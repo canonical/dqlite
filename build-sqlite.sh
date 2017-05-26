@@ -1,4 +1,4 @@
-#!/bin/sh -ex
+#!/bin/sh -e
 
 if [ -f .sqlite/.libs/libsqlite3.so ]; then
     exit 0
