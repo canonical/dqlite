@@ -14,9 +14,14 @@ script:
   - export CGO_LDFLAGS="-L$(pwd)/.sqlite/.libs"
   - export TAGS="libsqlite3 linux"
   - export LD_LIBRARY_PATH=$(pwd)/.sqlite/.libs
+  - export COV_PREFIX=
   - go get -tags "$TAGS" ./...
   - go build -tags "$TAGS" ./...
-  - go test -v -tags "$TAGS"
+  - >-
+      echo "mode: count" > out.cov
+  - go test -v -tags "$TAGS" ./connection -covermode=count -coverprofile=tmp.cov
+  - tail -n +2 tmp.cov >> out.cov
+  - $HOME/gopath/bin/goveralls -coverprofile out.cov -service=travis-ci
 
 cache:
   directories:
