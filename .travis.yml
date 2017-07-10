@@ -23,6 +23,8 @@ script:
   - tail -n +2 tmp.cov >> out.cov
   - go test -v -tags "$TAGS" ./transaction -covermode=count -coverprofile=tmp.cov
   - tail -n +2 tmp.cov >> out.cov
+  - go test -v -tags "$TAGS" ./command -covermode=count -coverprofile=tmp.cov
+  - tail -n +2 tmp.cov >> out.cov
   - $HOME/gopath/bin/goveralls -coverprofile out.cov -service=travis-ci
 
 cache:
