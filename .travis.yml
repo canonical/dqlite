@@ -1,0 +1,26 @@
+dist: trusty
+sudo: false
+
+language: go
+
+before_install:
+  - go get github.com/mattn/goveralls
+
+install:
+  - ./build-sqlite.sh
+
+script:
+  - export CGO_CFLAGS="-I$(pwd)/.sqlite/"
+  - export CGO_LDFLAGS="-L$(pwd)/.sqlite/.libs"
+  - export TAGS="libsqlite3 linux"
+  - export LD_LIBRARY_PATH=$(pwd)/.sqlite/.libs
+  - go get -tags "$TAGS" ./...
+  - go build -tags "$TAGS" ./...
+  - go test -v -tags "$TAGS"
+
+cache:
+  directories:
+    - .sqlite
+
+go:
+  - 1.8
