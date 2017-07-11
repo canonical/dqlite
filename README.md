@@ -1,4 +1,4 @@
-dqlite [![Build Status](https://travis-ci.org/dqlite/dqlite.png)](https://travis-ci.org/dqlite/dqlite) [![Coverage Status](https://coveralls.io/repos/github/dqlite/dqlite/badge.svg?branch=master)](https://coveralls.io/github/dqlite/dqlite?branch=master)
+dqlite [![Build Status](https://travis-ci.org/dqlite/dqlite.png)](https://travis-ci.org/dqlite/dqlite) [![Coverage Status](https://coveralls.io/repos/github/dqlite/dqlite/badge.svg?branch=master)](https://coveralls.io/github/dqlite/dqlite?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/dqlite/dqlite)](https://goreportcard.com/report/github.com/dqlite/dqlite)
 ======
 
 This repository provides the `dqlite` Go package, which can be used to
