@@ -215,8 +215,8 @@ func newTxnStateRules(forLeader bool) *fsm.Ruleset {
 
 // Map of all valid state transitions.
 var transitions = map[fsm.State][]fsm.State{
-	Pending: []fsm.State{Started},
-	Started: []fsm.State{Writing, Undoing, Ended},
-	Writing: []fsm.State{Writing, Undoing, Ended},
-	Undoing: []fsm.State{Undoing, Ended},
+	Pending: {Started},
+	Started: {Writing, Undoing, Ended},
+	Writing: {Writing, Undoing, Ended},
+	Undoing: {Undoing, Ended},
 }
