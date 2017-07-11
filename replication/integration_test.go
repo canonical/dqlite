@@ -2,8 +2,6 @@ package replication_test
 
 import (
 	"fmt"
-	"log"
-	"strconv"
 	"testing"
 	"time"
 
@@ -11,37 +9,39 @@ import (
 	"github.com/dqlite/dqlite/replication"
 	"github.com/dqlite/dqlite/transaction"
 	"github.com/dqlite/go-sqlite3x"
-	"github.com/hashicorp/raft"
+	"github.com/dqlite/raft-test"
 	"github.com/mattn/go-sqlite3"
 )
 
 func TestIntegration_Replication(t *testing.T) {
-	cluster := newCluster()
-	defer cluster.Cleanup()
+	cluster, cleanup := newCluster()
+	defer cleanup()
 
-	cluster.WaitElection()
-
-	conn1 := cluster.Open(0)
+	node1 := cluster.LeadershipAcquired()
+	conn1 := openConn(node1)
 	if _, err := conn1.Exec("CREATE TABLE test (n INT)", nil); err != nil {
 		t.Fatal(err)
 	}
 
-	cluster.Barrier(1)
+	node2 := cluster.Peers(node1)[0]
 
-	conn2 := cluster.Open(1)
+	fsm := node2.FSM.(*replication.FSM)
+	fsm.Wait(node1.Raft().AppliedIndex())
+
+	conn2 := openConn(node2)
 	if _, err := conn2.Query("SELECT * FROM test", nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestIntegration_RaftApplyErrorRemovePendingTxn(t *testing.T) {
-	cluster := newCluster()
-	defer cluster.Cleanup()
+	cluster, cleanup := newCluster()
+	defer cleanup()
 
-	cluster.WaitElection()
+	node := cluster.LeadershipAcquired()
 
-	conn := cluster.Open(0)
-	cluster.Disconnect(0)
+	conn := openConn(node)
+	cluster.Disconnect(node)
 
 	_, err := conn.Exec("CREATE TABLE test (n INT)", nil)
 
@@ -53,24 +53,24 @@ func TestIntegration_RaftApplyErrorRemovePendingTxn(t *testing.T) {
 	if got != want {
 		t.Errorf("expected\n%q\ngot\n%q", want, got)
 	}
-	if txn := cluster.Txn(conn); txn != nil {
+	if txn := findTxn(cluster, conn); txn != nil {
 		t.Errorf("expected pending transaction to be removed, found %s", txn)
 	}
 }
 
 func TestIntegration_RaftApplyErrorWithInflightTxnAndRecoverOnNewLeader(t *testing.T) {
-	cluster := newCluster()
-	defer cluster.Cleanup()
+	cluster, cleanup := newCluster()
+	defer cleanup()
 
-	cluster.WaitElection()
+	node := cluster.LeadershipAcquired()
 
-	conn := cluster.Open(0)
+	conn := openConn(node)
 
 	if _, err := conn.Exec("BEGIN; CREATE TABLE test (n INT)", nil); err != nil {
 		t.Fatal(err)
 	}
 
-	cluster.Disconnect(0)
+	cluster.Disconnect(node)
 
 	_, err := conn.Exec("INSERT INTO test VALUES(1); COMMIT", nil)
 	if err == nil {
@@ -83,10 +83,12 @@ func TestIntegration_RaftApplyErrorWithInflightTxnAndRecoverOnNewLeader(t *testi
 		t.Errorf("expected\n%q\ngot\n%q", want, got)
 	}
 
-	cluster.WaitElection()
-	cluster.Barrier(0)
+	node = cluster.LeadershipAcquired()
+	if err := node.Raft().Barrier(time.Second).Error(); err != nil {
+		t.Fatal(err)
+	}
 
-	conn = cluster.Open(0)
+	conn = openConn(node)
 
 	// XXX here we need to re-run the CREATE TABLE statement
 	// because there are two failure modes for the first CREATE
@@ -102,175 +104,74 @@ func TestIntegration_RaftApplyErrorWithInflightTxnAndRecoverOnNewLeader(t *testi
 
 }
 
-type cluster struct {
-	connections  []*connection.Registry
-	transactions []*transaction.Registry
-	methods      []*replication.Methods
-	fsms         []*replication.FSM
-	transports   []*raft.InmemTransport
-	rafts        []*raft.Raft
-	leader       int
-	follower1    int
-	follower2    int
-}
+// Create a new test raft cluster and configure each node to perform
+// SQLite replication.
+func newCluster() (*rafttest.Cluster, func()) {
+	cluster := rafttest.NewCluster(3)
+	cluster.Timeout = 25 * time.Second
 
-func (c *cluster) Cleanup() {
-	for i := range c.rafts {
-		cleanupRaftAndConnections(c.rafts[i], c.connections[i])
-	}
-}
-
-func (c *cluster) WaitElection() {
-	leader := -1
-
-	// Since notifications from LeaderCh are not buffered it could
-	// be that election already happened, so check it first.
-	for i, r := range c.rafts {
-		if r.State() == raft.Leader {
-			leader = i
-			break
+	for i := 0; i < 3; i++ {
+		node := cluster.Node(i)
+		fsm, connections, transactions := newFSMWithLogger(node.Config.Logger)
+		node.FSM = fsm
+		node.Data = &nodeData{
+			connections:  connections,
+			transactions: transactions,
 		}
 	}
+	cluster.Start()
 
-	// Wait for leader changes.
-	if leader == -1 {
-		flags := make([]bool, len(c.rafts))
-		select {
-		case flags[0] = <-c.rafts[0].LeaderCh():
-		case flags[1] = <-c.rafts[1].LeaderCh():
-		case flags[2] = <-c.rafts[2].LeaderCh():
-		}
-		for i, isLeader := range flags {
-			if isLeader {
-				leader = i
+	for i := 0; i < 3; i++ {
+		node := cluster.Node(i)
+		logger := node.Config.Logger
+
+		data := node.Data.(*nodeData)
+		methods := replication.NewMethods(logger, node.Raft(), data.connections, data.transactions)
+		data.methods = methods
+	}
+
+	cleanup := func() {
+		cluster.Shutdown()
+		for i := 0; i < 3; i++ {
+			node := cluster.Node(i)
+			data := node.Data.(*nodeData)
+			if err := data.connections.Purge(); err != nil {
+				panic(fmt.Sprintf("failed to purge connections registry: %v", err))
 			}
+
 		}
 	}
 
-	if leader == -1 {
-		panic("no leader elected")
-	}
-	c.leader = leader
-	c.follower1 = (leader + 1) % len(c.rafts)
-	c.follower2 = (leader + 2) % len(c.rafts)
+	return cluster, cleanup
 }
 
-func (c *cluster) Open(node int) *sqlite3.SQLiteConn {
-	i := c.index(node)
-	conn, err := c.connections[i].OpenLeader("test", c.methods[i])
+// Open a new leader connection on the given node.
+func openConn(node *rafttest.Node) *sqlite3.SQLiteConn {
+	data := node.Data.(*nodeData)
+	conn, err := data.connections.OpenLeader("test", data.methods)
 	if err != nil {
-		panic(fmt.Sprintf("failed to open leader on node %d: %v", node, err))
+		panic(fmt.Sprintf(
+			"failed to open leader on node %s: %v",
+			node.Transport.LocalAddr(), err))
 	}
 	return conn
 }
 
-func (c *cluster) Barrier(node int) {
-	if node == 0 {
-		if err := c.rafts[c.leader].Barrier(time.Second).Error(); err != nil {
-			panic(fmt.Sprintf("failed to apply leader barrier: %v", err))
-		}
-	} else {
-		i := c.index(node)
-		c.fsms[i].Wait(c.rafts[c.leader].AppliedIndex())
-	}
-}
-
-func (c *cluster) Disconnect(node int) {
-	i := c.index(node)
-	c.transports[i].DisconnectAll()
-}
-
-func (c *cluster) Txn(conn *sqlite3.SQLiteConn) *transaction.Txn {
-	for _, transactions := range c.transactions {
-		if txn := transactions.GetByConn(conn); txn != nil {
+// Find the transaction associated with the given connection.
+func findTxn(cluster *rafttest.Cluster, conn *sqlite3.SQLiteConn) *transaction.Txn {
+	for i := 0; i < 3; i++ {
+		node := cluster.Node(i)
+		data := node.Data.(*nodeData)
+		if txn := data.transactions.GetByConn(conn); txn != nil {
 			return txn
 		}
 	}
 	return nil
 }
 
-func (c *cluster) index(node int) int {
-	switch node {
-	case 0:
-		return c.leader
-	case 1:
-		return c.follower1
-	case 2:
-		return c.follower2
-	default:
-		panic(fmt.Sprintf("invalid node index %d", node))
-	}
-}
-
-func newCluster() *cluster {
-	n := 3
-
-	cluster := &cluster{
-		transports: newRaftTransports(n),
-	}
-	peerStores := newRaftPeerStores(cluster.transports)
-
-	for i := range cluster.transports {
-		logger := log.New(logOutput(), fmt.Sprintf("%d: ", i), log.Lmicroseconds)
-
-		fsm, connections, transactions := newFSMWithLogger(logger)
-
-		config := newRaftConfig()
-		config.Logger = logger
-
-		raft := newRaft(config, fsm, cluster.transports[i], peerStores[i])
-
-		methods := replication.NewMethods(logger, raft, connections, transactions)
-
-		cluster.connections = append(cluster.connections, connections)
-		cluster.transactions = append(cluster.transactions, transactions)
-		cluster.methods = append(cluster.methods, methods)
-		cluster.fsms = append(cluster.fsms, fsm)
-		cluster.rafts = append(cluster.rafts, raft)
-	}
-
-	return cluster
-}
-
-// Create the given number of in-memory raft transports and connect
-// them with each others.
-func newRaftTransports(n int) []*raft.InmemTransport {
-	transports := make([]*raft.InmemTransport, n)
-
-	for i := range transports {
-		_, transport := raft.NewInmemTransport(strconv.Itoa(i))
-		transports[i] = transport
-	}
-
-	for i, transport1 := range transports {
-		for j, transport2 := range transports {
-			if i != j {
-				transport1.Connect(transport2.LocalAddr(), transport2)
-				transport2.Connect(transport1.LocalAddr(), transport1)
-			}
-		}
-	}
-
-	return transports
-}
-
-// Creates in-memory static peers each one populated with the
-// addresses of the other ones.
-func newRaftPeerStores(transports []*raft.InmemTransport) []*raft.StaticPeers {
-	stores := make([]*raft.StaticPeers, len(transports))
-
-	for i := range stores {
-		stores[i] = &raft.StaticPeers{}
-	}
-
-	for i := range transports {
-		store := stores[i]
-		for j, transport := range transports {
-			if i != j {
-				store.StaticPeers = append(store.StaticPeers, transport.LocalAddr())
-			}
-		}
-	}
-
-	return stores
+// Node-level data specific to dqlite. They'll be saved in node.Data.
+type nodeData struct {
+	connections  *connection.Registry
+	transactions *transaction.Registry
+	methods      *replication.Methods
 }

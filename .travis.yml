@@ -15,19 +15,20 @@ script:
   - export TAGS="libsqlite3 linux"
   - export LD_LIBRARY_PATH=$(pwd)/.sqlite/.libs
   - export COV_PREFIX=
+  - go get github.com/dqlite/raft-test
   - go get -tags "$TAGS" ./...
   - go build -tags "$TAGS" ./...
   - >-
       echo "mode: count" > out.cov
-  - go test -v -tags "$TAGS" ./connection -covermode=count -coverprofile=tmp.cov
+  - go test -v -tags "$TAGS" ./connection -covermode=count -coverprofile=tmp.cov -timeout=30s
   - tail -n +2 tmp.cov >> out.cov
-  - go test -v -tags "$TAGS" ./transaction -covermode=count -coverprofile=tmp.cov
+  - go test -v -tags "$TAGS" ./transaction -covermode=count -coverprofile=tmp.cov -timeout=30s
   - tail -n +2 tmp.cov >> out.cov
-  - go test -v -tags "$TAGS" ./command -covermode=count -coverprofile=tmp.cov
+  - go test -v -tags "$TAGS" ./command -covermode=count -coverprofile=tmp.cov -timeout=30s
   - tail -n +2 tmp.cov >> out.cov
-  - go test -v -tags "$TAGS" ./replication -covermode=count -coverprofile=tmp.cov
+  - go test -v -tags "$TAGS" ./replication -covermode=count -coverprofile=tmp.cov -timeout=30s
   - tail -n +2 tmp.cov >> out.cov
-  - go test -v -tags "$TAGS" . -covermode=count -coverprofile=tmp.cov
+  - go test -v -tags "$TAGS" . -covermode=count -coverprofile=tmp.cov -timeout=30s
   - tail -n +2 tmp.cov >> out.cov
   - $HOME/gopath/bin/goveralls -coverprofile out.cov -service=travis-ci
 
