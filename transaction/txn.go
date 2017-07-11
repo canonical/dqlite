@@ -167,7 +167,7 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 	return err
 }
 
-// Assert that we have acutally entered a cricial section via mutex
+// Assert that we have actually entered a cricial section via mutex
 // locking.
 func (t *Txn) checkEntered() {
 	if !t.entered {
@@ -184,7 +184,7 @@ func (s *txnState) CurrentState() fsm.State {
 	return s.state
 }
 
-// SetState switchs the current state, implementing fsm.Stater.
+// SetState switches the current state, implementing fsm.Stater.
 func (s *txnState) SetState(state fsm.State) {
 	s.state = state
 }

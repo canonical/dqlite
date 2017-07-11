@@ -73,7 +73,7 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 
 	// Non-blocking notification of the last applied index. Used
 	// by tests for waiting for followers to actually finish
-	// commiting logs.
+	// committing logs.
 	select {
 	case f.indexes <- log.Index:
 	default:

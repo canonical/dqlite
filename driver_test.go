@@ -167,7 +167,7 @@ func TestDriver_SQLiteLogging(t *testing.T) {
 	const want = `[ERR] sqlite: near "FOO": syntax error (1)`
 	got := node.Output.String()
 	if !strings.Contains(got, want) {
-		t.Errorf("expected\n%q\nto contain\n%q", got, want)
+		t.Errorf("%q\ndoes not contain\n%q", got, want)
 	}
 }
 

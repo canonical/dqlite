@@ -111,7 +111,7 @@ func (r *Registry) DryRun() {
 }
 
 func (r *Registry) add(conn *sqlite3.SQLiteConn, id string, isLeader bool) *Txn {
-	// Sanity check that the same connection hasn't been registed
+	// Sanity check that the same connection hasn't been registered
 	// already. Iterating is fast since there will always be few
 	// write transactions active at given time.
 	if txn := r.getByConn(conn); txn != nil {
