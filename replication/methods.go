@@ -113,9 +113,8 @@ func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3x.Replicati
 	}
 
 	m.assertNoFollowerForDatabase(txn.Conn())
-	cmd := command.NewWalFrames(txn.ID(), frames)
 
-	if errno := m.apply(cmd); errno != 0 {
+	if errno := m.apply(command.NewWalFrames(txn.ID(), frames)); errno != 0 {
 		txn.Enter()
 		defer txn.Exit()
 		if errno := m.markStaleAndCreateSurrogateFollower(txn); errno != 0 {
@@ -143,9 +142,8 @@ func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	}
 
 	m.assertNoFollowerForDatabase(txn.Conn())
-	cmd := command.NewUndo(txn.ID())
 
-	if errno := m.apply(cmd); errno != 0 {
+	if errno := m.apply(command.NewUndo(txn.ID())); errno != 0 {
 		txn.Enter()
 		defer txn.Exit()
 		if errno := m.markStaleAndCreateSurrogateFollower(txn); errno != 0 {
@@ -175,9 +173,8 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	}
 
 	m.assertNoFollowerForDatabase(txn.Conn())
-	cmd := command.NewEnd(txn.ID())
 
-	if errno := m.apply(cmd); errno != 0 {
+	if errno := m.apply(command.NewEnd(txn.ID())); errno != 0 {
 		txn.Enter()
 		defer txn.Exit()
 		if txn.State() == transaction.Ended {
@@ -219,8 +216,7 @@ func (m *Methods) Checkpoint(conn *sqlite3.SQLiteConn, mode sqlite3x.WalCheckpoi
 
 	name := m.connections.NameByLeader(conn)
 
-	cmd := command.NewCheckpoint(name)
-	if errno := m.apply(cmd); errno != 0 {
+	if errno := m.apply(command.NewCheckpoint(name)); errno != 0 {
 		return errno
 	}
 
@@ -315,17 +311,19 @@ func (m *Methods) assertNoFollowerForDatabase(conn *sqlite3.SQLiteConn) {
 }
 
 // Apply the given command through raft.
-func (m *Methods) apply(cmd *command.Command) sqlite3.ErrNo {
-	m.logger.Printf("[DEBUG] dqlite: methods: apply command %s", cmd)
-	data, err := cmd.Marshal()
+func (m *Methods) apply(params command.Params) sqlite3.ErrNo {
+	code := command.CodeOf(params)
+	m.logger.Printf("[DEBUG] dqlite: methods: apply command %s", code)
+
+	data, err := command.Marshal(params)
 	if err != nil {
-		m.logger.Printf("[ERR] dqlite: methods: failed to marshal %s command: %s", cmd, err)
+		m.logger.Printf("[ERR] dqlite: methods: failed to marshal %s: %s", code, err)
 		return sqlite3x.ErrReplication
 	}
 
 	future := m.raft.Apply(data, m.applyTimeout)
 	if err := future.Error(); err != nil {
-		m.logger.Printf("[ERR] dqlite: methods: failed to apply %s command: %s", cmd, err)
+		m.logger.Printf("[ERR] dqlite: methods: failed to apply %s command: %s", code, err)
 
 		// If the node has lost leadership, we return a
 		// dedicated error, so clients will typically retry
@@ -338,7 +336,7 @@ func (m *Methods) apply(cmd *command.Command) sqlite3.ErrNo {
 		return sqlite3x.ErrReplication
 	}
 
-	m.logger.Printf("[DEBUG] dqlite: methods: applied command %s", cmd)
+	m.logger.Printf("[DEBUG] dqlite: methods: applied command %s", code)
 	return 0
 }
 

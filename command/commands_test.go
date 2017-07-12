@@ -1,89 +1,107 @@
 package command_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/dqlite/dqlite/command"
 	"github.com/dqlite/go-sqlite3x"
+	"github.com/golang/protobuf/proto"
 )
 
-func TestCommand_Marshal(t *testing.T) {
-	cmd := command.NewBegin("abcd", "test")
-	data, err := cmd.Marshal()
+func TestUnmarshal(t *testing.T) {
+	data, err := proto.Marshal(&command.Command{
+		Code:   command.Code_BEGIN,
+		Params: []byte("hello"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !(len(data) > 0) {
-		t.Error("marshalling didn't return any data")
-	}
-}
-
-func TestCommand_BeginString(t *testing.T) {
-	cmd := command.NewBegin("abcd", "test")
-	const want = "begin {txid=abcd name=test}"
-	got := fmt.Sprintf("%s", cmd)
-	if got != want {
-		t.Errorf("expected\n%q\ngot\n%q", want, got)
-	}
-}
-
-func TestCommand_BeginUnmarshal(t *testing.T) {
-	data, err := command.NewBegin("abcd", "test").Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	cmd, err := command.Unmarshal(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cmd.Code != command.Begin {
-		t.Errorf("expected command code %s, got %s", command.Begin, cmd.Code)
+	if cmd.Code != command.Code_BEGIN {
+		t.Fatalf("expected begin code (%d), got %d", command.Code_BEGIN, cmd.Code)
 	}
+}
+
+func TestUnmarshal_Error(t *testing.T) {
+	cmd, err := command.Unmarshal([]byte("garbage"))
+	if cmd != nil {
+		t.Error("non-nil Command returned despited garbage was passed")
+	}
+	if err == nil {
+		t.Error("nil error returned despite garbage was passed")
+	}
+}
+
+func TestParams(t *testing.T) {
+	cases := []struct {
+		new   func() command.Params
+		code  command.Code
+		check func(*command.Command, *testing.T)
+	}{
+		{newBegin, command.Code_BEGIN, checkBegin},
+		{newWalFrames, command.Code_WAL_FRAMES, checkWalFrames},
+	}
+	for _, c := range cases {
+		t.Run(c.code.String(), func(t *testing.T) {
+			data, err := command.Marshal(c.new())
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd, err := command.Unmarshal(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cmd.Code != c.code {
+				t.Errorf("expected code %s, got %s", c.code, cmd.Code)
+			}
+			c.check(cmd, t)
+		})
+	}
+}
+
+func newBegin() command.Params {
+	return command.NewBegin("abcd", "test")
+}
+
+func checkBegin(cmd *command.Command, t *testing.T) {
 	params, err := cmd.UnmarshalBegin()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if params.Txid != "abcd" {
-		t.Errorf("expected Txid abcd, got %s", params.Txid)
+		t.Errorf(`expected Txid "abcd", got "%s"`, params.Txid)
 	}
 	if params.Name != "test" {
-		t.Errorf("expected Name test, got %s", params.Name)
+		t.Errorf(`expected Name "test", got "%s"`, params.Name)
 	}
 }
 
-func TestCommand_WalFramesString(t *testing.T) {
-	frames := &sqlite3x.ReplicationWalFramesParams{
-		Pages: sqlite3x.NewReplicationPages(2, 4096),
-	}
-	cmd := command.NewWalFrames("abcd", frames)
-	const want = "WAL frames {txid=abcd page-size=0 pages=2 truncate=0 is-end=0 sync-flags=0}"
-	got := fmt.Sprintf("%s", cmd)
-	if got != want {
-		t.Errorf("expected\n%q\ngot\n%q", want, got)
-	}
-}
+func newWalFrames() command.Params {
+	size := 4096
+	pages := sqlite3x.NewReplicationPages(2, size)
 
-func TestCommand_WalFramesUnmarshal(t *testing.T) {
+	for i := range pages {
+		pages[i].Fill(make([]byte, 4096), 1, 1)
+	}
+
 	frames := &sqlite3x.ReplicationWalFramesParams{
-		Pages:    sqlite3x.NewReplicationPages(2, 4096),
-		PageSize: 4096,
+		Pages:    pages,
+		PageSize: size,
 		Truncate: 1,
 	}
-	data, err := command.NewWalFrames("abcd", frames).Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
+	return command.NewWalFrames("abcd", frames)
+}
 
-	cmd, err := command.Unmarshal(data)
-	if err != nil {
-		t.Fatal(err)
-	}
+func checkWalFrames(cmd *command.Command, t *testing.T) {
 	params, err := cmd.UnmarshalWalFrames()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if params.Txid != "abcd" {
 		t.Errorf("expected Txid abcd, got %s", params.Txid)
 	}
@@ -92,98 +110,5 @@ func TestCommand_WalFramesUnmarshal(t *testing.T) {
 	}
 	if params.Truncate != 1 {
 		t.Errorf("expected Truncate 1, got %d", params.Truncate)
-	}
-}
-
-func TestCommand_UndoString(t *testing.T) {
-	cmd := command.NewUndo("abcd")
-	const want = "undo {txid=abcd}"
-	got := fmt.Sprintf("%s", cmd)
-	if got != want {
-		t.Errorf("expected\n%q\ngot\n%q", want, got)
-	}
-}
-
-func TestCommand_UndoUnmarshal(t *testing.T) {
-	data, err := command.NewUndo("abcd").Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	cmd, err := command.Unmarshal(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cmd.Code != command.Undo {
-		t.Errorf("expected command code %s, got %s", command.Undo, cmd.Code)
-	}
-	params, err := cmd.UnmarshalUndo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if params.Txid != "abcd" {
-		t.Errorf("expected Txid abcd, got %s", params.Txid)
-	}
-}
-
-func TestCommand_EndString(t *testing.T) {
-	cmd := command.NewEnd("abcd")
-	const want = "end {txid=abcd}"
-	got := fmt.Sprintf("%s", cmd)
-	if got != want {
-		t.Errorf("expected\n%q\ngot\n%q", want, got)
-	}
-}
-
-func TestCommand_EndUnmarshal(t *testing.T) {
-	data, err := command.NewEnd("abcd").Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	cmd, err := command.Unmarshal(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cmd.Code != command.End {
-		t.Errorf("expected command code %s, got %s", command.End, cmd.Code)
-	}
-	params, err := cmd.UnmarshalEnd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if params.Txid != "abcd" {
-		t.Errorf("expected Txid abcd, got %s", params.Txid)
-	}
-}
-
-func TestCommand_CheckpointString(t *testing.T) {
-	cmd := command.NewCheckpoint("test")
-	const want = "checkpoint {name=test}"
-	got := fmt.Sprintf("%s", cmd)
-	if got != want {
-		t.Errorf("expected\n%q\ngot\n%q", want, got)
-	}
-}
-
-func TestCommand_CheckpointUnmarshal(t *testing.T) {
-	data, err := command.NewCheckpoint("test").Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	cmd, err := command.Unmarshal(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cmd.Code != command.Checkpoint {
-		t.Errorf("expected command code %s, got %s", command.Checkpoint, cmd.Code)
-	}
-	params, err := cmd.UnmarshalCheckpoint()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if params.Name != "test" {
-		t.Errorf("expected Name test, got %s", params.Name)
 	}
 }
