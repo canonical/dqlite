@@ -86,9 +86,17 @@ func TestMethods_WalFrames(t *testing.T) {
 	}
 	txn.Exit()
 
+	size := 4096
+	pages := sqlite3x.NewReplicationPages(2, size)
+
+	for i := range pages {
+		pages[i].Fill(make([]byte, 4096), 1, 1)
+	}
+
 	frames := &sqlite3x.ReplicationWalFramesParams{
-		Pages:    sqlite3x.NewReplicationPages(2, 4096),
-		PageSize: 4096,
+		Pages:    pages,
+		PageSize: size,
+		Truncate: 1,
 	}
 	if rc := methods.WalFrames(conn, frames); rc != 0 {
 		t.Fatalf("wal frames failed: %d", rc)

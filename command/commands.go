@@ -1,215 +1,156 @@
 package command
 
 import (
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-
 	"github.com/dqlite/go-sqlite3x"
+	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 )
 
-// NewBegin returns a new Command that instructs the dqlite FSM
-// to begin a new write transaction.
-func NewBegin(txid string, name string) *Command {
-	params := &beginParams{
+// Params is just a protobuf message that holds the payload of a
+// command.
+type Params proto.Message
+
+// NewBegin returns a new Begin protobuf message.
+func NewBegin(txid string, name string) *Begin {
+	return &Begin{
 		Txid: txid,
 		Name: name,
 	}
-	return newCommand(Begin, params)
 }
 
-// NewWalFrames creates a command to write new WAL frames.
-func NewWalFrames(txid string, frames *sqlite3x.ReplicationWalFramesParams) *Command {
-	pages := make([]walFramesPage, len(frames.Pages))
+// NewWalFrames returns a new WalFrames protobuf message.
+func NewWalFrames(txid string, frames *sqlite3x.ReplicationWalFramesParams) Params {
+	pages := make([]*WalFramesPage, len(frames.Pages))
 
 	size := frames.PageSize
-	for i, page := range frames.Pages {
-		data := (*[1 << 30]byte)(page.Data())[:size:size]
-		pages[i].Data = base64.StdEncoding.EncodeToString(data)
-		pages[i].Flags = page.Flags()
-		pages[i].Number = page.Number()
+	for i := range frames.Pages {
+		page := &frames.Pages[i]
+		pages[i] = &WalFramesPage{}
+		pages[i].Data = (*[1 << 30]byte)(page.Data())[:size:size]
+		pages[i].Flags = uint32(page.Flags())
+		pages[i].Number = uint32(page.Number())
 	}
-	params := &walFramesParams{
+	return &WalFrames{
 		Txid:      txid,
-		PageSize:  frames.PageSize,
+		PageSize:  int32(size),
 		Pages:     pages,
-		Truncate:  frames.Truncate,
-		IsCommit:  frames.IsCommit,
-		SyncFlags: frames.SyncFlags,
+		Truncate:  uint32(frames.Truncate),
+		IsCommit:  int32(frames.IsCommit),
+		SyncFlags: uint32(frames.SyncFlags),
 	}
-	return newCommand(WalFrames, params)
 }
 
-// NewUndo creates a command to undo any WAL changes.
-func NewUndo(txid string) *Command {
-	params := &undoParams{
+// NewUndo returns a new Undo protobuf message.
+func NewUndo(txid string) Params {
+	return &Undo{
 		Txid: txid,
 	}
-	return newCommand(Undo, params)
 }
 
-// NewEnd creates a command to finish a WAL write transaction
-// and release the relevant locks.
-func NewEnd(txid string) *Command {
-	params := &endParams{
+// NewEnd returns a new End protobuf message.
+func NewEnd(txid string) Params {
+	return &End{
 		Txid: txid,
 	}
-	return newCommand(End, params)
 }
 
-// NewCheckpoint creates a command to checkpoint the WAL.
-func NewCheckpoint(name string) *Command {
-	params := &checkpointParams{
+// NewCheckpoint returns a new Checkpoint protobuf message.
+func NewCheckpoint(name string) Params {
+	return &Checkpoint{
 		Name: name,
 	}
-	return newCommand(Checkpoint, params)
 }
 
-// Unmarshal the given data into a new Command instance.
+// CodeOf returns the command code for the given command parameters.
+func CodeOf(params Params) Code {
+	var code Code
+	switch params.(type) {
+	case *Begin:
+		code = Code_BEGIN
+	case *WalFrames:
+		code = Code_WAL_FRAMES
+	case *Undo:
+		code = Code_UNDO
+	case *End:
+		code = Code_END
+	case *Checkpoint:
+		code = Code_CHECKPOINT
+	}
+	return code
+}
+
+// Marshal serializes a new Command with the given parameters.
+func Marshal(params Params) ([]byte, error) {
+	paramsData, err := proto.Marshal(params)
+	if err != nil {
+		return nil, errors.Wrap(err, "params")
+	}
+	command := &Command{
+		Code:   CodeOf(params),
+		Params: paramsData,
+	}
+	commandData, err := proto.Marshal(command)
+	if err != nil {
+		return nil, errors.Wrap(err, "command")
+	}
+	return commandData, nil
+}
+
+// Unmarshal returns a Command from the given data.
 func Unmarshal(data []byte) (*Command, error) {
 	command := &Command{}
-	err := json.Unmarshal(data, command)
-	if err != nil {
+	if err := proto.Unmarshal(data, command); err != nil {
 		return nil, err
 	}
 	return command, nil
 }
 
-// Command captures data for a single dqlite FSM raft log entry.
-type Command struct {
-	Code   Code
-	Params interface{}
-}
-
-func (c *Command) String() string {
-	params := c.Params.(Params)
-	return fmt.Sprintf("%s %s", commandNames[c.Code], params.String())
-}
-
-// Marshal serializes the command into bytes.
-func (c *Command) Marshal() ([]byte, error) {
-	bytes, err := json.Marshal(c)
-	if err != nil {
-		return nil, errors.Wrap(err, fmt.Sprintf("failed to marshal %s command", c.String()))
-	}
-	return bytes, nil
-}
-
-func (c *Command) UnmarshalBegin() (*beginParams, error) {
-	params := &beginParams{}
-	if err := c.unmarshalParams(params); err != nil {
+// UnmarshalBegin returns the Begin parameters from a command params
+// payload.
+func (c *Command) UnmarshalBegin() (*Begin, error) {
+	params := &Begin{}
+	if err := proto.Unmarshal(c.Params, params); err != nil {
 		return nil, err
 	}
 	return params, nil
 }
 
-func (c *Command) UnmarshalWalFrames() (*walFramesParams, error) {
-	params := &walFramesParams{}
-	if err := c.unmarshalParams(params); err != nil {
+// UnmarshalWalFrames returns the WalFrames parameters from a command
+// params payload.
+func (c *Command) UnmarshalWalFrames() (*WalFrames, error) {
+	params := &WalFrames{}
+	if err := proto.Unmarshal(c.Params, params); err != nil {
 		return nil, err
 	}
 	return params, nil
 }
 
-func (c *Command) UnmarshalUndo() (*undoParams, error) {
-	params := &undoParams{}
-	if err := c.unmarshalParams(params); err != nil {
+// UnmarshalUndo returns the Undo parameters from a command params
+// payload.
+func (c *Command) UnmarshalUndo() (*Undo, error) {
+	params := &Undo{}
+	if err := proto.Unmarshal(c.Params, params); err != nil {
 		return nil, err
 	}
 	return params, nil
 }
 
-func (c *Command) UnmarshalEnd() (*endParams, error) {
-	params := &endParams{}
-	if err := c.unmarshalParams(params); err != nil {
+// UnmarshalEnd returns the End parameters from a command params
+// payload.
+func (c *Command) UnmarshalEnd() (*End, error) {
+	params := &End{}
+	if err := proto.Unmarshal(c.Params, params); err != nil {
 		return nil, err
 	}
 	return params, nil
 }
 
-func (c *Command) UnmarshalCheckpoint() (*checkpointParams, error) {
-	params := &checkpointParams{}
-	if err := c.unmarshalParams(params); err != nil {
+// UnmarshalCheckpoint returns the Checkpoint parameters from a command params
+// payload.
+func (c *Command) UnmarshalCheckpoint() (*Checkpoint, error) {
+	params := &Checkpoint{}
+	if err := proto.Unmarshal(c.Params, params); err != nil {
 		return nil, err
 	}
 	return params, nil
-}
-
-func (c *Command) unmarshalParams(params interface{}) error {
-	data, err := json.Marshal(c.Params)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(data, params); err != nil {
-		return errors.Wrap(err, fmt.Sprintf("failed to unmarshal params for %s", c.Code))
-	}
-	return nil
-}
-
-// Params is the interface that command parameters need to
-// implement.
-type Params interface {
-	String() string
-}
-
-func newCommand(code Code, params Params) *Command {
-	return &Command{
-		Code:   code,
-		Params: params,
-	}
-}
-
-type beginParams struct {
-	Txid string
-	Name string
-}
-
-func (p *beginParams) String() string {
-	return fmt.Sprintf("{txid=%s name=%s}", p.Txid, p.Name)
-}
-
-type walFramesPage struct {
-	Data   string
-	Flags  uint
-	Number uint
-}
-
-type walFramesParams struct {
-	Txid      string
-	PageSize  int
-	Pages     []walFramesPage
-	Truncate  uint
-	IsCommit  int
-	SyncFlags int
-}
-
-func (p *walFramesParams) String() string {
-	return fmt.Sprintf(
-		"{txid=%s page-size=%d pages=%d truncate=%d is-end=%d sync-flags=%d}",
-		p.Txid, p.PageSize, len(p.Pages), p.Truncate, p.IsCommit, p.SyncFlags)
-}
-
-type undoParams struct {
-	Txid string
-}
-
-func (p *undoParams) String() string {
-	return fmt.Sprintf("{txid=%s}", p.Txid)
-}
-
-type endParams struct {
-	Txid string
-}
-
-func (p *endParams) String() string {
-	return fmt.Sprintf("{txid=%s}", p.Txid)
-}
-
-type checkpointParams struct {
-	Name string
-}
-
-func (p *checkpointParams) String() string {
-	return fmt.Sprintf("{name=%s}", p.Name)
 }

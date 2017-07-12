@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package command;
+
+enum Code {
+  BEGIN      = 0;
+  WAL_FRAMES = 1;
+  UNDO       = 2;
+  END        = 3;
+  CHECKPOINT = 4;
+}
+	
+message Command {
+  Code code = 1;
+  bytes params = 2;
+}
+
+message Begin {
+  string txid = 1;
+  string name = 2;
+}
+
+message WalFrames {
+  string txid = 1;
+  int32 page_size = 2;
+  repeated WalFramesPage pages = 3;
+  uint32 truncate = 4;
+  int32 is_commit = 5;
+  uint32 sync_flags = 6;
+}
+
+message WalFramesPage {
+  bytes data = 1;
+  uint32 flags = 2;
+  uint32 number = 3;
+}
+
+message Undo {
+  string txid = 1;
+}
+
+message End {
+  string txid = 1;
+}
+
+message Checkpoint {
+  string name = 1;
+}

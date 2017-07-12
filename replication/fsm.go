@@ -3,7 +3,6 @@ package replication
 import (
 	"bufio"
 	"bytes"
-	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -53,15 +52,15 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	}
 
 	switch cmd.Code {
-	case command.Begin:
+	case command.Code_BEGIN:
 		err = f.applyBegin(cmd)
-	case command.WalFrames:
+	case command.Code_WAL_FRAMES:
 		err = f.applyWalFrames(cmd)
-	case command.Undo:
+	case command.Code_UNDO:
 		err = f.applyUndo(cmd)
-	case command.End:
+	case command.Code_END:
 		err = f.applyEnd(cmd)
-	case command.Checkpoint:
+	case command.Code_CHECKPOINT:
 		err = f.applyCheckpoint(cmd)
 	default:
 		err = fmt.Errorf("invalid code: %d", cmd.Code)
@@ -139,7 +138,8 @@ func (f *FSM) applyWalFrames(cmd *command.Command) error {
 	if err != nil {
 		return err
 	}
-	f.logCommand(cmd, params)
+	// XXX TODO: too noisy because of protobuf
+	//f.logCommand(cmd, params)
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
@@ -150,27 +150,19 @@ func (f *FSM) applyWalFrames(cmd *command.Command) error {
 
 	f.logTxn(cmd, txn)
 
-	pages := sqlite3x.NewReplicationPages(len(params.Pages), params.PageSize)
+	pages := sqlite3x.NewReplicationPages(len(params.Pages), int(params.PageSize))
 	defer sqlite3x.DestroyReplicationPages(pages)
 
 	for i, page := range params.Pages {
-		data := (*[1 << 30]byte)(pages[i].Data())[:params.PageSize:params.PageSize]
-		bytes, err := base64.StdEncoding.DecodeString(page.Data)
-		if err != nil {
-			return fmt.Errorf("failed to decode page %d data: %s for transaction %s", i, err, txn)
-		}
-		for i := range bytes {
-			data[i] = bytes[i]
-		}
-		pages[i].Fill(page.Flags, page.Number)
+		pages[i].Fill(page.Data, uint16(page.Flags), page.Number)
 	}
 
 	framesParams := &sqlite3x.ReplicationWalFramesParams{
-		PageSize:  params.PageSize,
+		PageSize:  int(params.PageSize),
 		Pages:     pages,
-		Truncate:  params.Truncate,
-		IsCommit:  params.IsCommit,
-		SyncFlags: params.SyncFlags,
+		Truncate:  uint32(params.Truncate),
+		IsCommit:  int(params.IsCommit),
+		SyncFlags: uint8(params.SyncFlags),
 	}
 
 	return txn.WalFrames(framesParams)

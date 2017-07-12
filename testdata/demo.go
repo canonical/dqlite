@@ -83,6 +83,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(0)
 
 	// Start crunching.
 	go insertForever(db)
