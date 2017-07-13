@@ -109,6 +109,19 @@ func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3x.Replicati
 	txn := m.lookupExistingLeaderForConn(conn)
 
 	if errno := m.checkIsLeader("wal frames"); errno != 0 {
+		// If we have lost leadership we're in a state where
+		// the transaction began on this node and a quorum of
+		// follower. When we return an error, SQLite will try
+		// to automatically rollback the WAL: we need to mark
+		// the transaction as stale (so the follow-up undo and
+		// end command will succeed as no-op) and create a
+		// follower (so the next leader will roll it back as
+		// leftover). See also #2.
+		txn.Enter()
+		defer txn.Exit()
+		if errno := m.markStaleAndCreateSurrogateFollower(txn); errno != 0 {
+			return errno
+		}
 		return errno
 	}
 

@@ -36,6 +36,7 @@ var data = flag.String("data", "", "directory to save SQLite databases and Raft 
 var join = flag.String("join", "", "address of an existing node in the cluster (or none for starting a new cluster)")
 var port = flag.Int("port", 9990, "local port to use for the raft HTTP gateway")
 var debug = flag.Bool("debug", false, "enable debug logging")
+var forever = flag.Bool("forever", false, "run forever, without crashing at a random time between 5 and 25 seconds ")
 
 func main() {
 	// Parse and validate command line flags.
@@ -87,9 +88,12 @@ func main() {
 	db.SetMaxIdleConns(0)
 
 	// Start crunching.
-	go insertForever(db)
-
-	randomSleep(5, 25)
+	if *forever {
+		insertForever(db)
+	} else {
+		go insertForever(db)
+		randomSleep(5, 25)
+	}
 	log.Printf("[INFO] demo: exit")
 }
 
@@ -105,7 +109,7 @@ func insertForever(db *sql.DB) {
 
 		// Ensure our test table is there.
 		if _, err := tx.Exec("CREATE TABLE IF NOT EXISTS test (n INT)"); err != nil {
-			handleTxError(tx, err)
+			handleTxError(tx, err, false)
 			continue
 		}
 
@@ -116,7 +120,7 @@ func insertForever(db *sql.DB) {
 		failed := false
 		for i := 0; i < 50; i++ {
 			if _, err := tx.Exec("INSERT INTO test (n) VALUES(?)", i+offset); err != nil {
-				handleTxError(tx, err)
+				handleTxError(tx, err, false)
 				failed = true
 				break
 			}
@@ -130,7 +134,7 @@ func insertForever(db *sql.DB) {
 
 		// Commit
 		if err := tx.Commit(); err != nil {
-			handleTxError(tx, err)
+			handleTxError(tx, err, true)
 			continue
 		}
 		// Sleep a little bit to simulate a pause in the service's
@@ -141,11 +145,18 @@ func insertForever(db *sql.DB) {
 
 // Handle a transaction error. All errors are fatal except ones due to
 // lost leadership, in which case we rollback and try again.
-func handleTxError(tx *sql.Tx, err error) {
+func handleTxError(tx *sql.Tx, err error, isCommit bool) {
 	if err, ok := err.(sqlite3.Error); ok {
 		if err.Code == sqlite3x.ErrNotLeader {
+			if isCommit {
+				// Commit failures are automatically
+				// rolled back by SQLite, so rolling
+				// back again would be an error. See
+				// also #2.
+				return
+			}
 			if err := tx.Rollback(); err != nil {
-				log.Fatalf("[ERR] demo: rolloback failed %v", err)
+				log.Fatalf("[ERR] demo: rollback failed %v", err)
 			}
 			return
 		}
