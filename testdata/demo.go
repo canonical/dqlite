@@ -34,7 +34,7 @@ import (
 
 var data = flag.String("data", "", "directory to save SQLite databases and Raft data in")
 var join = flag.String("join", "", "address of an existing node in the cluster (or none for starting a new cluster)")
-var port = flag.Int("port", 9990, "local port to use for the raft HTTP gateway")
+var addr = flag.String("addr", "127.0.0.1:9990", "address to listen to for the raft HTTP gateway other demo nodes will connect to (via initially -join)")
 var debug = flag.Bool("debug", false, "enable debug logging")
 var forever = flag.Bool("forever", false, "run forever, without crashing at a random time between 5 and 25 seconds ")
 
@@ -54,9 +54,9 @@ func main() {
 	// for the DQLite cluster. In a real-world web service you'll
 	// want to route the Raft HTTP handler to some specific path,
 	// not "/".
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
+	listener, err := net.Listen("tcp", fmt.Sprintf(*addr))
 	if err != nil {
-		log.Fatalf("[ERR] demo: failed to listen to port %d: %v", port, err)
+		log.Fatalf("[ERR] demo: failed to listen to address %s: %v", *addr, err)
 	}
 	handler := rafthttp.NewHandler()
 	server := &http.Server{Handler: handler}

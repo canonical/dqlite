@@ -14,12 +14,12 @@ BASE_PORT = 9980
 
 def spawnNode(n, purge=False):
     data = "/tmp/dqlite-demo-%d" % n
-    port = str(BASE_PORT + n)
+    port = BASE_PORT + n
 
     if purge and os.path.exists(data):
         shutil.rmtree(data)
 
-    args = ["./demo", "-data", data, "-port", port]
+    args = ["./demo", "-data", data, "-addr", "127.0.0.1:%d" % port]
     if n > 0:
         args.extend(["-join", "127.0.0.1:%d" % BASE_PORT])
 
