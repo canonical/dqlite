@@ -86,6 +86,9 @@ func NewDriver(config *Config, join string) (*Driver, error) {
 
 // Open starts a new connection to a SQLite database.
 func (d *Driver) Open(database string) (driver.Conn, error) {
+	if err := d.WaitLeadership(); err != nil {
+		return nil, err
+	}
 	sqliteConn, err := d.connections.OpenLeader(database, d.methods)
 	if err != nil {
 		return nil, err
@@ -169,9 +172,6 @@ func (c *Conn) Close() error {
 
 // Begin starts and returns a new transaction.
 func (c *Conn) Begin() (driver.Tx, error) {
-	if err := c.waitLeadership(); err != nil {
-		return nil, err
-	}
 	return c.sqliteConn.Begin()
 }
 
