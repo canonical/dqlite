@@ -45,10 +45,10 @@ func NewTempRegistryWithDatabase() *Registry {
 // registered database named 'test', that uses the test DSN, that
 // has its follower connection open and new leader connection
 // created with the given replication methods.
-func NewTempRegistryWithLeader(followers ...*sqlite3.SQLiteConn) (*Registry, *sqlite3.SQLiteConn) {
+func NewTempRegistryWithLeader() (*Registry, *sqlite3.SQLiteConn) {
 	registry := NewTempRegistryWithDatabase()
 
-	methods := sqlite3x.DirectReplicationMethods(followers...)
+	methods := sqlite3x.PassthroughReplicationMethods()
 	conn, err := registry.OpenLeader("test", methods)
 	if err != nil {
 		panic(fmt.Sprintf("failed to open leader connection: %v", err))

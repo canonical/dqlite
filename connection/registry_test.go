@@ -92,7 +92,7 @@ func TestRegistry_OpenAndCloseLeader(t *testing.T) {
 	registry := connection.NewTempRegistryWithDatabase()
 	defer registry.Purge()
 
-	methods := sqlite3x.DirectReplicationMethods()
+	methods := sqlite3x.PassthroughReplicationMethods()
 	conn, err := registry.OpenLeader("test", methods)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestRegistry_OpenLeaderFileError(t *testing.T) {
 	registry := connection.NewTempRegistryWithDatabase()
 	registry.Purge()
 
-	methods := sqlite3x.DirectReplicationMethods()
+	methods := sqlite3x.PassthroughReplicationMethods()
 	conn, err := registry.OpenLeader("test", methods)
 	if conn != nil {
 		t.Fatal("expected nil conn return value after opening leader with purged registry")
@@ -145,7 +145,7 @@ func TestRegistry_AutoCheckpoint(t *testing.T) {
 
 	registry.AutoCheckpoint(1)
 
-	methods := sqlite3x.DirectReplicationMethods()
+	methods := sqlite3x.PassthroughReplicationMethods()
 	conn, err := registry.OpenLeader("test", methods)
 	if err != nil {
 		t.Fatal(err)

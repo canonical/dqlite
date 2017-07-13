@@ -402,7 +402,7 @@ func marshalCommand(cmd *command.Command) []byte {
 // Wrapper around connections.Registry.OpenLeader(), panic'ing if any
 // error occurs.
 func openLeader(connections *connection.Registry) *sqlite3.SQLiteConn {
-	return openLeaderWithMethods(connections, sqlite3x.DirectReplicationMethods())
+	return openLeaderWithMethods(connections, sqlite3x.PassthroughReplicationMethods())
 }
 
 // Wrapper around connections.Registry.OpenLeader(), panic'ing if any
