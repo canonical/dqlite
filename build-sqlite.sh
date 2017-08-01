@@ -1,20 +1,12 @@
-#!/bin/sh -e
+#!/bin/sh -ex
 
-if [ -f .sqlite/.libs/libsqlite3.so ]; then
-    exit 0
-fi
+TAG=replication-support-3.19.2
+URL=https://github.com/dqlite/sqlite/releases/download/$TAG/release--enable-debug.tar.gz
 
-if ! [ -d .sqlite/.git ]; then
-  # Download the sqlite fork with replication support
-  git clone --depth 10 --single-branch --branch replication-support https://github.com/dqlite/sqlite.git .sqlite
-fi
-
+# Download the sqlite fork with replication support
+mkdir -p .sqlite
 cd .sqlite
+rm -f *
+wget $URL
 
-# Make the fossil VCS happy, see http://repo.or.cz/sqlite.git.
-git rev-parse --git-dir >/dev/null
-git log -1 --format=format:%ci%n | sed -e 's/ [-+].*$//;s/ /T/;s/^/D /' > manifest
-echo $(git log -1 --format=format:%H) > manifest.uuid
-
-./configure --enable-debug
-make
+tar xfz release--enable-debug.tar.gz
