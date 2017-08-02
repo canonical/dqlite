@@ -4,33 +4,14 @@ sudo: false
 language: go
 
 before_install:
+  - go get github.com/go-playground/overalls
   - go get github.com/mattn/goveralls
 
-install:
-  - ./build-sqlite.sh
-
 script:
-  - export CGO_CFLAGS="-I$(pwd)/.sqlite/"
-  - export CGO_LDFLAGS="-L$(pwd)/.sqlite/"
-  - export LD_LIBRARY_PATH="$(pwd)/.sqlite/"
-  - export TAGS="libsqlite3 linux"
-  - export COV_PREFIX=
-  - go get github.com/dqlite/raft-test
-  - go get -tags "$TAGS" ./...
-  - go build -tags "$TAGS" ./...
-  - >-
-      echo "mode: count" > out.cov
-  - go test -v -tags "$TAGS" ./connection -covermode=count -coverprofile=tmp.cov -timeout=30s
-  - tail -n +2 tmp.cov >> out.cov
-  - go test -v -tags "$TAGS" ./transaction -covermode=count -coverprofile=tmp.cov -timeout=30s
-  - tail -n +2 tmp.cov >> out.cov
-  - go test -v -tags "$TAGS" ./command -covermode=count -coverprofile=tmp.cov -timeout=30s
-  - tail -n +2 tmp.cov >> out.cov
-  - go test -v -tags "$TAGS" ./replication -covermode=count -coverprofile=tmp.cov -timeout=30s
-  - tail -n +2 tmp.cov >> out.cov
-  - go test -v -tags "$TAGS" . -covermode=count -coverprofile=tmp.cov -timeout=30s
-  - tail -n +2 tmp.cov >> out.cov
-  - $HOME/gopath/bin/goveralls -coverprofile out.cov -service=travis-ci
+  - make dependencies
+  - make build
+  - make coverage
+  - $GOPATH/bin/goveralls -coverprofile overalls.coverprofile -service=travis-ci
 
 go:
   - 1.8
