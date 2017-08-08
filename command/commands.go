@@ -109,7 +109,7 @@ func Unmarshal(data []byte) (*Command, error) {
 // payload.
 func (c *Command) UnmarshalBegin() (*Begin, error) {
 	params := &Begin{}
-	if err := proto.Unmarshal(c.Params, params); err != nil {
+	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
 		return nil, err
 	}
 	return params, nil
@@ -119,7 +119,7 @@ func (c *Command) UnmarshalBegin() (*Begin, error) {
 // params payload.
 func (c *Command) UnmarshalWalFrames() (*WalFrames, error) {
 	params := &WalFrames{}
-	if err := proto.Unmarshal(c.Params, params); err != nil {
+	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
 		return nil, err
 	}
 	return params, nil
@@ -129,7 +129,7 @@ func (c *Command) UnmarshalWalFrames() (*WalFrames, error) {
 // payload.
 func (c *Command) UnmarshalUndo() (*Undo, error) {
 	params := &Undo{}
-	if err := proto.Unmarshal(c.Params, params); err != nil {
+	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
 		return nil, err
 	}
 	return params, nil
@@ -139,7 +139,7 @@ func (c *Command) UnmarshalUndo() (*Undo, error) {
 // payload.
 func (c *Command) UnmarshalEnd() (*End, error) {
 	params := &End{}
-	if err := proto.Unmarshal(c.Params, params); err != nil {
+	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
 		return nil, err
 	}
 	return params, nil
@@ -149,7 +149,7 @@ func (c *Command) UnmarshalEnd() (*End, error) {
 // payload.
 func (c *Command) UnmarshalCheckpoint() (*Checkpoint, error) {
 	params := &Checkpoint{}
-	if err := proto.Unmarshal(c.Params, params); err != nil {
+	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
 		return nil, err
 	}
 	return params, nil
