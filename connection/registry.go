@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Registry is a DQLite node-level data structure that tracks all
+// Registry is a qlite node-level data structure that tracks all
 // SQLite connections opened on the node, either in leader replication
 // mode or follower replication mode.
 type Registry struct {
