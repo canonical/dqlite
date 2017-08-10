@@ -43,6 +43,9 @@ func TestRegistry_OpenAndCloseFollower(t *testing.T) {
 	if err := registry.OpenFollower("test"); err != nil {
 		t.Fatal(err)
 	}
+	if conn := registry.Follower("test"); conn == nil {
+		t.Error("no connection returned by Follower()")
+	}
 	if err := registry.CloseFollower("test"); err != nil {
 		t.Fatal(err)
 	}
