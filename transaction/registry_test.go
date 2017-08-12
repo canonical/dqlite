@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dqlite/dqlite/connection"
-	"github.com/dqlite/dqlite/transaction"
+	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/CanonicalLtd/dqlite/transaction"
 )
 
 func TestRegistry_AddLeader(t *testing.T) {

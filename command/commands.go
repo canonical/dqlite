@@ -1,7 +1,7 @@
 package command
 
 import (
-	"github.com/dqlite/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 )

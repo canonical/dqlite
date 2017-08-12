@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/dqlite/raft-http"
+	"github.com/CanonicalLtd/raft-http"
 	"github.com/hashicorp/raft"
 )
 

@@ -3,9 +3,9 @@ package transaction_test
 import (
 	"testing"
 
-	"github.com/dqlite/dqlite/connection"
-	"github.com/dqlite/dqlite/transaction"
-	"github.com/dqlite/go-sqlite3x"
+	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/CanonicalLtd/dqlite/transaction"
+	"github.com/CanonicalLtd/go-sqlite3x"
 )
 
 func TestTxn_String(t *testing.T) {

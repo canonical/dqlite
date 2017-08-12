@@ -26,9 +26,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/dqlite/dqlite"
-	"github.com/dqlite/go-sqlite3x"
-	"github.com/dqlite/raft-http"
+	"github.com/CanonicalLtd/dqlite"
+	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/raft-http"
 	"github.com/mattn/go-sqlite3"
 )
 

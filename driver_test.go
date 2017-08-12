@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dqlite/dqlite"
+	"github.com/CanonicalLtd/dqlite"
 	"github.com/hashicorp/raft"
 )
 
