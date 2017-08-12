@@ -54,13 +54,12 @@ func main() {
 	// for the DQLite cluster. In a real-world web service you'll
 	// want to route the Raft HTTP handler to some specific path,
 	// not "/".
-	listener, err := net.Listen("tcp", fmt.Sprintf(*addr))
+	listener, err := net.Listen("tcp", *addr)
 	if err != nil {
 		log.Fatalf("[ERR] demo: failed to listen to address %s: %v", *addr, err)
 	}
 	handler := rafthttp.NewHandler()
-	server := &http.Server{Handler: handler}
-	go server.Serve(listener)
+	go http.Serve(listener, handler)
 	addr := listener.Addr()
 
 	prefix := fmt.Sprintf("%s: ", addr)
