@@ -1,4 +1,4 @@
-dqlite [![Build Status](https://travis-ci.org/dqlite/dqlite.png)](https://travis-ci.org/dqlite/dqlite) [![Coverage Status](https://coveralls.io/repos/github/dqlite/dqlite/badge.svg?branch=master)](https://coveralls.io/github/dqlite/dqlite?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/dqlite/dqlite)](https://goreportcard.com/report/github.com/dqlite/dqlite)
+dqlite [![Build Status](https://travis-ci.org/CanonicalLtd/dqlite.png)](https://travis-ci.org/CanonicalLtd/dqlite) [![Coverage Status](https://coveralls.io/repos/github/CanonicalLtd/dqlite/badge.svg?branch=master)](https://coveralls.io/github/CanonicalLtd/dqlite?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/CanonicalLtd/dqlite)](https://goreportcard.com/report/github.com/CanonicalLtd/dqlite)
 ======
 
 This repository provides the `dqlite` Go package, which can be used to
@@ -10,7 +10,7 @@ Design higlights
 
 * No external processes needed: dqlite is just a Go library, you link it
   it to your application exactly like you would with SQLite.
-* Replication needs a [SQLite patch](https://github.com/dqlite/sqlite/commit/2a9aa8b056f37ae05f38835182a2856ffc95aee4)
+* Replication needs a [SQLite patch](https://github.com/CanonicalLtd/sqlite/commit/2a9aa8b056f37ae05f38835182a2856ffc95aee4)
   which is not yet included upstream.
 * The Go [Raft package](https://github.com/hashicorp/raft) from Hashicorp
   is used internally for replicating the write-ahead log frames of SQLite
@@ -46,8 +46,8 @@ installed:
 Then run:
 
 ```
-go get -d github.com/dqlite/dqlite
-cd $GOPATH/src/github.com/dqlite/dqlite
+go get -d github.com/CanonicalLtd/dqlite
+cd $GOPATH/src/github.com/CanonicalLtd/dqlite
 ./run-demo
 ```
 
@@ -74,4 +74,4 @@ raft logs store (```raft.db```), and raft snapshots.
 Documentation
 -------------
 
-The documentation for this package can be found on [Godoc](http://godoc.org/github.com/dqlite/dqlite).
+The documentation for this package can be found on [Godoc](http://godoc.org/github.com/CanonicalLtd/dqlite).

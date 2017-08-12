@@ -1,8 +1,8 @@
-PROJECT=github.com/dqlite/dqlite
+PROJECT=github.com/CanonicalLtd/dqlite
 
 SQLITE_TAG=replication-support-3.19.2
 SQLITE_TAR=release--enable-debug.tar.gz
-SQLITE_URL=https://github.com/dqlite/sqlite/releases/download/$(SQLITE_TAG)/$(SQLITE_TAR)
+SQLITE_URL=https://github.com/CanonicalLtd/sqlite/releases/download/$(SQLITE_TAG)/$(SQLITE_TAR)
 
 export GO_TAGS=libsqlite3
 export CGO_CFLAGS=-I$(PWD)/.sqlite/
@@ -14,7 +14,7 @@ dependencies:
 
 build:
 	go get -tags "$TAGS" ./...
-	go get github.com/dqlite/raft-test
+	go get github.com/CanonicalLtd/raft-test
 	go build -tags "$TAGS"
 
 coverage:

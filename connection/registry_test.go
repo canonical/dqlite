@@ -6,8 +6,8 @@ import (
 
 	"testing"
 
-	"github.com/dqlite/dqlite/connection"
-	"github.com/dqlite/go-sqlite3x"
+	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/CanonicalLtd/go-sqlite3x"
 	_ "github.com/mattn/go-sqlite3"
 )
 

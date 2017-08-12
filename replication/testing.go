@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dqlite/dqlite/connection"
-	"github.com/dqlite/dqlite/transaction"
-	"github.com/dqlite/go-sqlite3x"
-	"github.com/dqlite/raft-http"
+	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/CanonicalLtd/dqlite/transaction"
+	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/raft-http"
 	"github.com/hashicorp/raft"
 	"github.com/mattn/go-sqlite3"*/
 )

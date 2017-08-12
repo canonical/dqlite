@@ -3,8 +3,8 @@ package command_test
 import (
 	"testing"
 
-	"github.com/dqlite/dqlite/command"
-	"github.com/dqlite/go-sqlite3x"
+	"github.com/CanonicalLtd/dqlite/command"
+	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/golang/protobuf/proto"
 )
 

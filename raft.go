@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/dqlite/dqlite/replication"
+	"github.com/CanonicalLtd/dqlite/replication"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
 	"github.com/pkg/errors"

@@ -7,8 +7,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dqlite/dqlite"
-	"github.com/dqlite/raft-http"
+	"github.com/CanonicalLtd/dqlite"
+	"github.com/CanonicalLtd/raft-http"
 )
 
 func TestNewHTTPConfig(t *testing.T) {

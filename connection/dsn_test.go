@@ -3,7 +3,7 @@ package connection_test
 import (
 	"testing"
 
-	"github.com/dqlite/dqlite/connection"
+	"github.com/CanonicalLtd/dqlite/connection"
 )
 
 // If the given sqlite DSN string is compatible with SQLite, no error

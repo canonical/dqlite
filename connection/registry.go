@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/dqlite/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 )

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dqlite/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/mattn/go-sqlite3"
 	"github.com/pborman/uuid"
 )
