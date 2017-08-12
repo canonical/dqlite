@@ -41,14 +41,17 @@ var forever = flag.Bool("forever", false, "run forever, without crashing at a ra
 func main() {
 	// Parse and validate command line flags.
 	flag.Parse()
-	if *data == "" {
-		log.Fatal("[ERR] demo: the -data options is required (see -help)")
-	}
-	level := "NONE"
+	level := "INFO"
+	origins := []string{"demo"}
 	if *debug {
 		level = "DEBUG"
+		origins = append(origins, "dqlite", "raft", "raft-net")
 	}
-	logger := dqlite.NewLogger(os.Stderr, level, log.LstdFlags)
+	writer := dqlite.NewLogFilter(os.Stderr, level, origins)
+	logger := log.New(writer, "", log.LstdFlags)
+	if *data == "" {
+		logger.Fatal("[ERR] demo: the -data options is required (see -help)")
+	}
 
 	// Spawn an HTTP server that will act as our Raft transport
 	// for the DQLite cluster. In a real-world web service you'll
@@ -56,7 +59,7 @@ func main() {
 	// not "/".
 	listener, err := net.Listen("tcp", *addr)
 	if err != nil {
-		log.Fatalf("[ERR] demo: failed to listen to address %s: %v", *addr, err)
+		logger.Fatalf("[ERR] demo: failed to listen to address %s: %v", *addr, err)
 	}
 	handler := rafthttp.NewHandler()
 	go http.Serve(listener, handler)
@@ -65,15 +68,15 @@ func main() {
 	prefix := fmt.Sprintf("%s: ", addr)
 	logger.SetPrefix(prefix)
 
-	log.SetPrefix(prefix)
-	log.Printf("[INFO] demo: start")
+	logger.SetPrefix(prefix)
+	logger.Printf("[INFO] demo: start")
 
 	// Create a new DQLite driver for this node and register it
 	// using the sql package.
 	config := dqlite.NewHTTPConfig(*data, handler, "/", addr, logger)
 	driver, err := dqlite.NewDriver(config, *join)
 	if err != nil {
-		log.Fatalf("[ERR] demo: failed to start DQLite driver: %v", err)
+		logger.Fatalf("[ERR] demo: failed to start DQLite driver: %v", err)
 	}
 	driver.AutoCheckpoint(20)
 	sql.Register("dqlite", driver)
@@ -81,45 +84,45 @@ func main() {
 	// Open a database backed by DQLite, and use at most one connection.
 	db, err := sql.Open("dqlite", "test.db")
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(0)
 
 	// Start crunching.
 	if *forever {
-		insertForever(db)
+		insertForever(db, logger)
 	} else {
-		go insertForever(db)
+		go insertForever(db, logger)
 		randomSleep(5, 25)
 	}
-	log.Printf("[INFO] demo: exit")
+	logger.Printf("[INFO] demo: exit")
 }
 
 // Use the given database to insert new rows to a single-column table
 // until we fail or exit.
-func insertForever(db *sql.DB) {
+func insertForever(db *sql.DB, logger *log.Logger) {
 	for {
 		// Start the transaction.
 		tx, err := db.Begin()
 		if err != nil {
-			log.Fatalf("begin failed: %v", err)
+			logger.Fatalf("begin failed: %v", err)
 		}
 
 		// Ensure our test table is there.
 		if _, err := tx.Exec("CREATE TABLE IF NOT EXISTS test (n INT)"); err != nil {
-			handleTxError(tx, err, false)
+			handleTxError(tx, logger, err, false)
 			continue
 		}
 
-		reportProgress(tx)
+		reportProgress(tx, logger)
 
 		// Insert a batch of rows.
-		offset := insertedCount(tx)
+		offset := insertedCount(tx, logger)
 		failed := false
 		for i := 0; i < 50; i++ {
 			if _, err := tx.Exec("INSERT INTO test (n) VALUES(?)", i+offset); err != nil {
-				handleTxError(tx, err, false)
+				handleTxError(tx, logger, err, false)
 				failed = true
 				break
 			}
@@ -133,7 +136,7 @@ func insertForever(db *sql.DB) {
 
 		// Commit
 		if err := tx.Commit(); err != nil {
-			handleTxError(tx, err, true)
+			handleTxError(tx, logger, err, true)
 			continue
 		}
 		// Sleep a little bit to simulate a pause in the service's
@@ -144,7 +147,7 @@ func insertForever(db *sql.DB) {
 
 // Handle a transaction error. All errors are fatal except ones due to
 // lost leadership, in which case we rollback and try again.
-func handleTxError(tx *sql.Tx, err error, isCommit bool) {
+func handleTxError(tx *sql.Tx, logger *log.Logger, err error, isCommit bool) {
 	if err, ok := err.(sqlite3.Error); ok {
 		if err.Code == sqlite3x.ErrNotLeader {
 			if isCommit {
@@ -155,26 +158,26 @@ func handleTxError(tx *sql.Tx, err error, isCommit bool) {
 				return
 			}
 			if err := tx.Rollback(); err != nil {
-				log.Fatalf("[ERR] demo: rollback failed %v", err)
+				logger.Fatalf("[ERR] demo: rollback failed %v", err)
 			}
 			return
 		}
 	}
-	log.Fatalf("[ERR] demo: transaction failed: %v", err)
+	logger.Fatalf("[ERR] demo: transaction failed: %v", err)
 }
 
 // Log about the progress that has been maded
-func reportProgress(tx *sql.Tx) {
+func reportProgress(tx *sql.Tx, logger *log.Logger) {
 	rows, err := tx.Query("SELECT n FROM test")
 	if err != nil {
-		log.Fatalf("[ERR] demo: select failed: %v", err)
+		logger.Fatalf("[ERR] demo: select failed: %v", err)
 	}
 	defer rows.Close()
 	inserted := []int{}
 	for rows.Next() {
 		var n int
 		if err := rows.Scan(&n); err != nil {
-			log.Fatalf("[ERR] demo: scan failed: %v", err)
+			logger.Fatalf("[ERR] demo: scan failed: %v", err)
 		}
 		inserted = append(inserted, n)
 	}
@@ -184,22 +187,22 @@ func reportProgress(tx *sql.Tx) {
 			missing++
 		}
 	}
-	log.Printf("[INFO] demo: %d rows inserted, %d values missing", len(inserted), missing)
+	logger.Printf("[INFO] demo: %d rows inserted, %d values missing", len(inserted), missing)
 }
 
 // Return the number of rows inserted so far
-func insertedCount(tx *sql.Tx) int {
+func insertedCount(tx *sql.Tx, logger *log.Logger) int {
 	rows, err := tx.Query("SELECT COUNT(n) FROM test")
 	if err != nil {
-		log.Fatalf("[ERR] demo: select count failed: %v", err)
+		logger.Fatalf("[ERR] demo: select count failed: %v", err)
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		log.Fatal("[ERR] demo: select count returned no rows")
+		logger.Fatal("[ERR] demo: select count returned no rows")
 	}
 	var count int
 	if err := rows.Scan(&count); err != nil {
-		log.Fatalf("[ERR] demo: scanning failed: %v", err)
+		logger.Fatalf("[ERR] demo: scanning failed: %v", err)
 	}
 	return count
 }

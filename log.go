@@ -3,26 +3,24 @@ package dqlite
 import (
 	"bytes"
 	"io"
-	"log"
 	"sync"
 
 	"github.com/hashicorp/logutils"
 )
 
-// NewLogger is a convenience to create a new log.Logger with a filter
-// for the given logging level applied.
-func NewLogger(output io.Writer, level string, flag int) *log.Logger {
+// NewLogFilter creates a new LevelFilterWithOrigin with the given parameters.
+func NewLogFilter(writer io.Writer, level string, origins []string) io.Writer {
 	if level == "" {
 		level = "INFO"
 	}
 
-	filter := &logutils.LevelFilter{
-		Levels:   []logutils.LogLevel{"DEBUG", "WARN", "INFO", "ERR", "NONE"},
-		MinLevel: logutils.LogLevel(level),
-		Writer:   output,
-	}
+	filter := &LevelFilterWithOrigin{}
+	filter.Writer = writer
+	filter.Levels = []logutils.LogLevel{"DEBUG", "WARN", "ERR", "INFO"}
+	filter.MinLevel = logutils.LogLevel(level)
+	filter.Origins = origins
 
-	return log.New(filter, "", flag)
+	return filter
 }
 
 // LevelFilterWithOrigin is an io.Writer that can be used with a logger that
@@ -71,19 +69,13 @@ func (f *LevelFilterWithOrigin) Check(line []byte) bool {
 
 	var origin string
 	if x := bytes.IndexByte(line, ']'); x > 0 {
-		if y := bytes.IndexByte(line, ':'); y > 0 {
-			origin = string(line[x+2 : y])
+		if y := bytes.IndexByte(line[x:], ':'); y > 0 {
+			origin = string(line[x+2 : x+y])
 		}
 	}
 
 	_, ok := f.goodOrigins[origin]
 	return ok
-}
-
-// SetOrigins is used to update the accepted origins. Pass nil for all origins.
-func (f *LevelFilterWithOrigin) SetOrigins(origins []string) {
-	f.Origins = origins
-	f.init()
 }
 
 func (f *LevelFilterWithOrigin) init() {
