@@ -5,16 +5,10 @@ import (
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite"
-	"github.com/hashicorp/logutils"
 )
 
 func TestLevelFilterWithOrigin_Write(t *testing.T) {
 	writer := bytes.NewBuffer(nil)
-	filter := &dqlite.LevelFilterWithOrigin{}
-	filter.Writer = writer
-	filter.Levels = []logutils.LogLevel{"DEBUG", "INFO"}
-	filter.MinLevel = "INFO"
-	filter.Origins = []string{"foo"}
 
 	cases := []struct {
 		origins []string
@@ -32,7 +26,7 @@ func TestLevelFilterWithOrigin_Write(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.message, func(t *testing.T) {
 			defer writer.Reset()
-			filter.SetOrigins(c.origins)
+			filter := dqlite.NewLogFilter(writer, "", c.origins)
 
 			filter.Write([]byte(c.message))
 

@@ -3,6 +3,7 @@ package dqlite_test
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -41,7 +42,7 @@ func newHTTPConfig() *dqlite.Config {
 	handler := rafthttp.NewHandler()
 	server := httptest.NewServer(handler)
 	addr := server.Listener.Addr()
-	logger := dqlite.NewLogger(ioutil.Discard, "", 0)
+	logger := log.New(ioutil.Discard, "", 0)
 
 	return dqlite.NewHTTPConfig(dir, handler, "/", addr, logger)
 }

@@ -43,7 +43,7 @@ func NewDriver(config *Config, join string) (*Driver, error) {
 	// Logging
 	logger := config.Logger
 	if logger == nil {
-		logger = NewLogger(os.Stdout, "INFO", log.LstdFlags)
+		logger = log.New(os.Stdout, "", log.LstdFlags)
 	}
 	sqlite3x.LogConfig(logger)
 
