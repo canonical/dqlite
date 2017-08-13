@@ -38,21 +38,42 @@ var addr = flag.String("addr", "127.0.0.1:9990", "address to listen to for the r
 var debug = flag.Bool("debug", false, "enable debug logging")
 var forever = flag.Bool("forever", false, "run forever, without crashing at a random time between 5 and 25 seconds ")
 
+var logger *log.Logger
+var db *sql.DB
+
 func main() {
 	// Parse and validate command line flags.
+	parseCommandLine()
+
+	// Open our sql.DB using the dqlite driver.
+	openDB()
+
+	// Start inserting data into the DB.
+	useDB()
+
+}
+
+func parseCommandLine() {
 	flag.Parse()
+
+	if *data == "" {
+		fmt.Fprintf(os.Stderr, "error: the -data option is required (see -help)\n")
+		os.Exit(2)
+	}
+
 	level := "INFO"
 	origins := []string{"demo"}
+
 	if *debug {
 		level = "DEBUG"
 		origins = append(origins, "dqlite", "raft", "raft-net")
 	}
-	writer := dqlite.NewLogFilter(os.Stderr, level, origins)
-	logger := log.New(writer, "", log.LstdFlags)
-	if *data == "" {
-		logger.Fatal("[ERR] demo: the -data options is required (see -help)")
-	}
 
+	writer := dqlite.NewLogFilter(os.Stderr, level, origins)
+	logger = log.New(writer, "", log.LstdFlags)
+}
+
+func openDB() {
 	// Spawn an HTTP server that will act as our Raft transport
 	// for the DQLite cluster. In a real-world web service you'll
 	// want to route the Raft HTTP handler to some specific path,
@@ -63,13 +84,10 @@ func main() {
 	}
 	handler := rafthttp.NewHandler()
 	go http.Serve(listener, handler)
+
 	addr := listener.Addr()
-
-	prefix := fmt.Sprintf("%s: ", addr)
-	logger.SetPrefix(prefix)
-
-	logger.SetPrefix(prefix)
-	logger.Printf("[INFO] demo: start")
+	logger.SetPrefix(fmt.Sprintf("%s: ", addr))
+	logger.Printf("[INFO] demo: open DB")
 
 	// Create a new DQLite driver for this node and register it
 	// using the sql package.
@@ -82,18 +100,20 @@ func main() {
 	sql.Register("dqlite", driver)
 
 	// Open a database backed by DQLite, and use at most one connection.
-	db, err := sql.Open("dqlite", "test.db")
-	if err != nil {
+	if db, err = sql.Open("dqlite", "test.db"); err != nil {
 		logger.Fatal(err)
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(0)
+}
 
-	// Start crunching.
+func useDB() {
+	// Insert data into the DB, either forever for a random time between 5
+	// and 25 (depending on the -forever command line switch).
 	if *forever {
-		insertForever(db, logger)
+		insertForever()
 	} else {
-		go insertForever(db, logger)
+		go insertForever()
 		randomSleep(5, 25)
 	}
 	logger.Printf("[INFO] demo: exit")
@@ -101,7 +121,7 @@ func main() {
 
 // Use the given database to insert new rows to a single-column table
 // until we fail or exit.
-func insertForever(db *sql.DB, logger *log.Logger) {
+func insertForever() {
 	for {
 		// Start the transaction.
 		tx, err := db.Begin()
@@ -115,10 +135,10 @@ func insertForever(db *sql.DB, logger *log.Logger) {
 			continue
 		}
 
-		reportProgress(tx, logger)
+		reportProgress(tx)
 
 		// Insert a batch of rows.
-		offset := insertedCount(tx, logger)
+		offset := insertedCount(tx)
 		failed := false
 		for i := 0; i < 50; i++ {
 			if _, err := tx.Exec("INSERT INTO test (n) VALUES(?)", i+offset); err != nil {
@@ -167,7 +187,7 @@ func handleTxError(tx *sql.Tx, logger *log.Logger, err error, isCommit bool) {
 }
 
 // Log about the progress that has been maded
-func reportProgress(tx *sql.Tx, logger *log.Logger) {
+func reportProgress(tx *sql.Tx) {
 	rows, err := tx.Query("SELECT n FROM test")
 	if err != nil {
 		logger.Fatalf("[ERR] demo: select failed: %v", err)
@@ -191,7 +211,7 @@ func reportProgress(tx *sql.Tx, logger *log.Logger) {
 }
 
 // Return the number of rows inserted so far
-func insertedCount(tx *sql.Tx, logger *log.Logger) int {
+func insertedCount(tx *sql.Tx) int {
 	rows, err := tx.Query("SELECT COUNT(n) FROM test")
 	if err != nil {
 		logger.Fatalf("[ERR] demo: select count failed: %v", err)
