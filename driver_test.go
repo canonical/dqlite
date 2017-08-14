@@ -25,8 +25,6 @@ func TestNewDriver_Errors(t *testing.T) {
 		{newConfigWithDirThatCantBeMade, "failed to create data dir"},
 		{newConfigWithDirThatCantBeAccessed, "failed to access data dir"},
 		{newConfigWithDirThatIsRegularFile, "data dir '/etc/fstab' is not a directory"},
-		{newConfigWithCorruptedJSONPeersFile, "failed to get current raft peers"},
-		{newConfigWithSingleNodeAndExistingPeers, "attempt to start as single node but peers store is not empty"},
 		{newConfigWithInvalidBoltStoreFile, "failed to create raft store"},
 		{newConfigWithInvalidSnapshotsDir, "failed to create snapshot store"},
 		{newConfigWithInvalidRaftParams, "failed to start raft"},
@@ -82,26 +80,6 @@ func newConfigWithCorruptedJSONPeersFile() *dqlite.Config {
 	}
 
 	_, transport := raft.NewInmemTransport("1")
-
-	return &dqlite.Config{
-		Dir:              dir,
-		Transport:        transport,
-		EnableSingleNode: true,
-	}
-}
-
-func newConfigWithSingleNodeAndExistingPeers() *dqlite.Config {
-	dir, err := ioutil.TempDir("", "go-dqlite-")
-	if err != nil {
-		panic(fmt.Sprintf("failed to create temp dir: %v", err))
-	}
-
-	_, transport := raft.NewInmemTransport("1")
-
-	peerStore := raft.NewJSONPeers(dir, transport)
-	if err := peerStore.SetPeers([]string{"1", "2"}); err != nil {
-		panic(fmt.Sprintf("failed to set peers: %v", err))
-	}
 
 	return &dqlite.Config{
 		Dir:              dir,
@@ -253,6 +231,19 @@ func TestDriver_IsLoneNode(t *testing.T) {
 	}
 }
 
+func TestDriver_OpenErrorLeadershipTimeout(t *testing.T) {
+	node := newNode()
+	defer node.Cleanup()
+
+	conn, err := node.Driver.Open("test.db?_leadership_timeout=1")
+	if conn != nil {
+		t.Error("expected Open to timeout and return a nil connection")
+	}
+	if err == nil {
+		t.Error("expected Open to timeout and fail")
+	}
+}
+
 func TestDriver_ExecStatement(t *testing.T) {
 	node := newNode()
 	defer node.Cleanup()
@@ -320,7 +311,6 @@ func (n *node) Cleanup() {
 
 // Return a new dqlite.Conn created using the node's dqlite.Driver.
 func (n *node) Conn() *dqlite.Conn {
-	n.Driver.WaitLeadership()
 	conn, err := n.Driver.Open("test.db")
 	if err != nil {
 		panic(fmt.Sprintf("failed to create connection: %v", err))

@@ -148,7 +148,7 @@ func newCluster() (*rafttest.Cluster, func()) {
 // Open a new leader connection on the given node.
 func openConn(node *rafttest.Node) *sqlite3.SQLiteConn {
 	data := node.Data.(*nodeData)
-	conn, err := data.connections.OpenLeader("test", data.methods)
+	conn, err := data.connections.OpenLeader(connection.NewTestDSN(), data.methods)
 	if err != nil {
 		panic(fmt.Sprintf(
 			"failed to open leader on node %s: %v",

@@ -1,7 +1,7 @@
 package dqlite
 
 import (
-	"fmt"
+	//	"fmt"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/replication"
@@ -17,19 +17,7 @@ const (
 
 // Wrapper around NewRaft using our Config object and making
 // opinionated choices for dqlite use.
-func newRaft(config *Config, fsm *replication.FSM, peerStore raft.PeerStore) (*raft.Raft, error) {
-	// If we're being told to start as single node, double check that the
-	// we are actually a lone node.
-	if config.EnableSingleNode {
-		isLone, err := isLoneNode(peerStore, config.Transport.LocalAddr())
-		if err != nil {
-			return nil, err
-		}
-		if !isLone {
-			return nil, fmt.Errorf("attempt to start as single node but peers store is not empty")
-		}
-	}
-
+func newRaft(config *Config, fsm *replication.FSM, peerStore raft.PeerStore, notifyCh chan bool) (*raft.Raft, error) {
 	conf := &raft.Config{
 		HeartbeatTimeout:           config.HeartbeatTimeout,
 		ElectionTimeout:            config.ElectionTimeout,
@@ -40,8 +28,9 @@ func newRaft(config *Config, fsm *replication.FSM, peerStore raft.PeerStore) (*r
 		TrailingLogs:               256,
 		SnapshotInterval:           500 * time.Millisecond,
 		SnapshotThreshold:          64,
-		LeaderLeaseTimeout:         config.LeaderLeaseTimeout,
 		EnableSingleNode:           config.EnableSingleNode,
+		LeaderLeaseTimeout:         config.LeaderLeaseTimeout,
+		NotifyCh:                   notifyCh,
 		Logger:                     config.Logger,
 	}
 	store, err := raftboltdb.NewBoltStore(filepath.Join(config.Dir, "raft.db"))

@@ -3,16 +3,21 @@ syntax = "proto3";
 package command;
 
 enum Code {
-  BEGIN      = 0;
-  WAL_FRAMES = 1;
-  UNDO       = 2;
-  END        = 3;
-  CHECKPOINT = 4;
+  OPEN       = 0;
+  BEGIN      = 1;
+  WAL_FRAMES = 2;
+  UNDO       = 3;
+  END        = 4;
+  CHECKPOINT = 5;
 }
 	
 message Command {
   Code code = 1;
   bytes params = 2;
+}
+
+message Open {
+  string name = 1;
 }
 
 message Begin {

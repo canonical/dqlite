@@ -32,9 +32,8 @@ func NewTempRegistry() *Registry {
 // has its follower connection open.
 func NewTempRegistryWithDatabase() *Registry {
 	registry := NewTempRegistry()
-	registry.Add("test", NewTestDSN())
 
-	if err := registry.OpenFollower("test"); err != nil {
+	if err := registry.OpenFollower("test.db"); err != nil {
 		panic(fmt.Sprintf("failed to open follower connection: %v", err))
 	}
 
@@ -49,7 +48,7 @@ func NewTempRegistryWithLeader() (*Registry, *sqlite3.SQLiteConn) {
 	registry := NewTempRegistryWithDatabase()
 
 	methods := sqlite3x.PassthroughReplicationMethods()
-	conn, err := registry.OpenLeader("test", methods)
+	conn, err := registry.OpenLeader(NewTestDSN(), methods)
 	if err != nil {
 		panic(fmt.Sprintf("failed to open leader connection: %v", err))
 	}

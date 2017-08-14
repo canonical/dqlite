@@ -11,42 +11,17 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func TestRegistry_Add(t *testing.T) {
-	registry := connection.NewTempRegistry()
-	defer registry.Purge()
-
-	dsn := connection.NewTestDSN()
-	registry.Add("test", dsn)
-
-	if registry.DSN("test") != dsn {
-		t.Error("DSN mismatch")
-	}
-}
-
-func TestRegistry_Duplicate(t *testing.T) {
-	registry := connection.NewTempRegistry()
-	defer registry.Purge()
-
-	dsn := connection.NewTestDSN()
-	registry.Add("test", dsn)
-
-	defer panicCheck(t, "name 'test' is already registered")
-	registry.Add("test", dsn)
-}
-
 func TestRegistry_OpenAndCloseFollower(t *testing.T) {
 	registry := connection.NewTempRegistry()
 	defer registry.Purge()
 
-	registry.Add("test", connection.NewTestDSN())
-
-	if err := registry.OpenFollower("test"); err != nil {
+	if err := registry.OpenFollower("test.db"); err != nil {
 		t.Fatal(err)
 	}
-	if conn := registry.Follower("test"); conn == nil {
+	if conn := registry.Follower("test.db"); conn == nil {
 		t.Error("no connection returned by Follower()")
 	}
-	if err := registry.CloseFollower("test"); err != nil {
+	if err := registry.CloseFollower("test.db"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -55,21 +30,18 @@ func TestRegistry_OpenFollowerTwice(t *testing.T) {
 	registry := connection.NewTempRegistry()
 	defer registry.Purge()
 
-	registry.Add("test", connection.NewTestDSN())
-
-	if err := registry.OpenFollower("test"); err != nil {
+	if err := registry.OpenFollower("test.db"); err != nil {
 		t.Fatal(err)
 	}
-	defer panicCheck(t, "follower connection for 'test' already open")
-	registry.OpenFollower("test")
+	defer panicCheck(t, "follower connection for 'test.db' already open")
+	registry.OpenFollower("test.db")
 }
 
 func TestRegistry_OpenFollowerFileError(t *testing.T) {
 	registry := connection.NewTempRegistry()
-	registry.Add("test", connection.NewTestDSN())
 	registry.Purge()
 
-	err := registry.OpenFollower("test")
+	err := registry.OpenFollower("test.db")
 
 	if err == nil {
 		t.Fatal("expected error after opening leader with purged registry")
@@ -85,10 +57,8 @@ func TestRegistry_CloseFollowerWithoutOpeningItFirst(t *testing.T) {
 	registry := connection.NewTempRegistry()
 	defer registry.Purge()
 
-	registry.Add("test", connection.NewTestDSN())
-
-	defer panicCheck(t, "no follower connection for 'test'")
-	registry.CloseFollower("test")
+	defer panicCheck(t, "no follower connection for 'test.db'")
+	registry.CloseFollower("test.db")
 }
 
 func TestRegistry_OpenAndCloseLeader(t *testing.T) {
@@ -96,7 +66,8 @@ func TestRegistry_OpenAndCloseLeader(t *testing.T) {
 	defer registry.Purge()
 
 	methods := sqlite3x.PassthroughReplicationMethods()
-	conn, err := registry.OpenLeader("test", methods)
+	dsn := connection.NewTestDSN()
+	conn, err := registry.OpenLeader(dsn, methods)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +81,8 @@ func TestRegistry_OpenLeaderFileError(t *testing.T) {
 	registry.Purge()
 
 	methods := sqlite3x.PassthroughReplicationMethods()
-	conn, err := registry.OpenLeader("test", methods)
+	dsn := connection.NewTestDSN()
+	conn, err := registry.OpenLeader(dsn, methods)
 	if conn != nil {
 		t.Fatal("expected nil conn return value after opening leader with purged registry")
 	}
@@ -149,7 +121,8 @@ func TestRegistry_AutoCheckpoint(t *testing.T) {
 	registry.AutoCheckpoint(1)
 
 	methods := sqlite3x.PassthroughReplicationMethods()
-	conn, err := registry.OpenLeader("test", methods)
+	dsn := connection.NewTestDSN()
+	conn, err := registry.OpenLeader(dsn, methods)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +142,7 @@ func TestRegistry_NameByLeader(t *testing.T) {
 	registry, conn := connection.NewTempRegistryWithLeader()
 	defer registry.Purge()
 
-	if name := registry.NameByLeader(conn); name != "test" {
+	if name := registry.NameByLeader(conn); name != "test.db" {
 		t.Fatalf("got database name '%s', want 'test'", name)
 	}
 }
@@ -194,7 +167,7 @@ func TestRegistry_AllNames(t *testing.T) {
 	if len(names) != 1 {
 		t.Fatalf("got %d names, want 1", len(names))
 	}
-	if names[0] != "test" {
+	if names[0] != "test.db" {
 		t.Fatalf("got name '%s', want 'test'", names[0])
 	}
 }
@@ -203,7 +176,7 @@ func TestRegistry_Leaders(t *testing.T) {
 	registry, conn := connection.NewTempRegistryWithLeader()
 	defer registry.Purge()
 
-	conns := registry.Leaders("test")
+	conns := registry.Leaders("test.db")
 	if len(conns) != 1 {
 		t.Fatalf("got %d conns, want 1", len(conns))
 	}
@@ -220,18 +193,17 @@ func TestRegistry_Backup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	database, wal, err := registry.Backup("test")
+	database, wal, err := registry.Backup("test.db")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := registry.Restore("test", database, wal); err != nil {
+	if err := registry.Restore("test.db", database, wal); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check that the data actually matches our source database.
-	dsn := registry.DSN("test")
-	db, err := sql.Open("sqlite3", filepath.Join(registry.Dir(), dsn.Filename))
+	db, err := sql.Open("sqlite3", filepath.Join(registry.Dir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

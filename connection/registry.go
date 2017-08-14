@@ -19,7 +19,6 @@ import (
 type Registry struct {
 	mu             sync.RWMutex                   // Serialize access to internal state
 	dir            string                         // Directory where we store database files
-	names          map[string]*DSN                // Map database identifiers to their DSN
 	leaders        map[*sqlite3.SQLiteConn]string // Leader connections to database names
 	followers      map[string]*sqlite3.SQLiteConn // Database names to follower connections
 	autoCheckpoint int                            // Number for WAL frames after which a checkpoint will be triggered
@@ -30,7 +29,6 @@ type Registry struct {
 func NewRegistry(dir string) *Registry {
 	return &Registry{
 		dir:            dir,
-		names:          map[string]*DSN{},
 		leaders:        map[*sqlite3.SQLiteConn]string{},
 		followers:      map[string]*sqlite3.SQLiteConn{},
 		autoCheckpoint: 1000, // Same as SQLite default value
@@ -53,29 +51,6 @@ func (r *Registry) AutoCheckpoint(n int) {
 	r.autoCheckpoint = n
 }
 
-// Add a new database that will be replicated by DQLite. Within this
-// registry, the database must be uniquely identified by the given
-// name, and the given dsn will be used when creating connections to
-// it.
-func (r *Registry) Add(name string, dsn *DSN) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if _, ok := r.names[name]; ok {
-		panic(fmt.Sprintf("name '%s' is already registered", name))
-	}
-
-	r.names[name] = dsn
-}
-
-// DSN returns the DSN associated with the database with the given name.
-func (r *Registry) DSN(database string) *DSN {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	return r.dsn(database)
-}
-
 // NameByLeader returns the name of the database associated with the given
 // connection, which is assumed to be a registered leader connection.
 func (r *Registry) NameByLeader(conn *sqlite3.SQLiteConn) string {
@@ -92,7 +67,7 @@ func (r *Registry) NameByLeader(conn *sqlite3.SQLiteConn) string {
 // AllNames returns the names for all databases currently registered.
 func (r *Registry) AllNames() []string {
 	names := []string{}
-	for name := range r.names {
+	for name := range r.followers {
 		names = append(names, name)
 	}
 	return names
@@ -112,8 +87,7 @@ func (r *Registry) OpenFollower(name string) error {
 		return errors.Wrap(err, "failed to open follower connection")
 	}
 
-	dsn := r.dsn(name)
-	conn, err := r.open(dsn)
+	conn, err := r.open(name)
 	if err != nil {
 		return errWrapper(err)
 	}
@@ -152,19 +126,26 @@ func (r *Registry) Follower(name string) *sqlite3.SQLiteConn {
 	return r.follower(name)
 }
 
+// HasFollower checks whether the registry has a follower connection open for
+// the given filename.
+func (r *Registry) HasFollower(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, ok := r.followers[name]
+	return ok
+}
+
 // OpenLeader returns a new SQLite connection to a database in our
 // directory, set in leader replication mode.
-func (r *Registry) OpenLeader(name string, methods sqlite3x.ReplicationMethods) (*sqlite3.SQLiteConn, error) {
+func (r *Registry) OpenLeader(dsn *DSN, methods sqlite3x.ReplicationMethods) (*sqlite3.SQLiteConn, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
-	dsn := r.dsn(name)
 
 	errWrapper := func(err error) error {
 		return errors.Wrap(err, "failed to open leader connection")
 	}
 
-	conn, err := r.open(dsn)
+	conn, err := r.open(dsn.Encode())
 	if err != nil {
 		return nil, errWrapper(err)
 	}
@@ -177,7 +158,7 @@ func (r *Registry) OpenLeader(name string, methods sqlite3x.ReplicationMethods) 
 		return nil, errWrapper(err)
 	}
 
-	r.leaders[conn] = name
+	r.leaders[conn] = dsn.Filename
 
 	return conn, nil
 
@@ -227,15 +208,13 @@ func (r *Registry) Leaders(name string) []*sqlite3.SQLiteConn {
 // returns two slices of data, one the content of the backup database
 // and one is the current content of the WAL file.
 func (r *Registry) Backup(name string) ([]byte, []byte, error) {
-	//name := r.NameByLeader(conn)
-	sourceDSN := r.DSN(name)
-	sourceConn, err := r.open(sourceDSN)
+	sourceConn, err := r.open(name)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer sourceConn.Close()
 
-	backupConn, err := r.openBackup(sourceDSN)
+	backupConn, err := r.openBackup(name)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -303,9 +282,9 @@ func (r *Registry) Purge() error {
 // are disabled and the WAL always kept persistent after connections
 // close). The given DSN will be tracked in the registry and
 // associated with the connection.
-func (r *Registry) open(dsn *DSN) (*sqlite3.SQLiteConn, error) {
+func (r *Registry) open(dsn string) (*sqlite3.SQLiteConn, error) {
 	driver := &sqlite3.SQLiteDriver{}
-	conn, err := driver.Open(dsn.String(r.dir))
+	conn, err := driver.Open(filepath.Join(r.dir, dsn))
 	if err != nil {
 		return nil, err
 	}
@@ -331,19 +310,15 @@ func (r *Registry) open(dsn *DSN) (*sqlite3.SQLiteConn, error) {
 
 // Open a new database connection against a temporary backup database
 // file named against the given DSN.
-func (r *Registry) openBackup(dsn *DSN) (*sqlite3.SQLiteConn, error) {
+func (r *Registry) openBackup(name string) (*sqlite3.SQLiteConn, error) {
 	// Create a temporary file using the source DSN filename as prefix.
-	tempFile, err := ioutil.TempFile(r.dir, dsn.Filename)
+	tempFile, err := ioutil.TempFile(r.dir, name)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create temp file for backup")
 	}
 	tempFile.Close()
 
-	backupDSN := &DSN{
-		Filename: path.Base(tempFile.Name()),
-		Query:    dsn.Query,
-	}
-	backupConn, err := r.open(backupDSN)
+	backupConn, err := r.open(path.Base(tempFile.Name()))
 	if err != nil {
 		os.Remove(tempFile.Name())
 		return nil, errors.Wrap(err, "failed to open backup database")
@@ -376,7 +351,7 @@ func (r *Registry) readWalContent(conn *sqlite3.SQLiteConn) ([]byte, error) {
 // Write the the content of a database backup to the DSN filename associated
 // with the given identifier.
 func (r *Registry) writeDatabaseContent(name string, database []byte) error {
-	path := filepath.Join(r.Dir(), r.DSN(name).Filename)
+	path := filepath.Join(r.Dir(), name)
 	if err := ioutil.WriteFile(path, database, 0600); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("failed to write database content at %s", path))
 	}
@@ -386,7 +361,7 @@ func (r *Registry) writeDatabaseContent(name string, database []byte) error {
 // Write the the content of a WAL backup to the DSN filename associated
 // with the given identifier.
 func (r *Registry) writeWalContent(name string, wal []byte) error {
-	path := filepath.Join(r.Dir(), r.DSN(name).Filename+"-wal")
+	path := filepath.Join(r.Dir(), name+"-wal")
 	if err := ioutil.WriteFile(path, wal, 0600); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("failed to write wal content at %s", path))
 	}
@@ -401,14 +376,4 @@ func (r *Registry) follower(name string) *sqlite3.SQLiteConn {
 		panic(fmt.Sprintf("no follower connection for '%s'", name))
 	}
 	return conn
-}
-
-// Return the DSN associated with the database with the given name,
-// panics if not there.
-func (r *Registry) dsn(name string) *DSN {
-	dsn, ok := r.names[name]
-	if !ok {
-		panic(fmt.Sprintf("dsn not found: '%s' is not registered", name))
-	}
-	return dsn
 }

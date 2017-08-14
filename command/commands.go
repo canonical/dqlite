@@ -10,6 +10,13 @@ import (
 // command.
 type Params proto.Message
 
+// NewOpen returns a new Open protobuf message.
+func NewOpen(name string) *Open {
+	return &Open{
+		Name: name,
+	}
+}
+
 // NewBegin returns a new Begin protobuf message.
 func NewBegin(txid string, name string) *Begin {
 	return &Begin{
@@ -103,6 +110,16 @@ func Unmarshal(data []byte) (*Command, error) {
 		return nil, err
 	}
 	return command, nil
+}
+
+// UnmarshalOpen returns the Open parameters from a command params
+// payload.
+func (c *Command) UnmarshalOpen() (*Open, error) {
+	params := &Open{}
+	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
+		return nil, err
+	}
+	return params, nil
 }
 
 // UnmarshalBegin returns the Begin parameters from a command params
