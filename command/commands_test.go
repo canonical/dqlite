@@ -36,6 +36,10 @@ func TestUnmarshal_Error(t *testing.T) {
 }
 
 func TestParamsDefaults(t *testing.T) {
+	if (*command.Open).GetName(nil) != "" {
+		t.Errorf("expected empty Name with nil Open command")
+	}
+
 	if (*command.Begin).GetTxid(nil) != "" {
 		t.Errorf("expected empty Txid with nil Begin command")
 	}
@@ -87,6 +91,7 @@ func TestParams(t *testing.T) {
 		code  command.Code
 		check func(*command.Command, *testing.T)
 	}{
+		{newOpen, command.Code_OPEN, checkOpen},
 		{newBegin, command.Code_BEGIN, checkBegin},
 		{newWalFrames, command.Code_WAL_FRAMES, checkWalFrames},
 		{newWalFrames, command.Code_WAL_FRAMES, checkWalFrames},
@@ -112,6 +117,20 @@ func TestParams(t *testing.T) {
 			}
 			c.check(cmd, t)
 		})
+	}
+}
+
+func newOpen() command.Params {
+	return command.NewOpen("test")
+}
+
+func checkOpen(cmd *command.Command, t *testing.T) {
+	params, err := cmd.UnmarshalOpen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if params.GetName() != "test" {
+		t.Errorf(`expected Name "test", got "%s"`, params.Name)
 	}
 }
 

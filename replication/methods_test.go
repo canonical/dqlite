@@ -54,7 +54,7 @@ func TestMethods_BeginRollbackStaleFollowerTransaction(t *testing.T) {
 
 	transactions.DryRun()
 
-	txn := transactions.AddFollower(connections.Follower("test"), "abcd")
+	txn := transactions.AddFollower(connections.Follower("test.db"), "abcd")
 	txn.Enter()
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)

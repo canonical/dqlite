@@ -52,6 +52,8 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	}
 
 	switch cmd.Code {
+	case command.Code_OPEN:
+		err = f.applyOpen(cmd)
 	case command.Code_BEGIN:
 		err = f.applyBegin(cmd)
 	case command.Code_WAL_FRAMES:
@@ -89,6 +91,20 @@ func (f *FSM) Wait(index uint64) {
 			return
 		}
 	}
+}
+
+func (f *FSM) applyOpen(cmd *command.Command) error {
+	params, err := cmd.UnmarshalOpen()
+	if err != nil {
+		return err
+	}
+	f.logCommand(cmd, params)
+
+	if err := f.connections.OpenFollower(params.Name); err != nil {
+		return errors.Wrap(err, "failed to open follower connection")
+	}
+
+	return nil
 }
 
 func (f *FSM) applyBegin(cmd *command.Command) error {
@@ -386,14 +402,17 @@ func (f *FSM) restoreDatabase(reader io.ReadCloser) (bool, error) {
 		panic(fmt.Sprintf("restore failure: database '%s' has %d leader connections", name, len(conns)))
 	}
 
-	txn := f.transactions.GetByConn(f.connections.Follower(name))
+	// XXX TODO: reason about this situation, is it possible?
+	/*txn := f.transactions.GetByConn(f.connections.Follower(name))
 	if txn != nil {
 		f.logger.Printf("[WARN] dqlite: fsm: closing follower in-flight transaction %s", txn)
 		f.transactions.Remove(txn.ID())
-	}
+	}*/
 
-	if err := f.connections.CloseFollower(name); err != nil {
-		return false, err
+	if f.connections.HasFollower(name) {
+		if err := f.connections.CloseFollower(name); err != nil {
+			return false, err
+		}
 	}
 
 	txid, err := bufReader.ReadString(0)
@@ -405,8 +424,7 @@ func (f *FSM) restoreDatabase(reader io.ReadCloser) (bool, error) {
 		done = true
 	}
 
-	dsn := f.connections.DSN(name)
-	path := filepath.Join(f.connections.Dir(), dsn.Filename)
+	path := filepath.Join(f.connections.Dir(), name)
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return false, err
 	}

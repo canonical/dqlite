@@ -3,16 +3,21 @@ package connection
 import (
 	"fmt"
 	"net/url"
-	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // DSN captures details of a dqlite-compatible sqlite connection DSN. Only
 // pure file names without any directory segment are accepted (e.g.
 // "test.db"). Query parameters are always valid except for "mode=memory".
 type DSN struct {
-	Filename string
-	Query    string
+	Filename string // Main database filename
+	Query    string // Opaque query string to pass down to go-sqlite3/SQLite
+
+	// Special dqlite parameters
+	LeadershipTimeout time.Duration // Maximum time to wait for leadership
+	InitializeTimeout time.Duration // Maximum time to wait for pending logs to be applied
 }
 
 // NewDSN parses the given sqlite3 DSN name checking if it's
@@ -20,16 +25,34 @@ type DSN struct {
 func NewDSN(name string) (*DSN, error) {
 	filename := name
 	query := ""
+
+	leadershipTimeout := 10000
+	initializeTimeout := 30000
+
 	pos := strings.IndexRune(name, '?')
 	if pos >= 1 {
-		query = name[pos+1:]
-		params, err := url.ParseQuery(query)
+		params, err := url.ParseQuery(name[pos+1:])
 		if err != nil {
 			return nil, err
 		}
 		if params.Get("mode") == "memory" {
 			return nil, fmt.Errorf("can't replicate a memory database")
 		}
+		if key := params.Get("_leadership_timeout"); key != "" {
+			leadershipTimeout, err = strconv.Atoi(key)
+			if err != nil {
+				return nil, fmt.Errorf("leadership timeout is not a number: '%s'", key)
+			}
+			params.Del("_leadership_timeout")
+		}
+		if key := params.Get("_initialize_timeout"); key != "" {
+			initializeTimeout, err = strconv.Atoi(key)
+			if err != nil {
+				return nil, fmt.Errorf("initialize timeout is not a number: '%s'", key)
+			}
+			params.Del("_initialize_timeout")
+		}
+		query = params.Encode()
 		filename = filename[:pos]
 	}
 
@@ -46,18 +69,20 @@ func NewDSN(name string) (*DSN, error) {
 	}
 
 	dsn := &DSN{
-		Filename: filename,
-		Query:    query,
+		Filename:          filename,
+		Query:             query,
+		LeadershipTimeout: time.Duration(leadershipTimeout) * time.Millisecond,
+		InitializeTimeout: time.Duration(initializeTimeout) * time.Millisecond,
 	}
 	return dsn, nil
 }
 
-// String returns the full URI, including filename and query, the
-// given dir will be prepended.
-func (i *DSN) String(dir string) string {
+// Encode returns the full URI, including filename and query, but excluding any
+// dqlite-specific parameters.
+func (d *DSN) Encode() string {
 	query := ""
-	if i.Query != "" {
-		query = "?" + i.Query
+	if d.Query != "" {
+		query = "?" + d.Query
 	}
-	return fmt.Sprintf("%s%s", filepath.Join(dir, i.Filename), query)
+	return d.Filename + query
 }

@@ -47,7 +47,7 @@ func TestRegistry_AddFollower(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	conn := connections.Follower("test")
+	conn := connections.Follower("test.db")
 
 	txn := registry.AddFollower(conn, "abcd")
 

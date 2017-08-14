@@ -4,10 +4,10 @@ import (
 	"database/sql/driver"
 	"log"
 	"os"
-	"path/filepath"
-	"strings"
+	"sync"
 	"time"
 
+	"github.com/CanonicalLtd/dqlite/command"
 	"github.com/CanonicalLtd/dqlite/connection"
 	"github.com/CanonicalLtd/dqlite/replication"
 	"github.com/CanonicalLtd/dqlite/transaction"
@@ -30,9 +30,11 @@ type Driver struct {
 	raft         *raft.Raft                  // Underlying raft engine
 	addr         string                      // Address of this node
 	peers        raft.PeerStore              // Store of raft peers, used by the engine
+	leadership   chan bool                   // Notifications about leadership changes
 	membership   raftmembership.Changer      // API to join the raft cluster
 	connections  *connection.Registry        // Connections registry
 	methods      sqlite3x.ReplicationMethods // SQLite replication hooks
+	mu           sync.Mutex                  // For serializing critical sections
 	inititalized chan struct{}
 }
 
@@ -59,16 +61,15 @@ func NewDriver(config *Config) (*Driver, error) {
 	// follower connections that have not yet begun.
 	transactions.SkipCheckReplicationMode(true)
 
-	// XXX TODO: remove hard-coded database
-	if err := addDatabase(connections); err != nil {
-		return nil, err
-	}
-
 	// Peer store
 	peers := raft.NewJSONPeers(config.Dir, config.Transport)
 
+	// Notifications about leadership changes (acquired or lost). We use
+	// a reasonably large buffer here to make sure we don't block raft.
+	leadership := make(chan bool, 1024)
+
 	// Raft
-	raft, err := newRaft(config, fsm, peers)
+	raft, err := newRaft(config, fsm, peers, leadership)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +81,7 @@ func NewDriver(config *Config) (*Driver, error) {
 		raft:         raft,
 		addr:         config.Transport.LocalAddr(),
 		peers:        peers,
+		leadership:   leadership,
 		membership:   config.MembershipChanger,
 		connections:  connections,
 		methods:      methods,
@@ -107,20 +109,79 @@ func (d *Driver) Join(address string, timeout time.Duration) error {
 	return nil
 }
 
-// Open starts a new connection to a SQLite database.
-func (d *Driver) Open(database string) (driver.Conn, error) {
-	if err := d.WaitLeadership(); err != nil {
-		return nil, err
+// Open starts a new connection to a SQLite database. If this node is not the
+// leader, or the leader is unknown and this node doesn't get elected within a
+// certain timeout (10 seconds by default), an error will be returned.
+//
+// dqlite adds the following query parameters to those used by SQLite and
+// go-sqlite3:
+//
+//   _leadership_timeout=N
+//     Maximum number of milliseconds to wait for this node to be elected
+//     leader, in case there's currently no known leader. It defaults to 10000.
+//
+//   _initialize_timeout=N
+//     Maximum number of milliseconds to wait for this node to initialize the
+//     database by applying all needed raft log entries. It defaults to 30000.
+//
+// All other parameters are passed verbatim to go-slite3 and then SQLite.
+func (d *Driver) Open(name string) (driver.Conn, error) {
+	// Validate the given data source string.
+	dsn, err := connection.NewDSN(name)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid DSN string")
 	}
-	sqliteConn, err := d.connections.OpenLeader(database, d.methods)
+
+	// Poll until the leader is known, or the open timeout expires.
+	//
+	// XXX TODO: use an exponential backoff relative to the timeout? Or even
+	//           figure out how to reliably be notified of leadership change?
+	pollInterval := 50 * time.Millisecond
+	for remaining := dsn.LeadershipTimeout; remaining >= 0; remaining -= pollInterval {
+		if d.raft.Leader() != "" {
+			break
+		}
+		// Sleep for the minimum value between pollInterval and remaining
+		select {
+		case <-time.After(pollInterval):
+		case <-time.After(remaining):
+		}
+	}
+	if d.raft.State() != raft.Leader {
+		return nil, sqlite3.Error{Code: sqlite3x.ErrNotLeader}
+	}
+
+	// Wait until all pending logs are applied.
+	err = d.raft.Barrier(dsn.InitializeTimeout).Error()
+	if err != nil {
+		if err == raft.ErrLeadershipLost {
+			return nil, sqlite3.Error{Code: sqlite3x.ErrNotLeader}
+		}
+		return nil, errors.Wrap(err, "failed to apply pending logs")
+	}
+
+	// Take acqure the lock and check if a follower connection is already
+	// open for this filename, if not open one with the Begin raft command.
+	d.mu.Lock()
+	if !d.connections.HasFollower(dsn.Filename) {
+		data, err := command.Marshal(command.NewOpen(dsn.Filename))
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to marshal raft open log")
+		}
+		if err := d.raft.Apply(data, dsn.LeadershipTimeout).Error(); err != nil {
+			return nil, errors.Wrap(err, "failed to apply raft open log")
+		}
+	}
+	d.mu.Unlock()
+
+	sqliteConn, err := d.connections.OpenLeader(dsn, d.methods)
 	if err != nil {
 		return nil, err
 	}
 
 	conn := &Conn{
-		waitLeadership: d.WaitLeadership,
-		connections:    d.connections,
-		sqliteConn:     sqliteConn,
+		connections: d.connections,
+		sqliteConn:  sqliteConn,
 	}
 
 	return conn, err
@@ -137,38 +198,15 @@ func (d *Driver) AutoCheckpoint(n int) {
 	d.connections.AutoCheckpoint(n)
 }
 
-// WaitLeadership blocks until the node acquires raft leadership and
-// any outstanding log is applied.
-func (d *Driver) WaitLeadership() error {
-	if d.isLeader() {
-		return nil
-	}
-	for {
-		if <-d.raft.LeaderCh() {
-			err := d.raft.Barrier(120 * time.Second).Error()
-			if err == raft.ErrLeadershipLost {
-				continue
-			}
-			return errors.Wrap(err, "failed to apply pending logs")
-		}
-	}
-}
-
 // Shutdown the the node.
 func (d *Driver) Shutdown() error {
 	return d.raft.Shutdown().Error()
 }
 
-// Returns true if this peer currently think it's the leader.
-func (d *Driver) isLeader() bool {
-	return d.raft.State() == raft.Leader
-}
-
 // Conn implements the sql.Conn interface.
 type Conn struct {
-	waitLeadership func() error
-	connections    *connection.Registry
-	sqliteConn     *sqlite3.SQLiteConn // Raw SQLite connection using the Go bindings
+	connections *connection.Registry
+	sqliteConn  *sqlite3.SQLiteConn // Raw SQLite connection using the Go bindings
 }
 
 // Prepare returns a prepared statement, bound to this connection.
@@ -196,24 +234,4 @@ func (c *Conn) Close() error {
 // Begin starts and returns a new transaction.
 func (c *Conn) Begin() (driver.Tx, error) {
 	return c.sqliteConn.Begin()
-}
-
-func addDatabase(connections *connection.Registry) error {
-	dir := connections.Dir()
-	if err := filepath.Walk(dir, func(path string, f os.FileInfo, err error) error {
-		if strings.HasPrefix(f.Name(), "test.db") {
-			return os.Remove(path)
-		}
-		return nil
-	}); err != nil {
-		return errors.Wrap(err, "failed to purge existing database files")
-	}
-
-	dsn, _ := connection.NewDSN("test.db")
-	connections.Add("test.db", dsn)
-	if err := connections.OpenFollower("test.db"); err != nil {
-		return errors.Wrap(err, "failed to open follower connection")
-	}
-
-	return nil
 }

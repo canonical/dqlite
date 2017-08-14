@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import time
 
-BUILD_SQLITE = "./build-sqlite.sh"
 BUILD_DQLITE = "go build -tags libsqlite3 .".split(" ")
 BUILD_DEMO = "go build -tags libsqlite3 testdata/demo.go".split(" ")
 BASE_PORT = 9980
@@ -25,19 +24,17 @@ def spawnNode(n, purge=False):
 
     env = os.environ.copy()
     env.update({
-        "LD_LIBRARY_PATH": os.path.join(os.getcwd(), ".sqlite", ".libs"),
+        "LD_LIBRARY_PATH": os.path.join(os.getcwd(), ".sqlite"),
     })
 
     return subprocess.Popen(args, env=env)
 
 
 if __name__ == "__main__":
-    subprocess.check_call(BUILD_SQLITE)
-
     env = os.environ.copy()
     env.update({
         "CGO_CFLAGS": "-I%s" % os.path.join(os.getcwd(), ".sqlite"),
-        "CGO_LDFLAGS": "-L%s" % os.path.join(os.getcwd(), ".sqlite", ".libs"),
+        "CGO_LDFLAGS": "-L%s" % os.path.join(os.getcwd(), ".sqlite"),
     })
     subprocess.check_call(BUILD_DQLITE, env=env)
     subprocess.check_call(BUILD_DEMO, env=env)

@@ -12,6 +12,9 @@ export LD_LIBRARY_PATH=$(PWD)/.sqlite/
 dependencies:
 	mkdir -p .sqlite && cd .sqlite && rm -f * && wget $(SQLITE_URL) -O - | tar xfz -
 
+proto:
+	protoc --gofast_out=. command/commands.proto
+
 build:
 	go get -tags "$TAGS" ./...
 	go get github.com/CanonicalLtd/raft-test

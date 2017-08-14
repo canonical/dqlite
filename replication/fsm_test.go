@@ -408,7 +408,7 @@ func openLeader(connections *connection.Registry) *sqlite3.SQLiteConn {
 // Wrapper around connections.Registry.OpenLeader(), panic'ing if any
 // error occurs.
 func openLeaderWithMethods(connections *connection.Registry, methods sqlite3x.ReplicationMethods) *sqlite3.SQLiteConn {
-	conn, err := connections.OpenLeader("test", methods)
+	conn, err := connections.OpenLeader(connection.NewTestDSN(), methods)
 	if err != nil {
 		panic(fmt.Sprintf("failed to open leader: %v", err))
 	}

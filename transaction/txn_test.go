@@ -13,7 +13,7 @@ func TestTxn_String(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test"), "abcd")
+	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
 
 	want := "{id=abcd state=pending leader=false}"
 	got := txn.String()
@@ -27,7 +27,7 @@ func TestTxn_CheckEntered(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test"), "abcd")
+	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
 
 	const want = "accessing or modifying txn state without mutex: abcd"
 	defer func() {
@@ -44,7 +44,7 @@ func TestTxn_Pending(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test"), "abcd")
+	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
 	txn.Enter()
 
 	state := txn.State()
@@ -58,7 +58,7 @@ func TestTxn_Started(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test"), "abcd")
+	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
 	txn.Enter()
 
 	if err := txn.Begin(); err != nil {
@@ -78,7 +78,7 @@ func TestTxn_Writing(t *testing.T) {
 	registry := newRegistry()
 	registry.DryRun()
 
-	txn := registry.AddFollower(connections.Follower("test"), "abcd")
+	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
 	txn.Enter()
 
 	if err := txn.Begin(); err != nil {
@@ -102,7 +102,7 @@ func TestTxn_Undoing(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test"), "abcd")
+	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
 	txn.Enter()
 
 	if err := txn.Begin(); err != nil {
@@ -123,7 +123,7 @@ func TestTxn_Ended(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test"), "abcd")
+	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
 	txn.Enter()
 
 	if err := txn.Begin(); err != nil {
@@ -270,7 +270,7 @@ func TestTxn_StalePanicsIfInvokedOnFollowerTransaction(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test"), "abcd")
+	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
 	txn.Enter()
 
 	const want = "invalid pending -> stale transition"

@@ -92,6 +92,7 @@ func openDB() {
 	// Create a new DQLite driver for this node and register it
 	// using the sql package.
 	config := dqlite.NewHTTPConfig(*data, handler, "/", addr, logger)
+	config.EnableSingleNode = *join == ""
 	driver, err := dqlite.NewDriver(config)
 	if err != nil {
 		logger.Fatalf("[ERR] demo: failed to start DQLite driver: %v", err)
@@ -138,12 +139,19 @@ func insertForever() {
 		// Start the transaction.
 		tx, err := db.Begin()
 		if err != nil {
-			logger.Fatalf("begin failed: %v", err)
+			if err, ok := err.(sqlite3.Error); ok {
+				if err.Code == sqlite3x.ErrNotLeader {
+					// We're not the leader, wait a bit and try again
+					randomSleep(0.250, 0.500)
+					continue
+				}
+			}
+			logger.Fatalf("[FATAL] demo: begin failed: %v", err)
 		}
 
 		// Ensure our test table is there.
 		if _, err := tx.Exec("CREATE TABLE IF NOT EXISTS test (n INT)"); err != nil {
-			handleTxError(tx, logger, err, false)
+			handleTxError(tx, err, false)
 			continue
 		}
 
@@ -154,7 +162,7 @@ func insertForever() {
 		failed := false
 		for i := 0; i < 50; i++ {
 			if _, err := tx.Exec("INSERT INTO test (n) VALUES(?)", i+offset); err != nil {
-				handleTxError(tx, logger, err, false)
+				handleTxError(tx, err, false)
 				failed = true
 				break
 			}
@@ -168,7 +176,7 @@ func insertForever() {
 
 		// Commit
 		if err := tx.Commit(); err != nil {
-			handleTxError(tx, logger, err, true)
+			handleTxError(tx, err, true)
 			continue
 		}
 		// Sleep a little bit to simulate a pause in the service's
@@ -179,7 +187,7 @@ func insertForever() {
 
 // Handle a transaction error. All errors are fatal except ones due to
 // lost leadership, in which case we rollback and try again.
-func handleTxError(tx *sql.Tx, logger *log.Logger, err error, isCommit bool) {
+func handleTxError(tx *sql.Tx, err error, isCommit bool) {
 	if err, ok := err.(sqlite3.Error); ok {
 		if err.Code == sqlite3x.ErrNotLeader {
 			if isCommit {
