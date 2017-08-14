@@ -12,29 +12,30 @@ import (
 	"time"
 
 	"github.com/CanonicalLtd/dqlite"
+	"github.com/CanonicalLtd/raft-membership"
 	"github.com/hashicorp/raft"
 )
 
 func TestNewDriver_Errors(t *testing.T) {
 	cases := []struct {
-		name      string
 		newConfig func() *dqlite.Config
-		join      string
 		want      string
 	}{
-		{"no dir", newConfigWithNoPath, "", "no data dir provided in config"},
-		{"make dir error", newConfigWithDirThatCantBeMade, "", "failed to create data dir"},
-		{"dir access error", newConfigWithDirThatCantBeAccessed, "", "failed to access data dir"},
-		{"dir is regular file", newConfigWithDirThatIsRegularFile, "", "data dir '/etc/fstab' is not a directory"},
-		{"get peers", newConfigWithCorruptedJSONPeersFile, "", "failed to get current raft peers"},
-		{"raft params", newConfigWithInvalidRaftParams, "", "failed to start raft"},
-		{"join fails", newConfigWithFailingJoinAddress, "1.2.3.4", "failed to join the cluster"},
+		{newConfigWithNoPath, "no data dir provided in config"},
+		{newConfigWithDirThatCantBeMade, "failed to create data dir"},
+		{newConfigWithDirThatCantBeAccessed, "failed to access data dir"},
+		{newConfigWithDirThatIsRegularFile, "data dir '/etc/fstab' is not a directory"},
+		{newConfigWithCorruptedJSONPeersFile, "failed to get current raft peers"},
+		{newConfigWithSingleNodeAndExistingPeers, "attempt to start as single node but peers store is not empty"},
+		{newConfigWithInvalidBoltStoreFile, "failed to create raft store"},
+		{newConfigWithInvalidSnapshotsDir, "failed to create snapshot store"},
+		{newConfigWithInvalidRaftParams, "failed to start raft"},
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+		t.Run(c.want, func(t *testing.T) {
 			config := c.newConfig()
 			defer os.RemoveAll(config.Dir)
-			driver, err := dqlite.NewDriver(config, c.join)
+			driver, err := dqlite.NewDriver(config)
 			if driver != nil {
 				t.Error("driver is not nil")
 			}
@@ -76,9 +77,66 @@ func newConfigWithCorruptedJSONPeersFile() *dqlite.Config {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create temp dir: %v", err))
 	}
-	if err := ioutil.WriteFile(filepath.Join(dir, "peers.json"), []byte("foo"), 0755); err != nil {
+	if err := ioutil.WriteFile(filepath.Join(dir, "peers.json"), []byte("foo"), 0644); err != nil {
 		panic(fmt.Sprintf("failed to write peers.json: %v", err))
 	}
+
+	_, transport := raft.NewInmemTransport("1")
+
+	return &dqlite.Config{
+		Dir:              dir,
+		Transport:        transport,
+		EnableSingleNode: true,
+	}
+}
+
+func newConfigWithSingleNodeAndExistingPeers() *dqlite.Config {
+	dir, err := ioutil.TempDir("", "go-dqlite-")
+	if err != nil {
+		panic(fmt.Sprintf("failed to create temp dir: %v", err))
+	}
+
+	_, transport := raft.NewInmemTransport("1")
+
+	peerStore := raft.NewJSONPeers(dir, transport)
+	if err := peerStore.SetPeers([]string{"1", "2"}); err != nil {
+		panic(fmt.Sprintf("failed to set peers: %v", err))
+	}
+
+	return &dqlite.Config{
+		Dir:              dir,
+		Transport:        transport,
+		EnableSingleNode: true,
+	}
+}
+
+func newConfigWithInvalidBoltStoreFile() *dqlite.Config {
+	dir, err := ioutil.TempDir("", "go-dqlite-")
+	if err != nil {
+		panic(fmt.Sprintf("failed to create temp dir: %v", err))
+	}
+
+	// Make raft.db a symlink to a file that does not exist, to trigger a
+	// bolt open error.
+	os.Symlink("/non/existing/file/path", filepath.Join(dir, "raft.db"))
+
+	return &dqlite.Config{
+		Dir: dir,
+	}
+}
+
+func newConfigWithInvalidSnapshotsDir() *dqlite.Config {
+	dir, err := ioutil.TempDir("", "go-dqlite-")
+	if err != nil {
+		panic(fmt.Sprintf("failed to create temp dir: %v", err))
+	}
+
+	// Make "snapshots" a file, so NewFileSnapshotStoreWithLogger will
+	// fail.
+	if err := ioutil.WriteFile(filepath.Join(dir, "snapshots"), []byte(""), 0644); err != nil {
+		panic(fmt.Sprintf("failed to write peers.json: %v", err))
+	}
+
 	return &dqlite.Config{
 		Dir: dir,
 	}
@@ -95,39 +153,52 @@ func newConfigWithInvalidRaftParams() *dqlite.Config {
 	}
 }
 
-func newConfigWithFailingJoinAddress() *dqlite.Config {
-	dir, err := ioutil.TempDir("", "go-dqlite-")
+func TestDriver_JoinError(t *testing.T) {
+	config := newConfigWithMembershipChanger(&failingMembershipChanger{})
+	driver, err := dqlite.NewDriver(config)
 	if err != nil {
-		panic(fmt.Sprintf("failed to create temp dir: %v", err))
+		t.Fatal(err)
 	}
-	_, transport := raft.NewInmemTransport("")
-	return &dqlite.Config{
-		Dir:                dir,
-		MembershipChanger:  &failingMembershipChanger{},
-		HeartbeatTimeout:   5 * time.Millisecond,
-		ElectionTimeout:    5 * time.Millisecond,
-		CommitTimeout:      5 * time.Millisecond,
-		LeaderLeaseTimeout: 5 * time.Millisecond,
-		Transport:          transport,
+
+	err = driver.Join("1.2.3.4", time.Microsecond)
+
+	if err == nil {
+		t.Fatal("no error returned")
+	}
+	want := "failed to join dqlite cluster: boom"
+	got := err.Error()
+	if got != want {
+		t.Errorf("expected error '%v', got '%v'", want, got)
 	}
 }
 
-func newConfigWithLeaderTimeout() *dqlite.Config {
+func TestDriver_JoinSuccess(t *testing.T) {
+	config := newConfigWithMembershipChanger(&succeedingMembershipChanger{})
+	driver, err := dqlite.NewDriver(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := driver.Join("1.2.3.4", time.Microsecond); err != nil {
+		t.Fatalf("joining failed: %v", err)
+	}
+}
+
+func newConfigWithMembershipChanger(changer raftmembership.Changer) *dqlite.Config {
 	dir, err := ioutil.TempDir("", "go-dqlite-")
 	if err != nil {
 		panic(fmt.Sprintf("failed to create temp dir: %v", err))
 	}
 	_, transport := raft.NewInmemTransport("")
+
 	return &dqlite.Config{
 		Dir:                dir,
-		Transport:          transport,
-		MembershipChanger:  &succeedingMembershipChanger{},
+		MembershipChanger:  changer,
 		HeartbeatTimeout:   5 * time.Millisecond,
 		ElectionTimeout:    5 * time.Millisecond,
 		CommitTimeout:      5 * time.Millisecond,
 		LeaderLeaseTimeout: 5 * time.Millisecond,
-		Logger:             log.New(bytes.NewBuffer(nil), "", 0),
-		SetupTimeout:       time.Microsecond,
+		Transport:          transport,
 	}
 }
 
@@ -171,6 +242,17 @@ func TestDriver_SQLiteLogging(t *testing.T) {
 	}
 }
 
+func TestDriver_IsLoneNode(t *testing.T) {
+	node := newNode()
+	isLone, err := node.Driver.IsLoneNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isLone {
+		t.Error("expected node to have no peers")
+	}
+}
+
 func TestDriver_ExecStatement(t *testing.T) {
 	node := newNode()
 	defer node.Cleanup()
@@ -205,7 +287,7 @@ func newNode() *node {
 	config := &dqlite.Config{
 		Dir:                dir,
 		Transport:          transport,
-		SetupTimeout:       1 * time.Second,
+		EnableSingleNode:   true,
 		HeartbeatTimeout:   5 * time.Millisecond,
 		ElectionTimeout:    5 * time.Millisecond,
 		CommitTimeout:      5 * time.Millisecond,
@@ -213,7 +295,7 @@ func newNode() *node {
 		Logger:             log.New(output, "", log.Lmicroseconds),
 	}
 
-	driver, err := dqlite.NewDriver(config, "")
+	driver, err := dqlite.NewDriver(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create driver: %v", err))
 	}

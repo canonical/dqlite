@@ -1,7 +1,7 @@
 package dqlite
 
 import (
-	"log"
+	"fmt"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/replication"
@@ -16,21 +16,19 @@ const (
 )
 
 // Wrapper around NewRaft using our Config object and making
-// opinionated choices for DQLite use. It also performs the
-// initial cluster join if needed and wait for leadership.
-func newRaft(config *Config, join string, fsm *replication.FSM, logger *log.Logger) (*raft.Raft, error) {
-	peerStore := raft.NewJSONPeers(config.Dir, config.Transport)
-	peers, err := peerStore.Peers()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get current raft peers")
+// opinionated choices for dqlite use.
+func newRaft(config *Config, fsm *replication.FSM, peerStore raft.PeerStore) (*raft.Raft, error) {
+	// If we're being told to start as single node, double check that the
+	// we are actually a lone node.
+	if config.EnableSingleNode {
+		isLone, err := isLoneNode(peerStore, config.Transport.LocalAddr())
+		if err != nil {
+			return nil, err
+		}
+		if !isLone {
+			return nil, fmt.Errorf("attempt to start as single node but peers store is not empty")
+		}
 	}
-	peersCount := len(peers)
-
-	// Enable single-node mode if there's no join address and there is
-	// either no peer or just ourselves.
-	noPeers := peersCount == 0
-	peersIsJustUs := peersCount == 1 && peers[0] == config.Transport.LocalAddr()
-	enableSingleNode := join == "" && (noPeers || peersIsJustUs)
 
 	conf := &raft.Config{
 		HeartbeatTimeout:           config.HeartbeatTimeout,
@@ -43,15 +41,15 @@ func newRaft(config *Config, join string, fsm *replication.FSM, logger *log.Logg
 		SnapshotInterval:           500 * time.Millisecond,
 		SnapshotThreshold:          64,
 		LeaderLeaseTimeout:         config.LeaderLeaseTimeout,
-		EnableSingleNode:           enableSingleNode,
-		Logger:                     logger,
+		EnableSingleNode:           config.EnableSingleNode,
+		Logger:                     config.Logger,
 	}
 	store, err := raftboltdb.NewBoltStore(filepath.Join(config.Dir, "raft.db"))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create raft store")
 	}
 	snaps, err := raft.NewFileSnapshotStoreWithLogger(
-		config.Dir, raftRetainSnapshotCount, logger)
+		config.Dir, raftRetainSnapshotCount, config.Logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create snapshot store: %s")
 	}
@@ -61,16 +59,19 @@ func newRaft(config *Config, join string, fsm *replication.FSM, logger *log.Logg
 		return nil, errors.Wrap(err, "failed to start raft")
 	}
 
-	// If a join address is given and there are no peers or peers
-	// include just us, request to join the cluster via the given
-	// address.
-	if join != "" && (noPeers || peersIsJustUs) {
-		timeout := config.SetupTimeout
-		if err := config.MembershipChanger.Join(join, timeout); err != nil {
-			raft.Shutdown().Error()
-			return nil, errors.Wrap(err, "failed to join the cluster")
-		}
-	}
-
 	return raft, nil
+}
+
+// Check whether a node is currently a "lone" node, meaning that it didn't join
+// any other nodes yet (i.e. peers store has no peers or that contains only our
+// address).
+func isLoneNode(peerStore raft.PeerStore, localAddr string) (bool, error) {
+	peers, err := peerStore.Peers()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to get current raft peers")
+	}
+	peersCount := len(peers)
+	noPeers := peersCount == 0
+	peersIsJustUs := peersCount == 1 && peers[0] == localAddr
+	return noPeers || peersIsJustUs, nil
 }
