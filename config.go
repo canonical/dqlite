@@ -31,6 +31,11 @@ type Config struct {
 	// raft-related setup when creating a new Driver.
 	SetupTimeout time.Duration
 
+	// EnableSingleNode allows for a single node mode of operation. This is
+	// false by default, which prevents a lone dqlite node from electing
+	// itself leader.
+	EnableSingleNode bool
+
 	// HeartbeatTimeout is a raft-specific setting and specifies
 	// the time in follower state without a leader before we
 	// attempt an election.

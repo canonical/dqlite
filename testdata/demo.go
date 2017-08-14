@@ -92,12 +92,24 @@ func openDB() {
 	// Create a new DQLite driver for this node and register it
 	// using the sql package.
 	config := dqlite.NewHTTPConfig(*data, handler, "/", addr, logger)
-	driver, err := dqlite.NewDriver(config, *join)
+	driver, err := dqlite.NewDriver(config)
 	if err != nil {
 		logger.Fatalf("[ERR] demo: failed to start DQLite driver: %v", err)
 	}
 	driver.AutoCheckpoint(20)
 	sql.Register("dqlite", driver)
+
+	// Join the cluster if we're being told so in the command line, and we
+	// yet a lone node.
+	isLone, err := driver.IsLoneNode()
+	if err != nil {
+		logger.Fatalf("[ERR] demo: failed to establish we're lone: %v", err)
+	}
+	if *join != "" && isLone {
+		if err := driver.Join(*join, 5*time.Second); err != nil {
+			logger.Fatalf("[ERR] demo: failed to join cluster: %v", err)
+		}
+	}
 
 	// Open a database backed by DQLite, and use at most one connection.
 	if db, err = sql.Open("dqlite", "test.db"); err != nil {

@@ -24,18 +24,21 @@ const (
 	bootstrapTimeout = 30 * time.Second
 )
 
-// Driver manages a node partecipating to a DQLite replicated cluster.
+// Driver manages a node partecipating to a dqlite replicated cluster.
 type Driver struct {
 	logger       *log.Logger                 // Log messages go here
 	raft         *raft.Raft                  // Underlying raft engine
+	addr         string                      // Address of this node
+	peers        raft.PeerStore              // Store of raft peers, used by the engine
+	membership   raftmembership.Changer      // API to join the raft cluster
 	connections  *connection.Registry        // Connections registry
 	methods      sqlite3x.ReplicationMethods // SQLite replication hooks
 	inititalized chan struct{}
 }
 
-// NewDriver creates a new node of a DQLite cluster, which also imlements the driver.Driver
+// NewDriver creates a new node of a dqlite cluster, which also imlements the driver.Driver
 // interface.
-func NewDriver(config *Config, join string) (*Driver, error) {
+func NewDriver(config *Config) (*Driver, error) {
 	if err := config.ensureDir(); err != nil {
 		return nil, err
 	}
@@ -43,7 +46,7 @@ func NewDriver(config *Config, join string) (*Driver, error) {
 	// Logging
 	logger := config.Logger
 	if logger == nil {
-		logger = log.New(os.Stdout, "", log.LstdFlags)
+		logger = log.New(os.Stderr, "", log.LstdFlags)
 	}
 	sqlite3x.LogConfig(logger)
 
@@ -61,8 +64,11 @@ func NewDriver(config *Config, join string) (*Driver, error) {
 		return nil, err
 	}
 
+	// Peer store
+	peers := raft.NewJSONPeers(config.Dir, config.Transport)
+
 	// Raft
-	raft, err := newRaft(config, join, fsm, logger)
+	raft, err := newRaft(config, fsm, peers)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +78,9 @@ func NewDriver(config *Config, join string) (*Driver, error) {
 	driver := &Driver{
 		logger:       logger,
 		raft:         raft,
+		addr:         config.Transport.LocalAddr(),
+		peers:        peers,
+		membership:   config.MembershipChanger,
 		connections:  connections,
 		methods:      methods,
 		inititalized: make(chan struct{}, 0),
@@ -82,6 +91,20 @@ func NewDriver(config *Config, join string) (*Driver, error) {
 	}
 
 	return driver, nil
+}
+
+// IsLoneNode returns whether this node is a "lone" one, meaning that has no
+// peers yet.
+func (d *Driver) IsLoneNode() (bool, error) {
+	return isLoneNode(d.peers, d.addr)
+}
+
+// Join a dqlite cluster by contacting the given address.
+func (d *Driver) Join(address string, timeout time.Duration) error {
+	if err := d.membership.Join(address, timeout); err != nil {
+		return errors.Wrap(err, "failed to join dqlite cluster")
+	}
+	return nil
 }
 
 // Open starts a new connection to a SQLite database.
