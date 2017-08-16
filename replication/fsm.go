@@ -110,7 +110,7 @@ func (f *FSM) applyOpen(cmd *command.Command) error {
 func (f *FSM) applyBegin(cmd *command.Command) error {
 	params, err := cmd.UnmarshalBegin()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to unmarshal params")
 	}
 	f.logCommand(cmd, params)
 
