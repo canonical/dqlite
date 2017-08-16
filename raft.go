@@ -1,14 +1,13 @@
 package dqlite
 
 import (
-	//	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/replication"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
 	"github.com/pkg/errors"
-	"path/filepath"
 )
 
 const (
