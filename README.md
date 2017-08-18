@@ -30,7 +30,7 @@ The main differences from [rqlite](https://github.com/rqlite/rqlite) are:
 Status
 ------
 
-This is '''alpha''' software for now, but we'll get to beta/rc soon.
+This is '''beta''' software for now, but we'll get to rc/release soon.
 
 Demo
 ----
@@ -48,6 +48,7 @@ Then run:
 ```
 go get -d github.com/CanonicalLtd/dqlite
 cd $GOPATH/src/github.com/CanonicalLtd/dqlite
+make dependencies
 ./run-demo
 ```
 
