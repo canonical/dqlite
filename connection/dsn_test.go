@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/mpvl/subtest"
 )
 
 // If the given sqlite DSN string is compatible with SQLite, no error
@@ -16,7 +17,7 @@ func TestNewDSN_Valid(t *testing.T) {
 		"file:test.db?_foreign_keys=1",
 	}
 	for _, input := range cases {
-		t.Run(input, func(t *testing.T) {
+		subtest.Run(t, input, func(t *testing.T) {
 			_, err := connection.NewDSN(input)
 			if err != nil {
 				t.Fatal(err)
@@ -34,7 +35,7 @@ func TestNewDSN_Query(t *testing.T) {
 		"test.db?_foreign_keys=1&mode=rwc": "_foreign_keys=1&mode=rwc",
 	}
 	for input, query := range cases {
-		t.Run(input, func(t *testing.T) {
+		subtest.Run(t, input, func(t *testing.T) {
 			dsn, err := connection.NewDSN(input)
 			if err != nil {
 				t.Fatal(err)
@@ -55,7 +56,7 @@ func TestNewDSN_Filename(t *testing.T) {
 		"file:test.db?mode=rwc": "test.db",
 	}
 	for input, filename := range cases {
-		t.Run(input, func(t *testing.T) {
+		subtest.Run(t, input, func(t *testing.T) {
 			dsn, err := connection.NewDSN(input)
 			if err != nil {
 				t.Fatal(err)
@@ -81,7 +82,7 @@ func TestNewDSN_Invalid(t *testing.T) {
 		"test.db?_initialize_timeout=abc": "initialize timeout is not a number: 'abc'",
 	}
 	for input, error := range cases {
-		t.Run(input, func(t *testing.T) {
+		subtest.Run(t, input, func(t *testing.T) {
 			_, err := connection.NewDSN(input)
 			if err == nil {
 				t.Fatalf("NewDSN didn't fail with %s", input)
@@ -126,7 +127,7 @@ func TestDSN_Encode(t *testing.T) {
 		"test.db?_leadership_timeout=100&mode=r": "test.db?mode=r",
 	}
 	for input, output := range cases {
-		t.Run(input, func(t *testing.T) {
+		subtest.Run(t, input, func(t *testing.T) {
 			dsn, err := connection.NewDSN(input)
 			if err != nil {
 				t.Fatal(err)

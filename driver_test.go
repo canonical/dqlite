@@ -14,6 +14,7 @@ import (
 	"github.com/CanonicalLtd/dqlite"
 	"github.com/CanonicalLtd/raft-membership"
 	"github.com/hashicorp/raft"
+	"github.com/mpvl/subtest"
 )
 
 func TestNewDriver_Errors(t *testing.T) {
@@ -30,7 +31,7 @@ func TestNewDriver_Errors(t *testing.T) {
 		{newConfigWithInvalidRaftParams, "failed to start raft"},
 	}
 	for _, c := range cases {
-		t.Run(c.want, func(t *testing.T) {
+		subtest.Run(t, c.want, func(t *testing.T) {
 			config := c.newConfig()
 			defer os.RemoveAll(config.Dir)
 			driver, err := dqlite.NewDriver(config)

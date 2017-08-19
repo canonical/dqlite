@@ -6,6 +6,8 @@ language: go
 before_install:
   - go get github.com/go-playground/overalls
   - go get github.com/mattn/goveralls
+  - mkdir -p $GOPATH/src/github.com/armon/
+  - git clone -b go-1.6-and-1.7-compatibility https://github.com/freeekanayaka/go-metrics.git $GOPATH/src/github.com/armon/go-metrics
 
 script:
   - make dependencies
@@ -14,4 +16,6 @@ script:
   - $GOPATH/bin/goveralls -coverprofile overalls.coverprofile -service=travis-ci
 
 go:
+  - 1.6
+  - 1.7
   - 1.8

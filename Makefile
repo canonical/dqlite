@@ -16,8 +16,7 @@ proto:
 	protoc --gofast_out=. command/commands.proto
 
 build:
-	go get -tags "$TAGS" ./...
-	go get github.com/CanonicalLtd/raft-test
+	go get -t -tags "$TAGS" ./...
 	go build -tags "$TAGS"
 
 coverage:
