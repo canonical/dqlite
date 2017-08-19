@@ -6,6 +6,7 @@ import (
 	"github.com/CanonicalLtd/dqlite/command"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/golang/protobuf/proto"
+	"github.com/mpvl/subtest"
 )
 
 func TestUnmarshal(t *testing.T) {
@@ -100,7 +101,7 @@ func TestParams(t *testing.T) {
 		{newCheckpoint, command.Code_CHECKPOINT, checkCheckpoint},
 	}
 	for _, c := range cases {
-		t.Run(c.code.String(), func(t *testing.T) {
+		subtest.Run(t, c.code.String(), func(t *testing.T) {
 			data, err := command.Marshal(c.new())
 			if err != nil {
 				t.Fatal(err)

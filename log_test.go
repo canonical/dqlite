@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite"
+	"github.com/mpvl/subtest"
 )
 
 func TestLevelFilterWithOrigin_Write(t *testing.T) {
@@ -24,7 +25,7 @@ func TestLevelFilterWithOrigin_Write(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		t.Run(c.message, func(t *testing.T) {
+		subtest.Run(t, c.message, func(t *testing.T) {
 			defer writer.Reset()
 			filter := dqlite.NewLogFilter(writer, "", c.origins)
 
