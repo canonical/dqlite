@@ -30,7 +30,7 @@ The main differences from [rqlite](https://github.com/rqlite/rqlite) are:
 Status
 ------
 
-This is '''beta''' software for now, but we'll get to rc/release soon.
+This is **beta** software for now, but we'll get to rc/release soon.
 
 Demo
 ----
@@ -76,3 +76,24 @@ Documentation
 -------------
 
 The documentation for this package can be found on [Godoc](http://godoc.org/github.com/CanonicalLtd/dqlite).
+
+FAQ
+---
+
+**Q**: How does dqlite behave during conflict situations? Does Raft
+select a winning WAL write and any others in flight are aborted?
+
+**A**: There can't be a conflict situation. Raft's model is that
+only the leader can append new log entries, which translated to dqlite
+means that only the leader can write new WAL frames. So this means
+that any attempt to perform a write transaction on a non-leader node
+will fail with a sqlite3x.ErrNotLeader error (and in this case clients
+are supposed to retry against whoever is the new leader).
+
+**Q**: When not enough nodes are available, are writes hung until
+consensus?
+
+**A**: Yes, however there's a (configurable) timeout. This is a
+consequence of Raft sitting in the CP spectrum of the CAP theorem: in
+case of a network partition it chooses consistency and sacrifices
+availability.
