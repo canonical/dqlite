@@ -8,23 +8,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CanonicalLtd/dqlite/command"
-	"github.com/CanonicalLtd/dqlite/connection"
-	"github.com/CanonicalLtd/dqlite/replication"
-	"github.com/CanonicalLtd/dqlite/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/CanonicalLtd/raft-membership"
 	"github.com/boltdb/bolt"
 	"github.com/hashicorp/raft"
-	raftboltdb "github.com/hashicorp/raft-boltdb"
+	"github.com/hashicorp/raft-boltdb"
 	"github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
-)
 
-const (
-	// Maximum time to wait for a single-mode peer to become
-	// leader or a new follower peer to join the cluster.
-	bootstrapTimeout = 30 * time.Second
+	"github.com/CanonicalLtd/dqlite/command"
+	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/CanonicalLtd/dqlite/replication"
+	"github.com/CanonicalLtd/dqlite/transaction"
 )
 
 // Driver manages a node partecipating to a dqlite replicated cluster.
@@ -34,7 +29,6 @@ type Driver struct {
 	addr         string                      // Address of this node
 	logs         *raftboltdb.BoltStore       // Store for raft logs
 	peers        raft.PeerStore              // Store of raft peers, used by the engine
-	leadership   chan bool                   // Notifications about leadership changes
 	membership   raftmembership.Changer      // API to join the raft cluster
 	connections  *connection.Registry        // Connections registry
 	methods      sqlite3x.ReplicationMethods // SQLite replication hooks
@@ -61,8 +55,8 @@ func NewDriver(config *Config) (*Driver, error) {
 	transactions := transaction.NewRegistry()
 	fsm := replication.NewFSM(logger, connections, transactions)
 
-	// XXX TODO: find a way to perform mode checks on fresh
-	// follower connections that have not yet begun.
+	// XXX TODO: find a way to perform mode checks on fresh follower
+	//           connections that have not yet begun.
 	transactions.SkipCheckReplicationMode(true)
 
 	// Logs store
@@ -95,7 +89,6 @@ func NewDriver(config *Config) (*Driver, error) {
 		addr:         config.Transport.LocalAddr(),
 		logs:         logs,
 		peers:        peers,
-		leadership:   leadership,
 		membership:   config.MembershipChanger,
 		connections:  connections,
 		methods:      methods,
@@ -103,6 +96,11 @@ func NewDriver(config *Config) (*Driver, error) {
 	}
 
 	if config.MembershipRequests != nil {
+		// This goroutine will normally terminate as soon as the
+		// config.MembershipRequests channel gets closed, which will
+		// happen as soon as raft it's shutdown, because this causes
+		// the transport to be closed which in turn should close this
+		// requests channel (like the rafthttp.Layer transport does).
 		go raftmembership.HandleChangeRequests(raft, config.MembershipRequests)
 	}
 
