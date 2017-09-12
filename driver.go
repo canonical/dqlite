@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,7 +14,9 @@ import (
 	"github.com/CanonicalLtd/dqlite/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/CanonicalLtd/raft-membership"
+	"github.com/boltdb/bolt"
 	"github.com/hashicorp/raft"
+	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 )
@@ -29,6 +32,7 @@ type Driver struct {
 	logger       *log.Logger                 // Log messages go here
 	raft         *raft.Raft                  // Underlying raft engine
 	addr         string                      // Address of this node
+	logs         *raftboltdb.BoltStore       // Store for raft logs
 	peers        raft.PeerStore              // Store of raft peers, used by the engine
 	leadership   chan bool                   // Notifications about leadership changes
 	membership   raftmembership.Changer      // API to join the raft cluster
@@ -61,6 +65,15 @@ func NewDriver(config *Config) (*Driver, error) {
 	// follower connections that have not yet begun.
 	transactions.SkipCheckReplicationMode(true)
 
+	// Logs store
+	logs, err := raftboltdb.New(raftboltdb.Options{
+		Path:        filepath.Join(config.Dir, "raft.db"),
+		BoltOptions: &bolt.Options{Timeout: config.SetupTimeout},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create raft logs store")
+	}
+
 	// Peer store
 	peers := raft.NewJSONPeers(config.Dir, config.Transport)
 
@@ -69,7 +82,7 @@ func NewDriver(config *Config) (*Driver, error) {
 	leadership := make(chan bool, 1024)
 
 	// Raft
-	raft, err := newRaft(config, fsm, peers, leadership)
+	raft, err := newRaft(config, fsm, logs, peers, leadership)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +93,7 @@ func NewDriver(config *Config) (*Driver, error) {
 		logger:       logger,
 		raft:         raft,
 		addr:         config.Transport.LocalAddr(),
+		logs:         logs,
 		peers:        peers,
 		leadership:   leadership,
 		membership:   config.MembershipChanger,
@@ -200,7 +214,14 @@ func (d *Driver) AutoCheckpoint(n int) {
 
 // Shutdown the the node.
 func (d *Driver) Shutdown() error {
-	return d.raft.Shutdown().Error()
+	if err := d.raft.Shutdown().Error(); err != nil {
+		return errors.Wrap(err, "failed to shutdown raft")
+	}
+	if err := d.logs.Close(); err != nil {
+		return errors.Wrap(err, "failed to close logs store")
+	}
+
+	return nil
 }
 
 // Conn implements the sql.Conn interface.

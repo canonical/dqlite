@@ -26,7 +26,7 @@ func TestNewDriver_Errors(t *testing.T) {
 		{newConfigWithDirThatCantBeMade, "failed to create data dir"},
 		{newConfigWithDirThatCantBeAccessed, "failed to access data dir"},
 		{newConfigWithDirThatIsRegularFile, "data dir '/etc/fstab' is not a directory"},
-		{newConfigWithInvalidBoltStoreFile, "failed to create raft store"},
+		{newConfigWithInvalidBoltStoreFile, "failed to create raft logs store"},
 		{newConfigWithInvalidSnapshotsDir, "failed to create snapshot store"},
 		{newConfigWithInvalidRaftParams, "failed to start raft"},
 	}
