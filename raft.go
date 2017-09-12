@@ -15,7 +15,7 @@ const (
 
 // Wrapper around NewRaft using our Config object and making
 // opinionated choices for dqlite use.
-func newRaft(config *Config, fsm *replication.FSM, store *raftboltdb.BoltStore, peerStore raft.PeerStore, notifyCh chan bool) (*raft.Raft, error) {
+func newRaft(config *Config, fsm *replication.FSM, logs *raftboltdb.BoltStore, peers raft.PeerStore, notifyCh chan bool) (*raft.Raft, error) {
 	conf := &raft.Config{
 		HeartbeatTimeout:           config.HeartbeatTimeout,
 		ElectionTimeout:            config.ElectionTimeout,
@@ -36,8 +36,7 @@ func newRaft(config *Config, fsm *replication.FSM, store *raftboltdb.BoltStore, 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create snapshot store: %s")
 	}
-	raft, err := raft.NewRaft(
-		conf, fsm, store, store, snaps, peerStore, config.Transport)
+	raft, err := raft.NewRaft(conf, fsm, logs, logs, snaps, peers, config.Transport)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start raft")
 	}

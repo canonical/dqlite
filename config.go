@@ -24,7 +24,7 @@ type Config struct {
 	Transport raft.Transport
 
 	// Request queue and processor for raft membership changes.
-	MembershipRequests chan *raftmembership.ChangeRequest
+	MembershipRequests <-chan *raftmembership.ChangeRequest
 	MembershipChanger  raftmembership.Changer
 
 	// SetupTimeout is how long to wait before timing out
