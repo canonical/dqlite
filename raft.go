@@ -3,7 +3,7 @@ package dqlite
 import (
 	"time"
 
-	"github.com/CanonicalLtd/dqlite/replication"
+	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/pkg/errors"

@@ -10,8 +10,8 @@ import (
 
 	"github.com/CanonicalLtd/dqlite/internal/command"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/dqlite/replication"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"

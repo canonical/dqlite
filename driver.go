@@ -18,8 +18,8 @@ import (
 
 	"github.com/CanonicalLtd/dqlite/internal/command"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/dqlite/replication"
 )
 
 // Driver manages a node partecipating to a dqlite replicated cluster.
