@@ -8,7 +8,7 @@ import (
 
 	"github.com/CanonicalLtd/dqlite/internal/command"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
-	"github.com/CanonicalLtd/dqlite/transaction"
+	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/hashicorp/raft"
 	"github.com/mattn/go-sqlite3"
