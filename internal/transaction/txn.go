@@ -9,16 +9,6 @@ import (
 	"github.com/ryanfaerman/fsm"
 )
 
-// Possible transaction states
-const (
-	Pending = fsm.State("pending")
-	Started = fsm.State("started")
-	Writing = fsm.State("writing")
-	Undoing = fsm.State("undoing")
-	Ended   = fsm.State("ended")
-	Stale   = fsm.State("stale")
-)
-
 // Txn captures information about an active WAL write transaction
 // that has been started on a SQLite connection configured to be in
 // either leader or replication mode.
@@ -32,6 +22,16 @@ type Txn struct {
 	state    *txnState
 	machine  *fsm.Machine
 }
+
+// Possible transaction states
+const (
+	Pending = fsm.State("pending")
+	Started = fsm.State("started")
+	Writing = fsm.State("writing")
+	Undoing = fsm.State("undoing")
+	Ended   = fsm.State("ended")
+	Stale   = fsm.State("stale")
+)
 
 func newTxn(conn *sqlite3.SQLiteConn, id string, isLeader bool, dryRun bool) *Txn {
 	state := &txnState{state: Pending}

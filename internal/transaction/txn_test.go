@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
-	"github.com/CanonicalLtd/dqlite/transaction"
+	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 )
 
