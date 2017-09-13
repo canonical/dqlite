@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/transaction"
 )
 

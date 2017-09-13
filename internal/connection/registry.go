@@ -13,15 +13,15 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Registry is a qlite node-level data structure that tracks all
+// Registry is a dqlite node-level data structure that tracks all
 // SQLite connections opened on the node, either in leader replication
 // mode or follower replication mode.
 type Registry struct {
-	mu             sync.RWMutex                   // Serialize access to internal state
-	dir            string                         // Directory where we store database files
-	leaders        map[*sqlite3.SQLiteConn]string // Leader connections to database names
-	followers      map[string]*sqlite3.SQLiteConn // Database names to follower connections
-	autoCheckpoint int                            // Number for WAL frames after which a checkpoint will be triggered
+	mu             sync.RWMutex                   // Serialize access to internal state.
+	dir            string                         // Directory where we store database files.
+	leaders        map[*sqlite3.SQLiteConn]string // Leader connections to database names.
+	followers      map[string]*sqlite3.SQLiteConn // Database names to follower connections.
+	autoCheckpoint int                            // Trigger a checkpoint after WAL has more frames than this.
 }
 
 // NewRegistry creates a new connections registry, managing
@@ -51,6 +51,35 @@ func (r *Registry) AutoCheckpoint(n int) {
 	r.autoCheckpoint = n
 }
 
+// OpenLeader returns a new SQLite connection to a database in our
+// directory, set in leader replication mode.
+func (r *Registry) OpenLeader(dsn *DSN, methods sqlite3x.ReplicationMethods) (*sqlite3.SQLiteConn, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	errWrapper := func(err error) error {
+		return errors.Wrap(err, "failed to open leader connection")
+	}
+
+	conn, err := r.open(dsn.Encode())
+	if err != nil {
+		return nil, errWrapper(err)
+	}
+
+	// Ensure WAL autocheckpoint is set
+	sqlite3x.ReplicationAutoCheckpoint(conn, r.autoCheckpoint)
+
+	// Swith to leader replication mode for this connection.
+	if err := sqlite3x.ReplicationLeader(conn, methods); err != nil {
+		return nil, errWrapper(err)
+	}
+
+	r.leaders[conn] = dsn.Filename
+
+	return conn, nil
+
+}
+
 // NameByLeader returns the name of the database associated with the given
 // connection, which is assumed to be a registered leader connection.
 func (r *Registry) NameByLeader(conn *sqlite3.SQLiteConn) string {
@@ -64,13 +93,44 @@ func (r *Registry) NameByLeader(conn *sqlite3.SQLiteConn) string {
 	return name
 }
 
-// AllNames returns the names for all databases currently registered.
-func (r *Registry) AllNames() []string {
-	names := []string{}
-	for name := range r.followers {
-		names = append(names, name)
+// Leaders returns all open leader connections for the database with
+// the given name.
+func (r *Registry) Leaders(name string) []*sqlite3.SQLiteConn {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	conns := []*sqlite3.SQLiteConn{}
+	for conn := range r.leaders {
+		if r.leaders[conn] == name {
+			conns = append(conns, conn)
+		}
 	}
-	return names
+	return conns
+}
+
+// CloseLeader closes the given leader connection and deletes its entry
+// in the leaders map.
+func (r *Registry) CloseLeader(conn *sqlite3.SQLiteConn) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.leaders[conn]; !ok {
+		panic("attempt to close a connection that was not registered")
+	}
+
+	// XXX Also set replication to none, to clear methods memory. Perhaps
+	//     this should be done in sqlite3x in a more explicit or nicer way.
+	if _, err := sqlite3x.ReplicationNone(conn); err != nil {
+		return err
+	}
+
+	if err := conn.Close(); err != nil {
+		return err
+	}
+
+	delete(r.leaders, conn)
+
+	return nil
 }
 
 // OpenFollower opens a follower against the database identified by
@@ -108,22 +168,14 @@ func (r *Registry) OpenFollower(name string) error {
 
 }
 
-// CloseFollower closes a follower connection.
-func (r *Registry) CloseFollower(name string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	conn := r.follower(name)
-	delete(r.followers, name)
-	return conn.Close()
-}
-
-// Follower returns the follower connection used to replicate the
-// database identified by the given name.
-func (r *Registry) Follower(name string) *sqlite3.SQLiteConn {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.follower(name)
+// AllNames returns the names for all databases which currently have registered
+// follower connections.
+func (r *Registry) AllNames() []string {
+	names := []string{}
+	for name := range r.followers {
+		names = append(names, name)
+	}
+	return names
 }
 
 // HasFollower checks whether the registry has a follower connection open for
@@ -135,73 +187,22 @@ func (r *Registry) HasFollower(name string) bool {
 	return ok
 }
 
-// OpenLeader returns a new SQLite connection to a database in our
-// directory, set in leader replication mode.
-func (r *Registry) OpenLeader(dsn *DSN, methods sqlite3x.ReplicationMethods) (*sqlite3.SQLiteConn, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	errWrapper := func(err error) error {
-		return errors.Wrap(err, "failed to open leader connection")
-	}
-
-	conn, err := r.open(dsn.Encode())
-	if err != nil {
-		return nil, errWrapper(err)
-	}
-
-	// Ensure WAL autocheckpoint is set
-	sqlite3x.ReplicationAutoCheckpoint(conn, r.autoCheckpoint)
-
-	// Swith to leader replication mode for this connection.
-	if err := sqlite3x.ReplicationLeader(conn, methods); err != nil {
-		return nil, errWrapper(err)
-	}
-
-	r.leaders[conn] = dsn.Filename
-
-	return conn, nil
-
-}
-
-// CloseLeader closes the given leader connection and deletes its entry
-// in the leaders map.
-func (r *Registry) CloseLeader(conn *sqlite3.SQLiteConn) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if _, ok := r.leaders[conn]; !ok {
-		panic("attempt to close a connection that was not registered")
-	}
-
-	// XXX Also set replication to none, to clear methods memory. Perhaps
-	//     this should be done in sqlite3x in a more explicit or nicer way.
-	if _, err := sqlite3x.ReplicationNone(conn); err != nil {
-		return err
-	}
-
-	if err := conn.Close(); err != nil {
-		return err
-	}
-
-	delete(r.leaders, conn)
-
-	return nil
-}
-
-// Leaders returns all open leader connections for the database with
-// the given name.
-func (r *Registry) Leaders(name string) []*sqlite3.SQLiteConn {
+// Follower returns the follower connection used to replicate the
+// database identified by the given name.
+func (r *Registry) Follower(name string) *sqlite3.SQLiteConn {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	return r.follower(name)
+}
 
-	conns := []*sqlite3.SQLiteConn{}
-	for conn := range r.leaders {
-		if r.leaders[conn] == name {
-			conns = append(conns, conn)
-		}
-	}
-	return conns
+// CloseFollower closes a follower connection.
+func (r *Registry) CloseFollower(name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	conn := r.follower(name)
+	delete(r.followers, name)
+	return conn.Close()
 }
 
 // Backup a single database using the given leader connection. It

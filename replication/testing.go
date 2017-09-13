@@ -1,6 +1,5 @@
 package replication
 
-import (
 /*	"fmt"
 	"log"
 	"os"
@@ -8,13 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/CanonicalLtd/raft-http"
 	"github.com/hashicorp/raft"
 	"github.com/mattn/go-sqlite3"*/
-)
 
 /*
 func NewTempTestFSM() {
