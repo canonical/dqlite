@@ -11,14 +11,14 @@ import (
 type Params proto.Message
 
 // NewOpen returns a new Open protobuf message.
-func NewOpen(name string) *Open {
+func NewOpen(name string) Params {
 	return &Open{
 		Name: name,
 	}
 }
 
 // NewBegin returns a new Begin protobuf message.
-func NewBegin(txid string, name string) *Begin {
+func NewBegin(txid string, name string) Params {
 	return &Begin{
 		Txid: txid,
 		Name: name,
@@ -115,59 +115,62 @@ func Unmarshal(data []byte) (*Command, error) {
 // UnmarshalOpen returns the Open parameters from a command params
 // payload.
 func (c *Command) UnmarshalOpen() (*Open, error) {
-	params := &Open{}
-	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
-		return nil, err
-	}
-	return params, nil
+	params, err := c.unmarshalParams()
+	return params.(*Open), err
 }
 
 // UnmarshalBegin returns the Begin parameters from a command params
 // payload.
 func (c *Command) UnmarshalBegin() (*Begin, error) {
-	params := &Begin{}
-	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
-		return nil, err
-	}
-	return params, nil
+	params, err := c.unmarshalParams()
+	return params.(*Begin), err
 }
 
 // UnmarshalWalFrames returns the WalFrames parameters from a command
 // params payload.
 func (c *Command) UnmarshalWalFrames() (*WalFrames, error) {
-	params := &WalFrames{}
-	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
-		return nil, err
-	}
-	return params, nil
+	params, err := c.unmarshalParams()
+	return params.(*WalFrames), err
 }
 
 // UnmarshalUndo returns the Undo parameters from a command params
 // payload.
 func (c *Command) UnmarshalUndo() (*Undo, error) {
-	params := &Undo{}
-	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
-		return nil, err
-	}
-	return params, nil
+	params, err := c.unmarshalParams()
+	return params.(*Undo), err
 }
 
 // UnmarshalEnd returns the End parameters from a command params
 // payload.
 func (c *Command) UnmarshalEnd() (*End, error) {
-	params := &End{}
-	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
-		return nil, err
-	}
-	return params, nil
+	params, err := c.unmarshalParams()
+	return params.(*End), err
 }
 
 // UnmarshalCheckpoint returns the Checkpoint parameters from a command params
 // payload.
 func (c *Command) UnmarshalCheckpoint() (*Checkpoint, error) {
-	params := &Checkpoint{}
-	if err := proto.Unmarshal(c.GetParams(), params); err != nil {
-		return nil, err
+	params, err := c.unmarshalParams()
+	return params.(*Checkpoint), err
+}
+
+// Unmarshal the params payload.
+func (c *Command) unmarshalParams() (proto.Message, error) {
+	var params proto.Message
+	switch c.Code {
+	case Code_OPEN:
+		params = &Open{}
+	case Code_BEGIN:
+		params = &Begin{}
+	case Code_WAL_FRAMES:
+		params = &WalFrames{}
+	case Code_UNDO:
+		params = &Undo{}
+	case Code_END:
+		params = &End{}
+	case Code_CHECKPOINT:
+		params = &Checkpoint{}
 	}
-	return params, nil
+	err := proto.Unmarshal(c.GetParams(), params)
+	return params, err
 }

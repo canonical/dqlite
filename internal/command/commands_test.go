@@ -3,10 +3,11 @@ package command_test
 import (
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/command"
+	"github.com/CanonicalLtd/dqlite/internal/command"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/golang/protobuf/proto"
 	"github.com/mpvl/subtest"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestUnmarshal(t *testing.T) {
@@ -121,6 +122,13 @@ func TestParams(t *testing.T) {
 	}
 }
 
+// In case of code mismatch between the requested unmarshal method and the
+// actual parameters code, a panic is raised.
+func TestCommand_UnmarshalOpenCodeMismatch(t *testing.T) {
+	cmd := command.Command{Code: command.Code_OPEN}
+	assert.Panics(t, func() { cmd.UnmarshalBegin() })
+}
+
 func newOpen() command.Params {
 	return command.NewOpen("test")
 }
@@ -161,10 +169,11 @@ func newWalFrames() command.Params {
 	}
 
 	frames := &sqlite3x.ReplicationWalFramesParams{
-		Pages:    pages,
-		PageSize: size,
-		Truncate: 1,
-		IsCommit: 0,
+		Pages:     pages,
+		PageSize:  size,
+		Truncate:  1,
+		IsCommit:  1,
+		SyncFlags: 1,
 	}
 	return command.NewWalFrames("abcd", frames)
 }
@@ -197,11 +206,11 @@ func checkWalFrames(cmd *command.Command, t *testing.T) {
 	if params.GetTruncate() != 1 {
 		t.Errorf("expected Truncate 1, got %d", params.Truncate)
 	}
-	if params.GetIsCommit() != 0 {
-		t.Errorf("expected IsCommit 0, got %d", params.IsCommit)
+	if params.GetIsCommit() != 1 {
+		t.Errorf("expected IsCommit 1, got %d", params.IsCommit)
 	}
-	if params.GetSyncFlags() != 0 {
-		t.Errorf("expected SyncFlags 0, got %d", params.IsCommit)
+	if params.GetSyncFlags() != 1 {
+		t.Errorf("expected SyncFlags 1, got %d", params.IsCommit)
 	}
 }
 

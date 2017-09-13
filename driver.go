@@ -16,8 +16,8 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 
-	"github.com/CanonicalLtd/dqlite/command"
 	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/CanonicalLtd/dqlite/internal/command"
 	"github.com/CanonicalLtd/dqlite/replication"
 	"github.com/CanonicalLtd/dqlite/transaction"
 )
@@ -172,8 +172,8 @@ func (d *Driver) Open(name string) (driver.Conn, error) {
 		return nil, errors.Wrap(err, "failed to apply pending logs")
 	}
 
-	// Take acqure the lock and check if a follower connection is already
-	// open for this filename, if not open one with the Begin raft command.
+	// Acquire the lock and check if a follower connection is already open
+	// for this filename, if not open one with the Open raft command.
 	d.mu.Lock()
 	if !d.connections.HasFollower(dsn.Filename) {
 		data, err := command.Marshal(command.NewOpen(dsn.Filename))

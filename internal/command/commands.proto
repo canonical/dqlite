@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package command;
+
+// Command meant to be executed by the dqlite Raft FSM.
+message Command {
+  Code code = 1;    // Identifier of the type of parameters, see below.
+  bytes params = 2; // Serialized command parameters.
+}
+
+// Code identifying the type of the params field of a Command.
+enum Code {
+  OPEN       = 0;
+  BEGIN      = 1;
+  WAL_FRAMES = 2;
+  UNDO       = 3;
+  END        = 4;
+  CHECKPOINT = 5;
+}
+
+// Parameters to open a new database and setup the needed data
+// structures for replication.
+message Open {
+  string name = 1; // Name of the database file.
+}
+
+// Parameters to begin a new write transaction.
+message Begin {
+  string txid = 1; // Transaction identifier.
+  string name = 2; // Name of the database file.
+}
+
+// Parameters to append new frames to the WAL within a write transaction.
+message WalFrames {
+  string txid = 1;                  // Transaction identifier.
+  int32 page_size = 2;              // Size of the data field of each frame.
+  repeated WalFramesPage pages = 3; // List of the frames to write.
+  uint32 truncate = 4;              // Flag telling if the WAL should be truncated.
+  int32 is_commit = 5;              // Flag telling if this is a final frames write.
+  uint32 sync_flags = 6;            // Flags for disk syncing.
+}
+
+// A single frame of data in a WalFrames command.
+message WalFramesPage {
+  bytes data = 1;    // Frame data.
+  uint32 flags = 2;  // WAL write flags.
+  uint32 number = 3; // Page number (i.e. position in the database file).
+}
+
+// Parameters to undo any previous WAL change in a write transaction.
+message Undo {
+  string txid = 1; // Transaction identifier.
+}
+
+// Parameters to end a write transaction, and update the WAL commit
+// pointer.
+message End {
+  string txid = 1; // Transaction identifier.
+}
+
+// Parameters to perform a WAL checkpoint.
+message Checkpoint {
+  string name = 1; // Name of the database file.
+}

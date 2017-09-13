@@ -6,8 +6,8 @@ import shutil
 import subprocess
 import time
 
-BUILD_DQLITE = "go build -tags libsqlite3 .".split(" ")
-BUILD_DEMO = "go build -tags libsqlite3 testdata/demo.go".split(" ")
+BUILD_DQLITE = "./.go-wrapper build -tags libsqlite3 .".split(" ")
+BUILD_DEMO = "./.go-wrapper build -tags libsqlite3 testdata/demo.go".split(" ")
 BASE_PORT = 9980
 
 
@@ -31,13 +31,8 @@ def spawnNode(n, purge=False):
 
 
 if __name__ == "__main__":
-    env = os.environ.copy()
-    env.update({
-        "CGO_CFLAGS": "-I%s" % os.path.join(os.getcwd(), ".sqlite"),
-        "CGO_LDFLAGS": "-L%s" % os.path.join(os.getcwd(), ".sqlite"),
-    })
-    subprocess.check_call(BUILD_DQLITE, env=env)
-    subprocess.check_call(BUILD_DEMO, env=env)
+    subprocess.check_call(BUILD_DQLITE)
+    subprocess.check_call(BUILD_DEMO)
 
     processes = []
     for i in range(3):
