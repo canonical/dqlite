@@ -16,8 +16,8 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 
-	"github.com/CanonicalLtd/dqlite/connection"
 	"github.com/CanonicalLtd/dqlite/internal/command"
+	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/replication"
 	"github.com/CanonicalLtd/dqlite/transaction"
 )

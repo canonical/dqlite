@@ -3,7 +3,7 @@ package connection_test
 import (
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/mpvl/subtest"
 )
 

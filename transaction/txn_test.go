@@ -3,7 +3,7 @@ package transaction_test
 import (
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/connection"
+	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 )
