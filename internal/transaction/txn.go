@@ -13,28 +13,35 @@ import (
 // that has been started on a SQLite connection configured to be in
 // either leader or replication mode.
 type Txn struct {
-	conn     *sqlite3.SQLiteConn
-	id       string
-	isLeader bool
-	dryRun   bool
-	mu       sync.Mutex // Serialize access to internal state
-	entered  bool       // Whether we obtained the mutex
-	state    *txnState
-	machine  *fsm.Machine
+	conn     *sqlite3.SQLiteConn // Underlying SQLite connection.
+	id       string              // Transaction ID.
+	isLeader bool                // Whether we're attached to a connection in leader mode.
+	dryRun   bool                // Dry run mode, don't invoke actual SQLite hooks, for testing.
+	mu       sync.Mutex          // Serialize access to internal state.
+	entered  bool                // Whether we obtained the mutex.
+	state    *txnState           // Current state of our internal fsm.
+	machine  *fsm.Machine        // Internal fsm.
 }
 
-// Possible transaction states
+// Possible transaction states. Most states are associated with SQLite
+// replication hooks that are invoked upon transitioning from one lifecycle
+// state to the next.
 const (
-	Pending = fsm.State("pending")
-	Started = fsm.State("started")
-	Writing = fsm.State("writing")
-	Undoing = fsm.State("undoing")
-	Ended   = fsm.State("ended")
-	Stale   = fsm.State("stale")
+	Pending = fsm.State("pending") // Initial state right after creation.
+	Started = fsm.State("started") // After the begin hook has been executed.
+	Writing = fsm.State("writing") // After the wal frames hook has been executed.
+	Undoing = fsm.State("undoing") // After the undo hook has been executed.
+	Ended   = fsm.State("ended")   // After the end hook has been executed.
+	Stale   = fsm.State("stale")   // The transaction is stale (leader only).
+	Doomed  = fsm.State("doomed")  // The transaction has errored.
 )
 
 func newTxn(conn *sqlite3.SQLiteConn, id string, isLeader bool, dryRun bool) *Txn {
 	state := &txnState{state: Pending}
+
+	// Initialize our internal FSM. Rules for state transitions are
+	// slightly different for leader and follower transactions, since only
+	// the former can be stale.
 	machine := &fsm.Machine{
 		Subject: state,
 		Rules:   newTxnStateRules(isLeader),
@@ -164,6 +171,12 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 	case Stale:
 	}
 
+	if err != nil {
+		if err := t.machine.Transition(Doomed); err != nil {
+			panic(fmt.Sprintf("cannot doom from %s", t.state.CurrentState()))
+		}
+	}
+
 	return err
 }
 
@@ -198,6 +211,9 @@ func newTxnStateRules(forLeader bool) *fsm.Ruleset {
 		for _, e := range states {
 			rules.AddTransition(fsm.T{O: o, E: e})
 		}
+	}
+	for _, o := range []fsm.State{Started, Writing, Undoing, Ended} {
+		rules.AddTransition(fsm.T{O: o, E: Doomed})
 	}
 
 	// Add rules valid only for leader transactions.

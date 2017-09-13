@@ -12,18 +12,17 @@ import (
 // Registry is a dqlite node-level data stracture that tracks all
 // write transactions happening in sqlite connections in leader
 // replication mode and all write transactions happening in sqlite
-// connections in follower replication.
+// connections in follower replication mode.
 type Registry struct {
 	mu   sync.RWMutex    // Serialize access to internal state
 	txns map[string]*Txn // Transactions by ID
 
-	// Flag indicating whether to skip checking that a new
-	// transaction started as leader or follower is actually
-	// associated to a connection in leader or follower
-	// replication mode. This value should always be true except
-	// during some unit tests that can't perform the check since
-	// the sqlite3_replication_mode API requres the btree lock to
-	// be held, and there's no public API for acquiring it.
+	// Flag indicating whether to skip checking that a new transaction
+	// started as leader or follower is actually associated to a connection
+	// in that replication mode. This value should always be true except
+	// during some unit tests that can't perform the check since the
+	// sqlite3_replication_mode API requres the btree lock to be held, and
+	// there's no public API for acquiring it.
 	skipCheckReplicationMode bool
 
 	// Flag indicating whether transactions state transitions
