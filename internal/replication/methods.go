@@ -60,7 +60,7 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		return errno
 	}
 
-	name := m.connections.NameByLeader(conn)
+	name := m.connections.FilenameOfLeader(conn)
 
 	if errno := m.ensureFollowerConnectionExists(name); errno != 0 {
 		return errno
@@ -210,7 +210,7 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 			// Create a surrogate follower, in case the raft command
 			// eventually gets committed or in case we become leader
 			// again and need to rollback.
-			name := m.connections.NameByLeader(txn.Conn())
+			name := m.connections.FilenameOfLeader(txn.Conn())
 			if errno := m.createSurrogateFollower(name, txn.ID()); errno != 0 {
 				return errno
 			}
@@ -232,7 +232,7 @@ func (m *Methods) Checkpoint(conn *sqlite3.SQLiteConn, mode sqlite3x.WalCheckpoi
 		return errno
 	}
 
-	name := m.connections.NameByLeader(conn)
+	name := m.connections.FilenameOfLeader(conn)
 
 	if errno := m.apply(commands.NewCheckpoint(name)); errno != 0 {
 		return errno
@@ -367,7 +367,7 @@ func (m *Methods) ensureNoFollower(name string) sqlite3.ErrNo {
 // Sanity check that there is no ongoing follower write transaction on
 // this node for the given database.
 func (m *Methods) assertNoFollowerForDatabase(conn *sqlite3.SQLiteConn) {
-	name := m.connections.NameByLeader(conn)
+	name := m.connections.FilenameOfLeader(conn)
 	if txn := m.transactions.GetByConn(m.connections.Follower(name)); txn != nil {
 		panic(fmt.Sprintf("detected follower write transaction %s", txn))
 	}
@@ -450,6 +450,6 @@ func (m *Methods) markStaleAndCreateSurrogateFollower(txn *transaction.Txn) sqli
 	if errno := m.markStale(txn); errno != 0 {
 		return errno
 	}
-	name := m.connections.NameByLeader(txn.Conn())
+	name := m.connections.FilenameOfLeader(txn.Conn())
 	return m.createSurrogateFollower(name, txn.ID())
 }

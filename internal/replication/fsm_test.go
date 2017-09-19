@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -241,7 +242,8 @@ func TestFSM_Snapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := connections.CloseLeader(conn); err != nil {
+	connections.DelLeader(conn)
+	if err := conn.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -309,7 +311,8 @@ func TestFSM_SnapshotAfterCheckpoint(t *testing.T) {
 	if err := snapshot.Persist(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := connections.CloseLeader(conn); err != nil {
+	connections.DelLeader(conn)
+	if err := conn.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -373,10 +376,13 @@ func openLeader(connections *connection.Registry) *sqlite3.SQLiteConn {
 // Wrapper around connections.Registry.OpenLeader(), panic'ing if any
 // error occurs.
 func openLeaderWithMethods(connections *connection.Registry, methods sqlite3x.ReplicationMethods) *sqlite3.SQLiteConn {
-	conn, err := connections.OpenLeader(connection.NewTestDSN(), methods)
+	dsn := connection.NewTestDSN()
+	conn, err := connection.OpenLeader(filepath.Join(connections.Dir(), dsn.Filename), methods, 1000)
 	if err != nil {
 		panic(fmt.Sprintf("failed to open leader: %v", err))
 	}
+	connections.AddLeader(dsn.Filename, conn)
+
 	return conn
 }
 

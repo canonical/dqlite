@@ -95,9 +95,12 @@ func (f *FSM) Wait(index uint64) {
 }
 
 func (f *FSM) applyOpen(params *commands.Open) error {
-	if err := f.connections.OpenFollower(params.Name); err != nil {
+	uri := filepath.Join(f.connections.Dir(), params.Name)
+	conn, err := connection.OpenFollower(uri)
+	if err != nil {
 		return errors.Wrap(err, "failed to open follower connection")
 	}
+	f.connections.AddFollower(params.Name, conn)
 
 	return nil
 }
@@ -252,7 +255,7 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 
 	backups := []*FSMDatabaseBackup{}
 
-	for _, name := range f.connections.AllNames() {
+	for _, name := range f.connections.FilenamesOfFollowers() {
 		backup, err := f.backupDatabase(name)
 		if err != nil {
 			return nil, err
@@ -372,7 +375,8 @@ func (f *FSM) restoreDatabase(reader io.ReadCloser) (bool, error) {
 	}*/
 
 	if f.connections.HasFollower(name) {
-		if err := f.connections.CloseFollower(name); err != nil {
+		follower := f.connections.Follower(name)
+		if err := follower.Close(); err != nil {
 			return false, err
 		}
 	}
@@ -405,9 +409,12 @@ func (f *FSM) restoreDatabase(reader io.ReadCloser) (bool, error) {
 		return false, errors.Wrap(err, "failed to restore wal")
 	}
 
-	if err := f.connections.OpenFollower(name); err != nil {
+	uri := filepath.Join(f.connections.Dir(), name)
+	conn, err := connection.OpenFollower(uri)
+	if err != nil {
 		return false, err
 	}
+	f.connections.ReplaceFollower(name, conn)
 
 	if txid != "" {
 		conn := f.connections.Follower(name)
