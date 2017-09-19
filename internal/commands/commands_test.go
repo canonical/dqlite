@@ -17,7 +17,7 @@ func TestUnmarshal_Error(t *testing.T) {
 	if err == nil {
 		t.Fatal("nil error returned despite garbage was passed")
 	}
-	if !strings.HasPrefix(err.Error(), "corrupted command data") {
+	if !strings.HasPrefix(err.Error(), "protobuf failure") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }

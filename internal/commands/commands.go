@@ -1,12 +1,12 @@
 package commands
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/golang/protobuf/proto"
+	"github.com/pkg/errors"
 )
 
 // Marshal a dqlite FSM command.
@@ -18,7 +18,7 @@ func Marshal(command *Command) ([]byte, error) {
 func Unmarshal(data []byte) (*Command, error) {
 	command := &Command{}
 	if err := proto.Unmarshal(data, command); err != nil {
-		return nil, fmt.Errorf("corrupted command data: %s", err)
+		return nil, errors.Wrap(err, "protobuf failure")
 	}
 	return command, nil
 }
