@@ -50,7 +50,7 @@ func NewDriver(config *Config) (*Driver, error) {
 	sqlite3x.LogConfig(logger)
 
 	// Replication
-	connections := connection.NewRegistry(config.Dir)
+	connections := connection.NewRegistryLegacy(config.Dir)
 	transactions := transaction.NewRegistry()
 	fsm := replication.NewFSM(logger, connections, transactions)
 
@@ -120,22 +120,15 @@ func (d *Driver) Join(address string, timeout time.Duration) error {
 	return nil
 }
 
-// Open starts a new connection to a SQLite database. If this node is not the
-// leader, or the leader is unknown and this node doesn't get elected within a
-// certain timeout (10 seconds by default), an error will be returned.
+// Open starts a new connection to a SQLite database.
 //
-// dqlite adds the following query parameters to those used by SQLite and
-// go-sqlite3:
+// The given name must be a pure file name without any directory segment,
+// dqlite will connect to a database with that name in its data directory.
 //
-//   _leadership_timeout=N
-//     Maximum number of milliseconds to wait for this node to be elected
-//     leader, in case there's currently no known leader. It defaults to 10000.
+// Query parameters are always valid except for "mode=memory".
 //
-//   _initialize_timeout=N
-//     Maximum number of milliseconds to wait for this node to initialize the
-//     database by applying all needed raft log entries. It defaults to 30000.
-//
-// All other parameters are passed verbatim to go-slite3 and then SQLite.
+// If this node is not the leader, or the leader is unknown an ErrNotLeader
+// error is returned.
 func (d *Driver) Open(name string) (driver.Conn, error) {
 	// Validate the given data source string.
 	dsn, err := connection.NewDSN(name)
@@ -146,10 +139,11 @@ func (d *Driver) Open(name string) (driver.Conn, error) {
 	// TODO: this currently set the timeout driver-wide
 	d.methods.ApplyTimeout(dsn.LeadershipTimeout)
 
-	sqliteConn, err := d.connections.OpenLeader(dsn, d.methods)
+	sqliteConn, err := connection.OpenLeader(filepath.Join(d.connections.Dir(), dsn.Encode()), d.methods, 1000)
 	if err != nil {
 		return nil, err
 	}
+	d.connections.AddLeader(dsn.Filename, sqliteConn)
 
 	conn := &Conn{
 		connections: d.connections,
@@ -167,7 +161,6 @@ func (d *Driver) AutoCheckpoint(n int) {
 	if n < 0 {
 		panic("can't set a negative auto-checkpoint threshold")
 	}
-	d.connections.AutoCheckpoint(n)
 }
 
 // Shutdown the the node.
@@ -209,7 +202,8 @@ func (c *Conn) Exec(query string, args []driver.Value) (driver.Result, error) {
 // idle connections, it shouldn't be necessary for drivers to
 // do their own connection caching.
 func (c *Conn) Close() error {
-	return c.connections.CloseLeader(c.sqliteConn)
+	c.connections.DelLeader(c.sqliteConn)
+	return connection.CloseLeader(c.sqliteConn)
 }
 
 // Begin starts and returns a new transaction.

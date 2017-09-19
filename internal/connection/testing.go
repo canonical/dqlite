@@ -3,13 +3,14 @@ package connection
 import (
 	"fmt"
 	"io/ioutil"
+	"path/filepath"
 
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/mattn/go-sqlite3"
 )
 
 // NewTestDSN returns a DSN pointing to a database filename called 'test.db'.
-func NewTestDSN() *DSN {
+func NewTestDSN() *Params {
 	dsn, err := NewDSN("test.db")
 	if err != nil {
 		panic(fmt.Sprintf("failed to create test DSN: %v", err))
@@ -24,7 +25,7 @@ func NewTempRegistry() *Registry {
 		panic(fmt.Sprintf("failed to create temp directory for registry: %v", err))
 
 	}
-	return NewRegistry(path)
+	return NewRegistryLegacy(path)
 }
 
 // NewTempRegistryWithDatabase returns a temp registry with a
@@ -33,9 +34,12 @@ func NewTempRegistry() *Registry {
 func NewTempRegistryWithDatabase() *Registry {
 	registry := NewTempRegistry()
 
-	if err := registry.OpenFollower("test.db"); err != nil {
+	path := filepath.Join(registry.Dir(), "test.db")
+	conn, err := OpenFollower(path)
+	if err != nil {
 		panic(fmt.Sprintf("failed to open follower connection: %v", err))
 	}
+	registry.AddFollower("test.db", conn)
 
 	return registry
 }
@@ -48,10 +52,12 @@ func NewTempRegistryWithLeader() (*Registry, *sqlite3.SQLiteConn) {
 	registry := NewTempRegistryWithDatabase()
 
 	methods := sqlite3x.PassthroughReplicationMethods()
-	conn, err := registry.OpenLeader(NewTestDSN(), methods)
+	dsn := NewTestDSN()
+	conn, err := OpenLeader(filepath.Join(registry.Dir(), dsn.Filename), methods, 1000)
 	if err != nil {
-		panic(fmt.Sprintf("failed to open leader connection: %v", err))
+		panic(fmt.Sprintf("failed to open leader: %v", err))
 	}
+	registry.AddLeader(dsn.Filename, conn)
 
 	return registry, conn
 }

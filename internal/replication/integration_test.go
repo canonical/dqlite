@@ -2,6 +2,7 @@ package replication_test
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -148,12 +149,16 @@ func newCluster() (*rafttest.Cluster, func()) {
 // Open a new leader connection on the given node.
 func openConn(node *rafttest.Node) *sqlite3.SQLiteConn {
 	data := node.Data.(*nodeData)
-	conn, err := data.connections.OpenLeader(connection.NewTestDSN(), data.methods)
+
+	dsn := connection.NewTestDSN()
+	conn, err := connection.OpenLeader(filepath.Join(data.connections.Dir(), dsn.Filename), data.methods, 1000)
 	if err != nil {
 		panic(fmt.Sprintf(
 			"failed to open leader on node %s: %v",
 			node.Transport.LocalAddr(), err))
 	}
+	data.connections.AddLeader(dsn.Filename, conn)
+
 	return conn
 }
 

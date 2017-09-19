@@ -17,72 +17,64 @@ import (
 // SQLite connections opened on the node, either in leader replication
 // mode or follower replication mode.
 type Registry struct {
-	mu             sync.RWMutex                   // Serialize access to internal state.
-	dir            string                         // Directory where we store database files.
-	leaders        map[*sqlite3.SQLiteConn]string // Leader connections to database names.
-	followers      map[string]*sqlite3.SQLiteConn // Database names to follower connections.
-	autoCheckpoint int                            // Trigger a checkpoint after WAL has more frames than this.
+	mu        sync.RWMutex                   // Serialize access to internal state.
+	leaders   map[*sqlite3.SQLiteConn]string // Leader connections to database filenames.
+	followers map[string]*sqlite3.SQLiteConn // Database filenames to follower connections.
+
+	dir string // Directory where we store database files.
+
 }
 
-// NewRegistry creates a new connections registry, managing
-// connections against database files in the given directory.
-func NewRegistry(dir string) *Registry {
+// NewRegistry creates a new connections registry.
+func NewRegistry() *Registry {
 	return &Registry{
-		dir:            dir,
-		leaders:        map[*sqlite3.SQLiteConn]string{},
-		followers:      map[string]*sqlite3.SQLiteConn{},
-		autoCheckpoint: 1000, // Same as SQLite default value
+		leaders:   map[*sqlite3.SQLiteConn]string{},
+		followers: map[string]*sqlite3.SQLiteConn{},
 	}
 }
 
-// Dir is the directory where databases are kept.
-func (r *Registry) Dir() string {
+// AddLeader adds a new leader connection to the registry.
+func (r *Registry) AddLeader(filename string, conn *sqlite3.SQLiteConn) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.leaders[conn] = filename
+}
+
+// DelLeader removes the given leader connection from the registry.
+func (r *Registry) DelLeader(conn *sqlite3.SQLiteConn) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.leaders[conn]; !ok {
+		panic("no such leader connection registered")
+	}
+
+	delete(r.leaders, conn)
+
+	return nil
+}
+
+// Leaders returns all open leader connections for the database with
+// the given filename.
+func (r *Registry) Leaders(filename string) []*sqlite3.SQLiteConn {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	return r.dir
+	conns := []*sqlite3.SQLiteConn{}
+	for conn := range r.leaders {
+		if r.leaders[conn] == filename {
+			conns = append(conns, conn)
+		}
+	}
+	return conns
 }
 
-// AutoCheckpoint sets the auto-checkpoint threshold.
-func (r *Registry) AutoCheckpoint(n int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.autoCheckpoint = n
-}
-
-// OpenLeader returns a new SQLite connection to a database in our
-// directory, set in leader replication mode.
-func (r *Registry) OpenLeader(dsn *DSN, methods sqlite3x.ReplicationMethods) (*sqlite3.SQLiteConn, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	errWrapper := func(err error) error {
-		return errors.Wrap(err, "failed to open leader connection")
-	}
-
-	conn, err := r.open(dsn.Encode())
-	if err != nil {
-		return nil, errWrapper(err)
-	}
-
-	// Ensure WAL autocheckpoint is set
-	sqlite3x.ReplicationAutoCheckpoint(conn, r.autoCheckpoint)
-
-	// Swith to leader replication mode for this connection.
-	if err := sqlite3x.ReplicationLeader(conn, methods); err != nil {
-		return nil, errWrapper(err)
-	}
-
-	r.leaders[conn] = dsn.Filename
-
-	return conn, nil
-
-}
-
-// NameByLeader returns the name of the database associated with the given
-// connection, which is assumed to be a registered leader connection.
-func (r *Registry) NameByLeader(conn *sqlite3.SQLiteConn) string {
+// FilenameOfLeader returns the filename of the database associated with the
+// given leader connection.
+//
+// If conn is not a registered leader connection, this method will panic.
+func (r *Registry) FilenameOfLeader(conn *sqlite3.SQLiteConn) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -93,84 +85,49 @@ func (r *Registry) NameByLeader(conn *sqlite3.SQLiteConn) string {
 	return name
 }
 
-// Leaders returns all open leader connections for the database with
-// the given name.
-func (r *Registry) Leaders(name string) []*sqlite3.SQLiteConn {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	conns := []*sqlite3.SQLiteConn{}
-	for conn := range r.leaders {
-		if r.leaders[conn] == name {
-			conns = append(conns, conn)
-		}
-	}
-	return conns
-}
-
-// CloseLeader closes the given leader connection and deletes its entry
-// in the leaders map.
-func (r *Registry) CloseLeader(conn *sqlite3.SQLiteConn) error {
+// AddFollower adds a new follower connection to the registry.
+//
+// If a follower connection for the database with the given filename is already
+// registered, this method panics.
+func (r *Registry) AddFollower(filename string, conn *sqlite3.SQLiteConn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, ok := r.leaders[conn]; !ok {
-		panic("attempt to close a connection that was not registered")
+	if _, ok := r.followers[filename]; ok {
+		panic(fmt.Sprintf("follower connection for '%s' already registered", filename))
 	}
 
-	// XXX Also set replication to none, to clear methods memory. Perhaps
-	//     this should be done in sqlite3x in a more explicit or nicer way.
-	if _, err := sqlite3x.ReplicationNone(conn); err != nil {
-		return err
-	}
-
-	if err := conn.Close(); err != nil {
-		return err
-	}
-
-	delete(r.leaders, conn)
-
-	return nil
+	r.followers[filename] = conn
 }
 
-// OpenFollower opens a follower against the database identified by
-// the given name.
-func (r *Registry) OpenFollower(name string) error {
+// ReplaceFollower replaces a follower connection.
+func (r *Registry) ReplaceFollower(filename string, conn *sqlite3.SQLiteConn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, ok := r.followers[name]; ok {
-		panic(fmt.Sprintf("follower connection for '%s' already open", name))
+	if _, ok := r.followers[filename]; !ok {
+		panic(fmt.Sprintf("follower connection for '%s' is not registered", filename))
 	}
 
-	errWrapper := func(err error) error {
-		return errors.Wrap(err, "failed to open follower connection")
-	}
-
-	conn, err := r.open(name)
-	if err != nil {
-		return errWrapper(err)
-	}
-
-	// Ensure WAL autocheckpoint for followers is disabled
-	if err := sqlite3x.WalAutoCheckpointPragma(conn, 0); err != nil {
-		return err
-	}
-
-	// Swith to leader replication mode for this connection.
-	if err := sqlite3x.ReplicationFollower(conn); err != nil {
-		return errWrapper(err)
-	}
-
-	r.followers[name] = conn
-
-	return nil
-
+	r.followers[filename] = conn
 }
 
-// AllNames returns the names for all databases which currently have registered
-// follower connections.
-func (r *Registry) AllNames() []string {
+// DelFollower removes the follower registered against the database with the
+// given filename.
+func (r *Registry) DelFollower(filename string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.followers[filename]; !ok {
+		panic(fmt.Sprintf("follower connection for '%s' is not registered", filename))
+	}
+
+	delete(r.followers, filename)
+}
+
+// FilenamesOfFollowers returns the filenames for all databases which currently
+// have registered follower connections.
+func (r *Registry) FilenamesOfFollowers() []string {
 	names := []string{}
 	for name := range r.followers {
 		names = append(names, name)
@@ -178,31 +135,47 @@ func (r *Registry) AllNames() []string {
 	return names
 }
 
-// HasFollower checks whether the registry has a follower connection open for
-// the given filename.
-func (r *Registry) HasFollower(name string) bool {
+// HasFollower checks whether the registry has a follower connection registered
+// against the database with the given filename.
+func (r *Registry) HasFollower(filename string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	_, ok := r.followers[name]
+	_, ok := r.followers[filename]
 	return ok
 }
 
 // Follower returns the follower connection used to replicate the
-// database identified by the given name.
-func (r *Registry) Follower(name string) *sqlite3.SQLiteConn {
+// database identified by the given filename.
+//
+// If there's no follower connection registered for the database with the given
+// filename, this method panics.
+func (r *Registry) Follower(filename string) *sqlite3.SQLiteConn {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.follower(name)
+
+	conn, ok := r.followers[filename]
+	if !ok {
+		panic(fmt.Sprintf("no follower connection for '%s'", filename))
+	}
+	return conn
 }
 
-// CloseFollower closes a follower connection.
-func (r *Registry) CloseFollower(name string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// NewRegistryLegacy creates a new connections registry, managing
+// connections against database files in the given directory.
+func NewRegistryLegacy(dir string) *Registry {
+	return &Registry{
+		dir:       dir,
+		leaders:   map[*sqlite3.SQLiteConn]string{},
+		followers: map[string]*sqlite3.SQLiteConn{},
+	}
+}
 
-	conn := r.follower(name)
-	delete(r.followers, name)
-	return conn.Close()
+// Dir is the directory where databases are kept.
+func (r *Registry) Dir() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return r.dir
 }
 
 // Backup a single database using the given leader connection. It
@@ -270,10 +243,16 @@ func (r *Registry) Restore(name string, database []byte, wal []byte) error {
 // directory itself.
 func (r *Registry) Purge() error {
 	for conn := range r.leaders {
-		r.CloseLeader(conn)
+		r.DelLeader(conn)
+		if err := CloseLeader(conn); err != nil {
+			return err
+		}
 	}
-	for name := range r.followers {
-		r.CloseFollower(name)
+	for name, conn := range r.followers {
+		r.DelFollower(name)
+		if err := conn.Close(); err != nil {
+			return err
+		}
 	}
 	return os.RemoveAll(r.dir)
 }
@@ -367,14 +346,4 @@ func (r *Registry) writeWalContent(name string, wal []byte) error {
 		return errors.Wrap(err, fmt.Sprintf("failed to write wal content at %s", path))
 	}
 	return nil
-}
-
-// Return the follower connection associated with the database with
-// the given name, panics if not there.
-func (r *Registry) follower(name string) *sqlite3.SQLiteConn {
-	conn, ok := r.followers[name]
-	if !ok {
-		panic(fmt.Sprintf("no follower connection for '%s'", name))
-	}
-	return conn
 }
