@@ -16,7 +16,6 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 
-	"github.com/CanonicalLtd/dqlite/internal/command"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
@@ -24,19 +23,19 @@ import (
 
 // Driver manages a node partecipating to a dqlite replicated cluster.
 type Driver struct {
-	logger       *log.Logger                 // Log messages go here
-	raft         *raft.Raft                  // Underlying raft engine
-	addr         string                      // Address of this node
-	logs         *raftboltdb.BoltStore       // Store for raft logs
-	peers        raft.PeerStore              // Store of raft peers, used by the engine
-	membership   raftmembership.Changer      // API to join the raft cluster
-	connections  *connection.Registry        // Connections registry
-	methods      sqlite3x.ReplicationMethods // SQLite replication hooks
-	mu           sync.Mutex                  // For serializing critical sections
+	logger       *log.Logger            // Log messages go here
+	raft         *raft.Raft             // Underlying raft engine
+	addr         string                 // Address of this node
+	logs         *raftboltdb.BoltStore  // Store for raft logs
+	peers        raft.PeerStore         // Store of raft peers, used by the engine
+	membership   raftmembership.Changer // API to join the raft cluster
+	connections  *connection.Registry   // Connections registry
+	methods      *replication.Methods   // SQLite replication hooks
+	mu           sync.Mutex             // For serializing critical sections
 	inititalized chan struct{}
 }
 
-// NewDriver creates a new node of a dqlite cluster, which also imlements the driver.Driver
+// NewDriver creates a new node of a dqlite cluster, which also implements the driver.Driver
 // interface.
 func NewDriver(config *Config) (*Driver, error) {
 	if err := config.ensureDir(); err != nil {
@@ -144,47 +143,8 @@ func (d *Driver) Open(name string) (driver.Conn, error) {
 		return nil, errors.Wrap(err, "invalid DSN string")
 	}
 
-	// Poll until the leader is known, or the open timeout expires.
-	//
-	// XXX TODO: use an exponential backoff relative to the timeout? Or even
-	//           figure out how to reliably be notified of leadership change?
-	pollInterval := 50 * time.Millisecond
-	for remaining := dsn.LeadershipTimeout; remaining >= 0; remaining -= pollInterval {
-		if d.raft.Leader() != "" {
-			break
-		}
-		// Sleep for the minimum value between pollInterval and remaining
-		select {
-		case <-time.After(pollInterval):
-		case <-time.After(remaining):
-		}
-	}
-	if d.raft.State() != raft.Leader {
-		return nil, sqlite3.Error{Code: sqlite3x.ErrNotLeader}
-	}
-
-	// Wait until all pending logs are applied.
-	err = d.raft.Barrier(dsn.InitializeTimeout).Error()
-	if err != nil {
-		if err == raft.ErrLeadershipLost {
-			return nil, sqlite3.Error{Code: sqlite3x.ErrNotLeader}
-		}
-		return nil, errors.Wrap(err, "failed to apply pending logs")
-	}
-
-	// Acquire the lock and check if a follower connection is already open
-	// for this filename, if not open one with the Open raft command.
-	d.mu.Lock()
-	if !d.connections.HasFollower(dsn.Filename) {
-		data, err := command.Marshal(command.NewOpen(dsn.Filename))
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to marshal raft open log")
-		}
-		if err := d.raft.Apply(data, dsn.LeadershipTimeout).Error(); err != nil {
-			return nil, errors.Wrap(err, "failed to apply raft open log")
-		}
-	}
-	d.mu.Unlock()
+	// TODO: this currently set the timeout driver-wide
+	d.methods.ApplyTimeout(dsn.LeadershipTimeout)
 
 	sqliteConn, err := d.connections.OpenLeader(dsn, d.methods)
 	if err != nil {
@@ -224,8 +184,10 @@ func (d *Driver) Shutdown() error {
 
 // Conn implements the sql.Conn interface.
 type Conn struct {
-	connections *connection.Registry
-	sqliteConn  *sqlite3.SQLiteConn // Raw SQLite connection using the Go bindings
+	connections       *connection.Registry
+	sqliteConn        *sqlite3.SQLiteConn // Raw SQLite connection using the Go bindings
+	leadershipTimeout time.Duration
+	barrierTimeout    time.Duration
 }
 
 // Prepare returns a prepared statement, bound to this connection.

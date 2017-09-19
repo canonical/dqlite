@@ -206,16 +206,16 @@ func TestDriver_IsLoneNode(t *testing.T) {
 	}
 }
 
-func TestDriver_OpenErrorLeadershipTimeout(t *testing.T) {
+func TestDriver_ExecStatementLeadershipTimeout(t *testing.T) {
 	driver, cleanup := newDriver()
 	defer cleanup()
 
 	conn, err := driver.Open("test.db?_leadership_timeout=1")
-	if conn != nil {
-		t.Error("expected Open to timeout and return a nil connection")
-	}
+	require.NoError(t, err)
+
+	_, err = conn.(*dqlite.Conn).Exec("CREATE TABLE foo (n INT)", nil)
 	if err == nil {
-		t.Error("expected Open to timeout and fail")
+		t.Error("expected Exec to timeout and fail")
 	}
 }
 

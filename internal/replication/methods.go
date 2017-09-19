@@ -55,14 +55,19 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 
 	m.checkNoTxnForConn(conn)
 
-	if errno := m.checkIsLeader("begin"); errno != 0 {
+	if errno := m.ensureIsLeader(); errno != 0 {
+		m.logger.Printf("[DEBUG] dqlite: begin hook for %p failed: not leader", conn)
+		return errno
+	}
+
+	name := m.connections.NameByLeader(conn)
+
+	if errno := m.ensureFollowerConnectionExists(name); errno != 0 {
 		return errno
 	}
 
 	// Insert a new transaction in the registry.
 	txn := m.transactions.AddLeader(conn)
-
-	name := m.connections.NameByLeader(conn)
 
 	if errno := m.ensureNoFollower(name); errno != 0 {
 		// We failed to rollback a leftover follower, let's
@@ -236,6 +241,40 @@ func (m *Methods) Checkpoint(conn *sqlite3.SQLiteConn, mode sqlite3x.WalCheckpoi
 	return 0
 }
 
+func (m *Methods) ensureIsLeader() sqlite3.ErrNo {
+	// Poll until the leader is known, or the open timeout expires.
+	//
+	// XXX TODO: use an exponential backoff relative to the timeout? Or even
+	//           figure out how to reliably be notified of leadership change?
+	pollInterval := 50 * time.Millisecond
+	for remaining := m.applyTimeout; remaining >= 0; remaining -= pollInterval {
+		if m.raft.Leader() != "" {
+			break
+		}
+		// Sleep for the minimum value between pollInterval and remaining
+		select {
+		case <-time.After(pollInterval):
+		case <-time.After(remaining):
+		}
+	}
+
+	if m.raft.State() != raft.Leader {
+		return sqlite3x.ErrNotLeader
+	}
+
+	// Wait until all pending logs are applied.
+	barrierTimeout := m.applyTimeout * 3 // TODO: make this configurable
+	if err := m.raft.Barrier(barrierTimeout).Error(); err != nil {
+		if err == raft.ErrLeadershipLost {
+			return sqlite3x.ErrNotLeader
+		}
+		m.logger.Printf("[ERR] dqlite: failed to apply pending logs")
+		return sqlite3x.ErrReplication
+	}
+
+	return 0
+}
+
 // Wrapper around IsLeader, logging a message if we don't think we are
 // the leader anymore. This is called by replication hooks, and
 // calling logic will short-circuit if we return non-zero, i.e. if we
@@ -262,7 +301,7 @@ func (m *Methods) checkNoTxnForConn(conn *sqlite3.SQLiteConn) {
 	// It should never happen that we have an ongoing write
 	// transaction for this connection, since SQLite locking
 	// system itself prevents it by serializing write
-	// transactions. Still double checkit for sanity.
+	// transactions. Still double check it for sanity.
 	if txn := m.transactions.GetByConn(conn); txn != nil {
 		panic(fmt.Sprintf("[ERR] dqlite: methods: leader transaction %s is already open", txn))
 	}
@@ -280,6 +319,17 @@ func (m *Methods) lookupExistingLeaderForConn(conn *sqlite3.SQLiteConn) *transac
 		}
 	}
 	return txn
+}
+
+// Acquire the lock and check if a follower connection is already open
+// for this database, if not open one with the Open raft command.
+func (m *Methods) ensureFollowerConnectionExists(name string) sqlite3.ErrNo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.connections.HasFollower(name) {
+		return m.apply(command.NewOpen(name))
+	}
+	return 0
 }
 
 // This method ensures that there is no follower write transactions

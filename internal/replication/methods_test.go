@@ -43,6 +43,7 @@ func TestMethods_BeginFailsIfNotLeader(t *testing.T) {
 	defer cleanupRaftAndConnections(raft, connections)
 
 	conn := openLeader(connections)
+	methods.ApplyTimeout(time.Microsecond)
 	if rc := methods.Begin(conn); rc != sqlite3x.ErrNotLeader {
 		t.Errorf("expected ErrNotLeader got %d", rc)
 	}

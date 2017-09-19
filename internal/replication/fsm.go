@@ -19,7 +19,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-// NewFSM creates a new state machine.
+// NewFSM creates a new Raft state machine for executing dqlite-specific
+// commands.
 func NewFSM(logger *log.Logger, connections *connection.Registry, transactions *transaction.Registry) *FSM {
 	return &FSM{
 		logger:       logger,
@@ -33,10 +34,9 @@ func NewFSM(logger *log.Logger, connections *connection.Registry, transactions *
 // SQLite data.
 type FSM struct {
 	logger       *log.Logger
-	connections  *connection.Registry
-	transactions *transaction.Registry
-	errors       chan error
-	indexes      chan uint64
+	connections  *connection.Registry  // Open connections (either leaders or followers).
+	transactions *transaction.Registry // Ongoing write transactions.
+	indexes      chan uint64           // Buffered stream of log indexes that have been applied.
 }
 
 // Apply log is invoked once a log entry is committed.
@@ -126,12 +126,10 @@ func (f *FSM) applyBegin(cmd *command.Command) error {
 	} else {
 		// This is a new follower transaction.
 
-		// Check for stale leader transactions. This might happen when
-		// a leader node started a transaction but meanwhile it got
-		// deposed before ending it and a follower transaction is now
-		// being started on the same node. In this case the stale leader
-		// WAL write lock must be released in order let the follower
-		// transaction begin.
+		// Sanity check that no leader transaction for against this
+		// database is happening on this node (since we're supposed
+		// purely followers, and unreleased write locks would get on
+		// our the way).
 		for _, conn := range f.connections.Leaders(params.Name) {
 			if txn := f.transactions.GetByConn(conn); txn != nil {
 				return fmt.Errorf("found dangling leader connection %s", txn)

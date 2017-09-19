@@ -139,23 +139,16 @@ func insertForever() {
 		// Start the transaction.
 		tx, err := db.Begin()
 		if err != nil {
-			if err, ok := err.(sqlite3.Error); ok {
-				if err.Code == sqlite3x.ErrNotLeader {
-					// We're not the leader, wait a bit and try again
-					randomSleep(0.250, 0.500)
-					continue
-				}
-			}
 			logger.Fatalf("[FATAL] demo: begin failed: %v", err)
 		}
 
 		// Ensure our test table is there.
 		if _, err := tx.Exec("CREATE TABLE IF NOT EXISTS test (n INT)"); err != nil {
 			handleTxError(tx, err, false)
+			// We're not the leader, wait a bit and try again
+			randomSleep(0.250, 0.500)
 			continue
 		}
-
-		reportProgress(tx)
 
 		// Insert a batch of rows.
 		offset := insertedCount(tx)
@@ -171,8 +164,12 @@ func insertForever() {
 			randomSleep(0.010, 0.025)
 		}
 		if failed {
+			// We're not the leader, wait a bit and try again
+			randomSleep(0.250, 0.500)
 			continue
 		}
+
+		reportProgress(tx)
 
 		// Commit
 		if err := tx.Commit(); err != nil {
