@@ -11,13 +11,13 @@ dependencies:
 	mkdir -p .sqlite && cd .sqlite && rm -f * && wget $(SQLITE_URL) -O - | tar xfz -
 
 proto:
-	protoc --gofast_out=. command/commands.proto
+	protoc --gofast_out=. internal/commands/commands.proto
 
 build:
 	$(GO) get -t -tags $(GO_TAGS) ./...
 	$(GO) build -tags  $(GO_TAGS)
 
 coverage:
-	$(GOPATH)/bin/overalls -go-binary $(GO) -project $(PROJECT) -covermode=count -- -tags $(GO_TAGS)
+	$(GOPATH)/bin/overalls -go-binary $(GO) -ignore internal/commands -project $(PROJECT) -covermode=count -- -tags $(GO_TAGS)
 
 .PHONY: dependencies build coverage

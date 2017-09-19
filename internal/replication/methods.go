@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CanonicalLtd/dqlite/internal/command"
+	"github.com/CanonicalLtd/dqlite/internal/commands"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
@@ -81,7 +81,7 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		return errno
 	}
 
-	if errno := m.apply(command.NewBegin(txn.ID(), name)); errno != 0 {
+	if errno := m.apply(commands.NewBegin(txn.ID(), name)); errno != 0 {
 		txn.Enter()
 		defer txn.Exit()
 
@@ -132,7 +132,7 @@ func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3x.Replicati
 
 	m.assertNoFollowerForDatabase(txn.Conn())
 
-	if errno := m.apply(command.NewWalFrames(txn.ID(), frames)); errno != 0 {
+	if errno := m.apply(commands.NewWalFrames(txn.ID(), frames)); errno != 0 {
 		txn.Enter()
 		defer txn.Exit()
 		if errno := m.markStaleAndCreateSurrogateFollower(txn); errno != 0 {
@@ -161,7 +161,7 @@ func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 
 	m.assertNoFollowerForDatabase(txn.Conn())
 
-	if errno := m.apply(command.NewUndo(txn.ID())); errno != 0 {
+	if errno := m.apply(commands.NewUndo(txn.ID())); errno != 0 {
 		txn.Enter()
 		defer txn.Exit()
 		if errno := m.markStaleAndCreateSurrogateFollower(txn); errno != 0 {
@@ -192,7 +192,7 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 
 	m.assertNoFollowerForDatabase(txn.Conn())
 
-	if errno := m.apply(command.NewEnd(txn.ID())); errno != 0 {
+	if errno := m.apply(commands.NewEnd(txn.ID())); errno != 0 {
 		txn.Enter()
 		defer txn.Exit()
 		if txn.State() == transaction.Ended {
@@ -234,7 +234,7 @@ func (m *Methods) Checkpoint(conn *sqlite3.SQLiteConn, mode sqlite3x.WalCheckpoi
 
 	name := m.connections.NameByLeader(conn)
 
-	if errno := m.apply(command.NewCheckpoint(name)); errno != 0 {
+	if errno := m.apply(commands.NewCheckpoint(name)); errno != 0 {
 		return errno
 	}
 
@@ -322,12 +322,12 @@ func (m *Methods) lookupExistingLeaderForConn(conn *sqlite3.SQLiteConn) *transac
 }
 
 // Acquire the lock and check if a follower connection is already open
-// for this database, if not open one with the Open raft command.
+// for this database, if not open one with the Open raft commands.
 func (m *Methods) ensureFollowerConnectionExists(name string) sqlite3.ErrNo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.connections.HasFollower(name) {
-		return m.apply(command.NewOpen(name))
+		return m.apply(commands.NewOpen(name))
 	}
 	return 0
 }
@@ -358,10 +358,10 @@ func (m *Methods) ensureNoFollower(name string) sqlite3.ErrNo {
 
 	m.logger.Printf("[DEBUG] dqlite: methods: rolling back stale transaction %s", txn)
 
-	if errno := m.apply(command.NewUndo(txn.ID())); errno != 0 {
+	if errno := m.apply(commands.NewUndo(txn.ID())); errno != 0 {
 		return errno
 	}
-	return m.apply(command.NewEnd(txn.ID()))
+	return m.apply(commands.NewEnd(txn.ID()))
 }
 
 // Sanity check that there is no ongoing follower write transaction on
@@ -374,19 +374,18 @@ func (m *Methods) assertNoFollowerForDatabase(conn *sqlite3.SQLiteConn) {
 }
 
 // Apply the given command through raft.
-func (m *Methods) apply(params command.Params) sqlite3.ErrNo {
-	code := command.CodeOf(params)
-	m.logger.Printf("[DEBUG] dqlite: methods: apply command %s", code)
+func (m *Methods) apply(cmd *commands.Command) sqlite3.ErrNo {
+	m.logger.Printf("[DEBUG] dqlite: methods: apply command %s", cmd.Name())
 
-	data, err := command.Marshal(params)
+	data, err := commands.Marshal(cmd)
 	if err != nil {
-		m.logger.Printf("[ERR] dqlite: methods: failed to marshal %s: %s", code, err)
+		m.logger.Printf("[ERR] dqlite: methods: failed to marshal %s: %s", cmd.Name(), err)
 		return sqlite3x.ErrReplication
 	}
 
 	future := m.raft.Apply(data, m.applyTimeout)
 	if err := future.Error(); err != nil {
-		m.logger.Printf("[ERR] dqlite: methods: failed to apply %s command: %s", code, err)
+		m.logger.Printf("[ERR] dqlite: methods: failed to apply %s command: %s", cmd.Name(), err)
 
 		// If the node has lost leadership, we return a
 		// dedicated error, so clients will typically retry
@@ -399,7 +398,7 @@ func (m *Methods) apply(params command.Params) sqlite3.ErrNo {
 		return sqlite3x.ErrReplication
 	}
 
-	m.logger.Printf("[DEBUG] dqlite: methods: applied command %s", code)
+	m.logger.Printf("[DEBUG] dqlite: methods: applied command %s", cmd.Name())
 	return 0
 }
 

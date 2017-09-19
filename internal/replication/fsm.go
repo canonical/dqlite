@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/CanonicalLtd/dqlite/internal/command"
+	"github.com/CanonicalLtd/dqlite/internal/commands"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
@@ -46,30 +46,31 @@ type FSM struct {
 func (f *FSM) Apply(log *raft.Log) interface{} {
 	f.logger.Printf("[DEBUG] dqlite: fsm: applying log with index %d", log.Index)
 
-	cmd, err := command.Unmarshal(log.Data)
+	cmd, err := commands.Unmarshal(log.Data)
 	if err != nil {
 		panic(fmt.Sprintf("fsm apply error: failed to unmarshal command: %s", err))
 	}
 
-	switch cmd.Code {
-	case command.Code_OPEN:
-		err = f.applyOpen(cmd)
-	case command.Code_BEGIN:
-		err = f.applyBegin(cmd)
-	case command.Code_WAL_FRAMES:
-		err = f.applyWalFrames(cmd)
-	case command.Code_UNDO:
-		err = f.applyUndo(cmd)
-	case command.Code_END:
-		err = f.applyEnd(cmd)
-	case command.Code_CHECKPOINT:
-		err = f.applyCheckpoint(cmd)
+	f.logger.Printf("[DEBUG] dqlite: fsm: applying %s", cmd.Name())
+	switch params := cmd.Params.(type) {
+	case *commands.Command_Open:
+		err = f.applyOpen(params.Open)
+	case *commands.Command_Begin:
+		err = f.applyBegin(params.Begin)
+	case *commands.Command_WalFrames:
+		err = f.applyWalFrames(params.WalFrames)
+	case *commands.Command_Undo:
+		err = f.applyUndo(params.Undo)
+	case *commands.Command_End:
+		err = f.applyEnd(params.End)
+	case *commands.Command_Checkpoint:
+		err = f.applyCheckpoint(params.Checkpoint)
 	default:
-		err = fmt.Errorf("invalid code: %d", cmd.Code)
+		err = fmt.Errorf("unhandled params type")
 	}
 
 	if err != nil {
-		panic(fmt.Sprintf("fsm apply error for command %s: %v", cmd.Code, err))
+		panic(fmt.Sprintf("fsm apply error for command %s: %v", cmd.Name(), err))
 	}
 
 	// Non-blocking notification of the last applied index. Used
@@ -93,13 +94,7 @@ func (f *FSM) Wait(index uint64) {
 	}
 }
 
-func (f *FSM) applyOpen(cmd *command.Command) error {
-	params, err := cmd.UnmarshalOpen()
-	if err != nil {
-		return err
-	}
-	f.logCommand(cmd, params)
-
+func (f *FSM) applyOpen(params *commands.Open) error {
 	if err := f.connections.OpenFollower(params.Name); err != nil {
 		return errors.Wrap(err, "failed to open follower connection")
 	}
@@ -107,13 +102,7 @@ func (f *FSM) applyOpen(cmd *command.Command) error {
 	return nil
 }
 
-func (f *FSM) applyBegin(cmd *command.Command) error {
-	params, err := cmd.UnmarshalBegin()
-	if err != nil {
-		return errors.Wrap(err, "failed to unmarshal params")
-	}
-	f.logCommand(cmd, params)
-
+func (f *FSM) applyBegin(params *commands.Begin) error {
 	txn := f.transactions.GetByID(params.Txid)
 	if txn != nil {
 		// We know about this txid, so the transaction must
@@ -142,16 +131,12 @@ func (f *FSM) applyBegin(cmd *command.Command) error {
 	txn.Enter()
 	defer txn.Exit()
 
-	f.logTxn(cmd, txn)
+	f.logTxn("begin", txn)
 
 	return txn.Begin()
 }
 
-func (f *FSM) applyWalFrames(cmd *command.Command) error {
-	params, err := cmd.UnmarshalWalFrames()
-	if err != nil {
-		return err
-	}
+func (f *FSM) applyWalFrames(params *commands.WalFrames) error {
 	// XXX TODO: too noisy because of protobuf
 	//f.logCommand(cmd, params)
 
@@ -162,7 +147,7 @@ func (f *FSM) applyWalFrames(cmd *command.Command) error {
 	txn.Enter()
 	defer txn.Exit()
 
-	f.logTxn(cmd, txn)
+	f.logTxn("wal frames", txn)
 
 	pages := sqlite3x.NewReplicationPages(len(params.Pages), int(params.PageSize))
 	defer sqlite3x.DestroyReplicationPages(pages)
@@ -182,13 +167,7 @@ func (f *FSM) applyWalFrames(cmd *command.Command) error {
 	return txn.WalFrames(framesParams)
 }
 
-func (f *FSM) applyUndo(cmd *command.Command) error {
-	params, err := cmd.UnmarshalUndo()
-	if err != nil {
-		return err
-	}
-	f.logCommand(cmd, params)
-
+func (f *FSM) applyUndo(params *commands.Undo) error {
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
 		return fmt.Errorf("transaction for %s doesn't exist", params)
@@ -196,18 +175,12 @@ func (f *FSM) applyUndo(cmd *command.Command) error {
 	txn.Enter()
 	defer txn.Exit()
 
-	f.logTxn(cmd, txn)
+	f.logTxn("undo", txn)
 
 	return txn.Undo()
 }
 
-func (f *FSM) applyEnd(cmd *command.Command) error {
-	params, err := cmd.UnmarshalEnd()
-	if err != nil {
-		return err
-	}
-	f.logCommand(cmd, params)
-
+func (f *FSM) applyEnd(params *commands.End) error {
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
 		return fmt.Errorf("transaction for %s doesn't exist", params)
@@ -215,9 +188,9 @@ func (f *FSM) applyEnd(cmd *command.Command) error {
 	txn.Enter()
 	defer txn.Exit()
 
-	f.logTxn(cmd, txn)
+	f.logTxn("end", txn)
 
-	err = txn.End()
+	err := txn.End()
 
 	f.logger.Printf("[DEBUG] dqlite: fsm: remove transaction %s", txn)
 	f.transactions.Remove(params.Txid)
@@ -225,12 +198,7 @@ func (f *FSM) applyEnd(cmd *command.Command) error {
 	return err
 }
 
-func (f *FSM) applyCheckpoint(cmd *command.Command) error {
-	params, err := cmd.UnmarshalCheckpoint()
-	if err != nil {
-		return err
-	}
-
+func (f *FSM) applyCheckpoint(params *commands.Checkpoint) error {
 	conn := f.connections.Follower(params.Name)
 
 	f.logger.Printf("[DEBUG] dqlite: fsm: applying checkpoint for '%s'", params.Name)
@@ -269,12 +237,8 @@ func (f *FSM) applyCheckpoint(cmd *command.Command) error {
 	return nil
 }
 
-func (f *FSM) logCommand(cmd *command.Command, params command.Params) {
-	f.logger.Printf("[DEBUG] dqlite: fsm: applying %s with params %s", cmd.Code, params)
-}
-
-func (f *FSM) logTxn(cmd *command.Command, txn *transaction.Txn) {
-	f.logger.Printf("[DEBUG] dqlite: fsm: applying %s for transaction %s", cmd.Code, txn)
+func (f *FSM) logTxn(name string, txn *transaction.Txn) {
+	f.logger.Printf("[DEBUG] dqlite: fsm: applying %s for transaction %s", name, txn)
 }
 
 // Snapshot is used to support log compaction. This call should
@@ -304,7 +268,7 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 }
 
 // Restore is used to restore an FSM from a snapshot. It is not called
-// concurrently with any other command. The FSM must discard all previous
+// concurrently with any other commands. The FSM must discard all previous
 // state.
 func (f *FSM) Restore(reader io.ReadCloser) error {
 	f.logger.Printf("[DEBUG] dqlite: restore snapshot")

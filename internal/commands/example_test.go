@@ -11,36 +11,31 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package command_test
+package commands_test
 
 import (
 	"fmt"
 	"log"
 
-	"github.com/CanonicalLtd/dqlite/internal/command"
+	"github.com/CanonicalLtd/dqlite/internal/commands"
 )
 
 // Create a new dqlite Command with a few parameters, serialize it, and the
 // finally deserialize it and read back its parameters.
 func Example() {
-	data, err := command.Marshal(command.NewOpen("test.db"))
+	data, err := commands.Marshal(commands.NewOpen("test.db"))
 	if err != nil {
 		log.Fatalf("failed to marshal open command: %v", err)
 	}
-	command, err := command.Unmarshal(data)
+	cmd, err := commands.Unmarshal(data)
 	if err != nil {
 		log.Fatalf("failed to unmarshal open command: %v", err)
 	}
-	params, err := command.UnmarshalOpen()
-	if err != nil {
-		log.Fatalf("failed to unmarshal open params: %v", err)
-	}
+	params := cmd.Params.(*commands.Command_Open)
 
 	// Output:
 	// 11
-	// OPEN
 	// test.db
 	fmt.Println(len(data))
-	fmt.Println(command.Code)
-	fmt.Println(params.Name)
+	fmt.Println(params.Open.Name)
 }

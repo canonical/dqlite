@@ -8,12 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/internal/command"
+	"github.com/CanonicalLtd/dqlite/internal/commands"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
-	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
 	"github.com/mattn/go-sqlite3"
 )
@@ -32,49 +31,15 @@ func TestFSM_ApplyPanicsIfLogDataIsGarbage(t *testing.T) {
 	fsm.Apply(&raft.Log{Data: []byte("garbage")})
 }
 
-func TestFSM_ApplyPanicsIfCommandCodeIsUnknown(t *testing.T) {
-	fsm, connections, _ := newFSM()
-	defer connections.Purge()
-
-	data, _ := proto.Marshal(&command.Command{Code: 666})
-
-	const want = "fsm apply error for command 666: invalid code: 666"
-	defer func() {
-		got := recover()
-		if got != want {
-			t.Errorf("expected\n%q\ngot\n%q", want, got)
-		}
-	}()
-	fsm.Apply(&raft.Log{Data: data})
-}
-
-func TestFSM_ApplyBeginPanicsIfParamsDataIsGarbage(t *testing.T) {
-	fsm, connections, _ := newFSM()
-	defer connections.Purge()
-
-	data, _ := proto.Marshal(&command.Command{
-		Code:   command.Code_BEGIN,
-		Params: []byte("garbage")})
-
-	const want = "fsm apply error for command BEGIN: failed to unmarshal params"
-	defer func() {
-		got := recover()
-		if !strings.Contains(got.(string), want) {
-			t.Errorf("panic message\n%q\ndoes not contain\n%q", got, want)
-		}
-	}()
-	fsm.Apply(&raft.Log{Data: data})
-}
-
 func TestFSM_ApplyBeginPanicsIfExistingTxnHasNonLeaderConnection(t *testing.T) {
 	fsm, connections, transactions := newFSM()
 	defer connections.Purge()
 
 	transactions.AddFollower(connections.Follower("test.db"), "abcd")
 
-	data := marshalCommand(command.NewBegin("abcd", "test.db"))
+	data := marshalCommand(commands.NewBegin("abcd", "test.db"))
 
-	const want = "fsm apply error for command BEGIN: existing transaction {id=abcd state=pending leader=false} has non-leader connection"
+	const want = "fsm apply error for command Begin: existing transaction {id=abcd state=pending leader=false} has non-leader connection"
 	defer func() {
 		got := recover()
 		if got != want {
@@ -91,9 +56,9 @@ func TestFSM_ApplyBeginPanicsIfDanglingLeaderIsFound(t *testing.T) {
 	conn := openLeader(connections)
 	txn := transactions.AddLeader(conn)
 
-	data := marshalCommand(command.NewBegin("abcd", "test.db"))
+	data := marshalCommand(commands.NewBegin("abcd", "test.db"))
 
-	want := fmt.Sprintf("fsm apply error for command BEGIN: found dangling leader connection %s", txn)
+	want := fmt.Sprintf("fsm apply error for command Begin: found dangling leader connection %s", txn)
 	defer func() {
 		got := recover()
 		if got != want {
@@ -107,7 +72,7 @@ func TestFSM_ApplyBeginAddFollower(t *testing.T) {
 	fsm, connections, transactions := newFSM()
 	defer connections.Purge()
 
-	data := marshalCommand(command.NewBegin("abcd", "test.db"))
+	data := marshalCommand(commands.NewBegin("abcd", "test.db"))
 	fsm.Apply(&raft.Log{Data: data})
 
 	txn := transactions.GetByID("abcd")
@@ -133,7 +98,7 @@ func TestFSM_ApplyBeginTwice(t *testing.T) {
 	conn := openLeader(connections)
 	txn := transactions.AddLeader(conn)
 
-	data := marshalCommand(command.NewBegin(txn.ID(), "test.db"))
+	data := marshalCommand(commands.NewBegin(txn.ID(), "test.db"))
 	fsm.Apply(&raft.Log{Data: data})
 
 	const want = "invalid started -> started transition"
@@ -166,7 +131,7 @@ func TestFSM_ApplyWalFrames(t *testing.T) {
 		IsCommit:  0,
 		SyncFlags: 0,
 	}
-	data := marshalCommand(command.NewWalFrames("abcd", frames))
+	data := marshalCommand(commands.NewWalFrames("abcd", frames))
 
 	fsm.Apply(&raft.Log{Data: data})
 
@@ -187,7 +152,7 @@ func TestFSM_ApplyUndo(t *testing.T) {
 	}
 	txn.Exit()
 
-	data := marshalCommand(command.NewUndo("abcd"))
+	data := marshalCommand(commands.NewUndo("abcd"))
 	fsm.Apply(&raft.Log{Data: data})
 
 	txn.Enter()
@@ -207,7 +172,7 @@ func TestFSM_ApplyEnd(t *testing.T) {
 	}
 	txn.Exit()
 
-	data := marshalCommand(command.NewEnd("abcd"))
+	data := marshalCommand(commands.NewEnd("abcd"))
 	fsm.Apply(&raft.Log{Data: data})
 
 	txn.Enter()
@@ -227,9 +192,9 @@ func TestFSM_ApplyCheckpointPanicsIfFollowerTransactionIsInFlight(t *testing.T) 
 	}
 	txn.Exit()
 
-	data := marshalCommand(command.NewCheckpoint("test.db"))
+	data := marshalCommand(commands.NewCheckpoint("test.db"))
 
-	const want = "fsm apply error for command CHECKPOINT: checkpoint for database 'test.db' can't run with transaction {id=abcd state=started leader=false}"
+	const want = "fsm apply error for command Checkpoint: checkpoint for database 'test.db' can't run with transaction {id=abcd state=started leader=false}"
 	defer func() {
 		got := recover()
 		if got != want {
@@ -251,7 +216,7 @@ func TestFSM_ApplyCheckpointWithLeaderConnection(t *testing.T) {
 		t.Fatalf("WAL has non-positive size: %d", size)
 	}
 
-	data := marshalCommand(command.NewCheckpoint("test.db"))
+	data := marshalCommand(commands.NewCheckpoint("test.db"))
 	fsm.Apply(&raft.Log{Data: data})
 
 	if size := sqlite3x.WalSize(conn); size != 0 {
@@ -390,9 +355,9 @@ func newFSMWithLogger(logger *log.Logger) (*replication.FSM, *connection.Registr
 	return fsm, connections, transactions
 }
 
-// Wrapper around command.Marshal(), panic'ing if any error occurs.
-func marshalCommand(params command.Params) []byte {
-	data, err := command.Marshal(params)
+// Wrapper around commands.Marshal(), panic'ing if any error occurs.
+func marshalCommand(cmd *commands.Command) []byte {
+	data, err := commands.Marshal(cmd)
 	if err != nil {
 		panic(fmt.Sprintf("failed to marshal command: %v", err))
 	}
