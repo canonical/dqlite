@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/mattn/go-sqlite3"
@@ -20,9 +21,9 @@ type Registry struct {
 	mu        sync.RWMutex                   // Serialize access to internal state.
 	leaders   map[*sqlite3.SQLiteConn]string // Leader connections to database filenames.
 	followers map[string]*sqlite3.SQLiteConn // Database filenames to follower connections.
+	serial    map[*sqlite3.SQLiteConn]uint64 // Map a connection to its serial number.
 
 	dir string // Directory where we store database files.
-
 }
 
 // NewRegistry creates a new connections registry.
@@ -30,6 +31,7 @@ func NewRegistry() *Registry {
 	return &Registry{
 		leaders:   map[*sqlite3.SQLiteConn]string{},
 		followers: map[string]*sqlite3.SQLiteConn{},
+		serial:    map[*sqlite3.SQLiteConn]uint64{},
 	}
 }
 
@@ -39,6 +41,7 @@ func (r *Registry) AddLeader(filename string, conn *sqlite3.SQLiteConn) {
 	defer r.mu.Unlock()
 
 	r.leaders[conn] = filename
+	r.addConn(conn)
 }
 
 // DelLeader removes the given leader connection from the registry.
@@ -51,6 +54,7 @@ func (r *Registry) DelLeader(conn *sqlite3.SQLiteConn) error {
 	}
 
 	delete(r.leaders, conn)
+	r.delConn(conn)
 
 	return nil
 }
@@ -98,6 +102,7 @@ func (r *Registry) AddFollower(filename string, conn *sqlite3.SQLiteConn) {
 	}
 
 	r.followers[filename] = conn
+	r.addConn(conn)
 }
 
 // ReplaceFollower replaces a follower connection.
@@ -110,6 +115,8 @@ func (r *Registry) ReplaceFollower(filename string, conn *sqlite3.SQLiteConn) {
 	}
 
 	r.followers[filename] = conn
+	r.delConn(conn)
+	r.addConn(conn)
 }
 
 // DelFollower removes the follower registered against the database with the
@@ -118,11 +125,13 @@ func (r *Registry) DelFollower(filename string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, ok := r.followers[filename]; !ok {
+	conn, ok := r.followers[filename]
+	if !ok {
 		panic(fmt.Sprintf("follower connection for '%s' is not registered", filename))
 	}
 
 	delete(r.followers, filename)
+	r.delConn(conn)
 }
 
 // FilenamesOfFollowers returns the filenames for all databases which currently
@@ -160,6 +169,38 @@ func (r *Registry) Follower(filename string) *sqlite3.SQLiteConn {
 	return conn
 }
 
+// Serial returns a serial number uniquely identifying the given registered
+// connection.
+func (r *Registry) Serial(conn *sqlite3.SQLiteConn) uint64 {
+	serial, ok := r.serial[conn]
+
+	if !ok {
+		panic("connection is not registered")
+	}
+
+	return serial
+}
+
+// Add a new connection (either leader or follower) to the registry and assign
+// it a serial number.
+func (r *Registry) addConn(conn *sqlite3.SQLiteConn) {
+	if serial, ok := r.serial[conn]; ok {
+		panic(fmt.Sprintf("connection is already registered with serial %d", serial))
+	}
+
+	atomic.AddUint64(&serial, 1)
+	r.serial[conn] = serial
+}
+
+// Delete a connection (either leader or follower) from the registry
+func (r *Registry) delConn(conn *sqlite3.SQLiteConn) {
+	if _, ok := r.serial[conn]; !ok {
+		panic("connection has no serial assigned")
+	}
+
+	delete(r.serial, conn)
+}
+
 // NewRegistryLegacy creates a new connections registry, managing
 // connections against database files in the given directory.
 func NewRegistryLegacy(dir string) *Registry {
@@ -167,6 +208,7 @@ func NewRegistryLegacy(dir string) *Registry {
 		dir:       dir,
 		leaders:   map[*sqlite3.SQLiteConn]string{},
 		followers: map[string]*sqlite3.SQLiteConn{},
+		serial:    map[*sqlite3.SQLiteConn]uint64{},
 	}
 }
 
@@ -347,3 +389,7 @@ func (r *Registry) writeWalContent(name string, wal []byte) error {
 	}
 	return nil
 }
+
+// Monotonic counter for identifying connections for tracing and debugging
+// purposes.
+var serial uint64
