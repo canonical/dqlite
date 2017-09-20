@@ -35,7 +35,9 @@ func Example() {
 
 	// Output:
 	// 11
+	// open
 	// test.db
 	fmt.Println(len(data))
+	fmt.Println(cmd.Name())
 	fmt.Println(params.Open.Name)
 }

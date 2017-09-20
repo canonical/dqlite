@@ -90,5 +90,5 @@ func newCommand(params isCommand_Params) *Command {
 // type.
 func (c *Command) Name() string {
 	typeName := reflect.TypeOf(c.Params).Elem().String()
-	return strings.Replace(typeName, "commands.Command_", "", 1)
+	return strings.ToLower(strings.Replace(typeName, "commands.Command_", "", 1))
 }
