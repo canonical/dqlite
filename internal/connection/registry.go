@@ -106,21 +106,6 @@ func (r *Registry) AddFollower(filename string, conn *sqlite3.SQLiteConn) {
 	r.addConn(conn)
 }
 
-// ReplaceFollower replaces a follower connection.
-func (r *Registry) ReplaceFollower(filename string, conn *sqlite3.SQLiteConn) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	oldConn, ok := r.followers[filename]
-	if !ok {
-		panic(fmt.Sprintf("follower connection for '%s' is not registered", filename))
-	}
-
-	r.followers[filename] = conn
-	r.delConn(oldConn)
-	r.addConn(conn)
-}
-
 // DelFollower removes the follower registered against the database with the
 // given filename.
 func (r *Registry) DelFollower(filename string) {
