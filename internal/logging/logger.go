@@ -23,13 +23,13 @@ func New(logger *log.Logger, level Level, prefix string) *Logger {
 
 }
 
-// AugmentPrefix returns a new logger which has the same settings as the given
+// Augment returns a new logger which has the same settings as this
 // one, but with its prefix augmented with the given string.
-func AugmentPrefix(logger *Logger, prefix string) *Logger {
+func (l *Logger) Augment(prefix string) *Logger {
 	return &Logger{
-		logger: logger.logger,
-		level:  logger.level,
-		prefix: logger.prefix + prefix,
+		logger: l.logger,
+		level:  l.level,
+		prefix: l.prefix + prefix,
 	}
 }
 
