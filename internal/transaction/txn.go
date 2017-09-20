@@ -3,6 +3,7 @@ package transaction
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/mattn/go-sqlite3"
@@ -60,7 +61,13 @@ func newTxn(conn *sqlite3.SQLiteConn, id string, isLeader bool, dryRun bool) *Tx
 }
 
 func (t *Txn) String() string {
-	return fmt.Sprintf("{id=%s state=%s leader=%v}", t.id, t.state.CurrentState(), t.isLeader)
+	s := fmt.Sprintf("%s as ", t.state.CurrentState())
+	if t.isLeader {
+		s += "leader"
+	} else {
+		s += "follower"
+	}
+	return s
 }
 
 // Enter starts a critical section accessing or modifying this
@@ -75,6 +82,14 @@ func (t *Txn) Enter() {
 func (t *Txn) Exit() {
 	t.entered = false
 	t.mu.Unlock()
+}
+
+// Do is a convenience around Enter/Exit executing the given function within
+// lock boundaries.
+func (t *Txn) Do(f func() error) error {
+	t.Enter()
+	defer t.Exit()
+	return f()
 }
 
 // Conn returns the sqlite connection that started this write
@@ -160,7 +175,21 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 
 	switch state {
 	case Started:
-		err = sqlite3x.ReplicationBegin(t.conn)
+		// Retry a few times if the database is locked.
+		//
+		// FIXME: retry interval/count should be configurable.
+		var err error
+		for i := 0; i < 10; i++ {
+			err = sqlite3x.ReplicationBegin(t.conn)
+			if err != nil {
+				if err != sqlite3.ErrLocked {
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			break
+		}
 	case Writing:
 		frames := args[0].(*sqlite3x.ReplicationWalFramesParams)
 		err = sqlite3x.ReplicationWalFrames(t.conn, frames)

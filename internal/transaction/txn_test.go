@@ -15,7 +15,7 @@ func TestTxn_String(t *testing.T) {
 	registry := newRegistry()
 	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
 
-	want := "{id=abcd state=pending leader=false}"
+	want := "pending as follower"
 	got := txn.String()
 	if got != want {
 		t.Errorf("expected\n%q\ngot\n%q", want, got)
