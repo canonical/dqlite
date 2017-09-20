@@ -102,7 +102,7 @@ func TestLogger_Panicf(t *testing.T) {
 func TestAugmentLogger(t *testing.T) {
 	buffer := bytes.NewBuffer(nil)
 	logger := logging.New(log.New(buffer, "", 0), logging.Trace, "foo: ")
-	logger = logging.AugmentPrefix(logger, "bar: ")
+	logger = logger.Augment("bar: ")
 	logger.Tracef("hi")
 	assert.Equal(t, "[TRACE] foo: bar: hi\n", buffer.String())
 }
