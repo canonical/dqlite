@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -110,12 +111,13 @@ func (r *Registry) ReplaceFollower(filename string, conn *sqlite3.SQLiteConn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, ok := r.followers[filename]; !ok {
+	oldConn, ok := r.followers[filename]
+	if !ok {
 		panic(fmt.Sprintf("follower connection for '%s' is not registered", filename))
 	}
 
 	r.followers[filename] = conn
-	r.delConn(conn)
+	r.delConn(oldConn)
 	r.addConn(conn)
 }
 
@@ -179,6 +181,19 @@ func (r *Registry) Serial(conn *sqlite3.SQLiteConn) uint64 {
 	}
 
 	return serial
+}
+
+// Dump the content of the registry, useful for debugging.
+func (r *Registry) Dump() string {
+	buffer := bytes.NewBuffer(nil)
+	fmt.Fprintf(buffer, "leaders:\n")
+	for conn, name := range r.leaders {
+		fmt.Fprintf(buffer, "-> %d: %s\n", r.Serial(conn), name)
+	}
+	for name, conn := range r.followers {
+		fmt.Fprintf(buffer, "-> %d: %s\n", r.Serial(conn), name)
+	}
+	return buffer.String()
 }
 
 // Add a new connection (either leader or follower) to the registry and assign
