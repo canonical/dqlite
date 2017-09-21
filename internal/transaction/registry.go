@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 
@@ -42,13 +43,18 @@ func NewRegistry() *Registry {
 // AddLeader adds a new transaction to the registry. The given connection is
 // assumed to be in leader replication mode. The new transaction will
 // be assigned a unique ID.
-func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn) *Txn {
+func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn, ids ...string) *Txn {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.checkReplicationMode(conn, sqlite3x.ReplicationModeLeader)
 
-	id := uuid.NewRandom().String()
+	var id string
+	if len(ids) > 0 {
+		id = ids[0]
+	} else {
+		id = uuid.NewRandom().String()
+	}
 	return r.add(conn, id, true)
 }
 
@@ -61,7 +67,9 @@ func (r *Registry) AddFollower(conn *sqlite3.SQLiteConn, id string) *Txn {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.checkReplicationMode(conn, sqlite3x.ReplicationModeFollower)
+	// FIXME: sqlite3_replication_mode requires the db mutex to be held,
+	// which is not the case for fresh followers that have not yet begun.
+	//r.checkReplicationMode(conn, sqlite3x.ReplicationModeFollower)
 
 	return r.add(conn, id, false)
 }
@@ -100,6 +108,16 @@ func (r *Registry) Remove(id string) {
 // mode. This should only be used by tests.
 func (r *Registry) SkipCheckReplicationMode(flag bool) {
 	r.skipCheckReplicationMode = flag
+}
+
+// Dump the content of the registry, useful for debugging.
+func (r *Registry) Dump() string {
+	buffer := bytes.NewBuffer(nil)
+	fmt.Fprintf(buffer, "transactions:\n")
+	for txn := range r.txns {
+		fmt.Fprintf(buffer, "-> %s\n", txn)
+	}
+	return buffer.String()
 }
 
 // DryRun makes transactions only transition between states, without

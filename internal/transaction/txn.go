@@ -158,6 +158,13 @@ func (t *Txn) Stale() error {
 	return t.transition(Stale)
 }
 
+// DryRun makes this transaction only transition between states, without
+// actually invoking the relevant SQLite APIs. This should only be
+// used by tests.
+func (t *Txn) DryRun(v bool) {
+	t.dryRun = v
+}
+
 // Try to transition to the given state. If the transition is invalid,
 // panic out.
 func (t *Txn) transition(state fsm.State, args ...interface{}) error {
