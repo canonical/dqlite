@@ -49,6 +49,7 @@ func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn, ids ...string) *Txn {
 
 	r.checkReplicationMode(conn, sqlite3x.ReplicationModeLeader)
 
+	// FIXME the txid should mandatory
 	var id string
 	if len(ids) > 0 {
 		id = ids[0]
