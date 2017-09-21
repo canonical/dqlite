@@ -6,37 +6,49 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
-	"os"
 	"path/filepath"
 
 	"github.com/CanonicalLtd/dqlite/internal/commands"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/logging"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/hashicorp/raft"
 	"github.com/pkg/errors"
 )
 
+// NewFSMLegacy creates a new Raft state machine for executing dqlite-specific
+// commands.
+func NewFSMLegacy(logger *log.Logger, conns *connection.Registry, txns *transaction.Registry) *FSM {
+	return &FSM{
+		logger:       logging.New(logger, logging.Trace, ""),
+		connections:  conns,
+		transactions: txns,
+		indexes:      make(chan uint64, 10), // Should be enough for tests
+	}
+}
+
 // NewFSM creates a new Raft state machine for executing dqlite-specific
 // commands.
-func NewFSM(logger *log.Logger, connections *connection.Registry, transactions *transaction.Registry) *FSM {
+func NewFSM(dir string, l *logging.Logger, c *connection.Registry, t *transaction.Registry) *FSM {
 	return &FSM{
-		logger:       logger,
-		connections:  connections,
-		transactions: transactions,
-		indexes:      make(chan uint64, 10), // Should be enough for tests
+		dir:          dir,
+		logger:       l.Augment("fsm: "),
+		connections:  c,
+		transactions: t,
 	}
 }
 
 // FSM implements the raft finite-state machine used to replicate
 // SQLite data.
 type FSM struct {
-	logger       *log.Logger
+	dir          string
+	logger       *logging.Logger
 	connections  *connection.Registry  // Open connections (either leaders or followers).
 	transactions *transaction.Registry // Ongoing write transactions.
-	indexes      chan uint64           // Buffered stream of log indexes that have been applied.
+
+	indexes chan uint64 // Buffered stream of log indexes that have been applied.
 }
 
 // Apply log is invoked once a log entry is committed.
@@ -44,34 +56,41 @@ type FSM struct {
 // ApplyFuture returned by Raft.Apply method if that
 // method was called on the same Raft node as the FSM.
 func (f *FSM) Apply(log *raft.Log) interface{} {
-	f.logger.Printf("[DEBUG] dqlite: fsm: applying log with index %d", log.Index)
+	logger := f.logger.Augment(fmt.Sprintf("log %d: ", log.Index))
+	logger.Tracef("start")
 
 	cmd, err := commands.Unmarshal(log.Data)
 	if err != nil {
-		panic(fmt.Sprintf("fsm apply error: failed to unmarshal command: %s", err))
+		logger.Panicf("corrupted command: %v", err)
 	}
 
-	f.logger.Printf("[DEBUG] dqlite: fsm: applying %s", cmd.Name())
+	logger = logger.Augment(fmt.Sprintf("%s: ", cmd.Name()))
+	logger.Tracef("start")
+	defer func() {
+		if result := recover(); result != nil {
+			logger.Infof("\n%s\n%s", f.connections.Dump(), f.transactions.Dump())
+			panic(result)
+		}
+	}()
+
 	switch params := cmd.Params.(type) {
 	case *commands.Command_Open:
-		err = f.applyOpen(params.Open)
+		f.applyOpen(logger, params.Open)
 	case *commands.Command_Begin:
-		err = f.applyBegin(params.Begin)
+		f.applyBegin(logger, params.Begin)
 	case *commands.Command_WalFrames:
-		err = f.applyWalFrames(params.WalFrames)
+		f.applyWalFrames(logger, params.WalFrames)
 	case *commands.Command_Undo:
-		err = f.applyUndo(params.Undo)
+		f.applyUndo(logger, params.Undo)
 	case *commands.Command_End:
-		err = f.applyEnd(params.End)
+		f.applyEnd(logger, params.End)
 	case *commands.Command_Checkpoint:
-		err = f.applyCheckpoint(params.Checkpoint)
+		f.applyCheckpoint(logger, params.Checkpoint)
 	default:
-		err = fmt.Errorf("unhandled params type")
+		logger.Panicf("unhandled params type")
 	}
 
-	if err != nil {
-		panic(fmt.Sprintf("fsm apply error for command %s: %v", cmd.Name(), err))
-	}
+	logger.Tracef("done")
 
 	// Non-blocking notification of the last applied index. Used
 	// by tests for waiting for followers to actually finish
@@ -81,7 +100,6 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	default:
 	}
 
-	f.logger.Printf("[DEBUG] dqlite: fsm: applied log with index %d", log.Index)
 	return nil
 }
 
@@ -94,63 +112,61 @@ func (f *FSM) Wait(index uint64) {
 	}
 }
 
-func (f *FSM) applyOpen(params *commands.Open) error {
-	uri := filepath.Join(f.connections.Dir(), params.Name)
+func (f *FSM) applyOpen(logger *logging.Logger, params *commands.Open) {
+	logger.Tracef("add follower for %s", params.Name)
+	uri := filepath.Join(f.dir, params.Name)
 	conn, err := connection.OpenFollower(uri)
 	if err != nil {
-		return errors.Wrap(err, "failed to open follower connection")
+		logger.Panicf("failed to open follower connection: %v", err)
 	}
 	f.connections.AddFollower(params.Name, conn)
-
-	return nil
 }
 
-func (f *FSM) applyBegin(params *commands.Begin) error {
+func (f *FSM) applyBegin(logger *logging.Logger, params *commands.Begin) {
+	logger = logger.Augment(fmt.Sprintf("txn %s: ", params.Txid))
+
 	txn := f.transactions.GetByID(params.Txid)
 	if txn != nil {
+		logger.Tracef("found %s, use it", txn)
 		// We know about this txid, so the transaction must
 		// have originated on this node and be a leader
 		// transaction.
 		if !txn.IsLeader() {
-			return fmt.Errorf(
-				"existing transaction %s has non-leader connection", txn)
+			logger.Panicf("is %s instead of leader", txn)
 		}
 	} else {
-		// This is a new follower transaction.
+		logger.Tracef("not found, add follower")
 
-		// Sanity check that no leader transaction for against this
-		// database is happening on this node (since we're supposed
-		// purely followers, and unreleased write locks would get on
-		// our the way).
+		// This is must be a new follower transaction. Let's check
+		// check that no leader transaction against this database is
+		// happening on this node (since we're supposed purely
+		// followers, and unreleased write locks would get on our the
+		// way).
 		for _, conn := range f.connections.Leaders(params.Name) {
 			if txn := f.transactions.GetByConn(conn); txn != nil {
-				return fmt.Errorf("found dangling leader connection %s", txn)
+				logger.Panicf("found dangling transaction %s", txn)
 			}
 		}
 
 		conn := f.connections.Follower(params.Name)
 		txn = f.transactions.AddFollower(conn, params.Txid)
 	}
-	txn.Enter()
-	defer txn.Exit()
 
-	f.logTxn("begin", txn)
-
-	return txn.Begin()
+	if err := txn.Do(txn.Begin); err != nil {
+		logger.Panicf("failed to begin transaction %s: %s", txn, err)
+	}
 }
 
-func (f *FSM) applyWalFrames(params *commands.WalFrames) error {
-	// XXX TODO: too noisy because of protobuf
-	//f.logCommand(cmd, params)
+func (f *FSM) applyWalFrames(logger *logging.Logger, params *commands.WalFrames) {
+	logger = logger.Augment(fmt.Sprintf("txn %s: ", params.Txid))
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
-		return fmt.Errorf("transaction for %s doesn't exist", params)
+		logger.Panicf("not found")
 	}
-	txn.Enter()
-	defer txn.Exit()
 
-	f.logTxn("wal frames", txn)
+	logger.Tracef(txn.String())
+	logger.Tracef("%d frames, commit=%v", len(params.Pages), params.IsCommit)
 
 	pages := sqlite3x.NewReplicationPages(len(params.Pages), int(params.PageSize))
 	defer sqlite3x.DestroyReplicationPages(pages)
@@ -167,44 +183,45 @@ func (f *FSM) applyWalFrames(params *commands.WalFrames) error {
 		SyncFlags: uint8(params.SyncFlags),
 	}
 
-	return txn.WalFrames(framesParams)
+	if err := txn.Do(func() error { return txn.WalFrames(framesParams) }); err != nil {
+		logger.Panicf("failed to write farames: %s", err)
+	}
 }
 
-func (f *FSM) applyUndo(params *commands.Undo) error {
+func (f *FSM) applyUndo(logger *logging.Logger, params *commands.Undo) {
+	logger = logger.Augment(fmt.Sprintf("txn %s: ", params.Txid))
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
-		return fmt.Errorf("transaction for %s doesn't exist", params)
+		logger.Panicf("not found")
 	}
-	txn.Enter()
-	defer txn.Exit()
+	logger.Tracef(txn.String())
 
-	f.logTxn("undo", txn)
-
-	return txn.Undo()
+	if err := txn.Do(txn.Undo); err != nil {
+		logger.Panicf("failed to undo transaction %s: %s", txn, err)
+	}
 }
 
-func (f *FSM) applyEnd(params *commands.End) error {
+func (f *FSM) applyEnd(logger *logging.Logger, params *commands.End) {
+	logger = logger.Augment(fmt.Sprintf("txn %s: ", params.Txid))
+
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
-		return fmt.Errorf("transaction for %s doesn't exist", params)
+		logger.Panicf("not found")
 	}
-	txn.Enter()
-	defer txn.Exit()
+	logger.Tracef(txn.String())
 
-	f.logTxn("end", txn)
+	if err := txn.Do(txn.End); err != nil {
+		logger.Panicf("failed to end transaction %s: %s", txn, err)
+	}
 
-	err := txn.End()
-
-	f.logger.Printf("[DEBUG] dqlite: fsm: remove transaction %s", txn)
+	logger.Tracef("unregister")
 	f.transactions.Remove(params.Txid)
-
-	return err
 }
 
-func (f *FSM) applyCheckpoint(params *commands.Checkpoint) error {
+func (f *FSM) applyCheckpoint(logger *logging.Logger, params *commands.Checkpoint) {
 	conn := f.connections.Follower(params.Name)
 
-	f.logger.Printf("[DEBUG] dqlite: fsm: applying checkpoint for '%s'", params.Name)
+	logger.Tracef("filename '%s'", params.Name)
 
 	// See if we can use the leader connection that triggered the
 	// checkpoint.
@@ -212,58 +229,78 @@ func (f *FSM) applyCheckpoint(params *commands.Checkpoint) error {
 		// XXX TODO: choose correct leader connection, without
 		//           assuming that there is at most one
 		conn = leaderConn
-		f.logger.Printf("[DEBUG] dqlite: fsm: using leader connection %p for checkpoint", conn)
+		logger.Tracef("using leader connection %d", f.connections.Serial(conn))
 		break
 	}
 
 	if txn := f.transactions.GetByConn(conn); txn != nil {
 		// Something went really wrong, a checkpoint should never be issued
 		// while a follower transaction is in flight.
-		return fmt.Errorf(
-			"checkpoint for database '%s' can't run with transaction %s",
-			params.Name, txn)
+		logger.Panicf("can't run with transaction %s %s", txn.ID(), txn)
 	}
 
 	// Run the checkpoint.
 	logFrames := 0
 	checkpointedFrames := 0
-	if err := sqlite3x.ReplicationCheckpoint(conn, sqlite3x.WalCheckpointTruncate, &logFrames, &checkpointedFrames); err != nil {
-		return errors.Wrap(err, fmt.Sprintf("checkpoint for '%s' failed", params.Name))
+	err := sqlite3x.ReplicationCheckpoint(
+		conn, sqlite3x.WalCheckpointTruncate, &logFrames, &checkpointedFrames)
+	if err != nil {
+		logger.Panicf("failure: %s", err)
 	}
 	if logFrames != 0 {
-		return fmt.Errorf("%d frames still in the WAL after checkpoint for '%s'", logFrames, params.Name)
+		logger.Panicf("%d frames are still in the WAL", logFrames)
 	}
 	if checkpointedFrames != 0 {
-		return fmt.Errorf("%d frames were checkpointed for '%s'", checkpointedFrames, params.Name)
+		logger.Panicf("only %d frames were checkpointed", checkpointedFrames)
 	}
-
-	return nil
 }
 
-func (f *FSM) logTxn(name string, txn *transaction.Txn) {
-	f.logger.Printf("[DEBUG] dqlite: fsm: applying %s for transaction %s", name, txn)
-}
-
-// Snapshot is used to support log compaction. This call should
-// return an FSMSnapshot which can be used to save a point-in-time
-// snapshot of the FSM. Apply and Snapshot are not called in multiple
-// threads, but Apply will be called concurrently with Persist. This means
-// the FSM should be implemented in a fashion that allows for concurrent
-// updates while a snapshot is happening.
+// Snapshot is used to support log compaction.
+//
+// From the raft's package documentation:
+//
+//   "This call should return an FSMSnapshot which can be used to save a
+//   point-in-time snapshot of the FSM. Apply and Snapshot are not called in
+//   multiple threads, but Apply will be called concurrently with Persist. This
+//   means the FSM should be implemented in a fashion that allows for
+//   concurrent updates while a snapshot is happening."
+//
+// In dqlite's case we do the following:
+//
+// - For each database that we track (i.e. that we have a follower connection
+//   for), create a backup using sqlite3_backup() and then read the content of
+//   the backup file and the current WAL file. Since nothing else is writing to
+//   the database (FSM.Apply won't be called until FSM.Snapshot completes), we
+//   could probably read the database bytes directly to increase efficiency,
+//   but for now we do current-write-safe backup as good measure.
+//
+// - For each database we track, look for ongoing transactions and include
+//   their ID in the FSM snapshot, so their state can be re-created upon
+//   snapshot Restore.
+//
+// This is a bit heavy-weight but should be safe. Optimizations can be added as
+// needed.
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	f.logger.Printf("[DEBUG] dqlite: fsm: start snapshot")
+	logger := f.logger.Augment("snapshot: ")
+	logger.Tracef("start")
 
-	backups := []*FSMDatabaseBackup{}
+	backups := []*fsmDatabaseSnapshot{}
 
+	// Loop through all known databases and create a backup for each of
+	// them. The filenames associated with follower connections are
+	// authoritative, since there will be one and only follower connection
+	// for each known database (we never close follower connections since
+	// database deletion is not yet supported).
 	for _, name := range f.connections.FilenamesOfFollowers() {
-		backup, err := f.backupDatabase(name)
+		backup, err := f.snapshotDatabase(logger, name)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "cannot backup database %s", name)
 		}
+		// Append the backup bytes to the snapshot.
 		backups = append(backups, backup)
 	}
 
-	f.logger.Printf("[DEBUG] dqlite: fsm: snapshot completed")
+	logger.Tracef("done")
 
 	return &FSMSnapshot{
 		backups: backups,
@@ -274,10 +311,11 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 // concurrently with any other commands. The FSM must discard all previous
 // state.
 func (f *FSM) Restore(reader io.ReadCloser) error {
-	f.logger.Printf("[DEBUG] dqlite: restore snapshot")
+	logger := f.logger.Augment("restore: ")
+	logger.Tracef("start")
 
 	for {
-		done, err := f.restoreDatabase(reader)
+		done, err := f.restoreDatabase(logger, reader)
 		if err != nil {
 			return err
 		}
@@ -286,15 +324,18 @@ func (f *FSM) Restore(reader io.ReadCloser) error {
 		}
 	}
 
+	logger.Tracef("done")
+
 	return nil
 }
 
 // Backup a single database.
-func (f *FSM) backupDatabase(name string) (*FSMDatabaseBackup, error) {
-	f.logger.Printf("[DEBUG] dqlite: fsm: database backup for %s", name)
+func (f *FSM) snapshotDatabase(logger *logging.Logger, name string) (*fsmDatabaseSnapshot, error) {
+	logger = logger.Augment(fmt.Sprintf("%s: ", name))
+	logger.Tracef("backup")
 
-	// Figure out if there is an ongoing transaction any of the
-	// database connections, if so we'll return an error.
+	// Figure out if there is an ongoing transaction associated with any of
+	// the database connections, if so we'll return an error.
 	conns := f.connections.Leaders(name)
 	conns = append(conns, f.connections.Follower(name))
 
@@ -305,20 +346,20 @@ func (f *FSM) backupDatabase(name string) (*FSMDatabaseBackup, error) {
 			state := txn.State()
 			txn.Exit()
 			if state != transaction.Started && state != transaction.Ended {
-				return nil, fmt.Errorf("can't snapshot right now, transaction %s is in progress", txn)
+				return nil, fmt.Errorf("transaction %s is in progress", txn)
 			}
-			f.logger.Printf("[DEBUG] dqlite: fsm: snapshot includes pending transaction %s", txn)
+			logger.Tracef("found txn %s: %s", txn.ID(), txn.String())
 			txid = txn.ID()
 		}
 	}
 
-	database, wal, err := f.connections.Backup(name)
+	database, wal, err := connection.Snapshot(f.dir, name)
 	if err != nil {
 		return nil, err
 	}
-	return &FSMDatabaseBackup{
-		database: name,
-		data:     database,
+	return &fsmDatabaseSnapshot{
+		filename: name,
+		database: database,
 		wal:      wal,
 		txid:     txid,
 	}, nil
@@ -326,45 +367,52 @@ func (f *FSM) backupDatabase(name string) (*FSMDatabaseBackup, error) {
 
 // Restore a single database. Returns true if there are more databases
 // to restore, false otherwise.
-func (f *FSM) restoreDatabase(reader io.ReadCloser) (bool, error) {
-
+func (f *FSM) restoreDatabase(logger *logging.Logger, reader io.ReadCloser) (bool, error) {
 	done := false
-	// Get size of database.
+
+	// The first 8 bytes contain the size of database.
 	var dataSize uint64
 	if err := binary.Read(reader, binary.LittleEndian, &dataSize); err != nil {
 		return false, errors.Wrap(err, "failed to read database size")
 	}
-	f.logger.Printf("[DEBUG] dqlite: snapshot database size %d", dataSize)
+	logger.Tracef("database size %d", dataSize)
 
-	// Now read in the database data.
+	// Then there's the database data..
 	data := make([]byte, dataSize)
 	if _, err := io.ReadFull(reader, data); err != nil {
 		return false, errors.Wrap(err, "failed to read database data")
 	}
 
-	// Get size of wal
+	// Next, the size of the WAL.
 	var walSize uint64
 	if err := binary.Read(reader, binary.LittleEndian, &walSize); err != nil {
 		return false, errors.Wrap(err, "failed to read wal size")
 	}
-	f.logger.Printf("[DEBUG] dqlite: snapshot wal size %d", walSize)
+	logger.Tracef("wal size %d", walSize)
 
-	// Now read in the wal data.
+	// Read the WAL data.
 	wal := make([]byte, walSize)
 	if _, err := io.ReadFull(reader, wal); err != nil {
 		return false, errors.Wrap(err, "failed to read wal data")
 	}
 
+	// Read the database filename.
 	bufReader := bufio.NewReader(reader)
-	name, err := bufReader.ReadString(0)
+	filename, err := bufReader.ReadString(0)
 	if err != nil {
 		return false, errors.Wrap(err, "failed to read database name")
 	}
-	name = name[:len(name)-1] // Strip the trailing 0
+	filename = filename[:len(filename)-1] // Strip the trailing 0
+	logger = logger.Augment(fmt.Sprintf("%s :", filename))
+	logger.Tracef("done reading database and WAL bytes")
 
-	conns := f.connections.Leaders(name)
+	// Check that there are no leader connections for this database.
+	//
+	// FIXME: we should relax this, as it prevents restoring snapshots "on
+	// the fly".
+	conns := f.connections.Leaders(filename)
 	if len(conns) > 0 {
-		panic(fmt.Sprintf("restore failure: database '%s' has %d leader connections", name, len(conns)))
+		logger.Panicf("found %d leader connections", len(conns))
 	}
 
 	// XXX TODO: reason about this situation, is it possible?
@@ -374,50 +422,44 @@ func (f *FSM) restoreDatabase(reader io.ReadCloser) (bool, error) {
 		f.transactions.Remove(txn.ID())
 	}*/
 
-	if f.connections.HasFollower(name) {
-		follower := f.connections.Follower(name)
+	// Close any follower connection, since we're going to overwrite the
+	// database file.
+	if f.connections.HasFollower(filename) {
+		logger.Tracef("close open follower")
+		follower := f.connections.Follower(filename)
+		f.connections.DelFollower(filename)
 		if err := follower.Close(); err != nil {
 			return false, err
 		}
 	}
 
+	// At this point there should be not connection open against this
+	// database, so it's safe to overwrite it.
 	txid, err := bufReader.ReadString(0)
-	f.logger.Printf("[DEBUG] dqlite: snapshot txid %s", txid)
 	if err != nil {
 		if err != io.EOF {
-			return false, errors.Wrap(err, "failed to read database database")
+			return false, errors.Wrap(err, "failed to read txid")
 		}
-		done = true
+		done = true // This is the last database.
 	}
+	logger.Tracef("txid %s", txid)
 
-	path := filepath.Join(f.connections.Dir(), name)
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return false, err
-	}
-	if err := os.Remove(path + "-wal"); err != nil && !os.IsNotExist(err) {
-		return false, err
-	}
-	if err := os.Remove(path + "-shm"); err != nil && !os.IsNotExist(err) {
+	logger.Tracef("restore")
+	if err := connection.Restore(f.dir, filename, data, wal); err != nil {
 		return false, err
 	}
 
-	if err := ioutil.WriteFile(path, data, 0600); err != nil {
-		return false, errors.Wrap(err, "failed to restore database")
-	}
-
-	if err := ioutil.WriteFile(path+"-wal", wal, 0600); err != nil {
-		return false, errors.Wrap(err, "failed to restore wal")
-	}
-
-	uri := filepath.Join(f.connections.Dir(), name)
+	logger.Tracef("open follower")
+	uri := filepath.Join(f.dir, filename)
 	conn, err := connection.OpenFollower(uri)
 	if err != nil {
 		return false, err
 	}
-	f.connections.ReplaceFollower(name, conn)
+	f.connections.AddFollower(filename, conn)
 
 	if txid != "" {
-		conn := f.connections.Follower(name)
+		logger.Tracef("restore transaction")
+		conn := f.connections.Follower(filename)
 		txn := f.transactions.AddFollower(conn, txid)
 		txn.Enter()
 		defer txn.Exit()
@@ -430,19 +472,11 @@ func (f *FSM) restoreDatabase(reader io.ReadCloser) (bool, error) {
 
 }
 
-// FSMDatabaseBackup holds backup information for a single database.
-type FSMDatabaseBackup struct {
-	database string
-	data     []byte
-	wal      []byte
-	txid     string
-}
-
 // FSMSnapshot is returned by an FSM in response to a Snapshot
 // It must be safe to invoke FSMSnapshot methods with concurrent
 // calls to Apply.
 type FSMSnapshot struct {
-	backups []*FSMDatabaseBackup
+	backups []*fsmDatabaseSnapshot
 }
 
 // Persist should dump all necessary state to the WriteCloser 'sink',
@@ -465,10 +499,10 @@ func (s *FSMSnapshot) Persist(sink raft.SnapshotSink) error {
 }
 
 // Persist a single backup file.
-func (s *FSMSnapshot) persistBackup(sink raft.SnapshotSink, backup *FSMDatabaseBackup) error {
+func (s *FSMSnapshot) persistBackup(sink raft.SnapshotSink, backup *fsmDatabaseSnapshot) error {
 	// Start by writing the size of the backup
 	buffer := new(bytes.Buffer)
-	dataSize := uint64(len(backup.data))
+	dataSize := uint64(len(backup.database))
 	if err := binary.Write(buffer, binary.LittleEndian, dataSize); err != nil {
 		return errors.Wrap(err, "failed to encode data size")
 	}
@@ -477,7 +511,7 @@ func (s *FSMSnapshot) persistBackup(sink raft.SnapshotSink, backup *FSMDatabaseB
 	}
 
 	// Next write the data to the sink.
-	if _, err := sink.Write(backup.data); err != nil {
+	if _, err := sink.Write(backup.database); err != nil {
 		return errors.Wrap(err, "failed to write backup data to sink")
 
 	}
@@ -497,7 +531,7 @@ func (s *FSMSnapshot) persistBackup(sink raft.SnapshotSink, backup *FSMDatabaseB
 
 	// Next write the database name.
 	buffer.Reset()
-	buffer.WriteString(backup.database)
+	buffer.WriteString(backup.filename)
 	if _, err := sink.Write(buffer.Bytes()); err != nil {
 		return errors.Wrap(err, "failed to write database name to sink")
 	}
@@ -517,4 +551,12 @@ func (s *FSMSnapshot) persistBackup(sink raft.SnapshotSink, backup *FSMDatabaseB
 
 // Release is invoked when we are finished with the snapshot.
 func (s *FSMSnapshot) Release() {
+}
+
+// fsmDatabaseSnapshot holds backup information for a single database.
+type fsmDatabaseSnapshot struct {
+	filename string
+	database []byte
+	wal      []byte
+	txid     string
 }
