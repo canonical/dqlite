@@ -1,9 +1,7 @@
 package connection_test
 
 import (
-	"database/sql"
 	"fmt"
-	"path/filepath"
 
 	"testing"
 
@@ -96,44 +94,4 @@ func newConn() *sqlite3.SQLiteConn {
 		panic(fmt.Errorf("failed to open in-memory database: %v", err))
 	}
 	return conn.(*sqlite3.SQLiteConn)
-}
-
-func TestRegistry_Backup(t *testing.T) {
-	registry, conn := connection.NewTempRegistryWithLeader()
-	defer registry.Purge()
-
-	if _, err := conn.Exec("BEGIN; CREATE TABLE foo (n INT); INSERT INTO foo VALUES(1); COMMIT", nil); err != nil {
-		t.Fatal(err)
-	}
-
-	database, wal, err := registry.Backup("test.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := registry.Restore("test.db", database, wal); err != nil {
-		t.Fatal(err)
-	}
-
-	// Check that the data actually matches our source database.
-	db, err := sql.Open("sqlite3", filepath.Join(registry.Dir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	rows, err := db.Query("SELECT * FROM foo", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	if !rows.Next() {
-		t.Fatal("query returned empty result set")
-	}
-	var n int
-	if err := rows.Scan(&n); err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("got row value of %d instead of 1", n)
-	}
 }

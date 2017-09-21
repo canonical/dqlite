@@ -3,16 +3,11 @@ package connection
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 
-	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/mattn/go-sqlite3"
-	"github.com/pkg/errors"
 )
 
 // Registry is a dqlite node-level data structure that tracks all
@@ -220,67 +215,6 @@ func (r *Registry) Dir() string {
 	return r.dir
 }
 
-// Backup a single database using the given leader connection. It
-// returns two slices of data, one the content of the backup database
-// and one is the current content of the WAL file.
-func (r *Registry) Backup(name string) ([]byte, []byte, error) {
-	sourceConn, err := r.open(name)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer sourceConn.Close()
-
-	backupConn, err := r.openBackup(name)
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, path := range []string{
-		sqlite3x.DatabaseFilename(backupConn),
-		sqlite3x.WalFilename(backupConn),
-		sqlite3x.ShmFilename(backupConn),
-	} {
-		defer os.Remove(path)
-	}
-	defer backupConn.Close()
-
-	backup, err := backupConn.Backup("main", sourceConn, "main")
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to init backup database")
-	}
-
-	done, err := backup.Step(-1)
-	backup.Close()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to backup database")
-	}
-	if !done {
-		return nil, nil, fmt.Errorf("database backup not complete")
-	}
-
-	database, err := r.readDatabaseContent(sourceConn)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	wal, err := r.readWalContent(backupConn)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return database, wal, nil
-}
-
-// Restore the given database and WAL backups.
-func (r *Registry) Restore(name string, database []byte, wal []byte) error {
-	if err := r.writeDatabaseContent(name, database); err != nil {
-		return err
-	}
-	if err := r.writeWalContent(name, wal); err != nil {
-		return err
-	}
-	return nil
-}
-
 // Purge removes all database files in our directory, including the
 // directory itself.
 func (r *Registry) Purge() error {
@@ -297,97 +231,6 @@ func (r *Registry) Purge() error {
 		}
 	}
 	return os.RemoveAll(r.dir)
-}
-
-// Open returns a new SQLite connection to a database in our
-// directory, configured with WAL journaling (automatic checkpoints
-// are disabled and the WAL always kept persistent after connections
-// close). The given DSN will be tracked in the registry and
-// associated with the connection.
-func (r *Registry) open(dsn string) (*sqlite3.SQLiteConn, error) {
-	driver := &sqlite3.SQLiteDriver{}
-	conn, err := driver.Open(filepath.Join(r.dir, dsn))
-	if err != nil {
-		return nil, err
-	}
-	// Convert driver.Conn interface to concrete sqlite3.SQLiteConn.
-	sqliteConn := conn.(*sqlite3.SQLiteConn)
-
-	// Ensure journal mode is set to WAL
-	if err := sqlite3x.JournalModePragma(sqliteConn, sqlite3x.JournalWal); err != nil {
-		return nil, err
-	}
-
-	// Ensure we don't truncate the WAL on exit.
-	if err := sqlite3x.JournalSizeLimitPragma(sqliteConn, -1); err != nil {
-		return nil, err
-	}
-
-	if err := sqlite3x.DatabaseNoCheckpointOnClose(sqliteConn); err != nil {
-		return nil, err
-	}
-
-	return sqliteConn, nil
-}
-
-// Open a new database connection against a temporary backup database
-// file named against the given DSN.
-func (r *Registry) openBackup(name string) (*sqlite3.SQLiteConn, error) {
-	// Create a temporary file using the source DSN filename as prefix.
-	tempFile, err := ioutil.TempFile(r.dir, name)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create temp file for backup")
-	}
-	tempFile.Close()
-
-	backupConn, err := r.open(path.Base(tempFile.Name()))
-	if err != nil {
-		os.Remove(tempFile.Name())
-		return nil, errors.Wrap(err, "failed to open backup database")
-	}
-	return backupConn, nil
-}
-
-// Read the current content of the database file associated with the given
-// connection.
-func (r *Registry) readDatabaseContent(conn *sqlite3.SQLiteConn) ([]byte, error) {
-	path := sqlite3x.DatabaseFilename(conn)
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, errors.Wrap(err, fmt.Sprintf("failed to read database content at %s", path))
-	}
-	return data, nil
-}
-
-// Read the current content of the WAL associated with the given
-// connection.
-func (r *Registry) readWalContent(conn *sqlite3.SQLiteConn) ([]byte, error) {
-	path := sqlite3x.WalFilename(conn)
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, errors.Wrap(err, fmt.Sprintf("failed to read WAL content at %s", path))
-	}
-	return data, nil
-}
-
-// Write the the content of a database backup to the DSN filename associated
-// with the given identifier.
-func (r *Registry) writeDatabaseContent(name string, database []byte) error {
-	path := filepath.Join(r.Dir(), name)
-	if err := ioutil.WriteFile(path, database, 0600); err != nil {
-		return errors.Wrap(err, fmt.Sprintf("failed to write database content at %s", path))
-	}
-	return nil
-}
-
-// Write the the content of a WAL backup to the DSN filename associated
-// with the given identifier.
-func (r *Registry) writeWalContent(name string, wal []byte) error {
-	path := filepath.Join(r.Dir(), name+"-wal")
-	if err := ioutil.WriteFile(path, wal, 0600); err != nil {
-		return errors.Wrap(err, fmt.Sprintf("failed to write wal content at %s", path))
-	}
-	return nil
 }
 
 // Monotonic counter for identifying connections for tracing and debugging
