@@ -1,252 +1,154 @@
 package replication_test
 
 import (
-	"fmt"
-	"io"
-	"io/ioutil"
-	"log"
-	"os"
 	"testing"
-	"time"
 
-	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	sqlite3x "github.com/CanonicalLtd/go-sqlite3x"
-	"github.com/hashicorp/raft"
+	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/raft-test"
+	"github.com/mattn/go-sqlite3"
+	"github.com/mpvl/subtest"
+	"github.com/ryanfaerman/fsm"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestMethods_Begin(t *testing.T) {
-	methods, raft, connections, transactions := newMethodsWaitElection()
-	defer cleanupRaftAndConnections(raft, connections)
+var errZero = sqlite3.ErrNo(0) // Convenience for assertions
 
-	conn := openLeaderWithMethods(connections, methods)
-	transactions.DryRun()
+func TestMethods_Hooks(t *testing.T) {
+	for _, c := range methodsHooksCases {
+		subtest.Run(t, c.title, func(t *testing.T) {
+			methods, conn, cleanup := newMethods(t)
+			defer cleanup()
 
-	if rc := methods.Begin(conn); rc != 0 {
-		t.Fatalf("begin failed: %d", rc)
-	}
+			c.f(t, methods, conn)
 
-	txn := transactions.GetByConn(conn)
-	if txn == nil {
-		t.Fatalf("no transaction was created for leader connection")
-	}
-	txn.Enter()
-	if state := txn.State(); state != transaction.Started {
-		t.Errorf("leader transaction not in Started state: %s", state)
-	}
-
-}
-
-func TestMethods_BeginFailsIfNotLeader(t *testing.T) {
-	methods, raft, connections, _ := newMethods()
-	defer cleanupRaftAndConnections(raft, connections)
-
-	conn := openLeader(connections)
-	methods.ApplyTimeout(time.Microsecond)
-	if rc := methods.Begin(conn); rc != sqlite3x.ErrNotLeader {
-		t.Errorf("expected ErrNotLeader got %d", rc)
+			if c.state == "" {
+				assert.Nil(t, methods.Transactions().GetByConn(conn))
+				return
+			}
+			txn := methods.Transactions().GetByConn(conn)
+			require.NotNil(t, txn)
+			txn.Enter()
+			assert.Equal(t, c.state, txn.State())
+		})
 	}
 }
 
-func TestMethods_BeginRollbackStaleFollowerTransaction(t *testing.T) {
-	methods, raft, connections, transactions := newMethodsWaitElection()
-	defer cleanupRaftAndConnections(raft, connections)
+var methodsHooksCases = []struct {
+	title string
+	f     func(*testing.T, *replication.Methods, *sqlite3.SQLiteConn)
+	state fsm.State // Expected transaction state after f is executed
+}{
+	{
+		`begin`,
+		func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
+			assert.Equal(t, errZero, methods.Begin(conn))
+		},
+		transaction.Started,
+	},
+	{
+		`rollback stale follower transaction`,
+		func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
+			require.Equal(t, errZero, methods.Begin(conn))
+			require.Equal(t, errZero, methods.End(conn))
 
-	transactions.DryRun()
+			followerConn := methods.Connections().Follower("test.db")
+			txn := methods.Transactions().AddFollower(followerConn, "2")
+			require.NoError(t, txn.Do(txn.Begin))
+			require.Equal(t, errZero, methods.Begin(conn))
 
-	txn := transactions.AddFollower(connections.Follower("test.db"), "abcd")
-	txn.Enter()
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	txn.Exit()
+			// The leftover follower transaction has been ended and remved.
+			txn.Enter()
+			require.Equal(t, transaction.Ended, txn.State())
+			require.Nil(t, methods.Transactions().GetByID(txn.ID()))
+		},
+		transaction.Started,
+	},
+	{
+		`wal frames`,
+		func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
+			require.Equal(t, errZero, methods.Begin(conn))
+			params := newWalFramesParams()
+			assert.Equal(t, errZero, methods.WalFrames(conn, params))
+		},
+		transaction.Writing,
+	},
+	{
+		`undo`,
+		func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
+			require.Equal(t, errZero, methods.Begin(conn))
+			assert.Equal(t, errZero, methods.Undo(conn))
+		},
+		transaction.Undoing,
+	},
+	{
+		`end`,
+		func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
+			require.Equal(t, errZero, methods.Begin(conn))
+			assert.Equal(t, errZero, methods.End(conn))
+		},
+		"",
+	},
+}
 
-	conn := openLeader(connections)
-	if rc := methods.Begin(conn); rc != 0 {
-		t.Fatalf("begin failed: %d", rc)
-	}
+func TestMethods_HookErrors(t *testing.T) {
+	for _, c := range methodsHookErrorCases {
+		subtest.Run(t, c.title, func(t *testing.T) {
+			methods, conn, cleanup := newMethods(t)
+			defer cleanup()
 
-	txn.Enter()
-	if txn.State() != transaction.Ended {
-		t.Errorf("follower transaction was not rolled back")
+			assert.Equal(t, c.error, c.f(t, methods, conn))
+		})
 	}
 }
 
-func TestMethods_WalFrames(t *testing.T) {
-	methods, raft, connections, transactions := newMethodsWaitElection()
-	defer cleanupRaftAndConnections(raft, connections)
-
-	transactions.DryRun()
-
-	conn := openLeader(connections)
-	txn := transactions.AddLeader(conn)
-	txn.Enter()
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	txn.Exit()
-
-	size := 4096
-	pages := sqlite3x.NewReplicationPages(2, size)
-
-	for i := range pages {
-		pages[i].Fill(make([]byte, 4096), 1, 1)
-	}
-
-	frames := &sqlite3x.ReplicationWalFramesParams{
-		Pages:    pages,
-		PageSize: size,
-		Truncate: 1,
-	}
-	if rc := methods.WalFrames(conn, frames); rc != 0 {
-		t.Fatalf("wal frames failed: %d", rc)
-	}
-
-	txn.Enter()
-	if state := txn.State(); state != transaction.Writing {
-		t.Errorf("leader transaction not in Writing state: %s", state)
-	}
+var methodsHookErrorCases = []struct {
+	title string
+	f     func(*testing.T, *replication.Methods, *sqlite3.SQLiteConn) sqlite3.ErrNo
+	error sqlite3.ErrNo // Expected error
+}{
+	{
+		`begin fails if node is not raft leader`,
+		func(t *testing.T, m *replication.Methods, conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
+			require.NoError(t, m.Raft().Shutdown().Error())
+			return m.Begin(conn)
+		},
+		sqlite3x.ErrNotLeader,
+	},
 }
 
-func TestMethods_Undo(t *testing.T) {
-	methods, raft, connections, transactions := newMethodsWaitElection()
-	defer cleanupRaftAndConnections(raft, connections)
+func newMethods(t *testing.T) (*replication.Methods, *sqlite3.SQLiteConn, func()) {
+	logger := log.New(log.Testing(t), log.Trace)
+	fsm, fsmCleanup := newFSM(t)
+	raft := rafttest.Node(t, fsm)
 
-	transactions.DryRun()
+	methods := replication.NewMethods(raft, logger, fsm.Connections(), fsm.Transactions())
 
-	conn := openLeader(connections)
-	txn := transactions.AddLeader(conn)
-	txn.Enter()
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	txn.Exit()
+	conn, connCleanup := newLeaderConn(t, fsm.Dir(), methods)
 
-	if rc := methods.Undo(conn); rc != 0 {
-		t.Fatalf("undo failed: %d", rc)
+	cleanup := func() {
+		connCleanup()
+		assert.NoError(t, raft.Shutdown().Error())
+		fsmCleanup()
 	}
 
-	txn.Enter()
-	if state := txn.State(); state != transaction.Undoing {
-		t.Errorf("leader transaction not in Undoing state: %s", state)
-	}
-}
+	methods.Connections().AddLeader("test.db", conn)
 
-func TestMethods_End(t *testing.T) {
-	methods, raft, connections, transactions := newMethodsWaitElection()
-	defer cleanupRaftAndConnections(raft, connections)
+	// We need to disable replication mode checks, because leader
+	// connections created with newLeaderConn() haven't actually initiated
+	// a WAL write transaction and acquired the db lock necessary for
+	// sqlite3_replication_mode() to succeed.
+	methods.Transactions().SkipCheckReplicationMode(true)
 
-	transactions.DryRun()
+	// Don't actually run the SQLite replication APIs, since the tests
+	// using this helper are meant to drive the methods instance directly
+	// (as opposed to indirectly via hooks triggered by SQLite), so the
+	// leader connection hasn't entered a WAL transaction and would trigger
+	// assertions in SQLite code.
+	methods.Transactions().DryRun()
 
-	conn := openLeader(connections)
-	txn := transactions.AddLeader(conn)
-	txn.Enter()
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	txn.Exit()
-
-	if rc := methods.End(conn); rc != 0 {
-		t.Fatalf("end failed: %d", rc)
-	}
-
-	txn.Enter()
-	if state := txn.State(); state != transaction.Ended {
-		t.Errorf("leader transaction not in Ended state: %s", state)
-	}
-}
-
-func TestMethods_Checkpoint(t *testing.T) {
-	methods, raft, connections, _ := newMethodsWaitElection()
-	defer cleanupRaftAndConnections(raft, connections)
-
-	conn := openLeader(connections)
-
-	var log, ckpt int
-	if rc := methods.Checkpoint(conn, sqlite3x.WalCheckpointTruncate, &log, &ckpt); rc != 0 {
-		t.Fatalf("checkpoint failed: %d", rc)
-	}
-}
-
-// Wrapper around NewMethods, creating an instance along with its
-// dependencies.
-func newMethods() (*replication.Methods, *raft.Raft, *connection.Registry, *transaction.Registry) {
-	logger := log.New(logOutput(), "", 0)
-
-	config := newRaftConfig()
-	config.EnableSingleNode = true
-	config.Logger = logger
-
-	fsm, connections, transactions := newFSM()
-
-	_, transport := raft.NewInmemTransport("1.2.3.4")
-	peers := &raft.StaticPeers{}
-	raft := newRaft(config, fsm, transport, peers)
-
-	methods := replication.NewMethods(logger, raft, connections, transactions)
-	return methods, raft, connections, transactions
-}
-
-// Like newMethods but also waits for the raft node to self-elect itself.
-func newMethodsWaitElection() (*replication.Methods, *raft.Raft, *connection.Registry, *transaction.Registry) {
-	methods, raft, connections, transactions := newMethods()
-
-	select {
-	case leader := <-raft.LeaderCh():
-		if !leader {
-			panic("raft node did not self-elect itself")
-		}
-	case <-time.After(time.Second):
-		panic("raft node did not self-elect itself within 1 second")
-	}
-
-	return methods, raft, connections, transactions
-}
-
-// Create a new in-memory raft instance configured to run in single mode.
-func newRaft(config *raft.Config, fsm raft.FSM, transport raft.Transport, peers raft.PeerStore) *raft.Raft {
-
-	raft, err := raft.NewRaft(
-		config,
-		fsm,
-		raft.NewInmemStore(),
-		raft.NewInmemStore(),
-		raft.NewDiscardSnapshotStore(),
-		peers,
-		transport,
-	)
-	if err != nil {
-		panic(fmt.Sprintf("failed to start raft: %v", err))
-	}
-	return raft
-}
-
-// Create a new raft.Config tweaked for in-memory testing.
-func newRaftConfig() *raft.Config {
-	config := raft.DefaultConfig()
-	config.HeartbeatTimeout = 50 * time.Millisecond
-	config.ElectionTimeout = 50 * time.Millisecond
-	config.LeaderLeaseTimeout = 50 * time.Millisecond
-	config.CommitTimeout = 25 * time.Millisecond
-
-	return config
-}
-
-// Convenience to shutdown raft and purge the connections registry.
-func cleanupRaftAndConnections(raft *raft.Raft, connections *connection.Registry) {
-	if err := raft.Shutdown().Error(); err != nil {
-		panic(fmt.Sprintf("failed to shutdown raft: %v", err))
-	}
-	if err := connections.Purge(); err != nil {
-		panic(fmt.Sprintf("failed to purge connections registry: %v", err))
-	}
-}
-
-func logOutput() io.Writer {
-	writer := ioutil.Discard
-	if testing.Verbose() {
-		writer = os.Stdout
-	}
-	return writer
+	return methods, conn, cleanup
 }

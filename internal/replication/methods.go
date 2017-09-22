@@ -2,12 +2,14 @@ package replication
 
 import (
 	"fmt"
-	"log"
+	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/commands"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/hashicorp/raft"
@@ -17,12 +19,12 @@ import (
 // NewMethods returns a new Methods instance that can be used as
 // callbacks API for raft-based sqlite replication of a single
 // connection.
-func NewMethods(logger *log.Logger, raft *raft.Raft, connections *connection.Registry, transactions *transaction.Registry) *Methods {
+func NewMethods(raft *raft.Raft, l *log.Logger, c *connection.Registry, t *transaction.Registry) *Methods {
 	return &Methods{
-		logger:       logger,
 		raft:         raft,
-		connections:  connections,
-		transactions: transactions,
+		logger:       l.Augment("methods"),
+		connections:  c,
+		transactions: t,
 		applyTimeout: 10 * time.Second,
 		stale:        map[*sqlite3.SQLiteConn]*transaction.Txn{},
 	}
@@ -31,8 +33,8 @@ func NewMethods(logger *log.Logger, raft *raft.Raft, connections *connection.Reg
 // Methods implements the sqlite replication C API using the sqlite3x
 // bindings.
 type Methods struct {
-	logger       *log.Logger // Log messages go here
 	raft         *raft.Raft  // Eaft engine to use
+	logger       *log.Logger // Log messages go here
 	connections  *connection.Registry
 	transactions *transaction.Registry // Registry of leader and follower transactions
 	applyTimeout time.Duration         // Timeout for applying raft commands
@@ -51,44 +53,53 @@ func (m *Methods) ApplyTimeout(timeout time.Duration) {
 // being started within a connection in leader replication mode on
 // this node.
 func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
-	m.logger.Printf("[DEBUG] dqlite: methods: begin hook for %p", conn)
+	logger := m.hookLogger(conn, "begin")
 
-	m.checkNoTxnForConn(conn)
-
-	if errno := m.ensureIsLeader(); errno != 0 {
-		m.logger.Printf("[DEBUG] dqlite: begin hook for %p failed: not leader", conn)
-		return errno
+	// It should never happen that we have an ongoing write transaction for
+	// this connection, since SQLite locking system itself prevents it by
+	// serializing write transactions. Still double check it for sanity.
+	if txn := m.transactions.GetByConn(conn); txn != nil {
+		logger.Panicf("found leader transaction %s (%s)", txn.ID(), txn)
 	}
 
-	name := m.connections.FilenameOfLeader(conn)
+	if err := checkIsLeader(logger, m.raft); err != nil {
+		return errno(err)
+	}
 
-	if errno := m.ensureFollowerConnectionExists(name); errno != 0 {
-		return errno
+	filename := m.connections.FilenameOfLeader(conn)
+	logger = logger.Augment(filepath.Base(filename))
+
+	if err := m.maybeAddFollowerConn(logger, filename); err != nil {
+		return errno(err)
 	}
 
 	// Insert a new transaction in the registry.
-	txn := m.transactions.AddLeader(conn)
+	txid := strconv.Itoa(int(m.raft.LastIndex()))
+	logger = logger.Augment(fmt.Sprintf("txn %s", txid))
+	logger.Tracef("register transaction")
+	txn := m.transactions.AddLeader(conn, txid)
 
-	if errno := m.ensureNoFollower(name); errno != 0 {
+	if err := m.maybeUndoFollowerTxn(logger, filename); err != nil {
 		// We failed to rollback a leftover follower, let's
 		// mark the transaction as stale. It should then be
 		// purged by client code.
 		txn.Enter()
 		defer txn.Exit()
-		if errno := m.markStale(txn); errno != 0 {
-			return errno
+		if err := m.markStale(logger, txn); err != nil {
+			return errno(err)
 		}
-		return errno
+		return errno(err)
 	}
 
-	if errno := m.apply(commands.NewBegin(txn.ID(), name)); errno != 0 {
+	command := commands.NewBegin(txn.ID(), filename)
+	if err := m.apply(logger, command); err != nil {
 		txn.Enter()
 		defer txn.Exit()
 
 		// Let's stale the transaction, so follow-up rollback hooks
 		// triggered by client clean-up will no-op.
-		if errno := m.markStale(txn); errno != 0 {
-			return errno
+		if err := m.markStale(logger, txn); err != nil {
+			return errno(err)
 		}
 		if txn.State() == transaction.Started {
 			// This means that the raft still managed to succeed, a very
@@ -96,12 +107,11 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 			// bad timing of thread and goroutine scheduling. Create a
 			// surrogate leftover follower so any rollback raft command
 			// initiated by the next leader will find it.
-			if errno := m.createSurrogateFollower(name, txn.ID()); errno != 0 {
-				return errno
+			if err := m.addFollowerTxn(logger, filename, txn.ID()); err != nil {
+				return errno(err)
 			}
 		}
-
-		return errno
+		return errno(err)
 	}
 	return 0
 }
@@ -109,14 +119,16 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 // WalFrames is the hook invoked by sqlite when new frames need to be
 // flushed to the write-ahead log.
 func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3x.ReplicationWalFramesParams) sqlite3.ErrNo {
-	m.logger.Printf("[DEBUG] dqlite: methods: wal frames hook for %p", conn)
+	logger := m.hookLogger(conn, "wal frames")
+	logger.Tracef("pages=%d commit=%d", len(frames.Pages), frames.IsCommit)
 
-	txn := m.lookupExistingLeaderForConn(conn)
+	txn := m.lookupTxn(logger, conn)
+	logger = logger.Augment(fmt.Sprintf("txn %s", txn.ID()))
 
-	if errno := m.checkIsLeader("wal frames"); errno != 0 {
+	if err := checkIsLeader(logger, m.raft); err != nil {
 		// If we have lost leadership we're in a state where
 		// the transaction began on this node and a quorum of
-		// follower. When we return an error, SQLite will try
+		// followers. When we return an error, SQLite will try
 		// to automatically rollback the WAL: we need to mark
 		// the transaction as stale (so the follow-up undo and
 		// end command will succeed as no-op) and create a
@@ -124,21 +136,22 @@ func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3x.Replicati
 		// leftover). See also #2.
 		txn.Enter()
 		defer txn.Exit()
-		if errno := m.markStaleAndCreateSurrogateFollower(txn); errno != 0 {
-			return errno
+		if err := m.markStaleAndAddFollowerTxn(logger, txn); err != nil {
+			return errno(err)
 		}
-		return errno
+		return errno(err)
 	}
 
-	m.assertNoFollowerForDatabase(txn.Conn())
+	m.assertNoFollowerTxn(logger, txn.Conn())
 
-	if errno := m.apply(commands.NewWalFrames(txn.ID(), frames)); errno != 0 {
+	command := commands.NewWalFrames(txn.ID(), frames)
+	if err := m.apply(logger, command); err != nil {
 		txn.Enter()
 		defer txn.Exit()
-		if errno := m.markStaleAndCreateSurrogateFollower(txn); errno != 0 {
-			return errno
+		if err := m.markStaleAndAddFollowerTxn(logger, txn); err != nil {
+			return errno(err)
 		}
-		return errno
+		return errno(err)
 	}
 	return 0
 }
@@ -146,28 +159,30 @@ func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3x.Replicati
 // Undo is the hook invoked by sqlite when a write transaction needs
 // to be rolled back.
 func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
-	m.logger.Printf("[DEBUG] dqlite: methods: undo hook for %p", conn)
+	logger := m.hookLogger(conn, "undo")
 
-	txn := m.lookupExistingLeaderForConn(conn)
+	txn := m.lookupTxn(logger, conn)
+	logger = logger.Augment(fmt.Sprintf("txn %s", txn.ID()))
 
-	if m.checkIsStale(txn) {
-		m.logger.Printf("[DEBUG] dqlite: methods: transaction %s is stale, skip undo", txn)
+	if txn.IsStale() {
+		logger.Tracef("transaction is stale, skip undo")
 		return 0
 	}
 
-	if errno := m.checkIsLeader("undo"); errno != 0 {
-		return errno
+	if err := checkIsLeader(logger, m.raft); err != nil {
+		return errno(err)
 	}
 
-	m.assertNoFollowerForDatabase(txn.Conn())
+	m.assertNoFollowerTxn(logger, txn.Conn())
 
-	if errno := m.apply(commands.NewUndo(txn.ID())); errno != 0 {
+	command := commands.NewUndo(txn.ID())
+	if err := m.apply(logger, command); err != nil {
 		txn.Enter()
 		defer txn.Exit()
-		if errno := m.markStaleAndCreateSurrogateFollower(txn); errno != 0 {
-			return errno
+		if err := m.markStaleAndAddFollowerTxn(logger, txn); err != nil {
+			return errno(err)
 		}
-		return errno
+		return errno(err)
 	}
 
 	return 0
@@ -176,49 +191,51 @@ func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 // End is the hook invoked by sqlite when a write transaction needs
 // to be ended.
 func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
-	m.logger.Printf("[DEBUG] dqlite: methods: end hook for %p", conn)
+	logger := m.hookLogger(conn, "end")
 
-	txn := m.lookupExistingLeaderForConn(conn)
+	txn := m.lookupTxn(logger, conn)
+	logger = logger.Augment(fmt.Sprintf("txn %s", txn.ID()))
 
-	if m.checkIsStale(txn) {
-		m.logger.Printf("[DEBUG] dqlite: methods: transaction %s is stale, remove it and skip end", txn)
+	if txn.IsStale() {
+		logger.Tracef("transaction is stale, remove it and skip end")
 		m.dropStale(txn)
 		return 0
 	}
 
-	if errno := m.checkIsLeader("end"); errno != 0 {
-		return errno
+	if err := checkIsLeader(logger, m.raft); err != nil {
+		return errno(err)
 	}
 
-	m.assertNoFollowerForDatabase(txn.Conn())
+	m.assertNoFollowerTxn(logger, txn.Conn())
 
-	if errno := m.apply(commands.NewEnd(txn.ID())); errno != 0 {
+	command := commands.NewEnd(txn.ID())
+	if err := m.apply(logger, command); err != nil {
 		txn.Enter()
 		defer txn.Exit()
 		if txn.State() == transaction.Ended {
 			// The command still has managed to be applied
 			// so let's just remove the transaction, it should not
 			// pop up again.
-			m.logger.Printf("[DEBUG] dqlite: methods: finished transaction that failed to apply end command %s", txn)
+			logger.Tracef("finished transaction that failed to apply end command")
 		} else {
 			// Let's end the transaction ourselves, since we won't be
 			// called back again as end replication hook by client hook.
 			if err := txn.End(); err != nil {
-				m.logger.Printf("[DEBUG] dqlite: methods: failed to end transaction after end command %s", txn)
+				logger.Tracef("failed to end transaction after end command")
 				return sqlite3x.ErrReplication
 			}
 			// Create a surrogate follower, in case the raft command
 			// eventually gets committed or in case we become leader
 			// again and need to rollback.
 			name := m.connections.FilenameOfLeader(txn.Conn())
-			if errno := m.createSurrogateFollower(name, txn.ID()); errno != 0 {
-				return errno
+			if err := m.addFollowerTxn(logger, name, txn.ID()); err != nil {
+				return errno(err)
 			}
 		}
-		return errno
+		return errno(err)
 	}
 
-	m.logger.Printf("[DEBUG] dqlite: methods: remove transaction %s", txn)
+	logger.Tracef("remove transaction")
 
 	return 0
 }
@@ -226,96 +243,41 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 // Checkpoint is the hook invoked by sqlite when the WAL file needs
 // to be checkpointed.
 func (m *Methods) Checkpoint(conn *sqlite3.SQLiteConn, mode sqlite3x.WalCheckpointMode, log *int, ckpt *int) sqlite3.ErrNo {
-	m.logger.Printf("[DEBUG] dqlite: Start firing checkpoint hook, mode %d", mode)
+	logger := m.logger.Augment(fmt.Sprintf("conn %d checkpoint", m.connections.Serial(conn)))
+	logger.Tracef("mode %d", mode)
 
-	if errno := m.checkIsLeader("checkpoint"); errno != 0 {
-		return errno
+	if err := checkIsLeader(logger, m.raft); err != nil {
+		return errno(err)
 	}
 
 	name := m.connections.FilenameOfLeader(conn)
 
-	if errno := m.apply(commands.NewCheckpoint(name)); errno != 0 {
-		return errno
+	command := commands.NewCheckpoint(name)
+	if err := m.apply(logger, command); err != nil {
+		return errno(err)
 	}
 
 	return 0
 }
 
-func (m *Methods) ensureIsLeader() sqlite3.ErrNo {
-	// Poll until the leader is known, or the open timeout expires.
-	//
-	// XXX TODO: use an exponential backoff relative to the timeout? Or even
-	//           figure out how to reliably be notified of leadership change?
-	pollInterval := 50 * time.Millisecond
-	for remaining := m.applyTimeout; remaining >= 0; remaining -= pollInterval {
-		if m.raft.Leader() != "" {
-			break
-		}
-		// Sleep for the minimum value between pollInterval and remaining
-		select {
-		case <-time.After(pollInterval):
-		case <-time.After(remaining):
-		}
-	}
-
-	if m.raft.State() != raft.Leader {
-		return sqlite3x.ErrNotLeader
-	}
-
-	// Wait until all pending logs are applied.
-	barrierTimeout := m.applyTimeout * 3 // TODO: make this configurable
-	if err := m.raft.Barrier(barrierTimeout).Error(); err != nil {
-		if err == raft.ErrLeadershipLost {
-			return sqlite3x.ErrNotLeader
-		}
-		m.logger.Printf("[ERR] dqlite: failed to apply pending logs")
-		return sqlite3x.ErrReplication
-	}
-
-	return 0
+// Augment our logger with connection/hook specific prefix containing the
+// connection serial number and hook name.
+func (m *Methods) hookLogger(conn *sqlite3.SQLiteConn, hook string) *log.Logger {
+	logger := m.logger.Augment(fmt.Sprintf("conn %d %s", m.connections.Serial(conn), hook))
+	logger.Tracef("start")
+	return logger
 }
 
-// Wrapper around IsLeader, logging a message if we don't think we are
-// the leader anymore. This is called by replication hooks, and
-// calling logic will short-circuit if we return non-zero, i.e. if we
-// were deposed between the time of the last successful raft command
-// and now.
-func (m *Methods) checkIsLeader(method string) sqlite3.ErrNo {
-	if m.raft.State() != raft.Leader {
-		m.logger.Printf("[INFO] dqlite: methods: attempted %s method on deposed leader\n", method)
-		return sqlite3x.ErrNotLeader
-	}
-	return 0
-}
-
-// Wrapper around Txn.State()
-func (m *Methods) checkIsStale(txn *transaction.Txn) bool {
-	txn.Enter()
-	defer txn.Exit()
-	return txn.State() == transaction.Stale
-}
-
-// Wrapper around Registry.LeaderByConn, panic'ing if a matching
-// leader transaction is found.
-func (m *Methods) checkNoTxnForConn(conn *sqlite3.SQLiteConn) {
-	// It should never happen that we have an ongoing write
-	// transaction for this connection, since SQLite locking
-	// system itself prevents it by serializing write
-	// transactions. Still double check it for sanity.
-	if txn := m.transactions.GetByConn(conn); txn != nil {
-		panic(fmt.Sprintf("[ERR] dqlite: methods: leader transaction %s is already open", txn))
-	}
-}
-
-// Wrapper around Registry.LeaderByConn, logging an error if no
-// matching leader transaction is found.
-func (m *Methods) lookupExistingLeaderForConn(conn *sqlite3.SQLiteConn) *transaction.Txn {
+// Wrapper around Registry.GetByConn, panic'ing if no matching transaction is
+// found.
+func (m *Methods) lookupTxn(logger *log.Logger, conn *sqlite3.SQLiteConn) *transaction.Txn {
 	txn := m.transactions.GetByConn(conn)
 	if txn == nil {
 		if _, ok := m.stale[conn]; ok {
 			txn = m.stale[conn]
+			logger.Tracef("found stale transaction %s (%s)", txn.ID(), txn)
 		} else {
-			panic(fmt.Sprintf("connection %p has no ongoing transactions", conn))
+			logger.Panicf("no ongoing transactions")
 		}
 	}
 	return txn
@@ -323,13 +285,13 @@ func (m *Methods) lookupExistingLeaderForConn(conn *sqlite3.SQLiteConn) *transac
 
 // Acquire the lock and check if a follower connection is already open
 // for this database, if not open one with the Open raft commands.
-func (m *Methods) ensureFollowerConnectionExists(name string) sqlite3.ErrNo {
+func (m *Methods) maybeAddFollowerConn(logger *log.Logger, name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.connections.HasFollower(name) {
-		return m.apply(commands.NewOpen(name))
+		return m.apply(logger.Augment("new follower"), commands.NewOpen(name))
 	}
-	return 0
+	return nil
 }
 
 // This method ensures that there is no follower write transactions
@@ -349,43 +311,41 @@ func (m *Methods) ensureFollowerConnectionExists(name string) sqlite3.ErrNo {
 // TODO: if the transaction was committed and the leader died
 // just after, we should detect that and report to clients
 // that it was all good.
-func (m *Methods) ensureNoFollower(name string) sqlite3.ErrNo {
+func (m *Methods) maybeUndoFollowerTxn(logger *log.Logger, name string) error {
 	txn := m.transactions.GetByConn(m.connections.Follower(name))
-
 	if txn == nil {
-		return 0
+		return nil
 	}
 
-	m.logger.Printf("[DEBUG] dqlite: methods: rolling back stale transaction %s", txn)
-
-	if errno := m.apply(commands.NewUndo(txn.ID())); errno != 0 {
-		return errno
+	logger.Tracef("undo stale transaction %s (%s)", txn.ID(), txn)
+	if err := m.apply(logger, commands.NewUndo(txn.ID())); err != nil {
+		return err
 	}
-	return m.apply(commands.NewEnd(txn.ID()))
+	return m.apply(logger, commands.NewEnd(txn.ID()))
 }
 
 // Sanity check that there is no ongoing follower write transaction on
 // this node for the given database.
-func (m *Methods) assertNoFollowerForDatabase(conn *sqlite3.SQLiteConn) {
+func (m *Methods) assertNoFollowerTxn(logger *log.Logger, conn *sqlite3.SQLiteConn) {
 	name := m.connections.FilenameOfLeader(conn)
 	if txn := m.transactions.GetByConn(m.connections.Follower(name)); txn != nil {
-		panic(fmt.Sprintf("detected follower write transaction %s", txn))
+		logger.Panicf("detected follower write transaction %s", txn)
 	}
 }
 
 // Apply the given command through raft.
-func (m *Methods) apply(cmd *commands.Command) sqlite3.ErrNo {
-	m.logger.Printf("[DEBUG] dqlite: methods: apply command %s", cmd.Name())
+func (m *Methods) apply(logger *log.Logger, cmd *commands.Command) error {
+	logger.Tracef("apply %s", cmd.Name())
 
 	data, err := commands.Marshal(cmd)
 	if err != nil {
-		m.logger.Printf("[ERR] dqlite: methods: failed to marshal %s: %s", cmd.Name(), err)
-		return sqlite3x.ErrReplication
+		logger.Tracef("failed to marshal %s: %s", cmd.Name(), err)
+		return err
 	}
 
 	future := m.raft.Apply(data, m.applyTimeout)
 	if err := future.Error(); err != nil {
-		m.logger.Printf("[ERR] dqlite: methods: failed to apply %s command: %s", cmd.Name(), err)
+		m.logger.Tracef("failed to apply %s command: %s", cmd.Name(), err)
 
 		// If the node has lost leadership, we return a
 		// dedicated error, so clients will typically retry
@@ -398,18 +358,18 @@ func (m *Methods) apply(cmd *commands.Command) sqlite3.ErrNo {
 		return sqlite3x.ErrReplication
 	}
 
-	m.logger.Printf("[DEBUG] dqlite: methods: applied command %s", cmd.Name())
-	return 0
+	logger.Tracef("done")
+	return nil
 }
 
-func (m *Methods) markStale(txn *transaction.Txn) sqlite3.ErrNo {
-	m.logger.Printf("[DEBUG] dqlite: methods: mark transaction %s as stale", txn)
+func (m *Methods) markStale(logger *log.Logger, txn *transaction.Txn) error {
+	logger.Tracef("mark as stale (%s)", txn)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if err := txn.Stale(); err != nil {
-		m.logger.Printf("[ERR] dqlite: methods: failed to mark transaction %s as stale: %s", txn, err)
-		return sqlite3x.ErrReplication
+		logger.Tracef("failed stale transition: %v", err)
+		return err
 	}
 
 	// Add the transaction to the stale index.
@@ -417,9 +377,10 @@ func (m *Methods) markStale(txn *transaction.Txn) sqlite3.ErrNo {
 
 	// Stale transactions instances are not involved anymore in
 	// raft-applied commands, so remove them from the registry.
+	logger.Tracef("remove stale transaction from registry")
 	m.transactions.Remove(txn.ID())
 
-	return 0
+	return nil
 }
 
 func (m *Methods) dropStale(txn *transaction.Txn) {
@@ -430,26 +391,49 @@ func (m *Methods) dropStale(txn *transaction.Txn) {
 }
 
 // Create a surrogate follower transaction with the given ID.
-func (m *Methods) createSurrogateFollower(name string, id string) sqlite3.ErrNo {
-	m.logger.Printf("[DEBUG] dqlite: methods: create surrogate follower transaction transaction on '%s' for %s", name, id)
+func (m *Methods) addFollowerTxn(logger *log.Logger, name string, id string) error {
+	logger.Tracef("create surrogate follower transaction")
 	txn := m.transactions.AddFollower(m.connections.Follower(name), id)
 
 	txn.Enter()
 	defer txn.Exit()
 
 	if err := txn.Begin(); err != nil {
-		m.logger.Printf("[ERR] dqlite: methods: failed to begin surrogate follower %s: %s", txn, err)
-		return sqlite3x.ErrReplication
+		logger.Tracef("failed to begin surrogate follower: %v", err)
+		return err
 	}
 
-	return 0
+	return nil
 }
 
-// Mark the transaction as stale and create a surrogate follower transaction with its ID.
-func (m *Methods) markStaleAndCreateSurrogateFollower(txn *transaction.Txn) sqlite3.ErrNo {
-	if errno := m.markStale(txn); errno != 0 {
-		return errno
+// Mark the transaction as stale and create a surrogate follower transaction
+// with its ID.
+func (m *Methods) markStaleAndAddFollowerTxn(logger *log.Logger, txn *transaction.Txn) error {
+	if err := m.markStale(logger, txn); err != nil {
+		return err
 	}
 	name := m.connections.FilenameOfLeader(txn.Conn())
-	return m.createSurrogateFollower(name, txn.ID())
+	return m.addFollowerTxn(logger, name, txn.ID())
+}
+
+// Wrapper around IsLeader, logging a message if we don't think we are the
+// leader anymore. This is called by replication hooks, and calling logic will
+// short-circuit if we return non-zero, i.e. if we were deposed between the
+// time of the last successful raft command and now.
+func checkIsLeader(logger *log.Logger, r *raft.Raft) error {
+	if r.State() != raft.Leader {
+		logger.Tracef("deposed leader")
+		return sqlite3x.ErrNotLeader
+	}
+	return nil
+}
+
+// Convert a Go error into a SQLite error number.
+func errno(err error) sqlite3.ErrNo {
+	switch e := err.(type) {
+	case sqlite3.ErrNo:
+		return e
+	default:
+		return sqlite3x.ErrReplication // Generic replication error.
+	}
 }
