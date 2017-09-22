@@ -13,7 +13,7 @@ func TestRegistry_AddLeader(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddLeader(conn)
+	txn := registry.AddLeader(conn, "1")
 	if txn.ID() == "" {
 		t.Error("no ID assigned to transaction")
 	}
@@ -30,7 +30,7 @@ func TestRegistry_AddLeaderPanicsIfPassedSameLeaderConnectionTwice(t *testing.T)
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddLeader(conn)
+	txn := registry.AddLeader(conn, "1")
 
 	want := fmt.Sprintf("a transaction for this connection is already registered with ID %s", txn.ID())
 	defer func() {
@@ -39,7 +39,7 @@ func TestRegistry_AddLeaderPanicsIfPassedSameLeaderConnectionTwice(t *testing.T)
 			t.Errorf("expected\n%q\ngot\n%q", want, got)
 		}
 	}()
-	registry.AddLeader(conn)
+	registry.AddLeader(conn, "2")
 }
 
 func TestRegistry_AddFollower(t *testing.T) {
@@ -67,7 +67,7 @@ func TestRegistry_GetByID(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddLeader(conn)
+	txn := registry.AddLeader(conn, "0")
 	if registry.GetByID(txn.ID()) != txn {
 		t.Error("transactions instances don't match")
 	}
@@ -85,7 +85,7 @@ func TestRegistry_GetByConn(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddLeader(conn)
+	txn := registry.AddLeader(conn, "0")
 	if registry.GetByConn(conn) != txn {
 		t.Error("transactions instances don't match")
 	}
@@ -107,7 +107,7 @@ func TestRegistry_Remove(t *testing.T) {
 
 	registry := newRegistry()
 
-	txn := registry.AddLeader(conn)
+	txn := registry.AddLeader(conn, "0")
 
 	registry.Remove(txn.ID())
 	if registry.GetByID(txn.ID()) != nil {

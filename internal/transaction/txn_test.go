@@ -144,7 +144,7 @@ func TestTxn_StaleFromPending(t *testing.T) {
 	defer connections.Purge()
 
 	registry := newRegistry()
-	txn := registry.AddLeader(conn)
+	txn := registry.AddLeader(conn, "0")
 	txn.Enter()
 
 	if err := txn.Stale(); err != nil {
@@ -164,7 +164,7 @@ func TestTxn_StaleFromStarted(t *testing.T) {
 	registry := newRegistry()
 	registry.DryRun()
 
-	txn := registry.AddLeader(conn)
+	txn := registry.AddLeader(conn, "0")
 	txn.Enter()
 
 	if err := txn.Begin(); err != nil {
@@ -188,7 +188,7 @@ func TestTxn_StaleFromWriting(t *testing.T) {
 	registry := newRegistry()
 	registry.DryRun()
 
-	txn := registry.AddLeader(conn)
+	txn := registry.AddLeader(conn, "0")
 	txn.Enter()
 
 	if err := txn.Begin(); err != nil {
@@ -220,7 +220,7 @@ func TestTxn_StaleFromUndoing(t *testing.T) {
 	// Pretend that the follower transaction is the leader, since
 	// invoking Begin() on an actual leader connection would fail
 	// because the WAL has not started a read transaction.
-	txn := registry.AddLeader(conn)
+	txn := registry.AddLeader(conn, "0")
 	txn.Enter()
 
 	if err := txn.Begin(); err != nil {
@@ -246,7 +246,7 @@ func TestTxn_StaleFromEnded(t *testing.T) {
 	registry := newRegistry()
 	registry.DryRun()
 
-	txn := registry.AddLeader(conn)
+	txn := registry.AddLeader(conn, "0")
 	txn.Enter()
 
 	if err := txn.Begin(); err != nil {

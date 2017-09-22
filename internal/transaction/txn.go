@@ -158,6 +158,14 @@ func (t *Txn) Stale() error {
 	return t.transition(Stale)
 }
 
+// IsStale returns true if the underlying connection is the Stale state.
+func (t *Txn) IsStale() bool {
+	// This flag is set by the registry at creation time. See Registry.add().
+	t.Enter()
+	defer t.Exit()
+	return t.State() == Stale
+}
+
 // DryRun makes this transaction only transition between states, without
 // actually invoking the relevant SQLite APIs. This should only be
 // used by tests.
