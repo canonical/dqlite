@@ -183,7 +183,7 @@ func (r *Registry) addConn(conn *sqlite3.SQLiteConn) {
 		panic(fmt.Sprintf("connection is already registered with serial %d", serial))
 	}
 
-	atomic.AddUint64(&serial, 1)
+	defer atomic.AddUint64(&serial, 1)
 	r.serial[conn] = serial
 }
 

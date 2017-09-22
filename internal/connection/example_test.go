@@ -46,12 +46,10 @@ func Example() {
 	// [test.db]
 	// true
 	// true
-	// true
 	fmt.Println(registry.FilenameOfLeader(leader))
 	fmt.Println(len(registry.Leaders("test.db")))
 	fmt.Println(registry.Leaders("test.db")[0] == leader)
 	fmt.Println(registry.FilenamesOfFollowers())
 	fmt.Println(registry.HasFollower("test.db"))
 	fmt.Println(registry.Follower("test.db") == follower)
-	fmt.Println(registry.Serial(follower) > 0)
 }
