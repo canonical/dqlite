@@ -90,5 +90,10 @@ func newCommand(params isCommand_Params) *Command {
 // type.
 func (c *Command) Name() string {
 	typeName := reflect.TypeOf(c.Params).Elem().String()
-	return strings.ToLower(strings.Replace(typeName, "commands.Command_", "", 1))
+	name := strings.ToLower(strings.Replace(typeName, "commands.Command_", "", 1))
+	// FIXME: should do proper camel-case level splitting.
+	if name == "walframes" {
+		name = "wal frames"
+	}
+	return name
 }
