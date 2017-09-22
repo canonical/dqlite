@@ -1,24 +1,23 @@
-package logging
+package log
 
 import (
 	"fmt"
-	"log"
+	"strings"
 )
 
 // Logger is a thin wrapper of stdlib's logger that provides support for log
 // levels and it's prefix-based friendly.
 type Logger struct {
-	logger *log.Logger
-	level  Level
-	prefix string
+	backend  Backend
+	level    Level
+	prefixes []string
 }
 
 // New creates a new level-aware logger.
-func New(logger *log.Logger, level Level, prefix string) *Logger {
+func New(backend Backend, level Level) *Logger {
 	return &Logger{
-		logger: logger,
-		level:  level,
-		prefix: prefix,
+		backend: backend,
+		level:   level,
 	}
 
 }
@@ -27,9 +26,9 @@ func New(logger *log.Logger, level Level, prefix string) *Logger {
 // one, but with its prefix augmented with the given string.
 func (l *Logger) Augment(prefix string) *Logger {
 	return &Logger{
-		logger: l.logger,
-		level:  l.level,
-		prefix: l.prefix + prefix,
+		backend:  l.backend,
+		level:    l.level,
+		prefixes: append(l.prefixes, prefix),
 	}
 }
 
@@ -56,17 +55,21 @@ func (l *Logger) Errorf(format string, v ...interface{}) {
 // Panicf logs messages at Pannic level.
 func (l *Logger) Panicf(format string, v ...interface{}) {
 	l.printf(Panic, format, v...)
-	panic(l.format(format, v...))
+
+	prefix := strings.Join(l.prefixes, ": ") + ": "
+	panic(fmt.Sprintf(prefix+format, v...))
 }
 
 func (l *Logger) printf(level Level, format string, v ...interface{}) {
 	if level < l.level {
 		return
 	}
-	l.logger.Output(3, fmt.Sprintf("[%s] %s", level, l.format(format, v...)))
-}
 
-func (l *Logger) format(format string, v ...interface{}) string {
-	format = fmt.Sprintf("%s%s", l.prefix, format)
-	return fmt.Sprintf(format, v...)
+	message := ""
+	for _, prefix := range l.prefixes {
+		message += prefix + ": "
+	}
+	message += fmt.Sprintf(format, v...)
+
+	l.backend.Output(level, message)
 }

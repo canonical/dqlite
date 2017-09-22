@@ -1,14 +1,14 @@
-package logging_test
+package log_test
 
 import (
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/internal/logging"
+	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestLevel_Unknown(t *testing.T) {
-	level := logging.Level(666)
+	level := log.Level(666)
 	f := func() { level.String() }
 	assert.Panics(t, f)
 }
