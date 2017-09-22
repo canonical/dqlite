@@ -7,7 +7,6 @@ import (
 
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/mattn/go-sqlite3"
-	"github.com/pborman/uuid"
 )
 
 // Registry is a dqlite node-level data stracture that tracks all
@@ -43,20 +42,15 @@ func NewRegistry() *Registry {
 // AddLeader adds a new transaction to the registry. The given connection is
 // assumed to be in leader replication mode. The new transaction will
 // be assigned a unique ID.
-func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn, ids ...string) *Txn {
+//
+// FIXME: txid should be uint64
+func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn, txid string) *Txn {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.checkReplicationMode(conn, sqlite3x.ReplicationModeLeader)
 
-	// FIXME the txid should mandatory
-	var id string
-	if len(ids) > 0 {
-		id = ids[0]
-	} else {
-		id = uuid.NewRandom().String()
-	}
-	return r.add(conn, id, true)
+	return r.add(conn, txid, true)
 }
 
 // AddFollower adds a new transaction to the registry. The given
