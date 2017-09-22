@@ -6,35 +6,23 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"path/filepath"
 
 	"github.com/CanonicalLtd/dqlite/internal/commands"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
-	"github.com/CanonicalLtd/dqlite/internal/logging"
+	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/hashicorp/raft"
 	"github.com/pkg/errors"
 )
 
-// NewFSMLegacy creates a new Raft state machine for executing dqlite-specific
-// commands.
-func NewFSMLegacy(logger *log.Logger, conns *connection.Registry, txns *transaction.Registry) *FSM {
-	return &FSM{
-		logger:       logging.New(logger, logging.Trace, ""),
-		connections:  conns,
-		transactions: txns,
-		indexes:      make(chan uint64, 10), // Should be enough for tests
-	}
-}
-
 // NewFSM creates a new Raft state machine for executing dqlite-specific
 // commands.
-func NewFSM(dir string, l *logging.Logger, c *connection.Registry, t *transaction.Registry) *FSM {
+func NewFSM(l *log.Logger, dir string, c *connection.Registry, t *transaction.Registry) *FSM {
 	return &FSM{
+		logger:       l.Augment("fsm"),
 		dir:          dir,
-		logger:       l.Augment("fsm: "),
 		connections:  c,
 		transactions: t,
 	}
@@ -44,7 +32,7 @@ func NewFSM(dir string, l *logging.Logger, c *connection.Registry, t *transactio
 // SQLite data.
 type FSM struct {
 	dir          string
-	logger       *logging.Logger
+	logger       *log.Logger
 	connections  *connection.Registry  // Open connections (either leaders or followers).
 	transactions *transaction.Registry // Ongoing write transactions.
 
@@ -56,15 +44,15 @@ type FSM struct {
 // ApplyFuture returned by Raft.Apply method if that
 // method was called on the same Raft node as the FSM.
 func (f *FSM) Apply(log *raft.Log) interface{} {
-	logger := f.logger.Augment(fmt.Sprintf("log %d: ", log.Index))
+	logger := f.logger.Augment(fmt.Sprintf("apply log %d", log.Index))
 	logger.Tracef("start")
 
 	cmd, err := commands.Unmarshal(log.Data)
 	if err != nil {
-		logger.Panicf("corrupted command: %v", err)
+		logger.Panicf("corrupted: %v", err)
 	}
 
-	logger = logger.Augment(fmt.Sprintf("%s: ", cmd.Name()))
+	logger = logger.Augment(cmd.Name())
 	logger.Tracef("start")
 	defer func() {
 		if result := recover(); result != nil {
@@ -92,38 +80,26 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 
 	logger.Tracef("done")
 
-	// Non-blocking notification of the last applied index. Used
-	// by tests for waiting for followers to actually finish
-	// committing logs.
-	select {
-	case f.indexes <- log.Index:
-	default:
+	if f.indexes != nil {
+		// Notification of the last applied index. Used by tests for
+		// waiting for followers to actually finish committing logs.
+		f.indexes <- log.Index
 	}
 
 	return nil
 }
 
-// Wait blocks until the command with the given index has been applied.
-func (f *FSM) Wait(index uint64) {
-	for {
-		if <-f.indexes >= index {
-			return
-		}
-	}
-}
-
-func (f *FSM) applyOpen(logger *logging.Logger, params *commands.Open) {
+func (f *FSM) applyOpen(logger *log.Logger, params *commands.Open) {
 	logger.Tracef("add follower for %s", params.Name)
-	uri := filepath.Join(f.dir, params.Name)
-	conn, err := connection.OpenFollower(uri)
+	conn, err := connection.OpenFollower(filepath.Join(f.dir, params.Name))
 	if err != nil {
 		logger.Panicf("failed to open follower connection: %v", err)
 	}
 	f.connections.AddFollower(params.Name, conn)
 }
 
-func (f *FSM) applyBegin(logger *logging.Logger, params *commands.Begin) {
-	logger = logger.Augment(fmt.Sprintf("txn %s: ", params.Txid))
+func (f *FSM) applyBegin(logger *log.Logger, params *commands.Begin) {
+	logger = logger.Augment(fmt.Sprintf("txn %s", params.Txid))
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn != nil {
@@ -144,7 +120,7 @@ func (f *FSM) applyBegin(logger *logging.Logger, params *commands.Begin) {
 		// way).
 		for _, conn := range f.connections.Leaders(params.Name) {
 			if txn := f.transactions.GetByConn(conn); txn != nil {
-				logger.Panicf("found dangling transaction %s", txn)
+				logger.Panicf("dangling transaction %s", txn)
 			}
 		}
 
@@ -157,8 +133,8 @@ func (f *FSM) applyBegin(logger *logging.Logger, params *commands.Begin) {
 	}
 }
 
-func (f *FSM) applyWalFrames(logger *logging.Logger, params *commands.WalFrames) {
-	logger = logger.Augment(fmt.Sprintf("txn %s: ", params.Txid))
+func (f *FSM) applyWalFrames(logger *log.Logger, params *commands.WalFrames) {
+	logger = logger.Augment(fmt.Sprintf("txn %s", params.Txid))
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
@@ -166,7 +142,7 @@ func (f *FSM) applyWalFrames(logger *logging.Logger, params *commands.WalFrames)
 	}
 
 	logger.Tracef(txn.String())
-	logger.Tracef("%d frames, commit=%v", len(params.Pages), params.IsCommit)
+	logger.Tracef("pages=%d commit=%d", len(params.Pages), params.IsCommit)
 
 	pages := sqlite3x.NewReplicationPages(len(params.Pages), int(params.PageSize))
 	defer sqlite3x.DestroyReplicationPages(pages)
@@ -188,8 +164,8 @@ func (f *FSM) applyWalFrames(logger *logging.Logger, params *commands.WalFrames)
 	}
 }
 
-func (f *FSM) applyUndo(logger *logging.Logger, params *commands.Undo) {
-	logger = logger.Augment(fmt.Sprintf("txn %s: ", params.Txid))
+func (f *FSM) applyUndo(logger *log.Logger, params *commands.Undo) {
+	logger = logger.Augment(fmt.Sprintf("txn %s", params.Txid))
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
 		logger.Panicf("not found")
@@ -201,8 +177,8 @@ func (f *FSM) applyUndo(logger *logging.Logger, params *commands.Undo) {
 	}
 }
 
-func (f *FSM) applyEnd(logger *logging.Logger, params *commands.End) {
-	logger = logger.Augment(fmt.Sprintf("txn %s: ", params.Txid))
+func (f *FSM) applyEnd(logger *log.Logger, params *commands.End) {
+	logger = logger.Augment(fmt.Sprintf("txn %s", params.Txid))
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
@@ -218,7 +194,7 @@ func (f *FSM) applyEnd(logger *logging.Logger, params *commands.End) {
 	f.transactions.Remove(params.Txid)
 }
 
-func (f *FSM) applyCheckpoint(logger *logging.Logger, params *commands.Checkpoint) {
+func (f *FSM) applyCheckpoint(logger *log.Logger, params *commands.Checkpoint) {
 	conn := f.connections.Follower(params.Name)
 
 	logger.Tracef("filename '%s'", params.Name)
@@ -229,7 +205,7 @@ func (f *FSM) applyCheckpoint(logger *logging.Logger, params *commands.Checkpoin
 		// XXX TODO: choose correct leader connection, without
 		//           assuming that there is at most one
 		conn = leaderConn
-		logger.Tracef("using leader connection %d", f.connections.Serial(conn))
+		logger.Tracef("using leader connection %s", f.connections.Serial(conn))
 		break
 	}
 
@@ -281,7 +257,7 @@ func (f *FSM) applyCheckpoint(logger *logging.Logger, params *commands.Checkpoin
 // This is a bit heavy-weight but should be safe. Optimizations can be added as
 // needed.
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	logger := f.logger.Augment("snapshot: ")
+	logger := f.logger.Augment("snapshot")
 	logger.Tracef("start")
 
 	backups := []*fsmDatabaseSnapshot{}
@@ -311,7 +287,7 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 // concurrently with any other commands. The FSM must discard all previous
 // state.
 func (f *FSM) Restore(reader io.ReadCloser) error {
-	logger := f.logger.Augment("restore: ")
+	logger := f.logger.Augment("restore")
 	logger.Tracef("start")
 
 	for {
@@ -330,15 +306,15 @@ func (f *FSM) Restore(reader io.ReadCloser) error {
 }
 
 // Backup a single database.
-func (f *FSM) snapshotDatabase(logger *logging.Logger, name string) (*fsmDatabaseSnapshot, error) {
-	logger = logger.Augment(fmt.Sprintf("%s: ", name))
+func (f *FSM) snapshotDatabase(logger *log.Logger, path string) (*fsmDatabaseSnapshot, error) {
+	logger = logger.Augment(path)
 	logger.Tracef("backup")
 
 	// Figure out if there is an ongoing transaction associated with any of
 	// the database connections, if so we'll return an error.
-	conns := f.connections.Leaders(name)
-	conns = append(conns, f.connections.Follower(name))
-
+	follower := f.connections.Follower(path)
+	conns := f.connections.Leaders(path)
+	conns = append(conns, follower)
 	txid := ""
 	for _, conn := range conns {
 		if txn := f.transactions.GetByConn(conn); txn != nil {
@@ -353,12 +329,12 @@ func (f *FSM) snapshotDatabase(logger *logging.Logger, name string) (*fsmDatabas
 		}
 	}
 
-	database, wal, err := connection.Snapshot(f.dir, name)
+	database, wal, err := connection.Snapshot(filepath.Join(f.dir, path))
 	if err != nil {
 		return nil, err
 	}
 	return &fsmDatabaseSnapshot{
-		filename: name,
+		filename: path,
 		database: database,
 		wal:      wal,
 		txid:     txid,
@@ -367,7 +343,7 @@ func (f *FSM) snapshotDatabase(logger *logging.Logger, name string) (*fsmDatabas
 
 // Restore a single database. Returns true if there are more databases
 // to restore, false otherwise.
-func (f *FSM) restoreDatabase(logger *logging.Logger, reader io.ReadCloser) (bool, error) {
+func (f *FSM) restoreDatabase(logger *log.Logger, reader io.ReadCloser) (bool, error) {
 	done := false
 
 	// The first 8 bytes contain the size of database.
@@ -396,14 +372,14 @@ func (f *FSM) restoreDatabase(logger *logging.Logger, reader io.ReadCloser) (boo
 		return false, errors.Wrap(err, "failed to read wal data")
 	}
 
-	// Read the database filename.
+	// Read the database path.
 	bufReader := bufio.NewReader(reader)
 	filename, err := bufReader.ReadString(0)
 	if err != nil {
 		return false, errors.Wrap(err, "failed to read database name")
 	}
 	filename = filename[:len(filename)-1] // Strip the trailing 0
-	logger = logger.Augment(fmt.Sprintf("%s :", filename))
+	logger = logger.Augment(filename)
 	logger.Tracef("done reading database and WAL bytes")
 
 	// Check that there are no leader connections for this database.
@@ -445,13 +421,13 @@ func (f *FSM) restoreDatabase(logger *logging.Logger, reader io.ReadCloser) (boo
 	logger.Tracef("txid %s", txid)
 
 	logger.Tracef("restore")
-	if err := connection.Restore(f.dir, filename, data, wal); err != nil {
+
+	if err := connection.Restore(filepath.Join(f.dir, filename), data, wal); err != nil {
 		return false, err
 	}
 
 	logger.Tracef("open follower")
-	uri := filepath.Join(f.dir, filename)
-	conn, err := connection.OpenFollower(uri)
+	conn, err := connection.OpenFollower(filepath.Join(f.dir, filename))
 	if err != nil {
 		return false, err
 	}

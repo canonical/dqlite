@@ -2,94 +2,88 @@ package replication_test
 
 import (
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/CanonicalLtd/raft-test"
+	"github.com/hashicorp/raft"
 	"github.com/mattn/go-sqlite3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+// Check that the WAL is actually replicated.
 func TestIntegration_Replication(t *testing.T) {
-	cluster, cleanup := newCluster()
-	defer cleanup()
+	cluster := newCluster(t)
+	defer cluster.Cleanup()
 
-	node1 := cluster.LeadershipAcquired()
-	conn1 := openConn(node1)
-	if _, err := conn1.Exec("CREATE TABLE test (n INT)", nil); err != nil {
-		t.Fatal(err)
-	}
+	// Get a leader connection on the leader node.
+	i := cluster.Notify.NextAcquired(time.Second)
+	conn := cluster.Conns[i]
 
-	node2 := cluster.Peers(node1)[0]
+	// Run a WAL-writing query.
+	_, err := conn.Exec("CREATE TABLE test (n INT)", nil)
+	require.NoError(t, err)
 
-	fsm := node2.FSM.(*replication.FSM)
-	fsm.Wait(node1.Raft().AppliedIndex())
+	// Wait for a follower to replicate the WAL.
+	j := rafttest.Other(cluster.Rafts, i)
+	fsm := cluster.FSMs[j]
+	fsm.Wait(cluster.Rafts[i].AppliedIndex())
 
-	conn2 := openConn(node2)
-	if _, err := conn2.Query("SELECT * FROM test", nil); err != nil {
-		t.Fatal(err)
-	}
+	// Get a leader conneciton on the follower and check that the change is
+	// there.
+	conn = cluster.Conns[j]
+	_, err = conn.Exec("SELECT * FROM test", nil)
+	assert.NoError(t, err)
 }
 
+// If the raft Apply() method fails, the query returns an error and the pending
+// transaction is removed from the registry.
 func TestIntegration_RaftApplyErrorRemovePendingTxn(t *testing.T) {
-	cluster, cleanup := newCluster()
-	defer cleanup()
+	cluster := newCluster(t)
+	defer cluster.Cleanup()
 
-	node := cluster.LeadershipAcquired()
+	// Get a leader connection on the leader node.
+	i := cluster.Notify.NextAcquired(time.Second)
+	conn := cluster.Conns[i]
 
-	conn := openConn(node)
-	cluster.Disconnect(node)
+	// Disconnect the leader
+	cluster.Network.Disconnect(i)
 
 	_, err := conn.Exec("CREATE TABLE test (n INT)", nil)
+	assert.EqualError(t, err, sqlite3x.ErrNotLeader.Error())
 
-	if err == nil {
-		t.Fatal("expected error when executing a statement on a disconnected leader")
-	}
-	want := sqlite3x.ErrorString(sqlite3x.ErrNotLeader)
-	got := err.Error()
-	if got != want {
-		t.Errorf("expected\n%q\ngot\n%q", want, got)
-	}
-	if txn := findTxn(cluster, conn); txn != nil {
-		t.Errorf("expected pending transaction to be removed, found %s", txn)
-	}
+	fsm := cluster.FSMs[i]
+	assert.Nil(t, fsm.Transactions().GetByConn(conn))
 }
 
 func TestIntegration_RaftApplyErrorWithInflightTxnAndRecoverOnNewLeader(t *testing.T) {
-	cluster, cleanup := newCluster()
-	defer cleanup()
+	cluster := newCluster(t)
+	defer cluster.Cleanup()
 
-	node := cluster.LeadershipAcquired()
+	// Get a leader connection on the leader node.
+	i := cluster.Notify.NextAcquired(time.Second)
+	conn := cluster.Conns[i]
 
-	conn := openConn(node)
+	// Start a write transaction.
+	_, err := conn.Exec("BEGIN; CREATE TABLE test (n INT)", nil)
+	require.NoError(t, err)
 
-	if _, err := conn.Exec("BEGIN; CREATE TABLE test (n INT)", nil); err != nil {
-		t.Fatal(err)
-	}
+	// Disconnect the leader
+	cluster.Network.Disconnect(i)
 
-	cluster.Disconnect(node)
+	// Try finish the transaction.
+	_, err = conn.Exec("INSERT INTO test VALUES(1); COMMIT", nil)
+	require.EqualError(t, err, sqlite3x.ErrNotLeader.Error())
 
-	_, err := conn.Exec("INSERT INTO test VALUES(1); COMMIT", nil)
-	if err == nil {
-		t.Fatal("expected error when executing a statement on a disconnected leader")
-	}
-
-	want := sqlite3x.ErrorString(sqlite3x.ErrNotLeader)
-	got := err.Error()
-	if got != want {
-		t.Errorf("expected\n%q\ngot\n%q", want, got)
-	}
-
-	node = cluster.LeadershipAcquired()
-	if err := node.Raft().Barrier(time.Second).Error(); err != nil {
-		t.Fatal(err)
-	}
-
-	conn = openConn(node)
+	// Wait for a follower be promoted and catch up with logs.
+	j := cluster.Notify.NextAcquired(time.Second)
+	require.NoError(t, cluster.Rafts[j].Barrier(time.Second).Error())
 
 	// XXX here we need to re-run the CREATE TABLE statement
 	// because there are two failure modes for the first CREATE
@@ -99,84 +93,84 @@ func TestIntegration_RaftApplyErrorWithInflightTxnAndRecoverOnNewLeader(t *testi
 	// that leadership is lost but still the log entry gets
 	// committed to the other nodes, and in that case the table is
 	// there on the new leader.
-	if _, err := conn.Exec("BEGIN; CREATE TABLE IF NOT EXISTS test (n INT); INSERT INTO test VALUES(2); COMMIT", nil); err != nil {
-		t.Fatal(err)
-	}
+	conn = cluster.Conns[j]
+	_, err = conn.Exec(
+		"BEGIN; CREATE TABLE IF NOT EXISTS test (n INT); INSERT INTO test VALUES(2); COMMIT", nil)
+	assert.NoError(t, err)
 
 }
 
-// Create a new test raft cluster and configure each node to perform
-// SQLite replication.
-func newCluster() (*rafttest.Cluster, func()) {
-	cluster := rafttest.NewCluster(3)
-	cluster.Timeout = 25 * time.Second
+type cluster struct {
+	FSMs    []*replication.FSM
+	Notify  *rafttest.NotifyKnob  // Notifications of leadership changes.
+	Network *rafttest.NetworkKnob // Network control
+	Rafts   []*raft.Raft          // Raft nodes.
+	Conns   []*sqlite3.SQLiteConn // Leader connections.
 
-	for i := 0; i < 3; i++ {
-		node := cluster.Node(i)
-		fsm, connections, transactions := newFSMWithLogger(node.Config.Logger)
-		node.FSM = fsm
-		node.Data = &nodeData{
-			connections:  connections,
-			transactions: transactions,
-		}
-	}
-	cluster.Start()
-
-	for i := 0; i < 3; i++ {
-		node := cluster.Node(i)
-		logger := node.Config.Logger
-
-		data := node.Data.(*nodeData)
-		methods := replication.NewMethods(logger, node.Raft(), data.connections, data.transactions)
-		data.methods = methods
-	}
-
-	cleanup := func() {
-		cluster.Shutdown()
-		for i := 0; i < 3; i++ {
-			node := cluster.Node(i)
-			data := node.Data.(*nodeData)
-			if err := data.connections.Purge(); err != nil {
-				panic(fmt.Sprintf("failed to purge connections registry: %v", err))
-			}
-
-		}
-	}
-
-	return cluster, cleanup
+	cleanups []func()
+	methods  []*replication.Methods
 }
 
-// Open a new leader connection on the given node.
-func openConn(node *rafttest.Node) *sqlite3.SQLiteConn {
-	data := node.Data.(*nodeData)
+// Create a new test cluster with 3 nodes, each of each has its own FSM,
+// Methods and SQLiteConn in leader mode.
+func newCluster(t *testing.T) *cluster {
+	// All cleanups.
+	cleanups := []func(){}
 
-	dsn := connection.NewTestDSN()
-	conn, err := connection.OpenLeader(filepath.Join(data.connections.Dir(), dsn.Filename), data.methods, 1000)
-	if err != nil {
-		panic(fmt.Sprintf(
-			"failed to open leader on node %s: %v",
-			node.Transport.LocalAddr(), err))
+	// Base logger, will be augmented with node-specific prefixes.
+	logger := log.New(log.Testing(t), log.Trace)
+
+	// FSMs.
+	fsms := make([]*replication.FSM, 3)
+	for i := range fsms {
+		logger := logger.Augment(fmt.Sprintf("node %d", i))
+		dir, cleanup := newDir(t)
+		connections := connection.NewRegistry()
+		transactions := transaction.NewRegistry()
+		fsm := replication.NewFSM(logger, dir, connections, transactions)
+		fsm.WithNotify()
+		cleanups = append(cleanups, cleanup)
+		fsms[i] = fsm
 	}
-	data.connections.AddLeader(dsn.Filename, conn)
 
-	return conn
+	// Raft nodes.
+	notify := rafttest.Notify()
+	network := rafttest.Network()
+	rafts, cleanup := rafttest.Cluster(t, []raft.FSM{fsms[0], fsms[1], fsms[2]}, notify, network)
+	cleanups = append(cleanups, cleanup)
+
+	// Methods and leader connections.
+	methods := make([]*replication.Methods, 3)
+	conns := make([]*sqlite3.SQLiteConn, 3)
+	for i := range methods {
+		raft := rafts[i]
+		logger = logger.Augment(fmt.Sprintf("node %d", i))
+		fsm := fsms[i]
+		connections := fsm.Connections()
+		transactions := fsm.Transactions()
+		methods[i] = replication.NewMethods(raft, logger, connections, transactions)
+
+		conn, cleanup := newLeaderConn(t, fsm.Dir(), methods[i])
+		cleanups = append(cleanups, cleanup)
+		conns[i] = conn
+
+		methods[i].Connections().AddLeader("test.db", conn)
+	}
+
+	return &cluster{
+		FSMs:     fsms,
+		Notify:   notify,
+		Network:  network,
+		Rafts:    rafts,
+		Conns:    conns,
+		cleanups: cleanups,
+		methods:  methods,
+	}
 }
 
-// Find the transaction associated with the given connection.
-func findTxn(cluster *rafttest.Cluster, conn *sqlite3.SQLiteConn) *transaction.Txn {
-	for i := 0; i < 3; i++ {
-		node := cluster.Node(i)
-		data := node.Data.(*nodeData)
-		if txn := data.transactions.GetByConn(conn); txn != nil {
-			return txn
-		}
+func (c *cluster) Cleanup() {
+	// Execute the cleanups in reverse order.
+	for i := len(c.cleanups) - 1; i >= 0; i-- {
+		c.cleanups[i]()
 	}
-	return nil
-}
-
-// Node-level data specific to dqlite. They'll be saved in node.Data.
-type nodeData struct {
-	connections  *connection.Registry
-	transactions *transaction.Registry
-	methods      *replication.Methods
 }
