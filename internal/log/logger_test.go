@@ -50,7 +50,7 @@ func TestLogger_Debugf(t *testing.T) {
 	for _, c := range cases {
 		subtest.Run(t, c.title, func(t *testing.T) {
 			buffer := newBuffer()
-			logger := log.New(buffer, c.level)
+			logger := log.New(buffer.Log, c.level)
 			logger.Debugf(c.format, c.values...)
 			assert.Equal(t, c.output, buffer.String())
 		})
@@ -59,7 +59,7 @@ func TestLogger_Debugf(t *testing.T) {
 
 func TestLogger_Levels(t *testing.T) {
 	buffer := newBuffer()
-	logger := log.New(buffer, log.Trace)
+	logger := log.New(buffer.Log, log.Trace)
 	cases := []struct {
 		level  log.Level
 		method func(string, ...interface{})
@@ -79,14 +79,15 @@ func TestLogger_Levels(t *testing.T) {
 }
 
 func TestLogger_Panicf(t *testing.T) {
-	logger := log.New(newBuffer(), log.Trace)
+	buffer := newBuffer()
+	logger := log.New(buffer.Log, log.Trace)
 	f := func() { logger.Panicf("hi") }
-	assert.PanicsWithValue(t, " hi", f)
+	assert.PanicsWithValue(t, "hi", f)
 }
 
 func TestAugmentLogger(t *testing.T) {
 	buffer := newBuffer()
-	logger := log.New(buffer, log.Trace)
+	logger := log.New(buffer.Log, log.Trace)
 	logger = logger.Augment("foo")
 	logger.Tracef("hi")
 	assert.Equal(t, "TRACE foo: hi", buffer.String())
@@ -100,7 +101,7 @@ func newBuffer() *buffer {
 	return &buffer{}
 }
 
-func (b *buffer) Output(level log.Level, message string) error {
+func (b *buffer) Log(level log.Level, message string) error {
 	_, err := b.WriteString(fmt.Sprintf("%s %s", level, message))
 	return err
 }
