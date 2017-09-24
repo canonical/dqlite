@@ -22,17 +22,3 @@ func (f *FSM) Connections() *connection.Registry {
 func (f *FSM) Transactions() *transaction.Registry {
 	return f.transactions
 }
-
-// Wait blocks until the command with the given index has been applied.
-func (f *FSM) Wait(index uint64) {
-	for {
-		if <-f.indexes >= index {
-			return
-		}
-	}
-}
-
-// Turn on indexes notifications.
-func (f *FSM) WithNotify() {
-	f.indexes = make(chan uint64, 128)
-}

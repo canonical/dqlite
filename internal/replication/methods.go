@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CanonicalLtd/dqlite/internal/commands"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/log"
+	"github.com/CanonicalLtd/dqlite/internal/protocol"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/hashicorp/raft"
@@ -91,7 +91,7 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		return errno(err)
 	}
 
-	command := commands.NewBegin(txn.ID(), filename)
+	command := protocol.NewBegin(txn.ID(), filename)
 	if err := m.apply(logger, command); err != nil {
 		txn.Enter()
 		defer txn.Exit()
@@ -144,7 +144,7 @@ func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3x.Replicati
 
 	m.assertNoFollowerTxn(logger, txn.Conn())
 
-	command := commands.NewWalFrames(txn.ID(), frames)
+	command := protocol.NewWalFrames(txn.ID(), frames)
 	if err := m.apply(logger, command); err != nil {
 		txn.Enter()
 		defer txn.Exit()
@@ -175,7 +175,7 @@ func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 
 	m.assertNoFollowerTxn(logger, txn.Conn())
 
-	command := commands.NewUndo(txn.ID())
+	command := protocol.NewUndo(txn.ID())
 	if err := m.apply(logger, command); err != nil {
 		txn.Enter()
 		defer txn.Exit()
@@ -208,7 +208,7 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 
 	m.assertNoFollowerTxn(logger, txn.Conn())
 
-	command := commands.NewEnd(txn.ID())
+	command := protocol.NewEnd(txn.ID())
 	if err := m.apply(logger, command); err != nil {
 		txn.Enter()
 		defer txn.Exit()
@@ -252,7 +252,7 @@ func (m *Methods) Checkpoint(conn *sqlite3.SQLiteConn, mode sqlite3x.WalCheckpoi
 
 	name := m.connections.FilenameOfLeader(conn)
 
-	command := commands.NewCheckpoint(name)
+	command := protocol.NewCheckpoint(name)
 	if err := m.apply(logger, command); err != nil {
 		return errno(err)
 	}
@@ -284,12 +284,12 @@ func (m *Methods) lookupTxn(logger *log.Logger, conn *sqlite3.SQLiteConn) *trans
 }
 
 // Acquire the lock and check if a follower connection is already open
-// for this database, if not open one with the Open raft commands.
+// for this database, if not open one with the Open raft command.
 func (m *Methods) maybeAddFollowerConn(logger *log.Logger, name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.connections.HasFollower(name) {
-		return m.apply(logger.Augment("new follower"), commands.NewOpen(name))
+		return m.apply(logger.Augment("new follower"), protocol.NewOpen(name))
 	}
 	return nil
 }
@@ -318,10 +318,10 @@ func (m *Methods) maybeUndoFollowerTxn(logger *log.Logger, name string) error {
 	}
 
 	logger.Tracef("undo stale transaction %s (%s)", txn.ID(), txn)
-	if err := m.apply(logger, commands.NewUndo(txn.ID())); err != nil {
+	if err := m.apply(logger, protocol.NewUndo(txn.ID())); err != nil {
 		return err
 	}
-	return m.apply(logger, commands.NewEnd(txn.ID()))
+	return m.apply(logger, protocol.NewEnd(txn.ID()))
 }
 
 // Sanity check that there is no ongoing follower write transaction on
@@ -334,10 +334,10 @@ func (m *Methods) assertNoFollowerTxn(logger *log.Logger, conn *sqlite3.SQLiteCo
 }
 
 // Apply the given command through raft.
-func (m *Methods) apply(logger *log.Logger, cmd *commands.Command) error {
+func (m *Methods) apply(logger *log.Logger, cmd *protocol.Command) error {
 	logger.Tracef("apply %s", cmd.Name())
 
-	data, err := commands.Marshal(cmd)
+	data, err := protocol.MarshalCommand(cmd)
 	if err != nil {
 		logger.Tracef("failed to marshal %s: %s", cmd.Name(), err)
 		return err
