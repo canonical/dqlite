@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sync/atomic"
 
-	"github.com/CanonicalLtd/dqlite/internal/commands"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/log"
+	"github.com/CanonicalLtd/dqlite/internal/protocol"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/hashicorp/raft"
@@ -18,7 +19,7 @@ import (
 )
 
 // NewFSM creates a new Raft state machine for executing dqlite-specific
-// commands.
+// command.
 func NewFSM(l *log.Logger, dir string, c *connection.Registry, t *transaction.Registry) *FSM {
 	return &FSM{
 		logger:       l.Augment("fsm"),
@@ -35,8 +36,7 @@ type FSM struct {
 	logger       *log.Logger
 	connections  *connection.Registry  // Open connections (either leaders or followers).
 	transactions *transaction.Registry // Ongoing write transactions.
-
-	indexes chan uint64 // Buffered stream of log indexes that have been applied.
+	index        uint64                // Last Raft index that has been successfully applied.
 }
 
 // Apply log is invoked once a log entry is committed.
@@ -47,7 +47,7 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	logger := f.logger.Augment(fmt.Sprintf("apply log %d", log.Index))
 	logger.Tracef("start")
 
-	cmd, err := commands.Unmarshal(log.Data)
+	cmd, err := protocol.UnmarshalCommand(log.Data)
 	if err != nil {
 		logger.Panicf("corrupted: %v", err)
 	}
@@ -62,34 +62,35 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	}()
 
 	switch params := cmd.Params.(type) {
-	case *commands.Command_Open:
+	case *protocol.Command_Open:
 		f.applyOpen(logger, params.Open)
-	case *commands.Command_Begin:
+	case *protocol.Command_Begin:
 		f.applyBegin(logger, params.Begin)
-	case *commands.Command_WalFrames:
+	case *protocol.Command_WalFrames:
 		f.applyWalFrames(logger, params.WalFrames)
-	case *commands.Command_Undo:
+	case *protocol.Command_Undo:
 		f.applyUndo(logger, params.Undo)
-	case *commands.Command_End:
+	case *protocol.Command_End:
 		f.applyEnd(logger, params.End)
-	case *commands.Command_Checkpoint:
+	case *protocol.Command_Checkpoint:
 		f.applyCheckpoint(logger, params.Checkpoint)
 	default:
 		logger.Panicf("unhandled params type")
 	}
 
+	atomic.StoreUint64(&f.index, log.Index)
+
 	logger.Tracef("done")
-
-	if f.indexes != nil {
-		// Notification of the last applied index. Used by tests for
-		// waiting for followers to actually finish committing logs.
-		f.indexes <- log.Index
-	}
-
 	return nil
 }
 
-func (f *FSM) applyOpen(logger *log.Logger, params *commands.Open) {
+// Index returns the last Raft log index that was successfully applied by this
+// FSM.
+func (f *FSM) Index() uint64 {
+	return atomic.LoadUint64(&f.index)
+}
+
+func (f *FSM) applyOpen(logger *log.Logger, params *protocol.Open) {
 	logger.Tracef("add follower for %s", params.Name)
 	conn, err := connection.OpenFollower(filepath.Join(f.dir, params.Name))
 	if err != nil {
@@ -98,7 +99,7 @@ func (f *FSM) applyOpen(logger *log.Logger, params *commands.Open) {
 	f.connections.AddFollower(params.Name, conn)
 }
 
-func (f *FSM) applyBegin(logger *log.Logger, params *commands.Begin) {
+func (f *FSM) applyBegin(logger *log.Logger, params *protocol.Begin) {
 	logger = logger.Augment(fmt.Sprintf("txn %s", params.Txid))
 
 	txn := f.transactions.GetByID(params.Txid)
@@ -133,7 +134,7 @@ func (f *FSM) applyBegin(logger *log.Logger, params *commands.Begin) {
 	}
 }
 
-func (f *FSM) applyWalFrames(logger *log.Logger, params *commands.WalFrames) {
+func (f *FSM) applyWalFrames(logger *log.Logger, params *protocol.WalFrames) {
 	logger = logger.Augment(fmt.Sprintf("txn %s", params.Txid))
 
 	txn := f.transactions.GetByID(params.Txid)
@@ -164,7 +165,7 @@ func (f *FSM) applyWalFrames(logger *log.Logger, params *commands.WalFrames) {
 	}
 }
 
-func (f *FSM) applyUndo(logger *log.Logger, params *commands.Undo) {
+func (f *FSM) applyUndo(logger *log.Logger, params *protocol.Undo) {
 	logger = logger.Augment(fmt.Sprintf("txn %s", params.Txid))
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
@@ -177,7 +178,7 @@ func (f *FSM) applyUndo(logger *log.Logger, params *commands.Undo) {
 	}
 }
 
-func (f *FSM) applyEnd(logger *log.Logger, params *commands.End) {
+func (f *FSM) applyEnd(logger *log.Logger, params *protocol.End) {
 	logger = logger.Augment(fmt.Sprintf("txn %s", params.Txid))
 
 	txn := f.transactions.GetByID(params.Txid)
@@ -194,7 +195,7 @@ func (f *FSM) applyEnd(logger *log.Logger, params *commands.End) {
 	f.transactions.Remove(params.Txid)
 }
 
-func (f *FSM) applyCheckpoint(logger *log.Logger, params *commands.Checkpoint) {
+func (f *FSM) applyCheckpoint(logger *log.Logger, params *protocol.Checkpoint) {
 	conn := f.connections.Follower(params.Name)
 
 	logger.Tracef("filename '%s'", params.Name)
@@ -260,35 +261,43 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	logger := f.logger.Augment("snapshot")
 	logger.Tracef("start")
 
-	backups := []*fsmDatabaseSnapshot{}
+	databases := []*fsmDatabaseSnapshot{}
 
 	// Loop through all known databases and create a backup for each of
-	// them. The filenames associated with follower connections are
-	// authoritative, since there will be one and only follower connection
-	// for each known database (we never close follower connections since
-	// database deletion is not yet supported).
+	// them. The filenames associated with follower connections uniquely
+	// identify all known databases, since there will be one and only
+	// follower connection for each known database (we never close follower
+	// connections since database deletion is not yet supported).
 	for _, name := range f.connections.FilenamesOfFollowers() {
-		backup, err := f.snapshotDatabase(logger, name)
+		database, err := f.snapshotDatabase(logger, name)
 		if err != nil {
-			return nil, errors.Wrapf(err, "cannot backup database %s", name)
+			return nil, errors.Wrapf(err, "cannot snapshot database %s", name)
 		}
-		// Append the backup bytes to the snapshot.
-		backups = append(backups, backup)
+		databases = append(databases, database)
 	}
 
 	logger.Tracef("done")
 
 	return &FSMSnapshot{
-		backups: backups,
+		index:     f.Index(),
+		databases: databases,
 	}, nil
 }
 
 // Restore is used to restore an FSM from a snapshot. It is not called
-// concurrently with any other commands. The FSM must discard all previous
+// concurrently with any other command. The FSM must discard all previous
 // state.
 func (f *FSM) Restore(reader io.ReadCloser) error {
 	logger := f.logger.Augment("restore")
 	logger.Tracef("start")
+
+	// The first 8 bytes contain the FSM Raft log index.
+	var index uint64
+	if err := binary.Read(reader, binary.LittleEndian, &index); err != nil {
+		return errors.Wrap(err, "failed to read FSM index")
+	}
+	atomic.StoreUint64(&f.index, index)
+	logger.Tracef("index %d", index)
 
 	for {
 		done, err := f.restoreDatabase(logger, reader)
@@ -452,14 +461,25 @@ func (f *FSM) restoreDatabase(logger *log.Logger, reader io.ReadCloser) (bool, e
 // It must be safe to invoke FSMSnapshot methods with concurrent
 // calls to Apply.
 type FSMSnapshot struct {
-	backups []*fsmDatabaseSnapshot
+	index     uint64
+	databases []*fsmDatabaseSnapshot
 }
 
 // Persist should dump all necessary state to the WriteCloser 'sink',
 // and call sink.Close() when finished or call sink.Cancel() on error.
 func (s *FSMSnapshot) Persist(sink raft.SnapshotSink) error {
-	for _, backup := range s.backups {
-		if err := s.persistBackup(sink, backup); err != nil {
+	// First, write the FSM index.
+	buffer := new(bytes.Buffer)
+	if err := binary.Write(buffer, binary.LittleEndian, s.index); err != nil {
+		return errors.Wrap(err, "failed to FSM index")
+	}
+	if _, err := sink.Write(buffer.Bytes()); err != nil {
+		return errors.Wrap(err, "failed to write FSM index to sink")
+	}
+
+	// Then write the individual databases.
+	for _, database := range s.databases {
+		if err := s.persistDatabase(sink, database); err != nil {
 			sink.Cancel()
 			return err
 		}
@@ -474,11 +494,11 @@ func (s *FSMSnapshot) Persist(sink raft.SnapshotSink) error {
 	return nil
 }
 
-// Persist a single backup file.
-func (s *FSMSnapshot) persistBackup(sink raft.SnapshotSink, backup *fsmDatabaseSnapshot) error {
+// Persist a single daabase snapshot.
+func (s *FSMSnapshot) persistDatabase(sink raft.SnapshotSink, database *fsmDatabaseSnapshot) error {
 	// Start by writing the size of the backup
 	buffer := new(bytes.Buffer)
-	dataSize := uint64(len(backup.database))
+	dataSize := uint64(len(database.database))
 	if err := binary.Write(buffer, binary.LittleEndian, dataSize); err != nil {
 		return errors.Wrap(err, "failed to encode data size")
 	}
@@ -487,27 +507,27 @@ func (s *FSMSnapshot) persistBackup(sink raft.SnapshotSink, backup *fsmDatabaseS
 	}
 
 	// Next write the data to the sink.
-	if _, err := sink.Write(backup.database); err != nil {
+	if _, err := sink.Write(database.database); err != nil {
 		return errors.Wrap(err, "failed to write backup data to sink")
 
 	}
 
 	buffer.Reset()
-	walSize := uint64(len(backup.wal))
+	walSize := uint64(len(database.wal))
 	if err := binary.Write(buffer, binary.LittleEndian, walSize); err != nil {
 		return errors.Wrap(err, "failed to encode wal size")
 	}
 	if _, err := sink.Write(buffer.Bytes()); err != nil {
 		return errors.Wrap(err, "failed to write wal size to sink")
 	}
-	if _, err := sink.Write(backup.wal); err != nil {
+	if _, err := sink.Write(database.wal); err != nil {
 		return errors.Wrap(err, "failed to write backup data to sink")
 
 	}
 
 	// Next write the database name.
 	buffer.Reset()
-	buffer.WriteString(backup.filename)
+	buffer.WriteString(database.filename)
 	if _, err := sink.Write(buffer.Bytes()); err != nil {
 		return errors.Wrap(err, "failed to write database name to sink")
 	}
@@ -517,7 +537,7 @@ func (s *FSMSnapshot) persistBackup(sink raft.SnapshotSink, backup *fsmDatabaseS
 
 	// FInally write the current transaction ID, if any.
 	buffer.Reset()
-	buffer.WriteString(backup.txid)
+	buffer.WriteString(database.txid)
 	if _, err := sink.Write(buffer.Bytes()); err != nil {
 		return errors.Wrap(err, "failed to write txid to sink")
 	}

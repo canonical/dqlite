@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/internal/commands"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/log"
+	"github.com/CanonicalLtd/dqlite/internal/protocol"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
@@ -47,17 +47,17 @@ var fsmApplyPanicCases = []struct {
 	}, {
 		`existing transaction has non-leader connection`,
 		func(t *testing.T, fsm *replication.FSM) {
-			fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
-			fsm.Apply(newRaftLog(1, commands.NewBegin("abcd", "test.db")))
-			fsm.Apply(newRaftLog(2, commands.NewBegin("abcd", "test.db")))
+			fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
+			fsm.Apply(newRaftLog(1, protocol.NewBegin("abcd", "test.db")))
+			fsm.Apply(newRaftLog(2, protocol.NewBegin("abcd", "test.db")))
 		},
 		"fsm: apply log 2: begin: txn abcd: is started as follower instead of leader",
 	}, {
 		`new follower transaction started before previous is ended`,
 		func(t *testing.T, fsm *replication.FSM) {
-			fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
-			fsm.Apply(newRaftLog(1, commands.NewBegin("abcd", "test.db")))
-			fsm.Apply(newRaftLog(2, commands.NewBegin("efgh", "test.db")))
+			fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
+			fsm.Apply(newRaftLog(1, protocol.NewBegin("abcd", "test.db")))
+			fsm.Apply(newRaftLog(2, protocol.NewBegin("efgh", "test.db")))
 		},
 		"a transaction for this connection is already registered with ID abcd",
 	}, {
@@ -70,33 +70,33 @@ var fsmApplyPanicCases = []struct {
 			fsm.Connections().AddLeader("test.db", conn)
 			fsm.Transactions().AddLeader(conn, "xxxx")
 
-			fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
-			fsm.Apply(newRaftLog(1, commands.NewBegin("abcd", "test.db")))
+			fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
+			fsm.Apply(newRaftLog(1, protocol.NewBegin("abcd", "test.db")))
 		},
 		"fsm: apply log 1: begin: txn abcd: dangling transaction pending as leader",
 	}, {
 		`wal frames transaction not found`,
 		func(t *testing.T, fsm *replication.FSM) {
 			params := newWalFramesParams()
-			fsm.Apply(newRaftLog(0, commands.NewWalFrames("abcd", params)))
+			fsm.Apply(newRaftLog(0, protocol.NewWalFrames("abcd", params)))
 		},
 		"fsm: apply log 0: wal frames: txn abcd: not found",
 	}, {
 		`undo transaction not found`,
 		func(t *testing.T, fsm *replication.FSM) {
-			fsm.Apply(newRaftLog(0, commands.NewUndo("abcd")))
+			fsm.Apply(newRaftLog(0, protocol.NewUndo("abcd")))
 		},
 		"fsm: apply log 0: undo: txn abcd: not found",
 	}, {
 		`end transaction not found`,
 		func(t *testing.T, fsm *replication.FSM) {
-			fsm.Apply(newRaftLog(0, commands.NewEnd("abcd")))
+			fsm.Apply(newRaftLog(0, protocol.NewEnd("abcd")))
 		},
 		"fsm: apply log 0: end: txn abcd: not found",
 	},
 }
 
-// Test the happy path of the various transaction-related commands.
+// Test the happy path of the various transaction-related protocol.
 func TestFSM_ApplyTransactionCommands(t *testing.T) {
 	for _, c := range fsmApplyCases {
 		subtest.Run(t, c.title, func(t *testing.T) {
@@ -128,29 +128,29 @@ var fsmApplyCases = []struct {
 			txn := fsm.Transactions().AddLeader(conn, "0")
 			txn.DryRun(true)
 
-			fsm.Apply(newRaftLog(0, commands.NewBegin("0", "test.db")))
+			fsm.Apply(newRaftLog(0, protocol.NewBegin("0", "test.db")))
 		},
 		transaction.Started,
 	},
 	{
 		`begin follower`,
 		func(t *testing.T, fsm *replication.FSM) {
-			fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
-			fsm.Apply(newRaftLog(1, commands.NewBegin("0", "test.db")))
+			fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
+			fsm.Apply(newRaftLog(1, protocol.NewBegin("0", "test.db")))
 		},
 		transaction.Started,
 	},
 	{
 		`wal frames`,
 		func(t *testing.T, fsm *replication.FSM) {
-			fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
-			fsm.Apply(newRaftLog(1, commands.NewBegin("0", "test.db")))
+			fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
+			fsm.Apply(newRaftLog(1, protocol.NewBegin("0", "test.db")))
 
 			txn := fsm.Transactions().GetByID("0")
 			txn.DryRun(true)
 
 			params := newWalFramesParams()
-			fsm.Apply(newRaftLog(2, commands.NewWalFrames("0", params)))
+			fsm.Apply(newRaftLog(2, protocol.NewWalFrames("0", params)))
 
 		},
 		transaction.Writing,
@@ -158,13 +158,13 @@ var fsmApplyCases = []struct {
 	{
 		`undo`,
 		func(t *testing.T, fsm *replication.FSM) {
-			fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
-			fsm.Apply(newRaftLog(1, commands.NewBegin("0", "test.db")))
+			fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
+			fsm.Apply(newRaftLog(1, protocol.NewBegin("0", "test.db")))
 
 			txn := fsm.Transactions().GetByID("0")
 			txn.DryRun(true)
 
-			fsm.Apply(newRaftLog(2, commands.NewUndo("0")))
+			fsm.Apply(newRaftLog(2, protocol.NewUndo("0")))
 		},
 		transaction.Undoing,
 	},
@@ -175,7 +175,7 @@ func TestFSM_ApplyOpen(t *testing.T) {
 	fsm, cleanup := newFSM(t)
 	defer cleanup()
 
-	fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
+	fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
 	assert.Equal(t, true, fsm.Connections().HasFollower("test.db"))
 }
 
@@ -184,12 +184,12 @@ func TestFSM_ApplyEnd(t *testing.T) {
 	fsm, cleanup := newFSM(t)
 	defer cleanup()
 
-	fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
-	fsm.Apply(newRaftLog(1, commands.NewBegin("abcd", "test.db")))
+	fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
+	fsm.Apply(newRaftLog(1, protocol.NewBegin("abcd", "test.db")))
 
 	txn := fsm.Transactions().GetByID("abcd")
 
-	fsm.Apply(newRaftLog(2, commands.NewEnd("abcd")))
+	fsm.Apply(newRaftLog(2, protocol.NewEnd("abcd")))
 
 	txn.Enter()
 	assert.Equal(t, transaction.Ended, txn.State())
@@ -200,10 +200,10 @@ func TestFSM_ApplyCheckpointPanicsIfFollowerTransactionIsInFlight(t *testing.T) 
 	fsm, cleanup := newFSM(t)
 	defer cleanup()
 
-	fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
-	fsm.Apply(newRaftLog(1, commands.NewBegin("abcd", "test.db")))
+	fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
+	fsm.Apply(newRaftLog(1, protocol.NewBegin("abcd", "test.db")))
 
-	f := func() { fsm.Apply(newRaftLog(2, commands.NewCheckpoint("test.db"))) }
+	f := func() { fsm.Apply(newRaftLog(2, protocol.NewCheckpoint("test.db"))) }
 	msg := "fsm: apply log 2: checkpoint: can't run with transaction abcd started as follower"
 	assert.PanicsWithValue(t, msg, f)
 }
@@ -215,13 +215,13 @@ func TestFSM_ApplyCheckpointWithLeaderConnection(t *testing.T) {
 	conn, cleanup := newLeaderConn(t, fsm.Dir(), sqlite3x.PassthroughReplicationMethods())
 	defer cleanup()
 
-	fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
+	fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
 
 	_, err := conn.Exec("CREATE TABLE foo (n INT)", nil)
 	require.NoError(t, err)
 	require.Equal(t, true, sqlite3x.WalSize(conn) > 0, "WAL has non-positive size")
 
-	fsm.Apply(newRaftLog(1, commands.NewCheckpoint("test.db")))
+	fsm.Apply(newRaftLog(1, protocol.NewCheckpoint("test.db")))
 
 	require.Equal(t, int64(0), sqlite3x.WalSize(conn), "WAL has non-zero size")
 }
@@ -238,7 +238,7 @@ func TestFSM_Snapshot(t *testing.T) {
 	db.Close()
 
 	// Register the database.
-	fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
+	fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
 
 	// Create a snapshot
 	snapshot, err := fsm.Snapshot()
@@ -289,7 +289,7 @@ func TestFSM_Restore(t *testing.T) {
 	db.Close()
 
 	// Register the database.
-	fsm.Apply(newRaftLog(0, commands.NewOpen("test.db")))
+	fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
 
 	// Create a snapshot
 	snapshot, err := fsm.Snapshot()
@@ -329,8 +329,8 @@ func TestFSM_Restore(t *testing.T) {
 }
 
 // Create a *raft.Log for the given dqlite protocol Command.
-func newRaftLog(index uint64, cmd *commands.Command) *raft.Log {
-	data, err := commands.Marshal(cmd)
+func newRaftLog(index uint64, cmd *protocol.Command) *raft.Log {
+	data, err := protocol.MarshalCommand(cmd)
 	if err != nil {
 		panic(fmt.Sprintf("cannot marshal command: %v", err))
 	}
