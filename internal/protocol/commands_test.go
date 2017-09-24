@@ -1,16 +1,16 @@
-package commands_test
+package protocol_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/internal/commands"
+	"github.com/CanonicalLtd/dqlite/internal/protocol"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/mpvl/subtest"
 )
 
 func TestUnmarshal_Error(t *testing.T) {
-	cmd, err := commands.Unmarshal([]byte("garbage"))
+	cmd, err := protocol.UnmarshalCommand([]byte("garbage"))
 	if cmd != nil {
 		t.Error("non-nil Command returned despited garbage was passed")
 	}
@@ -22,11 +22,11 @@ func TestUnmarshal_Error(t *testing.T) {
 	}
 }
 
-// Create, marshal, unmarshal and check dqlite FSM commands.
+// Create, marshal, unmarshal and check dqlite FSM protocol.
 func TestCommands(t *testing.T) {
 	cases := []struct {
-		factory func() *commands.Command
-		checker func(*commands.Command, *testing.T)
+		factory func() *protocol.Command
+		checker func(*protocol.Command, *testing.T)
 	}{
 		{newOpen, checkOpen},
 		{newBegin, checkBegin},
@@ -40,13 +40,13 @@ func TestCommands(t *testing.T) {
 		name := cmd.Name()
 		subtest.Run(t, name, func(t *testing.T) {
 			// Exercise marshaling.
-			data, err := commands.Marshal(cmd)
+			data, err := protocol.MarshalCommand(cmd)
 			if err != nil {
 				t.Fatalf("failed to marshal %s: %v", name, err)
 			}
 
 			// Exercise unmarshaling.
-			cmd, err = commands.Unmarshal(data)
+			cmd, err = protocol.UnmarshalCommand(data)
 			if err != nil {
 				t.Fatalf("failed to unmarshal %s: %v", name, err)
 			}
@@ -55,28 +55,28 @@ func TestCommands(t *testing.T) {
 	}
 }
 
-func newOpen() *commands.Command {
-	return commands.NewOpen("test")
+func newOpen() *protocol.Command {
+	return protocol.NewOpen("test")
 }
 
-func checkOpen(cmd *commands.Command, t *testing.T) {
-	params, ok := cmd.Params.(*commands.Command_Open)
+func checkOpen(cmd *protocol.Command, t *testing.T) {
+	params, ok := cmd.Params.(*protocol.Command_Open)
 	if !ok {
-		t.Errorf("Params field is not of type commands.Command_Open")
+		t.Errorf("Params field is not of type protocol.Command_Open")
 	}
 	if params.Open.Name != "test" {
 		t.Errorf(`expected Name "test", got "%s"`, params.Open.Name)
 	}
 }
 
-func newBegin() *commands.Command {
-	return commands.NewBegin("abcd", "test")
+func newBegin() *protocol.Command {
+	return protocol.NewBegin("abcd", "test")
 }
 
-func checkBegin(cmd *commands.Command, t *testing.T) {
-	params, ok := cmd.Params.(*commands.Command_Begin)
+func checkBegin(cmd *protocol.Command, t *testing.T) {
+	params, ok := cmd.Params.(*protocol.Command_Begin)
 	if !ok {
-		t.Errorf("Params field is not of type commands.Command_Begin")
+		t.Errorf("Params field is not of type protocol.Command_Begin")
 	}
 	if params.Begin.Txid != "abcd" {
 		t.Errorf(`expected Txid "abcd", got "%s"`, params.Begin.Txid)
@@ -86,7 +86,7 @@ func checkBegin(cmd *commands.Command, t *testing.T) {
 	}
 }
 
-func newWalFrames() *commands.Command {
+func newWalFrames() *protocol.Command {
 	size := 4096
 	pages := sqlite3x.NewReplicationPages(2, size)
 
@@ -101,13 +101,13 @@ func newWalFrames() *commands.Command {
 		IsCommit:  1,
 		SyncFlags: 1,
 	}
-	return commands.NewWalFrames("abcd", frames)
+	return protocol.NewWalFrames("abcd", frames)
 }
 
-func checkWalFrames(cmd *commands.Command, t *testing.T) {
-	params, ok := cmd.Params.(*commands.Command_WalFrames)
+func checkWalFrames(cmd *protocol.Command, t *testing.T) {
+	params, ok := cmd.Params.(*protocol.Command_WalFrames)
 	if !ok {
-		t.Errorf("Params field is not of type commands.Command_WalFrames")
+		t.Errorf("Params field is not of type protocol.Command_WalFrames")
 	}
 	if params.WalFrames.Txid != "abcd" {
 		t.Errorf("expected Txid abcd, got %s", params.WalFrames.Txid)
@@ -139,42 +139,42 @@ func checkWalFrames(cmd *commands.Command, t *testing.T) {
 	}
 }
 
-func newEnd() *commands.Command {
-	return commands.NewEnd("abcd")
+func newEnd() *protocol.Command {
+	return protocol.NewEnd("abcd")
 }
 
-func checkEnd(cmd *commands.Command, t *testing.T) {
-	params, ok := cmd.Params.(*commands.Command_End)
+func checkEnd(cmd *protocol.Command, t *testing.T) {
+	params, ok := cmd.Params.(*protocol.Command_End)
 	if !ok {
-		t.Errorf("Params field is not of type commands.Command_WalFrames")
+		t.Errorf("Params field is not of type protocol.Command_WalFrames")
 	}
 	if params.End.Txid != "abcd" {
 		t.Errorf(`expected Txid "abcd", got "%s"`, params.End.Txid)
 	}
 }
 
-func newUndo() *commands.Command {
-	return commands.NewUndo("abcd")
+func newUndo() *protocol.Command {
+	return protocol.NewUndo("abcd")
 }
 
-func checkUndo(cmd *commands.Command, t *testing.T) {
-	params, ok := cmd.Params.(*commands.Command_Undo)
+func checkUndo(cmd *protocol.Command, t *testing.T) {
+	params, ok := cmd.Params.(*protocol.Command_Undo)
 	if !ok {
-		t.Errorf("Params field is not of type commands.Command_Undo")
+		t.Errorf("Params field is not of type protocol.Command_Undo")
 	}
 	if params.Undo.Txid != "abcd" {
 		t.Errorf(`expected Txid "abcd", got "%s"`, params.Undo.Txid)
 	}
 }
 
-func newCheckpoint() *commands.Command {
-	return commands.NewCheckpoint("test")
+func newCheckpoint() *protocol.Command {
+	return protocol.NewCheckpoint("test")
 }
 
-func checkCheckpoint(cmd *commands.Command, t *testing.T) {
-	params, ok := cmd.Params.(*commands.Command_Checkpoint)
+func checkCheckpoint(cmd *protocol.Command, t *testing.T) {
+	params, ok := cmd.Params.(*protocol.Command_Checkpoint)
 	if !ok {
-		t.Errorf("Params field is not of type commands.Command_Checkpoint")
+		t.Errorf("Params field is not of type protocol.Command_Checkpoint")
 	}
 	if params.Checkpoint.Name != "test" {
 		t.Errorf(`expected Name "test", got "%s"`, params.Checkpoint.Name)
