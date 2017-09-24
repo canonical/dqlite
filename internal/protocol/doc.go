@@ -12,6 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package commands implements serialization and deserialization logic for
+// package protocol implements serialization and deserialization logic for
 // dqlite-specific Raft commands, that will be exeuted by the dqlite's FSM.
-package commands
+package protocol

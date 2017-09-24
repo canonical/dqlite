@@ -1,4 +1,4 @@
-package commands
+package protocol
 
 import (
 	"reflect"
@@ -9,13 +9,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Marshal a dqlite FSM command.
-func Marshal(command *Command) ([]byte, error) {
+// MarshalCommand marshals a dqlite FSM command.
+func MarshalCommand(command *Command) ([]byte, error) {
 	return proto.Marshal(command)
 }
 
-// Unmarshal a dqlite FSM command.
-func Unmarshal(data []byte) (*Command, error) {
+// UnmarshalCommand unmarshals a dqlite FSM command.
+func UnmarshalCommand(data []byte) (*Command, error) {
 	command := &Command{}
 	if err := proto.Unmarshal(data, command); err != nil {
 		return nil, errors.Wrap(err, "protobuf failure")
@@ -90,7 +90,7 @@ func newCommand(params isCommand_Params) *Command {
 // type.
 func (c *Command) Name() string {
 	typeName := reflect.TypeOf(c.Params).Elem().String()
-	name := strings.ToLower(strings.Replace(typeName, "commands.Command_", "", 1))
+	name := strings.ToLower(strings.Replace(typeName, "protocol.Command_", "", 1))
 	// FIXME: should do proper camel-case level splitting.
 	if name == "walframes" {
 		name = "wal frames"
