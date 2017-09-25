@@ -3,7 +3,6 @@ package connection
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 
@@ -194,43 +193,6 @@ func (r *Registry) delConn(conn *sqlite3.SQLiteConn) {
 	}
 
 	delete(r.serial, conn)
-}
-
-// NewRegistryLegacy creates a new connections registry, managing
-// connections against database files in the given directory.
-func NewRegistryLegacy(dir string) *Registry {
-	return &Registry{
-		dir:       dir,
-		leaders:   map[*sqlite3.SQLiteConn]string{},
-		followers: map[string]*sqlite3.SQLiteConn{},
-		serial:    map[*sqlite3.SQLiteConn]uint64{},
-	}
-}
-
-// Dir is the directory where databases are kept.
-func (r *Registry) Dir() string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	return r.dir
-}
-
-// Purge removes all database files in our directory, including the
-// directory itself.
-func (r *Registry) Purge() error {
-	for conn := range r.leaders {
-		r.DelLeader(conn)
-		if err := CloseLeader(conn); err != nil {
-			return err
-		}
-	}
-	for name, conn := range r.followers {
-		r.DelFollower(name)
-		if err := conn.Close(); err != nil {
-			return err
-		}
-	}
-	return os.RemoveAll(r.dir)
 }
 
 // Monotonic counter for identifying connections for tracing and debugging

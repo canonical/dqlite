@@ -11,7 +11,7 @@ dependencies:
 	mkdir -p .sqlite && cd .sqlite && rm -f * && wget $(SQLITE_URL) -O - | tar xfz -
 
 proto:
-	protoc --gofast_out=. internal/commands/commands.proto
+	protoc --gofast_out=. internal/protocol/commands.proto
 
 build:
 	$(GO) get -t -tags $(GO_TAGS) ./...

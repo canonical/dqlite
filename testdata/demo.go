@@ -18,42 +18,34 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"math/rand"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite"
 	"github.com/CanonicalLtd/go-sqlite3x"
 	"github.com/CanonicalLtd/raft-http"
+	"github.com/CanonicalLtd/raft-membership"
+	"github.com/boltdb/bolt"
+	"github.com/hashicorp/raft"
+	"github.com/hashicorp/raft-boltdb"
 	"github.com/mattn/go-sqlite3"
+	"github.com/pkg/errors"
 )
 
 var data = flag.String("data", "", "directory to save SQLite databases and Raft data in")
-var join = flag.String("join", "", "address of an existing node in the cluster (or none for starting a new cluster)")
-var addr = flag.String("addr", "127.0.0.1:9990", "address to listen to for the raft HTTP gateway other demo nodes will connect to (via initially -join)")
+var join = flag.String("join", "", "address of an existing node in the cluster (or none for leader)")
+var addr = flag.String("addr", "127.0.0.1:9990", "raft HTTP gateway other address")
 var debug = flag.Bool("debug", false, "enable debug logging")
-var forever = flag.Bool("forever", false, "run forever, without crashing at a random time between 5 and 25 seconds ")
-
-var logger *log.Logger
-var db *sql.DB
+var forever = flag.Bool("forever", false, "run forever, without crashing at a random time")
 
 func main() {
-	// Parse and validate command line flags.
-	parseCommandLine()
-
-	// Open our sql.DB using the dqlite driver.
-	openDB()
-
-	// Start inserting data into the DB.
-	useDB()
-
-}
-
-func parseCommandLine() {
 	flag.Parse()
 
 	if *data == "" {
@@ -61,101 +53,133 @@ func parseCommandLine() {
 		os.Exit(2)
 	}
 
-	level := "INFO"
-	origins := []string{"demo"}
-
-	if *debug {
-		level = "DEBUG"
-		origins = append(origins, "dqlite", "raft", "raft-net")
+	node := newNode(*data, *addr, *join, *debug)
+	defer node.Stop()
+	if err := node.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to start node: %v\n", err)
+		os.Exit(2)
 	}
 
-	writer := dqlite.NewLogFilter(os.Stderr, level, origins)
-	logger = log.New(writer, "", log.LstdFlags)
-}
-
-func openDB() {
-	// Spawn an HTTP server that will act as our Raft transport
-	// for the DQLite cluster. In a real-world web service you'll
-	// want to route the Raft HTTP handler to some specific path,
-	// not "/".
-	listener, err := net.Listen("tcp", *addr)
-	if err != nil {
-		logger.Fatalf("[ERR] demo: failed to listen to address %s: %v", *addr, err)
-	}
-	handler := rafthttp.NewHandler()
-	go http.Serve(listener, handler)
-
-	addr := listener.Addr()
-	logger.SetPrefix(fmt.Sprintf("%s: ", addr))
-	logger.Printf("[INFO] demo: open DB")
-
-	// Create a new DQLite driver for this node and register it
-	// using the sql package.
-	config := dqlite.NewHTTPConfig(*data, handler, "/", addr, logger)
-	config.EnableSingleNode = *join == ""
-	driver, err := dqlite.NewDriver(config)
-	if err != nil {
-		logger.Fatalf("[ERR] demo: failed to start DQLite driver: %v", err)
-	}
-	driver.AutoCheckpoint(20)
-	sql.Register("dqlite", driver)
-
-	// Join the cluster if we're being told so in the command line, and we
-	// yet a lone node.
-	isLone, err := driver.IsLoneNode()
-	if err != nil {
-		logger.Fatalf("[ERR] demo: failed to establish we're lone: %v", err)
-	}
-	if *join != "" && isLone {
-		if err := driver.Join(*join, 5*time.Second); err != nil {
-			logger.Fatalf("[ERR] demo: failed to join cluster: %v", err)
-		}
-	}
-
-	// Open a database backed by DQLite, and use at most one connection.
-	if db, err = sql.Open("dqlite", "test.db"); err != nil {
-		logger.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(0)
-}
-
-func useDB() {
 	// Insert data into the DB, either forever for a random time between 5
 	// and 25 (depending on the -forever command line switch).
 	if *forever {
-		insertForever()
+		node.InsertForever()
 	} else {
-		go insertForever()
+		go node.InsertForever()
 		randomSleep(5, 25)
 	}
-	logger.Printf("[INFO] demo: exit")
 }
 
-// Use the given database to insert new rows to a single-column table
+type node struct {
+	logger   *log.Logger
+	addr     string
+	join     string
+	debug    bool
+	listener net.Listener
+	handler  *rafthttp.Handler
+	dir      string
+	timeout  time.Duration
+	notifyCh <-chan bool
+	raft     *raft.Raft
+	driver   *dqlite.Driver
+	db       *sql.DB
+}
+
+func newNode(dir string, addr string, join string, debug bool) *node {
+	return &node{
+		logger:  log.New(os.Stdout, addr+" ", log.Ltime|log.Lmicroseconds),
+		addr:    addr,
+		dir:     dir,
+		join:    join,
+		timeout: 10 * time.Second,
+	}
+}
+
+func (n *node) Driver() *dqlite.Driver {
+	return n.driver
+}
+
+func (n *node) Addr() string {
+	return n.listener.Addr().String()
+}
+
+func (n *node) Start() (err error) {
+	if n.listener, err = net.Listen("tcp", n.addr); err != nil {
+		return errors.Wrap(err, "failed to listen to random port")
+	}
+	n.handler = rafthttp.NewHandler()
+	go http.Serve(n.listener, n.handler)
+
+	logFunc := func(level, message string) {
+		if n.debug {
+			n.logger.Printf("[%s] %s", level, message)
+		}
+	}
+
+	options := []dqlite.Option{
+		dqlite.LogFunc(logFunc),
+		dqlite.BarrierTimeout(n.timeout),
+		dqlite.BarrierTimeout(n.timeout),
+	}
+	if n.driver, err = dqlite.NewDriver(n.dir, n.makeRaft, options...); err != nil {
+		return errors.Wrap(err, "failed to create dqlite driver")
+	}
+	sql.Register("dqlite", n.driver)
+
+	// Open a database backed by DQLite, and use at most one connection.
+	if n.db, err = sql.Open("dqlite", "test.db"); err != nil {
+		return errors.Wrap(err, "failed to open database")
+	}
+	n.db.SetMaxOpenConns(1)
+	n.db.SetMaxIdleConns(0)
+
+	return nil
+}
+
+func (n *node) Stop() {
+	if n.listener != nil {
+		if err := n.listener.Close(); err != nil {
+			n.logger.Fatalf("failed to close listener: %v", err)
+		}
+	}
+	if n.raft != nil {
+		if err := n.raft.Shutdown().Error(); err != nil {
+			n.logger.Fatalf("failed to shutdown raft: %v", err)
+		}
+	}
+	n.logger.Printf("[INFO] demo: exit")
+}
+
+// Use the out dqlite database to insert new rows to a single-column table
 // until we fail or exit.
-func insertForever() {
+func (n *node) InsertForever() {
 	for {
+		if n.raft.State() != raft.Leader {
+			if !<-n.notifyCh {
+				continue
+			}
+		}
+
 		// Start the transaction.
-		tx, err := db.Begin()
+		tx, err := n.db.Begin()
 		if err != nil {
-			logger.Fatalf("[FATAL] demo: begin failed: %v", err)
+			n.logger.Fatalf("[FATAL] demo: begin failed: %v", err)
 		}
 
 		// Ensure our test table is there.
 		if _, err := tx.Exec("CREATE TABLE IF NOT EXISTS test (n INT)"); err != nil {
-			handleTxError(tx, err, false)
+			handleTxError(n.logger, tx, err, false)
 			// We're not the leader, wait a bit and try again
 			randomSleep(0.250, 0.500)
 			continue
 		}
 
 		// Insert a batch of rows.
-		offset := insertedCount(tx)
+		offset := insertedCount(n.logger, tx)
 		failed := false
 		for i := 0; i < 50; i++ {
 			if _, err := tx.Exec("INSERT INTO test (n) VALUES(?)", i+offset); err != nil {
-				handleTxError(tx, err, false)
+				handleTxError(n.logger, tx, err, false)
 				failed = true
 				break
 			}
@@ -169,11 +193,11 @@ func insertForever() {
 			continue
 		}
 
-		reportProgress(tx)
+		reportProgress(n.logger, tx)
 
 		// Commit
 		if err := tx.Commit(); err != nil {
-			handleTxError(tx, err, true)
+			handleTxError(n.logger, tx, err, true)
 			continue
 		}
 		// Sleep a little bit to simulate a pause in the service's
@@ -182,9 +206,85 @@ func insertForever() {
 	}
 }
 
+func (n *node) makeRaft(fsm raft.FSM) (*raft.Raft, error) {
+	logger := n.logger
+	if !n.debug {
+		logger = log.New(ioutil.Discard, "", 0)
+	}
+
+	// Create a raft configuration with default values.
+	config := raft.DefaultConfig()
+	config.Logger = logger
+
+	// Setup a notify channel to be notified about leadership changes.
+	notifyCh := make(chan bool, 128)
+	config.NotifyCh = notifyCh
+	n.notifyCh = notifyCh
+
+	// Create a boltdb-based logs store.
+	logs, err := raftboltdb.New(raftboltdb.Options{
+		Path:        filepath.Join(n.dir, "raft.db"),
+		BoltOptions: &bolt.Options{Timeout: n.timeout},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create bolt store for raft logs")
+	}
+
+	// Create an HTTP-tunneled transport.
+	addr := n.listener.Addr()
+	layer := rafthttp.NewLayer("/", addr, n.handler, rafthttp.NewDialTCP())
+	transport := raft.NewNetworkTransportWithLogger(layer, 2, n.timeout, logger)
+
+	// Create a file snapshot store.
+	snaps, err := raft.NewFileSnapshotStoreWithLogger(n.dir, 2, logger)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create file snapshot store")
+	}
+
+	// Create a JSON-based peers file.
+	peers := raft.NewJSONPeers(n.dir, transport)
+
+	// Determine if we are already part of a cluster or not.
+	isLoneNode, err := dqlite.RaftLoneNode(peers, n.Addr())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to check if this is a lone node")
+	}
+
+	// If we are not yet part of a cluster and we have no bootstrap node to
+	// join, it means we should be the bootstrap node
+	config.EnableSingleNode = isLoneNode && n.join == ""
+
+	// Start raft.
+	n.raft, err = raft.NewRaft(config, fsm, logs, logs, snaps, peers, transport)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to start raft")
+	}
+
+	// Process Raft connections over HTTP.
+	go raftmembership.HandleChangeRequests(n.raft, n.handler.Requests())
+
+	// If we are not yet part of the cluster and we are being given a
+	// bootstrap node to join, let's join.
+	if isLoneNode && n.join != "" {
+		var err error
+		for i := 0; i < 10; i++ {
+			if err = layer.Join(n.join, n.timeout); err == nil {
+				break
+			}
+			n.logger.Printf("[INFO] demo: retry to join cluster: %v", err)
+			time.Sleep(time.Second)
+		}
+		if err != nil {
+			n.logger.Fatalf("[ERR] demo: failed to join cluster: %v", err)
+		}
+	}
+
+	return n.raft, nil
+}
+
 // Handle a transaction error. All errors are fatal except ones due to
 // lost leadership, in which case we rollback and try again.
-func handleTxError(tx *sql.Tx, err error, isCommit bool) {
+func handleTxError(logger *log.Logger, tx *sql.Tx, err error, isCommit bool) {
 	if err, ok := err.(sqlite3.Error); ok {
 		if err.Code == sqlite3x.ErrNotLeader {
 			if isCommit {
@@ -203,8 +303,25 @@ func handleTxError(tx *sql.Tx, err error, isCommit bool) {
 	logger.Fatalf("[ERR] demo: transaction failed: %v", err)
 }
 
+// Return the number of rows inserted so far
+func insertedCount(logger *log.Logger, tx *sql.Tx) int {
+	rows, err := tx.Query("SELECT COUNT(n) FROM test")
+	if err != nil {
+		logger.Fatalf("[ERR] demo: select count failed: %v", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		logger.Fatal("[ERR] demo: select count returned no rows")
+	}
+	var count int
+	if err := rows.Scan(&count); err != nil {
+		logger.Fatalf("[ERR] demo: scanning failed: %v", err)
+	}
+	return count
+}
+
 // Log about the progress that has been maded
-func reportProgress(tx *sql.Tx) {
+func reportProgress(logger *log.Logger, tx *sql.Tx) {
 	rows, err := tx.Query("SELECT n FROM test")
 	if err != nil {
 		logger.Fatalf("[ERR] demo: select failed: %v", err)
@@ -225,23 +342,6 @@ func reportProgress(tx *sql.Tx) {
 		}
 	}
 	logger.Printf("[INFO] demo: %d rows inserted, %d values missing", len(inserted), missing)
-}
-
-// Return the number of rows inserted so far
-func insertedCount(tx *sql.Tx) int {
-	rows, err := tx.Query("SELECT COUNT(n) FROM test")
-	if err != nil {
-		logger.Fatalf("[ERR] demo: select count failed: %v", err)
-	}
-	defer rows.Close()
-	if !rows.Next() {
-		logger.Fatal("[ERR] demo: select count returned no rows")
-	}
-	var count int
-	if err := rows.Scan(&count); err != nil {
-		logger.Fatalf("[ERR] demo: scanning failed: %v", err)
-	}
-	return count
 }
 
 // Randomly sleep at least min seconds and at most max.
