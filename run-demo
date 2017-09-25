@@ -17,6 +17,8 @@ def spawnNode(n, purge=False):
 
     if purge and os.path.exists(data):
         shutil.rmtree(data)
+    if not os.path.exists(data):
+        os.mkdir(data)
 
     args = ["./demo", "-data", data, "-addr", "127.0.0.1:%d" % port]
     if n > 0:
@@ -27,7 +29,8 @@ def spawnNode(n, purge=False):
         "LD_LIBRARY_PATH": os.path.join(os.getcwd(), ".sqlite"),
     })
 
-    return subprocess.Popen(args, env=env)
+    fd = open(os.path.join(data, "log"), "a+")
+    return subprocess.Popen(args, env=env, stdout=fd, stderr=fd)
 
 
 if __name__ == "__main__":
@@ -44,6 +47,9 @@ if __name__ == "__main__":
             if rc is not None:
                 if rc != 0:
                     print("ERROR node %d exited with return code %d" % (i, rc))
+                    for j, process in enumerate(processes):
+                        if j != i:
+                            process.kill()
                     sys.exit(1)
                 # respawn
                 processes[i] = spawnNode(i)

@@ -206,7 +206,7 @@ func (f *FSM) applyCheckpoint(logger *log.Logger, params *protocol.Checkpoint) {
 		// XXX TODO: choose correct leader connection, without
 		//           assuming that there is at most one
 		conn = leaderConn
-		logger.Tracef("using leader connection %s", f.connections.Serial(conn))
+		logger.Tracef("using leader connection %d", f.connections.Serial(conn))
 		break
 	}
 

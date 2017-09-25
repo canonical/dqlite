@@ -3,17 +3,16 @@ package transaction_test
 import (
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/mattn/go-sqlite3"
 )
 
 func TestTxn_String(t *testing.T) {
-	connections := connection.NewTempRegistryWithDatabase()
-	defer connections.Purge()
-
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
+	conn := &sqlite3.SQLiteConn{}
+
+	txn := registry.AddFollower(conn, "abcd")
 
 	want := "pending as follower"
 	got := txn.String()
@@ -23,11 +22,10 @@ func TestTxn_String(t *testing.T) {
 }
 
 func TestTxn_CheckEntered(t *testing.T) {
-	connections := connection.NewTempRegistryWithDatabase()
-	defer connections.Purge()
-
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
+
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.AddFollower(conn, "abcd")
 
 	const want = "accessing or modifying txn state without mutex: abcd"
 	defer func() {
@@ -40,11 +38,10 @@ func TestTxn_CheckEntered(t *testing.T) {
 }
 
 func TestTxn_Pending(t *testing.T) {
-	connections := connection.NewTempRegistryWithDatabase()
-	defer connections.Purge()
-
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
+
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.AddFollower(conn, "abcd")
 	txn.Enter()
 
 	state := txn.State()
@@ -54,13 +51,13 @@ func TestTxn_Pending(t *testing.T) {
 }
 
 func TestTxn_Started(t *testing.T) {
-	connections := connection.NewTempRegistryWithDatabase()
-	defer connections.Purge()
-
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
+
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.AddFollower(conn, "abcd")
 	txn.Enter()
 
+	txn.DryRun(true)
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
@@ -72,13 +69,11 @@ func TestTxn_Started(t *testing.T) {
 }
 
 func TestTxn_Writing(t *testing.T) {
-	connections := connection.NewTempRegistryWithDatabase()
-	defer connections.Purge()
-
 	registry := newRegistry()
 	registry.DryRun()
 
-	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.AddFollower(conn, "abcd")
 	txn.Enter()
 
 	if err := txn.Begin(); err != nil {
@@ -98,13 +93,13 @@ func TestTxn_Writing(t *testing.T) {
 }
 
 func TestTxn_Undoing(t *testing.T) {
-	connections := connection.NewTempRegistryWithDatabase()
-	defer connections.Purge()
-
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
+
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.AddFollower(conn, "abcd")
 	txn.Enter()
 
+	txn.DryRun(true)
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
@@ -119,13 +114,13 @@ func TestTxn_Undoing(t *testing.T) {
 }
 
 func TestTxn_Ended(t *testing.T) {
-	connections := connection.NewTempRegistryWithDatabase()
-	defer connections.Purge()
-
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
+
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.AddFollower(conn, "abcd")
 	txn.Enter()
 
+	txn.DryRun(true)
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
@@ -140,13 +135,13 @@ func TestTxn_Ended(t *testing.T) {
 }
 
 func TestTxn_StaleFromPending(t *testing.T) {
-	connections, conn := connection.NewTempRegistryWithLeader()
-	defer connections.Purge()
-
 	registry := newRegistry()
+
+	conn := &sqlite3.SQLiteConn{}
 	txn := registry.AddLeader(conn, "0")
 	txn.Enter()
 
+	txn.DryRun(true)
 	if err := txn.Stale(); err != nil {
 		t.Fatal(err)
 	}
@@ -158,15 +153,14 @@ func TestTxn_StaleFromPending(t *testing.T) {
 }
 
 func TestTxn_StaleFromStarted(t *testing.T) {
-	connections, conn := connection.NewTempRegistryWithLeader()
-	defer connections.Purge()
-
 	registry := newRegistry()
 	registry.DryRun()
 
+	conn := &sqlite3.SQLiteConn{}
 	txn := registry.AddLeader(conn, "0")
 	txn.Enter()
 
+	txn.DryRun(true)
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
@@ -182,15 +176,14 @@ func TestTxn_StaleFromStarted(t *testing.T) {
 }
 
 func TestTxn_StaleFromWriting(t *testing.T) {
-	connections, conn := connection.NewTempRegistryWithLeader()
-	defer connections.Purge()
-
 	registry := newRegistry()
 	registry.DryRun()
 
+	conn := &sqlite3.SQLiteConn{}
 	txn := registry.AddLeader(conn, "0")
 	txn.Enter()
 
+	txn.DryRun(true)
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
@@ -211,11 +204,10 @@ func TestTxn_StaleFromWriting(t *testing.T) {
 }
 
 func TestTxn_StaleFromUndoing(t *testing.T) {
-	connections, conn := connection.NewTempRegistryWithLeader()
-	defer connections.Purge()
-
 	registry := newRegistry()
 	registry.DryRun()
+
+	conn := &sqlite3.SQLiteConn{}
 
 	// Pretend that the follower transaction is the leader, since
 	// invoking Begin() on an actual leader connection would fail
@@ -223,6 +215,7 @@ func TestTxn_StaleFromUndoing(t *testing.T) {
 	txn := registry.AddLeader(conn, "0")
 	txn.Enter()
 
+	txn.DryRun(true)
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
@@ -240,15 +233,15 @@ func TestTxn_StaleFromUndoing(t *testing.T) {
 }
 
 func TestTxn_StaleFromEnded(t *testing.T) {
-	connections, conn := connection.NewTempRegistryWithLeader()
-	defer connections.Purge()
-
 	registry := newRegistry()
 	registry.DryRun()
+
+	conn := &sqlite3.SQLiteConn{}
 
 	txn := registry.AddLeader(conn, "0")
 	txn.Enter()
 
+	txn.DryRun(true)
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
@@ -266,11 +259,10 @@ func TestTxn_StaleFromEnded(t *testing.T) {
 }
 
 func TestTxn_StalePanicsIfInvokedOnFollowerTransaction(t *testing.T) {
-	connections := connection.NewTempRegistryWithDatabase()
-	defer connections.Purge()
-
 	registry := newRegistry()
-	txn := registry.AddFollower(connections.Follower("test.db"), "abcd")
+
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.AddFollower(conn, "abcd")
 	txn.Enter()
 
 	const want = "invalid pending -> stale transition"

@@ -2,122 +2,83 @@ package dqlite
 
 import (
 	"database/sql/driver"
-	"log"
-	"os"
+	"fmt"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/CanonicalLtd/go-sqlite3x"
-	"github.com/CanonicalLtd/raft-membership"
-	"github.com/boltdb/bolt"
-	"github.com/hashicorp/raft"
-	"github.com/hashicorp/raft-boltdb"
 	"github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 )
 
 // Driver manages a node partecipating to a dqlite replicated cluster.
 type Driver struct {
-	logger       *log.Logger            // Log messages go here
-	raft         *raft.Raft             // Underlying raft engine
-	addr         string                 // Address of this node
-	logs         *raftboltdb.BoltStore  // Store for raft logs
-	peers        raft.PeerStore         // Store of raft peers, used by the engine
-	membership   raftmembership.Changer // API to join the raft cluster
-	connections  *connection.Registry   // Connections registry
-	methods      *replication.Methods   // SQLite replication hooks
-	mu           sync.Mutex             // For serializing critical sections
-	inititalized chan struct{}
+	logger         *log.Logger          // Log messages.
+	dir            string               // Database files live here.
+	autoCheckpoint int                  // WAL auto-checkpoint size threshold.
+	connections    *connection.Registry // Connections registry.
+	methods        *replication.Methods // SQLite replication hooks.
+	barrier        barrier              // Used to make sure the FSM is in sync with the logs.
+	mu             sync.Mutex           // For serializing critical sections.
 }
 
 // NewDriver creates a new node of a dqlite cluster, which also implements the driver.Driver
 // interface.
-func NewDriver(config *Config) (*Driver, error) {
-	if err := config.ensureDir(); err != nil {
+func NewDriver(dir string, factory RaftFactory, options ...Option) (*Driver, error) {
+	if err := ensureDir(dir); err != nil {
 		return nil, err
 	}
 
-	// Logging
-	logger := config.Logger
-	if logger == nil {
-		logger = log.New(os.Stderr, "", log.LstdFlags)
+	o := newOptions()
+	for _, option := range options {
+		option(o)
+
 	}
-	sqlite3x.LogConfig(logger)
+
+	logger := log.New(o.logFunc, log.Trace)
+	sqlite3x.LogConfig(func(code int, message string) {
+		o.logFunc(log.Error, fmt.Sprintf("[%d] %s", code, message))
+	})
 
 	// Replication
-	connections := connection.NewRegistryLegacy(config.Dir)
+	connections := connection.NewRegistry()
 	transactions := transaction.NewRegistry()
-	fsm := replication.NewFSM(logger, connections, transactions)
-
-	// XXX TODO: find a way to perform mode checks on fresh follower
-	//           connections that have not yet begun.
-	transactions.SkipCheckReplicationMode(true)
-
-	// Logs store
-	logs, err := raftboltdb.New(raftboltdb.Options{
-		Path:        filepath.Join(config.Dir, "raft.db"),
-		BoltOptions: &bolt.Options{Timeout: config.SetupTimeout},
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create raft logs store")
-	}
-
-	// Peer store
-	peers := raft.NewJSONPeers(config.Dir, config.Transport)
-
-	// Notifications about leadership changes (acquired or lost). We use
-	// a reasonably large buffer here to make sure we don't block raft.
-	leadership := make(chan bool, 1024)
+	fsm := replication.NewFSM(logger, dir, connections, transactions)
 
 	// Raft
-	raft, err := newRaft(config, fsm, logs, peers, leadership)
+	raft, err := factory(fsm)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to start raft")
 	}
 
-	methods := replication.NewMethods(logger, raft, connections, transactions)
+	// Replication methods
+	methods := replication.NewMethods(raft, logger, connections, transactions)
+	methods.ApplyTimeout(o.applyTimeout)
+
+	barrier := func() error {
+		if fsm.Index() == raft.LastIndex() {
+			return nil
+		}
+		if err := raft.Barrier(o.barrierTimeout).Error(); err != nil {
+			return errors.Wrap(err, "FSM out of sync")
+		}
+		return nil
+	}
 
 	driver := &Driver{
-		logger:       logger,
-		raft:         raft,
-		addr:         config.Transport.LocalAddr(),
-		logs:         logs,
-		peers:        peers,
-		membership:   config.MembershipChanger,
-		connections:  connections,
-		methods:      methods,
-		inititalized: make(chan struct{}, 0),
-	}
-
-	if config.MembershipRequests != nil {
-		// This goroutine will normally terminate as soon as the
-		// config.MembershipRequests channel gets closed, which will
-		// happen as soon as raft it's shutdown, because this causes
-		// the transport to be closed which in turn should close this
-		// requests channel (like the rafthttp.Layer transport does).
-		go raftmembership.HandleChangeRequests(raft, config.MembershipRequests)
+		logger:      logger.Augment("driver"),
+		dir:         dir,
+		connections: connections,
+		barrier:     barrier,
+		methods:     methods,
 	}
 
 	return driver, nil
-}
-
-// IsLoneNode returns whether this node is a "lone" one, meaning that has no
-// peers yet.
-func (d *Driver) IsLoneNode() (bool, error) {
-	return isLoneNode(d.peers, d.addr)
-}
-
-// Join a dqlite cluster by contacting the given address.
-func (d *Driver) Join(address string, timeout time.Duration) error {
-	if err := d.membership.Join(address, timeout); err != nil {
-		return errors.Wrap(err, "failed to join dqlite cluster")
-	}
-	return nil
 }
 
 // Open starts a new connection to a SQLite database.
@@ -136,16 +97,16 @@ func (d *Driver) Open(name string) (driver.Conn, error) {
 		return nil, errors.Wrap(err, "invalid DSN string")
 	}
 
-	// TODO: this currently set the timeout driver-wide
-	d.methods.ApplyTimeout(dsn.LeadershipTimeout)
-
-	sqliteConn, err := connection.OpenLeader(filepath.Join(d.connections.Dir(), dsn.Encode()), d.methods, 1000)
+	uri := filepath.Join(d.dir, dsn.Encode())
+	sqliteConn, err := connection.OpenLeader(uri, d.methods, d.autoCheckpoint)
 	if err != nil {
 		return nil, err
 	}
 	d.connections.AddLeader(dsn.Filename, sqliteConn)
+	d.logger.Tracef("add leader %d", d.connections.Serial(sqliteConn))
 
 	conn := &Conn{
+		barrier:     d.barrier,
 		connections: d.connections,
 		sqliteConn:  sqliteConn,
 	}
@@ -153,44 +114,27 @@ func (d *Driver) Open(name string) (driver.Conn, error) {
 	return conn, err
 }
 
-// AutoCheckpoint sets how many frames the WAL file of a database
-// should have before a replicated checkpoint is automatically
-// attempted. A value of 1000 (the default if not set) is usually
-// works for most application.
-func (d *Driver) AutoCheckpoint(n int) {
-	if n < 0 {
-		panic("can't set a negative auto-checkpoint threshold")
-	}
-}
-
-// Shutdown the the node.
-func (d *Driver) Shutdown() error {
-	if err := d.raft.Shutdown().Error(); err != nil {
-		return errors.Wrap(err, "failed to shutdown raft")
-	}
-	if err := d.logs.Close(); err != nil {
-		return errors.Wrap(err, "failed to close logs store")
-	}
-
-	return nil
-}
-
 // Conn implements the sql.Conn interface.
 type Conn struct {
-	connections       *connection.Registry
-	sqliteConn        *sqlite3.SQLiteConn // Raw SQLite connection using the Go bindings
-	leadershipTimeout time.Duration
-	barrierTimeout    time.Duration
+	barrier     barrier
+	connections *connection.Registry
+	sqliteConn  *sqlite3.SQLiteConn // Raw SQLite connection using the Go bindings
 }
 
 // Prepare returns a prepared statement, bound to this connection.
 func (c *Conn) Prepare(query string) (driver.Stmt, error) {
-	return c.sqliteConn.Prepare(query)
-}
-
-// Exec executes the given query.
-func (c *Conn) Exec(query string, args []driver.Value) (driver.Result, error) {
-	return c.sqliteConn.Exec(query, args)
+	if err := c.barrier(); err != nil {
+		return nil, err
+	}
+	driverStmt, err := c.sqliteConn.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	stmt := &Stmt{
+		barrier:    c.barrier,
+		sqliteStmt: driverStmt.(*sqlite3.SQLiteStmt),
+	}
+	return stmt, err
 }
 
 // Close invalidates and potentially stops any current
@@ -208,5 +152,75 @@ func (c *Conn) Close() error {
 
 // Begin starts and returns a new transaction.
 func (c *Conn) Begin() (driver.Tx, error) {
-	return c.sqliteConn.Begin()
+	if err := c.barrier(); err != nil {
+		return nil, err
+	}
+	driverTx, err := c.sqliteConn.Begin()
+	if err != nil {
+		return nil, err
+	}
+	tx := &Tx{
+		barrier:  c.barrier,
+		sqliteTx: driverTx.(*sqlite3.SQLiteTx),
+	}
+	return tx, nil
 }
+
+// Tx is a transaction.
+type Tx struct {
+	barrier  barrier
+	sqliteTx *sqlite3.SQLiteTx
+}
+
+// Commit the transaction.
+func (tx *Tx) Commit() error {
+	if err := tx.barrier(); err != nil {
+		return err
+	}
+	return tx.sqliteTx.Commit()
+}
+
+// Rollback the transaction.
+func (tx *Tx) Rollback() error {
+	if err := tx.barrier(); err != nil {
+		return err
+	}
+	return tx.sqliteTx.Rollback()
+}
+
+// Stmt is a prepared statement. It is bound to a Conn and not
+// used by multiple goroutines concurrently.
+type Stmt struct {
+	barrier    barrier
+	sqliteStmt *sqlite3.SQLiteStmt
+}
+
+// Close closes the statement.
+func (s *Stmt) Close() error {
+	return s.sqliteStmt.Close()
+}
+
+// NumInput returns the number of placeholder parameters.
+func (s *Stmt) NumInput() int {
+	return s.sqliteStmt.NumInput()
+}
+
+// Exec executes a query that doesn't return rows, such
+func (s *Stmt) Exec(args []driver.Value) (driver.Result, error) {
+	if err := s.barrier(); err != nil {
+		return nil, err
+	}
+	return s.sqliteStmt.Exec(args)
+}
+
+// Query executes a query that may return rows, such as a
+func (s *Stmt) Query(args []driver.Value) (driver.Rows, error) {
+	if err := s.barrier(); err != nil {
+		return nil, err
+	}
+	return s.sqliteStmt.Query(args)
+}
+
+// A function used to make sure that our FSM is up-to-date with the latest Raft
+// index.
+type barrier func() error
