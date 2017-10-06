@@ -215,11 +215,15 @@ func (n *node) makeRaft(fsm raft.FSM) (*raft.Raft, error) {
 	// Create a raft configuration with default values.
 	config := raft.DefaultConfig()
 	config.Logger = logger
+	config.LocalID = raft.ServerID(n.Addr())
 
 	// Setup a notify channel to be notified about leadership changes.
 	notifyCh := make(chan bool, 128)
 	config.NotifyCh = notifyCh
 	n.notifyCh = notifyCh
+
+	// Check if this is a brand new cluster.
+	isNewCluster := !pathExists(filepath.Join(n.dir, "raft.db"))
 
 	// Create a boltdb-based logs store.
 	logs, err := raftboltdb.New(raftboltdb.Options{
@@ -241,21 +245,21 @@ func (n *node) makeRaft(fsm raft.FSM) (*raft.Raft, error) {
 		return nil, errors.Wrap(err, "failed to create file snapshot store")
 	}
 
-	// Create a JSON-based peers file.
-	peers := raft.NewJSONPeers(n.dir, transport)
-
-	// Determine if we are already part of a cluster or not.
-	isLoneNode, err := dqlite.RaftLoneNode(peers, n.Addr())
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to check if this is a lone node")
+	// If we are the seed node and it's a new cluster, bootstrap it.
+	if isNewCluster && n.join == "" {
+		configuration := raft.Configuration{}
+		configuration.Servers = []raft.Server{{
+			ID:      config.LocalID,
+			Address: raft.ServerAddress(n.Addr()),
+		}}
+		err := raft.BootstrapCluster(config, logs, logs, snaps, transport, configuration)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to bootstrap cluster")
+		}
 	}
 
-	// If we are not yet part of a cluster and we have no bootstrap node to
-	// join, it means we should be the bootstrap node
-	config.EnableSingleNode = isLoneNode && n.join == ""
-
 	// Start raft.
-	n.raft, err = raft.NewRaft(config, fsm, logs, logs, snaps, peers, transport)
+	n.raft, err = raft.NewRaft(config, fsm, logs, logs, snaps, transport)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start raft")
 	}
@@ -265,10 +269,10 @@ func (n *node) makeRaft(fsm raft.FSM) (*raft.Raft, error) {
 
 	// If we are not yet part of the cluster and we are being given a
 	// bootstrap node to join, let's join.
-	if isLoneNode && n.join != "" {
+	if isNewCluster && n.join != "" {
 		var err error
 		for i := 0; i < 10; i++ {
-			if err = layer.Join(n.join, n.timeout); err == nil {
+			if err = layer.Join(raft.ServerAddress(n.join), n.timeout); err == nil {
 				break
 			}
 			n.logger.Printf("[INFO] demo: retry to join cluster: %v", err)
@@ -348,4 +352,11 @@ func reportProgress(logger *log.Logger, tx *sql.Tx) {
 func randomSleep(min float64, max float64) {
 	milliseconds := (min*1000 + math.Ceil(rand.Float64()*(max-min)*1000))
 	time.Sleep(time.Duration(milliseconds) * time.Millisecond)
+}
+
+func pathExists(name string) bool {
+	if _, err := os.Lstat(name); err != nil && os.IsNotExist(err) {
+		return false
+	}
+	return true
 }

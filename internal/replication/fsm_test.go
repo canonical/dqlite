@@ -248,7 +248,7 @@ func TestFSM_Snapshot(t *testing.T) {
 
 	// Persist the snapshot in a store.
 	store := newSnapshotStore(fsm.Dir())
-	sink, err := store.Create(1, 1, []byte{})
+	sink := newSnapshotSink(t, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestFSM_Restore(t *testing.T) {
 
 	// Persist the snapshot in a store.
 	store := newSnapshotStore(fsm.Dir())
-	sink, err := store.Create(1, 1, []byte{})
+	sink := newSnapshotSink(t, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,4 +403,21 @@ func newSnapshotStore(dir string) raft.SnapshotStore {
 		panic(fmt.Sprintf("failed to create snapshot store: %v", err))
 	}
 	return store
+}
+
+// Convenience to create a new test snapshot sink.
+func newSnapshotSink(t *testing.T, store raft.SnapshotStore) raft.SnapshotSink {
+	_, transport := raft.NewInmemTransport(raft.ServerAddress(""))
+	sink, err := store.Create(
+		raft.SnapshotVersionMax,
+		uint64(1),
+		uint64(1),
+		raft.Configuration{},
+		uint64(1),
+		transport,
+	)
+	if err != nil {
+		t.Fatalf("failed to create test snapshot sink: %v", err)
+	}
+	return sink
 }
