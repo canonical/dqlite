@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/raft"
-	"github.com/pkg/errors"
 )
 
 // RaftFactory is the interface of a function that creates a raft instance
@@ -13,17 +12,14 @@ type RaftFactory func(raft.FSM) (*raft.Raft, error)
 
 // RaftLoneNode is a convenience for checking if a raft node is a "lone" one,
 // meaning that it has no other peers yet.
-func RaftLoneNode(peerStore raft.PeerStore, localAddr string) (bool, error) {
-	peers, err := peerStore.Peers()
-	if err != nil {
-		return false, errors.Wrap(err, "failed to get current raft peers")
-	}
-	switch len(peers) {
+func RaftLoneNode(configuration raft.Configuration, localAddr string) (bool, error) {
+	servers := configuration.Servers
+	switch len(servers) {
 	case 0:
 		return true, nil
 	case 1:
-		if peers[0] != localAddr {
-			return false, fmt.Errorf("peer store has unexpected address")
+		if servers[0].Address != raft.ServerAddress(localAddr) {
+			return false, fmt.Errorf("configuration has unexpected address")
 		}
 		return true, nil
 	default:
