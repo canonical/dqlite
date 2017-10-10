@@ -118,7 +118,7 @@ func (n *node) Start() (err error) {
 
 	options := []dqlite.Option{
 		dqlite.LogFunc(logFunc),
-		dqlite.BarrierTimeout(n.timeout),
+		dqlite.AutoCheckpoint(1000),
 		dqlite.BarrierTimeout(n.timeout),
 	}
 	if n.driver, err = dqlite.NewDriver(n.dir, n.makeRaft, options...); err != nil {
