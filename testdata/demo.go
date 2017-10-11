@@ -170,7 +170,7 @@ func (n *node) InsertForever() {
 		if _, err := tx.Exec("CREATE TABLE IF NOT EXISTS test (n INT)"); err != nil {
 			handleTxError(n.logger, tx, err, false)
 			// We're not the leader, wait a bit and try again
-			randomSleep(0.250, 0.500)
+			//randomSleep(0.250, 0.500)
 			continue
 		}
 
@@ -179,7 +179,7 @@ func (n *node) InsertForever() {
 		failed := false
 		for i := 0; i < 50; i++ {
 			if _, err := tx.Exec("INSERT INTO test (n) VALUES(?)", i+offset); err != nil {
-				handleTxError(n.logger, tx, err, false)
+				//handleTxError(n.logger, tx, err, false)
 				failed = true
 				break
 			}
@@ -200,6 +200,7 @@ func (n *node) InsertForever() {
 			handleTxError(n.logger, tx, err, true)
 			continue
 		}
+		os.Exit(0)
 		// Sleep a little bit to simulate a pause in the service's
 		// activity and give a chance to snapshot.
 		randomSleep(0.25, 0.5)
@@ -272,7 +273,7 @@ func (n *node) makeRaft(fsm raft.FSM) (*raft.Raft, error) {
 	if isNewCluster && n.join != "" {
 		var err error
 		for i := 0; i < 10; i++ {
-			if err = layer.Join(raft.ServerAddress(n.join), n.timeout); err == nil {
+			if err = layer.Join(config.LocalID, raft.ServerAddress(n.join), n.timeout); err == nil {
 				break
 			}
 			n.logger.Printf("[INFO] demo: retry to join cluster: %v", err)
