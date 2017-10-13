@@ -32,6 +32,11 @@ def spawnNode(n, purge=False):
     fd = open(os.path.join(data, "log"), "a+")
     return subprocess.Popen(args, env=env, stdout=fd, stderr=fd)
 
+def spawnTail():
+    args = ["tail", "-f"]
+    for i in range(3):
+        args.append("/tmp/dqlite-demo-%d/log" % i)
+    return subprocess.Popen(args, stderr=subprocess.STDOUT)
 
 if __name__ == "__main__":
     subprocess.check_call(BUILD_DQLITE)
@@ -40,6 +45,7 @@ if __name__ == "__main__":
     processes = []
     for i in range(3):
         processes.append(spawnNode(i, purge=True))
+    spawnTail()
 
     while True:
         for i, process in enumerate(processes):
