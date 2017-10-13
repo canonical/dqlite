@@ -1,28 +1,23 @@
 package dqlite
 
 import (
-	"fmt"
-
+	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/log"
+	"github.com/CanonicalLtd/dqlite/internal/replication"
+	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/hashicorp/raft"
 )
 
-// RaftFactory is the interface of a function that creates a raft instance
-// attached to the given fsm.
-type RaftFactory func(raft.FSM) (*raft.Raft, error)
-
-// RaftLoneNode is a convenience for checking if a raft node is a "lone" one,
-// meaning that it has no other peers yet.
-func RaftLoneNode(configuration raft.Configuration, localAddr string) (bool, error) {
-	servers := configuration.Servers
-	switch len(servers) {
-	case 0:
-		return true, nil
-	case 1:
-		if servers[0].Address != raft.ServerAddress(localAddr) {
-			return false, fmt.Errorf("configuration has unexpected address")
-		}
-		return true, nil
-	default:
-		return false, nil
-	}
+// NewFSM creates a new dqlite FSM, suitable to be passed to raft.NewRaft.
+//
+// It will handle replication of the SQLite write-ahead log.
+//
+// This is mostly an internal implementation detail of dqlite, but it needs to
+// be exposed since the raft.Raft parameter that NewDriver accepts doesn't
+// allow access to the FSM that it was passed.
+func NewFSM(dir string) raft.FSM {
+	logger := log.New(log.Standard(), log.Info)
+	connections := connection.NewRegistry()
+	transactions := transaction.NewRegistry()
+	return replication.NewFSM(logger, dir, connections, transactions)
 }

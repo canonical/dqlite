@@ -32,11 +32,31 @@ func NewFSM(l *log.Logger, dir string, c *connection.Registry, t *transaction.Re
 // FSM implements the raft finite-state machine used to replicate
 // SQLite data.
 type FSM struct {
-	dir          string
 	logger       *log.Logger
+	dir          string
 	connections  *connection.Registry  // Open connections (either leaders or followers).
 	transactions *transaction.Registry // Ongoing write transactions.
 	index        uint64                // Last Raft index that has been successfully applied.
+}
+
+// Logger used by this FSM.
+func (f *FSM) Logger() *log.Logger {
+	return f.logger
+}
+
+// Dir is the directory where this FSM stores the replicated SQLite files.
+func (f *FSM) Dir() string {
+	return f.dir
+}
+
+// Connections returns the internal connections registry used by this FSM.
+func (f *FSM) Connections() *connection.Registry {
+	return f.connections
+}
+
+// Transactions returns the internal transactions registry used by this FSM.
+func (f *FSM) Transactions() *transaction.Registry {
+	return f.transactions
 }
 
 // Apply log is invoked once a log entry is committed.

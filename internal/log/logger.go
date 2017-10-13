@@ -19,6 +19,11 @@ func New(f Func, level Level) *Logger {
 
 }
 
+// Func replaces the logging function used by this logger.
+func (l *Logger) Func(f Func) {
+	l.f = f
+}
+
 // Augment returns a new logger which has the same settings as this
 // one, but with its prefix augmented with the given string.
 func (l *Logger) Augment(prefix string) *Logger {

@@ -87,7 +87,8 @@ func TestLogger_Panicf(t *testing.T) {
 
 func TestAugmentLogger(t *testing.T) {
 	buffer := newBuffer()
-	logger := log.New(buffer.Log, log.Trace)
+	logger := log.New(log.Standard(), log.Trace)
+	logger.Func(buffer.Log)
 	logger = logger.Augment("foo")
 	logger.Tracef("hi")
 	assert.Equal(t, "TRACE foo: hi", buffer.String())
