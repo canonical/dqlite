@@ -9,6 +9,7 @@ import (
 
 func TestLevel_Unknown(t *testing.T) {
 	level := log.Level(666)
-	f := func() { level.String() }
+	var s string
+	f := func() { s = level.String() }
 	assert.Panics(t, f)
 }

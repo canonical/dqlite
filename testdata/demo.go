@@ -121,7 +121,12 @@ func (n *node) Start() (err error) {
 		dqlite.AutoCheckpoint(1000),
 		dqlite.BarrierTimeout(n.timeout),
 	}
-	if n.driver, err = dqlite.NewDriver(n.dir, n.makeRaft, options...); err != nil {
+	fsm := dqlite.NewFSM(n.dir)
+	raft, err := n.makeRaft(fsm)
+	if err != nil {
+		return errors.Wrap(err, "failed to start raft")
+	}
+	if n.driver, err = dqlite.NewDriver(fsm, raft, options...); err != nil {
 		return errors.Wrap(err, "failed to create dqlite driver")
 	}
 	sql.Register("dqlite", n.driver)

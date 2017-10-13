@@ -14,7 +14,6 @@ import (
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
-	"github.com/CanonicalLtd/dqlite/internal/transaction"
 )
 
 // Driver manages a node partecipating to a dqlite replicated cluster.
@@ -30,8 +29,15 @@ type Driver struct {
 
 // NewDriver creates a new node of a dqlite cluster, which also implements the driver.Driver
 // interface.
-func NewDriver(dir string, factory RaftFactory, options ...Option) (*Driver, error) {
-	if err := ensureDir(dir); err != nil {
+//
+// The 'fsm' instance must be the same one that was passed to raft.NewRaft for
+// creating the 'raft' instance.
+func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error) {
+	fsmi, ok := fsm.(*replication.FSM)
+	if !ok {
+		return nil, fmt.Errorf("raftFSM is not a dqlite FSM")
+	}
+	if err := ensureDir(fsmi.Dir()); err != nil {
 		return nil, err
 	}
 
@@ -41,31 +47,22 @@ func NewDriver(dir string, factory RaftFactory, options ...Option) (*Driver, err
 
 	}
 
+	// Logging
 	logger := log.New(o.logFunc, log.Trace)
 	sqlite3x.LogConfig(func(code int, message string) {
 		o.logFunc(log.Error, fmt.Sprintf("[%d] %s", code, message))
 	})
-
-	// Replication
-	connections := connection.NewRegistry()
-	transactions := transaction.NewRegistry()
-	fsm := replication.NewFSM(logger, dir, connections, transactions)
-
-	// Raft
-	raft, err := factory(fsm)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to start raft")
-	}
+	fsmi.Logger().Func(o.logFunc)
 
 	// Replication methods
-	methods := replication.NewMethods(raft, logger, connections, transactions)
+	methods := replication.NewMethods(raft, logger, fsmi.Connections(), fsmi.Transactions())
 	methods.ApplyTimeout(o.applyTimeout)
 
 	barrier := func() error {
 		if raft.State() != raftLeader {
 			return sqlite3x.ErrNotLeader
 		}
-		if fsm.Index() == raft.LastIndex() {
+		if fsmi.Index() == raft.LastIndex() {
 			return nil
 		}
 		if err := raft.Barrier(o.barrierTimeout).Error(); err != nil {
@@ -76,8 +73,8 @@ func NewDriver(dir string, factory RaftFactory, options ...Option) (*Driver, err
 
 	driver := &Driver{
 		logger:      logger.Augment("driver"),
-		dir:         dir,
-		connections: connections,
+		dir:         fsmi.Dir(),
+		connections: fsmi.Connections(),
 		barrier:     barrier,
 		methods:     methods,
 	}

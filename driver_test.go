@@ -46,25 +46,12 @@ func TestNewDriver_DirErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		subtest.Run(t, c.title, func(t *testing.T) {
-			driver, err := dqlite.NewDriver(c.dir, nil)
+			driver, err := dqlite.NewDriver(dqlite.NewFSM(c.dir), nil)
 			assert.Nil(t, driver)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), c.error)
 		})
 	}
-}
-
-// If there's a problem starting raft, an error is returned.
-func TestNewDriver_RaftErrors(t *testing.T) {
-	dir, cleanup := newDir(t)
-	defer cleanup()
-
-	factory := func(raft.FSM) (*raft.Raft, error) {
-		return nil, fmt.Errorf("boom")
-	}
-	driver, err := dqlite.NewDriver(dir, factory)
-	assert.Nil(t, driver)
-	assert.EqualError(t, err, "failed to start raft: boom")
 }
 
 // If the data directory does not exist, it is created automatically.
@@ -73,10 +60,7 @@ func TestNewDriver_CreateDir(t *testing.T) {
 	defer cleanup()
 
 	dir = filepath.Join(dir, "does", "not", "exist")
-	factory := func(raft.FSM) (*raft.Raft, error) {
-		return &raft.Raft{}, nil
-	}
-	_, err := dqlite.NewDriver(dir, factory)
+	_, err := dqlite.NewDriver(dqlite.NewFSM(dir), &raft.Raft{})
 	assert.NoError(t, err)
 }
 
@@ -166,13 +150,15 @@ func TestTx_Rollback(t *testing.T) {
 // Create a new test dqlite.Driver.
 func newDriver(t *testing.T, options ...dqlite.Option) (*dqlite.Driver, func()) {
 	dir, dirCleanup := newDir(t)
-	factory, factoryCleanup := newFactory(t)
 
-	driver, err := dqlite.NewDriver(dir, factory, options...)
+	fsm := dqlite.NewFSM(dir)
+	raft := rafttest.Node(t, fsm)
+
+	driver, err := dqlite.NewDriver(fsm, raft, options...)
 	require.NoError(t, err)
 
 	cleanup := func() {
-		factoryCleanup()
+		require.NoError(t, raft.Shutdown().Error())
 		dirCleanup()
 	}
 
@@ -192,22 +178,4 @@ func newDir(t *testing.T) (string, func()) {
 		}
 	}
 	return dir, cleanup
-}
-
-// Create a new RaftFactory, using a single node raft.
-func newFactory(t *testing.T) (dqlite.RaftFactory, func()) {
-	rafts := make([]*raft.Raft, 1)
-	factory := func(fsm raft.FSM) (*raft.Raft, error) {
-		raft := rafttest.Node(t, fsm)
-		rafts[0] = raft
-		return raft, nil
-	}
-	cleanup := func() {
-		raft := rafts[0]
-		if raft == nil {
-			return
-		}
-		require.NoError(t, raft.Shutdown().Error())
-	}
-	return factory, cleanup
 }
