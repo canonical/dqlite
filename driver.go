@@ -147,8 +147,15 @@ func (c *Conn) Prepare(query string) (driver.Stmt, error) {
 // idle connections, it shouldn't be necessary for drivers to
 // do their own connection caching.
 func (c *Conn) Close() error {
+	if c.sqliteConn == nil {
+		return nil // Idempotency
+	}
 	c.connections.DelLeader(c.sqliteConn)
-	return connection.CloseLeader(c.sqliteConn)
+	if err := connection.CloseLeader(c.sqliteConn); err != nil {
+		return err
+	}
+	c.sqliteConn = nil
+	return nil
 }
 
 // Begin starts and returns a new transaction.

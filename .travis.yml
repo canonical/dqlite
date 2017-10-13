@@ -16,6 +16,5 @@ script:
   - $GOPATH/bin/goveralls -coverprofile overalls.coverprofile -service=travis-ci
 
 go:
-  - 1.6
   - 1.7
   - 1.8
