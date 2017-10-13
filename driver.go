@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/hashicorp/raft"
 	"github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 
@@ -61,6 +62,9 @@ func NewDriver(dir string, factory RaftFactory, options ...Option) (*Driver, err
 	methods.ApplyTimeout(o.applyTimeout)
 
 	barrier := func() error {
+		if raft.State() != raftLeader {
+			return sqlite3x.ErrNotLeader
+		}
 		if fsm.Index() == raft.LastIndex() {
 			return nil
 		}
@@ -224,3 +228,5 @@ func (s *Stmt) Query(args []driver.Value) (driver.Rows, error) {
 // A function used to make sure that our FSM is up-to-date with the latest Raft
 // index.
 type barrier func() error
+
+const raftLeader = raft.Leader
