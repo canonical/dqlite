@@ -72,11 +72,12 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error
 	}
 
 	driver := &Driver{
-		logger:      logger.Augment("driver"),
-		dir:         fsmi.Dir(),
-		connections: fsmi.Connections(),
-		barrier:     barrier,
-		methods:     methods,
+		logger:         logger.Augment("driver"),
+		dir:            fsmi.Dir(),
+		connections:    fsmi.Connections(),
+		barrier:        barrier,
+		methods:        methods,
+		autoCheckpoint: o.autoCheckpoint,
 	}
 
 	return driver, nil
@@ -136,6 +137,16 @@ func (c *Conn) Prepare(query string) (driver.Stmt, error) {
 		sqliteStmt: driverStmt.(*sqlite3.SQLiteStmt),
 	}
 	return stmt, err
+}
+
+// Exec may return ErrSkip.
+//
+// Deprecated: Drivers should implement ExecerContext instead (or additionally).
+func (c *Conn) Exec(query string, args []driver.Value) (driver.Result, error) {
+	if err := c.barrier(); err != nil {
+		return nil, err
+	}
+	return c.sqliteConn.Exec(query, args)
 }
 
 // Close invalidates and potentially stops any current
