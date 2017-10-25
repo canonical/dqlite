@@ -66,6 +66,9 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error
 			return nil
 		}
 		if err := raft.Barrier(o.barrierTimeout).Error(); err != nil {
+			if err == raftErrLeadershipLost {
+				return sqlite3x.ErrNotLeader
+			}
 			return errors.Wrap(err, "FSM out of sync")
 		}
 		return nil
@@ -245,3 +248,5 @@ func (s *Stmt) Query(args []driver.Value) (driver.Rows, error) {
 type barrier func() error
 
 const raftLeader = raft.Leader
+
+var raftErrLeadershipLost = raft.ErrLeadershipLost
