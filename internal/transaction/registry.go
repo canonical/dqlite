@@ -43,10 +43,22 @@ func NewRegistry() *Registry {
 // assumed to be in leader replication mode. The new transaction will
 // be assigned a unique ID.
 //
+// If any of the other given connections has registered transaction (except the
+// given one), nil is returned.
+//
 // FIXME: txid should be uint64
-func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn, txid string) *Txn {
+func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn, txid string, others []*sqlite3.SQLiteConn) *Txn {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	for _, other := range others {
+		if other == conn {
+			continue
+		}
+		if txn := r.getByConn(other); txn != nil {
+			return nil
+		}
+	}
 
 	r.checkReplicationMode(conn, sqlite3x.ReplicationModeLeader)
 

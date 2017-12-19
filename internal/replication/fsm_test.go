@@ -68,7 +68,7 @@ var fsmApplyPanicCases = []struct {
 			defer cleanup()
 
 			fsm.Connections().AddLeader("test.db", conn)
-			fsm.Transactions().AddLeader(conn, "xxxx")
+			fsm.Transactions().AddLeader(conn, "xxxx", nil)
 
 			fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
 			fsm.Apply(newRaftLog(1, protocol.NewBegin("abcd", "test.db")))
@@ -125,7 +125,7 @@ var fsmApplyCases = []struct {
 			conn, cleanup := newLeaderConn(t, fsm.Dir(), methods)
 			defer cleanup()
 
-			txn := fsm.Transactions().AddLeader(conn, "0")
+			txn := fsm.Transactions().AddLeader(conn, "0", nil)
 			txn.DryRun(true)
 
 			fsm.Apply(newRaftLog(0, protocol.NewBegin("0", "test.db")))
