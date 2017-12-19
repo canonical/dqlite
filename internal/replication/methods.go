@@ -53,32 +53,32 @@ func (m *Methods) ApplyTimeout(timeout time.Duration) {
 // being started within a connection in leader replication mode on
 // this node.
 func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
-	logger := m.hookLogger(conn, "begin")
+	var logger *log.Logger
+	var txn *transaction.Txn
 
-	// It should never happen that we have an ongoing write transaction for
-	// this connection, since SQLite locking system itself prevents it by
-	// serializing write transactions. Still double check it for sanity.
-	if txn := m.transactions.GetByConn(conn); txn != nil {
-		logger.Panicf("found leader transaction %s (%s)", txn.ID(), txn)
-	}
-
-	if err := checkIsLeader(logger, m.raft); err != nil {
-		return errno(err)
+	// Insert a new transaction in the registry, preventing more than one
+	// transaction to be active at the same time.
+	timeout := time.After(m.applyTimeout)
+	for {
+		var err error
+		logger, txn, err = m.tryBegin(conn)
+		if err != nil {
+			return errno(err)
+		}
+		if txn != nil {
+			break
+		}
+		logger.Tracef("wait for active transaction to complete")
+		time.Sleep(25 * time.Millisecond)
+		select {
+		case <-timeout:
+			logger.Tracef("active transaction did not complete within %s", m.applyTimeout)
+			return sqlite3.ErrBusy
+		default:
+		}
 	}
 
 	filename := m.connections.FilenameOfLeader(conn)
-	logger = logger.Augment(filepath.Base(filename))
-
-	if err := m.maybeAddFollowerConn(logger, filename); err != nil {
-		return errno(err)
-	}
-
-	// Insert a new transaction in the registry.
-	txid := strconv.Itoa(int(m.raft.LastIndex()))
-	logger = logger.Augment(fmt.Sprintf("txn %s", txid))
-	logger.Tracef("register transaction")
-	txn := m.transactions.AddLeader(conn, txid)
-
 	if err := m.maybeUndoFollowerTxn(logger, filename); err != nil {
 		// We failed to rollback a leftover follower, let's
 		// mark the transaction as stale. It should then be
@@ -114,6 +114,39 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		return errno(err)
 	}
 	return 0
+}
+
+// This is the core logic of the Begin method, which fails in case there's
+// already an ongoing transaction for another leader connection.
+func (m *Methods) tryBegin(conn *sqlite3.SQLiteConn) (*log.Logger, *transaction.Txn, error) {
+	logger := m.hookLogger(conn, "begin")
+	filename := m.connections.FilenameOfLeader(conn)
+	logger = logger.Augment(filepath.Base(filename))
+
+	if err := checkIsLeader(logger, m.raft); err != nil {
+		return nil, nil, err
+	}
+
+	// It should never happen that we have an ongoing write transaction for
+	// this connection, since SQLite locking system itself prevents it by
+	// serializing write transactions. Still double check it for sanity.
+	if txn := m.transactions.GetByConn(conn); txn != nil {
+		logger.Panicf("found leader transaction %s (%s)", txn.ID(), txn)
+	}
+
+	if err := m.maybeAddFollowerConn(logger, filename); err != nil {
+		return nil, nil, err
+	}
+
+	leaders := m.connections.Leaders(filename)
+
+	txid := strconv.Itoa(int(m.raft.LastIndex()))
+	logger = logger.Augment(fmt.Sprintf("txn %s", txid))
+	logger.Tracef("register transaction")
+
+	txn := m.transactions.AddLeader(conn, txid, leaders)
+
+	return logger, txn, nil
 }
 
 // WalFrames is the hook invoked by sqlite when new frames need to be

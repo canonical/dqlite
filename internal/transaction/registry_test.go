@@ -12,7 +12,7 @@ func TestRegistry_AddLeader(t *testing.T) {
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, "1")
+	txn := registry.AddLeader(conn, "1", nil)
 
 	if txn.ID() == "" {
 		t.Error("no ID assigned to transaction")
@@ -29,7 +29,7 @@ func TestRegistry_AddLeaderPanicsIfPassedSameLeaderConnectionTwice(t *testing.T)
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, "1")
+	txn := registry.AddLeader(conn, "1", nil)
 
 	want := fmt.Sprintf("a transaction for this connection is already registered with ID %s", txn.ID())
 	defer func() {
@@ -38,7 +38,7 @@ func TestRegistry_AddLeaderPanicsIfPassedSameLeaderConnectionTwice(t *testing.T)
 			t.Errorf("expected\n%q\ngot\n%q", want, got)
 		}
 	}()
-	registry.AddLeader(conn, "2")
+	registry.AddLeader(conn, "2", nil)
 }
 
 func TestRegistry_AddFollower(t *testing.T) {
@@ -62,7 +62,7 @@ func TestRegistry_GetByID(t *testing.T) {
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, "0")
+	txn := registry.AddLeader(conn, "0", nil)
 	if registry.GetByID(txn.ID()) != txn {
 		t.Error("transactions instances don't match")
 	}
@@ -79,7 +79,7 @@ func TestRegistry_GetByConn(t *testing.T) {
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, "0")
+	txn := registry.AddLeader(conn, "0", nil)
 	if registry.GetByConn(conn) != txn {
 		t.Error("transactions instances don't match")
 	}
@@ -98,7 +98,7 @@ func TestRegistry_Remove(t *testing.T) {
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, "0")
+	txn := registry.AddLeader(conn, "0", nil)
 
 	registry.Remove(txn.ID())
 	if registry.GetByID(txn.ID()) != nil {

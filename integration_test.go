@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -59,6 +60,36 @@ func TestExposeDriverOverGrpc(t *testing.T) {
 	require.NoError(t, tx.Commit())
 }
 
+// Test concurrent leader connections and transactions over gRPC.
+func TestGrpcConcurrency(t *testing.T) {
+	dbs, cleanup := newGrpcCluster(t)
+	defer cleanup()
+
+	// Create a table using the first db.
+	db := dbs[0]
+	tx, err := db.Begin()
+	require.NoError(t, err)
+	_, err = tx.Exec("CREATE TABLE test (n INT)")
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit())
+
+	n := 3
+	wg := sync.WaitGroup{}
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			db := dbs[i]
+			tx, err := db.Begin()
+			require.NoError(t, err)
+			_, err = tx.Exec("INSERT INTO test VALUES(?)", i)
+			require.NoError(t, err)
+			require.NoError(t, tx.Commit())
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+}
+
 // Create a new cluster for 3 dqlite drivers exposed over gRPC. Return 3 sql.DB
 // instances backed gRPC SQL drivers, each one trying to connect to one of the
 // 3 dqlite drivers over gRPC, in a round-robin fashion.
@@ -79,8 +110,9 @@ func newGrpcCluster(t *testing.T) ([]*sql.DB, func()) {
 	// Create the dqlite drivers.
 	drivers := make([]driver.Driver, 3)
 	for i := range fsms {
+		index := i
 		logFunc := func(level, message string) {
-			t.Logf("[%s] %d: %s", level, i, message)
+			t.Logf("[%s] %d: %s", level, index, message)
 		}
 		driver, err := dqlite.NewDriver(fsms[i], rafts[i], dqlite.LogFunc(logFunc))
 		require.NoError(t, err)
@@ -129,7 +161,8 @@ func newGrpcCluster(t *testing.T) ([]*sql.DB, func()) {
 
 	for i := range dbs {
 		grpcDriver := grpcsql.NewDriver(dialer)
-		grpcDriverName := fmt.Sprintf("dqlite-integration-test-%d", i)
+		grpcDriverName := fmt.Sprintf("dqlite-integration-test-%d", grpcDriversCount)
+		grpcDriversCount++
 		sql.Register(grpcDriverName, grpcDriver)
 
 		db, err := sql.Open(grpcDriverName, "test.db")
@@ -150,3 +183,5 @@ func newGrpcCluster(t *testing.T) ([]*sql.DB, func()) {
 
 	return dbs, cleanup
 }
+
+var grpcDriversCount = 0

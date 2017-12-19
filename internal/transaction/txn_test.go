@@ -138,7 +138,7 @@ func TestTxn_StaleFromPending(t *testing.T) {
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, "0")
+	txn := registry.AddLeader(conn, "0", nil)
 	txn.Enter()
 
 	txn.DryRun(true)
@@ -157,7 +157,7 @@ func TestTxn_StaleFromStarted(t *testing.T) {
 	registry.DryRun()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, "0")
+	txn := registry.AddLeader(conn, "0", nil)
 	txn.Enter()
 
 	txn.DryRun(true)
@@ -180,7 +180,7 @@ func TestTxn_StaleFromWriting(t *testing.T) {
 	registry.DryRun()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, "0")
+	txn := registry.AddLeader(conn, "0", nil)
 	txn.Enter()
 
 	txn.DryRun(true)
@@ -212,7 +212,7 @@ func TestTxn_StaleFromUndoing(t *testing.T) {
 	// Pretend that the follower transaction is the leader, since
 	// invoking Begin() on an actual leader connection would fail
 	// because the WAL has not started a read transaction.
-	txn := registry.AddLeader(conn, "0")
+	txn := registry.AddLeader(conn, "0", nil)
 	txn.Enter()
 
 	txn.DryRun(true)
@@ -238,7 +238,7 @@ func TestTxn_StaleFromEnded(t *testing.T) {
 
 	conn := &sqlite3.SQLiteConn{}
 
-	txn := registry.AddLeader(conn, "0")
+	txn := registry.AddLeader(conn, "0", nil)
 	txn.Enter()
 
 	txn.DryRun(true)
