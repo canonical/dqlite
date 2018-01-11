@@ -114,7 +114,8 @@ func newGrpcCluster(t *testing.T) ([]*sql.DB, func()) {
 		logFunc := func(level, message string) {
 			t.Logf("[%s] %d: %s", level, index, message)
 		}
-		driver, err := dqlite.NewDriver(fsms[i], rafts[i], dqlite.LogFunc(logFunc))
+		driver, err := dqlite.NewDriver(
+			fsms[i], rafts[i], dqlite.LogFunc(logFunc), dqlite.LogLevel("TRACE"))
 		require.NoError(t, err)
 		drivers[i] = driver
 	}

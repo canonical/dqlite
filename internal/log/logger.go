@@ -24,6 +24,11 @@ func (l *Logger) Func(f Func) {
 	l.f = f
 }
 
+// Level sets the log level used by this logger.
+func (l *Logger) Level(level Level) {
+	l.level = level
+}
+
 // Augment returns a new logger which has the same settings as this
 // one, but with its prefix augmented with the given string.
 func (l *Logger) Augment(prefix string) *Logger {

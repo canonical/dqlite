@@ -54,6 +54,31 @@ func TestNewDriver_DirErrors(t *testing.T) {
 	}
 }
 
+// Valid log levels are accepted as configuration option.
+func TestNewDriver_LogLevels(t *testing.T) {
+	levels := []string{
+		"TRACE", "DEBUG", "INFO", "ERROR", "PANIC",
+	}
+	for _, level := range levels {
+		subtest.Run(t, level, func(t *testing.T) {
+			dir, cleanup := newDir(t)
+			defer cleanup()
+
+			_, err := dqlite.NewDriver(dqlite.NewFSM(dir), nil, dqlite.LogLevel(level))
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// Invalid log levels result in an error.
+func TestNewDriver_LogLevelError(t *testing.T) {
+	dir, cleanup := newDir(t)
+	defer cleanup()
+
+	_, err := dqlite.NewDriver(dqlite.NewFSM(dir), nil, dqlite.LogLevel("foo"))
+	assert.EqualError(t, err, "unknown log level foo")
+}
+
 // If the data directory does not exist, it is created automatically.
 func TestNewDriver_CreateDir(t *testing.T) {
 	dir, cleanup := newDir(t)

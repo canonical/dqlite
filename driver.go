@@ -48,11 +48,28 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error
 	}
 
 	// Logging
-	logger := log.New(o.logFunc, log.Trace)
+	var logLevel log.Level
+	switch o.logLevel {
+	case "TRACE":
+		logLevel = log.Trace
+	case "DEBUG":
+		logLevel = log.Debug
+	case "INFO":
+		logLevel = log.Info
+	case "ERROR":
+		logLevel = log.Error
+	case "PANIC":
+		logLevel = log.Panic
+	default:
+		return nil, fmt.Errorf("unknown log level %s", o.logLevel)
+
+	}
+	logger := log.New(o.logFunc, logLevel)
 	sqlite3x.LogConfig(func(code int, message string) {
 		o.logFunc(log.Error, fmt.Sprintf("[%d] %s", code, message))
 	})
 	fsmi.Logger().Func(o.logFunc)
+	fsmi.Logger().Level(logLevel)
 
 	// Replication methods
 	methods := replication.NewMethods(raft, logger, fsmi.Connections(), fsmi.Transactions())
