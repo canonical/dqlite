@@ -65,6 +65,7 @@ func newOptions() *options {
 		logFunc:        log.Standard(),
 		logLevel:       "INFO",
 		barrierTimeout: time.Minute,
+		applyTimeout:   10 * time.Second,
 		autoCheckpoint: 1000,
 	}
 }
