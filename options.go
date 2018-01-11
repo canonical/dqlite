@@ -22,6 +22,16 @@ func LogFunc(f func(level, message string)) Option {
 	}
 }
 
+// LogLevel sets the logging level for messages emitted by the driver.
+//
+// Possible values are "TRACE", "DEBUG", "INFO", "ERROR", "PANIC"
+func LogLevel(level string) Option {
+	return func(options *options) {
+		options.logLevel = level
+	}
+
+}
+
 // BarrierTimeout sets the maximum amount of time to wait for the FSM to catch
 // up with the latest log.
 func BarrierTimeout(timeout time.Duration) Option {
@@ -53,6 +63,7 @@ func AutoCheckpoint(n int) Option {
 func newOptions() *options {
 	return &options{
 		logFunc:        log.Standard(),
+		logLevel:       "INFO",
 		barrierTimeout: time.Minute,
 		autoCheckpoint: 1000,
 	}
@@ -60,6 +71,7 @@ func newOptions() *options {
 
 type options struct {
 	logFunc        log.Func
+	logLevel       string
 	applyTimeout   time.Duration
 	barrierTimeout time.Duration
 	autoCheckpoint int
