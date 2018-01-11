@@ -76,7 +76,8 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	logger.Tracef("start")
 	defer func() {
 		if result := recover(); result != nil {
-			logger.Infof("\n%s\n%s", f.connections.Dump(), f.transactions.Dump())
+			logger.Errorf("%v", result)
+			logger.Errorf("\n%s\n%s", f.connections.Dump(), f.transactions.Dump())
 			panic(result)
 		}
 	}()
@@ -149,7 +150,7 @@ func (f *FSM) applyBegin(logger *log.Logger, params *protocol.Begin) {
 		txn = f.transactions.AddFollower(conn, params.Txid)
 	}
 
-	if err := txn.Do(txn.Begin); err != nil {
+	if err := f.txnDo(logger, txn, txn.Begin); err != nil {
 		logger.Panicf("failed to begin transaction %s: %s", txn, err)
 	}
 }
@@ -180,7 +181,7 @@ func (f *FSM) applyWalFrames(logger *log.Logger, params *protocol.WalFrames) {
 		SyncFlags: uint8(params.SyncFlags),
 	}
 
-	if err := txn.Do(func() error { return txn.WalFrames(framesParams) }); err != nil {
+	if err := f.txnDo(logger, txn, func() error { return txn.WalFrames(framesParams) }); err != nil {
 		logger.Panicf("failed to write farames: %s", err)
 	}
 }
@@ -193,7 +194,7 @@ func (f *FSM) applyUndo(logger *log.Logger, params *protocol.Undo) {
 	}
 	logger.Tracef(txn.String())
 
-	if err := txn.Do(txn.Undo); err != nil {
+	if err := f.txnDo(logger, txn, txn.Undo); err != nil {
 		logger.Panicf("failed to undo transaction %s: %s", txn, err)
 	}
 }
@@ -207,7 +208,7 @@ func (f *FSM) applyEnd(logger *log.Logger, params *protocol.End) {
 	}
 	logger.Tracef(txn.String())
 
-	if err := txn.Do(txn.End); err != nil {
+	if err := f.txnDo(logger, txn, txn.End); err != nil {
 		logger.Panicf("failed to end transaction %s: %s", txn, err)
 	}
 
@@ -475,6 +476,11 @@ func (f *FSM) restoreDatabase(logger *log.Logger, reader io.ReadCloser) (bool, e
 
 	return done, nil
 
+}
+
+func (f *FSM) txnDo(logger *log.Logger, txn *transaction.Txn, fn func() error) error {
+	logger.Tracef("perform on conn %d", f.connections.Serial(txn.Conn()))
+	return txn.Do(fn)
 }
 
 // FSMSnapshot is returned by an FSM in response to a Snapshot
