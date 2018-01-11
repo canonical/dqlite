@@ -55,27 +55,17 @@ func (m *Methods) ApplyTimeout(timeout time.Duration) {
 func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	var logger *log.Logger
 	var txn *transaction.Txn
+	var err error
 
 	// Insert a new transaction in the registry, preventing more than one
 	// transaction to be active at the same time.
-	timeout := time.After(m.applyTimeout)
-	for {
-		var err error
-		logger, txn, err = m.tryBegin(conn)
-		if err != nil {
-			return errno(err)
-		}
-		if txn != nil {
-			break
-		}
-		logger.Tracef("wait for active transaction to complete")
-		time.Sleep(25 * time.Millisecond)
-		select {
-		case <-timeout:
-			logger.Tracef("active transaction did not complete within %s", m.applyTimeout)
-			return sqlite3.ErrBusy
-		default:
-		}
+	logger, txn, err = m.tryBegin(conn)
+	if err != nil {
+		return errno(err)
+	}
+	if txn == nil {
+		logger.Tracef("a transaction is already running")
+		return sqlite3.ErrBusy
 	}
 
 	filename := m.connections.FilenameOfLeader(conn)
