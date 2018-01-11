@@ -125,6 +125,8 @@ var fsmApplyCases = []struct {
 			conn, cleanup := newLeaderConn(t, fsm.Dir(), methods)
 			defer cleanup()
 
+			fsm.Connections().AddLeader("test.db", conn)
+
 			txn := fsm.Transactions().AddLeader(conn, "0", nil)
 			txn.DryRun(true)
 
