@@ -1,7 +1,8 @@
 #!/bin/sh
 
-export CGO_CFLAGS="-I$(dirname $0)/.sqlite/"
-export CGO_LDFLAGS="-L$(dirname $0)/.sqlite/"
-export LD_LIBRARY_PATH="$(dirname $0)/.sqlite/"
+sqlite="$(realpath $(dirname $0))/.sqlite"
+export CGO_CFLAGS="-I${sqlite}"
+export CGO_LDFLAGS="-L${sqlite}"
+export LD_LIBRARY_PATH="${sqlite}"
 
 go $@
