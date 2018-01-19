@@ -3,6 +3,11 @@ sudo: false
 
 language: go
 
+addons:
+  apt:
+    packages:
+    - realpath
+
 before_install:
   - go get github.com/go-playground/overalls
   - go get github.com/mattn/goveralls

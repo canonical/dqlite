@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"sync/atomic"
+	"sync"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/log"
@@ -37,6 +37,8 @@ type FSM struct {
 	connections  *connection.Registry  // Open connections (either leaders or followers).
 	transactions *transaction.Registry // Ongoing write transactions.
 	index        uint64                // Last Raft index that has been successfully applied.
+
+	mu sync.Mutex // Only used on 386 as alternative to StoreUint64
 }
 
 // Logger used by this FSM.
@@ -99,16 +101,10 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		logger.Panicf("unhandled params type")
 	}
 
-	atomic.StoreUint64(&f.index, log.Index)
+	f.saveIndex(log.Index)
 
 	logger.Tracef("done")
 	return nil
-}
-
-// Index returns the last Raft log index that was successfully applied by this
-// FSM.
-func (f *FSM) Index() uint64 {
-	return atomic.LoadUint64(&f.index)
 }
 
 func (f *FSM) applyOpen(logger *log.Logger, params *protocol.Open) {
@@ -317,7 +313,7 @@ func (f *FSM) Restore(reader io.ReadCloser) error {
 	if err := binary.Read(reader, binary.LittleEndian, &index); err != nil {
 		return errors.Wrap(err, "failed to read FSM index")
 	}
-	atomic.StoreUint64(&f.index, index)
+	f.saveIndex(index)
 	logger.Tracef("index %d", index)
 
 	for {
