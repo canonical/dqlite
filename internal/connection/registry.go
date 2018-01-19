@@ -153,6 +153,9 @@ func (r *Registry) Follower(filename string) *sqlite3.SQLiteConn {
 // Serial returns a serial number uniquely identifying the given registered
 // connection.
 func (r *Registry) Serial(conn *sqlite3.SQLiteConn) uint64 {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	serial, ok := r.serial[conn]
 
 	if !ok {
