@@ -94,6 +94,17 @@ func TestAugmentLogger(t *testing.T) {
 	assert.Equal(t, "TRACE foo: hi", buffer.String())
 }
 
+func TestLogger_Level(t *testing.T) {
+	buffer := newBuffer()
+	logger := log.New(log.Standard(), log.Info)
+	logger.Func(buffer.Log)
+	logger.Tracef("hello")
+	assert.Equal(t, "", buffer.String())
+	logger.Level(log.Trace)
+	logger.Tracef("hi")
+	assert.Equal(t, "TRACE hi", buffer.String())
+}
+
 type buffer struct {
 	bytes.Buffer
 }

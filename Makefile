@@ -18,6 +18,6 @@ build:
 	$(GO) build -tags  $(GO_TAGS)
 
 coverage:
-	$(GOPATH)/bin/overalls -go-binary $(GO) -ignore internal/commands -project $(PROJECT) -covermode=count -- -tags $(GO_TAGS)
+	$(GOPATH)/bin/overalls -go-binary $(GO) -ignore internal/protocol -project $(PROJECT) -covermode=count -- -tags $(GO_TAGS) -timeout 60s
 
 .PHONY: dependencies build coverage

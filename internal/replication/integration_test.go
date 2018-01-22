@@ -106,7 +106,7 @@ func TestIntegration_RaftApplyErrorWithInflightTxnAndRecoverOnNewLeader(t *testi
 // Exercise creating and restoring snapshots.
 func TestIntegration_Snapshot(t *testing.T) {
 	config := rafttest.Config(func(n int, config *raft.Config) {
-		config.SnapshotInterval = 5 * time.Millisecond
+		config.SnapshotInterval = 50 * time.Millisecond
 		config.SnapshotThreshold = 2
 		config.TrailingLogs = 1
 	})
