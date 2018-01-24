@@ -2,7 +2,6 @@ package replication_test
 
 import (
 	"database/sql/driver"
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,7 +33,7 @@ func TestIntegration_Replication(t *testing.T) {
 
 	// Wait for a follower to replicate the WAL.
 	j := rafttest.Other(cluster.Rafts, i)
-	cluster.WaitFSM(i, j)
+	cluster.Watcher.WaitIndex(j, cluster.Rafts[i].AppliedIndex(), time.Second)
 
 	// Get a leader conneciton on the follower and check that the change is
 	// there.
@@ -106,12 +105,11 @@ func TestIntegration_RaftApplyErrorWithInflightTxnAndRecoverOnNewLeader(t *testi
 // Exercise creating and restoring snapshots.
 func TestIntegration_Snapshot(t *testing.T) {
 	config := rafttest.Config(func(n int, config *raft.Config) {
-		config.SnapshotInterval = 50 * time.Millisecond
-		config.SnapshotThreshold = 2
-		config.TrailingLogs = 1
+		config.SnapshotInterval = time.Second
+		config.SnapshotThreshold = 10
+		config.TrailingLogs = 2
 	})
-	snapshots := rafttest.FileSnapshots()
-	cluster := newCluster(t, config, snapshots)
+	cluster := newCluster(t, config)
 	defer cluster.Cleanup()
 
 	// Get a leader connection on the leader node.
@@ -119,7 +117,7 @@ func TestIntegration_Snapshot(t *testing.T) {
 	conn := cluster.OpenConn(i, 1000)
 
 	// Disconnect a follower, so it will be forced to use the snapshot at
-	// startup.
+	// reconnection.
 	j := rafttest.Other(cluster.Rafts, i)
 	cluster.Network.Disconnect(j)
 
@@ -131,14 +129,25 @@ func TestIntegration_Snapshot(t *testing.T) {
 	_, err = conn.Exec("INSERT INTO test VALUES(2)", nil)
 	require.NoError(t, err)
 
-	// Sleep for 5x the SnapshotInterval, since a snapshot is triggered at
-	// 2x the SnapshotInterval at latest, this should be enough to trigger
-	// it.
-	time.Sleep(25 * time.Millisecond)
+	// Get the index of the alive follower.
+	k := rafttest.Other(cluster.Rafts, i, j)
+
+	// At this point node i and k shouldn't have made any snapshot yet.
+	require.Equal(t, uint64(0), cluster.Watcher.LastSnapshot(i))
+	require.Equal(t, uint64(0), cluster.Watcher.LastSnapshot(k))
+
+	// Make sure snapshot is taken by the leader and the follower.
+	cluster.Watcher.WaitSnapshot(i, 1, 3*time.Second)
+	cluster.Watcher.WaitSnapshot(k, 1, 3*time.Second)
 
 	// Reconnect the disconnected node and wait for it to catch up.
 	cluster.Network.Reconnect(j)
-	cluster.WaitFSM(i, j)
+	cluster.Watcher.WaitRestore(j, 1, 3*time.Second)
+
+	// FIXME: not sure why a sleep is needed here, but without it the query
+	// below occasionally fails with "no such table: 'test'", maybe
+	// because the sqlite files haven't been synced to disk yet.
+	time.Sleep(250 * time.Millisecond)
 
 	// Verify that the follower has the expected data.
 	conn = cluster.OpenConn(j, 1000)
@@ -154,6 +163,7 @@ func TestIntegration_Snapshot(t *testing.T) {
 
 type cluster struct {
 	FSMs    []*replication.FSM
+	Watcher *rafttest.FSMWatcherAPI
 	Notify  *rafttest.NotifyKnob  // Notifications of leadership changes.
 	Network *rafttest.NetworkKnob // Network control
 	Rafts   []*raft.Raft          // Raft nodes.
@@ -177,13 +187,10 @@ func newCluster(t *testing.T, knobs ...rafttest.Knob) *cluster {
 		}
 	}()
 
-	// Base logger, will be augmented with node-specific prefixes.
-	logger := log.New(log.Testing(t), log.Trace)
-
 	// FSMs.
 	fsms := make([]*replication.FSM, 3)
 	for i := range fsms {
-		logger := logger.Augment(fmt.Sprintf("node %d", i))
+		logger := log.New(log.Testing(t, 1), log.Trace)
 		dir, cleanup := newDir(t)
 		connections := connection.NewRegistry()
 		transactions := transaction.NewRegistry()
@@ -196,14 +203,16 @@ func newCluster(t *testing.T, knobs ...rafttest.Knob) *cluster {
 	notify := rafttest.Notify()
 	network := rafttest.Network()
 	knobs = append(knobs, notify, network)
-	rafts, cleanup := rafttest.Cluster(t, []raft.FSM{fsms[0], fsms[1], fsms[2]}, knobs...)
+	raftFSMs := []raft.FSM{fsms[0], fsms[1], fsms[2]}
+	watcher := rafttest.FSMWatcher(t, raftFSMs)
+	rafts, cleanup := rafttest.Cluster(t, raftFSMs, knobs...)
 	cleanups = append(cleanups, cleanup)
 
 	// Methods
 	methods := make([]*replication.Methods, 3)
 	for i := range methods {
 		raft := rafts[i]
-		logger := logger.Augment(fmt.Sprintf("node %d", i))
+		logger := log.New(log.Testing(t, 1), log.Trace)
 		fsm := fsms[i]
 		connections := fsm.Connections()
 		transactions := fsm.Transactions()
@@ -216,6 +225,7 @@ func newCluster(t *testing.T, knobs ...rafttest.Knob) *cluster {
 	succeeded = true
 	return &cluster{
 		FSMs:     fsms,
+		Watcher:  watcher,
 		Notify:   notify,
 		Network:  network,
 		Rafts:    rafts,
@@ -254,23 +264,6 @@ func (c *cluster) CloseConn(i int) {
 	fsm := c.FSMs[i]
 	fsm.Connections().DelLeader(conn)
 	connection.CloseLeader(conn)
-}
-
-// Block until the FSM with the 'follower' index has caught up with the one
-// with the 'leader' index, in terms of applied logs. Panic if that does not
-// happen within a second.
-func (c *cluster) WaitFSM(leader int, follower int) {
-	index := c.Rafts[leader].AppliedIndex()
-	fsm := c.FSMs[follower]
-	timeout := time.Second
-	for fsm.Index() != index {
-		poll := 50 * time.Millisecond
-		time.Sleep(poll)
-		timeout -= poll
-		if timeout <= 0 {
-			panic(fmt.Sprintf("fsm %d did not catch up with index %d", follower, index))
-		}
-	}
 }
 
 // Execute the given cleanup functions in reverse order.
