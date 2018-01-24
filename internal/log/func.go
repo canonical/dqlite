@@ -17,9 +17,9 @@ func Standard() Func {
 }
 
 // Testing adapts a testing logger to the Func interface.
-func Testing(t *testing.T) Func {
+func Testing(t *testing.T, node int) Func {
 	return func(level Level, message string) error {
-		t.Logf("[%s] %s", level, message)
+		t.Logf("%d: [%s] %s", node, level, message)
 		return nil
 	}
 }

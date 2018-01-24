@@ -121,7 +121,7 @@ var methodsHookErrorCases = []struct {
 }
 
 func newMethods(t *testing.T) (*replication.Methods, *sqlite3.SQLiteConn, func()) {
-	logger := log.New(log.Testing(t), log.Trace)
+	logger := log.New(log.Testing(t, 0), log.Trace)
 	fsm, fsmCleanup := newFSM(t)
 	raft := rafttest.Node(t, fsm)
 

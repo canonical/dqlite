@@ -27,6 +27,6 @@ func TestStandard(t *testing.T) {
 // The Testing log function emits logs to the testing logger.
 func TestTesting(t *testing.T) {
 	testingT := &testing.T{}
-	f := log.Testing(testingT)
-	f(log.Trace, "hello")
+	f := log.Testing(testingT, 1)
+	f(log.Trace, "1: hello")
 }
