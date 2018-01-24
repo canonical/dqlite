@@ -11,8 +11,8 @@ addons:
 before_install:
   - go get github.com/go-playground/overalls
   - go get github.com/mattn/goveralls
-  - mkdir -p $GOPATH/src/github.com/armon/
-  - git clone -b go-1.6-and-1.7-compatibility https://github.com/freeekanayaka/go-metrics.git $GOPATH/src/github.com/armon/go-metrics
+  - mkdir -p $GOPATH/src/github.com/hashicorp/raft
+  - git clone -b fix-inmem-snapshot-open-twice https://github.com/freeekanayaka/raft.git $GOPATH/src/github.com/hashicorp/raft
 
 script:
   - make dependencies
