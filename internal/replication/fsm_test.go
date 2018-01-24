@@ -341,7 +341,7 @@ func newRaftLog(index uint64, cmd *protocol.Command) *raft.Log {
 
 // Return a fresh FSM for tests.
 func newFSM(t *testing.T) (*replication.FSM, func()) {
-	logger := log.New(log.Testing(t), log.Trace)
+	logger := log.New(log.Testing(t, 0), log.Trace)
 	dir, cleanup := newDir(t)
 	connections := connection.NewRegistry()
 	transactions := transaction.NewRegistry()
