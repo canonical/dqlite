@@ -13,7 +13,7 @@ import (
 	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/protocol"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/hashicorp/raft"
 	"github.com/pkg/errors"
 )
@@ -162,14 +162,14 @@ func (f *FSM) applyWalFrames(logger *log.Logger, params *protocol.WalFrames) {
 	logger.Tracef(txn.String())
 	logger.Tracef("pages=%d commit=%d", len(params.Pages), params.IsCommit)
 
-	pages := sqlite3x.NewReplicationPages(len(params.Pages), int(params.PageSize))
-	defer sqlite3x.DestroyReplicationPages(pages)
+	pages := sqlite3.NewReplicationPages(len(params.Pages), int(params.PageSize))
+	defer sqlite3.DestroyReplicationPages(pages)
 
 	for i, page := range params.Pages {
 		pages[i].Fill(page.Data, uint16(page.Flags), page.Number)
 	}
 
-	framesParams := &sqlite3x.ReplicationWalFramesParams{
+	framesParams := &sqlite3.ReplicationWalFramesParams{
 		PageSize:  int(params.PageSize),
 		Pages:     pages,
 		Truncate:  uint32(params.Truncate),
@@ -236,8 +236,8 @@ func (f *FSM) applyCheckpoint(logger *log.Logger, params *protocol.Checkpoint) {
 	// Run the checkpoint.
 	logFrames := 0
 	checkpointedFrames := 0
-	err := sqlite3x.ReplicationCheckpoint(
-		conn, sqlite3x.WalCheckpointTruncate, &logFrames, &checkpointedFrames)
+	err := sqlite3.ReplicationCheckpoint(
+		conn, sqlite3.WalCheckpointTruncate, &logFrames, &checkpointedFrames)
 	if err != nil {
 		logger.Panicf("failure: %s", err)
 	}

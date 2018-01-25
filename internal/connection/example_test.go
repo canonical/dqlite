@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 )
 
 func Example() {
@@ -20,7 +20,7 @@ func Example() {
 	defer os.RemoveAll(dir)
 
 	// Create a connection in leader replication mode.
-	methods := sqlite3x.PassthroughReplicationMethods()
+	methods := sqlite3.PassthroughReplicationMethods()
 	uri := filepath.Join(dir, "test.db")
 	leader, err := connection.OpenLeader(uri, methods, 1000)
 	if err != nil {

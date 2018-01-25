@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/mattn/go-sqlite3"
+	"github.com/CanonicalLtd/go-sqlite3"
 )
 
 func TestRegistry_AddLeader(t *testing.T) {

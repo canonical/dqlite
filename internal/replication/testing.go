@@ -9,10 +9,10 @@ package replication
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/CanonicalLtd/raft-http"
 	"github.com/hashicorp/raft"
-	"github.com/mattn/go-sqlite3"*/
+	"github.com/CanonicalLtd/go-sqlite3"*/
 
 /*
 func NewTempTestFSM() {
@@ -121,7 +121,7 @@ func NewConnectedStaticPeers(transports []*raft.InmemTransport) []*raft.StaticPe
 func TestingHelper(t *testing.T) *Testing {
 	h := &Testing{
 		t:          t,
-		sqlite:     sqlite3x.TestingHelper(t),
+		sqlite:     sqlite3.TestingHelper(t),
 		connection: connection.TestingHelper(t),
 	}
 	h.addCleanup(h.sqlite.Cleanup)
@@ -130,7 +130,7 @@ func TestingHelper(t *testing.T) *Testing {
 
 type Testing struct {
 	t          *testing.T
-	sqlite     *sqlite3x.Testing
+	sqlite     *sqlite3.Testing
 	connection *connection.Testing
 	cleanups   []func()
 }
@@ -189,7 +189,7 @@ func (h *Testing) SnapshotStore(fsm *FSM) raft.SnapshotStore {
 // file for the given connection. Used in tests to check if a file has
 // been changed.
 func (h *Testing) DatabaseModTime(conn *sqlite3.SQLiteConn) time.Time {
-	info, err := os.Stat(sqlite3x.DatabaseFilename(conn))
+	info, err := os.Stat(sqlite3.DatabaseFilename(conn))
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func (h *Testing) DatabaseModTime(conn *sqlite3.SQLiteConn) time.Time {
 // DatabaseSize returns the size of the database file for the given
 // connection.
 func (h *Testing) DatabaseSize(conn *sqlite3.SQLiteConn) int64 {
-	info, err := os.Stat(sqlite3x.DatabaseFilename(conn))
+	info, err := os.Stat(sqlite3.DatabaseFilename(conn))
 	if err != nil {
 		h.t.Fatal(err)
 	}

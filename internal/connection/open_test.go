@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +18,7 @@ func TestOpenLeader(t *testing.T) {
 	dir, cleanup := newDir()
 	defer cleanup()
 
-	methods := sqlite3x.PassthroughReplicationMethods()
+	methods := sqlite3.PassthroughReplicationMethods()
 	conn, err := connection.OpenLeader(filepath.Join(dir, "test.db"), methods, 1)
 	defer connection.CloseLeader(conn)
 

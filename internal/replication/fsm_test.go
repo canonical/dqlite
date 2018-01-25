@@ -13,9 +13,8 @@ import (
 	"github.com/CanonicalLtd/dqlite/internal/protocol"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/hashicorp/raft"
-	"github.com/mattn/go-sqlite3"
 	"github.com/mpvl/subtest"
 	"github.com/ryanfaerman/fsm"
 	"github.com/stretchr/testify/assert"
@@ -63,7 +62,7 @@ var fsmApplyPanicCases = []struct {
 	}, {
 		`dangling leader connection`,
 		func(t *testing.T, fsm *replication.FSM) {
-			methods := sqlite3x.PassthroughReplicationMethods()
+			methods := sqlite3.PassthroughReplicationMethods()
 			conn, cleanup := newLeaderConn(t, fsm.Dir(), methods)
 			defer cleanup()
 
@@ -121,7 +120,7 @@ var fsmApplyCases = []struct {
 	{
 		`begin leader`,
 		func(t *testing.T, fsm *replication.FSM) {
-			methods := sqlite3x.PassthroughReplicationMethods()
+			methods := sqlite3.PassthroughReplicationMethods()
 			conn, cleanup := newLeaderConn(t, fsm.Dir(), methods)
 			defer cleanup()
 
@@ -214,18 +213,18 @@ func TestFSM_ApplyCheckpointWithLeaderConnection(t *testing.T) {
 	fsm, cleanup := newFSM(t)
 	defer cleanup()
 
-	conn, cleanup := newLeaderConn(t, fsm.Dir(), sqlite3x.PassthroughReplicationMethods())
+	conn, cleanup := newLeaderConn(t, fsm.Dir(), sqlite3.PassthroughReplicationMethods())
 	defer cleanup()
 
 	fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
 
 	_, err := conn.Exec("CREATE TABLE foo (n INT)", nil)
 	require.NoError(t, err)
-	require.Equal(t, true, sqlite3x.WalSize(conn) > 0, "WAL has non-positive size")
+	require.Equal(t, true, sqlite3.WalSize(conn) > 0, "WAL has non-positive size")
 
 	fsm.Apply(newRaftLog(1, protocol.NewCheckpoint("test.db")))
 
-	require.Equal(t, int64(0), sqlite3x.WalSize(conn), "WAL has non-zero size")
+	require.Equal(t, int64(0), sqlite3.WalSize(conn), "WAL has non-zero size")
 }
 
 func TestFSM_Snapshot(t *testing.T) {
@@ -371,7 +370,7 @@ func newDir(t *testing.T) (string, func()) {
 
 // Create a new SQLite connection in leader replication mode, opened against a
 // database at a temporary file.
-func newLeaderConn(t *testing.T, dir string, methods sqlite3x.ReplicationMethods) (*sqlite3.SQLiteConn, func()) {
+func newLeaderConn(t *testing.T, dir string, methods sqlite3.ReplicationMethods) (*sqlite3.SQLiteConn, func()) {
 	conn, err := connection.OpenLeader(filepath.Join(dir, "test.db"), methods, 1000)
 	if err != nil {
 		t.Fatalf("failed to open leader connection: %v", err)
@@ -387,9 +386,9 @@ func newLeaderConn(t *testing.T, dir string, methods sqlite3x.ReplicationMethods
 }
 
 // Convenience to create test parameters for a wal frames command.
-func newWalFramesParams() *sqlite3x.ReplicationWalFramesParams {
-	return &sqlite3x.ReplicationWalFramesParams{
-		Pages:     sqlite3x.NewReplicationPages(2, 4096),
+func newWalFramesParams() *sqlite3.ReplicationWalFramesParams {
+	return &sqlite3.ReplicationWalFramesParams{
+		Pages:     sqlite3.NewReplicationPages(2, 4096),
 		PageSize:  4096,
 		Truncate:  uint32(0),
 		IsCommit:  0,

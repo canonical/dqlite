@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/CanonicalLtd/go-sqlite3x"
-	"github.com/mattn/go-sqlite3"
+	"github.com/CanonicalLtd/go-sqlite3"
 )
 
 // Registry is a dqlite node-level data stracture that tracks all
@@ -60,7 +59,7 @@ func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn, txid string, others []*sq
 		}
 	}
 
-	r.checkReplicationMode(conn, sqlite3x.ReplicationModeLeader)
+	r.checkReplicationMode(conn, sqlite3.ReplicationModeLeader)
 
 	return r.add(conn, txid, true)
 }
@@ -76,7 +75,7 @@ func (r *Registry) AddFollower(conn *sqlite3.SQLiteConn, id string) *Txn {
 
 	// FIXME: sqlite3_replication_mode requires the db mutex to be held,
 	// which is not the case for fresh followers that have not yet begun.
-	//r.checkReplicationMode(conn, sqlite3x.ReplicationModeFollower)
+	//r.checkReplicationMode(conn, sqlite3.ReplicationModeFollower)
 
 	return r.add(conn, id, false)
 }
@@ -150,12 +149,12 @@ func (r *Registry) add(conn *sqlite3.SQLiteConn, id string, isLeader bool) *Txn 
 
 // Check that the given connection is actually in the given
 // replication mode.
-func (r *Registry) checkReplicationMode(conn *sqlite3.SQLiteConn, mode sqlite3x.Replication) {
+func (r *Registry) checkReplicationMode(conn *sqlite3.SQLiteConn, mode sqlite3.Replication) {
 	if r.skipCheckReplicationMode {
 		return
 	}
 
-	actualMode, err := sqlite3x.ReplicationMode(conn)
+	actualMode, err := sqlite3.ReplicationMode(conn)
 	if err != nil {
 		panic(fmt.Sprintf("failed to check replication mode: %v", err))
 	}
