@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite/internal/protocol"
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/mpvl/subtest"
 )
 
@@ -88,13 +88,13 @@ func checkBegin(cmd *protocol.Command, t *testing.T) {
 
 func newWalFrames() *protocol.Command {
 	size := 4096
-	pages := sqlite3x.NewReplicationPages(2, size)
+	pages := sqlite3.NewReplicationPages(2, size)
 
 	for i := range pages {
 		pages[i].Fill(make([]byte, 4096), 1, 1)
 	}
 
-	frames := &sqlite3x.ReplicationWalFramesParams{
+	frames := &sqlite3.ReplicationWalFramesParams{
 		Pages:     pages,
 		PageSize:  size,
 		Truncate:  1,

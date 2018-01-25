@@ -6,9 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/hashicorp/raft"
-	"github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
@@ -65,7 +64,7 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error
 
 	}
 	logger := log.New(o.logFunc, logLevel)
-	sqlite3x.LogConfig(func(code int, message string) {
+	sqlite3.LogConfig(func(code int, message string) {
 		o.logFunc(log.Error, fmt.Sprintf("[%d] %s", code, message))
 	})
 	fsmi.Logger().Func(o.logFunc)
@@ -77,14 +76,14 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error
 
 	barrier := func() error {
 		if raft.State() != raftLeader {
-			return sqlite3x.ErrNotLeader
+			return sqlite3.ErrNotLeader
 		}
 		if fsmi.Index() == raft.LastIndex() {
 			return nil
 		}
 		if err := raft.Barrier(o.barrierTimeout).Error(); err != nil {
 			if err == raftErrLeadershipLost {
-				return sqlite3x.ErrNotLeader
+				return sqlite3.ErrNotLeader
 			}
 			return errors.Wrap(err, "FSM out of sync")
 		}

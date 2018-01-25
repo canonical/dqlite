@@ -4,8 +4,7 @@ import (
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3x"
-	"github.com/mattn/go-sqlite3"
+	"github.com/CanonicalLtd/go-sqlite3"
 )
 
 func TestTxn_String(t *testing.T) {
@@ -79,8 +78,8 @@ func TestTxn_Writing(t *testing.T) {
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
-	params := &sqlite3x.ReplicationWalFramesParams{
-		Pages: sqlite3x.NewReplicationPages(2, 4096),
+	params := &sqlite3.ReplicationWalFramesParams{
+		Pages: sqlite3.NewReplicationPages(2, 4096),
 	}
 	if err := txn.WalFrames(params); err != nil {
 		t.Fatal(err)
@@ -187,8 +186,8 @@ func TestTxn_StaleFromWriting(t *testing.T) {
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
-	params := &sqlite3x.ReplicationWalFramesParams{
-		Pages: sqlite3x.NewReplicationPages(2, 4096),
+	params := &sqlite3.ReplicationWalFramesParams{
+		Pages: sqlite3.NewReplicationPages(2, 4096),
 	}
 	if err := txn.WalFrames(params); err != nil {
 		t.Fatal(err)

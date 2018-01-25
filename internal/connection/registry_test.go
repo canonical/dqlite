@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
-	"github.com/mattn/go-sqlite3"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -11,9 +11,8 @@ import (
 	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/protocol"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/hashicorp/raft"
-	"github.com/mattn/go-sqlite3"
 )
 
 // NewMethods returns a new Methods instance that can be used as
@@ -30,7 +29,7 @@ func NewMethods(raft *raft.Raft, l *log.Logger, c *connection.Registry, t *trans
 	}
 }
 
-// Methods implements the sqlite replication C API using the sqlite3x
+// Methods implements the sqlite replication C API using the sqlite3
 // bindings.
 type Methods struct {
 	raft         *raft.Raft  // Eaft engine to use
@@ -141,7 +140,7 @@ func (m *Methods) tryBegin(conn *sqlite3.SQLiteConn) (*log.Logger, *transaction.
 
 // WalFrames is the hook invoked by sqlite when new frames need to be
 // flushed to the write-ahead log.
-func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3x.ReplicationWalFramesParams) sqlite3.ErrNo {
+func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3.ReplicationWalFramesParams) sqlite3.ErrNo {
 	logger := m.hookLogger(conn, "wal frames")
 	logger.Tracef("pages=%d commit=%d", len(frames.Pages), frames.IsCommit)
 
@@ -245,7 +244,7 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 			// called back again as end replication hook by client hook.
 			if err := txn.End(); err != nil {
 				logger.Tracef("failed to end transaction after end command")
-				return sqlite3x.ErrReplication
+				return sqlite3.ErrReplication
 			}
 			// Create a surrogate follower, in case the raft command
 			// eventually gets committed or in case we become leader
@@ -265,7 +264,7 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 
 // Checkpoint is the hook invoked by sqlite when the WAL file needs
 // to be checkpointed.
-func (m *Methods) Checkpoint(conn *sqlite3.SQLiteConn, mode sqlite3x.WalCheckpointMode, log *int, ckpt *int) sqlite3.ErrNo {
+func (m *Methods) Checkpoint(conn *sqlite3.SQLiteConn, mode sqlite3.WalCheckpointMode, log *int, ckpt *int) sqlite3.ErrNo {
 	logger := m.logger.Augment(fmt.Sprintf("conn %d checkpoint", m.connections.Serial(conn)))
 	logger.Tracef("mode %d", mode)
 
@@ -374,11 +373,11 @@ func (m *Methods) apply(logger *log.Logger, cmd *protocol.Command) error {
 		// dedicated error, so clients will typically retry
 		// against the new leader.
 		if err == raft.ErrNotLeader || err == raft.ErrLeadershipLost {
-			return sqlite3x.ErrNotLeader
+			return sqlite3.ErrNotLeader
 		}
 
 		// Generic replication error.
-		return sqlite3x.ErrReplication
+		return sqlite3.ErrReplication
 	}
 
 	logger.Tracef("done")
@@ -446,7 +445,7 @@ func (m *Methods) markStaleAndAddFollowerTxn(logger *log.Logger, txn *transactio
 func checkIsLeader(logger *log.Logger, r *raft.Raft) error {
 	if r.State() != raft.Leader {
 		logger.Tracef("deposed leader")
-		return sqlite3x.ErrNotLeader
+		return sqlite3.ErrNotLeader
 	}
 	return nil
 }
@@ -457,6 +456,6 @@ func errno(err error) sqlite3.ErrNo {
 	case sqlite3.ErrNo:
 		return e
 	default:
-		return sqlite3x.ErrReplication // Generic replication error.
+		return sqlite3.ErrReplication // Generic replication error.
 	}
 }

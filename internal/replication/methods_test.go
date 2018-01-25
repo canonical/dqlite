@@ -6,9 +6,8 @@ import (
 	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/CanonicalLtd/raft-test"
-	"github.com/mattn/go-sqlite3"
 	"github.com/mpvl/subtest"
 	"github.com/ryanfaerman/fsm"
 	"github.com/stretchr/testify/assert"
@@ -116,7 +115,7 @@ var methodsHookErrorCases = []struct {
 			require.NoError(t, m.Raft().Shutdown().Error())
 			return m.Begin(conn)
 		},
-		sqlite3x.ErrNotLeader,
+		sqlite3.ErrNotLeader,
 	},
 }
 

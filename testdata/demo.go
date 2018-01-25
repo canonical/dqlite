@@ -29,13 +29,12 @@ import (
 	"time"
 
 	"github.com/CanonicalLtd/dqlite"
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/CanonicalLtd/raft-http"
 	"github.com/CanonicalLtd/raft-membership"
 	"github.com/boltdb/bolt"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
-	"github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 )
 
@@ -296,7 +295,7 @@ func (n *node) makeRaft(fsm raft.FSM) (*raft.Raft, error) {
 // lost leadership, in which case we rollback and try again.
 func handleTxError(logger *log.Logger, tx *sql.Tx, err error, isCommit bool) {
 	if err, ok := err.(sqlite3.Error); ok {
-		if err.Code == sqlite3x.ErrNotLeader {
+		if err.Code == sqlite3.ErrNotLeader {
 			if isCommit {
 				// Commit failures are automatically
 				// rolled back by SQLite, so rolling

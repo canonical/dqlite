@@ -5,8 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CanonicalLtd/go-sqlite3x"
-	"github.com/mattn/go-sqlite3"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/ryanfaerman/fsm"
 )
 
@@ -123,7 +122,7 @@ func (t *Txn) Begin() error {
 }
 
 // WalFrames writes frames to the WAL.
-func (t *Txn) WalFrames(frames *sqlite3x.ReplicationWalFramesParams) error {
+func (t *Txn) WalFrames(frames *sqlite3.ReplicationWalFramesParams) error {
 	t.checkEntered()
 	return t.transition(Writing, frames)
 }
@@ -195,7 +194,7 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 		// FIXME: retry interval/count should be configurable.
 		var err error
 		for i := 0; i < 10; i++ {
-			err = sqlite3x.ReplicationBegin(t.conn)
+			err = sqlite3.ReplicationBegin(t.conn)
 			if err != nil {
 				if err != sqlite3.ErrLocked {
 					break
@@ -206,12 +205,12 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 			break
 		}
 	case Writing:
-		frames := args[0].(*sqlite3x.ReplicationWalFramesParams)
-		err = sqlite3x.ReplicationWalFrames(t.conn, frames)
+		frames := args[0].(*sqlite3.ReplicationWalFramesParams)
+		err = sqlite3.ReplicationWalFrames(t.conn, frames)
 	case Undoing:
-		err = sqlite3x.ReplicationUndo(t.conn)
+		err = sqlite3.ReplicationUndo(t.conn)
 	case Ended:
-		err = sqlite3x.ReplicationEnd(t.conn)
+		err = sqlite3.ReplicationEnd(t.conn)
 	case Stale:
 	}
 

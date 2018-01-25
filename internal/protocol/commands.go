@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 )
@@ -36,7 +36,7 @@ func NewBegin(txid string, name string) *Command {
 }
 
 // NewWalFrames returns a new WalFrames protobuf message.
-func NewWalFrames(txid string, frames *sqlite3x.ReplicationWalFramesParams) *Command {
+func NewWalFrames(txid string, frames *sqlite3.ReplicationWalFramesParams) *Command {
 	pages := make([]*WalFramesPage, len(frames.Pages))
 
 	size := frames.PageSize

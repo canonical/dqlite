@@ -10,10 +10,9 @@ import (
 	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3x"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/CanonicalLtd/raft-test"
 	"github.com/hashicorp/raft"
-	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,7 +55,7 @@ func TestIntegration_RaftApplyErrorRemovePendingTxn(t *testing.T) {
 	cluster.Network.Disconnect(i)
 
 	_, err := conn.Exec("CREATE TABLE test (n INT)", nil)
-	assert.EqualError(t, err, sqlite3x.ErrNotLeader.Error())
+	assert.EqualError(t, err, sqlite3.ErrNotLeader.Error())
 
 	fsm := cluster.FSMs[i]
 	assert.Nil(t, fsm.Transactions().GetByConn(conn))
@@ -81,7 +80,7 @@ func TestIntegration_RaftApplyErrorWithInflightTxnAndRecoverOnNewLeader(t *testi
 
 	// Try finish the transaction.
 	_, err = conn.Exec("INSERT INTO test VALUES(1); COMMIT", nil)
-	require.EqualError(t, err, sqlite3x.ErrNotLeader.Error())
+	require.EqualError(t, err, sqlite3.ErrNotLeader.Error())
 
 	// Wait for a follower be promoted and catch up with logs.
 	j := cluster.Notify.NextAcquired(time.Second)
