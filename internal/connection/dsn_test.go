@@ -72,14 +72,12 @@ func TestNewDSN_Filename(t *testing.T) {
 // error will be returned.
 func TestNewDSN_Invalid(t *testing.T) {
 	cases := map[string]string{
-		":memory:":                        "can't replicate a memory database",
-		"test.db?mode=memory":             "can't replicate a memory database",
-		"test.db?%gh&%ij":                 "invalid URL escape \"%gh\"",
-		"file:///test.db":                 "directory segments are invalid",
-		"/foo/test.db":                    "directory segments are invalid",
-		"./bar/test.db":                   "directory segments are invalid",
-		"test.db?_leadership_timeout=abc": "leadership timeout is not a number: 'abc'",
-		"test.db?_initialize_timeout=abc": "initialize timeout is not a number: 'abc'",
+		":memory:":            "can't replicate a memory database",
+		"test.db?mode=memory": "can't replicate a memory database",
+		"test.db?%gh&%ij":     "invalid URL escape \"%gh\"",
+		"file:///test.db":     "directory segments are invalid",
+		"/foo/test.db":        "directory segments are invalid",
+		"./bar/test.db":       "directory segments are invalid",
 	}
 	for input, error := range cases {
 		subtest.Run(t, input, func(t *testing.T) {
@@ -94,37 +92,10 @@ func TestNewDSN_Invalid(t *testing.T) {
 	}
 }
 
-func TestNewDSN_LeadershipTimeout(t *testing.T) {
-	dsn, err := connection.NewDSN("test.db?_leadership_timeout=100&mode=rwc")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if dsn.LeadershipTimeout.String() != "100ms" {
-		t.Errorf("leadership timeout is %s, want 100s", dsn.LeadershipTimeout)
-	}
-	if dsn.Query != "mode=rwc" {
-		t.Errorf("query is '%s', want 'mode=rwc'", dsn.Query)
-	}
-}
-
-func TestNewDSN_InitializeTimeout(t *testing.T) {
-	dsn, err := connection.NewDSN("test.db?_initialize_timeout=100&mode=rwc")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if dsn.InitializeTimeout.String() != "100ms" {
-		t.Errorf("initialize timeout is %s, want 100s", dsn.InitializeTimeout)
-	}
-	if dsn.Query != "mode=rwc" {
-		t.Errorf("query is '%s', want 'mode=rwc'", dsn.Query)
-	}
-}
-
 func TestDSN_Encode(t *testing.T) {
 	cases := map[string]string{
-		"test.db":                                "test.db",
-		"test.db?mode=r":                         "test.db?mode=r",
-		"test.db?_leadership_timeout=100&mode=r": "test.db?mode=r",
+		"test.db":        "test.db",
+		"test.db?mode=r": "test.db?mode=r",
 	}
 	for input, output := range cases {
 		subtest.Run(t, input, func(t *testing.T) {
