@@ -22,7 +22,7 @@ func Example() {
 	// Create a connection in leader replication mode.
 	methods := sqlite3.PassthroughReplicationMethods()
 	uri := filepath.Join(dir, "test.db")
-	leader, err := connection.OpenLeader(uri, methods, 1000)
+	leader, err := connection.OpenLeader(uri, methods)
 	if err != nil {
 		log.Fatalf("failed to open leader connection: %v", err)
 	}

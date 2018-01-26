@@ -17,13 +17,12 @@ import (
 
 // Driver manages a node partecipating to a dqlite replicated cluster.
 type Driver struct {
-	logger         *log.Logger          // Log messages.
-	dir            string               // Database files live here.
-	autoCheckpoint int                  // WAL auto-checkpoint size threshold.
-	connections    *connection.Registry // Connections registry.
-	methods        *replication.Methods // SQLite replication hooks.
-	barrier        barrier              // Used to make sure the FSM is in sync with the logs.
-	mu             sync.Mutex           // For serializing critical sections.
+	logger      *log.Logger          // Log messages.
+	dir         string               // Database files live here.
+	connections *connection.Registry // Connections registry.
+	methods     *replication.Methods // SQLite replication hooks.
+	barrier     barrier              // Used to make sure the FSM is in sync with the logs.
+	mu          sync.Mutex           // For serializing critical sections.
 }
 
 // NewDriver creates a new node of a dqlite cluster, which also implements the driver.Driver
@@ -91,12 +90,11 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error
 	}
 
 	driver := &Driver{
-		logger:         logger.Augment("driver"),
-		dir:            fsmi.Dir(),
-		connections:    fsmi.Connections(),
-		barrier:        barrier,
-		methods:        methods,
-		autoCheckpoint: o.autoCheckpoint,
+		logger:      logger.Augment("driver"),
+		dir:         fsmi.Dir(),
+		connections: fsmi.Connections(),
+		barrier:     barrier,
+		methods:     methods,
 	}
 
 	return driver, nil
@@ -119,7 +117,7 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 	}
 
 	uri = filepath.Join(d.dir, connection.EncodeURI(filename, query))
-	sqliteConn, err := connection.OpenLeader(uri, d.methods, d.autoCheckpoint)
+	sqliteConn, err := connection.OpenLeader(uri, d.methods)
 	if err != nil {
 		return nil, err
 	}

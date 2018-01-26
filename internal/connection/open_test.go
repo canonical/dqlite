@@ -19,7 +19,7 @@ func TestOpenLeader(t *testing.T) {
 	defer cleanup()
 
 	methods := sqlite3.PassthroughReplicationMethods()
-	conn, err := connection.OpenLeader(filepath.Join(dir, "test.db"), methods, 1)
+	conn, err := connection.OpenLeader(filepath.Join(dir, "test.db"), methods)
 	defer connection.CloseLeader(conn)
 
 	require.NoError(t, err)
@@ -28,13 +28,13 @@ func TestOpenLeader(t *testing.T) {
 	_, err = conn.Exec("CREATE TABLE test (n INT)", nil)
 	require.NoError(t, err)
 
-	// The journal mode is set to WAL and got truncated because we set the
-	// autocheckpoint to 1.
+	// The journal mode is set to WAL and did not truncated because we disabled
+	// checkpoints on close.
 	_, err = os.Stat(filepath.Join(dir, "test.db-shm"))
 	require.NoError(t, err)
 
 	info, err := os.Stat(filepath.Join(dir, "test.db-wal"))
-	require.Equal(t, int64(0), info.Size())
+	require.Equal(t, int64(8272), info.Size())
 }
 
 // Open a connection in follower replication mode.
