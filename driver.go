@@ -111,19 +111,19 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error
 //
 // If this node is not the leader, or the leader is unknown an ErrNotLeader
 // error is returned.
-func (d *Driver) Open(name string) (driver.Conn, error) {
+func (d *Driver) Open(uri string) (driver.Conn, error) {
 	// Validate the given data source string.
-	dsn, err := connection.NewDSN(name)
+	filename, query, err := connection.ParseURI(uri)
 	if err != nil {
-		return nil, errors.Wrap(err, "invalid DSN string")
+		return nil, errors.Wrap(err, "invalid URI string")
 	}
 
-	uri := filepath.Join(d.dir, dsn.Encode())
+	uri = filepath.Join(d.dir, connection.EncodeURI(filename, query))
 	sqliteConn, err := connection.OpenLeader(uri, d.methods, d.autoCheckpoint)
 	if err != nil {
 		return nil, err
 	}
-	d.connections.AddLeader(dsn.Filename, sqliteConn)
+	d.connections.AddLeader(filename, sqliteConn)
 	d.logger.Tracef("add leader %d", d.connections.Serial(sqliteConn))
 
 	conn := &Conn{
