@@ -5,19 +5,19 @@ import (
 
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTxn_String(t *testing.T) {
 	registry := newRegistry()
-	conn := &sqlite3.SQLiteConn{}
 
-	txn := registry.AddFollower(conn, "abcd")
+	conn1 := &sqlite3.SQLiteConn{}
+	txn1 := registry.AddFollower(conn1, "abcd")
+	assert.Equal(t, "pending as follower", txn1.String())
 
-	want := "pending as follower"
-	got := txn.String()
-	if got != want {
-		t.Errorf("expected\n%q\ngot\n%q", want, got)
-	}
+	conn2 := &sqlite3.SQLiteConn{}
+	txn2 := registry.AddLeader(conn2, "0", nil)
+	assert.Equal(t, "pending as leader", txn2.String())
 }
 
 func TestTxn_CheckEntered(t *testing.T) {
@@ -26,14 +26,40 @@ func TestTxn_CheckEntered(t *testing.T) {
 	conn := &sqlite3.SQLiteConn{}
 	txn := registry.AddFollower(conn, "abcd")
 
-	const want = "accessing or modifying txn state without mutex: abcd"
-	defer func() {
-		got := recover()
-		if got != want {
-			t.Errorf("expected\n%q\ngot\n%q", want, got)
-		}
-	}()
-	txn.State()
+	f := func() { txn.State() }
+	assert.PanicsWithValue(t, "accessing or modifying txn state without mutex: abcd", f)
+}
+
+func TestTxn_IsStale(t *testing.T) {
+	registry := newRegistry()
+
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.AddLeader(conn, "0", nil)
+
+	assert.False(t, txn.IsStale())
+
+	txn.DryRun(true)
+	txn.Do(txn.Begin)
+	txn.Do(txn.Stale)
+
+	assert.True(t, txn.IsStale())
+}
+
+// Follower transactions can't transition to the stale state.
+func TestTxn_IsStaleFollower(t *testing.T) {
+	registry := newRegistry()
+
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.AddFollower(conn, "abcd")
+
+	assert.False(t, txn.IsStale())
+
+	txn.DryRun(true)
+	txn.Do(txn.Begin)
+
+	f := func() { txn.Do(txn.Stale) }
+
+	assert.PanicsWithValue(t, "invalid ended -> stale transition", f)
 }
 
 func TestTxn_Pending(t *testing.T) {

@@ -120,8 +120,8 @@ func (r *Registry) SkipCheckReplicationMode(flag bool) {
 func (r *Registry) Dump() string {
 	buffer := bytes.NewBuffer(nil)
 	fmt.Fprintf(buffer, "transactions:\n")
-	for txn := range r.txns {
-		fmt.Fprintf(buffer, "-> %s\n", txn)
+	for id, txn := range r.txns {
+		fmt.Fprintf(buffer, "-> %s %s\n", id, txn)
 	}
 	return buffer.String()
 }

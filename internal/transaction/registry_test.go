@@ -6,6 +6,7 @@ import (
 
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRegistry_AddLeader(t *testing.T) {
@@ -39,6 +40,20 @@ func TestRegistry_AddLeaderPanicsIfPassedSameLeaderConnectionTwice(t *testing.T)
 		}
 	}()
 	registry.AddLeader(conn, "2", nil)
+}
+
+// If one of the other leader connections has already a transaction registered,
+// nil is returned.
+func TestRegistry_AddLeaderWithOnGoingTxn(t *testing.T) {
+	registry := newRegistry()
+
+	conn1 := &sqlite3.SQLiteConn{}
+	txn1 := registry.AddLeader(conn1, "1", nil)
+	assert.NotNil(t, txn1)
+
+	conn2 := &sqlite3.SQLiteConn{}
+	txn2 := registry.AddLeader(conn2, "2", []*sqlite3.SQLiteConn{conn1, conn2})
+	assert.Nil(t, txn2)
 }
 
 func TestRegistry_AddFollower(t *testing.T) {
@@ -116,6 +131,17 @@ func TestRegistry_RemovePanicsIfPassedNonRegisteredID(t *testing.T) {
 		}
 	}()
 	registry.Remove("abcd")
+}
+
+// Dump returns a string with the contents of the registry.
+func TestRegistry_Dump(t *testing.T) {
+	registry := newRegistry()
+
+	conn1 := &sqlite3.SQLiteConn{}
+	registry.AddLeader(conn1, "0", nil)
+
+	dump := registry.Dump()
+	assert.Equal(t, "transactions:\n-> 0 pending as leader\n", dump)
 }
 
 // Create a new registry with the replication mode check disabled.
