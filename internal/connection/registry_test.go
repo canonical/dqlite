@@ -19,6 +19,16 @@ func TestRegistry_AddLeader(t *testing.T) {
 	assert.Equal(t, "test.db", registry.FilenameOfLeader(conn))
 }
 
+// Adding the same connection twice results in panic.
+func TestRegistry_AddLeaderTwice(t *testing.T) {
+	connection.ResetSerial()
+	conn := newConn()
+	registry := connection.NewRegistry()
+	registry.AddLeader("foo.db", conn)
+	f := func() { registry.AddLeader("bar.db", conn) }
+	assert.PanicsWithValue(t, "connection is already registered with serial 1", f)
+}
+
 // Delete a leader from to the registry.
 func TestRegistry_DelLeader(t *testing.T) {
 	conn := newConn()
@@ -84,6 +94,34 @@ func TestRegistry_FollowerNotRegistered(t *testing.T) {
 	registry := connection.NewRegistry()
 	f := func() { registry.Follower("test.db") }
 	assert.PanicsWithValue(t, "no follower connection for 'test.db'", f)
+}
+
+// Serial tracks added/removed connections with unique identifiers.
+func TestRegistry_Serial(t *testing.T) {
+	connection.ResetSerial()
+	conn1 := newConn()
+	conn2 := newConn()
+	registry := connection.NewRegistry()
+	registry.AddLeader("test.db", conn1)
+	registry.AddFollower("test.db", conn2)
+	assert.Equal(t, uint64(1), registry.Serial(conn1))
+	assert.Equal(t, uint64(2), registry.Serial(conn2))
+}
+
+// Serial panics if the given connection is not registered.
+func TestRegistry_SerialNotRegistered(t *testing.T) {
+	registry := connection.NewRegistry()
+	f := func() { registry.Serial(newConn()) }
+	assert.PanicsWithValue(t, "connection is not registered", f)
+}
+
+// Dump returns a string with the contents of the registry.
+func TestRegistry_Dump(t *testing.T) {
+	connection.ResetSerial()
+	registry := connection.NewRegistry()
+	registry.AddLeader("foo.db", newConn())
+	registry.AddFollower("foo.db", newConn())
+	assert.Equal(t, "leaders:\n-> 1: foo.db\nfollowers:\n-> 2: foo.db\n", registry.Dump())
 }
 
 // Create a new sqlite connection against a memory database.
