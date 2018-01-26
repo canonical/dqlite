@@ -18,7 +18,7 @@ type Txn struct {
 	isLeader bool                // Whether we're attached to a connection in leader mode.
 	dryRun   bool                // Dry run mode, don't invoke actual SQLite hooks, for testing.
 	mu       sync.Mutex          // Serialize access to internal state.
-	entered  bool                // Whether we obtained the mutex.
+	entered  bool                // Whether the mutex is currently locked.
 	state    *txnState           // Current state of our internal fsm.
 	machine  *fsm.Machine        // Internal fsm.
 }
