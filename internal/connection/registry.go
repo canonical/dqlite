@@ -14,8 +14,8 @@ import (
 // mode or follower replication mode.
 type Registry struct {
 	mu        sync.RWMutex                   // Serialize access to internal state.
-	leaders   map[*sqlite3.SQLiteConn]string // Leader connections to database filenames.
-	followers map[string]*sqlite3.SQLiteConn // Database filenames to follower connections.
+	leaders   map[*sqlite3.SQLiteConn]string // Map leader connections to database filenames.
+	followers map[string]*sqlite3.SQLiteConn // Map database filenames to follower connections.
 	serial    map[*sqlite3.SQLiteConn]uint64 // Map a connection to its serial number.
 
 	dir string // Directory where we store database files.
@@ -40,7 +40,7 @@ func (r *Registry) AddLeader(filename string, conn *sqlite3.SQLiteConn) {
 }
 
 // DelLeader removes the given leader connection from the registry.
-func (r *Registry) DelLeader(conn *sqlite3.SQLiteConn) error {
+func (r *Registry) DelLeader(conn *sqlite3.SQLiteConn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -50,8 +50,6 @@ func (r *Registry) DelLeader(conn *sqlite3.SQLiteConn) error {
 
 	delete(r.leaders, conn)
 	r.delConn(conn)
-
-	return nil
 }
 
 // Leaders returns all open leader connections for the database with
@@ -172,6 +170,7 @@ func (r *Registry) Dump() string {
 	for conn, name := range r.leaders {
 		fmt.Fprintf(buffer, "-> %d: %s\n", r.Serial(conn), name)
 	}
+	fmt.Fprintf(buffer, "followers:\n")
 	for name, conn := range r.followers {
 		fmt.Fprintf(buffer, "-> %d: %s\n", r.Serial(conn), name)
 	}
@@ -185,7 +184,7 @@ func (r *Registry) addConn(conn *sqlite3.SQLiteConn) {
 		panic(fmt.Sprintf("connection is already registered with serial %d", serial))
 	}
 
-	defer atomic.AddUint64(&serial, 1)
+	atomic.AddUint64(&serial, 1)
 	r.serial[conn] = serial
 }
 

@@ -42,3 +42,10 @@ func TestSnapshot(t *testing.T) {
 	assert.NoError(t, rows.Scan(&n))
 	assert.Equal(t, 1, n)
 }
+
+func TestSnapshot_InvalidDir(t *testing.T) {
+	// Perform and restore the snapshot.
+	_, _, err := connection.Snapshot("/non/existing/path")
+	msg := "failed to open source connection: open error for /non/existing/path: unable to open database file"
+	assert.EqualError(t, err, msg)
+}

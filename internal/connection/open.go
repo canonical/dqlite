@@ -6,9 +6,9 @@ import (
 )
 
 // OpenLeader is a wrapper around SQLiteDriver.Open that opens connection in
-// follower replication mode, and sets any additional dqlite-related options.
+// leader replication mode, and sets any additional dqlite-related options.
 //
-// The methods argument is used to set the replication methods and the n one is
+// The 'methods' argument is used to set the replication methods and the n one is
 // the WAL frame size threshold after which auto-checkpoint will trigger.
 func OpenLeader(dsn string, methods sqlite3.ReplicationMethods, n int) (*sqlite3.SQLiteConn, error) {
 	conn, err := open(dsn)
@@ -30,7 +30,7 @@ func OpenLeader(dsn string, methods sqlite3.ReplicationMethods, n int) (*sqlite3
 }
 
 // CloseLeader closes the given leader connection and releases the associated
-// method C hooks memory allocated by go-sqlite3.
+// methods C hooks memory allocated by go-sqlite3.
 //
 // FIXME: Perhaps this should be done in sqlite3 in a more explicit or nicer way.
 func CloseLeader(conn *sqlite3.SQLiteConn) error {
@@ -72,7 +72,7 @@ func open(dsn string) (*sqlite3.SQLiteConn, error) {
 	driver := &sqlite3.SQLiteDriver{}
 	conn, err := driver.Open(dsn)
 	if err != nil {
-		return nil, errors.Wrap(err, "open error")
+		return nil, errors.Wrapf(err, "open error for %s", dsn)
 	}
 
 	// Convert driver.Conn interface to concrete sqlite3.SQLiteConn.
