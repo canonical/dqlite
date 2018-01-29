@@ -1,3 +1,21 @@
+// Copyright 2017 Canonical Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Create a new cluster for 3 dqlite drivers exposed over gRPC. Return 3 sql.DB
+// instances backed gRPC SQL drivers, each one trying to connect to one of the
+// 3 dqlite drivers over gRPC, in a round-robin fashion.
+
 package dqlite_test
 
 import (
@@ -5,95 +23,62 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 	"testing"
-	"time"
-
-	"google.golang.org/grpc"
 
 	"github.com/CanonicalLtd/dqlite"
-	"github.com/CanonicalLtd/go-grpc-sql"
 	"github.com/CanonicalLtd/raft-test"
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// Test the integration with the go-grpc-sql package.
-func TestExposeDriverOverGrpc(t *testing.T) {
-	dbs, cleanup := newGrpcCluster(t)
+func Test_Foo(t *testing.T) {
+	_, cleanup := newCluster(t)
 	defer cleanup()
-
-	// Create a table using the first db.
-	db := dbs[0]
-	tx, err := db.Begin()
-	require.NoError(t, err)
-	_, err = tx.Exec("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
-	require.NoError(t, tx.Commit())
-
-	// Insert a row in the created table using the second db.
-	db = dbs[1]
-	tx, err = db.Begin()
-	require.NoError(t, err)
-	_, err = tx.Exec("INSERT INTO test VALUES(123)")
-	require.NoError(t, err)
-	require.NoError(t, tx.Commit())
-
-	// Read the inserted row using the third db.
-	db = dbs[2]
-	tx, err = db.Begin()
-	require.NoError(t, err)
-	rows, err := tx.Query("SELECT n FROM test")
-	require.NoError(t, err)
-	require.True(t, rows.Next())
-	var n int
-	require.NoError(t, rows.Scan(&n))
-	assert.Equal(t, 123, n)
-	require.False(t, rows.Next())
-	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
-	require.NoError(t, tx.Commit())
 }
 
-// Test concurrent leader connections and transactions over gRPC.
-func TestGrpcConcurrency(t *testing.T) {
-	dbs, cleanup := newGrpcCluster(t)
-	defer cleanup()
+func newCluster(t *testing.T) ([]*sql.DB, func()) {
+	drivers, _, driversCleanup := newDrivers(t)
 
-	// Create a table using the first db.
-	db := dbs[0]
-	tx, err := db.Begin()
-	require.NoError(t, err)
-	_, err = tx.Exec("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
-	require.NoError(t, tx.Commit())
+	dbs, dbsCleanup := newDBs(t, func(i int) driver.Driver {
+		return drivers[i]
+	})
 
-	n := 3
-	wg := sync.WaitGroup{}
-	wg.Add(n)
-	for i := 0; i < n; i++ {
-		go func(i int) {
-			db := dbs[i]
-			tx, err := db.Begin()
-			require.NoError(t, err)
-			_, err = tx.Exec("INSERT INTO test VALUES(?)", i)
-			require.NoError(t, err)
-			require.NoError(t, tx.Commit())
-			wg.Done()
-		}(i)
+	cleanup := func() {
+		dbsCleanup()
+		driversCleanup()
 	}
-	wg.Wait()
+
+	return dbs, cleanup
 }
 
-// Create a new cluster for 3 dqlite drivers exposed over gRPC. Return 3 sql.DB
-// instances backed gRPC SQL drivers, each one trying to connect to one of the
-// 3 dqlite drivers over gRPC, in a round-robin fashion.
-func newGrpcCluster(t *testing.T) ([]*sql.DB, func()) {
+func newDBs(t *testing.T, driverFactory func(int) driver.Driver) ([]*sql.DB, func()) {
+	dbs := make([]*sql.DB, 3)
+
+	for i := range dbs {
+		driver := driverFactory(i)
+		driverName := fmt.Sprintf("dqlite-integration-test-%d", driversCount)
+		driversCount++
+		sql.Register(driverName, driver)
+
+		db, err := sql.Open(driverName, "test.db")
+		require.NoError(t, err)
+		dbs[i] = db
+	}
+
+	cleanup := func() {
+		for i := range dbs {
+			require.NoError(t, dbs[i].Close())
+		}
+	}
+
+	return dbs, cleanup
+}
+
+func newDrivers(t *testing.T) ([]driver.Driver, []*raft.Raft, func()) {
 	// Temporary dqlite data dir.
 	dir, err := ioutil.TempDir("", "dqlite-integration-test-")
 	assert.NoError(t, err)
@@ -105,84 +90,28 @@ func newGrpcCluster(t *testing.T) ([]*sql.DB, func()) {
 	}
 
 	// Create the raft cluster using the dqlite FSMs.
-	rafts, raftsCleanup := rafttest.Cluster(t, fsms)
+	rafts, control := rafttest.Cluster(t, fsms)
 
 	// Create the dqlite drivers.
 	drivers := make([]driver.Driver, 3)
 	for i := range fsms {
-		index := i
-		logFunc := func(level, message string) {
-			t.Logf("[%s] %d: %s", level, index, message)
-		}
-		driver, err := dqlite.NewDriver(
-			fsms[i], rafts[i], dqlite.LogFunc(logFunc), dqlite.LogLevel("TRACE"))
+		config := dqlite.DriverConfig{Logger: newTestingLogger(t, i)}
+		driver, err := dqlite.NewDriver(fsms[i], rafts[i], config)
 		require.NoError(t, err)
 		drivers[i] = driver
 	}
 
-	// Create the gRPC SQL servers and dialers. The dialer will fail if the
-	// raft instance associated with their server is not the leader.
-	servers := make([]*grpc.Server, 3)
-	dialers := make([]grpcsql.Dialer, 3)
-	for i, driver := range drivers {
-		rft := rafts[i]
-		listener, err := net.Listen("tcp", ":0")
-		require.NoError(t, err)
-		server := grpcsql.NewServer(driver)
-		go server.Serve(listener)
-		servers[i] = server
-		dialers[i] = func() (*grpc.ClientConn, error) {
-			if rft.State() != raft.Leader {
-				return nil, fmt.Errorf("not leader")
-			}
-			return grpc.Dial(listener.Addr().String(), grpc.WithInsecure())
-		}
-	}
-
-	// Create a dialer which will try to connect to the others in
-	// round-robin, until one succeeds or a timeout expires.
-	dialer := func() (*grpc.ClientConn, error) {
-		var lastErr error
-		remaining := 5 * time.Second
-		for remaining > 0 {
-			for i, dialer := range dialers {
-				t.Logf("dialing backend %d", i)
-				conn, err := dialer()
-				if err == nil {
-					return conn, err
-				}
-				lastErr = err
-			}
-			time.Sleep(250 * time.Millisecond)
-			remaining -= 250 * time.Millisecond
-		}
-		return nil, lastErr
-	}
-	dbs := make([]*sql.DB, 3)
-
-	for i := range dbs {
-		grpcDriver := grpcsql.NewDriver(dialer)
-		grpcDriverName := fmt.Sprintf("dqlite-integration-test-%d", grpcDriversCount)
-		grpcDriversCount++
-		sql.Register(grpcDriverName, grpcDriver)
-
-		db, err := sql.Open(grpcDriverName, "test.db")
-		require.NoError(t, err)
-		dbs[i] = db
-	}
-
 	cleanup := func() {
-		for i := range dbs {
-			require.NoError(t, dbs[i].Close())
+		control.Close()
+		_, err := os.Stat(dir)
+		if err != nil {
+			assert.True(t, os.IsNotExist(err))
+		} else {
+			assert.NoError(t, os.RemoveAll(dir))
 		}
-		for i := range servers {
-			servers[i].Stop()
-		}
-		raftsCleanup()
-		require.NoError(t, os.RemoveAll(dir))
 	}
 
-	return dbs, cleanup
+	return drivers, rafts, cleanup
 }
 
-var grpcDriversCount = 0
+var driversCount = 0

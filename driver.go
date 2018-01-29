@@ -1,29 +1,54 @@
+// Copyright 2017 Canonical Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package dqlite
 
 import (
 	"database/sql/driver"
-	"fmt"
+	"io/ioutil"
+	"log"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/hashicorp/raft"
 	"github.com/pkg/errors"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
-	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
+	"github.com/CanonicalLtd/dqlite/internal/trace"
 )
 
 // Driver manages a node partecipating to a dqlite replicated cluster.
 type Driver struct {
-	logger         *log.Logger          // Log messages.
 	dir            string               // Database files live here.
-	autoCheckpoint int                  // WAL auto-checkpoint size threshold.
 	connections    *connection.Registry // Connections registry.
+	tracers        *trace.Registry      // Tracers regitry.
 	methods        *replication.Methods // SQLite replication hooks.
+	logger         *log.Logger          // Logger to use.
 	barrier        barrier              // Used to make sure the FSM is in sync with the logs.
 	mu             sync.Mutex           // For serializing critical sections.
+	autoCheckpoint int
+}
+
+// DriverConfig holds configuration options for a dqlite SQL Driver.
+type DriverConfig struct {
+	Logger         *log.Logger   // Logger to use to emit messages.
+	BarrierTimeout time.Duration // Maximum amount of time to wait for the FSM to catch  up with the latest log.
+	ApplyTimeout   time.Duration // Maximum amount of time to wait for a raft FSM command to be applied.
+	AutoCheckpoint int
 }
 
 // NewDriver creates a new node of a dqlite cluster, which also implements the driver.Driver
@@ -31,48 +56,33 @@ type Driver struct {
 //
 // The 'fsm' instance must be the same one that was passed to raft.NewRaft for
 // creating the 'raft' instance.
-func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error) {
+func NewDriver(fsm raft.FSM, raft *raft.Raft, config DriverConfig) (*Driver, error) {
 	fsmi, ok := fsm.(*replication.FSM)
 	if !ok {
-		return nil, fmt.Errorf("raftFSM is not a dqlite FSM")
+		panic("fsm is not a dqlite FSM")
 	}
 	if err := ensureDir(fsmi.Dir()); err != nil {
 		return nil, err
 	}
 
-	o := newOptions()
-	for _, option := range options {
-		option(o)
-
+	if config.Logger == nil {
+		config.Logger = log.New(ioutil.Discard, "", 0)
+		//config.Logger = log.New(os.Stderr, "", log.LstdFlags)
+	}
+	if config.BarrierTimeout == 0 {
+		config.BarrierTimeout = time.Minute
+	}
+	if config.ApplyTimeout == 0 {
+		config.ApplyTimeout = 10 * time.Second
 	}
 
-	// Logging
-	var logLevel log.Level
-	switch o.logLevel {
-	case "TRACE":
-		logLevel = log.Trace
-	case "DEBUG":
-		logLevel = log.Debug
-	case "INFO":
-		logLevel = log.Info
-	case "ERROR":
-		logLevel = log.Error
-	case "PANIC":
-		logLevel = log.Panic
-	default:
-		return nil, fmt.Errorf("unknown log level %s", o.logLevel)
-
-	}
-	logger := log.New(o.logFunc, logLevel)
 	sqlite3.LogConfig(func(code int, message string) {
-		o.logFunc(log.Error, fmt.Sprintf("[%d] %s", code, message))
+		config.Logger.Printf("[ERR] %s (%d)", message, code)
 	})
-	fsmi.Logger().Func(o.logFunc)
-	fsmi.Logger().Level(logLevel)
 
 	// Replication methods
-	methods := replication.NewMethods(raft, logger, fsmi.Connections(), fsmi.Transactions())
-	methods.ApplyTimeout(o.applyTimeout)
+	methods := replication.NewMethods(fsmi, raft)
+	methods.ApplyTimeout(config.ApplyTimeout)
 
 	barrier := func() error {
 		if raft.State() != raftLeader {
@@ -81,7 +91,7 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error
 		if fsmi.Index() == raft.LastIndex() {
 			return nil
 		}
-		if err := raft.Barrier(o.barrierTimeout).Error(); err != nil {
+		if err := raft.Barrier(config.BarrierTimeout).Error(); err != nil {
 			if err == raftErrLeadershipLost {
 				return sqlite3.ErrNotLeader
 			}
@@ -91,12 +101,13 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, options ...Option) (*Driver, error
 	}
 
 	driver := &Driver{
-		logger:         logger.Augment("driver"),
 		dir:            fsmi.Dir(),
 		connections:    fsmi.Connections(),
+		tracers:        fsmi.Tracers(),
+		logger:         config.Logger,
 		barrier:        barrier,
 		methods:        methods,
-		autoCheckpoint: o.autoCheckpoint,
+		autoCheckpoint: config.AutoCheckpoint,
 	}
 
 	return driver, nil
@@ -115,7 +126,7 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 	// Validate the given data source string.
 	filename, query, err := connection.ParseURI(uri)
 	if err != nil {
-		return nil, errors.Wrap(err, "invalid URI string")
+		return nil, errors.Wrapf(err, "invalid URI %s", uri)
 	}
 
 	uri = filepath.Join(d.dir, connection.EncodeURI(filename, query))
@@ -123,12 +134,14 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	d.connections.AddLeader(filename, sqliteConn)
-	d.logger.Tracef("add leader %d", d.connections.Serial(sqliteConn))
+	d.tracers.Add(replication.TracerName(d.connections, sqliteConn))
 
 	conn := &Conn{
 		barrier:     d.barrier,
 		connections: d.connections,
+		tracers:     d.tracers,
 		sqliteConn:  sqliteConn,
 	}
 
@@ -139,6 +152,7 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 type Conn struct {
 	barrier     barrier
 	connections *connection.Registry
+	tracers     *trace.Registry
 	sqliteConn  *sqlite3.SQLiteConn // Raw SQLite connection using the Go bindings
 }
 
@@ -180,7 +194,10 @@ func (c *Conn) Close() error {
 	if c.sqliteConn == nil {
 		return nil // Idempotency
 	}
+
+	c.tracers.Remove(replication.TracerName(c.connections, c.sqliteConn))
 	c.connections.DelLeader(c.sqliteConn)
+
 	if err := connection.CloseLeader(c.sqliteConn); err != nil {
 		return err
 	}

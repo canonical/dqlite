@@ -42,7 +42,7 @@ func NewRegistry() *Registry {
 // assumed to be in leader replication mode. The new transaction will
 // be assigned a unique ID.
 //
-// If any of the other given connections has registered transaction (except the
+// If any of the other given connections has a registered transaction (except the
 // given one), nil is returned.
 //
 // FIXME: txid should be uint64
@@ -120,8 +120,8 @@ func (r *Registry) SkipCheckReplicationMode(flag bool) {
 func (r *Registry) Dump() string {
 	buffer := bytes.NewBuffer(nil)
 	fmt.Fprintf(buffer, "transactions:\n")
-	for id, txn := range r.txns {
-		fmt.Fprintf(buffer, "-> %s %s\n", id, txn)
+	for _, txn := range r.txns {
+		fmt.Fprintf(buffer, "-> %s\n", txn)
 	}
 	return buffer.String()
 }

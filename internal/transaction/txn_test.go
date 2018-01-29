@@ -12,12 +12,12 @@ func TestTxn_String(t *testing.T) {
 	registry := newRegistry()
 
 	conn1 := &sqlite3.SQLiteConn{}
-	txn1 := registry.AddFollower(conn1, "abcd")
-	assert.Equal(t, "pending as follower", txn1.String())
+	txn1 := registry.AddFollower(conn1, "0")
+	assert.Equal(t, "0 pending as follower", txn1.String())
 
 	conn2 := &sqlite3.SQLiteConn{}
-	txn2 := registry.AddLeader(conn2, "0", nil)
-	assert.Equal(t, "pending as leader", txn2.String())
+	txn2 := registry.AddLeader(conn2, "1", nil)
+	assert.Equal(t, "1 pending as leader", txn2.String())
 }
 
 func TestTxn_CheckEntered(t *testing.T) {
