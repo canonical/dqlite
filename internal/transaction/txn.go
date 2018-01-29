@@ -60,7 +60,7 @@ func newTxn(conn *sqlite3.SQLiteConn, id string, isLeader bool, dryRun bool) *Tx
 }
 
 func (t *Txn) String() string {
-	s := fmt.Sprintf("%s as ", t.state.CurrentState())
+	s := fmt.Sprintf("%s %s as ", t.id, t.state.CurrentState())
 	if t.isLeader {
 		s += "leader"
 	} else {
@@ -192,15 +192,13 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 		// Retry a few times if the database is locked.
 		//
 		// FIXME: retry interval/count should be configurable.
-		var err error
 		for i := 0; i < 10; i++ {
 			err = sqlite3.ReplicationBegin(t.conn)
-			if err != nil {
-				if err != sqlite3.ErrLocked {
-					break
+			if err, ok := err.(sqlite3.Error); ok {
+				if err.Code == sqlite3.ErrLocked {
+					time.Sleep(100 * time.Millisecond)
+					continue
 				}
-				time.Sleep(100 * time.Millisecond)
-				continue
 			}
 			break
 		}

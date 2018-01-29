@@ -109,23 +109,16 @@ func (n *node) Start() (err error) {
 	n.handler = rafthttp.NewHandler()
 	go http.Serve(n.listener, n.handler)
 
-	logFunc := func(level, message string) {
-		if n.debug {
-			n.logger.Printf("[%s] %s", level, message)
-		}
-	}
-
-	options := []dqlite.Option{
-		dqlite.LogFunc(logFunc),
-		dqlite.AutoCheckpoint(1000),
-		dqlite.BarrierTimeout(n.timeout),
+	config := dqlite.DriverConfig{
+		//dqlite.LogFunc(logFunc),
+		BarrierTimeout: n.timeout,
 	}
 	fsm := dqlite.NewFSM(n.dir)
 	raft, err := n.makeRaft(fsm)
 	if err != nil {
 		return errors.Wrap(err, "failed to start raft")
 	}
-	if n.driver, err = dqlite.NewDriver(fsm, raft, options...); err != nil {
+	if n.driver, err = dqlite.NewDriver(fsm, raft, config); err != nil {
 		return errors.Wrap(err, "failed to create dqlite driver")
 	}
 	sql.Register("dqlite", n.driver)

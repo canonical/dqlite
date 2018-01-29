@@ -46,6 +46,6 @@ func TestSnapshot(t *testing.T) {
 func TestSnapshot_InvalidDir(t *testing.T) {
 	// Perform and restore the snapshot.
 	_, _, err := connection.Snapshot("/non/existing/path")
-	msg := "failed to open source connection: open error for /non/existing/path: unable to open database file"
+	msg := "source connection: open error for /non/existing/path: unable to open database file"
 	assert.EqualError(t, err, msg)
 }

@@ -3,7 +3,6 @@ package replication_test
 import (
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/internal/log"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3"
@@ -14,10 +13,69 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var errZero = sqlite3.ErrNo(0) // Convenience for assertions
-
+// The various methods hooks perform the correct state transition on the
+// relevant transaction.
 func TestMethods_Hooks(t *testing.T) {
-	for _, c := range methodsHooksCases {
+	errZero := sqlite3.ErrNo(0) // Convenience for assertions
+
+	cases := []struct {
+		title string
+		f     func(*testing.T, *replication.Methods, *sqlite3.SQLiteConn)
+		state fsm.State // Expected transaction state after f is executed
+	}{
+		{
+			`begin`,
+			func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
+				assert.Equal(t, errZero, methods.Begin(conn))
+			},
+			transaction.Started,
+		},
+		{
+			`rollback stale follower transaction`,
+			func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
+				require.Equal(t, errZero, methods.Begin(conn))
+				require.Equal(t, errZero, methods.End(conn))
+
+				followerConn := methods.Connections().Follower("test.db")
+				txn := methods.Transactions().AddFollower(followerConn, "2")
+				require.NoError(t, txn.Do(txn.Begin))
+				require.Equal(t, errZero, methods.Begin(conn))
+
+				// The leftover follower transaction has been ended and remved.
+				txn.Enter()
+				require.Equal(t, transaction.Ended, txn.State())
+				require.Nil(t, methods.Transactions().GetByID(txn.ID()))
+			},
+			transaction.Started,
+		},
+		{
+			`wal frames`,
+			func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
+				require.Equal(t, errZero, methods.Begin(conn))
+				params := newWalFramesParams()
+				assert.Equal(t, errZero, methods.WalFrames(conn, params))
+			},
+			transaction.Writing,
+		},
+		{
+			`undo`,
+			func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
+				require.Equal(t, errZero, methods.Begin(conn))
+				assert.Equal(t, errZero, methods.Undo(conn))
+			},
+			transaction.Undoing,
+		},
+		{
+			`end`,
+			func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
+				require.Equal(t, errZero, methods.Begin(conn))
+				assert.Equal(t, errZero, methods.End(conn))
+			},
+			"",
+		},
+	}
+
+	for _, c := range cases {
 		subtest.Run(t, c.title, func(t *testing.T) {
 			methods, conn, cleanup := newMethods(t)
 			defer cleanup()
@@ -36,111 +94,51 @@ func TestMethods_Hooks(t *testing.T) {
 	}
 }
 
-var methodsHooksCases = []struct {
-	title string
-	f     func(*testing.T, *replication.Methods, *sqlite3.SQLiteConn)
-	state fsm.State // Expected transaction state after f is executed
-}{
-	{
-		`begin`,
-		func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
-			assert.Equal(t, errZero, methods.Begin(conn))
+func TestMethods_HookPanic(t *testing.T) {
+	cases := []struct {
+		title string
+		f     func(*testing.T, *replication.Methods, *sqlite3.SQLiteConn) sqlite3.ErrNo
+		panic string // Expected panic message
+	}{
+		{
+			`begin fails if node is not raft leader`,
+			func(t *testing.T, m *replication.Methods, conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
+				txn := m.Transactions().AddLeader(conn, "1", nil)
+				require.NotNil(t, txn)
+				return m.Begin(conn)
+			},
+			"connection has existing transaction 1 pending as leader",
 		},
-		transaction.Started,
-	},
-	{
-		`rollback stale follower transaction`,
-		func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
-			require.Equal(t, errZero, methods.Begin(conn))
-			require.Equal(t, errZero, methods.End(conn))
-
-			followerConn := methods.Connections().Follower("test.db")
-			txn := methods.Transactions().AddFollower(followerConn, "2")
-			require.NoError(t, txn.Do(txn.Begin))
-			require.Equal(t, errZero, methods.Begin(conn))
-
-			// The leftover follower transaction has been ended and remved.
-			txn.Enter()
-			require.Equal(t, transaction.Ended, txn.State())
-			require.Nil(t, methods.Transactions().GetByID(txn.ID()))
-		},
-		transaction.Started,
-	},
-	{
-		`wal frames`,
-		func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
-			require.Equal(t, errZero, methods.Begin(conn))
-			params := newWalFramesParams()
-			assert.Equal(t, errZero, methods.WalFrames(conn, params))
-		},
-		transaction.Writing,
-	},
-	{
-		`undo`,
-		func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
-			require.Equal(t, errZero, methods.Begin(conn))
-			assert.Equal(t, errZero, methods.Undo(conn))
-		},
-		transaction.Undoing,
-	},
-	{
-		`end`,
-		func(t *testing.T, methods *replication.Methods, conn *sqlite3.SQLiteConn) {
-			require.Equal(t, errZero, methods.Begin(conn))
-			assert.Equal(t, errZero, methods.End(conn))
-		},
-		"",
-	},
-}
-
-func TestMethods_HookErrors(t *testing.T) {
-	for _, c := range methodsHookErrorCases {
+	}
+	for _, c := range cases {
 		subtest.Run(t, c.title, func(t *testing.T) {
 			methods, conn, cleanup := newMethods(t)
 			defer cleanup()
 
-			assert.Equal(t, c.error, c.f(t, methods, conn))
+			assert.PanicsWithValue(t, c.panic, func() { c.f(t, methods, conn) })
 		})
 	}
 }
 
-var methodsHookErrorCases = []struct {
-	title string
-	f     func(*testing.T, *replication.Methods, *sqlite3.SQLiteConn) sqlite3.ErrNo
-	error sqlite3.ErrNo // Expected error
-}{
-	{
-		`begin fails if node is not raft leader`,
-		func(t *testing.T, m *replication.Methods, conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
-			require.NoError(t, m.Raft().Shutdown().Error())
-			return m.Begin(conn)
-		},
-		sqlite3.ErrNotLeader,
-	},
-}
-
 func newMethods(t *testing.T) (*replication.Methods, *sqlite3.SQLiteConn, func()) {
-	logger := log.New(log.Testing(t, 0), log.Trace)
 	fsm, fsmCleanup := newFSM(t)
-	raft := rafttest.Node(t, fsm)
+	raft, raftCleanup := rafttest.Node(t, fsm)
 
-	methods := replication.NewMethods(raft, logger, fsm.Connections(), fsm.Transactions())
+	methods := replication.NewMethods(fsm, raft)
 
 	conn, connCleanup := newLeaderConn(t, fsm.Dir(), methods)
 
+	methods.Connections().AddLeader("test.db", conn)
+	methods.Tracers().Add(replication.TracerName(methods.Connections(), conn))
+
 	cleanup := func() {
+		methods.Tracers().Remove(replication.TracerName(methods.Connections(), conn))
+		methods.Connections().DelLeader(conn)
+
 		connCleanup()
-		assert.NoError(t, raft.Shutdown().Error())
+		raftCleanup()
 		fsmCleanup()
 	}
-
-	methods.Connections().AddLeader("test.db", conn)
-
-	// We need to disable replication mode checks, because leader
-	// connections created with newLeaderConn() haven't actually initiated
-	// a WAL write transaction and acquired the db lock necessary for
-	// sqlite3_replication_mode() to succeed.
-	methods.Transactions().SkipCheckReplicationMode(true)
 
 	// Don't actually run the SQLite replication APIs, since the tests
 	// using this helper are meant to drive the methods instance directly

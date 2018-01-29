@@ -6,8 +6,8 @@ import shutil
 import subprocess
 import time
 
-BUILD_DQLITE = "./.go-wrapper build -tags libsqlite3 .".split(" ")
-BUILD_DEMO = "./.go-wrapper build -tags libsqlite3 testdata/demo.go".split(" ")
+BUILD_DQLITE = "go build -tags libsqlite3 .".split(" ")
+BUILD_DEMO = "go build -tags libsqlite3 testdata/demo.go".split(" ")
 BASE_PORT = 9980
 
 

@@ -17,8 +17,6 @@ type Registry struct {
 	leaders   map[*sqlite3.SQLiteConn]string // Map leader connections to database filenames.
 	followers map[string]*sqlite3.SQLiteConn // Map database filenames to follower connections.
 	serial    map[*sqlite3.SQLiteConn]uint64 // Map a connection to its serial number.
-
-	dir string // Directory where we store database files.
 }
 
 // NewRegistry creates a new connections registry.

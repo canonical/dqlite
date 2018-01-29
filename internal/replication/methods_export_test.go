@@ -2,6 +2,7 @@ package replication
 
 import (
 	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/trace"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/hashicorp/raft"
 )
@@ -22,4 +23,9 @@ func (m *Methods) Raft() *raft.Raft {
 // after invoking other Methods APIs.
 func (m *Methods) Transactions() *transaction.Registry {
 	return m.transactions
+}
+
+// Expose the internal tracers so tests can set a writer.
+func (m *Methods) Tracers() *trace.Registry {
+	return m.tracers
 }

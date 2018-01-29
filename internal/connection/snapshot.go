@@ -18,7 +18,7 @@ func Snapshot(path string) ([]byte, []byte, error) {
 	// Create a source connection that will read the database snapshot.
 	sourceConn, err := open(path)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to open source connection")
+		return nil, nil, errors.Wrap(err, "source connection")
 	}
 	defer sourceConn.Close()
 
