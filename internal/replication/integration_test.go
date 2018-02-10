@@ -24,7 +24,7 @@ func TestIntegration_Replication(t *testing.T) {
 
 	// Get a leader connection on the leader node.
 	i := cluster.Notify.NextAcquired(time.Second)
-	conn := cluster.OpenConn(i)
+	conn := cluster.OpenConn(i, 1000)
 
 	// Run a WAL-writing query.
 	_, err := conn.Exec("CREATE TABLE test (n INT)", nil)
@@ -36,7 +36,7 @@ func TestIntegration_Replication(t *testing.T) {
 
 	// Get a leader conneciton on the follower and check that the change is
 	// there.
-	conn = cluster.OpenConn(j)
+	conn = cluster.OpenConn(j, 1000)
 	_, err = conn.Exec("SELECT * FROM test", nil)
 	assert.NoError(t, err)
 }
@@ -49,7 +49,7 @@ func TestIntegration_RaftApplyErrorRemovePendingTxn(t *testing.T) {
 
 	// Get a leader connection on the leader node.
 	i := cluster.Notify.NextAcquired(time.Second)
-	conn := cluster.OpenConn(i)
+	conn := cluster.OpenConn(i, 1000)
 
 	// Disconnect the leader
 	cluster.Network.Disconnect(i)
@@ -69,7 +69,7 @@ func TestIntegration_RaftApplyErrorWithInflightTxnAndRecoverOnNewLeader(t *testi
 
 	// Get a leader connection on the leader node.
 	i := cluster.Notify.NextAcquired(time.Second)
-	conn := cluster.OpenConn(i)
+	conn := cluster.OpenConn(i, 1000)
 
 	// Start a write transaction.
 	_, err := conn.Exec("BEGIN; CREATE TABLE test (n INT)", nil)
@@ -94,7 +94,7 @@ func TestIntegration_RaftApplyErrorWithInflightTxnAndRecoverOnNewLeader(t *testi
 	// that leadership is lost but still the log entry gets
 	// committed to the other nodes, and in that case the table is
 	// there on the new leader.
-	conn = cluster.OpenConn(j)
+	conn = cluster.OpenConn(j, 1000)
 	_, err = conn.Exec(
 		"BEGIN; CREATE TABLE IF NOT EXISTS test (n INT); INSERT INTO test VALUES(2); COMMIT", nil)
 	assert.NoError(t, err)
@@ -113,7 +113,7 @@ func TestIntegration_Snapshot(t *testing.T) {
 
 	// Get a leader connection on the leader node.
 	i := cluster.Notify.NextAcquired(time.Second)
-	conn := cluster.OpenConn(i)
+	conn := cluster.OpenConn(i, 1000)
 
 	// Disconnect a follower, so it will be forced to use the snapshot at
 	// reconnection.
@@ -149,7 +149,7 @@ func TestIntegration_Snapshot(t *testing.T) {
 	time.Sleep(250 * time.Millisecond)
 
 	// Verify that the follower has the expected data.
-	conn = cluster.OpenConn(j)
+	conn = cluster.OpenConn(j, 1000)
 	rows, err := conn.Query("SELECT n FROM test", nil)
 	require.NoError(t, err)
 	defer rows.Close()
@@ -243,11 +243,11 @@ func (c *cluster) Cleanup() {
 }
 
 // Open a leader connection on node i.
-func (c *cluster) OpenConn(i int) *sqlite3.SQLiteConn {
+func (c *cluster) OpenConn(i int, autoCheckpoint int) *sqlite3.SQLiteConn {
 	fsm := c.FSMs[i]
 	methods := c.methods[i]
 	path := filepath.Join(fsm.Dir(), "test.db")
-	conn, err := connection.OpenLeader(path, methods)
+	conn, err := connection.OpenLeader(path, methods, autoCheckpoint)
 	require.NoError(c.t, err)
 	fsm.Connections().AddLeader("test.db", conn)
 	c.conns[i] = conn

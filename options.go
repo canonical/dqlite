@@ -50,6 +50,15 @@ func ApplyTimeout(timeout time.Duration) Option {
 
 }
 
+// AutoCheckpoint sets how many frames the WAL file of a database should have
+// before a replicated checkpoint is automatically attempted. A value of 1000
+// (the default if not set) is fine for most application.
+func AutoCheckpoint(n int) Option {
+	return func(options *options) {
+		options.autoCheckpoint = n
+	}
+}
+
 // Create a options instance with default values.
 func newOptions() *options {
 	return &options{
@@ -57,6 +66,7 @@ func newOptions() *options {
 		logLevel:       "INFO",
 		barrierTimeout: time.Minute,
 		applyTimeout:   10 * time.Second,
+		autoCheckpoint: 0,
 	}
 }
 
@@ -65,4 +75,5 @@ type options struct {
 	logLevel       string
 	applyTimeout   time.Duration
 	barrierTimeout time.Duration
+	autoCheckpoint int
 }

@@ -10,10 +10,16 @@ import (
 //
 // The 'methods' argument is used to set the replication methods and the n one is
 // the WAL frame size threshold after which auto-checkpoint will trigger.
-func OpenLeader(dsn string, methods sqlite3.ReplicationMethods) (*sqlite3.SQLiteConn, error) {
+func OpenLeader(dsn string, methods sqlite3.ReplicationMethods, n int) (*sqlite3.SQLiteConn, error) {
 	conn, err := open(dsn)
 	if err != nil {
 		return nil, err
+	}
+
+	// Ensure WAL autocheckpoint is set, so the WAL and the raft log store
+	// don't not grow indefitely.
+	if n > 0 {
+		sqlite3.ReplicationAutoCheckpoint(conn, n)
 	}
 
 	// Swith to leader replication mode for this connection.
@@ -47,6 +53,12 @@ func OpenFollower(dsn string) (*sqlite3.SQLiteConn, error) {
 		return nil, err
 	}
 
+	// Ensure WAL autocheckpoint for followers is disabled, since
+	// checkpoints are triggered by leader connections via Raft commands.
+	if err := sqlite3.WalAutoCheckpointPragma(conn, 0); err != nil {
+		return nil, err
+	}
+
 	// Switch to leader replication mode for this connection.
 	if err := sqlite3.ReplicationFollower(conn); err != nil {
 		return nil, err
@@ -71,12 +83,6 @@ func open(dsn string) (*sqlite3.SQLiteConn, error) {
 	// Ensure journal mode is set to WAL, as this is a requirement for
 	// replication.
 	if err := sqlite3.JournalModePragma(sqliteConn, sqlite3.JournalWal); err != nil {
-		return nil, err
-	}
-
-	// Ensure WAL autocheckpoint are disabled, since checkpoints are
-	// triggered by out-of-band logic in dqlite.
-	if err := sqlite3.WalAutoCheckpointPragma(sqliteConn, 0); err != nil {
 		return nil, err
 	}
 

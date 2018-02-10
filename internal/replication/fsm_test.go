@@ -371,7 +371,7 @@ func newDir(t *testing.T) (string, func()) {
 // Create a new SQLite connection in leader replication mode, opened against a
 // database at a temporary file.
 func newLeaderConn(t *testing.T, dir string, methods sqlite3.ReplicationMethods) (*sqlite3.SQLiteConn, func()) {
-	conn, err := connection.OpenLeader(filepath.Join(dir, "test.db"), methods)
+	conn, err := connection.OpenLeader(filepath.Join(dir, "test.db"), methods, 1000)
 	if err != nil {
 		t.Fatalf("failed to open leader connection: %v", err)
 	}
