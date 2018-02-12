@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
@@ -152,7 +153,7 @@ func (f *FSM) applyOpen(tracer *trace.Tracer, params *protocol.Open) error {
 
 func (f *FSM) applyBegin(tracer *trace.Tracer, params *protocol.Begin) error {
 	tracer = tracer.With(
-		trace.String("txn", params.Txid),
+		trace.Integer("txn", int64(params.Txid)),
 		trace.String("file", params.Name),
 	)
 	tracer.Message("start")
@@ -195,14 +196,14 @@ func (f *FSM) applyBegin(tracer *trace.Tracer, params *protocol.Begin) error {
 
 func (f *FSM) applyWalFrames(tracer *trace.Tracer, params *protocol.WalFrames) error {
 	tracer = tracer.With(
-		trace.String("txn", params.Txid),
+		trace.Integer("txn", int64(params.Txid)),
 		trace.Integer("pages", int64(len(params.Pages))),
 		trace.Integer("commit", int64(params.IsCommit)))
 	tracer.Message("start")
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
-		tracer.Panic("no transaction with ID %s", params.Txid)
+		tracer.Panic("no transaction with ID %d", params.Txid)
 	}
 
 	pages := sqlite3.NewReplicationPages(len(params.Pages), int(params.PageSize))
@@ -231,13 +232,13 @@ func (f *FSM) applyWalFrames(tracer *trace.Tracer, params *protocol.WalFrames) e
 
 func (f *FSM) applyUndo(tracer *trace.Tracer, params *protocol.Undo) error {
 	tracer = tracer.With(
-		trace.String("txn", params.Txid),
+		trace.Integer("txn", int64(params.Txid)),
 	)
 	tracer.Message("start")
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
-		tracer.Panic("no transaction with ID %s", params.Txid)
+		tracer.Panic("no transaction with ID %d", params.Txid)
 	}
 
 	txn.Enter()
@@ -260,13 +261,13 @@ func (f *FSM) applyUndo(tracer *trace.Tracer, params *protocol.Undo) error {
 
 func (f *FSM) applyEnd(tracer *trace.Tracer, params *protocol.End) error {
 	tracer = tracer.With(
-		trace.String("txn", params.Txid),
+		trace.Integer("txn", int64(params.Txid)),
 	)
 	tracer.Message("start")
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
-		tracer.Panic("no transaction with ID %s", params.Txid)
+		tracer.Panic("no transaction with ID %d", params.Txid)
 	}
 
 	txn.Enter()
@@ -401,7 +402,7 @@ func (f *FSM) snapshotDatabase(filename string) (*fsmDatabaseSnapshot, error) {
 				return nil, fmt.Errorf("transaction %s is in progress", txn)
 			}
 			tracer.Message("idle transaction %s", txn)
-			txid = txn.ID()
+			txid = strconv.FormatUint(txn.ID(), 10)
 		}
 	}
 
@@ -540,7 +541,11 @@ func (f *FSM) restoreDatabase(tracer *trace.Tracer, reader io.ReadCloser) (bool,
 	f.connections.AddFollower(filename, conn)
 
 	if txid != "" {
-		tracer.Message("add transaction: %d", txid)
+		txid, err := strconv.ParseUint(txid, 10, 64)
+		if err != nil {
+			return false, err
+		}
+		tracer.Message("add transaction: %s", txid)
 		conn := f.connections.Follower(filename)
 		txn := f.transactions.AddFollower(conn, txid)
 		txn.Enter()

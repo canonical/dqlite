@@ -34,7 +34,7 @@ func TestEntry_Message(t *testing.T) {
 	}{
 		{
 			"hello %d",
-			[]interface{}{123},
+			[]interface{}{uint64(123)},
 			nil,
 			nil,
 			"hello 123",

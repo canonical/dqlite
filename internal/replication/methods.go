@@ -15,7 +15,6 @@
 package replication
 
 import (
-	"strconv"
 	"sync"
 	"time"
 
@@ -87,9 +86,9 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	}
 
 	// Use the last raft index as transaction ID.
-	txid := strconv.Itoa(int(m.raft.LastIndex()))
+	txid := m.raft.LastIndex()
 
-	tracer = tracer.With(trace.String("txn", txid))
+	tracer = tracer.With(trace.Integer("txn", int64(txid)))
 	tracer.Message("register transaction")
 
 	// Try to create a new transaction in the registry, this fails if there
@@ -181,7 +180,7 @@ func (m *Methods) beginMaybeUndoFollowerTxn(tracer *trace.Tracer, conn *sqlite3.
 		return nil
 	}
 
-	tracer.Message("undo stale transaction %s", txn.ID())
+	tracer.Message("undo stale transaction %d", txn.ID())
 
 	if err := m.apply(tracer, conn, protocol.NewUndo(txn.ID())); err != nil {
 		return err
@@ -444,7 +443,7 @@ func (m *Methods) markStaleAndAddFollowerTxn(tracer *trace.Tracer, conn *sqlite3
 }
 
 // Create a surrogate follower transaction with the given ID.
-func (m *Methods) addFollowerTxn(tracer *trace.Tracer, conn *sqlite3.SQLiteConn, name string, id string) error {
+func (m *Methods) addFollowerTxn(tracer *trace.Tracer, conn *sqlite3.SQLiteConn, name string, id uint64) error {
 	tracer.Message("create surrogate follower transaction")
 	txn := m.transactions.AddFollower(m.connections.Follower(name), id)
 

@@ -68,8 +68,8 @@ func TestFSM_ApplyPanics(t *testing.T) {
 			`existing transaction has non-leader connection`,
 			func(t *testing.T, fsm *replication.FSM) {
 				require.NoError(t, fsmApply(fsm, 0, protocol.NewOpen("test.db")))
-				fsm.Transactions().AddFollower(&sqlite3.SQLiteConn{}, "abcd")
-				fsmApply(fsm, 1, protocol.NewBegin("abcd", "test.db"))
+				fsm.Transactions().AddFollower(&sqlite3.SQLiteConn{}, 123)
+				fsmApply(fsm, 1, protocol.NewBegin(123, "test.db"))
 			},
 			"unexpected follower connection for existing transaction",
 		},
@@ -77,10 +77,10 @@ func TestFSM_ApplyPanics(t *testing.T) {
 			`new follower transaction started before previous is ended`,
 			func(t *testing.T, fsm *replication.FSM) {
 				require.NoError(t, fsmApply(fsm, 0, protocol.NewOpen("test.db")))
-				require.NoError(t, fsmApply(fsm, 1, protocol.NewBegin("abcd", "test.db")))
-				fsmApply(fsm, 2, protocol.NewBegin("efgh", "test.db"))
+				require.NoError(t, fsmApply(fsm, 1, protocol.NewBegin(123, "test.db")))
+				fsmApply(fsm, 2, protocol.NewBegin(456, "test.db"))
 			},
-			"a transaction for this connection is already registered with ID abcd",
+			"a transaction for this connection is already registered with ID 123",
 		},
 		{
 			`dangling leader connection`,
@@ -90,10 +90,10 @@ func TestFSM_ApplyPanics(t *testing.T) {
 				defer cleanup()
 
 				fsm.Connections().AddLeader("test.db", conn)
-				fsm.Transactions().AddLeader(conn, "1", nil)
+				fsm.Transactions().AddLeader(conn, 1, nil)
 
 				require.NoError(t, fsmApply(fsm, 0, protocol.NewOpen("test.db")))
-				fsmApply(fsm, 1, protocol.NewBegin("abcd", "test.db"))
+				fsmApply(fsm, 1, protocol.NewBegin(123, "test.db"))
 			},
 			"unexpected transaction 1 pending as leader",
 		},
@@ -101,23 +101,23 @@ func TestFSM_ApplyPanics(t *testing.T) {
 			`wal frames transaction not found`,
 			func(t *testing.T, fsm *replication.FSM) {
 				params := newWalFramesParams()
-				fsmApply(fsm, 0, protocol.NewWalFrames("abcd", params))
+				fsmApply(fsm, 0, protocol.NewWalFrames(123, params))
 			},
-			"no transaction with ID abcd",
+			"no transaction with ID 123",
 		},
 		{
 			`undo transaction not found`,
 			func(t *testing.T, fsm *replication.FSM) {
-				fsmApply(fsm, 0, protocol.NewUndo("abcd"))
+				fsmApply(fsm, 0, protocol.NewUndo(123))
 			},
-			"no transaction with ID abcd",
+			"no transaction with ID 123",
 		},
 		{
 			`end transaction not found`,
 			func(t *testing.T, fsm *replication.FSM) {
-				fsmApply(fsm, 0, protocol.NewEnd("abcd"))
+				fsmApply(fsm, 0, protocol.NewEnd(123))
 			},
-			"no transaction with ID abcd",
+			"no transaction with ID 123",
 		},
 	}
 	for _, c := range cases {
@@ -145,10 +145,10 @@ func TestFSM_Apply(t *testing.T) {
 
 				fsm.Connections().AddLeader("test.db", conn)
 
-				txn := fsm.Transactions().AddLeader(conn, "0", nil)
+				txn := fsm.Transactions().AddLeader(conn, 1, nil)
 				txn.DryRun(true)
 
-				fsm.Apply(newRaftLog(0, protocol.NewBegin("0", "test.db")))
+				fsm.Apply(newRaftLog(0, protocol.NewBegin(1, "test.db")))
 			},
 			transaction.Started,
 		},
@@ -156,7 +156,7 @@ func TestFSM_Apply(t *testing.T) {
 			`begin follower`,
 			func(t *testing.T, fsm *replication.FSM) {
 				fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
-				fsm.Apply(newRaftLog(1, protocol.NewBegin("0", "test.db")))
+				fsm.Apply(newRaftLog(1, protocol.NewBegin(1, "test.db")))
 			},
 			transaction.Started,
 		},
@@ -164,13 +164,13 @@ func TestFSM_Apply(t *testing.T) {
 			`wal frames`,
 			func(t *testing.T, fsm *replication.FSM) {
 				fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
-				fsm.Apply(newRaftLog(1, protocol.NewBegin("0", "test.db")))
+				fsm.Apply(newRaftLog(1, protocol.NewBegin(1, "test.db")))
 
-				txn := fsm.Transactions().GetByID("0")
+				txn := fsm.Transactions().GetByID(1)
 				txn.DryRun(true)
 
 				params := newWalFramesParams()
-				fsm.Apply(newRaftLog(2, protocol.NewWalFrames("0", params)))
+				fsm.Apply(newRaftLog(2, protocol.NewWalFrames(1, params)))
 
 			},
 			transaction.Writing,
@@ -179,12 +179,12 @@ func TestFSM_Apply(t *testing.T) {
 			`undo`,
 			func(t *testing.T, fsm *replication.FSM) {
 				fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
-				fsm.Apply(newRaftLog(1, protocol.NewBegin("0", "test.db")))
+				fsm.Apply(newRaftLog(1, protocol.NewBegin(1, "test.db")))
 
-				txn := fsm.Transactions().GetByID("0")
+				txn := fsm.Transactions().GetByID(1)
 				txn.DryRun(true)
 
-				fsm.Apply(newRaftLog(2, protocol.NewUndo("0")))
+				fsm.Apply(newRaftLog(2, protocol.NewUndo(1)))
 			},
 			transaction.Undoing,
 		},
@@ -197,7 +197,7 @@ func TestFSM_Apply(t *testing.T) {
 
 			c.f(t, fsm)
 
-			txn := fsm.Transactions().GetByID("0")
+			txn := fsm.Transactions().GetByID(1)
 			require.NotNil(t, txn)
 			txn.Enter()
 			assert.Equal(t, c.state, txn.State())
@@ -220,15 +220,15 @@ func TestFSM_ApplyEnd(t *testing.T) {
 	defer cleanup()
 
 	fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
-	fsm.Apply(newRaftLog(1, protocol.NewBegin("0", "test.db")))
+	fsm.Apply(newRaftLog(1, protocol.NewBegin(1, "test.db")))
 
-	txn := fsm.Transactions().GetByID("0")
+	txn := fsm.Transactions().GetByID(1)
 
-	fsm.Apply(newRaftLog(2, protocol.NewEnd("0")))
+	fsm.Apply(newRaftLog(2, protocol.NewEnd(1)))
 
 	txn.Enter()
 	assert.Equal(t, transaction.Ended, txn.State())
-	assert.Nil(t, fsm.Transactions().GetByID("0"))
+	assert.Nil(t, fsm.Transactions().GetByID(1))
 }
 
 func TestFSM_ApplyCheckpointPanicsIfFollowerTransactionIsInFlight(t *testing.T) {
@@ -236,10 +236,10 @@ func TestFSM_ApplyCheckpointPanicsIfFollowerTransactionIsInFlight(t *testing.T) 
 	defer cleanup()
 
 	fsm.Apply(newRaftLog(0, protocol.NewOpen("test.db")))
-	fsm.Apply(newRaftLog(1, protocol.NewBegin("0", "test.db")))
+	fsm.Apply(newRaftLog(1, protocol.NewBegin(1, "test.db")))
 
 	f := func() { fsm.Apply(newRaftLog(2, protocol.NewCheckpoint("test.db"))) }
-	assert.PanicsWithValue(t, "can't run with transaction 0 started as follower", f)
+	assert.PanicsWithValue(t, "can't run with transaction 1 started as follower", f)
 }
 
 func TestFSM_ApplyCheckpointWithLeaderConnection(t *testing.T) {
@@ -291,15 +291,15 @@ func TestFSM_SnapshotActiveTransactionError(t *testing.T) {
 
 	// Register the database and start a writing transaction.
 	fsmApply(fsm, 0, protocol.NewOpen("test.db"))
-	fsmApply(fsm, 1, protocol.NewBegin("0", "test.db"))
-	fsm.Transactions().GetByID("0").DryRun(true)
-	fsmApply(fsm, 2, protocol.NewWalFrames("0", newWalFramesParams()))
+	fsmApply(fsm, 1, protocol.NewBegin(1, "test.db"))
+	fsm.Transactions().GetByID(1).DryRun(true)
+	fsmApply(fsm, 2, protocol.NewWalFrames(1, newWalFramesParams()))
 
 	// Create a snapshot
 	snapshot, err := fsm.Snapshot()
 	assert.Nil(t, snapshot)
 
-	expected := "test.db: transaction 0 writing as follower is in progress"
+	expected := "test.db: transaction 1 writing as follower is in progress"
 	assert.EqualError(t, err, expected)
 }
 
@@ -311,7 +311,7 @@ func TestFSM_SnapshotIdleTransaction(t *testing.T) {
 
 	// Register the database and start an idle transaction.
 	fsmApply(fsm1, 0, protocol.NewOpen("test.db"))
-	fsmApply(fsm1, 1, protocol.NewBegin("0", "test.db"))
+	fsmApply(fsm1, 1, protocol.NewBegin(1, "test.db"))
 
 	store := newSnapshotStore()
 	sink := newSnapshotSink(t, store)
@@ -330,7 +330,7 @@ func TestFSM_SnapshotIdleTransaction(t *testing.T) {
 	require.NoError(t, fsm2.Restore(reader))
 
 	// There's a registered transaction in Started state
-	txn := fsm2.Transactions().GetByID("0")
+	txn := fsm2.Transactions().GetByID(1)
 	txn.Enter()
 	assert.Equal(t, transaction.Started, txn.State())
 
@@ -486,7 +486,7 @@ func newRaftLog(index uint64, cmd *protocol.Command) *raft.Log {
 
 // Return a new temporary directory.
 func newDir(t *testing.T) (string, func()) {
-	t.Helper()
+	//t.Helper()
 
 	dir, err := ioutil.TempDir("", "dqlite-replication-test-")
 	assert.NoError(t, err)

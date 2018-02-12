@@ -30,13 +30,13 @@ func NewOpen(name string) *Command {
 }
 
 // NewBegin returns a new Command with Begin parameters.
-func NewBegin(txid string, name string) *Command {
+func NewBegin(txid uint64, name string) *Command {
 	params := &Command_Begin{Begin: &Begin{Txid: txid, Name: name}}
 	return newCommand(params)
 }
 
 // NewWalFrames returns a new WalFrames protobuf message.
-func NewWalFrames(txid string, frames *sqlite3.ReplicationWalFramesParams) *Command {
+func NewWalFrames(txid uint64, frames *sqlite3.ReplicationWalFramesParams) *Command {
 	pages := make([]*WalFramesPage, len(frames.Pages))
 
 	size := frames.PageSize
@@ -59,7 +59,7 @@ func NewWalFrames(txid string, frames *sqlite3.ReplicationWalFramesParams) *Comm
 }
 
 // NewUndo returns a new Undo protobuf message.
-func NewUndo(txid string) *Command {
+func NewUndo(txid uint64) *Command {
 	params := &Command_Undo{Undo: &Undo{
 		Txid: txid,
 	}}
@@ -67,7 +67,7 @@ func NewUndo(txid string) *Command {
 }
 
 // NewEnd returns a new End protobuf message.
-func NewEnd(txid string) *Command {
+func NewEnd(txid uint64) *Command {
 	params := &Command_End{End: &End{
 		Txid: txid,
 	}}

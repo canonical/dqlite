@@ -593,7 +593,7 @@ func (c *cluster) CloseConn(i int) {
 // Check that the method timeline of the given node contains the given event
 // for the given connection.
 func (c *cluster) TimelineContains(raft *raft.Raft, conn *sqlite3.SQLiteConn, event string) {
-	c.t.Helper()
+	//c.t.Helper()
 
 	i := c.Control.Index(raft)
 	fsm := c.FSMs[i]
@@ -605,7 +605,7 @@ func (c *cluster) TimelineContains(raft *raft.Raft, conn *sqlite3.SQLiteConn, ev
 // Check the cluster is still functional after a failure that involved one or
 // more nodes to be disconnected and after those nodes have been reconnected.
 func (c *cluster) StillFunctional() {
-	c.t.Helper()
+	//c.t.Helper()
 
 	// Start a new transaction and check that it works. Retry a few times
 	// since the leader might not be stable at this point.

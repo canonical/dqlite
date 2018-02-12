@@ -70,7 +70,7 @@ func checkOpen(cmd *protocol.Command, t *testing.T) {
 }
 
 func newBegin() *protocol.Command {
-	return protocol.NewBegin("abcd", "test")
+	return protocol.NewBegin(123, "test")
 }
 
 func checkBegin(cmd *protocol.Command, t *testing.T) {
@@ -78,8 +78,8 @@ func checkBegin(cmd *protocol.Command, t *testing.T) {
 	if !ok {
 		t.Errorf("Params field is not of type protocol.Command_Begin")
 	}
-	if params.Begin.Txid != "abcd" {
-		t.Errorf(`expected Txid "abcd", got "%s"`, params.Begin.Txid)
+	if params.Begin.Txid != 123 {
+		t.Errorf(`expected Txid 123, got "%d"`, params.Begin.Txid)
 	}
 	if params.Begin.Name != "test" {
 		t.Errorf(`expected Name "test", got "%s"`, params.Begin.Name)
@@ -101,7 +101,7 @@ func newWalFrames() *protocol.Command {
 		IsCommit:  1,
 		SyncFlags: 1,
 	}
-	return protocol.NewWalFrames("abcd", frames)
+	return protocol.NewWalFrames(123, frames)
 }
 
 func checkWalFrames(cmd *protocol.Command, t *testing.T) {
@@ -109,8 +109,8 @@ func checkWalFrames(cmd *protocol.Command, t *testing.T) {
 	if !ok {
 		t.Errorf("Params field is not of type protocol.Command_WalFrames")
 	}
-	if params.WalFrames.Txid != "abcd" {
-		t.Errorf("expected Txid abcd, got %s", params.WalFrames.Txid)
+	if params.WalFrames.Txid != 123 {
+		t.Errorf("expected Txid 123, got %d", params.WalFrames.Txid)
 	}
 	if params.WalFrames.PageSize != 4096 {
 		t.Errorf("expected PageSize 4096, got %d", params.WalFrames.PageSize)
@@ -140,7 +140,7 @@ func checkWalFrames(cmd *protocol.Command, t *testing.T) {
 }
 
 func newEnd() *protocol.Command {
-	return protocol.NewEnd("abcd")
+	return protocol.NewEnd(123)
 }
 
 func checkEnd(cmd *protocol.Command, t *testing.T) {
@@ -148,13 +148,13 @@ func checkEnd(cmd *protocol.Command, t *testing.T) {
 	if !ok {
 		t.Errorf("Params field is not of type protocol.Command_WalFrames")
 	}
-	if params.End.Txid != "abcd" {
-		t.Errorf(`expected Txid "abcd", got "%s"`, params.End.Txid)
+	if params.End.Txid != 123 {
+		t.Errorf(`expected Txid 123, got "%d"`, params.End.Txid)
 	}
 }
 
 func newUndo() *protocol.Command {
-	return protocol.NewUndo("abcd")
+	return protocol.NewUndo(123)
 }
 
 func checkUndo(cmd *protocol.Command, t *testing.T) {
@@ -162,8 +162,8 @@ func checkUndo(cmd *protocol.Command, t *testing.T) {
 	if !ok {
 		t.Errorf("Params field is not of type protocol.Command_Undo")
 	}
-	if params.Undo.Txid != "abcd" {
-		t.Errorf(`expected Txid "abcd", got "%s"`, params.Undo.Txid)
+	if params.Undo.Txid != 123 {
+		t.Errorf(`expected Txid 123, got "%d"`, params.Undo.Txid)
 	}
 }
 
