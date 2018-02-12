@@ -35,13 +35,13 @@ message Open {
 
 // Parameters to begin a new write transaction.
 message Begin {
-  string txid = 1; // Transaction identifier.
+  uint64 txid = 1; // Transaction identifier.
   string name = 2; // Name of the database file.
 }
 
 // Parameters to append new frames to the WAL within a write transaction.
 message WalFrames {
-  string txid = 1;                  // Transaction identifier.
+  uint64 txid = 1;                  // Transaction identifier.
   int32 page_size = 2;              // Size of the data field of each frame.
   repeated WalFramesPage pages = 3; // List of the frames to write.
   uint32 truncate = 4;              // Flag telling if the WAL should be truncated.
@@ -58,13 +58,13 @@ message WalFramesPage {
 
 // Parameters to undo any previous WAL change in a write transaction.
 message Undo {
-  string txid = 1; // Transaction identifier.
+  uint64 txid = 1; // Transaction identifier.
 }
 
 // Parameters to end a write transaction, and update the WAL commit
 // pointer.
 message End {
-  string txid = 1; // Transaction identifier.
+  uint64 txid = 1; // Transaction identifier.
 }
 
 // Parameters to perform a WAL checkpoint.

@@ -14,7 +14,7 @@ import (
 // connections in follower replication mode.
 type Registry struct {
 	mu   sync.RWMutex    // Serialize access to internal state
-	txns map[string]*Txn // Transactions by ID
+	txns map[uint64]*Txn // Transactions by ID
 
 	// Flag indicating whether to skip checking that a new transaction
 	// started as leader or follower is actually associated to a connection
@@ -34,7 +34,7 @@ type Registry struct {
 // NewRegistry creates a new registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		txns: map[string]*Txn{},
+		txns: map[uint64]*Txn{},
 	}
 }
 
@@ -46,7 +46,7 @@ func NewRegistry() *Registry {
 // given one), nil is returned.
 //
 // FIXME: txid should be uint64
-func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn, txid string, others []*sqlite3.SQLiteConn) *Txn {
+func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn, txid uint64, others []*sqlite3.SQLiteConn) *Txn {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -69,7 +69,7 @@ func (r *Registry) AddLeader(conn *sqlite3.SQLiteConn, txid string, others []*sq
 // transaction will be associated with the given transaction ID, which
 // should match the one of the leader transaction that initiated the
 // write.
-func (r *Registry) AddFollower(conn *sqlite3.SQLiteConn, id string) *Txn {
+func (r *Registry) AddFollower(conn *sqlite3.SQLiteConn, id uint64) *Txn {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -81,7 +81,7 @@ func (r *Registry) AddFollower(conn *sqlite3.SQLiteConn, id string) *Txn {
 }
 
 // GetByID returns the transaction with the given ID, if it exists.
-func (r *Registry) GetByID(id string) *Txn {
+func (r *Registry) GetByID(id uint64) *Txn {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -98,12 +98,12 @@ func (r *Registry) GetByConn(conn *sqlite3.SQLiteConn) *Txn {
 }
 
 // Remove deletes the transaction with the given ID.
-func (r *Registry) Remove(id string) {
+func (r *Registry) Remove(id uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if _, ok := r.txns[id]; !ok {
-		panic(fmt.Sprintf("attempt to remove unregistered transaction %s", id))
+		panic(fmt.Sprintf("attempt to remove unregistered transaction %d", id))
 	}
 
 	delete(r.txns, id)
@@ -133,13 +133,13 @@ func (r *Registry) DryRun() {
 	r.dryRun = true
 }
 
-func (r *Registry) add(conn *sqlite3.SQLiteConn, id string, isLeader bool) *Txn {
+func (r *Registry) add(conn *sqlite3.SQLiteConn, id uint64, isLeader bool) *Txn {
 	// Sanity check that the same connection hasn't been registered
 	// already. Iterating is fast since there will always be few
 	// write transactions active at given time.
 	if txn := r.getByConn(conn); txn != nil {
 		panic(fmt.Sprintf(
-			"a transaction for this connection is already registered with ID %s", txn.ID()))
+			"a transaction for this connection is already registered with ID %d", txn.ID()))
 	}
 
 	txn := newTxn(conn, id, isLeader, r.dryRun)

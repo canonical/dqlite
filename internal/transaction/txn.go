@@ -14,7 +14,7 @@ import (
 // either leader or replication mode.
 type Txn struct {
 	conn     *sqlite3.SQLiteConn // Underlying SQLite connection.
-	id       string              // Transaction ID.
+	id       uint64              // Transaction ID.
 	isLeader bool                // Whether we're attached to a connection in leader mode.
 	dryRun   bool                // Dry run mode, don't invoke actual SQLite hooks, for testing.
 	mu       sync.Mutex          // Serialize access to internal state.
@@ -36,7 +36,7 @@ const (
 	Doomed  = fsm.State("doomed")  // The transaction has errored.
 )
 
-func newTxn(conn *sqlite3.SQLiteConn, id string, isLeader bool, dryRun bool) *Txn {
+func newTxn(conn *sqlite3.SQLiteConn, id uint64, isLeader bool, dryRun bool) *Txn {
 	state := &txnState{state: Pending}
 
 	// Initialize our internal FSM. Rules for state transitions are
@@ -60,7 +60,7 @@ func newTxn(conn *sqlite3.SQLiteConn, id string, isLeader bool, dryRun bool) *Tx
 }
 
 func (t *Txn) String() string {
-	s := fmt.Sprintf("%s %s as ", t.id, t.state.CurrentState())
+	s := fmt.Sprintf("%d %s as ", t.id, t.state.CurrentState())
 	if t.isLeader {
 		s += "leader"
 	} else {
@@ -98,7 +98,7 @@ func (t *Txn) Conn() *sqlite3.SQLiteConn {
 }
 
 // ID returns the ID associated with this transaction.
-func (t *Txn) ID() string {
+func (t *Txn) ID() uint64 {
 	return t.id
 }
 
@@ -225,7 +225,7 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 // locking.
 func (t *Txn) checkEntered() {
 	if !t.entered {
-		panic(fmt.Sprintf("accessing or modifying txn state without mutex: %s", t.id))
+		panic(fmt.Sprintf("accessing or modifying txn state without mutex: %d", t.id))
 	}
 }
 

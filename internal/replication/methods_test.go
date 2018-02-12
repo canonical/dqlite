@@ -37,7 +37,7 @@ func TestMethods_Hooks(t *testing.T) {
 				require.Equal(t, errZero, methods.End(conn))
 
 				followerConn := methods.Connections().Follower("test.db")
-				txn := methods.Transactions().AddFollower(followerConn, "2")
+				txn := methods.Transactions().AddFollower(followerConn, 2)
 				require.NoError(t, txn.Do(txn.Begin))
 				require.Equal(t, errZero, methods.Begin(conn))
 
@@ -103,7 +103,7 @@ func TestMethods_HookPanic(t *testing.T) {
 		{
 			`begin fails if node is not raft leader`,
 			func(t *testing.T, m *replication.Methods, conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
-				txn := m.Transactions().AddLeader(conn, "1", nil)
+				txn := m.Transactions().AddLeader(conn, 1, nil)
 				require.NotNil(t, txn)
 				return m.Begin(conn)
 			},
