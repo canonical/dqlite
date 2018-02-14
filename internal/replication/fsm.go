@@ -107,16 +107,16 @@ func (f *FSM) apply(log *raft.Log) error {
 		err = errors.Wrapf(err, "open %s", params.Open.Name)
 	case *protocol.Command_Begin:
 		err = f.applyBegin(tracer, params.Begin)
-		err = errors.Wrapf(err, "begin txn %s on %s", params.Begin.Txid, params.Begin.Name)
+		err = errors.Wrapf(err, "begin txn %d on %s", params.Begin.Txid, params.Begin.Name)
 	case *protocol.Command_WalFrames:
 		err = f.applyWalFrames(tracer, params.WalFrames)
-		err = errors.Wrapf(err, "wal frames txn %s (%v)", params.WalFrames.Txid, params.WalFrames.IsCommit)
+		err = errors.Wrapf(err, "wal frames txn %d (%v)", params.WalFrames.Txid, params.WalFrames.IsCommit)
 	case *protocol.Command_Undo:
 		err = f.applyUndo(tracer, params.Undo)
-		err = errors.Wrapf(err, "undo txn %s", params.Undo.Txid)
+		err = errors.Wrapf(err, "undo txn %d", params.Undo.Txid)
 	case *protocol.Command_End:
 		err = f.applyEnd(tracer, params.End)
-		err = errors.Wrapf(err, "end txn %s", params.End.Txid)
+		err = errors.Wrapf(err, "end txn %d", params.End.Txid)
 	case *protocol.Command_Checkpoint:
 		err = f.applyCheckpoint(tracer, params.Checkpoint)
 		err = errors.Wrapf(err, "checkpoint")
