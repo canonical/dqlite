@@ -195,7 +195,7 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 		for i := 0; i < 10; i++ {
 			err = sqlite3.ReplicationBegin(t.conn)
 			if err, ok := err.(sqlite3.Error); ok {
-				if err.Code == sqlite3.ErrLocked {
+				if err.Code == sqlite3.ErrBusy || err.Code == sqlite3.ErrLocked {
 					time.Sleep(100 * time.Millisecond)
 					continue
 				}
