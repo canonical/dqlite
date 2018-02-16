@@ -194,6 +194,9 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 		// FIXME: retry interval/count should be configurable.
 		for i := 0; i < 10; i++ {
 			err = sqlite3.ReplicationBegin(t.conn)
+			if err != nil {
+				fmt.Printf("TXN TRANSITION: BEGIN %d: ERROR: %#v\n", i, err)
+			}
 			if err, ok := err.(sqlite3.Error); ok {
 				if err.Code == sqlite3.ErrBusy || err.Code == sqlite3.ErrLocked {
 					time.Sleep(100 * time.Millisecond)
