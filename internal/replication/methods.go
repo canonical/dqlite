@@ -120,6 +120,7 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	// quite done yet. We return ErrBusy and client code should retry. See
 	// also sqlite3WalBeginWriteTransaction in the wal.c file of sqlite.
 	if err := txn.Do(txn.Begin); err != nil {
+		m.transactions.Remove(txn.ID())
 		tracer.Error("failed to begin WAL write transaction", err)
 		if err, ok := err.(sqlite3.Error); ok {
 			return err.Code
