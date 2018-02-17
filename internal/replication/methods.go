@@ -114,6 +114,19 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		return errno(err)
 	}
 
+	// Try to acquire the WAL write lock by beginning a write
+	// transaction. This can fail with SQLITE_BUSY_SNAPSHOT if there's a
+	// concurrent connection that has started a transaction but is not
+	// quite done yet. We return ErrBusy and client code should retry. See
+	// also sqlite3WalBeginWriteTransaction in the wal.c file of sqlite.
+	if err := txn.Do(txn.Begin); err != nil {
+		tracer.Error("failed to begin WAL write transaction", err)
+		if err, ok := err.(sqlite3.Error); ok {
+			return err.Code
+		}
+		return sqlite3.ErrReplication
+	}
+
 	command := protocol.NewBegin(txn.ID(), filename)
 	if err := m.apply(tracer, conn, command); err != nil {
 		txn.Enter()

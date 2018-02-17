@@ -148,6 +148,10 @@ func TestFSM_Apply(t *testing.T) {
 				txn := fsm.Transactions().AddLeader(conn, 1, nil)
 				txn.DryRun(true)
 
+				// Begin the WAL write transaction by hand, as it would be done
+				// by the Methods.Begin hook.
+				assert.NoError(t, txn.Do(txn.Begin))
+
 				fsm.Apply(newRaftLog(0, protocol.NewBegin(1, "test.db")))
 			},
 			transaction.Started,

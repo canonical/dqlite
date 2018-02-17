@@ -167,6 +167,9 @@ func (f *FSM) applyBegin(tracer *trace.Tracer, params *protocol.Begin) error {
 		if !txn.IsLeader() {
 			tracer.Panic("unexpected follower connection for existing transaction")
 		}
+
+		// We don't need to do anything else, since the WAL write
+		// transaction was already started by the methods hook.
 	} else {
 		tracer.Message("txn not found, add follower")
 
@@ -183,10 +186,10 @@ func (f *FSM) applyBegin(tracer *trace.Tracer, params *protocol.Begin) error {
 
 		conn := f.connections.Follower(params.Name)
 		txn = f.transactions.AddFollower(conn, params.Txid)
-	}
 
-	if err := txn.Do(txn.Begin); err != nil {
-		return err
+		if err := txn.Do(txn.Begin); err != nil {
+			return err
+		}
 	}
 
 	tracer.Message("done")

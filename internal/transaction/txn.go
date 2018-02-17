@@ -3,7 +3,6 @@ package transaction
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/ryanfaerman/fsm"
@@ -189,22 +188,7 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 
 	switch state {
 	case Started:
-		// Retry a few times if the database is locked.
-		//
-		// FIXME: retry interval/count should be configurable.
-		for i := 0; i < 10; i++ {
-			err = sqlite3.ReplicationBegin(t.conn)
-			if err != nil {
-				fmt.Printf("TXN TRANSITION: BEGIN %d: ERROR: %#v\n", i, err)
-			}
-			if err, ok := err.(sqlite3.Error); ok {
-				if err.Code == sqlite3.ErrBusy || err.Code == sqlite3.ErrLocked {
-					time.Sleep(100 * time.Millisecond)
-					continue
-				}
-			}
-			break
-		}
+		err = sqlite3.ReplicationBegin(t.conn)
 	case Writing:
 		frames := args[0].(*sqlite3.ReplicationWalFramesParams)
 		err = sqlite3.ReplicationWalFrames(t.conn, frames)
