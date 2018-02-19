@@ -43,7 +43,7 @@ func NewWalFrames(txid uint64, frames *sqlite3.ReplicationWalFramesParams) *Comm
 	for i := range frames.Pages {
 		page := &frames.Pages[i]
 		pages[i] = &WalFramesPage{}
-		pages[i].Data = (*[1 << 30]byte)(page.Data())[:size:size]
+		pages[i].Data = (*[1 << 16]byte)(page.Data())[:size:size]
 		pages[i].Flags = uint32(page.Flags())
 		pages[i].Number = uint32(page.Number())
 	}
