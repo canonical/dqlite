@@ -86,7 +86,7 @@ func TestNewDriver_CreateDir(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestDriver_SQLiteLogging(t *testing.T) {
+func DISABLE_TestDriver_SQLiteLogging(t *testing.T) {
 	output := bytes.NewBuffer(nil)
 	logger := log.New(output, "", 0)
 	config := dqlite.DriverConfig{Logger: logger}

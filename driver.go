@@ -76,9 +76,9 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, config DriverConfig) (*Driver, err
 		config.ApplyTimeout = 10 * time.Second
 	}
 
-	sqlite3.LogConfig(func(code int, message string) {
-		config.Logger.Printf("[ERR] %s (%d)", message, code)
-	})
+	//sqlite3.LogConfig(func(code int, message string) {
+	//config.Logger.Printf("[ERR] %s (%d)", message, code)
+	//})
 
 	// Replication methods
 	methods := replication.NewMethods(fsmi, raft)
