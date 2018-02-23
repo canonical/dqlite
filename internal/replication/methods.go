@@ -65,11 +65,11 @@ func (m *Methods) ApplyTimeout(timeout time.Duration) {
 // this node.
 func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	tracer := m.tracer(conn, "begin")
-	tracer.Message("start")
+	//tracer.Message("start")
 
 	// Check if we're the leader.
 	if m.raft.State() != raft.Leader {
-		tracer.Message("not leader")
+		//tracer.Message("not leader")
 		return sqlite3.ErrNotLeader
 	}
 
@@ -77,7 +77,7 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	// this connection, since SQLite locking system itself prevents it by
 	// serializing write transactions. Still double check it for sanity.
 	if txn := m.transactions.GetByConn(conn); txn != nil {
-		tracer.Panic("connection has existing transaction %s", txn)
+		//tracer.Panic("connection has existing transaction %s", txn)
 	}
 
 	// Possibly open a follower for this database if it doesn't exist yet.
@@ -88,8 +88,8 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	// Use the last raft index as transaction ID.
 	txid := m.raft.LastIndex()
 
-	tracer = tracer.With(trace.Integer("txn", int64(txid)))
-	tracer.Message("register transaction")
+	//tracer = tracer.With(trace.Integer("txn", int64(txid)))
+	//tracer.Message("register transaction")
 
 	// Try to create a new transaction in the registry, this fails if there
 	// is another leader connection with an ongoing transaction.
@@ -97,7 +97,7 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	leaders := m.connections.Leaders(filename)
 	txn := m.transactions.AddLeader(conn, txid, leaders)
 	if txn == nil {
-		tracer.Message("a transaction is already in progress")
+		//tracer.Message("a transaction is already in progress")
 		return sqlite3.ErrBusy
 	}
 
@@ -121,7 +121,7 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	// also sqlite3WalBeginWriteTransaction in the wal.c file of sqlite.
 	if err := txn.Do(txn.Begin); err != nil {
 		m.transactions.Remove(txn.ID())
-		tracer.Error("failed to begin WAL write transaction", err)
+		//tracer.Error("failed to begin WAL write transaction", err)
 		if err, ok := err.(sqlite3.Error); ok {
 			return err.Code
 		}
@@ -151,7 +151,7 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		return errno(err)
 	}
 
-	tracer.Message("done")
+	//tracer.Message("done")
 
 	return 0
 }
@@ -166,7 +166,7 @@ func (m *Methods) beginMaybeAddFollowerConn(tracer *trace.Tracer, conn *sqlite3.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.connections.HasFollower(filename) {
-		tracer.Message("open follower for %s", filename)
+		//tracer.Message("open follower for %s", filename)
 		return m.apply(tracer, conn, protocol.NewOpen(filename))
 	}
 	return nil
@@ -194,7 +194,7 @@ func (m *Methods) beginMaybeUndoFollowerTxn(tracer *trace.Tracer, conn *sqlite3.
 		return nil
 	}
 
-	tracer.Message("undo stale transaction %d", txn.ID())
+	//tracer.Message("undo stale transaction %d", txn.ID())
 
 	if err := m.apply(tracer, conn, protocol.NewUndo(txn.ID())); err != nil {
 		return err
@@ -210,7 +210,7 @@ func (m *Methods) beginMaybeUndoFollowerTxn(tracer *trace.Tracer, conn *sqlite3.
 // flushed to the write-ahead log.
 func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3.ReplicationWalFramesParams) sqlite3.ErrNo {
 	tracer := m.tracer(conn, "wal frames")
-	tracer.Message("start")
+	//tracer.Message("start")
 
 	txn := m.getTxnByConn(tracer, conn)
 
@@ -223,7 +223,7 @@ func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3.Replicatio
 		// transaction as stale (so the follow-up undo and end command
 		// will succeed as no-op) and create a follower (so the next
 		// leader will roll it back as leftover). See also #2.
-		tracer.Message("not leader")
+		//tracer.Message("not leader")
 		txn.Enter()
 		defer txn.Exit()
 		if err := m.markStaleAndAddFollowerTxn(tracer, conn, txn); err != nil {
@@ -251,7 +251,7 @@ func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3.Replicatio
 		return errno(err)
 	}
 
-	tracer.Message("done")
+	//tracer.Message("done")
 
 	return 0
 }
@@ -260,7 +260,7 @@ func (m *Methods) WalFrames(conn *sqlite3.SQLiteConn, frames *sqlite3.Replicatio
 // to be rolled back.
 func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	tracer := m.tracer(conn, "undo")
-	tracer.Message("start")
+	//tracer.Message("start")
 
 	txn := m.getTxnByConn(tracer, conn)
 
@@ -269,13 +269,13 @@ func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		// This transaction is stale, so this Undo hook is being invoked
 		// by SQLite as part of the rollback sequence after a failed
 		// WalFrames. We just no-op.
-		tracer.Message("transaction is stale, no-op")
+		//tracer.Message("transaction is stale, no-op")
 		return 0
 	}
 
 	// Check if we're the leader.
 	if m.raft.State() != raft.Leader {
-		tracer.Message("not leader")
+		//tracer.Message("not leader")
 		return sqlite3.ErrNotLeader
 	}
 
@@ -291,7 +291,7 @@ func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		return errno(err)
 	}
 
-	tracer.Message("done")
+	//tracer.Message("done")
 
 	return 0
 }
@@ -300,7 +300,7 @@ func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 // to be ended.
 func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	tracer := m.tracer(conn, "end")
-	tracer.Message("start")
+	//tracer.Message("start")
 
 	txn := m.getTxnByConn(tracer, conn)
 
@@ -310,7 +310,7 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		// by SQLite as part of the rollback sequence after a failed
 		// WalFrames. We just no-op and remove the transaction from the
 		// stale index, since it's should be gone forever.
-		tracer.Message("transaction is stale, no-op and drop it")
+		//tracer.Message("transaction is stale, no-op and drop it")
 
 		m.mu.Lock()
 		defer m.mu.Unlock()
@@ -324,15 +324,15 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		// rollback the transaction here, to release the exclusive WAL
 		// lock. The transaction will be marked as stale and will be
 		// rolled back by the next leader with an Undo command.
-		tracer.Message("not leader")
+		//tracer.Message("not leader")
 
 		// Failing to release the WAL write lock is fatal,
 		// since SQLite assumes this can never fail.
 		if err := txn.Do(txn.Undo); err != nil {
-			tracer.Panic("failed to end undo transaction upon lost leadership: %v", err)
+			//tracer.Panic("failed to end undo transaction upon lost leadership: %v", err)
 		}
 		if err := txn.Do(txn.Stale); err != nil {
-			tracer.Panic("failed to end WAL transaction upon lost leadership: %v", err)
+			//tracer.Panic("failed to end WAL transaction upon lost leadership: %v", err)
 		}
 
 		return sqlite3.ErrNotLeader
@@ -348,12 +348,12 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 			// The command still has managed to be applied
 			// so let's just remove the transaction, it should not
 			// pop up again.
-			tracer.Message("finished transaction that failed to apply end command")
+			//tracer.Message("finished transaction that failed to apply end command")
 		} else {
 			// Let's end the transaction ourselves, since we won't be
 			// called back again as end replication hook by client hook.
 			if err := txn.End(); err != nil {
-				tracer.Error("failed to finish txn after apply failure", err)
+				//tracer.Error("failed to finish txn after apply failure", err)
 				return sqlite3.ErrReplication
 			}
 			// Create a surrogate follower, in case the raft command
@@ -367,7 +367,7 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		return errno(err)
 	}
 
-	tracer.Message("done")
+	//tracer.Message("done")
 
 	return 0
 }
@@ -376,7 +376,7 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 // to be checkpointed.
 func (m *Methods) Checkpoint(conn *sqlite3.SQLiteConn, mode sqlite3.WalCheckpointMode, log *int, ckpt *int) sqlite3.ErrNo {
 	tracer := m.tracer(conn, "checkpoint")
-	tracer.Message("start")
+	//tracer.Message("start")
 
 	// Check if we're the leader.
 	if m.raft.State() != raft.Leader {
@@ -406,7 +406,7 @@ func (m *Methods) getTxnByConn(tracer *trace.Tracer, conn *sqlite3.SQLiteConn) *
 	if txn == nil {
 		if _, ok := m.stale[conn]; ok {
 			txn = m.stale[conn]
-			tracer.Message("found stale txn")
+			//tracer.Message("found stale txn")
 		} else {
 			panic("no ongoing transactions")
 		}
@@ -419,18 +419,18 @@ func (m *Methods) getTxnByConn(tracer *trace.Tracer, conn *sqlite3.SQLiteConn) *
 func (m *Methods) checkNoFollowerTxnExists(tracer *trace.Tracer, conn *sqlite3.SQLiteConn) {
 	name := m.connections.FilenameOfLeader(conn)
 	if txn := m.transactions.GetByConn(m.connections.Follower(name)); txn != nil {
-		tracer.Panic("detected follower write transaction %s", txn)
+		//tracer.Panic("detected follower write transaction %s", txn)
 	}
 }
 
 func (m *Methods) markStale(tracer *trace.Tracer, conn *sqlite3.SQLiteConn, txn *transaction.Txn) error {
-	tracer.Message("stale transaction %s", txn)
+	//tracer.Message("stale transaction %s", txn)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if err := txn.Stale(); err != nil {
-		tracer.Error("transition to stale state failed", err)
+		//tracer.Error("transition to stale state failed", err)
 		return err
 	}
 
@@ -439,7 +439,7 @@ func (m *Methods) markStale(tracer *trace.Tracer, conn *sqlite3.SQLiteConn, txn 
 
 	// Stale transactions instances are not involved anymore in
 	// raft-applied commands, so remove them from the registry.
-	tracer.Message("remove stale transaction from registry %s", txn)
+	//tracer.Message("remove stale transaction from registry %s", txn)
 	m.transactions.Remove(txn.ID())
 
 	return nil
@@ -458,14 +458,14 @@ func (m *Methods) markStaleAndAddFollowerTxn(tracer *trace.Tracer, conn *sqlite3
 
 // Create a surrogate follower transaction with the given ID.
 func (m *Methods) addFollowerTxn(tracer *trace.Tracer, conn *sqlite3.SQLiteConn, name string, id uint64) error {
-	tracer.Message("create surrogate follower transaction")
+	//tracer.Message("create surrogate follower transaction")
 	txn := m.transactions.AddFollower(m.connections.Follower(name), id)
 
 	txn.Enter()
 	defer txn.Exit()
 
 	if err := txn.Begin(); err != nil {
-		tracer.Error("transition to begin state failed", err)
+		//tracer.Error("transition to begin state failed", err)
 		return err
 	}
 
@@ -474,8 +474,8 @@ func (m *Methods) addFollowerTxn(tracer *trace.Tracer, conn *sqlite3.SQLiteConn,
 
 // Apply the given command through raft.
 func (m *Methods) apply(tracer *trace.Tracer, conn *sqlite3.SQLiteConn, cmd *protocol.Command) error {
-	tracer = tracer.With(trace.String("cmd", cmd.Name()))
-	tracer.Message("apply start")
+	//tracer = tracer.With(trace.String("cmd", cmd.Name()))
+	//tracer.Message("apply start")
 
 	data, err := protocol.MarshalCommand(cmd)
 	if err != nil {
@@ -484,7 +484,7 @@ func (m *Methods) apply(tracer *trace.Tracer, conn *sqlite3.SQLiteConn, cmd *pro
 
 	future := m.raft.Apply(data, m.applyTimeout)
 	if err := future.Error(); err != nil {
-		tracer.Error("apply error", err)
+		//tracer.Error("apply error", err)
 
 		// If the node has lost leadership, we return a
 		// dedicated error, so clients will typically retry
@@ -497,7 +497,7 @@ func (m *Methods) apply(tracer *trace.Tracer, conn *sqlite3.SQLiteConn, cmd *pro
 		return sqlite3.ErrReplication
 	}
 
-	tracer.Message("apply done")
+	//tracer.Message("apply done")
 	return nil
 }
 
