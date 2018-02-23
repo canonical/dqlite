@@ -210,6 +210,7 @@ func (f *FSM) applyWalFrames(tracer *trace.Tracer, params *protocol.WalFrames) e
 	}
 
 	pages := sqlite3.NewReplicationPages(len(params.Pages), int(params.PageSize))
+	defer sqlite3.DestroyReplicationPages(pages)
 
 	for i, page := range params.Pages {
 		pages[i].Fill(page.Data, uint16(page.Flags), page.Number)
