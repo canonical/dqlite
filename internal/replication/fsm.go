@@ -81,9 +81,9 @@ func (f *FSM) Tracers() *trace.Registry {
 func (f *FSM) Apply(log *raft.Log) interface{} {
 	err := f.apply(log)
 	if err != nil {
-		//tracer := f.tracer()
+		tracer := f.tracer()
 		if f.panicOnFailure {
-			//tracer.Panic("%v", err)
+			tracer.Panic("%v", err)
 		}
 		//tracer.Error("apply failed", err)
 		return err
@@ -165,7 +165,7 @@ func (f *FSM) applyBegin(tracer *trace.Tracer, params *protocol.Begin) error {
 		// We know about this txid, so the transaction must have
 		// originated on this node and be a leader transaction.
 		if !txn.IsLeader() {
-			//tracer.Panic("unexpected follower connection for existing transaction")
+			tracer.Panic("unexpected follower connection for existing transaction")
 		}
 
 		// We don't need to do anything else, since the WAL write
@@ -180,7 +180,7 @@ func (f *FSM) applyBegin(tracer *trace.Tracer, params *protocol.Begin) error {
 		// way).
 		for _, conn := range f.connections.Leaders(params.Name) {
 			if txn := f.transactions.GetByConn(conn); txn != nil {
-				//tracer.Panic("unexpected transaction %v", txn)
+				tracer.Panic("unexpected transaction %v", txn)
 			}
 		}
 
@@ -206,7 +206,7 @@ func (f *FSM) applyWalFrames(tracer *trace.Tracer, params *protocol.WalFrames) e
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
-		//tracer.Panic("no transaction with ID %d", params.Txid)
+		tracer.Panic("no transaction with ID %d", params.Txid)
 	}
 
 	pages := sqlite3.NewReplicationPages(len(params.Pages), int(params.PageSize))
@@ -240,7 +240,7 @@ func (f *FSM) applyUndo(tracer *trace.Tracer, params *protocol.Undo) error {
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
-		//tracer.Panic("no transaction with ID %d", params.Txid)
+		tracer.Panic("no transaction with ID %d", params.Txid)
 	}
 
 	txn.Enter()
@@ -269,7 +269,7 @@ func (f *FSM) applyEnd(tracer *trace.Tracer, params *protocol.End) error {
 
 	txn := f.transactions.GetByID(params.Txid)
 	if txn == nil {
-		//tracer.Panic("no transaction with ID %d", params.Txid)
+		tracer.Panic("no transaction with ID %d", params.Txid)
 	}
 
 	txn.Enter()
@@ -311,7 +311,7 @@ func (f *FSM) applyCheckpoint(tracer *trace.Tracer, params *protocol.Checkpoint)
 	if txn := f.transactions.GetByConn(conn); txn != nil {
 		// Something went really wrong, a checkpoint should never be issued
 		// while a follower transaction is in flight.
-		//tracer.Panic("can't run with transaction %s", txn)
+		tracer.Panic("can't run with transaction %s", txn)
 	}
 
 	// Run the checkpoint.
@@ -323,10 +323,10 @@ func (f *FSM) applyCheckpoint(tracer *trace.Tracer, params *protocol.Checkpoint)
 		return err
 	}
 	if logFrames != 0 {
-		//tracer.Panic("%d frames are still in the WAL", logFrames)
+		tracer.Panic("%d frames are still in the WAL", logFrames)
 	}
 	if checkpointedFrames != 0 {
-		//tracer.Panic("only %d frames were checkpointed", checkpointedFrames)
+		tracer.Panic("only %d frames were checkpointed", checkpointedFrames)
 	}
 
 	//tracer.Message("done")
@@ -499,7 +499,7 @@ func (f *FSM) restoreDatabase(tracer *trace.Tracer, reader io.ReadCloser) (bool,
 	// the fly".
 	conns := f.connections.Leaders(filename)
 	if len(conns) > 0 {
-		//tracer.Panic("found %d leader connections", len(conns))
+		tracer.Panic("found %d leader connections", len(conns))
 	}
 
 	// XXX TODO: reason about this situation, is it possible?

@@ -77,7 +77,7 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	// this connection, since SQLite locking system itself prevents it by
 	// serializing write transactions. Still double check it for sanity.
 	if txn := m.transactions.GetByConn(conn); txn != nil {
-		//tracer.Panic("connection has existing transaction %s", txn)
+		tracer.Panic("connection has existing transaction %s", txn)
 	}
 
 	// Possibly open a follower for this database if it doesn't exist yet.
@@ -329,10 +329,10 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		// Failing to release the WAL write lock is fatal,
 		// since SQLite assumes this can never fail.
 		if err := txn.Do(txn.Undo); err != nil {
-			//tracer.Panic("failed to end undo transaction upon lost leadership: %v", err)
+			tracer.Panic("failed to end undo transaction upon lost leadership: %v", err)
 		}
 		if err := txn.Do(txn.Stale); err != nil {
-			//tracer.Panic("failed to end WAL transaction upon lost leadership: %v", err)
+			tracer.Panic("failed to end WAL transaction upon lost leadership: %v", err)
 		}
 
 		return sqlite3.ErrNotLeader
@@ -419,7 +419,7 @@ func (m *Methods) getTxnByConn(tracer *trace.Tracer, conn *sqlite3.SQLiteConn) *
 func (m *Methods) checkNoFollowerTxnExists(tracer *trace.Tracer, conn *sqlite3.SQLiteConn) {
 	name := m.connections.FilenameOfLeader(conn)
 	if txn := m.transactions.GetByConn(m.connections.Follower(name)); txn != nil {
-		//tracer.Panic("detected follower write transaction %s", txn)
+		tracer.Panic("detected follower write transaction %s", txn)
 	}
 }
 
