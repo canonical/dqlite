@@ -31,7 +31,7 @@ func Example() {
 	if err != nil {
 		log.Fatalf("failed to unmarshal open command: %v", err)
 	}
-	params := cmd.Params.(*protocol.Command_Open)
+	params := cmd.Payload.(*protocol.Command_Open)
 
 	// Output:
 	// 11

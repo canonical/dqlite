@@ -15,9 +15,12 @@ syntax = "proto3";
 
 package protocol;
 
-// Command meant to be executed by the dqlite Raft FSM.
+// Command encapsulates the payload fo a dqlite Raft FSM command.
+//
+// On the wire this will be a varint indentifying the command type,
+// followed by the command payload.
 message Command {
-  oneof Params {
+  oneof Payload {
     Open open = 1;
     Begin begin = 2;
     WalFrames wal_frames = 3;

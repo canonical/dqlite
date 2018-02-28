@@ -82,14 +82,14 @@ func NewCheckpoint(name string) *Command {
 	return newCommand(params)
 }
 
-func newCommand(params isCommand_Params) *Command {
-	return &Command{Params: params}
+func newCommand(payload isCommand_Payload) *Command {
+	return &Command{Payload: payload}
 }
 
 // Name returns a human readable name for the command, based on its Params
 // type.
 func (c *Command) Name() string {
-	typeName := reflect.TypeOf(c.Params).Elem().String()
+	typeName := reflect.TypeOf(c.Payload).Elem().String()
 	name := strings.ToLower(strings.Replace(typeName, "protocol.Command_", "", 1))
 	// FIXME: should do proper camel-case level splitting.
 	if name == "walframes" {

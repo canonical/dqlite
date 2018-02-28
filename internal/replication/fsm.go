@@ -101,24 +101,24 @@ func (f *FSM) apply(log *raft.Log) error {
 	}
 	//tracer = //tracer.With(trace.String("cmd", cmd.Name()))
 
-	switch params := cmd.Params.(type) {
+	switch payload := cmd.Payload.(type) {
 	case *protocol.Command_Open:
-		err = f.applyOpen(tracer, params.Open)
-		err = errors.Wrapf(err, "open %s", params.Open.Name)
+		err = f.applyOpen(tracer, payload.Open)
+		err = errors.Wrapf(err, "open %s", payload.Open.Name)
 	case *protocol.Command_Begin:
-		err = f.applyBegin(tracer, params.Begin)
-		err = errors.Wrapf(err, "begin txn %d on %s", params.Begin.Txid, params.Begin.Name)
+		err = f.applyBegin(tracer, payload.Begin)
+		err = errors.Wrapf(err, "begin txn %d on %s", payload.Begin.Txid, payload.Begin.Name)
 	case *protocol.Command_WalFrames:
-		err = f.applyWalFrames(tracer, params.WalFrames)
-		err = errors.Wrapf(err, "wal frames txn %d (%v)", params.WalFrames.Txid, params.WalFrames.IsCommit)
+		err = f.applyWalFrames(tracer, payload.WalFrames)
+		err = errors.Wrapf(err, "wal frames txn %d (%v)", payload.WalFrames.Txid, payload.WalFrames.IsCommit)
 	case *protocol.Command_Undo:
-		err = f.applyUndo(tracer, params.Undo)
-		err = errors.Wrapf(err, "undo txn %d", params.Undo.Txid)
+		err = f.applyUndo(tracer, payload.Undo)
+		err = errors.Wrapf(err, "undo txn %d", payload.Undo.Txid)
 	case *protocol.Command_End:
-		err = f.applyEnd(tracer, params.End)
-		err = errors.Wrapf(err, "end txn %d", params.End.Txid)
+		err = f.applyEnd(tracer, payload.End)
+		err = errors.Wrapf(err, "end txn %d", payload.End.Txid)
 	case *protocol.Command_Checkpoint:
-		err = f.applyCheckpoint(tracer, params.Checkpoint)
+		err = f.applyCheckpoint(tracer, payload.Checkpoint)
 		err = errors.Wrapf(err, "checkpoint")
 	default:
 		err = fmt.Errorf("unknown command")

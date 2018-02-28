@@ -60,7 +60,7 @@ func newOpen() *protocol.Command {
 }
 
 func checkOpen(cmd *protocol.Command, t *testing.T) {
-	params, ok := cmd.Params.(*protocol.Command_Open)
+	params, ok := cmd.Payload.(*protocol.Command_Open)
 	if !ok {
 		t.Errorf("Params field is not of type protocol.Command_Open")
 	}
@@ -74,7 +74,7 @@ func newBegin() *protocol.Command {
 }
 
 func checkBegin(cmd *protocol.Command, t *testing.T) {
-	params, ok := cmd.Params.(*protocol.Command_Begin)
+	params, ok := cmd.Payload.(*protocol.Command_Begin)
 	if !ok {
 		t.Errorf("Params field is not of type protocol.Command_Begin")
 	}
@@ -105,7 +105,7 @@ func newWalFrames() *protocol.Command {
 }
 
 func checkWalFrames(cmd *protocol.Command, t *testing.T) {
-	params, ok := cmd.Params.(*protocol.Command_WalFrames)
+	params, ok := cmd.Payload.(*protocol.Command_WalFrames)
 	if !ok {
 		t.Errorf("Params field is not of type protocol.Command_WalFrames")
 	}
@@ -144,7 +144,7 @@ func newEnd() *protocol.Command {
 }
 
 func checkEnd(cmd *protocol.Command, t *testing.T) {
-	params, ok := cmd.Params.(*protocol.Command_End)
+	params, ok := cmd.Payload.(*protocol.Command_End)
 	if !ok {
 		t.Errorf("Params field is not of type protocol.Command_WalFrames")
 	}
@@ -158,7 +158,7 @@ func newUndo() *protocol.Command {
 }
 
 func checkUndo(cmd *protocol.Command, t *testing.T) {
-	params, ok := cmd.Params.(*protocol.Command_Undo)
+	params, ok := cmd.Payload.(*protocol.Command_Undo)
 	if !ok {
 		t.Errorf("Params field is not of type protocol.Command_Undo")
 	}
@@ -172,7 +172,7 @@ func newCheckpoint() *protocol.Command {
 }
 
 func checkCheckpoint(cmd *protocol.Command, t *testing.T) {
-	params, ok := cmd.Params.(*protocol.Command_Checkpoint)
+	params, ok := cmd.Payload.(*protocol.Command_Checkpoint)
 	if !ok {
 		t.Errorf("Params field is not of type protocol.Command_Checkpoint")
 	}
