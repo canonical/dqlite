@@ -14,6 +14,6 @@
 
 package trace
 
-func (s *Registry) Now(now now) {
+func (s *Set) Now(now now) {
 	s.now = now
 }

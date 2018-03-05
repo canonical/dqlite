@@ -22,7 +22,7 @@ func TestUnmarshal_Error(t *testing.T) {
 	}
 }
 
-// Create, marshal, unmarshal and check dqlite FSM protocol.
+// Create, marshal, unmarshal and check dqlite FSM protocol commands.
 func TestCommands(t *testing.T) {
 	cases := []struct {
 		factory func() *protocol.Command
@@ -94,28 +94,28 @@ func newWalFrames() *protocol.Command {
 		pages[i].Fill(make([]byte, 4096), 1, 1)
 	}
 
-	frames := &sqlite3.ReplicationWalFramesParams{
+	frames := &sqlite3.ReplicationFramesParams{
 		Pages:     pages,
 		PageSize:  size,
 		Truncate:  1,
 		IsCommit:  1,
 		SyncFlags: 1,
 	}
-	return protocol.NewWalFrames(123, frames)
+	return protocol.NewFrames(123, "test.db", frames)
 }
 
 func checkWalFrames(cmd *protocol.Command, t *testing.T) {
-	params, ok := cmd.Payload.(*protocol.Command_WalFrames)
+	params, ok := cmd.Payload.(*protocol.Command_Frames)
 	if !ok {
-		t.Errorf("Params field is not of type protocol.Command_WalFrames")
+		t.Errorf("Params field is not of type protocol.Command_Frames")
 	}
-	if params.WalFrames.Txid != 123 {
-		t.Errorf("expected Txid 123, got %d", params.WalFrames.Txid)
+	if params.Frames.Txid != 123 {
+		t.Errorf("expected Txid 123, got %d", params.Frames.Txid)
 	}
-	if params.WalFrames.PageSize != 4096 {
-		t.Errorf("expected PageSize 4096, got %d", params.WalFrames.PageSize)
+	if params.Frames.PageSize != 4096 {
+		t.Errorf("expected PageSize 4096, got %d", params.Frames.PageSize)
 	}
-	pages := params.WalFrames.Pages
+	pages := params.Frames.Pages
 	if len(pages) != 2 {
 		t.Errorf("expected 2 pages, got %d", len(pages))
 	}
@@ -128,14 +128,17 @@ func checkWalFrames(cmd *protocol.Command, t *testing.T) {
 	if number := pages[0].Number; number != 1 {
 		t.Errorf("expected page number to be 1, got %d", number)
 	}
-	if params.WalFrames.Truncate != 1 {
-		t.Errorf("expected Truncate 1, got %d", params.WalFrames.Truncate)
+	if params.Frames.Truncate != 1 {
+		t.Errorf("expected Truncate 1, got %d", params.Frames.Truncate)
 	}
-	if params.WalFrames.IsCommit != 1 {
-		t.Errorf("expected IsCommit 1, got %d", params.WalFrames.IsCommit)
+	if params.Frames.IsCommit != 1 {
+		t.Errorf("expected IsCommit 1, got %d", params.Frames.IsCommit)
 	}
-	if params.WalFrames.SyncFlags != 1 {
-		t.Errorf("expected SyncFlags 1, got %d", params.WalFrames.IsCommit)
+	if params.Frames.SyncFlags != 1 {
+		t.Errorf("expected SyncFlags 1, got %d", params.Frames.IsCommit)
+	}
+	if params.Frames.Filename != "test.db" {
+		t.Errorf("expected Filename test.db, got %s", params.Frames.Filename)
 	}
 }
 

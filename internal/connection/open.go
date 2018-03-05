@@ -8,41 +8,20 @@ import (
 // OpenLeader is a wrapper around SQLiteDriver.Open that opens connection in
 // leader replication mode, and sets any additional dqlite-related options.
 //
-// The 'methods' argument is used to set the replication methods and the n one is
-// the WAL frame size threshold after which auto-checkpoint will trigger.
-func OpenLeader(dsn string, methods sqlite3.ReplicationMethods, n int) (*sqlite3.SQLiteConn, error) {
+// The 'methods' argument is used to set the replication methods.
+func OpenLeader(dsn string, methods sqlite3.ReplicationMethods) (*sqlite3.SQLiteConn, error) {
 	conn, err := open(dsn)
 	if err != nil {
 		return nil, err
 	}
 
-	// Ensure WAL autocheckpoint is set, so the WAL and the raft log store
-	// don't not grow indefitely.
-	if n > 0 {
-		sqlite3.ReplicationAutoCheckpoint(conn, n)
-	}
-
 	// Swith to leader replication mode for this connection.
-	if err := sqlite3.ReplicationLeader(conn, methods); err != nil {
+	if err := conn.ReplicationLeader(methods); err != nil {
 		return nil, err
 	}
 
 	return conn, nil
 
-}
-
-// CloseLeader closes the given leader connection and releases the associated
-// methods C hooks memory allocated by go-sqlite3.
-//
-// FIXME: Perhaps this should be done in sqlite3 in a more explicit or nicer way.
-func CloseLeader(conn *sqlite3.SQLiteConn) error {
-	if _, err := sqlite3.ReplicationNone(conn); err != nil {
-		return errors.Wrap(err, "failed to set replication mode back to none")
-	}
-	if err := conn.Close(); err != nil {
-		return errors.Wrap(err, "failed to close leader connection")
-	}
-	return nil
 }
 
 // OpenFollower is a wrapper around SQLiteDriver.Open that opens connection in
@@ -53,14 +32,8 @@ func OpenFollower(dsn string) (*sqlite3.SQLiteConn, error) {
 		return nil, err
 	}
 
-	// Ensure WAL autocheckpoint for followers is disabled, since
-	// checkpoints are triggered by leader connections via Raft commands.
-	if err := sqlite3.WalAutoCheckpointPragma(conn, 0); err != nil {
-		return nil, err
-	}
-
 	// Switch to leader replication mode for this connection.
-	if err := sqlite3.ReplicationFollower(conn); err != nil {
+	if err := conn.ReplicationFollower(); err != nil {
 		return nil, err
 	}
 
@@ -82,17 +55,18 @@ func open(dsn string) (*sqlite3.SQLiteConn, error) {
 
 	// Ensure journal mode is set to WAL, as this is a requirement for
 	// replication.
-	if err := sqlite3.JournalModePragma(sqliteConn, sqlite3.JournalWal); err != nil {
+	if _, err := sqliteConn.Exec("PRAGMA journal_mode=wal", nil); err != nil {
 		return nil, err
 	}
 
-	// Ensure we don't truncate or checkpoint the WAL on exit, as this
-	// would bork replication which must be in full control of the WAL
-	// file.
-	if err := sqlite3.JournalSizeLimitPragma(sqliteConn, -1); err != nil {
+	// Ensure WAL autocheckpoint disabled, since checkpoints are triggered
+	// by explicitly by dqlite.
+	if _, err := sqliteConn.Exec("PRAGMA wal_autocheckpoint=0", nil); err != nil {
 		return nil, err
 	}
-	if err := sqlite3.DatabaseNoCheckpointOnClose(sqliteConn); err != nil {
+
+	// Ensure we don't truncate the WAL.
+	if _, err := sqliteConn.Exec("PRAGMA journal_size_limit=-1", nil); err != nil {
 		return nil, err
 	}
 

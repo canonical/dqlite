@@ -111,14 +111,16 @@ func (n *node) Start() (err error) {
 
 	config := dqlite.DriverConfig{
 		//dqlite.LogFunc(logFunc),
-		BarrierTimeout: n.timeout,
+		BarrierTimeout:      n.timeout,
+		CheckpointThreshold: 100,
 	}
-	fsm := dqlite.NewFSM(n.dir)
+	registry := dqlite.NewRegistry(n.dir)
+	fsm := dqlite.NewFSM(registry)
 	raft, err := n.makeRaft(fsm)
 	if err != nil {
 		return errors.Wrap(err, "failed to start raft")
 	}
-	if n.driver, err = dqlite.NewDriver(fsm, raft, config); err != nil {
+	if n.driver, err = dqlite.NewDriver(registry, raft, config); err != nil {
 		return errors.Wrap(err, "failed to create dqlite driver")
 	}
 	sql.Register("dqlite", n.driver)
@@ -128,7 +130,7 @@ func (n *node) Start() (err error) {
 		return errors.Wrap(err, "failed to open database")
 	}
 	n.db.SetMaxOpenConns(1)
-	n.db.SetMaxIdleConns(0)
+	n.db.SetMaxIdleConns(1)
 
 	return nil
 }
@@ -166,8 +168,6 @@ func (n *node) InsertForever() {
 		// Ensure our test table is there.
 		if _, err := tx.Exec("CREATE TABLE IF NOT EXISTS test (n INT)"); err != nil {
 			handleTxError(n.logger, tx, err, false)
-			// We're not the leader, wait a bit and try again
-			//randomSleep(0.250, 0.500)
 			continue
 		}
 
@@ -176,7 +176,7 @@ func (n *node) InsertForever() {
 		failed := false
 		for i := 0; i < 50; i++ {
 			if _, err := tx.Exec("INSERT INTO test (n) VALUES(?)", i+offset); err != nil {
-				//handleTxError(n.logger, tx, err, false)
+				handleTxError(n.logger, tx, err, false)
 				failed = true
 				break
 			}
@@ -197,7 +197,7 @@ func (n *node) InsertForever() {
 			handleTxError(n.logger, tx, err, true)
 			continue
 		}
-		os.Exit(0)
+
 		// Sleep a little bit to simulate a pause in the service's
 		// activity and give a chance to snapshot.
 		randomSleep(0.25, 0.5)
@@ -212,6 +212,8 @@ func (n *node) makeRaft(fsm raft.FSM) (*raft.Raft, error) {
 
 	// Create a raft configuration with default values.
 	config := raft.DefaultConfig()
+	config.SnapshotInterval = 12 * time.Second
+	config.SnapshotThreshold = 512
 	config.Logger = logger
 	config.LocalID = raft.ServerID(n.Addr())
 
@@ -288,7 +290,7 @@ func (n *node) makeRaft(fsm raft.FSM) (*raft.Raft, error) {
 // lost leadership, in which case we rollback and try again.
 func handleTxError(logger *log.Logger, tx *sql.Tx, err error, isCommit bool) {
 	if err, ok := err.(sqlite3.Error); ok {
-		if err.Code == sqlite3.ErrNotLeader {
+		if err.ExtendedCode == sqlite3.ErrIoErrNotLeader || err.ExtendedCode == sqlite3.ErrIoErrLeadershipLost {
 			if isCommit {
 				// Commit failures are automatically
 				// rolled back by SQLite, so rolling
@@ -297,6 +299,11 @@ func handleTxError(logger *log.Logger, tx *sql.Tx, err error, isCommit bool) {
 				return
 			}
 			if err := tx.Rollback(); err != nil {
+				if err, ok := err.(sqlite3.Error); ok {
+					if err.ExtendedCode == sqlite3.ErrIoErrNotLeader || err.ExtendedCode == sqlite3.ErrIoErrLeadershipLost {
+						return
+					}
+				}
 				logger.Fatalf("[ERR] demo: rollback failed %v", err)
 			}
 			return

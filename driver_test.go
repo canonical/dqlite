@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite"
+	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/CanonicalLtd/raft-test"
 	"github.com/hashicorp/raft"
 	"github.com/mpvl/subtest"
@@ -61,7 +62,8 @@ func TestNewDriver_DirErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		subtest.Run(t, c.title, func(t *testing.T) {
-			driver, err := dqlite.NewDriver(dqlite.NewFSM(c.dir), nil, dqlite.DriverConfig{})
+			registry := dqlite.NewRegistry(c.dir)
+			driver, err := dqlite.NewDriver(registry, nil, dqlite.DriverConfig{})
 			assert.Nil(t, driver)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), c.error)
@@ -69,20 +71,13 @@ func TestNewDriver_DirErrors(t *testing.T) {
 	}
 }
 
-// Passing a raft.FSM that is not a dqlite FSM results in panic.
-func TestNewDriver_WrongFSMConcreteType(t *testing.T) {
-	f := func() {
-		dqlite.NewDriver(rafttest.FSM(), nil, dqlite.DriverConfig{})
-	}
-	assert.PanicsWithValue(t, "fsm is not a dqlite FSM", f)
-}
-
 func TestNewDriver_CreateDir(t *testing.T) {
 	dir, cleanup := newDir(t)
 	defer cleanup()
 
 	dir = filepath.Join(dir, "does", "not", "exist")
-	_, err := dqlite.NewDriver(dqlite.NewFSM(dir), &raft.Raft{}, dqlite.DriverConfig{})
+	registry := dqlite.NewRegistry(dir)
+	_, err := dqlite.NewDriver(registry, &raft.Raft{}, dqlite.DriverConfig{})
 	assert.NoError(t, err)
 }
 
@@ -120,16 +115,17 @@ func TestDriver_OpenInvalidURI(t *testing.T) {
 	assert.EqualError(t, err, "invalid URI /foo/test.db: directory segments are invalid")
 }
 
-func TestDriver_OpenEror(t *testing.T) {
+func TestDriver_OpenError(t *testing.T) {
 	dir, cleanup := newDir(t)
 	defer cleanup()
 
-	fsm := dqlite.NewFSM(dir)
+	registry := dqlite.NewRegistry(dir)
+	fsm := dqlite.NewFSM(registry)
 	raft, cleanup := rafttest.Node(t, fsm)
 	defer cleanup()
 	config := dqlite.DriverConfig{}
 
-	driver, err := dqlite.NewDriver(fsm, raft, config)
+	driver, err := dqlite.NewDriver(registry, raft, config)
 	require.NoError(t, err)
 	require.NoError(t, os.RemoveAll(dir))
 
@@ -173,21 +169,26 @@ func TestDriver_NotLeader(t *testing.T) {
 			dir, cleanup := newDir(t)
 			defer cleanup()
 
-			fsm1 := dqlite.NewFSM(dir)
-			fsm2 := dqlite.NewFSM(dir)
+			registry1 := dqlite.NewRegistry(dir)
+			registry2 := dqlite.NewRegistry(dir)
+			fsm1 := dqlite.NewFSM(registry1)
+			fsm2 := dqlite.NewFSM(registry2)
 			rafts, control := rafttest.Cluster(t, []raft.FSM{fsm1, fsm2}, rafttest.Latency(1000.0))
 			defer control.Close()
 
 			config := dqlite.DriverConfig{}
 
-			driver, err := dqlite.NewDriver(fsm1, rafts[0], config)
+			driver, err := dqlite.NewDriver(registry1, rafts[0], config)
 			require.NoError(t, err)
 
 			conn, err := driver.Open("test.db")
 			require.NoError(t, err)
 
 			err = c.f(t, conn.(*dqlite.Conn))
-			assert.EqualError(t, err, "attempt to write on a non-leader replicated node")
+			require.Error(t, err)
+			erri, ok := err.(sqlite3.Error)
+			require.True(t, ok)
+			assert.Equal(t, sqlite3.ErrIoErrNotLeader, erri.ExtendedCode)
 		})
 	}
 }
@@ -259,10 +260,11 @@ func newDriver(t *testing.T) (*dqlite.Driver, func()) {
 func newDriverWithConfig(t *testing.T, config dqlite.DriverConfig) (*dqlite.Driver, func()) {
 	dir, dirCleanup := newDir(t)
 
-	fsm := dqlite.NewFSM(dir)
+	registry := dqlite.NewRegistry(dir)
+	fsm := dqlite.NewFSM(registry)
 	raft, raftCleanup := rafttest.Node(t, fsm)
 
-	driver, err := dqlite.NewDriver(fsm, raft, config)
+	driver, err := dqlite.NewDriver(registry, raft, config)
 	require.NoError(t, err)
 
 	cleanup := func() {

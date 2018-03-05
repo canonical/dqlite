@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package trace_test
+package trace
 
 import (
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/internal/trace"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTimelineCursor_AdvanceAndRetract(t *testing.T) {
-	cursor := trace.NewCursor(0, 3)
+func TestCursor_AdvanceAndRetract(t *testing.T) {
+	cursor := newCursor(0, 3)
 	assert.Equal(t, 0, cursor.Position())
 
 	cursor.Advance()

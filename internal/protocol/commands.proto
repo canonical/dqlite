@@ -23,7 +23,7 @@ message Command {
   oneof Payload {
     Open open = 1;
     Begin begin = 2;
-    WalFrames wal_frames = 3;
+    Frames frames = 3;
     Undo undo = 4;
     End end = 5;
     Checkpoint checkpoint = 6;
@@ -37,23 +37,27 @@ message Open {
 }
 
 // Parameters to begin a new write transaction.
+//
+// This command is not used anymore, but it's
+// kept for backward-compatibility.
 message Begin {
   uint64 txid = 1; // Transaction identifier.
   string name = 2; // Name of the database file.
 }
 
 // Parameters to append new frames to the WAL within a write transaction.
-message WalFrames {
+message Frames {
   uint64 txid = 1;                  // Transaction identifier.
   int32 page_size = 2;              // Size of the data field of each frame.
-  repeated WalFramesPage pages = 3; // List of the frames to write.
+  repeated FramesPage pages = 3;    // List of the frames to write.
   uint32 truncate = 4;              // Flag telling if the WAL should be truncated.
   int32 is_commit = 5;              // Flag telling if this is a final frames write.
   uint32 sync_flags = 6;            // Flags for disk syncing.
+  string filename = 7;              // Filename of the database file.
 }
 
-// A single frame of data in a WalFrames command.
-message WalFramesPage {
+// A single frame of data in a Frames command.
+message FramesPage {
   bytes data = 1;    // Frame data.
   uint32 flags = 2;  // WAL write flags.
   uint32 number = 3; // Page number (i.e. position in the database file).
@@ -66,6 +70,9 @@ message Undo {
 
 // Parameters to end a write transaction, and update the WAL commit
 // pointer.
+//
+// This command is not used anymore, but it's
+// kept for backward-compatibility.
 message End {
   uint64 txid = 1; // Transaction identifier.
 }

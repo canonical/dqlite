@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/pkg/errors"
 )
 
@@ -34,8 +33,8 @@ func Snapshot(path string) ([]byte, []byte, error) {
 	}
 
 	// Cleanup the shm and wal files of the backup as well.
-	defer os.Remove(sqlite3.WalFilename(backupConn))
-	defer os.Remove(sqlite3.ShmFilename(backupConn))
+	defer os.Remove(backupPath + "-wal")
+	defer os.Remove(backupPath + "-shm")
 	defer backupConn.Close()
 
 	// Perform the backup.
@@ -58,7 +57,7 @@ func Snapshot(path string) ([]byte, []byte, error) {
 		return nil, nil, errors.Wrapf(err, "cannot read backup content at %s", backupPath)
 	}
 
-	wal, err := ioutil.ReadFile(sqlite3.WalFilename(backupConn))
+	wal, err := ioutil.ReadFile(backupPath + "-wal")
 	if err != nil {
 		return nil, nil, err
 	}

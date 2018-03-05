@@ -18,22 +18,19 @@ import "fmt"
 
 // Tracer holds a buffer of recent trace entries in a trace Registry.
 type Tracer struct {
-	cursor  *cursor
-	entries []entry
-	fields  [maxFields]Field
-	now     now
-	panic   func(string)
-	forward func(entry)
+	set    *Set    // Set this tracer is part of.
+	name   string  // Name of the tracer.
+	buffer *buffer // Ring buffer for trace entries.
+	fields fields  // Tracer-specific key/value pairs.
 }
 
 // Creates a new tracer.
-func newTracer(cursor *cursor, entries []entry, now now, panic func(string)) *Tracer {
+func newTracer(set *Set, name string, buffer *buffer) *Tracer {
 	return &Tracer{
-		cursor:  cursor,
-		entries: entries,
-		fields:  [maxFields]Field{},
-		now:     now,
-		panic:   panic,
+		set:    set,
+		name:   name,
+		buffer: buffer,
+		fields: fields{},
 	}
 }
 
@@ -53,27 +50,11 @@ func (t *Tracer) Error(message string, err error) {
 // Panic causes a Go panic which will print all trace entries across all
 // tracers.
 func (t *Tracer) Panic(message string, v ...interface{}) {
-	t.panic(fmt.Sprintf(message, v...))
-}
-
-// Emit a new trace entry.
-func (t *Tracer) emit(message string, args []interface{}, err error) {
-	entry := entry{
-		timestamp: t.now(),
-		message:   message,
-		error:     err,
-		fields:    &t.fields,
+	message = fmt.Sprintf(message, v...)
+	if t.set.testing == nil {
+		message += "\n\ntrace:\n" + t.set.String()
 	}
-	for i, arg := range args {
-		entry.args[i] = arg
-	}
-
-	t.entries[t.cursor.Position()] = entry
-	t.cursor.Advance()
-
-	if t.forward != nil {
-		t.forward(entry)
-	}
+	panic(message)
 }
 
 // With returns a new Tracer instance emitting entries in the same buffer of this
@@ -85,14 +66,7 @@ func (t *Tracer) With(fields ...Field) *Tracer {
 
 	// Create the child tracer, cloning the parent and using its entries
 	// buffer.
-	tracer := &Tracer{
-		cursor:  t.cursor,
-		entries: t.entries,
-		fields:  [maxFields]Field{},
-		now:     t.now,
-		panic:   t.panic,
-		forward: t.forward,
-	}
+	tracer := newTracer(t.set, t.name, t.buffer)
 
 	// Copy the fields of the parent into the child.
 	i := 0
@@ -108,26 +82,13 @@ func (t *Tracer) With(fields ...Field) *Tracer {
 	return tracer
 }
 
-// Return how many entries are retained at most.
-func (t *Tracer) size() int {
-	return len(t.entries)
-}
+// Emit a new trace entry.
+func (t *Tracer) emit(message string, args []interface{}, err error) {
+	t.buffer.Append(t.set.now(), message, args, err, &t.fields)
 
-// Return the list of current entrys in the tracer.
-func (t *Tracer) current() []entry {
-	entries := make([]entry, 0)
-
-	// We don't keep track of the actual number of entries in the buffer,
-	// instead we iterate them backwards until we find a "null" entry.
-	cursor := newCursor(t.cursor.Position(), t.size())
-	for i := 0; i < t.size(); i++ {
-		cursor.Retract()
-		previous := t.entries[cursor.Position()]
-		if previous.timestamp.Unix() == epoch {
-			break
-		}
-		entries = append([]entry{previous}, entries...)
+	if t.set.testing != nil {
+		entry := t.buffer.Last()
+		format := "%d: %s: %s: %s\n"
+		t.set.testing.Logf(format, t.set.node, entry.Timestamp(), t.name, entry.Message())
 	}
-
-	return entries
 }

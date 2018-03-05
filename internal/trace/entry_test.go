@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package trace_test
+package trace
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/CanonicalLtd/dqlite/internal/trace"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +28,7 @@ func TestEntry_Message(t *testing.T) {
 		message string
 		args    []interface{}
 		error   error
-		fields  []trace.Field
+		fields  []Field
 		result  string
 	}{
 		{
@@ -50,20 +49,30 @@ func TestEntry_Message(t *testing.T) {
 			"hello",
 			nil,
 			nil,
-			[]trace.Field{trace.String("x", "y"), trace.Integer("z", int64(1))},
+			[]Field{String("x", "y"), Integer("z", int64(1))},
 			"x=y z=1 hello",
 		},
 		{
 			"hello %s %d",
 			[]interface{}{"world", 123},
 			fmt.Errorf("boom"),
-			[]trace.Field{trace.String("x", "y"), trace.Integer("z", int64(1))},
+			[]Field{String("x", "y"), Integer("z", int64(1))},
 			"x=y z=1 hello world 123: boom",
 		},
 	}
 	for _, c := range cases {
-		entry := trace.NewEntry(time.Now(), c.message)
-		entry.Set(c.args, c.error, c.fields)
+		entry := entry{
+			timestamp: time.Now(),
+			message:   c.message,
+			error:     c.error,
+		}
+		for i, arg := range c.args {
+			entry.args[i] = arg
+		}
+		entry.fields = &fields{}
+		for i, field := range c.fields {
+			entry.fields[i] = field
+		}
 		assert.Equal(t, c.result, entry.Message())
 	}
 }
@@ -73,6 +82,6 @@ func TestEntry_Timestamp(t *testing.T) {
 	timestamp, err := time.Parse(format, "Jan 27, 2018 at 10:55am")
 	require.NoError(t, err)
 
-	entry := trace.NewEntry(timestamp, "hello")
+	entry := entry{timestamp: timestamp}
 	assert.Equal(t, "2018-01-27 10:55:00.00000", entry.Timestamp())
 }

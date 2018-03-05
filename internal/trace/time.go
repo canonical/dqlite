@@ -19,4 +19,5 @@ import "time"
 // A function returning the current time.
 type now func() time.Time
 
+// Nil value of a time.Time instance
 var epoch = (time.Time{}).Unix()

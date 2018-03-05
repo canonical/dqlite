@@ -23,40 +23,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRegistry_Errors(t *testing.T) {
+func TestSet_Errors(t *testing.T) {
 	cases := []struct {
 		name  string
-		f     func(*trace.Registry)
+		f     func(*trace.Set)
 		panic string
 	}{
 		{
-			`add duplicate tracer`,
-			func(registry *trace.Registry) {
-				registry.Add("x")
-				registry.Add("x")
-			},
-			"a tracer named x is already registered",
-		},
-		{
-			`get non-existing tracer`,
-			func(registry *trace.Registry) {
-				registry.Get("x")
-			},
-			"no tracer named x is registered",
-		},
-		{
 			`remove non-existing tracer`,
-			func(registry *trace.Registry) {
-				registry.Remove("x")
-			},
-			"no tracer named x is registered",
-		},
-		{
-			`remove non-existing tracer`,
-			func(registry *trace.Registry) {
-				registry.Add("x")
-				registry.Remove("x")
-				registry.Get("x")
+			func(set *trace.Set) {
+				set.Del("x")
 			},
 			"no tracer named x is registered",
 		},
@@ -64,14 +40,14 @@ func TestRegistry_Errors(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			registry := trace.NewRegistry(3)
-			f := func() { c.f(registry) }
+			set := trace.NewSet(3)
+			f := func() { c.f(set) }
 			assert.PanicsWithValue(t, c.panic, f)
 		})
 	}
 }
 
-func TestRegistry_String(t *testing.T) {
+func TestSet_String(t *testing.T) {
 	// Wrap tracer.Add by setting a deterministic timestamp.
 	var i int64
 	add := func(tracer *trace.Tracer, message string, args ...interface{}) {
@@ -80,16 +56,12 @@ func TestRegistry_String(t *testing.T) {
 	}
 
 	now := func() time.Time { return time.Unix(123450+i, 123450000) }
-	registry := trace.NewRegistry(3)
-	registry.Now(now)
+	set := trace.NewSet(3)
+	set.Now(now)
 
-	registry.Add("x")
-	registry.Add("y")
-	registry.Add("z")
-
-	tracer1 := registry.Get("x")
-	tracer2 := registry.Get("y")
-	tracer3 := registry.Get("z")
+	tracer1 := set.Add("x")
+	tracer2 := set.Add("y")
+	tracer3 := set.Add("z")
 	tracer4 := tracer3.With(trace.Integer("foo", 1))
 	tracer5 := tracer4.With(trace.Integer("bar", 2))
 
@@ -111,7 +83,7 @@ func TestRegistry_String(t *testing.T) {
 1970-01-02 10:17:38.12345: z: foo=1 h
 1970-01-02 10:17:39.12345: z: foo=1 bar=2 i abc
 `
-	assert.Equal(t, s, registry.String())
+	assert.Equal(t, s, set.String())
 
 	// Each tracer has saved at most 3 entries.
 	assert.Equal(t, 1, strings.Count(s, ": x:"))
@@ -126,14 +98,13 @@ func TestRegistry_String(t *testing.T) {
 
 	// If forwarding to the test logger is enabled, trace entries are not
 	// included in the panic message.
-	registry.Testing(&testing.T{}, 1)
+	set.Testing(&testing.T{}, 1)
 	tracer1.Message("hello")
 	assert.PanicsWithValue(t, "boom: bye bye", f)
 }
 
-func TestRegistry_Testing(t *testing.T) {
-	registry := trace.NewRegistry(3)
-	registry.Testing(&testing.T{}, 1)
-	registry.Add("foo")
-	registry.Get("foo").Message("hello")
+func TestSet_Testing(t *testing.T) {
+	set := trace.NewSet(3)
+	set.Testing(&testing.T{}, 1)
+	set.Add("foo").Message("hello")
 }

@@ -1,6 +1,7 @@
 package dqlite
 
 import (
+	"github.com/CanonicalLtd/dqlite/internal/registry"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/hashicorp/raft"
 )
@@ -11,7 +12,7 @@ import (
 //
 // This is mostly an internal implementation detail of dqlite, but it needs to
 // be exposed since the raft.Raft parameter that NewDriver accepts doesn't
-// allow access to the FSM that it was passed.
-func NewFSM(dir string) raft.FSM {
-	return replication.NewFSM(dir)
+// allow access to the FSM that it was passed when created with raft.NewRaft().
+func NewFSM(r *Registry) raft.FSM {
+	return replication.NewFSM((*registry.Registry)(r))
 }

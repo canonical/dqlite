@@ -1,11 +1,20 @@
 package replication
 
+import (
+	"github.com/CanonicalLtd/dqlite/internal/registry"
+)
+
 // Toggles whether the FSM should panic in case of errors, or just return them.
 func (f *FSM) PanicOnFailure(flag bool) {
 	f.panicOnFailure = flag
 }
 
-// Replace the FSM's dir.
-func (f *FSM) SetDir(dir string) {
-	f.dir = dir
+// Return the FSM's registry.
+func (f *FSM) Registry() *registry.Registry {
+	return f.registry
+}
+
+// Replace the FSM's registry.
+func (f *FSM) RegistryReplace(registry *registry.Registry) {
+	f.registry = registry
 }

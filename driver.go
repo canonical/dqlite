@@ -15,9 +15,11 @@
 package dqlite
 
 import (
+	"context"
 	"database/sql/driver"
 	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -27,41 +29,40 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/protocol"
+	"github.com/CanonicalLtd/dqlite/internal/registry"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
-	"github.com/CanonicalLtd/dqlite/internal/trace"
+	"github.com/CanonicalLtd/dqlite/internal/transaction"
 )
 
 // Driver manages a node partecipating to a dqlite replicated cluster.
 type Driver struct {
-	dir            string               // Database files live here.
-	connections    *connection.Registry // Connections registry.
-	tracers        *trace.Registry      // Tracers regitry.
-	methods        *replication.Methods // SQLite replication hooks.
-	logger         *log.Logger          // Logger to use.
-	barrier        barrier              // Used to make sure the FSM is in sync with the logs.
-	mu             sync.Mutex           // For serializing critical sections.
-	autoCheckpoint int
+	registry            *registry.Registry   // Internal registry.
+	raft                *raft.Raft           // Raft instance
+	methods             *replication.Methods // SQLite replication hooks.
+	logger              *log.Logger          // Logger to use.
+	checkpointThreshold uint64               // Minimum number of frames before checkpointing
+	mu                  sync.RWMutex         // For serializing checkpoints (TODO: make this per-database)
+
 }
 
 // DriverConfig holds configuration options for a dqlite SQL Driver.
 type DriverConfig struct {
-	Logger         *log.Logger   // Logger to use to emit messages.
-	BarrierTimeout time.Duration // Maximum amount of time to wait for the FSM to catch  up with the latest log.
-	ApplyTimeout   time.Duration // Maximum amount of time to wait for a raft FSM command to be applied.
-	AutoCheckpoint int
+	Logger              *log.Logger   // Logger to use to emit messages.
+	BarrierTimeout      time.Duration // Maximum amount of time to wait for the FSM to catch up with logs.
+	ApplyTimeout        time.Duration // Maximum amount of time to wait for a raft FSM command to be applied.
+	CheckpointThreshold uint64        // Minimum number of WAL frames before performing a checkpoint.
 }
 
 // NewDriver creates a new node of a dqlite cluster, which also implements the driver.Driver
 // interface.
 //
-// The 'fsm' instance must be the same one that was passed to raft.NewRaft for
-// creating the 'raft' instance.
-func NewDriver(fsm raft.FSM, raft *raft.Raft, config DriverConfig) (*Driver, error) {
-	fsmi, ok := fsm.(*replication.FSM)
-	if !ok {
-		panic("fsm is not a dqlite FSM")
-	}
-	if err := ensureDir(fsmi.Dir()); err != nil {
+// The Registry instance must be the same one that was passed to NewFSM to
+// build the raft.FSM which in turn got passed to raft.NewRaft for creating the
+// raft instance.
+func NewDriver(r *Registry, raft *raft.Raft, config DriverConfig) (*Driver, error) {
+	registry := (*registry.Registry)(r)
+	if err := ensureDir(registry.Dir()); err != nil {
 		return nil, err
 	}
 
@@ -75,39 +76,24 @@ func NewDriver(fsm raft.FSM, raft *raft.Raft, config DriverConfig) (*Driver, err
 	if config.ApplyTimeout == 0 {
 		config.ApplyTimeout = 10 * time.Second
 	}
+	if config.CheckpointThreshold == 0 {
+		config.CheckpointThreshold = 1000 // Same as SQLite default
+	}
 
 	//sqlite3.LogConfig(func(code int, message string) {
 	//config.Logger.Printf("[ERR] %s (%d)", message, code)
 	//})
 
 	// Replication methods
-	methods := replication.NewMethods(fsmi, raft)
+	methods := replication.NewMethods(registry, raft)
 	methods.ApplyTimeout(config.ApplyTimeout)
 
-	barrier := func() error {
-		if raft.State() != raftLeader {
-			return sqlite3.ErrNotLeader
-		}
-		if fsmi.Index() == raft.LastIndex() {
-			return nil
-		}
-		if err := raft.Barrier(config.BarrierTimeout).Error(); err != nil {
-			if err == raftErrLeadershipLost {
-				return sqlite3.ErrNotLeader
-			}
-			return errors.Wrap(err, "FSM out of sync")
-		}
-		return nil
-	}
-
 	driver := &Driver{
-		dir:            fsmi.Dir(),
-		connections:    fsmi.Connections(),
-		tracers:        fsmi.Tracers(),
-		logger:         config.Logger,
-		barrier:        barrier,
-		methods:        methods,
-		autoCheckpoint: config.AutoCheckpoint,
+		registry:            registry,
+		raft:                raft,
+		logger:              config.Logger,
+		methods:             methods,
+		checkpointThreshold: config.CheckpointThreshold,
 	}
 
 	return driver, nil
@@ -129,31 +115,143 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 		return nil, errors.Wrapf(err, "invalid URI %s", uri)
 	}
 
-	uri = filepath.Join(d.dir, connection.EncodeURI(filename, query))
-	sqliteConn, err := connection.OpenLeader(uri, d.methods, d.autoCheckpoint)
+	d.registry.Lock()
+	defer d.registry.Unlock()
+
+	uri = filepath.Join(d.registry.Dir(), connection.EncodeURI(filename, query))
+	sqliteConn, err := connection.OpenLeader(uri, d.methods)
 	if err != nil {
 		return nil, err
 	}
 
-	d.connections.AddLeader(filename, sqliteConn)
-	d.tracers.Add(replication.TracerName(d.connections, sqliteConn))
-
 	conn := &Conn{
-		barrier:     d.barrier,
-		connections: d.connections,
-		tracers:     d.tracers,
-		sqliteConn:  sqliteConn,
+		driver:     d,
+		registry:   d.registry,
+		filename:   filename,
+		raft:       d.raft,
+		sqliteConn: sqliteConn,
 	}
+
+	if n := len(d.registry.ConnLeaders(filename)); n == 0 {
+		// This is the first connection against this database, let's
+		// spawn a checkpointing goroutine.
+		ctx, cancel := context.WithCancel(context.Background())
+		conn.cancelCheckpoint = cancel
+		timeout := 10 * time.Second // TODO: make this configurable
+		go func() {
+			for {
+				timer := time.After(timeout)
+				select {
+				case <-ctx.Done():
+					return
+				case <-timer:
+					conn.checkpoint()
+				}
+			}
+		}()
+	}
+
+	d.registry.ConnLeaderAdd(filename, sqliteConn)
 
 	return conn, err
 }
 
 // Conn implements the sql.Conn interface.
 type Conn struct {
-	barrier     barrier
-	connections *connection.Registry
-	tracers     *trace.Registry
-	sqliteConn  *sqlite3.SQLiteConn // Raw SQLite connection using the Go bindings
+	driver     *Driver
+	registry   *registry.Registry
+	raft       *raft.Raft
+	filename   string
+	sqliteConn *sqlite3.SQLiteConn // Raw SQLite connection using the Go bindings
+
+	cancelCheckpoint context.CancelFunc
+}
+
+func (c *Conn) barrier() error {
+	if c.raft.State() != raftLeader {
+		return sqlite3.Error{
+			Code:         sqlite3.ErrIoErr,
+			ExtendedCode: sqlite3.ErrIoErrNotLeader,
+		}
+	}
+	c.registry.Lock()
+	index := c.registry.Index()
+	c.registry.Unlock()
+	if index == c.raft.LastIndex() {
+		return nil
+	}
+	timeout := time.Minute // TODO: make this configurable
+	if err := c.raft.Barrier(timeout).Error(); err != nil {
+		if err == raftErrLeadershipLost {
+			return sqlite3.Error{
+				Code:         sqlite3.ErrIoErr,
+				ExtendedCode: sqlite3.ErrIoErrNotLeader,
+			}
+		}
+		return errors.Wrap(err, "FSM out of sync")
+	}
+	// XXX TODO: figure out how to tell the difference between
+	//           an FSM command log index and an internal raft log
+	//           index.
+	// Spin a bit to make sure the FSM actually applied the last
+	// log.
+	// timeout := time.After(time.Second) // Make this timeout configurable?
+	// for {
+	// 	select {
+	// 	case <-timeout:
+	// 		return fmt.Errorf("FSM out of sync")
+	// 	default:
+	// 	}
+	// 	registry.Lock()
+	// 	index := registry.Index()
+	// 	registry.Unlock()
+	// 	if index == raft.LastIndex() {
+	// 		return nil
+	// 	}
+	// }
+	return nil
+
+}
+
+func (c *Conn) checkpoint() error {
+	if c.raft.State() != raftLeader {
+		return sqlite3.Error{
+			Code:         sqlite3.ErrIoErr,
+			ExtendedCode: sqlite3.ErrIoErrNotLeader,
+		}
+	}
+
+	c.driver.mu.Lock()
+	defer c.driver.mu.Unlock()
+
+	// Read the current size of the WAL.
+	stat, err := os.Stat(filepath.Join(c.driver.registry.Dir(), c.filename+"-wal"))
+	if err != nil {
+		return nil
+	}
+
+	c.driver.registry.Lock()
+	c.driver.registry.FramesReset()
+	c.driver.registry.FramesIncrease(uint64(stat.Size()) / 4096) // TODO: frame size should not be hard-coded
+	frames := c.driver.registry.Frames()
+	c.driver.registry.Unlock()
+
+	// Check if we crossed the checkpoint threshold
+	if frames < c.driver.checkpointThreshold {
+		return nil
+	}
+
+	cmd := protocol.NewCheckpoint(c.filename)
+	data, err := protocol.MarshalCommand(cmd)
+	if err != nil {
+		return err
+	}
+	timeout := time.Second // TODO make this configurable
+	err = c.raft.Apply(data, timeout).Error()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Prepare returns a prepared statement, bound to this connection.
@@ -166,7 +264,7 @@ func (c *Conn) Prepare(query string) (driver.Stmt, error) {
 		return nil, err
 	}
 	stmt := &Stmt{
-		barrier:    c.barrier,
+		conn:       c,
 		sqliteStmt: driverStmt.(*sqlite3.SQLiteStmt),
 	}
 	return stmt, err
@@ -195,41 +293,65 @@ func (c *Conn) Close() error {
 		return nil // Idempotency
 	}
 
-	c.tracers.Remove(replication.TracerName(c.connections, c.sqliteConn))
-	c.connections.DelLeader(c.sqliteConn)
+	c.registry.Lock()
+	defer c.registry.Unlock()
 
-	if err := connection.CloseLeader(c.sqliteConn); err != nil {
+	// Invalidate any pending transaction
+	if txn := c.registry.TxnByConn(c.sqliteConn); txn != nil {
+		if txn.State() == transaction.Pending {
+			// Followers don't know about this transaction, let's
+			// just purge it.
+			c.registry.TxnDel(txn.ID())
+		} else {
+			// We need to create a surrogate follower, in order to
+			// undo this transaction across all nodes.
+			txn = c.registry.TxnFollowerSurrogate(txn)
+			txn.DryRun(true)
+			txn.Frames(true, &sqlite3.ReplicationFramesParams{IsCommit: 0})
+		}
+	}
+
+	c.registry.ConnLeaderDel(c.sqliteConn)
+
+	if err := c.sqliteConn.Close(); err != nil {
 		return err
 	}
 	c.sqliteConn = nil
+
 	return nil
 }
 
 // Begin starts and returns a new transaction.
 func (c *Conn) Begin() (driver.Tx, error) {
+	c.driver.mu.RLock()
 	if err := c.barrier(); err != nil {
+		c.driver.mu.RUnlock()
 		return nil, err
 	}
+
 	driverTx, err := c.sqliteConn.Begin()
 	if err != nil {
+		c.driver.mu.RUnlock()
 		return nil, err
 	}
 	tx := &Tx{
-		barrier:  c.barrier,
+		conn:     c,
 		sqliteTx: driverTx.(*sqlite3.SQLiteTx),
 	}
+
 	return tx, nil
 }
 
 // Tx is a transaction.
 type Tx struct {
-	barrier  barrier
+	conn     *Conn
 	sqliteTx *sqlite3.SQLiteTx
 }
 
 // Commit the transaction.
 func (tx *Tx) Commit() error {
-	if err := tx.barrier(); err != nil {
+	defer tx.conn.driver.mu.RUnlock()
+	if err := tx.conn.barrier(); err != nil {
 		return err
 	}
 	return tx.sqliteTx.Commit()
@@ -237,7 +359,8 @@ func (tx *Tx) Commit() error {
 
 // Rollback the transaction.
 func (tx *Tx) Rollback() error {
-	if err := tx.barrier(); err != nil {
+	defer tx.conn.driver.mu.RUnlock()
+	if err := tx.conn.barrier(); err != nil {
 		return err
 	}
 	return tx.sqliteTx.Rollback()
@@ -246,7 +369,7 @@ func (tx *Tx) Rollback() error {
 // Stmt is a prepared statement. It is bound to a Conn and not
 // used by multiple goroutines concurrently.
 type Stmt struct {
-	barrier    barrier
+	conn       *Conn
 	sqliteStmt *sqlite3.SQLiteStmt
 }
 
@@ -262,7 +385,7 @@ func (s *Stmt) NumInput() int {
 
 // Exec executes a query that doesn't return rows, such
 func (s *Stmt) Exec(args []driver.Value) (driver.Result, error) {
-	if err := s.barrier(); err != nil {
+	if err := s.conn.barrier(); err != nil {
 		return nil, err
 	}
 	return s.sqliteStmt.Exec(args)
@@ -270,7 +393,7 @@ func (s *Stmt) Exec(args []driver.Value) (driver.Result, error) {
 
 // Query executes a query that may return rows, such as a
 func (s *Stmt) Query(args []driver.Value) (driver.Rows, error) {
-	if err := s.barrier(); err != nil {
+	if err := s.conn.barrier(); err != nil {
 		return nil, err
 	}
 	return s.sqliteStmt.Query(args)

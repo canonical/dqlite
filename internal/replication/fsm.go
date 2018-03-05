@@ -1,3 +1,17 @@
+// Copyright 2017 Canonical Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package replication
 
 import (
@@ -7,11 +21,10 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strconv"
-	"sync"
 
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/protocol"
+	"github.com/CanonicalLtd/dqlite/internal/registry"
 	"github.com/CanonicalLtd/dqlite/internal/trace"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3"
@@ -19,34 +32,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-// NewFSM creates a new Raft state machine for executing dqlite-specific
-// command.
-//
-// The 'dir' parameter set the directory where the FSM will save the SQLite
-// database files.
-func NewFSM(dir string) *FSM {
-	fsm := &FSM{
-		dir:            dir,
-		connections:    connection.NewRegistry(),
-		transactions:   transaction.NewRegistry(),
-		tracers:        trace.NewRegistry(250),
-		panicOnFailure: true,
-	}
-	fsm.tracers.Add("fsm")
-
-	return fsm
-}
-
 // FSM implements the raft finite-state machine used to replicate
 // SQLite data.
 type FSM struct {
-	dir          string
-	connections  *connection.Registry  // Open connections (either leaders or followers).
-	transactions *transaction.Registry // Ongoing write transactions.
-	tracers      *trace.Registry       // Registry of event tracers.
-	index        uint64                // Last Raft index that has been successfully applied.
-
-	mu sync.Mutex // Only used on 386 as alternative to StoreUint64
+	registry *registry.Registry
 
 	// Whether to make Apply panic when an error occurs, or to simply
 	// return an error. This should always be is true except for unit
@@ -54,52 +43,62 @@ type FSM struct {
 	panicOnFailure bool
 }
 
-// Dir is the directory where this FSM stores the replicated SQLite files.
-func (f *FSM) Dir() string {
-	return f.dir
+// NewFSM creates a new Raft state machine for executing dqlite-specific
+// command.
+func NewFSM(registry *registry.Registry) *FSM {
+	return &FSM{
+		registry:       registry,
+		panicOnFailure: true,
+	}
 }
 
-// Connections returns the internal connections registry used by this FSM.
-func (f *FSM) Connections() *connection.Registry {
-	return f.connections
-}
-
-// Transactions returns the internal transactions registry used by this FSM.
-func (f *FSM) Transactions() *transaction.Registry {
-	return f.transactions
-}
-
-// Tracers return the internal tracers registry used by this FSM.
-func (f *FSM) Tracers() *trace.Registry {
-	return f.tracers
-}
-
-// Apply log is invoked once a log entry is committed.
-// It returns a value which will be made available in the
-// ApplyFuture returned by Raft.Apply method if that
-// method was called on the same Raft node as the FSM.
+// Apply log is invoked once a log entry is committed.  It returns a value
+// which will be made available in the ApplyFuture returned by Raft.Apply
+// method if that method was called on the same Raft node as the FSM.
 func (f *FSM) Apply(log *raft.Log) interface{} {
-	err := f.apply(log)
+	// Lock the registry for the entire duration of the command
+	// handlers. This is fine since no other write change can happen
+	// anyways while we're running. This might slowdown a bit opening new
+	// leader connections, but since application should be designed to open
+	// their leaders once for all, it shouldn't be a problem in
+	// practice. Read transactions are not be affected by the locking.
+	f.registry.Lock()
+	defer f.registry.Unlock()
+
+	tracer := f.registry.TracerFSM()
+
+	// If we're being invoked in the context of a Methods replication hook
+	// applying a log command, block execution of any log commands coming
+	// on the wire from other leaders until the hook as completed.
+	if !f.registry.HookSyncMatches(log.Data) {
+		tracer.Message("wait for methods hook to complete")
+		// This will temporarily release and re-acquire the registry lock.
+		f.registry.HookSyncWait()
+	}
+
+	err := f.apply(tracer, log)
 	if err != nil {
-		tracer := f.tracer()
 		if f.panicOnFailure {
 			tracer.Panic("%v", err)
 		}
-		//tracer.Error("apply failed", err)
+		tracer.Error("apply failed", err)
 		return err
 	}
 
 	return nil
 }
 
-func (f *FSM) apply(log *raft.Log) error {
-	tracer := f.tracers.Get("fsm").With(trace.Integer("log", int64(log.Index)))
+func (f *FSM) apply(tracer *trace.Tracer, log *raft.Log) error {
+	tracer = tracer.With(
+		trace.Integer("term", int64(log.Term)),
+		trace.Integer("index", int64(log.Index)),
+	)
 
 	cmd, err := protocol.UnmarshalCommand(log.Data)
 	if err != nil {
 		return errors.Wrap(err, "corrupted command data")
 	}
-	//tracer = //tracer.With(trace.String("cmd", cmd.Name()))
+	tracer = tracer.With(trace.String("cmd", cmd.Name()))
 
 	switch payload := cmd.Payload.(type) {
 	case *protocol.Command_Open:
@@ -108,9 +107,9 @@ func (f *FSM) apply(log *raft.Log) error {
 	case *protocol.Command_Begin:
 		err = f.applyBegin(tracer, payload.Begin)
 		err = errors.Wrapf(err, "begin txn %d on %s", payload.Begin.Txid, payload.Begin.Name)
-	case *protocol.Command_WalFrames:
-		err = f.applyWalFrames(tracer, payload.WalFrames)
-		err = errors.Wrapf(err, "wal frames txn %d (%v)", payload.WalFrames.Txid, payload.WalFrames.IsCommit)
+	case *protocol.Command_Frames:
+		err = f.applyFrames(tracer, payload.Frames)
+		err = errors.Wrapf(err, "wal frames txn %d (%v)", payload.Frames.Txid, payload.Frames.IsCommit)
 	case *protocol.Command_Undo:
 		err = f.applyUndo(tracer, payload.Undo)
 		err = errors.Wrapf(err, "undo txn %d", payload.Undo.Txid)
@@ -125,200 +124,215 @@ func (f *FSM) apply(log *raft.Log) error {
 	}
 
 	if err != nil {
-		//tracer.Error("failed", err)
+		tracer.Error("failed", err)
 		return err
 	}
 
-	f.saveIndex(log.Index)
+	f.registry.IndexUpdate(log.Index)
 
 	return nil
 }
 
 func (f *FSM) applyOpen(tracer *trace.Tracer, params *protocol.Open) error {
-	//tracer = //tracer.With(
-	//trace.String("file", params.Name),
-	//)
-	//tracer.Message("start")
+	tracer = tracer.With(
+		trace.String("name", params.Name),
+	)
+	tracer.Message("start")
 
-	conn, err := connection.OpenFollower(filepath.Join(f.dir, params.Name))
+	conn, err := connection.OpenFollower(filepath.Join(f.registry.Dir(), params.Name))
 	if err != nil {
 		return err
 	}
-	f.connections.AddFollower(params.Name, conn)
+	f.registry.ConnFollowerAdd(params.Name, conn)
 
-	//tracer.Message("done")
+	tracer.Message("done")
 
 	return nil
 }
 
 func (f *FSM) applyBegin(tracer *trace.Tracer, params *protocol.Begin) error {
-	//tracer = //tracer.With(
-	//trace.Integer("txn", int64(params.Txid)),
-	//trace.String("file", params.Name),
-	//)
-	//tracer.Message("start")
+	tracer = tracer.With(
+		trace.Integer("txn", int64(params.Txid)),
+	)
 
-	txn := f.transactions.GetByID(params.Txid)
-	if txn != nil {
-		//tracer.Message("txn found, use it")
-
-		// We know about this txid, so the transaction must have
-		// originated on this node and be a leader transaction.
-		if !txn.IsLeader() {
-			tracer.Panic("unexpected follower connection for existing transaction")
-		}
-
-		// We don't need to do anything else, since the WAL write
-		// transaction was already started by the methods hook.
-	} else {
-		//tracer.Message("txn not found, add follower")
-
-		// This is must be a new follower transaction. Let's check
-		// check that no leader transaction against this database is
-		// happening on this node (since we're supposed purely
-		// followers, and unreleased write locks would get on the
-		// way).
-		for _, conn := range f.connections.Leaders(params.Name) {
-			if txn := f.transactions.GetByConn(conn); txn != nil {
-				tracer.Panic("unexpected transaction %v", txn)
-			}
-		}
-
-		conn := f.connections.Follower(params.Name)
-		txn = f.transactions.AddFollower(conn, params.Txid)
-
-		if err := txn.Do(txn.Begin); err != nil {
-			return err
-		}
-	}
-
-	//tracer.Message("done")
+	// This FSM command is not needed anymore. We make it a no-op, for
+	// backward compatibility with deployments that do have it stored in
+	// their raft logs.
+	tracer.Message("no-op")
 
 	return nil
 }
 
-func (f *FSM) applyWalFrames(tracer *trace.Tracer, params *protocol.WalFrames) error {
-	//tracer = //tracer.With(
-	//trace.Integer("txn", int64(params.Txid)),
-	//trace.Integer("pages", int64(len(params.Pages))),
-	//trace.Integer("commit", int64(params.IsCommit)))
-	//tracer.Message("start")
+func (f *FSM) applyFrames(tracer *trace.Tracer, params *protocol.Frames) error {
+	tracer = tracer.With(
+		trace.Integer("txn", int64(params.Txid)),
+		trace.Integer("pages", int64(len(params.Pages))),
+		trace.Integer("commit", int64(params.IsCommit)))
+	tracer.Message("start")
 
-	txn := f.transactions.GetByID(params.Txid)
-	if txn == nil {
-		tracer.Panic("no transaction with ID %d", params.Txid)
+	if params.Filename == "" {
+		// Backward compatibility with existing LXD deployments.
+		params.Filename = "db.bin"
 	}
 
+	txn := f.registry.TxnByID(params.Txid)
+	begin := true
+
+	if txn != nil {
+		// We know about this transaction.
+		tracer.Message("txn found %s", txn)
+
+		if txn.IsLeader() {
+			// We're executing the Frames command triggered by the
+			// Methods.Frames hook on this node.
+			if txn.IsZombie() {
+				// The only way that this can be a zombie is if
+				// this Frames command is being executed by
+				// this FSM after this leader failed with
+				// ErrLeadershipLost, but a quorum was still
+				// reached. We don't know who's gonna be the
+				// next leader, if this node or another
+				// one. Either way, we create a surrogate
+				// follower and transition it to Writing. If it
+				// happens that this node gets elected again,
+				// then its next Methods.Begin hook will find a
+				// Writing follower and will roll it back. If
+				// it happens that some other node gets
+				// elected, same.
+				txn = f.registry.TxnFollowerSurrogate(txn)
+			} else {
+				// We're executing this FSM command in during
+				// the execution of the Methods.Frames hook.
+			}
+
+		} else {
+			// We're executing the Frames command as followers. The
+			// transaction must be in the Writing state.
+			if txn.State() != transaction.Writing {
+				tracer.Panic("unexpected transaction %s", txn)
+			}
+			begin = false
+		}
+	} else {
+		// We don't know about this transaction.
+		//
+		// This is must be a new follower transaction. Let's check that
+		// no other transaction against this database is happening on
+		// this node, since we're supposed to be purely followers, and
+		// unreleased WAL write locks would get in the way. We need to
+		// special case zombie transactions which were left around by a
+		// leader that lost leadership during a Frames hook.
+		if txn := f.registry.TxnByFilename(params.Filename); txn != nil {
+			if txn.IsLeader() && txn.IsZombie() {
+				tracer.Message("found zombie transaction %s", txn)
+				if txn.ID() >= params.Txid {
+					tracer.Panic("zombie transaction too recent %s", txn)
+				}
+				tracer.Message("removing stale zombie transaction %s", txn)
+				// This is stale zombie, let's just get rid of it.
+				f.registry.TxnDel(txn.ID())
+			} else {
+				tracer.Panic("unexpected transaction %s", txn)
+			}
+		}
+
+		conn := f.registry.ConnFollower(params.Filename)
+		txn = f.registry.TxnFollowerAdd(conn, params.Txid)
+	}
+
+	framesParams := &sqlite3.ReplicationFramesParams{
+		PageSize:  int(params.PageSize),
+		Truncate:  uint32(params.Truncate),
+		IsCommit:  int(params.IsCommit),
+		SyncFlags: uint8(params.SyncFlags),
+	}
 	pages := sqlite3.NewReplicationPages(len(params.Pages), int(params.PageSize))
 
 	for i, page := range params.Pages {
 		pages[i].Fill(page.Data, uint16(page.Flags), page.Number)
 	}
 
-	framesParams := &sqlite3.ReplicationWalFramesParams{
-		PageSize:  int(params.PageSize),
-		Pages:     pages,
-		Truncate:  uint32(params.Truncate),
-		IsCommit:  int(params.IsCommit),
-		SyncFlags: uint8(params.SyncFlags),
-	}
-
-	if err := txn.Do(func() error { return txn.WalFrames(framesParams) }); err != nil {
+	framesParams.Pages = pages
+	if err := txn.Frames(begin, framesParams); err != nil {
 		return err
 	}
 
-	//tracer.Message("done")
+	// If the commit flag is on, this is the final write of a transaction,
+	// so if it's a follower we unregister it.
+	if !txn.IsLeader() && framesParams.IsCommit > 0 {
+		tracer.Message("unregister txn")
+		f.registry.TxnDel(params.Txid)
+	}
+
+	tracer.Message("done")
 
 	return nil
 }
 
 func (f *FSM) applyUndo(tracer *trace.Tracer, params *protocol.Undo) error {
-	//tracer = //tracer.With(
-	// 	trace.Integer("txn", int64(params.Txid)),
-	// )
-	//tracer.Message("start")
+	tracer = tracer.With(
+		trace.Integer("txn", int64(params.Txid)),
+	)
+	tracer.Message("start")
 
-	txn := f.transactions.GetByID(params.Txid)
-	if txn == nil {
-		tracer.Panic("no transaction with ID %d", params.Txid)
-	}
+	txn := f.registry.TxnByID(params.Txid)
 
-	txn.Enter()
-	defer txn.Exit()
-	if txn.State() == transaction.Stale {
-		// This transaction was initiated by a leader which could not
-		// apply the End command and so rolled back the transaction in
-		// methods.go. We just no-op in this case.
-		return nil
+	if txn != nil {
+		tracer.Message("txn found: %s", txn)
+
+		// We know about this transaction.
+		tracer.Message("txn found %s", txn)
+
+		if txn.IsLeader() {
+		}
+
+	} else {
+		tracer.Panic("txn not found")
 	}
 
 	if err := txn.Undo(); err != nil {
 		return err
 	}
 
-	//tracer.Message("done")
+	if !txn.IsLeader() {
+		tracer.Message("unregister txn")
+		f.registry.TxnDel(params.Txid)
+	}
+
+	tracer.Message("done")
 
 	return nil
 }
 
 func (f *FSM) applyEnd(tracer *trace.Tracer, params *protocol.End) error {
-	//tracer = //tracer.With(
-	// 	trace.Integer("txn", int64(params.Txid)),
-	// )
-	//tracer.Message("start")
+	tracer = tracer.With(
+		trace.Integer("txn", int64(params.Txid)),
+	)
 
-	txn := f.transactions.GetByID(params.Txid)
-	if txn == nil {
-		tracer.Panic("no transaction with ID %d", params.Txid)
-	}
-
-	txn.Enter()
-	defer txn.Exit()
-	if txn.State() == transaction.Stale {
-		// This transaction was initiated by a leader which could not
-		// apply the End command and so rolled back the transaction in
-		// methods.go. We just no-op in this case.
-	} else if err := txn.End(); err != nil {
-		return err
-	}
-
-	//tracer.Message("unregister txn")
-	f.transactions.Remove(params.Txid)
-
-	//tracer.Message("done")
+	// This FSM command is not needed anymore. We make it a no-op, for
+	// backward compatibility with deployments that do have it stored in
+	// their raft logs.
+	tracer.Message("no-op")
 
 	return nil
 }
 
 func (f *FSM) applyCheckpoint(tracer *trace.Tracer, params *protocol.Checkpoint) error {
-	//tracer = //tracer.With(
-	// 	trace.String("file", params.Name),
-	// )
-	//tracer.Message("start")
+	tracer = tracer.With(
+		trace.String("file", params.Name),
+	)
+	tracer.Message("start")
 
-	conn := f.connections.Follower(params.Name)
+	conn := f.registry.ConnFollower(params.Name)
 
-	// See if we can use the leader connection that triggered the
-	// checkpoint.
-	for _, leaderConn := range f.connections.Leaders(params.Name) {
-		// XXX TODO: choose correct leader connection, without
-		//           assuming that there is at most one
-		conn = leaderConn
-		//logger.Tracef("using leader connection %d", f.connections.Serial(conn))
-		break
-	}
-
-	if txn := f.transactions.GetByConn(conn); txn != nil {
+	if txn := f.registry.TxnByConn(conn); txn != nil {
 		// Something went really wrong, a checkpoint should never be issued
 		// while a follower transaction is in flight.
-		tracer.Panic("can't run with transaction %s", txn)
+		tracer.Panic("can't run checkpoint concurrently with transaction %s", txn)
 	}
 
 	// Run the checkpoint.
-	logFrames := 0
-	checkpointedFrames := 0
-	err := sqlite3.ReplicationCheckpoint(
-		conn, sqlite3.WalCheckpointTruncate, &logFrames, &checkpointedFrames)
+	logFrames, checkpointedFrames, err := conn.WalCheckpoint("main", sqlite3.WalCheckpointTruncate)
 	if err != nil {
 		return err
 	}
@@ -329,7 +343,7 @@ func (f *FSM) applyCheckpoint(tracer *trace.Tracer, params *protocol.Checkpoint)
 		tracer.Panic("only %d frames were checkpointed", checkpointedFrames)
 	}
 
-	//tracer.Message("done")
+	tracer.Message("done")
 
 	return nil
 }
@@ -360,60 +374,68 @@ func (f *FSM) applyCheckpoint(tracer *trace.Tracer, params *protocol.Checkpoint)
 // This is a bit heavy-weight but should be safe. Optimizations can be added as
 // needed.
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
+	f.registry.Lock()
+	defer f.registry.Unlock()
+
+	tracer := f.registry.TracerFSM()
+
 	databases := []*fsmDatabaseSnapshot{}
 
 	// Loop through all known databases and create a backup for each of
 	// them. The filenames associated with follower connections uniquely
 	// identify all known databases, since there will be one and only
 	// follower connection for each known database (we never close follower
-	// connections since database deletion is not yet supported).
-	for _, filename := range f.connections.FilenamesOfFollowers() {
-		database, err := f.snapshotDatabase(filename)
+	// connections since database deletion is not supported).
+	for _, filename := range f.registry.ConnFollowerFilenames() {
+		database, err := f.snapshotDatabase(tracer, filename)
 		if err != nil {
 			err = errors.Wrapf(err, "%s", filename)
-			f.tracer().Error("database snapshot failed", err)
+			tracer.Error("database snapshot failed", err)
 			return nil, err
 		}
 		databases = append(databases, database)
 	}
 
 	return &FSMSnapshot{
-		index:     f.Index(),
+		index:     f.registry.Index(),
 		databases: databases,
 	}, nil
 }
 
 // Backup a single database.
-func (f *FSM) snapshotDatabase(filename string) (*fsmDatabaseSnapshot, error) {
-	// tracer := f.tracer().With(trace.String("snapshot", filename))
-	//tracer.Message("start")
+func (f *FSM) snapshotDatabase(tracer *trace.Tracer, filename string) (*fsmDatabaseSnapshot, error) {
+	tracer = tracer.With(trace.String("snapshot", filename))
+	tracer.Message("start")
 
 	// Figure out if there is an ongoing transaction associated with any of
 	// the database connections, if so we'll return an error.
-	follower := f.connections.Follower(filename)
-	conns := f.connections.Leaders(filename)
-	conns = append(conns, follower)
+	conns := f.registry.ConnLeaders(filename)
+	conns = append(conns, f.registry.ConnFollower(filename))
 	txid := ""
 	for _, conn := range conns {
-		if txn := f.transactions.GetByConn(conn); txn != nil {
-			txn.Enter()
-			state := txn.State()
-			txn.Exit()
-			if state != transaction.Started && state != transaction.Ended {
-				//tracer.Message("transaction %s is in progress", txn)
-				return nil, fmt.Errorf("transaction %s is in progress", txn)
-			}
+		if txn := f.registry.TxnByConn(conn); txn != nil {
+			// XXX TODO: If we let started transaction in the
+			// snapshot, the TestIntegration_Snapshot crashes with:
+			//
+			// panic: unexpected follower transaction 7 started as follower
+			//
+			// figure out why.
+			//if txn.State() == transaction.Writing {
+			tracer.Message("transaction %s is in progress", txn)
+			return nil, fmt.Errorf("transaction %s is in progress", txn)
+			//}
+			// We'll save the transaction ID in the snapshot.
 			//tracer.Message("idle transaction %s", txn)
-			txid = strconv.FormatUint(txn.ID(), 10)
+			//txid = strconv.FormatUint(txn.ID(), 10)
 		}
 	}
 
-	database, wal, err := connection.Snapshot(filepath.Join(f.dir, filename))
+	database, wal, err := connection.Snapshot(filepath.Join(f.registry.Dir(), filename))
 	if err != nil {
 		return nil, err
 	}
 
-	//tracer.Message("done")
+	tracer.Message("done")
 
 	return &fsmDatabaseSnapshot{
 		filename: filename,
@@ -427,16 +449,21 @@ func (f *FSM) snapshotDatabase(filename string) (*fsmDatabaseSnapshot, error) {
 // concurrently with any other command. The FSM must discard all previous
 // state.
 func (f *FSM) Restore(reader io.ReadCloser) error {
+	f.registry.Lock()
+	defer f.registry.Unlock()
+
+	tracer := f.registry.TracerFSM()
+
 	// The first 8 bytes contain the FSM Raft log index.
 	var index uint64
 	if err := binary.Read(reader, binary.LittleEndian, &index); err != nil {
 		return errors.Wrap(err, "failed to read FSM index")
 	}
 
-	tracer := f.tracer().With(trace.Integer("restore", int64(index)))
-	//tracer.Message("start")
+	tracer = tracer.With(trace.Integer("restore", int64(index)))
+	tracer.Message("start")
 
-	f.saveIndex(index)
+	f.registry.IndexUpdate(index)
 
 	for {
 		done, err := f.restoreDatabase(tracer, reader)
@@ -448,7 +475,7 @@ func (f *FSM) Restore(reader io.ReadCloser) error {
 		}
 	}
 
-	//tracer.Message("done")
+	tracer.Message("done")
 
 	return nil
 }
@@ -463,7 +490,7 @@ func (f *FSM) restoreDatabase(tracer *trace.Tracer, reader io.ReadCloser) (bool,
 	if err := binary.Read(reader, binary.LittleEndian, &dataSize); err != nil {
 		return false, errors.Wrap(err, "failed to read database size")
 	}
-	//tracer.Message("database size: %d", dataSize)
+	tracer.Message("database size: %d", dataSize)
 
 	// Then there's the database data.
 	data := make([]byte, dataSize)
@@ -476,7 +503,7 @@ func (f *FSM) restoreDatabase(tracer *trace.Tracer, reader io.ReadCloser) (bool,
 	if err := binary.Read(reader, binary.LittleEndian, &walSize); err != nil {
 		return false, errors.Wrap(err, "failed to read wal size")
 	}
-	//tracer.Message("wal size: %d", walSize)
+	tracer.Message("wal size: %d", walSize)
 
 	// Read the WAL data.
 	wal := make([]byte, walSize)
@@ -491,30 +518,31 @@ func (f *FSM) restoreDatabase(tracer *trace.Tracer, reader io.ReadCloser) (bool,
 		return false, errors.Wrap(err, "failed to read database name")
 	}
 	filename = filename[:len(filename)-1] // Strip the trailing 0
-	//tracer.Message("filename: %s", filename)
+	tracer.Message("filename: %s", filename)
 
+	// XXX TODO: reason about this situation, is it harmful?
 	// Check that there are no leader connections for this database.
 	//
 	// FIXME: we should relax this, as it prevents restoring snapshots "on
 	// the fly".
-	conns := f.connections.Leaders(filename)
-	if len(conns) > 0 {
-		tracer.Panic("found %d leader connections", len(conns))
-	}
+	// conns := f.registry.ConnLeaders(filename)
+	// if len(conns) > 0 {
+	// 	tracer.Panic("found %d leader connections", len(conns))
+	// }
 
 	// XXX TODO: reason about this situation, is it possible?
-	/*txn := f.transactions.GetByConn(f.connections.Follower(name))
-	if txn != nil {
-		f.logger.Printf("[WARN] dqlite: fsm: closing follower in-flight transaction %s", txn)
-		f.transactions.Remove(txn.ID())
-	}*/
+	//txn := f.transactions.GetByConn(f.connections.Follower(name))
+	//if txn != nil {
+	//	f.logger.Printf("[WARN] dqlite: fsm: closing follower in-flight transaction %s", txn)
+	//	f.transactions.Remove(txn.ID())
+	//}
 
 	// Close any follower connection, since we're going to overwrite the
 	// database file.
-	if f.connections.HasFollower(filename) {
-		//tracer.Message("close follower: %s", filename)
-		follower := f.connections.Follower(filename)
-		f.connections.DelFollower(filename)
+	if f.registry.ConnFollowerExists(filename) {
+		tracer.Message("close follower: %s", filename)
+		follower := f.registry.ConnFollower(filename)
+		f.registry.ConnFollowerDel(filename)
 		if err := follower.Close(); err != nil {
 			return false, err
 		}
@@ -529,40 +557,35 @@ func (f *FSM) restoreDatabase(tracer *trace.Tracer, reader io.ReadCloser) (bool,
 		}
 		done = true // This is the last database.
 	}
-	//tracer.Message("transaction ID: %s", txid)
+	tracer.Message("transaction ID: %s", txid)
 
-	if err := connection.Restore(filepath.Join(f.dir, filename), data, wal); err != nil {
+	path := filepath.Join(f.registry.Dir(), filename)
+	if err := connection.Restore(path, data, wal); err != nil {
 		return false, err
 	}
 
-	//tracer.Message("open follower: %s", filename)
-	conn, err := connection.OpenFollower(filepath.Join(f.dir, filename))
+	tracer.Message("open follower: %s", filename)
+	conn, err := connection.OpenFollower(path)
 	if err != nil {
 		return false, err
 	}
-	f.connections.AddFollower(filename, conn)
+	f.registry.ConnFollowerAdd(filename, conn)
 
 	if txid != "" {
-		txid, err := strconv.ParseUint(txid, 10, 64)
-		if err != nil {
-			return false, err
-		}
-		//tracer.Message("add transaction: %s", txid)
-		conn := f.connections.Follower(filename)
-		txn := f.transactions.AddFollower(conn, txid)
-		txn.Enter()
-		defer txn.Exit()
-		if err := txn.Begin(); err != nil {
-			return false, err
-		}
+		/*
+			txid, err := strconv.ParseUint(txid, 10, 64)
+			if err != nil {
+				return false, err
+			}
+			tracer.Message("add transaction: %d", txid)
+			conn := f.registry.ConnFollower(filename)
+			txn := f.registry.TxnFollowerAdd(conn, txid)
+			if err := txn.Begin(); err != nil {
+				return false, err
+			}*/
 	}
 
 	return done, nil
-
-}
-
-func (f *FSM) tracer() *trace.Tracer {
-	return f.tracers.Get("fsm")
 }
 
 // FSMSnapshot is returned by an FSM in response to a Snapshot

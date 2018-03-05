@@ -21,11 +21,14 @@ import (
 
 // A single trace entry.
 type entry struct {
-	timestamp time.Time            // Time at which the entry was created.
-	message   string               // Message of the entry.
-	args      [maxArgs]interface{} // Additional format arguments for the message.
-	error     error                // Error associated with the entry.
-	fields    *[maxFields]Field    // Key/value fields associated with the entry.
+	timestamp time.Time // Time at which the entry was created.
+	message   string    // Message of the entry.
+	args      args      // Additional format arguments for the message.
+	error     error     // Error associated with the entry.
+
+	// Key/value fields associated with the entry. This is a pointer
+	// because all entries of a specific tracer share the same fields.
+	fields *fields
 }
 
 // Timestamp returns a string representation of the entry's timestamp.
@@ -47,7 +50,7 @@ func (e entry) Message() string {
 	}
 
 	fields := ""
-	for i := 0; e.fields[i].key != ""; i++ {
+	for i := 0; i < len(e.fields) && e.fields[i].key != ""; i++ {
 		fields += fmt.Sprintf("%s ", e.fields[i])
 	}
 
@@ -57,3 +60,6 @@ func (e entry) Message() string {
 
 	return fmt.Sprintf("%s%s", fields, message)
 }
+
+type args [maxArgs]interface{}
+type fields [maxFields]Field

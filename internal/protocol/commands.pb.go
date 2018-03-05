@@ -11,8 +11,8 @@
 		Command
 		Open
 		Begin
-		WalFrames
-		WalFramesPage
+		Frames
+		FramesPage
 		Undo
 		End
 		Checkpoint
@@ -44,7 +44,7 @@ type Command struct {
 	// Types that are valid to be assigned to Payload:
 	//	*Command_Open
 	//	*Command_Begin
-	//	*Command_WalFrames
+	//	*Command_Frames
 	//	*Command_Undo
 	//	*Command_End
 	//	*Command_Checkpoint
@@ -68,8 +68,8 @@ type Command_Open struct {
 type Command_Begin struct {
 	Begin *Begin `protobuf:"bytes,2,opt,name=begin,oneof"`
 }
-type Command_WalFrames struct {
-	WalFrames *WalFrames `protobuf:"bytes,3,opt,name=wal_frames,json=walFrames,oneof"`
+type Command_Frames struct {
+	Frames *Frames `protobuf:"bytes,3,opt,name=frames,oneof"`
 }
 type Command_Undo struct {
 	Undo *Undo `protobuf:"bytes,4,opt,name=undo,oneof"`
@@ -83,7 +83,7 @@ type Command_Checkpoint struct {
 
 func (*Command_Open) isCommand_Payload()       {}
 func (*Command_Begin) isCommand_Payload()      {}
-func (*Command_WalFrames) isCommand_Payload()  {}
+func (*Command_Frames) isCommand_Payload()     {}
 func (*Command_Undo) isCommand_Payload()       {}
 func (*Command_End) isCommand_Payload()        {}
 func (*Command_Checkpoint) isCommand_Payload() {}
@@ -109,9 +109,9 @@ func (m *Command) GetBegin() *Begin {
 	return nil
 }
 
-func (m *Command) GetWalFrames() *WalFrames {
-	if x, ok := m.GetPayload().(*Command_WalFrames); ok {
-		return x.WalFrames
+func (m *Command) GetFrames() *Frames {
+	if x, ok := m.GetPayload().(*Command_Frames); ok {
+		return x.Frames
 	}
 	return nil
 }
@@ -142,7 +142,7 @@ func (*Command) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error
 	return _Command_OneofMarshaler, _Command_OneofUnmarshaler, _Command_OneofSizer, []interface{}{
 		(*Command_Open)(nil),
 		(*Command_Begin)(nil),
-		(*Command_WalFrames)(nil),
+		(*Command_Frames)(nil),
 		(*Command_Undo)(nil),
 		(*Command_End)(nil),
 		(*Command_Checkpoint)(nil),
@@ -163,9 +163,9 @@ func _Command_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
 		if err := b.EncodeMessage(x.Begin); err != nil {
 			return err
 		}
-	case *Command_WalFrames:
+	case *Command_Frames:
 		_ = b.EncodeVarint(3<<3 | proto.WireBytes)
-		if err := b.EncodeMessage(x.WalFrames); err != nil {
+		if err := b.EncodeMessage(x.Frames); err != nil {
 			return err
 		}
 	case *Command_Undo:
@@ -209,13 +209,13 @@ func _Command_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer
 		err := b.DecodeMessage(msg)
 		m.Payload = &Command_Begin{msg}
 		return true, err
-	case 3: // Payload.wal_frames
+	case 3: // Payload.frames
 		if wire != proto.WireBytes {
 			return true, proto.ErrInternalBadWireType
 		}
-		msg := new(WalFrames)
+		msg := new(Frames)
 		err := b.DecodeMessage(msg)
-		m.Payload = &Command_WalFrames{msg}
+		m.Payload = &Command_Frames{msg}
 		return true, err
 	case 4: // Payload.undo
 		if wire != proto.WireBytes {
@@ -260,8 +260,8 @@ func _Command_OneofSizer(msg proto.Message) (n int) {
 		n += proto.SizeVarint(2<<3 | proto.WireBytes)
 		n += proto.SizeVarint(uint64(s))
 		n += s
-	case *Command_WalFrames:
-		s := proto.Size(x.WalFrames)
+	case *Command_Frames:
+		s := proto.Size(x.Frames)
 		n += proto.SizeVarint(3<<3 | proto.WireBytes)
 		n += proto.SizeVarint(uint64(s))
 		n += s
@@ -306,6 +306,9 @@ func (m *Open) GetName() string {
 }
 
 // Parameters to begin a new write transaction.
+//
+// This command is not used anymore, but it's
+// kept for backward-compatibility.
 type Begin struct {
 	Txid uint64 `protobuf:"varint,1,opt,name=txid,proto3" json:"txid,omitempty"`
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
@@ -331,89 +334,97 @@ func (m *Begin) GetName() string {
 }
 
 // Parameters to append new frames to the WAL within a write transaction.
-type WalFrames struct {
-	Txid      uint64           `protobuf:"varint,1,opt,name=txid,proto3" json:"txid,omitempty"`
-	PageSize  int32            `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	Pages     []*WalFramesPage `protobuf:"bytes,3,rep,name=pages" json:"pages,omitempty"`
-	Truncate  uint32           `protobuf:"varint,4,opt,name=truncate,proto3" json:"truncate,omitempty"`
-	IsCommit  int32            `protobuf:"varint,5,opt,name=is_commit,json=isCommit,proto3" json:"is_commit,omitempty"`
-	SyncFlags uint32           `protobuf:"varint,6,opt,name=sync_flags,json=syncFlags,proto3" json:"sync_flags,omitempty"`
+type Frames struct {
+	Txid      uint64        `protobuf:"varint,1,opt,name=txid,proto3" json:"txid,omitempty"`
+	PageSize  int32         `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Pages     []*FramesPage `protobuf:"bytes,3,rep,name=pages" json:"pages,omitempty"`
+	Truncate  uint32        `protobuf:"varint,4,opt,name=truncate,proto3" json:"truncate,omitempty"`
+	IsCommit  int32         `protobuf:"varint,5,opt,name=is_commit,json=isCommit,proto3" json:"is_commit,omitempty"`
+	SyncFlags uint32        `protobuf:"varint,6,opt,name=sync_flags,json=syncFlags,proto3" json:"sync_flags,omitempty"`
+	Filename  string        `protobuf:"bytes,7,opt,name=filename,proto3" json:"filename,omitempty"`
 }
 
-func (m *WalFrames) Reset()                    { *m = WalFrames{} }
-func (m *WalFrames) String() string            { return proto.CompactTextString(m) }
-func (*WalFrames) ProtoMessage()               {}
-func (*WalFrames) Descriptor() ([]byte, []int) { return fileDescriptorCommands, []int{3} }
+func (m *Frames) Reset()                    { *m = Frames{} }
+func (m *Frames) String() string            { return proto.CompactTextString(m) }
+func (*Frames) ProtoMessage()               {}
+func (*Frames) Descriptor() ([]byte, []int) { return fileDescriptorCommands, []int{3} }
 
-func (m *WalFrames) GetTxid() uint64 {
+func (m *Frames) GetTxid() uint64 {
 	if m != nil {
 		return m.Txid
 	}
 	return 0
 }
 
-func (m *WalFrames) GetPageSize() int32 {
+func (m *Frames) GetPageSize() int32 {
 	if m != nil {
 		return m.PageSize
 	}
 	return 0
 }
 
-func (m *WalFrames) GetPages() []*WalFramesPage {
+func (m *Frames) GetPages() []*FramesPage {
 	if m != nil {
 		return m.Pages
 	}
 	return nil
 }
 
-func (m *WalFrames) GetTruncate() uint32 {
+func (m *Frames) GetTruncate() uint32 {
 	if m != nil {
 		return m.Truncate
 	}
 	return 0
 }
 
-func (m *WalFrames) GetIsCommit() int32 {
+func (m *Frames) GetIsCommit() int32 {
 	if m != nil {
 		return m.IsCommit
 	}
 	return 0
 }
 
-func (m *WalFrames) GetSyncFlags() uint32 {
+func (m *Frames) GetSyncFlags() uint32 {
 	if m != nil {
 		return m.SyncFlags
 	}
 	return 0
 }
 
-// A single frame of data in a WalFrames command.
-type WalFramesPage struct {
+func (m *Frames) GetFilename() string {
+	if m != nil {
+		return m.Filename
+	}
+	return ""
+}
+
+// A single frame of data in a Frames command.
+type FramesPage struct {
 	Data   []byte `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
 	Flags  uint32 `protobuf:"varint,2,opt,name=flags,proto3" json:"flags,omitempty"`
 	Number uint32 `protobuf:"varint,3,opt,name=number,proto3" json:"number,omitempty"`
 }
 
-func (m *WalFramesPage) Reset()                    { *m = WalFramesPage{} }
-func (m *WalFramesPage) String() string            { return proto.CompactTextString(m) }
-func (*WalFramesPage) ProtoMessage()               {}
-func (*WalFramesPage) Descriptor() ([]byte, []int) { return fileDescriptorCommands, []int{4} }
+func (m *FramesPage) Reset()                    { *m = FramesPage{} }
+func (m *FramesPage) String() string            { return proto.CompactTextString(m) }
+func (*FramesPage) ProtoMessage()               {}
+func (*FramesPage) Descriptor() ([]byte, []int) { return fileDescriptorCommands, []int{4} }
 
-func (m *WalFramesPage) GetData() []byte {
+func (m *FramesPage) GetData() []byte {
 	if m != nil {
 		return m.Data
 	}
 	return nil
 }
 
-func (m *WalFramesPage) GetFlags() uint32 {
+func (m *FramesPage) GetFlags() uint32 {
 	if m != nil {
 		return m.Flags
 	}
 	return 0
 }
 
-func (m *WalFramesPage) GetNumber() uint32 {
+func (m *FramesPage) GetNumber() uint32 {
 	if m != nil {
 		return m.Number
 	}
@@ -439,6 +450,9 @@ func (m *Undo) GetTxid() uint64 {
 
 // Parameters to end a write transaction, and update the WAL commit
 // pointer.
+//
+// This command is not used anymore, but it's
+// kept for backward-compatibility.
 type End struct {
 	Txid uint64 `protobuf:"varint,1,opt,name=txid,proto3" json:"txid,omitempty"`
 }
@@ -476,8 +490,8 @@ func init() {
 	proto.RegisterType((*Command)(nil), "protocol.Command")
 	proto.RegisterType((*Open)(nil), "protocol.Open")
 	proto.RegisterType((*Begin)(nil), "protocol.Begin")
-	proto.RegisterType((*WalFrames)(nil), "protocol.WalFrames")
-	proto.RegisterType((*WalFramesPage)(nil), "protocol.WalFramesPage")
+	proto.RegisterType((*Frames)(nil), "protocol.Frames")
+	proto.RegisterType((*FramesPage)(nil), "protocol.FramesPage")
 	proto.RegisterType((*Undo)(nil), "protocol.Undo")
 	proto.RegisterType((*End)(nil), "protocol.End")
 	proto.RegisterType((*Checkpoint)(nil), "protocol.Checkpoint")
@@ -535,13 +549,13 @@ func (m *Command_Begin) MarshalTo(dAtA []byte) (int, error) {
 	}
 	return i, nil
 }
-func (m *Command_WalFrames) MarshalTo(dAtA []byte) (int, error) {
+func (m *Command_Frames) MarshalTo(dAtA []byte) (int, error) {
 	i := 0
-	if m.WalFrames != nil {
+	if m.Frames != nil {
 		dAtA[i] = 0x1a
 		i++
-		i = encodeVarintCommands(dAtA, i, uint64(m.WalFrames.Size()))
-		n4, err := m.WalFrames.MarshalTo(dAtA[i:])
+		i = encodeVarintCommands(dAtA, i, uint64(m.Frames.Size()))
+		n4, err := m.Frames.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
@@ -644,7 +658,7 @@ func (m *Begin) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
-func (m *WalFrames) Marshal() (dAtA []byte, err error) {
+func (m *Frames) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -654,7 +668,7 @@ func (m *WalFrames) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *WalFrames) MarshalTo(dAtA []byte) (int, error) {
+func (m *Frames) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -696,10 +710,16 @@ func (m *WalFrames) MarshalTo(dAtA []byte) (int, error) {
 		i++
 		i = encodeVarintCommands(dAtA, i, uint64(m.SyncFlags))
 	}
+	if len(m.Filename) > 0 {
+		dAtA[i] = 0x3a
+		i++
+		i = encodeVarintCommands(dAtA, i, uint64(len(m.Filename)))
+		i += copy(dAtA[i:], m.Filename)
+	}
 	return i, nil
 }
 
-func (m *WalFramesPage) Marshal() (dAtA []byte, err error) {
+func (m *FramesPage) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -709,7 +729,7 @@ func (m *WalFramesPage) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *WalFramesPage) MarshalTo(dAtA []byte) (int, error) {
+func (m *FramesPage) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -839,11 +859,11 @@ func (m *Command_Begin) Size() (n int) {
 	}
 	return n
 }
-func (m *Command_WalFrames) Size() (n int) {
+func (m *Command_Frames) Size() (n int) {
 	var l int
 	_ = l
-	if m.WalFrames != nil {
-		l = m.WalFrames.Size()
+	if m.Frames != nil {
+		l = m.Frames.Size()
 		n += 1 + l + sovCommands(uint64(l))
 	}
 	return n
@@ -898,7 +918,7 @@ func (m *Begin) Size() (n int) {
 	return n
 }
 
-func (m *WalFrames) Size() (n int) {
+func (m *Frames) Size() (n int) {
 	var l int
 	_ = l
 	if m.Txid != 0 {
@@ -922,10 +942,14 @@ func (m *WalFrames) Size() (n int) {
 	if m.SyncFlags != 0 {
 		n += 1 + sovCommands(uint64(m.SyncFlags))
 	}
+	l = len(m.Filename)
+	if l > 0 {
+		n += 1 + l + sovCommands(uint64(l))
+	}
 	return n
 }
 
-func (m *WalFramesPage) Size() (n int) {
+func (m *FramesPage) Size() (n int) {
 	var l int
 	_ = l
 	l = len(m.Data)
@@ -1077,7 +1101,7 @@ func (m *Command) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field WalFrames", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Frames", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -1101,11 +1125,11 @@ func (m *Command) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			v := &WalFrames{}
+			v := &Frames{}
 			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			m.Payload = &Command_WalFrames{v}
+			m.Payload = &Command_Frames{v}
 			iNdEx = postIndex
 		case 4:
 			if wireType != 2 {
@@ -1401,7 +1425,7 @@ func (m *Begin) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *WalFrames) Unmarshal(dAtA []byte) error {
+func (m *Frames) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1424,10 +1448,10 @@ func (m *WalFrames) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: WalFrames: wiretype end group for non-group")
+			return fmt.Errorf("proto: Frames: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: WalFrames: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Frames: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -1494,7 +1518,7 @@ func (m *WalFrames) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Pages = append(m.Pages, &WalFramesPage{})
+			m.Pages = append(m.Pages, &FramesPage{})
 			if err := m.Pages[len(m.Pages)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1556,6 +1580,35 @@ func (m *WalFrames) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Filename", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCommands
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthCommands
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Filename = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipCommands(dAtA[iNdEx:])
@@ -1577,7 +1630,7 @@ func (m *WalFrames) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *WalFramesPage) Unmarshal(dAtA []byte) error {
+func (m *FramesPage) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1600,10 +1653,10 @@ func (m *WalFramesPage) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: WalFramesPage: wiretype end group for non-group")
+			return fmt.Errorf("proto: FramesPage: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: WalFramesPage: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: FramesPage: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2021,34 +2074,34 @@ var (
 func init() { proto.RegisterFile("internal/protocol/commands.proto", fileDescriptorCommands) }
 
 var fileDescriptorCommands = []byte{
-	// 452 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x92, 0xc1, 0x6e, 0xd3, 0x40,
-	0x10, 0x86, 0xed, 0xc4, 0x4e, 0xe3, 0x29, 0x06, 0xb4, 0x54, 0x60, 0x8a, 0x88, 0x82, 0x85, 0x44,
-	0x2f, 0x24, 0x52, 0x41, 0x3c, 0x40, 0xa2, 0x56, 0xbe, 0x51, 0x16, 0x21, 0x8e, 0xd1, 0xc6, 0xbb,
-	0x0d, 0x2b, 0xec, 0x5d, 0xcb, 0x76, 0x54, 0xda, 0x27, 0x41, 0xbc, 0x0e, 0x17, 0x8e, 0x3c, 0x02,
-	0x0a, 0x2f, 0x82, 0x66, 0x4c, 0xec, 0x82, 0x7c, 0x9b, 0x99, 0xff, 0xfb, 0xb5, 0x3b, 0xff, 0x2e,
-	0x4c, 0xb5, 0xa9, 0x55, 0x69, 0x44, 0x36, 0x2f, 0x4a, 0x5b, 0xdb, 0xd4, 0x66, 0xf3, 0xd4, 0xe6,
-	0xb9, 0x30, 0xb2, 0x9a, 0xd1, 0x84, 0x8d, 0xf7, 0x42, 0xfc, 0x6d, 0x00, 0x07, 0xcb, 0x46, 0x64,
-	0xcf, 0xc1, 0xb3, 0x85, 0x32, 0x91, 0x3b, 0x75, 0x4f, 0x0e, 0x4f, 0xef, 0xce, 0xf6, 0xd0, 0xec,
-	0x6d, 0xa1, 0x4c, 0xe2, 0x70, 0x52, 0xd9, 0x0b, 0xf0, 0xd7, 0x6a, 0xa3, 0x4d, 0x34, 0x20, 0xec,
-	0x5e, 0x87, 0x2d, 0x70, 0x9c, 0x38, 0xbc, 0xd1, 0xd9, 0x6b, 0x80, 0x2b, 0x91, 0xad, 0x2e, 0x4b,
-	0x91, 0xab, 0x2a, 0x1a, 0x12, 0xfd, 0xa0, 0xa3, 0x3f, 0x8a, 0xec, 0x9c, 0xa4, 0xc4, 0xe1, 0xc1,
-	0xd5, 0xbe, 0xc1, 0x4b, 0x6c, 0x8d, 0xb4, 0x91, 0xf7, 0xff, 0x25, 0x3e, 0x18, 0x69, 0xf1, 0x12,
-	0xa8, 0xb2, 0x67, 0x30, 0x54, 0x46, 0x46, 0x3e, 0x41, 0x61, 0x07, 0x9d, 0x19, 0x99, 0x38, 0x1c,
-	0x35, 0xf6, 0x06, 0x20, 0xfd, 0xa4, 0xd2, 0xcf, 0x85, 0xd5, 0xa6, 0x8e, 0x46, 0x44, 0x1e, 0x75,
-	0xe4, 0xb2, 0xd5, 0x12, 0x87, 0xdf, 0x22, 0x17, 0x01, 0x1c, 0x5c, 0x88, 0xeb, 0xcc, 0x0a, 0x19,
-	0x1f, 0x83, 0x87, 0xab, 0x33, 0x06, 0x9e, 0x11, 0xb9, 0xa2, 0x60, 0x02, 0x4e, 0x75, 0x3c, 0x07,
-	0x9f, 0xf6, 0x45, 0xb1, 0xfe, 0xa2, 0x25, 0x89, 0x1e, 0xa7, 0xba, 0x35, 0x0c, 0x6e, 0x19, 0xbe,
-	0xbb, 0x10, 0xb4, 0x3b, 0xf7, 0xba, 0x9e, 0x40, 0x50, 0x88, 0x8d, 0x5a, 0x55, 0xfa, 0xa6, 0xb1,
-	0xfa, 0x7c, 0x8c, 0x83, 0xf7, 0xfa, 0x46, 0xb1, 0x97, 0xe0, 0x63, 0x8d, 0x41, 0x0e, 0x4f, 0x0e,
-	0x4f, 0x1f, 0xf5, 0x04, 0x79, 0x21, 0x36, 0x8a, 0x37, 0x14, 0x3b, 0x86, 0x71, 0x5d, 0x6e, 0x4d,
-	0x2a, 0x6a, 0x45, 0x51, 0x86, 0xbc, 0xed, 0xf1, 0x1c, 0x5d, 0xad, 0xf0, 0x4b, 0xe8, 0x9a, 0x22,
-	0xf4, 0xf9, 0x58, 0x57, 0x4b, 0xea, 0xd9, 0x53, 0x80, 0xea, 0xda, 0xa4, 0xab, 0xcb, 0x4c, 0x6c,
-	0x2a, 0x8a, 0x2d, 0xe4, 0x01, 0x4e, 0xce, 0x71, 0x10, 0xbf, 0x83, 0xf0, 0x9f, 0xf3, 0x70, 0x11,
-	0x29, 0x6a, 0x41, 0x8b, 0xdc, 0xe1, 0x54, 0xb3, 0x23, 0xf0, 0x1b, 0xfb, 0x80, 0xec, 0x4d, 0xc3,
-	0x1e, 0xc2, 0xc8, 0x6c, 0xf3, 0xb5, 0x2a, 0xe9, 0x2f, 0x84, 0xfc, 0x6f, 0x87, 0x29, 0xe3, 0xdb,
-	0xf6, 0x45, 0x12, 0x3f, 0x86, 0xe1, 0x99, 0x91, 0xbd, 0xd2, 0x14, 0xa0, 0x7b, 0xc3, 0xbe, 0x27,
-	0x5a, 0xdc, 0xff, 0xb1, 0x9b, 0xb8, 0x3f, 0x77, 0x13, 0xf7, 0xd7, 0x6e, 0xe2, 0x7e, 0xfd, 0x3d,
-	0x71, 0xd6, 0x23, 0x0a, 0xed, 0xd5, 0x9f, 0x00, 0x00, 0x00, 0xff, 0xff, 0x85, 0x1c, 0xad, 0xa4,
-	0x22, 0x03, 0x00, 0x00,
+	// 451 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x52, 0xc1, 0x6e, 0xd3, 0x40,
+	0x10, 0xb5, 0x13, 0xdb, 0x49, 0x06, 0x02, 0xd5, 0xaa, 0x42, 0xa6, 0x88, 0x28, 0x58, 0x48, 0xa0,
+	0x1e, 0x12, 0x09, 0x24, 0x3e, 0x20, 0x51, 0x2b, 0x9f, 0xa0, 0x5a, 0xc4, 0x39, 0xda, 0x78, 0x37,
+	0x61, 0x85, 0x3d, 0x6b, 0xd9, 0x8e, 0x44, 0xfb, 0x15, 0x1c, 0xf9, 0x24, 0x8e, 0x5c, 0xb9, 0xa1,
+	0xf0, 0x23, 0x68, 0xc6, 0x6d, 0x5c, 0x50, 0x6e, 0x33, 0xef, 0xbd, 0x99, 0xf1, 0x7b, 0x6b, 0x98,
+	0x5a, 0x6c, 0x4c, 0x85, 0x2a, 0x9f, 0x97, 0x95, 0x6b, 0x5c, 0xe6, 0xf2, 0x79, 0xe6, 0x8a, 0x42,
+	0xa1, 0xae, 0x67, 0x8c, 0x88, 0xe1, 0x1d, 0x91, 0x7c, 0xeb, 0xc1, 0x60, 0xd9, 0x92, 0xe2, 0x25,
+	0x04, 0xae, 0x34, 0x18, 0xfb, 0x53, 0xff, 0xf5, 0x83, 0x37, 0x8f, 0x66, 0x77, 0xa2, 0xd9, 0x87,
+	0xd2, 0x60, 0xea, 0x49, 0x66, 0xc5, 0x2b, 0x08, 0xd7, 0x66, 0x6b, 0x31, 0xee, 0xb1, 0xec, 0x71,
+	0x27, 0x5b, 0x10, 0x9c, 0x7a, 0xb2, 0xe5, 0xc5, 0x39, 0x44, 0x9b, 0x4a, 0x15, 0xa6, 0x8e, 0xfb,
+	0xac, 0x3c, 0xe9, 0x94, 0x97, 0x8c, 0xa7, 0x9e, 0xbc, 0x55, 0xd0, 0xe9, 0x1d, 0x6a, 0x17, 0x07,
+	0xff, 0x9f, 0xfe, 0x84, 0xda, 0xd1, 0x69, 0x62, 0xc5, 0x0b, 0xe8, 0x1b, 0xd4, 0x71, 0xc8, 0xa2,
+	0x71, 0x27, 0xba, 0x40, 0x9d, 0x7a, 0x92, 0x38, 0xf1, 0x0e, 0x20, 0xfb, 0x6c, 0xb2, 0x2f, 0xa5,
+	0xb3, 0xd8, 0xc4, 0x11, 0x2b, 0x4f, 0x3b, 0xe5, 0xf2, 0xc0, 0xa5, 0x9e, 0xbc, 0xa7, 0x5c, 0x8c,
+	0x60, 0x70, 0xa5, 0xae, 0x73, 0xa7, 0x74, 0x72, 0x06, 0x01, 0x19, 0x16, 0x02, 0x02, 0x54, 0x85,
+	0xe1, 0x38, 0x46, 0x92, 0xeb, 0x64, 0x0e, 0x21, 0xbb, 0x24, 0xb2, 0xf9, 0x6a, 0x35, 0x93, 0x81,
+	0xe4, 0xfa, 0x30, 0xd0, 0xbb, 0x37, 0xf0, 0xcb, 0x87, 0xa8, 0x75, 0x7b, 0x74, 0xe4, 0x19, 0x8c,
+	0x4a, 0xb5, 0x35, 0xab, 0xda, 0xde, 0xb4, 0x73, 0xa1, 0x1c, 0x12, 0xf0, 0xd1, 0xde, 0x18, 0x71,
+	0x0e, 0x21, 0xd5, 0x94, 0x5f, 0xff, 0x5f, 0x1b, 0xed, 0xc6, 0x2b, 0xb5, 0x35, 0xb2, 0x95, 0x88,
+	0x33, 0x18, 0x36, 0xd5, 0x0e, 0x33, 0xd5, 0x18, 0x0e, 0x71, 0x2c, 0x0f, 0x3d, 0x1d, 0xb1, 0xf5,
+	0x8a, 0x7e, 0x01, 0xdb, 0x70, 0x78, 0xa1, 0x1c, 0xda, 0x7a, 0xc9, 0xbd, 0x78, 0x0e, 0x50, 0x5f,
+	0x63, 0xb6, 0xda, 0xe4, 0x6a, 0x5b, 0x73, 0x60, 0x63, 0x39, 0x22, 0xe4, 0x92, 0x00, 0xda, 0xbb,
+	0xb1, 0xb9, 0x61, 0x5f, 0x03, 0xf6, 0x75, 0xe8, 0x93, 0xf7, 0x00, 0xdd, 0x87, 0x90, 0x3d, 0xad,
+	0x1a, 0xc5, 0xf6, 0x1e, 0x4a, 0xae, 0xc5, 0x29, 0x84, 0xed, 0xde, 0x1e, 0xef, 0x6d, 0x1b, 0xf1,
+	0x04, 0x22, 0xdc, 0x15, 0x6b, 0x53, 0xf1, 0x8f, 0x31, 0x96, 0xb7, 0x1d, 0x05, 0x4f, 0xcf, 0x7d,
+	0x2c, 0xa8, 0xe4, 0x29, 0xf4, 0x2f, 0x50, 0x1f, 0xa5, 0xa6, 0x00, 0xdd, 0xb3, 0x1e, 0x7b, 0xb5,
+	0xc5, 0xc9, 0x8f, 0xfd, 0xc4, 0xff, 0xb9, 0x9f, 0xf8, 0xbf, 0xf7, 0x13, 0xff, 0xfb, 0x9f, 0x89,
+	0xb7, 0x8e, 0x38, 0xca, 0xb7, 0x7f, 0x03, 0x00, 0x00, 0xff, 0xff, 0x13, 0x86, 0x50, 0xa9, 0x2b,
+	0x03, 0x00, 0x00,
 }
