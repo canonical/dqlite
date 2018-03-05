@@ -14,15 +14,10 @@
 
 package replication
 
-import (
-	"fmt"
-
-	"github.com/CanonicalLtd/dqlite/internal/connection"
-	"github.com/CanonicalLtd/go-sqlite3"
-)
-
+/*
 // TracerName returns the name of the methods tracer to be used for the given
 // connection.
 func TracerName(connections *connection.Registry, conn *sqlite3.SQLiteConn) string {
 	return fmt.Sprintf("methods %d", connections.Serial(conn))
 }
+*/

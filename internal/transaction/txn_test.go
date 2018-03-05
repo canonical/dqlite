@@ -9,26 +9,16 @@ import (
 )
 
 func TestTxn_String(t *testing.T) {
-	registry := newRegistry()
-
 	conn1 := &sqlite3.SQLiteConn{}
-	txn1 := registry.AddFollower(conn1, 0)
+	txn1 := transaction.New(conn1, 0, false, false)
 	assert.Equal(t, "0 pending as follower", txn1.String())
 
 	conn2 := &sqlite3.SQLiteConn{}
-	txn2 := registry.AddLeader(conn2, 1, nil)
+	txn2 := transaction.New(conn2, 1, true, false)
 	assert.Equal(t, "1 pending as leader", txn2.String())
 }
 
-func TestTxn_CheckEntered(t *testing.T) {
-	registry := newRegistry()
-
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddFollower(conn, 123)
-
-	f := func() { txn.State() }
-	assert.PanicsWithValue(t, "accessing or modifying txn state without mutex: 123", f)
-}
+/*
 
 func TestTxn_IsStale(t *testing.T) {
 	registry := newRegistry()
@@ -50,7 +40,7 @@ func TestTxn_IsStaleFollower(t *testing.T) {
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddFollower(conn, 123)
+	txn := registry.TxnAddFollower(conn, 123)
 
 	assert.False(t, txn.IsStale())
 
@@ -59,18 +49,18 @@ func TestTxn_IsStaleFollower(t *testing.T) {
 
 	f := func() { txn.Do(txn.Stale) }
 
-	assert.PanicsWithValue(t, "invalid ended -> stale transition", f)
+	assert.PanicsWithValue(t, "invalid undone -> stale transition", f)
 }
 
 func TestTxn_Pending(t *testing.T) {
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddFollower(conn, 123)
+	txn := registry.TxnAddFollower(conn, 123)
 	txn.Enter()
 
 	state := txn.State()
-	if state != transaction.Pending {
+	if state != registry.Pending {
 		t.Errorf("initial txn state is not Pending: %s", state)
 	}
 }
@@ -79,7 +69,7 @@ func TestTxn_Started(t *testing.T) {
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddFollower(conn, 123)
+	txn := registry.TxnAddFollower(conn, 123)
 	txn.Enter()
 
 	txn.DryRun(true)
@@ -88,7 +78,7 @@ func TestTxn_Started(t *testing.T) {
 	}
 
 	state := txn.State()
-	if state != transaction.Started {
+	if state != registry.Started {
 		t.Errorf("txn state after Begin is not Started: %s", state)
 	}
 }
@@ -98,30 +88,55 @@ func TestTxn_Writing(t *testing.T) {
 	registry.DryRun()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddFollower(conn, 123)
+	txn := registry.TxnAddFollower(conn, 123)
 	txn.Enter()
 
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
-	params := &sqlite3.ReplicationWalFramesParams{
+	params := &sqlite3.ReplicationFramesParams{
 		Pages: sqlite3.NewReplicationPages(2, 4096),
 	}
-	if err := txn.WalFrames(params); err != nil {
+	if err := txn.Frames(params); err != nil {
 		t.Fatal(err)
 	}
 
 	state := txn.State()
-	if state != transaction.Writing {
-		t.Errorf("txn state after WalFrames is not Writing: %s", state)
+	if state != registry.Writing {
+		t.Errorf("txn state after Frames is not Writing: %s", state)
 	}
 }
 
-func TestTxn_Undoing(t *testing.T) {
+func TestTxn_Written(t *testing.T) {
+	registry := newRegistry()
+	registry.DryRun()
+
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.TxnAddFollower(conn, 123)
+	txn.Enter()
+
+	if err := txn.Begin(); err != nil {
+		t.Fatal(err)
+	}
+	params := &sqlite3.ReplicationFramesParams{
+		Pages:    sqlite3.NewReplicationPages(2, 4096),
+		IsCommit: 1,
+	}
+	if err := txn.Frames(params); err != nil {
+		t.Fatal(err)
+	}
+
+	state := txn.State()
+	if state != registry.Written {
+		t.Errorf("txn state after Frames is not Written: %s", state)
+	}
+}
+
+func TestTxn_Undone(t *testing.T) {
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddFollower(conn, 123)
+	txn := registry.TxnAddFollower(conn, 123)
 	txn.Enter()
 
 	txn.DryRun(true)
@@ -133,29 +148,8 @@ func TestTxn_Undoing(t *testing.T) {
 	}
 
 	state := txn.State()
-	if state != transaction.Undoing {
-		t.Errorf("txn state after Undo is not Undoing: %s", state)
-	}
-}
-
-func TestTxn_Ended(t *testing.T) {
-	registry := newRegistry()
-
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddFollower(conn, 123)
-	txn.Enter()
-
-	txn.DryRun(true)
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	if err := txn.End(); err != nil {
-		t.Fatal(err)
-	}
-
-	state := txn.State()
-	if state != transaction.Ended {
-		t.Errorf("txn state after End is not Ended: %s", state)
+	if state != registry.Undone {
+		t.Errorf("txn state after Undo is not Undone: %s", state)
 	}
 }
 
@@ -172,7 +166,7 @@ func TestTxn_StaleFromPending(t *testing.T) {
 	}
 
 	state := txn.State()
-	if state != transaction.Stale {
+	if state != registry.Stale {
 		t.Errorf("txn state after Stale from Pending is not Stale: %s", state)
 	}
 }
@@ -195,7 +189,7 @@ func TestTxn_StaleFromStarted(t *testing.T) {
 	}
 
 	state := txn.State()
-	if state != transaction.Stale {
+	if state != registry.Stale {
 		t.Errorf("txn state after Stale from Begin is not Stale: %s", state)
 	}
 }
@@ -212,10 +206,10 @@ func TestTxn_StaleFromWriting(t *testing.T) {
 	if err := txn.Begin(); err != nil {
 		t.Fatal(err)
 	}
-	params := &sqlite3.ReplicationWalFramesParams{
+	params := &sqlite3.ReplicationFramesParams{
 		Pages: sqlite3.NewReplicationPages(2, 4096),
 	}
-	if err := txn.WalFrames(params); err != nil {
+	if err := txn.Frames(params); err != nil {
 		t.Fatal(err)
 	}
 	if err := txn.Stale(); err != nil {
@@ -223,12 +217,41 @@ func TestTxn_StaleFromWriting(t *testing.T) {
 	}
 
 	state := txn.State()
-	if state != transaction.Stale {
+	if state != registry.Stale {
 		t.Errorf("txn state after Stale from Writing is not Stale: %s", state)
 	}
 }
 
-func TestTxn_StaleFromUndoing(t *testing.T) {
+func TestTxn_StaleFromWritten(t *testing.T) {
+	registry := newRegistry()
+	registry.DryRun()
+
+	conn := &sqlite3.SQLiteConn{}
+	txn := registry.AddLeader(conn, 0, nil)
+	txn.Enter()
+
+	txn.DryRun(true)
+	if err := txn.Begin(); err != nil {
+		t.Fatal(err)
+	}
+	params := &sqlite3.ReplicationFramesParams{
+		Pages:    sqlite3.NewReplicationPages(2, 4096),
+		IsCommit: 1,
+	}
+	if err := txn.Frames(params); err != nil {
+		t.Fatal(err)
+	}
+	if err := txn.Stale(); err != nil {
+		t.Fatal(err)
+	}
+
+	state := txn.State()
+	if state != registry.Stale {
+		t.Errorf("txn state after Stale from Written is not Stale: %s", state)
+	}
+}
+
+func TestTxn_StaleFromUndone(t *testing.T) {
 	registry := newRegistry()
 	registry.DryRun()
 
@@ -236,7 +259,7 @@ func TestTxn_StaleFromUndoing(t *testing.T) {
 
 	// Pretend that the follower transaction is the leader, since
 	// invoking Begin() on an actual leader connection would fail
-	// because the WAL has not started a read transaction.
+	// because the WAL has not started a read registry.
 	txn := registry.AddLeader(conn, 0, nil)
 	txn.Enter()
 
@@ -252,34 +275,8 @@ func TestTxn_StaleFromUndoing(t *testing.T) {
 	}
 
 	state := txn.State()
-	if state != transaction.Stale {
-		t.Errorf("txn state after Stale from Undoing is not Stale: %s", state)
-	}
-}
-
-func TestTxn_StaleFromEnded(t *testing.T) {
-	registry := newRegistry()
-	registry.DryRun()
-
-	conn := &sqlite3.SQLiteConn{}
-
-	txn := registry.AddLeader(conn, 0, nil)
-	txn.Enter()
-
-	txn.DryRun(true)
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	if err := txn.End(); err != nil {
-		t.Fatal(err)
-	}
-	if err := txn.Stale(); err != nil {
-		t.Fatal(err)
-	}
-
-	state := txn.State()
-	if state != transaction.Stale {
-		t.Errorf("txn state after Stale from End is not Stale: %s", state)
+	if state != registry.Stale {
+		t.Errorf("txn state after Stale from Undone is not Stale: %s", state)
 	}
 }
 
@@ -287,7 +284,7 @@ func TestTxn_StalePanicsIfInvokedOnFollowerTransaction(t *testing.T) {
 	registry := newRegistry()
 
 	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddFollower(conn, 123)
+	txn := registry.TxnAddFollower(conn, 123)
 	txn.Enter()
 
 	const want = "invalid pending -> stale transition"
@@ -299,3 +296,4 @@ func TestTxn_StalePanicsIfInvokedOnFollowerTransaction(t *testing.T) {
 	}()
 	txn.Stale()
 }
+*/

@@ -18,23 +18,22 @@ func TestOpenLeader(t *testing.T) {
 	dir, cleanup := newDir()
 	defer cleanup()
 
-	methods := sqlite3.PassthroughReplicationMethods()
-	conn, err := connection.OpenLeader(filepath.Join(dir, "test.db"), methods, 1)
-	defer connection.CloseLeader(conn)
-
+	methods := sqlite3.NoopReplicationMethods()
+	conn, err := connection.OpenLeader(filepath.Join(dir, "test.db"), methods)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
+
+	defer conn.Close()
 
 	_, err = conn.Exec("CREATE TABLE test (n INT)", nil)
 	require.NoError(t, err)
 
-	// The journal mode is set to WAL and got truncated because we set the
-	// autocheckpoint to 1.
+	// The journal mode is set to WAL.
 	_, err = os.Stat(filepath.Join(dir, "test.db-shm"))
 	require.NoError(t, err)
 
 	info, err := os.Stat(filepath.Join(dir, "test.db-wal"))
-	require.Equal(t, int64(0), info.Size())
+	require.NotEqual(t, int64(0), info.Size())
 }
 
 // Open a connection in follower replication mode.
@@ -61,11 +60,6 @@ func TestOpenFollower_Error(t *testing.T) {
 			`non existing dsn`,
 			"/non/existing/dsn.db",
 			"open error",
-		},
-		{
-			`memory database`,
-			":memory:",
-			"failed to set journal mode to 'wal'",
 		},
 	}
 	for _, c := range cases {

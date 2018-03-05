@@ -35,25 +35,26 @@ func NewBegin(txid uint64, name string) *Command {
 	return newCommand(params)
 }
 
-// NewWalFrames returns a new WalFrames protobuf message.
-func NewWalFrames(txid uint64, frames *sqlite3.ReplicationWalFramesParams) *Command {
-	pages := make([]*WalFramesPage, len(frames.Pages))
+// NewFrames returns a new WalFrames protobuf message.
+func NewFrames(txid uint64, filename string, frames *sqlite3.ReplicationFramesParams) *Command {
+	pages := make([]*FramesPage, len(frames.Pages))
 
 	size := frames.PageSize
 	for i := range frames.Pages {
 		page := &frames.Pages[i]
-		pages[i] = &WalFramesPage{}
+		pages[i] = &FramesPage{}
 		pages[i].Data = page.Data()
 		pages[i].Flags = uint32(page.Flags())
 		pages[i].Number = uint32(page.Number())
 	}
-	params := &Command_WalFrames{WalFrames: &WalFrames{
+	params := &Command_Frames{Frames: &Frames{
 		Txid:      txid,
 		PageSize:  int32(size),
 		Pages:     pages,
 		Truncate:  uint32(frames.Truncate),
 		IsCommit:  int32(frames.IsCommit),
 		SyncFlags: uint32(frames.SyncFlags),
+		Filename:  filename,
 	}}
 	return newCommand(params)
 }
@@ -90,10 +91,5 @@ func newCommand(payload isCommand_Payload) *Command {
 // type.
 func (c *Command) Name() string {
 	typeName := reflect.TypeOf(c.Payload).Elem().String()
-	name := strings.ToLower(strings.Replace(typeName, "protocol.Command_", "", 1))
-	// FIXME: should do proper camel-case level splitting.
-	if name == "walframes" {
-		name = "wal frames"
-	}
-	return name
+	return strings.ToLower(strings.Replace(typeName, "protocol.Command_", "", 1))
 }

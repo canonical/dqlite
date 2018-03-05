@@ -21,9 +21,8 @@ import (
 )
 
 func Benchmark_With(b *testing.B) {
-	registry := trace.NewRegistry(250)
-	registry.Add("foo")
-	tracer := registry.Get("foo").With(trace.String("x", "a"))
+	set := trace.NewSet(250)
+	tracer := set.Add("foo").With(trace.String("x", "a"))
 	for i := 0; i < b.N; i++ {
 		tracer := tracer.With(trace.String("y", "b"))
 		tracer.Message("x %d", i)
@@ -31,9 +30,8 @@ func Benchmark_With(b *testing.B) {
 }
 
 func Benchmark_Message(b *testing.B) {
-	registry := trace.NewRegistry(250)
-	registry.Add("foo")
-	tracer := registry.Get("foo").With(trace.String("x", "a"))
+	set := trace.NewSet(250)
+	tracer := set.Add("foo").With(trace.String("x", "a"))
 	for i := 0; i < b.N; i++ {
 		tracer.Message("x %d", i)
 	}

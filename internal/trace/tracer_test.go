@@ -12,27 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package trace_test
+package trace
 
 import (
 	"fmt"
 	"testing"
-	"time"
 
-	"github.com/CanonicalLtd/dqlite/internal/trace"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTracer_Message(t *testing.T) {
-	tracer := newTracer()
-	tracer.Message("hello")
-
-	// The cursor has advanced.
-	assert.Equal(t, 1, tracer.Cursor().Position())
-}
-
 func TestTracer_MessagePanic(t *testing.T) {
-	tracer := newTracer()
+	set := NewSet(3)
+	tracer := set.Add("foo")
 
 	f := func() {
 		tracer.Message("hello", 1, 2, 3, 4, 5)
@@ -43,15 +34,18 @@ func TestTracer_MessagePanic(t *testing.T) {
 }
 
 func TestTracer_Error(t *testing.T) {
-	tracer := newTracer()
+	set := NewSet(3)
+	tracer := set.Add("foo")
 	tracer.Error("hello", fmt.Errorf("boom"))
 
 	// The cursor has advanced.
-	assert.Equal(t, 1, tracer.Cursor().Position())
+	assert.Equal(t, 1, tracer.buffer.cursor.Position())
 }
 
 func TestTracer_Panic(t *testing.T) {
-	tracer := newTracer()
+	set := NewSet(3)
+	set.Testing(t, 1)
+	tracer := set.Add("foo")
 
 	f := func() {
 		tracer.Panic("hello %d", 123)
@@ -62,27 +56,17 @@ func TestTracer_Panic(t *testing.T) {
 }
 
 func TestTracer_WithPanic(t *testing.T) {
-	tracer := newTracer()
+	set := NewSet(3)
+	tracer := set.Add("foo")
 
 	f := func() {
-		fields := make([]trace.Field, 7)
+		fields := make([]Field, 7)
 		for i := range fields {
-			fields[i] = trace.String("x", "y")
+			fields[i] = String("x", "y")
 		}
 		tracer.With(fields...)
 	}
 
 	// The maximum number of fields is 6.
 	assert.PanicsWithValue(t, "a trace entry can have at most 6 fields, but 7 were given", f)
-}
-
-func newTracer() *trace.Tracer {
-	cursor := trace.NewCursor(0, 3)
-	entries := trace.NewEntries(3)
-
-	panic := func(message string) {
-		panic(message)
-	}
-
-	return trace.NewTracer(cursor, entries, time.Now, panic)
 }

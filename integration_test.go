@@ -83,10 +83,12 @@ func newDrivers(t *testing.T) ([]driver.Driver, []*raft.Raft, func()) {
 	dir, err := ioutil.TempDir("", "dqlite-integration-test-")
 	assert.NoError(t, err)
 
-	// Create the dqlite FSMs.
+	// Create the dqlite Registries and FSMs.
+	registries := make([]*dqlite.Registry, 3)
 	fsms := make([]raft.FSM, 3)
 	for i := range fsms {
-		fsms[i] = dqlite.NewFSM(filepath.Join(dir, strconv.Itoa(i)))
+		registries[i] = dqlite.NewRegistry(filepath.Join(dir, strconv.Itoa(i)))
+		fsms[i] = dqlite.NewFSM(registries[i])
 	}
 
 	// Create the raft cluster using the dqlite FSMs.
@@ -96,7 +98,7 @@ func newDrivers(t *testing.T) ([]driver.Driver, []*raft.Raft, func()) {
 	drivers := make([]driver.Driver, 3)
 	for i := range fsms {
 		config := dqlite.DriverConfig{Logger: newTestingLogger(t, i)}
-		driver, err := dqlite.NewDriver(fsms[i], rafts[i], config)
+		driver, err := dqlite.NewDriver(registries[i], rafts[i], config)
 		require.NoError(t, err)
 		drivers[i] = driver
 	}

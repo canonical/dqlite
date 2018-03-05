@@ -24,7 +24,7 @@ before_install:
   - cd -
   - mkdir -p $GOPATH/src/github.com/hashicorp/raft
   - raft_fork=https://github.com/freeekanayaka/raft.git
-  - git clone -b fix-inmem-snapshot-open-twice $raft_fork $GOPATH/src/github.com/hashicorp/raft
+  - git clone -b assorted-fixes $raft_fork $GOPATH/src/github.com/hashicorp/raft
 
 script:
   - go get -t -tags libsqlite3 ./...
@@ -32,8 +32,9 @@ script:
   - golint
   - deadcode
   - project=github.com/CanonicalLtd/dqlite
-  - $GOPATH/bin/overalls -ignore internal/protocol -project $project -covermode=count -- -tags libsqlite3 -timeout 60s
+  - GO_RAFT_TEST_LATENCY=2.0 $GOPATH/bin/overalls -ignore internal/protocol -project $project -covermode=count -- -tags libsqlite3 -timeout 60s
   - $GOPATH/bin/goveralls -coverprofile overalls.coverprofile -service=travis-ci
 
 go:
-  - 1.9
+  - "1.9"
+  - "1.10"

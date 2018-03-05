@@ -1,16 +1,6 @@
 package connection_test
 
-import (
-	"fmt"
-	"io/ioutil"
-	"log"
-	"os"
-	"path/filepath"
-
-	"github.com/CanonicalLtd/dqlite/internal/connection"
-	"github.com/CanonicalLtd/go-sqlite3"
-)
-
+/*
 func Example() {
 	// Create a temporary directory.
 	dir, err := ioutil.TempDir("", "dqlite-connection-example-")
@@ -22,11 +12,11 @@ func Example() {
 	// Create a connection in leader replication mode.
 	methods := sqlite3.PassthroughReplicationMethods()
 	uri := filepath.Join(dir, "test.db")
-	leader, err := connection.OpenLeader(uri, methods, 1000)
+	leader, err := connection.OpenLeader(uri, methods)
 	if err != nil {
 		log.Fatalf("failed to open leader connection: %v", err)
 	}
-	defer connection.CloseLeader(leader)
+	defer leader.Close()
 
 	// Create a connection in follower replication mode.
 	follower, err := connection.OpenFollower(uri)
@@ -53,3 +43,4 @@ func Example() {
 	fmt.Println(registry.HasFollower("test.db"))
 	fmt.Println(registry.Follower("test.db") == follower)
 }
+*/

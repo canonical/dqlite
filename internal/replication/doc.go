@@ -12,6 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package trace
-
-var NewCursor = newCursor
+// Package replication implements the core part of dqlite, setting up
+// raft-based replication of the SQLite WAL.
+package replication
