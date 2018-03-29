@@ -295,6 +295,8 @@ func (f *FSM) applyUndo(tracer *trace.Tracer, params *protocol.Undo) error {
 		if f.noopBeginTxn != params.Txid {
 			tracer.Panic("txn not found")
 		}
+		f.noopBeginTxn = 0
+		return nil
 	}
 
 	if err := txn.Undo(); err != nil {
@@ -307,8 +309,6 @@ func (f *FSM) applyUndo(tracer *trace.Tracer, params *protocol.Undo) error {
 	}
 
 	tracer.Message("done")
-
-	f.noopBeginTxn = 0
 
 	return nil
 }
