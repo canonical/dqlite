@@ -41,6 +41,8 @@ type FSM struct {
 	// return an error. This should always be is true except for unit
 	// tests.
 	panicOnFailure bool
+
+	noopBeginTxn uint64 // For upgrades
 }
 
 // NewFSM creates a new Raft state machine for executing dqlite-specific
@@ -159,6 +161,7 @@ func (f *FSM) applyBegin(tracer *trace.Tracer, params *protocol.Begin) error {
 	// backward compatibility with deployments that do have it stored in
 	// their raft logs.
 	tracer.Message("no-op")
+	f.noopBeginTxn = params.Txid
 
 	return nil
 }
@@ -266,6 +269,8 @@ func (f *FSM) applyFrames(tracer *trace.Tracer, params *protocol.Frames) error {
 
 	tracer.Message("done")
 
+	f.noopBeginTxn = 0 // Backward compat.
+
 	return nil
 }
 
@@ -287,7 +292,9 @@ func (f *FSM) applyUndo(tracer *trace.Tracer, params *protocol.Undo) error {
 		}
 
 	} else {
-		tracer.Panic("txn not found")
+		if f.noopBeginTxn != params.Txid {
+			tracer.Panic("txn not found")
+		}
 	}
 
 	if err := txn.Undo(); err != nil {
@@ -300,6 +307,8 @@ func (f *FSM) applyUndo(tracer *trace.Tracer, params *protocol.Undo) error {
 	}
 
 	tracer.Message("done")
+
+	f.noopBeginTxn = 0
 
 	return nil
 }
