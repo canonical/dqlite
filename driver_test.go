@@ -121,7 +121,7 @@ func TestDriver_OpenError(t *testing.T) {
 
 	registry := dqlite.NewRegistry(dir)
 	fsm := dqlite.NewFSM(registry)
-	raft, cleanup := rafttest.Node(t, fsm)
+	raft, cleanup := rafttest.Server(t, fsm)
 	defer cleanup()
 	config := dqlite.DriverConfig{}
 
@@ -178,7 +178,7 @@ func TestDriver_NotLeader(t *testing.T) {
 
 			config := dqlite.DriverConfig{}
 
-			driver, err := dqlite.NewDriver(registry1, rafts[0], config)
+			driver, err := dqlite.NewDriver(registry1, rafts["0"], config)
 			require.NoError(t, err)
 
 			conn, err := driver.Open("test.db")
@@ -262,7 +262,7 @@ func newDriverWithConfig(t *testing.T, config dqlite.DriverConfig) (*dqlite.Driv
 
 	registry := dqlite.NewRegistry(dir)
 	fsm := dqlite.NewFSM(registry)
-	raft, raftCleanup := rafttest.Node(t, fsm)
+	raft, raftCleanup := rafttest.Server(t, fsm)
 
 	driver, err := dqlite.NewDriver(registry, raft, config)
 	require.NoError(t, err)
@@ -295,5 +295,18 @@ func newDir(t *testing.T) (string, func()) {
 
 // Return a logger forwarding its output to the test logger.
 func newTestingLogger(t *testing.T, n int) *log.Logger {
-	return log.New(rafttest.TestingWriter(t), fmt.Sprintf("%d: ", n), log.LstdFlags)
+	return log.New(&testingWriter{t}, fmt.Sprintf("%d: ", n), log.LstdFlags)
+}
+
+// Implement io.Writer and forward what it receives to a
+// testing logger.
+type testingWriter struct {
+	t testing.TB
+}
+
+// Write a single log entry. It's assumed that p is always a \n-terminated UTF
+// string.
+func (w *testingWriter) Write(p []byte) (n int, err error) {
+	w.t.Logf(string(p))
+	return len(p), nil
 }

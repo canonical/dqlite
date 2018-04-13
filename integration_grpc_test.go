@@ -19,6 +19,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -109,7 +110,8 @@ func newGrpcCluster(t *testing.T) ([]*sql.DB, func()) {
 	servers := make([]*grpc.Server, 3)
 	dialers := make([]grpcsql.Dialer, 3)
 	for i, driver := range drivers {
-		rft := rafts[i]
+		id := raft.ServerID(strconv.Itoa(i))
+		rft := rafts[id]
 		listener, err := net.Listen("tcp", ":0")
 		require.NoError(t, err)
 		server := grpcsql.NewServer(driver)

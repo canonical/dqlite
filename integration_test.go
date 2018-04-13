@@ -78,7 +78,7 @@ func newDBs(t *testing.T, driverFactory func(int) driver.Driver) ([]*sql.DB, fun
 	return dbs, cleanup
 }
 
-func newDrivers(t *testing.T) ([]driver.Driver, []*raft.Raft, func()) {
+func newDrivers(t *testing.T) ([]driver.Driver, map[raft.ServerID]*raft.Raft, func()) {
 	// Temporary dqlite data dir.
 	dir, err := ioutil.TempDir("", "dqlite-integration-test-")
 	assert.NoError(t, err)
@@ -93,12 +93,14 @@ func newDrivers(t *testing.T) ([]driver.Driver, []*raft.Raft, func()) {
 
 	// Create the raft cluster using the dqlite FSMs.
 	rafts, control := rafttest.Cluster(t, fsms)
+	control.Elect("0")
 
 	// Create the dqlite drivers.
 	drivers := make([]driver.Driver, 3)
 	for i := range fsms {
 		config := dqlite.DriverConfig{Logger: newTestingLogger(t, i)}
-		driver, err := dqlite.NewDriver(registries[i], rafts[i], config)
+		id := raft.ServerID(strconv.Itoa(i))
+		driver, err := dqlite.NewDriver(registries[i], rafts[id], config)
 		require.NoError(t, err)
 		drivers[i] = driver
 	}

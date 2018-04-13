@@ -18,6 +18,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -35,137 +36,115 @@ import (
 
 // Leadership is lost before the Begin hook fires.
 func TestIntegration_Begin_HookCheck_NotLeader(t *testing.T) {
-	// Don't do anything in stage1, since we want to fail right way at the
-	// start of the Begin hook.
-	stage1 := scenarioStageNoop()
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
 
-	// Take a connection against the deposed leader node and try to
-	// create a table.
-	stage2 := scenarioStageCreateTable(t, sqlite3.ErrIoErrNotLeader)
+	// Since no leader was elected, we fail.
+	createTable(t, conns["0"][0], sqlite3.ErrIoErrNotLeader)
 
-	// Take a connection against the new leader node and create again the
+	// Take a connection against a new leader and create again the
 	// test table.
-	stage3 := scenarioStageCreateTable(t, 0)
+	control.Elect("1")
+	createTable(t, conns["1"][0], 0)
+	control.Barrier()
 
-	// Take a connection against the reconnected deposed leader nodes and check that
-	// the change is there.
-	stage4 := scenarioStageSelectAny(t)
+	// Check that deposed leader has caught up.
+	selectAny(t, conns["0"][0])
 
-	// Take a connection against the other follower and check that the
-	// change is there.
-	stage5 := scenarioStageSelectAny(t)
-
-	runScenario(t, rafttest.NotLeaderScenario(0), stage1, stage2, stage3, stage4, stage5)
+	// Check that the third server has caught up as well.
+	selectAny(t, conns["2"][0])
 }
 
 // Leadership is lost when trying to apply the Open command to open follower
 // connections.
 func TestIntegration_Begin_OpenFollower_NotLeader(t *testing.T) {
-	// Skip the initial leader check since we want to fail when the Open
-	// command is applied.
-	stage1 := scenarioStageNoLeaderCheck(scenarioStageNoop())
+	conns, control, cleanup := newCluster(t, noLeaderCheck)
+	defer cleanup()
 
-	// Take a connection against the deposed leader node and try to
-	// create a table.
-	stage2 := scenarioStageCreateTable(t, sqlite3.ErrIoErrNotLeader)
+	// Since no leader was elected, we fail.
+	createTable(t, conns["0"][0], sqlite3.ErrIoErrNotLeader)
 
-	// Take a connection against the new leader node and create again the
+	// Take a connection against a new leader and create again the
 	// test table.
-	stage3 := scenarioStageCreateTable(t, 0)
+	control.Elect("1")
+	createTable(t, conns["1"][0], 0)
+	control.Barrier()
 
-	// Take a connection against the reconnected deposed leader nodes and check that
-	// the change is there.
-	stage4 := scenarioStageSelectAny(t)
+	// Check that deposed leader has caught up.
+	selectAny(t, conns["0"][0])
 
-	// Take a connection against the other follower and check that the
-	// change is there.
-	stage5 := scenarioStageSelectAny(t)
-
-	runScenario(t, rafttest.NotLeaderScenario(0), stage1, stage2, stage3, stage4, stage5)
+	// Check that the third server has caught up as well.
+	selectAny(t, conns["2"][0])
 }
 
 // Leadership is lost when committing the Open command to open follower
 // connections. A quorum is not reached and the Open command does not get
 // applied.
 func TestIntegration_Begin_OpenFollower_LeadershipLost(t *testing.T) {
-	// Don't do anything in stage1, since we want the a follower not to
-	// exist and the Open FSM command to fail.
-	stage1 := scenarioStageNoop()
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
 
-	// Take a connection against a leader node that is going to be deposed
-	// because followers are slow, but that will manage to commit the open
-	// FSM command.
-	stage2 := scenarioStageCreateTable(t, sqlite3.ErrIoErrLeadershipLost)
+	control.Elect("0").When().Command(1).Enqueued().Depose()
+	createTable(t, conns["0"][0], sqlite3.ErrIoErrLeadershipLost)
 
-	// Take a connection against the re-elected leader node and create again
-	// the test table.
-	stage3 := scenarioStageCreateTable(t, 0)
+	// Take a connection against a new leader and create again the test
+	// table.
+	control.Elect("1")
+	createTable(t, conns["1"][0], 0)
+	control.Barrier()
 
-	// Take a connection against a follower and check that the change is
-	// there.
-	stage4 := scenarioStageSelectAny(t)
+	// Take a connection against the deposed leader and check that the
+	// change is there.
+	selectAny(t, conns["0"][0])
 
 	// Take a connection against the other follower and check that the
 	// change is there.
-	stage5 := scenarioStageSelectAny(t)
-
-	runScenario(t, rafttest.LeadershipLostScenario(), stage1, stage2, stage3, stage4, stage5)
+	selectAny(t, conns["0"][0])
 }
 
 // Leadership is lost when committing the Open command to open follower
 // connections. A quorum is reached and the Open command still gets applied,
 // the same leader gets re-elected.
 func TestIntegration_Begin_OpenFollower_LeadershipLostQuorumSameLeader(t *testing.T) {
-	// Don't do anything in stage1, since we want the a follower not to
-	// exist and the Open FSM command to fail.
-	stage1 := scenarioStageNoop()
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
 
-	// Take a connection against a leader node that is going to be deposed
-	// because followers are slow, but that will manage to commit the open
-	// FSM command.
-	stage2 := scenarioStageCreateTable(t, sqlite3.ErrIoErrLeadershipLost)
+	control.Elect("0").When().Command(1).Appended().Depose()
+	createTable(t, conns["0"][0], sqlite3.ErrIoErrLeadershipLost)
+
+	control.Elect("0")
 
 	// Take a connection against the re-elected leader node and create again
 	// the test table.
-	stage3 := scenarioStageCreateTable(t, 0)
+	control.Barrier()
+	createTable(t, conns["0"][0], 0)
+	control.Barrier()
 
-	// Take a connection against a follower and check that the change is
-	// there.
-	stage4 := scenarioStageSelectAny(t)
-
-	// Take a connection against the other follower and check that the
-	// change is there.
-	stage5 := scenarioStageSelectAny(t)
-
-	runScenario(t, rafttest.LeadershipLostQuorumSameLeaderScenario(3), stage1, stage2, stage3, stage4, stage5)
+	// The followers have it too.
+	selectAny(t, conns["1"][0])
+	selectAny(t, conns["2"][0])
 }
 
 // Leadership is lost when committing the Open command to open follower
 // connections. A quorum is reached and the Open command still gets applied, a
 // different leader gets re-elected.
 func TestIntegration_Begin_OpenFollower_LeadershipLostQuorumOtherLeader(t *testing.T) {
-	// Don't do anything in stage1, since we want the a follower not to
-	// exist and the Open FSM command to fail.
-	stage1 := scenarioStageNoop()
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
 
-	// Take a connection against a leader node that is going to be deposed
-	// because followers are slow, but that will manage to commit the open
-	// FSM command.
-	stage2 := scenarioStageCreateTable(t, sqlite3.ErrIoErrLeadershipLost)
+	control.Elect("0").When().Command(1).Appended().Depose()
+	createTable(t, conns["0"][0], sqlite3.ErrIoErrLeadershipLost)
 
-	// Take a connection against the re-elected leader node and create again
-	// the test table.
-	stage3 := scenarioStageCreateTable(t, 0)
+	control.Elect("1")
 
-	// Take a connection against a follower and check that the change is
-	// there.
-	stage4 := scenarioStageSelectAny(t)
+	// Take a connection against the new leader and create again the test
+	// table.
+	createTable(t, conns["1"][0], 0)
+	control.Barrier()
 
-	// Take a connection against the other follower and check that the
-	// change is there.
-	stage5 := scenarioStageSelectAny(t)
-
-	runScenario(t, rafttest.LeadershipLostQuorumOtherLeaderScenario(3), stage1, stage2, stage3, stage4, stage5)
+	// The followers have it too.
+	selectAny(t, conns["0"][0])
+	selectAny(t, conns["2"][0])
 }
 
 // A transaction on another leader connection is in progress, the Begin hook
@@ -175,9 +154,9 @@ func TestIntegration_Begin_BusyTimeout(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
-	raft := control.LeadershipAcquired(time.Second)
-	conn1 := conns[raft][0]
-	conn2 := conns[raft][1]
+	control.Elect("0")
+	conn1 := conns["0"][0]
+	conn2 := conns["0"][1]
 
 	_, err := conn1.Exec("BEGIN; CREATE TABLE test (n INT)", nil)
 	require.NoError(t, err)
@@ -198,9 +177,9 @@ func TestIntegration_Begin_BusyRetry(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
-	r1 := control.LeadershipAcquired(time.Second)
-	conn1 := conns[r1][0]
-	conn2 := conns[r1][1]
+	control.Elect("0")
+	conn1 := conns["0"][0]
+	conn2 := conns["0"][1]
 
 	_, err := conn1.Exec("CREATE TABLE test (n INT)", nil)
 	require.NoError(t, err)
@@ -219,9 +198,8 @@ func TestIntegration_Begin_BusyRetry(t *testing.T) {
 	require.NoError(t, <-errors)
 
 	// The change is visible from other nodes
-	r2 := control.Other(r1)
-	control.WaitIndex(r2, r1.AppliedIndex(), time.Second)
-	conn := conns[r2][0]
+	control.Barrier()
+	conn := conns["1"][0]
 	rows, err := conn.Query("SELECT n FROM test ORDER BY n", nil)
 	require.NoError(t, err)
 	values := make([]driver.Value, 1)
@@ -238,13 +216,12 @@ func TestIntegration_Begin_BusyRetrySameConn(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
-	r1 := control.LeadershipAcquired(time.Second)
-	conn := conns[r1][0]
+	control.Elect("0")
+	conn := conns["0"][0]
 
-	_, err := conn.Exec("CREATE TABLE test (n INT)", nil)
-	require.NoError(t, err)
+	createTable(t, conn, 0)
 
-	_, err = conn.Exec("BEGIN; INSERT INTO test(n) VALUES(1)", nil)
+	_, err := conn.Exec("BEGIN; INSERT INTO test(n) VALUES(1)", nil)
 	require.NoError(t, err)
 	errors := make(chan error)
 	go func() {
@@ -258,9 +235,8 @@ func TestIntegration_Begin_BusyRetrySameConn(t *testing.T) {
 	require.NoError(t, <-errors)
 
 	// The change is visible from other nodes
-	r2 := control.Other(r1)
-	control.WaitIndex(r2, r1.AppliedIndex(), time.Second)
-	conn = conns[r2][0]
+	control.Barrier()
+	conn = conns["1"][0]
 	rows, err := conn.Query("SELECT n FROM test ORDER BY n", nil)
 	require.NoError(t, err)
 	values := make([]driver.Value, 1)
@@ -269,155 +245,149 @@ func TestIntegration_Begin_BusyRetrySameConn(t *testing.T) {
 	require.NoError(t, rows.Close())
 }
 
-// A transaction that performs no WAL write doesn't apply any FSM command.
-func TestIntegration_Begin_NoWrite(t *testing.T) {
+// The server is not the leader anymore when the Frames hook fires.
+func TestIntegration_Frames_HookCheck_NotLeader(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
-	r1 := control.LeadershipAcquired(time.Second)
-	conn := conns[r1][0]
+	control.Elect("0").When().Command(1).Committed().Depose()
 
-	_, err := conn.Exec("CREATE TABLE test (n INT)", nil)
-	require.NoError(t, err)
-
-	_, err = conn.Exec("BEGIN; UPDATE test SET n=1; COMMIT", nil)
-	require.NoError(t, err)
-	_, err = conn.Exec("BEGIN; INSERT INTO test(n) VALUES(1); COMMIT", nil)
-	require.NoError(t, err)
-}
-
-// The node is not the leader anymore when the Frames hook fires.
-func TestIntegration_Frames_HookCheck_NotLeader(t *testing.T) {
 	// Take a connection against a the leader node and start a write transaction.
-	stage1 := scenarioStageBeginCreateTable(t, 0)
+	conn := conns["0"][0]
+	createTableBegin(t, conn, 0)
 
 	// Take a connection against the deposed leader node and try to
 	// commit the transaction.
-	stage2 := scenarioStageCommitCreateTable(t, sqlite3.ErrIoErrNotLeader)
+	createTableCommit(t, conn, sqlite3.ErrIoErrNotLeader)
 
 	// Take a connection against the new leader node and create the same
-	// test table of stage1/stage2.
-	stage3 := scenarioStageCreateTable(t, 0)
+	// test table.
+	control.Elect("1")
+	createTable(t, conns["1"][0], 0)
 
-	// Take a connection against the reconnected deposed leader nodes and check that
-	// the change is there.
-	stage4 := scenarioStageSelectAny(t)
-
-	// Take a connection against the other follower and check that the
-	// change is there.
-	stage5 := scenarioStageSelectAny(t)
-
-	runScenario(t, rafttest.NotLeaderScenario(3), stage1, stage2, stage3, stage4, stage5)
+	// The followers have it too.
+	control.Barrier()
+	selectAny(t, conns["0"][0])
+	selectAny(t, conns["2"][0])
 }
 
-// The node is not the leader anymore when the Frames hook tries to apply the
+// The server is not the leader anymore when the Frames hook tries to apply the
 // Frames command.
 func TestIntegration_Frames_NotLeader(t *testing.T) {
+	conns, control, cleanup := newCluster(t, noLeaderCheck)
+	defer cleanup()
+
+	control.Elect("0").When().Command(1).Committed().Depose()
+
 	// Take a connection against a the leader node and start a write transaction.
-	stage1 := scenarioStageBeginCreateTable(t, 0)
+	conn := conns["0"][0]
+	createTableBegin(t, conn, 0)
 
 	// Take a connection against the deposed leader node and try to
 	// commit the transaction.
-	stage2 := scenarioStageNoLeaderCheck(scenarioStageCommitCreateTable(t, sqlite3.ErrIoErrNotLeader))
+	createTableCommit(t, conn, sqlite3.ErrIoErrNotLeader)
 
 	// Take a connection against the new leader node and create the same
-	// test table of stage1/stage2.
-	stage3 := scenarioStageCreateTable(t, 0)
+	// test table.
+	control.Elect("1")
+	createTable(t, conns["1"][0], 0)
 
-	// Take a connection against the reconnected deposed leader nodes and check that
-	// the change is there.
-	stage4 := scenarioStageSelectAny(t)
-
-	// Take a connection against the other follower and check that the
-	// change is there.
-	stage5 := scenarioStageSelectAny(t)
-
-	runScenario(t, rafttest.NotLeaderScenario(3), stage1, stage2, stage3, stage4, stage5)
+	// The followers have it too.
+	control.Barrier()
+	selectAny(t, conns["0"][0])
+	selectAny(t, conns["2"][0])
 }
 
 // The node loses leadership when the Frames hook tries to apply the Frames
 // command. The frames is a commit one, and no quorum is reached for the
 // inflight Frames command.
 func TestIntegration_Frames_LeadershipLost_Commit(t *testing.T) {
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
+
+	control.Elect("0").When().Command(2).Enqueued().Depose()
+
 	// Take a connection against a the leader node and start a write transaction.
-	stage1 := scenarioStageBeginCreateTable(t, 0)
+	conn := conns["0"][0]
+	createTableBegin(t, conn, 0)
 
-	// Take a connection against the going-to-be-deposed leader node and try to
+	// Take a connection against the deposed leader node and try to
 	// commit the transaction.
-	stage2 := scenarioStageCommitCreateTable(t, sqlite3.ErrIoErrLeadershipLost)
+	createTableCommit(t, conn, sqlite3.ErrIoErrLeadershipLost)
 
-	// Take a connection against the new leader node and create again the
+	// Take a connection against the new leader node and create the same
 	// test table.
-	stage3 := scenarioStageCreateTable(t, 0)
+	control.Elect("1")
+	createTable(t, conns["1"][0], 0)
 
-	// Take a connection against the reconnected deposed leader nodes and check that
-	// the change is there.
-	stage4 := scenarioStageSelectAny(t)
-
-	// Take a connection against the other follower and check that the
-	// change is there.
-	stage5 := scenarioStageSelectAny(t)
-
-	runScenario(t, rafttest.LeadershipLostScenario(), stage1, stage2, stage3, stage4, stage5)
+	// The followers have it too.
+	control.Barrier()
+	selectAny(t, conns["0"][0])
+	selectAny(t, conns["2"][0])
 }
 
 // Leadership is lost when applying the Frames command, but a quorum is reached
 // and the command actually gets committed. The same node that lost leadership
 // gets re-elected.
 func TestIntegration_Frames_LeadershipLost_Quorum_SameLeader(t *testing.T) {
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
+
+	control.Elect("0").When().Command(2).Appended().Depose()
+
 	// Take a connection against a the leader node and start a write transaction.
-	stage1 := scenarioStageBeginCreateTable(t, 0)
+	conn := conns["0"][0]
+	createTableBegin(t, conn, 0)
 
 	// Take a connection against the deposed leader node and try to
-	// insert a value in the test table.
-	stage2 := scenarioStageCommitCreateTable(t, sqlite3.ErrIoErrLeadershipLost)
+	// commit the transaction.
+	createTableCommit(t, conn, sqlite3.ErrIoErrLeadershipLost)
 
 	// Take a connection against the same leader node and insert the a value
 	// into the test table. This works because the Frames log got committed
 	// despite the lost leadership.
-	stage3 := scenarioStageInsert(t, 0)
+	control.Elect("0")
+	control.Barrier()
+	insertOne(t, conn, 0)
 
-	// Take a connection against the first follower and check that the
-	// change is there.
-	stage4 := scenarioStageSelectOne(t)
-
-	// Take a connection against the other follower and check that the
-	// change is there.
-	stage5 := scenarioStageSelectOne(t)
-
-	runScenario(t, rafttest.LeadershipLostQuorumSameLeaderScenario(4), stage1, stage2, stage3, stage4, stage5)
+	// The followers see the inserted row too.
+	control.Barrier()
+	selectOne(t, conns["1"][0])
+	selectOne(t, conns["2"][0])
 }
 
 // Leadership is lost when applying the Frames command, but a quorum is reached
 // and the command actually gets committed. A different node than the one that
 // lost leadership gets re-elected.
 func TestIntegration_Frames_LeadershipLost_Quorum_OtherLeader(t *testing.T) {
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
+
+	control.Elect("0").When().Command(2).Appended().Depose()
+
 	// Take a connection against a the leader node and start a write transaction.
-	stage1 := scenarioStageBeginCreateTable(t, 0)
+	conn := conns["0"][0]
+	createTableBegin(t, conn, 0)
 
-	// Take a connection against the going-to-be-deposed leader node and
-	// try to commit the transaction.
-	stage2 := scenarioStageCommitCreateTable(t, sqlite3.ErrIoErrLeadershipLost)
+	// Take a connection against the deposed leader node and try to
+	// commit the transaction.
+	createTableCommit(t, conn, sqlite3.ErrIoErrLeadershipLost)
 
-	// Take a connection against the new leader node and insert the a value
+	// Take a connection against the new leader and insert the a value
 	// into the test table. This works because the Frames log got committed
 	// despite the lost leadership.
-	stage3 := scenarioStageInsert(t, 0)
+	control.Elect("1")
+	control.Barrier()
+	insertOne(t, conns["1"][0], 0)
 
-	// Take a connection against the former leader and check that the
-	// change is there.
-	stage4 := scenarioStageSelectOne(t)
-
-	// Take a connection against the other follower and check that the
-	// change is there.
-	stage5 := scenarioStageSelectOne(t)
-
-	runScenario(t, rafttest.LeadershipLostQuorumOtherLeaderScenario(4), stage1, stage2, stage3, stage4, stage5)
+	// The followers see the inserted row too.
+	control.Barrier()
+	selectOne(t, conns["0"][0])
+	selectOne(t, conns["2"][0])
 }
 
 /*
-
-// The node is not the leader anymore when the Undo hook fires.
+// The server is not the leader anymore when the Undo hook fires.
 func TestIntegration_Undo_HookCheck_NotLeader(t *testing.T) {
 	// Take a connection against a the leader node and start a write transaction.
 	stage1 := scenarioStageBeginCreateTable(t, 0)
@@ -546,48 +516,65 @@ func TestIntegration_Undo_LeadershipLost_Quorum_OtherLeader(t *testing.T) {
 
 // Check that the WAL is actually replicated.
 func TestIntegration_Replication(t *testing.T) {
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
+
+	control.Elect("0")
+
 	// Take a connection against the leader node and run a WAL-writing
 	// query.
-	stage1 := func(conn *sqlite3.SQLiteConn) {
-		_, err := conn.Exec("CREATE TABLE test (n INT)", nil)
-		require.NoError(t, err)
-	}
+	createTable(t, conns["0"][0], 0)
 
-	// Take a connection against one the follower nodes and check that the
-	// change is there.
-	stage2 := func(conn *sqlite3.SQLiteConn) {
-		_, err := conn.Exec("SELECT * FROM test", nil)
-		assert.NoError(t, err)
-	}
-
-	// Take a connection against the other follower nodes and check that
-	// the change is there.
-	stage3 := func(conn *sqlite3.SQLiteConn) {
-		_, err := conn.Exec("SELECT * FROM test", nil)
-		assert.NoError(t, err)
-	}
-
-	runScenario(t, rafttest.ReplicationScenario(), stage1, stage2, stage3)
+	// The followers see the inserted table too.
+	control.Barrier()
+	selectAny(t, conns["1"][0])
+	selectAny(t, conns["2"][0])
 }
+
+/*
+FIXME: requires more fine grained control in raft-test snapshots
 
 // Exercise creating and restoring snapshots.
 func TestIntegration_Snapshot(t *testing.T) {
-	config := rafttest.Config(func(n int, config *raft.Config) {
-		config.SnapshotInterval = 100 * time.Millisecond
-		config.SnapshotThreshold = 5
-		config.TrailingLogs = 1
-
-		// Prevent the disconnected node from restarting election
-		config.ElectionTimeout = 300 * time.Millisecond
-		config.HeartbeatTimeout = 250 * time.Millisecond
-		config.LeaderLeaseTimeout = 250 * time.Millisecond
-	})
-	conns, control, cleanup := newCluster(t, config)
+	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
+	term := control.Elect("0")
+
+	// Disconnect the follower immediately, so it will be forced to use the
+	// snapshot at reconnection.
+	term.When().Command(1).Committed().Disconnect("1")
+
+	// Take a snapshot on the leader after first batch of WAL-writing queries below is done.
+	term.When().Command(4).Committed().Snapshot()
+
+	// Reconnect the follower after a further query.
+	term.When().Command(5).Committed().Reconnect("1")
+
 	// Get a leader connection on the leader node.
-	r1 := control.LeadershipAcquired(time.Second)
-	conn := conns[r1][0]
+	conn := conns["0"][0]
+
+	// Run a few of WAL-writing queries.
+	_, err := conn.Exec("CREATE TABLE test (n INT)", nil)
+	require.NoError(t, err)
+	_, err = conn.Exec("INSERT INTO test VALUES(1)", nil)
+	require.NoError(t, err)
+	t.Log("LAST QUERY")
+	_, err = conn.Exec("INSERT INTO test VALUES(2)", nil)
+	require.NoError(t, err)
+	t.Log("LAST DONE")
+
+	// Make sure snapshot is taken by the leader.
+	time.Sleep(150 * time.Millisecond)
+	control.Barrier()
+	assert.Equal(t, uint64(1), control.Snapshots("0"))
+
+	// This query will make the follower re-connect.
+	_, err = conn.Exec("INSERT INTO test VALUES(3)", nil)
+	require.NoError(t, err)
+
+	// The follower will now restore the snapshot.
+	control.Barrier()
 
 	// Figure out the database name
 	rows, err := conn.Query("SELECT file FROM pragma_database_list WHERE name='main'", nil)
@@ -597,35 +584,7 @@ func TestIntegration_Snapshot(t *testing.T) {
 	require.NoError(t, rows.Close())
 	path := string(values[0].([]byte))
 
-	// Disconnect a follower, so it will be forced to use the snapshot at
-	// reconnection.
-	r2 := control.Other(r1)
-	control.Disconnect(r2)
-
-	// Run a couple of WAL-writing queries.
-	_, err = conn.Exec("CREATE TABLE test (n INT)", nil)
-	require.NoError(t, err)
-	_, err = conn.Exec("INSERT INTO test VALUES(1)", nil)
-	require.NoError(t, err)
-	_, err = conn.Exec("INSERT INTO test VALUES(2)", nil)
-	require.NoError(t, err)
-
-	// Get the index of the alive follower.
-	r3 := control.Other(r1, r2)
-
-	// Make sure snapshot is taken by the leader and the follower.
-	control.WaitSnapshot(r1, 1, time.Second)
-	control.WaitSnapshot(r3, 1, time.Second)
-
-	// Reconnect the disconnected node and wait for it to catch up.
-	control.Reconnect(r2)
-	control.WaitRestore(r2, 1, time.Second)
-
-	// FIXME: not sure why a sleep is needed here, but without it the query
-	// below occasionally fails with "no such table: 'test'", maybe
-	// because the sqlite files haven't been synced to disk yet.
-	time.Sleep(50 * time.Millisecond)
-
+	// Open a new connection since the database file has been replaced.
 	methods := sqlite3.NoopReplicationMethods()
 	conn, err = connection.OpenLeader(path, methods)
 	rows, err = conn.Query("SELECT n FROM test", nil)
@@ -636,125 +595,107 @@ func TestIntegration_Snapshot(t *testing.T) {
 	assert.Equal(t, int64(1), values[0].(int64))
 	require.NoError(t, rows.Next(values))
 	assert.Equal(t, int64(2), values[0].(int64))
+	require.NoError(t, rows.Next(values))
+	assert.Equal(t, int64(3), values[0].(int64))
+
 }
+*/
 
-type scenarioStage func(*sqlite3.SQLiteConn)
-
-// A stage function that does nothing.
-func scenarioStageNoop() scenarioStage {
-	return func(conn *sqlite3.SQLiteConn) {}
-}
-
-// A decorator that will call Methods.NoLeaderCheck before executing the actual scenario.
-func scenarioStageNoLeaderCheck(stage scenarioStage) scenarioStage {
-	return func(conn *sqlite3.SQLiteConn) {
-		methods := methodByConnGet(conn)
-		methods.NoLeaderCheck()
-		stage(conn)
-	}
-}
-
-// A stage function that creates a test table.
-func scenarioStageCreateTable(t *testing.T, code sqlite3.ErrNoExtended) scenarioStage {
-	return func(conn *sqlite3.SQLiteConn) {
-		_, err := conn.Exec("CREATE TABLE test (n INT, UNIQUE (n))", nil)
-		if code == 0 {
-			require.NoError(t, err)
-		} else {
-			requireEqualErrNo(t, code, err)
-		}
-	}
-}
-
-// A stage function that begins a transaction to create a test table.
-func scenarioStageBeginCreateTable(t *testing.T, code sqlite3.ErrNoExtended) scenarioStage {
-	return func(conn *sqlite3.SQLiteConn) {
-		_, err := conn.Exec("BEGIN; CREATE TABLE test (n INT)", nil)
-		if code == 0 {
-			require.NoError(t, err)
-		} else {
-			requireEqualErrNo(t, code, err)
-		}
-	}
-}
-
-// A stage function that commits a transaction to create a test table.
-func scenarioStageCommitCreateTable(t *testing.T, code sqlite3.ErrNoExtended) scenarioStage {
-	return func(conn *sqlite3.SQLiteConn) {
-		_, err := conn.Exec("COMMIT", nil)
-		if code == 0 {
-			require.NoError(t, err)
-		} else {
-			requireEqualErrNo(t, code, err)
-		}
-	}
-}
-
-// A stage function that rollos back a transaction to create a test table.
-func scenarioStageRollbackCreateTable(t *testing.T) scenarioStage {
-	return func(conn *sqlite3.SQLiteConn) {
-		_, err := conn.Exec("ROLLBACK", nil)
-		require.NoError(t, err) // SQLite should never return an error here
-	}
-}
-
-// A stage function that inserts a single row into the test table.
-func scenarioStageInsert(t *testing.T, code sqlite3.ErrNoExtended) scenarioStage {
-	return func(conn *sqlite3.SQLiteConn) {
-		_, err := conn.Exec("INSERT INTO test(n) VALUES (1)", nil)
-		if code == 0 {
-			require.NoError(t, err)
-		} else {
-			requireEqualErrNo(t, code, err)
-		}
-	}
-}
-
-// A stage function that just selects from the test table to assert that it's
-// there.
-func scenarioStageSelectAny(t *testing.T) scenarioStage {
-	return func(conn *sqlite3.SQLiteConn) {
-		_, err := conn.Exec("SELECT n FROM test", nil)
-		assert.NoError(t, err)
-	}
-}
-
-// A stage function that just select a row from the test table and check that
-// its value is 1.
-func scenarioStageSelectOne(t *testing.T) scenarioStage {
-	return func(conn *sqlite3.SQLiteConn) {
-		rows, err := conn.Query("SELECT n FROM test", nil)
-		require.NoError(t, err)
-		values := make([]driver.Value, 1)
-		rows.Next(values)
-		require.Equal(t, int64(1), values[0])
-		require.NoError(t, rows.Close())
-	}
-}
-
-func runScenario(t *testing.T, scenario rafttest.Scenario, stages ...scenarioStage) {
+// Creates a test table using the given connection. If code is not zero, assert
+// that the query fails.
+func createTable(t *testing.T, conn *sqlite3.SQLiteConn, code sqlite3.ErrNoExtended) {
 	t.Helper()
-
-	conns, control, cleanup := newCluster(t)
-	defer cleanup()
-
-	scenarioStages := make([]rafttest.ScenarioStage, len(stages))
-	for i := range stages {
-		stage := stages[i]
-		scenarioStages[i] = func(raft *raft.Raft) {
-			t.Helper()
-
-			conn := conns[raft][0]
-			stage(conn)
-		}
+	_, err := conn.Exec("CREATE TABLE test (n INT, UNIQUE (n))", nil)
+	if code == 0 {
+		require.NoError(t, err)
+	} else {
+		requireEqualErrNo(t, code, err)
 	}
+}
 
-	scenario(control, scenarioStages...)
+// Start a transaction to create a test table, but don't commit it.
+func createTableBegin(t *testing.T, conn *sqlite3.SQLiteConn, code sqlite3.ErrNoExtended) {
+	t.Helper()
+	_, err := conn.Exec("BEGIN; CREATE TABLE test (n INT)", nil)
+	if code == 0 {
+		require.NoError(t, err)
+	} else {
+		requireEqualErrNo(t, code, err)
+	}
+}
+
+// Commit a transaction that was creating a table.
+func createTableCommit(t *testing.T, conn *sqlite3.SQLiteConn, code sqlite3.ErrNoExtended) {
+	t.Helper()
+	_, err := conn.Exec("COMMIT", nil)
+	if code == 0 {
+		require.NoError(t, err)
+	} else {
+		requireEqualErrNo(t, code, err)
+	}
+}
+
+// Rollback a transaction to create a test table.
+func createTableRollback(t *testing.T, conn *sqlite3.SQLiteConn) {
+	t.Helper()
+	_, err := conn.Exec("ROLLBACK", nil)
+	require.NoError(t, err) // SQLite should never return an error here
+}
+
+// Inserts a single row into the test table.
+func insertOne(t *testing.T, conn *sqlite3.SQLiteConn, code sqlite3.ErrNoExtended) {
+	t.Helper()
+	_, err := conn.Exec("INSERT INTO test(n) VALUES (1)", nil)
+	if code == 0 {
+		require.NoError(t, err)
+	} else {
+		requireEqualErrNo(t, code, err)
+	}
+}
+
+// Selects from the test table to assert that it's there.
+func selectAny(t *testing.T, conn *sqlite3.SQLiteConn) {
+	t.Helper()
+	_, err := conn.Exec("SELECT n FROM test", nil)
+	assert.NoError(t, err)
+}
+
+// Select a row from the test table and check that its value is 1.
+func selectOne(t *testing.T, conn *sqlite3.SQLiteConn) {
+	t.Helper()
+	rows, err := conn.Query("SELECT n FROM test", nil)
+	require.NoError(t, err)
+	values := make([]driver.Value, 1)
+	require.NoError(t, rows.Next(values))
+	require.Equal(t, int64(1), values[0])
+	require.NoError(t, rows.Close())
+}
+
+// Select N rows from the test table and check that their value is progressing.
+func selectN(t *testing.T, conn *sqlite3.SQLiteConn, n int) {
+	t.Helper()
+	rows, err := conn.Query("SELECT n FROM test ORDER BY n", nil)
+	require.NoError(t, err)
+	for i := 0; i < n; i++ {
+		values := make([]driver.Value, 1)
+		require.NoError(t, rows.Next(values))
+		require.Equal(t, int64(i+1), values[0])
+	}
+	require.NoError(t, rows.Close())
+}
+
+type clusterOptions func([]*replication.Methods)
+
+// Option that disable leadership checks in the methods hooks.
+func noLeaderCheck(methods []*replication.Methods) {
+	for _, methods := range methods {
+		methods.NoLeaderCheck()
+	}
 }
 
 // Create a new test cluster with 3 nodes, each with its own FSM, Methods and
 // two connections opened in leader mode.
-func newCluster(t *testing.T, knobs ...rafttest.Knob) (map[*raft.Raft][2]*sqlite3.SQLiteConn, *rafttest.Control, func()) {
+func newCluster(t *testing.T, opts ...clusterOptions) (map[raft.ServerID][2]*sqlite3.SQLiteConn, *rafttest.Control, func()) {
 	t.Helper()
 
 	// Registries and FSMs
@@ -784,15 +725,16 @@ func newCluster(t *testing.T, knobs ...rafttest.Knob) (map[*raft.Raft][2]*sqlite
 	}
 
 	// Raft instances.
-	knobs = append(knobs, rafttest.LogStore(func(i int) raft.LogStore { return stores[i] }))
-	rafts, control := rafttest.Cluster(t, fsms, knobs...)
+	store := rafttest.LogStore(func(i int) raft.LogStore { return stores[i] })
+	rafts, control := rafttest.Cluster(t, fsms, store)
 
 	// Methods and connections.
 	methods := make([]*replication.Methods, 3)
-	conns := map[*raft.Raft][2]*sqlite3.SQLiteConn{}
+	conns := map[raft.ServerID][2]*sqlite3.SQLiteConn{}
 	for i := range methods {
 		//logger := log.New(log.Testing(t, 1), log.Trace)
-		methods[i] = replication.NewMethods(registries[i], rafts[i])
+		id := raft.ServerID(strconv.Itoa(i))
+		methods[i] = replication.NewMethods(registries[i], rafts[id])
 
 		dir := methods[i].Registry().Dir()
 		timeout := rafttest.Duration(100*time.Millisecond).Nanoseconds() / (1000 * 1000)
@@ -806,10 +748,14 @@ func newCluster(t *testing.T, knobs ...rafttest.Knob) (map[*raft.Raft][2]*sqlite
 		require.NoError(t, err)
 		methods[i].Registry().ConnLeaderAdd("test.db", conn2)
 
-		conns[rafts[i]] = [2]*sqlite3.SQLiteConn{conn1, conn2}
+		conns[id] = [2]*sqlite3.SQLiteConn{conn1, conn2}
 
 		methodByConnSet(conn1, methods[i])
 		methodByConnSet(conn2, methods[i])
+	}
+
+	for _, o := range opts {
+		o(methods)
 	}
 
 	cleanup := func() {
