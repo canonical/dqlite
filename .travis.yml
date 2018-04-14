@@ -13,15 +13,10 @@ before_install:
   - go get github.com/mattn/goveralls
   - go get github.com/golang/lint/golint
   - go get github.com/tsenart/deadcode
-  - mkdir -p /tmp/sqlite
-  - cd /tmp/sqlite
-  - sqlite_project=CanonicalLtd/sqlite
-  - sqlite_latest=https://api.github.com/repos/$sqlite_project/releases/latest
-  - sqlite_release=$(curl -s $sqlite_latest | grep browser_download_url | cut -d '"' -f 4|grep amd64--enable-debug)
-  - wget $sqlite_release -O - | tar xfz -
-  - sudo cp libsqlite3.so.0 libsqlite3.so.0.8.6 /usr/lib/x86_64-linux-gnu
-  - sudo cp sqlite3.h /usr/include/sqlite3.h
-  - cd -
+  - sqlite_tmp_dir=/tmp/sqlite
+  - ./ci/download-sqlite.sh $sqlite_tmp_dir
+  - sudo cp $sqlite_tmp_dir/libsqlite3.so.0 $sqlite_tmp_dir/libsqlite3.so.0.8.6 /usr/lib/x86_64-linux-gnu
+  - sudo cp $sqlite_tmp_dir/sqlite3.h /usr/include/sqlite3.h
   - mkdir -p $GOPATH/src/github.com/hashicorp/raft
   - raft_fork=https://github.com/freeekanayaka/raft.git
   - git clone -b assorted-fixes $raft_fork $GOPATH/src/github.com/hashicorp/raft
@@ -32,7 +27,7 @@ script:
   - golint
   - deadcode
   - project=github.com/CanonicalLtd/dqlite
-  - GO_RAFT_TEST_LATENCY=3.0 $GOPATH/bin/overalls -ignore internal/protocol -project $project -covermode=count -- -tags libsqlite3 -timeout 240s
+  - GO_RAFT_TEST_LATENCY=5.0 $GOPATH/bin/overalls -ignore internal/protocol -project $project -covermode=count -- -tags libsqlite3 -timeout 240s
   - $GOPATH/bin/goveralls -coverprofile overalls.coverprofile -service=travis-ci
 
 go:
