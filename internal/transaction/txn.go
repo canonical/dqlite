@@ -220,7 +220,7 @@ func newTxnStateRules() *fsm.Ruleset {
 // Map of all valid state transitions.
 var transitions = map[fsm.State][]fsm.State{
 	Pending: {Writing, Written, Undone},
-	Writing: {Written, Undone, Doomed},
+	Writing: {Writing, Written, Undone, Doomed},
 	Written: {Doomed},
 	Undone:  {Doomed},
 }

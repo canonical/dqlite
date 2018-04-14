@@ -1,6 +1,17 @@
 package replication_test
 
 /*
+import (
+	"testing"
+
+	"github.com/CanonicalLtd/dqlite/internal/replication"
+	"github.com/CanonicalLtd/dqlite/internal/transaction"
+	"github.com/CanonicalLtd/go-sqlite3"
+	"github.com/mpvl/subtest"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
 // The Begin hook registers a new transaction and transitions it to Started by
 // applying a begin FSM command.
 func TestMethods_Begin(t *testing.T) {

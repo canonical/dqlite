@@ -33,8 +33,9 @@ type Methods struct {
 	mu           sync.RWMutex // TODO: make this lock per-database.
 	applyTimeout time.Duration
 
-	// Skip initial not-leader checks, only used for testing.
-	noLeaderCheck bool
+	// If greater than zero, skip the initial not-leader checks, this
+	// amount of times. Only used for testing.
+	noLeaderCheck int
 }
 
 // NewMethods returns a new Methods instance that can be used as callbacks API
@@ -76,11 +77,16 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	tracer.Message("start")
 
 	// Check if we're the leader.
-	if !m.noLeaderCheck && m.raft.State() != raft.Leader {
+	if m.noLeaderCheck == 0 && m.raft.State() != raft.Leader {
 		// No dqlite state has been modified, and the WAL write lock
 		// has not been acquired. Just return ErrIoErrNotLeader.
 		tracer.Message("not leader")
 		return sqlite3.ErrNo(sqlite3.ErrIoErrNotLeader)
+	}
+
+	// Update the noLeaderCheck counter.
+	if m.noLeaderCheck > 0 {
+		m.noLeaderCheck--
 	}
 
 	// Possibly open a follower for this database if it doesn't exist yet.
@@ -275,8 +281,13 @@ func (m *Methods) Frames(conn *sqlite3.SQLiteConn, frames *sqlite3.ReplicationFr
 	}
 
 	// Check if we're the leader.
-	if !m.noLeaderCheck && m.raft.State() != raft.Leader {
+	if m.noLeaderCheck == 0 && m.raft.State() != raft.Leader {
 		return m.framesNotLeader(tracer, txn)
+	}
+
+	// Update the noLeaderCheck counter.
+	if m.noLeaderCheck > 0 {
+		m.noLeaderCheck--
 	}
 
 	filename := m.registry.ConnLeaderFilename(conn)
@@ -431,15 +442,20 @@ func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	}
 
 	// Check if we're the leader.
-	if !m.noLeaderCheck && m.raft.State() != raft.Leader {
+	if m.noLeaderCheck == 0 && m.raft.State() != raft.Leader {
 		// If we have lost leadership we're in a state where the
 		// transaction began on this node and a quorum of followers. We
 		// return an error, and SQLite will ignore it, however we
-		// tocreate a surrogate follower, so the next leader will try to
+		// need to create a surrogate follower, so the next leader will try to
 		// undo it across all nodes.
 		tracer.Message("not leader")
 		m.surrogateWriting(tracer, txn)
 		return sqlite3.ErrNo(sqlite3.ErrIoErrNotLeader)
+	}
+
+	// Update the noLeaderCheck counter.
+	if m.noLeaderCheck > 0 {
+		m.noLeaderCheck--
 	}
 
 	// We don't really care whether the Undo command applied just below here
@@ -477,19 +493,26 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 
 	txn := m.registry.TxnByConn(conn)
 	if txn == nil {
-		// Ignore missing transactions that might have been removed by a
-		// particular bad timing where a new leader has already sent
-		// some Undo command following a leadership change and our FSM
-		// applied it against a surrogate, removing it from the
-		// registry.
-		tracer.Message("done: ignore missing transaction")
+		// Check if we have a surrogate transaction instead.
+		filename := m.registry.ConnLeaderFilename(conn)
+		conn := m.registry.ConnFollower(filename)
+		txn = m.registry.TxnByConn(conn)
+		if txn == nil {
+			// Ignore missing transactions that might have been removed by a
+			// particularly bad timing where a new leader has already sent
+			// some Undo command following a leadership change and our FSM
+			// applied it against a surrogate, removing it from the
+			// registry.
+			tracer.Message("done: ignore missing transaction")
+			return 0
+		}
+	} else {
+		// Sanity check
+		if txn.Conn() != conn {
+			tracer.Panic("unexpected transaction", conn)
+		}
 	}
 	tracer.Message("found txn %s", txn)
-
-	// Sanity check
-	if txn.Conn() != conn {
-		tracer.Panic("unexpected transaction", conn)
-	}
 
 	if !txn.IsLeader() {
 		// This must be a surrogate follower created by the Frames or
