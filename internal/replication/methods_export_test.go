@@ -16,7 +16,7 @@ func (m *Methods) Raft() *raft.Raft {
 	return m.raft
 }
 
-// Don't check for leadership when entering a hook.
-func (m *Methods) NoLeaderCheck() {
-	m.noLeaderCheck = true
+// Don't check for leadership this amount of times when entering a hook.
+func (m *Methods) NoLeaderCheck(n int) {
+	m.noLeaderCheck = n
 }
