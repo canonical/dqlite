@@ -45,13 +45,12 @@ func TestIntegration_Begin_HookCheck_NotLeader(t *testing.T) {
 	// Take a connection against a new leader and create again the
 	// test table.
 	control.Elect("1")
-	createTable(t, conns["1"][0], 0)
 	control.Barrier()
+	createTable(t, conns["1"][0], 0)
 
-	// Check that deposed leader has caught up.
+	// Check that followers see the change.
+	control.Barrier()
 	selectAny(t, conns["0"][0])
-
-	// Check that the third server has caught up as well.
 	selectAny(t, conns["2"][0])
 }
 
@@ -67,13 +66,12 @@ func TestIntegration_Begin_OpenFollower_NotLeader(t *testing.T) {
 	// Take a connection against a new leader and create again the
 	// test table.
 	control.Elect("1")
-	createTable(t, conns["1"][0], 0)
 	control.Barrier()
+	createTable(t, conns["1"][0], 0)
 
-	// Check that deposed leader has caught up.
+	// Check that followers see the change.
+	control.Barrier()
 	selectAny(t, conns["0"][0])
-
-	// Check that the third server has caught up as well.
 	selectAny(t, conns["2"][0])
 }
 
@@ -90,15 +88,12 @@ func TestIntegration_Begin_OpenFollower_LeadershipLost(t *testing.T) {
 	// Take a connection against a new leader and create again the test
 	// table.
 	control.Elect("1")
-	createTable(t, conns["1"][0], 0)
 	control.Barrier()
+	createTable(t, conns["1"][0], 0)
 
-	// Take a connection against the deposed leader and check that the
-	// change is there.
+	// Check that followers see the change.
+	control.Barrier()
 	selectAny(t, conns["0"][0])
-
-	// Take a connection against the other follower and check that the
-	// change is there.
 	selectAny(t, conns["0"][0])
 }
 
@@ -113,14 +108,14 @@ func TestIntegration_Begin_OpenFollower_LeadershipLostQuorumSameLeader(t *testin
 	createTable(t, conns["0"][0], sqlite3.ErrIoErrLeadershipLost)
 
 	control.Elect("0")
+	control.Barrier()
 
 	// Take a connection against the re-elected leader node and create again
 	// the test table.
-	control.Barrier()
 	createTable(t, conns["0"][0], 0)
-	control.Barrier()
 
 	// The followers have it too.
+	control.Barrier()
 	selectAny(t, conns["1"][0])
 	selectAny(t, conns["2"][0])
 }
@@ -135,14 +130,14 @@ func TestIntegration_Begin_OpenFollower_LeadershipLostQuorumOtherLeader(t *testi
 	control.Elect("0").When().Command(1).Appended().Depose()
 	createTable(t, conns["0"][0], sqlite3.ErrIoErrLeadershipLost)
 
-	control.Elect("1")
-
-	// Take a connection against the new leader and create again the test
+	// Take a connection against the a leader and create again the test
 	// table.
-	createTable(t, conns["1"][0], 0)
+	control.Elect("1")
 	control.Barrier()
+	createTable(t, conns["1"][0], 0)
 
 	// The followers have it too.
+	control.Barrier()
 	selectAny(t, conns["0"][0])
 	selectAny(t, conns["2"][0])
 }
@@ -263,6 +258,7 @@ func TestIntegration_Frames_HookCheck_NotLeader(t *testing.T) {
 	// Take a connection against the new leader node and create the same
 	// test table.
 	control.Elect("1")
+	control.Barrier()
 	createTable(t, conns["1"][0], 0)
 
 	// The followers have it too.
@@ -290,6 +286,7 @@ func TestIntegration_Frames_NotLeader(t *testing.T) {
 	// Take a connection against the new leader node and create the same
 	// test table.
 	control.Elect("1")
+	control.Barrier()
 	createTable(t, conns["1"][0], 0)
 
 	// The followers have it too.
@@ -318,6 +315,7 @@ func TestIntegration_Frames_LeadershipLost_Commit(t *testing.T) {
 	// Take a connection against the new leader node and create the same
 	// test table.
 	control.Elect("1")
+	control.Barrier()
 	createTable(t, conns["1"][0], 0)
 
 	// The followers have it too.
@@ -531,9 +529,6 @@ func TestIntegration_Replication(t *testing.T) {
 	selectAny(t, conns["2"][0])
 }
 
-/*
-FIXME: requires more fine grained control in raft-test snapshots
-
 // Exercise creating and restoring snapshots.
 func TestIntegration_Snapshot(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
@@ -543,13 +538,7 @@ func TestIntegration_Snapshot(t *testing.T) {
 
 	// Disconnect the follower immediately, so it will be forced to use the
 	// snapshot at reconnection.
-	term.When().Command(1).Committed().Disconnect("1")
-
-	// Take a snapshot on the leader after first batch of WAL-writing queries below is done.
-	term.When().Command(4).Committed().Snapshot()
-
-	// Reconnect the follower after a further query.
-	term.When().Command(5).Committed().Reconnect("1")
+	term.Disconnect("1")
 
 	// Get a leader connection on the leader node.
 	conn := conns["0"][0]
@@ -559,21 +548,24 @@ func TestIntegration_Snapshot(t *testing.T) {
 	require.NoError(t, err)
 	_, err = conn.Exec("INSERT INTO test VALUES(1)", nil)
 	require.NoError(t, err)
-	t.Log("LAST QUERY")
 	_, err = conn.Exec("INSERT INTO test VALUES(2)", nil)
 	require.NoError(t, err)
-	t.Log("LAST DONE")
+
+	// Take a snapshot on the leader after this first batch of queries.
+	term.Snapshot("0")
 
 	// Make sure snapshot is taken by the leader.
-	time.Sleep(150 * time.Millisecond)
 	control.Barrier()
 	assert.Equal(t, uint64(1), control.Snapshots("0"))
 
-	// This query will make the follower re-connect.
+	term.Reconnect("1")
+
+	// Run an extra query to proof that the follower with the restored
+	// snapshot is still functional.
 	_, err = conn.Exec("INSERT INTO test VALUES(3)", nil)
 	require.NoError(t, err)
 
-	// The follower will now restore the snapshot.
+	// The follower will now have to restore the snapshot.
 	control.Barrier()
 
 	// Figure out the database name
@@ -599,7 +591,6 @@ func TestIntegration_Snapshot(t *testing.T) {
 	assert.Equal(t, int64(3), values[0].(int64))
 
 }
-*/
 
 // Creates a test table using the given connection. If code is not zero, assert
 // that the query fails.
