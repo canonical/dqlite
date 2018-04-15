@@ -496,7 +496,7 @@ func TestIntegration_Undo_LeadershipLost(t *testing.T) {
 // Leadership is lost when applying the Undo command, but a quorum is reached
 // and the command actually gets committed. The same node that lost leadership
 // gets re-elected.
-func BROKEN_TestIntegration_Undo_LeadershipLost_Quorum_SameLeader(t *testing.T) {
+func TestIntegration_Undo_LeadershipLost_Quorum_SameLeader(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
@@ -528,7 +528,7 @@ func BROKEN_TestIntegration_Undo_LeadershipLost_Quorum_SameLeader(t *testing.T) 
 // Leadership is lost when applying the Undo command, but a quorum is reached
 // and the command actually gets committed. A different node than the one that
 // lost leadership gets re-elected.
-func BROKEN_TestIntegration_Undo_LeadershipLost_Quorum_OtherLeader(t *testing.T) {
+func TestIntegration_Undo_LeadershipLost_Quorum_OtherLeader(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
@@ -844,7 +844,6 @@ func newCluster(t *testing.T, opts ...clusterOption) (map[raft.ServerID][2]*sqli
 	methods := make([]*replication.Methods, 3)
 	conns := map[raft.ServerID][2]*sqlite3.SQLiteConn{}
 	for i := range methods {
-		//logger := log.New(log.Testing(t, 1), log.Trace)
 		id := raft.ServerID(strconv.Itoa(i))
 		methods[i] = replication.NewMethods(registries[i], rafts[id])
 
