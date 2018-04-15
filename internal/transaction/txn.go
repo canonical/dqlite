@@ -173,6 +173,7 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 	var err error
 	switch state {
 	case Writing:
+		fallthrough
 	case Written:
 		begin := args[0].(bool)
 		frames := args[1].(*sqlite3.ReplicationFramesParams)
