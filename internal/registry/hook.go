@@ -81,7 +81,7 @@ func (r *Registry) hookSyncEnsureUnset() {
 // The goal is that if a replication hook of Methods instance is in progress,
 // the associated FSM instance should only execute log commands applied by that
 // hook, and block the execution of any log command not applied by the hook
-// until the hook is done.
+// until the hook returns.
 //
 // The semantics of HookSync is somewhat similar to sync.WaitGroup.
 //
@@ -103,7 +103,8 @@ func (r *Registry) hookSyncEnsureUnset() {
 //  - The FSM acquires the Registry lock and check if a HookSync instance
 //    is set.
 //
-//  - If no HookSync instance is set, the FSM continues normally.
+//  - If no HookSync instance is set, the FSM continues normally. This is the
+//    typical case when the FSM is applying logs as follower.
 //
 //  - If the HookSync instance is set and HookSync.Matches() returns true, then
 //    the HookSync.data field matches the Log.Data field of the log command
@@ -111,9 +112,12 @@ func (r *Registry) hookSyncEnsureUnset() {
 //
 //  - If the HookSync instance is set and HookSync.Matches() returns false,
 //    then the HookSync.data field does not match the Log.Data field of the log
-//    command being applied, the FSM releases the lock on the Registry and
-//    calls HookSync.Wait() which tries to acquire the HookSync.mu lock (which
-//    is being held by the Methods instance running the replication hook).
+//    command being applied. This means that the FSM is about to apply a log
+//    command that did not originate on this node during the hook execution
+//    (e.g. the FSM is about to apply a log sent from a new leader after this
+//    leader was deposed). The FSM releases the lock on the Registry and calls
+//    HookSync.Wait() which tries to acquire the HookSync.mu lock (which is
+//    being held by the Methods instance running the replication hook).
 //
 //  - When control eventually returns to the Methods instance after the
 //    Raft.Apply() call returns, the Methods instance re-acquires the Registry
@@ -134,7 +138,8 @@ type hookSync struct {
 	// Track the number of times the mu mutex was locked with RLock.
 	n int
 
-	// Reference to the Log.Data payload of the last log command applied.
+	// Reference to the Log.Data payload of the last log command applied by
+	// a Methods hook running on this server.
 	data []byte
 }
 
@@ -156,6 +161,10 @@ func (s *hookSync) Add(data []byte) {
 
 // Matches returns true if the data referenced by this HookSync matches the
 // one of the given raft.Log.Data.
+//
+// This assumes that the hashicorp/raft package does not make a copy of the
+// data slice when invoking FSM.Apply() to apply a log command that originated
+// from a call to Raft.Apply() on this server.
 func (s *hookSync) Matches(data []byte) bool {
 	return reflect.ValueOf(s.data).Pointer() == reflect.ValueOf(data).Pointer()
 }
