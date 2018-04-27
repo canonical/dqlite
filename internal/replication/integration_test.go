@@ -231,7 +231,7 @@ func TestIntegration_Begin_BusyRetry(t *testing.T) {
 }
 
 // Trying to start two write transaction on the same connection fails.
-func TestIntegration_Begin_BusyRetrySameConn(t *testing.T) {
+func TestIntegration_Begin_TransactionSameConn(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
@@ -319,8 +319,8 @@ func TestIntegration_Frames_NotLeader(t *testing.T) {
 
 // The node loses leadership when the Frames hook tries to apply the Frames
 // command. The frames is a commit one, and no quorum is reached for the
-// inflight Frames command.
-func TestIntegration_Frames_LeadershipLost_Commit(t *testing.T) {
+// inflight Frames command. Another leader is elected.
+func TestIntegration_Frames_LeadershipLost_Commit_NoQuorum_OtherLeader(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
@@ -345,10 +345,38 @@ func TestIntegration_Frames_LeadershipLost_Commit(t *testing.T) {
 	selectOne(t, conns["2"][0])
 }
 
-// Leadership is lost when applying the Frames command, but a quorum is reached
-// and the command actually gets committed. The same node that lost leadership
-// gets re-elected.
-func TestIntegration_Frames_LeadershipLost_Quorum_SameLeader(t *testing.T) {
+// The node loses leadership when the Frames hook tries to apply the Frames
+// command. The frames is a commit one, and no quorum is reached for the
+// inflight Frames command. The same leader gets re-elected.
+func TestIntegration_Frames_LeadershipLost_Commit_NoQuorum_SameLeader(t *testing.T) {
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
+
+	control.Elect("0").When().Command(1).Enqueued().Depose()
+
+	conn := conns["0"][0]
+	begin(t, conn)
+	insertOne(t, conn, 0)
+	commit(t, conn, sqlite3.ErrIoErrLeadershipLost)
+
+	// Take a connection against the same leader node and insert a new
+	// row, since the old insert will be applied.
+	control.Elect("0")
+	control.Barrier()
+	begin(t, conn)
+	insertTwo(t, conns["0"][0], 0)
+	commit(t, conn, 0)
+
+	// The followers have it too.
+	control.Barrier()
+	selectN(t, conns["1"][0], 2)
+	selectN(t, conns["2"][0], 2)
+}
+
+// Leadership is lost when applying a commit Frames command, but a quorum is
+// reached and the command actually gets committed. The same node that lost
+// leadership gets re-elected.
+func TestIntegration_Frames_LeadershipLost_Commit_Quorum_SameLeader(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
@@ -373,10 +401,10 @@ func TestIntegration_Frames_LeadershipLost_Quorum_SameLeader(t *testing.T) {
 	selectN(t, conns["2"][0], 2)
 }
 
-// Leadership is lost when applying the Frames command, but a quorum is reached
-// and the command actually gets committed. A different node than the one that
-// lost leadership gets re-elected.
-func TestIntegration_Frames_LeadershipLost_Quorum_OtherLeader(t *testing.T) {
+// Leadership is lost when applying a commit Frames command, but a quorum is
+// reached and the command actually gets committed. A different node than the
+// one that lost leadership gets re-elected.
+func TestIntegration_Frames_LeadershipLost_Commit_Quorum_OtherLeader(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
 	defer cleanup()
 
