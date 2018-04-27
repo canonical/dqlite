@@ -56,14 +56,20 @@ func (m *Methods) ApplyTimeout(timeout time.Duration) {
 
 // Begin is the hook invoked by SQLite when a new write transaction is
 // being started within a connection in leader replication mode on
-// this node.
+// this server.
 func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	// We take a the lock for the entire duration of the hook to avoid
-	// races between to cocurrent hooks.
+	// races between to concurrent hooks.
+	//
+	// Concurrent calls can happen because the xBegin hook is fired by
+	// SQLite before acquiring a write lock on the WAL (i.e. before calling
+	// WalBeginWriteTransaction). This way we're given a chance to cleanup
+	// any dangling follower transactions that might have been left open
+	// after a leadership change.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Lock the registry.
+	// Lock the registry, to avoid races with the FSM.
 	m.registry.Lock()
 	defer m.registry.Unlock()
 
