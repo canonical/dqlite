@@ -47,6 +47,7 @@ func TestRegistry_SyncHook_Leader(t *testing.T) {
 
 	// Mimick an FSM instance applying the log command.
 	registry.Lock()
+	assert.True(t, registry.HookSyncPresent())
 	assert.True(t, registry.HookSyncMatches(data1))
 	registry.Unlock()
 
@@ -58,6 +59,7 @@ func TestRegistry_SyncHook_Leader(t *testing.T) {
 
 	// Mimick an FSM instance applying the second log command.
 	registry.Lock()
+	assert.True(t, registry.HookSyncPresent())
 	assert.True(t, registry.HookSyncMatches(data2))
 	registry.Unlock()
 
@@ -67,9 +69,9 @@ func TestRegistry_SyncHook_Leader(t *testing.T) {
 	registry.Unlock()
 
 	// Mimick an FSM instance applying a third command log sent by another
-	// server. The HookSyncMatches() methods unconditionally returns true.
-	data3 := []byte("!")
-	assert.True(t, registry.HookSyncMatches(data3))
+	// server. The HookSyncPresent() check now returns false and the FSM
+	// can proceed.
+	assert.False(t, registry.HookSyncPresent())
 }
 
 // Test the synchronization protocol flow in the normal follower case, mimicking
@@ -81,7 +83,7 @@ func TestRegistry_SyncHook_Follower(t *testing.T) {
 
 	// Mimick an FSM instance applying the log command.
 	registry.Lock()
-	assert.True(t, registry.HookSyncMatches([]byte("hello")))
+	assert.False(t, registry.HookSyncPresent())
 	registry.Unlock()
 }
 
@@ -103,6 +105,7 @@ func TestRegistry_SyncHook_LeadershipLost(t *testing.T) {
 
 	// Mimick an FSM instance applying the log command.
 	registry.Lock()
+	assert.True(t, registry.HookSyncPresent())
 	assert.True(t, registry.HookSyncMatches(data1))
 	registry.Unlock()
 
@@ -118,6 +121,7 @@ func TestRegistry_SyncHook_LeadershipLost(t *testing.T) {
 	// did not get notified about it (e.g. because of a network glitch),
 	// and lost leadership.
 	registry.Lock()
+	assert.True(t, registry.HookSyncPresent())
 	assert.False(t, registry.HookSyncMatches([]byte("wolrd")))
 	done := make(chan struct{})
 	go func() {
