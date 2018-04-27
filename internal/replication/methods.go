@@ -100,12 +100,8 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	}
 
 	// Check whether there is already an an ongoing transaction.
-	proceed, err := m.beginMaybeHandleInProgressTxn(tracer, conn)
-	if err != nil {
+	if err := m.beginMaybeHandleInProgressTxn(tracer, conn); err != nil {
 		return errno(err)
-	}
-	if !proceed {
-		return 0
 	}
 
 	// Use the last raft index as transaction ID.
@@ -140,13 +136,12 @@ func (m *Methods) beginMaybeAddFollowerConn(tracer *trace.Tracer, conn *sqlite3.
 //
 // If one is found, this method will try take appropriate measures.
 //
-// Return true if Begin should continue, false otherwise. If an error is
-// returned, Begin should stop and return it.
-func (m *Methods) beginMaybeHandleInProgressTxn(tracer *trace.Tracer, conn *sqlite3.SQLiteConn) (bool, error) {
+// If an error is returned, Begin should stop and return it.
+func (m *Methods) beginMaybeHandleInProgressTxn(tracer *trace.Tracer, conn *sqlite3.SQLiteConn) error {
 	filename := m.registry.ConnLeaderFilename(conn)
 	txn := m.registry.TxnByFilename(filename)
 	if txn == nil {
-		return true, nil
+		return nil
 	}
 
 	tracer.Message("found in-progress transaction %s", txn)
@@ -161,19 +156,17 @@ func (m *Methods) beginMaybeHandleInProgressTxn(tracer *trace.Tracer, conn *sqli
 			// No dqlite state has been modified, and the WAL write
 			// lock has not been acquired. Just return ErrBusy.
 			tracer.Message("busy")
-			return false, sqlite3.Error{Code: sqlite3.ErrBusy}
+			return sqlite3.Error{Code: sqlite3.ErrBusy}
 		}
 
-		// There's transaction originated on this Methods instance for
+		// There a's transaction originated on this Methods instance for
 		// the same connection.
 		if !txn.IsZombie() {
-			// Another transaction for this very same connection is
-			// in progress. We'll just proceed: control will return
-			// to SQLite, which should fail with SQLITE_BUSY when
-			// trying to start the WAL write transaction. At that
-			// point, our Abort hook will be called and we purge the
-			// transaction.
-			return true, nil
+			// This should be an impossible situation since it
+			// would mean that the same connection managed to open
+			// a new WAL write transaction, something that SQLite
+			// prevents.
+			tracer.Panic("unexpected transaction on same connection %s", txn)
 		}
 
 		// If we have a zombie for this connection it means that a
@@ -184,7 +177,7 @@ func (m *Methods) beginMaybeHandleInProgressTxn(tracer *trace.Tracer, conn *sqli
 			// just discard this zombie and start fresh.
 			tracer.Message("discard dangling zombie")
 			m.registry.TxnDel(txn.ID())
-			return true, nil
+			return nil
 		}
 		if txn.State() != transaction.Writing {
 			// A non-dangling zombie must have committed at least
@@ -203,10 +196,10 @@ func (m *Methods) beginMaybeHandleInProgressTxn(tracer *trace.Tracer, conn *sqli
 		// leadeship lost), we can leave things as they are,
 		// since the next leader should try to run again the
 		// undo command.
-		return false, err
+		return err
 	}
 
-	return true, nil
+	return nil
 }
 
 // Abort is the hook invoked by SQLite when a write transaction fails
