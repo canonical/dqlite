@@ -32,13 +32,16 @@ func (r *Registry) HookSyncAdd(data []byte) {
 	r.hookSync.Add(data)
 }
 
+// HookSyncPresent checks whether a hook sync was set by methods hook.
+func (r *Registry) HookSyncPresent() bool {
+	return r.hookSync != nil
+}
+
 // HookSyncMatches checks whether the Log.Data bytes that an FSM.Apply() call
 // is about to process match the ones that were last added to the hookSync via
-// HookSyncAdd(). If no hookSync is set on the registry, always return true.
+// HookSyncAdd().
 func (r *Registry) HookSyncMatches(data []byte) bool {
-	if r.hookSync == nil {
-		return true
-	}
+	r.hookSyncEnsureSet()
 	return r.hookSync.Matches(data)
 }
 
@@ -83,7 +86,13 @@ func (r *Registry) hookSyncEnsureUnset() {
 // hook, and block the execution of any log command not applied by the hook
 // until the hook returns.
 //
-// The semantics of HookSync is somewhat similar to sync.WaitGroup.
+// The semantics of HookSync is somewhat similar to sync.WaitGroup, and indeed
+// it uses WaitGroup internally. The only additional behavior is really the
+// additional API that checks if a certain command log that the FSM is about to
+// apply was originated by an Apply() call on the same server during a
+// concurrent Methods hook call, or if's a replicated command log that was sent
+// by another server over the network, perhaps right while a Methods hook is
+// finishing up after leadership was lost.
 //
 // The synchronization protocol goes through the following steps:
 //
@@ -94,9 +103,8 @@ func (r *Registry) hookSyncEnsureUnset() {
 //
 //  - Whenever the Methods instance is about to apply a log command, it calls
 //    HookSync.Add(), which saves the reference to the data bytes slice to be
-//    applied in HookSync.data, and increases by one the number of reader locks
-//    on HookSync.mu lock. The Methods instance then releases the Registry
-//    lock.
+//    applied in HookSync.data, and increases by one the the WaitGroup count on
+//    HookSync.wg. The Methods instance then releases the Registry lock.
 //
 //  - The FSM starts executing a log command.
 //
@@ -131,11 +139,11 @@ func (r *Registry) hookSyncEnsureUnset() {
 // See also Methods.Begin, Methods.Frames, Methods.Undo and FSM.Apply for
 // details.
 type hookSync struct {
-	// Use an RW mutex because it might be acquired multiple times by a
-	// Methods instance applying more than one log command.
-	mu sync.RWMutex
+	// A Methods instance hook must call Add(1) aginst this wait group each
+	// time it applies a log command.
+	wg sync.WaitGroup
 
-	// Track the number of times the mu mutex was locked with RLock.
+	// Track the number of Add(1) calls agaist the WaitGroup.
 	n int
 
 	// Reference to the Log.Data payload of the last log command applied by
@@ -154,7 +162,7 @@ func newHookSync() *hookSync {
 // This can be called multiple times by a Methods instance during the execution
 // of a replication hook.
 func (s *hookSync) Add(data []byte) {
-	s.mu.RLock()
+	s.wg.Add(1)
 	s.n++
 	s.data = data
 }
@@ -172,12 +180,12 @@ func (s *hookSync) Matches(data []byte) bool {
 // Wait blocks until our mutex has no more readers, i.e. the replication hook
 // that created us has completed.
 func (s *hookSync) Wait() {
-	s.mu.Lock()
+	s.wg.Wait()
 }
 
 // Done releases all reader locks acquired during our life cycle.
 func (s *hookSync) Done() {
 	for i := 0; i < s.n; i++ {
-		s.mu.RUnlock()
+		s.wg.Done()
 	}
 }

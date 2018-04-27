@@ -72,7 +72,7 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	// If we're being invoked in the context of a Methods replication hook
 	// applying a log command, block execution of any log commands coming
 	// on the wire from other leaders until the hook as completed.
-	if !f.registry.HookSyncMatches(log.Data) {
+	if f.registry.HookSyncPresent() && !f.registry.HookSyncMatches(log.Data) {
 		tracer.Message("wait for methods hook to complete")
 		// This will temporarily release and re-acquire the registry lock.
 		f.registry.HookSyncWait()
