@@ -194,7 +194,7 @@ func (f *FSM) applyFrames(tracer *trace.Tracer, params *protocol.Frames) error {
 				// this FSM after this leader failed with
 				// ErrLeadershipLost, but a quorum was still
 				// reached. We don't know who's gonna be the
-				// next leader, if this node or another
+				// next leader, if this server or another
 				// one. Either way, we create a surrogate
 				// follower and transition it to Writing. If it
 				// happens that this node gets elected again,

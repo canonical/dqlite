@@ -201,6 +201,19 @@ func TestIntegration_Begin_BusyTimeout(t *testing.T) {
 
 	commit(t, conn1, 0)
 	selectOne(t, conn1)
+
+	// Try again to start a write transaction on conn2 now that the one on
+	// conn1 is done.
+	rollback(t, conn2)
+	begin(t, conn2)
+	insertTwo(t, conn2, 0)
+	commit(t, conn2, 0)
+
+	// Changes are visible from all nodes.
+	control.Barrier()
+	selectN(t, conns["0"][0], 2)
+	selectN(t, conns["1"][0], 2)
+	selectN(t, conns["2"][0], 2)
 }
 
 // A transaction on another leader connection is in progress, the Begin hook
@@ -429,6 +442,163 @@ func TestIntegration_Frames_LeadershipLost_Commit_Quorum_OtherLeader(t *testing.
 	selectN(t, conns["2"][0], 2)
 }
 
+// The server is not the leader anymore when the Frames hook for a non-commit
+// frames fires. The same leader gets re-elected.
+func TestIntegration_Frames_NotLeader_Spill_SameLeader(t *testing.T) {
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
+
+	control.Elect("0").When().Command(3).Committed().Depose()
+
+	conn := conns["0"][0]
+
+	// Lower SQLite's page cache size to force it to write uncommitted
+	// dirty pages to the WAL.
+	lowerCacheSize(t, conn)
+
+	// Start a write transaction and insert enough data to cause page cache
+	// stress and flush to the WAL and trigger exactly one Frames
+	// command. After the Frames command gets committed the leader gets
+	// deposed.
+	begin(t, conn)
+	insertN(t, conn, 500, 0)
+
+	// This will trigger one more Frames command that will fail because the
+	// server is not the leader anymore.
+	insertN(t, conn, 500, sqlite3.ErrIoErrNotLeader)
+
+	control.Elect("0")
+
+	// The above transaction was automatically rolled back. A new
+	// transaction can begin and succeed.
+	begin(t, conn)
+	insertN(t, conn, 500, 0)
+	commit(t, conn, 0)
+
+	// All nodes see it.
+	control.Barrier()
+	selectN(t, conns["0"][0], 500)
+	selectN(t, conns["1"][0], 500)
+	selectN(t, conns["2"][0], 500)
+}
+
+// The server is not the leader anymore when the Frames hook for a non-commit
+// frames fires. Another leader gets re-elected.
+func TestIntegration_Frames_NotLeader_Spill_OtherLeader(t *testing.T) {
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
+
+	control.Elect("0").When().Command(3).Committed().Depose()
+
+	conn := conns["0"][0]
+
+	// Lower SQLite's page cache size to force it to write uncommitted
+	// dirty pages to the WAL.
+	lowerCacheSize(t, conn)
+
+	// Start a write transaction and insert enough data to cause page cache
+	// stress and flush to the WAL and trigger exactly one Frames
+	// command. After the Frames command gets committed the leader gets
+	// deposed.
+	begin(t, conn)
+	insertN(t, conn, 500, 0)
+
+	// This will trigger one more Frames command that will fail because the
+	// server is not the leader anymore.
+	insertN(t, conn, 500, sqlite3.ErrIoErrNotLeader)
+
+	control.Elect("1")
+	conn = conns["1"][0]
+
+	// The above transaction was automatically rolled back. A new
+	// transaction can begin and succeed.
+	begin(t, conn)
+	insertN(t, conn, 500, 0)
+	commit(t, conn, 0)
+
+	// All nodes see it.
+	control.Barrier()
+	selectN(t, conns["0"][0], 500)
+	selectN(t, conns["1"][0], 500)
+	selectN(t, conns["2"][0], 500)
+}
+
+// The server loses leadership when the Frames hook for a non-commit frames
+// fires. No quorum is reached for the inflight Frames command. The same leader
+// gets re-elected.
+func TestIntegration_Frames_LeadershipLost_Spill_NoQuorum_SameLeader(t *testing.T) {
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
+
+	control.Elect("0").When().Command(1).Enqueued().Depose()
+
+	conn := conns["0"][0]
+
+	// Lower SQLite's page cache size to force it to write uncommitted
+	// dirty pages to the WAL.
+	lowerCacheSize(t, conn)
+
+	// Start a write transaction and insert enough data to cause page cache
+	// stress and flush to the WAL and trigger exactly one Frames
+	// command. After the Frames command gets enqueued the leader loses
+	// leadership.
+	begin(t, conn)
+	insertN(t, conn, 500, sqlite3.ErrIoErrLeadershipLost)
+
+	control.Elect("0")
+	conn = conns["0"][0]
+
+	// The above transaction was automatically rolled back. A new
+	// transaction can begin and succeed.
+	begin(t, conn)
+	insertN(t, conn, 500, 0)
+	commit(t, conn, 0)
+
+	// All nodes see it.
+	control.Barrier()
+	selectN(t, conns["0"][0], 500)
+	selectN(t, conns["1"][0], 500)
+	selectN(t, conns["2"][0], 500)
+}
+
+// The server loses leadership when the Frames hook for a non-commit frames
+// fires. No quorum is reached for the inflight Frames command. Another leader
+// gets elected.
+func TestIntegration_Frames_LeadershipLost_Spill_NoQuorum_OtherLeader(t *testing.T) {
+	conns, control, cleanup := newCluster(t)
+	defer cleanup()
+
+	control.Elect("0").When().Command(1).Enqueued().Depose()
+
+	conn := conns["0"][0]
+
+	// Lower SQLite's page cache size to force it to write uncommitted
+	// dirty pages to the WAL.
+	lowerCacheSize(t, conn)
+
+	// Start a write transaction and insert enough data to cause page cache
+	// stress and flush to the WAL and trigger exactly one Frames
+	// command. After the Frames command gets enqueued the leader loses
+	// leadership.
+	begin(t, conn)
+	insertN(t, conn, 500, sqlite3.ErrIoErrLeadershipLost)
+
+	control.Elect("1")
+	conn = conns["1"][0]
+
+	// The above transaction was automatically rolled back. A new
+	// transaction can begin and succeed.
+	begin(t, conn)
+	insertN(t, conn, 500, 0)
+	commit(t, conn, 0)
+
+	// All nodes see it.
+	control.Barrier()
+	selectN(t, conns["0"][0], 500)
+	selectN(t, conns["1"][0], 500)
+	selectN(t, conns["2"][0], 500)
+}
+
 // The server is not the leader anymore when the Undo hook fires.
 func TestIntegration_Undo_HookCheck_NotLeader(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
@@ -447,7 +617,7 @@ func TestIntegration_Undo_HookCheck_NotLeader(t *testing.T) {
 	// command. After the Frames command gets committed the leader gets
 	// deposed.
 	begin(t, conn)
-	insertN(t, conn, 500)
+	insertN(t, conn, 500, 0)
 	rollback(t, conn)
 
 	control.Elect("1")
@@ -478,7 +648,7 @@ func TestIntegration_Undo_NotLeader(t *testing.T) {
 	// command. After the Frames command gets committed the leader gets
 	// deposed.
 	begin(t, conn)
-	insertN(t, conn, 500)
+	insertN(t, conn, 500, 0)
 	rollback(t, conn)
 
 	control.Elect("1")
@@ -509,7 +679,7 @@ func TestIntegration_Undo_LeadershipLost(t *testing.T) {
 	// command. After the Frames command gets committed the leader gets
 	// deposed.
 	begin(t, conn)
-	insertN(t, conn, 500)
+	insertN(t, conn, 500, 0)
 	rollback(t, conn)
 
 	control.Elect("1")
@@ -541,7 +711,7 @@ func TestIntegration_Undo_LeadershipLost_Quorum_SameLeader(t *testing.T) {
 	// command. After the Frames command gets committed the leader gets
 	// deposed.
 	begin(t, conn)
-	insertN(t, conn, 500)
+	insertN(t, conn, 500, 0)
 	rollback(t, conn)
 
 	control.Elect("0")
@@ -573,7 +743,7 @@ func TestIntegration_Undo_LeadershipLost_Quorum_OtherLeader(t *testing.T) {
 	// command. After the Frames command gets committed the leader gets
 	// deposed.
 	begin(t, conn)
-	insertN(t, conn, 500)
+	insertN(t, conn, 500, 0)
 	rollback(t, conn)
 
 	control.Elect("1")
@@ -751,7 +921,7 @@ func insertThree(t *testing.T, conn *sqlite3.SQLiteConn, code sqlite3.ErrNoExten
 }
 
 // Inserts the given number of rows in the test table.
-func insertN(t *testing.T, conn *sqlite3.SQLiteConn, n int) {
+func insertN(t *testing.T, conn *sqlite3.SQLiteConn, n int, code sqlite3.ErrNoExtended) {
 	t.Helper()
 
 	values := ""
@@ -760,7 +930,11 @@ func insertN(t *testing.T, conn *sqlite3.SQLiteConn, n int) {
 	}
 	values = values[:len(values)-1]
 	_, err := conn.Exec(fmt.Sprintf("INSERT INTO test(n) VALUES %s", values), nil)
-	require.NoError(t, err)
+	if code == 0 {
+		require.NoError(t, err)
+	} else {
+		requireEqualErrNo(t, code, err)
+	}
 }
 
 // Selects from the test table to assert that it's there.
@@ -866,7 +1040,7 @@ func newCluster(t *testing.T, opts ...clusterOption) (map[raft.ServerID][2]*sqli
 
 	// Raft instances.
 	store := rafttest.LogStore(func(i int) raft.LogStore { return stores[i] })
-	rafts, control := rafttest.Cluster(t, fsms, store)
+	rafts, control := rafttest.Cluster(t, fsms, store, rafttest.DiscardLogger())
 
 	// Methods and connections.
 	methods := make([]*replication.Methods, 3)
@@ -902,10 +1076,12 @@ func newCluster(t *testing.T, opts ...clusterOption) (map[raft.ServerID][2]*sqli
 	}
 
 	if options.CreateTable {
+		t.Log("replication test: temporarily elect leader 0 and create test table")
 		// Create the test table and the depose the leader so tests can
 		// start fresh.
 		control.Elect("0").When().Command(2).Committed().Depose()
 		createTable(t, conns["0"][0], 0)
+		t.Log("replication test: test table created")
 	}
 
 	cleanup := func() {
