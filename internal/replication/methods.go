@@ -61,15 +61,60 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	// We take a the lock for the entire duration of the hook to avoid
 	// races between to concurrent hooks.
 	//
+	// The main tasks of Begin are to check that no other write transaction
+	// is in progress and to cleanup any dangling follower transactions
+	// that might have been left open after a leadership change.
+	//
 	// Concurrent calls can happen because the xBegin hook is fired by
 	// SQLite before acquiring a write lock on the WAL (i.e. before calling
-	// WalBeginWriteTransaction). This way we're given a chance to cleanup
-	// any dangling follower transactions that might have been left open
-	// after a leadership change.
+	// WalBeginWriteTransaction), so different connections can enter the
+	// Begin hook at any time .
+	//
+	// Some races that is worth mentioning are:
+	//
+	//  - Two concurrent calls of Begin: without the lock, they would race
+	//    to open a follower connection if it does not exists yet.
+	//
+	//  - Two concurrent calls of Begin and another hook: without the lock,
+	//    they would race to mutate the registry (e.g. add/delete
+	//    transactions).
+	//
+	// The most common errors that Begin returns are:
+	//
+	//  - SQLITE_BUSY:  If we detect that a write transaction is in progress
+	//                  on another connection. The SQLite's call to sqlite3PagerBegin
+	//                  that triggered the xBegin hook will propagate the error
+	//                  to sqlite3BtreeBeginTrans, which will invoke the busy
+	//                  handler (if set), calling xBegin/Begin again, which will
+	//                  keep returning SQLITE_BUSY as long as the other transaction
+	//                  is in progress. If the busy handler gives up, the SQLITE_BUSY
+	//                  error will bubble up, and the statement that triggered the
+	//                  write attempt will fail. The client should then execute a
+	//                  ROLLBACK and then decide what to do.
+	//
+	//  - SQLITE_IOERR: This is returned if we are not the leader when the
+	//                  hook fires or if we fail to apply the Open follower
+	//                  command log (in case no follower for this database
+	//                  is open yet). We include the relevant extended
+	//                  code, either SQLITE_IOERR_NOT_LEADER if this server
+	//                  is not the leader anymore or it is being shutdown,
+	//                  or SQLITE_IOERR_LEADERSHIP_LOST if leadership was
+	//                  lost while applying the Open command. The SQLite's
+	//                  call to sqlite3PagerBegin that triggered the xBegin
+	//                  hook will propagate the error to sqlite3BtreeBeginTrans,
+	//                  which will in turn propagate it to the OP_Transaction case
+	//                  of vdbe.c, which will goto abort_due_to_error and finally
+	//                  call sqlite3VdbeHalt, automatically rolling back the
+	//                  transaction. Since no write transaction was actually started the
+	//                  xEnd hook is not fired.
+	//
+	// We might return SQLITE_INTERRUPT or SQLITE_INTERNAL in case of more exotic
+	// failures. See the apply() method for details.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Lock the registry, to avoid races with the FSM.
+	// Lock the registry, to avoid races with the FSM when checking for the
+	// presence of a hook sync and when modifying transactions.
 	m.registry.Lock()
 	defer m.registry.Unlock()
 
@@ -90,7 +135,7 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		return sqlite3.ErrNo(sqlite3.ErrIoErrNotLeader)
 	}
 
-	// Update the noLeaderCheck counter.
+	// Update the noLeaderCheck counter (used for tests).
 	if m.noLeaderCheck > 0 {
 		m.noLeaderCheck--
 	}
@@ -159,8 +204,18 @@ func (m *Methods) beginMaybeHandleInProgressTxn(tracer *trace.Tracer, conn *sqli
 			// originated on this Methods instance for another
 			// connection.
 			//
+			// We can't proceed as the Begin method would then try
+			// to add a new transaction to the registry and crash.
+			//
 			// No dqlite state has been modified, and the WAL write
-			// lock has not been acquired. Just return ErrBusy.
+			// lock has not been acquired.
+			//
+			// We just return ErrBusy, which has the same effect as
+			// the call to sqlite3WalBeginWriteTransaction (invoked
+			// in pager.c after a successful xBegin) would have, i.e.
+			// the busy handler will end up polling us again until
+			// the concurrent write transaction ends and we're free
+			// to go.
 			tracer.Message("busy")
 			return sqlite3.Error{Code: sqlite3.ErrBusy}
 		}
@@ -169,23 +224,23 @@ func (m *Methods) beginMaybeHandleInProgressTxn(tracer *trace.Tracer, conn *sqli
 		// the same connection.
 		if !txn.IsZombie() {
 			// This should be an impossible situation since it
-			// would mean that the same connection managed to open
-			// a new WAL write transaction, something that SQLite
-			// prevents.
+			// would mean that the same connection managed to begin
+			// a new transaction on the same connection, something
+			// that SQLite prevents.
 			tracer.Panic("unexpected transaction on same connection %s", txn)
 		}
 
 		// If we have a zombie for this connection it means that a
 		// Frames command failed because of lost leadership, and no
 		// quorum was reached.
-		if txn.State() == transaction.Pending {
+		switch txn.State() {
+		case transaction.Pending:
 			// The lost Frames command was the first one, we can
 			// just discard this zombie and start fresh.
 			tracer.Message("discard dangling zombie")
 			m.registry.TxnDel(txn.ID())
 			return nil
-		}
-		if txn.State() != transaction.Writing {
+		default:
 			// A non-dangling zombie must have committed at least
 			// one Frames command.
 			tracer.Panic("unexpected transaction %s", txn)
@@ -248,7 +303,28 @@ func (m *Methods) Abort(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 // flushed to the write-ahead log.
 func (m *Methods) Frames(conn *sqlite3.SQLiteConn, frames *sqlite3.ReplicationFramesParams) sqlite3.ErrNo {
 	// We take a the lock for the entire duration of the hook to avoid
-	// races between to cocurrent hooks.
+	// races between to cocurrent hooks. See the comments in Begin for more
+	// details.
+	//
+	// The xFrames hook is invoked by the SQLite pager in two cases, either
+	// in sqlite3PagerCommitPhaseOne (for committing) or in pagerStress (for
+	// flushing dirty pages to disk, invoked by the pcache implementation when
+	// no more space is available in the built-in page cache).
+	//
+	// In the first case, any error returned here will be propagated up to
+	// sqlite3VdbeHalt (the final step of SQLite's VDBE), which will rollback
+	// the transaction and indirectly invoke sqlite3PagerRollback which in turn
+	// will indirectly fire xUndo and xEnd.
+	//
+	// In the second case, any error returned here will transition the
+	// pager to the ERROR state (see the final pager_error call in
+	// pagerStress) and will be propagated first to sqlite3PcacheFetchStress
+	// and the indirectly to the btree layer which will automatically rollback
+	// the transaction. The xUndo and xEnd hooks won't be fired, since the
+	// pager is in an error state.
+	//
+	// The most common errors that Frames returns are:
+	//
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -263,7 +339,7 @@ func (m *Methods) Frames(conn *sqlite3.SQLiteConn, frames *sqlite3.ReplicationFr
 	defer m.registry.HookSyncReset()
 
 	tracer := m.registry.TracerConn(conn, "frames")
-	tracer.Message("start")
+	tracer.Message("start (commit=%d)", frames.IsCommit)
 
 	txn := m.registry.TxnByConn(conn)
 	if txn == nil {
@@ -281,7 +357,7 @@ func (m *Methods) Frames(conn *sqlite3.SQLiteConn, frames *sqlite3.ReplicationFr
 
 	// Check if we're the leader.
 	if m.noLeaderCheck == 0 && m.raft.State() != raft.Leader {
-		return m.framesNotLeader(tracer, txn)
+		return errno(m.framesNotLeader(tracer, txn))
 	}
 
 	// Update the noLeaderCheck counter.
@@ -312,15 +388,40 @@ func (m *Methods) Frames(conn *sqlite3.SQLiteConn, frames *sqlite3.ReplicationFr
 			// stale, create a surrogate follower and return. The
 			// Undo hook that will be fired right after and will
 			// no-op.
-			return m.framesNotLeader(tracer, txn)
+			return errno(m.framesNotLeader(tracer, txn))
 		} else if isErrLeadershipLost(err) {
 			if frames.IsCommit == 0 {
-				// If this is not a commit Frames event, it
-				// does not matter whether a quorum will be
-				// reached or not. We can just create a
-				// surrogate and the next leader will undo it.
-				tracer.Message("non-commit frames")
-				m.surrogateWriting(tracer, txn)
+				// Mark the transaction as zombie. Possible scenarios:
+				//
+				// 1. A quorum for this log won't be reached.
+				//
+				//    If we happen to be re-elected right away,
+				//    we'll apply this log again, our FSM will
+				//    transition it to a surrogate follower and
+				//    our next Begin hook invokation will Undo
+				//    the dangling follower.
+				//
+				//    If someone else becomes leader, there are
+				//    two cases: if this was the first
+				//    non-commit frames command log, then the
+				//    new leader will sends us a Begin command
+				//    for a new transaction, otherwise it will
+				//    send us an Undo command to rollback the
+				//    dangling follower writing transaction
+				//    that it finds. In either case our FSM
+				//    will detect the pending zombie and purge
+				//    it.
+				//
+				// 2. A quorum for this log will actually be
+				//    reached. The FSM will find a started
+				//    zombie and create a surrogate
+				//    follower. Since this is a commit frame,
+				//    the transaction will be removed and
+				//    whoever becomes the next leader will be
+				//    fine. TODO: inform clients that a
+				//    transaction that apparently failed,
+				//    actually got committed.
+				txn.Zombie(transaction.Writing)
 			} else {
 				// Mark the transaction as zombie. Possible scenarios:
 				//
@@ -360,8 +461,8 @@ func (m *Methods) Frames(conn *sqlite3.SQLiteConn, frames *sqlite3.ReplicationFr
 	return 0
 }
 
-// Handle Frames failures due to this not not being the leader.
-func (m *Methods) framesNotLeader(tracer *trace.Tracer, txn *transaction.Txn) sqlite3.ErrNo {
+// Handle Frames failures due to this server not not being the leader.
+func (m *Methods) framesNotLeader(tracer *trace.Tracer, txn *transaction.Txn) error {
 	if txn.State() == transaction.Pending {
 		// No Frames command was applied, so followers don't
 		// know about this transaction. We don't need to do
@@ -370,14 +471,19 @@ func (m *Methods) framesNotLeader(tracer *trace.Tracer, txn *transaction.Txn) sq
 		tracer.Message("no frames command applied")
 	} else {
 		// At least one Frames command was applied, so the transaction
-		// exists on the followers. We create a follower transaction in
-		// the same Writing state, so the next leader can roll it back.
+		// exists on the followers. We create a surrogate follower
+		// transaction in the same Writing state, so the next leader
+		// can roll it back.
 		m.surrogateWriting(tracer, txn)
 	}
 
 	// When we return an error, SQLite will fire the End hook.
 	tracer.Message("not leader")
-	return sqlite3.ErrNo(sqlite3.ErrIoErrNotLeader)
+
+	return sqlite3.Error{
+		Code:         sqlite3.ErrIoErr,
+		ExtendedCode: sqlite3.ErrIoErrNotLeader,
+	}
 }
 
 // Undo is the hook invoked by sqlite when a write transaction needs
@@ -568,10 +674,14 @@ func (m *Methods) apply(tracer *trace.Tracer, conn *sqlite3.SQLiteConn, cmd *pro
 	if err != nil {
 		tracer.Error("apply error", err)
 
-		// If the node has lost leadership, we return a
-		// dedicated error, so clients will typically retry
+		// If the server has lost leadership or is shutting down, we
+		// return a dedicated error, so clients will typically retry
 		// against the new leader.
 		switch err {
+		case raft.ErrRaftShutdown:
+			// For our purposes, this is semantically equivalent
+			// to not being the leader anymore.
+			fallthrough
 		case raft.ErrNotLeader:
 			return sqlite3.Error{
 				Code:         sqlite3.ErrIoErr,
@@ -582,8 +692,30 @@ func (m *Methods) apply(tracer *trace.Tracer, conn *sqlite3.SQLiteConn, cmd *pro
 				Code:         sqlite3.ErrIoErr,
 				ExtendedCode: sqlite3.ErrIoErrLeadershipLost,
 			}
+		case raft.ErrEnqueueTimeout:
+			// This should be pretty much impossible, since Methods
+			// hooks are the only way to apply command logs, and
+			// hooks always wait for a command log to finish before
+			// applying a new one (see the Apply().Error() call
+			// above). We return SQLITE_INTERRUPT, which for our
+			// purposes has the same semantics as SQLITE_IOERR,
+			// i.e. it will automatically rollback the transaction.
+			return sqlite3.Error{
+				Code:         sqlite3.ErrInterrupt,
+				ExtendedCode: 0,
+			}
 		default:
-			return err
+			// This is an unexpected raft error of some kind.
+			//
+			// TODO: We should investigate what this could be,
+			//       for example how to properly handle ErrAbortedByRestore
+			//       or log-store related errors. We should also
+			//       examine what SQLite exactly does if we return
+			//       SQLITE_INTERNAL.
+			return sqlite3.Error{
+				Code:         sqlite3.ErrInternal,
+				ExtendedCode: 0,
+			}
 		}
 
 	}
