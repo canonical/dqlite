@@ -34,8 +34,6 @@ func TestFSM_Apply_Frames_Leader(t *testing.T) {
 	fsm, conn, txn, cleanup := newFSMWithLeader(t)
 	defer cleanup()
 
-	txn.DryRun(true)
-
 	fsmApply(fsm, 1, protocol.NewFrames(txn.ID(), "test.db", newFramesParams()))
 
 	// The transaction is still in the registry and is in the Written
@@ -48,8 +46,6 @@ func TestFSM_Apply_Frames_Leader(t *testing.T) {
 func TestFSM_Apply_Frames_NonCommit_Leader(t *testing.T) {
 	fsm, conn, txn, cleanup := newFSMWithLeader(t)
 	defer cleanup()
-
-	txn.DryRun(true)
 
 	params := newFramesParams()
 	params.IsCommit = 0
@@ -65,8 +61,6 @@ func TestFSM_Apply_Frames_NonCommit_Leader(t *testing.T) {
 func TestFSM_Apply_Frames_Undo(t *testing.T) {
 	fsm, conn, txn, cleanup := newFSMWithLeader(t)
 	defer cleanup()
-
-	txn.DryRun(true)
 
 	fsmApply(fsm, 2, protocol.NewUndo(txn.ID()))
 

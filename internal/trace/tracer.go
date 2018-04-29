@@ -14,7 +14,9 @@
 
 package trace
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Tracer holds a buffer of recent trace entries in a trace Registry.
 type Tracer struct {

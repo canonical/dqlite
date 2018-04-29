@@ -69,7 +69,7 @@ func (r *Registry) TxnFollowerAdd(conn *sqlite3.SQLiteConn, id uint64) *transact
 // TxnFollowerSurrogate creates a surrogate follower transaction.
 //
 // Surrogate follower transactions are used to replace leader transactions when
-// a node loses leadership.
+// a node loses leadership and are supposed to be undone by the next leader.
 func (r *Registry) TxnFollowerSurrogate(txn *transaction.Txn) *transaction.Txn {
 	if !txn.IsLeader() {
 		panic("expected leader transaction")
@@ -78,8 +78,23 @@ func (r *Registry) TxnFollowerSurrogate(txn *transaction.Txn) *transaction.Txn {
 	filename := r.ConnLeaderFilename(txn.Conn())
 	conn := r.ConnFollower(filename)
 	txn = r.TxnFollowerAdd(conn, txn.ID())
+	txn.DryRun()
 
 	return txn
+}
+
+// TxnFollowerResurrected registers a follower transaction created by
+// resurrecting a zombie leader transaction.
+func (r *Registry) TxnFollowerResurrected(txn *transaction.Txn) {
+	if txn.IsLeader() {
+		panic("expected follower transaction")
+	}
+
+	// Delete the zombie leader transaction, which has the same ID.
+	r.TxnDel(txn.ID())
+
+	// Register the new follower transaction.
+	r.txnAdd(txn.Conn(), txn.ID(), false)
 }
 
 // TxnDel deletes the transaction with the given ID.
@@ -141,8 +156,8 @@ func (r *Registry) TxnByFilename(filename string) *transaction.Txn {
 }
 
 // TxnDryRun makes transactions only transition between states, without
-// actually invoking the relevant SQLite APIs. This should only be
-// used by tests.
+// actually invoking the relevant SQLite APIs. This is used by tests and by
+// surrogate followers.
 func (r *Registry) TxnDryRun() {
 	r.txnDryRun = true
 }
@@ -156,7 +171,15 @@ func (r *Registry) txnAdd(conn *sqlite3.SQLiteConn, id uint64, isLeader bool) *t
 			"a transaction for this connection is already registered with ID %d", txn.ID()))
 	}
 
-	txn := transaction.New(conn, id, isLeader, r.txnDryRun)
+	txn := transaction.New(conn, id)
+
+	if isLeader {
+		txn.Leader()
+	} else if r.txnDryRun {
+		txn.DryRun()
+	}
+
 	r.txns[id] = txn
+
 	return txn
 }

@@ -7,17 +7,29 @@ import (
 	"github.com/ryanfaerman/fsm"
 )
 
-// Txn captures information about an active WAL write transaction
-// that has been started on a SQLite connection configured to be in
-// either leader or replication mode.
+// Txn captures information about an active WAL write transaction that has been
+// started on a SQLite connection configured to be in either leader or follower
+// replication mode.
 type Txn struct {
 	conn     *sqlite3.SQLiteConn // Underlying SQLite connection.
 	id       uint64              // Transaction ID.
-	isLeader bool                // Whether we're attached to a connection in leader mode.
+	machine  fsm.Machine         // Internal fsm for validating state changes.
+	isLeader bool                // Whether our connection is in leader mode.
 	isZombie bool                // Whether this is a zombie transaction, see Zombie().
-	dryRun   bool                // Dry run mode, don't invoke actual SQLite hooks, for testing.
-	state    *txnState           // Current state of our internal fsm.
-	machine  *fsm.Machine        // Internal fsm.
+	dryRun   bool                // Dry run mode, don't invoke actual SQLite hooks.
+
+	// For leader transactions, these are the parameters of all non-commit
+	// frames commands that were executed so far during this
+	// transaction.
+	//
+	// They are used in case the last commit frames command failed with
+	// ErrLeadershipLost, and either the same server gets re-elected or a
+	// quorum was reached despite the glitch and another server was
+	// elected. In that situation the server that lost leadership in the
+	// first place will need to replay the whole transaction using a
+	// follower connection, since its transaction (associated with a leader
+	// connection) was rolled back by SQLite.
+	frames []*sqlite3.ReplicationFramesParams
 }
 
 // Possible transaction states. Most states are associated with SQLite
@@ -25,38 +37,23 @@ type Txn struct {
 // state to the next.
 const (
 	Pending = fsm.State("pending") // Initial state right after creation.
-	Writing = fsm.State("writing") // After the frames hook has been executed.
-	Written = fsm.State("written") // After a final frames hook has been executed.
-	Undone  = fsm.State("undone")  // After the undo hook has been executed.
+	Writing = fsm.State("writing") // After a non-commit frames command has been executed.
+	Written = fsm.State("written") // After a final commit frames command has been executed.
+	Undone  = fsm.State("undone")  // After an undo command has been executed.
 	Doomed  = fsm.State("doomed")  // The transaction has errored.
 )
 
 // New creates a new Txn instance.
-func New(conn *sqlite3.SQLiteConn, id uint64, isLeader bool, dryRun bool) *Txn {
-	state := &txnState{state: Pending}
-
-	// Initialize our internal FSM. Rules for state transitions are
-	// slightly different for leader and follower transactions, since only
-	// the former can be stale.
-	machine := &fsm.Machine{
-		Subject: state,
-		Rules:   newTxnStateRules(),
+func New(conn *sqlite3.SQLiteConn, id uint64) *Txn {
+	return &Txn{
+		conn:    conn,
+		id:      id,
+		machine: newMachine(),
 	}
-
-	txn := &Txn{
-		conn:     conn,
-		id:       id,
-		isLeader: isLeader,
-		dryRun:   dryRun,
-		state:    state,
-		machine:  machine,
-	}
-
-	return txn
 }
 
 func (t *Txn) String() string {
-	s := fmt.Sprintf("%d %s as ", t.id, t.state.CurrentState())
+	s := fmt.Sprintf("%d %s as ", t.id, t.State())
 	if t.IsLeader() {
 		s += "leader"
 		if t.IsZombie() {
@@ -66,6 +63,40 @@ func (t *Txn) String() string {
 		s += "follower"
 	}
 	return s
+}
+
+// Leader marks this transaction as a leader transaction.
+//
+// A leader transaction is automatically set to dry-run, since the SQLite will
+// trigger itself the relevant WAL APIs when transitioning between states.
+//
+// Depending on the particular replication hook being executed SQLite might do
+// that before or after the hook. See src/pager.c in SQLite source code for
+// details about when WAL APis are invoked exactly with respect to the various
+// sqlite3_replication_methods hooks.
+func (t *Txn) Leader() {
+	if t.isLeader {
+		panic("transaction is already marked as leader")
+	}
+	t.isLeader = true
+	t.DryRun()
+}
+
+// IsLeader returns true if the underlying connection is in leader
+// replication mode.
+func (t *Txn) IsLeader() bool {
+	return t.isLeader
+}
+
+// DryRun makes this transaction only transition between states, without
+// actually invoking the relevant SQLite APIs.
+//
+// This is used to create a surrogate follower, and for tests.
+func (t *Txn) DryRun() {
+	if t.dryRun {
+		panic("transaction is already in dry-run mode")
+	}
+	t.dryRun = true
 }
 
 // Conn returns the sqlite connection that started this write
@@ -79,16 +110,9 @@ func (t *Txn) ID() uint64 {
 	return t.id
 }
 
-// State returns the current state of the transition.
+// State returns the current state of the transaction.
 func (t *Txn) State() fsm.State {
-	return t.state.CurrentState()
-}
-
-// IsLeader returns true if the underlying connection is in leader
-// replication mode.
-func (t *Txn) IsLeader() bool {
-	// This flag is set by the registry at creation time. See Registry.add().
-	return t.isLeader
+	return t.machine.Subject.CurrentState()
 }
 
 // Frames writes frames to the WAL.
@@ -112,61 +136,93 @@ func (t *Txn) Undo() error {
 // A zombie transaction is one whose leader has lost leadership while applying
 // the associated FSM command. The transaction is left in state passed as
 // argument.
-func (t *Txn) Zombie(state fsm.State) {
+func (t *Txn) Zombie() {
 	if !t.isLeader {
-		panic("non-leader transactions can't be marked as zombie")
+		panic("follower transactions can't be marked as zombie")
 	}
 	if t.isZombie {
 		panic("transaction is already marked as zombie")
 	}
-	t.machine.Subject.SetState(state)
 	t.isZombie = true
-}
-
-// Resurrect a zombie transaction, to be re-used after a leader that lost
-// leadership was re-elected right away.
-func (t *Txn) Resurrect(state fsm.State) {
-	if !t.isLeader {
-		panic("non-leader transactions can't be marked as zombie")
-	}
-	if !t.isZombie {
-		panic("transaction is not marked as zombie")
-	}
-	t.machine.Subject.SetState(state)
-	t.isZombie = false
 }
 
 // IsZombie returns true if this is a zombie transaction.
 func (t *Txn) IsZombie() bool {
 	if !t.isLeader {
-		panic("non-leader transactions can't be zombie")
+		panic("follower transactions can't be zombie")
 	}
 	return t.isZombie
 }
 
-// DryRun makes this transaction only transition between states, without
-// actually invoking the relevant SQLite APIs. This should only be
-// used by tests.
-func (t *Txn) DryRun(v bool) {
-	t.dryRun = v
+// Resurrect a zombie transaction.
+//
+// This should be called only on zombie transactions in Pending or Writing
+// state, in case a leader that lost leadership was re-elected right away or a
+// quorum for a lost commit frames command was reached and the new leader is
+// replicating it on the former leader.
+//
+// A new follower transaction will be created with the given connection (which
+// is assumed to be in follower replication mode), and set to the same ID as
+// this zombie.
+//
+// All preceeding non-commit frames commands (if any) will be re-applied on the
+// follower transaction.
+//
+// If no error occurrs, the newly created follower transaction is returned.
+func (t *Txn) Resurrect(conn *sqlite3.SQLiteConn) (*Txn, error) {
+	if !t.isLeader {
+		panic("attempt to resurrect follower transaction")
+	}
+	if !t.isZombie {
+		panic("attempt to resurrect non-zombie transaction")
+	}
+	if t.State() != Pending && t.State() != Writing {
+		panic("attempt to resurrect a transaction not in pending or writing state")
+	}
+	txn := New(conn, t.ID())
+
+	for i, frames := range t.frames {
+		begin := i == 0
+		if err := txn.transition(Writing, begin, frames); err != nil {
+			return nil, err
+		}
+	}
+
+	return txn, nil
 }
 
 // Try to transition to the given state. If the transition is invalid,
 // panic out.
 func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 	if err := t.machine.Transition(state); err != nil {
-		panic(fmt.Sprintf(
-			"invalid %s -> %s transition", t.state.CurrentState(), state))
-	}
-
-	if t.dryRun {
-		// In dry run mode, don't actually invoke any SQLite API.
-		return nil
+		panic(fmt.Sprintf("invalid %s -> %s transition", t.State(), state))
 	}
 
 	if t.isLeader {
 		// In leader mode, don't actually invoke SQLite replication
 		// API, since that will be done by SQLite internally.
+		switch state {
+		case Writing:
+			// Save non-commit frames in case the last commit fails
+			// and gets recovered by the same leader.
+			begin := args[0].(bool)
+			frames := args[1].(*sqlite3.ReplicationFramesParams)
+			if begin {
+				t.frames = append(t.frames, frames)
+			}
+		case Written:
+			fallthrough
+		case Undone:
+			// Reset saved frames. They are not going to be used
+			// anymore and they help garbage-collecting them, since
+			// the tracer holds references to a number of
+			// transaction objects.
+			t.frames = nil
+		}
+	}
+
+	if t.dryRun {
+		// In dry run mode, don't actually invoke any SQLite API.
 		return nil
 	}
 
@@ -184,44 +240,9 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 
 	if err != nil {
 		if err := t.machine.Transition(Doomed); err != nil {
-			panic(fmt.Sprintf("cannot doom from %s", t.state.CurrentState()))
+			panic(fmt.Sprintf("cannot doom from %s", t.State()))
 		}
 	}
 
 	return err
-}
-
-type txnState struct {
-	state fsm.State
-}
-
-// CurrentState returns the current state, implementing fsm.Stater.
-func (s *txnState) CurrentState() fsm.State {
-	return s.state
-}
-
-// SetState switches the current state, implementing fsm.Stater.
-func (s *txnState) SetState(state fsm.State) {
-	s.state = state
-}
-
-// Capture valid state transitions within a transaction.
-func newTxnStateRules() *fsm.Ruleset {
-	rules := &fsm.Ruleset{}
-
-	for o, states := range transitions {
-		for _, e := range states {
-			rules.AddTransition(fsm.T{O: o, E: e})
-		}
-	}
-
-	return rules
-}
-
-// Map of all valid state transitions.
-var transitions = map[fsm.State][]fsm.State{
-	Pending: {Writing, Written, Undone},
-	Writing: {Writing, Written, Undone, Doomed},
-	Written: {Doomed},
-	Undone:  {Doomed},
 }
