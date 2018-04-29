@@ -1,299 +1,267 @@
 package transaction_test
 
 import (
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTxn_String(t *testing.T) {
-	conn1 := &sqlite3.SQLiteConn{}
-	txn1 := transaction.New(conn1, 0, false, false)
-	assert.Equal(t, "0 pending as follower", txn1.String())
+	txn, cleanup := newFollowerTxn(t, 0)
+	defer cleanup()
+	assert.False(t, txn.IsLeader())
+	assert.Equal(t, "0 pending as follower", txn.String())
 
-	conn2 := &sqlite3.SQLiteConn{}
-	txn2 := transaction.New(conn2, 1, true, false)
-	assert.Equal(t, "1 pending as leader", txn2.String())
+	txn, cleanup = newLeaderTxn(t, 1)
+	defer cleanup()
+	assert.True(t, txn.IsLeader())
+	assert.Equal(t, "1 pending as leader", txn.String())
+
+	txn.Zombie()
+	assert.Equal(t, "1 pending as leader (zombie)", txn.String())
 }
 
-/*
+// Marking a transaction as leader twice results in a panic.
+func TestTxn_LeaderTwice(t *testing.T) {
+	txn, cleanup := newLeaderTxn(t, 1)
+	defer cleanup()
 
-func TestTxn_IsStale(t *testing.T) {
-	registry := newRegistry()
-
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, 0, nil)
-
-	assert.False(t, txn.IsStale())
-
-	txn.DryRun(true)
-	txn.Do(txn.Begin)
-	txn.Do(txn.Stale)
-
-	assert.True(t, txn.IsStale())
+	assert.PanicsWithValue(t, "transaction is already marked as leader", txn.Leader)
 }
 
-// Follower transactions can't transition to the stale state.
-func TestTxn_IsStaleFollower(t *testing.T) {
-	registry := newRegistry()
+// Putting a transaction in dry-run mode twice results in a panic.
+func TestTxn_DryRunTwice(t *testing.T) {
+	txn, cleanup := newFollowerTxn(t, 1)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.TxnAddFollower(conn, 123)
+	txn.DryRun()
 
-	assert.False(t, txn.IsStale())
-
-	txn.DryRun(true)
-	txn.Do(txn.Begin)
-
-	f := func() { txn.Do(txn.Stale) }
-
-	assert.PanicsWithValue(t, "invalid undone -> stale transition", f)
+	assert.PanicsWithValue(t, "transaction is already in dry-run mode", txn.DryRun)
 }
 
-func TestTxn_Pending(t *testing.T) {
-	registry := newRegistry()
+// The transaction connection is exposed by the Conn() method.
+func TestTxn_Conn(t *testing.T) {
+	txn, cleanup := newFollowerTxn(t, 123)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.TxnAddFollower(conn, 123)
-	txn.Enter()
-
-	state := txn.State()
-	if state != registry.Pending {
-		t.Errorf("initial txn state is not Pending: %s", state)
-	}
+	assert.NotNil(t, txn.Conn())
 }
 
-func TestTxn_Started(t *testing.T) {
-	registry := newRegistry()
+// The transaction ID is exposed by the ID() method.
+func TestTxn_ID(t *testing.T) {
+	txn, cleanup := newFollowerTxn(t, 123)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.TxnAddFollower(conn, 123)
-	txn.Enter()
-
-	txn.DryRun(true)
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-
-	state := txn.State()
-	if state != registry.Started {
-		t.Errorf("txn state after Begin is not Started: %s", state)
-	}
+	assert.Equal(t, uint64(123), txn.ID())
 }
 
-func TestTxn_Writing(t *testing.T) {
-	registry := newRegistry()
-	registry.DryRun()
+// The transaction state is exposed by the Sate() method.
+func TestTxn_State(t *testing.T) {
+	txn, cleanup := newFollowerTxn(t, 123)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.TxnAddFollower(conn, 123)
-	txn.Enter()
-
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	params := &sqlite3.ReplicationFramesParams{
-		Pages: sqlite3.NewReplicationPages(2, 4096),
-	}
-	if err := txn.Frames(params); err != nil {
-		t.Fatal(err)
-	}
-
-	state := txn.State()
-	if state != registry.Writing {
-		t.Errorf("txn state after Frames is not Writing: %s", state)
-	}
+	assert.Equal(t, transaction.Pending, txn.State())
 }
 
-func TestTxn_Written(t *testing.T) {
-	registry := newRegistry()
-	registry.DryRun()
+// A follower transaction replicates the given commit frames command.
+func TestTxn_Frames_Follower_Commit(t *testing.T) {
+	txn, cleanup := newFollowerTxn(t, 123)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.TxnAddFollower(conn, 123)
-	txn.Enter()
+	err := txn.Frames(true /* begin */, newCreateTable())
+	require.NoError(t, err)
 
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	params := &sqlite3.ReplicationFramesParams{
-		Pages:    sqlite3.NewReplicationPages(2, 4096),
-		IsCommit: 1,
-	}
-	if err := txn.Frames(params); err != nil {
-		t.Fatal(err)
-	}
-
-	state := txn.State()
-	if state != registry.Written {
-		t.Errorf("txn state after Frames is not Written: %s", state)
-	}
+	assert.Equal(t, transaction.Written, txn.State())
 }
 
-func TestTxn_Undone(t *testing.T) {
-	registry := newRegistry()
+// A follower transaction replicates the given non-commit frames command.
+func TestTxn_Frames_Follower_Non_Commit(t *testing.T) {
+	txn, cleanup := newFollowerTxn(t, 0)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.TxnAddFollower(conn, 123)
-	txn.Enter()
+	err := txn.Frames(true /* begin */, newCreateTable())
+	require.NoError(t, err)
 
-	txn.DryRun(true)
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	if err := txn.Undo(); err != nil {
-		t.Fatal(err)
-	}
+	// Create a new txn with the same connection, since the one above is done.
+	txn = transaction.New(txn.Conn(), 1)
 
-	state := txn.State()
-	if state != registry.Undone {
-		t.Errorf("txn state after Undo is not Undone: %s", state)
-	}
+	err = txn.Frames(true /* begin */, newInsertN())
+	require.NoError(t, err)
+
+	assert.Equal(t, transaction.Writing, txn.State())
 }
 
-func TestTxn_StaleFromPending(t *testing.T) {
-	registry := newRegistry()
+// A follower transaction executes an undo command.
+func TestTxn_Undo_Follower_Non_Commit(t *testing.T) {
+	txn, cleanup := newFollowerTxn(t, 0)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, 0, nil)
-	txn.Enter()
+	err := txn.Frames(true /* begin */, newCreateTable())
+	require.NoError(t, err)
 
-	txn.DryRun(true)
-	if err := txn.Stale(); err != nil {
-		t.Fatal(err)
-	}
+	// Create a new txn with the same connection, since the one above is done.
+	txn = transaction.New(txn.Conn(), 1)
 
-	state := txn.State()
-	if state != registry.Stale {
-		t.Errorf("txn state after Stale from Pending is not Stale: %s", state)
-	}
+	err = txn.Frames(true /* begin */, newInsertN())
+	require.NoError(t, err)
+
+	err = txn.Undo()
+	require.NoError(t, err)
+
+	assert.Equal(t, transaction.Undone, txn.State())
 }
 
-func TestTxn_StaleFromStarted(t *testing.T) {
-	registry := newRegistry()
-	registry.DryRun()
+// Mark a leader transaction as zombie.
+func TestTxn_Zombie(t *testing.T) {
+	txn, cleanup := newLeaderTxn(t, 0)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, 0, nil)
-	txn.Enter()
+	txn.Zombie()
 
-	txn.DryRun(true)
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := txn.Stale(); err != nil {
-		t.Fatal(err)
-	}
-
-	state := txn.State()
-	if state != registry.Stale {
-		t.Errorf("txn state after Stale from Begin is not Stale: %s", state)
-	}
+	assert.True(t, txn.IsZombie())
 }
 
-func TestTxn_StaleFromWriting(t *testing.T) {
-	registry := newRegistry()
-	registry.DryRun()
+// Marking a follower transaction as zombie results in a panic.
+func TestTxn_Zombie_Follower(t *testing.T) {
+	txn, cleanup := newFollowerTxn(t, 0)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, 0, nil)
-	txn.Enter()
-
-	txn.DryRun(true)
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	params := &sqlite3.ReplicationFramesParams{
-		Pages: sqlite3.NewReplicationPages(2, 4096),
-	}
-	if err := txn.Frames(params); err != nil {
-		t.Fatal(err)
-	}
-	if err := txn.Stale(); err != nil {
-		t.Fatal(err)
-	}
-
-	state := txn.State()
-	if state != registry.Stale {
-		t.Errorf("txn state after Stale from Writing is not Stale: %s", state)
-	}
+	assert.PanicsWithValue(t, "follower transactions can't be marked as zombie", txn.Zombie)
 }
 
-func TestTxn_StaleFromWritten(t *testing.T) {
-	registry := newRegistry()
-	registry.DryRun()
+// Marking a transaction as zombie twice results in a panic.
+func TestTxn_Zombie_Twice(t *testing.T) {
+	txn, cleanup := newLeaderTxn(t, 0)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.AddLeader(conn, 0, nil)
-	txn.Enter()
+	txn.Zombie()
 
-	txn.DryRun(true)
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	params := &sqlite3.ReplicationFramesParams{
-		Pages:    sqlite3.NewReplicationPages(2, 4096),
-		IsCommit: 1,
-	}
-	if err := txn.Frames(params); err != nil {
-		t.Fatal(err)
-	}
-	if err := txn.Stale(); err != nil {
-		t.Fatal(err)
-	}
-
-	state := txn.State()
-	if state != registry.Stale {
-		t.Errorf("txn state after Stale from Written is not Stale: %s", state)
-	}
+	assert.PanicsWithValue(t, "transaction is already marked as zombie", txn.Zombie)
 }
 
-func TestTxn_StaleFromUndone(t *testing.T) {
-	registry := newRegistry()
-	registry.DryRun()
+// Calling IsZombie() on a follower connection results in a panic.
+func TestTxn_IsZombie_Follower(t *testing.T) {
+	txn, cleanup := newFollowerTxn(t, 0)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-
-	// Pretend that the follower transaction is the leader, since
-	// invoking Begin() on an actual leader connection would fail
-	// because the WAL has not started a read registry.
-	txn := registry.AddLeader(conn, 0, nil)
-	txn.Enter()
-
-	txn.DryRun(true)
-	if err := txn.Begin(); err != nil {
-		t.Fatal(err)
-	}
-	if err := txn.Undo(); err != nil {
-		t.Fatal(err)
-	}
-	if err := txn.Stale(); err != nil {
-		t.Fatal(err)
-	}
-
-	state := txn.State()
-	if state != registry.Stale {
-		t.Errorf("txn state after Stale from Undone is not Stale: %s", state)
-	}
+	assert.PanicsWithValue(t, "follower transactions can't be zombie", func() { txn.IsZombie() })
 }
 
-func TestTxn_StalePanicsIfInvokedOnFollowerTransaction(t *testing.T) {
-	registry := newRegistry()
+// Resurrect a zombie transaction.
+func TestTxn_Resurrect(t *testing.T) {
+	// First apply a CREATE TABLE frames command to both a leader and a
+	// follower transaction. This is needed in order for the recover of the
+	// INSERT frames command below to work.
+	leader, cleanup := newLeaderTxn(t, 0)
+	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
-	txn := registry.TxnAddFollower(conn, 123)
-	txn.Enter()
+	follower, cleanup := newFollowerTxn(t, 0)
+	defer cleanup()
 
-	const want = "invalid pending -> stale transition"
-	defer func() {
-		got := recover()
-		if got != want {
-			t.Errorf("expected\n%q\ngot\n%q", want, got)
+	err := leader.Frames(true /* begin */, newCreateTable())
+	require.NoError(t, err)
+
+	err = follower.Frames(true /* begin */, newCreateTable())
+	require.NoError(t, err)
+
+	// Then apply an INSERT frames command to the leader connection, using
+	// a new transaction ID.
+	leader = transaction.New(leader.Conn(), 1)
+	leader.Leader()
+
+	err = leader.Frames(true /* begin */, newInsertN())
+	require.NoError(t, err)
+
+	// Now mark the transaction as zombie and resurrect it using the
+	// follower connection.
+	leader.Zombie()
+
+	follower, err = leader.Resurrect(follower.Conn())
+	require.NoError(t, err)
+	assert.Equal(t, leader.ID(), follower.ID())
+	assert.Equal(t, transaction.Writing, follower.State())
+}
+
+// Resurrect panics if some pre-conditions are not met.
+func TestTxn_Resurrect_Panic(t *testing.T) {
+	leader := transaction.New(&sqlite3.SQLiteConn{}, 1)
+
+	f := func() { leader.Resurrect(&sqlite3.SQLiteConn{}) }
+	assert.PanicsWithValue(t, "attempt to resurrect follower transaction", f)
+
+	leader.Leader()
+	assert.PanicsWithValue(t, "attempt to resurrect non-zombie transaction", f)
+
+	leader.Zombie()
+	leader.Undo()
+	assert.PanicsWithValue(t, "attempt to resurrect a transaction not in pending or writing state", f)
+}
+
+// Performing an invalid state transition results in an error
+func TestTxn_InvalidTransition(t *testing.T) {
+	txn, cleanup := newFollowerTxn(t, 1)
+	defer cleanup()
+
+	err := txn.Frames(true /* begin */, newCreateTable())
+	require.NoError(t, err)
+
+	f := func() { txn.Undo() }
+	assert.PanicsWithValue(t, "invalid written -> undone transition", f)
+}
+
+func newFollowerTxn(t *testing.T, id uint64) (*transaction.Txn, func()) {
+	t.Helper()
+
+	dir, cleanup := newDir(t)
+
+	conn, err := connection.OpenFollower(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal("could not open follower connection", err)
+	}
+
+	txn := transaction.New(conn, id)
+
+	return txn, cleanup
+}
+
+func newLeaderTxn(t *testing.T, id uint64) (*transaction.Txn, func()) {
+	t.Helper()
+
+	dir, cleanup := newDir(t)
+
+	methods := sqlite3.NoopReplicationMethods()
+	conn, err := connection.OpenLeader(filepath.Join(dir, "test.db"), methods)
+	if err != nil {
+		t.Fatal("could not open follower connection", err)
+	}
+
+	txn := transaction.New(conn, id)
+	txn.Leader()
+
+	return txn, cleanup
+}
+
+// Create a new temporary directory.
+func newDir(t *testing.T) (string, func()) {
+	t.Helper()
+
+	dir, err := ioutil.TempDir("", "dqlite-transaction-test-")
+	if err != nil {
+		t.Fatal("could not create temporary", err)
+	}
+
+	cleanup := func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal("could not remove temporary dir", err)
 		}
-	}()
-	txn.Stale()
+	}
+
+	return dir, cleanup
 }
-*/

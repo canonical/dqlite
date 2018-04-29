@@ -306,7 +306,6 @@ func (c *Conn) Close() error {
 			// We need to create a surrogate follower, in order to
 			// undo this transaction across all nodes.
 			txn = c.registry.TxnFollowerSurrogate(txn)
-			txn.DryRun(true)
 			txn.Frames(true, &sqlite3.ReplicationFramesParams{IsCommit: 0})
 		}
 	}

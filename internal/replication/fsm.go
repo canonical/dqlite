@@ -186,23 +186,51 @@ func (f *FSM) applyFrames(tracer *trace.Tracer, params *protocol.Frames) error {
 		tracer.Message("txn found %s", txn)
 
 		if txn.IsLeader() {
-			// We're executing the Frames command triggered by the
-			// Methods.Frames hook on this node.
+			// We're executing a Frames command triggered by the
+			// Methods.Frames hook on this servers.
 			if txn.IsZombie() {
 				// The only way that this can be a zombie is if
 				// this Frames command is being executed by
 				// this FSM after this leader failed with
-				// ErrLeadershipLost, but a quorum was still
-				// reached. We don't know who's gonna be the
-				// next leader, if this server or another
-				// one. Either way, we create a surrogate
-				// follower and transition it to Writing. If it
-				// happens that this node gets elected again,
-				// then its next Methods.Begin hook will find a
-				// Writing follower and will roll it back. If
-				// it happens that some other node gets
-				// elected, same.
-				txn = f.registry.TxnFollowerSurrogate(txn)
+				// ErrLeadershipLost, and 1) this server was
+				// re-elected right away and has successfully
+				// retried to apply this command or 2) another
+				// server was elected and a quorum was still
+				// reached for this command log despite the
+				// previous leader not getting notified about
+				// it.
+				if params.IsCommit == 0 {
+					// This is not a commit frames
+					// command. Regardless of whether 1) or
+					// 2) happened, it's safe to create a
+					// surrogate follower transaction and
+					// transition it to Writing.
+					//
+					// If 1) happens, then the next
+					// Methods.Begin hook on this server
+					// will find a leftover Writing
+					// follower and will roll it back with
+					// an Undo command. If 2) happens, same.
+					tracer.Message("create surrogate follower", txn)
+					txn = f.registry.TxnFollowerSurrogate(txn)
+				} else {
+					// This is a commit frames
+					// command. Regardless of whether 1) or
+					// 2) happened, we need to resurrect
+					// the zombie into a follower and
+					// possibly re-apply any non-commit
+					// frames that were applied so far in
+					// the transaction.
+					tracer.Message("recover commit")
+					conn := f.registry.ConnFollower(params.Filename)
+					var err error
+					txn, err = txn.Resurrect(conn)
+					if err != nil {
+						return err
+					}
+					f.registry.TxnFollowerResurrected(txn)
+					begin = txn.State() == transaction.Pending
+				}
 			} else {
 				// We're executing this FSM command in during
 				// the execution of the Methods.Frames hook.
@@ -219,20 +247,31 @@ func (f *FSM) applyFrames(tracer *trace.Tracer, params *protocol.Frames) error {
 	} else {
 		// We don't know about this transaction.
 		//
-		// This is must be a new follower transaction. Let's check that
-		// no other transaction against this database is happening on
-		// this node, since we're supposed to be purely followers, and
-		// unreleased WAL write locks would get in the way. We need to
-		// special case zombie transactions which were left around by a
-		// leader that lost leadership during a Frames hook.
+		// This is must be a new follower transaction. Let's make sure
+		// that no other transaction against this database is happening
+		// on this server.
 		if txn := f.registry.TxnByFilename(params.Filename); txn != nil {
-			if txn.IsLeader() && txn.IsZombie() {
+			if txn.IsZombie() {
+				// This transactions was left around by a
+				// leader that lost leadership during a Frames
+				// hook that was the first to be sent and did
+				// not reach a quorum, so no other server knows
+				// about it, and now we're starting a new
+				// trasaction initiated by a new leader. We can
+				// just purge it from the registry, since its
+				// state was already rolled back by SQLite
+				// after the xFrames hook failure.
 				tracer.Message("found zombie transaction %s", txn)
-				if txn.ID() >= params.Txid {
+
+				// Perform some sanity checks.
+				if txn.ID() > params.Txid {
 					tracer.Panic("zombie transaction too recent %s", txn)
 				}
+				if txn.State() != transaction.Pending {
+					tracer.Panic("unexpected transaction state %s", txn)
+				}
+
 				tracer.Message("removing stale zombie transaction %s", txn)
-				// This is stale zombie, let's just get rid of it.
 				f.registry.TxnDel(txn.ID())
 			} else {
 				tracer.Panic("unexpected transaction %s", txn)
@@ -283,14 +322,8 @@ func (f *FSM) applyUndo(tracer *trace.Tracer, params *protocol.Undo) error {
 	txn := f.registry.TxnByID(params.Txid)
 
 	if txn != nil {
-		tracer.Message("txn found: %s", txn)
-
 		// We know about this transaction.
-		tracer.Message("txn found %s", txn)
-
-		if txn.IsLeader() {
-		}
-
+		tracer.Message("txn found: %s", txn)
 	} else {
 		if f.noopBeginTxn != params.Txid {
 			tracer.Panic("txn not found")
@@ -303,7 +336,26 @@ func (f *FSM) applyUndo(tracer *trace.Tracer, params *protocol.Undo) error {
 		return err
 	}
 
-	if !txn.IsLeader() {
+	// Let's decide whether to remove the transaction from the registry or
+	// not. The following scenarios are possible:
+	//
+	// 1. This is a non-zombie leader transaction. We can assume that this
+	//    command is being applied in the context of a Methods.Undo() hook
+	//    execution, which will wait for the command to succeed and then
+	//    remove the transaction by itself in the End hook, so no need to
+	//    remove it here.
+	//
+	// 2. This is a follower transaction. We're done here, since undone is
+	//    a final state, so let's remove the transaction.
+	//
+	// 3. This is a zombie leader transaction. This can happen if the
+	//    leader lost leadership when applying the a non-commit frames, but
+	//    the command was still committed (either by us is we were
+	//    re-elected, or by another server if the command still reached a
+	//    quorum). In that case the we're handling an Undo command to
+	//    rollback a dangling transaction, and we have to remove the zombie
+	//    ourselves, because nobody else would do it otherwise.
+	if !txn.IsLeader() || txn.IsZombie() {
 		tracer.Message("unregister txn")
 		f.registry.TxnDel(params.Txid)
 	}

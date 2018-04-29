@@ -155,8 +155,17 @@ func (m *Methods) Begin(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 		return errno(err)
 	}
 
-	// Use the last raft index as transaction ID.
-	txid := m.raft.LastIndex()
+	// Use the last applied index as transaction ID.
+	//
+	// If this server is still the leader, this number is guaranteed to be
+	// strictly higher than any previous transaction ID, since after a
+	// leadership change we always call raft.Barrier() to advance the FSM
+	// up to the latest committed log, raft.Barrier() itself will increment
+	// the applied index by one.
+	//
+	// If it's not the leader anymore, it does not matter which ID we pick
+	// because any coming Frames or Undo hook will fail with ErrNotLeader.
+	txid := m.raft.AppliedIndex()
 
 	tracer = tracer.With(trace.Integer("txn", int64(txid)))
 	tracer.Message("register transaction")
@@ -230,19 +239,12 @@ func (m *Methods) beginMaybeHandleInProgressTxn(tracer *trace.Tracer, conn *sqli
 			tracer.Panic("unexpected transaction on same connection %s", txn)
 		}
 
-		// If we have a zombie for this connection it means that a
-		// Frames command failed because of lost leadership, and no
-		// quorum was reached.
-		switch txn.State() {
-		case transaction.Pending:
-			// The lost Frames command was the first one, we can
-			// just discard this zombie and start fresh.
-			tracer.Message("discard dangling zombie")
-			m.registry.TxnDel(txn.ID())
-			return nil
-		default:
-			// A non-dangling zombie must have committed at least
-			// one Frames command.
+		// If we have a zombie for this connection it, must mean that a
+		// Frames command failed because we were not leaders anymore at
+		// that time and this was a commit frames command following one
+		// or more non-commit frames commands that were successfully
+		// applied.
+		if txn.State() != transaction.Writing {
 			tracer.Panic("unexpected transaction %s", txn)
 		}
 
@@ -393,65 +395,110 @@ func (m *Methods) Frames(conn *sqlite3.SQLiteConn, frames *sqlite3.ReplicationFr
 			if frames.IsCommit == 0 {
 				// Mark the transaction as zombie. Possible scenarios:
 				//
-				// 1. A quorum for this log won't be reached.
+				// 1. This server gets re-elected right away as leader.
 				//
-				//    If we happen to be re-elected right away,
-				//    we'll apply this log again, our FSM will
-				//    transition it to a surrogate follower and
-				//    our next Begin hook invokation will Undo
-				//    the dangling follower.
+				//    In this case we'll try to apply this lost
+				//    command log again. If we succeed, our FSM
+				//    will transition this zombie transaction
+				//    into to a surrogate follower and our next
+				//    Begin hook invokation will issue an Undo
+				//    command, which (if successfull) will be a
+				//    no-op on our FSM and an actual rollback
+				//    on the followers (regardless of whether
+				//    this was the first non-commit frames
+				//    command or a further one). If we fail to
+				//    re-apply the command there will be a new
+				//    election, and we'll end up again in
+				//    either this case (1) or the next one
+				//    (2). Same if the Undo command fails.
 				//
-				//    If someone else becomes leader, there are
-				//    two cases: if this was the first
-				//    non-commit frames command log, then the
-				//    new leader will sends us a Begin command
-				//    for a new transaction, otherwise it will
-				//    send us an Undo command to rollback the
-				//    dangling follower writing transaction
-				//    that it finds. In either case our FSM
-				//    will detect the pending zombie and purge
-				//    it.
+				// 2. Another server gets elected as leader.
 				//
-				// 2. A quorum for this log will actually be
-				//    reached. The FSM will find a started
-				//    zombie and create a surrogate
-				//    follower. Since this is a commit frame,
-				//    the transaction will be removed and
-				//    whoever becomes the next leader will be
-				//    fine. TODO: inform clients that a
-				//    transaction that apparently failed,
-				//    actually got committed.
-				txn.Zombie(transaction.Writing)
+				//    In this case there are two possible
+				//    scenarios.
+				//
+				//    2.1. No quorum was reached for the lost
+				//         commit command. This means that no
+				//         FSM (including ours) will ever try
+				//         to apply it. If this lost non-commit
+				//         frames command was the first one of
+				//         a transaction, the new leader will
+				//         see no dangling follower and will
+				//         just start a new transaction with a
+				//         new ID, sending a Frames command to
+				//         our FSM. Our FSM will detect the
+				//         zombie transaction and simply purge
+				//         it from the registry.
+				//
+				//    2.2 A quorum was reached for the lost
+				//        commit command. This means that the
+				//        new leader will replicate it to every
+				//        server that didn't apply it yet,
+				//        which includes us, and then issue an
+				//        Undo command to abort the
+				//        transaction. In this case our FSM
+				//        will behave like in case 1.
+				tracer.Message("marking as zombie")
+				txn.Zombie()
 			} else {
 				// Mark the transaction as zombie. Possible scenarios:
 				//
-				// 1. A quorum for this log won't be reached. In
-				//    this case no FSM will ever apply this
-				//    command. If we happen to be re-elected
-				//    right away, our next Begin hook invokation
-				//    will detect the zombie and and purge it or
-				//    undo it. If someone else becomes leader
-				//    and sends us a Begin command for a new
-				//    transaction, the FSM will detect the
-				//    pending zombie for an older transaction
-				//    and purge it.
+				// 1. This server gets re-elected right away as leader.
 				//
-				// 2. A quorum for this log will actually be
-				//    reached. The FSM will find a started
-				//    zombie and create a surrogate
-				//    follower. Since this is a commit frame,
-				//    the transaction will be removed and
-				//    whoever becomes the next leader will be
-				//    fine. TODO: inform clients that a
-				//    transaction that apparently failed,
-				//    actually got committed.
-				txn.Zombie(transaction.Pending)
+				//    In this case we'll try to apply this lost
+				//    command log again. If we succeed, two
+				//    scenarios are possible:
+				//
+				//    1.1 This was the only Frames command in
+				//        the transaction, our FSM will convert
+				//        the zombie transaction into a
+				//        follower transaction, and apply it
+				//        normally, effectively recovering the
+				//        commit failure.
+				//
+				//    2.1 This was the last Frames command in a
+				//        series of one or more non-commit
+				//        Frames commands, which were all
+				//        applied.
+				//
+				// 2. Another server gets elected as leader.
+				//
+				//    In this case there are two possible
+				//    scenarios.
+				//
+				//    2.1. No quorum was reached for the lost
+				//         commit command. This means that no
+				//         FSM (including ours) will ever try
+				//         to apply it. If this lost commit
+				//         frames command was the first one of
+				//         a transaction, the new leader will
+				//         see no dangling follower and will
+				//         just start a new transaction with a
+				//         new ID, sending a Frames command to
+				//         our FSM. Our FSM will detect the
+				//         zombie transaction and simply purge
+				//         it from the registry.
+				//
+				//    2.2 A quorum was reached for the lost
+				//        commit command. This means that the
+				//        new leader will replicate it to every
+				//        server that didn't apply it yet,
+				//        which includes us. In this case our
+				//        FSM will detect the zombie and
+				//        resurrect it using the follower
+				//        connection for this database, and
+				//        possibly writing all preceeding
+				//        non-commit frames to fully recover
+				//        the transaction (which was originally
+				//        rolled back on this server).
+				tracer.Message("marking as zombie")
+				txn.Zombie()
 			}
-		} else {
-			// TODO: under which circumstances can we get errors
-			// other than NotLeader and LeadershipLost? How to
-			// handle them?
 		}
+
+		// TODO: under which circumstances can we get errors other than
+		// NotLeader/RaftShutdown and LeadershipLost? How to handle
+		// them? See also the comments in the apply() method.
 
 		return errno(err)
 	}
@@ -471,10 +518,13 @@ func (m *Methods) framesNotLeader(tracer *trace.Tracer, txn *transaction.Txn) er
 		tracer.Message("no frames command applied")
 	} else {
 		// At least one Frames command was applied, so the transaction
-		// exists on the followers. We create a surrogate follower
-		// transaction in the same Writing state, so the next leader
-		// can roll it back.
-		m.surrogateWriting(tracer, txn)
+		// exists on the followers. We mark the transaction as zombie,
+		// the Begin() hook of next leader (either us or somebody else)
+		// will detect a dangling transaction and issue an Undo command
+		// to roll it back. In its applyUndo method our FSM will detect
+		// that the rollback is for a zombie and just no-op it.
+		tracer.Message("marking as zombie")
+		txn.Zombie()
 	}
 
 	// When we return an error, SQLite will fire the End hook.
@@ -525,14 +575,26 @@ func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	}
 
 	if txn.IsZombie() {
-		// This zombie originated from a Frames hook that lost
-		// leadership while applying the Frames command for a commit
-		// frames. We can't simply remove the transaction since the
-		// Frames command might eventually get committed. We just ignore
-		// it, and let it handle by the next Begin hook (if we are
-		// re-elected), or by the FSM's applyUndo method (if another
-		// leader is elected) just resurrect it, roll it back, and mark
-		// it as zombie again with the Started state.
+		// This zombie originated from the Frames hook. There are two scenarios:
+		//
+		// 1. Leadership was lost while applying the Frames command.
+		//
+		//    We can't simply remove the transaction since the Frames
+		//    command might eventually get committed. We just ignore
+		//    it, and let it handle by our FSM in that case (i.e. if we
+		//    are re-elected or a quorum was reached and another leader
+		//    tries to apply it).
+		//
+		// 2. This server was not the leader anymore when the Frames
+		//    hook fired for a commit frames batch which was the last
+		//    of a sequence of non-commit ones.
+		//
+		//    In this case we're being invoked by SQLite which is
+		//    trying to rollback the transaction. We can't simply
+		//    remove the transaction since the next leader will detect
+		//    a dangling transaction and try to issue an Undo
+		//    command. We just ignore the zombie and let our FSM handle
+		//    it when the Undo command will be applied.
 		tracer.Message("done: ignore zombie")
 		return 0
 	}
@@ -646,7 +708,6 @@ func (m *Methods) End(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 func (m *Methods) surrogateWriting(tracer *trace.Tracer, txn *transaction.Txn) {
 	tracer.Message("surrogate to Writing")
 	txn = m.registry.TxnFollowerSurrogate(txn)
-	txn.DryRun(true)
 	txn.Frames(true, &sqlite3.ReplicationFramesParams{IsCommit: 0})
 }
 
