@@ -563,15 +563,9 @@ func (m *Methods) Undo(conn *sqlite3.SQLiteConn) sqlite3.ErrNo {
 	}
 	tracer.Message("found txn %s", txn)
 
+	// Sanity check.
 	if !txn.IsLeader() {
-		// This must be a surrogate follower created by the Frames
-		// hook. We can just ignore it and it will be handled by the
-		// next leader.
-		if txn.State() != transaction.Writing {
-			tracer.Panic("unexpected transaction state %s", txn)
-		}
-		tracer.Message("done: ignore surrogate follower")
-		return 0
+		tracer.Panic("unexpected transaction %s", txn)
 	}
 
 	if txn.IsZombie() {
