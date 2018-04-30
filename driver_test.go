@@ -136,7 +136,8 @@ func TestDriver_OpenError(t *testing.T) {
 	assert.EqualError(t, err, expected)
 }
 
-func TestDriver_NotLeader(t *testing.T) {
+// If the driver is not the current leader, all APIs return an error.
+func TestDriver_NotLeader_Errors(t *testing.T) {
 	cases := []struct {
 		title string
 		f     func(*testing.T, *dqlite.Conn) error
@@ -193,6 +194,24 @@ func TestDriver_NotLeader(t *testing.T) {
 	}
 }
 
+// Return the address of the current raft leader.
+func TestDriver_Leader(t *testing.T) {
+	driver, cleanup := newDriver(t)
+	defer cleanup()
+
+	assert.Equal(t, "0", driver.Leader())
+}
+
+// Return the addresses of all current raft servers.
+func TestDriver_Servers(t *testing.T) {
+	driver, cleanup := newDriver(t)
+	defer cleanup()
+
+	servers, err := driver.Servers()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"0"}, servers)
+}
+
 func TestStmt_Exec(t *testing.T) {
 	driver, cleanup := newDriver(t)
 	defer cleanup()
@@ -234,7 +253,16 @@ func TestTx_Commit(t *testing.T) {
 
 	tx, err := conn.Begin()
 	require.NoError(t, err)
+
+	_, err = conn.(*dqlite.Conn).Exec("CREATE TABLE test (n INT)", nil)
+	require.NoError(t, err)
+
 	assert.NoError(t, tx.Commit())
+
+	// The transaction ID has been saved in the committed buffer.
+	token := tx.(*dqlite.Tx).Token()
+	assert.Equal(t, uint64(5), token)
+	assert.NoError(t, driver.Recover(token))
 }
 
 func TestTx_Rollback(t *testing.T) {

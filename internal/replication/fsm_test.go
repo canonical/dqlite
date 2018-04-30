@@ -39,7 +39,10 @@ func TestFSM_Apply_Frames_Leader(t *testing.T) {
 	// The transaction is still in the registry and is in the Written
 	// state.
 	assert.Equal(t, txn, fsm.Registry().TxnByConn(conn))
-	require.Equal(t, transaction.Written, txn.State())
+	assert.Equal(t, transaction.Written, txn.State())
+
+	// The transaction ID has been saved in the committed buffer.
+	assert.True(t, fsm.Registry().TxnCommittedFind(1))
 }
 
 // Successful non-commit frames command with a leader connection.
@@ -54,7 +57,7 @@ func TestFSM_Apply_Frames_NonCommit_Leader(t *testing.T) {
 	// The transaction is still in the registry and has transitioned to
 	// Writing.
 	assert.Equal(t, txn, fsm.Registry().TxnByConn(conn))
-	require.Equal(t, transaction.Writing, txn.State())
+	assert.Equal(t, transaction.Writing, txn.State())
 }
 
 // Successful undo command with a leader connection.
@@ -81,6 +84,9 @@ func TestFSM_Apply_Frames_Follower(t *testing.T) {
 
 	// The transaction has been removed from the registry
 	assert.Nil(t, fsm.Registry().TxnByID(123))
+
+	// The transaction ID has been saved in the committed buffer.
+	assert.True(t, fsm.Registry().TxnCommittedFind(123))
 }
 
 // Successful undo command with a follower connection.

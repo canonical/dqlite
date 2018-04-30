@@ -18,7 +18,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/CanonicalLtd/dqlite/internal/transaction"
 	"github.com/CanonicalLtd/go-sqlite3"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRegistry_TxnAddLeader(t *testing.T) {
@@ -131,6 +133,21 @@ func TestRegistry_TxnDel(t *testing.T) {
 	if registry.TxnByID(txn.ID()) != nil {
 		t.Error("expected no transaction instance for unregistered ID")
 	}
+}
+
+// Add and find IDs of recently committed transactions.
+func TestRegistry_TxnCommitted(t *testing.T) {
+	registry, cleanup := newRegistry(t)
+	defer cleanup()
+
+	for i := 1; i <= 10001; i++ {
+		txn := transaction.New(nil, uint64(i))
+		registry.TxnCommittedAdd(txn)
+	}
+
+	assert.False(t, registry.TxnCommittedFind(1))
+	assert.True(t, registry.TxnCommittedFind(10001))
+	assert.True(t, registry.TxnCommittedFind(2))
 }
 
 func TestRegistry_RemovePanicsIfPassedNonRegisteredID(t *testing.T) {

@@ -300,10 +300,16 @@ func (f *FSM) applyFrames(tracer *trace.Tracer, params *protocol.Frames) error {
 	}
 
 	// If the commit flag is on, this is the final write of a transaction,
-	// so if it's a follower we unregister it.
-	if !txn.IsLeader() && framesParams.IsCommit > 0 {
-		tracer.Message("unregister txn")
-		f.registry.TxnDel(params.Txid)
+	if framesParams.IsCommit > 0 {
+		// Save the ID of this transaction in the buffer of recently committed
+		// transactions.
+		f.registry.TxnCommittedAdd(txn)
+
+		// If it's a follower, we also unregister it.
+		if !txn.IsLeader() {
+			tracer.Message("unregister txn")
+			f.registry.TxnDel(params.Txid)
+		}
 	}
 
 	tracer.Message("done")
