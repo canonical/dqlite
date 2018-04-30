@@ -21,7 +21,6 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -1337,6 +1336,29 @@ func TestIntegration_Undo_LeadershipLost_Quorum_OtherLeader(t *testing.T) {
 	}, assertEqualDatabaseFiles)
 }
 
+// Test a successful rollback.
+func TestIntegration_Undo(t *testing.T) {
+	runScenario(t, scenario{
+		stageOne{
+			Steps: []stageStep{
+				0: createTable(),
+				1: lowerCacheSize(),
+				2: begin(),
+				3: insertN(500),
+				4: rollback(),
+			},
+		},
+		stageTwo{
+			Steps: []stageStep{
+				0: begin(),
+				1: insertOne(),
+				2: commit(),
+			},
+			Inserted: 1,
+		},
+	}, assertEqualDatabaseFiles)
+}
+
 // Exercise creating and restoring snapshots.
 func TestIntegration_Snapshot(t *testing.T) {
 	conns, control, cleanup := newCluster(t)
@@ -1346,7 +1368,9 @@ func TestIntegration_Snapshot(t *testing.T) {
 
 	// Get a leader connection on the leader node and create a table.
 	conn := conns["0"][0]
-	createTableOld(t, conn, 0)
+	_, err := conn.Exec("CREATE TABLE test (n INT, UNIQUE(n))", nil)
+	require.NoError(t, err)
+
 	control.Barrier()
 
 	// Disconnect the follower immediately, so it will be forced to use the
@@ -1354,9 +1378,10 @@ func TestIntegration_Snapshot(t *testing.T) {
 	term.Disconnect("1")
 
 	// Run a few of WAL-writing queries.
-	insertOneOld(t, conn, 0)
-	insertTwoOld(t, conn, 0)
-	insertThree(t, conn, 0)
+	for i := 1; i < 4; i++ {
+		_, err := conn.Exec(fmt.Sprintf("INSERT INTO test(n) VALUES (%d)", i), nil)
+		require.NoError(t, err)
+	}
 
 	// Take a snapshot on the leader after this first batch of queries.
 	term.Snapshot("0")
@@ -1369,7 +1394,7 @@ func TestIntegration_Snapshot(t *testing.T) {
 
 	// Run an extra query to proof that the follower with the restored
 	// snapshot is still functional.
-	_, err := conn.Exec("INSERT INTO test VALUES(4)", nil)
+	_, err = conn.Exec("INSERT INTO test VALUES(4)", nil)
 	require.NoError(t, err)
 
 	// The follower will now have to restore the snapshot.
@@ -1468,6 +1493,21 @@ func runScenario(t *testing.T, s scenario, options ...clusterOption) {
 	selectN(t, conns["0"][0], s.StageTwo.Inserted)
 	selectN(t, conns["1"][0], s.StageTwo.Inserted)
 	selectN(t, conns["2"][0], s.StageTwo.Inserted)
+}
+
+// Select N rows from the test table and check that their value is progressing
+// and no other rows are there.
+func selectN(t *testing.T, conn *sqlite3.SQLiteConn, n int) {
+	t.Helper()
+	rows, err := conn.Query("SELECT n FROM test ORDER BY n", nil)
+	require.NoError(t, err)
+	values := make([]driver.Value, 1)
+	for i := 0; i < n; i++ {
+		require.NoError(t, rows.Next(values))
+		assert.Equal(t, int64(i+1), values[0])
+	}
+	assert.Equal(t, io.EOF, rows.Next(values))
+	require.NoError(t, rows.Close())
 }
 
 type scenario struct {
@@ -1694,9 +1734,6 @@ func newCluster(t *testing.T, opts ...clusterOption) (clusterConns, *rafttest.Co
 		methods[i].Registry().ConnLeaderAdd("test.db", conn2)
 
 		conns[id] = [2]*sqlite3.SQLiteConn{conn1, conn2}
-
-		methodByConnSet(conn1, methods[i])
-		methodByConnSet(conn2, methods[i])
 	}
 
 	options := defaultClusterOptions()
@@ -1805,16 +1842,6 @@ func noLeaderCheck(n int) clusterOption {
 	}
 }
 
-func requireEqualErrNoOld(t *testing.T, code sqlite3.ErrNoExtended, err error) {
-	t.Helper()
-
-	sqliteErr, ok := err.(sqlite3.Error)
-	if !ok {
-		t.Fatal("expected sqlite3.Error, but got:", err)
-	}
-	require.Equal(t, code, sqliteErr.ExtendedCode)
-}
-
 // Apply a checkpoint command against the given fsm.
 func checkpointDatabase(t *testing.T, fsm raft.FSM) {
 	t.Helper()
@@ -1834,178 +1861,4 @@ func readDatabaseFile(t *testing.T, dir string) []byte {
 	data, err := ioutil.ReadFile(path)
 	require.NoError(t, err)
 	return data
-}
-
-// Global registry of Methods instances by connection. This is a poor man
-// shortcut to avoid exposing Methods instances explicitely to the tests.
-func methodByConnGet(conn *sqlite3.SQLiteConn) *replication.Methods {
-	methodsByConnMu.RLock()
-	defer methodsByConnMu.RUnlock()
-	return methodsByConn[conn]
-}
-func methodByConnSet(conn *sqlite3.SQLiteConn, methods *replication.Methods) {
-	methodsByConnMu.Lock()
-	defer methodsByConnMu.Unlock()
-	methodsByConn[conn] = methods
-}
-
-var methodsByConn = map[*sqlite3.SQLiteConn]*replication.Methods{}
-var methodsByConnMu = sync.RWMutex{}
-
-// Set the page and cache size of SQLite in order to force it write pages to
-// the WAL even before the transaction is committed. This allows to trigger the
-// xUndo callback, which would be otherwise not called (because all dirty pages
-// were still SQLite's page cache).
-func lowerCacheSizeOld(t *testing.T, conn *sqlite3.SQLiteConn) {
-	t.Helper()
-	_, err := conn.Exec("PRAGMA page_size = 1024", nil)
-	require.NoError(t, err) // SQLite should never return an error here
-	_, err = conn.Exec("PRAGMA cache_size = 1", nil)
-	require.NoError(t, err) // SQLite should never return an error here
-}
-
-// Creates a test table in a transaction using the given connection. If code is
-// not zero, assert that the query fails.
-func createTableOld(t *testing.T, conn *sqlite3.SQLiteConn, code sqlite3.ErrNoExtended) {
-	t.Helper()
-	beginOld(t, conn)
-	_, err := conn.Exec("CREATE TABLE test (n INT, UNIQUE(n))", nil)
-	if code == 0 {
-		require.NoError(t, err)
-		commitOld(t, conn, 0)
-	} else {
-		requireEqualErrNoOld(t, code, err)
-	}
-}
-
-// Begin a transaction
-func beginOld(t *testing.T, conn *sqlite3.SQLiteConn) {
-	t.Helper()
-	_, err := conn.Exec("BEGIN", nil)
-	require.NoError(t, err)
-}
-
-// Commit a transaction.
-func commitOld(t *testing.T, conn *sqlite3.SQLiteConn, code sqlite3.ErrNoExtended) {
-	t.Helper()
-	_, err := conn.Exec("COMMIT", nil)
-	if code == 0 {
-		require.NoError(t, err)
-	} else {
-		requireEqualErrNoOld(t, code, err)
-	}
-}
-
-// Rollback a transaction.
-func rollbackOld(t *testing.T, conn *sqlite3.SQLiteConn) {
-	t.Helper()
-	_, err := conn.Exec("ROLLBACK", nil)
-	require.NoError(t, err) // SQLite should never return an error here
-}
-
-// Inserts a single row into the test table with value 1.
-func insertOneOld(t *testing.T, conn *sqlite3.SQLiteConn, code sqlite3.ErrNoExtended) {
-	t.Helper()
-	_, err := conn.Exec("INSERT INTO test(n) VALUES (1)", nil)
-	if code == 0 {
-		require.NoError(t, err)
-	} else {
-		requireEqualErrNoOld(t, code, err)
-	}
-}
-
-// Inserts a single row into the test table with value 2.
-func insertTwoOld(t *testing.T, conn *sqlite3.SQLiteConn, code sqlite3.ErrNoExtended) {
-	t.Helper()
-	_, err := conn.Exec("INSERT INTO test(n) VALUES (2)", nil)
-	if code == 0 {
-		require.NoError(t, err)
-	} else {
-		requireEqualErrNoOld(t, code, err)
-	}
-}
-
-// Inserts a single row into the test table with value 3.
-func insertThree(t *testing.T, conn *sqlite3.SQLiteConn, code sqlite3.ErrNoExtended) {
-	t.Helper()
-	_, err := conn.Exec("INSERT INTO test(n) VALUES (3)", nil)
-	if code == 0 {
-		require.NoError(t, err)
-	} else {
-		requireEqualErrNoOld(t, code, err)
-	}
-}
-
-// Inserts the given number of rows in the test table.
-func insertNold(t *testing.T, conn *sqlite3.SQLiteConn, n int, code sqlite3.ErrNoExtended) {
-	t.Helper()
-
-	values := ""
-	for i := 0; i < n; i++ {
-		values += fmt.Sprintf(" (%d),", i+1)
-	}
-	values = values[:len(values)-1]
-	_, err := conn.Exec(fmt.Sprintf("INSERT INTO test(n) VALUES %s", values), nil)
-	if code == 0 {
-		require.NoError(t, err)
-	} else {
-		requireEqualErrNoOld(t, code, err)
-	}
-}
-
-// Inserts the one more number into the test table, after that N have been
-// inserted already
-func insertOneAfterNold(t *testing.T, conn *sqlite3.SQLiteConn, n int, code sqlite3.ErrNoExtended) {
-	t.Helper()
-	_, err := conn.Exec(fmt.Sprintf("INSERT INTO test(n) VALUES (%d)", n+1), nil)
-	if code == 0 {
-		require.NoError(t, err)
-	} else {
-		requireEqualErrNoOld(t, code, err)
-	}
-}
-
-// Selects from the test table to assert that it's there.
-func selectAny(t *testing.T, conn *sqlite3.SQLiteConn) {
-	t.Helper()
-	_, err := conn.Exec("SELECT n FROM test", nil)
-	assert.NoError(t, err)
-}
-
-// Select from the test table and assert that there are zero rows.
-func selectZero(t *testing.T, conn *sqlite3.SQLiteConn) {
-	t.Helper()
-	rows, err := conn.Query("SELECT n FROM test", nil)
-	require.NoError(t, err)
-	values := make([]driver.Value, 1)
-	assert.Equal(t, io.EOF, rows.Next(values))
-	require.NoError(t, rows.Close())
-}
-
-// Select a row from the test table and check that its value is 1 and it's the
-// only row.
-func selectOne(t *testing.T, conn *sqlite3.SQLiteConn) {
-	t.Helper()
-	rows, err := conn.Query("SELECT n FROM test", nil)
-	require.NoError(t, err)
-	values := make([]driver.Value, 1)
-	require.NoError(t, rows.Next(values))
-	assert.Equal(t, int64(1), values[0])
-	assert.Equal(t, io.EOF, rows.Next(values))
-	require.NoError(t, rows.Close())
-}
-
-// Select N rows from the test table and check that their value is progressing
-// and no other rows are there.
-func selectN(t *testing.T, conn *sqlite3.SQLiteConn, n int) {
-	t.Helper()
-	rows, err := conn.Query("SELECT n FROM test ORDER BY n", nil)
-	require.NoError(t, err)
-	values := make([]driver.Value, 1)
-	for i := 0; i < n; i++ {
-		require.NoError(t, rows.Next(values))
-		assert.Equal(t, int64(i+1), values[0])
-	}
-	assert.Equal(t, io.EOF, rows.Next(values))
-	require.NoError(t, rows.Close())
 }
