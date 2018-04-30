@@ -36,6 +36,11 @@ func (r *Registry) TxnLeaderAdd(conn *sqlite3.SQLiteConn, id uint64) *transactio
 			}
 		}
 	}
+
+	// Keep track of the ID of the last transaction executed on this
+	// connection.
+	r.lastTxnIDs[conn] = id
+
 	return r.txnAdd(conn, id, true)
 }
 
@@ -160,6 +165,34 @@ func (r *Registry) TxnByFilename(filename string) *transaction.Txn {
 // surrogate followers.
 func (r *Registry) TxnDryRun() {
 	r.txnDryRun = true
+}
+
+// TxnLastID returns the ID of the last transaction executed on the given
+// leader connection.
+func (r *Registry) TxnLastID(conn *sqlite3.SQLiteConn) uint64 {
+	return r.lastTxnIDs[conn]
+}
+
+// TxnCommittedAdd saves the ID of the given transaction in the committed buffer,
+// in case a client needs to check if it can be recovered.
+func (r *Registry) TxnCommittedAdd(txn *transaction.Txn) {
+	r.committed[r.committedCursor] = txn.ID()
+	r.committedCursor++
+	if r.committedCursor == len(r.committed) {
+		// Rollover
+		r.committedCursor = 0
+	}
+}
+
+// TxnCommittedFind scans the comitted buffer and returns true if the given ID
+// is present.
+func (r *Registry) TxnCommittedFind(id uint64) bool {
+	for i := range r.committed {
+		if r.committed[i] == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Registry) txnAdd(conn *sqlite3.SQLiteConn, id uint64, isLeader bool) *transaction.Txn {

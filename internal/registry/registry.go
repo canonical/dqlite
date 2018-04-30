@@ -59,6 +59,19 @@ type Registry struct {
 	// to be unique inside the same process.
 	serial map[*sqlite3.SQLiteConn]uint64
 
+	// Circular buffer holding the IDs of the last N transactions that
+	// where successfully committed. It is used to recover a transaction
+	// that errored because of lost leadership but that might actually get
+	// completed because a quorum was reached for the lost commit frames
+	// command log.
+	committed       []uint64
+	committedCursor int
+
+	// Map a leader connection to the ID of the last transaction executed
+	// on it. Used by the driver's Tx implementation to know its ID in case
+	// a client asks for it for recovering a lost commit.
+	lastTxnIDs map[*sqlite3.SQLiteConn]uint64
+
 	// Flag indicating whether transactions state transitions
 	// should actually callback the relevant SQLite APIs. Some
 	// tests need set this flag to true because there's no public
@@ -78,12 +91,14 @@ func New(dir string) *Registry {
 	tracers.Add("fsm")
 
 	return &Registry{
-		dir:       dir,
-		leaders:   map[*sqlite3.SQLiteConn]string{},
-		followers: map[string]*sqlite3.SQLiteConn{},
-		txns:      map[uint64]*transaction.Txn{},
-		tracers:   tracers,
-		serial:    map[*sqlite3.SQLiteConn]uint64{},
+		dir:        dir,
+		leaders:    map[*sqlite3.SQLiteConn]string{},
+		followers:  map[string]*sqlite3.SQLiteConn{},
+		txns:       map[uint64]*transaction.Txn{},
+		tracers:    tracers,
+		serial:     map[*sqlite3.SQLiteConn]uint64{},
+		committed:  make([]uint64, committedBufferSize),
+		lastTxnIDs: make(map[*sqlite3.SQLiteConn]uint64),
 	}
 }
 
@@ -127,3 +142,8 @@ func (r *Registry) Dump() string {
 	}
 	return buffer.String()
 }
+
+// Keep track of at most this much comitted transactions. This number should be
+// large enough for any real-world situation, where it's unlikely that a client
+// tries to recover a transaction that is so old.
+const committedBufferSize = 10000

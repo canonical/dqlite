@@ -17,6 +17,7 @@ package dqlite
 import (
 	"context"
 	"database/sql/driver"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -154,6 +155,61 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 	d.registry.ConnLeaderAdd(filename, sqliteConn)
 
 	return conn, err
+}
+
+// Leader returns the address of the current raft leader, if any.
+func (d *Driver) Leader() string {
+	return string(d.raft.Leader())
+}
+
+// Servers returns the addresses of all current raft servers. It returns an
+// error if this server is not the leader.
+func (d *Driver) Servers() ([]string, error) {
+	if d.raft.State() != raft.Leader {
+		// TODO: convert this to grpcsql/cluster.ErrDriverNotLeader
+		return nil, raft.ErrNotLeader
+	}
+
+	future := d.raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return nil, err
+	}
+	configuration := future.Configuration()
+
+	servers := make([]string, len(configuration.Servers))
+	for i, server := range configuration.Servers {
+		// TODO: add support for raft.ServerAddressProvider
+		servers[i] = string(server.Address)
+	}
+
+	return servers, nil
+}
+
+// Recover tries to recover a transaction that errored because leadership was
+// lost at commit time.
+//
+// If this driver is the newly elected leader and a quorum was reached for the
+// lost commit command, recovering will succeed and the transaction can safely
+// be considered committed.
+func (d *Driver) Recover(token uint64) error {
+	if d.raft.State() != raft.Leader {
+		return raft.ErrNotLeader
+	}
+
+	// Apply a barrier to be sure we caught up with logs.
+	timeout := 10 * time.Second // TODO: make this configurable?
+	if err := d.raft.Barrier(timeout).Error(); err != nil {
+		return err
+	}
+
+	d.registry.Lock()
+	defer d.registry.Unlock()
+
+	if !d.registry.TxnCommittedFind(token) {
+		return fmt.Errorf("not found")
+	}
+
+	return nil
 }
 
 // Conn implements the sql.Conn interface.
@@ -363,6 +419,15 @@ func (tx *Tx) Rollback() error {
 		return err
 	}
 	return tx.sqliteTx.Rollback()
+}
+
+// Token returns the internal ID for this transaction, that can be passed to
+// driver.Recover() in case the commit fails because of lost leadership.
+func (tx *Tx) Token() uint64 {
+	tx.conn.registry.Lock()
+	defer tx.conn.registry.Unlock()
+
+	return tx.conn.registry.TxnLastID(tx.conn.sqliteConn)
 }
 
 // Stmt is a prepared statement. It is bound to a Conn and not
