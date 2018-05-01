@@ -1,7 +1,6 @@
-package cmd
+package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -22,12 +21,12 @@ func newDump() *cobra.Command {
 		Use:   "dump [path to raft data dir]",
 		Short: "Dump or replay the content of a dqlite raft store.",
 		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := args[0]
+
 			logs, snaps, err := dumpOpen(dir)
 			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
+				return err
 			}
 
 			options := make([]dump.Option, 0)
@@ -40,9 +39,10 @@ func newDump() *cobra.Command {
 			}
 
 			if err := dump.Dump(logs, snaps, os.Stdout, options...); err != nil {
-				fmt.Println(err)
-				os.Exit(1)
+				return err
 			}
+
+			return nil
 		},
 	}
 
