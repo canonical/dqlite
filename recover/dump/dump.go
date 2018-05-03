@@ -21,20 +21,21 @@ func Dump(logs raft.LogStore, snaps raft.SnapshotStore, out io.Writer, options .
 		}
 	}
 
-	if o.dir != "" {
-		// Replay the logs.
-		if err := store.Replay(logs, snaps, o.dir); err != nil {
-			return errors.Wrap(err, "failed to replay logs")
-		}
-		return nil
-	}
-
 	if o.r == nil {
 		r, err := store.DefaultRange(logs)
 		if err != nil {
 			return err
 		}
 		o.r = r
+	}
+
+	o.r.Last = uint64(24900)
+	if o.dir != "" {
+		// Replay the logs.
+		if err := store.Replay(logs, snaps, o.r, o.dir); err != nil {
+			return errors.Wrap(err, "failed to replay logs")
+		}
+		return nil
 	}
 
 	logger := log.New(out, "", 0)

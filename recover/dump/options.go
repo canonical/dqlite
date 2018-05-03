@@ -22,6 +22,20 @@ func Tail(n int) Option {
 	}
 }
 
+// Head limits the output to the first N entries.
+func Head(n int) Option {
+	return func(logs raft.LogStore, o *options) error {
+		r, err := store.HeadRange(logs, n)
+		if err != nil {
+			return err
+		}
+
+		o.r = r
+
+		return nil
+	}
+}
+
 // Replay the commands generating SQLite databases in the given dir.
 func Replay(dir string) Option {
 	return func(logs raft.LogStore, o *options) error {
