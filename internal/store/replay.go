@@ -9,16 +9,10 @@ import (
 
 // Replay the commands in the given logs and snapshot stores using the given
 // dir as database directory.
-func Replay(logs raft.LogStore, snaps raft.SnapshotStore, dir string) error {
+func Replay(logs raft.LogStore, snaps raft.SnapshotStore, r *Range, dir string) error {
 	// Create a registry and a FSM.
 	registry := registry.New(dir)
 	fsm := replication.NewFSM(registry)
-
-	// We'll apply all logs unless there is a snapshot, see below.
-	r, err := DefaultRange(logs)
-	if err != nil {
-		return errors.Wrap(err, "failed to get index range")
-	}
 
 	// Figure out if we have a snapshot to restore.
 	metas, err := snaps.List()

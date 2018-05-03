@@ -14,6 +14,7 @@ import (
 
 // Return a new dump command.
 func newDump() *cobra.Command {
+	var head int
 	var tail int
 	var replay string
 
@@ -31,6 +32,9 @@ func newDump() *cobra.Command {
 
 			options := make([]dump.Option, 0)
 
+			if head != 0 {
+				options = append(options, dump.Head(head))
+			}
 			if tail != 0 {
 				options = append(options, dump.Tail(tail))
 			}
@@ -47,6 +51,7 @@ func newDump() *cobra.Command {
 	}
 
 	flags := dump.Flags()
+	flags.IntVarP(&head, "head", "H", 0, "limit the dump to the first N log commands")
 	flags.IntVarP(&tail, "tail", "t", 0, "limit the dump to the last N log commands")
 	flags.StringVarP(&replay, "replay", "r", "", "replay the logs to the given database dir")
 
