@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Dump the content of dqlite a store.
+// Dump the content of a dqlite store.
 func Dump(logs raft.LogStore, snaps raft.SnapshotStore, out io.Writer, options ...Option) error {
 	o := defaultOptions()
 	for _, option := range options {
@@ -29,7 +29,6 @@ func Dump(logs raft.LogStore, snaps raft.SnapshotStore, out io.Writer, options .
 		o.r = r
 	}
 
-	o.r.Last = uint64(24900)
 	if o.dir != "" {
 		// Replay the logs.
 		if err := store.Replay(logs, snaps, o.r, o.dir); err != nil {

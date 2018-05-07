@@ -13,9 +13,11 @@ before_install:
   - go get github.com/mattn/goveralls
   - go get github.com/golang/lint/golint
   - go get github.com/tsenart/deadcode
+  - go get github.com/freeekanayaka/gh-asset
   - sqlite_tmp_dir=/tmp/sqlite
-  - ./ci/download-sqlite.sh $sqlite_tmp_dir
-  - sudo cp $sqlite_tmp_dir/libsqlite3.so.0 $sqlite_tmp_dir/libsqlite3.so.0.8.6 /usr/lib/x86_64-linux-gnu
+  - mkdir $sqlite_tmp_dir
+  - $GOPATH/bin/gh-asset -d $sqlite_tmp_dir -x CanonicalLtd sqlite "sqlite-amd64--enable-debug-.*.tar.gz"
+  - sudo cp $sqlite_tmp_dir/libsqlite3.so.* /usr/lib/x86_64-linux-gnu
   - sudo cp $sqlite_tmp_dir/sqlite3.h /usr/include/sqlite3.h
   - mkdir -p $GOPATH/src/github.com/hashicorp/raft
   - raft_fork=https://github.com/freeekanayaka/raft.git
