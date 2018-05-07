@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/CanonicalLtd/dqlite/recover"
 	"github.com/CanonicalLtd/dqlite/recover/dump"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
@@ -25,7 +26,7 @@ func newDump() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := args[0]
 
-			logs, snaps, err := dumpOpen(dir)
+			logs, snaps, err := recover.Open(dir)
 			if err != nil {
 				return err
 			}
