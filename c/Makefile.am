@@ -1,0 +1,111 @@
+ACLOCAL_AMFLAGS = -I m4
+AUTOMAKE_OPTIONS = foreign subdir-objects
+
+lib_LTLIBRARIES =
+check_PROGRAMS =
+EXTRA_DIST =
+noinst_HEADERS =
+include_HEADERS =
+
+EXTRA_DIST += dqlite.pc.in
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = dqlite.pc
+
+AM_CFLAGS = -I$(top_srcdir)/include -Wall
+if DEBUG
+  AM_CFLAGS += -g -O3 -fprofile-arcs -ftest-coverage -DDQLITE_DEBUG
+else
+  AM_CFLAGS += -O3
+endif
+
+AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(CAPNP_CFLAGS)
+
+lib_LTLIBRARIES += libdqlite.la
+libdqlite_la_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(CAPNP_LIBS) -version-info 0:1:0
+libdqlite_la_SOURCES = \
+  src/conn.c \
+  src/conn.h \
+  src/error.c \
+  src/error.h \
+  src/fsm.c \
+  src/fsm.h \
+  src/gateway.c \
+  src/gateway.h \
+  src/lifecycle.c \
+  src/lifecycle.h \
+  src/log.h \
+  src/protocol.capnp.c \
+  src/protocol.capnp.h \
+  src/queue.c \
+  src/queue.h \
+  src/request.c \
+  src/request.h \
+  src/response.c \
+  src/response.h \
+  src/service.c
+include_HEADERS += include/dqlite.h
+
+# Don't try to generate any *.capnp files. Otherwise make wants to compile them
+# from *.capnp.c and fails.
+%.capnp: ;
+
+# Tests
+check_PROGRAMS += \
+	dqlite-test
+dqlite_test_SOURCES = \
+  test/client.c \
+  test/client.h \
+  test/cluster.c \
+  test/cluster.h \
+  test/log.c \
+  test/log.h \
+  test/request.c \
+  test/request.h \
+  test/runner.c \
+  test/server.c \
+  test/server.h \
+  test/socket.c \
+  test/socket.h \
+  test/suite.c \
+  test/suite.h \
+  test/test_conn.c \
+  test/test_conn.h \
+  test/test_dqlite.c \
+  test/test_dqlite.h \
+  test/test_error.c \
+  test/test_error.h \
+  test/test_gateway.c \
+  test/test_gateway.h \
+  test/test_queue.c \
+  test/test_queue.h \
+  test/test_request.c \
+  test/test_request.h \
+  test/test_response.c \
+  test/test_response.h
+dqlite_test_CFLAGS = \
+  -I$(top_srcdir)/include \
+  -I$(top_srcdir)/test \
+  -DDQLITE_DEBUG \
+  -Wall -g -O0
+dqlite_test_CFLAGS += $(SQLITE3_CFLAGS) $(UV_CFLAGS) $(CAPNP_CFLAGS)
+dqlite_test_LDADD = libdqlite.la
+dqlite_test_LDFLAGS = -lcunit -lpthread $(SQLITE_LIBS) $(UV_LIBS) $(CAPNP_LIBS)
+TESTS = dqlite-test
+
+cov-reset:
+	@lcov --directory src --zerocounters
+
+cov-clean:
+	@rm -fr coverage
+	@find . -name "*.gcda" -o -name '*.gcno' -delete
+
+cov-report:
+	@mkdir -p coverage
+	@lcov --compat-libtool --directory src --capture --output-file coverage/dqlite.info
+	@genhtml -o coverage/ coverage/dqlite.info
+
+clean-local:
+	@make cov-clean
+
+check: cov-reset
+	@make cov-report
