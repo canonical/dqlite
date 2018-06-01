@@ -1,0 +1,11 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: dqlite
+Description: Distributed SQLite engine
+Version:  @PACKAGE_VERSION@
+Libs: -L${libdir} -ldqlite
+Libs.private: @SQLITE_LIBS@ @UV_LIBS@ @CAPNP_LIBS@
+Cflags: -I${includedir}
