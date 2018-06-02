@@ -33,8 +33,8 @@ void test__request_init(struct test_request *r, enum Request_which which) {
 	r->size =0;
 }
 
-void test_request_leader(struct test_request *r) {
-	test__request_init(r, Request_leader);
+void test_request_helo(struct test_request *r) {
+	test__request_init(r, Request_helo);
 	r->size = capn_write_mem(&r->session, r->buf, TEST_REQUEST_BUF_SIZE, 0);
 
 	if(r->size <= 0){

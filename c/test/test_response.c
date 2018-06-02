@@ -42,18 +42,19 @@ static void test_dqlite__response_read() {
 	test_dqlite__response_read(); \
 	PTR.p = capn_getp(root, 0, 1);
 
-void test_dqlite__response_server()
+void test_dqlite__response_cluster()
 {
 	int err;
-	Server_ptr ptr;
-	struct Server server;
+	Cluster_ptr ptr;
+	struct Cluster cluster;
 
-	err = dqlite__response_server(&response, "1.2.3.4:666");
+	err = dqlite__response_cluster(&response, "1.2.3.4:666", 15);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	TEST_DQLITE__RESPONSE_READ(ptr);
 
-	read_Server(&server, ptr);
+	read_Cluster(&cluster, ptr);
 
-	CU_ASSERT_STRING_EQUAL(server.address.str,  "1.2.3.4:666");
+	CU_ASSERT_STRING_EQUAL(cluster.leader.str, "1.2.3.4:666");
+	CU_ASSERT_EQUAL(cluster.heartbeat, 15);
 }

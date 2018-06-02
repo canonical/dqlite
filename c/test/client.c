@@ -35,7 +35,8 @@ int test_client_handshake(struct test_client *c){
 	return 0;
 }
 
-int test_client_leader(struct test_client *c, char **leader){
+int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
+{
 	int err;
 	struct capn session;
 	capn_ptr root;
@@ -49,7 +50,7 @@ int test_client_leader(struct test_client *c, char **leader){
 	root = capn_root(&session);
 	segment = root.seg;
 
-	request.which = Request_leader;
+	request.which = Request_helo;
 	requestPtr = new_Request(segment);
 	write_Request(&request, requestPtr);
 
@@ -60,7 +61,7 @@ int test_client_leader(struct test_client *c, char **leader){
 	}
 
 	struct test_request r;
-	test_request_leader(&r);
+	test_request_helo(&r);
 	write(c->fd, r.buf, r.size);
 
 	in = fdopen(c->fd, "r");
@@ -69,15 +70,15 @@ int test_client_leader(struct test_client *c, char **leader){
 	err = capn_init_fp(&session, in, 0);
 	CU_ASSERT_EQUAL(err, 0);
 
-	Server_ptr serverPtr;
-	struct Server server;
+	Cluster_ptr clusterPtr;
+	struct Cluster cluster;
 
 	root = capn_root(&session);
 
-	serverPtr.p = capn_getp(root, 0 /* off */, 1 /* resolve */);
-	read_Server(&server, serverPtr);
+	clusterPtr.p = capn_getp(root, 0 /* off */, 1 /* resolve */);
+	read_Cluster(&cluster, clusterPtr);
 
-	CU_ASSERT_STRING_EQUAL(server.address.str,  "127.0.0.1:666");
+	CU_ASSERT_STRING_EQUAL(cluster.leader.str,  "127.0.0.1:666");
 
 	return 0;
 }

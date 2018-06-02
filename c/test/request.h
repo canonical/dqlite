@@ -21,8 +21,8 @@ struct test_request {
 	size_t               size;
 };
 
-/* Write a Leader request */
-void test_request_leader(struct test_request *r);
+/* Write a Helo request */
+void test_request_helo(struct test_request *r);
 
 /* Write a Heartbeat request */
 void test_request_heartbeat(struct test_request *r);

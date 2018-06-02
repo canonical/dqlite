@@ -2,6 +2,7 @@
 #define DQLITE_GATEWAY_H
 
 #include <stdio.h>
+#include <time.h>
 
 #include "dqlite.h"
 #include "fsm.h"
@@ -23,6 +24,9 @@ struct dqlite__gateway_ctx {
  * Handle requests from a single connected client and forward them to SQLite.
  */
 struct dqlite__gateway {
+	/* public */
+	time_t heartbeat; /* Time of last successful heartbeat from the client */
+
 	/* read-only */
 	dqlite__error      error;   /* Last error occurred, if any */
 	FILE              *log;     /* Log output stream */

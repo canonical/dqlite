@@ -353,7 +353,7 @@ void test_dqlite__conn_read_cb_invalid_preamble()
 {
 	int err;
 	uint32_t version = capn_flip32(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[32] = { /* Invalid preamble, header and Leader request */
+	uint8_t buf[32] = { /* Invalid preamble, header and Helo request */
 		1, 0, 0, 0,
 		3, 0, 0, 0,
 		0, 0, 0, 0,
@@ -388,7 +388,7 @@ void test_dqlite__conn_read_cb_invalid_header()
 {
 	int err;
 	uint32_t version = capn_flip32(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[32] = { /* Preamble, invalid header (too big) and Leader request */
+	uint8_t buf[32] = { /* Preamble, invalid header (too big) and Helo request */
 		0, 0, 0, 0,
 		0, 0, 0, 1,
 		0, 0, 0, 0,
@@ -451,7 +451,7 @@ void test_dqlite__conn_read_cb_unexpected_request()
 
 	sockets.server_disconnected = 1;
 
-	CU_ASSERT_STRING_EQUAL(conn.error, "failed to handle request: expected Leader, got Heartbeat");
+	CU_ASSERT_STRING_EQUAL(conn.error, "failed to handle request: expected Helo, got Heartbeat");
 }
 
 /*

@@ -30,7 +30,10 @@ void dqlite__response_init(struct dqlite__response* r);
 void dqlite__response_close(struct dqlite__response* r);
 
 /* APIs for encoding responses */
-int dqlite__response_server(struct dqlite__response *r, const char* address);
+int dqlite__response_cluster(
+	struct dqlite__response *r,
+	const char* leader,
+	uint8_t heartbeat);
 
 /* Get the data of an encoded response */
 uint8_t *dqlite__response_data(struct dqlite__response *r);

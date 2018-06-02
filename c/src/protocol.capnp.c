@@ -25,7 +25,7 @@ void read_Request(struct Request *s capnp_unused, Request_ptr p) {
 	capnp_use(s);
 	s->which = (enum Request_which)(int) capn_read16(p.p, 0);
 	switch (s->which) {
-	case Request_leader:
+	case Request_helo:
 	case Request_heartbeat:
 		s->heartbeat.p = capn_getp(p.p, 0, 0);
 		break;
@@ -38,7 +38,7 @@ void write_Request(const struct Request *s capnp_unused, Request_ptr p) {
 	capnp_use(s);
 	capn_write16(p.p, 0, s->which);
 	switch (s->which) {
-	case Request_leader:
+	case Request_helo:
 	case Request_heartbeat:
 		capn_setp(p.p, 0, s->heartbeat.p);
 		break;
@@ -57,33 +57,33 @@ void set_Request(const struct Request *s, Request_list l, int i) {
 	write_Request(s, p);
 }
 
-Leader_ptr new_Leader(struct capn_segment *s) {
-	Leader_ptr p;
+Helo_ptr new_Helo(struct capn_segment *s) {
+	Helo_ptr p;
 	p.p = capn_new_struct(s, 0, 0);
 	return p;
 }
-Leader_list new_Leader_list(struct capn_segment *s, int len) {
-	Leader_list p;
+Helo_list new_Helo_list(struct capn_segment *s, int len) {
+	Helo_list p;
 	p.p = capn_new_list(s, len, 0, 0);
 	return p;
 }
-void read_Leader(struct Leader *s capnp_unused, Leader_ptr p) {
+void read_Helo(struct Helo *s capnp_unused, Helo_ptr p) {
 	capn_resolve(&p.p);
 	capnp_use(s);
 }
-void write_Leader(const struct Leader *s capnp_unused, Leader_ptr p) {
+void write_Helo(const struct Helo *s capnp_unused, Helo_ptr p) {
 	capn_resolve(&p.p);
 	capnp_use(s);
 }
-void get_Leader(struct Leader *s, Leader_list l, int i) {
-	Leader_ptr p;
+void get_Helo(struct Helo *s, Helo_list l, int i) {
+	Helo_ptr p;
 	p.p = capn_getp(l.p, i, 0);
-	read_Leader(s, p);
+	read_Helo(s, p);
 }
-void set_Leader(const struct Leader *s, Leader_list l, int i) {
-	Leader_ptr p;
+void set_Helo(const struct Helo *s, Helo_list l, int i) {
+	Helo_ptr p;
 	p.p = capn_getp(l.p, i, 0);
-	write_Leader(s, p);
+	write_Helo(s, p);
 }
 
 Heartbeat_ptr new_Heartbeat(struct capn_segment *s) {
@@ -115,45 +115,59 @@ void set_Heartbeat(const struct Heartbeat *s, Heartbeat_list l, int i) {
 	write_Heartbeat(s, p);
 }
 
-Server_ptr new_Server(struct capn_segment *s) {
-	Server_ptr p;
-	p.p = capn_new_struct(s, 0, 1);
+Cluster_ptr new_Cluster(struct capn_segment *s) {
+	Cluster_ptr p;
+	p.p = capn_new_struct(s, 8, 1);
 	return p;
 }
-Server_list new_Server_list(struct capn_segment *s, int len) {
-	Server_list p;
-	p.p = capn_new_list(s, len, 0, 1);
+Cluster_list new_Cluster_list(struct capn_segment *s, int len) {
+	Cluster_list p;
+	p.p = capn_new_list(s, len, 8, 1);
 	return p;
 }
-void read_Server(struct Server *s capnp_unused, Server_ptr p) {
+void read_Cluster(struct Cluster *s capnp_unused, Cluster_ptr p) {
 	capn_resolve(&p.p);
 	capnp_use(s);
-	s->address = capn_get_text(p.p, 0, capn_val0);
+	s->leader = capn_get_text(p.p, 0, capn_val0);
+	s->heartbeat = capn_read8(p.p, 0);
 }
-void write_Server(const struct Server *s capnp_unused, Server_ptr p) {
+void write_Cluster(const struct Cluster *s capnp_unused, Cluster_ptr p) {
 	capn_resolve(&p.p);
 	capnp_use(s);
-	capn_set_text(p.p, 0, s->address);
+	capn_set_text(p.p, 0, s->leader);
+	capn_write8(p.p, 0, s->heartbeat);
 }
-void get_Server(struct Server *s, Server_list l, int i) {
-	Server_ptr p;
+void get_Cluster(struct Cluster *s, Cluster_list l, int i) {
+	Cluster_ptr p;
 	p.p = capn_getp(l.p, i, 0);
-	read_Server(s, p);
+	read_Cluster(s, p);
 }
-void set_Server(const struct Server *s, Server_list l, int i) {
-	Server_ptr p;
+void set_Cluster(const struct Cluster *s, Cluster_list l, int i) {
+	Cluster_ptr p;
 	p.p = capn_getp(l.p, i, 0);
-	write_Server(s, p);
+	write_Cluster(s, p);
 }
 
-capn_text Server_get_address(Server_ptr p)
+capn_text Cluster_get_leader(Cluster_ptr p)
 {
-	capn_text address;
-	address = capn_get_text(p.p, 0, capn_val0);
-	return address;
+	capn_text leader;
+	leader = capn_get_text(p.p, 0, capn_val0);
+	return leader;
 }
 
-void Server_set_address(Server_ptr p, capn_text address)
+uint8_t Cluster_get_heartbeat(Cluster_ptr p)
 {
-	capn_set_text(p.p, 0, address);
+	uint8_t heartbeat;
+	heartbeat = capn_read8(p.p, 0);
+	return heartbeat;
+}
+
+void Cluster_set_leader(Cluster_ptr p, capn_text leader)
+{
+	capn_set_text(p.p, 0, leader);
+}
+
+void Cluster_set_heartbeat(Cluster_ptr p, uint8_t heartbeat)
+{
+	capn_write8(p.p, 0, heartbeat);
 }

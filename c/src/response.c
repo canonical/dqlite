@@ -158,17 +158,22 @@ void dqlite__response_close(struct dqlite__response* r)
 		return DQLITE__RESPONSE_ERR_RENDER; \
 	}
 
-int dqlite__response_server(struct dqlite__response *r, const char* address)
+int dqlite__response_cluster(
+	struct dqlite__response *r,
+	const char* leader,
+	uint8_t heartbeat)
 {
-	struct Server server;
-	Server_ptr ptr;
+	struct Cluster cluster;
+	Cluster_ptr ptr;
 
 	assert(r != NULL);
-	assert(address != NULL);
+	assert(leader != NULL);
+	assert(heartbeat > 0);
 
-	server.address = dqlite__response_text(address);
+	cluster.leader = dqlite__response_text(leader);
+	cluster.heartbeat = heartbeat;
 
-	DQLITE__RESPONSE_RENDER(server, new_Server, write_Server);
+	DQLITE__RESPONSE_RENDER(cluster, new_Cluster, write_Cluster);
 
 	return 0;
 }
