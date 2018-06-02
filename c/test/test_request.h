@@ -30,12 +30,12 @@ CU_TestInfo dqlite__request_header_suite[] = {
 	CU_TEST_INFO_NULL,
 };
 
-void test_dqlite__request_type_leader();
+void test_dqlite__request_type_helo();
 void test_dqlite__request_type_heartbeat();
 void test_dqlite__request_type_unknown();
 
 CU_TestInfo dqlite__request_type_suite[] = {
-	{"leader",          test_dqlite__request_type_leader},
+	{"helo",            test_dqlite__request_type_helo},
 	{"heartbeat",       test_dqlite__request_type_heartbeat},
 	{"unknown",         test_dqlite__request_type_unknown},
 	CU_TEST_INFO_NULL,

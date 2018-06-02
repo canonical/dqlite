@@ -10,8 +10,8 @@
 #define DQLITE_REQUEST_ERR_PARSE -1
 
 /* Request types */
-#define DQLITE_REQUEST_LEADER    Request_leader
-#define DQLITE_REQUEST_HEARTBEAT Request_heartbeat
+#define DQLITE__REQUEST_HELO      Request_helo
+#define DQLITE__REQUEST_HEARTBEAT Request_heartbeat
 
 /*
  * Decoder for incoming requests.

@@ -69,10 +69,10 @@ void test_dqlite__gateway_handle_connect()
 {
 	int err;
 	struct test_request r;
-	Server_ptr ptr;
-	struct Server server;
+	Cluster_ptr ptr;
+	struct Cluster cluster;
 
-	test_request_leader(&r);
+	test_request_helo(&r);
 	test_dqlite__request_write(&r);
 
 	err = dqlite__gateway_handle(&gateway, &request, &response);
@@ -80,9 +80,9 @@ void test_dqlite__gateway_handle_connect()
 
 	TEST_DQLITE__RESPONSE_READ(ptr);
 
-	read_Server(&server, ptr);
+	read_Cluster(&cluster, ptr);
 
-	CU_ASSERT_STRING_EQUAL(server.address.str,  "127.0.0.1:666");
+	CU_ASSERT_STRING_EQUAL(cluster.leader.str,  "127.0.0.1:666");
 }
 
 void test_dqlite__gateway_handle_connect_wrong_request_type()
@@ -96,5 +96,5 @@ void test_dqlite__gateway_handle_connect_wrong_request_type()
 	err = dqlite__gateway_handle(&gateway, &request, &response);
 	CU_ASSERT_EQUAL(err, DQLITE_PROTO);
 
-	CU_ASSERT_STRING_EQUAL(gateway.error, "expected Leader, got Heartbeat");
+	CU_ASSERT_STRING_EQUAL(gateway.error, "expected Helo, got Heartbeat");
 }

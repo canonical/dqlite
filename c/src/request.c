@@ -19,8 +19,8 @@
 #define DQLITE_REQUEST_MAX_SEGMENT_SIZE 1048576
 
 static const char *dqlite__request_type_names[] = {
-	"Leader",    /* DQLITE_REQUEST_LEADER */
-	"Heartbeat", /* DQLITE_REQUEST_HEARTBEAT */
+	"Helo",      /* DQLITE__REQUEST_HELO */
+	"Heartbeat", /* DQLITE__REQUEST_HEARTBEAT */
 	0
 };
 

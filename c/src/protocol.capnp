@@ -6,19 +6,27 @@ $fieldgetset;
 # Hold information about a request sent by dqlite client.
 struct Request {
   union {
-    leader    @0 :Leader;
+    helo      @0 :Helo;
     heartbeat @1 :Heartbeat;
   }
 }
 
-struct Leader {
+# Initial message that a client must send to register itself.
+#
+# The server will reply with a Cluster response.
+struct Helo {
 }
 
+# Heartbeat message that a client must send periodically.
 struct Heartbeat {
 }
 
-# Hold information about a dqlite server.
-struct Server {
-  # Address the server is reachable at (IP or host name)
-  address @0 :Text;
+# Information about the cluster, sent as response to Register.
+struct Cluster {
+  # Address of the current cluster leader.
+  leader    @0 :Text;
+
+  # Timeout after which the connection will be killed if no
+  # heartbeat is received from the client.
+  heartbeat @1 :UInt8;
 }

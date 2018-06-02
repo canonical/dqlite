@@ -21,28 +21,28 @@ extern "C" {
 #endif
 
 struct Request;
-struct Leader;
+struct Helo;
 struct Heartbeat;
-struct Server;
+struct Cluster;
 
 typedef struct {capn_ptr p;} Request_ptr;
-typedef struct {capn_ptr p;} Leader_ptr;
+typedef struct {capn_ptr p;} Helo_ptr;
 typedef struct {capn_ptr p;} Heartbeat_ptr;
-typedef struct {capn_ptr p;} Server_ptr;
+typedef struct {capn_ptr p;} Cluster_ptr;
 
 typedef struct {capn_ptr p;} Request_list;
-typedef struct {capn_ptr p;} Leader_list;
+typedef struct {capn_ptr p;} Helo_list;
 typedef struct {capn_ptr p;} Heartbeat_list;
-typedef struct {capn_ptr p;} Server_list;
+typedef struct {capn_ptr p;} Cluster_list;
 enum Request_which {
-	Request_leader = 0,
+	Request_helo = 0,
 	Request_heartbeat = 1
 };
 
 struct Request {
 	enum Request_which which;
 	capnp_nowarn union {
-		Leader_ptr leader;
+		Helo_ptr helo;
 		Heartbeat_ptr heartbeat;
 	};
 };
@@ -53,14 +53,14 @@ static const size_t Request_pointer_count = 1;
 
 static const size_t Request_struct_bytes_count = 16;
 
-capnp_nowarn struct Leader {
+capnp_nowarn struct Helo {
 };
 
-static const size_t Leader_word_count = 0;
+static const size_t Helo_word_count = 0;
 
-static const size_t Leader_pointer_count = 0;
+static const size_t Helo_pointer_count = 0;
 
-static const size_t Leader_struct_bytes_count = 0;
+static const size_t Helo_struct_bytes_count = 0;
 
 capnp_nowarn struct Heartbeat {
 };
@@ -71,49 +71,54 @@ static const size_t Heartbeat_pointer_count = 0;
 
 static const size_t Heartbeat_struct_bytes_count = 0;
 
-struct Server {
-	capn_text address;
+struct Cluster {
+	capn_text leader;
+	uint8_t heartbeat;
 };
 
-static const size_t Server_word_count = 0;
+static const size_t Cluster_word_count = 1;
 
-static const size_t Server_pointer_count = 1;
+static const size_t Cluster_pointer_count = 1;
 
-static const size_t Server_struct_bytes_count = 8;
+static const size_t Cluster_struct_bytes_count = 16;
 
-capn_text Server_get_address(Server_ptr p);
+capn_text Cluster_get_leader(Cluster_ptr p);
 
-void Server_set_address(Server_ptr p, capn_text address);
+uint8_t Cluster_get_heartbeat(Cluster_ptr p);
+
+void Cluster_set_leader(Cluster_ptr p, capn_text leader);
+
+void Cluster_set_heartbeat(Cluster_ptr p, uint8_t heartbeat);
 
 Request_ptr new_Request(struct capn_segment*);
-Leader_ptr new_Leader(struct capn_segment*);
+Helo_ptr new_Helo(struct capn_segment*);
 Heartbeat_ptr new_Heartbeat(struct capn_segment*);
-Server_ptr new_Server(struct capn_segment*);
+Cluster_ptr new_Cluster(struct capn_segment*);
 
 Request_list new_Request_list(struct capn_segment*, int len);
-Leader_list new_Leader_list(struct capn_segment*, int len);
+Helo_list new_Helo_list(struct capn_segment*, int len);
 Heartbeat_list new_Heartbeat_list(struct capn_segment*, int len);
-Server_list new_Server_list(struct capn_segment*, int len);
+Cluster_list new_Cluster_list(struct capn_segment*, int len);
 
 void read_Request(struct Request*, Request_ptr);
-void read_Leader(struct Leader*, Leader_ptr);
+void read_Helo(struct Helo*, Helo_ptr);
 void read_Heartbeat(struct Heartbeat*, Heartbeat_ptr);
-void read_Server(struct Server*, Server_ptr);
+void read_Cluster(struct Cluster*, Cluster_ptr);
 
 void write_Request(const struct Request*, Request_ptr);
-void write_Leader(const struct Leader*, Leader_ptr);
+void write_Helo(const struct Helo*, Helo_ptr);
 void write_Heartbeat(const struct Heartbeat*, Heartbeat_ptr);
-void write_Server(const struct Server*, Server_ptr);
+void write_Cluster(const struct Cluster*, Cluster_ptr);
 
 void get_Request(struct Request*, Request_list, int i);
-void get_Leader(struct Leader*, Leader_list, int i);
+void get_Helo(struct Helo*, Helo_list, int i);
 void get_Heartbeat(struct Heartbeat*, Heartbeat_list, int i);
-void get_Server(struct Server*, Server_list, int i);
+void get_Cluster(struct Cluster*, Cluster_list, int i);
 
 void set_Request(const struct Request*, Request_list, int i);
-void set_Leader(const struct Leader*, Leader_list, int i);
+void set_Helo(const struct Helo*, Helo_list, int i);
 void set_Heartbeat(const struct Heartbeat*, Heartbeat_list, int i);
-void set_Server(const struct Server*, Server_list, int i);
+void set_Cluster(const struct Cluster*, Cluster_list, int i);
 
 #ifdef __cplusplus
 }

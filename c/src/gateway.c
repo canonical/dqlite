@@ -12,10 +12,12 @@
 
 #define DQLITE__GATEWAY_NULL DQLITE__FSM_NULL
 
-#define DQLITE__GATEWAY_CONNECT 0 /* Initial state after a fresh connection */
+#define DQLITE__GATEWAY_CONNECT  0 /* Initial state after a fresh connection */
+#define DQLITE__GATEWAY_OPERATE  1 /* Operating state after registration */
 
 static struct dqlite__fsm_state dqlite__gateway_states[] = {
 	{DQLITE__GATEWAY_CONNECT, "connect"},
+	{DQLITE__GATEWAY_OPERATE, "operate"},
 	{DQLITE__GATEWAY_NULL,  NULL },
 };
 
@@ -34,7 +36,8 @@ static struct dqlite__fsm_event dqlite__gateway_events[] = {
 	struct dqlite__gateway *g; \
 	struct dqlite__request *request; \
 	struct dqlite__response *response; \
-					 \
+	const char *name; \
+						\
 	assert(arg != NULL); \
 			     \
 	ctx = (struct dqlite__gateway_ctx*)arg; \
@@ -42,7 +45,8 @@ static struct dqlite__fsm_event dqlite__gateway_events[] = {
 	request = ctx->request; \
 	response = &ctx->response; \
 	dqlite__response_init(&ctx->response);	\
-	type = dqlite__request_type(request)
+	type = dqlite__request_type(request); \
+	name = dqlite__request_type_name(request)
 
 /* Helper for common request FSM handler cleanup code */
 #define DQLITE__GATEWAY_REQUEST_HDLR_CLOSE \
@@ -54,20 +58,20 @@ static int dqlite__gateway_connect_request_hdlr(void *arg)
 {
 	DQLITE__GATEWAY_REQUEST_HDLR_INIT;
 
-	const char *address;
+	const char *leader;
+	uint8_t heartbeat = 15; /* TODO: make this configurable */
 
-	dqlite__debugf(g, "handle connect", "");
+	dqlite__debugf(g, "handle register", "name=%s", name);
 
-	if (type != DQLITE_REQUEST_LEADER) {
-		const char *name = dqlite__request_type_name(request);
-		dqlite__error_printf(&g->error, "expected Leader, got %s", name);
+	if (type != DQLITE__REQUEST_HELO) {
+		dqlite__error_printf(&g->error, "expected Helo, got %s", name);
 		err = DQLITE_PROTO;
 		goto out;
 	}
 
-	address = g->cluster->xLeader(g->cluster->ctx);
+	leader = g->cluster->xLeader(g->cluster->ctx);
 
-	err = dqlite__response_server(response, address);
+	err = dqlite__response_cluster(response, leader, heartbeat);
 	if (err != 0) {
 		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");
 		goto out;
@@ -78,11 +82,65 @@ static int dqlite__gateway_connect_request_hdlr(void *arg)
 }
 
 static struct dqlite__fsm_transition dqlite__conn_transitions_connect[] = {
-	{DQLITE__GATEWAY_REQUEST, dqlite__gateway_connect_request_hdlr, 0},
+	{DQLITE__GATEWAY_REQUEST, dqlite__gateway_connect_request_hdlr, DQLITE__GATEWAY_OPERATE},
+};
+
+/* Handle a Heartbeat request */
+static int dqlite__gateway_heartbeat(
+	struct dqlite__gateway *g,
+	struct dqlite__response *response)
+{
+	const char **servers;
+
+	servers = g->cluster->xServers(g->cluster->ctx);
+	if (servers == NULL ) {
+		dqlite__errorf(g, "failed to get cluster servers", "");
+		return DQLITE_ERROR;
+	}
+
+	/* Refresh the heartbeat timestamp. */
+	g->heartbeat = time(NULL);
+
+	/* Encode the response */
+
+	return 0;
+}
+
+static int dqlite__gateway_operate_request_hdlr(void *arg)
+{
+	DQLITE__GATEWAY_REQUEST_HDLR_INIT;
+
+	dqlite__debugf(g, "handle operate", "name=%s", name);
+
+	switch (type) {
+	case DQLITE__REQUEST_HEARTBEAT:
+		break;
+	default:
+		dqlite__error_printf(&g->error, "unexpected Request %s", name);
+		err = DQLITE_PROTO;
+	}
+
+	const char *address;
+
+	address = g->cluster->xLeader(g->cluster->ctx);
+
+	//err = dqlite__response_server(response, address);
+	if (err != 0) {
+		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");
+		goto out;
+	}
+
+ out:
+	DQLITE__GATEWAY_REQUEST_HDLR_CLOSE;
+}
+
+static struct dqlite__fsm_transition dqlite__conn_transitions_operate[] = {
+	{DQLITE__GATEWAY_REQUEST, dqlite__gateway_operate_request_hdlr, DQLITE__GATEWAY_OPERATE},
 };
 
 static struct dqlite__fsm_transition *dqlite__gateway_transitions[] = {
 	dqlite__conn_transitions_connect,
+	dqlite__conn_transitions_operate,
 };
 
 static void dqlite__gateway_ctx_init(struct dqlite__gateway_ctx *ctx, struct dqlite__gateway *g)
@@ -91,15 +149,19 @@ static void dqlite__gateway_ctx_init(struct dqlite__gateway_ctx *ctx, struct dql
 	ctx->request = NULL;
 }
 
-void dqlite__gateway_init(struct dqlite__gateway *g,
-			FILE *log,
-			dqlite_cluster *cluster)
+void dqlite__gateway_init(
+	struct dqlite__gateway *g,
+	FILE *log,
+	struct dqlite_cluster *cluster)
 {
 	int i;
 
 	assert(g != NULL);
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_GATEWAY);
+
+	/* Consider the initial connection as a heartbeat */
+	g->heartbeat = time(NULL);
 
 	dqlite__error_init(&g->error);
 

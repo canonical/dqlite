@@ -1,6 +1,8 @@
 #ifndef DQLITE_TEST_CLIENT_H
 #define DQLITE_TEST_CLIENT_H
 
+#include <stdint.h>
+
 struct test_client {
 	int fd;
 };
@@ -23,10 +25,8 @@ void test_client_close(struct test_client *c);
 int test_client_handshake(struct test_client* c);
 
 /*
- * Send a Leader request.
- *
- * @address: The address of the current cluster leader.
+ * Send a Helo request.
  */
-int test_client_leader(struct test_client *c, char **address);
+int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat);
 
 #endif /* DQLITE_TEST_CLIENT_H */

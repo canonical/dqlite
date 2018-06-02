@@ -136,21 +136,21 @@ static void test_dqlite__request_write(struct test_request *r)
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 }
 
-void test_dqlite__request_type_leader()
+void test_dqlite__request_type_helo()
 {
 	struct test_request r;
 	int type;
 	const char* name;
 
-	test_request_leader(&r);
+	test_request_helo(&r);
 
 	test_dqlite__request_write(&r);
 
 	type = dqlite__request_type(&request);
 	name = dqlite__request_type_name(&request);
 
-	CU_ASSERT_EQUAL(type, DQLITE_REQUEST_LEADER);
-	CU_ASSERT_STRING_EQUAL(name, "Leader");
+	CU_ASSERT_EQUAL(type, DQLITE__REQUEST_HELO);
+	CU_ASSERT_STRING_EQUAL(name, "Helo");
 }
 
 void test_dqlite__request_type_heartbeat()
@@ -166,7 +166,7 @@ void test_dqlite__request_type_heartbeat()
 	type = dqlite__request_type(&request);
 	name = dqlite__request_type_name(&request);
 
-	CU_ASSERT_EQUAL(type, DQLITE_REQUEST_HEARTBEAT);
+	CU_ASSERT_EQUAL(type, DQLITE__REQUEST_HEARTBEAT);
 	CU_ASSERT_STRING_EQUAL(name, "Heartbeat");
 }
 
