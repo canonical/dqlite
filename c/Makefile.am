@@ -42,7 +42,9 @@ libdqlite_la_SOURCES = \
   src/request.h \
   src/response.c \
   src/response.h \
-  src/service.c
+  src/service.c \
+  src/vfs.c \
+  src/vfs.h
 include_HEADERS += include/dqlite.h
 
 # Don't try to generate any *.capnp files. Otherwise make wants to compile them
@@ -81,7 +83,9 @@ dqlite_test_SOURCES = \
   test/test_request.c \
   test/test_request.h \
   test/test_response.c \
-  test/test_response.h
+  test/test_response.h \
+  test/test_vfs.c \
+  test/test_vfs.h
 dqlite_test_CFLAGS = \
   -I$(top_srcdir)/include \
   -I$(top_srcdir)/test \

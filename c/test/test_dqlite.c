@@ -83,5 +83,4 @@ void test_dqlite_start(){
 }
 
 void test_dqlite_stop(){
-  //  CU_ASSERT_EQUAL(1, 0);
 }
