@@ -70,15 +70,15 @@ int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
 	err = capn_init_fp(&session, in, 0);
 	CU_ASSERT_EQUAL(err, 0);
 
-	Cluster_ptr clusterPtr;
-	struct Cluster cluster;
+	Welcome_ptr welcomePtr;
+	struct Welcome welcome;
 
 	root = capn_root(&session);
 
-	clusterPtr.p = capn_getp(root, 0 /* off */, 1 /* resolve */);
-	read_Cluster(&cluster, clusterPtr);
+	welcomePtr.p = capn_getp(root, 0 /* off */, 1 /* resolve */);
+	read_Welcome(&welcome, welcomePtr);
 
-	CU_ASSERT_STRING_EQUAL(cluster.leader.str,  "127.0.0.1:666");
+	CU_ASSERT_STRING_EQUAL(welcome.leader.str,  "127.0.0.1:666");
 
 	return 0;
 }

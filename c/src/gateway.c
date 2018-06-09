@@ -76,7 +76,7 @@ static int dqlite__gateway_connect_request_hdlr(void *arg)
 
 	leader = g->cluster->xLeader(g->cluster->ctx);
 
-	err = dqlite__response_cluster(response, leader, g->heartbeat_timeout);
+	err = dqlite__response_welcome(response, leader, g->heartbeat_timeout);
 	if (err != 0) {
 		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");
 		goto out;

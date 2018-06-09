@@ -6,11 +6,11 @@
 void test_dqlite__response_setup();
 void test_dqlite__response_teardown();
 
-void test_dqlite__response_cluster();
+void test_dqlite__response_welcome();
 void test_dqlite__response_servers();
 
 CU_TestInfo dqlite__response_suite[] = {
-	{"cluster",  test_dqlite__response_cluster},
+	{"welcome",  test_dqlite__response_welcome},
 	{"servers",  test_dqlite__response_servers},
 	CU_TEST_INFO_NULL,
 };

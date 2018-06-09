@@ -30,7 +30,7 @@ void dqlite__response_init(struct dqlite__response* r);
 void dqlite__response_close(struct dqlite__response* r);
 
 /* APIs for encoding responses */
-int dqlite__response_cluster(
+int dqlite__response_welcome(
 	struct dqlite__response *r,
 	const char* leader,
 	uint16_t heartbeat_timeout /* In milliseconds */);

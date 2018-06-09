@@ -162,24 +162,24 @@ void dqlite__response_close(struct dqlite__response* r)
 		goto out; \
 	}
 
-int dqlite__response_cluster(
+int dqlite__response_welcome(
 	struct dqlite__response *r,
 	const char* leader,
 	uint16_t heartbeat_timeout)
 {
 	DQLITE__RESPONSE_INIT;
 
-	struct Cluster cluster;
-	Cluster_ptr ptr;
+	struct Welcome welcome;
+	Welcome_ptr ptr;
 
 	assert(r != NULL);
 	assert(leader != NULL);
 	assert(heartbeat_timeout > 0);
 
-	cluster.leader = dqlite__response_text(leader);
-	cluster.heartbeatTimeout = heartbeat_timeout;
+	welcome.leader = dqlite__response_text(leader);
+	welcome.heartbeatTimeout = heartbeat_timeout;
 
-	DQLITE__RESPONSE_ENCODE(cluster, new_Cluster, write_Cluster);
+	DQLITE__RESPONSE_ENCODE(welcome, new_Welcome, write_Welcome);
 
  out:
 	return err;
