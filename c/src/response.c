@@ -154,13 +154,14 @@ void dqlite__response_close(struct dqlite__response* r)
 	err = capn_setp(root, 0, ptr.p); \
 	if( err != 0) { \
 		dqlite__error_printf(&r->error, "failed to set object pointer: %d", err); \
-		goto out; \
+		return err; \
 	} \
 	err = dqlite__response_render(r, &session); \
 	if( err != 0 ) { \
 		dqlite__error_printf(&r->error, "failed to serialize object: %d", err); \
-		goto out; \
-	}
+		return err; \
+	} \
+	return 0;
 
 int dqlite__response_welcome(
 	struct dqlite__response *r,
@@ -180,16 +181,13 @@ int dqlite__response_welcome(
 	welcome.heartbeatTimeout = heartbeat_timeout;
 
 	DQLITE__RESPONSE_ENCODE(welcome, new_Welcome, write_Welcome);
-
- out:
-	return err;
 }
 
 int dqlite__response_servers(struct dqlite__response *r, const char **addresses)
 {
 	DQLITE__RESPONSE_INIT;
 
-	struct Address *address_list;
+	struct Address address;
 	struct Servers servers;
 	Servers_ptr ptr;
 	int i;
@@ -204,26 +202,14 @@ int dqlite__response_servers(struct dqlite__response *r, const char **addresses)
 
 	assert(n > 0);
 
-	address_list = (struct Address*)sqlite3_malloc(sizeof(*address_list) * n);
-	if (address_list == NULL) {
-		dqlite__error_oom(&r->error, "failed to create servers list");
-		return DQLITE_NOMEM;
-	}
-
 	servers.addresses = new_Address_list(segment, n);
 
 	for(i = 0; *(addresses + i) != NULL; i++) {
-		struct Address *address = address_list + i;
-		address->value = dqlite__response_text(*(addresses + i));
-		set_Address(address, servers.addresses, i);
+		address.value = dqlite__response_text(*(addresses + i));
+		set_Address(&address, servers.addresses, i);
 	}
 
 	DQLITE__RESPONSE_ENCODE(servers, new_Servers, write_Servers);
-
- out:
-	sqlite3_free(address_list);
-
-	return err;
 }
 
 uint8_t *dqlite__response_data(struct dqlite__response* r)
