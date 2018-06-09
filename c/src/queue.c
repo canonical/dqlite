@@ -51,16 +51,13 @@ void dqlite__queue_item_close(struct dqlite__queue_item *i){
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_QUEUE_ITEM);
 }
 
-static void dqlite__queue_item_read_start(
-	struct dqlite__queue_item *i,
-	uv_loop_t *loop)
+static void dqlite__queue_item_process(struct dqlite__queue_item *i)
 {
 	int err;
 
 	assert(i != NULL);
-	assert(loop != NULL);
 
-	err = dqlite__conn_read_start(i->conn, loop);
+	err = dqlite__conn_start(i->conn);
 	if (err != 0) {
 		dqlite__error_wrapf(&i->error, &i->conn->error, "failed to init connection");
 	}
@@ -149,13 +146,12 @@ struct dqlite__queue_item *dqlite__queue_pop(struct dqlite__queue *q){
 	return item;
 }
 
-void dqlite__queue_process(struct dqlite__queue *q, uv_loop_t *loop){
+void dqlite__queue_process(struct dqlite__queue *q){
 	struct dqlite__queue_item *item;
 
 	assert(q != NULL);
-	assert(loop != NULL);
 
 	while ((item = dqlite__queue_pop(q)) != NULL) {
-		dqlite__queue_item_read_start(item, loop);
+		dqlite__queue_item_process(item);
 	}
 }

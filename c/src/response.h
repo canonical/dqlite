@@ -33,7 +33,9 @@ void dqlite__response_close(struct dqlite__response* r);
 int dqlite__response_cluster(
 	struct dqlite__response *r,
 	const char* leader,
-	uint8_t heartbeat);
+	uint16_t heartbeat_timeout /* In milliseconds */);
+
+int dqlite__response_servers(struct dqlite__response *r, const char** servers);
 
 /* Get the data of an encoded response */
 uint8_t *dqlite__response_data(struct dqlite__response *r);

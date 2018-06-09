@@ -10,6 +10,12 @@
 #include "request.h"
 #include "response.h"
 
+/* Default heartbeat timeout in milliseconds.
+ *
+ * Clients will be disconnected if we don't send a heartbeat
+ * message within this time. */
+#define DQLITE__GATEWAY_DEFAULT_HEARTBEAT_TIMEOUT 15000
+
 #define DQLITE__GATEWAY_NULL DQLITE__FSM_NULL
 
 #define DQLITE__GATEWAY_CONNECT  0 /* Initial state after a fresh connection */
@@ -59,7 +65,6 @@ static int dqlite__gateway_connect_request_hdlr(void *arg)
 	DQLITE__GATEWAY_REQUEST_HDLR_INIT;
 
 	const char *leader;
-	uint8_t heartbeat = 15; /* TODO: make this configurable */
 
 	dqlite__debugf(g, "handle register", "name=%s", name);
 
@@ -71,7 +76,7 @@ static int dqlite__gateway_connect_request_hdlr(void *arg)
 
 	leader = g->cluster->xLeader(g->cluster->ctx);
 
-	err = dqlite__response_cluster(response, leader, heartbeat);
+	err = dqlite__response_cluster(response, leader, g->heartbeat_timeout);
 	if (err != 0) {
 		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");
 		goto out;
@@ -88,20 +93,28 @@ static struct dqlite__fsm_transition dqlite__conn_transitions_connect[] = {
 /* Handle a Heartbeat request */
 static int dqlite__gateway_heartbeat(
 	struct dqlite__gateway *g,
+	struct dqlite__request *request,
 	struct dqlite__response *response)
 {
-	const char **servers;
+	int err;
+	const char **addresses;
 
-	servers = g->cluster->xServers(g->cluster->ctx);
-	if (servers == NULL ) {
+	/* Get the current list of servers in the cluster */
+	addresses = g->cluster->xServers(g->cluster->ctx);
+	if (addresses == NULL ) {
 		dqlite__errorf(g, "failed to get cluster servers", "");
 		return DQLITE_ERROR;
 	}
 
-	/* Refresh the heartbeat timestamp. */
-	g->heartbeat = time(NULL);
-
 	/* Encode the response */
+	err = dqlite__response_servers(response, addresses);
+	if (err != 0) {
+		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");
+		return err;
+	}
+
+	/* Refresh the heartbeat timestamp. */
+	g->heartbeat = request->timestamp;
 
 	return 0;
 }
@@ -114,17 +127,12 @@ static int dqlite__gateway_operate_request_hdlr(void *arg)
 
 	switch (type) {
 	case DQLITE__REQUEST_HEARTBEAT:
+		err = dqlite__gateway_heartbeat(g, request, response);
 		break;
 	default:
 		dqlite__error_printf(&g->error, "unexpected Request %s", name);
 		err = DQLITE_PROTO;
 	}
-
-	const char *address;
-
-	address = g->cluster->xLeader(g->cluster->ctx);
-
-	//err = dqlite__response_server(response, address);
 	if (err != 0) {
 		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");
 		goto out;
@@ -160,8 +168,7 @@ void dqlite__gateway_init(
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_GATEWAY);
 
-	/* Consider the initial connection as a heartbeat */
-	g->heartbeat = time(NULL);
+	g->heartbeat_timeout = DQLITE__GATEWAY_DEFAULT_HEARTBEAT_TIMEOUT;
 
 	dqlite__error_init(&g->error);
 

@@ -17,13 +17,16 @@
  * Decoder for incoming requests.
  */
 struct dqlite__request {
+	/*public */
+	uint64_t       timestamp; /* Time at which the request was received */
+
 	/* read-only */
 	dqlite__error  error;
 
 	/* private */
-	struct Request request; /* Container for the request being decoded */
-	uint32_t       segnum;  /* Number of segments the request (currently always 1) */
-	uint32_t       segsize; /* Segment size */
+	struct Request request;  /* Container for the request being decoded */
+	uint32_t       segnum;   /* Number of segments the request (currently always 1) */
+	uint32_t       segsize;  /* Segment size */
 };
 
 void dqlite__request_init(struct dqlite__request *r);

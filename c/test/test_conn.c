@@ -30,7 +30,7 @@ void test_dqlite__conn_setup()
 		CU_FAIL("test setup failed");
 	}
 
-	dqlite__conn_init(&conn, log, sockets.server, test_cluster());
+	dqlite__conn_init(&conn, log, sockets.server, test_cluster(), &loop);
 }
 
 void test_dqlite__conn_teardown()
@@ -63,7 +63,7 @@ void test_dqlite__conn_abort_immediately()
 {
 	int err;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	err = test_socket_pair_client_disconnect(&sockets);
@@ -83,7 +83,7 @@ void test_dqlite__conn_abort_during_handshake()
 	uint32_t version = capn_flip32(DQLITE_PROTOCOL_VERSION);
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 3);
@@ -109,7 +109,7 @@ void test_dqlite__conn_abort_after_handshake()
 	uint32_t version = capn_flip32(DQLITE_PROTOCOL_VERSION);
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);
@@ -136,7 +136,7 @@ void test_dqlite__conn_abort_during_preamble()
 	uint8_t buf[4] = {0, 0, 0, 0}; /* Preamble */
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);
@@ -166,7 +166,7 @@ void test_dqlite__conn_abort_after_preamble()
 	uint8_t buf[4] = {0, 0, 0, 0}; /* Preamble */
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);
@@ -199,7 +199,7 @@ void test_dqlite__conn_abort_during_header()
 	};
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);
@@ -232,7 +232,7 @@ void test_dqlite__conn_abort_after_header()
 	};
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);
@@ -267,7 +267,7 @@ void test_dqlite__conn_abort_during_data()
 	};
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);
@@ -302,7 +302,7 @@ void test_dqlite__conn_abort_after_data()
 	};
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);
@@ -325,6 +325,36 @@ void test_dqlite__conn_abort_after_data()
 	CU_ASSERT_STRING_EQUAL(conn.error, "read error: connection reset by peer (ECONNRESET)");
 }
 
+void test_dqlite__conn_abort_after_heartbeat_timeout()
+{
+	int err;
+	uint32_t version = capn_flip32(DQLITE_PROTOCOL_VERSION);
+	uint8_t buf[3] = { /* Incomplete preamble */
+		0, 0, 0,
+	};
+	ssize_t nwrite;
+
+	conn.gateway.heartbeat_timeout = 1; /* Abort after a millisecond */
+
+	err = dqlite__conn_start(&conn);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	nwrite = write(sockets.client, &version, 4);
+	CU_ASSERT_EQUAL_FATAL(nwrite, 4);
+
+	nwrite = write(sockets.client, buf, 3);
+	CU_ASSERT_EQUAL_FATAL(nwrite, 3);
+
+	usleep(2 * 1000);
+
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	sockets.server_disconnected = 1;
+
+	CU_ASSERT_PTR_NOT_NULL(strstr(conn.error, "no heartbeat since"));
+}
+
 /*
  * dqlite__conn_read_cb_suite
  */
@@ -335,7 +365,7 @@ void test_dqlite__conn_read_cb_unknown_protocol()
 	uint32_t version = 123456;
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);
@@ -365,7 +395,7 @@ void test_dqlite__conn_read_cb_invalid_preamble()
 	};
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);
@@ -400,7 +430,7 @@ void test_dqlite__conn_read_cb_invalid_header()
 	};
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);
@@ -435,7 +465,7 @@ void test_dqlite__conn_read_cb_unexpected_request()
 	};
 	ssize_t nwrite;
 
-	err = dqlite__conn_read_start(&conn, &loop);
+	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	nwrite = write(sockets.client, &version, 4);

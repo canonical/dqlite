@@ -2,6 +2,7 @@
 #define DQLITE_GATEWAY_H
 
 #include <stdio.h>
+#include <stdint.h>
 #include <time.h>
 
 #include "dqlite.h"
@@ -17,7 +18,7 @@
 struct dqlite__gateway_ctx {
 	struct dqlite__gateway  *gateway;
 	struct dqlite__request  *request;
-	struct dqlite__response response;
+	struct dqlite__response  response;
 };
 
 /*
@@ -25,15 +26,16 @@ struct dqlite__gateway_ctx {
  */
 struct dqlite__gateway {
 	/* public */
-	time_t heartbeat; /* Time of last successful heartbeat from the client */
+	uint16_t           heartbeat_timeout; /* Abort after this many milliseconds with no heartbeat */
 
 	/* read-only */
-	dqlite__error      error;   /* Last error occurred, if any */
-	FILE              *log;     /* Log output stream */
-	dqlite_cluster    *cluster; /* Cluster interface implementation */
+	dqlite__error      error;             /* Last error occurred, if any */
+	uint64_t           heartbeat;         /* Timestamp of last successful heartbeat from the client */
 
 	/* private */
-	struct dqlite__fsm fsm;     /* Client state machine */
+	FILE              *log;               /* Log output stream */
+	dqlite_cluster    *cluster;           /* Cluster interface implementation */
+	struct dqlite__fsm fsm;               /* Client state machine */
 
 	/*
 	 * Clients are expected to issue one SQL request at a time and wait for
