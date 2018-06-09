@@ -13,7 +13,7 @@ struct Request {
 
 # Initial message that a client must send to register itself.
 #
-# The server will reply with a Cluster response.
+# The server will reply with a Welcome response.
 struct Helo {
 }
 
@@ -21,8 +21,8 @@ struct Helo {
 struct Heartbeat {
 }
 
-# Information about the cluster, sent as response to Register.
-struct Cluster {
+# Information about the server, sent as response to Helo.
+struct Welcome {
   # Address of the current cluster leader.
   leader    @0 :Text;
 

@@ -71,8 +71,8 @@ void test_dqlite__gateway_handle_connect()
 {
 	int err;
 	struct test_request r;
-	Cluster_ptr ptr;
-	struct Cluster cluster;
+	Welcome_ptr ptr;
+	struct Welcome welcome;
 
 	test_request_helo(&r);
 	test_dqlite__request_write(&r);
@@ -82,9 +82,9 @@ void test_dqlite__gateway_handle_connect()
 
 	TEST_DQLITE__RESPONSE_READ(ptr);
 
-	read_Cluster(&cluster, ptr);
+	read_Welcome(&welcome, ptr);
 
-	CU_ASSERT_STRING_EQUAL(cluster.leader.str,  "127.0.0.1:666");
+	CU_ASSERT_STRING_EQUAL(welcome.leader.str,  "127.0.0.1:666");
 }
 
 void test_dqlite__gateway_handle_connect_wrong_request_type()

@@ -115,59 +115,59 @@ void set_Heartbeat(const struct Heartbeat *s, Heartbeat_list l, int i) {
 	write_Heartbeat(s, p);
 }
 
-Cluster_ptr new_Cluster(struct capn_segment *s) {
-	Cluster_ptr p;
+Welcome_ptr new_Welcome(struct capn_segment *s) {
+	Welcome_ptr p;
 	p.p = capn_new_struct(s, 8, 1);
 	return p;
 }
-Cluster_list new_Cluster_list(struct capn_segment *s, int len) {
-	Cluster_list p;
+Welcome_list new_Welcome_list(struct capn_segment *s, int len) {
+	Welcome_list p;
 	p.p = capn_new_list(s, len, 8, 1);
 	return p;
 }
-void read_Cluster(struct Cluster *s capnp_unused, Cluster_ptr p) {
+void read_Welcome(struct Welcome *s capnp_unused, Welcome_ptr p) {
 	capn_resolve(&p.p);
 	capnp_use(s);
 	s->leader = capn_get_text(p.p, 0, capn_val0);
 	s->heartbeatTimeout = capn_read16(p.p, 0);
 }
-void write_Cluster(const struct Cluster *s capnp_unused, Cluster_ptr p) {
+void write_Welcome(const struct Welcome *s capnp_unused, Welcome_ptr p) {
 	capn_resolve(&p.p);
 	capnp_use(s);
 	capn_set_text(p.p, 0, s->leader);
 	capn_write16(p.p, 0, s->heartbeatTimeout);
 }
-void get_Cluster(struct Cluster *s, Cluster_list l, int i) {
-	Cluster_ptr p;
+void get_Welcome(struct Welcome *s, Welcome_list l, int i) {
+	Welcome_ptr p;
 	p.p = capn_getp(l.p, i, 0);
-	read_Cluster(s, p);
+	read_Welcome(s, p);
 }
-void set_Cluster(const struct Cluster *s, Cluster_list l, int i) {
-	Cluster_ptr p;
+void set_Welcome(const struct Welcome *s, Welcome_list l, int i) {
+	Welcome_ptr p;
 	p.p = capn_getp(l.p, i, 0);
-	write_Cluster(s, p);
+	write_Welcome(s, p);
 }
 
-capn_text Cluster_get_leader(Cluster_ptr p)
+capn_text Welcome_get_leader(Welcome_ptr p)
 {
 	capn_text leader;
 	leader = capn_get_text(p.p, 0, capn_val0);
 	return leader;
 }
 
-uint16_t Cluster_get_heartbeatTimeout(Cluster_ptr p)
+uint16_t Welcome_get_heartbeatTimeout(Welcome_ptr p)
 {
 	uint16_t heartbeatTimeout;
 	heartbeatTimeout = capn_read16(p.p, 0);
 	return heartbeatTimeout;
 }
 
-void Cluster_set_leader(Cluster_ptr p, capn_text leader)
+void Welcome_set_leader(Welcome_ptr p, capn_text leader)
 {
 	capn_set_text(p.p, 0, leader);
 }
 
-void Cluster_set_heartbeatTimeout(Cluster_ptr p, uint16_t heartbeatTimeout)
+void Welcome_set_heartbeatTimeout(Welcome_ptr p, uint16_t heartbeatTimeout)
 {
 	capn_write16(p.p, 0, heartbeatTimeout);
 }
