@@ -30,6 +30,8 @@ void dqlite__request_init(struct dqlite__request *r)
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_REQUEST);
 
+	r->timestamp = 0;
+
 	dqlite__error_init(&r->error);
 
 	r->segnum = 0;

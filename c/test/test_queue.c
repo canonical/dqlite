@@ -64,7 +64,7 @@ void test_dqlite__queue_push()
 	struct dqlite__conn conn;
 	struct dqlite__queue_item item;
 
-	dqlite__conn_init(&conn, log, 123, test_cluster());
+	dqlite__conn_init(&conn, log, 123, test_cluster(), &loop);
 
 	err = dqlite__queue_item_init(&item, &conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
@@ -89,7 +89,7 @@ void test_dqlite__queue_process()
 	struct dqlite__queue_item item;
 	struct dqlite__conn conn;
 
-	dqlite__conn_init(&conn, log, sockets.server, test_cluster());
+	dqlite__conn_init(&conn, log, sockets.server, test_cluster(), &loop);
 
 	err = dqlite__queue_item_init(&item, &conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
@@ -97,7 +97,7 @@ void test_dqlite__queue_process()
 	err = dqlite__queue_push(&queue, &item);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	dqlite__queue_process(&queue, &loop);
+	dqlite__queue_process(&queue);
 
 	CU_ASSERT_FATAL(dqlite__error_is_null(&item.error));
 

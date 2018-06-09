@@ -129,13 +129,13 @@ void read_Cluster(struct Cluster *s capnp_unused, Cluster_ptr p) {
 	capn_resolve(&p.p);
 	capnp_use(s);
 	s->leader = capn_get_text(p.p, 0, capn_val0);
-	s->heartbeat = capn_read8(p.p, 0);
+	s->heartbeatTimeout = capn_read16(p.p, 0);
 }
 void write_Cluster(const struct Cluster *s capnp_unused, Cluster_ptr p) {
 	capn_resolve(&p.p);
 	capnp_use(s);
 	capn_set_text(p.p, 0, s->leader);
-	capn_write8(p.p, 0, s->heartbeat);
+	capn_write16(p.p, 0, s->heartbeatTimeout);
 }
 void get_Cluster(struct Cluster *s, Cluster_list l, int i) {
 	Cluster_ptr p;
@@ -155,11 +155,11 @@ capn_text Cluster_get_leader(Cluster_ptr p)
 	return leader;
 }
 
-uint8_t Cluster_get_heartbeat(Cluster_ptr p)
+uint16_t Cluster_get_heartbeatTimeout(Cluster_ptr p)
 {
-	uint8_t heartbeat;
-	heartbeat = capn_read8(p.p, 0);
-	return heartbeat;
+	uint16_t heartbeatTimeout;
+	heartbeatTimeout = capn_read16(p.p, 0);
+	return heartbeatTimeout;
 }
 
 void Cluster_set_leader(Cluster_ptr p, capn_text leader)
@@ -167,7 +167,93 @@ void Cluster_set_leader(Cluster_ptr p, capn_text leader)
 	capn_set_text(p.p, 0, leader);
 }
 
-void Cluster_set_heartbeat(Cluster_ptr p, uint8_t heartbeat)
+void Cluster_set_heartbeatTimeout(Cluster_ptr p, uint16_t heartbeatTimeout)
 {
-	capn_write8(p.p, 0, heartbeat);
+	capn_write16(p.p, 0, heartbeatTimeout);
+}
+
+Servers_ptr new_Servers(struct capn_segment *s) {
+	Servers_ptr p;
+	p.p = capn_new_struct(s, 0, 1);
+	return p;
+}
+Servers_list new_Servers_list(struct capn_segment *s, int len) {
+	Servers_list p;
+	p.p = capn_new_list(s, len, 0, 1);
+	return p;
+}
+void read_Servers(struct Servers *s capnp_unused, Servers_ptr p) {
+	capn_resolve(&p.p);
+	capnp_use(s);
+	s->addresses.p = capn_getp(p.p, 0, 0);
+}
+void write_Servers(const struct Servers *s capnp_unused, Servers_ptr p) {
+	capn_resolve(&p.p);
+	capnp_use(s);
+	capn_setp(p.p, 0, s->addresses.p);
+}
+void get_Servers(struct Servers *s, Servers_list l, int i) {
+	Servers_ptr p;
+	p.p = capn_getp(l.p, i, 0);
+	read_Servers(s, p);
+}
+void set_Servers(const struct Servers *s, Servers_list l, int i) {
+	Servers_ptr p;
+	p.p = capn_getp(l.p, i, 0);
+	write_Servers(s, p);
+}
+
+Address_list Servers_get_addresses(Servers_ptr p)
+{
+	Address_list addresses;
+	addresses.p = capn_getp(p.p, 0, 0);
+	return addresses;
+}
+
+void Servers_set_addresses(Servers_ptr p, Address_list addresses)
+{
+	capn_setp(p.p, 0, addresses.p);
+}
+
+Address_ptr new_Address(struct capn_segment *s) {
+	Address_ptr p;
+	p.p = capn_new_struct(s, 0, 1);
+	return p;
+}
+Address_list new_Address_list(struct capn_segment *s, int len) {
+	Address_list p;
+	p.p = capn_new_list(s, len, 0, 1);
+	return p;
+}
+void read_Address(struct Address *s capnp_unused, Address_ptr p) {
+	capn_resolve(&p.p);
+	capnp_use(s);
+	s->value = capn_get_text(p.p, 0, capn_val0);
+}
+void write_Address(const struct Address *s capnp_unused, Address_ptr p) {
+	capn_resolve(&p.p);
+	capnp_use(s);
+	capn_set_text(p.p, 0, s->value);
+}
+void get_Address(struct Address *s, Address_list l, int i) {
+	Address_ptr p;
+	p.p = capn_getp(l.p, i, 0);
+	read_Address(s, p);
+}
+void set_Address(const struct Address *s, Address_list l, int i) {
+	Address_ptr p;
+	p.p = capn_getp(l.p, i, 0);
+	write_Address(s, p);
+}
+
+capn_text Address_get_value(Address_ptr p)
+{
+	capn_text value;
+	value = capn_get_text(p.p, 0, capn_val0);
+	return value;
+}
+
+void Address_set_value(Address_ptr p, capn_text value)
+{
+	capn_set_text(p.p, 0, value);
 }

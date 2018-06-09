@@ -50,6 +50,7 @@ static void dqlite__service_stop_walk_cb(uv_handle_t *handle, void *arg)
 	assert(arg != NULL);
 	assert(
 		handle->type == UV_ASYNC ||
+		handle->type == UV_TIMER ||
 		handle->type == UV_TCP);
 
 	s = (struct dqlite__service*)arg;
@@ -126,7 +127,7 @@ static void dqlite__service_incoming_cb(uv_async_t *incoming){
 	 * pushed. */
 	sqlite3_mutex_enter(s->mutex);
 
-	dqlite__queue_process(&s->queue, &s->loop);
+	dqlite__queue_process(&s->queue);
 
 	sqlite3_mutex_leave(s->mutex);
 
@@ -281,7 +282,7 @@ int dqlite_service_handle(dqlite_service *s, int socket, char **errmsg){
 		err = DQLITE_NOMEM;
 		goto err_conn_malloc;
 	}
-	dqlite__conn_init(conn, s->log, socket, s->cluster);
+	dqlite__conn_init(conn, s->log, socket, s->cluster, &s->loop);
 
 	err = dqlite__queue_item_init(&item, conn);
 	if (err != 0) {

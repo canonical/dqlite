@@ -48,7 +48,7 @@ void test_dqlite__response_cluster()
 	Cluster_ptr ptr;
 	struct Cluster cluster;
 
-	err = dqlite__response_cluster(&response, "1.2.3.4:666", 15);
+	err = dqlite__response_cluster(&response, "1.2.3.4:666", 15000);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	TEST_DQLITE__RESPONSE_READ(ptr);
@@ -56,5 +56,33 @@ void test_dqlite__response_cluster()
 	read_Cluster(&cluster, ptr);
 
 	CU_ASSERT_STRING_EQUAL(cluster.leader.str, "1.2.3.4:666");
-	CU_ASSERT_EQUAL(cluster.heartbeat, 15);
+	CU_ASSERT_EQUAL(cluster.heartbeatTimeout, 15000);
+}
+
+void test_dqlite__response_servers()
+{
+	int err;
+	Servers_ptr ptr;
+	struct Servers servers;
+	struct Address address;
+	const char *addresses[] = {
+		"1.2.3.4:666",
+		"5.6.7.8:666",
+		NULL,
+	};
+
+	err = dqlite__response_servers(&response, addresses);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	TEST_DQLITE__RESPONSE_READ(ptr);
+
+	read_Servers(&servers, ptr);
+
+	CU_ASSERT_EQUAL(capn_len(servers.addresses), 2);
+
+	get_Address(&address, servers.addresses, 0);
+	CU_ASSERT_STRING_EQUAL(address.value.str, "1.2.3.4:666");
+
+	get_Address(&address, servers.addresses, 1);
+	CU_ASSERT_STRING_EQUAL(address.value.str, "5.6.7.8:666");
 }

@@ -15,17 +15,19 @@ void test_dqlite__conn_abort_during_header();
 void test_dqlite__conn_abort_after_header();
 void test_dqlite__conn_abort_during_data();
 void test_dqlite__conn_abort_after_data();
+void test_dqlite__conn_abort_after_heartbeat_timeout();
 
 CU_TestInfo dqlite__conn_abort_suite[] = {
-	{"immediately",      test_dqlite__conn_abort_immediately},
-	{"during handshake", test_dqlite__conn_abort_during_handshake},
-	{"after handshake",  test_dqlite__conn_abort_after_handshake},
-	{"during preamble",  test_dqlite__conn_abort_during_preamble},
-	{"after preamble",   test_dqlite__conn_abort_after_preamble},
-	{"during header",    test_dqlite__conn_abort_during_header},
-	{"after header",     test_dqlite__conn_abort_after_header},
-	{"during data",      test_dqlite__conn_abort_during_data},
-	{"after data",       test_dqlite__conn_abort_after_data},
+	{"immediately",             test_dqlite__conn_abort_immediately},
+	{"during handshake",        test_dqlite__conn_abort_during_handshake},
+	{"after handshake",         test_dqlite__conn_abort_after_handshake},
+	{"during preamble",         test_dqlite__conn_abort_during_preamble},
+	{"after preamble",          test_dqlite__conn_abort_after_preamble},
+	{"during header",           test_dqlite__conn_abort_during_header},
+	{"after header",            test_dqlite__conn_abort_after_header},
+	{"during data",             test_dqlite__conn_abort_during_data},
+	{"after data",              test_dqlite__conn_abort_after_data},
+	{"after heartbeat timeout", test_dqlite__conn_abort_after_heartbeat_timeout},
 	CU_TEST_INFO_NULL,
 };
 

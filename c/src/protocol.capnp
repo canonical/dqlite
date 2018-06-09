@@ -27,6 +27,16 @@ struct Cluster {
   leader    @0 :Text;
 
   # Timeout after which the connection will be killed if no
-  # heartbeat is received from the client.
-  heartbeat @1 :UInt8;
+  # heartbeat is received from the client (in milliseconds).
+  heartbeatTimeout @1 :UInt16;
+}
+
+# Information about the current servers in the cluster, set
+# as response to Heartbeat.
+struct Servers {
+  addresses @0 :List(Address);
+}
+
+struct Address {
+  value @0 :Text;
 }

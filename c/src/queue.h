@@ -47,6 +47,6 @@ int dqlite__queue_push(
 
 struct dqlite__queue_item *dqlite__queue_pop(struct dqlite__queue *q);
 
-void dqlite__queue_process(struct dqlite__queue *q, uv_loop_t *loop);
+void dqlite__queue_process(struct dqlite__queue *q);
 
 #endif /* DQLITE_QUEUE_H */

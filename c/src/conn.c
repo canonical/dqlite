@@ -303,11 +303,6 @@ static void dqlite__conn_write_cb(uv_write_t* req, int status)
 	c = ctx->conn;
 	response = ctx->response;
 
-	// FIXME: there's a race condition, the write dqlite__conn_write_cb gets
-	//        invoked after the connection has aborted.
-	if( c->aborted)
-		return;
-
 	assert(c != NULL);
 	assert(response != NULL);
 
@@ -359,6 +354,8 @@ static int dqlite__conn_data_read_hdlr(void *arg)
 		return err;
 	}
 
+	c->request.timestamp = uv_now(c->loop);
+
 	err = dqlite__gateway_handle(&c->gateway, &c->request, &response);
 	if (err != 0) {
 		assert(response == NULL);
@@ -392,19 +389,6 @@ static struct dqlite__fsm_transition *dqlite__transitions[] = {
 	dqlite__conn_transitions_data,
 };
 
-static void dqlite__conn_close_cb(uv_handle_t* tcp)
-{
-	struct dqlite__conn *c;
-
-	assert(tcp != NULL);
-
-	c = (struct dqlite__conn*)tcp->data;
-
-	assert(c != NULL);
-
-	dqlite__debugf(c, "connection aborted", "socket=%d", c->socket);
-}
-
 static void dqlite__conn_alloc_cb(uv_handle_t *tcp, size_t suggested_size, uv_buf_t *buf)
 {
 	int err;
@@ -432,6 +416,29 @@ static void dqlite__conn_alloc_cb(uv_handle_t *tcp, size_t suggested_size, uv_bu
 
 	buf->base = (char*)c->buffer.data;
 	buf->len = c->buffer.pending;
+}
+
+static void dqlite__conn_alive_cb(uv_timer_t *alive)
+{
+	uint64_t elapsed;
+	struct dqlite__conn *c;
+
+	assert(alive != NULL);
+
+	c = (struct dqlite__conn*)alive->data;
+
+	assert(c != NULL);
+
+	dqlite__debugf(c, "check heartbeat", "socket=%d", c->socket);
+
+	elapsed = uv_now(c->loop) - c->gateway.heartbeat;
+
+	/* If the last successful heartbeat happened more than heartbeat_timeout
+	 * milliseconds ago, abort the connection. */
+	if (elapsed > c->gateway.heartbeat_timeout) {
+		dqlite__error_printf(&c->error, "no heartbeat since %ld milliseconds", elapsed);
+		dqlite__conn_abort(c);
+	}
 }
 
 static void dqlite__conn_read_cb(uv_stream_t *tcp, ssize_t nread, const uv_buf_t *buf)
@@ -492,12 +499,17 @@ static void dqlite__conn_read_cb(uv_stream_t *tcp, ssize_t nread, const uv_buf_t
 	return;
 }
 
-void dqlite__conn_init(struct dqlite__conn *c,
-		FILE *log,
-		int socket,
-		dqlite_cluster *cluster)
+void dqlite__conn_init(
+	struct dqlite__conn *c,
+	FILE *log,
+	int socket,
+	dqlite_cluster *cluster,
+	uv_loop_t *loop)
 {
 	assert(c != NULL );
+	assert(log != NULL );
+	assert(cluster != NULL );
+	assert(loop != NULL );
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_CONN);
 
@@ -506,14 +518,13 @@ void dqlite__conn_init(struct dqlite__conn *c,
 	c->log = log;
 	c->socket = socket;
 	c->cluster = cluster;
+	c->loop = loop;
 
 	dqlite__fsm_init(&c->fsm, dqlite__conn_states, dqlite__conn_events, dqlite__transitions);
 
 	c->buffer.data = NULL;
 	c->buffer.offset = 0;
 	c->buffer.pending = 0;
-
-	c->aborted = 0;
 
 	dqlite__request_init(&c->request);
 
@@ -533,33 +544,75 @@ void dqlite__conn_close(struct dqlite__conn *c)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_CONN);
 }
 
-int dqlite__conn_read_start(struct dqlite__conn *c, uv_loop_t *loop)
+int dqlite__conn_start(struct dqlite__conn *c)
 {
-	int err = 0;
+	int err;
+	uint64_t heartbeat_timeout;
 
-	assert( c );
-	assert( loop );
+	assert(c != NULL);
 
-	dqlite__debugf(c, "start reading", "socket=%d", c->socket);
+	dqlite__debugf(c, "start connection", "socket=%d", c->socket);
 
-	err = uv_tcp_init(loop, &c->tcp);
+	/* Consider the initial connection as a heartbeat */
+	c->gateway.heartbeat = uv_now(c->loop);
+
+	/* Start the alive timer, which will disconnect the client if no
+	 * heartbeat is received within the timeout. */
+
+	heartbeat_timeout = c->gateway.heartbeat_timeout;
+
+	assert(heartbeat_timeout > 0);
+
+	err = uv_timer_init(c->loop, &c->alive);
+	if (err != 0) {
+		dqlite__error_uv(&c->error, err, "failed to init alive timer");
+		err = DQLITE_ERROR;
+		goto err_timer_init;
+	}
+	c->alive.data = (void*)c;
+
+	err = uv_timer_start(&c->alive, dqlite__conn_alive_cb, heartbeat_timeout, heartbeat_timeout);
+	if (err != 0) {
+		dqlite__error_uv(&c->error, err, "failed to init alive timer");
+		err = DQLITE_ERROR;
+		goto err_timer_init;
+	}
+
+	/* Start reading from the TCP socket. */
+
+	err = uv_tcp_init(c->loop, &c->tcp);
 	if (err != 0) {
 		dqlite__error_uv(&c->error, err, "failed to init tcp stream");
-		return DQLITE_ERROR;
+		err = DQLITE_ERROR;
+		goto err_tcp_init;
 	}
 
 	err = uv_tcp_open(&c->tcp, c->socket);
 	if (err != 0) {
 		dqlite__error_uv(&c->error, err, "failed to open tcp stream");
-		return DQLITE_ERROR;
+		err = DQLITE_ERROR;
+		goto err_tcp_open;
 	}
 	c->tcp.data = (void*)c;
 
 	err = uv_read_start((uv_stream_t*)(&c->tcp), dqlite__conn_alloc_cb, dqlite__conn_read_cb);
 	if (err != 0) {
 		dqlite__error_uv(&c->error, err, "failed to start reading tcp stream");
-		return DQLITE_ERROR;
+		err = DQLITE_ERROR;
+		goto err_tcp_start;
 	}
+
+	return 0;
+
+ err_tcp_start:
+ err_tcp_open:
+	uv_close((uv_handle_t*)(&c->tcp), NULL);
+
+ err_tcp_init:
+	uv_close((uv_handle_t*)(&c->alive), NULL);
+
+ err_timer_init:
+	assert(err != 0);
 
 	return err;
 }
@@ -572,8 +625,6 @@ void dqlite__conn_abort(struct dqlite__conn *c)
 	const char *gateway_state;
 
 	assert(c != NULL);
-
-	c->aborted = 1;
 
 	if (uv_is_closing((uv_handle_t*)(&c->tcp))) {
 		/* It might happen that a connection error occurs at the same time
@@ -603,9 +654,6 @@ void dqlite__conn_abort(struct dqlite__conn *c)
 			"aborting connection", "socket=%d conn_state=%s gateway_state=%s msg=%s",
 			c->socket, conn_state, gateway_state, c->error);
 
-	// TODO: understand if we actually need a close callback (e.g. do we
-	// have resources that must be released after close?). Probably not,
-	// since all the work can be done here.
-	// uv_close((uv_handle_t*)(&c->tcp), dqlite__conn_close_cb);
+	uv_close((uv_handle_t*)(&c->alive), NULL);
 	uv_close((uv_handle_t*)(&c->tcp), NULL);
 }
