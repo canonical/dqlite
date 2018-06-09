@@ -61,6 +61,7 @@ int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
 	}
 
 	struct test_request r;
+	memset(&r, 0, sizeof(r));
 	test_request_helo(&r);
 	write(c->fd, r.buf, r.size);
 
