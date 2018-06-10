@@ -2,25 +2,23 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <capnp_c.h>
-
 #include "dqlite.h"
 #include "error.h"
 #include "lifecycle.h"
-#include "protocol.capnp.h"
+#include "message.h"
 #include "request.h"
 
-/* The preable is a 32-bit unsigned integer, containing the number of
- * segments. */
-#define DQLITE_REQUEST_PREAMBLE_SIZE sizeof(uint32_t)
-
-/* Set the maximum segment size to 1M, to prevent eccessive memmory allocation
- * in case of client bugs */
-#define DQLITE_REQUEST_MAX_SEGMENT_SIZE 1048576
+/* Set the maximum data size to 1M, to prevent eccessive memmory allocation
+ * in case of client bugs
+ *
+ * TODO: relax this limit since it prevents inserting large blobs.
+ */
+#define DQLITE_REQUEST_MAX_DATA_SIZE 1048576
 
 static const char *dqlite__request_type_names[] = {
-	"Helo",      /* DQLITE__REQUEST_HELO */
-	"Heartbeat", /* DQLITE__REQUEST_HEARTBEAT */
+	"Helo",      /* DQLITE_HELO */
+	"Heartbeat", /* DQLITE_HEARTBEAT */
+	"Open",      /* DQLITE_OPEN */
 	0
 };
 
@@ -33,9 +31,7 @@ void dqlite__request_init(struct dqlite__request *r)
 	r->timestamp = 0;
 
 	dqlite__error_init(&r->error);
-
-	r->segnum = 0;
-	r->segsize = 0;
+	dqlite__message_init(&r->message);
 }
 
 void dqlite__request_close(struct dqlite__request* r)
@@ -43,109 +39,163 @@ void dqlite__request_close(struct dqlite__request* r)
 	assert(r != NULL);
 
 	dqlite__error_close(&r->error);
+	dqlite__message_close(&r->message);
 
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_REQUEST);
 }
 
-size_t dqlite__request_preamble_size(struct dqlite__request *r)
+int dqlite__request_header_received(struct dqlite__request *r)
 {
+	int err;
 	assert(r != NULL);
 
-	return DQLITE_REQUEST_PREAMBLE_SIZE;
-}
-
-int dqlite__request_preamble(struct dqlite__request *r, const uint8_t *buf)
-{
-	uint32_t segnum;
-
-	assert(r != NULL);
-	assert(buf != NULL);
-
-	assert(r->segnum == 0);
-
-	memcpy(&segnum, buf, DQLITE_REQUEST_PREAMBLE_SIZE);
-	segnum = capn_flip32(segnum);
-
-	segnum++; /* The wire encoding is zero-based */
-
-	/* At the moment we require requests to have exactly one segment */
-	if (segnum != 1) {
-		dqlite__error_printf(&r->error, "too many segments: %d", segnum);
-		return DQLITE_REQUEST_ERR_PARSE;
+	err = dqlite__message_header_received(&r->message);
+	if (err != 0) {
+		dqlite__error_wrapf(&r->error, &r->message.error, "failed to parse request header");
 	}
 
-	r->segnum = segnum;
-
 	return 0;
 }
 
-size_t dqlite__request_header_size(struct dqlite__request *r)
+/* At the moment we're setting a cap to the request size. Also, for requests
+ * with a fixed message body length, check that the length of the received
+ * message body actually matches the expected one. */
+static int dqlite__request_body_len_check(struct dqlite__request *r)
 {
-	assert(r != NULL);
-	assert(r->segnum == 1);
-
-	return 8 * (r->segnum/2) + 4;
-}
-
-int dqlite__request_header(struct dqlite__request *r, uint8_t *buf)
-{
-	uint32_t segsize;
+	uint16_t type;
+	size_t len;
+	size_t expected_len;
 
 	assert(r != NULL);
-	assert(buf != NULL);
 
-	assert(r->segnum == 1);
-	assert(r->segsize == 0);
+	type = dqlite__request_type(r);
+	len = dqlite__message_body_len(&r->message);
 
-	memcpy(&segsize, buf, sizeof(uint32_t));
-	if (segsize == 0 || segsize > DQLITE_REQUEST_MAX_SEGMENT_SIZE) {
-		dqlite__error_printf(&r->error, "invalid segment size: %d", segsize);
-		return DQLITE_REQUEST_ERR_PARSE;
+	if (len > DQLITE_REQUEST_MAX_DATA_SIZE) {
+		dqlite__error_printf(&r->error, "request too large: %ld", len);
+		return DQLITE_PARSE;
 	}
 
-	r->segsize = segsize;
+	switch (type) {
+
+	case DQLITE_HELO:
+		expected_len = DQLITE__MESSAGE_WORD_SIZE;
+		break;
+
+	case DQLITE_HEARTBEAT:
+		expected_len = DQLITE__MESSAGE_WORD_SIZE;
+		break;
+
+	default:
+		return 0;
+	}
+
+	if (len != expected_len) {
+		const char *name = dqlite__request_type_name(r);
+		dqlite__error_printf(&r->error, "malformed %s: %ld bytes", name, len);
+		return DQLITE_PARSE;
+	}
 
 	return 0;
 }
 
-size_t dqlite__request_data_size(struct dqlite__request *r)
+static int dqlite__request_helo_received(struct dqlite__request *r)
 {
-	assert(r != NULL);
-	assert(r->segsize != 0 && r->segsize <= DQLITE_REQUEST_MAX_SEGMENT_SIZE);
+	int err;
 
-	return r->segsize * sizeof(uint64_t);
+	assert(r != NULL);
+
+	err = dqlite__message_read_uint64(&r->message, &r->helo.client_id);
+	if (err != 0 && err != DQLITE_EOM) {
+		dqlite__error_wrapf(&r->error, &r->message.error, "failed to parse client ID");
+		return err;
+	}
+
+	return err;
 }
 
-int dqlite__request_data(struct dqlite__request *r, uint8_t *buf)
+static int dqlite__request_heartbeat_received(struct dqlite__request *r)
 {
-	struct capn session;
-	struct capn_segment segment;
-	Request_ptr request_ptr;
+	int err;
 
 	assert(r != NULL);
-	assert(buf != NULL);
 
-	/* Requests are supposed to be contained in one segment */
-	assert( r->segnum==1 );
+	err = dqlite__message_read_uint64(&r->message, &r->heartbeat.timestamp);
+	if (err != 0 && err != DQLITE_EOM) {
+		dqlite__error_wrapf(&r->error, &r->message.error, "failed to parse timestamp");
+		return err;
+	}
 
-	segment.data = (char*)buf;
-	segment.len = dqlite__request_data_size(r);
-	segment.cap = segment.len;
+	return err;
+}
 
-	capn_init_malloc(&session);
-	capn_append_segment(&session, &segment);
+static int dqlite__request_open_received(struct dqlite__request *r)
+{
+	int err;
 
-	request_ptr.p = capn_getp(capn_root(&session), 0 /* off */, 1 /* resolve */);
+	assert(r != NULL);
 
-	read_Request(&r->request, request_ptr);
+	err = dqlite__message_read_text(&r->message, &r->open.name);
+	if (err != 0 && err != DQLITE_EOM) {
+		dqlite__error_wrapf(&r->error, &r->message.error, "failed to parse name");
+		return err;
+	}
+
+	return err;
+}
+
+int dqlite__request_body_received(struct dqlite__request *r)
+{
+	int err;
+	uint16_t type;
+
+	assert(r != NULL);
+
+	err = dqlite__request_body_len_check(r);
+	if (err != 0) {
+		return err;
+	}
+
+	type = dqlite__request_type(r);
+
+	switch (type) {
+
+	case DQLITE_HELO:
+		err = dqlite__request_helo_received(r);
+		break;
+
+	case DQLITE_HEARTBEAT:
+		err = dqlite__request_heartbeat_received(r);
+		break;
+
+	case DQLITE_OPEN:
+		err = dqlite__request_open_received(r);
+		break;
+
+	default:
+		dqlite__error_printf(&r->error, "unknown request type");
+		err = DQLITE_PROTO;
+		break;
+	}
+
+	if (err != DQLITE_EOM) {
+		const char *name = dqlite__request_type_name(r);
+		dqlite__error_wrapf(&r->error, &r->error, "failed to parse %s", name);
+		return err;
+	}
 
 	return 0;
 }
 
-int dqlite__request_type(struct dqlite__request *r){
+void dqlite__request_processed(struct dqlite__request *r)
+{
+	dqlite__message_processed(&r->message);
+}
+
+uint16_t dqlite__request_type(struct dqlite__request *r){
 	assert(r != NULL);
 
-	return r->request.which;
+	return r->message.type;
 }
 
 const char *dqlite__request_type_name(struct dqlite__request *r)

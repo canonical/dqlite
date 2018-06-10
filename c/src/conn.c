@@ -8,7 +8,6 @@
 
 #include <uv.h>
 #include <sqlite3.h>
-#include <capnp_c.h>
 
 #include "conn.h"
 #include "dqlite.h"
@@ -20,49 +19,39 @@
 #include "request.h"
 #include "response.h"
 
-static int dqlite__conn_buf_alloc(struct dqlite__conn *c, size_t size)
+static void dqlite__conn_buf_init(struct dqlite__conn *c, uint8_t *buf,	size_t size)
 {
 	assert(c != NULL);
-	assert(c->buffer.data == NULL);
+	assert(c->buf == NULL);
+	assert(c->offset == 0);
+	assert(c->pending == 0);
 
-	c->buffer.data = (uint8_t*)sqlite3_malloc(size);
-	if (c->buffer.data == NULL){
-		dqlite__error_oom(&c->error, "failed to allocate read buffer");
-		return DQLITE_NOMEM;
-	}
-	memset(c->buffer.data, 0, size);
-
-	c->buffer.offset = 0;
-	c->buffer.pending = size;
-
-	return 0;
+	c->buf = buf;
+	c->offset = 0;
+	c->pending = size;
 }
 
-static void dqlite__conn_buf_free(struct dqlite__conn *c)
+static void dqlite__conn_buf_close(struct dqlite__conn *c)
 {
 	assert(c != NULL);
-	assert(c->buffer.data != NULL);
+	assert(c->buf != NULL);
+	assert(c->pending == 0);
 
-	sqlite3_free(c->buffer.data);
-
-	c->buffer.data = 0;
-	c->buffer.offset = 0;
-	c->buffer.pending = 0;
+	c->buf = NULL;
+	c->offset = 0;
 }
 
 #define DQLITE__CONN_NULL DQLITE__FSM_NULL
 
 #define DQLITE__CONN_HANDSHAKE 0
-#define DQLITE__CONN_PREAMBLE  1
-#define DQLITE__CONN_HEADER    2
-#define DQLITE__CONN_DATA      3
+#define DQLITE__CONN_HEADER   1
+#define DQLITE__CONN_BODY      2
 
 static struct dqlite__fsm_state dqlite__conn_states[] = {
 	{DQLITE__CONN_HANDSHAKE, "handshake"},
-	{DQLITE__CONN_PREAMBLE,  "preamble" },
-	{DQLITE__CONN_HEADER,    "header"   },
-	{DQLITE__CONN_DATA,      "data"     },
-	{DQLITE__CONN_NULL,      NULL       },
+	{DQLITE__CONN_HEADER,   "message" },
+	{DQLITE__CONN_BODY,      "data" },
+	{DQLITE__CONN_NULL,      NULL      },
 };
 
 #define DQLITE__CONN_ALLOC 0
@@ -76,19 +65,20 @@ static struct dqlite__fsm_event dqlite__conn_events[] = {
 
 static int dqlite__conn_handshake_alloc_hdlr(void *arg)
 {
-	int err;
 	struct dqlite__conn *c;
-	size_t size = sizeof(uint32_t); /* The version is a 32-bit number */
+	uint8_t *buf;
+	size_t len;
 
 	assert(arg != NULL);
 
 	c = (struct dqlite__conn*)arg;
 
-	dqlite__debugf(c, "handshake alloc", "socket=%d size=%ld", c->socket, size);
+	buf = (uint8_t*)(&c->version);
+	len = sizeof(c->version);
 
-	err = dqlite__conn_buf_alloc(c, size);
-	if (err != 0)
-		return err;
+	dqlite__debugf(c, "handshake alloc", "socket=%d len=%ld", c->socket, len);
+
+	dqlite__conn_buf_init(c, buf, len);
 
 	return 0;
 }
@@ -96,23 +86,22 @@ static int dqlite__conn_handshake_alloc_hdlr(void *arg)
 static int dqlite__conn_handshake_read_hdlr(void *arg)
 {
 	int err;
-	uint32_t version;
 	struct dqlite__conn *c;
 
 	assert(arg != NULL);
 
 	c = (struct dqlite__conn*)arg;
 
-	assert(c->buffer.data != NULL);
+	/* The buffer must point to our version field */
+	assert(c->buf == (uint8_t*)(&c->version));
 
-	memcpy(&version, c->buffer.data, sizeof(uint32_t));
-	version = capn_flip32(version);
+	c->version = dqlite__message_flip32(c->version);
 
-	dqlite__debugf(c, "handshake read", "socket=%d version=%x", c->socket, version);
+	dqlite__debugf(c, "handshake read", "socket=%d version=%x", c->socket, c->version);
 
-	if (version != DQLITE_PROTOCOL_VERSION)	{
+	if (c->version != DQLITE_PROTOCOL_VERSION) {
 		err = DQLITE_PROTO;
-		dqlite__error_printf(&c->error, "unknown protocol version: %d", version);
+		dqlite__error_printf(&c->error, "unknown protocol version: %d", c->version);
 		return err;
 	}
 
@@ -121,74 +110,24 @@ static int dqlite__conn_handshake_read_hdlr(void *arg)
 
 static struct dqlite__fsm_transition dqlite__conn_transitions_handshake[] = {
 	{DQLITE__CONN_ALLOC, dqlite__conn_handshake_alloc_hdlr, DQLITE__CONN_HANDSHAKE},
-	{DQLITE__CONN_READ,  dqlite__conn_handshake_read_hdlr,  DQLITE__CONN_PREAMBLE},
-};
-
-static int dqlite__conn_preamble_alloc_hdlr(void *arg)
-{
-	int err;
-	struct dqlite__conn *c;
-	size_t size;
-
-	assert(arg != NULL);
-
-	c = (struct dqlite__conn*)arg;
-
-	size = dqlite__request_preamble_size(&c->request);
-
-	dqlite__debugf(c, "preamble alloc", "socket=%d size=%ld", c->socket, size);
-
-	err = dqlite__conn_buf_alloc(c, size);
-	if (err != 0)
-		return err;
-
-	return 0;
-}
-
-static int dqlite__conn_preamble_read_hdlr(void *arg)
-{
-	int err;
-	struct dqlite__conn *c;
-
-	assert(arg != NULL);
-
-	c = (struct dqlite__conn*)arg;
-
-	assert(c->buffer.data != NULL);
-
-	dqlite__debugf(c, "preamble read", "socket=%d", c->socket);
-
-	err = dqlite__request_preamble(&c->request, c->buffer.data);
-	if (err != 0) {
-		dqlite__error_wrapf(&c->error, &c->request.error, "failed to parse request preamble");
-		return err;
-	}
-
-	return 0;
-}
-
-static struct dqlite__fsm_transition dqlite__conn_transitions_preamble[] = {
-	{DQLITE__CONN_ALLOC, dqlite__conn_preamble_alloc_hdlr, DQLITE__CONN_PREAMBLE},
-	{DQLITE__CONN_READ,  dqlite__conn_preamble_read_hdlr,  DQLITE__CONN_HEADER},
+	{DQLITE__CONN_READ,  dqlite__conn_handshake_read_hdlr,  DQLITE__CONN_HEADER},
 };
 
 static int dqlite__conn_header_alloc_hdlr(void *arg)
 {
-	int err;
 	struct dqlite__conn *c;
-	size_t size;
+	uint8_t *buf;
+	size_t len;
 
 	assert(arg != NULL);
 
 	c = (struct dqlite__conn*)arg;
 
-	size = dqlite__request_header_size(&c->request);
+	dqlite__request_header_buf(&c->request, &buf, &len);
 
-	dqlite__debugf(c, "header alloc", "socket=%d size=%ld", c->socket, size);
+	dqlite__debugf(c, "header alloc", "socket=%d len=%ld", c->socket, len);
 
-	err = dqlite__conn_buf_alloc(c, size);
-	if (err != 0)
-		return err;
+	dqlite__conn_buf_init(c, buf, len);
 
 	return 0;
 }
@@ -202,13 +141,11 @@ static int dqlite__conn_header_read_hdlr(void *arg)
 
 	c = (struct dqlite__conn*)arg;
 
-	assert(c->buffer.data != NULL);
-
 	dqlite__debugf(c, "header read", "socket=%d", c->socket);
 
-	err = dqlite__request_header(&c->request, c->buffer.data);
+	err = dqlite__request_header_received(&c->request);
 	if (err != 0) {
-		dqlite__error_wrapf(&c->error, &c->request.error, "failed to parse request header");
+		dqlite__error_wrapf(&c->error, &c->request.error, "failed to parse message header");
 		return err;
 	}
 
@@ -217,28 +154,24 @@ static int dqlite__conn_header_read_hdlr(void *arg)
 
 static struct dqlite__fsm_transition dqlite__conn_transitions_header[] = {
 	{DQLITE__CONN_ALLOC, dqlite__conn_header_alloc_hdlr, DQLITE__CONN_HEADER},
-	{DQLITE__CONN_READ,  dqlite__conn_header_read_hdlr, DQLITE__CONN_DATA  },
+	{DQLITE__CONN_READ,  dqlite__conn_header_read_hdlr,  DQLITE__CONN_BODY},
 };
 
-static int dqlite__conn_data_alloc_hdlr(void *arg)
+static int dqlite__conn_body_alloc_hdlr(void *arg)
 {
-	int err;
 	struct dqlite__conn *c;
-	size_t size;
+	uint8_t *buf;
+	size_t len;
 
 	assert(arg != NULL);
 
 	c = (struct dqlite__conn*)arg;
 
-	assert(&c->request != NULL);
+	dqlite__request_body_buf(&c->request, &buf, &len);
 
-	size = dqlite__request_data_size(&c->request);
+	dqlite__debugf(c, "header alloc", "socket=%d len=%ld", c->socket, len);
 
-	dqlite__debugf(c, "data alloc", "socket=%d size=%ld", c->socket, size);
-
-	err = dqlite__conn_buf_alloc(c, size);
-	if (err != 0)
-		return err;
+	dqlite__conn_buf_init(c, buf, len);
 
 	return 0;
 }
@@ -256,8 +189,9 @@ static int dqlite__conn_write(struct dqlite__conn *c, struct dqlite__response *r
 	int err;
 	struct dqlite__conn_write_ctx *ctx;
 	uv_write_t *req;
-	uv_buf_t buf;
+	uv_buf_t bufs[2];
 
+	/* Create a write request UV handle */
 	req = (uv_write_t*)sqlite3_malloc(sizeof(*req) + sizeof(*ctx));
 	if (req == NULL) {
 		err = DQLITE_NOMEM;
@@ -271,16 +205,20 @@ static int dqlite__conn_write(struct dqlite__conn *c, struct dqlite__response *r
 
 	req->data = (void*)ctx;
 
-	buf.base = (char*)dqlite__response_data(response);
-	buf.len = dqlite__response_size(response);
+	dqlite__response_header_buf(response, (uint8_t**)(&bufs[0].base), &bufs[0].len);
+	dqlite__response_body_buf(response, (uint8_t**)(&bufs[1].base), &bufs[1].len);
 
-	assert(buf.base != 0);
-	assert(buf.len > 0);
+	assert(bufs[0].base != NULL);
+	assert(bufs[0].len > 0);
 
-	dqlite__debugf(c, "writing response", "socket=%d size=%ld", c->socket, buf.len);
+	assert(bufs[1].base != NULL);
+	assert(bufs[1].len > 0);
 
-	err = uv_write(req, (uv_stream_t*)(&c->tcp), &buf, 1, dqlite__conn_write_cb);
+	dqlite__debugf(c, "writing response", "socket=%d len=%ld", c->socket, bufs[0].len + bufs[1].len);
+
+	err = uv_write(req, (uv_stream_t*)(&c->tcp), bufs, 2, dqlite__conn_write_cb);
 	if (err != 0) {
+		sqlite3_free(req);
 		dqlite__error_uv(&c->error, err, "failed to write response");
 		return err;
 	}
@@ -333,7 +271,7 @@ static void dqlite__conn_write_cb(uv_write_t* req, int status)
 	sqlite3_free(req);
 }
 
-static int dqlite__conn_data_read_hdlr(void *arg)
+static int dqlite__conn_body_read_hdlr(void *arg)
 {
 	int err;
 	struct dqlite__conn *c;
@@ -343,20 +281,24 @@ static int dqlite__conn_data_read_hdlr(void *arg)
 
 	c = (struct dqlite__conn*)arg;
 
-	assert(c->buffer.data != NULL);
+	dqlite__debugf(c, "body read", "socket=%d", c->socket);
 
-	dqlite__debugf(c, "data read", "socket=%d", c->socket);
-
-	err = dqlite__request_data(&c->request, c->buffer.data);
+	err = dqlite__message_body_received(&c->request.message);
 	if (err != 0) {
 		assert(err == DQLITE_PROTO);
-		dqlite__error_wrapf(&c->error, &c->request.error, "failed to parse request data");
+		dqlite__error_wrapf(&c->error, &c->request.error, "failed to parse message body");
 		return err;
 	}
 
 	c->request.timestamp = uv_now(c->loop);
 
 	err = dqlite__gateway_handle(&c->gateway, &c->request, &response);
+
+	/* Release any resources allocated by the request object and reset it to
+	 * its initial state, so a new request can be started (if there was no
+	 * error). */
+	dqlite__request_processed(&c->request);
+
 	if (err != 0) {
 		assert(response == NULL);
 		dqlite__error_wrapf(&c->error, &c->gateway.error, "failed to handle request");
@@ -377,16 +319,15 @@ static int dqlite__conn_data_read_hdlr(void *arg)
 	return 0;
 }
 
-static struct dqlite__fsm_transition dqlite__conn_transitions_data[] = {
-	{DQLITE__CONN_ALLOC, dqlite__conn_data_alloc_hdlr, DQLITE__CONN_DATA},
-	{DQLITE__CONN_READ,  dqlite__conn_data_read_hdlr,  DQLITE__CONN_PREAMBLE},
+static struct dqlite__fsm_transition dqlite__conn_transitions_body[] = {
+	{DQLITE__CONN_ALLOC, dqlite__conn_body_alloc_hdlr, DQLITE__CONN_BODY},
+	{DQLITE__CONN_READ,  dqlite__conn_body_read_hdlr,  DQLITE__CONN_HEADER},
 };
 
 static struct dqlite__fsm_transition *dqlite__transitions[] = {
 	dqlite__conn_transitions_handshake,
-	dqlite__conn_transitions_preamble,
 	dqlite__conn_transitions_header,
-	dqlite__conn_transitions_data,
+	dqlite__conn_transitions_body,
 };
 
 static void dqlite__conn_alloc_cb(uv_handle_t *tcp, size_t suggested_size, uv_buf_t *buf)
@@ -399,23 +340,25 @@ static void dqlite__conn_alloc_cb(uv_handle_t *tcp, size_t suggested_size, uv_bu
 
 	c = (struct dqlite__conn*)tcp->data;
 
-	if (c->buffer.data == NULL) {
-		/* This is the first read for a handshake or a new request */
-		err = dqlite__fsm_step(&c->fsm, DQLITE__CONN_ALLOC, (void*)c);
+	/* If this is the first read of the handshake or of a new message
+	 * header, or of a message body, give the relevant FSM a chance
+	 * initialize the read buffer. */
+	if (c->buf == NULL) {
 
+		assert(c->offset == 0);
+		assert(c->pending == 0);
+
+		err = dqlite__fsm_step(&c->fsm, DQLITE__CONN_ALLOC, (void*)c);
 		if (err != 0) {
-			assert(c->buffer.data == NULL);
 			dqlite__conn_abort(c);
 			return;
 		}
 
-		assert(c->buffer.data != NULL);
-		assert(c->buffer.offset == 0);
-		assert(c->buffer.pending > 0);
+		assert(c->offset == 0);
 	}
 
-	buf->base = (char*)c->buffer.data;
-	buf->len = c->buffer.pending;
+	buf->base = (char*)(c->buf + c->offset);
+	buf->len = c->pending;
 }
 
 static void dqlite__conn_alive_cb(uv_timer_t *alive)
@@ -451,28 +394,32 @@ static void dqlite__conn_read_cb(uv_stream_t *tcp, ssize_t nread, const uv_buf_t
 
 	c = (struct dqlite__conn*)tcp->data;
 
+	assert(c != NULL);
+
 	if (nread > 0) {
 		size_t n = (size_t)nread;
 
 		/* We shouldn't have read more data than the pending amount. */
-		assert(n <= c->buffer.pending);
+		assert(n <= c->pending);
 
-		/* If there's more data to read, update the counters and return. */
-		if (n < c->buffer.pending) {
-			c->buffer.offset += n;
-			c->buffer.pending -= n;
+		/* Advance the counters */
+		c->pending -= n;
+		c->offset += n;
+
+		/* If there's more data to read in order to fill the current
+		 * read buffer, just return, we'll be invoked again. */
+		if (c->pending > 0) {
 			goto out;
 		}
 
-		/* Read completed, advance the FSM. */
+		/* Read completed, advance the FSM and reset the read buffer.. */
 		err = dqlite__fsm_step(&c->fsm, DQLITE__CONN_READ, (void*)c);
+		dqlite__conn_buf_close(c);
 
 		/* If an error occurred, abort the connection. */
 		if (err != 0) {
 			goto abort;
 		}
-
-		dqlite__conn_buf_free(c);
 
 		goto out;
 
@@ -491,6 +438,7 @@ static void dqlite__conn_read_cb(uv_stream_t *tcp, ssize_t nread, const uv_buf_t
 	 * a goto and never reach this point. */
 	assert(nread < 0);
 
+	/* Set the error and abort */
 	dqlite__error_uv(&c->error, nread, "read error");
 
  abort:
@@ -522,9 +470,9 @@ void dqlite__conn_init(
 
 	dqlite__fsm_init(&c->fsm, dqlite__conn_states, dqlite__conn_events, dqlite__transitions);
 
-	c->buffer.data = NULL;
-	c->buffer.offset = 0;
-	c->buffer.pending = 0;
+	c->buf = NULL;
+	c->offset = 0;
+	c->pending = 0;
 
 	dqlite__request_init(&c->request);
 
@@ -636,10 +584,6 @@ void dqlite__conn_abort(struct dqlite__conn *c)
 		return;
 	}
 
-	if( c->buffer.data ){
-		dqlite__conn_buf_free(c);
-	}
-
 	conn_state = dqlite__fsm_state(&c->fsm);
 	gateway_state = dqlite__fsm_state(&c->gateway.fsm);
 
@@ -655,5 +599,7 @@ void dqlite__conn_abort(struct dqlite__conn *c)
 			c->socket, conn_state, gateway_state, c->error);
 
 	uv_close((uv_handle_t*)(&c->alive), NULL);
+
+	/* TODO: add a close callback and invoke dqlite__conn_close(conn) */
 	uv_close((uv_handle_t*)(&c->tcp), NULL);
 }

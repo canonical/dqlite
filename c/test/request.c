@@ -4,49 +4,43 @@
 #include <string.h>
 
 #include <CUnit/CUnit.h>
-#include <capnp_c.h>
 
-#include "../src/protocol.capnp.h"
+#include "../src/message.h"
+#include "../include/dqlite.h"
 
 #include "suite.h"
 #include "request.h"
 
-/* Initialize a test request */
-void test__request_init(struct test_request *r, enum Request_which which) {
+void test_request_helo(struct dqlite__message *m, uint64_t client_id) {
 	int err;
 
-	capn_init_malloc(&r->session);
-	r->root = capn_root(&r->session);
-	r->segment = r->root.seg;
-	r->request_ptr = new_Request(r->segment);
+	assert(m != NULL);
 
-	r->request.which = which;
+	err = dqlite__message_write_uint64(m, client_id);
+	CU_ASSERT_EQUAL(err, 0);
 
-	write_Request(&r->request, r->request_ptr);
-
-	err = capn_setp(capn_root(&r->session), 0, r->request_ptr.p);
-	if (err != 0){
-		CU_FAIL_FATAL("failed init request");
-	}
-
-	memset(r->buf, 0, TEST_REQUEST_BUF_SIZE);
-	r->size =0;
+	dqlite__message_flush(m, DQLITE_HELO, 0);
 }
 
-void test_request_helo(struct test_request *r) {
-	test__request_init(r, Request_helo);
-	r->size = capn_write_mem(&r->session, r->buf, TEST_REQUEST_BUF_SIZE, 0);
+void test_request_heartbeat(struct dqlite__message *m, uint64_t timestamp) {
+	int err;
 
-	if(r->size <= 0){
-		CU_FAIL_FATAL("failed to write request");
-	}
+	assert(m != NULL);
+
+	err = dqlite__message_write_uint64(m, timestamp);
+	CU_ASSERT_EQUAL(err, 0);
+
+	dqlite__message_flush(m, DQLITE_HEARTBEAT, 0);
 }
 
-void test_request_heartbeat(struct test_request *r) {
-	test__request_init(r, Request_heartbeat);
-	r->size = capn_write_mem(&r->session, r->buf, TEST_REQUEST_BUF_SIZE, 0);
+void test_request_open(struct dqlite__message *m, const char *name) {
+	int err;
 
-	if(r->size <= 0){
-		CU_FAIL_FATAL("failed to write request");
-	}
+	assert(m != NULL);
+
+	err = dqlite__message_write_text(m, name);
+	CU_ASSERT_EQUAL(err, 0);
+
+	dqlite__message_flush(m, DQLITE_OPEN, 0);
 }
+

@@ -3,10 +3,9 @@
 #include <stdint.h>
 #include <unistd.h>
 
-#include <capnp_c.h>
 #include <sqlite3.h>
 
-#include "../src/protocol.capnp.h"
+#include "../src/message.h"
 #include "../include/dqlite.h"
 
 #include "client.h"
@@ -24,7 +23,7 @@ int test_client_handshake(struct test_client *c){
 	int err;
 	uint32_t version;
 
-	version = capn_flip32(DQLITE_PROTOCOL_VERSION);
+	version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
 
 	err = write(c->fd, &version, 4);
 	if( err<0 ){
@@ -35,51 +34,38 @@ int test_client_handshake(struct test_client *c){
 	return 0;
 }
 
+#define TEST_CLIENT__INIT \
+	int err;				\
+	struct dqlite__message message;		\
+	uint8_t *buf;				\
+	size_t len;				\
+	dqlite__message_init(&message)
+
+#define TEST_CLIENT__WRITE \
+	dqlite__message_header_buf(&message, &buf, &len);	\
+	err = write(c->fd, buf, len); \
+	if( err<0 ){ \
+		test_suite_printf("failed to write request header: %s", strerror(errno)); \
+		dqlite__message_close(&message);			\
+		return 1; \
+	} \
+	dqlite__message_body_buf(&message, &buf, &len);	\
+	err = write(c->fd, buf, len); \
+	if( err<0 ){ \
+		test_suite_printf("failed to write request body: %s", strerror(errno)); \
+		dqlite__message_close(&message);			\
+		return 1; \
+	} \
+	dqlite__message_close(&message); \
+	return 0
+
 int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
 {
-	int err;
-	struct capn session;
-	capn_ptr root;
-	struct capn_segment *segment;
-	struct Request request;
-	Request_ptr requestPtr;
-	ssize_t size;
-	FILE *in;
+	TEST_CLIENT__INIT;
 
-	capn_init_malloc(&session);
-	root = capn_root(&session);
-	segment = root.seg;
+	test_request_helo(&message, 123);
 
-	request.which = Request_helo;
-	requestPtr = new_Request(segment);
-	write_Request(&request, requestPtr);
-
-	err = capn_setp(root, 0, requestPtr.p);
-	if( err ){
-		test_suite_printf("failed to marshal leader request: %d", err);
-		return 1;
-	}
-
-	struct test_request r;
-	memset(&r, 0, sizeof(r));
-	test_request_helo(&r);
-	write(c->fd, r.buf, r.size);
-
-	in = fdopen(c->fd, "r");
-	CU_ASSERT_PTR_NOT_NULL( in );
-
-	err = capn_init_fp(&session, in, 0);
-	CU_ASSERT_EQUAL(err, 0);
-
-	Welcome_ptr welcomePtr;
-	struct Welcome welcome;
-
-	root = capn_root(&session);
-
-	welcomePtr.p = capn_getp(root, 0 /* off */, 1 /* resolve */);
-	read_Welcome(&welcome, welcomePtr);
-
-	CU_ASSERT_STRING_EQUAL(welcome.leader.str,  "127.0.0.1:666");
+	TEST_CLIENT__WRITE;
 
 	return 0;
 }

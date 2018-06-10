@@ -9,11 +9,13 @@ void test_dqlite__gateway_teardown();
 void test_dqlite__gateway_handle_connect();
 void test_dqlite__gateway_handle_connect_wrong_request_type();
 void test_dqlite__gateway_heartbeat();
+void test_dqlite__gateway_open();
 
 CU_TestInfo dqlite__gateway_handle_suite[] = {
 	{"connect",                    test_dqlite__gateway_handle_connect},
 	{"connect wrong request type", test_dqlite__gateway_handle_connect_wrong_request_type},
 	{"heartbeat",                  test_dqlite__gateway_heartbeat},
+	/* {"open",                       test_dqlite__gateway_open}, */
 	CU_TEST_INFO_NULL,
 };
 ;

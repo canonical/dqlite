@@ -10,6 +10,7 @@ void test_dqlite__error_printf();
 void test_dqlite__error_printf_override();
 void test_dqlite__error_wrapf();
 void test_dqlite__error_wrapf_null_cause();
+void test_dqlite__error_wrapf_itself();
 void test_dqlite__error_oom();
 void test_dqlite__error_uv();
 void test_dqlite__error_copy();
@@ -24,6 +25,7 @@ CU_TestInfo dqlite__error_suite[] = {
 	{"printf_override",      test_dqlite__error_printf_override},
 	{"wrapf",                test_dqlite__error_wrapf},
 	{"wrapf null cause",     test_dqlite__error_wrapf_null_cause},
+	{"wrapf itself",         test_dqlite__error_wrapf_itself},
 	{"oom",                  test_dqlite__error_oom},
 	{"uv",                   test_dqlite__error_uv},
 	{"copy",                 test_dqlite__error_copy},

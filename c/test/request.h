@@ -4,27 +4,11 @@
 #include <unistd.h>
 #include <stdint.h>
 
-#include <capnp_c.h>
+#include "../src/message.h"
 
-#include "../src/protocol.capnp.h"
-
-#define TEST_REQUEST_BUF_SIZE 4096
-
-/* Helper to write dqlite requests */
-struct test_request {
-	struct capn          session;
-	capn_ptr             root;
-	struct capn_segment *segment;
-	struct Request       request;
-	Request_ptr          request_ptr;
-	uint8_t              buf[TEST_REQUEST_BUF_SIZE];
-	size_t               size;
-};
-
-/* Write a Helo request */
-void test_request_helo(struct test_request *r);
-
-/* Write a Heartbeat request */
-void test_request_heartbeat(struct test_request *r);
+/* Helpers to render dqlite requests. */
+void test_request_helo(struct dqlite__message *m, uint64_t client_id);
+void test_request_heartbeat(struct dqlite__message *m, uint64_t timestamp);
+void test_request_open(struct dqlite__message *m, const char *name);
 
 #endif /* DQLITE_TEST_REQUEST_H */

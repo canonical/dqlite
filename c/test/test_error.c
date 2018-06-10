@@ -59,6 +59,15 @@ void test_dqlite__error_wrapf_null_cause()
 	CU_ASSERT_STRING_EQUAL(error, "boom: (null)");
 }
 
+void test_dqlite__error_wrapf_itself()
+{
+	dqlite__error_printf(&error, "I'm %s!", "here");
+
+	dqlite__error_wrapf(&error, &error, "boom");
+
+	CU_ASSERT_STRING_EQUAL(error, "boom: I'm here!");
+}
+
 void test_dqlite__error_oom()
 {
 	dqlite__error_oom(&error, "boom");
