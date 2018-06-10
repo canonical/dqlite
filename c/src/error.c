@@ -77,14 +77,23 @@ void dqlite__error_wrapf(dqlite__error *e, const dqlite__error *cause, const cha
 {
 	dqlite__error tmp;
 	va_list args;
+	char *msg;
 
+	/* First, print the format and arguments, using a temporary error. */
 	dqlite__error_init(&tmp);
 
 	va_start(args, fmt);
 	dqlite__error_vprintf(&tmp, fmt, args);
 	va_end(args);
 
-	dqlite__error_printf(e, "%s: %s", tmp, *cause);
+	if (cause == e) {
+		/* When the error is wrapping itself, we need to make a copy */
+		dqlite__error_copy(e, &msg);
+		dqlite__error_printf(e, "%s: %s", tmp, msg);
+		sqlite3_free(msg);
+	} else {
+		dqlite__error_printf(e, "%s: %s", tmp, *cause);
+	}
 
 	dqlite__error_close(&tmp);
 }

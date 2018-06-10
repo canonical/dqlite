@@ -66,9 +66,9 @@ static int dqlite__gateway_connect_request_hdlr(void *arg)
 
 	const char *leader;
 
-	dqlite__debugf(g, "handle register", "name=%s", name);
+	dqlite__debugf(g, "handle connect", "name=%s", name);
 
-	if (type != DQLITE__REQUEST_HELO) {
+	if (type != DQLITE_HELO) {
 		dqlite__error_printf(&g->error, "expected Helo, got %s", name);
 		err = DQLITE_PROTO;
 		goto out;
@@ -90,8 +90,35 @@ static struct dqlite__fsm_transition dqlite__conn_transitions_connect[] = {
 	{DQLITE__GATEWAY_REQUEST, dqlite__gateway_connect_request_hdlr, DQLITE__GATEWAY_OPERATE},
 };
 
-/* Handle a Heartbeat request */
 static int dqlite__gateway_heartbeat(
+	struct dqlite__gateway *g,
+	struct dqlite__request *request,
+	struct dqlite__response *response)
+{
+	int err;
+	const char **addresses;
+
+	/* Get the current list of servers in the cluster */
+	addresses = g->cluster->xServers(g->cluster->ctx);
+	if (addresses == NULL ) {
+		dqlite__errorf(g, "failed to get cluster servers", "");
+		return DQLITE_ERROR;
+	}
+
+	/* Encode the response */
+	err = dqlite__response_servers(response, addresses);
+	if (err != 0) {
+		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");
+		return err;
+	}
+
+	/* Refresh the heartbeat timestamp. */
+	g->heartbeat = request->timestamp;
+
+	return 0;
+}
+
+static int dqlite__gateway_open(
 	struct dqlite__gateway *g,
 	struct dqlite__request *request,
 	struct dqlite__response *response)
@@ -126,12 +153,20 @@ static int dqlite__gateway_operate_request_hdlr(void *arg)
 	dqlite__debugf(g, "handle operate", "name=%s", name);
 
 	switch (type) {
-	case DQLITE__REQUEST_HEARTBEAT:
+
+	case DQLITE_HEARTBEAT:
 		err = dqlite__gateway_heartbeat(g, request, response);
 		break;
+
+	case DQLITE_OPEN:
+		err = dqlite__gateway_open(g, request, response);
+		break;
+
 	default:
 		dqlite__error_printf(&g->error, "unexpected Request %s", name);
 		err = DQLITE_PROTO;
+		goto out;
+
 	}
 	if (err != 0) {
 		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");

@@ -8,10 +8,12 @@ void test_dqlite__response_teardown();
 
 void test_dqlite__response_welcome();
 void test_dqlite__response_servers();
+void test_dqlite__response_db();
 
 CU_TestInfo dqlite__response_suite[] = {
 	{"welcome",  test_dqlite__response_welcome},
 	{"servers",  test_dqlite__response_servers},
+	/* {"db",       test_dqlite__response_db}, */
 	CU_TEST_INFO_NULL,
 };
 ;

@@ -4,19 +4,43 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define DQLITE_OK    0
-#define DQLITE_ERROR 1
-#define DQLITE_NOMEM 2
-#define DQLITE_PROTO 3
+/* #ifdef __cplusplus */
+/* extern "C" { */
+/* #endif */
+
+#if defined(__cplusplus) || (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L)
+#define DQLITE_INLINE static inline
+#else
+#define DQLITE_INLINE static
+#endif
+
+/* Error codes */
+#define DQLITE_OK       0
+#define DQLITE_ERROR    1
+#define DQLITE_NOMEM    2
+#define DQLITE_PROTO    3
+#define DQLITE_PARSE    4
+#define DQLITE_OVERFLOW 5
+#define DQLITE_EOM      6 /* End of message */
+
+/* Request types */
+#define DQLITE_HELO      0
+#define DQLITE_HEARTBEAT 1
+#define DQLITE_OPEN      2
+
+/* Response types */
+#define DQLITE_WELCOME 0
+#define DQLITE_SERVERS 1
+#define DQLITE_DB      2
 
 #define DQLITE_PROTOCOL_VERSION 0xbf93ea39
 
 typedef struct dqlite__service dqlite_service;
 typedef struct dqlite_cluster {
-  void *ctx;
-  const char * (*xLeader)(void*);
-  const char **(*xServers)(void*);
-  int          (*xRecover)(void*, uint64_t);
+	void *ctx;
+	const char * (*xLeader)(void*);
+	const char **(*xServers)(void*);
+	int          (*xRecover)(void*, uint64_t);
 } dqlite_cluster;
 
 dqlite_service *dqlite_service_alloc();

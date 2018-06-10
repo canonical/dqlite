@@ -4,14 +4,14 @@
 #include <unistd.h>
 #include <stdint.h>
 
-#include <capnp_c.h>
-
 #include "error.h"
+#include "message.h"
 
-/* Errors */
-#define DQLITE__RESPONSE_ERR_RENDER -1
+/* The size of pre-allocated response buffer. This should generally fit in
+ * a single IP packet, given typical MTU sizes */
+#define DQLITE__RESPONSE_BUF_SIZE 1024
 
-#define DQLITE__RESPONSE_BUF_SIZE 4096
+/* Response types */
 
 /*
  * Encoder for outgoing responses.
@@ -21,9 +21,7 @@ struct dqlite__response {
 	dqlite__error  error;
 
 	/* private */
-	uint8_t  buf1[DQLITE__RESPONSE_BUF_SIZE]; /* Pre-allocated response buffer, enough for most cases */
-	uint8_t *buf2;                            /* Dynamically allocated buffer for large payloads */
-	size_t   size;                            /* Number of bytes in the encoded response */
+	struct dqlite__message message;
 };
 
 void dqlite__response_init(struct dqlite__response* r);
@@ -34,13 +32,25 @@ int dqlite__response_welcome(
 	struct dqlite__response *r,
 	const char* leader,
 	uint16_t heartbeat_timeout /* In milliseconds */);
-
 int dqlite__response_servers(struct dqlite__response *r, const char** servers);
+int dqlite__response_db(struct dqlite__response *r, uint64_t id);
 
-/* Get the data of an encoded response */
-uint8_t *dqlite__response_data(struct dqlite__response *r);
+DQLITE_INLINE void dqlite__response_header_buf(
+	struct dqlite__response *r,
+	uint8_t **buf,
+	size_t *len)
+{
+	assert(r != NULL);
+	dqlite__message_header_buf(&r->message, buf, len);
+}
 
-/* Get the size of a encoded response */
-size_t dqlite__response_size(struct dqlite__response *r);
+DQLITE_INLINE void dqlite__response_body_buf(
+	struct dqlite__response *r,
+	uint8_t **buf,
+	size_t *len)
+{
+	assert(r != NULL);
+	dqlite__message_body_buf(&r->message, buf, len);
+}
 
 #endif /* DQLITE_RESPONSE_H */

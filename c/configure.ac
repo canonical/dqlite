@@ -44,7 +44,6 @@ AC_DEFINE(DEBUG, 0, [Define to 1 or higher if this is a debug build]))
 # Checks for libraries
 PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.22.0], [], [])
 PKG_CHECK_MODULES(UV, [libuv >= 1.18.0], [], [])
-PKG_CHECK_MODULES(CAPNP, [c-capnproto >= 0.3], [], [])
 
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h fcntl.h stdint.h stdlib.h string.h sys/socket.h unistd.h])

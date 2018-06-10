@@ -18,13 +18,15 @@ else
   AM_CFLAGS += -O3
 endif
 
-AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(CAPNP_CFLAGS)
+AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS)
 
 lib_LTLIBRARIES += libdqlite.la
-libdqlite_la_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(CAPNP_LIBS) -version-info 0:1:0
+libdqlite_la_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
   src/conn.c \
   src/conn.h \
+  src/db.c \
+  src/db.h \
   src/error.c \
   src/error.h \
   src/fsm.c \
@@ -34,8 +36,8 @@ libdqlite_la_SOURCES = \
   src/lifecycle.c \
   src/lifecycle.h \
   src/log.h \
-  src/protocol.capnp.c \
-  src/protocol.capnp.h \
+  src/message.c \
+  src/message.h \
   src/queue.c \
   src/queue.h \
   src/request.c \
@@ -46,10 +48,6 @@ libdqlite_la_SOURCES = \
   src/vfs.c \
   src/vfs.h
 include_HEADERS += include/dqlite.h
-
-# Don't try to generate any *.capnp files. Otherwise make wants to compile them
-# from *.capnp.c and fails.
-%.capnp: ;
 
 # Tests
 check_PROGRAMS += \
@@ -63,6 +61,8 @@ dqlite_test_SOURCES = \
   test/log.h \
   test/request.c \
   test/request.h \
+  test/response.c \
+  test/response.h \
   test/runner.c \
   test/server.c \
   test/server.h \
@@ -78,6 +78,8 @@ dqlite_test_SOURCES = \
   test/test_error.h \
   test/test_gateway.c \
   test/test_gateway.h \
+  test/test_message.c \
+  test/test_message.h \
   test/test_queue.c \
   test/test_queue.h \
   test/test_request.c \
@@ -91,9 +93,9 @@ dqlite_test_CFLAGS = \
   -I$(top_srcdir)/test \
   -DDQLITE_DEBUG \
   -Wall -g -O0
-dqlite_test_CFLAGS += $(SQLITE3_CFLAGS) $(UV_CFLAGS) $(CAPNP_CFLAGS)
+dqlite_test_CFLAGS += $(SQLITE3_CFLAGS) $(UV_CFLAGS)
 dqlite_test_LDADD = libdqlite.la
-dqlite_test_LDFLAGS = -lcunit -lpthread $(SQLITE_LIBS) $(UV_LIBS) $(CAPNP_LIBS)
+dqlite_test_LDFLAGS = -lcunit -lpthread $(SQLITE_LIBS) $(UV_LIBS)
 TESTS = dqlite-test
 
 cov-reset:
