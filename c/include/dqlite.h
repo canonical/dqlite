@@ -22,6 +22,10 @@
 #define DQLITE_PARSE    4
 #define DQLITE_OVERFLOW 5
 #define DQLITE_EOM      6 /* End of message */
+#define DQLITE_ENGINE   7 /* A SQLite error occurred */
+
+/* Config op codes */
+#define DQLITE_CONFIG_VFS
 
 /* Request types */
 #define DQLITE_HELO      0
