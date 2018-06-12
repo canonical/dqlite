@@ -10,8 +10,9 @@
 #include "test_dqlite.h"
 #include "test_error.h"
 #include "test_gateway.h"
-#include "test_queue.h"
 #include "test_message.h"
+#include "test_queue.h"
+#include "test_registry.h"
 #include "test_request.h"
 #include "test_response.h"
 #include "test_vfs.h"
@@ -22,8 +23,9 @@ static CU_SuiteInfo* test__runner_suites[] = {
 	dqlite__db_suites,
 	dqlite__error_suites,
 	dqlite__gateway_suites,
-	dqlite__queue_suites,
 	dqlite__message_suites,
+	dqlite__queue_suites,
+	dqlite__registry_suites,
 	dqlite__request_suites,
 	dqlite__response_suites,
 	dqlite__vfs_suites,

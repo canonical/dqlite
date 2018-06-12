@@ -40,6 +40,7 @@ libdqlite_la_SOURCES = \
   src/message.h \
   src/queue.c \
   src/queue.h \
+  src/registry.h \
   src/request.c \
   src/request.h \
   src/response.c \
@@ -84,6 +85,8 @@ dqlite_test_SOURCES = \
   test/test_message.h \
   test/test_queue.c \
   test/test_queue.h \
+  test/test_registry.c \
+  test/test_registry.h \
   test/test_request.c \
   test/test_request.h \
   test/test_response.c \

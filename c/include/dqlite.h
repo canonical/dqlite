@@ -23,6 +23,7 @@
 #define DQLITE_OVERFLOW 5
 #define DQLITE_EOM      6 /* End of message */
 #define DQLITE_ENGINE   7 /* A SQLite error occurred */
+#define DQLITE_NOTFOUND 8
 
 /* Config op codes */
 #define DQLITE_CONFIG_VFS
@@ -42,7 +43,7 @@
 typedef struct dqlite__service dqlite_service;
 typedef struct dqlite_cluster {
 	void *ctx;
-	const char * (*xLeader)(void*);
+	const char  *(*xLeader)(void*);
 	const char **(*xServers)(void*);
 	int          (*xRecover)(void*, uint64_t);
 } dqlite_cluster;
