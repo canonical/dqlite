@@ -6,6 +6,7 @@
 
 #include "suite.h"
 #include "test_conn.h"
+#include "test_db.h"
 #include "test_dqlite.h"
 #include "test_error.h"
 #include "test_gateway.h"
@@ -18,6 +19,7 @@
 /* All suites to run */
 static CU_SuiteInfo* test__runner_suites[] = {
 	dqlite__conn_suites,
+	dqlite__db_suites,
 	dqlite__error_suites,
 	dqlite__gateway_suites,
 	dqlite__queue_suites,
