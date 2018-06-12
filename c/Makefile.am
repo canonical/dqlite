@@ -72,6 +72,8 @@ dqlite_test_SOURCES = \
   test/suite.h \
   test/test_conn.c \
   test/test_conn.h \
+  test/test_db.c \
+  test/test_db.h \
   test/test_dqlite.c \
   test/test_dqlite.h \
   test/test_error.c \
