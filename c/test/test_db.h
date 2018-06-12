@@ -6,19 +6,19 @@
 void test_dqlite__db_setup();
 void test_dqlite__db_teardown();
 
-void test_dqlite__db_foo();
+void test_dqlite__db_open();
 
-CU_TestInfo dqlite__db_foo_suite[] = {
-	{"foo",             test_dqlite__db_foo},
+CU_TestInfo dqlite__db_open_suite[] = {
+	{"open",             test_dqlite__db_open},
 	CU_TEST_INFO_NULL,
 };
 
 CU_SuiteInfo dqlite__db_suites[] = {
 	{
-		"dqlite__db foo",
+		"dqlite__db_open",
 		NULL, NULL,
 		test_dqlite__db_setup, test_dqlite__db_teardown,
-		dqlite__db_foo_suite
+		dqlite__db_open_suite
 	},
 	CU_SUITE_INFO_NULL,
 };

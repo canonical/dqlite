@@ -32,7 +32,7 @@ static int dqlite__lifecycle_refcount[] = {
 	0, /* DQLITE__LIFECYCLE_CONN */
 	0, /* DQLITE__LIFECYCLE_QUEUE */
 	0, /* DQLITE__LIFECYCLE_QUEUE_ITEM */
-	0, /* DQLITE__LIFECYCLE_QUEUE_DB */
+	0, /* DQLITE__LIFECYCLE_DB */
 	DQLITE__LIFECYCLE_REFCOUNT_NULL
 };
 
