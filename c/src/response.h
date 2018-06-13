@@ -1,56 +1,38 @@
 #ifndef DQLITE_RESPONSE_H
 #define DQLITE_RESPONSE_H
 
-#include <unistd.h>
-#include <stdint.h>
-
-#include "error.h"
-#include "message.h"
+#include "schema.h"
 
 /* The size of pre-allocated response buffer. This should generally fit in
  * a single IP packet, given typical MTU sizes */
 #define DQLITE__RESPONSE_BUF_SIZE 1024
 
-/* Response types */
+#define DQLITE__RESPONSE_SCHEMA_WELCOME(X, ...)		\
+	X(uint64, heartbeat_timeout, __VA_ARGS__)	\
+	X(text, leader, __VA_ARGS__)
 
-/*
- * Encoder for outgoing responses.
- */
-struct dqlite__response {
-	/* read-only */
-	dqlite__error  error;
+#define DQLITE__RESPONSE_SCHEMA_SERVERS(X, ...)	\
+	X(text_list, addresses, __VA_ARGS__)
 
-	/* private */
-	struct dqlite__message message;
-};
+#define DQLITE__RESPONSE_SCHEMA_DB_ERROR(X, ...)	\
+	X(uint64, code, __VA_ARGS__)		\
+	X(uint64, extended_code, __VA_ARGS__)	\
+	X(text,   message, __VA_ARGS__)
 
-void dqlite__response_init(struct dqlite__response* r);
-void dqlite__response_close(struct dqlite__response* r);
+#define DQLITE__RESPONSE_SCHEMA_DB(X, ...)	\
+	X(uint64, id, __VA_ARGS__)
 
-/* APIs for encoding responses */
-int dqlite__response_welcome(
-	struct dqlite__response *r,
-	const char* leader,
-	uint16_t heartbeat_timeout /* In milliseconds */);
-int dqlite__response_servers(struct dqlite__response *r, const char** servers);
-int dqlite__response_db(struct dqlite__response *r, uint64_t id);
+DQLITE__SCHEMA_DEFINE(dqlite__response_welcome, DQLITE__RESPONSE_SCHEMA_WELCOME);
+DQLITE__SCHEMA_DEFINE(dqlite__response_servers, DQLITE__RESPONSE_SCHEMA_SERVERS);
+DQLITE__SCHEMA_DEFINE(dqlite__response_db_error, DQLITE__RESPONSE_SCHEMA_DB_ERROR);
+DQLITE__SCHEMA_DEFINE(dqlite__response_db, DQLITE__RESPONSE_SCHEMA_DB);
 
-DQLITE_INLINE void dqlite__response_header_buf(
-	struct dqlite__response *r,
-	uint8_t **buf,
-	size_t *len)
-{
-	assert(r != NULL);
-	dqlite__message_header_buf(&r->message, buf, len);
-}
+#define DQLITE__RESPONSE_SCHEMA_TYPES(X, ...)				\
+	X(DQLITE_WELCOME,  dqlite__response_welcome,  welcome,  __VA_ARGS__) \
+	X(DQLITE_SERVERS,  dqlite__response_servers,  servers,  __VA_ARGS__) \
+	X(DQLITE_DB_ERROR, dqlite__response_db_error, db_error, __VA_ARGS__) \
+	X(DQLITE_DB,       dqlite__response_db,       db,       __VA_ARGS__)
 
-DQLITE_INLINE void dqlite__response_body_buf(
-	struct dqlite__response *r,
-	uint8_t **buf,
-	size_t *len)
-{
-	assert(r != NULL);
-	dqlite__message_body_buf(&r->message, buf, len);
-}
+DQLITE__SCHEMA_ENCODER_DEFINE(dqlite__response, DQLITE__RESPONSE_SCHEMA_TYPES);
 
 #endif /* DQLITE_RESPONSE_H */

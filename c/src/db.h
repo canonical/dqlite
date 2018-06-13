@@ -5,13 +5,12 @@
 
 #include "error.h"
 #include "registry.h"
+#include "stmt.h"
 
 /* Hold state for a single open SQLite database */
 struct dqlite__db {
-	dqlite__error error;  /* Last error occurred */
-	sqlite3* db;          /* Underlying SQLite database */
-	int rc;               /* Code of the last SQLite error occurred */
-	const char *errmsg;   /* Message of thet last SQLite error occurred */
+	sqlite3      *db;                   /* Underlying SQLite database */
+	struct dqlite__stmt_registry stmts; /* Registry of prepared statements */
 };
 
 void dqlite__db_init(struct dqlite__db *db);
@@ -22,6 +21,8 @@ int dqlite__db_open(
 	const char *name,
 	int flags,
 	const char *vfs);
+
+int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint64_t *stmt_id);
 
 DQLITE__REGISTRY(dqlite__db_registry, dqlite__db);
 

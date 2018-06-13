@@ -13,6 +13,8 @@ static char *dqlite__lifecycle_type_names[] = {
 	"dqlite__error",      /* DQLITE__LIFECYCLE_ERROR */
 	"dqlite__fsm",        /* DQLITE__LIFECYCLE_FSM */
 	"dqlite__message",    /* DQLITE__LIFECYCLE_MESSAGE */
+	"dqlite__encoder",    /* DQLITE__LIFECYCLE_ENCODER */
+	"dqlite__decoder",    /* DQLITE__LIFECYCLE_DECODER */
 	"dqlite__request",    /* DQLITE__LIFECYCLE_REQUEST */
 	"dqlite__response",   /* DQLITE__LIFECYCLE_RESPONSE */
 	"dqlite__gateway",    /* DQLITE__LIFECYCLE_GATEWAY */
@@ -20,12 +22,15 @@ static char *dqlite__lifecycle_type_names[] = {
 	"dqlite__queue",      /* DQLITE__LIFECYCLE_QUEUE */
 	"dqlite__queue_item", /* DQLITE__LIFECYCLE_QUEUE_ITEM */
 	"dqlite__db",         /* DQLITE__LIFECYCLE_DB */
+	"dqlite__stmt",       /* DQLITE__LIFECYCLE_STMT */
 };
 
 static int dqlite__lifecycle_refcount[] = {
 	0, /* DQLITE__LIFECYCLE_ERROR */
 	0, /* DQLITE__LIFECYCLE_FSM */
 	0, /* DQLITE__LIFECYCLE_MESSAGE */
+	0, /* DQLITE__LIFECYCLE_ENCODER */
+	0, /* DQLITE__LIFECYCLE_DECODER */
 	0, /* DQLITE__LIFECYCLE_REQUEST */
 	0, /* DQLITE__LIFECYCLE_RESPONSE */
 	0, /* DQLITE__LIFECYCLE_GATEWAY */
@@ -33,6 +38,7 @@ static int dqlite__lifecycle_refcount[] = {
 	0, /* DQLITE__LIFECYCLE_QUEUE */
 	0, /* DQLITE__LIFECYCLE_QUEUE_ITEM */
 	0, /* DQLITE__LIFECYCLE_DB */
+	0, /* DQLITE__LIFECYCLE_STMT */
 	DQLITE__LIFECYCLE_REFCOUNT_NULL
 };
 

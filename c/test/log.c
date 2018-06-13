@@ -32,7 +32,6 @@ test_log *test_log_open(){
 }
 
 FILE *test_log_stream(test_log *log){
-	return stdout;
 	assert( log );
 	assert( log->stream );
 

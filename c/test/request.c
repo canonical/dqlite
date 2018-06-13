@@ -5,42 +5,15 @@
 
 #include <CUnit/CUnit.h>
 
-#include "../src/message.h"
+#include "../src/schema.h"
+#include "../src/request.h"
 #include "../include/dqlite.h"
 
-#include "suite.h"
+#include "message.h"
 #include "request.h"
 
-void test_request_helo(struct dqlite__message *m, uint64_t client_id) {
-	int err;
+DQLITE__SCHEMA_ENCODER_IMPLEMENT(test_request, DQLITE__REQUEST_SCHEMA_TYPES);
 
-	assert(m != NULL);
-
-	err = dqlite__message_write_uint64(m, client_id);
-	CU_ASSERT_EQUAL(err, 0);
-
-	dqlite__message_flush(m, DQLITE_HELO, 0);
-}
-
-void test_request_heartbeat(struct dqlite__message *m, uint64_t timestamp) {
-	int err;
-
-	assert(m != NULL);
-
-	err = dqlite__message_write_uint64(m, timestamp);
-	CU_ASSERT_EQUAL(err, 0);
-
-	dqlite__message_flush(m, DQLITE_HEARTBEAT, 0);
-}
-
-void test_request_open(struct dqlite__message *m, const char *name) {
-	int err;
-
-	assert(m != NULL);
-
-	err = dqlite__message_write_text(m, name);
-	CU_ASSERT_EQUAL(err, 0);
-
-	dqlite__message_flush(m, DQLITE_OPEN, 0);
-}
-
+TEST_MESSAGE_SEND_IMPLEMENT(helo, DQLITE_HELO, test_request, DQLITE__REQUEST_SCHEMA_HELO);
+TEST_MESSAGE_SEND_IMPLEMENT(heartbeat, DQLITE_HEARTBEAT, test_request, DQLITE__REQUEST_SCHEMA_HEARTBEAT);
+TEST_MESSAGE_SEND_IMPLEMENT(open, DQLITE_OPEN, test_request, DQLITE__REQUEST_SCHEMA_OPEN);

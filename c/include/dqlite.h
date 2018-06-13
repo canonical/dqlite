@@ -34,11 +34,12 @@
 #define DQLITE_OPEN      2
 
 /* Response types */
-#define DQLITE_WELCOME 0
-#define DQLITE_SERVERS 1
-#define DQLITE_DB      2
+#define DQLITE_WELCOME  0
+#define DQLITE_SERVERS  1
+#define DQLITE_DB_ERROR 2
+#define DQLITE_DB       3
 
-#define DQLITE_PROTOCOL_VERSION 0xbf93ea39
+#define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
 
 typedef struct dqlite__service dqlite_service;
 typedef struct dqlite_cluster {
