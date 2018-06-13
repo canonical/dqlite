@@ -15,6 +15,8 @@
 #include "test_registry.h"
 #include "test_request.h"
 #include "test_response.h"
+#include "test_schema.h"
+#include "test_stmt.h"
 #include "test_vfs.h"
 
 /* All suites to run */
@@ -28,6 +30,7 @@ static CU_SuiteInfo* test__runner_suites[] = {
 	dqlite__registry_suites,
 	dqlite__request_suites,
 	dqlite__response_suites,
+	dqlite__schema_suites,
 	dqlite__vfs_suites,
 	dqlite_suites,
 	0,

@@ -5,6 +5,7 @@
 
 #include <sqlite3.h>
 
+#include "../src/binary.h"
 #include "../src/message.h"
 #include "../include/dqlite.h"
 
@@ -21,11 +22,11 @@ void test_client_init(struct test_client *c, int fd)
 
 int test_client_handshake(struct test_client *c){
 	int err;
-	uint32_t version;
+	uint64_t protocol;
 
-	version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
+	protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
 
-	err = write(c->fd, &version, 4);
+	err = write(c->fd, &protocol, sizeof(protocol));
 	if( err<0 ){
 		test_suite_printf("failed to write to client socket: %s", strerror(errno));
 		return 1;
@@ -37,25 +38,26 @@ int test_client_handshake(struct test_client *c){
 #define TEST_CLIENT__INIT \
 	int err;				\
 	struct dqlite__message message;		\
-	uint8_t *buf;				\
-	size_t len;				\
-	dqlite__message_init(&message)
+	struct test_request request;		\
+	uv_buf_t bufs[3];			\
+	dqlite__message_init(&message);		\
+	test_request_init(&request)
 
 #define TEST_CLIENT__WRITE \
-	dqlite__message_header_buf(&message, &buf, &len);	\
-	err = write(c->fd, buf, len); \
+	dqlite__message_send_start(&message, bufs);	\
+	err = write(c->fd, bufs[0].base, bufs[0].len); \
 	if( err<0 ){ \
 		test_suite_printf("failed to write request header: %s", strerror(errno)); \
 		dqlite__message_close(&message);			\
 		return 1; \
 	} \
-	dqlite__message_body_buf(&message, &buf, &len);	\
-	err = write(c->fd, buf, len); \
+	err = write(c->fd, bufs[1].base, bufs[1].len); \
 	if( err<0 ){ \
 		test_suite_printf("failed to write request body: %s", strerror(errno)); \
 		dqlite__message_close(&message);			\
 		return 1; \
 	} \
+	test_request_close(&request); \
 	dqlite__message_close(&message); \
 	return 0
 
@@ -63,7 +65,13 @@ int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
 {
 	TEST_CLIENT__INIT;
 
-	test_request_helo(&message, 123);
+	request.type = DQLITE_HELO;
+	request.helo.client_id = 123;
+
+	err = test_request_encode(&request, &message);
+	if (err != 0) {
+		test_suite_printf("failed to encode request: %s", &request.error);
+	}
 
 	TEST_CLIENT__WRITE;
 
@@ -74,7 +82,7 @@ int test_client_open(struct test_client *c, const char *name, uint64_t *id)
 {
 	TEST_CLIENT__INIT;
 
-	test_request_open(&message, "test.db");
+	//test_request_open(&message, "test.db");
 
 	TEST_CLIENT__WRITE;
 

@@ -23,6 +23,7 @@ AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS)
 lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
+  src/binary.h \
   src/conn.c \
   src/conn.h \
   src/db.c \
@@ -45,7 +46,10 @@ libdqlite_la_SOURCES = \
   src/request.h \
   src/response.c \
   src/response.h \
+  src/schema.h \
   src/service.c \
+  src/stmt.c \
+  src/stmt.h \
   src/vfs.c \
   src/vfs.h
 include_HEADERS += include/dqlite.h
@@ -60,6 +64,8 @@ dqlite_test_SOURCES = \
   test/cluster.h \
   test/log.c \
   test/log.h \
+  test/message.c \
+  test/message.h \
   test/request.c \
   test/request.h \
   test/response.c \
@@ -91,6 +97,10 @@ dqlite_test_SOURCES = \
   test/test_request.h \
   test/test_response.c \
   test/test_response.h \
+  test/test_schema.c \
+  test/test_schema.h \
+  test/test_stmt.c \
+  test/test_stmt.h \
   test/test_vfs.c \
   test/test_vfs.h
 dqlite_test_CFLAGS = \

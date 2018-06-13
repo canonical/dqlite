@@ -15,9 +15,8 @@
 /* Maximum number of requests that can be served concurrently. */
 #define DQLITE__GATEWAY_MAX_REQUESTS 5
 
-/* Context for the gateway FSM handlers */
+/* Context for the gateway request handlers */
 struct dqlite__gateway_ctx {
-	struct dqlite__gateway  *gateway;
 	struct dqlite__request  *request;
 	struct dqlite__response  response;
 };
@@ -30,13 +29,13 @@ struct dqlite__gateway {
 	uint16_t           heartbeat_timeout; /* Abort after this many milliseconds with no heartbeat */
 
 	/* read-only */
-	dqlite__error      error;             /* Last error occurred, if any */
+	uint64_t           client_id;
 	uint64_t           heartbeat;         /* Timestamp of last successful heartbeat from the client */
+	dqlite__error      error;             /* Last error occurred, if any */
 
 	/* private */
 	FILE              *log;               /* Log output stream */
 	dqlite_cluster    *cluster;           /* Cluster interface implementation */
-	struct dqlite__fsm fsm;               /* Client state machine */
 
 	/*
 	 * Clients are expected to issue one SQL request at a time and wait for
@@ -45,7 +44,7 @@ struct dqlite__gateway {
 	 */
 	struct dqlite__gateway_ctx ctxs[DQLITE__GATEWAY_MAX_REQUESTS];
 
-	struct dqlite__db_registry registry; /* Registry of open databases */
+	struct dqlite__db_registry dbs; /* Registry of open databases */
 };
 
 void dqlite__gateway_init(

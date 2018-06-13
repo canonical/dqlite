@@ -67,7 +67,6 @@ void dqlite__fsm_close(struct dqlite__fsm *f)
 int dqlite__fsm_step(struct dqlite__fsm *f, int event_id, void *arg){
 	int err;
 	struct dqlite__fsm_transition *transition;
-	dqlite__fsm_handler handler;
 
 	assert(f != NULL);
 	assert(arg != NULL);
@@ -78,11 +77,9 @@ int dqlite__fsm_step(struct dqlite__fsm *f, int event_id, void *arg){
 	assert(transition != NULL);
 	assert(transition->next_state_id < f->states_count);
 
-	handler = transition->handler;
+	assert(transition->callback != NULL);
 
-	assert(handler != NULL);
-
-	err = (*handler)(arg);
+	err = (*transition->callback)(arg);
 	if (err != 0)
 		return err;
 

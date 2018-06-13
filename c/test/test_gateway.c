@@ -37,72 +37,74 @@ void test_dqlite__gateway_teardown()
 	dqlite__vfs_unregister(vfs);
 }
 
-void test_dqlite__gateway_handle_connect()
-{
-	int err;
-	struct test_response_welcome welcome;
-
-	test_request_helo(&request.message, 123);
-	dqlite__request_body_received(&request);
-
-	err = dqlite__gateway_handle(&gateway, &request, &response);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	dqlite__request_processed(&request);
-
-	welcome = test_response_welcome_parse(response);
-	CU_ASSERT_STRING_EQUAL(welcome.leader,  "127.0.0.1:666");
-}
-
-void test_dqlite__gateway_handle_connect_wrong_request_type()
+void test_dqlite__gateway_helo()
 {
 	int err;
 
-	test_request_heartbeat(&request.message, 666);
+	request.type = DQLITE_HELO;
+	request.helo.client_id = 123;
 
 	err = dqlite__gateway_handle(&gateway, &request, &response);
-	CU_ASSERT_EQUAL(err, DQLITE_PROTO);
+	CU_ASSERT_EQUAL(err, 0);
 
-	CU_ASSERT_STRING_EQUAL(gateway.error, "expected Helo, got Heartbeat");
+	CU_ASSERT_PTR_NOT_NULL(response);
+	CU_ASSERT_EQUAL(response->type, DQLITE_WELCOME);
+
+	CU_ASSERT_STRING_EQUAL(response->welcome.leader,  "127.0.0.1:666");
 }
 
 void test_dqlite__gateway_heartbeat()
 {
 	int err;
-	struct test_response_servers servers;
 
-	test_dqlite__gateway_handle_connect();
-
-	test_request_heartbeat(&request.message, 666);
-	dqlite__request_body_received(&request);
+	request.type = DQLITE_HEARTBEAT;
+	request.heartbeat.timestamp = 12345;
 
 	err = dqlite__gateway_handle(&gateway, &request, &response);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	CU_ASSERT_EQUAL(err, 0);
 
-	dqlite__request_processed(&request);
+	CU_ASSERT_PTR_NOT_NULL(response);
+	CU_ASSERT_EQUAL(response->type, DQLITE_SERVERS);
 
-	servers = test_response_servers_parse(response);
-
-	CU_ASSERT_STRING_EQUAL(servers.addresses[0], "1.2.3.4:666");
-	CU_ASSERT_STRING_EQUAL(servers.addresses[1], "5.6.7.8:666");
+	CU_ASSERT_STRING_EQUAL(response->servers.addresses[0], "1.2.3.4:666");
+	CU_ASSERT_STRING_EQUAL(response->servers.addresses[1], "5.6.7.8:666");
+	CU_ASSERT_PTR_NULL(response->servers.addresses[2]);
 }
 
 void test_dqlite__gateway_open()
 {
 	int err;
-	struct test_response_db db;
 
-	test_dqlite__gateway_handle_connect();
-
-	test_request_open(&request.message, "test.db");
-	dqlite__request_body_received(&request);
+	request.type = DQLITE_OPEN;
+	request.open.name = "test.db";
+	request.open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	request.open.vfs = "volatile";
 
 	err = dqlite__gateway_handle(&gateway, &request, &response);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	CU_ASSERT_EQUAL(err, 0);
 
-	dqlite__request_processed(&request);
+	CU_ASSERT_PTR_NOT_NULL(response);
+	CU_ASSERT_EQUAL(response->type, DQLITE_DB);
 
-	db = test_response_db_parse(response);
+	CU_ASSERT_EQUAL(response->db.id, 0);
+}
 
-	CU_ASSERT_EQUAL(db.id, 0);
+void test_dqlite__gateway_open_error()
+{
+	int err;
+
+	request.type = DQLITE_OPEN;
+	request.open.name = "test.db";
+	request.open.flags = SQLITE_OPEN_CREATE;
+	request.open.vfs = "volatile";
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_PTR_NOT_NULL(response);
+
+	CU_ASSERT_EQUAL(response->type, DQLITE_DB_ERROR);
+	CU_ASSERT_EQUAL(response->db_error.code, SQLITE_MISUSE);
+	CU_ASSERT_EQUAL(response->db_error.extended_code, SQLITE_MISUSE);
+	CU_ASSERT_STRING_EQUAL(response->db_error.message, "bad parameter or other API misuse");
 }

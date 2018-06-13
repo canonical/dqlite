@@ -1,8 +1,10 @@
 #include <assert.h>
+#include <unistd.h>
 
 #include <CUnit/CUnit.h>
 #include <uv.h>
 
+#include "../src/binary.h"
 #include "../src/conn.h"
 #include "../include/dqlite.h"
 
@@ -79,13 +81,13 @@ void test_dqlite__conn_abort_immediately()
 void test_dqlite__conn_abort_during_handshake()
 {
 	int err;
-	uint32_t version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
 	ssize_t nwrite;
 
 	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	nwrite = write(sockets.client, &version, 3);
+	nwrite = write(sockets.client, &protocol, 3);
 	CU_ASSERT_EQUAL_FATAL(nwrite, 3);
 
 	err = uv_run(&loop, UV_RUN_NOWAIT);
@@ -105,14 +107,14 @@ void test_dqlite__conn_abort_during_handshake()
 void test_dqlite__conn_abort_after_handshake()
 {
 	int err;
-	uint32_t version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
 	ssize_t nwrite;
 
 	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	nwrite = write(sockets.client, &version, 4);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 4);
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
 	err = uv_run(&loop, UV_RUN_NOWAIT);
 	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
@@ -131,7 +133,7 @@ void test_dqlite__conn_abort_after_handshake()
 void test_dqlite__conn_abort_during_header()
 {
 	int err;
-	uint32_t version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
 	uint8_t buf[7] = { /* Partial header */
 		0, 0, 0, 0,
 		0, 0, 0
@@ -141,8 +143,8 @@ void test_dqlite__conn_abort_during_header()
 	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	nwrite = write(sockets.client, &version, 4);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 4);
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
 	nwrite = write(sockets.client, buf, 7);
 	CU_ASSERT_EQUAL_FATAL(nwrite, 7);
@@ -164,7 +166,7 @@ void test_dqlite__conn_abort_during_header()
 void test_dqlite__conn_abort_after_header()
 {
 	int err;
-	uint32_t version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
 	uint8_t buf[8] = { /* Full header */
 		1, 0, 0, 0,
 		0, 0, 0, 0
@@ -174,8 +176,8 @@ void test_dqlite__conn_abort_after_header()
 	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	nwrite = write(sockets.client, &version, 4);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 4);
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
 	nwrite = write(sockets.client, buf, 8);
 	CU_ASSERT_EQUAL_FATAL(nwrite, 8);
@@ -197,7 +199,7 @@ void test_dqlite__conn_abort_after_header()
 void test_dqlite__conn_abort_during_body()
 {
 	int err;
-	uint32_t version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
 	uint8_t buf[13] = { /* Header and partial body */
 		1, 0, 0, 0,
 		0, 0, 0, 0,
@@ -209,8 +211,8 @@ void test_dqlite__conn_abort_during_body()
 	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	nwrite = write(sockets.client, &version, 4);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 4);
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
 	nwrite = write(sockets.client, buf, 13);
 	CU_ASSERT_EQUAL_FATAL(nwrite, 13);
@@ -232,7 +234,7 @@ void test_dqlite__conn_abort_during_body()
 void test_dqlite__conn_abort_after_body()
 {
 	int err;
-	uint32_t version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
 	uint8_t buf[16] = { /* Header and body (Helo request) */
 		1, 0, 0, 0,
 		0, 0, 0, 0,
@@ -244,8 +246,8 @@ void test_dqlite__conn_abort_after_body()
 	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	nwrite = write(sockets.client, &version, 4);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 4);
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
 	nwrite = write(sockets.client, buf, 16);
 	CU_ASSERT_EQUAL_FATAL(nwrite, 16);
@@ -267,7 +269,7 @@ void test_dqlite__conn_abort_after_body()
 void test_dqlite__conn_abort_after_heartbeat_timeout()
 {
 	int err;
-	uint32_t version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
 	uint8_t buf[3] = { /* Incomplete header */
 		0, 0, 0,
 	};
@@ -278,8 +280,8 @@ void test_dqlite__conn_abort_after_heartbeat_timeout()
 	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	nwrite = write(sockets.client, &version, 4);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 4);
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
 	nwrite = write(sockets.client, buf, 3);
 	CU_ASSERT_EQUAL_FATAL(nwrite, 3);
@@ -301,14 +303,14 @@ void test_dqlite__conn_abort_after_heartbeat_timeout()
 void test_dqlite__conn_read_cb_unknown_protocol()
 {
 	int err;
-	uint32_t version = 123456;
+	uint64_t protocol = 0x123456;
 	ssize_t nwrite;
 
 	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	nwrite = write(sockets.client, &version, 4);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 4);
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
 	err = uv_run(&loop, UV_RUN_NOWAIT);
 	CU_ASSERT_EQUAL_FATAL(err, 0 /* Number of pending handles */);
@@ -322,7 +324,7 @@ void test_dqlite__conn_read_cb_unknown_protocol()
 void test_dqlite__conn_read_cb_invalid_header()
 {
 	int err;
-	uint32_t version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
 	uint8_t buf[32] = { /* Preamble, invalid header (too big) and Helo request */
 		0, 0, 0, 0,
 		0, 0, 0, 1,
@@ -338,8 +340,8 @@ void test_dqlite__conn_read_cb_invalid_header()
 	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	nwrite = write(sockets.client, &version, 4);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 4);
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
 	nwrite = write(sockets.client, buf, 32);
 	CU_ASSERT_EQUAL_FATAL(nwrite, 32);
@@ -357,7 +359,7 @@ void test_dqlite__conn_read_cb_invalid_header()
 void test_dqlite__conn_read_cb_unexpected_request()
 {
 	int err;
-	uint32_t version = dqlite__message_flip32(DQLITE_PROTOCOL_VERSION);
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
 	uint8_t buf[16] = { /* Header and unexpected request (Heartbeat) */
 		1, 0, 0, 0,
 		1, 0, 0, 0,
@@ -369,8 +371,8 @@ void test_dqlite__conn_read_cb_unexpected_request()
 	err = dqlite__conn_start(&conn);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	nwrite = write(sockets.client, &version, 4);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 4);
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
 	nwrite = write(sockets.client, buf, 16);
 	CU_ASSERT_EQUAL_FATAL(nwrite, 16);
@@ -382,7 +384,7 @@ void test_dqlite__conn_read_cb_unexpected_request()
 
 	sockets.server_disconnected = 1;
 
-	CU_ASSERT_STRING_EQUAL(conn.error, "failed to handle request: expected Helo, got Heartbeat");
+	CU_ASSERT_STRING_EQUAL(conn.error, "failed to handle request: expected helo, got 1");
 }
 
 /*

@@ -4,72 +4,33 @@
 #include <stdint.h>
 
 #include "dqlite.h"
-#include "error.h"
-#include "message.h"
+#include "schema.h"
 
 /*
- * Request structures.
+ * Request types.
  */
 
-struct dqlite__request_helo {
-	uint64_t client_id;
-};
+#define DQLITE__REQUEST_SCHEMA_HELO(X, ...)	\
+	X(uint64, client_id, __VA_ARGS__)
 
-struct dqlite__request_heartbeat {
-	uint64_t timestamp;
-};
+#define DQLITE__REQUEST_SCHEMA_HEARTBEAT(X, ...)	\
+	X(uint64, timestamp, __VA_ARGS__)
 
-struct dqlite__request_open {
-	const char* name;
-};
+#define DQLITE__REQUEST_SCHEMA_OPEN(X, ...)	\
+	X(text,   name,  __VA_ARGS__)		\
+	X(uint64, flags, __VA_ARGS__)		\
+	X(text,   vfs,   __VA_ARGS__)
 
-/*
- * Decoder for incoming requests.
- */
-struct dqlite__request {
-	/*public */
-	uint64_t               timestamp; /* Time at which the request was received */
+DQLITE__SCHEMA_DEFINE(dqlite__request_open, DQLITE__REQUEST_SCHEMA_OPEN);
+DQLITE__SCHEMA_DEFINE(dqlite__request_helo, DQLITE__REQUEST_SCHEMA_HELO);
+DQLITE__SCHEMA_DEFINE(dqlite__request_heartbeat, DQLITE__REQUEST_SCHEMA_HEARTBEAT);
 
-	/* read-only */
-	struct dqlite__message message;  /* Request message info */
-	dqlite__error          error;    /* Last error occurred, if any. */
-	union {                          /* Request data */
-		struct dqlite__request_helo      helo;
-		struct dqlite__request_heartbeat heartbeat;
-		struct dqlite__request_open      open;
-	};
-};
+#define DQLITE__REQUEST_SCHEMA_TYPES(X, ...)	\
+	X(DQLITE_HELO,      dqlite__request_helo,      helo,      __VA_ARGS__) \
+	X(DQLITE_HEARTBEAT, dqlite__request_heartbeat, heartbeat, __VA_ARGS__) \
+	X(DQLITE_OPEN,      dqlite__request_open,      open,      __VA_ARGS__)
 
-void dqlite__request_init(struct dqlite__request *r);
-void dqlite__request_close(struct dqlite__request* r);
-
-DQLITE_INLINE void dqlite__request_header_buf(
-	struct dqlite__request *r,
-	uint8_t **buf,
-	size_t *len)
-{
-	assert(r != NULL);
-	dqlite__message_header_buf(&r->message, buf, len);
-}
-
-int dqlite__request_header_received(struct dqlite__request *r);
-
-DQLITE_INLINE void dqlite__request_body_buf(
-	struct dqlite__request *r,
-	uint8_t **buf,
-	size_t *len)
-{
-	assert(r != NULL);
-	dqlite__message_body_buf(&r->message, buf, len);
-}
-
-int dqlite__request_body_received(struct dqlite__request *r);
-
-void dqlite__request_processed(struct dqlite__request *r);
-
-/* Return the request's type code or name */
-uint16_t dqlite__request_type(struct dqlite__request *r);
-const char *dqlite__request_type_name(struct dqlite__request *r);
+DQLITE__SCHEMA_DECODER_DEFINE(dqlite__request, DQLITE__REQUEST_SCHEMA_TYPES);
 
 #endif /* DQLITE_REQUEST_H */
 

@@ -16,14 +16,14 @@ struct dqlite__fsm_event {
 	const char *name; /* Event name */
 };
 
-/* Handler fired upon a state transition */
-typedef int (*dqlite__fsm_handler)(void *arg);
+/* Callback fired upon a state transition */
+typedef int (*dqlite__fsm_cb)(void *arg);
 
 /* State transition in a FSM transition after an event is fired */
 struct dqlite__fsm_transition {
-	int                 event_id;      /* Event triggering the transition */
-	dqlite__fsm_handler handler;       /* Handler to invoke  */
-	int                 next_state_id; /* ID of the next state (if the handler succeeds) */
+	int                  event_id;      /* Event triggering the transition */
+	dqlite__fsm_cb       callback;      /* Callback to invoke  */
+	int                  next_state_id; /* ID of the next state (if the callback succeeds) */
 };
 
 /* A finite state machine transitioning between states upon events */

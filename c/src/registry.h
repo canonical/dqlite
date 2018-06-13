@@ -75,7 +75,7 @@
 		 * double the capacity.					\
 		 */							\
 		if (r->len + 1 > r->cap) {				\
-			cap = (r->cap == 0) ? 1 : r->cap << 1;		\
+			cap = (r->cap == 0) ? 1 : r->cap * 2;		\
 			buf = sqlite3_realloc(				\
 				r->buf, cap * sizeof(*r->buf));		\
 			if (buf == NULL)				\

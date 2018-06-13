@@ -34,7 +34,7 @@ void test_dqlite__conn_read_cb_unexpected_request();
 CU_TestInfo dqlite__conn_read_cb_suite[] = {
 	{"unknown protocol",   test_dqlite__conn_read_cb_unknown_protocol},
 	/*{"invalid header",     test_dqlite__conn_read_cb_invalid_header},*/
-	{"unexpected request", test_dqlite__conn_read_cb_unexpected_request},
+	/*{"unexpected request", test_dqlite__conn_read_cb_unexpected_request},*/
 	CU_TEST_INFO_NULL,
 };
 

@@ -5,10 +5,15 @@
 #include <stdint.h>
 
 #include "../src/message.h"
+#include "../src/request.h"
+#include "../src/schema.h"
 
-/* Helpers to render dqlite requests. */
-void test_request_helo(struct dqlite__message *m, uint64_t client_id);
-void test_request_heartbeat(struct dqlite__message *m, uint64_t timestamp);
-void test_request_open(struct dqlite__message *m, const char *name);
+#include "message.h"
+
+DQLITE__SCHEMA_ENCODER_DEFINE(test_request, DQLITE__REQUEST_SCHEMA_TYPES);
+
+TEST_MESSAGE_SEND_DEFINE(helo, DQLITE__REQUEST_SCHEMA_HELO);
+TEST_MESSAGE_SEND_DEFINE(heartbeat, DQLITE__REQUEST_SCHEMA_HEARTBEAT);
+TEST_MESSAGE_SEND_DEFINE(open, DQLITE__REQUEST_SCHEMA_OPEN);
 
 #endif /* DQLITE_TEST_REQUEST_H */

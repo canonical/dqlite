@@ -1,26 +1,14 @@
 #ifndef DQLITE_TEST_RESPONSE_H
 #define DQLITE_TEST_RESPONSE_H
 
-#include <stdint.h>
-#include <unistd.h>
-
 #include "../src/response.h"
 
-struct test_response_welcome {
-	const char *leader;
-	uint64_t heartbeat_timeout;
-};
+#include "message.h"
 
-struct test_response_servers {
-	const char *addresses[3];
-};
+DQLITE__SCHEMA_DECODER_DEFINE(test_response, DQLITE__RESPONSE_SCHEMA_TYPES);
 
-struct test_response_db {
-	uint64_t id;
-};
-
-struct test_response_welcome test_response_welcome_parse(struct dqlite__response *r);
-struct test_response_servers test_response_servers_parse(struct dqlite__response *r);
-struct test_response_db test_response_db_parse(struct dqlite__response *r);
+TEST_MESSAGE_SEND_DEFINE(welcome, DQLITE__RESPONSE_SCHEMA_WELCOME);
+TEST_MESSAGE_SEND_DEFINE(servers, DQLITE__RESPONSE_SCHEMA_SERVERS);
+TEST_MESSAGE_SEND_DEFINE(db, DQLITE__RESPONSE_SCHEMA_DB);
 
 #endif /* DQLITE_TEST_RESPONSE_H */
