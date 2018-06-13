@@ -2,12 +2,14 @@
 
 #include "../src/gateway.h"
 #include "../src/response.h"
+#include "../src/vfs.h"
 
 #include "cluster.h"
 #include "suite.h"
 #include "request.h"
 #include "response.h"
 
+static sqlite3_vfs* vfs;
 static struct dqlite__gateway gateway;
 static struct dqlite__request request;
 struct dqlite__response *response;
@@ -15,6 +17,14 @@ struct dqlite__response *response;
 void test_dqlite__gateway_setup()
 {
 	FILE *log = test_suite_dqlite_log();
+	int err;
+
+	err = dqlite__vfs_register("volatile", &vfs);
+
+	if (err != 0) {
+		test_suite_errorf("failed to register vfs: %s - %d", sqlite3_errstr(err), err);
+		CU_FAIL("test setup failed");
+	}
 
 	dqlite__request_init(&request);
 	dqlite__gateway_init(&gateway, log, test_cluster());
@@ -24,6 +34,7 @@ void test_dqlite__gateway_teardown()
 {
 	dqlite__gateway_close(&gateway);
 	dqlite__request_close(&request);
+	dqlite__vfs_unregister(vfs);
 }
 
 void test_dqlite__gateway_handle_connect()
@@ -78,23 +89,20 @@ void test_dqlite__gateway_heartbeat()
 
 void test_dqlite__gateway_open()
 {
-	/* return; */
-	/* int err; */
-	/* struct test_request r; */
-	/* Db_ptr ptr; */
-	/* struct Db db; */
+	int err;
+	struct test_response_db db;
 
-	/* test_dqlite__gateway_handle_connect(); */
+	test_dqlite__gateway_handle_connect();
 
-	/* test_request_open(&r, "test.db"); */
-	/* test_dqlite__request_write(&r); */
+	test_request_open(&request.message, "test.db");
+	dqlite__request_body_received(&request);
 
-	/* err = dqlite__gateway_handle(&gateway, &request, &response); */
-	/* CU_ASSERT_EQUAL_FATAL(err, 0); */
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
 
-	/* TEST_DQLITE__RESPONSE_READ(ptr); */
+	dqlite__request_processed(&request);
 
-	/* read_Db(&db, ptr); */
+	db = test_response_db_parse(response);
 
-	/* CU_ASSERT_EQUAL(db.id, 1); */
+	CU_ASSERT_EQUAL(db.id, 0);
 }

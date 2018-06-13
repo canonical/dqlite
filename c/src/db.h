@@ -4,6 +4,7 @@
 #include <sqlite3.h>
 
 #include "error.h"
+#include "registry.h"
 
 /* Hold state for a single open SQLite database */
 struct dqlite__db {
@@ -22,6 +23,6 @@ int dqlite__db_open(
 	int flags,
 	const char *vfs);
 
-int dqlite__db_abort(struct dqlite__db *db);
+DQLITE__REGISTRY(dqlite__db_registry, dqlite__db);
 
 #endif /* DQLITE_DB_H */

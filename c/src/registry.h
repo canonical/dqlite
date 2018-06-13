@@ -17,7 +17,12 @@
 		struct TYPE **buf;					\
 		size_t        len;					\
 		size_t        cap;					\
-	}
+	};								\
+	void NAME ## _init(struct NAME *r);				\
+	void NAME ## _close(struct NAME *r);				\
+	int NAME ## _add(struct NAME *r, struct TYPE **item, size_t *i); \
+	struct TYPE *NAME ## _get(struct NAME *r, size_t i);		\
+	int NAME ## _del(struct NAME *r, size_t i)
 
 /* Define the methods of a registry */
 #define DQLITE__REGISTRY_METHODS(NAME, TYPE)				\

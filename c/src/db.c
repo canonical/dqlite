@@ -6,6 +6,7 @@
 #include "db.h"
 #include "dqlite.h"
 #include "lifecycle.h"
+#include "registry.h"
 
 void dqlite__db_init(struct dqlite__db *db) {
 	assert(db != NULL);
@@ -21,6 +22,14 @@ void dqlite__db_init(struct dqlite__db *db) {
 
 void dqlite__db_close(struct dqlite__db *db) {
 	assert(db != NULL);
+
+	if (db->db != NULL) {
+		db->rc = sqlite3_close(db->db);
+
+		/* Since we cleanup all existing db resources, SQLite should
+		 * never fail, according to the docs. */
+		assert(db->rc == SQLITE_OK);
+	}
 
 	dqlite__error_close(&db->error);
 
@@ -47,20 +56,4 @@ int dqlite__db_open(
 	return 0;
 }
 
-int dqlite__db_abort(struct dqlite__db *db)
-{
-	assert(db != NULL);
-
-	if (db->db == NULL) {
-		return 0;
-	}
-
-	db->rc = sqlite3_close(db->db);
-	if (db->rc != SQLITE_OK) {
-		db->errmsg = sqlite3_errmsg(db->db);
-		return DQLITE_ENGINE;
-	}
-
-	return 0;
-}
-
+DQLITE__REGISTRY_METHODS(dqlite__db_registry, dqlite__db);
