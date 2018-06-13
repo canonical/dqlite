@@ -1426,7 +1426,7 @@ static int dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotU
 	return rc;
 }
 
-int dqlite__vfs_register(char *name, sqlite3_vfs **out) {
+int dqlite__vfs_register(const char *name, sqlite3_vfs **out) {
   sqlite3_vfs* vfs;
   struct dqlite__vfs_root *root;
   int err;

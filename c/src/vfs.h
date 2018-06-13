@@ -3,7 +3,7 @@
 
 #include <sqlite3.h>
 
-int dqlite__vfs_register(char *name, sqlite3_vfs **out);
+int dqlite__vfs_register(const char *name, sqlite3_vfs **out);
 void dqlite__vfs_unregister(sqlite3_vfs* vfs);
 
 #endif /* DQLITE_VFS_H */

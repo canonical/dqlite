@@ -12,6 +12,9 @@
 #include "queue.h"
 #include "conn.h"
 #include "dqlite.h"
+#include "vfs.h"
+
+#define DQLITE__SERVICE_DEFAULT_VFS_NAME "volatile"
 
 struct dqlite__service {
 	/* read-only */
@@ -25,6 +28,8 @@ struct dqlite__service {
 	uv_async_t      stop;       /* Event to stop the UV loop */
 	uv_async_t      incoming;   /* Event to process incoming connections */
 	sqlite3_mutex  *mutex;      /* Serialize access to the incoming queue */
+	const char     *vfs_name;   /* Name to use when registering the vfs below */
+	sqlite3_vfs    *vfs;        /* SQLite in-memory file system */
 };
 
 /* Close callback for the stop event handle */
@@ -197,6 +202,8 @@ int dqlite_service_init(dqlite_service *s, FILE *log, dqlite_cluster *cluster)
 	}
 	s->incoming.data = (void*)s;
 
+	s->vfs_name = DQLITE__SERVICE_DEFAULT_VFS_NAME;
+
 	return 0;
 }
 
@@ -206,12 +213,23 @@ void dqlite_service_close(dqlite_service *s)
 
 	dqlite__queue_close(&s->queue);
 	dqlite__error_close(&s->error);
+
+	if (s->vfs != NULL)
+		dqlite__vfs_unregister(s->vfs);
 }
 
 int dqlite_service_run(struct dqlite__service *s){
 	int err;
 
 	assert(s != NULL);
+	assert(s->vfs_name != NULL);
+
+	dqlite__infof(s, "register in-memory vfs", "name=%s", s->vfs_name);
+	err = dqlite__vfs_register(s->vfs_name, &s->vfs);
+	if (err != 0) {
+		dqlite__error_printf(&s->error, "failed to register vfs: %d", err);
+		return DQLITE_ERROR;
+	}
 
 	dqlite__infof(s, "run event loop", "");
 
