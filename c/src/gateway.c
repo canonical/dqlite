@@ -78,7 +78,7 @@ static int dqlite__gateway_connect_request_hdlr(void *arg)
 
 	err = dqlite__response_welcome(response, leader, g->heartbeat_timeout);
 	if (err != 0) {
-		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");
+		dqlite__error_wrapf(&g->error, &response->error, "failed to create welcome response");
 		goto out;
 	}
 
@@ -108,7 +108,7 @@ static int dqlite__gateway_heartbeat(
 	/* Encode the response */
 	err = dqlite__response_servers(response, addresses);
 	if (err != 0) {
-		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");
+		dqlite__error_wrapf(&g->error, &response->error, "failed to create servers response");
 		return err;
 	}
 
@@ -124,26 +124,45 @@ static int dqlite__gateway_open(
 	struct dqlite__response *response)
 {
 	int err;
-	const char **addresses;
+	size_t i;
+	struct dqlite__db *db;
 
-	/* Get the current list of servers in the cluster */
-	addresses = g->cluster->xServers(g->cluster->ctx);
-	if (addresses == NULL ) {
-		dqlite__errorf(g, "failed to get cluster servers", "");
-		return DQLITE_ERROR;
+	/* TODO: flags should be in the request */
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+
+	/* TODO: vfs should be a gateway field */
+	const char *vfs = "volatile";
+
+	err = dqlite__db_registry_add(&g->registry, &db, &i);
+	if (err != 0) {
+		assert(err == DQLITE_NOMEM);
+		dqlite__error_oom(&g->error, "failed to create db object");
+		goto err_registry_add;
+	}
+
+	assert(db != NULL);
+
+	err = dqlite__db_open(db, request->open.name, flags, vfs);
+	if (err != 0) {
+		assert(err == DQLITE_ENGINE);
+		assert(0); /* TODO: return the error to the client */
 	}
 
 	/* Encode the response */
-	err = dqlite__response_servers(response, addresses);
+	err = dqlite__response_db(response, (uint64_t)i);
 	if (err != 0) {
-		dqlite__error_wrapf(&g->error, &response->error, "failed to render response");
-		return err;
+		dqlite__error_wrapf(&g->error, &response->error, "failed to create db response");
+		goto err_response_db;
 	}
 
-	/* Refresh the heartbeat timestamp. */
-	g->heartbeat = request->timestamp;
-
 	return 0;
+
+ err_response_db:
+
+ err_registry_add:
+	assert(err != 0);
+
+	return err;
 }
 
 static int dqlite__gateway_operate_request_hdlr(void *arg)
@@ -220,6 +239,8 @@ void dqlite__gateway_init(
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
 		dqlite__gateway_ctx_init(&g->ctxs[i], g);
 	}
+
+	dqlite__db_registry_init(&g->registry);
 }
 
 void dqlite__gateway_close(struct dqlite__gateway *g)
@@ -228,6 +249,7 @@ void dqlite__gateway_close(struct dqlite__gateway *g)
 
 	dqlite__error_close(&g->error);
 	dqlite__fsm_close(&g->fsm);
+	dqlite__db_registry_close(&g->registry);
 
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_GATEWAY);
 }

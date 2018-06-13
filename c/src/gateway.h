@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "db.h"
 #include "dqlite.h"
 #include "fsm.h"
 #include "request.h"
@@ -43,6 +44,8 @@ struct dqlite__gateway {
 	 * Heartbeat or Interrupt. So we don't need a lot of concurrency.
 	 */
 	struct dqlite__gateway_ctx ctxs[DQLITE__GATEWAY_MAX_REQUESTS];
+
+	struct dqlite__db_registry registry; /* Registry of open databases */
 };
 
 void dqlite__gateway_init(

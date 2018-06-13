@@ -10,7 +10,9 @@ static struct dqlite__db db;
 
 void test_dqlite__db_setup()
 {
-	int err = dqlite__vfs_register("volatile", &vfs);
+	int err;
+
+	err = dqlite__vfs_register("volatile", &vfs);
 	if (err != 0) {
 		test_suite_errorf("failed to register vfs: %s - %d", sqlite3_errstr(err), err);
 		CU_FAIL("test setup failed");
@@ -30,8 +32,5 @@ void test_dqlite__db_open()
 	int err;
 
 	err = dqlite__db_open(&db, "test.db", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "volatile");
-	CU_ASSERT_EQUAL(err, 0);
-
-	err = dqlite__db_abort(&db);
 	CU_ASSERT_EQUAL(err, 0);
 }
