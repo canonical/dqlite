@@ -24,6 +24,8 @@ void test_client_close(struct test_client *c);
  */
 int test_client_handshake(struct test_client* c);
 
+int test_client_open(struct test_client *c, const char *name, uint64_t *id);
+
 /*
  * Send a Helo request.
  */

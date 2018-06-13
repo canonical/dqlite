@@ -74,12 +74,16 @@ void test_dqlite_start(){
   int err;
   char *leader;
   uint8_t heartbeat;
+  uint64_t id;
 
   err = test_client_handshake(client);
   CU_ASSERT_EQUAL(err, 0);
 
   err = test_client_helo(client, &leader, &heartbeat);
   CU_ASSERT_EQUAL(err, 0);
+
+  //err = test_client_open(client, "test.db", &id);
+  //CU_ASSERT_EQUAL(err, 0);
 }
 
 void test_dqlite_stop(){

@@ -70,5 +70,16 @@ int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
 	return 0;
 }
 
+int test_client_open(struct test_client *c, const char *name, uint64_t *id)
+{
+	TEST_CLIENT__INIT;
+
+	test_request_open(&message, "test.db");
+
+	TEST_CLIENT__WRITE;
+
+	return 0;
+}
+
 void test_client_close(struct test_client *c){
 }
