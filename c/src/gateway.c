@@ -155,6 +155,11 @@ static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gatew
 	return 0;
 }
 
+static int dqlite__gateway_finalize(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
+{
+	return 0;
+}
+
 void dqlite__gateway_init(
 	struct dqlite__gateway *g,
 	FILE *log,
