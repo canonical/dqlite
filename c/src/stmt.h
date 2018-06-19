@@ -13,6 +13,8 @@ struct dqlite__stmt {
 void dqlite__stmt_init(struct dqlite__stmt *stmt);
 void dqlite__stmt_close(struct dqlite__stmt *stmt);
 
+int dqlite__stmt_query(struct dqlite__stmt *stmt);
+
 DQLITE__REGISTRY(dqlite__stmt_registry, dqlite__stmt);
 
 #endif /* DQLITE_STMT_H */

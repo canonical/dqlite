@@ -116,6 +116,16 @@ static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gat
 	return 0;
 }
 
+static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
+{
+	return 0;
+}
+
+static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
+{
+	return 0;
+}
+
 void dqlite__gateway_init(
 	struct dqlite__gateway *g,
 	FILE *log,

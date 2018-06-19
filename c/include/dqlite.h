@@ -33,6 +33,8 @@
 #define DQLITE_HEARTBEAT 1
 #define DQLITE_OPEN      2
 #define DQLITE_PREPARE   3
+#define DQLITE_EXEC      4
+#define DQLITE_QUERY     5
 
 /* Response types */
 #define DQLITE_WELCOME  0
