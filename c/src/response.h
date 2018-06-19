@@ -22,16 +22,21 @@
 #define DQLITE__RESPONSE_SCHEMA_DB(X, ...)	\
 	X(uint64, id, __VA_ARGS__)
 
+#define DQLITE__RESPONSE_SCHEMA_STMT(X, ...)	\
+	X(uint64, id, __VA_ARGS__)
+
 DQLITE__SCHEMA_DEFINE(dqlite__response_welcome, DQLITE__RESPONSE_SCHEMA_WELCOME);
 DQLITE__SCHEMA_DEFINE(dqlite__response_servers, DQLITE__RESPONSE_SCHEMA_SERVERS);
 DQLITE__SCHEMA_DEFINE(dqlite__response_db_error, DQLITE__RESPONSE_SCHEMA_DB_ERROR);
 DQLITE__SCHEMA_DEFINE(dqlite__response_db, DQLITE__RESPONSE_SCHEMA_DB);
+DQLITE__SCHEMA_DEFINE(dqlite__response_stmt, DQLITE__RESPONSE_SCHEMA_STMT);
 
 #define DQLITE__RESPONSE_SCHEMA_TYPES(X, ...)				\
 	X(DQLITE_WELCOME,  dqlite__response_welcome,  welcome,  __VA_ARGS__) \
 	X(DQLITE_SERVERS,  dqlite__response_servers,  servers,  __VA_ARGS__) \
 	X(DQLITE_DB_ERROR, dqlite__response_db_error, db_error, __VA_ARGS__) \
-	X(DQLITE_DB,       dqlite__response_db,       db,       __VA_ARGS__)
+	X(DQLITE_DB,       dqlite__response_db,       db,       __VA_ARGS__) \
+	X(DQLITE_STMT,     dqlite__response_stmt,     stmt,     __VA_ARGS__)
 
 DQLITE__SCHEMA_ENCODER_DEFINE(dqlite__response, DQLITE__RESPONSE_SCHEMA_TYPES);
 

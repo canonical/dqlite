@@ -108,3 +108,68 @@ void test_dqlite__gateway_open_error()
 	CU_ASSERT_EQUAL(response->db_error.extended_code, SQLITE_MISUSE);
 	CU_ASSERT_STRING_EQUAL(response->db_error.message, "bad parameter or other API misuse");
 }
+
+void test_dqlite__gateway_prepare()
+{
+	int err;
+
+	request.type = DQLITE_OPEN;
+	request.open.name = "test.db";
+	request.open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	request.open.vfs = "volatile";
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	request.type = DQLITE_PREPARE;
+	request.prepare.db_id = response->db.id;
+	request.prepare.sql = "CREATE TABLE foo (n INT)";
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_PTR_NOT_NULL(response);
+	CU_ASSERT_EQUAL(response->type, DQLITE_STMT);
+
+	CU_ASSERT_EQUAL(response->stmt.id, 0);
+}
+
+void test_dqlite__gateway_prepare_error()
+{
+	int err;
+
+	request.type = DQLITE_OPEN;
+	request.open.name = "test.db";
+	request.open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	request.open.vfs = "volatile";
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	request.type = DQLITE_PREPARE;
+	request.prepare.db_id = response->db.id;
+	request.prepare.sql = "garbage";
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_PTR_NOT_NULL(response);
+
+	CU_ASSERT_EQUAL(response->type, DQLITE_DB_ERROR);
+	CU_ASSERT_EQUAL(response->db_error.code, SQLITE_ERROR);
+	CU_ASSERT_EQUAL(response->db_error.extended_code, SQLITE_ERROR);
+}
+
+void test_dqlite__gateway_prepare_invalid_db_id()
+{
+	int err;
+
+	request.type = DQLITE_PREPARE;
+	request.prepare.db_id = 123;
+	request.prepare.sql = "CREATE TABLE foo (n INT)";
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, DQLITE_NOTFOUND);
+
+	CU_ASSERT_STRING_EQUAL(gateway.error, "failed to handle prepare: no db object with id 123");
+}

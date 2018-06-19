@@ -32,12 +32,14 @@
 #define DQLITE_HELO      0
 #define DQLITE_HEARTBEAT 1
 #define DQLITE_OPEN      2
+#define DQLITE_PREPARE   3
 
 /* Response types */
 #define DQLITE_WELCOME  0
 #define DQLITE_SERVERS  1
 #define DQLITE_DB_ERROR 2
 #define DQLITE_DB       3
+#define DQLITE_STMT     4
 
 #define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
 

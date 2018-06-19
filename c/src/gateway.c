@@ -63,13 +63,6 @@ static void dqlite__gateway_db_error(struct dqlite__gateway_ctx *ctx, sqlite3 *d
 	ctx->response.db_error.message = sqlite3_errmsg(db);
 }
 
-#define DQLITE__GATEWAY_DB_ERROR					\
-	assert(rc != SQLITE_OK);					\
-	ctx->response.type = DQLITE_DB_ERROR;				\
-	ctx->response.db_error.code = sqlite3_errcode(db->db);		\
-	ctx->response.db_error.extended_code = sqlite3_extended_errcode(db->db); \
-	ctx->response.db_error.message = sqlite3_errmsg(db->db)
-
 static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
 {
 	int err;
@@ -93,6 +86,30 @@ static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gatewa
 		ctx->response.db.id =  (uint64_t)i;
 	} else {
 		dqlite__db_registry_del(&g->dbs, i);
+		dqlite__gateway_db_error(ctx, db->db, rc);
+	}
+
+	return 0;
+}
+
+static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
+{
+	int rc;
+
+	struct dqlite__db *db;
+	uint64_t stmt_id;
+
+	db = dqlite__db_registry_get(&g->dbs, ctx->request->prepare.db_id);
+	if (db == NULL) {
+		dqlite__error_printf(&g->error, "no db object with id %d", ctx->request->prepare.db_id);
+		return DQLITE_NOTFOUND;
+	}
+
+	rc = dqlite__db_prepare(db, ctx->request->prepare.sql, &stmt_id);
+	if (rc == SQLITE_OK) {
+		ctx->response.type = DQLITE_STMT;
+		ctx->response.stmt.id =  (uint64_t)stmt_id;
+	} else {
 		dqlite__gateway_db_error(ctx, db->db, rc);
 	}
 
@@ -169,9 +186,15 @@ int dqlite__gateway_handle(
 
 	switch (request->type) {
 
-#define DQLITE__GATEWAY_HANDLE(CODE, STRUCT, NAME, _)		\
-		case CODE:					\
-			err = dqlite__gateway_ ## NAME(g, ctx);	\
+#define DQLITE__GATEWAY_HANDLE(CODE, STRUCT, NAME, _)			\
+		case CODE:						\
+			err = dqlite__gateway_ ## NAME(g, ctx);		\
+			if (err != 0) {					\
+				dqlite__error_wrapf(			\
+					&g->error, &g->error,		\
+					"failed to handle %s", #NAME);	\
+				goto err;				\
+			}						\
 			break;
 
 		DQLITE__REQUEST_SCHEMA_TYPES(DQLITE__GATEWAY_HANDLE,);
@@ -183,17 +206,15 @@ int dqlite__gateway_handle(
 
 	}
 
-	if (err != 0) {
-		dqlite__error_wrapf(&g->error, &ctx->response.error, "failed to render response");
-		goto err;
-	}
-
 	*response = &ctx->response;
 
 	return 0;
 
  err:
+	assert(err != 0);
+
 	*response = 0;
+
 	return err;
 }
 
