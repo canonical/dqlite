@@ -49,7 +49,7 @@ int dqlite__db_open(
 	return sqlite3_open_v2(name, &db->db, flags, vfs);
 }
 
-int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint64_t *stmt_id)
+int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint32_t *stmt_id)
 {
 	int rc;
 	struct dqlite__stmt *stmt;
@@ -75,7 +75,7 @@ int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint64_t *stmt_id
 		goto err_stmt_prepare;
 	}
 
-	*stmt_id = i;
+	*stmt_id = (uint32_t)i;
 
 	return SQLITE_OK;
 

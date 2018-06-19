@@ -20,10 +20,12 @@
 	X(text,   description,   __VA_ARGS__)
 
 #define DQLITE__RESPONSE_SCHEMA_DB(X, ...)	\
-	X(uint64, id, __VA_ARGS__)
+	X(uint32, id,      __VA_ARGS__)		\
+	X(uint32, __pad__, __VA_ARGS__)
 
 #define DQLITE__RESPONSE_SCHEMA_STMT(X, ...)	\
-	X(uint64, id, __VA_ARGS__)
+	X(uint32, db_id, __VA_ARGS__)		\
+	X(uint32, id,    __VA_ARGS__)
 
 #define DQLITE__RESPONSE_SCHEMA_ROWS(X, ...)	\
 	X(uint64, id,           __VA_ARGS__)	\

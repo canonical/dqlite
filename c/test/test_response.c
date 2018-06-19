@@ -61,7 +61,7 @@ void test_dqlite__response_db()
 {
 	int err;
 
-	test_message_send_db(123, &response.message);
+	test_message_send_db(123, 0 /* __pad__ */, &response.message);
 
 	err = test_response_decode(&response);
 	CU_ASSERT_EQUAL(err, 0);

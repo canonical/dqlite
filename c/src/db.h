@@ -22,7 +22,7 @@ int dqlite__db_open(
 	int flags,
 	const char *vfs);
 
-int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint64_t *stmt_id);
+int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint32_t *stmt_id);
 
 DQLITE__REGISTRY(dqlite__db_registry, dqlite__db);
 
