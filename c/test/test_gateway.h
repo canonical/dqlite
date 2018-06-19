@@ -13,15 +13,17 @@ void test_dqlite__gateway_open_error();
 void test_dqlite__gateway_prepare();
 void test_dqlite__gateway_prepare_error();
 void test_dqlite__gateway_prepare_invalid_db_id();
+void test_dqlite__gateway_exec();
 
 CU_TestInfo dqlite__gateway_handle_suite[] = {
 	{"helo",                  test_dqlite__gateway_helo},
 	{"heartbeat",             test_dqlite__gateway_heartbeat},
 	{"open",                  test_dqlite__gateway_open},
 	{"open error",            test_dqlite__gateway_open_error},
-	{"prepare"  ,             test_dqlite__gateway_prepare},
+	{"prepare",               test_dqlite__gateway_prepare},
 	{"prepare error",         test_dqlite__gateway_prepare_error},
 	{"prepare invalid db id", test_dqlite__gateway_prepare_invalid_db_id},
+	{"exec" ,                 test_dqlite__gateway_exec},
 	CU_TEST_INFO_NULL,
 };
 
