@@ -27,4 +27,24 @@ void dqlite__stmt_close(struct dqlite__stmt *stmt)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_STMT);
 }
 
+int dqlite__stmt_exec(
+	struct dqlite__stmt *stmt,
+	uint64_t *last_insert_id,
+	uint64_t *rows_affected)
+{
+	int rc;
+
+	assert(stmt != NULL);
+	assert(stmt->stmt != NULL);
+
+	rc = sqlite3_step(stmt->stmt);
+	if (rc != SQLITE_DONE)
+		return rc;
+
+	*last_insert_id = sqlite3_last_insert_rowid(stmt->db);
+	*rows_affected = sqlite3_changes(stmt->db);
+
+	return 0;
+}
+
 DQLITE__REGISTRY_METHODS(dqlite__stmt_registry, dqlite__stmt);

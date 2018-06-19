@@ -92,6 +92,20 @@ static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gatewa
 	return 0;
 }
 
+#define DQLITE__GATEWAY_LOOKUP_DB(ID)					\
+	db = dqlite__db_registry_get(&g->dbs, ID);			\
+	if (db == NULL) {						\
+		dqlite__error_printf(&g->error, "no db with id %d", ID); \
+		return DQLITE_NOTFOUND;					\
+	}
+
+#define DQLITE__GATEWAY_LOOKUP_STMT(ID)					\
+	stmt = dqlite__db_stmt(db, ID);					\
+	if (stmt == NULL) {						\
+		dqlite__error_printf(&g->error, "no stmt with id %d", ID); \
+		return DQLITE_NOTFOUND;					\
+	}
+
 static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
 {
 	int rc;
@@ -99,11 +113,7 @@ static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gat
 	struct dqlite__db *db;
 	uint32_t stmt_id;
 
-	db = dqlite__db_registry_get(&g->dbs, ctx->request->prepare.db_id);
-	if (db == NULL) {
-		dqlite__error_printf(&g->error, "no db object with id %d", ctx->request->prepare.db_id);
-		return DQLITE_NOTFOUND;
-	}
+	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->prepare.db_id);
 
 	rc = dqlite__db_prepare(db, ctx->request->prepare.sql, &stmt_id);
 	if (rc == SQLITE_OK) {
@@ -119,6 +129,24 @@ static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gat
 
 static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
 {
+	int rc;
+	struct dqlite__db *db;
+	struct dqlite__stmt *stmt;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+
+	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->exec.db_id);
+	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->exec.stmt_id);
+
+	rc = dqlite__stmt_exec(stmt, &last_insert_id, &rows_affected);
+	if (rc == 0) {
+		ctx->response.type = DQLITE_RESULT;
+		ctx->response.result.last_insert_id = last_insert_id;
+		ctx->response.result.rows_affected = rows_affected;
+	} else {
+		dqlite__gateway_db_error(ctx, db->db, rc);
+	}
+
 	return 0;
 }
 
@@ -177,8 +205,6 @@ int dqlite__gateway_handle(
 	assert(request != NULL );
 	assert(response != NULL );
 
-	dqlite__debugf(g, "handle request", "type=%d", request->type);
-
 	/* Look for an available request context buffer */
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
 		if (g->ctxs[i].request == NULL)
@@ -199,6 +225,8 @@ int dqlite__gateway_handle(
 
 #define DQLITE__GATEWAY_HANDLE(CODE, STRUCT, NAME, _)			\
 		case CODE:						\
+			dqlite__debugf(g, "handle request", "type=%s", #NAME); \
+									\
 			err = dqlite__gateway_ ## NAME(g, ctx);		\
 			if (err != 0) {					\
 				dqlite__error_wrapf(			\

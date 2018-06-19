@@ -26,6 +26,7 @@
 	X(text,   sql,  __VA_ARGS__)
 
 #define DQLITE__REQUEST_SCHEMA_EXEC(X, ...)	\
+	X(uint32, db_id, __VA_ARGS__)		\
 	X(uint64, stmt_id, __VA_ARGS__)
 
 #define DQLITE__REQUEST_SCHEMA_QUERY(X, ...)	\

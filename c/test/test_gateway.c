@@ -172,5 +172,63 @@ void test_dqlite__gateway_prepare_invalid_db_id()
 	err = dqlite__gateway_handle(&gateway, &request, &response);
 	CU_ASSERT_EQUAL(err, DQLITE_NOTFOUND);
 
-	CU_ASSERT_STRING_EQUAL(gateway.error, "failed to handle prepare: no db object with id 123");
+	CU_ASSERT_STRING_EQUAL(gateway.error, "failed to handle prepare: no db with id 123");
+}
+
+void test_dqlite__gateway_exec()
+{
+	int err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+
+	request.type = DQLITE_OPEN;
+	request.open.name = "test.db";
+	request.open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	request.open.vfs = "volatile";
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	db_id = response->db.id;
+
+	request.type = DQLITE_PREPARE;
+	request.prepare.db_id = db_id;
+	request.prepare.sql = "CREATE TABLE foo (n INT)";
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	stmt_id = response->stmt.id;
+
+	request.type = DQLITE_EXEC;
+	request.exec.db_id = db_id;
+	request.exec.stmt_id = stmt_id;
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_PTR_NOT_NULL(response);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESULT);
+
+	request.type = DQLITE_PREPARE;
+	request.prepare.db_id = db_id;
+	request.prepare.sql = "INSERT INTO foo(n) VALUES(1)";
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	stmt_id = response->stmt.id;
+
+	request.type = DQLITE_EXEC;
+	request.exec.db_id = db_id;
+	request.exec.stmt_id = stmt_id;
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_PTR_NOT_NULL(response);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESULT);
+
+	CU_ASSERT_EQUAL(response->result.last_insert_id, 1);
+	CU_ASSERT_EQUAL(response->result.rows_affected, 1);
 }
