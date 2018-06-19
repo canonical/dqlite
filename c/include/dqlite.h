@@ -42,6 +42,7 @@
 #define DQLITE_DB_ERROR 2
 #define DQLITE_DB       3
 #define DQLITE_STMT     4
+#define DQLITE_ROWS     5
 
 #define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
 
