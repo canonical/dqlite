@@ -17,7 +17,7 @@
 #define DQLITE__RESPONSE_SCHEMA_DB_ERROR(X, ...)	\
 	X(uint64, code,          __VA_ARGS__)		\
 	X(uint64, extended_code, __VA_ARGS__)		\
-	X(text,   message,       __VA_ARGS__)
+	X(text,   description,   __VA_ARGS__)
 
 #define DQLITE__RESPONSE_SCHEMA_DB(X, ...)	\
 	X(uint64, id, __VA_ARGS__)

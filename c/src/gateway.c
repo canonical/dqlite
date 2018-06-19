@@ -60,7 +60,7 @@ static void dqlite__gateway_db_error(struct dqlite__gateway_ctx *ctx, sqlite3 *d
 	ctx->response.type = DQLITE_DB_ERROR;
 	ctx->response.db_error.code = sqlite3_errcode(db);
 	ctx->response.db_error.extended_code = sqlite3_extended_errcode(db);
-	ctx->response.db_error.message = sqlite3_errmsg(db);
+	ctx->response.db_error.description = sqlite3_errmsg(db);
 }
 
 static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
