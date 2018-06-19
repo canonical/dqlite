@@ -106,7 +106,7 @@ void test_dqlite__gateway_open_error()
 	CU_ASSERT_EQUAL(response->type, DQLITE_DB_ERROR);
 	CU_ASSERT_EQUAL(response->db_error.code, SQLITE_MISUSE);
 	CU_ASSERT_EQUAL(response->db_error.extended_code, SQLITE_MISUSE);
-	CU_ASSERT_STRING_EQUAL(response->db_error.message, "bad parameter or other API misuse");
+	CU_ASSERT_STRING_EQUAL(response->db_error.description, "bad parameter or other API misuse");
 }
 
 void test_dqlite__gateway_prepare()
