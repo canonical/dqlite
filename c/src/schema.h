@@ -83,6 +83,7 @@
 
 #define DQLITE__SCHEMA_ENCODER_DEFINE(NAME, TYPES)			\
 	struct NAME {							\
+		struct dqlite__message message;				\
 		uint8_t type;						\
 		uint8_t flags;						\
 		dqlite__error error;					\
@@ -95,13 +96,11 @@
 									\
 	void NAME ## _close(struct NAME *e);				\
 									\
-	int NAME ## _encode(						\
-		struct NAME *e,						\
-		struct dqlite__message *m)
+	int NAME ## _encode(struct NAME *e)				\
 
 #define __DQLITE__SCHEMA_ENCODER_FIELD_PUT(CODE, STRUCT, NAME, _)	\
 	case CODE:							\
-	err = STRUCT ## _put(&e->NAME, m, &e->error);			\
+	err = STRUCT ## _put(&e->NAME, &e->message, &e->error);		\
 	break;								\
 
 #define DQLITE__SCHEMA_ENCODER_IMPLEMENT(NAME, TYPES)	\
@@ -113,6 +112,7 @@
 		e->type = 0;						\
 		e->flags = 0;						\
 									\
+		dqlite__message_init(&e->message);			\
 		dqlite__error_init(&e->error);				\
 									\
 		dqlite__lifecycle_init(DQLITE__LIFECYCLE_ENCODER);	\
@@ -123,19 +123,19 @@
 		assert(e != NULL);					\
 									\
 		dqlite__error_close(&e->error);				\
+		dqlite__message_close(&e->message);			\
 									\
 		dqlite__lifecycle_close(DQLITE__LIFECYCLE_ENCODER);	\
 	}								\
 									\
-	int NAME ## _encode(						\
-		struct NAME *e,						\
-		struct dqlite__message *m)				\
+	int NAME ## _encode(struct NAME *e)				\
 	{								\
 		int err;						\
 									\
 		assert(e != NULL);					\
 									\
-		dqlite__message_header_put(m, e->type, e->flags);	\
+		dqlite__message_header_put(				\
+			&e->message, e->type, e->flags);		\
 									\
 		switch (e->type) {					\
 			TYPES(__DQLITE__SCHEMA_ENCODER_FIELD_PUT, );	\
@@ -149,7 +149,8 @@
 									\
 		if (err != 0) {						\
 			dqlite__error_wrapf(\
-				&e->error, &m->error, "encode error");	\
+				&e->error, &e->message.error,		\
+				"encode error");			\
 			return err;					\
 		}							\
 									\
@@ -161,6 +162,7 @@
 
 #define DQLITE__SCHEMA_DECODER_DEFINE(NAME, TYPES)			\
 	struct NAME {							\
+		struct dqlite__message message;				\
 		uint64_t timestamp;					\
 		uint8_t type;						\
 		dqlite__error   error;					\
@@ -173,12 +175,12 @@
 									\
 	void NAME ## _close(struct NAME *d);				\
 									\
-	int NAME ## _decode(struct NAME *d, struct dqlite__message *m)
+	int NAME ## _decode(struct NAME *d)
 
 #define __DQLITE__SCHEMA_DECODER_FIELD_GET(CODE, STRUCT, NAME, _)	\
 	case CODE:							\
 									\
-	err = STRUCT ## _get(&d->NAME, m, &d->error);			\
+	err = STRUCT ## _get(&d->NAME, &d->message, &d->error);		\
 	if (err != 0) {							\
 		dqlite__error_wrapf(					\
 			&d->error, &d->error,				\
@@ -194,6 +196,7 @@
 	{								\
 		assert(d != NULL);					\
 									\
+		dqlite__message_init(&d->message);			\
 		dqlite__error_init(&d->error);				\
 									\
 		dqlite__lifecycle_init(DQLITE__LIFECYCLE_DECODER);	\
@@ -204,17 +207,18 @@
 		assert(d != NULL);					\
 									\
 		dqlite__error_close(&d->error);				\
+		dqlite__message_close(&d->message);			\
 									\
 		dqlite__lifecycle_close(DQLITE__LIFECYCLE_DECODER);	\
 	}								\
 									\
-	int NAME ## _decode(struct NAME *d, struct dqlite__message *m)	\
+	int NAME ## _decode(struct NAME *d)				\
 	{								\
 		int err;						\
 									\
 		assert(d != NULL);					\
 									\
-		d->type = m->type;					\
+		d->type = d->message.type;				\
 									\
 		switch (d->type) {					\
 			TYPES(__DQLITE__SCHEMA_DECODER_FIELD_GET, );	\

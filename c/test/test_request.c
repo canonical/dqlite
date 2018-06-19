@@ -7,19 +7,16 @@
 
 #include "request.h"
 
-static struct dqlite__message message;
 static struct dqlite__request request;
 
 void test_dqlite__request_setup()
 {
-	dqlite__message_init(&message);
 	dqlite__request_init(&request);
 }
 
 void test_dqlite__request_teardown()
 {
 	dqlite__request_close(&request);
-	dqlite__message_close(&message);
 }
 
 /*
@@ -66,9 +63,9 @@ void test_dqlite__request_decode_helo()
 {
 	int err;
 
-	test_message_send_helo(123, &message);
+	test_message_send_helo(123, &request.message);
 
-	err = dqlite__request_decode(&request, &message);
+	err = dqlite__request_decode(&request);
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_EQUAL(request.helo.client_id, 123);
@@ -78,9 +75,9 @@ void test_dqlite__request_decode_heartbeat()
 {
 	int err;
 
-	test_message_send_heartbeat(666, &message);
+	test_message_send_heartbeat(666, &request.message);
 
-	err = dqlite__request_decode(&request, &message);
+	err = dqlite__request_decode(&request);
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_EQUAL(request.heartbeat.timestamp, 666);
@@ -90,10 +87,11 @@ void test_dqlite__request_decode_open()
 {
 	int err;
 
-	test_message_send_open("test.db", 123, "volatile", &message);
+	test_message_send_open("test.db", 123, "volatile", &request.message);
 
-	err = dqlite__request_decode(&request, &message);
+	err = dqlite__request_decode(&request);
 	CU_ASSERT_EQUAL_FATAL(err, 0);
+
 
 	CU_ASSERT_STRING_EQUAL(request.open.name, "test.db");
 	CU_ASSERT_EQUAL(request.open.flags, 123);

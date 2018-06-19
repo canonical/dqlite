@@ -30,20 +30,19 @@ void test_message_send(
 		int err;						\
 									\
 		struct OBJECT object;					\
-		struct dqlite__message outgoing;			\
 									\
-		dqlite__message_init(&outgoing);			\
+		OBJECT ## _init(&object);				\
 									\
 		SCHEMA(__TEST_MESSAGE_SEND_ASSIGN, NAME);		\
 									\
 		object.type = CODE;					\
 									\
-		err = OBJECT ## _encode(&object, &outgoing);		\
+		err = OBJECT ## _encode(&object);			\
 		CU_ASSERT_EQUAL(err, 0);				\
 									\
-		test_message_send(&outgoing, incoming);			\
+		test_message_send(&object.message, incoming);		\
 									\
-		dqlite__message_close(&outgoing);			\
+		OBJECT ## _close(&object);				\
 	}
 
 
