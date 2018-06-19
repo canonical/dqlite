@@ -35,6 +35,7 @@
 #define DQLITE_PREPARE   3
 #define DQLITE_EXEC      4
 #define DQLITE_QUERY     5
+#define DQLITE_FINALIZE  6
 
 /* Response types */
 #define DQLITE_WELCOME  0
