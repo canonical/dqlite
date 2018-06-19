@@ -197,6 +197,10 @@ int dqlite__message_body_get_text(struct dqlite__message *m, text_t *text)
 	/* The header must have been written already */
 	assert(m->words > 0);
 
+	/* A text entry must start at word boundary */
+	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+
 	if (m->body2.base != NULL) {
 		/* We allocated a dymanic buffer, let's use it */
 		src = m->body2.base;
@@ -260,6 +264,46 @@ int dqlite__message_body_get_text_list(struct dqlite__message *m, text_list_t *l
 	return err;
 }
 
+int dqlite__message_body_get_uint8(struct dqlite__message *m, uint8_t *value)
+{
+	int err;
+	const char *buf;
+
+	assert(m != NULL);
+	assert(value != NULL);
+
+	err = dqlite__message_get(m, &buf, sizeof(*value));
+	if (err != 0 && err != DQLITE_EOM) {
+		return err;
+	}
+
+	*value = *((uint8_t*)buf);
+
+	return err;
+}
+
+int dqlite__message_body_get_uint32(struct dqlite__message *m, uint32_t *value)
+{
+	int err;
+	const char *buf;
+
+	assert(m != NULL);
+	assert(value != NULL);
+
+	/* A uint32 must be at 4-byte boundary */
+	assert((m->offset1 % sizeof(*value)) == 0);
+	assert((m->offset2 % sizeof(*value)) == 0);
+
+	err = dqlite__message_get(m, &buf, sizeof(*value));
+	if (err != 0 && err != DQLITE_EOM) {
+		return err;
+	}
+
+	*value = dqlite__flip32(*((uint32_t*)buf));
+
+	return err;
+}
+
 int dqlite__message_body_get_int64(struct dqlite__message *m, int64_t *value)
 {
 	int err;
@@ -286,6 +330,10 @@ int dqlite__message_body_get_uint64(struct dqlite__message *m, uint64_t *value)
 
 	assert(m != NULL);
 	assert(value != NULL);
+
+	/* A uint64 entry must start at word boundary */
+	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
 
 	err = dqlite__message_get(m, &buf, sizeof(*value));
 	if (err != 0 && err != DQLITE_EOM) {
@@ -367,7 +415,12 @@ int dqlite__message_body_put_text(struct dqlite__message *m, text_t text)
 	size_t pad;
 	size_t len;
 
+	assert(m != NULL);
 	assert(text != NULL);
+
+	/* Text entries must start at word boundary */
+	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
 
 	len = strlen(text) + 1;
 
@@ -389,6 +442,10 @@ int dqlite__message_body_put_text_list(struct dqlite__message *m, text_list_t li
 	assert(m != NULL);
 	assert(list != NULL);
 
+	/* Text lists must start at word boundary */
+	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+
 	for (i = 0; list[i] != NULL; i++) {
 		err = dqlite__message_body_put_text(m, list[i]);
 		if (err != 0) {
@@ -399,14 +456,45 @@ int dqlite__message_body_put_text_list(struct dqlite__message *m, text_list_t li
 	return 0;
 }
 
+int dqlite__message_body_put_uint8(struct dqlite__message *m, uint8_t value)
+{
+	assert(m != NULL);
+
+	return dqlite__message_body_put(m, (const char*)(&value), sizeof(value), 0);
+}
+
+int dqlite__message_body_put_uint32(struct dqlite__message *m, uint32_t value)
+{
+	assert(m != NULL);
+
+	/* An uint32 must start at 4-byte boundary */
+	assert((m->offset1 % sizeof(value)) == 0);
+	assert((m->offset2 % sizeof(value)) == 0);
+
+	value = dqlite__flip32(value);
+	return dqlite__message_body_put(m, (const char*)(&value), sizeof(value), 0);
+}
+
 int dqlite__message_body_put_int64(struct dqlite__message *m, int64_t value)
 {
+	assert(m != NULL);
+
+	/* An int64 must start at word boundary */
+	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+
 	value = (int64_t)dqlite__flip64((uint64_t)value);
 	return dqlite__message_body_put(m, (const char*)(&value), sizeof(value), 0);
 }
 
 int dqlite__message_body_put_uint64(struct dqlite__message *m, uint64_t value)
 {
+	assert(m != NULL);
+
+	/* An uint64 must start at word boundary */
+	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+
 	value = dqlite__flip64(value);
 	return dqlite__message_body_put(m, (const char*)(&value), sizeof(value), 0);
 }
