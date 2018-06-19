@@ -14,6 +14,7 @@ void test_dqlite__gateway_prepare();
 void test_dqlite__gateway_prepare_error();
 void test_dqlite__gateway_prepare_invalid_db_id();
 void test_dqlite__gateway_exec();
+void test_dqlite__gateway_exec_with_params();
 void test_dqlite__gateway_exec_invalid_stmt_id();
 void test_dqlite__gateway_finalize();
 
@@ -26,6 +27,7 @@ CU_TestInfo dqlite__gateway_handle_suite[] = {
 	{"prepare error",         test_dqlite__gateway_prepare_error},
 	{"prepare invalid db id", test_dqlite__gateway_prepare_invalid_db_id},
 	{"exec" ,                 test_dqlite__gateway_exec},
+	{"exec with params",      test_dqlite__gateway_exec_with_params},
 	{"exec invalid stmt id",  test_dqlite__gateway_exec_invalid_stmt_id},
 	{"finalize" ,             test_dqlite__gateway_finalize},
 	CU_TEST_INFO_NULL,

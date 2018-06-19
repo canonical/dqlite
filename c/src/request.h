@@ -30,7 +30,8 @@
 	X(uint32, stmt_id, __VA_ARGS__)
 
 #define DQLITE__REQUEST_SCHEMA_QUERY(X, ...)	\
-	X(uint64, stmt_id, __VA_ARGS__)
+	X(uint32, db_id, __VA_ARGS__)		\
+	X(uint32, stmt_id, __VA_ARGS__)
 
 #define DQLITE__REQUEST_SCHEMA_FINALIZE(X, ...)	\
 	X(uint32, db_id, __VA_ARGS__)		\

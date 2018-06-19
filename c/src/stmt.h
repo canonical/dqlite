@@ -3,16 +3,24 @@
 
 #include <sqlite3.h>
 
+#include "error.h"
+#include "message.h"
 #include "registry.h"
 
 /* Hold state for a single open SQLite database */
 struct dqlite__stmt {
-	sqlite3           *db;   /* Underlying SQLite database handle */
-	sqlite3_stmt      *stmt; /* Underlying SQLite statement handle */
+	sqlite3       *db;    /* Underlying SQLite database handle */
+	sqlite3_stmt  *stmt;  /* Underlying SQLite statement handle */
+	dqlite__error  error; /* Last dqlite-speific error */
 };
 
 void dqlite__stmt_init(struct dqlite__stmt *stmt);
 void dqlite__stmt_close(struct dqlite__stmt *stmt);
+
+int dqlite__stmt_bind(
+	struct dqlite__stmt *s,
+	struct dqlite__message *message,
+	int *rc);
 
 int dqlite__stmt_exec(
 	struct dqlite__stmt *stmt,

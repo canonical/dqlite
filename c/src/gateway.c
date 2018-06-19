@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <float.h>
 
 #include "gateway.h"
 #include "dqlite.h"
@@ -129,6 +130,7 @@ static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gat
 
 static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
 {
+	int err;
 	int rc;
 	struct dqlite__db *db;
 	struct dqlite__stmt *stmt;
@@ -137,6 +139,25 @@ static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gatewa
 
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->exec.db_id);
 	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->exec.stmt_id);
+
+	assert(stmt->stmt != NULL);
+
+	err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
+	if (err != 0) {
+		assert(err == DQLITE_PROTO || err == DQLITE_ENGINE);
+
+		if (err == DQLITE_PROTO) {
+			dqlite__error_wrapf(&g->error, &stmt->error, "invalid bindings");
+			return err;
+		}
+
+		assert(err == DQLITE_ENGINE);
+		assert(rc != SQLITE_OK);
+
+		dqlite__gateway_db_error(ctx, db->db, rc);
+
+		return 0;
+	}
 
 	rc = dqlite__stmt_exec(stmt, &last_insert_id, &rows_affected);
 	if (rc == 0) {
@@ -152,6 +173,39 @@ static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gatewa
 
 static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
 {
+	int err;
+	int rc;
+	struct dqlite__db *db;
+	struct dqlite__stmt *stmt;
+	int column_count;
+
+	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->query.db_id);
+	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->query.stmt_id);
+
+	assert(stmt->stmt != NULL);
+
+	err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
+	if (err != 0) {
+		assert(err == DQLITE_PROTO || err == DQLITE_ENGINE);
+
+		if (err == DQLITE_PROTO) {
+			dqlite__error_wrapf(&g->error, &stmt->error, "invalid bindings");
+			return err;
+		}
+
+		assert(err == DQLITE_ENGINE);
+		assert(rc != SQLITE_OK);
+
+		dqlite__gateway_db_error(ctx, db->db, rc);
+
+		return 0;
+	}
+
+	column_count = sqlite3_column_count(stmt->stmt);
+	if (column_count <= 0) {
+		dqlite__error_printf(&g->error, "stmt doesn't yield any column");
+	}
+
 	return 0;
 }
 
