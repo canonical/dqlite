@@ -27,7 +27,7 @@
 
 #define DQLITE__REQUEST_SCHEMA_EXEC(X, ...)	\
 	X(uint32, db_id, __VA_ARGS__)		\
-	X(uint64, stmt_id, __VA_ARGS__)
+	X(uint32, stmt_id, __VA_ARGS__)
 
 #define DQLITE__REQUEST_SCHEMA_QUERY(X, ...)	\
 	X(uint64, stmt_id, __VA_ARGS__)
@@ -53,7 +53,7 @@ DQLITE__SCHEMA_DEFINE(dqlite__request_finalize,  DQLITE__REQUEST_SCHEMA_FINALIZE
 	X(DQLITE_QUERY,     dqlite__request_query,     query,     __VA_ARGS__) \
 	X(DQLITE_FINALIZE,  dqlite__request_finalize,  finalize,  __VA_ARGS__)
 
-DQLITE__SCHEMA_DECODER_DEFINE(dqlite__request, DQLITE__REQUEST_SCHEMA_TYPES);
+DQLITE__SCHEMA_HANDLER_DEFINE(dqlite__request, DQLITE__REQUEST_SCHEMA_TYPES);
 
 #endif /* DQLITE_REQUEST_H */
 

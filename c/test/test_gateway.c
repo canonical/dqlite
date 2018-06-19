@@ -6,8 +6,6 @@
 
 #include "cluster.h"
 #include "suite.h"
-#include "request.h"
-#include "response.h"
 
 static sqlite3_vfs* vfs;
 static struct dqlite__gateway gateway;

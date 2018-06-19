@@ -2,6 +2,8 @@
 #define DQLITE_TEST_MESSAGE_HELPER_H
 
 #include "../src/message.h"
+#include "../src/request.h"
+#include "../src/response.h"
 
 /* Helper to initialize an 'incoming' message object with the data from an
  * 'outgoing' message object */
@@ -45,5 +47,12 @@ void test_message_send(
 		OBJECT ## _close(&object);				\
 	}
 
+TEST_MESSAGE_SEND_DEFINE(helo, DQLITE__REQUEST_SCHEMA_HELO);
+TEST_MESSAGE_SEND_DEFINE(heartbeat, DQLITE__REQUEST_SCHEMA_HEARTBEAT);
+TEST_MESSAGE_SEND_DEFINE(open, DQLITE__REQUEST_SCHEMA_OPEN);
+
+TEST_MESSAGE_SEND_DEFINE(welcome, DQLITE__RESPONSE_SCHEMA_WELCOME);
+TEST_MESSAGE_SEND_DEFINE(servers, DQLITE__RESPONSE_SCHEMA_SERVERS);
+TEST_MESSAGE_SEND_DEFINE(db, DQLITE__RESPONSE_SCHEMA_DB);
 
 #endif /* DQLITE_TEST_MESSAGE_HELPER_H */

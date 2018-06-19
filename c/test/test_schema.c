@@ -28,135 +28,134 @@ DQLITE__SCHEMA_IMPLEMENT(test_bar, TEST_SCHEMA_BAR);
 	X(TEST_FOO, test_foo, foo, __VA_ARGS__)	\
 	X(TEST_BAR, test_bar, bar, __VA_ARGS__)
 
-DQLITE__SCHEMA_ENCODER_DEFINE(test_encoder, TEST_SCHEMA_TYPES);
-DQLITE__SCHEMA_ENCODER_IMPLEMENT(test_encoder, TEST_SCHEMA_TYPES);
+DQLITE__SCHEMA_HANDLER_DEFINE(test_handler, TEST_SCHEMA_TYPES);
+DQLITE__SCHEMA_HANDLER_IMPLEMENT(test_handler, TEST_SCHEMA_TYPES);
 
-DQLITE__SCHEMA_DECODER_DEFINE(test_decoder, TEST_SCHEMA_TYPES);
-DQLITE__SCHEMA_DECODER_IMPLEMENT(test_decoder, TEST_SCHEMA_TYPES);
-
-static struct test_encoder encoder;
-static struct test_decoder decoder;
+static struct test_handler handler;
 
 void test_dqlite__schema_setup()
 {
-	test_encoder_init(&encoder);
-	test_decoder_init(&decoder);
+	test_handler_init(&handler);
 }
 
 void test_dqlite__schema_teardown()
 {
-	test_decoder_close(&decoder);
-	test_encoder_close(&encoder);
+	test_handler_close(&handler);
 }
 
 /*
- * dqlite__schema_decoder_decode_suite
+ * dqlite__schema_handler_decode_suite
  */
 
-void test_dqlite__schema_encoder_encode_two_uint64()
+void test_dqlite__schema_handler_encode_two_uint64()
 {
 	int err;
 
-	encoder.type = TEST_BAR;
-	encoder.bar.i = 99;
-	encoder.bar.j = 17;
+	handler.type = TEST_BAR;
+	handler.bar.i = 99;
+	handler.bar.j = 17;
 
-	err = test_encoder_encode(&encoder);
+	err = test_handler_encode(&handler);
 	CU_ASSERT_EQUAL(err, 0);
 
-	CU_ASSERT_EQUAL(encoder.message.type, TEST_BAR);
-	CU_ASSERT_EQUAL(encoder.message.offset1, 16);
+	CU_ASSERT_EQUAL(handler.message.type, TEST_BAR);
+	CU_ASSERT_EQUAL(handler.message.offset1, 16);
 
-	CU_ASSERT_EQUAL(*(uint64_t*)encoder.message.body1, 99);
-	CU_ASSERT_EQUAL(*(uint64_t*)(encoder.message.body1 + 8), 17);
+	CU_ASSERT_EQUAL(*(uint64_t*)handler.message.body1, 99);
+	CU_ASSERT_EQUAL(*(uint64_t*)(handler.message.body1 + 8), 17);
 }
 
-void test_dqlite__schema_encoder_encode_uint64_and_text()
+void test_dqlite__schema_handler_encode_uint64_and_text()
 {
 	int err;
 
-	encoder.type = TEST_FOO;
-	encoder.foo.id = 123;
-	encoder.foo.name = "hello world!";
+	handler.type = TEST_FOO;
+	handler.foo.id = 123;
+	handler.foo.name = "hello world!";
 
-	err = test_encoder_encode(&encoder);
+	err = test_handler_encode(&handler);
 	CU_ASSERT_EQUAL(err, 0);
 
-	CU_ASSERT_EQUAL(encoder.message.type, TEST_FOO);
-	CU_ASSERT_EQUAL(encoder.message.offset1, 24);
+	CU_ASSERT_EQUAL(handler.message.type, TEST_FOO);
+	CU_ASSERT_EQUAL(handler.message.offset1, 24);
 
-	CU_ASSERT_EQUAL(*(uint64_t*)encoder.message.body1, 123);
-	CU_ASSERT_STRING_EQUAL((const char*)(encoder.message.body1 + 8), "hello world!");
+	CU_ASSERT_EQUAL(*(uint64_t*)handler.message.body1, 123);
+	CU_ASSERT_STRING_EQUAL((const char*)(handler.message.body1 + 8), "hello world!");
 }
 
-void test_dqlite__schema_encoder_encode_unknown_type()
+void test_dqlite__schema_handler_encode_unknown_type()
 {
 	int err;
 
-	encoder.type = 255;
+	handler.type = 255;
 
-	err = test_encoder_encode(&encoder);
+	err = test_handler_encode(&handler);
 	CU_ASSERT_EQUAL(err, DQLITE_PROTO);
 
-	CU_ASSERT_STRING_EQUAL(encoder.error, "unknown message type 255");
+	CU_ASSERT_STRING_EQUAL(handler.error, "unknown message type 255");
 }
 
 /*
- * dqlite__schema_encoder_encode_suite
+ * dqlite__schema_handler_encode_suite
  */
 
-void test_dqlite__schema_decoder_decode_invalid_text()
+void test_dqlite__schema_handler_decode_invalid_text()
 {
 	int err;
-	decoder.message.type = TEST_FOO;
-	decoder.message.words = 2;
+	handler.message.type = TEST_FOO;
+	handler.message.words = 2;
 
-	*(uint64_t*)decoder.message.body1 = 123;
-	*(uint64_t*)(decoder.message.body1 + 8) = 0xffffffffffffffff;
+	*(uint64_t*)handler.message.body1 = 123;
+	*(uint64_t*)(handler.message.body1 + 8) = 0xffffffffffffffff;
 
-	err = test_decoder_decode(&decoder);
+	err = test_handler_decode(&handler);
 	CU_ASSERT_EQUAL(err, DQLITE_PARSE);
 
 	CU_ASSERT_STRING_EQUAL(
-		decoder.error,
+		handler.error,
 		"failed to decode 'foo': failed to get 'name' field: no string found");
 }
 
-void test_dqlite__schema_decoder_decode_unknown_type()
+void test_dqlite__schema_handler_decode_unknown_type()
 {
 	int err;
-	decoder.message.type = 255;
-	decoder.message.words = 1;
+	handler.message.type = 255;
+	handler.message.words = 1;
 
-	err = test_decoder_decode(&decoder);
+	err = test_handler_decode(&handler);
 	CU_ASSERT_EQUAL(err, DQLITE_PROTO);
 
-	CU_ASSERT_STRING_EQUAL(decoder.error, "unknown message type 255");
+	CU_ASSERT_STRING_EQUAL(handler.error, "unknown message type 255");
 }
 
-void test_dqlite__schema_decoder_decode_two_uint64()
+void test_dqlite__schema_handler_decode_two_uint64()
 {
 	int err;
+	static struct test_handler handler2;
 
-	encoder.type = TEST_BAR;
-	encoder.bar.i = 99;
-	encoder.bar.j = 17;
+	test_handler_init(&handler2);
 
-	err = test_encoder_encode(&encoder);
+	handler.type = TEST_BAR;
+	handler.bar.i = 99;
+	handler.bar.j = 17;
+
+	err = test_handler_encode(&handler);
 	CU_ASSERT_EQUAL(err, 0);
 
-	CU_ASSERT_EQUAL(encoder.message.type, TEST_BAR);
+	CU_ASSERT_EQUAL(handler.message.type, TEST_BAR);
 
-	test_message_send(&encoder.message, &decoder.message);
+	test_message_send(&handler.message, &handler2.message);
 
-	CU_ASSERT_EQUAL(decoder.message.type, TEST_BAR);
+	CU_ASSERT_EQUAL(handler2.message.type, TEST_BAR);
 
-	err = test_decoder_decode(&decoder);
+	err = test_handler_decode(&handler2);
 	CU_ASSERT_EQUAL(err, 0);
 
-	CU_ASSERT_EQUAL(decoder.bar.i, 99);
-	CU_ASSERT_EQUAL(decoder.bar.j, 17);
+	CU_ASSERT_EQUAL(handler2.bar.i, 99);
+	CU_ASSERT_EQUAL(handler2.bar.j, 17);
 
-	dqlite__message_recv_reset(&decoder.message);
-	dqlite__message_send_reset(&encoder.message);
+	dqlite__message_recv_reset(&handler2.message);
+	dqlite__message_send_reset(&handler.message);
+
+	test_handler_close(&handler2);
 }

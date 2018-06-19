@@ -5,7 +5,7 @@
 #include "../src/message.h"
 #include "../src/request.h"
 
-#include "request.h"
+#include "message.h"
 
 static struct dqlite__request request;
 

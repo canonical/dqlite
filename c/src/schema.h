@@ -78,159 +78,119 @@
 		return 0;						\
 	}
 
-#define __DQLITE__SCHEMA_ENCODER_FIELD_DEFINE(CODE, STRUCT, NAME, _)	\
+#define __DQLITE__SCHEMA_HANDLER_FIELD_DEFINE(CODE, STRUCT, NAME, _)	\
 	struct STRUCT NAME;
 
-#define DQLITE__SCHEMA_ENCODER_DEFINE(NAME, TYPES)			\
-	struct NAME {							\
-		struct dqlite__message message;				\
-		uint8_t type;						\
-		uint8_t flags;						\
-		dqlite__error error;					\
-		union {							\
-			TYPES(__DQLITE__SCHEMA_ENCODER_FIELD_DEFINE, )	\
-		};							\
-	};								\
-									\
-	void NAME ## _init(struct NAME *e);				\
-									\
-	void NAME ## _close(struct NAME *e);				\
-									\
-	int NAME ## _encode(struct NAME *e)				\
-
-#define __DQLITE__SCHEMA_ENCODER_FIELD_PUT(CODE, STRUCT, NAME, _)	\
-	case CODE:							\
-	err = STRUCT ## _put(&e->NAME, &e->message, &e->error);		\
-	break;								\
-
-#define DQLITE__SCHEMA_ENCODER_IMPLEMENT(NAME, TYPES)	\
-									\
-	void NAME ## _init(struct NAME *e)				\
-	{								\
-		assert(e != NULL);					\
-									\
-		e->type = 0;						\
-		e->flags = 0;						\
-									\
-		dqlite__message_init(&e->message);			\
-		dqlite__error_init(&e->error);				\
-									\
-		dqlite__lifecycle_init(DQLITE__LIFECYCLE_ENCODER);	\
-	};								\
-									\
-	void NAME ## _close(struct NAME *e)				\
-	{								\
-		assert(e != NULL);					\
-									\
-		dqlite__error_close(&e->error);				\
-		dqlite__message_close(&e->message);			\
-									\
-		dqlite__lifecycle_close(DQLITE__LIFECYCLE_ENCODER);	\
-	}								\
-									\
-	int NAME ## _encode(struct NAME *e)				\
-	{								\
-		int err;						\
-									\
-		assert(e != NULL);					\
-									\
-		dqlite__message_header_put(				\
-			&e->message, e->type, e->flags);		\
-									\
-		switch (e->type) {					\
-			TYPES(__DQLITE__SCHEMA_ENCODER_FIELD_PUT, );	\
-									\
-		default:						\
-			dqlite__error_printf(				\
-				&e->error, "unknown message type %d",	\
-				e->type);				\
-			return DQLITE_PROTO;				\
-		}							\
-									\
-		if (err != 0) {						\
-			dqlite__error_wrapf(\
-				&e->error, &e->message.error,		\
-				"encode error");			\
-			return err;					\
-		}							\
-									\
-		return 0;						\
-	}
-
-#define __DQLITE__SCHEMA_DECODER_FIELD_DEFINE(CODE, STRUCT, NAME, _)	\
-	struct STRUCT NAME;
-
-#define DQLITE__SCHEMA_DECODER_DEFINE(NAME, TYPES)			\
+#define DQLITE__SCHEMA_HANDLER_DEFINE(NAME, TYPES)			\
 	struct NAME {							\
 		struct dqlite__message message;				\
 		uint64_t timestamp;					\
 		uint8_t type;						\
-		dqlite__error   error;					\
+		uint8_t flags;						\
+		dqlite__error error;					\
 		union {							\
-			TYPES(__DQLITE__SCHEMA_DECODER_FIELD_DEFINE, NAME) \
+			TYPES(__DQLITE__SCHEMA_HANDLER_FIELD_DEFINE, )	\
 		};							\
 	};								\
 									\
-	void NAME ## _init(struct NAME *d);				\
+	void NAME ## _init(struct NAME *h);				\
 									\
-	void NAME ## _close(struct NAME *d);				\
+	void NAME ## _close(struct NAME *h);				\
 									\
-	int NAME ## _decode(struct NAME *d)
+	int NAME ## _encode(struct NAME *h);				\
+									\
+	int NAME ## _decode(struct NAME *h)
 
-#define __DQLITE__SCHEMA_DECODER_FIELD_GET(CODE, STRUCT, NAME, _)	\
+#define __DQLITE__SCHEMA_HANDLER_FIELD_PUT(CODE, STRUCT, NAME, _)	\
+	case CODE:							\
+	err = STRUCT ## _put(&h->NAME, &h->message, &h->error);		\
+	break;								\
+
+#define __DQLITE__SCHEMA_HANDLER_FIELD_GET(CODE, STRUCT, NAME, _)	\
 	case CODE:							\
 									\
-	err = STRUCT ## _get(&d->NAME, &d->message, &d->error);		\
+	err = STRUCT ## _get(&h->NAME, &h->message, &h->error);		\
 	if (err != 0) {							\
 		dqlite__error_wrapf(					\
-			&d->error, &d->error,				\
+			&h->error, &h->error,				\
 			"failed to decode '%s'", #NAME);		\
 		return err;						\
 	}								\
 									\
 	break;
 
-#define DQLITE__SCHEMA_DECODER_IMPLEMENT(NAME, TYPES)			\
+#define DQLITE__SCHEMA_HANDLER_IMPLEMENT(NAME, TYPES)	\
 									\
-	void NAME ## _init(struct NAME *d)				\
+	void NAME ## _init(struct NAME *h)				\
 	{								\
-		assert(d != NULL);					\
+		assert(h != NULL);					\
 									\
-		dqlite__message_init(&d->message);			\
-		dqlite__error_init(&d->error);				\
+		h->type = 0;						\
+		h->flags = 0;						\
 									\
-		dqlite__lifecycle_init(DQLITE__LIFECYCLE_DECODER);	\
+		dqlite__message_init(&h->message);			\
+		dqlite__error_init(&h->error);				\
+									\
+		dqlite__lifecycle_init(DQLITE__LIFECYCLE_ENCODER);	\
 	};								\
 									\
-	void NAME ## _close(struct NAME *d)				\
+	void NAME ## _close(struct NAME *h)				\
 	{								\
-		assert(d != NULL);					\
+		assert(h != NULL);					\
 									\
-		dqlite__error_close(&d->error);				\
-		dqlite__message_close(&d->message);			\
+		dqlite__error_close(&h->error);				\
+		dqlite__message_close(&h->message);			\
 									\
-		dqlite__lifecycle_close(DQLITE__LIFECYCLE_DECODER);	\
+		dqlite__lifecycle_close(DQLITE__LIFECYCLE_ENCODER);	\
 	}								\
 									\
-	int NAME ## _decode(struct NAME *d)				\
+	int NAME ## _encode(struct NAME *h)				\
 	{								\
 		int err;						\
 									\
-		assert(d != NULL);					\
+		assert(h != NULL);					\
 									\
-		d->type = d->message.type;				\
+		dqlite__message_header_put(				\
+			&h->message, h->type, h->flags);		\
 									\
-		switch (d->type) {					\
-			TYPES(__DQLITE__SCHEMA_DECODER_FIELD_GET, );	\
+		switch (h->type) {					\
+			TYPES(__DQLITE__SCHEMA_HANDLER_FIELD_PUT, );	\
+									\
 		default:						\
 			dqlite__error_printf(				\
-				&d->error, "unknown message type %d",	\
-				d->type);				\
+				&h->error, "unknown message type %d",	\
+				h->type);				\
+			return DQLITE_PROTO;				\
+		}							\
+									\
+		if (err != 0) {						\
+			dqlite__error_wrapf(\
+				&h->error, &h->message.error,		\
+				"encode error");			\
+			return err;					\
+		}							\
+									\
+		return 0;						\
+	}								\
+									\
+	int NAME ## _decode(struct NAME *h)				\
+	{								\
+		int err;						\
+									\
+		assert(h != NULL);					\
+									\
+		h->type = h->message.type;				\
+									\
+		switch (h->type) {					\
+			TYPES(__DQLITE__SCHEMA_HANDLER_FIELD_GET, );	\
+		default:						\
+			dqlite__error_printf(				\
+				&h->error, "unknown message type %d",	\
+				h->type);				\
 			return DQLITE_PROTO;				\
 		}							\
 									\
 		return 0;						\
 	}
-
 
 #endif /* DQLITE_SCHEMA_H */
