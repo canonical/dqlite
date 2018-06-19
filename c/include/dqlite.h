@@ -45,6 +45,7 @@
 #define DQLITE_STMT     4
 #define DQLITE_RESULT   5
 #define DQLITE_ROWS     6
+#define DQLITE_EMPTY    7
 
 #define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
 

@@ -157,6 +157,20 @@ static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gatew
 
 static int dqlite__gateway_finalize(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
 {
+	int rc;
+	struct dqlite__db *db;
+	struct dqlite__stmt *stmt;
+
+	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->finalize.db_id);
+	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->finalize.stmt_id);
+
+	rc = dqlite__db_finalize(db, stmt, ctx->request->finalize.stmt_id);
+	if (rc == SQLITE_OK) {
+		ctx->response.type = DQLITE_EMPTY;
+	} else {
+		dqlite__gateway_db_error(ctx, db->db, rc);
+	}
+
 	return 0;
 }
 
