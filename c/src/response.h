@@ -57,6 +57,6 @@ DQLITE__SCHEMA_DEFINE(dqlite__response_empty,    DQLITE__RESPONSE_SCHEMA_EMPTY);
 	X(DQLITE_ROWS,     dqlite__response_rows,     rows,     __VA_ARGS__) \
 	X(DQLITE_EMPTY,    dqlite__response_empty,    empty,    __VA_ARGS__)
 
-DQLITE__SCHEMA_ENCODER_DEFINE(dqlite__response, DQLITE__RESPONSE_SCHEMA_TYPES);
+DQLITE__SCHEMA_HANDLER_DEFINE(dqlite__response, DQLITE__RESPONSE_SCHEMA_TYPES);
 
 #endif /* DQLITE_RESPONSE_H */

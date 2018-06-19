@@ -1,6 +1,11 @@
 #include <CUnit/CUnit.h>
 
 #include "../src/message.h"
+#include "../src/request.h"
+#include "../src/response.h"
+#include "../include/dqlite.h"
+
+#include "message.h"
 
 void test_message_send(
 	struct dqlite__message *outgoing,
@@ -34,3 +39,11 @@ void test_message_send(
 	/* Copy the body data */
 	memcpy(buf.base, bufs[1].base, bufs[1].len);
 }
+
+TEST_MESSAGE_SEND_IMPLEMENT(helo, DQLITE_HELO, dqlite__request, DQLITE__REQUEST_SCHEMA_HELO);
+TEST_MESSAGE_SEND_IMPLEMENT(heartbeat, DQLITE_HEARTBEAT, dqlite__request, DQLITE__REQUEST_SCHEMA_HEARTBEAT);
+TEST_MESSAGE_SEND_IMPLEMENT(open, DQLITE_OPEN, dqlite__request, DQLITE__REQUEST_SCHEMA_OPEN);
+
+TEST_MESSAGE_SEND_IMPLEMENT(welcome, DQLITE_WELCOME, dqlite__response, DQLITE__RESPONSE_SCHEMA_WELCOME);
+TEST_MESSAGE_SEND_IMPLEMENT(servers, DQLITE_SERVERS, dqlite__response, DQLITE__RESPONSE_SCHEMA_SERVERS);
+TEST_MESSAGE_SEND_IMPLEMENT(db, DQLITE_DB, dqlite__response, DQLITE__RESPONSE_SCHEMA_DB);

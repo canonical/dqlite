@@ -66,10 +66,6 @@ dqlite_test_SOURCES = \
   test/log.h \
   test/message.c \
   test/message.h \
-  test/request.c \
-  test/request.h \
-  test/response.c \
-  test/response.h \
   test/runner.c \
   test/server.c \
   test/server.h \

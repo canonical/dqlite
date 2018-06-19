@@ -6,11 +6,10 @@
 #include <sqlite3.h>
 
 #include "../src/binary.h"
-#include "../src/message.h"
+#include "../src/request.h"
 #include "../include/dqlite.h"
 
 #include "client.h"
-#include "request.h"
 #include "suite.h"
 
 void test_client_init(struct test_client *c, int fd)
@@ -37,9 +36,9 @@ int test_client_handshake(struct test_client *c){
 
 #define TEST_CLIENT__INIT \
 	int err;				\
-	struct test_request request;		\
+	struct dqlite__request request;		\
 	uv_buf_t bufs[3];			\
-	test_request_init(&request)
+	dqlite__request_init(&request)
 
 #define TEST_CLIENT__WRITE \
 	dqlite__message_send_start(&request.message, bufs);	\
@@ -55,7 +54,7 @@ int test_client_handshake(struct test_client *c){
 		dqlite__message_close(&request.message);			\
 		return 1; \
 	} \
-	test_request_close(&request); \
+	dqlite__request_close(&request);		\
 	return 0
 
 int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
@@ -65,7 +64,7 @@ int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
 	request.type = DQLITE_HELO;
 	request.helo.client_id = 123;
 
-	err = test_request_encode(&request);
+	err = dqlite__request_encode(&request);
 	if (err != 0) {
 		test_suite_printf("failed to encode request: %s", &request.error);
 	}
