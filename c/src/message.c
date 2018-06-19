@@ -345,6 +345,28 @@ int dqlite__message_body_get_uint64(struct dqlite__message *m, uint64_t *value)
 	return err;
 }
 
+int dqlite__message_body_get_double(struct dqlite__message *m, double_t *value)
+{
+	int err;
+	const char *buf;
+
+	assert(m != NULL);
+	assert(value != NULL);
+
+	/* A double entry must start at word boundary */
+	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+
+	err = dqlite__message_get(m, &buf, sizeof(*value));
+	if (err != 0 && err != DQLITE_EOM) {
+		return err;
+	}
+
+	*((uint64_t*)value) = dqlite__flip64(*((uint64_t*)buf));
+
+	return err;
+}
+
 void dqlite__message_header_put(struct dqlite__message *m, uint8_t type, uint8_t flags)
 {
 	assert(m != NULL);
@@ -497,6 +519,23 @@ int dqlite__message_body_put_uint64(struct dqlite__message *m, uint64_t value)
 
 	value = dqlite__flip64(value);
 	return dqlite__message_body_put(m, (const char*)(&value), sizeof(value), 0);
+}
+
+
+int dqlite__message_body_put_double(struct dqlite__message *m, double_t value)
+{
+	uint64_t buf;
+
+	assert(m != NULL);
+
+	/* An uint64 must start at word boundary */
+	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
+
+	buf = *((uint64_t*)(&value));
+	buf = dqlite__flip64(buf);
+
+	return dqlite__message_body_put(m, (const char*)(&buf), sizeof(buf), 0);
 }
 
 void dqlite__message_send_start(struct dqlite__message *m, uv_buf_t bufs[3])

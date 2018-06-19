@@ -30,6 +30,7 @@
 /* Type aliases to used by macro-based definitions in schema.h */
 typedef const char*  text_t;
 typedef const char** text_list_t;
+typedef double double_t;
 
 /*
  * Common header for requests and responses.
@@ -89,6 +90,7 @@ int dqlite__message_body_get_uint8(struct dqlite__message *m, uint8_t *value);
 int dqlite__message_body_get_uint32(struct dqlite__message *m, uint32_t *value);
 int dqlite__message_body_get_int64(struct dqlite__message *m, int64_t *value);
 int dqlite__message_body_get_uint64(struct dqlite__message *m, uint64_t *value);
+int dqlite__message_body_get_double(struct dqlite__message *m, double_t *value);
 
 /* Called after the message body has been read completely and it has been
  * processed. It resets the internal state so the object can be re-used for
@@ -110,6 +112,7 @@ int dqlite__message_body_put_uint8(struct dqlite__message *m, uint8_t value);
 int dqlite__message_body_put_uint32(struct dqlite__message *m, uint32_t value);
 int dqlite__message_body_put_int64(struct dqlite__message *m, int64_t value);
 int dqlite__message_body_put_uint64(struct dqlite__message *m, uint64_t value);
+int dqlite__message_body_put_double(struct dqlite__message *m, double_t value);
 
 /* Called when starting to send a message.
  *

@@ -43,6 +43,7 @@ void test_dqlite__message_body_get_int64_one_value();
 void test_dqlite__message_body_get_int64_two_values();
 void test_dqlite__message_body_get_uint64_one_value();
 void test_dqlite__message_body_get_uint64_two_values();
+void test_dqlite__message_body_get_double_one_value();
 
 CU_TestInfo dqlite__message_body_get_suite[] = {
 	{"text one string",     test_dqlite__message_body_get_text_one_string},
@@ -57,6 +58,7 @@ CU_TestInfo dqlite__message_body_get_suite[] = {
 	{"int64 two values",    test_dqlite__message_body_get_int64_two_values},
 	{"uint64 one value",    test_dqlite__message_body_get_uint64_one_value},
 	{"uint64 two value",    test_dqlite__message_body_get_uint64_two_values},
+	{"double one value",    test_dqlite__message_body_get_double_one_value},
 	CU_TEST_INFO_NULL,
 };
 
@@ -76,16 +78,18 @@ void test_dqlite__message_body_put_uint8_four();
 void test_dqlite__message_body_put_uint32_two();
 void test_dqlite__message_body_put_int64_one();
 void test_dqlite__message_body_put_uint64_one();
+void test_dqlite__message_body_put_double_one();
 void test_dqlite__message_body_put_dyn_buf();
 
 CU_TestInfo dqlite__message_body_put_suite[] = {
 	{"text one",        test_dqlite__message_body_put_text_one},
 	{"text one no pad", test_dqlite__message_body_put_text_one_no_pad},
 	{"text two",        test_dqlite__message_body_put_text_two},
-	{"uint8 four ",     test_dqlite__message_body_put_uint8_four},
-	{"uint32 two ",     test_dqlite__message_body_put_uint32_two},
-	{"int64 one ",      test_dqlite__message_body_put_int64_one},
-	{"uint64 one ",     test_dqlite__message_body_put_uint64_one},
+	{"uint8 four",      test_dqlite__message_body_put_uint8_four},
+	{"uint32 two",      test_dqlite__message_body_put_uint32_two},
+	{"int64 one",       test_dqlite__message_body_put_int64_one},
+	{"uint64 one",      test_dqlite__message_body_put_uint64_one},
+	{"double one",      test_dqlite__message_body_put_double_one},
 	{"dyn buf",         test_dqlite__message_body_put_dyn_buf},
 	CU_TEST_INFO_NULL,
 };

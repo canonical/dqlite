@@ -379,6 +379,25 @@ void test_dqlite__message_body_get_uint64_two_values()
 	CU_ASSERT_EQUAL(value, 77);
 }
 
+void test_dqlite__message_body_get_double_one_value()
+{
+	int err;
+	uint64_t *buf;
+	double pi = 3.1415926535;
+	double value;
+
+	message.words = 1;
+
+	buf = (uint64_t*)(&pi);
+	*buf = dqlite__flip64(*buf);
+	memcpy(message.body1, buf, 8);
+
+	err = dqlite__message_body_get_double(&message, &value);
+	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+
+	CU_ASSERT_EQUAL(value, 3.1415926535);
+}
+
 /*
  * dqlite__message_header_put_suite
  */
@@ -523,6 +542,20 @@ void test_dqlite__message_body_put_uint64_one()
 	CU_ASSERT_EQUAL(message.offset1, 8);
 
 	CU_ASSERT_EQUAL(dqlite__flip64(*(uint64_t*)(message.body1)), 99);
+}
+
+void test_dqlite__message_body_put_double_one()
+{
+	int err;
+	uint64_t buf;
+
+	err = dqlite__message_body_put_double(&message, 3.1415926535);
+
+	CU_ASSERT_EQUAL(err, 0);
+	CU_ASSERT_EQUAL(message.offset1, 8);
+
+	buf = dqlite__flip64(*(uint64_t*)(message.body1));
+	CU_ASSERT_EQUAL(*(double*)(&buf), 3.1415926535);
 }
 
 void test_dqlite__message_body_put_dyn_buf()
