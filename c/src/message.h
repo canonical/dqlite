@@ -85,6 +85,8 @@ int dqlite__message_body_recv_start(struct dqlite__message *m, uv_buf_t *buf);
  */
 int dqlite__message_body_get_text(struct dqlite__message *m, text_t *text);
 int dqlite__message_body_get_text_list(struct dqlite__message *m, text_list_t *list);
+int dqlite__message_body_get_uint8(struct dqlite__message *m, uint8_t *value);
+int dqlite__message_body_get_uint32(struct dqlite__message *m, uint32_t *value);
 int dqlite__message_body_get_int64(struct dqlite__message *m, int64_t *value);
 int dqlite__message_body_get_uint64(struct dqlite__message *m, uint64_t *value);
 
@@ -104,6 +106,8 @@ void dqlite__message_header_put(struct dqlite__message *m, uint8_t type, uint8_t
  */
 int dqlite__message_body_put_text(struct dqlite__message *m, text_t text);
 int dqlite__message_body_put_text_list(struct dqlite__message *m, text_list_t list);
+int dqlite__message_body_put_uint8(struct dqlite__message *m, uint8_t value);
+int dqlite__message_body_put_uint32(struct dqlite__message *m, uint32_t value);
 int dqlite__message_body_put_int64(struct dqlite__message *m, int64_t value);
 int dqlite__message_body_put_uint64(struct dqlite__message *m, uint64_t value);
 

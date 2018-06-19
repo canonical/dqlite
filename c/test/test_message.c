@@ -229,6 +229,72 @@ void test_dqlite__message_body_get_text_list_two_items()
 	sqlite3_free(list);
 }
 
+void test_dqlite__message_body_get_uint8_four_values()
+{
+	int err;
+	uint8_t buf;
+	uint8_t value;
+
+	message.words = 1;
+
+	buf = 12;
+	memcpy(message.body1, &buf, 1);
+
+	buf = 77;
+	memcpy(message.body1 + 1, &buf, 1);
+
+	buf = 128;
+	memcpy(message.body1 + 2, &buf, 1);
+
+	buf = 255;
+	memcpy(message.body1 + 3, &buf, 1);
+
+	err = dqlite__message_body_get_uint8(&message, &value);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(value, 12);
+
+	err = dqlite__message_body_get_uint8(&message, &value);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(value, 77);
+
+	err = dqlite__message_body_get_uint8(&message, &value);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(value, 128);
+
+	err = dqlite__message_body_get_uint8(&message, &value);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(value, 255);
+}
+
+void test_dqlite__message_body_get_uint32_two_values()
+{
+	int err;
+	uint32_t buf;
+	uint32_t value;
+
+	message.words = 1;
+
+	buf = dqlite__flip32(12);
+	memcpy(message.body1, &buf, 4);
+
+	buf = dqlite__flip32(77);
+	memcpy(message.body1 + 4, &buf, 4);
+
+	err = dqlite__message_body_get_uint32(&message, &value);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(value, 12);
+
+	err = dqlite__message_body_get_uint32(&message, &value);
+	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+
+	CU_ASSERT_EQUAL(value, 77);
+}
+
 void test_dqlite__message_body_get_int64_one_value()
 {
 	int err;
@@ -385,6 +451,54 @@ void test_dqlite__message_body_put_text_two()
 	CU_ASSERT_EQUAL(message.body1[8 + 6], 0);
 	CU_ASSERT_EQUAL(message.body1[8 + 7], 0);
 
+}
+
+void test_dqlite__message_body_put_uint8_four()
+{
+	int err;
+
+	err = dqlite__message_body_put_uint8(&message, 25);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(message.offset1, 1);
+
+	err = dqlite__message_body_put_uint8(&message, 50);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(message.offset1, 2);
+
+	err = dqlite__message_body_put_uint8(&message, 100);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(message.offset1, 3);
+
+	err = dqlite__message_body_put_uint8(&message, 200);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(message.offset1, 4);
+
+	CU_ASSERT_EQUAL(*(uint8_t*)(message.body1), 25);
+	CU_ASSERT_EQUAL(*(uint8_t*)(message.body1 + 1), 50);
+	CU_ASSERT_EQUAL(*(uint8_t*)(message.body1 + 2), 100);
+	CU_ASSERT_EQUAL(*(uint8_t*)(message.body1 + 3), 200);
+}
+
+void test_dqlite__message_body_put_uint32_two()
+{
+	int err;
+
+	err = dqlite__message_body_put_uint32(&message, 99);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(message.offset1, 4);
+
+	err = dqlite__message_body_put_uint32(&message, 66);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(message.offset1, 8);
+
+	CU_ASSERT_EQUAL(dqlite__flip32(*(uint32_t*)(message.body1)), 99);
+	CU_ASSERT_EQUAL(dqlite__flip32(*(uint32_t*)(message.body1 + 4)), 66);
 }
 
 void test_dqlite__message_body_put_int64_one()

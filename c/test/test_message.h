@@ -37,6 +37,8 @@ void test_dqlite__message_body_get_text_parse_error();
 void test_dqlite__message_body_get_text_from_dyn_buf();
 void test_dqlite__message_body_get_text_list_one_item();
 void test_dqlite__message_body_get_text_list_two_items();
+void test_dqlite__message_body_get_uint8_four_values();
+void test_dqlite__message_body_get_uint32_two_values();
 void test_dqlite__message_body_get_int64_one_value();
 void test_dqlite__message_body_get_int64_two_values();
 void test_dqlite__message_body_get_uint64_one_value();
@@ -49,6 +51,8 @@ CU_TestInfo dqlite__message_body_get_suite[] = {
 	{"text from dyn buf",   test_dqlite__message_body_get_text_from_dyn_buf},
 	{"text list one item",  test_dqlite__message_body_get_text_list_one_item},
 	{"text list two items", test_dqlite__message_body_get_text_list_two_items},
+	{"uint8 four values",   test_dqlite__message_body_get_uint8_four_values},
+	{"uint32 two values",   test_dqlite__message_body_get_uint32_two_values},
 	{"int64 one value",     test_dqlite__message_body_get_int64_one_value},
 	{"int64 two values",    test_dqlite__message_body_get_int64_two_values},
 	{"uint64 one value",    test_dqlite__message_body_get_uint64_one_value},
@@ -68,6 +72,8 @@ CU_TestInfo dqlite__message_header_put_suite[] = {
 void test_dqlite__message_body_put_text_one();
 void test_dqlite__message_body_put_text_one_no_pad();
 void test_dqlite__message_body_put_text_two();
+void test_dqlite__message_body_put_uint8_four();
+void test_dqlite__message_body_put_uint32_two();
 void test_dqlite__message_body_put_int64_one();
 void test_dqlite__message_body_put_uint64_one();
 void test_dqlite__message_body_put_dyn_buf();
@@ -76,6 +82,8 @@ CU_TestInfo dqlite__message_body_put_suite[] = {
 	{"text one",        test_dqlite__message_body_put_text_one},
 	{"text one no pad", test_dqlite__message_body_put_text_one_no_pad},
 	{"text two",        test_dqlite__message_body_put_text_two},
+	{"uint8 four ",     test_dqlite__message_body_put_uint8_four},
+	{"uint32 two ",     test_dqlite__message_body_put_uint32_two},
 	{"int64 one ",      test_dqlite__message_body_put_int64_one},
 	{"uint64 one ",     test_dqlite__message_body_put_uint64_one},
 	{"dyn buf",         test_dqlite__message_body_put_dyn_buf},
