@@ -42,11 +42,58 @@ int dqlite__db_open(
 	int flags,
 	const char *vfs)
 {
+	int rc;
+	sqlite3_stmt *stmt;
+	const char *tail;
+
 	assert(db != NULL);
 	assert(name != NULL);
 	assert(vfs != NULL);
 
-	return sqlite3_open_v2(name, &db->db, flags, vfs);
+	rc = sqlite3_open_v2(name, &db->db, flags, vfs);
+	if (rc != SQLITE_OK)
+		return rc;
+
+	/* Set the page size. TODO: make page size configurable? */
+	rc = sqlite3_prepare(db->db, "PRAGMA page_size=4096", -1, &stmt, &tail);
+	if (rc != SQLITE_OK)
+		return rc;
+
+	rc = sqlite3_step(stmt);
+	if (rc != SQLITE_DONE)
+		return rc;
+
+	rc = sqlite3_finalize(stmt);
+	if (rc != SQLITE_OK)
+		return rc;
+
+	/* Disable syncs. */
+	rc = sqlite3_prepare(db->db, "PRAGMA synchronous=OFF", -1, &stmt, &tail);
+	if (rc != SQLITE_OK)
+		return rc;
+
+	rc = sqlite3_step(stmt);
+	if (rc != SQLITE_DONE)
+		return rc;
+
+	rc = sqlite3_finalize(stmt);
+	if (rc != SQLITE_OK)
+		return rc;
+
+	/* Set WAL journaling. */
+	rc = sqlite3_prepare(db->db, "PRAGMA journal_mode=WAL", -1, &stmt, &tail);
+	if (rc != SQLITE_OK)
+		return rc;
+
+	rc = sqlite3_step(stmt);
+	if (rc != SQLITE_ROW)
+		return rc;
+
+	rc = sqlite3_finalize(stmt);
+	if (rc != SQLITE_OK)
+		return rc;
+
+	return rc;
 }
 
 int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint32_t *stmt_id)
