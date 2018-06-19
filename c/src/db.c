@@ -137,9 +137,34 @@ int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint32_t *stmt_id
 	return rc;
 }
 
-struct dqlite__stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t id)
+/* Lookup a stmt object by ID */
+struct dqlite__stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id)
 {
-	return dqlite__stmt_registry_get(&db->stmts, id);
+	return dqlite__stmt_registry_get(&db->stmts, stmt_id);
+}
+
+int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt, uint32_t stmt_id)
+{
+	int err;
+	int rc;
+
+	assert(db != NULL);
+	assert(stmt != NULL);
+	assert(stmt->stmt != NULL);
+
+	rc = sqlite3_finalize(stmt->stmt);
+
+	/* Unset the stmt member, to prevent dqlite__stmt_registry_del from
+	 * trying to finalize the statement too */
+	stmt->stmt = NULL;
+
+	err = dqlite__stmt_registry_del(&db->stmts, stmt_id);
+
+	/* Deleting the statement from the registry can't fail, because the
+	 * given statement ID was obtained with dqlite__db_stmt(). */
+	assert(err == 0);
+
+	return rc;
 }
 
 DQLITE__REGISTRY_METHODS(dqlite__db_registry, dqlite__db);

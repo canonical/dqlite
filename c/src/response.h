@@ -35,6 +35,9 @@
 	X(uint64, id,           __VA_ARGS__)	\
 	X(uint64, column_count, __VA_ARGS__)
 
+#define DQLITE__RESPONSE_SCHEMA_EMPTY(X, ...)	\
+	X(uint64, __unused__, __VA_ARGS__)
+
 DQLITE__SCHEMA_DEFINE(dqlite__response_welcome,  DQLITE__RESPONSE_SCHEMA_WELCOME);
 DQLITE__SCHEMA_DEFINE(dqlite__response_servers,  DQLITE__RESPONSE_SCHEMA_SERVERS);
 DQLITE__SCHEMA_DEFINE(dqlite__response_db_error, DQLITE__RESPONSE_SCHEMA_DB_ERROR);
@@ -42,6 +45,7 @@ DQLITE__SCHEMA_DEFINE(dqlite__response_db,       DQLITE__RESPONSE_SCHEMA_DB);
 DQLITE__SCHEMA_DEFINE(dqlite__response_stmt,     DQLITE__RESPONSE_SCHEMA_STMT);
 DQLITE__SCHEMA_DEFINE(dqlite__response_result,   DQLITE__RESPONSE_SCHEMA_RESULT);
 DQLITE__SCHEMA_DEFINE(dqlite__response_rows,     DQLITE__RESPONSE_SCHEMA_ROWS);
+DQLITE__SCHEMA_DEFINE(dqlite__response_empty,    DQLITE__RESPONSE_SCHEMA_EMPTY);
 
 #define DQLITE__RESPONSE_SCHEMA_TYPES(X, ...)				\
 	X(DQLITE_WELCOME,  dqlite__response_welcome,  welcome,  __VA_ARGS__) \
@@ -50,7 +54,8 @@ DQLITE__SCHEMA_DEFINE(dqlite__response_rows,     DQLITE__RESPONSE_SCHEMA_ROWS);
 	X(DQLITE_DB,       dqlite__response_db,       db,       __VA_ARGS__) \
 	X(DQLITE_STMT,     dqlite__response_stmt,     stmt,     __VA_ARGS__) \
 	X(DQLITE_RESULT,   dqlite__response_result,   result,   __VA_ARGS__) \
-	X(DQLITE_ROWS,     dqlite__response_rows,     rows,     __VA_ARGS__)
+	X(DQLITE_ROWS,     dqlite__response_rows,     rows,     __VA_ARGS__) \
+	X(DQLITE_EMPTY,    dqlite__response_empty,    empty,    __VA_ARGS__)
 
 DQLITE__SCHEMA_ENCODER_DEFINE(dqlite__response, DQLITE__RESPONSE_SCHEMA_TYPES);
 
