@@ -83,7 +83,7 @@ static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gatewa
 		db, ctx->request->open.name, ctx->request->open.flags, ctx->request->open.vfs);
 	if (rc == SQLITE_OK) {
 		ctx->response.type = DQLITE_DB;
-		ctx->response.db.id =  (uint64_t)i;
+		ctx->response.db.id =  (uint32_t)i;
 	} else {
 		dqlite__db_registry_del(&g->dbs, i);
 		dqlite__gateway_db_error(ctx, db->db, rc);
@@ -97,7 +97,7 @@ static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gat
 	int rc;
 
 	struct dqlite__db *db;
-	uint64_t stmt_id;
+	uint32_t stmt_id;
 
 	db = dqlite__db_registry_get(&g->dbs, ctx->request->prepare.db_id);
 	if (db == NULL) {
@@ -108,7 +108,8 @@ static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gat
 	rc = dqlite__db_prepare(db, ctx->request->prepare.sql, &stmt_id);
 	if (rc == SQLITE_OK) {
 		ctx->response.type = DQLITE_STMT;
-		ctx->response.stmt.id =  (uint64_t)stmt_id;
+		ctx->response.stmt.db_id =  ctx->request->prepare.db_id;
+		ctx->response.stmt.id =  stmt_id;
 	} else {
 		dqlite__gateway_db_error(ctx, db->db, rc);
 	}

@@ -131,6 +131,7 @@ void test_dqlite__gateway_prepare()
 	CU_ASSERT_PTR_NOT_NULL(response);
 	CU_ASSERT_EQUAL(response->type, DQLITE_STMT);
 
+	CU_ASSERT_EQUAL(response->stmt.db_id, 0);
 	CU_ASSERT_EQUAL(response->stmt.id, 0);
 }
 
