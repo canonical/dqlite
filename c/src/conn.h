@@ -27,8 +27,7 @@ struct dqlite__conn {
 
 	/* private */
 	struct dqlite__fsm      fsm;      /* Connection state machine */
-	struct dqlite__message  incoming; /* Incoming request message */
-	struct dqlite__message  outgoing; /* Outgoing response message */
+	struct dqlite__request  request;  /* Incoming request */
 	struct dqlite__gateway  gateway;  /* Client state and request handler */
 	FILE                   *log;      /* Log output stream */
 	int                     socket;   /* Socket file descriptor of client connection */

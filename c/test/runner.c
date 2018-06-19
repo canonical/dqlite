@@ -21,18 +21,18 @@
 
 /* All suites to run */
 static CU_SuiteInfo* test__runner_suites[] = {
-	/* dqlite__conn_suites, */
-	/* dqlite__db_suites, */
-	/* dqlite__error_suites, */
-	/* dqlite__gateway_suites, */
-	/* dqlite__message_suites, */
-	/* dqlite__queue_suites, */
-	/* dqlite__registry_suites, */
-	/* dqlite__request_suites, */
-	/* dqlite__response_suites, */
+	dqlite__conn_suites,
+	dqlite__db_suites,
+	dqlite__error_suites,
+	dqlite__gateway_suites,
+	dqlite__message_suites,
+	dqlite__queue_suites,
+	dqlite__registry_suites,
+	dqlite__request_suites,
+	dqlite__response_suites,
 	dqlite__schema_suites,
-	/* dqlite__vfs_suites, */
-	/* dqlite_suites, */
+	dqlite__vfs_suites,
+	dqlite_suites,
 	0,
 };
 

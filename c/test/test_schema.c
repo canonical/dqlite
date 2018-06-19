@@ -34,15 +34,11 @@ DQLITE__SCHEMA_ENCODER_IMPLEMENT(test_encoder, TEST_SCHEMA_TYPES);
 DQLITE__SCHEMA_DECODER_DEFINE(test_decoder, TEST_SCHEMA_TYPES);
 DQLITE__SCHEMA_DECODER_IMPLEMENT(test_decoder, TEST_SCHEMA_TYPES);
 
-static struct dqlite__message outgoing;
-static struct dqlite__message incoming;
 static struct test_encoder encoder;
 static struct test_decoder decoder;
 
 void test_dqlite__schema_setup()
 {
-	dqlite__message_init(&outgoing);
-	dqlite__message_init(&incoming);
 	test_encoder_init(&encoder);
 	test_decoder_init(&decoder);
 }
@@ -51,8 +47,6 @@ void test_dqlite__schema_teardown()
 {
 	test_decoder_close(&decoder);
 	test_encoder_close(&encoder);
-	dqlite__message_close(&incoming);
-	dqlite__message_close(&outgoing);
 }
 
 /*
@@ -67,14 +61,14 @@ void test_dqlite__schema_encoder_encode_two_uint64()
 	encoder.bar.i = 99;
 	encoder.bar.j = 17;
 
-	err = test_encoder_encode(&encoder, &outgoing);
+	err = test_encoder_encode(&encoder);
 	CU_ASSERT_EQUAL(err, 0);
 
-	CU_ASSERT_EQUAL(outgoing.type, TEST_BAR);
-	CU_ASSERT_EQUAL(outgoing.offset1, 16);
+	CU_ASSERT_EQUAL(encoder.message.type, TEST_BAR);
+	CU_ASSERT_EQUAL(encoder.message.offset1, 16);
 
-	CU_ASSERT_EQUAL(*(uint64_t*)outgoing.body1, 99);
-	CU_ASSERT_EQUAL(*(uint64_t*)(outgoing.body1 + 8), 17);
+	CU_ASSERT_EQUAL(*(uint64_t*)encoder.message.body1, 99);
+	CU_ASSERT_EQUAL(*(uint64_t*)(encoder.message.body1 + 8), 17);
 }
 
 void test_dqlite__schema_encoder_encode_uint64_and_text()
@@ -85,14 +79,14 @@ void test_dqlite__schema_encoder_encode_uint64_and_text()
 	encoder.foo.id = 123;
 	encoder.foo.name = "hello world!";
 
-	err = test_encoder_encode(&encoder, &outgoing);
+	err = test_encoder_encode(&encoder);
 	CU_ASSERT_EQUAL(err, 0);
 
-	CU_ASSERT_EQUAL(outgoing.type, TEST_FOO);
-	CU_ASSERT_EQUAL(outgoing.offset1, 24);
+	CU_ASSERT_EQUAL(encoder.message.type, TEST_FOO);
+	CU_ASSERT_EQUAL(encoder.message.offset1, 24);
 
-	CU_ASSERT_EQUAL(*(uint64_t*)outgoing.body1, 123);
-	CU_ASSERT_STRING_EQUAL((const char*)(outgoing.body1 + 8), "hello world!");
+	CU_ASSERT_EQUAL(*(uint64_t*)encoder.message.body1, 123);
+	CU_ASSERT_STRING_EQUAL((const char*)(encoder.message.body1 + 8), "hello world!");
 }
 
 void test_dqlite__schema_encoder_encode_unknown_type()
@@ -101,7 +95,7 @@ void test_dqlite__schema_encoder_encode_unknown_type()
 
 	encoder.type = 255;
 
-	err = test_encoder_encode(&encoder, &outgoing);
+	err = test_encoder_encode(&encoder);
 	CU_ASSERT_EQUAL(err, DQLITE_PROTO);
 
 	CU_ASSERT_STRING_EQUAL(encoder.error, "unknown message type 255");
@@ -114,13 +108,13 @@ void test_dqlite__schema_encoder_encode_unknown_type()
 void test_dqlite__schema_decoder_decode_invalid_text()
 {
 	int err;
-	incoming.type = TEST_FOO;
-	incoming.words = 2;
+	decoder.message.type = TEST_FOO;
+	decoder.message.words = 2;
 
-	*(uint64_t*)incoming.body1 = 123;
-	*(uint64_t*)(incoming.body1 + 8) = 0xffffffffffffffff;
+	*(uint64_t*)decoder.message.body1 = 123;
+	*(uint64_t*)(decoder.message.body1 + 8) = 0xffffffffffffffff;
 
-	err = test_decoder_decode(&decoder, &incoming);
+	err = test_decoder_decode(&decoder);
 	CU_ASSERT_EQUAL(err, DQLITE_PARSE);
 
 	CU_ASSERT_STRING_EQUAL(
@@ -131,10 +125,10 @@ void test_dqlite__schema_decoder_decode_invalid_text()
 void test_dqlite__schema_decoder_decode_unknown_type()
 {
 	int err;
-	incoming.type = 255;
-	incoming.words = 1;
+	decoder.message.type = 255;
+	decoder.message.words = 1;
 
-	err = test_decoder_decode(&decoder, &incoming);
+	err = test_decoder_decode(&decoder);
 	CU_ASSERT_EQUAL(err, DQLITE_PROTO);
 
 	CU_ASSERT_STRING_EQUAL(decoder.error, "unknown message type 255");
@@ -148,21 +142,21 @@ void test_dqlite__schema_decoder_decode_two_uint64()
 	encoder.bar.i = 99;
 	encoder.bar.j = 17;
 
-	err = test_encoder_encode(&encoder, &outgoing);
+	err = test_encoder_encode(&encoder);
 	CU_ASSERT_EQUAL(err, 0);
 
-	CU_ASSERT_EQUAL(outgoing.type, TEST_BAR);
+	CU_ASSERT_EQUAL(encoder.message.type, TEST_BAR);
 
-	test_message_send(&outgoing, &incoming);
+	test_message_send(&encoder.message, &decoder.message);
 
-	CU_ASSERT_EQUAL(incoming.type, TEST_BAR);
+	CU_ASSERT_EQUAL(decoder.message.type, TEST_BAR);
 
-	err = test_decoder_decode(&decoder, &incoming);
+	err = test_decoder_decode(&decoder);
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_EQUAL(decoder.bar.i, 99);
 	CU_ASSERT_EQUAL(decoder.bar.j, 17);
 
-	dqlite__message_recv_reset(&incoming);
-	dqlite__message_send_reset(&outgoing);
+	dqlite__message_recv_reset(&decoder.message);
+	dqlite__message_send_reset(&encoder.message);
 }

@@ -7,28 +7,25 @@
 
 #include "response.h"
 
-static struct dqlite__message message;
 static struct test_response response;
 
 void test_dqlite__response_setup()
 {
-	dqlite__message_init(&message);
 	test_response_init(&response);
 }
 
 void test_dqlite__response_teardown()
 {
 	test_response_close(&response);
-	dqlite__message_close(&message);
 }
 
 void test_dqlite__response_welcome()
 {
 	int err;
 
-	test_message_send_welcome(15000, "1.2.3.4:666", &message);
+	test_message_send_welcome(15000, "1.2.3.4:666", &response.message);
 
-	err = test_response_decode(&response, &message);
+	err = test_response_decode(&response);
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_EQUAL(response.welcome.heartbeat_timeout, 15000);
@@ -45,9 +42,9 @@ void test_dqlite__response_servers()
 		NULL
 	};
 
-	test_message_send_servers(addresses, &message);
+	test_message_send_servers(addresses, &response.message);
 
-	err = test_response_decode(&response, &message);
+	err = test_response_decode(&response);
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response.servers.addresses);
@@ -64,9 +61,9 @@ void test_dqlite__response_db()
 {
 	int err;
 
-	test_message_send_db(123, &message);
+	test_message_send_db(123, &response.message);
 
-	err = test_response_decode(&response, &message);
+	err = test_response_decode(&response);
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_EQUAL(response.db.id, 123);

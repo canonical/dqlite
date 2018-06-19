@@ -37,28 +37,25 @@ int test_client_handshake(struct test_client *c){
 
 #define TEST_CLIENT__INIT \
 	int err;				\
-	struct dqlite__message message;		\
 	struct test_request request;		\
 	uv_buf_t bufs[3];			\
-	dqlite__message_init(&message);		\
 	test_request_init(&request)
 
 #define TEST_CLIENT__WRITE \
-	dqlite__message_send_start(&message, bufs);	\
+	dqlite__message_send_start(&request.message, bufs);	\
 	err = write(c->fd, bufs[0].base, bufs[0].len); \
 	if( err<0 ){ \
 		test_suite_printf("failed to write request header: %s", strerror(errno)); \
-		dqlite__message_close(&message);			\
+		dqlite__message_close(&request.message);			\
 		return 1; \
 	} \
 	err = write(c->fd, bufs[1].base, bufs[1].len); \
 	if( err<0 ){ \
 		test_suite_printf("failed to write request body: %s", strerror(errno)); \
-		dqlite__message_close(&message);			\
+		dqlite__message_close(&request.message);			\
 		return 1; \
 	} \
 	test_request_close(&request); \
-	dqlite__message_close(&message); \
 	return 0
 
 int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
@@ -68,7 +65,7 @@ int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
 	request.type = DQLITE_HELO;
 	request.helo.client_id = 123;
 
-	err = test_request_encode(&request, &message);
+	err = test_request_encode(&request);
 	if (err != 0) {
 		test_suite_printf("failed to encode request: %s", &request.error);
 	}
