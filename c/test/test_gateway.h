@@ -16,6 +16,9 @@ void test_dqlite__gateway_prepare_invalid_db_id();
 void test_dqlite__gateway_exec();
 void test_dqlite__gateway_exec_with_params();
 void test_dqlite__gateway_exec_invalid_stmt_id();
+void test_dqlite__gateway_query();
+void test_dqlite__gateway_query_multi_column();
+void test_dqlite__gateway_query_multi_row();
 void test_dqlite__gateway_finalize();
 
 CU_TestInfo dqlite__gateway_handle_suite[] = {
@@ -29,7 +32,10 @@ CU_TestInfo dqlite__gateway_handle_suite[] = {
 	{"exec" ,                 test_dqlite__gateway_exec},
 	{"exec with params",      test_dqlite__gateway_exec_with_params},
 	{"exec invalid stmt id",  test_dqlite__gateway_exec_invalid_stmt_id},
-	{"finalize" ,             test_dqlite__gateway_finalize},
+	{"query",                 test_dqlite__gateway_query},
+	{"query multi column",    test_dqlite__gateway_query_multi_column},
+	{"query multi row",       test_dqlite__gateway_query_multi_row},
+	{"finalize",              test_dqlite__gateway_finalize},
 	CU_TEST_INFO_NULL,
 };
 
