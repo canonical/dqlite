@@ -1,5 +1,6 @@
 package dump
 
+/*
 import (
 	"fmt"
 	"io"
@@ -103,3 +104,4 @@ func dumpEnd(params *protocol.End) string {
 func dumpCheckpoint(params *protocol.Checkpoint) string {
 	return fmt.Sprintf("file: %-8s", params.Name)
 }
+*/

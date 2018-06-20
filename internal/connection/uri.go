@@ -1,5 +1,6 @@
 package connection
 
+/*
 import (
 	"fmt"
 	"net/url"
@@ -54,3 +55,4 @@ func EncodeURI(filename, query string) string {
 	}
 	return filename + query
 }
+*/

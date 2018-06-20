@@ -1,5 +1,6 @@
 package registry_test
 
+/*
 import (
 	"io/ioutil"
 	"os"
@@ -39,3 +40,4 @@ func newRegistry(t *testing.T) (*registry.Registry, func()) {
 
 	return registry, cleanup
 }
+*/

@@ -14,6 +14,7 @@
 
 package dqlite
 
+/*
 import (
 	"context"
 	"database/sql/driver"
@@ -470,3 +471,4 @@ type barrier func() error
 const raftLeader = raft.Leader
 
 var raftErrLeadershipLost = raft.ErrLeadershipLost
+*/

@@ -1,5 +1,6 @@
 package transaction
 
+/*
 import (
 	"github.com/ryanfaerman/fsm"
 )
@@ -54,3 +55,4 @@ func (s *state) CurrentState() fsm.State {
 func (s *state) SetState(state fsm.State) {
 	s.state = state
 }
+*/

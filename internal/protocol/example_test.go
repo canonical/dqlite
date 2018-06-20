@@ -13,6 +13,7 @@
 // limitations under the License.
 package protocol_test
 
+/*
 import (
 	"fmt"
 	"log"
@@ -41,3 +42,4 @@ func Example() {
 	fmt.Println(cmd.Name())
 	fmt.Println(params.Open.Name)
 }
+*/

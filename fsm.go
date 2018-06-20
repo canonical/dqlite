@@ -1,5 +1,6 @@
 package dqlite
 
+/*
 import (
 	"github.com/CanonicalLtd/dqlite/internal/registry"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
@@ -16,3 +17,4 @@ import (
 func NewFSM(r *Registry) raft.FSM {
 	return replication.NewFSM((*registry.Registry)(r))
 }
+*/

@@ -14,6 +14,7 @@
 
 package registry
 
+/*
 import (
 	"reflect"
 	"sync"
@@ -189,3 +190,4 @@ func (s *hookSync) Done() {
 		s.wg.Done()
 	}
 }
+*/

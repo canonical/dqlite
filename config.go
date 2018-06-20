@@ -1,5 +1,6 @@
 package dqlite
 
+/*
 import (
 	"fmt"
 	"os"
@@ -27,3 +28,4 @@ func ensureDir(dir string) error {
 	}
 	return nil
 }
+*/

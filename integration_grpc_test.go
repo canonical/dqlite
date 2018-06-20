@@ -14,6 +14,7 @@
 
 package dqlite_test
 
+/*
 import (
 	"database/sql"
 	"database/sql/driver"
@@ -159,3 +160,4 @@ func newGrpcCluster(t *testing.T) ([]*sql.DB, func()) {
 
 	return dbs, cleanup
 }
+*/

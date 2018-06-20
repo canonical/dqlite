@@ -1,5 +1,6 @@
 package connection
 
+/*
 import (
 	"fmt"
 	"io/ioutil"
@@ -104,3 +105,4 @@ func newBackupPath(path string) (string, error) {
 
 	return file.Name(), nil
 }
+*/
