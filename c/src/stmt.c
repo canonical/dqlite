@@ -13,25 +13,25 @@
  * can fit in one byte. */
 #define DQLITE__STMT_MAX_COLUMNS (1 << 8) - 1
 
-void dqlite__stmt_init(struct dqlite__stmt *stmt)
+void dqlite__stmt_init(struct dqlite__stmt *s)
 {
-	assert(stmt != NULL);
+	assert(s != NULL);
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_STMT);
 
-	dqlite__error_init(&stmt->error);
+	dqlite__error_init(&s->error);
 }
 
-void dqlite__stmt_close(struct dqlite__stmt *stmt)
+void dqlite__stmt_close(struct dqlite__stmt *s)
 {
-	assert(stmt != NULL);
+	assert(s != NULL);
 
-	if (stmt->stmt != NULL) {
+	if (s->stmt != NULL) {
 		/* Ignore the return code, since it will be non-zero in case the
 		 * most rececent evaluation of the statement failed. */
-		sqlite3_finalize(stmt->stmt); }
+		sqlite3_finalize(s->stmt); }
 
-	dqlite__error_close(&stmt->error);
+	dqlite__error_close(&s->error);
 
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_STMT);
 }
@@ -50,6 +50,7 @@ int dqlite__stmt_bind(
 	assert(s != NULL);
 	assert(s->stmt != NULL);
 	assert(message != NULL);
+	assert(rc != NULL);
 
 	err = dqlite__message_body_get_uint8(message, &param_count);
 
@@ -141,21 +142,161 @@ int dqlite__stmt_bind(
 }
 
 int dqlite__stmt_exec(
-	struct dqlite__stmt *stmt,
+	struct dqlite__stmt *s,
 	uint64_t *last_insert_id,
 	uint64_t *rows_affected)
 {
 	int rc;
 
-	assert(stmt != NULL);
-	assert(stmt->stmt != NULL);
+	assert(s != NULL);
+	assert(s->stmt != NULL);
 
-	rc = sqlite3_step(stmt->stmt);
+	rc = sqlite3_step(s->stmt);
 	if (rc != SQLITE_DONE)
 		return rc;
 
-	*last_insert_id = sqlite3_last_insert_rowid(stmt->db);
-	*rows_affected = sqlite3_changes(stmt->db);
+	*last_insert_id = sqlite3_last_insert_rowid(s->db);
+	*rows_affected = sqlite3_changes(s->db);
+
+	return 0;
+}
+
+static int dqlite__stmt_put_row(
+	struct dqlite__stmt *s,
+	struct dqlite__message *message,
+	int column_count)
+{
+	int err;
+	int i;
+	int pad;
+	uint8_t slot;
+	int header_bits;
+	int *column_types;
+
+	assert(s != NULL);
+	assert(message != NULL);
+	assert(column_count > 0);
+
+	/* Allocate an array to store the column column_types */
+	column_types = (int*)sqlite3_malloc(column_count * sizeof(*column_types));
+	if (column_types == NULL) {
+		dqlite__error_oom(&s->error, "failed to create column column_types array");
+		return DQLITE_NOMEM;
+	}
+
+	/* Each column needs a 4 byte slot to store the column type. The row
+	 * header must be padded to reach word boundary. */
+	header_bits = column_count * 4;
+	if ((header_bits % DQLITE__MESSAGE_WORD_BITS) != 0) {
+		pad = (DQLITE__MESSAGE_WORD_BITS - (header_bits % DQLITE__MESSAGE_WORD_BITS)) / 4;
+	} else {
+		pad = 0;
+	}
+
+	/* Write the row header */
+	for (i = 0; i < column_count + pad; i++) {
+		int column_type;
+
+		if (i < column_count) {
+			/* Actual column, fetch the type */
+			column_type = sqlite3_column_type(s->stmt, i);
+			assert(column_type < 16);
+			column_types[i] = column_type;
+		} else {
+			/* Padding */
+			column_type = 0;
+		}
+
+		if (i % 2 == 0) {
+			/* Fill the lower 4 bits of the slot */
+			slot = column_type;
+		} else {
+			/* Fill the higher 4 bits of the slot and flush it */
+			slot |= column_type << 4;
+			err = dqlite__message_body_put_uint8(message, slot);
+			if (err != 0) {
+				assert(err == DQLITE_NOMEM);
+				dqlite__error_wrapf(
+					&s->error, &message->error,
+					"failed to write row header");
+				goto out;
+			}
+		}
+	}
+
+	/* Write the row columns */
+	for (i = 0; i < column_count; i++) {
+		int64_t integer;
+		double float_;
+		text_t text;
+
+		switch (column_types[i]) {
+		case SQLITE_INTEGER:
+			integer = sqlite3_column_int64(s->stmt, i);
+			err = dqlite__message_body_put_int64(message, integer);
+			break;
+		case SQLITE_FLOAT:
+			float_ = sqlite3_column_double(s->stmt, i);
+			err = dqlite__message_body_put_double(message, float_);
+			break;
+		case SQLITE_BLOB:
+			assert(0); /* TODO */
+			break;
+		case SQLITE_NULL:
+			/* TODO: allow null to be encoded with 0 bytes */
+			err = dqlite__message_body_put_int64(message, 0);
+			break;
+		case SQLITE_TEXT:
+			text = (text_t)sqlite3_column_text(s->stmt, i);
+			err = dqlite__message_body_put_text(message, text);
+			break;
+		default:
+			dqlite__error_printf(&s->error, "unknown type %d for column %d", column_types[i], i);
+			err = DQLITE_ERROR;
+			goto out;
+		}
+
+		if (err != 0) {
+			break;
+		}
+	}
+
+ out:
+	sqlite3_free(column_types);
+
+	return err;
+}
+
+int dqlite__stmt_query(
+	struct dqlite__stmt *s,
+	struct dqlite__message *message,
+	int *rc)
+{
+	int err;
+	int column_count;
+
+	assert(s != NULL);
+	assert(s->stmt != NULL);
+	assert(message != NULL);
+	assert(rc != NULL);
+
+	column_count = sqlite3_column_count(s->stmt);
+	if (column_count <= 0) {
+		dqlite__error_printf(&s->error, "stmt doesn't yield any column");
+	}
+
+	err = 0; /* In case there's no row and the loop breaks immediately */
+	do {
+		*rc = sqlite3_step(s->stmt);
+		if (*rc != SQLITE_ROW)
+			break;
+
+		err = dqlite__stmt_put_row(s, message, column_count);
+		if (err != 0) {
+			return err;
+		}
+
+	} while (1);
 
 	return 0;
 }

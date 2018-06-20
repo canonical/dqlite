@@ -140,7 +140,7 @@ static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gatewa
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->exec.db_id);
 	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->exec.stmt_id);
 
-	assert(stmt->stmt != NULL);
+	assert(stmt != NULL);
 
 	err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
 	if (err != 0) {
@@ -177,12 +177,11 @@ static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gatew
 	int rc;
 	struct dqlite__db *db;
 	struct dqlite__stmt *stmt;
-	int column_count;
 
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->query.db_id);
 	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->query.stmt_id);
 
-	assert(stmt->stmt != NULL);
+	assert(stmt != NULL);
 
 	err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
 	if (err != 0) {
@@ -201,9 +200,17 @@ static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gatew
 		return 0;
 	}
 
-	column_count = sqlite3_column_count(stmt->stmt);
-	if (column_count <= 0) {
-		dqlite__error_printf(&g->error, "stmt doesn't yield any column");
+	err = dqlite__stmt_query(stmt, &ctx->response.message, &rc);
+	if (err != 0) {
+		dqlite__error_wrapf(&g->error, &stmt->error, "failed to fetch rows");
+		return err;
+	}
+
+	if (rc != SQLITE_DONE) {
+		/* TODO: reset what was written in the message */
+		dqlite__gateway_db_error(ctx, db->db, rc);
+	} else {
+		ctx->response.type = DQLITE_ROWS;
 	}
 
 	return 0;
@@ -340,10 +347,23 @@ int dqlite__gateway_continue(struct dqlite__gateway *g, struct dqlite__response 
 
 void dqlite__gateway_finish(struct dqlite__gateway *g, struct dqlite__response *response)
 {
+	int i;
+
 	assert(g != NULL);
 	assert(response != NULL);
 
-	dqlite__debugf(g, "request finished", "");
+	/* Reset the request associated with this response */
+	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
+		if (&g->ctxs[i].response == response) {
+			g->ctxs[i].request = NULL;
+			break;
+		}
+	}
+
+	/* Assert that an associated request was indeed found */
+	assert(i < DQLITE__GATEWAY_MAX_REQUESTS);
+
+	dqlite__debugf(g, "request finished", "index=%d", i);
 }
 
 void dqlite__gateway_abort(struct dqlite__gateway *g, struct dqlite__response *response){

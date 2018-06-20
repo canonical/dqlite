@@ -27,6 +27,9 @@
  */
 #define DQLITE__MESSAGE_WORD_SIZE 8
 
+/* The size in bits of a single word in the message body */
+#define DQLITE__MESSAGE_WORD_BITS 64
+
 /* Type aliases to used by macro-based definitions in schema.h */
 typedef const char*  text_t;
 typedef const char** text_list_t;

@@ -14,8 +14,8 @@ struct dqlite__stmt {
 	dqlite__error  error; /* Last dqlite-speific error */
 };
 
-void dqlite__stmt_init(struct dqlite__stmt *stmt);
-void dqlite__stmt_close(struct dqlite__stmt *stmt);
+void dqlite__stmt_init(struct dqlite__stmt *s);
+void dqlite__stmt_close(struct dqlite__stmt *s);
 
 int dqlite__stmt_bind(
 	struct dqlite__stmt *s,
@@ -23,11 +23,14 @@ int dqlite__stmt_bind(
 	int *rc);
 
 int dqlite__stmt_exec(
-	struct dqlite__stmt *stmt,
+	struct dqlite__stmt *s,
 	uint64_t *last_insert_id,
 	uint64_t *rows_affected);
 
-int dqlite__stmt_query(struct dqlite__stmt *stmt);
+int dqlite__stmt_query(
+	struct dqlite__stmt *s,
+	struct dqlite__message *message,
+	int *rc);
 
 DQLITE__REGISTRY(dqlite__stmt_registry, dqlite__stmt);
 
