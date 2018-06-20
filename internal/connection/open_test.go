@@ -1,5 +1,6 @@
 package connection_test
 
+/*
 import (
 	"fmt"
 	"io/ioutil"
@@ -85,3 +86,4 @@ func newDir() (string, func()) {
 
 	return dir, cleanup
 }
+*/

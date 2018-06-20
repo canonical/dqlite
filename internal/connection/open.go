@@ -1,5 +1,6 @@
 package connection
 
+/*
 import (
 	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/pkg/errors"
@@ -72,3 +73,4 @@ func open(dsn string) (*sqlite3.SQLiteConn, error) {
 
 	return sqliteConn, nil
 }
+*/

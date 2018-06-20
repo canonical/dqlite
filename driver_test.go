@@ -14,6 +14,7 @@
 
 package dqlite_test
 
+/*
 import (
 	"bytes"
 	"fmt"
@@ -338,3 +339,4 @@ func (w *testingWriter) Write(p []byte) (n int, err error) {
 	w.t.Logf(string(p))
 	return len(p), nil
 }
+*/

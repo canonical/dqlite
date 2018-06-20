@@ -14,6 +14,7 @@
 
 package registry
 
+/*
 import (
 	"fmt"
 	"sync/atomic"
@@ -152,3 +153,4 @@ func (r *Registry) connDel(conn *sqlite3.SQLiteConn) {
 // Monotonic counter for identifying connections for tracing and debugging
 // purposes.
 var serial uint64
+*/

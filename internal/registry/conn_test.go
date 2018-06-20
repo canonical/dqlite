@@ -14,6 +14,7 @@
 
 package registry_test
 
+/*
 import (
 	"fmt"
 
@@ -159,3 +160,4 @@ func newConn() *sqlite3.SQLiteConn {
 	}
 	return conn.(*sqlite3.SQLiteConn)
 }
+*/

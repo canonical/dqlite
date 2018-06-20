@@ -14,6 +14,7 @@
 
 package registry
 
+/*
 import (
 	"fmt"
 
@@ -34,3 +35,4 @@ func (r *Registry) TracerConn(conn *sqlite3.SQLiteConn, hook string) *trace.Trac
 	tracer := r.tracers.Get(fmt.Sprintf("methods %d", r.ConnSerial(conn)))
 	return tracer.With(trace.String("hook", hook))
 }
+*/

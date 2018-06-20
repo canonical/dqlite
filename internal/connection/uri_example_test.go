@@ -1,5 +1,6 @@
 package connection_test
 
+/*
 import (
 	"fmt"
 	"log"
@@ -21,3 +22,4 @@ func ExampleURI() {
 	fmt.Println(query)
 	fmt.Println(connection.EncodeURI(filename, query))
 }
+*/

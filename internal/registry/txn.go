@@ -14,6 +14,7 @@
 
 package registry
 
+/*
 import (
 	"fmt"
 
@@ -216,3 +217,4 @@ func (r *Registry) txnAdd(conn *sqlite3.SQLiteConn, id uint64, isLeader bool) *t
 
 	return txn
 }
+*/

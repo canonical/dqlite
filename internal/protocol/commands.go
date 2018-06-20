@@ -1,5 +1,6 @@
 package protocol
 
+/*
 import (
 	"reflect"
 	"strings"
@@ -93,3 +94,4 @@ func (c *Command) Name() string {
 	typeName := reflect.TypeOf(c.Payload).Elem().String()
 	return strings.ToLower(strings.Replace(typeName, "protocol.Command_", "", 1))
 }
+*/

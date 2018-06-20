@@ -18,6 +18,7 @@
 
 package dqlite_test
 
+/*
 import (
 	"database/sql"
 	"database/sql/driver"
@@ -119,3 +120,4 @@ func newDrivers(t *testing.T) ([]driver.Driver, map[raft.ServerID]*raft.Raft, fu
 }
 
 var driversCount = 0
+*/

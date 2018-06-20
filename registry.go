@@ -1,5 +1,6 @@
 package dqlite
 
+/*
 import (
 	"github.com/CanonicalLtd/dqlite/internal/registry"
 )
@@ -15,3 +16,4 @@ type Registry registry.Registry
 func NewRegistry(dir string) *Registry {
 	return (*Registry)(registry.New(dir))
 }
+*/

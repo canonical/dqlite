@@ -14,6 +14,7 @@
 
 package replication
 
+/*
 import (
 	"bufio"
 	"bytes"
@@ -639,17 +640,16 @@ func (f *FSM) restoreDatabase(tracer *trace.Tracer, reader io.ReadCloser) (bool,
 	f.registry.ConnFollowerAdd(filename, conn)
 
 	if txid != "" {
-		/*
-			txid, err := strconv.ParseUint(txid, 10, 64)
-			if err != nil {
-				return false, err
-			}
-			tracer.Message("add transaction: %d", txid)
-			conn := f.registry.ConnFollower(filename)
-			txn := f.registry.TxnFollowerAdd(conn, txid)
-			if err := txn.Begin(); err != nil {
-				return false, err
-			}*/
+			// txid, err := strconv.ParseUint(txid, 10, 64)
+			// if err != nil {
+			// 	return false, err
+			// }
+			// tracer.Message("add transaction: %d", txid)
+			// conn := f.registry.ConnFollower(filename)
+			// txn := f.registry.TxnFollowerAdd(conn, txid)
+			// if err := txn.Begin(); err != nil {
+			// 	return false, err
+			// }
 	}
 
 	return done, nil
@@ -754,3 +754,4 @@ type fsmDatabaseSnapshot struct {
 	wal      []byte
 	txid     string
 }
+*/

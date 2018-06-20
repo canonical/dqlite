@@ -1,5 +1,6 @@
 package transaction_test
 
+/*
 import (
 	"encoding/base64"
 	"strings"
@@ -408,3 +409,4 @@ CQ==
 		4,
 	},
 }
+*/

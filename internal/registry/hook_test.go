@@ -14,6 +14,7 @@
 
 package registry_test
 
+/*
 import (
 	"io"
 	"io/ioutil"
@@ -270,3 +271,4 @@ func (s *testHookSyncSnapshot) Persist(sink raft.SnapshotSink) error { return ni
 
 // Release is a no-op.
 func (s *testHookSyncSnapshot) Release() {}
+*/

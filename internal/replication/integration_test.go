@@ -14,6 +14,7 @@
 
 package replication_test
 
+/*
 import (
 	"database/sql/driver"
 	"fmt"
@@ -1862,3 +1863,4 @@ func readDatabaseFile(t *testing.T, dir string) []byte {
 	require.NoError(t, err)
 	return data
 }
+*/

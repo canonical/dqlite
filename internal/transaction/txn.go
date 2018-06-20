@@ -1,5 +1,6 @@
 package transaction
 
+/*
 import (
 	"fmt"
 
@@ -246,3 +247,4 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 
 	return err
 }
+*/

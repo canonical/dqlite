@@ -1,5 +1,6 @@
 package registry
 
+/*
 // Index returns the last Raft log index that was successfully applied the FSM.
 func (r *Registry) Index() uint64 {
 	return r.index
@@ -27,3 +28,4 @@ func (r *Registry) FramesIncrease(n uint64) {
 func (r *Registry) FramesReset() {
 	r.frames = 0
 }
+*/

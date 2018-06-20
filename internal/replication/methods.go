@@ -14,6 +14,7 @@
 
 package replication
 
+/*
 import (
 	"sync"
 	"time"
@@ -809,3 +810,4 @@ func isErrLeadershipLost(err error) bool {
 	}
 	return false
 }
+*/

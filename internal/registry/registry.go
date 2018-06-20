@@ -14,6 +14,7 @@
 
 package registry
 
+/*
 import (
 	"bytes"
 	"fmt"
@@ -147,3 +148,4 @@ func (r *Registry) Dump() string {
 // large enough for any real-world situation, where it's unlikely that a client
 // tries to recover a transaction that is so old.
 const committedBufferSize = 10000
+*/
