@@ -74,7 +74,8 @@ void test_dqlite_start(){
   int err;
   char *leader;
   uint8_t heartbeat;
-  uint64_t id;
+  uint32_t db_id;
+  uint32_t stmt_id;
 
   err = test_client_handshake(client);
   CU_ASSERT_EQUAL(err, 0);
@@ -82,8 +83,43 @@ void test_dqlite_start(){
   err = test_client_helo(client, &leader, &heartbeat);
   CU_ASSERT_EQUAL(err, 0);
 
-  //err = test_client_open(client, "test.db", &id);
-  //CU_ASSERT_EQUAL(err, 0);
+  err = test_client_open(client, "test.db", &db_id);
+  CU_ASSERT_EQUAL(err, 0);
+
+  CU_ASSERT_EQUAL(db_id, 0);
+
+  err = test_client_prepare(client, db_id, "CREATE TABLE test (n INT)", &stmt_id);
+  CU_ASSERT_EQUAL(err, 0);
+
+  CU_ASSERT_EQUAL(stmt_id, 0);
+
+  err = test_client_exec(client, db_id, stmt_id);
+  CU_ASSERT_EQUAL(err, 0);
+
+  err = test_client_finalize(client, db_id, stmt_id);
+  CU_ASSERT_EQUAL(err, 0);
+
+  err = test_client_prepare(client, db_id, "INSERT INTO test VALUES(123)", &stmt_id);
+  CU_ASSERT_EQUAL(err, 0);
+
+  CU_ASSERT_EQUAL(stmt_id, 0);
+
+  err = test_client_exec(client, db_id, stmt_id);
+  CU_ASSERT_EQUAL(err, 0);
+
+  err = test_client_finalize(client, db_id, stmt_id);
+  CU_ASSERT_EQUAL(err, 0);
+
+  err = test_client_prepare(client, db_id, "SELECT n FROM test", &stmt_id);
+  CU_ASSERT_EQUAL(err, 0);
+
+  CU_ASSERT_EQUAL(stmt_id, 0);
+
+  err = test_client_query(client, db_id, stmt_id);
+  CU_ASSERT_EQUAL(err, 0);
+
+  err = test_client_finalize(client, db_id, stmt_id);
+  CU_ASSERT_EQUAL(err, 0);
 }
 
 void test_dqlite_stop(){

@@ -24,7 +24,11 @@ void test_client_close(struct test_client *c);
  */
 int test_client_handshake(struct test_client* c);
 
-int test_client_open(struct test_client *c, const char *name, uint64_t *id);
+int test_client_open(struct test_client *c, const char *name, uint32_t *db_id);
+int test_client_prepare(struct test_client *c, uint32_t db_id, const char *sql, uint32_t *stmt_id);
+int test_client_exec(struct test_client *c, uint32_t db_id, uint32_t stmt_id);
+int test_client_query(struct test_client *c, uint32_t db_id, uint32_t stmt_id);
+int test_client_finalize(struct test_client *c, uint32_t db_id, uint32_t stmt_id);
 
 /*
  * Send a Helo request.

@@ -174,15 +174,15 @@ static int dqlite__message_get(struct dqlite__message *m, const char **dst, size
 	/* Calculate the number of words that we read so far */
 	words = offset / DQLITE__MESSAGE_WORD_SIZE;
 
-	/* Check if reached the end of the message */
-	if (words == m->words) {
-		return DQLITE_EOM;
-	}
-
 	if (m->body2.base == NULL)
 		m->offset1 = offset;
 	else
 		m->offset2 = offset;
+
+	/* Check if reached the end of the message */
+	if (words == m->words) {
+		return DQLITE_EOM;
+	}
 
 	return 0;
 }

@@ -176,7 +176,7 @@ static int dqlite__conn_body_alloc_cb(void *arg)
 		return err;
 	}
 
-	dqlite__debugf(c, "header alloc", "socket=%d len=%ld", c->socket, buf.len);
+	dqlite__debugf(c, "body alloc", "socket=%d len=%ld", c->socket, buf.len);
 
 	dqlite__conn_buf_init(c, &buf);
 
