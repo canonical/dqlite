@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"encoding/binary"
 	"net"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 )
 
 func TestServer(t *testing.T) {
+	protocol := server.Protocol
 	server, err := server.New()
 	require.NoError(t, err)
 	defer server.Stop()
@@ -26,9 +28,7 @@ func TestServer(t *testing.T) {
 	conn, err := net.Dial("tcp", listener.Addr().String())
 	require.NoError(t, err)
 
-	conn.Write([]byte{0x39, 0xea, 0x93, 0xbf})
-	//n, err := conn.Write([]byte("hello"))
-	//require.NoError(t, err)
-	//require.Equal(t, 5, n)
+	err = binary.Write(conn, binary.LittleEndian, protocol)
+	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
 }

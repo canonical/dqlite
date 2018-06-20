@@ -8,17 +8,32 @@ package server
 
 #include <dqlite.h>
 
-static dqlite* dqliteCreateWrapper() {
-  int     err;
-  dqlite *d;
+const char *test__cluster_leader(void *ctx)
+{
+  return "127.0.0.1:666";
+}
 
-  err = dqlite_create(stdout, &d);
-  assert( !err );
+const char **test__cluster_servers(void *ctx)
+{
+	static const char *addresses[] = {
+		"1.2.3.4:666",
+		"5.6.7.8:666",
+		NULL,
+	};
 
-  err = dqlite_init(d);
-  assert( !err );
+	return addresses;
+}
 
-  return d;
+static dqlite_cluster test__cluster = {
+  0,
+  test__cluster_leader,
+  test__cluster_servers,
+  0,
+};
+
+dqlite_cluster* test_cluster()
+{
+	return &test__cluster;
 }
 
 */
@@ -26,20 +41,35 @@ import "C"
 import (
 	"fmt"
 	"net"
+	"os"
 	"runtime"
 )
 
 // Server wraps a C dqlite instance.
 type Server struct {
-	dqlite *C.dqlite
-	stopCh chan struct{}
+	service *C.dqlite_service
+	stopCh  chan struct{}
 }
 
 // New creates a new dqlite server.
 func New() (*Server, error) {
+	log := os.Stdout.Fd()
+
+	service := C.dqlite_service_alloc()
+	if service == nil {
+		return nil, fmt.Errorf("out of memory")
+	}
+
+	file := C.fdopen(C.int(log), C.CString("w"))
+	if file == nil {
+		return nil, fmt.Errorf("out of memory")
+	}
+
+	C.dqlite_service_init(service, file, C.test_cluster())
+
 	server := &Server{
-		dqlite: C.dqliteCreateWrapper(),
-		stopCh: make(chan struct{}),
+		service: service,
+		stopCh:  make(chan struct{}),
 	}
 
 	go server.run()
@@ -59,12 +89,10 @@ func (s *Server) Handle(conn net.Conn) error {
 	var errmsg *C.char
 	var rc C.int
 
-	rc = C.dqlite_handle(s.dqlite, C.int(fd), &errmsg)
+	rc = C.dqlite_service_handle(s.service, C.int(fd), &errmsg)
 	if rc != 0 {
 		return fmt.Errorf(C.GoString(errmsg))
 	}
-
-	conn.Write([]byte{0x39, 0xea, 0x93, 0xbf})
 
 	return nil
 }
@@ -74,12 +102,15 @@ func (s *Server) Stop() error {
 	var errmsg *C.char
 	var rc C.int
 
-	rc = C.dqlite_stop(s.dqlite, &errmsg)
+	rc = C.dqlite_service_stop(s.service, &errmsg)
 	if rc != 0 {
 		return fmt.Errorf(C.GoString(errmsg))
 	}
 
 	<-s.stopCh
+
+	C.dqlite_service_close(s.service)
+	C.dqlite_service_free(s.service)
 
 	return nil
 }
@@ -87,6 +118,10 @@ func (s *Server) Stop() error {
 func (s *Server) run() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	C.dqlite_run(s.dqlite)
+
+	C.dqlite_service_run(s.service)
 	close(s.stopCh)
 }
+
+// Protocol version.
+const Protocol = uint64(C.DQLITE_PROTOCOL_VERSION)
