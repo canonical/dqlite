@@ -38,7 +38,7 @@ void test_dqlite__request_teardown()
 /* void test_dqlite__request_old_body_received_malformed_helo() */
 /* { */
 /* 	int err; */
-/* 	request.message.type = DQLITE_HELO; */
+/* 	request.message.type = DQLITE_REQUEST_HELO; */
 /* 	request.message.words = 2; */
 
 /* 	err = dqlite__request_old_body_received(&request); */
@@ -50,7 +50,7 @@ void test_dqlite__request_teardown()
 /* void test_dqlite__request_old_body_received_malformed_heartbeat() */
 /* { */
 /* 	int err; */
-/* 	request.message.type = DQLITE_HEARTBEAT; */
+/* 	request.message.type = DQLITE_REQUEST_HEARTBEAT; */
 /* 	request.message.words = 2; */
 
 /* 	err = dqlite__request_old_body_received(&request); */

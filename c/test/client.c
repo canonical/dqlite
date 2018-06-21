@@ -110,7 +110,7 @@ int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
 {
 	TEST_CLIENT__INIT;
 
-	request.type = DQLITE_HELO;
+	request.type = DQLITE_REQUEST_HELO;
 	request.helo.client_id = 123;
 
 	TEST_CLIENT__WRITE;
@@ -123,7 +123,7 @@ int test_client_open(struct test_client *c, const char *name, uint32_t *db_id)
 {
 	TEST_CLIENT__INIT;
 
-	request.type = DQLITE_OPEN;
+	request.type = DQLITE_REQUEST_OPEN;
 	request.open.name = "test.db";
 	request.open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	request.open.vfs = "volatile";
@@ -140,7 +140,7 @@ int test_client_prepare(struct test_client *c, uint32_t db_id, const char *sql, 
 {
 	TEST_CLIENT__INIT;
 
-	request.type = DQLITE_PREPARE;
+	request.type = DQLITE_REQUEST_PREPARE;
 	request.prepare.db_id = db_id;
 	request.prepare.sql = sql;
 
@@ -156,7 +156,7 @@ int test_client_exec(struct test_client *c, uint32_t db_id, uint32_t stmt_id)
 {
 	TEST_CLIENT__INIT;
 
-	request.type = DQLITE_EXEC;
+	request.type = DQLITE_REQUEST_EXEC;
 	request.exec.db_id = db_id;
 	request.exec.stmt_id = stmt_id;
 
@@ -170,7 +170,7 @@ int test_client_query(struct test_client *c, uint32_t db_id, uint32_t stmt_id)
 {
 	TEST_CLIENT__INIT;
 
-	request.type = DQLITE_QUERY;
+	request.type = DQLITE_REQUEST_QUERY;
 	request.exec.db_id = db_id;
 	request.exec.stmt_id = stmt_id;
 
@@ -184,7 +184,7 @@ int test_client_finalize(struct test_client *c, uint32_t db_id, uint32_t stmt_id
 {
 	TEST_CLIENT__INIT;
 
-	request.type = DQLITE_FINALIZE;
+	request.type = DQLITE_REQUEST_FINALIZE;
 	request.finalize.db_id = db_id;
 	request.finalize.stmt_id = stmt_id;
 

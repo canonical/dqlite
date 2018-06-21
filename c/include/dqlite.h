@@ -28,26 +28,27 @@
 /* Config op codes */
 #define DQLITE_CONFIG_VFS
 
+/* Current protocol version */
+#define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
+
 /* Request types */
-#define DQLITE_HELO      0
-#define DQLITE_HEARTBEAT 1
-#define DQLITE_OPEN      2
-#define DQLITE_PREPARE   3
-#define DQLITE_EXEC      4
-#define DQLITE_QUERY     5
-#define DQLITE_FINALIZE  6
+#define DQLITE_REQUEST_HELO      0
+#define DQLITE_REQUEST_HEARTBEAT 1
+#define DQLITE_REQUEST_OPEN      2
+#define DQLITE_REQUEST_PREPARE   3
+#define DQLITE_REQUEST_EXEC      4
+#define DQLITE_REQUEST_QUERY     5
+#define DQLITE_REQUEST_FINALIZE  6
 
 /* Response types */
-#define DQLITE_WELCOME  0
-#define DQLITE_SERVERS  1
-#define DQLITE_DB_ERROR 2
-#define DQLITE_DB       3
-#define DQLITE_STMT     4
-#define DQLITE_RESULT   5
-#define DQLITE_ROWS     6
-#define DQLITE_EMPTY    7
-
-#define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
+#define DQLITE_RESPONSE_WELCOME  0
+#define DQLITE_RESPONSE_SERVERS  1
+#define DQLITE_RESPONSE_DB_ERROR 2
+#define DQLITE_RESPONSE_DB       3
+#define DQLITE_RESPONSE_STMT     4
+#define DQLITE_RESPONSE_RESULT   5
+#define DQLITE_RESPONSE_ROWS     6
+#define DQLITE_RESPONSE_EMPTY    7
 
 /* Interface implementing cluster-related functionality */
 typedef struct dqlite_cluster {
