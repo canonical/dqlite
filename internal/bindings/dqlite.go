@@ -7,6 +7,7 @@ package bindings
 #include <stdlib.h>
 
 #include <dqlite.h>
+#include <sqlite3.h>
 
 struct dqliteCluster {
   int    handle;          // Entry of the Go clusterHandles map
@@ -163,22 +164,26 @@ import (
 	"unsafe"
 )
 
-// ServerProtocol is the latest dqlite server protocol version.
-const ServerProtocol = C.DQLITE_PROTOCOL_VERSION
+// ServerProtocolVersion is the latest dqlite server protocol version.
+const ServerProtocolVersion = uint64(C.DQLITE_PROTOCOL_VERSION)
 
 // Request types.
 const (
-	ServerRequestHelo      = C.DQLITE_REQUEST_HELO
+	ServerRequestLeader    = C.DQLITE_REQUEST_LEADER
+	ServerRequestClient    = C.DQLITE_REQUEST_CLIENT
 	ServerRequestHeartbeat = C.DQLITE_REQUEST_HEARTBEAT
 	ServerRequestOpen      = C.DQLITE_REQUEST_OPEN
 	ServerRequestPrepare   = C.DQLITE_REQUEST_PREPARE
 	ServerRequestExec      = C.DQLITE_REQUEST_EXEC
 	ServerRequestQuery     = C.DQLITE_REQUEST_QUERY
 	ServerRequestFinalize  = C.DQLITE_REQUEST_FINALIZE
+	ServerRequestExecSQL   = C.DQLITE_REQUEST_EXEC_SQL
+	ServerRequestQuerySQL  = C.DQLITE_REQUEST_QUERY_SQL
 )
 
 // Response types.
 const (
+	ServerResponseServer  = C.DQLITE_RESPONSE_SERVER
 	ServerResponseWelcome = C.DQLITE_RESPONSE_WELCOME
 	ServerResponseServers = C.DQLITE_RESPONSE_SERVERS
 	ServerResponseDbError = C.DQLITE_RESPONSE_DB_ERROR
@@ -191,6 +196,17 @@ const (
 
 // Server is a Go wrapper arround server
 type Server C.dqlite_server
+
+// Init initializes dqlite global state.
+func Init() error {
+	var errmsg *C.char
+
+	rc := C.dqlite_init(&errmsg)
+	if rc != 0 {
+		return fmt.Errorf("%s (%d)", errmsg, rc)
+	}
+	return nil
+}
 
 // NewServer creates a new Server instance.
 func NewServer(file *os.File, cluster Cluster) (*Server, error) {
@@ -243,6 +259,13 @@ func (s *Server) Run() error {
 	return nil
 }
 
+// Ready waits for the server to be ready to handle connections.
+func (s *Server) Ready() bool {
+	server := (*C.dqlite_server)(unsafe.Pointer(s))
+
+	return C.dqlite_server_ready(server) == 1
+}
+
 // Handle a new connection.
 func (s *Server) Handle(conn net.Conn) error {
 	server := (*C.dqlite_server)(unsafe.Pointer(s))
@@ -258,6 +281,10 @@ func (s *Server) Handle(conn net.Conn) error {
 
 	rc := C.dqlite_server_handle(server, C.int(fd), &errmsg)
 	if rc != 0 {
+		defer C.sqlite3_free(unsafe.Pointer(errmsg))
+		if rc == C.DQLITE_STOPPED {
+			return ErrServerStopped
+		}
 		return fmt.Errorf(C.GoString(errmsg))
 	}
 
@@ -277,6 +304,9 @@ func (s *Server) Stop() error {
 
 	return nil
 }
+
+// ErrServerStopped is returned by Server.Handle() is the server was stopped.
+var ErrServerStopped = fmt.Errorf("server was stopped")
 
 // Cluster implements the interface required by dqlite_cluster.
 type Cluster interface {
