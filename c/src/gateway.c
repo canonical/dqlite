@@ -32,14 +32,19 @@ static int dqlite__gateway_helo(struct dqlite__gateway *g, struct dqlite__gatewa
 
 static int dqlite__gateway_heartbeat(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
 {
+	int err;
 	const char **addresses;
 
 	/* Get the current list of servers in the cluster */
-	addresses = g->cluster->xServers(g->cluster->ctx);
-	if (addresses == NULL ) {
+	err = g->cluster->xServers(g->cluster->ctx, &addresses);
+	if (err != 0) {
+		/* TODO: handle the case where the error is due to the not not
+		 * being the leader */
 		dqlite__errorf(g, "failed to get cluster servers", "");
 		return DQLITE_ERROR;
 	}
+
+	assert(addresses != NULL);
 
 	/* Encode the response */
 	ctx->response.type = DQLITE_SERVERS;
