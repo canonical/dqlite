@@ -1427,66 +1427,66 @@ static int dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotU
 }
 
 int dqlite__vfs_register(const char *name, sqlite3_vfs **out) {
-  sqlite3_vfs* vfs;
-  struct dqlite__vfs_root *root;
-  int err;
+	sqlite3_vfs* vfs;
+	struct dqlite__vfs_root *root;
+	int err;
 
-  assert(name != NULL);
-  assert(out != NULL);
+	assert(name != NULL);
+	assert(out != NULL);
 
-  *out = 0; // In case of errors
+	*out = 0; // In case of errors
 
-  vfs = (sqlite3_vfs*)sqlite3_malloc(sizeof(sqlite3_vfs));
-  if (vfs == NULL) {
-    return SQLITE_NOMEM;
-  }
+	vfs = (sqlite3_vfs*)sqlite3_malloc(sizeof(sqlite3_vfs));
+	if (vfs == NULL) {
+		return SQLITE_NOMEM;
+	}
 
-  root = (struct dqlite__vfs_root*)sqlite3_malloc(sizeof(*root));
+	root = (struct dqlite__vfs_root*)sqlite3_malloc(sizeof(*root));
 
-  err = dqlite__vfs_root_init(root);
-  if (err != 0) {
-    sqlite3_free(vfs);
-    return err;
-  }
+	err = dqlite__vfs_root_init(root);
+	if (err != 0) {
+		sqlite3_free(vfs);
+		return err;
+	}
 
-  vfs->iVersion =          2;
-  vfs->szOsFile =          sizeof(struct dqlite__vfs_file);
-  vfs->mxPathname =        DQLITE__VFS_MAX_PATHNAME;
-  vfs->pNext =             0;
-  vfs->zName =             (const char*)name;
-  vfs->pAppData =          (void*)root;
-  vfs->xOpen =             dqlite__vfs_open;
-  vfs->xDelete =           dqlite__vfs_delete;
-  vfs->xAccess =           dqlite__vfs_access;
-  vfs->xFullPathname =     dqlite__vfs_full_pathname;
-  vfs->xDlOpen =           dqlite__vfs_dl_open;
-  vfs->xDlError =          dqlite__vfs_dl_error;
-  vfs->xDlSym =            dqlite__vfs_dl_sym;
-  vfs->xDlClose =          dqlite__vfs_dl_close;
-  vfs->xRandomness =       dqlite__vfs_randomness;
-  vfs->xSleep =            dqlite__vfs_sleep;
-  vfs->xCurrentTime =      dqlite__vfs_current_time;
-  vfs->xGetLastError =     dqlite__vfs_get_last_error;
-  vfs->xCurrentTimeInt64 = dqlite__vfs_current_time_int64;
+	vfs->iVersion =          2;
+	vfs->szOsFile =          sizeof(struct dqlite__vfs_file);
+	vfs->mxPathname =        DQLITE__VFS_MAX_PATHNAME;
+	vfs->pNext =             0;
+	vfs->zName =             (const char*)name;
+	vfs->pAppData =          (void*)root;
+	vfs->xOpen =             dqlite__vfs_open;
+	vfs->xDelete =           dqlite__vfs_delete;
+	vfs->xAccess =           dqlite__vfs_access;
+	vfs->xFullPathname =     dqlite__vfs_full_pathname;
+	vfs->xDlOpen =           dqlite__vfs_dl_open;
+	vfs->xDlError =          dqlite__vfs_dl_error;
+	vfs->xDlSym =            dqlite__vfs_dl_sym;
+	vfs->xDlClose =          dqlite__vfs_dl_close;
+	vfs->xRandomness =       dqlite__vfs_randomness;
+	vfs->xSleep =            dqlite__vfs_sleep;
+	vfs->xCurrentTime =      dqlite__vfs_current_time;
+	vfs->xGetLastError =     dqlite__vfs_get_last_error;
+	vfs->xCurrentTimeInt64 = dqlite__vfs_current_time_int64;
 
-  sqlite3_vfs_register(vfs, 0);
+	sqlite3_vfs_register(vfs, 0);
 
-  *out = vfs;
+	*out = vfs;
 
-  return SQLITE_OK;
+	return SQLITE_OK;
 }
 
 void dqlite__vfs_unregister(sqlite3_vfs* vfs) {
-  struct dqlite__vfs_root *root;
+	struct dqlite__vfs_root *root;
 
-  assert(vfs != NULL);
+	assert(vfs != NULL);
 
-  sqlite3_vfs_unregister(vfs);
+	sqlite3_vfs_unregister(vfs);
 
-  root = (struct dqlite__vfs_root*)(vfs->pAppData);
+	root = (struct dqlite__vfs_root*)(vfs->pAppData);
 
-  dqlite__vfs_root_close(root);
+	dqlite__vfs_root_close(root);
 
-  sqlite3_free(root);
-  sqlite3_free(vfs);
+	sqlite3_free(root);
+	sqlite3_free(vfs);
 }
