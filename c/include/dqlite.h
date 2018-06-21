@@ -49,23 +49,33 @@
 
 #define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
 
-typedef struct dqlite__server dqlite_server;
+/* Interface implementing cluster-related functionality */
 typedef struct dqlite_cluster {
 	void *ctx;
-	const char  *(*xLeader)(void*);
-	const char **(*xServers)(void*);
-	int          (*xRecover)(void*, uint64_t);
+	const char *(*xLeader)(void *ctx);
+	int         (*xServers)(void *ctx, const char ***addresses);
+	int         (*xRecover)(void *ctx, uint64_t tx_token);
 } dqlite_cluster;
 
+/* Handle connections from dqlite clients */
+typedef struct dqlite__server dqlite_server;
+
+/* Allocate and free a dqlite server */
 dqlite_server *dqlite_server_alloc();
 void dqlite_server_free(dqlite_server *s);
 
+/* Initialize and release resources used by a dqlite server */
 int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster);
 void dqlite_server_close(dqlite_server *s);
 
+/* Start a dqlite server.
+ *
+ * In case of error, a human-readable message describing the failure can be
+ * obtained using dqlite_server_errmsg.
+ */
 int dqlite_server_run(dqlite_server *s);
 
-/* Stop a dqlite service.
+/* Stop a dqlite server.
 **
 ** This is a thread-safe API.
 **
@@ -83,6 +93,15 @@ int dqlite_server_stop(dqlite_server *s, char **errmsg);
 */
 int dqlite_server_handle(dqlite_server *s, int socket, char **errrmsg);
 
+/* Return a message describing the most recent error occurred.
+ *
+ * This is API not thread-safe.
+ *
+ * The memory holding returned string is managed by the dqlite_server object
+ * internally, and will be valid until dqlite_server_close is invoked. However,
+ * the message contained in the string itself might change if another error
+ * occurs in the meantime.
+ */
 const char* dqlite_server_errmsg(dqlite_server*);
 
 #endif /* DQLITE_H */

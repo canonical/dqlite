@@ -9,7 +9,7 @@ const char *test__cluster_leader(void *ctx)
   return "127.0.0.1:666";
 }
 
-const char **test__cluster_servers(void *ctx)
+const int test__cluster_servers(void *ctx, const char ***out)
 {
 	static const char *addresses[] = {
 		"1.2.3.4:666",
@@ -17,7 +17,9 @@ const char **test__cluster_servers(void *ctx)
 		NULL,
 	};
 
-	return addresses;
+	*out = addresses;
+
+	return 0;
 }
 
 static dqlite_cluster test__cluster = {
