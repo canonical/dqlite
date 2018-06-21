@@ -17,7 +17,7 @@ static void test_dqlite__gateway_send_open(uint32_t *db_id)
 {
 	int err;
 
-	request.type = DQLITE_OPEN;
+	request.type = DQLITE_REQUEST_OPEN;
 	request.open.name = "test.db";
 	request.open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	request.open.vfs = "volatile";
@@ -26,7 +26,7 @@ static void test_dqlite__gateway_send_open(uint32_t *db_id)
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response);
-	CU_ASSERT_EQUAL(response->type, DQLITE_DB);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_DB);
 
 	*db_id = response->db.id;
 
@@ -38,7 +38,7 @@ static void test_dqlite__gateway_send_prepare(uint32_t db_id, const char *sql, u
 {
 	int err;
 
-	request.type = DQLITE_PREPARE;
+	request.type = DQLITE_REQUEST_PREPARE;
 	request.prepare.db_id = db_id;
 	request.prepare.sql = sql;
 
@@ -46,7 +46,7 @@ static void test_dqlite__gateway_send_prepare(uint32_t db_id, const char *sql, u
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response);
-	CU_ASSERT_EQUAL(response->type, DQLITE_STMT);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_STMT);
 
 	CU_ASSERT_EQUAL(response->stmt.db_id, db_id);
 
@@ -61,7 +61,7 @@ static void test_dqlite__gateway_send_exec(
 	uint64_t *last_insert_id, uint64_t *rows_affected)
 {
 	int err;
-	request.type = DQLITE_EXEC;
+	request.type = DQLITE_REQUEST_EXEC;
 	request.exec.db_id = db_id;
 	request.exec.stmt_id = stmt_id;
 
@@ -72,7 +72,7 @@ static void test_dqlite__gateway_send_exec(
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response);
-	CU_ASSERT_EQUAL(response->type, DQLITE_RESULT);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_RESULT);
 
 	*last_insert_id = response->result.last_insert_id;
 	*rows_affected = response->result.rows_affected;
@@ -107,14 +107,14 @@ void test_dqlite__gateway_helo()
 {
 	int err;
 
-	request.type = DQLITE_HELO;
+	request.type = DQLITE_REQUEST_HELO;
 	request.helo.client_id = 123;
 
 	err = dqlite__gateway_handle(&gateway, &request, &response);
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response);
-	CU_ASSERT_EQUAL(response->type, DQLITE_WELCOME);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_WELCOME);
 
 	CU_ASSERT_STRING_EQUAL(response->welcome.leader,  "127.0.0.1:666");
 }
@@ -123,14 +123,14 @@ void test_dqlite__gateway_heartbeat()
 {
 	int err;
 
-	request.type = DQLITE_HEARTBEAT;
+	request.type = DQLITE_REQUEST_HEARTBEAT;
 	request.heartbeat.timestamp = 12345;
 
 	err = dqlite__gateway_handle(&gateway, &request, &response);
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response);
-	CU_ASSERT_EQUAL(response->type, DQLITE_SERVERS);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_SERVERS);
 
 	CU_ASSERT_STRING_EQUAL(response->servers.addresses[0], "1.2.3.4:666");
 	CU_ASSERT_STRING_EQUAL(response->servers.addresses[1], "5.6.7.8:666");
@@ -150,7 +150,7 @@ void test_dqlite__gateway_open_error()
 {
 	int err;
 
-	request.type = DQLITE_OPEN;
+	request.type = DQLITE_REQUEST_OPEN;
 	request.open.name = "test.db";
 	request.open.flags = SQLITE_OPEN_CREATE;
 	request.open.vfs = "volatile";
@@ -160,7 +160,7 @@ void test_dqlite__gateway_open_error()
 
 	CU_ASSERT_PTR_NOT_NULL(response);
 
-	CU_ASSERT_EQUAL(response->type, DQLITE_DB_ERROR);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_DB_ERROR);
 	CU_ASSERT_EQUAL(response->db_error.code, SQLITE_MISUSE);
 	CU_ASSERT_EQUAL(response->db_error.extended_code, SQLITE_MISUSE);
 	CU_ASSERT_STRING_EQUAL(response->db_error.description, "bad parameter or other API misuse");
@@ -185,7 +185,7 @@ void test_dqlite__gateway_prepare_error()
 
 	test_dqlite__gateway_send_open(&db_id);
 
-	request.type = DQLITE_PREPARE;
+	request.type = DQLITE_REQUEST_PREPARE;
 	request.prepare.db_id = response->db.id;
 	request.prepare.sql = "garbage";
 
@@ -194,7 +194,7 @@ void test_dqlite__gateway_prepare_error()
 
 	CU_ASSERT_PTR_NOT_NULL(response);
 
-	CU_ASSERT_EQUAL(response->type, DQLITE_DB_ERROR);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_DB_ERROR);
 	CU_ASSERT_EQUAL(response->db_error.code, SQLITE_ERROR);
 	CU_ASSERT_EQUAL(response->db_error.extended_code, SQLITE_ERROR);
 }
@@ -203,7 +203,7 @@ void test_dqlite__gateway_prepare_invalid_db_id()
 {
 	int err;
 
-	request.type = DQLITE_PREPARE;
+	request.type = DQLITE_REQUEST_PREPARE;
 	request.prepare.db_id = 123;
 	request.prepare.sql = "CREATE TABLE foo (n INT)";
 
@@ -250,7 +250,7 @@ void test_dqlite__gateway_exec_with_params()
 
 	test_dqlite__gateway_send_prepare(db_id, "INSERT INTO foo(n,t,f) VALUES(?,?,?)", &stmt_id);
 
-	request.type = DQLITE_EXEC;
+	request.type = DQLITE_REQUEST_EXEC;
 	request.exec.db_id = db_id;
 	request.exec.stmt_id = stmt_id;
 
@@ -286,7 +286,7 @@ void test_dqlite__gateway_exec_with_params()
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response);
-	CU_ASSERT_EQUAL(response->type, DQLITE_RESULT);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_RESULT);
 
 	CU_ASSERT_EQUAL(response->result.last_insert_id, 1);
 	CU_ASSERT_EQUAL(response->result.rows_affected, 1);
@@ -299,7 +299,7 @@ void test_dqlite__gateway_exec_invalid_stmt_id()
 
 	test_dqlite__gateway_send_open(&db_id);
 
-	request.type = DQLITE_EXEC;
+	request.type = DQLITE_REQUEST_EXEC;
 	request.exec.db_id = db_id;
 	request.exec.stmt_id = 666;
 
@@ -331,7 +331,7 @@ void test_dqlite__gateway_query()
 
 	test_dqlite__gateway_send_prepare(db_id, "SELECT n FROM foo", &stmt_id);
 
-	request.type = DQLITE_QUERY;
+	request.type = DQLITE_REQUEST_QUERY;
 	request.query.db_id = db_id;
 	request.query.stmt_id = stmt_id;
 
@@ -344,7 +344,7 @@ void test_dqlite__gateway_query()
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response);
-	CU_ASSERT_EQUAL(response->type, DQLITE_ROWS);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_ROWS);
 
 	/* Two words were written, one with the row header and one with the row
 	 * column */
@@ -390,7 +390,7 @@ void test_dqlite__gateway_query_multi_column()
 
 	test_dqlite__gateway_send_prepare(db_id, "SELECT n,t,f FROM foo", &stmt_id);
 
-	request.type = DQLITE_QUERY;
+	request.type = DQLITE_REQUEST_QUERY;
 	request.query.db_id = db_id;
 	request.query.stmt_id = stmt_id;
 
@@ -403,7 +403,7 @@ void test_dqlite__gateway_query_multi_column()
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response);
-	CU_ASSERT_EQUAL(response->type, DQLITE_ROWS);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_ROWS);
 
 	/* Four words were written, one for the row header and three for the row
 	 * columns */
@@ -468,7 +468,7 @@ void test_dqlite__gateway_query_multi_row()
 
 	test_dqlite__gateway_send_prepare(db_id, "SELECT n,t,f FROM foo", &stmt_id);
 
-	request.type = DQLITE_QUERY;
+	request.type = DQLITE_REQUEST_QUERY;
 	request.query.db_id = db_id;
 	request.query.stmt_id = stmt_id;
 
@@ -481,7 +481,7 @@ void test_dqlite__gateway_query_multi_row()
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response);
-	CU_ASSERT_EQUAL(response->type, DQLITE_ROWS);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_ROWS);
 
 	/* Eight words were written (two header rows and size row columns). */
 	CU_ASSERT_EQUAL(response->message.offset1, 64);
@@ -548,7 +548,7 @@ void test_dqlite__gateway_finalize()
 	uint32_t db_id;
 	uint32_t stmt_id;
 
-	request.type = DQLITE_OPEN;
+	request.type = DQLITE_REQUEST_OPEN;
 	request.open.name = "test.db";
 	request.open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	request.open.vfs = "volatile";
@@ -558,7 +558,7 @@ void test_dqlite__gateway_finalize()
 
 	db_id = response->db.id;
 
-	request.type = DQLITE_PREPARE;
+	request.type = DQLITE_REQUEST_PREPARE;
 	request.prepare.db_id = db_id;
 	request.prepare.sql = "CREATE TABLE foo (n INT)";
 
@@ -567,7 +567,7 @@ void test_dqlite__gateway_finalize()
 
 	stmt_id = response->stmt.id;
 
-	request.type = DQLITE_FINALIZE;
+	request.type = DQLITE_REQUEST_FINALIZE;
 	request.finalize.db_id = db_id;
 	request.finalize.stmt_id = stmt_id;
 
@@ -575,5 +575,5 @@ void test_dqlite__gateway_finalize()
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_PTR_NOT_NULL(response);
-	CU_ASSERT_EQUAL(response->type, DQLITE_EMPTY);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_EMPTY);
 }
