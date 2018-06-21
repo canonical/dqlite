@@ -47,7 +47,7 @@ libdqlite_la_SOURCES = \
   src/response.c \
   src/response.h \
   src/schema.h \
-  src/service.c \
+  src/server.c \
   src/stmt.c \
   src/stmt.h \
   src/vfs.c \

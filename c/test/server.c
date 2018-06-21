@@ -17,7 +17,7 @@
 
 struct test_server {
 	pthread_t          thread;
-	dqlite_service    *service;
+	dqlite_server    *service;
 	struct sockaddr_in address;
 	int                socket;
 	struct test_client client;
@@ -32,15 +32,15 @@ test_server *testServerCreate(){
 	if (s == NULL)
 		return NULL;
 
-	s->service = dqlite_service_alloc();
+	s->service = dqlite_server_alloc();
 	if (s->service == NULL) {
 		sqlite3_free(s);
 		return 0;
 	}
 
-	err = dqlite_service_init(s->service, log, test_cluster());
+	err = dqlite_server_init(s->service, log, test_cluster());
 	if (err != 0) {
-		dqlite_service_free(s->service);
+		dqlite_server_free(s->service);
 		sqlite3_free(s);
 	}
 
@@ -57,8 +57,8 @@ void testServerDestroy(test_server *s){
 	assert(s != NULL);
 	assert(s->service != NULL);
 
-	dqlite_service_close(s->service);
-	dqlite_service_free(s->service);
+	dqlite_server_close(s->service);
+	dqlite_server_free(s->service);
 
 	sqlite3_free(s);
 }
@@ -174,7 +174,7 @@ static void *testServerRun(void *arg){
 	s = (test_server*)(arg);
 	assert( s );
 
-	rc = dqlite_service_run(s->service);
+	rc = dqlite_server_run(s->service);
 	if( rc ){
 		return (void*)1;
 	}
@@ -222,7 +222,7 @@ int test_server_connect(test_server *s, struct test_client **client){
 		return 1;
 	}
 
-	err = dqlite_service_handle(s->service, serverFd, &errmsg);
+	err = dqlite_server_handle(s->service, serverFd, &errmsg);
 	if( err ){
 		test_suite_printf("failed to notify new client: %s", errmsg);
 		return 1;
@@ -243,7 +243,7 @@ int test_server_stop(test_server *t){
 	assert( t );
 	assert( t->service );
 
-	err = dqlite_service_stop(t->service, &errmsg);
+	err = dqlite_server_stop(t->service, &errmsg);
 	if( err ){
 		test_suite_printf("failed to stop dqlite: %s", errmsg);
 		return 1;
@@ -261,7 +261,7 @@ int test_server_stop(test_server *t){
 	}
 
 	if( retval ){
-		test_suite_printf("test thread error: %s", dqlite_service_errmsg(t->service));
+		test_suite_printf("test thread error: %s", dqlite_server_errmsg(t->service));
 		return 1;
 	}
 
