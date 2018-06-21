@@ -102,6 +102,9 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errrmsg);
  * the message contained in the string itself might change if another error
  * occurs in the meantime.
  */
-const char* dqlite_server_errmsg(dqlite_server*);
+const char* dqlite_server_errmsg(dqlite_server *s);
+
+/* Return the dqlite_cluster object used to initialize the server */
+dqlite_cluster *dqlite_server_cluster(dqlite_server *s);
 
 #endif /* DQLITE_H */

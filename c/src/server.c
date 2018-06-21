@@ -367,3 +367,11 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 const char* dqlite_server_errmsg(dqlite_server *s){
 	return s->error;
 }
+
+dqlite_cluster *dqlite_server_cluster(dqlite_server *s)
+{
+	assert(s != NULL);
+
+	return s->cluster;
+}
+
