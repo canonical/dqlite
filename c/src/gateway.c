@@ -311,8 +311,6 @@ int dqlite__gateway_handle(
 	ctx = &g->ctxs[i];
 	ctx->request = request;
 
-	dqlite__debugf(g, "offset", "offset=%ld", request->message.offset1);
-	dqlite__debugf(g, "words", "words=%d", request->message.words);
 	switch (request->type) {
 
 #define DQLITE__GATEWAY_HANDLE(CODE, STRUCT, NAME, _)			\
