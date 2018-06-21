@@ -23,6 +23,11 @@ static int dqlite__gateway_helo(struct dqlite__gateway *g, struct dqlite__gatewa
 
 	leader = g->cluster->xLeader(g->cluster->ctx);
 
+	if (leader == NULL) {
+		dqlite__error_oom(&g->error, "failed to get cluster leader");
+		return DQLITE_NOMEM;
+	}
+
 	ctx->response.type = DQLITE_WELCOME;
 	ctx->response.welcome.heartbeat_timeout = g->heartbeat_timeout;
 	ctx->response.welcome.leader = leader;
