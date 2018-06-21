@@ -20,6 +20,7 @@ Complete documentation is available at https://github.com/CanonicalLtd/dqlite`,
 	}
 	root.AddCommand(newDump())
 	root.AddCommand(newDelete())
+	root.AddCommand(newBench())
 
 	return root
 }
