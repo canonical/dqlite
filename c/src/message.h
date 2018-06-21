@@ -15,11 +15,6 @@
 /* The size of the message header, always 8 bytes. */
 #define DQLITE__MESSAGE_HEADER_LEN 8
 
-/* Length of the statically allocated message body buffer of dqlite__message. If
- * a message body exeeds this size, a dynamically allocated buffer will be
- * used. */
-#define DQLITE__MESSAGE_BUF_LEN 4096
-
 /* The size in bytes of a single word in the message body.
  *
  * Since the 'words' field of dqlite__message is 32-bit, the maximum size of a
@@ -29,6 +24,12 @@
 
 /* The size in bits of a single word in the message body */
 #define DQLITE__MESSAGE_WORD_BITS 64
+
+/* Length of the statically allocated message body buffer of dqlite__message. If
+ * a message body exeeds this size, a dynamically allocated buffer will be
+ * used. */
+#define DQLITE__MESSAGE_BUF_LEN   4096
+#define DQLITE__MESSAGE_BUF_WORDS DQLITE__MESSAGE_BUF_LEN / DQLITE__MESSAGE_WORD_SIZE
 
 /* Type aliases to used by macro-based definitions in schema.h */
 typedef const char*  text_t;
@@ -49,10 +50,14 @@ struct dqlite__message {
 	dqlite__error error;
 
 	/* private */
-	char     body1[DQLITE__MESSAGE_BUF_LEN]; /* Pre-allocated body buffer, enough for most cases */
-	uv_buf_t body2;                          /* Dynamically allocated buffer for bodies exeeding body1 */
-	size_t   offset1;                        /* Number of bytes that have been read or written to body1 */
-	size_t   offset2;                        /* Number of bytes that have been read or written to bdoy2 */
+	union {
+		 /* Pre-allocated body buffer, enough for most cases */
+		char       body1  [DQLITE__MESSAGE_BUF_LEN];
+		uint64_t __body1__[DQLITE__MESSAGE_BUF_WORDS]; /* Alignment */
+	};
+	uv_buf_t body2;   /* Dynamically allocated buffer for bodies exeeding body1 */
+	size_t   offset1; /* Number of bytes that have been read or written to body1 */
+	size_t   offset2; /* Number of bytes that have been read or written to bdoy2 */
 };
 
 void dqlite__message_init(struct dqlite__message *m);

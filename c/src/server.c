@@ -16,23 +16,28 @@
 
 #define DQLITE__SERVER_DEFAULT_VFS_NAME "volatile"
 
+/* Manage client TCP connections to a dqlite node */
 struct dqlite__server {
 	/* read-only */
-	dqlite__error   error;   /* Last error occurred, if any */
-	FILE           *log;     /* Log output stream */
-	dqlite_cluster *cluster; /* Cluster implementation */
+	dqlite__error   error;  /* Last error occurred, if any */
 
 	/* private */
-	struct dqlite__queue queue; /* Queue of incoming connections */
-	uv_loop_t       loop;       /* UV loop */
-	uv_async_t      stop;       /* Event to stop the UV loop */
-	uv_async_t      incoming;   /* Event to process incoming connections */
-	sqlite3_mutex  *mutex;      /* Serialize access to the incoming queue */
-	const char     *vfs_name;   /* Name to use when registering the vfs below */
-	sqlite3_vfs    *vfs;        /* SQLite in-memory file system */
+	FILE                *log;      /* Log output stream */
+	dqlite_cluster      *cluster;  /* Cluster implementation */
+	sqlite3_vfs         *vfs;      /* In-memory file system */
+	const char          *vfs_name; /* Registration name for the vfs */
+	struct dqlite__queue queue;    /* Queue of incoming connections */
+	sqlite3_mutex       *mutex;    /* Serialize access to incoming queue */
+	uv_loop_t            loop;     /* UV loop */
+	uv_async_t           stop;     /* Event to stop the UV loop */
+	uv_async_t           incoming; /* Event to process the incoming queue */
 };
 
-/* Close callback for the stop event handle */
+/* Close callback for the 'stop' async event handle
+ *
+ * This callback must be fired when *all* other UV handles have been closed and
+ * it's hence safe to stop the loop.
+ */
 static void dqlite__server_stop_close_cb(uv_handle_t *stop)
 {
 	struct dqlite__server* s;
@@ -41,10 +46,19 @@ static void dqlite__server_stop_close_cb(uv_handle_t *stop)
 
 	s = (struct dqlite__server*)stop->data;
 
+	assert(s != NULL);
+
+	/* All handles must have been closed */
+	assert(!uv_loop_alive(&s->loop));
+
 	uv_stop(&s->loop);
 }
 
-/* Callback for the uv_walk() call in dqlite__server_stop_cb */
+/* Callback for the uv_walk() call in dqlite__server_stop_cb.
+ *
+ * This callback gets fired once for every active handle in the UV loop and is
+ * in charge of closing each of them.
+ */
 static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 {
 	struct dqlite__server* s;
@@ -70,7 +84,7 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 		callback = NULL;
 
 		/* FIXME: here we rely on the fact that the stop handle is
-                 *        the last one to walked into. This behavior is not
+                 *        the last one to be walked into. This behavior is not
                  *        advertised by the libuv docs and hence might change.
                  */
 		if (handle == (uv_handle_t*)&s->stop)
@@ -202,6 +216,7 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 	}
 	s->incoming.data = (void*)s;
 
+	s->vfs = NULL;
 	s->vfs_name = DQLITE__SERVER_DEFAULT_VFS_NAME;
 
 	return 0;
