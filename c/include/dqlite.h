@@ -49,7 +49,7 @@
 
 #define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
 
-typedef struct dqlite__service dqlite_service;
+typedef struct dqlite__server dqlite_server;
 typedef struct dqlite_cluster {
 	void *ctx;
 	const char  *(*xLeader)(void*);
@@ -57,13 +57,13 @@ typedef struct dqlite_cluster {
 	int          (*xRecover)(void*, uint64_t);
 } dqlite_cluster;
 
-dqlite_service *dqlite_service_alloc();
-void dqlite_service_free(dqlite_service *s);
+dqlite_server *dqlite_server_alloc();
+void dqlite_server_free(dqlite_server *s);
 
-int dqlite_service_init(dqlite_service *s, FILE *log, dqlite_cluster *cluster);
-void dqlite_service_close(dqlite_service *s);
+int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster);
+void dqlite_server_close(dqlite_server *s);
 
-int dqlite_service_run(dqlite_service *s);
+int dqlite_server_run(dqlite_server *s);
 
 /* Stop a dqlite service.
 **
@@ -72,7 +72,7 @@ int dqlite_service_run(dqlite_service *s);
 ** In case of error, the caller must invoke sqlite3_free
 ** against the returned errmsg.
 */
-int dqlite_service_stop(dqlite_service *s, char **errmsg);
+int dqlite_server_stop(dqlite_server *s, char **errmsg);
 
 /* Start handling a new connection.
 **
@@ -81,8 +81,8 @@ int dqlite_service_stop(dqlite_service *s, char **errmsg);
 ** In case of error, the caller must invoke sqlite3_free
 ** against the returned errmsg.
 */
-int dqlite_service_handle(dqlite_service *s, int socket, char **errrmsg);
+int dqlite_server_handle(dqlite_server *s, int socket, char **errrmsg);
 
-const char* dqlite_service_errmsg(dqlite_service*);
+const char* dqlite_server_errmsg(dqlite_server*);
 
 #endif /* DQLITE_H */

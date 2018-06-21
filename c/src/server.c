@@ -14,9 +14,9 @@
 #include "dqlite.h"
 #include "vfs.h"
 
-#define DQLITE__SERVICE_DEFAULT_VFS_NAME "volatile"
+#define DQLITE__SERVER_DEFAULT_VFS_NAME "volatile"
 
-struct dqlite__service {
+struct dqlite__server {
 	/* read-only */
 	dqlite__error   error;   /* Last error occurred, if any */
 	FILE           *log;     /* Log output stream */
@@ -33,21 +33,21 @@ struct dqlite__service {
 };
 
 /* Close callback for the stop event handle */
-static void dqlite__service_stop_close_cb(uv_handle_t *stop)
+static void dqlite__server_stop_close_cb(uv_handle_t *stop)
 {
-	struct dqlite__service* s;
+	struct dqlite__server* s;
 
 	assert(stop != NULL);
 
-	s = (struct dqlite__service*)stop->data;
+	s = (struct dqlite__server*)stop->data;
 
 	uv_stop(&s->loop);
 }
 
-/* Callback for the uv_walk() call in dqlite__service_stop_cb */
-static void dqlite__service_stop_walk_cb(uv_handle_t *handle, void *arg)
+/* Callback for the uv_walk() call in dqlite__server_stop_cb */
+static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 {
-	struct dqlite__service* s;
+	struct dqlite__server* s;
 	struct dqlite__conn *conn;
 	uv_close_cb callback;
 
@@ -58,7 +58,7 @@ static void dqlite__service_stop_walk_cb(uv_handle_t *handle, void *arg)
 		handle->type == UV_TIMER ||
 		handle->type == UV_TCP);
 
-	s = (struct dqlite__service*)arg;
+	s = (struct dqlite__server*)arg;
 
 	switch(handle->type) {
 
@@ -74,7 +74,7 @@ static void dqlite__service_stop_walk_cb(uv_handle_t *handle, void *arg)
                  *        advertised by the libuv docs and hence might change.
                  */
 		if (handle == (uv_handle_t*)&s->stop)
-			callback = dqlite__service_stop_close_cb;
+			callback = dqlite__server_stop_close_cb;
 
 		uv_close(handle, callback);
 
@@ -100,30 +100,30 @@ static void dqlite__service_stop_walk_cb(uv_handle_t *handle, void *arg)
 }
 
 /* Callback invoked when the stop async handle gets fired. */
-static void dqlite__service_stop_cb(uv_async_t *stop)
+static void dqlite__server_stop_cb(uv_async_t *stop)
 {
-	struct dqlite__service *s;
+	struct dqlite__server *s;
 
 	assert(stop != NULL);
 	assert(stop->data != NULL);
 
-	s = (struct dqlite__service*)stop->data;
+	s = (struct dqlite__server*)stop->data;
 
 	assert(s != NULL);
 
 	/* Loop through all connections and abort them, then stop the event
 	 * loop. */
-	uv_walk(&s->loop, dqlite__service_stop_walk_cb, (void*)s);
+	uv_walk(&s->loop, dqlite__server_stop_walk_cb, (void*)s);
 }
 
 /* Callback invoked when the incoming async handle gets fired. */
-static void dqlite__service_incoming_cb(uv_async_t *incoming){
-	struct dqlite__service *s;
+static void dqlite__server_incoming_cb(uv_async_t *incoming){
+	struct dqlite__server *s;
 
 	assert(incoming != NULL);
 	assert(incoming->data != NULL);
 
-	s = (struct dqlite__service*)incoming->data;
+	s = (struct dqlite__server*)incoming->data;
 
 	assert(s != NULL );
 	assert(s->mutex != NULL);
@@ -138,11 +138,11 @@ static void dqlite__service_incoming_cb(uv_async_t *incoming){
 
 }
 
-dqlite_service *dqlite_service_alloc()
+dqlite_server *dqlite_server_alloc()
 {
-	struct dqlite__service *s;
+	struct dqlite__server *s;
 
-	s = (struct dqlite__service*)(sqlite3_malloc(sizeof(*s)));
+	s = (struct dqlite__server*)(sqlite3_malloc(sizeof(*s)));
 	if(s == NULL)
 		goto err_alloc;
 
@@ -159,7 +159,7 @@ dqlite_service *dqlite_service_alloc()
 	return NULL;
 }
 
-void dqlite_service_free(dqlite_service *s)
+void dqlite_server_free(dqlite_server *s)
 {
 	assert(s != NULL);
 
@@ -167,7 +167,7 @@ void dqlite_service_free(dqlite_service *s)
 	sqlite3_free(s);
 }
 
-int dqlite_service_init(dqlite_service *s, FILE *log, dqlite_cluster *cluster)
+int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 {
 	int err;
 
@@ -188,26 +188,26 @@ int dqlite_service_init(dqlite_service *s, FILE *log, dqlite_cluster *cluster)
 		return DQLITE_ERROR;
 	}
 
-	err = uv_async_init(&s->loop, &s->stop, dqlite__service_stop_cb);
+	err = uv_async_init(&s->loop, &s->stop, dqlite__server_stop_cb);
 	if (err !=0) {
 		dqlite__error_uv(&s->error, err, "failed to init stop event handle");
 		return DQLITE_ERROR;
 	}
 	s->stop.data = (void*)s;
 
-	err = uv_async_init(&s->loop, &s->incoming, dqlite__service_incoming_cb);
+	err = uv_async_init(&s->loop, &s->incoming, dqlite__server_incoming_cb);
 	if (err !=0) {
 		dqlite__error_uv(&s->error, err, "failed to init accept event handle");
 		return DQLITE_ERROR;
 	}
 	s->incoming.data = (void*)s;
 
-	s->vfs_name = DQLITE__SERVICE_DEFAULT_VFS_NAME;
+	s->vfs_name = DQLITE__SERVER_DEFAULT_VFS_NAME;
 
 	return 0;
 }
 
-void dqlite_service_close(dqlite_service *s)
+void dqlite_server_close(dqlite_server *s)
 {
 	assert(s != NULL);
 
@@ -218,7 +218,7 @@ void dqlite_service_close(dqlite_service *s)
 		dqlite__vfs_unregister(s->vfs);
 }
 
-int dqlite_service_run(struct dqlite__service *s){
+int dqlite_server_run(struct dqlite__server *s){
 	int err;
 
 	assert(s != NULL);
@@ -250,7 +250,7 @@ int dqlite_service_run(struct dqlite__service *s){
 	return 0;
 }
 
-int dqlite_service_stop(dqlite_service *s, char **errmsg){
+int dqlite_server_stop(dqlite_server *s, char **errmsg){
 	int err = 0;
 	dqlite__error e;
 
@@ -278,7 +278,7 @@ int dqlite_service_stop(dqlite_service *s, char **errmsg){
 }
 
 /* Start handling a new connection */
-int dqlite_service_handle(dqlite_service *s, int socket, char **errmsg){
+int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 	int err;
 	dqlite__error e;
 	struct dqlite__conn *conn;
@@ -364,6 +364,6 @@ int dqlite_service_handle(dqlite_service *s, int socket, char **errmsg){
 	return err;
 }
 
-const char* dqlite_service_errmsg(dqlite_service *s){
+const char* dqlite_server_errmsg(dqlite_server *s){
 	return s->error;
 }

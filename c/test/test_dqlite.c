@@ -10,23 +10,23 @@
 #include "client.h"
 #include "cluster.h"
 
-static dqlite_service *testInstance = 0;
+static dqlite_server *testInstance = 0;
 
 void test_dqlite_create(){
   int err;
   FILE *log = test_suite_dqlite_log();
 
-  testInstance = dqlite_service_alloc();
+  testInstance = dqlite_server_alloc();
   CU_ASSERT_PTR_NOT_NULL( testInstance );
 
-  err = dqlite_service_init(testInstance, log, test_cluster());
+  err = dqlite_server_init(testInstance, log, test_cluster());
 
   CU_ASSERT_EQUAL(err, 0);
 }
 
 void test_dqlite_destroy(){
-  dqlite_service_close(testInstance);
-  dqlite_service_free(testInstance);
+  dqlite_server_close(testInstance);
+  dqlite_server_free(testInstance);
   testInstance = 0;
 }
 
