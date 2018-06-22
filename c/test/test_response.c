@@ -19,17 +19,28 @@ void test_dqlite__response_teardown()
 	dqlite__response_close(&response);
 }
 
+void test_dqlite__response_server()
+{
+	int err;
+
+	test_message_send_server("1.2.3.4:666", &response.message);
+
+	err = dqlite__response_decode(&response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_STRING_EQUAL(response.server.address, "1.2.3.4:666");
+}
+
 void test_dqlite__response_welcome()
 {
 	int err;
 
-	test_message_send_welcome(15000, "1.2.3.4:666", &response.message);
+	test_message_send_welcome(15000, &response.message);
 
 	err = dqlite__response_decode(&response);
 	CU_ASSERT_EQUAL(err, 0);
 
 	CU_ASSERT_EQUAL(response.welcome.heartbeat_timeout, 15000);
-	CU_ASSERT_STRING_EQUAL(response.welcome.leader, "1.2.3.4:666");
 }
 
 void test_dqlite__response_servers()

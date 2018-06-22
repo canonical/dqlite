@@ -17,20 +17,29 @@
  * message within this time. */
 #define DQLITE__GATEWAY_DEFAULT_HEARTBEAT_TIMEOUT 15000
 
-static int dqlite__gateway_helo(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
+static int dqlite__gateway_leader(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
 {
-	const char *leader;
+	const char *address;
 
-	leader = g->cluster->xLeader(g->cluster->ctx);
+	address = g->cluster->xLeader(g->cluster->ctx);
 
-	if (leader == NULL) {
+	if (address == NULL) {
 		dqlite__error_oom(&g->error, "failed to get cluster leader");
 		return DQLITE_NOMEM;
 	}
 
+	ctx->response.type = DQLITE_RESPONSE_SERVER;
+	ctx->response.server.address = address;
+
+	return 0;
+}
+
+static int dqlite__gateway_client(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
+{
+	/* TODO: handle client registrations */
+
 	ctx->response.type = DQLITE_RESPONSE_WELCOME;
 	ctx->response.welcome.heartbeat_timeout = g->heartbeat_timeout;
-	ctx->response.welcome.leader = leader;
 
 	return 0;
 }
