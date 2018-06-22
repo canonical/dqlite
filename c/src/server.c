@@ -31,6 +31,9 @@ struct dqlite__server {
 	uv_loop_t            loop;     /* UV loop */
 	uv_async_t           stop;     /* Event to stop the UV loop */
 	uv_async_t           incoming; /* Event to process the incoming queue */
+	int                  running;  /* Indicate that the loop is running */
+	sem_t                ready;    /* Notifiy that the loop is running */
+	uv_timer_t           startup;  /* Used for unblocking the ready sem */
 };
 
 /* Close callback for the 'stop' async event handle
@@ -108,9 +111,14 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 		break;
 
 	case UV_TIMER:
-		/* Each conn object creates a timer handle, which gets closed by
-		 * the dqlite__conn_abort call above, so there's nothing to do
-		 * here. */
+		/* Double check that this is not the startup timer which gets
+		 * closed at startup time. */
+		assert(handle != (uv_handle_t*)&s->startup);
+
+		/* This must be a timer created by a conn object, which gets
+		 * closed by the dqlite__conn_abort call above, so there's
+		 * nothing to do in that case. */
+
 		break;
 
 	default:
@@ -163,6 +171,29 @@ static void dqlite__server_incoming_cb(uv_async_t *incoming){
 
 	sqlite3_mutex_leave(s->mutex);
 
+}
+
+/* Callback invoked as soon as the loop as started.
+ *
+ * It unblocks the s->ready semaphore.
+ */
+static void dqlite__service_startup_cb(uv_timer_t *startup)
+{
+	int err;
+	struct dqlite__server *s;
+
+	assert(startup != NULL);
+	assert(startup->data != NULL);
+
+	s = (struct dqlite__server*)startup->data;
+
+	/* Close the handle, since we're not going to need it anymore. */
+	uv_close((uv_handle_t*)startup, NULL);
+
+	s->running = 1;
+
+	err = sem_post(&s->ready);
+	assert(err == 0); /* No reason for which posting should fail */
 }
 
 /* Perform all memory allocations needed to create a dqlite_server object. */
@@ -237,12 +268,42 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 	}
 	s->incoming.data = (void*)s;
 
+	err = sem_init(&s->ready, 0, 0);
+	if (err !=0) {
+		dqlite__error_sys(&s->error, "failed to init ready semaphore");
+		return DQLITE_ERROR;
+	}
+
+	err = uv_timer_init(&s->loop, &s->startup);
+	if (err != 0) {
+		dqlite__error_uv(&s->error, err, "failed to init timer");
+		return DQLITE_ERROR;
+	}
+	s->startup.data = (void*)s;
+
+	/* Schedule dqlite__service_startup_cb to be fired as soon as the loop
+	 * starts. It will unblock clients of dqlite_service_ready. */
+	err = uv_timer_start(&s->startup, dqlite__service_startup_cb, 0, 0);
+	if (err != 0) {
+		dqlite__error_uv(&s->error, err, "failed to startup timer");
+		return DQLITE_ERROR;
+	}
+
+	s->running = 0;
+
 	return 0;
 }
 
 void dqlite_server_close(dqlite_server *s)
 {
+	int err;
+
 	assert(s != NULL);
+
+	/* The sem_destroy call should only fail if the given semaphore is
+	 * invalid, which must not be our case. */
+	err = sem_destroy(&s->ready);
+	assert(err == 0);
 
 	assert(s->vfs == NULL);
 
@@ -263,6 +324,10 @@ int dqlite_server_run(struct dqlite__server *s){
 		assert(err == SQLITE_NOMEM);
 
 		dqlite__error_printf(&s->error, "failed to register vfs: out of memory");
+
+		/* Unblock any client of dqlite_server_ready */
+		err = sem_post(&s->ready);
+		assert(err == 0); /* No reason for which posting should fail */
 
 		return DQLITE_ERROR;
 	}
@@ -290,6 +355,16 @@ int dqlite_server_run(struct dqlite__server *s){
 	fflush(s->log);
 
 	return 0;
+}
+
+int dqlite_server_ready(dqlite_server *s)
+{
+	assert(s != NULL);
+
+	/* Wait for the ready mutex to be released */
+	sem_wait(&s->ready);
+
+	return s->running;
 }
 
 int dqlite_server_stop(dqlite_server *s, char **errmsg){
