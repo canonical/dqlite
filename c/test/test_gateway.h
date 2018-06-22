@@ -6,7 +6,8 @@
 void test_dqlite__gateway_setup();
 void test_dqlite__gateway_teardown();
 
-void test_dqlite__gateway_helo();
+void test_dqlite__gateway_leader();
+void test_dqlite__gateway_client();
 void test_dqlite__gateway_heartbeat();
 void test_dqlite__gateway_open();
 void test_dqlite__gateway_open_error();
@@ -22,7 +23,8 @@ void test_dqlite__gateway_query_multi_row();
 void test_dqlite__gateway_finalize();
 
 CU_TestInfo dqlite__gateway_handle_suite[] = {
-	{"helo",                  test_dqlite__gateway_helo},
+	{"leader",                test_dqlite__gateway_leader},
+	{"client",                test_dqlite__gateway_client},
 	{"heartbeat",             test_dqlite__gateway_heartbeat},
 	{"open",                  test_dqlite__gateway_open},
 	{"open error",            test_dqlite__gateway_open_error},

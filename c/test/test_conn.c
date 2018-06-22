@@ -235,7 +235,7 @@ void test_dqlite__conn_abort_after_body()
 {
 	int err;
 	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[16] = { /* Header and body (Helo request) */
+	uint8_t buf[16] = { /* Header and body (Leader request) */
 		1, 0, 0, 0,
 		0, 0, 0, 0,
 		0, 0, 0, 0,
@@ -325,7 +325,7 @@ void test_dqlite__conn_read_cb_invalid_header()
 {
 	int err;
 	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[32] = { /* Preamble, invalid header (too big) and Helo request */
+	uint8_t buf[32] = { /* Preamble, invalid header (too big) and Leader request */
 		0, 0, 0, 0,
 		0, 0, 0, 1,
 		0, 0, 0, 0,
@@ -384,7 +384,7 @@ void test_dqlite__conn_read_cb_unexpected_request()
 
 	sockets.server_disconnected = 1;
 
-	CU_ASSERT_STRING_EQUAL(conn.error, "failed to handle request: expected helo, got 1");
+	CU_ASSERT_STRING_EQUAL(conn.error, "failed to handle request: expected leader, got 1");
 }
 
 /*

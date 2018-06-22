@@ -103,12 +103,27 @@ void test_dqlite__gateway_teardown()
 	dqlite__vfs_unregister(vfs);
 }
 
-void test_dqlite__gateway_helo()
+void test_dqlite__gateway_leader()
 {
 	int err;
 
-	request.type = DQLITE_REQUEST_HELO;
-	request.helo.client_id = 123;
+	request.type = DQLITE_REQUEST_LEADER;
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_PTR_NOT_NULL(response);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_SERVER);
+
+	CU_ASSERT_STRING_EQUAL(response->server.address,  "127.0.0.1:666");
+}
+
+void test_dqlite__gateway_client()
+{
+	int err;
+
+	request.type = DQLITE_REQUEST_CLIENT;
+	request.client.id = 123;
 
 	err = dqlite__gateway_handle(&gateway, &request, &response);
 	CU_ASSERT_EQUAL(err, 0);
@@ -116,7 +131,7 @@ void test_dqlite__gateway_helo()
 	CU_ASSERT_PTR_NOT_NULL(response);
 	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_WELCOME);
 
-	CU_ASSERT_STRING_EQUAL(response->welcome.leader,  "127.0.0.1:666");
+	CU_ASSERT_EQUAL(response->welcome.heartbeat_timeout, 15000);
 }
 
 void test_dqlite__gateway_heartbeat()

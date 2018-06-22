@@ -10,8 +10,11 @@
  * Request types.
  */
 
-#define DQLITE__REQUEST_SCHEMA_HELO(X, ...)	\
-	X(uint64, client_id, __VA_ARGS__)
+#define DQLITE__REQUEST_SCHEMA_LEADER(X, ...)	\
+	X(uint64, __unused__, __VA_ARGS__)
+
+#define DQLITE__REQUEST_SCHEMA_CLIENT(X, ...)	\
+	X(uint64, id, __VA_ARGS__)
 
 #define DQLITE__REQUEST_SCHEMA_HEARTBEAT(X, ...)	\
 	X(uint64, timestamp, __VA_ARGS__)
@@ -37,7 +40,8 @@
 	X(uint32, db_id, __VA_ARGS__)		\
 	X(uint32, stmt_id, __VA_ARGS__)
 
-DQLITE__SCHEMA_DEFINE(dqlite__request_helo,      DQLITE__REQUEST_SCHEMA_HELO);
+DQLITE__SCHEMA_DEFINE(dqlite__request_leader,    DQLITE__REQUEST_SCHEMA_LEADER);
+DQLITE__SCHEMA_DEFINE(dqlite__request_client,    DQLITE__REQUEST_SCHEMA_CLIENT);
 DQLITE__SCHEMA_DEFINE(dqlite__request_heartbeat, DQLITE__REQUEST_SCHEMA_HEARTBEAT);
 DQLITE__SCHEMA_DEFINE(dqlite__request_open,      DQLITE__REQUEST_SCHEMA_OPEN);
 DQLITE__SCHEMA_DEFINE(dqlite__request_prepare,   DQLITE__REQUEST_SCHEMA_PREPARE);
@@ -46,7 +50,8 @@ DQLITE__SCHEMA_DEFINE(dqlite__request_exec,      DQLITE__REQUEST_SCHEMA_EXEC);
 DQLITE__SCHEMA_DEFINE(dqlite__request_finalize,  DQLITE__REQUEST_SCHEMA_FINALIZE);
 
 #define DQLITE__REQUEST_SCHEMA_TYPES(X, ...)				\
-	X(DQLITE_REQUEST_HELO,      dqlite__request_helo,      helo,      __VA_ARGS__) \
+	X(DQLITE_REQUEST_LEADER,    dqlite__request_leader,    leader,    __VA_ARGS__) \
+	X(DQLITE_REQUEST_CLIENT,    dqlite__request_client,    client,    __VA_ARGS__) \
 	X(DQLITE_REQUEST_HEARTBEAT, dqlite__request_heartbeat, heartbeat, __VA_ARGS__) \
 	X(DQLITE_REQUEST_OPEN,      dqlite__request_open,      open,      __VA_ARGS__) \
 	X(DQLITE_REQUEST_PREPARE,   dqlite__request_prepare,   prepare,   __VA_ARGS__) \

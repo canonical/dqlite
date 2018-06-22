@@ -6,18 +6,14 @@
 void test_dqlite__request_setup();
 void test_dqlite__request_teardown();
 
-//void test_dqlite__request_old_body_received_too_large();
-//void test_dqlite__request_old_body_received_malformed_helo();
-//void test_dqlite__request_old_body_received_malformed_heartbeat();
-void test_dqlite__request_decode_helo();
+void test_dqlite__request_decode_leader();
+void test_dqlite__request_decode_client();
 void test_dqlite__request_decode_heartbeat();
 void test_dqlite__request_decode_open();
 
 CU_TestInfo dqlite__request_decode_suite[] = {
-	//{"too large",           test_dqlite__request_old_body_received_too_large},
-	//{"malformed helo",      test_dqlite__request_old_body_received_malformed_helo},
-	//{"malformed heartbeat", test_dqlite__request_old_body_received_malformed_heartbeat},
-	{"helo",                test_dqlite__request_decode_helo},
+	{"leader",              test_dqlite__request_decode_leader},
+	{"client",              test_dqlite__request_decode_client},
 	{"heartbeat",           test_dqlite__request_decode_heartbeat},
 	{"open",                test_dqlite__request_decode_open},
 	CU_TEST_INFO_NULL,

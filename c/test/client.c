@@ -106,12 +106,24 @@ int test_client_handshake(struct test_client *c){
 									\
 	return 0
 
-int test_client_helo(struct test_client *c, char **leader, uint8_t *heartbeat)
+int test_client_leader(struct test_client *c, char **leader)
 {
 	TEST_CLIENT__INIT;
 
-	request.type = DQLITE_REQUEST_HELO;
-	request.helo.client_id = 123;
+	request.type = DQLITE_REQUEST_LEADER;
+
+	TEST_CLIENT__WRITE;
+	TEST_CLIENT__READ;
+
+	TEST_CLIENT__CLOSE;
+}
+
+int test_client_client(struct test_client *c, uint64_t *heartbeat)
+{
+	TEST_CLIENT__INIT;
+
+	request.type = DQLITE_REQUEST_CLIENT;
+	request.client.id = 123;
 
 	TEST_CLIENT__WRITE;
 	TEST_CLIENT__READ;
