@@ -76,6 +76,15 @@ void dqlite_server_close(dqlite_server *s);
  */
 int dqlite_server_run(dqlite_server *s);
 
+/* Wait until a dqlite server is ready and can handle connections.
+**
+** Returns 1 if the server has been successfully started, 0 otherwise.
+**
+** This is a thread-safe API, but must be invoked before any call to
+** dqlite_server_stop or dqlite_server_handle.
+*/
+int dqlite_server_ready(dqlite_server *s);
+
 /* Stop a dqlite server.
 **
 ** This is a thread-safe API.

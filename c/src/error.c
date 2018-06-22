@@ -103,6 +103,11 @@ void dqlite__error_oom(dqlite__error *e, const char *msg)
 	dqlite__error_printf(e, "%s: %s", msg, "out of memory");
 }
 
+void dqlite__error_sys(dqlite__error *e, const char *msg)
+{
+	dqlite__error_printf(e, "%s: %s", msg, strerror(errno));
+}
+
 void dqlite__error_uv(dqlite__error *e, int err, const char *msg)
 {
 	dqlite__error_printf(e, "%s: %s (%s)", msg, uv_strerror(err), uv_err_name(err));

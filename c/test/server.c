@@ -184,6 +184,7 @@ static void *testServerRun(void *arg){
 
 test_server *test_server_start(){
 	int err;
+	int ready;
 	test_server *s = testServerCreate();
 
 	assert( s );
@@ -197,6 +198,12 @@ test_server *test_server_start(){
 	err = pthread_create(&s->thread, 0, &testServerRun, (void*)s);
 	if( err ){
 		test_suite_printf("failed to spawn server thread: %s", strerror(errno));
+		return 0;
+	}
+
+	ready = dqlite_server_ready(s->service);
+	if (!ready) {
+		test_suite_printf("server did not start: %s", dqlite_server_errmsg(s->service));
 		return 0;
 	}
 

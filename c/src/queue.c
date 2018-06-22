@@ -62,7 +62,8 @@ static void dqlite__queue_item_process(struct dqlite__queue_item *i)
 		dqlite__error_wrapf(&i->error, &i->conn->error, "failed to init connection");
 	}
 
-	sem_post(&i->pending);
+	err = sem_post(&i->pending);
+	assert(err == 0); /* No reason for which posting should fail */
 }
 
 void dqlite__queue_item_wait(struct dqlite__queue_item *i)
