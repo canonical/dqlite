@@ -24,6 +24,7 @@
 #define DQLITE_EOM      6 /* End of message */
 #define DQLITE_ENGINE   7 /* A SQLite error occurred */
 #define DQLITE_NOTFOUND 8
+#define DQLITE_STOPPED  9 /* The server was stopped */
 
 /* Config op codes */
 #define DQLITE_CONFIG_VFS
@@ -87,7 +88,7 @@ int dqlite_server_run(dqlite_server *s);
 */
 int dqlite_server_ready(dqlite_server *s);
 
-/* Stop a dqlite server.
+/* Stop a dqlite server and wait for it to shutdown.
 **
 ** This is a thread-safe API.
 **

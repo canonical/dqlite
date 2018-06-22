@@ -34,6 +34,7 @@ struct dqlite__server {
 	int                  running;  /* Indicate that the loop is running */
 	sem_t                ready;    /* Notifiy that the loop is running */
 	uv_timer_t           startup;  /* Used for unblocking the ready sem */
+	sem_t                stopped;  /* Notifiy that the loop has been stopped */
 };
 
 /* Close callback for the 'stop' async event handle
@@ -144,6 +145,16 @@ static void dqlite__server_stop_cb(uv_async_t *stop)
 
 	s = (struct dqlite__server*)stop->data;
 
+	/* We expect that we're being executed after dqlite_server_stop and so
+	 * the running flag is off. */
+	assert(!s->running);
+
+	/* Give a final pass to the incoming queue, to unblock any call to
+	 * dqlite_server_handle that might be blocked. There's no need to
+	 * acquire the mutex since now the running flag is off and no new
+	 * incoming connection can be enqueued. */
+	dqlite__queue_process(&s->queue);
+
 	/* Loop through all connections and abort them, then stop the event
 	 * loop. */
 	uv_walk(&s->loop, dqlite__server_stop_walk_cb, (void*)s);
@@ -170,7 +181,6 @@ static void dqlite__server_incoming_cb(uv_async_t *incoming){
 	dqlite__queue_process(&s->queue);
 
 	sqlite3_mutex_leave(s->mutex);
-
 }
 
 /* Callback invoked as soon as the loop as started.
@@ -289,6 +299,13 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 		return DQLITE_ERROR;
 	}
 
+	err = sem_init(&s->stopped, 0, 0);
+	if (err !=0) {
+		dqlite__error_sys(&s->error, "failed to init stopped semaphore");
+		return DQLITE_ERROR;
+	}
+
+
 	s->running = 0;
 
 	return 0;
@@ -303,6 +320,9 @@ void dqlite_server_close(dqlite_server *s)
 	/* The sem_destroy call should only fail if the given semaphore is
 	 * invalid, which must not be our case. */
 	err = sem_destroy(&s->ready);
+	assert(err == 0);
+
+	err = sem_destroy(&s->stopped);
 	assert(err == 0);
 
 	assert(s->vfs == NULL);
@@ -342,6 +362,10 @@ int dqlite_server_run(struct dqlite__server *s){
 
 	dqlite__infof(s, "event loop done", "");
 
+	/* Unblock calls to dqlite_server_stop */
+	err = sem_post(&s->stopped);
+	assert(err == 0); /* No reason for which posting should fail */
+
 	err = uv_loop_close(&s->loop);
 	if (err != 0) {
 		dqlite__error_uv(&s->error, err, "failed to close event loop");
@@ -361,7 +385,7 @@ int dqlite_server_ready(dqlite_server *s)
 {
 	assert(s != NULL);
 
-	/* Wait for the ready mutex to be released */
+	/* Wait for the ready semaphore */
 	sem_wait(&s->ready);
 
 	return s->running;
@@ -377,8 +401,18 @@ int dqlite_server_stop(dqlite_server *s, char **errmsg){
 
 	dqlite__debugf(s, "stop event loop", "");
 
+	/* Grab the queue mutex, so we can be sure no new incoming request will
+	 * be enqueued from this point on. */
+	sqlite3_mutex_enter(s->mutex);
+
 	/* Create an error instance since the one on d is not thread-safe */
 	dqlite__error_init(&e);
+
+	/* Turn off the running flag, so calls to dqlite_server_handle will fail
+	 * with DQLITE_STOPPED. This needs to happen before we send the stop
+	 * signal since the stop callback expects to see that the flag is
+	 * off. */
+	s->running = 0;
 
 	err = uv_async_send(&s->stop);
 	if (err != 0) {
@@ -389,7 +423,15 @@ int dqlite_server_stop(dqlite_server *s, char **errmsg){
 		err = DQLITE_ERROR;
 	}
 
+	sqlite3_mutex_leave(s->mutex);
+
 	dqlite__error_close(&e);
+
+	if (err != 0) {
+		/* Wait for the stopped semaphore, which signals that the loop
+		 * has exited. */
+		sem_wait(&s->stopped);
+	}
 
 	return err;
 }
@@ -427,6 +469,12 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 	}
 
 	sqlite3_mutex_enter(s->mutex);
+
+	if (!s->running) {
+		err = DQLITE_STOPPED;
+		dqlite__error_printf(&e, "server is not running");
+		goto err_queue_push;
+	}
 
 	err = dqlite__queue_push(&s->queue, &item);
 	if (err != 0) {
