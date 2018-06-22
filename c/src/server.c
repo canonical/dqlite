@@ -286,6 +286,9 @@ int dqlite_server_run(struct dqlite__server *s){
 	dqlite__vfs_unregister(s->vfs);
 	s->vfs = NULL;
 
+	/* Flush the log, but ignore errors */
+	fflush(s->log);
+
 	return 0;
 }
 
