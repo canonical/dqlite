@@ -19,7 +19,7 @@
 /* Manage client TCP connections to a dqlite node */
 struct dqlite__server {
 	/* read-only */
-	dqlite__error   error;  /* Last error occurred, if any */
+	dqlite__error        error;    /* Last error occurred, if any */
 
 	/* private */
 	FILE                *log;      /* Log output stream */
@@ -43,10 +43,9 @@ static void dqlite__server_stop_close_cb(uv_handle_t *stop)
 	struct dqlite__server* s;
 
 	assert(stop != NULL);
+	assert(stop->data != NULL);
 
 	s = (struct dqlite__server*)stop->data;
-
-	assert(s != NULL);
 
 	/* All handles must have been closed */
 	assert(!uv_loop_alive(&s->loop));
@@ -108,12 +107,26 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 
 		break;
 
+	case UV_TIMER:
+		/* Each conn object creates a timer handle, which gets closed by
+		 * the dqlite__conn_abort call above, so there's nothing to do
+		 * here. */
+		break;
+
 	default:
+		/* Should not be reached because we assert all possible handle
+		 * types above */
+		assert(0);
 		break;
 	}
 }
 
-/* Callback invoked when the stop async handle gets fired. */
+/* Callback invoked when the stop async handle gets fired.
+ *
+ * This callback will walk through all active handles and close them. After the
+ * last handle (which must be the 'stop' async handle) is closed, the loop gets
+ * stopped.
+ */
 static void dqlite__server_stop_cb(uv_async_t *stop)
 {
 	struct dqlite__server *s;
@@ -123,14 +136,15 @@ static void dqlite__server_stop_cb(uv_async_t *stop)
 
 	s = (struct dqlite__server*)stop->data;
 
-	assert(s != NULL);
-
 	/* Loop through all connections and abort them, then stop the event
 	 * loop. */
 	uv_walk(&s->loop, dqlite__server_stop_walk_cb, (void*)s);
 }
 
-/* Callback invoked when the incoming async handle gets fired. */
+/* Callback invoked when the incoming async handle gets fired.
+ *
+ * This callback will scan the incoming queue and create new connections.
+ */
 static void dqlite__server_incoming_cb(uv_async_t *incoming){
 	struct dqlite__server *s;
 
@@ -139,7 +153,6 @@ static void dqlite__server_incoming_cb(uv_async_t *incoming){
 
 	s = (struct dqlite__server*)incoming->data;
 
-	assert(s != NULL );
 	assert(s->mutex != NULL);
 
 	/* Acquire the queue lock, so no new incoming connection can be
@@ -152,6 +165,7 @@ static void dqlite__server_incoming_cb(uv_async_t *incoming){
 
 }
 
+/* Perform all memory allocations needed to create a dqlite_server object. */
 dqlite_server *dqlite_server_alloc()
 {
 	struct dqlite__server *s;
@@ -173,14 +187,17 @@ dqlite_server *dqlite_server_alloc()
 	return NULL;
 }
 
+/* Release all memory allocated in dqlite_server_alloc() */
 void dqlite_server_free(dqlite_server *s)
 {
 	assert(s != NULL);
+	assert(s->mutex != NULL);
 
 	sqlite3_mutex_free(s->mutex);
 	sqlite3_free(s);
 }
 
+/* Initialize internal state */
 int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 {
 	int err;
@@ -194,7 +211,11 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 	s->log = log;
 	s->cluster = cluster;
 
+	s->vfs = NULL;
+	s->vfs_name = DQLITE__SERVER_DEFAULT_VFS_NAME;
+
 	dqlite__queue_init(&s->queue);
+	assert(s->mutex != NULL); /* Allocated in dqlite_server_alloc */
 
 	err = uv_loop_init(&s->loop);
 	if (err != 0) {
@@ -216,9 +237,6 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 	}
 	s->incoming.data = (void*)s;
 
-	s->vfs = NULL;
-	s->vfs_name = DQLITE__SERVER_DEFAULT_VFS_NAME;
-
 	return 0;
 }
 
@@ -226,11 +244,11 @@ void dqlite_server_close(dqlite_server *s)
 {
 	assert(s != NULL);
 
+	assert(s->vfs == NULL);
+
 	dqlite__queue_close(&s->queue);
 	dqlite__error_close(&s->error);
 
-	if (s->vfs != NULL)
-		dqlite__vfs_unregister(s->vfs);
 }
 
 int dqlite_server_run(struct dqlite__server *s){
@@ -242,7 +260,10 @@ int dqlite_server_run(struct dqlite__server *s){
 	dqlite__infof(s, "register in-memory vfs", "name=%s", s->vfs_name);
 	err = dqlite__vfs_register(s->vfs_name, &s->vfs);
 	if (err != 0) {
-		dqlite__error_printf(&s->error, "failed to register vfs: %d", err);
+		assert(err == SQLITE_NOMEM);
+
+		dqlite__error_printf(&s->error, "failed to register vfs: out of memory");
+
 		return DQLITE_ERROR;
 	}
 
@@ -261,6 +282,9 @@ int dqlite_server_run(struct dqlite__server *s){
 		dqlite__error_uv(&s->error, err, "failed to close event loop");
 		return DQLITE_ERROR;
 	}
+
+	dqlite__vfs_unregister(s->vfs);
+	s->vfs = NULL;
 
 	return 0;
 }

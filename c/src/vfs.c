@@ -1445,6 +1445,8 @@ int dqlite__vfs_register(const char *name, sqlite3_vfs **out) {
 
 	err = dqlite__vfs_root_init(root);
 	if (err != 0) {
+		assert(err == SQLITE_NOMEM);
+
 		sqlite3_free(vfs);
 		return err;
 	}
