@@ -22,6 +22,7 @@ void test_dqlite__gateway_query_multi_column();
 void test_dqlite__gateway_query_multi_row();
 void test_dqlite__gateway_finalize();
 void test_dqlite__gateway_exec_sql();
+void test_dqlite__gateway_query_sql();
 
 CU_TestInfo dqlite__gateway_handle_suite[] = {
 	{"leader",                test_dqlite__gateway_leader},
@@ -40,6 +41,7 @@ CU_TestInfo dqlite__gateway_handle_suite[] = {
 	{"query multi row",       test_dqlite__gateway_query_multi_row},
 	{"finalize",              test_dqlite__gateway_finalize},
 	{"exec sql",              test_dqlite__gateway_exec_sql},
+	{"query sql",             test_dqlite__gateway_query_sql},
 	CU_TEST_INFO_NULL,
 };
 
