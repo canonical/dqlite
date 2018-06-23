@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stddef.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
@@ -367,15 +368,16 @@ static void dqlite__vfs_content_truncate(
 // Root of the volatile file system. Contains pointers to the content
 // of all files that were created.
 struct dqlite__vfs_root {
-	struct dqlite__vfs_content **contents;      /* Pointers to files in the file system */
+	struct dqlite__vfs_content **contents;     /* Pointers to files in the file system */
 	int                          contents_len; /* Number of files in the file system */
-	sqlite3_mutex               *mutex;         /* Serialize to access this object */
-	int                          error;         /* Last error occurred. */
+	pthread_mutex_t              mutex;        /* Serialize to access this object */
+	int                          error;        /* Last error occurred. */
 };
 
 /* Initialize a new dqlite__vfs_root object. */
 static int dqlite__vfs_root_init(struct dqlite__vfs_root *r)
 {
+	int err;
 	int contents_size = sizeof(struct dqlite__vfs_content*) * DQLITE__VFS_MAX_FILES;
 
 	assert(r != NULL);
@@ -387,14 +389,10 @@ static int dqlite__vfs_root_init(struct dqlite__vfs_root *r)
 		goto err_contents_malloc;
 	memset(r->contents, 0, contents_size);
 
-	r->mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_FAST);
-	if (r->mutex == NULL)
-		goto err_mutex_alloc;
+	err = pthread_mutex_init(&r->mutex, NULL);
+	assert(err == 0); /* Docs say that pthread_mutex_init can't fail */
 
 	return SQLITE_OK;
-
- err_mutex_alloc:
-	sqlite3_free(r->contents);
 
  err_contents_malloc:
 	return SQLITE_NOMEM;
@@ -412,7 +410,6 @@ static void dqlite__vfs_root_close(struct dqlite__vfs_root *r)
 
 	assert(r != NULL);
 	assert(r->contents != NULL);
-	assert(r->mutex != NULL);
 
 	cursor = r->contents;
 
@@ -430,7 +427,6 @@ static void dqlite__vfs_root_close(struct dqlite__vfs_root *r)
 	}
 
 	sqlite3_free(r->contents);
-	sqlite3_mutex_free(r->mutex);
 }
 
 /* Find a content object by name.
@@ -606,12 +602,12 @@ static int dqlite__vfs_close(sqlite3_file *file)
 	struct dqlite__vfs_file *f = (struct dqlite__vfs_file*)file;
 	struct dqlite__vfs_root *root = (struct dqlite__vfs_root*)(f->root);
 
-	sqlite3_mutex_enter(root->mutex);
+	pthread_mutex_lock(&root->mutex);
 
 	assert( f->content->refcount );
 	f->content->refcount--;
 
-	sqlite3_mutex_leave(root->mutex);
+	pthread_mutex_unlock(&root->mutex);
 
 	return SQLITE_OK;
 }
@@ -1186,7 +1182,7 @@ static int dqlite__vfs_open(
 	/* This signals SQLite to not call Close() in case we return an error. */
 	f->base.pMethods = 0;
 
-	sqlite3_mutex_enter(root->mutex);
+	pthread_mutex_lock(&root->mutex);
 
 	/* Search if the file exists already, and (if it doesn't) if there are
 	 * free slots. */
@@ -1207,7 +1203,7 @@ static int dqlite__vfs_open(
 	 */
 	if (exists && exclusive && create) {
 		root->error = EEXIST;
-		sqlite3_mutex_leave(root->mutex);
+		pthread_mutex_unlock(&root->mutex);
 		return SQLITE_CANTOPEN;
 	}
 
@@ -1215,7 +1211,7 @@ static int dqlite__vfs_open(
 		/* Check the create flag. */
 		if (!create) {
 			root->error = ENOENT;
-			sqlite3_mutex_leave(root->mutex);
+			pthread_mutex_unlock(&root->mutex);
 			return SQLITE_CANTOPEN;
 		}
 
@@ -1223,7 +1219,7 @@ static int dqlite__vfs_open(
 		if (free_slot == -1) {
 			/* No more file content slots available. */
 			root->error = ENFILE;
-			sqlite3_mutex_leave(root->mutex);
+			pthread_mutex_unlock(&root->mutex);
 			return SQLITE_CANTOPEN;
 		}
 
@@ -1238,14 +1234,14 @@ static int dqlite__vfs_open(
 		content = (struct dqlite__vfs_content*)sqlite3_malloc(sizeof(*content));
 		if (content == NULL) {
 			root->error = ENOMEM;
-			sqlite3_mutex_leave(root->mutex);
+			pthread_mutex_unlock(&root->mutex);
 			return SQLITE_NOMEM;
 		}
 
 		rc = dqlite__vfs_content_init(content, filename, type);
 		if (rc != SQLITE_OK) {
 			root->error = ENOMEM;
-			sqlite3_mutex_leave(root->mutex);
+			pthread_mutex_unlock(&root->mutex);
 			return SQLITE_NOMEM;
 		}
 
@@ -1255,7 +1251,7 @@ static int dqlite__vfs_open(
 			rc = dqlite__vfs_root_database_content_lookup(root, filename, &database);
 			if (rc != SQLITE_OK) {
 				root->error = ENOMEM;
-				sqlite3_mutex_leave(root->mutex);
+				pthread_mutex_unlock(&root->mutex);
 				return rc;
 			}
 			database->wal = content;
@@ -1295,7 +1291,7 @@ static int dqlite__vfs_open(
 
 	content->refcount++;
 
-	sqlite3_mutex_leave(root->mutex);
+	pthread_mutex_unlock(&root->mutex);
 
 	return SQLITE_OK;
 }
@@ -1308,20 +1304,20 @@ static int dqlite__vfs_delete(
 	struct dqlite__vfs_content *content;
 	int content_index;
 
-	sqlite3_mutex_enter(root->mutex);
+	pthread_mutex_lock(&root->mutex);
 
 	/* Check if the file exists. */
 	content_index = dqlite__vfs_root_content_lookup(root, filename, &content);
 	if (content == NULL) {
 		root->error = ENOENT;
-		sqlite3_mutex_leave(root->mutex);
+		pthread_mutex_unlock(&root->mutex);
 		return SQLITE_IOERR_DELETE_NOENT;
 	}
 
 	/* Check that there are no consumers of this file. */
 	if (content->refcount > 0) {
 		root->error = EBUSY;
-		sqlite3_mutex_leave(root->mutex);
+		pthread_mutex_unlock(&root->mutex);
 		return SQLITE_IOERR_DELETE;
 	}
 
@@ -1332,7 +1328,7 @@ static int dqlite__vfs_delete(
 	// Reset the file content slot.
 	*(root->contents + content_index) = 0;
 
-	sqlite3_mutex_leave(root->mutex);
+	pthread_mutex_unlock(&root->mutex);
 
 	return SQLITE_OK;
 }
@@ -1346,7 +1342,7 @@ static int dqlite__vfs_access(
 	struct dqlite__vfs_root *root = (struct dqlite__vfs_root*)(vfs->pAppData);
 	struct dqlite__vfs_content *content;
 
-	sqlite3_mutex_enter(root->mutex);
+	pthread_mutex_lock(&root->mutex);
 
 	/* If the file exists, access is always granted. */
 	dqlite__vfs_root_content_lookup(root, filename, &content);
@@ -1357,7 +1353,7 @@ static int dqlite__vfs_access(
 		*result = 1;
 	}
 
-	sqlite3_mutex_leave(root->mutex);
+	pthread_mutex_unlock(&root->mutex);
 
 	return SQLITE_OK;
 }
@@ -1419,9 +1415,9 @@ static int dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotU
 	struct dqlite__vfs_root *root = (struct dqlite__vfs_root*)(vfs->pAppData);
 	int rc;
 
-	sqlite3_mutex_enter(root->mutex);
+	pthread_mutex_lock(&root->mutex);
 	rc = root->error;
-	sqlite3_mutex_leave(root->mutex);
+	pthread_mutex_unlock(&root->mutex);
 
 	return rc;
 }
