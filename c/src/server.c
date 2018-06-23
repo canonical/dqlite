@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -27,7 +28,7 @@ struct dqlite__server {
 	sqlite3_vfs         *vfs;      /* In-memory file system */
 	const char          *vfs_name; /* Registration name for the vfs */
 	struct dqlite__queue queue;    /* Queue of incoming connections */
-	sqlite3_mutex       *mutex;    /* Serialize access to incoming queue */
+	pthread_mutex_t      mutex;    /* Serialize access to incoming queue */
 	uv_loop_t            loop;     /* UV loop */
 	uv_async_t           stop;     /* Event to stop the UV loop */
 	uv_async_t           incoming; /* Event to process the incoming queue */
@@ -172,15 +173,13 @@ static void dqlite__server_incoming_cb(uv_async_t *incoming){
 
 	s = (struct dqlite__server*)incoming->data;
 
-	assert(s->mutex != NULL);
-
 	/* Acquire the queue lock, so no new incoming connection can be
 	 * pushed. */
-	sqlite3_mutex_enter(s->mutex);
+	pthread_mutex_lock(&s->mutex);
 
 	dqlite__queue_process(&s->queue);
 
-	sqlite3_mutex_leave(s->mutex);
+	pthread_mutex_unlock(&s->mutex);
 }
 
 /* Callback invoked as soon as the loop as started.
@@ -215,14 +214,7 @@ dqlite_server *dqlite_server_alloc()
 	if(s == NULL)
 		goto err_alloc;
 
-	s->mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_FAST);
-	if (s->mutex == NULL)
-		goto err_mutex_alloc;
-
 	return s;
-
- err_mutex_alloc:
-	sqlite3_free(s);
 
  err_alloc:
 	return NULL;
@@ -232,9 +224,7 @@ dqlite_server *dqlite_server_alloc()
 void dqlite_server_free(dqlite_server *s)
 {
 	assert(s != NULL);
-	assert(s->mutex != NULL);
 
-	sqlite3_mutex_free(s->mutex);
 	sqlite3_free(s);
 }
 
@@ -256,7 +246,9 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 	s->vfs_name = DQLITE__SERVER_DEFAULT_VFS_NAME;
 
 	dqlite__queue_init(&s->queue);
-	assert(s->mutex != NULL); /* Allocated in dqlite_server_alloc */
+
+	err = pthread_mutex_init(&s->mutex, NULL);
+	assert(err == 0); /* Docs say that pthread_mutex_init can't fail */
 
 	err = uv_loop_init(&s->loop);
 	if (err != 0) {
@@ -396,14 +388,13 @@ int dqlite_server_stop(dqlite_server *s, char **errmsg){
 	dqlite__error e;
 
 	assert(s != NULL);
-	assert(s->mutex != NULL);
 	assert(errmsg != NULL);
 
 	dqlite__debugf(s, "stop event loop", "");
 
 	/* Grab the queue mutex, so we can be sure no new incoming request will
 	 * be enqueued from this point on. */
-	sqlite3_mutex_enter(s->mutex);
+	pthread_mutex_lock(&s->mutex);
 
 	/* Create an error instance since the one on d is not thread-safe */
 	dqlite__error_init(&e);
@@ -423,7 +414,7 @@ int dqlite_server_stop(dqlite_server *s, char **errmsg){
 		err = DQLITE_ERROR;
 	}
 
-	sqlite3_mutex_leave(s->mutex);
+	pthread_mutex_unlock(&s->mutex);
 
 	dqlite__error_close(&e);
 
@@ -444,7 +435,6 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 	struct dqlite__queue_item item;
 
 	assert(s != NULL);
-	assert(s->mutex != NULL);
 	assert(s->log != NULL);
 	assert(s->cluster != NULL);
 
@@ -468,7 +458,7 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 		goto err_item_init;
 	}
 
-	sqlite3_mutex_enter(s->mutex);
+	pthread_mutex_lock(&s->mutex);
 
 	if (!s->running) {
 		err = DQLITE_STOPPED;
@@ -489,7 +479,7 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 		goto err_incoming_send;
 	}
 
-	sqlite3_mutex_leave(s->mutex);
+	pthread_mutex_unlock(&s->mutex);
 
 	dqlite__debugf(s, "wait connection ready", "socket=%d", socket);
 
@@ -510,7 +500,7 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 	dqlite__queue_pop(&s->queue);
 
  err_queue_push:
-	sqlite3_mutex_leave(s->mutex);
+	pthread_mutex_unlock(&s->mutex);
 
  err_item_wait:
 	dqlite__queue_item_close(&item);
