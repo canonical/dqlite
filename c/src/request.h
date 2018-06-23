@@ -44,6 +44,10 @@
 	X(uint64, db_id, __VA_ARGS__)		\
 	X(text,   sql,   __VA_ARGS__)
 
+#define DQLITE__REQUEST_SCHEMA_QUERY_SQL(X, ...)	\
+	X(uint64, db_id, __VA_ARGS__)			\
+	X(text,   sql,   __VA_ARGS__)
+
 DQLITE__SCHEMA_DEFINE(dqlite__request_leader,    DQLITE__REQUEST_SCHEMA_LEADER);
 DQLITE__SCHEMA_DEFINE(dqlite__request_client,    DQLITE__REQUEST_SCHEMA_CLIENT);
 DQLITE__SCHEMA_DEFINE(dqlite__request_heartbeat, DQLITE__REQUEST_SCHEMA_HEARTBEAT);
@@ -53,6 +57,7 @@ DQLITE__SCHEMA_DEFINE(dqlite__request_query,     DQLITE__REQUEST_SCHEMA_QUERY);
 DQLITE__SCHEMA_DEFINE(dqlite__request_exec,      DQLITE__REQUEST_SCHEMA_EXEC);
 DQLITE__SCHEMA_DEFINE(dqlite__request_finalize,  DQLITE__REQUEST_SCHEMA_FINALIZE);
 DQLITE__SCHEMA_DEFINE(dqlite__request_exec_sql,  DQLITE__REQUEST_SCHEMA_EXEC_SQL);
+DQLITE__SCHEMA_DEFINE(dqlite__request_query_sql, DQLITE__REQUEST_SCHEMA_QUERY_SQL);
 
 #define DQLITE__REQUEST_SCHEMA_TYPES(X, ...)				\
 	X(DQLITE_REQUEST_LEADER,    dqlite__request_leader,    leader,    __VA_ARGS__) \
@@ -63,7 +68,8 @@ DQLITE__SCHEMA_DEFINE(dqlite__request_exec_sql,  DQLITE__REQUEST_SCHEMA_EXEC_SQL
 	X(DQLITE_REQUEST_EXEC,      dqlite__request_exec,      exec,      __VA_ARGS__) \
 	X(DQLITE_REQUEST_QUERY,     dqlite__request_query,     query,     __VA_ARGS__) \
 	X(DQLITE_REQUEST_FINALIZE,  dqlite__request_finalize,  finalize,  __VA_ARGS__) \
-	X(DQLITE_REQUEST_EXEC_SQL,  dqlite__request_exec_sql,  exec_sql,  __VA_ARGS__)
+	X(DQLITE_REQUEST_EXEC_SQL,  dqlite__request_exec_sql,  exec_sql,  __VA_ARGS__) \
+	X(DQLITE_REQUEST_QUERY_SQL, dqlite__request_query_sql, query_sql, __VA_ARGS__)
 
 DQLITE__SCHEMA_HANDLER_DEFINE(dqlite__request, DQLITE__REQUEST_SCHEMA_TYPES);
 

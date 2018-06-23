@@ -648,3 +648,58 @@ void test_dqlite__gateway_exec_sql()
 	CU_ASSERT_EQUAL(response->result.last_insert_id, 1);
 	CU_ASSERT_EQUAL(response->result.rows_affected, 1);
 }
+
+void test_dqlite__gateway_query_sql()
+{
+	int err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	uint64_t header;
+	int64_t n;
+
+	test_dqlite__gateway_send_open(&db_id);
+
+	test_dqlite__gateway_send_prepare(db_id, "CREATE TABLE foo (n INT)", &stmt_id);
+
+	test_dqlite__gateway_send_exec(db_id, stmt_id, &last_insert_id, &rows_affected);
+
+	test_dqlite__gateway_send_prepare(db_id, "INSERT INTO foo(n) VALUES(-12)", &stmt_id);
+
+	test_dqlite__gateway_send_exec(db_id, stmt_id, &last_insert_id, &rows_affected);
+
+	request.type = DQLITE_REQUEST_QUERY_SQL;
+	request.query_sql.db_id = db_id;
+	request.query_sql.sql = "SELECT n FROM foo";
+
+	request.message.words = 1;
+	request.message.offset1 = 8;
+
+	response->message.offset1 = 0;
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_PTR_NOT_NULL(response);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_ROWS);
+
+	/* Two words were written, one with the row header and one with the row
+	 * column */
+	CU_ASSERT_EQUAL(response->message.offset1, 16);
+
+	response->message.words = 2;
+	response->message.offset1 = 0;
+
+	/* Read the header */
+	err = dqlite__message_body_get_uint64(&response->message, &header);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL((uint8_t*)(&header)[0], SQLITE_INTEGER);
+
+	/* Read the value */
+	err = dqlite__message_body_get_int64(&response->message, &n);
+	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+
+	CU_ASSERT_EQUAL(n, -12);
+}
