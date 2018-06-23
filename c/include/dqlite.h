@@ -41,6 +41,7 @@
 #define DQLITE_REQUEST_EXEC      5
 #define DQLITE_REQUEST_QUERY     6
 #define DQLITE_REQUEST_FINALIZE  7
+#define DQLITE_REQUEST_EXEC_SQL  8
 
 /* Response types */
 #define DQLITE_RESPONSE_SERVER   0

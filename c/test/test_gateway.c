@@ -592,3 +592,59 @@ void test_dqlite__gateway_finalize()
 	CU_ASSERT_PTR_NOT_NULL(response);
 	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_EMPTY);
 }
+
+void test_dqlite__gateway_exec_sql()
+{
+	int err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+
+	test_dqlite__gateway_send_open(&db_id);
+
+	test_dqlite__gateway_send_prepare(db_id, "CREATE TABLE foo (n INT, t TEXT, f FLOAT)", &stmt_id);
+
+	test_dqlite__gateway_send_exec(db_id, stmt_id, &last_insert_id, &rows_affected);
+
+	request.type = DQLITE_REQUEST_EXEC_SQL;
+	request.exec_sql.db_id = db_id;
+	request.exec_sql.sql =  "INSERT INTO foo(n,t,f) VALUES(?,?,?)";
+
+	request.message.words = 5;
+	request.message.offset1 = 8;
+
+	err = dqlite__message_body_put_uint8(&request.message, 3); /* N of params */
+	CU_ASSERT_EQUAL(err, 0);
+
+	err = dqlite__message_body_put_uint8(&request.message, SQLITE_INTEGER); /* param type */
+	CU_ASSERT_EQUAL(err, 0);
+
+	err = dqlite__message_body_put_uint8(&request.message, SQLITE_TEXT); /* param type */
+	CU_ASSERT_EQUAL(err, 0);
+
+	err = dqlite__message_body_put_uint8(&request.message, SQLITE_NULL); /* param type */
+	CU_ASSERT_EQUAL(err, 0);
+
+	request.message.offset1 = 16; /* skip padding bytes */
+
+	err = dqlite__message_body_put_int64(&request.message, 1); /* param value */
+	CU_ASSERT_EQUAL(err, 0);
+
+	err = dqlite__message_body_put_text(&request.message, "hello"); /* param value */
+	CU_ASSERT_EQUAL(err, 0);
+
+	err = dqlite__message_body_put_int64(&request.message, 0); /* param value */
+	CU_ASSERT_EQUAL(err, 0);
+
+	request.message.offset1 = 8; /* rewind */
+
+	err = dqlite__gateway_handle(&gateway, &request, &response);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_PTR_NOT_NULL(response);
+	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_RESULT);
+
+	CU_ASSERT_EQUAL(response->result.last_insert_id, 1);
+	CU_ASSERT_EQUAL(response->result.rows_affected, 1);
+}
