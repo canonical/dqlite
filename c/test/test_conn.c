@@ -320,18 +320,11 @@ void test_dqlite__conn_read_cb_unknown_protocol()
 	CU_ASSERT_STRING_EQUAL(conn.error, "unknown protocol version: 123456");
 }
 
-/* TODO: set a header with zero words */
-void test_dqlite__conn_read_cb_invalid_header()
+void test_dqlite__conn_read_cb_empty_body()
 {
 	int err;
 	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[32] = { /* Preamble, invalid header (too big) and Leader request */
-		0, 0, 0, 0,
-		0, 0, 0, 1,
-		0, 0, 0, 0,
-		1, 0, 1, 0,
-		0, 0, 0, 0,
-		0, 0, 0, 0,
+	uint8_t buf[8] = { /* Invalid header (empty body) */
 		0, 0, 0, 0,
 		0, 0, 0, 0,
 	};
@@ -343,8 +336,11 @@ void test_dqlite__conn_read_cb_invalid_header()
 	nwrite = write(sockets.client, &protocol, sizeof(protocol));
 	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
-	nwrite = write(sockets.client, buf, 32);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 32);
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+
+	nwrite = write(sockets.client, buf, 8);
+	CU_ASSERT_EQUAL_FATAL(nwrite, 8);
 
 	err = uv_run(&loop, UV_RUN_NOWAIT);
 
@@ -353,17 +349,15 @@ void test_dqlite__conn_read_cb_invalid_header()
 
 	sockets.server_disconnected = 1;
 
-	CU_ASSERT_STRING_EQUAL(conn.error, "failed to parse request header: invalid segment size: 16777216");
+	CU_ASSERT_STRING_EQUAL(conn.error, "failed to parse request header: empty message body");
 }
 
-void test_dqlite__conn_read_cb_unexpected_request()
+void test_dqlite__conn_read_cb_body_too_large()
 {
 	int err;
 	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[16] = { /* Header and unexpected request (Heartbeat) */
-		1, 0, 0, 0,
-		1, 0, 0, 0,
-		0, 0, 0, 0,
+	uint8_t buf[8] = { /* Invalid header (body too large) */
+		0xf, 0xf, 0xf, 0xf,
 		0, 0, 0, 0,
 	};
 	ssize_t nwrite;
@@ -374,8 +368,11 @@ void test_dqlite__conn_read_cb_unexpected_request()
 	nwrite = write(sockets.client, &protocol, sizeof(protocol));
 	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
 
-	nwrite = write(sockets.client, buf, 16);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 16);
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+
+	nwrite = write(sockets.client, buf, 8);
+	CU_ASSERT_EQUAL_FATAL(nwrite, 8);
 
 	err = uv_run(&loop, UV_RUN_NOWAIT);
 
@@ -384,7 +381,7 @@ void test_dqlite__conn_read_cb_unexpected_request()
 
 	sockets.server_disconnected = 1;
 
-	CU_ASSERT_STRING_EQUAL(conn.error, "failed to handle request: expected leader, got 1");
+	CU_ASSERT_STRING_EQUAL(conn.error, "failed to parse request header: message body too large");
 }
 
 /*

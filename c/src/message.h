@@ -19,17 +19,27 @@
  *
  * Since the 'words' field of dqlite__message is 32-bit, the maximum size of a
  * message body is about 34G.
+ *
+ * However this is currently limited to by DQLITE__MESSAGE_MAX_WORDS, mostly to
+ * defend against misbehaving clients.
  */
 #define DQLITE__MESSAGE_WORD_SIZE 8
 
 /* The size in bits of a single word in the message body */
 #define DQLITE__MESSAGE_WORD_BITS 64
 
+/* Maximum number of words in a message. This is a reasonable figure for current
+ * use cases of dqlite.
+ *
+ * TODO: make this configurable.
+ */
+#define DQLITE__MESSAGE_MAX_WORDS (1 << 25) /* ~250M */
+
 /* Length of the statically allocated message body buffer of dqlite__message. If
  * a message body exeeds this size, a dynamically allocated buffer will be
  * used. */
 #define DQLITE__MESSAGE_BUF_LEN   4096
-#define DQLITE__MESSAGE_BUF_WORDS DQLITE__MESSAGE_BUF_LEN / DQLITE__MESSAGE_WORD_SIZE
+#define DQLITE__MESSAGE_BUF_WORDS (DQLITE__MESSAGE_BUF_LEN / DQLITE__MESSAGE_WORD_SIZE)
 
 /* Type aliases to used by macro-based definitions in schema.h */
 typedef const char*  text_t;

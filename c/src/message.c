@@ -76,6 +76,12 @@ int dqlite__message_header_recv_done(struct dqlite__message *m)
 		return DQLITE_ERROR;
 	}
 
+	/* The message body can't exeed DQLITE__MESSAGE_MAX_WORDS. */
+	if (m->words > DQLITE__MESSAGE_MAX_WORDS) {
+		dqlite__error_printf(&m->error, "message body too large");
+		return DQLITE_ERROR;
+	}
+
 	return 0;
 }
 

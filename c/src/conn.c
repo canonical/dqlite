@@ -146,7 +146,7 @@ static int dqlite__conn_header_read_cb(void *arg)
 		dqlite__error_wrapf(
 			&c->error,
 			&c->request.message.error,
-			"failed parse request header");
+			"failed to parse request header");
 		return err;
 	}
 
