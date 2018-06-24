@@ -59,7 +59,7 @@ void test_dqlite__message_header_recv_done_empty_body()
 	int err;
 	err = dqlite__message_header_recv_done(&message);
 
-	CU_ASSERT_EQUAL(err, DQLITE_ERROR);
+	CU_ASSERT_EQUAL(err, DQLITE_PROTO);
 	CU_ASSERT_STRING_EQUAL(message.error, "empty message body");
 }
 
@@ -71,7 +71,7 @@ void test_dqlite__message_header_recv_done_body_too_large()
 
 	err = dqlite__message_header_recv_done(&message);
 
-	CU_ASSERT_EQUAL(err, DQLITE_ERROR);
+	CU_ASSERT_EQUAL(err, DQLITE_PROTO);
 	CU_ASSERT_STRING_EQUAL(message.error, "message body too large");
 }
 

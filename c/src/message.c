@@ -73,13 +73,13 @@ int dqlite__message_header_recv_done(struct dqlite__message *m)
 	/* The message body can't be empty. */
 	if (m->words == 0) {
 		dqlite__error_printf(&m->error, "empty message body");
-		return DQLITE_ERROR;
+		return DQLITE_PROTO;
 	}
 
 	/* The message body can't exeed DQLITE__MESSAGE_MAX_WORDS. */
 	if (m->words > DQLITE__MESSAGE_MAX_WORDS) {
 		dqlite__error_printf(&m->error, "message body too large");
-		return DQLITE_ERROR;
+		return DQLITE_PROTO;
 	}
 
 	return 0;
@@ -133,6 +133,7 @@ int dqlite__message_body_recv_start(struct dqlite__message *m, uv_buf_t *buf)
 	if (m->words > DQLITE__MESSAGE_BUF_LEN / DQLITE__MESSAGE_WORD_SIZE) {
 		err = dqlite__message_body_alloc(m, m->words);
 		if (err != 0) {
+			assert(err == DQLITE_NOMEM);
 			return err;
 		}
 		buf->base = (char*)m->body2.base;

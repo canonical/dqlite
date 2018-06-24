@@ -30,11 +30,15 @@ CU_TestInfo dqlite__conn_abort_suite[] = {
 void test_dqlite__conn_read_cb_unknown_protocol();
 void test_dqlite__conn_read_cb_empty_body();
 void test_dqlite__conn_read_cb_body_too_large();
+void test_dqlite__conn_read_cb_malformed_body();
+void test_dqlite__conn_read_cb_invalid_db_id();
 
 CU_TestInfo dqlite__conn_read_cb_suite[] = {
-	{"unknown protocol", test_dqlite__conn_read_cb_unknown_protocol},
-	{"empty body",       test_dqlite__conn_read_cb_empty_body},
-	{"body too large",   test_dqlite__conn_read_cb_body_too_large},
+	{"unknown protocol",  test_dqlite__conn_read_cb_unknown_protocol},
+	{"empty body",        test_dqlite__conn_read_cb_empty_body},
+	{"body too large",    test_dqlite__conn_read_cb_body_too_large},
+	{"malformed body",    test_dqlite__conn_read_cb_malformed_body},
+	{"invalid db _id",    test_dqlite__conn_read_cb_invalid_db_id},
 	CU_TEST_INFO_NULL,
 };
 

@@ -183,6 +183,7 @@ const (
 
 // Response types.
 const (
+	ServerResponseFailure = C.DQLITE_RESPONSE_FAILURE
 	ServerResponseServer  = C.DQLITE_RESPONSE_SERVER
 	ServerResponseWelcome = C.DQLITE_RESPONSE_WELCOME
 	ServerResponseServers = C.DQLITE_RESPONSE_SERVERS

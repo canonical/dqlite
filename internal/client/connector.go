@@ -56,7 +56,7 @@ func (c *Connector) Stop() {
 // connector is stopped, an error is returned.
 func (c *Connector) Connect(ctx context.Context) (*Client, error) {
 	// Wait for a connection to the leader server to be available.
-	client, err := c.getConn(ctx)
+	client, err := c.getClient(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func (c *Connector) connectLoop() {
 		case <-ch:
 		case <-c.loopCh:
 		case <-c.stopCh:
-			c.setConn(nil)
+			c.setClient(nil)
 			client.Close()
 			return
 		}
@@ -103,7 +103,7 @@ func (c *Connector) connectLoop() {
 		// We lost connectivity to the server or we we were interrupted
 		// by connect() because it detected that the server lost
 		// leadership, let's connect again.
-		c.setConn(nil)
+		c.setClient(nil)
 		client.Close()
 	}
 }
@@ -121,7 +121,7 @@ func (c *Connector) connect() *Client {
 		// awake all waiting goroutines spawned by getServer(), to give
 		// them a chance to terminate if their context is expired.
 		defer func() {
-			c.setConn(client)
+			c.setClient(client)
 		}()
 
 		logger := c.logger.With(zap.Uint("attempt", attempt))
@@ -256,7 +256,7 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string) (*Cli
 
 // Set the current leader server (or nil) and awake anything waiting on
 // getServer.
-func (c *Connector) setConn(client *Client) {
+func (c *Connector) setClient(client *Client) {
 	c.cond.L.Lock()
 	defer c.cond.L.Unlock()
 	c.client = client
@@ -265,7 +265,7 @@ func (c *Connector) setConn(client *Client) {
 
 // Get a connection to the leader server. If the context is done before such a
 // connection is available, return an errNoAvailableLeader.
-func (c *Connector) getConn(ctx context.Context) (*Client, error) {
+func (c *Connector) getClient(ctx context.Context) (*Client, error) {
 	// Make this channel buffered, so the goroutine below will not block on
 	// sending to it if this method returns early, because the context was
 	// done or the stopCh was cllosed.
@@ -274,7 +274,7 @@ func (c *Connector) getConn(ctx context.Context) (*Client, error) {
 		// Loop until we find a connected server which is still the
 		// leader.
 		for {
-			client, err := c.waitConn(ctx)
+			client, err := c.waitClient(ctx)
 			if err != nil {
 				if err == errStaleLeader {
 					continue
@@ -298,7 +298,7 @@ func (c *Connector) getConn(ctx context.Context) (*Client, error) {
 }
 
 // Wait for the connect loop to connect to a leader server.
-func (c *Connector) waitConn(ctx context.Context) (*Client, error) {
+func (c *Connector) waitClient(ctx context.Context) (*Client, error) {
 	c.cond.L.Lock()
 	defer c.cond.L.Unlock()
 

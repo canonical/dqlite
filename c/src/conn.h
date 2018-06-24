@@ -29,6 +29,7 @@ struct dqlite__conn {
 	struct dqlite__fsm      fsm;      /* Connection state machine */
 	struct dqlite__request  request;  /* Incoming request */
 	struct dqlite__gateway  gateway;  /* Client state and request handler */
+	struct dqlite__response response; /* Response buffer for internal failures */
 	FILE                   *log;      /* Log output stream */
 	int                     socket;   /* Socket file descriptor of client connection */
 	uv_loop_t              *loop;     /* UV loop */

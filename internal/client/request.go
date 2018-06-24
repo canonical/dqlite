@@ -15,7 +15,7 @@ func (r *Leader) Write(w io.Writer) error {
 	message.Type = bindings.ServerRequestLeader
 	message.Body.Bytes = make([]byte, messageWordSize)
 
-	message.Body.WriteUint64(r.unused)
+	message.Body.PutUint64(r.unused)
 
 	return message.Write(w)
 }
@@ -36,9 +36,9 @@ func (r *Open) Write(w io.Writer) error {
 
 	message.Body.Bytes = make([]byte, size)
 
-	message.Body.WriteString(r.name)
-	message.Body.WriteUint64(r.flags)
-	message.Body.WriteString(r.vfs)
+	message.Body.PutString(r.name)
+	message.Body.PutUint64(r.flags)
+	message.Body.PutString(r.vfs)
 
 	return message.Write(w)
 }
@@ -57,8 +57,8 @@ func (r *Prepare) Write(w io.Writer) error {
 
 	message.Body.Bytes = make([]byte, size)
 
-	message.Body.WriteUint64(r.db)
-	message.Body.WriteString(r.sql)
+	message.Body.PutUint64(r.db)
+	message.Body.PutString(r.sql)
 
 	return message.Write(w)
 }
@@ -77,8 +77,8 @@ func (r *Exec) Write(w io.Writer) error {
 
 	message.Body.Bytes = make([]byte, size)
 
-	message.Body.WriteUint32(r.db)
-	message.Body.WriteUint32(r.stmt)
+	message.Body.PutUint32(r.db)
+	message.Body.PutUint32(r.stmt)
 
 	return message.Write(w)
 }
@@ -97,8 +97,8 @@ func (r *Query) Write(w io.Writer) error {
 
 	message.Body.Bytes = make([]byte, size)
 
-	message.Body.WriteUint32(r.db)
-	message.Body.WriteUint32(r.stmt)
+	message.Body.PutUint32(r.db)
+	message.Body.PutUint32(r.stmt)
 
 	return message.Write(w)
 }
@@ -117,8 +117,8 @@ func (r *Finalize) Write(w io.Writer) error {
 
 	message.Body.Bytes = make([]byte, size)
 
-	message.Body.WriteUint32(r.db)
-	message.Body.WriteUint32(r.stmt)
+	message.Body.PutUint32(r.db)
+	message.Body.PutUint32(r.stmt)
 
 	return message.Write(w)
 }
@@ -137,8 +137,8 @@ func (r *QuerySQL) Write(w io.Writer) error {
 
 	message.Body.Bytes = make([]byte, size)
 
-	message.Body.WriteUint64(r.db)
-	message.Body.WriteString(r.sql)
+	message.Body.PutUint64(r.db)
+	message.Body.PutString(r.sql)
 
 	return message.Write(w)
 }
@@ -157,8 +157,8 @@ func (r *ExecSQL) Write(w io.Writer) error {
 
 	message.Body.Bytes = make([]byte, size)
 
-	message.Body.WriteUint64(r.db)
-	message.Body.WriteString(r.sql)
+	message.Body.PutUint64(r.db)
+	message.Body.PutString(r.sql)
 
 	return message.Write(w)
 }

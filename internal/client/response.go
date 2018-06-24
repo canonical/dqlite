@@ -23,7 +23,7 @@ func (r *Server) Read(reader io.Reader) error {
 		return fmt.Errorf("unexpected response")
 	}
 
-	r.Address = m.Body.ReadString()
+	r.Address = m.Body.GetString()
 
 	return nil
 }
@@ -43,7 +43,7 @@ func (r *Welcome) Read(reader io.Reader) error {
 		return fmt.Errorf("unexpected response")
 	}
 
-	r.HeartbeatTimeout = m.Body.ReadUint64()
+	r.HeartbeatTimeout = m.Body.GetUint64()
 
 	return nil
 }
@@ -64,8 +64,8 @@ func (r *Db) Read(reader io.Reader) error {
 		return fmt.Errorf("unexpected response %d", m.Type)
 	}
 
-	r.ID = m.Body.ReadUint32()
-	r.unused = m.Body.ReadUint32()
+	r.ID = m.Body.GetUint32()
+	r.unused = m.Body.GetUint32()
 
 	return nil
 }
@@ -86,8 +86,8 @@ func (r *Stmt) Read(reader io.Reader) error {
 		return fmt.Errorf("unexpected response %d", m.Type)
 	}
 
-	r.Db = m.Body.ReadUint32()
-	r.ID = m.Body.ReadUint32()
+	r.Db = m.Body.GetUint32()
+	r.ID = m.Body.GetUint32()
 
 	return nil
 }
@@ -108,8 +108,8 @@ func (r *Result) Read(reader io.Reader) error {
 		return fmt.Errorf("unexpected response %d", m.Type)
 	}
 
-	r.LastInsertedID = m.Body.ReadUint64()
-	r.RowsAffected = m.Body.ReadUint64()
+	r.LastInsertedID = m.Body.GetUint64()
+	r.RowsAffected = m.Body.GetUint64()
 
 	return nil
 }
@@ -129,7 +129,7 @@ func (r *Rows) Read(reader io.Reader) error {
 		return fmt.Errorf("unexpected response %d", m.Type)
 	}
 
-	r.unused = m.Body.ReadUint64()
+	r.unused = m.Body.GetUint64()
 
 	return nil
 }
@@ -149,7 +149,7 @@ func (r *Empty) Read(reader io.Reader) error {
 		return fmt.Errorf("unexpected response %d", m.Type)
 	}
 
-	r.unused = m.Body.ReadUint64()
+	r.unused = m.Body.GetUint64()
 
 	return nil
 }
