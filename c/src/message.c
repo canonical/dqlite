@@ -10,6 +10,14 @@
 #include "lifecycle.h"
 #include "message.h"
 
+/* This ensures that doubles are 64-bit long
+ *
+ * See https://stackoverflow.com/questions/752309/ensuring-c-doubles-are-64-bits
+ */
+#ifndef __STDC_IEC_559__
+#error "Requires IEEE 754 floating point!"
+#endif
+
 static void dqlite__message_reset(struct dqlite__message *m)
 {
 	assert(m != NULL);
@@ -542,7 +550,10 @@ int dqlite__message_body_put_double(struct dqlite__message *m, double_t value)
 	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
 	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
 
-	buf = *((uint64_t*)(&value));
+	assert(sizeof(buf) == sizeof(value));
+
+	memcpy(&buf, &value, sizeof(buf));
+
 	buf = dqlite__flip64(buf);
 
 	return dqlite__message_body_put(m, (const char*)(&buf), sizeof(buf), 0);

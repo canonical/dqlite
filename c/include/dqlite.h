@@ -27,7 +27,7 @@
 #define DQLITE_STOPPED  9 /* The server was stopped */
 
 /* Config op codes */
-#define DQLITE_CONFIG_VFS
+#define DQLITE_CONFIG_VFS 0
 
 /* Current protocol version */
 #define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
@@ -81,6 +81,14 @@ void dqlite_server_free(dqlite_server *s);
 /* Initialize and release resources used by a dqlite server */
 int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster);
 void dqlite_server_close(dqlite_server *s);
+
+/* Set a config option on a dqlite server
+ *
+ * This API must be called after dqlite_server_init and before
+ * dqlite_server_run.
+ */
+int dqlite_server_config(dqlite_server *s, int op, void *arg);
+
 
 /* Start a dqlite server.
  *

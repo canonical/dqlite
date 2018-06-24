@@ -560,6 +560,7 @@ void test_dqlite__message_body_put_double_one()
 {
 	int err;
 	uint64_t buf;
+	double value;
 
 	err = dqlite__message_body_put_double(&message, 3.1415926535);
 
@@ -567,7 +568,10 @@ void test_dqlite__message_body_put_double_one()
 	CU_ASSERT_EQUAL(message.offset1, 8);
 
 	buf = dqlite__flip64(*(uint64_t*)(message.body1));
-	CU_ASSERT_EQUAL(*(double*)(&buf), 3.1415926535);
+
+	memcpy(&value, &buf, sizeof(buf));
+
+	CU_ASSERT_EQUAL(value, 3.1415926535);
 }
 
 void test_dqlite__message_body_put_dyn_buf()

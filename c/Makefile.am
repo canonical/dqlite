@@ -77,12 +77,12 @@ dqlite_test_SOURCES = \
   test/test_conn.h \
   test/test_db.c \
   test/test_db.h \
-  test/test_dqlite.c \
-  test/test_dqlite.h \
   test/test_error.c \
   test/test_error.h \
   test/test_gateway.c \
   test/test_gateway.h \
+  test/test_integration.c \
+  test/test_integration.h \
   test/test_message.c \
   test/test_message.h \
   test/test_queue.c \
@@ -95,6 +95,8 @@ dqlite_test_SOURCES = \
   test/test_response.h \
   test/test_schema.c \
   test/test_schema.h \
+  test/test_server.c \
+  test/test_server.h \
   test/test_stmt.c \
   test/test_stmt.h \
   test/test_vfs.c \
