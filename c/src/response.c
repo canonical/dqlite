@@ -11,6 +11,7 @@
 #include "message.h"
 #include "schema.h"
 
+DQLITE__SCHEMA_IMPLEMENT(dqlite__response_failure,  DQLITE__RESPONSE_SCHEMA_FAILURE);
 DQLITE__SCHEMA_IMPLEMENT(dqlite__response_server,   DQLITE__RESPONSE_SCHEMA_SERVER);
 DQLITE__SCHEMA_IMPLEMENT(dqlite__response_welcome,  DQLITE__RESPONSE_SCHEMA_WELCOME);
 DQLITE__SCHEMA_IMPLEMENT(dqlite__response_servers,  DQLITE__RESPONSE_SCHEMA_SERVERS);
