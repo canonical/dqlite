@@ -55,6 +55,13 @@
 #define DQLITE_RESPONSE_ROWS     7
 #define DQLITE_RESPONSE_EMPTY    8
 
+/* Initialize SQLite global state with values specific to dqlite
+ *
+ * This API must be called exactly once before any other SQLite or dqlite API
+ * call is invoked in a process.
+ */
+int dqlite_init(const char **ermsg);
+
 /* Interface implementing cluster-related functionality */
 typedef struct dqlite_cluster {
 	void *ctx;

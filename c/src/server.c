@@ -17,6 +17,28 @@
 
 #define DQLITE__SERVER_DEFAULT_VFS_NAME "volatile"
 
+int dqlite_init(const char **errmsg) {
+	int rc;
+
+	assert(errmsg != NULL);
+
+	/* Configure SQLite for single-thread mode. This is a global config.
+	 *
+	 * TODO: add an option to turn failures into warnings instead. This
+	 * would degrade performance but allow clients to use this process'
+	 * SQLite instance for other purposes that require multi-thread.
+	 */
+	rc = sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
+	if (rc != SQLITE_OK) {
+		*errmsg = "failed to set SQLite to single-thread mode";
+		return DQLITE_ERROR;
+	}
+
+	*errmsg = NULL;
+
+	return 0;
+}
+
 /* Manage client TCP connections to a dqlite node */
 struct dqlite__server {
 	/* read-only */
@@ -170,7 +192,6 @@ static void dqlite__server_incoming_cb(uv_async_t *incoming){
 
 	assert(incoming != NULL);
 	assert(incoming->data != NULL);
-
 	s = (struct dqlite__server*)incoming->data;
 
 	/* Acquire the queue lock, so no new incoming connection can be
