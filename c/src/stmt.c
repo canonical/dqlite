@@ -169,9 +169,9 @@ static int dqlite__stmt_put_row(
 	int err;
 	int i;
 	int pad;
-	uint8_t slot;
 	int header_bits;
 	int *column_types;
+	uint8_t slot = 0;
 
 	assert(s != NULL);
 	assert(message != NULL);

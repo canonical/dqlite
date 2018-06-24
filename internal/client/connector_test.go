@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
-func TestConnector(t *testing.T) {
+func TestConnector_Connect(t *testing.T) {
 	connector, cleanup := newConnector(t)
 	defer cleanup()
 

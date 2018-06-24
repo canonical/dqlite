@@ -48,7 +48,7 @@ struct dqlite__server {
 	FILE                *log;      /* Log output stream */
 	dqlite_cluster      *cluster;  /* Cluster implementation */
 	sqlite3_vfs         *vfs;      /* In-memory file system */
-	const char          *vfs_name; /* Registration name for the vfs */
+	char                *vfs_name; /* Registration name for the vfs */
 	struct dqlite__queue queue;    /* Queue of incoming connections */
 	pthread_mutex_t      mutex;    /* Serialize access to incoming queue */
 	uv_loop_t            loop;     /* UV loop */
@@ -246,6 +246,10 @@ void dqlite_server_free(dqlite_server *s)
 {
 	assert(s != NULL);
 
+	if (s->vfs_name != NULL) {
+		sqlite3_free(s->vfs_name);
+	}
+
 	sqlite3_free(s);
 }
 
@@ -264,7 +268,7 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 	s->cluster = cluster;
 
 	s->vfs = NULL;
-	s->vfs_name = DQLITE__SERVER_DEFAULT_VFS_NAME;
+	s->vfs_name = NULL;
 
 	dqlite__queue_init(&s->queue);
 
@@ -345,14 +349,51 @@ void dqlite_server_close(dqlite_server *s)
 
 }
 
-int dqlite_server_run(struct dqlite__server *s){
-	int err;
+/* Set a config option */
+int dqlite_server_config(dqlite_server *s, int op, void *arg)
+{
+	int err = 0;
 
 	assert(s != NULL);
-	assert(s->vfs_name != NULL);
 
-	dqlite__infof(s, "register in-memory vfs", "name=%s", s->vfs_name);
-	err = dqlite__vfs_register(s->vfs_name, &s->vfs);
+	switch (op) {
+
+	case DQLITE_CONFIG_VFS:
+		if (s->vfs_name != NULL) {
+			sqlite3_free(s->vfs_name);
+		}
+
+		s->vfs_name = sqlite3_malloc(strlen((const char*)arg) + 1);
+		if (s->vfs_name == NULL) {
+			dqlite__error_oom(&s->error, "failed to copy VFS name");
+			err = DQLITE_NOMEM;
+		}
+
+		strcpy(s->vfs_name, (const char*)arg);
+
+		break;
+
+	default:
+		dqlite__error_printf(&s->error, "unknown op code %d", op);
+		err = DQLITE_ERROR;
+		break;
+	}
+
+	return err;
+}
+
+int dqlite_server_run(struct dqlite__server *s){
+	int err;
+	const char *vfs_name;
+
+	assert(s != NULL);
+
+	if (s->vfs_name == NULL) {
+		vfs_name = DQLITE__SERVER_DEFAULT_VFS_NAME;
+	}
+
+	dqlite__infof(s, "register in-memory vfs", "name=%s", vfs_name);
+	err = dqlite__vfs_register(vfs_name, &s->vfs);
 	if (err != 0) {
 		assert(err == SQLITE_NOMEM);
 

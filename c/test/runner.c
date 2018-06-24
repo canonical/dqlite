@@ -9,15 +9,16 @@
 #include "suite.h"
 #include "test_conn.h"
 #include "test_db.h"
-#include "test_dqlite.h"
 #include "test_error.h"
 #include "test_gateway.h"
+#include "test_integration.h"
 #include "test_message.h"
 #include "test_queue.h"
 #include "test_registry.h"
 #include "test_request.h"
 #include "test_response.h"
 #include "test_schema.h"
+#include "test_server.h"
 #include "test_stmt.h"
 #include "test_vfs.h"
 
@@ -34,7 +35,8 @@ static CU_SuiteInfo* test__runner_suites[] = {
 	dqlite__response_suites,
 	dqlite__schema_suites,
 	dqlite__vfs_suites,
-	dqlite_suites,
+	dqlite_server_suites,
+	dqlite_integration_suites,
 	0,
 };
 
