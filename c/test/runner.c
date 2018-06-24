@@ -4,6 +4,8 @@
 
 #include <CUnit/CUnit.h>
 
+#include "../include/dqlite.h"
+
 #include "suite.h"
 #include "test_conn.h"
 #include "test_db.h"
@@ -85,6 +87,7 @@ int main(){
 	int exit_code = EXIT_SUCCESS;
 	int err = 0;
 	CU_SuiteInfo **suite;
+	const char *errmsg;
 
 	/* Unbuffered output so everything reaches the screen */
 	setvbuf(stdout, NULL, _IONBF, 0);
@@ -116,6 +119,14 @@ int main(){
 				CU_get_error_msg());
 			return EXIT_FAILURE;
 		}
+	}
+
+	/* Initialize SQLite global state */
+	err = dqlite_init(&errmsg);
+	if(err != 0){
+		fprintf(stderr, "\nFailed to initialize dqlite: %s (%d)\n",
+			errmsg, err);
+		exit_code = EXIT_FAILURE;
 	}
 
 	/* Run tests. */
