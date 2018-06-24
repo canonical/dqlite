@@ -15,6 +15,7 @@
 static struct test_socket_pair sockets;
 static uv_loop_t loop;
 static struct dqlite__conn conn;
+struct dqlite__response response;
 
 void test_dqlite__conn_setup()
 {
@@ -32,12 +33,14 @@ void test_dqlite__conn_setup()
 	}
 
 	dqlite__conn_init(&conn, log, sockets.server, test_cluster(), &loop);
+	dqlite__response_init(&response);
 }
 
 void test_dqlite__conn_teardown()
 {
 	int err;
 
+	dqlite__response_close(&response);
 	dqlite__conn_close(&conn);
 
 	err = uv_loop_close(&loop);
@@ -300,6 +303,31 @@ void test_dqlite__conn_abort_after_heartbeat_timeout()
  * dqlite__conn_read_cb_suite
  */
 
+static void test_dqlite__conn_recv_response() {
+	int err;
+	uv_buf_t buf;
+	ssize_t nread;
+
+	dqlite__message_header_recv_start(&response.message, &buf);
+
+	nread = read(sockets.client, buf.base, buf.len);
+	CU_ASSERT_EQUAL_FATAL(nread, buf.len);
+
+	err = dqlite__message_header_recv_done(&response.message);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	err = dqlite__message_body_recv_start(&response.message, &buf);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	nread = read(sockets.client, buf.base, buf.len);
+	CU_ASSERT_EQUAL_FATAL(nread, buf.len);
+
+	err = dqlite__response_decode(&response);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	dqlite__message_recv_reset(&response.message);
+}
+
 void test_dqlite__conn_read_cb_unknown_protocol()
 {
 	int err;
@@ -343,13 +371,23 @@ void test_dqlite__conn_read_cb_empty_body()
 	CU_ASSERT_EQUAL_FATAL(nwrite, 8);
 
 	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
 
-	/* The connection gets closed by the server */
-	CU_ASSERT_EQUAL_FATAL(err, 0 /* Number of pending handles */);
+	test_dqlite__conn_recv_response();
+
+	CU_ASSERT_EQUAL(response.type, DQLITE_RESPONSE_FAILURE);
+	CU_ASSERT_EQUAL(response.failure.code, DQLITE_PROTO);
+	CU_ASSERT_STRING_EQUAL(
+		response.failure.description,
+		"failed to parse request header: empty message body");
+
+	err = test_socket_pair_client_disconnect(&sockets);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	sockets.server_disconnected = 1;
-
-	CU_ASSERT_STRING_EQUAL(conn.error, "failed to parse request header: empty message body");
 }
 
 void test_dqlite__conn_read_cb_body_too_large()
@@ -375,13 +413,110 @@ void test_dqlite__conn_read_cb_body_too_large()
 	CU_ASSERT_EQUAL_FATAL(nwrite, 8);
 
 	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
 
-	/* The connection gets closed by the server */
-	CU_ASSERT_EQUAL_FATAL(err, 0 /* Number of pending handles */);
+	test_dqlite__conn_recv_response();
+
+	CU_ASSERT_EQUAL(response.type, DQLITE_RESPONSE_FAILURE);
+	CU_ASSERT_EQUAL(response.failure.code, DQLITE_PROTO);
+	CU_ASSERT_STRING_EQUAL(
+		response.failure.description,
+		"failed to parse request header: message body too large");
+
+	err = test_socket_pair_client_disconnect(&sockets);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
 
 	sockets.server_disconnected = 1;
+}
 
-	CU_ASSERT_STRING_EQUAL(conn.error, "failed to parse request header: message body too large");
+void test_dqlite__conn_read_cb_malformed_body()
+{
+	int err;
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t buf[32] = { /* Valid header for Open request, invalid Open.volatile */
+		3, 0, 0, 0, DQLITE_REQUEST_OPEN, 0, 0, 0,
+		't', 'e', 's', 't', '.', 'd', 'b', 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		'v', 'o', 'l', 'a', 't', 'i', 'e', 'x',
+	};
+	ssize_t nwrite;
+
+	err = dqlite__conn_start(&conn);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
+
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+
+	nwrite = write(sockets.client, buf, 32);
+	CU_ASSERT_EQUAL_FATAL(nwrite, 32);
+
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+
+	test_dqlite__conn_recv_response();
+
+	CU_ASSERT_EQUAL(response.type, DQLITE_RESPONSE_FAILURE);
+	CU_ASSERT_EQUAL(response.failure.code, DQLITE_PARSE);
+	CU_ASSERT_STRING_EQUAL(
+		response.failure.description,
+		"failed to decode request: failed to decode 'open': failed to get 'vfs' field: no string found");
+
+	err = test_socket_pair_client_disconnect(&sockets);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	sockets.server_disconnected = 1;
+}
+
+void test_dqlite__conn_read_cb_invalid_db_id()
+{
+	int err;
+	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t buf[24] = { /* Valid header for Prepare request, invalid Prepare.db_id */
+		2, 0, 0, 0, DQLITE_REQUEST_PREPARE, 0, 0, 0,
+		1, 0, 0, 0, 0, 0, 0, 0,
+		'S', 'E', 'L', 'E', 'C', ' ', '1', 0,
+	};
+	ssize_t nwrite;
+
+	err = dqlite__conn_start(&conn);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	nwrite = write(sockets.client, &protocol, sizeof(protocol));
+	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
+
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+
+	nwrite = write(sockets.client, buf, 24);
+	CU_ASSERT_EQUAL_FATAL(nwrite, 24);
+
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+
+	test_dqlite__conn_recv_response();
+
+	CU_ASSERT_EQUAL(response.type, DQLITE_RESPONSE_FAILURE);
+	CU_ASSERT_EQUAL(response.failure.code, DQLITE_NOTFOUND);
+	CU_ASSERT_STRING_EQUAL(
+		response.failure.description,
+		"failed to handle request: failed to handle prepare: no db with id 1");
+
+	err = test_socket_pair_client_disconnect(&sockets);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	err = uv_run(&loop, UV_RUN_NOWAIT);
+	CU_ASSERT_EQUAL_FATAL(err, 0);
+
+	sockets.server_disconnected = 1;
 }
 
 /*

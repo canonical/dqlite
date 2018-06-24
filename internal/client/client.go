@@ -38,7 +38,7 @@ func (c *Client) connect(ctx context.Context) error {
 
 	// Perform the protocol handshake.
 	buf := buffer{Bytes: make([]byte, 8)}
-	buf.WriteUint64(bindings.ServerProtocolVersion)
+	buf.PutUint64(bindings.ServerProtocolVersion)
 
 	// TODO: we should keep on with short writes
 	n, err := conn.Write(buf.Bytes)

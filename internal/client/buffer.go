@@ -10,7 +10,7 @@ type buffer struct {
 	Offset uint64
 }
 
-func (b *buffer) WriteString(v string) {
+func (b *buffer) PutString(v string) {
 	offset := b.Offset
 
 	// Copy the string bytes into the buffer.
@@ -30,31 +30,31 @@ func (b *buffer) WriteString(v string) {
 	b.advance(offset - b.Offset)
 }
 
-func (b *buffer) WriteUint8(v uint8) {
+func (b *buffer) PutUint8(v uint8) {
 	defer b.advance(1)
 
 	b.Bytes[b.Offset] = v
 }
 
-func (b *buffer) WriteUint16(v uint16) {
+func (b *buffer) PutUint16(v uint16) {
 	defer b.advance(2)
 
 	binary.LittleEndian.PutUint16(b.Bytes[b.Offset:], v)
 }
 
-func (b *buffer) WriteUint32(v uint32) {
+func (b *buffer) PutUint32(v uint32) {
 	defer b.advance(4)
 
 	binary.LittleEndian.PutUint32(b.Bytes[b.Offset:], v)
 }
 
-func (b *buffer) WriteUint64(v uint64) {
+func (b *buffer) PutUint64(v uint64) {
 	defer b.advance(8)
 
 	binary.LittleEndian.PutUint64(b.Bytes[b.Offset:], v)
 }
 
-func (b *buffer) ReadString() string {
+func (b *buffer) GetString() string {
 	index := bytes.IndexByte(b.Bytes[b.Offset:], 0)
 	if index == -1 {
 		panic("no string found")
@@ -73,25 +73,25 @@ func (b *buffer) ReadString() string {
 	return s
 }
 
-func (b *buffer) ReadUint8() uint8 {
+func (b *buffer) GetUint8() uint8 {
 	defer b.advance(1)
 
 	return b.Bytes[b.Offset]
 }
 
-func (b *buffer) ReadUint16() uint16 {
+func (b *buffer) GetUint16() uint16 {
 	defer b.advance(2)
 
 	return binary.LittleEndian.Uint16(b.Bytes[b.Offset:])
 }
 
-func (b *buffer) ReadUint32() uint32 {
+func (b *buffer) GetUint32() uint32 {
 	defer b.advance(4)
 
 	return binary.LittleEndian.Uint32(b.Bytes[b.Offset:])
 }
 
-func (b *buffer) ReadUint64() uint64 {
+func (b *buffer) GetUint64() uint64 {
 	defer b.advance(8)
 
 	return binary.LittleEndian.Uint64(b.Bytes[b.Offset:])

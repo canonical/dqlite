@@ -130,59 +130,6 @@ static int dqlite__conn_header_alloc_cb(void *arg)
 	return 0;
 }
 
-static int dqlite__conn_header_read_cb(void *arg)
-{
-	int err;
-	struct dqlite__conn *c;
-
-	assert(arg != NULL);
-
-	c = (struct dqlite__conn*)arg;
-
-	dqlite__debugf(c, "header read", "socket=%d", c->socket);
-
-	err = dqlite__message_header_recv_done(&c->request.message);
-	if (err != 0) {
-		dqlite__error_wrapf(
-			&c->error,
-			&c->request.message.error,
-			"failed to parse request header");
-		return err;
-	}
-
-	return 0;
-}
-
-static struct dqlite__fsm_transition dqlite__conn_transitions_header[] = {
-	{DQLITE__CONN_ALLOC, dqlite__conn_header_alloc_cb, DQLITE__CONN_HEADER},
-	{DQLITE__CONN_READ,  dqlite__conn_header_read_cb,  DQLITE__CONN_BODY},
-};
-
-static int dqlite__conn_body_alloc_cb(void *arg)
-{
-	int err;
-	struct dqlite__conn *c;
-	uv_buf_t buf;
-
-	assert(arg != NULL);
-
-	c = (struct dqlite__conn*)arg;
-
-	err = dqlite__message_body_recv_start(&c->request.message, &buf);
-	if (err != 0) {
-		dqlite__error_wrapf(
-			&c->error,
-			&c->request.message.error, "failed to start reading message body");
-		return err;
-	}
-
-	dqlite__debugf(c, "body alloc", "socket=%d len=%ld", c->socket, buf.len);
-
-	dqlite__conn_buf_init(c, &buf);
-
-	return 0;
-}
-
 /* Context attached to an uv_write_t write request */
 struct dqlite__conn_write_ctx {
 	struct dqlite__conn     *conn;
@@ -191,6 +138,7 @@ struct dqlite__conn_write_ctx {
 
 static void dqlite__conn_write_cb(uv_write_t* req, int status);
 
+/* Write out a response for the client */
 static int dqlite__conn_write(struct dqlite__conn *c, struct dqlite__response *response)
 {
 	int err;
@@ -236,6 +184,106 @@ static int dqlite__conn_write(struct dqlite__conn *c, struct dqlite__response *r
 	return 0;
 }
 
+/* Write out a failure response.
+ *
+ * This is used to inform the client about failures such as malformed requests
+ * that failed to be parsed or handled because they are either malformed or
+ * invalid (e.g. they contain a reference to an unknown prepared statement).
+ */
+static int dqlite__conn_write_failure(struct dqlite__conn *c, int code) {
+	int err;
+
+	assert(c != NULL);
+	assert(code != 0);
+
+	dqlite__debugf(c, "failure", "code=%d description=%s", code, c->error);
+
+	c->response.type = DQLITE_RESPONSE_FAILURE;
+	c->response.failure.code = code;
+	c->response.failure.description = c->error;
+
+	err = dqlite__response_encode(&c->response);
+	if (err != 0) {
+		dqlite__error_wrapf(
+			&c->error, &c->response.error,
+			"failed to encode failure response");
+		return err;
+	}
+
+	err = dqlite__conn_write(c, &c->response);
+	if (err != 0) {
+		/* NOTE: no need to set c->error since that's done by
+		 * dqlite__conn_write. */
+		return err;
+	}
+
+	return 0;
+}
+
+static int dqlite__conn_header_read_cb(void *arg)
+{
+	int err;
+	struct dqlite__conn *c;
+
+	assert(arg != NULL);
+
+	c = (struct dqlite__conn*)arg;
+
+	dqlite__debugf(c, "header read", "socket=%d", c->socket);
+
+	err = dqlite__message_header_recv_done(&c->request.message);
+	if (err != 0) {
+		/* At the moment DQLITE_PROTO is the only error that should be
+		 * returned. */
+		assert(err == DQLITE_PROTO);
+
+		dqlite__error_wrapf(
+			&c->error,
+			&c->request.message.error,
+			"failed to parse request header");
+
+		err = dqlite__conn_write_failure(c, err);
+		if (err != 0) {
+			return err;
+		}
+
+		/* Instruct the fsm to skip receiving the message body */
+		c->fsm.jump_state_id = DQLITE__CONN_HEADER;
+	}
+
+	return 0;
+}
+
+static struct dqlite__fsm_transition dqlite__conn_transitions_header[] = {
+	{DQLITE__CONN_ALLOC, dqlite__conn_header_alloc_cb, DQLITE__CONN_HEADER},
+	{DQLITE__CONN_READ,  dqlite__conn_header_read_cb,  DQLITE__CONN_BODY},
+};
+
+static int dqlite__conn_body_alloc_cb(void *arg)
+{
+	int err;
+	struct dqlite__conn *c;
+	uv_buf_t buf;
+
+	assert(arg != NULL);
+
+	c = (struct dqlite__conn*)arg;
+
+	err = dqlite__message_body_recv_start(&c->request.message, &buf);
+	if (err != 0) {
+		dqlite__error_wrapf(
+			&c->error,
+			&c->request.message.error, "failed to start reading message body");
+		return err;
+	}
+
+	dqlite__debugf(c, "body alloc", "socket=%d len=%ld", c->socket, buf.len);
+
+	dqlite__conn_buf_init(c, &buf);
+
+	return 0;
+}
+
 static void dqlite__conn_write_cb(uv_write_t* req, int status)
 {
 	int err;
@@ -277,7 +325,11 @@ static void dqlite__conn_write_cb(uv_write_t* req, int status)
 			}
 		}
 	} else {
-		dqlite__gateway_finish(&c->gateway, response);
+		/* In case this not a failure response, notify the gateway that
+		 * we're done */
+		if (response != &c->response) {
+			dqlite__gateway_finish(&c->gateway, response);
+		}
 	}
 
 	sqlite3_free(req);
@@ -298,7 +350,7 @@ static int dqlite__conn_body_read_cb(void *arg)
 	err = dqlite__request_decode(&c->request);
 	if (err != 0) {
 		dqlite__error_wrapf(&c->error, &c->request.error, "failed to decode request");
-		goto err;
+		goto request_failure;
 	}
 
 	c->request.timestamp = uv_now(c->loop);
@@ -306,36 +358,41 @@ static int dqlite__conn_body_read_cb(void *arg)
 	err = dqlite__gateway_handle(&c->gateway, &c->request, &response);
 	if (err != 0) {
 		dqlite__error_wrapf(&c->error, &c->gateway.error, "failed to handle request");
-		goto err;
+		goto request_failure;
 	}
+
+	/* Currently all requests require a response */
+	assert(response != NULL);
 
 	dqlite__message_recv_reset(&c->request.message);
 
 	err = dqlite__response_encode(response);
 	if (err != 0) {
 		dqlite__error_wrapf(&c->error, &response->error, "failed to encode response");
-		goto err;
+		goto response_failure;
 	}
-
-	/* Currently all requests require a response */
-	assert(response != NULL);
 
 	err = dqlite__conn_write(c, response);
 	if (err != 0) {
 		/* NOTE: no need to set c->error since that's done by
 		 * dqlite__conn_write. */
-		dqlite__gateway_abort(&c->gateway, response);
-		return err;
+		goto response_failure;
 	}
 
 	return 0;
 
- err:
+ response_failure:
+	dqlite__gateway_abort(&c->gateway, response);
+
+ request_failure:
 	assert(err != 0);
 
-	dqlite__message_recv_reset(&c->request.message);
+	err = dqlite__conn_write_failure(c, err);
+	if (err != 0) {
+		return err;
+	}
 
-	return err;
+	return 0;
 }
 
 static struct dqlite__fsm_transition dqlite__conn_transitions_body[] = {
@@ -488,6 +545,7 @@ void dqlite__conn_init(
 	dqlite__fsm_init(&c->fsm, dqlite__conn_states, dqlite__conn_events, dqlite__transitions);
 	dqlite__request_init(&c->request);
 	dqlite__gateway_init(&c->gateway, log, cluster);
+	dqlite__response_init(&c->response);
 
 	c->log = log;
 	c->socket = socket;
@@ -501,6 +559,7 @@ void dqlite__conn_close(struct dqlite__conn *c)
 {
 	assert(c != NULL);
 
+	dqlite__response_close(&c->response);
 	dqlite__gateway_close(&c->gateway);
 	dqlite__fsm_close(&c->fsm);
 	dqlite__request_close(&c->request);

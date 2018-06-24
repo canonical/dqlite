@@ -38,6 +38,7 @@ struct dqlite__fsm {
 	int events_count;  /* Length of the events array */
 	int curr_state_id; /* ID of the current state of the FSM */
 	int next_state_id; /* ID of the next state of the FSM */
+	int jump_state_id; /* ID of alternate state the FSM will jump to */
 };
 
 /* FSM lifecycle */

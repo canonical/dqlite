@@ -30,6 +30,7 @@ void dqlite__fsm_init(
 
 	f->curr_state_id = 0;
 	f->next_state_id = 0;
+	f->jump_state_id = -1;
 
 	/* Count the number of valid events */
 	f->events_count = 0;
@@ -83,7 +84,16 @@ int dqlite__fsm_step(struct dqlite__fsm *f, int event_id, void *arg){
 	if (err != 0)
 		return err;
 
-	f->next_state_id = transition->next_state_id;
+	/* Handlers can set jump_state_id if they want to skip the normal FSM
+	 * flow and jump to a different state. */
+	if (f->jump_state_id != -1) {
+		assert(-f->jump_state_id < f->states_count);
+		f->next_state_id = f->jump_state_id;
+		f->jump_state_id = -1;
+	} else {
+		f->next_state_id = transition->next_state_id;
+	}
+
 	f->curr_state_id = f->next_state_id;
 
 	return 0;

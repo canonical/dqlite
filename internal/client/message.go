@@ -37,10 +37,10 @@ func (m *message) Write(writer io.Writer) error {
 func (m *message) writeHeader(writer io.Writer) error {
 	buffer := buffer{Bytes: make([]byte, messageHeaderSize)}
 
-	buffer.WriteUint32(m.Words)
-	buffer.WriteUint8(m.Type)
-	buffer.WriteUint8(m.Flags)
-	buffer.WriteUint16(m.Extra)
+	buffer.PutUint32(m.Words)
+	buffer.PutUint8(m.Type)
+	buffer.PutUint8(m.Flags)
+	buffer.PutUint16(m.Extra)
 
 	// TODO: we should keep on with short writes
 	n, err := writer.Write(buffer.Bytes)
@@ -56,7 +56,6 @@ func (m *message) writeHeader(writer io.Writer) error {
 }
 
 func (m *message) writeBody(writer io.Writer) error {
-	// TODO: we should keep on with short writes
 	n, err := writer.Write(m.Body.Bytes)
 	if err != nil {
 		return errors.Wrap(err, "failed to write body")
@@ -88,10 +87,10 @@ func (m *message) readHeader(reader io.Reader) error {
 		return errors.Wrap(err, "failed to read header")
 	}
 
-	m.Words = buf.ReadUint32()
-	m.Type = buf.ReadUint8()
-	m.Flags = buf.ReadUint8()
-	m.Extra = buf.ReadUint16()
+	m.Words = buf.GetUint32()
+	m.Type = buf.GetUint8()
+	m.Flags = buf.GetUint8()
+	m.Extra = buf.GetUint16()
 
 	return nil
 }
