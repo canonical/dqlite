@@ -28,13 +28,13 @@ CU_TestInfo dqlite__conn_abort_suite[] = {
 };
 
 void test_dqlite__conn_read_cb_unknown_protocol();
-void test_dqlite__conn_read_cb_invalid_header();
-void test_dqlite__conn_read_cb_unexpected_request();
+void test_dqlite__conn_read_cb_empty_body();
+void test_dqlite__conn_read_cb_body_too_large();
 
 CU_TestInfo dqlite__conn_read_cb_suite[] = {
-	{"unknown protocol",   test_dqlite__conn_read_cb_unknown_protocol},
-	/*{"invalid header",     test_dqlite__conn_read_cb_invalid_header},*/
-	/*{"unexpected request", test_dqlite__conn_read_cb_unexpected_request},*/
+	{"unknown protocol", test_dqlite__conn_read_cb_unknown_protocol},
+	{"empty body",       test_dqlite__conn_read_cb_empty_body},
+	{"body too large",   test_dqlite__conn_read_cb_body_too_large},
 	CU_TEST_INFO_NULL,
 };
 

@@ -16,9 +16,11 @@ CU_TestInfo dqlite__message_header_recv_start_suite[] = {
 };
 
 void test_dqlite__message_header_recv_done_empty_body();
+void test_dqlite__message_header_recv_done_body_too_large();
 
 CU_TestInfo dqlite__message_header_recv_done_suite[] = {
-	{"empty body", test_dqlite__message_header_recv_done_empty_body},
+	{"empty body",     test_dqlite__message_header_recv_done_empty_body},
+	{"body too large", test_dqlite__message_header_recv_done_body_too_large},
 	CU_TEST_INFO_NULL,
 };
 

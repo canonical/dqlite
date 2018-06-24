@@ -387,6 +387,7 @@ void dqlite__gateway_init(
 	/* Reset all request contexts in the buffer */
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
 		g->ctxs[i].request = NULL;
+		dqlite__response_init(&g->ctxs[i].response);
 	}
 
 	dqlite__db_registry_init(&g->dbs);
@@ -394,10 +395,17 @@ void dqlite__gateway_init(
 
 void dqlite__gateway_close(struct dqlite__gateway *g)
 {
+	int i;
+
 	assert(g != NULL);
 
-	dqlite__error_close(&g->error);
 	dqlite__db_registry_close(&g->dbs);
+
+	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
+		dqlite__response_close(&g->ctxs[i].response);
+	}
+
+	dqlite__error_close(&g->error);
 
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_GATEWAY);
 }
