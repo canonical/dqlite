@@ -1,148 +1,388 @@
 package client
 
 import (
+	"bytes"
+	"database/sql/driver"
+	"encoding/binary"
 	"io"
 
-	"github.com/pkg/errors"
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 )
 
+type NamedValues = []driver.NamedValue
+
 type Message struct {
-	Words uint32
-	Type  uint8
-	Flags uint8
-	Extra uint16
-	Body  buffer
+	words  uint32
+	mtype  uint8
+	flags  uint8
+	extra  uint16
+	header []byte // Statically allocated header buffer
+	body1  buffer // Statically allocated body data, using bytes
+	body2  buffer // Dynamically allocated body data
 }
 
-func (m *Message) Write(writer io.Writer) error {
-	n := len(m.Body.Bytes)
-
-	if (n % messageWordSize) != 0 {
-		panic("body is not aligned at word boundary")
+func (m *Message) Init(staticSize int) {
+	if (staticSize % messageWordSize) != 0 {
+		panic("static size is not aligned to word boundary")
 	}
-
-	m.Words = uint32(n / messageWordSize)
-
-	if err := m.writeHeader(writer); err != nil {
-		return errors.Wrap(err, "failed to write header")
-	}
-
-	if err := m.writeBody(writer); err != nil {
-		return errors.Wrap(err, "failed to write body")
-	}
-
-	return nil
+	m.header = make([]byte, messageHeaderSize)
+	m.body1.Bytes = make([]byte, staticSize)
+	m.Reset()
 }
 
-func (m *Message) writeHeader(writer io.Writer) error {
-	buffer := buffer{Bytes: make([]byte, messageHeaderSize)}
-
-	buffer.PutUint32(m.Words)
-	buffer.PutUint8(m.Type)
-	buffer.PutUint8(m.Flags)
-	buffer.PutUint16(m.Extra)
-
-	// TODO: we should keep on with short writes
-	n, err := writer.Write(buffer.Bytes)
-	if err != nil {
-		return errors.Wrap(err, "failed to write header")
-	}
-
-	if n != messageHeaderSize {
-		return errors.Wrap(io.ErrShortWrite, "failed to write header")
-	}
-
-	return nil
+func (m *Message) Reset() {
+	m.body1.Offset = 0
+	m.body2.Bytes = nil
+	m.body2.Offset = 0
 }
 
-func (m *Message) writeBody(writer io.Writer) error {
-	n, err := writer.Write(m.Body.Bytes)
-	if err != nil {
-		return errors.Wrap(err, "failed to write body")
+func (m *Message) PutString(v string) {
+	size := len(v) + 1
+	pad := 0
+	if (size % messageWordSize) != 0 {
+		// Account for padding
+		pad = messageWordSize - (size % messageWordSize)
+		size += pad
 	}
 
-	if n != len(m.Body.Bytes) {
-		return errors.Wrap(io.ErrShortWrite, "failed to write body")
-	}
+	b := m.bufferForPut(size)
+	defer b.Advance(size)
 
-	return nil
+	// Copy the string bytes into the buffer.
+	offset := b.Offset
+	copy(b.Bytes[offset:], v)
+	offset += len(v)
+
+	// Add a nul byte
+	b.Bytes[offset] = 0
+	offset++
+
+	// Add padding
+	for i := 0; i < pad; i++ {
+		b.Bytes[offset] = 0
+		offset++
+	}
 }
 
-func (m *Message) Read(reader io.Reader) error {
-	if err := m.readHeader(reader); err != nil {
-		return errors.Wrap(err, "failed to read header")
-	}
+func (m *Message) PutUint8(v uint8) {
+	b := m.bufferForPut(1)
+	defer b.Advance(1)
 
-	if err := m.readBody(reader); err != nil {
-		return errors.Wrap(err, "failed to read body")
-	}
-
-	return nil
+	b.Bytes[b.Offset] = v
 }
 
-func (m *Message) readHeader(reader io.Reader) error {
-	buf := buffer{Bytes: make([]byte, messageHeaderSize)}
+func (m *Message) PutUint16(v uint16) {
+	b := m.bufferForPut(2)
+	defer b.Advance(2)
 
-	if err := m.readPeek(reader, buf.Bytes); err != nil {
-		return errors.Wrap(err, "failed to read header")
-	}
-
-	m.Words = buf.GetUint32()
-	m.Type = buf.GetUint8()
-	m.Flags = buf.GetUint8()
-	m.Extra = buf.GetUint16()
-
-	return nil
+	binary.LittleEndian.PutUint16(b.Bytes[b.Offset:], v)
 }
 
-func (m *Message) readBody(reader io.Reader) error {
-	n := int(m.Words) * messageWordSize
-	buf := buffer{Bytes: make([]byte, n)}
+func (m *Message) PutUint32(v uint32) {
+	b := m.bufferForPut(4)
+	defer b.Advance(4)
 
-	if err := m.readPeek(reader, buf.Bytes); err != nil {
-		return errors.Wrap(err, "failed to read body")
-	}
-
-	m.Body = buf
-
-	return nil
+	binary.LittleEndian.PutUint32(b.Bytes[b.Offset:], v)
 }
 
-// Read until buf is full.
-func (m *Message) readPeek(reader io.Reader, buf []byte) error {
-	for offset := 0; offset < len(buf); {
-		n, err := m.readFill(reader, buf[offset:])
-		if err != nil {
-			return err
+func (m *Message) PutUint64(v uint64) {
+	b := m.bufferForPut(8)
+	defer b.Advance(8)
+
+	binary.LittleEndian.PutUint64(b.Bytes[b.Offset:], v)
+}
+
+func (m *Message) PutInt64(v int64) {
+	b := m.bufferForPut(8)
+	defer b.Advance(8)
+
+	binary.LittleEndian.PutUint64(b.Bytes[b.Offset:], uint64(v))
+}
+
+func (m *Message) PutNamedValues(values NamedValues) {
+	n := uint8(len(values)) // N of params
+	if n == 0 {
+		return
+	}
+
+	m.PutUint8(n)
+
+	for i := range values {
+		if values[i].Ordinal != i+1 {
+			panic("unexpected ordinal")
 		}
-		offset += n
-	}
 
-	return nil
-}
-
-// Try to fill buf, but perform at most one read.
-func (m *Message) readFill(reader io.Reader, buf []byte) (int, error) {
-	// Read new data: try a limited number of times.
-	//
-	// This technique is copied from bufio.Reader.
-	for i := messageMaxConsecutiveEmptyReads; i > 0; i-- {
-		n, err := reader.Read(buf)
-		if n < 0 {
-			panic(errNegativeRead)
-		}
-		if err != nil {
-			return -1, err
-		}
-		if n > 0 {
-			return n, nil
+		switch values[i].Value.(type) {
+		case int64:
+			m.PutUint8(bindings.Integer)
+		case float64:
+			m.PutUint8(bindings.Float)
+		case bool:
+			m.PutUint8(bindings.Integer)
+		case []byte:
+			m.PutUint8(bindings.Blob)
+		case string:
+			m.PutUint8(bindings.Text)
+		case nil:
+			m.PutUint8(bindings.Null)
+		default:
+			panic("unsupported value type")
 		}
 	}
-	return -1, io.ErrNoProgress
+
+	b := m.bufferForPut(1)
+
+	if trailing := b.Offset % messageWordSize; trailing != 0 {
+		// Skip padding bytes
+		b.Advance(messageWordSize - trailing)
+	}
+
+	for i := range values {
+		switch v := values[i].Value.(type) {
+		case int64:
+			m.PutInt64(v)
+		case float64:
+			panic("todo")
+		case bool:
+			panic("todo")
+		case []byte:
+			panic("todo")
+		case string:
+			m.PutString(v)
+		case nil:
+			m.PutInt64(0)
+		default:
+			panic("unsupported value type")
+		}
+	}
+
+}
+
+func (m *Message) PutHeader(mtype uint8) {
+	if m.body1.Offset <= 0 {
+		panic("static offset is not positive")
+	}
+
+	if (m.body1.Offset % messageWordSize) != 0 {
+		panic("static body is not aligned")
+	}
+
+	m.mtype = mtype
+	m.flags = 0
+	m.extra = 0
+
+	m.words = uint32(m.body1.Offset) / messageWordSize
+
+	if m.body2.Bytes == nil {
+		m.flushHeader()
+		return
+	}
+
+	if m.body2.Offset <= 0 {
+		panic("dynamic offset is not positive")
+	}
+
+	if (m.body2.Offset % messageWordSize) != 0 {
+		panic("dynamic body is not aligned")
+	}
+
+	m.words += uint32(m.body2.Offset) / messageWordSize
+
+	m.flushHeader()
+}
+
+func (m *Message) flushHeader() {
+	if m.words == 0 {
+		panic("empty message body")
+	}
+
+	binary.LittleEndian.PutUint32(m.header[0:], m.words)
+	m.header[4] = m.mtype
+	m.header[5] = m.flags
+	binary.LittleEndian.PutUint16(m.header[6:], m.extra)
+}
+
+func (m *Message) bufferForPut(size int) *buffer {
+	if m.body2.Bytes != nil {
+		// TODO: check if body2 is large enough
+		return &m.body2
+	}
+
+	if (m.body1.Offset + size) > len(m.body1.Bytes) {
+		// TODO: alloc array for body2
+		return &m.body2
+	}
+
+	return &m.body1
+}
+
+func (m *Message) GetHeader() (uint8, uint8) {
+	return m.mtype, m.flags
+}
+
+func (m *Message) GetString() string {
+	b := m.bufferForGet()
+
+	index := bytes.IndexByte(b.Bytes[b.Offset:], 0)
+	if index == -1 {
+		panic("no string found")
+	}
+	s := string(b.Bytes[b.Offset : b.Offset+index])
+
+	index++
+
+	if trailing := index % messageWordSize; trailing != 0 {
+		// Account for padding, moving index to the next word boundary.
+		index += messageWordSize - trailing
+	}
+
+	b.Advance(index)
+
+	return s
+}
+
+func (m *Message) GetUint8() uint8 {
+	b := m.bufferForGet()
+	defer b.Advance(1)
+
+	return b.Bytes[b.Offset]
+}
+
+func (m *Message) GetUint16() uint16 {
+	b := m.bufferForGet()
+	defer b.Advance(2)
+
+	return binary.LittleEndian.Uint16(b.Bytes[b.Offset:])
+}
+
+func (m *Message) GetUint32() uint32 {
+	b := m.bufferForGet()
+	defer b.Advance(4)
+
+	return binary.LittleEndian.Uint32(b.Bytes[b.Offset:])
+}
+
+func (m *Message) GetUint64() uint64 {
+	b := m.bufferForGet()
+	defer b.Advance(8)
+
+	return binary.LittleEndian.Uint64(b.Bytes[b.Offset:])
+}
+
+func (m *Message) GetInt64() int64 {
+	b := m.bufferForGet()
+	defer b.Advance(8)
+
+	return int64(binary.LittleEndian.Uint64(b.Bytes[b.Offset:]))
+}
+
+func (m *Message) GetResult() Result {
+	return Result{
+		LastInsertID: m.GetUint64(),
+		RowsAffected: m.GetUint64(),
+	}
+}
+
+func (m *Message) GetRows() Rows {
+	// Read the column count and column names.
+	columns := make([]string, m.GetUint64())
+	for i := range columns {
+		columns[i] = m.GetString()
+	}
+
+	rows := Rows{
+		Columns: columns,
+		message: m,
+	}
+	return rows
+}
+
+func (m *Message) bufferForGet() *buffer {
+	size := int(m.words * messageWordSize)
+	if m.body1.Offset == size {
+		// The static body has been exahusted, use the dynamic one.
+		if m.body1.Offset+m.body2.Offset == size {
+			panic(errMessageEOF)
+		}
+		return &m.body2
+	}
+
+	return &m.body1
+}
+
+type Result struct {
+	LastInsertID uint64
+	RowsAffected uint64
+}
+
+type Rows struct {
+	Columns []string
+	message *Message
+}
+
+func (r *Rows) Next(dest []driver.Value) error {
+	types := make([]uint8, len(r.Columns))
+
+	// Each column needs a 4 byte slot to store the column type. The row
+	// header must be padded to reach word boundary.
+	headerBits := len(types) * 4
+	padBits := 0
+	if trailingBits := (headerBits % messageWordBits); trailingBits != 0 {
+		padBits = (messageWordBits - trailingBits)
+	}
+
+	headerSize := (headerBits + padBits) / messageWordBits * messageWordSize
+
+	for i := 0; i < headerSize; i++ {
+		slot := r.message.GetUint8()
+
+		if slot == 0xff {
+			// Rows EOF marker
+			r.message.Reset()
+			return io.EOF
+		}
+
+		index := i * 2
+
+		if index >= len(types) {
+			continue // This is padding.
+		}
+
+		types[index] = slot & 0x0f
+
+		index++
+
+		if index >= len(types) {
+			continue // This is padding byte.
+		}
+
+		types[index] = slot >> 4
+	}
+
+	for i := range types {
+		switch types[i] {
+		case bindings.Integer:
+			dest[i] = r.message.GetInt64()
+		case bindings.Float:
+			panic("todo")
+		case bindings.Blob:
+			panic("todo")
+		case bindings.Text:
+			dest[i] = r.message.GetString()
+		case bindings.Null:
+			r.message.GetUint64()
+			dest[i] = nil
+		default:
+			//panic("unknown data type")
+		}
+	}
+
+	return nil
 }
 
 const (
 	messageWordSize                 = 8
+	messageWordBits                 = messageWordSize * 8
 	messageHeaderSize               = messageWordSize
 	messageMaxConsecutiveEmptyReads = 100
 )

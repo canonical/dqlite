@@ -331,6 +331,8 @@ void test_dqlite__gateway_query()
 	uint32_t stmt_id;
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
+	uint64_t column_count;
+	const char* column_name;
 	uint64_t header;
 	int64_t n;
 
@@ -361,12 +363,24 @@ void test_dqlite__gateway_query()
 	CU_ASSERT_PTR_NOT_NULL(response);
 	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_ROWS);
 
-	/* Two words were written, one with the row header and one with the row
-	 * column */
-	CU_ASSERT_EQUAL(response->message.offset1, 16);
+	/* Four words were written, one with the column count, one with the
+	 * column name, one with the row header and one with the row column */
+	CU_ASSERT_EQUAL(response->message.offset1, 32);
 
-	response->message.words = 2;
+	response->message.words = 4;
 	response->message.offset1 = 0;
+
+	/* Read the column count */
+	err = dqlite__message_body_get_uint64(&response->message, &column_count);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(column_count, 1);
+
+	/* Read the column name */
+	err = dqlite__message_body_get_text(&response->message, &column_name);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_STRING_EQUAL(column_name, "n");
 
 	/* Read the header */
 	err = dqlite__message_body_get_uint64(&response->message, &header);
@@ -388,6 +402,8 @@ void test_dqlite__gateway_query_multi_column()
 	uint32_t stmt_id;
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
+	uint64_t column_count;
+	const char *column_name;
 	uint64_t header;
 	int64_t n;
 	text_t t;
@@ -420,12 +436,34 @@ void test_dqlite__gateway_query_multi_column()
 	CU_ASSERT_PTR_NOT_NULL(response);
 	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_ROWS);
 
-	/* Four words were written, one for the row header and three for the row
-	 * columns */
-	CU_ASSERT_EQUAL(response->message.offset1, 32);
+	/* Eight words were written, one for the column count, three with the
+	 * column names, one for the row header and three for the row columns */
+	CU_ASSERT_EQUAL(response->message.offset1, 64);
 
-	response->message.words = 4;
+	response->message.words = 8;
 	response->message.offset1 = 0;
+
+	/* Read the column count */
+	err = dqlite__message_body_get_uint64(&response->message, &column_count);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(column_count, 3);
+
+	/* Read the column names */
+	err = dqlite__message_body_get_text(&response->message, &column_name);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_STRING_EQUAL(column_name, "n");
+
+	err = dqlite__message_body_get_text(&response->message, &column_name);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_STRING_EQUAL(column_name, "t");
+
+	err = dqlite__message_body_get_text(&response->message, &column_name);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_STRING_EQUAL(column_name, "f");
 
 	/* Read the header */
 	err = dqlite__message_body_get_uint64(&response->message, &header);
@@ -461,6 +499,8 @@ void test_dqlite__gateway_query_multi_row()
 	uint32_t stmt_id;
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
+	uint64_t column_count;
+	const char *column_name;
 	uint64_t header;
 	int64_t n;
 	text_t t;
@@ -498,11 +538,34 @@ void test_dqlite__gateway_query_multi_row()
 	CU_ASSERT_PTR_NOT_NULL(response);
 	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_ROWS);
 
-	/* Eight words were written (two header rows and size row columns). */
-	CU_ASSERT_EQUAL(response->message.offset1, 64);
+	/* Twelve words were written (one column count, three column names, two
+	 * header rows and size row columns). */
+	CU_ASSERT_EQUAL(response->message.offset1, 96);
 
-	response->message.words = 8;
+	response->message.words = 12;
 	response->message.offset1 = 0;
+
+	/* Read the column count */
+	err = dqlite__message_body_get_uint64(&response->message, &column_count);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(column_count, 3);
+
+	/* Read the column names */
+	err = dqlite__message_body_get_text(&response->message, &column_name);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_STRING_EQUAL(column_name, "n");
+
+	err = dqlite__message_body_get_text(&response->message, &column_name);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_STRING_EQUAL(column_name, "t");
+
+	err = dqlite__message_body_get_text(&response->message, &column_name);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_STRING_EQUAL(column_name, "f");
 
 	/* Read the header (first row) */
 	err = dqlite__message_body_get_uint64(&response->message, &header);
@@ -656,6 +719,8 @@ void test_dqlite__gateway_query_sql()
 	uint32_t stmt_id;
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
+	uint64_t column_count;
+	const char *column_name;
 	uint64_t header;
 	int64_t n;
 
@@ -684,12 +749,24 @@ void test_dqlite__gateway_query_sql()
 	CU_ASSERT_PTR_NOT_NULL(response);
 	CU_ASSERT_EQUAL(response->type, DQLITE_RESPONSE_ROWS);
 
-	/* Two words were written, one with the row header and one with the row
-	 * column */
-	CU_ASSERT_EQUAL(response->message.offset1, 16);
+	/* Four words were written, one with the column count, one with the
+	 * column name, one with the row header and one with the row column */
+	CU_ASSERT_EQUAL(response->message.offset1, 32);
 
-	response->message.words = 2;
+	response->message.words = 4;
 	response->message.offset1 = 0;
+
+	/* Read the column count */
+	err = dqlite__message_body_get_uint64(&response->message, &column_count);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_EQUAL(column_count, 1);
+
+	/* Read the column name */
+	err = dqlite__message_body_get_text(&response->message, &column_name);
+	CU_ASSERT_EQUAL(err, 0);
+
+	CU_ASSERT_STRING_EQUAL(column_name, "n");
 
 	/* Read the header */
 	err = dqlite__message_body_get_uint64(&response->message, &header);

@@ -20,7 +20,7 @@ import (
 )
 
 // Successful connection.
-func TestConnector_Connect(t *testing.T) {
+func TestConnector_Connect_Success(t *testing.T) {
 	listener := newListener(t)
 
 	cluster := newTestCluster()
@@ -37,9 +37,9 @@ func TestConnector_Connect(t *testing.T) {
 	defer cancel()
 
 	client, err := connector.Connect(ctx)
-
 	require.NoError(t, err)
-	client.Close()
+
+	assert.NoError(t, client.Close())
 }
 
 // Connection failed because the server store is empty.
@@ -55,8 +55,8 @@ func TestConnector_Connect_Error_EmptyServerStore(t *testing.T) {
 	require.EqualError(t, err, "no available dqlite leader server found")
 }
 
-// Connection failed because the connector was stopped.
-func TestConnector_Connect_Error_AfterStop(t *testing.T) {
+// Connection failed because the context was canceled.
+func TestConnector_Connect_Error_AfterCancel(t *testing.T) {
 	listener := newListener(t)
 
 	cluster := newTestCluster()
@@ -69,13 +69,11 @@ func TestConnector_Connect_Error_AfterStop(t *testing.T) {
 
 	connector := newConnector(t, store)
 
-	connector.Stop()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
-	defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
 	_, err := connector.Connect(ctx)
-	require.EqualError(t, err, "connector was stopped")
+	assert.EqualError(t, err, "no available dqlite leader server found")
 }
 
 // If an election is in progress, the connector will retry until a leader gets
@@ -112,8 +110,10 @@ func TestConnector_Connect_ElectionInProgress(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	_, err := connector.Connect(ctx)
+	client, err := connector.Connect(ctx)
 	require.NoError(t, err)
+
+	assert.NoError(t, client.Close())
 }
 
 // If a server reports that it knows about the leader, the hint will be taken
@@ -147,8 +147,10 @@ func TestConnector_Connect_ServerKnowsAboutLeader(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	_, err := connector.Connect(ctx)
+	client, err := connector.Connect(ctx)
 	require.NoError(t, err)
+
+	assert.NoError(t, client.Close())
 }
 
 // If a server reports that it knows about the leader, the hint will be taken
@@ -195,8 +197,10 @@ func TestConnector_Connect_ServerKnowsAboutDeadLeader(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	_, err := connector.Connect(ctx)
+	client, err := connector.Connect(ctx)
 	require.NoError(t, err)
+
+	assert.NoError(t, client.Close())
 }
 
 // If a server reports that it knows about the leader, the hint will be taken
@@ -234,8 +238,10 @@ func TestConnector_Connect_ServerKnowsAboutStaleLeader(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	_, err := connector.Connect(ctx)
+	client, err := connector.Connect(ctx)
 	require.NoError(t, err)
+
+	assert.NoError(t, client.Close())
 }
 
 func newConnector(t *testing.T, store client.ServerStore) *client.Connector {
@@ -347,7 +353,7 @@ func newListener(t *testing.T) net.Listener {
 func newFile(t *testing.T) (*os.File, func()) {
 	t.Helper()
 
-	file, err := ioutil.TempFile("", "dqlite-bindings-")
+	file, err := ioutil.TempFile("", "dqlite-client-")
 	require.NoError(t, err)
 
 	cleanup := func() {

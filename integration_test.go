@@ -18,6 +18,68 @@
 
 package dqlite_test
 
+import (
+	"database/sql"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestIntegration_DatabaseSQL(t *testing.T) {
+	driver, cleanup := newDriver(t)
+	defer cleanup()
+
+	sql.Register("dqlite-database-sql", driver)
+
+	db, err := sql.Open("dqlite-database-sql", "test.db")
+	require.NoError(t, err)
+
+	start := time.Now()
+
+	tx, err := db.Begin()
+	require.NoError(t, err)
+
+	_, err = tx.Exec("CREATE TABLE test (n INT, s TEXT)")
+	require.NoError(t, err)
+
+	stmt, err := tx.Prepare("INSERT INTO test(n, s) VALUES(?, ?)")
+	require.NoError(t, err)
+
+	_, err = stmt.Exec(int64(123), "hello")
+	require.NoError(t, err)
+
+	require.NoError(t, stmt.Close())
+	require.NoError(t, tx.Commit())
+
+	tx, err = db.Begin()
+	require.NoError(t, err)
+
+	rows, err := tx.Query("SELECT n, s FROM test")
+	require.NoError(t, err)
+
+	for rows.Next() {
+		var n int64
+		var s string
+
+		require.NoError(t, rows.Scan(&n, &s))
+
+		assert.Equal(t, int64(123), n)
+		assert.Equal(t, "hello", s)
+	}
+
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	require.NoError(t, tx.Rollback())
+
+	fmt.Println("time", time.Since(start))
+
+	require.NoError(t, db.Close())
+}
+
 /*
 import (
 	"database/sql"
@@ -56,7 +118,7 @@ func newCluster(t *testing.T) ([]*sql.DB, func()) {
 	return dbs, cleanup
 }
 
-func newDBs(t *testing.T, driverFactory func(int) driver.Driver) ([]*sql.DB, func()) {
+vfunc newDBs(t *testing.T, driverFactory func(int) driver.Driver) ([]*sql.DB, func()) {
 	dbs := make([]*sql.DB, 3)
 
 	for i := range dbs {

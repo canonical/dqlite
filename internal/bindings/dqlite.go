@@ -204,7 +204,7 @@ func Init() error {
 
 	rc := C.dqlite_init(&errmsg)
 	if rc != 0 {
-		return fmt.Errorf("%s (%d)", errmsg, rc)
+		return fmt.Errorf("%s (%d)", C.GoString(errmsg), rc)
 	}
 	return nil
 }

@@ -30,15 +30,16 @@
 	X(uint32, __pad__, __VA_ARGS__)
 
 #define DQLITE__RESPONSE_SCHEMA_STMT(X, ...)	\
-	X(uint32, db_id, __VA_ARGS__)		\
-	X(uint32, id,    __VA_ARGS__)
+	X(uint32, db_id,  __VA_ARGS__)		\
+	X(uint32, id,     __VA_ARGS__)		\
+	X(uint64, params, __VA_ARGS__)
 
 #define DQLITE__RESPONSE_SCHEMA_RESULT(X, ...)	\
 	X(uint64, last_insert_id, __VA_ARGS__)	\
 	X(uint64, rows_affected,  __VA_ARGS__)
 
 #define DQLITE__RESPONSE_SCHEMA_ROWS(X, ...)	\
-	X(uint64, __unused__, __VA_ARGS__)
+	X(uint64, eof, __VA_ARGS__)
 
 #define DQLITE__RESPONSE_SCHEMA_EMPTY(X, ...)	\
 	X(uint64, __unused__, __VA_ARGS__)

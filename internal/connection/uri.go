@@ -1,10 +1,11 @@
 package connection
 
-/*
 import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 )
 
 // ParseURI parses the given sqlite3 URI checking if it's compatible with
@@ -15,20 +16,32 @@ import (
 // "mode=memory".
 //
 // It returns the filename and query parameters.
-func ParseURI(uri string) (string, string, error) {
+func ParseURI(uri string) (string, uint64, error) {
 	filename := uri
-	query := ""
+	flags := uint64(bindings.DbOpenReadWrite | bindings.DbOpenCreate)
 
 	pos := strings.IndexRune(uri, '?')
 	if pos >= 1 {
 		params, err := url.ParseQuery(uri[pos+1:])
 		if err != nil {
-			return "", "", err
+			return "", 0, err
 		}
-		if params.Get("mode") == "memory" {
-			return "", "", fmt.Errorf("can't replicate a memory database")
+
+		mode := params.Get("mode")
+		switch mode {
+		case "":
+		case "memory":
+			return "", 0, fmt.Errorf("memory database not supported")
+		case "ro":
+			flags = bindings.DbOpenReadOnly
+		case "rw":
+			flags = bindings.DbOpenReadWrite
+		case "rwc":
+			flags = bindings.DbOpenReadWrite | bindings.DbOpenCreate
+		default:
+			return "", 0, fmt.Errorf("unknown mode %s", mode)
 		}
-		query = params.Encode()
+
 		filename = filename[:pos]
 	}
 
@@ -37,22 +50,12 @@ func ParseURI(uri string) (string, string, error) {
 	}
 
 	if filename == ":memory:" {
-		return "", "", fmt.Errorf("can't replicate a memory database")
+		return "", 0, fmt.Errorf("memory database not supported")
 	}
 
 	if strings.IndexRune(filename, '/') >= 0 {
-		return "", "", fmt.Errorf("directory segments are invalid")
+		return "", 0, fmt.Errorf("directory segments are invalid")
 	}
 
-	return filename, query, nil
+	return filename, flags, nil
 }
-
-// EncodeURI concatenates the given filename and query string, returning the
-// full URI.
-func EncodeURI(filename, query string) string {
-	if query != "" {
-		query = "?" + query
-	}
-	return filename + query
-}
-*/
