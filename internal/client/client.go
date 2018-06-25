@@ -2,11 +2,11 @@ package client
 
 import (
 	"context"
+	"encoding/binary"
 	"io"
 	"net"
 	"time"
 
-	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -20,174 +20,163 @@ type Client struct {
 	timeout time.Duration // Heartbeat timeout reported at registration.
 }
 
-func newClient(address string, store ServerStore, logger *zap.Logger) *Client {
-	return &Client{
-		logger:  logger.With(zap.String("target", address)),
+func newClient(conn net.Conn, address string, store ServerStore, logger *zap.Logger) *Client {
+	client := &Client{
+		conn:    conn,
 		address: address,
 		store:   store,
+		logger:  logger.With(zap.String("target", address)),
 	}
+
+	return client
 }
 
-// Establish a TCP network connection and send the initial handshake.
-func (c *Client) connect(ctx context.Context) error {
-	dialer := net.Dialer{}
-	conn, err := dialer.DialContext(ctx, "tcp", c.address)
-	if err != nil {
-		return errors.Wrap(err, "failed to establish network connection")
+// Call invokes a dqlite RPC, sending a request message and receiving a
+// response message.
+func (c *Client) Call(ctx context.Context, request, response *Message) error {
+	// TODO: honor ctx
+	if err := c.send(request); err != nil {
+		return errors.Wrap(err, "failed to send request")
 	}
 
-	// Perform the protocol handshake.
-	buf := buffer{Bytes: make([]byte, 8)}
-	buf.PutUint64(bindings.ServerProtocolVersion)
-
-	// TODO: we should keep on with short writes
-	n, err := conn.Write(buf.Bytes)
-	if err != nil {
-		conn.Close()
-		return errors.Wrap(err, "failed to send handshake")
+	if err := c.recv(response); err != nil {
+		return errors.Wrap(err, "failed to receive response")
 	}
-	if n != 8 {
-		conn.Close()
-		return errors.Wrap(io.ErrShortWrite, "failed to send handshake")
-	}
-
-	c.conn = conn
 
 	return nil
 }
 
-func (c *Client) Close() {
-	c.conn.Close()
-}
-
-// Return the address used to create the client.
-func (c *Client) Address() string {
-	return c.address
-}
-
-// Leader sends a Leader request and reads the response.
-func (c *Client) Leader(ctx context.Context) (response Server, err error) {
-	leader := Leader{}
-
-	if err = leader.Write(c.conn); err != nil {
-		return
+func (c *Client) send(req *Message) error {
+	if err := c.sendHeader(req); err != nil {
+		return errors.Wrap(err, "failed to send header")
 	}
 
-	if err = response.Read(c.conn); err != nil {
-		return
+	if err := c.sendBody(req); err != nil {
+		return errors.Wrap(err, "failed to send body")
 	}
 
-	return
+	return nil
 }
 
-func (c *Client) Heartbeat(id string) error {
+func (c *Client) sendHeader(req *Message) error {
+	n, err := c.conn.Write(req.header[:])
+	if err != nil {
+		return errors.Wrap(err, "failed to send header")
+	}
+
+	if n != messageHeaderSize {
+		return errors.Wrap(io.ErrShortWrite, "failed to send header")
+	}
+
+	return nil
+}
+
+func (c *Client) sendBody(req *Message) error {
+	buf := req.body1.Bytes[:req.body1.Offset]
+	n, err := c.conn.Write(buf)
+	if err != nil {
+		return errors.Wrap(err, "failed to send static body")
+	}
+
+	if n != len(buf) {
+		return errors.Wrap(io.ErrShortWrite, "failed to write body")
+	}
+
+	if req.body2.Bytes == nil {
+		return nil
+	}
+
+	buf = req.body2.Bytes[:req.body2.Offset]
+	n, err = c.conn.Write(buf)
+	if err != nil {
+		return errors.Wrap(err, "failed to send dynamic body")
+	}
+
+	if n != len(buf) {
+		return errors.Wrap(io.ErrShortWrite, "failed to write body")
+	}
+
+	return nil
+}
+
+func (c *Client) recv(res *Message) error {
+	if err := c.recvHeader(res); err != nil {
+		return errors.Wrap(err, "failed to receive header")
+	}
+
+	if err := c.recvBody(res); err != nil {
+		return errors.Wrap(err, "failed to receive body")
+	}
+
+	return nil
+}
+
+func (c *Client) recvHeader(res *Message) error {
+	if err := c.recvPeek(res.header); err != nil {
+		return errors.Wrap(err, "failed to receive header")
+	}
+
+	res.words = binary.LittleEndian.Uint32(res.header[0:])
+	res.mtype = res.header[4]
+	res.flags = res.header[5]
+	res.extra = binary.LittleEndian.Uint16(res.header[6:])
+
+	return nil
+}
+
+func (c *Client) recvBody(res *Message) error {
+	n := int(res.words) * messageWordSize
+
+	// TODO: handle n > 4096 (i.e. static buffer size)
+	buf := res.body1.Bytes[:n]
+
+	if err := c.recvPeek(buf); err != nil {
+		return errors.Wrap(err, "failed to read body")
+	}
+
+	return nil
+}
+
+// Read until buf is full.
+func (c *Client) recvPeek(buf []byte) error {
+	for offset := 0; offset < len(buf); {
+		n, err := c.recvFill(buf[offset:])
+		if err != nil {
+			return err
+		}
+		offset += n
+	}
+
+	return nil
+}
+
+// Try to fill buf, but perform at most one read.
+func (c *Client) recvFill(buf []byte) (int, error) {
+	// Read new data: try a limited number of times.
+	//
+	// This technique is copied from bufio.Reader.
+	for i := messageMaxConsecutiveEmptyReads; i > 0; i-- {
+		n, err := c.conn.Read(buf)
+		if n < 0 {
+			panic(errNegativeRead)
+		}
+		if err != nil {
+			return -1, err
+		}
+		if n > 0 {
+			return n, nil
+		}
+	}
+	return -1, io.ErrNoProgress
+}
+
+// Close the client connection.
+func (c *Client) Close() error {
+	return c.conn.Close()
+}
+
+func (c *Client) heartbeat(id string) error {
 	ch := make(chan int)
 	<-ch
 	return nil
-}
-
-// Open sends a Open request and reads the response.
-func (c *Client) Open(ctx context.Context, name string, vfs string) (response Db, err error) {
-	open := Open{}
-	open.name = name
-	open.flags = bindings.DbOpenReadWrite | bindings.DbOpenCreate
-	open.vfs = vfs
-
-	if err = open.Write(c.conn); err != nil {
-		return
-	}
-
-	err = response.Read(c.conn)
-
-	return
-}
-
-// Prepare sends a Prepare request and reads the response.
-func (c *Client) Prepare(ctx context.Context, db uint32, sql string) (response Stmt, err error) {
-	prepare := Prepare{}
-	prepare.db = uint64(db)
-	prepare.sql = sql
-
-	if err = prepare.Write(c.conn); err != nil {
-		return
-	}
-
-	err = response.Read(c.conn)
-
-	return
-}
-
-// Exec sends a Exec request and reads the response.
-func (c *Client) Exec(ctx context.Context, db uint32, stmt uint32) (response Result, err error) {
-	exec := Exec{}
-	exec.db = db
-	exec.stmt = stmt
-
-	if err = exec.Write(c.conn); err != nil {
-		return
-	}
-
-	err = response.Read(c.conn)
-
-	return
-}
-
-// Query sends a Query request and reads the response.
-func (c *Client) Query(ctx context.Context, db uint32, stmt uint32) (response Rows, err error) {
-	query := Query{}
-	query.db = db
-	query.stmt = stmt
-
-	if err = query.Write(c.conn); err != nil {
-		return
-	}
-
-	err = response.Read(c.conn)
-
-	return
-}
-
-// Finalize sends a Finalize request and reads the response.
-func (c *Client) Finalize(ctx context.Context, db uint32, stmt uint32) (response Empty, err error) {
-	finalize := Finalize{}
-	finalize.db = db
-	finalize.stmt = stmt
-
-	if err = finalize.Write(c.conn); err != nil {
-		return
-	}
-
-	err = response.Read(c.conn)
-
-	return
-}
-
-// ExecSQL sends a ExecSQL request and reads the response.
-func (c *Client) ExecSQL(ctx context.Context, db uint32, sql string) (response Result, err error) {
-	execSQL := ExecSQL{}
-	execSQL.db = uint64(db)
-	execSQL.sql = sql
-
-	if err = execSQL.Write(c.conn); err != nil {
-		return
-	}
-
-	err = response.Read(c.conn)
-
-	return
-}
-
-// QuerySQL sends a QuerySQL request and reads the response.
-func (c *Client) QuerySQL(ctx context.Context, db uint32, sql string) (response Rows, err error) {
-	querySQL := QuerySQL{}
-	querySQL.db = uint64(db)
-	querySQL.sql = sql
-
-	if err = querySQL.Write(c.conn); err != nil {
-		return
-	}
-
-	err = response.Read(c.conn)
-
-	return
 }

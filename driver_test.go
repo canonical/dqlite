@@ -14,6 +14,327 @@
 
 package dqlite_test
 
+import (
+	"context"
+	"database/sql/driver"
+	"io"
+	"io/ioutil"
+	"net"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/CanonicalLtd/dqlite"
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
+)
+
+func TestDriver_Open(t *testing.T) {
+	driver, cleanup := newDriver(t)
+	defer cleanup()
+
+	conn, err := driver.Open("test.db")
+	require.NoError(t, err)
+
+	assert.NoError(t, conn.Close())
+}
+
+func TestDriver_Prepare(t *testing.T) {
+	driver, cleanup := newDriver(t)
+	defer cleanup()
+
+	conn, err := driver.Open("test.db")
+	require.NoError(t, err)
+
+	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, stmt.NumInput())
+
+	assert.NoError(t, conn.Close())
+}
+
+func TestConn_Exec(t *testing.T) {
+	drv, cleanup := newDriver(t)
+	defer cleanup()
+
+	conn, err := drv.Open("test.db")
+	require.NoError(t, err)
+
+	execer := conn.(driver.Execer)
+
+	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
+	require.NoError(t, err)
+
+	result, err := execer.Exec("INSERT INTO test(n) VALUES(1)", nil)
+	require.NoError(t, err)
+
+	lastInsertID, err := result.LastInsertId()
+	require.NoError(t, err)
+
+	assert.Equal(t, lastInsertID, int64(1))
+
+	rowsAffected, err := result.RowsAffected()
+	require.NoError(t, err)
+
+	assert.Equal(t, rowsAffected, int64(1))
+
+	assert.NoError(t, conn.Close())
+}
+
+func TestConn_Query(t *testing.T) {
+	drv, cleanup := newDriver(t)
+	defer cleanup()
+
+	conn, err := drv.Open("test.db")
+	require.NoError(t, err)
+
+	execer := conn.(driver.Execer)
+
+	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
+	require.NoError(t, err)
+
+	_, err = execer.Exec("INSERT INTO test(n) VALUES(1)", nil)
+	require.NoError(t, err)
+
+	queryer := conn.(driver.Queryer)
+
+	_, err = queryer.Query("SELECT n FROM test", nil)
+	require.NoError(t, err)
+
+	assert.NoError(t, conn.Close())
+}
+
+func TestStmt_Exec(t *testing.T) {
+	drv, cleanup := newDriver(t)
+	defer cleanup()
+
+	conn, err := drv.Open("test.db")
+	require.NoError(t, err)
+
+	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	require.NoError(t, err)
+
+	_, err = stmt.Exec(nil)
+	require.NoError(t, err)
+
+	require.NoError(t, stmt.Close())
+
+	values := []driver.Value{
+		int64(1),
+	}
+
+	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES(?)")
+	require.NoError(t, err)
+
+	result, err := stmt.Exec(values)
+	require.NoError(t, err)
+
+	lastInsertID, err := result.LastInsertId()
+	require.NoError(t, err)
+
+	assert.Equal(t, lastInsertID, int64(1))
+
+	rowsAffected, err := result.RowsAffected()
+	require.NoError(t, err)
+
+	assert.Equal(t, rowsAffected, int64(1))
+
+	require.NoError(t, stmt.Close())
+
+	assert.NoError(t, conn.Close())
+}
+
+func TestStmt_Query(t *testing.T) {
+	drv, cleanup := newDriver(t)
+	defer cleanup()
+
+	conn, err := drv.Open("test.db")
+	require.NoError(t, err)
+
+	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	require.NoError(t, err)
+
+	_, err = stmt.Exec(nil)
+	require.NoError(t, err)
+
+	require.NoError(t, stmt.Close())
+
+	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES(-123)")
+	require.NoError(t, err)
+
+	_, err = stmt.Exec(nil)
+	require.NoError(t, err)
+
+	require.NoError(t, stmt.Close())
+
+	stmt, err = conn.Prepare("SELECT n FROM test")
+	require.NoError(t, err)
+
+	rows, err := stmt.Query(nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, rows.Columns(), []string{"n"})
+
+	values := make([]driver.Value, 1)
+	require.NoError(t, rows.Next(values))
+
+	assert.Equal(t, int64(-123), values[0])
+
+	require.Equal(t, io.EOF, rows.Next(values))
+
+	require.NoError(t, stmt.Close())
+
+	assert.NoError(t, conn.Close())
+}
+
+func newDriver(t *testing.T) (*dqlite.Driver, func()) {
+	t.Helper()
+
+	listener := newListener(t)
+	cluster := newTestCluster()
+	cluster.leader = listener.Addr().String()
+
+	cleanup := newServer(t, listener, cluster)
+
+	store := newStore(t, cluster.leader)
+
+	driver, err := dqlite.NewDriver(store, dqlite.WithLogger(zaptest.NewLogger(t)))
+	require.NoError(t, err)
+
+	return driver, cleanup
+}
+
+// Create a new in-memory server store populated with the given addresses.
+func newStore(t *testing.T, address string) *dqlite.ServerStore {
+	t.Helper()
+
+	store, err := dqlite.DefaultServerStore(":memory:")
+	require.NoError(t, err)
+
+	require.NoError(t, store.Set(context.Background(), []string{address}))
+
+	return store
+}
+
+func newServer(t *testing.T, listener net.Listener, cluster bindings.Cluster) func() {
+	t.Helper()
+
+	file, fileCleanup := newFile(t)
+
+	server, err := bindings.NewServer(file, cluster)
+	require.NoError(t, err)
+
+	runCh := make(chan error)
+	go func() {
+		err := server.Run()
+		runCh <- err
+	}()
+
+	require.True(t, server.Ready())
+
+	acceptCh := make(chan error, 1)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				acceptCh <- nil
+				return
+			}
+
+			err = server.Handle(conn)
+			if err == bindings.ErrServerStopped {
+				acceptCh <- nil
+				return
+			}
+			if err != nil {
+				acceptCh <- err
+				return
+			}
+		}
+	}()
+
+	cleanup := func() {
+		require.NoError(t, server.Stop())
+
+		require.NoError(t, listener.Close())
+
+		// Wait for the accept goroutine to exit.
+		select {
+		case err := <-acceptCh:
+			assert.NoError(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("accept goroutine did not stop within a second")
+		}
+
+		// Wait for the run goroutine to exit.
+		select {
+		case err := <-runCh:
+			assert.NoError(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("server did not stop within a second")
+		}
+
+		server.Close()
+		server.Free()
+
+		fileCleanup()
+	}
+
+	return cleanup
+}
+
+func newListener(t *testing.T) net.Listener {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	return listener
+}
+
+func newFile(t *testing.T) (*os.File, func()) {
+	t.Helper()
+
+	file, err := ioutil.TempFile("", "dqlite-driver-")
+	require.NoError(t, err)
+
+	cleanup := func() {
+		require.NoError(t, file.Close())
+
+		bytes, err := ioutil.ReadFile(file.Name())
+		require.NoError(t, err)
+
+		t.Logf("server log:\n%s\n", string(bytes))
+
+		require.NoError(t, os.Remove(file.Name()))
+	}
+
+	return file, cleanup
+}
+
+type testCluster struct {
+	leader string
+}
+
+func newTestCluster() *testCluster {
+	return &testCluster{}
+}
+
+func (c *testCluster) Leader() string {
+	return c.leader
+}
+
+func (c *testCluster) Servers() ([]string, error) {
+	return []string{c.leader}, nil
+}
+
+func (c *testCluster) Recover(token uint64) error {
+	return nil
+}
+
 /*
 import (
 	"bytes"

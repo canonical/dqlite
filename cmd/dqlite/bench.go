@@ -2,18 +2,16 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	"os"
 	"time"
 
+	"github.com/CanonicalLtd/dqlite"
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
-	"github.com/CanonicalLtd/dqlite/internal/client"
-	"github.com/Rican7/retry/backoff"
-	"github.com/Rican7/retry/strategy"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 )
 
 // Return a new bench command.
@@ -109,51 +107,63 @@ func (c *testCluster) Recover(token uint64) error {
 }
 
 func runClient(address string) error {
-	store := client.NewInmemServerStore()
-	store.Set(context.Background(), []string{address})
-
-	config := client.Config{
-		AttemptTimeout: 100 * time.Millisecond,
-		RetryStrategies: []strategy.Strategy{
-			strategy.Backoff(backoff.BinaryExponential(time.Millisecond)),
-		},
-	}
-
-	logger, err := zap.NewDevelopment()
+	store, err := dqlite.DefaultServerStore(":memory:")
 	if err != nil {
-		return errors.Wrapf(err, "failed to create logger")
+		return errors.Wrap(err, "failed to create server store")
 	}
 
-	connector := client.NewConnector(0, store, config, logger)
+	if err := store.Set(context.Background(), []string{address}); err != nil {
+		return errors.Wrap(err, "failed to set server address")
+	}
+
+	driver, err := dqlite.NewDriver(store)
+	if err != nil {
+		return errors.Wrap(err, "failed to create dqlite driver")
+	}
+
+	sql.Register("dqlite", driver)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
 
-	client, err := connector.Connect(ctx)
+	db, err := sql.Open("dqlite", "test.db")
 	if err != nil {
-		return errors.Wrapf(err, "failed to connect")
+		return errors.Wrap(err, "failed to open database")
 	}
+	defer db.Close()
 
-	db, err := client.Open(ctx, "test.db", "volatile")
+	tx, err := db.Begin()
 	if err != nil {
-		return errors.Wrapf(err, "failed to open db")
+		return errors.Wrap(err, "failed to begin transaction")
 	}
 
 	start := time.Now()
 
-	_, err = client.ExecSQL(ctx, db.ID, "CREATE TABLE test (n INT)")
-	if err != nil {
-		return errors.Wrapf(err, "failed to exec")
+	if _, err := tx.ExecContext(ctx, "CREATE TABLE test (n INT, t TEXT)"); err != nil {
+		return errors.Wrapf(err, "failed to create test table")
 	}
 
-	_, err = client.ExecSQL(ctx, db.ID, "INSERT INTO test VALUES(1)")
-	if err != nil {
-		return errors.Wrapf(err, "failed to exec")
+	if _, err := tx.ExecContext(ctx, "INSERT INTO test(n,t) VALUES(?, ?)", int64(123), "hello"); err != nil {
+		return errors.Wrapf(err, "failed to insert test value")
 	}
 
-	_, err = client.QuerySQL(ctx, db.ID, "SELECT n FROM test")
+	rows, err := tx.QueryContext(ctx, "SELECT n FROM test")
 	if err != nil {
-		return errors.Wrapf(err, "failed to query")
+		return errors.Wrapf(err, "failed to query test table")
+	}
+
+	for rows.Next() {
+		var n int64
+		if err := rows.Scan(&n); err != nil {
+			return errors.Wrap(err, "failed to scan row")
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return errors.Wrap(err, "result set failure")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "failed to commit transaction")
 	}
 
 	fmt.Printf("time %s\n", time.Since(start))

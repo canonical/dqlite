@@ -20,6 +20,151 @@
 #include "request.h"
 #include "response.h"
 
+/* Context attached to an uv_write_t write request */
+struct dqlite__conn_write_ctx {
+	struct dqlite__conn     *conn;
+	struct dqlite__response *response;
+};
+
+static void dqlite__conn_write_cb(uv_write_t* req, int status);
+
+/* Write out a response for the client */
+static int dqlite__conn_write(struct dqlite__conn *c, struct dqlite__response *response)
+{
+	int err;
+	struct dqlite__conn_write_ctx *ctx;
+	uv_write_t *req;
+	uv_buf_t bufs[3];
+	size_t len;
+
+	/* Create a write request UV handle */
+	req = (uv_write_t*)sqlite3_malloc(sizeof(*req) + sizeof(*ctx));
+	if (req == NULL) {
+		err = DQLITE_NOMEM;
+		dqlite__error_oom(&c->error, "failed to start writing response");
+		return err;
+	}
+
+	ctx = (struct dqlite__conn_write_ctx*)(((char*)req) + sizeof(*req));
+	ctx->conn = c;
+	ctx->response = response;
+
+	req->data = (void*)ctx;
+
+	dqlite__message_send_start(&response->message, bufs);
+
+	assert(bufs[0].base != NULL);
+	assert(bufs[0].len > 0);
+
+	assert(bufs[1].base != NULL);
+	assert(bufs[1].len > 0);
+
+	len = bufs[0].len + bufs[1].len + bufs[2].len;
+
+	dqlite__debugf(c, "writing response", "socket=%d len=%ld", c->socket, len);
+
+	err = uv_write(req, (uv_stream_t*)(&c->tcp), bufs, 3, dqlite__conn_write_cb);
+	if (err != 0) {
+		dqlite__message_send_reset(&response->message);
+		sqlite3_free(req);
+		dqlite__error_uv(&c->error, err, "failed to write response");
+		return err;
+	}
+
+	return 0;
+}
+
+/* Write out a failure response.
+ *
+ * This is used to inform the client about failures such as malformed requests
+ * that failed to be parsed or handled because they are either malformed or
+ * invalid (e.g. they contain a reference to an unknown prepared statement).
+ */
+static int dqlite__conn_write_failure(struct dqlite__conn *c, int code) {
+	int err;
+
+	assert(c != NULL);
+	assert(code != 0);
+
+	dqlite__debugf(c, "failure", "code=%d description=%s", code, c->error);
+
+	/* TODO: allocate the response object dynamically, to allow for
+	 *       concurrent failures (e.g. the client issues a second failing
+	 *       request before the response for the first failing request has
+	 *       been completely written out. */
+	c->response.type = DQLITE_RESPONSE_FAILURE;
+	c->response.failure.code = code;
+	c->response.failure.description = c->error;
+
+	err = dqlite__response_encode(&c->response);
+	if (err != 0) {
+		dqlite__error_wrapf(
+			&c->error, &c->response.error,
+			"failed to encode failure response");
+		return err;
+	}
+
+	err = dqlite__conn_write(c, &c->response);
+	if (err != 0) {
+		/* NOTE: no need to set c->error since that's done by
+		 * dqlite__conn_write. */
+		return err;
+	}
+
+	return 0;
+}
+
+static void dqlite__conn_write_cb(uv_write_t* req, int status)
+{
+	int err;
+	struct dqlite__conn_write_ctx *ctx;
+	struct dqlite__conn *c;
+	struct dqlite__response *response;
+
+	assert(req != NULL);
+	assert(req->data != NULL);
+
+	ctx = (struct dqlite__conn_write_ctx*)req->data;
+
+	c = ctx->conn;
+	response = ctx->response;
+
+	assert(c != NULL);
+	assert(response != NULL);
+
+	dqlite__message_send_reset(&response->message);
+
+	if (status) {
+		dqlite__infof(c, "response write error", "socket=%d msg=%s", c->socket, uv_strerror(status));
+		dqlite__gateway_abort(&c->gateway, response);
+		dqlite__conn_abort(c);
+	} else if (0) {
+		//}else if( !dqlite__response_is_finished(response) ){
+		dqlite__debugf(c, "continuing response", "socket=%d", c->socket);
+		err = dqlite__gateway_continue(&c->gateway, response);
+		if (err != 0) {
+			assert(response == NULL);
+			//dqlite__infof(c, "failed to handle request", "socket=%d msg=%s", c->socket, dqliteClientErrmsg(c->gateway));
+			dqlite__conn_abort(c);
+		} else {
+			err = dqlite__conn_write(c, response);
+			if (err != 0) {
+				//dqlite__infof(c, "response error", "socket=%d msg=%s", c->socket, dqlite__errorMessage(&c->error));
+				dqlite__gateway_abort(&c->gateway, response);
+				dqlite__conn_abort(c);
+			}
+		}
+	} else {
+		/* In case this not a failure response, notify the gateway that
+		 * we're done */
+		if (response != &c->response) {
+			dqlite__gateway_finish(&c->gateway, response);
+		}
+	}
+
+	sqlite3_free(req);
+}
+
 static void dqlite__conn_buf_init(struct dqlite__conn *c, uv_buf_t *buf)
 {
 	assert(c != NULL);
@@ -130,96 +275,6 @@ static int dqlite__conn_header_alloc_cb(void *arg)
 	return 0;
 }
 
-/* Context attached to an uv_write_t write request */
-struct dqlite__conn_write_ctx {
-	struct dqlite__conn     *conn;
-	struct dqlite__response *response;
-};
-
-static void dqlite__conn_write_cb(uv_write_t* req, int status);
-
-/* Write out a response for the client */
-static int dqlite__conn_write(struct dqlite__conn *c, struct dqlite__response *response)
-{
-	int err;
-	struct dqlite__conn_write_ctx *ctx;
-	uv_write_t *req;
-	uv_buf_t bufs[3];
-	size_t len;
-
-	/* Create a write request UV handle */
-	req = (uv_write_t*)sqlite3_malloc(sizeof(*req) + sizeof(*ctx));
-	if (req == NULL) {
-		err = DQLITE_NOMEM;
-		dqlite__error_oom(&c->error, "failed to start writing response");
-		return err;
-	}
-
-	ctx = (struct dqlite__conn_write_ctx*)(((char*)req) + sizeof(*req));
-	ctx->conn = c;
-	ctx->response = response;
-
-	req->data = (void*)ctx;
-
-	dqlite__message_send_start(&response->message, bufs);
-
-	assert(bufs[0].base != NULL);
-	assert(bufs[0].len > 0);
-
-	assert(bufs[1].base != NULL);
-	assert(bufs[1].len > 0);
-
-	len = bufs[0].len + bufs[1].len + bufs[2].len;
-
-	dqlite__debugf(c, "writing response", "socket=%d len=%ld", c->socket, len);
-
-	err = uv_write(req, (uv_stream_t*)(&c->tcp), bufs, 3, dqlite__conn_write_cb);
-	if (err != 0) {
-		dqlite__message_send_reset(&response->message);
-		sqlite3_free(req);
-		dqlite__error_uv(&c->error, err, "failed to write response");
-		return err;
-	}
-
-	return 0;
-}
-
-/* Write out a failure response.
- *
- * This is used to inform the client about failures such as malformed requests
- * that failed to be parsed or handled because they are either malformed or
- * invalid (e.g. they contain a reference to an unknown prepared statement).
- */
-static int dqlite__conn_write_failure(struct dqlite__conn *c, int code) {
-	int err;
-
-	assert(c != NULL);
-	assert(code != 0);
-
-	dqlite__debugf(c, "failure", "code=%d description=%s", code, c->error);
-
-	c->response.type = DQLITE_RESPONSE_FAILURE;
-	c->response.failure.code = code;
-	c->response.failure.description = c->error;
-
-	err = dqlite__response_encode(&c->response);
-	if (err != 0) {
-		dqlite__error_wrapf(
-			&c->error, &c->response.error,
-			"failed to encode failure response");
-		return err;
-	}
-
-	err = dqlite__conn_write(c, &c->response);
-	if (err != 0) {
-		/* NOTE: no need to set c->error since that's done by
-		 * dqlite__conn_write. */
-		return err;
-	}
-
-	return 0;
-}
-
 static int dqlite__conn_header_read_cb(void *arg)
 {
 	int err;
@@ -282,57 +337,6 @@ static int dqlite__conn_body_alloc_cb(void *arg)
 	dqlite__conn_buf_init(c, &buf);
 
 	return 0;
-}
-
-static void dqlite__conn_write_cb(uv_write_t* req, int status)
-{
-	int err;
-	struct dqlite__conn_write_ctx *ctx;
-	struct dqlite__conn *c;
-	struct dqlite__response *response;
-
-	assert(req != NULL);
-	assert(req->data != NULL);
-
-	ctx = (struct dqlite__conn_write_ctx*)req->data;
-
-	c = ctx->conn;
-	response = ctx->response;
-
-	assert(c != NULL);
-	assert(response != NULL);
-
-	dqlite__message_send_reset(&response->message);
-
-	if (status) {
-		dqlite__infof(c, "response write error", "socket=%d msg=%s", c->socket, uv_strerror(status));
-		dqlite__gateway_abort(&c->gateway, response);
-		dqlite__conn_abort(c);
-	} else if (0) {
-		//}else if( !dqlite__response_is_finished(response) ){
-		dqlite__debugf(c, "continuing response", "socket=%d", c->socket);
-		err = dqlite__gateway_continue(&c->gateway, response);
-		if (err != 0) {
-			assert(response == NULL);
-			//dqlite__infof(c, "failed to handle request", "socket=%d msg=%s", c->socket, dqliteClientErrmsg(c->gateway));
-			dqlite__conn_abort(c);
-		} else {
-			err = dqlite__conn_write(c, response);
-			if (err != 0) {
-				//dqlite__infof(c, "response error", "socket=%d msg=%s", c->socket, dqlite__errorMessage(&c->error));
-				dqlite__gateway_abort(&c->gateway, response);
-				dqlite__conn_abort(c);
-			}
-		}
-	} else {
-		/* In case this not a failure response, notify the gateway that
-		 * we're done */
-		if (response != &c->response) {
-			dqlite__gateway_finish(&c->gateway, response);
-		}
-	}
-
-	sqlite3_free(req);
 }
 
 static int dqlite__conn_body_read_cb(void *arg)

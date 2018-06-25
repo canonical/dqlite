@@ -274,6 +274,7 @@ int dqlite__stmt_query(
 {
 	int err;
 	int column_count;
+	int i;
 
 	assert(s != NULL);
 	assert(s->stmt != NULL);
@@ -283,6 +284,21 @@ int dqlite__stmt_query(
 	column_count = sqlite3_column_count(s->stmt);
 	if (column_count <= 0) {
 		dqlite__error_printf(&s->error, "stmt doesn't yield any column");
+	}
+
+	/* Insert the column count */
+	err = dqlite__message_body_put_uint64(message, (uint64_t)column_count);
+	if (err != 0) {
+		return err;
+	}
+
+	/* Insert the column names */
+	for (i = 0; i < column_count; i++) {
+		const char *name = sqlite3_column_name(s->stmt, i);
+		err = dqlite__message_body_put_text(message, name);
+		if (err != 0) {
+			return err;
+		}
 	}
 
 	err = 0; /* In case there's no row and the loop breaks immediately */

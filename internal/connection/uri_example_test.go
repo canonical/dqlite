@@ -1,6 +1,5 @@
 package connection_test
 
-/*
 import (
 	"fmt"
 	"log"
@@ -10,16 +9,13 @@ import (
 
 // Parse and encode dqlite-compatbile URIs.
 func ExampleURI() {
-	filename, query, err := connection.ParseURI("test.db?mode=rw")
+	filename, flags, err := connection.ParseURI("test.db?mode=rw")
 	if err != nil {
 		log.Fatalf("failed to parse connection string: %v", err)
 	}
 	// Output:
 	// test.db
-	// mode=rw
-	// test.db?mode=rw
+	// 2
 	fmt.Println(filename)
-	fmt.Println(query)
-	fmt.Println(connection.EncodeURI(filename, query))
+	fmt.Println(flags)
 }
-*/

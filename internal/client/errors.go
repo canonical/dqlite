@@ -10,4 +10,26 @@ var (
 	errStaleLeader       = fmt.Errorf("server has lost leadership")
 	errNotClustered      = fmt.Errorf("server is not clustered")
 	errNegativeRead      = fmt.Errorf("reader returned negative count from Read")
+	errMessageEOF        = fmt.Errorf("message eof")
 )
+
+// ErrRequest is returned in case of request failure.
+type ErrRequest struct {
+	Code        uint64
+	Description string
+}
+
+func (e ErrRequest) Error() string {
+	return fmt.Sprintf("%s (%d)", e.Description, e.Code)
+}
+
+// ErrDb is returned in case of SQLite errors.
+type ErrDb struct {
+	Code         uint64
+	ExtendedCode uint64
+	Description  string
+}
+
+func (e ErrDb) Error() string {
+	return fmt.Sprintf("%s (%d:%d)", e.Description, e.Code, e.ExtendedCode)
+}

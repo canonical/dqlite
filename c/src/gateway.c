@@ -131,6 +131,7 @@ static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gat
 	int rc;
 
 	struct dqlite__db *db;
+	struct dqlite__stmt *stmt;
 	uint32_t stmt_id;
 
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->prepare.db_id);
@@ -140,6 +141,10 @@ static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gat
 		ctx->response.type = DQLITE_RESPONSE_STMT;
 		ctx->response.stmt.db_id =  ctx->request->prepare.db_id;
 		ctx->response.stmt.id =  stmt_id;
+
+		stmt = dqlite__db_stmt(db, stmt_id);
+		ctx->response.stmt.params = sqlite3_bind_parameter_count(stmt->stmt);
+
 	} else {
 		dqlite__gateway_db_error(ctx, db->db, rc);
 	}
@@ -230,6 +235,7 @@ static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gatew
 		dqlite__gateway_db_error(ctx, db->db, rc);
 	} else {
 		ctx->response.type = DQLITE_RESPONSE_ROWS;
+ 		ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_EOF;
 	}
 
 	return 0;
@@ -356,6 +362,7 @@ static int dqlite__gateway_query_sql(struct dqlite__gateway *g, struct dqlite__g
 		dqlite__gateway_db_error(ctx, db->db, rc);
 	} else {
 		ctx->response.type = DQLITE_RESPONSE_ROWS;
+		ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_EOF;
 	}
 
  out:

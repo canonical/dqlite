@@ -9,9 +9,9 @@
 
 /* Hold state for a single open SQLite database */
 struct dqlite__stmt {
-	sqlite3       *db;    /* Underlying SQLite database handle */
-	sqlite3_stmt  *stmt;  /* Underlying SQLite statement handle */
-	dqlite__error  error; /* Last dqlite-speific error */
+	sqlite3       *db;     /* Underlying SQLite database handle */
+	sqlite3_stmt  *stmt;   /* Underlying SQLite statement handle */
+	dqlite__error  error;  /* Last dqlite-speific error */
 };
 
 void dqlite__stmt_init(struct dqlite__stmt *s);

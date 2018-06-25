@@ -1,9 +1,9 @@
 package connection_test
 
-/*
 import (
 	"testing"
 
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 )
 
@@ -26,22 +26,22 @@ func TestParseURI_Valid(t *testing.T) {
 	}
 }
 
-// The query string gets returned as second return value.
+// The query string gets converted into flags.
 func TestParseURI_Query(t *testing.T) {
-	cases := map[string]string{
-		"test.db":                          "",
-		"file:test.db?":                    "",
-		"test.db?mode=rwc":                 "mode=rwc",
-		"test.db?_foreign_keys=1&mode=rwc": "_foreign_keys=1&mode=rwc",
+	cases := map[string]uint64{
+		"test.db":         bindings.DbOpenReadWrite | bindings.DbOpenCreate,
+		"file:test.db?":   bindings.DbOpenReadWrite | bindings.DbOpenCreate,
+		"test.db?mode=rw": bindings.DbOpenReadWrite,
+		"test.db?mode=ro": bindings.DbOpenReadOnly,
 	}
 	for uri, expected := range cases {
 		t.Run(uri, func(t *testing.T) {
-			_, query, err := connection.ParseURI(uri)
+			_, flags, err := connection.ParseURI(uri)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if query != expected {
-				t.Fatalf("Got query %s, expected %s", query, expected)
+			if flags != expected {
+				t.Fatalf("Got flags %d, expected %d", flags, expected)
 			}
 		})
 	}
@@ -72,8 +72,8 @@ func TestParseURI_Filename(t *testing.T) {
 // error will be returned.
 func TestParseURI_Invalid(t *testing.T) {
 	cases := map[string]string{
-		":memory:":            "can't replicate a memory database",
-		"test.db?mode=memory": "can't replicate a memory database",
+		":memory:":            "memory database not supported",
+		"test.db?mode=memory": "memory database not supported",
 		"test.db?%gh&%ij":     "invalid URL escape \"%gh\"",
 		"file:///test.db":     "directory segments are invalid",
 		"/foo/test.db":        "directory segments are invalid",
@@ -91,24 +91,3 @@ func TestParseURI_Invalid(t *testing.T) {
 		})
 	}
 }
-
-func TestDSN_Encode(t *testing.T) {
-	cases := map[string]string{
-		"test.db":        "test.db",
-		"test.db?mode=r": "test.db?mode=r",
-		"file:test.db":   "test.db",
-	}
-	for uri, expected := range cases {
-		t.Run(uri, func(t *testing.T) {
-			filename, query, err := connection.ParseURI(uri)
-			if err != nil {
-				t.Fatal(err)
-			}
-			got := connection.EncodeURI(filename, query)
-			if got != expected {
-				t.Fatalf("EncodeURI() should have returned %s, got %s instead", expected, got)
-			}
-		})
-	}
-}
-*/
