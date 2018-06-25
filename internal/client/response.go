@@ -13,7 +13,7 @@ type Server struct {
 }
 
 func (r *Server) Read(reader io.Reader) error {
-	m := message{}
+	m := Message{}
 
 	if err := m.Read(reader); err != nil {
 		errors.Wrap(err, "failed to read message")
@@ -33,7 +33,7 @@ type Welcome struct {
 }
 
 func (r *Welcome) Read(reader io.Reader) error {
-	m := message{}
+	m := Message{}
 
 	if err := m.Read(reader); err != nil {
 		errors.Wrap(err, "failed to read message")
@@ -54,7 +54,7 @@ type Db struct {
 }
 
 func (r *Db) Read(reader io.Reader) error {
-	m := message{}
+	m := Message{}
 
 	if err := m.Read(reader); err != nil {
 		errors.Wrap(err, "failed to read message")
@@ -76,7 +76,7 @@ type Stmt struct {
 }
 
 func (r *Stmt) Read(reader io.Reader) error {
-	m := message{}
+	m := Message{}
 
 	if err := m.Read(reader); err != nil {
 		errors.Wrap(err, "failed to read message")
@@ -98,7 +98,7 @@ type Result struct {
 }
 
 func (r *Result) Read(reader io.Reader) error {
-	m := message{}
+	m := Message{}
 
 	if err := m.Read(reader); err != nil {
 		errors.Wrap(err, "failed to read message")
@@ -119,7 +119,7 @@ type Rows struct {
 }
 
 func (r *Rows) Read(reader io.Reader) error {
-	m := message{}
+	m := Message{}
 
 	if err := m.Read(reader); err != nil {
 		errors.Wrap(err, "failed to read message")
@@ -139,7 +139,7 @@ type Empty struct {
 }
 
 func (r *Empty) Read(reader io.Reader) error {
-	m := message{}
+	m := Message{}
 
 	if err := m.Read(reader); err != nil {
 		errors.Wrap(err, "failed to read message")

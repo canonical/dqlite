@@ -11,7 +11,7 @@ type Leader struct {
 }
 
 func (r *Leader) Write(w io.Writer) error {
-	message := message{}
+	message := Message{}
 	message.Type = bindings.ServerRequestLeader
 	message.Body.Bytes = make([]byte, messageWordSize)
 
@@ -27,7 +27,7 @@ type Open struct {
 }
 
 func (r *Open) Write(w io.Writer) error {
-	message := message{}
+	message := Message{}
 	message.Type = bindings.ServerRequestOpen
 
 	size := requestStringSize(r.name)
@@ -49,7 +49,7 @@ type Prepare struct {
 }
 
 func (r *Prepare) Write(w io.Writer) error {
-	message := message{}
+	message := Message{}
 	message.Type = bindings.ServerRequestPrepare
 
 	size := uint64(messageWordSize)
@@ -69,7 +69,7 @@ type Exec struct {
 }
 
 func (r *Exec) Write(w io.Writer) error {
-	message := message{}
+	message := Message{}
 	message.Type = bindings.ServerRequestExec
 
 	size := uint64(messageWordSize / 2)
@@ -89,7 +89,7 @@ type Query struct {
 }
 
 func (r *Query) Write(w io.Writer) error {
-	message := message{}
+	message := Message{}
 	message.Type = bindings.ServerRequestQuery
 
 	size := uint64(messageWordSize / 2)
@@ -109,7 +109,7 @@ type Finalize struct {
 }
 
 func (r *Finalize) Write(w io.Writer) error {
-	message := message{}
+	message := Message{}
 	message.Type = bindings.ServerRequestFinalize
 
 	size := uint64(messageWordSize / 2)
@@ -129,7 +129,7 @@ type QuerySQL struct {
 }
 
 func (r *QuerySQL) Write(w io.Writer) error {
-	message := message{}
+	message := Message{}
 	message.Type = bindings.ServerRequestQuerySQL
 
 	size := uint64(messageWordSize)
@@ -149,7 +149,7 @@ type ExecSQL struct {
 }
 
 func (r *ExecSQL) Write(w io.Writer) error {
-	message := message{}
+	message := Message{}
 	message.Type = bindings.ServerRequestExecSQL
 
 	size := uint64(messageWordSize)

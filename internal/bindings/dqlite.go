@@ -232,6 +232,22 @@ func NewServer(file *os.File, cluster Cluster) (*Server, error) {
 	return (*Server)(unsafe.Pointer(server)), nil
 }
 
+// ConfigVfs sets the registration name of the in-memory VFS.
+func (s *Server) ConfigVfs(name string) error {
+	server := (*C.dqlite_server)(unsafe.Pointer(s))
+
+	arg := unsafe.Pointer(C.CString(name))
+	defer C.free(arg)
+
+	rc := C.dqlite_server_config(server, C.DQLITE_CONFIG_VFS, arg)
+	if rc != 0 {
+		msg := C.GoString(C.dqlite_server_errmsg(server))
+		return fmt.Errorf(msg)
+	}
+
+	return nil
+}
+
 // Close the server releasing all used resources.
 func (s *Server) Close() {
 	server := (*C.dqlite_server)(unsafe.Pointer(s))

@@ -104,7 +104,16 @@ func TestClient_Query(t *testing.T) {
 func newClient(t *testing.T) (*client.Client, func()) {
 	t.Helper()
 
-	connector, connectorCleanup := newConnector(t)
+	listener := newListener(t)
+
+	cluster := newTestCluster()
+	cluster.leader = listener.Addr().String()
+
+	serverCleanup := newServer(t, 0, listener, cluster)
+
+	store := newStore(t, []string{cluster.leader})
+
+	connector := newConnector(t, store)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
@@ -115,7 +124,7 @@ func newClient(t *testing.T) (*client.Client, func()) {
 
 	cleanup := func() {
 		client.Close()
-		connectorCleanup()
+		serverCleanup()
 	}
 
 	return client, cleanup
