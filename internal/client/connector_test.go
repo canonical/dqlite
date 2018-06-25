@@ -2,6 +2,7 @@ package client_test
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
@@ -18,11 +19,21 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
+// Successful connection.
 func TestConnector_Connect(t *testing.T) {
-	connector, cleanup := newConnector(t)
+	listener := newListener(t)
+
+	cluster := newTestCluster()
+	cluster.leader = listener.Addr().String()
+
+	cleanup := newServer(t, 0, listener, cluster)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	store := newStore(t, []string{cluster.leader})
+
+	connector := newConnector(t, store)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 	defer cancel()
 
 	client, err := connector.Connect(ctx)
@@ -31,12 +42,204 @@ func TestConnector_Connect(t *testing.T) {
 	client.Close()
 }
 
-func newConnector(t *testing.T) (*client.Connector, func()) {
+// Connection failed because the server store is empty.
+func TestConnector_Connect_Error_EmptyServerStore(t *testing.T) {
+	store := newStore(t, []string{})
+
+	connector := newConnector(t, store)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+
+	_, err := connector.Connect(ctx)
+	require.EqualError(t, err, "no available dqlite leader server found")
+}
+
+// Connection failed because the connector was stopped.
+func TestConnector_Connect_Error_AfterStop(t *testing.T) {
+	listener := newListener(t)
+
+	cluster := newTestCluster()
+	cluster.leader = listener.Addr().String()
+
+	cleanup := newServer(t, 0, listener, cluster)
+	defer cleanup()
+
+	store := newStore(t, []string{cluster.leader})
+
+	connector := newConnector(t, store)
+
+	connector.Stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+
+	_, err := connector.Connect(ctx)
+	require.EqualError(t, err, "connector was stopped")
+}
+
+// If an election is in progress, the connector will retry until a leader gets
+// elected.
+func TestConnector_Connect_ElectionInProgress(t *testing.T) {
+	listener1 := newListener(t)
+	listener2 := newListener(t)
+	listener3 := newListener(t)
+
+	cluster1 := newTestCluster()
+	cluster2 := newTestCluster()
+	cluster3 := newTestCluster()
+
+	defer newServer(t, 1, listener1, cluster2)()
+	defer newServer(t, 2, listener2, cluster2)()
+	defer newServer(t, 3, listener3, cluster3)()
+
+	store := newStore(t, []string{
+		listener1.Addr().String(),
+		listener2.Addr().String(),
+		listener3.Addr().String(),
+	})
+
+	connector := newConnector(t, store)
+
+	go func() {
+		// Simulate server 1 winning the election after 10ms
+		time.Sleep(10 * time.Millisecond)
+		cluster1.leader = listener1.Addr().String()
+		cluster2.leader = listener1.Addr().String()
+		cluster3.leader = listener1.Addr().String()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err := connector.Connect(ctx)
+	require.NoError(t, err)
+}
+
+// If a server reports that it knows about the leader, the hint will be taken
+// and an attempt will be made to connect to it.
+func TestConnector_Connect_ServerKnowsAboutLeader(t *testing.T) {
+	listener1 := newListener(t)
+	listener2 := newListener(t)
+	listener3 := newListener(t)
+
+	cluster1 := newTestCluster()
+	cluster2 := newTestCluster()
+	cluster3 := newTestCluster()
+
+	defer newServer(t, 1, listener1, cluster2)()
+	defer newServer(t, 2, listener2, cluster2)()
+	defer newServer(t, 3, listener3, cluster3)()
+
+	// Server 1 will be contacted first, which will report that server 2 is
+	// the leader.
+	store := newStore(t, []string{
+		listener1.Addr().String(),
+		listener2.Addr().String(),
+		listener3.Addr().String(),
+	})
+	cluster1.leader = listener2.Addr().String()
+	cluster2.leader = listener2.Addr().String()
+	cluster3.leader = listener2.Addr().String()
+
+	connector := newConnector(t, store)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err := connector.Connect(ctx)
+	require.NoError(t, err)
+}
+
+// If a server reports that it knows about the leader, the hint will be taken
+// and an attempt will be made to connect to it. If that leader has died, the
+// next target will be tried.
+func TestConnector_Connect_ServerKnowsAboutDeadLeader(t *testing.T) {
+	listener1 := newListener(t)
+	listener2 := newListener(t)
+	listener3 := newListener(t)
+
+	cluster1 := newTestCluster()
+	cluster2 := newTestCluster()
+	cluster3 := newTestCluster()
+
+	defer newServer(t, 1, listener1, cluster2)()
+	defer newServer(t, 3, listener3, cluster3)()
+
+	// Simulate server 2 crashing.
+	require.NoError(t, listener2.Close())
+
+	// Server 1 will be contacted first, which will report that server 2 is
+	// the leader. However server 2 has crashed, and after a bit server 1
+	// gets elected.
+	store := newStore(t, []string{
+		listener1.Addr().String(),
+		listener2.Addr().String(),
+		listener3.Addr().String(),
+	})
+	cluster1.leader = listener2.Addr().String()
+	cluster2.leader = listener2.Addr().String()
+	cluster3.leader = listener2.Addr().String()
+
+	go func() {
+		// Simulate server 1 becoming the new leader after server 2
+		// crashed.
+		time.Sleep(10 * time.Millisecond)
+		cluster1.leader = listener1.Addr().String()
+		cluster2.leader = listener1.Addr().String()
+		cluster3.leader = listener1.Addr().String()
+	}()
+
+	connector := newConnector(t, store)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err := connector.Connect(ctx)
+	require.NoError(t, err)
+}
+
+// If a server reports that it knows about the leader, the hint will be taken
+// and an attempt will be made to connect to it. If that leader is not actually
+// the leader the next target will be tried.
+func TestConnector_Connect_ServerKnowsAboutStaleLeader(t *testing.T) {
+	listener1 := newListener(t)
+	listener2 := newListener(t)
+	listener3 := newListener(t)
+
+	cluster1 := newTestCluster()
+	cluster2 := newTestCluster()
+	cluster3 := newTestCluster()
+
+	defer newServer(t, 1, listener1, cluster2)()
+	defer newServer(t, 3, listener3, cluster3)()
+
+	// Simulate server 2 crashing.
+	require.NoError(t, listener2.Close())
+
+	// Server 1 will be contacted first, which will report that server 2 is
+	// the leader. However server 2 thinks that 3 is the leader, and server
+	// 3 is actually the leader.
+	store := newStore(t, []string{
+		listener1.Addr().String(),
+		listener2.Addr().String(),
+		listener3.Addr().String(),
+	})
+	cluster1.leader = listener2.Addr().String()
+	cluster2.leader = listener3.Addr().String()
+	cluster3.leader = listener3.Addr().String()
+
+	connector := newConnector(t, store)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err := connector.Connect(ctx)
+	require.NoError(t, err)
+}
+
+func newConnector(t *testing.T, store client.ServerStore) *client.Connector {
 	t.Helper()
-
-	addr, cleanup := newServer(t)
-
-	store := newStore(t, []string{addr.String()})
 
 	config := client.Config{
 		AttemptTimeout: 100 * time.Millisecond,
@@ -49,7 +252,7 @@ func newConnector(t *testing.T) (*client.Connector, func()) {
 
 	connector := client.NewConnector(0, store, config, logger)
 
-	return connector, cleanup
+	return connector
 }
 
 // Create a new in-memory server store populated with the given addresses.
@@ -62,19 +265,16 @@ func newStore(t *testing.T, addresses []string) client.ServerStore {
 	return store
 }
 
-func newServer(t *testing.T) (net.Addr, func()) {
+func newServer(t *testing.T, index int, listener net.Listener, cluster bindings.Cluster) func() {
 	t.Helper()
 
 	file, fileCleanup := newFile(t)
-	cluster := newTestCluster()
 
 	server, err := bindings.NewServer(file, cluster)
 	require.NoError(t, err)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	err = server.ConfigVfs(fmt.Sprintf("volatile-%d", index))
 	require.NoError(t, err)
-
-	cluster.leader = listener.Addr().String()
 
 	runCh := make(chan error)
 	go func() {
@@ -84,20 +284,25 @@ func newServer(t *testing.T) (net.Addr, func()) {
 
 	require.True(t, server.Ready())
 
-	acceptCh := make(chan error)
+	acceptCh := make(chan error, 1)
 	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			acceptCh <- nil
-			return
-		}
-		err = server.Handle(conn)
-		if err == bindings.ErrServerStopped {
-			acceptCh <- nil
-			return
-		}
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				acceptCh <- nil
+				return
+			}
 
-		acceptCh <- err
+			err = server.Handle(conn)
+			if err == bindings.ErrServerStopped {
+				acceptCh <- nil
+				return
+			}
+			if err != nil {
+				acceptCh <- err
+				return
+			}
+		}
 	}()
 
 	cleanup := func() {
@@ -127,7 +332,16 @@ func newServer(t *testing.T) (net.Addr, func()) {
 		fileCleanup()
 	}
 
-	return listener.Addr(), cleanup
+	return cleanup
+}
+
+func newListener(t *testing.T) net.Listener {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	return listener
 }
 
 func newFile(t *testing.T) (*os.File, func()) {

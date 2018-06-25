@@ -6,7 +6,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-type message struct {
+type Message struct {
 	Words uint32
 	Type  uint8
 	Flags uint8
@@ -14,7 +14,7 @@ type message struct {
 	Body  buffer
 }
 
-func (m *message) Write(writer io.Writer) error {
+func (m *Message) Write(writer io.Writer) error {
 	n := len(m.Body.Bytes)
 
 	if (n % messageWordSize) != 0 {
@@ -34,7 +34,7 @@ func (m *message) Write(writer io.Writer) error {
 	return nil
 }
 
-func (m *message) writeHeader(writer io.Writer) error {
+func (m *Message) writeHeader(writer io.Writer) error {
 	buffer := buffer{Bytes: make([]byte, messageHeaderSize)}
 
 	buffer.PutUint32(m.Words)
@@ -55,7 +55,7 @@ func (m *message) writeHeader(writer io.Writer) error {
 	return nil
 }
 
-func (m *message) writeBody(writer io.Writer) error {
+func (m *Message) writeBody(writer io.Writer) error {
 	n, err := writer.Write(m.Body.Bytes)
 	if err != nil {
 		return errors.Wrap(err, "failed to write body")
@@ -68,7 +68,7 @@ func (m *message) writeBody(writer io.Writer) error {
 	return nil
 }
 
-func (m *message) Read(reader io.Reader) error {
+func (m *Message) Read(reader io.Reader) error {
 	if err := m.readHeader(reader); err != nil {
 		return errors.Wrap(err, "failed to read header")
 	}
@@ -80,7 +80,7 @@ func (m *message) Read(reader io.Reader) error {
 	return nil
 }
 
-func (m *message) readHeader(reader io.Reader) error {
+func (m *Message) readHeader(reader io.Reader) error {
 	buf := buffer{Bytes: make([]byte, messageHeaderSize)}
 
 	if err := m.readPeek(reader, buf.Bytes); err != nil {
@@ -95,7 +95,7 @@ func (m *message) readHeader(reader io.Reader) error {
 	return nil
 }
 
-func (m *message) readBody(reader io.Reader) error {
+func (m *Message) readBody(reader io.Reader) error {
 	n := int(m.Words) * messageWordSize
 	buf := buffer{Bytes: make([]byte, n)}
 
@@ -109,7 +109,7 @@ func (m *message) readBody(reader io.Reader) error {
 }
 
 // Read until buf is full.
-func (m *message) readPeek(reader io.Reader, buf []byte) error {
+func (m *Message) readPeek(reader io.Reader, buf []byte) error {
 	for offset := 0; offset < len(buf); {
 		n, err := m.readFill(reader, buf[offset:])
 		if err != nil {
@@ -122,7 +122,7 @@ func (m *message) readPeek(reader io.Reader, buf []byte) error {
 }
 
 // Try to fill buf, but perform at most one read.
-func (m *message) readFill(reader io.Reader, buf []byte) (int, error) {
+func (m *Message) readFill(reader io.Reader, buf []byte) (int, error) {
 	// Read new data: try a limited number of times.
 	//
 	// This technique is copied from bufio.Reader.
