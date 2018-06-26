@@ -18,7 +18,7 @@ import (
 // It returns the filename and query parameters.
 func ParseURI(uri string) (string, uint64, error) {
 	filename := uri
-	flags := uint64(bindings.DbOpenReadWrite | bindings.DbOpenCreate)
+	flags := uint64(bindings.OpenReadWrite | bindings.OpenCreate)
 
 	pos := strings.IndexRune(uri, '?')
 	if pos >= 1 {
@@ -33,11 +33,11 @@ func ParseURI(uri string) (string, uint64, error) {
 		case "memory":
 			return "", 0, fmt.Errorf("memory database not supported")
 		case "ro":
-			flags = bindings.DbOpenReadOnly
+			flags = bindings.OpenReadOnly
 		case "rw":
-			flags = bindings.DbOpenReadWrite
+			flags = bindings.OpenReadWrite
 		case "rwc":
-			flags = bindings.DbOpenReadWrite | bindings.DbOpenCreate
+			flags = bindings.OpenReadWrite | bindings.OpenCreate
 		default:
 			return "", 0, fmt.Errorf("unknown mode %s", mode)
 		}

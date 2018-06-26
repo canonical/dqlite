@@ -14,12 +14,11 @@
 
 package registry
 
-/*
 import (
 	"fmt"
 
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/trace"
-	"github.com/CanonicalLtd/go-sqlite3"
 )
 
 // TracerFSM returns the tracer that should be used by the replication.FSM
@@ -31,8 +30,7 @@ func (r *Registry) TracerFSM() *trace.Tracer {
 // TracerConn returns the tracer that should be used by the replication.Methods
 // instance associated with this registry when running the given hook for the
 // given connection, which is assumed to be a registered leader connection.
-func (r *Registry) TracerConn(conn *sqlite3.SQLiteConn, hook string) *trace.Tracer {
+func (r *Registry) TracerConn(conn *bindings.Conn, hook string) *trace.Tracer {
 	tracer := r.tracers.Get(fmt.Sprintf("methods %d", r.ConnSerial(conn)))
 	return tracer.With(trace.String("hook", hook))
 }
-*/

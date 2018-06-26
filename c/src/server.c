@@ -13,9 +13,6 @@
 #include "queue.h"
 #include "conn.h"
 #include "dqlite.h"
-#include "vfs.h"
-
-#define DQLITE__SERVER_DEFAULT_VFS_NAME "volatile"
 
 int dqlite_init(const char **errmsg) {
 	int rc;
@@ -47,8 +44,6 @@ struct dqlite__server {
 	/* private */
 	FILE                *log;      /* Log output stream */
 	dqlite_cluster      *cluster;  /* Cluster implementation */
-	sqlite3_vfs         *vfs;      /* In-memory file system */
-	char                *vfs_name; /* Registration name for the vfs */
 	struct dqlite__queue queue;    /* Queue of incoming connections */
 	pthread_mutex_t      mutex;    /* Serialize access to incoming queue */
 	uv_loop_t            loop;     /* UV loop */
@@ -246,10 +241,6 @@ void dqlite_server_free(dqlite_server *s)
 {
 	assert(s != NULL);
 
-	if (s->vfs_name != NULL) {
-		sqlite3_free(s->vfs_name);
-	}
-
 	sqlite3_free(s);
 }
 
@@ -266,9 +257,6 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 
 	s->log = log;
 	s->cluster = cluster;
-
-	s->vfs = NULL;
-	s->vfs_name = NULL;
 
 	dqlite__queue_init(&s->queue);
 
@@ -342,8 +330,6 @@ void dqlite_server_close(dqlite_server *s)
 	err = sem_destroy(&s->stopped);
 	assert(err == 0);
 
-	assert(s->vfs == NULL);
-
 	dqlite__queue_close(&s->queue);
 	dqlite__error_close(&s->error);
 
@@ -355,23 +341,9 @@ int dqlite_server_config(dqlite_server *s, int op, void *arg)
 	int err = 0;
 
 	assert(s != NULL);
+	(void)arg;
 
 	switch (op) {
-
-	case DQLITE_CONFIG_VFS:
-		if (s->vfs_name != NULL) {
-			sqlite3_free(s->vfs_name);
-		}
-
-		s->vfs_name = sqlite3_malloc(strlen((const char*)arg) + 1);
-		if (s->vfs_name == NULL) {
-			dqlite__error_oom(&s->error, "failed to copy VFS name");
-			err = DQLITE_NOMEM;
-		}
-
-		strcpy(s->vfs_name, (const char*)arg);
-
-		break;
 
 	default:
 		dqlite__error_printf(&s->error, "unknown op code %d", op);
@@ -384,55 +356,32 @@ int dqlite_server_config(dqlite_server *s, int op, void *arg)
 
 int dqlite_server_run(struct dqlite__server *s){
 	int err;
-	const char *vfs_name;
 
 	assert(s != NULL);
-
-	if (s->vfs_name == NULL) {
-		vfs_name = DQLITE__SERVER_DEFAULT_VFS_NAME;
-	}
-
-	dqlite__infof(s, "register in-memory vfs", "name=%s", vfs_name);
-	err = dqlite__vfs_register(vfs_name, &s->vfs);
-	if (err != 0) {
-		assert(err == SQLITE_NOMEM);
-
-		dqlite__error_printf(&s->error, "failed to register vfs: out of memory");
-
-		/* Unblock any client of dqlite_server_ready */
-		err = sem_post(&s->ready);
-		assert(err == 0); /* No reason for which posting should fail */
-
-		return DQLITE_ERROR;
-	}
 
 	dqlite__infof(s, "run event loop", "");
 
 	err = uv_run(&s->loop, UV_RUN_DEFAULT);
 	if (err != 0) {
 		dqlite__error_uv(&s->error, err, "event loop finished unclealy");
-		return DQLITE_ERROR;
+		goto out;
 	}
-
-	dqlite__infof(s, "event loop done", "");
-
-	/* Unblock calls to dqlite_server_stop */
-	err = sem_post(&s->stopped);
-	assert(err == 0); /* No reason for which posting should fail */
 
 	err = uv_loop_close(&s->loop);
 	if (err != 0) {
 		dqlite__error_uv(&s->error, err, "failed to close event loop");
-		return DQLITE_ERROR;
+		goto out;
 	}
 
-	dqlite__vfs_unregister(s->vfs);
-	s->vfs = NULL;
+ out:
+	/* Unblock any client of dqlite_server_ready (no reason for which
+	 * posting should fail). */
+	assert(sem_post(&s->ready) == 0);
 
 	/* Flush the log, but ignore errors */
 	fflush(s->log);
 
-	return 0;
+	return err;
 }
 
 int dqlite_server_ready(dqlite_server *s)

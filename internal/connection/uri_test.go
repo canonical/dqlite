@@ -29,10 +29,10 @@ func TestParseURI_Valid(t *testing.T) {
 // The query string gets converted into flags.
 func TestParseURI_Query(t *testing.T) {
 	cases := map[string]uint64{
-		"test.db":         bindings.DbOpenReadWrite | bindings.DbOpenCreate,
-		"file:test.db?":   bindings.DbOpenReadWrite | bindings.DbOpenCreate,
-		"test.db?mode=rw": bindings.DbOpenReadWrite,
-		"test.db?mode=ro": bindings.DbOpenReadOnly,
+		"test.db":         bindings.OpenReadWrite | bindings.OpenCreate,
+		"file:test.db?":   bindings.OpenReadWrite | bindings.OpenCreate,
+		"test.db?mode=rw": bindings.OpenReadWrite,
+		"test.db?mode=ro": bindings.OpenReadOnly,
 	}
 	for uri, expected := range cases {
 		t.Run(uri, func(t *testing.T) {

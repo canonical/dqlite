@@ -100,10 +100,12 @@ static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gatewa
 	assert(db != NULL);
 
 	rc = dqlite__db_open(
-		db, ctx->request->open.name, ctx->request->open.flags, ctx->request->open.vfs);
+		db, ctx->request->open.name, ctx->request->open.flags,
+		g->cluster->xReplication(g->cluster->ctx));
 	if (rc == SQLITE_OK) {
 		ctx->response.type = DQLITE_RESPONSE_DB;
 		ctx->response.db.id =  (uint32_t)i;
+		g->cluster->xRegister(g->cluster->ctx, db->db);
 	} else {
 		dqlite__db_registry_del(&g->dbs, i);
 		dqlite__gateway_db_error(ctx, db->db, rc);

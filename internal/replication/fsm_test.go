@@ -1,21 +1,16 @@
 package replication_test
 
-/*
 import (
-	"bytes"
-	"database/sql"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"testing"
 
-	"github.com/CanonicalLtd/dqlite/internal/connection"
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/protocol"
 	"github.com/CanonicalLtd/dqlite/internal/registry"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,7 +30,14 @@ func TestFSM_Apply_Frames_Leader(t *testing.T) {
 	fsm, conn, txn, cleanup := newFSMWithLeader(t)
 	defer cleanup()
 
-	fsmApply(fsm, 1, protocol.NewFrames(txn.ID(), "test.db", newFramesParams()))
+	command := protocol.NewFrames(txn.ID(), "test.db", newFrameList())
+
+	frames := command.Payload.(*protocol.Command_Frames)
+	frames.Frames.IsCommit = 1
+	frames.Frames.PageNumbers = []uint32{0}
+	frames.Frames.PageData = []byte{0}
+
+	fsmApply(fsm, 1, command)
 
 	// The transaction is still in the registry and is in the Written
 	// state.
@@ -51,9 +53,14 @@ func TestFSM_Apply_Frames_NonCommit_Leader(t *testing.T) {
 	fsm, conn, txn, cleanup := newFSMWithLeader(t)
 	defer cleanup()
 
-	params := newFramesParams()
-	params.IsCommit = 0
-	fsmApply(fsm, 1, protocol.NewFrames(txn.ID(), "test.db", params))
+	command := protocol.NewFrames(txn.ID(), "test.db", newFrameList())
+
+	frames := command.Payload.(*protocol.Command_Frames)
+	frames.Frames.IsCommit = 0
+	frames.Frames.PageNumbers = []uint32{0}
+	frames.Frames.PageData = []byte{0}
+
+	fsmApply(fsm, 1, command)
 
 	// The transaction is still in the registry and has transitioned to
 	// Writing.
@@ -81,7 +88,14 @@ func TestFSM_Apply_Frames_Follower(t *testing.T) {
 
 	fsm.Registry().TxnDryRun()
 
-	fsmApply(fsm, 1, protocol.NewFrames(123, "test.db", newFramesParams()))
+	command := protocol.NewFrames(123, "test.db", newFrameList())
+
+	frames := command.Payload.(*protocol.Command_Frames)
+	frames.Frames.IsCommit = 1
+	frames.Frames.PageNumbers = []uint32{0}
+	frames.Frames.PageData = []byte{0}
+
+	fsmApply(fsm, 1, command)
 
 	// The transaction has been removed from the registry
 	assert.Nil(t, fsm.Registry().TxnByID(123))
@@ -97,9 +111,14 @@ func TestFSM_Apply_Undo_Follower(t *testing.T) {
 
 	fsm.Registry().TxnDryRun()
 
-	params := newFramesParams()
-	params.IsCommit = 0
-	fsmApply(fsm, 1, protocol.NewFrames(123, "test.db", params))
+	command := protocol.NewFrames(123, "test.db", newFrameList())
+
+	frames := command.Payload.(*protocol.Command_Frames)
+	frames.Frames.IsCommit = 0
+	frames.Frames.PageNumbers = []uint32{0}
+	frames.Frames.PageData = []byte{0}
+
+	fsmApply(fsm, 1, command)
 	fsmApply(fsm, 2, protocol.NewUndo(123))
 
 	// The transaction has been removed from the registry
@@ -120,15 +139,15 @@ func TestFSM_ApplyError(t *testing.T) {
 			},
 			"corrupted command data: protobuf failure: proto: illegal wireType 7",
 		},
-		{
-			`open error`,
-			func(t *testing.T, fsm *replication.FSM) error {
-				registry := registry.New("/foo/bar")
-				fsm.RegistryReplace(registry)
-				return fsmApply(fsm, 0, protocol.NewOpen("test.db"))
-			},
-			"open test.db: open error for /foo/bar/test.db: unable to open database file",
-		},
+		// {
+		// 	`open error`,
+		// 	func(t *testing.T, fsm *replication.FSM) error {
+		// 		registry := registry.New("/foo/bar")
+		// 		fsm.RegistryReplace(registry)
+		// 		return fsmApply(fsm, 0, protocol.NewOpen("test.db"))
+		// 	},
+		// 	"open test.db: open error for /foo/bar/test.db: unable to open database file",
+		// },
 	}
 	for _, c := range cases {
 		t.Run(c.title, func(t *testing.T) {
@@ -155,7 +174,7 @@ func aTestFSM_ApplyPanics(t *testing.T) {
 			`existing transaction has non-leader connection`,
 			func(t *testing.T, fsm *replication.FSM) {
 				fsmApply(fsm, 0, protocol.NewOpen("test.db"))
-				fsm.Registry().TxnFollowerAdd(&sqlite3.SQLiteConn{}, 123)
+				fsm.Registry().TxnFollowerAdd(&bindings.Conn{}, 123)
 				fsmApply(fsm, 1, protocol.NewBegin(123, "test.db"))
 			},
 			"unexpected follower transaction 123 pending as follower",
@@ -174,7 +193,7 @@ func aTestFSM_ApplyPanics(t *testing.T) {
 			func(t *testing.T, fsm *replication.FSM) {
 				fsmApply(fsm, 0, protocol.NewOpen("test.db"))
 
-				conn := &sqlite3.SQLiteConn{}
+				conn := &bindings.Conn{}
 				fsm.Registry().ConnLeaderAdd("test.db", conn)
 				fsm.Registry().TxnLeaderAdd(conn, 1)
 
@@ -182,14 +201,14 @@ func aTestFSM_ApplyPanics(t *testing.T) {
 			},
 			"unexpected transaction 1 pending as leader",
 		},
-		{
-			`wal frames transaction not found`,
-			func(t *testing.T, fsm *replication.FSM) {
-				params := newFramesParams()
-				fsmApply(fsm, 0, protocol.NewFrames(123, "test.db", params))
-			},
-			"no transaction with ID 123",
-		},
+		// {
+		// 	`wal frames transaction not found`,
+		// 	func(t *testing.T, fsm *replication.FSM) {
+		// 		params := newFramesParams()
+		// 		fsmApply(fsm, 0, protocol.NewFrames(123, "test.db", params))
+		// 	},
+		// 	"no transaction with ID 123",
+		// },
 		{
 			`undo transaction not found`,
 			func(t *testing.T, fsm *replication.FSM) {
@@ -206,6 +225,8 @@ func aTestFSM_ApplyPanics(t *testing.T) {
 		})
 	}
 }
+
+/*
 
 func TestFSM_ApplyCheckpoint(t *testing.T) {
 	fsm, cleanup := newFSM(t)
@@ -431,15 +452,53 @@ func TestFSM_Restore(t *testing.T) {
 	assert.Equal(t, 1, n)
 }
 
+
+// Return a raft snapshot store that uses the given directory to store
+// snapshots.
+func newSnapshotStore() raft.SnapshotStore {
+	return raft.NewInmemSnapshotStore()
+}
+
+// Convenience to create a new test snapshot sink.
+func newSnapshotSink(t *testing.T, store raft.SnapshotStore) raft.SnapshotSink {
+	_, transport := raft.NewInmemTransport(raft.ServerAddress(""))
+	sink, err := store.Create(
+		raft.SnapshotVersionMax,
+		uint64(1),
+		uint64(1),
+		raft.Configuration{},
+		uint64(1),
+		transport,
+	)
+	if err != nil {
+		t.Fatalf("failed to create test snapshot sink: %v", err)
+	}
+	return sink
+}
+*/
+
 // Return a fresh FSM for tests.
 func newFSM(t *testing.T) (*replication.FSM, func()) {
 	t.Helper()
 
-	dir, cleanup := newDir(t)
-	registry := registry.New(dir)
+	err := bindings.RegisterWalReplication("test", newNoopWalReplication())
+	require.NoError(t, err)
+
+	vfs, err := bindings.RegisterVfs("test")
+	require.NoError(t, err)
+
+	dir, dirCleanup := newDir(t)
+
+	registry := registry.New(vfs, dir)
 	registry.Testing(t, 0)
 
 	fsm := replication.NewFSM(registry)
+
+	cleanup := func() {
+		dirCleanup()
+		bindings.UnregisterVfs(vfs)
+		bindings.UnregisterWalReplication("test")
+	}
 
 	// We need to disable replication mode checks, because leader
 	// connections created with newLeaderConn() haven't actually initiated
@@ -452,13 +511,13 @@ func newFSM(t *testing.T) (*replication.FSM, func()) {
 
 // Return a fresh FSM for tests, along with a registered leader connection and
 // transaction, as it would be created by a Methods.Begin hook.
-func newFSMWithLeader(t *testing.T) (*replication.FSM, *sqlite3.SQLiteConn, *transaction.Txn, func()) {
+func newFSMWithLeader(t *testing.T) (*replication.FSM, *bindings.Conn, *transaction.Txn, func()) {
 	t.Helper()
 
 	fsm, fsmCleanup := newFSM(t)
 
-	methods := sqlite3.NoopReplicationMethods()
-	conn, connCleanup := newLeaderConn(t, fsm.Registry().Dir(), methods)
+	name := fsm.Registry().Vfs().Name()
+	conn, connCleanup := newLeaderConn(t, name, name)
 
 	fsm.Registry().ConnLeaderAdd("test.db", conn)
 	txn := fsm.Registry().TxnLeaderAdd(conn, 1)
@@ -481,6 +540,30 @@ func newFSMWithFollower(t *testing.T) (*replication.FSM, func()) {
 	fsmApply(fsm, 0, protocol.NewOpen("test.db"))
 
 	return fsm, cleanup
+}
+
+// Create a new SQLite connection in leader replication mode, opened against a
+// database at a temporary file.
+func newLeaderConn(t *testing.T, vfs string, replication string) (*bindings.Conn, func()) {
+	t.Helper()
+
+	conn, err := bindings.OpenLeader("test.db", vfs, replication)
+	if err != nil {
+		t.Fatalf("failed to open leader connection: %v", err)
+	}
+
+	cleanup := func() {
+		if err := conn.Close(); err != nil {
+			t.Fatalf("failed to close leader connection: %v", err)
+		}
+	}
+
+	return conn, cleanup
+}
+
+// Convenience to create test parameters for a wal frames command.
+func newFrameList() bindings.WalReplicationFrameList {
+	return bindings.WalReplicationFrameList{}
 }
 
 // Return a new temporary directory.
@@ -524,56 +607,30 @@ func newRaftLog(index uint64, cmd *protocol.Command) *raft.Log {
 	return &raft.Log{Data: data, Index: index}
 }
 
-// Create a new SQLite connection in leader replication mode, opened against a
-// database at a temporary file.
-func newLeaderConn(t *testing.T, dir string, methods sqlite3.ReplicationMethods) (*sqlite3.SQLiteConn, func()) {
-	t.Helper()
-
-	conn, err := connection.OpenLeader(filepath.Join(dir, "test.db"), methods)
-	if err != nil {
-		t.Fatalf("failed to open leader connection: %v", err)
-	}
-
-	cleanup := func() {
-		if err := conn.Close(); err != nil {
-			t.Fatalf("failed to close leader connection: %v", err)
-		}
-	}
-
-	return conn, cleanup
+// NoopWalReplication returns a new instance of a WalReplication implementation
+// whose hooks do nothing.
+func newNoopWalReplication() bindings.WalReplication {
+	return &noopWalReplication{}
 }
 
-// Convenience to create test parameters for a wal frames command.
-func newFramesParams() *sqlite3.ReplicationFramesParams {
-	return &sqlite3.ReplicationFramesParams{
-		Pages:     sqlite3.NewReplicationPages(2, 4096),
-		PageSize:  4096,
-		Truncate:  uint32(1),
-		IsCommit:  1,
-		SyncFlags: 10,
-	}
+type noopWalReplication struct{}
+
+func (m *noopWalReplication) Begin(*bindings.Conn) int {
+	return 0
 }
 
-// Return a raft snapshot store that uses the given directory to store
-// snapshots.
-func newSnapshotStore() raft.SnapshotStore {
-	return raft.NewInmemSnapshotStore()
+func (m *noopWalReplication) Abort(*bindings.Conn) int {
+	return 0
 }
 
-// Convenience to create a new test snapshot sink.
-func newSnapshotSink(t *testing.T, store raft.SnapshotStore) raft.SnapshotSink {
-	_, transport := raft.NewInmemTransport(raft.ServerAddress(""))
-	sink, err := store.Create(
-		raft.SnapshotVersionMax,
-		uint64(1),
-		uint64(1),
-		raft.Configuration{},
-		uint64(1),
-		transport,
-	)
-	if err != nil {
-		t.Fatalf("failed to create test snapshot sink: %v", err)
-	}
-	return sink
+func (m *noopWalReplication) Frames(*bindings.Conn, bindings.WalReplicationFrameList) int {
+	return 0
 }
-*/
+
+func (m *noopWalReplication) Undo(*bindings.Conn) int {
+	return 0
+}
+
+func (m *noopWalReplication) End(*bindings.Conn) int {
+	return 0
+}

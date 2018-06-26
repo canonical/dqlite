@@ -20,7 +20,7 @@ int dqlite__db_open(
 	struct dqlite__db *db,
 	const char *name,
 	int flags,
-	const char *vfs);
+	const char *replication);
 
 int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint32_t *stmt_id);
 struct dqlite__stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id);

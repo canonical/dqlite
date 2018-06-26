@@ -10,10 +10,11 @@ package bindings
 #include <sqlite3.h>
 
 struct dqliteCluster {
-  int    handle;          // Entry of the Go clusterHandles map
-  char  *leader;          // Hold the last string returned by xLeader.
-  char **addresses;       // Hold the last string array returned by xServers.
-  dqlite_cluster cluster; // Cluster methods implementation.
+  int    handle;      // Entry of the Go clusterHandles map
+  char  *replication; // Hold the last string returned by xReplication
+  char  *leader;      // Hold the last string returned by xLeader.
+  char **addresses;   // Hold the last string array returned by xServers.
+  dqlite_cluster cluster;
 };
 
 static struct dqliteCluster *dqliteClusterAlloc() {
@@ -29,6 +30,22 @@ static void dqliteClusterFree(struct dqliteCluster *c)
   assert(c != NULL);
 
   free(c);
+}
+
+// Go land callback for xReplication.
+char *dqliteClusterReplicationCb(int handle);
+
+static const char *dqliteClusterReplication(void *ctx) {
+  int err;
+  struct dqliteCluster *c;
+
+  assert(ctx != NULL);
+
+  c = (struct dqliteCluster*)ctx;
+
+  c->replication = dqliteClusterReplicationCb(c->handle);
+
+  return (const char*)c->replication;
 }
 
 // Go land callback for xLeader.
@@ -70,6 +87,32 @@ static int dqliteClusterServers(void *ctx, const char ***addresses) {
   return 0;
 }
 
+// Go land callback for xRegister.
+void dqliteClusterRegisterCb(int handle, sqlite3 *db);
+
+static void dqliteClusterRegister(void *ctx, sqlite3 *db) {
+  struct dqliteCluster *c;
+
+  assert(ctx != NULL);
+
+  c = (struct dqliteCluster*)ctx;
+
+  dqliteClusterRegisterCb(c->handle, db);
+}
+
+// Go land callback for xUnregister.
+void dqliteClusterUnregisterCb(int handle, sqlite3 *db);
+
+static void dqliteClusterUnregister(void *ctx, sqlite3 *db) {
+  struct dqliteCluster *c;
+
+  assert(ctx != NULL);
+
+  c = (struct dqliteCluster*)ctx;
+
+  dqliteClusterUnregisterCb(c->handle, db);
+}
+
 // Go land callback for xLeader.
 int dqliteClusterRecoverCb(int handle, uint64_t txToken);
 
@@ -88,18 +131,26 @@ static void dqliteClusterInit(struct dqliteCluster *c, int handle)
   assert(c != NULL);
 
   c->handle = handle;
+  c->replication = NULL;
   c->leader = NULL;
   c->addresses = NULL;
 
   c->cluster.ctx = (void*)c;
+  c->cluster.xReplication = dqliteClusterReplication;
   c->cluster.xLeader = dqliteClusterLeader;
   c->cluster.xServers = dqliteClusterServers;
+  c->cluster.xRegister = dqliteClusterRegister;
+  c->cluster.xUnregister = dqliteClusterUnregister;
   c->cluster.xRecover = dqliteClusterRecover;
 }
 
 static void dqliteClusterClose(struct dqliteCluster *c)
 {
   assert(c != NULL);
+
+  if (c->replication != NULL) {
+    free(c->replication);
+  }
 
   if (c->leader != NULL) {
     free(c->leader);
@@ -195,7 +246,39 @@ const (
 	ServerResponseEmpty   = C.DQLITE_RESPONSE_EMPTY
 )
 
-// Server is a Go wrapper arround server
+// Vfs is a Go wrapper arround dqlite's in-memory VFS implementation.
+type Vfs C.sqlite3_vfs
+
+// Name returns the registration name of the vfs.
+func (v *Vfs) Name() string {
+	vfs := (*C.sqlite3_vfs)(unsafe.Pointer(v))
+
+	return C.GoString(vfs.zName)
+}
+
+// RegisterVfs registers an in-memory VFS instance under the given name.
+func RegisterVfs(name string) (*Vfs, error) {
+	cname := C.CString(name)
+
+	var vfs *C.sqlite3_vfs
+
+	err := C.dqlite_vfs_register(cname, &vfs)
+	if err != 0 {
+		return nil, fmt.Errorf("failure (%d)", err)
+	}
+
+	return (*Vfs)(unsafe.Pointer(vfs)), nil
+}
+
+// UnregisterVfs unregisters an in-memory VFS instance.
+func UnregisterVfs(vfs *Vfs) {
+	cvfs := (*C.sqlite3_vfs)(unsafe.Pointer(vfs))
+	C.dqlite_vfs_unregister(cvfs)
+
+	C.free(unsafe.Pointer(cvfs.zName))
+}
+
+// Server is a Go wrapper arround dqlite_server.
 type Server C.dqlite_server
 
 // Init initializes dqlite global state.
@@ -230,22 +313,6 @@ func NewServer(file *os.File, cluster Cluster) (*Server, error) {
 	}
 
 	return (*Server)(unsafe.Pointer(server)), nil
-}
-
-// ConfigVfs sets the registration name of the in-memory VFS.
-func (s *Server) ConfigVfs(name string) error {
-	server := (*C.dqlite_server)(unsafe.Pointer(s))
-
-	arg := unsafe.Pointer(C.CString(name))
-	defer C.free(arg)
-
-	rc := C.dqlite_server_config(server, C.DQLITE_CONFIG_VFS, arg)
-	if rc != 0 {
-		msg := C.GoString(C.dqlite_server_errmsg(server))
-		return fmt.Errorf(msg)
-	}
-
-	return nil
 }
 
 // Close the server releasing all used resources.
@@ -327,6 +394,9 @@ var ErrServerStopped = fmt.Errorf("server was stopped")
 
 // Cluster implements the interface required by dqlite_cluster.
 type Cluster interface {
+	// Return the registration name of the WAL replication implementation.
+	Replication() string
+
 	// Return the address of the current cluster leader, if any. If not
 	// empty, the address string must a be valid network IP or hostname,
 	// that clients can use to connect to a dqlite service.
@@ -343,6 +413,9 @@ type Cluster interface {
 	// NotLeader() must be returned.
 	Servers() ([]string, error)
 
+	Register(*Conn)
+	Unregister(*Conn)
+
 	Recover(token uint64) error
 }
 
@@ -350,6 +423,13 @@ type Cluster interface {
 type ClusterError interface {
 	error
 	NotLeader() bool // Is the error due to the server not being the leader?
+}
+
+//export dqliteClusterReplicationCb
+func dqliteClusterReplicationCb(handle C.int) *C.char {
+	cluster := clusterHandles[handle]
+
+	return C.CString(cluster.Replication())
 }
 
 //export dqliteClusterLeaderCb
@@ -392,6 +472,20 @@ func dqliteClusterServersCb(handle C.int, out ***C.char) C.int {
 	return C.int(0)
 }
 
+//export dqliteClusterRegisterCb
+func dqliteClusterRegisterCb(handle C.int, db *C.sqlite3) {
+	cluster := clusterHandles[handle]
+
+	cluster.Register((*Conn)(unsafe.Pointer(db)))
+}
+
+//export dqliteClusterUnregisterCb
+func dqliteClusterUnregisterCb(handle C.int, db *C.sqlite3) {
+	cluster := clusterHandles[handle]
+
+	cluster.Unregister((*Conn)(unsafe.Pointer(db)))
+}
+
 //export dqliteClusterRecoverCb
 func dqliteClusterRecoverCb(handle C.int, txToken C.uint64_t) C.int {
 	cluster := clusterHandles[handle]
@@ -407,6 +501,6 @@ func dqliteClusterRecoverCb(handle C.int, txToken C.uint64_t) C.int {
 // Map C.int to Cluster instances to avoid passing Go pointers to C.
 //
 // We do not protect this map with a lock since typically just one long-lived
-// Cluster instance should be registered (expect for unit tests).
+// Cluster instance should be registered (except for unit tests).
 var clusterHandlesSerial C.int
 var clusterHandles = map[C.int]Cluster{}

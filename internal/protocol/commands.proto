@@ -49,18 +49,11 @@ message Begin {
 message Frames {
   uint64 txid = 1;                  // Transaction identifier.
   int32 page_size = 2;              // Size of the data field of each frame.
-  repeated FramesPage pages = 3;    // List of the frames to write.
-  uint32 truncate = 4;              // Flag telling if the WAL should be truncated.
-  int32 is_commit = 5;              // Flag telling if this is a final frames write.
-  uint32 sync_flags = 6;            // Flags for disk syncing.
+  repeated uint32 page_numbers = 3; // Page numbers of the frames to write.
+  bytes page_data = 4;              // Contiguous page data.
+  uint32 truncate = 5;              // Flag telling if the WAL should be truncated.
+  int32 is_commit = 6;              // Flag telling if this is a final frames write.
   string filename = 7;              // Filename of the database file.
-}
-
-// A single frame of data in a Frames command.
-message FramesPage {
-  bytes data = 1;    // Frame data.
-  uint32 flags = 2;  // WAL write flags.
-  uint32 number = 3; // Page number (i.e. position in the database file).
 }
 
 // Parameters to undo any previous WAL change in a write transaction.

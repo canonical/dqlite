@@ -138,7 +138,7 @@ int test_client_open(struct test_client *c, const char *name, uint32_t *db_id)
 	request.type = DQLITE_REQUEST_OPEN;
 	request.open.name = "test.db";
 	request.open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	request.open.vfs = "volatile";
+	request.open.vfs = "test";
 
 	TEST_CLIENT__WRITE;
 	TEST_CLIENT__READ;

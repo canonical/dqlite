@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include <sqlite3.h>
+
 /* #ifdef __cplusplus */
 /* extern "C" { */
 /* #endif */
@@ -25,9 +27,6 @@
 #define DQLITE_ENGINE   7 /* A SQLite error occurred */
 #define DQLITE_NOTFOUND 8
 #define DQLITE_STOPPED  9 /* The server was stopped */
-
-/* Config op codes */
-#define DQLITE_CONFIG_VFS 0
 
 /* Current protocol version */
 #define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
@@ -66,11 +65,18 @@
  */
 int dqlite_init(const char **ermsg);
 
+/* In-memory VFS implementation */
+int dqlite_vfs_register(const char *name, sqlite3_vfs **vfs);
+void dqlite_vfs_unregister(sqlite3_vfs* vfs);
+
 /* Interface implementing cluster-related functionality */
 typedef struct dqlite_cluster {
 	void *ctx;
+	const char *(*xReplication)(void *ctx);
 	const char *(*xLeader)(void *ctx);
 	int         (*xServers)(void *ctx, const char ***addresses);
+	void        (*xRegister)(void *ctx, sqlite3 *db);
+	void        (*xUnregister)(void *ctx, sqlite3 *db);
 	int         (*xRecover)(void *ctx, uint64_t tx_token);
 } dqlite_cluster;
 
@@ -91,7 +97,6 @@ void dqlite_server_close(dqlite_server *s);
  * dqlite_server_run.
  */
 int dqlite_server_config(dqlite_server *s, int op, void *arg);
-
 
 /* Start a dqlite server.
  *

@@ -1,13 +1,17 @@
 #include <CUnit/CUnit.h>
 
+#include <sqlite3.h>
+
 #include "../src/gateway.h"
 #include "../src/response.h"
-#include "../src/vfs.h"
+#include "../include/dqlite.h"
 
 #include "cluster.h"
+#include "replication.h"
 #include "suite.h"
 
 static sqlite3_vfs* vfs;
+static sqlite3_wal_replication *replication;
 static struct dqlite__gateway gateway;
 static struct dqlite__request request;
 struct dqlite__response *response;
@@ -20,7 +24,7 @@ static void test_dqlite__gateway_send_open(uint32_t *db_id)
 	request.type = DQLITE_REQUEST_OPEN;
 	request.open.name = "test.db";
 	request.open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	request.open.vfs = "volatile";
+	request.open.vfs = replication->zName;
 
 	err = dqlite__gateway_handle(&gateway, &request, &response);
 	CU_ASSERT_EQUAL(err, 0);
@@ -85,14 +89,22 @@ void test_dqlite__gateway_setup()
 	FILE *log = test_suite_dqlite_log();
 	int err;
 
-	err = dqlite__vfs_register("volatile", &vfs);
+	replication = test_replication();
 
+	err = sqlite3_wal_replication_register(replication, 0);
+	if (err != 0) {
+		test_suite_errorf("failed to register wal: %s - %d", sqlite3_errstr(err), err);
+		CU_FAIL("test setup failed");
+	}
+
+	err = dqlite_vfs_register(replication->zName, &vfs);
 	if (err != 0) {
 		test_suite_errorf("failed to register vfs: %s - %d", sqlite3_errstr(err), err);
 		CU_FAIL("test setup failed");
 	}
 
 	dqlite__request_init(&request);
+
 	dqlite__gateway_init(&gateway, log, test_cluster());
 }
 
@@ -100,7 +112,8 @@ void test_dqlite__gateway_teardown()
 {
 	dqlite__gateway_close(&gateway);
 	dqlite__request_close(&request);
-	dqlite__vfs_unregister(vfs);
+	sqlite3_wal_replication_unregister(replication);
+	dqlite_vfs_unregister(vfs);
 }
 
 void test_dqlite__gateway_leader()
@@ -168,7 +181,7 @@ void test_dqlite__gateway_open_error()
 	request.type = DQLITE_REQUEST_OPEN;
 	request.open.name = "test.db";
 	request.open.flags = SQLITE_OPEN_CREATE;
-	request.open.vfs = "volatile";
+	request.open.vfs = replication->zName;
 
 	err = dqlite__gateway_handle(&gateway, &request, &response);
 	CU_ASSERT_EQUAL(err, 0);
@@ -629,7 +642,7 @@ void test_dqlite__gateway_finalize()
 	request.type = DQLITE_REQUEST_OPEN;
 	request.open.name = "test.db";
 	request.open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	request.open.vfs = "volatile";
+	request.open.vfs = replication->zName;
 
 	err = dqlite__gateway_handle(&gateway, &request, &response);
 	CU_ASSERT_EQUAL(err, 0);

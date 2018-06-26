@@ -1,11 +1,11 @@
 package registry_test
 
-/*
 import (
 	"io/ioutil"
 	"os"
 	"testing"
 
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,15 +29,20 @@ func TestRegistry_Dump(t *testing.T) {
 
 func newRegistry(t *testing.T) (*registry.Registry, func()) {
 	t.Helper()
+
 	dir, err := ioutil.TempDir("", "dqlite-registry-test-")
 	require.NoError(t, err)
 
-	registry := registry.New(dir)
+	vfs, err := bindings.RegisterVfs("test")
+	require.NoError(t, err)
+
+	registry := registry.New(vfs, dir)
+
 	cleanup := func() {
 		require.NoError(t, os.RemoveAll(dir))
 		registry.ConnSerialReset()
+		bindings.UnregisterVfs(vfs)
 	}
 
 	return registry, cleanup
 }
-*/

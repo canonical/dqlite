@@ -40,15 +40,20 @@ int dqlite__db_open(
 	struct dqlite__db *db,
 	const char *name,
 	int flags,
-	const char *vfs)
+	const char *replication)
 {
 	int rc;
 	sqlite3_stmt *stmt;
 	const char *tail;
+	const char *vfs;
 
 	assert(db != NULL);
 	assert(name != NULL);
-	assert(vfs != NULL);
+	assert(replication != NULL);
+
+	/* The VFS registration name must match the one of the replication
+	 * implementation. */
+	vfs = replication;
 
 	rc = sqlite3_open_v2(name, &db->db, flags, vfs);
 	if (rc != SQLITE_OK)
@@ -90,6 +95,11 @@ int dqlite__db_open(
 		return rc;
 
 	rc = sqlite3_finalize(stmt);
+	if (rc != SQLITE_OK)
+		return rc;
+
+	/* Set WAL replication. */
+	rc = sqlite3_wal_replication_leader(db->db, "main", replication, (void*)db->db);
 	if (rc != SQLITE_OK)
 		return rc;
 

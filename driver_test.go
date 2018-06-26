@@ -26,6 +26,9 @@ import (
 
 	"github.com/CanonicalLtd/dqlite"
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
+	"github.com/CanonicalLtd/dqlite/internal/registry"
+	"github.com/CanonicalLtd/dqlite/internal/replication"
+	"github.com/CanonicalLtd/raft-test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -219,10 +222,26 @@ func newStore(t *testing.T, address string) *dqlite.ServerStore {
 	return store
 }
 
-func newServer(t *testing.T, listener net.Listener, cluster bindings.Cluster) func() {
+func newServer(t *testing.T, listener net.Listener, cluster *testCluster) func() {
 	t.Helper()
 
+	dir, dirCleanup := newDir(t)
+
+	vfs, err := bindings.RegisterVfs("test")
+	require.NoError(t, err)
+
+	registry := registry.New(vfs, dir)
+	fsm := replication.NewFSM(registry)
+	raft, raftCleanup := rafttest.Server(t, fsm)
+
+	methods := replication.NewMethods(registry, raft)
+
+	err = bindings.RegisterWalReplication("test", methods)
+	require.NoError(t, err)
+
 	file, fileCleanup := newFile(t)
+
+	cluster.registry = registry
 
 	server, err := bindings.NewServer(file, cluster)
 	require.NoError(t, err)
@@ -281,9 +300,33 @@ func newServer(t *testing.T, listener net.Listener, cluster bindings.Cluster) fu
 		server.Free()
 
 		fileCleanup()
+
+		bindings.UnregisterWalReplication("test")
+
+		raftCleanup()
+		bindings.UnregisterVfs(vfs)
+		dirCleanup()
 	}
 
 	return cleanup
+}
+
+func newDir(t *testing.T) (string, func()) {
+	t.Helper()
+
+	dir, err := ioutil.TempDir("", "dqlite-driver-test-")
+	assert.NoError(t, err)
+
+	cleanup := func() {
+		_, err := os.Stat(dir)
+		if err != nil {
+			assert.True(t, os.IsNotExist(err))
+		} else {
+			assert.NoError(t, os.RemoveAll(dir))
+		}
+	}
+
+	return dir, cleanup
 }
 
 func newListener(t *testing.T) net.Listener {
@@ -316,11 +359,16 @@ func newFile(t *testing.T) (*os.File, func()) {
 }
 
 type testCluster struct {
-	leader string
+	leader   string
+	registry *registry.Registry
 }
 
 func newTestCluster() *testCluster {
 	return &testCluster{}
+}
+
+func (c *testCluster) Replication() string {
+	return "test"
 }
 
 func (c *testCluster) Leader() string {
@@ -329,6 +377,15 @@ func (c *testCluster) Leader() string {
 
 func (c *testCluster) Servers() ([]string, error) {
 	return []string{c.leader}, nil
+}
+
+func (c *testCluster) Register(conn *bindings.Conn) {
+	filename := conn.Filename()
+	c.registry.ConnLeaderAdd(filename, conn)
+}
+
+func (c *testCluster) Unregister(conn *bindings.Conn) {
+	c.registry.ConnLeaderDel(conn)
 }
 
 func (c *testCluster) Recover(token uint64) error {

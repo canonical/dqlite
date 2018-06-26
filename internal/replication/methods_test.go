@@ -1,13 +1,13 @@
 package replication_test
 
-/*
 import (
 	"testing"
 
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
+	"github.com/CanonicalLtd/dqlite/internal/registry"
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3"
-	"github.com/mpvl/subtest"
+	"github.com/CanonicalLtd/raft-test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,12 +18,13 @@ func TestMethods_Begin(t *testing.T) {
 	methods, conn, cleanup := newMethods(t)
 	defer cleanup()
 
-	assert.Equal(t, errZero, methods.Begin(conn))
+	assert.Equal(t, 0, methods.Begin(conn))
 	txn := methods.Registry().TxnByConn(conn)
 	require.NotNil(t, txn)
-	assert.Equal(t, transaction.Started, txn.State())
+	assert.Equal(t, transaction.Pending, txn.State())
 }
 
+/*
 // The Begin hook applies an undo FSM command to rollback stale follower
 // transactions that might have been left dangling by a deposed leader.
 func TestMethods_Begin_UndoStaleFollowerTransaction(t *testing.T) {
@@ -102,15 +103,30 @@ func TestMethods_HookPanic(t *testing.T) {
 	}
 }
 
-func newMethods(t *testing.T) (*replication.Methods, *sqlite3.SQLiteConn, func()) {
+var errZero = sqlite3.ErrNo(0) // Convenience for assertions
+*/
+
+func newMethods(t *testing.T) (*replication.Methods, *bindings.Conn, func()) {
 	t.Helper()
 
-	fsm, fsmCleanup := newFSM(t)
-	raft, raftCleanup := rafttest.Node(t, fsm)
+	vfs, err := bindings.RegisterVfs("test")
+	require.NoError(t, err)
 
-	methods := replication.NewMethods(fsm.Registry(), raft)
+	dir, dirCleanup := newDir(t)
 
-	conn, connCleanup := newLeaderConn(t, fsm.Registry().Dir(), methods)
+	registry := registry.New(vfs, dir)
+	registry.Testing(t, 0)
+
+	fsm := replication.NewFSM(registry)
+
+	raft, raftCleanup := rafttest.Server(t, fsm)
+
+	methods := replication.NewMethods(registry, raft)
+
+	err = bindings.RegisterWalReplication("test", methods)
+	require.NoError(t, err)
+
+	conn, connCleanup := newLeaderConn(t, "test", "test")
 
 	methods.Registry().ConnLeaderAdd("test.db", conn)
 
@@ -119,7 +135,9 @@ func newMethods(t *testing.T) (*replication.Methods, *sqlite3.SQLiteConn, func()
 
 		connCleanup()
 		raftCleanup()
-		fsmCleanup()
+		dirCleanup()
+		bindings.UnregisterVfs(vfs)
+		bindings.UnregisterWalReplication("test")
 	}
 
 	// Don't actually run the SQLite replication APIs, since the tests
@@ -131,6 +149,3 @@ func newMethods(t *testing.T) (*replication.Methods, *sqlite3.SQLiteConn, func()
 
 	return methods, conn, cleanup
 }
-
-var errZero = sqlite3.ErrNo(0) // Convenience for assertions
-*/

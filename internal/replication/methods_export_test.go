@@ -1,6 +1,5 @@
 package replication
 
-/*
 import (
 	"github.com/CanonicalLtd/dqlite/internal/registry"
 	"github.com/hashicorp/raft"
@@ -21,4 +20,3 @@ func (m *Methods) Raft() *raft.Raft {
 func (m *Methods) NoLeaderCheck(n int) {
 	m.noLeaderCheck = n
 }
-*/

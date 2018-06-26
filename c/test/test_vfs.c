@@ -3,7 +3,7 @@
 #include <CUnit/CUnit.h>
 #include <sqlite3.h>
 
-#include "../src/vfs.h"
+#include "../include/dqlite.h"
 
 #include "suite.h"
 
@@ -13,7 +13,7 @@ static sqlite3_file* file2;
 
 void test_dqlite__vfs_setup()
 {
-	int err = dqlite__vfs_register("volatile", &vfs);
+	int err = dqlite_vfs_register("volatile", &vfs);
 	if (err != 0) {
 		test_suite_errorf("failed to register vfs: %s - %d", sqlite3_errstr(err), err);
 		CU_FAIL("test setup failed");
@@ -36,7 +36,7 @@ void test_dqlite__vfs_teardown()
 {
 	sqlite3_free(file2);
 	sqlite3_free(file1);
-	dqlite__vfs_unregister(vfs);
+	dqlite_vfs_unregister(vfs);
 }
 
 /* If the file does not exist and the SQLITE_OPEN_CREATE flag is not passed, an

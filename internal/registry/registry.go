@@ -14,16 +14,15 @@
 
 package registry
 
-/*
 import (
 	"bytes"
 	"fmt"
 	"sync"
 	"testing"
 
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/trace"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3"
 )
 
 // Registry is a dqlite node-level data structure that tracks:
@@ -46,19 +45,20 @@ import (
 // Methods that access or mutate the registry are not thread-safe and must be
 // performed after acquiring the lock. See Lock() and Unlock().
 type Registry struct {
-	mu        sync.Mutex                     // Serialize access to internal state.
-	dir       string                         // Node data directory
-	leaders   map[*sqlite3.SQLiteConn]string // Map leader connections to database filenames.
-	followers map[string]*sqlite3.SQLiteConn // Map database filenames to follower connections.
-	txns      map[uint64]*transaction.Txn    // Transactions by ID
-	tracers   *trace.Set                     // Tracers used by this dqlite instance.
-	index     uint64                         // Last log index applied by the dqlite FSM.
-	frames    uint64                         // Number of frames written to the WAL so far.
-	hookSync  *hookSync                      // Used for synchronizing Methods and FSM.
+	mu        sync.Mutex                  // Serialize access to internal state.
+	vfs       *bindings.Vfs               // In-memory file-system
+	dir       string                      // Node data directory
+	leaders   map[*bindings.Conn]string   // Map leader connections to database filenames.
+	followers map[string]*bindings.Conn   // Map database filenames to follower connections.
+	txns      map[uint64]*transaction.Txn // Transactions by ID
+	tracers   *trace.Set                  // Tracers used by this dqlite instance.
+	index     uint64                      // Last log index applied by the dqlite FSM.
+	frames    uint64                      // Number of frames written to the WAL so far.
+	hookSync  *hookSync                   // Used for synchronizing Methods and FSM.
 
 	// Map a connection to its serial number. Serial numbers are guaranteed
 	// to be unique inside the same process.
-	serial map[*sqlite3.SQLiteConn]uint64
+	serial map[*bindings.Conn]uint64
 
 	// Circular buffer holding the IDs of the last N transactions that
 	// where successfully committed. It is used to recover a transaction
@@ -71,7 +71,7 @@ type Registry struct {
 	// Map a leader connection to the ID of the last transaction executed
 	// on it. Used by the driver's Tx implementation to know its ID in case
 	// a client asks for it for recovering a lost commit.
-	lastTxnIDs map[*sqlite3.SQLiteConn]uint64
+	lastTxnIDs map[*bindings.Conn]uint64
 
 	// Flag indicating whether transactions state transitions
 	// should actually callback the relevant SQLite APIs. Some
@@ -84,7 +84,7 @@ type Registry struct {
 //
 // The 'dir' parameter sets the directory where the node associated with this
 // registry will save the SQLite database files.
-func New(dir string) *Registry {
+func New(vfs *bindings.Vfs, dir string) *Registry {
 	tracers := trace.NewSet(250)
 
 	// Register the is the tracer that will be used by the FSM associated
@@ -92,14 +92,15 @@ func New(dir string) *Registry {
 	tracers.Add("fsm")
 
 	return &Registry{
+		vfs:        vfs,
 		dir:        dir,
-		leaders:    map[*sqlite3.SQLiteConn]string{},
-		followers:  map[string]*sqlite3.SQLiteConn{},
+		leaders:    map[*bindings.Conn]string{},
+		followers:  map[string]*bindings.Conn{},
 		txns:       map[uint64]*transaction.Txn{},
 		tracers:    tracers,
-		serial:     map[*sqlite3.SQLiteConn]uint64{},
+		serial:     map[*bindings.Conn]uint64{},
 		committed:  make([]uint64, committedBufferSize),
-		lastTxnIDs: make(map[*sqlite3.SQLiteConn]uint64),
+		lastTxnIDs: make(map[*bindings.Conn]uint64),
 	}
 }
 
@@ -111,6 +112,11 @@ func (r *Registry) Lock() {
 // Unlock the registry.
 func (r *Registry) Unlock() {
 	r.mu.Unlock()
+}
+
+// Vfs is in-memory VFS used for SQLite databases.
+func (r *Registry) Vfs() *bindings.Vfs {
+	return r.vfs
 }
 
 // Dir is the directory where replicated SQLite files are stored.
@@ -148,4 +154,3 @@ func (r *Registry) Dump() string {
 // large enough for any real-world situation, where it's unlikely that a client
 // tries to recover a transaction that is so old.
 const committedBufferSize = 10000
-*/
