@@ -1,8 +1,18 @@
 package transaction
 
-/*
 import (
 	"github.com/ryanfaerman/fsm"
+)
+
+// Possible transaction states. Most states are associated with SQLite
+// replication hooks that are invoked upon transitioning from one lifecycle
+// state to the next.
+const (
+	Pending = fsm.State("pending") // Initial state right after creation.
+	Writing = fsm.State("writing") // After a non-commit frames command has been executed.
+	Written = fsm.State("written") // After a final commit frames command has been executed.
+	Undone  = fsm.State("undone")  // After an undo command has been executed.
+	Doomed  = fsm.State("doomed")  // The transaction has errored.
 )
 
 // Create a new FSM initialized with a fresh state object set to Pending.
@@ -55,4 +65,3 @@ func (s *state) CurrentState() fsm.State {
 func (s *state) SetState(state fsm.State) {
 	s.state = state
 }
-*/

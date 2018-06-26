@@ -14,18 +14,17 @@
 
 package registry
 
-/*
 import (
 	"fmt"
 
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3"
 )
 
 // TxnLeaderAdd adds a new transaction to the registry.
 //
 // The given connection is assumed to be in leader replication mode.
-func (r *Registry) TxnLeaderAdd(conn *sqlite3.SQLiteConn, id uint64) *transaction.Txn {
+func (r *Registry) TxnLeaderAdd(conn *bindings.Conn, id uint64) *transaction.Txn {
 	// Check that no other leader connection is registered for the same
 	// filename.
 	filename := r.ConnLeaderFilename(conn)
@@ -68,7 +67,7 @@ func (r *Registry) TxnLeaderByFilename(filename string) *transaction.Txn {
 // The given connection is assumed to be in follower replication mode. The new
 // transaction will be associated with the given transaction ID, which should
 // match the one of the leader transaction that initiated the write.
-func (r *Registry) TxnFollowerAdd(conn *sqlite3.SQLiteConn, id uint64) *transaction.Txn {
+func (r *Registry) TxnFollowerAdd(conn *bindings.Conn, id uint64) *transaction.Txn {
 	return r.txnAdd(conn, id, false)
 }
 
@@ -120,7 +119,7 @@ func (r *Registry) TxnByID(id uint64) *transaction.Txn {
 
 // TxnByConn returns the transaction associated with the given connection, if
 // any.
-func (r *Registry) TxnByConn(conn *sqlite3.SQLiteConn) *transaction.Txn {
+func (r *Registry) TxnByConn(conn *bindings.Conn) *transaction.Txn {
 	for _, txn := range r.txns {
 		if txn.Conn() == conn {
 			return txn
@@ -135,7 +134,7 @@ func (r *Registry) TxnByConn(conn *sqlite3.SQLiteConn) *transaction.Txn {
 // If there is more than one transaction for the same filename, this method
 // panics.
 func (r *Registry) TxnByFilename(filename string) *transaction.Txn {
-	conns := make([]*sqlite3.SQLiteConn, 0)
+	conns := make([]*bindings.Conn, 0)
 
 	if conn, ok := r.followers[filename]; ok {
 		conns = append(conns, conn)
@@ -170,7 +169,7 @@ func (r *Registry) TxnDryRun() {
 
 // TxnLastID returns the ID of the last transaction executed on the given
 // leader connection.
-func (r *Registry) TxnLastID(conn *sqlite3.SQLiteConn) uint64 {
+func (r *Registry) TxnLastID(conn *bindings.Conn) uint64 {
 	return r.lastTxnIDs[conn]
 }
 
@@ -196,7 +195,7 @@ func (r *Registry) TxnCommittedFind(id uint64) bool {
 	return false
 }
 
-func (r *Registry) txnAdd(conn *sqlite3.SQLiteConn, id uint64, isLeader bool) *transaction.Txn {
+func (r *Registry) txnAdd(conn *bindings.Conn, id uint64, isLeader bool) *transaction.Txn {
 	// Sanity check that a transaction for the same connection hasn't been
 	// registered already. Iterating is fast since there will always be few
 	// write transactions active at given time.
@@ -217,4 +216,3 @@ func (r *Registry) txnAdd(conn *sqlite3.SQLiteConn, id uint64, isLeader bool) *t
 
 	return txn
 }
-*/

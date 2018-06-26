@@ -11,16 +11,19 @@
 
 #include "dqlite.h"
 #include "cluster.h"
+#include "replication.h"
 #include "server.h"
 #include "client.h"
 #include "suite.h"
 
 struct test_server {
-	pthread_t          thread;
-	dqlite_server    *service;
-	struct sockaddr_in address;
-	int                socket;
-	struct test_client client;
+	pthread_t                thread;
+	sqlite3_wal_replication *replication;
+	sqlite3_vfs             *vfs;
+	dqlite_server           *service;
+	struct sockaddr_in       address;
+	int                      socket;
+	struct test_client       client;
 };
 
 test_server *testServerCreate(){
@@ -31,6 +34,17 @@ test_server *testServerCreate(){
 	s = (test_server*)(sqlite3_malloc(sizeof(test_server)));
 	if (s == NULL)
 		return NULL;
+
+	s->replication = test_replication();
+	err = sqlite3_wal_replication_register(s->replication, 0);
+	if (err != 0) {
+		return 0;
+	}
+
+	err = dqlite_vfs_register(s->replication->zName, &s->vfs);
+	if (err != 0) {
+		return 0;
+	}
 
 	s->service = dqlite_server_alloc();
 	if (s->service == NULL) {
@@ -56,6 +70,9 @@ test_server *testServerCreate(){
 void testServerDestroy(test_server *s){
 	assert(s != NULL);
 	assert(s->service != NULL);
+
+	sqlite3_wal_replication_unregister(s->replication);
+	dqlite_vfs_unregister(s->vfs);
 
 	dqlite_server_close(s->service);
 	dqlite_server_free(s->service);

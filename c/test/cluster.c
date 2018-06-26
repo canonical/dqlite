@@ -4,12 +4,19 @@
 
 #include "dqlite.h"
 
-const char *test__cluster_leader(void *ctx)
+#include "replication.h"
+
+static const char *test__cluster_replication(void *ctx)
+{
+	return test_replication()->zName;
+}
+
+static const char *test__cluster_leader(void *ctx)
 {
   return "127.0.0.1:666";
 }
 
-const int test__cluster_servers(void *ctx, const char ***out)
+static int test__cluster_servers(void *ctx, const char ***out)
 {
 	static const char *addresses[] = {
 		"1.2.3.4:666",
@@ -22,11 +29,17 @@ const int test__cluster_servers(void *ctx, const char ***out)
 	return 0;
 }
 
+static void test__cluster_register(void *ctx, sqlite3 *db) {}
+static void test__cluster_unregister(void *ctx, sqlite3 *db) {}
+
 static dqlite_cluster test__cluster = {
-  0,
+  NULL,
+  test__cluster_replication,
   test__cluster_leader,
   test__cluster_servers,
-  0,
+  test__cluster_register,
+  test__cluster_unregister,
+  NULL,
 };
 
 dqlite_cluster* test_cluster()

@@ -6,12 +6,10 @@
 void test_dqlite_server_setup();
 void test_dqlite_server_teardown();
 
-void test_dqlite_server_config_vfs();
-void test_dqlite_server_config_vfs_twice();
+void test_dqlite_server_lifecycle();
 
 CU_TestInfo dqlite_server_config_suite[] = {
-	{ "vfs",       test_dqlite_server_config_vfs },
-	{ "vfs twice", test_dqlite_server_config_vfs },
+	{ "lifecycle",       test_dqlite_server_lifecycle },
 	CU_TEST_INFO_NULL,
 };
 

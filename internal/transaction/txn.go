@@ -1,10 +1,9 @@
 package transaction
 
-/*
 import (
 	"fmt"
 
-	"github.com/CanonicalLtd/go-sqlite3"
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/ryanfaerman/fsm"
 )
 
@@ -12,12 +11,12 @@ import (
 // started on a SQLite connection configured to be in either leader or follower
 // replication mode.
 type Txn struct {
-	conn     *sqlite3.SQLiteConn // Underlying SQLite connection.
-	id       uint64              // Transaction ID.
-	machine  fsm.Machine         // Internal fsm for validating state changes.
-	isLeader bool                // Whether our connection is in leader mode.
-	isZombie bool                // Whether this is a zombie transaction, see Zombie().
-	dryRun   bool                // Dry run mode, don't invoke actual SQLite hooks.
+	conn     *bindings.Conn // Underlying SQLite db.
+	id       uint64         // Transaction ID.
+	machine  fsm.Machine    // Internal fsm for validating state changes.
+	isLeader bool           // Whether our connection is in leader mode.
+	isZombie bool           // Whether this is a zombie transaction, see Zombie().
+	dryRun   bool           // Dry run mode, don't invoke actual SQLite hooks.
 
 	// For leader transactions, these are the parameters of all non-commit
 	// frames commands that were executed so far during this
@@ -30,22 +29,11 @@ type Txn struct {
 	// first place will need to replay the whole transaction using a
 	// follower connection, since its transaction (associated with a leader
 	// connection) was rolled back by SQLite.
-	frames []*sqlite3.ReplicationFramesParams
+	frames []bindings.WalReplicationFrameInfo
 }
 
-// Possible transaction states. Most states are associated with SQLite
-// replication hooks that are invoked upon transitioning from one lifecycle
-// state to the next.
-const (
-	Pending = fsm.State("pending") // Initial state right after creation.
-	Writing = fsm.State("writing") // After a non-commit frames command has been executed.
-	Written = fsm.State("written") // After a final commit frames command has been executed.
-	Undone  = fsm.State("undone")  // After an undo command has been executed.
-	Doomed  = fsm.State("doomed")  // The transaction has errored.
-)
-
 // New creates a new Txn instance.
-func New(conn *sqlite3.SQLiteConn, id uint64) *Txn {
+func New(conn *bindings.Conn, id uint64) *Txn {
 	return &Txn{
 		conn:    conn,
 		id:      id,
@@ -102,7 +90,7 @@ func (t *Txn) DryRun() {
 
 // Conn returns the sqlite connection that started this write
 // transaction.
-func (t *Txn) Conn() *sqlite3.SQLiteConn {
+func (t *Txn) Conn() *bindings.Conn {
 	return t.conn
 }
 
@@ -117,12 +105,12 @@ func (t *Txn) State() fsm.State {
 }
 
 // Frames writes frames to the WAL.
-func (t *Txn) Frames(begin bool, frames *sqlite3.ReplicationFramesParams) error {
+func (t *Txn) Frames(begin bool, info bindings.WalReplicationFrameInfo) error {
 	state := Writing
-	if frames.IsCommit > 0 {
+	if info.IsCommitGet() {
 		state = Written
 	}
-	return t.transition(state, begin, frames)
+	return t.transition(state, begin, info)
 }
 
 // Undo reverts all changes to the WAL since the start of the
@@ -170,7 +158,7 @@ func (t *Txn) IsZombie() bool {
 // follower transaction.
 //
 // If no error occurrs, the newly created follower transaction is returned.
-func (t *Txn) Resurrect(conn *sqlite3.SQLiteConn) (*Txn, error) {
+func (t *Txn) Resurrect(conn *bindings.Conn) (*Txn, error) {
 	if !t.isLeader {
 		panic("attempt to resurrect follower transaction")
 	}
@@ -207,7 +195,7 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 			// Save non-commit frames in case the last commit fails
 			// and gets recovered by the same leader.
 			begin := args[0].(bool)
-			frames := args[1].(*sqlite3.ReplicationFramesParams)
+			frames := args[1].(bindings.WalReplicationFrameInfo)
 			if begin {
 				t.frames = append(t.frames, frames)
 			}
@@ -232,11 +220,11 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 	case Writing:
 		fallthrough
 	case Written:
-		begin := args[0].(bool)
-		frames := args[1].(*sqlite3.ReplicationFramesParams)
-		err = sqlite3.ReplicationFrames(t.conn, begin, frames)
+		//begin := args[0].(bool)
+		info := args[1].(bindings.WalReplicationFrameInfo)
+		err = t.conn.WalReplicationFrames(info)
 	case Undone:
-		err = sqlite3.ReplicationUndo(t.conn)
+		err = t.conn.WalReplicationUndo()
 	}
 
 	if err != nil {
@@ -247,4 +235,3 @@ func (t *Txn) transition(state fsm.State, args ...interface{}) error {
 
 	return err
 }
-*/

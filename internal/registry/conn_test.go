@@ -14,13 +14,10 @@
 
 package registry_test
 
-/*
 import (
-	"fmt"
-
 	"testing"
 
-	"github.com/CanonicalLtd/go-sqlite3"
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -31,7 +28,7 @@ func TestRegistry_ConnLeaderAdd(t *testing.T) {
 
 	conn := newConn()
 	registry.ConnLeaderAdd("test.db", conn)
-	assert.Equal(t, []*sqlite3.SQLiteConn{conn}, registry.ConnLeaders("test.db"))
+	assert.Equal(t, []*bindings.Conn{conn}, registry.ConnLeaders("test.db"))
 	assert.Equal(t, "test.db", registry.ConnLeaderFilename(conn))
 }
 
@@ -54,7 +51,7 @@ func TestRegistry_ConnLeaderDel(t *testing.T) {
 	conn := newConn()
 	registry.ConnLeaderAdd("test.db", conn)
 	registry.ConnLeaderDel(conn)
-	assert.Equal(t, []*sqlite3.SQLiteConn{}, registry.ConnLeaders("test.db"))
+	assert.Equal(t, []*bindings.Conn{}, registry.ConnLeaders("test.db"))
 }
 
 // Delete a non registered leader causes a panic.
@@ -136,6 +133,10 @@ func TestRegistry_Serial(t *testing.T) {
 
 	conn1 := newConn()
 	conn2 := newConn()
+
+	defer conn1.Close()
+	defer conn2.Close()
+
 	registry.ConnLeaderAdd("test.db", conn1)
 	registry.ConnFollowerAdd("test.db", conn2)
 	assert.Equal(t, uint64(1), registry.ConnSerial(conn1))
@@ -152,12 +153,10 @@ func TestRegistry_SerialNotRegistered(t *testing.T) {
 }
 
 // Create a new sqlite connection against a memory database.
-func newConn() *sqlite3.SQLiteConn {
-	driver := &sqlite3.SQLiteDriver{}
-	conn, err := driver.Open(":memory:")
+func newConn() *bindings.Conn {
+	conn, err := bindings.OpenFollower("test.db", "test")
 	if err != nil {
-		panic(fmt.Errorf("failed to open in-memory database: %v", err))
+		panic(err)
 	}
-	return conn.(*sqlite3.SQLiteConn)
+	return conn
 }
-*/

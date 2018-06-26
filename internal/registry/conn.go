@@ -14,16 +14,15 @@
 
 package registry
 
-/*
 import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/CanonicalLtd/go-sqlite3"
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 )
 
 // ConnLeaderAdd adds a new leader connection to the registry.
-func (r *Registry) ConnLeaderAdd(filename string, conn *sqlite3.SQLiteConn) {
+func (r *Registry) ConnLeaderAdd(filename string, conn *bindings.Conn) {
 	r.connAdd(conn)
 	r.leaders[conn] = filename
 
@@ -34,7 +33,7 @@ func (r *Registry) ConnLeaderAdd(filename string, conn *sqlite3.SQLiteConn) {
 }
 
 // ConnLeaderDel removes the given leader connection from the registry.
-func (r *Registry) ConnLeaderDel(conn *sqlite3.SQLiteConn) {
+func (r *Registry) ConnLeaderDel(conn *bindings.Conn) {
 	// Dell the connection-specific tracer.
 	r.tracers.Del(fmt.Sprintf("methods %d", r.ConnSerial(conn)))
 
@@ -47,7 +46,7 @@ func (r *Registry) ConnLeaderDel(conn *sqlite3.SQLiteConn) {
 // given leader connection.
 //
 // If conn is not a registered leader connection, this method will panic.
-func (r *Registry) ConnLeaderFilename(conn *sqlite3.SQLiteConn) string {
+func (r *Registry) ConnLeaderFilename(conn *bindings.Conn) string {
 	name, ok := r.leaders[conn]
 	if !ok {
 		panic("no database for the given connection")
@@ -57,8 +56,8 @@ func (r *Registry) ConnLeaderFilename(conn *sqlite3.SQLiteConn) string {
 
 // ConnLeaders returns all open leader connections for the database with
 // the given filename.
-func (r *Registry) ConnLeaders(filename string) []*sqlite3.SQLiteConn {
-	conns := []*sqlite3.SQLiteConn{}
+func (r *Registry) ConnLeaders(filename string) []*bindings.Conn {
+	conns := []*bindings.Conn{}
 	for conn := range r.leaders {
 		if r.leaders[conn] == filename {
 			conns = append(conns, conn)
@@ -71,7 +70,7 @@ func (r *Registry) ConnLeaders(filename string) []*sqlite3.SQLiteConn {
 //
 // If a follower connection for the database with the given filename is already
 // registered, this method panics.
-func (r *Registry) ConnFollowerAdd(filename string, conn *sqlite3.SQLiteConn) {
+func (r *Registry) ConnFollowerAdd(filename string, conn *bindings.Conn) {
 	r.connAdd(conn)
 	r.followers[filename] = conn
 }
@@ -103,7 +102,7 @@ func (r *Registry) ConnFollowerFilenames() []string {
 //
 // If there's no follower connection registered for the database with the given
 // filename, this method panics.
-func (r *Registry) ConnFollower(filename string) *sqlite3.SQLiteConn {
+func (r *Registry) ConnFollower(filename string) *bindings.Conn {
 	conn, ok := r.followers[filename]
 	if !ok {
 		panic(fmt.Sprintf("no follower connection for '%s'", filename))
@@ -120,7 +119,7 @@ func (r *Registry) ConnFollowerExists(filename string) bool {
 
 // ConnSerial returns a serial number uniquely identifying the given registered
 // connection.
-func (r *Registry) ConnSerial(conn *sqlite3.SQLiteConn) uint64 {
+func (r *Registry) ConnSerial(conn *bindings.Conn) uint64 {
 	serial, ok := r.serial[conn]
 
 	if !ok {
@@ -132,7 +131,7 @@ func (r *Registry) ConnSerial(conn *sqlite3.SQLiteConn) uint64 {
 
 // Add a new connection (either leader or follower) to the registry and assign
 // it a serial number.
-func (r *Registry) connAdd(conn *sqlite3.SQLiteConn) {
+func (r *Registry) connAdd(conn *bindings.Conn) {
 	if serial, ok := r.serial[conn]; ok {
 		panic(fmt.Sprintf("connection is already registered with serial %d", serial))
 	}
@@ -142,7 +141,7 @@ func (r *Registry) connAdd(conn *sqlite3.SQLiteConn) {
 }
 
 // Delete a connection (either leader or follower) from the registry
-func (r *Registry) connDel(conn *sqlite3.SQLiteConn) {
+func (r *Registry) connDel(conn *bindings.Conn) {
 	if _, ok := r.serial[conn]; !ok {
 		panic("connection is not registered")
 	}
@@ -153,4 +152,3 @@ func (r *Registry) connDel(conn *sqlite3.SQLiteConn) {
 // Monotonic counter for identifying connections for tracing and debugging
 // purposes.
 var serial uint64
-*/

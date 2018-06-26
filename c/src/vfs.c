@@ -2,13 +2,12 @@
 #include <errno.h>
 #include <stddef.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 
 #include <sqlite3.h>
-
-#include "vfs.h"
 
 /* Maximum pathname length supported by this VFS. */
 #define DQLITE__VFS_MAX_PATHNAME 512
@@ -717,11 +716,19 @@ static int dqlite__vfs_read(
 			return SQLITE_OK;
 		}
 
-		/* For any other frame, we expect either a header read, a page read
-		 * or a full frame read. */
+		/* For any other frame, we expect either a header read, a
+		 * checksum read, a page read or a full frame read. */
 		if (amount == DQLITE__VFS_WAL_FRAME_HDRSIZE) {
 			assert( ((offset-DQLITE__VFS_WAL_HDRSIZE) % (f->content->page_size+DQLITE__VFS_WAL_FRAME_HDRSIZE))==0 );
 			pgno = ((offset-DQLITE__VFS_WAL_HDRSIZE) / (f->content->page_size+DQLITE__VFS_WAL_FRAME_HDRSIZE)) + 1;
+		}else if (amount == sizeof(uint32_t)*2) {
+			if (offset == DQLITE__VFS_WAL_FRAME_HDRSIZE) {
+				/* Read the checksum from the WAL header. */
+				memcpy(buf, f->content->hdr + offset, amount);
+				return SQLITE_OK;
+			}
+			assert(((offset-16-DQLITE__VFS_WAL_HDRSIZE) % (f->content->page_size+DQLITE__VFS_WAL_FRAME_HDRSIZE)) == 0);
+			pgno = (offset-16-DQLITE__VFS_WAL_HDRSIZE) / (f->content->page_size+DQLITE__VFS_WAL_FRAME_HDRSIZE) + 1;
 		}else if( amount==f->content->page_size ){
 			assert( ((offset-DQLITE__VFS_WAL_HDRSIZE-DQLITE__VFS_WAL_FRAME_HDRSIZE) % (f->content->page_size+DQLITE__VFS_WAL_FRAME_HDRSIZE))==0 );
 			pgno = ((offset-DQLITE__VFS_WAL_HDRSIZE-DQLITE__VFS_WAL_FRAME_HDRSIZE) / (f->content->page_size+DQLITE__VFS_WAL_FRAME_HDRSIZE)) + 1;
@@ -740,6 +747,8 @@ static int dqlite__vfs_read(
 
 		if (amount == DQLITE__VFS_WAL_FRAME_HDRSIZE) {
 			memcpy(buf, page->hdr, amount);
+		} else if (amount == sizeof(uint32_t)*2) {
+			memcpy(buf, page->hdr + 16, amount);
 		} else if (amount == f->content->page_size) {
 			memcpy(buf, page->buf, amount);
 		} else {
@@ -1422,7 +1431,7 @@ static int dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotU
 	return rc;
 }
 
-int dqlite__vfs_register(const char *name, sqlite3_vfs **out) {
+int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
 	sqlite3_vfs* vfs;
 	struct dqlite__vfs_root *root;
 	int err;
@@ -1474,7 +1483,7 @@ int dqlite__vfs_register(const char *name, sqlite3_vfs **out) {
 	return SQLITE_OK;
 }
 
-void dqlite__vfs_unregister(sqlite3_vfs* vfs) {
+void dqlite_vfs_unregister(sqlite3_vfs* vfs) {
 	struct dqlite__vfs_root *root;
 
 	assert(vfs != NULL);

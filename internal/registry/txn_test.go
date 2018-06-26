@@ -14,13 +14,12 @@
 
 package registry_test
 
-/*
 import (
 	"fmt"
 	"testing"
 
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/transaction"
-	"github.com/CanonicalLtd/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,7 +27,7 @@ func TestRegistry_TxnAddLeader(t *testing.T) {
 	registry, cleanup := newRegistry(t)
 	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
+	conn := &bindings.Conn{}
 	registry.ConnLeaderAdd("test.db", conn)
 	txn := registry.TxnLeaderAdd(conn, 1)
 
@@ -47,7 +46,7 @@ func TestRegistry_TxnLeaderAddPanicsIfPassedSameLeaderConnectionTwice(t *testing
 	registry, cleanup := newRegistry(t)
 	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
+	conn := &bindings.Conn{}
 	registry.ConnLeaderAdd("test.db", conn)
 	txn := registry.TxnLeaderAdd(conn, 1)
 
@@ -65,7 +64,7 @@ func TestRegistry_TxnFollowerAdd(t *testing.T) {
 	registry, cleanup := newRegistry(t)
 	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
+	conn := &bindings.Conn{}
 	txn := registry.TxnFollowerAdd(conn, 123)
 
 	if txn.ID() != 123 {
@@ -83,7 +82,7 @@ func TestRegistry_TxnByID(t *testing.T) {
 	registry, cleanup := newRegistry(t)
 	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
+	conn := &bindings.Conn{}
 	registry.ConnLeaderAdd("test.db", conn)
 	txn := registry.TxnLeaderAdd(conn, 0)
 	if registry.TxnByID(txn.ID()) != txn {
@@ -104,7 +103,7 @@ func TestRegistry_TxnByConn(t *testing.T) {
 	registry, cleanup := newRegistry(t)
 	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
+	conn := &bindings.Conn{}
 	registry.ConnLeaderAdd("test.db", conn)
 	txn := registry.TxnLeaderAdd(conn, 0)
 	if registry.TxnByConn(conn) != txn {
@@ -116,7 +115,7 @@ func TestRegistry_TxnByConnFound(t *testing.T) {
 	registry, cleanup := newRegistry(t)
 	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
+	conn := &bindings.Conn{}
 	if registry.TxnByConn(conn) != nil {
 		t.Error("expected no transaction instance for non-registered conn")
 	}
@@ -126,7 +125,7 @@ func TestRegistry_TxnDel(t *testing.T) {
 	registry, cleanup := newRegistry(t)
 	defer cleanup()
 
-	conn := &sqlite3.SQLiteConn{}
+	conn := &bindings.Conn{}
 	registry.ConnLeaderAdd("test.db", conn)
 	txn := registry.TxnLeaderAdd(conn, 0)
 
@@ -164,4 +163,3 @@ func TestRegistry_RemovePanicsIfPassedNonRegisteredID(t *testing.T) {
 	}()
 	registry.TxnDel(123)
 }
-*/

@@ -50,8 +50,7 @@ libdqlite_la_SOURCES = \
   src/server.c \
   src/stmt.c \
   src/stmt.h \
-  src/vfs.c \
-  src/vfs.h
+  src/vfs.c
 include_HEADERS += include/dqlite.h
 
 # Tests
@@ -66,6 +65,8 @@ dqlite_test_SOURCES = \
   test/log.h \
   test/message.c \
   test/message.h \
+  test/replication.c \
+  test/replication.h \
   test/runner.c \
   test/server.c \
   test/server.h \

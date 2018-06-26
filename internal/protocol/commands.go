@@ -1,11 +1,11 @@
 package protocol
 
-/*
 import (
 	"reflect"
 	"strings"
+	"unsafe"
 
-	"github.com/CanonicalLtd/go-sqlite3"
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 )
@@ -37,26 +37,37 @@ func NewBegin(txid uint64, name string) *Command {
 }
 
 // NewFrames returns a new WalFrames protobuf message.
-func NewFrames(txid uint64, filename string, frames *sqlite3.ReplicationFramesParams) *Command {
-	pages := make([]*FramesPage, len(frames.Pages))
+func NewFrames(txid uint64, filename string, list bindings.WalReplicationFrameList) *Command {
+	length := list.Len()
+	pageSize := list.PageSize()
 
-	size := frames.PageSize
-	for i := range frames.Pages {
-		page := &frames.Pages[i]
-		pages[i] = &FramesPage{}
-		pages[i].Data = page.Data()
-		pages[i].Flags = uint32(page.Flags())
-		pages[i].Number = uint32(page.Number())
+	numbers := make([]uint32, length)
+	pages := make([]byte, length*pageSize)
+
+	for i := range numbers {
+		data, pgno, _ := list.Frame(i)
+		numbers[i] = uint32(pgno)
+		header := reflect.SliceHeader{Data: uintptr(data), Len: pageSize, Cap: pageSize}
+		var slice []byte
+		slice = reflect.NewAt(reflect.TypeOf(slice), unsafe.Pointer(&header)).Elem().Interface().([]byte)
+		copy(pages[i*pageSize:(i+1)*pageSize], slice)
 	}
+
+	isCommit := int32(0)
+	if list.IsCommit() {
+		isCommit = int32(1)
+	}
+
 	params := &Command_Frames{Frames: &Frames{
-		Txid:      txid,
-		PageSize:  int32(size),
-		Pages:     pages,
-		Truncate:  uint32(frames.Truncate),
-		IsCommit:  int32(frames.IsCommit),
-		SyncFlags: uint32(frames.SyncFlags),
-		Filename:  filename,
+		Txid:        txid,
+		PageSize:    int32(pageSize),
+		PageNumbers: numbers,
+		PageData:    pages,
+		Truncate:    uint32(list.Truncate()),
+		IsCommit:    isCommit,
+		Filename:    filename,
 	}}
+
 	return newCommand(params)
 }
 
@@ -94,4 +105,3 @@ func (c *Command) Name() string {
 	typeName := reflect.TypeOf(c.Payload).Elem().String()
 	return strings.ToLower(strings.Replace(typeName, "protocol.Command_", "", 1))
 }
-*/

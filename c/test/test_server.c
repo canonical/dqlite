@@ -29,25 +29,6 @@ void test_dqlite_server_teardown(){
 	dqlite_server_free(server);
 }
 
-/*
- * dqlite_server_config_test
- */
-
-void test_dqlite_server_config_vfs()
+void test_dqlite_server_lifecycle()
 {
-	int err;
-
-	err = dqlite_server_config(server, DQLITE_CONFIG_VFS, "foo");
-	CU_ASSERT_EQUAL(err, 0);
-}
-
-void test_dqlite_server_config_vfs_twice()
-{
-	int err;
-
-	err = dqlite_server_config(server, DQLITE_CONFIG_VFS, "foo");
-	CU_ASSERT_EQUAL(err, 0);
-
-	err = dqlite_server_config(server, DQLITE_CONFIG_VFS, "bar");
-	CU_ASSERT_EQUAL(err, 0);
 }
