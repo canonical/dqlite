@@ -850,7 +850,7 @@ static int dqlite__vfs_write(
 			assert(amount == DQLITE__VFS_WAL_HDRSIZE);
 
 			/* The page size indicated in the header must match the one of the database file. */
-			assert(dqlite__vfs_parse_wal_page_size(buf) == f->content->page_size );
+			assert((int)dqlite__vfs_parse_wal_page_size(buf) == f->content->page_size);
 
 			memcpy(f->content->hdr, buf, amount);
 			return SQLITE_OK;
@@ -943,6 +943,9 @@ static int dqlite__vfs_truncate(sqlite3_file *file, sqlite_int64 size)
 }
 
 static int dqlite__vfs_sync(sqlite3_file *file, int flags){
+	(void)file;
+	(void)flags;
+
 	return SQLITE_OK;
 }
 
@@ -983,12 +986,18 @@ static int dqlite__vfs_file_size(sqlite3_file *file, sqlite_int64 *size)
 /* Locking a file is a no-op, since no other process has visibility on it. */
 static int dqlite__vfs_lock(sqlite3_file *file, int lock)
 {
+	(void)file;
+	(void)lock;
+
 	return SQLITE_OK;
 }
 
 /* Unlocking a file is a no-op, since no other process has visibility on it. */
 static int dqlite__vfs_unlock(sqlite3_file *file, int lock)
 {
+	(void)file;
+	(void)lock;
+
 	return SQLITE_OK;
 }
 
@@ -996,6 +1005,8 @@ static int dqlite__vfs_unlock(sqlite3_file *file, int lock)
  * journal mode, so it doesn't matter. */
 static int dqlite__vfs_check_reserved_lock(sqlite3_file *file, int *result)
 {
+	(void)file;
+
 	*result = 1;
 	return SQLITE_OK;
 }
@@ -1056,11 +1067,15 @@ static int dqlite__vfs_file_control(sqlite3_file *file, int op, void *arg)
 
 static int dqlite__vfs_sector_size(sqlite3_file *file)
 {
+	(void)file;
+
 	return 0;
 }
 
 static int dqlite__vfs_device_characteristics(sqlite3_file *file)
 {
+	(void)file;
+
 	return 0;
 }
 
@@ -1119,6 +1134,11 @@ static int dqlite__vfs_shm_map(
 
 static int dqlite__vfs_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 {
+	(void)file;
+	(void)ofst;
+	(void)n;
+	(void)flags;
+
 	/* This is a no-op since shared-memory locking is relevant only for
 	 * inter-process concurrency. See also the unix-excl branch from upstream
 	 * (git commit cda6b3249167a54a0cf892f949d52760ee557129). */
@@ -1127,16 +1147,23 @@ static int dqlite__vfs_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 
 static void dqlite__vfs_shm_barrier(sqlite3_file *file)
 {
+	(void)file;
 	/* This is a no-op since we expect SQLite to be compiled with mutex
 	 * support (i.e. SQLITE_MUTEX_OMIT or SQLITE_MUTEX_NOOP are *not*
 	 * defined, see sqliteInt.h). */
 }
 
-static int dqlite__vfs_shm_unmap(sqlite3_file *file, int deleteFlag)
+static int dqlite__vfs_shm_unmap(sqlite3_file *file, int delete_flag)
 {
-	struct dqlite__vfs_file *f = (struct dqlite__vfs_file*)file;
+	struct dqlite__vfs_file *f;;
 	void **cursor;
 	int i;
+
+	assert(file != NULL);
+
+	(void)delete_flag;
+
+	f = (struct dqlite__vfs_file*)file;
 
 	// If reference count is 0, no shared memory map is set.
 	if (f->content->shm_refcount == 0){
@@ -1171,6 +1198,8 @@ static int dqlite__vfs_open(
 	assert(vfs != NULL);
 	assert(file != NULL );
 	assert(filename != NULL);
+
+	(void)out_flags;
 
 	struct dqlite__vfs_root *root = (struct dqlite__vfs_root*)(vfs->pAppData);
 	struct dqlite__vfs_file *f = (struct dqlite__vfs_file*)file;
@@ -1307,11 +1336,18 @@ static int dqlite__vfs_open(
 
 static int dqlite__vfs_delete(
 	sqlite3_vfs *vfs,
-	const char *filename, int dirSync)
+	const char *filename, int dir_sync)
 {
-	struct dqlite__vfs_root *root = (struct dqlite__vfs_root*)(vfs->pAppData);
+	struct dqlite__vfs_root *root;
 	struct dqlite__vfs_content *content;
 	int content_index;
+
+	assert(vfs != NULL);
+	assert(vfs->pAppData != NULL);
+
+	root = (struct dqlite__vfs_root*)(vfs->pAppData);
+
+	(void)dir_sync;
 
 	pthread_mutex_lock(&root->mutex);
 
@@ -1346,10 +1382,17 @@ static int dqlite__vfs_access(
 	sqlite3_vfs *vfs,
 	const char *filename,
 	int flags,
-	int *result
-	){
-	struct dqlite__vfs_root *root = (struct dqlite__vfs_root*)(vfs->pAppData);
+	int *result)
+{
+	struct dqlite__vfs_root *root;
 	struct dqlite__vfs_content *content;
+
+	assert(vfs != NULL);
+	assert(vfs->pAppData != NULL);
+
+	(void)flags;
+
+	root = (struct dqlite__vfs_root*)(vfs->pAppData);
 
 	pthread_mutex_lock(&root->mutex);
 
@@ -1368,61 +1411,97 @@ static int dqlite__vfs_access(
 }
 
 static int dqlite__vfs_full_pathname(
-	sqlite3_vfs *vfs,              // VFS
-	const char *filename,              // Input path (possibly a relative path)
-	int pathname_len,                   // Size of output buffer in bytes
-	char *pathname                  // Pointer to output buffer
-	){
+	sqlite3_vfs *vfs,     /* VFS */
+	const char *filename, /* Input path (possibly a relative path) */
+	int pathname_len,     /* Size of output buffer in bytes */
+	char *pathname)       /* Pointer to output buffer */
+{
+	(void)vfs;
+
 	// Just return the path unchanged.
 	sqlite3_snprintf(pathname_len, pathname, "%s", filename);
 	return SQLITE_OK;
 }
 
-static void* dqlite__vfs_dl_open(sqlite3_vfs *vfs, const char *filename){
+static void* dqlite__vfs_dl_open(sqlite3_vfs *vfs, const char *filename)
+{
+	(void)vfs;
+	(void)filename;
+
 	return 0;
 }
 
-static void dqlite__vfs_dl_error(sqlite3_vfs *vfs, int nByte, char *zErrMsg){
+static void dqlite__vfs_dl_error(sqlite3_vfs *vfs, int nByte, char *zErrMsg)
+{
+	(void)vfs;
+
 	sqlite3_snprintf(nByte, zErrMsg, "Loadable extensions are not supported");
 	zErrMsg[nByte-1] = '\0';
 }
 
-static void (*dqlite__vfs_dl_sym(sqlite3_vfs *vfs, void *pH, const char *z))(void){
+static void (*dqlite__vfs_dl_sym(sqlite3_vfs *vfs, void *pH, const char *z))(void)
+{
+	(void)vfs;
+	(void)pH;
+	(void)z;
+
 	return 0;
 }
 
-static void dqlite__vfs_dl_close(sqlite3_vfs *vfs, void *pHandle){
+static void dqlite__vfs_dl_close(sqlite3_vfs *vfs, void *pHandle)
+{
+	(void)vfs;
+	(void)pHandle;
+
 	return;
 }
 
-static int dqlite__vfs_randomness(sqlite3_vfs *vfs, int nByte, char *zByte){
+static int dqlite__vfs_randomness(sqlite3_vfs *vfs, int nByte, char *zByte)
+{
+	(void)vfs;
+	(void)nByte;
+	(void)zByte;
+
 	return SQLITE_OK;
 	// TODO return volatileRandomness(nByte, zByte);
 }
 
-static int dqlite__vfs_sleep(sqlite3_vfs *NotUsed, int microseconds){
+static int dqlite__vfs_sleep(sqlite3_vfs *vfs, int microseconds)
+{
+	(void)vfs;
+
 	// Sleep in Go, to avoid the scheduler unconditionally preempting the
 	// SQLite API call being invoked.
 	return microseconds;
 	// TODO return volatileSleep(microseconds);
 }
 
-static int dqlite__vfs_current_time_int64(sqlite3_vfs *vfs, sqlite3_int64 *piNow){
+static int dqlite__vfs_current_time_int64(sqlite3_vfs *vfs, sqlite3_int64 *piNow)
+{
 	static const sqlite3_int64 unixEpoch = 24405875*(sqlite3_int64)8640000;
-	struct timeval sNow;
-	(void)gettimeofday(&sNow, 0);
-	*piNow = unixEpoch + 1000*(sqlite3_int64)sNow.tv_sec + sNow.tv_usec/1000;
+	struct timeval now;
+
+	(void)vfs;
+
+	gettimeofday(&now, 0);
+	*piNow = unixEpoch + 1000*(sqlite3_int64)now.tv_sec + now.tv_usec/1000;
 	return SQLITE_OK;
 }
 
-static int dqlite__vfs_current_time(sqlite3_vfs *vfs, double *piNow){
+static int dqlite__vfs_current_time(sqlite3_vfs *vfs, double *piNow)
+{
 	// TODO: check if it's always safe to cast a double* to a sqlite3_int64*.
 	return dqlite__vfs_current_time_int64(vfs, (sqlite3_int64*)piNow);
 }
 
-static int dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotUsed3){
+static int dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotUsed3)
+{
 	struct dqlite__vfs_root *root = (struct dqlite__vfs_root*)(vfs->pAppData);
 	int rc;
+
+	(void)vfs;
+	(void)NotUsed2;
+	(void)NotUsed3;
 
 	pthread_mutex_lock(&root->mutex);
 	rc = root->error;
