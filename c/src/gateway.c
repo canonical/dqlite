@@ -52,8 +52,8 @@ static int dqlite__gateway_heartbeat(struct dqlite__gateway *g, struct dqlite__g
 	/* Get the current list of servers in the cluster */
 	err = g->cluster->xServers(g->cluster->ctx, &addresses);
 	if (err != 0) {
-		/* TODO: handle the case where the error is due to the not not
-		 * being the leader */
+		/* TODO: handle the case where the error is due to the node not
+		 * not being the leader */
 		dqlite__errorf(g, "failed to get cluster servers", "");
 		return DQLITE_ERROR;
 	}
@@ -104,7 +104,7 @@ static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gatewa
 		g->cluster->xReplication(g->cluster->ctx));
 	if (rc == SQLITE_OK) {
 		ctx->response.type = DQLITE_RESPONSE_DB;
-		ctx->response.db.id =  (uint32_t)i;
+		ctx->response.db.id = (uint32_t)i;
 		g->cluster->xRegister(g->cluster->ctx, db->db);
 	} else {
 		dqlite__db_registry_del(&g->dbs, i);
