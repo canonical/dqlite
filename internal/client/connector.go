@@ -36,7 +36,7 @@ func NewConnector(id uint64, store ServerStore, config Config, logger *zap.Logge
 
 	binary.LittleEndian.PutUint64(
 		connector.protocol,
-		bindings.ServerProtocolVersion,
+		bindings.ProtocolVersion,
 	)
 
 	return connector

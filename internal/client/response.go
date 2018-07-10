@@ -14,7 +14,7 @@ import (
 func DecodeServer(response *Message) (address string, err error) {
 	mtype, _ := response.GetHeader()
 
-	if mtype == bindings.ServerResponseFailure {
+	if mtype == bindings.ResponseFailure {
 		e := ErrRequest{}
 		e.Code = response.GetUint64()
 		e.Description = response.GetString()
@@ -22,7 +22,7 @@ func DecodeServer(response *Message) (address string, err error) {
                 return
 	}
 
-	if mtype == bindings.ServerResponseDbError {
+	if mtype == bindings.ResponseDbError {
 		e := ErrDb{}
 		e.Code = response.GetUint64()
 		e.ExtendedCode = response.GetUint64()
@@ -31,7 +31,7 @@ func DecodeServer(response *Message) (address string, err error) {
                 return
 	}
 
-	if mtype != bindings.ServerResponseServer {
+	if mtype != bindings.ResponseServer {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
 	}
@@ -45,7 +45,7 @@ func DecodeServer(response *Message) (address string, err error) {
 func DecodeDb(response *Message) (id uint32, err error) {
 	mtype, _ := response.GetHeader()
 
-	if mtype == bindings.ServerResponseFailure {
+	if mtype == bindings.ResponseFailure {
 		e := ErrRequest{}
 		e.Code = response.GetUint64()
 		e.Description = response.GetString()
@@ -53,7 +53,7 @@ func DecodeDb(response *Message) (id uint32, err error) {
                 return
 	}
 
-	if mtype == bindings.ServerResponseDbError {
+	if mtype == bindings.ResponseDbError {
 		e := ErrDb{}
 		e.Code = response.GetUint64()
 		e.ExtendedCode = response.GetUint64()
@@ -62,7 +62,7 @@ func DecodeDb(response *Message) (id uint32, err error) {
                 return
 	}
 
-	if mtype != bindings.ServerResponseDb {
+	if mtype != bindings.ResponseDb {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
 	}
@@ -77,7 +77,7 @@ func DecodeDb(response *Message) (id uint32, err error) {
 func DecodeStmt(response *Message) (db uint32, id uint32, params uint64, err error) {
 	mtype, _ := response.GetHeader()
 
-	if mtype == bindings.ServerResponseFailure {
+	if mtype == bindings.ResponseFailure {
 		e := ErrRequest{}
 		e.Code = response.GetUint64()
 		e.Description = response.GetString()
@@ -85,7 +85,7 @@ func DecodeStmt(response *Message) (db uint32, id uint32, params uint64, err err
                 return
 	}
 
-	if mtype == bindings.ServerResponseDbError {
+	if mtype == bindings.ResponseDbError {
 		e := ErrDb{}
 		e.Code = response.GetUint64()
 		e.ExtendedCode = response.GetUint64()
@@ -94,7 +94,7 @@ func DecodeStmt(response *Message) (db uint32, id uint32, params uint64, err err
                 return
 	}
 
-	if mtype != bindings.ServerResponseStmt {
+	if mtype != bindings.ResponseStmt {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
 	}
@@ -110,7 +110,7 @@ func DecodeStmt(response *Message) (db uint32, id uint32, params uint64, err err
 func DecodeEmpty(response *Message) (err error) {
 	mtype, _ := response.GetHeader()
 
-	if mtype == bindings.ServerResponseFailure {
+	if mtype == bindings.ResponseFailure {
 		e := ErrRequest{}
 		e.Code = response.GetUint64()
 		e.Description = response.GetString()
@@ -118,7 +118,7 @@ func DecodeEmpty(response *Message) (err error) {
                 return
 	}
 
-	if mtype == bindings.ServerResponseDbError {
+	if mtype == bindings.ResponseDbError {
 		e := ErrDb{}
 		e.Code = response.GetUint64()
 		e.ExtendedCode = response.GetUint64()
@@ -127,7 +127,7 @@ func DecodeEmpty(response *Message) (err error) {
                 return
 	}
 
-	if mtype != bindings.ServerResponseEmpty {
+	if mtype != bindings.ResponseEmpty {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
 	}
@@ -141,7 +141,7 @@ func DecodeEmpty(response *Message) (err error) {
 func DecodeResult(response *Message) (result Result, err error) {
 	mtype, _ := response.GetHeader()
 
-	if mtype == bindings.ServerResponseFailure {
+	if mtype == bindings.ResponseFailure {
 		e := ErrRequest{}
 		e.Code = response.GetUint64()
 		e.Description = response.GetString()
@@ -149,7 +149,7 @@ func DecodeResult(response *Message) (result Result, err error) {
                 return
 	}
 
-	if mtype == bindings.ServerResponseDbError {
+	if mtype == bindings.ResponseDbError {
 		e := ErrDb{}
 		e.Code = response.GetUint64()
 		e.ExtendedCode = response.GetUint64()
@@ -158,7 +158,7 @@ func DecodeResult(response *Message) (result Result, err error) {
                 return
 	}
 
-	if mtype != bindings.ServerResponseResult {
+	if mtype != bindings.ResponseResult {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
 	}
@@ -172,7 +172,7 @@ func DecodeResult(response *Message) (result Result, err error) {
 func DecodeRows(response *Message) (rows Rows, err error) {
 	mtype, _ := response.GetHeader()
 
-	if mtype == bindings.ServerResponseFailure {
+	if mtype == bindings.ResponseFailure {
 		e := ErrRequest{}
 		e.Code = response.GetUint64()
 		e.Description = response.GetString()
@@ -180,7 +180,7 @@ func DecodeRows(response *Message) (rows Rows, err error) {
                 return
 	}
 
-	if mtype == bindings.ServerResponseDbError {
+	if mtype == bindings.ResponseDbError {
 		e := ErrDb{}
 		e.Code = response.GetUint64()
 		e.ExtendedCode = response.GetUint64()
@@ -189,7 +189,7 @@ func DecodeRows(response *Message) (rows Rows, err error) {
                 return
 	}
 
-	if mtype != bindings.ServerResponseRows {
+	if mtype != bindings.ResponseRows {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
 	}
