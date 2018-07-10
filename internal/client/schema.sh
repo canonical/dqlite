@@ -78,7 +78,7 @@ EOF
 
     cat >> request.go <<EOF
 
-	request.PutHeader(bindings.ServerRequest${cmd})
+	request.PutHeader(bindings.Request${cmd})
 }
 EOF
 
@@ -110,7 +110,7 @@ if [ "$entity" = "--response" ]; then
 func Decode${cmd}(response *Message) (${returns}err error) {
 	mtype, _ := response.GetHeader()
 
-	if mtype == bindings.ServerResponseFailure {
+	if mtype == bindings.ResponseFailure {
 		e := ErrRequest{}
 		e.Code = response.GetUint64()
 		e.Description = response.GetString()
@@ -118,7 +118,7 @@ func Decode${cmd}(response *Message) (${returns}err error) {
                 return
 	}
 
-	if mtype == bindings.ServerResponseDbError {
+	if mtype == bindings.ResponseDbError {
 		e := ErrDb{}
 		e.Code = response.GetUint64()
 		e.ExtendedCode = response.GetUint64()
@@ -127,7 +127,7 @@ func Decode${cmd}(response *Message) (${returns}err error) {
                 return
 	}
 
-	if mtype != bindings.ServerResponse${cmd} {
+	if mtype != bindings.Response${cmd} {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
 	}

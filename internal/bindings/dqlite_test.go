@@ -57,7 +57,7 @@ func TestServer_Run(t *testing.T) {
 	conn, err := net.Dial("tcp", listener.Addr().String())
 	require.NoError(t, err)
 
-	err = binary.Write(conn, binary.LittleEndian, bindings.ServerProtocolVersion)
+	err = binary.Write(conn, binary.LittleEndian, bindings.ProtocolVersion)
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 

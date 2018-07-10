@@ -215,35 +215,35 @@ import (
 	"unsafe"
 )
 
-// ServerProtocolVersion is the latest dqlite server protocol version.
-const ServerProtocolVersion = uint64(C.DQLITE_PROTOCOL_VERSION)
+// ProtocolVersion is the latest dqlite server protocol version.
+const ProtocolVersion = uint64(C.DQLITE_PROTOCOL_VERSION)
 
 // Request types.
 const (
-	ServerRequestLeader    = C.DQLITE_REQUEST_LEADER
-	ServerRequestClient    = C.DQLITE_REQUEST_CLIENT
-	ServerRequestHeartbeat = C.DQLITE_REQUEST_HEARTBEAT
-	ServerRequestOpen      = C.DQLITE_REQUEST_OPEN
-	ServerRequestPrepare   = C.DQLITE_REQUEST_PREPARE
-	ServerRequestExec      = C.DQLITE_REQUEST_EXEC
-	ServerRequestQuery     = C.DQLITE_REQUEST_QUERY
-	ServerRequestFinalize  = C.DQLITE_REQUEST_FINALIZE
-	ServerRequestExecSQL   = C.DQLITE_REQUEST_EXEC_SQL
-	ServerRequestQuerySQL  = C.DQLITE_REQUEST_QUERY_SQL
+	RequestLeader    = C.DQLITE_REQUEST_LEADER
+	RequestClient    = C.DQLITE_REQUEST_CLIENT
+	RequestHeartbeat = C.DQLITE_REQUEST_HEARTBEAT
+	RequestOpen      = C.DQLITE_REQUEST_OPEN
+	RequestPrepare   = C.DQLITE_REQUEST_PREPARE
+	RequestExec      = C.DQLITE_REQUEST_EXEC
+	RequestQuery     = C.DQLITE_REQUEST_QUERY
+	RequestFinalize  = C.DQLITE_REQUEST_FINALIZE
+	RequestExecSQL   = C.DQLITE_REQUEST_EXEC_SQL
+	RequestQuerySQL  = C.DQLITE_REQUEST_QUERY_SQL
 )
 
 // Response types.
 const (
-	ServerResponseFailure = C.DQLITE_RESPONSE_FAILURE
-	ServerResponseServer  = C.DQLITE_RESPONSE_SERVER
-	ServerResponseWelcome = C.DQLITE_RESPONSE_WELCOME
-	ServerResponseServers = C.DQLITE_RESPONSE_SERVERS
-	ServerResponseDbError = C.DQLITE_RESPONSE_DB_ERROR
-	ServerResponseDb      = C.DQLITE_RESPONSE_DB
-	ServerResponseStmt    = C.DQLITE_RESPONSE_STMT
-	ServerResponseResult  = C.DQLITE_RESPONSE_RESULT
-	ServerResponseRows    = C.DQLITE_RESPONSE_ROWS
-	ServerResponseEmpty   = C.DQLITE_RESPONSE_EMPTY
+	ResponseFailure = C.DQLITE_RESPONSE_FAILURE
+	ResponseServer  = C.DQLITE_RESPONSE_SERVER
+	ResponseWelcome = C.DQLITE_RESPONSE_WELCOME
+	ResponseServers = C.DQLITE_RESPONSE_SERVERS
+	ResponseDbError = C.DQLITE_RESPONSE_DB_ERROR
+	ResponseDb      = C.DQLITE_RESPONSE_DB
+	ResponseStmt    = C.DQLITE_RESPONSE_STMT
+	ResponseResult  = C.DQLITE_RESPONSE_RESULT
+	ResponseRows    = C.DQLITE_RESPONSE_ROWS
+	ResponseEmpty   = C.DQLITE_RESPONSE_EMPTY
 )
 
 // Vfs is a Go wrapper arround dqlite's in-memory VFS implementation.
