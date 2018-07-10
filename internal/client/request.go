@@ -15,6 +15,20 @@ func EncodeLeader(request *Message) {
 	request.PutHeader(bindings.RequestLeader)
 }
 
+// EncodeClient encodes a Client request.
+func EncodeClient(request *Message, id uint64) {
+	request.PutUint64(id)
+
+	request.PutHeader(bindings.RequestClient)
+}
+
+// EncodeHeartbeat encodes a Heartbeat request.
+func EncodeHeartbeat(request *Message, timestamp uint64) {
+	request.PutUint64(timestamp)
+
+	request.PutHeader(bindings.RequestHeartbeat)
+}
+
 // EncodeOpen encodes a Open request.
 func EncodeOpen(request *Message, name string, flags uint64, vfs string) {
 	request.PutString(name)

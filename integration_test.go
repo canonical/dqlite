@@ -20,9 +20,7 @@ package dqlite_test
 
 import (
 	"database/sql"
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,8 +34,6 @@ func TestIntegration_DatabaseSQL(t *testing.T) {
 
 	db, err := sql.Open("dqlite-database-sql", "test.db")
 	require.NoError(t, err)
-
-	start := time.Now()
 
 	tx, err := db.Begin()
 	require.NoError(t, err)
@@ -74,8 +70,6 @@ func TestIntegration_DatabaseSQL(t *testing.T) {
 	require.NoError(t, rows.Close())
 
 	require.NoError(t, tx.Rollback())
-
-	fmt.Println("time", time.Since(start))
 
 	require.NoError(t, db.Close())
 }

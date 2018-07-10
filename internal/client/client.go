@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -13,11 +14,13 @@ import (
 
 // Client connecting to a dqlite server and speaking the dqlite wire protocol.
 type Client struct {
-	logger  *zap.Logger   // Logger.
-	address string        // Address of the connected dqlite server.
-	store   ServerStore   // Update this store upon heartbeats.
-	conn    net.Conn      // Underlying network connection.
-	timeout time.Duration // Heartbeat timeout reported at registration.
+	logger           *zap.Logger   // Logger.
+	address          string        // Address of the connected dqlite server.
+	store            ServerStore   // Update this store upon heartbeats.
+	conn             net.Conn      // Underlying network connection.
+	heartbeatTimeout time.Duration // Heartbeat timeout reported at registration.
+	closeCh          chan struct{} // Stops the heartbeat when the connection gets closed
+	mu               sync.Mutex    // Serialize requests
 }
 
 func newClient(conn net.Conn, address string, store ServerStore, logger *zap.Logger) *Client {
@@ -26,6 +29,7 @@ func newClient(conn net.Conn, address string, store ServerStore, logger *zap.Log
 		address: address,
 		store:   store,
 		logger:  logger.With(zap.String("target", address)),
+		closeCh: make(chan struct{}),
 	}
 
 	return client
@@ -34,6 +38,11 @@ func newClient(conn net.Conn, address string, store ServerStore, logger *zap.Log
 // Call invokes a dqlite RPC, sending a request message and receiving a
 // response message.
 func (c *Client) Call(ctx context.Context, request, response *Message) error {
+	// We need to take a lock since the dqlite server currently does not
+	// support concurrent requests.
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	// TODO: honor ctx
 	if err := c.send(request); err != nil {
 		return errors.Wrap(err, "failed to send request")
@@ -44,6 +53,12 @@ func (c *Client) Call(ctx context.Context, request, response *Message) error {
 	}
 
 	return nil
+}
+
+// Close the client connection.
+func (c *Client) Close() error {
+	close(c.closeCh)
+	return c.conn.Close()
 }
 
 func (c *Client) send(req *Message) error {
@@ -170,13 +185,43 @@ func (c *Client) recvFill(buf []byte) (int, error) {
 	return -1, io.ErrNoProgress
 }
 
-// Close the client connection.
-func (c *Client) Close() error {
-	return c.conn.Close()
-}
+func (c *Client) heartbeat() {
+	request := Message{}
+	request.Init(16)
+	response := Message{}
+	response.Init(512)
 
-func (c *Client) heartbeat(id string) error {
-	ch := make(chan int)
-	<-ch
-	return nil
+	for {
+		time.Sleep(c.heartbeatTimeout)
+
+		// Check if we've been closed.
+		select {
+		case <-c.closeCh:
+			return
+		default:
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+
+		EncodeHeartbeat(&request, uint64(time.Now().Unix()))
+
+		err := c.Call(ctx, &request, &response)
+		cancel()
+
+		// We bail out upon failures.
+		//
+		// TODO: make the client survive temporary disconnections.
+		if err != nil {
+			return
+		}
+
+		addresses, err := DecodeServers(&response)
+		if err != nil {
+			return
+		}
+
+		if err := c.store.Set(ctx, addresses); err != nil {
+			return
+		}
+	}
 }

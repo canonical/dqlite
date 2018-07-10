@@ -6,22 +6,32 @@ import (
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/client"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestClient_Open(t *testing.T) {
-	_, cleanup := newClient(t)
+func TestClient_Heartbeat(t *testing.T) {
+	c, cleanup := newClient(t)
 	defer cleanup()
 
-	/*
-		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
-		defer cancel()
+	request := client.Message{}
+	request.Init(512)
+	response := client.Message{}
+	response.Init(512)
 
-		db, err := client.Open(ctx, "test.db", "volatile")
-		require.NoError(t, err)
+	client.EncodeHeartbeat(&request, uint64(time.Now().Unix()))
 
-		assert.Equal(t, db.ID, uint32(0))
-	*/
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+
+	err := c.Call(ctx, &request, &response)
+	require.NoError(t, err)
+
+	addresses, err := client.DecodeServers(&response)
+	require.NoError(t, err)
+
+	assert.Len(t, addresses, 2)
+	assert.Equal(t, client.Strings{"1.2.3.4:666", "5.6.7.8:666"}, addresses)
 }
 
 /*

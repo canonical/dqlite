@@ -10,6 +10,7 @@ import (
 )
 
 type NamedValues = []driver.NamedValue
+type Strings []string
 
 type Message struct {
 	words  uint32
@@ -274,6 +275,21 @@ func (m *Message) GetInt64() int64 {
 	defer b.Advance(8)
 
 	return int64(binary.LittleEndian.Uint64(b.Bytes[b.Offset:]))
+}
+
+func (m *Message) GetStrings() (list Strings) {
+	defer func() {
+		err := recover()
+		if err != errMessageEOF {
+			panic(err)
+		}
+
+	}()
+
+	for {
+		list = append(list, m.GetString())
+		m.bufferForGet()
+	}
 }
 
 func (m *Message) GetResult() Result {
