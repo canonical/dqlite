@@ -38,6 +38,12 @@ func newBench() *cobra.Command {
 func runServer(address string) error {
 	cluster := newTestCluster()
 
+	vfs, err := bindings.RegisterVfs("volatile")
+	if err != nil {
+		return errors.Wrap(err, "failed to register VFS")
+	}
+	defer bindings.UnregisterVfs(vfs)
+
 	server, err := bindings.NewServer(os.Stdout, cluster)
 	if err != nil {
 		return errors.Wrap(err, "failed to create server")
@@ -90,7 +96,7 @@ func newTestCluster() *testCluster {
 }
 
 func (c *testCluster) Replication() string {
-	return "test"
+	return "volatile"
 }
 
 func (c *testCluster) Leader() string {
