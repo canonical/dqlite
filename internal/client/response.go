@@ -10,6 +10,37 @@ import (
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
 )
 
+// DecodeWelcome decodes a Welcome response.
+func DecodeWelcome(response *Message) (heartbeatTimeout uint64, err error) {
+	mtype, _ := response.GetHeader()
+
+	if mtype == bindings.ResponseFailure {
+		e := ErrRequest{}
+		e.Code = response.GetUint64()
+		e.Description = response.GetString()
+                err = e
+                return
+	}
+
+	if mtype == bindings.ResponseDbError {
+		e := ErrDb{}
+		e.Code = response.GetUint64()
+		e.ExtendedCode = response.GetUint64()
+		e.Description = response.GetString()
+                err = e
+                return
+	}
+
+	if mtype != bindings.ResponseWelcome {
+		err = fmt.Errorf("unexpected response type %d", mtype)
+                return
+	}
+
+	heartbeatTimeout = response.GetUint64()
+
+	return
+}
+
 // DecodeServer decodes a Server response.
 func DecodeServer(response *Message) (address string, err error) {
 	mtype, _ := response.GetHeader()
@@ -37,6 +68,37 @@ func DecodeServer(response *Message) (address string, err error) {
 	}
 
 	address = response.GetString()
+
+	return
+}
+
+// DecodeServers decodes a Servers response.
+func DecodeServers(response *Message) (addresses Strings, err error) {
+	mtype, _ := response.GetHeader()
+
+	if mtype == bindings.ResponseFailure {
+		e := ErrRequest{}
+		e.Code = response.GetUint64()
+		e.Description = response.GetString()
+                err = e
+                return
+	}
+
+	if mtype == bindings.ResponseDbError {
+		e := ErrDb{}
+		e.Code = response.GetUint64()
+		e.ExtendedCode = response.GetUint64()
+		e.Description = response.GetString()
+                err = e
+                return
+	}
+
+	if mtype != bindings.ResponseServers {
+		err = fmt.Errorf("unexpected response type %d", mtype)
+                return
+	}
+
+	addresses = response.GetStrings()
 
 	return
 }

@@ -160,7 +160,7 @@ static void dqliteClusterClose(struct dqliteCluster *c)
     int i;
 
     for (i = 0; *(c->addresses + i) != NULL; i++) {
-      free(*c->addresses + i);
+      free(*(c->addresses + i));
     }
 
     free(c->addresses);

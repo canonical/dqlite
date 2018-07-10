@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/Rican7/retry"
@@ -173,7 +174,7 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string) (*Cli
 
 	// Send the initial Leader request.
 	request := Message{}
-	request.Init(8)
+	request.Init(16)
 	response := Message{}
 	response.Init(512)
 
@@ -187,7 +188,7 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string) (*Cli
 	leader, err := DecodeServer(&response)
 	if err != nil {
 		client.Close()
-		return nil, "", errors.Wrap(err, "failed to send Leader request")
+		return nil, "", errors.Wrap(err, "failed to parse Server response")
 	}
 
 	switch leader {
@@ -196,7 +197,24 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string) (*Cli
 		client.Close()
 		return nil, "", nil
 	case address:
-		// This server is the leader
+		// This server is the leader, register ourselves and return.
+		EncodeClient(&request, c.id)
+
+		if err := client.Call(ctx, &request, &response); err != nil {
+			client.Close()
+			return nil, "", errors.Wrap(err, "failed to send Client request")
+		}
+
+		heartbeatTimeout, err := DecodeWelcome(&response)
+		if err != nil {
+			client.Close()
+			return nil, "", errors.Wrap(err, "failed to parse Welcome response")
+		}
+
+		client.heartbeatTimeout = time.Duration(heartbeatTimeout) * time.Millisecond
+
+		go client.heartbeat()
+
 		return client, "", nil
 	default:
 		// This server claims to know who the current leader is.
