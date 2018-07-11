@@ -47,7 +47,6 @@ import (
 type Registry struct {
 	mu        sync.Mutex                  // Serialize access to internal state.
 	vfs       *bindings.Vfs               // In-memory file-system
-	dir       string                      // Node data directory
 	leaders   map[*bindings.Conn]string   // Map leader connections to database filenames.
 	followers map[string]*bindings.Conn   // Map database filenames to follower connections.
 	txns      map[uint64]*transaction.Txn // Transactions by ID
@@ -84,7 +83,7 @@ type Registry struct {
 //
 // The 'dir' parameter sets the directory where the node associated with this
 // registry will save the SQLite database files.
-func New(vfs *bindings.Vfs, dir string) *Registry {
+func New(vfs *bindings.Vfs) *Registry {
 	tracers := trace.NewSet(250)
 
 	// Register the is the tracer that will be used by the FSM associated
@@ -93,7 +92,6 @@ func New(vfs *bindings.Vfs, dir string) *Registry {
 
 	return &Registry{
 		vfs:        vfs,
-		dir:        dir,
 		leaders:    map[*bindings.Conn]string{},
 		followers:  map[string]*bindings.Conn{},
 		txns:       map[uint64]*transaction.Txn{},
@@ -117,11 +115,6 @@ func (r *Registry) Unlock() {
 // Vfs is in-memory VFS used for SQLite databases.
 func (r *Registry) Vfs() *bindings.Vfs {
 	return r.vfs
-}
-
-// Dir is the directory where replicated SQLite files are stored.
-func (r *Registry) Dir() string {
-	return r.dir
 }
 
 // Testing sets up this registry for unit-testing.

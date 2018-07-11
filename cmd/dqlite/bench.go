@@ -5,11 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
-	"os"
+	"testing"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite"
-	"github.com/CanonicalLtd/dqlite/internal/bindings"
+	"github.com/CanonicalLtd/raft-test"
+	"github.com/hashicorp/raft"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -36,90 +37,29 @@ func newBench() *cobra.Command {
 }
 
 func runServer(address string) error {
-	cluster := newTestCluster()
+	registry := dqlite.NewRegistry("0")
+	fsm := dqlite.NewFSM(registry)
 
-	vfs, err := bindings.RegisterVfs("volatile")
-	if err != nil {
-		return errors.Wrap(err, "failed to register VFS")
-	}
-	defer bindings.UnregisterVfs(vfs)
-
-	server, err := bindings.NewServer(os.Stdout, cluster)
-	if err != nil {
-		return errors.Wrap(err, "failed to create server")
-	}
+	t := &testing.T{}
+	r, cleanup := rafttest.Server(t, fsm, rafttest.Transport(func(i int) raft.Transport {
+		_, transport := raft.NewInmemTransport(raft.ServerAddress(address))
+		return transport
+	}))
+	defer cleanup()
 
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return errors.Wrap(err, "failed to listen")
 	}
 
-	cluster.leader = listener.Addr().String()
-
-	runCh := make(chan error)
-	go func() {
-		err := server.Run()
-		runCh <- err
-	}()
-
-	if !server.Ready() {
-		return fmt.Errorf("server not ready")
+	server, err := dqlite.NewServer(r, registry, listener)
+	if err != nil {
+		return errors.Wrap(err, "failed to create server")
 	}
 
-	acceptCh := make(chan error)
-	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			acceptCh <- nil
-			return
-		}
-		err = server.Handle(conn)
-		if err == bindings.ErrServerStopped {
-			acceptCh <- nil
-			return
-		}
+	time.Sleep(time.Minute)
 
-		//acceptCh <- err
-	}()
-
-	<-acceptCh
-
-	return nil
-}
-
-type testCluster struct {
-	leader string
-}
-
-func newTestCluster() *testCluster {
-	return &testCluster{}
-}
-
-func (c *testCluster) Replication() string {
-	return "volatile"
-}
-
-func (c *testCluster) Leader() string {
-	return c.leader
-}
-
-func (c *testCluster) Servers() ([]string, error) {
-	addresses := []string{
-		"1.2.3.4:666",
-		"5.6.7.8:666",
-	}
-
-	return addresses, nil
-}
-
-func (c *testCluster) Register(*bindings.Conn) {
-}
-
-func (c *testCluster) Unregister(*bindings.Conn) {
-}
-
-func (c *testCluster) Recover(token uint64) error {
-	return nil
+	return server.Close()
 }
 
 func runClient(address string) error {

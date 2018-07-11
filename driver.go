@@ -42,7 +42,7 @@ type Driver struct {
 // DriverOption can be used to tweak driver parameters.
 type DriverOption func(*driverOptions)
 
-// DriverConfig holds configuration options for a dqlite SQL Driver.
+// Hold configuration options for a dqlite driver.
 type driverOptions struct {
 	Logger                  *zap.Logger
 	ConnectionTimeout       time.Duration
