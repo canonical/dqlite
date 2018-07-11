@@ -71,8 +71,9 @@ static int dqlite__gateway_heartbeat(struct dqlite__gateway *g, struct dqlite__g
 }
 
 /* Helper to fill the response with the details of a database error */
-static void dqlite__gateway_db_error(struct dqlite__gateway_ctx *ctx, sqlite3 *db, int rc)
+static void dqlite__gateway_db_error(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx, sqlite3 *db, int rc)
 {
+	assert(g != NULL);
 	assert(ctx != NULL);
 	assert(db != NULL);
 	assert(rc != SQLITE_OK);
@@ -81,6 +82,10 @@ static void dqlite__gateway_db_error(struct dqlite__gateway_ctx *ctx, sqlite3 *d
 	ctx->response.db_error.code = sqlite3_errcode(db);
 	ctx->response.db_error.extended_code = sqlite3_extended_errcode(db);
 	ctx->response.db_error.description = sqlite3_errmsg(db);
+
+	dqlite__debugf(
+		g, "database error", "code=%ld msg=%s",
+		ctx->response.db_error.extended_code, ctx->response.db_error.description);
 }
 
 static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
@@ -108,7 +113,7 @@ static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gatewa
 		g->cluster->xRegister(g->cluster->ctx, db->db);
 	} else {
 		dqlite__db_registry_del(&g->dbs, i);
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 	}
 
 	return 0;
@@ -148,7 +153,7 @@ static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gat
 		ctx->response.stmt.params = sqlite3_bind_parameter_count(stmt->stmt);
 
 	} else {
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 	}
 
 	return 0;
@@ -180,7 +185,7 @@ static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gatewa
 		assert(err == DQLITE_ENGINE);
 		assert(rc != SQLITE_OK);
 
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 
 		return 0;
 	}
@@ -191,7 +196,7 @@ static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gatewa
 		ctx->response.result.last_insert_id = last_insert_id;
 		ctx->response.result.rows_affected = rows_affected;
 	} else {
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 	}
 
 	return 0;
@@ -221,7 +226,7 @@ static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gatew
 		assert(err == DQLITE_ENGINE);
 		assert(rc != SQLITE_OK);
 
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 
 		return 0;
 	}
@@ -234,7 +239,7 @@ static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gatew
 
 	if (rc != SQLITE_DONE) {
 		/* TODO: reset what was written in the message */
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 	} else {
 		ctx->response.type = DQLITE_RESPONSE_ROWS;
  		ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_EOF;
@@ -256,7 +261,7 @@ static int dqlite__gateway_finalize(struct dqlite__gateway *g, struct dqlite__ga
 	if (rc == SQLITE_OK) {
 		ctx->response.type = DQLITE_RESPONSE_EMPTY;
 	} else {
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 	}
 
 	return 0;
@@ -278,7 +283,7 @@ static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__ga
 
 	rc = dqlite__db_prepare(db, ctx->request->exec_sql.sql, &stmt_id);
 	if (rc != SQLITE_OK) {
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 		return 0;
 	}
 
@@ -296,7 +301,7 @@ static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__ga
 		assert(err == DQLITE_ENGINE);
 		assert(rc != SQLITE_OK);
 
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 
 		return 0;
 	}
@@ -307,7 +312,7 @@ static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__ga
 		ctx->response.result.last_insert_id = last_insert_id;
 		ctx->response.result.rows_affected = rows_affected;
 	} else {
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 	}
 
 	/* Ignore errors here. TODO: emit a warning instead */
@@ -330,7 +335,7 @@ static int dqlite__gateway_query_sql(struct dqlite__gateway *g, struct dqlite__g
 
 	rc = dqlite__db_prepare(db, ctx->request->query_sql.sql, &stmt_id);
 	if (rc != SQLITE_OK) {
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 		return 0;
 	}
 
@@ -348,7 +353,7 @@ static int dqlite__gateway_query_sql(struct dqlite__gateway *g, struct dqlite__g
 		assert(err == DQLITE_ENGINE);
 		assert(rc != SQLITE_OK);
 
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 
 		return 0;
 	}
@@ -361,7 +366,7 @@ static int dqlite__gateway_query_sql(struct dqlite__gateway *g, struct dqlite__g
 
 	if (rc != SQLITE_DONE) {
 		/* TODO: reset what was written in the message */
-		dqlite__gateway_db_error(ctx, db->db, rc);
+		dqlite__gateway_db_error(g, ctx, db->db, rc);
 	} else {
 		ctx->response.type = DQLITE_RESPONSE_ROWS;
 		ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_EOF;

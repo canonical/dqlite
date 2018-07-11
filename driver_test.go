@@ -22,13 +22,10 @@ import (
 	"net"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/CanonicalLtd/dqlite"
-	"github.com/CanonicalLtd/dqlite/internal/bindings"
-	"github.com/CanonicalLtd/dqlite/internal/registry"
-	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/CanonicalLtd/raft-test"
+	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -197,12 +194,11 @@ func newDriver(t *testing.T) (*dqlite.Driver, func()) {
 	t.Helper()
 
 	listener := newListener(t)
-	cluster := newTestCluster()
-	cluster.leader = listener.Addr().String()
+	address := listener.Addr().String()
 
-	cleanup := newServer(t, listener, cluster)
+	cleanup := newServer(t, listener)
 
-	store := newStore(t, cluster.leader)
+	store := newStore(t, address)
 
 	driver, err := dqlite.NewDriver(store, dqlite.WithLogger(zaptest.NewLogger(t)))
 	require.NoError(t, err)
@@ -222,90 +218,33 @@ func newStore(t *testing.T, address string) *dqlite.ServerStore {
 	return store
 }
 
-func newServer(t *testing.T, listener net.Listener, cluster *testCluster) func() {
+func newServer(t *testing.T, listener net.Listener) func() {
 	t.Helper()
 
-	dir, dirCleanup := newDir(t)
+	registry := dqlite.NewRegistry("0")
 
-	vfs, err := bindings.RegisterVfs("test")
-	require.NoError(t, err)
+	fsm := dqlite.NewFSM(registry)
 
-	registry := registry.New(vfs, dir)
-	fsm := replication.NewFSM(registry)
-	raft, raftCleanup := rafttest.Server(t, fsm)
+	r, raftCleanup := rafttest.Server(t, fsm, rafttest.Transport(func(i int) raft.Transport {
+		require.Equal(t, i, 0)
+		address := raft.ServerAddress(listener.Addr().String())
+		_, transport := raft.NewInmemTransport(address)
+		return transport
+	}))
 
-	methods := replication.NewMethods(registry, raft)
-
-	err = bindings.RegisterWalReplication("test", methods)
-	require.NoError(t, err)
-
+	logger := zaptest.NewLogger(t)
 	file, fileCleanup := newFile(t)
 
-	cluster.registry = registry
-
-	server, err := bindings.NewServer(file, cluster)
+	server, err := dqlite.NewServer(
+		r, registry, listener,
+		dqlite.WithServerLogger(logger), dqlite.WithServerLogFile(file))
 	require.NoError(t, err)
 
-	runCh := make(chan error)
-	go func() {
-		err := server.Run()
-		runCh <- err
-	}()
-
-	require.True(t, server.Ready())
-
-	acceptCh := make(chan error, 1)
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				acceptCh <- nil
-				return
-			}
-
-			err = server.Handle(conn)
-			if err == bindings.ErrServerStopped {
-				acceptCh <- nil
-				return
-			}
-			if err != nil {
-				acceptCh <- err
-				return
-			}
-		}
-	}()
-
 	cleanup := func() {
-		require.NoError(t, server.Stop())
-
-		require.NoError(t, listener.Close())
-
-		// Wait for the accept goroutine to exit.
-		select {
-		case err := <-acceptCh:
-			assert.NoError(t, err)
-		case <-time.After(time.Second):
-			t.Fatal("accept goroutine did not stop within a second")
-		}
-
-		// Wait for the run goroutine to exit.
-		select {
-		case err := <-runCh:
-			assert.NoError(t, err)
-		case <-time.After(time.Second):
-			t.Fatal("server did not stop within a second")
-		}
-
-		server.Close()
-		server.Free()
+		require.NoError(t, server.Close())
 
 		fileCleanup()
-
-		bindings.UnregisterWalReplication("test")
-
 		raftCleanup()
-		bindings.UnregisterVfs(vfs)
-		dirCleanup()
 	}
 
 	return cleanup
@@ -356,40 +295,6 @@ func newFile(t *testing.T) (*os.File, func()) {
 	}
 
 	return file, cleanup
-}
-
-type testCluster struct {
-	leader   string
-	registry *registry.Registry
-}
-
-func newTestCluster() *testCluster {
-	return &testCluster{}
-}
-
-func (c *testCluster) Replication() string {
-	return "test"
-}
-
-func (c *testCluster) Leader() string {
-	return c.leader
-}
-
-func (c *testCluster) Servers() ([]string, error) {
-	return []string{c.leader}, nil
-}
-
-func (c *testCluster) Register(conn *bindings.Conn) {
-	filename := conn.Filename()
-	c.registry.ConnLeaderAdd(filename, conn)
-}
-
-func (c *testCluster) Unregister(conn *bindings.Conn) {
-	c.registry.ConnLeaderDel(conn)
-}
-
-func (c *testCluster) Recover(token uint64) error {
-	return nil
 }
 
 /*

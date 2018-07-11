@@ -487,15 +487,12 @@ func newFSM(t *testing.T) (*replication.FSM, func()) {
 	vfs, err := bindings.RegisterVfs("test")
 	require.NoError(t, err)
 
-	dir, dirCleanup := newDir(t)
-
-	registry := registry.New(vfs, dir)
+	registry := registry.New(vfs)
 	registry.Testing(t, 0)
 
 	fsm := replication.NewFSM(registry)
 
 	cleanup := func() {
-		dirCleanup()
 		bindings.UnregisterVfs(vfs)
 		bindings.UnregisterWalReplication("test")
 	}

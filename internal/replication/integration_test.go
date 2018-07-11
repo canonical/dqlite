@@ -1691,7 +1691,7 @@ func newCluster(t *testing.T, opts ...clusterOption) (clusterConns, *rafttest.Co
 			bindings.UnregisterVfs(vfs)
 		})
 
-		registries[i] = registry.New(vfs, dir)
+		registries[i] = registry.New(vfs)
 		registries[i].Testing(t, i)
 
 		dirs[i] = dir
@@ -1703,7 +1703,7 @@ func newCluster(t *testing.T, opts ...clusterOption) (clusterConns, *rafttest.Co
 	// Registry.HookSync mechanism to work properly.
 	stores := make([]raft.LogStore, 3)
 	for i := range stores {
-		path := filepath.Join(registries[i].Dir(), "bolt.db")
+		path := filepath.Join(dirs[i], "bolt.db")
 		store, err := raftboltdb.NewBoltStore(path)
 		require.NoError(t, err)
 

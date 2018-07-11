@@ -112,9 +112,7 @@ func newMethods(t *testing.T) (*replication.Methods, *bindings.Conn, func()) {
 	vfs, err := bindings.RegisterVfs("test")
 	require.NoError(t, err)
 
-	dir, dirCleanup := newDir(t)
-
-	registry := registry.New(vfs, dir)
+	registry := registry.New(vfs)
 	registry.Testing(t, 0)
 
 	fsm := replication.NewFSM(registry)
@@ -135,7 +133,6 @@ func newMethods(t *testing.T) (*replication.Methods, *bindings.Conn, func()) {
 
 		connCleanup()
 		raftCleanup()
-		dirCleanup()
 		bindings.UnregisterVfs(vfs)
 		bindings.UnregisterWalReplication("test")
 	}
