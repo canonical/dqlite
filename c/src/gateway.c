@@ -274,7 +274,7 @@ static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__ga
 	struct dqlite__db *db;
 	const char *sql;
 	uint32_t stmt_id;
-	struct dqlite__stmt *stmt;
+	struct dqlite__stmt *stmt = NULL;
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 
@@ -292,6 +292,9 @@ static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__ga
 		}
 
 		DQLITE__GATEWAY_LOOKUP_STMT(stmt_id);
+
+		if (stmt->stmt == NULL)
+			goto out;
 
 		err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
 		if (err != 0) {

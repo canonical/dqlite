@@ -205,12 +205,22 @@ func (m *Message) flushHeader() {
 
 func (m *Message) bufferForPut(size int) *buffer {
 	if m.body2.Bytes != nil {
-		// TODO: check if body2 is large enough
+		if (m.body2.Offset + size) > len(m.body2.Bytes) {
+			// Grow body2.
+			//
+			// TODO: find a good grow strategy.
+			bytes := make([]byte, m.body2.Offset+size)
+			copy(bytes, m.body2.Bytes)
+			m.body2.Bytes = bytes
+		}
+
 		return &m.body2
 	}
 
 	if (m.body1.Offset + size) > len(m.body1.Bytes) {
-		// TODO: alloc array for body2
+		m.body2.Bytes = make([]byte, size)
+		m.body2.Offset = 0
+
 		return &m.body2
 	}
 

@@ -155,13 +155,13 @@ struct dqlite__stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id)
 int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt, uint32_t stmt_id)
 {
 	int err;
-	int rc;
+	int rc = SQLITE_OK;
 
 	assert(db != NULL);
 	assert(stmt != NULL);
-	assert(stmt->stmt != NULL);
 
-	rc = sqlite3_finalize(stmt->stmt);
+	if (stmt->stmt != NULL)
+		rc = sqlite3_finalize(stmt->stmt);
 
 	/* Unset the stmt member, to prevent dqlite__stmt_registry_del from
 	 * trying to finalize the statement too */
