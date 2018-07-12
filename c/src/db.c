@@ -111,7 +111,6 @@ int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint32_t *stmt_id
 	int rc;
 	struct dqlite__stmt *stmt;
 	size_t i;
-	const char *tail;
 
 	assert(db != NULL);
 	assert(db->db != NULL);
@@ -129,7 +128,7 @@ int dqlite__db_prepare(struct dqlite__db *db, const char *sql, uint32_t *stmt_id
 
 	stmt->db = db->db;
 
-	rc = sqlite3_prepare_v2(db->db, sql, -1, &stmt->stmt, &tail);
+	rc = sqlite3_prepare_v2(db->db, sql, -1, &stmt->stmt, &stmt->tail);
 	if (rc != SQLITE_OK) {
 		goto err_stmt_prepare;
 	}

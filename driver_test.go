@@ -250,24 +250,6 @@ func newServer(t *testing.T, listener net.Listener) func() {
 	return cleanup
 }
 
-func newDir(t *testing.T) (string, func()) {
-	t.Helper()
-
-	dir, err := ioutil.TempDir("", "dqlite-driver-test-")
-	assert.NoError(t, err)
-
-	cleanup := func() {
-		_, err := os.Stat(dir)
-		if err != nil {
-			assert.True(t, os.IsNotExist(err))
-		} else {
-			assert.NoError(t, os.RemoveAll(dir))
-		}
-	}
-
-	return dir, cleanup
-}
-
 func newListener(t *testing.T) net.Listener {
 	t.Helper()
 
