@@ -52,6 +52,8 @@ int dqlite__stmt_bind(
 	assert(message != NULL);
 	assert(rc != NULL);
 
+	sqlite3_reset(s->stmt); /* TODO: handle the return code? */
+
 	err = dqlite__message_body_get_uint8(message, &param_count);
 
 	assert(err == 0 || err == DQLITE_OVERFLOW || err == DQLITE_EOM);
@@ -117,6 +119,12 @@ int dqlite__stmt_bind(
 				*rc = sqlite3_bind_text(s->stmt, i + 1, text, -1, SQLITE_STATIC);
 			}
 			break;
+		case DQLITE_DATETIME:
+			err = dqlite__message_body_get_text(message, &text);
+			if (err == 0 || err == DQLITE_EOM) {
+				*rc = sqlite3_bind_text(s->stmt, i + 1, text, -1, SQLITE_STATIC);
+			}
+			break;
 		default:
 			dqlite__error_printf(&s->error, "unknown type %d for param %d", param_types[i], i);
 			return DQLITE_PROTO;
@@ -177,7 +185,7 @@ static int dqlite__stmt_put_row(
 	assert(message != NULL);
 	assert(column_count > 0);
 
-	/* Allocate an array to store the column column_types */
+	/* Allocate an array to store the column types */
 	column_types = (int*)sqlite3_malloc(column_count * sizeof(*column_types));
 	if (column_types == NULL) {
 		dqlite__error_oom(&s->error, "failed to create column column_types array");
@@ -199,7 +207,15 @@ static int dqlite__stmt_put_row(
 
 		if (i < column_count) {
 			/* Actual column, fetch the type */
-			column_type = sqlite3_column_type(s->stmt, i);
+			const char *column_type_name;
+
+			/* TODO: find a better way to handle time types */
+			column_type_name = sqlite3_column_decltype(s->stmt, i);
+			if (column_type_name != NULL && strcmp(column_type_name, "DATETIME") == 0) {
+				column_type = DQLITE_DATETIME;
+			} else {
+				column_type = sqlite3_column_type(s->stmt, i);
+			}
 			assert(column_type < 16);
 			column_types[i] = column_type;
 		} else {
@@ -247,6 +263,10 @@ static int dqlite__stmt_put_row(
 			err = dqlite__message_body_put_int64(message, 0);
 			break;
 		case SQLITE_TEXT:
+			text = (text_t)sqlite3_column_text(s->stmt, i);
+			err = dqlite__message_body_put_text(message, text);
+			break;
+		case DQLITE_DATETIME:
 			text = (text_t)sqlite3_column_text(s->stmt, i);
 			err = dqlite__message_body_put_text(message, text);
 			break;

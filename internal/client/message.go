@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"io"
+	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
 )
@@ -126,6 +127,8 @@ func (m *Message) PutNamedValues(values NamedValues) {
 			m.PutUint8(bindings.Text)
 		case nil:
 			m.PutUint8(bindings.Null)
+		case time.Time:
+			m.PutUint8(bindings.Datetime)
 		default:
 			panic("unsupported value type")
 		}
@@ -152,6 +155,9 @@ func (m *Message) PutNamedValues(values NamedValues) {
 			m.PutString(v)
 		case nil:
 			m.PutInt64(0)
+		case time.Time:
+			timestamp := v.Format(iso8601)
+			m.PutString(timestamp)
 		default:
 			panic("unsupported value type")
 		}
@@ -398,6 +404,12 @@ func (r *Rows) Next(dest []driver.Value) error {
 		case bindings.Null:
 			r.message.GetUint64()
 			dest[i] = nil
+		case bindings.Datetime:
+			timestamp, err := time.Parse(iso8601, r.message.GetString())
+			if err != nil {
+				return err
+			}
+			dest[i] = timestamp
 		default:
 			//panic("unknown data type")
 		}
@@ -412,3 +424,5 @@ const (
 	messageHeaderSize               = messageWordSize
 	messageMaxConsecutiveEmptyReads = 100
 )
+
+const iso8601 = "2006-01-02 15:04:05"

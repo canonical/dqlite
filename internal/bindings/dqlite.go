@@ -246,6 +246,11 @@ const (
 	ResponseEmpty   = C.DQLITE_RESPONSE_EMPTY
 )
 
+// Special data types
+const (
+	Datetime = C.DQLITE_DATETIME
+)
+
 // Vfs is a Go wrapper arround dqlite's in-memory VFS implementation.
 type Vfs C.sqlite3_vfs
 
