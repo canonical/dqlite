@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,6 +33,42 @@ func TestClient_Heartbeat(t *testing.T) {
 
 	assert.Len(t, addresses, 2)
 	assert.Equal(t, client.Strings{"1.2.3.4:666", "5.6.7.8:666"}, addresses)
+}
+
+func TestClient_LargeMessage(t *testing.T) {
+	c, cleanup := newClient(t)
+	defer cleanup()
+
+	request := client.Message{}
+	request.Init(64)
+	response := client.Message{}
+	response.Init(64)
+
+	flags := uint64(bindings.OpenReadWrite | bindings.OpenCreate)
+	client.EncodeOpen(&request, "test.db", flags, "test")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+
+	err := c.Call(ctx, &request, &response)
+	require.NoError(t, err)
+
+	id, err := client.DecodeDb(&response)
+	require.NoError(t, err)
+
+	request.Reset()
+	response.Reset()
+
+	sql := `
+CREATE TABLE foo (n INT);
+CREATE TABLE bar (n INT);
+CREATE TABLE egg (n INT);
+CREATE TABLE baz (n INT);
+`
+	client.EncodeExecSQL(&request, uint64(id), sql, nil)
+
+	err = c.Call(ctx, &request, &response)
+	require.NoError(t, err)
 }
 
 /*

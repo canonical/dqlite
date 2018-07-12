@@ -273,6 +273,12 @@ func newStore(t *testing.T, addresses []string) client.ServerStore {
 func newServer(t *testing.T, index int, listener net.Listener, cluster bindings.Cluster) func() {
 	t.Helper()
 
+	vfs, err := bindings.RegisterVfs("test")
+	require.NoError(t, err)
+
+	err = bindings.RegisterWalReplication("test", &testWalReplication{})
+	require.NoError(t, err)
+
 	file, fileCleanup := newFile(t)
 
 	server, err := bindings.NewServer(file, cluster)
@@ -330,6 +336,9 @@ func newServer(t *testing.T, index int, listener net.Listener, cluster bindings.
 
 		server.Close()
 		server.Free()
+
+		bindings.UnregisterWalReplication("test")
+		bindings.UnregisterVfs(vfs)
 
 		fileCleanup()
 	}
@@ -399,6 +408,29 @@ func (c *testCluster) Unregister(*bindings.Conn) {
 
 func (c *testCluster) Recover(token uint64) error {
 	return nil
+}
+
+type testWalReplication struct {
+}
+
+func (r *testWalReplication) Begin(*bindings.Conn) int {
+	return 0
+}
+
+func (r *testWalReplication) Abort(*bindings.Conn) int {
+	return 0
+}
+
+func (r *testWalReplication) Frames(*bindings.Conn, bindings.WalReplicationFrameList) int {
+	return 0
+}
+
+func (r *testWalReplication) Undo(*bindings.Conn) int {
+	return 0
+}
+
+func (r *testWalReplication) End(*bindings.Conn) int {
+	return 0
 }
 
 func init() {
