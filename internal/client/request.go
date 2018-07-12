@@ -56,9 +56,10 @@ func EncodeExec(request *Message, db uint32, stmt uint32, values NamedValues) {
 }
 
 // EncodeQuery encodes a Query request.
-func EncodeQuery(request *Message, db uint32, stmt uint32) {
+func EncodeQuery(request *Message, db uint32, stmt uint32, values NamedValues) {
 	request.PutUint32(db)
 	request.PutUint32(stmt)
+	request.PutNamedValues(values)
 
 	request.PutHeader(bindings.RequestQuery)
 }
@@ -72,17 +73,19 @@ func EncodeFinalize(request *Message, db uint32, stmt uint32) {
 }
 
 // EncodeExecSQL encodes a ExecSQL request.
-func EncodeExecSQL(request *Message, db uint64, sql string) {
+func EncodeExecSQL(request *Message, db uint64, sql string, values NamedValues) {
 	request.PutUint64(db)
 	request.PutString(sql)
+	request.PutNamedValues(values)
 
 	request.PutHeader(bindings.RequestExecSQL)
 }
 
 // EncodeQuerySQL encodes a QuerySQL request.
-func EncodeQuerySQL(request *Message, db uint64, sql string) {
+func EncodeQuerySQL(request *Message, db uint64, sql string, values NamedValues) {
 	request.PutUint64(db)
 	request.PutString(sql)
+	request.PutNamedValues(values)
 
 	request.PutHeader(bindings.RequestQuerySQL)
 }

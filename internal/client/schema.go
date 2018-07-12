@@ -8,10 +8,10 @@ package client
 //go:generate ./schema.sh --request Open      name:string flags:uint64 vfs:string
 //go:generate ./schema.sh --request Prepare   db:uint64 sql:string
 //go:generate ./schema.sh --request Exec      db:uint32 stmt:uint32 values:NamedValues
-//go:generate ./schema.sh --request Query     db:uint32 stmt:uint32
+//go:generate ./schema.sh --request Query     db:uint32 stmt:uint32 values:NamedValues
 //go:generate ./schema.sh --request Finalize  db:uint32 stmt:uint32
-//go:generate ./schema.sh --request ExecSQL   db:uint64 sql:string
-//go:generate ./schema.sh --request QuerySQL  db:uint64 sql:string
+//go:generate ./schema.sh --request ExecSQL   db:uint64 sql:string values:NamedValues
+//go:generate ./schema.sh --request QuerySQL  db:uint64 sql:string values:NamedValues
 
 //go:generate ./schema.sh --response init
 //go:generate ./schema.sh --response Welcome  heartbeatTimeout:uint64

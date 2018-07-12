@@ -238,7 +238,7 @@ func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	defer c.request.Reset()
 	defer c.response.Reset()
 
-	client.EncodeExecSQL(&c.request, uint64(c.id), query)
+	client.EncodeExecSQL(&c.request, uint64(c.id), query, args)
 
 	if err := c.client.Call(ctx, &c.request, &c.response); err != nil {
 		return nil, errors.Wrap(err, "failed to exec statement")
@@ -261,7 +261,7 @@ func (c *Conn) Query(query string, args []driver.Value) (driver.Rows, error) {
 func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	defer c.request.Reset()
 
-	client.EncodeQuerySQL(&c.request, uint64(c.id), query)
+	client.EncodeQuerySQL(&c.request, uint64(c.id), query, args)
 
 	if err := c.client.Call(ctx, &c.request, &c.response); err != nil {
 		return nil, errors.Wrap(err, "failed to exec statement")
@@ -414,7 +414,7 @@ func (s *Stmt) Exec(args []driver.Value) (driver.Result, error) {
 func (s *Stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
 	defer s.request.Reset()
 
-	client.EncodeQuery(s.request, s.db, s.id)
+	client.EncodeQuery(s.request, s.db, s.id, args)
 
 	if err := s.client.Call(ctx, s.request, s.response); err != nil {
 		return nil, errors.Wrap(err, "failed to query statement")
