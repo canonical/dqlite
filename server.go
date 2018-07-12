@@ -118,6 +118,8 @@ func (s *Server) acceptLoop() {
 
 // Close the server, releasing all resources it created.
 func (s *Server) Close() error {
+	s.logger.Debug("stopping dqlite C server")
+
 	if err := s.server.Stop(); err != nil {
 		return err
 	}

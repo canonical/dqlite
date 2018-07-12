@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
-	"net"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
@@ -153,8 +152,7 @@ func (c *Connector) connectAttemptAll(ctx context.Context, logger *zap.Logger) (
 //
 func (c *Connector) connectAttemptOne(ctx context.Context, address string) (*Client, string, error) {
 	// Establish the connection.
-	dialer := net.Dialer{}
-	conn, err := dialer.DialContext(ctx, "tcp", address)
+	conn, err := c.config.Dial(ctx, address)
 	if err != nil {
 		return nil, "", errors.Wrap(err, "failed to establish network connection")
 	}

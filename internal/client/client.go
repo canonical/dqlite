@@ -57,7 +57,10 @@ func (c *Client) Call(ctx context.Context, request, response *Message) error {
 
 // Close the client connection.
 func (c *Client) Close() error {
+	c.logger.Info("closing client")
+
 	close(c.closeCh)
+
 	return c.conn.Close()
 }
 

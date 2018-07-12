@@ -377,8 +377,13 @@ func (s *Server) Handle(conn net.Conn) error {
 		return fmt.Errorf(C.GoString(errmsg))
 	}
 
+	// TODO: this is a hack to prevent the GC from closing the file.
+	files = append(files, file)
+
 	return nil
 }
+
+var files = []*os.File{}
 
 // Stop the server.
 func (s *Server) Stop() error {

@@ -431,6 +431,7 @@ static void dqlite__conn_alloc_cb(uv_handle_t *tcp, size_t suggested_size, uv_bu
 
 		err = dqlite__fsm_step(&c->fsm, DQLITE__CONN_ALLOC, (void*)c);
 		if (err != 0) {
+			dqlite__debugf(c, "alloc failure", "socket=%d", c->socket);
 			dqlite__conn_abort(c);
 			return;
 		}
@@ -659,7 +660,7 @@ void dqlite__conn_abort(struct dqlite__conn *c)
 		** the same loop iteration. We just ignore the second call in that
 		** case.
 		*/
-		dqlite__debugf(c, "skip abort closing connection", "socket=%d", c->socket);
+		dqlite__debugf(c, "skip abort (closing connection)", "socket=%d", c->socket);
 		return;
 	}
 
