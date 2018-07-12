@@ -55,6 +55,9 @@
 #define DQLITE_RESPONSE_ROWS     8
 #define DQLITE_RESPONSE_EMPTY    9
 
+/* Special datatypes */
+#define DQLITE_DATETIME 15
+
 /* TODO: avoid this redundant EOF marker */
 #define DQLITE_RESPONSE_ROWS_EOF 0xffffffffffffffff
 

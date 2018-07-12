@@ -21,6 +21,7 @@ package dqlite_test
 import (
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,9 +39,10 @@ func TestIntegration_DatabaseSQL(t *testing.T) {
 	tx, err := db.Begin()
 	require.NoError(t, err)
 
-	_, err = tx.Exec(
-		"CREATE TABLE test (n INT, s TEXT); CREATE TABLE test2 (n INT)",
-	)
+	_, err = tx.Exec(`
+CREATE TABLE test  (n INT, s TEXT);
+CREATE TABLE test2 (n INT, t DATETIME DEFAULT CURRENT_TIMESTAMP)
+`)
 	require.NoError(t, err)
 
 	stmt, err := tx.Prepare("INSERT INTO test(n, s) VALUES(?, ?)")
@@ -50,6 +52,10 @@ func TestIntegration_DatabaseSQL(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, stmt.Close())
+
+	_, err = tx.Exec("INSERT INTO test2(n) VALUES(?)", int64(456))
+	require.NoError(t, err)
+
 	require.NoError(t, tx.Commit())
 
 	tx, err = db.Begin()
@@ -71,12 +77,19 @@ func TestIntegration_DatabaseSQL(t *testing.T) {
 	require.NoError(t, rows.Err())
 	require.NoError(t, rows.Close())
 
-	rows, err = tx.Query("SELECT n FROM test2")
+	rows, err = tx.Query("SELECT n, t FROM test2")
 	require.NoError(t, err)
 
 	for rows.Next() {
-	} // TODO: at the moment the test panics without this loop.
+		var n int64
+		var s time.Time
 
+		require.NoError(t, rows.Scan(&n, &s))
+
+		assert.Equal(t, int64(456), n)
+	}
+
+	require.NoError(t, rows.Err())
 	require.NoError(t, rows.Close())
 
 	require.NoError(t, tx.Rollback())
