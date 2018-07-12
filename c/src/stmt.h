@@ -11,7 +11,8 @@
 struct dqlite__stmt {
 	sqlite3       *db;     /* Underlying SQLite database handle */
 	sqlite3_stmt  *stmt;   /* Underlying SQLite statement handle */
-	dqlite__error  error;  /* Last dqlite-speific error */
+	const char    *tail;   /* Unparsed SQL portion */
+	dqlite__error  error;  /* Last dqlite-specific error */
 };
 
 void dqlite__stmt_init(struct dqlite__stmt *s);

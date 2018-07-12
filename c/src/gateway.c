@@ -269,9 +269,10 @@ static int dqlite__gateway_finalize(struct dqlite__gateway *g, struct dqlite__ga
 
 static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
 {
-	int err;
+	int err = 0;
 	int rc;
 	struct dqlite__db *db;
+	const char *sql;
 	uint32_t stmt_id;
 	struct dqlite__stmt *stmt;
 	uint64_t last_insert_id;
@@ -281,44 +282,52 @@ static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__ga
 
 	assert(db != NULL);
 
-	rc = dqlite__db_prepare(db, ctx->request->exec_sql.sql, &stmt_id);
-	if (rc != SQLITE_OK) {
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
-		return 0;
-	}
+	sql = ctx->request->exec_sql.sql;
 
-	DQLITE__GATEWAY_LOOKUP_STMT(stmt_id);
-
-	err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
-	if (err != 0) {
-		assert(err == DQLITE_PROTO || err == DQLITE_ENGINE);
-
-		if (err == DQLITE_PROTO) {
-			dqlite__error_wrapf(&g->error, &stmt->error, "invalid bindings");
-			return err;
+	while (sql != NULL && strcmp(sql, "") != 0) {
+		rc = dqlite__db_prepare(db, sql, &stmt_id);
+		if (rc != SQLITE_OK) {
+			dqlite__gateway_db_error(g, ctx, db->db, rc);
+			return 0;
 		}
 
-		assert(err == DQLITE_ENGINE);
-		assert(rc != SQLITE_OK);
+		DQLITE__GATEWAY_LOOKUP_STMT(stmt_id);
 
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
+		err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
+		if (err != 0) {
+			assert(err == DQLITE_PROTO || err == DQLITE_ENGINE);
 
-		return 0;
+			if (err == DQLITE_PROTO) {
+				dqlite__error_wrapf(&g->error, &stmt->error, "invalid bindings");
+				goto out;
+			}
+
+			assert(err == DQLITE_ENGINE);
+			assert(rc != SQLITE_OK);
+
+			dqlite__gateway_db_error(g, ctx, db->db, rc);
+
+			goto out;
+		}
+
+		rc = dqlite__stmt_exec(stmt, &last_insert_id, &rows_affected);
+		if (rc == 0) {
+			ctx->response.type = DQLITE_RESPONSE_RESULT;
+			ctx->response.result.last_insert_id = last_insert_id;
+			ctx->response.result.rows_affected = rows_affected;
+		} else {
+			dqlite__gateway_db_error(g, ctx, db->db, rc);
+			goto out;
+		}
+
+		sql = stmt->tail;
 	}
 
-	rc = dqlite__stmt_exec(stmt, &last_insert_id, &rows_affected);
-	if (rc == 0) {
-		ctx->response.type = DQLITE_RESPONSE_RESULT;
-		ctx->response.result.last_insert_id = last_insert_id;
-		ctx->response.result.rows_affected = rows_affected;
-	} else {
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
-	}
-
+ out:
 	/* Ignore errors here. TODO: emit a warning instead */
 	dqlite__db_finalize(db, stmt, stmt_id);
 
-	return 0;
+	return err;
 }
 
 static int dqlite__gateway_query_sql(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)

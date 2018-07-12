@@ -38,7 +38,9 @@ func TestIntegration_DatabaseSQL(t *testing.T) {
 	tx, err := db.Begin()
 	require.NoError(t, err)
 
-	_, err = tx.Exec("CREATE TABLE test (n INT, s TEXT)")
+	_, err = tx.Exec(
+		"CREATE TABLE test (n INT, s TEXT); CREATE TABLE test2 (n INT)",
+	)
 	require.NoError(t, err)
 
 	stmt, err := tx.Prepare("INSERT INTO test(n, s) VALUES(?, ?)")
@@ -67,6 +69,14 @@ func TestIntegration_DatabaseSQL(t *testing.T) {
 	}
 
 	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	rows, err = tx.Query("SELECT n FROM test2")
+	require.NoError(t, err)
+
+	for rows.Next() {
+	} // TODO: at the moment the test panics without this loop.
+
 	require.NoError(t, rows.Close())
 
 	require.NoError(t, tx.Rollback())
