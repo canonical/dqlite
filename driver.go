@@ -45,6 +45,7 @@ type DriverOption func(*driverOptions)
 // Hold configuration options for a dqlite driver.
 type driverOptions struct {
 	Logger                  *zap.Logger
+	Dial                    client.DialFunc
 	ConnectionTimeout       time.Duration
 	ConnectionBackoffFactor time.Duration
 	ConnectionBackoffCap    time.Duration
@@ -54,6 +55,16 @@ type driverOptions struct {
 func WithLogger(logger *zap.Logger) DriverOption {
 	return func(options *driverOptions) {
 		options.Logger = logger
+	}
+}
+
+// DialFunc is a function that can be used to establish a network connection.
+type DialFunc client.DialFunc
+
+// WithDialFunc sets a custom dial function.
+func WithDialFunc(dial DialFunc) DriverOption {
+	return func(options *driverOptions) {
+		options.Dial = client.DialFunc(dial)
 	}
 }
 
@@ -101,6 +112,7 @@ func NewDriver(store *ServerStore, options ...DriverOption) (*Driver, error) {
 		connectionTimeout: o.ConnectionTimeout,
 	}
 
+	driver.clientConfig.Dial = o.Dial
 	driver.clientConfig.AttemptTimeout = o.ConnectionTimeout / 10
 	driver.clientConfig.RetryStrategies = []strategy.Strategy{
 		driverConnectionRetryStrategy(
@@ -116,6 +128,7 @@ func NewDriver(store *ServerStore, options ...DriverOption) (*Driver, error) {
 func defaultDriverOptions() *driverOptions {
 	return &driverOptions{
 		Logger:                  defaultLogger(),
+		Dial:                    client.TCPDial,
 		ConnectionTimeout:       5 * time.Second,
 		ConnectionBackoffFactor: 50 * time.Millisecond,
 		ConnectionBackoffCap:    time.Second,

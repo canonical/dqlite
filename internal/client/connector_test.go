@@ -247,6 +247,7 @@ func newConnector(t *testing.T, store client.ServerStore) *client.Connector {
 	t.Helper()
 
 	config := client.Config{
+		Dial:           client.TCPDial,
 		AttemptTimeout: 100 * time.Millisecond,
 		RetryStrategies: []strategy.Strategy{
 			strategy.Backoff(backoff.BinaryExponential(time.Millisecond)),
