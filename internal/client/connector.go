@@ -196,6 +196,9 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string) (*Cli
 		return nil, "", nil
 	case address:
 		// This server is the leader, register ourselves and return.
+		request.Reset()
+		response.Reset()
+
 		EncodeClient(&request, c.id)
 
 		if err := client.Call(ctx, &request, &response); err != nil {
