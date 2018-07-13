@@ -1,6 +1,5 @@
 package dump
 
-/*
 import (
 	"fmt"
 	"io"
@@ -90,7 +89,7 @@ func dumpBegin(params *protocol.Begin) string {
 
 func dumpFrames(params *protocol.Frames) string {
 	return fmt.Sprintf("name: %8s txn: %6d commit: %d pages: %2d",
-		params.Filename, params.Txid, params.IsCommit, len(params.Pages))
+		params.Filename, params.Txid, params.IsCommit, len(params.PageNumbers))
 }
 
 func dumpUndo(params *protocol.Undo) string {
@@ -104,4 +103,3 @@ func dumpEnd(params *protocol.End) string {
 func dumpCheckpoint(params *protocol.Checkpoint) string {
 	return fmt.Sprintf("file: %-8s", params.Name)
 }
-*/

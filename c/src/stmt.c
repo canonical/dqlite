@@ -119,7 +119,7 @@ int dqlite__stmt_bind(
 				*rc = sqlite3_bind_text(s->stmt, i + 1, text, -1, SQLITE_STATIC);
 			}
 			break;
-		case DQLITE_DATETIME:
+		case DQLITE_ISO8601:
 			err = dqlite__message_body_get_text(message, &text);
 			if (err == 0 || err == DQLITE_EOM) {
 				*rc = sqlite3_bind_text(s->stmt, i + 1, text, -1, SQLITE_STATIC);
@@ -209,13 +209,19 @@ static int dqlite__stmt_put_row(
 			/* Actual column, fetch the type */
 			const char *column_type_name;
 
+			column_type = sqlite3_column_type(s->stmt, i);
+
 			/* TODO: find a better way to handle time types */
 			column_type_name = sqlite3_column_decltype(s->stmt, i);
 			if (column_type_name != NULL && strcmp(column_type_name, "DATETIME") == 0) {
-				column_type = DQLITE_DATETIME;
-			} else {
-				column_type = sqlite3_column_type(s->stmt, i);
+				if (column_type == SQLITE_INTEGER) {
+					column_type = DQLITE_UNIXTIME;
+				} else {
+					assert(column_type == SQLITE_TEXT || column_type == SQLITE_NULL);
+					column_type = DQLITE_ISO8601;
+				}
 			}
+
 			assert(column_type < 16);
 			column_types[i] = column_type;
 		} else {
@@ -266,8 +272,14 @@ static int dqlite__stmt_put_row(
 			text = (text_t)sqlite3_column_text(s->stmt, i);
 			err = dqlite__message_body_put_text(message, text);
 			break;
-		case DQLITE_DATETIME:
+		case DQLITE_UNIXTIME:
+			integer = sqlite3_column_int64(s->stmt, i);
+			err = dqlite__message_body_put_int64(message, integer);
+			break;
+		case DQLITE_ISO8601:
 			text = (text_t)sqlite3_column_text(s->stmt, i);
+			if (text == NULL || strcmp(text, "") == 0)
+				text = "0000-01-01 00:00:00";
 			err = dqlite__message_body_put_text(message, text);
 			break;
 		default:

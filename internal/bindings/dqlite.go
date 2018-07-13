@@ -246,9 +246,10 @@ const (
 	ResponseEmpty   = C.DQLITE_RESPONSE_EMPTY
 )
 
-// Special data types
+// Special data types for time values.
 const (
-	Datetime = C.DQLITE_DATETIME
+	UnixTime = C.DQLITE_UNIXTIME
+	ISO8601  = C.DQLITE_ISO8601
 )
 
 // Vfs is a Go wrapper arround dqlite's in-memory VFS implementation.
