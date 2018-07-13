@@ -195,7 +195,10 @@ func (c *Client) heartbeat() {
 	response.Init(512)
 
 	for {
-		time.Sleep(c.heartbeatTimeout)
+		delay := c.heartbeatTimeout / 3
+
+		c.logger.Debug("sending heartbeat", zap.Duration("delay", delay))
+		time.Sleep(delay)
 
 		// Check if we've been closed.
 		select {
@@ -209,22 +212,32 @@ func (c *Client) heartbeat() {
 		EncodeHeartbeat(&request, uint64(time.Now().Unix()))
 
 		err := c.Call(ctx, &request, &response)
-		cancel()
 
 		// We bail out upon failures.
 		//
 		// TODO: make the client survive temporary disconnections.
 		if err != nil {
+			cancel()
+			c.logger.Error("heartbeat failed", zap.Error(err))
 			return
 		}
 
 		addresses, err := DecodeServers(&response)
 		if err != nil {
+			cancel()
+			c.logger.Error("invalid heartbeat response", zap.Error(err))
 			return
 		}
 
 		if err := c.store.Set(ctx, addresses); err != nil {
+			cancel()
+			c.logger.Error("failed to update servers", zap.Error(err))
 			return
 		}
+
+		cancel()
+
+		request.Reset()
+		response.Reset()
 	}
 }
