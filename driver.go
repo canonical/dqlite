@@ -479,6 +479,7 @@ func (r *Rows) Columns() []string {
 
 // Close closes the rows iterator.
 func (r *Rows) Close() error {
+	r.rows.Close()
 	return nil
 }
 

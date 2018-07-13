@@ -128,7 +128,7 @@ func (m *Message) PutNamedValues(values NamedValues) {
 		case nil:
 			m.PutUint8(bindings.Null)
 		case time.Time:
-			m.PutUint8(bindings.Datetime)
+			m.PutUint8(bindings.ISO8601)
 		default:
 			panic("unsupported value type")
 		}
@@ -370,7 +370,6 @@ func (r *Rows) Next(dest []driver.Value) error {
 
 		if slot == 0xff {
 			// Rows EOF marker
-			r.message.Reset()
 			return io.EOF
 		}
 
@@ -404,7 +403,10 @@ func (r *Rows) Next(dest []driver.Value) error {
 		case bindings.Null:
 			r.message.GetUint64()
 			dest[i] = nil
-		case bindings.Datetime:
+		case bindings.UnixTime:
+			timestamp := time.Unix(r.message.GetInt64(), 0)
+			dest[i] = timestamp
+		case bindings.ISO8601:
 			timestamp, err := time.Parse(iso8601, r.message.GetString())
 			if err != nil {
 				return err
@@ -416,6 +418,10 @@ func (r *Rows) Next(dest []driver.Value) error {
 	}
 
 	return nil
+}
+
+func (r *Rows) Close() {
+	r.message.Reset()
 }
 
 const (

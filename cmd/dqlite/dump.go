@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/CanonicalLtd/dqlite/recover"
+	"github.com/CanonicalLtd/dqlite/recover/dump"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
 	"github.com/pkg/errors"
@@ -22,29 +24,28 @@ func newDump() *cobra.Command {
 		Short: "Dump or replay the content of a dqlite raft store.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			/*
-				dir := args[0]
+			dir := args[0]
 
-				logs, snaps, err := recover.Open(dir)
-				if err != nil {
-					return err
-				}
+			logs, snaps, err := recover.Open(dir)
+			if err != nil {
+				return err
+			}
 
-				options := make([]dump.Option, 0)
+			options := make([]dump.Option, 0)
 
-				if head != 0 {
-					options = append(options, dump.Head(head))
-				}
-				if tail != 0 {
-					options = append(options, dump.Tail(tail))
-				}
-				if replay != "" {
-					options = append(options, dump.Replay(replay))
-				}
+			if head != 0 {
+				options = append(options, dump.Head(head))
+			}
+			if tail != 0 {
+				options = append(options, dump.Tail(tail))
+			}
+			if replay != "" {
+				options = append(options, dump.Replay(replay))
+			}
 
-				if err := dump.Dump(logs, snaps, os.Stdout, options...); err != nil {
-					return err
-				}*/
+			if err := dump.Dump(logs, snaps, os.Stdout, options...); err != nil {
+				return err
+			}
 
 			return nil
 		},
