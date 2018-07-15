@@ -17,6 +17,7 @@ package dqlite
 import (
 	"context"
 	"database/sql/driver"
+	"net"
 	"reflect"
 	"time"
 
@@ -235,7 +236,7 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	var err error
 	stmt.db, stmt.id, stmt.params, err = client.DecodeStmt(&c.response)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to prepare statement")
+		return nil, driverError(err)
 	}
 
 	return stmt, nil
@@ -254,7 +255,7 @@ func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	client.EncodeExecSQL(&c.request, uint64(c.id), query, args)
 
 	if err := c.client.Call(ctx, &c.request, &c.response); err != nil {
-		return nil, errors.Wrap(err, "failed to exec statement")
+		return nil, driverError(err)
 	}
 
 	result, err := client.DecodeResult(&c.response)
@@ -277,7 +278,7 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	client.EncodeQuerySQL(&c.request, uint64(c.id), query, args)
 
 	if err := c.client.Call(ctx, &c.request, &c.response); err != nil {
-		return nil, errors.Wrap(err, "failed to exec statement")
+		return nil, driverError(err)
 	}
 
 	rows, err := client.DecodeRows(&c.response)
@@ -317,7 +318,7 @@ func (c *Conn) Close() error {
 // an error if it is not supported.
 func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
 	if _, err := c.ExecContext(ctx, "BEGIN", nil); err != nil {
-		return nil, err
+		return nil, driverError(err)
 	}
 
 	tx := &Tx{
@@ -342,7 +343,7 @@ type Tx struct {
 // Commit the transaction.
 func (tx *Tx) Commit() error {
 	if _, err := tx.conn.Exec("COMMIT", nil); err != nil {
-		return err
+		return driverError(err)
 	}
 
 	return nil
@@ -351,7 +352,7 @@ func (tx *Tx) Commit() error {
 // Rollback the transaction.
 func (tx *Tx) Rollback() error {
 	if _, err := tx.conn.Exec("ROLLBACK", nil); err != nil {
-		return err
+		return driverError(err)
 	}
 
 	return nil
@@ -378,7 +379,7 @@ func (s *Stmt) Close() error {
 	ctx := context.Background()
 
 	if err := s.client.Call(ctx, s.request, s.response); err != nil {
-		return errors.Wrap(err, "failed to close statement")
+		return driverError(err)
 	}
 
 	if err := client.DecodeEmpty(s.response); err != nil {
@@ -404,7 +405,7 @@ func (s *Stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	client.EncodeExec(s.request, s.db, s.id, args)
 
 	if err := s.client.Call(ctx, s.request, s.response); err != nil {
-		return nil, errors.Wrap(err, "failed to exec statement")
+		return nil, driverError(err)
 	}
 
 	result, err := client.DecodeResult(s.response)
@@ -430,7 +431,7 @@ func (s *Stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 	client.EncodeQuery(s.request, s.db, s.id, args)
 
 	if err := s.client.Call(ctx, s.request, s.response); err != nil {
-		return nil, errors.Wrap(err, "failed to query statement")
+		return nil, driverError(err)
 	}
 
 	rows, err := client.DecodeRows(s.response)
@@ -528,6 +529,15 @@ func valuesToNamedValues(args []driver.Value) []driver.NamedValue {
 		}
 	}
 	return namedValues
+}
+
+func driverError(err error) error {
+	switch errors.Cause(err).(type) {
+	case *net.OpError:
+		return driver.ErrBadConn
+	default:
+		return err
+	}
 }
 
 func init() {
