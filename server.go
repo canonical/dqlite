@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
@@ -89,6 +90,9 @@ func NewServer(raft *raft.Raft, registry *Registry, listener net.Listener, optio
 
 // Run the server.
 func (s *Server) run() {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	s.logger.Debug("starting dqlite C server")
 
 	s.runCh <- s.server.Run()
@@ -120,10 +124,6 @@ func (s *Server) acceptLoop() {
 func (s *Server) Close() error {
 	s.logger.Debug("stopping dqlite C server")
 
-	if err := s.server.Stop(); err != nil {
-		return err
-	}
-
 	if err := s.listener.Close(); err != nil {
 		return err
 	}
@@ -136,6 +136,10 @@ func (s *Server) Close() error {
 		}
 	case <-time.After(time.Second):
 		return fmt.Errorf("accept goroutine did not stop within a second")
+	}
+
+	if err := s.server.Stop(); err != nil {
+		return err
 	}
 
 	// Wait for the run goroutine to exit.

@@ -7,11 +7,21 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/CanonicalLtd/dqlite/internal/client"
 	_ "github.com/mattn/go-sqlite3" // Go SQLite bindings
 )
 
-// ServerStore persists a list addresses of dqlite servers in a SQL table.
-type ServerStore struct {
+// ServerStore is used by a dqlite client to get an initial list of candidate
+// dqlite server addresses that it can dial in order to find a leader dqlite
+// server to use.
+//
+// Once connected, the client periodically updates the addresses in the store
+// by querying the leader server about changes in the cluster (such as servers
+// being added or removed).
+type ServerStore = client.ServerStore
+
+// DatabaseServerStore persists a list addresses of dqlite servers in a SQL table.
+type DatabaseServerStore struct {
 	db     *sql.DB // Database handle to use.
 	schema string  // Name of the schema holding the servers table.
 	table  string  // Name of the servers table.
@@ -23,7 +33,7 @@ type ServerStore struct {
 // parameters.
 //
 // It also creates the table if it doesn't exist yet.
-func DefaultServerStore(filename string) (*ServerStore, error) {
+func DefaultServerStore(filename string) (*DatabaseServerStore, error) {
 	// Open the database.
 	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
@@ -46,8 +56,8 @@ func DefaultServerStore(filename string) (*ServerStore, error) {
 }
 
 // NewServerStore creates a new ServerStore.
-func NewServerStore(db *sql.DB, schema, table, column string) *ServerStore {
-	return &ServerStore{
+func NewServerStore(db *sql.DB, schema, table, column string) *DatabaseServerStore {
+	return &DatabaseServerStore{
 		db:     db,
 		schema: schema,
 		table:  table,
@@ -56,7 +66,7 @@ func NewServerStore(db *sql.DB, schema, table, column string) *ServerStore {
 }
 
 // Get the current servers.
-func (d *ServerStore) Get(ctx context.Context) ([]string, error) {
+func (d *DatabaseServerStore) Get(ctx context.Context) ([]string, error) {
 	tx, err := d.db.Begin()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to begin transaction")
@@ -87,7 +97,7 @@ func (d *ServerStore) Get(ctx context.Context) ([]string, error) {
 }
 
 // Set the servers addresses.
-func (d *ServerStore) Set(ctx context.Context, addresses []string) error {
+func (d *DatabaseServerStore) Set(ctx context.Context, addresses []string) error {
 	tx, err := d.db.Begin()
 	if err != nil {
 		return errors.Wrap(err, "failed to begin transaction")
