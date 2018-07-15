@@ -20,6 +20,12 @@ import (
 // being added or removed).
 type ServerStore = client.ServerStore
 
+// InmemServerStore keeps the list of target gRPC SQL servers in memory.
+type InmemServerStore = client.InmemServerStore
+
+// NewInmemServerStore creates ServerStore which stores its data in-memory.
+var NewInmemServerStore = client.NewInmemServerStore
+
 // DatabaseServerStore persists a list addresses of dqlite servers in a SQL table.
 type DatabaseServerStore struct {
 	db     *sql.DB // Database handle to use.
