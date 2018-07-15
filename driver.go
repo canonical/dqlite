@@ -34,7 +34,7 @@ import (
 // Driver perform queries against a dqlite server.
 type Driver struct {
 	logger            *zap.Logger   // Logger to use
-	store             *ServerStore  // Holds addresses of dqlite servers
+	store             ServerStore   // Holds addresses of dqlite servers
 	connectionTimeout time.Duration // Max time to wait for a new connection
 	clientConfig      client.Config // Configuration for dqlite client instances
 }
@@ -99,7 +99,7 @@ func WithConnectionBackoffCap(cap time.Duration) DriverOption {
 
 // NewDriver creates a new dqlite driver, which also implements the
 // driver.Driver interface.
-func NewDriver(store *ServerStore, options ...DriverOption) (*Driver, error) {
+func NewDriver(store ServerStore, options ...DriverOption) (*Driver, error) {
 	o := defaultDriverOptions()
 
 	for _, option := range options {
