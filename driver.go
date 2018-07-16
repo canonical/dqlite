@@ -177,7 +177,9 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 	// TODO: generate a client ID.
 	connector := client.NewConnector(0, d.store, d.clientConfig, d.logger)
 
-	conn := &Conn{}
+	conn := &Conn{
+		logger: d.logger,
+	}
 
 	conn.client, err = connector.Connect(ctx)
 	if err != nil {
@@ -208,6 +210,7 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 
 // Conn implements the sql.Conn interface.
 type Conn struct {
+	logger   *zap.Logger
 	client   *client.Client
 	request  client.Message
 	response client.Message
