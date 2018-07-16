@@ -35,7 +35,6 @@ static int dqlite__conn_write(struct dqlite__conn *c, struct dqlite__response *r
 	struct dqlite__conn_write_ctx *ctx;
 	uv_write_t *req;
 	uv_buf_t bufs[3];
-	size_t len;
 
 	/* Create a write request UV handle */
 	req = (uv_write_t*)sqlite3_malloc(sizeof(*req) + sizeof(*ctx));
@@ -58,10 +57,6 @@ static int dqlite__conn_write(struct dqlite__conn *c, struct dqlite__response *r
 
 	assert(bufs[1].base != NULL);
 	assert(bufs[1].len > 0);
-
-	len = bufs[0].len + bufs[1].len + bufs[2].len;
-
-	dqlite__debugf(c, "writing response", "socket=%d len=%ld", c->socket, len);
 
 	err = uv_write(req, (uv_stream_t*)(&c->tcp), bufs, 3, dqlite__conn_write_cb);
 	if (err != 0) {
@@ -220,8 +215,6 @@ static int dqlite__conn_handshake_alloc_cb(void *arg)
 	buf.base = (char*)(&c->protocol);
 	buf.len = sizeof(c->protocol);
 
-	dqlite__debugf(c, "handshake alloc", "socket=%d len=%ld", c->socket, buf.len);
-
 	dqlite__conn_buf_init(c, &buf);
 
 	return 0;
@@ -240,8 +233,6 @@ static int dqlite__conn_handshake_read_cb(void *arg)
 	assert((c->buf.base - sizeof(c->protocol)) == (char*)(&c->protocol));
 
 	c->protocol = dqlite__flip64(c->protocol);
-
-	dqlite__debugf(c, "handshake read", "socket=%d protocol=%lx", c->socket, c->protocol);
 
 	if (c->protocol != DQLITE_PROTOCOL_VERSION) {
 		err = DQLITE_PROTO;
@@ -268,8 +259,6 @@ static int dqlite__conn_header_alloc_cb(void *arg)
 
 	dqlite__message_header_recv_start(&c->request.message, &buf);
 
-	dqlite__debugf(c, "header alloc", "socket=%d len=%ld", c->socket, buf.len);
-
 	dqlite__conn_buf_init(c, &buf);
 
 	return 0;
@@ -283,8 +272,6 @@ static int dqlite__conn_header_read_cb(void *arg)
 	assert(arg != NULL);
 
 	c = (struct dqlite__conn*)arg;
-
-	dqlite__debugf(c, "header read", "socket=%d", c->socket);
 
 	err = dqlite__message_header_recv_done(&c->request.message);
 	if (err != 0) {
@@ -332,8 +319,6 @@ static int dqlite__conn_body_alloc_cb(void *arg)
 		return err;
 	}
 
-	dqlite__debugf(c, "body alloc", "socket=%d len=%ld", c->socket, buf.len);
-
 	dqlite__conn_buf_init(c, &buf);
 
 	return 0;
@@ -348,8 +333,6 @@ static int dqlite__conn_body_read_cb(void *arg)
 	assert(arg != NULL);
 
 	c = (struct dqlite__conn*)arg;
-
-	dqlite__debugf(c, "body read", "socket=%d", c->socket);
 
 	err = dqlite__request_decode(&c->request);
 	if (err != 0) {
@@ -454,8 +437,6 @@ static void dqlite__conn_alive_cb(uv_timer_t *alive)
 
 	assert(c != NULL);
 
-	dqlite__debugf(c, "check heartbeat", "socket=%d", c->socket);
-
 	elapsed = uv_now(c->loop) - c->gateway.heartbeat;
 
 	/* If the last successful heartbeat happened more than heartbeat_timeout
@@ -512,7 +493,6 @@ static void dqlite__conn_read_cb(uv_stream_t *tcp, ssize_t nread, const uv_buf_t
 	assert(nread <= 0);
 
 	if (nread == 0) {
-		dqlite__debugf(c, "empty read", "socket=%d", c->socket);
 		goto out;
 	}
 
@@ -579,8 +559,6 @@ int dqlite__conn_start(struct dqlite__conn *c)
 	uint64_t heartbeat_timeout;
 
 	assert(c != NULL);
-
-	dqlite__debugf(c, "start connection", "socket=%d", c->socket);
 
 	/* Consider the initial connection as a heartbeat */
 	c->gateway.heartbeat = uv_now(c->loop);
@@ -660,7 +638,6 @@ void dqlite__conn_abort(struct dqlite__conn *c)
 		** the same loop iteration. We just ignore the second call in that
 		** case.
 		*/
-		dqlite__debugf(c, "skip abort (closing connection)", "socket=%d", c->socket);
 		return;
 	}
 
