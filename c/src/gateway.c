@@ -469,8 +469,6 @@ int dqlite__gateway_handle(
 
 #define DQLITE__GATEWAY_HANDLE(CODE, STRUCT, NAME, _)			\
 		case CODE:						\
-			dqlite__debugf(g, "handle request", "type=%s", #NAME); \
-									\
 			err = dqlite__gateway_ ## NAME(g, ctx);		\
 			if (err != 0) {					\
 				dqlite__error_wrapf(			\
@@ -526,8 +524,6 @@ void dqlite__gateway_finish(struct dqlite__gateway *g, struct dqlite__response *
 
 	/* Assert that an associated request was indeed found */
 	assert(i < DQLITE__GATEWAY_MAX_REQUESTS);
-
-	dqlite__debugf(g, "request finished", "index=%d", i);
 }
 
 void dqlite__gateway_abort(struct dqlite__gateway *g, struct dqlite__response *response){
