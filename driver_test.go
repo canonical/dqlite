@@ -586,22 +586,4 @@ func newDir(t *testing.T) (string, func()) {
 	}
 	return dir, cleanup
 }
-
-// Return a logger forwarding its output to the test logger.
-func newTestingLogger(t *testing.T, n int) *log.Logger {
-	return log.New(&testingWriter{t}, fmt.Sprintf("%d: ", n), log.LstdFlags)
-}
-
-// Implement io.Writer and forward what it receives to a
-// testing logger.
-type testingWriter struct {
-	t testing.TB
-}
-
-// Write a single log entry. It's assumed that p is always a \n-terminated UTF
-// string.
-func (w *testingWriter) Write(p []byte) (n int, err error) {
-	w.t.Logf(string(p))
-	return len(p), nil
-}
 */

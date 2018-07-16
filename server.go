@@ -27,13 +27,6 @@ type Server struct {
 // ServerOption can be used to tweak server parameters.
 type ServerOption func(*serverOptions)
 
-// Hold configuration options for a dqlite server.
-type serverOptions struct {
-	Logger          *zap.Logger
-	LogFile         *os.File
-	AddressProvider raft.ServerAddressProvider
-}
-
 // WithServerLogger sets a custom Server zap logger.
 func WithServerLogger(logger *zap.Logger) ServerOption {
 	return func(options *serverOptions) {
@@ -64,6 +57,10 @@ func NewServer(raft *raft.Raft, registry *Registry, listener net.Listener, optio
 	}
 
 	methods := replication.NewMethods(registry.registry, raft)
+
+	if replication := bindings.FindWalReplication(registry.name); replication != nil {
+		return nil, fmt.Errorf("replication name already in use")
+	}
 
 	if err := bindings.RegisterWalReplication(registry.name, methods); err != nil {
 		return nil, errors.Wrap(err, "failed to register WAL replication")
@@ -101,12 +98,17 @@ func NewServer(raft *raft.Raft, registry *Registry, listener net.Listener, optio
 	return s, nil
 }
 
+// Hold configuration options for a dqlite server.
+type serverOptions struct {
+	Logger          *zap.Logger
+	LogFile         *os.File
+	AddressProvider raft.ServerAddressProvider
+}
+
 // Run the server.
 func (s *Server) run() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-
-	s.logger.Debug("starting dqlite C server")
 
 	s.runCh <- s.server.Run()
 }
@@ -122,11 +124,12 @@ func (s *Server) acceptLoop() {
 		}
 
 		err = s.server.Handle(conn)
-		if err == bindings.ErrServerStopped {
-			s.acceptCh <- nil
-			return
-		}
 		if err != nil {
+			if err == bindings.ErrServerStopped {
+				// Ignore failures due to the server being
+				// stopped.
+				err = nil
+			}
 			s.acceptCh <- err
 			return
 		}
@@ -135,8 +138,8 @@ func (s *Server) acceptLoop() {
 
 // Close the server, releasing all resources it created.
 func (s *Server) Close() error {
-	s.logger.Debug("stopping dqlite C server")
-
+	// Close the listener, which will make the listener.Accept() call in
+	// acceptLoop() return an error.
 	if err := s.listener.Close(); err != nil {
 		return err
 	}
@@ -151,8 +154,9 @@ func (s *Server) Close() error {
 		return fmt.Errorf("accept goroutine did not stop within a second")
 	}
 
+	// Send a stop signal to the dqlite event loop.
 	if err := s.server.Stop(); err != nil {
-		return err
+		return errors.Wrap(err, "server failed to stop")
 	}
 
 	// Wait for the run goroutine to exit.
