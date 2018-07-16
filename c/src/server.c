@@ -55,26 +55,6 @@ struct dqlite__server {
 	sem_t                stopped;  /* Notifiy that the loop has been stopped */
 };
 
-/* Close callback for the 'stop' async event handle
- *
- * This callback must be fired when *all* other UV handles have been closed and
- * it's hence safe to stop the loop.
- */
-static void dqlite__server_stop_close_cb(uv_handle_t *stop)
-{
-	struct dqlite__server* s;
-
-	assert(stop != NULL);
-	assert(stop->data != NULL);
-
-	s = (struct dqlite__server*)stop->data;
-
-	/* All handles must have been closed */
-	assert(!uv_loop_alive(&s->loop));
-
-	uv_stop(&s->loop);
-}
-
 /* Callback for the uv_walk() call in dqlite__server_stop_cb.
  *
  * This callback gets fired once for every active handle in the UV loop and is
@@ -84,7 +64,6 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 {
 	struct dqlite__server* s;
 	struct dqlite__conn *conn;
-	uv_close_cb callback;
 
 	assert(handle != NULL);
 	assert(arg != NULL);
@@ -102,16 +81,7 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 			handle == (uv_handle_t*)&s->stop ||
 			handle == (uv_handle_t*)&s->incoming);
 
-		callback = NULL;
-
-		/* FIXME: here we rely on the fact that the stop handle is
-                 *        the last one to be walked into. This behavior is not
-                 *        advertised by the libuv docs and hence might change.
-                 */
-		if (handle == (uv_handle_t*)&s->stop)
-			callback = dqlite__server_stop_close_cb;
-
-		uv_close(handle, callback);
+		uv_close(handle, NULL);
 
 		break;
 
@@ -130,15 +100,14 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 		break;
 
 	case UV_TIMER:
-		/* If this is not the startup timer, it means that we got stopped very
-		 * early on and the startup callback didn't trigger yet. */
+		/* If this is the startup timer, let's close it explicitely. */
 		if (handle == (uv_handle_t*)&s->startup) {
 			uv_close(handle, NULL);
 		}
 
-		/* This must be a timer created by a conn object, which gets
-		 * closed by the dqlite__conn_abort call above, so there's
-		 * nothing to do in that case. */
+		/* In all other cases this must be a timer created by a conn
+		 * object, which gets closed by the dqlite__conn_abort call
+		 * above, so there's nothing to do in that case. */
 
 		break;
 
@@ -213,9 +182,6 @@ static void dqlite__service_startup_cb(uv_timer_t *startup)
 	assert(startup->data != NULL);
 
 	s = (struct dqlite__server*)startup->data;
-
-	/* Close the handle, since we're not going to need it anymore. */
-	uv_close((uv_handle_t*)startup, NULL);
 
 	s->running = 1;
 
@@ -361,7 +327,7 @@ int dqlite_server_run(struct dqlite__server *s){
 
 	assert(s != NULL);
 
-	dqlite__infof(s, "run event loop", "");
+	dqlite__infof(s, "run dqlite server", "");
 
 	err = uv_run(&s->loop, UV_RUN_DEFAULT);
 	if (err != 0) {
@@ -453,14 +419,22 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 
 	dqlite__debugf(s, "new connection", "socket=%d", socket);
 
+	pthread_mutex_lock(&s->mutex);
+
 	/* Create an error instance since the one on d is not thread-safe */
 	dqlite__error_init(&e);
+
+	if (!s->running) {
+		err = DQLITE_STOPPED;
+		dqlite__error_printf(&e, "server is not running");
+		goto err_not_running_or_conn_malloc;
+	}
 
 	conn = (struct dqlite__conn*)sqlite3_malloc(sizeof(*conn));
 	if (conn == NULL) {
 		dqlite__error_oom(&e, "failed to allocate connection");
 		err = DQLITE_NOMEM;
-		goto err_conn_malloc;
+		goto err_not_running_or_conn_malloc;
 	}
 	dqlite__conn_init(conn, s->log, socket, s->cluster, &s->loop);
 
@@ -468,21 +442,13 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 	if (err != 0) {
 		dqlite__error_printf(&e, "failed to init incoming queue item: %s", strerror(errno));
 		err = DQLITE_ERROR;
-		goto err_item_init;
-	}
-
-	pthread_mutex_lock(&s->mutex);
-
-	if (!s->running) {
-		err = DQLITE_STOPPED;
-		dqlite__error_printf(&e, "server is not running");
-		goto err_queue_push;
+		goto err_item_init_or_queue_push;
 	}
 
 	err = dqlite__queue_push(&s->queue, &item);
 	if (err != 0) {
 		dqlite__error_wrapf(&e, &s->queue.error, "failed to push incoming queue item");
-		goto err_queue_push;
+		goto err_item_init_or_queue_push;
 	}
 
 	err = uv_async_send(&s->incoming);
@@ -493,8 +459,6 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 	}
 
 	pthread_mutex_unlock(&s->mutex);
-
-	dqlite__debugf(s, "wait connection ready", "socket=%d", socket);
 
 	dqlite__queue_item_wait(&item);
 
@@ -512,22 +476,23 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
  err_incoming_send:
 	dqlite__queue_pop(&s->queue);
 
- err_queue_push:
-	pthread_mutex_unlock(&s->mutex);
-
- err_item_wait:
-	dqlite__queue_item_close(&item);
-
- err_item_init:
+ err_item_init_or_queue_push:
 	dqlite__conn_close(conn);
 	sqlite3_free(conn);
 
- err_conn_malloc:
+ err_not_running_or_conn_malloc:
 	err = dqlite__error_copy(&e, errmsg);
 	if (err != 0)
 		*errmsg = "error message unavailable (out of memory)";
 
 	dqlite__error_close(&e);
+
+	pthread_mutex_unlock(&s->mutex);
+
+	return err;
+
+ err_item_wait:
+	dqlite__queue_item_close(&item);
 
 	return err;
 }
