@@ -12,8 +12,13 @@
 #include "response.h"
 #include "error.h"
 
-/* Maximum number of requests that can be served concurrently. */
-#define DQLITE__GATEWAY_MAX_REQUESTS 5
+/* Maximum number of requests that can be served concurrently.
+ *
+ * TODO: this should be reduced to 5 or 3. The problem is that some new request
+ * might come in before the response for the last request has been completely
+ * written out.
+ */
+#define DQLITE__GATEWAY_MAX_REQUESTS 20
 
 /* Context for the gateway request handlers */
 struct dqlite__gateway_ctx {
