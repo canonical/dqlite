@@ -9,6 +9,8 @@ package bindings
 #include <dqlite.h>
 #include <sqlite3.h>
 
+// Trampoline between a C dqlite_cluster instance and a Go
+// bindings.Cluster instance.
 struct dqliteCluster {
   int    handle;      // Entry of the Go clusterHandles map
   char  *replication; // Hold the last string returned by xReplication
@@ -17,6 +19,7 @@ struct dqliteCluster {
   dqlite_cluster cluster;
 };
 
+// Constructor.
 static struct dqliteCluster *dqliteClusterAlloc() {
   struct dqliteCluster *c;
 
@@ -25,6 +28,7 @@ static struct dqliteCluster *dqliteClusterAlloc() {
   return c;
 }
 
+// Destructor.
 static void dqliteClusterFree(struct dqliteCluster *c)
 {
   assert(c != NULL);
@@ -35,6 +39,7 @@ static void dqliteClusterFree(struct dqliteCluster *c)
 // Go land callback for xReplication.
 char *dqliteClusterReplicationCb(int handle);
 
+// Implementation of xReplication.
 static const char *dqliteClusterReplication(void *ctx) {
   int err;
   struct dqliteCluster *c;
@@ -43,6 +48,8 @@ static const char *dqliteClusterReplication(void *ctx) {
 
   c = (struct dqliteCluster*)ctx;
 
+  // Save the C string allocated by Go because we'll want to
+  // free it when this dqliteCluster instance gets destroyed.
   c->replication = dqliteClusterReplicationCb(c->handle);
 
   return (const char*)c->replication;
@@ -51,6 +58,7 @@ static const char *dqliteClusterReplication(void *ctx) {
 // Go land callback for xLeader.
 char *dqliteClusterLeaderCb(int handle);
 
+// Implementation of xLeader.
 static const char* dqliteClusterLeader(void *ctx) {
   struct dqliteCluster *c;
   char *leader;
@@ -59,6 +67,8 @@ static const char* dqliteClusterLeader(void *ctx) {
 
   c = (struct dqliteCluster*)ctx;
 
+  // Save the C string allocated by Go because we'll want to
+  // free it when this dqliteCluster instance gets destroyed.
   c->leader = dqliteClusterLeaderCb(c->handle);
 
   return (const char*)c->leader;
@@ -67,6 +77,7 @@ static const char* dqliteClusterLeader(void *ctx) {
 // Go land callback for xServers.
 int dqliteClusterServersCb(int handle, char ***addresses);
 
+// Implementation of xServers.
 static int dqliteClusterServers(void *ctx, const char ***addresses) {
   int err;
   struct dqliteCluster *c;
@@ -75,6 +86,8 @@ static int dqliteClusterServers(void *ctx, const char ***addresses) {
 
   c = (struct dqliteCluster*)ctx;
 
+  // Save the C string array allocated by Go because we'll want to
+  // free it when this dqliteCluster instance gets destroyed.
   err = dqliteClusterServersCb(c->handle, &c->addresses);
   if (err != 0) {
     assert(c->addresses == NULL);
@@ -90,6 +103,7 @@ static int dqliteClusterServers(void *ctx, const char ***addresses) {
 // Go land callback for xRegister.
 void dqliteClusterRegisterCb(int handle, sqlite3 *db);
 
+// Implementation of xRegister.
 static void dqliteClusterRegister(void *ctx, sqlite3 *db) {
   struct dqliteCluster *c;
 
@@ -103,6 +117,7 @@ static void dqliteClusterRegister(void *ctx, sqlite3 *db) {
 // Go land callback for xUnregister.
 void dqliteClusterUnregisterCb(int handle, sqlite3 *db);
 
+// Implementation of xUnregister.
 static void dqliteClusterUnregister(void *ctx, sqlite3 *db) {
   struct dqliteCluster *c;
 
@@ -116,6 +131,7 @@ static void dqliteClusterUnregister(void *ctx, sqlite3 *db) {
 // Go land callback for xBarrier.
 int dqliteClusterBarrierCb(int handle);
 
+// Implementation of xBarrier.
 static int dqliteClusterBarrier(void *ctx) {
   struct dqliteCluster *c;
 
@@ -129,6 +145,7 @@ static int dqliteClusterBarrier(void *ctx) {
 // Go land callback for xRecover.
 int dqliteClusterRecoverCb(int handle, uint64_t txToken);
 
+// Go land callback for xRecover.
 static int dqliteClusterRecover(void *ctx, uint64_t tx_token) {
   struct dqliteCluster *c;
 
@@ -139,6 +156,7 @@ static int dqliteClusterRecover(void *ctx, uint64_t tx_token) {
   return dqliteClusterRecoverCb(c->handle, tx_token);
 }
 
+// Initializer.
 static void dqliteClusterInit(struct dqliteCluster *c, int handle)
 {
   assert(c != NULL);
@@ -148,7 +166,7 @@ static void dqliteClusterInit(struct dqliteCluster *c, int handle)
   c->leader = NULL;
   c->addresses = NULL;
 
-  c->cluster.ctx = (void*)c;
+  c->cluster.ctx = (void*)c; // The context is the wrapper itself.
   c->cluster.xReplication = dqliteClusterReplication;
   c->cluster.xLeader = dqliteClusterLeader;
   c->cluster.xServers = dqliteClusterServers;
@@ -158,6 +176,7 @@ static void dqliteClusterInit(struct dqliteCluster *c, int handle)
   c->cluster.xRecover = dqliteClusterRecover;
 }
 
+// Closer.
 static void dqliteClusterClose(struct dqliteCluster *c)
 {
   assert(c != NULL);
@@ -181,6 +200,9 @@ static void dqliteClusterClose(struct dqliteCluster *c)
   }
 }
 
+// Wrapper around dqlite_server_init. It's needed in order to create a
+// dqliteCluster instance that holds a handle to the Go cluster
+// implementation.
 static int dqliteServerInit(dqlite_server *s, int fd, int cluster_handle)
 {
   int err;
@@ -319,11 +341,9 @@ func NewServer(file *os.File, cluster Cluster) (*Server, error) {
 		return nil, fmt.Errorf("out of memory")
 	}
 
-	handle := clusterHandlesSerial
-
-	clusterHandles[handle] = cluster
-
-	clusterHandlesSerial++
+	// Register the cluster implementation pass its handle to
+	// dqliteServerInit.
+	handle := clusterRegister(cluster)
 
 	rc := C.dqliteServerInit(server, C.int(file.Fd()), handle)
 	if rc != 0 {
@@ -547,3 +567,12 @@ func dqliteClusterRecoverCb(handle C.int, txToken C.uint64_t) C.int {
 // Cluster instance should be registered (except for unit tests).
 var clusterHandlesSerial C.int
 var clusterHandles = map[C.int]Cluster{}
+
+func clusterRegister(cluster Cluster) C.int {
+	handle := clusterHandlesSerial
+
+	clusterHandles[handle] = cluster
+	clusterHandlesSerial++
+
+	return handle
+}

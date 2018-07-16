@@ -521,6 +521,22 @@ type WalReplication interface {
 	End(*Conn) int
 }
 
+// FindWalReplication finds the replication implementation with the given name,
+// if one is registered.
+func FindWalReplication(name string) WalReplication {
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+
+	r := C.sqlite3_wal_replication_find(cname)
+	if r == nil {
+		return nil
+	}
+
+	handle := *(*C.int)(r.pAppData)
+
+	return walReplicationHandles[handle]
+}
+
 // RegisterWalReplication registers a WalReplication implementation under the
 // given name.
 func RegisterWalReplication(name string, replication WalReplication) error {
