@@ -43,7 +43,13 @@ func (c *Client) Call(ctx context.Context, request, response *Message) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// TODO: honor ctx
+	// Honor the ctx deadline, if present, or use a default.
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(time.Second)
+	}
+	c.conn.SetDeadline(deadline)
+
 	if err := c.send(request); err != nil {
 		return errors.Wrap(err, "failed to send request")
 	}
