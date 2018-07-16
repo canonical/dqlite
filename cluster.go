@@ -8,17 +8,10 @@ import (
 )
 
 type cluster struct {
-	replication string             // Registration name for WAL replication
-	raft        *raft.Raft         // Raft instance
-	registry    *registry.Registry // Connection registry
-}
-
-func newCluster(replication string, raft *raft.Raft, registry *registry.Registry) *cluster {
-	return &cluster{
-		replication: replication,
-		raft:        raft,
-		registry:    registry,
-	}
+	replication string                     // Registration name for WAL replication
+	raft        *raft.Raft                 // Raft instance
+	registry    *registry.Registry         // Connection registry
+	provider    raft.ServerAddressProvider // Custom address provider
 }
 
 func (c *cluster) Replication() string {
@@ -46,6 +39,16 @@ func (c *cluster) Servers() ([]string, error) {
 	addresses := make([]string, len(servers))
 
 	for i, server := range servers {
+		if c.provider != nil {
+			address, err := c.provider.ServerAddr(server.ID)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to fetch raft server address")
+			}
+			if address != "" {
+				addresses[i] = string(address)
+				continue
+			}
+		}
 		addresses[i] = string(server.Address)
 	}
 
