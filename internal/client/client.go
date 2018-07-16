@@ -222,18 +222,19 @@ func (c *Client) heartbeat() {
 			return
 		}
 
-		addresses, err := DecodeServers(&response)
+		//addresses, err := DecodeServers(&response)
+		_, err = DecodeServers(&response)
 		if err != nil {
 			cancel()
 			c.logger.Error("invalid heartbeat response", zap.Error(err))
 			return
 		}
 
-		if err := c.store.Set(ctx, addresses); err != nil {
-			cancel()
-			c.logger.Error("failed to update servers", zap.Error(err))
-			return
-		}
+		// if err := c.store.Set(ctx, addresses); err != nil {
+		// 	cancel()
+		// 	c.logger.Error("failed to update servers", zap.Error(err))
+		// 	return
+		// }
 
 		cancel()
 

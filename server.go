@@ -29,8 +29,9 @@ type ServerOption func(*serverOptions)
 
 // Hold configuration options for a dqlite server.
 type serverOptions struct {
-	Logger  *zap.Logger
-	LogFile *os.File
+	Logger          *zap.Logger
+	LogFile         *os.File
+	AddressProvider raft.ServerAddressProvider
 }
 
 // WithServerLogger sets a custom Server zap logger.
@@ -44,6 +45,13 @@ func WithServerLogger(logger *zap.Logger) ServerOption {
 func WithServerLogFile(file *os.File) ServerOption {
 	return func(options *serverOptions) {
 		options.LogFile = file
+	}
+}
+
+// WithServerAddressProvider sets a custom resolver for server addresses.
+func WithServerAddressProvider(provider raft.ServerAddressProvider) ServerOption {
+	return func(options *serverOptions) {
+		options.AddressProvider = provider
 	}
 }
 
@@ -61,7 +69,12 @@ func NewServer(raft *raft.Raft, registry *Registry, listener net.Listener, optio
 		return nil, errors.Wrap(err, "failed to register WAL replication")
 	}
 
-	cluster := newCluster(registry.name, raft, registry.registry)
+	cluster := &cluster{
+		replication: registry.name,
+		raft:        raft,
+		registry:    registry.registry,
+		provider:    o.AddressProvider,
+	}
 
 	server, err := bindings.NewServer(o.LogFile, cluster)
 	if err != nil {
@@ -164,7 +177,8 @@ func (s *Server) Close() error {
 // Create a serverOptions object with sane defaults.
 func defaultServerOptions() *serverOptions {
 	return &serverOptions{
-		Logger:  defaultLogger(),
-		LogFile: os.Stdout,
+		Logger:          defaultLogger(),
+		LogFile:         os.Stdout,
+		AddressProvider: nil,
 	}
 }
