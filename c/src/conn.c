@@ -461,8 +461,8 @@ static void dqlite__conn_alive_cb(uv_timer_t *alive)
 	/* If the last successful heartbeat happened more than heartbeat_timeout
 	 * milliseconds ago, abort the connection. */
 	if (elapsed > c->gateway.heartbeat_timeout) {
-		dqlite__error_printf(&c->error, "no heartbeat since %ld milliseconds", elapsed);
-		dqlite__conn_abort(c);
+		//dqlite__error_printf(&c->error, "no heartbeat since %ld milliseconds", elapsed);
+		//dqlite__conn_abort(c);
 	}
 }
 

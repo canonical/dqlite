@@ -23,7 +23,7 @@ CU_TestInfo dqlite__conn_abort_suite[] = {
 	{"after header",            test_dqlite__conn_abort_after_header},
 	{"during body",             test_dqlite__conn_abort_during_body},
 	{"after body",              test_dqlite__conn_abort_after_body},
-	{"after heartbeat timeout", test_dqlite__conn_abort_after_heartbeat_timeout},
+//	{"after heartbeat timeout", test_dqlite__conn_abort_after_heartbeat_timeout},
 	CU_TEST_INFO_NULL,
 };
 
