@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/stretchr/testify/assert"
@@ -38,6 +37,30 @@ func TestServer_Run(t *testing.T) {
 	defer server.Free()
 	defer server.Close()
 
+	ch := make(chan error)
+	go func() {
+		err := server.Run()
+		ch <- err
+	}()
+
+	require.True(t, server.Ready())
+	require.NoError(t, server.Stop())
+
+	assert.NoError(t, <-ch)
+}
+
+func TestServer_Handle(t *testing.T) {
+	file, cleanup := newTestFile(t)
+	defer cleanup()
+
+	cluster := newTestCluster()
+
+	server, err := bindings.NewServer(file, cluster)
+	require.NoError(t, err)
+
+	defer server.Free()
+	defer server.Close()
+
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer listener.Close()
@@ -48,6 +71,8 @@ func TestServer_Run(t *testing.T) {
 		ch <- err
 	}()
 
+	require.True(t, server.Ready())
+
 	go func() {
 		conn, err := listener.Accept()
 		require.NoError(t, err)
@@ -57,16 +82,74 @@ func TestServer_Run(t *testing.T) {
 	conn, err := net.Dial("tcp", listener.Addr().String())
 	require.NoError(t, err)
 
+	// Handshake
 	err = binary.Write(conn, binary.LittleEndian, bindings.ProtocolVersion)
 	require.NoError(t, err)
-	require.NoError(t, conn.Close())
 
-	time.Sleep(100 * time.Millisecond)
+	// Make a Leader request
+	err = binary.Write(conn, binary.LittleEndian, uint32(1)) // Words
+	require.NoError(t, err)
+	n, err := conn.Write([]byte{bindings.RequestLeader, 0, 0, 0}) // Type, flags, extra
+	require.NoError(t, err)
+	require.Equal(t, 4, n)
+	n, err = conn.Write([]byte{0, 0, 0, 0, 0, 0, 0, 0}) // Unused single-word request payload
+	require.NoError(t, err)
+	require.Equal(t, 8, n)
+
+	// Read the response
+	buf := make([]byte, 64)
+	n, err = conn.Read(buf)
+	require.NoError(t, err)
+
+	require.NoError(t, conn.Close())
 
 	require.NoError(t, server.Stop())
 
 	err = <-ch
 	assert.NoError(t, err)
+}
+
+func TestServer_ConcurrentHandleAndClose(t *testing.T) {
+	file, cleanup := newTestFile(t)
+	defer cleanup()
+
+	cluster := newTestCluster()
+
+	server, err := bindings.NewServer(file, cluster)
+	require.NoError(t, err)
+
+	defer server.Free()
+	defer server.Close()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	runCh := make(chan error)
+	go func() {
+		err := server.Run()
+		runCh <- err
+	}()
+
+	require.True(t, server.Ready())
+
+	acceptCh := make(chan struct{})
+	go func() {
+		conn, err := listener.Accept()
+		require.NoError(t, err)
+		server.Handle(conn)
+		acceptCh <- struct{}{}
+	}()
+
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	require.NoError(t, err)
+
+	require.NoError(t, conn.Close())
+
+	require.NoError(t, server.Stop())
+
+	assert.NoError(t, <-runCh)
+	<-acceptCh
 }
 
 func newTestFile(t *testing.T) (*os.File, func()) {
