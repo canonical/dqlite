@@ -109,7 +109,7 @@ var errZero = sqlite3.ErrNo(0) // Convenience for assertions
 func newMethods(t *testing.T) (*replication.Methods, *bindings.Conn, func()) {
 	t.Helper()
 
-	vfs, err := bindings.RegisterVfs("test")
+	vfs, err := bindings.NewVfs("test")
 	require.NoError(t, err)
 
 	registry := registry.New(vfs)
@@ -133,7 +133,7 @@ func newMethods(t *testing.T) (*replication.Methods, *bindings.Conn, func()) {
 
 		connCleanup()
 		raftCleanup()
-		bindings.UnregisterVfs(vfs)
+		vfs.Close()
 		bindings.UnregisterWalReplication("test")
 	}
 

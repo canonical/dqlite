@@ -20,7 +20,7 @@ type Registry struct {
 // The ID parameter is a string identifying the local node.
 func NewRegistry(id string) *Registry {
 	name := fmt.Sprintf("dqlite-%s", id)
-	vfs, err := bindings.RegisterVfs(name)
+	vfs, err := bindings.NewVfs(name)
 	if err != nil {
 		panic("failed to register VFS")
 	}
@@ -34,5 +34,5 @@ func NewRegistry(id string) *Registry {
 
 // Close the registry.
 func (r *Registry) Close() {
-	bindings.UnregisterVfs(r.vfs)
+	r.vfs.Close()
 }

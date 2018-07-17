@@ -28,14 +28,14 @@ func TestRegistry_Dump(t *testing.T) {
 func newRegistry(t *testing.T) (*registry.Registry, func()) {
 	t.Helper()
 
-	vfs, err := bindings.RegisterVfs("test")
+	vfs, err := bindings.NewVfs("test")
 	require.NoError(t, err)
 
 	registry := registry.New(vfs)
 
 	cleanup := func() {
 		registry.ConnSerialReset()
-		bindings.UnregisterVfs(vfs)
+		vfs.Close()
 	}
 
 	return registry, cleanup
