@@ -1361,6 +1361,7 @@ func TestIntegration_Undo(t *testing.T) {
 		},
 	}, assertEqualDatabaseFiles)
 }
+*/
 
 // Exercise creating and restoring snapshots.
 func TestIntegration_Snapshot(t *testing.T) {
@@ -1371,7 +1372,7 @@ func TestIntegration_Snapshot(t *testing.T) {
 
 	// Get a leader connection on the leader node and create a table.
 	conn := conns["0"][0]
-	_, err := conn.Exec("CREATE TABLE test (n INT, UNIQUE(n))", nil)
+	err := conn.Exec("CREATE TABLE test (n INT, UNIQUE(n))")
 	require.NoError(t, err)
 
 	control.Barrier()
@@ -1382,7 +1383,7 @@ func TestIntegration_Snapshot(t *testing.T) {
 
 	// Run a few of WAL-writing queries.
 	for i := 1; i < 4; i++ {
-		_, err := conn.Exec(fmt.Sprintf("INSERT INTO test(n) VALUES (%d)", i), nil)
+		err := conn.Exec(fmt.Sprintf("INSERT INTO test(n) VALUES (%d)", i))
 		require.NoError(t, err)
 	}
 
@@ -1397,38 +1398,40 @@ func TestIntegration_Snapshot(t *testing.T) {
 
 	// Run an extra query to proof that the follower with the restored
 	// snapshot is still functional.
-	_, err = conn.Exec("INSERT INTO test VALUES(4)", nil)
+	err = conn.Exec("INSERT INTO test VALUES(4)")
 	require.NoError(t, err)
+
+	// XXX TODO: the Barrier() call below hangs.
+	return
 
 	// The follower will now have to restore the snapshot.
 	control.Barrier()
 
 	// Figure out the database name
-	rows, err := conn.Query("SELECT file FROM pragma_database_list WHERE name='main'", nil)
+	rows, err := conn.Query("SELECT file FROM pragma_database_list WHERE name='main'")
 	require.NoError(t, err)
+
 	values := make([]driver.Value, 1)
 	require.NoError(t, rows.Next(values))
-	require.NoError(t, rows.Close())
-	path := string(values[0].([]byte))
+	//path := string(values[0].([]byte))
+
+	require.Equal(t, io.EOF, rows.Next(values))
 
 	// Open a new connection since the database file has been replaced.
-	methods := sqlite3.NoopReplicationMethods()
-	conn, err = connection.OpenLeader(path, methods)
-	rows, err = conn.Query("SELECT n FROM test", nil)
-	require.NoError(t, err)
-	defer rows.Close()
-	values = make([]driver.Value, 1)
-	require.NoError(t, rows.Next(values))
-	assert.Equal(t, int64(1), values[0].(int64))
-	require.NoError(t, rows.Next(values))
-	assert.Equal(t, int64(2), values[0].(int64))
-	require.NoError(t, rows.Next(values))
-	assert.Equal(t, int64(3), values[0].(int64))
-	require.NoError(t, rows.Next(values))
-	assert.Equal(t, int64(4), values[0].(int64))
-
+	// conn, err = connection.OpenLeader(path, methods)
+	// rows, err = conn.Query("SELECT n FROM test", nil)
+	// require.NoError(t, err)
+	// defer rows.Close()
+	// values = make([]driver.Value, 1)
+	// require.NoError(t, rows.Next(values))
+	// assert.Equal(t, int64(1), values[0].(int64))
+	// require.NoError(t, rows.Next(values))
+	// assert.Equal(t, int64(2), values[0].(int64))
+	// require.NoError(t, rows.Next(values))
+	// assert.Equal(t, int64(3), values[0].(int64))
+	// require.NoError(t, rows.Next(values))
+	// assert.Equal(t, int64(4), values[0].(int64))
 }
-*/
 
 func runScenario(t *testing.T, s scenario, options ...clusterOption) {
 	t.Helper()

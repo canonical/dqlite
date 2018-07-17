@@ -23,6 +23,7 @@ import (
 	"unsafe"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
+	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/CanonicalLtd/dqlite/internal/protocol"
 	"github.com/CanonicalLtd/dqlite/internal/registry"
 	"github.com/CanonicalLtd/dqlite/internal/trace"
@@ -484,7 +485,7 @@ func (f *FSM) snapshotDatabase(tracer *trace.Tracer, filename string) (*fsmDatab
 	// the database connections, if so we'll return an error.
 	conns := f.registry.ConnLeaders(filename)
 	conns = append(conns, f.registry.ConnFollower(filename))
-	//txid := ""
+	txid := ""
 	for _, conn := range conns {
 		if txn := f.registry.TxnByConn(conn); txn != nil {
 			// XXX TODO: If we let started transaction in the
@@ -503,7 +504,7 @@ func (f *FSM) snapshotDatabase(tracer *trace.Tracer, filename string) (*fsmDatab
 		}
 	}
 
-	/*database, wal, err := connection.Snapshot(filepath.Join(f.registry.Dir(), filename))
+	database, wal, err := connection.Snapshot(f.registry.Vfs(), filename)
 	if err != nil {
 		return nil, err
 	}
@@ -515,8 +516,7 @@ func (f *FSM) snapshotDatabase(tracer *trace.Tracer, filename string) (*fsmDatab
 		database: database,
 		wal:      wal,
 		txid:     txid,
-	}, nil*/
-	return nil, nil
+	}, nil
 }
 
 // Restore is used to restore an FSM from a snapshot. It is not called
@@ -633,17 +633,18 @@ func (f *FSM) restoreDatabase(tracer *trace.Tracer, reader io.ReadCloser) (bool,
 	}
 	tracer.Message("transaction ID: %s", txid)
 
-	// path := filepath.Join(f.registry.Dir(), filename)
-	// if err := connection.Restore(path, data, wal); err != nil {
-	// 	return false, err
-	// }
+	vfs := f.registry.Vfs()
+
+	if err := connection.Restore(vfs, filename, data, wal); err != nil {
+		return false, err
+	}
 
 	tracer.Message("open follower: %s", filename)
-	// conn, err := connection.OpenFollower(path)
-	// if err != nil {
-	// 	return false, err
-	// }
-	// f.registry.ConnFollowerAdd(filename, conn)
+	conn, err := bindings.OpenFollower(filename, vfs.Name())
+	if err != nil {
+		return false, err
+	}
+	f.registry.ConnFollowerAdd(filename, conn)
 
 	if txid != "" {
 		// txid, err := strconv.ParseUint(txid, 10, 64)
