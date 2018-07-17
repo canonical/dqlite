@@ -229,19 +229,17 @@ func aTestFSM_ApplyPanics(t *testing.T) {
 	}
 }
 
-/*
-
 func TestFSM_ApplyCheckpoint(t *testing.T) {
 	fsm, cleanup := newFSM(t)
 	defer cleanup()
 
-	methods := sqlite3.NoopReplicationMethods()
-	conn, cleanup := newLeaderConn(t, fsm.Registry().Dir(), methods)
+	name := fsm.Registry().Vfs().Name()
+	conn, cleanup := newLeaderConn(t, name, name)
 	defer cleanup()
 
 	// Commit something to the WAL, otherwise the sqlite3_checkpoint_v2 API
 	// would crash.
-	_, err := conn.Exec("CREATE TABLE test (n INT)", nil)
+	err := conn.Exec("CREATE TABLE test (n INT)")
 	require.NoError(t, err)
 
 	fsmApply(fsm, 0, protocol.NewOpen("test.db"))
@@ -256,15 +254,18 @@ func TestFSM_ApplyCheckpointPanicsIfFollowerTransactionIsInFlight(t *testing.T) 
 
 	fsm.Registry().TxnDryRun()
 
-	params := newFramesParams()
-	params.IsCommit = 0
-	fsmApply(fsm, 1, protocol.NewFrames(1, "test.db", params))
+	command := protocol.NewFrames(123, "test.db", newFrameList())
+
+	frames := command.Payload.(*protocol.Command_Frames)
+	frames.Frames.IsCommit = 0
+	frames.Frames.PageNumbers = []uint32{0}
+	frames.Frames.PageData = []byte{0}
+
+	fsmApply(fsm, 1, command)
 
 	f := func() { fsmApply(fsm, 2, protocol.NewCheckpoint("test.db")) }
-	assert.PanicsWithValue(t, "can't run checkpoint concurrently with transaction 1 writing as follower", f)
+	assert.PanicsWithValue(t, "can't run checkpoint concurrently with transaction 123 writing as follower", f)
 }
-
-*/
 
 // In case the snapshot is made when an active transaction is in progress an
 // error is returned.
