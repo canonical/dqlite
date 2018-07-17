@@ -119,6 +119,18 @@ static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gatewa
 	return 0;
 }
 
+#define DQLITE__GATEWAY_BARRIER						\
+	rc = g->cluster->xBarrier(g->cluster->ctx);			\
+	if (rc != 0) {							\
+		dqlite__debugf(g, "barrier failed", "rc=%d", rc);	\
+		ctx->response.db_error.code = SQLITE_IOERR;		\
+		ctx->response.type = DQLITE_RESPONSE_DB_ERROR;		\
+		ctx->response.db_error.extended_code = rc;		\
+		ctx->response.db_error.description = "barrier failed";	\
+									\
+		return 0;						\
+	}
+
 #define DQLITE__GATEWAY_LOOKUP_DB(ID)					\
 	db = dqlite__db_registry_get(&g->dbs, ID);			\
 	if (db == NULL) {						\
@@ -141,6 +153,7 @@ static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gat
 	struct dqlite__stmt *stmt;
 	uint32_t stmt_id;
 
+	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->prepare.db_id);
 
 	rc = dqlite__db_prepare(db, ctx->request->prepare.sql, &stmt_id);
@@ -168,6 +181,7 @@ static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gatewa
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 
+	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->exec.db_id);
 	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->exec.stmt_id);
 
@@ -209,6 +223,7 @@ static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gatew
 	struct dqlite__db *db;
 	struct dqlite__stmt *stmt;
 
+	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->query.db_id);
 	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->query.stmt_id);
 
@@ -254,6 +269,7 @@ static int dqlite__gateway_finalize(struct dqlite__gateway *g, struct dqlite__ga
 	struct dqlite__db *db;
 	struct dqlite__stmt *stmt;
 
+	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->finalize.db_id);
 	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->finalize.stmt_id);
 
@@ -269,7 +285,7 @@ static int dqlite__gateway_finalize(struct dqlite__gateway *g, struct dqlite__ga
 
 static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
 {
-	int err = 0;
+	int err;
 	int rc;
 	struct dqlite__db *db;
 	const char *sql;
@@ -278,6 +294,7 @@ static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__ga
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 
+	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->exec_sql.db_id);
 
 	assert(db != NULL);
@@ -341,6 +358,7 @@ static int dqlite__gateway_query_sql(struct dqlite__gateway *g, struct dqlite__g
 	uint32_t stmt_id;
 	struct dqlite__stmt *stmt;
 
+	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->query_sql.db_id);
 
 	assert(db != NULL);

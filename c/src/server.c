@@ -130,9 +130,11 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 		break;
 
 	case UV_TIMER:
-		/* Double check that this is not the startup timer which gets
-		 * closed at startup time. */
-		assert(handle != (uv_handle_t*)&s->startup);
+		/* If this is not the startup timer, it means that we got stopped very
+		 * early on and the startup callback didn't trigger yet. */
+		if (handle == (uv_handle_t*)&s->startup) {
+			uv_close(handle, NULL);
+		}
 
 		/* This must be a timer created by a conn object, which gets
 		 * closed by the dqlite__conn_abort call above, so there's
