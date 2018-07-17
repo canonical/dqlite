@@ -291,15 +291,8 @@ const (
 // Vfs is a Go wrapper arround dqlite's in-memory VFS implementation.
 type Vfs C.sqlite3_vfs
 
-// Name returns the registration name of the vfs.
-func (v *Vfs) Name() string {
-	vfs := (*C.sqlite3_vfs)(unsafe.Pointer(v))
-
-	return C.GoString(vfs.zName)
-}
-
-// RegisterVfs registers an in-memory VFS instance under the given name.
-func RegisterVfs(name string) (*Vfs, error) {
+// NewVfs registers an in-memory VFS instance under the given name.
+func NewVfs(name string) (*Vfs, error) {
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))
 
@@ -313,10 +306,19 @@ func RegisterVfs(name string) (*Vfs, error) {
 	return (*Vfs)(unsafe.Pointer(vfs)), nil
 }
 
-// UnregisterVfs unregisters an in-memory VFS instance.
-func UnregisterVfs(vfs *Vfs) {
-	cvfs := (*C.sqlite3_vfs)(unsafe.Pointer(vfs))
-	C.dqlite_vfs_unregister(cvfs)
+// Close unregisters this in-memory VFS instance.
+func (v *Vfs) Close() {
+	vfs := (*C.sqlite3_vfs)(unsafe.Pointer(v))
+	C.dqlite_vfs_unregister(vfs)
+}
+
+// Name returns the registration name of the vfs.
+func (v *Vfs) Name() string {
+	vfs := (*C.sqlite3_vfs)(unsafe.Pointer(v))
+
+	return C.GoString(vfs.zName)
+}
+
 }
 
 // Server is a Go wrapper arround dqlite_server.

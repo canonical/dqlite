@@ -1685,10 +1685,10 @@ func newCluster(t *testing.T, opts ...clusterOption) (clusterConns, *rafttest.Co
 		dir, cleanup := newDir(t)
 		cleanups = append(cleanups, cleanup)
 
-		vfs, err := bindings.RegisterVfs(fmt.Sprintf("test-%d", i))
+		vfs, err := bindings.NewVfs(fmt.Sprintf("test-%d", i))
 		require.NoError(t, err)
 		cleanups = append(cleanups, func() {
-			bindings.UnregisterVfs(vfs)
+			vfs.Close()
 		})
 
 		registries[i] = registry.New(vfs)

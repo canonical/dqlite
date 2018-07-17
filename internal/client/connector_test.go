@@ -276,7 +276,7 @@ func newServer(t *testing.T, index int, listener net.Listener, cluster bindings.
 	t.Helper()
 
 	name := fmt.Sprintf("test-%d", index)
-	vfs, err := bindings.RegisterVfs(name)
+	vfs, err := bindings.NewVfs(name)
 	require.NoError(t, err)
 
 	err = bindings.RegisterWalReplication(name, &testWalReplication{})
@@ -341,7 +341,7 @@ func newServer(t *testing.T, index int, listener net.Listener, cluster bindings.
 		server.Free()
 
 		bindings.UnregisterWalReplication("test")
-		bindings.UnregisterVfs(vfs)
+		vfs.Close()
 
 		fileCleanup()
 	}
