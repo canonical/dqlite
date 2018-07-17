@@ -839,8 +839,9 @@ static int dqlite__vfs_write(
 			 * the associated main database file. */
 			int err = dqlite__vfs_root_database_page_size(
 				f->root, f->content->filename, &f->content->page_size);
-			if (err != 0 )
+			if (err != 0 ) {
 				return err;
+			}
 		}
 
 		if (offset ==0 ) {
