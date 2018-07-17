@@ -72,6 +72,11 @@ int dqlite_init(const char **ermsg);
 /* In-memory VFS implementation */
 int dqlite_vfs_register(const char *name, sqlite3_vfs **vfs);
 void dqlite_vfs_unregister(sqlite3_vfs* vfs);
+int dqlite_vfs_content(
+	sqlite3_vfs* vfs,
+	const char *filename,
+	uint8_t **buf,
+	size_t *len);
 
 /* Interface implementing cluster-related functionality */
 typedef struct dqlite_cluster {

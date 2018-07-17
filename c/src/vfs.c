@@ -430,7 +430,7 @@ static void dqlite__vfs_root_close(struct dqlite__vfs_root *r)
 
 /* Find a content object by name.
  *
- * Fill ppContent and return its index if found, otherwise return the index
+ * Fill out and return its index if found, otherwise return the index
  * of a free slot (or -1, if there are no free slots).
  */
 static int dqlite__vfs_root_content_lookup(
@@ -1511,7 +1511,8 @@ static int dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotU
 	return rc;
 }
 
-int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
+int dqlite_vfs_register(const char *name, sqlite3_vfs **out)
+{
 	sqlite3_vfs* vfs;
 	char *zName;
 	struct dqlite__vfs_root *root;
@@ -1590,7 +1591,8 @@ int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
 	return err;
 }
 
-void dqlite_vfs_unregister(sqlite3_vfs* vfs) {
+void dqlite_vfs_unregister(sqlite3_vfs* vfs)
+{
 	struct dqlite__vfs_root *root;
 
 	assert(vfs != NULL);
@@ -1604,4 +1606,60 @@ void dqlite_vfs_unregister(sqlite3_vfs* vfs) {
 	sqlite3_free(root);
 	sqlite3_free((char *)vfs->zName);
 	sqlite3_free(vfs);
+}
+
+int dqlite_vfs_content(sqlite3_vfs* vfs, const char *filename, uint8_t **buf, size_t *len)
+{
+	struct dqlite__vfs_root *root;
+	struct dqlite__vfs_content *content;
+	struct dqlite__vfs_page *page;
+	size_t size;
+	uint8_t *cursor;
+	int i;
+
+	assert(vfs != NULL);
+	assert(buf != NULL);
+
+	root = (struct dqlite__vfs_root*)(vfs->pAppData);
+
+	dqlite__vfs_root_content_lookup(root, filename, &content);
+
+	if (content == NULL) {
+		return SQLITE_NOTFOUND;
+	}
+
+	size = content->page_size * content->pages_len;
+
+	if (content->hdr != NULL) {
+		size += DQLITE__VFS_WAL_HDRSIZE;
+		size += DQLITE__VFS_WAL_FRAME_HDRSIZE * content->pages_len;
+	}
+
+	*buf = (uint8_t*)sqlite3_malloc(size);
+	*len = size;
+
+	if (*buf == NULL) {
+		return SQLITE_NOMEM;
+	}
+
+	cursor = *buf;
+
+	if (content->hdr != NULL) {
+		memcpy(cursor, content->hdr, DQLITE__VFS_WAL_HDRSIZE);
+		cursor += DQLITE__VFS_WAL_HDRSIZE;
+	}
+
+	for (i = 0; i < content->pages_len; i++) {
+		page = *(content->pages + i);
+
+		if (page->hdr != NULL) {
+			memcpy(cursor, page->hdr, DQLITE__VFS_WAL_FRAME_HDRSIZE);
+			cursor += DQLITE__VFS_WAL_FRAME_HDRSIZE;
+		}
+
+		memcpy(cursor, page->buf, content->page_size);
+		cursor += content->page_size;
+	}
+
+	return 0;
 }
