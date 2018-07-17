@@ -190,7 +190,7 @@ func (e Error) Error() string {
 	if e.Message != "" {
 		return e.Message
 	}
-	return C.GoString(C.sqlite3_errstr(C.int(e.ExtendedCode)))
+	return C.GoString(C.sqlite3_errstr(C.int(e.Code)))
 }
 
 func lastError(db *C.sqlite3) Error {

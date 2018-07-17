@@ -172,16 +172,16 @@ func TestVfs_Content(t *testing.T) {
 
 	defer os.RemoveAll(dir)
 
-	bytes, err := vfs.Content("test.db")
+	database, err := vfs.Content("test.db")
 	require.NoError(t, err)
 
-	err = ioutil.WriteFile(filepath.Join(dir, "test.db"), bytes, 0600)
+	err = ioutil.WriteFile(filepath.Join(dir, "test.db"), database, 0600)
 	require.NoError(t, err)
 
-	bytes, err = vfs.Content("test.db-wal")
+	wal, err := vfs.Content("test.db-wal")
 	require.NoError(t, err)
 
-	err = ioutil.WriteFile(filepath.Join(dir, "test.db-wal"), bytes, 0600)
+	err = ioutil.WriteFile(filepath.Join(dir, "test.db-wal"), wal, 0600)
 	require.NoError(t, err)
 
 	require.NoError(t, conn.Close())
@@ -192,6 +192,24 @@ func TestVfs_Content(t *testing.T) {
 	require.NoError(t, err)
 
 	rows, err := conn.Query("SELECT * FROM foo")
+	require.NoError(t, err)
+
+	assert.Equal(t, io.EOF, rows.Next(nil))
+
+	require.NoError(t, conn.Close())
+
+	// Restore the files that we have dumped and check that the table we
+	// created is there.
+	err = vfs.Restore("test.db", database)
+	require.NoError(t, err)
+
+	err = vfs.Restore("test.db-wal", wal)
+	require.NoError(t, err)
+
+	conn, err = bindings.Open("test.db", "test")
+	require.NoError(t, err)
+
+	rows, err = conn.Query("SELECT * FROM foo")
 	require.NoError(t, err)
 
 	assert.Equal(t, io.EOF, rows.Next(nil))

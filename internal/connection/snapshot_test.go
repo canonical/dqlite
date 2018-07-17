@@ -1,53 +1,48 @@
 package connection_test
 
-/*
 import (
-	"database/sql"
-	"path/filepath"
+	"database/sql/driver"
+	"io"
 	"testing"
 
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/connection"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSnapshot(t *testing.T) {
-	dir, cleanup := newDir()
-	defer cleanup()
+	vfs, err := bindings.NewVfs("test")
+	require.NoError(t, err)
 
-	path := filepath.Join(dir, "test.db")
+	defer vfs.Close()
 
 	// Create a database with some content.
-	db, err := sql.Open("sqlite3", path)
+	conn, err := bindings.Open("test.db", "test")
 	require.NoError(t, err)
-	_, err = db.Exec("CREATE TABLE foo (n INT); INSERT INTO foo VALUES(1)")
-	require.NoError(t, err)
-	db.Close()
 
-	// Perform and restore the snapshot.
-	database, wal, err := connection.Snapshot(path)
+	err = conn.Exec("CREATE TABLE foo (n INT); INSERT INTO foo VALUES(1)")
 	require.NoError(t, err)
-	require.NoError(t, connection.Restore(path, database, wal))
+
+	// Perform the snapshot.
+	database, wal, err := connection.Snapshot(vfs, "test.db")
+	require.NoError(t, err)
+
+	require.NoError(t, conn.Close())
+
+	// Restore the snapshot.
+	require.NoError(t, connection.Restore(vfs, "test.db", database, wal))
 
 	// Check that the data actually matches our source database.
-	db, err = sql.Open("sqlite3", path)
+	conn, err = bindings.Open("test.db", "test")
 	require.NoError(t, err)
-	defer db.Close()
+	defer conn.Close()
 
-	rows, err := db.Query("SELECT * FROM foo", nil)
+	rows, err := conn.Query("SELECT * FROM foo")
 	require.NoError(t, err)
-	defer rows.Close()
 
-	require.Equal(t, true, rows.Next())
-	var n int
-	assert.NoError(t, rows.Scan(&n))
-	assert.Equal(t, 1, n)
+	values := make([]driver.Value, 1)
+	assert.Equal(t, nil, rows.Next(values))
+	assert.Equal(t, int64(1), values[0])
+	assert.Equal(t, io.EOF, rows.Next(values))
 }
-
-func TestSnapshot_InvalidDir(t *testing.T) {
-	// Perform and restore the snapshot.
-	_, _, err := connection.Snapshot("/non/existing/path")
-	msg := "source connection: open error for /non/existing/path: unable to open database file"
-	assert.EqualError(t, err, msg)
-}
-*/
