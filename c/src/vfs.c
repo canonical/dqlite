@@ -1521,6 +1521,11 @@ int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
 
 	*out = 0; // In case of errors
 
+	vfs = sqlite3_vfs_find(name);
+	if (vfs != NULL) {
+		return SQLITE_ERROR;
+	}
+
 	vfs = (sqlite3_vfs*)sqlite3_malloc(sizeof(sqlite3_vfs));
 	if (vfs == NULL) {
 		return SQLITE_NOMEM;
