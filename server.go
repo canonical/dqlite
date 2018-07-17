@@ -2,8 +2,10 @@ package dqlite
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -134,6 +136,33 @@ func (s *Server) acceptLoop() {
 			return
 		}
 	}
+}
+
+// Dump the files of a database to disk.
+func (s *Server) Dump(name string, dir string) error {
+	// Dump the database file.
+	bytes, err := s.registry.vfs.Content(name)
+	if err != nil {
+		return errors.Wrap(err, "failed to get database file content")
+	}
+
+	path := filepath.Join(dir, name)
+	if err := ioutil.WriteFile(path, bytes, 0600); err != nil {
+		return errors.Wrap(err, "failed to write database file")
+	}
+
+	// Dump the WAL file.
+	bytes, err = s.registry.vfs.Content(name + "-wal")
+	if err != nil {
+		return errors.Wrap(err, "failed to get WAL file content")
+	}
+
+	path = filepath.Join(dir, name+"-wal")
+	if err := ioutil.WriteFile(path, bytes, 0600); err != nil {
+		return errors.Wrap(err, "failed to write WAL file")
+	}
+
+	return nil
 }
 
 // Close the server, releasing all resources it created.

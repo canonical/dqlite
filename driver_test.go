@@ -15,17 +15,11 @@
 package dqlite_test
 
 import (
-	"context"
 	"database/sql/driver"
 	"io"
-	"io/ioutil"
-	"net"
-	"os"
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite"
-	"github.com/CanonicalLtd/raft-test"
-	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -196,7 +190,7 @@ func newDriver(t *testing.T) (*dqlite.Driver, func()) {
 	listener := newListener(t)
 	address := listener.Addr().String()
 
-	cleanup := newServer(t, listener)
+	_, cleanup := newServer(t, listener)
 
 	store := newStore(t, address)
 
@@ -204,79 +198,6 @@ func newDriver(t *testing.T) (*dqlite.Driver, func()) {
 	require.NoError(t, err)
 
 	return driver, cleanup
-}
-
-// Create a new in-memory server store populated with the given addresses.
-func newStore(t *testing.T, address string) *dqlite.DatabaseServerStore {
-	t.Helper()
-
-	store, err := dqlite.DefaultServerStore(":memory:")
-	require.NoError(t, err)
-
-	require.NoError(t, store.Set(context.Background(), []string{address}))
-
-	return store
-}
-
-func newServer(t *testing.T, listener net.Listener) func() {
-	t.Helper()
-
-	registry := dqlite.NewRegistry("0")
-
-	fsm := dqlite.NewFSM(registry)
-
-	r, raftCleanup := rafttest.Server(t, fsm, rafttest.Transport(func(i int) raft.Transport {
-		require.Equal(t, i, 0)
-		address := raft.ServerAddress(listener.Addr().String())
-		_, transport := raft.NewInmemTransport(address)
-		return transport
-	}))
-
-	logger := zaptest.NewLogger(t)
-	file, fileCleanup := newFile(t)
-
-	server, err := dqlite.NewServer(
-		r, registry, listener,
-		dqlite.WithServerLogger(logger), dqlite.WithServerLogFile(file))
-	require.NoError(t, err)
-
-	cleanup := func() {
-		require.NoError(t, server.Close())
-
-		fileCleanup()
-		raftCleanup()
-	}
-
-	return cleanup
-}
-
-func newListener(t *testing.T) net.Listener {
-	t.Helper()
-
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-
-	return listener
-}
-
-func newFile(t *testing.T) (*os.File, func()) {
-	t.Helper()
-
-	file, err := ioutil.TempFile("", "dqlite-driver-")
-	require.NoError(t, err)
-
-	cleanup := func() {
-		require.NoError(t, file.Close())
-
-		bytes, err := ioutil.ReadFile(file.Name())
-		require.NoError(t, err)
-
-		t.Logf("server log:\n%s\n", string(bytes))
-
-		require.NoError(t, os.Remove(file.Name()))
-	}
-
-	return file, cleanup
 }
 
 /*
