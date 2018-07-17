@@ -18,7 +18,8 @@ void test_dqlite__vfs_write_and_read_database_pages();
 void test_dqlite__vfs_write_and_read_wal_frames();
 void test_dqlite__vfs_truncate_database();
 void test_dqlite__vfs_truncate_wal();
-void test_dqlite__vfs_integration();
+void test_dqlite_vfs_register();
+void test_dqlite_vfs_content();
 
 CU_TestInfo dqlite__vfs_suite[] = {
 	{"open noent",                test_dqlite__vfs_open_noent},
@@ -32,7 +33,8 @@ CU_TestInfo dqlite__vfs_suite[] = {
 	{"write and read wal frames", test_dqlite__vfs_write_and_read_wal_frames},
 	{"truncate database",         test_dqlite__vfs_truncate_database},
 	{"truncate wal",              test_dqlite__vfs_truncate_wal},
-	{"integration",               test_dqlite__vfs_integration},
+	{"register",                  test_dqlite_vfs_register},
+	{"content",                   test_dqlite_vfs_content},
 	CU_TEST_INFO_NULL,
 };
 

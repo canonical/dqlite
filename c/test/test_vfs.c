@@ -441,7 +441,34 @@ void test_dqlite__vfs_truncate_wal()
 
 }
 
-void test_dqlite__vfs_integration()
+/* Helper to execute a SQL statement. */
+static void test_dqlite_vfs__db_exec(sqlite3 *db, const char *sql)
+{
+	int rc;
+	char *errmsg;
+
+	rc = sqlite3_exec(db, sql, NULL, NULL, &errmsg);
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+}
+
+/* Helper to open and initialize a database, setting the page size and
+ * WAL mode. */
+static sqlite3 *test_dqlite_vfs__db_open()
+{
+	int rc;
+	sqlite3 *db;
+
+	rc = sqlite3_open_v2("test.db", &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "volatile");
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+
+	test_dqlite_vfs__db_exec(db, "PRAGMA page_size=4096");
+	test_dqlite_vfs__db_exec(db, "PRAGMA synchronous=OFF");
+	test_dqlite_vfs__db_exec(db, "PRAGMA journal_mode=WAL");
+
+	return db;
+}
+
+void test_dqlite_vfs_register()
 {
 	int rc;
 	sqlite3 *db;
@@ -451,48 +478,10 @@ void test_dqlite__vfs_integration()
 	int size;
 	int ckpt;
 
-	rc = sqlite3_open_v2("test.db", &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "volatile");
-	CU_ASSERT_EQUAL(rc, SQLITE_OK);
-
-	/* Set the page size */
-	rc = sqlite3_prepare(db, "PRAGMA page_size=4096", -1, &stmt, &tail);
-	CU_ASSERT_EQUAL(rc, SQLITE_OK);
-
-	rc = sqlite3_step(stmt);
-	CU_ASSERT_EQUAL(rc, SQLITE_DONE);
-
-	rc = sqlite3_finalize(stmt);
-	CU_ASSERT_EQUAL(rc, SQLITE_OK);
-
-	/* Disable syncs. */
-	rc = sqlite3_prepare(db, "PRAGMA synchronous=OFF", -1, &stmt, &tail);
-	CU_ASSERT_EQUAL(rc, SQLITE_OK);
-
-	rc = sqlite3_step(stmt);
-	CU_ASSERT_EQUAL(rc, SQLITE_DONE);
-
-	rc = sqlite3_finalize(stmt);
-	CU_ASSERT_EQUAL(rc, SQLITE_OK);
-
-	/* Set WAL journaling. */
-	rc = sqlite3_prepare(db, "PRAGMA journal_mode=WAL", -1, &stmt, &tail);
-	CU_ASSERT_EQUAL(rc, SQLITE_OK);
-
-	rc = sqlite3_step(stmt);
-	CU_ASSERT_EQUAL(rc, SQLITE_ROW);
-
-	rc = sqlite3_finalize(stmt);
-	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+	db = test_dqlite_vfs__db_open();
 
 	/* Create a test table and insert a few rows into it. */
-	rc = sqlite3_prepare(db, "CREATE TABLE test (n INT)", -1, &stmt, &tail);
-	CU_ASSERT_EQUAL(rc, SQLITE_OK);
-
-	rc = sqlite3_step(stmt);
-	CU_ASSERT_EQUAL(rc, SQLITE_DONE);
-
-	rc = sqlite3_finalize(stmt);
-	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+	test_dqlite_vfs__db_exec(db, "CREATE TABLE test (n INT)");
 
 	rc = sqlite3_prepare(db, "INSERT INTO test(n) VALUES(?)", -1, &stmt, &tail);
 	CU_ASSERT_EQUAL(rc, SQLITE_OK);
@@ -516,4 +505,40 @@ void test_dqlite__vfs_integration()
 
 	rc = sqlite3_close(db);
 	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+}
+
+void test_dqlite_vfs_content()
+{
+	int rc;
+	sqlite3 *db;
+	sqlite3_vfs *vfs;
+	uint8_t *buf;
+	size_t len;
+
+	db = test_dqlite_vfs__db_open();
+
+	test_dqlite_vfs__db_exec(db, "CREATE TABLE test (n INT)");
+
+	vfs = sqlite3_vfs_find("volatile");
+	CU_ASSERT_PTR_NOT_NULL(vfs);
+
+	rc = dqlite_vfs_content(vfs, "test.db", &buf, &len);
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+
+	CU_ASSERT_PTR_NOT_NULL(buf);
+	CU_ASSERT_EQUAL(len, 4096);
+
+	sqlite3_free(buf);
+
+	rc = dqlite_vfs_content(vfs, "test.db-wal", &buf, &len);
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+
+	CU_ASSERT_PTR_NOT_NULL(buf);
+	CU_ASSERT_EQUAL(len, 8272);
+
+	sqlite3_free(buf);
+
+	rc = sqlite3_close(db);
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+
 }
