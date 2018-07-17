@@ -19,22 +19,26 @@
 package dqlite_test
 
 import (
+	"context"
 	"database/sql"
+	"database/sql/driver"
+	"fmt"
+	"net"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/CanonicalLtd/dqlite"
+	"github.com/CanonicalLtd/raft-test"
+	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 )
 
 func TestIntegration_DatabaseSQL(t *testing.T) {
-	driver, cleanup := newDriver(t)
+	db, _, cleanup := newDB(t)
 	defer cleanup()
-
-	sql.Register("dqlite-database-sql", driver)
-
-	db, err := sql.Open("dqlite-database-sql", "test.db")
-	require.NoError(t, err)
 
 	tx, err := db.Begin()
 	require.NoError(t, err)
@@ -97,106 +101,105 @@ CREATE TABLE test2 (n INT, t DATETIME DEFAULT CURRENT_TIMESTAMP)
 	require.NoError(t, db.Close())
 }
 
-/*
-import (
-	"database/sql"
-	"database/sql/driver"
-	"fmt"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"strconv"
-	"testing"
-
-	"github.com/CanonicalLtd/dqlite"
-	"github.com/CanonicalLtd/raft-test"
-	"github.com/hashicorp/raft"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-)
-
-func Test_Foo(t *testing.T) {
-	_, cleanup := newCluster(t)
+func TestIntegration_NotLeader(t *testing.T) {
+	db, control, cleanup := newDB(t)
 	defer cleanup()
+
+	tx, err := db.Begin()
+	require.NoError(t, err)
+
+	control.Depose()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err = tx.PrepareContext(ctx, "CREATE TABLE test (n INT)")
+	require.Equal(t, driver.ErrBadConn, err)
 }
 
-func newCluster(t *testing.T) ([]*sql.DB, func()) {
-	drivers, _, driversCleanup := newDrivers(t)
+func newDB(t *testing.T) (*sql.DB, *rafttest.Control, func()) {
+	n := 3
 
-	dbs, dbsCleanup := newDBs(t, func(i int) driver.Driver {
-		return drivers[i]
-	})
-
-	cleanup := func() {
-		dbsCleanup()
-		driversCleanup()
+	listeners := make([]net.Listener, n)
+	addresses := make([]string, n)
+	for i := range listeners {
+		listeners[i] = newListener(t)
+		addresses[i] = listeners[i].Addr().String()
 	}
 
-	return dbs, cleanup
+	control, cleanup := newServers(t, listeners)
+
+	store, err := dqlite.DefaultServerStore(":memory:")
+	require.NoError(t, err)
+
+	require.NoError(t, store.Set(context.Background(), addresses))
+
+	driver, err := dqlite.NewDriver(store, dqlite.WithLogger(zaptest.NewLogger(t)))
+	require.NoError(t, err)
+
+	driverName := fmt.Sprintf("dqlite-integration-test-%d", driversCount)
+	sql.Register(driverName, driver)
+
+	driversCount++
+
+	db, err := sql.Open(driverName, "test.db")
+	require.NoError(t, err)
+
+	return db, control, cleanup
 }
 
-vfunc newDBs(t *testing.T, driverFactory func(int) driver.Driver) ([]*sql.DB, func()) {
-	dbs := make([]*sql.DB, 3)
+func newServers(t *testing.T, listeners []net.Listener) (*rafttest.Control, func()) {
+	t.Helper()
 
-	for i := range dbs {
-		driver := driverFactory(i)
-		driverName := fmt.Sprintf("dqlite-integration-test-%d", driversCount)
-		driversCount++
-		sql.Register(driverName, driver)
+	n := len(listeners)
+	cleanups := make([]func(), 0)
 
-		db, err := sql.Open(driverName, "test.db")
-		require.NoError(t, err)
-		dbs[i] = db
-	}
+	// Create the dqlite registries and FSMs.
+	registries := make([]*dqlite.Registry, n)
+	fsms := make([]raft.FSM, n)
 
-	cleanup := func() {
-		for i := range dbs {
-			require.NoError(t, dbs[i].Close())
-		}
-	}
-
-	return dbs, cleanup
-}
-
-func newDrivers(t *testing.T) ([]driver.Driver, map[raft.ServerID]*raft.Raft, func()) {
-	// Temporary dqlite data dir.
-	dir, err := ioutil.TempDir("", "dqlite-integration-test-")
-	assert.NoError(t, err)
-
-	// Create the dqlite Registries and FSMs.
-	registries := make([]*dqlite.Registry, 3)
-	fsms := make([]raft.FSM, 3)
-	for i := range fsms {
-		registries[i] = dqlite.NewRegistry(filepath.Join(dir, strconv.Itoa(i)))
+	for i := range registries {
+		id := strconv.Itoa(i)
+		registries[i] = dqlite.NewRegistry(id)
 		fsms[i] = dqlite.NewFSM(registries[i])
 	}
 
 	// Create the raft cluster using the dqlite FSMs.
-	rafts, control := rafttest.Cluster(t, fsms)
+	rafts, control := rafttest.Cluster(t, fsms, rafttest.Transport(func(i int) raft.Transport {
+		address := raft.ServerAddress(listeners[i].Addr().String())
+		_, transport := raft.NewInmemTransport(address)
+		return transport
+	}))
 	control.Elect("0")
 
-	// Create the dqlite drivers.
-	drivers := make([]driver.Driver, 3)
-	for i := range fsms {
-		config := dqlite.DriverConfig{Logger: newTestingLogger(t, i)}
-		id := raft.ServerID(strconv.Itoa(i))
-		driver, err := dqlite.NewDriver(registries[i], rafts[id], config)
+	for id := range rafts {
+		r := rafts[id]
+		i, err := strconv.Atoi(string(id))
 		require.NoError(t, err)
-		drivers[i] = driver
+
+		logger := zaptest.NewLogger(t)
+		file, cleanup := newFile(t)
+		cleanups = append(cleanups, cleanup)
+
+		server, err := dqlite.NewServer(
+			r, registries[i], listeners[i],
+			dqlite.WithServerLogger(logger), dqlite.WithServerLogFile(file))
+		require.NoError(t, err)
+
+		cleanups = append(cleanups, func() {
+			require.NoError(t, server.Close())
+		})
+
 	}
 
 	cleanup := func() {
 		control.Close()
-		_, err := os.Stat(dir)
-		if err != nil {
-			assert.True(t, os.IsNotExist(err))
-		} else {
-			assert.NoError(t, os.RemoveAll(dir))
+		for _, f := range cleanups {
+			f()
 		}
 	}
 
-	return drivers, rafts, cleanup
+	return control, cleanup
 }
 
 var driversCount = 0
-*/

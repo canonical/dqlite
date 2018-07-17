@@ -214,7 +214,8 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string) (*Cli
 
 		client.heartbeatTimeout = time.Duration(heartbeatTimeout) * time.Millisecond
 
-		go client.heartbeat()
+		// TODO: enable heartbeat
+		//go client.heartbeat()
 
 		return client, "", nil
 	default:
