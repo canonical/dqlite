@@ -105,6 +105,13 @@ static int sqlite3__wal_replication_unregister(char *name, int *handle) {
   return SQLITE_OK;
 }
 
+// Wrapper around sqlite3_db_config() for invoking the
+// SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE opcode, since there's no way to use C
+// varargs from Go.
+static int sqlite3__config_no_ckpt_on_close(sqlite3 *db, int value, int *pValue) {
+  return sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, value, pValue);
+}
+
 */
 import "C"
 import (
@@ -207,6 +214,14 @@ func Open(name string, vfs string) (*Conn, error) {
 
 	db, err := open(name, flags, vfs)
 	if err != nil {
+		return nil, err
+	}
+
+	var value C.int
+	rc := C.sqlite3__config_no_ckpt_on_close(db, 1, &value)
+	if rc != C.SQLITE_OK {
+		err := lastError(db)
+		C.sqlite3_close_v2(db)
 		return nil, err
 	}
 

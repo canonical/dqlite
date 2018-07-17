@@ -1,7 +1,10 @@
 package replication_test
 
 import (
+	"bytes"
+	"database/sql/driver"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -261,28 +264,7 @@ func TestFSM_ApplyCheckpointPanicsIfFollowerTransactionIsInFlight(t *testing.T) 
 	assert.PanicsWithValue(t, "can't run checkpoint concurrently with transaction 1 writing as follower", f)
 }
 
-// In case the snapshot the source backup connection can't be opened, an error
-// is returned.
-func TestFSM_SnapshotSourceConnectionError(t *testing.T) {
-	fsm, cleanup := newFSM(t)
-	defer cleanup()
-
-	// Register the database.
-	fsmApply(fsm, 0, protocol.NewOpen("test.db"))
-
-	// Remove the FSM dir to trigger a snapshot error.
-	require.NoError(t, os.RemoveAll(fsm.Registry().Dir()))
-
-	// Create a snapshot
-	snapshot, err := fsm.Snapshot()
-	assert.Nil(t, snapshot)
-
-	expected := fmt.Sprintf(
-		"test.db: source connection: open error for %s: unable to open database file",
-		filepath.Join(fsm.Registry().Dir(), "test.db"))
-
-	assert.EqualError(t, err, expected)
-}
+*/
 
 // In case the snapshot is made when an active transaction is in progress an
 // error is returned.
@@ -295,18 +277,24 @@ func TestFSM_SnapshotActiveTransactionError(t *testing.T) {
 
 	fsm.Registry().TxnDryRun()
 
-	params := newFramesParams()
-	params.IsCommit = 0
-	fsmApply(fsm, 2, protocol.NewFrames(1, "test.db", params))
+	command := protocol.NewFrames(123, "test.db", newFrameList())
+
+	frames := command.Payload.(*protocol.Command_Frames)
+	frames.Frames.IsCommit = 0
+	frames.Frames.PageNumbers = []uint32{0}
+	frames.Frames.PageData = []byte{0}
+
+	fsmApply(fsm, 1, command)
 
 	// Create a snapshot
 	snapshot, err := fsm.Snapshot()
 	assert.Nil(t, snapshot)
 
-	expected := "test.db: transaction 1 writing as follower is in progress"
+	expected := "test.db: transaction 123 writing as follower is in progress"
 	assert.EqualError(t, err, expected)
 }
 
+/*
 // In case the snapshot is taken while there's an idle transaction, no error is
 // returned, but the transaction is included in the snapshot.
 func TestFSM_SnapshotIdleTransaction(t *testing.T) {
@@ -339,18 +327,19 @@ func TestFSM_SnapshotIdleTransaction(t *testing.T) {
 	//assert.Equal(t, transaction.Started, txn.State())
 
 }
+*/
 
 func TestFSM_Snapshot(t *testing.T) {
 	fsm, cleanup := newFSM(t)
 	defer cleanup()
 
 	// Create a database with some content.
-	path := filepath.Join(fsm.Registry().Dir(), "test.db")
-	db, err := sql.Open("sqlite3", path)
+	vfs := fsm.Registry().Vfs().Name()
+	conn, err := bindings.Open("test.db", vfs)
 	require.NoError(t, err)
-	_, err = db.Exec("CREATE TABLE foo (n INT); INSERT INTO foo VALUES(1)")
+	err = conn.Exec("CREATE TABLE foo (n INT); INSERT INTO foo VALUES(1)")
 	require.NoError(t, err)
-	db.Close()
+	require.NoError(t, conn.Close())
 
 	// Register the database.
 	fsmApply(fsm, 0, protocol.NewOpen("test.db"))
@@ -378,15 +367,17 @@ func TestFSM_Snapshot(t *testing.T) {
 	}
 
 	// The restored file has the expected data
-	db, err = sql.Open("sqlite3", path)
+	conn, err = bindings.Open("test.db", vfs)
 	require.NoError(t, err)
-	rows, err := db.Query("SELECT * FROM foo", nil)
+	defer conn.Close()
+
+	rows, err := conn.Query("SELECT n FROM foo")
 	require.NoError(t, err)
-	defer rows.Close()
-	require.Equal(t, true, rows.Next())
-	var n int
-	require.NoError(t, rows.Scan(&n))
-	assert.Equal(t, 1, n)
+
+	values := make([]driver.Value, 1)
+	assert.Equal(t, nil, rows.Next(values))
+	assert.Equal(t, int64(1), values[0])
+	assert.Equal(t, io.EOF, rows.Next(values))
 }
 
 func TestFSM_RestoreLogIndexError(t *testing.T) {
@@ -399,59 +390,6 @@ func TestFSM_RestoreLogIndexError(t *testing.T) {
 
 	assert.EqualError(t, err, "failed to read FSM index: unexpected EOF")
 }
-
-func TestFSM_Restore(t *testing.T) {
-	fsm, cleanup := newFSM(t)
-	defer cleanup()
-
-	// Create a database with some content.
-	path := filepath.Join(fsm.Registry().Dir(), "test.db")
-	db, err := sql.Open("sqlite3", path)
-	require.NoError(t, err)
-	_, err = db.Exec("CREATE TABLE foo (n INT); INSERT INTO foo VALUES(1)")
-	require.NoError(t, err)
-	db.Close()
-
-	// Register the database.
-	fsmApply(fsm, 0, protocol.NewOpen("test.db"))
-
-	// Create a snapshot
-	snapshot, err := fsm.Snapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Persist the snapshot in a store.
-	store := newSnapshotStore()
-	sink := newSnapshotSink(t, store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := snapshot.Persist(sink); err != nil {
-		t.Fatal(err)
-	}
-
-	// Restore the snapshot
-	_, reader, err := store.Open(sink.ID())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := fsm.Restore(reader); err != nil {
-		t.Fatal(err)
-	}
-
-	// The restored file has the expected data
-	db, err = sql.Open("sqlite3", path)
-	require.NoError(t, err)
-	rows, err := db.Query("SELECT * FROM foo", nil)
-	require.NoError(t, err)
-	defer rows.Close()
-	require.Equal(t, true, rows.Next())
-	var n int
-	require.NoError(t, rows.Scan(&n))
-	assert.Equal(t, 1, n)
-}
-
 
 // Return a raft snapshot store that uses the given directory to store
 // snapshots.
@@ -475,7 +413,6 @@ func newSnapshotSink(t *testing.T, store raft.SnapshotStore) raft.SnapshotSink {
 	}
 	return sink
 }
-*/
 
 // Return a fresh FSM for tests.
 func newFSM(t *testing.T) (*replication.FSM, func()) {
