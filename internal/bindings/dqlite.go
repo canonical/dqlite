@@ -113,7 +113,20 @@ static void dqliteClusterUnregister(void *ctx, sqlite3 *db) {
   dqliteClusterUnregisterCb(c->handle, db);
 }
 
-// Go land callback for xLeader.
+// Go land callback for xBarrier.
+int dqliteClusterBarrierCb(int handle);
+
+static int dqliteClusterBarrier(void *ctx) {
+  struct dqliteCluster *c;
+
+  assert(ctx != NULL);
+
+  c = (struct dqliteCluster*)ctx;
+
+  return dqliteClusterBarrierCb(c->handle);
+}
+
+// Go land callback for xRecover.
 int dqliteClusterRecoverCb(int handle, uint64_t txToken);
 
 static int dqliteClusterRecover(void *ctx, uint64_t tx_token) {
@@ -141,6 +154,7 @@ static void dqliteClusterInit(struct dqliteCluster *c, int handle)
   c->cluster.xServers = dqliteClusterServers;
   c->cluster.xRegister = dqliteClusterRegister;
   c->cluster.xUnregister = dqliteClusterUnregister;
+  c->cluster.xBarrier = dqliteClusterBarrier;
   c->cluster.xRecover = dqliteClusterRecover;
 }
 
@@ -427,6 +441,8 @@ type Cluster interface {
 	Register(*Conn)
 	Unregister(*Conn)
 
+	Barrier() error
+
 	Recover(token uint64) error
 }
 
@@ -495,6 +511,22 @@ func dqliteClusterUnregisterCb(handle C.int, db *C.sqlite3) {
 	cluster := clusterHandles[handle]
 
 	cluster.Unregister((*Conn)(unsafe.Pointer(db)))
+}
+
+//export dqliteClusterBarrierCb
+func dqliteClusterBarrierCb(handle C.int) C.int {
+	cluster := clusterHandles[handle]
+
+	if err := cluster.Barrier(); err != nil {
+		if err, ok := err.(Error); ok {
+			return C.int(err.ExtendedCode)
+		}
+
+		// Return a generic error.
+		return C.SQLITE_ERROR
+	}
+
+	return 0
 }
 
 //export dqliteClusterRecoverCb

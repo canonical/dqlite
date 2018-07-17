@@ -113,6 +113,10 @@ func (c *testCluster) Register(*bindings.Conn) {
 func (c *testCluster) Unregister(*bindings.Conn) {
 }
 
+func (c *testCluster) Barrier() error {
+	return nil
+}
+
 func (c *testCluster) Recover(token uint64) error {
 	return nil
 }

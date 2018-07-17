@@ -8,16 +8,22 @@
 
 static const char *test__cluster_replication(void *ctx)
 {
+	(void)ctx;
+
 	return test_replication()->zName;
 }
 
 static const char *test__cluster_leader(void *ctx)
 {
-  return "127.0.0.1:666";
+	(void)ctx;
+
+	return "127.0.0.1:666";
 }
 
 static int test__cluster_servers(void *ctx, const char ***out)
 {
+	(void)ctx;
+
 	static const char *addresses[] = {
 		"1.2.3.4:666",
 		"5.6.7.8:666",
@@ -29,8 +35,21 @@ static int test__cluster_servers(void *ctx, const char ***out)
 	return 0;
 }
 
-static void test__cluster_register(void *ctx, sqlite3 *db) {}
-static void test__cluster_unregister(void *ctx, sqlite3 *db) {}
+static void test__cluster_register(void *ctx, sqlite3 *db) {
+	(void)ctx;
+	(void)db;
+}
+
+static void test__cluster_unregister(void *ctx, sqlite3 *db) {
+	(void)ctx;
+	(void)db;
+}
+
+static int test__cluster_barrier(void *ctx) {
+	(void)ctx;
+
+	return 0;
+}
 
 static dqlite_cluster test__cluster = {
   NULL,
@@ -39,6 +58,7 @@ static dqlite_cluster test__cluster = {
   test__cluster_servers,
   test__cluster_register,
   test__cluster_unregister,
+  test__cluster_barrier,
   NULL,
 };
 

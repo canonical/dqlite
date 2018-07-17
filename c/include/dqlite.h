@@ -81,6 +81,7 @@ typedef struct dqlite_cluster {
 	int         (*xServers)(void *ctx, const char ***addresses);
 	void        (*xRegister)(void *ctx, sqlite3 *db);
 	void        (*xUnregister)(void *ctx, sqlite3 *db);
+	int         (*xBarrier)(void *ctx);
 	int         (*xRecover)(void *ctx, uint64_t tx_token);
 } dqlite_cluster;
 

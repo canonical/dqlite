@@ -230,7 +230,7 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	client.EncodePrepare(&c.request, uint64(c.id), query)
 
 	if err := c.client.Call(ctx, &c.request, &c.response); err != nil {
-		return nil, errors.Wrap(err, "failed to prepare statement")
+		return nil, driverError(err)
 	}
 
 	var err error
@@ -260,7 +260,7 @@ func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.Name
 
 	result, err := client.DecodeResult(&c.response)
 	if err != nil {
-		return nil, err
+		return nil, driverError(err)
 	}
 
 	return &Result{result: result}, nil
@@ -283,7 +283,7 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 
 	rows, err := client.DecodeRows(&c.response)
 	if err != nil {
-		return nil, err
+		return nil, driverError(err)
 	}
 
 	return &Rows{rows: rows}, nil
@@ -383,7 +383,7 @@ func (s *Stmt) Close() error {
 	}
 
 	if err := client.DecodeEmpty(s.response); err != nil {
-		return err
+		return driverError(err)
 	}
 
 	return nil
@@ -410,7 +410,7 @@ func (s *Stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 
 	result, err := client.DecodeResult(s.response)
 	if err != nil {
-		return nil, err
+		return nil, driverError(err)
 	}
 
 	return &Result{result: result}, nil
@@ -436,7 +436,7 @@ func (s *Stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 
 	rows, err := client.DecodeRows(s.response)
 	if err != nil {
-		return nil, err
+		return nil, driverError(err)
 	}
 
 	return &Rows{rows: rows}, nil
@@ -532,12 +532,15 @@ func valuesToNamedValues(args []driver.Value) []driver.NamedValue {
 }
 
 func driverError(err error) error {
-	switch errors.Cause(err).(type) {
+	switch err := errors.Cause(err).(type) {
 	case *net.OpError:
 		return driver.ErrBadConn
-	default:
-		return err
+	case client.ErrDb:
+		if err.ExtendedCode == bindings.ErrIoErrNotLeader {
+			return driver.ErrBadConn
+		}
 	}
+	return err
 }
 
 func init() {
