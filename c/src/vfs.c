@@ -1226,7 +1226,7 @@ static int dqlite__vfs_open(
 	/* Search if the file exists already, and (if it doesn't) if there are
 	 * free slots. */
 	free_slot = dqlite__vfs_root_content_lookup(root, filename, &content);
-	exists = content != 0;
+	exists = content != NULL;
 
 	/* If file exists, and the exclusive flag is on, then return an error.
 	 *
@@ -1662,4 +1662,116 @@ int dqlite_vfs_content(sqlite3_vfs* vfs, const char *filename, uint8_t **buf, si
 	}
 
 	return 0;
+}
+
+int dqlite_vfs_restore(
+	sqlite3_vfs* vfs,
+	const char *filename,
+	uint8_t *buf,
+	size_t len
+	)
+{
+	int err = SQLITE_OK;
+
+	sqlite3_file *file;
+	int exists;
+	int flags;
+	int page_size;
+	sqlite3_int64 offset;
+	uint8_t *cursor;
+
+	assert(vfs != NULL);
+	assert(buf != NULL);
+	assert(len > 0 );
+
+	/* First check if the file exists */
+	err = dqlite__vfs_access(vfs, filename, 0, &exists);
+	if (err != SQLITE_OK) {
+		return err;
+	}
+
+	/* If it exists, remove it. */
+	if (exists) {
+		err = dqlite__vfs_delete(vfs, filename, 0);
+		if (err != SQLITE_OK) {
+			return err;
+		}
+	}
+
+	/* Common flags */
+	flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+
+	/* Determine if this is a database or a WAL file
+	 *
+	 * TODO: improve the check. */
+	if (strstr(filename, "-wal") != NULL) {
+		flags |= SQLITE_OPEN_WAL;
+	} else {
+		flags |= SQLITE_OPEN_MAIN_DB;
+	}
+
+	/* Create the file */
+	file = (sqlite3_file*)sqlite3_malloc(sizeof(*file));
+	if (file == NULL) {
+		err = SQLITE_NOMEM;
+		goto err_file_malloc;
+	}
+
+	err = dqlite__vfs_open(vfs, filename, file, flags, &flags);
+	if (err != SQLITE_OK) {
+		goto err_open;
+	}
+
+	if (flags & SQLITE_OPEN_MAIN_DB) {
+		/* Write a database file */
+		cursor = buf;
+		page_size = dqlite__vfs_parse_database_page_size(cursor);
+
+		assert((len % page_size) == 0);
+
+		for (offset = 0; offset < (sqlite3_int64)(len); offset += page_size) {
+			cursor = buf + offset;
+			err = dqlite__vfs_write(file, cursor, page_size, offset);
+			if (err != SQLITE_OK) {
+				goto err_write;
+			}
+		}
+	} else {
+		/* Write a WAL file */
+		int frame_size;
+
+		page_size = dqlite__vfs_parse_wal_page_size(buf);
+		frame_size = DQLITE__VFS_WAL_FRAME_HDRSIZE + page_size;
+		assert(((len - DQLITE__VFS_WAL_HDRSIZE) % frame_size) == 0);
+
+		cursor = buf;
+		err = dqlite__vfs_write(file, cursor, DQLITE__VFS_WAL_HDRSIZE, 0);
+		if (err != SQLITE_OK) {
+			goto err_write;
+		}
+
+		for (offset = DQLITE__VFS_WAL_HDRSIZE; offset < (sqlite3_int64)(len); offset += frame_size ) {
+			cursor = buf + offset;
+			err = dqlite__vfs_write(file, cursor, DQLITE__VFS_WAL_FRAME_HDRSIZE, offset);
+			if (err != SQLITE_OK) {
+				goto err_write;
+			}
+
+			cursor = buf + offset + DQLITE__VFS_WAL_FRAME_HDRSIZE;
+			err = dqlite__vfs_write(file, cursor, page_size, offset + DQLITE__VFS_WAL_FRAME_HDRSIZE);
+			if (err != SQLITE_OK) {
+				goto err_write;
+			}
+		}
+	}
+
+ err_write:
+	dqlite__vfs_close(file);
+
+ err_open:
+	sqlite3_free(file);
+
+ err_file_malloc:
+
+	return err;
 }

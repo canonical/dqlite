@@ -512,8 +512,11 @@ void test_dqlite_vfs_content()
 	int rc;
 	sqlite3 *db;
 	sqlite3_vfs *vfs;
-	uint8_t *buf;
+	uint8_t *database;
+	uint8_t *wal;
 	size_t len;
+	sqlite3_stmt *stmt;
+	const char *tail;
 
 	db = test_dqlite_vfs__db_open();
 
@@ -522,23 +525,39 @@ void test_dqlite_vfs_content()
 	vfs = sqlite3_vfs_find("volatile");
 	CU_ASSERT_PTR_NOT_NULL(vfs);
 
-	rc = dqlite_vfs_content(vfs, "test.db", &buf, &len);
+	rc = dqlite_vfs_content(vfs, "test.db", &database, &len);
 	CU_ASSERT_EQUAL(rc, SQLITE_OK);
 
-	CU_ASSERT_PTR_NOT_NULL(buf);
+	CU_ASSERT_PTR_NOT_NULL(database);
 	CU_ASSERT_EQUAL(len, 4096);
 
-	sqlite3_free(buf);
-
-	rc = dqlite_vfs_content(vfs, "test.db-wal", &buf, &len);
+	rc = dqlite_vfs_content(vfs, "test.db-wal", &wal, &len);
 	CU_ASSERT_EQUAL(rc, SQLITE_OK);
 
-	CU_ASSERT_PTR_NOT_NULL(buf);
+	CU_ASSERT_PTR_NOT_NULL(wal);
 	CU_ASSERT_EQUAL(len, 8272);
-
-	sqlite3_free(buf);
 
 	rc = sqlite3_close(db);
 	CU_ASSERT_EQUAL(rc, SQLITE_OK);
 
+	rc = dqlite_vfs_restore(vfs, "test.db", database, 4096);
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+
+	rc = dqlite_vfs_restore(vfs, "test.db-wal", wal, 8272);
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+
+	sqlite3_free(database);
+	sqlite3_free(wal);
+
+	rc = sqlite3_open_v2("test.db", &db, SQLITE_OPEN_READWRITE, "volatile");
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+
+	rc = sqlite3_prepare(db, "INSERT INTO test(n) VALUES(?)", -1, &stmt, &tail);
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+
+	rc = sqlite3_finalize(stmt);
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
+
+	rc = sqlite3_close(db);
+	CU_ASSERT_EQUAL(rc, SQLITE_OK);
 }
