@@ -1513,6 +1513,7 @@ static int dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotU
 
 int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
 	sqlite3_vfs* vfs;
+	char *zName;
 	struct dqlite__vfs_root *root;
 	int err;
 
@@ -1528,24 +1529,35 @@ int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
 
 	vfs = (sqlite3_vfs*)sqlite3_malloc(sizeof(sqlite3_vfs));
 	if (vfs == NULL) {
-		return SQLITE_NOMEM;
+		err = SQLITE_NOMEM;
+		goto err_vfs_malloc;
 	}
 
 	root = (struct dqlite__vfs_root*)sqlite3_malloc(sizeof(*root));
+	if (root == NULL) {
+		err = SQLITE_NOMEM;
+		goto err_vfs_root_malloc;
+	}
 
 	err = dqlite__vfs_root_init(root);
 	if (err != 0) {
 		assert(err == SQLITE_NOMEM);
-
-		sqlite3_free(vfs);
-		return err;
+		goto err_vfs_root_init;
 	}
+
+	zName = sqlite3_malloc(strlen(name) + 1);
+	if (zName == NULL) {
+		err = SQLITE_NOMEM;
+		goto err_zname_malloc;
+	}
+
+	strcpy(zName, name);
 
 	vfs->iVersion =          2;
 	vfs->szOsFile =          sizeof(struct dqlite__vfs_file);
 	vfs->mxPathname =        DQLITE__VFS_MAX_PATHNAME;
 	vfs->pNext =             0;
-	vfs->zName =             (const char*)name;
+	vfs->zName =             (const char*)zName;
 	vfs->pAppData =          (void*)root;
 	vfs->xOpen =             dqlite__vfs_open;
 	vfs->xDelete =           dqlite__vfs_delete;
@@ -1566,6 +1578,16 @@ int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
 	*out = vfs;
 
 	return SQLITE_OK;
+
+ err_zname_malloc:
+ err_vfs_root_init:
+	sqlite3_free(root);
+
+ err_vfs_root_malloc:
+	sqlite3_free(vfs);
+
+ err_vfs_malloc:
+	return err;
 }
 
 void dqlite_vfs_unregister(sqlite3_vfs* vfs) {
@@ -1580,5 +1602,6 @@ void dqlite_vfs_unregister(sqlite3_vfs* vfs) {
 	dqlite__vfs_root_close(root);
 
 	sqlite3_free(root);
+	sqlite3_free((char *)vfs->zName);
 	sqlite3_free(vfs);
 }
