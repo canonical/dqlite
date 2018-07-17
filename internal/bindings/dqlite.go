@@ -301,6 +301,7 @@ func (v *Vfs) Name() string {
 // RegisterVfs registers an in-memory VFS instance under the given name.
 func RegisterVfs(name string) (*Vfs, error) {
 	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
 
 	var vfs *C.sqlite3_vfs
 
@@ -316,8 +317,6 @@ func RegisterVfs(name string) (*Vfs, error) {
 func UnregisterVfs(vfs *Vfs) {
 	cvfs := (*C.sqlite3_vfs)(unsafe.Pointer(vfs))
 	C.dqlite_vfs_unregister(cvfs)
-
-	C.free(unsafe.Pointer(cvfs.zName))
 }
 
 // Server is a Go wrapper arround dqlite_server.

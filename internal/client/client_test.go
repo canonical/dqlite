@@ -45,7 +45,7 @@ func TestClient_LargeMessage(t *testing.T) {
 	response.Init(64)
 
 	flags := uint64(bindings.OpenReadWrite | bindings.OpenCreate)
-	client.EncodeOpen(&request, "test.db", flags, "test")
+	client.EncodeOpen(&request, "test.db", flags, "test-0")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
@@ -155,6 +155,7 @@ func newClient(t *testing.T) (*client.Client, func()) {
 
 	cluster := newTestCluster()
 	cluster.leader = listener.Addr().String()
+	cluster.name = "test-0"
 
 	serverCleanup := newServer(t, 0, listener, cluster)
 

@@ -2,6 +2,7 @@ package client_test
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
@@ -274,10 +275,11 @@ func newStore(t *testing.T, addresses []string) client.ServerStore {
 func newServer(t *testing.T, index int, listener net.Listener, cluster bindings.Cluster) func() {
 	t.Helper()
 
-	vfs, err := bindings.RegisterVfs("test")
+	name := fmt.Sprintf("test-%d", index)
+	vfs, err := bindings.RegisterVfs(name)
 	require.NoError(t, err)
 
-	err = bindings.RegisterWalReplication("test", &testWalReplication{})
+	err = bindings.RegisterWalReplication(name, &testWalReplication{})
 	require.NoError(t, err)
 
 	file, fileCleanup := newFile(t)
@@ -377,6 +379,7 @@ func newFile(t *testing.T) (*os.File, func()) {
 }
 
 type testCluster struct {
+	name   string
 	leader string
 }
 
@@ -385,7 +388,7 @@ func newTestCluster() *testCluster {
 }
 
 func (c *testCluster) Replication() string {
-	return "test"
+	return c.name
 }
 
 func (c *testCluster) Leader() string {
