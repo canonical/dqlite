@@ -77,6 +77,12 @@ int dqlite_vfs_content(
 	const char *filename,
 	uint8_t **buf,
 	size_t *len);
+int dqlite_vfs_restore(
+	sqlite3_vfs* vfs,
+	const char *filename,
+	uint8_t *buf,
+	size_t len
+	);
 
 /* Interface implementing cluster-related functionality */
 typedef struct dqlite_cluster {

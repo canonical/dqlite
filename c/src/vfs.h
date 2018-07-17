@@ -16,4 +16,11 @@ int dqlite_vfs_content(
 	size_t *len
 	);
 
+int dqlite_vfs_restore(
+	sqlite3_vfs* vfs,
+	const char *filename,
+	uint8_t *buf,
+	size_t len
+	);
+
 #endif /* DQLITE_VFS_H */
