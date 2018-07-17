@@ -246,9 +246,14 @@ static void dqliteServerClose(dqlite_server *s) {
 import "C"
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
+	"strings"
 	"unsafe"
+
+	"github.com/pkg/errors"
 )
 
 // ProtocolVersion is the latest dqlite server protocol version.
@@ -319,6 +324,42 @@ func (v *Vfs) Name() string {
 	return C.GoString(vfs.zName)
 }
 
+// Content returns the content of the given filename.
+func (v *Vfs) Content(filename string) ([]byte, error) {
+	vfs := (*C.sqlite3_vfs)(unsafe.Pointer(v))
+
+	cfilename := C.CString(filename)
+	defer C.free(unsafe.Pointer(cfilename))
+
+	var buf *C.uint8_t
+	var n C.size_t
+
+	rc := C.dqlite_vfs_content(vfs, cfilename, &buf, &n)
+	if rc != 0 {
+		return nil, Error{Code: int(rc)}
+	}
+
+	content := C.GoBytes(unsafe.Pointer(buf), C.int(n))
+
+	return content, nil
+}
+
+// Dump the content of a volatile file to the actual file system.
+func (v *Vfs) dumpFile(data []byte, dir string, name string) error {
+	if strings.HasPrefix(name, "/") {
+		return fmt.Errorf("can't dump absolute file path %s", name)
+	}
+
+	path := filepath.Join(dir, name)
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return errors.Wrap(err, "failed to create parent directory")
+	}
+	if err := ioutil.WriteFile(path, data, 0644); err != nil {
+		return errors.Wrap(err, "failed to write file")
+	}
+
+	return nil
 }
 
 // Server is a Go wrapper arround dqlite_server.

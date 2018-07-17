@@ -201,6 +201,18 @@ func lastError(db *C.sqlite3) Error {
 	}
 }
 
+// Open a SQLite connection.
+func Open(name string, vfs string) (*Conn, error) {
+	flags := OpenReadWrite | OpenCreate
+
+	db, err := open(name, flags, vfs)
+	if err != nil {
+		return nil, err
+	}
+
+	return (*Conn)(unsafe.Pointer(db)), nil
+}
+
 // Open a SQLite connection, setting anything that is common between leader and
 // follower connections.
 func open(name string, flags int, vfs string) (*C.sqlite3, error) {
@@ -217,64 +229,33 @@ func open(name string, flags int, vfs string) (*C.sqlite3, error) {
 		return nil, errors.Wrap(lastError(db), "failed to open database")
 	}
 
-	// Set the page size. TODO: make page size configurable?
-	var stmt *C.sqlite3_stmt
-	var tail *C.char
+	var errmsg *C.char
 
+	// Set the page size. TODO: make page size configurable?
 	sql := C.CString("PRAGMA page_size=4096")
 	defer C.free(unsafe.Pointer(sql))
 
-	rc = C.sqlite3_prepare(db, sql, -1, &stmt, &tail)
+	rc = C.sqlite3_exec(db, sql, nil, nil, &errmsg)
 	if rc != C.SQLITE_OK {
-		return nil, errors.Wrap(lastError(db), "failed to prepare PRAGMA page_size")
-	}
-
-	rc = C.sqlite3_step(stmt)
-	if rc != C.SQLITE_DONE {
-		return nil, errors.Wrap(lastError(db), "failed to execute PRAGMA page_size")
-	}
-
-	rc = C.sqlite3_finalize(stmt)
-	if rc != C.SQLITE_OK {
-		return nil, errors.Wrap(lastError(db), "failed to finalize PRAGMA page_size")
+		return nil, errors.Wrap(lastError(db), "failed to exec PRAGMA page_size")
 	}
 
 	// Disable syncs.
 	sql = C.CString("PRAGMA synchronous=OFF")
 	defer C.free(unsafe.Pointer(sql))
 
-	rc = C.sqlite3_prepare(db, sql, -1, &stmt, &tail)
+	rc = C.sqlite3_exec(db, sql, nil, nil, &errmsg)
 	if rc != C.SQLITE_OK {
-		return nil, errors.Wrap(lastError(db), "failed to prepare PRAGMA synchronous")
-	}
-
-	rc = C.sqlite3_step(stmt)
-	if rc != C.SQLITE_DONE {
-		return nil, errors.Wrap(lastError(db), "failed to execute PRAGMA synchronous")
-	}
-
-	rc = C.sqlite3_finalize(stmt)
-	if rc != C.SQLITE_OK {
-		return nil, errors.Wrap(lastError(db), "failed to finalize PRAGMA synchronous")
+		return nil, errors.Wrap(lastError(db), "failed to exec PRAGMA synchronous")
 	}
 
 	// Set WAL journaling.
 	sql = C.CString("PRAGMA journal_mode=WAL")
 	defer C.free(unsafe.Pointer(sql))
 
-	rc = C.sqlite3_prepare(db, sql, -1, &stmt, &tail)
+	rc = C.sqlite3_exec(db, sql, nil, nil, &errmsg)
 	if rc != C.SQLITE_OK {
-		return nil, errors.Wrap(lastError(db), "failed to prepare PRAGMA journal_mode")
-	}
-
-	rc = C.sqlite3_step(stmt)
-	if rc != C.SQLITE_ROW {
-		return nil, errors.Wrap(lastError(db), "failed to execute PRAGMA journal_mode")
-	}
-
-	rc = C.sqlite3_finalize(stmt)
-	if rc != C.SQLITE_OK {
-		return nil, errors.Wrap(lastError(db), "failed to finalize PRAGMA journal_mode")
+		return nil, errors.Wrap(lastError(db), "failed to exec PRAGMA journal_mode")
 	}
 
 	return db, nil
@@ -323,20 +304,13 @@ func (c *Conn) Query(query string) (*Rows, error) {
 func (c *Conn) Exec(query string) error {
 	db := (*C.sqlite3)(unsafe.Pointer(c))
 
-	var stmt *C.sqlite3_stmt
-	var tail *C.char
+	var errmsg *C.char
 
 	sql := C.CString(query)
 	defer C.free(unsafe.Pointer(sql))
 
-	rc := C.sqlite3_prepare_v2(db, sql, -1, &stmt, &tail)
+	rc := C.sqlite3_exec(db, sql, nil, nil, &errmsg)
 	if rc != C.SQLITE_OK {
-		return lastError(db)
-	}
-	defer C.sqlite3_finalize(stmt)
-
-	rc = C.sqlite3_step(stmt)
-	if rc != C.SQLITE_DONE {
 		return lastError(db)
 	}
 
