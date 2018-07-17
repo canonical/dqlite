@@ -2,9 +2,11 @@ package bindings_test
 
 import (
 	"encoding/binary"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
@@ -150,6 +152,51 @@ func TestServer_ConcurrentHandleAndClose(t *testing.T) {
 
 	assert.NoError(t, <-runCh)
 	<-acceptCh
+}
+
+func TestVfs_Content(t *testing.T) {
+	vfs, err := bindings.NewVfs("test")
+	require.NoError(t, err)
+
+	defer vfs.Close()
+
+	conn, err := bindings.Open("test.db", "test")
+	require.NoError(t, err)
+
+	err = conn.Exec("CREATE TABLE foo (n INT)")
+	require.NoError(t, err)
+
+	// Dump the in-memory files to a temporary directory.
+	dir, err := ioutil.TempDir("", "dqlite-bindings-")
+	require.NoError(t, err)
+
+	defer os.RemoveAll(dir)
+
+	bytes, err := vfs.Content("test.db")
+	require.NoError(t, err)
+
+	err = ioutil.WriteFile(filepath.Join(dir, "test.db"), bytes, 0600)
+	require.NoError(t, err)
+
+	bytes, err = vfs.Content("test.db-wal")
+	require.NoError(t, err)
+
+	err = ioutil.WriteFile(filepath.Join(dir, "test.db-wal"), bytes, 0600)
+	require.NoError(t, err)
+
+	require.NoError(t, conn.Close())
+
+	// Open the files that we have dumped and check that the table we
+	// created is there.
+	conn, err = bindings.Open(filepath.Join(dir, "test.db"), "unix")
+	require.NoError(t, err)
+
+	rows, err := conn.Query("SELECT * FROM foo")
+	require.NoError(t, err)
+
+	assert.Equal(t, io.EOF, rows.Next(nil))
+
+	require.NoError(t, conn.Close())
 }
 
 func newTestFile(t *testing.T) (*os.File, func()) {
