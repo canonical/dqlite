@@ -34,23 +34,15 @@ import (
 
 // Driver perform queries against a dqlite server.
 type Driver struct {
-	logger            *zap.Logger   // Logger to use
-	store             ServerStore   // Holds addresses of dqlite servers
-	connectionTimeout time.Duration // Max time to wait for a new connection
-	clientConfig      client.Config // Configuration for dqlite client instances
+	logger            *zap.Logger     // Logger to use
+	store             ServerStore     // Holds addresses of dqlite servers
+	context           context.Context // Global cancellation context
+	connectionTimeout time.Duration   // Max time to wait for a new connection
+	clientConfig      client.Config   // Configuration for dqlite client instances
 }
 
 // DriverOption can be used to tweak driver parameters.
 type DriverOption func(*driverOptions)
-
-// Hold configuration options for a dqlite driver.
-type driverOptions struct {
-	Logger                  *zap.Logger
-	Dial                    client.DialFunc
-	ConnectionTimeout       time.Duration
-	ConnectionBackoffFactor time.Duration
-	ConnectionBackoffCap    time.Duration
-}
 
 // WithLogger sets a custom Driver zap logger.
 func WithLogger(logger *zap.Logger) DriverOption {
@@ -98,6 +90,13 @@ func WithConnectionBackoffCap(cap time.Duration) DriverOption {
 	}
 }
 
+// WithContext sets a global cancellation context.
+func WithContext(context context.Context) DriverOption {
+	return func(options *driverOptions) {
+		options.Context = context
+	}
+}
+
 // NewDriver creates a new dqlite driver, which also implements the
 // driver.Driver interface.
 func NewDriver(store ServerStore, options ...DriverOption) (*Driver, error) {
@@ -110,6 +109,7 @@ func NewDriver(store ServerStore, options ...DriverOption) (*Driver, error) {
 	driver := &Driver{
 		logger:            o.Logger,
 		store:             store,
+		context:           o.Context,
 		connectionTimeout: o.ConnectionTimeout,
 	}
 
@@ -125,14 +125,25 @@ func NewDriver(store ServerStore, options ...DriverOption) (*Driver, error) {
 	return driver, nil
 }
 
+// Hold configuration options for a dqlite driver.
+type driverOptions struct {
+	Logger                  *zap.Logger
+	Dial                    client.DialFunc
+	ConnectionTimeout       time.Duration
+	ConnectionBackoffFactor time.Duration
+	ConnectionBackoffCap    time.Duration
+	Context                 context.Context
+}
+
 // Create a driverOptions object with sane defaults.
 func defaultDriverOptions() *driverOptions {
 	return &driverOptions{
 		Logger:                  defaultLogger(),
 		Dial:                    client.TCPDial,
-		ConnectionTimeout:       5 * time.Second,
+		ConnectionTimeout:       15 * time.Second,
 		ConnectionBackoffFactor: 50 * time.Millisecond,
 		ConnectionBackoffCap:    time.Second,
+		Context:                 context.Background(),
 	}
 }
 
@@ -171,7 +182,7 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 		return nil, errors.Wrapf(err, "invalid URI %s", uri)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), d.connectionTimeout)
+	ctx, cancel := context.WithTimeout(d.context, d.connectionTimeout)
 	defer cancel()
 
 	// TODO: generate a client ID.
