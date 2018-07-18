@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"os"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -33,13 +32,6 @@ type ServerOption func(*serverOptions)
 func WithServerLogger(logger *zap.Logger) ServerOption {
 	return func(options *serverOptions) {
 		options.Logger = logger
-	}
-}
-
-// WithServerLogFile sets a custom dqlite C server log file.
-func WithServerLogFile(file *os.File) ServerOption {
-	return func(options *serverOptions) {
-		options.LogFile = file
 	}
 }
 
@@ -75,10 +67,11 @@ func NewServer(raft *raft.Raft, registry *Registry, listener net.Listener, optio
 		provider:    o.AddressProvider,
 	}
 
-	server, err := bindings.NewServer(o.LogFile, cluster)
+	server, err := bindings.NewServer(cluster)
 	if err != nil {
 		return nil, err
 	}
+	server.SetLogger(&dqliteLogger{logger: o.Logger})
 
 	s := &Server{
 		logger:   o.Logger,
@@ -103,7 +96,6 @@ func NewServer(raft *raft.Raft, registry *Registry, listener net.Listener, optio
 // Hold configuration options for a dqlite server.
 type serverOptions struct {
 	Logger          *zap.Logger
-	LogFile         *os.File
 	AddressProvider raft.ServerAddressProvider
 }
 
@@ -211,7 +203,24 @@ func (s *Server) Close() error {
 func defaultServerOptions() *serverOptions {
 	return &serverOptions{
 		Logger:          defaultLogger(),
-		LogFile:         os.Stdout,
 		AddressProvider: nil,
+	}
+}
+
+// Wraps a zap.Logger and implements the dqlite.Logger interface.
+type dqliteLogger struct {
+	logger *zap.Logger
+}
+
+func (l *dqliteLogger) Logf(level int, message string) {
+	switch level {
+	case bindings.LogDebug:
+		l.logger.Debug(message)
+	case bindings.LogInfo:
+		l.logger.Info(message)
+	case bindings.LogWarn:
+		l.logger.Warn(message)
+	case bindings.LogError:
+		l.logger.Error(message)
 	}
 }

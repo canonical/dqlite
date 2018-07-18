@@ -3,9 +3,7 @@ package client_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net"
-	"os"
 	"testing"
 	"time"
 
@@ -282,9 +280,7 @@ func newServer(t *testing.T, index int, listener net.Listener, cluster bindings.
 	err = bindings.RegisterWalReplication(name, &testWalReplication{})
 	require.NoError(t, err)
 
-	file, fileCleanup := newFile(t)
-
-	server, err := bindings.NewServer(file, cluster)
+	server, err := bindings.NewServer(cluster)
 	require.NoError(t, err)
 
 	runCh := make(chan error)
@@ -342,8 +338,6 @@ func newServer(t *testing.T, index int, listener net.Listener, cluster bindings.
 
 		bindings.UnregisterWalReplication("test")
 		vfs.Close()
-
-		fileCleanup()
 	}
 
 	return cleanup
@@ -356,26 +350,6 @@ func newListener(t *testing.T) net.Listener {
 	require.NoError(t, err)
 
 	return listener
-}
-
-func newFile(t *testing.T) (*os.File, func()) {
-	t.Helper()
-
-	file, err := ioutil.TempFile("", "dqlite-client-")
-	require.NoError(t, err)
-
-	cleanup := func() {
-		require.NoError(t, file.Close())
-
-		bytes, err := ioutil.ReadFile(file.Name())
-		require.NoError(t, err)
-
-		t.Logf("server log:\n%s\n", string(bytes))
-
-		require.NoError(t, os.Remove(file.Name()))
-	}
-
-	return file, cleanup
 }
 
 type testCluster struct {
@@ -395,13 +369,13 @@ func (c *testCluster) Leader() string {
 	return c.leader
 }
 
-func (c *testCluster) Servers() ([]string, error) {
-	addresses := []string{
-		"1.2.3.4:666",
-		"5.6.7.8:666",
+func (c *testCluster) Servers() ([]bindings.ServerInfo, error) {
+	servers := []bindings.ServerInfo{
+		{ID: 1, Address: "1.2.3.4:666"},
+		{ID: 2, Address: "5.6.7.8:666"},
 	}
 
-	return addresses, nil
+	return servers, nil
 }
 
 func (c *testCluster) Register(*bindings.Conn) {

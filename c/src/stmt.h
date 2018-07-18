@@ -9,29 +9,30 @@
 
 /* Hold state for a single open SQLite database */
 struct dqlite__stmt {
-	sqlite3       *db;     /* Underlying SQLite database handle */
-	sqlite3_stmt  *stmt;   /* Underlying SQLite statement handle */
-	const char    *tail;   /* Unparsed SQL portion */
-	dqlite__error  error;  /* Last dqlite-specific error */
+	size_t        id;    /* Statement ID */
+	sqlite3 *     db;    /* Underlying SQLite database handle */
+	sqlite3_stmt *stmt;  /* Underlying SQLite statement handle */
+	const char *  tail;  /* Unparsed SQL portion */
+	dqlite__error error; /* Last dqlite-specific error */
 };
 
+/* Initialize a statement state object */
 void dqlite__stmt_init(struct dqlite__stmt *s);
+
+/* Close a statement state object, releasing all associated resources. */
 void dqlite__stmt_close(struct dqlite__stmt *s);
 
-int dqlite__stmt_bind(
-	struct dqlite__stmt *s,
-	struct dqlite__message *message,
-	int *rc);
+/* Bind the parameters of the underlying statement by decoding the given
+ * message. */
+int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message);
 
-int dqlite__stmt_exec(
-	struct dqlite__stmt *s,
-	uint64_t *last_insert_id,
-	uint64_t *rows_affected);
+int dqlite__stmt_exec(struct dqlite__stmt *s,
+                      uint64_t *           last_insert_id,
+                      uint64_t *           rows_affected);
 
-int dqlite__stmt_query(
-	struct dqlite__stmt *s,
-	struct dqlite__message *message,
-	int *rc);
+/* Step through a query statement and fill the given message with the rows it
+ * yields. */
+int dqlite__stmt_query(struct dqlite__stmt *s, struct dqlite__message *message);
 
 DQLITE__REGISTRY(dqlite__stmt_registry, dqlite__stmt);
 

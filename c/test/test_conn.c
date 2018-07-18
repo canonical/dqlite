@@ -1,524 +1,688 @@
 #include <assert.h>
 #include <unistd.h>
 
-#include <CUnit/CUnit.h>
 #include <uv.h>
 
+#include "../include/dqlite.h"
 #include "../src/binary.h"
 #include "../src/conn.h"
-#include "../include/dqlite.h"
 
 #include "cluster.h"
+#include "leak.h"
+#include "log.h"
+#include "munit.h"
 #include "socket.h"
-#include "suite.h"
 
-static struct test_socket_pair sockets;
-static uv_loop_t loop;
-static struct dqlite__conn conn;
-struct dqlite__response response;
+/******************************************************************************
+ *
+ * Helpers
+ *
+ ******************************************************************************/
 
-void test_dqlite__conn_setup()
-{
-	int err;
-	FILE *log = test_suite_dqlite_log();
+struct fixture {
+	struct test_socket_pair sockets;
+	uv_loop_t               loop;
+	struct dqlite__conn     conn;
+	struct dqlite__response response;
+};
 
-	err = test_socket_pair_initialize(&sockets);
-	if (err != 0)
-		CU_FAIL("test setup failed");
+static void __recv_response(struct fixture *f) {
+	int      err;
+	uv_buf_t buf;
+	ssize_t  nread;
 
-	err = uv_loop_init(&loop);
-	if (err != 0) {
-		test_suite_errorf("failed to init UV loop: %s - %d", uv_strerror(errno), err);
-		CU_FAIL("test setup failed");
-	}
+	dqlite__message_header_recv_start(&f->response.message, &buf);
 
-	dqlite__conn_init(&conn, log, sockets.server, test_cluster(), &loop);
-	dqlite__response_init(&response);
+	nread = read(f->sockets.client, buf.base, buf.len);
+	munit_assert_int(nread, ==, buf.len);
+
+	err = dqlite__message_header_recv_done(&f->response.message);
+	munit_assert_int(err, ==, 0);
+
+	err = dqlite__message_body_recv_start(&f->response.message, &buf);
+	munit_assert_int(err, ==, 0);
+
+	nread = read(f->sockets.client, buf.base, buf.len);
+	munit_assert_int(nread, ==, buf.len);
+
+	err = dqlite__response_decode(&f->response);
+	munit_assert_int(err, ==, 0);
+
+	dqlite__message_recv_reset(&f->response.message);
 }
 
-void test_dqlite__conn_teardown()
-{
-	int err;
+/******************************************************************************
+ *
+ * Setup and tear down
+ *
+ ******************************************************************************/
 
-	dqlite__response_close(&response);
-	dqlite__conn_close(&conn);
+static void *setup(const MunitParameter params[], void *user_data) {
+	struct fixture *f;
+	int             err;
 
-	err = uv_loop_close(&loop);
-	if (err != 0) {
-		test_suite_errorf("failed to close UV loop: %s - %d", uv_strerror(err), err);
-		test_suite_teardown_fail();
-		return;
-	}
+	(void)params;
+	(void)user_data;
 
-	err = test_socket_pair_cleanup(&sockets);
-	if (err != 0) {
-		test_suite_teardown_fail();
-		return;
-	}
+	f = munit_malloc(sizeof *f);
 
-	test_suite_teardown_pass();
+	err = test_socket_pair_initialize(&f->sockets);
+	munit_assert_int(err, ==, 0);
+
+	err = uv_loop_init(&f->loop);
+	munit_assert_int(err, ==, 0);
+
+	dqlite__conn_init(&f->conn, f->sockets.server, test_cluster(), &f->loop);
+	f->conn.logger = test_logger();
+
+	dqlite__response_init(&f->response);
+
+	return f;
 }
 
-/*
- * dqlite__conn_abort_suite
- */
+static void tear_down(void *data) {
+	struct fixture *f = data;
+	int             err;
 
-void test_dqlite__conn_abort_immediately()
-{
-	int err;
+	dqlite__response_close(&f->response);
+	dqlite__conn_close(&f->conn);
 
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	err = uv_loop_close(&f->loop);
+	munit_assert_int(err, ==, 0);
 
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	err = test_socket_pair_cleanup(&f->sockets);
+	munit_assert_int(err, ==, 0);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL(err, 0);
-
-	sockets.server_disconnected = 1;
-
-	CU_ASSERT_STRING_EQUAL(conn.error, "read error: end of file (EOF)");
+	test_assert_no_leaks();
 }
 
-void test_dqlite__conn_abort_during_handshake()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+/******************************************************************************
+ *
+ * Tests for dqlite__conn_abort
+ *
+ ******************************************************************************/
+
+static MunitResult test_abort_immediately(const MunitParameter params[],
+                                          void *               data) {
+	struct fixture *f = data;
+	int             err;
+
+	(void)params;
+
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
+
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	munit_assert_string_equal(f->conn.error, "read error: end of file (EOF)");
+
+	return MUNIT_OK;
+}
+
+static MunitResult test_abort_during_handshake(const MunitParameter params[],
+                                               void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	ssize_t         nwrite;
+
+	(void)params;
+
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
+
+	nwrite = write(f->sockets.client, &protocol, 3);
+	munit_assert_int(nwrite, ==, 3);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	munit_assert_string_equal(f->conn.error, "read error: end of file (EOF)");
+
+	return MUNIT_OK;
+}
+
+static MunitResult test_abort_after_handshake(const MunitParameter params[],
+                                              void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	ssize_t         nwrite;
+
+	(void)params;
+
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
+
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof(protocol));
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	munit_assert_string_equal(f->conn.error, "read error: end of file (EOF)");
+
+	return MUNIT_OK;
+}
+
+static MunitResult test_abort_during_header(const MunitParameter params[],
+                                            void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t         buf[7]   = {/* Partial header */
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0};
+	ssize_t         nwrite;
+
+	(void)params;
+
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
+
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof(protocol));
+
+	nwrite = write(f->sockets.client, buf, 7);
+	munit_assert_int(nwrite, ==, 7);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	munit_assert_string_equal(f->conn.error, "read error: end of file (EOF)");
+
+	return MUNIT_OK;
+}
+
+static MunitResult test_abort_after_header(const MunitParameter params[],
+                                           void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t         buf[8]   = {/* Full header */
+                          1,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0};
+	ssize_t         nwrite;
+
+	(void)params;
+
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
+
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof(protocol));
+
+	nwrite = write(f->sockets.client, buf, 8);
+	munit_assert_int(nwrite, ==, 8);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	munit_assert_string_equal(f->conn.error, "read error: end of file (EOF)");
+
+	return MUNIT_OK;
+}
+
+static MunitResult test_abort_during_body(const MunitParameter params[],
+                                          void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t         buf[13]  = {/* Header and partial body */
+                           1,
+                           0,
+                           0,
+                           0,
+                           0,
+                           0,
+                           0,
+                           0,
+                           0,
+                           0,
+                           0,
+                           0,
+                           0};
+	ssize_t         nwrite;
+
+	(void)params;
+
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
+
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof(protocol));
+
+	nwrite = write(f->sockets.client, buf, 13);
+	munit_assert_int(nwrite, ==, 13);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	munit_assert_string_equal(f->conn.error, "read error: end of file (EOF)");
+
+	return MUNIT_OK;
+}
+
+static MunitResult test_abort_after_body(const MunitParameter params[], void *data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t         buf[16]  = {
+            /* Header and body (Leader request) */
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        };
 	ssize_t nwrite;
 
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	(void)params;
 
-	nwrite = write(sockets.client, &protocol, 3);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 3);
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof(protocol));
 
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	nwrite = write(f->sockets.client, buf, 16);
+	munit_assert_int(nwrite, ==, 16);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	sockets.server_disconnected = 1;
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_STRING_EQUAL(conn.error, "read error: end of file (EOF)");
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	munit_assert_string_equal(
+	    f->conn.error, "read error: connection reset by peer (ECONNRESET)");
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__conn_abort_after_handshake()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+static MunitResult test_abort_after_heartbeat_timeout(const MunitParameter params[],
+                                                      void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t         buf[3]   = {
+            /* Incomplete header */
+            0,
+            0,
+            0,
+        };
 	ssize_t nwrite;
 
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	(void)params;
 
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
+	f->conn.gateway.heartbeat_timeout = 1; /* Abort after a millisecond */
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
 
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof(protocol));
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	sockets.server_disconnected = 1;
-
-	CU_ASSERT_STRING_EQUAL(conn.error, "read error: end of file (EOF)");
-}
-
-void test_dqlite__conn_abort_during_header()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[7] = { /* Partial header */
-		0, 0, 0, 0,
-		0, 0, 0
-	};
-	ssize_t nwrite;
-
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
-
-	nwrite = write(sockets.client, buf, 7);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 7);
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
-
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	sockets.server_disconnected = 1;
-
-	CU_ASSERT_STRING_EQUAL(conn.error, "read error: end of file (EOF)");
-}
-
-void test_dqlite__conn_abort_after_header()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[8] = { /* Full header */
-		1, 0, 0, 0,
-		0, 0, 0, 0
-	};
-	ssize_t nwrite;
-
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
-
-	nwrite = write(sockets.client, buf, 8);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 8);
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
-
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	sockets.server_disconnected = 1;
-
-	CU_ASSERT_STRING_EQUAL(conn.error, "read error: end of file (EOF)");
-}
-
-void test_dqlite__conn_abort_during_body()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[13] = { /* Header and partial body */
-		1, 0, 0, 0,
-		0, 0, 0, 0,
-		0, 0, 0, 0,
-		0
-	};
-	ssize_t nwrite;
-
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
-
-	nwrite = write(sockets.client, buf, 13);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 13);
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
-
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	sockets.server_disconnected = 1;
-
-	CU_ASSERT_STRING_EQUAL(conn.error, "read error: end of file (EOF)");
-}
-
-void test_dqlite__conn_abort_after_body()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[16] = { /* Header and body (Leader request) */
-		1, 0, 0, 0,
-		0, 0, 0, 0,
-		0, 0, 0, 0,
-		0, 0, 0, 0,
-	};
-	ssize_t nwrite;
-
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
-
-	nwrite = write(sockets.client, buf, 16);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 16);
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
-
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	sockets.server_disconnected = 1;
-
-	CU_ASSERT_STRING_EQUAL(conn.error, "read error: connection reset by peer (ECONNRESET)");
-}
-
-void test_dqlite__conn_abort_after_heartbeat_timeout()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[3] = { /* Incomplete header */
-		0, 0, 0,
-	};
-	ssize_t nwrite;
-
-	conn.gateway.heartbeat_timeout = 1; /* Abort after a millisecond */
-
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
-
-	nwrite = write(sockets.client, buf, 3);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 3);
+	nwrite = write(f->sockets.client, buf, 3);
+	munit_assert_int(nwrite, ==, 3);
 
 	usleep(2 * 1000);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
 
-	sockets.server_disconnected = 1;
+	f->sockets.server_disconnected = 1;
 
-	CU_ASSERT_PTR_NOT_NULL(strstr(conn.error, "no heartbeat since"));
+	munit_assert_ptr_not_equal(strstr(f->conn.error, "no heartbeat since"),
+	                           NULL);
+
+	return MUNIT_OK;
 }
 
-/*
- * dqlite__conn_read_cb_suite
- */
+static MunitTest dqlite__conn_abort_tests[] = {
+    {"/immediately", test_abort_immediately, setup, tear_down, 0, NULL},
+    {"/during-handshake", test_abort_during_handshake, setup, tear_down, 0, NULL},
+    {"/after-handshake", test_abort_after_handshake, setup, tear_down, 0, NULL},
+    {"/during-header", test_abort_during_header, setup, tear_down, 0, NULL},
+    {"/after-header", test_abort_after_header, setup, tear_down, 0, NULL},
+    {"/during-body", test_abort_during_body, setup, tear_down, 0, NULL},
+    {"/after-body", test_abort_after_body, setup, tear_down, 0, NULL},
+    //	{"after heartbeat timeout", test_dqlite__conn_abort_after_heartbeat_timeout},
+    {NULL, NULL, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
+};
 
-static void test_dqlite__conn_recv_response() {
-	int err;
-	uv_buf_t buf;
-	ssize_t nread;
+/******************************************************************************
+ *
+ * Tests for dqlite__conn_read_cb
+ *
+ ******************************************************************************/
 
-	dqlite__message_header_recv_start(&response.message, &buf);
+static MunitResult test_read_cb_unknown_protocol(const MunitParameter params[],
+                                                 void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = 0x123456;
+	ssize_t         nwrite;
 
-	nread = read(sockets.client, buf.base, buf.len);
-	CU_ASSERT_EQUAL_FATAL(nread, buf.len);
+	(void)params;
 
-	err = dqlite__message_header_recv_done(&response.message);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
 
-	err = dqlite__message_body_recv_start(&response.message, &buf);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof protocol);
 
-	nread = read(sockets.client, buf.base, buf.len);
-	CU_ASSERT_EQUAL_FATAL(nread, buf.len);
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0 /* Number of pending handles */);
 
-	err = dqlite__response_decode(&response);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	f->sockets.server_disconnected = 1;
 
-	dqlite__message_recv_reset(&response.message);
+	munit_assert_string_equal(f->conn.error, "unknown protocol version: 123456");
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__conn_read_cb_unknown_protocol()
-{
-	int err;
-	uint64_t protocol = 0x123456;
+static MunitResult test_read_cb_empty_body(const MunitParameter params[],
+                                           void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t         buf[8]   = {
+            /* Invalid header (empty body) */
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        };
 	ssize_t nwrite;
 
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	(void)params;
 
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0 /* Number of pending handles */);
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof protocol);
 
-	sockets.server_disconnected = 1;
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	CU_ASSERT_STRING_EQUAL(conn.error, "unknown protocol version: 123456");
+	nwrite = write(f->sockets.client, buf, 8);
+	munit_assert_int(nwrite, ==, 8);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	__recv_response(f);
+
+	munit_assert_int(f->response.type, ==, DQLITE_RESPONSE_FAILURE);
+	munit_assert_int(f->response.failure.code, ==, DQLITE_PROTO);
+	munit_assert_string_equal(
+	    f->response.failure.message,
+	    "failed to parse request header: empty message body");
+
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__conn_read_cb_empty_body()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[8] = { /* Invalid header (empty body) */
-		0, 0, 0, 0,
-		0, 0, 0, 0,
-	};
+static MunitResult test_read_cb_body_too_large(const MunitParameter params[],
+                                               void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t         buf[8]   = {
+            /* Invalid header (body too large) */
+            0xf,
+            0xf,
+            0xf,
+            0xf,
+            0,
+            0,
+            0,
+            0,
+        };
 	ssize_t nwrite;
 
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	(void)params;
 
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof protocol);
 
-	nwrite = write(sockets.client, buf, 8);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 8);
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+	nwrite = write(f->sockets.client, buf, 8);
+	munit_assert_int(nwrite, ==, 8);
 
-	test_dqlite__conn_recv_response();
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	CU_ASSERT_EQUAL(response.type, DQLITE_RESPONSE_FAILURE);
-	CU_ASSERT_EQUAL(response.failure.code, DQLITE_PROTO);
-	CU_ASSERT_STRING_EQUAL(
-		response.failure.description,
-		"failed to parse request header: empty message body");
+	__recv_response(f);
 
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	munit_assert_int(f->response.type, ==, DQLITE_RESPONSE_FAILURE);
+	munit_assert_int(f->response.failure.code, ==, DQLITE_PROTO);
+	munit_assert_string_equal(
+	    f->response.failure.message,
+	    "failed to parse request header: message body too large");
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
 
-	sockets.server_disconnected = 1;
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__conn_read_cb_body_too_large()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[8] = { /* Invalid header (body too large) */
-		0xf, 0xf, 0xf, 0xf,
-		0, 0, 0, 0,
-	};
+static MunitResult test_read_cb_malformed_body(const MunitParameter params[],
+                                               void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t         buf[32]  = {
+            /* Valid header for Open request, invalid Open.volatile */
+            3,   0,   0,   0,   DQLITE_REQUEST_OPEN,
+            0,   0,   0,   't', 'e',
+            's', 't', '.', 'd', 'b',
+            0,   0,   0,   0,   0,
+            0,   0,   0,   0,   'v',
+            'o', 'l', 'a', 't', 'i',
+            'e', 'x',
+        };
 	ssize_t nwrite;
 
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	(void)params;
 
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof(protocol));
 
-	nwrite = write(sockets.client, buf, 8);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 8);
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+	nwrite = write(f->sockets.client, buf, 32);
+	munit_assert_int(nwrite, ==, 32);
 
-	test_dqlite__conn_recv_response();
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	CU_ASSERT_EQUAL(response.type, DQLITE_RESPONSE_FAILURE);
-	CU_ASSERT_EQUAL(response.failure.code, DQLITE_PROTO);
-	CU_ASSERT_STRING_EQUAL(
-		response.failure.description,
-		"failed to parse request header: message body too large");
+	__recv_response(f);
 
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	munit_assert_int(f->response.type, ==, DQLITE_RESPONSE_FAILURE);
+	munit_assert_int(f->response.failure.code, ==, DQLITE_PARSE);
+	munit_assert_string_equal(
+	    f->response.failure.message,
+	    "failed to decode request: failed to decode 'open': "
+	    "failed to get 'vfs' field: no string found");
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
 
-	sockets.server_disconnected = 1;
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__conn_read_cb_malformed_body()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[32] = { /* Valid header for Open request, invalid Open.volatile */
-		3, 0, 0, 0, DQLITE_REQUEST_OPEN, 0, 0, 0,
-		't', 'e', 's', 't', '.', 'd', 'b', 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		'v', 'o', 'l', 'a', 't', 'i', 'e', 'x',
-	};
+static MunitResult test_read_cb_invalid_db_id(const MunitParameter params[],
+                                              void *               data) {
+	struct fixture *f = data;
+	int             err;
+	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint8_t         buf[24]  = {
+            /* Valid header for Prepare request, invalid Prepare.db_id */
+            2,   0,   0,   0,   DQLITE_REQUEST_PREPARE,
+            0,   0,   0,   1,   0,
+            0,   0,   0,   0,   0,
+            0,   'S', 'E', 'L', 'E',
+            'C', ' ', '1', 0,
+        };
 	ssize_t nwrite;
 
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	(void)params;
 
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
+	err = dqlite__conn_start(&f->conn);
+	munit_assert_int(err, ==, 0);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
+	munit_assert_int(nwrite, ==, sizeof protocol);
 
-	nwrite = write(sockets.client, buf, 32);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 32);
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
+	nwrite = write(f->sockets.client, buf, 24);
+	munit_assert_int(nwrite, ==, 24);
 
-	test_dqlite__conn_recv_response();
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	CU_ASSERT_EQUAL(response.type, DQLITE_RESPONSE_FAILURE);
-	CU_ASSERT_EQUAL(response.failure.code, DQLITE_PARSE);
-	CU_ASSERT_STRING_EQUAL(
-		response.failure.description,
-		"failed to decode request: failed to decode 'open': failed to get 'vfs' field: no string found");
+	__recv_response(f);
 
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	munit_assert_int(f->response.type, ==, DQLITE_RESPONSE_FAILURE);
+	munit_assert_int(f->response.failure.code, ==, SQLITE_NOTFOUND);
+	munit_assert_string_equal(f->response.failure.message, "no db with id 1");
 
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+	err = test_socket_pair_client_disconnect(&f->sockets);
+	munit_assert_int(err, ==, 0);
 
-	sockets.server_disconnected = 1;
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 0);
+
+	f->sockets.server_disconnected = 1;
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__conn_read_cb_invalid_db_id()
-{
-	int err;
-	uint64_t protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
-	uint8_t buf[24] = { /* Valid header for Prepare request, invalid Prepare.db_id */
-		2, 0, 0, 0, DQLITE_REQUEST_PREPARE, 0, 0, 0,
-		1, 0, 0, 0, 0, 0, 0, 0,
-		'S', 'E', 'L', 'E', 'C', ' ', '1', 0,
-	};
-	ssize_t nwrite;
+static MunitTest dqlite__conn_read_cb_tests[] = {
+    {"/unknown-protocol", test_read_cb_unknown_protocol, setup, tear_down, 0, NULL},
+    {"/empty-body", test_read_cb_empty_body, setup, tear_down, 0, NULL},
+    {"/body-too-large", test_read_cb_body_too_large, setup, tear_down, 0, NULL},
+    {"/malformed-body", test_read_cb_malformed_body, setup, tear_down, 0, NULL},
+    {"/invalid-db-id", test_read_cb_invalid_db_id, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
 
-	err = dqlite__conn_start(&conn);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
+/******************************************************************************
+ *
+ * Suite
+ *
+ ******************************************************************************/
 
-	nwrite = write(sockets.client, &protocol, sizeof(protocol));
-	CU_ASSERT_EQUAL_FATAL(nwrite, sizeof(protocol));
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
-
-	nwrite = write(sockets.client, buf, 24);
-	CU_ASSERT_EQUAL_FATAL(nwrite, 24);
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 1 /* Number of pending handles */);
-
-	test_dqlite__conn_recv_response();
-
-	CU_ASSERT_EQUAL(response.type, DQLITE_RESPONSE_FAILURE);
-	CU_ASSERT_EQUAL(response.failure.code, DQLITE_NOTFOUND);
-	CU_ASSERT_STRING_EQUAL(
-		response.failure.description,
-		"failed to handle request: failed to handle prepare: no db with id 1");
-
-	err = test_socket_pair_client_disconnect(&sockets);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	err = uv_run(&loop, UV_RUN_NOWAIT);
-	CU_ASSERT_EQUAL_FATAL(err, 0);
-
-	sockets.server_disconnected = 1;
-}
-
-/*
- * dqlite__conn_write_suite
- */
+MunitSuite dqlite__conn_suites[] = {
+    {"_abort", dqlite__conn_abort_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+    {"_read_cb", dqlite__conn_read_cb_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+    {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
+};

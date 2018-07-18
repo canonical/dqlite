@@ -1,11 +1,12 @@
 #include <assert.h>
-#include <stdio.h>
 #include <float.h>
+#include <stdio.h>
 
-#include "gateway.h"
-#include "dqlite.h"
+#include "../include/dqlite.h"
+
 #include "error.h"
 #include "fsm.h"
+#include "gateway.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "request.h"
@@ -17,169 +18,161 @@
  * message within this time. */
 #define DQLITE__GATEWAY_DEFAULT_HEARTBEAT_TIMEOUT 15000
 
-static int dqlite__gateway_leader(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
-{
+/* Render a failure response. */
+static void dqlite__gateway_failure(struct dqlite__gateway *    g,
+                                    struct dqlite__gateway_ctx *ctx,
+                                    int                         code) {
+	ctx->response.type            = DQLITE_RESPONSE_FAILURE;
+	ctx->response.failure.code    = code;
+	ctx->response.failure.message = g->error;
+}
+
+static void dqlite__gateway_leader(struct dqlite__gateway *    g,
+                                   struct dqlite__gateway_ctx *ctx) {
 	const char *address;
 
 	address = g->cluster->xLeader(g->cluster->ctx);
 
 	if (address == NULL) {
 		dqlite__error_oom(&g->error, "failed to get cluster leader");
-		return DQLITE_NOMEM;
+		dqlite__gateway_failure(g, ctx, SQLITE_NOMEM);
+		return;
 	}
 
-	ctx->response.type = DQLITE_RESPONSE_SERVER;
+	ctx->response.type           = DQLITE_RESPONSE_SERVER;
 	ctx->response.server.address = address;
 
-	return 0;
+	return;
 }
 
-static int dqlite__gateway_client(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
-{
+static void dqlite__gateway_client(struct dqlite__gateway *    g,
+                                   struct dqlite__gateway_ctx *ctx) {
 	/* TODO: handle client registrations */
 
-	ctx->response.type = DQLITE_RESPONSE_WELCOME;
+	ctx->response.type                      = DQLITE_RESPONSE_WELCOME;
 	ctx->response.welcome.heartbeat_timeout = g->heartbeat_timeout;
 
-	return 0;
+	return;
 }
 
-static int dqlite__gateway_heartbeat(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
-{
-	int err;
-	const char **addresses;
+static void dqlite__gateway_heartbeat(struct dqlite__gateway *    g,
+                                      struct dqlite__gateway_ctx *ctx) {
+	int                        rc;
+	struct dqlite_server_info *servers;
 
 	/* Get the current list of servers in the cluster */
-	err = g->cluster->xServers(g->cluster->ctx, &addresses);
-	if (err != 0) {
-		/* TODO: handle the case where the error is due to the node not
-		 * not being the leader */
-		dqlite__errorf(g, "failed to get cluster servers", "");
-		return DQLITE_ERROR;
+	rc = g->cluster->xServers(g->cluster->ctx, &servers);
+	if (rc != SQLITE_OK) {
+		dqlite__error_printf(&g->error, "failed to get cluster servers");
+		dqlite__gateway_failure(g, ctx, rc);
+		return;
 	}
 
-	assert(addresses != NULL);
+	assert(servers != NULL);
 
 	/* Encode the response */
-	ctx->response.type = DQLITE_RESPONSE_SERVERS;
-	ctx->response.servers.addresses = addresses;
+	ctx->response.type            = DQLITE_RESPONSE_SERVERS;
+	ctx->response.servers.servers = servers;
 
 	/* Refresh the heartbeat timestamp. */
 	g->heartbeat = ctx->request->timestamp;
 
-	return 0;
+	return;
 }
 
-/* Helper to fill the response with the details of a database error */
-static void dqlite__gateway_db_error(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx, sqlite3 *db, int rc)
-{
-	assert(g != NULL);
-	assert(ctx != NULL);
-	assert(db != NULL);
-	assert(rc != SQLITE_OK);
-
-	ctx->response.type = DQLITE_RESPONSE_DB_ERROR;
-	ctx->response.db_error.code = sqlite3_errcode(db);
-	ctx->response.db_error.extended_code = sqlite3_extended_errcode(db);
-	ctx->response.db_error.description = sqlite3_errmsg(db);
-
-	dqlite__debugf(
-		g, "database error", "code=%ld msg=%s",
-		ctx->response.db_error.extended_code, ctx->response.db_error.description);
-}
-
-static int dqlite__gateway_open(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
-{
-	int err;
-	int rc;
-	size_t i;
+static void dqlite__gateway_open(struct dqlite__gateway *    g,
+                                 struct dqlite__gateway_ctx *ctx) {
+	int                err;
+	int                rc;
+	const char *       replication;
 	struct dqlite__db *db;
 
-	err = dqlite__db_registry_add(&g->dbs, &db, &i);
+	err = dqlite__db_registry_add(&g->dbs, &db);
 	if (err != 0) {
 		assert(err == DQLITE_NOMEM);
-		dqlite__error_oom(&g->error, "failed to create db object");
-		return err;
+		dqlite__error_oom(&g->error, "unable to register database");
+		dqlite__gateway_failure(g, ctx, SQLITE_NOMEM);
+		return;
 	}
 
 	assert(db != NULL);
 
+	replication = g->cluster->xReplication(g->cluster->ctx);
+
+	assert(replication != NULL);
+
 	rc = dqlite__db_open(
-		db, ctx->request->open.name, ctx->request->open.flags,
-		g->cluster->xReplication(g->cluster->ctx));
-	if (rc == SQLITE_OK) {
-		ctx->response.type = DQLITE_RESPONSE_DB;
-		ctx->response.db.id = (uint32_t)i;
-		g->cluster->xRegister(g->cluster->ctx, db->db);
-	} else {
-		dqlite__db_registry_del(&g->dbs, i);
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
+	    db, ctx->request->open.name, ctx->request->open.flags, replication);
+
+	if (rc != 0) {
+		dqlite__error_printf(&g->error, db->error);
+		dqlite__gateway_failure(g, ctx, rc);
+		dqlite__db_registry_del(&g->dbs, db);
+		return;
 	}
 
-	return 0;
+	ctx->response.type  = DQLITE_RESPONSE_DB;
+	ctx->response.db.id = (uint32_t)db->id;
+	g->cluster->xRegister(g->cluster->ctx, db->db);
+
+	return;
 }
 
-#define DQLITE__GATEWAY_BARRIER						\
-	rc = g->cluster->xBarrier(g->cluster->ctx);			\
-	if (rc != 0) {							\
-		dqlite__debugf(g, "barrier failed", "rc=%d", rc);	\
-		ctx->response.db_error.code = SQLITE_IOERR;		\
-		ctx->response.type = DQLITE_RESPONSE_DB_ERROR;		\
-		ctx->response.db_error.extended_code = rc;		\
-		ctx->response.db_error.description = "barrier failed";	\
-									\
-		return 0;						\
+#define DQLITE__GATEWAY_BARRIER                                                     \
+	rc = g->cluster->xBarrier(g->cluster->ctx);                                 \
+	if (rc != 0) {                                                              \
+		dqlite__error_printf(&g->error, "raft barrier failed");             \
+		dqlite__gateway_failure(g, ctx, rc);                                \
+		return;                                                             \
 	}
 
-#define DQLITE__GATEWAY_LOOKUP_DB(ID)					\
-	db = dqlite__db_registry_get(&g->dbs, ID);			\
-	if (db == NULL) {						\
-		dqlite__error_printf(&g->error, "no db with id %d", ID); \
-		return DQLITE_NOTFOUND;					\
+#define DQLITE__GATEWAY_LOOKUP_DB(ID)                                               \
+	db = dqlite__db_registry_get(&g->dbs, ID);                                  \
+	if (db == NULL) {                                                           \
+		dqlite__error_printf(&g->error, "no db with id %d", ID);            \
+		dqlite__gateway_failure(g, ctx, SQLITE_NOTFOUND);                   \
+		return;                                                             \
 	}
 
-#define DQLITE__GATEWAY_LOOKUP_STMT(ID)					\
-	stmt = dqlite__db_stmt(db, ID);					\
-	if (stmt == NULL) {						\
-		dqlite__error_printf(&g->error, "no stmt with id %d", ID); \
-		return DQLITE_NOTFOUND;					\
+#define DQLITE__GATEWAY_LOOKUP_STMT(ID)                                             \
+	stmt = dqlite__db_stmt(db, ID);                                             \
+	if (stmt == NULL) {                                                         \
+		dqlite__error_printf(&g->error, "no stmt with id %d", ID);          \
+		dqlite__gateway_failure(g, ctx, SQLITE_NOTFOUND);                   \
+		return;                                                             \
 	}
 
-static int dqlite__gateway_prepare(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
-{
-	int rc;
-
-	struct dqlite__db *db;
+static void dqlite__gateway_prepare(struct dqlite__gateway *    g,
+                                    struct dqlite__gateway_ctx *ctx) {
+	struct dqlite__db *  db;
 	struct dqlite__stmt *stmt;
-	uint32_t stmt_id;
+	int                  rc;
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->prepare.db_id);
 
-	rc = dqlite__db_prepare(db, ctx->request->prepare.sql, &stmt_id);
-	if (rc == SQLITE_OK) {
-		ctx->response.type = DQLITE_RESPONSE_STMT;
-		ctx->response.stmt.db_id =  ctx->request->prepare.db_id;
-		ctx->response.stmt.id =  stmt_id;
-
-		stmt = dqlite__db_stmt(db, stmt_id);
-		ctx->response.stmt.params = sqlite3_bind_parameter_count(stmt->stmt);
-
-	} else {
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
+	rc = dqlite__db_prepare(db, ctx->request->prepare.sql, &stmt);
+	if (rc != SQLITE_OK) {
+		dqlite__error_printf(&g->error, db->error);
+		dqlite__gateway_failure(g, ctx, rc);
+		return;
 	}
 
-	return 0;
+	ctx->response.type        = DQLITE_RESPONSE_STMT;
+	ctx->response.stmt.db_id  = ctx->request->prepare.db_id;
+	ctx->response.stmt.id     = stmt->id;
+	ctx->response.stmt.params = sqlite3_bind_parameter_count(stmt->stmt);
+
+	return;
 }
 
-static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
-{
-	int err;
-	int rc;
-	struct dqlite__db *db;
+static void dqlite__gateway_exec(struct dqlite__gateway *    g,
+                                 struct dqlite__gateway_ctx *ctx) {
+	int                  rc;
+	struct dqlite__db *  db;
 	struct dqlite__stmt *stmt;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
+	uint64_t             last_insert_id;
+	uint64_t             rows_affected;
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->exec.db_id);
@@ -187,40 +180,30 @@ static int dqlite__gateway_exec(struct dqlite__gateway *g, struct dqlite__gatewa
 
 	assert(stmt != NULL);
 
-	err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
-	if (err != 0) {
-		assert(err == DQLITE_PROTO || err == DQLITE_ENGINE);
-
-		if (err == DQLITE_PROTO) {
-			dqlite__error_wrapf(&g->error, &stmt->error, "invalid bindings");
-			return err;
-		}
-
-		assert(err == DQLITE_ENGINE);
-		assert(rc != SQLITE_OK);
-
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
-
-		return 0;
+	rc = dqlite__stmt_bind(stmt, &ctx->request->message);
+	if (rc != SQLITE_OK) {
+		dqlite__error_printf(&g->error, stmt->error);
+		dqlite__gateway_failure(g, ctx, rc);
+		return;
 	}
 
 	rc = dqlite__stmt_exec(stmt, &last_insert_id, &rows_affected);
-	if (rc == 0) {
-		ctx->response.type = DQLITE_RESPONSE_RESULT;
+	if (rc == SQLITE_OK) {
+		ctx->response.type                  = DQLITE_RESPONSE_RESULT;
 		ctx->response.result.last_insert_id = last_insert_id;
-		ctx->response.result.rows_affected = rows_affected;
+		ctx->response.result.rows_affected  = rows_affected;
 	} else {
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
+		dqlite__error_printf(&g->error, stmt->error);
+		dqlite__gateway_failure(g, ctx, rc);
 	}
 
-	return 0;
+	return;
 }
 
-static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
-{
-	int err;
-	int rc;
-	struct dqlite__db *db;
+static void dqlite__gateway_query(struct dqlite__gateway *    g,
+                                  struct dqlite__gateway_ctx *ctx) {
+	int                  rc;
+	struct dqlite__db *  db;
 	struct dqlite__stmt *stmt;
 
 	DQLITE__GATEWAY_BARRIER;
@@ -229,70 +212,55 @@ static int dqlite__gateway_query(struct dqlite__gateway *g, struct dqlite__gatew
 
 	assert(stmt != NULL);
 
-	err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
-	if (err != 0) {
-		assert(err == DQLITE_PROTO || err == DQLITE_ENGINE);
-
-		if (err == DQLITE_PROTO) {
-			dqlite__error_wrapf(&g->error, &stmt->error, "invalid bindings");
-			return err;
-		}
-
-		assert(err == DQLITE_ENGINE);
-		assert(rc != SQLITE_OK);
-
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
-
-		return 0;
+	rc = dqlite__stmt_bind(stmt, &ctx->request->message);
+	if (rc != SQLITE_OK) {
+		dqlite__error_printf(&g->error, stmt->error);
+		dqlite__gateway_failure(g, ctx, rc);
+		return;
 	}
 
-	err = dqlite__stmt_query(stmt, &ctx->response.message, &rc);
-	if (err != 0) {
-		dqlite__error_wrapf(&g->error, &stmt->error, "failed to fetch rows");
-		return err;
-	}
-
+	rc = dqlite__stmt_query(stmt, &ctx->response.message);
 	if (rc != SQLITE_DONE) {
 		/* TODO: reset what was written in the message */
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
+		dqlite__error_printf(&g->error, stmt->error);
+		dqlite__gateway_failure(g, ctx, rc);
 	} else {
-		ctx->response.type = DQLITE_RESPONSE_ROWS;
- 		ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_EOF;
+		ctx->response.type     = DQLITE_RESPONSE_ROWS;
+		ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_EOF;
 	}
 
-	return 0;
+	return;
 }
 
-static int dqlite__gateway_finalize(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
-{
-	int rc;
-	struct dqlite__db *db;
+static void dqlite__gateway_finalize(struct dqlite__gateway *    g,
+                                     struct dqlite__gateway_ctx *ctx) {
+	int                  rc;
+	struct dqlite__db *  db;
 	struct dqlite__stmt *stmt;
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->finalize.db_id);
 	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->finalize.stmt_id);
 
-	rc = dqlite__db_finalize(db, stmt, ctx->request->finalize.stmt_id);
+	rc = dqlite__db_finalize(db, stmt);
 	if (rc == SQLITE_OK) {
 		ctx->response.type = DQLITE_RESPONSE_EMPTY;
 	} else {
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
+		dqlite__error_printf(&g->error, db->error);
+		dqlite__gateway_failure(g, ctx, rc);
 	}
 
-	return 0;
+	return;
 }
 
-static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
-{
-	int err;
-	int rc;
-	struct dqlite__db *db;
-	const char *sql;
-	uint32_t stmt_id;
+static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
+                                     struct dqlite__gateway_ctx *ctx) {
+	int                  rc;
+	struct dqlite__db *  db;
+	const char *         sql;
 	struct dqlite__stmt *stmt = NULL;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
+	uint64_t             last_insert_id;
+	uint64_t             rows_affected;
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->exec_sql.db_id);
@@ -302,60 +270,50 @@ static int dqlite__gateway_exec_sql(struct dqlite__gateway *g, struct dqlite__ga
 	sql = ctx->request->exec_sql.sql;
 
 	while (sql != NULL && strcmp(sql, "") != 0) {
-		rc = dqlite__db_prepare(db, sql, &stmt_id);
+		rc = dqlite__db_prepare(db, sql, &stmt);
 		if (rc != SQLITE_OK) {
-			dqlite__gateway_db_error(g, ctx, db->db, rc);
-			return 0;
+			dqlite__error_printf(&g->error, db->error);
+			dqlite__gateway_failure(g, ctx, rc);
+			return;
 		}
 
-		DQLITE__GATEWAY_LOOKUP_STMT(stmt_id);
-
-		if (stmt->stmt == NULL)
+		if (stmt->stmt == NULL) {
 			goto out;
+		}
 
-		err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
-		if (err != 0) {
-			assert(err == DQLITE_PROTO || err == DQLITE_ENGINE);
-
-			if (err == DQLITE_PROTO) {
-				dqlite__error_wrapf(&g->error, &stmt->error, "invalid bindings");
-				goto out;
-			}
-
-			assert(err == DQLITE_ENGINE);
-			assert(rc != SQLITE_OK);
-
-			dqlite__gateway_db_error(g, ctx, db->db, rc);
-
-			goto out;
+		/* TODO: what about bindings for multi-statement SQL text? */
+		rc = dqlite__stmt_bind(stmt, &ctx->request->message);
+		if (rc != SQLITE_OK) {
+			dqlite__error_printf(&g->error, stmt->error);
+			dqlite__gateway_failure(g, ctx, rc);
+			return;
 		}
 
 		rc = dqlite__stmt_exec(stmt, &last_insert_id, &rows_affected);
-		if (rc == 0) {
-			ctx->response.type = DQLITE_RESPONSE_RESULT;
+		if (rc == SQLITE_OK) {
+			ctx->response.type                  = DQLITE_RESPONSE_RESULT;
 			ctx->response.result.last_insert_id = last_insert_id;
-			ctx->response.result.rows_affected = rows_affected;
+			ctx->response.result.rows_affected  = rows_affected;
 		} else {
-			dqlite__gateway_db_error(g, ctx, db->db, rc);
+			dqlite__error_printf(&g->error, stmt->error);
+			dqlite__gateway_failure(g, ctx, rc);
 			goto out;
 		}
 
 		sql = stmt->tail;
 	}
 
- out:
+out:
 	/* Ignore errors here. TODO: emit a warning instead */
-	dqlite__db_finalize(db, stmt, stmt_id);
+	dqlite__db_finalize(db, stmt);
 
-	return err;
+	return;
 }
 
-static int dqlite__gateway_query_sql(struct dqlite__gateway *g, struct dqlite__gateway_ctx *ctx)
-{
-	int err;
-	int rc;
-	struct dqlite__db *db;
-	uint32_t stmt_id;
+static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
+                                      struct dqlite__gateway_ctx *ctx) {
+	int                  rc;
+	struct dqlite__db *  db;
 	struct dqlite__stmt *stmt;
 
 	DQLITE__GATEWAY_BARRIER;
@@ -363,69 +321,46 @@ static int dqlite__gateway_query_sql(struct dqlite__gateway *g, struct dqlite__g
 
 	assert(db != NULL);
 
-	rc = dqlite__db_prepare(db, ctx->request->query_sql.sql, &stmt_id);
+	rc = dqlite__db_prepare(db, ctx->request->query_sql.sql, &stmt);
 	if (rc != SQLITE_OK) {
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
-		return 0;
+		dqlite__error_printf(&g->error, db->error);
+		dqlite__gateway_failure(g, ctx, rc);
+		return;
 	}
 
-	DQLITE__GATEWAY_LOOKUP_STMT(stmt_id);
-
-	err = dqlite__stmt_bind(stmt, &ctx->request->message, &rc);
-	if (err != 0) {
-		assert(err == DQLITE_PROTO || err == DQLITE_ENGINE);
-
-		if (err == DQLITE_PROTO) {
-			dqlite__error_wrapf(&g->error, &stmt->error, "invalid bindings");
-			return err;
-		}
-
-		assert(err == DQLITE_ENGINE);
-		assert(rc != SQLITE_OK);
-
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
-
-		return 0;
+	rc = dqlite__stmt_bind(stmt, &ctx->request->message);
+	if (rc != SQLITE_OK) {
+		dqlite__error_printf(&g->error, stmt->error);
+		dqlite__gateway_failure(g, ctx, rc);
+		return;
 	}
 
-	err = dqlite__stmt_query(stmt, &ctx->response.message, &rc);
-	if (err != 0) {
-		dqlite__error_wrapf(&g->error, &stmt->error, "failed to fetch rows");
-		goto out;
-	}
-
+	rc = dqlite__stmt_query(stmt, &ctx->response.message);
 	if (rc != SQLITE_DONE) {
 		/* TODO: reset what was written in the message */
-		dqlite__gateway_db_error(g, ctx, db->db, rc);
+		dqlite__error_printf(&g->error, stmt->error);
+		dqlite__gateway_failure(g, ctx, rc);
 	} else {
-		ctx->response.type = DQLITE_RESPONSE_ROWS;
+		ctx->response.type     = DQLITE_RESPONSE_ROWS;
 		ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_EOF;
 	}
 
- out:
-	/* Ignore errors here. TODO: emit a warning instead */
-	dqlite__db_finalize(db, stmt, stmt_id);
-
-	return err;
+	return;
 }
 
-void dqlite__gateway_init(
-	struct dqlite__gateway *g,
-	FILE *log,
-	struct dqlite_cluster *cluster)
-{
+void dqlite__gateway_init(struct dqlite__gateway *g,
+                          struct dqlite_cluster * cluster) {
 	int i;
 
 	assert(g != NULL);
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_GATEWAY);
 
-	g->client_id = 0;
+	g->client_id         = 0;
 	g->heartbeat_timeout = DQLITE__GATEWAY_DEFAULT_HEARTBEAT_TIMEOUT;
 
 	dqlite__error_init(&g->error);
 
-	g->log = log;
 	g->cluster = cluster;
 
 	/* Reset all request contexts in the buffer */
@@ -437,8 +372,7 @@ void dqlite__gateway_init(
 	dqlite__db_registry_init(&g->dbs);
 }
 
-void dqlite__gateway_close(struct dqlite__gateway *g)
-{
+void dqlite__gateway_close(struct dqlite__gateway *g) {
 	int i;
 
 	assert(g != NULL);
@@ -454,18 +388,16 @@ void dqlite__gateway_close(struct dqlite__gateway *g)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_GATEWAY);
 }
 
-int dqlite__gateway_handle(
-	struct dqlite__gateway *g,
-	struct dqlite__request *request,
-	struct dqlite__response **response)
-{
-	int err;
-	int i;
+int dqlite__gateway_handle(struct dqlite__gateway *  g,
+                           struct dqlite__request *  request,
+                           struct dqlite__response **response) {
+	int                         err;
+	int                         i;
 	struct dqlite__gateway_ctx *ctx;
 
 	assert(g != NULL);
-	assert(request != NULL );
-	assert(response != NULL );
+	assert(request != NULL);
+	assert(response != NULL);
 
 	/* Look for an available request context buffer */
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
@@ -480,36 +412,30 @@ int dqlite__gateway_handle(
 		goto err;
 	}
 
-	ctx = &g->ctxs[i];
+	ctx          = &g->ctxs[i];
 	ctx->request = request;
 
 	switch (request->type) {
 
-#define DQLITE__GATEWAY_HANDLE(CODE, STRUCT, NAME, _)			\
-		case CODE:						\
-			err = dqlite__gateway_ ## NAME(g, ctx);		\
-			if (err != 0) {					\
-				dqlite__error_wrapf(			\
-					&g->error, &g->error,		\
-					"failed to handle %s", #NAME);	\
-				goto err;				\
-			}						\
-			break;
+#define DQLITE__GATEWAY_HANDLE(CODE, STRUCT, NAME, _)                               \
+	case CODE:                                                                  \
+		dqlite__gateway_##NAME(g, ctx);                                     \
+		break;
 
-		DQLITE__REQUEST_SCHEMA_TYPES(DQLITE__GATEWAY_HANDLE,);
+		DQLITE__REQUEST_SCHEMA_TYPES(DQLITE__GATEWAY_HANDLE, );
 
 	default:
-		dqlite__error_printf(&g->error, "unexpected Request %d", request->type);
-		err = DQLITE_PROTO;
-		goto err;
-
+		dqlite__error_printf(
+		    &g->error, "invalid request type %d", request->type);
+		dqlite__gateway_failure(g, ctx, SQLITE_ERROR);
+		break;
 	}
 
 	*response = &ctx->response;
 
 	return 0;
 
- err:
+err:
 	assert(err != 0);
 
 	*response = 0;
@@ -517,16 +443,16 @@ int dqlite__gateway_handle(
 	return err;
 }
 
-int dqlite__gateway_continue(struct dqlite__gateway *g, struct dqlite__response *response)
-{
+int dqlite__gateway_continue(struct dqlite__gateway * g,
+                             struct dqlite__response *response) {
 	assert(g != NULL);
 	assert(response != NULL);
 
 	return 0;
 }
 
-void dqlite__gateway_finish(struct dqlite__gateway *g, struct dqlite__response *response)
-{
+void dqlite__gateway_finish(struct dqlite__gateway * g,
+                            struct dqlite__response *response) {
 	int i;
 
 	assert(g != NULL);
@@ -544,9 +470,8 @@ void dqlite__gateway_finish(struct dqlite__gateway *g, struct dqlite__response *
 	assert(i < DQLITE__GATEWAY_MAX_REQUESTS);
 }
 
-void dqlite__gateway_abort(struct dqlite__gateway *g, struct dqlite__response *response){
+void dqlite__gateway_abort(struct dqlite__gateway * g,
+                           struct dqlite__response *response) {
 	assert(g != NULL);
 	assert(response != NULL);
-
-	dqlite__debugf(g, "abort request", "");
 }

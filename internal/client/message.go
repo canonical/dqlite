@@ -12,7 +12,7 @@ import (
 )
 
 type NamedValues = []driver.NamedValue
-type Strings []string
+type Servers []bindings.ServerInfo
 
 type Message struct {
 	words  uint32
@@ -294,7 +294,7 @@ func (m *Message) GetInt64() int64 {
 	return int64(binary.LittleEndian.Uint64(b.Bytes[b.Offset:]))
 }
 
-func (m *Message) GetStrings() (list Strings) {
+func (m *Message) GetServers() (servers Servers) {
 	defer func() {
 		err := recover()
 		if err != errMessageEOF {
@@ -304,7 +304,11 @@ func (m *Message) GetStrings() (list Strings) {
 	}()
 
 	for {
-		list = append(list, m.GetString())
+		server := bindings.ServerInfo{
+			ID:      m.GetUint64(),
+			Address: m.GetString(),
+		}
+		servers = append(servers, server)
 		m.bufferForGet()
 	}
 }

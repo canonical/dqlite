@@ -1,6 +1,7 @@
 package dqlite
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
@@ -24,7 +25,7 @@ func (c *cluster) Leader() string {
 	return string(c.raft.Leader())
 }
 
-func (c *cluster) Servers() ([]string, error) {
+func (c *cluster) Servers() ([]bindings.ServerInfo, error) {
 	if c.raft.State() != raft.Leader {
 		return nil, raft.ErrNotLeader
 	}
@@ -37,24 +38,31 @@ func (c *cluster) Servers() ([]string, error) {
 
 	configuration := future.Configuration()
 
-	servers := configuration.Servers
-	addresses := make([]string, len(servers))
+	servers := make([]bindings.ServerInfo, len(configuration.Servers))
 
-	for i, server := range servers {
+	for i := range servers {
+		server := configuration.Servers[i]
+
+		id, err := strconv.Atoi(string(server.ID))
+		if err != nil {
+			return nil, errors.Wrap(err, "server ID is not a number")
+		}
+		servers[i].ID = uint64(id)
+
 		if c.provider != nil {
 			address, err := c.provider.ServerAddr(server.ID)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to fetch raft server address")
 			}
 			if address != "" {
-				addresses[i] = string(address)
+				servers[i].Address = string(address)
 				continue
 			}
 		}
-		addresses[i] = string(server.Address)
+		servers[i].Address = string(server.Address)
 	}
 
-	return addresses, nil
+	return servers, nil
 }
 
 func (c *cluster) Register(conn *bindings.Conn) {

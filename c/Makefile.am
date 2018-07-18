@@ -13,7 +13,7 @@ pkgconfig_DATA = dqlite.pc
 
 AM_CFLAGS = -I$(top_srcdir)/include -Wall
 if DEBUG
-  AM_CFLAGS += -g -O3 -fprofile-arcs -ftest-coverage -DDQLITE_DEBUG
+  AM_CFLAGS += -g -O0 -fprofile-arcs -ftest-coverage -DDQLITE_DEBUG
 else
   AM_CFLAGS += -O3
 endif
@@ -45,7 +45,6 @@ libdqlite_la_SOURCES = \
   src/request.c \
   src/request.h \
   src/response.c \
-  src/response.h \
   src/schema.h \
   src/server.c \
   src/stmt.c \
@@ -61,10 +60,14 @@ dqlite_test_SOURCES = \
   test/client.h \
   test/cluster.c \
   test/cluster.h \
+  test/leak.c \
+  test/leak.h \
   test/log.c \
   test/log.h \
   test/message.c \
   test/message.h \
+  test/munit.c \
+  test/munit.h \
   test/replication.c \
   test/replication.h \
   test/runner.c \
@@ -72,36 +75,20 @@ dqlite_test_SOURCES = \
   test/server.h \
   test/socket.c \
   test/socket.h \
-  test/suite.c \
-  test/suite.h \
   test/test_conn.c \
-  test/test_conn.h \
   test/test_db.c \
-  test/test_db.h \
   test/test_error.c \
-  test/test_error.h \
   test/test_gateway.c \
-  test/test_gateway.h \
   test/test_integration.c \
-  test/test_integration.h \
   test/test_message.c \
-  test/test_message.h \
   test/test_queue.c \
-  test/test_queue.h \
   test/test_registry.c \
-  test/test_registry.h \
   test/test_request.c \
-  test/test_request.h \
   test/test_response.c \
-  test/test_response.h \
   test/test_schema.c \
-  test/test_schema.h \
   test/test_server.c \
-  test/test_server.h \
   test/test_stmt.c \
-  test/test_stmt.h \
-  test/test_vfs.c \
-  test/test_vfs.h
+  test/test_vfs.c
 dqlite_test_CFLAGS = \
   -I$(top_srcdir)/include \
   -I$(top_srcdir)/test \
@@ -109,7 +96,7 @@ dqlite_test_CFLAGS = \
   -Wall -g -O0
 dqlite_test_CFLAGS += $(SQLITE3_CFLAGS) $(UV_CFLAGS)
 dqlite_test_LDADD = libdqlite.la
-dqlite_test_LDFLAGS = -lcunit -lpthread $(SQLITE_LIBS) $(UV_LIBS)
+dqlite_test_LDFLAGS = -lpthread $(SQLITE_LIBS) $(UV_LIBS)
 TESTS = dqlite-test
 
 cov-reset:

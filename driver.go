@@ -553,6 +553,10 @@ func driverError(err error) error {
 		if err.ExtendedCode == bindings.ErrIoErrNotLeader {
 			return driver.ErrBadConn
 		}
+	case client.ErrRequest:
+		if err.Code == bindings.ErrIoErrNotLeader {
+			return driver.ErrBadConn
+		}
 	}
 	return err
 }

@@ -1,104 +1,143 @@
 #include <assert.h>
 
-#include <CUnit/CUnit.h>
+#include "../include/dqlite.h"
 
 #include "client.h"
+#include "leak.h"
+#include "munit.h"
 #include "server.h"
 
-static test_server* server = 0;
-static struct test_client *client = 0;
+/******************************************************************************
+ *
+ * Helpers
+ *
+ ******************************************************************************/
 
-int test_dqlite_init()
-{
-	int err;
+struct fixture {
+	test_server *       server;
+	struct test_client *client;
+};
 
-	assert( !server );
-	assert( !client );
+/******************************************************************************
+ *
+ * Setup and tear down
+ *
+ ******************************************************************************/
 
-	server = test_server_start();
-	if( !server ){
-		return 1;
-	}
+static void *setup(const MunitParameter params[], void *user_data) {
+	struct fixture *f;
+	const char *    errmsg;
+	int             err;
 
-	err = test_server_connect(server, &client);
-	if( err ){
-		return 1;
-	}
+	(void)params;
+	(void)user_data;
 
-	return 0;
+	err = dqlite_init(&errmsg);
+	munit_assert_int(err, ==, 0);
+
+	f = munit_malloc(sizeof *f);
+
+	f->server = test_server_start();
+	munit_assert_ptr_not_equal(f->server, NULL);
+
+	err = test_server_connect(f->server, &f->client);
+	munit_assert_int(err, ==, 0);
+
+	return f;
 }
 
-int test_dqlite_cleanup()
-{
-	int err;
+static void tear_down(void *data) {
+	struct fixture *f = data;
+	int             err;
 
-	assert( server );
-	assert( client );
+	test_client_close(f->client);
 
-	test_client_close(client);
+	err = test_server_stop(f->server);
+	munit_assert_int(err, ==, 0);
 
-	err = test_server_stop(server);
-	server = 0;
-
-	if( err ){
-		return err;
-	}
-
-	return 0;
+	test_assert_no_leaks();
 }
 
-void test_dqlite()
-{
-	int err;
-	char *leader;
-	uint64_t heartbeat;
-	uint32_t db_id;
-	uint32_t stmt_id;
+/******************************************************************************
+ *
+ * Tests
+ *
+ ******************************************************************************/
 
-	err = test_client_handshake(client);
-	CU_ASSERT_EQUAL(err, 0);
+static MunitResult test_dqlite(const MunitParameter params[], void *data) {
+	struct fixture *f = data;
+	int             err;
+	char *          leader;
+	uint64_t        heartbeat;
+	uint32_t        db_id;
+	uint32_t        stmt_id;
 
-	err = test_client_leader(client, &leader);
-	CU_ASSERT_EQUAL(err, 0);
+	(void)params;
 
-	err = test_client_client(client, &heartbeat);
-	CU_ASSERT_EQUAL(err, 0);
+	err = test_client_handshake(f->client);
+	munit_assert_int(err, ==, 0);
 
-	err = test_client_open(client, "test.db", &db_id);
-	CU_ASSERT_EQUAL(err, 0);
+	err = test_client_leader(f->client, &leader);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(db_id, 0);
+	err = test_client_client(f->client, &heartbeat);
+	munit_assert_int(err, ==, 0);
 
-	err = test_client_prepare(client, db_id, "CREATE TABLE test (n INT)", &stmt_id);
-	CU_ASSERT_EQUAL(err, 0);
+	err = test_client_open(f->client, "test.db", &db_id);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(stmt_id, 0);
+	munit_assert_int(db_id, ==, 0);
 
-	err = test_client_exec(client, db_id, stmt_id);
-	CU_ASSERT_EQUAL(err, 0);
+	err = test_client_prepare(
+	    f->client, db_id, "CREATE TABLE test (n INT)", &stmt_id);
+	munit_assert_int(err, ==, 0);
 
-	err = test_client_finalize(client, db_id, stmt_id);
-	CU_ASSERT_EQUAL(err, 0);
+	munit_assert_int(stmt_id, ==, 0);
 
-	err = test_client_prepare(client, db_id, "INSERT INTO test VALUES(123)", &stmt_id);
-	CU_ASSERT_EQUAL(err, 0);
+	err = test_client_exec(f->client, db_id, stmt_id);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(stmt_id, 0);
+	err = test_client_finalize(f->client, db_id, stmt_id);
+	munit_assert_int(err, ==, 0);
 
-	err = test_client_exec(client, db_id, stmt_id);
-	CU_ASSERT_EQUAL(err, 0);
+	err = test_client_prepare(
+	    f->client, db_id, "INSERT INTO test VALUES(123)", &stmt_id);
+	munit_assert_int(err, ==, 0);
 
-	err = test_client_finalize(client, db_id, stmt_id);
-	CU_ASSERT_EQUAL(err, 0);
+	munit_assert_int(stmt_id, ==, 0);
 
-	err = test_client_prepare(client, db_id, "SELECT n FROM test", &stmt_id);
-	CU_ASSERT_EQUAL(err, 0);
+	err = test_client_exec(f->client, db_id, stmt_id);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(stmt_id, 0);
+	err = test_client_finalize(f->client, db_id, stmt_id);
+	munit_assert_int(err, ==, 0);
 
-	err = test_client_query(client, db_id, stmt_id);
-	CU_ASSERT_EQUAL(err, 0);
+	err = test_client_prepare(f->client, db_id, "SELECT n FROM test", &stmt_id);
+	munit_assert_int(err, ==, 0);
 
-	err = test_client_finalize(client, db_id, stmt_id);
-	CU_ASSERT_EQUAL(err, 0);
+	munit_assert_int(stmt_id, ==, 0);
+
+	err = test_client_query(f->client, db_id, stmt_id);
+	munit_assert_int(err, ==, 0);
+
+	err = test_client_finalize(f->client, db_id, stmt_id);
+	munit_assert_int(err, ==, 0);
+
+	return MUNIT_OK;
 }
+
+static MunitTest dqlite__integration_tests[] = {
+    {"dqlite", test_dqlite, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * Suite
+ *
+ ******************************************************************************/
+
+MunitSuite dqlite__integration_suites[] = {
+    {"", dqlite__integration_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+    {NULL, NULL, NULL, 0, 0},
+};
