@@ -73,7 +73,7 @@ func DecodeServer(response *Message) (address string, err error) {
 }
 
 // DecodeServers decodes a Servers response.
-func DecodeServers(response *Message) (addresses Strings, err error) {
+func DecodeServers(response *Message) (servers Servers, err error) {
 	mtype, _ := response.GetHeader()
 
 	if mtype == bindings.ResponseFailure {
@@ -98,7 +98,7 @@ func DecodeServers(response *Message) (addresses Strings, err error) {
                 return
 	}
 
-	addresses = response.GetStrings()
+	servers = response.GetServers()
 
 	return
 }

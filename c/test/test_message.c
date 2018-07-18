@@ -1,629 +1,1104 @@
-#include <string.h>
 #include <stdint.h>
+#include <string.h>
+#include <time.h>
 
-#include <CUnit/CUnit.h>
+#include <sqlite3.h>
 #include <uv.h>
 
+#include "../include/dqlite.h"
 #include "../src/binary.h"
 #include "../src/message.h"
 
-#include "suite.h"
+#include "leak.h"
+#include "munit.h"
 
-static struct dqlite__message message;
+/******************************************************************************
+ *
+ * Setup and tear down
+ *
+ ******************************************************************************/
 
-void test_dqlite__message_setup()
-{
-	dqlite__message_init(&message);
+static void *setup(const MunitParameter params[], void *user_data) {
+	struct dqlite__message *message;
+	(void)params;
+	(void)user_data;
+
+	message = munit_malloc(sizeof *message);
+	dqlite__message_init(message);
+
+	return message;
 }
 
-void test_dqlite__message_teardown()
-{
-	dqlite__message_close(&message);
+static void tear_down(void *data) {
+	struct dqlite__message *message = data;
+
+	dqlite__message_close(message);
+
+	test_assert_no_leaks();
 }
 
-/*
- * dqlite__message_header_recv_start_suite
- */
+/******************************************************************************
+ *
+ * dqlite__message_header_recv_start
+ *
+ ******************************************************************************/
 
-void test_dqlite__message_header_recv_start_base() {
-	uv_buf_t buf;
+/* The header buffer is the message itself. */
+static MunitResult test_header_recv_start_base(const MunitParameter params[],
+                                               void *               data) {
+	struct dqlite__message *message = data;
+	uv_buf_t                buf;
 
-	dqlite__message_header_recv_start(&message, &buf);
+	(void)params;
 
-	CU_ASSERT_PTR_EQUAL(buf.base, &message);
+	dqlite__message_header_recv_start(message, &buf);
+
+	munit_assert_ptr_equal(buf.base, message);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_header_recv_start_len()
-{
-	uv_buf_t buf;
+/* The header buffer lenght is 8 bytes. */
+static MunitResult test_header_recv_start_len(const MunitParameter params[],
+                                              void *               data) {
+	struct dqlite__message *message = data;
+	uv_buf_t                buf;
 
-	dqlite__message_header_recv_start(&message, &buf);
-	CU_ASSERT_EQUAL(buf.len, DQLITE__MESSAGE_HEADER_LEN);
-	CU_ASSERT_EQUAL(
-		buf.len, (
-			sizeof(message.words) +
-			sizeof(message.type) +
-			sizeof(message.flags) +
-			sizeof(message.extra)
-			)
-		);
+	(void)params;
 
+	dqlite__message_header_recv_start(message, &buf);
+	munit_assert_int(buf.len, ==, DQLITE__MESSAGE_HEADER_LEN);
+	munit_assert_int(buf.len,
+	                 ==,
+	                 (sizeof message->words + sizeof message->type +
+	                  sizeof message->flags + sizeof message->extra));
+
+	return MUNIT_OK;
 }
 
-/*
- * dqlite__message_header_recv_done_suite
- */
+static MunitTest header_recv_start_tests[] = {
+    {"/buf/base", test_header_recv_start_base, setup, tear_down, 0, NULL},
+    {"/buf/len", test_header_recv_start_len, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL}};
 
-void test_dqlite__message_header_recv_done_empty_body()
-{
-	int err;
-	err = dqlite__message_header_recv_done(&message);
+/******************************************************************************
+ *
+ * dqlite__message_header_recv_done
+ *
+ ******************************************************************************/
 
-	CU_ASSERT_EQUAL(err, DQLITE_PROTO);
-	CU_ASSERT_STRING_EQUAL(message.error, "empty message body");
+/* If the number of words of the message body is zero, an error is returned. */
+static MunitResult test_header_recv_done_empty_body(const MunitParameter params[],
+                                                    void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	err = dqlite__message_header_recv_done(message);
+
+	(void)params;
+
+	munit_assert_int(err, ==, DQLITE_PROTO);
+	munit_assert_string_equal(message->error, "empty message body");
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_header_recv_done_body_too_large()
-{
-	int err;
+/* If the number of words of the message body exceeds the hard-coded limit, an
+ * error is returned. */
+static MunitResult test_header_recv_done_body_too_big(const MunitParameter params[],
+                                                      void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uv_buf_t                buf;
 
-	message.words = 1 << 30;
+	(void)params;
 
-	err = dqlite__message_header_recv_done(&message);
+	dqlite__message_header_recv_start(message, &buf);
 
-	CU_ASSERT_EQUAL(err, DQLITE_PROTO);
-	CU_ASSERT_STRING_EQUAL(message.error, "message body too large");
+	/* Set a very high word count */
+	buf.base[0] = 0;
+	buf.base[1] = 0;
+	buf.base[2] = 0;
+	buf.base[3] = 127;
+
+	err = dqlite__message_header_recv_done(message);
+
+	munit_assert_int(err, ==, DQLITE_PROTO);
+	munit_assert_string_equal(message->error, "message body too large");
+
+	return MUNIT_OK;
 }
 
-/*
- * dqlite__message_body_recv_start_suite
- */
+static MunitTest header_recv_done_tests[] = {
+    {"/body/empty", test_header_recv_done_empty_body, setup, tear_down, 0, NULL},
+    {"/body/too-large",
+     test_header_recv_done_body_too_big,
+     setup,
+     tear_down,
+     0,
+     NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
 
-void test_dqlite__message_body_recv_start_1()
-{
-	int err;
-	uv_buf_t buf;
+/******************************************************************************
+ *
+ * dqlite__message_body_recv_start
+ *
+ ******************************************************************************/
 
-	message.words = 1;
+/* The message body is 1 word long, the static buffer gets used. */
+static MunitResult test_body_recv_start_1(const MunitParameter params[],
+                                          void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uv_buf_t                buf;
 
-	err = dqlite__message_body_recv_start(&message, &buf);
-	CU_ASSERT_EQUAL(err, 0);
+	(void)params;
 
-	CU_ASSERT_PTR_EQUAL(buf.base, message.body1);
-	CU_ASSERT_EQUAL(buf.len, 8);
+	message->words = 1;
+
+	err = dqlite__message_body_recv_start(message, &buf);
+	munit_assert_int(err, ==, 0);
+
+	munit_assert_ptr_equal(buf.base, message->body1);
+	munit_assert_int(buf.len, ==, 8);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_recv_start_513()
-{
-	int err;
-	uv_buf_t buf;
+/* The message body is 513 words long, and the dynamic buffer gets allocated. */
+static MunitResult test_body_recv_start_513(const MunitParameter params[],
+                                            void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uv_buf_t                buf;
 
-	message.words = 513;
+	(void)params;
 
-	err = dqlite__message_body_recv_start(&message, &buf);
-	CU_ASSERT_EQUAL(err, 0);
+	message->words = 513;
 
-	CU_ASSERT_PTR_EQUAL(buf.base, message.body2.base);
-	CU_ASSERT_EQUAL(buf.len, message.body2.len);
-	CU_ASSERT_EQUAL(buf.len, 4104);
-}
-/*
- * dqlite__message_body_get_suite
- */
+	err = dqlite__message_body_recv_start(message, &buf);
+	munit_assert_int(err, ==, 0);
 
-void test_dqlite__message_body_get_text_one_string()
-{
-	int err;
-	text_t text;
-	char buf[8] = {
-		'h', 'e', 'l', 'l', 'o', '!', '!', 0,
-	};
+	munit_assert_ptr_equal(buf.base, message->body2.base);
+	munit_assert_int(buf.len, ==, message->body2.len);
+	munit_assert_int(buf.len, ==, 4104);
 
-	message.words = 1;
-	memcpy(message.body1, buf, 8);
-
-	err = dqlite__message_body_get_text(&message, &text);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
-
-	CU_ASSERT_STRING_EQUAL(text, "hello!!");
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_get_text_two_strings()
-{
-	int err;
-	text_t text;
-	char buf[16] = {
-		'h', 'e', 'l', 'l', 'o', 0, 0, 0,
-		'w', 'o', 'r', 'l', 'd', 0, 0, 0,
-	};
+static MunitTest body_recv_start_tests[] = {
+    {"/1-word", test_body_recv_start_1, setup, tear_down, 0, NULL},
+    {"/513-words", test_body_recv_start_513, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL}};
 
-	message.words = 2;
-	memcpy(message.body1, buf, 16);
+/******************************************************************************
+ *
+ * dqlite__message_body_get
+ *
+ ******************************************************************************/
 
-	err = dqlite__message_body_get_text(&message, &text);
-	CU_ASSERT_EQUAL(err, 0);
-	CU_ASSERT_STRING_EQUAL(text, "hello");
+/* Attempting to read a string when the read cursor is not at word boundary
+ * results in an error. */
+static MunitResult test_body_get_text_misaligned(const MunitParameter params[],
+                                                 void *               data) {
+	struct dqlite__message *message = data;
 
-	err = dqlite__message_body_get_text(&message, &text);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
-	CU_ASSERT_STRING_EQUAL(text, "world");
+	char    buf[8] = {0, 0, 'h', 'i', 0, 0, 0, 0};
+	uint8_t n;
+	text_t  text;
+	int     err;
+
+	(void)params;
+
+	message->words = 1;
+	memcpy(message->body1, buf, 8);
+
+	err = dqlite__message_body_get_uint8(message, &n);
+	munit_assert_int(err, ==, 0);
+
+	err = dqlite__message_body_get_text(message, &text);
+	munit_assert_int(err, ==, DQLITE_PARSE);
+
+	munit_assert_string_equal(message->error, "misaligned read");
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_get_text_parse_error()
-{
-	int err;
-	text_t text;
-	char buf[8] = {
-		255, 255, 255, 255, 255, 255, 255, 255,
-	};
+/* If no terminating null byte is found within the message body, an error is
+ * returned. */
+static MunitResult test_body_get_text_not_found(const MunitParameter params[],
+                                                void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	text_t                  text;
+	char                    buf[8] = {255, 255, 255, 255, 255, 255, 255, 255};
 
-	message.words = 1;
-	memcpy(message.body1, buf, 8);
+	(void)params;
 
-	err = dqlite__message_body_get_text(&message, &text);
+	message->words = 1;
+	memcpy(message->body1, buf, 8);
 
-	CU_ASSERT_EQUAL(err, DQLITE_PARSE);
+	err = dqlite__message_body_get_text(message, &text);
 
-	CU_ASSERT_STRING_EQUAL(message.error, "no string found");
+	munit_assert_int(err, ==, DQLITE_PARSE);
+
+	munit_assert_string_equal(message->error, "no string found");
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_get_text_from_dyn_buf()
-{
-	int err;
-	text_t text;
-	uv_buf_t buf;
+/* Read one string. */
+static MunitResult test_body_get_text_one_string(const MunitParameter params[],
+                                                 void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	text_t                  text;
+	char                    buf[8] = {'h', 'e', 'l', 'l', 'o', '!', '!', 0};
 
-	message.words = 513;
+	(void)params;
 
-	err = dqlite__message_body_recv_start(&message, &buf);
-	CU_ASSERT_EQUAL(err, 0);
+	message->words = 1;
+	memcpy(message->body1, buf, 8);
 
-	memcpy(buf.base, "hello", strlen("hello"));
-	buf.base[5] = 0;
+	err = dqlite__message_body_get_text(message, &text);
+	munit_assert_int(err, ==, DQLITE_EOM);
 
-	err = dqlite__message_body_get_text(&message, &text);
-	CU_ASSERT_EQUAL(err, 0);
+	munit_assert_string_equal(text, "hello!!");
 
-	CU_ASSERT_STRING_EQUAL(text, "hello");
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_get_text_list_one_item()
-{
-	int err;
-	text_list_t list;
-	uv_buf_t buf;
+/* Read two strings. */
+static MunitResult test_body_get_text_two_strings(const MunitParameter params[],
+                                                  void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	text_t                  text;
+	char                    buf[16] = {
+            'h', 'e', 'l', 'l', 'o', 0, 0, 0, 'w', 'o', 'r', 'l', 'd', 0, 0, 0};
 
-	message.words = 1;
+	(void)params;
 
-	err = dqlite__message_body_recv_start(&message, &buf);
-	CU_ASSERT_EQUAL(err, 0);
+	message->words = 2;
+	memcpy(message->body1, buf, 16);
 
-	memcpy(buf.base, "hello", strlen("hello"));
-	buf.base[5] = 0;
-	buf.base[6] = 0;
-	buf.base[7] = 0;
+	err = dqlite__message_body_get_text(message, &text);
+	munit_assert_int(err, ==, 0);
+	munit_assert_string_equal(text, "hello");
 
-	err = dqlite__message_body_get_text_list(&message, &list);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+	err = dqlite__message_body_get_text(message, &text);
+	munit_assert_int(err, ==, DQLITE_EOM);
+	munit_assert_string_equal(text, "world");
 
-	CU_ASSERT_STRING_EQUAL(list[0], "hello");
-
-	sqlite3_free(list);
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_get_text_list_two_items()
-{
-	int err;
-	text_list_t list;
-	uv_buf_t buf;
+/* Read a string from a message that uses the dynamic message body buffer. */
+static MunitResult test_body_get_text_from_dyn_buf(const MunitParameter params[],
+                                                   void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	text_t                  text;
+	uv_buf_t                buf;
 
-	message.words = 2;
+	(void)params;
 
-	err = dqlite__message_body_recv_start(&message, &buf);
-	CU_ASSERT_EQUAL(err, 0);
+	message->words = 513;
 
-	memcpy(buf.base, "hello", strlen("hello"));
-	buf.base[5] = 0;
-	buf.base[6] = 0;
-	buf.base[7] = 0;
+	err = dqlite__message_body_recv_start(message, &buf);
+	munit_assert_int(err, ==, 0);
 
-	memcpy(buf.base + 8, "world", strlen("world"));
-	buf.base[8 + 5] = 0;
-	buf.base[8 + 6] = 0;
-	buf.base[8 + 7] = 0;
+	strcpy(buf.base, "hello");
 
-	err = dqlite__message_body_get_text_list(&message, &list);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+	err = dqlite__message_body_get_text(message, &text);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_STRING_EQUAL(list[0], "hello");
-	CU_ASSERT_STRING_EQUAL(list[1], "world");
+	munit_assert_string_equal(text, "hello");
 
-	sqlite3_free(list);
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_get_uint8_four_values()
-{
-	int err;
-	uint8_t buf;
-	uint8_t value;
+/* Read four uint8 values. */
+static MunitResult test_body_get_uint8_four_values(const MunitParameter params[],
+                                                   void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uint8_t                 buf;
+	uint8_t                 value;
 
-	message.words = 1;
+	(void)params;
+
+	message->words = 1;
 
 	buf = 12;
-	memcpy(message.body1, &buf, 1);
+	memcpy(message->body1, &buf, 1);
 
 	buf = 77;
-	memcpy(message.body1 + 1, &buf, 1);
+	memcpy(message->body1 + 1, &buf, 1);
 
 	buf = 128;
-	memcpy(message.body1 + 2, &buf, 1);
+	memcpy(message->body1 + 2, &buf, 1);
 
 	buf = 255;
-	memcpy(message.body1 + 3, &buf, 1);
+	memcpy(message->body1 + 3, &buf, 1);
 
-	err = dqlite__message_body_get_uint8(&message, &value);
-	CU_ASSERT_EQUAL(err, 0);
+	err = dqlite__message_body_get_uint8(message, &value);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(value, 12);
+	munit_assert_int(value, ==, 12);
 
-	err = dqlite__message_body_get_uint8(&message, &value);
-	CU_ASSERT_EQUAL(err, 0);
+	err = dqlite__message_body_get_uint8(message, &value);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(value, 77);
+	munit_assert_int(value, ==, 77);
 
-	err = dqlite__message_body_get_uint8(&message, &value);
-	CU_ASSERT_EQUAL(err, 0);
+	err = dqlite__message_body_get_uint8(message, &value);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(value, 128);
+	munit_assert_int(value, ==, 128);
 
-	err = dqlite__message_body_get_uint8(&message, &value);
-	CU_ASSERT_EQUAL(err, 0);
+	err = dqlite__message_body_get_uint8(message, &value);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(value, 255);
+	munit_assert_int(value, ==, 255);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_get_uint32_two_values()
-{
-	int err;
-	uint32_t buf;
-	uint32_t value;
+/* Trying to read a uint8 value past the end of the message body results in an
+ * error. */
+static MunitResult test_body_get_uint8_overflow(const MunitParameter params[],
+                                                void *               data) {
+	struct dqlite__message *message = data;
 
-	message.words = 1;
+	int     i;
+	uint8_t value;
+	int     err;
+
+	(void)params;
+
+	message->words = 1;
+
+	for (i = 0; i < 7; i++) {
+		err = dqlite__message_body_get_uint8(message, &value);
+		munit_assert_int(err, ==, 0);
+	}
+
+	err = dqlite__message_body_get_uint8(message, &value);
+	munit_assert_int(err, ==, DQLITE_EOM);
+
+	err = dqlite__message_body_get_uint8(message, &value);
+	munit_assert_int(err, ==, DQLITE_OVERFLOW);
+
+	return MUNIT_OK;
+}
+
+/* Read two uint32 values. */
+static MunitResult test_body_get_uint32_two_values(const MunitParameter params[],
+                                                   void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uint32_t                buf;
+	uint32_t                value;
+
+	(void)params;
+
+	message->words = 1;
 
 	buf = dqlite__flip32(12);
-	memcpy(message.body1, &buf, 4);
+	memcpy(message->body1, &buf, 4);
 
 	buf = dqlite__flip32(77);
-	memcpy(message.body1 + 4, &buf, 4);
+	memcpy(message->body1 + 4, &buf, 4);
 
-	err = dqlite__message_body_get_uint32(&message, &value);
-	CU_ASSERT_EQUAL(err, 0);
+	err = dqlite__message_body_get_uint32(message, &value);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(value, 12);
+	munit_assert_int(value, ==, 12);
 
-	err = dqlite__message_body_get_uint32(&message, &value);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+	err = dqlite__message_body_get_uint32(message, &value);
+	munit_assert_int(err, ==, DQLITE_EOM);
 
-	CU_ASSERT_EQUAL(value, 77);
+	munit_assert_int(value, ==, 77);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_get_int64_one_value()
-{
-	int err;
-	uint64_t buf;
-	int64_t value;
+/* Trying to read a uint32 when the read cursor is not 4-byte aligned results in
+ * an error. */
+static MunitResult test_body_get_uint32_misaligned(const MunitParameter params[],
+                                                   void *               data) {
+	struct dqlite__message *message = data;
 
-	message.words = 1;
+	uint8_t  value1;
+	uint32_t value2;
+	int      err;
+
+	(void)params;
+
+	message->words = 1;
+
+	err = dqlite__message_body_get_uint8(message, &value1);
+	munit_assert_int(err, ==, 0);
+
+	err = dqlite__message_body_get_uint32(message, &value2);
+	munit_assert_int(err, ==, DQLITE_PARSE);
+
+	munit_assert_string_equal(message->error, "misaligned read");
+
+	return MUNIT_OK;
+}
+
+/* Trying to read a uint32 value past the end of the message body results in an
+ * error. */
+static MunitResult test_body_get_uint32_overflow(const MunitParameter params[],
+                                                 void *               data) {
+	struct dqlite__message *message = data;
+
+	uint32_t value;
+	int      err;
+
+	(void)params;
+
+	message->words = 1;
+
+	err = dqlite__message_body_get_uint32(message, &value);
+	munit_assert_int(err, ==, 0);
+
+	err = dqlite__message_body_get_uint32(message, &value);
+	munit_assert_int(err, ==, DQLITE_EOM);
+
+	err = dqlite__message_body_get_uint32(message, &value);
+	munit_assert_int(err, ==, DQLITE_OVERFLOW);
+
+	return MUNIT_OK;
+}
+
+/* Read one uint64 value. */
+static MunitResult test_body_get_uint64_one_value(const MunitParameter params[],
+                                                  void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uint64_t                buf;
+	uint64_t                value;
+
+	(void)params;
+
+	message->words = 1;
 
 	buf = dqlite__flip64(123456789);
-	memcpy(message.body1, &buf, 8);
+	memcpy(message->body1, &buf, 8);
 
-	err = dqlite__message_body_get_int64(&message, &value);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+	err = dqlite__message_body_get_uint64(message, &value);
+	munit_assert_int(err, ==, DQLITE_EOM);
 
-	CU_ASSERT_EQUAL(value, 123456789);
+	munit_assert_int(value, ==, 123456789);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_get_int64_two_values()
-{
-	int err;
-	uint64_t buf;
-	int64_t value;
+/* Read two uint64 values. */
+static MunitResult test_body_get_uint64_two_values(const MunitParameter params[],
+                                                   void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uint64_t                buf;
+	uint64_t                value;
 
-	message.words = 2;
+	(void)params;
 
-	buf = dqlite__flip64((uint64_t)(-12));
-	memcpy(message.body1, &buf, 8);
-
-	buf = dqlite__flip64(23);
-	memcpy(message.body1 + 8, &buf, 8);
-
-	err = dqlite__message_body_get_int64(&message, &value);
-	CU_ASSERT_EQUAL(err, 0);
-
-	CU_ASSERT_EQUAL(value, -12);
-
-	err = dqlite__message_body_get_int64(&message, &value);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
-
-	CU_ASSERT_EQUAL(value, 23);
-}
-
-void test_dqlite__message_body_get_uint64_one_value()
-{
-	int err;
-	uint64_t buf;
-	uint64_t value;
-
-	message.words = 1;
-
-	buf = dqlite__flip64(123456789);
-	memcpy(message.body1, &buf, 8);
-
-	err = dqlite__message_body_get_uint64(&message, &value);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
-
-	CU_ASSERT_EQUAL(value, 123456789);
-}
-
-void test_dqlite__message_body_get_uint64_two_values()
-{
-	int err;
-	uint64_t buf;
-	uint64_t value;
-
-	message.words = 2;
+	message->words = 2;
 
 	buf = dqlite__flip64(12);
-	memcpy(message.body1, &buf, 8);
+	memcpy(message->body1, &buf, 8);
 
 	buf = dqlite__flip64(77);
-	memcpy(message.body1 + 8, &buf, 8);
+	memcpy(message->body1 + 8, &buf, 8);
 
-	err = dqlite__message_body_get_uint64(&message, &value);
-	CU_ASSERT_EQUAL(err, 0);
+	err = dqlite__message_body_get_uint64(message, &value);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(value, 12);
+	munit_assert_int(value, ==, 12);
 
-	err = dqlite__message_body_get_uint64(&message, &value);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+	err = dqlite__message_body_get_uint64(message, &value);
+	munit_assert_int(err, ==, DQLITE_EOM);
 
-	CU_ASSERT_EQUAL(value, 77);
+	munit_assert_int(value, ==, 77);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_get_double_one_value()
-{
-	int err;
-	uint64_t *buf;
-	double pi = 3.1415926535;
-	double value;
+/* Trying to read a uint64 when the read cursor is not word aligned results in
+ * an error. */
+static MunitResult test_body_get_uint64_misaligned(const MunitParameter params[],
+                                                   void *               data) {
+	struct dqlite__message *message = data;
 
-	message.words = 1;
+	uint8_t  value1;
+	uint64_t value2;
+	int      err;
 
-	buf = (uint64_t*)(&pi);
+	(void)params;
+
+	message->words = 2;
+
+	err = dqlite__message_body_get_uint8(message, &value1);
+	munit_assert_int(err, ==, 0);
+
+	err = dqlite__message_body_get_uint64(message, &value2);
+	munit_assert_int(err, ==, DQLITE_PARSE);
+
+	munit_assert_string_equal(message->error, "misaligned read");
+
+	return MUNIT_OK;
+}
+
+/* Trying to read a uint64 value past the end of the message body results in an
+ * error. */
+static MunitResult test_body_get_uint64_overflow(const MunitParameter params[],
+                                                 void *               data) {
+	struct dqlite__message *message = data;
+
+	uint64_t value;
+	int      err;
+
+	(void)params;
+
+	message->words = 1;
+
+	err = dqlite__message_body_get_uint64(message, &value);
+	munit_assert_int(err, ==, DQLITE_EOM);
+
+	err = dqlite__message_body_get_uint64(message, &value);
+	munit_assert_int(err, ==, DQLITE_OVERFLOW);
+
+	return MUNIT_OK;
+}
+
+/* Read one int64 value. */
+static MunitResult test_body_get_int64_one_value(const MunitParameter params[],
+                                                 void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uint64_t                buf;
+	int64_t                 value;
+
+	(void)params;
+
+	message->words = 1;
+
+	buf = dqlite__flip64(123456789);
+	memcpy(message->body1, &buf, 8);
+
+	err = dqlite__message_body_get_int64(message, &value);
+	munit_assert_int(err, ==, DQLITE_EOM);
+
+	munit_assert_int(value, ==, 123456789);
+
+	return MUNIT_OK;
+}
+
+/* Read two int64 values. */
+static MunitResult test_body_get_int64_two_values(const MunitParameter params[],
+                                                  void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uint64_t                buf;
+	int64_t                 value;
+
+	(void)params;
+
+	message->words = 2;
+
+	buf = dqlite__flip64((uint64_t)(-12));
+	memcpy(message->body1, &buf, 8);
+
+	buf = dqlite__flip64(23);
+	memcpy(message->body1 + 8, &buf, 8);
+
+	err = dqlite__message_body_get_int64(message, &value);
+	munit_assert_int(err, ==, 0);
+
+	munit_assert_int(value, ==, -12);
+
+	err = dqlite__message_body_get_int64(message, &value);
+	munit_assert_int(err, ==, DQLITE_EOM);
+
+	munit_assert_int(value, ==, 23);
+
+	return MUNIT_OK;
+}
+
+/* Read a double value. */
+static MunitResult test_body_get_double_one_value(const MunitParameter params[],
+                                                  void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uint64_t *              buf;
+	double                  pi = 3.1415926535;
+	double                  value;
+
+	(void)params;
+
+	message->words = 1;
+
+	buf  = (uint64_t *)(&pi);
 	*buf = dqlite__flip64(*buf);
-	memcpy(message.body1, buf, 8);
+	memcpy(message->body1, buf, 8);
 
-	err = dqlite__message_body_get_double(&message, &value);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+	err = dqlite__message_body_get_double(message, &value);
+	munit_assert_int(err, ==, DQLITE_EOM);
 
-	CU_ASSERT_EQUAL(value, 3.1415926535);
+	munit_assert_double(value, ==, 3.1415926535);
+
+	return MUNIT_OK;
 }
 
-/*
- * dqlite__message_header_put_suite
- */
+static MunitResult test_body_get_servers_one(const MunitParameter params[],
+                                             void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	servers_t               servers;
+	uv_buf_t                buf;
 
-void test_dqlite__message_header_put_type()
-{
-	dqlite__message_header_put(&message, 123, 0);
-	CU_ASSERT_EQUAL(message.type, 123);
+	(void)params;
+
+	message->words = 3;
+
+	err = dqlite__message_body_recv_start(message, &buf);
+	munit_assert_int(err, ==, 0);
+
+	*(uint64_t *)(buf.base) = dqlite__flip64(1);
+	strcpy(buf.base + 8, "1.2.3.4:666");
+
+	err = dqlite__message_body_get_servers(message, &servers);
+	munit_assert_int(err, ==, DQLITE_EOM);
+
+	munit_assert_int(servers[0].id, ==, 1);
+	munit_assert_string_equal(servers[0].address, "1.2.3.4:666");
+
+	munit_assert_int(servers[1].id, ==, 0);
+	munit_assert_ptr_equal(servers[1].address, NULL);
+
+	sqlite3_free(servers);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_header_put_flags()
-{
-	dqlite__message_header_put(&message, 0, 255);
-	CU_ASSERT_EQUAL(message.flags, 255);
+static MunitResult test_body_get_servers_two(const MunitParameter params[],
+                                             void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	servers_t               servers;
+	uv_buf_t                buf;
+
+	(void)params;
+
+	message->words = 6;
+
+	err = dqlite__message_body_recv_start(message, &buf);
+	munit_assert_int(err, ==, 0);
+
+	*(uint64_t *)(buf.base) = dqlite__flip64(1);
+	strcpy(buf.base + 8, "1.2.3.4:666");
+
+	*(uint64_t *)(buf.base + 24) = dqlite__flip64(2);
+	strcpy(buf.base + 32, "5.6.7.8:666");
+
+	err = dqlite__message_body_get_servers(message, &servers);
+	munit_assert_int(err, ==, DQLITE_EOM);
+
+	munit_assert_int(servers[0].id, ==, 1);
+	munit_assert_string_equal(servers[0].address, "1.2.3.4:666");
+
+	munit_assert_int(servers[1].id, ==, 2);
+	munit_assert_string_equal(servers[1].address, "5.6.7.8:666");
+
+	munit_assert_int(servers[2].id, ==, 0);
+	munit_assert_ptr_equal(servers[2].address, NULL);
+
+	sqlite3_free(servers);
+
+	return MUNIT_OK;
 }
 
-/*
- * dqlite__message_body_put_suite
- */
+static MunitTest body_get_tests[] = {
+    {"_text/misaligned", test_body_get_text_misaligned, setup, tear_down, 0, NULL},
+    {"_text/not-found", test_body_get_text_not_found, setup, tear_down, 0, NULL},
+    {"_text/one-string", test_body_get_text_one_string, setup, tear_down, 0, NULL},
+    {"_text/two-strings", test_body_get_text_two_strings, setup, tear_down, 0, NULL},
+    {"_text/dyn-buf", test_body_get_text_from_dyn_buf, setup, tear_down, 0, NULL},
+    {"_uint8/four", test_body_get_uint8_four_values, setup, tear_down, 0, NULL},
+    {"_uint8/overflow", test_body_get_uint8_overflow, setup, tear_down, 0, NULL},
+    {"_uint32/two", test_body_get_uint32_two_values, setup, tear_down, 0, NULL},
+    {"_uint32/misaligned",
+     test_body_get_uint32_misaligned,
+     setup,
+     tear_down,
+     0,
+     NULL},
+    {"_uint32/overflow", test_body_get_uint32_overflow, setup, tear_down, 0, NULL},
+    {"_uint64/one", test_body_get_uint64_one_value, setup, tear_down, 0, NULL},
+    {"_uint64/two", test_body_get_uint64_two_values, setup, tear_down, 0, NULL},
+    {"_uint64/misaligned",
+     test_body_get_uint64_misaligned,
+     setup,
+     tear_down,
+     0,
+     NULL},
+    {"_uint64/overflow", test_body_get_uint64_overflow, setup, tear_down, 0, NULL},
+    {"_int64/one-value", test_body_get_int64_one_value, setup, tear_down, 0, NULL},
+    {"_int64/two-values", test_body_get_int64_two_values, setup, tear_down, 0, NULL},
+    {"_double/one-value", test_body_get_double_one_value, setup, tear_down, 0, NULL},
+    {"_servers/one", test_body_get_servers_one, setup, tear_down, 0, NULL},
+    {"_servers/two", test_body_get_servers_two, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL}};
 
-void test_dqlite__message_body_put_text_one()
-{
-	int err;
+/******************************************************************************
+ *
+ * dqlite__message_header_put
+ *
+ ******************************************************************************/
 
-	err = dqlite__message_body_put_text(&message, "hello");
+/* Set the type of a message. */
+static MunitResult test_header_put_type(const MunitParameter params[], void *data) {
+	struct dqlite__message *message = data;
 
-	CU_ASSERT_EQUAL(err, 0);
-	CU_ASSERT_EQUAL(message.offset1, 8);
+	(void)params;
 
-	CU_ASSERT_STRING_EQUAL(message.body1, "hello");
+	dqlite__message_header_put(message, 123, 0);
+	munit_assert_int(message->type, ==, 123);
+
+	return MUNIT_OK;
+}
+
+/* Set the message flags. */
+static MunitResult test_header_put_flags(const MunitParameter params[], void *data) {
+	struct dqlite__message *message = data;
+
+	(void)params;
+
+	dqlite__message_header_put(message, 0, 255);
+	munit_assert_int(message->flags, ==, 255);
+
+	return MUNIT_OK;
+}
+
+static MunitTest header_put_tests[] = {
+    {"/type", test_header_put_type, setup, tear_down, 0, NULL},
+    {"/flags", test_header_put_flags, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL}};
+
+/******************************************************************************
+ *
+ * dqlite__message_body_put
+ *
+ ******************************************************************************/
+
+/* Trying to write a string when the write cursor is not at word boundary
+ * results in an error. */
+static MunitResult test_body_put_text_misaligned(const MunitParameter params[],
+                                                 void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+
+	(void)params;
+
+	err = dqlite__message_body_put_uint8(message, 123);
+	munit_assert_int(err, ==, 0);
+
+	err = dqlite__message_body_put_text(message, "hello");
+	munit_assert_int(err, ==, DQLITE_PROTO);
+
+	munit_assert_string_equal(message->error, "misaligned write");
+
+	return MUNIT_OK;
+}
+
+static MunitResult test_body_put_text_one(const MunitParameter params[],
+                                          void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+
+	(void)params;
+
+	err = dqlite__message_body_put_text(message, "hello");
+
+	munit_assert_int(err, ==, 0);
+	munit_assert_int(message->offset1, ==, 8);
+
+	munit_assert_string_equal(message->body1, "hello");
 
 	/* Padding */
-	CU_ASSERT_EQUAL(message.body1[6], 0);
-	CU_ASSERT_EQUAL(message.body1[7], 0);
+	munit_assert_int(message->body1[6], ==, 0);
+	munit_assert_int(message->body1[7], ==, 0);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_put_text_one_no_pad()
-{
-	int err;
+static MunitResult test_body_put_text_one_no_pad(const MunitParameter params[],
+                                                 void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
 
-	err = dqlite__message_body_put_text(&message, "hello!!");
+	(void)params;
 
-	CU_ASSERT_EQUAL(err, 0);
-	CU_ASSERT_EQUAL(message.offset1, 8);
+	err = dqlite__message_body_put_text(message, "hello!!");
 
-	CU_ASSERT_STRING_EQUAL(message.body1, "hello!!");
+	munit_assert_int(err, ==, 0);
+	munit_assert_int(message->offset1, ==, 8);
+
+	munit_assert_string_equal(message->body1, "hello!!");
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_put_text_two()
-{
-	int err;
+static MunitResult test_body_put_text_two(const MunitParameter params[],
+                                          void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
 
-	err = dqlite__message_body_put_text(&message, "hello");
-	CU_ASSERT_EQUAL(err, 0);
+	(void)params;
 
-	err = dqlite__message_body_put_text(&message, "world");
-	CU_ASSERT_EQUAL(err, 0);
+	err = dqlite__message_body_put_text(message, "hello");
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(message.offset1, 16);
+	err = dqlite__message_body_put_text(message, "world");
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_STRING_EQUAL(message.body1, "hello");
+	munit_assert_int(message->offset1, ==, 16);
+
+	munit_assert_string_equal(message->body1, "hello");
 
 	/* Padding */
-	CU_ASSERT_EQUAL(message.body1[6], 0);
-	CU_ASSERT_EQUAL(message.body1[7], 0);
+	munit_assert_int(message->body1[6], ==, 0);
+	munit_assert_int(message->body1[7], ==, 0);
 
-	CU_ASSERT_STRING_EQUAL(message.body1 + 8, "world");
+	munit_assert_string_equal(message->body1 + 8, "world");
 
 	/* Padding */
-	CU_ASSERT_EQUAL(message.body1[8 + 6], 0);
-	CU_ASSERT_EQUAL(message.body1[8 + 7], 0);
+	munit_assert_int(message->body1[8 + 6], ==, 0);
+	munit_assert_int(message->body1[8 + 7], ==, 0);
 
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_put_uint8_four()
-{
-	int err;
+static MunitResult test_body_put_uint8_four(const MunitParameter params[],
+                                            void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
 
-	err = dqlite__message_body_put_uint8(&message, 25);
-	CU_ASSERT_EQUAL(err, 0);
+	(void)params;
 
-	CU_ASSERT_EQUAL(message.offset1, 1);
+	err = dqlite__message_body_put_uint8(message, 25);
+	munit_assert_int(err, ==, 0);
 
-	err = dqlite__message_body_put_uint8(&message, 50);
-	CU_ASSERT_EQUAL(err, 0);
+	munit_assert_int(message->offset1, ==, 1);
 
-	CU_ASSERT_EQUAL(message.offset1, 2);
+	err = dqlite__message_body_put_uint8(message, 50);
+	munit_assert_int(err, ==, 0);
 
-	err = dqlite__message_body_put_uint8(&message, 100);
-	CU_ASSERT_EQUAL(err, 0);
+	munit_assert_int(message->offset1, ==, 2);
 
-	CU_ASSERT_EQUAL(message.offset1, 3);
+	err = dqlite__message_body_put_uint8(message, 100);
+	munit_assert_int(err, ==, 0);
 
-	err = dqlite__message_body_put_uint8(&message, 200);
-	CU_ASSERT_EQUAL(err, 0);
+	munit_assert_int(message->offset1, ==, 3);
 
-	CU_ASSERT_EQUAL(message.offset1, 4);
+	err = dqlite__message_body_put_uint8(message, 200);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(*(uint8_t*)(message.body1), 25);
-	CU_ASSERT_EQUAL(*(uint8_t*)(message.body1 + 1), 50);
-	CU_ASSERT_EQUAL(*(uint8_t*)(message.body1 + 2), 100);
-	CU_ASSERT_EQUAL(*(uint8_t*)(message.body1 + 3), 200);
+	munit_assert_int(message->offset1, ==, 4);
+
+	munit_assert_int(*(uint8_t *)(message->body1), ==, 25);
+	munit_assert_int(*(uint8_t *)(message->body1 + 1), ==, 50);
+	munit_assert_int(*(uint8_t *)(message->body1 + 2), ==, 100);
+	munit_assert_int(*(uint8_t *)(message->body1 + 3), ==, 200);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_put_uint32_two()
-{
-	int err;
+static MunitResult test_body_put_uint32_two(const MunitParameter params[],
+                                            void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
 
-	err = dqlite__message_body_put_uint32(&message, 99);
-	CU_ASSERT_EQUAL(err, 0);
+	(void)params;
 
-	CU_ASSERT_EQUAL(message.offset1, 4);
+	err = dqlite__message_body_put_uint32(message, 99);
+	munit_assert_int(err, ==, 0);
 
-	err = dqlite__message_body_put_uint32(&message, 66);
-	CU_ASSERT_EQUAL(err, 0);
+	munit_assert_int(message->offset1, ==, 4);
 
-	CU_ASSERT_EQUAL(message.offset1, 8);
+	err = dqlite__message_body_put_uint32(message, 66);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(dqlite__flip32(*(uint32_t*)(message.body1)), 99);
-	CU_ASSERT_EQUAL(dqlite__flip32(*(uint32_t*)(message.body1 + 4)), 66);
+	munit_assert_int(message->offset1, ==, 8);
+
+	munit_assert_int(dqlite__flip32(*(uint32_t *)(message->body1)), ==, 99);
+	munit_assert_int(dqlite__flip32(*(uint32_t *)(message->body1 + 4)), ==, 66);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_put_int64_one()
-{
-	int err;
+static MunitResult test_body_put_int64_one(const MunitParameter params[],
+                                           void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
 
-	err = dqlite__message_body_put_int64(&message, -12);
+	(void)params;
 
-	CU_ASSERT_EQUAL(err, 0);
-	CU_ASSERT_EQUAL(message.offset1, 8);
+	err = dqlite__message_body_put_int64(message, -12);
 
-	CU_ASSERT_EQUAL((int64_t)dqlite__flip64(*(uint64_t*)(message.body1)), -12);
+	munit_assert_int(err, ==, 0);
+	munit_assert_int(message->offset1, ==, 8);
+
+	munit_assert_int(
+	    (int64_t)dqlite__flip64(*(uint64_t *)(message->body1)), ==, -12);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_put_uint64_one()
-{
-	int err;
+static MunitResult test_body_put_uint64_one(const MunitParameter params[],
+                                            void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
 
-	err = dqlite__message_body_put_uint64(&message, 99);
+	(void)params;
 
-	CU_ASSERT_EQUAL(err, 0);
-	CU_ASSERT_EQUAL(message.offset1, 8);
+	err = dqlite__message_body_put_uint64(message, 99);
 
-	CU_ASSERT_EQUAL(dqlite__flip64(*(uint64_t*)(message.body1)), 99);
+	munit_assert_int(err, ==, 0);
+	munit_assert_int(message->offset1, ==, 8);
+
+	munit_assert_int(dqlite__flip64(*(uint64_t *)(message->body1)), ==, 99);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_put_double_one()
-{
-	int err;
-	uint64_t buf;
-	double value;
+static MunitResult test_body_put_double_one(const MunitParameter params[],
+                                            void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uint64_t                buf;
+	double                  value;
 
-	err = dqlite__message_body_put_double(&message, 3.1415926535);
+	(void)params;
 
-	CU_ASSERT_EQUAL(err, 0);
-	CU_ASSERT_EQUAL(message.offset1, 8);
+	err = dqlite__message_body_put_double(message, 3.1415926535);
 
-	buf = dqlite__flip64(*(uint64_t*)(message.body1));
+	munit_assert_int(err, ==, 0);
+	munit_assert_int(message->offset1, ==, 8);
+
+	buf = dqlite__flip64(*(uint64_t *)(message->body1));
 
 	memcpy(&value, &buf, sizeof(buf));
 
-	CU_ASSERT_EQUAL(value, 3.1415926535);
+	munit_assert_double(value, ==, 3.1415926535);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_body_put_dyn_buf()
-{
-	int err;
-	uint64_t i;
+static MunitResult test_body_put_dyn_buf(const MunitParameter params[], void *data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uint64_t                i;
+
+	(void)params;
 
 	for (i = 0; i < 4096 / 8; i++) {
-		err = dqlite__message_body_put_uint64(&message, i);
-		CU_ASSERT_EQUAL(err, 0);
+		err = dqlite__message_body_put_uint64(message, i);
+		munit_assert_int(err, ==, 0);
 	}
 
-	CU_ASSERT_EQUAL(message.offset1, 4096);
-	CU_ASSERT_EQUAL(message.offset2, 0);
+	munit_assert_int(message->offset1, ==, 4096);
+	munit_assert_int(message->offset2, ==, 0);
 
-	err = dqlite__message_body_put_uint64(&message, 666);
-	CU_ASSERT_EQUAL(err, 0);
+	err = dqlite__message_body_put_uint64(message, 666);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(message.offset2, 8);
+	munit_assert_int(message->offset2, ==, 8);
+
+	return MUNIT_OK;
 }
 
-/*
- * dqlite__message_send_start_suite
- */
+static MunitResult test_body_put_servers_one(const MunitParameter params[],
+                                             void *               data) {
+	struct dqlite__message *message   = data;
+	dqlite_server_info      servers[] = {
+            {1, "1.2.3.4:666"},
+            {0, NULL},
+        };
+	int         err;
+	uint64_t    id;
+	const char *address;
 
-void test_dqlite__message_send_start_no_dyn_buf()
-{
-	int err;
-	uv_buf_t bufs[3];
-	struct dqlite__message message2;
-	uv_buf_t buf;
-	uint64_t value;
-	text_t text;
+	(void)params;
 
-	dqlite__message_header_put(&message, 9, 123);
+	err = dqlite__message_body_put_servers(message, servers);
+	munit_assert_int(err, ==, 0);
 
-	err = dqlite__message_body_put_uint64(&message, 78);
-	CU_ASSERT_EQUAL(err, 0);
+	munit_assert_int(message->offset1, ==, 24);
 
-	err = dqlite__message_body_put_text(&message, "hello");
-	CU_ASSERT_EQUAL(err, 0);
+	id = dqlite__flip64(*(uint64_t *)(message->body1));
+	munit_assert_int(id, ==, 1);
 
-	dqlite__message_send_start(&message, bufs);
+	address = (const char *)(message->body1 + 8);
+	munit_assert_string_equal(address, "1.2.3.4:666");
 
-	CU_ASSERT_PTR_EQUAL(bufs[0].base, &message);
-	CU_ASSERT_EQUAL(bufs[0].len, 8);
+	return MUNIT_OK;
+}
 
-	CU_ASSERT_PTR_EQUAL(bufs[1].base, message.body1);
-	CU_ASSERT_EQUAL(bufs[1].len, 16);
+static MunitTest body_put_tests[] = {
+    {"_text/misaligned", test_body_put_text_misaligned, setup, tear_down, 0, NULL},
+    {"_text/one", test_body_put_text_one, setup, tear_down, 0, NULL},
+    {"_text/one-no-pad", test_body_put_text_one_no_pad, setup, tear_down, 0, NULL},
+    {"_text/two", test_body_put_text_two, setup, tear_down, 0, NULL},
+    {"_uint8/four", test_body_put_uint8_four, setup, tear_down, 0, NULL},
+    {"_uint32/two", test_body_put_uint32_two, setup, tear_down, 0, NULL},
+    {"_int64/one", test_body_put_int64_one, setup, tear_down, 0, NULL},
+    {"_uint64/one", test_body_put_uint64_one, setup, tear_down, 0, NULL},
+    {"_double/one", test_body_put_double_one, setup, tear_down, 0, NULL},
+    {"_uint64/dyn-buf", test_body_put_dyn_buf, setup, tear_down, 0, NULL},
+    {"_servers/one", test_body_put_servers_one, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL}};
 
-	CU_ASSERT_PTR_NULL(bufs[2].base);
-	CU_ASSERT_EQUAL(bufs[2].len, 0);
+/******************************************************************************
+ *
+ * dqlite__message_send_start
+ *
+ ******************************************************************************/
+
+static MunitResult test_send_start_no_dyn_buf(const MunitParameter params[],
+                                              void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uv_buf_t                bufs[3];
+	struct dqlite__message  message2;
+	uv_buf_t                buf;
+	uint64_t                value;
+	text_t                  text;
+
+	(void)params;
+
+	dqlite__message_header_put(message, 9, 123);
+
+	err = dqlite__message_body_put_uint64(message, 78);
+	munit_assert_int(err, ==, 0);
+
+	err = dqlite__message_body_put_text(message, "hello");
+	munit_assert_int(err, ==, 0);
+
+	dqlite__message_send_start(message, bufs);
+
+	munit_assert_ptr_equal(bufs[0].base, message);
+	munit_assert_int(bufs[0].len, ==, 8);
+
+	munit_assert_ptr_equal(bufs[1].base, message->body1);
+	munit_assert_int(bufs[1].len, ==, 16);
+
+	munit_assert_ptr_equal(bufs[2].base, NULL);
+	munit_assert_int(bufs[2].len, ==, 0);
 
 	dqlite__message_init(&message2);
 
@@ -631,66 +1106,71 @@ void test_dqlite__message_send_start_no_dyn_buf()
 	memcpy(buf.base, bufs[0].base, bufs[0].len);
 
 	err = dqlite__message_header_recv_done(&message2);
-	CU_ASSERT_EQUAL(0, err);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(message2.type, 9);
-	CU_ASSERT_EQUAL(message2.flags, 123);
+	munit_assert_int(message2.type, ==, 9);
+	munit_assert_int(message2.flags, ==, 123);
 
 	err = dqlite__message_body_recv_start(&message2, &buf);
-	CU_ASSERT_EQUAL(0, err);
+	munit_assert_int(err, ==, 0);
 
 	memcpy(buf.base, bufs[1].base, bufs[1].len);
 
 	err = dqlite__message_body_get_uint64(&message2, &value);
-	CU_ASSERT_EQUAL(err, 0);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(value, 78);
+	munit_assert_int(value, ==, 78);
 
 	err = dqlite__message_body_get_text(&message2, &text);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+	munit_assert_int(err, ==, DQLITE_EOM);
 
-	CU_ASSERT_STRING_EQUAL(text, "hello");
+	munit_assert_string_equal(text, "hello");
 
 	dqlite__message_recv_reset(&message2);
-	dqlite__message_send_reset(&message);
+	dqlite__message_send_reset(message);
 
 	dqlite__message_close(&message2);
+
+	return MUNIT_OK;
 }
 
-void test_dqlite__message_send_start_dyn_buf()
-{
-	int err;
-	uint64_t i;
-	uv_buf_t bufs[3];
-	struct dqlite__message message2;
-	uv_buf_t buf;
-	uint64_t value;
-	text_t text;
+static MunitResult test_send_start_dyn_buf(const MunitParameter params[],
+                                           void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+	uint64_t                i;
+	uv_buf_t                bufs[3];
+	struct dqlite__message  message2;
+	uv_buf_t                buf;
+	uint64_t                value;
+	text_t                  text;
 
-	dqlite__message_header_put(&message, 9, 123);
+	(void)params;
+
+	dqlite__message_header_put(message, 9, 123);
 
 	for (i = 0; i < 4088 / 8; i++) {
-		err = dqlite__message_body_put_uint64(&message, i);
-		CU_ASSERT_EQUAL(err, 0);
+		err = dqlite__message_body_put_uint64(message, i);
+		munit_assert_int(err, ==, 0);
 	}
-	CU_ASSERT_EQUAL(message.offset1, 4088);
+	munit_assert_int(message->offset1, ==, 4088);
 
-	err = dqlite__message_body_put_text(&message, "hello world");
-	CU_ASSERT_EQUAL(err, 0);
+	err = dqlite__message_body_put_text(message, "hello world");
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(message.offset1, 4088);
-	CU_ASSERT_EQUAL(message.offset2, 16);
+	munit_assert_int(message->offset1, ==, 4088);
+	munit_assert_int(message->offset2, ==, 16);
 
-	dqlite__message_send_start(&message, bufs);
+	dqlite__message_send_start(message, bufs);
 
-	CU_ASSERT_PTR_EQUAL(bufs[0].base, &message);
-	CU_ASSERT_EQUAL(bufs[0].len, 8);
+	munit_assert_ptr_equal(bufs[0].base, message);
+	munit_assert_int(bufs[0].len, ==, 8);
 
-	CU_ASSERT_PTR_EQUAL(bufs[1].base, message.body1);
-	CU_ASSERT_EQUAL(bufs[1].len, 4088);
+	munit_assert_ptr_equal(bufs[1].base, message->body1);
+	munit_assert_int(bufs[1].len, ==, 4088);
 
-	CU_ASSERT_PTR_NOT_NULL(bufs[2].base);
-	CU_ASSERT_EQUAL(bufs[2].len, 16);
+	munit_assert_ptr_not_equal(bufs[2].base, NULL);
+	munit_assert_int(bufs[2].len, ==, 16);
 
 	dqlite__message_init(&message2);
 
@@ -698,30 +1178,59 @@ void test_dqlite__message_send_start_dyn_buf()
 	memcpy(buf.base, bufs[0].base, bufs[0].len);
 
 	err = dqlite__message_header_recv_done(&message2);
-	CU_ASSERT_EQUAL(0, err);
+	munit_assert_int(err, ==, 0);
 
-	CU_ASSERT_EQUAL(message2.type, 9);
-	CU_ASSERT_EQUAL(message2.flags, 123);
+	munit_assert_int(message2.type, ==, 9);
+	munit_assert_int(message2.flags, ==, 123);
 
 	err = dqlite__message_body_recv_start(&message2, &buf);
-	CU_ASSERT_EQUAL(0, err);
+	munit_assert_int(err, ==, 0);
 
 	memcpy(buf.base, bufs[1].base, bufs[1].len);
 	memcpy(buf.base + bufs[1].len, bufs[2].base, bufs[2].len);
 
 	for (i = 0; i < 4088 / 8; i++) {
 		err = dqlite__message_body_get_uint64(&message2, &value);
-		CU_ASSERT_EQUAL(err, 0);
-		CU_ASSERT_EQUAL(value, i);
+		munit_assert_int(err, ==, 0);
+		munit_assert_int(value, ==, i);
 	}
 
 	err = dqlite__message_body_get_text(&message2, &text);
-	CU_ASSERT_EQUAL(err, DQLITE_EOM);
+	munit_assert_int(err, ==, DQLITE_EOM);
 
-	CU_ASSERT_STRING_EQUAL(text, "hello world");
+	munit_assert_string_equal(text, "hello world");
 
 	dqlite__message_recv_reset(&message2);
-	dqlite__message_send_reset(&message);
+	dqlite__message_send_reset(message);
 
 	dqlite__message_close(&message2);
+
+	return MUNIT_OK;
 }
+
+static MunitTest send_start_tests[] = {
+    {"/no-dyn-buf", test_send_start_no_dyn_buf, setup, tear_down, 0, NULL},
+    {"/dyn-buf", test_send_start_dyn_buf, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__message suite
+ *
+ ******************************************************************************/
+
+MunitSuite dqlite__message_suites[] = {
+    {"_header_recv_start",
+     header_recv_start_tests,
+     NULL,
+     1,
+     MUNIT_SUITE_OPTION_NONE},
+    {"_header_recv_done", header_recv_done_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+    {"_body_recv_start", body_recv_start_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+    {"_body_get", body_get_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+    {"_header_put", header_put_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+    {"_body_put", body_put_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+    {"_send_start", send_start_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+    {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
+};

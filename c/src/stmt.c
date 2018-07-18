@@ -13,8 +13,7 @@
  * can fit in one byte. */
 #define DQLITE__STMT_MAX_COLUMNS (1 << 8) - 1
 
-void dqlite__stmt_init(struct dqlite__stmt *s)
-{
+void dqlite__stmt_init(struct dqlite__stmt *s) {
 	assert(s != NULL);
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_STMT);
@@ -22,163 +21,199 @@ void dqlite__stmt_init(struct dqlite__stmt *s)
 	dqlite__error_init(&s->error);
 }
 
-void dqlite__stmt_close(struct dqlite__stmt *s)
-{
+void dqlite__stmt_close(struct dqlite__stmt *s) {
 	assert(s != NULL);
 
 	if (s->stmt != NULL) {
 		/* Ignore the return code, since it will be non-zero in case the
 		 * most rececent evaluation of the statement failed. */
-		sqlite3_finalize(s->stmt); }
+		sqlite3_finalize(s->stmt);
+	}
 
 	dqlite__error_close(&s->error);
 
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_STMT);
 }
 
-int dqlite__stmt_bind(
-	struct dqlite__stmt *s,
-	struct dqlite__message *message,
-	int *rc)
-{
-	int err;
-	uint8_t param_count;
+/* Bind a parameter. */
+static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
+                                   struct dqlite__message *message,
+                                   int                     i,
+                                   int                     type,
+                                   int *                   rc) {
+	int64_t  integer;
+	double   float_;
+	uint64_t null;
+	text_t   text;
+	int      err;
+
+	assert(s != NULL);
+
+	switch (type) {
+
+	case SQLITE_INTEGER:
+		err = dqlite__message_body_get_int64(message, &integer);
+		if (err == 0 || err == DQLITE_EOM) {
+			*rc = sqlite3_bind_int64(s->stmt, i, integer);
+		}
+		break;
+
+	case SQLITE_FLOAT:
+		err = dqlite__message_body_get_double(message, &float_);
+		if (err == 0 || err == DQLITE_EOM) {
+			*rc = sqlite3_bind_double(s->stmt, i, float_);
+		}
+		break;
+
+	case SQLITE_BLOB:
+		assert(0); /* TODO */
+		break;
+
+	case SQLITE_NULL:
+		/* TODO: allow null to be encoded with 0 bytes? */
+		err = dqlite__message_body_get_uint64(message, &null);
+		if (err == 0 || err == DQLITE_EOM) {
+			*rc = sqlite3_bind_null(s->stmt, i);
+		}
+		break;
+
+	case SQLITE_TEXT:
+		err = dqlite__message_body_get_text(message, &text);
+		if (err == 0 || err == DQLITE_EOM) {
+			*rc = sqlite3_bind_text(s->stmt, i, text, -1, SQLITE_STATIC);
+		}
+		break;
+
+	case DQLITE_ISO8601:
+		err = dqlite__message_body_get_text(message, &text);
+		if (err == 0 || err == DQLITE_EOM) {
+			*rc = sqlite3_bind_text(s->stmt, i, text, -1, SQLITE_STATIC);
+		}
+		break;
+
+	default:
+		dqlite__error_printf(&s->error, "unknown type %d", type);
+		return DQLITE_PROTO;
+	}
+
+	return err;
+}
+
+int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message) {
+	int     err;
+	size_t  words;
+	size_t  offset;
 	uint8_t pad = 0;
 	uint8_t i;
-	uint8_t param_types[DQLITE__STMT_MAX_COLUMNS]; /* TODO: allow more than 255 params */
+	uint8_t count;
+	uint8_t types[DQLITE__MESSAGE_MAX_BINDINGS];
 
 	assert(s != NULL);
 	assert(s->stmt != NULL);
 	assert(message != NULL);
-	assert(rc != NULL);
 
-	sqlite3_reset(s->stmt); /* TODO: handle the return code? */
-
-	err = dqlite__message_body_get_uint8(message, &param_count);
-
-	assert(err == 0 || err == DQLITE_OVERFLOW || err == DQLITE_EOM);
-
-	if (err == DQLITE_OVERFLOW) {
-		 /* No bindings were provided */
-		return 0;
+	/* First check if we reached the end of the message. Since bindings are
+	 * always the last part of a message, no further data means that no
+	 * bindings were supplied and there's nothing to do. */
+	if (message->body2.base != NULL) {
+		offset = message->offset2;
+	} else {
+		offset = message->offset1;
+	}
+	words = offset / DQLITE__MESSAGE_WORD_SIZE;
+	if (words == message->words) {
+		return SQLITE_OK;
 	}
 
-	if (err == DQLITE_EOM) {
-		/* The body contains a column count, but nothing more */
-		dqlite__error_printf(&s->error, "no param types provided");
-		return DQLITE_PROTO;
-	}
+	/* Get the number of parameters. The maximum value is 255. */
+	err = dqlite__message_body_get_uint8(message, &count);
+	assert(err == 0);
 
 	/* Clients are expected to pad the column type bytes to reach the word
 	 * boundary (including the first byte, the param count) */
-	if ((param_count + 1) % DQLITE__MESSAGE_WORD_SIZE != 0) {
-		pad = DQLITE__MESSAGE_WORD_SIZE - ((param_count + 1) % DQLITE__MESSAGE_WORD_SIZE);
+	if ((count + 1) % DQLITE__MESSAGE_WORD_SIZE != 0) {
+		pad = DQLITE__MESSAGE_WORD_SIZE -
+		      ((count + 1) % DQLITE__MESSAGE_WORD_SIZE);
 	}
 
-	for (i = 0; i < param_count + pad; i++) {
-		err = dqlite__message_body_get_uint8(message, &param_types[i]);
+	/* Get the type of each parameter. */
+	for (i = 0; i < count + pad; i++) {
+		err = dqlite__message_body_get_uint8(message, &types[i]);
 		if (err != 0) {
-			/* The only possible way this should fail is end-of-message */
+			/* The only possible way this should fail is end-of-message
+			 */
 			assert(err == DQLITE_EOM);
-			dqlite__error_printf(&s->error, "incomplete param types");
-			return DQLITE_PROTO;
+			if (i == count + pad - 1) {
+				/* All parameter types are present, but there's
+				 * no further data holding parameter values. */
+				dqlite__error_printf(&s->error,
+				                     "incomplete param values");
+			} else {
+				/* Not all parameter types were provided. */
+				dqlite__error_printf(&s->error,
+				                     "incomplete param types");
+			}
+			return SQLITE_ERROR;
 		}
 	}
 
-	for (i = 0; i < param_count; i++) {
-		int64_t integer;
-		double float_;
-		text_t text;
+	/* Get the value of each parameter. */
+	for (i = 0; i < count; i++) {
+		int rc = SQLITE_OK;
 
-		switch (param_types[i]) {
-		case SQLITE_INTEGER:
-			err = dqlite__message_body_get_int64(message, &integer);
-			if (err == 0 || err == DQLITE_EOM) {
-				*rc = sqlite3_bind_int64(s->stmt, i + 1, integer);
+		err = dqlite__stmt_bind_param(s, message, i + 1, types[i], &rc);
+		if (err == DQLITE_EOM) {
+			if (i != count - 1) {
+				/* We reached the end of the message but we did
+				 * not exhaust the parameters. */
+				dqlite__error_printf(&s->error,
+				                     "incomplete param values");
+				return SQLITE_ERROR;
 			}
-			break;
-		case SQLITE_FLOAT:
-			err = dqlite__message_body_get_double(message, &float_);
-			if (err == 0 || err == DQLITE_EOM) {
-				*rc = sqlite3_bind_double(s->stmt, i + 1, float_);
-			}
-			break;
-		case SQLITE_BLOB:
-			assert(0); /* TODO */
-			break;
-		case SQLITE_NULL:
-			/* TODO: allow null to be encoded with 0 bytes */
-			err = dqlite__message_body_get_int64(message, &integer);
-			if (err == 0 || err == DQLITE_EOM) {
-				*rc = sqlite3_bind_null(s->stmt, i + 1);
-			}
-			break;
-		case SQLITE_TEXT:
-			err = dqlite__message_body_get_text(message, &text);
-			if (err == 0 || err == DQLITE_EOM) {
-				*rc = sqlite3_bind_text(s->stmt, i + 1, text, -1, SQLITE_STATIC);
-			}
-			break;
-		case DQLITE_ISO8601:
-			err = dqlite__message_body_get_text(message, &text);
-			if (err == 0 || err == DQLITE_EOM) {
-				*rc = sqlite3_bind_text(s->stmt, i + 1, text, -1, SQLITE_STATIC);
-			}
-			break;
-		default:
-			dqlite__error_printf(&s->error, "unknown type %d for param %d", param_types[i], i);
-			return DQLITE_PROTO;
+		} else if (err != 0) {
+			dqlite__error_wrapf(
+			    &s->error, &s->error, "invalid param %d", i + 1);
+			return SQLITE_ERROR;
 		}
 
-		if (err != 0 || *rc != SQLITE_OK) {
-			break;
+		if (rc != SQLITE_OK) {
+			dqlite__error_printf(&s->error, sqlite3_errmsg(s->db));
+			return rc;
 		}
 	}
 
-	if (err != DQLITE_EOM) {
-		/* TODO: differentiate between the various cases, e.g. err == 0,
-		 * err == DQLITE_OVERFLOW, err == DQLITE_PARSE */
-		dqlite__error_printf(&s->error, "invalid params");
-		return DQLITE_PROTO;
-	}
-
-	if (*rc != SQLITE_OK) {
-		return DQLITE_ENGINE;
-	}
-
-	return 0;
+	return SQLITE_OK;
 }
 
-int dqlite__stmt_exec(
-	struct dqlite__stmt *s,
-	uint64_t *last_insert_id,
-	uint64_t *rows_affected)
-{
+int dqlite__stmt_exec(struct dqlite__stmt *s,
+                      uint64_t *           last_insert_id,
+                      uint64_t *           rows_affected) {
 	int rc;
 
 	assert(s != NULL);
 	assert(s->stmt != NULL);
 
 	rc = sqlite3_step(s->stmt);
-	if (rc != SQLITE_DONE)
+	if (rc != SQLITE_DONE) {
+		dqlite__error_printf(&s->error, sqlite3_errmsg(s->db));
 		return rc;
+	}
 
 	*last_insert_id = sqlite3_last_insert_rowid(s->db);
-	*rows_affected = sqlite3_changes(s->db);
+	*rows_affected  = sqlite3_changes(s->db);
 
-	return 0;
+	return SQLITE_OK;
 }
 
-static int dqlite__stmt_put_row(
-	struct dqlite__stmt *s,
-	struct dqlite__message *message,
-	int column_count)
-{
-	int err;
-	int i;
-	int pad;
-	int header_bits;
-	int *column_types;
+/* Append a single row to the message. */
+static int dqlite__stmt_row(struct dqlite__stmt *   s,
+                            struct dqlite__message *message,
+                            int                     column_count) {
+	int     err;
+	int     i;
+	int     pad;
+	int     header_bits;
+	int *   column_types;
 	uint8_t slot = 0;
 
 	assert(s != NULL);
@@ -186,17 +221,20 @@ static int dqlite__stmt_put_row(
 	assert(column_count > 0);
 
 	/* Allocate an array to store the column types */
-	column_types = (int*)sqlite3_malloc(column_count * sizeof(*column_types));
+	column_types = (int *)sqlite3_malloc(column_count * sizeof(*column_types));
 	if (column_types == NULL) {
-		dqlite__error_oom(&s->error, "failed to create column column_types array");
-		return DQLITE_NOMEM;
+		dqlite__error_oom(&s->error,
+		                  "failed to create column column_types array");
+		return SQLITE_NOMEM;
 	}
 
 	/* Each column needs a 4 byte slot to store the column type. The row
 	 * header must be padded to reach word boundary. */
 	header_bits = column_count * 4;
 	if ((header_bits % DQLITE__MESSAGE_WORD_BITS) != 0) {
-		pad = (DQLITE__MESSAGE_WORD_BITS - (header_bits % DQLITE__MESSAGE_WORD_BITS)) / 4;
+		pad = (DQLITE__MESSAGE_WORD_BITS -
+		       (header_bits % DQLITE__MESSAGE_WORD_BITS)) /
+		      4;
 	} else {
 		pad = 0;
 	}
@@ -206,18 +244,23 @@ static int dqlite__stmt_put_row(
 		int column_type;
 
 		if (i < column_count) {
-			/* Actual column, fetch the type */
+			/* Actual column, figure the type */
 			const char *column_type_name;
+			int         is_datetime_column;
 
 			column_type = sqlite3_column_type(s->stmt, i);
 
 			/* TODO: find a better way to handle time types */
 			column_type_name = sqlite3_column_decltype(s->stmt, i);
-			if (column_type_name != NULL && strcmp(column_type_name, "DATETIME") == 0) {
+			is_datetime_column =
+			    strcmp(column_type_name, "DATETIME") == 0;
+			if (column_type_name != NULL && is_datetime_column) {
 				if (column_type == SQLITE_INTEGER) {
+
 					column_type = DQLITE_UNIXTIME;
 				} else {
-					assert(column_type == SQLITE_TEXT || column_type == SQLITE_NULL);
+					assert(column_type == SQLITE_TEXT ||
+					       column_type == SQLITE_NULL);
 					column_type = DQLITE_ISO8601;
 				}
 			}
@@ -238,9 +281,10 @@ static int dqlite__stmt_put_row(
 			err = dqlite__message_body_put_uint8(message, slot);
 			if (err != 0) {
 				assert(err == DQLITE_NOMEM);
-				dqlite__error_wrapf(
-					&s->error, &message->error,
-					"failed to write row header");
+				dqlite__error_wrapf(&s->error,
+				                    &message->error,
+				                    "failed to write row header");
+				err = SQLITE_NOMEM;
 				goto out;
 			}
 		}
@@ -249,17 +293,17 @@ static int dqlite__stmt_put_row(
 	/* Write the row columns */
 	for (i = 0; i < column_count; i++) {
 		int64_t integer;
-		double float_;
-		text_t text;
+		double  float_;
+		text_t  text;
 
 		switch (column_types[i]) {
 		case SQLITE_INTEGER:
 			integer = sqlite3_column_int64(s->stmt, i);
-			err = dqlite__message_body_put_int64(message, integer);
+			err     = dqlite__message_body_put_int64(message, integer);
 			break;
 		case SQLITE_FLOAT:
 			float_ = sqlite3_column_double(s->stmt, i);
-			err = dqlite__message_body_put_double(message, float_);
+			err    = dqlite__message_body_put_double(message, float_);
 			break;
 		case SQLITE_BLOB:
 			assert(0); /* TODO */
@@ -270,11 +314,11 @@ static int dqlite__stmt_put_row(
 			break;
 		case SQLITE_TEXT:
 			text = (text_t)sqlite3_column_text(s->stmt, i);
-			err = dqlite__message_body_put_text(message, text);
+			err  = dqlite__message_body_put_text(message, text);
 			break;
 		case DQLITE_UNIXTIME:
 			integer = sqlite3_column_int64(s->stmt, i);
-			err = dqlite__message_body_put_int64(message, integer);
+			err     = dqlite__message_body_put_int64(message, integer);
 			break;
 		case DQLITE_ISO8601:
 			text = (text_t)sqlite3_column_text(s->stmt, i);
@@ -283,8 +327,11 @@ static int dqlite__stmt_put_row(
 			err = dqlite__message_body_put_text(message, text);
 			break;
 		default:
-			dqlite__error_printf(&s->error, "unknown type %d for column %d", column_types[i], i);
-			err = DQLITE_ERROR;
+			dqlite__error_printf(&s->error,
+			                     "unknown type %d for column %d",
+			                     column_types[i],
+			                     i);
+			err = SQLITE_ERROR;
 			goto out;
 		}
 
@@ -293,60 +340,70 @@ static int dqlite__stmt_put_row(
 		}
 	}
 
- out:
+out:
 	sqlite3_free(column_types);
 
-	return err;
+	if (err != 0) {
+		assert(!dqlite__error_is_null(&s->error));
+		return SQLITE_ERROR;
+	}
+
+	return SQLITE_OK;
 }
 
-int dqlite__stmt_query(
-	struct dqlite__stmt *s,
-	struct dqlite__message *message,
-	int *rc)
-{
-	int err;
+int dqlite__stmt_query(struct dqlite__stmt *s, struct dqlite__message *message) {
 	int column_count;
+	int err;
 	int i;
+	int rc;
 
 	assert(s != NULL);
 	assert(s->stmt != NULL);
 	assert(message != NULL);
-	assert(rc != NULL);
 
 	column_count = sqlite3_column_count(s->stmt);
 	if (column_count <= 0) {
 		dqlite__error_printf(&s->error, "stmt doesn't yield any column");
+		return SQLITE_ERROR;
 	}
 
 	/* Insert the column count */
 	err = dqlite__message_body_put_uint64(message, (uint64_t)column_count);
 	if (err != 0) {
-		return err;
+		dqlite__error_wrapf(
+		    &s->error, &message->error, "failed to encode column count");
+		return SQLITE_ERROR;
 	}
 
 	/* Insert the column names */
 	for (i = 0; i < column_count; i++) {
 		const char *name = sqlite3_column_name(s->stmt, i);
+
 		err = dqlite__message_body_put_text(message, name);
 		if (err != 0) {
-			return err;
+			dqlite__error_wrapf(&s->error,
+			                    &message->error,
+			                    "failed to encode column name %d",
+			                    i);
+			return SQLITE_ERROR;
 		}
 	}
 
-	err = 0; /* In case there's no row and the loop breaks immediately */
+	/* Insert the rows. */
 	do {
-		*rc = sqlite3_step(s->stmt);
-		if (*rc != SQLITE_ROW)
+		rc = sqlite3_step(s->stmt);
+		if (rc != SQLITE_ROW) {
 			break;
+		}
 
-		err = dqlite__stmt_put_row(s, message, column_count);
-		if (err != 0) {
-			return err;
+		rc = dqlite__stmt_row(s, message, column_count);
+		if (rc != SQLITE_OK) {
+			break;
 		}
 
 	} while (1);
 
-	return 0;
+	return rc;
 }
 
 DQLITE__REGISTRY_METHODS(dqlite__stmt_registry, dqlite__stmt);

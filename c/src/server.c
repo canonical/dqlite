@@ -5,14 +5,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <uv.h>
 #include <sqlite3.h>
+#include <uv.h>
 
-#include "log.h"
-#include "error.h"
-#include "queue.h"
+#include "../include/dqlite.h"
+
 #include "conn.h"
-#include "dqlite.h"
+#include "error.h"
+#include "log.h"
+#include "queue.h"
 
 int dqlite_init(const char **errmsg) {
 	int rc;
@@ -39,20 +40,20 @@ int dqlite_init(const char **errmsg) {
 /* Manage client TCP connections to a dqlite node */
 struct dqlite__server {
 	/* read-only */
-	dqlite__error        error;    /* Last error occurred, if any */
+	dqlite__error error; /* Last error occurred, if any */
 
 	/* private */
-	FILE                *log;      /* Log output stream */
-	dqlite_cluster      *cluster;  /* Cluster implementation */
-	struct dqlite__queue queue;    /* Queue of incoming connections */
-	pthread_mutex_t      mutex;    /* Serialize access to incoming queue */
-	uv_loop_t            loop;     /* UV loop */
-	uv_async_t           stop;     /* Event to stop the UV loop */
-	uv_async_t           incoming; /* Event to process the incoming queue */
-	int                  running;  /* Indicate that the loop is running */
-	sem_t                ready;    /* Notifiy that the loop is running */
-	uv_timer_t           startup;  /* Used for unblocking the ready sem */
-	sem_t                stopped;  /* Notifiy that the loop has been stopped */
+	struct dqlite_logger *logger;   /* Optional logger implementation */
+	dqlite_cluster *      cluster;  /* Cluster implementation */
+	struct dqlite__queue  queue;    /* Queue of incoming connections */
+	pthread_mutex_t       mutex;    /* Serialize access to incoming queue */
+	uv_loop_t             loop;     /* UV loop */
+	uv_async_t            stop;     /* Event to stop the UV loop */
+	uv_async_t            incoming; /* Event to process the incoming queue */
+	int                   running;  /* Indicate that the loop is running */
+	sem_t                 ready;    /* Notifiy that the loop is running */
+	uv_timer_t            startup;  /* Used for unblocking the ready sem */
+	sem_t                 stopped;  /* Notifiy that the loop has been stopped */
 };
 
 /* Callback for the uv_walk() call in dqlite__server_stop_cb.
@@ -60,26 +61,22 @@ struct dqlite__server {
  * This callback gets fired once for every active handle in the UV loop and is
  * in charge of closing each of them.
  */
-static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
-{
-	struct dqlite__server* s;
-	struct dqlite__conn *conn;
+static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg) {
+	struct dqlite__server *s;
+	struct dqlite__conn *  conn;
 
 	assert(handle != NULL);
 	assert(arg != NULL);
-	assert(
-		handle->type == UV_ASYNC ||
-		handle->type == UV_TIMER ||
-		handle->type == UV_TCP);
+	assert(handle->type == UV_ASYNC || handle->type == UV_TIMER ||
+	       handle->type == UV_TCP);
 
-	s = (struct dqlite__server*)arg;
+	s = (struct dqlite__server *)arg;
 
-	switch(handle->type) {
+	switch (handle->type) {
 
 	case UV_ASYNC:
-		assert(
-			handle == (uv_handle_t*)&s->stop ||
-			handle == (uv_handle_t*)&s->incoming);
+		assert(handle == (uv_handle_t *)&s->stop ||
+		       handle == (uv_handle_t *)&s->incoming);
 
 		uv_close(handle, NULL);
 
@@ -88,7 +85,7 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 	case UV_TCP:
 		assert(handle->data != NULL);
 
-		conn = (struct dqlite__conn*)handle->data;
+		conn = (struct dqlite__conn *)handle->data;
 
 		/* Abort the client connection and release any allocated
 		 * resources. */
@@ -101,7 +98,7 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 
 	case UV_TIMER:
 		/* If this is the startup timer, let's close it explicitely. */
-		if (handle == (uv_handle_t*)&s->startup) {
+		if (handle == (uv_handle_t *)&s->startup) {
 			uv_close(handle, NULL);
 		}
 
@@ -125,14 +122,13 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
  * last handle (which must be the 'stop' async handle) is closed, the loop gets
  * stopped.
  */
-static void dqlite__server_stop_cb(uv_async_t *stop)
-{
+static void dqlite__server_stop_cb(uv_async_t *stop) {
 	struct dqlite__server *s;
 
 	assert(stop != NULL);
 	assert(stop->data != NULL);
 
-	s = (struct dqlite__server*)stop->data;
+	s = (struct dqlite__server *)stop->data;
 
 	/* We expect that we're being executed after dqlite_server_stop and so
 	 * the running flag is off. */
@@ -146,19 +142,19 @@ static void dqlite__server_stop_cb(uv_async_t *stop)
 
 	/* Loop through all connections and abort them, then stop the event
 	 * loop. */
-	uv_walk(&s->loop, dqlite__server_stop_walk_cb, (void*)s);
+	uv_walk(&s->loop, dqlite__server_stop_walk_cb, (void *)s);
 }
 
 /* Callback invoked when the incoming async handle gets fired.
  *
  * This callback will scan the incoming queue and create new connections.
  */
-static void dqlite__server_incoming_cb(uv_async_t *incoming){
+static void dqlite__server_incoming_cb(uv_async_t *incoming) {
 	struct dqlite__server *s;
 
 	assert(incoming != NULL);
 	assert(incoming->data != NULL);
-	s = (struct dqlite__server*)incoming->data;
+	s = (struct dqlite__server *)incoming->data;
 
 	/* Acquire the queue lock, so no new incoming connection can be
 	 * pushed. */
@@ -173,15 +169,14 @@ static void dqlite__server_incoming_cb(uv_async_t *incoming){
  *
  * It unblocks the s->ready semaphore.
  */
-static void dqlite__service_startup_cb(uv_timer_t *startup)
-{
-	int err;
+static void dqlite__service_startup_cb(uv_timer_t *startup) {
+	int                    err;
 	struct dqlite__server *s;
 
 	assert(startup != NULL);
 	assert(startup->data != NULL);
 
-	s = (struct dqlite__server*)startup->data;
+	s = (struct dqlite__server *)startup->data;
 
 	s->running = 1;
 
@@ -190,40 +185,36 @@ static void dqlite__service_startup_cb(uv_timer_t *startup)
 }
 
 /* Perform all memory allocations needed to create a dqlite_server object. */
-dqlite_server *dqlite_server_alloc()
-{
+dqlite_server *dqlite_server_alloc() {
 	struct dqlite__server *s;
 
-	s = (struct dqlite__server*)(sqlite3_malloc(sizeof(*s)));
-	if(s == NULL)
+	s = (struct dqlite__server *)(sqlite3_malloc(sizeof(*s)));
+	if (s == NULL)
 		goto err_alloc;
 
 	return s;
 
- err_alloc:
+err_alloc:
 	return NULL;
 }
 
 /* Release all memory allocated in dqlite_server_alloc() */
-void dqlite_server_free(dqlite_server *s)
-{
+void dqlite_server_free(dqlite_server *s) {
 	assert(s != NULL);
 
 	sqlite3_free(s);
 }
 
 /* Initialize internal state */
-int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
-{
+int dqlite_server_init(dqlite_server *s, dqlite_cluster *cluster) {
 	int err;
 
 	assert(s != NULL);
-	assert(log != NULL);
 	assert(cluster != NULL);
 
 	dqlite__error_init(&s->error);
 
-	s->log = log;
+	s->logger  = NULL;
 	s->cluster = cluster;
 
 	dqlite__queue_init(&s->queue);
@@ -238,21 +229,22 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 	}
 
 	err = uv_async_init(&s->loop, &s->stop, dqlite__server_stop_cb);
-	if (err !=0) {
+	if (err != 0) {
 		dqlite__error_uv(&s->error, err, "failed to init stop event handle");
 		return DQLITE_ERROR;
 	}
-	s->stop.data = (void*)s;
+	s->stop.data = (void *)s;
 
 	err = uv_async_init(&s->loop, &s->incoming, dqlite__server_incoming_cb);
-	if (err !=0) {
-		dqlite__error_uv(&s->error, err, "failed to init accept event handle");
+	if (err != 0) {
+		dqlite__error_uv(
+		    &s->error, err, "failed to init accept event handle");
 		return DQLITE_ERROR;
 	}
-	s->incoming.data = (void*)s;
+	s->incoming.data = (void *)s;
 
 	err = sem_init(&s->ready, 0, 0);
-	if (err !=0) {
+	if (err != 0) {
 		dqlite__error_sys(&s->error, "failed to init ready semaphore");
 		return DQLITE_ERROR;
 	}
@@ -262,7 +254,7 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 		dqlite__error_uv(&s->error, err, "failed to init timer");
 		return DQLITE_ERROR;
 	}
-	s->startup.data = (void*)s;
+	s->startup.data = (void *)s;
 
 	/* Schedule dqlite__service_startup_cb to be fired as soon as the loop
 	 * starts. It will unblock clients of dqlite_service_ready. */
@@ -273,19 +265,17 @@ int dqlite_server_init(dqlite_server *s, FILE *log, dqlite_cluster *cluster)
 	}
 
 	err = sem_init(&s->stopped, 0, 0);
-	if (err !=0) {
+	if (err != 0) {
 		dqlite__error_sys(&s->error, "failed to init stopped semaphore");
 		return DQLITE_ERROR;
 	}
-
 
 	s->running = 0;
 
 	return 0;
 }
 
-void dqlite_server_close(dqlite_server *s)
-{
+void dqlite_server_close(dqlite_server *s) {
 	int err;
 
 	assert(s != NULL);
@@ -300,18 +290,20 @@ void dqlite_server_close(dqlite_server *s)
 
 	dqlite__queue_close(&s->queue);
 	dqlite__error_close(&s->error);
-
 }
 
 /* Set a config option */
-int dqlite_server_config(dqlite_server *s, int op, void *arg)
-{
+int dqlite_server_config(dqlite_server *s, int op, void *arg) {
 	int err = 0;
 
 	assert(s != NULL);
 	(void)arg;
 
 	switch (op) {
+
+	case DQLITE_CONFIG_LOGGER:
+		s->logger = arg;
+		break;
 
 	default:
 		dqlite__error_printf(&s->error, "unknown op code %d", op);
@@ -322,7 +314,7 @@ int dqlite_server_config(dqlite_server *s, int op, void *arg)
 	return err;
 }
 
-int dqlite_server_run(struct dqlite__server *s){
+int dqlite_server_run(struct dqlite__server *s) {
 	int err;
 
 	assert(s != NULL);
@@ -341,19 +333,15 @@ int dqlite_server_run(struct dqlite__server *s){
 		goto out;
 	}
 
- out:
+out:
 	/* Unblock any client of dqlite_server_ready (no reason for which
 	 * posting should fail). */
 	assert(sem_post(&s->ready) == 0);
 
-	/* Flush the log, but ignore errors */
-	fflush(s->log);
-
 	return err;
 }
 
-int dqlite_server_ready(dqlite_server *s)
-{
+int dqlite_server_ready(dqlite_server *s) {
 	assert(s != NULL);
 
 	/* Wait for the ready semaphore */
@@ -362,14 +350,14 @@ int dqlite_server_ready(dqlite_server *s)
 	return s->running;
 }
 
-int dqlite_server_stop(dqlite_server *s, char **errmsg){
-	int err = 0;
+int dqlite_server_stop(dqlite_server *s, char **errmsg) {
+	int           err = 0;
 	dqlite__error e;
 
 	assert(s != NULL);
 	assert(errmsg != NULL);
 
-	dqlite__debugf(s, "stop event loop", "");
+	dqlite__infof(s, "stopping event loop");
 
 	/* Grab the queue mutex, so we can be sure no new incoming request will
 	 * be enqueued from this point on. */
@@ -407,17 +395,16 @@ int dqlite_server_stop(dqlite_server *s, char **errmsg){
 }
 
 /* Start handling a new connection */
-int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
-	int err;
-	dqlite__error e;
-	struct dqlite__conn *conn;
+int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg) {
+	int                       err;
+	dqlite__error             e;
+	struct dqlite__conn *     conn;
 	struct dqlite__queue_item item;
 
 	assert(s != NULL);
-	assert(s->log != NULL);
 	assert(s->cluster != NULL);
 
-	dqlite__debugf(s, "new connection", "socket=%d", socket);
+	dqlite__infof(s, "handling new connection (fd=%d)", fd);
 
 	pthread_mutex_lock(&s->mutex);
 
@@ -430,30 +417,33 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 		goto err_not_running_or_conn_malloc;
 	}
 
-	conn = (struct dqlite__conn*)sqlite3_malloc(sizeof(*conn));
+	conn = (struct dqlite__conn *)sqlite3_malloc(sizeof(*conn));
 	if (conn == NULL) {
 		dqlite__error_oom(&e, "failed to allocate connection");
 		err = DQLITE_NOMEM;
 		goto err_not_running_or_conn_malloc;
 	}
-	dqlite__conn_init(conn, s->log, socket, s->cluster, &s->loop);
+	dqlite__conn_init(conn, fd, s->cluster, &s->loop);
 
 	err = dqlite__queue_item_init(&item, conn);
 	if (err != 0) {
-		dqlite__error_printf(&e, "failed to init incoming queue item: %s", strerror(errno));
+		dqlite__error_printf(
+		    &e, "failed to init incoming queue item: %s", strerror(errno));
 		err = DQLITE_ERROR;
 		goto err_item_init_or_queue_push;
 	}
 
 	err = dqlite__queue_push(&s->queue, &item);
 	if (err != 0) {
-		dqlite__error_wrapf(&e, &s->queue.error, "failed to push incoming queue item");
+		dqlite__error_wrapf(
+		    &e, &s->queue.error, "failed to push incoming queue item");
 		goto err_item_init_or_queue_push;
 	}
 
 	err = uv_async_send(&s->incoming);
 	if (err != 0) {
-		dqlite__error_uv(&e, err, "failed to fire incoming connection event");
+		dqlite__error_uv(
+		    &e, err, "failed to fire incoming connection event");
 		err = DQLITE_ERROR;
 		goto err_incoming_send;
 	}
@@ -462,8 +452,9 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 
 	dqlite__queue_item_wait(&item);
 
-	if(!dqlite__error_is_null(&item.error)) {
-		dqlite__error_wrapf(&e, &item.error, "failed to process incoming queue item");
+	if (!dqlite__error_is_null(&item.error)) {
+		dqlite__error_wrapf(
+		    &e, &item.error, "failed to process incoming queue item");
 		err = DQLITE_ERROR;
 		goto err_item_wait;
 	}
@@ -473,14 +464,14 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 
 	return 0;
 
- err_incoming_send:
+err_incoming_send:
 	dqlite__queue_pop(&s->queue);
 
- err_item_init_or_queue_push:
+err_item_init_or_queue_push:
 	dqlite__conn_close(conn);
 	sqlite3_free(conn);
 
- err_not_running_or_conn_malloc:
+err_not_running_or_conn_malloc:
 	err = dqlite__error_copy(&e, errmsg);
 	if (err != 0)
 		*errmsg = "error message unavailable (out of memory)";
@@ -491,20 +482,22 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errmsg){
 
 	return err;
 
- err_item_wait:
+err_item_wait:
 	dqlite__queue_item_close(&item);
 
 	return err;
 }
 
-const char* dqlite_server_errmsg(dqlite_server *s){
-	return s->error;
-}
+const char *dqlite_server_errmsg(dqlite_server *s) { return s->error; }
 
-dqlite_cluster *dqlite_server_cluster(dqlite_server *s)
-{
+dqlite_cluster *dqlite_server_cluster(dqlite_server *s) {
 	assert(s != NULL);
 
 	return s->cluster;
 }
 
+dqlite_logger *dqlite_server_logger(dqlite_server *s) {
+	assert(s != NULL);
+
+	return s->logger;
+}

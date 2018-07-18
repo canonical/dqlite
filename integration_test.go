@@ -178,12 +178,10 @@ func newServers(t *testing.T, listeners []net.Listener) (*rafttest.Control, func
 		require.NoError(t, err)
 
 		logger := zaptest.NewLogger(t)
-		file, cleanup := newFile(t)
-		cleanups = append(cleanups, cleanup)
 
 		server, err := dqlite.NewServer(
 			r, registries[i], listeners[i],
-			dqlite.WithServerLogger(logger), dqlite.WithServerLogFile(file))
+			dqlite.WithServerLogger(logger))
 		require.NoError(t, err)
 
 		cleanups = append(cleanups, func() {

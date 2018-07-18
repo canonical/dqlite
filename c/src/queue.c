@@ -1,19 +1,20 @@
 #include <assert.h>
-#include <stdio.h>
 #include <semaphore.h>
+#include <stdio.h>
 
 #include <sqlite3.h>
 #include <uv.h>
 
+#include "../include/dqlite.h"
+
 #include "conn.h"
-#include "dqlite.h"
 #include "error.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "queue.h"
 
-int dqlite__queue_item_init(struct dqlite__queue_item *i, struct dqlite__conn *conn)
-{
+int dqlite__queue_item_init(struct dqlite__queue_item *i,
+                            struct dqlite__conn *      conn) {
 	int err;
 
 	assert(i != NULL);
@@ -36,7 +37,7 @@ int dqlite__queue_item_init(struct dqlite__queue_item *i, struct dqlite__conn *c
 	return 0;
 }
 
-void dqlite__queue_item_close(struct dqlite__queue_item *i){
+void dqlite__queue_item_close(struct dqlite__queue_item *i) {
 	int err;
 
 	assert(i != NULL);
@@ -51,23 +52,22 @@ void dqlite__queue_item_close(struct dqlite__queue_item *i){
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_QUEUE_ITEM);
 }
 
-static void dqlite__queue_item_process(struct dqlite__queue_item *i)
-{
+static void dqlite__queue_item_process(struct dqlite__queue_item *i) {
 	int err;
 
 	assert(i != NULL);
 
 	err = dqlite__conn_start(i->conn);
 	if (err != 0) {
-		dqlite__error_wrapf(&i->error, &i->conn->error, "failed to init connection");
+		dqlite__error_wrapf(
+		    &i->error, &i->conn->error, "failed to init connection");
 	}
 
 	err = sem_post(&i->pending);
 	assert(err == 0); /* No reason for which posting should fail */
 }
 
-void dqlite__queue_item_wait(struct dqlite__queue_item *i)
-{
+void dqlite__queue_item_wait(struct dqlite__queue_item *i) {
 	assert(i != NULL);
 	assert(i->conn != NULL);
 
@@ -75,8 +75,7 @@ void dqlite__queue_item_wait(struct dqlite__queue_item *i)
 	sem_wait(&i->pending);
 }
 
-void dqlite__queue_init(struct dqlite__queue *q)
-{
+void dqlite__queue_init(struct dqlite__queue *q) {
 	assert(q != NULL);
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_QUEUE);
@@ -84,11 +83,10 @@ void dqlite__queue_init(struct dqlite__queue *q)
 	dqlite__error_init(&q->error);
 
 	q->incoming = NULL;
-	q->length = 0;
+	q->length   = 0;
 }
 
-void dqlite__queue_close(struct dqlite__queue *q)
-{
+void dqlite__queue_close(struct dqlite__queue *q) {
 	assert(q != NULL);
 
 	/* Assert that the queue is empty */
@@ -100,20 +98,17 @@ void dqlite__queue_close(struct dqlite__queue *q)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_QUEUE);
 }
 
-int dqlite__queue_push(
-	struct dqlite__queue *q,
-	struct dqlite__queue_item *item)
-{
-	int length;
+int dqlite__queue_push(struct dqlite__queue *q, struct dqlite__queue_item *item) {
+	int                         length;
 	struct dqlite__queue_item **incoming;
 
 	assert(q != NULL);
 	assert(item != NULL);
 
 	/* Increase the size of the incoming queue by 1 */
-	length = q->length+1;
-	incoming = (struct dqlite__queue_item**)sqlite3_realloc(
-		q->incoming, sizeof(*incoming) * (length));
+	length   = q->length + 1;
+	incoming = (struct dqlite__queue_item **)sqlite3_realloc(
+	    q->incoming, sizeof(*incoming) * (length));
 
 	if (incoming == NULL) {
 		dqlite__error_oom(&q->error, "failed to grow incoming queue");
@@ -123,15 +118,15 @@ int dqlite__queue_push(
 	incoming[q->length] = item;
 
 	q->incoming = incoming;
-	q->length = length;
+	q->length   = length;
 
 	return 0;
 }
 
-struct dqlite__queue_item *dqlite__queue_pop(struct dqlite__queue *q){
+struct dqlite__queue_item *dqlite__queue_pop(struct dqlite__queue *q) {
 	struct dqlite__queue_item *item;
 
-	if( !q->length ){
+	if (!q->length) {
 		return NULL;
 	}
 
@@ -147,7 +142,7 @@ struct dqlite__queue_item *dqlite__queue_pop(struct dqlite__queue *q){
 	return item;
 }
 
-void dqlite__queue_process(struct dqlite__queue *q){
+void dqlite__queue_process(struct dqlite__queue *q) {
 	struct dqlite__queue_item *item;
 
 	assert(q != NULL);

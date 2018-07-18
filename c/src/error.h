@@ -6,7 +6,7 @@
 #include <sqlite3.h>
 
 /* A message describing the last error occurred on an object */
-typedef char* dqlite__error;
+typedef char *dqlite__error;
 
 /* Initialize the error with an empty message */
 void dqlite__error_init(dqlite__error *e);
@@ -31,8 +31,9 @@ void dqlite__error_uv(dqlite__error *e, int err, const char *msg);
 
 /* Copy the underlying error message.
  *
- * NOTE: calling cade is responsible of calling sqlite3_free to
- *       deallocate the returned string. */
+ * Client code is responsible of invoking sqlite3_free to deallocate the
+ * returned string.
+ */
 int dqlite__error_copy(dqlite__error *e, char **msg);
 
 /* Whether the error is not set */

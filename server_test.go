@@ -107,17 +107,14 @@ func newServer(t *testing.T, listener net.Listener) (*dqlite.Server, func()) {
 	}))
 
 	logger := zaptest.NewLogger(t)
-	file, fileCleanup := newFile(t)
 
 	server, err := dqlite.NewServer(
 		r, registry, listener,
-		dqlite.WithServerLogger(logger), dqlite.WithServerLogFile(file))
+		dqlite.WithServerLogger(logger))
 	require.NoError(t, err)
 
 	cleanup := func() {
 		require.NoError(t, server.Close())
-
-		fileCleanup()
 		raftCleanup()
 	}
 
@@ -131,24 +128,4 @@ func newListener(t *testing.T) net.Listener {
 	require.NoError(t, err)
 
 	return listener
-}
-
-func newFile(t *testing.T) (*os.File, func()) {
-	t.Helper()
-
-	file, err := ioutil.TempFile("", "dqlite-driver-")
-	require.NoError(t, err)
-
-	cleanup := func() {
-		require.NoError(t, file.Close())
-
-		bytes, err := ioutil.ReadFile(file.Name())
-		require.NoError(t, err)
-
-		t.Logf("server log:\n%s\n", string(bytes))
-
-		require.NoError(t, os.Remove(file.Name()))
-	}
-
-	return file, cleanup
 }

@@ -28,11 +28,14 @@ func TestClient_Heartbeat(t *testing.T) {
 	err := c.Call(ctx, &request, &response)
 	require.NoError(t, err)
 
-	addresses, err := client.DecodeServers(&response)
+	servers, err := client.DecodeServers(&response)
 	require.NoError(t, err)
 
-	assert.Len(t, addresses, 2)
-	assert.Equal(t, client.Strings{"1.2.3.4:666", "5.6.7.8:666"}, addresses)
+	assert.Len(t, servers, 2)
+	assert.Equal(t, client.Servers{
+		{ID: uint64(1), Address: "1.2.3.4:666"},
+		{ID: uint64(2), Address: "5.6.7.8:666"}},
+		servers)
 }
 
 func TestClient_LargeMessage(t *testing.T) {

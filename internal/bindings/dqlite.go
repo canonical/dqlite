@@ -5,17 +5,62 @@ package bindings
 
 #include <assert.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include <dqlite.h>
 #include <sqlite3.h>
 
+// This silences warnings.
+extern int vasprintf(char **strp, const char *fmt, va_list ap);
+
+// Go land callback for xLogf.
+void dqliteLoggerLogfCb(uintptr_t handle, int level, char *msg);
+
+// Implementation of xLogf.
+static void dqliteLoggerLogf(void *ctx, int level, const char *format, ...) {
+  uintptr_t handle;
+  va_list args;
+  char *msg;
+  int err;
+
+  assert(ctx != NULL);
+
+  handle = (uintptr_t)ctx;
+
+  va_start(args, format);
+  err = vasprintf(&msg, format, args);
+  va_end(args);
+  if (err < 0) {
+    // Ignore errors
+    return;
+  }
+
+  dqliteLoggerLogfCb(handle, level, (char*)msg);
+
+  free(msg);
+}
+
+// Constructor.
+static dqlite_logger *dqliteLoggerAlloc(uintptr_t handle) {
+  dqlite_logger *logger = malloc(sizeof *logger);
+
+  if (logger == NULL) {
+    return NULL;
+  }
+
+  logger->ctx = (void*)handle;
+  logger->xLogf = dqliteLoggerLogf;
+
+  return logger;
+}
+
 // Trampoline between a C dqlite_cluster instance and a Go
 // bindings.Cluster instance.
 struct dqliteCluster {
-  int    handle;      // Entry of the Go clusterHandles map
-  char  *replication; // Hold the last string returned by xReplication
-  char  *leader;      // Hold the last string returned by xLeader.
-  char **addresses;   // Hold the last string array returned by xServers.
+  int    handle;               // Entry of the Go clusterHandles map
+  char  *replication;          // Hold the last string returned by xReplication
+  char  *leader;               // Hold the last string returned by xLeader.
+  dqlite_server_info *servers; // Hold the last array returned by xServers.
   dqlite_cluster cluster;
 };
 
@@ -48,6 +93,11 @@ static const char *dqliteClusterReplication(void *ctx) {
 
   c = (struct dqliteCluster*)ctx;
 
+  // Free the previous value.
+  if (c->replication != NULL) {
+    free(c->replication);
+  }
+
   // Save the C string allocated by Go because we'll want to
   // free it when this dqliteCluster instance gets destroyed.
   c->replication = dqliteClusterReplicationCb(c->handle);
@@ -67,6 +117,11 @@ static const char* dqliteClusterLeader(void *ctx) {
 
   c = (struct dqliteCluster*)ctx;
 
+  // Free the previous value.
+  if (c->leader != NULL) {
+    free(c->leader);
+  }
+
   // Save the C string allocated by Go because we'll want to
   // free it when this dqliteCluster instance gets destroyed.
   c->leader = dqliteClusterLeaderCb(c->handle);
@@ -75,10 +130,10 @@ static const char* dqliteClusterLeader(void *ctx) {
 }
 
 // Go land callback for xServers.
-int dqliteClusterServersCb(int handle, char ***addresses);
+int dqliteClusterServersCb(int handle, dqlite_server_info **servers);
 
 // Implementation of xServers.
-static int dqliteClusterServers(void *ctx, const char ***addresses) {
+static int dqliteClusterServers(void *ctx, dqlite_server_info *servers[]) {
   int err;
   struct dqliteCluster *c;
 
@@ -86,18 +141,18 @@ static int dqliteClusterServers(void *ctx, const char ***addresses) {
 
   c = (struct dqliteCluster*)ctx;
 
-  // Save the C string array allocated by Go because we'll want to
-  // free it when this dqliteCluster instance gets destroyed.
-  err = dqliteClusterServersCb(c->handle, &c->addresses);
-  if (err != 0) {
-    assert(c->addresses == NULL);
-    *addresses = NULL;
-    return err;
+  // Free the previous value.
+  if (c->servers != NULL) {
+    free(c->servers);
   }
 
-  *addresses = (const char**)c->addresses;
+  // Save the C string array allocated by Go because we'll want to
+  // free it when this dqliteCluster instance gets destroyed.
+  err = dqliteClusterServersCb(c->handle, &c->servers);
 
-  return 0;
+  *servers = c->servers;
+
+  return err;
 }
 
 // Go land callback for xRegister.
@@ -164,7 +219,7 @@ static void dqliteClusterInit(struct dqliteCluster *c, int handle)
   c->handle = handle;
   c->replication = NULL;
   c->leader = NULL;
-  c->addresses = NULL;
+  c->servers = NULL;
 
   c->cluster.ctx = (void*)c; // The context is the wrapper itself.
   c->cluster.xReplication = dqliteClusterReplication;
@@ -189,32 +244,21 @@ static void dqliteClusterClose(struct dqliteCluster *c)
     free(c->leader);
   }
 
-  if (c->addresses != NULL) {
-    int i;
-
-    for (i = 0; *(c->addresses + i) != NULL; i++) {
-      free(*(c->addresses + i));
-    }
-
-    free(c->addresses);
+  if (c->servers != NULL) {
+    free(c->servers);
   }
 }
 
 // Wrapper around dqlite_server_init. It's needed in order to create a
 // dqliteCluster instance that holds a handle to the Go cluster
 // implementation.
-static int dqliteServerInit(dqlite_server *s, int fd, int cluster_handle)
+static int dqliteServerInit(dqlite_server *s, int cluster_handle)
 {
   int err;
   FILE *file;
   struct dqliteCluster *cluster;
 
   assert(s != NULL);
-
-  file = fdopen(fd, "w");
-  if (file == NULL) {
-    return DQLITE_ERROR;
-  }
 
   cluster = dqliteClusterAlloc();
   if (cluster == NULL) {
@@ -223,7 +267,7 @@ static int dqliteServerInit(dqlite_server *s, int fd, int cluster_handle)
 
   dqliteClusterInit(cluster, cluster_handle);
 
-  err = dqlite_server_init(s, file, &cluster->cluster);
+  err = dqlite_server_init(s, &cluster->cluster);
   if (err != 0) {
     return err;
   }
@@ -288,6 +332,14 @@ const (
 	ISO8601  = C.DQLITE_ISO8601
 )
 
+// Logging levels.
+const (
+	LogDebug = C.DQLITE_LOG_DEBUG
+	LogInfo  = C.DQLITE_LOG_INFO
+	LogWarn  = C.DQLITE_LOG_WARN
+	LogError = C.DQLITE_LOG_ERROR
+)
+
 // Vfs is a Go wrapper arround dqlite's in-memory VFS implementation.
 type Vfs C.sqlite3_vfs
 
@@ -329,7 +381,7 @@ func (v *Vfs) Content(filename string) ([]byte, error) {
 	var buf *C.uint8_t
 	var n C.size_t
 
-	rc := C.dqlite_vfs_content(vfs, cfilename, &buf, &n)
+	rc := C.dqlite_vfs_snapshot(vfs, cfilename, &buf, &n)
 	if rc != 0 {
 		return nil, Error{Code: int(rc)}
 	}
@@ -374,17 +426,17 @@ func Init() error {
 }
 
 // NewServer creates a new Server instance.
-func NewServer(file *os.File, cluster Cluster) (*Server, error) {
+func NewServer(cluster Cluster) (*Server, error) {
 	server := C.dqlite_server_alloc()
 	if server == nil {
 		return nil, fmt.Errorf("out of memory")
 	}
 
-	// Register the cluster implementation pass its handle to
+	// Register the cluster implementation and pass its handle to
 	// dqliteServerInit.
 	handle := clusterRegister(cluster)
 
-	rc := C.dqliteServerInit(server, C.int(file.Fd()), handle)
+	rc := C.dqliteServerInit(server, handle)
 	if rc != 0 {
 		C.dqliteServerClose(server)
 		C.dqlite_server_free(server)
@@ -397,13 +449,40 @@ func NewServer(file *os.File, cluster Cluster) (*Server, error) {
 // Close the server releasing all used resources.
 func (s *Server) Close() {
 	server := (*C.dqlite_server)(unsafe.Pointer(s))
+
 	C.dqliteServerClose(server)
 }
 
 // Free the memory allocated for the given server.
 func (s *Server) Free() {
 	server := (*C.dqlite_server)(unsafe.Pointer(s))
+
+	if logger := C.dqlite_server_logger(server); logger != nil {
+		loggerUnregister(uintptr(logger.ctx))
+		C.sqlite3_free(unsafe.Pointer(logger))
+	}
+
 	C.dqlite_server_free(server)
+}
+
+// SetLogger sets the the server logger.
+func (s *Server) SetLogger(logger Logger) {
+	server := (*C.dqlite_server)(unsafe.Pointer(s))
+
+	// Register the logger implementation and pass its handle to
+	// dqliteLoggerInit.
+	handle := loggerRegister(logger)
+
+	l := C.dqliteLoggerAlloc(C.uintptr_t(handle))
+	if l == nil {
+		panic("out of memory")
+	}
+
+	rc := C.dqlite_server_config(server, C.DQLITE_CONFIG_LOGGER, unsafe.Pointer(l))
+	if rc != 0 {
+		// Setting the logger should never fail.
+		panic("failed to set logger")
+	}
 }
 
 // Run the server.
@@ -476,6 +555,12 @@ func (s *Server) Stop() error {
 // ErrServerStopped is returned by Server.Handle() is the server was stopped.
 var ErrServerStopped = fmt.Errorf("server was stopped")
 
+// ServerInfo is the Go equivalent of dqlite_server_info.
+type ServerInfo struct {
+	ID      uint64
+	Address string
+}
+
 // Cluster implements the interface required by dqlite_cluster.
 type Cluster interface {
 	// Return the registration name of the WAL replication implementation.
@@ -495,7 +580,7 @@ type Cluster interface {
 	// If this driver is not the current leader of the cluster, an error
 	// implementing the Error interface below and returning true in
 	// NotLeader() must be returned.
-	Servers() ([]string, error)
+	Servers() ([]ServerInfo, error)
 
 	Register(*Conn)
 	Unregister(*Conn)
@@ -503,6 +588,11 @@ type Cluster interface {
 	Barrier() error
 
 	Recover(token uint64) error
+}
+
+// Logger implements the interface required by dqlite_logger.
+type Logger interface {
+	Logf(level int, message string)
 }
 
 // A ClusterError represents a cluster-related error.
@@ -526,32 +616,34 @@ func dqliteClusterLeaderCb(handle C.int) *C.char {
 }
 
 //export dqliteClusterServersCb
-func dqliteClusterServersCb(handle C.int, out ***C.char) C.int {
+func dqliteClusterServersCb(handle C.int, out **C.dqlite_server_info) C.int {
 	cluster := clusterHandles[handle]
 
-	addresses, err := cluster.Servers()
+	servers, err := cluster.Servers()
 	if err != nil {
 		*out = nil
 		// TODO: return an appropriate error code based on err
 		return C.int(-1)
 	}
 
-	n := C.size_t(len(addresses)) + 1
+	n := C.size_t(len(servers)) + 1
 
-	*out = (**C.char)(C.malloc(n))
+	size := unsafe.Sizeof(C.dqlite_server_info{})
+	*out = (*C.dqlite_server_info)(C.malloc(n * C.size_t(size)))
 
 	if *out == nil {
 		return C.DQLITE_NOMEM
 	}
 
-	size := unsafe.Sizeof(*out)
 	for i := C.size_t(0); i < n; i++ {
-		address := (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(*out)) + size*uintptr(i)))
+		server := (*C.dqlite_server_info)(unsafe.Pointer(uintptr(unsafe.Pointer(*out)) + size*uintptr(i)))
 
 		if i == n-1 {
-			*address = nil
+			server.id = 0
+			server.address = nil
 		} else {
-			*address = C.CString(addresses[i])
+			server.id = C.uint64_t(servers[i].ID)
+			server.address = C.CString(servers[i].Address)
 		}
 	}
 
@@ -614,4 +706,31 @@ func clusterRegister(cluster Cluster) C.int {
 	clusterHandlesSerial++
 
 	return handle
+}
+
+//export dqliteLoggerLogfCb
+func dqliteLoggerLogfCb(handle C.uintptr_t, level C.int, msg *C.char) {
+	logger := loggerHandles[uintptr(handle)]
+
+	logger.Logf(int(level), C.GoString(msg))
+}
+
+// Map uintptr to Logger instances to avoid passing Go pointers to C.
+//
+// We do not protect this map with a lock since typically just one long-lived
+// Logger instance should be registered (except for unit tests).
+var loggerHandlesSerial uintptr = 100
+var loggerHandles = map[uintptr]Logger{}
+
+func loggerRegister(logger Logger) uintptr {
+	handle := loggerHandlesSerial
+
+	loggerHandles[handle] = logger
+	loggerHandlesSerial++
+
+	return handle
+}
+
+func loggerUnregister(handle uintptr) {
+	delete(loggerHandles, handle)
 }

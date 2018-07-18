@@ -2,13 +2,14 @@
 #define DQLITE_MESSAGE_H
 
 #include <assert.h>
+#include <endian.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <endian.h>
 
 #include <uv.h>
 
-#include "dqlite.h"
+#include "../include/dqlite.h"
+
 #include "error.h"
 #include "lifecycle.h"
 
@@ -38,113 +39,121 @@
 /* Length of the statically allocated message body buffer of dqlite__message. If
  * a message body exeeds this size, a dynamically allocated buffer will be
  * used. */
-#define DQLITE__MESSAGE_BUF_LEN   4096
-#define DQLITE__MESSAGE_BUF_WORDS (DQLITE__MESSAGE_BUF_LEN / DQLITE__MESSAGE_WORD_SIZE)
+#define DQLITE__MESSAGE_BUF_LEN 4096
+
+/* Number of words that the statically allocated message body buffer can
+ * hold. */
+#define DQLITE__MESSAGE_BUF_WORDS                                                   \
+	(DQLITE__MESSAGE_BUF_LEN / DQLITE__MESSAGE_WORD_SIZE)
+
+/* The maximum number of statement bindings or column rows is 255, which can fit
+ * in one byte. */
+#define DQLITE__MESSAGE_MAX_BINDINGS ((1 << 8) - 1)
+#define DQLITE__MESSAGE_MAX_COLUMNS ((1 << 8) - 1)
 
 /* Type aliases to used by macro-based definitions in schema.h */
-typedef const char*  text_t;
-typedef const char** text_list_t;
-typedef double double_t;
+typedef const char *        text_t;
+typedef double              double_t;
+typedef dqlite_server_info *servers_t;
 
-/*
- * Common header for requests and responses.
- */
+/* We rely on the size of double to be 64 bit, since that's what sent over the
+ * wire. */
+static_assert(sizeof(double) == sizeof(uint64_t), "Size of 'double' is not 64 bits");
+
+/* A message serializes dqlite requests and responses. */
 struct dqlite__message {
 	/* public */
-	uint32_t words;     /* Number of 64-bit words in the body (little endian) */
-	uint8_t  type;      /* Code identifying the message type */
-	uint8_t  flags;     /* Type-specific flags */
-	uint16_t extra;     /* Extra space for type-specific data */
+	uint32_t words; /* Number of 64-bit words in the body (little endian) */
+	uint8_t  type;  /* Code identifying the message type */
+	uint8_t  flags; /* Type-specific flags */
+	uint16_t extra; /* Extra space for type-specific data */
 
 	/* read-only */
 	dqlite__error error;
 
 	/* private */
 	union {
-		 /* Pre-allocated body buffer, enough for most cases */
-		char       body1  [DQLITE__MESSAGE_BUF_LEN];
+		/* Pre-allocated body buffer, enough for most cases */
+		char     body1[DQLITE__MESSAGE_BUF_LEN];
 		uint64_t __body1__[DQLITE__MESSAGE_BUF_WORDS]; /* Alignment */
 	};
-	uv_buf_t body2;   /* Dynamically allocated buffer for bodies exeeding body1 */
-	size_t   offset1; /* Number of bytes that have been read or written to body1 */
-	size_t   offset2; /* Number of bytes that have been read or written to bdoy2 */
+	uv_buf_t body2; /* Dynamically allocated buffer for bodies exeeding body1 */
+	size_t offset1; /* Number of bytes that have been read or written to body1 */
+	size_t offset2; /* Number of bytes that have been read or written to bdoy2 */
 };
 
+/* Initialize the message. */
 void dqlite__message_init(struct dqlite__message *m);
+
+/* Close the message, releasing any associated resources. */
 void dqlite__message_close(struct dqlite__message *m);
 
 /* Called when starting to receive a message header.
  *
  * It returns a buffer large enough to hold the message header bytes. The buffer
- * must be progressivelly filled with the received data as it gets read from the
- * socket, until it's full.
- */
+ * must be progressivelly filled with the received data as it gets received from
+ * the client, until it's full. */
 void dqlite__message_header_recv_start(struct dqlite__message *m, uv_buf_t *buf);
 
 /* Called when the buffer returned by dqlite__message_header_recv_start has been
  * completely filled by reads and the header is complete.
  *
- * Return an error if the header data is invalid.
- */
+ * Return an error if the header data is invalid. */
 int dqlite__message_header_recv_done(struct dqlite__message *m);
 
 /* Called when starting to receive a message body, after the message header
  * buffer was filled and dqlite__message_header_recv_done has been called.
  *
  * It returns a buffer large enough to hold the message body. The buffer must be
- * progressivelly filled with the received data as it gets read from the socket,
- * until it's full.
+ * progressivelly filled as data gets received from the client, until it's full.
  *
- * Return an error if there is not enough memory to hold the message body.
- */
+ * Return an error if there is not enough memory to hold the message body. */
 int dqlite__message_body_recv_start(struct dqlite__message *m, uv_buf_t *buf);
 
-/*
- * APIs for decoding the message body.
- */
+/* APIs for decoding the message body.
+ *
+ * They must be called once the body has been completely received and they
+ * return DQLITE_EOM when the end of the body is reached. */
 int dqlite__message_body_get_text(struct dqlite__message *m, text_t *text);
-int dqlite__message_body_get_text_list(struct dqlite__message *m, text_list_t *list);
 int dqlite__message_body_get_uint8(struct dqlite__message *m, uint8_t *value);
 int dqlite__message_body_get_uint32(struct dqlite__message *m, uint32_t *value);
-int dqlite__message_body_get_int64(struct dqlite__message *m, int64_t *value);
 int dqlite__message_body_get_uint64(struct dqlite__message *m, uint64_t *value);
+int dqlite__message_body_get_int64(struct dqlite__message *m, int64_t *value);
 int dqlite__message_body_get_double(struct dqlite__message *m, double_t *value);
+int dqlite__message_body_get_servers(struct dqlite__message *m, servers_t *servers);
 
-/* Called after the message body has been read completely and it has been
+/* Called after the message body has been completely decoded and it has been
  * processed. It resets the internal state so the object can be re-used for
  * receiving another message */
 void dqlite__message_recv_reset(struct dqlite__message *m);
 
 /* Called when starting to render a message.
  *
- * It sets the message header with the given values.
- */
-void dqlite__message_header_put(struct dqlite__message *m, uint8_t type, uint8_t flags);
+ * It sets the message header with the given values. */
+void dqlite__message_header_put(struct dqlite__message *m,
+                                uint8_t                 type,
+                                uint8_t                 flags);
 
-/*
- * APIs for encoding the message body.
- */
+/* APIs for encoding the message body. */
 int dqlite__message_body_put_text(struct dqlite__message *m, text_t text);
-int dqlite__message_body_put_text_list(struct dqlite__message *m, text_list_t list);
 int dqlite__message_body_put_uint8(struct dqlite__message *m, uint8_t value);
 int dqlite__message_body_put_uint32(struct dqlite__message *m, uint32_t value);
 int dqlite__message_body_put_int64(struct dqlite__message *m, int64_t value);
 int dqlite__message_body_put_uint64(struct dqlite__message *m, uint64_t value);
 int dqlite__message_body_put_double(struct dqlite__message *m, double_t value);
+int dqlite__message_body_put_servers(struct dqlite__message *m, servers_t servers);
 
 /* Called when starting to send a message.
  *
  * It returns three buffers: the message header buffer, the statically allocated
  * message body buffer, and optionally a dynamically allocated body buffer (if
- * the body size exeeds the size of the statically allocated body buffer).
- */
+ * the body size exeeds the size of the statically allocated body buffer). */
 void dqlite__message_send_start(struct dqlite__message *m, uv_buf_t bufs[3]);
 
-/* Called after the body has been completely written to the socket.
+/* Called after the body has been completely sent to the client.
  *
  * It resets the internal state so the object can be re-used for sending another
- * message.
- */
+ * message. */
 void dqlite__message_send_reset(struct dqlite__message *m);
 
 #endif /* DQLITE_MESSAGE_H */

@@ -16,7 +16,7 @@ package client
 //go:generate ./schema.sh --response init
 //go:generate ./schema.sh --response Welcome  heartbeatTimeout:uint64
 //go:generate ./schema.sh --response Server   address:string
-//go:generate ./schema.sh --response Servers  addresses:Strings
+//go:generate ./schema.sh --response Servers  servers:Servers
 //go:generate ./schema.sh --response Db       id:uint32 unused:uint32
 //go:generate ./schema.sh --response Stmt     db:uint32 id:uint32 params:uint64
 //go:generate ./schema.sh --response Empty    unused:uint64

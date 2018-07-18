@@ -15,12 +15,9 @@ import (
 )
 
 func TestServer_Lifecycle(t *testing.T) {
-	file, cleanup := newTestFile(t)
-	defer cleanup()
-
 	cluster := newTestCluster()
 
-	server, err := bindings.NewServer(file, cluster)
+	server, err := bindings.NewServer(cluster)
 	require.NoError(t, err)
 
 	server.Close()
@@ -28,12 +25,9 @@ func TestServer_Lifecycle(t *testing.T) {
 }
 
 func TestServer_Run(t *testing.T) {
-	file, cleanup := newTestFile(t)
-	defer cleanup()
-
 	cluster := newTestCluster()
 
-	server, err := bindings.NewServer(file, cluster)
+	server, err := bindings.NewServer(cluster)
 	require.NoError(t, err)
 
 	defer server.Free()
@@ -52,12 +46,9 @@ func TestServer_Run(t *testing.T) {
 }
 
 func TestServer_Handle(t *testing.T) {
-	file, cleanup := newTestFile(t)
-	defer cleanup()
-
 	cluster := newTestCluster()
 
-	server, err := bindings.NewServer(file, cluster)
+	server, err := bindings.NewServer(cluster)
 	require.NoError(t, err)
 
 	defer server.Free()
@@ -112,12 +103,9 @@ func TestServer_Handle(t *testing.T) {
 }
 
 func TestServer_ConcurrentHandleAndClose(t *testing.T) {
-	file, cleanup := newTestFile(t)
-	defer cleanup()
-
 	cluster := newTestCluster()
 
-	server, err := bindings.NewServer(file, cluster)
+	server, err := bindings.NewServer(cluster)
 	require.NoError(t, err)
 
 	defer server.Free()
@@ -217,20 +205,6 @@ func TestVfs_Content(t *testing.T) {
 	require.NoError(t, conn.Close())
 }
 
-func newTestFile(t *testing.T) (*os.File, func()) {
-	t.Helper()
-
-	file, err := ioutil.TempFile("", "dqlite-bindings-")
-	require.NoError(t, err)
-
-	cleanup := func() {
-		require.NoError(t, file.Close())
-		require.NoError(t, os.Remove(file.Name()))
-	}
-
-	return file, cleanup
-}
-
 type testCluster struct {
 }
 
@@ -246,13 +220,13 @@ func (c *testCluster) Leader() string {
 	return "127.0.0.1:666"
 }
 
-func (c *testCluster) Servers() ([]string, error) {
-	addresses := []string{
-		"1.2.3.4:666",
-		"5.6.7.8:666",
+func (c *testCluster) Servers() ([]bindings.ServerInfo, error) {
+	servers := []bindings.ServerInfo{
+		{ID: 1, Address: "1.2.3.4:666"},
+		{ID: 2, Address: "5.6.7.8:666"},
 	}
 
-	return addresses, nil
+	return servers, nil
 }
 
 func (c *testCluster) Register(*bindings.Conn) {
