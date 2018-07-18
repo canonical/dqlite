@@ -99,8 +99,10 @@ func runClient(address string) error {
 		return errors.Wrapf(err, "failed to create test table")
 	}
 
-	if _, err := tx.ExecContext(ctx, "INSERT INTO test(n,t) VALUES(?, ?)", int64(123), "hello"); err != nil {
-		return errors.Wrapf(err, "failed to insert test value")
+	for i := 0; i < 100; i++ {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO test(n,t) VALUES(?, ?)", int64(i), "hello"); err != nil {
+			return errors.Wrapf(err, "failed to insert test value")
+		}
 	}
 
 	rows, err := tx.QueryContext(ctx, "SELECT n FROM test")
