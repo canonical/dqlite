@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
@@ -407,7 +408,11 @@ func (r *Rows) Next(dest []driver.Value) error {
 			timestamp := time.Unix(r.message.GetInt64(), 0)
 			dest[i] = timestamp
 		case bindings.ISO8601:
-			timestamp, err := time.Parse(iso8601, r.message.GetString())
+			value := r.message.GetString()
+			if !strings.Contains(value, "+") {
+				value += "+00:00"
+			}
+			timestamp, err := time.Parse(iso8601, value)
 			if err != nil {
 				return err
 			}
@@ -431,4 +436,4 @@ const (
 	messageMaxConsecutiveEmptyReads = 100
 )
 
-const iso8601 = "2006-01-02 15:04:05"
+const iso8601 = "2006-01-02 15:04:05+00:00"
