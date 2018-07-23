@@ -2,6 +2,7 @@ package dqlite_test
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
@@ -11,12 +12,12 @@ import (
 	"github.com/CanonicalLtd/dqlite"
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/client"
+	"github.com/CanonicalLtd/dqlite/internal/logging"
 	"github.com/CanonicalLtd/raft-test"
 	"github.com/Rican7/retry/backoff"
 	"github.com/Rican7/retry/strategy"
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 )
 
 func TestServer_Dump(t *testing.T) {
@@ -34,9 +35,13 @@ func TestServer_Dump(t *testing.T) {
 			strategy.Backoff(backoff.BinaryExponential(time.Millisecond)),
 		},
 	}
-	logger := zaptest.NewLogger(t)
 
-	connector := client.NewConnector(0, store, config, logger)
+	log := func(l logging.Level, format string, a ...interface{}) {
+		format = fmt.Sprintf("%s: %s", l.String(), format)
+		t.Logf(format, a...)
+	}
+
+	connector := client.NewConnector(0, store, config, log)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -87,7 +92,8 @@ func newStore(t *testing.T, address string) *dqlite.DatabaseServerStore {
 	store, err := dqlite.DefaultServerStore(":memory:")
 	require.NoError(t, err)
 
-	require.NoError(t, store.Set(context.Background(), []string{address}))
+	server := dqlite.ServerInfo{Address: address}
+	require.NoError(t, store.Set(context.Background(), []dqlite.ServerInfo{server}))
 
 	return store
 }
@@ -106,11 +112,10 @@ func newServer(t *testing.T, listener net.Listener) (*dqlite.Server, func()) {
 		return transport
 	}))
 
-	logger := zaptest.NewLogger(t)
+	log := testingLogFunc(t)
 
 	server, err := dqlite.NewServer(
-		r, registry, listener,
-		dqlite.WithServerLogger(logger))
+		r, registry, listener, dqlite.WithServerLogFunc(log))
 	require.NoError(t, err)
 
 	cleanup := func() {

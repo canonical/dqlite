@@ -293,6 +293,8 @@ import (
 	"net"
 	"os"
 	"unsafe"
+
+	"github.com/CanonicalLtd/dqlite/internal/logging"
 )
 
 // ProtocolVersion is the latest dqlite server protocol version.
@@ -465,13 +467,13 @@ func (s *Server) Free() {
 	C.dqlite_server_free(server)
 }
 
-// SetLogger sets the the server logger.
-func (s *Server) SetLogger(logger Logger) {
+// SetLogFunc sets the server logging function.
+func (s *Server) SetLogFunc(f logging.Func) {
 	server := (*C.dqlite_server)(unsafe.Pointer(s))
 
 	// Register the logger implementation and pass its handle to
 	// dqliteLoggerInit.
-	handle := loggerRegister(logger)
+	handle := loggerRegister(f)
 
 	l := C.dqliteLoggerAlloc(C.uintptr_t(handle))
 	if l == nil {
@@ -710,22 +712,32 @@ func clusterRegister(cluster Cluster) C.int {
 
 //export dqliteLoggerLogfCb
 func dqliteLoggerLogfCb(handle C.uintptr_t, level C.int, msg *C.char) {
-	logger := loggerHandles[uintptr(handle)]
+	f := loggerHandles[uintptr(handle)]
 
-	logger.Logf(int(level), C.GoString(msg))
+	message := C.GoString(msg)
+	switch level {
+	case LogDebug:
+		f(logging.Debug, message)
+	case LogInfo:
+		f(logging.Info, message)
+	case LogWarn:
+		f(logging.Warn, message)
+	case LogError:
+		f(logging.Error, message)
+	}
 }
 
-// Map uintptr to Logger instances to avoid passing Go pointers to C.
+// Map uintptr to logging.Func instances to avoid passing Go pointers to C.
 //
 // We do not protect this map with a lock since typically just one long-lived
 // Logger instance should be registered (except for unit tests).
 var loggerHandlesSerial uintptr = 100
-var loggerHandles = map[uintptr]Logger{}
+var loggerHandles = map[uintptr]logging.Func{}
 
-func loggerRegister(logger Logger) uintptr {
+func loggerRegister(f logging.Func) uintptr {
 	handle := loggerHandlesSerial
 
-	loggerHandles[handle] = logger
+	loggerHandles[handle] = f
 	loggerHandlesSerial++
 
 	return handle

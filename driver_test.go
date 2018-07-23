@@ -16,13 +16,14 @@ package dqlite_test
 
 import (
 	"database/sql/driver"
+	"fmt"
 	"io"
 	"testing"
 
 	"github.com/CanonicalLtd/dqlite"
+	"github.com/CanonicalLtd/dqlite/internal/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 )
 
 func TestDriver_Open(t *testing.T) {
@@ -194,10 +195,19 @@ func newDriver(t *testing.T) (*dqlite.Driver, func()) {
 
 	store := newStore(t, address)
 
-	driver, err := dqlite.NewDriver(store, dqlite.WithLogger(zaptest.NewLogger(t)))
+	log := testingLogFunc(t)
+	driver, err := dqlite.NewDriver(store, dqlite.WithLogFunc(log))
 	require.NoError(t, err)
 
 	return driver, cleanup
+}
+
+func testingLogFunc(t *testing.T) dqlite.LogFunc {
+	return func(l logging.Level, format string, a ...interface{}) {
+		format = fmt.Sprintf("%s: %s", l.String(), format)
+		t.Logf(format, a...)
+	}
+
 }
 
 /*

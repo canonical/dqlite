@@ -9,12 +9,12 @@ import (
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/client"
+	"github.com/CanonicalLtd/dqlite/internal/logging"
 	"github.com/Rican7/retry/backoff"
 	"github.com/Rican7/retry/strategy"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 )
 
 // Successful connection.
@@ -253,9 +253,12 @@ func newConnector(t *testing.T, store client.ServerStore) *client.Connector {
 		},
 	}
 
-	logger := zaptest.NewLogger(t)
+	log := func(l logging.Level, format string, a ...interface{}) {
+		format = fmt.Sprintf("%s: %s", l.String(), format)
+		t.Logf(format, a...)
+	}
 
-	connector := client.NewConnector(0, store, config, logger)
+	connector := client.NewConnector(0, store, config, log)
 
 	return connector
 }
@@ -264,8 +267,14 @@ func newConnector(t *testing.T, store client.ServerStore) *client.Connector {
 func newStore(t *testing.T, addresses []string) client.ServerStore {
 	t.Helper()
 
+	servers := make([]client.ServerInfo, len(addresses))
+	for i, address := range addresses {
+		servers[i].ID = uint64(i)
+		servers[i].Address = address
+	}
+
 	store := client.NewInmemServerStore()
-	require.NoError(t, store.Set(context.Background(), addresses))
+	require.NoError(t, store.Set(context.Background(), servers))
 
 	return store
 }

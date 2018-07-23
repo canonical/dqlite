@@ -8,13 +8,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CanonicalLtd/dqlite/internal/bindings"
+	"github.com/CanonicalLtd/dqlite/internal/logging"
 	"github.com/pkg/errors"
-	"go.uber.org/zap"
 )
 
 // Client connecting to a dqlite server and speaking the dqlite wire protocol.
 type Client struct {
-	logger           *zap.Logger   // Logger.
+	log              logging.Func  // Logging function.
 	address          string        // Address of the connected dqlite server.
 	store            ServerStore   // Update this store upon heartbeats.
 	conn             net.Conn      // Underlying network connection.
@@ -23,12 +24,13 @@ type Client struct {
 	mu               sync.Mutex    // Serialize requests
 }
 
-func newClient(conn net.Conn, address string, store ServerStore, logger *zap.Logger) *Client {
+func newClient(conn net.Conn, address string, store ServerStore, log logging.Func) *Client {
+	//logger.With(zap.String("target", address)
 	client := &Client{
 		conn:    conn,
 		address: address,
 		store:   store,
-		logger:  logger.With(zap.String("target", address)),
+		log:     log,
 		closeCh: make(chan struct{}),
 	}
 
@@ -63,7 +65,7 @@ func (c *Client) Call(ctx context.Context, request, response *Message) error {
 
 // Close the client connection.
 func (c *Client) Close() error {
-	c.logger.Info("closing client")
+	c.log(bindings.LogInfo, "closing client")
 
 	close(c.closeCh)
 
@@ -203,7 +205,7 @@ func (c *Client) heartbeat() {
 	for {
 		delay := c.heartbeatTimeout / 3
 
-		c.logger.Debug("sending heartbeat", zap.Duration("delay", delay))
+		//c.logger.Debug("sending heartbeat", zap.Duration("delay", delay))
 		time.Sleep(delay)
 
 		// Check if we've been closed.
@@ -224,7 +226,7 @@ func (c *Client) heartbeat() {
 		// TODO: make the client survive temporary disconnections.
 		if err != nil {
 			cancel()
-			c.logger.Error("heartbeat failed", zap.Error(err))
+			//c.logger.Error("heartbeat failed", zap.Error(err))
 			return
 		}
 
@@ -232,7 +234,7 @@ func (c *Client) heartbeat() {
 		_, err = DecodeServers(&response)
 		if err != nil {
 			cancel()
-			c.logger.Error("invalid heartbeat response", zap.Error(err))
+			//c.logger.Error("invalid heartbeat response", zap.Error(err))
 			return
 		}
 
