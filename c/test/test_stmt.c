@@ -209,15 +209,8 @@ static MunitResult test_bind_bad_param(const MunitParameter params[], void *data
 
 	(void)params;
 
-	__db_prepare(f, "SELECT ?");
-
-	/* Step the statement without resetting it afterwise. This will make any
-	 * call to sqlite3_bind_xxx fail. */
-	rc = sqlite3_bind_int64(f->stmt->stmt, 1, 123);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = sqlite3_step(f->stmt->stmt);
-	munit_assert_int(rc, ==, SQLITE_ROW);
+	/* Prepare a statement with no parameters. */
+	__db_prepare(f, "SELECT 1");
 
 	/* A single integer parameter. */
 	f->message->words    = 2;
@@ -225,10 +218,9 @@ static MunitResult test_bind_bad_param(const MunitParameter params[], void *data
 	f->message->body1[1] = SQLITE_INTEGER;
 
 	rc = dqlite__stmt_bind(f->stmt, f->message);
-	munit_assert_int(rc, ==, SQLITE_MISUSE);
+	munit_assert_int(rc, ==, SQLITE_RANGE);
 
-	munit_assert_string_equal(f->stmt->error,
-	                          "bad parameter or other API misuse");
+	munit_assert_string_equal(f->stmt->error, "column index out of range");
 
 	return MUNIT_OK;
 }

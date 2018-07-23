@@ -112,6 +112,8 @@ int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message) {
 	assert(s->stmt != NULL);
 	assert(message != NULL);
 
+	sqlite3_reset(s->stmt);
+
 	/* First check if we reached the end of the message. Since bindings are
 	 * always the last part of a message, no further data means that no
 	 * bindings were supplied and there's nothing to do. */
@@ -253,6 +255,7 @@ static int dqlite__stmt_row(struct dqlite__stmt *   s,
 			/* TODO: find a better way to handle time types */
 			column_type_name = sqlite3_column_decltype(s->stmt, i);
 			is_datetime_column =
+			    column_type_name != NULL &&
 			    strcmp(column_type_name, "DATETIME") == 0;
 			if (column_type_name != NULL && is_datetime_column) {
 				if (column_type == SQLITE_INTEGER) {
