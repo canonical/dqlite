@@ -188,9 +188,8 @@ func OpenLeader(name string, vfs string, replication string) (*Conn, error) {
 
 // Error holds information about a SQLite error.
 type Error struct {
-	Code         int
-	ExtendedCode int
-	Message      string
+	Code    int
+	Message string
 }
 
 func (e Error) Error() string {
@@ -202,9 +201,8 @@ func (e Error) Error() string {
 
 func lastError(db *C.sqlite3) Error {
 	return Error{
-		Code:         int(C.sqlite3_errcode(db)),
-		ExtendedCode: int(C.sqlite3_extended_errcode(db)),
-		Message:      C.GoString(C.sqlite3_errmsg(db)),
+		Code:    int(C.sqlite3_extended_errcode(db)),
+		Message: C.GoString(C.sqlite3_errmsg(db)),
 	}
 }
 

@@ -55,20 +55,12 @@ func TestConnector_Connect_Error_EmptyServerStore(t *testing.T) {
 
 // Connection failed because the context was canceled.
 func TestConnector_Connect_Error_AfterCancel(t *testing.T) {
-	listener := newListener(t)
-
-	cluster := newTestCluster()
-	cluster.leader = listener.Addr().String()
-
-	cleanup := newServer(t, 0, listener, cluster)
-	defer cleanup()
-
-	store := newStore(t, []string{cluster.leader})
+	store := newStore(t, []string{"1.2.3.4:666"})
 
 	connector := newConnector(t, store)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
 
 	_, err := connector.Connect(ctx)
 	assert.EqualError(t, err, "no available dqlite leader server found")

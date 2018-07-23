@@ -530,10 +530,7 @@ func (m *Methods) framesNotLeader(tracer *trace.Tracer, txn *transaction.Txn) er
 	// When we return an error, SQLite will fire the End hook.
 	tracer.Message("not leader")
 
-	return bindings.Error{
-		Code:         bindings.ErrIoErr,
-		ExtendedCode: bindings.ErrIoErrNotLeader,
-	}
+	return bindings.Error{Code: bindings.ErrIoErrNotLeader}
 }
 
 // Undo is the hook invoked by sqlite when a write transaction needs
@@ -739,15 +736,9 @@ func (m *Methods) apply(tracer *trace.Tracer, conn *bindings.Conn, cmd *protocol
 			// to not being the leader anymore.
 			fallthrough
 		case raft.ErrNotLeader:
-			return bindings.Error{
-				Code:         bindings.ErrIoErr,
-				ExtendedCode: bindings.ErrIoErrNotLeader,
-			}
+			return bindings.Error{Code: bindings.ErrIoErrNotLeader}
 		case raft.ErrLeadershipLost:
-			return bindings.Error{
-				Code:         bindings.ErrIoErr,
-				ExtendedCode: bindings.ErrIoErrLeadershipLost,
-			}
+			return bindings.Error{Code: bindings.ErrIoErrLeadershipLost}
 		case raft.ErrEnqueueTimeout:
 			// This should be pretty much impossible, since Methods
 			// hooks are the only way to apply command logs, and
@@ -756,10 +747,7 @@ func (m *Methods) apply(tracer *trace.Tracer, conn *bindings.Conn, cmd *protocol
 			// above). We return SQLITE_INTERRUPT, which for our
 			// purposes has the same semantics as SQLITE_IOERR,
 			// i.e. it will automatically rollback the transaction.
-			return bindings.Error{
-				Code:         bindings.ErrInterrupt,
-				ExtendedCode: 0,
-			}
+			return bindings.Error{Code: bindings.ErrInterrupt}
 		default:
 			// This is an unexpected raft error of some kind.
 			//
@@ -768,10 +756,7 @@ func (m *Methods) apply(tracer *trace.Tracer, conn *bindings.Conn, cmd *protocol
 			//       or log-store related errors. We should also
 			//       examine what SQLite exactly does if we return
 			//       SQLITE_INTERNAL.
-			return bindings.Error{
-				Code:         bindings.ErrInternal,
-				ExtendedCode: 0,
-			}
+			return bindings.Error{Code: bindings.ErrInternal}
 		}
 
 	}
@@ -784,9 +769,6 @@ func (m *Methods) apply(tracer *trace.Tracer, conn *bindings.Conn, cmd *protocol
 func errno(err error) int {
 	switch e := err.(type) {
 	case bindings.Error:
-		if e.ExtendedCode != 0 {
-			return e.ExtendedCode
-		}
 		return e.Code
 	default:
 		return bindings.ErrInternal
@@ -795,7 +777,7 @@ func errno(err error) int {
 
 func isErrNotLeader(err error) bool {
 	if err, ok := err.(bindings.Error); ok {
-		if err.ExtendedCode == bindings.ErrIoErrNotLeader {
+		if err.Code == bindings.ErrIoErrNotLeader {
 			return true
 		}
 	}
@@ -804,7 +786,7 @@ func isErrNotLeader(err error) bool {
 
 func isErrLeadershipLost(err error) bool {
 	if err, ok := err.(bindings.Error); ok {
-		if err.ExtendedCode == bindings.ErrIoErrLeadershipLost {
+		if err.Code == bindings.ErrIoErrLeadershipLost {
 			return true
 		}
 	}

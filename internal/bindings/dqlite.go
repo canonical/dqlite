@@ -672,7 +672,7 @@ func dqliteClusterBarrierCb(handle C.int) C.int {
 
 	if err := cluster.Barrier(); err != nil {
 		if err, ok := err.(Error); ok {
-			return C.int(err.ExtendedCode)
+			return C.int(err.Code)
 		}
 
 		// Return a generic error.
