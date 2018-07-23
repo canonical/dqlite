@@ -13,9 +13,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Connector is in charge of creating a gRPC SQL client connected to the
-// current leader of a gRPC SQL cluster and sending heartbeats to prevent
-// connections created by that client from being killed by the server.
+// Connector is in charge of creating a dqlite SQL client connected to the
+// current leader of a cluster.
 type Connector struct {
 	id       uint64       // Client ID to use when registering against the server.
 	store    ServerStore  // Used to get and update current cluster servers.
@@ -24,8 +23,8 @@ type Connector struct {
 	protocol []byte       // Protocol version
 }
 
-// NewConnector creates a new connector that can be used by a gRPC SQL driver
-// to create new clients connected to a leader gRPC SQL server.
+// NewConnector creates a new connector that can be used by a dqlite driver to
+// create new clients connected to a leader dqlite server.
 func NewConnector(id uint64, store ServerStore, config Config, log logging.Func) *Connector {
 	connector := &Connector{
 		id:       id,
@@ -35,6 +34,7 @@ func NewConnector(id uint64, store ServerStore, config Config, log logging.Func)
 		protocol: make([]byte, 8),
 	}
 
+	// Latest protocol version.
 	binary.LittleEndian.PutUint64(
 		connector.protocol,
 		bindings.ProtocolVersion,

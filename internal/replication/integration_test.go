@@ -1473,7 +1473,7 @@ func runScenario(t *testing.T, s scenario, options ...clusterOption) {
 				t.Fatalf("stage 1: step %d: expected bindings.Error, but got: %v", i, err)
 			}
 			expect := step.errno
-			got := sqliteErr.ExtendedCode
+			got := sqliteErr.Code
 			if expect != got {
 				t.Fatalf("stage 1: step %d: expected code %d, but got %d:", i, expect, got)
 			}

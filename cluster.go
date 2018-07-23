@@ -76,10 +76,7 @@ func (c *cluster) Unregister(conn *bindings.Conn) {
 
 func (c *cluster) Barrier() error {
 	if c.raft.State() != raft.Leader {
-		return bindings.Error{
-			Code:         bindings.ErrIoErr,
-			ExtendedCode: bindings.ErrIoErrNotLeader,
-		}
+		return bindings.Error{Code: bindings.ErrIoErrNotLeader}
 	}
 
 	c.registry.Lock()
@@ -92,10 +89,7 @@ func (c *cluster) Barrier() error {
 	timeout := time.Minute // TODO: make this configurable
 	if err := c.raft.Barrier(timeout).Error(); err != nil {
 		if err == raft.ErrLeadershipLost {
-			return bindings.Error{
-				Code:         bindings.ErrIoErr,
-				ExtendedCode: bindings.ErrIoErrNotLeader,
-			}
+			return bindings.Error{Code: bindings.ErrIoErrNotLeader}
 		}
 
 		// TODO: add an out-of-sync error to SQLite?
