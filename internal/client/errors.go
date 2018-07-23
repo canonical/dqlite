@@ -22,14 +22,3 @@ type ErrRequest struct {
 func (e ErrRequest) Error() string {
 	return fmt.Sprintf("%s (%d)", e.Description, e.Code)
 }
-
-// ErrDb is returned in case of SQLite errors.
-type ErrDb struct {
-	Code         uint64
-	ExtendedCode uint64
-	Description  string
-}
-
-func (e ErrDb) Error() string {
-	return fmt.Sprintf("%s (%d:%d)", e.Description, e.Code, e.ExtendedCode)
-}

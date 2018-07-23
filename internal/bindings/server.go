@@ -42,7 +42,6 @@ const (
 	ResponseServer  = C.DQLITE_RESPONSE_SERVER
 	ResponseWelcome = C.DQLITE_RESPONSE_WELCOME
 	ResponseServers = C.DQLITE_RESPONSE_SERVERS
-	ResponseDbError = C.DQLITE_RESPONSE_DB_ERROR
 	ResponseDb      = C.DQLITE_RESPONSE_DB
 	ResponseStmt    = C.DQLITE_RESPONSE_STMT
 	ResponseResult  = C.DQLITE_RESPONSE_RESULT

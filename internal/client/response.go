@@ -10,8 +10,8 @@ import (
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
 )
 
-// DecodeWelcome decodes a Welcome response.
-func DecodeWelcome(response *Message) (heartbeatTimeout uint64, err error) {
+// DecodeFailure decodes a Failure response.
+func DecodeFailure(response *Message) (code uint64, message string, err error) {
 	mtype, _ := response.GetHeader()
 
 	if mtype == bindings.ResponseFailure {
@@ -22,10 +22,24 @@ func DecodeWelcome(response *Message) (heartbeatTimeout uint64, err error) {
                 return
 	}
 
-	if mtype == bindings.ResponseDbError {
-		e := ErrDb{}
+	if mtype != bindings.ResponseFailure {
+		err = fmt.Errorf("unexpected response type %d", mtype)
+                return
+	}
+
+	code = response.GetUint64()
+	message = response.GetString()
+
+	return
+}
+
+// DecodeWelcome decodes a Welcome response.
+func DecodeWelcome(response *Message) (heartbeatTimeout uint64, err error) {
+	mtype, _ := response.GetHeader()
+
+	if mtype == bindings.ResponseFailure {
+		e := ErrRequest{}
 		e.Code = response.GetUint64()
-		e.ExtendedCode = response.GetUint64()
 		e.Description = response.GetString()
                 err = e
                 return
@@ -53,15 +67,6 @@ func DecodeServer(response *Message) (address string, err error) {
                 return
 	}
 
-	if mtype == bindings.ResponseDbError {
-		e := ErrDb{}
-		e.Code = response.GetUint64()
-		e.ExtendedCode = response.GetUint64()
-		e.Description = response.GetString()
-                err = e
-                return
-	}
-
 	if mtype != bindings.ResponseServer {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
@@ -79,15 +84,6 @@ func DecodeServers(response *Message) (servers Servers, err error) {
 	if mtype == bindings.ResponseFailure {
 		e := ErrRequest{}
 		e.Code = response.GetUint64()
-		e.Description = response.GetString()
-                err = e
-                return
-	}
-
-	if mtype == bindings.ResponseDbError {
-		e := ErrDb{}
-		e.Code = response.GetUint64()
-		e.ExtendedCode = response.GetUint64()
 		e.Description = response.GetString()
                 err = e
                 return
@@ -115,15 +111,6 @@ func DecodeDb(response *Message) (id uint32, err error) {
                 return
 	}
 
-	if mtype == bindings.ResponseDbError {
-		e := ErrDb{}
-		e.Code = response.GetUint64()
-		e.ExtendedCode = response.GetUint64()
-		e.Description = response.GetString()
-                err = e
-                return
-	}
-
 	if mtype != bindings.ResponseDb {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
@@ -142,15 +129,6 @@ func DecodeStmt(response *Message) (db uint32, id uint32, params uint64, err err
 	if mtype == bindings.ResponseFailure {
 		e := ErrRequest{}
 		e.Code = response.GetUint64()
-		e.Description = response.GetString()
-                err = e
-                return
-	}
-
-	if mtype == bindings.ResponseDbError {
-		e := ErrDb{}
-		e.Code = response.GetUint64()
-		e.ExtendedCode = response.GetUint64()
 		e.Description = response.GetString()
                 err = e
                 return
@@ -180,15 +158,6 @@ func DecodeEmpty(response *Message) (err error) {
                 return
 	}
 
-	if mtype == bindings.ResponseDbError {
-		e := ErrDb{}
-		e.Code = response.GetUint64()
-		e.ExtendedCode = response.GetUint64()
-		e.Description = response.GetString()
-                err = e
-                return
-	}
-
 	if mtype != bindings.ResponseEmpty {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
@@ -211,15 +180,6 @@ func DecodeResult(response *Message) (result Result, err error) {
                 return
 	}
 
-	if mtype == bindings.ResponseDbError {
-		e := ErrDb{}
-		e.Code = response.GetUint64()
-		e.ExtendedCode = response.GetUint64()
-		e.Description = response.GetString()
-                err = e
-                return
-	}
-
 	if mtype != bindings.ResponseResult {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return
@@ -237,15 +197,6 @@ func DecodeRows(response *Message) (rows Rows, err error) {
 	if mtype == bindings.ResponseFailure {
 		e := ErrRequest{}
 		e.Code = response.GetUint64()
-		e.Description = response.GetString()
-                err = e
-                return
-	}
-
-	if mtype == bindings.ResponseDbError {
-		e := ErrDb{}
-		e.Code = response.GetUint64()
-		e.ExtendedCode = response.GetUint64()
 		e.Description = response.GetString()
                 err = e
                 return
