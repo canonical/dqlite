@@ -14,6 +14,7 @@ package client
 //go:generate ./schema.sh --request QuerySQL  db:uint64 sql:string values:NamedValues
 
 //go:generate ./schema.sh --response init
+//go:generate ./schema.sh --response Failure  code:uint64 message:string
 //go:generate ./schema.sh --response Welcome  heartbeatTimeout:uint64
 //go:generate ./schema.sh --response Server   address:string
 //go:generate ./schema.sh --response Servers  servers:Servers

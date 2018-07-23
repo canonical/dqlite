@@ -118,15 +118,6 @@ func Decode${cmd}(response *Message) (${returns}err error) {
                 return
 	}
 
-	if mtype == bindings.ResponseDbError {
-		e := ErrDb{}
-		e.Code = response.GetUint64()
-		e.ExtendedCode = response.GetUint64()
-		e.Description = response.GetString()
-                err = e
-                return
-	}
-
 	if mtype != bindings.Response${cmd} {
 		err = fmt.Errorf("unexpected response type %d", mtype)
                 return

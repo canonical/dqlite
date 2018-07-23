@@ -40,6 +40,9 @@ type Driver struct {
 	clientConfig      client.Config   // Configuration for dqlite client instances
 }
 
+// DriverError is returned in case of database errors.
+type DriverError = bindings.Error
+
 // DriverOption can be used to tweak driver parameters.
 type DriverOption func(*driverOptions)
 
@@ -548,13 +551,17 @@ func driverError(err error) error {
 	switch err := errors.Cause(err).(type) {
 	case *net.OpError:
 		return driver.ErrBadConn
-	case client.ErrDb:
-		if err.ExtendedCode == bindings.ErrIoErrNotLeader {
-			return driver.ErrBadConn
-		}
 	case client.ErrRequest:
-		if err.Code == bindings.ErrIoErrNotLeader {
+		switch err.Code {
+		case bindings.ErrIoErrNotLeader:
+			fallthrough
+		case bindings.ErrIoErrLeadershipLost:
 			return driver.ErrBadConn
+		default:
+			return DriverError{
+				Code:    int(err.Code),
+				Message: err.Description,
+			}
 		}
 	}
 	return err
