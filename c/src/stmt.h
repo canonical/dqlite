@@ -10,7 +10,7 @@
 /* Hold state for a single open SQLite database */
 struct dqlite__stmt {
 	size_t        id;    /* Statement ID */
-	sqlite3 *     db;    /* Underlying SQLite database handle */
+	sqlite3 *     db;    /* Underlying database info */
 	sqlite3_stmt *stmt;  /* Underlying SQLite statement handle */
 	const char *  tail;  /* Unparsed SQL portion */
 	dqlite__error error; /* Last dqlite-specific error */

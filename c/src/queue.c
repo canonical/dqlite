@@ -10,7 +10,6 @@
 #include "conn.h"
 #include "error.h"
 #include "lifecycle.h"
-#include "log.h"
 #include "queue.h"
 
 int dqlite__queue_item_init(struct dqlite__queue_item *i,

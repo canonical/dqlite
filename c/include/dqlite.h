@@ -36,6 +36,9 @@
 #define DQLITE_REQUEST_FINALIZE 7
 #define DQLITE_REQUEST_EXEC_SQL 8
 #define DQLITE_REQUEST_QUERY_SQL 9
+#define DQLITE_REQUEST_BEGIN 10
+#define DQLITE_REQUEST_COMMIT 11
+#define DQLITE_REQUEST_ROLLBACK 12
 
 /* Response types */
 #define DQLITE_RESPONSE_FAILURE 0
@@ -60,6 +63,9 @@
 
 /* Config opcodes */
 #define DQLITE_CONFIG_LOGGER 0
+#define DQLITE_CONFIG_HEARTBEAT_TIMEOUT 1
+#define DQLITE_CONFIG_PAGE_SIZE 2
+#define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 3
 
 /* TODO: avoid this redundant EOF marker */
 #define DQLITE_RESPONSE_ROWS_EOF 0xffffffffffffffff
@@ -94,6 +100,7 @@ typedef struct dqlite_cluster {
 	void (*xUnregister)(void *ctx, sqlite3 *db);
 	int (*xBarrier)(void *ctx);
 	int (*xRecover)(void *ctx, uint64_t tx_token);
+	int (*xCheckpoint)(void *ctx, sqlite3 *db);
 } dqlite_cluster;
 
 /* Handle connections from dqlite clients */

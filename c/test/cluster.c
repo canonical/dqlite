@@ -50,6 +50,29 @@ static int test__cluster_barrier(void *ctx) {
 	return 0;
 }
 
+#include "munit.h"
+
+static int test__cluster_checkpoint(void *ctx, sqlite3 *db) {
+	int rc;
+	int log;
+	int ckpt;
+
+	(void)ctx;
+
+	rc = sqlite3_wal_checkpoint_v2(
+	    db, "main", SQLITE_CHECKPOINT_TRUNCATE, &log, &ckpt);
+
+	if (rc != SQLITE_OK) {
+		return rc;
+	}
+
+	if (log != 0 || ckpt != 0) {
+		return SQLITE_ERROR;
+	}
+
+	return 0;
+}
+
 static dqlite_cluster test__cluster = {
     NULL,
     test__cluster_replication,
@@ -59,6 +82,7 @@ static dqlite_cluster test__cluster = {
     test__cluster_unregister,
     test__cluster_barrier,
     NULL,
+    test__cluster_checkpoint,
 };
 
 dqlite_cluster *test_cluster() { return &test__cluster; }

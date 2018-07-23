@@ -445,7 +445,7 @@ static void dqlite__conn_alive_cb(uv_timer_t *alive) {
 
 	/* If the last successful heartbeat happened more than heartbeat_timeout
 	 * milliseconds ago, abort the connection. */
-	if (elapsed > c->gateway.heartbeat_timeout) {
+	if (elapsed > c->options->heartbeat_timeout) {
 		// dqlite__error_printf(&c->error, "no heartbeat since %ld
 		// milliseconds", elapsed); dqlite__conn_abort(c);
 	}
@@ -513,25 +513,29 @@ out:
 	return;
 }
 
-void dqlite__conn_init(struct dqlite__conn *c,
-                       int                  fd,
-                       dqlite_cluster *     cluster,
-                       uv_loop_t *          loop) {
+void dqlite__conn_init(struct dqlite__conn *   c,
+                       int                     fd,
+                       dqlite_cluster *        cluster,
+                       uv_loop_t *             loop,
+                       struct dqlite__options *options) {
 	assert(c != NULL);
 	assert(cluster != NULL);
 	assert(loop != NULL);
+	assert(options != NULL);
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_CONN);
 
-	c->logger = NULL;
+	c->logger   = NULL;
+	c->protocol = 0;
+
+	c->options = options;
 
 	dqlite__error_init(&c->error);
-	c->protocol = 0;
 
 	dqlite__fsm_init(
 	    &c->fsm, dqlite__conn_states, dqlite__conn_events, dqlite__transitions);
 	dqlite__request_init(&c->request);
-	dqlite__gateway_init(&c->gateway, cluster);
+	dqlite__gateway_init(&c->gateway, cluster, options);
 	dqlite__response_init(&c->response);
 
 	c->fd   = fd;
@@ -564,7 +568,7 @@ int dqlite__conn_start(struct dqlite__conn *c) {
 
 	/* Start the alive timer, which will disconnect the client if no
 	 * heartbeat is received within the timeout. */
-	heartbeat_timeout = c->gateway.heartbeat_timeout;
+	heartbeat_timeout = c->options->heartbeat_timeout;
 	assert(heartbeat_timeout > 0);
 
 	err = uv_timer_init(c->loop, &c->alive);

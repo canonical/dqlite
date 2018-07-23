@@ -238,3 +238,7 @@ func (c *testCluster) Barrier() error {
 func (c *testCluster) Recover(token uint64) error {
 	return nil
 }
+
+func (c *testCluster) Checkpoint(*bindings.Conn) error {
+	return nil
+}

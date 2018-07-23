@@ -3,6 +3,7 @@
 
 #include "../src/conn.h"
 #include "../src/error.h"
+#include "../src/options.h"
 #include "../src/queue.h"
 
 #include "cluster.h"
@@ -20,6 +21,7 @@ struct fixture {
 	struct test_socket_pair sockets;
 	uv_loop_t               loop;
 	struct dqlite__queue    queue;
+	struct dqlite__options  options;
 };
 
 /******************************************************************************
@@ -44,6 +46,9 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	munit_assert_int(err, ==, 0);
 
 	dqlite__queue_init(&f->queue);
+
+	dqlite__options_defaults(&f->options);
+
 	return f;
 }
 
@@ -77,7 +82,7 @@ static MunitResult test_push(const MunitParameter params[], void *data) {
 
 	(void)params;
 
-	dqlite__conn_init(&conn, 123, test_cluster(), &f->loop);
+	dqlite__conn_init(&conn, 123, test_cluster(), &f->loop, &f->options);
 
 	err = dqlite__queue_item_init(&item, &conn);
 	munit_assert_int(err, ==, 0);
@@ -112,7 +117,8 @@ static MunitResult test_process(const MunitParameter params[], void *data) {
 
 	(void)params;
 
-	dqlite__conn_init(&conn, f->sockets.server, test_cluster(), &f->loop);
+	dqlite__conn_init(
+	    &conn, f->sockets.server, test_cluster(), &f->loop, &f->options);
 
 	err = dqlite__queue_item_init(&item, &conn);
 	munit_assert_int(err, ==, 0);

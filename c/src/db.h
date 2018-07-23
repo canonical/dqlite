@@ -14,8 +14,9 @@ struct dqlite__db {
 	dqlite__error error; /* Last error occurred */
 
 	/* private */
-	sqlite3 *                    db;    /* Underlying SQLite database */
-	struct dqlite__stmt_registry stmts; /* Registry of prepared statements */
+	sqlite3 *                    db;      /* Underlying SQLite database */
+	struct dqlite__stmt_registry stmts;   /* Registry of prepared statements */
+	int                          in_a_tx; /* True if a tx is in progress */
 };
 
 /* Initialize a database state object */
@@ -40,6 +41,15 @@ struct dqlite__stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id);
 
 /* Finalize a statement. */
 int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt);
+
+/* Begin a transaction. */
+int dqlite__db_begin(struct dqlite__db *db);
+
+/* Commit a transaction. */
+int dqlite__db_commit(struct dqlite__db *db);
+
+/* Rollback a transaction. */
+int dqlite__db_rollback(struct dqlite__db *db);
 
 /* Define the database registry */
 DQLITE__REGISTRY(dqlite__db_registry, dqlite__db);

@@ -58,6 +58,9 @@ func TestConn_Exec(t *testing.T) {
 	conn, err := drv.Open("test.db")
 	require.NoError(t, err)
 
+	_, err = conn.Begin()
+	require.NoError(t, err)
+
 	execer := conn.(driver.Execer)
 
 	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
@@ -86,6 +89,9 @@ func TestConn_Query(t *testing.T) {
 	conn, err := drv.Open("test.db")
 	require.NoError(t, err)
 
+	_, err = conn.Begin()
+	require.NoError(t, err)
+
 	execer := conn.(driver.Execer)
 
 	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
@@ -110,6 +116,9 @@ func TestStmt_Exec(t *testing.T) {
 	require.NoError(t, err)
 
 	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	require.NoError(t, err)
+
+	_, err = conn.Begin()
 	require.NoError(t, err)
 
 	_, err = stmt.Exec(nil)
@@ -150,6 +159,9 @@ func TestStmt_Query(t *testing.T) {
 	require.NoError(t, err)
 
 	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	require.NoError(t, err)
+
+	_, err = conn.Begin()
 	require.NoError(t, err)
 
 	_, err = stmt.Exec(nil)

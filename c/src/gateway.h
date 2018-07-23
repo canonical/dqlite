@@ -10,6 +10,7 @@
 #include "db.h"
 #include "error.h"
 #include "fsm.h"
+#include "options.h"
 #include "request.h"
 #include "response.h"
 
@@ -31,17 +32,14 @@ struct dqlite__gateway_ctx {
  * Handle requests from a single connected client and forward them to SQLite.
  */
 struct dqlite__gateway {
-	/* public */
-	uint16_t heartbeat_timeout; /* Abort after this many milliseconds with no
-	                               heartbeat */
-
 	/* read-only */
 	uint64_t      client_id;
 	uint64_t      heartbeat; /* Last successful heartbeat from the client */
 	dqlite__error error;     /* Last error occurred, if any */
 
 	/* private */
-	dqlite_cluster *cluster; /* Cluster interface implementation */
+	dqlite_cluster *        cluster; /* Cluster interface implementation */
+	struct dqlite__options *options; /* Configuration options */
 
 	/*
 	 * Clients are expected to issue one SQL request at a time and wait for
@@ -53,7 +51,9 @@ struct dqlite__gateway {
 	struct dqlite__db_registry dbs; /* Registry of open databases */
 };
 
-void dqlite__gateway_init(struct dqlite__gateway *g, dqlite_cluster *cluster);
+void dqlite__gateway_init(struct dqlite__gateway *g,
+                          struct dqlite_cluster * cluster,
+                          struct dqlite__options *options);
 
 void dqlite__gateway_close(struct dqlite__gateway *g);
 
