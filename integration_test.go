@@ -33,7 +33,6 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 )
 
 func TestIntegration_DatabaseSQL(t *testing.T) {
@@ -121,10 +120,10 @@ func newDB(t *testing.T) (*sql.DB, *rafttest.Control, func()) {
 	n := 3
 
 	listeners := make([]net.Listener, n)
-	addresses := make([]string, n)
+	servers := make([]dqlite.ServerInfo, n)
 	for i := range listeners {
 		listeners[i] = newListener(t)
-		addresses[i] = listeners[i].Addr().String()
+		servers[i].Address = listeners[i].Addr().String()
 	}
 
 	control, cleanup := newServers(t, listeners)
@@ -132,9 +131,10 @@ func newDB(t *testing.T) (*sql.DB, *rafttest.Control, func()) {
 	store, err := dqlite.DefaultServerStore(":memory:")
 	require.NoError(t, err)
 
-	require.NoError(t, store.Set(context.Background(), addresses))
+	require.NoError(t, store.Set(context.Background(), servers))
 
-	driver, err := dqlite.NewDriver(store, dqlite.WithLogger(zaptest.NewLogger(t)))
+	log := testingLogFunc(t)
+	driver, err := dqlite.NewDriver(store, dqlite.WithLogFunc(log))
 	require.NoError(t, err)
 
 	driverName := fmt.Sprintf("dqlite-integration-test-%d", driversCount)
@@ -177,11 +177,11 @@ func newServers(t *testing.T, listeners []net.Listener) (*rafttest.Control, func
 		i, err := strconv.Atoi(string(id))
 		require.NoError(t, err)
 
-		logger := zaptest.NewLogger(t)
+		log := testingLogFunc(t)
 
 		server, err := dqlite.NewServer(
 			r, registries[i], listeners[i],
-			dqlite.WithServerLogger(logger))
+			dqlite.WithServerLogFunc(log))
 		require.NoError(t, err)
 
 		cleanups = append(cleanups, func() {

@@ -11,6 +11,9 @@ import (
 	_ "github.com/mattn/go-sqlite3" // Go SQLite bindings
 )
 
+// ServerInfo holds information about a single server.
+type ServerInfo = client.ServerInfo
+
 // ServerStore is used by a dqlite client to get an initial list of candidate
 // dqlite server addresses that it can dial in order to find a leader dqlite
 // server to use.
@@ -72,7 +75,7 @@ func NewServerStore(db *sql.DB, schema, table, column string) *DatabaseServerSto
 }
 
 // Get the current servers.
-func (d *DatabaseServerStore) Get(ctx context.Context) ([]string, error) {
+func (d *DatabaseServerStore) Get(ctx context.Context) ([]ServerInfo, error) {
 	tx, err := d.db.Begin()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to begin transaction")
@@ -86,24 +89,24 @@ func (d *DatabaseServerStore) Get(ctx context.Context) ([]string, error) {
 	}
 	defer rows.Close()
 
-	addresses := make([]string, 0)
+	servers := make([]ServerInfo, 0)
 	for rows.Next() {
 		var address string
 		err := rows.Scan(&address)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to fetch server address")
 		}
-		addresses = append(addresses, address)
+		servers = append(servers, ServerInfo{ID: 1, Address: address})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, errors.Wrap(err, "result set failure")
 	}
 
-	return addresses, nil
+	return servers, nil
 }
 
 // Set the servers addresses.
-func (d *DatabaseServerStore) Set(ctx context.Context, addresses []string) error {
+func (d *DatabaseServerStore) Set(ctx context.Context, servers []ServerInfo) error {
 	tx, err := d.db.Begin()
 	if err != nil {
 		return errors.Wrap(err, "failed to begin transaction")
@@ -123,10 +126,10 @@ func (d *DatabaseServerStore) Set(ctx context.Context, addresses []string) error
 	}
 	defer stmt.Close()
 
-	for _, address := range addresses {
-		if _, err := stmt.ExecContext(ctx, address); err != nil {
+	for _, server := range servers {
+		if _, err := stmt.ExecContext(ctx, server.Address); err != nil {
 			tx.Rollback()
-			return errors.Wrapf(err, "failed to insert server %s", address)
+			return errors.Wrapf(err, "failed to insert server %s", server.Address)
 		}
 	}
 

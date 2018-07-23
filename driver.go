@@ -25,7 +25,6 @@ import (
 	"github.com/Rican7/retry/jitter"
 	"github.com/Rican7/retry/strategy"
 	"github.com/pkg/errors"
-	"go.uber.org/zap"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
 	"github.com/CanonicalLtd/dqlite/internal/client"
@@ -34,7 +33,7 @@ import (
 
 // Driver perform queries against a dqlite server.
 type Driver struct {
-	logger            *zap.Logger     // Logger to use
+	log               LogFunc         // Log function to use
 	store             ServerStore     // Holds addresses of dqlite servers
 	context           context.Context // Global cancellation context
 	connectionTimeout time.Duration   // Max time to wait for a new connection
@@ -44,10 +43,10 @@ type Driver struct {
 // DriverOption can be used to tweak driver parameters.
 type DriverOption func(*driverOptions)
 
-// WithLogger sets a custom Driver zap logger.
-func WithLogger(logger *zap.Logger) DriverOption {
+// WithLogFunc sets a custom logging function.
+func WithLogFunc(log LogFunc) DriverOption {
 	return func(options *driverOptions) {
-		options.Logger = logger
+		options.Log = log
 	}
 }
 
@@ -107,7 +106,7 @@ func NewDriver(store ServerStore, options ...DriverOption) (*Driver, error) {
 	}
 
 	driver := &Driver{
-		logger:            o.Logger,
+		log:               o.Log,
 		store:             store,
 		context:           o.Context,
 		connectionTimeout: o.ConnectionTimeout,
@@ -127,7 +126,7 @@ func NewDriver(store ServerStore, options ...DriverOption) (*Driver, error) {
 
 // Hold configuration options for a dqlite driver.
 type driverOptions struct {
-	Logger                  *zap.Logger
+	Log                     LogFunc
 	Dial                    client.DialFunc
 	ConnectionTimeout       time.Duration
 	ConnectionBackoffFactor time.Duration
@@ -138,7 +137,7 @@ type driverOptions struct {
 // Create a driverOptions object with sane defaults.
 func defaultDriverOptions() *driverOptions {
 	return &driverOptions{
-		Logger:                  defaultLogger(),
+		Log:                     defaultLogFunc(),
 		Dial:                    client.TCPDial,
 		ConnectionTimeout:       15 * time.Second,
 		ConnectionBackoffFactor: 50 * time.Millisecond,
@@ -186,10 +185,10 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 	defer cancel()
 
 	// TODO: generate a client ID.
-	connector := client.NewConnector(0, d.store, d.clientConfig, d.logger)
+	connector := client.NewConnector(0, d.store, d.clientConfig, d.log)
 
 	conn := &Conn{
-		logger: d.logger,
+		log: d.log,
 	}
 
 	conn.client, err = connector.Connect(ctx)
@@ -221,7 +220,7 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 
 // Conn implements the sql.Conn interface.
 type Conn struct {
-	logger   *zap.Logger
+	log      LogFunc
 	client   *client.Client
 	request  client.Message
 	response client.Message

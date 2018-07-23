@@ -68,7 +68,7 @@ func runClient(address string) error {
 		return errors.Wrap(err, "failed to create server store")
 	}
 
-	if err := store.Set(context.Background(), []string{address}); err != nil {
+	if err := store.Set(context.Background(), []dqlite.ServerInfo{{Address: address}}); err != nil {
 		return errors.Wrap(err, "failed to set server address")
 	}
 

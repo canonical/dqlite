@@ -12,12 +12,11 @@ import (
 	"github.com/CanonicalLtd/dqlite/internal/replication"
 	"github.com/hashicorp/raft"
 	"github.com/pkg/errors"
-	"go.uber.org/zap"
 )
 
 // Server implements the dqlite network protocol.
 type Server struct {
-	logger   *zap.Logger      // Logger
+	log      LogFunc          // Logger
 	registry *Registry        // Registry wrapper
 	server   *bindings.Server // Low-level C implementation
 	listener net.Listener     // Queue of new connections
@@ -28,10 +27,10 @@ type Server struct {
 // ServerOption can be used to tweak server parameters.
 type ServerOption func(*serverOptions)
 
-// WithServerLogger sets a custom Server zap logger.
-func WithServerLogger(logger *zap.Logger) ServerOption {
+// WithServerLogFunc sets a custom log function for the server.
+func WithServerLogFunc(log LogFunc) ServerOption {
 	return func(options *serverOptions) {
-		options.Logger = logger
+		options.Log = log
 	}
 }
 
@@ -71,10 +70,10 @@ func NewServer(raft *raft.Raft, registry *Registry, listener net.Listener, optio
 	if err != nil {
 		return nil, err
 	}
-	server.SetLogger(&dqliteLogger{logger: o.Logger})
+	server.SetLogFunc(o.Log)
 
 	s := &Server{
-		logger:   o.Logger,
+		log:      o.Log,
 		registry: registry,
 		server:   server,
 		listener: listener,
@@ -95,7 +94,7 @@ func NewServer(raft *raft.Raft, registry *Registry, listener net.Listener, optio
 
 // Hold configuration options for a dqlite server.
 type serverOptions struct {
-	Logger          *zap.Logger
+	Log             LogFunc
 	AddressProvider raft.ServerAddressProvider
 }
 
@@ -108,7 +107,7 @@ func (s *Server) run() {
 }
 
 func (s *Server) acceptLoop() {
-	s.logger.Debug("accepting connections")
+	s.log(LogDebug, "accepting connections")
 
 	for {
 		conn, err := s.listener.Accept()
@@ -202,25 +201,7 @@ func (s *Server) Close() error {
 // Create a serverOptions object with sane defaults.
 func defaultServerOptions() *serverOptions {
 	return &serverOptions{
-		Logger:          defaultLogger(),
+		Log:             defaultLogFunc(),
 		AddressProvider: nil,
-	}
-}
-
-// Wraps a zap.Logger and implements the dqlite.Logger interface.
-type dqliteLogger struct {
-	logger *zap.Logger
-}
-
-func (l *dqliteLogger) Logf(level int, message string) {
-	switch level {
-	case bindings.LogDebug:
-		l.logger.Debug(message)
-	case bindings.LogInfo:
-		l.logger.Info(message)
-	case bindings.LogWarn:
-		l.logger.Warn(message)
-	case bindings.LogError:
-		l.logger.Error(message)
 	}
 }

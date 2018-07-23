@@ -3,34 +3,35 @@ package client
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
+	"github.com/CanonicalLtd/dqlite/internal/logging"
 	"github.com/Rican7/retry"
 	"github.com/pkg/errors"
-	"go.uber.org/zap"
 )
 
 // Connector is in charge of creating a gRPC SQL client connected to the
 // current leader of a gRPC SQL cluster and sending heartbeats to prevent
 // connections created by that client from being killed by the server.
 type Connector struct {
-	id       uint64      // Client ID to use when registering against the server.
-	store    ServerStore // Used to get and update current cluster servers.
-	config   Config      // Connection parameters.
-	logger   *zap.Logger // Logger.
-	protocol []byte      // Protocol version
+	id       uint64       // Client ID to use when registering against the server.
+	store    ServerStore  // Used to get and update current cluster servers.
+	config   Config       // Connection parameters.
+	log      logging.Func // Logging function.
+	protocol []byte       // Protocol version
 }
 
 // NewConnector creates a new connector that can be used by a gRPC SQL driver
 // to create new clients connected to a leader gRPC SQL server.
-func NewConnector(id uint64, store ServerStore, config Config, logger *zap.Logger) *Connector {
+func NewConnector(id uint64, store ServerStore, config Config, log logging.Func) *Connector {
 	connector := &Connector{
 		id:       id,
 		store:    store,
 		config:   config,
-		logger:   logger.With(zap.Namespace("connector")),
+		log:      log,
 		protocol: make([]byte, 8),
 	}
 
@@ -51,7 +52,10 @@ func (c *Connector) Connect(ctx context.Context) (*Client, error) {
 	// The retry strategy should be configured to retry indefinitely, until
 	// the given context is done.
 	err := retry.Retry(func(attempt uint) error {
-		logger := c.logger.With(zap.Uint("attempt", attempt))
+		log := func(l logging.Level, format string, a ...interface{}) {
+			format += fmt.Sprintf(" attempt=%d", attempt)
+			c.log(l, fmt.Sprintf(format, a...))
+		}
 
 		select {
 		case <-ctx.Done():
@@ -61,9 +65,9 @@ func (c *Connector) Connect(ctx context.Context) (*Client, error) {
 		}
 
 		var err error
-		client, err = c.connectAttemptAll(ctx, logger)
+		client, err = c.connectAttemptAll(ctx, log)
 		if err != nil {
-			logger.Info("connection failed", zap.String("err", err.Error()))
+			log(logging.Debug, "connection failed err=%v", err)
 			return err
 		}
 
@@ -85,30 +89,31 @@ func (c *Connector) Connect(ctx context.Context) (*Client, error) {
 
 // Make a single attempt to establish a connection to the leader server trying
 // all addresses available in the store.
-func (c *Connector) connectAttemptAll(ctx context.Context, logger *zap.Logger) (*Client, error) {
-	addresses, err := c.store.Get(ctx)
+func (c *Connector) connectAttemptAll(ctx context.Context, log logging.Func) (*Client, error) {
+	servers, err := c.store.Get(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get server addresses")
+		return nil, errors.Wrap(err, "failed to get cluster servers")
 	}
 
-	logger.Info("connecting to leader server", zap.Strings("addresses", addresses))
-
 	// Make an attempt for each address until we find the leader.
-	for _, address := range addresses {
-		logger := logger.With(zap.String("address", address))
+	for _, server := range servers {
+		log := func(l logging.Level, format string, a ...interface{}) {
+			format += fmt.Sprintf(" address=%s", server.Address)
+			log(l, fmt.Sprintf(format, a...))
+		}
 
 		ctx, cancel := context.WithTimeout(ctx, c.config.AttemptTimeout)
 		defer cancel()
 
-		conn, leader, err := c.connectAttemptOne(ctx, address)
+		conn, leader, err := c.connectAttemptOne(ctx, server.Address)
 		if err != nil {
 			// This server is unavailable, try with the next target.
-			logger.Info("server connection failed", zap.String("err", err.Error()))
+			log(logging.Debug, "server connection failed err=%v", err)
 			continue
 		}
 		if conn != nil {
 			// We found the leader
-			logger.Info("connected")
+			log(logging.Info, "connected")
 			return conn, nil
 		}
 		if leader == "" {
@@ -120,21 +125,21 @@ func (c *Connector) connectAttemptAll(ctx context.Context, logger *zap.Logger) (
 		// If we get here, it means this server reported that another
 		// server is the leader, let's close the connection to this
 		// server and try with the suggested one.
-		logger = logger.With(zap.String("leader", leader))
+		//logger = logger.With(zap.String("leader", leader))
 		conn, leader, err = c.connectAttemptOne(ctx, leader)
 		if err != nil {
 			// The leader reported by the previous server is
 			// unavailable, try with the next target.
-			logger.Info("leader server connection failed", zap.String("err", err.Error()))
+			//logger.Info("leader server connection failed", zap.String("err", err.Error()))
 			continue
 		}
 		if conn == nil {
 			// The leader reported by the target server does not consider itself
 			// the leader, try with the next target.
-			logger.Info("reported leader server is not the leader")
+			//logger.Info("reported leader server is not the leader")
 			continue
 		}
-		logger.Info("connected")
+		log(logging.Info, "connected")
 		return conn, nil
 	}
 
@@ -168,7 +173,7 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string) (*Cli
 		return nil, "", errors.Wrap(io.ErrShortWrite, "failed to send handshake")
 	}
 
-	client := newClient(conn, address, c.store, c.logger)
+	client := newClient(conn, address, c.store, c.log)
 
 	// Send the initial Leader request.
 	request := Message{}
