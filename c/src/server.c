@@ -13,6 +13,7 @@
 #include "conn.h"
 #include "error.h"
 #include "log.h"
+#include "options.h"
 #include "queue.h"
 
 int dqlite_init(const char **errmsg) {
@@ -43,17 +44,18 @@ struct dqlite__server {
 	dqlite__error error; /* Last error occurred, if any */
 
 	/* private */
-	struct dqlite_logger *logger;   /* Optional logger implementation */
-	dqlite_cluster *      cluster;  /* Cluster implementation */
-	struct dqlite__queue  queue;    /* Queue of incoming connections */
-	pthread_mutex_t       mutex;    /* Serialize access to incoming queue */
-	uv_loop_t             loop;     /* UV loop */
-	uv_async_t            stop;     /* Event to stop the UV loop */
-	uv_async_t            incoming; /* Event to process the incoming queue */
-	int                   running;  /* Indicate that the loop is running */
-	sem_t                 ready;    /* Notifiy that the loop is running */
-	uv_timer_t            startup;  /* Used for unblocking the ready sem */
-	sem_t                 stopped;  /* Notifiy that the loop has been stopped */
+	dqlite_cluster *       cluster;  /* Cluster implementation */
+	struct dqlite_logger * logger;   /* Optional logger implementation */
+	struct dqlite__options options;  /* Configuration values */
+	struct dqlite__queue   queue;    /* Queue of incoming connections */
+	pthread_mutex_t        mutex;    /* Serialize access to incoming queue */
+	uv_loop_t              loop;     /* UV loop */
+	uv_async_t             stop;     /* Event to stop the UV loop */
+	uv_async_t             incoming; /* Event to process the incoming queue */
+	int                    running;  /* Indicate that the loop is running */
+	sem_t                  ready;    /* Notifiy that the loop is running */
+	uv_timer_t             startup;  /* Used for unblocking the ready sem */
+	sem_t                  stopped;  /* Notifiy that the loop has been stopped */
 };
 
 /* Callback for the uv_walk() call in dqlite__server_stop_cb.
@@ -217,6 +219,8 @@ int dqlite_server_init(dqlite_server *s, dqlite_cluster *cluster) {
 	s->logger  = NULL;
 	s->cluster = cluster;
 
+	dqlite__options_defaults(&s->options);
+
 	dqlite__queue_init(&s->queue);
 
 	err = pthread_mutex_init(&s->mutex, NULL);
@@ -303,6 +307,18 @@ int dqlite_server_config(dqlite_server *s, int op, void *arg) {
 
 	case DQLITE_CONFIG_LOGGER:
 		s->logger = arg;
+		break;
+
+	case DQLITE_CONFIG_HEARTBEAT_TIMEOUT:
+		s->options.heartbeat_timeout = *(uint16_t *)arg;
+		break;
+
+	case DQLITE_CONFIG_PAGE_SIZE:
+		s->options.page_size = *(uint16_t *)arg;
+		break;
+
+	case DQLITE_CONFIG_CHECKPOINT_THRESHOLD:
+		s->options.checkpoint_threshold = *(uint32_t *)arg;
 		break;
 
 	default:
@@ -423,7 +439,7 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg) {
 		err = DQLITE_NOMEM;
 		goto err_not_running_or_conn_malloc;
 	}
-	dqlite__conn_init(conn, fd, s->cluster, &s->loop);
+	dqlite__conn_init(conn, fd, s->cluster, &s->loop, &s->options);
 
 	err = dqlite__queue_item_init(&item, conn);
 	if (err != 0) {

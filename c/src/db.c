@@ -9,6 +9,29 @@
 #include "lifecycle.h"
 #include "registry.h"
 #include "stmt.h"
+#include "vfs.h"
+
+/* Wrapper around sqlite3_exec that frees the memory allocated for the error
+ * message in case of failure and sets the dqlite__db's error field
+ * appropriately */
+static int dqlite__db_exec(struct dqlite__db *db, const char *sql) {
+	char *msg;
+	int   rc;
+
+	assert(db != NULL);
+
+	rc = sqlite3_exec(db->db, sql, NULL, NULL, &msg);
+	if (rc != SQLITE_OK) {
+
+		assert(msg != NULL);
+		sqlite3_free(msg);
+		dqlite__error_printf(&db->error, sqlite3_errmsg(db->db));
+
+		return rc;
+	}
+
+	return SQLITE_OK;
+}
 
 void dqlite__db_init(struct dqlite__db *db) {
 	assert(db != NULL);
@@ -16,6 +39,8 @@ void dqlite__db_init(struct dqlite__db *db) {
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_DB);
 	dqlite__error_init(&db->error);
 	dqlite__stmt_registry_init(&db->stmts);
+
+	db->in_a_tx = 0;
 }
 
 void dqlite__db_close(struct dqlite__db *db) {
@@ -43,7 +68,6 @@ int dqlite__db_open(struct dqlite__db *db,
                     const char *       replication) {
 	const char *vfs;
 	int         rc;
-	char *      msg;
 
 	assert(db != NULL);
 	assert(name != NULL);
@@ -68,24 +92,26 @@ int dqlite__db_open(struct dqlite__db *db,
 	}
 
 	/* Set the page size. TODO: make page size configurable? */
-	rc = sqlite3_exec(db->db, "PRAGMA page_size=4096", NULL, NULL, &msg);
+	rc = dqlite__db_exec(db, "PRAGMA page_size=4096");
 	if (rc != SQLITE_OK) {
-		dqlite__error_printf(&db->error, "unable to set page size: %s", msg);
+		dqlite__error_wrapf(
+		    &db->error, &db->error, "unable to set page size");
 		return rc;
 	}
 
 	/* Disable syncs. */
-	rc = sqlite3_exec(db->db, "PRAGMA synchronous=OFF", NULL, NULL, &msg);
+	rc = dqlite__db_exec(db, "PRAGMA synchronous=OFF");
 	if (rc != SQLITE_OK) {
-		dqlite__error_printf(
-		    &db->error, "unable to switch off syncs: %s", msg);
+		dqlite__error_wrapf(
+		    &db->error, &db->error, "unable to switch off syncs");
 		return rc;
 	}
 
 	/* Set WAL journaling. */
-	rc = sqlite3_exec(db->db, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
+	rc = dqlite__db_exec(db, "PRAGMA journal_mode=WAL");
 	if (rc != SQLITE_OK) {
-		dqlite__error_printf(&db->error, "unable to set WAL mode: %s", msg);
+		dqlite__error_wrapf(
+		    &db->error, &db->error, "unable to set WAL mode: %s");
 		return rc;
 	}
 
@@ -95,6 +121,14 @@ int dqlite__db_open(struct dqlite__db *db,
 
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&db->error, "unable to set WAL replication");
+		return rc;
+	}
+
+	/* TODO: make setting foreign keys optional. */
+	rc = dqlite__db_exec(db, "PRAGMA foreign_keys=1");
+	if (rc != SQLITE_OK) {
+		dqlite__error_wrapf(
+		    &db->error, &db->error, "unable to set foreign keys checks: %s");
 		return rc;
 	}
 
@@ -165,6 +199,84 @@ int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt) {
 	assert(err == 0);
 
 	return rc;
+}
+
+/* Helper to to update the transaction refcount on the in-memory file object
+ * associated with the db. */
+static void dqlite__db_update_tx_refcount(struct dqlite__db *db, int delta) {
+	struct dqlite__vfs_file *file;
+	int                      rc;
+
+	rc = sqlite3_file_control(db->db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
+	assert(rc == SQLITE_OK); /* Should never fail */
+
+	file->content->tx_refcount += delta;
+}
+
+int dqlite__db_begin(struct dqlite__db *db) {
+	int rc;
+
+	assert(db != NULL);
+
+	rc = dqlite__db_exec(db, "BEGIN");
+	if (rc != SQLITE_OK) {
+		return rc;
+	}
+
+	/* SQLite doesn't allow to start a transaction twice in the same
+	 * connection, so our in_a_tx flag should be false. */
+	assert(db->in_a_tx == 0);
+
+	db->in_a_tx = 1;
+
+	dqlite__db_update_tx_refcount(db, 1);
+
+	return SQLITE_OK;
+}
+
+int dqlite__db_commit(struct dqlite__db *db) {
+	int rc;
+
+	assert(db != NULL);
+
+	rc = dqlite__db_exec(db, "COMMIT");
+	if (rc != SQLITE_OK) {
+		/* Since we're in single-thread mode, contention should never
+		 * happen. */
+		assert(rc != SQLITE_BUSY);
+
+		return rc;
+	}
+
+	/* SQLite doesn't allow a commit to succeed if a transaction isn't
+	 * started, so our in_a_tx flags should be true. */
+	assert(db->in_a_tx == 1);
+
+	db->in_a_tx = 0;
+
+	dqlite__db_update_tx_refcount(db, -1);
+
+	return SQLITE_OK;
+}
+
+int dqlite__db_rollback(struct dqlite__db *db) {
+	int rc;
+
+	assert(db != NULL);
+
+	rc = dqlite__db_exec(db, "ROLLBACK");
+
+	/* TODO: what are the failure modes of a ROLLBACK statement? is it
+	 * possible that it leaves a transaction open?. */
+	db->in_a_tx = 0;
+
+	dqlite__db_update_tx_refcount(db, -1);
+
+	if (rc != SQLITE_OK) {
+		return rc;
+	}
+
+	return SQLITE_OK;
 }
 
 DQLITE__REGISTRY_METHODS(dqlite__db_registry, dqlite__db);

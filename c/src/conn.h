@@ -10,6 +10,7 @@
 #include "error.h"
 #include "fsm.h"
 #include "gateway.h"
+#include "options.h"
 #include "request.h"
 
 /* The size of pre-allocated read buffer for holding the payload of incoming
@@ -31,6 +32,7 @@ struct dqlite__conn {
 	uint64_t      protocol; /* Protocol version */
 
 	/* private */
+	struct dqlite__options *options;  /* Connection state machine */
 	struct dqlite__fsm      fsm;      /* Connection state machine */
 	struct dqlite__gateway  gateway;  /* Client state and request handler */
 	struct dqlite__request  request;  /* Incoming request */
@@ -44,10 +46,11 @@ struct dqlite__conn {
 };
 
 /* Initialize a connection object */
-void dqlite__conn_init(struct dqlite__conn *c,
-                       int                  fd,
-                       dqlite_cluster *     cluster,
-                       uv_loop_t *          loop);
+void dqlite__conn_init(struct dqlite__conn *   c,
+                       int                     fd,
+                       dqlite_cluster *        cluster,
+                       uv_loop_t *             loop,
+                       struct dqlite__options *options);
 
 /* Close a connection object, releasing all associated resources. */
 void dqlite__conn_close(struct dqlite__conn *c);

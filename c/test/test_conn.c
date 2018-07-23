@@ -6,6 +6,7 @@
 #include "../include/dqlite.h"
 #include "../src/binary.h"
 #include "../src/conn.h"
+#include "../src/options.h"
 
 #include "cluster.h"
 #include "leak.h"
@@ -24,6 +25,7 @@ struct fixture {
 	uv_loop_t               loop;
 	struct dqlite__conn     conn;
 	struct dqlite__response response;
+	struct dqlite__options  options;
 };
 
 static void __recv_response(struct fixture *f) {
@@ -72,10 +74,13 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	err = uv_loop_init(&f->loop);
 	munit_assert_int(err, ==, 0);
 
-	dqlite__conn_init(&f->conn, f->sockets.server, test_cluster(), &f->loop);
+	dqlite__conn_init(
+	    &f->conn, f->sockets.server, test_cluster(), &f->loop, &f->options);
 	f->conn.logger = test_logger();
 
 	dqlite__response_init(&f->response);
+
+	dqlite__options_defaults(&f->options);
 
 	return f;
 }
@@ -388,7 +393,7 @@ static MunitResult test_abort_after_heartbeat_timeout(const MunitParameter param
 
 	(void)params;
 
-	f->conn.gateway.heartbeat_timeout = 1; /* Abort after a millisecond */
+	f->conn.options->heartbeat_timeout = 1; /* Abort after a millisecond */
 
 	err = dqlite__conn_start(&f->conn);
 	munit_assert_int(err, ==, 0);

@@ -2,6 +2,7 @@
 
 #include "../include/dqlite.h"
 #include "../src/gateway.h"
+#include "../src/options.h"
 #include "../src/response.h"
 
 #include "cluster.h"
@@ -19,6 +20,7 @@
 struct fixture {
 	sqlite3_wal_replication *replication;
 	sqlite3_vfs *            vfs;
+	struct dqlite__options * options;
 	struct dqlite__gateway * gateway;
 	struct dqlite__request * request;
 	struct dqlite__response *response;
@@ -86,6 +88,44 @@ static void fixture_exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id) {
 	dqlite__gateway_finish(f->gateway, f->response);
 }
 
+/* Send a begin request. */
+static void fixture_begin(struct fixture *f, uint32_t db_id) {
+	int err;
+
+	f->request->type        = DQLITE_REQUEST_BEGIN;
+	f->request->begin.db_id = (uint64_t)db_id;
+
+	f->request->message.words   = 1;
+	f->request->message.offset1 = 8;
+
+	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
+	munit_assert_int(err, ==, 0);
+
+	munit_assert_ptr_not_equal(f->response, NULL);
+	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_EMPTY);
+
+	dqlite__gateway_finish(f->gateway, f->response);
+}
+
+/* Send a commit request. */
+static void fixture_commit(struct fixture *f, uint32_t db_id) {
+	int err;
+
+	f->request->type        = DQLITE_REQUEST_COMMIT;
+	f->request->begin.db_id = (uint64_t)db_id;
+
+	f->request->message.words   = 1;
+	f->request->message.offset1 = 8;
+
+	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
+	munit_assert_int(err, ==, 0);
+
+	munit_assert_ptr_not_equal(f->response, NULL);
+	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_EMPTY);
+
+	dqlite__gateway_finish(f->gateway, f->response);
+}
+
 /******************************************************************************
  *
  * Setup and tear down
@@ -114,8 +154,11 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	err = dqlite_vfs_register(f->replication->zName, &f->vfs);
 	munit_assert_int(err, ==, 0);
 
+	f->options = munit_malloc(sizeof *f->options);
+	dqlite__options_defaults(f->options);
+
 	f->gateway = munit_malloc(sizeof *f->gateway);
-	dqlite__gateway_init(f->gateway, test_cluster());
+	dqlite__gateway_init(f->gateway, test_cluster(), f->options);
 
 	f->request = munit_malloc(sizeof *f->request);
 	dqlite__request_init(f->request);
@@ -366,6 +409,7 @@ static MunitResult test_exec(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 	fixture_prepare(f, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 
 	f->request->type         = DQLITE_REQUEST_EXEC;
@@ -395,6 +439,8 @@ static MunitResult test_exec_params(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
+
 	fixture_prepare(f, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
 
@@ -462,6 +508,7 @@ static MunitResult test_exec_bad_params(const MunitParameter params[], void *dat
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 	fixture_prepare(f, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 
 	f->request->type         = DQLITE_REQUEST_EXEC;
@@ -504,6 +551,7 @@ static MunitResult test_exec_fail(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE test (n INT, UNIQUE (n))", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
@@ -534,6 +582,40 @@ static MunitResult test_exec_fail(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
+/* If no transcation has been started, an error is returned. */
+static MunitResult test_exec_no_tx(const MunitParameter params[], void *data) {
+	struct fixture *f = data;
+	uint32_t        db_id;
+	uint32_t        stmt_id;
+	int             err;
+
+	(void)params;
+
+	fixture_open(f, &db_id);
+
+	fixture_prepare(f, db_id, "CREATE TABLE test (n INT)", &stmt_id);
+
+	f->request->type         = DQLITE_REQUEST_EXEC;
+	f->request->exec.db_id   = db_id;
+	f->request->exec.stmt_id = stmt_id;
+
+	f->request->message.words   = 1;
+	f->request->message.offset1 = 8;
+
+	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
+	munit_assert_int(err, ==, 0);
+
+	munit_assert_ptr_not_equal(f->response, NULL);
+
+	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
+	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
+
+	munit_assert_string_equal(f->response->failure.message,
+	                          "no transaction in progress");
+
+	return MUNIT_OK;
+}
+
 /* Handle a query request. */
 static MunitResult test_query(const MunitParameter params[], void *data) {
 	struct fixture *f = data;
@@ -544,6 +626,7 @@ static MunitResult test_query(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE foo (n INT)", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
@@ -580,6 +663,8 @@ static MunitResult test_query_bad_params(const MunitParameter params[], void *da
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
+
 	fixture_prepare(f, db_id, "CREATE TABLE foo (n INT)", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
 
@@ -615,6 +700,40 @@ static MunitResult test_query_bad_params(const MunitParameter params[], void *da
 	return MUNIT_OK;
 }
 
+/* If no transcation has been started, an error is returned. */
+static MunitResult test_query_no_tx(const MunitParameter params[], void *data) {
+	struct fixture *f = data;
+	uint32_t        db_id;
+	uint32_t        stmt_id;
+	int             err;
+
+	(void)params;
+
+	fixture_open(f, &db_id);
+
+	fixture_prepare(f, db_id, "SELECT 1", &stmt_id);
+
+	f->request->type          = DQLITE_REQUEST_QUERY;
+	f->request->query.db_id   = db_id;
+	f->request->query.stmt_id = stmt_id;
+
+	f->request->message.words   = 1;
+	f->request->message.offset1 = 8;
+
+	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
+	munit_assert_int(err, ==, 0);
+
+	munit_assert_ptr_not_equal(f->response, NULL);
+
+	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
+	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
+
+	munit_assert_string_equal(f->response->failure.message,
+	                          "no transaction in progress");
+
+	return MUNIT_OK;
+}
+
 /* Handle a finalize request. */
 static MunitResult test_finalize(const MunitParameter params[], void *data) {
 	struct fixture *f = data;
@@ -625,6 +744,7 @@ static MunitResult test_finalize(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE foo (n INT)", &stmt_id);
 
@@ -648,6 +768,8 @@ static MunitResult test_exec_sql(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
+
 	fixture_prepare(
 	    f, db_id, "CREATE TABLE foo (n INT, t TEXT, f FLOAT)", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
@@ -696,6 +818,7 @@ static MunitResult test_exec_sql_multi(const MunitParameter params[], void *data
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 
 	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
@@ -724,6 +847,7 @@ static MunitResult test_exec_sql_bad_sql(const MunitParameter params[], void *da
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 
 	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
@@ -752,6 +876,7 @@ static MunitResult test_exec_sql_bad_params(const MunitParameter params[],
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 
 	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
@@ -783,6 +908,33 @@ static MunitResult test_exec_sql_bad_params(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
+/* If the given bindings are invalid, an error is returned. */
+static MunitResult test_exec_sql_no_tx(const MunitParameter params[], void *data) {
+	struct fixture *f = data;
+	uint32_t        db_id;
+	int             err;
+
+	(void)params;
+
+	fixture_open(f, &db_id);
+
+	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->exec_sql.db_id = db_id;
+	f->request->exec_sql.sql   = "CREATE TABLE test (n INT)";
+
+	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
+	munit_assert_int(err, ==, 0);
+
+	munit_assert_ptr_not_equal(f->response, NULL);
+	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
+	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
+
+	munit_assert_string_equal(f->response->failure.message,
+	                          "no transaction in progress");
+
+	return MUNIT_OK;
+}
+
 /* If the execution of the statement fails, an error is returned. */
 static MunitResult test_exec_sql_error(const MunitParameter params[], void *data) {
 	struct fixture *f = data;
@@ -793,6 +945,7 @@ static MunitResult test_exec_sql_error(const MunitParameter params[], void *data
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE foo (n INT, UNIQUE(n))", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
@@ -831,6 +984,8 @@ static MunitResult test_query_sql(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
+
 	fixture_prepare(f, db_id, "CREATE TABLE foo (n INT)", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
 
@@ -889,6 +1044,7 @@ static MunitResult test_query_sql_bad_sql(const MunitParameter params[],
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 
 	f->request->type            = DQLITE_REQUEST_QUERY_SQL;
 	f->request->query_sql.db_id = db_id;
@@ -917,6 +1073,7 @@ static MunitResult test_query_sql_bad_params(const MunitParameter params[],
 	(void)params;
 
 	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
 
 	f->request->type            = DQLITE_REQUEST_QUERY_SQL;
 	f->request->query_sql.db_id = db_id;
@@ -944,6 +1101,33 @@ static MunitResult test_query_sql_bad_params(const MunitParameter params[],
 
 	munit_assert_string_equal(f->response->failure.message,
 	                          "column index out of range");
+
+	return MUNIT_OK;
+}
+
+/* If no transaction is in progress, an error is returned. */
+static MunitResult test_query_sql_no_tx(const MunitParameter params[], void *data) {
+	struct fixture *f = data;
+	uint32_t        db_id;
+	int             err;
+
+	(void)params;
+
+	fixture_open(f, &db_id);
+
+	f->request->type            = DQLITE_REQUEST_QUERY_SQL;
+	f->request->query_sql.db_id = db_id;
+	f->request->query_sql.sql   = "SELECT 1";
+
+	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
+	munit_assert_int(err, ==, 0);
+
+	munit_assert_ptr_not_equal(f->response, NULL);
+	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
+	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
+
+	munit_assert_string_equal(f->response->failure.message,
+	                          "no transaction in progress");
 
 	return MUNIT_OK;
 }
@@ -997,6 +1181,46 @@ static MunitResult test_max_requests(const MunitParameter params[], void *data) 
 	return MUNIT_OK;
 }
 
+/* If the number of frames in the WAL reaches the configured threshold, a checkpoint
+ * is triggered. */
+static MunitResult test_checkpoint(const MunitParameter params[], void *data) {
+	struct fixture *f    = data;
+	sqlite3_file *  file = munit_malloc(f->vfs->szOsFile);
+	uint32_t        db_id;
+	int             err;
+	int             rc;
+	int             flags;
+	sqlite3_int64   size;
+
+	(void)params;
+
+	f->gateway->options->checkpoint_threshold = 1;
+
+	fixture_open(f, &db_id);
+	fixture_begin(f, db_id);
+
+	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->exec_sql.db_id = db_id;
+	f->request->exec_sql.sql   = "CREATE TABLE test (n INT)";
+
+	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
+	munit_assert_int(err, ==, 0);
+
+	fixture_commit(f, db_id);
+
+	/* The WAL file got truncated. */
+	flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_WAL;
+	rc    = f->vfs->xOpen(f->vfs, "test.db-wal", file, flags, &flags);
+	munit_assert_int(rc, ==, 0);
+
+	rc = file->pMethods->xFileSize(file, &size);
+	munit_assert_int(rc, ==, 0);
+
+	munit_assert_int(size, ==, 0);
+
+	return MUNIT_OK;
+}
+
 static MunitTest dqlite__gateway_handle_tests[] = {
     {"/leader", test_leader, setup, tear_down, 0, NULL},
     {"/client", test_client, setup, tear_down, 0, NULL},
@@ -1012,19 +1236,24 @@ static MunitTest dqlite__gateway_handle_tests[] = {
     {"/exec/bad-stmt-id", test_exec_bad_stmt_id, setup, tear_down, 0, NULL},
     {"/exec/bad-params", test_exec_bad_params, setup, tear_down, 0, NULL},
     {"/exec/fail", test_exec_fail, setup, tear_down, 0, NULL},
+    {"/exec/no-tx", test_exec_no_tx, setup, tear_down, 0, NULL},
     {"/query", test_query, setup, tear_down, 0, NULL},
     {"/query/bad-params", test_query_bad_params, setup, tear_down, 0, NULL},
+    {"/query/no-tx", test_query_no_tx, setup, tear_down, 0, NULL},
     {"/finalize", test_finalize, setup, tear_down, 0, NULL},
     {"/exec-sql", test_exec_sql, setup, tear_down, 0, NULL},
     {"/exec-sql/multi", test_exec_sql_multi, setup, tear_down, 0, NULL},
     {"/exec-sql/bad-sql", test_exec_sql_bad_sql, setup, tear_down, 0, NULL},
     {"/exec-sql/bad-params", test_exec_sql_bad_params, setup, tear_down, 0, NULL},
+    {"/exec-sql/no-tx", test_exec_sql_no_tx, setup, tear_down, 0, NULL},
     {"/exec-sql/error", test_exec_sql_error, setup, tear_down, 0, NULL},
     {"/query-sql", test_query_sql, setup, tear_down, 0, NULL},
     {"/query-sql/bad-sql", test_query_sql_bad_sql, setup, tear_down, 0, NULL},
     {"/query-sql/bad-params", test_query_sql_bad_params, setup, tear_down, 0, NULL},
+    {"/query-sql/no-tx", test_query_sql_no_tx, setup, tear_down, 0, NULL},
     {"/invalid-request-type", test_invalid_request_type, setup, tear_down, 0, NULL},
     {"/max-requests", test_max_requests, setup, tear_down, 0, NULL},
+    {"/checkpoint", test_checkpoint, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 

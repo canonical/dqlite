@@ -9,6 +9,8 @@
 
 #include <sqlite3.h>
 
+#include "vfs.h"
+
 /* Maximum pathname length supported by this VFS. */
 #define DQLITE__VFS_MAX_PATHNAME 512
 
@@ -32,17 +34,6 @@
 
 // Size of header before each frame in wal
 #define DQLITE__VFS_WAL_FRAME_HDRSIZE 24
-
-/* Hold content for a single page or frame in a volatile file. */
-struct dqlite__vfs_page {
-	void *buf;        /* Content of the page. */
-	void *hdr;        /* Page header (only for WAL pages). */
-	void *dirty_mask; /* Bit mask of dirty buf bytes to be re-written (only for
-	                     WAL pages) */
-	int   dirty_mask_size; /* Number of bytes in the dirty_mask array. */
-	void *dirty_buf; /* List of dirty buf bytes, one for each bit with value 1 in
-	                    dirty_mask. */
-};
 
 /* Initialize a new volatile page for a database or WAL file.
  *
@@ -103,22 +94,6 @@ static void dqlite__vfs_page_close(struct dqlite__vfs_page *page) {
 	}
 }
 
-/* Hold content for a single file in the volatile file system. */
-struct dqlite__vfs_content {
-	char *                    filename;  /* Name of the file. */
-	void *                    hdr;       /* File header (only for WAL files). */
-	struct dqlite__vfs_page **pages;     /* Pointers to all pages in the file. */
-	int                       pages_len; /* Number of pages in the file. */
-	int                       page_size; /* Size of page->buf for each page. */
-	int    refcount;        /* Number of open FDs referencing this file. */
-	int    type;            /* Content type (either main db or WAL). */
-	void **shm_regions;     /* Pointers to shared memory regions. */
-	int    shm_regions_len; /* Number of shared memory regions. */
-	int    shm_refcount;    /* Number of opened files using the shared memory. */
-	struct dqlite__vfs_content
-	    *wal; /* Handle to the WAL file content (for database files). */
-};
-
 /* Initialize the content structure for a new volatile file. */
 static int dqlite__vfs_content_init(struct dqlite__vfs_content *content,
                                     const char *                filename,
@@ -154,6 +129,7 @@ static int dqlite__vfs_content_init(struct dqlite__vfs_content *content,
 	content->shm_regions_len = 0;
 	content->shm_refcount    = 0;
 	content->wal             = 0;
+	content->tx_refcount     = 0;
 
 	return SQLITE_OK;
 
@@ -351,16 +327,6 @@ static void dqlite__vfs_content_truncate(struct dqlite__vfs_content *content,
 	content->pages_len = pages_len;
 }
 
-// Root of the volatile file system. Contains pointers to the content
-// of all files that were created.
-struct dqlite__vfs_root {
-	struct dqlite__vfs_content *
-	    *           contents;     /* Pointers to files in the file system */
-	int             contents_len; /* Number of files in the file system */
-	pthread_mutex_t mutex;        /* Serialize to access this object */
-	int             error;        /* Last error occurred. */
-};
-
 /* Initialize a new dqlite__vfs_root object. */
 static int dqlite__vfs_root_init(struct dqlite__vfs_root *r) {
 	int err;
@@ -371,7 +337,7 @@ static int dqlite__vfs_root_init(struct dqlite__vfs_root *r) {
 
 	r->contents_len = DQLITE__VFS_MAX_FILES;
 
-	r->contents = (struct dqlite__vfs_content **)(sqlite3_malloc(contents_size));
+	r->contents = sqlite3_malloc(contents_size);
 	if (r->contents == NULL)
 		goto err_contents_malloc;
 	memset(r->contents, 0, contents_size);
@@ -566,13 +532,6 @@ static unsigned dqlite__vfs_parse_wal_page_size(const void *buf) {
 
 	return page_size;
 }
-
-struct dqlite__vfs_file {
-	sqlite3_file base; /* Base class. Must be first. */
-	struct dqlite__vfs_root
-	    *root; /* Pointer to our volatile VFS instance data. */
-	struct dqlite__vfs_content *content; /* Handle to the file content. */
-};
 
 static int dqlite__vfs_close(sqlite3_file *file) {
 	struct dqlite__vfs_file *f    = (struct dqlite__vfs_file *)file;
@@ -991,7 +950,6 @@ static int dqlite__vfs_file_size(sqlite3_file *file, sqlite_int64 *size) {
 
 /* Locking a file is a no-op, since no other process has visibility on it. */
 static int dqlite__vfs_lock(sqlite3_file *file, int lock) {
-	struct dqlite__vfs_file *f = (struct dqlite__vfs_file *)file;
 	(void)file;
 	(void)lock;
 
@@ -1000,7 +958,6 @@ static int dqlite__vfs_lock(sqlite3_file *file, int lock) {
 
 /* Unlocking a file is a no-op, since no other process has visibility on it. */
 static int dqlite__vfs_unlock(sqlite3_file *file, int lock) {
-	struct dqlite__vfs_file *f = (struct dqlite__vfs_file *)file;
 	(void)file;
 	(void)lock;
 

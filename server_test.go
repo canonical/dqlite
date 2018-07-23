@@ -68,6 +68,13 @@ func TestServer_Dump(t *testing.T) {
 	request.Reset()
 	response.Reset()
 
+	client.EncodeBegin(&request, db, 0)
+	err = c.Call(ctx, &request, &response)
+	require.NoError(t, err)
+
+	request.Reset()
+	response.Reset()
+
 	client.EncodeExecSQL(&request, uint64(db), "CREATE TABLE foo (n INT)", nil)
 
 	err = c.Call(ctx, &request, &response)

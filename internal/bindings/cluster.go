@@ -14,6 +14,7 @@ void clusterRegisterCb(int handle, sqlite3 *db);
 void clusterUnregisterCb(int handle, sqlite3 *db);
 int clusterBarrierCb(int handle);
 int clusterRecoverCb(int handle, uint64_t txToken);
+int clusterCheckpointCb(int handle, sqlite3 *db);
 
 // Custom state used as context for dqlite_cluster trampoline objects.
 typedef struct dqlite__cluster_state {
@@ -153,6 +154,17 @@ static int dqlite__cluster_recover(void *ctx, uint64_t tx_token) {
   return clusterRecoverCb(state->handle, tx_token);
 }
 
+// Implementation of of xCheckpoint.
+static int dqlite__cluster_checkpoint(void *ctx, sqlite3 *db) {
+  struct dqlite__cluster_state *state;
+
+  assert(ctx != NULL);
+
+  state = ctx;
+
+  return clusterCheckpointCb(state->handle, db);
+}
+
 // Initializer.
 static void dqlite__cluster_init(dqlite_cluster *c, int handle)
 {
@@ -174,6 +186,7 @@ static void dqlite__cluster_init(dqlite_cluster *c, int handle)
   c->xUnregister = dqlite__cluster_unregister;
   c->xBarrier = dqlite__cluster_barrier;
   c->xRecover = dqlite__cluster_recover;
+  c->xCheckpoint = dqlite__cluster_checkpoint;
 }
 
 // Destructor.
@@ -240,6 +253,8 @@ type Cluster interface {
 	Barrier() error
 
 	Recover(token uint64) error
+
+	Checkpoint(*Conn) error
 }
 
 // Map C.int to Cluster instances to avoid passing Go pointers to C.
@@ -364,7 +379,19 @@ func clusterRecoverCb(handle C.int, txToken C.uint64_t) C.int {
 
 	err := cluster.Recover(uint64(txToken))
 	if err != nil {
-		return C.int(-1)
+		return C.int(ErrorCode(err))
+	}
+
+	return C.int(0)
+}
+
+//export clusterCheckpointCb
+func clusterCheckpointCb(handle C.int, db *C.sqlite3) C.int {
+	cluster := clusterHandles[handle]
+
+	err := cluster.Checkpoint((*Conn)(unsafe.Pointer(db)))
+	if err != nil {
+		return C.int(ErrorCode(err))
 	}
 
 	return C.int(0)

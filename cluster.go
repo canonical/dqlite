@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/CanonicalLtd/dqlite/internal/bindings"
+	"github.com/CanonicalLtd/dqlite/internal/protocol"
 	"github.com/CanonicalLtd/dqlite/internal/registry"
 	"github.com/hashicorp/raft"
 	"github.com/pkg/errors"
@@ -100,5 +101,20 @@ func (c *cluster) Barrier() error {
 }
 
 func (c *cluster) Recover(token uint64) error {
+	return nil
+}
+
+func (c *cluster) Checkpoint(conn *bindings.Conn) error {
+	command := protocol.NewCheckpoint(conn.Filename())
+
+	data, err := protocol.MarshalCommand(command)
+	if err != nil {
+		return err
+	}
+
+	if err := c.raft.Apply(data, time.Second).Error(); err != nil {
+		return err
+	}
+
 	return nil
 }

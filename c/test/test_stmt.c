@@ -3,8 +3,10 @@
 
 #include <sqlite3.h>
 
+#include "../include/dqlite.h"
 #include "../src/binary.h"
 #include "../src/stmt.h"
+#include "../src/vfs.h"
 
 #include "leak.h"
 #include "munit.h"
@@ -16,16 +18,17 @@
  ******************************************************************************/
 
 struct fixture {
+	sqlite3_vfs *           vfs;
 	struct dqlite__stmt *   stmt;
 	struct dqlite__message *message;
 };
 
-/* Helper to open an in-memory database. */
+/* Helper to open a database using the in-memory VFS. */
 static void __db_open(struct fixture *f) {
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int rc;
 
-	rc = sqlite3_open_v2(":memory:", &f->stmt->db, flags, NULL);
+	rc = sqlite3_open_v2("test.db:", &f->stmt->db, flags, "test");
 	munit_assert_int(rc, ==, SQLITE_OK);
 }
 
@@ -57,6 +60,7 @@ static void __db_exec(struct fixture *f, const char *sql) {
 
 static void *setup(const MunitParameter params[], void *user_data) {
 	struct fixture *f;
+	int             rc;
 
 	(void)params;
 	(void)user_data;
@@ -64,6 +68,9 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	f          = munit_malloc(sizeof *f);
 	f->stmt    = munit_malloc(sizeof *f->stmt);
 	f->message = munit_malloc(sizeof *f->message);
+
+	rc = dqlite_vfs_register("test", &f->vfs);
+	munit_assert_int(rc, ==, 0);
 
 	dqlite__stmt_init(f->stmt);
 	dqlite__message_init(f->message);
@@ -80,6 +87,8 @@ static void tear_down(void *data) {
 
 	dqlite__message_close(f->message);
 	dqlite__stmt_close(f->stmt);
+
+	dqlite_vfs_unregister(f->vfs);
 
 	test_assert_no_leaks();
 }
@@ -795,6 +804,37 @@ static MunitResult test_query_two_complex(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
+/* Encode a result set yielding a column with no underlying name
+ * (e.g. COUNT). */
+static MunitResult test_query_count(const MunitParameter params[], void *data) {
+	struct fixture *f = data;
+	int             rc;
+	uint64_t *      buf;
+	const char *    text;
+
+	(void)params;
+
+	__db_prepare(f, "SELECT COUNT(name) FROM sqlite_master");
+
+	rc = dqlite__stmt_query(f->stmt, f->message);
+	munit_assert_int(rc, ==, SQLITE_DONE);
+
+	/* The first word written is the column count. */
+	buf = (uint64_t *)f->message->body1;
+	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+
+	/* Then the column names. */
+	text = (const char *)(f->message->body1 + 8);
+	munit_assert_string_equal(text, "COUNT(name)");
+
+	/* Then the row, with its header and columns. */
+	munit_assert_int(f->message->body1[24] & 0x0f, ==, SQLITE_INTEGER);
+	buf = (uint64_t *)(f->message->body1 + 32);
+	munit_assert_int(dqlite__flip64(*buf), ==, 0);
+
+	return MUNIT_OK;
+}
+
 static MunitTest dqlite__stmt_query_tests[] = {
     {"/no-columns", test_query_no_columns, setup, tear_down, 0, NULL},
     {"/none", test_query_none, setup, tear_down, 0, NULL},
@@ -808,6 +848,7 @@ static MunitTest dqlite__stmt_query_tests[] = {
     {"/iso8601/empty", test_query_iso8601_empty, setup, tear_down, 0, NULL},
     {"/two/simple", test_query_two_simple, setup, tear_down, 0, NULL},
     {"/two/complex", test_query_two_complex, setup, tear_down, 0, NULL},
+    {"/count", test_query_count, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL}};
 
 /******************************************************************************

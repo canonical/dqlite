@@ -12,6 +12,9 @@ package client
 //go:generate ./schema.sh --request Finalize  db:uint32 stmt:uint32
 //go:generate ./schema.sh --request ExecSQL   db:uint64 sql:string values:NamedValues
 //go:generate ./schema.sh --request QuerySQL  db:uint64 sql:string values:NamedValues
+//go:generate ./schema.sh --request Begin     db:uint32 flags:uint32
+//go:generate ./schema.sh --request Commit    db:uint64
+//go:generate ./schema.sh --request Rollback  db:uint64
 
 //go:generate ./schema.sh --response init
 //go:generate ./schema.sh --response Failure  code:uint64 message:string

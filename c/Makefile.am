@@ -37,6 +37,8 @@ libdqlite_la_SOURCES = \
   src/lifecycle.c \
   src/lifecycle.h \
   src/log.h \
+  src/options.c \
+  src/options.h \
   src/message.c \
   src/message.h \
   src/queue.c \

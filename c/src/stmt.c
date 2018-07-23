@@ -257,7 +257,7 @@ static int dqlite__stmt_row(struct dqlite__stmt *   s,
 			is_datetime_column =
 			    column_type_name != NULL &&
 			    strcmp(column_type_name, "DATETIME") == 0;
-			if (column_type_name != NULL && is_datetime_column) {
+			if (is_datetime_column) {
 				if (column_type == SQLITE_INTEGER) {
 
 					column_type = DQLITE_UNIXTIME;
