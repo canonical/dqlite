@@ -190,7 +190,6 @@ func (s *Server) Close() error {
 	}
 
 	s.server.Close()
-	s.server.Free()
 
 	bindings.UnregisterWalReplication(s.registry.name)
 	s.registry.Close()
