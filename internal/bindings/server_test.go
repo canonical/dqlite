@@ -21,7 +21,6 @@ func TestServer_Lifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	server.Close()
-	server.Free()
 }
 
 func TestServer_Run(t *testing.T) {
@@ -30,7 +29,6 @@ func TestServer_Run(t *testing.T) {
 	server, err := bindings.NewServer(cluster)
 	require.NoError(t, err)
 
-	defer server.Free()
 	defer server.Close()
 
 	ch := make(chan error)
@@ -51,7 +49,6 @@ func TestServer_Handle(t *testing.T) {
 	server, err := bindings.NewServer(cluster)
 	require.NoError(t, err)
 
-	defer server.Free()
 	defer server.Close()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -108,7 +105,6 @@ func TestServer_ConcurrentHandleAndClose(t *testing.T) {
 	server, err := bindings.NewServer(cluster)
 	require.NoError(t, err)
 
-	defer server.Free()
 	defer server.Close()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

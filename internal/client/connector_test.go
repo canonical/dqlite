@@ -335,7 +335,6 @@ func newServer(t *testing.T, index int, listener net.Listener, cluster bindings.
 		}
 
 		server.Close()
-		server.Free()
 
 		bindings.UnregisterWalReplication("test")
 		vfs.Close()

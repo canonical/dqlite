@@ -1,8 +1,6 @@
 package bindings
 
 /*
-#cgo linux LDFLAGS: -lsqlite3
-
 #include <stdlib.h>
 #include <sqlite3.h>
 
@@ -104,256 +102,10 @@ static int sqlite3__wal_replication_unregister(char *name, int *handle) {
 
   return SQLITE_OK;
 }
-
-// Wrapper around sqlite3_db_config() for invoking the
-// SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE opcode, since there's no way to use C
-// varargs from Go.
-static int sqlite3__config_no_ckpt_on_close(sqlite3 *db, int value, int *pValue) {
-  return sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, value, pValue);
-}
-
 */
 import "C"
-import (
-	"database/sql/driver"
-	"fmt"
-	"io"
-	"unsafe"
 
-	"github.com/pkg/errors"
-)
-
-// SQLite constants.
-const (
-	OpenReadWrite = C.SQLITE_OPEN_READWRITE
-	OpenReadOnly  = C.SQLITE_OPEN_READONLY
-	OpenCreate    = C.SQLITE_OPEN_CREATE
-
-	Integer = C.SQLITE_INTEGER
-	Float   = C.SQLITE_FLOAT
-	Text    = C.SQLITE_TEXT
-	Blob    = C.SQLITE_BLOB
-	Null    = C.SQLITE_NULL
-
-	ErrError               = C.SQLITE_ERROR
-	ErrInternal            = C.SQLITE_INTERNAL
-	ErrInterrupt           = C.SQLITE_INTERRUPT
-	ErrBusy                = C.SQLITE_BUSY
-	ErrIoErr               = C.SQLITE_IOERR
-	ErrIoErrNotLeader      = C.SQLITE_IOERR_NOT_LEADER
-	ErrIoErrLeadershipLost = C.SQLITE_IOERR_LEADERSHIP_LOST
-)
-
-// Conn is a Go wrapper around a sqlite3 database instance.
-type Conn C.sqlite3
-
-// OpenFollower is a wrapper around Open that opens connection in follower
-// replication mode, and sets any additional dqlite-related options.
-func OpenFollower(name string, vfs string) (*Conn, error) {
-	flags := OpenReadWrite | OpenCreate
-
-	db, err := open(name, flags, vfs)
-	if err != nil {
-		return nil, err
-	}
-
-	rc := C.sqlite3_wal_replication_follower(db, walReplicationSchema)
-	if rc != C.SQLITE_OK {
-		return nil, fmt.Errorf("failed to set follower mode")
-	}
-
-	return (*Conn)(unsafe.Pointer(db)), nil
-}
-
-// OpenLeader is a wrapper around open that opens connection in leader
-// replication mode, and sets any additional dqlite-related options.
-func OpenLeader(name string, vfs string, replication string) (*Conn, error) {
-	flags := OpenReadWrite | OpenCreate
-
-	db, err := open(name, flags, vfs)
-	if err != nil {
-		return nil, err
-	}
-
-	creplication := C.CString(replication)
-	defer C.free(unsafe.Pointer(creplication))
-
-	rc := C.sqlite3_wal_replication_leader(db, walReplicationSchema, creplication, unsafe.Pointer(db))
-	if rc != C.SQLITE_OK {
-		return nil, fmt.Errorf("failed to set leader mode")
-	}
-
-	return (*Conn)(unsafe.Pointer(db)), nil
-}
-
-// Error holds information about a SQLite error.
-type Error struct {
-	Code    int
-	Message string
-}
-
-func (e Error) Error() string {
-	if e.Message != "" {
-		return e.Message
-	}
-	return C.GoString(C.sqlite3_errstr(C.int(e.Code)))
-}
-
-func lastError(db *C.sqlite3) Error {
-	return Error{
-		Code:    int(C.sqlite3_extended_errcode(db)),
-		Message: C.GoString(C.sqlite3_errmsg(db)),
-	}
-}
-
-// Open a SQLite connection.
-func Open(name string, vfs string) (*Conn, error) {
-	flags := OpenReadWrite | OpenCreate
-
-	db, err := open(name, flags, vfs)
-	if err != nil {
-		return nil, err
-	}
-
-	var value C.int
-	rc := C.sqlite3__config_no_ckpt_on_close(db, 1, &value)
-	if rc != C.SQLITE_OK {
-		err := lastError(db)
-		C.sqlite3_close_v2(db)
-		return nil, err
-	}
-
-	return (*Conn)(unsafe.Pointer(db)), nil
-}
-
-// Open a SQLite connection, setting anything that is common between leader and
-// follower connections.
-func open(name string, flags int, vfs string) (*C.sqlite3, error) {
-	// Open the database.
-	cname := C.CString(name)
-	defer C.free(unsafe.Pointer(cname))
-
-	cvfs := C.CString(vfs)
-	defer C.free(unsafe.Pointer(cvfs))
-
-	var db *C.sqlite3
-	rc := C.sqlite3_open_v2(cname, &db, C.int(flags), cvfs)
-	if rc != C.SQLITE_OK {
-		return nil, errors.Wrap(lastError(db), "failed to open database")
-	}
-
-	var errmsg *C.char
-
-	// Set the page size. TODO: make page size configurable?
-	sql := C.CString("PRAGMA page_size=4096")
-	defer C.free(unsafe.Pointer(sql))
-
-	rc = C.sqlite3_exec(db, sql, nil, nil, &errmsg)
-	if rc != C.SQLITE_OK {
-		return nil, errors.Wrap(lastError(db), "failed to exec PRAGMA page_size")
-	}
-
-	// Disable syncs.
-	sql = C.CString("PRAGMA synchronous=OFF")
-	defer C.free(unsafe.Pointer(sql))
-
-	rc = C.sqlite3_exec(db, sql, nil, nil, &errmsg)
-	if rc != C.SQLITE_OK {
-		return nil, errors.Wrap(lastError(db), "failed to exec PRAGMA synchronous")
-	}
-
-	// Set WAL journaling.
-	sql = C.CString("PRAGMA journal_mode=WAL")
-	defer C.free(unsafe.Pointer(sql))
-
-	rc = C.sqlite3_exec(db, sql, nil, nil, &errmsg)
-	if rc != C.SQLITE_OK {
-		return nil, errors.Wrap(lastError(db), "failed to exec PRAGMA journal_mode")
-	}
-
-	return db, nil
-}
-
-// Close the connection.
-func (c *Conn) Close() error {
-	db := (*C.sqlite3)(unsafe.Pointer(c))
-
-	rc := C.sqlite3_close(db)
-	if rc != C.SQLITE_OK {
-		return lastError(db)
-	}
-
-	return nil
-}
-
-// Filename of the underlying database file.
-func (c *Conn) Filename() string {
-	db := (*C.sqlite3)(unsafe.Pointer(c))
-
-	return C.GoString(C.sqlite3_db_filename(db, walReplicationSchema))
-}
-
-// Query the database.
-func (c *Conn) Query(query string) (*Rows, error) {
-	db := (*C.sqlite3)(unsafe.Pointer(c))
-
-	var stmt *C.sqlite3_stmt
-	var tail *C.char
-
-	sql := C.CString(query)
-	defer C.free(unsafe.Pointer(sql))
-
-	rc := C.sqlite3_prepare(db, sql, -1, &stmt, &tail)
-	if rc != C.SQLITE_OK {
-		return nil, lastError(db)
-	}
-
-	rows := &Rows{db: db, stmt: stmt}
-
-	return rows, nil
-}
-
-// Exec executes a query.
-func (c *Conn) Exec(query string) error {
-	db := (*C.sqlite3)(unsafe.Pointer(c))
-
-	var errmsg *C.char
-
-	sql := C.CString(query)
-	defer C.free(unsafe.Pointer(sql))
-
-	rc := C.sqlite3_exec(db, sql, nil, nil, &errmsg)
-	if rc != C.SQLITE_OK {
-		return lastError(db)
-	}
-
-	return nil
-}
-
-type Rows struct {
-	db   *C.sqlite3
-	stmt *C.sqlite3_stmt
-}
-
-func (r *Rows) Next(values []driver.Value) error {
-	rc := C.sqlite3_step(r.stmt)
-	if rc == C.SQLITE_DONE {
-		rc = C.sqlite3_finalize(r.stmt)
-		if rc != C.SQLITE_OK {
-			return lastError(r.db)
-		}
-		return io.EOF
-	}
-	if rc != C.SQLITE_ROW {
-		return lastError(r.db)
-	}
-
-	for i := range values {
-		values[i] = int64(C.sqlite3_column_int64(r.stmt, C.int(i)))
-	}
-
-	return nil
-}
+import "unsafe"
 
 // WalReplicationFollower switches the given sqlite connection to follower WAL
 // replication mode. In this mode no regular operation is possible, and the
@@ -535,7 +287,7 @@ func RegisterWalReplication(name string, replication WalReplication) error {
 
 	rc := C.sqlite3__wal_replication_register(C.CString(name), handle)
 	if rc != C.SQLITE_OK {
-		return fmt.Errorf("registration failed: %d", rc)
+		return codeToError(rc)
 	}
 
 	return nil
@@ -550,7 +302,7 @@ func UnregisterWalReplication(name string) error {
 	var handle C.int
 	rc := C.sqlite3__wal_replication_unregister(cname, &handle)
 	if rc != C.SQLITE_OK {
-		return fmt.Errorf("unregistration failed: %d", rc)
+		return codeToError(rc)
 	}
 
 	// Cleanup the entry
