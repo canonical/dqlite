@@ -155,7 +155,7 @@ func (s *Server) Ready() bool {
 func (s *Server) Handle(conn net.Conn) error {
 	server := (*C.dqlite_server)(unsafe.Pointer(s))
 
-	file, err := conn.(*net.TCPConn).File()
+	file, err := conn.(fileConn).File()
 	if err != nil {
 		return err
 	}
@@ -177,6 +177,12 @@ func (s *Server) Handle(conn net.Conn) error {
 	files = append(files, file)
 
 	return nil
+}
+
+// Interface that net.Conn must implement in order to extract the underlying
+// file descriptor.
+type fileConn interface {
+	File() (*os.File, error)
 }
 
 var files = []*os.File{}

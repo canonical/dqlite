@@ -60,8 +60,7 @@ static int dqlite__conn_write(struct dqlite__conn *    c,
 	assert(bufs[1].base != NULL);
 	assert(bufs[1].len > 0);
 
-	err =
-	    uv_write(req, (uv_stream_t *)(&c->tcp), bufs, 3, dqlite__conn_write_cb);
+	err = uv_write(req, &c->stream, bufs, 3, dqlite__conn_write_cb);
 	if (err != 0) {
 		dqlite__message_send_reset(&response->message);
 		sqlite3_free(req);
@@ -452,14 +451,14 @@ static void dqlite__conn_alive_cb(uv_timer_t *alive) {
 }
 
 static void
-dqlite__conn_read_cb(uv_stream_t *tcp, ssize_t nread, const uv_buf_t *buf) {
+dqlite__conn_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 	int                  err;
 	struct dqlite__conn *c;
 
-	assert(tcp != NULL);
+	assert(stream != NULL);
 	assert(buf != NULL);
 
-	c = (struct dqlite__conn *)tcp->data;
+	c = (struct dqlite__conn *)stream->data;
 
 	assert(c != NULL);
 
@@ -587,24 +586,55 @@ int dqlite__conn_start(struct dqlite__conn *c) {
 		goto err;
 	}
 
-	/* Start reading from the TCP socket. */
-	err = uv_tcp_init(c->loop, &c->tcp);
-	if (err != 0) {
-		dqlite__error_uv(&c->error, err, "failed to init tcp stream");
+	/* Start reading from the stream. */
+	switch (uv_guess_handle(c->fd)) {
+	case UV_TCP:
+		err = uv_tcp_init(c->loop, &c->tcp);
+		if (err != 0) {
+			dqlite__error_uv(
+			    &c->error, err, "failed to init tcp stream");
+			err = DQLITE_ERROR;
+			goto err_after_timer_start;
+		}
+
+		err = uv_tcp_open(&c->tcp, c->fd);
+		if (err != 0) {
+			dqlite__error_uv(
+			    &c->error, err, "failed to open tcp stream");
+			err = DQLITE_ERROR;
+			goto err_after_timer_start;
+		}
+
+		break;
+
+	case UV_NAMED_PIPE:
+		err = uv_pipe_init(c->loop, &c->pipe, 0);
+		if (err != 0) {
+			dqlite__error_uv(
+			    &c->error, err, "failed to init pipe stream");
+			err = DQLITE_ERROR;
+			goto err_after_timer_start;
+		}
+
+		err = uv_pipe_open(&c->pipe, c->fd);
+		if (err != 0) {
+			dqlite__error_uv(
+			    &c->error, err, "failed to open pipe stream");
+			err = DQLITE_ERROR;
+			goto err_after_timer_start;
+		}
+
+		break;
+
+	default:
+		dqlite__error_printf(&c->error, "unsupported stream type");
 		err = DQLITE_ERROR;
 		goto err_after_timer_start;
 	}
 
-	err = uv_tcp_open(&c->tcp, c->fd);
-	if (err != 0) {
-		dqlite__error_uv(&c->error, err, "failed to open tcp stream");
-		err = DQLITE_ERROR;
-		goto err_after_timer_start;
-	}
-	c->tcp.data = (void *)c;
+	c->stream.data = (void *)c;
 
-	err = uv_read_start(
-	    (uv_stream_t *)(&c->tcp), dqlite__conn_alloc_cb, dqlite__conn_read_cb);
+	err = uv_read_start(&c->stream, dqlite__conn_alloc_cb, dqlite__conn_read_cb);
 	if (err != 0) {
 		dqlite__error_uv(
 		    &c->error, err, "failed to start reading tcp stream");
@@ -615,7 +645,7 @@ int dqlite__conn_start(struct dqlite__conn *c) {
 	return 0;
 
 err_after_stream_open:
-	uv_close((uv_handle_t *)(&c->tcp), NULL);
+	uv_close((uv_handle_t *)(&c->stream), NULL);
 
 err_after_timer_start:
 	uv_close((uv_handle_t *)(&c->alive), NULL);
@@ -632,7 +662,7 @@ void dqlite__conn_abort(struct dqlite__conn *c) {
 
 	assert(c != NULL);
 
-	if (uv_is_closing((uv_handle_t *)(&c->tcp))) {
+	if (uv_is_closing((uv_handle_t *)(&c->stream))) {
 		/* It might happen that a connection error occurs at the same time
 		** the loop gets stopped, and dqlite__conn_abort is called twice in
 		** the same loop iteration. We just ignore the second call in that
@@ -653,5 +683,5 @@ void dqlite__conn_abort(struct dqlite__conn *c) {
 	uv_close((uv_handle_t *)(&c->alive), NULL);
 
 	/* TODO: add a close callback and invoke dqlite__conn_close(conn) */
-	uv_close((uv_handle_t *)(&c->tcp), NULL);
+	uv_close((uv_handle_t *)(&c->stream), NULL);
 }

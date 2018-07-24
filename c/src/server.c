@@ -70,7 +70,7 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg) {
 	assert(handle != NULL);
 	assert(arg != NULL);
 	assert(handle->type == UV_ASYNC || handle->type == UV_TIMER ||
-	       handle->type == UV_TCP);
+	       handle->type == UV_TCP || handle->type == UV_NAMED_PIPE);
 
 	s = (struct dqlite__server *)arg;
 
@@ -85,6 +85,7 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg) {
 		break;
 
 	case UV_TCP:
+	case UV_NAMED_PIPE:
 		assert(handle->data != NULL);
 
 		conn = (struct dqlite__conn *)handle->data;
