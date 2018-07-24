@@ -38,9 +38,13 @@ struct dqlite__conn {
 	struct dqlite__request  request;  /* Incoming request */
 	struct dqlite__response response; /* Response buffer for internal failures */
 
-	int        fd;    /* File descriptor of client stream */
-	uv_loop_t *loop;  /* UV loop */
-	uv_tcp_t   tcp;   /* UV TCP handle */
+	int        fd;   /* File descriptor of client stream */
+	uv_loop_t *loop; /* UV loop */
+	union {
+		uv_tcp_t    tcp;
+		uv_pipe_t   pipe;
+		uv_stream_t stream;
+	};                /* UV stream handle */
 	uv_timer_t alive; /* Check that the client is still alive */
 	uv_buf_t   buf;   /* Read buffer */
 };
