@@ -35,6 +35,12 @@ void dqlite__stmt_close(struct dqlite__stmt *s) {
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_STMT);
 }
 
+const char *dqlite__stmt_hash(struct dqlite__stmt *stmt) {
+	(void)stmt;
+
+	return NULL;
+}
+
 /* Bind a parameter. */
 static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
                                    struct dqlite__message *message,
