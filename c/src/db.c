@@ -65,17 +65,19 @@ void dqlite__db_close(struct dqlite__db *db) {
 int dqlite__db_open(struct dqlite__db *db,
                     const char *       name,
                     int                flags,
-                    const char *       replication) {
-	const char *vfs;
+                    const char *       vfs,
+                    uint16_t           page_size) {
+	const char *replication;
+	char        pragma[255];
 	int         rc;
 
 	assert(db != NULL);
 	assert(name != NULL);
-	assert(replication != NULL);
+	assert(vfs != NULL);
 
-	/* The VFS registration name must match the one of the replication
-	 * implementation. */
-	vfs = replication;
+	/* The replication registration name must match the one of the VFS
+	 * replication implementation. */
+	replication = vfs;
 
 	/* TODO: do some validation of the name (e.g. can't begin with a slash) */
 	rc = sqlite3_open_v2(name, &db->db, flags, vfs);
@@ -91,8 +93,9 @@ int dqlite__db_open(struct dqlite__db *db,
 		return rc;
 	}
 
-	/* Set the page size. TODO: make page size configurable? */
-	rc = dqlite__db_exec(db, "PRAGMA page_size=4096");
+	/* Set the page size. */
+	sprintf(pragma, "PRAGMA page_size=%d", page_size);
+	rc = dqlite__db_exec(db, pragma);
 	if (rc != SQLITE_OK) {
 		dqlite__error_wrapf(
 		    &db->error, &db->error, "unable to set page size");

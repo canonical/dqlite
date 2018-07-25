@@ -20,7 +20,7 @@ static void __db_open(struct dqlite__db *db) {
 	int rc;
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 
-	rc = dqlite__db_open(db, "test.db", flags, "test");
+	rc = dqlite__db_open(db, "test.db", flags, "test", 4096);
 	munit_assert_int(rc, ==, SQLITE_OK);
 }
 
@@ -87,7 +87,7 @@ static MunitResult test_open_cantopen(const MunitParameter params[], void *data)
 
 	(void)params;
 
-	rc = dqlite__db_open(db, "test.db", flags, "test");
+	rc = dqlite__db_open(db, "test.db", flags, "test", 4096);
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 
 	munit_assert_string_equal(db->error, "unable to open database file");
@@ -104,7 +104,7 @@ static MunitResult test_open_bad_vfs(const MunitParameter params[], void *data) 
 
 	(void)params;
 
-	rc = dqlite__db_open(db, "test.db", flags, "foo");
+	rc = dqlite__db_open(db, "test.db", flags, "foo", 4096);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(db->error, "no such vfs: foo");
@@ -120,7 +120,7 @@ static MunitResult test_open(const MunitParameter params[], void *data) {
 
 	(void)params;
 
-	rc = dqlite__db_open(db, "test.db", flags, "test");
+	rc = dqlite__db_open(db, "test.db", flags, "test", 4096);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	return MUNIT_OK;
