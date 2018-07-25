@@ -22,7 +22,7 @@ struct dqlite__vfs_content {
 	void *                    hdr;       /* File header (only for WAL files). */
 	struct dqlite__vfs_page **pages;     /* Pointers to all pages in the file. */
 	int                       pages_len; /* Number of pages in the file. */
-	int                       page_size; /* Size of page->buf for each page. */
+	unsigned int              page_size; /* Size of page->buf for each page. */
 
 	int    refcount;        /* Number of open FDs referencing this file. */
 	int    type;            /* Content type (either main db or WAL). */

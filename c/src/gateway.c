@@ -5,6 +5,7 @@
 #include "../include/dqlite.h"
 
 #include "error.h"
+#include "format.h"
 #include "fsm.h"
 #include "gateway.h"
 #include "lifecycle.h"
@@ -367,22 +368,35 @@ static void dqlite__gateway_begin(struct dqlite__gateway *    g,
  * configured threshold and there are no transactions in progress. */
 static void dqlite__gateway_maybe_checkpoint(struct dqlite__gateway *g,
                                              struct dqlite__db *     db) {
-	struct dqlite__vfs_file *file;
+	struct sqlite3_file *    file;
+	sqlite_int64             size;
+	unsigned                 pages;
 	int                      rc;
+	struct dqlite__vfs_file *db_file;
 
 	assert(g != NULL);
 	assert(db != NULL);
 
-	/* Get the file associated with this database */
-	rc = sqlite3_file_control(db->db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
+	/* Get the WAL file associated with this database */
+	rc = sqlite3_file_control(
+	    db->db, "main", SQLITE_FCNTL_JOURNAL_POINTER, &file);
 	assert(rc == SQLITE_OK); /* Should never fail */
 
-	if (file->content->pages_len < (int)g->options->checkpoint_threshold) {
+	rc = file->pMethods->xFileSize(file, &size);
+	assert(rc == SQLITE_OK); /* Should never fail */
+
+	pages = dqlite__format_wal_calc_pages(g->options->page_size, size);
+	if (pages < g->options->checkpoint_threshold) {
 		/* Nothing to do yet. */
 		return;
 	}
 
-	if (file->content->tx_refcount > 0) {
+	/* Get the main db file associated with this database */
+	rc = sqlite3_file_control(
+	    db->db, "main", SQLITE_FCNTL_FILE_POINTER, &db_file);
+	assert(rc == SQLITE_OK); /* Should never fail */
+
+	if (db_file->content->tx_refcount > 0) {
 		/* There are ongoing transactions, do nothing. */
 		return;
 	}
