@@ -62,6 +62,12 @@ void dqlite__db_close(struct dqlite__db *db) {
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_DB);
 }
 
+const char *dqlite__db_hash(struct dqlite__db *db) {
+	(void)db;
+
+	return NULL;
+}
+
 int dqlite__db_open(struct dqlite__db *db,
                     const char *       name,
                     int                flags,

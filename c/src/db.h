@@ -25,6 +25,9 @@ void dqlite__db_init(struct dqlite__db *db);
 /* Close a database state object, releasing all associated resources. */
 void dqlite__db_close(struct dqlite__db *db);
 
+/* No-op hash function (hashing is not supported for dqlite__db). */
+const char *dqlite__db_hash(struct dqlite__db *db);
+
 /* Open the underlying db. */
 int dqlite__db_open(struct dqlite__db *db,
                     const char *       name,

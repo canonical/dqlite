@@ -22,6 +22,9 @@ void dqlite__stmt_init(struct dqlite__stmt *s);
 /* Close a statement state object, releasing all associated resources. */
 void dqlite__stmt_close(struct dqlite__stmt *s);
 
+/* No-op hash function (hashing is not supported for dqlite__stmt). */
+const char *dqlite__stmt_hash(struct dqlite__stmt *stmt);
+
 /* Bind the parameters of the underlying statement by decoding the given
  * message. */
 int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message);

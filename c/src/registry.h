@@ -11,7 +11,10 @@
 #include "../include/dqlite.h"
 
 /* Define a type-safe registry able to allocate and lookup items of a given
- * type. */
+ * type.
+ *
+ * The item TYPE is required to implement three methods: TYPE##_init,
+ * TYPE##_close and TYPE##_hash. */
 #define DQLITE__REGISTRY(NAME, TYPE)                                                \
                                                                                     \
 	struct NAME {                                                               \
@@ -36,6 +39,10 @@
 	/* Given its ID, retrieve an item previously added to the                   \
 	 * registry. */                                                             \
 	struct TYPE *NAME##_get(struct NAME *r, size_t id);                         \
+                                                                                    \
+	/* Get the index of the first item matching the given hash key. Return      \
+	 * 0 on success and DQLITE_NOTFOUND otherwise. */                           \
+	int NAME##_idx(struct NAME *r, const char *key, size_t *i);                 \
                                                                                     \
 	/* Delete a previously added item. */                                       \
 	int NAME##_del(struct NAME *r, struct TYPE *item)
@@ -136,6 +143,32 @@
 		assert(item->id == id);                                             \
                                                                                     \
 		return item;                                                        \
+	}                                                                           \
+                                                                                    \
+	int NAME##_idx(struct NAME *r, const char *key, size_t *i) {                \
+		struct TYPE *item;                                                  \
+                                                                                    \
+		assert(r != NULL);                                                  \
+		assert(key != NULL);                                                \
+		assert(i != NULL);                                                  \
+                                                                                    \
+		for (*i = 0; *i < r->len; (*i)++) {                                 \
+			const char *hash;                                           \
+                                                                                    \
+			item = *(r->buf + *i);                                      \
+                                                                                    \
+			if (item == NULL) {                                         \
+				continue;                                           \
+			}                                                           \
+                                                                                    \
+			hash = TYPE##_hash(item);                                   \
+                                                                                    \
+			if (hash != NULL && strcmp(hash, key) == 0) {               \
+				return 0;                                           \
+			}                                                           \
+		}                                                                   \
+                                                                                    \
+		return DQLITE_NOTFOUND;                                             \
 	}                                                                           \
                                                                                     \
 	int NAME##_del(struct NAME *r, struct TYPE *item) {                         \
