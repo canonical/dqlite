@@ -90,8 +90,11 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 
 	assert(replication != NULL);
 
-	rc = dqlite__db_open(
-	    db, ctx->request->open.name, ctx->request->open.flags, replication);
+	rc = dqlite__db_open(db,
+	                     ctx->request->open.name,
+	                     ctx->request->open.flags,
+	                     replication,
+	                     g->options->page_size);
 
 	if (rc != 0) {
 		dqlite__error_printf(&g->error, db->error);
