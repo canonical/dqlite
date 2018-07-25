@@ -30,6 +30,8 @@ libdqlite_la_SOURCES = \
   src/db.h \
   src/error.c \
   src/error.h \
+  src/format.c \
+  src/format.h \
   src/fsm.c \
   src/fsm.h \
   src/gateway.c \
@@ -80,6 +82,7 @@ dqlite_test_SOURCES = \
   test/test_conn.c \
   test/test_db.c \
   test/test_error.c \
+  test/test_format.c \
   test/test_gateway.c \
   test/test_integration.c \
   test/test_message.c \
