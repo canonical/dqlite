@@ -146,9 +146,7 @@ static int dqlite__vfs_content_init(struct dqlite__vfs_content *c,
 	c->refcount  = 0;
 	c->type      = type;
 	c->shm       = NULL;
-
-	c->wal         = NULL;
-	c->tx_refcount = 0;
+	c->wal       = NULL;
 
 	return SQLITE_OK;
 

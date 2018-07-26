@@ -196,9 +196,8 @@ static MunitResult test_begin_error(const MunitParameter params[], void *data) {
 
 /* The in_a_tx flag gets switched on after a transaction is successfully started. */
 static MunitResult test_begin(const MunitParameter params[], void *data) {
-	struct dqlite__db *      db = data;
-	struct dqlite__vfs_file *file;
-	int                      rc;
+	struct dqlite__db *db = data;
+	int                rc;
 
 	(void)params;
 
@@ -208,12 +207,6 @@ static MunitResult test_begin(const MunitParameter params[], void *data) {
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	munit_assert_int(db->in_a_tx, ==, 1);
-
-	/* The transaction refcount is now 1 */
-	rc = sqlite3_file_control(db->db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	munit_assert_int(file->content->tx_refcount, ==, 1);
 
 	return MUNIT_OK;
 }
@@ -306,8 +299,6 @@ static MunitResult test_commit(const MunitParameter params[], void *data) {
 	/* The transaction refcount has dropped to 0 */
 	rc = sqlite3_file_control(db->db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
-
-	munit_assert_int(file->content->tx_refcount, ==, 0);
 
 	return MUNIT_OK;
 }

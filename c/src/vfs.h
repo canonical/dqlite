@@ -38,11 +38,6 @@ struct dqlite__vfs_content {
 
 	struct dqlite__vfs_shm *    shm; /* Shared memory (for databse files). */
 	struct dqlite__vfs_content *wal; /* WAL file content (for database files). */
-
-	/* For database files, number of ongoing transations across all db
-	 * connections using this database. Used to decide whether it's safe to
-	 * issue a checkpoint after a commit. */
-	int tx_refcount;
 };
 
 // Root of the volatile file system. Contains pointers to the content
