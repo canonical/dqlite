@@ -1726,62 +1726,127 @@ void dqlite_vfs_unregister(sqlite3_vfs *vfs) {
 	sqlite3_free(vfs);
 }
 
+/* Guess the file type by looking the filename. */
+static int dqlite__vfs_guess_file_type(const char *filename) {
+	/* TODO: improve the check. */
+	if (strstr(filename, "-wal") != NULL) {
+		return DQLITE__FORMAT_WAL;
+	}
+
+	return DQLITE__FORMAT_DB;
+}
+
 int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
                         const char * filename,
                         uint8_t **   buf,
                         size_t *     len) {
-	struct dqlite__vfs_root *   root;
-	struct dqlite__vfs_content *content;
-	struct dqlite__vfs_page *   page;
-	size_t                      size;
-	uint8_t *                   cursor;
-	int                         i;
+	int           type;
+	int           flags;
+	sqlite3_file *file;
+	unsigned      page_size;
+	sqlite3_int64 offset = 0;
+	int           rc;
 
 	assert(vfs != NULL);
 	assert(buf != NULL);
 
-	root = (struct dqlite__vfs_root *)(vfs->pAppData);
+	type = dqlite__vfs_guess_file_type(filename);
 
-	dqlite__vfs_root_content_lookup(root, filename, &content);
+	/* Common flags */
+	flags = SQLITE_OPEN_READWRITE;
 
-	if (content == NULL) {
-		return SQLITE_NOTFOUND;
+	if (type == DQLITE__FORMAT_DB) {
+		flags |= SQLITE_OPEN_MAIN_DB;
+	} else {
+		flags |= SQLITE_OPEN_WAL;
 	}
 
-	size = content->page_size * content->pages_len;
-
-	if (content->hdr != NULL) {
-		size += DQLITE__FORMAT_WAL_HDR_SIZE;
-		size += DQLITE__FORMAT_WAL_FRAME_HDR_SIZE * content->pages_len;
+	/* Open the file */
+	file = (sqlite3_file *)sqlite3_malloc(sizeof(*file));
+	if (file == NULL) {
+		rc = SQLITE_NOMEM;
+		goto err;
 	}
 
-	*buf = (uint8_t *)sqlite3_malloc(size);
-	*len = size;
+	rc = dqlite__vfs_open(vfs, filename, file, flags, &flags);
+	if (rc != SQLITE_OK) {
+		goto err_after_file_malloc;
+	}
 
+	/* Get the file size */
+	rc = file->pMethods->xFileSize(file, (sqlite3_int64 *)len);
+	if (rc != SQLITE_OK) {
+		goto err_after_file_open;
+	}
+
+	/* Allocate the read buffer */
+	*buf = sqlite3_malloc(*len);
 	if (*buf == NULL) {
-		return SQLITE_NOMEM;
+		rc = SQLITE_NOMEM;
+		goto err_after_file_open;
 	}
 
-	cursor = *buf;
-
-	if (content->hdr != NULL) {
-		memcpy(cursor, content->hdr, DQLITE__FORMAT_WAL_HDR_SIZE);
-		cursor += DQLITE__FORMAT_WAL_HDR_SIZE;
+	/* Read the header. The buffer size is enough for both cases. */
+	rc = file->pMethods->xRead(file, *buf, DQLITE__FORMAT_WAL_HDR_SIZE, 0);
+	if (rc != SQLITE_OK) {
+		goto err_after_buf_malloc;
 	}
 
-	for (i = 0; i < content->pages_len; i++) {
-		page = *(content->pages + i);
+	/* Figure the page size */
+	rc = dqlite__format_get_page_size(type, *buf, &page_size);
+	if (rc != SQLITE_OK) {
+		goto err_after_buf_malloc;
+	}
 
-		if (page->hdr != NULL) {
-			memcpy(cursor, page->hdr, DQLITE__FORMAT_WAL_FRAME_HDR_SIZE);
-			cursor += DQLITE__FORMAT_WAL_FRAME_HDR_SIZE;
+	/* If this is a WAL file, we have already read the header and we can
+	 * move on. */
+	if (type == DQLITE__FORMAT_WAL) {
+		offset += DQLITE__FORMAT_WAL_HDR_SIZE;
+	}
+
+	while ((size_t)offset < *len) {
+		uint8_t *pos = (*buf) + offset;
+
+		if (type == DQLITE__FORMAT_WAL) {
+			/* Read the frame header */
+			rc = file->pMethods->xRead(
+			    file, pos, DQLITE__FORMAT_WAL_FRAME_HDR_SIZE, offset);
+			if (rc != SQLITE_OK) {
+				goto err_after_buf_malloc;
+			}
+			offset += DQLITE__FORMAT_WAL_FRAME_HDR_SIZE;
+			pos += DQLITE__FORMAT_WAL_FRAME_HDR_SIZE;
 		}
 
-		memcpy(cursor, page->buf, content->page_size);
-		cursor += content->page_size;
-	}
+		/* Read the page */
+		rc = file->pMethods->xRead(file, pos, page_size, offset);
+		if (rc != SQLITE_OK) {
+			goto err_after_buf_malloc;
+		}
+		offset += page_size;
+	};
 
-	return 0;
+	file->pMethods->xClose(file);
+	sqlite3_free(file);
+
+	return SQLITE_OK;
+
+err_after_buf_malloc:
+	sqlite3_free(*buf);
+
+err_after_file_open:
+	file->pMethods->xClose(file);
+
+err_after_file_malloc:
+	sqlite3_free(file);
+
+err:
+	assert(rc != SQLITE_OK);
+
+	*buf = NULL;
+	*len = 0;
+
+	return rc;
 }
 
 int dqlite_vfs_restore(sqlite3_vfs *vfs,

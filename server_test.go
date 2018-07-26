@@ -80,6 +80,14 @@ func TestServer_Dump(t *testing.T) {
 	err = c.Call(ctx, &request, &response)
 	require.NoError(t, err)
 
+	request.Reset()
+	response.Reset()
+
+	client.EncodeCommit(&request, uint64(db))
+
+	err = c.Call(ctx, &request, &response)
+	require.NoError(t, err)
+
 	// Dump the database to disk.
 	dir, err := ioutil.TempDir("", "dqlite-server-")
 	require.NoError(t, err)
