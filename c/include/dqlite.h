@@ -172,6 +172,12 @@ dqlite_cluster *dqlite_server_cluster(dqlite_server *s);
 /* Return the dqlite_logger object the server is using, if any was configured. */
 dqlite_logger *dqlite_server_logger(dqlite_server *s);
 
+/* A data buffer, used for taking and restoring VFS file snapshots. */
+typedef struct dqlite_buffer {
+	uint8_t *data;
+	size_t   size;
+} dqlite_buf;
+
 /* Register an in-memory SQLite VFS implementation under the given name. Return
  * the newly created VFS instance.
  *

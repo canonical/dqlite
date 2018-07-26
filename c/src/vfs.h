@@ -5,6 +5,9 @@
 
 #include <sqlite3.h>
 
+#define DQLITE__VFS_FCNTL_WAL_IDX_MX_FRAME 100
+#define DQLITE__VFS_FCNTL_WAL_IDX_READ_MARKS 101
+
 /* Hold content for a single page or frame in a volatile file. */
 struct dqlite__vfs_page {
 	void *buf;        /* Content of the page. */
@@ -16,6 +19,16 @@ struct dqlite__vfs_page {
 	                    dirty_mask. */
 };
 
+/* Hold content for a shared memory mapping. */
+struct dqlite__vfs_shm {
+	void **regions;     /* Pointers to shared memory regions. */
+	int    regions_len; /* Number of shared memory regions. */
+	int    refcount;    /* Number of opened files using the shared memory. */
+
+	unsigned shared[SQLITE_SHM_NLOCK];    /* Count of shared locks */
+	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
+};
+
 /* Hold content for a single file in the volatile file system. */
 struct dqlite__vfs_content {
 	char *                    filename;  /* Name of the file. */
@@ -24,12 +37,10 @@ struct dqlite__vfs_content {
 	int                       pages_len; /* Number of pages in the file. */
 	unsigned int              page_size; /* Size of page->buf for each page. */
 
-	int    refcount;        /* Number of open FDs referencing this file. */
-	int    type;            /* Content type (either main db or WAL). */
-	void **shm_regions;     /* Pointers to shared memory regions. */
-	int    shm_regions_len; /* Number of shared memory regions. */
-	int    shm_refcount;    /* Number of opened files using the shared memory. */
+	int refcount; /* Number of open FDs referencing this file. */
+	int type;     /* Content type (either main db or WAL). */
 
+	struct dqlite__vfs_shm *    shm; /* Shared memory (for databse files). */
 	struct dqlite__vfs_content *wal; /* WAL file content (for database files). */
 
 	/* For database files, number of ongoing transations across all db

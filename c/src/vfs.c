@@ -79,6 +79,40 @@ static void dqlite__vfs_page_close(struct dqlite__vfs_page *p) {
 	}
 }
 
+/* Initialize a new SHM mapping for a database file. */
+static void dqlite__vfs_shm_init(struct dqlite__vfs_shm *s) {
+	int i;
+
+	s->regions     = NULL;
+	s->regions_len = 0;
+	s->refcount    = 0;
+
+	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
+		s->shared[i]    = 0;
+		s->exclusive[i] = 0;
+	}
+}
+
+/* Release the memory of a SHM mapping. */
+static void dqlite__vfs_shm_close(struct dqlite__vfs_shm *s) {
+	void *region;
+	int   i;
+
+	assert(s != NULL);
+
+	/* Free all regions. */
+	for (i = 0; i < s->regions_len; i++) {
+		region = *(s->regions + i);
+		assert(region != NULL);
+		sqlite3_free(region);
+	}
+
+	/* Free the shared memory region array. */
+	if (s->regions != NULL) {
+		sqlite3_free(s->regions);
+	}
+}
+
 /* Initialize the content structure for a new volatile file. */
 static int dqlite__vfs_content_init(struct dqlite__vfs_content *c,
                                     const char *                filename,
@@ -107,16 +141,15 @@ static int dqlite__vfs_content_init(struct dqlite__vfs_content *c,
 		c->hdr = NULL;
 	}
 
-	c->pages           = 0;
-	c->pages_len       = 0;
-	c->page_size       = 0;
-	c->refcount        = 0;
-	c->type            = type;
-	c->shm_regions     = 0;
-	c->shm_regions_len = 0;
-	c->shm_refcount    = 0;
-	c->wal             = 0;
-	c->tx_refcount     = 0;
+	c->pages     = 0;
+	c->pages_len = 0;
+	c->page_size = 0;
+	c->refcount  = 0;
+	c->type      = type;
+	c->shm       = NULL;
+
+	c->wal         = NULL;
+	c->tx_refcount = 0;
 
 	return SQLITE_OK;
 
@@ -131,7 +164,6 @@ err:
 static void dqlite__vfs_content_close(struct dqlite__vfs_content *c, int force) {
 	int                      i;
 	struct dqlite__vfs_page *page;
-	void *                   shm_region;
 
 	assert(c != NULL);
 	assert(c->filename != NULL);
@@ -165,16 +197,11 @@ static void dqlite__vfs_content_close(struct dqlite__vfs_content *c, int force) 
 		sqlite3_free(c->pages);
 	}
 
-	/* Free all shared memory regions. */
-	for (i = 0; i < c->shm_regions_len; i++) {
-		shm_region = *(c->shm_regions + i);
-		assert(shm_region);
-		sqlite3_free(shm_region);
-	}
-
-	/* Free the shared memory region array. */
-	if (c->shm_regions) {
-		sqlite3_free(c->shm_regions);
+	/* Free the SHM mappping */
+	if (c->shm != NULL) {
+		assert(c->type == DQLITE__FORMAT_DB);
+		dqlite__vfs_shm_close(c->shm);
+		sqlite3_free(c->shm);
 	}
 }
 
@@ -551,6 +578,7 @@ dqlite__vfs_read(sqlite3_file *file, void *buf, int amount, sqlite_int64 offset)
 	       f->content->type == DQLITE__FORMAT_WAL);
 
 	switch (f->content->type) {
+
 	case DQLITE__FORMAT_DB:
 		/* Main database */
 
@@ -951,60 +979,117 @@ static int dqlite__vfs_check_reserved_lock(sqlite3_file *file, int *result) {
 	return SQLITE_OK;
 }
 
+/* Handle pragma a pragma file control. See the xFileControl
+ * docstring in sqlite.h.in for more details. */
+static int dqlite__vfs_file_control_pragma(struct dqlite__vfs_file *f,
+                                           char **                  fnctl) {
+	const char *left;
+	const char *right;
+
+	assert(f != NULL);
+	assert(fnctl != NULL);
+
+	left  = fnctl[1];
+	right = fnctl[2];
+
+	assert(left != NULL);
+
+	if (strcmp(left, "page_size") == 0 && right) {
+		/* When the user executes 'PRAGMA page_size=N' we save the
+		 * size internally.
+		 *
+		 * The page size must be between 512 and 65536, and be a
+		 * power of two. The check below was copied from
+		 * sqlite3BtreeSetPageSize in btree.c.
+		 *
+		 * Invalid sizes are simply ignored, SQLite will do the same.
+		 *
+		 * It's not possible to change the size after it's set.
+		 */
+		int page_size = atoi(right);
+
+		if (page_size >= DQLITE__FORMAT_PAGE_SIZE_MIN &&
+		    page_size <= DQLITE__FORMAT_PAGE_SIZE_MAX &&
+		    ((page_size - 1) & page_size) == 0) {
+
+			if (f->content->page_size &&
+			    page_size != (int)f->content->page_size) {
+				fnctl[0] = "changing page size is not supported";
+				return SQLITE_ERROR;
+			}
+			f->content->page_size = page_size;
+		}
+	} else if (strcmp(left, "journal_mode") == 0 && right) {
+		/* When the user executes 'PRAGMA journal_mode=x' we ensure
+		 * that the desired mode is 'wal'. */
+		if (strcasecmp(right, "wal") != 0) {
+			fnctl[0] = "only WAL mode is supported";
+			return SQLITE_ERROR;
+		}
+	}
+
+	return SQLITE_NOTFOUND;
+}
+
+static int dqlite__vfs_file_control_wal_idx_mx_frame(struct dqlite__vfs_file *f,
+                                                     uint32_t *               v) {
+	uint32_t *idx;
+
+	assert(f != NULL);
+	assert(v != NULL);
+
+	assert(f->content->type == DQLITE__FORMAT_DB);
+	assert(f->content->shm != NULL);
+
+	assert(f->content->shm->regions != NULL);
+	assert(f->content->shm->regions_len > 0);
+
+	idx = f->content->shm->regions[0];
+
+	/* The mxFrame number is 16th byte of the WAL index header. See also
+	 * https://sqlite.org/walformat.html. */
+	*v = idx[4];
+
+	return SQLITE_OK;
+}
+
+static int dqlite__vfs_file_control_wal_idx_read_marks(struct dqlite__vfs_file *f,
+                                                       uint32_t v[5]) {
+	uint32_t *idx;
+
+	assert(f != NULL);
+	assert(v != NULL);
+
+	assert(f->content->type == DQLITE__FORMAT_DB);
+	assert(f->content->shm != NULL);
+
+	assert(f->content->shm->regions != NULL);
+	assert(f->content->shm->regions_len > 0);
+
+	idx = f->content->shm->regions[0];
+
+	/* The read-mark array starts at the 100th byte of the WAL index
+	 * header. See also https://sqlite.org/walformat.html. */
+	memcpy(v, &idx[25], (sizeof *idx) * 5);
+
+	return SQLITE_OK;
+}
+
 static int dqlite__vfs_file_control(sqlite3_file *file, int op, void *arg) {
 	struct dqlite__vfs_file *f = (struct dqlite__vfs_file *)file;
 
-	if (op == SQLITE_FCNTL_PRAGMA) {
-		// Handle pragma a pragma file control. See the xFileControl
-		// docstring in sqlite.h.in for more details.
-		char **     pragma_fnctl;
-		const char *pragma_left;
-		const char *pragma_right;
+	switch (op) {
 
-		pragma_fnctl = (char **)arg;
-		assert(pragma_fnctl);
+	case SQLITE_FCNTL_PRAGMA:
+		return dqlite__vfs_file_control_pragma(f, arg);
 
-		pragma_left  = pragma_fnctl[1];
-		pragma_right = pragma_fnctl[2];
-		assert(pragma_left);
+	case DQLITE__VFS_FCNTL_WAL_IDX_MX_FRAME:
+		return dqlite__vfs_file_control_wal_idx_mx_frame(f, arg);
 
-		if (strcmp(pragma_left, "page_size") == 0 && pragma_right) {
-			/* When the user executes 'PRAGMA page_size=N' we save the
-			 * size internally.
-			 *
-			 * The page size must be between 512 and 65536, and be a
-			 * power of two. The check below was copied from
-			 * sqlite3BtreeSetPageSize in btree.c.
-			 *
-			 * Invalid sizes are simply ignored, SQLite will do the same.
-			 *
-			 * It's not possible to change the size after it's set.
-			 */
-			int page_size = atoi(pragma_right);
-
-			if (page_size >= DQLITE__FORMAT_PAGE_SIZE_MIN &&
-			    page_size <= DQLITE__FORMAT_PAGE_SIZE_MAX &&
-			    ((page_size - 1) & page_size) == 0) {
-
-				if (f->content->page_size &&
-				    page_size != (int)f->content->page_size) {
-					pragma_fnctl[0] =
-					    "changing page size is not supported";
-					return SQLITE_ERROR;
-				}
-				f->content->page_size = page_size;
-			}
-		} else if (strcmp(pragma_left, "journal_mode") == 0 &&
-		           pragma_right) {
-			/* When the user executes 'PRAGMA journal_mode=x' we ensure
-			 * that the desired mode is 'wal'. */
-			if (strcasecmp(pragma_right, "wal") != 0) {
-				pragma_fnctl[0] = "only WAL mode is supported";
-				return SQLITE_ERROR;
-			}
-		}
-		return SQLITE_NOTFOUND;
+	case DQLITE__VFS_FCNTL_WAL_IDX_READ_MARKS:
+		return dqlite__vfs_file_control_wal_idx_read_marks(f, arg);
 	}
+
 	return SQLITE_OK;
 }
 
@@ -1029,36 +1114,46 @@ static int dqlite__vfs_shm_map(sqlite3_file *file, /* Handle open on database fi
 ) {
 	struct dqlite__vfs_file *f = (struct dqlite__vfs_file *)file;
 	void *                   region;
-	int                      err = SQLITE_OK;
+	int                      rc;
 
-	if (f->content->shm_regions != NULL &&
-	    region_index < f->content->shm_regions_len) {
+	if (f->content->shm == NULL) {
+		f->content->shm = sqlite3_malloc(sizeof *f->content->shm);
+		if (f->content->shm == NULL) {
+			rc = SQLITE_NOMEM;
+			goto err;
+		}
+		dqlite__vfs_shm_init(f->content->shm);
+	}
+
+	if (f->content->shm->regions != NULL &&
+	    region_index < f->content->shm->regions_len) {
 		/* The region was already allocated. */
-		region = *(f->content->shm_regions + region_index);
+		region = *(f->content->shm->regions + region_index);
 		assert(region != NULL);
 	} else {
 		if (extend) {
 			/* We should grow the map one region at a time. */
-			assert(region_index == f->content->shm_regions_len);
-
+			assert(region_index == f->content->shm->regions_len);
 			region = sqlite3_malloc(region_size);
-			if (region != NULL) {
-				memset(region, 0, region_size);
-				f->content->shm_regions = (void **)sqlite3_realloc(
-				    f->content->shm_regions,
-				    sizeof(void *) * (region_index + 1));
-				if (f->content->shm_regions == NULL) {
-					sqlite3_free(region);
-					region = 0;
-					err    = SQLITE_NOMEM;
-				} else {
-					*(f->content->shm_regions + region_index) =
-					    region;
-					f->content->shm_regions_len++;
-				}
-			} else {
-				err = SQLITE_NOMEM;
+			if (region == NULL) {
+				rc = SQLITE_NOMEM;
+				goto err;
 			}
+
+			memset(region, 0, region_size);
+
+			f->content->shm->regions =
+			    sqlite3_realloc(f->content->shm->regions,
+			                    sizeof(void *) * (region_index + 1));
+
+			if (f->content->shm->regions == NULL) {
+				rc = SQLITE_NOMEM;
+				goto err_after_region_malloc;
+			}
+
+			*(f->content->shm->regions + region_index) = region;
+			f->content->shm->regions_len++;
+
 		} else {
 			/* The region was not allocated and we don't have to
 			 * extend the map. */
@@ -1067,23 +1162,103 @@ static int dqlite__vfs_shm_map(sqlite3_file *file, /* Handle open on database fi
 	}
 
 	if (region) {
-		f->content->shm_refcount++;
+		f->content->shm->refcount++;
 	}
 
 	*out = region;
 
-	return err;
+	return SQLITE_OK;
+
+err_after_region_malloc:
+	sqlite3_free(region);
+
+err:
+	assert(rc != SQLITE_OK);
+
+	*out = NULL;
+
+	return rc;
 }
 
 static int dqlite__vfs_shm_lock(sqlite3_file *file, int ofst, int n, int flags) {
-	(void)file;
-	(void)ofst;
-	(void)n;
-	(void)flags;
+	struct dqlite__vfs_file *f;
+	int                      i;
+
+	assert(file != NULL);
+
+	/* Legal values for the offset and the range */
+	assert(ofst >= 0 && ofst + n <= SQLITE_SHM_NLOCK);
+	assert(n >= 1);
+	assert(n == 1 || (flags & SQLITE_SHM_EXCLUSIVE) != 0);
+
+	/* Legal values for the flags.
+	 *
+	 * See https://sqlite.org/c3ref/c_shm_exclusive.html. */
+	assert(flags == (SQLITE_SHM_LOCK | SQLITE_SHM_SHARED) ||
+	       flags == (SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE) ||
+	       flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED) ||
+	       flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE));
 
 	/* This is a no-op since shared-memory locking is relevant only for
 	 * inter-process concurrency. See also the unix-excl branch from upstream
 	 * (git commit cda6b3249167a54a0cf892f949d52760ee557129). */
+
+	f = (struct dqlite__vfs_file *)file;
+
+	assert(f->content != NULL);
+	assert(f->content->shm != NULL);
+
+	if (flags & SQLITE_SHM_UNLOCK) {
+		unsigned *these_locks;
+		unsigned *other_locks;
+
+		if (flags & SQLITE_SHM_SHARED) {
+			these_locks = f->content->shm->shared;
+			other_locks = f->content->shm->exclusive;
+		} else {
+			these_locks = f->content->shm->exclusive;
+			other_locks = f->content->shm->shared;
+		}
+
+		for (i = ofst; i < ofst + n; i++) {
+			/* Sanity check that no lock of the other type is held
+			 * in this region. */
+			assert(other_locks[i] == 0);
+
+			/* Sanity check that there is at least one lock held for
+			 * this index. */
+			assert(these_locks[i] > 0);
+
+			these_locks[i]--;
+		}
+	} else {
+		if (flags & SQLITE_SHM_EXCLUSIVE) {
+			/* No shared or exclusive lock must be held in the region. */
+			for (i = ofst; i < ofst + n; i++) {
+				if (f->content->shm->shared[i] > 0 ||
+				    f->content->shm->exclusive[i] > 0) {
+					return SQLITE_BUSY;
+				}
+			}
+
+			for (i = ofst; i < ofst + n; i++) {
+				assert(f->content->shm->exclusive[i] == 0);
+				f->content->shm->exclusive[i] = 1;
+			}
+		} else {
+			/* No exclusive lock must be held in the region. */
+			for (i = ofst; i < ofst + n; i++) {
+				if (f->content->shm->exclusive[i] > 0) {
+					return SQLITE_BUSY;
+				}
+			}
+
+			for (i = ofst; i < ofst + n; i++) {
+				f->content->shm->shared[i]++;
+			}
+		}
+	}
+
 	return SQLITE_OK;
 }
 
@@ -1096,8 +1271,6 @@ static void dqlite__vfs_shm_barrier(sqlite3_file *file) {
 
 static int dqlite__vfs_shm_unmap(sqlite3_file *file, int delete_flag) {
 	struct dqlite__vfs_file *f;
-	void **                  cursor;
-	int                      i;
 
 	assert(file != NULL);
 
@@ -1105,23 +1278,18 @@ static int dqlite__vfs_shm_unmap(sqlite3_file *file, int delete_flag) {
 
 	f = (struct dqlite__vfs_file *)file;
 
-	// If reference count is 0, no shared memory map is set.
-	if (f->content->shm_refcount == 0) {
+	// If the shm pointer is NULL shared memory mapping is set.
+	if (f->content->shm == NULL) {
 		return SQLITE_OK;
 	}
 
-	f->content->shm_refcount--;
+	f->content->shm->refcount--;
 
 	/* If we got zero references, free the entire map. */
-	if (f->content->shm_refcount == 0) {
-		cursor = f->content->shm_regions;
-		for (i = 0; i < f->content->shm_regions_len; i++) {
-			sqlite3_free(*cursor);
-			cursor++;
-		}
-		sqlite3_free(f->content->shm_regions);
-		f->content->shm_regions     = 0;
-		f->content->shm_regions_len = 0;
+	if (f->content->shm->refcount == 0) {
+		dqlite__vfs_shm_close(f->content->shm);
+		sqlite3_free(f->content->shm);
+		f->content->shm = NULL;
 	}
 
 	return SQLITE_OK;
