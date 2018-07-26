@@ -50,16 +50,9 @@ test_server *testServerCreate() {
 
 	sqlite3_vfs_register(s->vfs, 0);
 
-	s->service = dqlite_server_alloc();
-	if (s->service == NULL) {
-		sqlite3_free(s);
-		return 0;
-	}
-
-	err = dqlite_server_init(s->service, test_cluster());
+	err = dqlite_server_create(test_cluster(), &s->service);
 	if (err != 0) {
-		dqlite_server_free(s->service);
-		sqlite3_free(s);
+		return NULL;
 	}
 
 	s->address.sin_family      = AF_INET;
@@ -80,8 +73,7 @@ void testServerDestroy(test_server *s) {
 
 	dqlite_vfs_destroy(s->vfs);
 
-	dqlite_server_close(s->service);
-	dqlite_server_free(s->service);
+	dqlite_server_destroy(s->service);
 
 	sqlite3_free(s);
 }
