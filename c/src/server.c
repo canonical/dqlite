@@ -187,33 +187,18 @@ static void dqlite__service_startup_cb(uv_timer_t *startup) {
 	assert(err == 0); /* No reason for which posting should fail */
 }
 
-/* Perform all memory allocations needed to create a dqlite_server object. */
-dqlite_server *dqlite_server_alloc() {
-	struct dqlite__server *s;
+int dqlite_server_create(dqlite_cluster *cluster, dqlite_server **out) {
+	dqlite_server *s;
+	int            err;
 
-	s = (struct dqlite__server *)(sqlite3_malloc(sizeof(*s)));
-	if (s == NULL)
-		goto err_alloc;
-
-	return s;
-
-err_alloc:
-	return NULL;
-}
-
-/* Release all memory allocated in dqlite_server_alloc() */
-void dqlite_server_free(dqlite_server *s) {
-	assert(s != NULL);
-
-	sqlite3_free(s);
-}
-
-/* Initialize internal state */
-int dqlite_server_init(dqlite_server *s, dqlite_cluster *cluster) {
-	int err;
-
-	assert(s != NULL);
 	assert(cluster != NULL);
+	assert(out != NULL);
+
+	s = sqlite3_malloc(sizeof *s);
+	if (s == NULL) {
+		err = DQLITE_NOMEM;
+		goto err;
+	}
 
 	dqlite__error_init(&s->error);
 
@@ -277,10 +262,19 @@ int dqlite_server_init(dqlite_server *s, dqlite_cluster *cluster) {
 
 	s->running = 0;
 
+	*out = s;
+
 	return 0;
+
+err:
+	assert(err != 0);
+
+	*out = NULL;
+
+	return err;
 }
 
-void dqlite_server_close(dqlite_server *s) {
+void dqlite_server_destroy(dqlite_server *s) {
 	int err;
 
 	assert(s != NULL);
@@ -295,6 +289,8 @@ void dqlite_server_close(dqlite_server *s) {
 
 	dqlite__queue_close(&s->queue);
 	dqlite__error_close(&s->error);
+
+	sqlite3_free(s);
 }
 
 /* Set a config option */

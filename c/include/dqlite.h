@@ -106,13 +106,11 @@ typedef struct dqlite_cluster {
 /* Handle connections from dqlite clients */
 typedef struct dqlite__server dqlite_server;
 
-/* Allocate and free a dqlite server */
-dqlite_server *dqlite_server_alloc();
-void           dqlite_server_free(dqlite_server *s);
+/* Allocate and initialize a dqlite server instance. */
+int dqlite_server_create(dqlite_cluster *cluster, dqlite_server **out);
 
-/* Initialize and release resources used by a dqlite server */
-int  dqlite_server_init(dqlite_server *s, dqlite_cluster *cluster);
-void dqlite_server_close(dqlite_server *s);
+/* Destroy and deallocate a dqlite server instance. */
+void dqlite_server_destroy(dqlite_server *s);
 
 /* Set a config option on a dqlite server
  *

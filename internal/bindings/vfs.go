@@ -8,7 +8,6 @@ package bindings
 */
 import "C"
 import (
-	"fmt"
 	"unsafe"
 )
 
@@ -20,11 +19,14 @@ func NewVfs(name string) (*Vfs, error) {
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))
 
-	var vfs *C.sqlite3_vfs
+	vfs := C.dqlite_vfs_create(cname)
+	if vfs == nil {
+		return nil, codeToError(C.DQLITE_NOMEM)
+	}
 
-	err := C.dqlite_vfs_register(cname, &vfs)
-	if err != 0 {
-		return nil, fmt.Errorf("failure (%d)", err)
+	rc := C.sqlite3_vfs_register(vfs, 0)
+	if rc != 0 {
+		return nil, codeToError(rc)
 	}
 
 	return (*Vfs)(unsafe.Pointer(vfs)), nil
@@ -33,7 +35,8 @@ func NewVfs(name string) (*Vfs, error) {
 // Close unregisters this in-memory VFS instance.
 func (v *Vfs) Close() {
 	vfs := (*C.sqlite3_vfs)(unsafe.Pointer(v))
-	C.dqlite_vfs_unregister(vfs)
+	C.sqlite3_vfs_unregister(vfs)
+	C.dqlite_vfs_destroy(vfs)
 }
 
 // Name returns the registration name of the vfs.

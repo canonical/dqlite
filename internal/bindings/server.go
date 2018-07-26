@@ -68,11 +68,7 @@ func Init() error {
 
 // NewServer creates a new Server instance.
 func NewServer(cluster Cluster) (*Server, error) {
-	server := C.dqlite_server_alloc()
-	if server == nil {
-		err := codeToError(C.SQLITE_NOMEM)
-		return nil, errors.Wrap(err, "failed to allocate server object")
-	}
+	var server *C.dqlite_server
 
 	clusterHandle := clusterRegister(cluster)
 
@@ -83,14 +79,10 @@ func NewServer(cluster Cluster) (*Server, error) {
 	}
 	clusterInit(clusterTrampoline, clusterHandle)
 
-	rc := C.dqlite_server_init(server, clusterTrampoline)
+	rc := C.dqlite_server_create(clusterTrampoline, &server)
 	if rc != 0 {
-		clusterUnregister(clusterHandle)
-		clusterFree(clusterTrampoline)
-		C.dqlite_server_free(server)
-
 		err := codeToError(rc)
-		return nil, errors.Wrap(err, "failed to initialize server")
+		return nil, errors.Wrap(err, "failed to create server object")
 	}
 
 	return (*Server)(unsafe.Pointer(server)), nil
@@ -111,8 +103,7 @@ func (s *Server) Close() {
 		C.sqlite3_free(unsafe.Pointer(logger))
 	}
 
-	C.dqlite_server_close(server)
-	C.dqlite_server_free(server)
+	C.dqlite_server_destroy(server)
 }
 
 // SetLogFunc sets the server logging function.

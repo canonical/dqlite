@@ -28,32 +28,39 @@ struct dqlite__vfs_page {
 	                    dirty_mask. */
 };
 
-/* Initialize a new volatile page for a database or WAL file.
+/* Create a new volatile page for a database or WAL file.
  *
  * If it's a page for a WAL file, the WAL header will
  * also be allocated.
  */
-static int dqlite__vfs_page_init(struct dqlite__vfs_page *p, int size, int wal) {
-	assert(p != NULL);
+static struct dqlite__vfs_page *dqlite__vfs_page_create(int size, int wal) {
+	struct dqlite__vfs_page *p;
+
 	assert(size > 0);
 	assert(wal == 0 || wal == 1);
 
+	p = sqlite3_malloc(sizeof *p);
+	if (p == NULL) {
+		goto oom;
+	}
+
 	p->buf = sqlite3_malloc(size);
 	if (p->buf == NULL) {
-		goto err;
+		goto oom_after_page_alloc;
 	}
 	memset(p->buf, 0, size);
 
 	if (wal) {
 		p->hdr = sqlite3_malloc(DQLITE__FORMAT_WAL_FRAME_HDR_SIZE);
-		if (p->hdr == NULL)
-			goto err_after_buf_malloc;
+		if (p->hdr == NULL) {
+			goto oom_after_buf_malloc;
+		}
 		memset(p->hdr, 0, DQLITE__FORMAT_WAL_FRAME_HDR_SIZE);
 
 		p->dirty_mask_size = size / sizeof(char);
 		p->dirty_mask      = sqlite3_malloc(p->dirty_mask_size);
 		if (p->dirty_mask == NULL) {
-			goto err_after_hdr_malloc;
+			goto oom_after_hdr_malloc;
 		}
 		memset(p->dirty_mask, 0, p->dirty_mask_size);
 	} else {
@@ -62,20 +69,23 @@ static int dqlite__vfs_page_init(struct dqlite__vfs_page *p, int size, int wal) 
 
 	p->dirty_buf = NULL;
 
-	return SQLITE_OK;
+	return p;
 
-err_after_hdr_malloc:
+oom_after_hdr_malloc:
 	sqlite3_free(p->hdr);
 
-err_after_buf_malloc:
+oom_after_buf_malloc:
 	sqlite3_free(p->buf);
 
-err:
-	return SQLITE_NOMEM;
+oom_after_page_alloc:
+	sqlite3_free(p);
+
+oom:
+	return NULL;
 }
 
-/* Release the memory of a volatile page */
-static void dqlite__vfs_page_close(struct dqlite__vfs_page *p) {
+/* Destroy a volatile page */
+static void dqlite__vfs_page_destroy(struct dqlite__vfs_page *p) {
 	assert(p != NULL);
 	assert(p->buf != NULL);
 
@@ -87,6 +97,8 @@ static void dqlite__vfs_page_close(struct dqlite__vfs_page *p) {
 		sqlite3_free(p->hdr);
 		sqlite3_free(p->dirty_mask);
 	}
+
+	sqlite3_free(p);
 }
 
 /* Hold content for a shared memory mapping. */
@@ -98,9 +110,15 @@ struct dqlite__vfs_shm {
 	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
 };
 
-/* Initialize a new SHM mapping for a database file. */
-static void dqlite__vfs_shm_init(struct dqlite__vfs_shm *s) {
-	int i;
+/* Create a new shared memory mapping for a database file. */
+static struct dqlite__vfs_shm *dqlite__vfs_shm_create() {
+	struct dqlite__vfs_shm *s;
+	int                     i;
+
+	s = sqlite3_malloc(sizeof *s);
+	if (s == NULL) {
+		goto oom;
+	}
 
 	s->regions     = NULL;
 	s->regions_len = 0;
@@ -109,10 +127,15 @@ static void dqlite__vfs_shm_init(struct dqlite__vfs_shm *s) {
 		s->shared[i]    = 0;
 		s->exclusive[i] = 0;
 	}
+
+	return s;
+
+oom:
+	return NULL;
 }
 
-/* Release the memory of a SHM mapping. */
-static void dqlite__vfs_shm_close(struct dqlite__vfs_shm *s) {
+/* Destroy a shared memory mapping. */
+static void dqlite__vfs_shm_destroy(struct dqlite__vfs_shm *s) {
 	void *region;
 	int   i;
 
@@ -129,6 +152,8 @@ static void dqlite__vfs_shm_close(struct dqlite__vfs_shm *s) {
 	if (s->regions != NULL) {
 		sqlite3_free(s->regions);
 	}
+
+	sqlite3_free(s);
 }
 
 /* Hold content for a single file in the volatile file system. */
@@ -146,28 +171,32 @@ struct dqlite__vfs_content {
 	struct dqlite__vfs_content *wal; /* WAL file content (for database files). */
 };
 
-/* Initialize the content structure for a new volatile file. */
-static int dqlite__vfs_content_init(struct dqlite__vfs_content *c,
-                                    const char *                filename,
-                                    int                         type) {
-	assert(c != NULL);
+/* Create the content structure for a new volatile file. */
+static struct dqlite__vfs_content *dqlite__vfs_content_create(const char *filename,
+                                                              int         type) {
+	struct dqlite__vfs_content *c;
+
 	assert(filename != NULL);
 	assert(type == DQLITE__FORMAT_DB || type == DQLITE__FORMAT_WAL ||
 	       type == DQLITE__FORMAT_OTHER);
 
+	c = sqlite3_malloc(sizeof *c);
+	if (c == NULL) {
+		goto oom;
+	}
+
 	// Copy the name, since when called from Go, the pointer will be freed.
 	c->filename = sqlite3_malloc(strlen(filename) + 1);
 	if (c->filename == NULL) {
-		goto err;
+		goto oom_after_content_malloc;
 	}
-
 	strcpy(c->filename, filename);
 
 	// For WAL files, also allocate the WAL file header.
 	if (type == DQLITE__FORMAT_WAL) {
 		c->hdr = sqlite3_malloc(DQLITE__FORMAT_WAL_HDR_SIZE);
 		if (c->hdr == NULL) {
-			goto err_after_filename_malloc;
+			goto oom_after_filename_malloc;
 		}
 		memset(c->hdr, 0, DQLITE__FORMAT_WAL_HDR_SIZE);
 	} else {
@@ -182,27 +211,25 @@ static int dqlite__vfs_content_init(struct dqlite__vfs_content *c,
 	c->shm       = NULL;
 	c->wal       = NULL;
 
-	return SQLITE_OK;
+	return c;
 
-err_after_filename_malloc:
+oom_after_filename_malloc:
 	sqlite3_free(c->filename);
 
-err:
-	return SQLITE_NOMEM;
+oom_after_content_malloc:
+	sqlite3_free(c);
+
+oom:
+	return NULL;
 }
 
-/* Release the memory used for the content of a volatile file. */
-static void dqlite__vfs_content_close(struct dqlite__vfs_content *c, int force) {
+/* Destroy the content of a volatile file. */
+static void dqlite__vfs_content_destroy(struct dqlite__vfs_content *c) {
 	int                      i;
 	struct dqlite__vfs_page *page;
 
 	assert(c != NULL);
 	assert(c->filename != NULL);
-	assert(force == 0 || force == 1);
-
-	/* If the force flag is not set, we expect callers to have checked that
-	 * the refcount has dropped to zero. */
-	assert(force == 1 || c->refcount == 0);
 
 	/* Free the filename. */
 	sqlite3_free(c->filename);
@@ -219,8 +246,7 @@ static void dqlite__vfs_content_close(struct dqlite__vfs_content *c, int force) 
 	for (i = 0; i < c->pages_len; i++) {
 		page = *(c->pages + i);
 		assert(page != NULL);
-		dqlite__vfs_page_close(page);
-		sqlite3_free(page);
+		dqlite__vfs_page_destroy(page);
 	}
 
 	/* Free the page array. */
@@ -231,9 +257,10 @@ static void dqlite__vfs_content_close(struct dqlite__vfs_content *c, int force) 
 	/* Free the SHM mappping */
 	if (c->shm != NULL) {
 		assert(c->type == DQLITE__FORMAT_DB);
-		dqlite__vfs_shm_close(c->shm);
-		sqlite3_free(c->shm);
+		dqlite__vfs_shm_destroy(c->shm);
 	}
+
+	sqlite3_free(c);
 }
 
 /* Return 1 if this file has no content. */
@@ -284,22 +311,15 @@ static int dqlite__vfs_content_page_get(struct dqlite__vfs_content *c,
 			goto err;
 		}
 
-		*page = sqlite3_malloc(sizeof **page);
-		if (page == NULL) {
-			rc = SQLITE_OK;
+		*page = dqlite__vfs_page_create(c->page_size, is_wal);
+		if (*page == NULL) {
 			goto err;
-		}
-
-		rc = dqlite__vfs_page_init(*page, c->page_size, is_wal);
-		if (rc != SQLITE_OK) {
-			assert(rc == SQLITE_NOMEM);
-			goto err_after_page_malloc;
 		}
 
 		pages = sqlite3_realloc(c->pages, (sizeof *pages) * pgno);
 		if (pages == NULL) {
 			rc = SQLITE_NOMEM;
-			goto err_after_page_init;
+			goto err_after_page_create;
 		}
 
 		/* Append the new page to the new page array. */
@@ -316,18 +336,13 @@ static int dqlite__vfs_content_page_get(struct dqlite__vfs_content *c,
 
 	return SQLITE_OK;
 
-err_after_page_init:
-	dqlite__vfs_page_close(*page);
-
-err_after_page_malloc:
-	sqlite3_free(page);
+err_after_page_create:
+	dqlite__vfs_page_destroy(*page);
 
 err:
-	assert(rc != SQLITE_OK);
-
 	*page = NULL;
 
-	return rc;
+	return SQLITE_NOMEM;
 }
 
 /* Lookup a page from this file, returning NULL if it doesn't exist. */
@@ -370,8 +385,7 @@ static void dqlite__vfs_content_truncate(struct dqlite__vfs_content *content,
 	/* Destroy pages beyond pages_len. */
 	cursor = content->pages + pages_len;
 	for (i = 0; i < (content->pages_len - pages_len); i++) {
-		dqlite__vfs_page_close(*cursor);
-		sqlite3_free(*cursor);
+		dqlite__vfs_page_destroy(*cursor);
 		cursor++;
 	}
 
@@ -410,26 +424,40 @@ struct dqlite__vfs_root {
 	int                          error;        /* Last error occurred. */
 };
 
-/* Initialize a new dqlite__vfs_root object. */
-static int dqlite__vfs_root_init(struct dqlite__vfs_root *r) {
-	int err;
-	int contents_size =
-	    sizeof(struct dqlite__vfs_content *) * DQLITE__VFS_MAX_FILES;
+/* Create a new dqlite__vfs_root object. */
+static struct dqlite__vfs_root *dqlite__vfs_root_create() {
+	struct dqlite__vfs_root *r;
+	int                      contents_size;
+	int                      err;
+
+	r = sqlite3_malloc(sizeof *r);
+	if (r == NULL) {
+		goto oom;
+	}
 
 	assert(r != NULL);
 
 	r->contents_len = DQLITE__VFS_MAX_FILES;
 
+	contents_size = r->contents_len * sizeof *r->contents;
+
 	r->contents = sqlite3_malloc(contents_size);
 	if (r->contents == NULL) {
-		return SQLITE_NOMEM;
+		goto oom_after_root_alloc;
 	}
+
 	memset(r->contents, 0, contents_size);
 
 	err = pthread_mutex_init(&r->mutex, NULL);
 	assert(err == 0); /* Docs say that pthread_mutex_init can't fail */
 
-	return SQLITE_OK;
+	return r;
+
+oom_after_root_alloc:
+	sqlite3_free(r);
+
+oom:
+	return NULL;
 }
 
 /* Release the memory used internally by dqlite__vfs_root object.
@@ -437,7 +465,7 @@ static int dqlite__vfs_root_init(struct dqlite__vfs_root *r) {
  * All file content will be de-allocated, so dangling open FDs against
  * those files will be broken.
  */
-static void dqlite__vfs_root_close(struct dqlite__vfs_root *r) {
+static void dqlite__vfs_root_destroy(struct dqlite__vfs_root *r) {
 	struct dqlite__vfs_content **cursor; /* Iterator for r->contents */
 	int                          i;
 
@@ -453,8 +481,7 @@ static void dqlite__vfs_root_close(struct dqlite__vfs_root *r) {
 	for (i = 0; i < r->contents_len; i++) {
 		struct dqlite__vfs_content *content = *cursor;
 		if (content != NULL) {
-			dqlite__vfs_content_close(content, 1);
-			sqlite3_free(content);
+			dqlite__vfs_content_destroy(content);
 		}
 		cursor++;
 	}
@@ -583,8 +610,7 @@ static int dqlite__vfs_close(sqlite3_file *file) {
 
 	/* If we got zero references, free the shared memory mapping, if present. */
 	if (f->content->refcount == 0 && f->content->shm != NULL) {
-		dqlite__vfs_shm_close(f->content->shm);
-		sqlite3_free(f->content->shm);
+		dqlite__vfs_shm_destroy(f->content->shm);
 		f->content->shm = NULL;
 	}
 
@@ -1122,12 +1148,11 @@ static int dqlite__vfs_shm_map(sqlite3_file *file, /* Handle open on database fi
 	int                      rc;
 
 	if (f->content->shm == NULL) {
-		f->content->shm = sqlite3_malloc(sizeof *f->content->shm);
+		f->content->shm = dqlite__vfs_shm_create();
 		if (f->content->shm == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err;
 		}
-		dqlite__vfs_shm_init(f->content->shm);
 	}
 
 	if (f->content->shm->regions != NULL &&
@@ -1369,18 +1394,11 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 			type = DQLITE__FORMAT_OTHER;
 		}
 
-		content = sqlite3_malloc(sizeof *content);
+		content = dqlite__vfs_content_create(filename, type);
 		if (content == NULL) {
 			root->error = ENOMEM;
 			rc          = SQLITE_NOMEM;
 			goto err;
-		}
-
-		rc = dqlite__vfs_content_init(content, filename, type);
-		if (rc != SQLITE_OK) {
-			root->error = ENOMEM;
-			rc          = SQLITE_NOMEM;
-			goto err_after_content_malloc;
 		}
 
 		if (type == DQLITE__FORMAT_WAL) {
@@ -1390,7 +1408,7 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 			    root, filename, &database);
 			if (rc != SQLITE_OK) {
 				root->error = ENOMEM;
-				goto err_after_content_init;
+				goto err_after_content_create;
 			}
 			database->wal = content;
 		}
@@ -1433,11 +1451,8 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 
 	return SQLITE_OK;
 
-err_after_content_init:
-	dqlite__vfs_content_close(content, 0);
-
-err_after_content_malloc:
-	sqlite3_free(content);
+err_after_content_create:
+	dqlite__vfs_content_destroy(content);
 
 err:
 	assert(rc != SQLITE_OK);
@@ -1479,8 +1494,7 @@ static int dqlite__vfs_delete(sqlite3_vfs *vfs, const char *filename, int dir_sy
 	}
 
 	/* Free all memory allocated for this file. */
-	dqlite__vfs_content_close(content, 0);
-	sqlite3_free(content);
+	dqlite__vfs_content_destroy(content);
 
 	/* Reset the file content slot. */
 	*(root->contents + content_index) = NULL;
@@ -1597,14 +1611,13 @@ static int dqlite__vfs_current_time(sqlite3_vfs *vfs, double *piNow) {
 	return dqlite__vfs_current_time_int64(vfs, (sqlite3_int64 *)piNow);
 }
 
-static int
-dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotUsed3) {
+static int dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int x, char *y) {
 	struct dqlite__vfs_root *root = (struct dqlite__vfs_root *)(vfs->pAppData);
 	int                      rc;
 
 	(void)vfs;
-	(void)NotUsed2;
-	(void)NotUsed3;
+	(void)x;
+	(void)y;
 
 	pthread_mutex_lock(&root->mutex);
 	rc = root->error;
@@ -1614,73 +1627,56 @@ dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotUsed3) {
 }
 
 sqlite3_vfs *dqlite_vfs_create(const char *name) {
-	sqlite3_vfs *            vfs;
-	struct dqlite__vfs_root *root;
-	int                      rc;
+	sqlite3_vfs *vfs;
 
 	assert(name != NULL);
 
 	vfs = sqlite3_malloc(sizeof *vfs);
 	if (vfs == NULL) {
-		rc = SQLITE_NOMEM;
 		goto err;
 	}
 
-	root = sqlite3_malloc(sizeof *root);
-	if (root == NULL) {
-		rc = SQLITE_NOMEM;
-		goto err;
-	}
-
-	rc = dqlite__vfs_root_init(root);
-	if (rc != 0) {
-		assert(rc == SQLITE_NOMEM);
-		goto err_after_root_malloc;
-	}
+	vfs->iVersion   = 2;
+	vfs->szOsFile   = sizeof(struct dqlite__vfs_file);
+	vfs->mxPathname = DQLITE__VFS_MAX_PATHNAME;
+	vfs->pNext      = NULL;
 
 	/* Make a copy of the provided name, so clients can free the string if
 	 * they need. */
 	vfs->zName = sqlite3_malloc(strlen(name) + 1);
 	if (vfs->zName == NULL) {
-		goto err_after_root_init;
+		goto err_after_vfs_malloc;
 	}
-
 	strcpy((char *)vfs->zName, name);
 
-	vfs->iVersion   = 2;
-	vfs->szOsFile   = sizeof(struct dqlite__vfs_file);
-	vfs->mxPathname = DQLITE__VFS_MAX_PATHNAME;
-	vfs->pNext      = 0;
-	vfs->pAppData   = root;
-	vfs->xOpen      = dqlite__vfs_open;
-	vfs->xDelete    = dqlite__vfs_delete;
-	vfs->xAccess    = dqlite__vfs_access;
+	vfs->pAppData = dqlite__vfs_root_create();
+	if (vfs->pAppData == NULL) {
+		goto err_after_name_copy;
+	}
 
-	vfs->xFullPathname = dqlite__vfs_full_pathname;
-
-	vfs->xDlOpen  = dqlite__vfs_dl_open;
-	vfs->xDlError = dqlite__vfs_dl_error;
-	vfs->xDlSym   = dqlite__vfs_dl_sym;
-	vfs->xDlClose = dqlite__vfs_dl_close;
-
-	vfs->xRandomness = dqlite__vfs_randomness;
-	vfs->xSleep      = dqlite__vfs_sleep;
-
+	vfs->xOpen             = dqlite__vfs_open;
+	vfs->xDelete           = dqlite__vfs_delete;
+	vfs->xAccess           = dqlite__vfs_access;
+	vfs->xFullPathname     = dqlite__vfs_full_pathname;
+	vfs->xDlOpen           = dqlite__vfs_dl_open;
+	vfs->xDlError          = dqlite__vfs_dl_error;
+	vfs->xDlSym            = dqlite__vfs_dl_sym;
+	vfs->xDlClose          = dqlite__vfs_dl_close;
+	vfs->xRandomness       = dqlite__vfs_randomness;
+	vfs->xSleep            = dqlite__vfs_sleep;
 	vfs->xCurrentTime      = dqlite__vfs_current_time;
 	vfs->xGetLastError     = dqlite__vfs_get_last_error;
 	vfs->xCurrentTimeInt64 = dqlite__vfs_current_time_int64;
 
 	return vfs;
 
-err_after_root_init:
-	dqlite__vfs_root_close(root);
+err_after_name_copy:
+	sqlite3_free((char *)vfs->zName);
 
-err_after_root_malloc:
-	sqlite3_free(root);
+err_after_vfs_malloc:
+	sqlite3_free(vfs);
 
 err:
-	assert(rc != SQLITE_OK);
-
 	return NULL;
 }
 
@@ -1691,7 +1687,7 @@ void dqlite_vfs_destroy(sqlite3_vfs *vfs) {
 
 	root = (struct dqlite__vfs_root *)(vfs->pAppData);
 
-	dqlite__vfs_root_close(root);
+	dqlite__vfs_root_destroy(root);
 
 	sqlite3_free(root);
 	sqlite3_free((char *)vfs->zName);

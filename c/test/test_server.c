@@ -25,11 +25,7 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	(void)params;
 	(void)user_data;
 
-	server = dqlite_server_alloc();
-	munit_assert_ptr_not_equal(server, NULL);
-
-	err = dqlite_server_init(server, test_cluster());
-
+	err = dqlite_server_create(test_cluster(), &server);
 	munit_assert_int(err, ==, 0);
 
 	return server;
@@ -38,8 +34,7 @@ static void *setup(const MunitParameter params[], void *user_data) {
 static void tear_down(void *data) {
 	dqlite_server *server = data;
 
-	dqlite_server_close(server);
-	dqlite_server_free(server);
+	dqlite_server_destroy(server);
 
 	test_assert_no_leaks();
 }
