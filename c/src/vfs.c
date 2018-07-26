@@ -85,7 +85,6 @@ static void dqlite__vfs_shm_init(struct dqlite__vfs_shm *s) {
 
 	s->regions     = NULL;
 	s->regions_len = 0;
-	s->refcount    = 0;
 
 	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
 		s->shared[i]    = 0;
@@ -532,6 +531,13 @@ static int dqlite__vfs_close(sqlite3_file *file) {
 
 	assert(f->content->refcount);
 	f->content->refcount--;
+
+	/* If we got zero references, free the shared memory mapping, if present. */
+	if (f->content->refcount == 0 && f->content->shm != NULL) {
+		dqlite__vfs_shm_close(f->content->shm);
+		sqlite3_free(f->content->shm);
+		f->content->shm = NULL;
+	}
 
 	pthread_mutex_unlock(&root->mutex);
 
@@ -1031,50 +1037,6 @@ static int dqlite__vfs_file_control_pragma(struct dqlite__vfs_file *f,
 	return SQLITE_NOTFOUND;
 }
 
-static int dqlite__vfs_file_control_wal_idx_mx_frame(struct dqlite__vfs_file *f,
-                                                     uint32_t *               v) {
-	uint32_t *idx;
-
-	assert(f != NULL);
-	assert(v != NULL);
-
-	assert(f->content->type == DQLITE__FORMAT_DB);
-	assert(f->content->shm != NULL);
-
-	assert(f->content->shm->regions != NULL);
-	assert(f->content->shm->regions_len > 0);
-
-	idx = f->content->shm->regions[0];
-
-	/* The mxFrame number is 16th byte of the WAL index header. See also
-	 * https://sqlite.org/walformat.html. */
-	*v = idx[4];
-
-	return SQLITE_OK;
-}
-
-static int dqlite__vfs_file_control_wal_idx_read_marks(struct dqlite__vfs_file *f,
-                                                       uint32_t v[5]) {
-	uint32_t *idx;
-
-	assert(f != NULL);
-	assert(v != NULL);
-
-	assert(f->content->type == DQLITE__FORMAT_DB);
-	assert(f->content->shm != NULL);
-
-	assert(f->content->shm->regions != NULL);
-	assert(f->content->shm->regions_len > 0);
-
-	idx = f->content->shm->regions[0];
-
-	/* The read-mark array starts at the 100th byte of the WAL index
-	 * header. See also https://sqlite.org/walformat.html. */
-	memcpy(v, &idx[25], (sizeof *idx) * 5);
-
-	return SQLITE_OK;
-}
-
 static int dqlite__vfs_file_control(sqlite3_file *file, int op, void *arg) {
 	struct dqlite__vfs_file *f = (struct dqlite__vfs_file *)file;
 
@@ -1082,12 +1044,6 @@ static int dqlite__vfs_file_control(sqlite3_file *file, int op, void *arg) {
 
 	case SQLITE_FCNTL_PRAGMA:
 		return dqlite__vfs_file_control_pragma(f, arg);
-
-	case DQLITE__VFS_FCNTL_WAL_IDX_MX_FRAME:
-		return dqlite__vfs_file_control_wal_idx_mx_frame(f, arg);
-
-	case DQLITE__VFS_FCNTL_WAL_IDX_READ_MARKS:
-		return dqlite__vfs_file_control_wal_idx_read_marks(f, arg);
 	}
 
 	return SQLITE_OK;
@@ -1159,10 +1115,6 @@ static int dqlite__vfs_shm_map(sqlite3_file *file, /* Handle open on database fi
 			 * extend the map. */
 			region = NULL;
 		}
-	}
-
-	if (region) {
-		f->content->shm->refcount++;
 	}
 
 	*out = region;
@@ -1278,18 +1230,9 @@ static int dqlite__vfs_shm_unmap(sqlite3_file *file, int delete_flag) {
 
 	f = (struct dqlite__vfs_file *)file;
 
-	// If the shm pointer is NULL shared memory mapping is set.
+	// If the shm pointer is NULL no shared memory mapping is set.
 	if (f->content->shm == NULL) {
 		return SQLITE_OK;
-	}
-
-	f->content->shm->refcount--;
-
-	/* If we got zero references, free the entire map. */
-	if (f->content->shm->refcount == 0) {
-		dqlite__vfs_shm_close(f->content->shm);
-		sqlite3_free(f->content->shm);
-		f->content->shm = NULL;
 	}
 
 	return SQLITE_OK;

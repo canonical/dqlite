@@ -3,7 +3,7 @@
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
-#include "../src/vfs.h"
+#include "../src/format.h"
 
 #include "leak.h"
 #include "munit.h"
@@ -132,12 +132,18 @@ static sqlite3 *__db_open() {
 /* Helper get the mxFrame value of the WAL index object associated with the given
  * database. */
 static uint32_t __wal_idx_mx_frame(sqlite3 *db) {
-	uint32_t mx_frame;
-	int      rc;
+	sqlite3_file * file;
+	volatile void *region;
+	uint32_t       mx_frame;
+	int            rc;
 
-	rc = sqlite3_file_control(
-	    db, "main", DQLITE__VFS_FCNTL_WAL_IDX_MX_FRAME, &mx_frame);
+	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	dqlite__format_get_mx_frame((const uint8_t *)region, &mx_frame);
 
 	return mx_frame;
 }
@@ -145,12 +151,19 @@ static uint32_t __wal_idx_mx_frame(sqlite3 *db) {
 /* Helper get the read mark array of the WAL index object associated with the given
  * database. */
 static uint32_t *__wal_idx_read_marks(sqlite3 *db) {
-	uint32_t *read_marks = munit_malloc(5 * (sizeof *read_marks));
-	int       rc;
+	sqlite3_file * file;
+	volatile void *region;
+	uint32_t *     read_marks =
+	    munit_malloc(DQLITE__FORMAT_WAL_NREADER * (sizeof *read_marks));
+	int rc;
 
-	rc = sqlite3_file_control(
-	    db, "main", DQLITE__VFS_FCNTL_WAL_IDX_READ_MARKS, read_marks);
+	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	dqlite__format_get_read_marks((const uint8_t *)region, read_marks);
 
 	return read_marks;
 }
