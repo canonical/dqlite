@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <sqlite3.h>
 
@@ -34,4 +35,27 @@ int dqlite__format_get_page_size(int type, const uint8_t *buf, unsigned *page_si
 	}
 
 	return SQLITE_OK;
+}
+
+void dqlite__format_get_mx_frame(const uint8_t *buf, uint32_t *mx_frame) {
+	assert(buf != NULL);
+	assert(mx_frame != NULL);
+
+	/* The mxFrame number is 16th byte of the WAL index header. See also
+	 * https://sqlite.org/walformat.html. */
+	*mx_frame = ((uint32_t *)buf)[4];
+}
+
+void dqlite__format_get_read_marks(const uint8_t *buf,
+                                   uint32_t read_marks[DQLITE__FORMAT_WAL_NREADER]) {
+	uint32_t *idx;
+
+	assert(buf != NULL);
+	assert(read_marks != NULL);
+
+	idx = (uint32_t *)buf;
+
+	/* The read-mark array starts at the 100th byte of the WAL index
+	 * header. See also https://sqlite.org/walformat.html. */
+	memcpy(read_marks, &idx[25], (sizeof *idx) * DQLITE__FORMAT_WAL_NREADER);
 }

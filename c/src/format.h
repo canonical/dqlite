@@ -30,6 +30,9 @@
 /* Write ahead log frame header size. */
 #define DQLITE__FORMAT_WAL_FRAME_HDR_SIZE 24
 
+/* Number of reader marks in the wal index header. */
+#define DQLITE__FORMAT_WAL_NREADER 5
+
 /* Given the page size, calculate the size of a full WAL frame (frame header
  * plus page data). */
 #define dqlite__format_wal_calc_frame_size(PAGE_SIZE)                               \
@@ -58,5 +61,14 @@
 int dqlite__format_get_page_size(int            type,
                                  const uint8_t *buf,
                                  unsigned int * page_size);
+
+/* Extract the mxFrame field from the WAL index header stored in the given
+ * buffer */
+void dqlite__format_get_mx_frame(const uint8_t *buf, uint32_t *mx_frame);
+
+/* Extract the read marks array from the WAL index header stored in the given
+ * buffer. */
+void dqlite__format_get_read_marks(const uint8_t *buf,
+                                   uint32_t read_marks[DQLITE__FORMAT_WAL_NREADER]);
 
 #endif /* DQLITE_FORMAT_H */

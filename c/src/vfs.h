@@ -5,9 +5,6 @@
 
 #include <sqlite3.h>
 
-#define DQLITE__VFS_FCNTL_WAL_IDX_MX_FRAME 100
-#define DQLITE__VFS_FCNTL_WAL_IDX_READ_MARKS 101
-
 /* Hold content for a single page or frame in a volatile file. */
 struct dqlite__vfs_page {
 	void *buf;        /* Content of the page. */
@@ -23,7 +20,6 @@ struct dqlite__vfs_page {
 struct dqlite__vfs_shm {
 	void **regions;     /* Pointers to shared memory regions. */
 	int    regions_len; /* Number of shared memory regions. */
-	int    refcount;    /* Number of opened files using the shared memory. */
 
 	unsigned shared[SQLITE_SHM_NLOCK];    /* Count of shared locks */
 	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
