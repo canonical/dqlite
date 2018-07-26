@@ -9,6 +9,7 @@
 extern MunitSuite dqlite__conn_suites[];
 extern MunitSuite dqlite__db_suites[];
 extern MunitSuite dqlite__error_suites[];
+extern MunitSuite dqlite__file_suites[];
 extern MunitSuite dqlite__format_suites[];
 extern MunitSuite dqlite__gateway_suites[];
 extern MunitSuite dqlite__integration_suites[];
@@ -26,6 +27,7 @@ static MunitSuite dqlite__test_suites[] = {
     {"dqlite__conn", NULL, dqlite__conn_suites, 1, 0},
     {"dqlite__db", NULL, dqlite__db_suites, 1, 0},
     {"dqlite__error", NULL, dqlite__error_suites, 1, 0},
+    {"dqlite__file", NULL, dqlite__file_suites, 1, 0},
     {"dqlite__format", NULL, dqlite__format_suites, 1, 0},
     {"dqlite__gateway", NULL, dqlite__gateway_suites, 1, 0},
     {"dqlite__integration", NULL, dqlite__integration_suites, 1, 0},

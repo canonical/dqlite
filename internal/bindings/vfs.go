@@ -53,7 +53,7 @@ func (v *Vfs) Content(filename string) ([]byte, error) {
 	var buf *C.uint8_t
 	var n C.size_t
 
-	rc := C.dqlite_vfs_snapshot(vfs, cfilename, &buf, &n)
+	rc := C.dqlite_file_read(vfs.zName, cfilename, &buf, &n)
 	if rc != 0 {
 		return nil, Error{Code: int(rc)}
 	}
@@ -75,7 +75,7 @@ func (v *Vfs) Restore(filename string, bytes []byte) error {
 	buf := (*C.uint8_t)(unsafe.Pointer(&bytes[0]))
 	n := C.size_t(len(bytes))
 
-	rc := C.dqlite_vfs_restore(vfs, cfilename, buf, n)
+	rc := C.dqlite_file_write(vfs.zName, cfilename, buf, n)
 	if rc != 0 {
 		return Error{Code: int(rc & 0xff)}
 	}

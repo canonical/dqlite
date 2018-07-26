@@ -332,7 +332,7 @@ static MunitResult test_open_enfile(const MunitParameter params[], void *data) {
 }
 
 /* Trying to open a WAL file before its main database file results in an
- * error.. */
+ * error. */
 static MunitResult test_open_wal_before_db(const MunitParameter params[],
                                            void *               data) {
 	sqlite3_vfs * vfs  = data;
@@ -1122,73 +1122,6 @@ static MunitTest dqlite__vfs_register_tests[] = {
 
 /******************************************************************************
  *
- * dqlite__vfs_snapshot
- *
- ******************************************************************************/
-
-/* Test taking and restoring file snapshots. */
-static MunitResult test_snapshot(const MunitParameter params[], void *data) {
-	sqlite3_vfs * vfs = data;
-	int           rc;
-	sqlite3 *     db;
-	uint8_t *     database;
-	uint8_t *     wal;
-	size_t        len;
-	sqlite3_stmt *stmt;
-	const char *  tail;
-
-	(void)params;
-
-	db = __db_open();
-
-	__db_exec(db, "CREATE TABLE test (n INT)");
-
-	rc = dqlite_vfs_snapshot(vfs, "test.db", &database, &len);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	munit_assert_ptr_not_equal(database, NULL);
-	munit_assert_int(len, ==, 512);
-
-	rc = dqlite_vfs_snapshot(vfs, "test.db-wal", &wal, &len);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	munit_assert_ptr_not_equal(wal, NULL);
-	munit_assert_int(len, ==, 1104);
-
-	rc = sqlite3_close(db);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = dqlite_vfs_restore(vfs, "test.db", database, 512);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = dqlite_vfs_restore(vfs, "test.db-wal", wal, 1104);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	sqlite3_free(database);
-	sqlite3_free(wal);
-
-	rc = sqlite3_open_v2("test.db", &db, SQLITE_OPEN_READWRITE, "volatile");
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = sqlite3_prepare(db, "INSERT INTO test(n) VALUES(?)", -1, &stmt, &tail);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = sqlite3_finalize(stmt);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = sqlite3_close(db);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	return MUNIT_OK;
-}
-
-static MunitTest dqlite__vfs_snapshot_tests[] = {
-    {"", test_snapshot, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
  * Test suite
  *
  ******************************************************************************/
@@ -1204,7 +1137,5 @@ MunitSuite dqlite__vfs_suites[] = {
     {"_truncate", dqlite__vfs_truncate_tests, NULL, 1, 0},
     {"_shm_lock", dqlite__vfs_shm_lock_tests, NULL, 1, 0},
     {"_register", dqlite__vfs_register_tests, NULL, 1, 0},
-    {"_snapshot", dqlite__vfs_snapshot_tests, NULL, 1, 0},
-    {"", dqlite__vfs_snapshot_tests, NULL, 1, 0},
     {NULL, NULL, NULL, 0, 0},
 };
