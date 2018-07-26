@@ -36,15 +36,19 @@ test_server *testServerCreate() {
 		return NULL;
 
 	s->replication = test_replication();
-	err            = sqlite3_wal_replication_register(s->replication, 0);
+
+	err = sqlite3_wal_replication_register(s->replication, 0);
+
 	if (err != 0) {
 		return 0;
 	}
 
-	err = dqlite_vfs_register(s->replication->zName, &s->vfs);
-	if (err != 0) {
-		return 0;
+	s->vfs = dqlite_vfs_create(s->replication->zName);
+	if (s->vfs == NULL) {
+		return NULL;
 	}
+
+	sqlite3_vfs_register(s->vfs, 0);
 
 	s->service = dqlite_server_alloc();
 	if (s->service == NULL) {
@@ -72,7 +76,9 @@ void testServerDestroy(test_server *s) {
 	assert(s->service != NULL);
 
 	sqlite3_wal_replication_unregister(s->replication);
-	dqlite_vfs_unregister(s->vfs);
+	sqlite3_vfs_unregister(s->vfs);
+
+	dqlite_vfs_destroy(s->vfs);
 
 	dqlite_server_close(s->service);
 	dqlite_server_free(s->service);

@@ -44,13 +44,15 @@ static sqlite3 *__db_open(sqlite3_vfs *vfs) {
 static void *setup(const MunitParameter params[], void *user_data) {
 	sqlite3_vfs *vfs;
 
-	int rc;
-
 	(void)params;
 	(void)user_data;
 
-	rc = dqlite_vfs_register("volatile", &vfs);
-	munit_assert_int(rc, ==, SQLITE_OK);
+	vfs = munit_malloc(sizeof *vfs);
+
+	vfs = dqlite_vfs_create("volatile");
+	munit_assert_ptr_not_null(vfs);
+
+	sqlite3_vfs_register(vfs, 0);
 
 	return vfs;
 }
@@ -58,7 +60,9 @@ static void *setup(const MunitParameter params[], void *user_data) {
 static void tear_down(void *data) {
 	sqlite3_vfs *vfs = data;
 
-	dqlite_vfs_unregister(vfs);
+	sqlite3_vfs_unregister(vfs);
+
+	dqlite_vfs_destroy(vfs);
 
 	test_assert_no_leaks();
 }

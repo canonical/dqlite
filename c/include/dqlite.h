@@ -172,15 +172,15 @@ dqlite_cluster *dqlite_server_cluster(dqlite_server *s);
 /* Return the dqlite_logger object the server is using, if any was configured. */
 dqlite_logger *dqlite_server_logger(dqlite_server *s);
 
-/* Register an in-memory SQLite VFS implementation under the given name. Return
- * the newly created VFS instance.
+/* Allocate and initialize an in-memory dqlite VFS object, configured with the
+ * given registration name.
  *
  * A copy of the provided name will be made, so clients can free it after the
  * function returns. */
-int dqlite_vfs_register(const char *name, sqlite3_vfs **out);
+sqlite3_vfs *dqlite_vfs_create(const char *name);
 
-/* Unregister an in-memory VFS instance. */
-void dqlite_vfs_unregister(sqlite3_vfs *vfs);
+/* Destroy and deallocate an in-memory dqlite VFS object. */
+void dqlite_vfs_destroy(sqlite3_vfs *vfs);
 
 /* Read the content of a file, using the VFS implementation registered under the
  * given name. Used to take database snapshots using the dqlite in-memory

@@ -59,17 +59,19 @@ static void __db_exec(struct fixture *f, const char *sql) {
 
 static void *setup(const MunitParameter params[], void *user_data) {
 	struct fixture *f;
-	int             rc;
 
 	(void)params;
 	(void)user_data;
 
 	f          = munit_malloc(sizeof *f);
+	f->vfs     = munit_malloc(sizeof *f->vfs);
 	f->stmt    = munit_malloc(sizeof *f->stmt);
 	f->message = munit_malloc(sizeof *f->message);
 
-	rc = dqlite_vfs_register("test", &f->vfs);
-	munit_assert_int(rc, ==, 0);
+	f->vfs = dqlite_vfs_create("test");
+	munit_assert_ptr_not_null(f->vfs);
+
+	sqlite3_vfs_register(f->vfs, 0);
 
 	dqlite__stmt_init(f->stmt);
 	dqlite__message_init(f->message);
@@ -84,10 +86,11 @@ static void tear_down(void *data) {
 
 	sqlite3_close_v2(f->stmt->db);
 
+	sqlite3_vfs_unregister(f->vfs);
+
 	dqlite__message_close(f->message);
 	dqlite__stmt_close(f->stmt);
-
-	dqlite_vfs_unregister(f->vfs);
+	dqlite_vfs_destroy(f->vfs);
 
 	test_assert_no_leaks();
 }
