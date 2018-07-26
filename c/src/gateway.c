@@ -12,7 +12,6 @@
 #include "log.h"
 #include "request.h"
 #include "response.h"
-#include "vfs.h"
 
 /* Render a failure response. */
 static void dqlite__gateway_failure(struct dqlite__gateway *    g,

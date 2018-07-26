@@ -18,6 +18,17 @@
 /* Maximum number of files this VFS can create. */
 #define DQLITE__VFS_MAX_FILES 64
 
+/* Hold content for a single page or frame in a volatile file. */
+struct dqlite__vfs_page {
+	void *buf;        /* Content of the page. */
+	void *hdr;        /* Page header (only for WAL pages). */
+	void *dirty_mask; /* Bit mask of dirty buf bytes to be re-written (only for
+	                     WAL pages) */
+	int   dirty_mask_size; /* Number of bytes in the dirty_mask array. */
+	void *dirty_buf; /* List of dirty buf bytes, one for each bit with value 1 in
+	                    dirty_mask. */
+};
+
 /* Initialize a new volatile page for a database or WAL file.
  *
  * If it's a page for a WAL file, the WAL header will
@@ -79,6 +90,15 @@ static void dqlite__vfs_page_close(struct dqlite__vfs_page *p) {
 	}
 }
 
+/* Hold content for a shared memory mapping. */
+struct dqlite__vfs_shm {
+	void **regions;     /* Pointers to shared memory regions. */
+	int    regions_len; /* Number of shared memory regions. */
+
+	unsigned shared[SQLITE_SHM_NLOCK];    /* Count of shared locks */
+	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
+};
+
 /* Initialize a new SHM mapping for a database file. */
 static void dqlite__vfs_shm_init(struct dqlite__vfs_shm *s) {
 	int i;
@@ -111,6 +131,21 @@ static void dqlite__vfs_shm_close(struct dqlite__vfs_shm *s) {
 		sqlite3_free(s->regions);
 	}
 }
+
+/* Hold content for a single file in the volatile file system. */
+struct dqlite__vfs_content {
+	char *                    filename;  /* Name of the file. */
+	void *                    hdr;       /* File header (only for WAL files). */
+	struct dqlite__vfs_page **pages;     /* Pointers to all pages in the file. */
+	int                       pages_len; /* Number of pages in the file. */
+	unsigned int              page_size; /* Size of page->buf for each page. */
+
+	int refcount; /* Number of open FDs referencing this file. */
+	int type;     /* Content type (either main db or WAL). */
+
+	struct dqlite__vfs_shm *    shm; /* Shared memory (for databse files). */
+	struct dqlite__vfs_content *wal; /* WAL file content (for database files). */
+};
 
 /* Initialize the content structure for a new volatile file. */
 static int dqlite__vfs_content_init(struct dqlite__vfs_content *c,
@@ -358,6 +393,23 @@ static void dqlite__vfs_content_truncate(struct dqlite__vfs_content *content,
 	/* Update the page count. */
 	content->pages_len = pages_len;
 }
+
+/* Implementation of the abstract sqlite3_file base class. */
+struct dqlite__vfs_file {
+	sqlite3_file base; /* Base class. Must be first. */
+	struct dqlite__vfs_root
+	    *root; /* Pointer to our volatile VFS instance data. */
+	struct dqlite__vfs_content *content; /* Handle to the file content. */
+};
+
+/* Root of the volatile file system. Contains pointers to the content
+ * of all files that were created. */
+struct dqlite__vfs_root {
+	struct dqlite__vfs_content **contents;     /* Files content */
+	int                          contents_len; /* Number of files */
+	pthread_mutex_t              mutex;        /* Serialize to access */
+	int                          error;        /* Last error occurred. */
+};
 
 /* Initialize a new dqlite__vfs_root object. */
 static int dqlite__vfs_root_init(struct dqlite__vfs_root *r) {

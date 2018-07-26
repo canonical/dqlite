@@ -9,7 +9,6 @@
 #include "lifecycle.h"
 #include "registry.h"
 #include "stmt.h"
-#include "vfs.h"
 
 /* Wrapper around sqlite3_exec that frees the memory allocated for the error
  * message in case of failure and sets the dqlite__db's error field
