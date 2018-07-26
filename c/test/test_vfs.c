@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
+#include "../src/vfs.h"
 
 #include "leak.h"
 #include "munit.h"
@@ -121,11 +122,64 @@ static sqlite3 *__db_open() {
 	    "test.db", &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "volatile");
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	__db_exec(db, "PRAGMA page_size=4096");
+	__db_exec(db, "PRAGMA page_size=512");
 	__db_exec(db, "PRAGMA synchronous=OFF");
 	__db_exec(db, "PRAGMA journal_mode=WAL");
 
 	return db;
+}
+
+/* Helper get the mxFrame value of the WAL index object associated with the given
+ * database. */
+static uint32_t __wal_idx_mx_frame(sqlite3 *db) {
+	uint32_t mx_frame;
+	int      rc;
+
+	rc = sqlite3_file_control(
+	    db, "main", DQLITE__VFS_FCNTL_WAL_IDX_MX_FRAME, &mx_frame);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	return mx_frame;
+}
+
+/* Helper get the read mark array of the WAL index object associated with the given
+ * database. */
+static uint32_t *__wal_idx_read_marks(sqlite3 *db) {
+	uint32_t *read_marks = munit_malloc(5 * (sizeof *read_marks));
+	int       rc;
+
+	rc = sqlite3_file_control(
+	    db, "main", DQLITE__VFS_FCNTL_WAL_IDX_READ_MARKS, read_marks);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	return read_marks;
+}
+
+/* Helper that returns true if the i'th lock of the shared memmory reagion
+ * associated with the given database is currently held. */
+static int __shm_shared_lock_held(sqlite3 *db, int i) {
+	sqlite3_file *file;
+	int           flags;
+	int           locked;
+	int           rc;
+
+	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	/* Try to acquire an exclusive lock, which will fail if the shared lock is
+	 * held. */
+	flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
+	rc    = file->pMethods->xShmLock(file, i, 1, flags);
+
+	locked = rc == SQLITE_BUSY;
+
+	if (rc == SQLITE_OK) {
+		flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
+		rc    = file->pMethods->xShmLock(file, i, 1, flags);
+		munit_assert_int(rc, ==, SQLITE_OK);
+	}
+
+	return locked;
 }
 
 /******************************************************************************
@@ -161,7 +215,7 @@ static void tear_down(void *data) {
 
 /******************************************************************************
  *
- * Test functions
+ * dqlite__vfs_open
  *
  ******************************************************************************/
 
@@ -284,6 +338,21 @@ static MunitResult test_open_wal_before_db(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
+static MunitTest dqlite__vfs_open_tests[] = {
+    {"/exclusive", test_open_exclusive, setup, tear_down, 0, NULL},
+    {"/again", test_open_again, setup, tear_down, 0, NULL},
+    {"/noent", test_open_noent, setup, tear_down, 0, NULL},
+    {"/enfile", test_open_enfile, setup, tear_down, 0, NULL},
+    {"/wal-before-db", test_open_wal_before_db, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_delete
+ *
+ ******************************************************************************/
+
 /* Delete a file. */
 static MunitResult test_delete(const MunitParameter params[], void *data) {
 	sqlite3_vfs * vfs  = data;
@@ -349,6 +418,19 @@ static MunitResult test_delete_enoent(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
+static MunitTest dqlite__vfs_delete_tests[] = {
+    {"", test_delete, setup, tear_down, 0, NULL},
+    {"/busy", test_delete_busy, setup, tear_down, 0, NULL},
+    {"/enoent", test_delete_enoent, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_access
+ *
+ ******************************************************************************/
+
 /* Accessing an existing file returns true. */
 static MunitResult test_access(const MunitParameter params[], void *data) {
 	sqlite3_vfs * vfs  = data;
@@ -392,6 +474,18 @@ static MunitResult test_access_noent(const MunitParameter params[], void *data) 
 	return MUNIT_OK;
 }
 
+static MunitTest dqlite__vfs_access_tests[] = {
+    {"", test_access, setup, tear_down, 0, NULL},
+    {"/noent", test_access_noent, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_full_pathname
+ *
+ ******************************************************************************/
+
 /* The xFullPathname API returns the filename unchanged. */
 static MunitResult test_full_pathname(const MunitParameter params[], void *data) {
 	sqlite3_vfs *vfs = data;
@@ -409,6 +503,17 @@ static MunitResult test_full_pathname(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
+static MunitTest dqlite__vfs_full_pathname_tests[] = {
+    {"", test_full_pathname, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_close
+ *
+ ******************************************************************************/
+
 /* Closing a file decreases its refcount so it's possible to delete it. */
 static MunitResult test_close_then_delete(const MunitParameter params[],
                                           void *               data) {
@@ -421,7 +526,6 @@ static MunitResult test_close_then_delete(const MunitParameter params[],
 	(void)params;
 
 	rc = vfs->xOpen(vfs, "test.db", file, SQLITE_OPEN_CREATE, &flags);
-
 	munit_assert_int(rc, ==, 0);
 
 	rc = file->pMethods->xClose(file);
@@ -432,6 +536,17 @@ static MunitResult test_close_then_delete(const MunitParameter params[],
 
 	return MUNIT_OK;
 }
+
+static MunitTest dqlite__vfs_close_tests[] = {
+    {"/then-delete", test_close_then_delete, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_read
+ *
+ ******************************************************************************/
 
 /* Trying to read a file that was not written yet, results in an error. */
 static MunitResult test_read_never_written(const MunitParameter params[],
@@ -452,6 +567,17 @@ static MunitResult test_read_never_written(const MunitParameter params[],
 
 	return MUNIT_OK;
 }
+
+static MunitTest dqlite__vfs_read_tests[] = {
+    {"/never-written", test_read_never_written, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_write
+ *
+ ******************************************************************************/
 
 /* Write the header of the database file. */
 static MunitResult test_write_database_header(const MunitParameter params[],
@@ -581,6 +707,19 @@ static MunitResult test_write_and_read_wal_frames(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
+static MunitTest dqlite__vfs_write_tests[] = {
+    {"/db-header", test_write_database_header, setup, tear_down, 0, NULL},
+    {"/db-pages", test_write_and_read_database_pages, setup, tear_down, 0, NULL},
+    {"/wal-frames", test_write_and_read_wal_frames, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_truncate
+ *
+ ******************************************************************************/
+
 /* Truncate the main database file. */
 static MunitResult test_truncate_database(const MunitParameter params[],
                                           void *               data) {
@@ -709,6 +848,95 @@ static MunitResult test_truncate_wal(const MunitParameter params[], void *data) 
 	return MUNIT_OK;
 }
 
+static MunitTest dqlite__vfs_truncate_tests[] = {
+    {"/database", test_truncate_database, setup, tear_down, 0, NULL},
+    {"/wal", test_truncate_wal, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_register
+ *
+ ******************************************************************************/
+
+/* If an exclusive lock is in place, getting a shared lock on any index of its
+ * range fails. */
+static MunitResult test_shm_lock_shared_busy(const MunitParameter params[],
+                                             void *               data) {
+	sqlite3_vfs *  vfs   = data;
+	sqlite3_file * file  = munit_malloc(vfs->szOsFile);
+	int            flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
+	volatile void *region;
+	int            rc;
+
+	(void)params;
+	(void)data;
+
+	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
+	munit_assert_int(rc, ==, 0);
+
+	rc = file->pMethods->xShmMap(file, 0, 512, 1, &region);
+	munit_assert_int(rc, ==, 0);
+
+	/* Take an exclusive lock on a range. */
+	flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
+	rc    = file->pMethods->xShmLock(file, 2, 3, flags);
+	munit_assert_int(rc, ==, 0);
+
+	/* Attempting to get a shared lock on an index in that range fails. */
+	flags = SQLITE_SHM_LOCK | SQLITE_SHM_SHARED;
+	rc    = file->pMethods->xShmLock(file, 3, 1, flags);
+	munit_assert_int(rc, ==, SQLITE_BUSY);
+
+	return MUNIT_OK;
+}
+
+/* If a shared lock is in place on any of the indexes of the requested range,
+ * getting an exclusive lock fails. */
+static MunitResult test_shm_lock_excl_busy(const MunitParameter params[],
+                                           void *               data) {
+	sqlite3_vfs *  vfs   = data;
+	sqlite3_file * file  = munit_malloc(vfs->szOsFile);
+	int            flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
+	volatile void *region;
+	int            rc;
+
+	(void)params;
+	(void)data;
+
+	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
+	munit_assert_int(rc, ==, 0);
+
+	rc = file->pMethods->xShmMap(file, 0, 512, 1, &region);
+	munit_assert_int(rc, ==, 0);
+
+	/* Take a shared lock on index 3. */
+	flags = SQLITE_SHM_LOCK | SQLITE_SHM_SHARED;
+	rc    = file->pMethods->xShmLock(file, 3, 1, flags);
+	munit_assert_int(rc, ==, 0);
+
+	/* Attempting to get an exclusive lock on a range that contains index 3
+	 * fails. */
+	flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
+	rc    = file->pMethods->xShmLock(file, 2, 3, flags);
+	munit_assert_int(rc, ==, SQLITE_BUSY);
+
+	return MUNIT_OK;
+}
+
+static MunitTest dqlite__vfs_shm_lock_tests[] = {
+    {"/shared-busy", test_shm_lock_excl_busy, setup, tear_down, 0, NULL},
+    {"/excl-busy", test_shm_lock_shared_busy, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_register
+ *
+ ******************************************************************************/
+
 /* Integration test, registering an in-memory VFS and performing various
  * database operations. */
 static MunitResult test_register(const MunitParameter params[], void *data) {
@@ -770,6 +998,121 @@ static MunitResult test_register_twice(const MunitParameter params[], void *data
 	return MUNIT_OK;
 }
 
+/* Test our expections on the memory-mapped WAl index format. */
+static MunitResult test_register_wal_index(const MunitParameter params[],
+                                           void *               data) {
+	sqlite3 * db1;
+	sqlite3 * db2;
+	uint32_t *read_marks;
+	int       rc;
+	int       i;
+
+	(void)data;
+	(void)params;
+
+	db1 = __db_open();
+	db2 = __db_open();
+
+	__db_exec(db1, "CREATE TABLE test (n INT)");
+
+	munit_assert_int(__wal_idx_mx_frame(db1), ==, 2);
+
+	read_marks = __wal_idx_read_marks(db1);
+	munit_assert_uint32(read_marks[0], ==, 0);
+	munit_assert_uint32(read_marks[1], ==, 0);
+	munit_assert_uint32(read_marks[2], ==, 0xffffffff);
+	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
+	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
+
+	/* Start a read transaction on db2 */
+	munit_log(MUNIT_LOG_INFO, "BEGIN");
+	__db_exec(db2, "BEGIN");
+	__db_exec(db2, "SELECT * FROM test");
+
+	/* The max frame is set to 2, which is the current size of the WAL. */
+	munit_assert_int(__wal_idx_mx_frame(db2), ==, 2);
+
+	/* The starting mx frame value has been saved in the read marks */
+	read_marks = __wal_idx_read_marks(db2);
+	munit_assert_uint32(read_marks[0], ==, 0);
+	munit_assert_uint32(read_marks[1], ==, 2);
+	munit_assert_uint32(read_marks[2], ==, 0xffffffff);
+	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
+	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
+
+	/* A shared lock is held on the second read mark (read locks start at
+	 * 3). */
+	munit_assert_true(__shm_shared_lock_held(db2, 4));
+
+	/* Start a write transaction on db1 */
+	__db_exec(db1, "BEGIN");
+
+	for (i = 0; i < 100; i++) {
+		__db_exec(db1, "INSERT INTO test(n) VALUES(1)");
+	}
+
+	/* The mx frame is still 2 since the transaction is not committed. */
+	munit_assert_int(__wal_idx_mx_frame(db1), ==, 2);
+
+	/* No extra read mark wal taken. */
+	read_marks = __wal_idx_read_marks(db1);
+	munit_assert_uint32(read_marks[0], ==, 0);
+	munit_assert_uint32(read_marks[1], ==, 2);
+	munit_assert_uint32(read_marks[2], ==, 0xffffffff);
+	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
+	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
+
+	__db_exec(db1, "COMMIT");
+
+	/* The mx frame is now 6. */
+	munit_assert_int(__wal_idx_mx_frame(db1), ==, 6);
+
+	/* The old read lock is still in place. */
+	munit_assert_true(__shm_shared_lock_held(db2, 4));
+
+	/* Start a read transaction on db1 */
+	__db_exec(db1, "BEGIN");
+	__db_exec(db1, "SELECT * FROM test");
+
+	/* The mx frame is still unchanged. */
+	munit_assert_int(__wal_idx_mx_frame(db1), ==, 6);
+
+	/* A new read mark was taken. */
+	read_marks = __wal_idx_read_marks(db1);
+	munit_assert_uint32(read_marks[0], ==, 0);
+	munit_assert_uint32(read_marks[1], ==, 2);
+	munit_assert_uint32(read_marks[2], ==, 6);
+	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
+	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
+
+	/* The old read lock is still in place. */
+	munit_assert_true(__shm_shared_lock_held(db2, 4));
+
+	/* The new read lock is in place as well. */
+	munit_assert_true(__shm_shared_lock_held(db2, 5));
+
+	rc = sqlite3_close(db1);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = sqlite3_close(db2);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	return SQLITE_OK;
+}
+
+static MunitTest dqlite__vfs_register_tests[] = {
+    {"", test_register, setup, tear_down, 0, NULL},
+    {"/twice", test_register_twice, setup, tear_down, 0, NULL},
+    {"/wal-index", test_register_wal_index, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_snapshot
+ *
+ ******************************************************************************/
+
 /* Test taking and restoring file snapshots. */
 static MunitResult test_snapshot(const MunitParameter params[], void *data) {
 	sqlite3_vfs * vfs = data;
@@ -791,21 +1134,21 @@ static MunitResult test_snapshot(const MunitParameter params[], void *data) {
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	munit_assert_ptr_not_equal(database, NULL);
-	munit_assert_int(len, ==, 4096);
+	munit_assert_int(len, ==, 512);
 
 	rc = dqlite_vfs_snapshot(vfs, "test.db-wal", &wal, &len);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	munit_assert_ptr_not_equal(wal, NULL);
-	munit_assert_int(len, ==, 8272);
+	munit_assert_int(len, ==, 1104);
 
 	rc = sqlite3_close(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = dqlite_vfs_restore(vfs, "test.db", database, 4096);
+	rc = dqlite_vfs_restore(vfs, "test.db", database, 512);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = dqlite_vfs_restore(vfs, "test.db-wal", wal, 8272);
+	rc = dqlite_vfs_restore(vfs, "test.db-wal", wal, 1104);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	sqlite3_free(database);
@@ -826,43 +1169,29 @@ static MunitResult test_snapshot(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
+static MunitTest dqlite__vfs_snapshot_tests[] = {
+    {"", test_snapshot, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
 /******************************************************************************
  *
  * Test suite
  *
  ******************************************************************************/
 
-static MunitTest dqlite__vfs_tests[] = {
-    {"_open/exclusive", test_open_exclusive, setup, tear_down, 0, NULL},
-    {"_open/again", test_open_again, setup, tear_down, 0, NULL},
-    {"_open/noent", test_open_noent, setup, tear_down, 0, NULL},
-    {"_open/enfile", test_open_enfile, setup, tear_down, 0, NULL},
-    {"_open/wal-before-db", test_open_wal_before_db, setup, tear_down, 0, NULL},
-    {"_delete", test_delete, setup, tear_down, 0, NULL},
-    {"_delete/busy", test_delete_busy, setup, tear_down, 0, NULL},
-    {"_delete/enoent", test_delete_enoent, setup, tear_down, 0, NULL},
-    {"_access", test_access, setup, tear_down, 0, NULL},
-    {"_access/noent", test_access_noent, setup, tear_down, 0, NULL},
-    {"_full_pathname", test_full_pathname, setup, tear_down, 0, NULL},
-    {"_close/then-delete", test_close_then_delete, setup, tear_down, 0, NULL},
-    {"_read/never-written", test_read_never_written, setup, tear_down, 0, NULL},
-    {"_write/db-header", test_write_database_header, setup, tear_down, 0, NULL},
-    {"_write/db-pages",
-     test_write_and_read_database_pages,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_write/wal-frames", test_write_and_read_wal_frames, setup, tear_down, 0, NULL},
-    {"_truncate/database", test_truncate_database, setup, tear_down, 0, NULL},
-    {"_truncate/wal", test_truncate_wal, setup, tear_down, 0, NULL},
-    {"_register", test_register, setup, tear_down, 0, NULL},
-    {"_register/twice", test_register_twice, setup, tear_down, 0, NULL},
-    {"_snapshot", test_snapshot, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 MunitSuite dqlite__vfs_suites[] = {
-    {"", dqlite__vfs_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
+    {"_open", dqlite__vfs_open_tests, NULL, 1, 0},
+    {"_delete", dqlite__vfs_delete_tests, NULL, 1, 0},
+    {"_access", dqlite__vfs_access_tests, NULL, 1, 0},
+    {"_full_pathname", dqlite__vfs_full_pathname_tests, NULL, 1, 0},
+    {"_close", dqlite__vfs_close_tests, NULL, 1, 0},
+    {"_read", dqlite__vfs_read_tests, NULL, 1, 0},
+    {"_write", dqlite__vfs_write_tests, NULL, 1, 0},
+    {"_truncate", dqlite__vfs_truncate_tests, NULL, 1, 0},
+    {"_shm_lock", dqlite__vfs_shm_lock_tests, NULL, 1, 0},
+    {"_register", dqlite__vfs_register_tests, NULL, 1, 0},
+    {"_snapshot", dqlite__vfs_snapshot_tests, NULL, 1, 0},
+    {"", dqlite__vfs_snapshot_tests, NULL, 1, 0},
+    {NULL, NULL, NULL, 0, 0},
 };
