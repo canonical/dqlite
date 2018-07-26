@@ -1744,7 +1744,7 @@ int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
 	int           flags;
 	sqlite3_file *file;
 	unsigned      page_size;
-	sqlite3_int64 offset = 0;
+	sqlite3_int64 offset;
 	int           rc;
 
 	assert(vfs != NULL);
@@ -1761,13 +1761,15 @@ int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
 		flags |= SQLITE_OPEN_WAL;
 	}
 
+	/* TODO: handle the cases where the file does not exist and the one
+	 * where it's empty. */
+
 	/* Open the file */
 	file = (sqlite3_file *)sqlite3_malloc(sizeof(*file));
 	if (file == NULL) {
 		rc = SQLITE_NOMEM;
 		goto err;
 	}
-
 	rc = dqlite__vfs_open(vfs, filename, file, flags, &flags);
 	if (rc != SQLITE_OK) {
 		goto err_after_file_malloc;
@@ -1786,19 +1788,22 @@ int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
 		goto err_after_file_open;
 	}
 
-	/* Read the header. The buffer size is enough for both cases. */
+	/* Read the header. The buffer size is enough for both database and WAL
+	 * files. */
 	rc = file->pMethods->xRead(file, *buf, DQLITE__FORMAT_WAL_HDR_SIZE, 0);
 	if (rc != SQLITE_OK) {
 		goto err_after_buf_malloc;
 	}
 
-	/* Figure the page size */
+	/* Figure the page size. */
 	rc = dqlite__format_get_page_size(type, *buf, &page_size);
 	if (rc != SQLITE_OK) {
 		goto err_after_buf_malloc;
 	}
 
-	/* If this is a WAL file, we have already read the header and we can
+	offset = 0;
+
+	/* If this is a WAL file , we have already read the header and we can
 	 * move on. */
 	if (type == DQLITE__FORMAT_WAL) {
 		offset += DQLITE__FORMAT_WAL_HDR_SIZE;
@@ -1853,127 +1858,110 @@ int dqlite_vfs_restore(sqlite3_vfs *vfs,
                        const char * filename,
                        uint8_t *    buf,
                        size_t       len) {
-	int err = SQLITE_OK;
-
 	sqlite3_file *file;
 	int           exists;
+	int           type;
 	int           flags;
 	unsigned int  page_size;
 	sqlite3_int64 offset;
-	uint8_t *     cursor;
+	uint8_t *     pos;
+	int           rc;
 
 	assert(vfs != NULL);
 	assert(buf != NULL);
 	assert(len > 0);
 
 	/* First check if the file exists */
-	err = dqlite__vfs_access(vfs, filename, 0, &exists);
-	if (err != SQLITE_OK) {
-		return err;
+	rc = dqlite__vfs_access(vfs, filename, 0, &exists);
+	if (rc != SQLITE_OK) {
+		goto err;
 	}
 
 	/* If it exists, remove it. */
 	if (exists) {
-		err = dqlite__vfs_delete(vfs, filename, 0);
-		if (err != SQLITE_OK) {
-			return err;
+		rc = dqlite__vfs_delete(vfs, filename, 0);
+		if (rc != SQLITE_OK) {
+			goto err;
 		}
 	}
+
+	/* Determine if this is a database or a WAL file. */
+	type = dqlite__vfs_guess_file_type(filename);
 
 	/* Common flags */
 	flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 
-	/* Determine if this is a database or a WAL file
-	 *
-	 * TODO: improve the check. */
-	if (strstr(filename, "-wal") != NULL) {
-		flags |= SQLITE_OPEN_WAL;
-	} else {
+	if (type == DQLITE__FORMAT_DB) {
 		flags |= SQLITE_OPEN_MAIN_DB;
+	} else {
+		flags |= SQLITE_OPEN_WAL;
 	}
 
 	/* Create the file */
 	file = (sqlite3_file *)sqlite3_malloc(sizeof(*file));
 	if (file == NULL) {
-		err = SQLITE_NOMEM;
-		goto err_file_malloc;
+		rc = SQLITE_NOMEM;
+		goto err;
+	}
+	rc = dqlite__vfs_open(vfs, filename, file, flags, &flags);
+	if (rc != SQLITE_OK) {
+		goto err_after_file_malloc;
 	}
 
-	err = dqlite__vfs_open(vfs, filename, file, flags, &flags);
-	if (err != SQLITE_OK) {
-		goto err_open;
+	/* Figure out the page size */
+	rc = dqlite__format_get_page_size(type, buf, &page_size);
+	if (rc != SQLITE_OK) {
+		goto err_after_file_open;
 	}
 
-	if (flags & SQLITE_OPEN_MAIN_DB) {
-		/* Write a database file */
-		cursor = buf;
+	offset = 0;
+	pos    = buf;
 
-		err = dqlite__format_get_page_size(
-		    DQLITE__FORMAT_DB, cursor, &page_size);
-		if (err != SQLITE_OK) {
-			goto err_write;
-		}
-
-		assert((len % page_size) == 0);
-
-		for (offset = 0; offset < (sqlite3_int64)(len);
-		     offset += page_size) {
-			cursor = buf + offset;
-			err    = dqlite__vfs_write(file, cursor, page_size, offset);
-			if (err != SQLITE_OK) {
-				goto err_write;
-			}
-		}
-	} else {
-		/* Write a WAL file */
-		int frame_size;
-		int rc;
-
-		rc = dqlite__format_get_page_size(
-		    DQLITE__FORMAT_WAL, buf, &page_size);
+	/* If this is a WAL file , write the header first. */
+	if (type == DQLITE__FORMAT_WAL) {
+		rc = file->pMethods->xWrite(
+		    file, pos, DQLITE__FORMAT_WAL_HDR_SIZE, offset);
 		if (rc != SQLITE_OK) {
-			return rc;
+			goto err_after_file_open;
 		}
-
-		frame_size = DQLITE__FORMAT_WAL_FRAME_HDR_SIZE + page_size;
-		assert(((len - DQLITE__FORMAT_WAL_HDR_SIZE) % frame_size) == 0);
-
-		cursor = buf;
-		err =
-		    dqlite__vfs_write(file, cursor, DQLITE__FORMAT_WAL_HDR_SIZE, 0);
-		if (err != SQLITE_OK) {
-			goto err_write;
-		}
-
-		for (offset = DQLITE__FORMAT_WAL_HDR_SIZE;
-		     offset < (sqlite3_int64)(len);
-		     offset += frame_size) {
-			cursor = buf + offset;
-			err    = dqlite__vfs_write(
-                            file, cursor, DQLITE__FORMAT_WAL_FRAME_HDR_SIZE, offset);
-			if (err != SQLITE_OK) {
-				goto err_write;
-			}
-
-			cursor = buf + offset + DQLITE__FORMAT_WAL_FRAME_HDR_SIZE;
-			err    = dqlite__vfs_write(
-                            file,
-                            cursor,
-                            page_size,
-                            offset + DQLITE__FORMAT_WAL_FRAME_HDR_SIZE);
-			if (err != SQLITE_OK) {
-				goto err_write;
-			}
-		}
+		offset += DQLITE__FORMAT_WAL_HDR_SIZE;
+		pos += DQLITE__FORMAT_WAL_HDR_SIZE;
 	}
 
-err_write:
-	dqlite__vfs_close(file);
+	while ((size_t)offset < len) {
+		if (type == DQLITE__FORMAT_WAL) {
+			/* Write the frame header */
+			rc = file->pMethods->xWrite(
+			    file, pos, DQLITE__FORMAT_WAL_FRAME_HDR_SIZE, offset);
+			if (rc != SQLITE_OK) {
+				goto err_after_file_open;
+			}
+			offset += DQLITE__FORMAT_WAL_FRAME_HDR_SIZE;
+			pos += DQLITE__FORMAT_WAL_FRAME_HDR_SIZE;
+		}
 
-err_open:
+		/* Write the page */
+		rc = file->pMethods->xWrite(file, pos, page_size, offset);
+		if (rc != SQLITE_OK) {
+			goto err_after_file_open;
+		}
+		offset += page_size;
+		pos += page_size;
+	};
+
+	file->pMethods->xClose(file);
 	sqlite3_free(file);
 
-err_file_malloc:
+	return SQLITE_OK;
 
-	return err;
+err_after_file_open:
+	dqlite__vfs_close(file);
+
+err_after_file_malloc:
+	sqlite3_free(file);
+
+err:
+	assert(rc != SQLITE_OK);
+
+	return rc;
 }
