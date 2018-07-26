@@ -172,12 +172,6 @@ dqlite_cluster *dqlite_server_cluster(dqlite_server *s);
 /* Return the dqlite_logger object the server is using, if any was configured. */
 dqlite_logger *dqlite_server_logger(dqlite_server *s);
 
-/* A data buffer, used for taking and restoring VFS file snapshots. */
-typedef struct dqlite_buffer {
-	uint8_t *data;
-	size_t   size;
-} dqlite_buf;
-
 /* Register an in-memory SQLite VFS implementation under the given name. Return
  * the newly created VFS instance.
  *
@@ -188,16 +182,20 @@ int dqlite_vfs_register(const char *name, sqlite3_vfs **out);
 /* Unregister an in-memory VFS instance. */
 void dqlite_vfs_unregister(sqlite3_vfs *vfs);
 
-/* Return a snapshot of the content of the file with the given name. */
-int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
-                        const char * filename,
-                        uint8_t **   buf,
-                        size_t *     len);
+/* Read the content of a file, using the VFS implementation registered under the
+ * given name. Used to take database snapshots using the dqlite in-memory
+ * VFS. */
+int dqlite_file_read(const char *vfs_name,
+                     const char *filename,
+                     uint8_t **  buf,
+                     size_t *    len);
 
-/* Restore a snapshot, replacing the content of the file with the given name. */
-int dqlite_vfs_restore(sqlite3_vfs *vfs,
-                       const char * filename,
-                       uint8_t *    buf,
-                       size_t       len);
+/* Write the content of a file, using the VFS implementation registered under
+ * the given name. Used to restore database snapshots against the dqlite
+ * in-memory VFS. If the file already exists, it's overwritten. */
+int dqlite_file_write(const char *vfs_name,
+                      const char *filename,
+                      uint8_t *   buf,
+                      size_t      len);
 
 #endif /* DQLITE_H */
