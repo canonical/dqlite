@@ -6,9 +6,7 @@
 
 #include "format.h"
 
-int dqlite__format_get_page_size(int            type,
-                                 const uint8_t *buf,
-                                 unsigned int * page_size) {
+int dqlite__format_get_page_size(int type, const uint8_t *buf, unsigned *page_size) {
 	assert(buf != NULL);
 	assert(page_size != NULL);
 	assert(type == DQLITE__FORMAT_DB || type == DQLITE__FORMAT_WAL);
