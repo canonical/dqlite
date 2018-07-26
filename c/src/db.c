@@ -210,18 +210,6 @@ int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt) {
 	return rc;
 }
 
-/* Helper to to update the transaction refcount on the in-memory file object
- * associated with the db. */
-static void dqlite__db_update_tx_refcount(struct dqlite__db *db, int delta) {
-	struct dqlite__vfs_file *file;
-	int                      rc;
-
-	rc = sqlite3_file_control(db->db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
-	assert(rc == SQLITE_OK); /* Should never fail */
-
-	file->content->tx_refcount += delta;
-}
-
 int dqlite__db_begin(struct dqlite__db *db) {
 	int rc;
 
@@ -237,8 +225,6 @@ int dqlite__db_begin(struct dqlite__db *db) {
 	assert(db->in_a_tx == 0);
 
 	db->in_a_tx = 1;
-
-	dqlite__db_update_tx_refcount(db, 1);
 
 	return SQLITE_OK;
 }
@@ -263,8 +249,6 @@ int dqlite__db_commit(struct dqlite__db *db) {
 
 	db->in_a_tx = 0;
 
-	dqlite__db_update_tx_refcount(db, -1);
-
 	return SQLITE_OK;
 }
 
@@ -278,8 +262,6 @@ int dqlite__db_rollback(struct dqlite__db *db) {
 	/* TODO: what are the failure modes of a ROLLBACK statement? is it
 	 * possible that it leaves a transaction open?. */
 	db->in_a_tx = 0;
-
-	dqlite__db_update_tx_refcount(db, -1);
 
 	if (rc != SQLITE_OK) {
 		return rc;
