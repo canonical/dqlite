@@ -134,7 +134,6 @@ static void fixture_commit(struct fixture *f, uint32_t db_id) {
 
 static void *setup(const MunitParameter params[], void *user_data) {
 	struct fixture *f;
-	int             err;
 	int             rc;
 
 	(void)params;
@@ -151,8 +150,10 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	rc = sqlite3_wal_replication_register(f->replication, 0);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	err = dqlite_vfs_register(f->replication->zName, &f->vfs);
-	munit_assert_int(err, ==, 0);
+	f->vfs = dqlite_vfs_create(f->replication->zName);
+	munit_assert_ptr_not_null(f->vfs);
+
+	sqlite3_vfs_register(f->vfs, 0);
 
 	f->options = munit_malloc(sizeof *f->options);
 	dqlite__options_defaults(f->options);
@@ -169,9 +170,11 @@ static void *setup(const MunitParameter params[], void *user_data) {
 static void tear_down(void *data) {
 	struct fixture *f = data;
 
+	sqlite3_vfs_unregister(f->vfs);
+
 	dqlite__request_close(f->request);
 	dqlite__gateway_close(f->gateway);
-	dqlite_vfs_unregister(f->vfs);
+	dqlite_vfs_destroy(f->vfs);
 	sqlite3_wal_replication_unregister(f->replication);
 
 	test_assert_no_leaks();

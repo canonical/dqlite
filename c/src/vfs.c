@@ -1613,20 +1613,12 @@ dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int NotUsed2, char *NotUsed3) {
 	return rc;
 }
 
-int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
+sqlite3_vfs *dqlite_vfs_create(const char *name) {
 	sqlite3_vfs *            vfs;
-	char *                   zName;
 	struct dqlite__vfs_root *root;
 	int                      rc;
 
 	assert(name != NULL);
-	assert(out != NULL);
-
-	vfs = sqlite3_vfs_find(name);
-	if (vfs != NULL) {
-		rc = SQLITE_ERROR;
-		goto err;
-	}
 
 	vfs = sqlite3_malloc(sizeof *vfs);
 	if (vfs == NULL) {
@@ -1637,7 +1629,7 @@ int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
 	root = sqlite3_malloc(sizeof *root);
 	if (root == NULL) {
 		rc = SQLITE_NOMEM;
-		goto err_after_vfs_malloc;
+		goto err;
 	}
 
 	rc = dqlite__vfs_root_init(root);
@@ -1646,21 +1638,19 @@ int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
 		goto err_after_root_malloc;
 	}
 
-	zName = sqlite3_malloc(strlen(name) + 1);
-	if (zName == NULL) {
-		rc = SQLITE_NOMEM;
+	/* Make a copy of the provided name, so clients can free the string if
+	 * they need. */
+	vfs->zName = sqlite3_malloc(strlen(name) + 1);
+	if (vfs->zName == NULL) {
 		goto err_after_root_init;
 	}
 
-	/* Make a copy of the provided name, so clients can free the string if
-	 * they need. */
-	strcpy(zName, name);
+	strcpy((char *)vfs->zName, name);
 
 	vfs->iVersion   = 2;
 	vfs->szOsFile   = sizeof(struct dqlite__vfs_file);
 	vfs->mxPathname = DQLITE__VFS_MAX_PATHNAME;
 	vfs->pNext      = 0;
-	vfs->zName      = zName;
 	vfs->pAppData   = root;
 	vfs->xOpen      = dqlite__vfs_open;
 	vfs->xDelete    = dqlite__vfs_delete;
@@ -1680,11 +1670,7 @@ int dqlite_vfs_register(const char *name, sqlite3_vfs **out) {
 	vfs->xGetLastError     = dqlite__vfs_get_last_error;
 	vfs->xCurrentTimeInt64 = dqlite__vfs_current_time_int64;
 
-	sqlite3_vfs_register(vfs, 0);
-
-	*out = vfs;
-
-	return SQLITE_OK;
+	return vfs;
 
 err_after_root_init:
 	dqlite__vfs_root_close(root);
@@ -1692,22 +1678,16 @@ err_after_root_init:
 err_after_root_malloc:
 	sqlite3_free(root);
 
-err_after_vfs_malloc:
-	sqlite3_free(vfs);
-
 err:
 	assert(rc != SQLITE_OK);
-	*out = NULL;
 
-	return rc;
+	return NULL;
 }
 
-void dqlite_vfs_unregister(sqlite3_vfs *vfs) {
+void dqlite_vfs_destroy(sqlite3_vfs *vfs) {
 	struct dqlite__vfs_root *root;
 
 	assert(vfs != NULL);
-
-	sqlite3_vfs_unregister(vfs);
 
 	root = (struct dqlite__vfs_root *)(vfs->pAppData);
 

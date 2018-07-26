@@ -202,18 +202,13 @@ static int __shm_shared_lock_held(sqlite3 *db, int i) {
  ******************************************************************************/
 
 static void *setup(const MunitParameter params[], void *user_data) {
-	sqlite3_vfs *vfs;
-
-	int rc;
+	sqlite3_vfs *vfs = munit_malloc(sizeof *vfs);
 
 	(void)params;
 	(void)user_data;
 
-	rc = dqlite_vfs_register("volatile", &vfs);
-	if (rc != 0) {
-		munit_errorf(
-		    "failed to register vfs: %s - %d", sqlite3_errstr(rc), rc);
-	}
+	vfs = dqlite_vfs_create("volatile");
+	munit_assert_ptr_not_null(vfs);
 
 	return vfs;
 }
@@ -221,7 +216,7 @@ static void *setup(const MunitParameter params[], void *user_data) {
 static void tear_down(void *data) {
 	sqlite3_vfs *vfs = data;
 
-	dqlite_vfs_unregister(vfs);
+	dqlite_vfs_destroy(vfs);
 
 	test_assert_no_leaks();
 }
@@ -952,17 +947,21 @@ static MunitTest dqlite__vfs_shm_lock_tests[] = {
 
 /* Integration test, registering an in-memory VFS and performing various
  * database operations. */
-static MunitResult test_register(const MunitParameter params[], void *data) {
-	int           rc;
+static MunitResult test_integration_db(const MunitParameter params[], void *data) {
+	sqlite3_vfs * vfs;
 	sqlite3 *     db;
 	sqlite3_stmt *stmt;
 	const char *  tail;
 	int           i;
 	int           size;
 	int           ckpt;
+	int           rc;
 
-	(void)data;
 	(void)params;
+
+	vfs = data;
+
+	sqlite3_vfs_register(vfs, 0);
 
 	db = __db_open();
 
@@ -993,35 +992,25 @@ static MunitResult test_register(const MunitParameter params[], void *data) {
 	rc = sqlite3_close(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	return MUNIT_OK;
-}
-
-/* Trying to register a new VFS with the same name produces and error. */
-static MunitResult test_register_twice(const MunitParameter params[], void *data) {
-	sqlite3_vfs *vfs;
-	int          rc;
-
-	(void)params;
-	(void)data;
-
-	rc = dqlite_vfs_register("volatile", &vfs);
-
-	munit_assert_int(rc, ==, DQLITE_ERROR);
+	sqlite3_vfs_unregister(vfs);
 
 	return MUNIT_OK;
 }
 
 /* Test our expections on the memory-mapped WAl index format. */
-static MunitResult test_register_wal_index(const MunitParameter params[],
-                                           void *               data) {
-	sqlite3 * db1;
-	sqlite3 * db2;
-	uint32_t *read_marks;
-	int       rc;
-	int       i;
+static MunitResult test_integration_wal(const MunitParameter params[], void *data) {
+	sqlite3_vfs *vfs;
+	sqlite3 *    db1;
+	sqlite3 *    db2;
+	uint32_t *   read_marks;
+	int          rc;
+	int          i;
 
-	(void)data;
 	(void)params;
+
+	vfs = data;
+
+	sqlite3_vfs_register(vfs, 0);
 
 	db1 = __db_open();
 	db2 = __db_open();
@@ -1110,13 +1099,14 @@ static MunitResult test_register_wal_index(const MunitParameter params[],
 	rc = sqlite3_close(db2);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
+	sqlite3_vfs_unregister(vfs);
+
 	return SQLITE_OK;
 }
 
-static MunitTest dqlite__vfs_register_tests[] = {
-    {"", test_register, setup, tear_down, 0, NULL},
-    {"/twice", test_register_twice, setup, tear_down, 0, NULL},
-    {"/wal-index", test_register_wal_index, setup, tear_down, 0, NULL},
+static MunitTest dqlite__vfs_integration_tests[] = {
+    {"/db", test_integration_db, setup, tear_down, 0, NULL},
+    {"/wal", test_integration_wal, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 
@@ -1136,6 +1126,6 @@ MunitSuite dqlite__vfs_suites[] = {
     {"_write", dqlite__vfs_write_tests, NULL, 1, 0},
     {"_truncate", dqlite__vfs_truncate_tests, NULL, 1, 0},
     {"_shm_lock", dqlite__vfs_shm_lock_tests, NULL, 1, 0},
-    {"_register", dqlite__vfs_register_tests, NULL, 1, 0},
+    {"/integration", dqlite__vfs_integration_tests, NULL, 1, 0},
     {NULL, NULL, NULL, 0, 0},
 };

@@ -48,8 +48,11 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	err = sqlite3_wal_replication_register(replication, 0);
 	munit_assert_int(err, ==, 0);
 
-	err = dqlite_vfs_register(replication->zName, &vfs);
+	vfs = dqlite_vfs_create(replication->zName);
+	munit_assert_ptr_not_null(vfs);
+
 	munit_assert_int(err, ==, 0);
+	sqlite3_vfs_register(vfs, 0);
 
 	db = munit_malloc(sizeof *db);
 
@@ -65,8 +68,10 @@ static void tear_down(void *data) {
 
 	dqlite__db_close(db);
 
-	dqlite_vfs_unregister(vfs);
+	sqlite3_vfs_unregister(vfs);
 	sqlite3_wal_replication_unregister(replication);
+
+	dqlite_vfs_destroy(vfs);
 
 	test_assert_no_leaks();
 }
