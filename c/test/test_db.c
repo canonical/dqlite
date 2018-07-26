@@ -2,7 +2,6 @@
 
 #include "../include/dqlite.h"
 #include "../src/db.h"
-#include "../src/vfs.h"
 
 #include "replication.h"
 

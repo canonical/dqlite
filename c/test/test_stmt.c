@@ -6,7 +6,6 @@
 #include "../include/dqlite.h"
 #include "../src/binary.h"
 #include "../src/stmt.h"
-#include "../src/vfs.h"
 
 #include "leak.h"
 #include "munit.h"
