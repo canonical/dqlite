@@ -156,7 +156,11 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	sqlite3_vfs_register(f->vfs, 0);
 
 	f->options = munit_malloc(sizeof *f->options);
+
 	dqlite__options_defaults(f->options);
+
+	f->options->vfs             = "test";
+	f->options->wal_replication = "test";
 
 	f->gateway = munit_malloc(sizeof *f->gateway);
 	dqlite__gateway_init(f->gateway, test_cluster(), f->options);

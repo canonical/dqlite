@@ -55,6 +55,19 @@ test_server *testServerCreate() {
 		return NULL;
 	}
 
+	err = dqlite_server_config(
+	    s->service, DQLITE_CONFIG_VFS, (void *)s->vfs->zName);
+	if (err != 0) {
+		return NULL;
+	}
+
+	err = dqlite_server_config(s->service,
+	                           DQLITE_CONFIG_WAL_REPLICATION,
+	                           (void *)s->replication->zName);
+	if (err != 0) {
+		return NULL;
+	}
+
 	s->address.sin_family      = AF_INET;
 	s->address.sin_addr.s_addr = inet_addr("127.0.0.1");
 	s->address.sin_port        = 0;

@@ -73,7 +73,6 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
                                  struct dqlite__gateway_ctx *ctx) {
 	int                err;
 	int                rc;
-	const char *       replication;
 	struct dqlite__db *db;
 
 	err = dqlite__db_registry_add(&g->dbs, &db);
@@ -86,15 +85,12 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 
 	assert(db != NULL);
 
-	replication = g->cluster->xReplication(g->cluster->ctx);
-
-	assert(replication != NULL);
-
 	rc = dqlite__db_open(db,
 	                     ctx->request->open.name,
 	                     ctx->request->open.flags,
-	                     replication,
-	                     g->options->page_size);
+	                     g->options->vfs,
+	                     g->options->page_size,
+	                     g->options->wal_replication);
 
 	if (rc != 0) {
 		dqlite__error_printf(&g->error, db->error);

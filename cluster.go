@@ -12,14 +12,9 @@ import (
 )
 
 type cluster struct {
-	replication string                     // Registration name for WAL replication
-	raft        *raft.Raft                 // Raft instance
-	registry    *registry.Registry         // Connection registry
-	provider    raft.ServerAddressProvider // Custom address provider
-}
-
-func (c *cluster) Replication() string {
-	return c.replication
+	raft     *raft.Raft                 // Raft instance
+	registry *registry.Registry         // Connection registry
+	provider raft.ServerAddressProvider // Custom address provider
 }
 
 func (c *cluster) Leader() string {

@@ -208,10 +208,6 @@ func newTestCluster() *testCluster {
 	return &testCluster{}
 }
 
-func (c *testCluster) Replication() string {
-	return "test"
-}
-
 func (c *testCluster) Leader() string {
 	return "127.0.0.1:666"
 }

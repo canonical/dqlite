@@ -127,7 +127,7 @@ static MunitResult test_dqlite(const MunitParameter params[], void *data) {
 }
 
 static MunitTest dqlite__integration_tests[] = {
-    {"dqlite", test_dqlite, setup, tear_down, 0, NULL},
+    {"/dqlite", test_dqlite, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 

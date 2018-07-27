@@ -63,9 +63,11 @@
 
 /* Config opcodes */
 #define DQLITE_CONFIG_LOGGER 0
-#define DQLITE_CONFIG_HEARTBEAT_TIMEOUT 1
-#define DQLITE_CONFIG_PAGE_SIZE 2
-#define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 3
+#define DQLITE_CONFIG_VFS 1
+#define DQLITE_CONFIG_WAL_REPLICATION 2
+#define DQLITE_CONFIG_HEARTBEAT_TIMEOUT 3
+#define DQLITE_CONFIG_PAGE_SIZE 4
+#define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 5
 
 /* TODO: avoid this redundant EOF marker */
 #define DQLITE_RESPONSE_ROWS_EOF 0xffffffffffffffff
@@ -93,7 +95,6 @@ typedef struct dqlite_server_info {
  * the next invokation of the same method. */
 typedef struct dqlite_cluster {
 	void *ctx;
-	const char *(*xReplication)(void *ctx);
 	const char *(*xLeader)(void *ctx);
 	int (*xServers)(void *ctx, dqlite_server_info *servers[]);
 	void (*xRegister)(void *ctx, sqlite3 *db);

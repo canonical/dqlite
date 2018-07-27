@@ -284,6 +284,9 @@ func newServer(t *testing.T, index int, listener net.Listener, cluster bindings.
 	server, err := bindings.NewServer(cluster)
 	require.NoError(t, err)
 
+	server.SetVfs(name)
+	server.SetWalReplication(name)
+
 	runCh := make(chan error)
 	go func() {
 		err := server.Run()
@@ -353,16 +356,11 @@ func newListener(t *testing.T) net.Listener {
 }
 
 type testCluster struct {
-	name   string
 	leader string
 }
 
 func newTestCluster() *testCluster {
 	return &testCluster{}
-}
-
-func (c *testCluster) Replication() string {
-	return c.name
 }
 
 func (c *testCluster) Leader() string {

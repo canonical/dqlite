@@ -279,6 +279,8 @@ void dqlite_server_destroy(dqlite_server *s) {
 
 	assert(s != NULL);
 
+	dqlite__options_close(&s->options);
+
 	/* The sem_destroy call should only fail if the given semaphore is
 	 * invalid, which must not be our case. */
 	err = sem_destroy(&s->ready);
@@ -304,6 +306,15 @@ int dqlite_server_config(dqlite_server *s, int op, void *arg) {
 
 	case DQLITE_CONFIG_LOGGER:
 		s->logger = arg;
+		break;
+
+	case DQLITE_CONFIG_VFS:
+		err = dqlite__options_set_vfs(&s->options, (const char *)arg);
+		break;
+
+	case DQLITE_CONFIG_WAL_REPLICATION:
+		err = dqlite__options_set_wal_replication(&s->options,
+		                                          (const char *)arg);
 		break;
 
 	case DQLITE_CONFIG_HEARTBEAT_TIMEOUT:
