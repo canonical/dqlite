@@ -39,8 +39,7 @@ static void *setup(const MunitParameter params[], void *user_data) {
 
 	f = munit_malloc(sizeof *f);
 
-	err = test_socket_pair_initialize(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_init(&f->sockets, "unix");
 
 	err = uv_loop_init(&f->loop);
 	munit_assert_int(err, ==, 0);
@@ -61,9 +60,7 @@ static void tear_down(void *data) {
 	err = uv_loop_close(&f->loop);
 	munit_assert_int(err, ==, 0);
 
-	err = test_socket_pair_cleanup(&f->sockets);
-	munit_assert_int(err, ==, 0);
-
+	test_socket_pair_close(&f->sockets);
 	test_assert_no_leaks();
 }
 
@@ -137,8 +134,7 @@ static MunitResult test_process(const MunitParameter params[], void *data) {
 	munit_assert(dqlite__error_is_null(&item.error));
 
 	/* Abort the newly created connection */
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
