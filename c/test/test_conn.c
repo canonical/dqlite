@@ -55,21 +55,36 @@ static void __recv_response(struct fixture *f) {
 
 /******************************************************************************
  *
+ * Parameters
+ *
+ ******************************************************************************/
+
+/* Run the tests using both TCP and Unix sockets. */
+static char *test_socket_families[] = {"tcp", "unix", NULL};
+
+static MunitParameterEnum test_socket_family_params[] = {
+    {"socket-family", test_socket_families},
+    {NULL, NULL},
+};
+
+/******************************************************************************
+ *
  * Setup and tear down
  *
  ******************************************************************************/
 
 static void *setup(const MunitParameter params[], void *user_data) {
 	struct fixture *f;
+	const char *    socket_family;
 	int             err;
 
-	(void)params;
 	(void)user_data;
+
+	socket_family = munit_parameters_get(params, "socket-family");
 
 	f = munit_malloc(sizeof *f);
 
-	err = test_socket_pair_initialize(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_init(&f->sockets, socket_family);
 
 	err = uv_loop_init(&f->loop);
 	munit_assert_int(err, ==, 0);
@@ -95,9 +110,7 @@ static void tear_down(void *data) {
 	err = uv_loop_close(&f->loop);
 	munit_assert_int(err, ==, 0);
 
-	err = test_socket_pair_cleanup(&f->sockets);
-	munit_assert_int(err, ==, 0);
-
+	test_socket_pair_close(&f->sockets);
 	test_assert_no_leaks();
 }
 
@@ -117,8 +130,7 @@ static MunitResult test_abort_immediately(const MunitParameter params[],
 	err = dqlite__conn_start(&f->conn);
 	munit_assert_int(err, ==, 0);
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -148,8 +160,7 @@ static MunitResult test_abort_during_handshake(const MunitParameter params[],
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -179,8 +190,7 @@ static MunitResult test_abort_after_handshake(const MunitParameter params[],
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -221,8 +231,7 @@ static MunitResult test_abort_during_header(const MunitParameter params[],
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -264,8 +273,7 @@ static MunitResult test_abort_after_header(const MunitParameter params[],
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -312,8 +320,7 @@ static MunitResult test_abort_during_body(const MunitParameter params[],
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -364,8 +371,7 @@ static MunitResult test_abort_after_body(const MunitParameter params[], void *da
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -418,13 +424,48 @@ static MunitResult test_abort_after_heartbeat_timeout(const MunitParameter param
 }
 
 static MunitTest dqlite__conn_abort_tests[] = {
-    {"/immediately", test_abort_immediately, setup, tear_down, 0, NULL},
-    {"/during-handshake", test_abort_during_handshake, setup, tear_down, 0, NULL},
-    {"/after-handshake", test_abort_after_handshake, setup, tear_down, 0, NULL},
-    {"/during-header", test_abort_during_header, setup, tear_down, 0, NULL},
-    {"/after-header", test_abort_after_header, setup, tear_down, 0, NULL},
-    {"/during-body", test_abort_during_body, setup, tear_down, 0, NULL},
-    {"/after-body", test_abort_after_body, setup, tear_down, 0, NULL},
+    {"/immediately",
+     test_abort_immediately,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
+    {"/during-handshake",
+     test_abort_during_handshake,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
+    {"/after-handshake",
+     test_abort_after_handshake,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
+    {"/during-header",
+     test_abort_during_header,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
+    {"/after-header",
+     test_abort_after_header,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
+    {"/during-body",
+     test_abort_during_body,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
+    {"/after-body",
+     test_abort_after_body,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
     //	{"after heartbeat timeout", test_dqlite__conn_abort_after_heartbeat_timeout},
     {NULL, NULL, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
 };
@@ -503,8 +544,7 @@ static MunitResult test_read_cb_empty_body(const MunitParameter params[],
 	    f->response.failure.message,
 	    "failed to parse request header: empty message body");
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -557,8 +597,7 @@ static MunitResult test_read_cb_body_too_large(const MunitParameter params[],
 	    f->response.failure.message,
 	    "failed to parse request header: message body too large");
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -611,8 +650,7 @@ static MunitResult test_read_cb_malformed_body(const MunitParameter params[],
 	    "failed to decode request: failed to decode 'open': "
 	    "failed to get 'vfs' field: no string found");
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -660,8 +698,7 @@ static MunitResult test_read_cb_invalid_db_id(const MunitParameter params[],
 	munit_assert_int(f->response.failure.code, ==, SQLITE_NOTFOUND);
 	munit_assert_string_equal(f->response.failure.message, "no db with id 1");
 
-	err = test_socket_pair_client_disconnect(&f->sockets);
-	munit_assert_int(err, ==, 0);
+	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -672,11 +709,36 @@ static MunitResult test_read_cb_invalid_db_id(const MunitParameter params[],
 }
 
 static MunitTest dqlite__conn_read_cb_tests[] = {
-    {"/unknown-protocol", test_read_cb_unknown_protocol, setup, tear_down, 0, NULL},
-    {"/empty-body", test_read_cb_empty_body, setup, tear_down, 0, NULL},
-    {"/body-too-large", test_read_cb_body_too_large, setup, tear_down, 0, NULL},
-    {"/malformed-body", test_read_cb_malformed_body, setup, tear_down, 0, NULL},
-    {"/invalid-db-id", test_read_cb_invalid_db_id, setup, tear_down, 0, NULL},
+    {"/unknown-protocol",
+     test_read_cb_unknown_protocol,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
+    {"/empty-body",
+     test_read_cb_empty_body,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
+    {"/body-too-large",
+     test_read_cb_body_too_large,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
+    {"/malformed-body",
+     test_read_cb_malformed_body,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
+    {"/invalid-db-id",
+     test_read_cb_invalid_db_id,
+     setup,
+     tear_down,
+     0,
+     test_socket_family_params},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 
