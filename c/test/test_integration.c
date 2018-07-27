@@ -14,7 +14,7 @@
  ******************************************************************************/
 
 struct fixture {
-	test_server *       server;
+	struct test_server *server;
 	struct test_client *client;
 };
 
@@ -40,20 +40,17 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	f->server = test_server_start();
 	munit_assert_ptr_not_equal(f->server, NULL);
 
-	err = test_server_connect(f->server, &f->client);
-	munit_assert_int(err, ==, 0);
+	test_server_connect(f->server, &f->client);
 
 	return f;
 }
 
 static void tear_down(void *data) {
 	struct fixture *f = data;
-	int             err;
 
 	test_client_close(f->client);
 
-	err = test_server_stop(f->server);
-	munit_assert_int(err, ==, 0);
+	test_server_stop(f->server);
 
 	test_assert_no_leaks();
 }
