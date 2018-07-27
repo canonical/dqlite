@@ -46,13 +46,6 @@
 	X(uint64, db_id, __VA_ARGS__)                                               \
 	X(text, sql, __VA_ARGS__)
 
-#define DQLITE__REQUEST_SCHEMA_BEGIN(X, ...)                                        \
-	X(uint32, db_id, __VA_ARGS__)                                               \
-	X(uint32, flags, __VA_ARGS__)
-
-#define DQLITE__REQUEST_SCHEMA_COMMIT(X, ...) X(uint64, db_id, __VA_ARGS__)
-#define DQLITE__REQUEST_SCHEMA_ROLLBACK(X, ...) X(uint64, db_id, __VA_ARGS__)
-
 DQLITE__SCHEMA_DEFINE(dqlite__request_leader, DQLITE__REQUEST_SCHEMA_LEADER);
 DQLITE__SCHEMA_DEFINE(dqlite__request_client, DQLITE__REQUEST_SCHEMA_CLIENT);
 DQLITE__SCHEMA_DEFINE(dqlite__request_heartbeat, DQLITE__REQUEST_SCHEMA_HEARTBEAT);
@@ -63,9 +56,6 @@ DQLITE__SCHEMA_DEFINE(dqlite__request_exec, DQLITE__REQUEST_SCHEMA_EXEC);
 DQLITE__SCHEMA_DEFINE(dqlite__request_finalize, DQLITE__REQUEST_SCHEMA_FINALIZE);
 DQLITE__SCHEMA_DEFINE(dqlite__request_exec_sql, DQLITE__REQUEST_SCHEMA_EXEC_SQL);
 DQLITE__SCHEMA_DEFINE(dqlite__request_query_sql, DQLITE__REQUEST_SCHEMA_QUERY_SQL);
-DQLITE__SCHEMA_DEFINE(dqlite__request_begin, DQLITE__REQUEST_SCHEMA_BEGIN);
-DQLITE__SCHEMA_DEFINE(dqlite__request_commit, DQLITE__REQUEST_SCHEMA_COMMIT);
-DQLITE__SCHEMA_DEFINE(dqlite__request_rollback, DQLITE__REQUEST_SCHEMA_ROLLBACK);
 
 #define DQLITE__REQUEST_SCHEMA_TYPES(X, ...)                                        \
 	X(DQLITE_REQUEST_LEADER, dqlite__request_leader, leader, __VA_ARGS__)       \
@@ -83,10 +73,7 @@ DQLITE__SCHEMA_DEFINE(dqlite__request_rollback, DQLITE__REQUEST_SCHEMA_ROLLBACK)
 	X(DQLITE_REQUEST_QUERY_SQL,                                                 \
 	  dqlite__request_query_sql,                                                \
 	  query_sql,                                                                \
-	  __VA_ARGS__)                                                              \
-	X(DQLITE_REQUEST_BEGIN, dqlite__request_begin, begin, __VA_ARGS__)          \
-	X(DQLITE_REQUEST_COMMIT, dqlite__request_commit, commit, __VA_ARGS__)       \
-	X(DQLITE_REQUEST_ROLLBACK, dqlite__request_rollback, rollback, __VA_ARGS__)
+	  __VA_ARGS__)
 
 DQLITE__SCHEMA_HANDLER_DEFINE(dqlite__request, DQLITE__REQUEST_SCHEMA_TYPES);
 

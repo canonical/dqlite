@@ -333,12 +333,7 @@ func (c *Conn) Close() error {
 // true to either set the read-only transaction property if supported or return
 // an error if it is not supported.
 func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
-	defer c.request.Reset()
-	defer c.response.Reset()
-
-	client.EncodeBegin(&c.request, uint32(c.id), 0)
-
-	if err := c.client.Call(ctx, &c.request, &c.response); err != nil {
+	if _, err := c.ExecContext(ctx, "BEGIN", nil); err != nil {
 		return nil, driverError(err)
 	}
 
@@ -363,15 +358,11 @@ type Tx struct {
 
 // Commit the transaction.
 func (tx *Tx) Commit() error {
-	defer tx.conn.request.Reset()
-	defer tx.conn.response.Reset()
-
-	client.EncodeCommit(&tx.conn.request, uint64(tx.conn.id))
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	// TODO: make the timeout configurable.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := tx.conn.client.Call(ctx, &tx.conn.request, &tx.conn.response); err != nil {
+	if _, err := tx.conn.ExecContext(ctx, "COMMIT", nil); err != nil {
 		return driverError(err)
 	}
 
@@ -380,15 +371,11 @@ func (tx *Tx) Commit() error {
 
 // Rollback the transaction.
 func (tx *Tx) Rollback() error {
-	defer tx.conn.request.Reset()
-	defer tx.conn.response.Reset()
-
-	client.EncodeRollback(&tx.conn.request, uint64(tx.conn.id))
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	// TODO: make the timeout configurable.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := tx.conn.client.Call(ctx, &tx.conn.request, &tx.conn.response); err != nil {
+	if _, err := tx.conn.ExecContext(ctx, "ROLLBACK", nil); err != nil {
 		return driverError(err)
 	}
 

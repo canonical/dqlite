@@ -89,25 +89,3 @@ func EncodeQuerySQL(request *Message, db uint64, sql string, values NamedValues)
 
 	request.PutHeader(bindings.RequestQuerySQL)
 }
-
-// EncodeBegin encodes a Begin request.
-func EncodeBegin(request *Message, db uint32, flags uint32) {
-	request.PutUint32(db)
-	request.PutUint32(flags)
-
-	request.PutHeader(bindings.RequestBegin)
-}
-
-// EncodeCommit encodes a Commit request.
-func EncodeCommit(request *Message, db uint64) {
-	request.PutUint64(db)
-
-	request.PutHeader(bindings.RequestCommit)
-}
-
-// EncodeRollback encodes a Rollback request.
-func EncodeRollback(request *Message, db uint64) {
-	request.PutUint64(db)
-
-	request.PutHeader(bindings.RequestRollback)
-}

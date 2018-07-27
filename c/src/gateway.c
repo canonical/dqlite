@@ -403,66 +403,6 @@ static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
 	}
 }
 
-static void dqlite__gateway_begin(struct dqlite__gateway *    g,
-                                  struct dqlite__gateway_ctx *ctx) {
-	int                rc;
-	struct dqlite__db *db;
-
-	DQLITE__GATEWAY_BARRIER;
-	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->begin.db_id);
-
-	assert(db != NULL);
-
-	rc = dqlite__db_begin(db);
-
-	if (rc != SQLITE_OK) {
-		dqlite__error_printf(&g->error, db->error);
-		dqlite__gateway_failure(g, ctx, rc);
-	} else {
-		ctx->response.type = DQLITE_RESPONSE_EMPTY;
-	}
-}
-
-static void dqlite__gateway_commit(struct dqlite__gateway *    g,
-                                   struct dqlite__gateway_ctx *ctx) {
-	int                rc;
-	struct dqlite__db *db;
-
-	DQLITE__GATEWAY_BARRIER;
-	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->commit.db_id);
-
-	assert(db != NULL);
-
-	rc = dqlite__db_commit(db);
-
-	if (rc != SQLITE_OK) {
-		dqlite__error_printf(&g->error, db->error);
-		dqlite__gateway_failure(g, ctx, rc);
-	} else {
-		ctx->response.type = DQLITE_RESPONSE_EMPTY;
-	}
-}
-
-static void dqlite__gateway_rollback(struct dqlite__gateway *    g,
-                                     struct dqlite__gateway_ctx *ctx) {
-	int                rc;
-	struct dqlite__db *db;
-
-	DQLITE__GATEWAY_BARRIER;
-	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->rollback.db_id);
-
-	assert(db != NULL);
-
-	rc = dqlite__db_rollback(db);
-
-	if (rc != SQLITE_OK) {
-		dqlite__error_printf(&g->error, db->error);
-		dqlite__gateway_failure(g, ctx, rc);
-	} else {
-		ctx->response.type = DQLITE_RESPONSE_EMPTY;
-	}
-}
-
 void dqlite__gateway_init(struct dqlite__gateway *g,
                           struct dqlite_cluster * cluster,
                           struct dqlite__options *options) {
