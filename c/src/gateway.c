@@ -13,6 +13,80 @@
 #include "request.h"
 #include "response.h"
 
+/* Perform a distributed checkpoint if the size of the WAL has reached the
+ * configured threshold and there are no reading transactions in progress (there
+ * can't be writing transaction because this helper gets called after a
+ * successful commit). */
+static int dqlite__gateway_maybe_checkpoint(void *      ctx,
+                                            sqlite3 *   db,
+                                            const char *schema,
+                                            int         pages) {
+	struct dqlite__gateway *g;
+	struct sqlite3_file *   file;
+	volatile void *         region;
+	uint32_t                mx_frame;
+	uint32_t                read_marks[DQLITE__FORMAT_WAL_NREADER];
+	int                     rc;
+	int                     i;
+
+	(void)schema;
+
+	assert(ctx != NULL);
+	assert(db != NULL);
+
+	g = ctx;
+
+	/* Check if the size of the WAL is beyond the threshold. */
+	if ((unsigned)pages < g->options->checkpoint_threshold) {
+		/* Nothing to do yet. */
+		return SQLITE_OK;
+	}
+
+	/* Get the database file associated with this connection */
+	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
+	assert(rc == SQLITE_OK); /* Should never fail */
+
+	/* Get the first SHM region, which contains the WAL header. */
+	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
+	assert(rc == SQLITE_OK); /* Should never fail */
+
+	/* Get the current value of mxFrame. */
+	dqlite__format_get_mx_frame((const uint8_t *)region, &mx_frame);
+
+	/* Get the content of the read marks. */
+	dqlite__format_get_read_marks((const uint8_t *)region, read_marks);
+
+	/* Check each mark and associated lock. This logic is similar to the one
+	 * in the walCheckpoint function of wal.c, in the SQLite code. */
+	for (i = 1; i < DQLITE__FORMAT_WAL_NREADER; i++) {
+		if (mx_frame > read_marks[i]) {
+			/* This read mark is set, let's check if it's also
+			 * locked. */
+			int flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
+
+			rc = file->pMethods->xShmLock(file, i, 1, flags);
+			if (rc == SQLITE_BUSY) {
+				/* It's locked. Let's postpone the checkpoint
+				 * for now. */
+				return SQLITE_OK;
+			}
+
+			/* Not locked. Let's release the lock we just
+			 * acquired. */
+			flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
+			file->pMethods->xShmLock(file, i, 1, flags);
+		}
+	}
+
+	/* Attempt to perfom a checkpoint across all nodes.
+	 *
+	 * TODO: reason about if it's indeed fine to ignore all kind of
+	 * errors. */
+	g->cluster->xCheckpoint(g->cluster->ctx, db);
+
+	return SQLITE_OK;
+}
+
 /* Render a failure response. */
 static void dqlite__gateway_failure(struct dqlite__gateway *    g,
                                     struct dqlite__gateway_ctx *ctx,
@@ -98,6 +172,8 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 		dqlite__db_registry_del(&g->dbs, db);
 		return;
 	}
+
+	sqlite3_wal_hook(db->db, dqlite__gateway_maybe_checkpoint, g);
 
 	ctx->response.type  = DQLITE_RESPONSE_DB;
 	ctx->response.db.id = (uint32_t)db->id;
@@ -347,82 +423,6 @@ static void dqlite__gateway_begin(struct dqlite__gateway *    g,
 	}
 }
 
-/* Perform a distributed checkpoint if the size of the WAL has reached the
- * configured threshold and there are no reading transactions in progress (there
- * can't be writing transaction because this helper gets called after a
- * successful commit). */
-static void dqlite__gateway_maybe_checkpoint(struct dqlite__gateway *g,
-                                             struct dqlite__db *     db) {
-	struct sqlite3_file *file;
-	volatile void *      region;
-	uint32_t             mx_frame;
-	uint32_t             read_marks[DQLITE__FORMAT_WAL_NREADER];
-	sqlite_int64         size;
-	unsigned             pages;
-	int                  rc;
-	int                  i;
-
-	assert(g != NULL);
-	assert(db != NULL);
-
-	/* Get the WAL file for this connection */
-	rc = sqlite3_file_control(
-	    db->db, "main", SQLITE_FCNTL_JOURNAL_POINTER, &file);
-	assert(rc == SQLITE_OK); /* Should never fail */
-
-	rc = file->pMethods->xFileSize(file, &size);
-	assert(rc == SQLITE_OK); /* Should never fail */
-
-	/* Check if the size of the WAL is beyond the threshold. */
-	pages = dqlite__format_wal_calc_pages(g->options->page_size, size);
-	if (pages < g->options->checkpoint_threshold) {
-		/* Nothing to do yet. */
-		return;
-	}
-
-	/* Get the database file associated with this connection */
-	rc = sqlite3_file_control(db->db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
-	assert(rc == SQLITE_OK); /* Should never fail */
-
-	/* Get the first SHM region, which contains the WAL header. */
-	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
-	assert(rc == SQLITE_OK); /* Should never fail */
-
-	/* Get the current value of mxFrame. */
-	dqlite__format_get_mx_frame((const uint8_t *)region, &mx_frame);
-
-	/* Get the content of the read marks. */
-	dqlite__format_get_read_marks((const uint8_t *)region, read_marks);
-
-	/* Check each mark and associated lock. This logic is similar to the one
-	 * in the walCheckpoint function of wal.c, in the SQLite code. */
-	for (i = 1; i < DQLITE__FORMAT_WAL_NREADER; i++) {
-		if (mx_frame > read_marks[i]) {
-			/* This read mark is set, let's check if it's also
-			 * locked. */
-			int flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
-
-			rc = file->pMethods->xShmLock(file, i, 1, flags);
-			if (rc == SQLITE_BUSY) {
-				/* It's locked. Let's postpone the checkpoint
-				 * for now. */
-				return;
-			}
-
-			/* Not locked. Let's release the lock we just
-			 * acquired. */
-			flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
-			file->pMethods->xShmLock(file, i, 1, flags);
-		}
-	}
-
-	/* Attempt to perfom a checkpoint across all nodes.
-	 *
-	 * TODO: reason about if it's indeed fine to ignore all kind of
-	 * errors. */
-	g->cluster->xCheckpoint(g->cluster->ctx, db->db);
-}
-
 static void dqlite__gateway_commit(struct dqlite__gateway *    g,
                                    struct dqlite__gateway_ctx *ctx) {
 	int                rc;
@@ -439,7 +439,6 @@ static void dqlite__gateway_commit(struct dqlite__gateway *    g,
 		dqlite__error_printf(&g->error, db->error);
 		dqlite__gateway_failure(g, ctx, rc);
 	} else {
-		dqlite__gateway_maybe_checkpoint(g, db);
 		ctx->response.type = DQLITE_RESPONSE_EMPTY;
 	}
 }
