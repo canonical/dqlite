@@ -13,23 +13,16 @@
 
 #include "client.h"
 #include "cluster.h"
+#include "log.h"
 #include "munit.h"
 #include "replication.h"
 #include "server.h"
 
-struct test_server {
-	pthread_t                thread;
-	sqlite3_wal_replication *replication;
-	sqlite3_vfs *            vfs;
-	dqlite_server *          service;
-	struct sockaddr_in       address;
-	int                      socket;
-	struct test_client       client;
-};
-
 static struct test_server *test_server__create() {
 	int                 err = 0;
 	struct test_server *s;
+	uint32_t            checkpoint_threshold = 100;
+	uint8_t             metrics              = 1;
 
 	s = munit_malloc(sizeof *s);
 
@@ -53,6 +46,19 @@ static struct test_server *test_server__create() {
 	}
 
 	err = dqlite_server_config(
+	    s->service, DQLITE_CONFIG_LOGGER, (void *)test_logger());
+	if (err != 0) {
+		munit_errorf("failed to set logger: %d", err);
+	}
+
+	err = dqlite_server_config(s->service,
+	                           DQLITE_CONFIG_CHECKPOINT_THRESHOLD,
+	                           (void *)(&checkpoint_threshold));
+	if (err != 0) {
+		munit_errorf("failed to set checkpoint threshold: %d", err);
+	}
+
+	err = dqlite_server_config(
 	    s->service, DQLITE_CONFIG_VFS, (void *)s->vfs->zName);
 	if (err != 0) {
 		munit_errorf("failed to set VFS name: %d", err);
@@ -65,9 +71,11 @@ static struct test_server *test_server__create() {
 		munit_errorf("failed to set WAL replication name: %d", err);
 	}
 
-	s->address.sin_family      = AF_INET;
-	s->address.sin_addr.s_addr = inet_addr("127.0.0.1");
-	s->address.sin_port        = 0;
+	err = dqlite_server_config(
+	    s->service, DQLITE_CONFIG_METRICS, (void *)(&metrics));
+	if (err != 0) {
+		munit_errorf("failed to enable metrics: %d", err);
+	}
 
 	s->socket = 0;
 
@@ -95,13 +103,39 @@ static void test_server__listen(struct test_server *s) {
 
 	assert(s);
 
-	s->socket = socket(AF_INET, SOCK_STREAM, 0);
+	switch (s->family) {
+
+	case AF_INET:
+		memset(&s->in_address, 0, sizeof s->in_address);
+
+		s->in_address.sin_family      = AF_INET;
+		s->in_address.sin_addr.s_addr = inet_addr("127.0.0.1");
+		s->in_address.sin_port        = 0;
+
+		address = (struct sockaddr *)(&s->in_address);
+		size    = sizeof(s->in_address);
+
+		break;
+
+	case AF_UNIX:
+		memset(&s->un_address, 0, sizeof s->un_address);
+
+		s->un_address.sun_family = AF_UNIX;
+		strcpy(s->un_address.sun_path, "");
+
+		address = (struct sockaddr *)(&s->un_address);
+		size    = sizeof(s->un_address);
+
+		break;
+
+	default:
+		munit_errorf("unexpected socket family: %d", s->family);
+	}
+
+	s->socket = socket(s->family, SOCK_STREAM, 0);
 	if (s->socket < 0) {
 		munit_errorf("failed to open server socket: %s", strerror(errno));
 	}
-
-	address = (struct sockaddr *)(&s->address);
-	size    = sizeof(s->address);
 
 	rc = bind(s->socket, address, size);
 	if (rc) {
@@ -128,13 +162,25 @@ static int test_server__connect(struct test_server *s) {
 	assert(s);
 	assert(s->socket);
 
-	fd = socket(AF_INET, SOCK_STREAM, 0);
+	fd = socket(s->family, SOCK_STREAM, 0);
 	if (fd < 0) {
 		munit_errorf("failed to open client socket: %s", strerror(errno));
 	}
 
-	address = (struct sockaddr *)(&s->address);
-	size    = sizeof(s->address);
+	switch (s->family) {
+	case AF_INET:
+		address = (struct sockaddr *)(&s->in_address);
+		size    = sizeof(s->in_address);
+		break;
+
+	case AF_UNIX:
+		address = (struct sockaddr *)(&s->un_address);
+		size    = sizeof(s->un_address);
+		break;
+
+	default:
+		munit_errorf("unexpected socket family: %d", s->family);
+	}
 
 	err = connect(fd, address, size);
 	if (err) {
@@ -155,7 +201,8 @@ static int test_server__accept(struct test_server *s) {
 	assert(s->socket);
 
 	size = sizeof(address);
-	fd   = accept(s->socket, (struct sockaddr *)&address, &size);
+
+	fd = accept(s->socket, (struct sockaddr *)&address, &size);
 	if (fd < 0) {
 		munit_errorf("failed to accept client connection: %s",
 		             strerror(errno));
@@ -198,13 +245,21 @@ static void *test__server_run(void *arg) {
 	return 0;
 }
 
-struct test_server *test_server_start() {
+struct test_server *test_server_start(const char *family) {
 	int                 err;
 	int                 ready;
 	struct test_server *s = test_server__create();
 
 	assert(s);
 	assert(s->service);
+
+	if (strcmp(family, "tcp") == 0) {
+		s->family = AF_INET;
+	} else if (strcmp(family, "unix") == 0) {
+		s->family = AF_UNIX;
+	} else {
+		munit_errorf("unexpected socket family: %s", family);
+	}
 
 	test_server__listen(s);
 
@@ -241,9 +296,9 @@ void test_server_connect(struct test_server *s, struct test_client **client) {
 		munit_errorf("failed to notify server about new client: %s", errmsg);
 	}
 
-	test_client_init(&s->client, clientFd);
+	*client = munit_malloc(sizeof **client);
 
-	*client = &s->client;
+	test_client_init(*client, clientFd);
 }
 
 void test_server_stop(struct test_server *t) {

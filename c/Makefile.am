@@ -44,6 +44,8 @@ libdqlite_la_SOURCES = \
   src/options.h \
   src/message.c \
   src/message.h \
+  src/metrics.c \
+  src/metrics.h \
   src/queue.c \
   src/queue.h \
   src/registry.h \

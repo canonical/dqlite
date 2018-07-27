@@ -323,6 +323,7 @@ func (m *Message) GetResult() Result {
 func (m *Message) GetRows() Rows {
 	// Read the column count and column names.
 	columns := make([]string, m.GetUint64())
+
 	for i := range columns {
 		columns[i] = m.GetString()
 	}
@@ -336,7 +337,7 @@ func (m *Message) GetRows() Rows {
 
 func (m *Message) bufferForGet() *buffer {
 	size := int(m.words * messageWordSize)
-	if m.body1.Offset == size {
+	if m.body1.Offset == size || m.body1.Offset == len(m.body1.Bytes) {
 		// The static body has been exahusted, use the dynamic one.
 		if m.body1.Offset+m.body2.Offset == size {
 			panic(errMessageEOF)

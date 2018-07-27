@@ -837,6 +837,45 @@ static MunitResult test_query_count(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
+/* Encode a result set exceeding the statically allocaed message body. */
+static MunitResult test_query_large(const MunitParameter params[], void *data) {
+	struct fixture *f = data;
+	int             rc;
+	uint64_t *      buf;
+	const char *    text;
+	int             i;
+
+	(void)params;
+
+	/* Create a test table and insert lots of rows into it. */
+	__db_exec(f, "CREATE TABLE test (n INT)");
+	for (i = 0; i < 256; i++) {
+		__db_exec(f, "INSERT INTO test VALUES(123456789)");
+	}
+
+	/* Fetch everything. */
+	__db_prepare(f, "SELECT n FROM test");
+
+	rc = dqlite__stmt_query(f->stmt, f->message);
+	munit_assert_int(rc, ==, SQLITE_DONE);
+
+	/* The first word written is the column count. */
+	buf = (uint64_t *)f->message->body1;
+	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+
+	/* Then the column names. */
+	text = (const char *)(f->message->body1 + 8);
+	munit_assert_string_equal(text, "n");
+
+	/* The static body is full. */
+	munit_assert_int(f->message->offset1, ==, 4096);
+
+	/* The dynamic body was allocated. */
+	munit_assert_ptr_not_null(f->message->body2.base);
+
+	return MUNIT_OK;
+}
+
 static MunitTest dqlite__stmt_query_tests[] = {
     {"/no-columns", test_query_no_columns, setup, tear_down, 0, NULL},
     {"/none", test_query_none, setup, tear_down, 0, NULL},
@@ -851,6 +890,7 @@ static MunitTest dqlite__stmt_query_tests[] = {
     {"/two/simple", test_query_two_simple, setup, tear_down, 0, NULL},
     {"/two/complex", test_query_two_complex, setup, tear_down, 0, NULL},
     {"/count", test_query_count, setup, tear_down, 0, NULL},
+    {"/large", test_query_large, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL}};
 
 /******************************************************************************

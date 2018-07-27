@@ -64,6 +64,7 @@
 #define DQLITE_CONFIG_HEARTBEAT_TIMEOUT 3
 #define DQLITE_CONFIG_PAGE_SIZE 4
 #define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 5
+#define DQLITE_CONFIG_METRICS 6
 
 /* TODO: avoid this redundant EOF marker */
 #define DQLITE_RESPONSE_ROWS_EOF 0xffffffffffffffff

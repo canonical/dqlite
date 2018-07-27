@@ -267,6 +267,11 @@ static int dqlite__conn_header_alloc_cb(void *arg) {
 
 	dqlite__conn_buf_init(c, &buf);
 
+	/* If metrics are enabled, keep track of the request start time. */
+	if (c->metrics != NULL) {
+		c->timestamp = uv_hrtime();
+	}
+
 	return 0;
 }
 
@@ -371,6 +376,12 @@ static int dqlite__conn_body_read_cb(void *arg) {
 		goto response_failure;
 	}
 
+	if (c->metrics != NULL) {
+		/* Update the metrics. */
+		c->metrics->requests++;
+		c->metrics->duration += uv_hrtime() - c->timestamp;
+	}
+
 	return 0;
 
 response_failure:
@@ -409,6 +420,8 @@ static void dqlite__conn_alloc_cb(uv_handle_t *stream, size_t _, uv_buf_t *buf) 
 	(void)_;
 
 	c = (struct dqlite__conn *)stream->data;
+
+	assert(c != NULL);
 
 	/* If this is the first read of the handshake or of a new message
 	 * header, or of a message body, give to the relevant FSM callback a
@@ -514,9 +527,11 @@ out:
 
 void dqlite__conn_init(struct dqlite__conn *   c,
                        int                     fd,
+                       dqlite_logger *         logger,
                        dqlite_cluster *        cluster,
                        uv_loop_t *             loop,
-                       struct dqlite__options *options) {
+                       struct dqlite__options *options,
+                       struct dqlite__metrics *metrics) {
 	assert(c != NULL);
 	assert(cluster != NULL);
 	assert(loop != NULL);
@@ -524,10 +539,11 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_CONN);
 
-	c->logger   = NULL;
+	c->logger   = logger;
 	c->protocol = 0;
 
 	c->options = options;
+	c->metrics = metrics;
 
 	dqlite__error_init(&c->error);
 

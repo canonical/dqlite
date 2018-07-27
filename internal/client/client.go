@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -152,12 +153,30 @@ func (c *Client) recvHeader(res *Message) error {
 
 func (c *Client) recvBody(res *Message) error {
 	n := int(res.words) * messageWordSize
+	n1 := n
+	n2 := 0
 
-	// TODO: handle n > 4096 (i.e. static buffer size)
-	buf := res.body1.Bytes[:n]
+	if n1 > len(res.body1.Bytes) {
+		// We need to allocate the dynamic buffer.
+		n1 = len(res.body1.Bytes)
+		n2 = n - n1
+	}
+
+	buf := res.body1.Bytes[:n1]
 
 	if err := c.recvPeek(buf); err != nil {
 		return errors.Wrap(err, "failed to read body")
+	}
+
+	if n2 > 0 {
+		fmt.Println("BUF 1", n1)
+		fmt.Println("BUF 2", n2)
+		res.body2.Bytes = make([]byte, n2)
+		res.body2.Offset = 0
+		buf = res.body2.Bytes
+		if err := c.recvPeek(buf); err != nil {
+			return errors.Wrap(err, "failed to read body")
+		}
 	}
 
 	return nil

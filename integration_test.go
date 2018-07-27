@@ -100,6 +100,55 @@ CREATE TABLE test2 (n INT, t DATETIME DEFAULT CURRENT_TIMESTAMP)
 	require.NoError(t, db.Close())
 }
 
+func TestIntegration_LargeQuery(t *testing.T) {
+	db, _, cleanup := newDB(t)
+	defer cleanup()
+
+	tx, err := db.Begin()
+	require.NoError(t, err)
+
+	_, err = tx.Exec("CREATE TABLE test  (n INT)")
+	require.NoError(t, err)
+
+	stmt, err := tx.Prepare("INSERT INTO test(n) VALUES(?)")
+	require.NoError(t, err)
+
+	for i := 0; i < 255; i++ {
+		_, err = stmt.Exec(int64(i))
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, stmt.Close())
+
+	require.NoError(t, tx.Commit())
+
+	tx, err = db.Begin()
+	require.NoError(t, err)
+
+	rows, err := tx.Query("SELECT n FROM test")
+	require.NoError(t, err)
+
+	columns, err := rows.Columns()
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"n"}, columns)
+
+	for i := 0; rows.Next(); i++ {
+		var n int64
+
+		require.NoError(t, rows.Scan(&n))
+
+		assert.Equal(t, int64(i), n)
+	}
+
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	require.NoError(t, tx.Rollback())
+
+	require.NoError(t, db.Close())
+}
+
 func TestIntegration_NotLeader(t *testing.T) {
 	db, control, cleanup := newDB(t)
 	defer cleanup()
