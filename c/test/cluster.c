@@ -6,12 +6,6 @@
 
 #include "replication.h"
 
-static const char *test__cluster_replication(void *ctx) {
-	(void)ctx;
-
-	return test_replication()->zName;
-}
-
 static const char *test__cluster_leader(void *ctx) {
 	(void)ctx;
 
@@ -75,7 +69,6 @@ static int test__cluster_checkpoint(void *ctx, sqlite3 *db) {
 
 static dqlite_cluster test__cluster = {
     NULL,
-    test__cluster_replication,
     test__cluster_leader,
     test__cluster_servers,
     test__cluster_register,

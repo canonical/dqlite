@@ -33,7 +33,8 @@ int dqlite__db_open(struct dqlite__db *db,
                     const char *       name,
                     int                flags,
                     const char *       vfs,
-                    uint16_t           page_size);
+                    uint16_t           page_size,
+                    const char *       wal_replication);
 
 /* Prepare a statement using the underlying db. */
 int dqlite__db_prepare(struct dqlite__db *   db,

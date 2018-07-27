@@ -7,7 +7,6 @@ package bindings
 #include <dqlite.h>
 
 // Go land callbacks for dqlite_cluster methods.
-char *clusterReplicationCb(int handle);
 char *clusterLeaderCb(int handle);
 int clusterServersCb(int handle, dqlite_server_info **servers);
 void clusterRegisterCb(int handle, sqlite3 *db);
@@ -19,7 +18,6 @@ int clusterCheckpointCb(int handle, sqlite3 *db);
 // Custom state used as context for dqlite_cluster trampoline objects.
 typedef struct dqlite__cluster_state {
   int    handle;               // Entry of the Go clusterHandles map
-  char  *replication;          // Hold the last string returned by xReplication
   char  *leader;               // Hold the last string returned by xLeader.
   dqlite_server_info *servers; // Hold the last array returned by xServers.
 } dqlite__cluster_state;
@@ -44,26 +42,6 @@ static dqlite_cluster *dqlite__cluster_alloc() {
   c->ctx = state;
 
   return c;
-}
-
-// Implementation of xReplication.
-static const char *dqlite__cluster_replication(void *ctx) {
-  struct dqlite__cluster_state *state;
-
-  assert(ctx != NULL);
-
-  state = ctx;
-
-  // Free the previous value.
-  if (state->replication != NULL) {
-    free(state->replication);
-  }
-
-  // Save the C string allocated by Go because we'll want to
-  // free it when this dqlite__cluster_state instance gets destroyed.
-  state->replication = clusterReplicationCb(state->handle);
-
-  return (const char*)state->replication;
 }
 
 // Implementation of xLeader.
@@ -175,11 +153,9 @@ static void dqlite__cluster_init(dqlite_cluster *c, int handle)
   state = c->ctx;
 
   state->handle = handle;
-  state->replication = NULL;
   state->leader = NULL;
   state->servers = NULL;
 
-  c->xReplication = dqlite__cluster_replication;
   c->xLeader = dqlite__cluster_leader;
   c->xServers = dqlite__cluster_servers;
   c->xRegister = dqlite__cluster_register;
@@ -197,10 +173,6 @@ static void dqlite__cluster_free(dqlite_cluster *c)
   assert(c != NULL);
 
   state = c->ctx;
-
-  if (state->replication != NULL) {
-    free(state->replication);
-  }
 
   if (state->leader != NULL) {
     free(state->leader);
@@ -228,9 +200,6 @@ type ServerInfo struct {
 
 // Cluster implements the interface required by dqlite_cluster.
 type Cluster interface {
-	// Return the registration name of the WAL replication implementation.
-	Replication() string
-
 	// Return the address of the current cluster leader, if any. If not
 	// empty, the address string must a be valid network IP or hostname,
 	// that clients can use to connect to a dqlite service.
@@ -298,13 +267,6 @@ func clusterHandle(c *C.dqlite_cluster) C.int {
 // Release resources associated with the given C cluster object.
 func clusterFree(cluster *C.dqlite_cluster) {
 	C.dqlite__cluster_free(cluster)
-}
-
-//export clusterReplicationCb
-func clusterReplicationCb(handle C.int) *C.char {
-	cluster := clusterHandles[handle]
-
-	return C.CString(cluster.Replication())
 }
 
 //export clusterLeaderCb

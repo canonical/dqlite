@@ -60,10 +60,9 @@ func NewServer(raft *raft.Raft, registry *Registry, listener net.Listener, optio
 	}
 
 	cluster := &cluster{
-		replication: registry.name,
-		raft:        raft,
-		registry:    registry.registry,
-		provider:    o.AddressProvider,
+		raft:     raft,
+		registry: registry.registry,
+		provider: o.AddressProvider,
 	}
 
 	server, err := bindings.NewServer(cluster)
@@ -71,6 +70,8 @@ func NewServer(raft *raft.Raft, registry *Registry, listener net.Listener, optio
 		return nil, err
 	}
 	server.SetLogFunc(o.Log)
+	server.SetVfs(registry.name)
+	server.SetWalReplication(registry.name)
 
 	s := &Server{
 		log:      o.Log,

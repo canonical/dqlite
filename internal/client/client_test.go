@@ -158,7 +158,6 @@ func newClient(t *testing.T) (*client.Client, func()) {
 
 	cluster := newTestCluster()
 	cluster.leader = listener.Addr().String()
-	cluster.name = "test-0"
 
 	serverCleanup := newServer(t, 0, listener, cluster)
 

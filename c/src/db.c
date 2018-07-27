@@ -10,6 +10,14 @@
 #include "registry.h"
 #include "stmt.h"
 
+/* Default name of the registered sqlite3_vfs implementation to use when opening
+ * new connections. */
+#define DQLITE__DB_DEFAULT_VFS "volatile"
+
+/* Default name of the registered sqlite3_wal_replication implementation to use
+ * to switch new connections to leader replication mode. */
+#define DQLITE__DB_DEFAULT_WAL_REPLICATION "dqlite"
+
 /* Wrapper around sqlite3_exec that frees the memory allocated for the error
  * message in case of failure and sets the dqlite__db's error field
  * appropriately */
@@ -71,18 +79,22 @@ int dqlite__db_open(struct dqlite__db *db,
                     const char *       name,
                     int                flags,
                     const char *       vfs,
-                    uint16_t           page_size) {
-	const char *replication;
-	char        pragma[255];
-	int         rc;
+                    uint16_t           page_size,
+                    const char *       wal_replication) {
+	char pragma[255];
+	int  rc;
 
 	assert(db != NULL);
 	assert(name != NULL);
-	assert(vfs != NULL);
+	assert(page_size > 0);
 
-	/* The replication registration name must match the one of the VFS
-	 * replication implementation. */
-	replication = vfs;
+	if (vfs == NULL) {
+		vfs = DQLITE__DB_DEFAULT_VFS;
+	}
+
+	if (wal_replication == NULL) {
+		wal_replication = DQLITE__DB_DEFAULT_WAL_REPLICATION;
+	}
 
 	/* TODO: do some validation of the name (e.g. can't begin with a slash) */
 	rc = sqlite3_open_v2(name, &db->db, flags, vfs);
@@ -125,7 +137,7 @@ int dqlite__db_open(struct dqlite__db *db,
 
 	/* Set WAL replication. */
 	rc = sqlite3_wal_replication_leader(
-	    db->db, "main", replication, (void *)db->db);
+	    db->db, "main", wal_replication, (void *)db->db);
 
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&db->error, "unable to set WAL replication");

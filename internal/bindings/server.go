@@ -119,6 +119,34 @@ func (s *Server) SetLogFunc(f logging.Func) {
 	}
 }
 
+// SetVfs sets the name of the VFS to use for new connections.
+func (s *Server) SetVfs(name string) {
+	server := (*C.dqlite_server)(unsafe.Pointer(s))
+
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+
+	rc := C.dqlite_server_config(server, C.DQLITE_CONFIG_VFS, unsafe.Pointer(cname))
+	if rc != 0 {
+		// Setting the logger should never fail.
+		panic("failed to set vfs")
+	}
+}
+
+// SetWalReplication sets the name of the WAL replication to use for new connections.
+func (s *Server) SetWalReplication(name string) {
+	server := (*C.dqlite_server)(unsafe.Pointer(s))
+
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+
+	rc := C.dqlite_server_config(server, C.DQLITE_CONFIG_WAL_REPLICATION, unsafe.Pointer(cname))
+	if rc != 0 {
+		// Setting the logger should never fail.
+		panic("failed to set WAL replication")
+	}
+}
+
 // Run the server.
 //
 // After this method is called it's possible to invoke Handle().

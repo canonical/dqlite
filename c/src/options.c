@@ -1,15 +1,12 @@
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
+
+#include <sqlite3.h>
+
+#include "../include/dqlite.h"
 
 #include "options.h"
-
-/* Default name of the regitered sqlite3_vfs implementation to use when opening
- * new connections. */
-#define DQLITE__OPTIONS_DEFAULT_VFS "volatile"
-
-/* Default name of the registerd sqlite3_wal_replication implementation to use
- * to switch new connections to leader replication mode. */
-#define DQLITE__OPTIONS_DEFAULT_WAL_REPLICATION "dqlite"
 
 /* Default heartbeat timeout in milliseconds.
  *
@@ -27,9 +24,50 @@
 void dqlite__options_defaults(struct dqlite__options *o) {
 	assert(o != NULL);
 
-	o->vfs                  = DQLITE__OPTIONS_DEFAULT_VFS;
-	o->wal_replication      = DQLITE__OPTIONS_DEFAULT_WAL_REPLICATION;
+	o->vfs                  = NULL;
+	o->wal_replication      = NULL;
 	o->heartbeat_timeout    = DQLITE__OPTIONS_DEFAULT_HEARTBEAT_TIMEOUT;
 	o->page_size            = DQLITE__OPTIONS_DEFAULT_PAGE_SIZE;
 	o->checkpoint_threshold = DQLITE__OPTIONS_CHECKPOINT_THRESHOLD;
+}
+
+void dqlite__options_close(struct dqlite__options *o) {
+	assert(o != NULL);
+
+	if (o->vfs != NULL) {
+		sqlite3_free((char *)o->vfs);
+	}
+
+	if (o->wal_replication != NULL) {
+		sqlite3_free((char *)o->wal_replication);
+	}
+}
+
+int dqlite__options_set_vfs(struct dqlite__options *o, const char *vfs) {
+	assert(o != NULL);
+	assert(vfs != NULL);
+
+	o->vfs = sqlite3_malloc(strlen(vfs) + 1);
+	if (o->vfs == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	strcpy((char *)o->vfs, vfs);
+
+	return 0;
+}
+
+int dqlite__options_set_wal_replication(struct dqlite__options *o,
+                                        const char *            wal_replication) {
+	assert(o != NULL);
+	assert(wal_replication != NULL);
+
+	o->wal_replication = sqlite3_malloc(strlen(wal_replication) + 1);
+	if (o->wal_replication == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	strcpy((char *)o->wal_replication, wal_replication);
+
+	return 0;
 }
