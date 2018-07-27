@@ -14,9 +14,8 @@ struct dqlite__db {
 	dqlite__error error; /* Last error occurred */
 
 	/* private */
-	sqlite3 *                    db;      /* Underlying SQLite database */
-	struct dqlite__stmt_registry stmts;   /* Registry of prepared statements */
-	int                          in_a_tx; /* True if a tx is in progress */
+	sqlite3 *                    db;    /* Underlying SQLite database */
+	struct dqlite__stmt_registry stmts; /* Registry of prepared statements */
 };
 
 /* Initialize a database state object */

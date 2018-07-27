@@ -589,40 +589,6 @@ static MunitResult test_exec_fail(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-/* If no transcation has been started, an error is returned. */
-static MunitResult test_exec_no_tx(const MunitParameter params[], void *data) {
-	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
-
-	(void)params;
-
-	fixture_open(f, &db_id);
-
-	fixture_prepare(f, db_id, "CREATE TABLE test (n INT)", &stmt_id);
-
-	f->request->type         = DQLITE_REQUEST_EXEC;
-	f->request->exec.db_id   = db_id;
-	f->request->exec.stmt_id = stmt_id;
-
-	f->request->message.words   = 1;
-	f->request->message.offset1 = 8;
-
-	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
-	munit_assert_int(err, ==, 0);
-
-	munit_assert_ptr_not_equal(f->response, NULL);
-
-	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
-	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
-
-	munit_assert_string_equal(f->response->failure.message,
-	                          "no transaction in progress");
-
-	return MUNIT_OK;
-}
-
 /* Handle a query request. */
 static MunitResult test_query(const MunitParameter params[], void *data) {
 	struct fixture *f = data;
@@ -703,40 +669,6 @@ static MunitResult test_query_bad_params(const MunitParameter params[], void *da
 
 	munit_assert_string_equal(f->response->failure.message,
 	                          "column index out of range");
-
-	return MUNIT_OK;
-}
-
-/* If no transcation has been started, an error is returned. */
-static MunitResult test_query_no_tx(const MunitParameter params[], void *data) {
-	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
-
-	(void)params;
-
-	fixture_open(f, &db_id);
-
-	fixture_prepare(f, db_id, "SELECT 1", &stmt_id);
-
-	f->request->type          = DQLITE_REQUEST_QUERY;
-	f->request->query.db_id   = db_id;
-	f->request->query.stmt_id = stmt_id;
-
-	f->request->message.words   = 1;
-	f->request->message.offset1 = 8;
-
-	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
-	munit_assert_int(err, ==, 0);
-
-	munit_assert_ptr_not_equal(f->response, NULL);
-
-	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
-	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
-
-	munit_assert_string_equal(f->response->failure.message,
-	                          "no transaction in progress");
 
 	return MUNIT_OK;
 }
@@ -915,33 +847,6 @@ static MunitResult test_exec_sql_bad_params(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-/* If the given bindings are invalid, an error is returned. */
-static MunitResult test_exec_sql_no_tx(const MunitParameter params[], void *data) {
-	struct fixture *f = data;
-	uint32_t        db_id;
-	int             err;
-
-	(void)params;
-
-	fixture_open(f, &db_id);
-
-	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
-	f->request->exec_sql.db_id = db_id;
-	f->request->exec_sql.sql   = "CREATE TABLE test (n INT)";
-
-	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
-	munit_assert_int(err, ==, 0);
-
-	munit_assert_ptr_not_equal(f->response, NULL);
-	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
-	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
-
-	munit_assert_string_equal(f->response->failure.message,
-	                          "no transaction in progress");
-
-	return MUNIT_OK;
-}
-
 /* If the execution of the statement fails, an error is returned. */
 static MunitResult test_exec_sql_error(const MunitParameter params[], void *data) {
 	struct fixture *f = data;
@@ -1112,33 +1017,6 @@ static MunitResult test_query_sql_bad_params(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-/* If no transaction is in progress, an error is returned. */
-static MunitResult test_query_sql_no_tx(const MunitParameter params[], void *data) {
-	struct fixture *f = data;
-	uint32_t        db_id;
-	int             err;
-
-	(void)params;
-
-	fixture_open(f, &db_id);
-
-	f->request->type            = DQLITE_REQUEST_QUERY_SQL;
-	f->request->query_sql.db_id = db_id;
-	f->request->query_sql.sql   = "SELECT 1";
-
-	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
-	munit_assert_int(err, ==, 0);
-
-	munit_assert_ptr_not_equal(f->response, NULL);
-	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
-	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
-
-	munit_assert_string_equal(f->response->failure.message,
-	                          "no transaction in progress");
-
-	return MUNIT_OK;
-}
-
 /* If the given request type is invalid, an error is returned. */
 static MunitResult test_invalid_request_type(const MunitParameter params[],
                                              void *               data) {
@@ -1243,21 +1121,17 @@ static MunitTest dqlite__gateway_handle_tests[] = {
     {"/exec/bad-stmt-id", test_exec_bad_stmt_id, setup, tear_down, 0, NULL},
     {"/exec/bad-params", test_exec_bad_params, setup, tear_down, 0, NULL},
     {"/exec/fail", test_exec_fail, setup, tear_down, 0, NULL},
-    {"/exec/no-tx", test_exec_no_tx, setup, tear_down, 0, NULL},
     {"/query", test_query, setup, tear_down, 0, NULL},
     {"/query/bad-params", test_query_bad_params, setup, tear_down, 0, NULL},
-    {"/query/no-tx", test_query_no_tx, setup, tear_down, 0, NULL},
     {"/finalize", test_finalize, setup, tear_down, 0, NULL},
     {"/exec-sql", test_exec_sql, setup, tear_down, 0, NULL},
     {"/exec-sql/multi", test_exec_sql_multi, setup, tear_down, 0, NULL},
     {"/exec-sql/bad-sql", test_exec_sql_bad_sql, setup, tear_down, 0, NULL},
     {"/exec-sql/bad-params", test_exec_sql_bad_params, setup, tear_down, 0, NULL},
-    {"/exec-sql/no-tx", test_exec_sql_no_tx, setup, tear_down, 0, NULL},
     {"/exec-sql/error", test_exec_sql_error, setup, tear_down, 0, NULL},
     {"/query-sql", test_query_sql, setup, tear_down, 0, NULL},
     {"/query-sql/bad-sql", test_query_sql_bad_sql, setup, tear_down, 0, NULL},
     {"/query-sql/bad-params", test_query_sql_bad_params, setup, tear_down, 0, NULL},
-    {"/query-sql/no-tx", test_query_sql_no_tx, setup, tear_down, 0, NULL},
     {"/invalid-request-type", test_invalid_request_type, setup, tear_down, 0, NULL},
     {"/max-requests", test_max_requests, setup, tear_down, 0, NULL},
     {"/checkpoint", test_checkpoint, setup, tear_down, 0, NULL},

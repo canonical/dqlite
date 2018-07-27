@@ -11,7 +11,6 @@
 /* #endif */
 
 /* Error codes */
-#define DQLITE_OK 0
 #define DQLITE_ERROR 1
 #define DQLITE_NOMEM 2
 #define DQLITE_PROTO 3

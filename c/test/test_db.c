@@ -193,8 +193,6 @@ static MunitResult test_begin_error(const MunitParameter params[], void *data) {
 	munit_assert_string_equal(db->error,
 	                          "cannot start a transaction within a transaction");
 
-	munit_assert_int(db->in_a_tx, ==, 0);
-
 	return MUNIT_OK;
 }
 
@@ -209,8 +207,6 @@ static MunitResult test_begin(const MunitParameter params[], void *data) {
 
 	rc = dqlite__db_begin(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
-
-	munit_assert_int(db->in_a_tx, ==, 1);
 
 	return MUNIT_OK;
 }
@@ -267,13 +263,9 @@ static MunitResult test_commit_error(const MunitParameter params[], void *data) 
 	rc = dqlite__db_commit(db);
 	munit_assert_int(rc, ==, SQLITE_CONSTRAINT_FOREIGNKEY);
 
-	munit_assert_int(db->in_a_tx, ==, 1);
-
 	/* Rollback. */
 	rc = dqlite__db_rollback(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
-
-	munit_assert_int(db->in_a_tx, ==, 0);
 
 	/* A new transaction can begin. */
 	rc = dqlite__db_begin(db);
@@ -297,8 +289,6 @@ static MunitResult test_commit(const MunitParameter params[], void *data) {
 
 	rc = dqlite__db_commit(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
-
-	munit_assert_int(db->in_a_tx, ==, 0);
 
 	/* The transaction refcount has dropped to 0 */
 	rc = sqlite3_file_control(db->db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
