@@ -133,14 +133,6 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 		return;                                                             \
 	}
 
-/* Check that there's an in progress transaction. */
-#define DQLITE__GATEWAY_CHECK_DB_IN_A_TX                                            \
-	if (!db->in_a_tx) {                                                         \
-		dqlite__error_printf(&g->error, "no transaction in progress");      \
-		dqlite__gateway_failure(g, ctx, SQLITE_ERROR);                      \
-		return;                                                             \
-	}
-
 static void dqlite__gateway_prepare(struct dqlite__gateway *    g,
                                     struct dqlite__gateway_ctx *ctx) {
 	struct dqlite__db *  db;
@@ -174,7 +166,6 @@ static void dqlite__gateway_exec(struct dqlite__gateway *    g,
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->exec.db_id);
 	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->exec.stmt_id);
-	DQLITE__GATEWAY_CHECK_DB_IN_A_TX;
 
 	assert(stmt != NULL);
 
@@ -205,7 +196,6 @@ static void dqlite__gateway_query(struct dqlite__gateway *    g,
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->query.db_id);
 	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->query.stmt_id);
-	DQLITE__GATEWAY_CHECK_DB_IN_A_TX;
 
 	assert(stmt != NULL);
 
@@ -257,7 +247,6 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->exec_sql.db_id);
-	DQLITE__GATEWAY_CHECK_DB_IN_A_TX;
 
 	assert(db != NULL);
 
@@ -310,7 +299,6 @@ static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->query_sql.db_id);
-	DQLITE__GATEWAY_CHECK_DB_IN_A_TX;
 
 	assert(db != NULL);
 

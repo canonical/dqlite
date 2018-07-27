@@ -46,8 +46,6 @@ void dqlite__db_init(struct dqlite__db *db) {
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_DB);
 	dqlite__error_init(&db->error);
 	dqlite__stmt_registry_init(&db->stmts);
-
-	db->in_a_tx = 0;
 }
 
 void dqlite__db_close(struct dqlite__db *db) {
@@ -231,12 +229,6 @@ int dqlite__db_begin(struct dqlite__db *db) {
 		return rc;
 	}
 
-	/* SQLite doesn't allow to start a transaction twice in the same
-	 * connection, so our in_a_tx flag should be false. */
-	assert(db->in_a_tx == 0);
-
-	db->in_a_tx = 1;
-
 	return SQLITE_OK;
 }
 
@@ -254,12 +246,6 @@ int dqlite__db_commit(struct dqlite__db *db) {
 		return rc;
 	}
 
-	/* SQLite doesn't allow a commit to succeed if a transaction isn't
-	 * started, so our in_a_tx flags should be true. */
-	assert(db->in_a_tx == 1);
-
-	db->in_a_tx = 0;
-
 	return SQLITE_OK;
 }
 
@@ -272,8 +258,6 @@ int dqlite__db_rollback(struct dqlite__db *db) {
 
 	/* TODO: what are the failure modes of a ROLLBACK statement? is it
 	 * possible that it leaves a transaction open?. */
-	db->in_a_tx = 0;
-
 	if (rc != SQLITE_OK) {
 		return rc;
 	}
