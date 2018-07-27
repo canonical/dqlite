@@ -88,44 +88,6 @@ static void fixture_exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id) {
 	dqlite__gateway_finish(f->gateway, f->response);
 }
 
-/* Send a begin request. */
-static void fixture_begin(struct fixture *f, uint32_t db_id) {
-	int err;
-
-	f->request->type        = DQLITE_REQUEST_BEGIN;
-	f->request->begin.db_id = (uint64_t)db_id;
-
-	f->request->message.words   = 1;
-	f->request->message.offset1 = 8;
-
-	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
-	munit_assert_int(err, ==, 0);
-
-	munit_assert_ptr_not_equal(f->response, NULL);
-	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_EMPTY);
-
-	dqlite__gateway_finish(f->gateway, f->response);
-}
-
-/* Send a commit request. */
-static void fixture_commit(struct fixture *f, uint32_t db_id) {
-	int err;
-
-	f->request->type        = DQLITE_REQUEST_COMMIT;
-	f->request->begin.db_id = (uint64_t)db_id;
-
-	f->request->message.words   = 1;
-	f->request->message.offset1 = 8;
-
-	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
-	munit_assert_int(err, ==, 0);
-
-	munit_assert_ptr_not_equal(f->response, NULL);
-	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_EMPTY);
-
-	dqlite__gateway_finish(f->gateway, f->response);
-}
-
 /******************************************************************************
  *
  * Setup and tear down
@@ -416,7 +378,6 @@ static MunitResult test_exec(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 	fixture_prepare(f, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 
 	f->request->type         = DQLITE_REQUEST_EXEC;
@@ -446,7 +407,6 @@ static MunitResult test_exec_params(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
@@ -515,7 +475,6 @@ static MunitResult test_exec_bad_params(const MunitParameter params[], void *dat
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 	fixture_prepare(f, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 
 	f->request->type         = DQLITE_REQUEST_EXEC;
@@ -558,7 +517,6 @@ static MunitResult test_exec_fail(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE test (n INT, UNIQUE (n))", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
@@ -599,7 +557,6 @@ static MunitResult test_query(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE foo (n INT)", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
@@ -636,7 +593,6 @@ static MunitResult test_query_bad_params(const MunitParameter params[], void *da
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE foo (n INT)", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
@@ -683,7 +639,6 @@ static MunitResult test_finalize(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE foo (n INT)", &stmt_id);
 
@@ -707,7 +662,6 @@ static MunitResult test_exec_sql(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	fixture_prepare(
 	    f, db_id, "CREATE TABLE foo (n INT, t TEXT, f FLOAT)", &stmt_id);
@@ -757,7 +711,6 @@ static MunitResult test_exec_sql_multi(const MunitParameter params[], void *data
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
@@ -786,7 +739,6 @@ static MunitResult test_exec_sql_bad_sql(const MunitParameter params[], void *da
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
@@ -815,7 +767,6 @@ static MunitResult test_exec_sql_bad_params(const MunitParameter params[],
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
@@ -857,7 +808,6 @@ static MunitResult test_exec_sql_error(const MunitParameter params[], void *data
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE foo (n INT, UNIQUE(n))", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
@@ -896,7 +846,6 @@ static MunitResult test_query_sql(const MunitParameter params[], void *data) {
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	fixture_prepare(f, db_id, "CREATE TABLE foo (n INT)", &stmt_id);
 	fixture_exec(f, db_id, stmt_id);
@@ -956,7 +905,6 @@ static MunitResult test_query_sql_bad_sql(const MunitParameter params[],
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	f->request->type            = DQLITE_REQUEST_QUERY_SQL;
 	f->request->query_sql.db_id = db_id;
@@ -985,7 +933,6 @@ static MunitResult test_query_sql_bad_params(const MunitParameter params[],
 	(void)params;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
 
 	f->request->type            = DQLITE_REQUEST_QUERY_SQL;
 	f->request->query_sql.db_id = db_id;
@@ -1072,6 +1019,7 @@ static MunitResult test_checkpoint(const MunitParameter params[], void *data) {
 	struct fixture *f    = data;
 	sqlite3_file *  file = munit_malloc(f->vfs->szOsFile);
 	uint32_t        db_id;
+	uint32_t        stmt_id;
 	int             err;
 	int             rc;
 	int             flags;
@@ -1082,7 +1030,8 @@ static MunitResult test_checkpoint(const MunitParameter params[], void *data) {
 	f->gateway->options->checkpoint_threshold = 1;
 
 	fixture_open(f, &db_id);
-	fixture_begin(f, db_id);
+	fixture_prepare(f, db_id, "BEGIN", &stmt_id);
+	fixture_exec(f, db_id, stmt_id);
 
 	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
@@ -1091,7 +1040,8 @@ static MunitResult test_checkpoint(const MunitParameter params[], void *data) {
 	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
 	munit_assert_int(err, ==, 0);
 
-	fixture_commit(f, db_id);
+	fixture_prepare(f, db_id, "COMMIT", &stmt_id);
+	fixture_exec(f, db_id, stmt_id);
 
 	/* The WAL file got truncated. */
 	flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_WAL;

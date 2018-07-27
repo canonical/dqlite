@@ -34,9 +34,6 @@ const (
 	RequestFinalize  = C.DQLITE_REQUEST_FINALIZE
 	RequestExecSQL   = C.DQLITE_REQUEST_EXEC_SQL
 	RequestQuerySQL  = C.DQLITE_REQUEST_QUERY_SQL
-	RequestBegin     = C.DQLITE_REQUEST_BEGIN
-	RequestCommit    = C.DQLITE_REQUEST_COMMIT
-	RequestRollback  = C.DQLITE_REQUEST_ROLLBACK
 )
 
 // Response types.
