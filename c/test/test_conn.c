@@ -6,6 +6,7 @@
 #include "../include/dqlite.h"
 #include "../src/binary.h"
 #include "../src/conn.h"
+#include "../src/metrics.h"
 #include "../src/options.h"
 
 #include "cluster.h"
@@ -26,6 +27,7 @@ struct fixture {
 	struct dqlite__conn     conn;
 	struct dqlite__response response;
 	struct dqlite__options  options;
+	struct dqlite__metrics  metrics;
 };
 
 static void __recv_response(struct fixture *f) {
@@ -89,13 +91,19 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	err = uv_loop_init(&f->loop);
 	munit_assert_int(err, ==, 0);
 
-	dqlite__conn_init(
-	    &f->conn, f->sockets.server, test_cluster(), &f->loop, &f->options);
+	dqlite__conn_init(&f->conn,
+	                  f->sockets.server,
+	                  test_logger(),
+	                  test_cluster(),
+	                  &f->loop,
+	                  &f->options,
+	                  &f->metrics);
 	f->conn.logger = test_logger();
 
 	dqlite__response_init(&f->response);
 
 	dqlite__options_defaults(&f->options);
+	dqlite__metrics_init(&f->metrics);
 
 	return f;
 }

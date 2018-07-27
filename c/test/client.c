@@ -63,6 +63,7 @@ static void test_client__write(struct test_client *c) {
 }
 
 static void test_client__read(struct test_client *c) {
+	int n;
 	int err;
 	dqlite__message_header_recv_start(&c->response.message, &c->bufs[0]);
 
@@ -83,14 +84,23 @@ static void test_client__read(struct test_client *c) {
 		             c->response.message.error);
 	}
 
-	err = read(c->fd, c->bufs[0].base, c->bufs[0].len);
-	if (err < 0) {
-		munit_errorf("failed to read response body: %s", strerror(errno));
+	n = read(c->fd, c->bufs[0].base, c->bufs[0].len);
+	if (n < 0) {
+		munit_errorf("failed to read response body: %s", strerror(n));
+	}
+	if (n != (int)c->bufs[0].len) {
+		munit_error("short read of response body");
 	}
 
 	err = dqlite__response_decode(&c->response);
 	if (err != 0) {
 		munit_errorf("failed to decode response: %s", c->response.error);
+	}
+
+	if (c->response.type == DQLITE_RESPONSE_FAILURE) {
+		munit_errorf("request failed: %s (%lu)",
+		             c->response.failure.message,
+		             c->response.failure.code);
 	}
 
 	/* Reset the message in all cases except for rows responses, which need
@@ -250,6 +260,8 @@ void test_client_query(struct test_client *     c,
 	test_client__write(c);
 	test_client__read(c);
 
+	rows->message = &c->response.message;
+
 	/* TODO: the request object decodes the eof field as first one, but the
 	 * rows are actually written first, by the gateway. */
 	rows->column_count = c->response.rows.eof;
@@ -259,7 +271,7 @@ void test_client_query(struct test_client *     c,
 
 	for (i = 0; i < (int)rows->column_count; i++) {
 		err = dqlite__message_body_get_text(&c->response.message,
-		                                    rows->column_names + i);
+		                                    &rows->column_names[i]);
 		munit_assert_int(err, ==, 0);
 	}
 
@@ -273,8 +285,10 @@ void test_client_query(struct test_client *     c,
 		}
 		prev = next;
 	} while (next != NULL);
+}
 
-	dqlite__message_recv_reset(&c->response.message);
+void test_client_rows_close(struct test_client_rows *rows) {
+	dqlite__message_recv_reset(rows->message);
 }
 
 void test_client_finalize(struct test_client *c, uint32_t db_id, uint32_t stmt_id) {

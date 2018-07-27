@@ -11,6 +11,7 @@
 
 #include <uv.h>
 
+#include "../src/message.h"
 #include "../src/request.h"
 #include "../src/response.h"
 
@@ -33,6 +34,7 @@ struct test_client_row {
 };
 
 struct test_client_rows {
+	struct dqlite__message *message;
 	uint64_t                column_count;
 	const char **           column_names;
 	struct test_client_row *next;
@@ -76,6 +78,9 @@ void test_client_query(struct test_client *     c,
                        uint32_t                 db_id,
                        uint32_t                 stmt_id,
                        struct test_client_rows *rows);
+
+/* Reset the underlying message */
+void test_client_rows_close(struct test_client_rows *rows);
 
 /* Destroy a prepared statement */
 void test_client_finalize(struct test_client *c, uint32_t db_id, uint32_t stmt_id);

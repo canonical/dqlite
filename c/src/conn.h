@@ -10,6 +10,7 @@
 #include "error.h"
 #include "fsm.h"
 #include "gateway.h"
+#include "metrics.h"
 #include "options.h"
 #include "request.h"
 
@@ -32,6 +33,7 @@ struct dqlite__conn {
 	uint64_t      protocol; /* Protocol version */
 
 	/* private */
+	struct dqlite__metrics *metrics;  /* Operational metrics */
 	struct dqlite__options *options;  /* Connection state machine */
 	struct dqlite__fsm      fsm;      /* Connection state machine */
 	struct dqlite__gateway  gateway;  /* Client state and request handler */
@@ -47,14 +49,18 @@ struct dqlite__conn {
 	};                /* UV stream handle */
 	uv_timer_t alive; /* Check that the client is still alive */
 	uv_buf_t   buf;   /* Read buffer */
+
+	uint64_t timestamp; /* Time at which the current request started. */
 };
 
 /* Initialize a connection object */
 void dqlite__conn_init(struct dqlite__conn *   c,
                        int                     fd,
+                       dqlite_logger *         logger,
                        dqlite_cluster *        cluster,
                        uv_loop_t *             loop,
-                       struct dqlite__options *options);
+                       struct dqlite__options *options,
+                       struct dqlite__metrics *metrics);
 
 /* Close a connection object, releasing all associated resources. */
 void dqlite__conn_close(struct dqlite__conn *c);

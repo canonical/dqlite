@@ -17,6 +17,7 @@ static void test_logger_logf(void *ctx, int level, const char *format, ...) {
 	int     err;
 
 	(void)ctx;
+	(void)level;
 
 	va_start(args, format);
 	err = vasprintf(&msg, format, args);
@@ -26,20 +27,7 @@ static void test_logger_logf(void *ctx, int level, const char *format, ...) {
 		return;
 	}
 
-	switch (level) {
-	case DQLITE_LOG_DEBUG:
-		munit_log(MUNIT_LOG_DEBUG, msg);
-		break;
-	case DQLITE_LOG_INFO:
-		munit_log(MUNIT_LOG_INFO, msg);
-		break;
-	case DQLITE_LOG_WARN:
-		munit_log(MUNIT_LOG_WARNING, msg);
-		break;
-	case DQLITE_LOG_ERROR:
-		munit_log(MUNIT_LOG_WARNING, msg);
-		break;
-	}
+	munit_log(MUNIT_LOG_INFO, msg);
 
 	free(msg);
 }

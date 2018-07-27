@@ -19,7 +19,7 @@
 
 /* Number of outstanding WAL frames after which a checkpoint is triggered as
  * soon as possible. */
-#define DQLITE__OPTIONS_CHECKPOINT_THRESHOLD 1000
+#define DQLITE__OPTIONS_DEFAULT_CHECKPOINT_THRESHOLD 1000
 
 void dqlite__options_defaults(struct dqlite__options *o) {
 	assert(o != NULL);
@@ -28,7 +28,7 @@ void dqlite__options_defaults(struct dqlite__options *o) {
 	o->wal_replication      = NULL;
 	o->heartbeat_timeout    = DQLITE__OPTIONS_DEFAULT_HEARTBEAT_TIMEOUT;
 	o->page_size            = DQLITE__OPTIONS_DEFAULT_PAGE_SIZE;
-	o->checkpoint_threshold = DQLITE__OPTIONS_CHECKPOINT_THRESHOLD;
+	o->checkpoint_threshold = DQLITE__OPTIONS_DEFAULT_CHECKPOINT_THRESHOLD;
 }
 
 void dqlite__options_close(struct dqlite__options *o) {

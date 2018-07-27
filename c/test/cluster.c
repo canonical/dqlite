@@ -4,7 +4,7 @@
 
 #include "../include/dqlite.h"
 
-#include "replication.h"
+#include "munit.h"
 
 static const char *test__cluster_leader(void *ctx) {
 	(void)ctx;
@@ -44,8 +44,6 @@ static int test__cluster_barrier(void *ctx) {
 	return 0;
 }
 
-#include "munit.h"
-
 static int test__cluster_checkpoint(void *ctx, sqlite3 *db) {
 	int rc;
 	int log;
@@ -55,14 +53,10 @@ static int test__cluster_checkpoint(void *ctx, sqlite3 *db) {
 
 	rc = sqlite3_wal_checkpoint_v2(
 	    db, "main", SQLITE_CHECKPOINT_TRUNCATE, &log, &ckpt);
+	munit_assert_int(rc, ==, 0);
 
-	if (rc != SQLITE_OK) {
-		return rc;
-	}
-
-	if (log != 0 || ckpt != 0) {
-		return SQLITE_ERROR;
-	}
+	munit_assert_int(log, ==, 0);
+	munit_assert_int(ckpt, ==, 0);
 
 	return 0;
 }
