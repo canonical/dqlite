@@ -1,8 +1,4 @@
-;;; Directory Local Variables
-;;; For more information see (info "(emacs) Directory Variables")
-((go-mode
-  . ((go-test-args . "-tags libsqlite3 -timeout 10s")
-     (eval
-      . (set
-	 (make-local-variable 'flycheck-go-build-tags)
-	 '("libsqlite3"))))))
+((nil . ((fill-column . 80)))
+ (c-mode . ((c-file-style . "linux-tabs-only")
+	    (flycheck-gcc-definitions . ("DQLITE_DEBUG"))
+	    (flycheck-gcc-include-path . ("../include")))))
