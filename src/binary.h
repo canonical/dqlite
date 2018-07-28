@@ -3,8 +3,15 @@
 
 #include <stdint.h>
 
+#if defined(__cplusplus) ||                                                         \
+    (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L)
+#define DQLITE_INLINE inline
+#else
+#define DQLITE_INLINE static
+#endif
+
 /* Flip a 32-bit number to network byte order (little endian) */
-inline uint32_t dqlite__flip32(uint32_t v) {
+DQLITE_INLINE uint32_t dqlite__flip32(uint32_t v) {
 #if defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN)
 	return v;
 #elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN) &&                    \
@@ -26,7 +33,7 @@ inline uint32_t dqlite__flip32(uint32_t v) {
 }
 
 /* Flip a 64-bit number to network byte order (little endian) */
-inline uint64_t dqlite__flip64(uint64_t v) {
+DQLITE_INLINE uint64_t dqlite__flip64(uint64_t v) {
 #if defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN)
 	return v;
 #elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN) &&                    \
