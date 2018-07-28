@@ -313,6 +313,7 @@ static int dqlite__vfs_content_page_get(struct dqlite__vfs_content *c,
 
 		*page = dqlite__vfs_page_create(c->page_size, is_wal);
 		if (*page == NULL) {
+			rc = SQLITE_NOMEM;
 			goto err;
 		}
 
@@ -342,7 +343,7 @@ err_after_page_create:
 err:
 	*page = NULL;
 
-	return SQLITE_NOMEM;
+	return rc;
 }
 
 /* Lookup a page from this file, returning NULL if it doesn't exist. */
