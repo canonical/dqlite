@@ -58,7 +58,9 @@ typedef dqlite_server_info *servers_t;
 
 /* We rely on the size of double to be 64 bit, since that's what sent over the
  * wire. */
+#ifdef static_assert
 static_assert(sizeof(double) == sizeof(uint64_t), "Size of 'double' is not 64 bits");
+#endif
 
 /* A message serializes dqlite requests and responses. */
 struct dqlite__message {

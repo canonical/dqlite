@@ -1,38 +1,41 @@
 dist: trusty
-sudo: false
+sudo: required
 
-language: go
+language: c
 
 addons:
   apt:
     packages:
-    - realpath
+    - lcov
 
 before_install:
-  - go get github.com/go-playground/overalls
-  - go get github.com/mattn/goveralls
-  - go get github.com/golang/lint/golint
-  - go get github.com/tsenart/deadcode
-  - go get github.com/freeekanayaka/gh-asset
-  - sqlite_tmp_dir=/tmp/sqlite
-  - mkdir $sqlite_tmp_dir
-  - $GOPATH/bin/gh-asset -d $sqlite_tmp_dir -x CanonicalLtd sqlite "sqlite-amd64--enable-debug-.*.tar.gz"
-  - sudo cp $sqlite_tmp_dir/libsqlite3.so.* /usr/lib/x86_64-linux-gnu
-  - sudo cp $sqlite_tmp_dir/sqlite3.h /usr/include/sqlite3.h
-  - mkdir -p $GOPATH/src/github.com/hashicorp/raft
-  - raft_fork=https://github.com/freeekanayaka/raft.git
-  - git clone -b assorted-fixes $raft_fork $GOPATH/src/github.com/hashicorp/raft
+  - eval "${MATRIX_EVAL}"
+  - wget https://github.com/libuv/libuv/archive/v1.22.0.tar.gz
+  - tar -xzvf v1.22.0.tar.gz
+  - pushd libuv-1.22.0 && sh autogen.sh && ./configure --prefix=/usr && make && sudo make install && popd
+  - curl -L https://api.github.com/repos/CanonicalLtd/sqlite/tarball/wal-replication > sqlite.tar.gz
+  - tar -xzvf sqlite.tar.gz
+  - pushd CanonicalLtd-sqlite-3be11a5 && git log -1 --format=format:%ci%n | sed -e 's/ [-+].*$//;s/ /T/;s/^/D /' > manifest && echo $(git log -1 --format=format:%H) > manifest.uuid && ./configure --enable-wal-replication --enable-debug --disable-amalgamation --prefix=/usr/ --libdir=/usr/lib/$(uname -p)-linux-gnu && make && sudo make install && popd
 
 script:
-  - go get -t -tags libsqlite3 ./...
-  - go vet
-  - golint
-  - deadcode
-  - project=github.com/CanonicalLtd/dqlite
-  - GO_RAFT_TEST_LATENCY=10.0 $GOPATH/bin/overalls -ignore internal/protocol -project $project -covermode=count -- -tags libsqlite3 -timeout 240s
-  - $GOPATH/bin/goveralls -coverprofile overalls.coverprofile -service=travis-ci
+  - autoreconf -i
+  - ./configure --enable-debug
+  - make
+  - make ./dqlite-test
+  - ./dqlite-test
 
-go:
-  - "1.9"
-  - "1.10"
-  - "master"
+compiler:
+  - gcc
+
+matrix:
+  include:
+    # works on Precise and Trusty
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-4.9
+      env:
+         - MATRIX_EVAL="CC=gcc-4.9 && CXX=g++-4.9"
