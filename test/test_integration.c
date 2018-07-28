@@ -74,14 +74,12 @@ static void *__worker_run(void *arg) {
 
 		row = rows.next;
 		for (j = w->a; j <= i; j++) {
-			struct test_client_row *prev;
 			munit_assert_ptr_not_null(row);
 
 			munit_assert_int(row->types[0], ==, SQLITE_INTEGER);
 			munit_assert_int(*(int64_t *)row->values[0], ==, j);
 
-			prev = row;
-			row  = row->next;
+			row = row->next;
 		}
 
 		test_client_rows_close(&rows);
