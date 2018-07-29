@@ -52,15 +52,13 @@ int dqlite_file_read(const char *vfs_name,
 		flags |= SQLITE_OPEN_WAL;
 	}
 
-	/* TODO: handle the cases where the file does not exist and the one
-	 * where it's empty. */
-
 	/* Open the file */
-	file = (sqlite3_file *)sqlite3_malloc(sizeof(*file));
+	file = sqlite3_malloc(sizeof(*file));
 	if (file == NULL) {
 		rc = SQLITE_NOMEM;
 		goto err;
 	}
+
 	rc = vfs->xOpen(vfs, filename, file, flags, &flags);
 	if (rc != SQLITE_OK) {
 		goto err_after_file_malloc;
@@ -70,6 +68,12 @@ int dqlite_file_read(const char *vfs_name,
 	rc = file->pMethods->xFileSize(file, (sqlite3_int64 *)len);
 	if (rc != SQLITE_OK) {
 		goto err_after_file_open;
+	}
+
+	/* Check if the file is empty. */
+	if (*len == 0) {
+		*buf = NULL;
+		goto out;
 	}
 
 	/* Allocate the read buffer */
@@ -122,6 +126,7 @@ int dqlite_file_read(const char *vfs_name,
 		offset += page_size;
 	};
 
+out:
 	file->pMethods->xClose(file);
 	sqlite3_free(file);
 

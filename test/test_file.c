@@ -73,8 +73,48 @@ static void tear_down(void *data) {
  *
  ******************************************************************************/
 
-/* Trying to open a WAL file before its main database file results in an
- * error. */
+/* If the file being read does not exists, an error is returned. */
+static MunitResult test_read_cantopen(const MunitParameter params[], void *data) {
+	sqlite3_vfs *vfs = data;
+	uint8_t *    buf;
+	size_t       len;
+	int          rc;
+
+	(void)params;
+
+	rc = dqlite_file_read(vfs->zName, "test.db", &buf, &len);
+	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
+
+	return MUNIT_OK;
+}
+
+/* Read the content of an empty file. */
+static MunitResult test_read_empty(const MunitParameter params[], void *data) {
+	sqlite3_vfs *vfs = data;
+	sqlite3 *    db;
+	uint8_t *    buf;
+	size_t       len;
+	int          flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int          rc;
+
+	(void)params;
+
+	rc = sqlite3_open_v2("test.db", &db, flags, vfs->zName);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = dqlite_file_read(vfs->zName, "test.db", &buf, &len);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	munit_assert_ptr_null(buf);
+	munit_assert_int(len, ==, 0);
+
+	rc = sqlite3_close(db);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	return MUNIT_OK;
+}
+
+/* Read the content of a database and WAL files and then write them back. */
 static MunitResult test_read_then_write(const MunitParameter params[], void *data) {
 	sqlite3_vfs * vfs = data;
 	sqlite3 *     db  = __db_open(vfs);
@@ -130,6 +170,8 @@ static MunitResult test_read_then_write(const MunitParameter params[], void *dat
 }
 
 static MunitTest dqlite__file_read_tests[] = {
+    {"/cantopen", test_read_cantopen, setup, tear_down, 0, NULL},
+    {"/empty", test_read_empty, setup, tear_down, 0, NULL},
     {"/then-write", test_read_then_write, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
