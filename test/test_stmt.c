@@ -22,6 +22,15 @@ struct fixture {
 	struct dqlite__message *message;
 };
 
+/* Helper to execute a statement. */
+static void __db_exec(struct fixture *f, const char *sql) {
+	char *errmsg;
+	int   rc;
+
+	rc = sqlite3_exec(f->stmt->db, sql, NULL, NULL, &errmsg);
+	munit_assert_int(rc, ==, SQLITE_OK);
+}
+
 /* Helper to open a database using the in-memory VFS. */
 static void __db_open(struct fixture *f) {
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
@@ -29,6 +38,8 @@ static void __db_open(struct fixture *f) {
 
 	rc = sqlite3_open_v2("test.db:", &f->stmt->db, flags, "test");
 	munit_assert_int(rc, ==, SQLITE_OK);
+
+	__db_exec(f, "PRAGMA synchronous=OFF");
 }
 
 /* Helper to prepare a statement. */
@@ -39,15 +50,6 @@ static void __db_prepare(struct fixture *f, const char *sql) {
 	munit_assert_ptr_not_equal(f->stmt->db, NULL);
 
 	rc = sqlite3_prepare(f->stmt->db, sql, -1, &f->stmt->stmt, &tail);
-	munit_assert_int(rc, ==, SQLITE_OK);
-}
-
-/* Helper to execute a statement. */
-static void __db_exec(struct fixture *f, const char *sql) {
-	char *errmsg;
-	int   rc;
-
-	rc = sqlite3_exec(f->stmt->db, sql, NULL, NULL, &errmsg);
 	munit_assert_int(rc, ==, SQLITE_OK);
 }
 
