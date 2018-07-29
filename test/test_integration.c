@@ -295,7 +295,7 @@ static MunitResult test_multi_thread(const MunitParameter params[], void *data) 
 
 	(void)params;
 
-	int n = 10;
+	int n = 5;
 	int i;
 
 	test_server_connect(server, &client);
@@ -318,7 +318,7 @@ static MunitResult test_multi_thread(const MunitParameter params[], void *data) 
 	workers = munit_malloc(n * sizeof *workers);
 
 	for (i = 0; i < n; i++) {
-		__worker_start(&(workers[i]), server, i, i * 100000, 500);
+		__worker_start(&(workers[i]), server, i, i * 100000, 10);
 	}
 
 	/* Wait for the workers. */
