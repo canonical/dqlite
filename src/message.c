@@ -301,6 +301,7 @@ int dqlite__message_body_get_servers(struct dqlite__message *m, servers_t *serve
 			}
 			new_servers[i - 1].id      = id;
 			new_servers[i - 1].address = address;
+			new_servers[i].id          = 0;
 			new_servers[i].address     = NULL;
 			*servers                   = new_servers;
 		}
