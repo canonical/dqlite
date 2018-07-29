@@ -105,10 +105,9 @@ static const void *__buf_page_2() {
 
 /* Helper to execute a SQL statement. */
 static void __db_exec(sqlite3 *db, const char *sql) {
-	int   rc;
-	char *errmsg;
+	int rc;
 
-	rc = sqlite3_exec(db, sql, NULL, NULL, &errmsg);
+	rc = sqlite3_exec(db, sql, NULL, NULL, NULL);
 	munit_assert_int(rc, ==, SQLITE_OK);
 }
 
@@ -127,6 +126,13 @@ static sqlite3 *__db_open() {
 	__db_exec(db, "PRAGMA journal_mode=WAL");
 
 	return db;
+}
+
+/* Helper to close a database. */
+static void __db_close(sqlite3 *db) {
+	int rc;
+	rc = sqlite3_close(db);
+	munit_assert_int(rc, ==, SQLITE_OK);
 }
 
 /* Helper get the mxFrame value of the WAL index object associated with the given
@@ -346,12 +352,44 @@ static MunitResult test_open_wal_before_db(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
+/* Trying to run queries against a database that hasn't turned off the
+ * synchronous flag results in an error. */
+static MunitResult test_open_synchronous(const MunitParameter params[], void *data) {
+	sqlite3_vfs *vfs   = data;
+	int          flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	sqlite3 *    db;
+	int          rc;
+
+	(void)params;
+
+	rc = sqlite3_vfs_register(vfs, 0);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = sqlite3_open_v2("test.db", &db, flags, vfs->zName);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	__db_exec(db, "PRAGMA page_size=4092");
+
+	rc = sqlite3_exec(db, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
+	munit_assert_int(rc, ==, SQLITE_IOERR);
+
+	munit_assert_string_equal(sqlite3_errmsg(db), "disk I/O error");
+
+	rc = sqlite3_vfs_unregister(vfs);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	__db_close(db);
+
+	return MUNIT_OK;
+}
+
 static MunitTest dqlite__vfs_open_tests[] = {
     {"/exclusive", test_open_exclusive, setup, tear_down, 0, NULL},
     {"/again", test_open_again, setup, tear_down, 0, NULL},
     {"/noent", test_open_noent, setup, tear_down, 0, NULL},
     {"/enfile", test_open_enfile, setup, tear_down, 0, NULL},
     {"/wal-before-db", test_open_wal_before_db, setup, tear_down, 0, NULL},
+    {"/synchronous", test_open_synchronous, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 
@@ -1093,11 +1131,8 @@ static MunitResult test_integration_wal(const MunitParameter params[], void *dat
 	/* The new read lock is in place as well. */
 	munit_assert_true(__shm_shared_lock_held(db2, 5));
 
-	rc = sqlite3_close(db1);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = sqlite3_close(db2);
-	munit_assert_int(rc, ==, SQLITE_OK);
+	__db_close(db1);
+	__db_close(db2);
 
 	sqlite3_vfs_unregister(vfs);
 
