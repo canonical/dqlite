@@ -355,9 +355,9 @@ static MunitResult test_open_wal_before_db(const MunitParameter params[],
 /* Trying to run queries against a database that hasn't turned off the
  * synchronous flag results in an error. */
 static MunitResult test_open_synchronous(const MunitParameter params[], void *data) {
-	sqlite3_vfs *vfs   = data;
-	int          flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	sqlite3_vfs *vfs = data;
 	sqlite3 *    db;
+	int          flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int          rc;
 
 	(void)params;
@@ -375,10 +375,55 @@ static MunitResult test_open_synchronous(const MunitParameter params[], void *da
 
 	munit_assert_string_equal(sqlite3_errmsg(db), "disk I/O error");
 
+	__db_close(db);
+
 	rc = sqlite3_vfs_unregister(vfs);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
+	return MUNIT_OK;
+}
+
+/* If no page size is set explicitely, the default one is used. */
+static MunitResult test_open_no_page_size(const MunitParameter params[],
+                                          void *               data) {
+	sqlite3_vfs * vfs = data;
+	sqlite3 *     db;
+	sqlite3_file *file  = munit_malloc(vfs->szOsFile);
+	int           flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	sqlite3_int64 size;
+	int           rc;
+	(void)params;
+
+	rc = sqlite3_vfs_register(vfs, 0);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = sqlite3_open_v2("test.db", &db, flags, vfs->zName);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	__db_exec(db, "PRAGMA synchronous=OFF");
+	__db_exec(db, "PRAGMA journal_mode=WAL");
+
+	rc = sqlite3_exec(db, "CREATE TABLE foo (n INT)", NULL, NULL, NULL);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = file->pMethods->xFileSize(file, &size);
+	munit_assert_int(rc, ==, 0);
+	munit_assert_int(size, ==, 4096);
+
+	rc = vfs->xOpen(vfs, "test.db-wal", file, flags, &flags);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = file->pMethods->xFileSize(file, &size);
+	munit_assert_int(rc, ==, 0);
+	munit_assert_int(size, ==, 8272);
+
 	__db_close(db);
+
+	rc = sqlite3_vfs_unregister(vfs);
+	munit_assert_int(rc, ==, SQLITE_OK);
 
 	return MUNIT_OK;
 }
@@ -390,6 +435,7 @@ static MunitTest dqlite__vfs_open_tests[] = {
     {"/enfile", test_open_enfile, setup, tear_down, 0, NULL},
     {"/wal-before-db", test_open_wal_before_db, setup, tear_down, 0, NULL},
     {"/synchronous", test_open_synchronous, setup, tear_down, 0, NULL},
+    {"/no-page-size", test_open_no_page_size, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 

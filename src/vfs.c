@@ -779,8 +779,6 @@ dqlite__vfs_read(sqlite3_file *file, void *buf, int amount, sqlite_int64 offset)
 	return SQLITE_IOERR_READ;
 }
 
-#include "../test/munit.h"
-
 static int dqlite__vfs_write(sqlite3_file *file,
                              const void *  buf,
                              int           amount,
@@ -912,7 +910,7 @@ static int dqlite__vfs_write(sqlite3_file *file,
 			memcpy(page->hdr, buf, amount);
 		} else {
 			/* Frame page write. */
-			munit_assert(amount == (int)f->content->page_size);
+			assert(amount == (int)f->content->page_size);
 			assert(((offset - DQLITE__FORMAT_WAL_HDR_SIZE -
 			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) %
 			        (f->content->page_size +
