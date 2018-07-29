@@ -39,3 +39,6 @@ matrix:
             - g++-4.9
       env:
          - MATRIX_EVAL="CC=gcc-4.9 && CXX=g++-4.9"
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
