@@ -12,6 +12,7 @@ before_install:
   - sqlite_tmp_dir=/tmp/sqlite
   - $GOPATH/bin/gh-asset -d $sqlite_tmp_dir -x CanonicalLtd sqlite "sqlite-amd64--enable-debug-.*.tar.gz"
   - sudo cp $sqlite_tmp_dir/libsqlite3.so.* /usr/lib/x86_64-linux-gnu
+  - sudo cp $sqlite_tmp_dir/sqlite3.pc /usr/lib/x86_64-linux-gnu/pkgconfig/sqlite3.pc
   - sudo cp $sqlite_tmp_dir/sqlite3.h /usr/include/sqlite3.h
 
 script:
