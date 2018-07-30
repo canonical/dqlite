@@ -3,12 +3,6 @@ sudo: required
 
 language: c
 
-addons:
-  apt:
-    packages:
-    - lcov
-    - golang
-
 before_install:
   - eval "${MATRIX_EVAL}"
   - go get github.com/freeekanayaka/gh-asset
@@ -32,16 +26,17 @@ compiler:
 
 matrix:
   include:
-    # works on Precise and Trusty
     - os: linux
       addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
           packages:
-            - g++-4.9
+            - g++-6
+            - lcov
+            - golang
       env:
-         - MATRIX_EVAL="CC=gcc-4.9 && CXX=g++-4.9"
+         - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
