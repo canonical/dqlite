@@ -21,6 +21,9 @@ script:
   - make
   - make ./dqlite-test
   - ./dqlite-test
+  - tar cfz build-amd64.tar.gz --transform 's|.libs/||g' --transform 's|include/||g' include/dqlite.h dqlite.pc .libs/libdqlite.so*
+  - mkdir deploy
+  - mv build-amd64.tar.gz deploy/dqlite-amd64${DEBUG}-$(cat VERSION).tar.gz
 
 compiler:
   - gcc
@@ -41,3 +44,13 @@ matrix:
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
+
+deploy:
+  provider: releases
+  api_key: '$GITHUB_API_KEY'
+  file_glob: true
+  file: 'deploy/*'
+  skip_cleanup: true
+  on:
+    tags: true
+    all_branches: true
