@@ -671,6 +671,17 @@ err:
 	return err;
 }
 
+static void dqlite__conn_close_cb(uv_handle_t *handle) {
+	struct dqlite__conn *c;
+
+	assert(handle != NULL);
+
+	c = handle->data;
+
+	dqlite__conn_close(c);
+	sqlite3_free(c);
+}
+
 /* Abort the connection, realeasing any memory allocated by the read buffer, and
  * closing the UV handle (which closes the underlying socket as well) */
 void dqlite__conn_abort(struct dqlite__conn *c) {
@@ -699,5 +710,5 @@ void dqlite__conn_abort(struct dqlite__conn *c) {
 	uv_close((uv_handle_t *)(&c->alive), NULL);
 
 	/* TODO: add a close callback and invoke dqlite__conn_close(conn) */
-	uv_close((uv_handle_t *)(&c->stream), NULL);
+	uv_close((uv_handle_t *)(&c->stream), dqlite__conn_close_cb);
 }

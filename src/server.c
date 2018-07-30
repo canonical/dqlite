@@ -95,9 +95,6 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg) {
 		/* Abort the client connection and release any allocated
 		 * resources. */
 		dqlite__conn_abort(conn);
-		dqlite__conn_close(conn);
-
-		sqlite3_free(conn);
 
 		break;
 
@@ -422,8 +419,9 @@ int dqlite_server_stop(dqlite_server *s, char **errmsg) {
 	if (err != 0) {
 		dqlite__error_uv(&e, err, "failed to fire stop event");
 		err = dqlite__error_copy(&e, errmsg);
-		if (err != 0)
+		if (err != 0) {
 			*errmsg = "error message unavailable (out of memory)";
+		}
 		err = DQLITE_ERROR;
 	}
 
