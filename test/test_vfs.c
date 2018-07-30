@@ -1087,7 +1087,6 @@ static MunitResult test_integration_wal(const MunitParameter params[], void *dat
 	sqlite3 *    db1;
 	sqlite3 *    db2;
 	uint32_t *   read_marks;
-	int          rc;
 	int          i;
 
 	(void)params;
