@@ -1,99 +1,40 @@
 dqlite [![Build Status](https://travis-ci.org/CanonicalLtd/dqlite.png)](https://travis-ci.org/CanonicalLtd/dqlite) [![codecov](https://codecov.io/gh/CanonicalLtd/dqlite/branch/master/graph/badge.svg)](https://codecov.io/gh/CanonicalLtd/dqlite)
 ======
 
-This repository provides the `dqlite` Go package, which can be used to
-replicate a SQLite database across a cluster, using the Raft
-algorithm.
+This repository provides the `dqlite` C library (libdqlite), which can be used
+to expose a SQLite database over the network and replicate it across a cluster
+of peers, using the Raft algorithm.
+
+Note that at the moment libdqlite implements only the client/server networking
+code, which allows a client to connect to a dqlite node and perform SQL queries
+using a dedicated wire protocol. The code that implements Raft-based replication
+is currently written in Go and available in the [go-dqlite](/CanonicalLtd/go-dqlite/)
+repository.
+
+It should be possible to compile the ``go-dqlite`` Go package as shared library
+and hence use ``libdqlite`` with any programming language with C
+bindings. However, the current focus of dqlite is to be an embedded distributed
+database for Go applications.
+
+See [go-dqlite](/CanonicalLtd/go-dqlite/) for more information.
 
 Design higlights
 ----------------
 
-* No external processes needed: dqlite is just a Go library, you link it
-  it to your application exactly like you would with SQLite.
-* Replication needs a [SQLite patch](https://github.com/CanonicalLtd/sqlite/commit/2a9aa8b056f37ae05f38835182a2856ffc95aee4)
-  which is not yet included upstream.
-* The Go [Raft package](https://github.com/hashicorp/raft) from Hashicorp
-  is used internally for replicating the write-ahead log frames of SQLite
-  across all nodes.
-
-How does it compare to rqlite?
-------------------------------
-
-The main differences from [rqlite](https://github.com/rqlite/rqlite) are:
-
-* Full support for transactions
-* No need for statements to be deterministic (e.g. you can use ```time()```)
-* Frame-based replication instead of statement-based replication, this
-  means in dqlite there's more data flowing between nodes, so expect
-  lower performance. Should not really matter for most use cases.
+* Asynchronous single-threaded server implemented on top of [libuv](http://libuv.org/)
+* Custom wire protocol optimized for SQLite primitives and data types
+* Raft replication is not built-in, consumers need to provide an implementation
 
 Status
 ------
 
 This is **beta** software for now, but we'll get to rc/release soon.
 
-Demo
-----
+Build
+-----
 
-To see dqlite in action, make sure you have the following dependencies
-installed:
+To build ``libdqlite`` you need:
 
-* Go (tested on 1.8)
-* gcc
-* any dependency/header that SQLite needs to build from source
-* Python 3
-
-Then run:
-
-```
-go get -d github.com/CanonicalLtd/dqlite
-cd $GOPATH/src/github.com/CanonicalLtd/dqlite
-make dependencies
-./run-demo
-```
-
-This should spawn three dqlite-based nodes, each of one running the
-code in the [demo Go source](testdata/demo.go).
-
-Each node inserts data in a test table and then dies abruptly after a
-random timeout. Leftover transactions and failover to other nodes
-should be handled gracefully.
-
-While the demo is running, to get more details about what's going on
-behind the scenes you can also open another terminal and run a command
-like:
-
-```
-watch ls -l /tmp/dqlite-demo-*/ /tmp/dqlite-demo-*/snapshots/
-```
-
-and see how the data directories of the three nodes evolve in terms
-SQLite databases (```test.db```), write-ahead log files (```test.db-wal```),
-raft logs store (```raft.db```), and raft snapshots.
-
-
-Documentation
--------------
-
-The documentation for this package can be found on [Godoc](http://godoc.org/github.com/CanonicalLtd/dqlite).
-
-FAQ
----
-
-**Q**: How does dqlite behave during conflict situations? Does Raft
-select a winning WAL write and any others in flight are aborted?
-
-**A**: There can't be a conflict situation. Raft's model is that
-only the leader can append new log entries, which translated to dqlite
-means that only the leader can write new WAL frames. So this means
-that any attempt to perform a write transaction on a non-leader node
-will fail with a sqlite3x.ErrNotLeader error (and in this case clients
-are supposed to retry against whoever is the new leader).
-
-**Q**: When not enough nodes are available, are writes hung until
-consensus?
-
-**A**: Yes, however there's a (configurable) timeout. This is a
-consequence of Raft sitting in the CP spectrum of the CAP theorem: in
-case of a network partition it chooses consistency and sacrifices
-availability.
+* A [patched version of SQLite](https://github.com/CanonicalLtd/sqlite/releases/latest)
+  with support for WAL-based replication.
+* A reasonably recent version of ``libuv`` (v1.8.0 or beyond).
