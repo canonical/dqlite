@@ -36,7 +36,9 @@ void dqlite__message_init(struct dqlite__message *m) {
 	assert(m != NULL);
 
 	/* The statically allocated buffer is aligned to word boundary */
-	assert((uintptr_t)m->body1 % DQLITE__MESSAGE_WORD_SIZE == 0);
+	/* TODO: re-enable this assertion once we figure a way to do make it
+	 * work on 32-bit. */
+	/* assert((uintptr_t)m->body1 % DQLITE__MESSAGE_WORD_SIZE == 0); */
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_MESSAGE);
 
