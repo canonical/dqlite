@@ -461,7 +461,7 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg) {
 		goto err_not_running_or_conn_malloc;
 	}
 
-	conn = (struct dqlite__conn *)sqlite3_malloc(sizeof(*conn));
+	conn = sqlite3_malloc(sizeof(*conn));
 	if (conn == NULL) {
 		dqlite__error_oom(&e, "failed to allocate connection");
 		err = DQLITE_NOMEM;

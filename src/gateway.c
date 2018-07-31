@@ -87,6 +87,35 @@ static int dqlite__gateway_maybe_checkpoint(void *      ctx,
 	return SQLITE_OK;
 }
 
+/* Release dynamically allocated data attached to a response after it has been
+ * encoded. */
+static void dqlite__gateway_response_reset(struct dqlite__response *r) {
+	int i;
+
+	switch (r->type) {
+
+	case DQLITE_RESPONSE_SERVER:
+		assert(r->server.address != NULL);
+
+		free((char *)r->server.address);
+		r->server.address = NULL;
+
+		break;
+
+	case DQLITE_RESPONSE_SERVERS:
+		assert(r->servers.servers != NULL);
+
+		for (i = 0; r->servers.servers[i].address != NULL; i++) {
+			free((char *)r->servers.servers[i].address);
+		}
+
+		free(r->servers.servers);
+		r->servers.servers = NULL;
+
+		break;
+	}
+}
+
 /* Render a failure response. */
 static void dqlite__gateway_failure(struct dqlite__gateway *    g,
                                     struct dqlite__gateway_ctx *ctx,
@@ -107,7 +136,6 @@ static void dqlite__gateway_leader(struct dqlite__gateway *    g,
 		dqlite__gateway_failure(g, ctx, SQLITE_NOMEM);
 		return;
 	}
-
 	ctx->response.type           = DQLITE_RESPONSE_SERVER;
 	ctx->response.server.address = address;
 }
@@ -135,7 +163,6 @@ static void dqlite__gateway_heartbeat(struct dqlite__gateway *    g,
 
 	assert(servers != NULL);
 
-	/* Encode the response */
 	ctx->response.type            = DQLITE_RESPONSE_SERVERS;
 	ctx->response.servers.servers = servers;
 
@@ -425,6 +452,7 @@ void dqlite__gateway_init(struct dqlite__gateway *g,
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
 		g->ctxs[i].request = NULL;
 		dqlite__response_init(&g->ctxs[i].response);
+		g->ctxs[i].response.xReset = dqlite__gateway_response_reset;
 	}
 
 	dqlite__db_registry_init(&g->dbs);
@@ -496,7 +524,7 @@ int dqlite__gateway_handle(struct dqlite__gateway *  g,
 err:
 	assert(err != 0);
 
-	*response = 0;
+	*response = NULL;
 
 	return err;
 }
