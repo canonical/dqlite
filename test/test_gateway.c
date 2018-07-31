@@ -169,6 +169,10 @@ static MunitResult test_leader(const MunitParameter params[], void *data) {
 
 	munit_assert_string_equal(f->response->server.address, "127.0.0.1:666");
 
+	/* Invoke the reset callback, as it would be if the response was then
+	 * being encoded. */
+	f->response->xReset(f->response);
+
 	return MUNIT_OK;
 }
 
@@ -214,6 +218,10 @@ static MunitResult test_heartbeat(const MunitParameter params[], void *data) {
 	munit_assert_string_equal(f->response->servers.servers[1].address,
 	                          "5.6.7.8:666");
 	munit_assert_ptr_equal(f->response->servers.servers[2].address, NULL);
+
+	/* Invoke the reset callback, as it would be if the response was then
+	 * being encoded. */
+	f->response->xReset(f->response);
 
 	return MUNIT_OK;
 }
@@ -996,13 +1004,13 @@ static MunitResult test_max_requests(const MunitParameter params[], void *data) 
 	(void)params;
 
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
-		f->request->type = DQLITE_REQUEST_LEADER;
+		f->request->type = DQLITE_REQUEST_CLIENT;
 
 		err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
 		munit_assert_int(err, ==, 0);
 	}
 
-	f->request->type = DQLITE_REQUEST_LEADER;
+	f->request->type = DQLITE_REQUEST_CLIENT;
 
 	err = dqlite__gateway_handle(f->gateway, f->request, &f->response);
 	munit_assert_int(err, ==, DQLITE_PROTO);

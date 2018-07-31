@@ -112,6 +112,10 @@
 		union {                                                             \
 			TYPES(__DQLITE__SCHEMA_HANDLER_FIELD_DEFINE, )              \
 		};                                                                  \
+                                                                                    \
+		/* Optional hook for resetting the object state after it has        \
+		 * been encoded (e.g. free strings). */                             \
+		void (*xReset)(struct NAME * h);                                    \
 	};                                                                          \
                                                                                     \
 	void NAME##_init(struct NAME *h);                                           \
@@ -151,6 +155,8 @@
 		dqlite__message_init(&h->message);                                  \
 		dqlite__error_init(&h->error);                                      \
                                                                                     \
+		h->xReset = NULL;                                                   \
+                                                                                    \
 		dqlite__lifecycle_init(DQLITE__LIFECYCLE_ENCODER);                  \
 	};                                                                          \
                                                                                     \
@@ -164,7 +170,7 @@
 	}                                                                           \
                                                                                     \
 	int NAME##_encode(struct NAME *h) {                                         \
-		int err;                                                            \
+		int err = 0;                                                        \
                                                                                     \
 		assert(h != NULL);                                                  \
                                                                                     \
@@ -176,16 +182,23 @@
 		default:                                                            \
 			dqlite__error_printf(                                       \
 			    &h->error, "unknown message type %d", h->type);         \
-			return DQLITE_PROTO;                                        \
+			err = DQLITE_PROTO;                                         \
+			goto out;                                                   \
 		}                                                                   \
                                                                                     \
 		if (err != 0) {                                                     \
 			dqlite__error_wrapf(                                        \
 			    &h->error, &h->message.error, "encode error");          \
-			return err;                                                 \
+			goto out;                                                   \
 		}                                                                   \
                                                                                     \
-		return 0;                                                           \
+	out:                                                                        \
+		/* Always invoke the custom resetter if set. */                     \
+		if (h->xReset != NULL) {                                            \
+			h->xReset(h);                                               \
+		}                                                                   \
+                                                                                    \
+		return err;                                                         \
 	}                                                                           \
                                                                                     \
 	int NAME##_decode(struct NAME *h) {                                         \

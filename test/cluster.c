@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <sqlite3.h>
 
@@ -8,24 +10,46 @@
 
 static const char *test__cluster_leader(void *ctx) {
 	(void)ctx;
+	char *address;
 
-	return "127.0.0.1:666";
+	/* Allocate a string, as regular implementations of the cluster
+	 * interface are expected to do. */
+	address = malloc(strlen("127.0.0.1:666") + 1);
+	if (address == NULL) {
+		return NULL;
+	}
+
+	strcpy(address, "127.0.0.1:666");
+
+	return address;
 }
-
-static dqlite_server_info test__cluster_server_info_list[] = {
-    {1, "1.2.3.4:666"},
-    {2, "5.6.7.8:666"},
-    {0, NULL},
-};
 
 static int test__cluster_servers_rc = SQLITE_OK;
 
 static int test__cluster_servers(void *ctx, dqlite_server_info **servers) {
 	(void)ctx;
 
-	*servers = test__cluster_server_info_list;
+	if (test__cluster_servers_rc != 0) {
+		*servers = NULL;
+		return test__cluster_servers_rc;
+	}
 
-	return test__cluster_servers_rc;
+	/* Allocate the servers array, as regular implementations of the cluster
+	 * interface are expected to do. */
+	*servers = malloc(3 * sizeof **servers);
+
+	(*servers)[0].id      = 1;
+	(*servers)[0].address = malloc(strlen("1.2.3.4:666") + 1);
+	strcpy((char *)(*servers)[0].address, "1.2.3.4:666");
+
+	(*servers)[1].id      = 2;
+	(*servers)[1].address = malloc(strlen("5.6.7.8:666") + 1);
+	strcpy((char *)(*servers)[1].address, "5.6.7.8:666");
+
+	(*servers)[2].id      = 0;
+	(*servers)[2].address = NULL;
+
+	return 0;
 }
 
 static void test__cluster_register(void *ctx, sqlite3 *db) {
