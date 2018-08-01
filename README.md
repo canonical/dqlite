@@ -30,11 +30,50 @@ Status
 
 This is **beta** software for now, but we'll get to rc/release soon.
 
+Install
+-------
+
+If you are on a Debian-based system, you can install daily built packages from a
+[Launchpad PPA](https://launchpad.net/~dqlite-maintainers/+archive/ubuntu/master):
+
+```
+sudo add-apt-repository ppa:dqlite-maintainers/master
+sudo apt-get update
+sudo apt-get install libsqlite3-dev libdqlite-dev
+```
+
 Build
 -----
 
-To build ``libdqlite`` you need:
+To build ``libdqlite`` from source you'll need:
 
+* A reasonably recent version of [libuv](http://libuv.org/) (v1.8.0 or beyond).
 * A [patched version of SQLite](https://github.com/CanonicalLtd/sqlite/releases/latest)
   with support for WAL-based replication.
-* A reasonably recent version of ``libuv`` (v1.8.0 or beyond).
+
+Your distribution should already provide you a pre-built libuv shared
+library.
+
+As for the patched version of SQLite, the base line is currently version 3.24.0
+and the changeset can be viewed [here](https://github.com/mackyle/sqlite/compare/version-3.24.0...CanonicalLtd:replication).
+
+To build it:
+
+```
+git clone --depth 100 https://github.com/CanonicalLtd/sqlite.git
+git log -1 --format=format:%ci%n | sed -e 's/ [-+].*$//;s/ /T/;s/^/D /' > manifest
+git log -1 --format=format:%H > manifest.uuid
+./configure --enable-replication
+make
+sudo make install
+```
+
+Once libuv and SQLite are installed, to in order to build the dqlite shared
+library itself you can run:
+
+```
+autoreconf -i
+./configure
+make
+sudo make install
+```
