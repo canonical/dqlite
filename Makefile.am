@@ -13,9 +13,9 @@ pkgconfig_DATA = dqlite.pc
 
 AM_CFLAGS = -I$(top_srcdir)/include -Wall
 if DEBUG
-  AM_CFLAGS += -g -O0 -fprofile-arcs -ftest-coverage -DDQLITE_DEBUG
+  AM_CFLAGS += -O0 -g -fprofile-arcs -ftest-coverage -DDQLITE_DEBUG
 else
-  AM_CFLAGS += -O3
+  AM_CFLAGS += -O2
 endif
 
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS)
