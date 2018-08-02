@@ -709,6 +709,40 @@ static MunitResult test_query_iso8601_empty(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
+/* Encode a query yielding a single row with a boolean time column. */
+static MunitResult test_query_boolean(const MunitParameter params[], void *data) {
+	struct fixture *f = data;
+	int             rc;
+	uint64_t *      buf;
+	const char *    text;
+
+	(void)params;
+
+	/* Create a test table and insert a row into it. */
+	__db_exec(f, "CREATE TABLE test (b BOOLEAN)");
+	__db_exec(f, "INSERT INTO test VALUES(1)");
+
+	__db_prepare(f, "SELECT b FROM test");
+
+	rc = dqlite__stmt_query(f->stmt, f->message);
+	munit_assert_int(rc, ==, SQLITE_DONE);
+
+	/* The first word written is the column count. */
+	buf = (uint64_t *)f->message->body1;
+	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+
+	/* Then the column name. */
+	text = (const char *)(f->message->body1 + 8);
+	munit_assert_string_equal(text, "b");
+
+	/* Then the row, with its header and value. */
+	munit_assert_int(f->message->body1[16], ==, DQLITE_BOOLEAN);
+	buf = (uint64_t *)(f->message->body1 + 24);
+	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+
+	return MUNIT_OK;
+}
+
 /* Encode a query yielding two rows with one column. */
 static MunitResult test_query_two_simple(const MunitParameter params[], void *data) {
 	struct fixture *f = data;
@@ -889,6 +923,7 @@ static MunitTest dqlite__stmt_query_tests[] = {
     {"/iso8601", test_query_iso8601, setup, tear_down, 0, NULL},
     {"/iso8601/null", test_query_iso8601_null, setup, tear_down, 0, NULL},
     {"/iso8601/empty", test_query_iso8601_empty, setup, tear_down, 0, NULL},
+    {"/boolean", test_query_boolean, setup, tear_down, 0, NULL},
     {"/two/simple", test_query_two_simple, setup, tear_down, 0, NULL},
     {"/two/complex", test_query_two_complex, setup, tear_down, 0, NULL},
     {"/count", test_query_count, setup, tear_down, 0, NULL},
