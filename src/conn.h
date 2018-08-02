@@ -51,6 +51,7 @@ struct dqlite__conn {
 	uv_buf_t   buf;   /* Read buffer */
 
 	uint64_t timestamp; /* Time at which the current request started. */
+	int      aborting;  /* True if we started to abort the connetion */
 };
 
 /* Initialize a connection object */

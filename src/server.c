@@ -517,9 +517,9 @@ err_item_init_or_queue_push:
 	sqlite3_free(conn);
 
 err_not_running_or_conn_malloc:
-	err = dqlite__error_copy(&e, errmsg);
-	if (err != 0)
+	if (dqlite__error_copy(&e, errmsg) != 0) {
 		*errmsg = "error message unavailable (out of memory)";
+	}
 
 	dqlite__error_close(&e);
 

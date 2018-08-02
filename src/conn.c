@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <sqlite3.h>
 #include <uv.h>
@@ -558,6 +559,8 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 
 	c->buf.base = NULL;
 	c->buf.len  = 0;
+
+	c->aborting = 0;
 }
 
 void dqlite__conn_close(struct dqlite__conn *c) {
@@ -689,7 +692,7 @@ void dqlite__conn_abort(struct dqlite__conn *c) {
 
 	assert(c != NULL);
 
-	if (uv_is_closing((uv_handle_t *)(&c->stream))) {
+	if (c->aborting) {
 		/* It might happen that a connection error occurs at the same time
 		** the loop gets stopped, and dqlite__conn_abort is called twice in
 		** the same loop iteration. We just ignore the second call in that
@@ -697,6 +700,8 @@ void dqlite__conn_abort(struct dqlite__conn *c) {
 		*/
 		return;
 	}
+
+	c->aborting = 1;
 
 	state = dqlite__fsm_state(&c->fsm);
 
