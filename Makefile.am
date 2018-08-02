@@ -98,12 +98,8 @@ dqlite_test_SOURCES = \
   test/test_server.c \
   test/test_stmt.c \
   test/test_vfs.c
-dqlite_test_CFLAGS = \
-  -I$(top_srcdir)/include \
-  -I$(top_srcdir)/test \
-  -DDQLITE_DEBUG \
-  -Wall -g -O0
-dqlite_test_CFLAGS += $(SQLITE3_CFLAGS) $(UV_CFLAGS)
+dqlite_test_CFLAGS = $(AM_CFLAGS)
+dqlite_test_CFLAGS += -I$(top_srcdir)/test
 dqlite_test_LDADD = libdqlite.la
 dqlite_test_LDFLAGS = -lpthread $(SQLITE_LIBS) $(UV_LIBS)
 TESTS = dqlite-test
