@@ -120,4 +120,6 @@ clean-local:
 	@make cov-clean
 
 check: cov-reset
+if DEBUG
 	@make cov-report
+endif

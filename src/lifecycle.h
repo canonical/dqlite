@@ -22,14 +22,16 @@
 
 #ifdef DQLITE_DEBUG
 void dqlite__lifecycle_init(int type);
+
 void dqlite__lifecycle_close(int type);
-#else
-#define dqlite__lifecycle_init(x)
-#define dqlite__lifecycle_close(x)
-#endif /* DQLITE_DEBUG */
 
 /* Return 0 if all initialized objects have been closed, or otherwise an error
  * message describing what has been leaked */
 int dqlite__lifecycle_check(char **errmsg);
+#else
+#define dqlite__lifecycle_init(x)
+#define dqlite__lifecycle_close(x)
+#define dqlite__lifecycle_check(x) 0
+#endif /* DQLITE_DEBUG */
 
 #endif /* DQLITE_LIFECYCLE_H */
