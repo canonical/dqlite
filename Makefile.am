@@ -105,7 +105,9 @@ dqlite_test_LDFLAGS = -lpthread $(SQLITE_LIBS) $(UV_LIBS)
 TESTS = dqlite-test
 
 cov-reset:
+if DEBUG
 	@lcov --directory src --zerocounters
+endif
 
 cov-clean:
 	@rm -fr coverage
