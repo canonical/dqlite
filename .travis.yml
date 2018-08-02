@@ -5,15 +5,9 @@ language: c
 
 before_install:
   - eval "${MATRIX_EVAL}"
-  - go get github.com/freeekanayaka/gh-asset
-  - wget https://github.com/libuv/libuv/archive/v1.8.0.tar.gz
-  - tar -xzvf v1.8.0.tar.gz
-  - pushd libuv-1.8.0 && sh autogen.sh && ./configure --prefix=/usr && make && sudo make install && popd
-  - sqlite_tmp_dir=/tmp/sqlite
-  - $GOPATH/bin/gh-asset -d $sqlite_tmp_dir -x CanonicalLtd sqlite "sqlite-amd64--enable-debug-.*.tar.gz"
-  - sudo cp $sqlite_tmp_dir/libsqlite3.so.* /usr/lib/x86_64-linux-gnu
-  - sudo cp $sqlite_tmp_dir/sqlite3.pc /usr/lib/x86_64-linux-gnu/pkgconfig/sqlite3.pc
-  - sudo cp $sqlite_tmp_dir/sqlite3.h /usr/include/sqlite3.h
+  - sudo add-apt-repository ppa:dqlite-maintainers/master -y
+  - sudo apt-get update -q
+  - sudo apt-get install libsqlite3-dev libuv1-dev -y
 
 script:
   - autoreconf -i
@@ -21,9 +15,6 @@ script:
   - make
   - make ./dqlite-test
   - ./dqlite-test
-  - tar cfz build-amd64.tar.gz --transform 's|.libs/||g' --transform 's|include/||g' include/dqlite.h dqlite.pc .libs/libdqlite.so*
-  - mkdir deploy
-  - mv build-amd64.tar.gz deploy/dqlite-amd64${DEBUG}-$(cat VERSION).tar.gz
 
 compiler:
   - gcc
@@ -38,19 +29,8 @@ matrix:
           packages:
             - g++-6
             - lcov
-            - golang
       env:
          - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
-
-deploy:
-  provider: releases
-  api_key: '$GITHUB_API_KEY'
-  file_glob: true
-  file: 'deploy/*'
-  skip_cleanup: true
-  on:
-    tags: true
-    all_branches: true
