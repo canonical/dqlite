@@ -3,7 +3,8 @@
 
 #include <sqlite3.h>
 
-#include "dqlite.h"
+#include "../include/dqlite.h"
+
 #include "error.h"
 #include "lifecycle.h"
 #include "registry.h"
@@ -254,23 +255,25 @@ static int dqlite__stmt_row(struct dqlite__stmt *   s,
 		if (i < column_count) {
 			/* Actual column, figure the type */
 			const char *column_type_name;
-			int         is_datetime_column;
 
 			column_type = sqlite3_column_type(s->stmt, i);
 
 			/* TODO: find a better way to handle time types */
 			column_type_name = sqlite3_column_decltype(s->stmt, i);
-			is_datetime_column =
-			    column_type_name != NULL &&
-			    strcmp(column_type_name, "DATETIME") == 0;
-			if (is_datetime_column) {
-				if (column_type == SQLITE_INTEGER) {
-
-					column_type = DQLITE_UNIXTIME;
-				} else {
-					assert(column_type == SQLITE_TEXT ||
+			if (column_type_name != NULL) {
+				if (strcmp(column_type_name, "DATETIME") == 0) {
+					if (column_type == SQLITE_INTEGER) {
+						column_type = DQLITE_UNIXTIME;
+					} else {
+						assert(column_type == SQLITE_TEXT ||
+						       column_type == SQLITE_NULL);
+						column_type = DQLITE_ISO8601;
+					}
+				}
+				if (strcmp(column_type_name, "BOOLEAN") == 0) {
+					assert(column_type == SQLITE_INTEGER ||
 					       column_type == SQLITE_NULL);
-					column_type = DQLITE_ISO8601;
+					column_type = DQLITE_BOOLEAN;
 				}
 			}
 
@@ -334,6 +337,10 @@ static int dqlite__stmt_row(struct dqlite__stmt *   s,
 			if (text == NULL || strcmp(text, "") == 0)
 				text = "0000-01-01 00:00:00";
 			err = dqlite__message_body_put_text(message, text);
+			break;
+		case DQLITE_BOOLEAN:
+			integer = sqlite3_column_int64(s->stmt, i);
+			err = dqlite__message_body_put_uint64(message, integer != 0);
 			break;
 		default:
 			dqlite__error_printf(&s->error,

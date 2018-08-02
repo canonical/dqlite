@@ -50,6 +50,7 @@
 /* Special datatypes */
 #define DQLITE_UNIXTIME 9
 #define DQLITE_ISO8601 10
+#define DQLITE_BOOLEAN 11
 
 /* Log levels */
 #define DQLITE_LOG_DEBUG 0
