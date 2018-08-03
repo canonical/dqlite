@@ -143,6 +143,9 @@ static MunitResult test_abort_immediately(const MunitParameter params[],
 	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
 
 	f->sockets.server_disconnected = 1;
@@ -171,6 +174,9 @@ static MunitResult test_abort_during_handshake(const MunitParameter params[],
 	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
 
 	f->sockets.server_disconnected = 1;
@@ -197,6 +203,9 @@ static MunitResult test_abort_after_handshake(const MunitParameter params[],
 	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
 	test_socket_pair_client_disconnect(&f->sockets);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -238,6 +247,9 @@ static MunitResult test_abort_during_header(const MunitParameter params[],
 	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
 
 	f->sockets.server_disconnected = 1;
@@ -276,6 +288,9 @@ static MunitResult test_abort_after_header(const MunitParameter params[],
 	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
 	test_socket_pair_client_disconnect(&f->sockets);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -321,6 +336,9 @@ static MunitResult test_abort_during_body(const MunitParameter params[],
 	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
 	test_socket_pair_client_disconnect(&f->sockets);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -370,6 +388,9 @@ static MunitResult test_abort_after_body(const MunitParameter params[], void *da
 	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
 	test_socket_pair_client_disconnect(&f->sockets);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -483,7 +504,10 @@ static MunitResult test_read_cb_unknown_protocol(const MunitParameter params[],
 	nwrite = write(f->sockets.client, &protocol, sizeof(protocol));
 	munit_assert_int(nwrite, ==, sizeof protocol);
 
-	err = uv_run(&f->loop, UV_RUN_DEFAULT);
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0 /* Number of pending handles */);
 
 	f->sockets.server_disconnected = 1;
@@ -535,6 +559,9 @@ static MunitResult test_read_cb_empty_body(const MunitParameter params[],
 	    "failed to parse request header: empty message body");
 
 	test_socket_pair_client_disconnect(&f->sockets);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
@@ -590,6 +617,9 @@ static MunitResult test_read_cb_body_too_large(const MunitParameter params[],
 	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
 
 	f->sockets.server_disconnected = 1;
@@ -643,6 +673,9 @@ static MunitResult test_read_cb_malformed_body(const MunitParameter params[],
 	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
 
 	f->sockets.server_disconnected = 1;
@@ -689,6 +722,9 @@ static MunitResult test_read_cb_invalid_db_id(const MunitParameter params[],
 	munit_assert_string_equal(f->response.failure.message, "no db with id 1");
 
 	test_socket_pair_client_disconnect(&f->sockets);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);

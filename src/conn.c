@@ -538,6 +538,11 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 	assert(loop != NULL);
 	assert(options != NULL);
 
+	/* The tcp and pipe handle structures are pointing to the same memory
+	 * location as the abstract stream handle. */
+	assert((uintptr_t)&c->tcp == (uintptr_t)&c->stream);
+	assert((uintptr_t)&c->pipe == (uintptr_t)&c->stream);
+
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_CONN);
 
 	c->logger   = logger;
@@ -674,7 +679,7 @@ err:
 	return err;
 }
 
-static void dqlite__conn_close_cb(uv_handle_t *handle) {
+static void dqlite__conn_stream_close_cb(uv_handle_t *handle) {
 	struct dqlite__conn *c;
 
 	assert(handle != NULL);
@@ -683,6 +688,16 @@ static void dqlite__conn_close_cb(uv_handle_t *handle) {
 
 	dqlite__conn_close(c);
 	sqlite3_free(c);
+}
+
+static void dqlite__conn_timer_close_cb(uv_handle_t *handle) {
+	struct dqlite__conn *c;
+
+	assert(handle != NULL);
+
+	c = handle->data;
+
+	uv_close((uv_handle_t *)(&c->stream), dqlite__conn_stream_close_cb);
 }
 
 /* Abort the connection, realeasing any memory allocated by the read buffer, and
@@ -718,8 +733,5 @@ void dqlite__conn_abort(struct dqlite__conn *c) {
 	}
 #endif
 
-	uv_close((uv_handle_t *)(&c->alive), NULL);
-
-	/* TODO: add a close callback and invoke dqlite__conn_close(conn) */
-	uv_close((uv_handle_t *)(&c->stream), dqlite__conn_close_cb);
+	uv_close((uv_handle_t *)(&c->alive), dqlite__conn_timer_close_cb);
 }

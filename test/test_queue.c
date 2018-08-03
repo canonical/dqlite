@@ -154,6 +154,9 @@ static MunitResult test_process(const MunitParameter params[], void *data) {
 	test_socket_pair_client_disconnect(&f->sockets);
 
 	err = uv_run(&f->loop, UV_RUN_NOWAIT);
+	munit_assert_int(err, ==, 1 /* Number of pending handles */);
+
+	err = uv_run(&f->loop, UV_RUN_NOWAIT);
 	munit_assert_int(err, ==, 0);
 
 	f->sockets.server_disconnected = 1;
