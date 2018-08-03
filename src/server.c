@@ -213,45 +213,9 @@ int dqlite_server_create(dqlite_cluster *cluster, dqlite_server **out) {
 	err = pthread_mutex_init(&s->mutex, NULL);
 	assert(err == 0); /* Docs say that pthread_mutex_init can't fail */
 
-	err = uv_loop_init(&s->loop);
-	if (err != 0) {
-		dqlite__error_uv(&s->error, err, "failed to init event loop");
-		return DQLITE_ERROR;
-	}
-
-	err = uv_async_init(&s->loop, &s->stop, dqlite__server_stop_cb);
-	if (err != 0) {
-		dqlite__error_uv(&s->error, err, "failed to init stop event handle");
-		return DQLITE_ERROR;
-	}
-	s->stop.data = (void *)s;
-
-	err = uv_async_init(&s->loop, &s->incoming, dqlite__server_incoming_cb);
-	if (err != 0) {
-		dqlite__error_uv(
-		    &s->error, err, "failed to init accept event handle");
-		return DQLITE_ERROR;
-	}
-	s->incoming.data = (void *)s;
-
 	err = sem_init(&s->ready, 0, 0);
 	if (err != 0) {
 		dqlite__error_sys(&s->error, "failed to init ready semaphore");
-		return DQLITE_ERROR;
-	}
-
-	err = uv_timer_init(&s->loop, &s->startup);
-	if (err != 0) {
-		dqlite__error_uv(&s->error, err, "failed to init timer");
-		return DQLITE_ERROR;
-	}
-	s->startup.data = (void *)s;
-
-	/* Schedule dqlite__service_startup_cb to be fired as soon as the loop
-	 * starts. It will unblock clients of dqlite_service_ready. */
-	err = uv_timer_start(&s->startup, dqlite__service_startup_cb, 0, 0);
-	if (err != 0) {
-		dqlite__error_uv(&s->error, err, "failed to startup timer");
 		return DQLITE_ERROR;
 	}
 
@@ -288,10 +252,14 @@ void dqlite_server_destroy(dqlite_server *s) {
 
 	/* The sem_destroy call should only fail if the given semaphore is
 	 * invalid, which must not be our case. */
+	err = sem_destroy(&s->stopped);
+	assert(err == 0);
+
 	err = sem_destroy(&s->ready);
 	assert(err == 0);
 
-	err = sem_destroy(&s->stopped);
+	/* The pthread_mutex_destroy call is a no-op on Linux . */
+	err = pthread_mutex_destroy(&s->mutex);
 	assert(err == 0);
 
 	dqlite__queue_close(&s->queue);
@@ -362,7 +330,49 @@ int dqlite_server_run(struct dqlite__server *s) {
 
 	assert(s != NULL);
 
-	dqlite__infof(s, "run dqlite server", "");
+	dqlite__infof(s, "starting event loop");
+
+	/* Initialize the event loop. */
+	err = uv_loop_init(&s->loop);
+	if (err != 0) {
+		dqlite__error_uv(&s->error, err, "failed to init event loop");
+		return DQLITE_ERROR;
+	}
+
+	/* Initialize async handles. */
+	err = uv_async_init(&s->loop, &s->stop, dqlite__server_stop_cb);
+	if (err != 0) {
+		dqlite__error_uv(&s->error, err, "failed to init stop event handle");
+		err = DQLITE_ERROR;
+		goto out;
+	}
+	s->stop.data = (void *)s;
+
+	err = uv_async_init(&s->loop, &s->incoming, dqlite__server_incoming_cb);
+	if (err != 0) {
+		dqlite__error_uv(
+		    &s->error, err, "failed to init accept event handle");
+		err = DQLITE_ERROR;
+		goto out;
+	}
+	s->incoming.data = (void *)s;
+
+	/* Schedule dqlite__service_startup_cb to be fired as soon as the loop
+	 * starts. It will unblock clients of dqlite_service_ready. */
+	err = uv_timer_init(&s->loop, &s->startup);
+	if (err != 0) {
+		dqlite__error_uv(&s->error, err, "failed to init timer");
+		err = DQLITE_ERROR;
+		goto out;
+	}
+	s->startup.data = (void *)s;
+
+	err = uv_timer_start(&s->startup, dqlite__service_startup_cb, 0, 0);
+	if (err != 0) {
+		dqlite__error_uv(&s->error, err, "failed to startup timer");
+		err = DQLITE_ERROR;
+		goto out;
+	}
 
 	err = uv_run(&s->loop, UV_RUN_DEFAULT);
 	if (err != 0) {
@@ -380,6 +390,8 @@ out:
 	/* Unblock any client of dqlite_server_ready (no reason for which
 	 * posting should fail). */
 	assert(sem_post(&s->ready) == 0);
+
+	dqlite__infof(s, "event loop stopped");
 
 	return err;
 }
