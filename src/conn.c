@@ -705,12 +705,18 @@ void dqlite__conn_abort(struct dqlite__conn *c) {
 
 	state = dqlite__fsm_state(&c->fsm);
 
+#ifdef DQLITE_DEBUG
+	/* In debug mode always log disconnections. */
+	dqlite__debugf(
+	    c, "aborting (fd=%d state=%s msg=%s)", c->fd, state, c->error);
+#else
 	/* If the error is not due to a client disconnection, log an error
 	 * message */
 	if (!dqlite__error_is_disconnect(&c->error)) {
 		dqlite__errorf(
 		    c, "aborting (fd=%d state=%s msg=%s)", c->fd, state, c->error);
 	}
+#endif
 
 	uv_close((uv_handle_t *)(&c->alive), NULL);
 
