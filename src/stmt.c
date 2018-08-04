@@ -334,8 +334,8 @@ static int dqlite__stmt_row(struct dqlite__stmt *   s,
 			break;
 		case DQLITE_ISO8601:
 			text = (text_t)sqlite3_column_text(s->stmt, i);
-			if (text == NULL || strcmp(text, "") == 0)
-				text = "0000-01-01 00:00:00";
+			if (text == NULL)
+				text = "";
 			err = dqlite__message_body_put_text(message, text);
 			break;
 		case DQLITE_BOOLEAN:
