@@ -669,7 +669,7 @@ static MunitResult test_query_iso8601_null(const MunitParameter params[],
 	/* Then the row, with its header and value. */
 	munit_assert_int(f->message->body1[16], ==, DQLITE_ISO8601);
 	text = (const char *)(f->message->body1 + 24);
-	munit_assert_string_equal(text, "0000-01-01 00:00:00");
+	munit_assert_string_equal(text, "");
 
 	return MUNIT_OK;
 }
@@ -704,7 +704,7 @@ static MunitResult test_query_iso8601_empty(const MunitParameter params[],
 	/* Then the row, with its header and value. */
 	munit_assert_int(f->message->body1[16], ==, DQLITE_ISO8601);
 	text = (const char *)(f->message->body1 + 24);
-	munit_assert_string_equal(text, "0000-01-01 00:00:00");
+	munit_assert_string_equal(text, "");
 
 	return MUNIT_OK;
 }
