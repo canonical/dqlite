@@ -229,7 +229,10 @@ static int dqlite__stmt_row(struct dqlite__stmt *   s,
 	assert(message != NULL);
 	assert(column_count > 0);
 
-	/* Allocate an array to store the column types */
+	/* Allocate an array to store the column types
+	 *
+	 * TODO: use a statically allocated buffer when the column count is
+	 * small. */
 	column_types = (int *)sqlite3_malloc(column_count * sizeof(*column_types));
 	if (column_types == NULL) {
 		dqlite__error_oom(&s->error,

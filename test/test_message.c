@@ -883,6 +883,28 @@ static MunitResult test_body_put_text_two(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
+/* The static body is not large enough to hold the given text, so the dynamic
+ * buffer is allocated in order to hold the rest of it. */
+static MunitResult test_body_put_text_body2(const MunitParameter params[],
+                                          void *               data) {
+	struct dqlite__message *message = data;
+	int                     err;
+
+	(void)params;
+
+	message->offset1 = 4088;
+
+	err = dqlite__message_body_put_text(message, "hello world");
+	munit_assert_int(err, ==, 0);
+
+	munit_assert_int(message->offset1, ==, 4088);
+	munit_assert_int(message->offset2, ==, 16);
+
+	munit_assert_string_equal(message->body2.base, "hello world");
+
+	return MUNIT_OK;
+}
+
 static MunitResult test_body_put_uint8_four(const MunitParameter params[],
                                             void *               data) {
 	struct dqlite__message *message = data;
@@ -1054,6 +1076,7 @@ static MunitTest body_put_tests[] = {
     {"_text/one", test_body_put_text_one, setup, tear_down, 0, NULL},
     {"_text/one-no-pad", test_body_put_text_one_no_pad, setup, tear_down, 0, NULL},
     {"_text/two", test_body_put_text_two, setup, tear_down, 0, NULL},
+    {"_text/body2", test_body_put_text_body2, setup, tear_down, 0, NULL},
     {"_uint8/four", test_body_put_uint8_four, setup, tear_down, 0, NULL},
     {"_uint32/two", test_body_put_uint32_two, setup, tear_down, 0, NULL},
     {"_int64/one", test_body_put_int64_one, setup, tear_down, 0, NULL},
