@@ -17,11 +17,20 @@ if DEBUG
 else
   AM_CFLAGS += -O2
 endif
+if EXPERIMENTAL
+  AM_CFLAGS += -DDQLITE_EXPERIMENTAL
+endif
 
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS)
+if EXPERIMENTAL
+  AM_CFLAGS += $(ZLIB_CFLAGS)
+endif
 
 lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) -version-info 0:1:0
+if EXPERIMENTAL
+  libdqlite_la_LDFLAGS += $(ZLIB_LIBS)
+endif
 libdqlite_la_SOURCES = \
   src/binary.h \
   src/conn.c \
@@ -102,6 +111,9 @@ dqlite_test_CFLAGS = $(AM_CFLAGS)
 dqlite_test_CFLAGS += -I$(top_srcdir)/test
 dqlite_test_LDADD = libdqlite.la
 dqlite_test_LDFLAGS = -lpthread $(SQLITE_LIBS) $(UV_LIBS)
+if EXPERIMENTAL
+  dqlite_test_LDFLAGS += $(ZLIB_LIBS)
+endif
 TESTS = dqlite-test
 
 cov-reset:

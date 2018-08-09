@@ -11,7 +11,7 @@ before_install:
 
 script:
   - autoreconf -i
-  - ./configure --enable-debug
+  - ./configure --enable-debug "${AC_FLAGS}"
   - make
   - make ./dqlite-test
   - ./dqlite-test
@@ -31,6 +31,17 @@ matrix:
             - lcov
       env:
          - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-6
+            - lcov
+            - zlib1g-dev
+      env:
+         - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6 AC_FLAGS=--enable-experimental"
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
