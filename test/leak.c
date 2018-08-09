@@ -32,6 +32,9 @@ static void test__assert_no_memory_leaks() {
 		    current_memory,
 		    current_malloc);
 	}
+
+	err = sqlite3_shutdown();
+	munit_assert_int(err, ==, 0);
 }
 
 static void test__assert_no_lifecycle_leak() {

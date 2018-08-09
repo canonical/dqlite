@@ -110,7 +110,7 @@ dqlite_test_SOURCES = \
   test/test_stmt.c \
   test/test_vfs.c
 dqlite_test_CFLAGS = $(AM_CFLAGS)
-dqlite_test_CFLAGS += -I$(top_srcdir)/test
+dqlite_test_CFLAGS += -I$(top_srcdir)/test -DMUNIT_NO_FORK
 dqlite_test_LDADD = libdqlite.la
 dqlite_test_LDFLAGS = -lpthread $(SQLITE_LIBS) $(UV_LIBS)
 if EXPERIMENTAL
