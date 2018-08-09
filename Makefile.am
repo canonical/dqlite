@@ -72,6 +72,8 @@ include_HEADERS += include/dqlite.h
 check_PROGRAMS += \
 	dqlite-test
 dqlite_test_SOURCES = \
+  test/case.c \
+  test/case.h \
   test/client.c \
   test/client.h \
   test/cluster.c \
