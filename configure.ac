@@ -60,6 +60,7 @@ PKG_CHECK_MODULES(UV, [libuv >= 1.8.0], [], [])
 AM_COND_IF(EXPERIMENTAL,
   [
   PKG_CHECK_MODULES(ZLIB, [zlib], [], [])
+  PKG_CHECK_MODULES(CO, [libco], [], [])
   AC_DEFINE(EXPERIMENTAL, 1, [Define to 0 to exclude experimental features])
   ], [
   AC_DEFINE(EXPERIMENTAL, 0, [Define to 1 to include experimental features])

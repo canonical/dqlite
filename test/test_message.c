@@ -88,8 +88,9 @@ static MunitTest header_recv_start_tests[] = {
  ******************************************************************************/
 
 /* If the number of words of the message body is zero, an error is returned. */
-static MunitResult test_header_recv_done_empty_body(const MunitParameter params[],
-                                                    void *               data) {
+static MunitResult test_header_recv_done_empty_body(
+    const MunitParameter params[],
+    void *               data) {
 	struct dqlite__message *message = data;
 	int                     err;
 	err = dqlite__message_header_recv_done(message);
@@ -104,8 +105,9 @@ static MunitResult test_header_recv_done_empty_body(const MunitParameter params[
 
 /* If the number of words of the message body exceeds the hard-coded limit, an
  * error is returned. */
-static MunitResult test_header_recv_done_body_too_big(const MunitParameter params[],
-                                                      void *               data) {
+static MunitResult test_header_recv_done_body_too_big(
+    const MunitParameter params[],
+    void *               data) {
 	struct dqlite__message *message = data;
 	int                     err;
 	uv_buf_t                buf;
@@ -129,7 +131,12 @@ static MunitResult test_header_recv_done_body_too_big(const MunitParameter param
 }
 
 static MunitTest header_recv_done_tests[] = {
-    {"/body/empty", test_header_recv_done_empty_body, setup, tear_down, 0, NULL},
+    {"/body/empty",
+     test_header_recv_done_empty_body,
+     setup,
+     tear_down,
+     0,
+     NULL},
     {"/body/too-large",
      test_header_recv_done_body_too_big,
      setup,
@@ -231,7 +238,7 @@ static MunitResult test_body_get_text_not_found(const MunitParameter params[],
 	struct dqlite__message *message = data;
 	int                     err;
 	text_t                  text;
-	char                    buf[8] = {255, 255, 255, 255, 255, 255, 255, 255};
+	char buf[8] = {255, 255, 255, 255, 255, 255, 255, 255};
 
 	(void)params;
 
@@ -294,8 +301,9 @@ static MunitResult test_body_get_text_two_strings(const MunitParameter params[],
 }
 
 /* Read a string from a message that uses the dynamic message body buffer. */
-static MunitResult test_body_get_text_from_dyn_buf(const MunitParameter params[],
-                                                   void *               data) {
+static MunitResult test_body_get_text_from_dyn_buf(
+    const MunitParameter params[],
+    void *               data) {
 	struct dqlite__message *message = data;
 	int                     err;
 	text_t                  text;
@@ -319,8 +327,9 @@ static MunitResult test_body_get_text_from_dyn_buf(const MunitParameter params[]
 }
 
 /* Read four uint8 values. */
-static MunitResult test_body_get_uint8_four_values(const MunitParameter params[],
-                                                   void *               data) {
+static MunitResult test_body_get_uint8_four_values(
+    const MunitParameter params[],
+    void *               data) {
 	struct dqlite__message *message = data;
 	int                     err;
 	uint8_t                 buf;
@@ -394,8 +403,9 @@ static MunitResult test_body_get_uint8_overflow(const MunitParameter params[],
 }
 
 /* Read two uint32 values. */
-static MunitResult test_body_get_uint32_two_values(const MunitParameter params[],
-                                                   void *               data) {
+static MunitResult test_body_get_uint32_two_values(
+    const MunitParameter params[],
+    void *               data) {
 	struct dqlite__message *message = data;
 	int                     err;
 	uint32_t                buf;
@@ -426,8 +436,9 @@ static MunitResult test_body_get_uint32_two_values(const MunitParameter params[]
 
 /* Trying to read a uint32 when the read cursor is not 4-byte aligned results in
  * an error. */
-static MunitResult test_body_get_uint32_misaligned(const MunitParameter params[],
-                                                   void *               data) {
+static MunitResult test_body_get_uint32_misaligned(
+    const MunitParameter params[],
+    void *               data) {
 	struct dqlite__message *message = data;
 
 	uint8_t  value1;
@@ -498,8 +509,9 @@ static MunitResult test_body_get_uint64_one_value(const MunitParameter params[],
 }
 
 /* Read two uint64 values. */
-static MunitResult test_body_get_uint64_two_values(const MunitParameter params[],
-                                                   void *               data) {
+static MunitResult test_body_get_uint64_two_values(
+    const MunitParameter params[],
+    void *               data) {
 	struct dqlite__message *message = data;
 	int                     err;
 	uint64_t                buf;
@@ -530,8 +542,9 @@ static MunitResult test_body_get_uint64_two_values(const MunitParameter params[]
 
 /* Trying to read a uint64 when the read cursor is not word aligned results in
  * an error. */
-static MunitResult test_body_get_uint64_misaligned(const MunitParameter params[],
-                                                   void *               data) {
+static MunitResult test_body_get_uint64_misaligned(
+    const MunitParameter params[],
+    void *               data) {
 	struct dqlite__message *message = data;
 
 	uint8_t  value1;
@@ -723,13 +736,43 @@ static MunitResult test_body_get_servers_two(const MunitParameter params[],
 }
 
 static MunitTest body_get_tests[] = {
-    {"_text/misaligned", test_body_get_text_misaligned, setup, tear_down, 0, NULL},
-    {"_text/not-found", test_body_get_text_not_found, setup, tear_down, 0, NULL},
-    {"_text/one-string", test_body_get_text_one_string, setup, tear_down, 0, NULL},
-    {"_text/two-strings", test_body_get_text_two_strings, setup, tear_down, 0, NULL},
-    {"_text/dyn-buf", test_body_get_text_from_dyn_buf, setup, tear_down, 0, NULL},
+    {"_text/misaligned",
+     test_body_get_text_misaligned,
+     setup,
+     tear_down,
+     0,
+     NULL},
+    {"_text/not-found",
+     test_body_get_text_not_found,
+     setup,
+     tear_down,
+     0,
+     NULL},
+    {"_text/one-string",
+     test_body_get_text_one_string,
+     setup,
+     tear_down,
+     0,
+     NULL},
+    {"_text/two-strings",
+     test_body_get_text_two_strings,
+     setup,
+     tear_down,
+     0,
+     NULL},
+    {"_text/dyn-buf",
+     test_body_get_text_from_dyn_buf,
+     setup,
+     tear_down,
+     0,
+     NULL},
     {"_uint8/four", test_body_get_uint8_four_values, setup, tear_down, 0, NULL},
-    {"_uint8/overflow", test_body_get_uint8_overflow, setup, tear_down, 0, NULL},
+    {"_uint8/overflow",
+     test_body_get_uint8_overflow,
+     setup,
+     tear_down,
+     0,
+     NULL},
     {"_uint32/two", test_body_get_uint32_two_values, setup, tear_down, 0, NULL},
     {"_uint32/misaligned",
      test_body_get_uint32_misaligned,
@@ -737,7 +780,12 @@ static MunitTest body_get_tests[] = {
      tear_down,
      0,
      NULL},
-    {"_uint32/overflow", test_body_get_uint32_overflow, setup, tear_down, 0, NULL},
+    {"_uint32/overflow",
+     test_body_get_uint32_overflow,
+     setup,
+     tear_down,
+     0,
+     NULL},
     {"_uint64/one", test_body_get_uint64_one_value, setup, tear_down, 0, NULL},
     {"_uint64/two", test_body_get_uint64_two_values, setup, tear_down, 0, NULL},
     {"_uint64/misaligned",
@@ -746,10 +794,30 @@ static MunitTest body_get_tests[] = {
      tear_down,
      0,
      NULL},
-    {"_uint64/overflow", test_body_get_uint64_overflow, setup, tear_down, 0, NULL},
-    {"_int64/one-value", test_body_get_int64_one_value, setup, tear_down, 0, NULL},
-    {"_int64/two-values", test_body_get_int64_two_values, setup, tear_down, 0, NULL},
-    {"_double/one-value", test_body_get_double_one_value, setup, tear_down, 0, NULL},
+    {"_uint64/overflow",
+     test_body_get_uint64_overflow,
+     setup,
+     tear_down,
+     0,
+     NULL},
+    {"_int64/one-value",
+     test_body_get_int64_one_value,
+     setup,
+     tear_down,
+     0,
+     NULL},
+    {"_int64/two-values",
+     test_body_get_int64_two_values,
+     setup,
+     tear_down,
+     0,
+     NULL},
+    {"_double/one-value",
+     test_body_get_double_one_value,
+     setup,
+     tear_down,
+     0,
+     NULL},
     {"_servers/one", test_body_get_servers_one, setup, tear_down, 0, NULL},
     {"_servers/two", test_body_get_servers_two, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL}};
@@ -761,7 +829,8 @@ static MunitTest body_get_tests[] = {
  ******************************************************************************/
 
 /* Set the type of a message. */
-static MunitResult test_header_put_type(const MunitParameter params[], void *data) {
+static MunitResult test_header_put_type(const MunitParameter params[],
+                                        void *               data) {
 	struct dqlite__message *message = data;
 
 	(void)params;
@@ -773,7 +842,8 @@ static MunitResult test_header_put_type(const MunitParameter params[], void *dat
 }
 
 /* Set the message flags. */
-static MunitResult test_header_put_flags(const MunitParameter params[], void *data) {
+static MunitResult test_header_put_flags(const MunitParameter params[],
+                                         void *               data) {
 	struct dqlite__message *message = data;
 
 	(void)params;
@@ -886,7 +956,7 @@ static MunitResult test_body_put_text_two(const MunitParameter params[],
 /* The static body is not large enough to hold the given text, so the dynamic
  * buffer is allocated in order to hold the rest of it. */
 static MunitResult test_body_put_text_body2(const MunitParameter params[],
-                                          void *               data) {
+                                            void *               data) {
 	struct dqlite__message *message = data;
 	int                     err;
 
@@ -958,7 +1028,8 @@ static MunitResult test_body_put_uint32_two(const MunitParameter params[],
 	munit_assert_int(message->offset1, ==, 8);
 
 	munit_assert_int(dqlite__flip32(*(uint32_t *)(message->body1)), ==, 99);
-	munit_assert_int(dqlite__flip32(*(uint32_t *)(message->body1 + 4)), ==, 66);
+	munit_assert_int(
+	    dqlite__flip32(*(uint32_t *)(message->body1 + 4)), ==, 66);
 
 	return MUNIT_OK;
 }
@@ -1021,7 +1092,8 @@ static MunitResult test_body_put_double_one(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_dyn_buf(const MunitParameter params[], void *data) {
+static MunitResult test_body_put_dyn_buf(const MunitParameter params[],
+                                         void *               data) {
 	struct dqlite__message *message = data;
 	int                     err;
 	uint64_t                i;
@@ -1072,9 +1144,19 @@ static MunitResult test_body_put_servers_one(const MunitParameter params[],
 }
 
 static MunitTest body_put_tests[] = {
-    {"_text/misaligned", test_body_put_text_misaligned, setup, tear_down, 0, NULL},
+    {"_text/misaligned",
+     test_body_put_text_misaligned,
+     setup,
+     tear_down,
+     0,
+     NULL},
     {"_text/one", test_body_put_text_one, setup, tear_down, 0, NULL},
-    {"_text/one-no-pad", test_body_put_text_one_no_pad, setup, tear_down, 0, NULL},
+    {"_text/one-no-pad",
+     test_body_put_text_one_no_pad,
+     setup,
+     tear_down,
+     0,
+     NULL},
     {"_text/two", test_body_put_text_two, setup, tear_down, 0, NULL},
     {"_text/body2", test_body_put_text_body2, setup, tear_down, 0, NULL},
     {"_uint8/four", test_body_put_uint8_four, setup, tear_down, 0, NULL},
@@ -1244,16 +1326,12 @@ static MunitTest send_start_tests[] = {
  ******************************************************************************/
 
 MunitSuite dqlite__message_suites[] = {
-    {"_header_recv_start",
-     header_recv_start_tests,
-     NULL,
-     1,
-     MUNIT_SUITE_OPTION_NONE},
-    {"_header_recv_done", header_recv_done_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {"_body_recv_start", body_recv_start_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {"_body_get", body_get_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {"_header_put", header_put_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {"_body_put", body_put_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {"_send_start", send_start_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
+    {"_header_recv_start", header_recv_start_tests, NULL, 1, 0},
+    {"_header_recv_done", header_recv_done_tests, NULL, 1, 0},
+    {"_body_recv_start", body_recv_start_tests, NULL, 1, 0},
+    {"_body_get", body_get_tests, NULL, 1, 0},
+    {"_header_put", header_put_tests, NULL, 1, 0},
+    {"_body_put", body_put_tests, NULL, 1, 0},
+    {"_send_start", send_start_tests, NULL, 1, 0},
+    {NULL, NULL, NULL, 0, 0},
 };

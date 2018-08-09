@@ -23,13 +23,13 @@ endif
 
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS)
 if EXPERIMENTAL
-  AM_CFLAGS += $(ZLIB_CFLAGS)
+  AM_CFLAGS += $(ZLIB_CFLAGS) $(CO_CFLAGS)
 endif
 
 lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) -version-info 0:1:0
 if EXPERIMENTAL
-  libdqlite_la_LDFLAGS += $(ZLIB_LIBS)
+  libdqlite_la_LDFLAGS += $(ZLIB_LIBS) $(CO_LIBS)
 endif
 libdqlite_la_SOURCES = \
   src/binary.h \
@@ -58,9 +58,12 @@ libdqlite_la_SOURCES = \
   src/queue.c \
   src/queue.h \
   src/registry.h \
+  src/replication.c \
+  src/replication.h \
   src/request.c \
   src/request.h \
   src/response.c \
+  src/response.h \
   src/schema.h \
   src/server.c \
   src/stmt.c \
@@ -105,6 +108,7 @@ dqlite_test_SOURCES = \
   test/test_message.c \
   test/test_queue.c \
   test/test_registry.c \
+  test/test_replication.c \
   test/test_request.c \
   test/test_response.c \
   test/test_schema.c \
@@ -116,7 +120,7 @@ dqlite_test_CFLAGS += -I$(top_srcdir)/test -DMUNIT_NO_FORK
 dqlite_test_LDADD = libdqlite.la
 dqlite_test_LDFLAGS = -lpthread $(SQLITE_LIBS) $(UV_LIBS)
 if EXPERIMENTAL
-  dqlite_test_LDFLAGS += $(ZLIB_LIBS)
+  dqlite_test_LDFLAGS += $(ZLIB_LIBS) $(CO_LIBS)
 endif
 TESTS = dqlite-test
 
