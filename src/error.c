@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,7 +16,8 @@
 
 /* Fallback message returned when failing to allocate the error message
  * itself. */
-static char *dqlite__error_oom_msg = "error message unavailable (out of memory)";
+static char *dqlite__error_oom_msg =
+    "error message unavailable (out of memory)";
 
 void dqlite__error_init(dqlite__error *e) {
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_ERROR);
@@ -24,8 +26,9 @@ void dqlite__error_init(dqlite__error *e) {
 }
 
 void dqlite__error_close(dqlite__error *e) {
-	if (*e != NULL && *e != dqlite__error_oom_msg)
+	if (*e != NULL && *e != dqlite__error_oom_msg) {
 		sqlite3_free(*e);
+	}
 
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_ERROR);
 }
@@ -34,11 +37,9 @@ void dqlite__error_close(dqlite__error *e) {
  * parameters.
  *
  * Any previously set error message will be cleared. */
-static void dqlite__error_vprintf(dqlite__error *e, const char *fmt, va_list args) {
-	int    err;
-	size_t n;
-	char * msg;
-
+static void dqlite__error_vprintf(dqlite__error *e,
+                                  const char *   fmt,
+                                  va_list        args) {
 	assert(fmt != NULL);
 
 	/* If a previous error was set (other than the hard-coded OOM fallback
@@ -49,29 +50,10 @@ static void dqlite__error_vprintf(dqlite__error *e, const char *fmt, va_list arg
 
 	/* Render the message. In case of error we fallback to the hard-coded
 	 * OOM fallback message. */
-	err = vasprintf(&msg, fmt, args);
-	if (err < 0) {
-		*e = dqlite__error_oom_msg;
-		goto err_vasprintf;
-	}
-
-	/* We copy the message using sqlite3_malloc here so we can catch memory
-	 * leaks in tests (vasprintf uses the malloc directly). */
-	n  = strlen(msg) + 1;
-	*e = sqlite3_malloc(n * sizeof **e);
+	*e = sqlite3_vmprintf(fmt, args);
 	if (*e == NULL) {
-		/* Fallback to an hard-coded message */
 		*e = dqlite__error_oom_msg;
-		goto err_malloc;
 	}
-
-	memcpy(*e, msg, n);
-
-err_malloc:
-	free(msg); /* Allocated by the vasprintf call above */
-
-err_vasprintf:
-	return;
 }
 
 void dqlite__error_printf(dqlite__error *e, const char *fmt, ...) {
@@ -82,35 +64,50 @@ void dqlite__error_printf(dqlite__error *e, const char *fmt, ...) {
 	va_end(args);
 }
 
-void dqlite__error_wrapf(dqlite__error *      e,
-                         const dqlite__error *cause,
-                         const char *         fmt,
-                         ...) {
+static void dqlite__error_vwrapf(dqlite__error *e,
+                                 const char *   cause,
+                                 const char *   fmt,
+                                 va_list        args) {
 	dqlite__error tmp;
-	va_list       args;
 	char *        msg;
 
 	/* First, print the format and arguments, using a temporary error. */
 	dqlite__error_init(&tmp);
 
-	va_start(args, fmt);
 	dqlite__error_vprintf(&tmp, fmt, args);
-	va_end(args);
 
-	if (cause == e) {
+	if (cause == NULL) {
+		/* Special case the cause error being empty. */
+		dqlite__error_printf(e, "%s: (null)", tmp);
+	} else if (cause == *e) {
 		/* When the error is wrapping itself, we need to make a copy */
 		dqlite__error_copy(e, &msg);
 		dqlite__error_printf(e, "%s: %s", tmp, msg);
 		sqlite3_free(msg);
 	} else {
-		dqlite__error_printf(e, "%s: %s", tmp, *cause);
+		dqlite__error_printf(e, "%s: %s", tmp, cause);
 	}
 
 	dqlite__error_close(&tmp);
 }
 
-void dqlite__error_oom(dqlite__error *e, const char *msg) {
-	dqlite__error_printf(e, "%s: %s", msg, "out of memory");
+void dqlite__error_wrapf(dqlite__error *      e,
+                         const dqlite__error *cause,
+                         const char *         fmt,
+                         ...) {
+	va_list args;
+
+	va_start(args, fmt);
+	dqlite__error_vwrapf(e, (const char *)(*cause), fmt, args);
+	va_end(args);
+}
+
+void dqlite__error_oom(dqlite__error *e, const char *msg, ...) {
+	va_list args;
+
+	va_start(args, msg);
+	dqlite__error_vwrapf(e, "out of memory", msg, args);
+	va_end(args);
 }
 
 void dqlite__error_sys(dqlite__error *e, const char *msg) {
