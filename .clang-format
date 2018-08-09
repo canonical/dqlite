@@ -6,7 +6,10 @@ AlignConsecutiveDeclarations: true
 AlignEscapedNewlines: Right
 #AlignOperands: true
 AlignTrailingComments: true
-#AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortBlocksOnASingleLine: false
+AlwaysBreakAfterReturnType: None
+PenaltyReturnTypeOnItsOwnLine: 100000
 BinPackArguments: false
 BinPackParameters: false
 #BreakBeforeBinaryOperators: None
@@ -15,4 +18,4 @@ IndentWidth: 8
 #SpacesInContainerLiterals: false
 UseTab: ForIndentation
 #TabWidth: 8
-ColumnLimit: 85
+ColumnLimit: 80

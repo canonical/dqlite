@@ -41,9 +41,29 @@ AM_COND_IF(DEBUG,
 AC_DEFINE(DEBUG, 1, [Define to 0 if this is a release build]),
 AC_DEFINE(DEBUG, 0, [Define to 1 or higher if this is a debug build]))
 
+AC_ARG_ENABLE(experimental,
+  AS_HELP_STRING(
+    [--enable-experimental],
+    [enable experimental features, default: no]),
+    [case "${enableval}" in
+      yes) experimental=true ;;
+      no)  experimental=false ;;
+      *)   AC_MSG_ERROR([bad value ${enableval} for --enable-experimental]) ;;
+    esac],
+    [experimental=false])
+AM_CONDITIONAL(EXPERIMENTAL, test x"$experimental" = x"true")
+
 # Checks for libraries
 PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.22.0], [], [])
 PKG_CHECK_MODULES(UV, [libuv >= 1.8.0], [], [])
+
+AM_COND_IF(EXPERIMENTAL,
+  [
+  PKG_CHECK_MODULES(ZLIB, [zlib], [], [])
+  AC_DEFINE(EXPERIMENTAL, 1, [Define to 0 to exclude experimental features])
+  ], [
+  AC_DEFINE(EXPERIMENTAL, 0, [Define to 1 to include experimental features])
+  ])
 
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h fcntl.h stdint.h stdlib.h string.h sys/socket.h unistd.h])
