@@ -143,8 +143,12 @@ static void *setup(const MunitParameter params[], void *user_data) {
 
 static void tear_down(void *data) {
 	struct test_server *server = data;
+	int                 rc;
 
 	test_server_stop(server);
+
+	rc = sqlite3_shutdown();
+	munit_assert_int(rc, ==, 0);
 
 	/* TODO: the instance tracking in lifecycle.c is not thread-safe, nor is
 	 * the one in sqlite3_malloc/free (since we disable mutexes). */
