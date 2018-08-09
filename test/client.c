@@ -49,12 +49,14 @@ static void test_client__write(struct test_client *c) {
 	dqlite__message_send_start(&c->request.message, c->bufs);
 	err = write(c->fd, c->bufs[0].base, c->bufs[0].len);
 	if (err < 0) {
-		munit_errorf("failed to write request header: %s", strerror(errno));
+		munit_errorf("failed to write request header: %s",
+		             strerror(errno));
 		dqlite__request_close(&c->request);
 	}
 	err = write(c->fd, c->bufs[1].base, c->bufs[1].len);
 	if (err < 0) {
-		munit_errorf("failed to write request body: %s", strerror(errno));
+		munit_errorf("failed to write request body: %s",
+		             strerror(errno));
 		dqlite__request_close(&c->request);
 	}
 
@@ -69,7 +71,8 @@ static void test_client__read(struct test_client *c) {
 
 	err = read(c->fd, c->bufs[0].base, c->bufs[0].len);
 	if (err < 0) {
-		munit_errorf("failed to read response header: %s", strerror(errno));
+		munit_errorf("failed to read response header: %s",
+		             strerror(errno));
 	}
 
 	err = dqlite__message_header_recv_done(&c->response.message);
@@ -78,7 +81,8 @@ static void test_client__read(struct test_client *c) {
 		             c->response.message.error);
 	}
 
-	err = dqlite__message_body_recv_start(&c->response.message, &c->bufs[0]);
+	err =
+	    dqlite__message_body_recv_start(&c->response.message, &c->bufs[0]);
 	if (err != 0) {
 		munit_errorf("failed to start receiving body: %s",
 		             c->response.message.error);
@@ -94,7 +98,8 @@ static void test_client__read(struct test_client *c) {
 
 	err = dqlite__response_decode(&c->response);
 	if (err != 0) {
-		munit_errorf("failed to decode response: %s", c->response.error);
+		munit_errorf("failed to decode response: %s",
+		             c->response.error);
 	}
 
 	if (c->response.type == DQLITE_RESPONSE_FAILURE) {
@@ -129,7 +134,9 @@ void test_client_client(struct test_client *c, uint64_t *heartbeat) {
 	test_client__read(c);
 }
 
-void test_client_open(struct test_client *c, const char *name, uint32_t *db_id) {
+void test_client_open(struct test_client *c,
+                      const char *        name,
+                      uint32_t *          db_id) {
 	(void)name;
 
 	c->request.type       = DQLITE_REQUEST_OPEN;
@@ -226,8 +233,8 @@ static void test_client_get_row(struct dqlite__message * m,
 		switch (types[i]) {
 		case SQLITE_INTEGER:
 			values[i] = munit_malloc(sizeof(int64_t));
-			err =
-			    dqlite__message_body_get_int64(m, (int64_t *)values[i]);
+			err       = dqlite__message_body_get_int64(
+                            m, (int64_t *)values[i]);
 			munit_assert_int(err, ==, 0);
 			break;
 		case SQLITE_TEXT:
@@ -277,7 +284,8 @@ void test_client_query(struct test_client *     c,
 
 	prev = NULL;
 	do {
-		test_client_get_row(&c->response.message, rows->column_count, &next);
+		test_client_get_row(
+		    &c->response.message, rows->column_count, &next);
 		if (prev == NULL) {
 			rows->next = next;
 		} else {
@@ -291,7 +299,9 @@ void test_client_rows_close(struct test_client_rows *rows) {
 	dqlite__message_recv_reset(rows->message);
 }
 
-void test_client_finalize(struct test_client *c, uint32_t db_id, uint32_t stmt_id) {
+void test_client_finalize(struct test_client *c,
+                          uint32_t            db_id,
+                          uint32_t            stmt_id) {
 	c->request.type             = DQLITE_REQUEST_FINALIZE;
 	c->request.finalize.db_id   = db_id;
 	c->request.finalize.stmt_id = stmt_id;

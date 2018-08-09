@@ -15,7 +15,8 @@ static void test__assert_no_memory_leaks() {
 	    SQLITE_STATUS_MALLOC_COUNT, &current_malloc, &highest_malloc, 1);
 
 	if (err != SQLITE_OK) {
-		munit_errorf("failed to get malloc count: %s", sqlite3_errstr(err));
+		munit_errorf("failed to get malloc count: %s",
+		             sqlite3_errstr(err));
 	}
 
 	err = sqlite3_status(

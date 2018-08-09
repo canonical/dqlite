@@ -263,7 +263,7 @@ struct test_server *test_server_start(const char *family) {
 
 	test_server__listen(s);
 
-	err = pthread_create(&s->thread, 0, &test__server_run, (void *)s);
+	err = pthread_create(&s->thread, 0, &test__server_run, s);
 	if (err) {
 		munit_errorf("failed to spawn server thread: %s", strerror(errno));
 		return 0;
