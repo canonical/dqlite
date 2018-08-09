@@ -64,7 +64,10 @@ static void *__worker_run(void *arg) {
 		test_client_finalize(w->client, db_id, stmt_id);
 
 		/* Fetch all rows within our own working range. */
-		sprintf(sql, "SELECT n FROM test WHERE n >= %d AND n < %d", w->a, b);
+		sprintf(sql,
+		        "SELECT n FROM test WHERE n >= %d AND n < %d",
+		        w->a,
+		        b);
 
 		test_client_prepare(w->client, db_id, sql, &stmt_id);
 		test_client_query(w->client, db_id, stmt_id, &rows);
@@ -89,8 +92,11 @@ static void *__worker_run(void *arg) {
 	return 0;
 }
 
-static void
-__worker_start(struct worker *w, struct test_server *server, int i, int a, int n) {
+static void __worker_start(struct worker *     w,
+                           struct test_server *server,
+                           int                 i,
+                           int                 a,
+                           int                 n) {
 	int err;
 
 	w->i = i;
@@ -161,7 +167,8 @@ static void tear_down(void *data) {
  *
  ******************************************************************************/
 
-static MunitResult test_exec_and_query(const MunitParameter params[], void *data) {
+static MunitResult test_exec_and_query(const MunitParameter params[],
+                                       void *               data) {
 	struct test_server *      server = data;
 	struct test_client *      client;
 	char *                    leader;
@@ -183,12 +190,14 @@ static MunitResult test_exec_and_query(const MunitParameter params[], void *data
 	munit_assert_int(db_id, ==, 0);
 
 	/* Create a test table. */
-	test_client_prepare(client, db_id, "CREATE TABLE test (n INT)", &stmt_id);
+	test_client_prepare(
+	    client, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 	test_client_exec(client, db_id, stmt_id, &result);
 	test_client_finalize(client, db_id, stmt_id);
 
 	/* Insert a row in the test table. */
-	test_client_prepare(client, db_id, "INSERT INTO test VALUES(123)", &stmt_id);
+	test_client_prepare(
+	    client, db_id, "INSERT INTO test VALUES(123)", &stmt_id);
 
 	munit_assert_int(stmt_id, ==, 0);
 
@@ -245,7 +254,8 @@ static MunitResult test_query_large(const MunitParameter params[], void *data) {
 	munit_assert_int(db_id, ==, 0);
 
 	/* Create a test table. */
-	test_client_prepare(client, db_id, "CREATE TABLE test (n INT)", &stmt_id);
+	test_client_prepare(
+	    client, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 	test_client_exec(client, db_id, stmt_id, &result);
 	test_client_finalize(client, db_id, stmt_id);
 
@@ -287,7 +297,8 @@ static MunitResult test_query_large(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-static MunitResult test_multi_thread(const MunitParameter params[], void *data) {
+static MunitResult test_multi_thread(const MunitParameter params[],
+                                     void *               data) {
 	struct test_server *      server = data;
 	struct worker *           workers;
 	struct test_client *      client;
@@ -312,7 +323,8 @@ static MunitResult test_multi_thread(const MunitParameter params[], void *data) 
 	munit_assert_int(db_id, ==, 0);
 
 	/* Create a test table and close this client. */
-	test_client_prepare(client, db_id, "CREATE TABLE test (n INT)", &stmt_id);
+	test_client_prepare(
+	    client, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 	test_client_exec(client, db_id, stmt_id, &result);
 	test_client_finalize(client, db_id, stmt_id);
 

@@ -42,9 +42,14 @@ static MunitSuite dqlite__test_suites[] = {
     {"dqlite__vfs", NULL, dqlite__vfs_suites, 1, 0},
     {NULL, NULL, NULL, 0, 0}};
 
-static MunitSuite dqlite__test_suite = {(char *)"", NULL, dqlite__test_suites, 1, 0};
+static MunitSuite dqlite__test_suite = {(char *)"",
+                                        NULL,
+                                        dqlite__test_suites,
+                                        1,
+                                        0};
 
 /* Test runner executable */
 int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc + 1)]) {
-	return munit_suite_main(&dqlite__test_suite, (void *)"µnit", argc, argv);
+	return munit_suite_main(
+	    &dqlite__test_suite, (void *)"µnit", argc, argv);
 }
