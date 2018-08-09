@@ -80,6 +80,8 @@ dqlite_test_SOURCES = \
   test/leak.h \
   test/log.c \
   test/log.h \
+  test/mem.c \
+  test/mem.h \
   test/message.c \
   test/message.h \
   test/munit.c \
