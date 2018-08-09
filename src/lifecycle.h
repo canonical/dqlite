@@ -19,6 +19,7 @@
 #define DQLITE__LIFECYCLE_QUEUE_ITEM 10
 #define DQLITE__LIFECYCLE_DB 11
 #define DQLITE__LIFECYCLE_STMT 12
+#define DQLITE__LIFECYCLE_REPLICATION 13
 
 #ifdef DQLITE_DEBUG
 void dqlite__lifecycle_init(int type);

@@ -21,11 +21,11 @@
 struct dqlite__vfs_page {
 	void *buf;        /* Content of the page. */
 	void *hdr;        /* Page header (only for WAL pages). */
-	void *dirty_mask; /* Bit mask of dirty buf bytes to be re-written (only for
-	                     WAL pages) */
+	void *dirty_mask; /* Bit mask of dirty buf bytes to be re-written (only
+	                     for WAL pages) */
 	int   dirty_mask_size; /* Number of bytes in the dirty_mask array. */
-	void *dirty_buf; /* List of dirty buf bytes, one for each bit with value 1 in
-	                    dirty_mask. */
+	void *dirty_buf; /* List of dirty buf bytes, one for each bit with value
+	                    1 in dirty_mask. */
 };
 
 /* Create a new volatile page for a database or WAL file.
@@ -158,22 +158,25 @@ static void dqlite__vfs_shm_destroy(struct dqlite__vfs_shm *s) {
 
 /* Hold content for a single file in the volatile file system. */
 struct dqlite__vfs_content {
-	char *                    filename;  /* Name of the file. */
-	void *                    hdr;       /* File header (only for WAL files). */
-	struct dqlite__vfs_page **pages;     /* Pointers to all pages in the file. */
-	int                       pages_len; /* Number of pages in the file. */
-	unsigned int              page_size; /* Size of page->buf for each page. */
+	char *filename; /* Name of the file. */
+	void *hdr;      /* File header (only for WAL files). */
+	struct dqlite__vfs_page *
+	    *        pages;     /* Pointers to all pages in the file. */
+	int          pages_len; /* Number of pages in the file. */
+	unsigned int page_size; /* Size of page->buf for each page. */
 
 	int refcount; /* Number of open FDs referencing this file. */
 	int type;     /* Content type (either main db or WAL). */
 
-	struct dqlite__vfs_shm *    shm; /* Shared memory (for databse files). */
-	struct dqlite__vfs_content *wal; /* WAL file content (for database files). */
+	struct dqlite__vfs_shm *shm; /* Shared memory (for databse files). */
+	struct dqlite__vfs_content
+	    *wal; /* WAL file content (for database files). */
 };
 
 /* Create the content structure for a new volatile file. */
-static struct dqlite__vfs_content *dqlite__vfs_content_create(const char *filename,
-                                                              int         type) {
+static struct dqlite__vfs_content *dqlite__vfs_content_create(
+    const char *filename,
+    int         type) {
 	struct dqlite__vfs_content *c;
 
 	assert(filename != NULL);
@@ -290,8 +293,8 @@ static int dqlite__vfs_content_page_get(struct dqlite__vfs_content *c,
 
 	is_wal = c->type == DQLITE__FORMAT_WAL;
 
-	/* SQLite should access pages progressively, without jumping more than one
-	 * page after the end. */
+	/* SQLite should access pages progressively, without jumping more than
+	 * one page after the end. */
 	if (pgno > (c->pages_len + 1)) {
 		rc = SQLITE_PROTOCOL;
 		goto err;
@@ -347,8 +350,9 @@ err:
 }
 
 /* Lookup a page from this file, returning NULL if it doesn't exist. */
-static struct dqlite__vfs_page *
-dqlite__vfs_content_page_lookup(struct dqlite__vfs_content *c, int pgno) {
+static struct dqlite__vfs_page *dqlite__vfs_content_page_lookup(
+    struct dqlite__vfs_content *c,
+    int                         pgno) {
 	struct dqlite__vfs_page *page;
 
 	assert(c != NULL);
@@ -371,7 +375,7 @@ dqlite__vfs_content_page_lookup(struct dqlite__vfs_content *c, int pgno) {
 
 /* Truncate the file to be exactly the given number of pages. */
 static void dqlite__vfs_content_truncate(struct dqlite__vfs_content *content,
-                                         int                         pages_len) {
+                                         int pages_len) {
 	struct dqlite__vfs_page **cursor;
 	int                       i;
 
@@ -401,8 +405,8 @@ static void dqlite__vfs_content_truncate(struct dqlite__vfs_content *content,
 	/* Shrink the page array, possibly to 0.
 	 *
 	 * TODO: in principle realloc could fail also when shrinking. */
-	content->pages =
-	    sqlite3_realloc(content->pages, (sizeof *(content->pages)) * pages_len);
+	content->pages = sqlite3_realloc(
+	    content->pages, (sizeof *(content->pages)) * pages_len);
 
 	/* Update the page count. */
 	content->pages_len = pages_len;
@@ -536,10 +540,10 @@ static int dqlite__vfs_root_content_lookup(
 }
 
 /* Find the database content object associated with the given WAL file name. */
-static int
-dqlite__vfs_root_database_content_lookup(struct dqlite__vfs_root *    r,
-                                         const char *                 wal_filename,
-                                         struct dqlite__vfs_content **out) {
+static int dqlite__vfs_root_database_content_lookup(
+    struct dqlite__vfs_root *    r,
+    const char *                 wal_filename,
+    struct dqlite__vfs_content **out) {
 	struct dqlite__vfs_content *content;
 	int                         main_filename_len;
 	char *                      main_filename;
@@ -577,8 +581,8 @@ dqlite__vfs_root_database_content_lookup(struct dqlite__vfs_root *    r,
  *
  * The size must have been previously set when this routine is called. */
 static int dqlite__vfs_root_database_page_size(struct dqlite__vfs_root *r,
-                                               const char *             wal_filename,
-                                               unsigned int *           page_size) {
+                                               const char *  wal_filename,
+                                               unsigned int *page_size) {
 	struct dqlite__vfs_content *content;
 	int                         err;
 
@@ -588,7 +592,8 @@ static int dqlite__vfs_root_database_page_size(struct dqlite__vfs_root *r,
 
 	*page_size = 0; /* In case of errors. */
 
-	err = dqlite__vfs_root_database_content_lookup(r, wal_filename, &content);
+	err =
+	    dqlite__vfs_root_database_content_lookup(r, wal_filename, &content);
 	if (err != SQLITE_OK) {
 		return err;
 	}
@@ -609,7 +614,8 @@ static int dqlite__vfs_close(sqlite3_file *file) {
 	assert(f->content->refcount);
 	f->content->refcount--;
 
-	/* If we got zero references, free the shared memory mapping, if present. */
+	/* If we got zero references, free the shared memory mapping, if
+	 * present. */
 	if (f->content->refcount == 0 && f->content->shm != NULL) {
 		dqlite__vfs_shm_destroy(f->content->shm);
 		f->content->shm = NULL;
@@ -620,8 +626,10 @@ static int dqlite__vfs_close(sqlite3_file *file) {
 	return SQLITE_OK;
 }
 
-static int
-dqlite__vfs_read(sqlite3_file *file, void *buf, int amount, sqlite_int64 offset) {
+static int dqlite__vfs_read(sqlite3_file *file,
+                            void *        buf,
+                            int           amount,
+                            sqlite_int64  offset) {
 	struct dqlite__vfs_file *f = (struct dqlite__vfs_file *)file;
 
 	int                      pgno;
@@ -664,8 +672,8 @@ dqlite__vfs_read(sqlite3_file *file, void *buf, int amount, sqlite_int64 offset)
 	case DQLITE__FORMAT_DB:
 		/* Main database */
 
-		/* If the main database file is not empty, we expect the page size
-		 * to have been set by an initial write. */
+		/* If the main database file is not empty, we expect the page
+		 * size to have been set by an initial write. */
 		assert(f->content->page_size > 0);
 
 		if (offset < f->content->page_size) {
@@ -675,8 +683,9 @@ dqlite__vfs_read(sqlite3_file *file, void *buf, int amount, sqlite_int64 offset)
 
 			pgno = 1;
 		} else {
-			/* For pages greater than 1, we expect a full page read, with
-			 * an offset that starts exectly at the page boundary. */
+			/* For pages greater than 1, we expect a full page read,
+			 * with an offset that starts exectly at the page
+			 * boundary. */
 			assert(amount == (int)f->content->page_size);
 			assert((offset % f->content->page_size) == 0);
 
@@ -700,10 +709,12 @@ dqlite__vfs_read(sqlite3_file *file, void *buf, int amount, sqlite_int64 offset)
 		/* WAL file */
 
 		if (f->content->page_size == 0) {
-			/* If the page size hasn't been set yet, set it by copy the
-			 * one from the associated main database file. */
+			/* If the page size hasn't been set yet, set it by copy
+			 * the one from the associated main database file. */
 			int err = dqlite__vfs_root_database_page_size(
-			    f->root, f->content->filename, &f->content->page_size);
+			    f->root,
+			    f->content->filename,
+			    &f->content->page_size);
 			if (err != 0) {
 				return err;
 			}
@@ -713,7 +724,8 @@ dqlite__vfs_read(sqlite3_file *file, void *buf, int amount, sqlite_int64 offset)
 			/* Read the header. */
 			assert(amount == DQLITE__FORMAT_WAL_HDR_SIZE);
 			assert(f->content->hdr);
-			memcpy(buf, f->content->hdr, DQLITE__FORMAT_WAL_HDR_SIZE);
+			memcpy(
+			    buf, f->content->hdr, DQLITE__FORMAT_WAL_HDR_SIZE);
 			return SQLITE_OK;
 		}
 
@@ -723,8 +735,8 @@ dqlite__vfs_read(sqlite3_file *file, void *buf, int amount, sqlite_int64 offset)
 			assert(((offset - DQLITE__FORMAT_WAL_HDR_SIZE) %
 			        (f->content->page_size +
 			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
-			pgno = dqlite__format_wal_calc_pgno(f->content->page_size,
-			                                    offset);
+			pgno = dqlite__format_wal_calc_pgno(
+			    f->content->page_size, offset);
 		} else if (amount == sizeof(uint32_t) * 2) {
 			if (offset == DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) {
 				/* Read the checksum from the WAL header. */
@@ -743,17 +755,18 @@ dqlite__vfs_read(sqlite3_file *file, void *buf, int amount, sqlite_int64 offset)
 			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) %
 			        (f->content->page_size +
 			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
-			pgno = dqlite__format_wal_calc_pgno(f->content->page_size,
-			                                    offset);
+			pgno = dqlite__format_wal_calc_pgno(
+			    f->content->page_size, offset);
 		} else {
 			assert(amount == (DQLITE__FORMAT_WAL_FRAME_HDR_SIZE +
 			                  (int)f->content->page_size));
-			pgno = dqlite__format_wal_calc_pgno(f->content->page_size,
-			                                    offset);
+			pgno = dqlite__format_wal_calc_pgno(
+			    f->content->page_size, offset);
 		}
 
 		if (pgno == 0) {
-			// This is an attempt to read a page that was never written.
+			// This is an attempt to read a page that was never
+			// written.
 			memset(buf, 0, amount);
 			return SQLITE_IOERR_SHORT_READ;
 		}
@@ -767,7 +780,8 @@ dqlite__vfs_read(sqlite3_file *file, void *buf, int amount, sqlite_int64 offset)
 		} else if (amount == (int)f->content->page_size) {
 			memcpy(buf, page->buf, amount);
 		} else {
-			memcpy(buf, page->hdr, DQLITE__FORMAT_WAL_FRAME_HDR_SIZE);
+			memcpy(
+			    buf, page->hdr, DQLITE__FORMAT_WAL_FRAME_HDR_SIZE);
 			memcpy(buf + DQLITE__FORMAT_WAL_FRAME_HDR_SIZE,
 			       page->buf,
 			       f->content->page_size);
@@ -802,8 +816,8 @@ static int dqlite__vfs_write(sqlite3_file *file,
 		if (offset == 0) {
 			unsigned int page_size;
 
-			/* This is the first database page. We expect the data to
-			 * contain at least the header. */
+			/* This is the first database page. We expect the data
+			 * to contain at least the header. */
 			assert(amount >= DQLITE__FORMAT_DB_HDR_SIZE);
 
 			/* Extract the page size from the header. */
@@ -814,21 +828,23 @@ static int dqlite__vfs_write(sqlite3_file *file,
 			}
 
 			if (f->content->page_size > 0) {
-				/* Check that the given page size actually matches
-				 * what we have recorded. Since we make 'PRAGMA
-				 * page_size=N' fail if the page is already set (see
-				 * struct dqlite__vfs_fileControl), there should be
+				/* Check that the given page size actually
+				 * matches what we have recorded. Since we make
+				 * 'PRAGMA page_size=N' fail if the page is
+				 * already set (see struct
+				 * dqlite__vfs_fileControl), there should be
 				 * no way for the user to change it. */
 				assert(page_size == f->content->page_size);
 			} else {
-				/* This must be the very first write to the database.
-				 * Keep track of the page size. */
+				/* This must be the very first write to the
+				 * database. Keep track of the page size. */
 				f->content->page_size = page_size;
 			}
 
 			pgno = 1;
 		} else {
-			/* The header must have been written and the page size set.
+			/* The header must have been written and the page size
+			 * set.
 			 */
 			assert(f->content->page_size > 0);
 
@@ -857,10 +873,12 @@ static int dqlite__vfs_write(sqlite3_file *file,
 		/* WAL file. */
 
 		if (f->content->page_size == 0) {
-			/* If the page size hasn't been set yet, set it by copy the
-			 * one from the associated main database file. */
+			/* If the page size hasn't been set yet, set it by copy
+			 * the one from the associated main database file. */
 			int err = dqlite__vfs_root_database_page_size(
-			    f->root, f->content->filename, &f->content->page_size);
+			    f->root,
+			    f->content->filename,
+			    &f->content->page_size);
 			if (err != 0) {
 				return err;
 			}
@@ -892,16 +910,16 @@ static int dqlite__vfs_write(sqlite3_file *file,
 
 		assert(f->content->page_size > 0);
 
-		/* This is a WAL frame write. We expect either a frame header or page
-		 * write. */
+		/* This is a WAL frame write. We expect either a frame header or
+		 * page write. */
 		if (amount == DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) {
 			/* Frame header write. */
 			assert(((offset - DQLITE__FORMAT_WAL_HDR_SIZE) %
 			        (f->content->page_size +
 			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 
-			pgno = dqlite__format_wal_calc_pgno(f->content->page_size,
-			                                    offset);
+			pgno = dqlite__format_wal_calc_pgno(
+			    f->content->page_size, offset);
 
 			dqlite__vfs_content_page_get(f->content, pgno, &page);
 			if (page == NULL) {
@@ -916,12 +934,13 @@ static int dqlite__vfs_write(sqlite3_file *file,
 			        (f->content->page_size +
 			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 
-			pgno = dqlite__format_wal_calc_pgno(f->content->page_size,
-			                                    offset);
+			pgno = dqlite__format_wal_calc_pgno(
+			    f->content->page_size, offset);
 
 			// The header for the this frame must already have been
 			// written, so the page is there.
-			page = dqlite__vfs_content_page_lookup(f->content, pgno);
+			page =
+			    dqlite__vfs_content_page_lookup(f->content, pgno);
 
 			assert(page != NULL);
 
@@ -1028,8 +1047,9 @@ static int dqlite__vfs_file_size(sqlite3_file *file, sqlite_int64 *size) {
 		/* TODO? here we assume that FileSize() is never invoked between
 		 *       a header write and a page write. */
 		*size = DQLITE__FORMAT_WAL_HDR_SIZE +
-		        (f->content->pages_len * (DQLITE__FORMAT_WAL_FRAME_HDR_SIZE +
-		                                  f->content->page_size));
+		        (f->content->pages_len *
+		         (DQLITE__FORMAT_WAL_FRAME_HDR_SIZE +
+		          f->content->page_size));
 		break;
 	}
 
@@ -1096,7 +1116,8 @@ static int dqlite__vfs_file_control_pragma(struct dqlite__vfs_file *f,
 
 			if (f->content->page_size &&
 			    page_size != (int)f->content->page_size) {
-				fnctl[0] = "changing page size is not supported";
+				fnctl[0] =
+				    "changing page size is not supported";
 				return SQLITE_ERROR;
 			}
 			f->content->page_size = page_size;
@@ -1138,11 +1159,12 @@ static int dqlite__vfs_device_characteristics(sqlite3_file *file) {
 }
 
 /* Simulate shared memory by allocating on the C heap. */
-static int dqlite__vfs_shm_map(sqlite3_file *file, /* Handle open on database file */
-                               int           region_index, /* Region to retrieve */
-                               int           region_size,  /* Size of regions */
-                               int extend, /* True to extend file if necessary */
-                               void volatile **out /* OUT: Mapped memory */
+static int dqlite__vfs_shm_map(
+    sqlite3_file *  file,         /* Handle open on database file */
+    int             region_index, /* Region to retrieve */
+    int             region_size,  /* Size of regions */
+    int             extend,       /* True to extend file if necessary */
+    void volatile **out           /* OUT: Mapped memory */
 ) {
 	struct dqlite__vfs_file *f = (struct dqlite__vfs_file *)file;
 	void *                   region;
@@ -1173,9 +1195,9 @@ static int dqlite__vfs_shm_map(sqlite3_file *file, /* Handle open on database fi
 
 			memset(region, 0, region_size);
 
-			f->content->shm->regions =
-			    sqlite3_realloc(f->content->shm->regions,
-			                    sizeof(void *) * (region_index + 1));
+			f->content->shm->regions = sqlite3_realloc(
+			    f->content->shm->regions,
+			    sizeof(void *) * (region_index + 1));
 
 			if (f->content->shm->regions == NULL) {
 				rc = SQLITE_NOMEM;
@@ -1207,7 +1229,10 @@ err:
 	return rc;
 }
 
-static int dqlite__vfs_shm_lock(sqlite3_file *file, int ofst, int n, int flags) {
+static int dqlite__vfs_shm_lock(sqlite3_file *file,
+                                int           ofst,
+                                int           n,
+                                int           flags) {
 	struct dqlite__vfs_file *f;
 	int                      i;
 
@@ -1227,8 +1252,8 @@ static int dqlite__vfs_shm_lock(sqlite3_file *file, int ofst, int n, int flags) 
 	       flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE));
 
 	/* This is a no-op since shared-memory locking is relevant only for
-	 * inter-process concurrency. See also the unix-excl branch from upstream
-	 * (git commit cda6b3249167a54a0cf892f949d52760ee557129). */
+	 * inter-process concurrency. See also the unix-excl branch from
+	 * upstream (git commit cda6b3249167a54a0cf892f949d52760ee557129). */
 
 	f = (struct dqlite__vfs_file *)file;
 
@@ -1260,7 +1285,8 @@ static int dqlite__vfs_shm_lock(sqlite3_file *file, int ofst, int n, int flags) 
 		}
 	} else {
 		if (flags & SQLITE_SHM_EXCLUSIVE) {
-			/* No shared or exclusive lock must be held in the region. */
+			/* No shared or exclusive lock must be held in the
+			 * region. */
 			for (i = ofst; i < ofst + n; i++) {
 				if (f->content->shm->shared[i] > 0 ||
 				    f->content->shm->exclusive[i] > 0) {
@@ -1322,8 +1348,9 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 	struct dqlite__vfs_file *   f;
 	struct dqlite__vfs_content *content;
 
-	int free_slot = -1; /* Index of a free slot in the root->acontent array. */
-	int exists    = 0;  /* Whether the file exists already. */
+	int free_slot =
+	    -1;         /* Index of a free slot in the root->acontent array. */
+	int exists = 0; /* Whether the file exists already. */
 
 	int type; /* File content type (e.g. database or WAL). */
 	int rc;   /* Return code. */
@@ -1342,7 +1369,8 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 	root = (struct dqlite__vfs_root *)(vfs->pAppData);
 	f    = (struct dqlite__vfs_file *)file;
 
-	/* This signals SQLite to not call Close() in case we return an error. */
+	/* This signals SQLite to not call Close() in case we return an error.
+	 */
 	f->base.pMethods = 0;
 
 	pthread_mutex_lock(&root->mutex);
@@ -1463,7 +1491,9 @@ err:
 	return rc;
 }
 
-static int dqlite__vfs_delete(sqlite3_vfs *vfs, const char *filename, int dir_sync) {
+static int dqlite__vfs_delete(sqlite3_vfs *vfs,
+                              const char * filename,
+                              int          dir_sync) {
 	struct dqlite__vfs_root *   root;
 	struct dqlite__vfs_content *content;
 	int                         content_index;
@@ -1479,7 +1509,8 @@ static int dqlite__vfs_delete(sqlite3_vfs *vfs, const char *filename, int dir_sy
 	pthread_mutex_lock(&root->mutex);
 
 	/* Check if the file exists. */
-	content_index = dqlite__vfs_root_content_lookup(root, filename, &content);
+	content_index =
+	    dqlite__vfs_root_content_lookup(root, filename, &content);
 	if (content == NULL) {
 		root->error = ENOENT;
 		rc          = SQLITE_IOERR_DELETE_NOENT;
@@ -1512,8 +1543,10 @@ err:
 	return rc;
 }
 
-static int
-dqlite__vfs_access(sqlite3_vfs *vfs, const char *filename, int flags, int *result) {
+static int dqlite__vfs_access(sqlite3_vfs *vfs,
+                              const char * filename,
+                              int          flags,
+                              int *        result) {
 	struct dqlite__vfs_root *   root;
 	struct dqlite__vfs_content *content;
 
@@ -1561,11 +1594,14 @@ static void *dqlite__vfs_dl_open(sqlite3_vfs *vfs, const char *filename) {
 static void dqlite__vfs_dl_error(sqlite3_vfs *vfs, int nByte, char *zErrMsg) {
 	(void)vfs;
 
-	sqlite3_snprintf(nByte, zErrMsg, "Loadable extensions are not supported");
+	sqlite3_snprintf(
+	    nByte, zErrMsg, "Loadable extensions are not supported");
 	zErrMsg[nByte - 1] = '\0';
 }
 
-static void (*dqlite__vfs_dl_sym(sqlite3_vfs *vfs, void *pH, const char *z))(void) {
+static void (*dqlite__vfs_dl_sym(sqlite3_vfs *vfs,
+                                 void *       pH,
+                                 const char * z))(void) {
 	(void)vfs;
 	(void)pH;
 	(void)z;
@@ -1596,25 +1632,30 @@ static int dqlite__vfs_sleep(sqlite3_vfs *vfs, int microseconds) {
 	return microseconds;
 }
 
-static int dqlite__vfs_current_time_int64(sqlite3_vfs *vfs, sqlite3_int64 *piNow) {
-	static const sqlite3_int64 unixEpoch = 24405875 * (sqlite3_int64)8640000;
-	struct timeval             now;
+static int dqlite__vfs_current_time_int64(sqlite3_vfs *  vfs,
+                                          sqlite3_int64 *piNow) {
+	static const sqlite3_int64 unixEpoch =
+	    24405875 * (sqlite3_int64)8640000;
+	struct timeval now;
 
 	(void)vfs;
 
 	gettimeofday(&now, 0);
-	*piNow = unixEpoch + 1000 * (sqlite3_int64)now.tv_sec + now.tv_usec / 1000;
+	*piNow =
+	    unixEpoch + 1000 * (sqlite3_int64)now.tv_sec + now.tv_usec / 1000;
 	return SQLITE_OK;
 }
 
 static int dqlite__vfs_current_time(sqlite3_vfs *vfs, double *piNow) {
-	// TODO: check if it's always safe to cast a double* to a sqlite3_int64*.
+	// TODO: check if it's always safe to cast a double* to a
+	// sqlite3_int64*.
 	return dqlite__vfs_current_time_int64(vfs, (sqlite3_int64 *)piNow);
 }
 
 static int dqlite__vfs_get_last_error(sqlite3_vfs *vfs, int x, char *y) {
-	struct dqlite__vfs_root *root = (struct dqlite__vfs_root *)(vfs->pAppData);
-	int                      rc;
+	struct dqlite__vfs_root *root =
+	    (struct dqlite__vfs_root *)(vfs->pAppData);
+	int rc;
 
 	(void)vfs;
 	(void)x;

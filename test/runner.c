@@ -15,6 +15,9 @@ extern MunitSuite dqlite__gateway_suites[];
 extern MunitSuite dqlite__integration_suites[];
 extern MunitSuite dqlite__message_suites[];
 extern MunitSuite dqlite__queue_suites[];
+#ifdef DQLITE_EXPERIMENTAL
+extern MunitSuite dqlite__replication_suites[];
+#endif /* DQLITE_EXPERIMENTAL */
 extern MunitSuite dqlite__registry_suites[];
 extern MunitSuite dqlite__request_suites[];
 extern MunitSuite dqlite__response_suites[];
@@ -34,6 +37,9 @@ static MunitSuite dqlite__test_suites[] = {
     {"dqlite__message", NULL, dqlite__message_suites, 1, 0},
     {"dqlite__queue", NULL, dqlite__queue_suites, 1, 0},
     {"dqlite__registry", NULL, dqlite__registry_suites, 1, 0},
+#ifdef DQLITE_EXPERIMENTAL
+    {"dqlite__replication", NULL, dqlite__replication_suites, 1, 0},
+#endif /* DQLITE_EXPERIMENTAL */
     {"dqlite__request", NULL, dqlite__request_suites, 1, 0},
     {"dqlite__response", NULL, dqlite__response_suites, 1, 0},
     {"dqlite__schema", NULL, dqlite__schema_suites, 1, 0},
