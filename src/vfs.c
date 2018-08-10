@@ -1277,11 +1277,12 @@ static int dqlite__vfs_shm_lock(sqlite3_file *file,
 			 * in this region. */
 			assert(other_locks[i] == 0);
 
-			/* Sanity check that there is at least one lock held for
-			 * this index. */
-			assert(these_locks[i] > 0);
-
-			these_locks[i]--;
+			/* Only decrease the lock count if it's positive. In
+			 * other words releasing a never acquired lock is legal
+			 * and idemponent. */
+			if (these_locks[i] > 0) {
+				these_locks[i]--;
+			}
 		}
 	} else {
 		if (flags & SQLITE_SHM_EXCLUSIVE) {
