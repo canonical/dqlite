@@ -81,6 +81,8 @@ dqlite_test_SOURCES = \
   test/client.h \
   test/cluster.c \
   test/cluster.h \
+  test/fs.c \
+  test/fs.h \
   test/leak.c \
   test/leak.h \
   test/log.c \
