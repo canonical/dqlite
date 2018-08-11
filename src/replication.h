@@ -4,8 +4,8 @@
  *
  *****************************************************************************/
 
-#ifndef DQLITE_OS_H
-#define DQLITE_OS_H
+#ifndef DQLITE_REPLICATION_H
+#define DQLITE_REPLICATION_H
 
 #ifdef DQLITE_EXPERIMENTAL
 
@@ -46,4 +46,4 @@ int dqlite__replication_end(sqlite3_wal_replication *r, void *arg);
 
 #endif /* DQLITE_EXPERIMENTAL */
 
-#endif /* DQLITE_OS_H */
+#endif /* DQLITE_REPLICATION_H */

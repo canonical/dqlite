@@ -35,6 +35,7 @@
 #define DQLITE_REQUEST_FINALIZE 7
 #define DQLITE_REQUEST_EXEC_SQL 8
 #define DQLITE_REQUEST_QUERY_SQL 9
+#define DQLITE_REQUEST_INTERRUPT 10 /* TODO: implement */
 
 /* Response types */
 #define DQLITE_RESPONSE_FAILURE 0
@@ -166,7 +167,8 @@ const char *dqlite_server_errmsg(dqlite_server *s);
 /* Return the dqlite_cluster object used to initialize the server */
 dqlite_cluster *dqlite_server_cluster(dqlite_server *s);
 
-/* Return the dqlite_logger object the server is using, if any was configured. */
+/* Return the dqlite_logger object the server is using, if any was configured.
+ */
 dqlite_logger *dqlite_server_logger(dqlite_server *s);
 
 /* Allocate and initialize an in-memory dqlite VFS object, configured with the
