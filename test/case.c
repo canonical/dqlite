@@ -17,7 +17,7 @@
 static void test__case_sqlite_log(void *ctx, int rc, const char *errmsg) {
 	(void)ctx;
 
-	munit_errorf("SQLite error: %s (%d)", errmsg, rc);
+	munit_logf(MUNIT_LOG_INFO, "SQLite error: %s (%d)", errmsg, rc);
 }
 
 /* Ensure that SQLite is unconfigured and set test-specific options. */

@@ -12,15 +12,15 @@
  *
  ******************************************************************************/
 
-#define TEST_SCHEMA_FOO(X, ...)                                                     \
-	X(uint64, id, __VA_ARGS__)                                                  \
+#define TEST_SCHEMA_FOO(X, ...)                                                \
+	X(uint64, id, __VA_ARGS__)                                             \
 	X(text, name, __VA_ARGS__)
 
 DQLITE__SCHEMA_DEFINE(test_foo, TEST_SCHEMA_FOO);
 DQLITE__SCHEMA_IMPLEMENT(test_foo, TEST_SCHEMA_FOO);
 
-#define TEST_SCHEMA_BAR(X, ...)                                                     \
-	X(uint64, i, __VA_ARGS__)                                                   \
+#define TEST_SCHEMA_BAR(X, ...)                                                \
+	X(uint64, i, __VA_ARGS__)                                              \
 	X(uint64, j, __VA_ARGS__)
 
 DQLITE__SCHEMA_DEFINE(test_bar, TEST_SCHEMA_BAR);
@@ -30,19 +30,12 @@ DQLITE__SCHEMA_IMPLEMENT(test_bar, TEST_SCHEMA_BAR);
 #define TEST_FOO 0
 #define TEST_BAR 1
 
-#define TEST_SCHEMA_TYPES(X, ...)                                                   \
-	X(TEST_FOO, test_foo, foo, __VA_ARGS__)                                     \
+#define TEST_SCHEMA_TYPES(X, ...)                                              \
+	X(TEST_FOO, test_foo, foo, __VA_ARGS__)                                \
 	X(TEST_BAR, test_bar, bar, __VA_ARGS__)
 
 DQLITE__SCHEMA_HANDLER_DEFINE(test_handler, TEST_SCHEMA_TYPES);
 DQLITE__SCHEMA_HANDLER_IMPLEMENT(test_handler, TEST_SCHEMA_TYPES);
-
-static void test_handler_reset(struct test_handler *h) {
-	if (h->type == TEST_FOO && h->foo.name != NULL) {
-		sqlite3_free((char *)h->foo.name);
-		h->foo.name = NULL;
-	}
-}
 
 /******************************************************************************
  *
@@ -140,42 +133,15 @@ static MunitResult test_encode_unknown_type(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-/* If set, the xReset hook is invoked after the message has been encoded. It's
- * typically used to free resources unsed by the handler. */
-static MunitResult test_encode_reset_hook(const MunitParameter params[],
-                                          void *               data) {
-	struct test_handler *handler = data;
-	int                  err;
-
-	(void)params;
-
-	handler->type     = TEST_FOO;
-	handler->foo.id   = 123;
-	handler->foo.name = sqlite3_malloc(strlen("hello") + 1);
-	handler->xReset   = test_handler_reset;
-
-	strcpy((char *)handler->foo.name, "hello");
-
-	err = test_handler_encode(handler);
-	munit_assert_int(err, ==, 0);
-
-	munit_assert_int(handler->message.type, ==, TEST_FOO);
-	munit_assert_int(handler->message.offset1, ==, 16);
-
-	munit_assert_int(*(uint64_t *)handler->message.body1, ==, 123);
-	munit_assert_string_equal((const char *)(handler->message.body1 + 8),
-	                          "hello");
-
-	munit_assert_ptr_null(handler->foo.name);
-
-	return MUNIT_OK;
-}
-
 static MunitTest dqlite__schema_encode_tests[] = {
     {"/two-uint64", test_encode_two_uint64, setup, tear_down, 0, NULL},
-    {"/uint64-and-text", test_encode_uint64_and_text, setup, tear_down, 0, NULL},
+    {"/uint64-and-text",
+     test_encode_uint64_and_text,
+     setup,
+     tear_down,
+     0,
+     NULL},
     {"/unknown-type", test_encode_unknown_type, setup, tear_down, 0, NULL},
-    {"/reset-hook", test_encode_reset_hook, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 
@@ -200,9 +166,9 @@ static MunitResult test_decode_invalid_text(const MunitParameter params[],
 	err = test_handler_decode(handler);
 	munit_assert_int(err, ==, DQLITE_PARSE);
 
-	munit_assert_string_equal(
-	    handler->error,
-	    "failed to decode 'foo': failed to get 'name' field: no string found");
+	munit_assert_string_equal(handler->error,
+	                          "failed to decode 'foo': failed to get "
+	                          "'name' field: no string found");
 
 	return MUNIT_OK;
 }
