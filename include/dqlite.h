@@ -68,8 +68,11 @@
 #define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 5
 #define DQLITE_CONFIG_METRICS 6
 
-/* TODO: avoid this redundant EOF marker */
-#define DQLITE_RESPONSE_ROWS_EOF 0xffffffffffffffff
+/* Special value indicating that a batch of rows is over, but there are more. */
+#define DQLITE_RESPONSE_ROWS_PART 0xeeeeeeeeeeeeeeee
+
+/* Special value indicating that the result set is complete. */
+#define DQLITE_RESPONSE_ROWS_DONE 0xffffffffffffffff
 
 /* Initialize SQLite global state with values specific to dqlite
  *

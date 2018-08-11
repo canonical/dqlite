@@ -67,7 +67,8 @@
 #define DQLITE__SCHEMA_IMPLEMENT(NAME, SCHEMA)                                 \
                                                                                \
 	int NAME##_put(                                                        \
-	    struct NAME *p, struct dqlite__message *m, dqlite__error *e) {     \
+	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)       \
+	{                                                                      \
 		int err;                                                       \
                                                                                \
 		assert(p != NULL);                                             \
@@ -79,7 +80,8 @@
 	};                                                                     \
                                                                                \
 	int NAME##_get(                                                        \
-	    struct NAME *p, struct dqlite__message *m, dqlite__error *e) {     \
+	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)       \
+	{                                                                      \
 		int err;                                                       \
                                                                                \
 		assert(p != NULL);                                             \
@@ -146,7 +148,8 @@
 /* Implement a new schema handler. */
 #define DQLITE__SCHEMA_HANDLER_IMPLEMENT(NAME, TYPES)                          \
                                                                                \
-	void NAME##_init(struct NAME *h) {                                     \
+	void NAME##_init(struct NAME *h)                                       \
+	{                                                                      \
 		assert(h != NULL);                                             \
                                                                                \
 		h->type  = 0;                                                  \
@@ -158,7 +161,8 @@
 		dqlite__lifecycle_init(DQLITE__LIFECYCLE_ENCODER);             \
 	};                                                                     \
                                                                                \
-	void NAME##_close(struct NAME *h) {                                    \
+	void NAME##_close(struct NAME *h)                                      \
+	{                                                                      \
 		assert(h != NULL);                                             \
                                                                                \
 		dqlite__error_close(&h->error);                                \
@@ -167,7 +171,8 @@
 		dqlite__lifecycle_close(DQLITE__LIFECYCLE_ENCODER);            \
 	}                                                                      \
                                                                                \
-	int NAME##_encode(struct NAME *h) {                                    \
+	int NAME##_encode(struct NAME *h)                                      \
+	{                                                                      \
 		int err = 0;                                                   \
                                                                                \
 		assert(h != NULL);                                             \
@@ -194,7 +199,8 @@
 		return err;                                                    \
 	}                                                                      \
                                                                                \
-	int NAME##_decode(struct NAME *h) {                                    \
+	int NAME##_decode(struct NAME *h)                                      \
+	{                                                                      \
 		int err;                                                       \
                                                                                \
 		assert(h != NULL);                                             \

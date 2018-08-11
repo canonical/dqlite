@@ -14,7 +14,8 @@
  * can fit in one byte. */
 #define DQLITE__STMT_MAX_COLUMNS (1 << 8) - 1
 
-void dqlite__stmt_init(struct dqlite__stmt *s) {
+void dqlite__stmt_init(struct dqlite__stmt *s)
+{
 	assert(s != NULL);
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_STMT);
@@ -22,7 +23,8 @@ void dqlite__stmt_init(struct dqlite__stmt *s) {
 	dqlite__error_init(&s->error);
 }
 
-void dqlite__stmt_close(struct dqlite__stmt *s) {
+void dqlite__stmt_close(struct dqlite__stmt *s)
+{
 	assert(s != NULL);
 
 	if (s->stmt != NULL) {
@@ -36,7 +38,8 @@ void dqlite__stmt_close(struct dqlite__stmt *s) {
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_STMT);
 }
 
-const char *dqlite__stmt_hash(struct dqlite__stmt *stmt) {
+const char *dqlite__stmt_hash(struct dqlite__stmt *stmt)
+{
 	(void)stmt;
 
 	return NULL;
@@ -47,7 +50,8 @@ static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
                                    struct dqlite__message *message,
                                    int                     i,
                                    int                     type,
-                                   int *                   rc) {
+                                   int *                   rc)
+{
 	int64_t  integer;
 	double   float_;
 	uint64_t null;
@@ -115,10 +119,9 @@ static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
 	return err;
 }
 
-int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message) {
+int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message)
+{
 	int     err;
-	size_t  words;
-	size_t  offset;
 	uint8_t pad = 0;
 	uint8_t i;
 	uint8_t count;
@@ -133,13 +136,7 @@ int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message) {
 	/* First check if we reached the end of the message. Since bindings are
 	 * always the last part of a message, no further data means that no
 	 * bindings were supplied and there's nothing to do. */
-	if (message->body2.base != NULL) {
-		offset = message->offset2;
-	} else {
-		offset = message->offset1;
-	}
-	words = offset / DQLITE__MESSAGE_WORD_SIZE;
-	if (words == message->words) {
+	if (dqlite__message_has_been_fully_consumed(message)) {
 		return SQLITE_OK;
 	}
 
@@ -206,7 +203,8 @@ int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message) {
 
 int dqlite__stmt_exec(struct dqlite__stmt *s,
                       uint64_t *           last_insert_id,
-                      uint64_t *           rows_affected) {
+                      uint64_t *           rows_affected)
+{
 	int rc;
 
 	assert(s != NULL);
@@ -227,7 +225,8 @@ int dqlite__stmt_exec(struct dqlite__stmt *s,
 /* Append a single row to the message. */
 static int dqlite__stmt_row(struct dqlite__stmt *   s,
                             struct dqlite__message *message,
-                            int                     column_count) {
+                            int                     column_count)
+{
 	int     err;
 	int     i;
 	int     pad;
@@ -385,8 +384,8 @@ out:
 	return SQLITE_OK;
 }
 
-int dqlite__stmt_query(struct dqlite__stmt *   s,
-                       struct dqlite__message *message) {
+int dqlite__stmt_query(struct dqlite__stmt *s, struct dqlite__message *message)
+{
 	int column_count;
 	int err;
 	int i;
@@ -428,6 +427,14 @@ int dqlite__stmt_query(struct dqlite__stmt *   s,
 
 	/* Insert the rows. */
 	do {
+		if (dqlite__message_is_large(message)) {
+			/* If we are already filled the static buffer, let's
+			 * break for now, we'll send more rows in a separate
+			 * response. */
+			rc = SQLITE_ROW;
+			break;
+		}
+
 		rc = sqlite3_step(s->stmt);
 		if (rc != SQLITE_ROW) {
 			break;

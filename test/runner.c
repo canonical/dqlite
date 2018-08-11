@@ -55,7 +55,8 @@ static MunitSuite dqlite__test_suite = {(char *)"",
                                         0};
 
 /* Test runner executable */
-int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc + 1)]) {
+int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc + 1)])
+{
 	return munit_suite_main(
 	    &dqlite__test_suite, (void *)"µnit", argc, argv);
 }

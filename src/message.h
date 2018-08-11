@@ -43,7 +43,7 @@
 
 /* Number of words that the statically allocated message body buffer can
  * hold. */
-#define DQLITE__MESSAGE_BUF_WORDS                                                   \
+#define DQLITE__MESSAGE_BUF_WORDS                                              \
 	(DQLITE__MESSAGE_BUF_LEN / DQLITE__MESSAGE_WORD_SIZE)
 
 /* The maximum number of statement bindings or column rows is 255, which can fit
@@ -59,7 +59,8 @@ typedef dqlite_server_info *servers_t;
 /* We rely on the size of double to be 64 bit, since that's what sent over the
  * wire. */
 #ifdef static_assert
-static_assert(sizeof(double) == sizeof(uint64_t), "Size of 'double' is not 64 bits");
+static_assert(sizeof(double) == sizeof(uint64_t),
+              "Size of 'double' is not 64 bits");
 #endif
 
 /* A message serializes dqlite requests and responses. */
@@ -79,9 +80,9 @@ struct dqlite__message {
 		char     body1[DQLITE__MESSAGE_BUF_LEN];
 		uint64_t __body1__[DQLITE__MESSAGE_BUF_WORDS]; /* Alignment */
 	};
-	uv_buf_t body2; /* Dynamically allocated buffer for bodies exeeding body1 */
-	size_t offset1; /* Number of bytes that have been read or written to body1 */
-	size_t offset2; /* Number of bytes that have been read or written to bdoy2 */
+	uv_buf_t body2;   /* Dynamic buffer for bodies exceeding body1 */
+	size_t   offset1; /* Bytes that have been read or written to body1 */
+	size_t   offset2; /* Bytes that have been read or written to bdoy2 */
 };
 
 /* Initialize the message. */
@@ -95,7 +96,8 @@ void dqlite__message_close(struct dqlite__message *m);
  * It returns a buffer large enough to hold the message header bytes. The buffer
  * must be progressivelly filled with the received data as it gets received from
  * the client, until it's full. */
-void dqlite__message_header_recv_start(struct dqlite__message *m, uv_buf_t *buf);
+void dqlite__message_header_recv_start(struct dqlite__message *m,
+                                       uv_buf_t *              buf);
 
 /* Called when the buffer returned by dqlite__message_header_recv_start has been
  * completely filled by reads and the header is complete.
@@ -122,7 +124,8 @@ int dqlite__message_body_get_uint32(struct dqlite__message *m, uint32_t *value);
 int dqlite__message_body_get_uint64(struct dqlite__message *m, uint64_t *value);
 int dqlite__message_body_get_int64(struct dqlite__message *m, int64_t *value);
 int dqlite__message_body_get_double(struct dqlite__message *m, double_t *value);
-int dqlite__message_body_get_servers(struct dqlite__message *m, servers_t *servers);
+int dqlite__message_body_get_servers(struct dqlite__message *m,
+                                     servers_t *             servers);
 
 /* Called after the message body has been completely decoded and it has been
  * processed. It resets the internal state so the object can be re-used for
@@ -143,7 +146,8 @@ int dqlite__message_body_put_uint32(struct dqlite__message *m, uint32_t value);
 int dqlite__message_body_put_int64(struct dqlite__message *m, int64_t value);
 int dqlite__message_body_put_uint64(struct dqlite__message *m, uint64_t value);
 int dqlite__message_body_put_double(struct dqlite__message *m, double_t value);
-int dqlite__message_body_put_servers(struct dqlite__message *m, servers_t servers);
+int dqlite__message_body_put_servers(struct dqlite__message *m,
+                                     servers_t               servers);
 
 /* Called when starting to send a message.
  *
@@ -157,5 +161,11 @@ void dqlite__message_send_start(struct dqlite__message *m, uv_buf_t bufs[3]);
  * It resets the internal state so the object can be re-used for sending another
  * message. */
 void dqlite__message_send_reset(struct dqlite__message *m);
+
+/* Return true if the message has been completely read. */
+int dqlite__message_has_been_fully_consumed(struct dqlite__message *m);
+
+/* Return true if the message is exceeding the static buffer size. */
+int dqlite__message_is_large(struct dqlite__message *m);
 
 #endif /* DQLITE_MESSAGE_H */
