@@ -26,6 +26,7 @@
 struct dqlite__gateway_ctx {
 	struct dqlite__request *request;
 	struct dqlite__response response;
+	struct dqlite__stmt *   stmt; /* For multi-response queries */
 };
 
 /* Callbacks that the gateway will invoke during the various phases of request

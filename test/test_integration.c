@@ -25,7 +25,8 @@ struct worker {
 	pthread_t           thread; /* System thread we run in */
 };
 
-static void *__worker_run(void *arg) {
+static void *__worker_run(void *arg)
+{
 	struct worker *w;
 	char *         leader;
 	uint64_t       heartbeat;
@@ -96,7 +97,8 @@ static void __worker_start(struct worker *     w,
                            struct test_server *server,
                            int                 i,
                            int                 a,
-                           int                 n) {
+                           int                 n)
+{
 	int err;
 
 	w->i = i;
@@ -112,7 +114,8 @@ static void __worker_start(struct worker *     w,
 	}
 }
 
-static void __worker_wait(struct worker *w) {
+static void __worker_wait(struct worker *w)
+{
 	int   err;
 	void *retval;
 
@@ -131,7 +134,8 @@ static void __worker_wait(struct worker *w) {
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	struct test_server *server;
 	const char *        errmsg;
 	int                 err;
@@ -147,7 +151,8 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	return server;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	struct test_server *server = data;
 	int                 rc;
 
@@ -168,7 +173,8 @@ static void tear_down(void *data) {
  ******************************************************************************/
 
 static MunitResult test_exec_and_query(const MunitParameter params[],
-                                       void *               data) {
+                                       void *               data)
+{
 	struct test_server *      server = data;
 	struct test_client *      client;
 	char *                    leader;
@@ -231,7 +237,8 @@ static MunitResult test_exec_and_query(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_query_large(const MunitParameter params[], void *data) {
+static MunitResult test_query_large(const MunitParameter params[], void *data)
+{
 	struct test_server *      server = data;
 	struct test_client *      client;
 	char *                    leader;
@@ -297,8 +304,8 @@ static MunitResult test_query_large(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-static MunitResult test_multi_thread(const MunitParameter params[],
-                                     void *               data) {
+static MunitResult test_multi_thread(const MunitParameter params[], void *data)
+{
 	struct test_server *      server = data;
 	struct worker *           workers;
 	struct test_client *      client;

@@ -15,7 +15,8 @@
 #include "client.h"
 #include "munit.h"
 
-void test_client_init(struct test_client *c, int fd) {
+void test_client_init(struct test_client *c, int fd)
+{
 	munit_assert_ptr_not_null(c);
 
 	c->fd = fd;
@@ -23,7 +24,8 @@ void test_client_init(struct test_client *c, int fd) {
 	dqlite__response_init(&c->response);
 }
 
-void test_client_handshake(struct test_client *c) {
+void test_client_handshake(struct test_client *c)
+{
 	int      err;
 	uint64_t protocol;
 
@@ -36,7 +38,8 @@ void test_client_handshake(struct test_client *c) {
 	}
 }
 
-static void test_client__write(struct test_client *c) {
+static void test_client__write(struct test_client *c)
+{
 	int err;
 
 	/* Encode the request. */
@@ -64,7 +67,8 @@ static void test_client__write(struct test_client *c) {
 	dqlite__message_send_reset(&c->request.message);
 }
 
-static void test_client__read(struct test_client *c) {
+static void test_client__read(struct test_client *c)
+{
 	int n;
 	int err;
 	dqlite__message_header_recv_start(&c->response.message, &c->bufs[0]);
@@ -115,7 +119,8 @@ static void test_client__read(struct test_client *c) {
 	}
 }
 
-void test_client_leader(struct test_client *c, char **leader) {
+void test_client_leader(struct test_client *c, char **leader)
+{
 	(void)leader;
 
 	c->request.type = DQLITE_REQUEST_LEADER;
@@ -124,7 +129,8 @@ void test_client_leader(struct test_client *c, char **leader) {
 	test_client__read(c);
 }
 
-void test_client_client(struct test_client *c, uint64_t *heartbeat) {
+void test_client_client(struct test_client *c, uint64_t *heartbeat)
+{
 	(void)heartbeat;
 
 	c->request.type      = DQLITE_REQUEST_CLIENT;
@@ -134,9 +140,8 @@ void test_client_client(struct test_client *c, uint64_t *heartbeat) {
 	test_client__read(c);
 }
 
-void test_client_open(struct test_client *c,
-                      const char *        name,
-                      uint32_t *          db_id) {
+void test_client_open(struct test_client *c, const char *name, uint32_t *db_id)
+{
 	(void)name;
 
 	c->request.type       = DQLITE_REQUEST_OPEN;
@@ -153,7 +158,8 @@ void test_client_open(struct test_client *c,
 void test_client_prepare(struct test_client *c,
                          uint32_t            db_id,
                          const char *        sql,
-                         uint32_t *          stmt_id) {
+                         uint32_t *          stmt_id)
+{
 	c->request.type          = DQLITE_REQUEST_PREPARE;
 	c->request.prepare.db_id = db_id;
 	c->request.prepare.sql   = sql;
@@ -167,7 +173,8 @@ void test_client_prepare(struct test_client *c,
 void test_client_exec(struct test_client *       c,
                       uint32_t                   db_id,
                       uint32_t                   stmt_id,
-                      struct test_client_result *result) {
+                      struct test_client_result *result)
+{
 	c->request.type         = DQLITE_REQUEST_EXEC;
 	c->request.exec.db_id   = db_id;
 	c->request.exec.stmt_id = stmt_id;
@@ -181,7 +188,9 @@ void test_client_exec(struct test_client *       c,
 
 static void test_client_get_row(struct dqlite__message * m,
                                 uint64_t                 column_count,
-                                struct test_client_row **row) {
+                                struct test_client_row **row,
+                                int *                    done)
+{
 	uint8_t *types         = munit_malloc(column_count * sizeof *types);
 	void **  values        = munit_malloc(column_count * sizeof *values);
 	int      header_bits   = column_count * 4;
@@ -208,9 +217,17 @@ static void test_client_get_row(struct dqlite__message * m,
 		err = dqlite__message_body_get_uint8(m, &slot);
 		munit_assert_int(err, ==, 0);
 
-		/* Rows EOF marker */
+		/* Rows PART marker */
+		if (slot == 0xee) {
+			*row  = NULL;
+			*done = 0;
+			return;
+		}
+
+		/* Rows DONE marker */
 		if (slot == 0xff) {
-			*row = NULL;
+			*row  = NULL;
+			*done = 1;
 			return;
 		}
 
@@ -251,23 +268,16 @@ static void test_client_get_row(struct dqlite__message * m,
 	(*row)->next   = NULL;
 }
 
-void test_client_query(struct test_client *     c,
-                       uint32_t                 db_id,
-                       uint32_t                 stmt_id,
-                       struct test_client_rows *rows) {
+static int test_client_query_batch(struct test_client *     c,
+                                   struct test_client_rows *rows,
+                                   struct test_client_row * prev)
+{
 	int                     i;
 	int                     err;
-	struct test_client_row *prev;
+	int                     done;
 	struct test_client_row *next;
 
-	c->request.type         = DQLITE_REQUEST_QUERY;
-	c->request.exec.db_id   = db_id;
-	c->request.exec.stmt_id = stmt_id;
-
-	test_client__write(c);
 	test_client__read(c);
-
-	rows->message = &c->response.message;
 
 	/* TODO: the request object decodes the eof field as first one, but the
 	 * rows are actually written first, by the gateway. */
@@ -282,10 +292,9 @@ void test_client_query(struct test_client *     c,
 		munit_assert_int(err, ==, 0);
 	}
 
-	prev = NULL;
 	do {
 		test_client_get_row(
-		    &c->response.message, rows->column_count, &next);
+		    &c->response.message, rows->column_count, &next, &done);
 		if (prev == NULL) {
 			rows->next = next;
 		} else {
@@ -293,15 +302,44 @@ void test_client_query(struct test_client *     c,
 		}
 		prev = next;
 	} while (next != NULL);
+
+	return done;
 }
 
-void test_client_rows_close(struct test_client_rows *rows) {
+void test_client_query(struct test_client *     c,
+                       uint32_t                 db_id,
+                       uint32_t                 stmt_id,
+                       struct test_client_rows *rows)
+{
+	int done;
+
+	c->request.type         = DQLITE_REQUEST_QUERY;
+	c->request.exec.db_id   = db_id;
+	c->request.exec.stmt_id = stmt_id;
+
+	test_client__write(c);
+
+	rows->message = &c->response.message;
+	rows->next    = NULL;
+
+	do {
+		done = test_client_query_batch(c, rows, rows->next);
+		if (done) {
+			break;
+		}
+		dqlite__message_recv_reset(rows->message);
+	} while (1);
+}
+
+void test_client_rows_close(struct test_client_rows *rows)
+{
 	dqlite__message_recv_reset(rows->message);
 }
 
 void test_client_finalize(struct test_client *c,
                           uint32_t            db_id,
-                          uint32_t            stmt_id) {
+                          uint32_t            stmt_id)
+{
 	c->request.type             = DQLITE_REQUEST_FINALIZE;
 	c->request.finalize.db_id   = db_id;
 	c->request.finalize.stmt_id = stmt_id;
@@ -310,7 +348,8 @@ void test_client_finalize(struct test_client *c,
 	test_client__read(c);
 }
 
-void test_client_close(struct test_client *c) {
+void test_client_close(struct test_client *c)
+{
 	dqlite__response_close(&c->response);
 	dqlite__request_close(&c->request);
 }

@@ -33,13 +33,12 @@ struct dqlite__conn {
 	uint64_t      protocol; /* Protocol version */
 
 	/* private */
-	struct dqlite__metrics *metrics; /* Operational metrics */
-	struct dqlite__options *options; /* Connection state machine */
-	struct dqlite__fsm      fsm;     /* Connection state machine */
-	struct dqlite__gateway  gateway; /* Client state and request handler */
-	struct dqlite__request  request; /* Incoming request */
-	struct dqlite__response
-	    response; /* Response buffer for internal failures */
+	struct dqlite__metrics *metrics;  /* Operational metrics */
+	struct dqlite__options *options;  /* Connection state machine */
+	struct dqlite__fsm      fsm;      /* Connection state machine */
+	struct dqlite__gateway  gateway;  /* Client state and request handler */
+	struct dqlite__request  request;  /* Incoming request */
+	struct dqlite__response response; /* Response for internal failures */
 
 	int        fd;   /* File descriptor of client stream */
 	uv_loop_t *loop; /* UV loop */

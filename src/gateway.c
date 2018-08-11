@@ -20,7 +20,8 @@
 static int dqlite__gateway_maybe_checkpoint(void *      ctx,
                                             sqlite3 *   db,
                                             const char *schema,
-                                            int         pages) {
+                                            int         pages)
+{
 	struct dqlite__gateway *g;
 	struct sqlite3_file *   file;
 	volatile void *         region;
@@ -89,7 +90,8 @@ static int dqlite__gateway_maybe_checkpoint(void *      ctx,
 
 /* Release dynamically allocated data attached to a response after it has been
  * flushed. */
-static void dqlite__gateway_response_reset(struct dqlite__response *r) {
+static void dqlite__gateway_response_reset(struct dqlite__response *r)
+{
 	int i;
 
 	/* TODO: we use free() instead of sqlite3_free() below because Go's
@@ -122,14 +124,16 @@ static void dqlite__gateway_response_reset(struct dqlite__response *r) {
 /* Render a failure response. */
 static void dqlite__gateway_failure(struct dqlite__gateway *    g,
                                     struct dqlite__gateway_ctx *ctx,
-                                    int                         code) {
+                                    int                         code)
+{
 	ctx->response.type            = DQLITE_RESPONSE_FAILURE;
 	ctx->response.failure.code    = code;
 	ctx->response.failure.message = g->error;
 }
 
 static void dqlite__gateway_leader(struct dqlite__gateway *    g,
-                                   struct dqlite__gateway_ctx *ctx) {
+                                   struct dqlite__gateway_ctx *ctx)
+{
 	const char *address;
 
 	address = g->cluster->xLeader(g->cluster->ctx);
@@ -144,7 +148,8 @@ static void dqlite__gateway_leader(struct dqlite__gateway *    g,
 }
 
 static void dqlite__gateway_client(struct dqlite__gateway *    g,
-                                   struct dqlite__gateway_ctx *ctx) {
+                                   struct dqlite__gateway_ctx *ctx)
+{
 	/* TODO: handle client registrations */
 
 	ctx->response.type                      = DQLITE_RESPONSE_WELCOME;
@@ -152,7 +157,8 @@ static void dqlite__gateway_client(struct dqlite__gateway *    g,
 }
 
 static void dqlite__gateway_heartbeat(struct dqlite__gateway *    g,
-                                      struct dqlite__gateway_ctx *ctx) {
+                                      struct dqlite__gateway_ctx *ctx)
+{
 	int                        rc;
 	struct dqlite_server_info *servers;
 
@@ -175,7 +181,8 @@ static void dqlite__gateway_heartbeat(struct dqlite__gateway *    g,
 }
 
 static void dqlite__gateway_open(struct dqlite__gateway *    g,
-                                 struct dqlite__gateway_ctx *ctx) {
+                                 struct dqlite__gateway_ctx *ctx)
+{
 	int                err;
 	int                rc;
 	struct dqlite__db *db;
@@ -241,7 +248,8 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 	}
 
 static void dqlite__gateway_prepare(struct dqlite__gateway *    g,
-                                    struct dqlite__gateway_ctx *ctx) {
+                                    struct dqlite__gateway_ctx *ctx)
+{
 	struct dqlite__db *  db;
 	struct dqlite__stmt *stmt;
 	int                  rc;
@@ -263,7 +271,8 @@ static void dqlite__gateway_prepare(struct dqlite__gateway *    g,
 }
 
 static void dqlite__gateway_exec(struct dqlite__gateway *    g,
-                                 struct dqlite__gateway_ctx *ctx) {
+                                 struct dqlite__gateway_ctx *ctx)
+{
 	int                  rc;
 	struct dqlite__db *  db;
 	struct dqlite__stmt *stmt;
@@ -294,8 +303,39 @@ static void dqlite__gateway_exec(struct dqlite__gateway *    g,
 	}
 }
 
+/* Step through the tiven statement and populate the response of the given
+ * context with a single batch of rows.
+ *
+ * A single batch of rows is typically about the size of the static response
+ * message body. */
+static void dqlite__gateway_query_batch(struct dqlite__gateway *    g,
+                                        struct dqlite__stmt *       stmt,
+                                        struct dqlite__gateway_ctx *ctx)
+{
+	int rc;
+
+	rc = dqlite__stmt_query(stmt, &ctx->response.message);
+	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+		/* TODO: reset what was written in the message */
+		dqlite__error_printf(&g->error, stmt->error);
+		dqlite__gateway_failure(g, ctx, rc);
+		ctx->stmt = NULL;
+	} else {
+		ctx->response.type = DQLITE_RESPONSE_ROWS;
+		assert(rc == SQLITE_ROW || rc == SQLITE_DONE);
+		if (rc == SQLITE_ROW) {
+			ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_PART;
+			ctx->stmt              = stmt;
+		} else {
+			ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_DONE;
+			ctx->stmt              = NULL;
+		}
+	}
+}
+
 static void dqlite__gateway_query(struct dqlite__gateway *    g,
-                                  struct dqlite__gateway_ctx *ctx) {
+                                  struct dqlite__gateway_ctx *ctx)
+{
 	int                  rc;
 	struct dqlite__db *  db;
 	struct dqlite__stmt *stmt;
@@ -313,19 +353,12 @@ static void dqlite__gateway_query(struct dqlite__gateway *    g,
 		return;
 	}
 
-	rc = dqlite__stmt_query(stmt, &ctx->response.message);
-	if (rc != SQLITE_DONE) {
-		/* TODO: reset what was written in the message */
-		dqlite__error_printf(&g->error, stmt->error);
-		dqlite__gateway_failure(g, ctx, rc);
-	} else {
-		ctx->response.type     = DQLITE_RESPONSE_ROWS;
-		ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_EOF;
-	}
+	dqlite__gateway_query_batch(g, stmt, ctx);
 }
 
 static void dqlite__gateway_finalize(struct dqlite__gateway *    g,
-                                     struct dqlite__gateway_ctx *ctx) {
+                                     struct dqlite__gateway_ctx *ctx)
+{
 	int                  rc;
 	struct dqlite__db *  db;
 	struct dqlite__stmt *stmt;
@@ -344,7 +377,8 @@ static void dqlite__gateway_finalize(struct dqlite__gateway *    g,
 }
 
 static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
-                                     struct dqlite__gateway_ctx *ctx) {
+                                     struct dqlite__gateway_ctx *ctx)
+{
 	int                  rc;
 	struct dqlite__db *  db;
 	const char *         sql;
@@ -399,7 +433,8 @@ out:
 }
 
 static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
-                                      struct dqlite__gateway_ctx *ctx) {
+                                      struct dqlite__gateway_ctx *ctx)
+{
 	int                  rc;
 	struct dqlite__db *  db;
 	struct dqlite__stmt *stmt;
@@ -423,21 +458,14 @@ static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
 		return;
 	}
 
-	rc = dqlite__stmt_query(stmt, &ctx->response.message);
-	if (rc != SQLITE_DONE) {
-		/* TODO: reset what was written in the message */
-		dqlite__error_printf(&g->error, stmt->error);
-		dqlite__gateway_failure(g, ctx, rc);
-	} else {
-		ctx->response.type     = DQLITE_RESPONSE_ROWS;
-		ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_EOF;
-	}
+	dqlite__gateway_query_batch(g, stmt, ctx);
 }
 
 void dqlite__gateway_init(struct dqlite__gateway *    g,
                           struct dqlite__gateway_cbs *callbacks,
                           struct dqlite_cluster *     cluster,
-                          struct dqlite__options *    options) {
+                          struct dqlite__options *    options)
+{
 	int i;
 
 	assert(g != NULL);
@@ -461,13 +489,15 @@ void dqlite__gateway_init(struct dqlite__gateway *    g,
 	/* Reset all request contexts in the buffer */
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
 		g->ctxs[i].request = NULL;
+		g->ctxs[i].stmt    = NULL;
 		dqlite__response_init(&g->ctxs[i].response);
 	}
 
 	dqlite__db_registry_init(&g->dbs);
 }
 
-void dqlite__gateway_close(struct dqlite__gateway *g) {
+void dqlite__gateway_close(struct dqlite__gateway *g)
+{
 	int i;
 
 	assert(g != NULL);
@@ -483,7 +513,8 @@ void dqlite__gateway_close(struct dqlite__gateway *g) {
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_GATEWAY);
 }
 
-int dqlite__gateway_ok_to_accept(struct dqlite__gateway *g, int type) {
+int dqlite__gateway_ok_to_accept(struct dqlite__gateway *g, int type)
+{
 	assert(g != NULL);
 
 	/* The first slot is reserved for database requests, and the second for
@@ -498,7 +529,8 @@ int dqlite__gateway_ok_to_accept(struct dqlite__gateway *g, int type) {
 }
 
 int dqlite__gateway_handle(struct dqlite__gateway *g,
-                           struct dqlite__request *request) {
+                           struct dqlite__request *request)
+{
 	int                         err;
 	struct dqlite__gateway_ctx *ctx;
 
@@ -553,8 +585,22 @@ err:
 	return err;
 }
 
+/* Resume stepping through a query and send a new follow-up response with more
+ * rows. */
+static void dqlite__gateway_query_resume(struct dqlite__gateway *    g,
+                                         struct dqlite__gateway_ctx *ctx)
+{
+	assert(ctx->stmt != NULL);
+
+	dqlite__gateway_query_batch(g, ctx->stmt, ctx);
+
+	/* Notify user code that a response is available. */
+	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
+}
+
 void dqlite__gateway_flushed(struct dqlite__gateway * g,
-                             struct dqlite__response *response) {
+                             struct dqlite__response *response)
+{
 	int i;
 
 	assert(g != NULL);
@@ -562,9 +608,14 @@ void dqlite__gateway_flushed(struct dqlite__gateway * g,
 
 	/* Reset the request context associated with this response */
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
-		if (&g->ctxs[i].response == response) {
+		struct dqlite__gateway_ctx *ctx = &g->ctxs[i];
+		if (&ctx->response == response) {
 			dqlite__gateway_response_reset(response);
-			g->ctxs[i].request = NULL;
+			if (ctx->stmt != NULL) {
+				dqlite__gateway_query_resume(g, ctx);
+			} else {
+				ctx->request = NULL;
+			}
 			break;
 		}
 	}
@@ -574,7 +625,8 @@ void dqlite__gateway_flushed(struct dqlite__gateway * g,
 }
 
 void dqlite__gateway_aborted(struct dqlite__gateway * g,
-                             struct dqlite__response *response) {
+                             struct dqlite__response *response)
+{
 	assert(g != NULL);
 	assert(response != NULL);
 }

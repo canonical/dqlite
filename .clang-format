@@ -1,21 +1,33 @@
-Language: Cpp
-#BasedOnStyle: WebKit
-#AlignAfterOpenBracket: true
+BasedOnStyle: LLVM
+
+AlignTrailingComments: true
 AlignConsecutiveAssignments: true
 AlignConsecutiveDeclarations: true
-AlignEscapedNewlines: Right
-#AlignOperands: true
-AlignTrailingComments: true
+AlignOperands: true
+
+AllowShortIfStatementsOnASingleLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
-AllowShortBlocksOnASingleLine: false
-AlwaysBreakAfterReturnType: None
-PenaltyReturnTypeOnItsOwnLine: 100000
+
 BinPackArguments: false
 BinPackParameters: false
-#BreakBeforeBinaryOperators: None
+
+BreakBeforeBraces: Linux
+IndentCaseLabels: false
 IndentWidth: 8
-#PointerAlignment: Right
-#SpacesInContainerLiterals: false
+
 UseTab: ForIndentation
+
+# AfterFunction: true
+#AlignAfterOpenBracket: true
+#AlignEscapedNewlines: Right
+#AllowShortBlocksOnASingleLine: false
+#AlwaysBreakAfterReturnType: None
+#BasedOnStyle: WebKit
+#BraceWrapping:
+#BreakBeforeBinaryOperators: None
+#BreakBeforeBraces: Custom
+#ColumnLimit: 80
+#Language: Cpp
+#PenaltyReturnTypeOnItsOwnLine: 100000
+#SpacesInContainerLiterals: false
 #TabWidth: 8
-ColumnLimit: 80

@@ -7,8 +7,7 @@
 #include "../src/binary.h"
 #include "../src/stmt.h"
 
-#include "leak.h"
-#include "munit.h"
+#include "case.h"
 
 /******************************************************************************
  *
@@ -23,7 +22,8 @@ struct fixture {
 };
 
 /* Helper to execute a statement. */
-static void __db_exec(struct fixture *f, const char *sql) {
+static void __exec(struct fixture *f, const char *sql)
+{
 	char *errmsg;
 	int   rc;
 
@@ -31,19 +31,9 @@ static void __db_exec(struct fixture *f, const char *sql) {
 	munit_assert_int(rc, ==, SQLITE_OK);
 }
 
-/* Helper to open a database using the in-memory VFS. */
-static void __db_open(struct fixture *f) {
-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	int rc;
-
-	rc = sqlite3_open_v2("test.db:", &f->stmt->db, flags, "test");
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	__db_exec(f, "PRAGMA synchronous=OFF");
-}
-
 /* Helper to prepare a statement. */
-static void __db_prepare(struct fixture *f, const char *sql) {
+static void __prepare(struct fixture *f, const char *sql)
+{
 	const char *tail;
 	int         rc;
 
@@ -59,42 +49,50 @@ static void __db_prepare(struct fixture *f, const char *sql) {
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	struct fixture *f;
+	int             flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int             rc;
 
-	(void)params;
-	(void)user_data;
+	test_case_setup(params, user_data);
 
-	f          = munit_malloc(sizeof *f);
-	f->vfs     = munit_malloc(sizeof *f->vfs);
-	f->stmt    = munit_malloc(sizeof *f->stmt);
-	f->message = munit_malloc(sizeof *f->message);
+	f = munit_malloc(sizeof *f);
 
+	/* Register a volatile VFS. */
 	f->vfs = dqlite_vfs_create("test");
 	munit_assert_ptr_not_null(f->vfs);
-
 	sqlite3_vfs_register(f->vfs, 0);
 
+	/* Create a dqlite__stmt object associated with a database. */
+	f->stmt = munit_malloc(sizeof *f->stmt);
 	dqlite__stmt_init(f->stmt);
-	dqlite__message_init(f->message);
 
-	__db_open(f);
+	rc = sqlite3_open_v2("test.db:", &f->stmt->db, flags, "test");
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	__exec(f, "PRAGMA synchronous=OFF");
+
+	/* Create a message object */
+	f->message = munit_malloc(sizeof *f->message);
+	dqlite__message_init(f->message);
 
 	return f;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	struct fixture *f = data;
 
+	dqlite__message_close(f->message);
+
 	sqlite3_close_v2(f->stmt->db);
+	dqlite__stmt_close(f->stmt);
 
 	sqlite3_vfs_unregister(f->vfs);
-
-	dqlite__message_close(f->message);
-	dqlite__stmt_close(f->stmt);
 	dqlite_vfs_destroy(f->vfs);
 
-	test_assert_no_leaks();
+	test_case_tear_down(data);
 }
 
 /******************************************************************************
@@ -104,13 +102,14 @@ static void tear_down(void *data) {
  ******************************************************************************/
 
 /* If a message carries no bindings, dqlite__stmt_bind is a no-op. */
-static MunitResult test_bind_none(const MunitParameter params[], void *data) {
+static MunitResult test_bind_none(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 
 	(void)params;
 
-	__db_prepare(f, "SELECT 1");
+	__prepare(f, "SELECT 1");
 
 	rc = dqlite__stmt_bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -121,13 +120,14 @@ static MunitResult test_bind_none(const MunitParameter params[], void *data) {
 /* If a message ends before all expected param types are read, an error is
  * returned. */
 static MunitResult test_bind_missing_types(const MunitParameter params[],
-                                           void *               data) {
+                                           void *               data)
+{
 	struct fixture *f = data;
 	int             rc;
 
 	(void)params;
 
-	__db_prepare(f, "SELECT ?");
+	__prepare(f, "SELECT ?");
 
 	/* Eight parameters, but only 7 bytes left in the message after the
 	 * parameters count. */
@@ -144,13 +144,15 @@ static MunitResult test_bind_missing_types(const MunitParameter params[],
 
 /* If a message ends right after the parameter types, providing no parameter
  * values, an error is returned. */
-static MunitResult test_bind_no_params(const MunitParameter params[], void *data) {
+static MunitResult test_bind_no_params(const MunitParameter params[],
+                                       void *               data)
+{
 	struct fixture *f = data;
 	int             rc;
 
 	(void)params;
 
-	__db_prepare(f, "SELECT ?");
+	__prepare(f, "SELECT ?");
 
 	/* One parameter of integer type, but no more words left in the
 	 * message. */
@@ -166,16 +168,18 @@ static MunitResult test_bind_no_params(const MunitParameter params[], void *data
 	return MUNIT_OK;
 }
 
-/* If a message ends before all expected parameters are read, an error is returned.
+/* If a message ends before all expected parameters are read, an error is
+ * returned.
  */
 static MunitResult test_bind_missing_params(const MunitParameter params[],
-                                            void *               data) {
+                                            void *               data)
+{
 	struct fixture *f = data;
 	int             rc;
 
 	(void)params;
 
-	__db_prepare(f, "SELECT ?");
+	__prepare(f, "SELECT ?");
 
 	/* Two parameters of integer type, but only on word left in the
 	 * message. */
@@ -193,13 +197,14 @@ static MunitResult test_bind_missing_params(const MunitParameter params[],
 }
 
 /* If a message sports an unknown parameter type, an error is returned. */
-static MunitResult test_bind_bad_type(const MunitParameter params[], void *data) {
+static MunitResult test_bind_bad_type(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 
 	(void)params;
 
-	__db_prepare(f, "SELECT ?");
+	__prepare(f, "SELECT ?");
 
 	/* One parameter of unknown type. */
 	f->message->words    = 2;
@@ -216,14 +221,16 @@ static MunitResult test_bind_bad_type(const MunitParameter params[], void *data)
 }
 
 /* If a parameter fails to be bound, an error is returned. */
-static MunitResult test_bind_bad_param(const MunitParameter params[], void *data) {
+static MunitResult test_bind_bad_param(const MunitParameter params[],
+                                       void *               data)
+{
 	struct fixture *f = data;
 	int             rc;
 
 	(void)params;
 
 	/* Prepare a statement with no parameters. */
-	__db_prepare(f, "SELECT 1");
+	__prepare(f, "SELECT 1");
 
 	/* A single integer parameter. */
 	f->message->words    = 2;
@@ -239,14 +246,15 @@ static MunitResult test_bind_bad_param(const MunitParameter params[], void *data
 }
 
 /* Bind a parameter of type integer. */
-static MunitResult test_bind_integer(const MunitParameter params[], void *data) {
+static MunitResult test_bind_integer(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t        buf = dqlite__flip64((uint64_t)(-666));
 
 	(void)params;
 
-	__db_prepare(f, "SELECT ?");
+	__prepare(f, "SELECT ?");
 
 	/* One parameter of type integer. */
 	f->message->words    = 2;
@@ -262,14 +270,16 @@ static MunitResult test_bind_integer(const MunitParameter params[], void *data) 
 	rc = sqlite3_step(f->stmt->stmt);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
-	munit_assert_int(sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_INTEGER);
+	munit_assert_int(
+	    sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_INTEGER);
 	munit_assert_int(sqlite3_column_int64(f->stmt->stmt, 0), ==, -666);
 
 	return MUNIT_OK;
 }
 
 /* Bind a parameter of type float. */
-static MunitResult test_bind_float(const MunitParameter params[], void *data) {
+static MunitResult test_bind_float(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	double          float_ = 3.1415;
@@ -277,7 +287,7 @@ static MunitResult test_bind_float(const MunitParameter params[], void *data) {
 
 	(void)params;
 
-	__db_prepare(f, "SELECT ?");
+	__prepare(f, "SELECT ?");
 
 	/* One parameter of type double. */
 	f->message->words    = 2;
@@ -295,20 +305,23 @@ static MunitResult test_bind_float(const MunitParameter params[], void *data) {
 	rc = sqlite3_step(f->stmt->stmt);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
-	munit_assert_int(sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_FLOAT);
-	munit_assert_double(sqlite3_column_double(f->stmt->stmt, 0), ==, 3.1415);
+	munit_assert_int(
+	    sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_FLOAT);
+	munit_assert_double(
+	    sqlite3_column_double(f->stmt->stmt, 0), ==, 3.1415);
 
 	return MUNIT_OK;
 }
 
 /* Bind a parameter of type text. */
-static MunitResult test_bind_text(const MunitParameter params[], void *data) {
+static MunitResult test_bind_text(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 
 	(void)params;
 
-	__db_prepare(f, "SELECT ?");
+	__prepare(f, "SELECT ?");
 
 	/* One parameter of type string. */
 	f->message->words    = 2;
@@ -324,7 +337,8 @@ static MunitResult test_bind_text(const MunitParameter params[], void *data) {
 	rc = sqlite3_step(f->stmt->stmt);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
-	munit_assert_int(sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_TEXT);
+	munit_assert_int(
+	    sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_TEXT);
 	munit_assert_string_equal(
 	    (const char *)sqlite3_column_text(f->stmt->stmt, 0), "hello");
 
@@ -332,13 +346,14 @@ static MunitResult test_bind_text(const MunitParameter params[], void *data) {
 }
 
 /* Bind a parameter of type iso8601. */
-static MunitResult test_bind_iso8601(const MunitParameter params[], void *data) {
+static MunitResult test_bind_iso8601(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 
 	(void)params;
 
-	__db_prepare(f, "SELECT ?");
+	__prepare(f, "SELECT ?");
 
 	/* One parameter of type string. */
 	f->message->words    = 5;
@@ -354,7 +369,8 @@ static MunitResult test_bind_iso8601(const MunitParameter params[], void *data) 
 	rc = sqlite3_step(f->stmt->stmt);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
-	munit_assert_int(sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_TEXT);
+	munit_assert_int(
+	    sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_TEXT);
 	munit_assert_string_equal(
 	    (const char *)sqlite3_column_text(f->stmt->stmt, 0),
 	    "2018-07-20 09:49:05+00:00");
@@ -383,27 +399,31 @@ static MunitTest dqlite__stmt_bind_tests[] = {
  ******************************************************************************/
 
 /* If a statement doesn't yield any column, an error is returned. */
-static MunitResult test_query_no_columns(const MunitParameter params[], void *data) {
+static MunitResult test_query_no_columns(const MunitParameter params[],
+                                         void *               data)
+{
 	struct fixture *f = data;
 	int             rc;
 
 	(void)params;
 
-	__db_exec(f, "CREATE TABLE test (n INT)");
+	__exec(f, "CREATE TABLE test (n INT)");
 
 	/* This statement yields no columns. */
-	__db_prepare(f, "DELETE FROM test");
+	__prepare(f, "DELETE FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
-	munit_assert_string_equal(f->stmt->error, "stmt doesn't yield any column");
+	munit_assert_string_equal(f->stmt->error,
+	                          "stmt doesn't yield any column");
 
 	return MUNIT_OK;
 }
 
 /* Encode a query yielding no rows. */
-static MunitResult test_query_none(const MunitParameter params[], void *data) {
+static MunitResult test_query_none(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -411,7 +431,7 @@ static MunitResult test_query_none(const MunitParameter params[], void *data) {
 
 	(void)params;
 
-	__db_prepare(f, "SELECT name FROM sqlite_master");
+	__prepare(f, "SELECT name FROM sqlite_master");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -431,7 +451,8 @@ static MunitResult test_query_none(const MunitParameter params[], void *data) {
 }
 
 /* Encode a query yielding a single row with an integer column. */
-static MunitResult test_query_integer(const MunitParameter params[], void *data) {
+static MunitResult test_query_integer(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -440,10 +461,10 @@ static MunitResult test_query_integer(const MunitParameter params[], void *data)
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (n INT)");
-	__db_exec(f, "INSERT INTO test VALUES(-123)");
+	__exec(f, "CREATE TABLE test (n INT)");
+	__exec(f, "INSERT INTO test VALUES(-123)");
 
-	__db_prepare(f, "SELECT n FROM test");
+	__prepare(f, "SELECT n FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -465,7 +486,8 @@ static MunitResult test_query_integer(const MunitParameter params[], void *data)
 }
 
 /* Encode a query yielding a single row with a float column. */
-static MunitResult test_query_float(const MunitParameter params[], void *data) {
+static MunitResult test_query_float(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -474,10 +496,10 @@ static MunitResult test_query_float(const MunitParameter params[], void *data) {
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (f FLOAT)");
-	__db_exec(f, "INSERT INTO test VALUES(3.1415)");
+	__exec(f, "CREATE TABLE test (f FLOAT)");
+	__exec(f, "INSERT INTO test VALUES(3.1415)");
 
-	__db_prepare(f, "SELECT f FROM test");
+	__prepare(f, "SELECT f FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -500,7 +522,8 @@ static MunitResult test_query_float(const MunitParameter params[], void *data) {
 }
 
 /* Encode a query yielding a single row with a null column. */
-static MunitResult test_query_null(const MunitParameter params[], void *data) {
+static MunitResult test_query_null(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -509,10 +532,10 @@ static MunitResult test_query_null(const MunitParameter params[], void *data) {
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (t TEXT)");
-	__db_exec(f, "INSERT INTO test VALUES(NULL)");
+	__exec(f, "CREATE TABLE test (t TEXT)");
+	__exec(f, "INSERT INTO test VALUES(NULL)");
 
-	__db_prepare(f, "SELECT t FROM test");
+	__prepare(f, "SELECT t FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -534,7 +557,8 @@ static MunitResult test_query_null(const MunitParameter params[], void *data) {
 }
 
 /* Encode a query yielding a single row with a text column. */
-static MunitResult test_query_text(const MunitParameter params[], void *data) {
+static MunitResult test_query_text(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -543,10 +567,10 @@ static MunitResult test_query_text(const MunitParameter params[], void *data) {
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (t TEXT)");
-	__db_exec(f, "INSERT INTO test VALUES('hello')");
+	__exec(f, "CREATE TABLE test (t TEXT)");
+	__exec(f, "INSERT INTO test VALUES('hello')");
 
-	__db_prepare(f, "SELECT t FROM test");
+	__prepare(f, "SELECT t FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -568,7 +592,9 @@ static MunitResult test_query_text(const MunitParameter params[], void *data) {
 }
 
 /* Encode a query yielding a single row with a Unix time column. */
-static MunitResult test_query_unixtime(const MunitParameter params[], void *data) {
+static MunitResult test_query_unixtime(const MunitParameter params[],
+                                       void *               data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -578,10 +604,10 @@ static MunitResult test_query_unixtime(const MunitParameter params[], void *data
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (t DATETIME)");
-	__db_exec(f, "INSERT INTO test VALUES(strftime('%s','now'))");
+	__exec(f, "CREATE TABLE test (t DATETIME)");
+	__exec(f, "INSERT INTO test VALUES(strftime('%s','now'))");
 
-	__db_prepare(f, "SELECT t FROM test");
+	__prepare(f, "SELECT t FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -600,13 +626,15 @@ static MunitResult test_query_unixtime(const MunitParameter params[], void *data
 	/* Then the row, with its header and value. */
 	munit_assert_int(f->message->body1[16], ==, DQLITE_UNIXTIME);
 	buf = (uint64_t *)(f->message->body1 + 24);
-	munit_assert_double_equal((double)(dqlite__flip64(*buf)), (double)(now), 0);
+	munit_assert_double_equal(
+	    (double)(dqlite__flip64(*buf)), (double)(now), 0);
 
 	return MUNIT_OK;
 }
 
 /* Encode a query yielding a single row with a ISO8601 time column. */
-static MunitResult test_query_iso8601(const MunitParameter params[], void *data) {
+static MunitResult test_query_iso8601(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -615,10 +643,10 @@ static MunitResult test_query_iso8601(const MunitParameter params[], void *data)
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (t DATETIME)");
-	__db_exec(f, "INSERT INTO test VALUES(datetime(1532078292, 'unixepoch'))");
+	__exec(f, "CREATE TABLE test (t DATETIME)");
+	__exec(f, "INSERT INTO test VALUES(datetime(1532078292, 'unixepoch'))");
 
-	__db_prepare(f, "SELECT t FROM test");
+	__prepare(f, "SELECT t FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -641,7 +669,8 @@ static MunitResult test_query_iso8601(const MunitParameter params[], void *data)
 
 /* Encode a query yielding a single row with a null time column. */
 static MunitResult test_query_iso8601_null(const MunitParameter params[],
-                                           void *               data) {
+                                           void *               data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -650,10 +679,10 @@ static MunitResult test_query_iso8601_null(const MunitParameter params[],
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (t DATETIME)");
-	__db_exec(f, "INSERT INTO test VALUES(NULL)");
+	__exec(f, "CREATE TABLE test (t DATETIME)");
+	__exec(f, "INSERT INTO test VALUES(NULL)");
 
-	__db_prepare(f, "SELECT t FROM test");
+	__prepare(f, "SELECT t FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -676,7 +705,8 @@ static MunitResult test_query_iso8601_null(const MunitParameter params[],
 
 /* Encode a query yielding a single row with an empty string time column. */
 static MunitResult test_query_iso8601_empty(const MunitParameter params[],
-                                            void *               data) {
+                                            void *               data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -685,10 +715,10 @@ static MunitResult test_query_iso8601_empty(const MunitParameter params[],
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (t DATETIME)");
-	__db_exec(f, "INSERT INTO test VALUES('')");
+	__exec(f, "CREATE TABLE test (t DATETIME)");
+	__exec(f, "INSERT INTO test VALUES('')");
 
-	__db_prepare(f, "SELECT t FROM test");
+	__prepare(f, "SELECT t FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -710,7 +740,8 @@ static MunitResult test_query_iso8601_empty(const MunitParameter params[],
 }
 
 /* Encode a query yielding a single row with a boolean time column. */
-static MunitResult test_query_boolean(const MunitParameter params[], void *data) {
+static MunitResult test_query_boolean(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -719,10 +750,10 @@ static MunitResult test_query_boolean(const MunitParameter params[], void *data)
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (b BOOLEAN)");
-	__db_exec(f, "INSERT INTO test VALUES(1)");
+	__exec(f, "CREATE TABLE test (b BOOLEAN)");
+	__exec(f, "INSERT INTO test VALUES(1)");
 
-	__db_prepare(f, "SELECT b FROM test");
+	__prepare(f, "SELECT b FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -744,7 +775,9 @@ static MunitResult test_query_boolean(const MunitParameter params[], void *data)
 }
 
 /* Encode a query yielding two rows with one column. */
-static MunitResult test_query_two_simple(const MunitParameter params[], void *data) {
+static MunitResult test_query_two_simple(const MunitParameter params[],
+                                         void *               data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -753,11 +786,11 @@ static MunitResult test_query_two_simple(const MunitParameter params[], void *da
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (n INT)");
-	__db_exec(f, "INSERT INTO test VALUES(1)");
-	__db_exec(f, "INSERT INTO test VALUES(2)");
+	__exec(f, "CREATE TABLE test (n INT)");
+	__exec(f, "INSERT INTO test VALUES(1)");
+	__exec(f, "INSERT INTO test VALUES(2)");
 
-	__db_prepare(f, "SELECT n FROM test");
+	__prepare(f, "SELECT n FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -780,7 +813,8 @@ static MunitResult test_query_two_simple(const MunitParameter params[], void *da
 
 /* Encode a query yielding two rows with three columns. */
 static MunitResult test_query_two_complex(const MunitParameter params[],
-                                          void *               data) {
+                                          void *               data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -789,11 +823,11 @@ static MunitResult test_query_two_complex(const MunitParameter params[],
 	(void)params;
 
 	/* Create a test table and insert a row into it. */
-	__db_exec(f, "CREATE TABLE test (n INT, t TEXT, f FLOAT)");
-	__db_exec(f, "INSERT INTO test VALUES(1, 'hi', 3.1415)");
-	__db_exec(f, "INSERT INTO test VALUES(2,'hello world', NULL)");
+	__exec(f, "CREATE TABLE test (n INT, t TEXT, f FLOAT)");
+	__exec(f, "INSERT INTO test VALUES(1, 'hi', 3.1415)");
+	__exec(f, "INSERT INTO test VALUES(2,'hello world', NULL)");
 
-	__db_prepare(f, "SELECT n, t, f FROM test");
+	__prepare(f, "SELECT n, t, f FROM test");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -844,7 +878,8 @@ static MunitResult test_query_two_complex(const MunitParameter params[],
 
 /* Encode a result set yielding a column with no underlying name
  * (e.g. COUNT). */
-static MunitResult test_query_count(const MunitParameter params[], void *data) {
+static MunitResult test_query_count(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -852,7 +887,7 @@ static MunitResult test_query_count(const MunitParameter params[], void *data) {
 
 	(void)params;
 
-	__db_prepare(f, "SELECT COUNT(name) FROM sqlite_master");
+	__prepare(f, "SELECT COUNT(name) FROM sqlite_master");
 
 	rc = dqlite__stmt_query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
@@ -874,7 +909,8 @@ static MunitResult test_query_count(const MunitParameter params[], void *data) {
 }
 
 /* Encode a result set exceeding the statically allocaed message body. */
-static MunitResult test_query_large(const MunitParameter params[], void *data) {
+static MunitResult test_query_large(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 	uint64_t *      buf;
@@ -884,16 +920,18 @@ static MunitResult test_query_large(const MunitParameter params[], void *data) {
 	(void)params;
 
 	/* Create a test table and insert lots of rows into it. */
-	__db_exec(f, "CREATE TABLE test (n INT)");
+	__exec(f, "CREATE TABLE test (n INT)");
 	for (i = 0; i < 256; i++) {
-		__db_exec(f, "INSERT INTO test VALUES(123456789)");
+		__exec(f, "INSERT INTO test VALUES(123456789)");
 	}
 
 	/* Fetch everything. */
-	__db_prepare(f, "SELECT n FROM test");
+	__prepare(f, "SELECT n FROM test");
 
+	/* The return code is SQLITE_ROW, to indicate that not all rows were
+	 * fetched. */
 	rc = dqlite__stmt_query(f->stmt, f->message);
-	munit_assert_int(rc, ==, SQLITE_DONE);
+	munit_assert_int(rc, ==, SQLITE_ROW);
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;

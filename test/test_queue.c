@@ -33,7 +33,8 @@ struct fixture {
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	struct fixture *f;
 	int             err;
 
@@ -42,7 +43,7 @@ static void *setup(const MunitParameter params[], void *user_data) {
 
 	f = munit_malloc(sizeof *f);
 
-	test_socket_pair_init(&f->sockets, "unix");
+	test_socket_pair_setup(params, &f->sockets);
 
 	err = uv_loop_init(&f->loop);
 	munit_assert_int(err, ==, 0);
@@ -55,7 +56,8 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	return f;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	struct fixture *f = data;
 	int             err;
 
@@ -64,7 +66,7 @@ static void tear_down(void *data) {
 	err = uv_loop_close(&f->loop);
 	munit_assert_int(err, ==, 0);
 
-	test_socket_pair_close(&f->sockets);
+	test_socket_pair_tear_down(&f->sockets);
 	test_assert_no_leaks();
 }
 
@@ -74,7 +76,8 @@ static void tear_down(void *data) {
  *
  ******************************************************************************/
 
-static MunitResult test_push(const MunitParameter params[], void *data) {
+static MunitResult test_push(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             err;
 
@@ -116,7 +119,8 @@ static MunitTest dqlite__queue_push_tests[] = {
  *
  ******************************************************************************/
 
-static MunitResult test_process(const MunitParameter params[], void *data) {
+static MunitResult test_process(const MunitParameter params[], void *data)
+{
 	struct fixture *          f = data;
 	int                       err;
 	struct dqlite__queue_item item;

@@ -35,7 +35,8 @@ static void dqlite__conn_write_cb(uv_write_t *, int);
 
 /* Write out a response for the client */
 static int dqlite__conn_write(struct dqlite__conn *    c,
-                              struct dqlite__response *response) {
+                              struct dqlite__response *response)
+{
 	int                            err;
 	struct dqlite__conn_write_ctx *ctx;
 	uv_write_t *                   req;
@@ -77,7 +78,8 @@ static int dqlite__conn_write(struct dqlite__conn *    c,
 }
 
 /* Write out a failure response. */
-static int dqlite__conn_write_failure(struct dqlite__conn *c, int code) {
+static int dqlite__conn_write_failure(struct dqlite__conn *c, int code)
+{
 	int err;
 
 	assert(c != NULL);
@@ -112,7 +114,8 @@ static int dqlite__conn_write_failure(struct dqlite__conn *c, int code) {
 	return 0;
 }
 
-static void dqlite__conn_write_cb(uv_write_t *req, int status) {
+static void dqlite__conn_write_cb(uv_write_t *req, int status)
+{
 	struct dqlite__conn_write_ctx *ctx;
 	struct dqlite__conn *          c;
 	struct dqlite__response *      response;
@@ -162,8 +165,8 @@ static void dqlite__conn_write_cb(uv_write_t *req, int status) {
 
 /* Invoked by the gateway when a response for a request is ready to be flushed
  * and sent to the client. */
-static void dqlite__conn_flush_cb(void *                   arg,
-                                  struct dqlite__response *response) {
+static void dqlite__conn_flush_cb(void *arg, struct dqlite__response *response)
+{
 	struct dqlite__conn *c;
 	int                  rc;
 
@@ -206,7 +209,8 @@ response_failure:
  * request. 2) Reqest body: the body of the request is read.
  *
  * After 2) the state machine goes back to 1). */
-static void dqlite__conn_buf_init(struct dqlite__conn *c, uv_buf_t *buf) {
+static void dqlite__conn_buf_init(struct dqlite__conn *c, uv_buf_t *buf)
+{
 	assert(c != NULL);
 	assert(buf->base != NULL);
 	assert(buf->len > 0);
@@ -220,7 +224,8 @@ static void dqlite__conn_buf_init(struct dqlite__conn *c, uv_buf_t *buf) {
 /* Reset the connection read buffer. This should be called at the end of a read
  * phase, to signal that the FSM should be advanced and next phase should
  * start (this is done by dqlite__conn_alloc_cb). */
-static void dqlite__conn_buf_close(struct dqlite__conn *c) {
+static void dqlite__conn_buf_close(struct dqlite__conn *c)
+{
 	assert(c != NULL);
 	assert(c->buf.base != NULL);
 	assert(c->buf.len == 0);
@@ -248,7 +253,8 @@ static struct dqlite__fsm_event dqlite__conn_events[] = {
     {DQLITE__FSM_NULL, NULL},
 };
 
-static int dqlite__conn_handshake_alloc_cb(void *arg) {
+static int dqlite__conn_handshake_alloc_cb(void *arg)
+{
 	struct dqlite__conn *c;
 	uv_buf_t             buf;
 
@@ -266,7 +272,8 @@ static int dqlite__conn_handshake_alloc_cb(void *arg) {
 	return 0;
 }
 
-static int dqlite__conn_handshake_read_cb(void *arg) {
+static int dqlite__conn_handshake_read_cb(void *arg)
+{
 	int                  err;
 	struct dqlite__conn *c;
 
@@ -296,7 +303,8 @@ static struct dqlite__fsm_transition dqlite__conn_transitions_handshake[] = {
     {DQLITE__CONN_READ, dqlite__conn_handshake_read_cb, DQLITE__CONN_HEADER},
 };
 
-static int dqlite__conn_header_alloc_cb(void *arg) {
+static int dqlite__conn_header_alloc_cb(void *arg)
+{
 	struct dqlite__conn *c;
 	uv_buf_t             buf;
 
@@ -316,7 +324,8 @@ static int dqlite__conn_header_alloc_cb(void *arg) {
 	return 0;
 }
 
-static int dqlite__conn_header_read_cb(void *arg) {
+static int dqlite__conn_header_read_cb(void *arg)
+{
 	int                  err;
 	struct dqlite__conn *c;
 
@@ -364,7 +373,8 @@ static struct dqlite__fsm_transition dqlite__conn_transitions_header[] = {
     {DQLITE__CONN_READ, dqlite__conn_header_read_cb, DQLITE__CONN_BODY},
 };
 
-static int dqlite__conn_body_alloc_cb(void *arg) {
+static int dqlite__conn_body_alloc_cb(void *arg)
+{
 	int                  err;
 	struct dqlite__conn *c;
 	uv_buf_t             buf;
@@ -386,7 +396,8 @@ static int dqlite__conn_body_alloc_cb(void *arg) {
 	return 0;
 }
 
-static int dqlite__conn_body_read_cb(void *arg) {
+static int dqlite__conn_body_read_cb(void *arg)
+{
 	int                  err;
 	struct dqlite__conn *c;
 
@@ -437,9 +448,8 @@ static struct dqlite__fsm_transition *dqlite__transitions[] = {
 };
 
 /* Called to allocate a buffer for the next stream read. */
-static void dqlite__conn_alloc_cb(uv_handle_t *stream,
-                                  size_t       _,
-                                  uv_buf_t *   buf) {
+static void dqlite__conn_alloc_cb(uv_handle_t *stream, size_t _, uv_buf_t *buf)
+{
 	int                  err;
 	struct dqlite__conn *c;
 
@@ -473,7 +483,8 @@ static void dqlite__conn_alloc_cb(uv_handle_t *stream,
 	*buf = c->buf;
 }
 
-static void dqlite__conn_alive_cb(uv_timer_t *alive) {
+static void dqlite__conn_alive_cb(uv_timer_t *alive)
+{
 	uint64_t             elapsed;
 	struct dqlite__conn *c;
 
@@ -493,9 +504,9 @@ static void dqlite__conn_alive_cb(uv_timer_t *alive) {
 	}
 }
 
-static void dqlite__conn_read_cb(uv_stream_t *   stream,
-                                 ssize_t         nread,
-                                 const uv_buf_t *buf) {
+static void
+dqlite__conn_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
+{
 	int                  err;
 	struct dqlite__conn *c;
 
@@ -562,7 +573,8 @@ void dqlite__conn_init(struct dqlite__conn *   c,
                        dqlite_cluster *        cluster,
                        uv_loop_t *             loop,
                        struct dqlite__options *options,
-                       struct dqlite__metrics *metrics) {
+                       struct dqlite__metrics *metrics)
+{
 	struct dqlite__gateway_cbs callbacks;
 
 	assert(c != NULL);
@@ -607,7 +619,8 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 	c->paused   = 0;
 }
 
-void dqlite__conn_close(struct dqlite__conn *c) {
+void dqlite__conn_close(struct dqlite__conn *c)
+{
 	assert(c != NULL);
 
 	dqlite__response_close(&c->response);
@@ -619,7 +632,8 @@ void dqlite__conn_close(struct dqlite__conn *c) {
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_CONN);
 }
 
-int dqlite__conn_start(struct dqlite__conn *c) {
+int dqlite__conn_start(struct dqlite__conn *c)
+{
 	int      err;
 	uint64_t heartbeat_timeout;
 
@@ -721,7 +735,8 @@ err:
 	return err;
 }
 
-static void dqlite__conn_stream_close_cb(uv_handle_t *handle) {
+static void dqlite__conn_stream_close_cb(uv_handle_t *handle)
+{
 	struct dqlite__conn *c;
 
 	assert(handle != NULL);
@@ -732,7 +747,8 @@ static void dqlite__conn_stream_close_cb(uv_handle_t *handle) {
 	sqlite3_free(c);
 }
 
-static void dqlite__conn_timer_close_cb(uv_handle_t *handle) {
+static void dqlite__conn_timer_close_cb(uv_handle_t *handle)
+{
 	struct dqlite__conn *c;
 
 	assert(handle != NULL);
@@ -744,7 +760,8 @@ static void dqlite__conn_timer_close_cb(uv_handle_t *handle) {
 
 /* Abort the connection, realeasing any memory allocated by the read buffer, and
  * closing the UV handle (which closes the underlying socket as well) */
-void dqlite__conn_abort(struct dqlite__conn *c) {
+void dqlite__conn_abort(struct dqlite__conn *c)
+{
 	const char *state;
 
 	assert(c != NULL);

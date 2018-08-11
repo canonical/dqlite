@@ -19,7 +19,8 @@
 #error "Requires IEEE 754 floating point!"
 #endif
 
-static void dqlite__message_reset(struct dqlite__message *m) {
+static void dqlite__message_reset(struct dqlite__message *m)
+{
 	assert(m != NULL);
 
 	m->type       = 0;
@@ -32,7 +33,8 @@ static void dqlite__message_reset(struct dqlite__message *m) {
 	m->offset2    = 0;
 }
 
-void dqlite__message_init(struct dqlite__message *m) {
+void dqlite__message_init(struct dqlite__message *m)
+{
 	assert(m != NULL);
 
 	/* The statically allocated buffer is aligned to word boundary */
@@ -47,7 +49,8 @@ void dqlite__message_init(struct dqlite__message *m) {
 	dqlite__error_init(&m->error);
 }
 
-void dqlite__message_close(struct dqlite__message *m) {
+void dqlite__message_close(struct dqlite__message *m)
+{
 	assert(m != NULL);
 
 	dqlite__error_close(&m->error);
@@ -59,7 +62,8 @@ void dqlite__message_close(struct dqlite__message *m) {
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_MESSAGE);
 }
 
-void dqlite__message_header_recv_start(struct dqlite__message *m, uv_buf_t *buf) {
+void dqlite__message_header_recv_start(struct dqlite__message *m, uv_buf_t *buf)
+{
 	assert(m != NULL);
 	assert(buf != NULL);
 
@@ -71,7 +75,8 @@ void dqlite__message_header_recv_start(struct dqlite__message *m, uv_buf_t *buf)
 	buf->len = DQLITE__MESSAGE_HEADER_LEN;
 }
 
-int dqlite__message_header_recv_done(struct dqlite__message *m) {
+int dqlite__message_header_recv_done(struct dqlite__message *m)
+{
 	assert(m != NULL);
 
 	assert(m->body2.base == NULL);
@@ -91,7 +96,8 @@ int dqlite__message_header_recv_done(struct dqlite__message *m) {
 	return 0;
 }
 
-static size_t dqlite__message_body_len(struct dqlite__message *m) {
+static size_t dqlite__message_body_len(struct dqlite__message *m)
+{
 	assert(m != NULL);
 	assert(m->words > 0);
 
@@ -102,7 +108,8 @@ static size_t dqlite__message_body_len(struct dqlite__message *m) {
 
 /* Allocate the message body dynamic buffer. Used for reading or writing a
  * message body that is larger than the size of the static buffer. */
-static int dqlite__message_body_alloc(struct dqlite__message *m) {
+static int dqlite__message_body_alloc(struct dqlite__message *m)
+{
 	size_t len;
 	assert(m != NULL);
 
@@ -124,7 +131,8 @@ static int dqlite__message_body_alloc(struct dqlite__message *m) {
 	return 0;
 }
 
-int dqlite__message_body_recv_start(struct dqlite__message *m, uv_buf_t *buf) {
+int dqlite__message_body_recv_start(struct dqlite__message *m, uv_buf_t *buf)
+{
 	int err;
 
 	assert(m != NULL);
@@ -153,7 +161,8 @@ int dqlite__message_body_recv_start(struct dqlite__message *m, uv_buf_t *buf) {
 /* Return true if the current read or write offset is aligned to the given
  * quantity. */
 static int dqlite__message_body_is_offset_aligned(struct dqlite__message *m,
-                                                  size_t                  len) {
+                                                  size_t                  len)
+{
 	int align; /* Expected offset alignment */
 
 	assert(m != NULL);
@@ -171,7 +180,8 @@ static int dqlite__message_body_is_offset_aligned(struct dqlite__message *m,
 }
 
 static int
-dqlite__message_get(struct dqlite__message *m, const char **dst, size_t len) {
+dqlite__message_get(struct dqlite__message *m, const char **dst, size_t len)
+{
 	size_t   offset; /* New offset */
 	char *   src;    /* Read buffer */
 	size_t   cap;    /* Size of the read buffer */
@@ -228,7 +238,8 @@ dqlite__message_get(struct dqlite__message *m, const char **dst, size_t len) {
 	return 0;
 }
 
-int dqlite__message_body_get_text(struct dqlite__message *m, text_t *text) {
+int dqlite__message_body_get_text(struct dqlite__message *m, text_t *text)
+{
 	char * src;
 	size_t offset;
 	size_t cap;
@@ -262,13 +273,16 @@ int dqlite__message_body_get_text(struct dqlite__message *m, text_t *text) {
 
 	/* Account for padding */
 	if ((len % DQLITE__MESSAGE_WORD_SIZE) != 0) {
-		len += DQLITE__MESSAGE_WORD_SIZE - (len % DQLITE__MESSAGE_WORD_SIZE);
+		len += DQLITE__MESSAGE_WORD_SIZE -
+		       (len % DQLITE__MESSAGE_WORD_SIZE);
 	}
 
 	return dqlite__message_get(m, text, len);
 }
 
-int dqlite__message_body_get_servers(struct dqlite__message *m, servers_t *servers) {
+int dqlite__message_body_get_servers(struct dqlite__message *m,
+                                     servers_t *             servers)
+{
 	int      err;
 	size_t   i = 0;
 	uint64_t id;
@@ -282,7 +296,8 @@ int dqlite__message_body_get_servers(struct dqlite__message *m, servers_t *serve
 	do {
 		err = dqlite__message_body_get_uint64(m, &id);
 		if (err != 0) {
-			dqlite__error_printf(&m->error, "missing server address");
+			dqlite__error_printf(&m->error,
+			                     "missing server address");
 			err = DQLITE_PROTO;
 			break;
 		}
@@ -297,8 +312,9 @@ int dqlite__message_body_get_servers(struct dqlite__message *m, servers_t *serve
 				if (*servers != NULL) {
 					sqlite3_free(*servers);
 				}
-				dqlite__error_oom(&m->error,
-				                  "failed to allocate servers list");
+				dqlite__error_oom(
+				    &m->error,
+				    "failed to allocate servers list");
 				return DQLITE_NOMEM;
 			}
 			new_servers[i - 1].id      = id;
@@ -312,7 +328,8 @@ int dqlite__message_body_get_servers(struct dqlite__message *m, servers_t *serve
 	return err;
 }
 
-int dqlite__message_body_get_uint8(struct dqlite__message *m, uint8_t *value) {
+int dqlite__message_body_get_uint8(struct dqlite__message *m, uint8_t *value)
+{
 	int err;
 
 	const char *buf;
@@ -330,7 +347,8 @@ int dqlite__message_body_get_uint8(struct dqlite__message *m, uint8_t *value) {
 	return err;
 }
 
-int dqlite__message_body_get_uint32(struct dqlite__message *m, uint32_t *value) {
+int dqlite__message_body_get_uint32(struct dqlite__message *m, uint32_t *value)
+{
 	int err;
 
 	const char *buf;
@@ -348,7 +366,8 @@ int dqlite__message_body_get_uint32(struct dqlite__message *m, uint32_t *value) 
 	return err;
 }
 
-int dqlite__message_body_get_uint64(struct dqlite__message *m, uint64_t *value) {
+int dqlite__message_body_get_uint64(struct dqlite__message *m, uint64_t *value)
+{
 	int         err;
 	const char *buf;
 
@@ -365,11 +384,13 @@ int dqlite__message_body_get_uint64(struct dqlite__message *m, uint64_t *value) 
 	return err;
 }
 
-int dqlite__message_body_get_int64(struct dqlite__message *m, int64_t *value) {
+int dqlite__message_body_get_int64(struct dqlite__message *m, int64_t *value)
+{
 	return dqlite__message_body_get_uint64(m, (uint64_t *)value);
 }
 
-int dqlite__message_body_get_double(struct dqlite__message *m, double_t *value) {
+int dqlite__message_body_get_double(struct dqlite__message *m, double_t *value)
+{
 	int         err;
 	const char *buf;
 
@@ -388,7 +409,8 @@ int dqlite__message_body_get_double(struct dqlite__message *m, double_t *value) 
 
 void dqlite__message_header_put(struct dqlite__message *m,
                                 uint8_t                 type,
-                                uint8_t                 flags) {
+                                uint8_t                 flags)
+{
 	assert(m != NULL);
 
 	m->type  = type;
@@ -398,7 +420,8 @@ void dqlite__message_header_put(struct dqlite__message *m,
 static int dqlite__message_body_put(struct dqlite__message *m,
                                     const char *            src,
                                     size_t                  len,
-                                    size_t                  pad) {
+                                    size_t                  pad)
+{
 	size_t offset; /* Write offset */
 	char * dst;    /* Write buffer to use */
 
@@ -433,8 +456,9 @@ static int dqlite__message_body_put(struct dqlite__message *m,
 			cap  = m->offset2 + len + pad + 1024;
 			base = sqlite3_realloc(m->body2.base, cap);
 			if (base == NULL) {
-				dqlite__error_oom(&m->error,
-				                  "failed to allocate dynamic body");
+				dqlite__error_oom(
+				    &m->error,
+				    "failed to allocate dynamic body");
 				return DQLITE_NOMEM;
 			}
 			m->body2.base = base;
@@ -464,7 +488,8 @@ static int dqlite__message_body_put(struct dqlite__message *m,
 	return 0;
 }
 
-int dqlite__message_body_put_text(struct dqlite__message *m, text_t text) {
+int dqlite__message_body_put_text(struct dqlite__message *m, text_t text)
+{
 	size_t pad;
 	size_t len;
 
@@ -483,7 +508,9 @@ int dqlite__message_body_put_text(struct dqlite__message *m, text_t text) {
 	return dqlite__message_body_put(m, text, len, pad);
 }
 
-int dqlite__message_body_put_servers(struct dqlite__message *m, servers_t servers) {
+int dqlite__message_body_put_servers(struct dqlite__message *m,
+                                     servers_t               servers)
+{
 	int    err;
 	size_t i;
 
@@ -505,31 +532,39 @@ int dqlite__message_body_put_servers(struct dqlite__message *m, servers_t server
 	return 0;
 }
 
-int dqlite__message_body_put_uint8(struct dqlite__message *m, uint8_t value) {
+int dqlite__message_body_put_uint8(struct dqlite__message *m, uint8_t value)
+{
 	assert(m != NULL);
 
-	return dqlite__message_body_put(m, (const char *)(&value), sizeof(value), 0);
+	return dqlite__message_body_put(
+	    m, (const char *)(&value), sizeof(value), 0);
 }
 
-int dqlite__message_body_put_uint32(struct dqlite__message *m, uint32_t value) {
+int dqlite__message_body_put_uint32(struct dqlite__message *m, uint32_t value)
+{
 	assert(m != NULL);
 
 	value = dqlite__flip32(value);
-	return dqlite__message_body_put(m, (const char *)(&value), sizeof(value), 0);
+	return dqlite__message_body_put(
+	    m, (const char *)(&value), sizeof(value), 0);
 }
 
-int dqlite__message_body_put_uint64(struct dqlite__message *m, uint64_t value) {
+int dqlite__message_body_put_uint64(struct dqlite__message *m, uint64_t value)
+{
 	assert(m != NULL);
 
 	value = dqlite__flip64(value);
-	return dqlite__message_body_put(m, (const char *)(&value), sizeof(value), 0);
+	return dqlite__message_body_put(
+	    m, (const char *)(&value), sizeof(value), 0);
 }
 
-int dqlite__message_body_put_int64(struct dqlite__message *m, int64_t value) {
+int dqlite__message_body_put_int64(struct dqlite__message *m, int64_t value)
+{
 	return dqlite__message_body_put_uint64(m, (uint64_t)value);
 }
 
-int dqlite__message_body_put_double(struct dqlite__message *m, double_t value) {
+int dqlite__message_body_put_double(struct dqlite__message *m, double_t value)
+{
 	uint64_t buf;
 
 	assert(m != NULL);
@@ -544,10 +579,12 @@ int dqlite__message_body_put_double(struct dqlite__message *m, double_t value) {
 
 	buf = dqlite__flip64(buf);
 
-	return dqlite__message_body_put(m, (const char *)(&buf), sizeof(buf), 0);
+	return dqlite__message_body_put(
+	    m, (const char *)(&buf), sizeof(buf), 0);
 }
 
-void dqlite__message_send_start(struct dqlite__message *m, uv_buf_t bufs[3]) {
+void dqlite__message_send_start(struct dqlite__message *m, uv_buf_t bufs[3])
+{
 	assert(m != NULL);
 	assert(bufs != NULL);
 
@@ -561,8 +598,8 @@ void dqlite__message_send_start(struct dqlite__message *m, uv_buf_t bufs[3]) {
 	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
 	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
 
-	m->words =
-	    dqlite__flip32((m->offset1 + m->offset2) / DQLITE__MESSAGE_WORD_SIZE);
+	m->words = dqlite__flip32((m->offset1 + m->offset2) /
+	                          DQLITE__MESSAGE_WORD_SIZE);
 
 	/* The message header is stored in the first part of the dqlite_message
 	 * structure. */
@@ -580,7 +617,8 @@ void dqlite__message_send_start(struct dqlite__message *m, uv_buf_t bufs[3]) {
 	return;
 }
 
-void dqlite__message_send_reset(struct dqlite__message *m) {
+void dqlite__message_send_reset(struct dqlite__message *m)
+{
 	assert(m != NULL);
 
 	/* Reset the state so we can start writing another message */
@@ -590,7 +628,8 @@ void dqlite__message_send_reset(struct dqlite__message *m) {
 	dqlite__message_reset(m);
 }
 
-void dqlite__message_recv_reset(struct dqlite__message *m) {
+void dqlite__message_recv_reset(struct dqlite__message *m)
+{
 	assert(m != NULL);
 
 	/* This must come after the header has been received */
@@ -601,4 +640,29 @@ void dqlite__message_recv_reset(struct dqlite__message *m) {
 		sqlite3_free(m->body2.base);
 	}
 	dqlite__message_reset(m);
+}
+
+int dqlite__message_has_been_fully_consumed(struct dqlite__message *m)
+{
+	size_t offset;
+	size_t words;
+
+	assert(m != NULL);
+
+	if (m->body2.base != NULL) {
+		offset = m->offset2;
+	} else {
+		offset = m->offset1;
+	}
+
+	words = offset / DQLITE__MESSAGE_WORD_SIZE;
+
+	return words == m->words;
+}
+
+int dqlite__message_is_large(struct dqlite__message *m)
+{
+	assert(m != NULL);
+
+	return m->body2.base != NULL;
 }
