@@ -18,11 +18,13 @@
 #include "replication.h"
 #include "server.h"
 
-static struct test_server *test_server__create() {
+static struct test_server *test_server__create()
+{
 	int                 err = 0;
 	struct test_server *s;
 	uint32_t            checkpoint_threshold = 100;
 	uint8_t             metrics              = 1;
+	dqlite_logger *     logger               = test_logger();
 
 	s = munit_malloc(sizeof *s);
 
@@ -33,7 +35,7 @@ static struct test_server *test_server__create() {
 		munit_errorf("failed to register wal replication: %d", err);
 	}
 
-	s->vfs = dqlite_vfs_create(s->replication->zName);
+	s->vfs = dqlite_vfs_create(s->replication->zName, logger);
 	if (s->vfs == NULL) {
 		munit_error("failed to create volatile VFS: out of memory");
 	}
@@ -45,8 +47,7 @@ static struct test_server *test_server__create() {
 		munit_errorf("failed to create dqlite server: %d", err);
 	}
 
-	err = dqlite_server_config(
-	    s->service, DQLITE_CONFIG_LOGGER, (void *)test_logger());
+	err = dqlite_server_config(s->service, DQLITE_CONFIG_LOGGER, logger);
 	if (err != 0) {
 		munit_errorf("failed to set logger: %d", err);
 	}
@@ -82,7 +83,8 @@ static struct test_server *test_server__create() {
 	return s;
 }
 
-static void test_server__destroy(struct test_server *s) {
+static void test_server__destroy(struct test_server *s)
+{
 	assert(s != NULL);
 	assert(s->service != NULL);
 
@@ -96,7 +98,8 @@ static void test_server__destroy(struct test_server *s) {
 	sqlite3_free(s);
 }
 
-static void test_server__listen(struct test_server *s) {
+static void test_server__listen(struct test_server *s)
+{
 	int              rc;
 	struct sockaddr *address;
 	socklen_t        size;
@@ -134,26 +137,31 @@ static void test_server__listen(struct test_server *s) {
 
 	s->socket = socket(s->family, SOCK_STREAM, 0);
 	if (s->socket < 0) {
-		munit_errorf("failed to open server socket: %s", strerror(errno));
+		munit_errorf("failed to open server socket: %s",
+		             strerror(errno));
 	}
 
 	rc = bind(s->socket, address, size);
 	if (rc) {
-		munit_errorf("failed to bind server socket: %s", strerror(errno));
+		munit_errorf("failed to bind server socket: %s",
+		             strerror(errno));
 	}
 
 	rc = listen(s->socket, 1);
 	if (rc) {
-		munit_errorf("failed to listen server socket: %s", strerror(errno));
+		munit_errorf("failed to listen server socket: %s",
+		             strerror(errno));
 	}
 
 	rc = getsockname(s->socket, address, &size);
 	if (rc) {
-		munit_errorf("failed to get server address: %s", strerror(errno));
+		munit_errorf("failed to get server address: %s",
+		             strerror(errno));
 	}
 }
 
-static int test_server__connect(struct test_server *s) {
+static int test_server__connect(struct test_server *s)
+{
 	int              fd;
 	int              err;
 	struct sockaddr *address;
@@ -164,7 +172,8 @@ static int test_server__connect(struct test_server *s) {
 
 	fd = socket(s->family, SOCK_STREAM, 0);
 	if (fd < 0) {
-		munit_errorf("failed to open client socket: %s", strerror(errno));
+		munit_errorf("failed to open client socket: %s",
+		             strerror(errno));
 	}
 
 	switch (s->family) {
@@ -191,7 +200,8 @@ static int test_server__connect(struct test_server *s) {
 	return fd;
 }
 
-static int test_server__accept(struct test_server *s) {
+static int test_server__accept(struct test_server *s)
+{
 	int                fd;
 	int                err;
 	struct sockaddr_in address;
@@ -218,7 +228,8 @@ static int test_server__accept(struct test_server *s) {
 	return fd;
 }
 
-static void test__server_close(struct test_server *s) {
+static void test__server_close(struct test_server *s)
+{
 	int rc;
 
 	assert(s);
@@ -226,11 +237,13 @@ static void test__server_close(struct test_server *s) {
 
 	rc = close(s->socket);
 	if (rc != 0) {
-		munit_errorf("failed to close server socket: %s", strerror(errno));
+		munit_errorf("failed to close server socket: %s",
+		             strerror(errno));
 	}
 }
 
-static void *test__server_run(void *arg) {
+static void *test__server_run(void *arg)
+{
 	struct test_server *s;
 	int                 rc;
 
@@ -245,7 +258,8 @@ static void *test__server_run(void *arg) {
 	return 0;
 }
 
-struct test_server *test_server_start(const char *family) {
+struct test_server *test_server_start(const char *family)
+{
 	int                 err;
 	int                 ready;
 	struct test_server *s = test_server__create();
@@ -265,7 +279,8 @@ struct test_server *test_server_start(const char *family) {
 
 	err = pthread_create(&s->thread, 0, &test__server_run, s);
 	if (err) {
-		munit_errorf("failed to spawn server thread: %s", strerror(errno));
+		munit_errorf("failed to spawn server thread: %s",
+		             strerror(errno));
 		return 0;
 	}
 
@@ -279,7 +294,8 @@ struct test_server *test_server_start(const char *family) {
 	return s;
 }
 
-void test_server_connect(struct test_server *s, struct test_client **client) {
+void test_server_connect(struct test_server *s, struct test_client **client)
+{
 	int   clientFd;
 	int   serverFd;
 	int   err;
@@ -293,7 +309,8 @@ void test_server_connect(struct test_server *s, struct test_client **client) {
 
 	err = dqlite_server_handle(s->service, serverFd, &errmsg);
 	if (err) {
-		munit_errorf("failed to notify server about new client: %s", errmsg);
+		munit_errorf("failed to notify server about new client: %s",
+		             errmsg);
 	}
 
 	*client = munit_malloc(sizeof **client);
@@ -301,7 +318,8 @@ void test_server_connect(struct test_server *s, struct test_client **client) {
 	test_client_init(*client, clientFd);
 }
 
-void test_server_stop(struct test_server *t) {
+void test_server_stop(struct test_server *t)
+{
 	int   err;
 	char *errmsg;
 	void *retval = 0;

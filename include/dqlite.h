@@ -170,8 +170,8 @@ const char *dqlite_server_errmsg(dqlite_server *s);
 /* Return the dqlite_cluster object used to initialize the server */
 dqlite_cluster *dqlite_server_cluster(dqlite_server *s);
 
-/* Return the dqlite_logger object the server is using, if any was configured.
- */
+/* Return the dqlite_logger object the server is using, if any was
+ * configured. */
 dqlite_logger *dqlite_server_logger(dqlite_server *s);
 
 /* Allocate and initialize an in-memory dqlite VFS object, configured with the
@@ -179,7 +179,7 @@ dqlite_logger *dqlite_server_logger(dqlite_server *s);
  *
  * A copy of the provided name will be made, so clients can free it after the
  * function returns. */
-sqlite3_vfs *dqlite_vfs_create(const char *name);
+sqlite3_vfs *dqlite_vfs_create(const char *name, dqlite_logger *logger);
 
 /* Destroy and deallocate an in-memory dqlite VFS object. */
 void dqlite_vfs_destroy(sqlite3_vfs *vfs);

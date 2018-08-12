@@ -9,6 +9,7 @@
 #include "replication.h"
 
 #include "case.h"
+#include "log.h"
 
 /******************************************************************************
  *
@@ -26,7 +27,8 @@ struct fixture {
 };
 
 /* Gateway flush callback, saving the response on the fixture. */
-static void fixture_flush_cb(void *arg, struct dqlite__response *response) {
+static void fixture_flush_cb(void *arg, struct dqlite__response *response)
+{
 	struct fixture *f = arg;
 
 	munit_assert_ptr_not_null(f);
@@ -35,7 +37,8 @@ static void fixture_flush_cb(void *arg, struct dqlite__response *response) {
 }
 
 /* Send a valid open request and return the database ID */
-static void fixture_open(struct fixture *f, uint32_t *db_id) {
+static void fixture_open(struct fixture *f, uint32_t *db_id)
+{
 	int err;
 
 	f->request->type       = DQLITE_REQUEST_OPEN;
@@ -58,7 +61,8 @@ static void fixture_open(struct fixture *f, uint32_t *db_id) {
 static void fixture_prepare(struct fixture *f,
                             uint32_t        db_id,
                             const char *    sql,
-                            uint32_t *      stmt_id) {
+                            uint32_t *      stmt_id)
+{
 	int err;
 
 	f->request->type          = DQLITE_REQUEST_PREPARE;
@@ -77,7 +81,8 @@ static void fixture_prepare(struct fixture *f,
 }
 
 /* Send a simple exec request with no parameters. */
-static void fixture_exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id) {
+static void fixture_exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id)
+{
 	int err;
 
 	f->request->type         = DQLITE_REQUEST_EXEC;
@@ -102,9 +107,11 @@ static void fixture_exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id) {
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	struct fixture *           f;
 	struct dqlite__gateway_cbs callbacks;
+	dqlite_logger *            logger = test_logger();
 	int                        rc;
 
 	test_case_setup(params, user_data);
@@ -119,7 +126,7 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	rc = sqlite3_wal_replication_register(f->replication, 0);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	f->vfs = dqlite_vfs_create(f->replication->zName);
+	f->vfs = dqlite_vfs_create(f->replication->zName, logger);
 	munit_assert_ptr_not_null(f->vfs);
 
 	sqlite3_vfs_register(f->vfs, 0);
@@ -141,7 +148,8 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	return f;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	struct fixture *f = data;
 
 	sqlite3_vfs_unregister(f->vfs);
@@ -161,7 +169,8 @@ static void tear_down(void *data) {
  ******************************************************************************/
 
 /* Handle a leader request. */
-static MunitResult test_leader(const MunitParameter params[], void *data) {
+static MunitResult test_leader(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             err;
 
@@ -185,7 +194,8 @@ static MunitResult test_leader(const MunitParameter params[], void *data) {
 }
 
 /* Handle a client request. */
-static MunitResult test_client(const MunitParameter params[], void *data) {
+static MunitResult test_client(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             err;
 
@@ -206,7 +216,8 @@ static MunitResult test_client(const MunitParameter params[], void *data) {
 }
 
 /* Handle a heartbeat request. */
-static MunitResult test_heartbeat(const MunitParameter params[], void *data) {
+static MunitResult test_heartbeat(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             err;
 
@@ -237,7 +248,8 @@ static MunitResult test_heartbeat(const MunitParameter params[], void *data) {
 /* If the xServers method of the cluster implementation returns an error, it's
  * propagated to the client. */
 static MunitResult test_heartbeat_error(const MunitParameter params[],
-                                        void *               data) {
+                                        void *               data)
+{
 	struct fixture *f = data;
 	int             err;
 
@@ -264,7 +276,8 @@ static MunitResult test_heartbeat_error(const MunitParameter params[],
 
 /* If an error occurs while opening a database, it's included in the
  * response. */
-static MunitResult test_open_error(const MunitParameter params[], void *data) {
+static MunitResult test_open_error(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             err;
 
@@ -289,7 +302,8 @@ static MunitResult test_open_error(const MunitParameter params[], void *data) {
 }
 
 /* Handle an oper request. */
-static MunitResult test_open(const MunitParameter params[], void *data) {
+static MunitResult test_open(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	int             err;
 
@@ -313,7 +327,8 @@ static MunitResult test_open(const MunitParameter params[], void *data) {
 
 /* If no registered db matches the provided ID, the request fails. */
 static MunitResult test_prepare_bad_db(const MunitParameter params[],
-                                       void *               data) {
+                                       void *               data)
+{
 	struct fixture *f = data;
 	int             err;
 
@@ -338,7 +353,8 @@ static MunitResult test_prepare_bad_db(const MunitParameter params[],
 
 /* If the provided SQL statement is invalid, the request fails. */
 static MunitResult test_prepare_bad_sql(const MunitParameter params[],
-                                        void *               data) {
+                                        void *               data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	int             err;
@@ -365,7 +381,8 @@ static MunitResult test_prepare_bad_sql(const MunitParameter params[],
 }
 
 /* Handle a prepare request. */
-static MunitResult test_prepare(const MunitParameter params[], void *data) {
+static MunitResult test_prepare(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	int             err;
@@ -390,7 +407,8 @@ static MunitResult test_prepare(const MunitParameter params[], void *data) {
 }
 
 /* Handle an exec request. */
-static MunitResult test_exec(const MunitParameter params[], void *data) {
+static MunitResult test_exec(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -419,7 +437,8 @@ static MunitResult test_exec(const MunitParameter params[], void *data) {
 }
 
 /* Handle an exec request with parameters. */
-static MunitResult test_exec_params(const MunitParameter params[], void *data) {
+static MunitResult test_exec_params(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -463,7 +482,8 @@ static MunitResult test_exec_params(const MunitParameter params[], void *data) {
 
 /* If the given statement ID is invalid, an error is returned. */
 static MunitResult test_exec_bad_stmt_id(const MunitParameter params[],
-                                         void *               data) {
+                                         void *               data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	int             err;
@@ -491,7 +511,8 @@ static MunitResult test_exec_bad_stmt_id(const MunitParameter params[],
 
 /* If the given bindings are invalid, an error is returned. */
 static MunitResult test_exec_bad_params(const MunitParameter params[],
-                                        void *               data) {
+                                        void *               data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -535,7 +556,8 @@ static MunitResult test_exec_bad_params(const MunitParameter params[],
 }
 
 /* If the execution of the statement fails, an error is returned. */
-static MunitResult test_exec_fail(const MunitParameter params[], void *data) {
+static MunitResult test_exec_fail(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -577,7 +599,8 @@ static MunitResult test_exec_fail(const MunitParameter params[], void *data) {
 }
 
 /* Handle a query request. */
-static MunitResult test_query(const MunitParameter params[], void *data) {
+static MunitResult test_query(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -614,7 +637,8 @@ static MunitResult test_query(const MunitParameter params[], void *data) {
 
 /* If the given bindings are invalid, an error is returned. */
 static MunitResult test_query_bad_params(const MunitParameter params[],
-                                         void *               data) {
+                                         void *               data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -662,7 +686,8 @@ static MunitResult test_query_bad_params(const MunitParameter params[],
 }
 
 /* Handle a finalize request. */
-static MunitResult test_finalize(const MunitParameter params[], void *data) {
+static MunitResult test_finalize(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -685,7 +710,8 @@ static MunitResult test_finalize(const MunitParameter params[], void *data) {
 }
 
 /* Handle an exec sql request. */
-static MunitResult test_exec_sql(const MunitParameter params[], void *data) {
+static MunitResult test_exec_sql(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -735,7 +761,8 @@ static MunitResult test_exec_sql(const MunitParameter params[], void *data) {
 
 /* Handle an exec sql request with multiple statements. */
 static MunitResult test_exec_sql_multi(const MunitParameter params[],
-                                       void *               data) {
+                                       void *               data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -767,7 +794,8 @@ static MunitResult test_exec_sql_multi(const MunitParameter params[],
 
 /* If the given SQL text is invalid, an error is returned. */
 static MunitResult test_exec_sql_bad_sql(const MunitParameter params[],
-                                         void *               data) {
+                                         void *               data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	int             err;
@@ -795,7 +823,8 @@ static MunitResult test_exec_sql_bad_sql(const MunitParameter params[],
 
 /* If the given bindings are invalid, an error is returned. */
 static MunitResult test_exec_sql_bad_params(const MunitParameter params[],
-                                            void *               data) {
+                                            void *               data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	int             err;
@@ -838,7 +867,8 @@ static MunitResult test_exec_sql_bad_params(const MunitParameter params[],
 
 /* If the execution of the statement fails, an error is returned. */
 static MunitResult test_exec_sql_error(const MunitParameter params[],
-                                       void *               data) {
+                                       void *               data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -874,7 +904,8 @@ static MunitResult test_exec_sql_error(const MunitParameter params[],
 }
 
 /* Handle a query sql request. */
-static MunitResult test_query_sql(const MunitParameter params[], void *data) {
+static MunitResult test_query_sql(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	uint32_t        stmt_id;
@@ -938,7 +969,8 @@ static MunitResult test_query_sql(const MunitParameter params[], void *data) {
 
 /* If the given SQL text is invalid, an error is returned. */
 static MunitResult test_query_sql_bad_sql(const MunitParameter params[],
-                                          void *               data) {
+                                          void *               data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	int             err;
@@ -966,7 +998,8 @@ static MunitResult test_query_sql_bad_sql(const MunitParameter params[],
 
 /* If the given bindings are invalid, an error is returned. */
 static MunitResult test_query_sql_bad_params(const MunitParameter params[],
-                                             void *               data) {
+                                             void *               data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	int             err;
@@ -1009,7 +1042,8 @@ static MunitResult test_query_sql_bad_params(const MunitParameter params[],
 
 /* If the given request type is invalid, an error is returned. */
 static MunitResult test_invalid_request_type(const MunitParameter params[],
-                                             void *               data) {
+                                             void *               data)
+{
 	struct fixture *f = data;
 	int             err;
 
@@ -1032,8 +1066,8 @@ static MunitResult test_invalid_request_type(const MunitParameter params[],
 
 /* If a second request is pushed before the first has completed , an error is
  * returned. */
-static MunitResult test_max_requests(const MunitParameter params[],
-                                     void *               data) {
+static MunitResult test_max_requests(const MunitParameter params[], void *data)
+{
 	struct fixture *f = data;
 	uint32_t        db_id;
 	int             err;
@@ -1060,7 +1094,8 @@ static MunitResult test_max_requests(const MunitParameter params[],
 
 /* If the number of frames in the WAL reaches the configured threshold, a
  * checkpoint is triggered. */
-static MunitResult test_checkpoint(const MunitParameter params[], void *data) {
+static MunitResult test_checkpoint(const MunitParameter params[], void *data)
+{
 	struct fixture *f    = data;
 	sqlite3_file *  file = munit_malloc(f->vfs->szOsFile);
 	uint32_t        db_id;

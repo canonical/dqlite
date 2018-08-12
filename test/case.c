@@ -14,14 +14,16 @@
  ******************************************************************************/
 
 /* SQLite log function redirecting to munit's log. */
-static void test__case_sqlite_log(void *ctx, int rc, const char *errmsg) {
+static void test__case_sqlite_log(void *ctx, int rc, const char *errmsg)
+{
 	(void)ctx;
 
 	munit_logf(MUNIT_LOG_INFO, "SQLite error: %s (%d)", errmsg, rc);
 }
 
 /* Ensure that SQLite is unconfigured and set test-specific options. */
-void test__case_config_setup(const MunitParameter params[], void *user_data) {
+void test__case_config_setup(const MunitParameter params[], void *user_data)
+{
 	int                 rc;
 	sqlite3_mem_methods mem;
 	sqlite3_mem_methods mem_fault;
@@ -55,7 +57,8 @@ void test__case_config_setup(const MunitParameter params[], void *user_data) {
 	}
 }
 
-void test__case_config_tear_down(void *data) {
+void test__case_config_tear_down(void *data)
+{
 	int                 rc;
 	sqlite3_mem_methods mem;
 	sqlite3_mem_methods mem_fault;
@@ -95,7 +98,8 @@ void test__case_config_tear_down(void *data) {
 
 /* Ensure we're starting from a clean memory state with no allocations and
  * optionally inject malloc failures. */
-void test__case_mem_setup(const MunitParameter params[], void *user_data) {
+void test__case_mem_setup(const MunitParameter params[], void *user_data)
+{
 	int         malloc_count;
 	int         memory_used;
 	const char *fault_delay;
@@ -126,7 +130,8 @@ void test__case_mem_setup(const MunitParameter params[], void *user_data) {
 }
 
 /* Ensure we're starting leaving a clean memory behind. */
-void test__case_mem_tear_down(void *data) {
+void test__case_mem_tear_down(void *data)
+{
 	(void)data;
 
 	int malloc_count;
@@ -149,8 +154,8 @@ void test__case_mem_tear_down(void *data) {
  ******************************************************************************/
 
 /* Ensure that there are no outstanding initializations. */
-void test__case_lifecycle_setup(const MunitParameter params[],
-                                void *               user_data) {
+void test__case_lifecycle_setup(const MunitParameter params[], void *user_data)
+{
 	int   rc;
 	char *msg;
 
@@ -163,7 +168,8 @@ void test__case_lifecycle_setup(const MunitParameter params[],
 	}
 }
 
-void test__case_lifecycle_tear_down(void *data) {
+void test__case_lifecycle_tear_down(void *data)
+{
 	int   rc;
 	char *msg;
 
@@ -181,7 +187,8 @@ void test__case_lifecycle_tear_down(void *data) {
  *
  ******************************************************************************/
 
-void *test_case_setup(const MunitParameter params[], void *user_data) {
+void *test_case_setup(const MunitParameter params[], void *user_data)
+{
 	test__case_config_setup(params, user_data);
 	test__case_mem_setup(params, user_data);
 	test__case_lifecycle_setup(params, user_data);
@@ -189,7 +196,8 @@ void *test_case_setup(const MunitParameter params[], void *user_data) {
 	return NULL;
 }
 
-void test_case_tear_down(void *data) {
+void test_case_tear_down(void *data)
+{
 	(void)data;
 
 	test__case_lifecycle_tear_down(data);

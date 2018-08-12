@@ -1,6 +1,7 @@
 #include "../include/dqlite.h"
 
 #include "leak.h"
+#include "log.h"
 #include "munit.h"
 
 /******************************************************************************
@@ -10,7 +11,8 @@
  ******************************************************************************/
 
 /* Helper to execute a SQL statement. */
-static void __db_exec(sqlite3 *db, const char *sql) {
+static void __db_exec(sqlite3 *db, const char *sql)
+{
 	int   rc;
 	char *errmsg;
 
@@ -20,12 +22,15 @@ static void __db_exec(sqlite3 *db, const char *sql) {
 
 /* Helper to open and initialize a database, setting the page size and
  * WAL mode. */
-static sqlite3 *__db_open(sqlite3_vfs *vfs) {
+static sqlite3 *__db_open(sqlite3_vfs *vfs)
+{
 	int      rc;
 	sqlite3 *db;
 
-	rc = sqlite3_open_v2(
-	    "test.db", &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, vfs->zName);
+	rc = sqlite3_open_v2("test.db",
+	                     &db,
+	                     SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+	                     vfs->zName);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	__db_exec(db, "PRAGMA page_size=512");
@@ -41,7 +46,8 @@ static sqlite3 *__db_open(sqlite3_vfs *vfs) {
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	sqlite3_vfs *vfs;
 
 	(void)params;
@@ -49,7 +55,7 @@ static void *setup(const MunitParameter params[], void *user_data) {
 
 	vfs = munit_malloc(sizeof *vfs);
 
-	vfs = dqlite_vfs_create("volatile");
+	vfs = dqlite_vfs_create("volatile", test_logger());
 	munit_assert_ptr_not_null(vfs);
 
 	sqlite3_vfs_register(vfs, 0);
@@ -57,7 +63,8 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	return vfs;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	sqlite3_vfs *vfs = data;
 
 	sqlite3_vfs_unregister(vfs);
@@ -74,7 +81,8 @@ static void tear_down(void *data) {
  ******************************************************************************/
 
 /* If the file being read does not exists, an error is returned. */
-static MunitResult test_read_cantopen(const MunitParameter params[], void *data) {
+static MunitResult test_read_cantopen(const MunitParameter params[], void *data)
+{
 	sqlite3_vfs *vfs = data;
 	uint8_t *    buf;
 	size_t       len;
@@ -89,7 +97,8 @@ static MunitResult test_read_cantopen(const MunitParameter params[], void *data)
 }
 
 /* Read the content of an empty file. */
-static MunitResult test_read_empty(const MunitParameter params[], void *data) {
+static MunitResult test_read_empty(const MunitParameter params[], void *data)
+{
 	sqlite3_vfs *vfs = data;
 	sqlite3 *    db;
 	uint8_t *    buf;
@@ -115,7 +124,9 @@ static MunitResult test_read_empty(const MunitParameter params[], void *data) {
 }
 
 /* Read the content of a database and WAL files and then write them back. */
-static MunitResult test_read_then_write(const MunitParameter params[], void *data) {
+static MunitResult test_read_then_write(const MunitParameter params[],
+                                        void *               data)
+{
 	sqlite3_vfs * vfs = data;
 	sqlite3 *     db  = __db_open(vfs);
 	int           rc;
@@ -157,7 +168,8 @@ static MunitResult test_read_then_write(const MunitParameter params[], void *dat
 	rc = sqlite3_open_v2("test.db", &db, SQLITE_OPEN_READWRITE, "volatile");
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = sqlite3_prepare(db, "INSERT INTO test(n) VALUES(?)", -1, &stmt, &tail);
+	rc = sqlite3_prepare(
+	    db, "INSERT INTO test(n) VALUES(?)", -1, &stmt, &tail);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	rc = sqlite3_finalize(stmt);

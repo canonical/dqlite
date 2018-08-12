@@ -3,6 +3,14 @@
 
 #include <sqlite3.h>
 
+#include "munit.h"
+
+/* Munit parameter defining the delay of the faulty memory implementation. */
+#define TEST_MEM_FAULT_DELAY_PARAM "mem-fault-delay"
+
+/* Munit parameter defining the repeat of the faulty memory implementation. */
+#define TEST_MEM_FAULT_REPEAT_PARAM "mem-fault-repeat"
+
 /* Get the current number of outstanding malloc()'s without a matching free()
  * and the total number of used memory. */
 void test_mem_stats(int *malloc_count, int *memory_used);

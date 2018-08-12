@@ -2,9 +2,11 @@
 
 #include <sqlite3.h>
 
+#include "mem.h"
 #include "munit.h"
 
-void test_mem_stats(int *malloc_count, int *memory_used) {
+void test_mem_stats(int *malloc_count, int *memory_used)
+{
 	int rc;
 	int watermark;
 
@@ -33,7 +35,8 @@ struct test__mem_fault {
 
 /* Check to see if a fault should be simulated. Return true to simulate the
  * fault.  Return false if the fault should not be simulated. */
-static int test__mem_fault_step(struct test__mem_fault *f) {
+static int test__mem_fault_step(struct test__mem_fault *f)
+{
 	if (MUNIT_LIKELY(!f->enabled)) {
 		return 0;
 	}
@@ -46,6 +49,7 @@ static int test__mem_fault_step(struct test__mem_fault *f) {
 	if (f->repeat == 0) {
 		f->enabled = 0;
 	}
+
 	return 1;
 }
 
@@ -57,7 +61,8 @@ static struct test__mem_fault __mem_fault;
 
 /* A version of sqlite3_mem_methods.xMalloc() that includes fault simulation
  * logic.*/
-static void *test__mem_fault_malloc(int n) {
+static void *test__mem_fault_malloc(int n)
+{
 	void *p = NULL;
 
 	if (!test__mem_fault_step(&__mem_fault)) {
@@ -69,7 +74,8 @@ static void *test__mem_fault_malloc(int n) {
 
 /* A version of sqlite3_mem_methods.xRealloc() that includes fault simulation
  * logic. */
-static void *test__mem_fault_realloc(void *old, int n) {
+static void *test__mem_fault_realloc(void *old, int n)
+{
 	void *p = NULL;
 
 	if (!test__mem_fault_step(&__mem_fault)) {
@@ -94,17 +100,20 @@ static int test__mem_fault_size(void *p) { return __mem_fault.m.xSize(p); }
 
 static int test__mem_fault_roundup(int n) { return __mem_fault.m.xRoundup(n); }
 
-static int test__mem_fault_init(void *p) {
+static int test__mem_fault_init(void *p)
+{
 	(void)p;
 	return __mem_fault.m.xInit(__mem_fault.m.pAppData);
 }
 
-static void test__mem_fault_shutdown(void *p) {
+static void test__mem_fault_shutdown(void *p)
+{
 	(void)p;
 	__mem_fault.m.xShutdown(__mem_fault.m.pAppData);
 }
 
-void test_mem_fault_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap) {
+void test_mem_fault_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
+{
 	__mem_fault.countdown = 0;
 	__mem_fault.repeat    = 0;
 	__mem_fault.fail      = 0;
@@ -122,13 +131,15 @@ void test_mem_fault_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap) {
 	wrap->pAppData = &__mem_fault;
 }
 
-void test_mem_fault_unwrap(sqlite3_mem_methods *wrap, sqlite3_mem_methods *m) {
+void test_mem_fault_unwrap(sqlite3_mem_methods *wrap, sqlite3_mem_methods *m)
+{
 	(void)wrap;
 
 	*m = __mem_fault.m;
 }
 
-void test_mem_fault_config(int delay, int repeat) {
+void test_mem_fault_config(int delay, int repeat)
+{
 	if (__mem_fault.enabled) {
 		munit_error("memory management failures already configured");
 	}

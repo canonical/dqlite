@@ -6,6 +6,7 @@
 #include "replication.h"
 
 #include "leak.h"
+#include "log.h"
 #include "munit.h"
 
 /******************************************************************************
@@ -15,7 +16,8 @@
  ******************************************************************************/
 
 /* Open a test database. */
-static void __db_open(struct dqlite__db *db) {
+static void __db_open(struct dqlite__db *db)
+{
 	int rc;
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 
@@ -29,7 +31,9 @@ static void __db_open(struct dqlite__db *db) {
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
+	dqlite_logger *          logger = test_logger();
 	sqlite3_vfs *            vfs;
 	sqlite3_wal_replication *replication;
 	struct dqlite__db *      db;
@@ -48,7 +52,7 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	err = sqlite3_wal_replication_register(replication, 0);
 	munit_assert_int(err, ==, 0);
 
-	vfs = dqlite_vfs_create(replication->zName);
+	vfs = dqlite_vfs_create(replication->zName, logger);
 	munit_assert_ptr_not_null(vfs);
 
 	munit_assert_int(err, ==, 0);
@@ -61,10 +65,12 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	return db;
 }
 
-static void tear_down(void *data) {
-	struct dqlite__db *      db          = data;
-	sqlite3_wal_replication *replication = sqlite3_wal_replication_find("test");
-	sqlite3_vfs *            vfs         = sqlite3_vfs_find(replication->zName);
+static void tear_down(void *data)
+{
+	struct dqlite__db *      db = data;
+	sqlite3_wal_replication *replication =
+	    sqlite3_wal_replication_find("test");
+	sqlite3_vfs *vfs = sqlite3_vfs_find(replication->zName);
 
 	dqlite__db_close(db);
 
@@ -84,7 +90,8 @@ static void tear_down(void *data) {
 
 /* An error is returned if the database does not exists and the
  * SQLITE_OPEN_CREATE flag is not on. */
-static MunitResult test_open_cantopen(const MunitParameter params[], void *data) {
+static MunitResult test_open_cantopen(const MunitParameter params[], void *data)
+{
 	struct dqlite__db *db    = data;
 	int                flags = SQLITE_OPEN_READWRITE;
 	int                rc;
@@ -101,7 +108,8 @@ static MunitResult test_open_cantopen(const MunitParameter params[], void *data)
 
 /* An error is returned if no VFS is registered under the given
  * name. */
-static MunitResult test_open_bad_vfs(const MunitParameter params[], void *data) {
+static MunitResult test_open_bad_vfs(const MunitParameter params[], void *data)
+{
 	struct dqlite__db *db    = data;
 	int                flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int                rc;
@@ -117,7 +125,8 @@ static MunitResult test_open_bad_vfs(const MunitParameter params[], void *data) 
 }
 
 /* Open a new database */
-static MunitResult test_open(const MunitParameter params[], void *data) {
+static MunitResult test_open(const MunitParameter params[], void *data)
+{
 	struct dqlite__db *db    = data;
 	int                flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int                rc;
@@ -144,7 +153,9 @@ static MunitTest dqlite__open_tests[] = {
  ******************************************************************************/
 
 /* If the SQL text is invalid, an error is returned. */
-static MunitResult test_prepare_bad_sql(const MunitParameter params[], void *data) {
+static MunitResult test_prepare_bad_sql(const MunitParameter params[],
+                                        void *               data)
+{
 	struct dqlite__db *  db = data;
 	struct dqlite__stmt *stmt;
 	int                  rc;
@@ -173,7 +184,8 @@ static MunitTest dqlite__prepare_tests[] = {
  ******************************************************************************/
 
 /* If the transaction fails to begin, the in_a_tx flag is not switched on. */
-static MunitResult test_begin_error(const MunitParameter params[], void *data) {
+static MunitResult test_begin_error(const MunitParameter params[], void *data)
+{
 	struct dqlite__db *db = data;
 	char *             msg;
 	int                rc;
@@ -190,14 +202,16 @@ static MunitResult test_begin_error(const MunitParameter params[], void *data) {
 	rc = dqlite__db_begin(db);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
-	munit_assert_string_equal(db->error,
-	                          "cannot start a transaction within a transaction");
+	munit_assert_string_equal(
+	    db->error, "cannot start a transaction within a transaction");
 
 	return MUNIT_OK;
 }
 
-/* The in_a_tx flag gets switched on after a transaction is successfully started. */
-static MunitResult test_begin(const MunitParameter params[], void *data) {
+/* The in_a_tx flag gets switched on after a transaction is successfully
+ * started. */
+static MunitResult test_begin(const MunitParameter params[], void *data)
+{
 	struct dqlite__db *db = data;
 	int                rc;
 
@@ -224,7 +238,8 @@ static MunitTest dqlite__begin_tests[] = {
  ******************************************************************************/
 
 /* If the transaction fails to commit, the in_a_tx flag is still switched off */
-static MunitResult test_commit_error(const MunitParameter params[], void *data) {
+static MunitResult test_commit_error(const MunitParameter params[], void *data)
+{
 	struct dqlite__db *  db = data;
 	struct dqlite__stmt *stmt;
 	char *               msg;
@@ -275,7 +290,8 @@ static MunitResult test_commit_error(const MunitParameter params[], void *data) 
 }
 
 /* Successful commit. */
-static MunitResult test_commit(const MunitParameter params[], void *data) {
+static MunitResult test_commit(const MunitParameter params[], void *data)
+{
 	struct dqlite__db *      db = data;
 	struct dqlite__vfs_file *file;
 	int                      rc;
@@ -291,7 +307,8 @@ static MunitResult test_commit(const MunitParameter params[], void *data) {
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The transaction refcount has dropped to 0 */
-	rc = sqlite3_file_control(db->db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
+	rc = sqlite3_file_control(
+	    db->db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	return MUNIT_OK;

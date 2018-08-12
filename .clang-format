@@ -12,12 +12,18 @@ BinPackArguments: false
 BinPackParameters: false
 
 BreakBeforeBraces: Linux
+
 IndentCaseLabels: false
 IndentWidth: 8
 
+PenaltyReturnTypeOnItsOwnLine: 100000
+
 UseTab: ForIndentation
 
-# AfterFunction: true
+BreakBeforeBraces: Custom
+BraceWrapping:
+ AfterFunction: true
+
 #AlignAfterOpenBracket: true
 #AlignEscapedNewlines: Right
 #AllowShortBlocksOnASingleLine: false
@@ -28,6 +34,5 @@ UseTab: ForIndentation
 #BreakBeforeBraces: Custom
 #ColumnLimit: 80
 #Language: Cpp
-#PenaltyReturnTypeOnItsOwnLine: 100000
 #SpacesInContainerLiterals: false
 #TabWidth: 8
