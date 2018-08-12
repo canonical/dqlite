@@ -4,6 +4,7 @@
 #include "../src/replication.h"
 
 #include "case.h"
+#include "log.h"
 
 /******************************************************************************
  *
@@ -20,7 +21,8 @@ struct fixture {
 };
 
 /* Execute a statement. */
-static void __db_exec(sqlite3 *db, const char *sql) {
+static void __db_exec(sqlite3 *db, const char *sql)
+{
 	char *errmsg;
 	int   rc;
 
@@ -29,7 +31,8 @@ static void __db_exec(sqlite3 *db, const char *sql) {
 }
 
 /* Open a test database and configure it */
-static sqlite3 *__db_open() {
+static sqlite3 *__db_open()
+{
 	sqlite3 *db;
 	int      flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int      rc;
@@ -58,8 +61,10 @@ static sqlite3 *__db_open() {
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	struct fixture *f;
+	dqlite_logger * logger = test_logger();
 	int             rc;
 
 	(void)params;
@@ -86,7 +91,7 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	rc = sqlite3_wal_replication_register(&f->replication, 0);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	f->vfs = dqlite_vfs_create(f->replication.zName);
+	f->vfs = dqlite_vfs_create(f->replication.zName, logger);
 	munit_assert_ptr_not_null(f->vfs);
 
 	sqlite3_vfs_register(f->vfs, 0);
@@ -97,7 +102,8 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	return f;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	struct fixture *f = data;
 	int             rc;
 
@@ -123,7 +129,8 @@ static void tear_down(void *data) {
  *
  ******************************************************************************/
 
-static MunitResult test_frames(const MunitParameter params[], void *data) {
+static MunitResult test_frames(const MunitParameter params[], void *data)
+{
 	(void)params;
 	(void)data;
 

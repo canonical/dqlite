@@ -148,8 +148,9 @@ static void dqlite__conn_write_cb(uv_write_t *req, int status)
 			dqlite__gateway_flushed(&c->gateway, response);
 		}
 
-		/* If had paused reading request, resume. */
-		if (c->paused) {
+		/* If we had paused reading requests and we're not shutting
+		 * down, let's resume. */
+		if (c->paused && !c->aborting) {
 			int err;
 			err = uv_read_start(&c->stream,
 			                    dqlite__conn_alloc_cb,
@@ -504,8 +505,9 @@ static void dqlite__conn_alive_cb(uv_timer_t *alive)
 	}
 }
 
-static void
-dqlite__conn_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
+static void dqlite__conn_read_cb(uv_stream_t *   stream,
+                                 ssize_t         nread,
+                                 const uv_buf_t *buf)
 {
 	int                  err;
 	struct dqlite__conn *c;
