@@ -25,7 +25,16 @@ void test_mem_fault_unwrap(sqlite3_mem_methods *wrap, sqlite3_mem_methods *m);
 
 /* Configure the faulty memory management implementation so malloc()-related
  * functions start returning NULL pointers after 'delay' calls, and keep failing
- * for 'repeat' consecutive times. */
+ * for 'repeat' consecutive times.
+ *
+ * Note that the faults won't automatically take place, an explicit call to
+ * test_mem_fault_enable() is needed. This allows configuration and actual
+ * behavior to happen at different times (e.g. configure at test setup time and
+ * enable at test case time). */
 void test_mem_fault_config(int delay, int repeat);
+
+/* Enable the faulty behavior, which from this point on will honor the
+ * parameters passed to test_mem_fault_config(). */
+void test_mem_fault_enable();
 
 #endif /* DQLITE_TEST_MEM_H */

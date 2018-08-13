@@ -145,5 +145,6 @@ void test_mem_fault_config(int delay, int repeat)
 	}
 	__mem_fault.countdown = delay;
 	__mem_fault.repeat    = repeat;
-	__mem_fault.enabled   = 1;
 }
+
+void test_mem_fault_enable() { __mem_fault.enabled = 1; }
