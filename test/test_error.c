@@ -12,7 +12,8 @@
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	dqlite__error *error;
 
 	test_case_setup(params, user_data);
@@ -24,7 +25,8 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	return error;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	dqlite__error *error = data;
 
 	dqlite__error_close(error);
@@ -38,7 +40,8 @@ static void tear_down(void *data) {
  *
  ******************************************************************************/
 
-static MunitResult test_printf(const MunitParameter params[], void *data) {
+static MunitResult test_printf(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
@@ -53,7 +56,8 @@ static MunitResult test_printf(const MunitParameter params[], void *data) {
 }
 
 static MunitResult test_printf_override(const MunitParameter params[],
-                                        void *               data) {
+                                        void *               data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
@@ -66,12 +70,14 @@ static MunitResult test_printf_override(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_printf_oom(const MunitParameter params[], void *data) {
+static MunitResult test_printf_oom(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
 
 	test_mem_fault_config(0, 1);
+	test_mem_fault_enable();
 
 	dqlite__error_printf(error, "hello %s", "world");
 
@@ -94,7 +100,8 @@ static MunitTest dqlite__error_printf_tests[] = {
  *
  ******************************************************************************/
 
-static MunitResult test_wrapf(const MunitParameter params[], void *data) {
+static MunitResult test_wrapf(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 	dqlite__error  cause;
 
@@ -114,7 +121,8 @@ static MunitResult test_wrapf(const MunitParameter params[], void *data) {
 }
 
 static MunitResult test_wrapf_null_cause(const MunitParameter params[],
-                                         void *               data) {
+                                         void *               data)
+{
 	dqlite__error *error = data;
 	dqlite__error  cause;
 
@@ -131,8 +139,8 @@ static MunitResult test_wrapf_null_cause(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_wrapf_itself(const MunitParameter params[],
-                                     void *               data) {
+static MunitResult test_wrapf_itself(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
@@ -159,7 +167,8 @@ static MunitTest dqlite__error_wrapf_tests[] = {
  *
  ******************************************************************************/
 
-static MunitResult test_oom(const MunitParameter params[], void *data) {
+static MunitResult test_oom(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
@@ -171,7 +180,8 @@ static MunitResult test_oom(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-static MunitResult test_oom_vargs(const MunitParameter params[], void *data) {
+static MunitResult test_oom_vargs(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
@@ -195,7 +205,8 @@ static MunitTest dqlite__error_oom_tests[] = {
  *
  ******************************************************************************/
 
-static MunitResult test_sys(const MunitParameter params[], void *data) {
+static MunitResult test_sys(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
@@ -219,7 +230,8 @@ static MunitTest dqlite__error_sys_tests[] = {
  *
  ******************************************************************************/
 
-static MunitResult test_uv(const MunitParameter params[], void *data) {
+static MunitResult test_uv(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
@@ -243,7 +255,8 @@ static MunitTest dqlite__error_uv_tests[] = {
  *
  ******************************************************************************/
 
-static MunitResult test_copy(const MunitParameter params[], void *data) {
+static MunitResult test_copy(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 	int            err;
 	char *         msg;
@@ -261,7 +274,8 @@ static MunitResult test_copy(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-static MunitResult test_copy_null(const MunitParameter params[], void *data) {
+static MunitResult test_copy_null(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 	int            err;
 	char *         msg;
@@ -276,7 +290,8 @@ static MunitResult test_copy_null(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-static MunitResult test_copy_oom(const MunitParameter params[], void *data) {
+static MunitResult test_copy_oom(const MunitParameter params[], void *data)
+{
 	dqlite__error *error = data;
 	int            err;
 	char *         msg;
@@ -284,6 +299,7 @@ static MunitResult test_copy_oom(const MunitParameter params[], void *data) {
 	(void)params;
 
 	test_mem_fault_config(2, 1);
+	test_mem_fault_enable();
 
 	dqlite__error_printf(error, "hello");
 
@@ -309,7 +325,8 @@ static MunitTest dqlite__error_copy_tests[] = {
  ******************************************************************************/
 
 static MunitResult test_is_disconnect_eof(const MunitParameter params[],
-                                          void *               data) {
+                                          void *               data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
@@ -322,7 +339,8 @@ static MunitResult test_is_disconnect_eof(const MunitParameter params[],
 }
 
 static MunitResult test_is_disconnect_econnreset(const MunitParameter params[],
-                                                 void *               data) {
+                                                 void *               data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
@@ -335,7 +353,8 @@ static MunitResult test_is_disconnect_econnreset(const MunitParameter params[],
 }
 
 static MunitResult test_is_disconnect_other(const MunitParameter params[],
-                                            void *               data) {
+                                            void *               data)
+{
 	dqlite__error *error = data;
 
 	(void)params;
@@ -348,7 +367,8 @@ static MunitResult test_is_disconnect_other(const MunitParameter params[],
 }
 
 static MunitResult test_is_disconnect_null(const MunitParameter params[],
-                                           void *               data) {
+                                           void *               data)
+{
 	dqlite__error *error = data;
 
 	(void)params;

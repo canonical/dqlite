@@ -463,6 +463,7 @@ static MunitResult test_open_oom(const MunitParameter params[], void *data)
 	(void)params;
 
 	test_mem_fault_config(0, 1);
+	test_mem_fault_enable();
 
 	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
@@ -482,6 +483,7 @@ static MunitResult test_open_oom_filename(const MunitParameter params[],
 	(void)params;
 
 	test_mem_fault_config(1, 1);
+	test_mem_fault_enable();
 
 	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
@@ -500,6 +502,7 @@ static MunitResult test_open_oom_wal(const MunitParameter params[], void *data)
 	(void)params;
 
 	test_mem_fault_config(2, 1);
+	test_mem_fault_enable();
 
 	rc = vfs->xOpen(vfs, "test.db-wal", file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
@@ -904,6 +907,7 @@ static MunitResult test_write_oom_page(const MunitParameter params[],
 	int           rc;
 
 	test_mem_fault_config(0, 1);
+	test_mem_fault_enable();
 
 	(void)params;
 
@@ -927,6 +931,7 @@ static MunitResult test_write_oom_page_array(const MunitParameter params[],
 	int           rc;
 
 	test_mem_fault_config(2, 1);
+	test_mem_fault_enable();
 
 	(void)params;
 
@@ -949,6 +954,7 @@ static MunitResult test_write_oom_page_buf(const MunitParameter params[],
 	int           rc;
 
 	test_mem_fault_config(1, 1);
+	test_mem_fault_enable();
 
 	(void)params;
 
@@ -976,6 +982,7 @@ static MunitResult test_write_oom_page_hdr(const MunitParameter params[],
 	memset(buf, 0, 512);
 
 	test_mem_fault_config(6, 1);
+	test_mem_fault_enable();
 
 	/* First write the main database header, which sets the page size. */
 	rc = file1->pMethods->xWrite(file1, __buf_header_main_db(), 100, 0);
@@ -1283,6 +1290,7 @@ static MunitTest dqlite__vfs_truncate_tests[] = {
     {"/database", test_truncate_database, setup, tear_down, 0, NULL},
     {"/wal", test_truncate_wal, setup, tear_down, 0, NULL},
     {"/unexpected", test_truncate_unexpected, setup, tear_down, 0, NULL},
+    {"/empty", test_truncate_empty, setup, tear_down, 0, NULL},
     {"/empty-grow", test_truncate_empty_grow, setup, tear_down, 0, NULL},
     {"/misaligned", test_truncate_misaligned, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL},
@@ -1294,9 +1302,17 @@ static MunitTest dqlite__vfs_truncate_tests[] = {
  *
  ******************************************************************************/
 
+static char *test_shm_map_oom_delay[]  = {"0", "1", "2", NULL};
+static char *test_shm_map_oom_repeat[] = {"1", NULL};
+
+static MunitParameterEnum test_shm_map_oom_params[] = {
+    {TEST_MEM_FAULT_DELAY_PARAM, test_shm_map_oom_delay},
+    {TEST_MEM_FAULT_REPEAT_PARAM, test_shm_map_oom_repeat},
+    {NULL, NULL},
+};
+
 /* Out of memory when trying to initialize the internal VFS shm data struct. */
-static MunitResult test_shm_map_oom_init(const MunitParameter params[],
-                                         void *               data)
+static MunitResult test_shm_map_oom(const MunitParameter params[], void *data)
 {
 	sqlite3_vfs *  vfs  = data;
 	sqlite3_file * file = __file_create_main_db(vfs);
@@ -1306,7 +1322,7 @@ static MunitResult test_shm_map_oom_init(const MunitParameter params[],
 	(void)params;
 	(void)data;
 
-	test_mem_fault_config(0, 1);
+	test_mem_fault_enable();
 
 	rc = file->pMethods->xShmMap(file, 0, 512, 1, &region);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
@@ -1315,7 +1331,7 @@ static MunitResult test_shm_map_oom_init(const MunitParameter params[],
 }
 
 static MunitTest dqlite__vfs_shm_map_tests[] = {
-    {"/oom-init", test_shm_map_oom_init, setup, tear_down, 0, NULL},
+    {"/oom", test_shm_map_oom, setup, tear_down, 0, test_shm_map_oom_params},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 
@@ -1482,11 +1498,133 @@ static MunitTest dqlite__vfs_shm_lock_tests[] = {
 
 /******************************************************************************
  *
+ * dqlite__vfs_file_control
+ *
+ ******************************************************************************/
+
+/* Trying to set the page size to a value different than the current one
+ * produces an error. */
+static MunitResult test_file_control_page_size(const MunitParameter params[],
+                                               void *               data)
+{
+	sqlite3_vfs * vfs     = data;
+	sqlite3_file *file    = __file_create_main_db(vfs);
+	char *        fnctl[] = {
+            "",
+            "page_size",
+            "512",
+            "",
+        };
+	int rc;
+
+	(void)params;
+	(void)data;
+
+	/* Setting the page size a first time returns NOTFOUND, which is what
+	 * SQLite effectively expects. */
+	rc = file->pMethods->xFileControl(file, SQLITE_FCNTL_PRAGMA, fnctl);
+	munit_assert_int(rc, ==, SQLITE_NOTFOUND);
+
+	/* Trying to change the page size results in an error. */
+	fnctl[2] = "1024";
+	rc = file->pMethods->xFileControl(file, SQLITE_FCNTL_PRAGMA, fnctl);
+	munit_assert_int(rc, ==, SQLITE_IOERR);
+
+	return MUNIT_OK;
+}
+
+/* Trying to set the journal mode to anything other than "wal" produces an
+ * error. */
+static MunitResult test_file_control_journal(const MunitParameter params[],
+                                             void *               data)
+{
+	sqlite3_vfs * vfs     = data;
+	sqlite3_file *file    = __file_create_main_db(vfs);
+	char *        fnctl[] = {
+            "",
+            "journal_mode",
+            "memory",
+            "",
+        };
+	int rc;
+
+	(void)params;
+	(void)data;
+
+	/* Setting the page size a first time returns NOTFOUND, which is what
+	 * SQLite effectively expects. */
+	rc = file->pMethods->xFileControl(file, SQLITE_FCNTL_PRAGMA, fnctl);
+	munit_assert_int(rc, ==, SQLITE_IOERR);
+
+	return MUNIT_OK;
+}
+
+static MunitTest dqlite__vfs_file_control_tests[] = {
+    {"/page-size", test_file_control_page_size, setup, tear_down, 0, NULL},
+    {"/journal", test_file_control_journal, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_current_time
+ *
+ ******************************************************************************/
+
+static MunitResult test_current_time(const MunitParameter params[], void *data)
+{
+	sqlite3_vfs *vfs = data;
+	double       now;
+	int          rc;
+
+	(void)params;
+
+	rc = vfs->xCurrentTime(vfs, &now);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	munit_assert_double(now, >, 0);
+
+	return MUNIT_OK;
+}
+
+static MunitTest dqlite_vfs_current_time_tests[] = {
+    {"/", test_current_time, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
+ * dqlite__vfs_sleep
+ *
+ ******************************************************************************/
+
+/* The xSleep implementation is a no-op. */
+static MunitResult test_sleep(const MunitParameter params[], void *data)
+{
+	sqlite3_vfs *vfs = data;
+	int          microseconds;
+
+	(void)params;
+
+	microseconds = vfs->xSleep(vfs, 123);
+
+	munit_assert_int(microseconds, ==, 123);
+
+	return MUNIT_OK;
+}
+
+static MunitTest dqlite_vfs_sleep_tests[] = {
+    {"/", test_sleep, setup, tear_down, 0, NULL},
+    {NULL, NULL, NULL, NULL, 0, NULL},
+};
+
+/******************************************************************************
+ *
  * dqlite_vfs_create
  *
  ******************************************************************************/
 
-static char *test_create_oom_delay[]  = {"0", "1", "2", "3", "4", NULL};
+static char *test_create_oom_delay[]  = {"0", "1", "2", "3", NULL};
 static char *test_create_oom_repeat[] = {"1", NULL};
 
 static MunitParameterEnum test_create_oom_params[] = {
@@ -1499,18 +1637,19 @@ static MunitResult test_create_oom(const MunitParameter params[], void *data)
 {
 	sqlite3_vfs *vfs;
 
-	test_case_setup(params, data);
+	(void)params;
+	(void)data;
+
+	test_mem_fault_enable();
 
 	vfs = dqlite_vfs_create("volatile", test_logger());
 	munit_assert_ptr_null(vfs);
-
-	test_case_tear_down(data);
 
 	return MUNIT_OK;
 }
 
 static MunitTest dqlite_vfs_create_tests[] = {
-    {"/oom", test_create_oom, NULL, NULL, 0, test_create_oom_params},
+    {"/oom", test_create_oom, setup, tear_down, 0, test_create_oom_params},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 
@@ -1703,6 +1842,9 @@ MunitSuite dqlite__vfs_suites[] = {
     {"_truncate", dqlite__vfs_truncate_tests, NULL, 1, 0},
     {"_shm_map", dqlite__vfs_shm_map_tests, NULL, 1, 0},
     {"_shm_lock", dqlite__vfs_shm_lock_tests, NULL, 1, 0},
+    {"_file_control", dqlite__vfs_file_control_tests, NULL, 1, 0},
+    {"_current_time", dqlite_vfs_current_time_tests, NULL, 1, 0},
+    {"_sleep", dqlite_vfs_sleep_tests, NULL, 1, 0},
     {"_create", dqlite_vfs_create_tests, NULL, 1, 0},
     {"/integration", dqlite__vfs_integration_tests, NULL, 1, 0},
     {NULL, NULL, NULL, 0, 0},

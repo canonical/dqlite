@@ -1152,7 +1152,7 @@ static int dqlite__vfs_file_control_pragma(struct dqlite__vfs_file *f,
 			    page_size != (int)f->content->page_size) {
 				fnctl[0] =
 				    "changing page size is not supported";
-				return SQLITE_ERROR;
+				return SQLITE_IOERR;
 			}
 			f->content->page_size = page_size;
 		}
@@ -1161,10 +1161,14 @@ static int dqlite__vfs_file_control_pragma(struct dqlite__vfs_file *f,
 		 * that the desired mode is 'wal'. */
 		if (strcasecmp(right, "wal") != 0) {
 			fnctl[0] = "only WAL mode is supported";
-			return SQLITE_ERROR;
+			return SQLITE_IOERR;
 		}
 	}
 
+	/* We're returning NOTFOUND here to tell SQLite that we wish it to go on
+	 * with its own handling as well. If we returned SQLITE_OK the page size
+	 * of the journal mode wouldn't be effectively set, as the processing of
+	 * the PRAGMA would stop here. */
 	return SQLITE_NOTFOUND;
 }
 

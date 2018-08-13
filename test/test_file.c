@@ -1,8 +1,8 @@
 #include "../include/dqlite.h"
 
-#include "leak.h"
+#include "case.h"
 #include "log.h"
-#include "munit.h"
+#include "mem.h"
 
 /******************************************************************************
  *
@@ -50,8 +50,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 {
 	sqlite3_vfs *vfs;
 
-	(void)params;
-	(void)user_data;
+	test_case_setup(params, user_data);
 
 	vfs = munit_malloc(sizeof *vfs);
 
@@ -71,7 +70,7 @@ static void tear_down(void *data)
 
 	dqlite_vfs_destroy(vfs);
 
-	test_assert_no_leaks();
+	test_case_tear_down(data);
 }
 
 /******************************************************************************
@@ -181,10 +180,44 @@ static MunitResult test_read_then_write(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
+static char *test_read_oom_delay[]  = {"0", "1", NULL};
+static char *test_read_oom_repeat[] = {"1", NULL};
+
+static MunitParameterEnum test_read_oom_params[] = {
+    {TEST_MEM_FAULT_DELAY_PARAM, test_read_oom_delay},
+    {TEST_MEM_FAULT_REPEAT_PARAM, test_read_oom_repeat},
+    {NULL, NULL},
+};
+
+/* Test out of memory scenarios. */
+static MunitResult test_read_oom(const MunitParameter params[], void *data)
+{
+	sqlite3_vfs *vfs = data;
+	sqlite3 *    db  = __db_open(vfs);
+	uint8_t *    buf;
+	size_t       len;
+	int          rc;
+
+	(void)params;
+
+	__db_exec(db, "CREATE TABLE test (n INT)");
+
+	test_mem_fault_enable();
+
+	rc = dqlite_file_read(vfs->zName, "test.db", &buf, &len);
+	munit_assert_int(rc, ==, SQLITE_NOMEM);
+
+	rc = sqlite3_close(db);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	return MUNIT_OK;
+}
+
 static MunitTest dqlite__file_read_tests[] = {
     {"/cantopen", test_read_cantopen, setup, tear_down, 0, NULL},
     {"/empty", test_read_empty, setup, tear_down, 0, NULL},
     {"/then-write", test_read_then_write, setup, tear_down, 0, NULL},
+    {"/oom", test_read_oom, setup, tear_down, 0, test_read_oom_params},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 
