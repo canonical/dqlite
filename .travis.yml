@@ -44,4 +44,4 @@ matrix:
          - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6 AC_FLAGS=--enable-experimental"
 
 after_success:
-  - bash <(curl -s https://codecov.io/bash)
+  - bash <(curl -s https://codecov.io/bash) -g "./test*"
