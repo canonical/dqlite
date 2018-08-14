@@ -11,6 +11,14 @@
 #include <stdio.h>
 #include <time.h>
 
+#ifdef DQLITE_EXPERIMENTAL
+
+#include <libco.h>
+
+#endif /* DQLITE_EXPERIMENTAL */
+
+#include "../include/dqlite.h"
+
 #include "../include/dqlite.h"
 
 #include "db.h"
@@ -62,7 +70,16 @@ struct dqlite__gateway {
 	 * heartbeat or interrupt. */
 	struct dqlite__gateway_ctx ctxs[DQLITE__GATEWAY_MAX_REQUESTS];
 
+	struct dqlite__request *next;
+
 	struct dqlite__db *db; /* Open database */
+
+#ifdef DQLITE_EXPERIMENTAL
+
+	cothread_t main_coroutine; /* Main coroutine ID */
+	cothread_t loop_coroutine; /* Coroutine ID of the gateway main loop. */
+
+#endif /* DQLITE_EXPERIMENTAL */
 };
 
 void dqlite__gateway_init(struct dqlite__gateway *    g,
@@ -71,6 +88,20 @@ void dqlite__gateway_init(struct dqlite__gateway *    g,
                           struct dqlite__options *    options);
 
 void dqlite__gateway_close(struct dqlite__gateway *g);
+
+/* Start the gateway.
+ *
+ * This function will kick off the gateway loop which runs in its own coroutine
+ * and has its own stack. Whenever blocking I/O is required (for example when
+ * applying a new raft entry) control will be passed back to the main thread
+ * loop, and the gateway loop will resume when the relevant I/O is completed.
+ *
+ * The 'now' parameter holds the current time, and it's used to set the initial
+ * heartbeat timestamp.
+ *
+ * It's a separate function from dqlite__gateway_init() since it must be called
+ * from the main loop thread. */
+int dqlite__gateway_start(struct dqlite__gateway *g, uint64_t now);
 
 /* Start handling a new client request.
  *
@@ -92,14 +123,15 @@ void dqlite__gateway_close(struct dqlite__gateway *g);
  * there's already a request in progress.
  *
  * User code can check whether the gateway would currently accept a request of a
- * certain type by calling dqlite__gateway_ok_to_accept.
+ * certain type by calling dqlite__gateway_ctx_for.
  */
 int dqlite__gateway_handle(struct dqlite__gateway *g,
                            struct dqlite__request *request);
 
-/* Return true if at the moment the gateway can accept a new request of the
- * given type. */
-int dqlite__gateway_ok_to_accept(struct dqlite__gateway *g, int type);
+/* Return the request ctx index that the gateway will use to handle a request of
+ * the given type at this moment, or -1 if the gateway can't handle a request of
+ * that type right now. */
+int dqlite__gateway_ctx_for(struct dqlite__gateway *g, int type);
 
 /* Notify the gateway that a response has been completely flushed and its data
  * sent to the client. */
