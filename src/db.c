@@ -21,7 +21,8 @@
 /* Wrapper around sqlite3_exec that frees the memory allocated for the error
  * message in case of failure and sets the dqlite__db's error field
  * appropriately */
-static int dqlite__db_exec(struct dqlite__db *db, const char *sql) {
+static int dqlite__db_exec(struct dqlite__db *db, const char *sql)
+{
 	char *msg;
 	int   rc;
 
@@ -40,15 +41,19 @@ static int dqlite__db_exec(struct dqlite__db *db, const char *sql) {
 	return SQLITE_OK;
 }
 
-void dqlite__db_init(struct dqlite__db *db) {
+void dqlite__db_init(struct dqlite__db *db)
+{
 	assert(db != NULL);
+
+	db->cluster = NULL;
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_DB);
 	dqlite__error_init(&db->error);
 	dqlite__stmt_registry_init(&db->stmts);
 }
 
-void dqlite__db_close(struct dqlite__db *db) {
+void dqlite__db_close(struct dqlite__db *db)
+{
 	int rc;
 
 	assert(db != NULL);
@@ -62,12 +67,21 @@ void dqlite__db_close(struct dqlite__db *db) {
 		/* Since we cleanup all existing db resources, SQLite should
 		 * never fail, according to the docs. */
 		assert(rc == SQLITE_OK);
+
+		if (db->cluster != NULL) {
+			/* Notify the cluster implementation about the database
+			 * being closed. */
+			db->cluster->xUnregister(db->cluster->ctx, db->db);
+		}
+
+		db->db = NULL;
 	}
 
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_DB);
 }
 
-const char *dqlite__db_hash(struct dqlite__db *db) {
+const char *dqlite__db_hash(struct dqlite__db *db)
+{
 	(void)db;
 
 	return NULL;
@@ -78,7 +92,8 @@ int dqlite__db_open(struct dqlite__db *db,
                     int                flags,
                     const char *       vfs,
                     uint16_t           page_size,
-                    const char *       wal_replication) {
+                    const char *       wal_replication)
+{
 	char pragma[255];
 	int  rc;
 
@@ -94,7 +109,8 @@ int dqlite__db_open(struct dqlite__db *db,
 		wal_replication = DQLITE__DB_DEFAULT_WAL_REPLICATION;
 	}
 
-	/* TODO: do some validation of the name (e.g. can't begin with a slash) */
+	/* TODO: do some validation of the name (e.g. can't begin with a slash)
+	 */
 	rc = sqlite3_open_v2(name, &db->db, flags, vfs);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&db->error, sqlite3_errmsg(db->db));
@@ -138,15 +154,17 @@ int dqlite__db_open(struct dqlite__db *db,
 	    db->db, "main", wal_replication, (void *)db->db);
 
 	if (rc != SQLITE_OK) {
-		dqlite__error_printf(&db->error, "unable to set WAL replication");
+		dqlite__error_printf(&db->error,
+		                     "unable to set WAL replication");
 		return rc;
 	}
 
 	/* TODO: make setting foreign keys optional. */
 	rc = dqlite__db_exec(db, "PRAGMA foreign_keys=1");
 	if (rc != SQLITE_OK) {
-		dqlite__error_wrapf(
-		    &db->error, &db->error, "unable to set foreign keys checks: %s");
+		dqlite__error_wrapf(&db->error,
+		                    &db->error,
+		                    "unable to set foreign keys checks: %s");
 		return rc;
 	}
 
@@ -155,7 +173,8 @@ int dqlite__db_open(struct dqlite__db *db,
 
 int dqlite__db_prepare(struct dqlite__db *   db,
                        const char *          sql,
-                       struct dqlite__stmt **stmt) {
+                       struct dqlite__stmt **stmt)
+{
 	int err;
 	int rc;
 
@@ -175,7 +194,8 @@ int dqlite__db_prepare(struct dqlite__db *   db,
 
 	(*stmt)->db = db->db;
 
-	rc = sqlite3_prepare_v2(db->db, sql, -1, &(*stmt)->stmt, &(*stmt)->tail);
+	rc =
+	    sqlite3_prepare_v2(db->db, sql, -1, &(*stmt)->stmt, &(*stmt)->tail);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&db->error, sqlite3_errmsg(db->db));
 		dqlite__stmt_registry_del(&db->stmts, *stmt);
@@ -186,11 +206,13 @@ int dqlite__db_prepare(struct dqlite__db *   db,
 }
 
 /* Lookup a stmt object by ID */
-struct dqlite__stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id) {
+struct dqlite__stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id)
+{
 	return dqlite__stmt_registry_get(&db->stmts, stmt_id);
 }
 
-int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt) {
+int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt)
+{
 	int rc;
 	int err;
 
@@ -200,11 +222,12 @@ int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt) {
 	if (stmt->stmt != NULL) {
 		rc = sqlite3_finalize(stmt->stmt);
 		if (rc != SQLITE_OK) {
-			dqlite__error_printf(&db->error, sqlite3_errmsg(db->db));
+			dqlite__error_printf(&db->error,
+			                     sqlite3_errmsg(db->db));
 		}
 
-		/* Unset the stmt member, to prevent dqlite__stmt_registry_del from
-		 * trying to finalize the statement too */
+		/* Unset the stmt member, to prevent dqlite__stmt_registry_del
+		 * from trying to finalize the statement too */
 		stmt->stmt = NULL;
 	} else {
 		rc = SQLITE_OK;
@@ -219,7 +242,8 @@ int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt) {
 	return rc;
 }
 
-int dqlite__db_begin(struct dqlite__db *db) {
+int dqlite__db_begin(struct dqlite__db *db)
+{
 	int rc;
 
 	assert(db != NULL);
@@ -232,7 +256,8 @@ int dqlite__db_begin(struct dqlite__db *db) {
 	return SQLITE_OK;
 }
 
-int dqlite__db_commit(struct dqlite__db *db) {
+int dqlite__db_commit(struct dqlite__db *db)
+{
 	int rc;
 
 	assert(db != NULL);
@@ -249,7 +274,8 @@ int dqlite__db_commit(struct dqlite__db *db) {
 	return SQLITE_OK;
 }
 
-int dqlite__db_rollback(struct dqlite__db *db) {
+int dqlite__db_rollback(struct dqlite__db *db)
+{
 	int rc;
 
 	assert(db != NULL);
