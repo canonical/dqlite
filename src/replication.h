@@ -9,12 +9,12 @@
 
 #ifdef DQLITE_EXPERIMENTAL
 
+#include <libco.h>
 #include <sqlite3.h>
 
 /* Application context object for sqlite3_wal_replication. */
 struct dqlite__replication_ctx {
-	void *arg;
-	void (*xHandler)(void *);
+	cothread_t main_coroutine;
 };
 
 /* Initialize a replication context object. */
