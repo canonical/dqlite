@@ -3,19 +3,25 @@
 
 #include <sqlite3.h>
 
+#include "../include/dqlite.h"
+
 #include "error.h"
 #include "registry.h"
 #include "stmt.h"
 
 /* Hold state for a single open SQLite database */
 struct dqlite__db {
+	/* public */
+	dqlite_cluster *cluster; /* Cluster API implementation  */
+
 	/* read-only */
 	size_t        id;    /* Database ID */
 	dqlite__error error; /* Last error occurred */
 
 	/* private */
-	sqlite3 *                    db;    /* Underlying SQLite database */
-	struct dqlite__stmt_registry stmts; /* Registry of prepared statements */
+	sqlite3 *db; /* Underlying SQLite database */
+	struct dqlite__stmt_registry
+	    stmts; /* Registry of prepared statements */
 };
 
 /* Initialize a database state object */

@@ -197,6 +197,8 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 
 	assert(db != NULL);
 
+	db->cluster = g->cluster;
+
 	rc = dqlite__db_open(db,
 	                     ctx->request->open.name,
 	                     ctx->request->open.flags,
