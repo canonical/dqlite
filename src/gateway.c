@@ -2,6 +2,12 @@
 #include <float.h>
 #include <stdio.h>
 
+#ifdef DQLITE_EXPERIMENTAL
+
+#include <libco.h>
+
+#endif /* DQLITE_EXPERIMENTAL */
+
 #include "../include/dqlite.h"
 
 #include "error.h"
@@ -473,6 +479,56 @@ static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
 	dqlite__gateway_query_batch(g, stmt, ctx);
 }
 
+/* Dispatch a request to the appropriate request handler. */
+static void dqlite__gateway_dispatch(struct dqlite__gateway *    g,
+                                     struct dqlite__gateway_ctx *ctx)
+{
+	switch (ctx->request->type) {
+
+#define DQLITE__GATEWAY_HANDLE(CODE, STRUCT, NAME, _)                          \
+	case CODE:                                                             \
+		dqlite__gateway_##NAME(g, ctx);                                \
+		break;
+
+		DQLITE__REQUEST_SCHEMA_TYPES(DQLITE__GATEWAY_HANDLE, );
+
+	default:
+		dqlite__error_printf(
+		    &g->error, "invalid request type %d", ctx->request->type);
+		dqlite__gateway_failure(g, ctx, SQLITE_ERROR);
+		break;
+	}
+
+	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
+}
+
+#ifdef DQLITE_EXPERIMENTAL
+
+/* Use a global variable to pass a gateway object as argument of the main loop
+ * coroutine entry point. */
+static struct dqlite__gateway *dqlite__gateway_loop_arg;
+
+static void dqlite__gateway_loop()
+{
+	struct dqlite__gateway *g = dqlite__gateway_loop_arg;
+
+	/* Pass control back to the main coroutine, as all we need to do
+	 * initially is to set the gateway local variable above */
+	co_switch(g->main_coroutine);
+
+	while (1) {
+		struct dqlite__gateway_ctx *ctx = &g->ctxs[0];
+
+		assert(ctx->request != NULL);
+
+		dqlite__gateway_dispatch(g, ctx);
+
+		co_switch(g->main_coroutine);
+	}
+}
+
+#endif /* DQLITE_EXPERIMENTAL */
+
 void dqlite__gateway_init(struct dqlite__gateway *    g,
                           struct dqlite__gateway_cbs *callbacks,
                           struct dqlite_cluster *     cluster,
@@ -506,7 +562,37 @@ void dqlite__gateway_init(struct dqlite__gateway *    g,
 	}
 
 	g->db = NULL;
+
+#ifdef DQLITE_EXPERIMENTAL
+	g->main_coroutine = NULL;
+	g->loop_coroutine = NULL;
+#endif /* DQLITE_EXPERIMENTAL */
 }
+
+#ifdef DQLITE_EXPERIMENTAL
+
+int dqlite__gateway_start(struct dqlite__gateway *g, uint64_t now)
+{
+	g->heartbeat      = now;
+	g->main_coroutine = co_active();
+	g->loop_coroutine =
+	    co_create(1024 * 1024 * sizeof(void *), dqlite__gateway_loop);
+
+	if (g->loop_coroutine == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	dqlite__gateway_loop_arg = g;
+
+	/* Kick off the gateway loop coroutine, which will initialize itself by
+	 * saving a reference to this gateway object and then immediately switch
+	 * back here. */
+	co_switch(g->loop_coroutine);
+
+	return 0;
+}
+
+#endif /* DQLITE_EXPERIMENTAL */
 
 void dqlite__gateway_close(struct dqlite__gateway *g)
 {
@@ -519,6 +605,14 @@ void dqlite__gateway_close(struct dqlite__gateway *g)
 		sqlite3_free(g->db);
 	}
 
+#ifdef DQLITE_EXPERIMENTAL
+
+	if (g->loop_coroutine != NULL) {
+		co_delete(g->loop_coroutine);
+	}
+
+#endif /* DQLITE_EXPERIMENTAL */
+
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
 		dqlite__response_close(&g->ctxs[i].response);
 	}
@@ -528,8 +622,9 @@ void dqlite__gateway_close(struct dqlite__gateway *g)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_GATEWAY);
 }
 
-int dqlite__gateway_ok_to_accept(struct dqlite__gateway *g, int type)
+int dqlite__gateway_ctx_for(struct dqlite__gateway *g, int type)
 {
+	int idx;
 	assert(g != NULL);
 
 	/* The first slot is reserved for database requests, and the second for
@@ -537,63 +632,59 @@ int dqlite__gateway_ok_to_accept(struct dqlite__gateway *g, int type)
 	switch (type) {
 	case DQLITE_REQUEST_HEARTBEAT:
 	case DQLITE_REQUEST_INTERRUPT:
-		return g->ctxs[1].request == NULL;
+		idx = 1;
+		break;
 	default:
-		return g->ctxs[0].request == NULL;
+		idx = 0;
+		break;
 	}
+
+	if (g->ctxs[idx].request == NULL) {
+		return idx;
+	}
+
+	return -1;
 }
 
 int dqlite__gateway_handle(struct dqlite__gateway *g,
                            struct dqlite__request *request)
 {
-	int                         err;
 	struct dqlite__gateway_ctx *ctx;
+	int                         i;
+	int                         err;
 
 	assert(g != NULL);
 	assert(request != NULL);
 
 	/* Abort if we can't accept the request at this time */
-	if (!dqlite__gateway_ok_to_accept(g, request->type)) {
+	i = dqlite__gateway_ctx_for(g, request->type);
+	if (i == -1) {
 		dqlite__error_printf(&g->error,
 		                     "concurrent request limit exceeded");
 		err = DQLITE_PROTO;
 		goto err;
 	}
 
-	/* Use the appropriate request context slot. */
-	switch (request->type) {
-	case DQLITE_REQUEST_HEARTBEAT:
-	case DQLITE_REQUEST_INTERRUPT:
-		ctx = &g->ctxs[1];
-		break;
-	default:
-		ctx = &g->ctxs[0];
-	}
-
-	assert(ctx != NULL);
-
+	/* Save the request in the context object. */
+	ctx          = &g->ctxs[i];
 	ctx->request = request;
 
-	switch (request->type) {
+	if (i == 1) {
+		/* Heartbeat and interrupt requests are handled synchronously.
+		 */
+		dqlite__gateway_dispatch(g, ctx);
+	} else {
 
-#define DQLITE__GATEWAY_HANDLE(CODE, STRUCT, NAME, _)                          \
-	case CODE:                                                             \
-		dqlite__gateway_##NAME(g, ctx);                                \
-		break;
-
-		DQLITE__REQUEST_SCHEMA_TYPES(DQLITE__GATEWAY_HANDLE, );
-
-	default:
-		dqlite__error_printf(
-		    &g->error, "invalid request type %d", request->type);
-		dqlite__gateway_failure(g, ctx, SQLITE_ERROR);
-		break;
+#ifdef DQLITE_EXPERIMENTAL
+		/* Database requests are handled asynchronously by the gateway
+		 * coroutine. */
+		co_switch(g->loop_coroutine);
+#else
+		dqlite__gateway_dispatch(g, ctx);
+#endif /* DQLITE_EXPERIMENTAL */
 	}
 
-	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
-
 	return 0;
-
 err:
 	assert(err != 0);
 

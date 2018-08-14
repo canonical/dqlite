@@ -329,6 +329,7 @@ static int dqlite__conn_header_read_cb(void *arg)
 {
 	int                  err;
 	struct dqlite__conn *c;
+	int                  ctx;
 
 	assert(arg != NULL);
 
@@ -355,8 +356,8 @@ static int dqlite__conn_header_read_cb(void *arg)
 
 	/* If the gateway is currently busy handling a previous request,
 	 * throttle the client. */
-	if (!dqlite__gateway_ok_to_accept(&c->gateway,
-	                                  c->request.message.type)) {
+	ctx = dqlite__gateway_ctx_for(&c->gateway, c->request.message.type);
+	if (ctx == -1) {
 		err = uv_read_stop(&c->stream);
 		if (err != 0) {
 			dqlite__error_uv(
@@ -641,8 +642,17 @@ int dqlite__conn_start(struct dqlite__conn *c)
 
 	assert(c != NULL);
 
-	/* Consider the initial connection as a heartbeat */
+#ifdef DQLITE_EXPERIMENTAL
+	/* Start the gateway */
+	err = dqlite__gateway_start(&c->gateway, uv_now(c->loop));
+	if (err != 0) {
+		dqlite__error_uv(
+		    &c->error, err, "failed to start gateway coroutine");
+		goto err;
+	}
+#else
 	c->gateway.heartbeat = uv_now(c->loop);
+#endif /* DQLITE_EXPERIMENTAL */
 
 	/* Start the alive timer, which will disconnect the client if no
 	 * heartbeat is received within the timeout. */

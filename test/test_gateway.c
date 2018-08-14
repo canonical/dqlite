@@ -142,6 +142,12 @@ static void *setup(const MunitParameter params[], void *user_data)
 	f->gateway = munit_malloc(sizeof *f->gateway);
 	dqlite__gateway_init(
 	    f->gateway, &callbacks, test_cluster(), f->options);
+
+#ifdef DQLITE_EXPERIMENTAL
+	rc = dqlite__gateway_start(f->gateway, 0);
+	munit_assert_int(rc, ==, SQLITE_OK);
+#endif /* DQLITE_EXPERIMENTAL */
+
 	f->request = munit_malloc(sizeof *f->request);
 
 	dqlite__request_init(f->request);
