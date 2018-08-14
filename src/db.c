@@ -290,5 +290,3 @@ int dqlite__db_rollback(struct dqlite__db *db)
 
 	return SQLITE_OK;
 }
-
-DQLITE__REGISTRY_METHODS(dqlite__db_registry, dqlite__db);

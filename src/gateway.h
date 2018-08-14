@@ -62,7 +62,7 @@ struct dqlite__gateway {
 	 * heartbeat or interrupt. */
 	struct dqlite__gateway_ctx ctxs[DQLITE__GATEWAY_MAX_REQUESTS];
 
-	struct dqlite__db_registry dbs; /* Registry of open databases */
+	struct dqlite__db *db; /* Open database */
 };
 
 void dqlite__gateway_init(struct dqlite__gateway *    g,
