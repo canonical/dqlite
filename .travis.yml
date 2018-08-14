@@ -27,21 +27,21 @@ matrix:
           sources:
             - ubuntu-toolchain-r-test
           packages:
-            - g++-6
+            - gcc-8
             - lcov
       env:
-         - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
+         - MATRIX_EVAL="CC=gcc-8"
     - os: linux
       addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
           packages:
-            - g++-6
+            - gcc-8
             - lcov
             - zlib1g-dev
       env:
-         - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6 AC_FLAGS=--enable-experimental"
+         - MATRIX_EVAL="CC=gcc-8 AC_FLAGS=--enable-experimental"
 
 after_success:
   - bash <(curl -s https://codecov.io/bash) -g "./test*"
