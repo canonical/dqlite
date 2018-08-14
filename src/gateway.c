@@ -210,8 +210,7 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 
 	dqlite__db_init(g->db);
 
-	g->db->id      = 0;
-	g->db->cluster = g->cluster;
+	g->db->id = 0;
 
 	rc = dqlite__db_open(g->db,
 	                     ctx->request->open.name,
@@ -236,6 +235,7 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 
 	/* Notify the cluster implementation about the new connection. */
 	g->cluster->xRegister(g->cluster->ctx, g->db->db);
+	g->db->cluster = g->cluster;
 }
 
 /* Ensure that there are no raft logs pending. */
