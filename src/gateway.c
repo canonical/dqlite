@@ -183,23 +183,31 @@ static void dqlite__gateway_heartbeat(struct dqlite__gateway *    g,
 static void dqlite__gateway_open(struct dqlite__gateway *    g,
                                  struct dqlite__gateway_ctx *ctx)
 {
-	int                err;
-	int                rc;
-	struct dqlite__db *db;
+	int rc;
 
-	err = dqlite__db_registry_add(&g->dbs, &db);
-	if (err != 0) {
-		assert(err == DQLITE_NOMEM);
-		dqlite__error_oom(&g->error, "unable to register database");
+	assert(g != NULL);
+
+	if (g->db != NULL) {
+		dqlite__error_printf(
+		    &g->error,
+		    "a database for this connection is already open");
+		dqlite__gateway_failure(g, ctx, SQLITE_BUSY);
+		return;
+	}
+
+	g->db = sqlite3_malloc(sizeof *g->db);
+	if (g->db == NULL) {
+		dqlite__error_oom(&g->error, "unable to create database");
 		dqlite__gateway_failure(g, ctx, SQLITE_NOMEM);
 		return;
 	}
 
-	assert(db != NULL);
+	dqlite__db_init(g->db);
 
-	db->cluster = g->cluster;
+	g->db->id      = 0;
+	g->db->cluster = g->cluster;
 
-	rc = dqlite__db_open(db,
+	rc = dqlite__db_open(g->db,
 	                     ctx->request->open.name,
 	                     ctx->request->open.flags,
 	                     g->options->vfs,
@@ -207,19 +215,21 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 	                     g->options->wal_replication);
 
 	if (rc != 0) {
-		dqlite__error_printf(&g->error, db->error);
+		dqlite__error_printf(&g->error, g->db->error);
 		dqlite__gateway_failure(g, ctx, rc);
-		dqlite__db_registry_del(&g->dbs, db);
+		dqlite__db_close(g->db);
+		sqlite3_free(g->db);
+		g->db = NULL;
 		return;
 	}
 
-	sqlite3_wal_hook(db->db, dqlite__gateway_maybe_checkpoint, g);
+	sqlite3_wal_hook(g->db->db, dqlite__gateway_maybe_checkpoint, g);
 
 	ctx->response.type  = DQLITE_RESPONSE_DB;
-	ctx->response.db.id = (uint32_t)db->id;
+	ctx->response.db.id = (uint32_t)g->db->id;
 
 	/* Notify the cluster implementation about the new connection. */
-	g->cluster->xRegister(g->cluster->ctx, db->db);
+	g->cluster->xRegister(g->cluster->ctx, g->db->db);
 }
 
 /* Ensure that there are no raft logs pending. */
@@ -233,8 +243,8 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 
 /* Lookup the database with the given ID. */
 #define DQLITE__GATEWAY_LOOKUP_DB(ID)                                          \
-	db = dqlite__db_registry_get(&g->dbs, ID);                             \
-	if (db == NULL) {                                                      \
+	db = g->db;                                                            \
+	if (db == NULL || db->id != ID) {                                      \
 		dqlite__error_printf(&g->error, "no db with id %d", ID);       \
 		dqlite__gateway_failure(g, ctx, SQLITE_NOTFOUND);              \
 		return;                                                        \
@@ -495,7 +505,7 @@ void dqlite__gateway_init(struct dqlite__gateway *    g,
 		dqlite__response_init(&g->ctxs[i].response);
 	}
 
-	dqlite__db_registry_init(&g->dbs);
+	g->db = NULL;
 }
 
 void dqlite__gateway_close(struct dqlite__gateway *g)
@@ -504,7 +514,10 @@ void dqlite__gateway_close(struct dqlite__gateway *g)
 
 	assert(g != NULL);
 
-	dqlite__db_registry_close(&g->dbs);
+	if (g->db != NULL) {
+		dqlite__db_close(g->db);
+		sqlite3_free(g->db);
+	}
 
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
 		dqlite__response_close(&g->ctxs[i].response);

@@ -6,7 +6,6 @@
 #include "../include/dqlite.h"
 
 #include "error.h"
-#include "registry.h"
 #include "stmt.h"
 
 /* Hold state for a single open SQLite database */
@@ -60,8 +59,5 @@ int dqlite__db_commit(struct dqlite__db *db);
 
 /* Rollback a transaction. */
 int dqlite__db_rollback(struct dqlite__db *db);
-
-/* Define the database registry */
-DQLITE__REGISTRY(dqlite__db_registry, dqlite__db);
 
 #endif /* DQLITE_DB_H */

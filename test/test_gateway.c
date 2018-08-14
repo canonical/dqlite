@@ -10,6 +10,7 @@
 
 #include "case.h"
 #include "log.h"
+#include "mem.h"
 
 /******************************************************************************
  *
@@ -301,6 +302,41 @@ static MunitResult test_open_error(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
+static char *test_open_oom_delay[]  = {"0", NULL};
+static char *test_open_oom_repeat[] = {"1", NULL};
+
+static MunitParameterEnum test_open_oom_params[] = {
+    {TEST_MEM_FAULT_DELAY_PARAM, test_open_oom_delay},
+    {TEST_MEM_FAULT_REPEAT_PARAM, test_open_oom_repeat},
+    {NULL, NULL},
+};
+
+/* Out of memory failure modes for the open request. */
+static MunitResult test_open_oom(const MunitParameter params[], void *data)
+{
+	struct fixture *f = data;
+	int             rc;
+
+	(void)params;
+
+	test_mem_fault_enable();
+
+	f->request->type       = DQLITE_REQUEST_OPEN;
+	f->request->open.name  = "test.db";
+	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	f->request->open.vfs   = f->replication->zName;
+
+	rc = dqlite__gateway_handle(f->gateway, f->request);
+	munit_assert_int(rc, ==, 0);
+
+	munit_assert_ptr_not_null(f->response);
+
+	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
+	munit_assert_int(f->response->failure.code, ==, SQLITE_NOMEM);
+
+	return MUNIT_OK;
+}
+
 /* Handle an oper request. */
 static MunitResult test_open(const MunitParameter params[], void *data)
 {
@@ -321,6 +357,40 @@ static MunitResult test_open(const MunitParameter params[], void *data)
 
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_DB);
 	munit_assert_int(f->response->db.id, ==, 0);
+
+	return MUNIT_OK;
+}
+
+/* Attempting to open two databases on the same gateway results in an error. */
+static MunitResult test_open_twice(const MunitParameter params[], void *data)
+{
+	struct fixture *f = data;
+	int             err;
+
+	(void)params;
+
+	f->request->type       = DQLITE_REQUEST_OPEN;
+	f->request->open.name  = "test.db";
+	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	f->request->open.vfs   = f->replication->zName;
+
+	err = dqlite__gateway_handle(f->gateway, f->request);
+	munit_assert_int(err, ==, 0);
+
+	dqlite__gateway_flushed(f->gateway, f->response);
+
+	f->request->open.name = "test2.db";
+
+	err = dqlite__gateway_handle(f->gateway, f->request);
+	munit_assert_int(err, ==, 0);
+
+	munit_assert_ptr_not_null(f->response);
+
+	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
+	munit_assert_int(f->response->failure.code, ==, SQLITE_BUSY);
+	munit_assert_string_equal(
+	    f->response->failure.message,
+	    "a database for this connection is already open");
 
 	return MUNIT_OK;
 }
@@ -1144,7 +1214,9 @@ static MunitTest dqlite__gateway_handle_tests[] = {
     {"/heartbeat", test_heartbeat, setup, tear_down, 0, NULL},
     {"/heartbeat/error", test_heartbeat_error, setup, tear_down, 0, NULL},
     {"/open/error", test_open_error, setup, tear_down, 0, NULL},
+    {"/open/oom", test_open_oom, setup, tear_down, 0, test_open_oom_params},
     {"/open", test_open, setup, tear_down, 0, NULL},
+    {"/open/twice", test_open_twice, setup, tear_down, 0, NULL},
     {"/prepare/bad-db", test_prepare_bad_db, setup, tear_down, 0, NULL},
     {"/prepare/bad-sql", test_prepare_bad_sql, setup, tear_down, 0, NULL},
     {"/prepare", test_prepare, setup, tear_down, 0, NULL},
