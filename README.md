@@ -8,7 +8,7 @@ of peers, using the Raft algorithm.
 Note that at the moment libdqlite implements only the client/server networking
 code, which allows a client to connect to a dqlite node and perform SQL queries
 using a dedicated wire protocol. The code that implements Raft-based replication
-is currently written in Go and available in the [go-dqlite](/CanonicalLtd/go-dqlite/)
+is currently written in Go and available in the [go-dqlite](https://github.com/CanonicalLtd/go-dqlite/)
 repository.
 
 It should be possible to compile the ``go-dqlite`` Go package as shared library
@@ -16,7 +16,7 @@ and hence use ``libdqlite`` with any programming language with C
 bindings. However, the current focus of dqlite is to be an embedded distributed
 database for Go applications.
 
-See [go-dqlite](/CanonicalLtd/go-dqlite/) for more information.
+See [go-dqlite](https://github.com/CanonicalLtd/go-dqlite/) for more information.
 
 Design higlights
 ----------------
