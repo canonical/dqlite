@@ -30,11 +30,21 @@
 
 #define DQLITE__GATEWAY_MAX_REQUESTS 2
 
+/* Cleanup code indicating that the request does not require any special logic
+ * upon completion. */
+#define DQLITE__GATEWAY_CLEANUP_NONE 0
+
+/* Cleanup code indicating that in order to complete the request the associated
+ * statement needs to be finalized. */
+#define DQLITE__GATEWAY_CLEANUP_FINALIZE 1
+
 /* Context for the gateway request handlers */
 struct dqlite__gateway_ctx {
 	struct dqlite__request *request;
 	struct dqlite__response response;
-	struct dqlite__stmt *   stmt; /* For multi-response queries */
+	struct dqlite__db *     db;      /* For multi-response queries */
+	struct dqlite__stmt *   stmt;    /* For multi-response queries */
+	int                     cleanup; /* Code indicating how to cleanup */
 };
 
 /* Callbacks that the gateway will invoke during the various phases of request

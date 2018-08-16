@@ -327,6 +327,7 @@ static void dqlite__gateway_exec(struct dqlite__gateway *    g,
  * A single batch of rows is typically about the size of the static response
  * message body. */
 static void dqlite__gateway_query_batch(struct dqlite__gateway *    g,
+                                        struct dqlite__db *         db,
                                         struct dqlite__stmt *       stmt,
                                         struct dqlite__gateway_ctx *ctx)
 {
@@ -334,19 +335,37 @@ static void dqlite__gateway_query_batch(struct dqlite__gateway *    g,
 
 	rc = dqlite__stmt_query(stmt, &ctx->response.message);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+		/* Finalize the statement if needed. */
+		if (ctx->cleanup == DQLITE__GATEWAY_CLEANUP_FINALIZE) {
+			dqlite__db_finalize(db, stmt);
+		}
+
 		/* TODO: reset what was written in the message */
 		dqlite__error_printf(&g->error, stmt->error);
 		dqlite__gateway_failure(g, ctx, rc);
-		ctx->stmt = NULL;
+
+		ctx->db      = NULL;
+		ctx->stmt    = NULL;
+		ctx->cleanup = DQLITE__GATEWAY_CLEANUP_NONE;
 	} else {
 		ctx->response.type = DQLITE_RESPONSE_ROWS;
 		assert(rc == SQLITE_ROW || rc == SQLITE_DONE);
 		if (rc == SQLITE_ROW) {
 			ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_PART;
+			ctx->db                = db;
 			ctx->stmt              = stmt;
 		} else {
+			/* Finalize the statement if needed. */
+			if (ctx->cleanup == DQLITE__GATEWAY_CLEANUP_FINALIZE) {
+				dqlite__db_finalize(db, stmt);
+			}
+
+			/* Reset the multi-response info and the cleanup code */
+			ctx->db      = NULL;
+			ctx->stmt    = NULL;
+			ctx->cleanup = DQLITE__GATEWAY_CLEANUP_NONE;
+
 			ctx->response.rows.eof = DQLITE_RESPONSE_ROWS_DONE;
-			ctx->stmt              = NULL;
 		}
 	}
 }
@@ -371,7 +390,11 @@ static void dqlite__gateway_query(struct dqlite__gateway *    g,
 		return;
 	}
 
-	dqlite__gateway_query_batch(g, stmt, ctx);
+	/* Set the cleanup code to none, since there's nothing to do
+	 * once the request is done. */
+	ctx->cleanup = DQLITE__GATEWAY_CLEANUP_NONE;
+
+	dqlite__gateway_query_batch(g, db, stmt, ctx);
 }
 
 static void dqlite__gateway_finalize(struct dqlite__gateway *    g,
@@ -420,7 +443,7 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
 		}
 
 		if (stmt->stmt == NULL) {
-			goto out;
+			return;
 		}
 
 		/* TODO: what about bindings for multi-statement SQL text? */
@@ -428,6 +451,7 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
 		if (rc != SQLITE_OK) {
 			dqlite__error_printf(&g->error, stmt->error);
 			dqlite__gateway_failure(g, ctx, rc);
+			goto err;
 			return;
 		}
 
@@ -439,13 +463,18 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
 		} else {
 			dqlite__error_printf(&g->error, stmt->error);
 			dqlite__gateway_failure(g, ctx, rc);
-			goto out;
+			goto err;
 		}
+
+		/* Ignore errors here. TODO: can this fail? */
+		dqlite__db_finalize(db, stmt);
 
 		sql = stmt->tail;
 	}
 
-out:
+	return;
+
+err:
 	/* Ignore errors here. TODO: emit a warning instead */
 	dqlite__db_finalize(db, stmt);
 }
@@ -476,7 +505,46 @@ static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
 		return;
 	}
 
-	dqlite__gateway_query_batch(g, stmt, ctx);
+	/* When the request is completed, the statement needs to be
+	 * finalized. */
+	ctx->cleanup = DQLITE__GATEWAY_CLEANUP_FINALIZE;
+
+	dqlite__gateway_query_batch(g, db, stmt, ctx);
+}
+
+static void dqlite__gateway_interrupt(struct dqlite__gateway *    g,
+                                      struct dqlite__gateway_ctx *ctx)
+{
+	assert(g != NULL);
+	assert(ctx != NULL);
+
+	/* If there's no ongoing database request there's really nothing to
+	 * do. */
+	if (g->ctxs[0].request == NULL) {
+		goto out;
+	}
+
+	assert(g->ctxs[0].cleanup == DQLITE__GATEWAY_CLEANUP_NONE ||
+	       g->ctxs[0].cleanup == DQLITE__GATEWAY_CLEANUP_FINALIZE);
+
+	/* Take appropriate action depending on the cleanup code. */
+	switch (g->ctxs[0].cleanup) {
+	case DQLITE__GATEWAY_CLEANUP_NONE:
+		/* Nothing to do */
+		break;
+	case DQLITE__GATEWAY_CLEANUP_FINALIZE:
+		/* Finalize the statempt */
+		dqlite__db_finalize(g->ctxs[0].db, g->ctxs[0].stmt);
+		break;
+	}
+
+out:
+	g->ctxs[0].request = NULL;
+	g->ctxs[0].db      = NULL;
+	g->ctxs[0].stmt    = NULL;
+	g->ctxs[0].cleanup = DQLITE__GATEWAY_CLEANUP_NONE;
+
+	ctx->response.type = DQLITE_RESPONSE_EMPTY;
 }
 
 /* Dispatch a request to the appropriate request handler. */
@@ -557,7 +625,9 @@ void dqlite__gateway_init(struct dqlite__gateway *    g,
 	/* Reset all request contexts in the buffer */
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
 		g->ctxs[i].request = NULL;
+		g->ctxs[i].db      = NULL;
 		g->ctxs[i].stmt    = NULL;
+		g->ctxs[i].cleanup = DQLITE__GATEWAY_CLEANUP_NONE;
 		dqlite__response_init(&g->ctxs[i].response);
 	}
 
@@ -628,13 +698,17 @@ int dqlite__gateway_ctx_for(struct dqlite__gateway *g, int type)
 	assert(g != NULL);
 
 	/* The first slot is reserved for database requests, and the second for
-	 * control ones. */
+	 * control ones. A control request can be served concurrently with a
+	 * database request, but not the other way round. */
 	switch (type) {
 	case DQLITE_REQUEST_HEARTBEAT:
 	case DQLITE_REQUEST_INTERRUPT:
 		idx = 1;
 		break;
 	default:
+		if (g->ctxs[1].request != NULL) {
+			return -1;
+		}
 		idx = 0;
 		break;
 	}
@@ -696,9 +770,10 @@ err:
 static void dqlite__gateway_query_resume(struct dqlite__gateway *    g,
                                          struct dqlite__gateway_ctx *ctx)
 {
+	assert(ctx->db != NULL);
 	assert(ctx->stmt != NULL);
 
-	dqlite__gateway_query_batch(g, ctx->stmt, ctx);
+	dqlite__gateway_query_batch(g, ctx->db, ctx->stmt, ctx);
 
 	/* Notify user code that a response is available. */
 	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
