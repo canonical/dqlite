@@ -24,6 +24,7 @@ extern MunitSuite dqlite__response_suites[];
 extern MunitSuite dqlite__schema_suites[];
 extern MunitSuite dqlite__server_suites[];
 extern MunitSuite dqlite__stmt_suites[];
+extern MunitSuite dqlite__uv_suites[];
 extern MunitSuite dqlite__vfs_suites[];
 
 static MunitSuite dqlite__test_suites[] = {
@@ -45,6 +46,7 @@ static MunitSuite dqlite__test_suites[] = {
     {"dqlite__schema", NULL, dqlite__schema_suites, 1, 0},
     {"dqlite__server", NULL, dqlite__server_suites, 1, 0},
     {"dqlite__stmt", NULL, dqlite__stmt_suites, 1, 0},
+    {"dqlite__uv", NULL, dqlite__uv_suites, 1, 0},
     {"dqlite__vfs", NULL, dqlite__vfs_suites, 1, 0},
     {NULL, NULL, NULL, 0, 0}};
 

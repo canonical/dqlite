@@ -11,6 +11,10 @@
 
 #include "munit.h"
 
+/* A few tests depend on knowing that certain read and writes will not be short
+ * and will happen immediately. */
+#define TEST_SOCKET_MIN_BUF_SIZE 4096
+
 /* Munit parameter defining the socket type to use in test_socket_pair_setup.
  *
  * If set to "unix" a pair of unix abstract sockets will be created. If set to

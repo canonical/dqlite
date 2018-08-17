@@ -29,6 +29,27 @@ struct test_socket__client {
 	int              fd;                  /* Connection to the server */
 };
 
+/* Assert that the read and write buffer size of the given socket is at least
+ * TEST_SOCKET_MIN_BUF_SIZE. */
+static void test_socket__assert_socket_buf_size(int fd)
+{
+	int       n;
+	socklen_t size = sizeof n;
+	int       rv;
+
+	/* Read */
+	rv = getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &n, &size);
+	munit_assert_int(rv, ==, 0);
+
+	munit_assert_int(n, >=, TEST_SOCKET_MIN_BUF_SIZE);
+
+	/* Write */
+	rv = getsockopt(fd, SOL_SOCKET, SO_SNDBUF, &n, &size);
+	munit_assert_int(rv, ==, 0);
+
+	munit_assert_int(n, >=, TEST_SOCKET_MIN_BUF_SIZE);
+}
+
 /* Bind s->fd and start listening on it. */
 static void test_socket__server_bind_and_listen(struct test_socket__server *s)
 {
@@ -49,7 +70,7 @@ static void test_socket__server_bind_and_listen(struct test_socket__server *s)
 		s->in_address.sin_port        = 0; /* Get a random free port */
 
 		address = (struct sockaddr *)(&s->in_address);
-		size    = sizeof(s->in_address);
+		size    = sizeof s->in_address;
 
 		break;
 
@@ -61,7 +82,7 @@ static void test_socket__server_bind_and_listen(struct test_socket__server *s)
 		strcpy(s->un_address.sun_path, ""); /* Get a random address */
 
 		address = (struct sockaddr *)(&s->un_address);
-		size    = sizeof(s->un_address);
+		size    = sizeof s->un_address;
 
 		break;
 
@@ -126,7 +147,7 @@ static void test_socket__server_accept(struct test_socket__server *s)
 	socklen_t          size;
 	int                rv;
 
-	size = sizeof(address);
+	size = sizeof address;
 
 	s->client_fd = accept(s->fd, (struct sockaddr *)&address, &size);
 
@@ -189,6 +210,9 @@ void test_socket_pair_setup(const MunitParameter     params[],
 
 	p->server = server.client_fd;
 	p->client = client.fd;
+
+	test_socket__assert_socket_buf_size(p->server);
+	test_socket__assert_socket_buf_size(p->client);
 
 	p->server_disconnected = false;
 	p->client_disconnected = false;
