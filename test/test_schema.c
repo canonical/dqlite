@@ -1,6 +1,7 @@
 #include "../src/error.h"
 #include "../src/message.h"
 #include "../src/schema.h"
+#include "../src/binary.h"
 
 #include "leak.h"
 #include "message.h"
@@ -87,8 +88,8 @@ static MunitResult test_encode_two_uint64(const MunitParameter params[],
 	munit_assert_int(handler->message.type, ==, TEST_BAR);
 	munit_assert_int(handler->message.offset1, ==, 16);
 
-	munit_assert_int(*(uint64_t *)handler->message.body1, ==, 99);
-	munit_assert_int(*(uint64_t *)(handler->message.body1 + 8), ==, 17);
+	munit_assert_int(dqlite__flip64(*(uint64_t *)handler->message.body1), ==, 99);
+	munit_assert_int(dqlite__flip64(*(uint64_t *)(handler->message.body1 + 8)), ==, 17);
 
 	return MUNIT_OK;
 }
@@ -110,7 +111,7 @@ static MunitResult test_encode_uint64_and_text(const MunitParameter params[],
 	munit_assert_int(handler->message.type, ==, TEST_FOO);
 	munit_assert_int(handler->message.offset1, ==, 24);
 
-	munit_assert_int(*(uint64_t *)handler->message.body1, ==, 123);
+	munit_assert_int(dqlite__flip64(*(uint64_t *)handler->message.body1), ==, 123);
 	munit_assert_string_equal((const char *)(handler->message.body1 + 8),
 	                          "hello world!");
 	return MUNIT_OK;
