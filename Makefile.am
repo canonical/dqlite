@@ -116,6 +116,7 @@ dqlite_test_SOURCES = \
   test/test_schema.c \
   test/test_server.c \
   test/test_stmt.c \
+  test/test_uv.c \
   test/test_vfs.c
 dqlite_test_CFLAGS = $(AM_CFLAGS)
 dqlite_test_CFLAGS += -I$(top_srcdir)/test -DMUNIT_NO_FORK

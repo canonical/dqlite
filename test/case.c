@@ -1,6 +1,7 @@
 #include <stdlib.h>
 
 #include <sqlite3.h>
+#include <uv.h>
 
 #include "../src/lifecycle.h"
 
@@ -22,7 +23,8 @@ static void test__case_sqlite_log(void *ctx, int rc, const char *errmsg)
 }
 
 /* Ensure that SQLite is unconfigured and set test-specific options. */
-void test__case_config_setup(const MunitParameter params[], void *user_data)
+static void test__case_config_setup(const MunitParameter params[],
+                                    void *               user_data)
 {
 	int                 rc;
 	sqlite3_mem_methods mem;
@@ -57,7 +59,7 @@ void test__case_config_setup(const MunitParameter params[], void *user_data)
 	}
 }
 
-void test__case_config_tear_down(void *data)
+static void test__case_config_tear_down(void *data)
 {
 	int                 rc;
 	sqlite3_mem_methods mem;
@@ -92,13 +94,61 @@ void test__case_config_tear_down(void *data)
 
 /******************************************************************************
  *
+ * Global libv configuration.
+ *
+ ******************************************************************************/
+
+/* Implementation of uv_malloc_func using SQLite's memory allocator. */
+static void *test__uv_malloc(size_t size) { return sqlite3_malloc(size); }
+
+/* Implementation of uv_realloc_func using SQLite's memory allocator. */
+static void *test__uv_realloc(void *ptr, size_t size)
+{
+	return sqlite3_realloc(ptr, size);
+}
+
+/* Implementation of uv_calloc_func using SQLite's memory allocator. */
+static void *test__uv_calloc(size_t nmemb, size_t size)
+{
+	size_t total_size = nmemb * size;
+	void * p          = sqlite3_malloc(total_size);
+
+	memset(p, 0, total_size);
+
+	return p;
+}
+
+static void test__case_uv_setup(const MunitParameter params[], void *user_data)
+{
+	int rv;
+
+	(void)params;
+	(void)user_data;
+
+	rv = uv_replace_allocator(
+	    test__uv_malloc, test__uv_realloc, test__uv_calloc, sqlite3_free);
+	munit_assert_int(rv, ==, 0);
+}
+
+static void test__case_uv_tear_down(void *data)
+{
+	int rv;
+
+	(void)data;
+
+	rv = uv_replace_allocator(malloc, realloc, calloc, free);
+	munit_assert_int(rv, ==, 0);
+}
+
+/******************************************************************************
+ *
  * Memory management.
  *
  ******************************************************************************/
 
 /* Ensure we're starting from a clean memory state with no allocations and
  * optionally inject malloc failures. */
-void test__case_mem_setup(const MunitParameter params[], void *user_data)
+static void test__case_mem_setup(const MunitParameter params[], void *user_data)
 {
 	int         malloc_count;
 	int         memory_used;
@@ -130,7 +180,7 @@ void test__case_mem_setup(const MunitParameter params[], void *user_data)
 }
 
 /* Ensure we're starting leaving a clean memory behind. */
-void test__case_mem_tear_down(void *data)
+static void test__case_mem_tear_down(void *data)
 {
 	(void)data;
 
@@ -154,7 +204,8 @@ void test__case_mem_tear_down(void *data)
  ******************************************************************************/
 
 /* Ensure that there are no outstanding initializations. */
-void test__case_lifecycle_setup(const MunitParameter params[], void *user_data)
+static void test__case_lifecycle_setup(const MunitParameter params[],
+                                       void *               user_data)
 {
 	int   rc;
 	char *msg;
@@ -168,7 +219,7 @@ void test__case_lifecycle_setup(const MunitParameter params[], void *user_data)
 	}
 }
 
-void test__case_lifecycle_tear_down(void *data)
+static void test__case_lifecycle_tear_down(void *data)
 {
 	int   rc;
 	char *msg;
@@ -192,6 +243,7 @@ void *test_case_setup(const MunitParameter params[], void *user_data)
 	test__case_config_setup(params, user_data);
 	test__case_mem_setup(params, user_data);
 	test__case_lifecycle_setup(params, user_data);
+	test__case_uv_setup(params, user_data);
 
 	return NULL;
 }
@@ -200,6 +252,7 @@ void test_case_tear_down(void *data)
 {
 	(void)data;
 
+	test__case_uv_tear_down(data);
 	test__case_lifecycle_tear_down(data);
 	test__case_mem_tear_down(data);
 	test__case_config_tear_down(data);
