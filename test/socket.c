@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -12,7 +13,7 @@
 char *test_socket_param_values[] = {"tcp", "unix", NULL};
 
 struct test_socket__server {
-	int family; /* Address family (either AF_INET or AF_UNIX) */
+	sa_family_t family; /* Address family (either AF_INET or AF_UNIX) */
 	union {
 		struct sockaddr_in in_address;
 		struct sockaddr_un un_address;
@@ -22,42 +23,45 @@ struct test_socket__server {
 };
 
 struct test_socket__client {
-	int family; /* Address family (either AF_INET or AF_UNIX) */
-	union {
-		struct sockaddr_in in_server_address;
-		struct sockaddr_un un_server_address;
-	};      /* Server address (either a TCP or a Unix address) */
-	int fd; /* Connection to the server */
+	sa_family_t      family;              /* Address family */
+	struct sockaddr *server_address;      /* Address value */
+	socklen_t        server_address_size; /* Address struct size */
+	int              fd;                  /* Connection to the server */
 };
 
+/* Bind s->fd and start listening on it. */
 static void test_socket__server_bind_and_listen(struct test_socket__server *s)
 {
-	int              err;
 	struct sockaddr *address;
 	socklen_t        size;
+	int              rv;
 
+	/* Initialize the appropriate socket address structure, depending on the
+	 * selected socket family. */
 	switch (s->family) {
 
 	case AF_INET:
+		/* TCP socket on loopback device */
 		memset(&s->in_address, 0, sizeof s->in_address);
 
-		s->in_address.sin_family = AF_INET;
+		s->in_address.sin_family      = AF_INET;
 		s->in_address.sin_addr.s_addr = inet_addr("127.0.0.1");
-		s->in_address.sin_port = 0;
+		s->in_address.sin_port        = 0; /* Get a random free port */
 
 		address = (struct sockaddr *)(&s->in_address);
-		size = sizeof(s->in_address);
+		size    = sizeof(s->in_address);
 
 		break;
 
 	case AF_UNIX:
+		/* Abstract Unix socket */
 		memset(&s->un_address, 0, sizeof s->un_address);
 
 		s->un_address.sun_family = AF_UNIX;
-		strcpy(s->un_address.sun_path, "");
+		strcpy(s->un_address.sun_path, ""); /* Get a random address */
 
 		address = (struct sockaddr *)(&s->un_address);
-		size = sizeof(s->un_address);
+		size    = sizeof(s->un_address);
 
 		break;
 
@@ -65,72 +69,62 @@ static void test_socket__server_bind_and_listen(struct test_socket__server *s)
 		munit_errorf("unexpected socket family: %d", s->family);
 	}
 
+	/* Create the listener fd. */
 	s->fd = socket(s->family, SOCK_STREAM, 0);
 	if (s->fd < 0) {
 		munit_errorf("failed to open server socket: %s",
 		             strerror(errno));
 	}
 
-	err = bind(s->fd, address, size);
-	if (err != 0) {
+	/* Bind the listener fd. */
+	rv = bind(s->fd, address, size);
+	if (rv != 0) {
 		munit_errorf("failed to bind server socket: %s",
 		             strerror(errno));
 	}
 
-	err = listen(s->fd, 1);
-	if (err != 0) {
+	/* Start listening. */
+	rv = listen(s->fd, 1);
+	if (rv != 0) {
 		munit_errorf("failed to listen server socket: %s",
 		             strerror(errno));
 	}
 
 	/* Get the actual addressed assigned by the kernel and save it back in
 	 * the relevant test_socket__server field (pointed to by address). */
-	err = getsockname(s->fd, address, &size);
-	if (err != 0) {
+	rv = getsockname(s->fd, address, &size);
+	if (rv != 0) {
 		munit_errorf("failed to get server address: %s",
 		             strerror(errno));
 	}
 }
 
+/* Create a client connection to the server. */
 static void test_socket__client_connect(struct test_socket__client *c)
 {
-	int              err;
-	struct sockaddr *address;
-	socklen_t        size;
+	int rv;
 
+	/* Create the socket. */
 	c->fd = socket(c->family, SOCK_STREAM, 0);
 	if (c->fd < 0) {
 		munit_errorf("failed to open client socket: %s",
 		             strerror(errno));
 	}
 
-	switch (c->family) {
-	case AF_INET:
-		address = (struct sockaddr *)(&c->in_server_address);
-		size = sizeof(c->in_server_address);
-		break;
-
-	case AF_UNIX:
-		address = (struct sockaddr *)(&c->un_server_address);
-		size = sizeof(c->un_server_address);
-		break;
-
-	default:
-		munit_errorf("unexpected socket family: %d", c->family);
-	}
-
-	err = connect(c->fd, address, size);
-	if (err != 0) {
+	/* Connect to the server */
+	rv = connect(c->fd, c->server_address, c->server_address_size);
+	if (rv != 0) {
 		munit_errorf("failed to connect to server socket: %s",
 		             strerror(errno));
 	}
 }
 
+/* Accept a client connection established with test_socket__client_connect. */
 static void test_socket__server_accept(struct test_socket__server *s)
 {
-	int                err;
 	struct sockaddr_in address; /* Client addressed, unused */
 	socklen_t          size;
+	int                rv;
 
 	size = sizeof(address);
 
@@ -142,8 +136,8 @@ static void test_socket__server_accept(struct test_socket__server *s)
 	}
 
 	/* Set non-blocking mode */
-	err = fcntl(s->client_fd, F_SETFL, O_NONBLOCK);
-	if (err != 0) {
+	rv = fcntl(s->client_fd, F_SETFL, O_NONBLOCK);
+	if (rv != 0) {
 		munit_errorf(
 		    "failed to set non-blocking mode on client connection: %s",
 		    strerror(errno));
@@ -178,10 +172,12 @@ void test_socket_pair_setup(const MunitParameter     params[],
 	/* Initialize the client side of the pair. */
 	switch (client.family) {
 	case AF_INET:
-		client.in_server_address = server.in_address;
+		client.server_address = (struct sockaddr *)&server.in_address;
+		client.server_address_size = sizeof server.in_address;
 		break;
 	case AF_UNIX:
-		client.un_server_address = server.un_address;
+		client.server_address = (struct sockaddr *)&server.un_address;
+		client.server_address_size = sizeof server.un_address;
 		break;
 	default:
 		munit_errorf("unexpected socket family: %d", client.family);
@@ -194,36 +190,36 @@ void test_socket_pair_setup(const MunitParameter     params[],
 	p->server = server.client_fd;
 	p->client = client.fd;
 
-	p->server_disconnected = 0;
-	p->client_disconnected = 0;
+	p->server_disconnected = false;
+	p->client_disconnected = false;
 
 	p->listen = server.fd;
 }
 
 void test_socket_pair_tear_down(struct test_socket_pair *p)
 {
-	int err;
+	int rv;
 
-	err = close(p->client);
-	if (err != 0) {
-		if (!p->client_disconnected || errno != EBADF) {
+	rv = close(p->client);
+	if (rv != 0) {
+		if (p->client_disconnected == false || errno != EBADF) {
 			munit_errorf("failed to close client socket: %s - %d",
 			             strerror(errno),
 			             errno);
 		}
 	}
 
-	err = close(p->server);
-	if (err != 0) {
-		if (!p->server_disconnected || errno != EBADF) {
+	rv = close(p->server);
+	if (rv != 0) {
+		if (p->server_disconnected == false || errno != EBADF) {
 			munit_errorf("failed to close server socket: %s - %d",
 			             strerror(errno),
 			             errno);
 		}
 	}
 
-	err = close(p->listen);
-	if (err != 0) {
+	rv = close(p->listen);
+	if (rv != 0) {
 		munit_errorf("failed to close listen socket: %s",
 		             strerror(errno));
 	}
@@ -231,32 +227,32 @@ void test_socket_pair_tear_down(struct test_socket_pair *p)
 
 void test_socket_pair_client_disconnect(struct test_socket_pair *p)
 {
-	int err;
+	int rv;
 
-	assert(!p->client_disconnected);
+	munit_assert(p->client_disconnected == false);
 
-	err = close(p->client);
-	if (err != 0) {
+	rv = close(p->client);
+	if (rv != 0) {
 		munit_errorf("failed to disconnect client: %s - %d",
 		             strerror(errno),
 		             errno);
 	}
 
-	p->client_disconnected = 1;
+	p->client_disconnected = true;
 }
 
 void test_socket_pair_server_disconnect(struct test_socket_pair *p)
 {
-	int err;
+	int rv;
 
-	assert(!p->server_disconnected);
+	munit_assert(p->server_disconnected == false);
 
-	err = close(p->server);
-	if (err != 0) {
+	rv = close(p->server);
+	if (rv != 0) {
 		munit_errorf("failed to disconnect server: %s - %d",
 		             strerror(errno),
 		             errno);
 	}
 
-	p->server_disconnected = 1;
+	p->server_disconnected = true;
 }
