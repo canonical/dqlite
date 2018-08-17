@@ -81,6 +81,7 @@ int dqlite__message_header_recv_done(struct dqlite__message *m)
 
 	assert(m->body2.base == NULL);
 
+	m->words = dqlite__flip32(m->words);
 	/* The message body can't be empty. */
 	if (m->words == 0) {
 		dqlite__error_printf(&m->error, "empty message body");
@@ -103,7 +104,7 @@ static size_t dqlite__message_body_len(struct dqlite__message *m)
 
 	/* The message body size is the number of words multiplied by the size
 	 * of each word. */
-	return dqlite__flip32(m->words) * DQLITE__MESSAGE_WORD_SIZE;
+	return m->words * DQLITE__MESSAGE_WORD_SIZE;
 }
 
 /* Allocate the message body dynamic buffer. Used for reading or writing a
