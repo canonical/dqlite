@@ -427,11 +427,8 @@ int dqlite__stmt_query(struct dqlite__stmt *s, struct dqlite__message *message)
 
 	/* Insert the rows. */
 	do {
-		/* FIXME: disable batching large result sets since it seems
-		 * buggy. */
-		/*if (dqlite__message_is_large(message)) {*/
-		if (0) {
-			/* If we are already filled the static buffer, let'so
+		if (dqlite__message_is_large(message)) {
+			/* If we are already filled the static buffer, let's
 			 * break for now, we'll send more rows in a separate
 			 * response. */
 			rc = SQLITE_ROW;

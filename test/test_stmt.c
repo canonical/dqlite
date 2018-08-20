@@ -967,7 +967,7 @@ static MunitTest dqlite__stmt_query_tests[] = {
     {"/two/simple", test_query_two_simple, setup, tear_down, 0, NULL},
     {"/two/complex", test_query_two_complex, setup, tear_down, 0, NULL},
     {"/count", test_query_count, setup, tear_down, 0, NULL},
-    /*{"/large", test_query_large, setup, tear_down, 0, NULL},*/
+    {"/large", test_query_large, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL}};
 
 /******************************************************************************
