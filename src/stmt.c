@@ -57,6 +57,7 @@ static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
 	uint64_t null;
 	text_t   text;
 	int      err;
+	uint64_t flag;
 
 	assert(s != NULL);
 
@@ -108,6 +109,13 @@ static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
 		if (err == 0 || err == DQLITE_EOM) {
 			*rc = sqlite3_bind_text(
 			    s->stmt, i, text, -1, SQLITE_TRANSIENT);
+		}
+		break;
+
+	case DQLITE_BOOLEAN:
+		err = dqlite__message_body_get_uint64(message, &flag);
+		if (err == 0 || err == DQLITE_EOM) {
+			*rc = sqlite3_bind_int64(s->stmt, i, flag == 0 ? 0 : 1);
 		}
 		break;
 
