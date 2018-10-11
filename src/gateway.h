@@ -73,6 +73,7 @@ struct dqlite__gateway {
 	struct dqlite__gateway_cbs callbacks; /* User callbacks */
 	dqlite_cluster *           cluster;   /* Cluster API implementation  */
 	struct dqlite__options *   options;   /* Configuration options */
+	struct dqlite_logger *     logger;    /* Logger to use */
 
 	/* Buffer holding responses for in-progress requests. Clients are
 	 * expected to issue one SQL request at a time and wait for the
@@ -95,6 +96,7 @@ struct dqlite__gateway {
 void dqlite__gateway_init(struct dqlite__gateway *    g,
                           struct dqlite__gateway_cbs *callbacks,
                           struct dqlite_cluster *     cluster,
+			  struct dqlite_logger *      logger,
                           struct dqlite__options *    options);
 
 void dqlite__gateway_close(struct dqlite__gateway *g);
