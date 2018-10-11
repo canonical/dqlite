@@ -609,7 +609,7 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 	                 dqlite__transitions);
 	dqlite__request_init(&c->request);
 
-	dqlite__gateway_init(&c->gateway, &callbacks, cluster, options);
+	dqlite__gateway_init(&c->gateway, &callbacks, cluster, logger, options);
 	dqlite__response_init(&c->response);
 
 	c->fd   = fd;

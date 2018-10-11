@@ -600,12 +600,14 @@ static void dqlite__gateway_loop()
 void dqlite__gateway_init(struct dqlite__gateway *    g,
                           struct dqlite__gateway_cbs *callbacks,
                           struct dqlite_cluster *     cluster,
+			  struct dqlite_logger *      logger,
                           struct dqlite__options *    options)
 {
 	int i;
 
 	assert(g != NULL);
 	assert(cluster != NULL);
+	assert(logger != NULL);
 	assert(options != NULL);
 	assert(callbacks != NULL);
 	assert(callbacks->xFlush != NULL);
@@ -620,6 +622,7 @@ void dqlite__gateway_init(struct dqlite__gateway *    g,
 	memcpy(&g->callbacks, callbacks, sizeof *callbacks);
 
 	g->cluster = cluster;
+	g->logger = logger;
 	g->options = options;
 
 	/* Reset all request contexts in the buffer */
