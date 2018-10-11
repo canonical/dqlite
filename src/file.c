@@ -53,7 +53,7 @@ int dqlite_file_read(const char *vfs_name,
 	}
 
 	/* Open the file */
-	file = sqlite3_malloc(sizeof(*file));
+	file = sqlite3_malloc(vfs->szOsFile);
 	if (file == NULL) {
 		rc = SQLITE_NOMEM;
 		goto err;
@@ -188,7 +188,7 @@ int dqlite_file_write(const char *vfs_name,
 	}
 
 	/* Open the file */
-	file = (sqlite3_file *)sqlite3_malloc(sizeof(*file));
+	file = (sqlite3_file *)sqlite3_malloc(vfs->szOsFile);
 	if (file == NULL) {
 		rc = SQLITE_NOMEM;
 		goto err;

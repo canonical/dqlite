@@ -510,6 +510,25 @@ static MunitResult test_open_oom_wal(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
+/* Open a temporary file. */
+static MunitResult test_open_tmp(const MunitParameter params[], void *data)
+{
+	sqlite3_vfs * vfs   = data;
+	sqlite3_file *file  = munit_malloc(vfs->szOsFile);
+	int           flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB | SQLITE_OPEN_DELETEONCLOSE;
+	int           rc;
+
+	(void)params;
+
+	rc = vfs->xOpen(vfs, NULL, file, flags, &flags);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = file->pMethods->xClose(file);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	return MUNIT_OK;
+}
+
 static MunitTest dqlite__vfs_open_tests[] = {
     {"/exclusive", test_open_exclusive, setup, tear_down, 0, NULL},
     {"/again", test_open_again, setup, tear_down, 0, NULL},
@@ -521,6 +540,7 @@ static MunitTest dqlite__vfs_open_tests[] = {
     {"/oom", test_open_oom, setup, tear_down, 0, NULL},
     {"/oom-filename", test_open_oom_filename, setup, tear_down, 0, NULL},
     {"/oom-wal", test_open_oom_wal, setup, tear_down, 0, NULL},
+    {"/tmp", test_open_tmp, setup, tear_down, 0, NULL},
     {NULL, NULL, NULL, NULL, 0, NULL},
 };
 
