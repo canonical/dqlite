@@ -419,6 +419,7 @@ struct dqlite__vfs_file {
 	struct dqlite__vfs_root
 	    *root; /* Pointer to our volatile VFS instance data. */
 	struct dqlite__vfs_content *content; /* Handle to the file content. */
+	int flags; /* Flags passed to xOpen */
 };
 
 /* Root of the volatile file system. Contains pointers to the content
@@ -611,6 +612,46 @@ static int dqlite__vfs_root_database_page_size(struct dqlite__vfs_root *r,
 	return SQLITE_OK;
 }
 
+static int dqlite__vfs_delete_content(struct dqlite__vfs_root *   root,
+                              const char * filename)
+{
+        struct dqlite__vfs_content *content;
+	int                         content_index;
+	int                         rc;
+
+	/* Check if the file exists. */
+	content_index =
+	    dqlite__vfs_root_content_lookup(root, filename, &content);
+	if (content == NULL) {
+		root->error = ENOENT;
+		rc          = SQLITE_IOERR_DELETE_NOENT;
+		goto err;
+	}
+
+	/* Check that there are no consumers of this file. */
+	if (content->refcount > 0) {
+		root->error = EBUSY;
+		pthread_mutex_unlock(&root->mutex);
+		rc = SQLITE_IOERR_DELETE;
+		goto err;
+	}
+
+	/* Free all memory allocated for this file. */
+	dqlite__vfs_content_destroy(content);
+
+	/* Reset the file content slot. */
+	*(root->contents + content_index) = NULL;
+
+	pthread_mutex_unlock(&root->mutex);
+
+	return SQLITE_OK;
+
+err:
+	assert(rc != SQLITE_OK);
+
+	return rc;
+}
+
 static int dqlite__vfs_close(sqlite3_file *file)
 {
 	struct dqlite__vfs_file *f    = (struct dqlite__vfs_file *)file;
@@ -626,6 +667,10 @@ static int dqlite__vfs_close(sqlite3_file *file)
 	if (f->content->refcount == 0 && f->content->shm != NULL) {
 		dqlite__vfs_shm_destroy(f->content->shm);
 		f->content->shm = NULL;
+	}
+
+	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
+	        dqlite__vfs_delete_content(root, f->content->filename);
 	}
 
 	pthread_mutex_unlock(&root->mutex);
@@ -1406,7 +1451,6 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 	assert(vfs != NULL);
 	assert(vfs->pAppData != NULL);
 	assert(file != NULL);
-	assert(filename != NULL);
 
 	(void)out_flags;
 
@@ -1416,6 +1460,22 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 	/* This signals SQLite to not call Close() in case we return an error.
 	 */
 	f->base.pMethods = 0;
+
+	/* From SQLite documentation:
+	 *
+	 * If the zFilename parameter to xOpen is a NULL pointer then xOpen
+	 * must invent its own temporary name for the file. Whenever the
+	 * xFilename parameter is NULL it will also be the case that the
+	 * flags parameter will include SQLITE_OPEN_DELETEONCLOSE.
+	 */
+	if (filename == NULL) {
+	    assert(flags & SQLITE_OPEN_DELETEONCLOSE);
+	    /* TODO: randomize the temporary file name. */
+	    filename = "tmp-file";
+	}
+
+	/* Save the flags */
+	f->flags = flags;
 
 	pthread_mutex_lock(&root->mutex);
 
@@ -1541,8 +1601,6 @@ static int dqlite__vfs_delete(sqlite3_vfs *vfs,
                               int          dir_sync)
 {
 	struct dqlite__vfs_root *   root;
-	struct dqlite__vfs_content *content;
-	int                         content_index;
 	int                         rc;
 
 	assert(vfs != NULL);
@@ -1554,35 +1612,7 @@ static int dqlite__vfs_delete(sqlite3_vfs *vfs,
 
 	pthread_mutex_lock(&root->mutex);
 
-	/* Check if the file exists. */
-	content_index =
-	    dqlite__vfs_root_content_lookup(root, filename, &content);
-	if (content == NULL) {
-		root->error = ENOENT;
-		rc          = SQLITE_IOERR_DELETE_NOENT;
-		goto err;
-	}
-
-	/* Check that there are no consumers of this file. */
-	if (content->refcount > 0) {
-		root->error = EBUSY;
-		pthread_mutex_unlock(&root->mutex);
-		rc = SQLITE_IOERR_DELETE;
-		goto err;
-	}
-
-	/* Free all memory allocated for this file. */
-	dqlite__vfs_content_destroy(content);
-
-	/* Reset the file content slot. */
-	*(root->contents + content_index) = NULL;
-
-	pthread_mutex_unlock(&root->mutex);
-
-	return SQLITE_OK;
-
-err:
-	assert(rc != SQLITE_OK);
+	rc = dqlite__vfs_delete_content(root, filename);
 
 	pthread_mutex_unlock(&root->mutex);
 
