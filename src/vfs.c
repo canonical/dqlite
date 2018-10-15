@@ -419,6 +419,7 @@ struct dqlite__vfs_file {
 	struct dqlite__vfs_root *   root;    /* Pointer to volatile VFS data. */
 	struct dqlite__vfs_content *content; /* Handle to the file content. */
 	int                         flags;   /* Flags passed to xOpen */
+	sqlite3_file *              temp;    /* For temp-files, actual VFS. */
 };
 
 /* Root of the volatile file system. Contains pointers to the content
@@ -656,6 +657,16 @@ static int dqlite__vfs_close(sqlite3_file *file)
 	struct dqlite__vfs_file *f    = (struct dqlite__vfs_file *)file;
 	struct dqlite__vfs_root *root = (struct dqlite__vfs_root *)(f->root);
 
+	if (f->temp != NULL) {
+		int rc;
+
+		/* Close the actual temporary file. */
+		rc = f->temp->pMethods->xClose(f->temp);
+		sqlite3_free(f->temp);
+
+		return rc;
+	}
+
 	pthread_mutex_lock(&root->mutex);
 
 	assert(f->content->refcount);
@@ -690,6 +701,12 @@ static int dqlite__vfs_read(sqlite3_file *file,
 	assert(buf != NULL);
 	assert(amount > 0);
 	assert(f != NULL);
+
+	if (f->temp != NULL) {
+		/* Read from the actual temporary file. */
+		return f->temp->pMethods->xRead(f->temp, buf, amount, offset);
+	}
+
 	assert(f->content != NULL);
 	assert(f->content->filename != NULL);
 	assert(f->content->refcount > 0);
@@ -859,6 +876,12 @@ static int dqlite__vfs_write(sqlite3_file *file,
 	assert(buf != NULL);
 	assert(amount > 0);
 	assert(f != NULL);
+
+	if (f->temp != NULL) {
+		/* Write to the actual temporary file. */
+		return f->temp->pMethods->xWrite(f->temp, buf, amount, offset);
+	}
+
 	assert(f->content != NULL);
 	assert(f->content->filename != NULL);
 	assert(f->content->refcount > 0);
@@ -1426,6 +1449,28 @@ static int dqlite__vfs_shm_unmap(sqlite3_file *file, int delete_flag)
 	return SQLITE_OK;
 }
 
+static const sqlite3_io_methods dqlite__io_methods = {
+    2,                                  // iVersion
+    dqlite__vfs_close,                  // xClose
+    dqlite__vfs_read,                   // xRead
+    dqlite__vfs_write,                  // xWrite
+    dqlite__vfs_truncate,               // xTruncate
+    dqlite__vfs_sync,                   // xSync
+    dqlite__vfs_file_size,              // xFileSize
+    dqlite__vfs_lock,                   // xLock
+    dqlite__vfs_unlock,                 // xUnlock
+    dqlite__vfs_check_reserved_lock,    // xCheckReservedLock
+    dqlite__vfs_file_control,           // xFileControl
+    dqlite__vfs_sector_size,            // xSectorSize
+    dqlite__vfs_device_characteristics, // xDeviceCharacteristics
+    dqlite__vfs_shm_map,                // xShmMap
+    dqlite__vfs_shm_lock,               // xShmLock
+    dqlite__vfs_shm_barrier,            // xShmBarrier
+    dqlite__vfs_shm_unmap,              // xShmUnmap
+    0,
+    0,
+};
+
 static int dqlite__vfs_open(sqlite3_vfs * vfs,
                             const char *  filename,
                             sqlite3_file *file,
@@ -1436,9 +1481,8 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 	struct dqlite__vfs_file *   f;
 	struct dqlite__vfs_content *content;
 
-	int free_slot =
-	    -1;         /* Index of a free slot in the root->acontent array. */
-	int exists = 0; /* Whether the file exists already. */
+	int free_slot = -1; /* Index of a free slot in root->acontent. */
+	int exists    = 0;  /* Whether the file exists already. */
 
 	int type; /* File content type (e.g. database or WAL). */
 	int rc;   /* Return code. */
@@ -1459,6 +1503,10 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 	/* This signals SQLite to not call Close() in case we return an error.
 	 */
 	f->base.pMethods = 0;
+	f->temp          = NULL;
+
+	/* Save the flags */
+	f->flags = flags;
 
 	/* From SQLite documentation:
 	 *
@@ -1469,12 +1517,28 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 	 */
 	if (filename == NULL) {
 		assert(flags & SQLITE_OPEN_DELETEONCLOSE);
-		/* TODO: randomize the temporary file name. */
-		filename = "tmp-file";
-	}
 
-	/* Save the flags */
-	f->flags = flags;
+		/* Open an actual temporary file. */
+		vfs = sqlite3_vfs_find("unix");
+		assert(vfs != NULL);
+
+		f->temp = sqlite3_malloc(vfs->szOsFile);
+		if (f->temp == NULL) {
+			root->error = ENOENT;
+			return SQLITE_CANTOPEN;
+		}
+		rc = vfs->xOpen(vfs, NULL, f->temp, flags, out_flags);
+		if (rc != SQLITE_OK) {
+			sqlite3_free(f->temp);
+			return rc;
+		}
+
+		f->base.pMethods = &dqlite__io_methods;
+		f->root          = NULL;
+		f->content       = NULL;
+
+		return SQLITE_OK;
+	}
 
 	pthread_mutex_lock(&root->mutex);
 
@@ -1552,29 +1616,7 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 	}
 
 	// Populate the new file handle.
-	static const sqlite3_io_methods io = {
-	    2,                                  // iVersion
-	    dqlite__vfs_close,                  // xClose
-	    dqlite__vfs_read,                   // xRead
-	    dqlite__vfs_write,                  // xWrite
-	    dqlite__vfs_truncate,               // xTruncate
-	    dqlite__vfs_sync,                   // xSync
-	    dqlite__vfs_file_size,              // xFileSize
-	    dqlite__vfs_lock,                   // xLock
-	    dqlite__vfs_unlock,                 // xUnlock
-	    dqlite__vfs_check_reserved_lock,    // xCheckReservedLock
-	    dqlite__vfs_file_control,           // xFileControl
-	    dqlite__vfs_sector_size,            // xSectorSize
-	    dqlite__vfs_device_characteristics, // xDeviceCharacteristics
-	    dqlite__vfs_shm_map,                // xShmMap
-	    dqlite__vfs_shm_lock,               // xShmLock
-	    dqlite__vfs_shm_barrier,            // xShmBarrier
-	    dqlite__vfs_shm_unmap,              // xShmUnmap
-	    0,
-	    0,
-	};
-
-	f->base.pMethods = &io;
+	f->base.pMethods = &dqlite__io_methods;
 	f->root          = root;
 	f->content       = content;
 
