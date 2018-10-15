@@ -515,13 +515,28 @@ static MunitResult test_open_tmp(const MunitParameter params[], void *data)
 {
 	sqlite3_vfs * vfs   = data;
 	sqlite3_file *file  = munit_malloc(vfs->szOsFile);
-	int           flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB | SQLITE_OPEN_DELETEONCLOSE;
+	int           flags = 0;
+	char          buf[16];
 	int           rc;
 
 	(void)params;
 
+	flags |= SQLITE_OPEN_CREATE;
+	flags |= SQLITE_OPEN_READWRITE;
+	flags |= SQLITE_OPEN_TEMP_JOURNAL;
+	flags |= SQLITE_OPEN_DELETEONCLOSE;
+
 	rc = vfs->xOpen(vfs, NULL, file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = file->pMethods->xWrite(file, "hello", 5, 0);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	memset(buf, 0, sizeof buf);
+	rc = file->pMethods->xRead(file, buf, 5, 0);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	munit_assert_string_equal(buf, "hello");
 
 	rc = file->pMethods->xClose(file);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -1433,10 +1448,11 @@ static MunitResult test_shm_lock_excl_busy(const MunitParameter params[],
 static MunitResult test_shm_lock_release_unix(const MunitParameter params[],
                                               void *               data)
 {
-	sqlite3_vfs *  vfs   = sqlite3_vfs_find("unix");
-	sqlite3_file * file  = munit_malloc(vfs->szOsFile);
-	int            flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
-	const char *   dir   = test_dir_setup();
+	sqlite3_vfs * vfs  = sqlite3_vfs_find("unix");
+	sqlite3_file *file = munit_malloc(vfs->szOsFile);
+	int           flags =
+	    SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
+	const char *   dir = test_dir_setup();
 	char           path[256];
 	volatile void *region;
 	int            rc;
@@ -1445,7 +1461,7 @@ static MunitResult test_shm_lock_release_unix(const MunitParameter params[],
 	(void)data;
 
 	sprintf(path, "%s/test.db", dir);
-	path[strlen(path)+1] = 0;
+	path[strlen(path) + 1] = 0;
 
 	rc = vfs->xOpen(vfs, path, file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
