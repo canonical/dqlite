@@ -1435,7 +1435,7 @@ static MunitResult test_shm_lock_release_unix(const MunitParameter params[],
 {
 	sqlite3_vfs *  vfs   = sqlite3_vfs_find("unix");
 	sqlite3_file * file  = munit_malloc(vfs->szOsFile);
-	int            flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
+	int            flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	const char *   dir   = test_dir_setup();
 	char           path[256];
 	volatile void *region;
@@ -1445,10 +1445,12 @@ static MunitResult test_shm_lock_release_unix(const MunitParameter params[],
 	(void)data;
 
 	sprintf(path, "%s/test.db", dir);
+	path[strlen(path)+1] = 0;
+
 	rc = vfs->xOpen(vfs, path, file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
-	rc = file->pMethods->xShmMap(file, 0, 512, 1, &region);
+	rc = file->pMethods->xShmMap(file, 0, 4096, 1, &region);
 	munit_assert_int(rc, ==, 0);
 
 	flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
