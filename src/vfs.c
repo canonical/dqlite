@@ -415,11 +415,10 @@ static void dqlite__vfs_content_truncate(struct dqlite__vfs_content *content,
 
 /* Implementation of the abstract sqlite3_file base class. */
 struct dqlite__vfs_file {
-	sqlite3_file base; /* Base class. Must be first. */
-	struct dqlite__vfs_root
-	    *root; /* Pointer to our volatile VFS instance data. */
+	sqlite3_file                base;    /* Base class. Must be first. */
+	struct dqlite__vfs_root *   root;    /* Pointer to volatile VFS data. */
 	struct dqlite__vfs_content *content; /* Handle to the file content. */
-	int flags; /* Flags passed to xOpen */
+	int                         flags;   /* Flags passed to xOpen */
 };
 
 /* Root of the volatile file system. Contains pointers to the content
@@ -612,10 +611,10 @@ static int dqlite__vfs_root_database_page_size(struct dqlite__vfs_root *r,
 	return SQLITE_OK;
 }
 
-static int dqlite__vfs_delete_content(struct dqlite__vfs_root *   root,
-                              const char * filename)
+static int dqlite__vfs_delete_content(struct dqlite__vfs_root *root,
+                                      const char *             filename)
 {
-        struct dqlite__vfs_content *content;
+	struct dqlite__vfs_content *content;
 	int                         content_index;
 	int                         rc;
 
@@ -670,7 +669,7 @@ static int dqlite__vfs_close(sqlite3_file *file)
 	}
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
-	        dqlite__vfs_delete_content(root, f->content->filename);
+		dqlite__vfs_delete_content(root, f->content->filename);
 	}
 
 	pthread_mutex_unlock(&root->mutex);
@@ -1469,9 +1468,9 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 	 * flags parameter will include SQLITE_OPEN_DELETEONCLOSE.
 	 */
 	if (filename == NULL) {
-	    assert(flags & SQLITE_OPEN_DELETEONCLOSE);
-	    /* TODO: randomize the temporary file name. */
-	    filename = "tmp-file";
+		assert(flags & SQLITE_OPEN_DELETEONCLOSE);
+		/* TODO: randomize the temporary file name. */
+		filename = "tmp-file";
 	}
 
 	/* Save the flags */
@@ -1600,8 +1599,8 @@ static int dqlite__vfs_delete(sqlite3_vfs *vfs,
                               const char * filename,
                               int          dir_sync)
 {
-	struct dqlite__vfs_root *   root;
-	int                         rc;
+	struct dqlite__vfs_root *root;
+	int                      rc;
 
 	assert(vfs != NULL);
 	assert(vfs->pAppData != NULL);
