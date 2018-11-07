@@ -29,12 +29,7 @@ int dqlite_init(const char **errmsg)
 	 * would degrade performance but allow clients to use this process'
 	 * SQLite instance for other purposes that require multi-thread.
 	 */
-
-	/* FIXME: this setting seems to be problematic since in fact it might be
-	 * possible for clients to send queries concurrently. So it's currently
-	 * disabled, see #92. */
-	/*rc = sqlite3_config(SQLITE_CONFIG_SINGLETHREAD); */
-	rc = SQLITE_OK;
+	rc = sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
 	if (rc != SQLITE_OK) {
 		*errmsg = "failed to set SQLite to single-thread mode";
 		return DQLITE_ERROR;

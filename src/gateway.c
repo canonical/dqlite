@@ -318,6 +318,7 @@ static void dqlite__gateway_exec(struct dqlite__gateway *    g,
 	} else {
 		dqlite__error_printf(&g->error, stmt->error);
 		dqlite__gateway_failure(g, ctx, rc);
+		sqlite3_reset(stmt->stmt);
 	}
 }
 
@@ -335,6 +336,8 @@ static void dqlite__gateway_query_batch(struct dqlite__gateway *    g,
 
 	rc = dqlite__stmt_query(stmt, &ctx->response.message);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+		sqlite3_reset(stmt->stmt);
+
 		/* Finalize the statement if needed. */
 		if (ctx->cleanup == DQLITE__GATEWAY_CLEANUP_FINALIZE) {
 			dqlite__db_finalize(db, stmt);
@@ -600,7 +603,7 @@ static void dqlite__gateway_loop()
 void dqlite__gateway_init(struct dqlite__gateway *    g,
                           struct dqlite__gateway_cbs *callbacks,
                           struct dqlite_cluster *     cluster,
-			  struct dqlite_logger *      logger,
+                          struct dqlite_logger *      logger,
                           struct dqlite__options *    options)
 {
 	int i;
@@ -622,7 +625,7 @@ void dqlite__gateway_init(struct dqlite__gateway *    g,
 	memcpy(&g->callbacks, callbacks, sizeof *callbacks);
 
 	g->cluster = cluster;
-	g->logger = logger;
+	g->logger  = logger;
 	g->options = options;
 
 	/* Reset all request contexts in the buffer */
