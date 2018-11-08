@@ -33,6 +33,10 @@
 /* Number of reader marks in the wal index header. */
 #define DQLITE__FORMAT_WAL_NREADER 5
 
+/* Lock index given the offset I in the aReadMark array. See the equivalent
+ * WAL_READ_LOCK definition in the wal.c file of the SQLite source code. */
+#define DQLITE__FORMAT_WAL_READ_LOCK(I) (3+(I))
+
 /* Given the page size, calculate the size of a full WAL frame (frame header
  * plus page data). */
 #define dqlite__format_wal_calc_frame_size(PAGE_SIZE)                               \

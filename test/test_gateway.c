@@ -1,9 +1,11 @@
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
+
 #include "../src/gateway.h"
 #include "../src/options.h"
 #include "../src/response.h"
+#include "../src/format.h"
 
 #include "cluster.h"
 #include "replication.h"
@@ -1212,6 +1214,102 @@ static MunitResult test_checkpoint(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
+/* If the number of frames in the WAL reaches the configured threshold, but a
+ * read transaction holding a shared lock on the WAL is in progress, no
+ * checkpoint is triggered. */
+static MunitResult test_checkpoint_busy(const MunitParameter params[],
+                                        void *               data)
+{
+	struct fixture *     f    = data;
+	sqlite3_file *       file = munit_malloc(f->vfs->szOsFile);
+	uint32_t             db1_id;
+	struct dqlite__db    db2;
+	struct dqlite__stmt *stmt2;
+	uint64_t             last_insert_id;
+	uint64_t             rows_affected;
+	uint32_t             stmt_id;
+	int                  err;
+	int                  rc;
+	int                  flags;
+	sqlite3_int64        size;
+
+	(void)params;
+
+	__open(f, &db1_id);
+	__prepare(f, db1_id, "BEGIN", &stmt_id);
+	__exec(f, db1_id, stmt_id);
+
+	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->exec_sql.db_id = db1_id;
+	f->request->exec_sql.sql =
+	    "CREATE TABLE test (n INT); INSERT INTO test VALUES(1)";
+
+	err = dqlite__gateway_handle(f->gateway, f->request);
+	munit_assert_int(err, ==, 0);
+
+	dqlite__gateway_flushed(f->gateway, f->response);
+
+	__prepare(f, db1_id, "COMMIT", &stmt_id);
+	__exec(f, db1_id, stmt_id);
+
+	/* Manually open a new connection to the same database and start a read
+	 * transaction. */
+	dqlite__db_init(&db2);
+	flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	rc    = dqlite__db_open(&db2,
+                             "test.db",
+                             flags,
+                             f->gateway->options->vfs,
+                             f->gateway->options->page_size,
+                             f->gateway->options->wal_replication);
+	munit_assert_int(rc, ==, 0);
+
+	rc = dqlite__db_prepare(&db2, "BEGIN", &stmt2);
+	munit_assert_int(rc, ==, 0);
+
+	rc = dqlite__stmt_exec(stmt2, &last_insert_id, &rows_affected);
+	munit_assert_int(rc, ==, 0);
+
+	rc = dqlite__db_prepare(&db2, "SELECT * FROM test", &stmt2);
+	munit_assert_int(rc, ==, 0);
+
+	rc = dqlite__stmt_exec(stmt2, &last_insert_id, &rows_affected);
+	munit_assert_int(rc, ==, SQLITE_ROW);
+
+	/* Lower the checkpoint threshold. */
+	f->gateway->options->checkpoint_threshold = 1;
+
+	/* Execute a new write transaction on the first connection. */
+	__prepare(f, db1_id, "BEGIN", &stmt_id);
+	__exec(f, db1_id, stmt_id);
+
+	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->exec_sql.db_id = db1_id;
+	f->request->exec_sql.sql   = "INSERT INTO test VALUES(1)";
+
+	err = dqlite__gateway_handle(f->gateway, f->request);
+	munit_assert_int(err, ==, 0);
+
+	dqlite__gateway_flushed(f->gateway, f->response);
+
+	__prepare(f, db1_id, "COMMIT", &stmt_id);
+	__exec(f, db1_id, stmt_id);
+
+	/* The WAL file did not get truncated. */
+	flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_WAL;
+	rc    = f->vfs->xOpen(f->vfs, "test.db-wal", file, flags, &flags);
+	munit_assert_int(rc, ==, 0);
+
+	rc = file->pMethods->xFileSize(file, &size);
+	munit_assert_int(rc, ==, 0);
+
+	munit_assert_int(dqlite__format_wal_calc_pages(4096, size), ==, 3);
+
+	dqlite__db_close(&db2);
+
+	return MUNIT_OK;
+}
+
 /* Interrupt a query request that does not need its statement to be finalized */
 static MunitResult test_interrupt(const MunitParameter params[], void *data)
 {
@@ -1472,6 +1570,7 @@ static MunitTest dqlite__gateway_handle_tests[] = {
      NULL},
     {"/max-requests", test_max_requests, setup, tear_down, 0, NULL},
     {"/checkpoint", test_checkpoint, setup, tear_down, 0, NULL},
+    {"/checkpoint-busy", test_checkpoint_busy, setup, tear_down, 0, NULL},
     {"/interrupt", test_interrupt, setup, tear_down, 0, NULL},
     {"/interrupt/finalize", test_interrupt_finalize, setup, tear_down, 0, NULL},
     {"/interrupt/no-request",
