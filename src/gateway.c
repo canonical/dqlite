@@ -66,7 +66,7 @@ static int dqlite__gateway_maybe_checkpoint(void *      ctx,
 	/* Check each mark and associated lock. This logic is similar to the one
 	 * in the walCheckpoint function of wal.c, in the SQLite code. */
 	for (i = 0; i < DQLITE__FORMAT_WAL_NREADER; i++) {
-		if (mx_frame > read_marks[i]) {
+		if (mx_frame >= read_marks[i]) {
 			/* This read mark is set, let's check if it's also
 			 * locked. */
 			int flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
