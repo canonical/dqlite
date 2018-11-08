@@ -65,25 +65,20 @@ static int dqlite__gateway_maybe_checkpoint(void *      ctx,
 
 	/* Check each mark and associated lock. This logic is similar to the one
 	 * in the walCheckpoint function of wal.c, in the SQLite code. */
-	for (i = 0; i < DQLITE__FORMAT_WAL_NREADER; i++) {
-		if (mx_frame >= read_marks[i]) {
-			/* This read mark is set, let's check if it's also
-			 * locked. */
-			int flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
-			int lock  = DQLITE__FORMAT_WAL_READ_LOCK(i);
+	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
+		int flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
 
-			rc = file->pMethods->xShmLock(file, lock, 1, flags);
-			if (rc == SQLITE_BUSY) {
-				/* It's locked. Let's postpone the checkpoint
-				 * for now. */
-				return SQLITE_OK;
-			}
-
-			/* Not locked. Let's release the lock we just
-			 * acquired. */
-			flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
-			file->pMethods->xShmLock(file, lock, 1, flags);
+		rc = file->pMethods->xShmLock(file, i, 1, flags);
+		if (rc == SQLITE_BUSY) {
+			/* It's locked. Let's postpone the checkpoint
+			 * for now. */
+			return SQLITE_OK;
 		}
+
+		/* Not locked. Let's release the lock we just
+		 * acquired. */
+		flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
+		file->pMethods->xShmLock(file, i, 1, flags);
 	}
 
 	/* Attempt to perfom a checkpoint across all nodes.
