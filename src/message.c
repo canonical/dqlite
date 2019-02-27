@@ -16,7 +16,9 @@
  * See https://stackoverflow.com/questions/752309/ensuring-c-doubles-are-64-bits
  */
 #ifndef __STDC_IEC_559__
+#if __SIZEOF_DOUBLE__ != 8
 #error "Requires IEEE 754 floating point!"
+#endif
 #endif
 
 static void dqlite__message_reset(struct dqlite__message *m)
