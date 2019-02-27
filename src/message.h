@@ -2,7 +2,7 @@
 #define DQLITE_MESSAGE_H
 
 #include <assert.h>
-#include <endian.h>
+#include <sys/types.h>
 #include <stddef.h>
 #include <stdint.h>
 
