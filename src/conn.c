@@ -757,18 +757,10 @@ static void dqlite__conn_stream_close_cb(uv_handle_t *handle)
 
 	dqlite__conn_close(c);
 	sqlite3_free(c);
+
+	uv_close((uv_handle_t *)(&c->alive), NULL);
 }
 
-static void dqlite__conn_timer_close_cb(uv_handle_t *handle)
-{
-	struct dqlite__conn *c;
-
-	assert(handle != NULL);
-
-	c = handle->data;
-
-	uv_close((uv_handle_t *)(&c->stream), dqlite__conn_stream_close_cb);
-}
 
 /* Abort the connection, realeasing any memory allocated by the read buffer, and
  * closing the UV handle (which closes the underlying socket as well) */
@@ -810,5 +802,5 @@ void dqlite__conn_abort(struct dqlite__conn *c)
 	}
 #endif
 
-	uv_close((uv_handle_t *)(&c->alive), dqlite__conn_timer_close_cb);
+	uv_close((uv_handle_t *)(&c->stream), dqlite__conn_stream_close_cb);
 }
