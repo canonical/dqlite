@@ -11,10 +11,10 @@ before_install:
 
 script:
   - autoreconf -i
-  - ./configure --enable-debug "${AC_FLAGS}"
+  - ./configure --enable-debug --enable-coverage "${AC_FLAGS}"
   - make
-  - make ./dqlite-test
-  - ./dqlite-test
+  - make ./unit-test
+  - ./unit-test
 
 compiler:
   - gcc

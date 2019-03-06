@@ -13,9 +13,15 @@ pkgconfig_DATA = dqlite.pc
 
 AM_CFLAGS = -I$(top_srcdir)/include -Wall
 if DEBUG
-  AM_CFLAGS += -O0 -g -fprofile-arcs -ftest-coverage -DDQLITE_DEBUG
+  AM_CFLAGS += -g -DDQLITE_DEBUG
 else
   AM_CFLAGS += -O2
+endif
+if COVERAGE
+  AM_CFLAGS += -O0 -fprofile-arcs -ftest-coverage
+endif
+if SANITIZE
+  AM_CFLAGS += -fsanitize=address
 endif
 if EXPERIMENTAL
   AM_CFLAGS += -DDQLITE_EXPERIMENTAL
@@ -73,8 +79,9 @@ include_HEADERS += include/dqlite.h
 
 # Tests
 check_PROGRAMS += \
-	dqlite-test
-dqlite_test_SOURCES = \
+	unit-test
+unit_test_SOURCES = $(libdqlite_la_SOURCES)
+unit_test_SOURCES += \
   test/case.c \
   test/case.h \
   test/client.c \
@@ -118,14 +125,13 @@ dqlite_test_SOURCES = \
   test/test_stmt.c \
   test/test_uv.c \
   test/test_vfs.c
-dqlite_test_CFLAGS = $(AM_CFLAGS)
-dqlite_test_CFLAGS += -I$(top_srcdir)/test -DMUNIT_NO_FORK
-dqlite_test_LDADD = libdqlite.la
-dqlite_test_LDFLAGS = -lpthread $(SQLITE_LIBS) $(UV_LIBS)
+unit_test_CFLAGS = $(AM_CFLAGS)
+unit_test_CFLAGS += -I$(top_srcdir)/test
+unit_test_LDFLAGS = -lpthread $(SQLITE_LIBS) $(UV_LIBS)
 if EXPERIMENTAL
-  dqlite_test_LDFLAGS += $(ZLIB_LIBS) $(CO_LIBS)
+  unit_test_LDFLAGS += $(ZLIB_LIBS) $(CO_LIBS)
 endif
-TESTS = dqlite-test
+TESTS = unit-test
 
 cov-reset:
 if DEBUG

@@ -3,7 +3,9 @@
 
 #include <stdint.h>
 
-#if defined(__cplusplus) ||                                                         \
+#if DQLITE_COVERAGE
+#define DQLITE_INLINE static inline
+#elif defined(__cplusplus) ||                                                         \
     (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L)
 #define DQLITE_INLINE inline
 #else
