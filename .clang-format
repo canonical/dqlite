@@ -1,38 +1,9 @@
-BasedOnStyle: LLVM
-
-AlignTrailingComments: true
-AlignConsecutiveAssignments: true
-AlignConsecutiveDeclarations: true
-AlignOperands: true
-
-AllowShortIfStatementsOnASingleLine: false
-AllowAllParametersOfDeclarationOnNextLine: false
-
-BinPackArguments: false
-BinPackParameters: false
-
-BreakBeforeBraces: Linux
-
-IndentCaseLabels: false
-IndentWidth: 8
-
-PenaltyReturnTypeOnItsOwnLine: 100000
-
-UseTab: ForIndentation
-
+BasedOnStyle: Chromium
 BreakBeforeBraces: Custom
 BraceWrapping:
  AfterFunction: true
-
-#AlignAfterOpenBracket: true
-#AlignEscapedNewlines: Right
-#AllowShortBlocksOnASingleLine: false
-#AlwaysBreakAfterReturnType: None
-#BasedOnStyle: WebKit
-#BraceWrapping:
-#BreakBeforeBinaryOperators: None
-#BreakBeforeBraces: Custom
-#ColumnLimit: 80
-#Language: Cpp
-#SpacesInContainerLiterals: false
-#TabWidth: 8
+ AfterStruct: true
+IndentWidth: 8
+PointerAlignment: Right
+UseTab: Always
+AllowAllParametersOfDeclarationOnNextLine: false
