@@ -102,7 +102,7 @@ static void __recv_response(struct fixture *f)
 
 /* Run the tests using both TCP and Unix sockets. */
 static MunitParameterEnum params[] = {
-    {TEST_SOCKET_FAMILY_PARAM, test_socket_param_values},
+    {TEST_SOCKET_FAMILY, test_socket_param_values},
     {NULL, NULL},
 };
 

@@ -80,7 +80,12 @@ include_HEADERS += include/dqlite.h
 # Tests
 check_PROGRAMS += \
 	unit-test
-unit_test_SOURCES = $(libdqlite_la_SOURCES)
+test_lib_SOURCES = \
+  test/lib/munit.c \
+  test/lib/socket.c \
+  test/lib/sqlite.c \
+  test/lib/uv.c
+unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
 unit_test_SOURCES += \
   test/case.c \
   test/case.h \
@@ -98,14 +103,12 @@ unit_test_SOURCES += \
   test/mem.h \
   test/message.c \
   test/message.h \
-  test/munit.c \
   test/munit.h \
   test/replication.c \
   test/replication.h \
   test/runner.c \
   test/server.c \
   test/server.h \
-  test/socket.c \
   test/socket.h \
   test/test_conn.c \
   test/test_db.c \
