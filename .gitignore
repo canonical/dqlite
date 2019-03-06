@@ -19,7 +19,7 @@ config.h*
 config.status
 configure
 coverage/
-dqlite-test
+unit-test
 dqlite.pc
 libtool
 stamp-h*
