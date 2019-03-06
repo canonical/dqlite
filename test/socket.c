@@ -254,7 +254,6 @@ void test_socket_pair_client_disconnect(struct test_socket_pair *p)
 	int rv;
 
 	munit_assert(p->client_disconnected == false);
-
 	rv = close(p->client);
 	if (rv != 0) {
 		munit_errorf("failed to disconnect client: %s - %d",
