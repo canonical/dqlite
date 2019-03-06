@@ -19,9 +19,9 @@
  *
  * If set to "unix" a pair of unix abstract sockets will be created. If set to
  * "tcp" a pair of TCP sockets using the loopback interface will be created. */
-#define TEST_SOCKET_PARAM "socket-family"
+#define TEST_SOCKET_FAMILY_PARAM "socket-family"
 
-/* Null-terminated list of legal values for TEST_SOCKET_PARAM. Currently "unix"
+/* Null-terminated list of legal values for TEST_SOCKET_FAMILY_PARAM. Currently "unix"
  * and "tcp". */
 extern char *test_socket_param_values[];
 

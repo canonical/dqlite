@@ -39,7 +39,7 @@ static uv_buf_t *__buf()
 
 /* Run the tests using both TCP and Unix sockets. */
 static MunitParameterEnum params[] = {
-    {TEST_SOCKET_PARAM, test_socket_param_values},
+    {TEST_SOCKET_FAMILY_PARAM, test_socket_param_values},
     {NULL, NULL},
 };
 
