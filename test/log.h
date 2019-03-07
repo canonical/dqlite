@@ -1,8 +1,6 @@
 #ifndef DQLITE_TEST_LOG_H
 #define DQLITE_TEST_LOG_H
 
-#include <stdio.h>
-
 #include "../include/dqlite.h"
 
 dqlite_logger *test_logger();

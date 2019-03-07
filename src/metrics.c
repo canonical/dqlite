@@ -1,6 +1,6 @@
-#include <assert.h>
 #include <stdlib.h>
 
+#include "assert.h"
 #include "metrics.h"
 
 void dqlite__metrics_init(struct dqlite__metrics *m) {

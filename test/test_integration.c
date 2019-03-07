@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <pthread.h>
 #include <time.h>
 

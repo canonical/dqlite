@@ -1,5 +1,4 @@
 #include <arpa/inet.h>
-#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -104,7 +103,7 @@ static void test_server__listen(struct test_server *s)
 	struct sockaddr *address;
 	socklen_t        size;
 
-	assert(s);
+	assert(s != NULL);
 
 	switch (s->family) {
 
@@ -167,8 +166,8 @@ static int test_server__connect(struct test_server *s)
 	struct sockaddr *address;
 	socklen_t        size;
 
-	assert(s);
-	assert(s->socket);
+	assert(s != NULL);
+	assert(s->socket > 0);
 
 	fd = socket(s->family, SOCK_STREAM, 0);
 	if (fd < 0) {
@@ -207,8 +206,8 @@ static int test_server__accept(struct test_server *s)
 	struct sockaddr_in address;
 	socklen_t          size;
 
-	assert(s);
-	assert(s->socket);
+	assert(s != NULL);
+	assert(s->socket > 0);
 
 	size = sizeof(address);
 
@@ -232,8 +231,8 @@ static void test__server_close(struct test_server *s)
 {
 	int rc;
 
-	assert(s);
-	assert(s->socket);
+	assert(s != NULL);
+	assert(s->socket > 0);
 
 	rc = close(s->socket);
 	if (rc != 0) {
@@ -248,7 +247,7 @@ static void *test__server_run(void *arg)
 	int                 rc;
 
 	s = (struct test_server *)(arg);
-	assert(s);
+	assert(s != NULL);
 
 	rc = dqlite_server_run(s->service);
 	if (rc) {
@@ -264,8 +263,7 @@ struct test_server *test_server_start(const char *family)
 	int                 ready;
 	struct test_server *s = test_server__create();
 
-	assert(s);
-	assert(s->service);
+	assert(s != NULL);
 
 	if (strcmp(family, "tcp") == 0) {
 		s->family = AF_INET;
@@ -301,8 +299,8 @@ void test_server_connect(struct test_server *s, struct test_client **client)
 	int   err;
 	char *errmsg;
 
-	assert(s);
-	assert(client);
+	assert(s != NULL);
+	assert(client != NULL);
 
 	clientFd = test_server__connect(s);
 	serverFd = test_server__accept(s);
@@ -324,8 +322,7 @@ void test_server_stop(struct test_server *t)
 	char *errmsg;
 	void *retval = 0;
 
-	assert(t);
-	assert(t->service);
+	assert(t != NULL);
 
 	err = dqlite_server_stop(t->service, &errmsg);
 	if (err) {
