@@ -31,8 +31,8 @@ static const char *test_item_hash(struct test_item *i) {
 	return "x";
 }
 
-DQLITE__REGISTRY(test_registry, test_item);
-DQLITE__REGISTRY_METHODS(test_registry, test_item);
+REGISTRY(test_registry, test_item);
+REGISTRY_METHODS(test_registry, test_item);
 
 static void *setup(const MunitParameter params[], void *user_data) {
 	struct test_registry *registry;

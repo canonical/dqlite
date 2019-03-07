@@ -82,6 +82,6 @@ int dqlite__stmt_exec(struct dqlite__stmt *s,
  * yields. */
 int dqlite__stmt_query(struct dqlite__stmt *s, struct message *message);
 
-DQLITE__REGISTRY(dqlite__stmt_registry, dqlite__stmt);
+REGISTRY(dqlite__stmt_registry, dqlite__stmt);
 
 #endif /* DQLITE_STMT_H */
