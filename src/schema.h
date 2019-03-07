@@ -7,6 +7,59 @@
 #include "lifecycle.h"
 #include "message.h"
 
+/**
+ * Define a new schema object.
+ *
+ * NAME:   Name of the structure which will be defined.
+ * SCHEMA: List of X-based macros defining the fields in the schema, in the form
+ *         of X(KIND, NAME, __VA_ARGS__). E.g. X(uint64, id, __VA_ARGS__).
+ */
+#define DQLITE__SCHEMA_DEFINE(NAME, SCHEMA)                                    \
+	struct NAME {                                                          \
+		SCHEMA(__DQLITE__SCHEMA_FIELD_DEFINE, )                        \
+	};                                                                     \
+                                                                               \
+	int NAME##_put(                                                        \
+	    struct NAME *p, struct dqlite__message *m, dqlite__error *e);      \
+                                                                               \
+	int NAME##_get(                                                        \
+	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)
+
+/**
+ * Implement a new schema object.
+ *
+ * NAME:   Name of the structure which will be defined.
+ * SCHEMA: List of X-macros defining the fields in the schema, in the form
+ *         of X(KIND, NAME, __VA_ARGS__). E.g. X(uint64, id, __VA_ARGS__).
+ */
+#define DQLITE__SCHEMA_IMPLEMENT(NAME, SCHEMA)                                 \
+                                                                               \
+	int NAME##_put(                                                        \
+	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)       \
+	{                                                                      \
+		int err;                                                       \
+                                                                               \
+		assert(p != NULL);                                             \
+		assert(m != NULL);                                             \
+                                                                               \
+		SCHEMA(__DQLITE__SCHEMA_FIELD_PUT, p, m, e);                   \
+                                                                               \
+		return 0;                                                      \
+	};                                                                     \
+                                                                               \
+	int NAME##_get(                                                        \
+	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)       \
+	{                                                                      \
+		int err;                                                       \
+                                                                               \
+		assert(p != NULL);                                             \
+		assert(m != NULL);                                             \
+                                                                               \
+		SCHEMA(__DQLITE__SCHEMA_FIELD_GET, p, m, e);                   \
+                                                                               \
+		return 0;                                                      \
+	}
+
 /* Define a single field in message schema.
  *
  * KIND:   Type code (e.g. uint64, text, etc).
@@ -41,55 +94,6 @@
 		dqlite__error_wrapf(                                           \
 		    E, &(M)->error, "failed to get '%s' field", #MEMBER);      \
 		return err;                                                    \
-	}
-
-/* Define a new schema object.
- *
- * NAME:   Name of the structure which will be defined.
- * SCHEMA: List of X-based macros defining the fields in the schema, in the form
- *         of X(KIND, NAME, __VA_ARGS__). E.g. X(uint64, id, __VA_ARGS__). */
-#define DQLITE__SCHEMA_DEFINE(NAME, SCHEMA)                                    \
-	struct NAME {                                                          \
-		SCHEMA(__DQLITE__SCHEMA_FIELD_DEFINE, )                        \
-	};                                                                     \
-                                                                               \
-	int NAME##_put(                                                        \
-	    struct NAME *p, struct dqlite__message *m, dqlite__error *e);      \
-                                                                               \
-	int NAME##_get(                                                        \
-	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)
-
-/* Implement a new schema object.
- *
- * NAME:   Name of the structure which will be defined.
- * SCHEMA: List of X-macros defining the fields in the schema, in the form
- *         of X(KIND, NAME, __VA_ARGS__). E.g. X(uint64, id, __VA_ARGS__). */
-#define DQLITE__SCHEMA_IMPLEMENT(NAME, SCHEMA)                                 \
-                                                                               \
-	int NAME##_put(                                                        \
-	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)       \
-	{                                                                      \
-		int err;                                                       \
-                                                                               \
-		assert(p != NULL);                                             \
-		assert(m != NULL);                                             \
-                                                                               \
-		SCHEMA(__DQLITE__SCHEMA_FIELD_PUT, p, m, e);                   \
-                                                                               \
-		return 0;                                                      \
-	};                                                                     \
-                                                                               \
-	int NAME##_get(                                                        \
-	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)       \
-	{                                                                      \
-		int err;                                                       \
-                                                                               \
-		assert(p != NULL);                                             \
-		assert(m != NULL);                                             \
-                                                                               \
-		SCHEMA(__DQLITE__SCHEMA_FIELD_GET, p, m, e);                   \
-                                                                               \
-		return 0;                                                      \
 	}
 
 #define __DQLITE__SCHEMA_HANDLER_FIELD_DEFINE(CODE, STRUCT, NAME, _)           \
