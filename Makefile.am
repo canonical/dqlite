@@ -81,6 +81,8 @@ include_HEADERS += include/dqlite.h
 check_PROGRAMS += \
 	unit-test
 test_lib_SOURCES = \
+  test/lib/fault.c \
+  test/lib/heap.c \
   test/lib/munit.c \
   test/lib/socket.c \
   test/lib/sqlite.c \
