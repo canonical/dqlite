@@ -7,11 +7,15 @@
 #include "../src/options.h"
 #include "../src/queue.h"
 
-#include "cluster.h"
-#include "leak.h"
-#include "log.h"
+#include "./lib/heap.h"
 #include "./lib/runner.h"
 #include "./lib/socket.h"
+#include "./lib/sqlite.h"
+#include "./lib/uv.h"
+#include "cluster.h"
+#include "log.h"
+
+TEST_MODULE(queue);
 
 /******************************************************************************
  *
@@ -19,12 +23,15 @@
  *
  ******************************************************************************/
 
-struct fixture {
+struct fixture
+{
 	struct test_socket_pair sockets;
-	uv_loop_t               loop;
-	struct dqlite__queue    queue;
-	struct dqlite__options  options;
-	struct dqlite__metrics  metrics;
+	uv_loop_t loop;
+	struct dqlite__queue queue;
+	struct dqlite__options options;
+	struct dqlite__metrics metrics;
+	dqlite_logger *logger;
+	dqlite_cluster *cluster;
 };
 
 /******************************************************************************
@@ -35,23 +42,23 @@ struct fixture {
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
-	struct fixture *f;
-	int             err;
+	struct fixture *f = munit_malloc(sizeof *f);
 
 	(void)params;
 	(void)user_data;
 
-	f = munit_malloc(sizeof *f);
-
+	test_heap_setup(params, user_data);
+	test_sqlite_setup(params);
 	test_socket_pair_setup(params, &f->sockets);
-
-	err = uv_loop_init(&f->loop);
-	munit_assert_int(err, ==, 0);
+	test_uv_setup(params, &f->loop);
 
 	dqlite__queue_init(&f->queue);
 
 	dqlite__options_defaults(&f->options);
 	dqlite__metrics_init(&f->metrics);
+
+	f->logger = test_logger();
+	f->cluster =  test_cluster();
 
 	return f;
 }
@@ -59,15 +66,19 @@ static void *setup(const MunitParameter params[], void *user_data)
 static void tear_down(void *data)
 {
 	struct fixture *f = data;
-	int             err;
 
 	dqlite__queue_close(&f->queue);
 
-	err = uv_loop_close(&f->loop);
-	munit_assert_int(err, ==, 0);
+	test_uv_tear_down(&f->loop);
 
 	test_socket_pair_tear_down(&f->sockets);
-	test_assert_no_leaks();
+	test_sqlite_tear_down();
+	test_heap_tear_down(data);
+
+	test_cluster_close(f->cluster);
+
+	free(f->logger);
+	free(f);
 }
 
 /******************************************************************************
@@ -76,23 +87,22 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
-static MunitResult test_push(const MunitParameter params[], void *data)
+TEST_SUITE(push);
+TEST_SETUP(push, setup);
+TEST_TEAR_DOWN(push, tear_down);
+
+TEST_CASE(push, success, NULL)
 {
 	struct fixture *f = data;
-	int             err;
+	int err;
 
-	struct conn       conn;
+	struct conn conn;
 	struct dqlite__queue_item item;
 
 	(void)params;
 
-	conn__init(&conn,
-	                  123,
-	                  test_logger(),
-	                  test_cluster(),
-	                  &f->loop,
-	                  &f->options,
-	                  &f->metrics);
+	conn__init(&conn, 123, f->logger, f->cluster, &f->loop,
+		   &f->options, &f->metrics);
 
 	err = dqlite__queue_item_init(&item, &conn);
 	munit_assert_int(err, ==, 0);
@@ -108,35 +118,29 @@ static MunitResult test_push(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__queue_push_tests[] = {
-    {"", test_push, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * Tests for dqlite__queue_process
  *
  ******************************************************************************/
 
-static MunitResult test_process(const MunitParameter params[], void *data)
+TEST_SUITE(process);
+TEST_SETUP(process, setup);
+TEST_TEAR_DOWN(process, tear_down);
+
+TEST_CASE(process, success, NULL)
 {
-	struct fixture *          f = data;
-	int                       err;
+	struct fixture *f = data;
+	int err;
 	struct dqlite__queue_item item;
-	struct conn *     conn;
+	struct conn *conn;
 
 	(void)params;
 
 	conn = munit_malloc(sizeof *conn);
 
-	conn__init(conn,
-	                  f->sockets.server,
-	                  test_logger(),
-	                  test_cluster(),
-	                  &f->loop,
-	                  &f->options,
-	                  &f->metrics);
+	conn__init(conn, f->sockets.server, f->logger, f->cluster,
+		   &f->loop, &f->options, &f->metrics);
 
 	err = dqlite__queue_item_init(&item, conn);
 	munit_assert_int(err, ==, 0);
@@ -169,20 +173,3 @@ static MunitResult test_process(const MunitParameter params[], void *data)
 
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__queue_process_tests[] = {
-    {"", test_process, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
- * Suite
- *
- ******************************************************************************/
-
-MunitSuite dqlite__queue_suites[] = {
-    {"_process", dqlite__queue_process_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {"_push", dqlite__queue_push_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
-};
