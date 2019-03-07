@@ -1,10 +1,10 @@
-#include <assert.h>
 #include <stddef.h>
 
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
 
+#include "assert.h"
 #include "db.h"
 #include "lifecycle.h"
 #include "registry.h"

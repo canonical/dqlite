@@ -247,8 +247,8 @@ extern int _main_suites_n;
 		MunitTest *tests = _##S##_##G##_tests;                    \
 		int n = _##S##_##G##_tests_n;                             \
 		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C,                 \
-					test_##S##_##G##_##C, S##__setup, \
-					S##__tear_down, PARAMS);          \
+					test_##S##_##G##_##C, _##S##_setup, \
+					_##S##_tear_down, PARAMS);          \
 		_##S##_##G##_tests_n = n + 1;                             \
 	}
 

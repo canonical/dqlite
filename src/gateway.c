@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <float.h>
 #include <stdio.h>
 
@@ -10,6 +9,7 @@
 
 #include "../include/dqlite.h"
 
+#include "assert.h"
 #include "error.h"
 #include "format.h"
 #include "fsm.h"

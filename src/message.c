@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -7,6 +6,7 @@
 
 #include "../include/dqlite.h"
 
+#include "assert.h"
 #include "byte.h"
 #include "lifecycle.h"
 #include "message.h"

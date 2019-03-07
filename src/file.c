@@ -1,10 +1,10 @@
-#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <sqlite3.h>
 
+#include "assert.h"
 #include "format.h"
 
 /* Guess the file type by looking the filename. */
