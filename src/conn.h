@@ -36,7 +36,7 @@ struct dqlite__conn {
 	struct dqlite__metrics *metrics;  /* Operational metrics */
 	struct dqlite__options *options;  /* Connection state machine */
 	struct dqlite__fsm      fsm;      /* Connection state machine */
-	struct dqlite__gateway  gateway;  /* Client state and request handler */
+	struct gateway  gateway;  /* Client state and request handler */
 	struct request  request;  /* Incoming request */
 	struct response response; /* Response for internal failures */
 
