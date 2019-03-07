@@ -25,7 +25,7 @@ struct fixture {
 	sqlite3_vfs *            vfs;
 	struct dqlite__options * options;
 	struct dqlite__gateway * gateway;
-	struct dqlite__request * request;
+	struct request * request;
 	struct dqlite__response *response;
 };
 
@@ -152,7 +152,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	f->request = munit_malloc(sizeof *f->request);
 
-	dqlite__request_init(f->request);
+	request_init(f->request);
 
 	return f;
 }
@@ -163,7 +163,7 @@ static void tear_down(void *data)
 
 	sqlite3_vfs_unregister(f->vfs);
 
-	dqlite__request_close(f->request);
+	request_close(f->request);
 	dqlite__gateway_close(f->gateway);
 	dqlite_vfs_destroy(f->vfs);
 	sqlite3_wal_replication_unregister(f->replication);

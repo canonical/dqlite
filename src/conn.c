@@ -407,7 +407,7 @@ static int dqlite__conn_body_read_cb(void *arg)
 
 	c = (struct dqlite__conn *)arg;
 
-	err = dqlite__request_decode(&c->request);
+	err = request_decode(&c->request);
 	if (err != 0) {
 		dqlite__error_wrapf(
 		    &c->error, &c->request.error, "failed to decode request");
@@ -607,7 +607,7 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 	                 dqlite__conn_states,
 	                 dqlite__conn_events,
 	                 dqlite__transitions);
-	dqlite__request_init(&c->request);
+	request_init(&c->request);
 
 	dqlite__gateway_init(&c->gateway, &callbacks, cluster, logger, options);
 	dqlite__response_init(&c->response);
@@ -629,7 +629,7 @@ void dqlite__conn_close(struct dqlite__conn *c)
 	dqlite__response_close(&c->response);
 	dqlite__gateway_close(&c->gateway);
 	dqlite__fsm_close(&c->fsm);
-	dqlite__request_close(&c->request);
+	request_close(&c->request);
 	dqlite__error_close(&c->error);
 
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_CONN);

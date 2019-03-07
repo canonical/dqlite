@@ -20,7 +20,7 @@ void test_client_init(struct test_client *c, int fd)
 	munit_assert_ptr_not_null(c);
 
 	c->fd = fd;
-	dqlite__request_init(&c->request);
+	request_init(&c->request);
 	dqlite__response_init(&c->response);
 }
 
@@ -43,7 +43,7 @@ static void test_client__write(struct test_client *c)
 	int err;
 
 	/* Encode the request. */
-	err = dqlite__request_encode(&c->request);
+	err = request_encode(&c->request);
 	if (err != 0) {
 		munit_errorf("failed to encode request: %s", c->request.error);
 	}
@@ -54,13 +54,13 @@ static void test_client__write(struct test_client *c)
 	if (err < 0) {
 		munit_errorf("failed to write request header: %s",
 		             strerror(errno));
-		dqlite__request_close(&c->request);
+		request_close(&c->request);
 	}
 	err = write(c->fd, c->bufs[1].base, c->bufs[1].len);
 	if (err < 0) {
 		munit_errorf("failed to write request body: %s",
 		             strerror(errno));
-		dqlite__request_close(&c->request);
+		request_close(&c->request);
 	}
 
 	/* Reset the request message. */
@@ -351,5 +351,5 @@ void test_client_finalize(struct test_client *c,
 void test_client_close(struct test_client *c)
 {
 	dqlite__response_close(&c->response);
-	dqlite__request_close(&c->request);
+	request_close(&c->request);
 }

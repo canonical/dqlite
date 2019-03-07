@@ -557,7 +557,7 @@ static void dqlite__gateway_dispatch(struct dqlite__gateway *    g,
 		dqlite__gateway_##NAME(g, ctx);                                \
 		break;
 
-		DQLITE__REQUEST_SCHEMA_TYPES(DQLITE__GATEWAY_HANDLE, );
+		REQUEST__SCHEMA_TYPES(DQLITE__GATEWAY_HANDLE, );
 
 	default:
 		dqlite__error_printf(
@@ -723,7 +723,7 @@ int dqlite__gateway_ctx_for(struct dqlite__gateway *g, int type)
 }
 
 int dqlite__gateway_handle(struct dqlite__gateway *g,
-                           struct dqlite__request *request)
+                           struct request *request)
 {
 	struct dqlite__gateway_ctx *ctx;
 	int                         i;
