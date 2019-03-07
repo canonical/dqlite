@@ -137,13 +137,13 @@ static void dqlite__conn_write_cb(uv_write_t *req, int status)
 
 	if (status) {
 		dqlite__error_uv(&c->error, status, "response write error");
-		dqlite__gateway_aborted(&c->gateway, response);
+		gateway__aborted(&c->gateway, response);
 		dqlite__conn_abort(c);
 	} else {
 		/* In case this not our own failure response object, notify the
 		 * gateway that we're done */
 		if (response != &c->response) {
-			dqlite__gateway_flushed(&c->gateway, response);
+			gateway__flushed(&c->gateway, response);
 		}
 
 		/* If we had paused reading requests and we're not shutting
@@ -197,7 +197,7 @@ static void dqlite__conn_flush_cb(void *arg, struct response *response)
 	return;
 
 response_failure:
-	dqlite__gateway_aborted(&c->gateway, response);
+	gateway__aborted(&c->gateway, response);
 }
 
 /* Initialize the connection read buffer, in preparation to the next read
@@ -354,7 +354,7 @@ static int dqlite__conn_header_read_cb(void *arg)
 
 	/* If the gateway is currently busy handling a previous request,
 	 * throttle the client. */
-	ctx = dqlite__gateway_ctx_for(&c->gateway, c->request.message.type);
+	ctx = gateway__ctx_for(&c->gateway, c->request.message.type);
 	if (ctx == -1) {
 		err = uv_read_stop(&c->stream);
 		if (err != 0) {
@@ -414,7 +414,7 @@ static int dqlite__conn_body_read_cb(void *arg)
 
 	c->request.timestamp = uv_now(c->loop);
 
-	err = dqlite__gateway_handle(&c->gateway, &c->request);
+	err = gateway__handle(&c->gateway, &c->request);
 	if (err != 0) {
 		dqlite__error_wrapf(
 		    &c->error, &c->gateway.error, "failed to handle request");
@@ -576,7 +576,7 @@ void dqlite__conn_init(struct dqlite__conn *   c,
                        struct dqlite__options *options,
                        struct dqlite__metrics *metrics)
 {
-	struct dqlite__gateway_cbs callbacks;
+	struct gateway__cbs callbacks;
 
 	assert(c != NULL);
 	assert(cluster != NULL);
@@ -607,7 +607,7 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 	                 dqlite__transitions);
 	request_init(&c->request);
 
-	dqlite__gateway_init(&c->gateway, &callbacks, cluster, logger, options);
+	gateway__init(&c->gateway, &callbacks, cluster, logger, options);
 	response_init(&c->response);
 
 	c->fd   = fd;
@@ -625,7 +625,7 @@ void dqlite__conn_close(struct dqlite__conn *c)
 	assert(c != NULL);
 
 	response_close(&c->response);
-	dqlite__gateway_close(&c->gateway);
+	gateway__close(&c->gateway);
 	dqlite__fsm_close(&c->fsm);
 	request_close(&c->request);
 	dqlite__error_close(&c->error);
@@ -642,7 +642,7 @@ int dqlite__conn_start(struct dqlite__conn *c)
 
 #ifdef DQLITE_EXPERIMENTAL
 	/* Start the gateway */
-	err = dqlite__gateway_start(&c->gateway, uv_now(c->loop));
+	err = gateway__start(&c->gateway, uv_now(c->loop));
 	if (err != 0) {
 		dqlite__error_uv(
 		    &c->error, err, "failed to start gateway coroutine");
