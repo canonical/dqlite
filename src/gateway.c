@@ -204,11 +204,11 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 		return;
 	}
 
-	dqlite__db_init(g->db);
+	db__init(g->db);
 
 	g->db->id = 0;
 
-	rc = dqlite__db_open(g->db,
+	rc = db__open(g->db,
 	                     ctx->request->open.name,
 	                     ctx->request->open.flags,
 	                     g->options->vfs,
@@ -218,7 +218,7 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 	if (rc != 0) {
 		dqlite__error_printf(&g->error, g->db->error);
 		dqlite__gateway_failure(g, ctx, rc);
-		dqlite__db_close(g->db);
+		db__close(g->db);
 		sqlite3_free(g->db);
 		g->db = NULL;
 		return;
@@ -254,7 +254,7 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 
 /* Lookup the statement with the given ID. */
 #define DQLITE__GATEWAY_LOOKUP_STMT(ID)                                        \
-	stmt = dqlite__db_stmt(db, ID);                                        \
+	stmt = db__stmt(db, ID);                                        \
 	if (stmt == NULL) {                                                    \
 		dqlite__error_printf(&g->error, "no stmt with id %d", ID);     \
 		dqlite__gateway_failure(g, ctx, SQLITE_NOTFOUND);              \
@@ -264,14 +264,14 @@ static void dqlite__gateway_open(struct dqlite__gateway *    g,
 static void dqlite__gateway_prepare(struct dqlite__gateway *    g,
                                     struct dqlite__gateway_ctx *ctx)
 {
-	struct dqlite__db *  db;
+	struct db *  db;
 	struct stmt *stmt;
 	int                  rc;
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->prepare.db_id);
 
-	rc = dqlite__db_prepare(db, ctx->request->prepare.sql, &stmt);
+	rc = db__prepare(db, ctx->request->prepare.sql, &stmt);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&g->error, db->error);
 		dqlite__gateway_failure(g, ctx, rc);
@@ -288,7 +288,7 @@ static void dqlite__gateway_exec(struct dqlite__gateway *    g,
                                  struct dqlite__gateway_ctx *ctx)
 {
 	int                  rc;
-	struct dqlite__db *  db;
+	struct db *  db;
 	struct stmt *stmt;
 	uint64_t             last_insert_id;
 	uint64_t             rows_affected;
@@ -324,7 +324,7 @@ static void dqlite__gateway_exec(struct dqlite__gateway *    g,
  * A single batch of rows is typically about the size of the static response
  * message body. */
 static void dqlite__gateway_query_batch(struct dqlite__gateway *    g,
-                                        struct dqlite__db *         db,
+                                        struct db *         db,
                                         struct stmt *       stmt,
                                         struct dqlite__gateway_ctx *ctx)
 {
@@ -336,7 +336,7 @@ static void dqlite__gateway_query_batch(struct dqlite__gateway *    g,
 
 		/* Finalize the statement if needed. */
 		if (ctx->cleanup == DQLITE__GATEWAY_CLEANUP_FINALIZE) {
-			dqlite__db_finalize(db, stmt);
+			db__finalize(db, stmt);
 		}
 
 		/* TODO: reset what was written in the message */
@@ -356,7 +356,7 @@ static void dqlite__gateway_query_batch(struct dqlite__gateway *    g,
 		} else {
 			/* Finalize the statement if needed. */
 			if (ctx->cleanup == DQLITE__GATEWAY_CLEANUP_FINALIZE) {
-				dqlite__db_finalize(db, stmt);
+				db__finalize(db, stmt);
 			}
 
 			/* Reset the multi-response info and the cleanup code */
@@ -373,7 +373,7 @@ static void dqlite__gateway_query(struct dqlite__gateway *    g,
                                   struct dqlite__gateway_ctx *ctx)
 {
 	int                  rc;
-	struct dqlite__db *  db;
+	struct db *  db;
 	struct stmt *stmt;
 
 	DQLITE__GATEWAY_BARRIER;
@@ -400,14 +400,14 @@ static void dqlite__gateway_finalize(struct dqlite__gateway *    g,
                                      struct dqlite__gateway_ctx *ctx)
 {
 	int                  rc;
-	struct dqlite__db *  db;
+	struct db *  db;
 	struct stmt *stmt;
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->finalize.db_id);
 	DQLITE__GATEWAY_LOOKUP_STMT(ctx->request->finalize.stmt_id);
 
-	rc = dqlite__db_finalize(db, stmt);
+	rc = db__finalize(db, stmt);
 	if (rc == SQLITE_OK) {
 		ctx->response.type = DQLITE_RESPONSE_EMPTY;
 	} else {
@@ -420,7 +420,7 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
                                      struct dqlite__gateway_ctx *ctx)
 {
 	int                  rc;
-	struct dqlite__db *  db;
+	struct db *  db;
 	const char *         sql;
 	struct stmt *stmt = NULL;
 	uint64_t             last_insert_id;
@@ -434,7 +434,7 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
 	sql = ctx->request->exec_sql.sql;
 
 	while (sql != NULL && strcmp(sql, "") != 0) {
-		rc = dqlite__db_prepare(db, sql, &stmt);
+		rc = db__prepare(db, sql, &stmt);
 		if (rc != SQLITE_OK) {
 			dqlite__error_printf(&g->error, db->error);
 			dqlite__gateway_failure(g, ctx, rc);
@@ -466,7 +466,7 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
 		}
 
 		/* Ignore errors here. TODO: can this fail? */
-		dqlite__db_finalize(db, stmt);
+		db__finalize(db, stmt);
 
 		sql = stmt->tail;
 	}
@@ -475,14 +475,14 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
 
 err:
 	/* Ignore errors here. TODO: emit a warning instead */
-	dqlite__db_finalize(db, stmt);
+	db__finalize(db, stmt);
 }
 
 static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
                                       struct dqlite__gateway_ctx *ctx)
 {
 	int                  rc;
-	struct dqlite__db *  db;
+	struct db *  db;
 	struct stmt *stmt;
 
 	DQLITE__GATEWAY_BARRIER;
@@ -490,7 +490,7 @@ static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
 
 	assert(db != NULL);
 
-	rc = dqlite__db_prepare(db, ctx->request->query_sql.sql, &stmt);
+	rc = db__prepare(db, ctx->request->query_sql.sql, &stmt);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&g->error, db->error);
 		dqlite__gateway_failure(g, ctx, rc);
@@ -533,7 +533,7 @@ static void dqlite__gateway_interrupt(struct dqlite__gateway *    g,
 		break;
 	case DQLITE__GATEWAY_CLEANUP_FINALIZE:
 		/* Finalize the statempt */
-		dqlite__db_finalize(g->ctxs[0].db, g->ctxs[0].stmt);
+		db__finalize(g->ctxs[0].db, g->ctxs[0].stmt);
 		break;
 	}
 
@@ -673,7 +673,7 @@ void dqlite__gateway_close(struct dqlite__gateway *g)
 	assert(g != NULL);
 
 	if (g->db != NULL) {
-		dqlite__db_close(g->db);
+		db__close(g->db);
 		sqlite3_free(g->db);
 	}
 

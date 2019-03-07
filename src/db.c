@@ -1,8 +1,4 @@
-#include <stddef.h>
-
 #include <sqlite3.h>
-
-#include "../include/dqlite.h"
 
 #include "assert.h"
 #include "db.h"
@@ -12,25 +8,24 @@
 
 /* Default name of the registered sqlite3_vfs implementation to use when opening
  * new connections. */
-#define DQLITE__DB_DEFAULT_VFS "volatile"
+#define DB__DEFAULT_VFS "volatile"
 
 /* Default name of the registered sqlite3_wal_replication implementation to use
  * to switch new connections to leader replication mode. */
-#define DQLITE__DB_DEFAULT_WAL_REPLICATION "dqlite"
+#define DB__DEFAULT_WAL_REPLICATION "dqlite"
 
 /* Wrapper around sqlite3_exec that frees the memory allocated for the error
- * message in case of failure and sets the dqlite__db's error field
+ * message in case of failure and sets the db's error field
  * appropriately */
-static int dqlite__db_exec(struct dqlite__db *db, const char *sql)
+static int db__exec(struct db *db, const char *sql)
 {
 	char *msg;
-	int   rc;
+	int rc;
 
 	assert(db != NULL);
 
 	rc = sqlite3_exec(db->db, sql, NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
-
 		assert(msg != NULL);
 		sqlite3_free(msg);
 		dqlite__error_printf(&db->error, sqlite3_errmsg(db->db));
@@ -41,7 +36,7 @@ static int dqlite__db_exec(struct dqlite__db *db, const char *sql)
 	return SQLITE_OK;
 }
 
-void dqlite__db_init(struct dqlite__db *db)
+void db__init(struct db *db)
 {
 	assert(db != NULL);
 
@@ -52,7 +47,7 @@ void dqlite__db_init(struct dqlite__db *db)
 	stmt__registry_init(&db->stmts);
 }
 
-void dqlite__db_close(struct dqlite__db *db)
+void db__close(struct db *db)
 {
 	int rc;
 
@@ -80,33 +75,33 @@ void dqlite__db_close(struct dqlite__db *db)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_DB);
 }
 
-const char *dqlite__db_hash(struct dqlite__db *db)
+const char *db__hash(struct db *db)
 {
 	(void)db;
 
 	return NULL;
 }
 
-int dqlite__db_open(struct dqlite__db *db,
-                    const char *       name,
-                    int                flags,
-                    const char *       vfs,
-                    uint16_t           page_size,
-                    const char *       wal_replication)
+int db__open(struct db *db,
+	     const char *name,
+	     int flags,
+	     const char *vfs,
+	     uint16_t page_size,
+	     const char *wal_replication)
 {
 	char pragma[255];
-	int  rc;
+	int rc;
 
 	assert(db != NULL);
 	assert(name != NULL);
 	assert(page_size > 0);
 
 	if (vfs == NULL) {
-		vfs = DQLITE__DB_DEFAULT_VFS;
+		vfs = DB__DEFAULT_VFS;
 	}
 
 	if (wal_replication == NULL) {
-		wal_replication = DQLITE__DB_DEFAULT_WAL_REPLICATION;
+		wal_replication = DB__DEFAULT_WAL_REPLICATION;
 	}
 
 	/* TODO: do some validation of the name (e.g. can't begin with a slash)
@@ -126,54 +121,51 @@ int dqlite__db_open(struct dqlite__db *db,
 
 	/* Set the page size. */
 	sprintf(pragma, "PRAGMA page_size=%d", page_size);
-	rc = dqlite__db_exec(db, pragma);
+	rc = db__exec(db, pragma);
 	if (rc != SQLITE_OK) {
-		dqlite__error_wrapf(
-		    &db->error, &db->error, "unable to set page size");
+		dqlite__error_wrapf(&db->error, &db->error,
+				    "unable to set page size");
 		return rc;
 	}
 
 	/* Disable syncs. */
-	rc = dqlite__db_exec(db, "PRAGMA synchronous=OFF");
+	rc = db__exec(db, "PRAGMA synchronous=OFF");
 	if (rc != SQLITE_OK) {
-		dqlite__error_wrapf(
-		    &db->error, &db->error, "unable to switch off syncs");
+		dqlite__error_wrapf(&db->error, &db->error,
+				    "unable to switch off syncs");
 		return rc;
 	}
 
 	/* Set WAL journaling. */
-	rc = dqlite__db_exec(db, "PRAGMA journal_mode=WAL");
+	rc = db__exec(db, "PRAGMA journal_mode=WAL");
 	if (rc != SQLITE_OK) {
-		dqlite__error_wrapf(
-		    &db->error, &db->error, "unable to set WAL mode: %s");
+		dqlite__error_wrapf(&db->error, &db->error,
+				    "unable to set WAL mode: %s");
 		return rc;
 	}
 
 	/* Set WAL replication. */
-	rc = sqlite3_wal_replication_leader(
-	    db->db, "main", wal_replication, (void *)db->db);
+	rc = sqlite3_wal_replication_leader(db->db, "main", wal_replication,
+					    (void *)db->db);
 
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&db->error,
-		                     "unable to set WAL replication");
+				     "unable to set WAL replication");
 		return rc;
 	}
 
 	/* TODO: make setting foreign keys optional. */
-	rc = dqlite__db_exec(db, "PRAGMA foreign_keys=1");
+	rc = db__exec(db, "PRAGMA foreign_keys=1");
 	if (rc != SQLITE_OK) {
-		dqlite__error_wrapf(&db->error,
-		                    &db->error,
-		                    "unable to set foreign keys checks: %s");
+		dqlite__error_wrapf(&db->error, &db->error,
+				    "unable to set foreign keys checks: %s");
 		return rc;
 	}
 
 	return SQLITE_OK;
 }
 
-int dqlite__db_prepare(struct dqlite__db *   db,
-                       const char *          sql,
-                       struct stmt **stmt)
+int db__prepare(struct db *db, const char *sql, struct stmt **stmt)
 {
 	int err;
 	int rc;
@@ -206,12 +198,12 @@ int dqlite__db_prepare(struct dqlite__db *   db,
 }
 
 /* Lookup a stmt object by ID */
-struct stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id)
+struct stmt *db__stmt(struct db *db, uint32_t stmt_id)
 {
 	return stmt__registry_get(&db->stmts, stmt_id);
 }
 
-int dqlite__db_finalize(struct dqlite__db *db, struct stmt *stmt)
+int db__finalize(struct db *db, struct stmt *stmt)
 {
 	int rc;
 	int err;
@@ -223,7 +215,7 @@ int dqlite__db_finalize(struct dqlite__db *db, struct stmt *stmt)
 		rc = sqlite3_finalize(stmt->stmt);
 		if (rc != SQLITE_OK) {
 			dqlite__error_printf(&db->error,
-			                     sqlite3_errmsg(db->db));
+					     sqlite3_errmsg(db->db));
 		}
 
 		/* Unset the stmt member, to prevent stmt__registry_del
@@ -236,19 +228,19 @@ int dqlite__db_finalize(struct dqlite__db *db, struct stmt *stmt)
 	err = stmt__registry_del(&db->stmts, stmt);
 
 	/* Deleting the statement from the registry can't fail, because the
-	 * given statement was obtained with dqlite__db_stmt(). */
+	 * given statement was obtained with db__stmt(). */
 	assert(err == 0);
 
 	return rc;
 }
 
-int dqlite__db_begin(struct dqlite__db *db)
+int db__begin(struct db *db)
 {
 	int rc;
 
 	assert(db != NULL);
 
-	rc = dqlite__db_exec(db, "BEGIN");
+	rc = db__exec(db, "BEGIN");
 	if (rc != SQLITE_OK) {
 		return rc;
 	}
@@ -256,13 +248,13 @@ int dqlite__db_begin(struct dqlite__db *db)
 	return SQLITE_OK;
 }
 
-int dqlite__db_commit(struct dqlite__db *db)
+int db__commit(struct db *db)
 {
 	int rc;
 
 	assert(db != NULL);
 
-	rc = dqlite__db_exec(db, "COMMIT");
+	rc = db__exec(db, "COMMIT");
 	if (rc != SQLITE_OK) {
 		/* Since we're in single-thread mode, contention should never
 		 * happen. */
@@ -274,13 +266,13 @@ int dqlite__db_commit(struct dqlite__db *db)
 	return SQLITE_OK;
 }
 
-int dqlite__db_rollback(struct dqlite__db *db)
+int db__rollback(struct db *db)
 {
 	int rc;
 
 	assert(db != NULL);
 
-	rc = dqlite__db_exec(db, "ROLLBACK");
+	rc = db__exec(db, "ROLLBACK");
 
 	/* TODO: what are the failure modes of a ROLLBACK statement? is it
 	 * possible that it leaves a transaction open?. */

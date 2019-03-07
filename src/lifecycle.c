@@ -21,7 +21,7 @@ static char *dqlite__lifecycle_type_names[] = {
     "dqlite__conn",        /* DQLITE__LIFECYCLE_CONN */
     "dqlite__queue",       /* DQLITE__LIFECYCLE_QUEUE */
     "dqlite__queue_item",  /* DQLITE__LIFECYCLE_QUEUE_ITEM */
-    "dqlite__db",          /* DQLITE__LIFECYCLE_DB */
+    "db",          /* DQLITE__LIFECYCLE_DB */
     "stmt",        /* DQLITE__LIFECYCLE_STMT */
     "dqlite__replication", /* DQLITE__LIFECYCLE_REPLICATION */
 };
