@@ -20,7 +20,7 @@ void test_client_init(struct test_client *c, int fd)
 
 	c->fd = fd;
 	request_init(&c->request);
-	dqlite__response_init(&c->response);
+	response_init(&c->response);
 }
 
 void test_client_handshake(struct test_client *c)
@@ -99,7 +99,7 @@ static void test_client__read(struct test_client *c)
 		munit_error("short read of response body");
 	}
 
-	err = dqlite__response_decode(&c->response);
+	err = response_decode(&c->response);
 	if (err != 0) {
 		munit_errorf("failed to decode response: %s",
 		             c->response.error);
@@ -349,6 +349,6 @@ void test_client_finalize(struct test_client *c,
 
 void test_client_close(struct test_client *c)
 {
-	dqlite__response_close(&c->response);
+	response_close(&c->response);
 	request_close(&c->request);
 }

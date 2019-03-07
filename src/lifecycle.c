@@ -16,7 +16,7 @@ static char *dqlite__lifecycle_type_names[] = {
     "dqlite__encoder",     /* DQLITE__LIFECYCLE_ENCODER */
     "dqlite__decoder",     /* DQLITE__LIFECYCLE_DECODER */
     "request",     /* DQLITE__LIFECYCLE_REQUEST */
-    "dqlite__response",    /* DQLITE__LIFECYCLE_RESPONSE */
+    "response",    /* DQLITE__LIFECYCLE_RESPONSE */
     "dqlite__gateway",     /* DQLITE__LIFECYCLE_GATEWAY */
     "dqlite__conn",        /* DQLITE__LIFECYCLE_CONN */
     "dqlite__queue",       /* DQLITE__LIFECYCLE_QUEUE */

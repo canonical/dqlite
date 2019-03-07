@@ -26,11 +26,11 @@ struct fixture {
 	struct dqlite__options * options;
 	struct dqlite__gateway * gateway;
 	struct request * request;
-	struct dqlite__response *response;
+	struct response *response;
 };
 
 /* Gateway flush callback, saving the response on the fixture. */
-static void fixture_flush_cb(void *arg, struct dqlite__response *response)
+static void fixture_flush_cb(void *arg, struct response *response)
 {
 	struct fixture *f = arg;
 
