@@ -6,7 +6,7 @@
 #include <uv.h>
 
 #include "../include/dqlite.h"
-#include "../src/binary.h"
+#include "../src/byte.h"
 #include "../src/message.h"
 
 #include "leak.h"
@@ -415,10 +415,10 @@ static MunitResult test_body_get_uint32_two_values(
 
 	message->words = 1;
 
-	buf = dqlite__flip32(12);
+	buf = byte__flip32(12);
 	memcpy(message->body1, &buf, 4);
 
-	buf = dqlite__flip32(77);
+	buf = byte__flip32(77);
 	memcpy(message->body1 + 4, &buf, 4);
 
 	err = dqlite__message_body_get_uint32(message, &value);
@@ -497,7 +497,7 @@ static MunitResult test_body_get_uint64_one_value(const MunitParameter params[],
 
 	message->words = 1;
 
-	buf = dqlite__flip64(123456789);
+	buf = byte__flip64(123456789);
 	memcpy(message->body1, &buf, 8);
 
 	err = dqlite__message_body_get_uint64(message, &value);
@@ -521,10 +521,10 @@ static MunitResult test_body_get_uint64_two_values(
 
 	message->words = 2;
 
-	buf = dqlite__flip64(12);
+	buf = byte__flip64(12);
 	memcpy(message->body1, &buf, 8);
 
-	buf = dqlite__flip64(77);
+	buf = byte__flip64(77);
 	memcpy(message->body1 + 8, &buf, 8);
 
 	err = dqlite__message_body_get_uint64(message, &value);
@@ -600,7 +600,7 @@ static MunitResult test_body_get_int64_one_value(const MunitParameter params[],
 
 	message->words = 1;
 
-	buf = dqlite__flip64(123456789);
+	buf = byte__flip64(123456789);
 	memcpy(message->body1, &buf, 8);
 
 	err = dqlite__message_body_get_int64(message, &value);
@@ -623,10 +623,10 @@ static MunitResult test_body_get_int64_two_values(const MunitParameter params[],
 
 	message->words = 2;
 
-	buf = dqlite__flip64((uint64_t)(-12));
+	buf = byte__flip64((uint64_t)(-12));
 	memcpy(message->body1, &buf, 8);
 
-	buf = dqlite__flip64(23);
+	buf = byte__flip64(23);
 	memcpy(message->body1 + 8, &buf, 8);
 
 	err = dqlite__message_body_get_int64(message, &value);
@@ -656,7 +656,7 @@ static MunitResult test_body_get_double_one_value(const MunitParameter params[],
 	message->words = 1;
 
 	buf  = (uint64_t *)(&pi);
-	*buf = dqlite__flip64(*buf);
+	*buf = byte__flip64(*buf);
 	memcpy(message->body1, buf, 8);
 
 	err = dqlite__message_body_get_double(message, &value);
@@ -681,7 +681,7 @@ static MunitResult test_body_get_servers_one(const MunitParameter params[],
 	err = dqlite__message_body_recv_start(message, &buf);
 	munit_assert_int(err, ==, 0);
 
-	*(uint64_t *)(buf.base) = dqlite__flip64(1);
+	*(uint64_t *)(buf.base) = byte__flip64(1);
 	strcpy(buf.base + 8, "1.2.3.4:666");
 
 	err = dqlite__message_body_get_servers(message, &servers);
@@ -712,10 +712,10 @@ static MunitResult test_body_get_servers_two(const MunitParameter params[],
 	err = dqlite__message_body_recv_start(message, &buf);
 	munit_assert_int(err, ==, 0);
 
-	*(uint64_t *)(buf.base) = dqlite__flip64(1);
+	*(uint64_t *)(buf.base) = byte__flip64(1);
 	strcpy(buf.base + 8, "1.2.3.4:666");
 
-	*(uint64_t *)(buf.base + 24) = dqlite__flip64(2);
+	*(uint64_t *)(buf.base + 24) = byte__flip64(2);
 	strcpy(buf.base + 32, "5.6.7.8:666");
 
 	err = dqlite__message_body_get_servers(message, &servers);
@@ -1027,9 +1027,9 @@ static MunitResult test_body_put_uint32_two(const MunitParameter params[],
 
 	munit_assert_int(message->offset1, ==, 8);
 
-	munit_assert_int(dqlite__flip32(*(uint32_t *)(message->body1)), ==, 99);
+	munit_assert_int(byte__flip32(*(uint32_t *)(message->body1)), ==, 99);
 	munit_assert_int(
-	    dqlite__flip32(*(uint32_t *)(message->body1 + 4)), ==, 66);
+	    byte__flip32(*(uint32_t *)(message->body1 + 4)), ==, 66);
 
 	return MUNIT_OK;
 }
@@ -1047,7 +1047,7 @@ static MunitResult test_body_put_int64_one(const MunitParameter params[],
 	munit_assert_int(message->offset1, ==, 8);
 
 	munit_assert_int(
-	    (int64_t)dqlite__flip64(*(uint64_t *)(message->body1)), ==, -12);
+	    (int64_t)byte__flip64(*(uint64_t *)(message->body1)), ==, -12);
 
 	return MUNIT_OK;
 }
@@ -1064,7 +1064,7 @@ static MunitResult test_body_put_uint64_one(const MunitParameter params[],
 	munit_assert_int(err, ==, 0);
 	munit_assert_int(message->offset1, ==, 8);
 
-	munit_assert_int(dqlite__flip64(*(uint64_t *)(message->body1)), ==, 99);
+	munit_assert_int(byte__flip64(*(uint64_t *)(message->body1)), ==, 99);
 
 	return MUNIT_OK;
 }
@@ -1083,7 +1083,7 @@ static MunitResult test_body_put_double_one(const MunitParameter params[],
 	munit_assert_int(err, ==, 0);
 	munit_assert_int(message->offset1, ==, 8);
 
-	buf = dqlite__flip64(*(uint64_t *)(message->body1));
+	buf = byte__flip64(*(uint64_t *)(message->body1));
 
 	memcpy(&value, &buf, sizeof(buf));
 
@@ -1134,7 +1134,7 @@ static MunitResult test_body_put_servers_one(const MunitParameter params[],
 
 	munit_assert_int(message->offset1, ==, 24);
 
-	id = dqlite__flip64(*(uint64_t *)(message->body1));
+	id = byte__flip64(*(uint64_t *)(message->body1));
 	munit_assert_int(id, ==, 1);
 
 	address = (const char *)(message->body1 + 8);

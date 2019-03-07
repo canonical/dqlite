@@ -7,7 +7,7 @@
 
 #include "../include/dqlite.h"
 
-#include "../src/binary.h"
+#include "../src/byte.h"
 #include "../src/message.h"
 #include "../src/request.h"
 #include "../src/response.h"
@@ -29,7 +29,7 @@ void test_client_handshake(struct test_client *c)
 	int      err;
 	uint64_t protocol;
 
-	protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	protocol = byte__flip64(DQLITE_PROTOCOL_VERSION);
 
 	err = write(c->fd, &protocol, sizeof(protocol));
 	if (err < 0) {

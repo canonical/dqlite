@@ -4,7 +4,7 @@
 #include <uv.h>
 
 #include "../include/dqlite.h"
-#include "../src/binary.h"
+#include "../src/byte.h"
 #include "../src/conn.h"
 #include "../src/metrics.h"
 #include "../src/options.h"
@@ -62,7 +62,7 @@ static void __send_data(struct fixture *f, void *buf, size_t count)
 /* Send a full handshake using the given protocol version. */
 static void __send_handshake(struct fixture *f, uint64_t protocol)
 {
-	uint64_t buf = dqlite__flip64(protocol);
+	uint64_t buf = byte__flip64(protocol);
 
 	__send_data(f, &buf, sizeof buf);
 }
@@ -185,7 +185,7 @@ static MunitResult test_abort_during_handshake(const MunitParameter params[],
                                                void *               data)
 {
 	struct fixture *f = data;
-	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint64_t        protocol = byte__flip64(DQLITE_PROTOCOL_VERSION);
 
 	(void)params;
 
@@ -336,7 +336,7 @@ static MunitResult
 test_abort_after_heartbeat_timeout(const MunitParameter params[], void *data)
 {
 	struct fixture *f = data;
-	uint64_t        protocol = dqlite__flip64(DQLITE_PROTOCOL_VERSION);
+	uint64_t        protocol = byte__flip64(DQLITE_PROTOCOL_VERSION);
 	uint8_t         buf[3] = {
             /* Incomplete header */
             0,

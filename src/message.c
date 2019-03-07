@@ -7,7 +7,7 @@
 
 #include "../include/dqlite.h"
 
-#include "binary.h"
+#include "byte.h"
 #include "lifecycle.h"
 #include "message.h"
 
@@ -83,7 +83,7 @@ int dqlite__message_header_recv_done(struct dqlite__message *m)
 
 	assert(m->body2.base == NULL);
 
-	m->words = dqlite__flip32(m->words);
+	m->words = byte__flip32(m->words);
 	/* The message body can't be empty. */
 	if (m->words == 0) {
 		dqlite__error_printf(&m->error, "empty message body");
@@ -364,7 +364,7 @@ int dqlite__message_body_get_uint32(struct dqlite__message *m, uint32_t *value)
 		return err;
 	}
 
-	*value = dqlite__flip32(*((uint32_t *)buf));
+	*value = byte__flip32(*((uint32_t *)buf));
 
 	return err;
 }
@@ -382,7 +382,7 @@ int dqlite__message_body_get_uint64(struct dqlite__message *m, uint64_t *value)
 		return err;
 	}
 
-	*value = dqlite__flip64(*((uint64_t *)buf));
+	*value = byte__flip64(*((uint64_t *)buf));
 
 	return err;
 }
@@ -405,7 +405,7 @@ int dqlite__message_body_get_double(struct dqlite__message *m, double_t *value)
 		return err;
 	}
 
-	*((uint64_t *)value) = dqlite__flip64(*((uint64_t *)buf));
+	*((uint64_t *)value) = byte__flip64(*((uint64_t *)buf));
 
 	return err;
 }
@@ -547,7 +547,7 @@ int dqlite__message_body_put_uint32(struct dqlite__message *m, uint32_t value)
 {
 	assert(m != NULL);
 
-	value = dqlite__flip32(value);
+	value = byte__flip32(value);
 	return dqlite__message_body_put(
 	    m, (const char *)(&value), sizeof(value), 0);
 }
@@ -556,7 +556,7 @@ int dqlite__message_body_put_uint64(struct dqlite__message *m, uint64_t value)
 {
 	assert(m != NULL);
 
-	value = dqlite__flip64(value);
+	value = byte__flip64(value);
 	return dqlite__message_body_put(
 	    m, (const char *)(&value), sizeof(value), 0);
 }
@@ -580,7 +580,7 @@ int dqlite__message_body_put_double(struct dqlite__message *m, double_t value)
 
 	memcpy(&buf, &value, sizeof(buf));
 
-	buf = dqlite__flip64(buf);
+	buf = byte__flip64(buf);
 
 	return dqlite__message_body_put(
 	    m, (const char *)(&buf), sizeof(buf), 0);
@@ -601,7 +601,7 @@ void dqlite__message_send_start(struct dqlite__message *m, uv_buf_t bufs[3])
 	assert((m->offset1 % DQLITE__MESSAGE_WORD_SIZE) == 0);
 	assert((m->offset2 % DQLITE__MESSAGE_WORD_SIZE) == 0);
 
-	m->words = dqlite__flip32((m->offset1 + m->offset2) /
+	m->words = byte__flip32((m->offset1 + m->offset2) /
 	                          DQLITE__MESSAGE_WORD_SIZE);
 
 	/* The message header is stored in the first part of the dqlite_message

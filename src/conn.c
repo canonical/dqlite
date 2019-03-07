@@ -12,7 +12,7 @@
 
 #include "../include/dqlite.h"
 
-#include "binary.h"
+#include "byte.h"
 #include "conn.h"
 #include "error.h"
 #include "fsm.h"
@@ -285,7 +285,7 @@ static int dqlite__conn_handshake_read_cb(void *arg)
 	/* The buffer must point to our protocol field */
 	assert((c->buf.base - sizeof(c->protocol)) == (char *)(&c->protocol));
 
-	c->protocol = dqlite__flip64(c->protocol);
+	c->protocol = byte__flip64(c->protocol);
 
 	if (c->protocol != DQLITE_PROTOCOL_VERSION) {
 		err = DQLITE_PROTO;
