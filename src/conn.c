@@ -23,7 +23,7 @@
 /* Context attached to an uv_write_t write request */
 struct dqlite__conn_write_ctx {
 	struct dqlite__conn *    conn;
-	struct dqlite__response *response;
+	struct response *response;
 };
 
 /* Forward declarations */
@@ -33,7 +33,7 @@ static void dqlite__conn_write_cb(uv_write_t *, int);
 
 /* Write out a response for the client */
 static int dqlite__conn_write(struct dqlite__conn *    c,
-                              struct dqlite__response *response)
+                              struct response *response)
 {
 	int                            err;
 	struct dqlite__conn_write_ctx *ctx;
@@ -94,7 +94,7 @@ static int dqlite__conn_write_failure(struct dqlite__conn *c, int code)
 	c->response.failure.code    = code;
 	c->response.failure.message = c->error;
 
-	err = dqlite__response_encode(&c->response);
+	err = response_encode(&c->response);
 	if (err != 0) {
 		dqlite__error_wrapf(&c->error,
 		                    &c->response.error,
@@ -116,7 +116,7 @@ static void dqlite__conn_write_cb(uv_write_t *req, int status)
 {
 	struct dqlite__conn_write_ctx *ctx;
 	struct dqlite__conn *          c;
-	struct dqlite__response *      response;
+	struct response *      response;
 
 	assert(req != NULL);
 	assert(req->data != NULL);
@@ -164,7 +164,7 @@ static void dqlite__conn_write_cb(uv_write_t *req, int status)
 
 /* Invoked by the gateway when a response for a request is ready to be flushed
  * and sent to the client. */
-static void dqlite__conn_flush_cb(void *arg, struct dqlite__response *response)
+static void dqlite__conn_flush_cb(void *arg, struct response *response)
 {
 	struct dqlite__conn *c;
 	int                  rc;
@@ -174,7 +174,7 @@ static void dqlite__conn_flush_cb(void *arg, struct dqlite__response *response)
 
 	c = arg;
 
-	rc = dqlite__response_encode(response);
+	rc = response_encode(response);
 	if (rc != 0) {
 		dqlite__error_wrapf(
 		    &c->error, &response->error, "failed to encode response");
@@ -608,7 +608,7 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 	request_init(&c->request);
 
 	dqlite__gateway_init(&c->gateway, &callbacks, cluster, logger, options);
-	dqlite__response_init(&c->response);
+	response_init(&c->response);
 
 	c->fd   = fd;
 	c->loop = loop;
@@ -624,7 +624,7 @@ void dqlite__conn_close(struct dqlite__conn *c)
 {
 	assert(c != NULL);
 
-	dqlite__response_close(&c->response);
+	response_close(&c->response);
 	dqlite__gateway_close(&c->gateway);
 	dqlite__fsm_close(&c->fsm);
 	request_close(&c->request);

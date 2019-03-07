@@ -92,7 +92,7 @@ static int dqlite__gateway_maybe_checkpoint(void *      ctx,
 
 /* Release dynamically allocated data attached to a response after it has been
  * flushed. */
-static void dqlite__gateway_response_reset(struct dqlite__response *r)
+static void dqlite__gateway_response_reset(struct response *r)
 {
 	int i;
 
@@ -630,7 +630,7 @@ void dqlite__gateway_init(struct dqlite__gateway *    g,
 		g->ctxs[i].db      = NULL;
 		g->ctxs[i].stmt    = NULL;
 		g->ctxs[i].cleanup = DQLITE__GATEWAY_CLEANUP_NONE;
-		dqlite__response_init(&g->ctxs[i].response);
+		response_init(&g->ctxs[i].response);
 	}
 
 	g->db = NULL;
@@ -686,7 +686,7 @@ void dqlite__gateway_close(struct dqlite__gateway *g)
 #endif /* DQLITE_EXPERIMENTAL */
 
 	for (i = 0; i < DQLITE__GATEWAY_MAX_REQUESTS; i++) {
-		dqlite__response_close(&g->ctxs[i].response);
+		response_close(&g->ctxs[i].response);
 	}
 
 	dqlite__error_close(&g->error);
@@ -782,7 +782,7 @@ static void dqlite__gateway_query_resume(struct dqlite__gateway *    g,
 }
 
 void dqlite__gateway_flushed(struct dqlite__gateway * g,
-                             struct dqlite__response *response)
+                             struct response *response)
 {
 	int i;
 
@@ -808,7 +808,7 @@ void dqlite__gateway_flushed(struct dqlite__gateway * g,
 }
 
 void dqlite__gateway_aborted(struct dqlite__gateway * g,
-                             struct dqlite__response *response)
+                             struct response *response)
 {
 	assert(g != NULL);
 	assert(response != NULL);

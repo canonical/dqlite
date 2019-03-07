@@ -38,7 +38,7 @@ struct dqlite__conn {
 	struct dqlite__fsm      fsm;      /* Connection state machine */
 	struct dqlite__gateway  gateway;  /* Client state and request handler */
 	struct request  request;  /* Incoming request */
-	struct dqlite__response response; /* Response for internal failures */
+	struct response response; /* Response for internal failures */
 
 	int        fd;   /* File descriptor of client stream */
 	uv_loop_t *loop; /* UV loop */

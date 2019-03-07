@@ -41,7 +41,7 @@
 /* Context for the gateway request handlers */
 struct dqlite__gateway_ctx {
 	struct request *request;
-	struct dqlite__response response;
+	struct response response;
 	struct db *     db;      /* For multi-response queries */
 	struct stmt *   stmt;    /* For multi-response queries */
 	int                     cleanup; /* Code indicating how to cleanup */
@@ -56,7 +56,7 @@ struct dqlite__gateway_cbs {
 	 * dqlite__gateway_flushed() to indicate that it has completed sending
 	 * the response data to the client and that the response buffer can be
 	 * used for another request. */
-	void (*xFlush)(void *ctx, struct dqlite__response *response);
+	void (*xFlush)(void *ctx, struct response *response);
 };
 
 /*
@@ -148,11 +148,11 @@ int dqlite__gateway_ctx_for(struct dqlite__gateway *g, int type);
 /* Notify the gateway that a response has been completely flushed and its data
  * sent to the client. */
 void dqlite__gateway_flushed(struct dqlite__gateway * g,
-                             struct dqlite__response *response);
+                             struct response *response);
 
 /* Notify the gateway that this response has been aborted due to errors
  * (e.g. the client disconnected). */
 void dqlite__gateway_aborted(struct dqlite__gateway * g,
-                             struct dqlite__response *response);
+                             struct response *response);
 
 #endif /* DQLITE_GATEWAY_H */

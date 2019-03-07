@@ -18,7 +18,7 @@
 struct test_client {
 	int                     fd;
 	struct request  request;
-	struct dqlite__response response;
+	struct response response;
 	uv_buf_t                bufs[3];
 };
 

@@ -26,7 +26,7 @@ struct fixture {
 	struct dqlite__metrics  metrics;
 	uv_loop_t               loop;
 	struct dqlite__conn *   conn;
-	struct dqlite__response response;
+	struct response response;
 };
 
 /* Run the fixture loop once.
@@ -87,7 +87,7 @@ static void __recv_response(struct fixture *f)
 	nread = read(f->sockets.client, buf.base, buf.len);
 	munit_assert_int(nread, ==, buf.len);
 
-	err = dqlite__response_decode(&f->response);
+	err = response_decode(&f->response);
 	munit_assert_int(err, ==, 0);
 
 	message__recv_reset(&f->response.message);
@@ -133,7 +133,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	                  &f->options,
 	                  &f->metrics);
 
-	dqlite__response_init(&f->response);
+	response_init(&f->response);
 
 	dqlite__options_defaults(&f->options);
 	dqlite__metrics_init(&f->metrics);
@@ -149,7 +149,7 @@ static void tear_down(void *data)
 	struct fixture *f = data;
 	int             err;
 
-	dqlite__response_close(&f->response);
+	response_close(&f->response);
 
 	err = uv_loop_close(&f->loop);
 	munit_assert_int(err, ==, 0);

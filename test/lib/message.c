@@ -56,17 +56,17 @@ TEST_MESSAGE_SEND_IMPLEMENT(open,
 
 TEST_MESSAGE_SEND_IMPLEMENT(server,
                             DQLITE_RESPONSE_SERVER,
-                            dqlite__response,
-                            DQLITE__RESPONSE_SCHEMA_SERVER);
+                            response,
+                            RESPONSE__SCHEMA_SERVER);
 TEST_MESSAGE_SEND_IMPLEMENT(welcome,
                             DQLITE_RESPONSE_WELCOME,
-                            dqlite__response,
-                            DQLITE__RESPONSE_SCHEMA_WELCOME);
+                            response,
+                            RESPONSE__SCHEMA_WELCOME);
 TEST_MESSAGE_SEND_IMPLEMENT(servers,
                             DQLITE_RESPONSE_SERVERS,
-                            dqlite__response,
-                            DQLITE__RESPONSE_SCHEMA_SERVERS);
+                            response,
+                            RESPONSE__SCHEMA_SERVERS);
 TEST_MESSAGE_SEND_IMPLEMENT(db,
                             DQLITE_RESPONSE_DB,
-                            dqlite__response,
-                            DQLITE__RESPONSE_SCHEMA_DB);
+                            response,
+                            RESPONSE__SCHEMA_DB);
