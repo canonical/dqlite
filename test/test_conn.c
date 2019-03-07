@@ -25,7 +25,7 @@ struct fixture {
 	struct dqlite__options  options;
 	struct dqlite__metrics  metrics;
 	uv_loop_t               loop;
-	struct dqlite__conn *   conn;
+	struct conn *   conn;
 	struct response response;
 };
 
@@ -125,7 +125,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	err = uv_loop_init(&f->loop);
 	munit_assert_int(err, ==, 0);
 
-	dqlite__conn_init(f->conn,
+	conn__init(f->conn,
 	                  f->sockets.server,
 	                  test_logger(),
 	                  test_cluster(),
@@ -138,7 +138,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	dqlite__options_defaults(&f->options);
 	dqlite__metrics_init(&f->metrics);
 
-	err = dqlite__conn_start(f->conn);
+	err = conn__start(f->conn);
 	munit_assert_int(err, ==, 0);
 
 	return f;
@@ -160,7 +160,7 @@ static void tear_down(void *data)
 
 /******************************************************************************
  *
- * dqlite__conn_abort
+ * conn__abort
  *
  ******************************************************************************/
 
@@ -361,7 +361,7 @@ test_abort_after_heartbeat_timeout(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__conn_abort_tests[] = {
+static MunitTest conn__abort_tests[] = {
     {"/immediately", test_abort_immediately, setup, tear_down, 0, params},
     {"/during-handshake",
      test_abort_during_handshake,
@@ -385,7 +385,7 @@ static MunitTest dqlite__conn_abort_tests[] = {
 
 /******************************************************************************
  *
- * dqlite__conn_read_cb
+ * conn__read_cb
  *
  ******************************************************************************/
 
@@ -594,7 +594,7 @@ static MunitResult test_read_cb_throttle(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__conn_read_cb_tests[] = {
+static MunitTest conn__read_cb_tests[] = {
     {"/bad-protocol", test_read_cb_bad_protocol, setup, tear_down, 0, params},
     {"/empty-body", test_read_cb_empty_body, setup, tear_down, 0, params},
     {"/body-too-big", test_read_cb_body_too_big, setup, tear_down, 0, params},
@@ -611,8 +611,8 @@ static MunitTest dqlite__conn_read_cb_tests[] = {
  *
  ******************************************************************************/
 
-MunitSuite dqlite__conn_suites[] = {
-    {"_abort", dqlite__conn_abort_tests, NULL, 1, 0},
-    {"_read_cb", dqlite__conn_read_cb_tests, NULL, 1, 0},
+MunitSuite conn__suites[] = {
+    {"_abort", conn__abort_tests, NULL, 1, 0},
+    {"_read_cb", conn__read_cb_tests, NULL, 1, 0},
     {NULL, NULL, NULL, 0, 0},
 };

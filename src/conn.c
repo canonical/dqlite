@@ -21,37 +21,37 @@
 #include "response.h"
 
 /* Context attached to an uv_write_t write request */
-struct dqlite__conn_write_ctx {
-	struct dqlite__conn *    conn;
+struct conn__write_ctx
+{
+	struct conn *conn;
 	struct response *response;
 };
 
 /* Forward declarations */
-static void dqlite__conn_alloc_cb(uv_handle_t *, size_t, uv_buf_t *);
-static void dqlite__conn_read_cb(uv_stream_t *, ssize_t, const uv_buf_t *);
-static void dqlite__conn_write_cb(uv_write_t *, int);
+static void conn__alloc_cb(uv_handle_t *, size_t, uv_buf_t *);
+static void conn__read_cb(uv_stream_t *, ssize_t, const uv_buf_t *);
+static void conn__write_cb(uv_write_t *, int);
 
 /* Write out a response for the client */
-static int dqlite__conn_write(struct dqlite__conn *    c,
-                              struct response *response)
+static int conn__write(struct conn *c, struct response *response)
 {
-	int                            err;
-	struct dqlite__conn_write_ctx *ctx;
-	uv_write_t *                   req;
-	uv_buf_t                       bufs[3];
+	int err;
+	struct conn__write_ctx *ctx;
+	uv_write_t *req;
+	uv_buf_t bufs[3];
 
 	/* Create a write request UV handle */
 	req = (uv_write_t *)sqlite3_malloc(sizeof(*req) + sizeof(*ctx));
 	if (req == NULL) {
 		err = DQLITE_NOMEM;
 		dqlite__error_oom(&c->error,
-		                  "failed to start writing response");
+				  "failed to start writing response");
 		return err;
 	}
 
-	ctx = (struct dqlite__conn_write_ctx *)(((char *)req) + sizeof(*req));
+	ctx = (struct conn__write_ctx *)(((char *)req) + sizeof(*req));
 
-	ctx->conn     = c;
+	ctx->conn = c;
 	ctx->response = response;
 
 	req->data = (void *)ctx;
@@ -64,7 +64,7 @@ static int dqlite__conn_write(struct dqlite__conn *    c,
 	assert(bufs[1].base != NULL);
 	assert(bufs[1].len > 0);
 
-	err = uv_write(req, &c->stream, bufs, 3, dqlite__conn_write_cb);
+	err = uv_write(req, &c->stream, bufs, 3, conn__write_cb);
 	if (err != 0) {
 		message__send_reset(&response->message);
 		sqlite3_free(req);
@@ -76,54 +76,53 @@ static int dqlite__conn_write(struct dqlite__conn *    c,
 }
 
 /* Write out a failure response. */
-static int dqlite__conn_write_failure(struct dqlite__conn *c, int code)
+static int conn__write_failure(struct conn *c, int code)
 {
 	int err;
 
 	assert(c != NULL);
 	assert(code != 0);
 
-	dqlite__debugf(
-	    c, "failure (fd=%d code=%d msg=%s)", c->fd, code, c->error);
+	dqlite__debugf(c, "failure (fd=%d code=%d msg=%s)", c->fd, code,
+		       c->error);
 
 	/* TODO: allocate the response object dynamically, to allow for
 	 *       concurrent failures (e.g. the client issues a second failing
 	 *       request before the response for the first failing request has
 	 *       been completely written out. */
-	c->response.type            = DQLITE_RESPONSE_FAILURE;
-	c->response.failure.code    = code;
+	c->response.type = DQLITE_RESPONSE_FAILURE;
+	c->response.failure.code = code;
 	c->response.failure.message = c->error;
 
 	err = response_encode(&c->response);
 	if (err != 0) {
-		dqlite__error_wrapf(&c->error,
-		                    &c->response.error,
-		                    "failed to encode failure response");
+		dqlite__error_wrapf(&c->error, &c->response.error,
+				    "failed to encode failure response");
 		return err;
 	}
 
-	err = dqlite__conn_write(c, &c->response);
+	err = conn__write(c, &c->response);
 	if (err != 0) {
 		/* NOTE: no need to set c->error since that's done by
-		 * dqlite__conn_write. */
+		 * conn__write. */
 		return err;
 	}
 
 	return 0;
 }
 
-static void dqlite__conn_write_cb(uv_write_t *req, int status)
+static void conn__write_cb(uv_write_t *req, int status)
 {
-	struct dqlite__conn_write_ctx *ctx;
-	struct dqlite__conn *          c;
-	struct response *      response;
+	struct conn__write_ctx *ctx;
+	struct conn *c;
+	struct response *response;
 
 	assert(req != NULL);
 	assert(req->data != NULL);
 
-	ctx = (struct dqlite__conn_write_ctx *)req->data;
+	ctx = (struct conn__write_ctx *)req->data;
 
-	c        = ctx->conn;
+	c = ctx->conn;
 	response = ctx->response;
 
 	assert(c != NULL);
@@ -138,7 +137,7 @@ static void dqlite__conn_write_cb(uv_write_t *req, int status)
 	if (status) {
 		dqlite__error_uv(&c->error, status, "response write error");
 		gateway__aborted(&c->gateway, response);
-		dqlite__conn_abort(c);
+		conn__abort(c);
 	} else {
 		/* In case this not our own failure response object, notify the
 		 * gateway that we're done */
@@ -150,9 +149,8 @@ static void dqlite__conn_write_cb(uv_write_t *req, int status)
 		 * down, let's resume. */
 		if (c->paused && !c->aborting) {
 			int err;
-			err = uv_read_start(&c->stream,
-			                    dqlite__conn_alloc_cb,
-			                    dqlite__conn_read_cb);
+			err = uv_read_start(&c->stream, conn__alloc_cb,
+					    conn__read_cb);
 			/* TODO: is it possible for uv_read_start to fail now?
 			 */
 			assert(err == 0);
@@ -164,10 +162,10 @@ static void dqlite__conn_write_cb(uv_write_t *req, int status)
 
 /* Invoked by the gateway when a response for a request is ready to be flushed
  * and sent to the client. */
-static void dqlite__conn_flush_cb(void *arg, struct response *response)
+static void conn__flush_cb(void *arg, struct response *response)
 {
-	struct dqlite__conn *c;
-	int                  rc;
+	struct conn *c;
+	int rc;
 
 	assert(arg != NULL);
 	assert(response != NULL);
@@ -176,15 +174,15 @@ static void dqlite__conn_flush_cb(void *arg, struct response *response)
 
 	rc = response_encode(response);
 	if (rc != 0) {
-		dqlite__error_wrapf(
-		    &c->error, &response->error, "failed to encode response");
+		dqlite__error_wrapf(&c->error, &response->error,
+				    "failed to encode response");
 		goto response_failure;
 	}
 
-	rc = dqlite__conn_write(c, response);
+	rc = conn__write(c, response);
 	if (rc != 0) {
 		/* NOTE: no need to set c->error since that's done by
-		 * dqlite__conn_write. */
+		 * conn__write. */
 		goto response_failure;
 	}
 
@@ -208,7 +206,7 @@ response_failure:
  * request. 2) Reqest body: the body of the request is read.
  *
  * After 2) the state machine goes back to 1). */
-static void dqlite__conn_buf_init(struct dqlite__conn *c, uv_buf_t *buf)
+static void conn__buf_init(struct conn *c, uv_buf_t *buf)
 {
 	assert(c != NULL);
 	assert(buf->base != NULL);
@@ -222,8 +220,8 @@ static void dqlite__conn_buf_init(struct dqlite__conn *c, uv_buf_t *buf)
 
 /* Reset the connection read buffer. This should be called at the end of a read
  * phase, to signal that the FSM should be advanced and next phase should
- * start (this is done by dqlite__conn_alloc_cb). */
-static void dqlite__conn_buf_close(struct dqlite__conn *c)
+ * start (this is done by conn__alloc_cb). */
+static void conn__buf_close(struct conn *c)
 {
 	assert(c != NULL);
 	assert(c->buf.base != NULL);
@@ -232,53 +230,53 @@ static void dqlite__conn_buf_close(struct dqlite__conn *c)
 	c->buf.base = NULL;
 }
 
-#define DQLITE__CONN_HANDSHAKE 0
-#define DQLITE__CONN_HEADER 1
-#define DQLITE__CONN_BODY 2
+#define CONN__HANDSHAKE 0
+#define CONN__HEADER 1
+#define CONN__BODY 2
 
-static struct dqlite__fsm_state dqlite__conn_states[] = {
-    {DQLITE__CONN_HANDSHAKE, "handshake"},
-    {DQLITE__CONN_HEADER, "header"},
-    {DQLITE__CONN_BODY, "body"},
+static struct dqlite__fsm_state conn__states[] = {
+    {CONN__HANDSHAKE, "handshake"},
+    {CONN__HEADER, "header"},
+    {CONN__BODY, "body"},
     {DQLITE__FSM_NULL, NULL},
 };
 
-#define DQLITE__CONN_ALLOC 0
-#define DQLITE__CONN_READ 1
+#define CONN__ALLOC 0
+#define CONN__READ 1
 
-static struct dqlite__fsm_event dqlite__conn_events[] = {
-    {DQLITE__CONN_ALLOC, "alloc"},
-    {DQLITE__CONN_READ, "read"},
+static struct dqlite__fsm_event conn__events[] = {
+    {CONN__ALLOC, "alloc"},
+    {CONN__READ, "read"},
     {DQLITE__FSM_NULL, NULL},
 };
 
-static int dqlite__conn_handshake_alloc_cb(void *arg)
+static int conn__handshake_alloc_cb(void *arg)
 {
-	struct dqlite__conn *c;
-	uv_buf_t             buf;
+	struct conn *c;
+	uv_buf_t buf;
 
 	assert(arg != NULL);
 
-	c = (struct dqlite__conn *)arg;
+	c = (struct conn *)arg;
 
 	/* The handshake read buffer is simply the protocol field of the
 	 * connection struct. */
 	buf.base = (char *)(&c->protocol);
-	buf.len  = sizeof(c->protocol);
+	buf.len = sizeof(c->protocol);
 
-	dqlite__conn_buf_init(c, &buf);
+	conn__buf_init(c, &buf);
 
 	return 0;
 }
 
-static int dqlite__conn_handshake_read_cb(void *arg)
+static int conn__handshake_read_cb(void *arg)
 {
-	int                  err;
-	struct dqlite__conn *c;
+	int err;
+	struct conn *c;
 
 	assert(arg != NULL);
 
-	c = (struct dqlite__conn *)arg;
+	c = (struct conn *)arg;
 
 	/* The buffer must point to our protocol field */
 	assert((c->buf.base - sizeof(c->protocol)) == (char *)(&c->protocol));
@@ -287,33 +285,31 @@ static int dqlite__conn_handshake_read_cb(void *arg)
 
 	if (c->protocol != DQLITE_PROTOCOL_VERSION) {
 		err = DQLITE_PROTO;
-		dqlite__error_printf(
-		    &c->error, "unknown protocol version: %lx", c->protocol);
+		dqlite__error_printf(&c->error, "unknown protocol version: %lx",
+				     c->protocol);
 		return err;
 	}
 
 	return 0;
 }
 
-static struct dqlite__fsm_transition dqlite__conn_transitions_handshake[] = {
-    {DQLITE__CONN_ALLOC,
-     dqlite__conn_handshake_alloc_cb,
-     DQLITE__CONN_HANDSHAKE},
-    {DQLITE__CONN_READ, dqlite__conn_handshake_read_cb, DQLITE__CONN_HEADER},
+static struct dqlite__fsm_transition conn__transitions_handshake[] = {
+    {CONN__ALLOC, conn__handshake_alloc_cb, CONN__HANDSHAKE},
+    {CONN__READ, conn__handshake_read_cb, CONN__HEADER},
 };
 
-static int dqlite__conn_header_alloc_cb(void *arg)
+static int conn__header_alloc_cb(void *arg)
 {
-	struct dqlite__conn *c;
-	uv_buf_t             buf;
+	struct conn *c;
+	uv_buf_t buf;
 
 	assert(arg != NULL);
 
-	c = (struct dqlite__conn *)arg;
+	c = (struct conn *)arg;
 
 	message__header_recv_start(&c->request.message, &buf);
 
-	dqlite__conn_buf_init(c, &buf);
+	conn__buf_init(c, &buf);
 
 	/* If metrics are enabled, keep track of the request start time. */
 	if (c->metrics != NULL) {
@@ -323,15 +319,15 @@ static int dqlite__conn_header_alloc_cb(void *arg)
 	return 0;
 }
 
-static int dqlite__conn_header_read_cb(void *arg)
+static int conn__header_read_cb(void *arg)
 {
-	int                  err;
-	struct dqlite__conn *c;
-	int                  ctx;
+	int err;
+	struct conn *c;
+	int ctx;
 
 	assert(arg != NULL);
 
-	c = (struct dqlite__conn *)arg;
+	c = (struct conn *)arg;
 
 	err = message__header_recv_done(&c->request.message);
 	if (err != 0) {
@@ -339,17 +335,16 @@ static int dqlite__conn_header_read_cb(void *arg)
 		 * returned. */
 		assert(err == DQLITE_PROTO);
 
-		dqlite__error_wrapf(&c->error,
-		                    &c->request.message.error,
-		                    "failed to parse request header");
+		dqlite__error_wrapf(&c->error, &c->request.message.error,
+				    "failed to parse request header");
 
-		err = dqlite__conn_write_failure(c, err);
+		err = conn__write_failure(c, err);
 		if (err != 0) {
 			return err;
 		}
 
 		/* Instruct the fsm to skip receiving the message body */
-		c->fsm.jump_state_id = DQLITE__CONN_HEADER;
+		c->fsm.jump_state_id = CONN__HEADER;
 	}
 
 	/* If the gateway is currently busy handling a previous request,
@@ -358,8 +353,8 @@ static int dqlite__conn_header_read_cb(void *arg)
 	if (ctx == -1) {
 		err = uv_read_stop(&c->stream);
 		if (err != 0) {
-			dqlite__error_uv(
-			    &c->error, err, "failed to pause reading");
+			dqlite__error_uv(&c->error, err,
+					 "failed to pause reading");
 			return err;
 		}
 		c->paused = 1;
@@ -368,47 +363,46 @@ static int dqlite__conn_header_read_cb(void *arg)
 	return 0;
 }
 
-static struct dqlite__fsm_transition dqlite__conn_transitions_header[] = {
-    {DQLITE__CONN_ALLOC, dqlite__conn_header_alloc_cb, DQLITE__CONN_HEADER},
-    {DQLITE__CONN_READ, dqlite__conn_header_read_cb, DQLITE__CONN_BODY},
+static struct dqlite__fsm_transition conn__transitions_header[] = {
+    {CONN__ALLOC, conn__header_alloc_cb, CONN__HEADER},
+    {CONN__READ, conn__header_read_cb, CONN__BODY},
 };
 
-static int dqlite__conn_body_alloc_cb(void *arg)
+static int conn__body_alloc_cb(void *arg)
 {
-	int                  err;
-	struct dqlite__conn *c;
-	uv_buf_t             buf;
+	int err;
+	struct conn *c;
+	uv_buf_t buf;
 
 	assert(arg != NULL);
 
-	c = (struct dqlite__conn *)arg;
+	c = (struct conn *)arg;
 
 	err = message__body_recv_start(&c->request.message, &buf);
 	if (err != 0) {
-		dqlite__error_wrapf(&c->error,
-		                    &c->request.message.error,
-		                    "failed to start reading message body");
+		dqlite__error_wrapf(&c->error, &c->request.message.error,
+				    "failed to start reading message body");
 		return err;
 	}
 
-	dqlite__conn_buf_init(c, &buf);
+	conn__buf_init(c, &buf);
 
 	return 0;
 }
 
-static int dqlite__conn_body_read_cb(void *arg)
+static int conn__body_read_cb(void *arg)
 {
-	int                  err;
-	struct dqlite__conn *c;
+	int err;
+	struct conn *c;
 
 	assert(arg != NULL);
 
-	c = (struct dqlite__conn *)arg;
+	c = (struct conn *)arg;
 
 	err = request_decode(&c->request);
 	if (err != 0) {
-		dqlite__error_wrapf(
-		    &c->error, &c->request.error, "failed to decode request");
+		dqlite__error_wrapf(&c->error, &c->request.error,
+				    "failed to decode request");
 		goto request_failure;
 	}
 
@@ -416,8 +410,8 @@ static int dqlite__conn_body_read_cb(void *arg)
 
 	err = gateway__handle(&c->gateway, &c->request);
 	if (err != 0) {
-		dqlite__error_wrapf(
-		    &c->error, &c->gateway.error, "failed to handle request");
+		dqlite__error_wrapf(&c->error, &c->gateway.error,
+				    "failed to handle request");
 		goto request_failure;
 	}
 
@@ -428,7 +422,7 @@ static int dqlite__conn_body_read_cb(void *arg)
 request_failure:
 	assert(err != 0);
 
-	err = dqlite__conn_write_failure(c, err);
+	err = conn__write_failure(c, err);
 	if (err != 0) {
 		return err;
 	}
@@ -436,29 +430,29 @@ request_failure:
 	return 0;
 }
 
-static struct dqlite__fsm_transition dqlite__conn_transitions_body[] = {
-    {DQLITE__CONN_ALLOC, dqlite__conn_body_alloc_cb, DQLITE__CONN_BODY},
-    {DQLITE__CONN_READ, dqlite__conn_body_read_cb, DQLITE__CONN_HEADER},
+static struct dqlite__fsm_transition conn__transitions_body[] = {
+    {CONN__ALLOC, conn__body_alloc_cb, CONN__BODY},
+    {CONN__READ, conn__body_read_cb, CONN__HEADER},
 };
 
 static struct dqlite__fsm_transition *dqlite__transitions[] = {
-    dqlite__conn_transitions_handshake,
-    dqlite__conn_transitions_header,
-    dqlite__conn_transitions_body,
+    conn__transitions_handshake,
+    conn__transitions_header,
+    conn__transitions_body,
 };
 
 /* Called to allocate a buffer for the next stream read. */
-static void dqlite__conn_alloc_cb(uv_handle_t *stream, size_t _, uv_buf_t *buf)
+static void conn__alloc_cb(uv_handle_t *stream, size_t _, uv_buf_t *buf)
 {
-	int                  err;
-	struct dqlite__conn *c;
+	int err;
+	struct conn *c;
 
 	assert(stream != NULL);
 	assert(buf != NULL);
 
 	(void)_;
 
-	c = (struct dqlite__conn *)stream->data;
+	c = (struct conn *)stream->data;
 
 	assert(c != NULL);
 
@@ -468,11 +462,11 @@ static void dqlite__conn_alloc_cb(uv_handle_t *stream, size_t _, uv_buf_t *buf)
 	if (c->buf.base == NULL) {
 		assert(c->buf.len == 0);
 
-		err = dqlite__fsm_step(&c->fsm, DQLITE__CONN_ALLOC, (void *)c);
+		err = dqlite__fsm_step(&c->fsm, CONN__ALLOC, (void *)c);
 		if (err != 0) {
-			dqlite__errorf(
-			    c, "alloc error (fd=%d err=%d)", c->fd, err);
-			dqlite__conn_abort(c);
+			dqlite__errorf(c, "alloc error (fd=%d err=%d)", c->fd,
+				       err);
+			conn__abort(c);
 			return;
 		}
 
@@ -483,14 +477,14 @@ static void dqlite__conn_alloc_cb(uv_handle_t *stream, size_t _, uv_buf_t *buf)
 	*buf = c->buf;
 }
 
-static void dqlite__conn_alive_cb(uv_timer_t *alive)
+static void conn__alive_cb(uv_timer_t *alive)
 {
-	uint64_t             elapsed;
-	struct dqlite__conn *c;
+	uint64_t elapsed;
+	struct conn *c;
 
 	assert(alive != NULL);
 
-	c = (struct dqlite__conn *)alive->data;
+	c = (struct conn *)alive->data;
 
 	assert(c != NULL);
 
@@ -500,21 +494,21 @@ static void dqlite__conn_alive_cb(uv_timer_t *alive)
 	 * milliseconds ago, abort the connection. */
 	if (elapsed > c->options->heartbeat_timeout) {
 		// dqlite__error_printf(&c->error, "no heartbeat since %ld
-		// milliseconds", elapsed); dqlite__conn_abort(c);
+		// milliseconds", elapsed); conn__abort(c);
 	}
 }
 
-static void dqlite__conn_read_cb(uv_stream_t *   stream,
-                                 ssize_t         nread,
-                                 const uv_buf_t *buf)
+static void conn__read_cb(uv_stream_t *stream,
+			  ssize_t nread,
+			  const uv_buf_t *buf)
 {
-	int                  err;
-	struct dqlite__conn *c;
+	int err;
+	struct conn *c;
 
 	assert(stream != NULL);
 	assert(buf != NULL);
 
-	c = (struct dqlite__conn *)stream->data;
+	c = (struct conn *)stream->data;
 
 	assert(c != NULL);
 
@@ -535,8 +529,8 @@ static void dqlite__conn_read_cb(uv_stream_t *   stream,
 		}
 
 		/* Read completed, advance the FSM and reset the read buffer. */
-		err = dqlite__fsm_step(&c->fsm, DQLITE__CONN_READ, (void *)c);
-		dqlite__conn_buf_close(c);
+		err = dqlite__fsm_step(&c->fsm, CONN__READ, (void *)c);
+		conn__buf_close(c);
 
 		/* If an error occurred, abort the connection. */
 		if (err != 0) {
@@ -563,18 +557,18 @@ static void dqlite__conn_read_cb(uv_stream_t *   stream,
 	dqlite__error_uv(&c->error, nread, "read error");
 
 abort:
-	dqlite__conn_abort(c);
+	conn__abort(c);
 out:
 	return;
 }
 
-void dqlite__conn_init(struct dqlite__conn *   c,
-                       int                     fd,
-                       dqlite_logger *         logger,
-                       dqlite_cluster *        cluster,
-                       uv_loop_t *             loop,
-                       struct dqlite__options *options,
-                       struct dqlite__metrics *metrics)
+void conn__init(struct conn *c,
+		int fd,
+		dqlite_logger *logger,
+		dqlite_cluster *cluster,
+		uv_loop_t *loop,
+		struct dqlite__options *options,
+		struct dqlite__metrics *metrics)
 {
 	struct gateway__cbs callbacks;
 
@@ -583,8 +577,8 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 	assert(loop != NULL);
 	assert(options != NULL);
 
-	callbacks.ctx    = c;
-	callbacks.xFlush = dqlite__conn_flush_cb;
+	callbacks.ctx = c;
+	callbacks.xFlush = conn__flush_cb;
 
 	/* The tcp and pipe handle structures are pointing to the same memory
 	 * location as the abstract stream handle. */
@@ -593,7 +587,7 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_CONN);
 
-	c->logger   = logger;
+	c->logger = logger;
 	c->protocol = 0;
 
 	c->options = options;
@@ -601,26 +595,24 @@ void dqlite__conn_init(struct dqlite__conn *   c,
 
 	dqlite__error_init(&c->error);
 
-	dqlite__fsm_init(&c->fsm,
-	                 dqlite__conn_states,
-	                 dqlite__conn_events,
-	                 dqlite__transitions);
+	dqlite__fsm_init(&c->fsm, conn__states, conn__events,
+			 dqlite__transitions);
 	request_init(&c->request);
 
 	gateway__init(&c->gateway, &callbacks, cluster, logger, options);
 	response_init(&c->response);
 
-	c->fd   = fd;
+	c->fd = fd;
 	c->loop = loop;
 
 	c->buf.base = NULL;
-	c->buf.len  = 0;
+	c->buf.len = 0;
 
 	c->aborting = 0;
-	c->paused   = 0;
+	c->paused = 0;
 }
 
-void dqlite__conn_close(struct dqlite__conn *c)
+void conn__close(struct conn *c)
 {
 	assert(c != NULL);
 
@@ -633,9 +625,9 @@ void dqlite__conn_close(struct dqlite__conn *c)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_CONN);
 }
 
-int dqlite__conn_start(struct dqlite__conn *c)
+int conn__start(struct conn *c)
 {
-	int      err;
+	int err;
 	uint64_t heartbeat_timeout;
 
 	assert(c != NULL);
@@ -644,8 +636,8 @@ int dqlite__conn_start(struct dqlite__conn *c)
 	/* Start the gateway */
 	err = gateway__start(&c->gateway, uv_now(c->loop));
 	if (err != 0) {
-		dqlite__error_uv(
-		    &c->error, err, "failed to start gateway coroutine");
+		dqlite__error_uv(&c->error, err,
+				 "failed to start gateway coroutine");
 		goto err;
 	}
 #else
@@ -665,10 +657,8 @@ int dqlite__conn_start(struct dqlite__conn *c)
 	}
 	c->alive.data = (void *)c;
 
-	err = uv_timer_start(&c->alive,
-	                     dqlite__conn_alive_cb,
-	                     heartbeat_timeout,
-	                     heartbeat_timeout);
+	err = uv_timer_start(&c->alive, conn__alive_cb, heartbeat_timeout,
+			     heartbeat_timeout);
 	if (err != 0) {
 		dqlite__error_uv(&c->error, err, "failed to init alive timer");
 		err = DQLITE_ERROR;
@@ -677,57 +667,57 @@ int dqlite__conn_start(struct dqlite__conn *c)
 
 	/* Start reading from the stream. */
 	switch (uv_guess_handle(c->fd)) {
-	case UV_TCP:
-		err = uv_tcp_init(c->loop, &c->tcp);
-		if (err != 0) {
-			dqlite__error_uv(
-			    &c->error, err, "failed to init tcp stream");
+		case UV_TCP:
+			err = uv_tcp_init(c->loop, &c->tcp);
+			if (err != 0) {
+				dqlite__error_uv(&c->error, err,
+						 "failed to init tcp stream");
+				err = DQLITE_ERROR;
+				goto err_after_timer_start;
+			}
+
+			err = uv_tcp_open(&c->tcp, c->fd);
+			if (err != 0) {
+				dqlite__error_uv(&c->error, err,
+						 "failed to open tcp stream");
+				err = DQLITE_ERROR;
+				goto err_after_timer_start;
+			}
+
+			break;
+
+		case UV_NAMED_PIPE:
+			err = uv_pipe_init(c->loop, &c->pipe, 0);
+			if (err != 0) {
+				dqlite__error_uv(&c->error, err,
+						 "failed to init pipe stream");
+				err = DQLITE_ERROR;
+				goto err_after_timer_start;
+			}
+
+			err = uv_pipe_open(&c->pipe, c->fd);
+			if (err != 0) {
+				dqlite__error_uv(&c->error, err,
+						 "failed to open pipe stream");
+				err = DQLITE_ERROR;
+				goto err_after_timer_start;
+			}
+
+			break;
+
+		default:
+			dqlite__error_printf(&c->error,
+					     "unsupported stream type");
 			err = DQLITE_ERROR;
 			goto err_after_timer_start;
-		}
-
-		err = uv_tcp_open(&c->tcp, c->fd);
-		if (err != 0) {
-			dqlite__error_uv(
-			    &c->error, err, "failed to open tcp stream");
-			err = DQLITE_ERROR;
-			goto err_after_timer_start;
-		}
-
-		break;
-
-	case UV_NAMED_PIPE:
-		err = uv_pipe_init(c->loop, &c->pipe, 0);
-		if (err != 0) {
-			dqlite__error_uv(
-			    &c->error, err, "failed to init pipe stream");
-			err = DQLITE_ERROR;
-			goto err_after_timer_start;
-		}
-
-		err = uv_pipe_open(&c->pipe, c->fd);
-		if (err != 0) {
-			dqlite__error_uv(
-			    &c->error, err, "failed to open pipe stream");
-			err = DQLITE_ERROR;
-			goto err_after_timer_start;
-		}
-
-		break;
-
-	default:
-		dqlite__error_printf(&c->error, "unsupported stream type");
-		err = DQLITE_ERROR;
-		goto err_after_timer_start;
 	}
 
 	c->stream.data = (void *)c;
 
-	err = uv_read_start(
-	    &c->stream, dqlite__conn_alloc_cb, dqlite__conn_read_cb);
+	err = uv_read_start(&c->stream, conn__alloc_cb, conn__read_cb);
 	if (err != 0) {
-		dqlite__error_uv(
-		    &c->error, err, "failed to start reading tcp stream");
+		dqlite__error_uv(&c->error, err,
+				 "failed to start reading tcp stream");
 		err = DQLITE_ERROR;
 		goto err_after_stream_open;
 	}
@@ -745,24 +735,23 @@ err:
 	return err;
 }
 
-static void dqlite__conn_stream_close_cb(uv_handle_t *handle)
+static void conn__stream_close_cb(uv_handle_t *handle)
 {
-	struct dqlite__conn *c;
+	struct conn *c;
 
 	assert(handle != NULL);
 
 	c = handle->data;
 
-	dqlite__conn_close(c);
+	conn__close(c);
 	sqlite3_free(c);
 
 	uv_close((uv_handle_t *)(&c->alive), NULL);
 }
 
-
 /* Abort the connection, realeasing any memory allocated by the read buffer, and
  * closing the UV handle (which closes the underlying socket as well) */
-void dqlite__conn_abort(struct dqlite__conn *c)
+void conn__abort(struct conn *c)
 {
 	const char *state;
 
@@ -771,7 +760,7 @@ void dqlite__conn_abort(struct dqlite__conn *c)
 	if (c->aborting) {
 		/* It might happen that a connection error occurs at the same
 		 *time
-		 ** the loop gets stopped, and dqlite__conn_abort is called
+		 ** the loop gets stopped, and conn__abort is called
 		 *twice in
 		 ** the same loop iteration. We just ignore the second call in
 		 *that
@@ -786,19 +775,16 @@ void dqlite__conn_abort(struct dqlite__conn *c)
 
 #ifdef DQLITE_DEBUG
 	/* In debug mode always log disconnections. */
-	dqlite__debugf(
-	    c, "aborting (fd=%d state=%s msg=%s)", c->fd, state, c->error);
+	dqlite__debugf(c, "aborting (fd=%d state=%s msg=%s)", c->fd, state,
+		       c->error);
 #else
 	/* If the error is not due to a client disconnection, log an error
 	 * message */
 	if (!dqlite__error_is_disconnect(&c->error)) {
-		dqlite__errorf(c,
-		               "aborting (fd=%d state=%s msg=%s)",
-		               c->fd,
-		               state,
-		               c->error);
+		dqlite__errorf(c, "aborting (fd=%d state=%s msg=%s)", c->fd,
+			       state, c->error);
 	}
 #endif
 
-	uv_close((uv_handle_t *)(&c->stream), dqlite__conn_stream_close_cb);
+	uv_close((uv_handle_t *)(&c->stream), conn__stream_close_cb);
 }

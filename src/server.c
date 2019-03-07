@@ -67,7 +67,7 @@ struct dqlite__server {
 static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 {
 	struct dqlite__server *s;
-	struct dqlite__conn *  conn;
+	struct conn *  conn;
 
 	assert(handle != NULL);
 	assert(arg != NULL);
@@ -90,11 +90,11 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 	case UV_NAMED_PIPE:
 		assert(handle->data != NULL);
 
-		conn = (struct dqlite__conn *)handle->data;
+		conn = (struct conn *)handle->data;
 
 		/* Abort the client connection and release any allocated
 		 * resources. */
-		dqlite__conn_abort(conn);
+		conn__abort(conn);
 
 		break;
 
@@ -105,7 +105,7 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 		}
 
 		/* In all other cases this must be a timer created by a conn
-		 * object, which gets closed by the dqlite__conn_abort call
+		 * object, which gets closed by the conn__abort call
 		 * above, so there's nothing to do in that case. */
 
 		break;
@@ -467,7 +467,7 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg)
 {
 	int                       err;
 	dqlite__error             e;
-	struct dqlite__conn *     conn;
+	struct conn *     conn;
 	struct dqlite__queue_item item;
 
 	assert(s != NULL);
@@ -492,7 +492,7 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg)
 		err = DQLITE_NOMEM;
 		goto err_not_running_or_conn_malloc;
 	}
-	dqlite__conn_init(
+	conn__init(
 	    conn, fd, s->logger, s->cluster, &s->loop, &s->options, s->metrics);
 
 	err = dqlite__queue_item_init(&item, conn);
@@ -539,7 +539,7 @@ err_incoming_send:
 	dqlite__queue_pop(&s->queue);
 
 err_item_init_or_queue_push:
-	dqlite__conn_close(conn);
+	conn__close(conn);
 	sqlite3_free(conn);
 
 err_not_running_or_conn_malloc:
@@ -554,7 +554,7 @@ err_not_running_or_conn_malloc:
 	return err;
 
 err_item_wait:
-	dqlite__conn_close(conn);
+	conn__close(conn);
 	sqlite3_free(conn);
 	dqlite__queue_item_close(&item);
 
