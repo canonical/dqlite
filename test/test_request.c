@@ -1,11 +1,10 @@
-#include <stdint.h>
-
-#include "../src/message.h"
 #include "../src/request.h"
 
-#include "leak.h"
+#include "./lib/heap.h"
 #include "./lib/message.h"
-#include "munit.h"
+#include "./lib/runner.h"
+
+TEST_MODULE(request);
 
 /******************************************************************************
  *
@@ -13,25 +12,21 @@
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	struct request *request;
-
-	(void)params;
-	(void)user_data;
-
+	test_heap_setup(params, user_data);
 	request = munit_malloc(sizeof *request);
-
 	request_init(request);
-
 	return request;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	struct request *request = data;
-
 	request_close(request);
-
-	test_assert_no_leaks();
+	free(request);
+	test_heap_tear_down(data);
 }
 
 /******************************************************************************
@@ -40,9 +35,14 @@ static void tear_down(void *data) {
  *
  ******************************************************************************/
 
-static MunitResult test_leader(const MunitParameter params[], void *data) {
+TEST_SUITE(decode);
+TEST_SETUP(decode, setup);
+TEST_TEAR_DOWN(decode, tear_down);
+
+TEST_CASE(decode, leader, NULL)
+{
 	struct request *request = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -54,9 +54,10 @@ static MunitResult test_leader(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-static MunitResult test_client(const MunitParameter params[], void *data) {
+TEST_CASE(decode, client, NULL)
+{
 	struct request *request = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -70,9 +71,10 @@ static MunitResult test_client(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-static MunitResult test_heartbeat(const MunitParameter params[], void *data) {
+TEST_CASE(decode, heartbeat, NULL)
+{
 	struct request *request = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -86,9 +88,10 @@ static MunitResult test_heartbeat(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-static MunitResult test_open(const MunitParameter params[], void *data) {
+TEST_CASE(decode, open, NULL)
+{
 	struct request *request = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -103,22 +106,3 @@ static MunitResult test_open(const MunitParameter params[], void *data) {
 
 	return MUNIT_OK;
 }
-
-static MunitTest request_decode_tests[] = {
-    {"/leader", test_leader, setup, tear_down, 0, NULL},
-    {"/client", test_client, setup, tear_down, 0, NULL},
-    {"/heartbeat", test_heartbeat, setup, tear_down, 0, NULL},
-    {"/open", test_open, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
- * Suite
- *
- ******************************************************************************/
-
-MunitSuite request_suites[] = {
-    {"_decode", request_decode_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {NULL, NULL, NULL, 0, 0},
-};
