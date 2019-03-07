@@ -17,15 +17,15 @@
 	X(uint64, id, __VA_ARGS__)                                             \
 	X(text, name, __VA_ARGS__)
 
-DQLITE__SCHEMA_DEFINE(test_foo, TEST_SCHEMA_FOO);
-DQLITE__SCHEMA_IMPLEMENT(test_foo, TEST_SCHEMA_FOO);
+SCHEMA__DEFINE(test_foo, TEST_SCHEMA_FOO);
+SCHEMA__IMPLEMENT(test_foo, TEST_SCHEMA_FOO);
 
 #define TEST_SCHEMA_BAR(X, ...)                                                \
 	X(uint64, i, __VA_ARGS__)                                              \
 	X(uint64, j, __VA_ARGS__)
 
-DQLITE__SCHEMA_DEFINE(test_bar, TEST_SCHEMA_BAR);
-DQLITE__SCHEMA_IMPLEMENT(test_bar, TEST_SCHEMA_BAR);
+SCHEMA__DEFINE(test_bar, TEST_SCHEMA_BAR);
+SCHEMA__IMPLEMENT(test_bar, TEST_SCHEMA_BAR);
 
 /* Type codes */
 #define TEST_FOO 0
@@ -35,8 +35,8 @@ DQLITE__SCHEMA_IMPLEMENT(test_bar, TEST_SCHEMA_BAR);
 	X(TEST_FOO, test_foo, foo, __VA_ARGS__)                                \
 	X(TEST_BAR, test_bar, bar, __VA_ARGS__)
 
-DQLITE__SCHEMA_HANDLER_DEFINE(test_handler, TEST_SCHEMA_TYPES);
-DQLITE__SCHEMA_HANDLER_IMPLEMENT(test_handler, TEST_SCHEMA_TYPES);
+SCHEMA__HANDLER_DEFINE(test_handler, TEST_SCHEMA_TYPES);
+SCHEMA__HANDLER_IMPLEMENT(test_handler, TEST_SCHEMA_TYPES);
 
 /******************************************************************************
  *

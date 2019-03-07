@@ -49,21 +49,21 @@
 
 #define DQLITE__REQUEST_SCHEMA_INTERRUPT(X, ...) X(uint64, db_id, __VA_ARGS__)
 
-DQLITE__SCHEMA_DEFINE(dqlite__request_leader, DQLITE__REQUEST_SCHEMA_LEADER);
-DQLITE__SCHEMA_DEFINE(dqlite__request_client, DQLITE__REQUEST_SCHEMA_CLIENT);
-DQLITE__SCHEMA_DEFINE(dqlite__request_heartbeat,
+SCHEMA__DEFINE(dqlite__request_leader, DQLITE__REQUEST_SCHEMA_LEADER);
+SCHEMA__DEFINE(dqlite__request_client, DQLITE__REQUEST_SCHEMA_CLIENT);
+SCHEMA__DEFINE(dqlite__request_heartbeat,
                       DQLITE__REQUEST_SCHEMA_HEARTBEAT);
-DQLITE__SCHEMA_DEFINE(dqlite__request_open, DQLITE__REQUEST_SCHEMA_OPEN);
-DQLITE__SCHEMA_DEFINE(dqlite__request_prepare, DQLITE__REQUEST_SCHEMA_PREPARE);
-DQLITE__SCHEMA_DEFINE(dqlite__request_query, DQLITE__REQUEST_SCHEMA_QUERY);
-DQLITE__SCHEMA_DEFINE(dqlite__request_exec, DQLITE__REQUEST_SCHEMA_EXEC);
-DQLITE__SCHEMA_DEFINE(dqlite__request_finalize,
+SCHEMA__DEFINE(dqlite__request_open, DQLITE__REQUEST_SCHEMA_OPEN);
+SCHEMA__DEFINE(dqlite__request_prepare, DQLITE__REQUEST_SCHEMA_PREPARE);
+SCHEMA__DEFINE(dqlite__request_query, DQLITE__REQUEST_SCHEMA_QUERY);
+SCHEMA__DEFINE(dqlite__request_exec, DQLITE__REQUEST_SCHEMA_EXEC);
+SCHEMA__DEFINE(dqlite__request_finalize,
                       DQLITE__REQUEST_SCHEMA_FINALIZE);
-DQLITE__SCHEMA_DEFINE(dqlite__request_exec_sql,
+SCHEMA__DEFINE(dqlite__request_exec_sql,
                       DQLITE__REQUEST_SCHEMA_EXEC_SQL);
-DQLITE__SCHEMA_DEFINE(dqlite__request_query_sql,
+SCHEMA__DEFINE(dqlite__request_query_sql,
                       DQLITE__REQUEST_SCHEMA_QUERY_SQL);
-DQLITE__SCHEMA_DEFINE(dqlite__request_interrupt,
+SCHEMA__DEFINE(dqlite__request_interrupt,
                       DQLITE__REQUEST_SCHEMA_INTERRUPT);
 
 #define DQLITE__REQUEST_SCHEMA_TYPES(X, ...)                                   \
@@ -97,6 +97,6 @@ DQLITE__SCHEMA_DEFINE(dqlite__request_interrupt,
 	  interrupt,                                                           \
 	  __VA_ARGS__)
 
-DQLITE__SCHEMA_HANDLER_DEFINE(dqlite__request, DQLITE__REQUEST_SCHEMA_TYPES);
+SCHEMA__HANDLER_DEFINE(dqlite__request, DQLITE__REQUEST_SCHEMA_TYPES);
 
 #endif /* DQLITE_REQUEST_H */
