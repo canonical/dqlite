@@ -4,11 +4,15 @@
 
 #include "../src/format.h"
 
-#include "leak.h"
-#include "munit.h"
+#include "./lib/runner.h"
+
+TEST_MODULE(format);
+
+TEST_SUITE(get_page_size);
 
 /* Parse the page size stored in a database file header. */
-static MunitResult test_get_page_size_db(const MunitParameter params[], void *data) {
+TEST_CASE(get_page_size, db, NULL)
+{
 	uint8_t      buf[FORMAT__DB_HDR_SIZE];
 	unsigned int page_size;
 	int          rc;
@@ -28,8 +32,8 @@ static MunitResult test_get_page_size_db(const MunitParameter params[], void *da
 }
 
 /* Parse the page size stored in a WAL file header. */
-static MunitResult test_get_page_size_wal(const MunitParameter params[],
-                                          void *               data) {
+TEST_CASE(get_page_size, wal, NULL)
+{
 	uint8_t      buf[FORMAT__WAL_HDR_SIZE];
 	unsigned int page_size;
 	int          rc;
@@ -51,8 +55,8 @@ static MunitResult test_get_page_size_wal(const MunitParameter params[],
 }
 
 /* If the stored value is 1, the resulting page size is the maximum one. */
-static MunitResult test_get_page_size_max(const MunitParameter params[],
-                                          void *               data) {
+TEST_CASE(get_page_size, max, NULL)
+{
 	uint8_t      buf[FORMAT__DB_HDR_SIZE];
 	unsigned int page_size;
 	int          rc;
@@ -72,8 +76,8 @@ static MunitResult test_get_page_size_max(const MunitParameter params[],
 }
 
 /* If the stored value is smaller than the minimum size, an error is returned. */
-static MunitResult test_get_page_size_too_small(const MunitParameter params[],
-                                                void *               data) {
+TEST_CASE(get_page_size, too_small, NULL)
+{
 	uint8_t      buf[FORMAT__DB_HDR_SIZE];
 	unsigned int page_size;
 	int          rc;
@@ -91,8 +95,8 @@ static MunitResult test_get_page_size_too_small(const MunitParameter params[],
 }
 
 /* If the stored is value larger than the maximum size, an error is returned. */
-static MunitResult test_get_page_size_too_large(const MunitParameter params[],
-                                                void *               data) {
+TEST_CASE(get_page_size, too_large, NULL)
+{
 	uint8_t      buf[FORMAT__DB_HDR_SIZE];
 	unsigned int page_size;
 	int          rc;
@@ -110,8 +114,8 @@ static MunitResult test_get_page_size_too_large(const MunitParameter params[],
 }
 
 /* If the stored value is not a power of 2, an error is returned. */
-static MunitResult test_get_page_size_not_power_of_2(const MunitParameter params[],
-                                                     void *               data) {
+TEST_CASE(get_page_size, not_power_of_2, NULL)
+{
 	uint8_t      buf[FORMAT__DB_HDR_SIZE];
 	unsigned int page_size;
 	int          rc;
@@ -127,18 +131,3 @@ static MunitResult test_get_page_size_not_power_of_2(const MunitParameter params
 
 	return MUNIT_OK;
 }
-
-static MunitTest format__page_size_tests[] = {
-    {"/db", test_get_page_size_db, NULL, NULL, 0, NULL},
-    {"/wal", test_get_page_size_wal, NULL, NULL, 0, NULL},
-    {"/max", test_get_page_size_max, NULL, NULL, 0, NULL},
-    {"/too-small", test_get_page_size_too_small, NULL, NULL, 0, NULL},
-    {"/too-large", test_get_page_size_too_large, NULL, NULL, 0, NULL},
-    {"/not-power-of-2", test_get_page_size_not_power_of_2, NULL, NULL, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-MunitSuite format__suites[] = {
-    {"_get_page_size", format__page_size_tests, NULL, 1, 0},
-    {NULL, NULL, NULL, 0, 0},
-};
