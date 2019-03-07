@@ -5,6 +5,8 @@
 
 dqlite_cluster *test_cluster();
 
+void test_cluster_close(dqlite_cluster *cluster);
+
 /* Set the return code of the xServers method. */
 void test_cluster_servers_rc(int rc);
 
