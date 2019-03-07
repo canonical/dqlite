@@ -18,7 +18,7 @@ static char *dqlite__lifecycle_type_names[] = {
     "request",     /* DQLITE__LIFECYCLE_REQUEST */
     "response",    /* DQLITE__LIFECYCLE_RESPONSE */
     "gateway",     /* DQLITE__LIFECYCLE_GATEWAY */
-    "dqlite__conn",        /* DQLITE__LIFECYCLE_CONN */
+    "conn",        /* DQLITE__LIFECYCLE_CONN */
     "dqlite__queue",       /* DQLITE__LIFECYCLE_QUEUE */
     "dqlite__queue_item",  /* DQLITE__LIFECYCLE_QUEUE_ITEM */
     "db",          /* DQLITE__LIFECYCLE_DB */

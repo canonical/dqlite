@@ -81,12 +81,12 @@ static MunitResult test_push(const MunitParameter params[], void *data)
 	struct fixture *f = data;
 	int             err;
 
-	struct dqlite__conn       conn;
+	struct conn       conn;
 	struct dqlite__queue_item item;
 
 	(void)params;
 
-	dqlite__conn_init(&conn,
+	conn__init(&conn,
 	                  123,
 	                  test_logger(),
 	                  test_cluster(),
@@ -103,7 +103,7 @@ static MunitResult test_push(const MunitParameter params[], void *data)
 	munit_assert_ptr_equal(dqlite__queue_pop(&f->queue), &item);
 
 	dqlite__queue_item_close(&item);
-	dqlite__conn_close(&conn);
+	conn__close(&conn);
 
 	return MUNIT_OK;
 }
@@ -124,13 +124,13 @@ static MunitResult test_process(const MunitParameter params[], void *data)
 	struct fixture *          f = data;
 	int                       err;
 	struct dqlite__queue_item item;
-	struct dqlite__conn *     conn;
+	struct conn *     conn;
 
 	(void)params;
 
 	conn = munit_malloc(sizeof *conn);
 
-	dqlite__conn_init(conn,
+	conn__init(conn,
 	                  f->sockets.server,
 	                  test_logger(),
 	                  test_cluster(),

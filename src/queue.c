@@ -13,7 +13,7 @@
 #include "queue.h"
 
 int dqlite__queue_item_init(struct dqlite__queue_item *i,
-                            struct dqlite__conn *      conn) {
+                            struct conn *      conn) {
 	int err;
 
 	assert(i != NULL);
@@ -56,7 +56,7 @@ static void dqlite__queue_item_process(struct dqlite__queue_item *i) {
 
 	assert(i != NULL);
 
-	err = dqlite__conn_start(i->conn);
+	err = conn__start(i->conn);
 	if (err != 0) {
 		dqlite__error_wrapf(
 		    &i->error, &i->conn->error, "failed to init connection");
