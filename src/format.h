@@ -6,73 +6,74 @@
  *
  *****************************************************************************/
 
-#ifndef DQLITE_FORMAT_H
-#define DQLITE_FORMAT_H
+#ifndef FORMAT_H_
+#define FORMAT_H_
 
 #include <stdint.h>
 #include <stdlib.h>
 
-/* Possible file types. */
-#define DQLITE__FORMAT_DB 0
-#define DQLITE__FORMAT_WAL 1
-#define DQLITE__FORMAT_OTHER 2
+/**
+ * Possible file types.
+ */
+#define FORMAT__DB 0
+#define FORMAT__WAL 1
+#define FORMAT__OTHER 2
 
 /* Minumum and maximum page size. */
-#define DQLITE__FORMAT_PAGE_SIZE_MIN 512
-#define DQLITE__FORMAT_PAGE_SIZE_MAX 65536
+#define FORMAT__PAGE_SIZE_MIN 512
+#define FORMAT__PAGE_SIZE_MAX 65536
 
 /* Database header size. */
-#define DQLITE__FORMAT_DB_HDR_SIZE 100
+#define FORMAT__DB_HDR_SIZE 100
 
 /* Write ahead log header size. */
-#define DQLITE__FORMAT_WAL_HDR_SIZE 32
+#define FORMAT__WAL_HDR_SIZE 32
 
 /* Write ahead log frame header size. */
-#define DQLITE__FORMAT_WAL_FRAME_HDR_SIZE 24
+#define FORMAT__WAL_FRAME_HDR_SIZE 24
 
 /* Number of reader marks in the wal index header. */
-#define DQLITE__FORMAT_WAL_NREADER 5
+#define FORMAT__WAL_NREADER 5
 
 /* Lock index given the offset I in the aReadMark array. See the equivalent
  * WAL_READ_LOCK definition in the wal.c file of the SQLite source code. */
-#define DQLITE__FORMAT_WAL_READ_LOCK(I) (3+(I))
+#define FORMAT__WAL_READ_LOCK(I) (3 + (I))
 
 /* Given the page size, calculate the size of a full WAL frame (frame header
  * plus page data). */
-#define dqlite__format_wal_calc_frame_size(PAGE_SIZE)                               \
-	(DQLITE__FORMAT_WAL_FRAME_HDR_SIZE + PAGE_SIZE)
+#define format__wal_calc_frame_size(PAGE_SIZE) \
+	(FORMAT__WAL_FRAME_HDR_SIZE + PAGE_SIZE)
 
 /* Given the page size and the WAL file size, calculate the number of pages
  * currently in the WAL. */
-#define dqlite__format_wal_calc_pages(PAGE_SIZE, SIZE)                              \
-	((SIZE - DQLITE__FORMAT_WAL_HDR_SIZE) /                                     \
-	 dqlite__format_wal_calc_frame_size(PAGE_SIZE))
+#define format__wal_calc_pages(PAGE_SIZE, SIZE) \
+	((SIZE - FORMAT__WAL_HDR_SIZE) / format__wal_calc_frame_size(PAGE_SIZE))
 
 /* Given the page size, calculate the WAL page number of the frame starting at
  * the given offset. */
-#define dqlite__format_wal_calc_pgno(PAGE_SIZE, OFFSET)                             \
-	dqlite__format_wal_calc_pages(                                              \
-	    PAGE_SIZE, OFFSET + dqlite__format_wal_calc_frame_size(PAGE_SIZE))
+#define format__wal_calc_pgno(PAGE_SIZE, OFFSET) \
+	format__wal_calc_pages(                  \
+	    PAGE_SIZE, OFFSET + format__wal_calc_frame_size(PAGE_SIZE))
 
 /* Extract the page size from the content of the first database page or from the
  * WAL header.
  *
- * If type is DQLITE__FORMAT_DB the given buffer must hold at least
- * DQLITE__FORMAT_DB_HDR_SIZE bytes.
+ * If type is FORMAT__DB the given buffer must hold at least
+ * FORMAT__DB_HDR_SIZE bytes.
  *
- * If type is DQLITE__FORMAT_WAL the given buffer must hold at least
- * DQLITE__FORMAT_WAL_HDR_SIZE. */
-int dqlite__format_get_page_size(int            type,
-                                 const uint8_t *buf,
-                                 unsigned int * page_size);
+ * If type is FORMAT__WAL the given buffer must hold at least
+ * FORMAT__WAL_HDR_SIZE. */
+int format__get_page_size(int type,
+			  const uint8_t *buf,
+			  unsigned int *page_size);
 
 /* Extract the mxFrame field from the WAL index header stored in the given
  * buffer */
-void dqlite__format_get_mx_frame(const uint8_t *buf, uint32_t *mx_frame);
+void format__get_mx_frame(const uint8_t *buf, uint32_t *mx_frame);
 
 /* Extract the read marks array from the WAL index header stored in the given
  * buffer. */
-void dqlite__format_get_read_marks(const uint8_t *buf,
-                                   uint32_t read_marks[DQLITE__FORMAT_WAL_NREADER]);
+void format__get_read_marks(const uint8_t *buf,
+			    uint32_t read_marks[FORMAT__WAL_NREADER]);
 
-#endif /* DQLITE_FORMAT_H */
+#endif /* FORMAT_H */
