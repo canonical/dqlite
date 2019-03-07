@@ -52,11 +52,12 @@
 #include "registry.h"
 
 /* Hold state for a single open SQLite database */
-struct stmt {
-	size_t        id;    /* Statement ID */
-	sqlite3 *     db;    /* Underlying database info */
+struct stmt
+{
+	size_t id;	   /* Statement ID */
+	sqlite3 *db;	 /* Underlying database info */
 	sqlite3_stmt *stmt;  /* Underlying SQLite statement handle */
-	const char *  tail;  /* Unparsed SQL portion */
+	const char *tail;    /* Unparsed SQL portion */
 	dqlite__error error; /* Last dqlite-specific error */
 };
 
@@ -80,8 +81,8 @@ const char *stmt__hash(struct stmt *stmt);
 int stmt__bind(struct stmt *s, struct message *message);
 
 int stmt__exec(struct stmt *s,
-                      uint64_t *           last_insert_id,
-                      uint64_t *           rows_affected);
+	       uint64_t *last_insert_id,
+	       uint64_t *rows_affected);
 
 /* Step through a query statement and fill the given message with the rows it
  * yields. */

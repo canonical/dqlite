@@ -9,6 +9,9 @@
 
 #include "case.h"
 #include "log.h"
+#include "./lib/runner.h"
+
+TEST_MODULE(stmt);
 
 /******************************************************************************
  *
@@ -16,17 +19,19 @@
  *
  ******************************************************************************/
 
-struct fixture {
-	sqlite3_vfs *           vfs;
-	struct stmt *   stmt;
+struct fixture
+{
+	sqlite3_vfs *vfs;
+	struct stmt *stmt;
 	struct message *message;
+	dqlite_logger * logger;
 };
 
 /* Helper to execute a statement. */
 static void __exec(struct fixture *f, const char *sql)
 {
 	char *errmsg;
-	int   rc;
+	int rc;
 
 	rc = sqlite3_exec(f->stmt->db, sql, NULL, NULL, &errmsg);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -36,7 +41,7 @@ static void __exec(struct fixture *f, const char *sql)
 static void __prepare(struct fixture *f, const char *sql)
 {
 	const char *tail;
-	int         rc;
+	int rc;
 
 	munit_assert_ptr_not_equal(f->stmt->db, NULL);
 
@@ -52,17 +57,16 @@ static void __prepare(struct fixture *f, const char *sql)
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
-	struct fixture *f;
-	dqlite_logger * logger = test_logger();
-	int             flags  = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	int             rc;
+	struct fixture *f = munit_malloc(sizeof *f);
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int rc;
 
 	test_case_setup(params, user_data);
 
-	f = munit_malloc(sizeof *f);
+	f->logger = test_logger();
 
 	/* Register a volatile VFS. */
-	f->vfs = dqlite_vfs_create("test", logger);
+	f->vfs = dqlite_vfs_create("test", f->logger);
 	munit_assert_ptr_not_null(f->vfs);
 	sqlite3_vfs_register(f->vfs, 0);
 
@@ -95,6 +99,11 @@ static void tear_down(void *data)
 	dqlite_vfs_destroy(f->vfs);
 
 	test_case_tear_down(data);
+
+	free(f->stmt);
+	free(f->message);
+	free(f->logger);
+	free(f);
 }
 
 /******************************************************************************
@@ -103,11 +112,15 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
+TEST_SUITE(bind);
+TEST_SETUP(bind, setup);
+TEST_TEAR_DOWN(bind, tear_down);
+
 /* If a message carries no bindings, stmt__bind is a no-op. */
-static MunitResult test_bind_none(const MunitParameter params[], void *data)
+TEST_CASE(bind, none, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	(void)params;
 
@@ -121,11 +134,10 @@ static MunitResult test_bind_none(const MunitParameter params[], void *data)
 
 /* If a message ends before all expected param types are read, an error is
  * returned. */
-static MunitResult test_bind_missing_types(const MunitParameter params[],
-                                           void *               data)
+TEST_CASE(bind, missing_types, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	(void)params;
 
@@ -133,7 +145,7 @@ static MunitResult test_bind_missing_types(const MunitParameter params[],
 
 	/* Eight parameters, but only 7 bytes left in the message after the
 	 * parameters count. */
-	f->message->words    = 1;
+	f->message->words = 1;
 	f->message->body1[0] = 8;
 
 	rc = stmt__bind(f->stmt, f->message);
@@ -146,11 +158,10 @@ static MunitResult test_bind_missing_types(const MunitParameter params[],
 
 /* If a message ends right after the parameter types, providing no parameter
  * values, an error is returned. */
-static MunitResult test_bind_no_params(const MunitParameter params[],
-                                       void *               data)
+TEST_CASE(bind, no_params, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	(void)params;
 
@@ -158,7 +169,7 @@ static MunitResult test_bind_no_params(const MunitParameter params[],
 
 	/* One parameter of integer type, but no more words left in the
 	 * message. */
-	f->message->words    = 1;
+	f->message->words = 1;
 	f->message->body1[0] = 1;
 	f->message->body1[1] = SQLITE_INTEGER;
 
@@ -173,11 +184,10 @@ static MunitResult test_bind_no_params(const MunitParameter params[],
 /* If a message ends before all expected parameters are read, an error is
  * returned.
  */
-static MunitResult test_bind_missing_params(const MunitParameter params[],
-                                            void *               data)
+TEST_CASE(bind, missing_params, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	(void)params;
 
@@ -185,7 +195,7 @@ static MunitResult test_bind_missing_params(const MunitParameter params[],
 
 	/* Two parameters of integer type, but only on word left in the
 	 * message. */
-	f->message->words    = 2;
+	f->message->words = 2;
 	f->message->body1[0] = 2;
 	f->message->body1[1] = SQLITE_INTEGER;
 	f->message->body1[2] = SQLITE_INTEGER;
@@ -199,17 +209,17 @@ static MunitResult test_bind_missing_params(const MunitParameter params[],
 }
 
 /* If a message sports an unknown parameter type, an error is returned. */
-static MunitResult test_bind_bad_type(const MunitParameter params[], void *data)
+TEST_CASE(bind, bad_type, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	(void)params;
 
 	__prepare(f, "SELECT ?");
 
 	/* One parameter of unknown type. */
-	f->message->words    = 2;
+	f->message->words = 2;
 	f->message->body1[0] = 1;
 	f->message->body1[1] = 127;
 
@@ -217,17 +227,16 @@ static MunitResult test_bind_bad_type(const MunitParameter params[], void *data)
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error,
-	                          "invalid param 1: unknown type 127");
+				  "invalid param 1: unknown type 127");
 
 	return MUNIT_OK;
 }
 
 /* If a parameter fails to be bound, an error is returned. */
-static MunitResult test_bind_bad_param(const MunitParameter params[],
-                                       void *               data)
+TEST_CASE(bind, bad_param, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	(void)params;
 
@@ -235,7 +244,7 @@ static MunitResult test_bind_bad_param(const MunitParameter params[],
 	__prepare(f, "SELECT 1");
 
 	/* A single integer parameter. */
-	f->message->words    = 2;
+	f->message->words = 2;
 	f->message->body1[0] = 1;
 	f->message->body1[1] = SQLITE_INTEGER;
 
@@ -248,18 +257,18 @@ static MunitResult test_bind_bad_param(const MunitParameter params[],
 }
 
 /* Bind a parameter of type integer. */
-static MunitResult test_bind_integer(const MunitParameter params[], void *data)
+TEST_CASE(bind, integer, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t        buf = byte__flip64((uint64_t)(-666));
+	int rc;
+	uint64_t buf = byte__flip64((uint64_t)(-666));
 
 	(void)params;
 
 	__prepare(f, "SELECT ?");
 
 	/* One parameter of type integer. */
-	f->message->words    = 2;
+	f->message->words = 2;
 	f->message->body1[0] = 1;
 	f->message->body1[1] = SQLITE_INTEGER;
 
@@ -272,27 +281,27 @@ static MunitResult test_bind_integer(const MunitParameter params[], void *data)
 	rc = sqlite3_step(f->stmt->stmt);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
-	munit_assert_int(
-	    sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_INTEGER);
+	munit_assert_int(sqlite3_column_type(f->stmt->stmt, 0), ==,
+			 SQLITE_INTEGER);
 	munit_assert_int(sqlite3_column_int64(f->stmt->stmt, 0), ==, -666);
 
 	return MUNIT_OK;
 }
 
 /* Bind a parameter of type float. */
-static MunitResult test_bind_float(const MunitParameter params[], void *data)
+TEST_CASE(bind, float, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	double          float_ = 3.1415;
-	uint64_t        buf;
+	int rc;
+	double float_ = 3.1415;
+	uint64_t buf;
 
 	(void)params;
 
 	__prepare(f, "SELECT ?");
 
 	/* One parameter of type double. */
-	f->message->words    = 2;
+	f->message->words = 2;
 	f->message->body1[0] = 1;
 	f->message->body1[1] = SQLITE_FLOAT;
 
@@ -307,26 +316,26 @@ static MunitResult test_bind_float(const MunitParameter params[], void *data)
 	rc = sqlite3_step(f->stmt->stmt);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
-	munit_assert_int(
-	    sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_FLOAT);
-	munit_assert_double(
-	    sqlite3_column_double(f->stmt->stmt, 0), ==, 3.1415);
+	munit_assert_int(sqlite3_column_type(f->stmt->stmt, 0), ==,
+			 SQLITE_FLOAT);
+	munit_assert_double(sqlite3_column_double(f->stmt->stmt, 0), ==,
+			    3.1415);
 
 	return MUNIT_OK;
 }
 
 /* Bind a parameter of type text. */
-static MunitResult test_bind_text(const MunitParameter params[], void *data)
+TEST_CASE(bind, text, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	(void)params;
 
 	__prepare(f, "SELECT ?");
 
 	/* One parameter of type string. */
-	f->message->words    = 2;
+	f->message->words = 2;
 	f->message->body1[0] = 1;
 	f->message->body1[1] = SQLITE_TEXT;
 
@@ -339,8 +348,8 @@ static MunitResult test_bind_text(const MunitParameter params[], void *data)
 	rc = sqlite3_step(f->stmt->stmt);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
-	munit_assert_int(
-	    sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_TEXT);
+	munit_assert_int(sqlite3_column_type(f->stmt->stmt, 0), ==,
+			 SQLITE_TEXT);
 	munit_assert_string_equal(
 	    (const char *)sqlite3_column_text(f->stmt->stmt, 0), "hello");
 
@@ -348,17 +357,17 @@ static MunitResult test_bind_text(const MunitParameter params[], void *data)
 }
 
 /* Bind a parameter of type iso8601. */
-static MunitResult test_bind_iso8601(const MunitParameter params[], void *data)
+TEST_CASE(bind, iso8601, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	(void)params;
 
 	__prepare(f, "SELECT ?");
 
 	/* One parameter of type string. */
-	f->message->words    = 5;
+	f->message->words = 5;
 	f->message->body1[0] = 1;
 	f->message->body1[1] = DQLITE_ISO8601;
 
@@ -371,8 +380,8 @@ static MunitResult test_bind_iso8601(const MunitParameter params[], void *data)
 	rc = sqlite3_step(f->stmt->stmt);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
-	munit_assert_int(
-	    sqlite3_column_type(f->stmt->stmt, 0), ==, SQLITE_TEXT);
+	munit_assert_int(sqlite3_column_type(f->stmt->stmt, 0), ==,
+			 SQLITE_TEXT);
 	munit_assert_string_equal(
 	    (const char *)sqlite3_column_text(f->stmt->stmt, 0),
 	    "2018-07-20 09:49:05+00:00");
@@ -380,32 +389,21 @@ static MunitResult test_bind_iso8601(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest stmt__bind_tests[] = {
-    {"/none", test_bind_none, setup, tear_down, 0, NULL},
-    {"/missing-types", test_bind_missing_types, setup, tear_down, 0, NULL},
-    {"/no-params", test_bind_no_params, setup, tear_down, 0, NULL},
-    {"/missing-params", test_bind_missing_params, setup, tear_down, 0, NULL},
-    {"/bad-type", test_bind_bad_type, setup, tear_down, 0, NULL},
-    {"/bad-param", test_bind_bad_param, setup, tear_down, 0, NULL},
-    {"/integer", test_bind_integer, setup, tear_down, 0, NULL},
-    {"/float", test_bind_float, setup, tear_down, 0, NULL},
-    {"/text", test_bind_text, setup, tear_down, 0, NULL},
-    {"/iso8601", test_bind_iso8601, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * stmt__query
  *
  ******************************************************************************/
 
+TEST_SUITE(query);
+TEST_SETUP(query, setup);
+TEST_TEAR_DOWN(query, tear_down);
+
 /* If a statement doesn't yield any column, an error is returned. */
-static MunitResult test_query_no_columns(const MunitParameter params[],
-                                         void *               data)
+TEST_CASE(query, no_columns, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	(void)params;
 
@@ -418,18 +416,18 @@ static MunitResult test_query_no_columns(const MunitParameter params[],
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error,
-	                          "stmt doesn't yield any column");
+				  "stmt doesn't yield any column");
 
 	return MUNIT_OK;
 }
 
 /* Encode a query yielding no rows. */
-static MunitResult test_query_none(const MunitParameter params[], void *data)
+TEST_CASE(query, none, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -453,12 +451,12 @@ static MunitResult test_query_none(const MunitParameter params[], void *data)
 }
 
 /* Encode a query yielding a single row with an integer column. */
-static MunitResult test_query_integer(const MunitParameter params[], void *data)
+TEST_CASE(query, integer, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -488,12 +486,12 @@ static MunitResult test_query_integer(const MunitParameter params[], void *data)
 }
 
 /* Encode a query yielding a single row with a float column. */
-static MunitResult test_query_float(const MunitParameter params[], void *data)
+TEST_CASE(query, float, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -516,7 +514,7 @@ static MunitResult test_query_float(const MunitParameter params[], void *data)
 
 	/* Then the row, with its header and value. */
 	munit_assert_int(f->message->body1[16], ==, SQLITE_FLOAT);
-	buf  = (uint64_t *)(f->message->body1 + 24);
+	buf = (uint64_t *)(f->message->body1 + 24);
 	*buf = byte__flip64(*buf);
 	munit_assert_double(*(double *)(buf), ==, 3.1415);
 
@@ -524,12 +522,12 @@ static MunitResult test_query_float(const MunitParameter params[], void *data)
 }
 
 /* Encode a query yielding a single row with a null column. */
-static MunitResult test_query_null(const MunitParameter params[], void *data)
+TEST_CASE(query, null, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -559,12 +557,12 @@ static MunitResult test_query_null(const MunitParameter params[], void *data)
 }
 
 /* Encode a query yielding a single row with a text column. */
-static MunitResult test_query_text(const MunitParameter params[], void *data)
+TEST_CASE(query, text, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -594,14 +592,13 @@ static MunitResult test_query_text(const MunitParameter params[], void *data)
 }
 
 /* Encode a query yielding a single row with a Unix time column. */
-static MunitResult test_query_unixtime(const MunitParameter params[],
-                                       void *               data)
+TEST_CASE(query, unixtime, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
-	time_t          now;
+	int rc;
+	uint64_t *buf;
+	const char *text;
+	time_t now;
 
 	(void)params;
 
@@ -628,19 +625,19 @@ static MunitResult test_query_unixtime(const MunitParameter params[],
 	/* Then the row, with its header and value. */
 	munit_assert_int(f->message->body1[16], ==, DQLITE_UNIXTIME);
 	buf = (uint64_t *)(f->message->body1 + 24);
-	munit_assert_double_equal(
-	    (double)(byte__flip64(*buf)), (double)(now), 0);
+	munit_assert_double_equal((double)(byte__flip64(*buf)), (double)(now),
+				  0);
 
 	return MUNIT_OK;
 }
 
 /* Encode a query yielding a single row with a ISO8601 time column. */
-static MunitResult test_query_iso8601(const MunitParameter params[], void *data)
+TEST_CASE(query, iso8601, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -670,13 +667,12 @@ static MunitResult test_query_iso8601(const MunitParameter params[], void *data)
 }
 
 /* Encode a query yielding a single row with a null time column. */
-static MunitResult test_query_iso8601_null(const MunitParameter params[],
-                                           void *               data)
+TEST_CASE(query, iso8601_null, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -706,13 +702,12 @@ static MunitResult test_query_iso8601_null(const MunitParameter params[],
 }
 
 /* Encode a query yielding a single row with an empty string time column. */
-static MunitResult test_query_iso8601_empty(const MunitParameter params[],
-                                            void *               data)
+TEST_CASE(query, iso8601_empty, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -742,12 +737,12 @@ static MunitResult test_query_iso8601_empty(const MunitParameter params[],
 }
 
 /* Encode a query yielding a single row with a boolean time column. */
-static MunitResult test_query_boolean(const MunitParameter params[], void *data)
+TEST_CASE(query, boolean, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -777,13 +772,12 @@ static MunitResult test_query_boolean(const MunitParameter params[], void *data)
 }
 
 /* Encode a query yielding two rows with one column. */
-static MunitResult test_query_two_simple(const MunitParameter params[],
-                                         void *               data)
+TEST_CASE(query, two_simple, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -814,13 +808,12 @@ static MunitResult test_query_two_simple(const MunitParameter params[],
 }
 
 /* Encode a query yielding two rows with three columns. */
-static MunitResult test_query_two_complex(const MunitParameter params[],
-                                          void *               data)
+TEST_CASE(query, two_complex, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -858,7 +851,7 @@ static MunitResult test_query_two_complex(const MunitParameter params[],
 	munit_assert_string_equal(text, "hi");
 
 	munit_assert_int(f->message->body1[33], ==, SQLITE_FLOAT);
-	buf  = (uint64_t *)(f->message->body1 + 56);
+	buf = (uint64_t *)(f->message->body1 + 56);
 	*buf = byte__flip64(*buf);
 	munit_assert_double(*(double *)(buf), ==, 3.1415);
 
@@ -880,12 +873,12 @@ static MunitResult test_query_two_complex(const MunitParameter params[],
 
 /* Encode a result set yielding a column with no underlying name
  * (e.g. COUNT). */
-static MunitResult test_query_count(const MunitParameter params[], void *data)
+TEST_CASE(query, count, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
+	int rc;
+	uint64_t *buf;
+	const char *text;
 
 	(void)params;
 
@@ -911,13 +904,13 @@ static MunitResult test_query_count(const MunitParameter params[], void *data)
 }
 
 /* Encode a result set exceeding the statically allocaed message body. */
-static MunitResult test_query_large(const MunitParameter params[], void *data)
+TEST_CASE(query, large, NULL)
 {
 	struct fixture *f = data;
-	int             rc;
-	uint64_t *      buf;
-	const char *    text;
-	int             i;
+	int rc;
+	uint64_t *buf;
+	const char *text;
+	int i;
 
 	(void)params;
 
@@ -951,33 +944,3 @@ static MunitResult test_query_large(const MunitParameter params[], void *data)
 
 	return MUNIT_OK;
 }
-
-static MunitTest stmt__query_tests[] = {
-    {"/no-columns", test_query_no_columns, setup, tear_down, 0, NULL},
-    {"/none", test_query_none, setup, tear_down, 0, NULL},
-    {"/integer", test_query_integer, setup, tear_down, 0, NULL},
-    {"/float", test_query_float, setup, tear_down, 0, NULL},
-    {"/null", test_query_null, setup, tear_down, 0, NULL},
-    {"/text", test_query_text, setup, tear_down, 0, NULL},
-    {"/unixtime", test_query_unixtime, setup, tear_down, 0, NULL},
-    {"/iso8601", test_query_iso8601, setup, tear_down, 0, NULL},
-    {"/iso8601/null", test_query_iso8601_null, setup, tear_down, 0, NULL},
-    {"/iso8601/empty", test_query_iso8601_empty, setup, tear_down, 0, NULL},
-    {"/boolean", test_query_boolean, setup, tear_down, 0, NULL},
-    {"/two/simple", test_query_two_simple, setup, tear_down, 0, NULL},
-    {"/two/complex", test_query_two_complex, setup, tear_down, 0, NULL},
-    {"/count", test_query_count, setup, tear_down, 0, NULL},
-    {"/large", test_query_large, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL}};
-
-/******************************************************************************
- *
- * Suite
- *
- ******************************************************************************/
-
-MunitSuite stmt__suites[] = {
-    {"_bind", stmt__bind_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {"_query", stmt__query_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
-};
