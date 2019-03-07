@@ -4,8 +4,8 @@
 #include "../src/byte.h"
 
 #include "leak.h"
-#include "message.h"
-#include "munit.h"
+#include "./lib/message.h"
+#include "./lib/runner.h"
 
 /******************************************************************************
  *
