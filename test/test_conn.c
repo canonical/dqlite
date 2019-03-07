@@ -74,15 +74,15 @@ static void __recv_response(struct fixture *f)
 	uv_buf_t buf;
 	ssize_t  nread;
 
-	dqlite__message_header_recv_start(&f->response.message, &buf);
+	message__header_recv_start(&f->response.message, &buf);
 
 	nread = read(f->sockets.client, buf.base, buf.len);
 	munit_assert_int(nread, ==, buf.len);
 
-	err = dqlite__message_header_recv_done(&f->response.message);
+	err = message__header_recv_done(&f->response.message);
 	munit_assert_int(err, ==, 0);
 
-	err = dqlite__message_body_recv_start(&f->response.message, &buf);
+	err = message__body_recv_start(&f->response.message, &buf);
 	munit_assert_int(err, ==, 0);
 
 	nread = read(f->sockets.client, buf.base, buf.len);
@@ -91,7 +91,7 @@ static void __recv_response(struct fixture *f)
 	err = dqlite__response_decode(&f->response);
 	munit_assert_int(err, ==, 0);
 
-	dqlite__message_recv_reset(&f->response.message);
+	message__recv_reset(&f->response.message);
 }
 
 /******************************************************************************

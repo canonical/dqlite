@@ -19,7 +19,7 @@
 struct fixture {
 	sqlite3_vfs *           vfs;
 	struct dqlite__stmt *   stmt;
-	struct dqlite__message *message;
+	struct message *message;
 };
 
 /* Helper to execute a statement. */
@@ -77,7 +77,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	/* Create a message object */
 	f->message = munit_malloc(sizeof *f->message);
-	dqlite__message_init(f->message);
+	message__init(f->message);
 
 	return f;
 }
@@ -86,7 +86,7 @@ static void tear_down(void *data)
 {
 	struct fixture *f = data;
 
-	dqlite__message_close(f->message);
+	message__close(f->message);
 
 	sqlite3_close_v2(f->stmt->db);
 	dqlite__stmt_close(f->stmt);

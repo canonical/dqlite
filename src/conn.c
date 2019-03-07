@@ -58,7 +58,7 @@ static int dqlite__conn_write(struct dqlite__conn *    c,
 
 	req->data = (void *)ctx;
 
-	dqlite__message_send_start(&response->message, bufs);
+	message__send_start(&response->message, bufs);
 
 	assert(bufs[0].base != NULL);
 	assert(bufs[0].len > 0);
@@ -68,7 +68,7 @@ static int dqlite__conn_write(struct dqlite__conn *    c,
 
 	err = uv_write(req, &c->stream, bufs, 3, dqlite__conn_write_cb);
 	if (err != 0) {
-		dqlite__message_send_reset(&response->message);
+		message__send_reset(&response->message);
 		sqlite3_free(req);
 		dqlite__error_uv(&c->error, err, "failed to write response");
 		return err;
@@ -131,7 +131,7 @@ static void dqlite__conn_write_cb(uv_write_t *req, int status)
 	assert(c != NULL);
 	assert(response != NULL);
 
-	dqlite__message_send_reset(&response->message);
+	message__send_reset(&response->message);
 
 	/* From libuv docs about the uv_write_cb type: "status will be 0 in case
 	 * of success, < 0 otherwise". */
@@ -313,7 +313,7 @@ static int dqlite__conn_header_alloc_cb(void *arg)
 
 	c = (struct dqlite__conn *)arg;
 
-	dqlite__message_header_recv_start(&c->request.message, &buf);
+	message__header_recv_start(&c->request.message, &buf);
 
 	dqlite__conn_buf_init(c, &buf);
 
@@ -335,7 +335,7 @@ static int dqlite__conn_header_read_cb(void *arg)
 
 	c = (struct dqlite__conn *)arg;
 
-	err = dqlite__message_header_recv_done(&c->request.message);
+	err = message__header_recv_done(&c->request.message);
 	if (err != 0) {
 		/* At the moment DQLITE_PROTO is the only error that should be
 		 * returned. */
@@ -385,7 +385,7 @@ static int dqlite__conn_body_alloc_cb(void *arg)
 
 	c = (struct dqlite__conn *)arg;
 
-	err = dqlite__message_body_recv_start(&c->request.message, &buf);
+	err = message__body_recv_start(&c->request.message, &buf);
 	if (err != 0) {
 		dqlite__error_wrapf(&c->error,
 		                    &c->request.message.error,
@@ -423,7 +423,7 @@ static int dqlite__conn_body_read_cb(void *arg)
 		goto request_failure;
 	}
 
-	dqlite__message_recv_reset(&c->request.message);
+	message__recv_reset(&c->request.message);
 
 	return 0;
 

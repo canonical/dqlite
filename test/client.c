@@ -49,7 +49,7 @@ static void test_client__write(struct test_client *c)
 	}
 
 	/* Write out the request data. */
-	dqlite__message_send_start(&c->request.message, c->bufs);
+	message__send_start(&c->request.message, c->bufs);
 	err = write(c->fd, c->bufs[0].base, c->bufs[0].len);
 	if (err < 0) {
 		munit_errorf("failed to write request header: %s",
@@ -64,14 +64,14 @@ static void test_client__write(struct test_client *c)
 	}
 
 	/* Reset the request message. */
-	dqlite__message_send_reset(&c->request.message);
+	message__send_reset(&c->request.message);
 }
 
 static void test_client__read(struct test_client *c)
 {
 	int n;
 	int err;
-	dqlite__message_header_recv_start(&c->response.message, &c->bufs[0]);
+	message__header_recv_start(&c->response.message, &c->bufs[0]);
 
 	err = read(c->fd, c->bufs[0].base, c->bufs[0].len);
 	if (err < 0) {
@@ -79,14 +79,14 @@ static void test_client__read(struct test_client *c)
 		             strerror(errno));
 	}
 
-	err = dqlite__message_header_recv_done(&c->response.message);
+	err = message__header_recv_done(&c->response.message);
 	if (err != 0) {
 		munit_errorf("failed to handle response header: %s",
 		             c->response.message.error);
 	}
 
 	err =
-	    dqlite__message_body_recv_start(&c->response.message, &c->bufs[0]);
+	    message__body_recv_start(&c->response.message, &c->bufs[0]);
 	if (err != 0) {
 		munit_errorf("failed to start receiving body: %s",
 		             c->response.message.error);
@@ -115,7 +115,7 @@ static void test_client__read(struct test_client *c)
 	/* Reset the message in all cases except for rows responses, which need
 	 * manual decoding. */
 	if (c->response.type != DQLITE_RESPONSE_ROWS) {
-		dqlite__message_recv_reset(&c->response.message);
+		message__recv_reset(&c->response.message);
 	}
 }
 
@@ -186,7 +186,7 @@ void test_client_exec(struct test_client *       c,
 	result->rows_affected  = c->response.result.rows_affected;
 }
 
-static void test_client_get_row(struct dqlite__message * m,
+static void test_client_get_row(struct message * m,
                                 uint64_t                 column_count,
                                 struct test_client_row **row,
                                 int *                    done)
@@ -195,7 +195,7 @@ static void test_client_get_row(struct dqlite__message * m,
 	void **  values        = munit_malloc(column_count * sizeof *values);
 	int      header_bits   = column_count * 4;
 	int      pad_bits      = 0;
-	int      trailing_bits = header_bits % DQLITE__MESSAGE_WORD_BITS;
+	int      trailing_bits = header_bits % MESSAGE__WORD_BITS;
 	int      header_size;
 	int      i;
 	int      err;
@@ -203,18 +203,18 @@ static void test_client_get_row(struct dqlite__message * m,
 	/* Each column needs a 4 byte slot to store the column type. The row
 	 * header must be padded to reach word boundary. */
 	if (trailing_bits != 0) {
-		pad_bits = DQLITE__MESSAGE_WORD_BITS - trailing_bits;
+		pad_bits = MESSAGE__WORD_BITS - trailing_bits;
 	}
 
-	header_size = (header_bits + pad_bits) / DQLITE__MESSAGE_WORD_BITS *
-	              DQLITE__MESSAGE_WORD_SIZE;
+	header_size = (header_bits + pad_bits) / MESSAGE__WORD_BITS *
+	              MESSAGE__WORD_SIZE;
 
 	for (i = 0; i < header_size; i++) {
 		uint8_t slot;
 		int     err;
 		int     index = i * 2;
 
-		err = dqlite__message_body_get_uint8(m, &slot);
+		err = message__body_get_uint8(m, &slot);
 		munit_assert_int(err, ==, 0);
 
 		/* Rows PART marker */
@@ -250,7 +250,7 @@ static void test_client_get_row(struct dqlite__message * m,
 		switch (types[i]) {
 		case SQLITE_INTEGER:
 			values[i] = munit_malloc(sizeof(int64_t));
-			err       = dqlite__message_body_get_int64(
+			err       = message__body_get_int64(
                             m, (int64_t *)values[i]);
 			munit_assert_int(err, ==, 0);
 			break;
@@ -287,7 +287,7 @@ static int test_client_query_batch(struct test_client *     c,
 	    munit_malloc(rows->column_count * sizeof *rows->column_names);
 
 	for (i = 0; i < (int)rows->column_count; i++) {
-		err = dqlite__message_body_get_text(&c->response.message,
+		err = message__body_get_text(&c->response.message,
 		                                    &rows->column_names[i]);
 		munit_assert_int(err, ==, 0);
 	}
@@ -327,13 +327,13 @@ void test_client_query(struct test_client *     c,
 		if (done) {
 			break;
 		}
-		dqlite__message_recv_reset(rows->message);
+		message__recv_reset(rows->message);
 	} while (1);
 }
 
 void test_client_rows_close(struct test_client_rows *rows)
 {
-	dqlite__message_recv_reset(rows->message);
+	message__recv_reset(rows->message);
 }
 
 void test_client_finalize(struct test_client *c,

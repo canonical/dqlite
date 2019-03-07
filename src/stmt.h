@@ -72,7 +72,7 @@ const char *dqlite__stmt_hash(struct dqlite__stmt *stmt);
 
 /* Bind the parameters of the underlying statement by decoding the given
  * message. */
-int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message);
+int dqlite__stmt_bind(struct dqlite__stmt *s, struct message *message);
 
 int dqlite__stmt_exec(struct dqlite__stmt *s,
                       uint64_t *           last_insert_id,
@@ -80,7 +80,7 @@ int dqlite__stmt_exec(struct dqlite__stmt *s,
 
 /* Step through a query statement and fill the given message with the rows it
  * yields. */
-int dqlite__stmt_query(struct dqlite__stmt *s, struct dqlite__message *message);
+int dqlite__stmt_query(struct dqlite__stmt *s, struct message *message);
 
 DQLITE__REGISTRY(dqlite__stmt_registry, dqlite__stmt);
 

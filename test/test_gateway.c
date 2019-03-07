@@ -538,13 +538,13 @@ static MunitResult test_exec_params(const MunitParameter params[], void *data)
 	f->request->message.words   = 3;
 	f->request->message.offset1 = 8;
 
-	dqlite__message_body_put_uint8(&f->request->message,
+	message__body_put_uint8(&f->request->message,
 	                               1); /* N of params */
-	dqlite__message_body_put_uint8(&f->request->message, SQLITE_INTEGER);
+	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
-	dqlite__message_body_put_int64(&f->request->message,
+	message__body_put_int64(&f->request->message,
 	                               1); /* param value */
 
 	f->request->message.offset1 = 8; /* rewind */
@@ -609,13 +609,13 @@ static MunitResult test_exec_bad_params(const MunitParameter params[],
 	f->request->message.words   = 3;
 	f->request->message.offset1 = 8;
 
-	dqlite__message_body_put_uint8(&f->request->message,
+	message__body_put_uint8(&f->request->message,
 	                               1); /* N of params */
-	dqlite__message_body_put_uint8(&f->request->message, SQLITE_INTEGER);
+	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
-	dqlite__message_body_put_int64(&f->request->message,
+	message__body_put_int64(&f->request->message,
 	                               1); /* param value */
 
 	f->request->message.offset1 = 8; /* rewind */
@@ -738,13 +738,13 @@ static MunitResult test_query_bad_params(const MunitParameter params[],
 	f->request->message.words   = 3;
 	f->request->message.offset1 = 8;
 
-	dqlite__message_body_put_uint8(&f->request->message,
+	message__body_put_uint8(&f->request->message,
 	                               1); /* N of params */
-	dqlite__message_body_put_uint8(&f->request->message, SQLITE_INTEGER);
+	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
-	dqlite__message_body_put_int64(&f->request->message,
+	message__body_put_int64(&f->request->message,
 	                               1); /* param value */
 
 	f->request->message.offset1 = 8; /* rewind */
@@ -810,17 +810,17 @@ static MunitResult test_exec_sql(const MunitParameter params[], void *data)
 	f->request->message.offset1 = 8;
 
 	/* N of params and parm types */
-	dqlite__message_body_put_uint8(&f->request->message, 3);
-	dqlite__message_body_put_uint8(&f->request->message, SQLITE_INTEGER);
-	dqlite__message_body_put_uint8(&f->request->message, SQLITE_TEXT);
-	dqlite__message_body_put_uint8(&f->request->message, SQLITE_NULL);
+	message__body_put_uint8(&f->request->message, 3);
+	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
+	message__body_put_uint8(&f->request->message, SQLITE_TEXT);
+	message__body_put_uint8(&f->request->message, SQLITE_NULL);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
 	/* param values */
-	dqlite__message_body_put_int64(&f->request->message, 1);
-	dqlite__message_body_put_text(&f->request->message, "hello");
-	dqlite__message_body_put_int64(&f->request->message, 0);
+	message__body_put_int64(&f->request->message, 1);
+	message__body_put_text(&f->request->message, "hello");
+	message__body_put_int64(&f->request->message, 0);
 
 	f->request->message.offset1 = 8; /* rewind */
 
@@ -918,13 +918,13 @@ static MunitResult test_exec_sql_bad_params(const MunitParameter params[],
 	f->request->message.words   = 3;
 	f->request->message.offset1 = 8;
 
-	dqlite__message_body_put_uint8(&f->request->message,
+	message__body_put_uint8(&f->request->message,
 	                               1); /* N of params */
-	dqlite__message_body_put_uint8(&f->request->message, SQLITE_INTEGER);
+	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
-	dqlite__message_body_put_int64(&f->request->message,
+	message__body_put_int64(&f->request->message,
 	                               1); /* param value */
 
 	f->request->message.offset1 = 8; /* rewind */
@@ -1024,20 +1024,20 @@ static MunitResult test_query_sql(const MunitParameter params[], void *data)
 	f->response->message.offset1 = 0;
 
 	/* Read the column count */
-	dqlite__message_body_get_uint64(&f->response->message, &column_count);
+	message__body_get_uint64(&f->response->message, &column_count);
 	munit_assert_int(column_count, ==, 1);
 
 	/* Read the column name */
-	dqlite__message_body_get_text(&f->response->message, &column_name);
+	message__body_get_text(&f->response->message, &column_name);
 	munit_assert_string_equal(column_name, "n");
 
 	/* Read the header */
-	dqlite__message_body_get_uint64(&f->response->message, &header);
+	message__body_get_uint64(&f->response->message, &header);
 
 	munit_assert_int(header, ==, SQLITE_INTEGER);
 
 	/* Read the value */
-	dqlite__message_body_get_int64(&f->response->message, &n);
+	message__body_get_int64(&f->response->message, &n);
 	munit_assert_int(n, ==, -12);
 
 	return MUNIT_OK;
@@ -1092,13 +1092,13 @@ static MunitResult test_query_sql_bad_params(const MunitParameter params[],
 	f->request->message.words   = 3;
 	f->request->message.offset1 = 8;
 
-	dqlite__message_body_put_uint8(&f->request->message,
+	message__body_put_uint8(&f->request->message,
 	                               1); /* N of params */
-	dqlite__message_body_put_uint8(&f->request->message, SQLITE_INTEGER);
+	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
-	dqlite__message_body_put_int64(&f->request->message,
+	message__body_put_int64(&f->request->message,
 	                               1); /* param value */
 
 	f->request->message.offset1 = 8; /* rewind */
