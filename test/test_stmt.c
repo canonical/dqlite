@@ -18,7 +18,7 @@
 
 struct fixture {
 	sqlite3_vfs *           vfs;
-	struct dqlite__stmt *   stmt;
+	struct stmt *   stmt;
 	struct message *message;
 };
 
@@ -66,9 +66,9 @@ static void *setup(const MunitParameter params[], void *user_data)
 	munit_assert_ptr_not_null(f->vfs);
 	sqlite3_vfs_register(f->vfs, 0);
 
-	/* Create a dqlite__stmt object associated with a database. */
+	/* Create a stmt object associated with a database. */
 	f->stmt = munit_malloc(sizeof *f->stmt);
-	dqlite__stmt_init(f->stmt);
+	stmt__init(f->stmt);
 
 	rc = sqlite3_open_v2("test.db:", &f->stmt->db, flags, "test");
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -89,7 +89,7 @@ static void tear_down(void *data)
 	message__close(f->message);
 
 	sqlite3_close_v2(f->stmt->db);
-	dqlite__stmt_close(f->stmt);
+	stmt__close(f->stmt);
 
 	sqlite3_vfs_unregister(f->vfs);
 	dqlite_vfs_destroy(f->vfs);
@@ -99,11 +99,11 @@ static void tear_down(void *data)
 
 /******************************************************************************
  *
- * dqlite__stmt_bind
+ * stmt__bind
  *
  ******************************************************************************/
 
-/* If a message carries no bindings, dqlite__stmt_bind is a no-op. */
+/* If a message carries no bindings, stmt__bind is a no-op. */
 static MunitResult test_bind_none(const MunitParameter params[], void *data)
 {
 	struct fixture *f = data;
@@ -113,7 +113,7 @@ static MunitResult test_bind_none(const MunitParameter params[], void *data)
 
 	__prepare(f, "SELECT 1");
 
-	rc = dqlite__stmt_bind(f->stmt, f->message);
+	rc = stmt__bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	return MUNIT_OK;
@@ -136,7 +136,7 @@ static MunitResult test_bind_missing_types(const MunitParameter params[],
 	f->message->words    = 1;
 	f->message->body1[0] = 8;
 
-	rc = dqlite__stmt_bind(f->stmt, f->message);
+	rc = stmt__bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error, "incomplete param types");
@@ -162,7 +162,7 @@ static MunitResult test_bind_no_params(const MunitParameter params[],
 	f->message->body1[0] = 1;
 	f->message->body1[1] = SQLITE_INTEGER;
 
-	rc = dqlite__stmt_bind(f->stmt, f->message);
+	rc = stmt__bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error, "incomplete param values");
@@ -190,7 +190,7 @@ static MunitResult test_bind_missing_params(const MunitParameter params[],
 	f->message->body1[1] = SQLITE_INTEGER;
 	f->message->body1[2] = SQLITE_INTEGER;
 
-	rc = dqlite__stmt_bind(f->stmt, f->message);
+	rc = stmt__bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error, "incomplete param values");
@@ -213,7 +213,7 @@ static MunitResult test_bind_bad_type(const MunitParameter params[], void *data)
 	f->message->body1[0] = 1;
 	f->message->body1[1] = 127;
 
-	rc = dqlite__stmt_bind(f->stmt, f->message);
+	rc = stmt__bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error,
@@ -239,7 +239,7 @@ static MunitResult test_bind_bad_param(const MunitParameter params[],
 	f->message->body1[0] = 1;
 	f->message->body1[1] = SQLITE_INTEGER;
 
-	rc = dqlite__stmt_bind(f->stmt, f->message);
+	rc = stmt__bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_RANGE);
 
 	munit_assert_string_equal(f->stmt->error, "column index out of range");
@@ -265,7 +265,7 @@ static MunitResult test_bind_integer(const MunitParameter params[], void *data)
 
 	memcpy(f->message->body1 + 8, &buf, sizeof buf);
 
-	rc = dqlite__stmt_bind(f->stmt, f->message);
+	rc = stmt__bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The float parameter was correctly bound. */
@@ -300,7 +300,7 @@ static MunitResult test_bind_float(const MunitParameter params[], void *data)
 	buf = byte__flip64(buf);
 	memcpy(f->message->body1 + 8, &buf, sizeof buf);
 
-	rc = dqlite__stmt_bind(f->stmt, f->message);
+	rc = stmt__bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The float parameter was correctly bound. */
@@ -332,7 +332,7 @@ static MunitResult test_bind_text(const MunitParameter params[], void *data)
 
 	strcpy(f->message->body1 + 8, "hello");
 
-	rc = dqlite__stmt_bind(f->stmt, f->message);
+	rc = stmt__bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The float parameter was correctly bound. */
@@ -364,7 +364,7 @@ static MunitResult test_bind_iso8601(const MunitParameter params[], void *data)
 
 	strcpy(f->message->body1 + 8, "2018-07-20 09:49:05+00:00");
 
-	rc = dqlite__stmt_bind(f->stmt, f->message);
+	rc = stmt__bind(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The float parameter was correctly bound. */
@@ -380,7 +380,7 @@ static MunitResult test_bind_iso8601(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__stmt_bind_tests[] = {
+static MunitTest stmt__bind_tests[] = {
     {"/none", test_bind_none, setup, tear_down, 0, NULL},
     {"/missing-types", test_bind_missing_types, setup, tear_down, 0, NULL},
     {"/no-params", test_bind_no_params, setup, tear_down, 0, NULL},
@@ -396,7 +396,7 @@ static MunitTest dqlite__stmt_bind_tests[] = {
 
 /******************************************************************************
  *
- * dqlite__stmt_query
+ * stmt__query
  *
  ******************************************************************************/
 
@@ -414,7 +414,7 @@ static MunitResult test_query_no_columns(const MunitParameter params[],
 	/* This statement yields no columns. */
 	__prepare(f, "DELETE FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error,
@@ -435,7 +435,7 @@ static MunitResult test_query_none(const MunitParameter params[], void *data)
 
 	__prepare(f, "SELECT name FROM sqlite_master");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -468,7 +468,7 @@ static MunitResult test_query_integer(const MunitParameter params[], void *data)
 
 	__prepare(f, "SELECT n FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -503,7 +503,7 @@ static MunitResult test_query_float(const MunitParameter params[], void *data)
 
 	__prepare(f, "SELECT f FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -539,7 +539,7 @@ static MunitResult test_query_null(const MunitParameter params[], void *data)
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -574,7 +574,7 @@ static MunitResult test_query_text(const MunitParameter params[], void *data)
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -611,7 +611,7 @@ static MunitResult test_query_unixtime(const MunitParameter params[],
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -650,7 +650,7 @@ static MunitResult test_query_iso8601(const MunitParameter params[], void *data)
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -686,7 +686,7 @@ static MunitResult test_query_iso8601_null(const MunitParameter params[],
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -722,7 +722,7 @@ static MunitResult test_query_iso8601_empty(const MunitParameter params[],
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -757,7 +757,7 @@ static MunitResult test_query_boolean(const MunitParameter params[], void *data)
 
 	__prepare(f, "SELECT b FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -794,7 +794,7 @@ static MunitResult test_query_two_simple(const MunitParameter params[],
 
 	__prepare(f, "SELECT n FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -831,7 +831,7 @@ static MunitResult test_query_two_complex(const MunitParameter params[],
 
 	__prepare(f, "SELECT n, t, f FROM test");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -891,7 +891,7 @@ static MunitResult test_query_count(const MunitParameter params[], void *data)
 
 	__prepare(f, "SELECT COUNT(name) FROM sqlite_master");
 
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -932,7 +932,7 @@ static MunitResult test_query_large(const MunitParameter params[], void *data)
 
 	/* The return code is SQLITE_ROW, to indicate that not all rows were
 	 * fetched. */
-	rc = dqlite__stmt_query(f->stmt, f->message);
+	rc = stmt__query(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
 	/* The first word written is the column count. */
@@ -952,7 +952,7 @@ static MunitResult test_query_large(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__stmt_query_tests[] = {
+static MunitTest stmt__query_tests[] = {
     {"/no-columns", test_query_no_columns, setup, tear_down, 0, NULL},
     {"/none", test_query_none, setup, tear_down, 0, NULL},
     {"/integer", test_query_integer, setup, tear_down, 0, NULL},
@@ -976,8 +976,8 @@ static MunitTest dqlite__stmt_query_tests[] = {
  *
  ******************************************************************************/
 
-MunitSuite dqlite__stmt_suites[] = {
-    {"_bind", dqlite__stmt_bind_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {"_query", dqlite__stmt_query_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+MunitSuite stmt__suites[] = {
+    {"_bind", stmt__bind_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
+    {"_query", stmt__query_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
     {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
 };

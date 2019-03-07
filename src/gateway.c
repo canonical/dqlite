@@ -265,7 +265,7 @@ static void dqlite__gateway_prepare(struct dqlite__gateway *    g,
                                     struct dqlite__gateway_ctx *ctx)
 {
 	struct dqlite__db *  db;
-	struct dqlite__stmt *stmt;
+	struct stmt *stmt;
 	int                  rc;
 
 	DQLITE__GATEWAY_BARRIER;
@@ -289,7 +289,7 @@ static void dqlite__gateway_exec(struct dqlite__gateway *    g,
 {
 	int                  rc;
 	struct dqlite__db *  db;
-	struct dqlite__stmt *stmt;
+	struct stmt *stmt;
 	uint64_t             last_insert_id;
 	uint64_t             rows_affected;
 
@@ -299,14 +299,14 @@ static void dqlite__gateway_exec(struct dqlite__gateway *    g,
 
 	assert(stmt != NULL);
 
-	rc = dqlite__stmt_bind(stmt, &ctx->request->message);
+	rc = stmt__bind(stmt, &ctx->request->message);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&g->error, stmt->error);
 		dqlite__gateway_failure(g, ctx, rc);
 		return;
 	}
 
-	rc = dqlite__stmt_exec(stmt, &last_insert_id, &rows_affected);
+	rc = stmt__exec(stmt, &last_insert_id, &rows_affected);
 	if (rc == SQLITE_OK) {
 		ctx->response.type                  = DQLITE_RESPONSE_RESULT;
 		ctx->response.result.last_insert_id = last_insert_id;
@@ -325,12 +325,12 @@ static void dqlite__gateway_exec(struct dqlite__gateway *    g,
  * message body. */
 static void dqlite__gateway_query_batch(struct dqlite__gateway *    g,
                                         struct dqlite__db *         db,
-                                        struct dqlite__stmt *       stmt,
+                                        struct stmt *       stmt,
                                         struct dqlite__gateway_ctx *ctx)
 {
 	int rc;
 
-	rc = dqlite__stmt_query(stmt, &ctx->response.message);
+	rc = stmt__query(stmt, &ctx->response.message);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		sqlite3_reset(stmt->stmt);
 
@@ -374,7 +374,7 @@ static void dqlite__gateway_query(struct dqlite__gateway *    g,
 {
 	int                  rc;
 	struct dqlite__db *  db;
-	struct dqlite__stmt *stmt;
+	struct stmt *stmt;
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->query.db_id);
@@ -382,7 +382,7 @@ static void dqlite__gateway_query(struct dqlite__gateway *    g,
 
 	assert(stmt != NULL);
 
-	rc = dqlite__stmt_bind(stmt, &ctx->request->message);
+	rc = stmt__bind(stmt, &ctx->request->message);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&g->error, stmt->error);
 		dqlite__gateway_failure(g, ctx, rc);
@@ -401,7 +401,7 @@ static void dqlite__gateway_finalize(struct dqlite__gateway *    g,
 {
 	int                  rc;
 	struct dqlite__db *  db;
-	struct dqlite__stmt *stmt;
+	struct stmt *stmt;
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->finalize.db_id);
@@ -422,7 +422,7 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
 	int                  rc;
 	struct dqlite__db *  db;
 	const char *         sql;
-	struct dqlite__stmt *stmt = NULL;
+	struct stmt *stmt = NULL;
 	uint64_t             last_insert_id;
 	uint64_t             rows_affected;
 
@@ -446,7 +446,7 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
 		}
 
 		/* TODO: what about bindings for multi-statement SQL text? */
-		rc = dqlite__stmt_bind(stmt, &ctx->request->message);
+		rc = stmt__bind(stmt, &ctx->request->message);
 		if (rc != SQLITE_OK) {
 			dqlite__error_printf(&g->error, stmt->error);
 			dqlite__gateway_failure(g, ctx, rc);
@@ -454,7 +454,7 @@ static void dqlite__gateway_exec_sql(struct dqlite__gateway *    g,
 			return;
 		}
 
-		rc = dqlite__stmt_exec(stmt, &last_insert_id, &rows_affected);
+		rc = stmt__exec(stmt, &last_insert_id, &rows_affected);
 		if (rc == SQLITE_OK) {
 			ctx->response.type = DQLITE_RESPONSE_RESULT;
 			ctx->response.result.last_insert_id = last_insert_id;
@@ -483,7 +483,7 @@ static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
 {
 	int                  rc;
 	struct dqlite__db *  db;
-	struct dqlite__stmt *stmt;
+	struct stmt *stmt;
 
 	DQLITE__GATEWAY_BARRIER;
 	DQLITE__GATEWAY_LOOKUP_DB(ctx->request->query_sql.db_id);
@@ -497,7 +497,7 @@ static void dqlite__gateway_query_sql(struct dqlite__gateway *    g,
 		return;
 	}
 
-	rc = dqlite__stmt_bind(stmt, &ctx->request->message);
+	rc = stmt__bind(stmt, &ctx->request->message);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&g->error, stmt->error);
 		dqlite__gateway_failure(g, ctx, rc);

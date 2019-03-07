@@ -49,7 +49,7 @@ void dqlite__db_init(struct dqlite__db *db)
 
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_DB);
 	dqlite__error_init(&db->error);
-	dqlite__stmt_registry_init(&db->stmts);
+	stmt__registry_init(&db->stmts);
 }
 
 void dqlite__db_close(struct dqlite__db *db)
@@ -58,7 +58,7 @@ void dqlite__db_close(struct dqlite__db *db)
 
 	assert(db != NULL);
 
-	dqlite__stmt_registry_close(&db->stmts);
+	stmt__registry_close(&db->stmts);
 	dqlite__error_close(&db->error);
 
 	if (db->db != NULL) {
@@ -173,7 +173,7 @@ int dqlite__db_open(struct dqlite__db *db,
 
 int dqlite__db_prepare(struct dqlite__db *   db,
                        const char *          sql,
-                       struct dqlite__stmt **stmt)
+                       struct stmt **stmt)
 {
 	int err;
 	int rc;
@@ -183,7 +183,7 @@ int dqlite__db_prepare(struct dqlite__db *   db,
 
 	assert(sql != NULL);
 
-	err = dqlite__stmt_registry_add(&db->stmts, stmt);
+	err = stmt__registry_add(&db->stmts, stmt);
 	if (err != 0) {
 		assert(err == DQLITE_NOMEM);
 		dqlite__error_oom(&db->error, "unable to register statement");
@@ -198,7 +198,7 @@ int dqlite__db_prepare(struct dqlite__db *   db,
 	    sqlite3_prepare_v2(db->db, sql, -1, &(*stmt)->stmt, &(*stmt)->tail);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&db->error, sqlite3_errmsg(db->db));
-		dqlite__stmt_registry_del(&db->stmts, *stmt);
+		stmt__registry_del(&db->stmts, *stmt);
 		return rc;
 	}
 
@@ -206,12 +206,12 @@ int dqlite__db_prepare(struct dqlite__db *   db,
 }
 
 /* Lookup a stmt object by ID */
-struct dqlite__stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id)
+struct stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id)
 {
-	return dqlite__stmt_registry_get(&db->stmts, stmt_id);
+	return stmt__registry_get(&db->stmts, stmt_id);
 }
 
-int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt)
+int dqlite__db_finalize(struct dqlite__db *db, struct stmt *stmt)
 {
 	int rc;
 	int err;
@@ -226,14 +226,14 @@ int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt)
 			                     sqlite3_errmsg(db->db));
 		}
 
-		/* Unset the stmt member, to prevent dqlite__stmt_registry_del
+		/* Unset the stmt member, to prevent stmt__registry_del
 		 * from trying to finalize the statement too */
 		stmt->stmt = NULL;
 	} else {
 		rc = SQLITE_OK;
 	}
 
-	err = dqlite__stmt_registry_del(&db->stmts, stmt);
+	err = stmt__registry_del(&db->stmts, stmt);
 
 	/* Deleting the statement from the registry can't fail, because the
 	 * given statement was obtained with dqlite__db_stmt(). */

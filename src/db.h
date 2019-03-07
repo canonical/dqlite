@@ -3,8 +3,6 @@
 
 #include <sqlite3.h>
 
-#include "../include/dqlite.h"
-
 #include "error.h"
 #include "stmt.h"
 
@@ -19,7 +17,7 @@ struct dqlite__db {
 
 	/* private */
 	sqlite3 *db; /* Underlying SQLite database */
-	struct dqlite__stmt_registry
+	struct stmt__registry
 	    stmts; /* Registry of prepared statements */
 };
 
@@ -43,13 +41,13 @@ int dqlite__db_open(struct dqlite__db *db,
 /* Prepare a statement using the underlying db. */
 int dqlite__db_prepare(struct dqlite__db *   db,
                        const char *          sql,
-                       struct dqlite__stmt **stmt);
+                       struct stmt **stmt);
 
 /* Lookup the statement with the given ID. */
-struct dqlite__stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id);
+struct stmt *dqlite__db_stmt(struct dqlite__db *db, uint32_t stmt_id);
 
 /* Finalize a statement. */
-int dqlite__db_finalize(struct dqlite__db *db, struct dqlite__stmt *stmt);
+int dqlite__db_finalize(struct dqlite__db *db, struct stmt *stmt);
 
 /* Begin a transaction. */
 int dqlite__db_begin(struct dqlite__db *db);

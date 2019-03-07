@@ -43,7 +43,7 @@ struct dqlite__gateway_ctx {
 	struct dqlite__request *request;
 	struct dqlite__response response;
 	struct dqlite__db *     db;      /* For multi-response queries */
-	struct dqlite__stmt *   stmt;    /* For multi-response queries */
+	struct stmt *   stmt;    /* For multi-response queries */
 	int                     cleanup; /* Code indicating how to cleanup */
 };
 

@@ -3,8 +3,6 @@
 
 #include <sqlite3.h>
 
-#include "../include/dqlite.h"
-
 #include "error.h"
 #include "lifecycle.h"
 #include "registry.h"
@@ -12,9 +10,9 @@
 
 /* The maximum number of columns we expect (for bindings or rows) is 255, which
  * can fit in one byte. */
-#define DQLITE__STMT_MAX_COLUMNS (1 << 8) - 1
+#define STMT__MAX_COLUMNS (1 << 8) - 1
 
-void dqlite__stmt_init(struct dqlite__stmt *s)
+void stmt__init(struct stmt *s)
 {
 	assert(s != NULL);
 
@@ -23,7 +21,7 @@ void dqlite__stmt_init(struct dqlite__stmt *s)
 	dqlite__error_init(&s->error);
 }
 
-void dqlite__stmt_close(struct dqlite__stmt *s)
+void stmt__close(struct stmt *s)
 {
 	assert(s != NULL);
 
@@ -38,7 +36,7 @@ void dqlite__stmt_close(struct dqlite__stmt *s)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_STMT);
 }
 
-const char *dqlite__stmt_hash(struct dqlite__stmt *stmt)
+const char *stmt__hash(struct stmt *stmt)
 {
 	(void)stmt;
 
@@ -46,7 +44,7 @@ const char *dqlite__stmt_hash(struct dqlite__stmt *stmt)
 }
 
 /* Bind a parameter. */
-static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
+static int stmt__bind_param(struct stmt *   s,
                                    struct message *message,
                                    int                     i,
                                    int                     type,
@@ -127,7 +125,7 @@ static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
 	return err;
 }
 
-int dqlite__stmt_bind(struct dqlite__stmt *s, struct message *message)
+int stmt__bind(struct stmt *s, struct message *message)
 {
 	int     err;
 	uint8_t pad = 0;
@@ -185,7 +183,7 @@ int dqlite__stmt_bind(struct dqlite__stmt *s, struct message *message)
 	for (i = 0; i < count; i++) {
 		int rc = SQLITE_OK;
 
-		err = dqlite__stmt_bind_param(s, message, i + 1, types[i], &rc);
+		err = stmt__bind_param(s, message, i + 1, types[i], &rc);
 		if (err == DQLITE_EOM) {
 			if (i != count - 1) {
 				/* We reached the end of the message but we did
@@ -209,7 +207,7 @@ int dqlite__stmt_bind(struct dqlite__stmt *s, struct message *message)
 	return SQLITE_OK;
 }
 
-int dqlite__stmt_exec(struct dqlite__stmt *s,
+int stmt__exec(struct stmt *s,
                       uint64_t *           last_insert_id,
                       uint64_t *           rows_affected)
 {
@@ -231,7 +229,7 @@ int dqlite__stmt_exec(struct dqlite__stmt *s,
 }
 
 /* Append a single row to the message. */
-static int dqlite__stmt_row(struct dqlite__stmt *   s,
+static int stmt__row(struct stmt *   s,
                             struct message *message,
                             int                     column_count)
 {
@@ -392,7 +390,7 @@ out:
 	return SQLITE_OK;
 }
 
-int dqlite__stmt_query(struct dqlite__stmt *s, struct message *message)
+int stmt__query(struct stmt *s, struct message *message)
 {
 	int column_count;
 	int err;
@@ -448,7 +446,7 @@ int dqlite__stmt_query(struct dqlite__stmt *s, struct message *message)
 			break;
 		}
 
-		rc = dqlite__stmt_row(s, message, column_count);
+		rc = stmt__row(s, message, column_count);
 		if (rc != SQLITE_OK) {
 			break;
 		}
@@ -458,4 +456,4 @@ int dqlite__stmt_query(struct dqlite__stmt *s, struct message *message)
 	return rc;
 }
 
-REGISTRY_METHODS(dqlite__stmt_registry, dqlite__stmt);
+REGISTRY_METHODS(stmt__registry, stmt);
