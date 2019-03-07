@@ -160,7 +160,7 @@ static uint32_t __wal_idx_mx_frame(sqlite3 *db)
 	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	dqlite__format_get_mx_frame((const uint8_t *)region, &mx_frame);
+	format__get_mx_frame((const uint8_t *)region, &mx_frame);
 
 	return mx_frame;
 }
@@ -174,7 +174,7 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 	uint32_t *     marks;
 	int            rc;
 
-	marks = munit_malloc(DQLITE__FORMAT_WAL_NREADER * sizeof *marks);
+	marks = munit_malloc(FORMAT__WAL_NREADER * sizeof *marks);
 
 	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -182,7 +182,7 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	dqlite__format_get_read_marks((const uint8_t *)region, marks);
+	format__get_read_marks((const uint8_t *)region, marks);
 
 	return marks;
 }
@@ -1906,7 +1906,7 @@ static MunitResult test_integration_checkpoint(const MunitParameter params[],
 	/* The WAL file has now 13 pages */
 	rv = file2->pMethods->xFileSize(file2, &size);
 	munit_logf(MUNIT_LOG_INFO, "size %lld", size);
-	munit_assert_int(dqlite__format_wal_calc_pages(512, size), ==, 13);
+	munit_assert_int(format__wal_calc_pages(512, size), ==, 13);
 
 	mx_frame = __wal_idx_mx_frame(db1);
 	munit_assert_int(mx_frame, ==, 13);

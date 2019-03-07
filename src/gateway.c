@@ -32,7 +32,7 @@ static int dqlite__gateway_maybe_checkpoint(void *      ctx,
 	struct sqlite3_file *   file;
 	volatile void *         region;
 	uint32_t                mx_frame;
-	uint32_t                read_marks[DQLITE__FORMAT_WAL_NREADER];
+	uint32_t                read_marks[FORMAT__WAL_NREADER];
 	int                     rc;
 	int                     i;
 
@@ -58,10 +58,10 @@ static int dqlite__gateway_maybe_checkpoint(void *      ctx,
 	assert(rc == SQLITE_OK); /* Should never fail */
 
 	/* Get the current value of mxFrame. */
-	dqlite__format_get_mx_frame((const uint8_t *)region, &mx_frame);
+	format__get_mx_frame((const uint8_t *)region, &mx_frame);
 
 	/* Get the content of the read marks. */
-	dqlite__format_get_read_marks((const uint8_t *)region, read_marks);
+	format__get_read_marks((const uint8_t *)region, read_marks);
 
 	/* Check each mark and associated lock. This logic is similar to the one
 	 * in the walCheckpoint function of wal.c, in the SQLite code. */

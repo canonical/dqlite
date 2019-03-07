@@ -1303,7 +1303,7 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 	rc = file->pMethods->xFileSize(file, &size);
 	munit_assert_int(rc, ==, 0);
 
-	munit_assert_int(dqlite__format_wal_calc_pages(4096, size), ==, 3);
+	munit_assert_int(format__wal_calc_pages(4096, size), ==, 3);
 
 	dqlite__db_close(&db2);
 

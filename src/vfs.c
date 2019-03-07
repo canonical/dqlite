@@ -48,11 +48,11 @@ static struct dqlite__vfs_page *dqlite__vfs_page_create(int size, int wal)
 	memset(p->buf, 0, size);
 
 	if (wal) {
-		p->hdr = sqlite3_malloc(DQLITE__FORMAT_WAL_FRAME_HDR_SIZE);
+		p->hdr = sqlite3_malloc(FORMAT__WAL_FRAME_HDR_SIZE);
 		if (p->hdr == NULL) {
 			goto oom_after_buf_malloc;
 		}
-		memset(p->hdr, 0, DQLITE__FORMAT_WAL_FRAME_HDR_SIZE);
+		memset(p->hdr, 0, FORMAT__WAL_FRAME_HDR_SIZE);
 	} else {
 		p->hdr = NULL;
 	}
@@ -167,8 +167,8 @@ static struct dqlite__vfs_content *dqlite__vfs_content_create(
 	struct dqlite__vfs_content *c;
 
 	assert(name != NULL);
-	assert(type == DQLITE__FORMAT_DB || type == DQLITE__FORMAT_WAL ||
-	       type == DQLITE__FORMAT_OTHER);
+	assert(type == FORMAT__DB || type == FORMAT__WAL ||
+	       type == FORMAT__OTHER);
 
 	c = sqlite3_malloc(sizeof *c);
 	if (c == NULL) {
@@ -185,12 +185,12 @@ static struct dqlite__vfs_content *dqlite__vfs_content_create(
 	strcpy(c->filename, name);
 
 	// For WAL files, also allocate the WAL file header.
-	if (type == DQLITE__FORMAT_WAL) {
-		c->hdr = sqlite3_malloc(DQLITE__FORMAT_WAL_HDR_SIZE);
+	if (type == FORMAT__WAL) {
+		c->hdr = sqlite3_malloc(FORMAT__WAL_HDR_SIZE);
 		if (c->hdr == NULL) {
 			goto oom_after_filename_malloc;
 		}
-		memset(c->hdr, 0, DQLITE__FORMAT_WAL_HDR_SIZE);
+		memset(c->hdr, 0, FORMAT__WAL_HDR_SIZE);
 	} else {
 		c->hdr = NULL;
 	}
@@ -228,7 +228,7 @@ static void dqlite__vfs_content_destroy(struct dqlite__vfs_content *c)
 	sqlite3_free(c->filename);
 
 	/* Free the header if it's a WAL file. */
-	if (c->type == DQLITE__FORMAT_WAL) {
+	if (c->type == FORMAT__WAL) {
 		assert(c->hdr != NULL);
 		sqlite3_free(c->hdr);
 	} else {
@@ -249,7 +249,7 @@ static void dqlite__vfs_content_destroy(struct dqlite__vfs_content *c)
 
 	/* Free the SHM mappping */
 	if (c->shm != NULL) {
-		assert(c->type == DQLITE__FORMAT_DB);
+		assert(c->type == FORMAT__DB);
 		dqlite__vfs_shm_destroy(c->shm);
 	}
 
@@ -283,7 +283,7 @@ static int dqlite__vfs_content_page_get(struct dqlite__vfs_content *c,
 	assert(c != NULL);
 	assert(pgno > 0);
 
-	is_wal = c->type == DQLITE__FORMAT_WAL;
+	is_wal = c->type == FORMAT__WAL;
 
 	/* SQLite should access pages progressively, without jumping more than
 	 * one page after the end. */
@@ -364,7 +364,7 @@ static struct dqlite__vfs_page *dqlite__vfs_content_page_lookup(
 
 	assert(page != NULL);
 
-	if (c->type == DQLITE__FORMAT_WAL) {
+	if (c->type == FORMAT__WAL) {
 		assert(page->hdr != NULL);
 	}
 
@@ -394,11 +394,11 @@ static void dqlite__vfs_content_truncate(struct dqlite__vfs_content *content,
 	}
 
 	/* Reset the file header (for WAL files). */
-	if (content->type == DQLITE__FORMAT_WAL) {
+	if (content->type == FORMAT__WAL) {
 		/* We expect callers to always truncate the WAL to zero. */
 		assert(pages_len == 0);
 		assert(content->hdr != NULL);
-		memset(content->hdr, 0, DQLITE__FORMAT_WAL_HDR_SIZE);
+		memset(content->hdr, 0, FORMAT__WAL_HDR_SIZE);
 	} else {
 		assert(content->hdr == NULL);
 	}
@@ -731,14 +731,14 @@ static int dqlite__vfs_read(sqlite3_file *file,
 
 	/* Since writes to all files other than the main database or the WAL are
 	 * no-ops and the associated content object remains empty, we expect the
-	 * content type to be either DQLITE__FORMAT_DB or
-	 * DQLITE__FORMAT_WAL. */
-	assert(f->content->type == DQLITE__FORMAT_DB ||
-	       f->content->type == DQLITE__FORMAT_WAL);
+	 * content type to be either FORMAT__DB or
+	 * FORMAT__WAL. */
+	assert(f->content->type == FORMAT__DB ||
+	       f->content->type == FORMAT__WAL);
 
 	switch (f->content->type) {
 
-	case DQLITE__FORMAT_DB:
+	case FORMAT__DB:
 		/* Main database */
 
 		/* If the main database file is not empty, we expect the page
@@ -774,7 +774,7 @@ static int dqlite__vfs_read(sqlite3_file *file,
 		}
 		return SQLITE_OK;
 
-	case DQLITE__FORMAT_WAL:
+	case FORMAT__WAL:
 		/* WAL file */
 
 		if (f->content->page_size == 0) {
@@ -791,45 +791,45 @@ static int dqlite__vfs_read(sqlite3_file *file,
 
 		if (offset == 0) {
 			/* Read the header. */
-			assert(amount == DQLITE__FORMAT_WAL_HDR_SIZE);
+			assert(amount == FORMAT__WAL_HDR_SIZE);
 			assert(f->content->hdr);
 			memcpy(
-			    buf, f->content->hdr, DQLITE__FORMAT_WAL_HDR_SIZE);
+			    buf, f->content->hdr, FORMAT__WAL_HDR_SIZE);
 			return SQLITE_OK;
 		}
 
 		/* For any other frame, we expect either a header read, a
 		 * checksum read, a page read or a full frame read. */
-		if (amount == DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) {
-			assert(((offset - DQLITE__FORMAT_WAL_HDR_SIZE) %
+		if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
+			assert(((offset - FORMAT__WAL_HDR_SIZE) %
 			        (f->content->page_size +
-			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
-			pgno = dqlite__format_wal_calc_pgno(
+			         FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+			pgno = format__wal_calc_pgno(
 			    f->content->page_size, offset);
 		} else if (amount == sizeof(uint32_t) * 2) {
-			if (offset == DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) {
+			if (offset == FORMAT__WAL_FRAME_HDR_SIZE) {
 				/* Read the checksum from the WAL header. */
 				memcpy(buf, f->content->hdr + offset, amount);
 				return SQLITE_OK;
 			}
-			assert(((offset - 16 - DQLITE__FORMAT_WAL_HDR_SIZE) %
+			assert(((offset - 16 - FORMAT__WAL_HDR_SIZE) %
 			        (f->content->page_size +
-			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
-			pgno = (offset - 16 - DQLITE__FORMAT_WAL_HDR_SIZE) /
+			         FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+			pgno = (offset - 16 - FORMAT__WAL_HDR_SIZE) /
 			           (f->content->page_size +
-			            DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) +
+			            FORMAT__WAL_FRAME_HDR_SIZE) +
 			       1;
 		} else if (amount == (int)f->content->page_size) {
-			assert(((offset - DQLITE__FORMAT_WAL_HDR_SIZE -
-			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) %
+			assert(((offset - FORMAT__WAL_HDR_SIZE -
+			         FORMAT__WAL_FRAME_HDR_SIZE) %
 			        (f->content->page_size +
-			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
-			pgno = dqlite__format_wal_calc_pgno(
+			         FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+			pgno = format__wal_calc_pgno(
 			    f->content->page_size, offset);
 		} else {
-			assert(amount == (DQLITE__FORMAT_WAL_FRAME_HDR_SIZE +
+			assert(amount == (FORMAT__WAL_FRAME_HDR_SIZE +
 			                  (int)f->content->page_size));
-			pgno = dqlite__format_wal_calc_pgno(
+			pgno = format__wal_calc_pgno(
 			    f->content->page_size, offset);
 		}
 
@@ -842,7 +842,7 @@ static int dqlite__vfs_read(sqlite3_file *file,
 
 		page = dqlite__vfs_content_page_lookup(f->content, pgno);
 
-		if (amount == DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) {
+		if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
 			memcpy(buf, page->hdr, amount);
 		} else if (amount == sizeof(uint32_t) * 2) {
 			memcpy(buf, page->hdr + 16, amount);
@@ -850,8 +850,8 @@ static int dqlite__vfs_read(sqlite3_file *file,
 			memcpy(buf, page->buf, amount);
 		} else {
 			memcpy(
-			    buf, page->hdr, DQLITE__FORMAT_WAL_FRAME_HDR_SIZE);
-			memcpy(buf + DQLITE__FORMAT_WAL_FRAME_HDR_SIZE,
+			    buf, page->hdr, FORMAT__WAL_FRAME_HDR_SIZE);
+			memcpy(buf + FORMAT__WAL_FRAME_HDR_SIZE,
 			       page->buf,
 			       f->content->page_size);
 		}
@@ -887,18 +887,18 @@ static int dqlite__vfs_write(sqlite3_file *file,
 	assert(f->content->refcount > 0);
 
 	switch (f->content->type) {
-	case DQLITE__FORMAT_DB:
+	case FORMAT__DB:
 		/* Main database. */
 		if (offset == 0) {
 			unsigned int page_size;
 
 			/* This is the first database page. We expect the data
 			 * to contain at least the header. */
-			assert(amount >= DQLITE__FORMAT_DB_HDR_SIZE);
+			assert(amount >= FORMAT__DB_HDR_SIZE);
 
 			/* Extract the page size from the header. */
-			rc = dqlite__format_get_page_size(
-			    DQLITE__FORMAT_DB, buf, &page_size);
+			rc = format__get_page_size(
+			    FORMAT__DB, buf, &page_size);
 			if (rc != SQLITE_OK) {
 				return rc;
 			}
@@ -950,7 +950,7 @@ static int dqlite__vfs_write(sqlite3_file *file,
 
 		return SQLITE_OK;
 
-	case DQLITE__FORMAT_WAL:
+	case FORMAT__WAL:
 		/* WAL file. */
 
 		if (f->content->page_size == 0) {
@@ -971,12 +971,12 @@ static int dqlite__vfs_write(sqlite3_file *file,
 			int          rc;
 
 			/* We expect the data to contain exactly 32 bytes. */
-			assert(amount == DQLITE__FORMAT_WAL_HDR_SIZE);
+			assert(amount == FORMAT__WAL_HDR_SIZE);
 
 			/* The page size indicated in the header must be valid
 			 * and match the one of the database file. */
-			rc = dqlite__format_get_page_size(
-			    DQLITE__FORMAT_WAL, buf, &page_size);
+			rc = format__get_page_size(
+			    FORMAT__WAL, buf, &page_size);
 			if (rc != SQLITE_OK) {
 				return SQLITE_CORRUPT;
 			}
@@ -993,13 +993,13 @@ static int dqlite__vfs_write(sqlite3_file *file,
 
 		/* This is a WAL frame write. We expect either a frame header or
 		 * page write. */
-		if (amount == DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) {
+		if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
 			/* Frame header write. */
-			assert(((offset - DQLITE__FORMAT_WAL_HDR_SIZE) %
+			assert(((offset - FORMAT__WAL_HDR_SIZE) %
 			        (f->content->page_size +
-			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
+			         FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 
-			pgno = dqlite__format_wal_calc_pgno(
+			pgno = format__wal_calc_pgno(
 			    f->content->page_size, offset);
 
 			dqlite__vfs_content_page_get(f->content, pgno, &page);
@@ -1010,12 +1010,12 @@ static int dqlite__vfs_write(sqlite3_file *file,
 		} else {
 			/* Frame page write. */
 			assert(amount == (int)f->content->page_size);
-			assert(((offset - DQLITE__FORMAT_WAL_HDR_SIZE -
-			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE) %
+			assert(((offset - FORMAT__WAL_HDR_SIZE -
+			         FORMAT__WAL_FRAME_HDR_SIZE) %
 			        (f->content->page_size +
-			         DQLITE__FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
+			         FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 
-			pgno = dqlite__format_wal_calc_pgno(
+			pgno = format__wal_calc_pgno(
 			    f->content->page_size, offset);
 
 			// The header for the this frame must already have been
@@ -1030,7 +1030,7 @@ static int dqlite__vfs_write(sqlite3_file *file,
 
 		return SQLITE_OK;
 
-	case DQLITE__FORMAT_OTHER:
+	case FORMAT__OTHER:
 		// Silently swallow writes to any other file.
 		return SQLITE_OK;
 	}
@@ -1047,8 +1047,8 @@ static int dqlite__vfs_truncate(sqlite3_file *file, sqlite_int64 size)
 	assert(f->content != NULL);
 
 	/* We expect calls to xTruncate only for database and WAL files. */
-	if (f->content->type != DQLITE__FORMAT_DB &&
-	    f->content->type != DQLITE__FORMAT_WAL) {
+	if (f->content->type != FORMAT__DB &&
+	    f->content->type != FORMAT__WAL) {
 		dqlite__errorf(f->content,
 		               "truncate called on unexpected file %s",
 		               f->content->filename);
@@ -1069,7 +1069,7 @@ static int dqlite__vfs_truncate(sqlite3_file *file, sqlite_int64 size)
 	}
 
 	switch (f->content->type) {
-	case DQLITE__FORMAT_DB:
+	case FORMAT__DB:
 		/* Main database. */
 
 		/* Since the file size is not zero, some content must have been
@@ -1088,7 +1088,7 @@ static int dqlite__vfs_truncate(sqlite3_file *file, sqlite_int64 size)
 		pgno = size / f->content->page_size;
 		break;
 
-	case DQLITE__FORMAT_WAL:
+	case FORMAT__WAL:
 		/* WAL file. */
 
 		/* We expect SQLite to only truncate to zero, after a full
@@ -1129,23 +1129,23 @@ static int dqlite__vfs_file_size(sqlite3_file *file, sqlite_int64 *size)
 
 	/* Since we don't allow writing any other file, this must be
 	 * either a database file or WAL file. */
-	assert(f->content->type == DQLITE__FORMAT_DB ||
-	       f->content->type == DQLITE__FORMAT_WAL);
+	assert(f->content->type == FORMAT__DB ||
+	       f->content->type == FORMAT__WAL);
 
 	/* Since this file is not empty, the page size must have been set. */
 	assert(f->content->page_size > 0);
 
 	switch (f->content->type) {
-	case DQLITE__FORMAT_DB:
+	case FORMAT__DB:
 		*size = f->content->pages_len * f->content->page_size;
 		break;
 
-	case DQLITE__FORMAT_WAL:
+	case FORMAT__WAL:
 		/* TODO? here we assume that FileSize() is never invoked between
 		 *       a header write and a page write. */
-		*size = DQLITE__FORMAT_WAL_HDR_SIZE +
+		*size = FORMAT__WAL_HDR_SIZE +
 		        (f->content->pages_len *
-		         (DQLITE__FORMAT_WAL_FRAME_HDR_SIZE +
+		         (FORMAT__WAL_FRAME_HDR_SIZE +
 		          f->content->page_size));
 		break;
 	}
@@ -1211,8 +1211,8 @@ static int dqlite__vfs_file_control_pragma(struct dqlite__vfs_file *f,
 		 */
 		int page_size = atoi(right);
 
-		if (page_size >= DQLITE__FORMAT_PAGE_SIZE_MIN &&
-		    page_size <= DQLITE__FORMAT_PAGE_SIZE_MAX &&
+		if (page_size >= FORMAT__PAGE_SIZE_MIN &&
+		    page_size <= FORMAT__PAGE_SIZE_MAX &&
 		    ((page_size - 1) & page_size) == 0) {
 
 			if (f->content->page_size &&
@@ -1583,11 +1583,11 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 		}
 
 		if (flags & SQLITE_OPEN_MAIN_DB) {
-			type = DQLITE__FORMAT_DB;
+			type = FORMAT__DB;
 		} else if (flags & SQLITE_OPEN_WAL) {
-			type = DQLITE__FORMAT_WAL;
+			type = FORMAT__WAL;
 		} else {
-			type = DQLITE__FORMAT_OTHER;
+			type = FORMAT__OTHER;
 		}
 
 		content =
@@ -1598,7 +1598,7 @@ static int dqlite__vfs_open(sqlite3_vfs * vfs,
 			goto err;
 		}
 
-		if (type == DQLITE__FORMAT_WAL) {
+		if (type == FORMAT__WAL) {
 			/* An associated database file must have been opened. */
 			struct dqlite__vfs_content *database;
 			rc = dqlite__vfs_root_database_content_lookup(
