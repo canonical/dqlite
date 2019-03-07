@@ -3,7 +3,7 @@
 #include "../src/request.h"
 #include "../src/response.h"
 
-#include "message.h"
+#include "./lib/message.h"
 #include "munit.h"
 
 void test_message_send(struct message *outgoing,

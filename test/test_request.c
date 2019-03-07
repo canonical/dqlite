@@ -4,7 +4,7 @@
 #include "../src/request.h"
 
 #include "leak.h"
-#include "message.h"
+#include "./lib/message.h"
 #include "munit.h"
 
 /******************************************************************************

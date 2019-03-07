@@ -38,42 +38,23 @@ if EXPERIMENTAL
   libdqlite_la_LDFLAGS += $(ZLIB_LIBS) $(CO_LIBS)
 endif
 libdqlite_la_SOURCES = \
-  src/binary.h \
   src/conn.c \
-  src/conn.h \
   src/db.c \
-  src/db.h \
   src/error.c \
-  src/error.h \
   src/file.c \
   src/format.c \
-  src/format.h \
   src/fsm.c \
-  src/fsm.h \
   src/gateway.c \
-  src/gateway.h \
   src/lifecycle.c \
-  src/lifecycle.h \
-  src/log.h \
   src/options.c \
-  src/options.h \
   src/message.c \
-  src/message.h \
   src/metrics.c \
-  src/metrics.h \
   src/queue.c \
-  src/queue.h \
-  src/registry.h \
   src/replication.c \
-  src/replication.h \
   src/request.c \
-  src/request.h \
   src/response.c \
-  src/response.h \
-  src/schema.h \
   src/server.c \
   src/stmt.c \
-  src/stmt.h \
   src/vfs.c
 include_HEADERS += include/dqlite.h
 
@@ -81,6 +62,7 @@ include_HEADERS += include/dqlite.h
 check_PROGRAMS += \
 	unit-test
 test_lib_SOURCES = \
+  test/lib/message.c \
   test/lib/fault.c \
   test/lib/heap.c \
   test/lib/munit.c \
@@ -90,28 +72,15 @@ test_lib_SOURCES = \
 unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
 unit_test_SOURCES += \
   test/case.c \
-  test/case.h \
   test/client.c \
-  test/client.h \
   test/cluster.c \
-  test/cluster.h \
   test/fs.c \
-  test/fs.h \
   test/leak.c \
-  test/leak.h \
   test/log.c \
-  test/log.h \
   test/mem.c \
-  test/mem.h \
-  test/message.c \
-  test/message.h \
-  test/munit.h \
   test/replication.c \
-  test/replication.h \
   test/runner.c \
   test/server.c \
-  test/server.h \
-  test/socket.h \
   test/test_conn.c \
   test/test_db.c \
   test/test_error.c \
