@@ -5,10 +5,13 @@
 #include "../include/dqlite.h"
 #include "../src/format.h"
 
+#include "./lib/runner.h"
 #include "case.h"
 #include "fs.h"
 #include "log.h"
 #include "mem.h"
+
+TEST_MODULE(vfs);
 
 /******************************************************************************
  *
@@ -18,8 +21,8 @@
 
 /* Helper for creating a new file */
 static sqlite3_file *__file_create(sqlite3_vfs *vfs,
-                                   const char * name,
-                                   int          type_flag)
+				   const char *name,
+				   int type_flag)
 {
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
@@ -48,7 +51,7 @@ static sqlite3_file *__file_create_wal(sqlite3_vfs *vfs)
 
 /* Helper for allocating a buffer of 100 bytes containing a database header with
  * a page size field set to 512 bytes. */
-static const void *__buf_header_main_db()
+static void *__buf_header_main_db()
 {
 	char *buf = munit_malloc(100 * sizeof *buf);
 
@@ -61,7 +64,7 @@ static const void *__buf_header_main_db()
 
 /* Helper for allocating a buffer of 32 bytes containing a WAL header with
  * a page size field set to 512 bytes. */
-static const void *__buf_header_wal()
+static void *__buf_header_wal()
 {
 	char *buf = munit_malloc(32 * sizeof *buf);
 
@@ -73,7 +76,7 @@ static const void *__buf_header_wal()
 }
 
 /* Helper for allocating a buffer of 24 bytes containing a WAL frame header. */
-static const void *__buf_header_wal_frame()
+static void *__buf_header_wal_frame()
 {
 	char *buf = munit_malloc(24 * sizeof *buf);
 
@@ -82,7 +85,7 @@ static const void *__buf_header_wal_frame()
 
 /* Helper for allocating a buffer with the content of the first page, i.e. the
  * the header and some other bytes. */
-static const void *__buf_page_1()
+static void *__buf_page_1()
 {
 	char *buf = munit_malloc(512 * sizeof *buf);
 
@@ -99,11 +102,11 @@ static const void *__buf_page_1()
 }
 
 /* Helper for allocating a buffer with the content of the second page. */
-static const void *__buf_page_2()
+static void *__buf_page_2()
 {
 	char *buf = munit_malloc(512 * sizeof *buf);
 
-	buf[0]   = 4;
+	buf[0] = 4;
 	buf[256] = 5;
 	buf[511] = 6;
 
@@ -124,8 +127,8 @@ static void __db_exec(sqlite3 *db, const char *sql)
 static sqlite3 *__db_open()
 {
 	sqlite3 *db;
-	int      flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	int      rc;
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int rc;
 
 	rc = sqlite3_open_v2("test.db", &db, flags, "volatile");
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -149,10 +152,10 @@ static void __db_close(sqlite3 *db)
  * given database. */
 static uint32_t __wal_idx_mx_frame(sqlite3 *db)
 {
-	sqlite3_file * file;
+	sqlite3_file *file;
 	volatile void *region;
-	uint32_t       mx_frame;
-	int            rc;
+	uint32_t mx_frame;
+	int rc;
 
 	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -169,10 +172,10 @@ static uint32_t __wal_idx_mx_frame(sqlite3 *db)
  * given database. */
 static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 {
-	sqlite3_file * file;
+	sqlite3_file *file;
 	volatile void *region;
-	uint32_t *     marks;
-	int            rc;
+	uint32_t *marks;
+	int rc;
 
 	marks = munit_malloc(FORMAT__WAL_NREADER * sizeof *marks);
 
@@ -192,9 +195,9 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 static int __shm_shared_lock_held(sqlite3 *db, int i)
 {
 	sqlite3_file *file;
-	int           flags;
-	int           locked;
-	int           rc;
+	int flags;
+	int locked;
+	int rc;
 
 	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -202,13 +205,13 @@ static int __shm_shared_lock_held(sqlite3 *db, int i)
 	/* Try to acquire an exclusive lock, which will fail if the shared lock
 	 * is held. */
 	flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
-	rc    = file->pMethods->xShmLock(file, i, 1, flags);
+	rc = file->pMethods->xShmLock(file, i, 1, flags);
 
 	locked = rc == SQLITE_BUSY;
 
 	if (rc == SQLITE_OK) {
 		flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
-		rc    = file->pMethods->xShmLock(file, i, 1, flags);
+		rc = file->pMethods->xShmLock(file, i, 1, flags);
 		munit_assert_int(rc, ==, SQLITE_OK);
 	}
 
@@ -221,13 +224,16 @@ static int __shm_shared_lock_held(sqlite3 *db, int i)
  *
  ******************************************************************************/
 
+static dqlite_logger *logger;
+
 static void *setup(const MunitParameter params[], void *user_data)
 {
 	sqlite3_vfs *vfs;
 
 	test_case_setup(params, user_data);
 
-	vfs = dqlite_vfs_create("volatile", test_logger());
+	logger = test_logger();
+	vfs = dqlite_vfs_create("volatile", logger);
 	munit_assert_ptr_not_null(vfs);
 
 	return vfs;
@@ -240,6 +246,7 @@ static void tear_down(void *data)
 	dqlite_vfs_destroy(vfs);
 
 	test_case_tear_down(data);
+	free(logger);
 }
 
 /******************************************************************************
@@ -248,12 +255,15 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
+TEST_SUITE(open);
+TEST_SETUP(open, setup);
+TEST_TEAR_DOWN(open, tear_down);
+
 /* If the EXCLUSIVE and CREATE flag are given, and the file already exists, an
  * error is returned. */
-static MunitResult test_open_exclusive(const MunitParameter params[],
-                                       void *               data)
+TEST_CASE(open, exclusive, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
 	int flags;
@@ -262,7 +272,7 @@ static MunitResult test_open_exclusive(const MunitParameter params[],
 	(void)params;
 
 	flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
-	rc    = vfs->xOpen(vfs, "test.db", file, flags, &flags);
+	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
 
 	munit_assert_int(rc, ==, SQLITE_OK);
 
@@ -272,14 +282,16 @@ static MunitResult test_open_exclusive(const MunitParameter params[],
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 	munit_assert_int(EEXIST, ==, vfs->xGetLastError(vfs, 0, 0));
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* It's possible to open again a previously created file. In that case passing
  * SQLITE_OPEN_CREATE is not necessary. */
-static MunitResult test_open_again(const MunitParameter params[], void *data)
+TEST_CASE(open, again, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
 	int flags;
@@ -288,7 +300,7 @@ static MunitResult test_open_again(const MunitParameter params[], void *data)
 	(void)params;
 
 	flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
-	rc    = vfs->xOpen(vfs, "test.db", file, flags, &flags);
+	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
 
 	munit_assert_int(rc, ==, SQLITE_OK);
 
@@ -296,18 +308,20 @@ static MunitResult test_open_again(const MunitParameter params[], void *data)
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_MAIN_DB;
-	rc    = vfs->xOpen(vfs, "test.db", file, flags, &flags);
+	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
 
 	munit_assert_int(rc, ==, 0);
+
+	free(file);
 
 	return MUNIT_OK;
 }
 
 /* If the file does not exist and the SQLITE_OPEN_CREATE flag is not passed, an
  * error is returned. */
-static MunitResult test_open_noent(const MunitParameter params[], void *data)
+TEST_CASE(open, noent, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
 	int flags;
@@ -320,18 +334,20 @@ static MunitResult test_open_noent(const MunitParameter params[], void *data)
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 	munit_assert_int(ENOENT, ==, vfs->xGetLastError(vfs, 0, 0));
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* There's an hard-coded limit for the number of files that can be opened. */
-static MunitResult test_open_enfile(const MunitParameter params[], void *data)
+TEST_CASE(open, enfile, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
-	int  flags;
-	int  rc;
-	int  i;
+	int flags;
+	int rc;
+	int i;
 	char name[20];
 
 	(void)params;
@@ -349,15 +365,16 @@ static MunitResult test_open_enfile(const MunitParameter params[], void *data)
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 	munit_assert_int(ENFILE, ==, vfs->xGetLastError(vfs, 0, 0));
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Trying to open a WAL file before its main database file results in an
  * error. */
-static MunitResult test_open_wal_before_db(const MunitParameter params[],
-                                           void *               data)
+TEST_CASE(open, wal_before_db, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
 	int flags;
@@ -366,22 +383,23 @@ static MunitResult test_open_wal_before_db(const MunitParameter params[],
 	(void)params;
 
 	flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL;
-	rc    = vfs->xOpen(vfs, "test.db", file, flags, &flags);
+	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
 
 	munit_assert_int(rc, ==, SQLITE_CORRUPT);
+
+	free(file);
 
 	return MUNIT_OK;
 }
 
 /* Trying to run queries against a database that hasn't turned off the
  * synchronous flag results in an error. */
-static MunitResult test_open_synchronous(const MunitParameter params[],
-                                         void *               data)
+TEST_CASE(open, synchronous, NULL)
 {
 	sqlite3_vfs *vfs = data;
-	sqlite3 *    db;
-	int          flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	int          rc;
+	sqlite3 *db;
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int rc;
 
 	(void)params;
 
@@ -407,15 +425,14 @@ static MunitResult test_open_synchronous(const MunitParameter params[],
 }
 
 /* If no page size is set explicitely, the default one is used. */
-static MunitResult test_open_no_page_size(const MunitParameter params[],
-                                          void *               data)
+TEST_CASE(open, no_page_size, NULL)
 {
-	sqlite3_vfs * vfs = data;
-	sqlite3 *     db;
-	sqlite3_file *file  = munit_malloc(vfs->szOsFile);
-	int           flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	sqlite3_vfs *vfs = data;
+	sqlite3 *db;
+	sqlite3_file *file = munit_malloc(vfs->szOsFile);
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	sqlite3_int64 size;
-	int           rc;
+	int rc;
 	(void)params;
 
 	rc = sqlite3_vfs_register(vfs, 0);
@@ -449,16 +466,18 @@ static MunitResult test_open_no_page_size(const MunitParameter params[],
 	rc = sqlite3_vfs_unregister(vfs);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Out of memory when creating the content structure for a new file. */
-static MunitResult test_open_oom(const MunitParameter params[], void *data)
+TEST_CASE(open, oom, NULL)
 {
-	sqlite3_vfs * vfs   = data;
-	sqlite3_file *file  = munit_malloc(vfs->szOsFile);
-	int           flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
-	int           rc;
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = munit_malloc(vfs->szOsFile);
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
+	int rc;
 
 	(void)params;
 
@@ -468,17 +487,18 @@ static MunitResult test_open_oom(const MunitParameter params[], void *data)
 	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Out of memory when internally copying the filename. */
-static MunitResult test_open_oom_filename(const MunitParameter params[],
-                                          void *               data)
+TEST_CASE(open, oom_filename, NULL)
 {
-	sqlite3_vfs * vfs   = data;
-	sqlite3_file *file  = munit_malloc(vfs->szOsFile);
-	int           flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
-	int           rc;
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = munit_malloc(vfs->szOsFile);
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
+	int rc;
 
 	(void)params;
 
@@ -488,16 +508,18 @@ static MunitResult test_open_oom_filename(const MunitParameter params[],
 	rc = vfs->xOpen(vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Out of memory when creating the WAL file header. */
-static MunitResult test_open_oom_wal(const MunitParameter params[], void *data)
+TEST_CASE(open, oom_wal, NULL)
 {
-	sqlite3_vfs * vfs   = data;
-	sqlite3_file *file  = munit_malloc(vfs->szOsFile);
-	int           flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL;
-	int           rc;
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = munit_malloc(vfs->szOsFile);
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL;
+	int rc;
 
 	(void)params;
 
@@ -507,17 +529,19 @@ static MunitResult test_open_oom_wal(const MunitParameter params[], void *data)
 	rc = vfs->xOpen(vfs, "test.db-wal", file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Open a temporary file. */
-static MunitResult test_open_tmp(const MunitParameter params[], void *data)
+TEST_CASE(open, tmp, NULL)
 {
-	sqlite3_vfs * vfs   = data;
-	sqlite3_file *file  = munit_malloc(vfs->szOsFile);
-	int           flags = 0;
-	char          buf[16];
-	int           rc;
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = munit_malloc(vfs->szOsFile);
+	int flags = 0;
+	char buf[16];
+	int rc;
 
 	(void)params;
 
@@ -541,23 +565,10 @@ static MunitResult test_open_tmp(const MunitParameter params[], void *data)
 	rc = file->pMethods->xClose(file);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
+	free(file);
+
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__vfs_open_tests[] = {
-    {"/exclusive", test_open_exclusive, setup, tear_down, 0, NULL},
-    {"/again", test_open_again, setup, tear_down, 0, NULL},
-    {"/noent", test_open_noent, setup, tear_down, 0, NULL},
-    {"/enfile", test_open_enfile, setup, tear_down, 0, NULL},
-    {"/wal-before-db", test_open_wal_before_db, setup, tear_down, 0, NULL},
-    {"/synchronous", test_open_synchronous, setup, tear_down, 0, NULL},
-    {"/no-page-size", test_open_no_page_size, setup, tear_down, 0, NULL},
-    {"/oom", test_open_oom, setup, tear_down, 0, NULL},
-    {"/oom-filename", test_open_oom_filename, setup, tear_down, 0, NULL},
-    {"/oom-wal", test_open_oom_wal, setup, tear_down, 0, NULL},
-    {"/tmp", test_open_tmp, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -565,10 +576,14 @@ static MunitTest dqlite__vfs_open_tests[] = {
  *
  ******************************************************************************/
 
+TEST_SUITE(delete);
+TEST_SETUP(delete, setup);
+TEST_TEAR_DOWN(delete, tear_down);
+
 /* Delete a file. */
-static MunitResult test_delete(const MunitParameter params[], void *data)
+TEST_CASE(delete, success, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
 	int flags;
@@ -590,13 +605,15 @@ static MunitResult test_delete(const MunitParameter params[], void *data)
 	rc = vfs->xOpen(vfs, "test.db", file, 0, &flags);
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Attempt to delete a file with open file descriptors. */
-static MunitResult test_delete_busy(const MunitParameter params[], void *data)
+TEST_CASE(delete, busy, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
 	int flags;
@@ -614,11 +631,13 @@ static MunitResult test_delete_busy(const MunitParameter params[], void *data)
 	rc = file->pMethods->xClose(file);
 	munit_assert_int(rc, ==, 0);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Trying to delete a non-existing file results in an error. */
-static MunitResult test_delete_enoent(const MunitParameter params[], void *data)
+TEST_CASE(delete, enoent, NULL)
 {
 	sqlite3_vfs *vfs = data;
 
@@ -633,23 +652,20 @@ static MunitResult test_delete_enoent(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__vfs_delete_tests[] = {
-    {"", test_delete, setup, tear_down, 0, NULL},
-    {"/busy", test_delete_busy, setup, tear_down, 0, NULL},
-    {"/enoent", test_delete_enoent, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * dqlite__vfs_access
  *
  ******************************************************************************/
 
+TEST_SUITE(access);
+TEST_SETUP(access, setup);
+TEST_TEAR_DOWN(access, tear_down);
+
 /* Accessing an existing file returns true. */
-static MunitResult test_access(const MunitParameter params[], void *data)
+TEST_CASE(access, success, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
 	int flags;
@@ -670,11 +686,13 @@ static MunitResult test_access(const MunitParameter params[], void *data)
 
 	munit_assert_true(exists);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Trying to access a non existing file returns false. */
-static MunitResult test_access_noent(const MunitParameter params[], void *data)
+TEST_CASE(access, noent, NULL)
 {
 	sqlite3_vfs *vfs = data;
 
@@ -691,24 +709,22 @@ static MunitResult test_access_noent(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__vfs_access_tests[] = {
-    {"", test_access, setup, tear_down, 0, NULL},
-    {"/noent", test_access_noent, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * dqlite__vfs_full_pathname
  *
  ******************************************************************************/
 
+TEST_SUITE(full_path_name);
+TEST_SETUP(full_path_name, setup);
+TEST_TEAR_DOWN(full_path_name, tear_down);
+
 /* The xFullPathname API returns the filename unchanged. */
-static MunitResult test_full_pathname(const MunitParameter params[], void *data)
+TEST_CASE(full_path_name, success, NULL)
 {
 	sqlite3_vfs *vfs = data;
 
-	int  rc;
+	int rc;
 	char pathname[10];
 
 	(void)params;
@@ -721,22 +737,20 @@ static MunitResult test_full_pathname(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__vfs_full_pathname_tests[] = {
-    {"", test_full_pathname, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * dqlite__vfs_close
  *
  ******************************************************************************/
 
+TEST_SUITE(close);
+TEST_SETUP(close, setup);
+TEST_TEAR_DOWN(close, tear_down);
+
 /* Closing a file decreases its refcount so it's possible to delete it. */
-static MunitResult test_close_then_delete(const MunitParameter params[],
-                                          void *               data)
+TEST_CASE(close, then_delete, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
 	int flags;
@@ -753,13 +767,10 @@ static MunitResult test_close_then_delete(const MunitParameter params[],
 	rc = vfs->xDelete(vfs, "test.db", 0);
 	munit_assert_int(rc, ==, 0);
 
+	free(file);
+
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__vfs_close_tests[] = {
-    {"/then-delete", test_close_then_delete, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -767,14 +778,17 @@ static MunitTest dqlite__vfs_close_tests[] = {
  *
  ******************************************************************************/
 
+TEST_SUITE(read);
+TEST_SETUP(read, setup);
+TEST_TEAR_DOWN(read, tear_down);
+
 /* Trying to read a file that was not written yet, results in an error. */
-static MunitResult test_read_never_written(const MunitParameter params[],
-                                           void *               data)
+TEST_CASE(read, never_written, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
 
-	int  rc;
+	int rc;
 	char buf[1] = {123};
 
 	(void)params;
@@ -785,13 +799,10 @@ static MunitResult test_read_never_written(const MunitParameter params[],
 	/* The buffer gets filled with zero */
 	munit_assert_int(buf[0], ==, 0);
 
+	free(file);
+
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__vfs_read_tests[] = {
-    {"/never-written", test_read_never_written, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -799,14 +810,17 @@ static MunitTest dqlite__vfs_read_tests[] = {
  *
  ******************************************************************************/
 
+TEST_SUITE(write);
+TEST_SETUP(write, setup);
+TEST_TEAR_DOWN(write, tear_down);
+
 /* Write the header of the database file. */
-static MunitResult test_write_db_header(const MunitParameter params[],
-                                        void *               data)
+TEST_CASE(write, db_header, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
 
-	const void *buf = __buf_header_main_db();
+	void *buf = __buf_header_main_db();
 
 	int rc;
 
@@ -815,34 +829,39 @@ static MunitResult test_write_db_header(const MunitParameter params[],
 	rc = file->pMethods->xWrite(file, buf, 100, 0);
 	munit_assert_int(rc, ==, 0);
 
+	free(file);
+	free(buf);
+
 	return MUNIT_OK;
 }
 
 /* Write the header of the database file, then the full first page and a second
  * page. */
-static MunitResult test_write_and_read_db_pages(const MunitParameter params[],
-                                                void *               data)
+TEST_CASE(write, and_read_db_pages, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
 
-	int  rc;
+	int rc;
 	char buf[512];
+	void *buf_header_main = __buf_header_main_db();
+	void *buf_page_1 = __buf_page_1();
+	void *buf_page_2 = __buf_page_2();
 
 	(void)params;
 
 	memset(buf, 0, 512);
 
 	/* Write the header. */
-	rc = file->pMethods->xWrite(file, __buf_header_main_db(), 100, 0);
+	rc = file->pMethods->xWrite(file, buf_header_main, 100, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the first page, containing the header and some content. */
-	rc = file->pMethods->xWrite(file, __buf_page_1(), 512, 0);
+	rc = file->pMethods->xWrite(file, buf_page_1, 512, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write a second page. */
-	rc = file->pMethods->xWrite(file, __buf_page_2(), 512, 512);
+	rc = file->pMethods->xWrite(file, buf_page_2, 512, 512);
 	munit_assert_int(rc, ==, 0);
 
 	/* Read the page header. */
@@ -864,18 +883,28 @@ static MunitResult test_write_and_read_db_pages(const MunitParameter params[],
 	munit_assert_int(buf[256], ==, 5);
 	munit_assert_int(buf[511], ==, 6);
 
+	free(buf_header_main);
+	free(buf_page_1);
+	free(buf_page_2);
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Write the header of a WAL file, then two frames. */
-static MunitResult test_write_and_read_wal_frames(const MunitParameter params[],
-                                                  void *               data)
+TEST_CASE(write, and_read_wal_frames, NULL)
 {
-	sqlite3_vfs * vfs   = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file1 = __file_create_main_db(vfs);
 	sqlite3_file *file2 = __file_create_wal(vfs);
+	void *buf_header_main = __buf_header_main_db();
+	void *buf_header_wal = __buf_header_wal();
+	void *buf_header_wal_frame_1 = __buf_header_wal_frame();
+	void *buf_header_wal_frame_2 = __buf_header_wal_frame();
+	void *buf_page_1 = __buf_page_1();
+	void *buf_page_2 = __buf_page_2();
 
-	int  rc;
+	int rc;
 	char buf[512];
 
 	(void)params;
@@ -883,29 +912,29 @@ static MunitResult test_write_and_read_wal_frames(const MunitParameter params[],
 	memset(buf, 0, 512);
 
 	/* First write the main database header, which sets the page size. */
-	rc = file1->pMethods->xWrite(file1, __buf_header_main_db(), 100, 0);
+	rc = file1->pMethods->xWrite(file1, buf_header_main, 100, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Open the associated WAL file and write the WAL header. */
-	rc = file2->pMethods->xWrite(file2, __buf_header_wal(), 32, 0);
+	rc = file2->pMethods->xWrite(file2, buf_header_wal, 32, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the header of the first frame. */
-	rc = file2->pMethods->xWrite(file2, __buf_header_wal_frame(), 24, 32);
+	rc = file2->pMethods->xWrite(file2, buf_header_wal_frame_1, 24, 32);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the page of the first frame. */
-	rc = file2->pMethods->xWrite(file2, __buf_page_1(), 512, 32 + 24);
+	rc = file2->pMethods->xWrite(file2, buf_page_1, 512, 32 + 24);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the header of the second frame. */
-	rc = file2->pMethods->xWrite(
-	    file2, __buf_header_wal_frame(), 24, 32 + 24 + 512);
+	rc = file2->pMethods->xWrite(file2, buf_header_wal_frame_2, 24,
+				     32 + 24 + 512);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the page of the second frame. */
-	rc = file2->pMethods->xWrite(
-	    file2, __buf_page_2(), 512, 32 + 24 + 512 + 24);
+	rc = file2->pMethods->xWrite(file2, buf_page_2, 512,
+				     32 + 24 + 512 + 24);
 	munit_assert_int(rc, ==, 0);
 
 	/* Read the WAL header. */
@@ -929,17 +958,26 @@ static MunitResult test_write_and_read_wal_frames(const MunitParameter params[],
 	    file2->pMethods->xRead(file2, (void *)buf, 512, 32 + 24 + 512 + 24);
 	munit_assert_int(rc, ==, 0);
 
+	free(buf_page_1);
+	free(buf_page_2);
+	free(buf_header_wal_frame_1);
+	free(buf_header_wal_frame_2);
+	free(buf_header_wal);
+	free(buf_header_main);
+	free(file1);
+	free(file2);
+
 	return MUNIT_OK;
 }
 
 /* Out of memory when trying to create a new page. */
-static MunitResult test_write_oom_page(const MunitParameter params[],
-                                       void *               data)
+TEST_CASE(write, oom_page, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
-	char          buf[512];
-	int           rc;
+	void *buf_header_main = __buf_header_main_db();
+	char buf[512];
+	int rc;
 
 	test_mem_fault_config(0, 1);
 	test_mem_fault_enable();
@@ -949,21 +987,24 @@ static MunitResult test_write_oom_page(const MunitParameter params[],
 	memset(buf, 0, 512);
 
 	/* Write the database header, which triggers creating the first page. */
-	rc = file->pMethods->xWrite(file, __buf_header_main_db(), 100, 0);
+	rc = file->pMethods->xWrite(file, buf_header_main, 100, 0);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
+
+	free(buf_header_main);
+	free(file);
 
 	return MUNIT_OK;
 }
 
 /* Out of memory when trying to append a new page to the internal page array of
  * the content object. */
-static MunitResult test_write_oom_page_array(const MunitParameter params[],
-                                             void *               data)
+TEST_CASE(write, oom_page_array, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
-	char          buf[512];
-	int           rc;
+	void *buf_header_main = __buf_header_main_db();
+	char buf[512];
+	int rc;
 
 	test_mem_fault_config(2, 1);
 	test_mem_fault_enable();
@@ -973,20 +1014,23 @@ static MunitResult test_write_oom_page_array(const MunitParameter params[],
 	memset(buf, 0, 512);
 
 	/* Write the database header, which triggers creating the first page. */
-	rc = file->pMethods->xWrite(file, __buf_header_main_db(), 100, 0);
+	rc = file->pMethods->xWrite(file, buf_header_main, 100, 0);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
+
+	free(buf_header_main);
+	free(file);
 
 	return MUNIT_OK;
 }
 
 /* Out of memory when trying to create the content buffer of a new page. */
-static MunitResult test_write_oom_page_buf(const MunitParameter params[],
-                                           void *               data)
+TEST_CASE(write, oom_page_buf, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
-	char          buf[512];
-	int           rc;
+	void *buf_header_main = __buf_header_main_db();
+	char buf[512];
+	int rc;
 
 	test_mem_fault_config(1, 1);
 	test_mem_fault_enable();
@@ -996,21 +1040,27 @@ static MunitResult test_write_oom_page_buf(const MunitParameter params[],
 	memset(buf, 0, 512);
 
 	/* Write the database header, which triggers creating the first page. */
-	rc = file->pMethods->xWrite(file, __buf_header_main_db(), 100, 0);
+	rc = file->pMethods->xWrite(file, buf_header_main, 100, 0);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
+
+
+	free(buf_header_main);
+	free(file);
 
 	return MUNIT_OK;
 }
 
 /* Out of memory when trying to create the header buffer of a new WAL page. */
-static MunitResult test_write_oom_page_hdr(const MunitParameter params[],
-                                           void *               data)
+TEST_CASE(write, oom_page_hdr, NULL)
 {
-	sqlite3_vfs * vfs   = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file1 = __file_create_main_db(vfs);
 	sqlite3_file *file2 = __file_create_wal(vfs);
-	char          buf[512];
-	int           rc;
+	void *buf_header_main = __buf_header_main_db();
+	void *buf_header_wal = __buf_header_wal();
+	void *buf_header_wal_frame = __buf_header_wal_frame();
+	char buf[512];
+	int rc;
 
 	(void)params;
 
@@ -1020,78 +1070,79 @@ static MunitResult test_write_oom_page_hdr(const MunitParameter params[],
 	test_mem_fault_enable();
 
 	/* First write the main database header, which sets the page size. */
-	rc = file1->pMethods->xWrite(file1, __buf_header_main_db(), 100, 0);
+	rc = file1->pMethods->xWrite(file1, buf_header_main, 100, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the WAL header */
-	rc = file2->pMethods->xWrite(file2, __buf_header_wal(), 32, 0);
+	rc = file2->pMethods->xWrite(file2, buf_header_wal, 32, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the header of the first frame, which triggers creating the
 	 * first page. */
-	rc = file2->pMethods->xWrite(file2, __buf_header_wal_frame(), 24, 32);
+	rc = file2->pMethods->xWrite(file2, buf_header_wal_frame, 24, 32);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
+
+	free(buf_header_main);
+	free(buf_header_wal);
+	free(buf_header_wal_frame);
+	free(file1);
+	free(file2);
 
 	return MUNIT_OK;
 }
 
 /* Trying to write the second page without writing the first results in an
  * error. */
-static MunitResult test_write_beyond_first(const MunitParameter params[],
-                                           void *               data)
+TEST_CASE(write, beyond_first, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
-	char          buf[512];
-	int           rc;
+	void *buf_page_1 = __buf_page_1();
+	char buf[512];
+	int rc;
 
 	(void)params;
 
 	memset(buf, 0, 512);
 
 	/* Write the second page, without writing the first. */
-	rc = file->pMethods->xWrite(file, __buf_page_1(), 512, 512);
+	rc = file->pMethods->xWrite(file, buf_page_1, 512, 512);
 	munit_assert_int(rc, ==, SQLITE_IOERR_WRITE);
+
+	free(buf_page_1);
+	free(file);
 
 	return MUNIT_OK;
 }
 
 /* Trying to write two pages beyond the last one results in an error. */
-static MunitResult test_write_beyond_last(const MunitParameter params[],
-                                          void *               data)
+TEST_CASE(write, beyond_last, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
-	char          buf[512];
-	int           rc;
+	void *buf_page_1 = __buf_page_1();
+	void *buf_page_2 = __buf_page_2();
+	char buf[512];
+	int rc;
 
 	(void)params;
 
 	memset(buf, 0, 512);
 
 	/* Write the first page. */
-	rc = file->pMethods->xWrite(file, __buf_page_1(), 512, 0);
+	rc = file->pMethods->xWrite(file, buf_page_1, 512, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the third page, without writing the second. */
-	rc = file->pMethods->xWrite(file, __buf_page_2(), 512, 1024);
+	rc = file->pMethods->xWrite(file, buf_page_2, 512, 1024);
 	munit_assert_int(rc, ==, SQLITE_IOERR_WRITE);
+
+	free(buf_page_1);
+	free(buf_page_2);
+	free(file);
 
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__vfs_write_tests[] = {
-    {"/db-header", test_write_db_header, setup, tear_down, 0, NULL},
-    {"/db-pages", test_write_and_read_db_pages, setup, tear_down, 0, NULL},
-    {"/wal-frames", test_write_and_read_wal_frames, setup, tear_down, 0, NULL},
-    {"/oom-page", test_write_oom_page, setup, tear_down, 0, NULL},
-    {"/oom-page-array", test_write_oom_page_array, setup, tear_down, 0, NULL},
-    {"/oom-page-buf", test_write_oom_page_buf, setup, tear_down, 0, NULL},
-    {"/oom-page-hdr", test_write_oom_page_hdr, setup, tear_down, 0, NULL},
-    {"/beyond-first", test_write_beyond_first, setup, tear_down, 0, NULL},
-    {"/beyond-last", test_write_beyond_last, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -1099,12 +1150,17 @@ static MunitTest dqlite__vfs_write_tests[] = {
  *
  ******************************************************************************/
 
+TEST_SUITE(truncate);
+TEST_SETUP(truncate, setup);
+TEST_TEAR_DOWN(truncate, tear_down);
+
 /* Truncate the main database file. */
-static MunitResult test_truncate_database(const MunitParameter params[],
-                                          void *               data)
+TEST_CASE(truncate, database, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
+	void *buf_page_1 = __buf_page_1();
+	void *buf_page_2 = __buf_page_2();
 
 	int rc;
 
@@ -1127,11 +1183,11 @@ static MunitResult test_truncate_database(const MunitParameter params[],
 	munit_assert_int(size, ==, 0);
 
 	/* Write the first page, containing the header. */
-	rc = file->pMethods->xWrite(file, __buf_page_1(), 512, 0);
+	rc = file->pMethods->xWrite(file, buf_page_1, 512, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write a second page. */
-	rc = file->pMethods->xWrite(file, __buf_page_2(), 512, 512);
+	rc = file->pMethods->xWrite(file, buf_page_2, 512, 512);
 	munit_assert_int(rc, ==, 0);
 
 	/* The size is 1024. */
@@ -1157,15 +1213,25 @@ static MunitResult test_truncate_database(const MunitParameter params[],
 	munit_assert_int(rc, ==, 0);
 	munit_assert_int(size, ==, 0);
 
+	free(buf_page_1);
+	free(buf_page_2);
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Truncate the WAL file. */
-static MunitResult test_truncate_wal(const MunitParameter params[], void *data)
+TEST_CASE(truncate, wal, NULL)
 {
-	sqlite3_vfs * vfs   = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file1 = __file_create_main_db(vfs);
 	sqlite3_file *file2 = __file_create_wal(vfs);
+	void *buf_header_main = __buf_header_main_db();
+	void *buf_header_wal = __buf_header_wal();
+	void *buf_header_wal_frame_1 = __buf_header_wal_frame();
+	void *buf_header_wal_frame_2 = __buf_header_wal_frame();
+	void *buf_page_1 = __buf_page_1();
+	void *buf_page_2 = __buf_page_2();
 
 	int rc;
 
@@ -1174,7 +1240,7 @@ static MunitResult test_truncate_wal(const MunitParameter params[], void *data)
 	(void)params;
 
 	/* First write the main database header, which sets the page size. */
-	rc = file1->pMethods->xWrite(file1, __buf_header_main_db(), 100, 0);
+	rc = file1->pMethods->xWrite(file1, buf_header_main, 100, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Initial size of the WAL file is 0. */
@@ -1192,25 +1258,25 @@ static MunitResult test_truncate_wal(const MunitParameter params[], void *data)
 	munit_assert_int(size, ==, 0);
 
 	/* Write the WAL header. */
-	rc = file2->pMethods->xWrite(file2, __buf_header_wal(), 32, 0);
+	rc = file2->pMethods->xWrite(file2, buf_header_wal, 32, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the header of the first frame. */
-	rc = file2->pMethods->xWrite(file2, __buf_header_wal_frame(), 24, 32);
+	rc = file2->pMethods->xWrite(file2, buf_header_wal_frame_1, 24, 32);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the page of the first frame. */
-	rc = file2->pMethods->xWrite(file2, __buf_page_1(), 512, 32 + 24);
+	rc = file2->pMethods->xWrite(file2, buf_page_1, 512, 32 + 24);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the header of the second frame. */
-	rc = file2->pMethods->xWrite(
-	    file2, __buf_header_wal_frame(), 24, 32 + 24 + 512);
+	rc = file2->pMethods->xWrite(file2, buf_header_wal_frame_2, 24,
+				     32 + 24 + 512);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the page of the second frame. */
-	rc = file2->pMethods->xWrite(
-	    file2, __buf_page_2(), 512, 32 + 24 + 512 + 24);
+	rc = file2->pMethods->xWrite(file2, buf_page_2, 512,
+				     32 + 24 + 512 + 24);
 	munit_assert_int(rc, ==, 0);
 
 	/* The size is 1104. */
@@ -1227,19 +1293,27 @@ static MunitResult test_truncate_wal(const MunitParameter params[], void *data)
 	munit_assert_int(rc, ==, 0);
 	munit_assert_int(size, ==, 0);
 
+	free(buf_header_wal_frame_2);
+	free(buf_header_wal_frame_1);
+	free(buf_page_1);
+	free(buf_page_2);
+	free(buf_header_wal);
+	free(buf_header_main);
+	free(file1);
+	free(file2);
+
 	return MUNIT_OK;
 }
 
 /* Truncating a file which is not the main db file or the WAL file produces an
  * error. */
-static MunitResult test_truncate_unexpected(const MunitParameter params[],
-                                            void *               data)
+TEST_CASE(truncate, unexpected, NULL)
 {
-	sqlite3_vfs * vfs   = data;
-	sqlite3_file *file  = munit_malloc(vfs->szOsFile);
-	int           flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_JOURNAL;
-	char          buf[32];
-	int           rc;
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = munit_malloc(vfs->szOsFile);
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_JOURNAL;
+	char buf[32];
+	int rc;
 
 	(void)params;
 
@@ -1255,17 +1329,18 @@ static MunitResult test_truncate_unexpected(const MunitParameter params[],
 	rc = file->pMethods->xTruncate(file, 0);
 	munit_assert_int(rc, ==, SQLITE_IOERR_TRUNCATE);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Truncating an empty file is a no-op. */
-static MunitResult test_truncate_empty(const MunitParameter params[],
-                                       void *               data)
+TEST_CASE(truncate, empty, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
-	sqlite_int64  size;
-	int           rc;
+	sqlite_int64 size;
+	int rc;
 
 	(void)params;
 
@@ -1278,16 +1353,17 @@ static MunitResult test_truncate_empty(const MunitParameter params[],
 	munit_assert_int(rc, ==, 0);
 	munit_assert_int(size, ==, 0);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Trying to grow an empty file produces an error. */
-static MunitResult test_truncate_empty_grow(const MunitParameter params[],
-                                            void *               data)
+TEST_CASE(truncate, empty_grow, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
-	int           rc;
+	int rc;
 
 	(void)params;
 
@@ -1295,41 +1371,36 @@ static MunitResult test_truncate_empty_grow(const MunitParameter params[],
 	rc = file->pMethods->xTruncate(file, 512);
 	munit_assert_int(rc, ==, SQLITE_IOERR_TRUNCATE);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Trying to truncate a main database file to a size which is not a multiple of
  * the page size produces an error. */
-static MunitResult test_truncate_misaligned(const MunitParameter params[],
-                                            void *               data)
+TEST_CASE(truncate, misaligned, NULL)
 {
-	sqlite3_vfs * vfs  = data;
+	sqlite3_vfs *vfs = data;
 	sqlite3_file *file = __file_create_main_db(vfs);
+	void *buf_page_1 = __buf_page_1();
 
 	int rc;
 
 	(void)params;
 
 	/* Write the first page, containing the header. */
-	rc = file->pMethods->xWrite(file, __buf_page_1(), 512, 0);
+	rc = file->pMethods->xWrite(file, buf_page_1, 512, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Truncating to an invalid size. */
 	rc = file->pMethods->xTruncate(file, 400);
 	munit_assert_int(rc, ==, SQLITE_IOERR_TRUNCATE);
 
+	free(buf_page_1);
+	free(file);
+
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__vfs_truncate_tests[] = {
-    {"/database", test_truncate_database, setup, tear_down, 0, NULL},
-    {"/wal", test_truncate_wal, setup, tear_down, 0, NULL},
-    {"/unexpected", test_truncate_unexpected, setup, tear_down, 0, NULL},
-    {"/empty", test_truncate_empty, setup, tear_down, 0, NULL},
-    {"/empty-grow", test_truncate_empty_grow, setup, tear_down, 0, NULL},
-    {"/misaligned", test_truncate_misaligned, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -1337,7 +1408,11 @@ static MunitTest dqlite__vfs_truncate_tests[] = {
  *
  ******************************************************************************/
 
-static char *test_shm_map_oom_delay[]  = {"0", "1", "2", NULL};
+TEST_SUITE(shm_map);
+TEST_SETUP(shm_map, setup);
+TEST_TEAR_DOWN(shm_map, tear_down);
+
+static char *test_shm_map_oom_delay[] = {"0", "1", "2", NULL};
 static char *test_shm_map_oom_repeat[] = {"1", NULL};
 
 static MunitParameterEnum test_shm_map_oom_params[] = {
@@ -1347,12 +1422,12 @@ static MunitParameterEnum test_shm_map_oom_params[] = {
 };
 
 /* Out of memory when trying to initialize the internal VFS shm data struct. */
-static MunitResult test_shm_map_oom(const MunitParameter params[], void *data)
+TEST_CASE(shm_map, oom, test_shm_map_oom_params)
 {
-	sqlite3_vfs *  vfs  = data;
-	sqlite3_file * file = __file_create_main_db(vfs);
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = __file_create_main_db(vfs);
 	volatile void *region;
-	int            rc;
+	int rc;
 
 	(void)params;
 	(void)data;
@@ -1362,13 +1437,10 @@ static MunitResult test_shm_map_oom(const MunitParameter params[], void *data)
 	rc = file->pMethods->xShmMap(file, 0, 512, 1, &region);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
+	free(file);
+
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__vfs_shm_map_tests[] = {
-    {"/oom", test_shm_map_oom, setup, tear_down, 0, test_shm_map_oom_params},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -1376,16 +1448,19 @@ static MunitTest dqlite__vfs_shm_map_tests[] = {
  *
  ******************************************************************************/
 
+TEST_SUITE(shm_lock);
+TEST_SETUP(shm_lock, setup);
+TEST_TEAR_DOWN(shm_lock, tear_down);
+
 /* If an exclusive lock is in place, getting a shared lock on any index of its
  * range fails. */
-static MunitResult test_shm_lock_shared_busy(const MunitParameter params[],
-                                             void *               data)
+TEST_CASE(shm_lock, shared_busy, NULL)
 {
-	sqlite3_vfs *  vfs   = data;
-	sqlite3_file * file  = munit_malloc(vfs->szOsFile);
-	int            flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = munit_malloc(vfs->szOsFile);
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	volatile void *region;
-	int            rc;
+	int rc;
 
 	(void)params;
 	(void)data;
@@ -1398,27 +1473,28 @@ static MunitResult test_shm_lock_shared_busy(const MunitParameter params[],
 
 	/* Take an exclusive lock on a range. */
 	flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
-	rc    = file->pMethods->xShmLock(file, 2, 3, flags);
+	rc = file->pMethods->xShmLock(file, 2, 3, flags);
 	munit_assert_int(rc, ==, 0);
 
 	/* Attempting to get a shared lock on an index in that range fails. */
 	flags = SQLITE_SHM_LOCK | SQLITE_SHM_SHARED;
-	rc    = file->pMethods->xShmLock(file, 3, 1, flags);
+	rc = file->pMethods->xShmLock(file, 3, 1, flags);
 	munit_assert_int(rc, ==, SQLITE_BUSY);
+
+	free(file);
 
 	return MUNIT_OK;
 }
 
 /* If a shared lock is in place on any of the indexes of the requested range,
  * getting an exclusive lock fails. */
-static MunitResult test_shm_lock_excl_busy(const MunitParameter params[],
-                                           void *               data)
+TEST_CASE(shm_lock, excl_busy, NULL)
 {
-	sqlite3_vfs *  vfs   = data;
-	sqlite3_file * file  = munit_malloc(vfs->szOsFile);
-	int            flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = munit_malloc(vfs->szOsFile);
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	volatile void *region;
-	int            rc;
+	int rc;
 
 	(void)params;
 	(void)data;
@@ -1431,31 +1507,32 @@ static MunitResult test_shm_lock_excl_busy(const MunitParameter params[],
 
 	/* Take a shared lock on index 3. */
 	flags = SQLITE_SHM_LOCK | SQLITE_SHM_SHARED;
-	rc    = file->pMethods->xShmLock(file, 3, 1, flags);
+	rc = file->pMethods->xShmLock(file, 3, 1, flags);
 	munit_assert_int(rc, ==, 0);
 
 	/* Attempting to get an exclusive lock on a range that contains index 3
 	 * fails. */
 	flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
-	rc    = file->pMethods->xShmLock(file, 2, 3, flags);
+	rc = file->pMethods->xShmLock(file, 2, 3, flags);
 	munit_assert_int(rc, ==, SQLITE_BUSY);
+
+	free(file);
 
 	return MUNIT_OK;
 }
 
 /* The native unix VFS implementation from SQLite allows to release a shared
  * memory lock without acquiring it first. */
-static MunitResult test_shm_lock_release_unix(const MunitParameter params[],
-                                              void *               data)
+TEST_CASE(shm_lock, release_unix, NULL)
 {
-	sqlite3_vfs * vfs  = sqlite3_vfs_find("unix");
+	sqlite3_vfs *vfs = sqlite3_vfs_find("unix");
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
-	int           flags =
+	int flags =
 	    SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
-	const char *   dir = test_dir_setup();
-	char           path[256];
+	char *dir = test_dir_setup();
+	char path[256];
 	volatile void *region;
-	int            rc;
+	int rc;
 
 	(void)params;
 	(void)data;
@@ -1470,11 +1547,11 @@ static MunitResult test_shm_lock_release_unix(const MunitParameter params[],
 	munit_assert_int(rc, ==, 0);
 
 	flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
-	rc    = file->pMethods->xShmLock(file, 3, 1, flags);
+	rc = file->pMethods->xShmLock(file, 3, 1, flags);
 	munit_assert_int(rc, ==, 0);
 
 	flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED;
-	rc    = file->pMethods->xShmLock(file, 2, 1, flags);
+	rc = file->pMethods->xShmLock(file, 2, 1, flags);
 	munit_assert_int(rc, ==, 0);
 
 	rc = file->pMethods->xShmUnmap(file, 1);
@@ -1485,20 +1562,22 @@ static MunitResult test_shm_lock_release_unix(const MunitParameter params[],
 
 	test_dir_tear_down(dir);
 
+	free(file);
+	free(dir);
+
 	return MUNIT_OK;
 }
 
 /* The dqlite VFS implementation allows to release a shared memory lock without
  * acquiring it first. This is important because at open time sometimes SQLite
  * will do just that (release before acquire). */
-static MunitResult test_shm_lock_release(const MunitParameter params[],
-                                         void *               data)
+TEST_CASE(shm_lock, release, NULL)
 {
-	sqlite3_vfs *  vfs   = data;
-	sqlite3_file * file  = munit_malloc(vfs->szOsFile);
-	int            flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = munit_malloc(vfs->szOsFile);
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	volatile void *region;
-	int            rc;
+	int rc;
 
 	(void)params;
 	(void)data;
@@ -1510,11 +1589,11 @@ static MunitResult test_shm_lock_release(const MunitParameter params[],
 	munit_assert_int(rc, ==, 0);
 
 	flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED;
-	rc    = file->pMethods->xShmLock(file, 3, 1, flags);
+	rc = file->pMethods->xShmLock(file, 3, 1, flags);
 	munit_assert_int(rc, ==, 0);
 
 	flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED;
-	rc    = file->pMethods->xShmLock(file, 2, 1, flags);
+	rc = file->pMethods->xShmLock(file, 2, 1, flags);
 	munit_assert_int(rc, ==, 0);
 
 	rc = file->pMethods->xShmUnmap(file, 1);
@@ -1523,16 +1602,10 @@ static MunitResult test_shm_lock_release(const MunitParameter params[],
 	rc = file->pMethods->xClose(file);
 	munit_assert_int(rc, ==, 0);
 
+	free(file);
+
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__vfs_shm_lock_tests[] = {
-    {"/shared-busy", test_shm_lock_excl_busy, setup, tear_down, 0, NULL},
-    {"/excl-busy", test_shm_lock_shared_busy, setup, tear_down, 0, NULL},
-    {"/release-unix", test_shm_lock_release_unix, setup, tear_down, 0, NULL},
-    {"/release", test_shm_lock_release, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -1540,19 +1613,22 @@ static MunitTest dqlite__vfs_shm_lock_tests[] = {
  *
  ******************************************************************************/
 
+TEST_SUITE(file_control);
+TEST_SETUP(file_control, setup);
+TEST_TEAR_DOWN(file_control, tear_down);
+
 /* Trying to set the page size to a value different than the current one
  * produces an error. */
-static MunitResult test_file_control_page_size(const MunitParameter params[],
-                                               void *               data)
+TEST_CASE(file_control, page_size, NULL)
 {
-	sqlite3_vfs * vfs     = data;
-	sqlite3_file *file    = __file_create_main_db(vfs);
-	char *        fnctl[] = {
-            "",
-            "page_size",
-            "512",
-            "",
-        };
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = __file_create_main_db(vfs);
+	char *fnctl[] = {
+	    "",
+	    "page_size",
+	    "512",
+	    "",
+	};
 	int rc;
 
 	(void)params;
@@ -1568,22 +1644,23 @@ static MunitResult test_file_control_page_size(const MunitParameter params[],
 	rc = file->pMethods->xFileControl(file, SQLITE_FCNTL_PRAGMA, fnctl);
 	munit_assert_int(rc, ==, SQLITE_IOERR);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Trying to set the journal mode to anything other than "wal" produces an
  * error. */
-static MunitResult test_file_control_journal(const MunitParameter params[],
-                                             void *               data)
+TEST_CASE(file_control, journal, NULL)
 {
-	sqlite3_vfs * vfs     = data;
-	sqlite3_file *file    = __file_create_main_db(vfs);
-	char *        fnctl[] = {
-            "",
-            "journal_mode",
-            "memory",
-            "",
-        };
+	sqlite3_vfs *vfs = data;
+	sqlite3_file *file = __file_create_main_db(vfs);
+	char *fnctl[] = {
+	    "",
+	    "journal_mode",
+	    "memory",
+	    "",
+	};
 	int rc;
 
 	(void)params;
@@ -1594,14 +1671,10 @@ static MunitResult test_file_control_journal(const MunitParameter params[],
 	rc = file->pMethods->xFileControl(file, SQLITE_FCNTL_PRAGMA, fnctl);
 	munit_assert_int(rc, ==, SQLITE_IOERR);
 
+	free(file);
+
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__vfs_file_control_tests[] = {
-    {"/page-size", test_file_control_page_size, setup, tear_down, 0, NULL},
-    {"/journal", test_file_control_journal, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -1609,11 +1682,15 @@ static MunitTest dqlite__vfs_file_control_tests[] = {
  *
  ******************************************************************************/
 
-static MunitResult test_current_time(const MunitParameter params[], void *data)
+TEST_SUITE(current_time);
+TEST_SETUP(current_time, setup);
+TEST_TEAR_DOWN(current_time, tear_down);
+
+TEST_CASE(current_time, success, NULL)
 {
 	sqlite3_vfs *vfs = data;
-	double       now;
-	int          rc;
+	double now;
+	int rc;
 
 	(void)params;
 
@@ -1625,22 +1702,21 @@ static MunitResult test_current_time(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite_vfs_current_time_tests[] = {
-    {"/", test_current_time, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * dqlite__vfs_sleep
  *
  ******************************************************************************/
 
+TEST_SUITE(sleep);
+TEST_SETUP(sleep, setup);
+TEST_TEAR_DOWN(sleep, tear_down);
+
 /* The xSleep implementation is a no-op. */
-static MunitResult test_sleep(const MunitParameter params[], void *data)
+TEST_CASE(sleep, success, NULL)
 {
 	sqlite3_vfs *vfs = data;
-	int          microseconds;
+	int microseconds;
 
 	(void)params;
 
@@ -1651,18 +1727,17 @@ static MunitResult test_sleep(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite_vfs_sleep_tests[] = {
-    {"/", test_sleep, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * dqlite_vfs_create
  *
  ******************************************************************************/
 
-static char *test_create_oom_delay[]  = {"0", "1", "2", "3", NULL};
+TEST_SUITE(create);
+TEST_SETUP(create, setup);
+TEST_TEAR_DOWN(create, tear_down);
+
+static char *test_create_oom_delay[] = {"0", "1", "2", "3", NULL};
 static char *test_create_oom_repeat[] = {"1", NULL};
 
 static MunitParameterEnum test_create_oom_params[] = {
@@ -1671,25 +1746,23 @@ static MunitParameterEnum test_create_oom_params[] = {
     {NULL, NULL},
 };
 
-static MunitResult test_create_oom(const MunitParameter params[], void *data)
+TEST_CASE(create, oom, test_create_oom_params)
 {
 	sqlite3_vfs *vfs;
+	dqlite_logger *logger = test_logger();
 
 	(void)params;
 	(void)data;
 
 	test_mem_fault_enable();
 
-	vfs = dqlite_vfs_create("volatile", test_logger());
+	vfs = dqlite_vfs_create("volatile", logger);
 	munit_assert_ptr_null(vfs);
+
+	free(logger);
 
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite_vfs_create_tests[] = {
-    {"/oom", test_create_oom, setup, tear_down, 0, test_create_oom_params},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -1697,19 +1770,22 @@ static MunitTest dqlite_vfs_create_tests[] = {
  *
  ******************************************************************************/
 
+TEST_SUITE(integration);
+TEST_SETUP(integration, setup);
+TEST_TEAR_DOWN(integration, tear_down);
+
 /* Integration test, registering an in-memory VFS and performing various
  * database operations. */
-static MunitResult test_integration_db(const MunitParameter params[],
-                                       void *               data)
+TEST_CASE(integration, db, NULL)
 {
-	sqlite3_vfs * vfs;
-	sqlite3 *     db;
+	sqlite3_vfs *vfs;
+	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	const char *  tail;
-	int           i;
-	int           size;
-	int           ckpt;
-	int           rc;
+	const char *tail;
+	int i;
+	int size;
+	int ckpt;
+	int rc;
 
 	(void)params;
 
@@ -1722,8 +1798,8 @@ static MunitResult test_integration_db(const MunitParameter params[],
 	/* Create a test table and insert a few rows into it. */
 	__db_exec(db, "CREATE TABLE test (n INT)");
 
-	rc = sqlite3_prepare(
-	    db, "INSERT INTO test(n) VALUES(?)", -1, &stmt, &tail);
+	rc = sqlite3_prepare(db, "INSERT INTO test(n) VALUES(?)", -1, &stmt,
+			     &tail);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	for (i = 0; i < 100; i++) {
@@ -1740,8 +1816,8 @@ static MunitResult test_integration_db(const MunitParameter params[],
 	rc = sqlite3_finalize(stmt);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = sqlite3_wal_checkpoint_v2(
-	    db, "main", SQLITE_CHECKPOINT_TRUNCATE, &size, &ckpt);
+	rc = sqlite3_wal_checkpoint_v2(db, "main", SQLITE_CHECKPOINT_TRUNCATE,
+				       &size, &ckpt);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	rc = sqlite3_close(db);
@@ -1753,14 +1829,13 @@ static MunitResult test_integration_db(const MunitParameter params[],
 }
 
 /* Test our expections on the memory-mapped WAl index format. */
-static MunitResult test_integration_wal(const MunitParameter params[],
-                                        void *               data)
+TEST_CASE(integration, wal, NULL)
 {
 	sqlite3_vfs *vfs;
-	sqlite3 *    db1;
-	sqlite3 *    db2;
-	uint32_t *   read_marks;
-	int          i;
+	sqlite3 *db1;
+	sqlite3 *db2;
+	uint32_t *read_marks;
+	int i;
 
 	(void)params;
 
@@ -1781,6 +1856,7 @@ static MunitResult test_integration_wal(const MunitParameter params[],
 	munit_assert_uint32(read_marks[2], ==, 0xffffffff);
 	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
 	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
+	free(read_marks);
 
 	/* Start a read transaction on db2 */
 	munit_log(MUNIT_LOG_INFO, "BEGIN");
@@ -1797,6 +1873,7 @@ static MunitResult test_integration_wal(const MunitParameter params[],
 	munit_assert_uint32(read_marks[2], ==, 0xffffffff);
 	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
 	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
+	free(read_marks);
 
 	/* A shared lock is held on the second read mark (read locks start at
 	 * 3). */
@@ -1819,6 +1896,7 @@ static MunitResult test_integration_wal(const MunitParameter params[],
 	munit_assert_uint32(read_marks[2], ==, 0xffffffff);
 	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
 	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
+	free(read_marks);
 
 	__db_exec(db1, "COMMIT");
 
@@ -1842,6 +1920,7 @@ static MunitResult test_integration_wal(const MunitParameter params[],
 	munit_assert_uint32(read_marks[2], ==, 6);
 	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
 	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
+	free(read_marks);
 
 	/* The old read lock is still in place. */
 	munit_assert_true(__shm_shared_lock_held(db2, 3 + 1));
@@ -1858,21 +1937,20 @@ static MunitResult test_integration_wal(const MunitParameter params[],
 }
 
 /* Full checkpoints are possible only when no read mark is set. */
-static MunitResult test_integration_checkpoint(const MunitParameter params[],
-                                               void *               data)
+TEST_CASE(integration, checkpoint, NULL)
 {
-	sqlite3_vfs * vfs;
-	sqlite3 *     db1;
-	sqlite3 *     db2;
+	sqlite3_vfs *vfs;
+	sqlite3 *db1;
+	sqlite3 *db2;
 	sqlite3_file *file1; /* main DB file */
 	sqlite3_file *file2; /* WAL file */
-	sqlite_int64  size;
-	uint32_t *    read_marks;
-	unsigned      mx_frame;
-	char          stmt[128];
-	int           log, ckpt;
-	int           i;
-	int           rv;
+	sqlite_int64 size;
+	uint32_t *read_marks;
+	unsigned mx_frame;
+	char stmt[128];
+	int log, ckpt;
+	int i;
+	int rv;
 
 	(void)params;
 
@@ -1895,12 +1973,12 @@ static MunitResult test_integration_checkpoint(const MunitParameter params[],
 	__db_exec(db1, "COMMIT");
 
 	/* Get the file objects for the main database and the WAL. */
-	rv = sqlite3_file_control(
-	    db1, "main", SQLITE_FCNTL_FILE_POINTER, &file1);
+	rv = sqlite3_file_control(db1, "main", SQLITE_FCNTL_FILE_POINTER,
+				  &file1);
 	munit_assert_int(rv, ==, 0);
 
-	rv = sqlite3_file_control(
-	    db1, "main",  SQLITE_FCNTL_JOURNAL_POINTER, &file2);
+	rv = sqlite3_file_control(db1, "main", SQLITE_FCNTL_JOURNAL_POINTER,
+				  &file2);
 	munit_assert_int(rv, ==, 0);
 
 	/* The WAL file has now 13 pages */
@@ -1919,8 +1997,10 @@ static MunitResult test_integration_checkpoint(const MunitParameter params[],
 
 	read_marks = __wal_idx_read_marks(db1);
 	munit_assert_int(read_marks[1], ==, 13);
+	free(read_marks);
 
-	rv = file1->pMethods->xShmLock(file1, 3 + 1, 1, SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);
+	rv = file1->pMethods->xShmLock(file1, 3 + 1, 1,
+				       SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);
 	munit_assert_int(rv, ==, SQLITE_BUSY);
 
 	munit_assert_true(__shm_shared_lock_held(db1, 3 + 1));
@@ -1938,16 +2018,16 @@ static MunitResult test_integration_checkpoint(const MunitParameter params[],
 	__db_exec(db1, "COMMIT");
 
 	/* Since there's a shared read lock, a full checkpoint will fail. */
-	rv = sqlite3_wal_checkpoint_v2(
-	    db1, "main", SQLITE_CHECKPOINT_TRUNCATE, &log, &ckpt);
+	rv = sqlite3_wal_checkpoint_v2(db1, "main", SQLITE_CHECKPOINT_TRUNCATE,
+				       &log, &ckpt);
 	munit_assert_int(rv, !=, 0);
 
 	/* If we complete the read transaction the shared lock is realeased and
 	 * the checkpoint succeeds. */
 	__db_exec(db2, "COMMIT");
 
-	rv = sqlite3_wal_checkpoint_v2(
-	    db1, "main", SQLITE_CHECKPOINT_TRUNCATE, &log, &ckpt);
+	rv = sqlite3_wal_checkpoint_v2(db1, "main", SQLITE_CHECKPOINT_TRUNCATE,
+				       &log, &ckpt);
 	munit_assert_int(rv, ==, 0);
 
 	__db_close(db1);
@@ -1957,35 +2037,3 @@ static MunitResult test_integration_checkpoint(const MunitParameter params[],
 
 	return SQLITE_OK;
 }
-
-static MunitTest dqlite__vfs_integration_tests[] = {
-    {"/db", test_integration_db, setup, tear_down, 0, NULL},
-    {"/wal", test_integration_wal, setup, tear_down, 0, NULL},
-    {"/checkpoint", test_integration_checkpoint, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
- * Test suite
- *
- ******************************************************************************/
-
-MunitSuite dqlite__vfs_suites[] = {
-    {"_open", dqlite__vfs_open_tests, NULL, 1, 0},
-    {"_delete", dqlite__vfs_delete_tests, NULL, 1, 0},
-    {"_access", dqlite__vfs_access_tests, NULL, 1, 0},
-    {"_full_pathname", dqlite__vfs_full_pathname_tests, NULL, 1, 0},
-    {"_close", dqlite__vfs_close_tests, NULL, 1, 0},
-    {"_read", dqlite__vfs_read_tests, NULL, 1, 0},
-    {"_write", dqlite__vfs_write_tests, NULL, 1, 0},
-    {"_truncate", dqlite__vfs_truncate_tests, NULL, 1, 0},
-    {"_shm_map", dqlite__vfs_shm_map_tests, NULL, 1, 0},
-    {"_shm_lock", dqlite__vfs_shm_lock_tests, NULL, 1, 0},
-    {"_file_control", dqlite__vfs_file_control_tests, NULL, 1, 0},
-    {"_current_time", dqlite_vfs_current_time_tests, NULL, 1, 0},
-    {"_sleep", dqlite_vfs_sleep_tests, NULL, 1, 0},
-    {"_create", dqlite_vfs_create_tests, NULL, 1, 0},
-    {"/integration", dqlite__vfs_integration_tests, NULL, 1, 0},
-    {NULL, NULL, NULL, 0, 0},
-};

@@ -9,7 +9,7 @@
 #include "fs.h"
 #include "munit.h"
 
-const char *test_dir_setup() {
+char *test_dir_setup() {
 	char *dir = munit_malloc(strlen(TEST__DIR_TEMPLATE) + 1);
 
 	strcpy(dir, TEST__DIR_TEMPLATE);
@@ -35,7 +35,7 @@ static int test__dir_tear_down_nftw_fn(const char *       path,
 	return 0;
 }
 
-void test_dir_tear_down(const char *dir) {
+void test_dir_tear_down(char *dir) {
 	int rc;
 
 	rc = nftw(dir,
