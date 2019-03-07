@@ -3,9 +3,10 @@
 #include "../src/schema.h"
 #include "../src/byte.h"
 
-#include "leak.h"
 #include "./lib/message.h"
 #include "./lib/runner.h"
+
+TEST_MODULE(schema);
 
 /******************************************************************************
  *
@@ -61,8 +62,7 @@ static void tear_down(void *data) {
 	struct test_handler *handler = data;
 
 	test_handler_close(handler);
-
-	test_assert_no_leaks();
+	free(handler);
 }
 
 /******************************************************************************
@@ -71,8 +71,12 @@ static void tear_down(void *data) {
  *
  ******************************************************************************/
 
-static MunitResult test_encode_two_uint64(const MunitParameter params[],
-                                          void *               data) {
+TEST_SUITE(encode);
+TEST_SETUP(encode, setup);
+TEST_TEAR_DOWN(encode, tear_down);
+
+TEST_CASE(encode, two_uint64, NULL)
+{
 	struct test_handler *handler = data;
 	int                  err;
 
@@ -94,8 +98,8 @@ static MunitResult test_encode_two_uint64(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_encode_uint64_and_text(const MunitParameter params[],
-                                               void *               data) {
+TEST_CASE(encode, uint64_and_text, NULL)
+{
 	struct test_handler *handler = data;
 	int                  err;
 
@@ -117,8 +121,8 @@ static MunitResult test_encode_uint64_and_text(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_encode_unknown_type(const MunitParameter params[],
-                                            void *               data) {
+TEST_CASE(encode, unknown_type, NULL)
+{
 	struct test_handler *handler = data;
 	int                  err;
 
@@ -134,25 +138,18 @@ static MunitResult test_encode_unknown_type(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__schema_encode_tests[] = {
-    {"/two-uint64", test_encode_two_uint64, setup, tear_down, 0, NULL},
-    {"/uint64-and-text",
-     test_encode_uint64_and_text,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"/unknown-type", test_encode_unknown_type, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * Tests for the _decode method.
  *
  ******************************************************************************/
-static MunitResult test_decode_invalid_text(const MunitParameter params[],
-                                            void *               data) {
+
+TEST_SUITE(decode);
+TEST_SETUP(decode, setup);
+TEST_TEAR_DOWN(decode, tear_down);
+
+TEST_CASE(decode, invalid_text, NULL)
+{
 	struct test_handler *handler = data;
 	int                  err;
 
@@ -174,8 +171,8 @@ static MunitResult test_decode_invalid_text(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_decode_unknown_type(const MunitParameter params[],
-                                            void *               data) {
+TEST_CASE(decode, unknown_type, NULL)
+{
 	struct test_handler *handler = data;
 	int                  err;
 
@@ -192,8 +189,8 @@ static MunitResult test_decode_unknown_type(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_decode_two_uint64(const MunitParameter params[],
-                                          void *               data) {
+TEST_CASE(decode, two_uint64, NULL)
+{
 	struct test_handler *      handler = data;
 	static struct test_handler handler2;
 	int                        err;
@@ -228,22 +225,3 @@ static MunitResult test_decode_two_uint64(const MunitParameter params[],
 
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__schema_decode_tests[] = {
-    {"/invalid-text", test_decode_invalid_text, setup, tear_down, 0, NULL},
-    {"/unknown-type", test_decode_unknown_type, setup, tear_down, 0, NULL},
-    {"/two-uint64-fields", test_decode_two_uint64, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL},
-};
-
-/******************************************************************************
- *
- * Suite
- *
- ******************************************************************************/
-
-MunitSuite dqlite__schema_suites[] = {
-    {"_encode", dqlite__schema_encode_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {"_decode", dqlite__schema_decode_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
-};
