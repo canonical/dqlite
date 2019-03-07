@@ -40,7 +40,7 @@
 
 /* Context for the gateway request handlers */
 struct dqlite__gateway_ctx {
-	struct dqlite__request *request;
+	struct request *request;
 	struct dqlite__response response;
 	struct db *     db;      /* For multi-response queries */
 	struct stmt *   stmt;    /* For multi-response queries */
@@ -81,7 +81,7 @@ struct dqlite__gateway {
 	 * heartbeat or interrupt. */
 	struct dqlite__gateway_ctx ctxs[DQLITE__GATEWAY_MAX_REQUESTS];
 
-	struct dqlite__request *next;
+	struct request *next;
 
 	struct db *db; /* Open database */
 
@@ -138,7 +138,7 @@ int dqlite__gateway_start(struct dqlite__gateway *g, uint64_t now);
  * certain type by calling dqlite__gateway_ctx_for.
  */
 int dqlite__gateway_handle(struct dqlite__gateway *g,
-                           struct dqlite__request *request);
+                           struct request *request);
 
 /* Return the request ctx index that the gateway will use to handle a request of
  * the given type at this moment, or -1 if the gateway can't handle a request of

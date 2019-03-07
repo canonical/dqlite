@@ -39,20 +39,20 @@ void test_message_send(struct message *outgoing,
 
 TEST_MESSAGE_SEND_IMPLEMENT(leader,
                             DQLITE_REQUEST_LEADER,
-                            dqlite__request,
-                            DQLITE__REQUEST_SCHEMA_LEADER);
+                            request,
+                            REQUEST__SCHEMA_LEADER);
 TEST_MESSAGE_SEND_IMPLEMENT(client,
                             DQLITE_REQUEST_CLIENT,
-                            dqlite__request,
-                            DQLITE__REQUEST_SCHEMA_CLIENT);
+                            request,
+                            REQUEST__SCHEMA_CLIENT);
 TEST_MESSAGE_SEND_IMPLEMENT(heartbeat,
                             DQLITE_REQUEST_HEARTBEAT,
-                            dqlite__request,
-                            DQLITE__REQUEST_SCHEMA_HEARTBEAT);
+                            request,
+                            REQUEST__SCHEMA_HEARTBEAT);
 TEST_MESSAGE_SEND_IMPLEMENT(open,
                             DQLITE_REQUEST_OPEN,
-                            dqlite__request,
-                            DQLITE__REQUEST_SCHEMA_OPEN);
+                            request,
+                            REQUEST__SCHEMA_OPEN);
 
 TEST_MESSAGE_SEND_IMPLEMENT(server,
                             DQLITE_RESPONSE_SERVER,

@@ -1,33 +1,15 @@
-#include <assert.h>
-#include <stdint.h>
-#include <string.h>
-
 #include "request.h"
-#include "schema.h"
 
-/* Set the maximum data size to 1M, to prevent eccessive memmory allocation
- * in case of client bugs
- *
- * TODO: relax this limit since it prevents inserting large blobs.
- */
-#define DQLITE_REQUEST_MAX_DATA_SIZE 1048576
+SCHEMA__IMPLEMENT(request_leader, REQUEST__SCHEMA_LEADER);
+SCHEMA__IMPLEMENT(request_client, REQUEST__SCHEMA_CLIENT);
+SCHEMA__IMPLEMENT(request_heartbeat, REQUEST__SCHEMA_HEARTBEAT);
+SCHEMA__IMPLEMENT(request_open, REQUEST__SCHEMA_OPEN);
+SCHEMA__IMPLEMENT(request_prepare, REQUEST__SCHEMA_PREPARE);
+SCHEMA__IMPLEMENT(request_exec, REQUEST__SCHEMA_EXEC);
+SCHEMA__IMPLEMENT(request_query, REQUEST__SCHEMA_QUERY);
+SCHEMA__IMPLEMENT(request_finalize, REQUEST__SCHEMA_FINALIZE);
+SCHEMA__IMPLEMENT(request_exec_sql, REQUEST__SCHEMA_EXEC_SQL);
+SCHEMA__IMPLEMENT(request_query_sql, REQUEST__SCHEMA_QUERY_SQL);
+SCHEMA__IMPLEMENT(request_interrupt, REQUEST__SCHEMA_INTERRUPT);
 
-SCHEMA__IMPLEMENT(dqlite__request_leader, DQLITE__REQUEST_SCHEMA_LEADER);
-SCHEMA__IMPLEMENT(dqlite__request_client, DQLITE__REQUEST_SCHEMA_CLIENT);
-SCHEMA__IMPLEMENT(dqlite__request_heartbeat,
-                         DQLITE__REQUEST_SCHEMA_HEARTBEAT);
-SCHEMA__IMPLEMENT(dqlite__request_open, DQLITE__REQUEST_SCHEMA_OPEN);
-SCHEMA__IMPLEMENT(dqlite__request_prepare,
-                         DQLITE__REQUEST_SCHEMA_PREPARE);
-SCHEMA__IMPLEMENT(dqlite__request_exec, DQLITE__REQUEST_SCHEMA_EXEC);
-SCHEMA__IMPLEMENT(dqlite__request_query, DQLITE__REQUEST_SCHEMA_QUERY);
-SCHEMA__IMPLEMENT(dqlite__request_finalize,
-                         DQLITE__REQUEST_SCHEMA_FINALIZE);
-SCHEMA__IMPLEMENT(dqlite__request_exec_sql,
-                         DQLITE__REQUEST_SCHEMA_EXEC_SQL);
-SCHEMA__IMPLEMENT(dqlite__request_query_sql,
-                         DQLITE__REQUEST_SCHEMA_QUERY_SQL);
-SCHEMA__IMPLEMENT(dqlite__request_interrupt,
-                         DQLITE__REQUEST_SCHEMA_INTERRUPT);
-
-SCHEMA__HANDLER_IMPLEMENT(dqlite__request, DQLITE__REQUEST_SCHEMA_TYPES);
+SCHEMA__HANDLER_IMPLEMENT(request, REQUEST__SCHEMA_TYPES);
