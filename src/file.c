@@ -8,7 +8,8 @@
 #include "format.h"
 
 /* Guess the file type by looking the filename. */
-static int dqlite__file_guess_type(const char *filename) {
+static int guess_file_type(const char *filename)
+{
 	/* TODO: improve the check. */
 	if (strstr(filename, "-wal") != NULL) {
 		return FORMAT__WAL;
@@ -18,16 +19,17 @@ static int dqlite__file_guess_type(const char *filename) {
 }
 
 int dqlite_file_read(const char *vfs_name,
-                     const char *filename,
-                     uint8_t **  buf,
-                     size_t *    len) {
-	sqlite3_vfs * vfs;
-	int           type;
-	int           flags;
+		     const char *filename,
+		     uint8_t **buf,
+		     size_t *len)
+{
+	sqlite3_vfs *vfs;
+	int type;
+	int flags;
 	sqlite3_file *file;
-	unsigned      page_size;
+	unsigned page_size;
 	sqlite3_int64 offset;
-	int           rc;
+	int rc;
 
 	assert(vfs_name != NULL);
 	assert(filename != NULL);
@@ -41,7 +43,7 @@ int dqlite_file_read(const char *vfs_name,
 		goto err;
 	}
 
-	type = dqlite__file_guess_type(filename);
+	type = guess_file_type(filename);
 
 	/* Common flags */
 	flags = SQLITE_OPEN_READWRITE;
@@ -151,17 +153,18 @@ err:
 }
 
 int dqlite_file_write(const char *vfs_name,
-                      const char *filename,
-                      uint8_t *   buf,
-                      size_t      len) {
-	sqlite3_vfs * vfs;
+		      const char *filename,
+		      uint8_t *buf,
+		      size_t len)
+{
+	sqlite3_vfs *vfs;
 	sqlite3_file *file;
-	int           type;
-	int           flags;
-	unsigned int  page_size;
+	int type;
+	int flags;
+	unsigned int page_size;
 	sqlite3_int64 offset;
-	uint8_t *     pos;
-	int           rc;
+	uint8_t *pos;
+	int rc;
 
 	assert(vfs_name != NULL);
 	assert(filename != NULL);
@@ -176,7 +179,7 @@ int dqlite_file_write(const char *vfs_name,
 	}
 
 	/* Determine if this is a database or a WAL file. */
-	type = dqlite__file_guess_type(filename);
+	type = guess_file_type(filename);
 
 	/* Common flags */
 	flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
@@ -211,12 +214,12 @@ int dqlite_file_write(const char *vfs_name,
 	}
 
 	offset = 0;
-	pos    = buf;
+	pos = buf;
 
 	/* If this is a WAL file , write the header first. */
 	if (type == FORMAT__WAL) {
-		rc = file->pMethods->xWrite(
-		    file, pos, FORMAT__WAL_HDR_SIZE, offset);
+		rc = file->pMethods->xWrite(file, pos, FORMAT__WAL_HDR_SIZE,
+					    offset);
 		if (rc != SQLITE_OK) {
 			goto err_after_file_open;
 		}

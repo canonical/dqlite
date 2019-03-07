@@ -2,7 +2,11 @@
 
 #include "case.h"
 #include "log.h"
-#include "mem.h"
+#include "./lib/heap.h"
+#include "./lib/runner.h"
+#include "./lib/sqlite.h"
+
+TEST_MODULE(file);
 
 /******************************************************************************
  *
@@ -46,15 +50,20 @@ static sqlite3 *__db_open(sqlite3_vfs *vfs)
  *
  ******************************************************************************/
 
+dqlite_logger *logger;
+
 static void *setup(const MunitParameter params[], void *user_data)
 {
 	sqlite3_vfs *vfs;
 
-	test_case_setup(params, user_data);
+	(void)user_data;
 
-	vfs = munit_malloc(sizeof *vfs);
+	test_heap_setup(params, user_data);
+	test_sqlite_setup(params);
 
-	vfs = dqlite_vfs_create("volatile", test_logger());
+	logger = test_logger();
+
+	vfs = dqlite_vfs_create("volatile", logger);
 	munit_assert_ptr_not_null(vfs);
 
 	sqlite3_vfs_register(vfs, 0);
@@ -70,7 +79,10 @@ static void tear_down(void *data)
 
 	dqlite_vfs_destroy(vfs);
 
-	test_case_tear_down(data);
+	test_sqlite_tear_down();
+	test_heap_tear_down(data);
+
+	free(logger);
 }
 
 /******************************************************************************
@@ -79,8 +91,12 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
+TEST_SUITE(read);
+TEST_SETUP(read, setup);
+TEST_TEAR_DOWN(read, tear_down);
+
 /* If the file being read does not exists, an error is returned. */
-static MunitResult test_read_cantopen(const MunitParameter params[], void *data)
+TEST_CASE(read, cantopen, NULL)
 {
 	sqlite3_vfs *vfs = data;
 	uint8_t *    buf;
@@ -96,7 +112,7 @@ static MunitResult test_read_cantopen(const MunitParameter params[], void *data)
 }
 
 /* Read the content of an empty file. */
-static MunitResult test_read_empty(const MunitParameter params[], void *data)
+TEST_CASE(read, empty, NULL)
 {
 	sqlite3_vfs *vfs = data;
 	sqlite3 *    db;
@@ -184,13 +200,13 @@ static char *test_read_oom_delay[]  = {"0", "1", NULL};
 static char *test_read_oom_repeat[] = {"1", NULL};
 
 static MunitParameterEnum test_read_oom_params[] = {
-    {TEST_MEM_FAULT_DELAY_PARAM, test_read_oom_delay},
-    {TEST_MEM_FAULT_REPEAT_PARAM, test_read_oom_repeat},
+    {TEST_HEAP_FAULT_DELAY, test_read_oom_delay},
+    {TEST_HEAP_FAULT_REPEAT, test_read_oom_repeat},
     {NULL, NULL},
 };
 
 /* Test out of memory scenarios. */
-static MunitResult test_read_oom(const MunitParameter params[], void *data)
+TEST_CASE(read, oom, test_read_oom_params)
 {
 	sqlite3_vfs *vfs = data;
 	sqlite3 *    db  = __db_open(vfs);
@@ -202,7 +218,7 @@ static MunitResult test_read_oom(const MunitParameter params[], void *data)
 
 	__db_exec(db, "CREATE TABLE test (n INT)");
 
-	test_mem_fault_enable();
+	test_heap_fault_enable();
 
 	rc = dqlite_file_read(vfs->zName, "test.db", &buf, &len);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
@@ -212,22 +228,3 @@ static MunitResult test_read_oom(const MunitParameter params[], void *data)
 
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__file_read_tests[] = {
-    {"/cantopen", test_read_cantopen, setup, tear_down, 0, NULL},
-    {"/empty", test_read_empty, setup, tear_down, 0, NULL},
-    {"/then-write", test_read_then_write, setup, tear_down, 0, NULL},
-    {"/oom", test_read_oom, setup, tear_down, 0, test_read_oom_params},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
- * Test suite
- *
- ******************************************************************************/
-
-MunitSuite dqlite__file_suites[] = {
-    {"_read", dqlite__file_read_tests, NULL, 1, 0},
-    {NULL, NULL, NULL, 0, 0},
-};
