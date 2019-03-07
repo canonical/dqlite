@@ -1,11 +1,12 @@
 #include <stdint.h>
 
-#include "../src/message.h"
 #include "../src/response.h"
 
-#include "leak.h"
+#include "./lib/heap.h"
 #include "./lib/message.h"
-#include "munit.h"
+#include "./lib/runner.h"
+
+TEST_MODULE(response);
 
 /******************************************************************************
  *
@@ -13,25 +14,21 @@
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	struct response *response;
-
-	(void)params;
-	(void)user_data;
-
+	test_heap_setup(params, user_data);
 	response = munit_malloc(sizeof *response);
-
 	response_init(response);
-
 	return response;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	struct response *response = data;
-
 	response_close(response);
-
-	test_assert_no_leaks();
+	free(response);
+	test_heap_tear_down(data);
 }
 
 /******************************************************************************
@@ -40,9 +37,14 @@ static void tear_down(void *data) {
  *
  ******************************************************************************/
 
-static MunitResult test_server(const MunitParameter params[], void *data) {
+TEST_SUITE(decode);
+TEST_SETUP(decode, setup);
+TEST_TEAR_DOWN(decode, tear_down);
+
+TEST_CASE(decode, server, NULL)
+{
 	struct response *response = data;
-	int                      err;
+	int err;
 
 	(void)params;
 
@@ -56,9 +58,10 @@ static MunitResult test_server(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-static MunitResult test_welcome(const MunitParameter params[], void *data) {
+TEST_CASE(decode, welcome, NULL)
+{
 	struct response *response = data;
-	int                      err;
+	int err;
 
 	(void)params;
 
@@ -72,7 +75,8 @@ static MunitResult test_welcome(const MunitParameter params[], void *data) {
 	return MUNIT_OK;
 }
 
-/* static MunitResult test_servers(const MunitParameter params[], void *data) { */
+/* static MunitResult test_servers(const MunitParameter params[], void *data) {
+ */
 /* 	struct response *response = data; */
 /* 	int                      err; */
 
@@ -87,8 +91,10 @@ static MunitResult test_welcome(const MunitParameter params[], void *data) {
 
 /* 	munit_assert_ptr_not_equal(response->servers.addresses, NULL); */
 
-/* 	munit_assert_string_equal(response->servers.addresses[0], "1.2.3.4:666"); */
-/* 	munit_assert_string_equal(response->servers.addresses[1], "5.6.7.8:999"); */
+/* 	munit_assert_string_equal(response->servers.addresses[0],
+ * "1.2.3.4:666"); */
+/* 	munit_assert_string_equal(response->servers.addresses[1],
+ * "5.6.7.8:999"); */
 /* 	munit_assert_ptr_equal(response->servers.addresses[2], NULL); */
 
 /* 	sqlite3_free(response->servers.addresses); */
@@ -96,9 +102,10 @@ static MunitResult test_welcome(const MunitParameter params[], void *data) {
 /* 	return MUNIT_OK; */
 /* } */
 
-static MunitResult test_db(const MunitParameter params[], void *data) {
+TEST_CASE(decode, db, NULL)
+{
 	struct response *response = data;
-	int                      err;
+	int err;
 
 	(void)params;
 
@@ -111,22 +118,3 @@ static MunitResult test_db(const MunitParameter params[], void *data) {
 
 	return MUNIT_OK;
 }
-
-static MunitTest response_decode_tests[] = {
-    {"/server", test_server, setup, tear_down, 0, NULL},
-    //{"/servers", test_servers, setup, tear_down, 0, NULL},
-    {"/welcome", test_welcome, setup, tear_down, 0, NULL},
-    {"/db", test_db, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
- * Suite
- *
- ******************************************************************************/
-
-MunitSuite response_suites[] = {
-    {"_decode", response_decode_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {NULL, NULL, NULL, 0, 0},
-};
