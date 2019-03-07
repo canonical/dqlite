@@ -1,5 +1,5 @@
-#ifndef DQLITE_BINARY_H
-#define DQLITE_BINARY_H
+#ifndef DQLITE_BYTE_H
+#define DQLITE_BYTE_H
 
 #include <stdint.h>
 
@@ -13,7 +13,7 @@
 #endif
 
 /* Flip a 32-bit number to network byte order (little endian) */
-DQLITE_INLINE uint32_t dqlite__flip32(uint32_t v) {
+DQLITE_INLINE uint32_t byte__flip32(uint32_t v) {
 #if defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN)
 	return v;
 #elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN) &&                    \
@@ -35,7 +35,7 @@ DQLITE_INLINE uint32_t dqlite__flip32(uint32_t v) {
 }
 
 /* Flip a 64-bit number to network byte order (little endian) */
-DQLITE_INLINE uint64_t dqlite__flip64(uint64_t v) {
+DQLITE_INLINE uint64_t byte__flip64(uint64_t v) {
 #if defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN)
 	return v;
 #elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN) &&                    \
@@ -60,4 +60,4 @@ DQLITE_INLINE uint64_t dqlite__flip64(uint64_t v) {
 #endif
 }
 
-#endif /* DQLITE_BINARY_H */
+#endif /* DQLITE_BYTE_H */

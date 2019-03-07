@@ -4,7 +4,7 @@
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
-#include "../src/binary.h"
+#include "../src/byte.h"
 #include "../src/stmt.h"
 
 #include "case.h"
@@ -252,7 +252,7 @@ static MunitResult test_bind_integer(const MunitParameter params[], void *data)
 {
 	struct fixture *f = data;
 	int             rc;
-	uint64_t        buf = dqlite__flip64((uint64_t)(-666));
+	uint64_t        buf = byte__flip64((uint64_t)(-666));
 
 	(void)params;
 
@@ -297,7 +297,7 @@ static MunitResult test_bind_float(const MunitParameter params[], void *data)
 	f->message->body1[1] = SQLITE_FLOAT;
 
 	memcpy(&buf, &float_, sizeof float_);
-	buf = dqlite__flip64(buf);
+	buf = byte__flip64(buf);
 	memcpy(f->message->body1 + 8, &buf, sizeof buf);
 
 	rc = dqlite__stmt_bind(f->stmt, f->message);
@@ -440,7 +440,7 @@ static MunitResult test_query_none(const MunitParameter params[], void *data)
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -473,7 +473,7 @@ static MunitResult test_query_integer(const MunitParameter params[], void *data)
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -482,7 +482,7 @@ static MunitResult test_query_integer(const MunitParameter params[], void *data)
 	/* Then the row, with its header and value. */
 	munit_assert_int(f->message->body1[16], ==, SQLITE_INTEGER);
 	buf = (uint64_t *)(f->message->body1 + 24);
-	munit_assert_int((int64_t)(dqlite__flip64(*buf)), ==, -123);
+	munit_assert_int((int64_t)(byte__flip64(*buf)), ==, -123);
 
 	return MUNIT_OK;
 }
@@ -508,7 +508,7 @@ static MunitResult test_query_float(const MunitParameter params[], void *data)
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -517,7 +517,7 @@ static MunitResult test_query_float(const MunitParameter params[], void *data)
 	/* Then the row, with its header and value. */
 	munit_assert_int(f->message->body1[16], ==, SQLITE_FLOAT);
 	buf  = (uint64_t *)(f->message->body1 + 24);
-	*buf = dqlite__flip64(*buf);
+	*buf = byte__flip64(*buf);
 	munit_assert_double(*(double *)(buf), ==, 3.1415);
 
 	return MUNIT_OK;
@@ -544,7 +544,7 @@ static MunitResult test_query_null(const MunitParameter params[], void *data)
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -553,7 +553,7 @@ static MunitResult test_query_null(const MunitParameter params[], void *data)
 	/* Then the row, with its header and value. */
 	munit_assert_int(f->message->body1[16], ==, SQLITE_NULL);
 	buf = (uint64_t *)(f->message->body1 + 24);
-	munit_assert_int((int64_t)(dqlite__flip64(*buf)), ==, 0);
+	munit_assert_int((int64_t)(byte__flip64(*buf)), ==, 0);
 
 	return MUNIT_OK;
 }
@@ -579,7 +579,7 @@ static MunitResult test_query_text(const MunitParameter params[], void *data)
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -616,7 +616,7 @@ static MunitResult test_query_unixtime(const MunitParameter params[],
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -629,7 +629,7 @@ static MunitResult test_query_unixtime(const MunitParameter params[],
 	munit_assert_int(f->message->body1[16], ==, DQLITE_UNIXTIME);
 	buf = (uint64_t *)(f->message->body1 + 24);
 	munit_assert_double_equal(
-	    (double)(dqlite__flip64(*buf)), (double)(now), 0);
+	    (double)(byte__flip64(*buf)), (double)(now), 0);
 
 	return MUNIT_OK;
 }
@@ -655,7 +655,7 @@ static MunitResult test_query_iso8601(const MunitParameter params[], void *data)
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -691,7 +691,7 @@ static MunitResult test_query_iso8601_null(const MunitParameter params[],
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -727,7 +727,7 @@ static MunitResult test_query_iso8601_empty(const MunitParameter params[],
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -762,7 +762,7 @@ static MunitResult test_query_boolean(const MunitParameter params[], void *data)
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -771,7 +771,7 @@ static MunitResult test_query_boolean(const MunitParameter params[], void *data)
 	/* Then the row, with its header and value. */
 	munit_assert_int(f->message->body1[16], ==, DQLITE_BOOLEAN);
 	buf = (uint64_t *)(f->message->body1 + 24);
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	return MUNIT_OK;
 }
@@ -799,7 +799,7 @@ static MunitResult test_query_two_simple(const MunitParameter params[],
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column name. */
 	text = (const char *)(f->message->body1 + 8);
@@ -808,7 +808,7 @@ static MunitResult test_query_two_simple(const MunitParameter params[],
 	/* Then the first row, with its header and value. */
 	munit_assert_int(f->message->body1[16], ==, SQLITE_INTEGER);
 	buf = (uint64_t *)(f->message->body1 + 24);
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	return MUNIT_OK;
 }
@@ -836,7 +836,7 @@ static MunitResult test_query_two_complex(const MunitParameter params[],
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 3);
+	munit_assert_int(byte__flip64(*buf), ==, 3);
 
 	/* Then the column names. */
 	text = (const char *)(f->message->body1 + 8);
@@ -851,7 +851,7 @@ static MunitResult test_query_two_complex(const MunitParameter params[],
 	/* Then the first row, with its header and columns. */
 	munit_assert_int(f->message->body1[32] & 0x0f, ==, SQLITE_INTEGER);
 	buf = (uint64_t *)(f->message->body1 + 40);
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	munit_assert_int((f->message->body1[32] & 0xf0) >> 4, ==, SQLITE_TEXT);
 	text = (const char *)(f->message->body1 + 48);
@@ -859,13 +859,13 @@ static MunitResult test_query_two_complex(const MunitParameter params[],
 
 	munit_assert_int(f->message->body1[33], ==, SQLITE_FLOAT);
 	buf  = (uint64_t *)(f->message->body1 + 56);
-	*buf = dqlite__flip64(*buf);
+	*buf = byte__flip64(*buf);
 	munit_assert_double(*(double *)(buf), ==, 3.1415);
 
 	/* Then the second row, with its header and columns. */
 	munit_assert_int(f->message->body1[64] & 0x0f, ==, SQLITE_INTEGER);
 	buf = (uint64_t *)(f->message->body1 + 72);
-	munit_assert_int(dqlite__flip64(*buf), ==, 2);
+	munit_assert_int(byte__flip64(*buf), ==, 2);
 
 	munit_assert_int((f->message->body1[64] & 0xf0) >> 4, ==, SQLITE_TEXT);
 	text = (const char *)(f->message->body1 + 80);
@@ -896,7 +896,7 @@ static MunitResult test_query_count(const MunitParameter params[], void *data)
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column names. */
 	text = (const char *)(f->message->body1 + 8);
@@ -905,7 +905,7 @@ static MunitResult test_query_count(const MunitParameter params[], void *data)
 	/* Then the row, with its header and columns. */
 	munit_assert_int(f->message->body1[24] & 0x0f, ==, SQLITE_INTEGER);
 	buf = (uint64_t *)(f->message->body1 + 32);
-	munit_assert_int(dqlite__flip64(*buf), ==, 0);
+	munit_assert_int(byte__flip64(*buf), ==, 0);
 
 	return MUNIT_OK;
 }
@@ -937,7 +937,7 @@ static MunitResult test_query_large(const MunitParameter params[], void *data)
 
 	/* The first word written is the column count. */
 	buf = (uint64_t *)f->message->body1;
-	munit_assert_int(dqlite__flip64(*buf), ==, 1);
+	munit_assert_int(byte__flip64(*buf), ==, 1);
 
 	/* Then the column names. */
 	text = (const char *)(f->message->body1 + 8);
