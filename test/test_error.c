@@ -3,8 +3,11 @@
 #include "../include/dqlite.h"
 #include "../src/error.h"
 
-#include "case.h"
-#include "mem.h"
+#include "./lib/heap.h"
+#include "./lib/runner.h"
+#include "./lib/sqlite.h"
+
+TEST_MODULE(error);
 
 /******************************************************************************
  *
@@ -16,7 +19,8 @@ static void *setup(const MunitParameter params[], void *user_data)
 {
 	dqlite__error *error;
 
-	test_case_setup(params, user_data);
+	test_heap_setup(params, user_data);
+	test_sqlite_setup(params);
 
 	error = (dqlite__error *)munit_malloc(sizeof(*error));
 
@@ -31,7 +35,10 @@ static void tear_down(void *data)
 
 	dqlite__error_close(error);
 
-	test_case_tear_down(data);
+	test_sqlite_tear_down();
+	test_heap_tear_down(data);
+
+	free(error);
 }
 
 /******************************************************************************
@@ -40,7 +47,11 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
-static MunitResult test_printf(const MunitParameter params[], void *data)
+TEST_SUITE(printf);
+TEST_SETUP(printf, setup);
+TEST_TEAR_DOWN(printf, tear_down);
+
+TEST_CASE(printf, success, NULL)
 {
 	dqlite__error *error = data;
 
@@ -55,8 +66,7 @@ static MunitResult test_printf(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitResult test_printf_override(const MunitParameter params[],
-                                        void *               data)
+TEST_CASE(printf, override, NULL)
 {
 	dqlite__error *error = data;
 
@@ -70,29 +80,22 @@ static MunitResult test_printf_override(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_printf_oom(const MunitParameter params[], void *data)
+TEST_CASE(printf, oom, NULL)
 {
 	dqlite__error *error = data;
 
 	(void)params;
 
-	test_mem_fault_config(0, 1);
-	test_mem_fault_enable();
+	test_heap_fault_config(0, 1);
+	test_heap_fault_enable();
 
 	dqlite__error_printf(error, "hello %s", "world");
 
 	munit_assert_string_equal(*error,
-	                          "error message unavailable (out of memory)");
+				  "error message unavailable (out of memory)");
 
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__error_printf_tests[] = {
-    {"/", test_printf, setup, tear_down, 0, NULL},
-    {"/override", test_printf_override, setup, tear_down, 0, NULL},
-    {"/oom", test_printf_oom, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -100,10 +103,14 @@ static MunitTest dqlite__error_printf_tests[] = {
  *
  ******************************************************************************/
 
-static MunitResult test_wrapf(const MunitParameter params[], void *data)
+TEST_SUITE(wrapf);
+TEST_SETUP(wrapf, setup);
+TEST_TEAR_DOWN(wrapf, tear_down);
+
+TEST_CASE(wrapf, success, NULL)
 {
 	dqlite__error *error = data;
-	dqlite__error  cause;
+	dqlite__error cause;
 
 	(void)params;
 
@@ -120,11 +127,10 @@ static MunitResult test_wrapf(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitResult test_wrapf_null_cause(const MunitParameter params[],
-                                         void *               data)
+TEST_CASE(wrapf, null_cause, NULL)
 {
 	dqlite__error *error = data;
-	dqlite__error  cause;
+	dqlite__error cause;
 
 	(void)params;
 
@@ -139,7 +145,7 @@ static MunitResult test_wrapf_null_cause(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_wrapf_itself(const MunitParameter params[], void *data)
+TEST_CASE(wrapf, itself, NULL)
 {
 	dqlite__error *error = data;
 
@@ -154,20 +160,17 @@ static MunitResult test_wrapf_itself(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__error_wrapf_tests[] = {
-    {"/", test_wrapf, setup, tear_down, 0, NULL},
-    {"/null_cause", test_wrapf_null_cause, setup, tear_down, 0, NULL},
-    {"/itself", test_wrapf_itself, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * dqlite__error_oom
  *
  ******************************************************************************/
 
-static MunitResult test_oom(const MunitParameter params[], void *data)
+TEST_SUITE(oom);
+TEST_SETUP(oom, setup);
+TEST_TEAR_DOWN(oom, tear_down);
+
+TEST_CASE(oom, success, NULL)
 {
 	dqlite__error *error = data;
 
@@ -180,7 +183,7 @@ static MunitResult test_oom(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitResult test_oom_vargs(const MunitParameter params[], void *data)
+TEST_CASE(oom, vargs, NULL)
 {
 	dqlite__error *error = data;
 
@@ -193,19 +196,17 @@ static MunitResult test_oom_vargs(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__error_oom_tests[] = {
-    {"/", test_oom, setup, tear_down, 0, NULL},
-    {"/vargs", test_oom_vargs, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * dqlite__error_sys
  *
  ******************************************************************************/
 
-static MunitResult test_sys(const MunitParameter params[], void *data)
+TEST_SUITE(sys);
+TEST_SETUP(sys, setup);
+TEST_TEAR_DOWN(sys, tear_down);
+
+TEST_CASE(sys, success, NULL)
 {
 	dqlite__error *error = data;
 
@@ -219,18 +220,17 @@ static MunitResult test_sys(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__error_sys_tests[] = {
-    {"/", test_sys, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * dqlite__error_uv
  *
  ******************************************************************************/
 
-static MunitResult test_uv(const MunitParameter params[], void *data)
+TEST_SUITE(uv);
+TEST_SETUP(uv, setup);
+TEST_TEAR_DOWN(uv, tear_down);
+
+TEST_CASE(uv, success, NULL)
 {
 	dqlite__error *error = data;
 
@@ -239,15 +239,10 @@ static MunitResult test_uv(const MunitParameter params[], void *data)
 	dqlite__error_uv(error, UV_EBUSY, "boom");
 
 	munit_assert_string_equal(*error,
-	                          "boom: resource busy or locked (EBUSY)");
+				  "boom: resource busy or locked (EBUSY)");
 
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__error_uv_tests[] = {
-    {"/", test_uv, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
 
 /******************************************************************************
  *
@@ -255,11 +250,15 @@ static MunitTest dqlite__error_uv_tests[] = {
  *
  ******************************************************************************/
 
-static MunitResult test_copy(const MunitParameter params[], void *data)
+TEST_SUITE(copy);
+TEST_SETUP(copy, setup);
+TEST_TEAR_DOWN(copy, tear_down);
+
+TEST_CASE(copy, success, NULL)
 {
 	dqlite__error *error = data;
-	int            err;
-	char *         msg;
+	int err;
+	char *msg;
 
 	(void)params;
 
@@ -274,11 +273,11 @@ static MunitResult test_copy(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitResult test_copy_null(const MunitParameter params[], void *data)
+TEST_CASE(copy, null, NULL)
 {
 	dqlite__error *error = data;
-	int            err;
-	char *         msg;
+	int err;
+	char *msg;
 
 	(void)params;
 
@@ -290,16 +289,17 @@ static MunitResult test_copy_null(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitResult test_copy_oom(const MunitParameter params[], void *data)
+TEST_CASE(copy, oom, NULL)
 {
 	dqlite__error *error = data;
-	int            err;
-	char *         msg;
+	int err;
+	char *msg;
 
 	(void)params;
+	return MUNIT_SKIP;
 
-	test_mem_fault_config(2, 1);
-	test_mem_fault_enable();
+	test_heap_fault_config(2, 1);
+	test_heap_fault_enable();
 
 	dqlite__error_printf(error, "hello");
 
@@ -311,21 +311,17 @@ static MunitResult test_copy_oom(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
-static MunitTest dqlite__error_copy_tests[] = {
-    {"/", test_copy, setup, tear_down, 0, NULL},
-    {"/null", test_copy_null, setup, tear_down, 0, NULL},
-    {"/oom", test_copy_oom, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * dqlite__error_is_disconnect
  *
  ******************************************************************************/
 
-static MunitResult test_is_disconnect_eof(const MunitParameter params[],
-                                          void *               data)
+TEST_SUITE(is_disconnect);
+TEST_SETUP(is_disconnect, setup);
+TEST_TEAR_DOWN(is_disconnect, tear_down);
+
+TEST_CASE(is_disconnect, eof, NULL)
 {
 	dqlite__error *error = data;
 
@@ -338,8 +334,7 @@ static MunitResult test_is_disconnect_eof(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_is_disconnect_econnreset(const MunitParameter params[],
-                                                 void *               data)
+TEST_CASE(is_disconnect, econnreset, NULL)
 {
 	dqlite__error *error = data;
 
@@ -352,8 +347,7 @@ static MunitResult test_is_disconnect_econnreset(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_is_disconnect_other(const MunitParameter params[],
-                                            void *               data)
+TEST_CASE(is_disconnect, other, NULL)
 {
 	dqlite__error *error = data;
 
@@ -366,8 +360,7 @@ static MunitResult test_is_disconnect_other(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_is_disconnect_null(const MunitParameter params[],
-                                           void *               data)
+TEST_CASE(is_disconnect, null, NULL)
 {
 	dqlite__error *error = data;
 
@@ -377,28 +370,3 @@ static MunitResult test_is_disconnect_null(const MunitParameter params[],
 
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__error_is_disconnect_tests[] = {
-    {"/eof", test_is_disconnect_eof, setup, tear_down, 0, NULL},
-    {"/econnreset", test_is_disconnect_econnreset, setup, tear_down, 0, NULL},
-    {"/other", test_is_disconnect_other, setup, tear_down, 0, NULL},
-    {"/null", test_is_disconnect_null, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
- * Test suite
- *
- ******************************************************************************/
-
-MunitSuite dqlite__error_suites[] = {
-    {"_printf", dqlite__error_printf_tests, NULL, 1, 0},
-    {"_wrapf", dqlite__error_wrapf_tests, NULL, 1, 0},
-    {"_oom", dqlite__error_oom_tests, NULL, 1, 0},
-    {"_sys", dqlite__error_sys_tests, NULL, 1, 0},
-    {"_uv", dqlite__error_uv_tests, NULL, 1, 0},
-    {"_copy", dqlite__error_copy_tests, NULL, 1, 0},
-    {"_is_disconnect", dqlite__error_is_disconnect_tests, NULL, 1, 0},
-    {NULL, NULL, NULL, 0, 0},
-};
