@@ -84,6 +84,7 @@ static void test__cluster_register(void *arg, sqlite3 *db)
 	new_db_list = munit_malloc((n + 1) * sizeof(sqlite3 *));
 	memcpy(new_db_list, ctx->db_list, n * sizeof(sqlite3 *));
 
+	free(ctx->db_list);
 	ctx->db_list = new_db_list;
 
 	*(ctx->db_list + (n - 1)) = db;
@@ -176,5 +177,11 @@ dqlite_cluster *test_cluster()
 
 	return &test__cluster;
 }
+
+void test_cluster_close(dqlite_cluster *cluster) {
+	(void)cluster;
+	free(test__cluster_ctx.db_list);
+}
+
 
 void test_cluster_servers_rc(int rc) { test__cluster_servers_rc = rc; }

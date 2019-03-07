@@ -1,18 +1,15 @@
-#include <sqlite3.h>
-
-#include "../include/dqlite.h"
-
-#include "../src/gateway.h"
-#include "../src/options.h"
-#include "../src/response.h"
 #include "../src/format.h"
+#include "../src/gateway.h"
 
 #include "cluster.h"
 #include "replication.h"
 
-#include "case.h"
+#include "./lib/heap.h"
+#include "./lib/runner.h"
+#include "./lib/sqlite.h"
 #include "log.h"
-#include "mem.h"
+
+TEST_MODULE(gateway);
 
 /******************************************************************************
  *
@@ -20,12 +17,15 @@
  *
  ******************************************************************************/
 
-struct fixture {
+struct fixture
+{
 	sqlite3_wal_replication *replication;
-	sqlite3_vfs *            vfs;
-	struct dqlite__options * options;
-	struct gateway * gateway;
-	struct request * request;
+	sqlite3_vfs *vfs;
+	dqlite_logger *logger;
+	struct dqlite__options *options;
+	dqlite_cluster *cluster;
+	struct gateway *gateway;
+	struct request *request;
 	struct response *response;
 };
 
@@ -44,10 +44,10 @@ static void __open(struct fixture *f, uint32_t *db_id)
 {
 	int err;
 
-	f->request->type       = DQLITE_REQUEST_OPEN;
-	f->request->open.name  = "test.db";
+	f->request->type = DQLITE_REQUEST_OPEN;
+	f->request->open.name = "test.db";
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	f->request->open.vfs   = f->replication->zName;
+	f->request->open.vfs = f->replication->zName;
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -62,15 +62,15 @@ static void __open(struct fixture *f, uint32_t *db_id)
 
 /* Send a prepare request and return the statement ID */
 static void __prepare(struct fixture *f,
-                      uint32_t        db_id,
-                      const char *    sql,
-                      uint32_t *      stmt_id)
+		      uint32_t db_id,
+		      const char *sql,
+		      uint32_t *stmt_id)
 {
 	int err;
 
-	f->request->type          = DQLITE_REQUEST_PREPARE;
+	f->request->type = DQLITE_REQUEST_PREPARE;
 	f->request->prepare.db_id = db_id;
-	f->request->prepare.sql   = sql;
+	f->request->prepare.sql = sql;
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -88,11 +88,11 @@ static void __exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id)
 {
 	int err;
 
-	f->request->type         = DQLITE_REQUEST_EXEC;
-	f->request->exec.db_id   = db_id;
+	f->request->type = DQLITE_REQUEST_EXEC;
+	f->request->exec.db_id = db_id;
 	f->request->exec.stmt_id = stmt_id;
 
-	f->request->message.words   = 1;
+	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
 	err = gateway__handle(f->gateway, f->request);
@@ -112,16 +112,16 @@ static void __exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id)
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
-	struct fixture *           f;
+	struct fixture *f = munit_malloc(sizeof *f);
 	struct gateway__cbs callbacks;
-	dqlite_logger *            logger = test_logger();
-	int                        rc;
+	int rc;
 
-	test_case_setup(params, user_data);
+	test_heap_setup(params, user_data);
+	test_sqlite_setup(params);
 
-	f = munit_malloc(sizeof *f);
+	f->logger = test_logger();
 
-	callbacks.ctx    = f;
+	callbacks.ctx = f;
 	callbacks.xFlush = fixture_flush_cb;
 
 	f->replication = test_replication();
@@ -129,7 +129,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	rc = sqlite3_wal_replication_register(f->replication, 0);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	f->vfs = dqlite_vfs_create(f->replication->zName, logger);
+	f->vfs = dqlite_vfs_create(f->replication->zName, f->logger);
 	munit_assert_ptr_not_null(f->vfs);
 
 	sqlite3_vfs_register(f->vfs, 0);
@@ -138,12 +138,13 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	dqlite__options_defaults(f->options);
 
-	f->options->vfs             = "test";
+	f->options->vfs = "test";
 	f->options->wal_replication = "test";
 
+	f->cluster = test_cluster();
 	f->gateway = munit_malloc(sizeof *f->gateway);
-	gateway__init(
-	    f->gateway, &callbacks, test_cluster(), test_logger(), f->options);
+	gateway__init(f->gateway, &callbacks, f->cluster, f->logger,
+		      f->options);
 
 #ifdef DQLITE_EXPERIMENTAL
 	rc = gateway__start(f->gateway, 0);
@@ -167,8 +168,14 @@ static void tear_down(void *data)
 	gateway__close(f->gateway);
 	dqlite_vfs_destroy(f->vfs);
 	sqlite3_wal_replication_unregister(f->replication);
+	test_cluster_close(f->cluster);
 
-	test_case_tear_down(data);
+	test_sqlite_tear_down();
+	test_heap_tear_down(data);
+
+	free(f->request);
+	free(f->logger);
+	free(f);
 }
 
 /******************************************************************************
@@ -177,11 +184,15 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
+TEST_SUITE(handle);
+TEST_SETUP(handle, setup);
+TEST_TEAR_DOWN(handle, tear_down);
+
 /* Handle a leader request. */
-static MunitResult test_leader(const MunitParameter params[], void *data)
+TEST_CASE(handle, leader, NULL)
 {
 	struct fixture *f = data;
-	int             err;
+	int err;
 
 	(void)params;
 
@@ -203,14 +214,14 @@ static MunitResult test_leader(const MunitParameter params[], void *data)
 }
 
 /* Handle a client request. */
-static MunitResult test_client(const MunitParameter params[], void *data)
+TEST_CASE(handle, client, NULL)
 {
 	struct fixture *f = data;
-	int             err;
+	int err;
 
 	(void)params;
 
-	f->request->type      = DQLITE_REQUEST_CLIENT;
+	f->request->type = DQLITE_REQUEST_CLIENT;
 	f->request->client.id = 123;
 
 	err = gateway__handle(f->gateway, f->request);
@@ -225,14 +236,14 @@ static MunitResult test_client(const MunitParameter params[], void *data)
 }
 
 /* Handle a heartbeat request. */
-static MunitResult test_heartbeat(const MunitParameter params[], void *data)
+TEST_CASE(handle, heartbeat, NULL)
 {
 	struct fixture *f = data;
-	int             err;
+	int err;
 
 	(void)params;
 
-	f->request->type                = DQLITE_REQUEST_HEARTBEAT;
+	f->request->type = DQLITE_REQUEST_HEARTBEAT;
 	f->request->heartbeat.timestamp = 12345;
 
 	err = gateway__handle(f->gateway, f->request);
@@ -242,9 +253,9 @@ static MunitResult test_heartbeat(const MunitParameter params[], void *data)
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_SERVERS);
 
 	munit_assert_string_equal(f->response->servers.servers[0].address,
-	                          "1.2.3.4:666");
+				  "1.2.3.4:666");
 	munit_assert_string_equal(f->response->servers.servers[1].address,
-	                          "5.6.7.8:666");
+				  "5.6.7.8:666");
 	munit_assert_ptr_equal(f->response->servers.servers[2].address, NULL);
 
 	/* Notify the gateway that the response has been flushed. This is just
@@ -256,15 +267,14 @@ static MunitResult test_heartbeat(const MunitParameter params[], void *data)
 
 /* If the xServers method of the cluster implementation returns an error, it's
  * propagated to the client. */
-static MunitResult test_heartbeat_error(const MunitParameter params[],
-                                        void *               data)
+TEST_CASE(handle, heartbeat_error, NULL)
 {
 	struct fixture *f = data;
-	int             err;
+	int err;
 
 	(void)params;
 
-	f->request->type                = DQLITE_REQUEST_HEARTBEAT;
+	f->request->type = DQLITE_REQUEST_HEARTBEAT;
 	f->request->heartbeat.timestamp = 12345;
 
 	test_cluster_servers_rc(SQLITE_IOERR_NOT_LEADER);
@@ -275,27 +285,27 @@ static MunitResult test_heartbeat_error(const MunitParameter params[],
 	munit_assert_ptr_not_null(f->response);
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
 
-	munit_assert_int(
-	    f->response->failure.code, ==, SQLITE_IOERR_NOT_LEADER);
+	munit_assert_int(f->response->failure.code, ==,
+			 SQLITE_IOERR_NOT_LEADER);
 	munit_assert_string_equal(f->response->failure.message,
-	                          "failed to get cluster servers");
+				  "failed to get cluster servers");
 
 	return MUNIT_OK;
 }
 
 /* If an error occurs while opening a database, it's included in the
  * response. */
-static MunitResult test_open_error(const MunitParameter params[], void *data)
+TEST_CASE(handle, open_error, NULL)
 {
 	struct fixture *f = data;
-	int             err;
+	int err;
 
 	(void)params;
 
-	f->request->type       = DQLITE_REQUEST_OPEN;
-	f->request->open.name  = "test.db";
+	f->request->type = DQLITE_REQUEST_OPEN;
+	f->request->open.name = "test.db";
 	f->request->open.flags = SQLITE_OPEN_CREATE;
-	f->request->open.vfs   = f->replication->zName;
+	f->request->open.vfs = f->replication->zName;
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -305,34 +315,34 @@ static MunitResult test_open_error(const MunitParameter params[], void *data)
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
 	munit_assert_int(f->response->failure.code, ==, SQLITE_MISUSE);
 	munit_assert_string_equal(f->response->failure.message,
-	                          "bad parameter or other API misuse");
+				  "bad parameter or other API misuse");
 
 	return MUNIT_OK;
 }
 
-static char *test_open_oom_delay[]  = {"0", NULL};
+static char *test_open_oom_delay[] = {"0", NULL};
 static char *test_open_oom_repeat[] = {"1", NULL};
 
 static MunitParameterEnum test_open_oom_params[] = {
-    {TEST_MEM_FAULT_DELAY_PARAM, test_open_oom_delay},
-    {TEST_MEM_FAULT_REPEAT_PARAM, test_open_oom_repeat},
+    {TEST_HEAP_FAULT_DELAY, test_open_oom_delay},
+    {TEST_HEAP_FAULT_REPEAT, test_open_oom_repeat},
     {NULL, NULL},
 };
 
 /* Out of memory failure modes for the open request. */
-static MunitResult test_open_oom(const MunitParameter params[], void *data)
+TEST_CASE(handle, open_oom, test_open_oom_params)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	(void)params;
 
-	test_mem_fault_enable();
+	test_heap_fault_enable();
 
-	f->request->type       = DQLITE_REQUEST_OPEN;
-	f->request->open.name  = "test.db";
+	f->request->type = DQLITE_REQUEST_OPEN;
+	f->request->open.name = "test.db";
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	f->request->open.vfs   = f->replication->zName;
+	f->request->open.vfs = f->replication->zName;
 
 	rc = gateway__handle(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
@@ -346,17 +356,17 @@ static MunitResult test_open_oom(const MunitParameter params[], void *data)
 }
 
 /* Handle an oper request. */
-static MunitResult test_open(const MunitParameter params[], void *data)
+TEST_CASE(handle, open, NULL)
 {
 	struct fixture *f = data;
-	int             err;
+	int err;
 
 	(void)params;
 
-	f->request->type       = DQLITE_REQUEST_OPEN;
-	f->request->open.name  = "test.db";
+	f->request->type = DQLITE_REQUEST_OPEN;
+	f->request->open.name = "test.db";
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	f->request->open.vfs   = f->replication->zName;
+	f->request->open.vfs = f->replication->zName;
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -370,17 +380,17 @@ static MunitResult test_open(const MunitParameter params[], void *data)
 }
 
 /* Attempting to open two databases on the same gateway results in an error. */
-static MunitResult test_open_twice(const MunitParameter params[], void *data)
+TEST_CASE(handle, open_twice, NULL)
 {
 	struct fixture *f = data;
-	int             err;
+	int err;
 
 	(void)params;
 
-	f->request->type       = DQLITE_REQUEST_OPEN;
-	f->request->open.name  = "test.db";
+	f->request->type = DQLITE_REQUEST_OPEN;
+	f->request->open.name = "test.db";
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	f->request->open.vfs   = f->replication->zName;
+	f->request->open.vfs = f->replication->zName;
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -404,17 +414,16 @@ static MunitResult test_open_twice(const MunitParameter params[], void *data)
 }
 
 /* If no registered db matches the provided ID, the request fails. */
-static MunitResult test_prepare_bad_db(const MunitParameter params[],
-                                       void *               data)
+TEST_CASE(handle, prepare_bad_db, NULL)
 {
 	struct fixture *f = data;
-	int             err;
+	int err;
 
 	(void)params;
 
-	f->request->type          = DQLITE_REQUEST_PREPARE;
+	f->request->type = DQLITE_REQUEST_PREPARE;
 	f->request->prepare.db_id = 123;
-	f->request->prepare.sql   = "SELECT 1";
+	f->request->prepare.sql = "SELECT 1";
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -424,26 +433,25 @@ static MunitResult test_prepare_bad_db(const MunitParameter params[],
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
 	munit_assert_int(f->response->failure.code, ==, SQLITE_NOTFOUND);
 	munit_assert_string_equal(f->response->failure.message,
-	                          "no db with id 123");
+				  "no db with id 123");
 
 	return MUNIT_OK;
 }
 
 /* If the provided SQL statement is invalid, the request fails. */
-static MunitResult test_prepare_bad_sql(const MunitParameter params[],
-                                        void *               data)
+TEST_CASE(handle, prepare_bad_sql, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	int             err;
+	uint32_t db_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 
-	f->request->type          = DQLITE_REQUEST_PREPARE;
+	f->request->type = DQLITE_REQUEST_PREPARE;
 	f->request->prepare.db_id = db_id;
-	f->request->prepare.sql   = "FOO bar";
+	f->request->prepare.sql = "FOO bar";
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -453,25 +461,25 @@ static MunitResult test_prepare_bad_sql(const MunitParameter params[],
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
 	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
 	munit_assert_string_equal(f->response->failure.message,
-	                          "near \"FOO\": syntax error");
+				  "near \"FOO\": syntax error");
 
 	return MUNIT_OK;
 }
 
 /* Handle a prepare request. */
-static MunitResult test_prepare(const MunitParameter params[], void *data)
+TEST_CASE(handle, prepare, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	int             err;
+	uint32_t db_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 
-	f->request->type          = DQLITE_REQUEST_PREPARE;
+	f->request->type = DQLITE_REQUEST_PREPARE;
 	f->request->prepare.db_id = db_id;
-	f->request->prepare.sql   = "SELECT 1";
+	f->request->prepare.sql = "SELECT 1";
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -485,23 +493,23 @@ static MunitResult test_prepare(const MunitParameter params[], void *data)
 }
 
 /* Handle an exec request. */
-static MunitResult test_exec(const MunitParameter params[], void *data)
+TEST_CASE(handle, exec, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 	__prepare(f, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 
-	f->request->type         = DQLITE_REQUEST_EXEC;
-	f->request->exec.db_id   = db_id;
+	f->request->type = DQLITE_REQUEST_EXEC;
+	f->request->exec.db_id = db_id;
 	f->request->exec.stmt_id = stmt_id;
 
-	f->request->message.words   = 1;
+	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
 	err = gateway__handle(f->gateway, f->request);
@@ -515,12 +523,12 @@ static MunitResult test_exec(const MunitParameter params[], void *data)
 }
 
 /* Handle an exec request with parameters. */
-static MunitResult test_exec_params(const MunitParameter params[], void *data)
+TEST_CASE(handle, exec_params, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
 
 	(void)params;
 
@@ -531,21 +539,19 @@ static MunitResult test_exec_params(const MunitParameter params[], void *data)
 
 	__prepare(f, db_id, "INSERT INTO test VALUES(?)", &stmt_id);
 
-	f->request->type         = DQLITE_REQUEST_EXEC;
-	f->request->exec.db_id   = db_id;
+	f->request->type = DQLITE_REQUEST_EXEC;
+	f->request->exec.db_id = db_id;
 	f->request->exec.stmt_id = stmt_id;
 
-	f->request->message.words   = 3;
+	f->request->message.words = 3;
 	f->request->message.offset1 = 8;
 
-	message__body_put_uint8(&f->request->message,
-	                               1); /* N of params */
+	message__body_put_uint8(&f->request->message, 1); /* N of params */
 	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
-	message__body_put_int64(&f->request->message,
-	                               1); /* param value */
+	message__body_put_int64(&f->request->message, 1); /* param value */
 
 	f->request->message.offset1 = 8; /* rewind */
 
@@ -559,19 +565,18 @@ static MunitResult test_exec_params(const MunitParameter params[], void *data)
 }
 
 /* If the given statement ID is invalid, an error is returned. */
-static MunitResult test_exec_bad_stmt_id(const MunitParameter params[],
-                                         void *               data)
+TEST_CASE(handle, exec_bad_stmt_id, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	int             err;
+	uint32_t db_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 
-	f->request->type         = DQLITE_REQUEST_EXEC;
-	f->request->exec.db_id   = db_id;
+	f->request->type = DQLITE_REQUEST_EXEC;
+	f->request->exec.db_id = db_id;
 	f->request->exec.stmt_id = 666;
 
 	err = gateway__handle(f->gateway, f->request);
@@ -582,41 +587,38 @@ static MunitResult test_exec_bad_stmt_id(const MunitParameter params[],
 	munit_assert_int(f->response->failure.code, ==, SQLITE_NOTFOUND);
 
 	munit_assert_string_equal(f->response->failure.message,
-	                          "no stmt with id 666");
+				  "no stmt with id 666");
 
 	return MUNIT_OK;
 }
 
 /* If the given bindings are invalid, an error is returned. */
-static MunitResult test_exec_bad_params(const MunitParameter params[],
-                                        void *               data)
+TEST_CASE(handle, exec_bad_params, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 	__prepare(f, db_id, "CREATE TABLE test (n INT)", &stmt_id);
 
-	f->request->type         = DQLITE_REQUEST_EXEC;
-	f->request->exec.db_id   = db_id;
+	f->request->type = DQLITE_REQUEST_EXEC;
+	f->request->exec.db_id = db_id;
 	f->request->exec.stmt_id = stmt_id;
 
 	/* Add a parameter even if the query has none. */
-	f->request->message.words   = 3;
+	f->request->message.words = 3;
 	f->request->message.offset1 = 8;
 
-	message__body_put_uint8(&f->request->message,
-	                               1); /* N of params */
+	message__body_put_uint8(&f->request->message, 1); /* N of params */
 	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
-	message__body_put_int64(&f->request->message,
-	                               1); /* param value */
+	message__body_put_int64(&f->request->message, 1); /* param value */
 
 	f->request->message.offset1 = 8; /* rewind */
 
@@ -628,18 +630,18 @@ static MunitResult test_exec_bad_params(const MunitParameter params[],
 	munit_assert_int(f->response->failure.code, ==, SQLITE_RANGE);
 
 	munit_assert_string_equal(f->response->failure.message,
-	                          "column index out of range");
+				  "column index out of range");
 
 	return MUNIT_OK;
 }
 
 /* If the execution of the statement fails, an error is returned. */
-static MunitResult test_exec_fail(const MunitParameter params[], void *data)
+TEST_CASE(handle, exec_fail, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
 
 	(void)params;
 
@@ -653,11 +655,11 @@ static MunitResult test_exec_fail(const MunitParameter params[], void *data)
 
 	__prepare(f, db_id, "INSERT INTO test VALUES(1)", &stmt_id);
 
-	f->request->type         = DQLITE_REQUEST_EXEC;
-	f->request->exec.db_id   = db_id;
+	f->request->type = DQLITE_REQUEST_EXEC;
+	f->request->exec.db_id = db_id;
 	f->request->exec.stmt_id = stmt_id;
 
-	f->request->message.words   = 1;
+	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
 	err = gateway__handle(f->gateway, f->request);
@@ -666,22 +668,22 @@ static MunitResult test_exec_fail(const MunitParameter params[], void *data)
 	munit_assert_ptr_not_null(f->response);
 
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
-	munit_assert_int(
-	    f->response->failure.code, ==, SQLITE_CONSTRAINT_UNIQUE);
+	munit_assert_int(f->response->failure.code, ==,
+			 SQLITE_CONSTRAINT_UNIQUE);
 
 	munit_assert_string_equal(f->response->failure.message,
-	                          "UNIQUE constraint failed: test.n");
+				  "UNIQUE constraint failed: test.n");
 
 	return MUNIT_OK;
 }
 
 /* Handle a query request. */
-static MunitResult test_query(const MunitParameter params[], void *data)
+TEST_CASE(handle, query, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
 
 	(void)params;
 
@@ -695,8 +697,8 @@ static MunitResult test_query(const MunitParameter params[], void *data)
 
 	__prepare(f, db_id, "SELECT n FROM foo", &stmt_id);
 
-	f->request->type          = DQLITE_REQUEST_QUERY;
-	f->request->query.db_id   = db_id;
+	f->request->type = DQLITE_REQUEST_QUERY;
+	f->request->query.db_id = db_id;
 	f->request->query.stmt_id = stmt_id;
 
 	err = gateway__handle(f->gateway, f->request);
@@ -713,13 +715,12 @@ static MunitResult test_query(const MunitParameter params[], void *data)
 }
 
 /* If the given bindings are invalid, an error is returned. */
-static MunitResult test_query_bad_params(const MunitParameter params[],
-                                         void *               data)
+TEST_CASE(handle, query_bad_params, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
 
 	(void)params;
 
@@ -730,22 +731,20 @@ static MunitResult test_query_bad_params(const MunitParameter params[],
 
 	__prepare(f, db_id, "SELECT n FROM foo", &stmt_id);
 
-	f->request->type         = DQLITE_REQUEST_QUERY;
-	f->request->exec.db_id   = db_id;
+	f->request->type = DQLITE_REQUEST_QUERY;
+	f->request->exec.db_id = db_id;
 	f->request->exec.stmt_id = stmt_id;
 
 	/* Add a parameter even if the query has none. */
-	f->request->message.words   = 3;
+	f->request->message.words = 3;
 	f->request->message.offset1 = 8;
 
-	message__body_put_uint8(&f->request->message,
-	                               1); /* N of params */
+	message__body_put_uint8(&f->request->message, 1); /* N of params */
 	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
-	message__body_put_int64(&f->request->message,
-	                               1); /* param value */
+	message__body_put_int64(&f->request->message, 1); /* param value */
 
 	f->request->message.offset1 = 8; /* rewind */
 
@@ -757,18 +756,18 @@ static MunitResult test_query_bad_params(const MunitParameter params[],
 	munit_assert_int(f->response->failure.code, ==, SQLITE_RANGE);
 
 	munit_assert_string_equal(f->response->failure.message,
-	                          "column index out of range");
+				  "column index out of range");
 
 	return MUNIT_OK;
 }
 
 /* Handle a finalize request. */
-static MunitResult test_finalize(const MunitParameter params[], void *data)
+TEST_CASE(handle, finalize, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
 
 	(void)params;
 
@@ -776,8 +775,8 @@ static MunitResult test_finalize(const MunitParameter params[], void *data)
 
 	__prepare(f, db_id, "CREATE TABLE foo (n INT)", &stmt_id);
 
-	f->request->type             = DQLITE_REQUEST_FINALIZE;
-	f->request->finalize.db_id   = db_id;
+	f->request->type = DQLITE_REQUEST_FINALIZE;
+	f->request->finalize.db_id = db_id;
 	f->request->finalize.stmt_id = stmt_id;
 
 	err = gateway__handle(f->gateway, f->request);
@@ -787,26 +786,26 @@ static MunitResult test_finalize(const MunitParameter params[], void *data)
 }
 
 /* Handle an exec sql request. */
-static MunitResult test_exec_sql(const MunitParameter params[], void *data)
+TEST_CASE(handle, exec_sql, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 
-	__prepare(
-	    f, db_id, "CREATE TABLE foo (n INT, t TEXT, f FLOAT)", &stmt_id);
+	__prepare(f, db_id, "CREATE TABLE foo (n INT, t TEXT, f FLOAT)",
+		  &stmt_id);
 	__exec(f, db_id, stmt_id);
 
-	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->type = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
-	f->request->exec_sql.sql   = "INSERT INTO foo(n,t,f) VALUES(?,?,?)";
+	f->request->exec_sql.sql = "INSERT INTO foo(n,t,f) VALUES(?,?,?)";
 
-	f->request->message.words   = 5;
+	f->request->message.words = 5;
 	f->request->message.offset1 = 8;
 
 	/* N of params and parm types */
@@ -837,19 +836,18 @@ static MunitResult test_exec_sql(const MunitParameter params[], void *data)
 }
 
 /* Handle an exec sql request with multiple statements. */
-static MunitResult test_exec_sql_multi(const MunitParameter params[],
-                                       void *               data)
+TEST_CASE(handle, exec_sql_multi, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 
-	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->type = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
 	f->request->exec_sql.sql =
 	    "CREATE TABLE foo (n INT); CREATE TABLE bar (t TEXT)";
@@ -870,20 +868,19 @@ static MunitResult test_exec_sql_multi(const MunitParameter params[],
 }
 
 /* If the given SQL text is invalid, an error is returned. */
-static MunitResult test_exec_sql_bad_sql(const MunitParameter params[],
-                                         void *               data)
+TEST_CASE(handle, exec_sql_bad_sql, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	int             err;
+	uint32_t db_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 
-	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->type = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
-	f->request->exec_sql.sql   = "FOO bar";
+	f->request->exec_sql.sql = "FOO bar";
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -893,39 +890,36 @@ static MunitResult test_exec_sql_bad_sql(const MunitParameter params[],
 	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->response->failure.message,
-	                          "near \"FOO\": syntax error");
+				  "near \"FOO\": syntax error");
 
 	return MUNIT_OK;
 }
 
 /* If the given bindings are invalid, an error is returned. */
-static MunitResult test_exec_sql_bad_params(const MunitParameter params[],
-                                            void *               data)
+TEST_CASE(handle, exec_sql_bad_params, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	int             err;
+	uint32_t db_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 
-	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->type = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
-	f->request->exec_sql.sql   = "CREATE TABLE test (n INT)";
+	f->request->exec_sql.sql = "CREATE TABLE test (n INT)";
 
 	/* Add a parameter even if the query has none. */
-	f->request->message.words   = 3;
+	f->request->message.words = 3;
 	f->request->message.offset1 = 8;
 
-	message__body_put_uint8(&f->request->message,
-	                               1); /* N of params */
+	message__body_put_uint8(&f->request->message, 1); /* N of params */
 	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
-	message__body_put_int64(&f->request->message,
-	                               1); /* param value */
+	message__body_put_int64(&f->request->message, 1); /* param value */
 
 	f->request->message.offset1 = 8; /* rewind */
 
@@ -937,19 +931,18 @@ static MunitResult test_exec_sql_bad_params(const MunitParameter params[],
 	munit_assert_int(f->response->failure.code, ==, SQLITE_RANGE);
 
 	munit_assert_string_equal(f->response->failure.message,
-	                          "column index out of range");
+				  "column index out of range");
 
 	return MUNIT_OK;
 }
 
 /* If the execution of the statement fails, an error is returned. */
-static MunitResult test_exec_sql_error(const MunitParameter params[],
-                                       void *               data)
+TEST_CASE(handle, exec_sql_error, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
 
 	(void)params;
 
@@ -961,35 +954,35 @@ static MunitResult test_exec_sql_error(const MunitParameter params[],
 	__prepare(f, db_id, "INSERT INTO foo(n) VALUES(1)", &stmt_id);
 	__exec(f, db_id, stmt_id);
 
-	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->type = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
-	f->request->exec_sql.sql   = "INSERT INTO foo(n) VALUES(1)";
+	f->request->exec_sql.sql = "INSERT INTO foo(n) VALUES(1)";
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_FAILURE);
-	munit_assert_int(
-	    f->response->failure.code, ==, SQLITE_CONSTRAINT_UNIQUE);
+	munit_assert_int(f->response->failure.code, ==,
+			 SQLITE_CONSTRAINT_UNIQUE);
 
 	munit_assert_string_equal(f->response->failure.message,
-	                          "UNIQUE constraint failed: foo.n");
+				  "UNIQUE constraint failed: foo.n");
 
 	return MUNIT_OK;
 }
 
 /* Handle a query sql request. */
-static MunitResult test_query_sql(const MunitParameter params[], void *data)
+TEST_CASE(handle, query_sql, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
-	uint64_t        column_count;
-	const char *    column_name;
-	uint64_t        header;
-	int64_t         n;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
+	uint64_t column_count;
+	const char *column_name;
+	uint64_t header;
+	int64_t n;
 
 	(void)params;
 
@@ -1001,11 +994,11 @@ static MunitResult test_query_sql(const MunitParameter params[], void *data)
 	__prepare(f, db_id, "INSERT INTO foo(n) VALUES(-12)", &stmt_id);
 	__exec(f, db_id, stmt_id);
 
-	f->request->type            = DQLITE_REQUEST_QUERY_SQL;
+	f->request->type = DQLITE_REQUEST_QUERY_SQL;
 	f->request->query_sql.db_id = db_id;
-	f->request->query_sql.sql   = "SELECT n FROM foo";
+	f->request->query_sql.sql = "SELECT n FROM foo";
 
-	f->request->message.words   = 1;
+	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
 	f->response->message.offset1 = 0;
@@ -1020,7 +1013,7 @@ static MunitResult test_query_sql(const MunitParameter params[], void *data)
 	 * column name, one with the row header and one with the row column */
 	munit_assert_int(f->response->message.offset1, ==, 32);
 
-	f->response->message.words   = 4;
+	f->response->message.words = 4;
 	f->response->message.offset1 = 0;
 
 	/* Read the column count */
@@ -1044,20 +1037,19 @@ static MunitResult test_query_sql(const MunitParameter params[], void *data)
 }
 
 /* If the given SQL text is invalid, an error is returned. */
-static MunitResult test_query_sql_bad_sql(const MunitParameter params[],
-                                          void *               data)
+TEST_CASE(handle, query_sql_bad_sql, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	int             err;
+	uint32_t db_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 
-	f->request->type            = DQLITE_REQUEST_QUERY_SQL;
+	f->request->type = DQLITE_REQUEST_QUERY_SQL;
 	f->request->query_sql.db_id = db_id;
-	f->request->query_sql.sql   = "FOO bar";
+	f->request->query_sql.sql = "FOO bar";
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -1067,39 +1059,36 @@ static MunitResult test_query_sql_bad_sql(const MunitParameter params[],
 	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->response->failure.message,
-	                          "near \"FOO\": syntax error");
+				  "near \"FOO\": syntax error");
 
 	return MUNIT_OK;
 }
 
 /* If the given bindings are invalid, an error is returned. */
-static MunitResult test_query_sql_bad_params(const MunitParameter params[],
-                                             void *               data)
+TEST_CASE(handle, query_sql_bad_params, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	int             err;
+	uint32_t db_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 
-	f->request->type            = DQLITE_REQUEST_QUERY_SQL;
+	f->request->type = DQLITE_REQUEST_QUERY_SQL;
 	f->request->query_sql.db_id = db_id;
-	f->request->query_sql.sql   = "SELECT 1";
+	f->request->query_sql.sql = "SELECT 1";
 
 	/* Add a parameter even if the query has none. */
-	f->request->message.words   = 3;
+	f->request->message.words = 3;
 	f->request->message.offset1 = 8;
 
-	message__body_put_uint8(&f->request->message,
-	                               1); /* N of params */
+	message__body_put_uint8(&f->request->message, 1); /* N of params */
 	message__body_put_uint8(&f->request->message, SQLITE_INTEGER);
 
 	f->request->message.offset1 = 16; /* skip padding bytes */
 
-	message__body_put_int64(&f->request->message,
-	                               1); /* param value */
+	message__body_put_int64(&f->request->message, 1); /* param value */
 
 	f->request->message.offset1 = 8; /* rewind */
 
@@ -1111,17 +1100,16 @@ static MunitResult test_query_sql_bad_params(const MunitParameter params[],
 	munit_assert_int(f->response->failure.code, ==, SQLITE_RANGE);
 
 	munit_assert_string_equal(f->response->failure.message,
-	                          "column index out of range");
+				  "column index out of range");
 
 	return MUNIT_OK;
 }
 
 /* If the given request type is invalid, an error is returned. */
-static MunitResult test_invalid_request_type(const MunitParameter params[],
-                                             void *               data)
+TEST_CASE(handle, invalid_request_type, NULL)
 {
 	struct fixture *f = data;
-	int             err;
+	int err;
 
 	(void)params;
 
@@ -1135,26 +1123,26 @@ static MunitResult test_invalid_request_type(const MunitParameter params[],
 	munit_assert_int(f->response->failure.code, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->response->failure.message,
-	                          "invalid request type 128");
+				  "invalid request type 128");
 
 	return MUNIT_OK;
 }
 
 /* If a second request is pushed before the first has completed , an error is
  * returned. */
-static MunitResult test_max_requests(const MunitParameter params[], void *data)
+TEST_CASE(handle, max_requests, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	int             err;
+	uint32_t db_id;
+	int err;
 
 	(void)params;
 
 	__open(f, &db_id);
 
-	f->request->type          = DQLITE_REQUEST_PREPARE;
+	f->request->type = DQLITE_REQUEST_PREPARE;
 	f->request->prepare.db_id = db_id;
-	f->request->prepare.sql   = "SELECT 1";
+	f->request->prepare.sql = "SELECT 1";
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -1163,23 +1151,23 @@ static MunitResult test_max_requests(const MunitParameter params[], void *data)
 	munit_assert_int(err, ==, DQLITE_PROTO);
 
 	munit_assert_string_equal(f->gateway->error,
-	                          "concurrent request limit exceeded");
+				  "concurrent request limit exceeded");
 
 	return MUNIT_OK;
 }
 
 /* If the number of frames in the WAL reaches the configured threshold, a
  * checkpoint is triggered. */
-static MunitResult test_checkpoint(const MunitParameter params[], void *data)
+TEST_CASE(handle, checkpoint, NULL)
 {
-	struct fixture *f    = data;
-	sqlite3_file *  file = munit_malloc(f->vfs->szOsFile);
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             err;
-	int             rc;
-	int             flags;
-	sqlite3_int64   size;
+	struct fixture *f = data;
+	sqlite3_file *file = munit_malloc(f->vfs->szOsFile);
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int err;
+	int rc;
+	int flags;
+	sqlite3_int64 size;
 
 	(void)params;
 
@@ -1189,9 +1177,9 @@ static MunitResult test_checkpoint(const MunitParameter params[], void *data)
 	__prepare(f, db_id, "BEGIN", &stmt_id);
 	__exec(f, db_id, stmt_id);
 
-	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->type = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db_id;
-	f->request->exec_sql.sql   = "CREATE TABLE test (n INT)";
+	f->request->exec_sql.sql = "CREATE TABLE test (n INT)";
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -1203,7 +1191,7 @@ static MunitResult test_checkpoint(const MunitParameter params[], void *data)
 
 	/* The WAL file got truncated. */
 	flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_WAL;
-	rc    = f->vfs->xOpen(f->vfs, "test.db-wal", file, flags, &flags);
+	rc = f->vfs->xOpen(f->vfs, "test.db-wal", file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
 	rc = file->pMethods->xFileSize(file, &size);
@@ -1211,27 +1199,28 @@ static MunitResult test_checkpoint(const MunitParameter params[], void *data)
 
 	munit_assert_int(size, ==, 0);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* If the number of frames in the WAL reaches the configured threshold, but a
  * read transaction holding a shared lock on the WAL is in progress, no
  * checkpoint is triggered. */
-static MunitResult test_checkpoint_busy(const MunitParameter params[],
-                                        void *               data)
+TEST_CASE(handle, checkpoint_busy, NULL)
 {
-	struct fixture *     f    = data;
-	sqlite3_file *       file = munit_malloc(f->vfs->szOsFile);
-	uint32_t             db1_id;
-	struct db    db2;
+	struct fixture *f = data;
+	sqlite3_file *file = munit_malloc(f->vfs->szOsFile);
+	uint32_t db1_id;
+	struct db db2;
 	struct stmt *stmt2;
-	uint64_t             last_insert_id;
-	uint64_t             rows_affected;
-	uint32_t             stmt_id;
-	int                  err;
-	int                  rc;
-	int                  flags;
-	sqlite3_int64        size;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	uint32_t stmt_id;
+	int err;
+	int rc;
+	int flags;
+	sqlite3_int64 size;
 
 	(void)params;
 
@@ -1239,7 +1228,7 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 	__prepare(f, db1_id, "BEGIN", &stmt_id);
 	__exec(f, db1_id, stmt_id);
 
-	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->type = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db1_id;
 	f->request->exec_sql.sql =
 	    "CREATE TABLE test (n INT); INSERT INTO test VALUES(1)";
@@ -1256,12 +1245,9 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 	 * transaction. */
 	db__init(&db2);
 	flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	rc    = db__open(&db2,
-                             "test.db",
-                             flags,
-                             f->gateway->options->vfs,
-                             f->gateway->options->page_size,
-                             f->gateway->options->wal_replication);
+	rc = db__open(&db2, "test.db", flags, f->gateway->options->vfs,
+		      f->gateway->options->page_size,
+		      f->gateway->options->wal_replication);
 	munit_assert_int(rc, ==, 0);
 
 	rc = db__prepare(&db2, "BEGIN", &stmt2);
@@ -1283,9 +1269,9 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 	__prepare(f, db1_id, "BEGIN", &stmt_id);
 	__exec(f, db1_id, stmt_id);
 
-	f->request->type           = DQLITE_REQUEST_EXEC_SQL;
+	f->request->type = DQLITE_REQUEST_EXEC_SQL;
 	f->request->exec_sql.db_id = db1_id;
-	f->request->exec_sql.sql   = "INSERT INTO test VALUES(1)";
+	f->request->exec_sql.sql = "INSERT INTO test VALUES(1)";
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -1297,7 +1283,7 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 
 	/* The WAL file did not get truncated. */
 	flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_WAL;
-	rc    = f->vfs->xOpen(f->vfs, "test.db-wal", file, flags, &flags);
+	rc = f->vfs->xOpen(f->vfs, "test.db-wal", file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
 	rc = file->pMethods->xFileSize(file, &size);
@@ -1307,18 +1293,20 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 
 	db__close(&db2);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
 /* Interrupt a query request that does not need its statement to be finalized */
-static MunitResult test_interrupt(const MunitParameter params[], void *data)
+TEST_CASE(handle, interrupt, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             i;
-	int             rc;
-	int             ctx;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int i;
+	int rc;
+	int ctx;
 
 	(void)params;
 
@@ -1342,11 +1330,11 @@ static MunitResult test_interrupt(const MunitParameter params[], void *data)
 
 	__prepare(f, db_id, "SELECT n FROM test", &stmt_id);
 
-	f->request->type          = DQLITE_REQUEST_QUERY;
-	f->request->query.db_id   = db_id;
+	f->request->type = DQLITE_REQUEST_QUERY;
+	f->request->query.db_id = db_id;
 	f->request->query.stmt_id = stmt_id;
 
-	f->request->message.words   = 2;
+	f->request->message.words = 2;
 	f->request->message.offset1 = 16;
 
 	f->response->message.offset1 = 0;
@@ -1359,10 +1347,10 @@ static MunitResult test_interrupt(const MunitParameter params[], void *data)
 
 	gateway__flushed(f->gateway, f->response);
 
-	f->request->type            = DQLITE_REQUEST_INTERRUPT;
+	f->request->type = DQLITE_REQUEST_INTERRUPT;
 	f->request->interrupt.db_id = db_id;
 
-	f->request->message.words   = 1;
+	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
 	f->response->message.offset1 = 0;
@@ -1384,15 +1372,14 @@ static MunitResult test_interrupt(const MunitParameter params[], void *data)
 }
 
 /* Interrupt a query request that needs its statement to be finalized. */
-static MunitResult test_interrupt_finalize(const MunitParameter params[],
-                                           void *               data)
+TEST_CASE(handle, interrupt_finalize, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	uint32_t        stmt_id;
-	int             i;
-	int             ctx;
-	int             rc;
+	uint32_t db_id;
+	uint32_t stmt_id;
+	int i;
+	int ctx;
+	int rc;
 
 	(void)params;
 
@@ -1414,11 +1401,11 @@ static MunitResult test_interrupt_finalize(const MunitParameter params[],
 	__prepare(f, db_id, "COMMIT", &stmt_id);
 	__exec(f, db_id, stmt_id);
 
-	f->request->type            = DQLITE_REQUEST_QUERY_SQL;
+	f->request->type = DQLITE_REQUEST_QUERY_SQL;
 	f->request->query_sql.db_id = db_id;
-	f->request->query_sql.sql   = "SELECT n FROM test";
+	f->request->query_sql.sql = "SELECT n FROM test";
 
-	f->request->message.words   = 1;
+	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
 	f->response->message.offset1 = 0;
@@ -1431,10 +1418,10 @@ static MunitResult test_interrupt_finalize(const MunitParameter params[],
 
 	gateway__flushed(f->gateway, f->response);
 
-	f->request->type            = DQLITE_REQUEST_INTERRUPT;
+	f->request->type = DQLITE_REQUEST_INTERRUPT;
 	f->request->interrupt.db_id = db_id;
 
-	f->request->message.words   = 1;
+	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
 	f->response->message.offset1 = 0;
@@ -1456,12 +1443,11 @@ static MunitResult test_interrupt_finalize(const MunitParameter params[],
 }
 
 /* An empty response is returned if there is no request in to interrupt. */
-static MunitResult test_interrupt_no_request(const MunitParameter params[],
-                                             void *               data)
+TEST_CASE(handle, interrupt_no_request, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	int             rc;
+	uint32_t db_id;
+	int rc;
 
 	(void)params;
 
@@ -1469,10 +1455,10 @@ static MunitResult test_interrupt_no_request(const MunitParameter params[],
 
 	__open(f, &db_id);
 
-	f->request->type            = DQLITE_REQUEST_INTERRUPT;
+	f->request->type = DQLITE_REQUEST_INTERRUPT;
 	f->request->interrupt.db_id = db_id;
 
-	f->request->message.words   = 1;
+	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
 	f->response->message.offset1 = 0;
@@ -1487,12 +1473,11 @@ static MunitResult test_interrupt_no_request(const MunitParameter params[],
 }
 
 /* An empty response is returned if the current request can't be interrupted. */
-static MunitResult test_interrupt_bad_request(const MunitParameter params[],
-                                              void *               data)
+TEST_CASE(handle, interrupt_bad_request, NULL)
 {
 	struct fixture *f = data;
-	uint32_t        db_id;
-	int             rc;
+	uint32_t db_id;
+	int rc;
 
 	(void)params;
 
@@ -1500,17 +1485,17 @@ static MunitResult test_interrupt_bad_request(const MunitParameter params[],
 
 	__open(f, &db_id);
 
-	f->request->type          = DQLITE_REQUEST_PREPARE;
+	f->request->type = DQLITE_REQUEST_PREPARE;
 	f->request->prepare.db_id = db_id;
-	f->request->prepare.sql   = "SELECT 1";
+	f->request->prepare.sql = "SELECT 1";
 
 	rc = gateway__handle(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
 
-	f->request->type            = DQLITE_REQUEST_INTERRUPT;
+	f->request->type = DQLITE_REQUEST_INTERRUPT;
 	f->request->interrupt.db_id = db_id;
 
-	f->request->message.words   = 1;
+	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
 	f->response->message.offset1 = 0;
@@ -1523,78 +1508,3 @@ static MunitResult test_interrupt_bad_request(const MunitParameter params[],
 
 	return MUNIT_OK;
 }
-
-static MunitTest gateway__handle_tests[] = {
-    {"/leader", test_leader, setup, tear_down, 0, NULL},
-    {"/client", test_client, setup, tear_down, 0, NULL},
-    {"/heartbeat", test_heartbeat, setup, tear_down, 0, NULL},
-    {"/heartbeat/error", test_heartbeat_error, setup, tear_down, 0, NULL},
-    {"/open/error", test_open_error, setup, tear_down, 0, NULL},
-    {"/open/oom", test_open_oom, setup, tear_down, 0, test_open_oom_params},
-    {"/open", test_open, setup, tear_down, 0, NULL},
-    {"/open/twice", test_open_twice, setup, tear_down, 0, NULL},
-    {"/prepare/bad-db", test_prepare_bad_db, setup, tear_down, 0, NULL},
-    {"/prepare/bad-sql", test_prepare_bad_sql, setup, tear_down, 0, NULL},
-    {"/prepare", test_prepare, setup, tear_down, 0, NULL},
-    {"/exec", test_exec, setup, tear_down, 0, NULL},
-    {"/exec/params", test_exec_params, setup, tear_down, 0, NULL},
-    {"/exec/bad-stmt-id", test_exec_bad_stmt_id, setup, tear_down, 0, NULL},
-    {"/exec/bad-params", test_exec_bad_params, setup, tear_down, 0, NULL},
-    {"/exec/fail", test_exec_fail, setup, tear_down, 0, NULL},
-    {"/query", test_query, setup, tear_down, 0, NULL},
-    {"/query/bad-params", test_query_bad_params, setup, tear_down, 0, NULL},
-    {"/finalize", test_finalize, setup, tear_down, 0, NULL},
-    {"/exec-sql", test_exec_sql, setup, tear_down, 0, NULL},
-    {"/exec-sql/multi", test_exec_sql_multi, setup, tear_down, 0, NULL},
-    {"/exec-sql/bad-sql", test_exec_sql_bad_sql, setup, tear_down, 0, NULL},
-    {"/exec-sql/bad-params",
-     test_exec_sql_bad_params,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"/exec-sql/error", test_exec_sql_error, setup, tear_down, 0, NULL},
-    {"/query-sql", test_query_sql, setup, tear_down, 0, NULL},
-    {"/query-sql/bad-sql", test_query_sql_bad_sql, setup, tear_down, 0, NULL},
-    {"/query-sql/bad-params",
-     test_query_sql_bad_params,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"/invalid-request-type",
-     test_invalid_request_type,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"/max-requests", test_max_requests, setup, tear_down, 0, NULL},
-    {"/checkpoint", test_checkpoint, setup, tear_down, 0, NULL},
-    {"/checkpoint-busy", test_checkpoint_busy, setup, tear_down, 0, NULL},
-    {"/interrupt", test_interrupt, setup, tear_down, 0, NULL},
-    {"/interrupt/finalize", test_interrupt_finalize, setup, tear_down, 0, NULL},
-    {"/interrupt/no-request",
-     test_interrupt_no_request,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"/interrupt/bad-request",
-     test_interrupt_bad_request,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
- * Suite
- *
- ******************************************************************************/
-
-MunitSuite gateway__suites[] = {
-    {"_handle", gateway__handle_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
-};

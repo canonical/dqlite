@@ -453,10 +453,10 @@ static void gateway__exec_sql(struct gateway *g, struct gateway__ctx *ctx)
 			goto err;
 		}
 
+		sql = stmt->tail;
+
 		/* Ignore errors here. TODO: can this fail? */
 		db__finalize(db, stmt);
-
-		sql = stmt->tail;
 	}
 
 	return;
