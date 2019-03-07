@@ -10,8 +10,8 @@
 #include "cluster.h"
 #include "leak.h"
 #include "log.h"
-#include "munit.h"
-#include "socket.h"
+#include "./lib/runner.h"
+#include "./lib/socket.h"
 
 /******************************************************************************
  *

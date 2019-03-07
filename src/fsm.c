@@ -1,9 +1,8 @@
-#include <assert.h>
-
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
 
+#include "assert.h"
 #include "fsm.h"
 #include "lifecycle.h"
 

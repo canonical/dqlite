@@ -1,10 +1,10 @@
-#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <sqlite3.h>
 
+#include "assert.h"
 #include "format.h"
 
 int dqlite__format_get_page_size(int type, const uint8_t *buf, unsigned *page_size) {

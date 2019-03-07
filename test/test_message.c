@@ -9,8 +9,9 @@
 #include "../src/byte.h"
 #include "../src/message.h"
 
-#include "leak.h"
-#include "munit.h"
+#include "./lib/runner.h"
+
+TEST_MODULE(runner);
 
 /******************************************************************************
  *
@@ -18,8 +19,10 @@
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	struct message *message;
+
 	(void)params;
 	(void)user_data;
 
@@ -29,13 +32,28 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	return message;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	struct message *message = data;
 
 	message__close(message);
-
-	test_assert_no_leaks();
+	free(message);
 }
+
+TEST_SUITE(recv);
+TEST_SETUP(recv, setup);
+TEST_TEAR_DOWN(recv, tear_down);
+
+TEST_GROUP(recv, header);
+TEST_GROUP(recv, body);
+
+TEST_SUITE(send);
+TEST_SETUP(send, setup);
+TEST_TEAR_DOWN(send, tear_down);
+
+TEST_GROUP(send, header);
+TEST_GROUP(send, body);
+TEST_GROUP(send, start);
 
 /******************************************************************************
  *
@@ -44,42 +62,35 @@ static void tear_down(void *data) {
  ******************************************************************************/
 
 /* The header buffer is the message itself. */
-static MunitResult test_header_recv_start_base(const MunitParameter params[],
-                                               void *               data) {
+TEST_CASE(recv, header, start_base, NULL)
+{
 	struct message *message = data;
-	uv_buf_t                buf;
+	uv_buf_t buf;
 
 	(void)params;
 
 	message__header_recv_start(message, &buf);
-
 	munit_assert_ptr_equal(buf.base, message);
 
 	return MUNIT_OK;
 }
 
 /* The header buffer lenght is 8 bytes. */
-static MunitResult test_header_recv_start_len(const MunitParameter params[],
-                                              void *               data) {
+TEST_CASE(recv, header, start_len, NULL)
+{
 	struct message *message = data;
-	uv_buf_t                buf;
+	uv_buf_t buf;
 
 	(void)params;
 
 	message__header_recv_start(message, &buf);
 	munit_assert_int(buf.len, ==, MESSAGE__HEADER_LEN);
-	munit_assert_int(buf.len,
-	                 ==,
-	                 (sizeof message->words + sizeof message->type +
-	                  sizeof message->flags + sizeof message->extra));
+	munit_assert_int(buf.len, ==,
+			 (sizeof message->words + sizeof message->type +
+			  sizeof message->flags + sizeof message->extra));
 
 	return MUNIT_OK;
 }
-
-static MunitTest header_recv_start_tests[] = {
-    {"/buf/base", test_header_recv_start_base, setup, tear_down, 0, NULL},
-    {"/buf/len", test_header_recv_start_len, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL}};
 
 /******************************************************************************
  *
@@ -88,11 +99,10 @@ static MunitTest header_recv_start_tests[] = {
  ******************************************************************************/
 
 /* If the number of words of the message body is zero, an error is returned. */
-static MunitResult test_header_recv_done_empty_body(
-    const MunitParameter params[],
-    void *               data) {
+TEST_CASE(recv, header, done_empty_body, NULL)
+{
 	struct message *message = data;
-	int                     err;
+	int err;
 	err = message__header_recv_done(message);
 
 	(void)params;
@@ -105,12 +115,11 @@ static MunitResult test_header_recv_done_empty_body(
 
 /* If the number of words of the message body exceeds the hard-coded limit, an
  * error is returned. */
-static MunitResult test_header_recv_done_body_too_big(
-    const MunitParameter params[],
-    void *               data) {
+TEST_CASE(recv, header, done_body_too_big, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uv_buf_t                buf;
+	int err;
+	uv_buf_t buf;
 
 	(void)params;
 
@@ -130,22 +139,6 @@ static MunitResult test_header_recv_done_body_too_big(
 	return MUNIT_OK;
 }
 
-static MunitTest header_recv_done_tests[] = {
-    {"/body/empty",
-     test_header_recv_done_empty_body,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"/body/too-large",
-     test_header_recv_done_body_too_big,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
 /******************************************************************************
  *
  * message__body_recv_start
@@ -153,11 +146,11 @@ static MunitTest header_recv_done_tests[] = {
  ******************************************************************************/
 
 /* The message body is 1 word long, the static buffer gets used. */
-static MunitResult test_body_recv_start_1(const MunitParameter params[],
-                                          void *               data) {
+TEST_CASE(recv, body, start_1, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uv_buf_t                buf;
+	int err;
+	uv_buf_t buf;
 
 	(void)params;
 
@@ -173,11 +166,11 @@ static MunitResult test_body_recv_start_1(const MunitParameter params[],
 }
 
 /* The message body is 513 words long, and the dynamic buffer gets allocated. */
-static MunitResult test_body_recv_start_513(const MunitParameter params[],
-                                            void *               data) {
+TEST_CASE(recv, body, start_513, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uv_buf_t                buf;
+	int err;
+	uv_buf_t buf;
 
 	(void)params;
 
@@ -193,11 +186,6 @@ static MunitResult test_body_recv_start_513(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitTest body_recv_start_tests[] = {
-    {"/1-word", test_body_recv_start_1, setup, tear_down, 0, NULL},
-    {"/513-words", test_body_recv_start_513, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL}};
-
 /******************************************************************************
  *
  * message__body_get
@@ -206,14 +194,14 @@ static MunitTest body_recv_start_tests[] = {
 
 /* Attempting to read a string when the read cursor is not at word boundary
  * results in an error. */
-static MunitResult test_body_get_text_misaligned(const MunitParameter params[],
-                                                 void *               data) {
+TEST_CASE(recv, body, get_text_misaligned, NULL)
+{
 	struct message *message = data;
 
-	char    buf[8] = {0, 0, 'h', 'i', 0, 0, 0, 0};
+	char buf[8] = {0, 0, 'h', 'i', 0, 0, 0, 0};
 	uint8_t n;
-	text_t  text;
-	int     err;
+	text_t text;
+	int err;
 
 	(void)params;
 
@@ -233,11 +221,11 @@ static MunitResult test_body_get_text_misaligned(const MunitParameter params[],
 
 /* If no terminating null byte is found within the message body, an error is
  * returned. */
-static MunitResult test_body_get_text_not_found(const MunitParameter params[],
-                                                void *               data) {
+TEST_CASE(recv, body, get_text_not_found, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	text_t                  text;
+	int err;
+	text_t text;
 	char buf[8] = {255, 255, 255, 255, 255, 255, 255, 255};
 
 	(void)params;
@@ -255,12 +243,12 @@ static MunitResult test_body_get_text_not_found(const MunitParameter params[],
 }
 
 /* Read one string. */
-static MunitResult test_body_get_text_one_string(const MunitParameter params[],
-                                                 void *               data) {
+TEST_CASE(recv, body, get_text_one_string, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	text_t                  text;
-	char                    buf[8] = {'h', 'e', 'l', 'l', 'o', '!', '!', 0};
+	int err;
+	text_t text;
+	char buf[8] = {'h', 'e', 'l', 'l', 'o', '!', '!', 0};
 
 	(void)params;
 
@@ -276,13 +264,13 @@ static MunitResult test_body_get_text_one_string(const MunitParameter params[],
 }
 
 /* Read two strings. */
-static MunitResult test_body_get_text_two_strings(const MunitParameter params[],
-                                                  void *               data) {
+TEST_CASE(recv, body, get_text_two_strings, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	text_t                  text;
-	char                    buf[16] = {
-            'h', 'e', 'l', 'l', 'o', 0, 0, 0, 'w', 'o', 'r', 'l', 'd', 0, 0, 0};
+	int err;
+	text_t text;
+	char buf[16] = {'h', 'e', 'l', 'l', 'o', 0, 0, 0,
+			'w', 'o', 'r', 'l', 'd', 0, 0, 0};
 
 	(void)params;
 
@@ -301,13 +289,12 @@ static MunitResult test_body_get_text_two_strings(const MunitParameter params[],
 }
 
 /* Read a string from a message that uses the dynamic message body buffer. */
-static MunitResult test_body_get_text_from_dyn_buf(
-    const MunitParameter params[],
-    void *               data) {
+TEST_CASE(recv, body, get_text_from_dyn_buf, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	text_t                  text;
-	uv_buf_t                buf;
+	int err;
+	text_t text;
+	uv_buf_t buf;
 
 	(void)params;
 
@@ -327,13 +314,12 @@ static MunitResult test_body_get_text_from_dyn_buf(
 }
 
 /* Read four uint8 values. */
-static MunitResult test_body_get_uint8_four_values(
-    const MunitParameter params[],
-    void *               data) {
+TEST_CASE(recv, body, get_uint8_four_values, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uint8_t                 buf;
-	uint8_t                 value;
+	int err;
+	uint8_t buf;
+	uint8_t value;
 
 	(void)params;
 
@@ -376,13 +362,13 @@ static MunitResult test_body_get_uint8_four_values(
 
 /* Trying to read a uint8 value past the end of the message body results in an
  * error. */
-static MunitResult test_body_get_uint8_overflow(const MunitParameter params[],
-                                                void *               data) {
+TEST_CASE(recv, body, get_uint8_overflow, NULL)
+{
 	struct message *message = data;
 
-	int     i;
+	int i;
 	uint8_t value;
-	int     err;
+	int err;
 
 	(void)params;
 
@@ -403,13 +389,12 @@ static MunitResult test_body_get_uint8_overflow(const MunitParameter params[],
 }
 
 /* Read two uint32 values. */
-static MunitResult test_body_get_uint32_two_values(
-    const MunitParameter params[],
-    void *               data) {
+TEST_CASE(recv, body, get_uint32_two_values, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uint32_t                buf;
-	uint32_t                value;
+	int err;
+	uint32_t buf;
+	uint32_t value;
 
 	(void)params;
 
@@ -436,14 +421,13 @@ static MunitResult test_body_get_uint32_two_values(
 
 /* Trying to read a uint32 when the read cursor is not 4-byte aligned results in
  * an error. */
-static MunitResult test_body_get_uint32_misaligned(
-    const MunitParameter params[],
-    void *               data) {
+TEST_CASE(recv, body, get_uint32_misaligned, NULL)
+{
 	struct message *message = data;
 
-	uint8_t  value1;
+	uint8_t value1;
 	uint32_t value2;
-	int      err;
+	int err;
 
 	(void)params;
 
@@ -462,12 +446,12 @@ static MunitResult test_body_get_uint32_misaligned(
 
 /* Trying to read a uint32 value past the end of the message body results in an
  * error. */
-static MunitResult test_body_get_uint32_overflow(const MunitParameter params[],
-                                                 void *               data) {
+TEST_CASE(recv, body, get_uint32_overflow, NULL)
+{
 	struct message *message = data;
 
 	uint32_t value;
-	int      err;
+	int err;
 
 	(void)params;
 
@@ -486,12 +470,12 @@ static MunitResult test_body_get_uint32_overflow(const MunitParameter params[],
 }
 
 /* Read one uint64 value. */
-static MunitResult test_body_get_uint64_one_value(const MunitParameter params[],
-                                                  void *               data) {
+TEST_CASE(recv, body, get_uint64_one_value, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uint64_t                buf;
-	uint64_t                value;
+	int err;
+	uint64_t buf;
+	uint64_t value;
 
 	(void)params;
 
@@ -509,13 +493,12 @@ static MunitResult test_body_get_uint64_one_value(const MunitParameter params[],
 }
 
 /* Read two uint64 values. */
-static MunitResult test_body_get_uint64_two_values(
-    const MunitParameter params[],
-    void *               data) {
+TEST_CASE(recv, body, get_uint64_two_values, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uint64_t                buf;
-	uint64_t                value;
+	int err;
+	uint64_t buf;
+	uint64_t value;
 
 	(void)params;
 
@@ -542,14 +525,13 @@ static MunitResult test_body_get_uint64_two_values(
 
 /* Trying to read a uint64 when the read cursor is not word aligned results in
  * an error. */
-static MunitResult test_body_get_uint64_misaligned(
-    const MunitParameter params[],
-    void *               data) {
+TEST_CASE(recv, body, get_uint64_misaligned, NULL)
+{
 	struct message *message = data;
 
-	uint8_t  value1;
+	uint8_t value1;
 	uint64_t value2;
-	int      err;
+	int err;
 
 	(void)params;
 
@@ -568,12 +550,12 @@ static MunitResult test_body_get_uint64_misaligned(
 
 /* Trying to read a uint64 value past the end of the message body results in an
  * error. */
-static MunitResult test_body_get_uint64_overflow(const MunitParameter params[],
-                                                 void *               data) {
+TEST_CASE(recv, body, get_uint64_overflow, NULL)
+{
 	struct message *message = data;
 
 	uint64_t value;
-	int      err;
+	int err;
 
 	(void)params;
 
@@ -589,12 +571,12 @@ static MunitResult test_body_get_uint64_overflow(const MunitParameter params[],
 }
 
 /* Read one int64 value. */
-static MunitResult test_body_get_int64_one_value(const MunitParameter params[],
-                                                 void *               data) {
+TEST_CASE(recv, body, get_int64_one_value, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uint64_t                buf;
-	int64_t                 value;
+	int err;
+	uint64_t buf;
+	int64_t value;
 
 	(void)params;
 
@@ -612,12 +594,12 @@ static MunitResult test_body_get_int64_one_value(const MunitParameter params[],
 }
 
 /* Read two int64 values. */
-static MunitResult test_body_get_int64_two_values(const MunitParameter params[],
-                                                  void *               data) {
+TEST_CASE(recv, body, get_int64_two_values, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uint64_t                buf;
-	int64_t                 value;
+	int err;
+	uint64_t buf;
+	int64_t value;
 
 	(void)params;
 
@@ -643,19 +625,19 @@ static MunitResult test_body_get_int64_two_values(const MunitParameter params[],
 }
 
 /* Read a double value. */
-static MunitResult test_body_get_double_one_value(const MunitParameter params[],
-                                                  void *               data) {
+TEST_CASE(recv, body, get_double_one_value, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uint64_t *              buf;
-	double                  pi = 3.1415926535;
-	double                  value;
+	int err;
+	uint64_t *buf;
+	double pi = 3.1415926535;
+	double value;
 
 	(void)params;
 
 	message->words = 1;
 
-	buf  = (uint64_t *)(&pi);
+	buf = (uint64_t *)(&pi);
 	*buf = byte__flip64(*buf);
 	memcpy(message->body1, buf, 8);
 
@@ -667,12 +649,12 @@ static MunitResult test_body_get_double_one_value(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_get_servers_one(const MunitParameter params[],
-                                             void *               data) {
+TEST_CASE(recv, body, get_servers_one, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	servers_t               servers;
-	uv_buf_t                buf;
+	int err;
+	servers_t servers;
+	uv_buf_t buf;
 
 	(void)params;
 
@@ -698,12 +680,12 @@ static MunitResult test_body_get_servers_one(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_get_servers_two(const MunitParameter params[],
-                                             void *               data) {
+TEST_CASE(recv, body, get_servers_two, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	servers_t               servers;
-	uv_buf_t                buf;
+	int err;
+	servers_t servers;
+	uv_buf_t buf;
 
 	(void)params;
 
@@ -735,93 +717,6 @@ static MunitResult test_body_get_servers_two(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitTest body_get_tests[] = {
-    {"_text/misaligned",
-     test_body_get_text_misaligned,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_text/not-found",
-     test_body_get_text_not_found,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_text/one-string",
-     test_body_get_text_one_string,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_text/two-strings",
-     test_body_get_text_two_strings,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_text/dyn-buf",
-     test_body_get_text_from_dyn_buf,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_uint8/four", test_body_get_uint8_four_values, setup, tear_down, 0, NULL},
-    {"_uint8/overflow",
-     test_body_get_uint8_overflow,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_uint32/two", test_body_get_uint32_two_values, setup, tear_down, 0, NULL},
-    {"_uint32/misaligned",
-     test_body_get_uint32_misaligned,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_uint32/overflow",
-     test_body_get_uint32_overflow,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_uint64/one", test_body_get_uint64_one_value, setup, tear_down, 0, NULL},
-    {"_uint64/two", test_body_get_uint64_two_values, setup, tear_down, 0, NULL},
-    {"_uint64/misaligned",
-     test_body_get_uint64_misaligned,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_uint64/overflow",
-     test_body_get_uint64_overflow,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_int64/one-value",
-     test_body_get_int64_one_value,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_int64/two-values",
-     test_body_get_int64_two_values,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_double/one-value",
-     test_body_get_double_one_value,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_servers/one", test_body_get_servers_one, setup, tear_down, 0, NULL},
-    {"_servers/two", test_body_get_servers_two, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL}};
-
 /******************************************************************************
  *
  * message__header_put
@@ -829,8 +724,8 @@ static MunitTest body_get_tests[] = {
  ******************************************************************************/
 
 /* Set the type of a message. */
-static MunitResult test_header_put_type(const MunitParameter params[],
-                                        void *               data) {
+TEST_CASE(send, header, put_type, NULL)
+{
 	struct message *message = data;
 
 	(void)params;
@@ -842,8 +737,8 @@ static MunitResult test_header_put_type(const MunitParameter params[],
 }
 
 /* Set the message flags. */
-static MunitResult test_header_put_flags(const MunitParameter params[],
-                                         void *               data) {
+TEST_CASE(send, header, put_flags, NULL)
+{
 	struct message *message = data;
 
 	(void)params;
@@ -854,11 +749,6 @@ static MunitResult test_header_put_flags(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitTest header_put_tests[] = {
-    {"/type", test_header_put_type, setup, tear_down, 0, NULL},
-    {"/flags", test_header_put_flags, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL}};
-
 /******************************************************************************
  *
  * message__body_put
@@ -867,10 +757,10 @@ static MunitTest header_put_tests[] = {
 
 /* Trying to write a string when the write cursor is not at word boundary
  * results in an error. */
-static MunitResult test_body_put_text_misaligned(const MunitParameter params[],
-                                                 void *               data) {
+TEST_CASE(send, body, put_text_misaligned, NULL)
+{
 	struct message *message = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -885,10 +775,10 @@ static MunitResult test_body_put_text_misaligned(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_text_one(const MunitParameter params[],
-                                          void *               data) {
+TEST_CASE(send, body, put_text_one, NULL)
+{
 	struct message *message = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -906,10 +796,10 @@ static MunitResult test_body_put_text_one(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_text_one_no_pad(const MunitParameter params[],
-                                                 void *               data) {
+TEST_CASE(send, body, put_text_one_no_pad, NULL)
+{
 	struct message *message = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -923,10 +813,10 @@ static MunitResult test_body_put_text_one_no_pad(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_text_two(const MunitParameter params[],
-                                          void *               data) {
+TEST_CASE(send, body, put_text_two, NULL)
+{
 	struct message *message = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -955,10 +845,10 @@ static MunitResult test_body_put_text_two(const MunitParameter params[],
 
 /* The static body is not large enough to hold the given text, so the dynamic
  * buffer is allocated in order to hold the rest of it. */
-static MunitResult test_body_put_text_body2(const MunitParameter params[],
-                                            void *               data) {
+TEST_CASE(send, body, put_text_body2, NULL)
+{
 	struct message *message = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -975,10 +865,10 @@ static MunitResult test_body_put_text_body2(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_uint8_four(const MunitParameter params[],
-                                            void *               data) {
+TEST_CASE(send, body, put_uint8_four, NULL)
+{
 	struct message *message = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -1010,10 +900,10 @@ static MunitResult test_body_put_uint8_four(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_uint32_two(const MunitParameter params[],
-                                            void *               data) {
+TEST_CASE(send, body, put_uint32_two, NULL)
+{
 	struct message *message = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -1028,16 +918,16 @@ static MunitResult test_body_put_uint32_two(const MunitParameter params[],
 	munit_assert_int(message->offset1, ==, 8);
 
 	munit_assert_int(byte__flip32(*(uint32_t *)(message->body1)), ==, 99);
-	munit_assert_int(
-	    byte__flip32(*(uint32_t *)(message->body1 + 4)), ==, 66);
+	munit_assert_int(byte__flip32(*(uint32_t *)(message->body1 + 4)), ==,
+			 66);
 
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_int64_one(const MunitParameter params[],
-                                           void *               data) {
+TEST_CASE(send, body, put_int64_one, NULL)
+{
 	struct message *message = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -1046,16 +936,16 @@ static MunitResult test_body_put_int64_one(const MunitParameter params[],
 	munit_assert_int(err, ==, 0);
 	munit_assert_int(message->offset1, ==, 8);
 
-	munit_assert_int(
-	    (int64_t)byte__flip64(*(uint64_t *)(message->body1)), ==, -12);
+	munit_assert_int((int64_t)byte__flip64(*(uint64_t *)(message->body1)),
+			 ==, -12);
 
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_uint64_one(const MunitParameter params[],
-                                            void *               data) {
+TEST_CASE(send, body, put_uint64_one, NULL)
+{
 	struct message *message = data;
-	int                     err;
+	int err;
 
 	(void)params;
 
@@ -1069,12 +959,12 @@ static MunitResult test_body_put_uint64_one(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_double_one(const MunitParameter params[],
-                                            void *               data) {
+TEST_CASE(send, body, put_double_one, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uint64_t                buf;
-	double                  value;
+	int err;
+	uint64_t buf;
+	double value;
 
 	(void)params;
 
@@ -1092,11 +982,11 @@ static MunitResult test_body_put_double_one(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_dyn_buf(const MunitParameter params[],
-                                         void *               data) {
+TEST_CASE(send, body, put_dyn_buf, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uint64_t                i;
+	int err;
+	uint64_t i;
 
 	(void)params;
 
@@ -1116,15 +1006,15 @@ static MunitResult test_body_put_dyn_buf(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_body_put_servers_one(const MunitParameter params[],
-                                             void *               data) {
-	struct message *message   = data;
-	dqlite_server_info      servers[] = {
-            {1, "1.2.3.4:666"},
-            {0, NULL},
-        };
-	int         err;
-	uint64_t    id;
+TEST_CASE(send, body, put_servers_one, NULL)
+{
+	struct message *message = data;
+	dqlite_server_info servers[] = {
+	    {1, "1.2.3.4:666"},
+	    {0, NULL},
+	};
+	int err;
+	uint64_t id;
 	const char *address;
 
 	(void)params;
@@ -1143,46 +1033,21 @@ static MunitResult test_body_put_servers_one(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitTest body_put_tests[] = {
-    {"_text/misaligned",
-     test_body_put_text_misaligned,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_text/one", test_body_put_text_one, setup, tear_down, 0, NULL},
-    {"_text/one-no-pad",
-     test_body_put_text_one_no_pad,
-     setup,
-     tear_down,
-     0,
-     NULL},
-    {"_text/two", test_body_put_text_two, setup, tear_down, 0, NULL},
-    {"_text/body2", test_body_put_text_body2, setup, tear_down, 0, NULL},
-    {"_uint8/four", test_body_put_uint8_four, setup, tear_down, 0, NULL},
-    {"_uint32/two", test_body_put_uint32_two, setup, tear_down, 0, NULL},
-    {"_int64/one", test_body_put_int64_one, setup, tear_down, 0, NULL},
-    {"_uint64/one", test_body_put_uint64_one, setup, tear_down, 0, NULL},
-    {"_double/one", test_body_put_double_one, setup, tear_down, 0, NULL},
-    {"_uint64/dyn-buf", test_body_put_dyn_buf, setup, tear_down, 0, NULL},
-    {"_servers/one", test_body_put_servers_one, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL}};
-
 /******************************************************************************
  *
  * message__send_start
  *
  ******************************************************************************/
 
-static MunitResult test_send_start_no_dyn_buf(const MunitParameter params[],
-                                              void *               data) {
+TEST_CASE(send, start, no_dyn_buf, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uv_buf_t                bufs[3];
-	struct message  message2;
-	uv_buf_t                buf;
-	uint64_t                value;
-	text_t                  text;
+	int err;
+	uv_buf_t bufs[3];
+	struct message message2;
+	uv_buf_t buf;
+	uint64_t value;
+	text_t text;
 
 	(void)params;
 
@@ -1239,16 +1104,16 @@ static MunitResult test_send_start_no_dyn_buf(const MunitParameter params[],
 	return MUNIT_OK;
 }
 
-static MunitResult test_send_start_dyn_buf(const MunitParameter params[],
-                                           void *               data) {
+TEST_CASE(send, start, dyn_buf, NULL)
+{
 	struct message *message = data;
-	int                     err;
-	uint64_t                i;
-	uv_buf_t                bufs[3];
-	struct message  message2;
-	uv_buf_t                buf;
-	uint64_t                value;
-	text_t                  text;
+	int err;
+	uint64_t i;
+	uv_buf_t bufs[3];
+	struct message message2;
+	uv_buf_t buf;
+	uint64_t value;
+	text_t text;
 
 	(void)params;
 
@@ -1312,26 +1177,3 @@ static MunitResult test_send_start_dyn_buf(const MunitParameter params[],
 
 	return MUNIT_OK;
 }
-
-static MunitTest send_start_tests[] = {
-    {"/no-dyn-buf", test_send_start_no_dyn_buf, setup, tear_down, 0, NULL},
-    {"/dyn-buf", test_send_start_dyn_buf, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
- * dqlite__message suite
- *
- ******************************************************************************/
-
-MunitSuite message__suites[] = {
-    {"_header_recv_start", header_recv_start_tests, NULL, 1, 0},
-    {"_header_recv_done", header_recv_done_tests, NULL, 1, 0},
-    {"_body_recv_start", body_recv_start_tests, NULL, 1, 0},
-    {"_body_get", body_get_tests, NULL, 1, 0},
-    {"_header_put", header_put_tests, NULL, 1, 0},
-    {"_body_put", body_put_tests, NULL, 1, 0},
-    {"_send_start", send_start_tests, NULL, 1, 0},
-    {NULL, NULL, NULL, 0, 0},
-};

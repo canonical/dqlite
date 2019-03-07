@@ -1,6 +1,5 @@
 #define _GNU_SOURCE
 
-#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +11,7 @@
 
 #include "../include/dqlite.h"
 
+#include "assert.h"
 #include "byte.h"
 #include "conn.h"
 #include "error.h"

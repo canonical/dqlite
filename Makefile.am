@@ -132,6 +132,7 @@ unit_test_SOURCES += \
   test/test_vfs.c
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test
+unit_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=60
 unit_test_LDFLAGS = -lpthread $(SQLITE_LIBS) $(UV_LIBS)
 if EXPERIMENTAL
   unit_test_LDFLAGS += $(ZLIB_LIBS) $(CO_LIBS)
