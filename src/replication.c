@@ -1,7 +1,5 @@
 #ifdef DQLITE_EXPERIMENTAL
 
-#include <stdlib.h>
-
 #include <libco.h>
 #include <sqlite3.h>
 
