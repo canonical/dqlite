@@ -1,7 +1,6 @@
 #ifndef DQLITE_REGISTRY_H
 #define DQLITE_REGISTRY_H
 
-#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -10,12 +9,16 @@
 
 #include "../include/dqlite.h"
 
-/* Define a type-safe registry able to allocate and lookup items of a given
+#include "assert.h"
+
+/**
+ * Define a type-safe registry able to allocate and lookup items of a given
  * type.
  *
  * The item TYPE is required to implement three methods: TYPE##_init,
- * TYPE##_close and TYPE##_hash. */
-#define DQLITE__REGISTRY(NAME, TYPE)                                                \
+ * TYPE##_close and TYPE##_hash.
+ */
+#define REGISTRY(NAME, TYPE)                                                \
                                                                                     \
 	struct NAME {                                                               \
 		struct TYPE **buf; /* Array of registry item slots */               \
@@ -47,8 +50,10 @@
 	/* Delete a previously added item. */                                       \
 	int NAME##_del(struct NAME *r, struct TYPE *item)
 
-/* Define the methods of a registry */
-#define DQLITE__REGISTRY_METHODS(NAME, TYPE)                                        \
+/**
+ * Define the methods of a registry
+ */
+#define REGISTRY_METHODS(NAME, TYPE)                                        \
 	void NAME##_init(struct NAME *r) {                                          \
 		assert(r != NULL);                                                  \
                                                                                     \

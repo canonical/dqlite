@@ -458,4 +458,4 @@ int dqlite__stmt_query(struct dqlite__stmt *s, struct message *message)
 	return rc;
 }
 
-DQLITE__REGISTRY_METHODS(dqlite__stmt_registry, dqlite__stmt);
+REGISTRY_METHODS(dqlite__stmt_registry, dqlite__stmt);
