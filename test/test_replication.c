@@ -3,10 +3,15 @@
 #include <libco.h>
 
 #include "../include/dqlite.h"
+
 #include "../src/replication.h"
 
-#include "case.h"
+#include "./lib/heap.h"
+#include "./lib/runner.h"
+#include "./lib/sqlite.h"
 #include "log.h"
+
+TEST_MODULE(replication);
 
 /******************************************************************************
  *
@@ -14,19 +19,21 @@
  *
  ******************************************************************************/
 
-struct fixture {
+struct fixture
+{
 	struct dqlite__replication_ctx ctx;
-	sqlite3_wal_replication        replication;
-	sqlite3_vfs *                  vfs;
-	sqlite3 *                      db1;
-	sqlite3 *                      db2;
+	dqlite_logger *logger;
+	sqlite3_wal_replication replication;
+	sqlite3_vfs *vfs;
+	sqlite3 *db1;
+	sqlite3 *db2;
 };
 
 /* Execute a statement. */
 static void __db_exec(sqlite3 *db, const char *sql)
 {
 	char *errmsg;
-	int   rc;
+	int rc;
 
 	rc = sqlite3_exec(db, sql, NULL, NULL, &errmsg);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -36,8 +43,8 @@ static void __db_exec(sqlite3 *db, const char *sql)
 static sqlite3 *__db_open(int replicated)
 {
 	sqlite3 *db;
-	int      flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	int      rc;
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int rc;
 
 	rc = sqlite3_open_v2("test.db", &db, flags, "dqlite");
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -67,35 +74,35 @@ static sqlite3 *__db_open(int replicated)
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
-	struct fixture *f;
-	dqlite_logger * logger = test_logger();
-	int             rc;
+	struct fixture *f = munit_malloc(sizeof *f);
+	int rc;
 
 	(void)params;
 	(void)user_data;
 
-	test_case_setup(params, user_data);
+	f->logger = test_logger();
 
-	f = munit_malloc(sizeof *f);
+	test_heap_setup(params, user_data);
+	test_sqlite_setup(params);
 
 	dqlite__replication_ctx_init(&f->ctx);
 
 	f->ctx.main_coroutine = co_active();
 
 	f->replication.iVersion = 1;
-	f->replication.zName    = "dqlite";
+	f->replication.zName = "dqlite";
 	f->replication.pAppData = &f->ctx;
 
-	f->replication.xBegin  = dqlite__replication_begin;
-	f->replication.xAbort  = dqlite__replication_abort;
+	f->replication.xBegin = dqlite__replication_begin;
+	f->replication.xAbort = dqlite__replication_abort;
 	f->replication.xFrames = dqlite__replication_frames;
-	f->replication.xUndo   = dqlite__replication_undo;
-	f->replication.xEnd    = dqlite__replication_end;
+	f->replication.xUndo = dqlite__replication_undo;
+	f->replication.xEnd = dqlite__replication_end;
 
 	rc = sqlite3_wal_replication_register(&f->replication, 0);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	f->vfs = dqlite_vfs_create(f->replication.zName, logger);
+	f->vfs = dqlite_vfs_create(f->replication.zName, f->logger);
 	munit_assert_ptr_not_null(f->vfs);
 
 	sqlite3_vfs_register(f->vfs, 0);
@@ -109,7 +116,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 static void tear_down(void *data)
 {
 	struct fixture *f = data;
-	int             rc;
+	int rc;
 
 	rc = sqlite3_close_v2(f->db1);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -124,7 +131,11 @@ static void tear_down(void *data)
 
 	dqlite__replication_ctx_close(&f->ctx);
 
-	test_case_tear_down(data);
+	test_sqlite_tear_down(data);
+	test_heap_tear_down(data);
+
+	free(f->logger);
+	free(f);
 }
 
 /******************************************************************************
@@ -132,6 +143,10 @@ static void tear_down(void *data)
  * Concurrency
  *
  ******************************************************************************/
+
+TEST_SUITE(concurrency);
+TEST_SETUP(concurrency, setup);
+TEST_TEAR_DOWN(concurrency, tear_down);
 
 static struct fixture *test_coroutine_arg;
 
@@ -145,13 +160,12 @@ static void test_coroutine()
 
 /* A coroutine attempting to perform a concurrent write while another has locked
  * the WAL fails with SQLITE_BUSY. */
-static MunitResult test_concurrency_write(const MunitParameter params[],
-                                          void *               data)
+TEST_CASE(concurrency, write, NULL)
 {
-	struct fixture *f         = data;
-	cothread_t *    coroutine = co_create(1024 * 1024, test_coroutine);
-	sqlite3_stmt *  stmt;
-	int             rc;
+	struct fixture *f = data;
+	cothread_t *coroutine = co_create(1024 * 1024, test_coroutine);
+	sqlite3_stmt *stmt;
+	int rc;
 
 	(void)params;
 
@@ -161,8 +175,8 @@ static MunitResult test_concurrency_write(const MunitParameter params[],
 	co_switch(coroutine);
 
 	/* Try to perform a write transaction on another connection. */
-	rc = sqlite3_prepare_v2(
-	    f->db2, "CREATE TABLE test2 (n INT)", -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(f->db2, "CREATE TABLE test2 (n INT)", -1, &stmt,
+				NULL);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	rc = sqlite3_step(stmt);
@@ -176,21 +190,5 @@ static MunitResult test_concurrency_write(const MunitParameter params[],
 
 	return MUNIT_OK;
 }
-
-static MunitTest concurrency_tests[] = {
-    {"/write", test_concurrency_write, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
- * Test suite
- *
- ******************************************************************************/
-
-MunitSuite dqlite__replication_suites[] = {
-    {"/concurrency", concurrency_tests, NULL, 1, 0},
-    {NULL, NULL, NULL, 0, 0},
-};
 
 #endif /* DQLITE_EXPERIMENTAL */
