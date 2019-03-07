@@ -1,11 +1,11 @@
 #ifdef DQLITE_EXPERIMENTAL
 
-#include <assert.h>
 #include <stdlib.h>
 
 #include <libco.h>
 #include <sqlite3.h>
 
+#include "assert.h"
 #include "lifecycle.h"
 #include "replication.h"
 

@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <semaphore.h>
 #include <stdio.h>
 
@@ -7,6 +6,7 @@
 
 #include "../include/dqlite.h"
 
+#include "assert.h"
 #include "conn.h"
 #include "error.h"
 #include "lifecycle.h"

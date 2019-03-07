@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <unistd.h>
 
 #include <uv.h>

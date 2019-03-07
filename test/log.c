@@ -1,6 +1,3 @@
-#define _GNU_SOURCE
-
-#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,31 +67,19 @@ test_log *test_log_open() {
 }
 
 FILE *test_log_stream(test_log *log) {
-	assert(log);
-	assert(log->stream);
-
 	return log->stream;
 }
 
 int test_log_is_empty(test_log *log) {
-	assert(log);
-	assert(log->buffer);
-
 	return log->size == 0;
 }
 
 char *test_log_output(test_log *log) {
-	assert(log);
-	assert(log->buffer);
-
 	return log->buffer;
 }
 
 void test_log_close(test_log *log) {
 	int err;
-
-	assert(log);
-	assert(log->stream);
 
 	err = fclose(log->stream);
 
@@ -107,9 +92,6 @@ void test_log_close(test_log *log) {
 }
 
 void test_log_destroy(test_log *log) {
-	assert(log);
-	assert(log->buffer);
-
 	free(log->buffer);
 	free(log);
 }

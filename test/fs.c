@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include <ftw.h>
 #include <stdio.h>
 #include <sys/stat.h>

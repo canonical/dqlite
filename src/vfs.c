@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <errno.h>
 #include <pthread.h>
 #include <stddef.h>
@@ -11,6 +10,7 @@
 
 #include "../include/dqlite.h"
 
+#include "assert.h"
 #include "format.h"
 #include "log.h"
 
@@ -784,7 +784,7 @@ static int vfs__read(sqlite3_file *file,
 			if (offset == 0) {
 				/* Read the header. */
 				assert(amount == FORMAT__WAL_HDR_SIZE);
-				assert(f->content->hdr);
+				assert(f->content->hdr != NULL);
 				memcpy(buf, f->content->hdr,
 				       FORMAT__WAL_HDR_SIZE);
 				return SQLITE_OK;
