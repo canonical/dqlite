@@ -34,7 +34,7 @@ struct test_client_row {
 };
 
 struct test_client_rows {
-	struct dqlite__message *message;
+	struct message *message;
 	uint64_t                column_count;
 	const char **           column_names;
 	struct test_client_row *next;

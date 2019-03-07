@@ -47,7 +47,7 @@ const char *dqlite__stmt_hash(struct dqlite__stmt *stmt)
 
 /* Bind a parameter. */
 static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
-                                   struct dqlite__message *message,
+                                   struct message *message,
                                    int                     i,
                                    int                     type,
                                    int *                   rc)
@@ -71,14 +71,14 @@ static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
 	switch (type) {
 
 	case SQLITE_INTEGER:
-		err = dqlite__message_body_get_int64(message, &integer);
+		err = message__body_get_int64(message, &integer);
 		if (err == 0 || err == DQLITE_EOM) {
 			*rc = sqlite3_bind_int64(s->stmt, i, integer);
 		}
 		break;
 
 	case SQLITE_FLOAT:
-		err = dqlite__message_body_get_double(message, &float_);
+		err = message__body_get_double(message, &float_);
 		if (err == 0 || err == DQLITE_EOM) {
 			*rc = sqlite3_bind_double(s->stmt, i, float_);
 		}
@@ -90,14 +90,14 @@ static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
 
 	case SQLITE_NULL:
 		/* TODO: allow null to be encoded with 0 bytes? */
-		err = dqlite__message_body_get_uint64(message, &null);
+		err = message__body_get_uint64(message, &null);
 		if (err == 0 || err == DQLITE_EOM) {
 			*rc = sqlite3_bind_null(s->stmt, i);
 		}
 		break;
 
 	case SQLITE_TEXT:
-		err = dqlite__message_body_get_text(message, &text);
+		err = message__body_get_text(message, &text);
 		if (err == 0 || err == DQLITE_EOM) {
 			*rc = sqlite3_bind_text(
 			    s->stmt, i, text, -1, SQLITE_TRANSIENT);
@@ -105,7 +105,7 @@ static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
 		break;
 
 	case DQLITE_ISO8601:
-		err = dqlite__message_body_get_text(message, &text);
+		err = message__body_get_text(message, &text);
 		if (err == 0 || err == DQLITE_EOM) {
 			*rc = sqlite3_bind_text(
 			    s->stmt, i, text, -1, SQLITE_TRANSIENT);
@@ -113,7 +113,7 @@ static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
 		break;
 
 	case DQLITE_BOOLEAN:
-		err = dqlite__message_body_get_uint64(message, &flag);
+		err = message__body_get_uint64(message, &flag);
 		if (err == 0 || err == DQLITE_EOM) {
 			*rc = sqlite3_bind_int64(s->stmt, i, flag == 0 ? 0 : 1);
 		}
@@ -127,13 +127,13 @@ static int dqlite__stmt_bind_param(struct dqlite__stmt *   s,
 	return err;
 }
 
-int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message)
+int dqlite__stmt_bind(struct dqlite__stmt *s, struct message *message)
 {
 	int     err;
 	uint8_t pad = 0;
 	uint8_t i;
 	uint8_t count;
-	uint8_t types[DQLITE__MESSAGE_MAX_BINDINGS];
+	uint8_t types[MESSAGE__MAX_BINDINGS];
 
 	assert(s != NULL);
 	assert(s->stmt != NULL);
@@ -144,24 +144,24 @@ int dqlite__stmt_bind(struct dqlite__stmt *s, struct dqlite__message *message)
 	/* First check if we reached the end of the message. Since bindings are
 	 * always the last part of a message, no further data means that no
 	 * bindings were supplied and there's nothing to do. */
-	if (dqlite__message_has_been_fully_consumed(message)) {
+	if (message__has_been_fully_consumed(message)) {
 		return SQLITE_OK;
 	}
 
 	/* Get the number of parameters. The maximum value is 255. */
-	err = dqlite__message_body_get_uint8(message, &count);
+	err = message__body_get_uint8(message, &count);
 	assert(err == 0);
 
 	/* Clients are expected to pad the column type bytes to reach the word
 	 * boundary (including the first byte, the param count) */
-	if ((count + 1) % DQLITE__MESSAGE_WORD_SIZE != 0) {
-		pad = DQLITE__MESSAGE_WORD_SIZE -
-		      ((count + 1) % DQLITE__MESSAGE_WORD_SIZE);
+	if ((count + 1) % MESSAGE__WORD_SIZE != 0) {
+		pad = MESSAGE__WORD_SIZE -
+		      ((count + 1) % MESSAGE__WORD_SIZE);
 	}
 
 	/* Get the type of each parameter. */
 	for (i = 0; i < count + pad; i++) {
-		err = dqlite__message_body_get_uint8(message, &types[i]);
+		err = message__body_get_uint8(message, &types[i]);
 		if (err != 0) {
 			/* The only possible way this should fail is
 			 * end-of-message
@@ -232,7 +232,7 @@ int dqlite__stmt_exec(struct dqlite__stmt *s,
 
 /* Append a single row to the message. */
 static int dqlite__stmt_row(struct dqlite__stmt *   s,
-                            struct dqlite__message *message,
+                            struct message *message,
                             int                     column_count)
 {
 	int     err;
@@ -261,9 +261,9 @@ static int dqlite__stmt_row(struct dqlite__stmt *   s,
 	/* Each column needs a 4 byte slot to store the column type. The row
 	 * header must be padded to reach word boundary. */
 	header_bits = column_count * 4;
-	if ((header_bits % DQLITE__MESSAGE_WORD_BITS) != 0) {
-		pad = (DQLITE__MESSAGE_WORD_BITS -
-		       (header_bits % DQLITE__MESSAGE_WORD_BITS)) /
+	if ((header_bits % MESSAGE__WORD_BITS) != 0) {
+		pad = (MESSAGE__WORD_BITS -
+		       (header_bits % MESSAGE__WORD_BITS)) /
 		      4;
 	} else {
 		pad = 0;
@@ -313,7 +313,7 @@ static int dqlite__stmt_row(struct dqlite__stmt *   s,
 		} else {
 			/* Fill the higher 4 bits of the slot and flush it */
 			slot |= column_type << 4;
-			err = dqlite__message_body_put_uint8(message, slot);
+			err = message__body_put_uint8(message, slot);
 			if (err != 0) {
 				assert(err == DQLITE_NOMEM);
 				dqlite__error_wrapf(
@@ -335,36 +335,36 @@ static int dqlite__stmt_row(struct dqlite__stmt *   s,
 		switch (column_types[i]) {
 		case SQLITE_INTEGER:
 			integer = sqlite3_column_int64(s->stmt, i);
-			err = dqlite__message_body_put_int64(message, integer);
+			err = message__body_put_int64(message, integer);
 			break;
 		case SQLITE_FLOAT:
 			float_ = sqlite3_column_double(s->stmt, i);
-			err = dqlite__message_body_put_double(message, float_);
+			err = message__body_put_double(message, float_);
 			break;
 		case SQLITE_BLOB:
 			assert(0); /* TODO */
 			break;
 		case SQLITE_NULL:
 			/* TODO: allow null to be encoded with 0 bytes */
-			err = dqlite__message_body_put_int64(message, 0);
+			err = message__body_put_int64(message, 0);
 			break;
 		case SQLITE_TEXT:
 			text = (text_t)sqlite3_column_text(s->stmt, i);
-			err  = dqlite__message_body_put_text(message, text);
+			err  = message__body_put_text(message, text);
 			break;
 		case DQLITE_UNIXTIME:
 			integer = sqlite3_column_int64(s->stmt, i);
-			err = dqlite__message_body_put_int64(message, integer);
+			err = message__body_put_int64(message, integer);
 			break;
 		case DQLITE_ISO8601:
 			text = (text_t)sqlite3_column_text(s->stmt, i);
 			if (text == NULL)
 				text = "";
-			err = dqlite__message_body_put_text(message, text);
+			err = message__body_put_text(message, text);
 			break;
 		case DQLITE_BOOLEAN:
 			integer = sqlite3_column_int64(s->stmt, i);
-			err     = dqlite__message_body_put_uint64(message,
+			err     = message__body_put_uint64(message,
                                                               integer != 0);
 			break;
 		default:
@@ -392,7 +392,7 @@ out:
 	return SQLITE_OK;
 }
 
-int dqlite__stmt_query(struct dqlite__stmt *s, struct dqlite__message *message)
+int dqlite__stmt_query(struct dqlite__stmt *s, struct message *message)
 {
 	int column_count;
 	int err;
@@ -411,7 +411,7 @@ int dqlite__stmt_query(struct dqlite__stmt *s, struct dqlite__message *message)
 	}
 
 	/* Insert the column count */
-	err = dqlite__message_body_put_uint64(message, (uint64_t)column_count);
+	err = message__body_put_uint64(message, (uint64_t)column_count);
 	if (err != 0) {
 		dqlite__error_wrapf(&s->error,
 		                    &message->error,
@@ -423,7 +423,7 @@ int dqlite__stmt_query(struct dqlite__stmt *s, struct dqlite__message *message)
 	for (i = 0; i < column_count; i++) {
 		const char *name = sqlite3_column_name(s->stmt, i);
 
-		err = dqlite__message_body_put_text(message, name);
+		err = message__body_put_text(message, name);
 		if (err != 0) {
 			dqlite__error_wrapf(&s->error,
 			                    &message->error,
@@ -435,7 +435,7 @@ int dqlite__stmt_query(struct dqlite__stmt *s, struct dqlite__message *message)
 
 	/* Insert the rows. */
 	do {
-		if (dqlite__message_is_large(message)) {
+		if (message__is_large(message)) {
 			/* If we are already filled the static buffer, let's
 			 * break for now, we'll send more rows in a separate
 			 * response. */

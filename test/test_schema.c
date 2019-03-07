@@ -221,8 +221,8 @@ static MunitResult test_decode_two_uint64(const MunitParameter params[],
 	munit_assert_int(handler2.bar.i, ==, 99);
 	munit_assert_int(handler2.bar.j, ==, 17);
 
-	dqlite__message_recv_reset(&handler2.message);
-	dqlite__message_send_reset(&handler->message);
+	message__recv_reset(&handler2.message);
+	message__send_reset(&handler->message);
 
 	test_handler_close(&handler2);
 

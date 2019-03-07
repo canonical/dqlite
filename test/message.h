@@ -7,20 +7,20 @@
 
 /* Helper to initialize an 'incoming' message object with the data from an
  * 'outgoing' message object */
-void test_message_send(struct dqlite__message *outgoing,
-                       struct dqlite__message *incoming);
+void test_message_send(struct message *outgoing,
+                       struct message *incoming);
 
 #define __TEST_MESSAGE_SEND_ARG(KIND, MEMBER, _) KIND##_t MEMBER,
 
 #define TEST_MESSAGE_SEND_DEFINE(NAME, SCHEMA)                                      \
 	void test_message_send_##NAME(                                              \
-	    SCHEMA(__TEST_MESSAGE_SEND_ARG) struct dqlite__message *incoming)
+	    SCHEMA(__TEST_MESSAGE_SEND_ARG) struct message *incoming)
 
 #define __TEST_MESSAGE_SEND_ASSIGN(KIND, MEMBER, NAME) object.NAME.MEMBER = MEMBER;
 
 #define TEST_MESSAGE_SEND_IMPLEMENT(NAME, CODE, OBJECT, SCHEMA)                     \
 	void test_message_send_##NAME(                                              \
-	    SCHEMA(__TEST_MESSAGE_SEND_ARG) struct dqlite__message *incoming) {     \
+	    SCHEMA(__TEST_MESSAGE_SEND_ARG) struct message *incoming) {     \
 		int err;                                                            \
                                                                                     \
 		struct OBJECT object;                                               \

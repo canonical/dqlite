@@ -20,10 +20,10 @@
 	};                                                                     \
                                                                                \
 	int NAME##_put(                                                        \
-	    struct NAME *p, struct dqlite__message *m, dqlite__error *e);      \
+	    struct NAME *p, struct message *m, dqlite__error *e);      \
                                                                                \
 	int NAME##_get(                                                        \
-	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)
+	    struct NAME *p, struct message *m, dqlite__error *e)
 
 /**
  * Implement a new schema object.
@@ -35,7 +35,7 @@
 #define DQLITE__SCHEMA_IMPLEMENT(NAME, SCHEMA)                                 \
                                                                                \
 	int NAME##_put(                                                        \
-	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)       \
+	    struct NAME *p, struct message *m, dqlite__error *e)       \
 	{                                                                      \
 		int err;                                                       \
                                                                                \
@@ -48,7 +48,7 @@
 	};                                                                     \
                                                                                \
 	int NAME##_get(                                                        \
-	    struct NAME *p, struct dqlite__message *m, dqlite__error *e)       \
+	    struct NAME *p, struct message *m, dqlite__error *e)       \
 	{                                                                      \
 		int err;                                                       \
                                                                                \
@@ -74,7 +74,7 @@
  * M:      Pointer to the underlying message.
  * E:      Pointer to the error to fill in case of failures. */
 #define __DQLITE__SCHEMA_FIELD_PUT(KIND, MEMBER, P, M, E)                      \
-	err = dqlite__message_body_put_##KIND(M, (P)->MEMBER);                 \
+	err = message__body_put_##KIND(M, (P)->MEMBER);                 \
 	if (err != 0 && err != DQLITE_EOM) {                                   \
 		dqlite__error_wrapf(                                           \
 		    E, &(M)->error, "failed to put %s", #MEMBER);              \
@@ -89,7 +89,7 @@
  * M:      Pointer to the underlying message.
  * E:      Pointer to the error to fill in case of failures. */
 #define __DQLITE__SCHEMA_FIELD_GET(KIND, MEMBER, P, M, E)                      \
-	err = dqlite__message_body_get_##KIND(M, &(P)->MEMBER);                \
+	err = message__body_get_##KIND(M, &(P)->MEMBER);                \
 	if (err != 0 && err != DQLITE_EOM) {                                   \
 		dqlite__error_wrapf(                                           \
 		    E, &(M)->error, "failed to get '%s' field", #MEMBER);      \
@@ -112,7 +112,7 @@
  * */
 #define DQLITE__SCHEMA_HANDLER_DEFINE(NAME, TYPES)                             \
 	struct NAME {                                                          \
-		struct dqlite__message message;                                \
+		struct message message;                                \
 		uint64_t               timestamp;                              \
 		uint8_t                type;                                   \
 		uint8_t                flags;                                  \
@@ -159,7 +159,7 @@
 		h->type  = 0;                                                  \
 		h->flags = 0;                                                  \
                                                                                \
-		dqlite__message_init(&h->message);                             \
+		message__init(&h->message);                             \
 		dqlite__error_init(&h->error);                                 \
                                                                                \
 		dqlite__lifecycle_init(DQLITE__LIFECYCLE_ENCODER);             \
@@ -170,7 +170,7 @@
 		assert(h != NULL);                                             \
                                                                                \
 		dqlite__error_close(&h->error);                                \
-		dqlite__message_close(&h->message);                            \
+		message__close(&h->message);                            \
                                                                                \
 		dqlite__lifecycle_close(DQLITE__LIFECYCLE_ENCODER);            \
 	}                                                                      \
@@ -181,7 +181,7 @@
                                                                                \
 		assert(h != NULL);                                             \
                                                                                \
-		dqlite__message_header_put(&h->message, h->type, h->flags);    \
+		message__header_put(&h->message, h->type, h->flags);    \
                                                                                \
 		switch (h->type) {                                             \
 			TYPES(__DQLITE__SCHEMA_HANDLER_FIELD_PUT, );           \
