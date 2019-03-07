@@ -1,32 +1,36 @@
-#include <assert.h>
 #include <stdlib.h>
 
 #include "../src/registry.h"
 
-#include "leak.h"
-#include "munit.h"
+#include "./lib/runner.h"
 
-struct test_item {
+TEST_MODULE(registry);
+
+struct test_item
+{
 	size_t id;
-	int *  ptr;
+	int *ptr;
 };
 
-static void test_item_init(struct test_item *i) {
-	assert(i != NULL);
+static void test_item_init(struct test_item *i)
+{
+	munit_assert(i != NULL);
 
-	i->ptr  = (int *)sqlite3_malloc(sizeof(*(i->ptr)));
+	i->ptr = (int *)sqlite3_malloc(sizeof(*(i->ptr)));
 	*i->ptr = 123;
 }
 
-static void test_item_close(struct test_item *i) {
-	assert(i != NULL);
-	assert(i->ptr != NULL);
+static void test_item_close(struct test_item *i)
+{
+	munit_assert(i != NULL);
+	munit_assert(i->ptr != NULL);
 
 	sqlite3_free(i->ptr);
 }
 
-static const char *test_item_hash(struct test_item *i) {
-	assert(i != NULL);
+static const char *test_item_hash(struct test_item *i)
+{
+	munit_assert(i != NULL);
 
 	return "x";
 }
@@ -34,7 +38,8 @@ static const char *test_item_hash(struct test_item *i) {
 REGISTRY(test_registry, test_item);
 REGISTRY_METHODS(test_registry, test_item);
 
-static void *setup(const MunitParameter params[], void *user_data) {
+static void *setup(const MunitParameter params[], void *user_data)
+{
 	struct test_registry *registry;
 
 	(void)params;
@@ -47,21 +52,34 @@ static void *setup(const MunitParameter params[], void *user_data) {
 	return registry;
 }
 
-static void tear_down(void *data) {
+static void tear_down(void *data)
+{
 	struct test_registry *registry = data;
 
 	test_registry_close(registry);
-
-	test_assert_no_leaks();
+	free(registry);
 }
 
+TEST_SUITE(add);
+TEST_SETUP(add, setup);
+TEST_TEAR_DOWN(add, tear_down);
+
+static char *test_add_n[] = {"1", "2", "3", "5",  "6",
+			     "7", "8", "9", "10", NULL};
+
+static MunitParameterEnum test_add_params[] = {
+    {"n", test_add_n},
+    {NULL, NULL},
+};
+
 /* Add N items. */
-static MunitResult test_add(const MunitParameter params[], void *data) {
+TEST_CASE(add, basic, test_add_params)
+{
 	struct test_registry *registry = data;
-	int                   err;
-	struct test_item *    item;
-	int                   n;
-	int                   i;
+	int err;
+	struct test_item *item;
+	int n;
+	int i;
 
 	n = atoi(munit_parameters_get(params, "n"));
 	munit_assert_int(n, >, 0);
@@ -80,13 +98,15 @@ static MunitResult test_add(const MunitParameter params[], void *data) {
 
 /* Add three items, delete the second, and then add another one. The original ID
  * of the deleted item gets reused. */
-static MunitResult test_add_del_add(const MunitParameter params[], void *data) {
+TEST_CASE(add, del_add, NULL)
+{
 	struct test_registry *registry = data;
-	int                   err;
-	struct test_item *    item1;
-	struct test_item *    item2;
-	struct test_item *    item3;
-	struct test_item *    item4;
+	int err;
+	struct test_item *item1;
+	struct test_item *item2;
+	struct test_item *item3;
+	struct test_item *item4;
+	int item2_id;
 
 	(void)params;
 
@@ -95,6 +115,7 @@ static MunitResult test_add_del_add(const MunitParameter params[], void *data) {
 
 	err = test_registry_add(registry, &item2);
 	munit_assert_int(err, ==, 0);
+	item2_id = item2->id;
 
 	err = test_registry_add(registry, &item3);
 	munit_assert_int(err, ==, 0);
@@ -105,18 +126,19 @@ static MunitResult test_add_del_add(const MunitParameter params[], void *data) {
 	err = test_registry_add(registry, &item4);
 	munit_assert_int(err, ==, 0);
 
-	munit_assert_int(item4->id, ==, item2->id);
+	munit_assert_int(item4->id, ==, item2_id);
 
 	return MUNIT_OK;
 }
 
 /* Add N items and then delete them all. */
-static MunitResult test_add_and_del_n(const MunitParameter params[], void *data) {
+TEST_CASE(add, and_del, test_add_params)
+{
 	struct test_registry *registry = data;
-	int                   err;
-	struct test_item **   items;
-	int                   n;
-	int                   i;
+	int err;
+	struct test_item **items;
+	int n;
+	int i;
 
 	n = atoi(munit_parameters_get(params, "n"));
 	munit_assert_int(n, >, 0);
@@ -133,14 +155,21 @@ static MunitResult test_add_and_del_n(const MunitParameter params[], void *data)
 		munit_assert_int(err, ==, 0);
 	}
 
+	free(items);
+
 	return MUNIT_OK;
 }
 
+TEST_SUITE(get);
+TEST_SETUP(get, setup);
+TEST_TEAR_DOWN(get, tear_down);
+
 /* Retrieve a previously added item. */
-static MunitResult test_get(const MunitParameter params[], void *data) {
+TEST_CASE(get, basic, NULL)
+{
 	struct test_registry *registry = data;
-	int                   err;
-	struct test_item *    item;
+	int err;
+	struct test_item *item;
 
 	(void)params;
 
@@ -154,11 +183,12 @@ static MunitResult test_get(const MunitParameter params[], void *data) {
 
 /* An item gets added and then deleted. Trying to fetch the item using its
  * former ID results in a NULL pointer. */
-static MunitResult test_get_deleted(const MunitParameter params[], void *data) {
+TEST_CASE(get, deleted, NULL)
+{
 	struct test_registry *registry = data;
-	int                   err;
-	struct test_item *    item;
-	size_t                id;
+	int err;
+	struct test_item *item;
+	size_t id;
 
 	(void)params;
 
@@ -176,9 +206,10 @@ static MunitResult test_get_deleted(const MunitParameter params[], void *data) {
 }
 
 /* Retrieve an item with an ID bigger than the current registry's length. */
-static MunitResult test_get_out_of_bound(const MunitParameter params[], void *data) {
+TEST_CASE(get, out_of_bound, NULL)
+{
 	struct test_registry *registry = data;
-	struct test_item *    item     = test_registry_get(registry, 123);
+	struct test_item *item = test_registry_get(registry, 123);
 
 	(void)params;
 
@@ -187,12 +218,17 @@ static MunitResult test_get_out_of_bound(const MunitParameter params[], void *da
 	return MUNIT_OK;
 }
 
+TEST_SUITE(idx);
+TEST_SETUP(idx, setup);
+TEST_TEAR_DOWN(idx, tear_down);
+
 /* Find the index of a matching item. */
-static MunitResult test_idx_found(const MunitParameter params[], void *data) {
+TEST_CASE(idx, found, NULL)
+{
 	struct test_registry *registry = data;
-	struct test_item *    item;
-	size_t                i;
-	int                   err;
+	struct test_item *item;
+	size_t i;
+	int err;
 
 	(void)params;
 
@@ -208,12 +244,13 @@ static MunitResult test_idx_found(const MunitParameter params[], void *data) {
 }
 
 /* No matching item. */
-static MunitResult test_idx_not_found(const MunitParameter params[], void *data) {
+TEST_CASE(idx, not_found, NULL)
+{
 	struct test_registry *registry = data;
-	struct test_item *    item1;
-	struct test_item *    item2;
-	size_t                i;
-	int                   err;
+	struct test_item *item1;
+	struct test_item *item2;
+	size_t i;
+	int err;
 
 	(void)params;
 
@@ -232,11 +269,16 @@ static MunitResult test_idx_not_found(const MunitParameter params[], void *data)
 	return MUNIT_OK;
 }
 
+TEST_SUITE(del);
+TEST_SETUP(del, setup);
+TEST_TEAR_DOWN(del, tear_down);
+
 /* Delete an item from the registry. */
-static MunitResult test_del(const MunitParameter params[], void *data) {
+TEST_CASE(del, basic, NULL)
+{
 	struct test_registry *registry = data;
-	int                   err;
-	struct test_item *    item;
+	int err;
+	struct test_item *item;
 
 	(void)params;
 
@@ -250,37 +292,43 @@ static MunitResult test_del(const MunitParameter params[], void *data) {
 }
 
 /* Deleting an item twice results in an error. */
-static MunitResult test_del_twice(const MunitParameter params[], void *data) {
+TEST_CASE(del, twice, NULL)
+{
 	struct test_registry *registry = data;
-	int                   err;
-	struct test_item *    item;
+	int err;
+	struct test_item *item;
+	struct test_item item_clone;
 
 	(void)params;
 
 	err = test_registry_add(registry, &item);
 	munit_assert_int(err, ==, 0);
+	item_clone.id = item->id;
 
 	err = test_registry_del(registry, item);
 	munit_assert_int(err, ==, 0);
 
-	err = test_registry_del(registry, item);
+	err = test_registry_del(registry, &item_clone);
 	munit_assert_int(err, ==, DQLITE_NOTFOUND);
 
 	return MUNIT_OK;
 }
 
-/* Deleting an item twice results in an error, also if the item being the
- * deleted again had an ID lower than the highest one. */
-static MunitResult test_del_twice_middle(const MunitParameter params[], void *data) {
+/* Deleting an item twice results in an error, also if the item being deleted
+ * again has an ID lower than the highest one. */
+TEST_CASE(del, twice_middle, NULL)
+{
 	struct test_registry *registry = data;
-	int                   err;
-	struct test_item *    item1;
-	struct test_item *    item2;
+	int err;
+	struct test_item *item1;
+	struct test_item *item2;
+	struct test_item item1_clone;
 
 	(void)params;
 
 	err = test_registry_add(registry, &item1);
 	munit_assert_int(err, ==, 0);
+	item1_clone.id = item1->id;
 
 	err = test_registry_add(registry, &item2);
 	munit_assert_int(err, ==, 0);
@@ -288,17 +336,18 @@ static MunitResult test_del_twice_middle(const MunitParameter params[], void *da
 	err = test_registry_del(registry, item1);
 	munit_assert_int(err, ==, 0);
 
-	err = test_registry_del(registry, item1);
+	err = test_registry_del(registry, &item1_clone);
 	munit_assert_int(err, ==, DQLITE_NOTFOUND);
 
 	return MUNIT_OK;
 }
 
 /* Deleting an item with an unknown ID results in an error. */
-static MunitResult test_del_out_of_bound(const MunitParameter params[], void *data) {
+TEST_CASE(del, out_of_bounds, NULL)
+{
 	struct test_registry *registry = data;
-	struct test_item      item;
-	int                   err;
+	struct test_item item;
+	int err;
 
 	(void)params;
 
@@ -312,12 +361,13 @@ static MunitResult test_del_out_of_bound(const MunitParameter params[], void *da
 }
 
 /* Add several items and then delete them. */
-static MunitResult test_del_many(const MunitParameter params[], void *data) {
+TEST_CASE(del, many, NULL)
+{
 	struct test_registry *registry = data;
-	int                   err;
-	struct test_item *    item1;
-	struct test_item *    item2;
-	struct test_item *    item3;
+	int err;
+	struct test_item *item1;
+	struct test_item *item2;
+	struct test_item *item3;
 
 	(void)params;
 
@@ -353,37 +403,3 @@ static MunitResult test_del_many(const MunitParameter params[], void *data) {
 
 	return MUNIT_OK;
 }
-
-static char *test_add_n[] = {"1", "2", "3", "5", "6", "7", "8", "9", "10", NULL};
-
-static MunitParameterEnum test_add_params[] = {
-    {"n", test_add_n},
-    {NULL, NULL},
-};
-
-MunitTest dqlite__registry_tests[] = {
-    {"_add", test_add, setup, tear_down, 0, test_add_params},
-    {"_add/then-del-and-add-again", test_add_del_add, setup, tear_down, 0, NULL},
-    {"_add/add-and-del-many",
-     test_add_and_del_n,
-     setup,
-     tear_down,
-     0,
-     test_add_params},
-    {"_get", test_get, setup, tear_down, 0, NULL},
-    {"_get/deleted", test_get_deleted, setup, tear_down, 0, NULL},
-    {"_get/out-of-bound", test_get_out_of_bound, setup, tear_down, 0, NULL},
-    {"_idx/found", test_idx_found, setup, tear_down, 0, NULL},
-    {"_idx/not-found", test_idx_not_found, setup, tear_down, 0, NULL},
-    {"_del", test_del, setup, tear_down, 0, NULL},
-    {"_del/twice", test_del_twice, setup, tear_down, 0, NULL},
-    {"_del/twice-middle", test_del_twice_middle, setup, tear_down, 0, NULL},
-    {"_del/out-of-bound", test_del_out_of_bound, setup, tear_down, 0, NULL},
-    {"_del/many", test_del_many, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-MunitSuite dqlite__registry_suites[] = {
-    {"", dqlite__registry_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {NULL, NULL, NULL, 0, MUNIT_SUITE_OPTION_NONE},
-};
