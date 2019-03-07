@@ -1,8 +1,6 @@
-#include <assert.h>
-#include <stddef.h>
-
 #include <sqlite3.h>
 
+#include "assert.h"
 #include "error.h"
 #include "lifecycle.h"
 #include "registry.h"

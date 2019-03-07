@@ -1223,7 +1223,7 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 	struct fixture *     f    = data;
 	sqlite3_file *       file = munit_malloc(f->vfs->szOsFile);
 	uint32_t             db1_id;
-	struct dqlite__db    db2;
+	struct db    db2;
 	struct stmt *stmt2;
 	uint64_t             last_insert_id;
 	uint64_t             rows_affected;
@@ -1254,9 +1254,9 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 
 	/* Manually open a new connection to the same database and start a read
 	 * transaction. */
-	dqlite__db_init(&db2);
+	db__init(&db2);
 	flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	rc    = dqlite__db_open(&db2,
+	rc    = db__open(&db2,
                              "test.db",
                              flags,
                              f->gateway->options->vfs,
@@ -1264,13 +1264,13 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
                              f->gateway->options->wal_replication);
 	munit_assert_int(rc, ==, 0);
 
-	rc = dqlite__db_prepare(&db2, "BEGIN", &stmt2);
+	rc = db__prepare(&db2, "BEGIN", &stmt2);
 	munit_assert_int(rc, ==, 0);
 
 	rc = stmt__exec(stmt2, &last_insert_id, &rows_affected);
 	munit_assert_int(rc, ==, 0);
 
-	rc = dqlite__db_prepare(&db2, "SELECT * FROM test", &stmt2);
+	rc = db__prepare(&db2, "SELECT * FROM test", &stmt2);
 	munit_assert_int(rc, ==, 0);
 
 	rc = stmt__exec(stmt2, &last_insert_id, &rows_affected);
@@ -1305,7 +1305,7 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 
 	munit_assert_int(format__wal_calc_pages(4096, size), ==, 3);
 
-	dqlite__db_close(&db2);
+	db__close(&db2);
 
 	return MUNIT_OK;
 }

@@ -42,7 +42,7 @@
 struct dqlite__gateway_ctx {
 	struct dqlite__request *request;
 	struct dqlite__response response;
-	struct dqlite__db *     db;      /* For multi-response queries */
+	struct db *     db;      /* For multi-response queries */
 	struct stmt *   stmt;    /* For multi-response queries */
 	int                     cleanup; /* Code indicating how to cleanup */
 };
@@ -83,7 +83,7 @@ struct dqlite__gateway {
 
 	struct dqlite__request *next;
 
-	struct dqlite__db *db; /* Open database */
+	struct db *db; /* Open database */
 
 #ifdef DQLITE_EXPERIMENTAL
 

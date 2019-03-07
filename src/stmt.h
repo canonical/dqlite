@@ -67,14 +67,14 @@ void stmt__init(struct stmt *s);
 /* Close a statement state object, releasing all associated resources. */
 void stmt__close(struct stmt *s);
 
+/* No-op hash function (hashing is not supported for stmt). This is
+ * required by the registry interface. */
+const char *stmt__hash(struct stmt *stmt);
+
 /* TODO: change registry naming pattern */
 #define stmt_init stmt__init
 #define stmt_close stmt__close
 #define stmt_hash stmt__hash
-
-/* No-op hash function (hashing is not supported for stmt). This is
- * required by the registry interface. */
-const char *stmt__hash(struct stmt *stmt);
 
 /* Bind the parameters of the underlying statement by decoding the given
  * message. */

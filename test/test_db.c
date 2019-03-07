@@ -16,12 +16,12 @@
  ******************************************************************************/
 
 /* Open a test database. */
-static void __db_open(struct dqlite__db *db)
+static void __db_open(struct db *db)
 {
 	int rc;
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 
-	rc = dqlite__db_open(db, "test.db", flags, "test", 4096, "test");
+	rc = db__open(db, "test.db", flags, "test", 4096, "test");
 	munit_assert_int(rc, ==, SQLITE_OK);
 }
 
@@ -36,7 +36,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	dqlite_logger *          logger = test_logger();
 	sqlite3_vfs *            vfs;
 	sqlite3_wal_replication *replication;
-	struct dqlite__db *      db;
+	struct db *      db;
 	int                      err;
 	int                      rc;
 
@@ -60,19 +60,19 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	db = munit_malloc(sizeof *db);
 
-	dqlite__db_init(db);
+	db__init(db);
 
 	return db;
 }
 
 static void tear_down(void *data)
 {
-	struct dqlite__db *      db = data;
+	struct db *      db = data;
 	sqlite3_wal_replication *replication =
 	    sqlite3_wal_replication_find("test");
 	sqlite3_vfs *vfs = sqlite3_vfs_find(replication->zName);
 
-	dqlite__db_close(db);
+	db__close(db);
 
 	sqlite3_vfs_unregister(vfs);
 	sqlite3_wal_replication_unregister(replication);
@@ -84,7 +84,7 @@ static void tear_down(void *data)
 
 /******************************************************************************
  *
- * dqlite__db_open
+ * db__open
  *
  ******************************************************************************/
 
@@ -92,13 +92,13 @@ static void tear_down(void *data)
  * SQLITE_OPEN_CREATE flag is not on. */
 static MunitResult test_open_cantopen(const MunitParameter params[], void *data)
 {
-	struct dqlite__db *db    = data;
+	struct db *db    = data;
 	int                flags = SQLITE_OPEN_READWRITE;
 	int                rc;
 
 	(void)params;
 
-	rc = dqlite__db_open(db, "test.db", flags, "test", 4096, "test");
+	rc = db__open(db, "test.db", flags, "test", 4096, "test");
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 
 	munit_assert_string_equal(db->error, "unable to open database file");
@@ -110,13 +110,13 @@ static MunitResult test_open_cantopen(const MunitParameter params[], void *data)
  * name. */
 static MunitResult test_open_bad_vfs(const MunitParameter params[], void *data)
 {
-	struct dqlite__db *db    = data;
+	struct db *db    = data;
 	int                flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int                rc;
 
 	(void)params;
 
-	rc = dqlite__db_open(db, "test.db", flags, "foo", 4096, "test");
+	rc = db__open(db, "test.db", flags, "foo", 4096, "test");
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(db->error, "no such vfs: foo");
@@ -127,13 +127,13 @@ static MunitResult test_open_bad_vfs(const MunitParameter params[], void *data)
 /* Open a new database */
 static MunitResult test_open(const MunitParameter params[], void *data)
 {
-	struct dqlite__db *db    = data;
+	struct db *db    = data;
 	int                flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int                rc;
 
 	(void)params;
 
-	rc = dqlite__db_open(db, "test.db", flags, "test", 4096, "test");
+	rc = db__open(db, "test.db", flags, "test", 4096, "test");
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	return MUNIT_OK;
@@ -148,7 +148,7 @@ static MunitTest dqlite__open_tests[] = {
 
 /******************************************************************************
  *
- * dqlite__db_prepare
+ * db__prepare
  *
  ******************************************************************************/
 
@@ -156,7 +156,7 @@ static MunitTest dqlite__open_tests[] = {
 static MunitResult test_prepare_bad_sql(const MunitParameter params[],
                                         void *               data)
 {
-	struct dqlite__db *  db = data;
+	struct db *  db = data;
 	struct stmt *stmt;
 	int                  rc;
 
@@ -164,7 +164,7 @@ static MunitResult test_prepare_bad_sql(const MunitParameter params[],
 
 	__db_open(db);
 
-	rc = dqlite__db_prepare(db, "FOO bar", &stmt);
+	rc = db__prepare(db, "FOO bar", &stmt);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(db->error, "near \"FOO\": syntax error");
@@ -179,14 +179,14 @@ static MunitTest dqlite__prepare_tests[] = {
 
 /******************************************************************************
  *
- * dqlite__db_begin
+ * db__begin
  *
  ******************************************************************************/
 
 /* If the transaction fails to begin, the in_a_tx flag is not switched on. */
 static MunitResult test_begin_error(const MunitParameter params[], void *data)
 {
-	struct dqlite__db *db = data;
+	struct db *db = data;
 	char *             msg;
 	int                rc;
 
@@ -194,12 +194,12 @@ static MunitResult test_begin_error(const MunitParameter params[], void *data)
 
 	__db_open(db);
 
-	/* Start a transaction by hand to so the call to dqlite__db_begin will
+	/* Start a transaction by hand to so the call to db__begin will
 	 * fail. */
 	rc = sqlite3_exec(db->db, "BEGIN", NULL, NULL, &msg);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = dqlite__db_begin(db);
+	rc = db__begin(db);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(
@@ -212,14 +212,14 @@ static MunitResult test_begin_error(const MunitParameter params[], void *data)
  * started. */
 static MunitResult test_begin(const MunitParameter params[], void *data)
 {
-	struct dqlite__db *db = data;
+	struct db *db = data;
 	int                rc;
 
 	(void)params;
 
 	__db_open(db);
 
-	rc = dqlite__db_begin(db);
+	rc = db__begin(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	return MUNIT_OK;
@@ -233,14 +233,14 @@ static MunitTest dqlite__begin_tests[] = {
 
 /******************************************************************************
  *
- * dqlite__db_commit
+ * db__commit
  *
  ******************************************************************************/
 
 /* If the transaction fails to commit, the in_a_tx flag is still switched off */
 static MunitResult test_commit_error(const MunitParameter params[], void *data)
 {
-	struct dqlite__db *  db = data;
+	struct db *  db = data;
 	struct stmt *stmt;
 	char *               msg;
 	int                  rc;
@@ -263,27 +263,27 @@ static MunitResult test_commit_error(const MunitParameter params[], void *data)
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* Begin a transaction */
-	rc = dqlite__db_begin(db);
+	rc = db__begin(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* Insert a broken foreign key. This won't fail immediately because the
 	 * fk check is deferred. */
-	rc = dqlite__db_prepare(db, "INSERT INTO test2(n) VALUES(1)", &stmt);
+	rc = db__prepare(db, "INSERT INTO test2(n) VALUES(1)", &stmt);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	rc = stmt__exec(stmt, &last_insert_id, &rows_affected);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* Attempt to commit the transaction. */
-	rc = dqlite__db_commit(db);
+	rc = db__commit(db);
 	munit_assert_int(rc, ==, SQLITE_CONSTRAINT_FOREIGNKEY);
 
 	/* Rollback. */
-	rc = dqlite__db_rollback(db);
+	rc = db__rollback(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* A new transaction can begin. */
-	rc = dqlite__db_begin(db);
+	rc = db__begin(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	return MUNIT_OK;
@@ -292,7 +292,7 @@ static MunitResult test_commit_error(const MunitParameter params[], void *data)
 /* Successful commit. */
 static MunitResult test_commit(const MunitParameter params[], void *data)
 {
-	struct dqlite__db *      db = data;
+	struct db *      db = data;
 	struct dqlite__vfs_file *file;
 	int                      rc;
 
@@ -300,10 +300,10 @@ static MunitResult test_commit(const MunitParameter params[], void *data)
 
 	__db_open(db);
 
-	rc = dqlite__db_begin(db);
+	rc = db__begin(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = dqlite__db_commit(db);
+	rc = db__commit(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The transaction refcount has dropped to 0 */
@@ -326,7 +326,7 @@ static MunitTest dqlite__commit_tests[] = {
  *
  ******************************************************************************/
 
-MunitSuite dqlite__db_suites[] = {
+MunitSuite db__suites[] = {
     {"_open", dqlite__open_tests, NULL, 1, 0},
     {"_prepare", dqlite__prepare_tests, NULL, 1, 0},
     {"_begin", dqlite__begin_tests, NULL, 1, 0},
