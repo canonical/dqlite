@@ -157,7 +157,7 @@ static MunitResult test_prepare_bad_sql(const MunitParameter params[],
                                         void *               data)
 {
 	struct dqlite__db *  db = data;
-	struct dqlite__stmt *stmt;
+	struct stmt *stmt;
 	int                  rc;
 
 	(void)params;
@@ -241,7 +241,7 @@ static MunitTest dqlite__begin_tests[] = {
 static MunitResult test_commit_error(const MunitParameter params[], void *data)
 {
 	struct dqlite__db *  db = data;
-	struct dqlite__stmt *stmt;
+	struct stmt *stmt;
 	char *               msg;
 	int                  rc;
 	uint64_t             last_insert_id;
@@ -271,7 +271,7 @@ static MunitResult test_commit_error(const MunitParameter params[], void *data)
 	rc = dqlite__db_prepare(db, "INSERT INTO test2(n) VALUES(1)", &stmt);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = dqlite__stmt_exec(stmt, &last_insert_id, &rows_affected);
+	rc = stmt__exec(stmt, &last_insert_id, &rows_affected);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* Attempt to commit the transaction. */

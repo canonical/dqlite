@@ -1224,7 +1224,7 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 	sqlite3_file *       file = munit_malloc(f->vfs->szOsFile);
 	uint32_t             db1_id;
 	struct dqlite__db    db2;
-	struct dqlite__stmt *stmt2;
+	struct stmt *stmt2;
 	uint64_t             last_insert_id;
 	uint64_t             rows_affected;
 	uint32_t             stmt_id;
@@ -1267,13 +1267,13 @@ static MunitResult test_checkpoint_busy(const MunitParameter params[],
 	rc = dqlite__db_prepare(&db2, "BEGIN", &stmt2);
 	munit_assert_int(rc, ==, 0);
 
-	rc = dqlite__stmt_exec(stmt2, &last_insert_id, &rows_affected);
+	rc = stmt__exec(stmt2, &last_insert_id, &rows_affected);
 	munit_assert_int(rc, ==, 0);
 
 	rc = dqlite__db_prepare(&db2, "SELECT * FROM test", &stmt2);
 	munit_assert_int(rc, ==, 0);
 
-	rc = dqlite__stmt_exec(stmt2, &last_insert_id, &rows_affected);
+	rc = stmt__exec(stmt2, &last_insert_id, &rows_affected);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
 	/* Lower the checkpoint threshold. */
