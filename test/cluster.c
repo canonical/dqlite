@@ -130,6 +130,7 @@ static void test__cluster_unregister(void *arg, sqlite3 *db)
 
 	*(new_db_list + n - 1) = NULL;
 
+	free(ctx->db_list);
 	ctx->db_list = new_db_list;
 }
 

@@ -4,9 +4,10 @@
 #include "../include/dqlite.h"
 
 #include "client.h"
-#include "leak.h"
-#include "munit.h"
 #include "server.h"
+#include "./lib/runner.h"
+
+TEST_MODULE(integration);
 
 /******************************************************************************
  *
@@ -125,6 +126,7 @@ static void __worker_wait(struct worker *w)
 	}
 
 	test_client_close(w->client);
+	free(w->client);
 }
 
 /******************************************************************************
@@ -139,8 +141,8 @@ static void *setup(const MunitParameter params[], void *user_data)
 	const char *        errmsg;
 	int                 err;
 
-	(void)params;
 	(void)user_data;
+	(void)params;
 
 	err = dqlite_init(&errmsg);
 	munit_assert_int(err, ==, 0);
@@ -159,10 +161,6 @@ static void tear_down(void *data)
 
 	rc = sqlite3_shutdown();
 	munit_assert_int(rc, ==, 0);
-
-	/* TODO: the instance tracking in lifecycle.c is not thread-safe, nor is
-	 * the one in sqlite3_malloc/free (since we disable mutexes). */
-	/* test_assert_no_leaks(); */
 }
 
 /******************************************************************************
@@ -171,8 +169,11 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
-static MunitResult test_exec_and_query(const MunitParameter params[],
-                                       void *               data)
+TEST_SUITE(exec);
+TEST_SETUP(exec, setup);
+TEST_TEAR_DOWN(exec, tear_down);
+
+TEST_CASE(exec, single_query, NULL)
 {
 	struct test_server *      server = data;
 	struct test_client *      client;
@@ -233,10 +234,12 @@ static MunitResult test_exec_and_query(const MunitParameter params[],
 
 	test_client_close(client);
 
+	free(client);
+
 	return MUNIT_OK;
 }
 
-static MunitResult test_query_large(const MunitParameter params[], void *data)
+TEST_CASE(exec, large_query, NULL)
 {
 	struct test_server *      server = data;
 	struct test_client *      client;
@@ -300,10 +303,12 @@ static MunitResult test_query_large(const MunitParameter params[], void *data)
 
 	test_client_close(client);
 
+	free(client);
+
 	return MUNIT_OK;
 }
 
-static MunitResult test_multi_thread(const MunitParameter params[], void *data)
+TEST_CASE(exec, multi_thread, NULL)
 {
 	struct test_server *      server = data;
 	struct worker *           workers;
@@ -348,23 +353,8 @@ static MunitResult test_multi_thread(const MunitParameter params[], void *data)
 		__worker_wait(&(workers[i]));
 	}
 
+	free(client);
+	free(workers);
+
 	return MUNIT_OK;
 }
-
-static MunitTest dqlite__integration_tests[] = {
-    {"/exec-and-query", test_exec_and_query, setup, tear_down, 0, NULL},
-    {"/query-large", test_query_large, setup, tear_down, 0, NULL},
-    {"/multi-thread", test_multi_thread, setup, tear_down, 0, NULL},
-    {NULL, NULL, NULL, NULL, 0, NULL},
-};
-
-/******************************************************************************
- *
- * Suite
- *
- ******************************************************************************/
-
-MunitSuite dqlite__integration_suites[] = {
-    {"", dqlite__integration_tests, NULL, 1, MUNIT_SUITE_OPTION_NONE},
-    {NULL, NULL, NULL, 0, 0},
-};
