@@ -1,6 +1,7 @@
 #include <sqlite3.h>
 
-#include "assert.h"
+#include "./lib/assert.h"
+
 #include "db.h"
 #include "lifecycle.h"
 #include "stmt.h"

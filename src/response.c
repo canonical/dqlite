@@ -5,7 +5,8 @@
 
 #include "../include/dqlite.h"
 
-#include "assert.h"
+#include "./lib/assert.h"
+
 #include "error.h"
 #include "lifecycle.h"
 #include "message.h"

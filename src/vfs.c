@@ -10,7 +10,8 @@
 
 #include "../include/dqlite.h"
 
-#include "assert.h"
+#include "./lib/assert.h"
+
 #include "format.h"
 #include "log.h"
 
