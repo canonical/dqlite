@@ -4,7 +4,6 @@
 
 #include "assert.h"
 #include "fsm.h"
-#include "lifecycle.h"
 
 void dqlite__fsm_init(struct dqlite__fsm *            f,
                       struct dqlite__fsm_state *      states,
@@ -19,8 +18,6 @@ void dqlite__fsm_init(struct dqlite__fsm *            f,
 	assert(states != NULL);
 	assert(events != NULL);
 	assert(transitions != NULL);
-
-	dqlite__lifecycle_init(DQLITE__LIFECYCLE_FSM);
 
 	f->events      = events;
 	f->states      = states;
@@ -56,10 +53,7 @@ void dqlite__fsm_init(struct dqlite__fsm *            f,
 
 void dqlite__fsm_close(struct dqlite__fsm *f) {
 	assert(f != NULL);
-
 	/* No-op */
-
-	dqlite__lifecycle_close(DQLITE__LIFECYCLE_FSM);
 }
 
 int dqlite__fsm_step(struct dqlite__fsm *f, int event_id, void *arg) {

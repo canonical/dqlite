@@ -11,7 +11,6 @@
 
 static char *dqlite__lifecycle_type_names[] = {
     "dqlite__error",       /* DQLITE__LIFECYCLE_ERROR */
-    "dqlite__fsm",         /* DQLITE__LIFECYCLE_FSM */
     "dqlite__message",     /* DQLITE__LIFECYCLE_MESSAGE */
     "dqlite__encoder",     /* DQLITE__LIFECYCLE_ENCODER */
     "dqlite__decoder",     /* DQLITE__LIFECYCLE_DECODER */
@@ -28,7 +27,6 @@ static char *dqlite__lifecycle_type_names[] = {
 
 static int dqlite__lifecycle_refcount[] = {
     0, /* DQLITE__LIFECYCLE_ERROR */
-    0, /* DQLITE__LIFECYCLE_FSM */
     0, /* DQLITE__LIFECYCLE_MESSAGE */
     0, /* DQLITE__LIFECYCLE_ENCODER */
     0, /* DQLITE__LIFECYCLE_DECODER */

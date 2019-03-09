@@ -15,11 +15,8 @@
 
 #include "../include/dqlite.h"
 
-#include "../include/dqlite.h"
-
 #include "db.h"
 #include "error.h"
-#include "fsm.h"
 #include "options.h"
 #include "request.h"
 #include "response.h"

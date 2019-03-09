@@ -13,7 +13,6 @@
 #include "byte.h"
 #include "conn.h"
 #include "error.h"
-#include "fsm.h"
 #include "gateway.h"
 #include "lifecycle.h"
 #include "log.h"

@@ -7,8 +7,9 @@
 
 #include "../include/dqlite.h"
 
+#include "./lib/fsm.h"
+
 #include "error.h"
-#include "fsm.h"
 #include "gateway.h"
 #include "metrics.h"
 #include "options.h"

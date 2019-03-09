@@ -43,12 +43,12 @@ libdqlite_la_SOURCES = \
   src/error.c \
   src/file.c \
   src/format.c \
-  src/fsm.c \
   src/gateway.c \
+  src/lib/fsm.c \
   src/lifecycle.c \
-  src/options.c \
   src/message.c \
   src/metrics.c \
+  src/options.c \
   src/queue.c \
   src/replication.c \
   src/request.c \
