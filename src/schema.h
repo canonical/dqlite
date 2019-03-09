@@ -1,7 +1,8 @@
 #ifndef DQLITE_SCHEMA_H
 #define DQLITE_SCHEMA_H
 
-#include "assert.h"
+#include "./lib/assert.h"
+
 #include "error.h"
 #include "lifecycle.h"
 #include "message.h"

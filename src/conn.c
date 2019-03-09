@@ -10,8 +10,8 @@
 #include "../include/dqlite.h"
 
 #include "./lib/byte.h"
+#include "./lib/assert.h"
 
-#include "assert.h"
 #include "conn.h"
 #include "error.h"
 #include "gateway.h"

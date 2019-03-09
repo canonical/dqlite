@@ -4,7 +4,8 @@
 
 #include <sqlite3.h>
 
-#include "assert.h"
+#include "./lib/assert.h"
+
 #include "format.h"
 
 /* Guess the file type by looking the filename. */

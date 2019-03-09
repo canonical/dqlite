@@ -4,7 +4,8 @@
 
 #include <sqlite3.h>
 
-#include "assert.h"
+#include "./lib/assert.h"
+
 #include "format.h"
 
 int format__get_page_size(int type, const uint8_t *buf, unsigned *page_size) {
