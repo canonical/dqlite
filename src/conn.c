@@ -9,8 +9,9 @@
 
 #include "../include/dqlite.h"
 
+#include "./lib/byte.h"
+
 #include "assert.h"
-#include "byte.h"
 #include "conn.h"
 #include "error.h"
 #include "gateway.h"

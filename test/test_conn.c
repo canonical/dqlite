@@ -3,7 +3,8 @@
 #include <uv.h>
 
 #include "../include/dqlite.h"
-#include "../src/byte.h"
+
+#include "../src/lib/byte.h"
 #include "../src/conn.h"
 #include "../src/metrics.h"
 #include "../src/options.h"

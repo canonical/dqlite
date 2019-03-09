@@ -1,7 +1,7 @@
 #include "../src/error.h"
 #include "../src/message.h"
 #include "../src/schema.h"
-#include "../src/byte.h"
+#include "../src/lib/byte.h"
 
 #include "./lib/message.h"
 #include "./lib/runner.h"
