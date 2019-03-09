@@ -95,8 +95,8 @@ unit_test_SOURCES += \
   test/test_schema.c \
   test/test_server.c \
   test/test_stmt.c \
-  test/test_uv.c \
   test/test_vfs.c\
+  test/unit/ext/test_uv.c \
   test/unit/lib/test_registry.c \
   test/unit/main.c
 if EXPERIMENTAL
