@@ -1,190 +1,56 @@
-#include <libco.h>
-
-#include "../../../include/dqlite.h"
-
 #include "../../../src/replication/methods.h"
 
 #include "../../lib/heap.h"
+#include "../../lib/logger.h"
 #include "../../lib/runner.h"
 #include "../../lib/sqlite.h"
-#include "../../log.h"
 
 TEST_MODULE(replication_methods);
 
-/******************************************************************************
- *
- * Helpers
- *
- ******************************************************************************/
-
-struct fixture
-{
-	struct dqlite__replication_ctx ctx;
-	dqlite_logger *logger;
+#define FIXTURE                      \
+	struct dqlite_logger logger; \
 	sqlite3_wal_replication replication;
-	sqlite3_vfs *vfs;
-	sqlite3 *db1;
-	sqlite3 *db2;
-};
 
-/* Execute a statement. */
-static void __db_exec(sqlite3 *db, const char *sql)
-{
-	char *errmsg;
-	int rc;
+#define SETUP                                                \
+	int rv;                                              \
+	test_heap_setup(params, user_data);                  \
+	test_sqlite_setup(params);                           \
+	test_logger_setup(params, &f->logger);               \
+	rv = replication__init(&f->replication, &f->logger); \
+	munit_assert_int(rv, ==, 0);
 
-	rc = sqlite3_exec(db, sql, NULL, NULL, &errmsg);
-	munit_assert_int(rc, ==, SQLITE_OK);
-}
-
-/* Open a test database and configure it */
-static sqlite3 *__db_open(int replicated)
-{
-	sqlite3 *db;
-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	int rc;
-
-	rc = sqlite3_open_v2("test.db", &db, flags, "dqlite");
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	/* Enable extended result codes by default */
-	rc = sqlite3_extended_result_codes(db, 1);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	/* Confgure the database. */
-	__db_exec(db, "PRAGMA page_size=512");
-	__db_exec(db, "PRAGMA synchronous=OFF");
-	__db_exec(db, "PRAGMA journal_mode=WAL");
-
-	if (replicated) {
-		rc = sqlite3_wal_replication_leader(db, "main", "dqlite", db);
-		munit_assert_int(rc, ==, SQLITE_OK);
-	}
-
-	return db;
-}
-
-/******************************************************************************
- *
- * Setup and tear down
- *
- ******************************************************************************/
-
-static void *setup(const MunitParameter params[], void *user_data)
-{
-	struct fixture *f = munit_malloc(sizeof *f);
-	int rc;
-
-	(void)params;
-	(void)user_data;
-
-	f->logger = test_logger();
-
-	test_heap_setup(params, user_data);
-	test_sqlite_setup(params);
-
-	dqlite__replication_ctx_init(&f->ctx);
-
-	f->ctx.main_coroutine = co_active();
-
-	f->replication.iVersion = 1;
-	f->replication.zName = "dqlite";
-	f->replication.pAppData = &f->ctx;
-
-	f->replication.xBegin = dqlite__replication_begin;
-	f->replication.xAbort = dqlite__replication_abort;
-	f->replication.xFrames = dqlite__replication_frames;
-	f->replication.xUndo = dqlite__replication_undo;
-	f->replication.xEnd = dqlite__replication_end;
-
-	rc = sqlite3_wal_replication_register(&f->replication, 0);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	f->vfs = dqlite_vfs_create(f->replication.zName, f->logger);
-	munit_assert_ptr_not_null(f->vfs);
-
-	sqlite3_vfs_register(f->vfs, 0);
-
-	f->db1 = __db_open(1);
-	f->db2 = __db_open(0);
-
-	return f;
-}
-
-static void tear_down(void *data)
-{
-	struct fixture *f = data;
-	int rc;
-
-	rc = sqlite3_close_v2(f->db1);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = sqlite3_close_v2(f->db2);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	sqlite3_vfs_unregister(f->vfs);
-	sqlite3_wal_replication_unregister(&f->replication);
-
-	dqlite_vfs_destroy(f->vfs);
-
-	dqlite__replication_ctx_close(&f->ctx);
-
-	test_sqlite_tear_down(data);
+#define TEAR_DOWN                            \
+	replication__close(&f->replication); \
+	test_logger_tear_down(&f->logger);   \
+	test_sqlite_tear_down();             \
 	test_heap_tear_down(data);
 
-	free(f->logger);
+/******************************************************************************
+ *
+ * sqlite3_wal_replication->xBegin
+ *
+ ******************************************************************************/
+
+struct begin_fixture
+{
+	FIXTURE;
+};
+
+TEST_SUITE(begin);
+TEST_SETUP(begin)
+{
+	struct begin_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	return f;
+}
+TEST_TEAR_DOWN(begin)
+{
+	struct begin_fixture *f = data;
+	TEAR_DOWN;
 	free(f);
 }
 
-/******************************************************************************
- *
- * Concurrency
- *
- ******************************************************************************/
-
-TEST_SUITE(concurrency);
-TEST_SETUP(concurrency, setup);
-TEST_TEAR_DOWN(concurrency, tear_down);
-
-static struct fixture *test_coroutine_arg;
-
-static void test_coroutine()
+TEST_CASE(begin, foo, NULL)
 {
-	struct fixture *f = test_coroutine_arg;
-
-	__db_exec(f->db1, "CREATE TABLE test (n INT)");
-	co_switch(f->ctx.main_coroutine);
-}
-
-/* A coroutine attempting to perform a concurrent write while another has locked
- * the WAL fails with SQLITE_BUSY. */
-TEST_CASE(concurrency, write, NULL)
-{
-	struct fixture *f = data;
-	cothread_t *coroutine = co_create(1024 * 1024, test_coroutine);
-	sqlite3_stmt *stmt;
-	int rc;
-
-	(void)params;
-
-	/* Start the test coroutine, which will enter a write transaction
-	 * without completing it and return control here. */
-	test_coroutine_arg = f;
-	co_switch(coroutine);
-
-	/* Try to perform a write transaction on another connection. */
-	rc = sqlite3_prepare_v2(f->db2, "CREATE TABLE test2 (n INT)", -1, &stmt,
-				NULL);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = sqlite3_step(stmt);
-	munit_assert_int(rc, ==, SQLITE_BUSY);
-
-	rc = sqlite3_finalize(stmt);
-	munit_assert_int(rc, ==, SQLITE_BUSY);
-
-	co_switch(coroutine);
-	co_delete(coroutine);
-
 	return MUNIT_OK;
 }
