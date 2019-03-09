@@ -12,7 +12,6 @@
 #include "assert.h"
 #include "error.h"
 #include "format.h"
-#include "fsm.h"
 #include "gateway.h"
 #include "lifecycle.h"
 #include "log.h"

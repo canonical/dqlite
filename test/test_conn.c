@@ -179,7 +179,7 @@ TEST_SUITE(abort);
 TEST_SETUP(abort, setup);
 TEST_TEAR_DOWN(abort, tear_down);
 
-TEST_CASE(abort, immediately, NULL)
+TEST_CASE(abort, immediately, params)
 {
 	struct fixture *f = data;
 
@@ -194,7 +194,7 @@ TEST_CASE(abort, immediately, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(abort, during_handshake, NULL)
+TEST_CASE(abort, during_handshake, params)
 {
 	struct fixture *f = data;
 	uint64_t protocol = byte__flip64(DQLITE_PROTOCOL_VERSION);
@@ -214,7 +214,7 @@ TEST_CASE(abort, during_handshake, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(abort, after_handshake, NULL)
+TEST_CASE(abort, after_handshake, params)
 {
 	struct fixture *f = data;
 
@@ -233,7 +233,7 @@ TEST_CASE(abort, after_handshake, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(abort, during_header, NULL)
+TEST_CASE(abort, during_header, params)
 {
 	struct fixture *f = data;
 
@@ -259,7 +259,7 @@ TEST_CASE(abort, during_header, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(abort, after_header, NULL)
+TEST_CASE(abort, after_header, params)
 {
 	struct fixture *f = data;
 
@@ -285,7 +285,7 @@ TEST_CASE(abort, after_header, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(abort, during_body, NULL)
+TEST_CASE(abort, during_body, params)
 {
 	struct fixture *f = data;
 
@@ -312,7 +312,7 @@ TEST_CASE(abort, during_body, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(abort, after_body, NULL)
+TEST_CASE(abort, after_body, params)
 {
 	struct fixture *f = data;
 
@@ -339,7 +339,7 @@ TEST_CASE(abort, after_body, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(abort, after_heartbeat_timeout, NULL)
+TEST_CASE(abort, after_heartbeat_timeout, params)
 {
 	struct fixture *f = data;
 	uint64_t protocol = byte__flip64(DQLITE_PROTOCOL_VERSION);
@@ -398,7 +398,7 @@ TEST_CASE(read_cb, bad_protocol, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(read_cb, empty_body, NULL)
+TEST_CASE(read_cb, empty_body, params)
 {
 	struct fixture *f = data;
 
@@ -434,7 +434,7 @@ TEST_CASE(read_cb, empty_body, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(read_cb, body_too_big, NULL)
+TEST_CASE(read_cb, body_too_big, params)
 {
 	struct fixture *f = data;
 
@@ -471,7 +471,7 @@ TEST_CASE(read_cb, body_too_big, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(read_cb, bad_body, NULL)
+TEST_CASE(read_cb, bad_body, params)
 {
 	struct fixture *f = data;
 	uint8_t buf[][8] = {
@@ -510,7 +510,7 @@ TEST_CASE(read_cb, bad_body, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(read_cb, invalid_db_id, NULL)
+TEST_CASE(read_cb, invalid_db_id, params)
 {
 	struct fixture *f = data;
 	uint8_t buf[][8] = {
@@ -546,7 +546,7 @@ TEST_CASE(read_cb, invalid_db_id, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(read_cb, throttle, NULL)
+TEST_CASE(read_cb, throttle, params)
 {
 	struct fixture *f = data;
 	uint8_t buf[][8] = {
