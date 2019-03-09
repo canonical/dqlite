@@ -3,7 +3,6 @@
 #include "assert.h"
 #include "error.h"
 #include "lifecycle.h"
-#include "registry.h"
 #include "stmt.h"
 
 /* The maximum number of columns we expect (for bindings or rows) is 255, which

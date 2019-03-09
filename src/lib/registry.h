@@ -7,9 +7,9 @@
 
 #include <sqlite3.h>
 
-#include "../include/dqlite.h"
+#include "../../include/dqlite.h"
 
-#include "assert.h"
+#include "../assert.h"
 
 /**
  * Define a type-safe registry able to allocate and lookup items of a given

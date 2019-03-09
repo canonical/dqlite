@@ -1,4 +1,4 @@
-#include "./lib/runner.h"
+#include "../lib/munit.h"
 
 MunitSuite _main_suites[64];
 int _main_suites_n = 0;

@@ -60,27 +60,26 @@ include_HEADERS += include/dqlite.h
 
 # Tests
 check_PROGRAMS += \
-	unit-test
+  unit-test
 test_lib_SOURCES = \
-  test/lib/message.c \
-  test/lib/fault.c \
-  test/lib/heap.c \
-  test/lib/munit.c \
-  test/lib/socket.c \
-  test/lib/sqlite.c \
-  test/lib/uv.c
-unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
-unit_test_SOURCES += \
   test/case.c \
   test/client.c \
   test/cluster.c \
   test/fs.c \
   test/leak.c \
+  test/lib/fault.c \
+  test/lib/heap.c \
+  test/lib/message.c \
+  test/lib/munit.c \
+  test/lib/socket.c \
+  test/lib/sqlite.c \
+  test/lib/uv.c \
   test/log.c \
   test/mem.c \
   test/replication.c \
-  test/runner.c \
-  test/server.c \
+  test/server.c
+unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
+unit_test_SOURCES += \
   test/test_conn.c \
   test/test_db.c \
   test/test_error.c \
@@ -90,7 +89,6 @@ unit_test_SOURCES += \
   test/test_integration.c \
   test/test_message.c \
   test/test_queue.c \
-  test/test_registry.c \
   test/test_replication.c \
   test/test_request.c \
   test/test_response.c \
@@ -98,7 +96,9 @@ unit_test_SOURCES += \
   test/test_server.c \
   test/test_stmt.c \
   test/test_uv.c \
-  test/test_vfs.c
+  test/test_vfs.c\
+  test/unit/lib/test_registry.c \
+  test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test
 unit_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=60

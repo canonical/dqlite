@@ -3,7 +3,6 @@
 #include "assert.h"
 #include "db.h"
 #include "lifecycle.h"
-#include "registry.h"
 #include "stmt.h"
 
 /* Default name of the registered sqlite3_vfs implementation to use when opening
