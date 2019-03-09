@@ -6,7 +6,8 @@
 
 #include "../include/dqlite.h"
 
-#include "../src/byte.h"
+#include "../src/lib/byte.h"
+
 #include "../src/message.h"
 #include "../src/request.h"
 #include "../src/response.h"

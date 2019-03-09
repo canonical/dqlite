@@ -6,8 +6,9 @@
 
 #include "../include/dqlite.h"
 
+#include "./lib/byte.h"
+
 #include "assert.h"
-#include "byte.h"
 #include "lifecycle.h"
 #include "message.h"
 
