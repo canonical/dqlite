@@ -4,42 +4,21 @@
  *
  *****************************************************************************/
 
-#ifndef DQLITE_REPLICATION_H
-#define DQLITE_REPLICATION_H
+#ifndef DQLITE_REPLICATION_METHODS_H
+#define DQLITE_REPLICATION_METHODS_H
 
 #include <libco.h>
 #include <sqlite3.h>
 
-/* Application context object for sqlite3_wal_replication. */
-struct dqlite__replication_ctx {
-	cothread_t main_coroutine;
-};
+#include "../../include/dqlite.h"
 
-/* Initialize a replication context object. */
-void dqlite__replication_ctx_init(struct dqlite__replication_ctx *c);
+/**
+ * Initialize the given SQLite replication interface with dqlite's raft based
+ * implementation.
+ */
+int replication__init(struct sqlite3_wal_replication *replication,
+		      struct dqlite_logger *logger);
 
-/* Close a replication context object, releasing all associated resources. */
-void dqlite__replication_ctx_close(struct dqlite__replication_ctx *r);
+void replication__close(struct sqlite3_wal_replication *replication);
 
-/* Implementation of the xBegin hook */
-int dqlite__replication_begin(sqlite3_wal_replication *r, void *arg);
-
-/* Implementation of the xAbort hook */
-int dqlite__replication_abort(sqlite3_wal_replication *r, void *arg);
-
-/* Implementation of the xFrames hook */
-int dqlite__replication_frames(sqlite3_wal_replication *      r,
-                               void *                         arg,
-                               int                            page_size,
-                               int                            n,
-                               sqlite3_wal_replication_frame *frames,
-                               unsigned                       truncate,
-                               int                            commit);
-
-/* Implementation of the xUndo hook */
-int dqlite__replication_undo(sqlite3_wal_replication *r, void *arg);
-
-/* Implementation of the xEnd hook */
-int dqlite__replication_end(sqlite3_wal_replication *r, void *arg);
-
-#endif /* DQLITE_REPLICATION_H */
+#endif /* DQLITE_REPLICATION_METHODS_H_ */

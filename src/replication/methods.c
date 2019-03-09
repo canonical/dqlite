@@ -6,17 +6,12 @@
 #include "../assert.h"
 #include "methods.h"
 
-void dqlite__replication_ctx_init(struct dqlite__replication_ctx *c)
+struct replication
 {
-	assert(c != NULL);
+	struct dqlite_logger *logger;
 };
 
-void dqlite__replication_ctx_close(struct dqlite__replication_ctx *c)
-{
-	assert(c != NULL);
-}
-
-int dqlite__replication_begin(sqlite3_wal_replication *r, void *arg)
+int replication__begin(sqlite3_wal_replication *r, void *arg)
 {
 	(void)r;
 	(void)arg;
@@ -24,7 +19,7 @@ int dqlite__replication_begin(sqlite3_wal_replication *r, void *arg)
 	return SQLITE_OK;
 }
 
-int dqlite__replication_abort(sqlite3_wal_replication *r, void *arg)
+int replication__abort(sqlite3_wal_replication *r, void *arg)
 {
 	(void)r;
 	(void)arg;
@@ -32,34 +27,18 @@ int dqlite__replication_abort(sqlite3_wal_replication *r, void *arg)
 	return SQLITE_OK;
 }
 
-int dqlite__replication_frames(sqlite3_wal_replication *      r,
-                               void *                         arg,
-                               int                            page_size,
-                               int                            n,
-                               sqlite3_wal_replication_frame *frames,
-                               unsigned                       truncate,
-                               int                            commit)
+int replication__frames(sqlite3_wal_replication *r,
+			void *arg,
+			int page_size,
+			int n,
+			sqlite3_wal_replication_frame *frames,
+			unsigned truncate,
+			int commit)
 {
-	struct dqlite__replication_ctx *ctx;
-
-	(void)arg;
-	(void)page_size;
-	(void)n;
-	(void)frames;
-	(void)truncate;
-	(void)commit;
-
-	assert(r != NULL);
-	assert(r->pAppData != NULL);
-
-	ctx = r->pAppData;
-
-	co_switch(ctx->main_coroutine);
-
 	return SQLITE_OK;
 }
 
-int dqlite__replication_undo(sqlite3_wal_replication *r, void *arg)
+int replication__undo(sqlite3_wal_replication *r, void *arg)
 {
 	(void)r;
 	(void)arg;
@@ -67,10 +46,37 @@ int dqlite__replication_undo(sqlite3_wal_replication *r, void *arg)
 	return SQLITE_OK;
 }
 
-int dqlite__replication_end(sqlite3_wal_replication *r, void *arg)
+int replication__end(sqlite3_wal_replication *r, void *arg)
 {
 	(void)r;
 	(void)arg;
 
 	return SQLITE_OK;
+}
+
+int replication__init(struct sqlite3_wal_replication *replication,
+		      struct dqlite_logger *logger)
+{
+	struct replication *r = sqlite3_malloc(sizeof *r);
+
+	if (r == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	r->logger = logger;
+
+	replication->iVersion = 1;
+	replication->pAppData = r;
+	replication->xBegin = replication__begin;
+	replication->xAbort = replication__abort;
+	replication->xFrames = replication__frames;
+	replication->xUndo = replication__undo;
+	replication->xEnd = replication__end;
+
+	return 0;
+}
+
+void replication__close(struct sqlite3_wal_replication *replication) {
+	struct replication *r = replication->pAppData;
+	sqlite3_free(r);
 }
