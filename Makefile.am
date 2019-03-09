@@ -70,6 +70,7 @@ test_lib_SOURCES = \
   test/leak.c \
   test/lib/fault.c \
   test/lib/heap.c \
+  test/lib/logger.c \
   test/lib/message.c \
   test/lib/munit.c \
   test/lib/socket.c \
