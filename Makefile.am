@@ -12,6 +12,7 @@ pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = dqlite.pc
 
 AM_CFLAGS = -I$(top_srcdir)/include -Wall
+AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS)
 if DEBUG
   AM_CFLAGS += -g -DDQLITE_DEBUG
 else
@@ -25,10 +26,6 @@ if SANITIZE
 endif
 if EXPERIMENTAL
   AM_CFLAGS += -DDQLITE_EXPERIMENTAL
-endif
-
-AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS)
-if EXPERIMENTAL
   AM_CFLAGS += $(ZLIB_CFLAGS) $(CO_CFLAGS)
 endif
 
@@ -50,12 +47,15 @@ libdqlite_la_SOURCES = \
   src/metrics.c \
   src/options.c \
   src/queue.c \
-  src/replication.c \
   src/request.c \
   src/response.c \
   src/server.c \
   src/stmt.c \
   src/vfs.c
+if EXPERIMENTAL
+  libdqlite_la_SOURCES += \
+  src/replication/methods.c
+endif
 include_HEADERS += include/dqlite.h
 
 # Tests
@@ -89,7 +89,6 @@ unit_test_SOURCES += \
   test/test_integration.c \
   test/test_message.c \
   test/test_queue.c \
-  test/test_replication.c \
   test/test_request.c \
   test/test_response.c \
   test/test_schema.c \
@@ -99,6 +98,10 @@ unit_test_SOURCES += \
   test/test_vfs.c\
   test/unit/lib/test_registry.c \
   test/unit/main.c
+if EXPERIMENTAL
+  unit_test_SOURCES += \
+  test/unit/replication/test_methods.c
+endif
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test
 unit_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=60

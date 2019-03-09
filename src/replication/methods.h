@@ -7,8 +7,6 @@
 #ifndef DQLITE_REPLICATION_H
 #define DQLITE_REPLICATION_H
 
-#ifdef DQLITE_EXPERIMENTAL
-
 #include <libco.h>
 #include <sqlite3.h>
 
@@ -43,7 +41,5 @@ int dqlite__replication_undo(sqlite3_wal_replication *r, void *arg);
 
 /* Implementation of the xEnd hook */
 int dqlite__replication_end(sqlite3_wal_replication *r, void *arg);
-
-#endif /* DQLITE_EXPERIMENTAL */
 
 #endif /* DQLITE_REPLICATION_H */

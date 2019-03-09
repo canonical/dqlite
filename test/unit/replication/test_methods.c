@@ -1,17 +1,15 @@
-#ifdef DQLITE_EXPERIMENTAL
-
 #include <libco.h>
 
-#include "../include/dqlite.h"
+#include "../../../include/dqlite.h"
 
-#include "../src/replication.h"
+#include "../../../src/replication/methods.h"
 
-#include "./lib/heap.h"
-#include "./lib/runner.h"
-#include "./lib/sqlite.h"
-#include "log.h"
+#include "../../lib/heap.h"
+#include "../../lib/runner.h"
+#include "../../lib/sqlite.h"
+#include "../../log.h"
 
-TEST_MODULE(replication);
+TEST_MODULE(replication_methods);
 
 /******************************************************************************
  *
@@ -190,5 +188,3 @@ TEST_CASE(concurrency, write, NULL)
 
 	return MUNIT_OK;
 }
-
-#endif /* DQLITE_EXPERIMENTAL */
