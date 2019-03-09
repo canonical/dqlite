@@ -101,6 +101,7 @@ unit_test_SOURCES += \
   test/unit/main.c
 if EXPERIMENTAL
   unit_test_SOURCES += \
+  test/unit/ext/test_co.c \
   test/unit/replication/test_methods.c
 endif
 unit_test_CFLAGS = $(AM_CFLAGS)
