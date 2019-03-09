@@ -8,15 +8,13 @@
 #include "log.h"
 #include "munit.h"
 
-static void test_logger_logf(void *ctx, int level, const char *format, ...) {
-	va_list args;
+static void emit(void *ctx, int level, const char *format, va_list args) {
 	char *  msg;
 	int     err;
 
 	(void)ctx;
 	(void)level;
 
-	va_start(args, format);
 	err = vasprintf(&msg, format, args);
 	va_end(args);
 
@@ -32,8 +30,8 @@ static void test_logger_logf(void *ctx, int level, const char *format, ...) {
 dqlite_logger *test_logger() {
 	dqlite_logger *logger = munit_malloc(sizeof *logger);
 
-	logger->ctx   = NULL;
-	logger->xLogf = test_logger_logf;
+	logger->data   = NULL;
+	logger->emit = emit;
 
 	return logger;
 }
