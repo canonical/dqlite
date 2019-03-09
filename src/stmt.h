@@ -47,9 +47,10 @@
 
 #include <sqlite3.h>
 
+#include "./lib/registry.h"
+
 #include "error.h"
 #include "message.h"
-#include "registry.h"
 
 /* Hold state for a single open SQLite database */
 struct stmt

@@ -139,8 +139,7 @@ TEST_CASE(read, empty, NULL)
 }
 
 /* Read the content of a database and WAL files and then write them back. */
-static MunitResult test_read_then_write(const MunitParameter params[],
-                                        void *               data)
+TEST_CASE(read, then_write, NULL)
 {
 	sqlite3_vfs * vfs = data;
 	sqlite3 *     db  = __db_open(vfs);

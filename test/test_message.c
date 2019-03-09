@@ -11,7 +11,7 @@
 
 #include "./lib/runner.h"
 
-TEST_MODULE(runner);
+TEST_MODULE(message);
 
 /******************************************************************************
  *

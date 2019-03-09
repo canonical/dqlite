@@ -1,10 +1,10 @@
 #include <stdlib.h>
 
-#include "../src/registry.h"
+#include "../../../src/lib/registry.h"
 
-#include "./lib/runner.h"
+#include "../../lib/runner.h"
 
-TEST_MODULE(registry);
+TEST_MODULE(lib_registry);
 
 struct test_item
 {
