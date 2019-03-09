@@ -30,11 +30,6 @@ void db__close(struct db *db);
 /* No-op hash function (hashing is not supported for db). */
 const char *db__hash(struct db *db);
 
-/* TODO: change registry naming pattern */
-#define db_init db__init
-#define db_close db__close
-#define db_hash db__hash
-
 /* Open the underlying db. */
 int db__open(struct db *db,
 	     const char *name,
