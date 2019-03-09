@@ -82,20 +82,23 @@
 int dqlite_init(const char **ermsg);
 
 /* Interface implementing logging functionality */
-typedef struct dqlite_logger {
-	void *ctx;
-	void (*xLogf)(void *ctx, int level, const char *format, ...);
+typedef struct dqlite_logger
+{
+	void *data;
+	void (*emit)(void *data, int level, const char *fmt, va_list args);
 } dqlite_logger;
 
 /* Interface implementing cluster-related functionality */
-typedef struct dqlite_server_info {
-	uint64_t    id;
+typedef struct dqlite_server_info
+{
+	uint64_t id;
 	const char *address;
 } dqlite_server_info;
 
 /* The memory returned by a method of the cluster interface must be valid until
  * the next invokation of the same method. */
-typedef struct dqlite_cluster {
+typedef struct dqlite_cluster
+{
 	void *ctx;
 	const char *(*xLeader)(void *ctx);
 	int (*xServers)(void *ctx, dqlite_server_info *servers[]);
@@ -188,16 +191,16 @@ void dqlite_vfs_destroy(sqlite3_vfs *vfs);
  * given name. Used to take database snapshots using the dqlite in-memory
  * VFS. */
 int dqlite_file_read(const char *vfs_name,
-                     const char *filename,
-                     uint8_t **  buf,
-                     size_t *    len);
+		     const char *filename,
+		     uint8_t **buf,
+		     size_t *len);
 
 /* Write the content of a file, using the VFS implementation registered under
  * the given name. Used to restore database snapshots against the dqlite
  * in-memory VFS. If the file already exists, it's overwritten. */
 int dqlite_file_write(const char *vfs_name,
-                      const char *filename,
-                      uint8_t *   buf,
-                      size_t      len);
+		      const char *filename,
+		      uint8_t *buf,
+		      size_t len);
 
 #endif /* DQLITE_H */
