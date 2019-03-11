@@ -8,6 +8,7 @@
 #include "./lib/logger.h"
 #include "./lib/runner.h"
 #include "./lib/sqlite.h"
+#include "./lib/options.h"
 
 TEST_MODULE(gateway);
 
@@ -20,9 +21,9 @@ TEST_MODULE(gateway);
 struct fixture
 {
 	LOGGER_FIXTURE;
+	OPTIONS_FIXTURE;
 	sqlite3_wal_replication *replication;
 	sqlite3_vfs *vfs;
-	struct options options;
 	dqlite_cluster *cluster;
 	struct gateway *gateway;
 	struct request *request;
@@ -116,6 +117,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	struct gateway__cbs callbacks;
 	int rc;
 	LOGGER_SETUP;
+	OPTIONS_SETUP;
 	test_heap_setup(params, user_data);
 	test_sqlite_setup(params);
 
@@ -131,8 +133,6 @@ static void *setup(const MunitParameter params[], void *user_data)
 	munit_assert_ptr_not_null(f->vfs);
 
 	sqlite3_vfs_register(f->vfs, 0);
-
-	options__init(&f->options);
 
 	f->options.vfs = "test";
 	f->options.replication = "test";
@@ -170,6 +170,7 @@ static void tear_down(void *data)
 	test_heap_tear_down(data);
 
 	free(f->request);
+	//OPTIONS_TEAR_DOWN;
 	LOGGER_TEAR_DOWN;
 	free(f);
 }

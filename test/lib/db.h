@@ -12,15 +12,15 @@
  */
 #define DB_FIXTURE(DB) sqlite3 *DB;
 
-#define DB_SETUP(DB)                                                        \
-	{                                                                   \
-		int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;     \
-		int rc;                                                     \
-		rc = sqlite3_open_v2("test.db", &f->DB, flags, "volatile"); \
-		munit_assert_int(rc, ==, SQLITE_OK);                        \
-		DB_EXEC(DB, "PRAGMA page_size=512", 0);                     \
-		DB_EXEC(DB, "PRAGMA synchronous=OFF", 0);                   \
-		DB_EXEC(DB, "PRAGMA journal_mode=WAL", 0);                  \
+#define DB_SETUP(DB)                                                    \
+	{                                                               \
+		int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE; \
+		int rc;                                                 \
+		rc = sqlite3_open_v2("test.db", &f->DB, flags, "test"); \
+		munit_assert_int(rc, ==, SQLITE_OK);                    \
+		DB_EXEC(DB, "PRAGMA page_size=512", 0);                 \
+		DB_EXEC(DB, "PRAGMA synchronous=OFF", 0);               \
+		DB_EXEC(DB, "PRAGMA journal_mode=WAL", 0);              \
 	}
 
 #define DB_TEAR_DOWN(DB)                             \
