@@ -11,8 +11,11 @@
 
 #define VFS_SETUP                                           \
 	f->vfs = dqlite_vfs_create("volatile", &f->logger); \
-	munit_assert_ptr_not_null(f->vfs);
+	munit_assert_ptr_not_null(f->vfs);                  \
+	sqlite3_vfs_register(f->vfs, 0);
 
-#define VFS_TEAR_DOWN dqlite_vfs_destroy(f->vfs);
+#define VFS_TEAR_DOWN                   \
+	sqlite3_vfs_unregister(f->vfs); \
+	dqlite_vfs_destroy(f->vfs);
 
 #endif /* TEST_VFS_H */
