@@ -6,9 +6,12 @@
 
 #include "./lib/heap.h"
 #include "./lib/logger.h"
+#include "./lib/options.h"
+#include "./lib/replication.h"
 #include "./lib/runner.h"
 #include "./lib/sqlite.h"
-#include "./lib/options.h"
+#include "./lib/vfs.h"
+#include "./lib/raft.h"
 
 TEST_MODULE(gateway);
 
@@ -21,9 +24,10 @@ TEST_MODULE(gateway);
 struct fixture
 {
 	LOGGER_FIXTURE;
+	VFS_FIXTURE;
 	OPTIONS_FIXTURE;
-	sqlite3_wal_replication *replication;
-	sqlite3_vfs *vfs;
+	RAFT_FIXTURE;
+	REPLICATION_FIXTURE;
 	dqlite_cluster *cluster;
 	struct gateway *gateway;
 	struct request *request;
@@ -48,7 +52,7 @@ static void __open(struct fixture *f, uint32_t *db_id)
 	f->request->type = DQLITE_REQUEST_OPEN;
 	f->request->open.name = "test.db";
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	f->request->open.vfs = f->replication->zName;
+	f->request->open.vfs = f->replication.zName;
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -117,25 +121,15 @@ static void *setup(const MunitParameter params[], void *user_data)
 	struct gateway__cbs callbacks;
 	int rc;
 	LOGGER_SETUP;
+	HEAP_SETUP;
+	SQLITE_SETUP;
+	VFS_SETUP;
+	RAFT_SETUP;
+	REPLICATION_SETUP;
 	OPTIONS_SETUP;
-	test_heap_setup(params, user_data);
-	test_sqlite_setup(params);
 
 	callbacks.ctx = f;
 	callbacks.xFlush = fixture_flush_cb;
-
-	f->replication = test_replication();
-
-	rc = sqlite3_wal_replication_register(f->replication, 0);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	f->vfs = dqlite_vfs_create(f->replication->zName, &f->logger);
-	munit_assert_ptr_not_null(f->vfs);
-
-	sqlite3_vfs_register(f->vfs, 0);
-
-	f->options.vfs = "test";
-	f->options.replication = "test";
 
 	f->cluster = test_cluster();
 	f->gateway = munit_malloc(sizeof *f->gateway);
@@ -158,20 +152,17 @@ static void tear_down(void *data)
 {
 	struct fixture *f = data;
 
-	sqlite3_vfs_unregister(f->vfs);
-
 	request_close(f->request);
 	gateway__close(f->gateway);
-	dqlite_vfs_destroy(f->vfs);
-	sqlite3_wal_replication_unregister(f->replication);
 	test_cluster_close(f->cluster);
-
-	test_sqlite_tear_down();
-	test_heap_tear_down(data);
-
-	free(f->request);
-	//OPTIONS_TEAR_DOWN;
+	OPTIONS_TEAR_DOWN;
+	REPLICATION_TEAR_DOWN;
+	RAFT_TEAR_DOWN;
+	VFS_TEAR_DOWN;
+	SQLITE_TEAR_DOWN;
+	HEAP_TEAR_DOWN;
 	LOGGER_TEAR_DOWN;
+	free(f->request);
 	free(f);
 }
 
@@ -302,7 +293,7 @@ TEST_CASE(handle, open_error, NULL)
 	f->request->type = DQLITE_REQUEST_OPEN;
 	f->request->open.name = "test.db";
 	f->request->open.flags = SQLITE_OPEN_CREATE;
-	f->request->open.vfs = f->replication->zName;
+	f->request->open.vfs = f->replication.zName;
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -339,7 +330,7 @@ TEST_CASE(handle, open_oom, test_open_oom_params)
 	f->request->type = DQLITE_REQUEST_OPEN;
 	f->request->open.name = "test.db";
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	f->request->open.vfs = f->replication->zName;
+	f->request->open.vfs = f->replication.zName;
 
 	rc = gateway__handle(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
@@ -363,7 +354,7 @@ TEST_CASE(handle, open, NULL)
 	f->request->type = DQLITE_REQUEST_OPEN;
 	f->request->open.name = "test.db";
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	f->request->open.vfs = f->replication->zName;
+	f->request->open.vfs = f->replication.zName;
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
@@ -387,7 +378,7 @@ TEST_CASE(handle, open_twice, NULL)
 	f->request->type = DQLITE_REQUEST_OPEN;
 	f->request->open.name = "test.db";
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	f->request->open.vfs = f->replication->zName;
+	f->request->open.vfs = f->replication.zName;
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
