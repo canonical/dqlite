@@ -206,7 +206,7 @@ static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 
 	rc = db__open(g->db, ctx->request->open.name, ctx->request->open.flags,
 		      g->options->vfs, g->options->page_size,
-		      g->options->wal_replication);
+		      g->options->replication);
 
 	if (rc != 0) {
 		dqlite__error_printf(&g->error, g->db->error);
@@ -585,7 +585,7 @@ void gateway__init(struct gateway *g,
 		   struct gateway__cbs *callbacks,
 		   struct dqlite_cluster *cluster,
 		   struct dqlite_logger *logger,
-		   struct dqlite__options *options)
+		   struct options *options)
 {
 	int i;
 

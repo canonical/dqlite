@@ -36,7 +36,7 @@ struct conn
 
 	/* private */
 	struct dqlite__metrics *metrics; /* Operational metrics */
-	struct dqlite__options *options; /* Connection state machine */
+	struct options *options; /* Connection state machine */
 	struct dqlite__fsm fsm;		 /* Connection state machine */
 	struct gateway gateway;		 /* Client state and request handler */
 	struct request request;		 /* Incoming request */
@@ -63,7 +63,7 @@ void conn__init(struct conn *c,
 		dqlite_logger *logger,
 		dqlite_cluster *cluster,
 		uv_loop_t *loop,
-		struct dqlite__options *options,
+		struct options *options,
 		struct dqlite__metrics *metrics);
 
 /* Close a connection object, releasing all associated resources. */
