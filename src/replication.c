@@ -4,8 +4,16 @@
 #include <sqlite3.h>
 
 #include "./lib/assert.h"
+#include "./lib/logger.h"
 
 #include "replication.h"
+
+/* Set to 1 to enable tracing. */
+#if 1
+#define tracef(MSG, ...) debugf(r->logger, MSG, ##__VA_ARGS__)
+#else
+#define tracef(MSG, ...)
+#endif
 
 /* Implementation of the sqlite3_wal_replication interface */
 struct replication
@@ -14,10 +22,13 @@ struct replication
 	struct raft *raft;
 };
 
-int replication__begin(sqlite3_wal_replication *r, void *arg)
+int replication__begin(sqlite3_wal_replication *replication, void *arg)
 {
-	(void)r;
+	struct replication *r = replication->pAppData;
+
 	(void)arg;
+
+	tracef("begin");
 
 	return SQLITE_OK;
 }
