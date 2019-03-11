@@ -86,7 +86,6 @@ unit_test_SOURCES += \
   test/test_error.c \
   test/test_file.c \
   test/test_format.c \
-  test/test_gateway.c \
   test/test_integration.c \
   test/test_message.c \
   test/test_queue.c \
@@ -103,6 +102,7 @@ if EXPERIMENTAL
   unit_test_SOURCES += \
   test/lib/raft.c \
   test/unit/ext/test_co.c \
+  test/unit/test_gateway.c \
   test/unit/test_replication.c
 endif
 unit_test_CFLAGS = $(AM_CFLAGS)

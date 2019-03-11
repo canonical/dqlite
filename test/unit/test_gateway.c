@@ -1,17 +1,16 @@
-#include "../src/format.h"
-#include "../src/gateway.h"
+#include "../lib/heap.h"
+#include "../lib/logger.h"
+#include "../lib/options.h"
+#include "../lib/replication.h"
+#include "../lib/runner.h"
+#include "../lib/sqlite.h"
+#include "../lib/vfs.h"
+#include "../lib/raft.h"
 
-#include "cluster.h"
-#include "replication.h"
+#include "../../src/format.h"
+#include "../../src/gateway.h"
 
-#include "./lib/heap.h"
-#include "./lib/logger.h"
-#include "./lib/options.h"
-#include "./lib/replication.h"
-#include "./lib/runner.h"
-#include "./lib/sqlite.h"
-#include "./lib/vfs.h"
-#include "./lib/raft.h"
+#include "../cluster.h"
 
 TEST_MODULE(gateway);
 
