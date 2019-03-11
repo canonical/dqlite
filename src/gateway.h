@@ -64,7 +64,7 @@ struct gateway
 	/* private */
 	struct gateway__cbs callbacks;   /* User callbacks */
 	dqlite_cluster *cluster;	 /* Cluster API implementation  */
-	struct dqlite__options *options; /* Configuration options */
+	struct options *options; /* Configuration options */
 	struct dqlite_logger *logger;    /* Logger to use */
 
 	/* Buffer holding responses for in-progress requests. Clients are
@@ -89,7 +89,7 @@ void gateway__init(struct gateway *g,
 		   struct gateway__cbs *callbacks,
 		   struct dqlite_cluster *cluster,
 		   struct dqlite_logger *logger,
-		   struct dqlite__options *options);
+		   struct options *options);
 
 void gateway__close(struct gateway *g);
 

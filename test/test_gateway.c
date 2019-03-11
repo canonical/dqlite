@@ -5,9 +5,9 @@
 #include "replication.h"
 
 #include "./lib/heap.h"
+#include "./lib/logger.h"
 #include "./lib/runner.h"
 #include "./lib/sqlite.h"
-#include "./lib/logger.h"
 
 TEST_MODULE(gateway);
 
@@ -22,7 +22,7 @@ struct fixture
 	LOGGER_FIXTURE;
 	sqlite3_wal_replication *replication;
 	sqlite3_vfs *vfs;
-	struct dqlite__options *options;
+	struct options options;
 	dqlite_cluster *cluster;
 	struct gateway *gateway;
 	struct request *request;
@@ -132,17 +132,15 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	sqlite3_vfs_register(f->vfs, 0);
 
-	f->options = munit_malloc(sizeof *f->options);
+	options__init(&f->options);
 
-	dqlite__options_defaults(f->options);
-
-	f->options->vfs = "test";
-	f->options->wal_replication = "test";
+	f->options.vfs = "test";
+	f->options.replication = "test";
 
 	f->cluster = test_cluster();
 	f->gateway = munit_malloc(sizeof *f->gateway);
 	gateway__init(f->gateway, &callbacks, f->cluster, &f->logger,
-		      f->options);
+		      &f->options);
 
 #ifdef DQLITE_EXPERIMENTAL
 	rc = gateway__start(f->gateway, 0);
@@ -1169,7 +1167,7 @@ TEST_CASE(handle, checkpoint, NULL)
 
 	(void)params;
 
-	f->gateway->options->checkpoint_threshold = 1;
+	f->options.checkpoint_threshold = 1;
 
 	__open(f, &db_id);
 	__prepare(f, db_id, "BEGIN", &stmt_id);
@@ -1243,9 +1241,9 @@ TEST_CASE(handle, checkpoint_busy, NULL)
 	 * transaction. */
 	db__init(&db2);
 	flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	rc = db__open(&db2, "test.db", flags, f->gateway->options->vfs,
+	rc = db__open(&db2, "test.db", flags, f->options.vfs,
 		      f->gateway->options->page_size,
-		      f->gateway->options->wal_replication);
+		      f->gateway->options->replication);
 	munit_assert_int(rc, ==, 0);
 
 	rc = db__prepare(&db2, "BEGIN", &stmt2);

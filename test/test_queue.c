@@ -28,7 +28,7 @@ struct fixture
 	struct test_socket_pair sockets;
 	uv_loop_t loop;
 	struct dqlite__queue queue;
-	struct dqlite__options options;
+	struct options options;
 	struct dqlite__metrics metrics;
 	dqlite_logger *logger;
 	dqlite_cluster *cluster;
@@ -54,7 +54,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	dqlite__queue_init(&f->queue);
 
-	dqlite__options_defaults(&f->options);
+	options__init(&f->options);
 	dqlite__metrics_init(&f->metrics);
 
 	f->logger = test_logger();
