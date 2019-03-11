@@ -101,6 +101,7 @@ unit_test_SOURCES += \
   test/unit/main.c
 if EXPERIMENTAL
   unit_test_SOURCES += \
+  test/lib/raft.c \
   test/unit/ext/test_co.c \
   test/unit/test_replication.c
 endif

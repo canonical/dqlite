@@ -2,17 +2,19 @@
 
 #include "../lib/heap.h"
 #include "../lib/logger.h"
+#include "../lib/raft.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
 
 TEST_MODULE(replication);
 
 #define FIXTURE                      \
+	RAFT_FIXTURE;                \
 	struct dqlite_logger logger; \
-	struct raft raft;            \
 	sqlite3_wal_replication replication;
 
 #define SETUP                                                          \
+	RAFT_SETUP;                                                    \
 	int rv;                                                        \
 	test_heap_setup(params, user_data);                            \
 	test_sqlite_setup(params);                                     \
@@ -24,7 +26,8 @@ TEST_MODULE(replication);
 	replication__close(&f->replication); \
 	test_logger_tear_down(&f->logger);   \
 	test_sqlite_tear_down();             \
-	test_heap_tear_down(data);
+	test_heap_tear_down(data);           \
+	RAFT_TEAR_DOWN;
 
 /******************************************************************************
  *
