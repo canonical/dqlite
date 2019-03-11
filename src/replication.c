@@ -3,9 +3,10 @@
 #include <libco.h>
 #include <sqlite3.h>
 
-#include "../assert.h"
-#include "methods.h"
+#include "assert.h"
+#include "replication.h"
 
+/* Implementation of the sqlite3_wal_replication interface */
 struct replication
 {
 	struct dqlite_logger *logger;
