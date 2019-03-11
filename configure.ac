@@ -91,6 +91,7 @@ PKG_CHECK_MODULES(UV, [libuv >= 1.8.0], [], [])
 
 AM_COND_IF(EXPERIMENTAL,
   [
+  PKG_CHECK_MODULES(RAFT, [raft], [], [])
   PKG_CHECK_MODULES(CO, [libco], [], [])
   AC_DEFINE(EXPERIMENTAL, 1, [Define to 0 to exclude experimental features])
   ], [
