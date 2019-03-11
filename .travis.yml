@@ -39,7 +39,6 @@ matrix:
           packages:
             - gcc-8
             - lcov
-            - zlib1g-dev
       env:
          - MATRIX_EVAL="CC=gcc-8 AC_FLAGS=--enable-experimental"
 
