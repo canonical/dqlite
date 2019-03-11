@@ -8,6 +8,7 @@
 #define DQLITE_REPLICATION_METHODS_H
 
 #include <libco.h>
+#include <raft.h>
 #include <sqlite3.h>
 
 #include "../../include/dqlite.h"
@@ -17,7 +18,8 @@
  * implementation.
  */
 int replication__init(struct sqlite3_wal_replication *replication,
-		      struct dqlite_logger *logger);
+		      struct dqlite_logger *logger,
+		      struct raft *raft);
 
 void replication__close(struct sqlite3_wal_replication *replication);
 
