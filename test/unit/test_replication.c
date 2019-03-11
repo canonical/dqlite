@@ -5,28 +5,32 @@
 #include "../lib/raft.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
+#include "../lib/vfs.h"
 
 TEST_MODULE(replication);
 
-#define FIXTURE                      \
-	RAFT_FIXTURE;                \
-	struct dqlite_logger logger; \
+#define FIXTURE         \
+	RAFT_FIXTURE;   \
+	LOGGER_FIXTURE; \
+	VFS_FIXTURE;    \
 	sqlite3_wal_replication replication;
 
 #define SETUP                                                          \
-	RAFT_SETUP;                                                    \
 	int rv;                                                        \
-	test_heap_setup(params, user_data);                            \
-	test_sqlite_setup(params);                                     \
-	test_logger_setup(params, &f->logger);                         \
+	RAFT_SETUP;                                                    \
+	LOGGER_SETUP;                                                  \
+	HEAP_SETUP;                                                    \
+	SQLITE_SETUP;                                                  \
+	VFS_SETUP;                                                     \
 	rv = replication__init(&f->replication, &f->logger, &f->raft); \
 	munit_assert_int(rv, ==, 0);
 
 #define TEAR_DOWN                            \
 	replication__close(&f->replication); \
-	test_logger_tear_down(&f->logger);   \
-	test_sqlite_tear_down();             \
-	test_heap_tear_down(data);           \
+	VFS_TEAR_DOWN;                       \
+	SQLITE_TEAR_DOWN;                    \
+	HEAP_TEAR_DOWN;                      \
+	LOGGER_TEAR_DOWN;                    \
 	RAFT_TEAR_DOWN;
 
 /******************************************************************************
