@@ -54,7 +54,7 @@ libdqlite_la_SOURCES = \
   src/vfs.c
 if EXPERIMENTAL
   libdqlite_la_SOURCES += \
-  src/replication/methods.c
+  src/replication.c
 endif
 include_HEADERS += include/dqlite.h
 
@@ -102,7 +102,7 @@ unit_test_SOURCES += \
 if EXPERIMENTAL
   unit_test_SOURCES += \
   test/unit/ext/test_co.c \
-  test/unit/replication/test_methods.c
+  test/unit/test_replication.c
 endif
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test

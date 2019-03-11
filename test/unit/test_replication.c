@@ -1,11 +1,11 @@
-#include "../../../src/replication/methods.h"
+#include "../../src/replication.h"
 
-#include "../../lib/heap.h"
-#include "../../lib/logger.h"
-#include "../../lib/runner.h"
-#include "../../lib/sqlite.h"
+#include "../lib/heap.h"
+#include "../lib/logger.h"
+#include "../lib/runner.h"
+#include "../lib/sqlite.h"
 
-TEST_MODULE(replication_methods);
+TEST_MODULE(replication);
 
 #define FIXTURE                      \
 	struct dqlite_logger logger; \

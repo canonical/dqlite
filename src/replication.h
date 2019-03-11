@@ -11,7 +11,7 @@
 #include <raft.h>
 #include <sqlite3.h>
 
-#include "../../include/dqlite.h"
+#include "../include/dqlite.h"
 
 /**
  * Initialize the given SQLite replication interface with dqlite's raft based
