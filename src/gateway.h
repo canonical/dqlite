@@ -1,16 +1,12 @@
-/******************************************************************************
- *
+/**
  * Core dqlite server engine, calling out SQLite for serving client requests.
- *
- *****************************************************************************/
+ */
 
 #ifndef DQLITE_GATEWAY_H
 #define DQLITE_GATEWAY_H
 
 #ifdef DQLITE_EXPERIMENTAL
-
 #include <libco.h>
-
 #endif /* DQLITE_EXPERIMENTAL */
 
 #include "../include/dqlite.h"
@@ -32,17 +28,19 @@
 #define GATEWAY__CLEANUP_FINALIZE 1
 
 /* Context for the gateway request handlers */
-struct gateway__ctx {
+struct gateway__ctx
+{
 	struct request *request;
 	struct response response;
-	struct db *     db;      /* For multi-response queries */
-	struct stmt *   stmt;    /* For multi-response queries */
-	int                     cleanup; /* Code indicating how to cleanup */
+	struct db *db;     /* For multi-response queries */
+	struct stmt *stmt; /* For multi-response queries */
+	int cleanup;       /* Code indicating how to cleanup */
 };
 
 /* Callbacks that the gateway will invoke during the various phases of request
  * handling. */
-struct gateway__cbs {
+struct gateway__cbs
+{
 	void *ctx; /* Context to pass to the callbacks. */
 
 	/* Invoked when a respone is available. User code is expected to invoke
@@ -56,17 +54,18 @@ struct gateway__cbs {
  * Handle requests from a single connected client and forward them to
  * SQLite.
  */
-struct gateway {
+struct gateway
+{
 	/* read-only */
-	uint64_t      client_id;
-	uint64_t      heartbeat; /* Last successful heartbeat from the client */
-	dqlite__error error;     /* Last error occurred, if any */
+	uint64_t client_id;
+	uint64_t heartbeat;  /* Last successful heartbeat from the client */
+	dqlite__error error; /* Last error occurred, if any */
 
 	/* private */
-	struct gateway__cbs callbacks; /* User callbacks */
-	dqlite_cluster *           cluster;   /* Cluster API implementation  */
-	struct dqlite__options *   options;   /* Configuration options */
-	struct dqlite_logger *     logger;    /* Logger to use */
+	struct gateway__cbs callbacks;   /* User callbacks */
+	dqlite_cluster *cluster;	 /* Cluster API implementation  */
+	struct dqlite__options *options; /* Configuration options */
+	struct dqlite_logger *logger;    /* Logger to use */
 
 	/* Buffer holding responses for in-progress requests. Clients are
 	 * expected to issue one SQL request at a time and wait for the
@@ -86,11 +85,11 @@ struct gateway {
 #endif /* DQLITE_EXPERIMENTAL */
 };
 
-void gateway__init(struct gateway *    g,
-                          struct gateway__cbs *callbacks,
-                          struct dqlite_cluster *     cluster,
-			  struct dqlite_logger *      logger,
-                          struct dqlite__options *    options);
+void gateway__init(struct gateway *g,
+		   struct gateway__cbs *callbacks,
+		   struct dqlite_cluster *cluster,
+		   struct dqlite_logger *logger,
+		   struct dqlite__options *options);
 
 void gateway__close(struct gateway *g);
 
@@ -130,8 +129,7 @@ int gateway__start(struct gateway *g, uint64_t now);
  * User code can check whether the gateway would currently accept a request of a
  * certain type by calling gateway__ctx_for.
  */
-int gateway__handle(struct gateway *g,
-                           struct request *request);
+int gateway__handle(struct gateway *g, struct request *request);
 
 /* Return the request ctx index that the gateway will use to handle a request of
  * the given type at this moment, or -1 if the gateway can't handle a request of
@@ -140,12 +138,10 @@ int gateway__ctx_for(struct gateway *g, int type);
 
 /* Notify the gateway that a response has been completely flushed and its data
  * sent to the client. */
-void gateway__flushed(struct gateway * g,
-                             struct response *response);
+void gateway__flushed(struct gateway *g, struct response *response);
 
 /* Notify the gateway that this response has been aborted due to errors
  * (e.g. the client disconnected). */
-void gateway__aborted(struct gateway * g,
-                             struct response *response);
+void gateway__aborted(struct gateway *g, struct response *response);
 
 #endif /* DQLITE_GATEWAY_H */

@@ -7,7 +7,7 @@
 #include "./lib/heap.h"
 #include "./lib/runner.h"
 #include "./lib/sqlite.h"
-#include "log.h"
+#include "./lib/logger.h"
 
 TEST_MODULE(gateway);
 
@@ -19,9 +19,9 @@ TEST_MODULE(gateway);
 
 struct fixture
 {
+	LOGGER_FIXTURE;
 	sqlite3_wal_replication *replication;
 	sqlite3_vfs *vfs;
-	dqlite_logger *logger;
 	struct dqlite__options *options;
 	dqlite_cluster *cluster;
 	struct gateway *gateway;
@@ -115,11 +115,9 @@ static void *setup(const MunitParameter params[], void *user_data)
 	struct fixture *f = munit_malloc(sizeof *f);
 	struct gateway__cbs callbacks;
 	int rc;
-
+	LOGGER_SETUP;
 	test_heap_setup(params, user_data);
 	test_sqlite_setup(params);
-
-	f->logger = test_logger();
 
 	callbacks.ctx = f;
 	callbacks.xFlush = fixture_flush_cb;
@@ -129,7 +127,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	rc = sqlite3_wal_replication_register(f->replication, 0);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	f->vfs = dqlite_vfs_create(f->replication->zName, f->logger);
+	f->vfs = dqlite_vfs_create(f->replication->zName, &f->logger);
 	munit_assert_ptr_not_null(f->vfs);
 
 	sqlite3_vfs_register(f->vfs, 0);
@@ -143,7 +141,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	f->cluster = test_cluster();
 	f->gateway = munit_malloc(sizeof *f->gateway);
-	gateway__init(f->gateway, &callbacks, f->cluster, f->logger,
+	gateway__init(f->gateway, &callbacks, f->cluster, &f->logger,
 		      f->options);
 
 #ifdef DQLITE_EXPERIMENTAL
@@ -174,7 +172,7 @@ static void tear_down(void *data)
 	test_heap_tear_down(data);
 
 	free(f->request);
-	free(f->logger);
+	LOGGER_TEAR_DOWN;
 	free(f);
 }
 
