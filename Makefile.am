@@ -26,13 +26,13 @@ if SANITIZE
 endif
 if EXPERIMENTAL
   AM_CFLAGS += -DDQLITE_EXPERIMENTAL
-  AM_CFLAGS += $(ZLIB_CFLAGS) $(CO_CFLAGS)
+  AM_CFLAGS += $(CO_CFLAGS)
 endif
 
 lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) -version-info 0:1:0
 if EXPERIMENTAL
-  libdqlite_la_LDFLAGS += $(ZLIB_LIBS) $(CO_LIBS)
+  libdqlite_la_LDFLAGS += $(CO_LIBS)
 endif
 libdqlite_la_SOURCES = \
   src/conn.c \
@@ -110,7 +110,7 @@ unit_test_CFLAGS += -I$(top_srcdir)/test
 unit_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=60
 unit_test_LDFLAGS = -lpthread $(SQLITE_LIBS) $(UV_LIBS)
 if EXPERIMENTAL
-  unit_test_LDFLAGS += $(ZLIB_LIBS) $(CO_LIBS)
+  unit_test_LDFLAGS += $(CO_LIBS)
 endif
 TESTS = unit-test
 
