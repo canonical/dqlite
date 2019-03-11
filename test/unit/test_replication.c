@@ -1,5 +1,6 @@
 #include "../../src/replication.h"
 
+#include "../lib/db.h"
 #include "../lib/heap.h"
 #include "../lib/logger.h"
 #include "../lib/raft.h"
@@ -13,6 +14,7 @@ TEST_MODULE(replication);
 	RAFT_FIXTURE;   \
 	LOGGER_FIXTURE; \
 	VFS_FIXTURE;    \
+	DB_FIXTURE(db); \
 	sqlite3_wal_replication replication;
 
 #define SETUP                                                          \
@@ -22,11 +24,13 @@ TEST_MODULE(replication);
 	HEAP_SETUP;                                                    \
 	SQLITE_SETUP;                                                  \
 	VFS_SETUP;                                                     \
+	DB_SETUP(db);                                                  \
 	rv = replication__init(&f->replication, &f->logger, &f->raft); \
 	munit_assert_int(rv, ==, 0);
 
 #define TEAR_DOWN                            \
 	replication__close(&f->replication); \
+	DB_TEAR_DOWN(db);                    \
 	VFS_TEAR_DOWN;                       \
 	SQLITE_TEAR_DOWN;                    \
 	HEAP_TEAR_DOWN;                      \
