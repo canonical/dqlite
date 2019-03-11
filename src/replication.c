@@ -3,7 +3,8 @@
 #include <libco.h>
 #include <sqlite3.h>
 
-#include "assert.h"
+#include "./lib/assert.h"
+
 #include "replication.h"
 
 /* Implementation of the sqlite3_wal_replication interface */
