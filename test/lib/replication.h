@@ -5,6 +5,8 @@
 #ifndef TEST_REPLICATION_H
 #define TEST_REPLICATION_H
 
+#include "../../src/replication.h"
+
 #define REPLICATION_FIXTURE sqlite3_wal_replication replication;
 
 #define REPLICATION_SETUP                                                      \
