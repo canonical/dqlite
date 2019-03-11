@@ -9,14 +9,15 @@ TEST_MODULE(replication_methods);
 
 #define FIXTURE                      \
 	struct dqlite_logger logger; \
+	struct raft raft;            \
 	sqlite3_wal_replication replication;
 
-#define SETUP                                                \
-	int rv;                                              \
-	test_heap_setup(params, user_data);                  \
-	test_sqlite_setup(params);                           \
-	test_logger_setup(params, &f->logger);               \
-	rv = replication__init(&f->replication, &f->logger); \
+#define SETUP                                                          \
+	int rv;                                                        \
+	test_heap_setup(params, user_data);                            \
+	test_sqlite_setup(params);                                     \
+	test_logger_setup(params, &f->logger);                         \
+	rv = replication__init(&f->replication, &f->logger, &f->raft); \
 	munit_assert_int(rv, ==, 0);
 
 #define TEAR_DOWN                            \
