@@ -4,6 +4,7 @@
 #include "../lib/heap.h"
 #include "../lib/logger.h"
 #include "../lib/raft.h"
+#include "../lib/replication.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
@@ -15,26 +16,25 @@ TEST_MODULE(replication);
 	LOGGER_FIXTURE; \
 	VFS_FIXTURE;    \
 	DB_FIXTURE(db); \
-	sqlite3_wal_replication replication;
+	REPLICATION_FIXTURE;
 
-#define SETUP                                                          \
-	int rv;                                                        \
-	RAFT_SETUP;                                                    \
-	LOGGER_SETUP;                                                  \
-	HEAP_SETUP;                                                    \
-	SQLITE_SETUP;                                                  \
-	VFS_SETUP;                                                     \
-	DB_SETUP(db);                                                  \
-	rv = replication__init(&f->replication, &f->logger, &f->raft); \
-	munit_assert_int(rv, ==, 0);
+#define SETUP         \
+	RAFT_SETUP;   \
+	LOGGER_SETUP; \
+	HEAP_SETUP;   \
+	SQLITE_SETUP; \
+	VFS_SETUP;    \
+	DB_SETUP(db); \
+	REPLICATION_SETUP;\
+	REPLICATION_LEADER(db);
 
-#define TEAR_DOWN                            \
-	replication__close(&f->replication); \
-	DB_TEAR_DOWN(db);                    \
-	VFS_TEAR_DOWN;                       \
-	SQLITE_TEAR_DOWN;                    \
-	HEAP_TEAR_DOWN;                      \
-	LOGGER_TEAR_DOWN;                    \
+#define TEAR_DOWN              \
+	REPLICATION_TEAR_DOWN; \
+	DB_TEAR_DOWN(db);      \
+	VFS_TEAR_DOWN;         \
+	SQLITE_TEAR_DOWN;      \
+	HEAP_TEAR_DOWN;        \
+	LOGGER_TEAR_DOWN;      \
 	RAFT_TEAR_DOWN;
 
 /******************************************************************************
