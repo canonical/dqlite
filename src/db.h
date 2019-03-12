@@ -47,13 +47,4 @@ struct stmt *db__stmt(struct db *db, uint32_t stmt_id);
 /* Finalize a statement. */
 int db__finalize(struct db *db, struct stmt *stmt);
 
-/* Begin a transaction. */
-int db__begin(struct db *db);
-
-/* Commit a transaction. */
-int db__commit(struct db *db);
-
-/* Rollback a transaction. */
-int db__rollback(struct db *db);
-
 #endif /* DQLITE_DB_H */
