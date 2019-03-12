@@ -6,6 +6,7 @@
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
 #include "../lib/raft.h"
+#include "../lib/registry.h"
 
 #include "../../src/format.h"
 #include "../../src/gateway.h"
@@ -26,6 +27,7 @@ struct fixture
 	FIXTURE_VFS;
 	FIXTURE_OPTIONS;
 	FIXTURE_RAFT;
+	FIXTURE_REGISTRY;
 	FIXTURE_REPLICATION;
 	dqlite_cluster *cluster;
 	struct gateway *gateway;
@@ -124,6 +126,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	SETUP_SQLITE;
 	SETUP_VFS;
 	SETUP_RAFT;
+	SETUP_REGISTRY;
 	SETUP_REPLICATION;
 	SETUP_OPTIONS;
 
@@ -156,6 +159,7 @@ static void tear_down(void *data)
 	test_cluster_close(f->cluster);
 	TEAR_DOWN_OPTIONS;
 	TEAR_DOWN_REPLICATION;
+	TEAR_DOWN_REGISTRY;
 	TEAR_DOWN_RAFT;
 	TEAR_DOWN_VFS;
 	TEAR_DOWN_SQLITE;

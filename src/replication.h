@@ -13,13 +13,16 @@
 
 #include "../include/dqlite.h"
 
+#include "registry.h"
+
 /**
  * Initialize the given SQLite replication interface with dqlite's raft based
  * implementation.
  */
 int replication__init(struct sqlite3_wal_replication *replication,
 		      struct dqlite_logger *logger,
-		      struct raft *raft);
+		      struct raft *raft,
+		      struct registry *registry);
 
 void replication__close(struct sqlite3_wal_replication *replication);
 
