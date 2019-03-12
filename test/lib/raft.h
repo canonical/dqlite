@@ -13,7 +13,7 @@
 /**
  * Fields common to all fixtures setting up a raft instance.
  */
-#define RAFT_FIXTURE                    \
+#define FIXTURE_RAFT                    \
 	struct raft_logger raft_logger; \
 	struct raft_io raft_io;         \
 	struct raft_fsm fsm;            \
@@ -22,7 +22,7 @@
 /**
  * Setup the raft instance of a fixture.
  */
-#define RAFT_SETUP                                                     \
+#define SETUP_RAFT                                                     \
 	{                                                              \
 		uint64_t id = 1;                                       \
 		const char *address = "1";                             \
@@ -36,7 +36,7 @@
 		raft_set_rand(&f->raft, (int (*)())munit_rand_uint32); \
 	}
 
-#define RAFT_TEAR_DOWN                           \
+#define TEAR_DOWN_RAFT                           \
 	{                                        \
 		raft_close(&f->raft, NULL);      \
 		raft_io_stub_close(&f->raft_io); \

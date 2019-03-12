@@ -10,9 +10,9 @@
 /**
  * The DB parameter is the fixture field name of the database object.
  */
-#define DB_FIXTURE(DB) sqlite3 *DB;
+#define FIXTURE_DB(DB) sqlite3 *DB;
 
-#define DB_SETUP(DB)                                                    \
+#define SETUP_DB(DB)                                                    \
 	{                                                               \
 		int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE; \
 		int rc;                                                 \
@@ -23,7 +23,7 @@
 		DB_EXEC(DB, "PRAGMA journal_mode=WAL", 0);              \
 	}
 
-#define DB_TEAR_DOWN(DB)                             \
+#define TEAR_DOWN_DB(DB)                             \
 	{                                            \
 		int rc;                              \
 		rc = sqlite3_close(f->DB);           \

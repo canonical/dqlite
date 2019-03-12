@@ -26,7 +26,7 @@ void test_heap_fault_config(int delay, int repeat);
  * parameters passed to test_mem_fault_config(). */
 void test_heap_fault_enable();
 
-#define HEAP_SETUP test_heap_setup(params, user_data);
-#define HEAP_TEAR_DOWN test_heap_tear_down(data);
+#define SETUP_HEAP test_heap_setup(params, user_data);
+#define TEAR_DOWN_HEAP test_heap_tear_down(data);
 
 #endif /* DQLITE_TEST_HEAP_H */
