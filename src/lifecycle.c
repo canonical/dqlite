@@ -17,7 +17,6 @@ static char *dqlite__lifecycle_type_names[] = {
     "request",     /* DQLITE__LIFECYCLE_REQUEST */
     "response",    /* DQLITE__LIFECYCLE_RESPONSE */
     "gateway",     /* DQLITE__LIFECYCLE_GATEWAY */
-    "conn",        /* DQLITE__LIFECYCLE_CONN */
     "dqlite__queue",       /* DQLITE__LIFECYCLE_QUEUE */
     "dqlite__queue_item",  /* DQLITE__LIFECYCLE_QUEUE_ITEM */
     "db",          /* DQLITE__LIFECYCLE_DB */
@@ -33,7 +32,6 @@ static int dqlite__lifecycle_refcount[] = {
     0, /* DQLITE__LIFECYCLE_REQUEST */
     0, /* DQLITE__LIFECYCLE_RESPONSE */
     0, /* DQLITE__LIFECYCLE_GATEWAY */
-    0, /* DQLITE__LIFECYCLE_CONN */
     0, /* DQLITE__LIFECYCLE_QUEUE */
     0, /* DQLITE__LIFECYCLE_QUEUE_ITEM */
     0, /* DQLITE__LIFECYCLE_DB */
