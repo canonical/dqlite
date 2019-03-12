@@ -27,9 +27,6 @@ void db__init(struct db *db);
 /* Close a database state object, releasing all associated resources. */
 void db__close(struct db *db);
 
-/* No-op hash function (hashing is not supported for db). */
-const char *db__hash(struct db *db);
-
 /* Open the underlying db. */
 int db__open(struct db *db,
 	     const char *name,

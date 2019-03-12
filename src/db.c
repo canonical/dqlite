@@ -75,13 +75,6 @@ void db__close(struct db *db)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_DB);
 }
 
-const char *db__hash(struct db *db)
-{
-	(void)db;
-
-	return NULL;
-}
-
 int db__open(struct db *db,
 	     const char *name,
 	     int flags,
