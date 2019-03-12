@@ -585,8 +585,6 @@ void conn__init(struct conn *c,
 	assert((uintptr_t)&c->tcp == (uintptr_t)&c->stream);
 	assert((uintptr_t)&c->pipe == (uintptr_t)&c->stream);
 
-	dqlite__lifecycle_init(DQLITE__LIFECYCLE_CONN);
-
 	c->logger = logger;
 	c->protocol = 0;
 
@@ -621,8 +619,6 @@ void conn__close(struct conn *c)
 	dqlite__fsm_close(&c->fsm);
 	request_close(&c->request);
 	dqlite__error_close(&c->error);
-
-	dqlite__lifecycle_close(DQLITE__LIFECYCLE_CONN);
 }
 
 int conn__start(struct conn *c)
