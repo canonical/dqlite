@@ -38,6 +38,7 @@ libdqlite_la_SOURCES = \
   src/db.c \
   src/error.c \
   src/file.c \
+  src/follower.c \
   src/format.c \
   src/gateway.c \
   src/lib/fsm.c \
