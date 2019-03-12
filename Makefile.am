@@ -47,6 +47,7 @@ libdqlite_la_SOURCES = \
   src/metrics.c \
   src/options.c \
   src/queue.c \
+  src/registry.c \
   src/request.c \
   src/response.c \
   src/server.c \
@@ -103,6 +104,7 @@ if EXPERIMENTAL
   test/lib/raft.c \
   test/unit/ext/test_co.c \
   test/unit/test_gateway.c \
+  test/unit/test_registry.c \
   test/unit/test_replication.c
 endif
 unit_test_CFLAGS = $(AM_CFLAGS)

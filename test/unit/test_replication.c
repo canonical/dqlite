@@ -12,30 +12,30 @@
 TEST_MODULE(replication);
 
 #define FIXTURE         \
-	RAFT_FIXTURE;   \
-	LOGGER_FIXTURE; \
-	VFS_FIXTURE;    \
-	DB_FIXTURE(db); \
-	REPLICATION_FIXTURE;
+	FIXTURE_RAFT;   \
+	FIXTURE_LOGGER; \
+	FIXTURE_VFS;    \
+	FIXTURE_DB(db); \
+	FIXTURE_REPLICATION;
 
 #define SETUP         \
-	RAFT_SETUP;   \
-	LOGGER_SETUP; \
-	HEAP_SETUP;   \
-	SQLITE_SETUP; \
-	VFS_SETUP;    \
-	DB_SETUP(db); \
-	REPLICATION_SETUP;\
+	SETUP_RAFT;   \
+	SETUP_LOGGER; \
+	SETUP_HEAP;   \
+	SETUP_SQLITE; \
+	SETUP_VFS;    \
+	SETUP_DB(db); \
+	SETUP_REPLICATION;\
 	REPLICATION_LEADER(db);
 
 #define TEAR_DOWN              \
-	REPLICATION_TEAR_DOWN; \
-	DB_TEAR_DOWN(db);      \
-	VFS_TEAR_DOWN;         \
-	SQLITE_TEAR_DOWN;      \
-	HEAP_TEAR_DOWN;        \
-	LOGGER_TEAR_DOWN;      \
-	RAFT_TEAR_DOWN;
+	TEAR_DOWN_REPLICATION; \
+	TEAR_DOWN_DB(db);      \
+	TEAR_DOWN_VFS;         \
+	TEAR_DOWN_SQLITE;      \
+	TEAR_DOWN_HEAP;        \
+	TEAR_DOWN_LOGGER;      \
+	TEAR_DOWN_RAFT;
 
 /******************************************************************************
  *

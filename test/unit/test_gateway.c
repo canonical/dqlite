@@ -22,11 +22,11 @@ TEST_MODULE(gateway);
 
 struct fixture
 {
-	LOGGER_FIXTURE;
-	VFS_FIXTURE;
-	OPTIONS_FIXTURE;
-	RAFT_FIXTURE;
-	REPLICATION_FIXTURE;
+	FIXTURE_LOGGER;
+	FIXTURE_VFS;
+	FIXTURE_OPTIONS;
+	FIXTURE_RAFT;
+	FIXTURE_REPLICATION;
 	dqlite_cluster *cluster;
 	struct gateway *gateway;
 	struct request *request;
@@ -119,13 +119,13 @@ static void *setup(const MunitParameter params[], void *user_data)
 	struct fixture *f = munit_malloc(sizeof *f);
 	struct gateway__cbs callbacks;
 	int rc;
-	LOGGER_SETUP;
-	HEAP_SETUP;
-	SQLITE_SETUP;
-	VFS_SETUP;
-	RAFT_SETUP;
-	REPLICATION_SETUP;
-	OPTIONS_SETUP;
+	SETUP_LOGGER;
+	SETUP_HEAP;
+	SETUP_SQLITE;
+	SETUP_VFS;
+	SETUP_RAFT;
+	SETUP_REPLICATION;
+	SETUP_OPTIONS;
 
 	callbacks.ctx = f;
 	callbacks.xFlush = fixture_flush_cb;
@@ -154,13 +154,13 @@ static void tear_down(void *data)
 	request_close(f->request);
 	gateway__close(f->gateway);
 	test_cluster_close(f->cluster);
-	OPTIONS_TEAR_DOWN;
-	REPLICATION_TEAR_DOWN;
-	RAFT_TEAR_DOWN;
-	VFS_TEAR_DOWN;
-	SQLITE_TEAR_DOWN;
-	HEAP_TEAR_DOWN;
-	LOGGER_TEAR_DOWN;
+	TEAR_DOWN_OPTIONS;
+	TEAR_DOWN_REPLICATION;
+	TEAR_DOWN_RAFT;
+	TEAR_DOWN_VFS;
+	TEAR_DOWN_SQLITE;
+	TEAR_DOWN_HEAP;
+	TEAR_DOWN_LOGGER;
 	free(f->request);
 	free(f);
 }

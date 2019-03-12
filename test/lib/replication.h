@@ -7,9 +7,9 @@
 
 #include "../../src/replication.h"
 
-#define REPLICATION_FIXTURE sqlite3_wal_replication replication;
+#define FIXTURE_REPLICATION sqlite3_wal_replication replication;
 
-#define REPLICATION_SETUP                                                      \
+#define SETUP_REPLICATION                                                      \
 	{                                                                      \
 		int rc;                                                        \
 		rc = replication__init(&f->replication, &f->logger, &f->raft); \
@@ -18,7 +18,7 @@
 		sqlite3_wal_replication_register(&f->replication, 0);          \
 	}
 
-#define REPLICATION_TEAR_DOWN                                \
+#define TEAR_DOWN_REPLICATION                                \
 	sqlite3_wal_replication_unregister(&f->replication); \
 	replication__close(&f->replication);
 
