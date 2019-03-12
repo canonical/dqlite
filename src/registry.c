@@ -5,22 +5,7 @@
 #include "./lib/assert.h"
 
 #include "registry.h"
-
-struct follower
-{
-	sqlite3 *db;
-	queue queue;
-};
-
-static const char *follower_filename(struct follower *f)
-{
-	return sqlite3_db_filename(f->db, "main");
-}
-
-static bool follower_has_filename(struct follower *f, const char *filename)
-{
-	return strcmp(follower_filename(f), filename) == 0;
-}
+#include "follower.h"
 
 void registry__init(struct registry *r)
 {
@@ -39,17 +24,21 @@ void registry__close(struct registry *r)
 	}
 }
 
-int registry__conn_follower_add(struct registry *r, sqlite3 *db)
+int registry__conn_follower_add(struct registry *r, sqlite3 *conn)
 {
 	struct follower *f;
-	const char *filename = sqlite3_db_filename(db, "main");
+	const char *filename = sqlite3_db_filename(conn, "main");
+
 	assert(registry__conn_follower_get(r, filename) == NULL);
+
 	f = sqlite3_malloc(sizeof *f);
 	if (f == NULL) {
 		return DQLITE_NOMEM;
 	}
-	f->db = db;
+	follower__init(f, conn);
+
 	QUEUE__PUSH(&r->followers, &f->queue);
+
 	return 0;
 }
 
@@ -59,8 +48,8 @@ sqlite3 *registry__conn_follower_get(struct registry *r, const char *filename)
 	QUEUE__FOREACH(head, &r->followers)
 	{
 		struct follower *f = QUEUE__DATA(head, struct follower, queue);
-		if (follower_has_filename(f, filename)) {
-			return f->db;
+		if (strcmp(follower__filename(f), filename) == 0) {
+			return f->conn;
 		}
 	}
 	return NULL;
