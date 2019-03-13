@@ -34,7 +34,6 @@ endif
 lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
-  src/command.c \
   src/conn.c \
   src/db_.c \
   src/error.c \
@@ -55,6 +54,7 @@ libdqlite_la_SOURCES = \
   src/vfs.c
 if EXPERIMENTAL
   libdqlite_la_SOURCES += \
+  src/command.c \
   src/registry.c \
   src/db.c \
   src/follower.c \
@@ -103,12 +103,13 @@ unit_test_SOURCES += \
   test/unit/ext/test_uv.c \
   test/unit/lib/test_registry.c \
   test/unit/lib/test_serialization.c \
+  test/unit/test_gateway.c \
   test/unit/main.c
 if EXPERIMENTAL
   unit_test_SOURCES += \
   test/lib/raft.c \
   test/unit/ext/test_co.c \
-  test/unit/test_gateway.c \
+  test/unit/test_command.c \
   test/unit/test_leader.c \
   test/unit/test_registry.c \
   test/unit/test_replication.c
