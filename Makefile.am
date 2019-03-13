@@ -107,6 +107,7 @@ if EXPERIMENTAL
   test/lib/raft.c \
   test/unit/ext/test_co.c \
   test/unit/test_gateway.c \
+  test/unit/test_leader.c \
   test/unit/test_registry.c \
   test/unit/test_replication.c
 endif

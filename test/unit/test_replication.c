@@ -1,6 +1,5 @@
 #include "../../src/replication.h"
 
-#include "../lib/db.h"
 #include "../lib/heap.h"
 #include "../lib/logger.h"
 #include "../lib/raft.h"
@@ -12,29 +11,22 @@
 
 TEST_MODULE(replication);
 
-#define FIXTURE           \
-	FIXTURE_RAFT;     \
-	FIXTURE_LOGGER;   \
-	FIXTURE_VFS;      \
-	FIXTURE_DB(db);   \
-	FIXTURE_REGISTRY; \
+#define FIXTURE         \
+	FIXTURE_RAFT;   \
+	FIXTURE_LOGGER; \
+	FIXTURE_VFS;    \
 	FIXTURE_REPLICATION;
 
-#define SETUP              \
-	SETUP_RAFT;        \
-	SETUP_LOGGER;      \
-	SETUP_HEAP;        \
-	SETUP_SQLITE;      \
-	SETUP_VFS;         \
-	SETUP_DB(db);      \
-	SETUP_REGISTRY;    \
-	SETUP_REPLICATION; \
-	REPLICATION_LEADER(db);
+#define SETUP         \
+	SETUP_RAFT;   \
+	SETUP_LOGGER; \
+	SETUP_HEAP;   \
+	SETUP_SQLITE; \
+	SETUP_VFS;    \
+	SETUP_REPLICATION;
 
 #define TEAR_DOWN              \
 	TEAR_DOWN_REPLICATION; \
-	TEAR_DOWN_REGISTRY;    \
-	TEAR_DOWN_DB(db);      \
 	TEAR_DOWN_VFS;         \
 	TEAR_DOWN_SQLITE;      \
 	TEAR_DOWN_HEAP;        \

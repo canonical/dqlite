@@ -1,4 +1,3 @@
-#include "../lib/db.h"
 #include "../lib/heap.h"
 #include "../lib/logger.h"
 #include "../lib/registry.h"

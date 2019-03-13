@@ -5,12 +5,17 @@
 
 #include "./lib/queue.h"
 
+#include "db.h"
+
 struct leader
 {
 	sqlite3 *conn;
+	struct db *db;
 	queue queue;
 };
 
-void leader__init(struct leader *l, sqlite3 *conn);
+int leader__init(struct leader *l, struct db *db);
+
+void leader__close(struct leader *l);
 
 #endif /* LEADER_H_*/

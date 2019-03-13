@@ -21,8 +21,7 @@
  */
 int replication__init(struct sqlite3_wal_replication *replication,
 		      struct dqlite_logger *logger,
-		      struct raft *raft,
-		      struct registry *registry);
+		      struct raft *raft);
 
 void replication__close(struct sqlite3_wal_replication *replication);
 
