@@ -4,7 +4,7 @@
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
-#include "../src/db.h"
+#include "../src/db_.h"
 
 #include "munit.h"
 

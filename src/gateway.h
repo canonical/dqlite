@@ -11,7 +11,7 @@
 
 #include "../include/dqlite.h"
 
-#include "db.h"
+#include "db_.h"
 #include "error.h"
 #include "options.h"
 #include "request.h"
