@@ -8,6 +8,7 @@
 
 #include "replication.h"
 #include "leader.h"
+#include "queue.h"
 
 /* Set to 1 to enable tracing. */
 #if 1
@@ -21,6 +22,7 @@ struct replication
 {
 	struct dqlite_logger *logger;
 	struct raft *raft;
+	queue apply_reqs;
 };
 
 int replication__begin(sqlite3_wal_replication *replication, void *arg)
@@ -85,6 +87,7 @@ int replication__init(struct sqlite3_wal_replication *replication,
 
 	r->logger = logger;
 	r->raft = raft;
+	QUEUE__INIT(&r->apply_reqs);
 
 	replication->iVersion = 1;
 	replication->pAppData = r;
