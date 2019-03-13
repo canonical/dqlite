@@ -80,3 +80,42 @@ TEST_CASE(init, conn, NULL)
 	sqlite3_finalize(stmt);
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * leader__exec
+ *
+ ******************************************************************************/
+
+struct exec_fixture
+{
+	FIXTURE;
+	sqlite3_stmt *stmt;
+	struct exec req;
+};
+
+TEST_SUITE(exec);
+TEST_SETUP(exec)
+{
+	struct exec_fixture *f = munit_malloc(sizeof *f);
+	int rc;
+	SETUP;
+	rc = sqlite3_prepare_v2(f->leader.conn, "CREATE TABLE test (a INT)", -1, &f->stmt, NULL);
+	munit_assert_int(rc, ==, 0);
+	return f;
+}
+TEST_TEAR_DOWN(exec)
+{
+	struct exec_fixture *f = data;
+	sqlite3_finalize(f->stmt);
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(exec, async, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	leader__exec(&f->leader, &f->req, f->stmt, NULL);
+	return MUNIT_OK;
+}

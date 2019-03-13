@@ -16,10 +16,11 @@ static int open_conn(const char *filename,
 		     unsigned page_size,
 		     sqlite3 **conn);
 static int init_loop(struct leader *l);
+static void maybe_exec_done(struct exec *req);
 
 static void loop();
 static struct leader *loop_arg_leader; /* For initializing the loop coroutine */
-static struct exec *loop_arg_exec; /* Next exec request to execute */
+static struct exec *loop_arg_exec;     /* Next exec request to execute */
 
 int leader__init(struct leader *l, struct db *db)
 {
@@ -35,28 +36,53 @@ int leader__init(struct leader *l, struct db *db)
 	if (rc != 0) {
 		goto err_after_loop_create;
 	}
+	l->exec = NULL;
 	QUEUE__PUSH(&db->leaders, &l->queue);
 	return 0;
 
- err_after_loop_create:
+err_after_loop_create:
 	co_delete(l->loop);
- err:
+err:
 	return rc;
 }
 
 void leader__close(struct leader *l)
 {
 	int rc;
-	QUEUE__REMOVE(&l->queue);
+	assert(l->exec == NULL);
 	rc = sqlite3_close(l->conn);
 	assert(rc == 0);
 	co_delete(l->loop);
+	QUEUE__REMOVE(&l->queue);
 }
 
 int leader__exec(struct leader *l,
 		 struct exec *req,
 		 sqlite3_stmt *stmt,
-		 exec_cb cb);
+		 exec_cb cb)
+{
+	if (l->exec != NULL) {
+		return SQLITE_BUSY;
+	}
+	req->leader = l;
+	req->stmt = stmt;
+	req->cb = cb;
+	loop_arg_exec = req;
+	co_switch(l->loop);
+	maybe_exec_done(req);
+	return 0;
+}
+
+static void maybe_exec_done(struct exec *req)
+{
+	if (!req->done) {
+		return;
+	}
+	if (req->cb != NULL) {
+		req->cb(req, req->status);
+	}
+	req->leader->exec = NULL;
+}
 
 static int open_conn(const char *filename,
 		     const char *vfs,
@@ -125,8 +151,8 @@ err:
 	return rc;
 }
 
-static int init_loop(struct leader *l) {
-	int rc;
+static int init_loop(struct leader *l)
+{
 	l->loop = co_create(LOOP_CORO_STACK_SIZE, loop);
 	if (l->loop == NULL) {
 		return DQLITE_NOMEM;
@@ -136,9 +162,16 @@ static int init_loop(struct leader *l) {
 	return 0;
 }
 
-static void loop() {
+static void loop()
+{
 	struct leader *l = loop_arg_leader;
 	co_switch(l->main);
-	while(1) {
+	while (1) {
+		struct exec *req = loop_arg_exec;
+		int rc;
+		rc = sqlite3_step(req->stmt);
+		req->done = true;
+		req->status = rc;
+		co_switch(l->main);
 	};
 }
