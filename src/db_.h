@@ -1,5 +1,5 @@
-#ifndef DQLITE_DB_H
-#define DQLITE_DB_H
+#ifndef DQLITE_DB__H_
+#define DQLITE_DB__H_
 
 #include <sqlite3.h>
 
@@ -44,4 +44,4 @@ struct stmt *db__stmt(struct db *db, uint32_t stmt_id);
 /* Finalize a statement. */
 int db__finalize(struct db *db, struct stmt *stmt);
 
-#endif /* DQLITE_DB_H */
+#endif /* DQLITE_DB__H_ */
