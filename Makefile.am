@@ -35,12 +35,14 @@ lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
   src/conn.c \
+  src/db.c \
   src/db_.c \
   src/error.c \
   src/file.c \
   src/follower.c \
   src/format.c \
   src/gateway.c \
+  src/leader.c \
   src/lib/fsm.c \
   src/lib/logger.c \
   src/lifecycle.c \
