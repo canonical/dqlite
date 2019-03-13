@@ -47,7 +47,7 @@ void db__init_(struct db_ *db)
 	stmt__registry_init(&db->stmts);
 }
 
-void db__close(struct db_ *db)
+void db__close_(struct db_ *db)
 {
 	int rc;
 

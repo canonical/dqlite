@@ -211,7 +211,7 @@ static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 	if (rc != 0) {
 		dqlite__error_printf(&g->error, g->db->error);
 		gateway__failure(g, ctx, rc);
-		db__close(g->db);
+		db__close_(g->db);
 		sqlite3_free(g->db);
 		g->db = NULL;
 		return;
@@ -658,7 +658,7 @@ void gateway__close(struct gateway *g)
 	assert(g != NULL);
 
 	if (g->db != NULL) {
-		db__close(g->db);
+		db__close_(g->db);
 		sqlite3_free(g->db);
 	}
 

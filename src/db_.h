@@ -25,7 +25,7 @@ struct db_
 void db__init_(struct db_ *db);
 
 /* Close a database state object, releasing all associated resources. */
-void db__close(struct db_ *db);
+void db__close_(struct db_ *db);
 
 /* Open the underlying db. */
 int db__open(struct db_ *db,
