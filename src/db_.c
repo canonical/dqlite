@@ -17,7 +17,7 @@
 /* Wrapper around sqlite3_exec that frees the memory allocated for the error
  * message in case of failure and sets the db's error field
  * appropriately */
-static int db__exec(struct db *db, const char *sql)
+static int db__exec(struct db_ *db, const char *sql)
 {
 	char *msg;
 	int rc;
@@ -36,7 +36,7 @@ static int db__exec(struct db *db, const char *sql)
 	return SQLITE_OK;
 }
 
-void db__init(struct db *db)
+void db__init(struct db_ *db)
 {
 	assert(db != NULL);
 
@@ -47,7 +47,7 @@ void db__init(struct db *db)
 	stmt__registry_init(&db->stmts);
 }
 
-void db__close(struct db *db)
+void db__close(struct db_ *db)
 {
 	int rc;
 
@@ -75,7 +75,7 @@ void db__close(struct db *db)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_DB);
 }
 
-int db__open(struct db *db,
+int db__open(struct db_ *db,
 	     const char *name,
 	     int flags,
 	     const char *vfs,
@@ -158,7 +158,7 @@ int db__open(struct db *db,
 	return SQLITE_OK;
 }
 
-int db__prepare(struct db *db, const char *sql, struct stmt **stmt)
+int db__prepare(struct db_ *db, const char *sql, struct stmt **stmt)
 {
 	int err;
 	int rc;
@@ -191,12 +191,12 @@ int db__prepare(struct db *db, const char *sql, struct stmt **stmt)
 }
 
 /* Lookup a stmt object by ID */
-struct stmt *db__stmt(struct db *db, uint32_t stmt_id)
+struct stmt *db__stmt(struct db_ *db, uint32_t stmt_id)
 {
 	return stmt__registry_get(&db->stmts, stmt_id);
 }
 
-int db__finalize(struct db *db, struct stmt *stmt)
+int db__finalize(struct db_ *db, struct stmt *stmt)
 {
 	int rc;
 	int err;
