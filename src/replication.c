@@ -7,6 +7,7 @@
 #include "./lib/logger.h"
 
 #include "replication.h"
+#include "leader.h"
 
 /* Set to 1 to enable tracing. */
 #if 1
@@ -25,12 +26,14 @@ struct replication
 int replication__begin(sqlite3_wal_replication *replication, void *arg)
 {
 	struct replication *r = replication->pAppData;
+	struct leader *leader = arg;
 
 	if (raft_state(r->raft) != RAFT_LEADER) {
 		return SQLITE_IOERR_NOT_LEADER;
 	}
 
-	(void)arg;
+	if (leader->db->follower == NULL) {
+	}
 
 	return SQLITE_OK;
 }
