@@ -8,8 +8,8 @@
 #include "../lib/replication.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
-#include "../lib/vfs.h"
 #include "../lib/stmt.h"
+#include "../lib/vfs.h"
 
 TEST_MODULE(leader);
 
@@ -109,6 +109,13 @@ TEST_TEAR_DOWN(exec)
 	TEAR_DOWN_STMT;
 	TEAR_DOWN;
 	free(f);
+}
+
+TEST_CASE(exec, success, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	return MUNIT_OK;
 }
 
 TEST_GROUP(exec, error);
