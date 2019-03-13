@@ -20,7 +20,6 @@ struct replication
 {
 	struct dqlite_logger *logger;
 	struct raft *raft;
-	struct registry *registry;
 };
 
 int replication__begin(sqlite3_wal_replication *replication, void *arg)
@@ -69,8 +68,7 @@ int replication__end(sqlite3_wal_replication *r, void *arg)
 
 int replication__init(struct sqlite3_wal_replication *replication,
 		      struct dqlite_logger *logger,
-		      struct raft *raft,
-		      struct registry *registry)
+		      struct raft *raft)
 {
 	struct replication *r = sqlite3_malloc(sizeof *r);
 
@@ -80,7 +78,6 @@ int replication__init(struct sqlite3_wal_replication *replication,
 
 	r->logger = logger;
 	r->raft = raft;
-	r->registry = registry;
 
 	replication->iVersion = 1;
 	replication->pAppData = r;
