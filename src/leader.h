@@ -2,6 +2,7 @@
 #define LEADER_H_
 
 #include <sqlite3.h>
+#include <libco.h>
 
 #include "./lib/queue.h"
 
@@ -9,8 +10,9 @@
 
 struct leader
 {
-	sqlite3 *conn;
 	struct db *db;
+	cothread_t main;
+	sqlite3 *conn;
 	queue queue;
 };
 
