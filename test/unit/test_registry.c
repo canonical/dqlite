@@ -11,7 +11,6 @@ TEST_MODULE(registry);
 #define FIXTURE         \
 	FIXTURE_LOGGER; \
 	FIXTURE_VFS;    \
-	FIXTURE_DB(db); \
 	FIXTURE_REGISTRY;
 
 #define SETUP           \
@@ -20,11 +19,9 @@ TEST_MODULE(registry);
 	SETUP_SQLITE;   \
 	SETUP_VFS;      \
 	SETUP_REGISTRY; \
-	SETUP_DB(db);
 
 #define TEAR_DOWN           \
 	TEAR_DOWN_REGISTRY; \
-	TEAR_DOWN_DB(db);   \
 	TEAR_DOWN_VFS;      \
 	TEAR_DOWN_SQLITE;   \
 	TEAR_DOWN_HEAP;     \
@@ -32,52 +29,54 @@ TEST_MODULE(registry);
 
 /******************************************************************************
  *
- * Follower-related APIs.
+ * db-related APIs.
  *
  ******************************************************************************/
 
-struct follower_fixture
+struct db_fixture
 {
 	FIXTURE;
 };
 
-TEST_SUITE(follower);
-TEST_SETUP(follower)
+TEST_SUITE(db);
+TEST_SETUP(db)
 {
-	struct follower_fixture *f = munit_malloc(sizeof *f);
+	struct db_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	return f;
 }
-TEST_TEAR_DOWN(follower)
+TEST_TEAR_DOWN(db)
 {
-	struct follower_fixture *f = data;
+	struct db_fixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
 
-/* Add a new follower connection to the registry. */
-TEST_CASE(follower, add, NULL)
+/* Get a db that didn't exist before. */
+TEST_CASE(db, get_new, NULL)
 {
-	struct follower_fixture *f = data;
+	struct db_fixture *f = data;
+	struct db *db;
 	(void)params;
 	int rc;
-	rc = registry__conn_follower_add(&f->registry, f->db);
+	rc = registry__db_get(&f->registry, "test.db", &db);
 	munit_assert_int(rc, ==, 0);
+	munit_assert_string_equal(db->filename, "test.db");
 	return MUNIT_OK;
 }
 
-/* Get a previously registered follower connection. */
-TEST_CASE(follower, get, NULL)
+/* Get a previously registered db. */
+TEST_CASE(db, get_existing, NULL)
 {
-	struct follower_fixture *f = data;
-	sqlite3 *db;
+	struct db_fixture *f = data;
+	struct db *db1;
+	struct db *db2;
 	(void)params;
 	int rc;
-	db = registry__conn_follower_get(&f->registry, "test.db");
-	munit_assert_ptr_null(db);
-	rc = registry__conn_follower_add(&f->registry, f->db);
+	rc = registry__db_get(&f->registry, "test.db", &db1);
 	munit_assert_int(rc, ==, 0);
-	db = registry__conn_follower_get(&f->registry, "test.db");
-	munit_assert_ptr_equal(db, f->db);
+	rc = registry__db_get(&f->registry, "test.db", &db2);
+	munit_assert_int(rc, ==, 0);
+	munit_assert_ptr_equal(db1, db2);
 	return MUNIT_OK;
 }

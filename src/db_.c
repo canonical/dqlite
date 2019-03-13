@@ -36,7 +36,7 @@ static int db__exec(struct db_ *db, const char *sql)
 	return SQLITE_OK;
 }
 
-void db__init(struct db_ *db)
+void db__init_(struct db_ *db)
 {
 	assert(db != NULL);
 

@@ -200,7 +200,7 @@ static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 		return;
 	}
 
-	db__init(g->db);
+	db__init_(g->db);
 
 	g->db->id = 0;
 

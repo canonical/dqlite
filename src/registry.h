@@ -7,26 +7,19 @@
 
 #include "./lib/queue.h"
 
+#include "db.h"
+
 struct registry
 {
-	queue followers;
+	queue dbs;
 };
 
 void registry__init(struct registry *r);
 void registry__close(struct registry *r);
 
 /**
- * Add a new follower connection to the registry.
- *
- * If a follower connection for the database with the given filename is already
- * registered, abort the process with an assertion error.
+ * Get the db with the given filename. If no one is registered, create one.
  */
-int registry__conn_follower_add(struct registry *r, sqlite3 *db);
-
-/**
- * Return the follower connection used to replicate the database identified by
- * the given filename, or NULL.
- */
-sqlite3 *registry__conn_follower_get(struct registry *r, const char *filename);
+int registry__db_get(struct registry *r, const char *filename, struct db **db);
 
 #endif /* REGISTRY_H_*/
