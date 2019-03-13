@@ -15,6 +15,7 @@ int leader__init(struct leader *l, struct db *db)
 	int rc;
 
 	l->db = db;
+	l->main = co_active();
 
 	rc = open_conn(db->filename, db->options->vfs, db->options->replication,
 		       l, db->options->page_size, &l->conn);
