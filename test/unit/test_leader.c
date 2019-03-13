@@ -9,6 +9,7 @@
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
+#include "../lib/stmt.h"
 
 TEST_MODULE(leader);
 
@@ -90,7 +91,7 @@ TEST_CASE(init, conn, NULL)
 struct exec_fixture
 {
 	FIXTURE;
-	sqlite3_stmt *stmt;
+	FIXTURE_STMT;
 	struct exec req;
 };
 
@@ -98,17 +99,14 @@ TEST_SUITE(exec);
 TEST_SETUP(exec)
 {
 	struct exec_fixture *f = munit_malloc(sizeof *f);
-	int rc;
 	SETUP;
-	rc = sqlite3_prepare_v2(f->leader.conn, "CREATE TABLE test (a INT)", -1,
-				&f->stmt, NULL);
-	munit_assert_int(rc, ==, 0);
+	SETUP_STMT;
 	return f;
 }
 TEST_TEAR_DOWN(exec)
 {
 	struct exec_fixture *f = data;
-	sqlite3_finalize(f->stmt);
+	TEAR_DOWN_STMT;
 	TEAR_DOWN;
 	free(f);
 }

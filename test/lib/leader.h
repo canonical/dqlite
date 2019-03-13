@@ -12,4 +12,4 @@
 #define SETUP_LEADER leader__init(&f->leader, &f->db)
 #define TEAR_DOWN_LEADER leader__close(&f->leader)
 
-#endif /* TEST_DB_H */
+#endif /* TEST_LEADER_H */
