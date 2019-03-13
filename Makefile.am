@@ -34,6 +34,7 @@ endif
 lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
+  src/command.c \
   src/conn.c \
   src/db_.c \
   src/error.c \
@@ -101,7 +102,6 @@ unit_test_SOURCES += \
   test/test_vfs.c\
   test/unit/ext/test_uv.c \
   test/unit/lib/test_registry.c \
-  test/unit/test_replication.c \
   test/unit/main.c
 if EXPERIMENTAL
   unit_test_SOURCES += \
@@ -109,7 +109,8 @@ if EXPERIMENTAL
   test/unit/ext/test_co.c \
   test/unit/test_gateway.c \
   test/unit/test_leader.c \
-  test/unit/test_registry.c
+  test/unit/test_registry.c \
+  test/unit/test_replication.c
 endif
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test
