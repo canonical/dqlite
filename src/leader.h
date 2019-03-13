@@ -12,6 +12,7 @@ struct leader
 {
 	struct db *db;
 	cothread_t main;
+	cothread_t loop;
 	sqlite3 *conn;
 	queue queue;
 };

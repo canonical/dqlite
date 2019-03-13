@@ -1,6 +1,12 @@
 #include <stdio.h>
 
+#include "../include/dqlite.h"
+
+#include "./lib/assert.h"
+
 #include "leader.h"
+
+#define LOOP_CORO_STACK_SIZE 1024 * 1024 /* TODO: make this configurable? */
 
 /* Open a SQLite connection and set it to leader replication mode. */
 static int open_conn(const char *filename,
@@ -9,30 +15,48 @@ static int open_conn(const char *filename,
 		     void *replication_arg,
 		     unsigned page_size,
 		     sqlite3 **conn);
+static int init_loop(struct leader *l);
+
+static void loop();
+static struct leader *loop_arg_leader; /* For initializing the loop coroutine */
+static struct exec *loop_arg_exec; /* Next exec request to execute */
 
 int leader__init(struct leader *l, struct db *db)
 {
 	int rc;
-
 	l->db = db;
 	l->main = co_active();
-
+	rc = init_loop(l);
+	if (rc != 0) {
+		goto err;
+	}
 	rc = open_conn(db->filename, db->options->vfs, db->options->replication,
 		       l, db->options->page_size, &l->conn);
 	if (rc != 0) {
-		return rc;
+		goto err_after_loop_create;
 	}
-
 	QUEUE__PUSH(&db->leaders, &l->queue);
-
 	return 0;
+
+ err_after_loop_create:
+	co_delete(l->loop);
+ err:
+	return rc;
 }
 
 void leader__close(struct leader *l)
 {
+	int rc;
 	QUEUE__REMOVE(&l->queue);
-	sqlite3_close(l->conn);
+	rc = sqlite3_close(l->conn);
+	assert(rc == 0);
+	co_delete(l->loop);
 }
+
+int leader__exec(struct leader *l,
+		 struct exec *req,
+		 sqlite3_stmt *stmt,
+		 exec_cb cb);
 
 static int open_conn(const char *filename,
 		     const char *vfs,
@@ -99,4 +123,22 @@ err:
 		sqlite3_free(msg);
 	}
 	return rc;
+}
+
+static int init_loop(struct leader *l) {
+	int rc;
+	l->loop = co_create(LOOP_CORO_STACK_SIZE, loop);
+	if (l->loop == NULL) {
+		return DQLITE_NOMEM;
+	}
+	loop_arg_leader = l;
+	co_switch(l->loop);
+	return 0;
+}
+
+static void loop() {
+	struct leader *l = loop_arg_leader;
+	co_switch(l->main);
+	while(1) {
+	};
 }
