@@ -35,14 +35,11 @@ lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
   src/conn.c \
-  src/db.c \
   src/db_.c \
   src/error.c \
   src/file.c \
-  src/follower.c \
   src/format.c \
   src/gateway.c \
-  src/leader.c \
   src/lib/fsm.c \
   src/lib/logger.c \
   src/lifecycle.c \
@@ -50,7 +47,6 @@ libdqlite_la_SOURCES = \
   src/metrics.c \
   src/options.c \
   src/queue.c \
-  src/registry.c \
   src/request.c \
   src/response.c \
   src/server.c \
@@ -58,6 +54,10 @@ libdqlite_la_SOURCES = \
   src/vfs.c
 if EXPERIMENTAL
   libdqlite_la_SOURCES += \
+  src/registry.c \
+  src/db.c \
+  src/follower.c \
+  src/leader.c \
   src/replication.c
 endif
 include_HEADERS += include/dqlite.h
