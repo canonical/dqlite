@@ -26,6 +26,10 @@ int replication__begin(sqlite3_wal_replication *replication, void *arg)
 {
 	struct replication *r = replication->pAppData;
 
+	if (raft_state(r->raft) != RAFT_LEADER) {
+		return SQLITE_IOERR_NOT_LEADER;
+	}
+
 	(void)arg;
 
 	return SQLITE_OK;
