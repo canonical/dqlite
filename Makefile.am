@@ -102,6 +102,7 @@ unit_test_SOURCES += \
   test/test_vfs.c\
   test/unit/ext/test_uv.c \
   test/unit/lib/test_registry.c \
+  test/unit/lib/test_serialization.c \
   test/unit/main.c
 if EXPERIMENTAL
   unit_test_SOURCES += \
