@@ -1,12 +1,12 @@
 #include "../lib/heap.h"
 #include "../lib/logger.h"
 #include "../lib/options.h"
-#include "../lib/replication.h"
+#include "../lib/registry.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
-#include "../lib/raft.h"
-#include "../lib/registry.h"
+
+#include "../replication.h"
 
 #include "../../src/format.h"
 #include "../../src/gateway.h"
@@ -26,8 +26,7 @@ struct fixture
 	FIXTURE_LOGGER;
 	FIXTURE_VFS;
 	FIXTURE_OPTIONS;
-	FIXTURE_RAFT;
-	FIXTURE_REPLICATION;
+	FIXTURE_STUB_REPLICATION;
 	dqlite_cluster *cluster;
 	struct gateway *gateway;
 	struct request *request;
@@ -124,8 +123,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	SETUP_HEAP;
 	SETUP_SQLITE;
 	SETUP_VFS;
-	SETUP_RAFT;
-	SETUP_REPLICATION;
+	SETUP_STUB_REPLICATION;
 	SETUP_OPTIONS;
 
 	callbacks.ctx = f;
@@ -155,9 +153,8 @@ static void tear_down(void *data)
 	request_close(f->request);
 	gateway__close(f->gateway);
 	test_cluster_close(f->cluster);
+	TEAR_DOWN_STUB_REPLICATION;
 	TEAR_DOWN_OPTIONS;
-	TEAR_DOWN_REPLICATION;
-	TEAR_DOWN_RAFT;
 	TEAR_DOWN_VFS;
 	TEAR_DOWN_SQLITE;
 	TEAR_DOWN_HEAP;

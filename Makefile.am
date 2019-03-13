@@ -101,6 +101,7 @@ unit_test_SOURCES += \
   test/test_vfs.c\
   test/unit/ext/test_uv.c \
   test/unit/lib/test_registry.c \
+  test/unit/test_replication.c \
   test/unit/main.c
 if EXPERIMENTAL
   unit_test_SOURCES += \
@@ -108,8 +109,7 @@ if EXPERIMENTAL
   test/unit/ext/test_co.c \
   test/unit/test_gateway.c \
   test/unit/test_leader.c \
-  test/unit/test_registry.c \
-  test/unit/test_replication.c
+  test/unit/test_registry.c
 endif
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test
