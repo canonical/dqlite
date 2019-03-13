@@ -83,6 +83,11 @@ DQLITE_INLINE size_t byte__pad64(size_t size)
 	return size;
 }
 
+DQLITE_INLINE size_t byte__sizeof_uint8(uint8_t value)
+{
+	return sizeof(value);
+}
+
 DQLITE_INLINE size_t byte__sizeof_uint32(uint32_t value)
 {
 	return sizeof(value);
@@ -98,9 +103,15 @@ DQLITE_INLINE size_t byte__sizeof_text(text_t value)
 	return byte__pad64(strlen(value) + 1);
 }
 
+DQLITE_INLINE void byte__encode_uint8(uint8_t value, void **cursor)
+{
+	*(uint8_t *)(*cursor) = value;
+	*cursor += sizeof(uint8_t);
+}
+
 DQLITE_INLINE void byte__encode_uint32(uint32_t value, void **cursor)
 {
-	*(uint32_t *)(*cursor) = value;
+	*(uint32_t *)(*cursor) = byte__flip32(value);
 	*cursor += sizeof(uint32_t);
 }
 
@@ -116,6 +127,13 @@ DQLITE_INLINE void byte__encode_text(text_t value, void **cursor)
 	memset(*cursor, 0, len);
 	strcpy(*cursor, value);
 	*cursor += len;
+}
+
+DQLITE_INLINE uint8_t byte__decode_uint8(const void **cursor)
+{
+	uint8_t value = *(uint8_t *)(*cursor);
+	*cursor += sizeof(uint8_t);
+	return value;
 }
 
 DQLITE_INLINE uint32_t byte__decode_uint32(const void **cursor)

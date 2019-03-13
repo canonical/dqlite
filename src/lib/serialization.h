@@ -21,14 +21,20 @@
  * A new struct called NAME will be defined, along with sizeof, encode and
  * decode functions.
  */
-#define SERIALIZATION__DEFINE(NAME, FIELDS)             \
-	struct NAME                                     \
-	{                                               \
-		FIELDS(SERIALIZATION__DEFINE_FIELD)     \
-	};                                              \
+#define SERIALIZATION__DEFINE(NAME, FIELDS)         \
+	SERIALIZATION__DEFINE_STRUCT(NAME, FIELDS); \
+	SERIALIZATION__DEFINE_METHODS(NAME, FIELDS)
+
+#define SERIALIZATION__DEFINE_STRUCT(NAME, FIELDS)  \
+	struct NAME                                 \
+	{                                           \
+		FIELDS(SERIALIZATION__DEFINE_FIELD) \
+	}
+
+#define SERIALIZATION__DEFINE_METHODS(NAME, FIELDS)     \
 	size_t NAME##__sizeof(struct NAME *p);          \
 	void NAME##__encode(struct NAME *p, void *buf); \
-	void NAME##__decode(void *buf, struct NAME *p);
+	void NAME##__decode(void *buf, struct NAME *p)
 
 /* Define a single field in serializable struct.
  *
