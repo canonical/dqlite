@@ -32,7 +32,7 @@ struct gateway__ctx
 {
 	struct request *request;
 	struct response response;
-	struct db *db;     /* For multi-response queries */
+	struct db_ *db;     /* For multi-response queries */
 	struct stmt *stmt; /* For multi-response queries */
 	int cleanup;       /* Code indicating how to cleanup */
 };
@@ -75,7 +75,7 @@ struct gateway
 
 	struct request *next;
 
-	struct db *db; /* Open database */
+	struct db_ *db; /* Open database */
 
 #ifdef DQLITE_EXPERIMENTAL
 

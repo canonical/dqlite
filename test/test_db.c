@@ -16,7 +16,7 @@ TEST_MODULE(db);
  ******************************************************************************/
 
 /* Open a test database. */
-static void __db_open(struct db *db)
+static void __db_open(struct db_ *db)
 {
 	int rc;
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
@@ -37,7 +37,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 {
 	sqlite3_vfs *vfs;
 	sqlite3_wal_replication *replication;
-	struct db *db;
+	struct db_ *db;
 	int err;
 	int rc;
 
@@ -70,7 +70,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 static void tear_down(void *data)
 {
-	struct db *db = data;
+	struct db_ *db = data;
 	sqlite3_wal_replication *replication =
 	    sqlite3_wal_replication_find("test");
 	sqlite3_vfs *vfs = sqlite3_vfs_find(replication->zName);
@@ -100,7 +100,7 @@ TEST_TEAR_DOWN(open, tear_down);
  * SQLITE_OPEN_CREATE flag is not on. */
 TEST_CASE(open, cantopen, NULL)
 {
-	struct db *db = data;
+	struct db_ *db = data;
 	int flags = SQLITE_OPEN_READWRITE;
 	int rc;
 
@@ -118,7 +118,7 @@ TEST_CASE(open, cantopen, NULL)
  * name. */
 TEST_CASE(open, bad_vfs, NULL)
 {
-	struct db *db = data;
+	struct db_ *db = data;
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int rc;
 
@@ -135,7 +135,7 @@ TEST_CASE(open, bad_vfs, NULL)
 /* Open a new database */
 TEST_CASE(open, success, NULL)
 {
-	struct db *db = data;
+	struct db_ *db = data;
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int rc;
 
@@ -160,7 +160,7 @@ TEST_TEAR_DOWN(prepare, tear_down);
 /* If the SQL text is invalid, an error is returned. */
 TEST_CASE(prepare, bad_sql, NULL)
 {
-	struct db *db = data;
+	struct db_ *db = data;
 	struct stmt *stmt;
 	int rc;
 

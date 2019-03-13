@@ -256,7 +256,7 @@ static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 
 static void gateway__prepare(struct gateway *g, struct gateway__ctx *ctx)
 {
-	struct db *db;
+	struct db_ *db;
 	struct stmt *stmt;
 	int rc;
 
@@ -279,7 +279,7 @@ static void gateway__prepare(struct gateway *g, struct gateway__ctx *ctx)
 static void gateway__exec(struct gateway *g, struct gateway__ctx *ctx)
 {
 	int rc;
-	struct db *db;
+	struct db_ *db;
 	struct stmt *stmt;
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
@@ -315,7 +315,7 @@ static void gateway__exec(struct gateway *g, struct gateway__ctx *ctx)
  * A single batch of rows is typically about the size of the static response
  * message body. */
 static void gateway__query_batch(struct gateway *g,
-				 struct db *db,
+				 struct db_ *db,
 				 struct stmt *stmt,
 				 struct gateway__ctx *ctx)
 {
@@ -363,7 +363,7 @@ static void gateway__query_batch(struct gateway *g,
 static void gateway__query(struct gateway *g, struct gateway__ctx *ctx)
 {
 	int rc;
-	struct db *db;
+	struct db_ *db;
 	struct stmt *stmt;
 
 	GATEWAY__BARRIER;
@@ -389,7 +389,7 @@ static void gateway__query(struct gateway *g, struct gateway__ctx *ctx)
 static void gateway__finalize(struct gateway *g, struct gateway__ctx *ctx)
 {
 	int rc;
-	struct db *db;
+	struct db_ *db;
 	struct stmt *stmt;
 
 	GATEWAY__BARRIER;
@@ -408,7 +408,7 @@ static void gateway__finalize(struct gateway *g, struct gateway__ctx *ctx)
 static void gateway__exec_sql(struct gateway *g, struct gateway__ctx *ctx)
 {
 	int rc;
-	struct db *db;
+	struct db_ *db;
 	const char *sql;
 	struct stmt *stmt = NULL;
 	uint64_t last_insert_id;
@@ -469,7 +469,7 @@ err:
 static void gateway__query_sql(struct gateway *g, struct gateway__ctx *ctx)
 {
 	int rc;
-	struct db *db;
+	struct db_ *db;
 	struct stmt *stmt;
 
 	GATEWAY__BARRIER;

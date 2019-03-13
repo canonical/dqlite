@@ -7,7 +7,7 @@
 #include "stmt.h"
 
 /* Hold state for a single open SQLite database */
-struct db
+struct db_
 {
 	/* public */
 	dqlite_cluster *cluster; /* Cluster API implementation  */
@@ -22,13 +22,13 @@ struct db
 };
 
 /* Initialize a database state object */
-void db__init(struct db *db);
+void db__init(struct db_ *db);
 
 /* Close a database state object, releasing all associated resources. */
-void db__close(struct db *db);
+void db__close(struct db_ *db);
 
 /* Open the underlying db. */
-int db__open(struct db *db,
+int db__open(struct db_ *db,
 	     const char *name,
 	     int flags,
 	     const char *vfs,
@@ -36,12 +36,12 @@ int db__open(struct db *db,
 	     const char *wal_replication);
 
 /* Prepare a statement using the underlying db. */
-int db__prepare(struct db *db, const char *sql, struct stmt **stmt);
+int db__prepare(struct db_ *db, const char *sql, struct stmt **stmt);
 
 /* Lookup the statement with the given ID. */
-struct stmt *db__stmt(struct db *db, uint32_t stmt_id);
+struct stmt *db__stmt(struct db_ *db, uint32_t stmt_id);
 
 /* Finalize a statement. */
-int db__finalize(struct db *db, struct stmt *stmt);
+int db__finalize(struct db_ *db, struct stmt *stmt);
 
 #endif /* DQLITE_DB__H_ */

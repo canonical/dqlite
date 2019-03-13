@@ -1203,7 +1203,7 @@ TEST_CASE(handle, checkpoint_busy, NULL)
 	struct fixture *f = data;
 	sqlite3_file *file = munit_malloc(f->vfs->szOsFile);
 	uint32_t db1_id;
-	struct db db2;
+	struct db_ db2;
 	struct stmt *stmt2;
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
