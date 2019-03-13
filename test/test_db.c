@@ -75,7 +75,7 @@ static void tear_down(void *data)
 	    sqlite3_wal_replication_find("test");
 	sqlite3_vfs *vfs = sqlite3_vfs_find(replication->zName);
 
-	db__close(db);
+	db__close_(db);
 	free(db);
 
 	sqlite3_vfs_unregister(vfs);
