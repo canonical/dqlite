@@ -22,7 +22,7 @@ struct db_
 };
 
 /* Initialize a database state object */
-void db__init(struct db_ *db);
+void db__init_(struct db_ *db);
 
 /* Close a database state object, releasing all associated resources. */
 void db__close(struct db_ *db);

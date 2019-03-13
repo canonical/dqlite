@@ -1234,7 +1234,7 @@ TEST_CASE(handle, checkpoint_busy, NULL)
 
 	/* Manually open a new connection to the same database and start a read
 	 * transaction. */
-	db__init(&db2);
+	db__init_(&db2);
 	flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	rc = db__open(&db2, "test.db", flags, f->options.vfs,
 		      f->gateway->options->page_size,

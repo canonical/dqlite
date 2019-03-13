@@ -63,7 +63,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	db = munit_malloc(sizeof *db);
 
-	db__init(db);
+	db__init_(db);
 
 	return db;
 }
