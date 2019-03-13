@@ -115,6 +115,8 @@ TEST_CASE(exec, success, NULL)
 {
 	struct exec_fixture *f = data;
 	(void)params;
+	RAFT_BECOME_LEADER;
+	leader__exec(&f->leader, &f->req, f->stmt, NULL);
 	return MUNIT_OK;
 }
 

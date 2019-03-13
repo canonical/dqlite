@@ -71,4 +71,38 @@
 		munit_assert_int(rc, ==, 0); \
 	}
 
+#define RAFT_BECOME_CANDIDATE                                       \
+	raft_io_stub_advance(&f->raft_io,                           \
+			     f->raft.election_timeout_rand + 100);  \
+	munit_assert_int(raft_state(&f->raft), ==, RAFT_CANDIDATE); \
+	raft_io_stub_flush(&f->raft_io);
+
+#define RAFT_BECOME_LEADER                                                  \
+	{                                                                   \
+		struct raft *r = &f->raft;                                  \
+		size_t votes = r->configuration.n / 2;                      \
+		size_t i;                                                   \
+		RAFT_BECOME_CANDIDATE;                                      \
+		for (i = 0; i < r->configuration.n; i++) {                  \
+			struct raft_server *server =                        \
+			    &r->configuration.servers[i];                   \
+			struct raft_message message;                        \
+			if (server->id == f->raft.id) {                     \
+				continue;                                   \
+			}                                                   \
+			message.type = RAFT_IO_REQUEST_VOTE_RESULT;         \
+			message.server_id = server->id;                     \
+			message.server_address = server->address;           \
+			message.request_vote_result.term = r->current_term; \
+			message.request_vote_result.vote_granted = 1;       \
+			raft_io_stub_dispatch(r->io, &message);             \
+			votes--;                                            \
+			if (votes == 0) {                                   \
+				break;                                      \
+			}                                                   \
+		}                                                           \
+		munit_assert_int(raft_state(r), ==, RAFT_LEADER);           \
+		raft_io_stub_flush(r->io);                                  \
+	}
+
 #endif /* TEST_RAFT_H */
