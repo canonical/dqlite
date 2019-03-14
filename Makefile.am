@@ -60,7 +60,8 @@ if EXPERIMENTAL
   src/fsm.c \
   src/leader.c \
   src/registry.c \
-  src/replication.c
+  src/replication.c \
+  src/txn.c
 endif
 include_HEADERS += include/dqlite.h
 
