@@ -6,15 +6,18 @@
 #include "./lib/serialization.h"
 
 /* Command type codes */
-enum { COMMAND_OPEN = 1 };
+enum { COMMAND_OPEN = 1, COMMAND_UNDO };
 
 /* Serialization definitions for a raft FSM command. */
 #define COMMAND__DEFINE(LOWER, UPPER, _) \
 	SERIALIZATION__DEFINE_STRUCT(command_##LOWER, COMMAND__##UPPER);
 
 #define COMMAND__OPEN(X, ...) X(text, filename, ##__VA_ARGS__)
+#define COMMAND__UNDO(X, ...) X(uint64, tx_id, ##__VA_ARGS__)
 
-#define COMMAND__TYPES(X, ...) X(open, OPEN, __VA_ARGS__)
+#define COMMAND__TYPES(X, ...) \
+	X(open, OPEN, __VA_ARGS__) \
+	X(undo, UNDO, __VA_ARGS__)
 
 COMMAND__TYPES(COMMAND__DEFINE);
 
