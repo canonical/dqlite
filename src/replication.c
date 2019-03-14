@@ -29,12 +29,18 @@ struct replication
 static void apply_cb(struct raft_apply *req, int status)
 {
 	struct leader *leader;
+	struct exec *r;
 	leader = req->data;
 	raft_free(req);
 	if (status != 0) {
 		assert(0); /* TODO */
 	}
 	co_switch(leader->loop);
+	r = leader->exec;
+	if (r != NULL && r->done) {
+		leader->exec = NULL;
+		r->cb(r, r->status);
+	}
 }
 
 static int apply(struct replication *r,

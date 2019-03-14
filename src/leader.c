@@ -64,6 +64,7 @@ int leader__exec(struct leader *l,
 	if (l->exec != NULL) {
 		return SQLITE_BUSY;
 	}
+	l->exec = req;
 	req->leader = l;
 	req->stmt = stmt;
 	req->cb = cb;
