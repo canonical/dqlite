@@ -4,6 +4,7 @@
 #include "./lib/queue.h"
 
 #include "options.h"
+#include "tx.h"
 
 struct leader;
 struct follower;
@@ -13,6 +14,7 @@ struct db
 	struct options *options;
 	const char *filename;
 	struct follower *follower;
+	struct tx *tx;
 	queue leaders;
 	queue queue;
 };
