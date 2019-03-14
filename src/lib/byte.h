@@ -20,6 +20,27 @@ typedef double double_t;
 #define DQLITE_INLINE static
 #endif
 
+/* Flip a 16-bit number to network byte order (little endian) */
+DQLITE_INLINE uint16_t byte__flip16(uint16_t v)
+{
+#if defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN)
+	return v;
+#elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN) && \
+    defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
+	return __builtin_bswap16(v);
+#else
+	union {
+		uint16_t u;
+		uint8_t v[2];
+	} s;
+
+	s.v[0] = (uint8_t)v;
+	s.v[1] = (uint8_t)(v >> 8);
+
+	return s.u;
+#endif
+}
+
 /* Flip a 32-bit number to network byte order (little endian) */
 DQLITE_INLINE uint32_t byte__flip32(uint32_t v)
 {
@@ -88,6 +109,11 @@ DQLITE_INLINE size_t byte__sizeof_uint8(uint8_t value)
 	return sizeof(value);
 }
 
+DQLITE_INLINE size_t byte__sizeof_uint16(uint16_t value)
+{
+	return sizeof(value);
+}
+
 DQLITE_INLINE size_t byte__sizeof_uint32(uint32_t value)
 {
 	return sizeof(value);
@@ -115,6 +141,12 @@ DQLITE_INLINE void byte__encode_uint32(uint32_t value, void **cursor)
 	*cursor += sizeof(uint32_t);
 }
 
+DQLITE_INLINE void byte__encode_uint16(uint16_t value, void **cursor)
+{
+	*(uint16_t *)(*cursor) = byte__flip16(value);
+	*cursor += sizeof(uint16_t);
+}
+
 DQLITE_INLINE void byte__encode_uint64(uint64_t value, void **cursor)
 {
 	*(uint64_t *)(*cursor) = byte__flip64(value);
@@ -133,6 +165,13 @@ DQLITE_INLINE uint8_t byte__decode_uint8(const void **cursor)
 {
 	uint8_t value = *(uint8_t *)(*cursor);
 	*cursor += sizeof(uint8_t);
+	return value;
+}
+
+DQLITE_INLINE uint16_t byte__decode_uint16(const void **cursor)
+{
+	uint16_t value = byte__flip16(*(uint16_t *)(*cursor));
+	*cursor += sizeof(uint16_t);
 	return value;
 }
 
