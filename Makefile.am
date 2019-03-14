@@ -56,7 +56,6 @@ if EXPERIMENTAL
   libdqlite_la_SOURCES += \
   src/command.c \
   src/db.c \
-  src/follower.c \
   src/fsm.c \
   src/leader.c \
   src/registry.c \

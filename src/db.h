@@ -7,13 +7,12 @@
 #include "tx.h"
 
 struct leader;
-struct follower;
 
 struct db
 {
 	struct options *options;
 	const char *filename;
-	struct follower *follower;
+	sqlite3 *follower;
 	struct tx *tx;
 	queue leaders;
 	queue queue;
