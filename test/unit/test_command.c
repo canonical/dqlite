@@ -25,7 +25,7 @@ TEST_CASE(open, encode, NULL)
 	rc = command__encode(COMMAND_OPEN, &c, &buf);
 	munit_assert_int(rc, ==, 0);
 	munit_assert_int(buf.len, ==, 16);
-	sqlite3_free(buf.base);
+	raft_free(buf.base);
 	return MUNIT_OK;
 }
 
@@ -45,7 +45,7 @@ TEST_CASE(open, decode, NULL)
 	munit_assert_int(rc, ==, 0);
 	munit_assert_int(type, ==, COMMAND_OPEN);
 	munit_assert_string_equal(((struct command_open *)c2)->filename, "db");
-	sqlite3_free(c2);
-	sqlite3_free(buf.base);
+	raft_free(c2);
+	raft_free(buf.base);
 	return MUNIT_OK;
 }
