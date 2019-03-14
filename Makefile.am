@@ -55,10 +55,11 @@ libdqlite_la_SOURCES = \
 if EXPERIMENTAL
   libdqlite_la_SOURCES += \
   src/command.c \
-  src/registry.c \
   src/db.c \
   src/follower.c \
+  src/fsm.c \
   src/leader.c \
+  src/registry.c \
   src/replication.c
 endif
 include_HEADERS += include/dqlite.h
