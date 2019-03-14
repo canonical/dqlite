@@ -7,7 +7,7 @@ before_install:
   - eval "${MATRIX_EVAL}"
   - sudo add-apt-repository ppa:dqlite-maintainers/master -y
   - sudo apt-get update -q
-  - sudo apt-get install libsqlite3-dev libuv1-dev libco-dev libraft-dev -y
+  - sudo apt-get install libsqlite3-dev libuv1-dev libco-dev libraft-dev -y --allow-unauthenticated
 
 script:
   - autoreconf -i
