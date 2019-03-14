@@ -135,6 +135,7 @@ TEST_CASE(exec, success, NULL)
 	rc = leader__exec(&f->leader, &f->req, f->stmt, fixture_exec_cb);
 	munit_assert_int(rc, ==, 0);
 	RAFT_COMMIT;
+	RAFT_COMMIT;
 	return MUNIT_OK;
 }
 

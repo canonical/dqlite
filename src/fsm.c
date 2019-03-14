@@ -11,7 +11,25 @@ struct fsm
 	struct registry *registry;
 };
 
-static int fsm__apply_open(struct fsm *f, const struct command_open *c);
+static int fsm__apply_open(struct fsm *f, const struct command_open *c)
+{
+	struct db *db;
+	int rc;
+
+	rc = registry__db_get(f->registry, c->filename, &db);
+	if (rc != 0) {
+		return rc;
+	}
+	rc = db__open_follower(db);
+	if (rc != 0) {
+		return rc;
+	}
+	return 0;
+}
+
+static int fsm__apply_frames(struct fsm *f, const struct command_frames *c) {
+	return 0;
+}
 
 static int fsm__apply(struct raft_fsm *fsm, const struct raft_buffer *buf)
 {
@@ -28,6 +46,9 @@ static int fsm__apply(struct raft_fsm *fsm, const struct raft_buffer *buf)
 		case COMMAND_OPEN:
 			rc = fsm__apply_open(f, command);
 			break;
+		case COMMAND_FRAMES:
+			rc = fsm__apply_frames(f, command);
+			break;
 		default:
 			rc = RAFT_ERR_IO_MALFORMED;
 			goto err_after_command_decode;
@@ -39,22 +60,6 @@ err_after_command_decode:
 	raft_free(command);
 err:
 	return rc;
-}
-
-static int fsm__apply_open(struct fsm *f, const struct command_open *c)
-{
-	struct db *db;
-	int rc;
-
-	rc = registry__db_get(f->registry, c->filename, &db);
-	if (rc != 0) {
-		return rc;
-	}
-	rc = db__open_follower(db);
-	if (rc != 0) {
-		return rc;
-	}
-	return 0;
 }
 
 static int fsm__snapshot(struct raft_fsm *fsm,

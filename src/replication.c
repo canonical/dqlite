@@ -18,6 +18,14 @@
 #define tracef(MSG, ...)
 #endif
 
+/* Implementation of the sqlite3_wal_replication interface */
+struct replication
+{
+	struct dqlite_logger *logger;
+	struct raft *raft;
+	queue apply_reqs;
+};
+
 static void apply_cb(struct raft_apply *req, int status)
 {
 	struct leader *leader;
@@ -29,13 +37,42 @@ static void apply_cb(struct raft_apply *req, int status)
 	co_switch(leader->loop);
 }
 
-/* Implementation of the sqlite3_wal_replication interface */
-struct replication
+static int apply(struct replication *r,
+		 struct leader *leader,
+		 int type,
+		 const void *command)
 {
-	struct dqlite_logger *logger;
-	struct raft *raft;
-	queue apply_reqs;
-};
+	struct raft_apply *req;
+	struct raft_buffer buf;
+	int rc;
+
+	req = raft_malloc(sizeof *req);
+	if (req == NULL) {
+		rc = DQLITE_NOMEM;
+		goto err;
+	}
+	req->data = leader;
+
+	rc = command__encode(type, command, &buf);
+	if (rc != 0) {
+		goto err_after_req_alloc;
+	}
+
+	rc = raft_apply(r->raft, req, &buf, 1, apply_cb);
+	if (rc != 0) {
+		goto err_after_command_encode;
+	}
+
+	co_switch(leader->main);
+	return 0;
+
+err_after_command_encode:
+	raft_free(buf.base);
+err_after_req_alloc:
+	raft_free(req);
+err:
+	return rc;
+}
 
 /* Check if a follower connection is already open for the leader's database, if
  * not open one with the open command. */
@@ -47,11 +84,10 @@ static int maybe_add_follower(struct replication *r, struct leader *leader)
 		return 0;
 	}
 	c.filename = leader->db->filename;
-	rc = command__apply(r->raft, COMMAND_OPEN, &c, leader, apply_cb);
+	rc = apply(r, leader, COMMAND_OPEN, &c);
 	if (rc != 0) {
 		return rc;
 	}
-	co_switch(leader->main);
 	return 0;
 }
 
@@ -86,11 +122,10 @@ static int maybe_handle_in_progress_tx(struct replication *r,
 	}
 
 	c.tx_id = tx->id;
-	rc = command__apply(r->raft, COMMAND_UNDO, &c, leader, apply_cb);
+	rc = apply(r, leader, COMMAND_UNDO, &c);
 	if (rc != 0) {
 		return rc;
 	}
-	co_switch(leader->main);
 	return 0;
 }
 
@@ -145,14 +180,40 @@ int replication__abort(sqlite3_wal_replication *r, void *arg)
 	return SQLITE_OK;
 }
 
-int replication__frames(sqlite3_wal_replication *r,
+int replication__frames(sqlite3_wal_replication *replication,
 			void *arg,
 			int page_size,
 			int n,
 			sqlite3_wal_replication_frame *frames,
 			unsigned truncate,
-			int commit)
+			int is_commit)
 {
+	struct replication *r = replication->pAppData;
+	struct leader *leader = arg;
+	struct tx *tx = leader->db->tx;
+	struct command_frames c;
+	int rc;
+
+	assert(tx != NULL);
+	assert(tx->conn == leader->conn);
+	assert(tx->state == TX__PENDING || tx->state == TX__WRITING);
+
+	/* We checked that we were leader in the begin hook. If we had lost
+	 * leadership in the meantime, the relevant apply callback would have
+	 * fired with RAFT_ELEADERSHIPLOST and SQLite wouldn't have invoked the
+	 * frames hook. */
+	assert(raft_state(r->raft) == RAFT_LEADER);
+
+	c.page_size = page_size;
+	c.truncate = truncate;
+	c.is_commit = is_commit;
+	c.filename = leader->db->filename;
+
+	rc = apply(r, leader, COMMAND_FRAMES, &c);
+	if (rc != 0) {
+		return rc;
+	}
+
 	return SQLITE_OK;
 }
 
