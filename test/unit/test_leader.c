@@ -136,6 +136,7 @@ TEST_CASE(exec, success, NULL)
 	munit_assert_int(rc, ==, 0);
 	RAFT_COMMIT;
 	RAFT_COMMIT;
+	munit_assert_true(f->invoked);
 	return MUNIT_OK;
 }
 
