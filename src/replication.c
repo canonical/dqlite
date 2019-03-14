@@ -6,10 +6,10 @@
 #include "./lib/assert.h"
 #include "./lib/logger.h"
 
-#include "replication.h"
+#include "command.h"
 #include "leader.h"
 #include "queue.h"
-#include "command.h"
+#include "replication.h"
 
 /* Set to 1 to enable tracing. */
 #if 1
@@ -17,6 +17,17 @@
 #else
 #define tracef(MSG, ...)
 #endif
+
+static void open_apply_cb(struct raft_apply *req, int status)
+{
+	struct leader *leader;
+	leader = req->data;
+	raft_free(req);
+	if (status != 0) {
+		assert(0); /* TODO */
+	}
+	co_switch(leader->loop);
+}
 
 /* Implementation of the sqlite3_wal_replication interface */
 struct replication
@@ -30,12 +41,21 @@ int replication__begin(sqlite3_wal_replication *replication, void *arg)
 {
 	struct replication *r = replication->pAppData;
 	struct leader *leader = arg;
+	int rc;
 
 	if (raft_state(r->raft) != RAFT_LEADER) {
 		return SQLITE_IOERR_NOT_LEADER;
 	}
 
 	if (leader->db->follower == NULL) {
+		struct command_open c;
+		c.filename = leader->db->filename;
+		rc = command__apply(r->raft, COMMAND_OPEN, &c, leader,
+				    open_apply_cb);
+		if (rc != 0) {
+			return rc;
+		}
+		co_switch(leader->main);
 	}
 
 	return SQLITE_OK;

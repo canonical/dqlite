@@ -17,6 +17,7 @@ TEST_MODULE(leader);
 	FIXTURE_RAFT;        \
 	FIXTURE_LOGGER;      \
 	FIXTURE_VFS;         \
+	FIXTURE_REGISTRY;    \
 	FIXTURE_REPLICATION; \
 	FIXTURE_OPTIONS;     \
 	FIXTURE_DB;          \
@@ -28,6 +29,7 @@ TEST_MODULE(leader);
 	SETUP_HEAP;        \
 	SETUP_SQLITE;      \
 	SETUP_VFS;         \
+	SETUP_REGISTRY;    \
 	SETUP_REPLICATION; \
 	SETUP_OPTIONS;     \
 	SETUP_DB;          \
@@ -38,6 +40,7 @@ TEST_MODULE(leader);
 	TEAR_DOWN_DB;          \
 	TEAR_DOWN_OPTIONS;     \
 	TEAR_DOWN_REPLICATION; \
+	TEAR_DOWN_REGISTRY;    \
 	TEAR_DOWN_VFS;         \
 	TEAR_DOWN_SQLITE;      \
 	TEAR_DOWN_HEAP;        \
@@ -93,7 +96,16 @@ struct exec_fixture
 	FIXTURE;
 	FIXTURE_STMT;
 	struct exec req;
+	bool invoked;
+	int status;
 };
+
+static void fixture_exec_cb(struct exec *req, int status)
+{
+	struct exec_fixture *f = req->data;
+	f->invoked = true;
+	f->status = status;
+}
 
 TEST_SUITE(exec);
 TEST_SETUP(exec)
@@ -101,6 +113,9 @@ TEST_SETUP(exec)
 	struct exec_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	SETUP_STMT;
+	f->req.data = f;
+	f->invoked = false;
+	f->status = -1;
 	return f;
 }
 TEST_TEAR_DOWN(exec)
@@ -115,8 +130,11 @@ TEST_CASE(exec, success, NULL)
 {
 	struct exec_fixture *f = data;
 	(void)params;
+	int rc;
 	RAFT_BECOME_LEADER;
-	leader__exec(&f->leader, &f->req, f->stmt, NULL);
+	rc = leader__exec(&f->leader, &f->req, f->stmt, fixture_exec_cb);
+	munit_assert_int(rc, ==, 0);
+	RAFT_COMMIT;
 	return MUNIT_OK;
 }
 

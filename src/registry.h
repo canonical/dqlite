@@ -11,10 +11,11 @@
 
 struct registry
 {
+	struct options *options;
 	queue dbs;
 };
 
-void registry__init(struct registry *r);
+void registry__init(struct registry *r, struct options *options);
 void registry__close(struct registry *r);
 
 /**

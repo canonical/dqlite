@@ -3,10 +3,10 @@
 
 #include "./lib/queue.h"
 
-#include "follower.h"
 #include "options.h"
 
 struct leader;
+struct follower;
 
 struct db
 {
@@ -19,5 +19,7 @@ struct db
 
 void db__init(struct db *db, struct options *options, const char *filename);
 void db__close(struct db *db);
+
+int db__open_follower(struct db *db);
 
 #endif /* DB_H_*/
