@@ -4,16 +4,13 @@
  *
  *****************************************************************************/
 
-#ifndef DQLITE_REPLICATION_METHODS_H
-#define DQLITE_REPLICATION_METHODS_H
+#ifndef DQLITE_REPLICATION_H_
+#define DQLITE_REPLICATION_H_
 
-#include <libco.h>
 #include <raft.h>
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
-
-#include "registry.h"
 
 /**
  * Initialize the given SQLite replication interface with dqlite's raft based
@@ -25,4 +22,4 @@ int replication__init(struct sqlite3_wal_replication *replication,
 
 void replication__close(struct sqlite3_wal_replication *replication);
 
-#endif /* DQLITE_REPLICATION_METHODS_H_ */
+#endif /* DQLITE_REPLICATION_H_ */
