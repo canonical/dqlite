@@ -26,6 +26,9 @@ void db__close(struct db *db)
 		rc = sqlite3_close(db->follower);
 		assert(rc == SQLITE_OK);
 	}
+	if (db->tx != NULL) {
+		sqlite3_free(db->tx);
+	}
 }
 
 int db__open_follower(struct db *db)
@@ -36,6 +39,16 @@ int db__open_follower(struct db *db)
 	if (rc != 0) {
 		return rc;
 	}
+	return 0;
+}
+
+int db__create_tx(struct db *db, unsigned long long id, sqlite3 *conn)
+{
+	db->tx = sqlite3_malloc(sizeof *db->tx);
+	if (db->tx == NULL) {
+		return DQLITE_NOMEM;
+	}
+	tx__init(db->tx, id, conn);
 	return 0;
 }
 
