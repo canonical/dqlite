@@ -29,7 +29,7 @@ static int fsm__apply(struct raft_fsm *fsm, const struct raft_buffer *buf)
 			rc = fsm__apply_open(f, command);
 			break;
 		default:
-			rc = RAFT_ERR_MALFORMED;
+			rc = RAFT_ERR_IO_MALFORMED;
 			goto err_after_command_decode;
 	}
 	raft_free(command);
