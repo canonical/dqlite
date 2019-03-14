@@ -8,6 +8,8 @@
 #include <raft.h>
 #include <raft/io_stub.h>
 
+#include "../../src/fsm.h"
+
 #include "munit.h"
 
 #define FIXTURE_RAFT                    \
@@ -24,6 +26,8 @@
 		f->raft_logger = raft_default_logger;                  \
 		rv = raft_io_stub_init(&f->raft_io, &f->raft_logger);  \
 		munit_assert_int(rv, ==, 0);                           \
+		rv = fsm__init(&f->fsm, &f->logger);                   \
+		munit_assert_int(rv, ==, 0);                           \
 		rv = raft_init(&f->raft, &f->raft_logger, &f->raft_io, \
 			       &f->fsm, f, id, address);               \
 		munit_assert_int(rv, ==, 0);                           \
@@ -35,6 +39,7 @@
 #define TEAR_DOWN_RAFT                           \
 	{                                        \
 		raft_close(&f->raft, NULL);      \
+		fsm__close(&f->fsm);             \
 		raft_io_stub_close(&f->raft_io); \
 	}
 
