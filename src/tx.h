@@ -1,15 +1,15 @@
-#ifndef TXN_H_
-#define TXN_H_
+#ifndef TX_H_
+#define TX_H_
 
 #include <stdbool.h>
 
 #include <sqlite3.h>
 
-struct txn
+struct tx
 {
 	unsigned long long id;
 	sqlite3 *conn;
 	bool is_zombie;
 };
 
-#endif /* TXN_H_*/
+#endif /* TX_H_*/
