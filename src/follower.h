@@ -5,17 +5,14 @@
 
 #include "./lib/queue.h"
 
+#include "db.h"
+
 struct follower
 {
 	sqlite3 *conn;
-	queue queue;
 };
 
-void follower__init(struct follower *f, sqlite3 *conn);
-
-/**
- * Return the filename of the database of the given follower connection.
- */
-const char *follower__filename(struct follower *f);
+int follower__init(struct follower *f, const char *vfs, const char *filename);
+void follower__close(struct follower *f);
 
 #endif /* FOLLOWER_H_*/

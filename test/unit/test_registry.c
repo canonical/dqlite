@@ -1,5 +1,6 @@
 #include "../lib/heap.h"
 #include "../lib/logger.h"
+#include "../lib/options.h"
 #include "../lib/registry.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
@@ -7,20 +8,23 @@
 
 TEST_MODULE(registry);
 
-#define FIXTURE         \
-	FIXTURE_LOGGER; \
-	FIXTURE_VFS;    \
+#define FIXTURE          \
+	FIXTURE_LOGGER;  \
+	FIXTURE_VFS;     \
+	FIXTURE_OPTIONS; \
 	FIXTURE_REGISTRY;
 
-#define SETUP           \
-	SETUP_LOGGER;   \
-	SETUP_HEAP;     \
-	SETUP_SQLITE;   \
-	SETUP_VFS;      \
-	SETUP_REGISTRY; \
+#define SETUP          \
+	SETUP_LOGGER;  \
+	SETUP_HEAP;    \
+	SETUP_SQLITE;  \
+	SETUP_VFS;     \
+	SETUP_OPTIONS; \
+	SETUP_REGISTRY;
 
 #define TEAR_DOWN           \
 	TEAR_DOWN_REGISTRY; \
+	TEAR_DOWN_OPTIONS;  \
 	TEAR_DOWN_VFS;      \
 	TEAR_DOWN_SQLITE;   \
 	TEAR_DOWN_HEAP;     \

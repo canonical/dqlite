@@ -26,7 +26,7 @@
 		f->raft_logger = raft_default_logger;                  \
 		rv = raft_io_stub_init(&f->raft_io, &f->raft_logger);  \
 		munit_assert_int(rv, ==, 0);                           \
-		rv = fsm__init(&f->fsm, &f->logger);                   \
+		rv = fsm__init(&f->fsm, &f->logger, &f->registry);     \
 		munit_assert_int(rv, ==, 0);                           \
 		rv = raft_init(&f->raft, &f->raft_logger, &f->raft_io, \
 			       &f->fsm, f, id, address);               \
@@ -108,6 +108,24 @@
 		}                                                           \
 		munit_assert_int(raft_state(r), ==, RAFT_LEADER);           \
 		raft_io_stub_flush(r->io);                                  \
+	}
+
+/* Reach a quorum for all outstanding entries. */
+#define RAFT_COMMIT                                                 \
+	{                                                           \
+		const char *address = "2";                          \
+		struct raft_message message;                        \
+		struct raft_append_entries_result *result =         \
+		    &message.append_entries_result;                 \
+		raft_io_stub_flush(&f->raft_io);                    \
+		message.type = RAFT_IO_APPEND_ENTRIES_RESULT;       \
+		message.server_id = 2;                              \
+		message.server_address = address;                   \
+		result->term = f->raft.current_term;                \
+		result->success = true;                             \
+		result->last_log_index =                            \
+		    f->raft.leader_state.replication[1].next_index; \
+		raft_io_stub_dispatch(&f->raft_io, &message);       \
 	}
 
 #endif /* TEST_RAFT_H */
