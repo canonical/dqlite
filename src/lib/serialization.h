@@ -31,9 +31,9 @@
 		FIELDS(SERIALIZATION__DEFINE_FIELD) \
 	}
 
-#define SERIALIZATION__DEFINE_METHODS(NAME, FIELDS)     \
-	size_t NAME##__sizeof(struct NAME *p);          \
-	void NAME##__encode(struct NAME *p, void *buf); \
+#define SERIALIZATION__DEFINE_METHODS(NAME, FIELDS)           \
+	size_t NAME##__sizeof(const struct NAME *p);          \
+	void NAME##__encode(const struct NAME *p, void *buf); \
 	void NAME##__decode(void *buf, struct NAME *p)
 
 /* Define a single field in serializable struct.
@@ -46,13 +46,13 @@
  * Implement the sizeof, encode and decode function of a serializable struct.
  */
 #define SERIALIZATION__IMPLEMENT(NAME, FIELDS)                   \
-	size_t NAME##__sizeof(struct NAME *p)                    \
+	size_t NAME##__sizeof(const struct NAME *p)              \
 	{                                                        \
 		size_t size = 0;                                 \
 		FIELDS(SERIALIZATION__SIZEOF_FIELD, p);          \
 		return size;                                     \
 	}                                                        \
-	void NAME##__encode(struct NAME *p, void *buf)           \
+	void NAME##__encode(const struct NAME *p, void *buf)     \
 	{                                                        \
 		void *cursor = buf;                              \
 		FIELDS(SERIALIZATION__ENCODE_FIELD, p, &cursor); \
