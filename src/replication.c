@@ -183,7 +183,7 @@ int replication__abort(sqlite3_wal_replication *r, void *arg)
 int replication__frames(sqlite3_wal_replication *replication,
 			void *arg,
 			int page_size,
-			int n,
+			int n_frames,
 			sqlite3_wal_replication_frame *frames,
 			unsigned truncate,
 			int is_commit)
@@ -204,10 +204,13 @@ int replication__frames(sqlite3_wal_replication *replication,
 	 * frames hook. */
 	assert(raft_state(r->raft) == RAFT_LEADER);
 
+	c.filename = leader->db->filename;
+	c.tx_id = tx->id;
 	c.page_size = page_size;
 	c.truncate = truncate;
 	c.is_commit = is_commit;
-	c.filename = leader->db->filename;
+	c.n_pages = n_frames;
+	c.data = frames;
 
 	rc = apply(r, leader, COMMAND_FRAMES, &c);
 	if (rc != 0) {
