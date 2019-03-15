@@ -55,5 +55,7 @@ TEST_CASE(begin, open, NULL)
 	munit_assert_int(rc, ==, 0);
 	CLUSTER_FLUSH;
 	CLUSTER_FLUSH;
+	CLUSTER_ADVANCE(110);
+	CLUSTER_FLUSH;
 	return MUNIT_OK;
 }

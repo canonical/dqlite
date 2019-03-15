@@ -23,4 +23,13 @@ void tx__init(struct tx *tx, unsigned long long id, sqlite3 *conn);
 
 bool tx__is_leader(struct tx *tx);
 
+int tx__frames(struct tx *tx,
+	       bool is_begin,
+	       int page_size,
+	       int n_frames,
+	       unsigned *page_numbers,
+	       void *pages,
+	       unsigned truncate,
+	       bool is_commit);
+
 #endif /* TX_H_*/
