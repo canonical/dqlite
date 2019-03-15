@@ -25,6 +25,7 @@ static int fsm__apply_open(struct fsm *f, const struct command_open *c)
 	if (rc != 0) {
 		return rc;
 	}
+
 	return 0;
 }
 
@@ -73,6 +74,7 @@ static int fsm__apply_frames(struct fsm *f, const struct command_frames *c)
 	command_frames__pages(c, &pages);
 
 	sqlite3_free(page_numbers);
+
 	return 0;
 }
 

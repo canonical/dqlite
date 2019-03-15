@@ -1,4 +1,3 @@
-#include "../lib/db.h"
 #include "../lib/heap.h"
 #include "../lib/leader.h"
 #include "../lib/logger.h"
@@ -14,38 +13,35 @@
 TEST_MODULE(leader);
 
 #define FIXTURE              \
-	FIXTURE_RAFT;        \
 	FIXTURE_LOGGER;      \
-	FIXTURE_VFS;         \
-	FIXTURE_REGISTRY;    \
-	FIXTURE_REPLICATION; \
 	FIXTURE_OPTIONS;     \
-	FIXTURE_DB;          \
+	FIXTURE_REGISTRY;    \
+	FIXTURE_RAFT;        \
+	FIXTURE_VFS;         \
+	FIXTURE_REPLICATION; \
 	FIXTURE_LEADER;
 
 #define SETUP              \
-	SETUP_RAFT;        \
-	SETUP_LOGGER;      \
 	SETUP_HEAP;        \
 	SETUP_SQLITE;      \
-	SETUP_VFS;         \
-	SETUP_REGISTRY;    \
-	SETUP_REPLICATION; \
+	SETUP_LOGGER;      \
 	SETUP_OPTIONS;     \
-	SETUP_DB;          \
+	SETUP_REGISTRY;    \
+	SETUP_RAFT;        \
+	SETUP_VFS;         \
+	SETUP_REPLICATION; \
 	SETUP_LEADER;
 
 #define TEAR_DOWN              \
 	TEAR_DOWN_LEADER;      \
-	TEAR_DOWN_DB;          \
-	TEAR_DOWN_OPTIONS;     \
 	TEAR_DOWN_REPLICATION; \
 	TEAR_DOWN_REGISTRY;    \
 	TEAR_DOWN_VFS;         \
-	TEAR_DOWN_SQLITE;      \
-	TEAR_DOWN_HEAP;        \
+	TEAR_DOWN_RAFT;        \
+	TEAR_DOWN_OPTIONS;     \
 	TEAR_DOWN_LOGGER;      \
-	TEAR_DOWN_RAFT;
+	TEAR_DOWN_SQLITE;      \
+	TEAR_DOWN_HEAP;
 
 /******************************************************************************
  *

@@ -1,44 +1,23 @@
 #include "../../src/replication.h"
 
+#include "../lib/cluster.h"
 #include "../lib/heap.h"
-#include "../lib/logger.h"
-#include "../lib/options.h"
-#include "../lib/raft.h"
-#include "../lib/registry.h"
-#include "../lib/replication.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
-#include "../lib/vfs.h"
 
 TEST_MODULE(replication);
 
-#define FIXTURE           \
-	FIXTURE_RAFT;     \
-	FIXTURE_LOGGER;   \
-	FIXTURE_VFS;      \
-	FIXTURE_OPTIONS;  \
-	FIXTURE_REGISTRY; \
-	FIXTURE_REPLICATION;
+#define FIXTURE FIXTURE_CLUSTER;
 
-#define SETUP           \
-	SETUP_RAFT;     \
-	SETUP_LOGGER;   \
-	SETUP_HEAP;     \
-	SETUP_SQLITE;   \
-	SETUP_VFS;      \
-	SETUP_OPTIONS;  \
-	SETUP_REGISTRY; \
-	SETUP_REPLICATION;
+#define SETUP         \
+	SETUP_HEAP;   \
+	SETUP_SQLITE; \
+	SETUP_CLUSTER;
 
-#define TEAR_DOWN              \
-	TEAR_DOWN_REPLICATION; \
-	TEAR_DOWN_REGISTRY;    \
-	TEAR_DOWN_OPTIONS;     \
-	TEAR_DOWN_VFS;         \
-	TEAR_DOWN_SQLITE;      \
-	TEAR_DOWN_HEAP;        \
-	TEAR_DOWN_LOGGER;      \
-	TEAR_DOWN_RAFT;
+#define TEAR_DOWN          \
+	TEAR_DOWN_CLUSTER; \
+	TEAR_DOWN_SQLITE;  \
+	TEAR_DOWN_HEAP;
 
 /******************************************************************************
  *
@@ -65,7 +44,16 @@ TEST_TEAR_DOWN(begin)
 	free(f);
 }
 
-TEST_CASE(begin, foo, NULL)
+TEST_CASE(begin, open, NULL)
 {
+	struct begin_fixture *f = data;
+	int rc;
+	struct exec req;
+	(void)params;
+	rc =
+	    leader__exec(&f->servers[0].leader, &req, f->servers[0].stmt, NULL);
+	munit_assert_int(rc, ==, 0);
+	CLUSTER_FLUSH;
+	CLUSTER_FLUSH;
 	return MUNIT_OK;
 }
