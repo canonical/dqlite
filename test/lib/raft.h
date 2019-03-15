@@ -18,29 +18,33 @@
 	struct raft_fsm fsm;            \
 	struct raft raft
 
-#define SETUP_RAFT                                                     \
+#define SETUP_RAFT               \
+	SETUP_RAFT_X(f, 1, "1"); \
+	RAFT_BOOTSTRAP(f, 2);    \
+	RAFT_START(f);
+
+#define TEAR_DOWN_RAFT TEAR_DOWN_RAFT_X(f)
+
+#define SETUP_RAFT_X(F, ID, ADDRESS)                                   \
 	{                                                              \
-		uint64_t id = 1;                                       \
-		const char *address = "1";                             \
 		int rv;                                                \
-		f->raft_logger = raft_default_logger;                  \
-		rv = raft_io_stub_init(&f->raft_io, &f->raft_logger);  \
+		raft_default_logger_set_server_id(ID);                 \
+		F->raft_logger = raft_default_logger;                  \
+		rv = raft_io_stub_init(&F->raft_io, &F->raft_logger);  \
 		munit_assert_int(rv, ==, 0);                           \
-		rv = fsm__init(&f->fsm, &f->logger, &f->registry);     \
+		rv = fsm__init(&F->fsm, &F->logger, &F->registry);     \
 		munit_assert_int(rv, ==, 0);                           \
-		rv = raft_init(&f->raft, &f->raft_logger, &f->raft_io, \
-			       &f->fsm, f, id, address);               \
+		rv = raft_init(&F->raft, &F->raft_logger, &F->raft_io, \
+			       &F->fsm, f, ID, ADDRESS);               \
 		munit_assert_int(rv, ==, 0);                           \
-		raft_set_rand(&f->raft, (int (*)())munit_rand_uint32); \
-		RAFT_BOOTSTRAP(2);                                     \
-		RAFT_START;                                            \
+		raft_set_rand(&F->raft, (int (*)())munit_rand_uint32); \
 	}
 
-#define TEAR_DOWN_RAFT                           \
+#define TEAR_DOWN_RAFT_X(F)                      \
 	{                                        \
-		raft_close(&f->raft, NULL);      \
-		fsm__close(&f->fsm);             \
-		raft_io_stub_close(&f->raft_io); \
+		raft_close(&F->raft, NULL);      \
+		fsm__close(&F->fsm);             \
+		raft_io_stub_close(&F->raft_io); \
 	}
 
 /**
@@ -50,7 +54,7 @@
  * saved as first entry in the log. The server IDs are assigned sequentially
  * starting from 1 up to @N_SERVERS. All servers will be voting servers.
  */
-#define RAFT_BOOTSTRAP(N_SERVERS)                                       \
+#define RAFT_BOOTSTRAP(F, N_SERVERS)                                    \
 	{                                                               \
 		struct raft_configuration configuration;                \
 		int i;                                                  \
@@ -64,30 +68,32 @@
 						    address, true);     \
 			munit_assert_int(rv, ==, 0);                    \
 		}                                                       \
-		rv = raft_bootstrap(&f->raft, &configuration);          \
+		rv = raft_bootstrap(&F->raft, &configuration);          \
 		munit_assert_int(rv, ==, 0);                            \
 		raft_configuration_close(&configuration);               \
 	}
 
-#define RAFT_START                           \
+#define RAFT_START(F)                        \
 	{                                    \
 		int rc;                      \
-		rc = raft_start(&f->raft);   \
+		rc = raft_start(&F->raft);   \
 		munit_assert_int(rc, ==, 0); \
 	}
 
-#define RAFT_BECOME_CANDIDATE                                       \
-	raft_io_stub_advance(&f->raft_io,                           \
-			     f->raft.election_timeout_rand + 100);  \
-	munit_assert_int(raft_state(&f->raft), ==, RAFT_CANDIDATE); \
-	raft_io_stub_flush(&f->raft_io);
+#define RAFT_FLUSH(F) raft_io_stub_flush(&F->raft_io)
+
+#define RAFT_BECOME_CANDIDATE(F)                                   \
+	raft_io_stub_advance(&F->raft_io,                          \
+			     F->raft.election_timeout_rand + 100); \
+	munit_assert_int(raft_state(&F->raft), ==, RAFT_CANDIDATE)
 
 #define RAFT_BECOME_LEADER                                                  \
 	{                                                                   \
 		struct raft *r = &f->raft;                                  \
 		size_t votes = r->configuration.n / 2;                      \
 		size_t i;                                                   \
-		RAFT_BECOME_CANDIDATE;                                      \
+		RAFT_BECOME_CANDIDATE(f);                                   \
+		RAFT_FLUSH(f);                                              \
 		for (i = 0; i < r->configuration.n; i++) {                  \
 			struct raft_server *server =                        \
 			    &r->configuration.servers[i];                   \
@@ -127,5 +133,9 @@
 		    f->raft.leader_state.replication[1].next_index; \
 		raft_io_stub_dispatch(&f->raft_io, &message);       \
 	}
+
+void raft_copy_entries(const struct raft_entry *src,
+		       struct raft_entry **dst,
+		       unsigned n);
 
 #endif /* TEST_RAFT_H */

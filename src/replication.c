@@ -39,7 +39,9 @@ static void apply_cb(struct raft_apply *req, int status)
 	r = leader->exec;
 	if (r != NULL && r->done) {
 		leader->exec = NULL;
-		r->cb(r, r->status);
+		if (r->cb != NULL) {
+			r->cb(r, r->status);
+		}
 	}
 }
 
