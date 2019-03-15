@@ -35,15 +35,21 @@ static int fsm__apply_frames(struct fsm *f, const struct command_frames *c)
 	struct tx *tx;
 	unsigned *page_numbers;
 	void *pages;
-	bool begin = true;
+	bool is_begin = true;
 	int rc;
 
 	rc = registry__db_get(f->registry, c->filename, &db);
 	assert(rc == 0); /* We have registered this filename before */
 
+	assert(db->follower != NULL); /* We have issued an open command */
+
 	tx = db->tx;
 
 	if (tx != NULL) {
+		/* TODO: handle leftover leader zombie transactions with lower
+		 * ID */
+		assert(tx->id == c->tx_id);
+
 		if (tx__is_leader(tx)) {
 			if (tx->is_zombie) {
 				/* TODO */
@@ -56,14 +62,16 @@ static int fsm__apply_frames(struct fsm *f, const struct command_frames *c)
 			/* We're executing the Frames command as followers. The
 			 * transaction must be in the Writing state. */
 			assert(tx->state == TX__WRITING);
-			begin = false;
+			is_begin = false;
 		}
 	} else {
-		/* We don't know about this transaction.
-		 *
-		 * This is must be a new follower transaction. Let's make sure
-		 * that no other transaction against this database is happening
-		 * on this server. */
+		/* We don't know about this transaction, it must be a new
+		 * follower transaction. */
+		rc = db__create_tx(db, c->tx_id, db->follower);
+		if (rc != 0) {
+			return rc;
+		}
+		tx = db->tx;
 	}
 
 	rc = command_frames__page_numbers(c, &page_numbers);
@@ -72,6 +80,12 @@ static int fsm__apply_frames(struct fsm *f, const struct command_frames *c)
 	}
 
 	command_frames__pages(c, &pages);
+
+	rc = tx__frames(tx, is_begin, c->page_size, c->n_pages, page_numbers,
+			pages, c->truncate, c->is_commit);
+	if (rc != 0) {
+		return rc;
+	}
 
 	sqlite3_free(page_numbers);
 

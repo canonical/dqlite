@@ -88,6 +88,15 @@ struct server_fixture
 		}                                                      \
 	}
 
+#define CLUSTER_ADVANCE(MSECS)                                               \
+	{                                                                    \
+		int i;                                                       \
+		for (i = 0; i < N_SERVERS; i++) {                            \
+			struct server_fixture *s = &f->servers[i];           \
+			raft_io_stub_advance(&s->raft_io, MSECS); \
+		}                                                            \
+	}
+
 /* Deliver a message */
 #define CLUSTER_DELIVER(S, M)                                              \
 	struct server_fixture *r = &f->servers[(M)->server_id - 1];        \
@@ -104,7 +113,7 @@ struct server_fixture
 			    (M)->append_entries.n_entries;                 \
 			break;                                             \
 	}                                                                  \
-	raft_io_stub_dispatch(r->raft.io, &message);\
+	raft_io_stub_dispatch(r->raft.io, &message);
 
 #define CLUSTER_ELECT(I)                                                 \
 	{                                                                \
