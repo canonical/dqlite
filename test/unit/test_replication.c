@@ -50,12 +50,20 @@ TEST_CASE(begin, open, NULL)
 	int rc;
 	struct exec req;
 	(void)params;
-	rc =
-	    leader__exec(&f->servers[0].leader, &req, f->servers[0].stmt, NULL);
+	rc = leader__exec(f->leader, &req, f->stmt, NULL);
 	munit_assert_int(rc, ==, 0);
-	CLUSTER_FLUSH;
-	CLUSTER_FLUSH;
-	CLUSTER_ADVANCE(110);
-	CLUSTER_FLUSH;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	char *msg;
+	rc = sqlite3_exec(f->servers[(f->leader_index + 1) % 2].leader.conn,
+			  "SELECT * FROM test", NULL, NULL, &msg);
+	munit_assert_int(rc, ==, SQLITE_OK);
 	return MUNIT_OK;
 }
