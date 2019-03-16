@@ -117,6 +117,22 @@ struct server_fixture
 		CLUSTER_FLUSH;                                                 \
 	}
 
+#define CLUSTER_APPLIED(N)                                                 \
+	{                                                                  \
+		int applied;                                               \
+		do {                                                       \
+			int i;                                             \
+			applied = 0;                                       \
+			CLUSTER_STEP;                                      \
+			for (i = 0; i < N_SERVERS; i++) {                  \
+				struct server_fixture *s = &f->servers[i]; \
+				if (raft_last_applied(&s->raft) >= N) {    \
+					applied++;                         \
+				}                                          \
+			}                                                  \
+		} while (applied < N_SERVERS);                             \
+	}
+
 /* Flush all pending I/O. Disk writes will complete and network messages
  * delivered. */
 #define CLUSTER_FLUSH                                              \
