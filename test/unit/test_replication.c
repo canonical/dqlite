@@ -50,12 +50,13 @@ TEST_CASE(begin, open, NULL)
 	int rc;
 	struct exec req;
 	(void)params;
+	STMT_PREPARE(f->leader->conn, f->stmt, "CREATE TABLE test (a INT)");
 	rc = leader__exec(f->leader, &req, f->stmt, NULL);
 	munit_assert_int(rc, ==, 0);
 	CLUSTER_APPLIED(3);
+	STMT_FINALIZE(f->stmt);
 	char *msg;
-	rc = sqlite3_exec(f->servers[(f->leader_index + 1) % 2].leader.conn,
-			  "SELECT * FROM test", NULL, NULL, &msg);
+	rc = sqlite3_exec(f->follower, "SELECT * FROM test", NULL, NULL, &msg);
 	munit_assert_int(rc, ==, SQLITE_OK);
 	return MUNIT_OK;
 }

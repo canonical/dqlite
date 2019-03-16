@@ -25,16 +25,15 @@ struct server_fixture
 	FIXTURE_RAFT;
 	FIXTURE_REPLICATION;
 	FIXTURE_LEADER;
-	FIXTURE_STMT;
 	char address[8];
 	char name[8];
 };
 
 #define FIXTURE_CLUSTER                           \
+	FIXTURE_STMT;                             \
 	struct server_fixture servers[N_SERVERS]; \
-	int leader_index;                         \
 	struct leader *leader;                    \
-	sqlite3_stmt *stmt;
+	sqlite3 *follower;
 
 #define SETUP_CLUSTER                                                       \
 	{                                                                   \
@@ -54,7 +53,6 @@ struct server_fixture
 			RAFT_BOOTSTRAP(s, N_SERVERS);                       \
 			RAFT_START(s);                                      \
 			SETUP_LEADER_X(s);                                  \
-			SETUP_STMT_X(s);                                    \
 		}                                                           \
 		for (i = 0; i < N_SERVERS; i++) {                           \
 			for (j = 0; j < N_SERVERS; j++) {                   \
@@ -75,7 +73,6 @@ struct server_fixture
 		int i;                                             \
 		for (i = 0; i < N_SERVERS; i++) {                  \
 			struct server_fixture *s = &f->servers[i]; \
-			TEAR_DOWN_STMT_X(s);                       \
 			TEAR_DOWN_LEADER_X(s);                     \
 			TEAR_DOWN_REPLICATION_X(s);                \
 			TEAR_DOWN_RAFT_X(s);                       \
@@ -153,20 +150,21 @@ struct server_fixture
 		}                                                  \
 	}
 
-#define CLUSTER_ELECT                                                      \
-	{                                                                  \
-		while (f->leader == NULL) {                                \
-			CLUSTER_STEP;                                      \
-			for (i = 0; i < N_SERVERS; i++) {                  \
-				struct server_fixture *s = &f->servers[i]; \
-				if (raft_state(&s->raft) == RAFT_LEADER) { \
-					f->leader_index = i;               \
-					f->leader = &s->leader;            \
-					f->stmt = s->stmt;                 \
-					break;                             \
-				}                                          \
-			}                                                  \
-		}                                                          \
+#define CLUSTER_ELECT                                                       \
+	{                                                                   \
+		while (f->leader == NULL) {                                 \
+			CLUSTER_STEP;                                       \
+			for (i = 0; i < N_SERVERS; i++) {                   \
+				struct server_fixture *s = &f->servers[i];  \
+				if (raft_state(&s->raft) == RAFT_LEADER) {  \
+					f->leader = &s->leader;             \
+					f->follower =                       \
+					    f->servers[(i + 1) % N_SERVERS] \
+						.leader.conn;               \
+					break;                              \
+				}                                           \
+			}                                                   \
+		}                                                           \
 	}
 
 #endif /* TEST_CLUSTER_H */
