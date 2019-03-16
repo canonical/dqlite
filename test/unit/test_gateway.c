@@ -64,6 +64,8 @@ static void __open(struct fixture *f, uint32_t *db_id)
 	gateway__flushed(f->gateway, f->response);
 }
 
+#ifndef DQLITE_EXPERIMENTAL
+
 /* Send a prepare request and return the statement ID */
 static void __prepare(struct fixture *f,
 		      uint32_t db_id,
@@ -107,6 +109,8 @@ static void __exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id)
 
 	gateway__flushed(f->gateway, f->response);
 }
+
+#endif
 
 /******************************************************************************
  *
@@ -245,6 +249,8 @@ TEST_CASE(handle, heartbeat, NULL)
 	return MUNIT_OK;
 }
 
+#ifndef DQLITE_EXPERIMENTAL
+
 /* If the xServers method of the cluster implementation returns an error, it's
  * propagated to the client. */
 TEST_CASE(handle, heartbeat_error, NULL)
@@ -334,6 +340,8 @@ TEST_CASE(handle, open_oom, test_open_oom_params)
 
 	return MUNIT_OK;
 }
+
+#endif /* !DQLITE_EXPERIMENTAL */
 
 /* Handle an oper request. */
 TEST_CASE(handle, open, NULL)
@@ -471,6 +479,8 @@ TEST_CASE(handle, prepare, NULL)
 
 	return MUNIT_OK;
 }
+
+#ifndef DQLITE_EXPERIMENTAL
 
 /* Handle an exec request. */
 TEST_CASE(handle, exec, NULL)
@@ -1488,3 +1498,5 @@ TEST_CASE(handle, interrupt_bad_request, NULL)
 
 	return MUNIT_OK;
 }
+
+#endif /* !DQLITE_EXPERIMENTAL */
