@@ -25,19 +25,20 @@
 
 #define TEAR_DOWN_RAFT TEAR_DOWN_RAFT_X(f)
 
-#define SETUP_RAFT_X(F, ID, ADDRESS)                                   \
-	{                                                              \
-		int rv;                                                \
-		raft_default_logger_set_server_id(ID);                 \
-		F->raft_logger = raft_default_logger;                  \
-		rv = raft_io_stub_init(&F->raft_io, &F->raft_logger);  \
-		munit_assert_int(rv, ==, 0);                           \
-		rv = fsm__init(&F->fsm, &F->logger, &F->registry);     \
-		munit_assert_int(rv, ==, 0);                           \
-		rv = raft_init(&F->raft, &F->raft_logger, &F->raft_io, \
-			       &F->fsm, f, ID, ADDRESS);               \
-		munit_assert_int(rv, ==, 0);                           \
-		raft_set_rand(&F->raft, (int (*)())munit_rand_uint32); \
+#define SETUP_RAFT_X(F, ID, ADDRESS)                                         \
+	{                                                                    \
+		int rv;                                                      \
+		raft_default_logger_set_server_id(ID);                       \
+		raft_default_logger_set_level(RAFT_DEBUG);                   \
+		F->raft_logger = raft_default_logger;                        \
+		rv = raft_io_stub_init(&F->raft_io, &F->raft_logger);        \
+		munit_assert_int(rv, ==, 0);                                 \
+		raft_io_stub_set_randint(&F->raft_io, munit_rand_int_range); \
+		rv = fsm__init(&F->fsm, &F->logger, &F->registry);           \
+		munit_assert_int(rv, ==, 0);                                 \
+		rv = raft_init(&F->raft, &F->raft_logger, &F->raft_io,       \
+			       &F->fsm, f, ID, ADDRESS);                     \
+		munit_assert_int(rv, ==, 0);                                 \
 	}
 
 #define TEAR_DOWN_RAFT_X(F)                      \
@@ -80,7 +81,9 @@
 		munit_assert_int(rc, ==, 0); \
 	}
 
-#define RAFT_FLUSH(F) raft_io_stub_flush(&F->raft_io)
+#define RAFT_FLUSH(F) raft_io_stub_flush_all(&F->raft_io)
+
+#define RAFT_CONNECT(F1, F2) raft_io_stub_connect(&F1->raft_io, &F2->raft_io)
 
 #define RAFT_BECOME_CANDIDATE(F)                                   \
 	raft_io_stub_advance(&F->raft_io,                          \
@@ -106,14 +109,14 @@
 			message.server_address = server->address;           \
 			message.request_vote_result.term = r->current_term; \
 			message.request_vote_result.vote_granted = 1;       \
-			raft_io_stub_dispatch(r->io, &message);             \
+			raft_io_stub_deliver(r->io, &message);              \
 			votes--;                                            \
 			if (votes == 0) {                                   \
 				break;                                      \
 			}                                                   \
 		}                                                           \
 		munit_assert_int(raft_state(r), ==, RAFT_LEADER);           \
-		raft_io_stub_flush(r->io);                                  \
+		raft_io_stub_flush_all(r->io);                              \
 	}
 
 /* Reach a quorum for all outstanding entries. */
@@ -123,7 +126,7 @@
 		struct raft_message message;                        \
 		struct raft_append_entries_result *result =         \
 		    &message.append_entries_result;                 \
-		raft_io_stub_flush(&f->raft_io);                    \
+		raft_io_stub_flush_all(&f->raft_io);                \
 		message.type = RAFT_IO_APPEND_ENTRIES_RESULT;       \
 		message.server_id = 2;                              \
 		message.server_address = address;                   \
@@ -131,7 +134,7 @@
 		result->success = true;                             \
 		result->last_log_index =                            \
 		    f->raft.leader_state.replication[1].next_index; \
-		raft_io_stub_dispatch(&f->raft_io, &message);       \
+		raft_io_stub_deliver(&f->raft_io, &message);        \
 	}
 
 void raft_copy_entries(const struct raft_entry *src,

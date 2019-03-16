@@ -26,32 +26,48 @@ struct server_fixture
 	FIXTURE_REPLICATION;
 	FIXTURE_LEADER;
 	FIXTURE_STMT;
+	char address[8];
+	char name[8];
 };
 
-#define FIXTURE_CLUSTER struct server_fixture servers[N_SERVERS];
+#define FIXTURE_CLUSTER                           \
+	struct server_fixture servers[N_SERVERS]; \
+	int leader_index;                         \
+	struct leader *leader;                    \
+	sqlite3_stmt *stmt;
 
-#define SETUP_CLUSTER                                              \
-	{                                                          \
-		int i;                                             \
-		for (i = 0; i < N_SERVERS; i++) {                  \
-			struct server_fixture *s = &f->servers[i]; \
-			unsigned id = i + 1;                       \
-			char address[8];                           \
-			char name[8];                              \
-			sprintf(address, "%d", id);                \
-			sprintf(name, "test%d", i);                \
-			SETUP_LOGGER_X(s);                         \
-			SETUP_VFS_X(s, name);                      \
-			SETUP_OPTIONS_X(s, name);                  \
-			SETUP_REGISTRY_X(s);                       \
-			SETUP_RAFT_X(s, id, address);              \
-			SETUP_REPLICATION_X(s, name);              \
-			RAFT_BOOTSTRAP(s, N_SERVERS);              \
-			RAFT_START(s);                             \
-			SETUP_LEADER_X(s);                         \
-			SETUP_STMT_X(s);                           \
-		}                                                  \
-		CLUSTER_ELECT(0);                                  \
+#define SETUP_CLUSTER                                                       \
+	{                                                                   \
+		int i;                                                      \
+		int j;                                                      \
+		for (i = 0; i < N_SERVERS; i++) {                           \
+			struct server_fixture *s = &f->servers[i];          \
+			unsigned id = i + 1;                                \
+			sprintf(s->address, "%d", id);                      \
+			sprintf(s->name, "test%d", i);                      \
+			SETUP_LOGGER_X(s);                                  \
+			SETUP_VFS_X(s, s->name);                            \
+			SETUP_OPTIONS_X(s, s->name);                        \
+			SETUP_REGISTRY_X(s);                                \
+			SETUP_RAFT_X(s, id, s->address);                    \
+			SETUP_REPLICATION_X(s, s->name);                    \
+			RAFT_BOOTSTRAP(s, N_SERVERS);                       \
+			RAFT_START(s);                                      \
+			SETUP_LEADER_X(s);                                  \
+			SETUP_STMT_X(s);                                    \
+		}                                                           \
+		for (i = 0; i < N_SERVERS; i++) {                           \
+			for (j = 0; j < N_SERVERS; j++) {                   \
+				struct server_fixture *s1 = &f->servers[i]; \
+				struct server_fixture *s2 = &f->servers[j]; \
+				if (i == j) {                               \
+					continue;                           \
+				}                                           \
+				RAFT_CONNECT(s1, s2);                       \
+			}                                                   \
+		}                                                           \
+		f->leader = NULL;                                           \
+		CLUSTER_ELECT;                                              \
 	}
 
 #define TEAR_DOWN_CLUSTER                                          \
@@ -70,58 +86,71 @@ struct server_fixture
 		}                                                  \
 	}
 
+#define CLUSTER_STEP                                                           \
+	{                                                                      \
+		int deliver_timeout = -1;                                      \
+		int raft_timeout = -1;                                         \
+		int timeout;                                                   \
+		int i;                                                         \
+		for (i = 0; i < N_SERVERS; i++) {                              \
+			struct server_fixture *s = &f->servers[i];             \
+			int timeout;                                           \
+			timeout =                                              \
+			    raft_io_stub_next_deliver_timeout(&s->raft_io);    \
+			if (timeout != -1) {                                   \
+				if (deliver_timeout == -1 ||                   \
+				    timeout < deliver_timeout) {               \
+					deliver_timeout = timeout;             \
+				}                                              \
+			}                                                      \
+			timeout = raft_next_timeout(&s->raft);                 \
+			if (raft_timeout == -1 || timeout < raft_timeout) {    \
+				raft_timeout = timeout;                        \
+			}                                                      \
+		}                                                              \
+		if (deliver_timeout != -1 && deliver_timeout < raft_timeout) { \
+			timeout = deliver_timeout;                             \
+		} else {                                                       \
+			timeout = raft_timeout;                                \
+		}                                                              \
+		CLUSTER_ADVANCE(timeout + 1);                                  \
+		CLUSTER_FLUSH;                                                 \
+	}
+
 /* Flush all pending I/O. Disk writes will complete and network messages
  * delivered. */
-#define CLUSTER_FLUSH                                                  \
-	{                                                              \
-		int i;                                                 \
-		for (i = 0; i < N_SERVERS; i++) {                      \
-			struct server_fixture *s = &f->servers[i];     \
-			struct raft_message *messages;                 \
-			unsigned n;                                    \
-			unsigned j;                                    \
-			RAFT_FLUSH(s);                                 \
-			raft_io_stub_sent(&s->raft_io, &messages, &n); \
-			for (j = 0; j < n; j++) {                      \
-				CLUSTER_DELIVER(s, &messages[j]);      \
-			}                                              \
-		}                                                      \
+#define CLUSTER_FLUSH                                              \
+	{                                                          \
+		int i;                                             \
+		for (i = 0; i < N_SERVERS; i++) {                  \
+			struct server_fixture *s = &f->servers[i]; \
+			RAFT_FLUSH(s);                             \
+		}                                                  \
 	}
 
-#define CLUSTER_ADVANCE(MSECS)                                               \
-	{                                                                    \
-		int i;                                                       \
-		for (i = 0; i < N_SERVERS; i++) {                            \
-			struct server_fixture *s = &f->servers[i];           \
-			raft_io_stub_advance(&s->raft_io, MSECS); \
-		}                                                            \
+#define CLUSTER_ADVANCE(MSECS)                                     \
+	{                                                          \
+		int i;                                             \
+		for (i = 0; i < N_SERVERS; i++) {                  \
+			struct server_fixture *s = &f->servers[i]; \
+			raft_io_stub_advance(&s->raft_io, MSECS);  \
+		}                                                  \
 	}
 
-/* Deliver a message */
-#define CLUSTER_DELIVER(S, M)                                              \
-	struct server_fixture *r = &f->servers[(M)->server_id - 1];        \
-	struct raft_message message = *(M);                                \
-	message.server_id = S->raft.id;                                    \
-	message.server_address = S->raft.address;                          \
-	switch ((M)->type) {                                               \
-		case RAFT_IO_APPEND_ENTRIES:                               \
-			/* Make a copy of the entries being sent */        \
-			raft_copy_entries((M)->append_entries.entries,     \
-					  &message.append_entries.entries, \
-					  (M)->append_entries.n_entries);  \
-			message.append_entries.n_entries =                 \
-			    (M)->append_entries.n_entries;                 \
-			break;                                             \
-	}                                                                  \
-	raft_io_stub_dispatch(r->raft.io, &message);
-
-#define CLUSTER_ELECT(I)                                                 \
-	{                                                                \
-		struct server_fixture *s = &f->servers[I];               \
-		RAFT_BECOME_CANDIDATE(s);                                \
-		CLUSTER_FLUSH;                                           \
-		CLUSTER_FLUSH;                                           \
-		munit_assert_int(raft_state(&s->raft), ==, RAFT_LEADER); \
+#define CLUSTER_ELECT                                                      \
+	{                                                                  \
+		while (f->leader == NULL) {                                \
+			CLUSTER_STEP;                                      \
+			for (i = 0; i < N_SERVERS; i++) {                  \
+				struct server_fixture *s = &f->servers[i]; \
+				if (raft_state(&s->raft) == RAFT_LEADER) { \
+					f->leader_index = i;               \
+					f->leader = &s->leader;            \
+					f->stmt = s->stmt;                 \
+					break;                             \
+				}                                          \
+			}                                                  \
+		}                                                          \
 	}
 
 #endif /* TEST_CLUSTER_H */
