@@ -5,10 +5,6 @@
 #ifndef DQLITE_GATEWAY_H
 #define DQLITE_GATEWAY_H
 
-#ifdef DQLITE_EXPERIMENTAL
-#include <libco.h>
-#endif /* DQLITE_EXPERIMENTAL */
-
 #include "../include/dqlite.h"
 
 #include "db_.h"
@@ -16,6 +12,9 @@
 #include "options.h"
 #include "request.h"
 #include "response.h"
+#ifdef DQLITE_EXPERIMENTAL
+#include "registry.h"
+#endif /* DQLITE_EXPERIMENTAL */
 
 #define GATEWAY__MAX_REQUESTS 2
 
@@ -78,10 +77,8 @@ struct gateway
 	struct db_ *db; /* Open database */
 
 #ifdef DQLITE_EXPERIMENTAL
-
-	cothread_t main_coroutine; /* Main coroutine ID */
-	cothread_t loop_coroutine; /* Coroutine ID of the gateway main loop. */
-
+	struct registry *registry;
+	struct leader *leader;
 #endif /* DQLITE_EXPERIMENTAL */
 };
 
