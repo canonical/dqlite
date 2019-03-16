@@ -108,7 +108,6 @@ TEST_SETUP(exec)
 {
 	struct exec_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
-	SETUP_STMT;
 	f->req.data = f;
 	f->invoked = false;
 	f->status = -1;
@@ -117,7 +116,6 @@ TEST_SETUP(exec)
 TEST_TEAR_DOWN(exec)
 {
 	struct exec_fixture *f = data;
-	TEAR_DOWN_STMT;
 	TEAR_DOWN;
 	free(f);
 }
@@ -128,10 +126,12 @@ TEST_CASE(exec, success, NULL)
 	(void)params;
 	int rc;
 	RAFT_BECOME_LEADER;
+	STMT_PREPARE(f->leader.conn, f->stmt, "CREATE TABLE test (a INT)");
 	rc = leader__exec(&f->leader, &f->req, f->stmt, fixture_exec_cb);
 	munit_assert_int(rc, ==, 0);
 	RAFT_COMMIT;
 	RAFT_COMMIT;
+	STMT_FINALIZE(f->stmt);
 	munit_assert_true(f->invoked);
 	return MUNIT_OK;
 }
