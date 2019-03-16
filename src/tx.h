@@ -20,6 +20,7 @@ struct tx
 };
 
 void tx__init(struct tx *tx, unsigned long long id, sqlite3 *conn);
+void tx__close(struct tx *tx);
 
 bool tx__is_leader(struct tx *tx);
 

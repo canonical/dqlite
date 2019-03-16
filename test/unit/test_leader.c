@@ -144,9 +144,11 @@ TEST_CASE(exec, error, begin_not_leader, NULL)
 	struct exec_fixture *f = data;
 	int rc;
 	(void)params;
+	STMT_PREPARE(f->leader.conn, f->stmt, "CREATE TABLE test (a INT)");
 	rc = leader__exec(&f->leader, &f->req, f->stmt, NULL);
 	munit_assert_int(rc, ==, 0);
 	munit_assert_true(f->req.done);
 	munit_assert_int(f->req.status, ==, SQLITE_IOERR_NOT_LEADER);
+	STMT_FINALIZE(f->stmt);
 	return MUNIT_OK;
 }

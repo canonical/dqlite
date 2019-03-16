@@ -89,6 +89,18 @@ static int fsm__apply_frames(struct fsm *f, const struct command_frames *c)
 
 	sqlite3_free(page_numbers);
 
+	/* If the commit flag is on, this is the final write of a transaction, */
+	if (c->is_commit) {
+		/* Save the ID of this transaction in the buffer of recently committed
+		 * transactions. */
+		/* TODO: f.registry.TxnCommittedAdd(txn) */
+
+		/* If it's a follower, we also unregister it. */
+		if (!tx__is_leader(tx)) {
+			db__delete_tx(db);
+		}
+	}
+
 	return 0;
 }
 
