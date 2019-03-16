@@ -118,7 +118,6 @@ static void *setup(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	struct gateway__cbs callbacks;
-	int rc;
 	SETUP_LOGGER;
 	SETUP_HEAP;
 	SETUP_SQLITE;
@@ -133,11 +132,6 @@ static void *setup(const MunitParameter params[], void *user_data)
 	f->gateway = munit_malloc(sizeof *f->gateway);
 	gateway__init(f->gateway, &callbacks, f->cluster, &f->logger,
 		      &f->options);
-
-#ifdef DQLITE_EXPERIMENTAL
-	rc = gateway__start(f->gateway, 0);
-	munit_assert_int(rc, ==, SQLITE_OK);
-#endif /* DQLITE_EXPERIMENTAL */
 
 	f->request = munit_malloc(sizeof *f->request);
 
@@ -159,6 +153,7 @@ static void tear_down(void *data)
 	TEAR_DOWN_SQLITE;
 	TEAR_DOWN_HEAP;
 	TEAR_DOWN_LOGGER;
+	free(f->gateway);
 	free(f->request);
 	free(f);
 }
