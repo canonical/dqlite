@@ -52,15 +52,7 @@ TEST_CASE(begin, open, NULL)
 	(void)params;
 	rc = leader__exec(f->leader, &req, f->stmt, NULL);
 	munit_assert_int(rc, ==, 0);
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
+	CLUSTER_APPLIED(3);
 	char *msg;
 	rc = sqlite3_exec(f->servers[(f->leader_index + 1) % 2].leader.conn,
 			  "SELECT * FROM test", NULL, NULL, &msg);
