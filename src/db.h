@@ -25,4 +25,6 @@ int db__open_follower(struct db *db);
 
 int db__create_tx(struct db *db, unsigned long long id, sqlite3 *conn);
 
+void db__delete_tx(struct db *db);
+
 #endif /* DB_H_*/

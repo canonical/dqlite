@@ -58,5 +58,10 @@ TEST_CASE(begin, open, NULL)
 	char *msg;
 	rc = sqlite3_exec(f->follower, "SELECT * FROM test", NULL, NULL, &msg);
 	munit_assert_int(rc, ==, SQLITE_OK);
+	STMT_PREPARE(f->leader->conn, f->stmt, "INSERT INTO test(a) VALUES(1)");
+	rc = leader__exec(f->leader, &req, f->stmt, NULL);
+	munit_assert_int(rc, ==, 0);
+	CLUSTER_APPLIED(4);
+	STMT_FINALIZE(f->stmt);
 	return MUNIT_OK;
 }

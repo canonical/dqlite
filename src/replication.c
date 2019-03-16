@@ -236,10 +236,20 @@ int replication__undo(sqlite3_wal_replication *r, void *arg)
 	return SQLITE_OK;
 }
 
-int replication__end(sqlite3_wal_replication *r, void *arg)
+int replication__end(sqlite3_wal_replication *replication, void *arg)
 {
-	(void)r;
-	(void)arg;
+	struct leader *leader = arg;
+	struct tx *tx = leader->db->tx;
+
+	(void)replication;
+
+	if (tx == NULL) {
+		/* TODO */
+	} else {
+		assert(tx->conn == leader->conn);
+	}
+
+	db__delete_tx(leader->db);
 
 	return SQLITE_OK;
 }

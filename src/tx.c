@@ -14,6 +14,10 @@ void tx__init(struct tx *tx, unsigned long long id, sqlite3 *conn)
 	tx->state = TX__PENDING;
 }
 
+void tx__close(struct tx *tx) {
+	(void)tx;
+}
+
 bool tx__is_leader(struct tx *tx)
 {
 	sqlite3_wal_replication *replication;

@@ -52,6 +52,12 @@ int db__create_tx(struct db *db, unsigned long long id, sqlite3 *conn)
 	return 0;
 }
 
+void db__delete_tx(struct db *db) {
+	tx__close(db->tx);
+	sqlite3_free(db->tx);
+	db->tx = NULL;
+}
+
 static int open_follower_conn(const char *filename,
 			      const char *vfs,
 			      sqlite3 **conn)
