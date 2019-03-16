@@ -628,17 +628,7 @@ int conn__start(struct conn *c)
 
 	assert(c != NULL);
 
-#ifdef DQLITE_EXPERIMENTAL
-	/* Start the gateway */
-	err = gateway__start(&c->gateway, uv_now(c->loop));
-	if (err != 0) {
-		dqlite__error_uv(&c->error, err,
-				 "failed to start gateway coroutine");
-		goto err;
-	}
-#else
 	c->gateway.heartbeat = uv_now(c->loop);
-#endif /* DQLITE_EXPERIMENTAL */
 
 	/* Start the alive timer, which will disconnect the client if no
 	 * heartbeat is received within the timeout. */

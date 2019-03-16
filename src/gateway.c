@@ -1,12 +1,6 @@
 #include <float.h>
 #include <stdio.h>
 
-#ifdef DQLITE_EXPERIMENTAL
-
-#include <libco.h>
-
-#endif /* DQLITE_EXPERIMENTAL */
-
 #include "../include/dqlite.h"
 
 #include "./lib/assert.h"
@@ -554,33 +548,6 @@ static void gateway__dispatch(struct gateway *g, struct gateway__ctx *ctx)
 	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
 }
 
-#ifdef DQLITE_EXPERIMENTAL
-
-/* Use a global variable to pass a gateway object as argument of the main loop
- * coroutine entry point. */
-static struct gateway *gateway__loop_arg;
-
-static void gateway__loop()
-{
-	struct gateway *g = gateway__loop_arg;
-
-	/* Pass control back to the main coroutine, as all we need to do
-	 * initially is to set the gateway local variable above */
-	co_switch(g->main_coroutine);
-
-	while (1) {
-		struct gateway__ctx *ctx = &g->ctxs[0];
-
-		assert(ctx->request != NULL);
-
-		gateway__dispatch(g, ctx);
-
-		co_switch(g->main_coroutine);
-	}
-}
-
-#endif /* DQLITE_EXPERIMENTAL */
-
 void gateway__init(struct gateway *g,
 		   struct gateway__cbs *callbacks,
 		   struct dqlite_cluster *cluster,
@@ -619,37 +586,7 @@ void gateway__init(struct gateway *g,
 	}
 
 	g->db = NULL;
-
-#ifdef DQLITE_EXPERIMENTAL
-	g->main_coroutine = NULL;
-	g->loop_coroutine = NULL;
-#endif /* DQLITE_EXPERIMENTAL */
 }
-
-#ifdef DQLITE_EXPERIMENTAL
-
-int gateway__start(struct gateway *g, uint64_t now)
-{
-	g->heartbeat = now;
-	g->main_coroutine = co_active();
-	g->loop_coroutine =
-	    co_create(1024 * 1024 * sizeof(void *), gateway__loop);
-
-	if (g->loop_coroutine == NULL) {
-		return DQLITE_NOMEM;
-	}
-
-	gateway__loop_arg = g;
-
-	/* Kick off the gateway loop coroutine, which will initialize itself by
-	 * saving a reference to this gateway object and then immediately switch
-	 * back here. */
-	co_switch(g->loop_coroutine);
-
-	return 0;
-}
-
-#endif /* DQLITE_EXPERIMENTAL */
 
 void gateway__close(struct gateway *g)
 {
@@ -661,14 +598,6 @@ void gateway__close(struct gateway *g)
 		db__close_(g->db);
 		sqlite3_free(g->db);
 	}
-
-#ifdef DQLITE_EXPERIMENTAL
-
-	if (g->loop_coroutine != NULL) {
-		co_delete(g->loop_coroutine);
-	}
-
-#endif /* DQLITE_EXPERIMENTAL */
 
 	for (i = 0; i < GATEWAY__MAX_REQUESTS; i++) {
 		response_close(&g->ctxs[i].response);
@@ -729,19 +658,7 @@ int gateway__handle(struct gateway *g, struct request *request)
 	ctx = &g->ctxs[i];
 	ctx->request = request;
 
-	if (i == 1) {
-		/* Heartbeat and interrupt requests are handled synchronously.
-		 */
-		gateway__dispatch(g, ctx);
-	} else {
-#ifdef DQLITE_EXPERIMENTAL
-		/* Database requests are handled asynchronously by the gateway
-		 * coroutine. */
-		co_switch(g->loop_coroutine);
-#else
-		gateway__dispatch(g, ctx);
-#endif /* DQLITE_EXPERIMENTAL */
-	}
+	gateway__dispatch(g, ctx);
 
 	return 0;
 err:
@@ -792,4 +709,5 @@ void gateway__aborted(struct gateway *g, struct response *response)
 {
 	assert(g != NULL);
 	assert(response != NULL);
+	reset_response(response);
 }
