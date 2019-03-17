@@ -15,6 +15,9 @@
 #include "metrics.h"
 #include "options.h"
 #include "queue.h"
+#ifdef DQLITE_EXPERIMENTAL
+#include "registry.h"
+#endif /* DQLITE_EXPERIMENTAL */
 
 int dqlite_init(const char **errmsg)
 {
@@ -50,6 +53,9 @@ struct dqlite__server
 	struct dqlite_logger *logger;    /* Optional logger implementation */
 	struct dqlite__metrics *metrics; /* Operational metrics */
 	struct options options;		 /* Configuration values */
+#ifdef DQLITE_EXPERIMENTAL
+	struct registry registry;
+#endif /* DQLITE_EXPERIMENTAL */
 	struct dqlite__queue queue;      /* Queue of incoming connections */
 	pthread_mutex_t mutex; /* Serialize access to incoming queue */
 	uv_loop_t loop;	/* UV loop */
@@ -234,6 +240,10 @@ int dqlite_server_create(dqlite_cluster *cluster, dqlite_server **out)
 
 	s->running = 0;
 
+#ifdef DQLITE_EXPERIMENTAL
+	registry__init(&s->registry, &s->options);
+#endif /* DQLITE_EXPERIMENTAL */
+
 	*out = s;
 
 	return 0;
@@ -251,6 +261,10 @@ void dqlite_server_destroy(dqlite_server *s)
 	int err;
 
 	assert(s != NULL);
+
+#ifdef DQLITE_EXPERIMENTAL
+	registry__close(&s->registry);
+#endif /* DQLITE_EXPERIMENTAL */
 
 	if (s->metrics != NULL) {
 		sqlite3_free(s->metrics);
@@ -497,6 +511,9 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg)
 	}
 	conn__init(conn, fd, s->logger, s->cluster, &s->loop, &s->options,
 		   s->metrics);
+#ifdef DQLITE_EXPERIMENTAL
+	conn->gateway.registry = &s->registry;
+#endif /* DQLITE_EXPERIMENTAL */
 
 	err = dqlite__queue_item_init(&item, conn);
 	if (err != 0) {
