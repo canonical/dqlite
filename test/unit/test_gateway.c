@@ -706,6 +706,8 @@ TEST_CASE(handle, exec_fail, NULL)
 	return MUNIT_OK;
 }
 
+#endif /* !DQLITE_EXPERIMENTAL */
+
 /* Handle a query request. */
 TEST_CASE(handle, query, NULL)
 {
@@ -855,6 +857,10 @@ TEST_CASE(handle, exec_sql, NULL)
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
+#ifdef DQLITE_EXPERIMENTAL
+	RAFT_COMMIT;
+#endif
+
 	munit_assert_ptr_not_null(f->response);
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_RESULT);
 
@@ -883,6 +889,12 @@ TEST_CASE(handle, exec_sql_multi, NULL)
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
+
+#ifdef DQLITE_EXPERIMENTAL
+	RAFT_COMMIT;
+	RAFT_COMMIT;
+	RAFT_COMMIT;
+#endif
 
 	munit_assert_ptr_not_null(f->response);
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_RESULT);
@@ -965,6 +977,8 @@ TEST_CASE(handle, exec_sql_bad_params, NULL)
 	return MUNIT_OK;
 }
 
+#ifndef DQLITE_EXPERIMENTAL
+
 /* If the execution of the statement fails, an error is returned. */
 TEST_CASE(handle, exec_sql_error, NULL)
 {
@@ -1000,6 +1014,8 @@ TEST_CASE(handle, exec_sql_error, NULL)
 
 	return MUNIT_OK;
 }
+
+#endif /* !DQLITE_EXPERIMENTAL */
 
 /* Handle a query sql request. */
 TEST_CASE(handle, query_sql, NULL)
@@ -1184,6 +1200,8 @@ TEST_CASE(handle, max_requests, NULL)
 
 	return MUNIT_OK;
 }
+
+#ifndef DQLITE_EXPERIMENTAL
 
 /* If the number of frames in the WAL reaches the configured threshold, a
  * checkpoint is triggered. */
