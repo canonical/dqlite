@@ -54,17 +54,17 @@ struct dqlite__server
 	struct dqlite__metrics *metrics; /* Operational metrics */
 	struct options options;		 /* Configuration values */
 #ifdef DQLITE_EXPERIMENTAL
-	struct registry registry;
-#endif /* DQLITE_EXPERIMENTAL */
-	struct dqlite__queue queue;      /* Queue of incoming connections */
-	pthread_mutex_t mutex; /* Serialize access to incoming queue */
-	uv_loop_t loop;	/* UV loop */
-	uv_async_t stop;       /* Event to stop the UV loop */
-	uv_async_t incoming;   /* Event to process the incoming queue */
-	int running;	   /* Indicate that the loop is running */
-	sem_t ready;	   /* Notifiy that the loop is running */
-	uv_timer_t startup;    /* Used for unblocking the ready sem */
-	sem_t stopped;	 /* Notifiy that the loop has been stopped */
+	struct registry *registry;
+#endif				    /* DQLITE_EXPERIMENTAL */
+	struct dqlite__queue queue; /* Queue of incoming connections */
+	pthread_mutex_t mutex;      /* Serialize access to incoming queue */
+	uv_loop_t loop;		    /* UV loop */
+	uv_async_t stop;	    /* Event to stop the UV loop */
+	uv_async_t incoming;	/* Event to process the incoming queue */
+	int running;		    /* Indicate that the loop is running */
+	sem_t ready;		    /* Notifiy that the loop is running */
+	uv_timer_t startup;	 /* Used for unblocking the ready sem */
+	sem_t stopped;		    /* Notifiy that the loop has been stopped */
 };
 
 /* Callback for the uv_walk() call in dqlite__server_stop_cb.
@@ -80,7 +80,8 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 	assert(handle != NULL);
 	assert(arg != NULL);
 	assert(handle->type == UV_ASYNC || handle->type == UV_TIMER ||
-	       handle->type == UV_TCP || handle->type == UV_NAMED_PIPE);
+	       handle->type == UV_TCP || handle->type == UV_NAMED_PIPE ||
+	       handle->type == UV_IDLE);
 
 	s = (struct dqlite__server *)arg;
 
@@ -117,6 +118,12 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 			 * call above, so there's nothing to do in that case. */
 
 			break;
+#ifdef DQLITE_EXPERIMENTAL
+		case UV_IDLE:
+			uv_idle_stop((struct uv_idle_s *)handle);
+			uv_close(handle, NULL);
+			break;
+#endif /* DQLITE_EXPERIMENTAL */
 
 		default:
 			/* Should not be reached because we assert all possible
@@ -240,9 +247,9 @@ int dqlite_server_create(dqlite_cluster *cluster, dqlite_server **out)
 
 	s->running = 0;
 
-#ifdef DQLITE_EXPERIMENTAL
-	registry__init(&s->registry, &s->options);
-#endif /* DQLITE_EXPERIMENTAL */
+	/* Initialize the event loop. */
+	err = uv_loop_init(&s->loop);
+	assert(err == 0);
 
 	*out = s;
 
@@ -262,9 +269,8 @@ void dqlite_server_destroy(dqlite_server *s)
 
 	assert(s != NULL);
 
-#ifdef DQLITE_EXPERIMENTAL
-	registry__close(&s->registry);
-#endif /* DQLITE_EXPERIMENTAL */
+	err = uv_loop_close(&s->loop);
+	assert(err == 0);
 
 	if (s->metrics != NULL) {
 		sqlite3_free(s->metrics);
@@ -338,6 +344,11 @@ int dqlite_server_config(dqlite_server *s, int op, void *arg)
 				}
 			}
 			break;
+#ifdef DQLITE_EXPERIMENTAL
+		case DQLITE_CONFIG_REGISTRY:
+			s->registry = arg;
+			break;
+#endif
 
 		default:
 			dqlite__error_printf(&s->error, "unknown op code %d",
@@ -349,6 +360,13 @@ int dqlite_server_config(dqlite_server *s, int op, void *arg)
 	return err;
 }
 
+#ifdef DQLITE_EXPERIMENTAL
+struct uv_loop_s *dqlite_server_loop(dqlite_server *s)
+{
+	return &s->loop;
+}
+#endif /* DQLITE_EXPERIMENTAL */
+
 int dqlite_server_run(struct dqlite__server *s)
 {
 	int err;
@@ -356,13 +374,6 @@ int dqlite_server_run(struct dqlite__server *s)
 	assert(s != NULL);
 
 	dqlite__infof(s, "starting event loop");
-
-	/* Initialize the event loop. */
-	err = uv_loop_init(&s->loop);
-	if (err != 0) {
-		dqlite__error_uv(&s->error, err, "failed to init event loop");
-		return DQLITE_ERROR;
-	}
 
 	/* Initialize async handles. */
 	err = uv_async_init(&s->loop, &s->stop, dqlite__server_stop_cb);
@@ -404,12 +415,6 @@ int dqlite_server_run(struct dqlite__server *s)
 	if (err != 0) {
 		dqlite__error_uv(&s->error, err,
 				 "event loop finished unclealy");
-		goto out;
-	}
-
-	err = uv_loop_close(&s->loop);
-	if (err != 0) {
-		dqlite__error_uv(&s->error, err, "failed to close event loop");
 		goto out;
 	}
 
@@ -512,7 +517,7 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg)
 	conn__init(conn, fd, s->logger, s->cluster, &s->loop, &s->options,
 		   s->metrics);
 #ifdef DQLITE_EXPERIMENTAL
-	conn->gateway.registry = &s->registry;
+	conn->gateway.registry = s->registry;
 #endif /* DQLITE_EXPERIMENTAL */
 
 	err = dqlite__queue_item_init(&item, conn);

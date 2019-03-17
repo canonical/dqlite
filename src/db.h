@@ -11,7 +11,7 @@ struct leader;
 struct db
 {
 	struct options *options;
-	const char *filename;
+	char *filename;
 	sqlite3 *follower;
 	struct tx *tx;
 	queue leaders;

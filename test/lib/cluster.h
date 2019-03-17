@@ -32,6 +32,7 @@ struct server_fixture
 #define FIXTURE_CLUSTER                           \
 	FIXTURE_STMT;                             \
 	struct server_fixture servers[N_SERVERS]; \
+	struct registry *registry;                \
 	struct leader *leader;                    \
 	sqlite3 *follower;
 
@@ -158,6 +159,7 @@ struct server_fixture
 				struct server_fixture *s = &f->servers[i];  \
 				if (raft_state(&s->raft) == RAFT_LEADER) {  \
 					f->leader = &s->leader;             \
+					f->registry = &s->registry;         \
 					f->follower =                       \
 					    f->servers[(i + 1) % N_SERVERS] \
 						.leader.conn;               \

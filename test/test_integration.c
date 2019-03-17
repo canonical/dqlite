@@ -147,7 +147,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	err = dqlite_init(&errmsg);
 	munit_assert_int(err, ==, 0);
 
-	server = test_server_start("unix");
+	server = test_server_start("unix", params);
 
 	return server;
 }
@@ -168,8 +168,6 @@ static void tear_down(void *data)
  * Tests
  *
  ******************************************************************************/
-
-#ifndef DQLITE_EXPERIMENTAL
 
 TEST_SUITE(exec);
 TEST_SETUP(exec, setup);
@@ -309,6 +307,8 @@ TEST_CASE(exec, large_query, NULL)
 
 	return MUNIT_OK;
 }
+
+#ifndef DQLITE_EXPERIMENTAL
 
 TEST_CASE(exec, multi_thread, NULL)
 {

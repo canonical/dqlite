@@ -14,7 +14,8 @@ void tx__init(struct tx *tx, unsigned long long id, sqlite3 *conn)
 	tx->state = TX__PENDING;
 }
 
-void tx__close(struct tx *tx) {
+void tx__close(struct tx *tx)
+{
 	(void)tx;
 }
 
