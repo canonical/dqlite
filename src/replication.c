@@ -147,6 +147,7 @@ int replication__begin(sqlite3_wal_replication *replication, void *arg)
 	if (raft_state(r->raft) != RAFT_LEADER) {
 		return SQLITE_IOERR_NOT_LEADER;
 	}
+	assert(leader->exec != NULL);
 
 	rc = maybe_add_follower(r, leader);
 	if (rc != 0) {

@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "../include/dqlite.h"
 
 #include "./lib/assert.h"
@@ -12,7 +14,9 @@ static int open_follower_conn(const char *filename,
 void db__init(struct db *db, struct options *options, const char *filename)
 {
 	db->options = options;
-	db->filename = filename;
+	db->filename = sqlite3_malloc(strlen(filename) + 1);
+	assert(db->filename != NULL); /* TODO: return an error instead */
+	strcpy(db->filename, filename);
 	db->follower = NULL;
 	db->tx = NULL;
 	QUEUE__INIT(&db->leaders);
@@ -29,6 +33,7 @@ void db__close(struct db *db)
 	if (db->tx != NULL) {
 		sqlite3_free(db->tx);
 	}
+	sqlite3_free(db->filename);
 }
 
 int db__open_follower(struct db *db)
@@ -52,7 +57,8 @@ int db__create_tx(struct db *db, unsigned long long id, sqlite3 *conn)
 	return 0;
 }
 
-void db__delete_tx(struct db *db) {
+void db__delete_tx(struct db *db)
+{
 	tx__close(db->tx);
 	sqlite3_free(db->tx);
 	db->tx = NULL;
@@ -85,13 +91,6 @@ static int open_follower_conn(const char *filename,
 
 	/* Set WAL journaling. */
 	rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		goto err_after_open;
-	}
-
-	/* Switch off automatic WAL checkpoint when a connection is closed. */
-	rc =
-	    sqlite3_db_config(*conn, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 0, NULL);
 	if (rc != SQLITE_OK) {
 		goto err_after_open;
 	}

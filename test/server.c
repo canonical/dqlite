@@ -19,17 +19,35 @@
 
 dqlite_logger *logger;
 
-static struct test_server *test_server__create()
+#ifdef DQLITE_EXPERIMENTAL
+void idle_cb(uv_idle_t *handle)
+{
+	struct test_server *f = handle->data;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+	CLUSTER_STEP;
+}
+#endif
+
+static struct test_server *test_server__create(const MunitParameter params[])
 {
 	int err = 0;
 	struct test_server *s;
 	uint32_t checkpoint_threshold = 100;
 	uint8_t metrics = 1;
+	const char *name;
 
 	s = munit_malloc(sizeof *s);
 
 	logger = test_logger();
 
+#ifdef DQLITE_EXPERIMENTAL
+	struct test_server *f = s;
+	SETUP_CLUSTER;
+#else
 	s->replication = test_replication();
 
 	err = sqlite3_wal_replication_register(s->replication, 0);
@@ -43,6 +61,7 @@ static struct test_server *test_server__create()
 	}
 
 	sqlite3_vfs_register(s->vfs, 0);
+#endif /* DQLITE_EXPERIMENTAL */
 
 	err = dqlite_server_create(test_cluster(), &s->service);
 	if (err != 0) {
@@ -61,14 +80,29 @@ static struct test_server *test_server__create()
 		munit_errorf("failed to set checkpoint threshold: %d", err);
 	}
 
-	err = dqlite_server_config(s->service, DQLITE_CONFIG_VFS,
-				   (void *)s->vfs->zName);
+#ifdef DQLITE_EXPERIMENTAL
+	struct uv_loop_s *loop = dqlite_server_loop(s->service);
+	err = uv_idle_init(loop, &s->idle);
+	s->idle.data = s;
+	munit_assert_int(err, ==, 0);
+	munit_assert_string_equal(f->leader->db->options->replication,
+				  f->leader->db->options->vfs);
+	name = f->leader->db->options->replication;
+	err = uv_idle_start(&s->idle, idle_cb);
+	munit_assert_int(err, ==, 0);
+	err = dqlite_server_config(s->service, DQLITE_CONFIG_REGISTRY, s->registry);
+	munit_assert_int(err, ==, 0);
+#else
+	munit_assert_string_equal(s->vfs->zName, s->replication->zName);
+	name = s->vfs->zName;
+#endif /* DQLITE_EXPERIMENTAL */
+	err = dqlite_server_config(s->service, DQLITE_CONFIG_VFS, (void *)name);
 	if (err != 0) {
 		munit_errorf("failed to set VFS name: %d", err);
 	}
 
 	err = dqlite_server_config(s->service, DQLITE_CONFIG_WAL_REPLICATION,
-				   (void *)s->replication->zName);
+				   (void *)name);
 	if (err != 0) {
 		munit_errorf("failed to set WAL replication name: %d", err);
 	}
@@ -89,10 +123,15 @@ static void test_server__destroy(struct test_server *s)
 	assert(s != NULL);
 	assert(s->service != NULL);
 
+#ifdef DQLITE_EXPERIMENTAL
+	struct test_server *f = s;
+	TEAR_DOWN_CLUSTER;
+#else
 	sqlite3_wal_replication_unregister(s->replication);
 	sqlite3_vfs_unregister(s->vfs);
 
 	dqlite_vfs_destroy(s->vfs);
+#endif
 
 	dqlite_server_destroy(s->service);
 
@@ -259,11 +298,12 @@ static void *test__server_run(void *arg)
 	return 0;
 }
 
-struct test_server *test_server_start(const char *family)
+struct test_server *test_server_start(const char *family,
+				      const MunitParameter params[])
 {
 	int err;
 	int ready;
-	struct test_server *s = test_server__create();
+	struct test_server *s = test_server__create(params);
 
 	assert(s != NULL);
 

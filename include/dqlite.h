@@ -5,6 +5,9 @@
 #include <stdio.h>
 
 #include <sqlite3.h>
+#ifdef DQLITE_EXPERIMENTAL
+#include <uv.h>
+#endif /* DQLITE_EXPERIMENTAL */
 
 /* #ifdef __cplusplus */
 /* extern "C" { */
@@ -67,7 +70,9 @@
 #define DQLITE_CONFIG_PAGE_SIZE 4
 #define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 5
 #define DQLITE_CONFIG_METRICS 6
-
+#ifdef DQLITE_EXPERIMENTAL
+#define DQLITE_CONFIG_REGISTRY 7
+#endif
 /* Special value indicating that a batch of rows is over, but there are more. */
 #define DQLITE_RESPONSE_ROWS_PART 0xeeeeeeeeeeeeeeee
 
@@ -124,6 +129,10 @@ void dqlite_server_destroy(dqlite_server *s);
  * dqlite_server_run.
  */
 int dqlite_server_config(dqlite_server *s, int op, void *arg);
+
+#ifdef DQLITE_EXPERIMENTAL
+struct uv_loop_s * dqlite_server_loop(dqlite_server *s);
+#endif /* DQLITE_EXPERIMENTAL */
 
 /* Start a dqlite server.
  *
