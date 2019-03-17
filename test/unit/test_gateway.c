@@ -5,6 +5,10 @@
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
+#ifdef DQLITE_EXPERIMENTAL
+#include "../lib/raft.h"
+#include "../lib/replication.h"
+#endif /* DQLITE_EXPERIMENTAL */
 
 #include "../replication.h"
 
@@ -26,7 +30,13 @@ struct fixture
 	FIXTURE_LOGGER;
 	FIXTURE_VFS;
 	FIXTURE_OPTIONS;
+#ifdef DQLITE_EXPERIMENTAL
+	FIXTURE_REGISTRY;
+	FIXTURE_RAFT;
+	FIXTURE_REPLICATION;
+#else
 	FIXTURE_STUB_REPLICATION;
+#endif /* DQLITE_EXPERIMENTAL */
 	dqlite_cluster *cluster;
 	struct gateway *gateway;
 	struct request *request;
@@ -122,12 +132,18 @@ static void *setup(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	struct gateway__cbs callbacks;
-	SETUP_LOGGER;
 	SETUP_HEAP;
 	SETUP_SQLITE;
-	SETUP_VFS;
-	SETUP_STUB_REPLICATION;
+	SETUP_LOGGER;
 	SETUP_OPTIONS;
+	SETUP_VFS;
+#ifdef DQLITE_EXPERIMENTAL
+	SETUP_REGISTRY;
+	SETUP_RAFT;
+	SETUP_REPLICATION;
+#else
+	SETUP_STUB_REPLICATION;
+#endif /* DQLITE_EXPERIMENTAL */
 
 	callbacks.ctx = f;
 	callbacks.xFlush = fixture_flush_cb;
@@ -151,7 +167,13 @@ static void tear_down(void *data)
 	request_close(f->request);
 	gateway__close(f->gateway);
 	test_cluster_close(f->cluster);
+#ifdef DQLITE_EXPERIMENTAL
+	TEAR_DOWN_REPLICATION;
+	TEAR_DOWN_REGISTRY;
+	TEAR_DOWN_RAFT;
+#else
 	TEAR_DOWN_STUB_REPLICATION;
+#endif /* DQLITE_EXPERIMENTAL */
 	TEAR_DOWN_OPTIONS;
 	TEAR_DOWN_VFS;
 	TEAR_DOWN_SQLITE;
