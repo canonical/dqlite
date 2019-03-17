@@ -14,6 +14,7 @@
 #include "response.h"
 #ifdef DQLITE_EXPERIMENTAL
 #include "registry.h"
+#include "leader.h"
 #endif /* DQLITE_EXPERIMENTAL */
 
 #define GATEWAY__MAX_REQUESTS 2

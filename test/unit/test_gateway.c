@@ -74,8 +74,6 @@ static void __open(struct fixture *f, uint32_t *db_id)
 	gateway__flushed(f->gateway, f->response);
 }
 
-#ifndef DQLITE_EXPERIMENTAL
-
 /* Send a prepare request and return the statement ID */
 static void __prepare(struct fixture *f,
 		      uint32_t db_id,
@@ -114,13 +112,19 @@ static void __exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id)
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
+#ifdef DQLITE_EXPERIMENTAL
+	if (f->gateway->leader->db->follower == NULL) {
+		/* Wait for the open command */
+		RAFT_COMMIT;
+	}
+	RAFT_COMMIT;
+#endif
+
 	munit_assert_ptr_not_null(f->response);
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_RESULT);
 
 	gateway__flushed(f->gateway, f->response);
 }
-
-#endif
 
 /******************************************************************************
  *
@@ -140,6 +144,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 #ifdef DQLITE_EXPERIMENTAL
 	SETUP_REGISTRY;
 	SETUP_RAFT;
+	RAFT_BECOME_LEADER;
 	SETUP_REPLICATION;
 #else
 	SETUP_STUB_REPLICATION;
@@ -505,8 +510,6 @@ TEST_CASE(handle, prepare, NULL)
 	return MUNIT_OK;
 }
 
-#ifndef DQLITE_EXPERIMENTAL
-
 /* Handle an exec request. */
 TEST_CASE(handle, exec, NULL)
 {
@@ -529,6 +532,11 @@ TEST_CASE(handle, exec, NULL)
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
+
+#ifdef DQLITE_EXPERIMENTAL
+	RAFT_COMMIT;
+	RAFT_COMMIT;
+#endif /* !DQLITE_EXPERIMENTAL */
 
 	munit_assert_ptr_not_null(f->response);
 
@@ -572,6 +580,10 @@ TEST_CASE(handle, exec_params, NULL)
 
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
+
+#ifdef DQLITE_EXPERIMENTAL
+	RAFT_COMMIT;
+#endif /* !DQLITE_EXPERIMENTAL */
 
 	munit_assert_ptr_not_null(f->response);
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_RESULT);
@@ -649,6 +661,8 @@ TEST_CASE(handle, exec_bad_params, NULL)
 
 	return MUNIT_OK;
 }
+
+#ifndef DQLITE_EXPERIMENTAL
 
 /* If the execution of the statement fails, an error is returned. */
 TEST_CASE(handle, exec_fail, NULL)
