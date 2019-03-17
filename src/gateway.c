@@ -12,9 +12,6 @@
 #include "log.h"
 #include "request.h"
 #include "response.h"
-#ifdef DQLITE_EXPERIMENTAL
-#include "leader.h"
-#endif
 
 /* Perform a distributed checkpoint if the size of the WAL has reached the
  * configured threshold and there are no reading transactions in progress (there
@@ -333,6 +330,80 @@ static void gateway__prepare(struct gateway *g, struct gateway__ctx *ctx)
 	ctx->response.stmt.params = sqlite3_bind_parameter_count(stmt->stmt);
 }
 
+#ifdef DQLITE_EXPERIMENTAL
+struct gateway_exec
+{
+	struct gateway *gateway;
+	struct gateway__ctx *ctx;
+	struct stmt *stmt;
+	struct exec req;
+};
+
+static void gateway__exec_cb(struct exec *req, int status)
+{
+	struct gateway_exec *r = req->data;
+	struct gateway *g = r->gateway;
+	struct stmt *stmt = r->stmt;
+	struct gateway__ctx *ctx = r->ctx;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+
+	sqlite3_free(r);
+
+	if (status == SQLITE_DONE) {
+		last_insert_id = sqlite3_last_insert_rowid(stmt->db);
+		rows_affected = sqlite3_changes(stmt->db);
+		ctx->response.type = DQLITE_RESPONSE_RESULT;
+		ctx->response.result.last_insert_id = last_insert_id;
+		ctx->response.result.rows_affected = rows_affected;
+	} else {
+		dqlite__error_printf(&g->error, "exec error");
+		gateway__failure(g, ctx, status);
+		sqlite3_reset(stmt->stmt);
+	}
+
+	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
+}
+
+static void gateway__exec(struct gateway *g, struct gateway__ctx *ctx)
+{
+	int rc;
+	struct db_ *db;
+	struct stmt *stmt;
+	struct gateway_exec *r;
+
+	GATEWAY__BARRIER;
+	GATEWAY__LOOKUP_DB(ctx->request->exec.db_id);
+	GATEWAY__LOOKUP_STMT(ctx->request->exec.stmt_id);
+
+	assert(stmt != NULL);
+
+	rc = stmt__bind(stmt, &ctx->request->message);
+	if (rc != SQLITE_OK) {
+		dqlite__error_printf(&g->error, stmt->error);
+		gateway__failure(g, ctx, rc);
+		return;
+	}
+
+	r = sqlite3_malloc(sizeof *r);
+	if (r == NULL) {
+		dqlite__error_oom(&g->error, "unable to create exec request");
+		gateway__failure(g, ctx, SQLITE_NOMEM);
+		return;
+	}
+
+	r->gateway = g;
+	r->ctx = ctx;
+	r->stmt = stmt;
+	r->req.data = r;
+	rc = leader__exec(g->leader, &r->req, stmt->stmt, gateway__exec_cb);
+	if (rc != SQLITE_OK) {
+		dqlite__error_printf(&g->error, "exec failed");
+		gateway__failure(g, ctx, rc);
+		sqlite3_reset(stmt->stmt);
+	}
+}
+#else
 static void gateway__exec(struct gateway *g, struct gateway__ctx *ctx)
 {
 	int rc;
@@ -365,6 +436,7 @@ static void gateway__exec(struct gateway *g, struct gateway__ctx *ctx)
 		sqlite3_reset(stmt->stmt);
 	}
 }
+#endif /* DQLITE_EXPERIMENTAL */
 
 /* Step through the tiven statement and populate the response of the given
  * context with a single batch of rows.
@@ -608,9 +680,14 @@ static void gateway__dispatch(struct gateway *g, struct gateway__ctx *ctx)
 			break;
 	}
 
+#ifdef DQLITE_EXPERIMENTAL
+	if (ctx->request->type != DQLITE_REQUEST_EXEC) {
+		g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
+	}
+#else
 	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
+#endif /* DQLITE_EXPERIMENTAL */
 }
-
 void gateway__init(struct gateway *g,
 		   struct gateway__cbs *callbacks,
 		   struct dqlite_cluster *cluster,
@@ -687,9 +764,10 @@ int gateway__ctx_for(struct gateway *g, int type)
 	int idx;
 	assert(g != NULL);
 
-	/* The first slot is reserved for database requests, and the second for
-	 * control ones. A control request can be served concurrently with a
-	 * database request, but not the other way round. */
+	/* The first slot is reserved for database requests, and the
+	 * second for control ones. A control request can be served
+	 * concurrently with a database request, but not the other way
+	 * round. */
 	switch (type) {
 		case DQLITE_REQUEST_HEARTBEAT:
 		case DQLITE_REQUEST_INTERRUPT:
@@ -741,8 +819,8 @@ err:
 	return err;
 }
 
-/* Resume stepping through a query and send a new follow-up response with more
- * rows. */
+/* Resume stepping through a query and send a new follow-up response
+ * with more rows. */
 static void gateway__query_resume(struct gateway *g, struct gateway__ctx *ctx)
 {
 	assert(ctx->db != NULL);

@@ -68,6 +68,7 @@ int leader__exec(struct leader *l,
 	req->leader = l;
 	req->stmt = stmt;
 	req->cb = cb;
+	req->done = false;
 	loop_arg_exec = req;
 	co_switch(l->loop);
 	maybe_exec_done(req);
