@@ -169,6 +169,8 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
+#ifndef DQLITE_EXPERIMENTAL
+
 TEST_SUITE(exec);
 TEST_SETUP(exec, setup);
 TEST_TEAR_DOWN(exec, tear_down);
@@ -358,3 +360,5 @@ TEST_CASE(exec, multi_thread, NULL)
 
 	return MUNIT_OK;
 }
+
+#endif /* !DQLITE_EXPERIMENTAL */
