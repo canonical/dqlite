@@ -205,6 +205,14 @@ static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 		gateway__failure(g, ctx, SQLITE_NOMEM);
 		return;
 	}
+	g->db = sqlite3_malloc(sizeof *g->db);
+	if (g->db == NULL) {
+		dqlite__error_oom(&g->error, "unable to create database");
+		gateway__failure(g, ctx, SQLITE_NOMEM);
+		sqlite3_free(g->leader);
+		g->leader = NULL;
+		return;
+	}
 
 	rc = leader__init(g->leader, db);
 	if (rc != 0) {
@@ -212,8 +220,14 @@ static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 		gateway__failure(g, ctx, rc);
 		sqlite3_free(g->leader);
 		g->leader = NULL;
+		sqlite3_free(g->db);
+		g->db = NULL;
 		return;
 	}
+
+	db__init_(g->db);
+	g->db->id = 0;
+	g->db->db = g->leader->conn;
 
 	/* sqlite3_wal_hook(g->db->db, maybe_checkpoint, g); */
 
@@ -645,8 +659,12 @@ void gateway__close(struct gateway *g)
 
 #ifdef DQLITE_EXPERIMENTAL
 	if (g->leader != NULL) {
+		g->db->db = NULL;
+		db__close_(g->db);
 		leader__close(g->leader);
 		sqlite3_free(g->leader);
+		assert(g->db != NULL);
+		sqlite3_free(g->db);
 	}
 #else
 	if (g->db != NULL) {
