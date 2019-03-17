@@ -152,6 +152,9 @@ static void *setup(const MunitParameter params[], void *user_data)
 	f->gateway = munit_malloc(sizeof *f->gateway);
 	gateway__init(f->gateway, &callbacks, f->cluster, &f->logger,
 		      &f->options);
+#ifdef DQLITE_EXPERIMENTAL
+	f->gateway->registry = &f->registry;
+#endif /* DQLITE_EXPERIMENTAL */
 
 	f->request = munit_malloc(sizeof *f->request);
 
@@ -448,6 +451,8 @@ TEST_CASE(handle, prepare_bad_db, NULL)
 	return MUNIT_OK;
 }
 
+#ifndef DQLITE_EXPERIMENTAL
+
 /* If the provided SQL statement is invalid, the request fails. */
 TEST_CASE(handle, prepare_bad_sql, NULL)
 {
@@ -501,8 +506,6 @@ TEST_CASE(handle, prepare, NULL)
 
 	return MUNIT_OK;
 }
-
-#ifndef DQLITE_EXPERIMENTAL
 
 /* Handle an exec request. */
 TEST_CASE(handle, exec, NULL)

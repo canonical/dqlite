@@ -12,6 +12,9 @@
 #include "log.h"
 #include "request.h"
 #include "response.h"
+#ifdef DQLITE_EXPERIMENTAL
+#include "leader.h"
+#endif
 
 /* Perform a distributed checkpoint if the size of the WAL has reached the
  * configured threshold and there are no reading transactions in progress (there
@@ -173,6 +176,51 @@ static void gateway__heartbeat(struct gateway *g, struct gateway__ctx *ctx)
 	g->heartbeat = ctx->request->timestamp;
 }
 
+#ifdef DQLITE_EXPERIMENTAL
+static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
+{
+	int rc;
+	struct db *db;
+
+	assert(g != NULL);
+
+	if (g->leader != NULL) {
+		dqlite__error_printf(
+		    &g->error,
+		    "a database for this connection is already open");
+		gateway__failure(g, ctx, SQLITE_BUSY);
+		return;
+	}
+
+	rc = registry__db_get(g->registry, ctx->request->open.name, &db);
+	if (rc != 0) {
+		dqlite__error_printf(&g->error, "get database");
+		gateway__failure(g, ctx, rc);
+		return;
+	}
+
+	g->leader = sqlite3_malloc(sizeof *g->leader);
+	if (g->leader == NULL) {
+		dqlite__error_oom(&g->error, "unable to create database");
+		gateway__failure(g, ctx, SQLITE_NOMEM);
+		return;
+	}
+
+	rc = leader__init(g->leader, db);
+	if (rc != 0) {
+		dqlite__error_printf(&g->error, "open database");
+		gateway__failure(g, ctx, rc);
+		sqlite3_free(g->leader);
+		g->leader = NULL;
+		return;
+	}
+
+	/* sqlite3_wal_hook(g->db->db, maybe_checkpoint, g); */
+
+	ctx->response.type = DQLITE_RESPONSE_DB;
+	ctx->response.db.id = 0;
+}
+#else
 static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 {
 	int rc;
@@ -220,6 +268,7 @@ static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 	g->cluster->xRegister(g->cluster->ctx, g->db->db);
 	g->db->cluster = g->cluster;
 }
+#endif /* DQLITE_EXPERIMENTAL */
 
 /* Ensure that there are no raft logs pending. */
 #define GATEWAY__BARRIER                                                \
@@ -594,10 +643,17 @@ void gateway__close(struct gateway *g)
 
 	assert(g != NULL);
 
+#ifdef DQLITE_EXPERIMENTAL
+	if (g->leader != NULL) {
+		leader__close(g->leader);
+		sqlite3_free(g->leader);
+	}
+#else
 	if (g->db != NULL) {
 		db__close_(g->db);
 		sqlite3_free(g->db);
 	}
+#endif /* DQLITE_EXPERIMENTAL */
 
 	for (i = 0; i < GATEWAY__MAX_REQUESTS; i++) {
 		response_close(&g->ctxs[i].response);
