@@ -12,10 +12,9 @@
 
 #include "munit.h"
 
-#define FIXTURE_RAFT                    \
-	struct raft_logger raft_logger; \
-	struct raft_io raft_io;         \
-	struct raft_fsm fsm;            \
+#define FIXTURE_RAFT            \
+	struct raft_io raft_io; \
+	struct raft_fsm fsm;    \
 	struct raft raft
 
 #define SETUP_RAFT               \
@@ -25,20 +24,17 @@
 
 #define TEAR_DOWN_RAFT TEAR_DOWN_RAFT_X(f)
 
-#define SETUP_RAFT_X(F, ID, ADDRESS)                                         \
-	{                                                                    \
-		int rv;                                                      \
-		raft_default_logger_set_server_id(ID);                       \
-		raft_default_logger_set_level(RAFT_DEBUG);                   \
-		F->raft_logger = raft_default_logger;                        \
-		rv = raft_io_stub_init(&F->raft_io, &F->raft_logger);        \
-		munit_assert_int(rv, ==, 0);                                 \
-		raft_io_stub_set_randint(&F->raft_io, munit_rand_int_range); \
-		rv = fsm__init(&F->fsm, &F->logger, &F->registry);           \
-		munit_assert_int(rv, ==, 0);                                 \
-		rv = raft_init(&F->raft, &F->raft_logger, &F->raft_io,       \
-			       &F->fsm, f, ID, ADDRESS);                     \
-		munit_assert_int(rv, ==, 0);                                 \
+#define SETUP_RAFT_X(F, ID, ADDRESS)                                           \
+	{                                                                      \
+		int rv;                                                        \
+		rv = raft_io_stub_init(&F->raft_io);                           \
+		munit_assert_int(rv, ==, 0);                                   \
+		raft_io_stub_set_random(&F->raft_io, munit_rand_int_range);    \
+		rv = fsm__init(&F->fsm, &F->logger, &F->registry);             \
+		munit_assert_int(rv, ==, 0);                                   \
+		rv =                                                           \
+		    raft_init(&F->raft, &F->raft_io, &F->fsm, f, ID, ADDRESS); \
+		munit_assert_int(rv, ==, 0);                                   \
 	}
 
 #define TEAR_DOWN_RAFT_X(F)                      \
