@@ -46,7 +46,7 @@ static struct test_server *test_server__create(const MunitParameter params[])
 
 #ifdef DQLITE_EXPERIMENTAL
 	struct test_server *f = s;
-	SETUP_CLUSTER;
+	SETUP_CLUSTER_;
 #else
 	s->replication = test_replication();
 
@@ -125,7 +125,7 @@ static void test_server__destroy(struct test_server *s)
 
 #ifdef DQLITE_EXPERIMENTAL
 	struct test_server *f = s;
-	TEAR_DOWN_CLUSTER;
+	TEAR_DOWN_CLUSTER_;
 #else
 	sqlite3_wal_replication_unregister(s->replication);
 	sqlite3_vfs_unregister(s->vfs);
