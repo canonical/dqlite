@@ -131,7 +131,11 @@ void dqlite_server_destroy(dqlite_server *s);
 int dqlite_server_config(dqlite_server *s, int op, void *arg);
 
 #ifdef DQLITE_EXPERIMENTAL
-struct uv_loop_s * dqlite_server_loop(dqlite_server *s);
+int dqlite_server_create2(const char *dir,
+			  unsigned id,
+			  const char *address,
+			  dqlite_server **out);
+struct uv_loop_s *dqlite_server_loop(dqlite_server *s);
 #endif /* DQLITE_EXPERIMENTAL */
 
 /* Start a dqlite server.

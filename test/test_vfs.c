@@ -1563,7 +1563,6 @@ TEST_CASE(shm_lock, release_unix, NULL)
 	test_dir_tear_down(dir);
 
 	free(file);
-	free(dir);
 
 	return MUNIT_OK;
 }

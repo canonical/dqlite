@@ -41,4 +41,5 @@ void test_dir_tear_down(char *dir) {
 	          10,
 	          FTW_DEPTH | FTW_MOUNT | FTW_PHYS);
 	munit_assert_int(rc, ==, 0);
+	free(dir);
 }

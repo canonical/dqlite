@@ -16,6 +16,7 @@
 #include "munit.h"
 #include "replication.h"
 #include "server.h"
+#include "fs.h"
 
 dqlite_logger *logger;
 
@@ -45,6 +46,7 @@ static struct test_server *test_server__create(const MunitParameter params[])
 	logger = test_logger();
 
 #ifdef DQLITE_EXPERIMENTAL
+	s->dir = test_dir_setup();
 	struct test_server *f = s;
 	struct leader *leader = CLUSTER_LEADER(0);
 	SETUP_CLUSTER;
@@ -65,7 +67,11 @@ static struct test_server *test_server__create(const MunitParameter params[])
 	sqlite3_vfs_register(s->vfs, 0);
 #endif /* DQLITE_EXPERIMENTAL */
 
+#ifdef DQLITE_EXPERIMENTAL
+	err = dqlite_server_create2(s->dir, 0, NULL, &s->service);
+#else
 	err = dqlite_server_create(test_cluster(), &s->service);
+#endif /* DQLITE_EXPERIMENTAL */
 	if (err != 0) {
 		munit_errorf("failed to create dqlite server: %d", err);
 	}
@@ -130,6 +136,7 @@ static void test_server__destroy(struct test_server *s)
 #ifdef DQLITE_EXPERIMENTAL
 	struct test_server *f = s;
 	TEAR_DOWN_CLUSTER;
+	test_dir_tear_down(s->dir);
 #else
 	sqlite3_wal_replication_unregister(s->replication);
 	sqlite3_vfs_unregister(s->vfs);

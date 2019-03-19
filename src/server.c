@@ -16,6 +16,7 @@
 #include "options.h"
 #include "queue.h"
 #ifdef DQLITE_EXPERIMENTAL
+#include "raft.h"
 #include "registry.h"
 #endif /* DQLITE_EXPERIMENTAL */
 
@@ -55,6 +56,17 @@ struct dqlite__server
 	struct options options;		 /* Configuration values */
 #ifdef DQLITE_EXPERIMENTAL
 	struct registry *registry;
+	struct
+	{
+		struct dqlite_cluster cluster;
+		struct raft_io io;
+		struct raft_fsm fsm;
+		struct raft raft;
+		struct raft_io_uv_transport transport;
+		raft_io_uv_accept_cb accept_cb;
+		unsigned id;
+		const char *address;
+	} raft;
 #endif				    /* DQLITE_EXPERIMENTAL */
 	struct dqlite__queue queue; /* Queue of incoming connections */
 	pthread_mutex_t mutex;      /* Serialize access to incoming queue */
@@ -204,12 +216,71 @@ static void dqlite__service_startup_cb(uv_timer_t *startup)
 	assert(err == 0); /* No reason for which posting should fail */
 }
 
-int dqlite_server_create(dqlite_cluster *cluster, dqlite_server **out)
+#ifdef DQLITE_EXPERIMENTAL
+static int transport__init(struct raft_io_uv_transport *transport,
+			   unsigned id,
+			   const char *address)
+{
+	struct dqlite__server *s = transport->impl;
+	s->raft.id = id;
+	s->raft.address = address;
+	return 0;
+}
+
+static int transport__listen(struct raft_io_uv_transport *transport,
+			     raft_io_uv_accept_cb cb)
+{
+	struct dqlite__server *s = transport->impl;
+	s->raft.accept_cb = cb;
+	return 0;
+}
+
+static int transport__connect(struct raft_io_uv_transport *transport,
+			      struct raft_io_uv_connect *req,
+			      unsigned id,
+			      const char *address,
+			      raft_io_uv_connect_cb cb)
+{
+}
+
+static void transport__close(struct raft_io_uv_transport *transport,
+			     raft_io_uv_transport_close_cb cb)
+{
+	(void)transport;
+	(void)cb;
+}
+
+static const char *cluster__leader(void *ctx)
+{
+	char *address;
+	(void)ctx;
+	/* Allocate a string, as regular implementations of the cluster
+	 * interface are expected to do. */
+	address = malloc(strlen("127.0.0.1:666") + 1);
+	if (address == NULL) {
+		return NULL;
+	}
+	strcpy(address, "127.0.0.1:666");
+	return address;
+}
+
+static int cluster__barrier(void *ctx) {
+	(void)ctx;
+	return 0;
+}
+
+
+#endif /* DQLITE_EXPERIMENTAL */
+
+int server__create(dqlite_cluster *cluster,
+		   const char *dir,
+		   unsigned id,
+		   const char *address,
+		   dqlite_server **out)
 {
 	dqlite_server *s;
 	int err;
 
-	assert(cluster != NULL);
 	assert(out != NULL);
 
 	s = sqlite3_malloc(sizeof *s);
@@ -253,6 +324,20 @@ int dqlite_server_create(dqlite_cluster *cluster, dqlite_server **out)
 
 	*out = s;
 
+#ifdef DQLITE_EXPERIMENTAL
+	s->cluster = &s->raft.cluster;
+	s->raft.cluster.ctx = s;
+	s->raft.cluster.xLeader = cluster__leader;
+	s->raft.cluster.xBarrier = cluster__barrier;
+	s->raft.transport.impl = s;
+	s->raft.transport.init = transport__init;
+	s->raft.transport.listen = transport__listen;
+	s->raft.transport.connect = transport__connect;
+	s->raft.transport.close = transport__close;
+	err = raft_io_uv_init(&s->raft.io, &s->loop, dir, &s->raft.transport);
+	assert(err == 0);
+#endif /* DQLITE_EXPERIMENTAL */
+
 	return 0;
 
 err:
@@ -262,6 +347,21 @@ err:
 
 	return err;
 }
+
+int dqlite_server_create(dqlite_cluster *cluster, dqlite_server **out)
+{
+	return server__create(cluster, NULL, 0, NULL, out);
+}
+
+#ifdef DQLITE_EXPERIMENTAL
+int dqlite_server_create2(const char *dir,
+			  unsigned id,
+			  const char *address,
+			  dqlite_server **out)
+{
+	return server__create(NULL, dir, id, address, out);
+}
+#endif /* DQLITE_EXPERIMENTAL */
 
 void dqlite_server_destroy(dqlite_server *s)
 {
@@ -292,6 +392,10 @@ void dqlite_server_destroy(dqlite_server *s)
 
 	dqlite__queue_close(&s->queue);
 	dqlite__error_close(&s->error);
+
+#ifdef DQLITE_EXPERIMENTAL
+	raft_io_uv_close(&s->raft.io);
+#endif /* DQLITE_EXPERIMENTAL */
 
 	sqlite3_free(s);
 }
