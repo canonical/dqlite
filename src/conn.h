@@ -36,21 +36,17 @@ struct conn
 
 	/* private */
 	struct dqlite__metrics *metrics; /* Operational metrics */
-	struct options *options; /* Connection state machine */
+	struct options *options;	 /* Connection state machine */
 	struct dqlite__fsm fsm;		 /* Connection state machine */
 	struct gateway gateway;		 /* Client state and request handler */
 	struct request request;		 /* Incoming request */
 	struct response response;	/* Response for internal failures */
 
-	int fd;		 /* File descriptor of client stream */
-	uv_loop_t *loop; /* UV loop */
-	union {
-		uv_tcp_t tcp;
-		uv_pipe_t pipe;
-		uv_stream_t stream;
-	};		  /* UV stream handle */
-	uv_timer_t alive; /* Check that the client is still alive */
-	uv_buf_t buf;     /* Read buffer */
+	int fd;		     /* File descriptor of client stream */
+	uv_loop_t *loop;     /* UV loop */
+	uv_stream_t *stream; /* UV stream handle */
+	uv_timer_t alive;    /* Check that the client is still alive */
+	uv_buf_t buf;	/* Read buffer */
 
 	uint64_t timestamp; /* Time at which the current request started. */
 	int aborting;       /* True if we started to abort the connetion */
