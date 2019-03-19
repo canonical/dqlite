@@ -64,7 +64,7 @@ static int conn__write(struct conn *c, struct response *response)
 	assert(bufs[1].base != NULL);
 	assert(bufs[1].len > 0);
 
-	err = uv_write(req, &c->stream, bufs, 3, conn__write_cb);
+	err = uv_write(req, c->stream, bufs, 3, conn__write_cb);
 	if (err != 0) {
 		message__send_reset(&response->message);
 		sqlite3_free(req);
@@ -149,7 +149,7 @@ static void conn__write_cb(uv_write_t *req, int status)
 		 * down, let's resume. */
 		if (c->paused && !c->aborting) {
 			int err;
-			err = uv_read_start(&c->stream, conn__alloc_cb,
+			err = uv_read_start(c->stream, conn__alloc_cb,
 					    conn__read_cb);
 			/* TODO: is it possible for uv_read_start to fail now?
 			 */
@@ -351,7 +351,7 @@ static int conn__header_read_cb(void *arg)
 	 * throttle the client. */
 	ctx = gateway__ctx_for(&c->gateway, c->request.message.type);
 	if (ctx == -1) {
-		err = uv_read_stop(&c->stream);
+		err = uv_read_stop(c->stream);
 		if (err != 0) {
 			dqlite__error_uv(&c->error, err,
 					 "failed to pause reading");
@@ -580,11 +580,6 @@ void conn__init(struct conn *c,
 	callbacks.ctx = c;
 	callbacks.xFlush = conn__flush_cb;
 
-	/* The tcp and pipe handle structures are pointing to the same memory
-	 * location as the abstract stream handle. */
-	assert((uintptr_t)&c->tcp == (uintptr_t)&c->stream);
-	assert((uintptr_t)&c->pipe == (uintptr_t)&c->stream);
-
 	c->logger = logger;
 	c->protocol = 0;
 
@@ -602,6 +597,7 @@ void conn__init(struct conn *c,
 
 	c->fd = fd;
 	c->loop = loop;
+	c->stream = NULL;
 
 	c->buf.base = NULL;
 	c->buf.len = 0;
@@ -613,6 +609,9 @@ void conn__init(struct conn *c,
 void conn__close(struct conn *c)
 {
 	assert(c != NULL);
+	if (c->stream != NULL) {
+		sqlite3_free(c->stream);
+	}
 
 	response_close(&c->response);
 	gateway__close(&c->gateway);
@@ -623,6 +622,8 @@ void conn__close(struct conn *c)
 
 int conn__start(struct conn *c)
 {
+	struct uv_pipe_s *pipe;
+	struct uv_tcp_s *tcp;
 	int err;
 	uint64_t heartbeat_timeout;
 
@@ -654,40 +655,52 @@ int conn__start(struct conn *c)
 	/* Start reading from the stream. */
 	switch (uv_guess_handle(c->fd)) {
 		case UV_TCP:
-			err = uv_tcp_init(c->loop, &c->tcp);
+			tcp = sqlite3_malloc(sizeof *tcp);
+			assert(tcp != NULL); /* TODO: handle OOM */
+			err = uv_tcp_init(c->loop, tcp);
 			if (err != 0) {
 				dqlite__error_uv(&c->error, err,
 						 "failed to init tcp stream");
 				err = DQLITE_ERROR;
+				sqlite3_free(tcp);
 				goto err_after_timer_start;
 			}
 
-			err = uv_tcp_open(&c->tcp, c->fd);
+			err = uv_tcp_open(tcp, c->fd);
 			if (err != 0) {
 				dqlite__error_uv(&c->error, err,
 						 "failed to open tcp stream");
 				err = DQLITE_ERROR;
+				sqlite3_free(tcp);
 				goto err_after_timer_start;
 			}
+
+			c->stream = (struct uv_stream_s*)tcp;
 
 			break;
 
 		case UV_NAMED_PIPE:
-			err = uv_pipe_init(c->loop, &c->pipe, 0);
+			pipe = sqlite3_malloc(sizeof *pipe);
+			assert(pipe != NULL); /* TODO: handle OOM */
+			err = uv_pipe_init(c->loop, pipe, 0);
 			if (err != 0) {
 				dqlite__error_uv(&c->error, err,
 						 "failed to init pipe stream");
 				err = DQLITE_ERROR;
+				sqlite3_free(pipe);
 				goto err_after_timer_start;
 			}
 
-			err = uv_pipe_open(&c->pipe, c->fd);
+			err = uv_pipe_open(pipe, c->fd);
 			if (err != 0) {
 				dqlite__error_uv(&c->error, err,
 						 "failed to open pipe stream");
 				err = DQLITE_ERROR;
+				sqlite3_free(pipe);
 				goto err_after_timer_start;
 			}
+
+			c->stream = (struct uv_stream_s*)pipe;
 
 			break;
 
@@ -698,9 +711,10 @@ int conn__start(struct conn *c)
 			goto err_after_timer_start;
 	}
 
-	c->stream.data = (void *)c;
+	assert(c->stream != NULL);
+	c->stream->data = (void *)c;
 
-	err = uv_read_start(&c->stream, conn__alloc_cb, conn__read_cb);
+	err = uv_read_start(c->stream, conn__alloc_cb, conn__read_cb);
 	if (err != 0) {
 		dqlite__error_uv(&c->error, err,
 				 "failed to start reading tcp stream");
@@ -711,10 +725,10 @@ int conn__start(struct conn *c)
 	return 0;
 
 err_after_stream_open:
-	uv_close((uv_handle_t *)(&c->stream), NULL);
+	uv_close((uv_handle_t *)c->stream, NULL);
 
 err_after_timer_start:
-	uv_close((uv_handle_t *)(&c->alive), NULL);
+	uv_close((uv_handle_t *)&c->alive, NULL);
 
 err:
 	assert(err != 0);
@@ -772,5 +786,5 @@ void conn__abort(struct conn *c)
 	}
 #endif
 
-	uv_close((uv_handle_t *)(&c->stream), conn__stream_close_cb);
+	uv_close((uv_handle_t *)c->stream, conn__stream_close_cb);
 }
