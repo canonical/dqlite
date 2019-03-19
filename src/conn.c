@@ -9,8 +9,8 @@
 
 #include "../include/dqlite.h"
 
-#include "./lib/byte.h"
 #include "./lib/assert.h"
+#include "./lib/byte.h"
 
 #include "conn.h"
 #include "error.h"
@@ -19,6 +19,16 @@
 #include "log.h"
 #include "request.h"
 #include "response.h"
+
+/* Raft protocol tag */
+#define RAFT_TAG 0x60c1f653be904bd1
+
+#ifdef DQLITE_EXPERIMENTAL
+
+/* Raft command codes */
+enum { RAFT_CONNECT = 1, RAFT_JOIN, RAFT_LEAVE };
+
+#endif /* DQLITE_EXPERIMENTAL */
 
 /* Context attached to an uv_write_t write request */
 struct conn__write_ctx
@@ -283,7 +293,7 @@ static int conn__handshake_read_cb(void *arg)
 
 	c->protocol = byte__flip64(c->protocol);
 
-	if (c->protocol != DQLITE_PROTOCOL_VERSION) {
+	if (c->protocol != DQLITE_PROTOCOL_VERSION && c->protocol != RAFT_TAG) {
 		err = DQLITE_PROTO;
 		dqlite__error_printf(&c->error, "unknown protocol version: %lx",
 				     c->protocol);
@@ -307,7 +317,19 @@ static int conn__header_alloc_cb(void *arg)
 
 	c = (struct conn *)arg;
 
+#ifdef DQLITE_EXPERIMENTAL
+	if (c->protocol == RAFT_TAG) {
+		buf.base = (char *)c->raft.preamble;
+		buf.len = sizeof c->raft.preamble;
+		goto done;
+	}
+#endif /* DQLITE_EXPERIMENTAL */
+
 	message__header_recv_start(&c->request.message, &buf);
+
+#ifdef DQLITE_EXPERIMENTAL
+done:
+#endif /* DQLITE_EXPERIMENTAL */
 
 	conn__buf_init(c, &buf);
 
@@ -328,6 +350,15 @@ static int conn__header_read_cb(void *arg)
 	assert(arg != NULL);
 
 	c = (struct conn *)arg;
+
+#ifdef DQLITE_EXPERIMENTAL
+	if (c->protocol == RAFT_TAG) {
+		c->raft.command = byte__flip64(c->raft.preamble[0]);
+		c->raft.server_id = byte__flip64(c->raft.preamble[1]);
+		c->raft.address.len = byte__flip64(c->raft.preamble[2]);
+		return 0;
+	}
+#endif /* DQLITE_EXPERIMENTAL */
 
 	err = message__header_recv_done(&c->request.message);
 	if (err != 0) {
@@ -378,6 +409,29 @@ static int conn__body_alloc_cb(void *arg)
 
 	c = (struct conn *)arg;
 
+#ifdef DQLITE_EXPERIMENTAL
+	if (c->protocol == RAFT_TAG) {
+		switch (c->raft.command) {
+			case RAFT_CONNECT:
+				c->raft.address.base =
+				    sqlite3_malloc(c->raft.address.len);
+				if (c->raft.address.base == NULL) {
+					dqlite__error_oom(
+					    &c->error,
+					    "can't alloc server address");
+					return DQLITE_NOMEM;
+				}
+				buf = c->raft.address;
+				break;
+			default:
+				dqlite__error_printf(&c->error,
+						     "bad raft command");
+				return DQLITE_PROTO;
+		}
+		goto done;
+	}
+#endif /* DQLITE_EXPERIMENTAL */
+
 	err = message__body_recv_start(&c->request.message, &buf);
 	if (err != 0) {
 		dqlite__error_wrapf(&c->error, &c->request.message.error,
@@ -385,6 +439,9 @@ static int conn__body_alloc_cb(void *arg)
 		return err;
 	}
 
+#ifdef DQLITE_EXPERIMENTAL
+done:
+#endif /* DQLITE_EXPERIMENTAL */
 	conn__buf_init(c, &buf);
 
 	return 0;
@@ -398,6 +455,23 @@ static int conn__body_read_cb(void *arg)
 	assert(arg != NULL);
 
 	c = (struct conn *)arg;
+
+#ifdef DQLITE_EXPERIMENTAL
+	if (c->protocol == RAFT_TAG) {
+		switch (c->raft.command) {
+			case RAFT_CONNECT:
+				c->raft.cb(c->raft.transport, c->raft.server_id,
+					   c->raft.address.base, c->stream);
+				c->stream = NULL;
+				sqlite3_free(c->raft.address.base);
+				/* This makes the connection abort */
+				dqlite__error_uv(&c->error, UV_EOF,
+						 "handled to raft");
+				return DQLITE_ERROR;
+				break;
+		}
+	}
+#endif /* DQLITE_EXPERIMENTAL */
 
 	err = request_decode(&c->request);
 	if (err != 0) {
@@ -675,7 +749,7 @@ int conn__start(struct conn *c)
 				goto err_after_timer_start;
 			}
 
-			c->stream = (struct uv_stream_s*)tcp;
+			c->stream = (struct uv_stream_s *)tcp;
 
 			break;
 
@@ -700,7 +774,7 @@ int conn__start(struct conn *c)
 				goto err_after_timer_start;
 			}
 
-			c->stream = (struct uv_stream_s*)pipe;
+			c->stream = (struct uv_stream_s *)pipe;
 
 			break;
 
@@ -735,6 +809,16 @@ err:
 	return err;
 }
 
+static void conn__destroy(struct conn *c)
+{
+	conn__close(c);
+
+	/* FIXME: this is broken, we should close the alive handle and *then*
+	 * free the connection object in the close callback */
+	sqlite3_free(c);
+	uv_close((uv_handle_t *)(&c->alive), NULL);
+}
+
 static void conn__stream_close_cb(uv_handle_t *handle)
 {
 	struct conn *c;
@@ -742,11 +826,7 @@ static void conn__stream_close_cb(uv_handle_t *handle)
 	assert(handle != NULL);
 
 	c = handle->data;
-
-	conn__close(c);
-	sqlite3_free(c);
-
-	uv_close((uv_handle_t *)(&c->alive), NULL);
+	conn__destroy(c);
 }
 
 /* Abort the connection, realeasing any memory allocated by the read buffer, and
@@ -759,12 +839,9 @@ void conn__abort(struct conn *c)
 
 	if (c->aborting) {
 		/* It might happen that a connection error occurs at the same
-		 *time
-		 ** the loop gets stopped, and conn__abort is called
-		 *twice in
-		 ** the same loop iteration. We just ignore the second call in
-		 *that
-		 ** case.
+		 * time the loop gets stopped, and conn__abort is called twice
+		 * in the same loop iteration. We just ignore the second call in
+		 * that case.
 		 */
 		return;
 	}
@@ -786,5 +863,11 @@ void conn__abort(struct conn *c)
 	}
 #endif
 
+#ifdef DQLITE_EXPERIMENTAL
+	if (c->stream == NULL) {
+		conn__destroy(c);
+		return;
+	}
+#endif /* DQLITE_EXPERIMENTAL */
 	uv_close((uv_handle_t *)c->stream, conn__stream_close_cb);
 }
