@@ -15,6 +15,7 @@ struct test_server
 #ifdef DQLITE_EXPERIMENTAL
 	FIXTURE_CLUSTER;
 	struct uv_idle_s idle;
+	char *dir;
 #else
 	sqlite3_wal_replication *replication;
 	sqlite3_vfs *vfs;
