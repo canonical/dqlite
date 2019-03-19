@@ -1,6 +1,9 @@
 #include <unistd.h>
 
 #include <uv.h>
+#ifdef DQLITE_EXPERIMENTAL
+#include <raft/io_uv.h>
+#endif /* DQLITE_EXPERIMENTAL */
 
 #include "../include/dqlite.h"
 
@@ -35,6 +38,10 @@ struct fixture
 	uv_loop_t loop;
 	struct conn *conn;
 	struct response response;
+#ifdef DQLITE_EXPERIMENTAL
+	struct raft_io_uv_transport transport;
+	bool accept_cb_invoked;
+#endif /* DQLITE_EXPERIMENTAL */
 };
 
 /* Run the fixture loop once.
@@ -147,6 +154,11 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	err = conn__start(f->conn);
 	munit_assert_int(err, ==, 0);
+
+#ifdef DQLITE_EXPERIMENTAL
+	f->transport.data = f;
+	f->accept_cb_invoked = false;
+#endif /* DQLITE_EXPERIMENTAL */
 
 	return f;
 }
@@ -390,7 +402,7 @@ TEST_CASE(read_cb, bad_protocol, NULL)
 
 	(void)params;
 
-	/* Write an unknonw protocol version. */
+	/* Write an unknown protocol version. */
 	__send_handshake(f, 0x123456);
 
 	__run_loop(f, 1);
@@ -587,3 +599,39 @@ TEST_CASE(read_cb, throttle, params)
 
 	return MUNIT_OK;
 }
+
+#ifdef DQLITE_EXPERIMENTAL
+static void accept_cb(struct raft_io_uv_transport *t,
+		      unsigned id,
+		      const char *address,
+		      struct uv_stream_s *stream)
+{
+	struct fixture *f = t->data;
+	f->accept_cb_invoked = true;
+	munit_assert_int(id, ==, 2);
+	munit_assert_string_equal(address, "1234567");
+	uv_close((struct uv_handle_s *)stream, (uv_close_cb)sqlite3_free);
+}
+
+TEST_CASE(read_cb, raft_connect, NULL)
+{
+	struct fixture *f = data;
+	f->conn->raft.transport = &f->transport;
+	f->conn->raft.cb = accept_cb;
+	uint8_t buf[][8] = {
+	    {1, 0, 0, 0, 0, 0, 0, 0},		    /* Command code */
+	    {2, 0, 0, 0, 0, 0, 0, 0},		    /* Server ID */
+	    {8, 0, 0, 0, 0, 0, 0, 0},		    /* Address len */
+	    {'1', '2', '3', '4', '5', '6', '7', 0}, /* Address */
+	};
+
+	(void)params;
+
+	/* Write a raft connect request. */
+	__send_handshake(f, 0x60c1f653be904bd1);
+	__send_data(f, buf, sizeof buf);
+	__run_loop(f, 0);
+
+	return MUNIT_OK;
+}
+#endif

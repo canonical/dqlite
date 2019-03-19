@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <uv.h>
+#ifdef DQLITE_EXPERIMENTAL
+#include <raft/io_uv.h>
+#endif /* DQLITE_EXPERIMENTAL */
 
 #include "../include/dqlite.h"
 
@@ -51,6 +54,19 @@ struct conn
 	uint64_t timestamp; /* Time at which the current request started. */
 	int aborting;       /* True if we started to abort the connetion */
 	int paused;	 /* True if we have paused reading from the stream */
+
+#ifdef DQLITE_EXPERIMENTAL
+	struct
+	{
+		uint64_t preamble[3];    /* Preamble buffer */
+		unsigned command;	/* Command code */
+		unsigned server_id;      /* Server ID of connecting server */
+		uv_buf_t address;	/* Address buffer */
+		struct raft *r;		 /* Raft instance */
+		raft_io_uv_accept_cb cb; /* Accept callback */
+		struct raft_io_uv_transport *transport;
+	} raft;
+#endif /* DQLITE_EXPERIMENTAL */
 };
 
 /* Initialize a connection object */
