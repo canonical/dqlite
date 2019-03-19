@@ -5,6 +5,9 @@
 #ifndef TEST_CLUSTER_H
 #define TEST_CLUSTER_H
 
+#include <raft.h>
+#include <raft/fixture.h>
+
 #include "../lib/leader.h"
 #include "../lib/logger.h"
 #include "../lib/options.h"
@@ -18,155 +21,70 @@
 
 struct server_fixture
 {
+	char name[8];
 	FIXTURE_LOGGER;
 	FIXTURE_VFS;
 	FIXTURE_OPTIONS;
 	FIXTURE_REGISTRY;
-	FIXTURE_RAFT;
-	FIXTURE_REPLICATION;
 	FIXTURE_LEADER;
-	char address[8];
-	char name[8];
+	sqlite3_wal_replication replication;
 };
 
-#define FIXTURE_CLUSTER_                           \
-	FIXTURE_STMT;                             \
+#define FIXTURE_CLUSTER                           \
 	struct server_fixture servers[N_SERVERS]; \
-	struct registry *registry;                \
-	struct leader *leader;                    \
-	sqlite3 *follower;
+	struct raft_fsm fsms[N_SERVERS];          \
+	struct raft_fixture cluster;              \
+	FIXTURE_STMT
 
-#define SETUP_CLUSTER_                                                       \
-	{                                                                   \
-		int i;                                                      \
-		int j;                                                      \
-		for (i = 0; i < N_SERVERS; i++) {                           \
-			struct server_fixture *s = &f->servers[i];          \
-			unsigned id = i + 1;                                \
-			sprintf(s->address, "%d", id);                      \
-			sprintf(s->name, "test%d", i);                      \
-			SETUP_LOGGER_X(s);                                  \
-			SETUP_VFS_X(s, s->name);                            \
-			SETUP_OPTIONS_X(s, s->name);                        \
-			SETUP_REGISTRY_X(s);                                \
-			SETUP_RAFT_X(s, id, s->address);                    \
-			SETUP_REPLICATION_X(s, s->name);                    \
-			RAFT_BOOTSTRAP(s, N_SERVERS);                       \
-			RAFT_START(s);                                      \
-			SETUP_LEADER_X(s);                                  \
-		}                                                           \
-		for (i = 0; i < N_SERVERS; i++) {                           \
-			for (j = 0; j < N_SERVERS; j++) {                   \
-				struct server_fixture *s1 = &f->servers[i]; \
-				struct server_fixture *s2 = &f->servers[j]; \
-				if (i == j) {                               \
-					continue;                           \
-				}                                           \
-				RAFT_CONNECT(s1, s2);                       \
-			}                                                   \
-		}                                                           \
-		f->leader = NULL;                                           \
-		CLUSTER_ELECT;                                              \
-	}
-
-#define TEAR_DOWN_CLUSTER_                                          \
-	{                                                          \
-		int i;                                             \
-		for (i = 0; i < N_SERVERS; i++) {                  \
-			struct server_fixture *s = &f->servers[i]; \
-			TEAR_DOWN_LEADER_X(s);                     \
-			TEAR_DOWN_REPLICATION_X(s);                \
-			TEAR_DOWN_RAFT_X(s);                       \
-			TEAR_DOWN_REGISTRY_X(s);                   \
-			TEAR_DOWN_OPTIONS_X(s);                    \
-			TEAR_DOWN_VFS_X(s);                        \
-			TEAR_DOWN_LOGGER_X(s);                     \
-		}                                                  \
-	}
-
-#define CLUSTER_STEP                                                           \
+#define SETUP_CLUSTER                                                          \
 	{                                                                      \
-		int deliver_timeout = -1;                                      \
-		int raft_timeout = -1;                                         \
-		int timeout;                                                   \
-		int i;                                                         \
+		unsigned i;                                                    \
+		int rc;                                                        \
+		rc = raft_fixture_setup(&f->cluster, N_SERVERS, N_SERVERS,     \
+					f->fsms, munit_rand_int_range);        \
+		munit_assert_int(rc, ==, 0);                                   \
 		for (i = 0; i < N_SERVERS; i++) {                              \
 			struct server_fixture *s = &f->servers[i];             \
-			int timeout;                                           \
-			timeout =                                              \
-			    raft_io_stub_next_deliver_timeout(&s->raft_io);    \
-			if (timeout != -1) {                                   \
-				if (deliver_timeout == -1 ||                   \
-				    timeout < deliver_timeout) {               \
-					deliver_timeout = timeout;             \
-				}                                              \
-			}                                                      \
-			timeout = raft_next_timeout(&s->raft);                 \
-			if (raft_timeout == -1 || timeout < raft_timeout) {    \
-				raft_timeout = timeout;                        \
-			}                                                      \
+			struct raft *raft = raft_fixture_get(&f->cluster, i);  \
+			sprintf(s->name, "test%d", i);                         \
+			SETUP_LOGGER_X(s);                                     \
+			SETUP_VFS_X(s, s->name);                               \
+			SETUP_OPTIONS_X(s, s->name);                           \
+			SETUP_REGISTRY_X(s);                                   \
+			rc = fsm__init(&f->fsms[i], &s->logger, &s->registry); \
+			munit_assert_int(rc, ==, 0);                           \
+			rc = replication__init(&s->replication, &s->logger,    \
+					       raft);                          \
+			s->replication.zName = s->name;                        \
+			munit_assert_int(rc, ==, 0);                           \
+			sqlite3_wal_replication_register(&s->replication, 0);  \
+			SETUP_LEADER_X(s);                                     \
 		}                                                              \
-		if (deliver_timeout != -1 && deliver_timeout < raft_timeout) { \
-			timeout = deliver_timeout;                             \
-		} else {                                                       \
-			timeout = raft_timeout;                                \
-		}                                                              \
-		CLUSTER_ADVANCE(timeout + 1);                                  \
-		CLUSTER_FLUSH;                                                 \
 	}
 
-#define CLUSTER_APPLIED(N)                                                 \
-	{                                                                  \
-		int applied;                                               \
-		do {                                                       \
-			int i;                                             \
-			applied = 0;                                       \
-			CLUSTER_STEP;                                      \
-			for (i = 0; i < N_SERVERS; i++) {                  \
-				struct server_fixture *s = &f->servers[i]; \
-				if (raft_last_applied(&s->raft) >= N) {    \
-					applied++;                         \
-				}                                          \
-			}                                                  \
-		} while (applied < N_SERVERS);                             \
+#define TEAR_DOWN_CLUSTER                                                    \
+	{                                                                    \
+		int i;                                                       \
+		for (i = 0; i < N_SERVERS; i++) {                            \
+			struct server_fixture *s = &f->servers[i];           \
+			TEAR_DOWN_LEADER_X(s);                               \
+			sqlite3_wal_replication_unregister(&s->replication); \
+			replication__close(&s->replication);                 \
+			fsm__close(&f->fsms[i]);                             \
+			TEAR_DOWN_REGISTRY_X(s);                             \
+			TEAR_DOWN_OPTIONS_X(s);                              \
+			TEAR_DOWN_VFS_X(s);                                  \
+			TEAR_DOWN_LOGGER_X(s);                               \
+		}                                                            \
+		raft_fixture_tear_down(&f->cluster);                         \
 	}
 
-/* Flush all pending I/O. Disk writes will complete and network messages
- * delivered. */
-#define CLUSTER_FLUSH                                              \
-	{                                                          \
-		int i;                                             \
-		for (i = 0; i < N_SERVERS; i++) {                  \
-			struct server_fixture *s = &f->servers[i]; \
-			RAFT_FLUSH(s);                             \
-		}                                                  \
-	}
+#define CLUSTER_LEADER(I) &f->servers[I].leader
+#define CLUSTER_REGISTRY(I) &f->servers[I].registry
 
-#define CLUSTER_ADVANCE(MSECS)                                     \
-	{                                                          \
-		int i;                                             \
-		for (i = 0; i < N_SERVERS; i++) {                  \
-			struct server_fixture *s = &f->servers[i]; \
-			raft_io_stub_advance(&s->raft_io, MSECS);  \
-		}                                                  \
-	}
+#define CLUSTER_ELECT(I) raft_fixture_elect(&f->cluster, I)
+#define CLUSTER_APPLIED(N) raft_fixture_wait_applied(&f->cluster, N);
 
-#define CLUSTER_ELECT                                                       \
-	{                                                                   \
-		while (f->leader == NULL) {                                 \
-			CLUSTER_STEP;                                       \
-			for (i = 0; i < N_SERVERS; i++) {                   \
-				struct server_fixture *s = &f->servers[i];  \
-				if (raft_state(&s->raft) == RAFT_LEADER) {  \
-					f->leader = &s->leader;             \
-					f->registry = &s->registry;         \
-					f->follower =                       \
-					    f->servers[(i + 1) % N_SERVERS] \
-						.leader.conn;               \
-					break;                              \
-				}                                           \
-			}                                                   \
-		}                                                           \
-	}
+#define CLUSTER_STEP raft_fixture_step(&f->cluster)
 
 #endif /* TEST_CLUSTER_H */

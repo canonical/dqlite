@@ -13,7 +13,7 @@ struct test_server
 {
 	pthread_t thread;
 #ifdef DQLITE_EXPERIMENTAL
-	FIXTURE_CLUSTER_;
+	FIXTURE_CLUSTER;
 	struct uv_idle_s idle;
 #else
 	sqlite3_wal_replication *replication;
