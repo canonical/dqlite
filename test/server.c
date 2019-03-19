@@ -46,7 +46,9 @@ static struct test_server *test_server__create(const MunitParameter params[])
 
 #ifdef DQLITE_EXPERIMENTAL
 	struct test_server *f = s;
-	SETUP_CLUSTER_;
+	struct leader *leader = CLUSTER_LEADER(0);
+	SETUP_CLUSTER;
+	CLUSTER_ELECT(0);
 #else
 	s->replication = test_replication();
 
@@ -82,15 +84,17 @@ static struct test_server *test_server__create(const MunitParameter params[])
 
 #ifdef DQLITE_EXPERIMENTAL
 	struct uv_loop_s *loop = dqlite_server_loop(s->service);
+	struct registry *registry = CLUSTER_REGISTRY(0);
 	err = uv_idle_init(loop, &s->idle);
 	s->idle.data = s;
 	munit_assert_int(err, ==, 0);
-	munit_assert_string_equal(f->leader->db->options->replication,
-				  f->leader->db->options->vfs);
-	name = f->leader->db->options->replication;
+	munit_assert_string_equal(leader->db->options->replication,
+				  leader->db->options->vfs);
+	name = leader->db->options->replication;
 	err = uv_idle_start(&s->idle, idle_cb);
 	munit_assert_int(err, ==, 0);
-	err = dqlite_server_config(s->service, DQLITE_CONFIG_REGISTRY, s->registry);
+	err =
+	    dqlite_server_config(s->service, DQLITE_CONFIG_REGISTRY, registry);
 	munit_assert_int(err, ==, 0);
 #else
 	munit_assert_string_equal(s->vfs->zName, s->replication->zName);
@@ -125,7 +129,7 @@ static void test_server__destroy(struct test_server *s)
 
 #ifdef DQLITE_EXPERIMENTAL
 	struct test_server *f = s;
-	TEAR_DOWN_CLUSTER_;
+	TEAR_DOWN_CLUSTER;
 #else
 	sqlite3_wal_replication_unregister(s->replication);
 	sqlite3_vfs_unregister(s->vfs);

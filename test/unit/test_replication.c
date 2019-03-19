@@ -7,15 +7,15 @@
 
 TEST_MODULE(replication);
 
-#define FIXTURE FIXTURE_CLUSTER_;
+#define FIXTURE FIXTURE_CLUSTER;
 
 #define SETUP         \
 	SETUP_HEAP;   \
 	SETUP_SQLITE; \
-	SETUP_CLUSTER_;
+	SETUP_CLUSTER;
 
 #define TEAR_DOWN          \
-	TEAR_DOWN_CLUSTER_; \
+	TEAR_DOWN_CLUSTER; \
 	TEAR_DOWN_SQLITE;  \
 	TEAR_DOWN_HEAP;
 
@@ -49,17 +49,18 @@ TEST_CASE(begin, open, NULL)
 	struct begin_fixture *f = data;
 	int rc;
 	struct exec req;
+	struct leader *leader0 = CLUSTER_LEADER(0);
+	struct leader *leader1 = CLUSTER_LEADER(1);
 	(void)params;
-	STMT_PREPARE(f->leader->conn, f->stmt, "CREATE TABLE test (a INT)");
-	rc = leader__exec(f->leader, &req, f->stmt, NULL);
+	CLUSTER_ELECT(0);
+	STMT_PREPARE(leader0->conn, f->stmt, "CREATE TABLE test (a INT)");
+	rc = leader__exec(leader0, &req, f->stmt, NULL);
 	munit_assert_int(rc, ==, 0);
 	CLUSTER_APPLIED(3);
 	STMT_FINALIZE(f->stmt);
-	char *msg;
-	rc = sqlite3_exec(f->follower, "SELECT * FROM test", NULL, NULL, &msg);
-	munit_assert_int(rc, ==, SQLITE_OK);
-	STMT_PREPARE(f->leader->conn, f->stmt, "INSERT INTO test(a) VALUES(1)");
-	rc = leader__exec(f->leader, &req, f->stmt, NULL);
+	STMT_EXEC(leader1->conn, "SELECT * FROM test");
+	STMT_PREPARE(leader0->conn, f->stmt, "INSERT INTO test(a) VALUES(1)");
+	rc = leader__exec(leader0, &req, f->stmt, NULL);
 	munit_assert_int(rc, ==, 0);
 	CLUSTER_APPLIED(4);
 	STMT_FINALIZE(f->stmt);
