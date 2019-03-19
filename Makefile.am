@@ -54,7 +54,6 @@ libdqlite_la_SOURCES = \
   src/vfs.c
 if EXPERIMENTAL
   libdqlite_la_SOURCES += \
-  src/raft.c \
   src/command.c \
   src/db.c \
   src/fsm.c \
