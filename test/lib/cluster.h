@@ -29,14 +29,14 @@ struct server_fixture
 	char name[8];
 };
 
-#define FIXTURE_CLUSTER                           \
+#define FIXTURE_CLUSTER_                           \
 	FIXTURE_STMT;                             \
 	struct server_fixture servers[N_SERVERS]; \
 	struct registry *registry;                \
 	struct leader *leader;                    \
 	sqlite3 *follower;
 
-#define SETUP_CLUSTER                                                       \
+#define SETUP_CLUSTER_                                                       \
 	{                                                                   \
 		int i;                                                      \
 		int j;                                                      \
@@ -69,7 +69,7 @@ struct server_fixture
 		CLUSTER_ELECT;                                              \
 	}
 
-#define TEAR_DOWN_CLUSTER                                          \
+#define TEAR_DOWN_CLUSTER_                                          \
 	{                                                          \
 		int i;                                             \
 		for (i = 0; i < N_SERVERS; i++) {                  \
