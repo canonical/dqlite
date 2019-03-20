@@ -16,8 +16,10 @@
 #include "options.h"
 #include "queue.h"
 #ifdef DQLITE_EXPERIMENTAL
+#include "fsm.h"
 #include "raft.h"
 #include "registry.h"
+#include "replication.h"
 #endif /* DQLITE_EXPERIMENTAL */
 
 int dqlite_init(const char **errmsg)
@@ -55,7 +57,10 @@ struct dqlite__server
 	struct dqlite__metrics *metrics; /* Operational metrics */
 	struct options options;		 /* Configuration values */
 #ifdef DQLITE_EXPERIMENTAL
-	struct registry *registry;
+	char name[256];
+	sqlite3_vfs *vfs;
+	struct registry registry;
+	sqlite3_wal_replication replication;
 	struct
 	{
 		struct dqlite_cluster cluster;
@@ -92,8 +97,7 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 	assert(handle != NULL);
 	assert(arg != NULL);
 	assert(handle->type == UV_ASYNC || handle->type == UV_TIMER ||
-	       handle->type == UV_TCP || handle->type == UV_NAMED_PIPE ||
-	       handle->type == UV_IDLE);
+	       handle->type == UV_TCP || handle->type == UV_NAMED_PIPE);
 
 	s = (struct dqlite__server *)arg;
 
@@ -130,12 +134,6 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 			 * call above, so there's nothing to do in that case. */
 
 			break;
-#ifdef DQLITE_EXPERIMENTAL
-		case UV_IDLE:
-			uv_idle_stop((struct uv_idle_s *)handle);
-			uv_close(handle, NULL);
-			break;
-#endif /* DQLITE_EXPERIMENTAL */
 
 		default:
 			/* Should not be reached because we assert all possible
@@ -151,6 +149,14 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
  * last handle (which must be the 'stop' async handle) is closed, the loop gets
  * stopped.
  */
+#ifdef DQLITE_EXPERIMENTAL
+static void raft_close_cb(struct raft *raft)
+{
+	struct dqlite__server *s = raft->data;
+	uv_walk(&s->loop, dqlite__server_stop_walk_cb, (void *)s);
+}
+#endif /* DQLITE_EXPERIMENTAL */
+
 static void dqlite__server_stop_cb(uv_async_t *stop)
 {
 	struct dqlite__server *s;
@@ -170,9 +176,13 @@ static void dqlite__server_stop_cb(uv_async_t *stop)
 	 * incoming connection can be enqueued. */
 	dqlite__queue_process(&s->queue);
 
+#ifdef DQLITE_EXPERIMENTAL
+	raft_close(&s->raft.raft, raft_close_cb);
+#else
 	/* Loop through all connections and abort them, then stop the event
 	 * loop. */
 	uv_walk(&s->loop, dqlite__server_stop_walk_cb, (void *)s);
+#endif /* DQLITE_EXPERIMENTAL */
 }
 
 /* Callback invoked when the incoming async handle gets fired.
@@ -241,13 +251,18 @@ static int transport__connect(struct raft_io_uv_transport *transport,
 			      const char *address,
 			      raft_io_uv_connect_cb cb)
 {
+	(void)transport;
+	(void)req;
+	(void)address;
+	(void)cb;
+	(void)id;
+	return 0;
 }
 
 static void transport__close(struct raft_io_uv_transport *transport,
 			     raft_io_uv_transport_close_cb cb)
 {
-	(void)transport;
-	(void)cb;
+	cb(transport);
 }
 
 static const char *cluster__leader(void *ctx)
@@ -264,11 +279,25 @@ static const char *cluster__leader(void *ctx)
 	return address;
 }
 
-static int cluster__barrier(void *ctx) {
+static int cluster__barrier(void *ctx)
+{
 	(void)ctx;
 	return 0;
 }
 
+int dqlite_server_bootstrap(dqlite_server *s)
+{
+	struct raft_configuration configuration;
+	int rc;
+	raft_configuration_init(&configuration);
+	rc = raft_configuration_add(&configuration, s->raft.raft.id,
+				    s->raft.raft.address, true);
+	assert(rc == 0);
+	rc = raft_bootstrap(&s->raft.raft, &configuration);
+	assert(rc == 0);
+	raft_configuration_close(&configuration);
+	return 0;
+}
 
 #endif /* DQLITE_EXPERIMENTAL */
 
@@ -325,6 +354,11 @@ int server__create(dqlite_cluster *cluster,
 	*out = s;
 
 #ifdef DQLITE_EXPERIMENTAL
+	sprintf(s->name, "dqlite-%u", id);
+	s->vfs = dqlite_vfs_create(s->name, s->logger);
+	assert(s->vfs != NULL);
+	sqlite3_vfs_register(s->vfs, 0);
+	registry__init(&s->registry, &s->options);
 	s->cluster = &s->raft.cluster;
 	s->raft.cluster.ctx = s;
 	s->raft.cluster.xLeader = cluster__leader;
@@ -336,6 +370,16 @@ int server__create(dqlite_cluster *cluster,
 	s->raft.transport.close = transport__close;
 	err = raft_io_uv_init(&s->raft.io, &s->loop, dir, &s->raft.transport);
 	assert(err == 0);
+	err = fsm__init(&s->raft.fsm, s->logger, &s->registry);
+	assert(err == 0);
+	err =
+	    raft_init(&s->raft.raft, &s->raft.io, &s->raft.fsm, s, id, address);
+	assert(err == 0);
+	raft_set_election_timeout(&s->raft.raft, 250);
+	err = replication__init(&s->replication, s->logger, &s->raft.raft);
+	assert(err == 0);
+	s->replication.zName = s->name;
+	sqlite3_wal_replication_register(&s->replication, 0);
 #endif /* DQLITE_EXPERIMENTAL */
 
 	return 0;
@@ -395,6 +439,12 @@ void dqlite_server_destroy(dqlite_server *s)
 
 #ifdef DQLITE_EXPERIMENTAL
 	raft_io_uv_close(&s->raft.io);
+	sqlite3_wal_replication_unregister(&s->replication);
+	replication__close(&s->replication);
+	fsm__close(&s->raft.fsm);
+	registry__close(&s->registry);
+	sqlite3_vfs_unregister(s->vfs);
+	dqlite_vfs_destroy(s->vfs);
 #endif /* DQLITE_EXPERIMENTAL */
 
 	sqlite3_free(s);
@@ -448,11 +498,6 @@ int dqlite_server_config(dqlite_server *s, int op, void *arg)
 				}
 			}
 			break;
-#ifdef DQLITE_EXPERIMENTAL
-		case DQLITE_CONFIG_REGISTRY:
-			s->registry = arg;
-			break;
-#endif
 
 		default:
 			dqlite__error_printf(&s->error, "unknown op code %d",
@@ -463,13 +508,6 @@ int dqlite_server_config(dqlite_server *s, int op, void *arg)
 
 	return err;
 }
-
-#ifdef DQLITE_EXPERIMENTAL
-struct uv_loop_s *dqlite_server_loop(dqlite_server *s)
-{
-	return &s->loop;
-}
-#endif /* DQLITE_EXPERIMENTAL */
 
 int dqlite_server_run(struct dqlite__server *s)
 {
@@ -514,6 +552,11 @@ int dqlite_server_run(struct dqlite__server *s)
 		err = DQLITE_ERROR;
 		goto out;
 	}
+
+#ifdef DQLITE_EXPERIMENTAL
+	err = raft_start(&s->raft.raft);
+	assert(err == 0);
+#endif /* DQLITE_EXPERIMENTAL */
 
 	err = uv_run(&s->loop, UV_RUN_DEFAULT);
 	if (err != 0) {
@@ -621,7 +664,7 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg)
 	conn__init(conn, fd, s->logger, s->cluster, &s->loop, &s->options,
 		   s->metrics);
 #ifdef DQLITE_EXPERIMENTAL
-	conn->gateway.registry = s->registry;
+	conn->gateway.registry = &s->registry;
 #endif /* DQLITE_EXPERIMENTAL */
 
 	err = dqlite__queue_item_init(&item, conn);

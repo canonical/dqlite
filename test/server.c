@@ -20,19 +20,6 @@
 
 dqlite_logger *logger;
 
-#ifdef DQLITE_EXPERIMENTAL
-void idle_cb(uv_idle_t *handle)
-{
-	struct test_server *f = handle->data;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-	CLUSTER_STEP;
-}
-#endif
-
 static struct test_server *test_server__create(const MunitParameter params[])
 {
 	int err = 0;
@@ -41,16 +28,14 @@ static struct test_server *test_server__create(const MunitParameter params[])
 	uint8_t metrics = 1;
 	const char *name;
 
+	(void)params;
+
 	s = munit_malloc(sizeof *s);
 
 	logger = test_logger();
 
 #ifdef DQLITE_EXPERIMENTAL
 	s->dir = test_dir_setup();
-	struct test_server *f = s;
-	struct leader *leader = CLUSTER_LEADER(0);
-	SETUP_CLUSTER;
-	CLUSTER_ELECT(0);
 #else
 	s->replication = test_replication();
 
@@ -68,7 +53,8 @@ static struct test_server *test_server__create(const MunitParameter params[])
 #endif /* DQLITE_EXPERIMENTAL */
 
 #ifdef DQLITE_EXPERIMENTAL
-	err = dqlite_server_create2(s->dir, 0, NULL, &s->service);
+	err = dqlite_server_create2(s->dir, 1, "1", &s->service);
+	dqlite_server_bootstrap(s->service);
 #else
 	err = dqlite_server_create(test_cluster(), &s->service);
 #endif /* DQLITE_EXPERIMENTAL */
@@ -89,19 +75,7 @@ static struct test_server *test_server__create(const MunitParameter params[])
 	}
 
 #ifdef DQLITE_EXPERIMENTAL
-	struct uv_loop_s *loop = dqlite_server_loop(s->service);
-	struct registry *registry = CLUSTER_REGISTRY(0);
-	err = uv_idle_init(loop, &s->idle);
-	s->idle.data = s;
-	munit_assert_int(err, ==, 0);
-	munit_assert_string_equal(leader->db->options->replication,
-				  leader->db->options->vfs);
-	name = leader->db->options->replication;
-	err = uv_idle_start(&s->idle, idle_cb);
-	munit_assert_int(err, ==, 0);
-	err =
-	    dqlite_server_config(s->service, DQLITE_CONFIG_REGISTRY, registry);
-	munit_assert_int(err, ==, 0);
+	name = "dqlite-1";
 #else
 	munit_assert_string_equal(s->vfs->zName, s->replication->zName);
 	name = s->vfs->zName;
@@ -134,8 +108,6 @@ static void test_server__destroy(struct test_server *s)
 	assert(s->service != NULL);
 
 #ifdef DQLITE_EXPERIMENTAL
-	struct test_server *f = s;
-	TEAR_DOWN_CLUSTER;
 	test_dir_tear_down(s->dir);
 #else
 	sqlite3_wal_replication_unregister(s->replication);
