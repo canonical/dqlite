@@ -70,9 +70,7 @@
 #define DQLITE_CONFIG_PAGE_SIZE 4
 #define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 5
 #define DQLITE_CONFIG_METRICS 6
-#ifdef DQLITE_EXPERIMENTAL
-#define DQLITE_CONFIG_REGISTRY 7
-#endif
+
 /* Special value indicating that a batch of rows is over, but there are more. */
 #define DQLITE_RESPONSE_ROWS_PART 0xeeeeeeeeeeeeeeee
 
@@ -135,7 +133,7 @@ int dqlite_server_create2(const char *dir,
 			  unsigned id,
 			  const char *address,
 			  dqlite_server **out);
-struct uv_loop_s *dqlite_server_loop(dqlite_server *s);
+int dqlite_server_bootstrap(dqlite_server *s);
 #endif /* DQLITE_EXPERIMENTAL */
 
 /* Start a dqlite server.

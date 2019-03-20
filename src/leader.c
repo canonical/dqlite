@@ -80,10 +80,10 @@ static void maybe_exec_done(struct exec *req)
 	if (!req->done) {
 		return;
 	}
+	req->leader->exec = NULL;
 	if (req->cb != NULL) {
 		req->cb(req, req->status);
 	}
-	req->leader->exec = NULL;
 }
 
 static int open_conn(const char *filename,
