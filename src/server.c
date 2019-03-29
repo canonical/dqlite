@@ -11,11 +11,11 @@
 
 #include "conn.h"
 #include "error.h"
+#include "fsm.h"
 #include "log.h"
 #include "metrics.h"
 #include "options.h"
 #include "queue.h"
-#include "fsm.h"
 #include "raft.h"
 #include "registry.h"
 #include "replication.h"
@@ -375,15 +375,10 @@ err:
 	return err;
 }
 
-int dqlite_server_create(dqlite_cluster *cluster, dqlite_server **out)
-{
-	return server__create(cluster, NULL, 0, NULL, out);
-}
-
-int dqlite_server_create2(const char *dir,
-			  unsigned id,
-			  const char *address,
-			  dqlite_server **out)
+int dqlite_server_create(const char *dir,
+			 unsigned id,
+			 const char *address,
+			 dqlite_server **out)
 {
 	return server__create(NULL, dir, id, address, out);
 }
