@@ -9,9 +9,6 @@
 /* Hold state for a single open SQLite database */
 struct db_
 {
-	/* public */
-	dqlite_cluster *cluster; /* Cluster API implementation  */
-
 	/* read-only */
 	size_t id;	   /* Database ID */
 	dqlite__error error; /* Last error occurred */

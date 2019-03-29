@@ -5,7 +5,6 @@
 #include "../include/dqlite.h"
 
 #include "client.h"
-#include "cluster.h"
 #include "log.h"
 #include "server.h"
 #include "./lib/runner.h"

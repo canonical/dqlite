@@ -69,7 +69,6 @@ struct conn
 void conn__init(struct conn *c,
 		int fd,
 		dqlite_logger *logger,
-		dqlite_cluster *cluster,
 		uv_loop_t *loop,
 		struct options *options,
 		struct dqlite__metrics *metrics);
