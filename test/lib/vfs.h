@@ -5,7 +5,7 @@
 #ifndef TEST_VFS_H
 #define TEST_VFS_H
 
-#include "../../include/dqlite.h"
+#include "../../src/vfs.h"
 
 #define FIXTURE_VFS sqlite3_vfs *vfs;
 #define SETUP_VFS SETUP_VFS_X(f, "test")
