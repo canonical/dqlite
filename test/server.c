@@ -36,7 +36,7 @@ static struct test_server *test_server__create(const MunitParameter params[])
 
 	s->dir = test_dir_setup();
 
-	err = dqlite_server_create2(s->dir, 1, "1", &s->service);
+	err = dqlite_server_create(s->dir, 1, "1", &s->service);
 	dqlite_server_bootstrap(s->service);
 	if (err != 0) {
 		munit_errorf("failed to create dqlite server: %d", err);
