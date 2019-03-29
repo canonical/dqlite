@@ -163,16 +163,6 @@ const char *dqlite_server_errmsg(dqlite_server *s);
  * configured. */
 dqlite_logger *dqlite_server_logger(dqlite_server *s);
 
-/* Allocate and initialize an in-memory dqlite VFS object, configured with the
- * given registration name.
- *
- * A copy of the provided name will be made, so clients can free it after the
- * function returns. */
-sqlite3_vfs *dqlite_vfs_create(const char *name, dqlite_logger *logger);
-
-/* Destroy and deallocate an in-memory dqlite VFS object. */
-void dqlite_vfs_destroy(sqlite3_vfs *vfs);
-
 /* Read the content of a file, using the VFS implementation registered under the
  * given name. Used to take database snapshots using the dqlite in-memory
  * VFS. */

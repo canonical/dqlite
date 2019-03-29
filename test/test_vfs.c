@@ -4,6 +4,7 @@
 
 #include "../include/dqlite.h"
 #include "../src/format.h"
+#include "../src/vfs.h"
 
 #include "./lib/runner.h"
 #include "case.h"

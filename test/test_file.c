@@ -1,4 +1,4 @@
-#include "../include/dqlite.h"
+#include "../src/vfs.h"
 
 #include "case.h"
 #include "log.h"
