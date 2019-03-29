@@ -40,8 +40,6 @@ void db__init_(struct db_ *db)
 {
 	assert(db != NULL);
 
-	db->cluster = NULL;
-
 	dqlite__lifecycle_init(DQLITE__LIFECYCLE_DB);
 	dqlite__error_init(&db->error);
 	stmt__registry_init(&db->stmts);
@@ -62,13 +60,6 @@ void db__close_(struct db_ *db)
 		/* Since we cleanup all existing db resources, SQLite should
 		 * never fail, according to the docs. */
 		assert(rc == SQLITE_OK);
-
-		if (db->cluster != NULL) {
-			/* Notify the cluster implementation about the database
-			 * being closed. */
-			db->cluster->xUnregister(db->cluster->ctx, db->db);
-		}
-
 		db->db = NULL;
 	}
 

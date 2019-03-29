@@ -622,7 +622,6 @@ out:
 void conn__init(struct conn *c,
 		int fd,
 		dqlite_logger *logger,
-		dqlite_cluster *cluster,
 		uv_loop_t *loop,
 		struct options *options,
 		struct dqlite__metrics *metrics)
@@ -630,7 +629,6 @@ void conn__init(struct conn *c,
 	struct gateway__cbs callbacks;
 
 	assert(c != NULL);
-	assert(cluster != NULL);
 	assert(loop != NULL);
 	assert(options != NULL);
 
@@ -649,7 +647,7 @@ void conn__init(struct conn *c,
 			 dqlite__transitions);
 	request_init(&c->request);
 
-	gateway__init(&c->gateway, &callbacks, cluster, logger, options);
+	gateway__init(&c->gateway, &callbacks, logger, options);
 	response_init(&c->response);
 
 	c->fd = fd;

@@ -50,7 +50,6 @@ struct dqlite__server
 	dqlite__error error; /* Last error occurred, if any */
 
 	/* private */
-	dqlite_cluster *cluster;	 /* Cluster implementation */
 	struct dqlite_logger *logger;    /* Optional logger implementation */
 	struct dqlite__metrics *metrics; /* Operational metrics */
 	struct options options;		 /* Configuration values */
@@ -60,7 +59,6 @@ struct dqlite__server
 	sqlite3_wal_replication replication;
 	struct
 	{
-		struct dqlite_cluster cluster;
 		struct raft_io io;
 		struct raft_fsm fsm;
 		struct raft raft;
@@ -252,26 +250,6 @@ static void transport__close(struct raft_io_uv_transport *transport,
 	cb(transport);
 }
 
-static const char *cluster__leader(void *ctx)
-{
-	char *address;
-	(void)ctx;
-	/* Allocate a string, as regular implementations of the cluster
-	 * interface are expected to do. */
-	address = malloc(strlen("127.0.0.1:666") + 1);
-	if (address == NULL) {
-		return NULL;
-	}
-	strcpy(address, "127.0.0.1:666");
-	return address;
-}
-
-static int cluster__barrier(void *ctx)
-{
-	(void)ctx;
-	return 0;
-}
-
 int dqlite_server_bootstrap(dqlite_server *s)
 {
 	struct raft_configuration configuration;
@@ -286,8 +264,7 @@ int dqlite_server_bootstrap(dqlite_server *s)
 	return 0;
 }
 
-int server__create(dqlite_cluster *cluster,
-		   const char *dir,
+int server__create(const char *dir,
 		   unsigned id,
 		   const char *address,
 		   dqlite_server **out)
@@ -307,8 +284,6 @@ int server__create(dqlite_cluster *cluster,
 
 	s->logger = NULL;
 	s->metrics = NULL;
-
-	s->cluster = cluster;
 
 	options__init(&s->options);
 
@@ -343,10 +318,6 @@ int server__create(dqlite_cluster *cluster,
 	assert(s->vfs != NULL);
 	sqlite3_vfs_register(s->vfs, 0);
 	registry__init(&s->registry, &s->options);
-	s->cluster = &s->raft.cluster;
-	s->raft.cluster.ctx = s;
-	s->raft.cluster.xLeader = cluster__leader;
-	s->raft.cluster.xBarrier = cluster__barrier;
 	s->raft.transport.impl = s;
 	s->raft.transport.init = transport__init;
 	s->raft.transport.listen = transport__listen;
@@ -380,7 +351,7 @@ int dqlite_server_create(const char *dir,
 			 const char *address,
 			 dqlite_server **out)
 {
-	return server__create(NULL, dir, id, address, out);
+	return server__create(dir, id, address, out);
 }
 
 void dqlite_server_destroy(dqlite_server *s)
@@ -612,7 +583,6 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg)
 	struct dqlite__queue_item item;
 
 	assert(s != NULL);
-	assert(s->cluster != NULL);
 
 	dqlite__infof(s, "handling new connection (fd=%d)", fd);
 
@@ -633,8 +603,7 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg)
 		err = DQLITE_NOMEM;
 		goto err_not_running_or_conn_malloc;
 	}
-	conn__init(conn, fd, s->logger, s->cluster, &s->loop, &s->options,
-		   s->metrics);
+	conn__init(conn, fd, s->logger, &s->loop, &s->options, s->metrics);
 	conn->gateway.registry = &s->registry;
 
 	err = dqlite__queue_item_init(&item, conn);
@@ -706,13 +675,6 @@ err_item_wait:
 const char *dqlite_server_errmsg(dqlite_server *s)
 {
 	return s->error;
-}
-
-dqlite_cluster *dqlite_server_cluster(dqlite_server *s)
-{
-	assert(s != NULL);
-
-	return s->cluster;
 }
 
 dqlite_logger *dqlite_server_logger(dqlite_server *s)

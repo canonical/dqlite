@@ -1,7 +1,7 @@
 #include <unistd.h>
 
-#include <uv.h>
 #include <raft/io_uv.h>
+#include <uv.h>
 
 #include "../include/dqlite.h"
 
@@ -15,7 +15,6 @@
 #include "./lib/socket.h"
 #include "./lib/sqlite.h"
 #include "case.h"
-#include "cluster.h"
 #include "log.h"
 
 TEST_MODULE(conn);
@@ -32,7 +31,6 @@ struct fixture
 	struct options options;
 	struct dqlite__metrics metrics;
 	dqlite_logger *logger;
-	dqlite_cluster *cluster;
 	uv_loop_t loop;
 	struct conn *conn;
 	struct response response;
@@ -132,7 +130,6 @@ static void *setup(const MunitParameter params[], void *user_data)
 	test_socket_pair_setup(params, &f->sockets);
 
 	f->logger = test_logger();
-	f->cluster = test_cluster();
 
 	f->conn = sqlite3_malloc(sizeof *f->conn);
 	munit_assert_ptr_not_null(f->conn);
@@ -140,8 +137,8 @@ static void *setup(const MunitParameter params[], void *user_data)
 	err = uv_loop_init(&f->loop);
 	munit_assert_int(err, ==, 0);
 
-	conn__init(f->conn, f->sockets.server, f->logger, f->cluster, &f->loop,
-		   &f->options, &f->metrics);
+	conn__init(f->conn, f->sockets.server, f->logger, &f->loop, &f->options,
+		   &f->metrics);
 
 	response_init(&f->response);
 
@@ -170,7 +167,6 @@ static void tear_down(void *data)
 	test_socket_pair_tear_down(&f->sockets);
 	test_sqlite_tear_down();
 	test_heap_tear_down(data);
-	test_cluster_close(f->cluster);
 
 	free(f->logger);
 	free(f);

@@ -1,19 +1,17 @@
 #include "../lib/heap.h"
 #include "../lib/logger.h"
 #include "../lib/options.h"
+#include "../lib/raft.h"
 #include "../lib/registry.h"
+#include "../lib/replication.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
-#include "../lib/raft.h"
-#include "../lib/replication.h"
 
 #include "../replication.h"
 
 #include "../../src/format.h"
 #include "../../src/gateway.h"
-
-#include "../cluster.h"
 
 TEST_MODULE(gateway);
 
@@ -31,7 +29,6 @@ struct fixture
 	FIXTURE_REGISTRY;
 	FIXTURE_RAFT;
 	FIXTURE_REPLICATION;
-	dqlite_cluster *cluster;
 	struct gateway *gateway;
 	struct request *request;
 	struct response *response;
@@ -141,10 +138,8 @@ static void *setup(const MunitParameter params[], void *user_data)
 	callbacks.ctx = f;
 	callbacks.xFlush = fixture_flush_cb;
 
-	f->cluster = test_cluster();
 	f->gateway = munit_malloc(sizeof *f->gateway);
-	gateway__init(f->gateway, &callbacks, f->cluster, &f->logger,
-		      &f->options);
+	gateway__init(f->gateway, &callbacks, &f->logger, &f->options);
 	f->gateway->registry = &f->registry;
 
 	f->request = munit_malloc(sizeof *f->request);
@@ -160,7 +155,6 @@ static void tear_down(void *data)
 
 	request_close(f->request);
 	gateway__close(f->gateway);
-	test_cluster_close(f->cluster);
 	TEAR_DOWN_REPLICATION;
 	TEAR_DOWN_REGISTRY;
 	TEAR_DOWN_RAFT;
@@ -231,6 +225,8 @@ TEST_CASE(handle, client, NULL)
 	return MUNIT_OK;
 }
 
+#if 0
+
 /* Handle a heartbeat request. */
 TEST_CASE(handle, heartbeat, NULL)
 {
@@ -260,8 +256,6 @@ TEST_CASE(handle, heartbeat, NULL)
 
 	return MUNIT_OK;
 }
-
-#if 0
 
 /* If the xServers method of the cluster implementation returns an error, it's
  * propagated to the client. */
