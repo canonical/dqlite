@@ -1,4 +1,5 @@
 #include "../src/vfs.h"
+#include "../src/file.h"
 
 #include "case.h"
 #include "log.h"
