@@ -23,12 +23,8 @@
 /* Raft protocol tag */
 #define RAFT_TAG 0x60c1f653be904bd1
 
-#ifdef DQLITE_EXPERIMENTAL
-
 /* Raft command codes */
 enum { RAFT_CONNECT = 1, RAFT_JOIN, RAFT_LEAVE };
-
-#endif /* DQLITE_EXPERIMENTAL */
 
 /* Context attached to an uv_write_t write request */
 struct conn__write_ctx
@@ -317,20 +313,15 @@ static int conn__header_alloc_cb(void *arg)
 
 	c = (struct conn *)arg;
 
-#ifdef DQLITE_EXPERIMENTAL
 	if (c->protocol == RAFT_TAG) {
 		buf.base = (char *)c->raft.preamble;
 		buf.len = sizeof c->raft.preamble;
 		goto done;
 	}
-#endif /* DQLITE_EXPERIMENTAL */
 
 	message__header_recv_start(&c->request.message, &buf);
 
-#ifdef DQLITE_EXPERIMENTAL
 done:
-#endif /* DQLITE_EXPERIMENTAL */
-
 	conn__buf_init(c, &buf);
 
 	/* If metrics are enabled, keep track of the request start time. */
@@ -351,14 +342,12 @@ static int conn__header_read_cb(void *arg)
 
 	c = (struct conn *)arg;
 
-#ifdef DQLITE_EXPERIMENTAL
 	if (c->protocol == RAFT_TAG) {
 		c->raft.command = byte__flip64(c->raft.preamble[0]);
 		c->raft.server_id = byte__flip64(c->raft.preamble[1]);
 		c->raft.address.len = byte__flip64(c->raft.preamble[2]);
 		return 0;
 	}
-#endif /* DQLITE_EXPERIMENTAL */
 
 	err = message__header_recv_done(&c->request.message);
 	if (err != 0) {
@@ -409,7 +398,6 @@ static int conn__body_alloc_cb(void *arg)
 
 	c = (struct conn *)arg;
 
-#ifdef DQLITE_EXPERIMENTAL
 	if (c->protocol == RAFT_TAG) {
 		switch (c->raft.command) {
 			case RAFT_CONNECT:
@@ -430,7 +418,6 @@ static int conn__body_alloc_cb(void *arg)
 		}
 		goto done;
 	}
-#endif /* DQLITE_EXPERIMENTAL */
 
 	err = message__body_recv_start(&c->request.message, &buf);
 	if (err != 0) {
@@ -439,9 +426,7 @@ static int conn__body_alloc_cb(void *arg)
 		return err;
 	}
 
-#ifdef DQLITE_EXPERIMENTAL
 done:
-#endif /* DQLITE_EXPERIMENTAL */
 	conn__buf_init(c, &buf);
 
 	return 0;
@@ -456,7 +441,6 @@ static int conn__body_read_cb(void *arg)
 
 	c = (struct conn *)arg;
 
-#ifdef DQLITE_EXPERIMENTAL
 	if (c->protocol == RAFT_TAG) {
 		switch (c->raft.command) {
 			case RAFT_CONNECT:
@@ -471,7 +455,6 @@ static int conn__body_read_cb(void *arg)
 				break;
 		}
 	}
-#endif /* DQLITE_EXPERIMENTAL */
 
 	err = request_decode(&c->request);
 	if (err != 0) {
@@ -863,11 +846,9 @@ void conn__abort(struct conn *c)
 	}
 #endif
 
-#ifdef DQLITE_EXPERIMENTAL
 	if (c->stream == NULL) {
 		conn__destroy(c);
 		return;
 	}
-#endif /* DQLITE_EXPERIMENTAL */
 	uv_close((uv_handle_t *)c->stream, conn__stream_close_cb);
 }

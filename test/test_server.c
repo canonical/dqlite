@@ -12,7 +12,7 @@
 #include "./lib/sqlite.h"
 #include "./lib/heap.h"
 
-#ifndef DQLITE_EXPERIMENTAL
+#if 0
 
 TEST_MODULE(server);
 
@@ -124,4 +124,4 @@ TEST_CASE(config, checkpoint_threshold, NULL)
 	return MUNIT_OK;
 }
 
-#endif /* DQLITE_EXPERIMENTAL */
+#endif

@@ -172,20 +172,11 @@ static dqlite_cluster test__cluster = {
 
 dqlite_cluster *test_cluster()
 {
-#ifndef DQLITE_EXPERIMENTAL
-	test__cluster_ctx.db_list = munit_malloc(sizeof(sqlite3 *));
-
-	*test__cluster_ctx.db_list = NULL;
-#endif /* !DQLITE_EXPERIMENTAL */
-
 	return &test__cluster;
 }
 
 void test_cluster_close(dqlite_cluster *cluster) {
 	(void)cluster;
-#ifndef DQLITE_EXPERIMENTAL
-	free(test__cluster_ctx.db_list);
-#endif /* !DQLITE_EXPERIMENTAL */
 }
 
 

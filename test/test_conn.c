@@ -1,9 +1,7 @@
 #include <unistd.h>
 
 #include <uv.h>
-#ifdef DQLITE_EXPERIMENTAL
 #include <raft/io_uv.h>
-#endif /* DQLITE_EXPERIMENTAL */
 
 #include "../include/dqlite.h"
 
@@ -38,10 +36,8 @@ struct fixture
 	uv_loop_t loop;
 	struct conn *conn;
 	struct response response;
-#ifdef DQLITE_EXPERIMENTAL
 	struct raft_io_uv_transport transport;
 	bool accept_cb_invoked;
-#endif /* DQLITE_EXPERIMENTAL */
 };
 
 /* Run the fixture loop once.
@@ -155,10 +151,8 @@ static void *setup(const MunitParameter params[], void *user_data)
 	err = conn__start(f->conn);
 	munit_assert_int(err, ==, 0);
 
-#ifdef DQLITE_EXPERIMENTAL
 	f->transport.data = f;
 	f->accept_cb_invoked = false;
-#endif /* DQLITE_EXPERIMENTAL */
 
 	return f;
 }
@@ -600,7 +594,6 @@ TEST_CASE(read_cb, throttle, params)
 	return MUNIT_OK;
 }
 
-#ifdef DQLITE_EXPERIMENTAL
 static void accept_cb(struct raft_io_uv_transport *t,
 		      unsigned id,
 		      const char *address,
@@ -634,4 +627,3 @@ TEST_CASE(read_cb, raft_connect, NULL)
 
 	return MUNIT_OK;
 }
-#endif

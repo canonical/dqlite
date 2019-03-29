@@ -173,7 +173,6 @@ static void gateway__heartbeat(struct gateway *g, struct gateway__ctx *ctx)
 	g->heartbeat = ctx->request->timestamp;
 }
 
-#ifdef DQLITE_EXPERIMENTAL
 static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 {
 	int rc;
@@ -231,55 +230,6 @@ static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 	ctx->response.type = DQLITE_RESPONSE_DB;
 	ctx->response.db.id = 0;
 }
-#else
-static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
-{
-	int rc;
-
-	assert(g != NULL);
-
-	if (g->db != NULL) {
-		dqlite__error_printf(
-		    &g->error,
-		    "a database for this connection is already open");
-		gateway__failure(g, ctx, SQLITE_BUSY);
-		return;
-	}
-
-	g->db = sqlite3_malloc(sizeof *g->db);
-	if (g->db == NULL) {
-		dqlite__error_oom(&g->error, "unable to create database");
-		gateway__failure(g, ctx, SQLITE_NOMEM);
-		return;
-	}
-
-	db__init_(g->db);
-
-	g->db->id = 0;
-
-	rc = db__open(g->db, ctx->request->open.name, ctx->request->open.flags,
-		      g->options->vfs, g->options->page_size,
-		      g->options->replication);
-
-	if (rc != 0) {
-		dqlite__error_printf(&g->error, g->db->error);
-		gateway__failure(g, ctx, rc);
-		db__close_(g->db);
-		sqlite3_free(g->db);
-		g->db = NULL;
-		return;
-	}
-
-	sqlite3_wal_hook(g->db->db, maybe_checkpoint, g);
-
-	ctx->response.type = DQLITE_RESPONSE_DB;
-	ctx->response.db.id = (uint32_t)g->db->id;
-
-	/* Notify the cluster implementation about the new connection. */
-	g->cluster->xRegister(g->cluster->ctx, g->db->db);
-	g->db->cluster = g->cluster;
-}
-#endif /* DQLITE_EXPERIMENTAL */
 
 /* Ensure that there are no raft logs pending. */
 #define GATEWAY__BARRIER                                                \
@@ -330,7 +280,6 @@ static void gateway__prepare(struct gateway *g, struct gateway__ctx *ctx)
 	ctx->response.stmt.params = sqlite3_bind_parameter_count(stmt->stmt);
 }
 
-#ifdef DQLITE_EXPERIMENTAL
 struct gateway_exec
 {
 	struct gateway *gateway;
@@ -403,40 +352,6 @@ static void gateway__exec(struct gateway *g, struct gateway__ctx *ctx)
 		sqlite3_reset(stmt->stmt);
 	}
 }
-#else
-static void gateway__exec(struct gateway *g, struct gateway__ctx *ctx)
-{
-	int rc;
-	struct db_ *db;
-	struct stmt *stmt;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
-
-	GATEWAY__BARRIER;
-	GATEWAY__LOOKUP_DB(ctx->request->exec.db_id);
-	GATEWAY__LOOKUP_STMT(ctx->request->exec.stmt_id);
-
-	assert(stmt != NULL);
-
-	rc = stmt__bind(stmt, &ctx->request->message);
-	if (rc != SQLITE_OK) {
-		dqlite__error_printf(&g->error, stmt->error);
-		gateway__failure(g, ctx, rc);
-		return;
-	}
-
-	rc = stmt__exec(stmt, &last_insert_id, &rows_affected);
-	if (rc == SQLITE_OK) {
-		ctx->response.type = DQLITE_RESPONSE_RESULT;
-		ctx->response.result.last_insert_id = last_insert_id;
-		ctx->response.result.rows_affected = rows_affected;
-	} else {
-		dqlite__error_printf(&g->error, stmt->error);
-		gateway__failure(g, ctx, rc);
-		sqlite3_reset(stmt->stmt);
-	}
-}
-#endif /* DQLITE_EXPERIMENTAL */
 
 /* Step through the tiven statement and populate the response of the given
  * context with a single batch of rows.
@@ -534,7 +449,6 @@ static void gateway__finalize(struct gateway *g, struct gateway__ctx *ctx)
 	}
 }
 
-#ifdef DQLITE_EXPERIMENTAL
 struct gateway_exec_sql
 {
 	struct gateway *gateway;
@@ -654,68 +568,6 @@ static void gateway__exec_sql(struct gateway *g, struct gateway__ctx *ctx)
 
 	gateway__exec_sql_next(g, r);
 }
-#else
-static void gateway__exec_sql(struct gateway *g, struct gateway__ctx *ctx)
-{
-	int rc;
-	struct db_ *db;
-	const char *sql;
-	struct stmt *stmt = NULL;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
-
-	GATEWAY__BARRIER;
-	GATEWAY__LOOKUP_DB(ctx->request->exec_sql.db_id);
-
-	assert(db != NULL);
-
-	sql = ctx->request->exec_sql.sql;
-
-	while (sql != NULL && strcmp(sql, "") != 0) {
-		rc = db__prepare(db, sql, &stmt);
-		if (rc != SQLITE_OK) {
-			dqlite__error_printf(&g->error, db->error);
-			gateway__failure(g, ctx, rc);
-			return;
-		}
-
-		if (stmt->stmt == NULL) {
-			return;
-		}
-
-		/* TODO: what about bindings for multi-statement SQL text? */
-		rc = stmt__bind(stmt, &ctx->request->message);
-		if (rc != SQLITE_OK) {
-			dqlite__error_printf(&g->error, stmt->error);
-			gateway__failure(g, ctx, rc);
-			goto err;
-			return;
-		}
-
-		rc = stmt__exec(stmt, &last_insert_id, &rows_affected);
-		if (rc == SQLITE_OK) {
-			ctx->response.type = DQLITE_RESPONSE_RESULT;
-			ctx->response.result.last_insert_id = last_insert_id;
-			ctx->response.result.rows_affected = rows_affected;
-		} else {
-			dqlite__error_printf(&g->error, stmt->error);
-			gateway__failure(g, ctx, rc);
-			goto err;
-		}
-
-		sql = stmt->tail;
-
-		/* Ignore errors here. TODO: can this fail? */
-		db__finalize(db, stmt);
-	}
-
-	return;
-
-err:
-	/* Ignore errors here. TODO: emit a warning instead */
-	db__finalize(db, stmt);
-}
-#endif /* DQLITE_EXPERIMENTAL */
 
 static void gateway__query_sql(struct gateway *g, struct gateway__ctx *ctx)
 {
@@ -802,14 +654,10 @@ static void gateway__dispatch(struct gateway *g, struct gateway__ctx *ctx)
 			break;
 	}
 
-#ifdef DQLITE_EXPERIMENTAL
 	if (ctx->request->type != DQLITE_REQUEST_EXEC &&
 	    ctx->request->type != DQLITE_REQUEST_EXEC_SQL) {
 		g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
 	}
-#else
-	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
-#endif /* DQLITE_EXPERIMENTAL */
 }
 void gateway__init(struct gateway *g,
 		   struct gateway__cbs *callbacks,
@@ -857,7 +705,6 @@ void gateway__close(struct gateway *g)
 
 	assert(g != NULL);
 
-#ifdef DQLITE_EXPERIMENTAL
 	if (g->leader != NULL) {
 		g->db->db = NULL;
 		db__close_(g->db);
@@ -866,12 +713,6 @@ void gateway__close(struct gateway *g)
 		assert(g->db != NULL);
 		sqlite3_free(g->db);
 	}
-#else
-	if (g->db != NULL) {
-		db__close_(g->db);
-		sqlite3_free(g->db);
-	}
-#endif /* DQLITE_EXPERIMENTAL */
 
 	for (i = 0; i < GATEWAY__MAX_REQUESTS; i++) {
 		response_close(&g->ctxs[i].response);
