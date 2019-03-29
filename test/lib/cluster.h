@@ -38,12 +38,14 @@ struct server_fixture
 
 #define SETUP_CLUSTER                                                          \
 	{                                                                      \
+		struct raft_configuration configuration;                       \
 		unsigned i;                                                    \
 		int rc;                                                        \
-		rc = raft_fixture_setup(&f->cluster, N_SERVERS, N_SERVERS,     \
-					f->fsms, munit_rand_int_range);        \
+		rc = raft_fixture_init(&f->cluster, N_SERVERS, f->fsms);       \
 		munit_assert_int(rc, ==, 0);                                   \
 		for (i = 0; i < N_SERVERS; i++) {                              \
+			raft_fixture_set_random(&f->cluster, i,                \
+						munit_rand_int_range);         \
 			struct server_fixture *s = &f->servers[i];             \
 			struct raft *raft = raft_fixture_get(&f->cluster, i);  \
 			sprintf(s->name, "test%d", i);                         \
@@ -60,6 +62,14 @@ struct server_fixture
 			sqlite3_wal_replication_register(&s->replication, 0);  \
 			SETUP_LEADER_X(s);                                     \
 		}                                                              \
+		rc = raft_fixture_configuration(&f->cluster, N_SERVERS,        \
+						&configuration);               \
+		munit_assert_int(rc, ==, 0);                                   \
+		rc = raft_fixture_bootstrap(&f->cluster, &configuration);      \
+		munit_assert_int(rc, ==, 0);                                   \
+		raft_configuration_close(&configuration);                      \
+		rc = raft_fixture_start(&f->cluster);                          \
+		munit_assert_int(rc, ==, 0);                                   \
 	}
 
 #define TEAR_DOWN_CLUSTER                                                    \
@@ -76,14 +86,23 @@ struct server_fixture
 			TEAR_DOWN_VFS_X(s);                                  \
 			TEAR_DOWN_LOGGER_X(s);                               \
 		}                                                            \
-		raft_fixture_tear_down(&f->cluster);                         \
+		raft_fixture_close(&f->cluster);                             \
 	}
 
 #define CLUSTER_LEADER(I) &f->servers[I].leader
 #define CLUSTER_REGISTRY(I) &f->servers[I].registry
 
 #define CLUSTER_ELECT(I) raft_fixture_elect(&f->cluster, I)
-#define CLUSTER_APPLIED(N) raft_fixture_wait_applied(&f->cluster, N);
+#define CLUSTER_APPLIED(N)                                                     \
+	{                                                                      \
+		int i;                                                         \
+		for (i = 0; i < N_SERVERS; i++) {                              \
+			bool done;                                             \
+			done = raft_fixture_step_until_applied(&f->cluster, i, \
+							       N, 1000);       \
+			munit_assert_true(done);                               \
+		}                                                              \
+	}
 
 #define CLUSTER_STEP raft_fixture_step(&f->cluster)
 

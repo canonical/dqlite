@@ -24,17 +24,17 @@
 
 #define TEAR_DOWN_RAFT TEAR_DOWN_RAFT_X(f)
 
-#define SETUP_RAFT_X(F, ID, ADDRESS)                                           \
-	{                                                                      \
-		int rv;                                                        \
-		rv = raft_io_stub_init(&F->raft_io);                           \
-		munit_assert_int(rv, ==, 0);                                   \
-		raft_io_stub_set_random(&F->raft_io, munit_rand_int_range);    \
-		rv = fsm__init(&F->fsm, &F->logger, &F->registry);             \
-		munit_assert_int(rv, ==, 0);                                   \
-		rv =                                                           \
-		    raft_init(&F->raft, &F->raft_io, &F->fsm, f, ID, ADDRESS); \
-		munit_assert_int(rv, ==, 0);                                   \
+#define SETUP_RAFT_X(F, ID, ADDRESS)                                         \
+	{                                                                    \
+		int rv;                                                      \
+		rv = raft_io_stub_init(&F->raft_io);                         \
+		munit_assert_int(rv, ==, 0);                                 \
+		raft_io_stub_set_random(&F->raft_io, munit_rand_int_range);  \
+		rv = fsm__init(&F->fsm, &F->logger, &F->registry);           \
+		munit_assert_int(rv, ==, 0);                                 \
+		rv = raft_init(&F->raft, &F->raft_io, &F->fsm, ID, ADDRESS); \
+		munit_assert_int(rv, ==, 0);                                 \
+		F->raft.data = F;                                            \
 	}
 
 #define TEAR_DOWN_RAFT_X(F)                      \
@@ -81,9 +81,9 @@
 
 #define RAFT_CONNECT(F1, F2) raft_io_stub_connect(&F1->raft_io, &F2->raft_io)
 
-#define RAFT_BECOME_CANDIDATE(F)                                   \
-	raft_io_stub_advance(&F->raft_io,                          \
-			     F->raft.election_timeout_rand + 100); \
+#define RAFT_BECOME_CANDIDATE(F)                                         \
+	raft_io_stub_advance(&F->raft_io,                                \
+			     F->raft.randomized_election_timeout + 100); \
 	munit_assert_int(raft_state(&F->raft), ==, RAFT_CANDIDATE)
 
 #define RAFT_BECOME_LEADER                                                  \
@@ -116,21 +116,21 @@
 	}
 
 /* Reach a quorum for all outstanding entries. */
-#define RAFT_COMMIT                                                 \
-	{                                                           \
-		const char *address = "2";                          \
-		struct raft_message message;                        \
-		struct raft_append_entries_result *result =         \
-		    &message.append_entries_result;                 \
-		raft_io_stub_flush_all(&f->raft_io);                \
-		message.type = RAFT_IO_APPEND_ENTRIES_RESULT;       \
-		message.server_id = 2;                              \
-		message.server_address = address;                   \
-		result->term = f->raft.current_term;                \
-		result->success = true;                             \
-		result->last_log_index =                            \
-		    f->raft.leader_state.replication[1].next_index; \
-		raft_io_stub_deliver(&f->raft_io, &message);        \
+#define RAFT_COMMIT                                              \
+	{                                                        \
+		const char *address = "2";                       \
+		struct raft_message message;                     \
+		struct raft_append_entries_result *result =      \
+		    &message.append_entries_result;              \
+		raft_io_stub_flush_all(&f->raft_io);             \
+		message.type = RAFT_IO_APPEND_ENTRIES_RESULT;    \
+		message.server_id = 2;                           \
+		message.server_address = address;                \
+		result->term = f->raft.current_term;             \
+		result->rejected = 0;                            \
+		result->last_log_index =                         \
+		    f->raft.leader_state.progress[1].next_index; \
+		raft_io_stub_deliver(&f->raft_io, &message);     \
 	}
 
 void raft_copy_entries(const struct raft_entry *src,
