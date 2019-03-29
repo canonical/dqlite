@@ -93,20 +93,6 @@ typedef struct dqlite_server_info
 	const char *address;
 } dqlite_server_info;
 
-/* The memory returned by a method of the cluster interface must be valid until
- * the next invokation of the same method. */
-typedef struct dqlite_cluster
-{
-	void *ctx;
-	const char *(*xLeader)(void *ctx);
-	int (*xServers)(void *ctx, dqlite_server_info *servers[]);
-	void (*xRegister)(void *ctx, sqlite3 *db);
-	void (*xUnregister)(void *ctx, sqlite3 *db);
-	int (*xBarrier)(void *ctx);
-	int (*xRecover)(void *ctx, uint64_t tx_token);
-	int (*xCheckpoint)(void *ctx, sqlite3 *db);
-} dqlite_cluster;
-
 /* Handle connections from dqlite clients */
 typedef struct dqlite__server dqlite_server;
 
@@ -172,9 +158,6 @@ int dqlite_server_handle(dqlite_server *s, int socket, char **errrmsg);
  * occurs in the meantime.
  */
 const char *dqlite_server_errmsg(dqlite_server *s);
-
-/* Return the dqlite_cluster object used to initialize the server */
-dqlite_cluster *dqlite_server_cluster(dqlite_server *s);
 
 /* Return the dqlite_logger object the server is using, if any was
  * configured. */

@@ -62,7 +62,6 @@ check_PROGRAMS += \
 test_lib_SOURCES = \
   test/case.c \
   test/client.c \
-  test/cluster.c \
   test/fs.c \
   test/leak.c \
   test/lib/fault.c \

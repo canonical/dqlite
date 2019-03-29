@@ -13,6 +13,8 @@
 #include "request.h"
 #include "response.h"
 
+#if 0 /* TODO: implement checkpoint support */
+
 /* Perform a distributed checkpoint if the size of the WAL has reached the
  * configured threshold and there are no reading transactions in progress (there
  * can't be writing transaction because this helper gets called after a
@@ -84,6 +86,8 @@ static int maybe_checkpoint(void *ctx,
 	return SQLITE_OK;
 }
 
+#endif
+
 /* Release dynamically allocated data attached to a response after it has been
  * flushed. */
 static void reset_response(struct response *r)
@@ -129,15 +133,22 @@ static void gateway__failure(struct gateway *g,
 
 static void gateway__leader(struct gateway *g, struct gateway__ctx *ctx)
 {
-	const char *address;
+	char *address;
 
-	address = g->cluster->xLeader(g->cluster->ctx);
+	/* Allocate a string, as regular implementations of the cluster
+	 * interface are expected to do.
+	 *
+	 * TODO: get the leader address from raft */
+	address = malloc(strlen("127.0.0.1:666") + 1);
 
 	if (address == NULL) {
 		dqlite__error_oom(&g->error, "failed to get cluster leader");
 		gateway__failure(g, ctx, SQLITE_NOMEM);
 		return;
 	}
+
+	strcpy(address, "127.0.0.1:666");
+
 	ctx->response.type = DQLITE_RESPONSE_SERVER;
 	ctx->response.server.address = address;
 }
@@ -152,11 +163,11 @@ static void gateway__client(struct gateway *g, struct gateway__ctx *ctx)
 
 static void gateway__heartbeat(struct gateway *g, struct gateway__ctx *ctx)
 {
-	int rc;
-	struct dqlite_server_info *servers;
+	struct dqlite_server_info *servers = NULL;
+	//int rc;
 
 	/* Get the current list of servers in the cluster */
-	rc = g->cluster->xServers(g->cluster->ctx, &servers);
+	/*rc = g->cluster->xServers(g->cluster->ctx, &servers);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&g->error,
 				     "failed to get cluster servers");
@@ -164,7 +175,7 @@ static void gateway__heartbeat(struct gateway *g, struct gateway__ctx *ctx)
 		return;
 	}
 
-	assert(servers != NULL);
+	assert(servers != NULL);*/
 
 	ctx->response.type = DQLITE_RESPONSE_SERVERS;
 	ctx->response.servers.servers = servers;
@@ -231,14 +242,10 @@ static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 	ctx->response.db.id = 0;
 }
 
-/* Ensure that there are no raft logs pending. */
-#define GATEWAY__BARRIER                                                \
-	rc = g->cluster->xBarrier(g->cluster->ctx);                     \
-	if (rc != 0) {                                                  \
-		dqlite__error_printf(&g->error, "raft barrier failed"); \
-		gateway__failure(g, ctx, rc);                           \
-		return;                                                 \
-	}
+/* Ensure that there are no raft logs pending.
+ *
+ * TODO: actually implemt barrier functionality in raft */
+#define GATEWAY__BARRIER
 
 /* Lookup the database with the given ID. */
 #define GATEWAY__LOOKUP_DB(ID)                                           \
@@ -545,7 +552,6 @@ static void gateway__exec_sql(struct gateway *g, struct gateway__ctx *ctx)
 {
 	struct gateway_exec_sql *r;
 	struct db_ *db;
-	int rc;
 
 	GATEWAY__BARRIER;
 	GATEWAY__LOOKUP_DB(ctx->request->exec_sql.db_id);
@@ -661,14 +667,12 @@ static void gateway__dispatch(struct gateway *g, struct gateway__ctx *ctx)
 }
 void gateway__init(struct gateway *g,
 		   struct gateway__cbs *callbacks,
-		   struct dqlite_cluster *cluster,
 		   struct dqlite_logger *logger,
 		   struct options *options)
 {
 	int i;
 
 	assert(g != NULL);
-	assert(cluster != NULL);
 	assert(logger != NULL);
 	assert(options != NULL);
 	assert(callbacks != NULL);
@@ -683,7 +687,6 @@ void gateway__init(struct gateway *g,
 	/* Make a copy of the callbacks passed as argument. */
 	memcpy(&g->callbacks, callbacks, sizeof *callbacks);
 
-	g->cluster = cluster;
 	g->logger = logger;
 	g->options = options;
 

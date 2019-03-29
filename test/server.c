@@ -11,7 +11,6 @@
 #include "../include/dqlite.h"
 
 #include "client.h"
-#include "cluster.h"
 #include "log.h"
 #include "munit.h"
 #include "replication.h"
