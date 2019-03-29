@@ -5,10 +5,8 @@
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
-#ifdef DQLITE_EXPERIMENTAL
 #include "../lib/raft.h"
 #include "../lib/replication.h"
-#endif /* DQLITE_EXPERIMENTAL */
 
 #include "../replication.h"
 
@@ -30,13 +28,9 @@ struct fixture
 	FIXTURE_LOGGER;
 	FIXTURE_VFS;
 	FIXTURE_OPTIONS;
-#ifdef DQLITE_EXPERIMENTAL
 	FIXTURE_REGISTRY;
 	FIXTURE_RAFT;
 	FIXTURE_REPLICATION;
-#else
-	FIXTURE_STUB_REPLICATION;
-#endif /* DQLITE_EXPERIMENTAL */
 	dqlite_cluster *cluster;
 	struct gateway *gateway;
 	struct request *request;
@@ -112,13 +106,11 @@ static void __exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id)
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
-#ifdef DQLITE_EXPERIMENTAL
 	if (f->gateway->leader->db->follower == NULL) {
 		/* Wait for the open command */
 		RAFT_COMMIT;
 	}
 	RAFT_COMMIT;
-#endif
 
 	munit_assert_ptr_not_null(f->response);
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_RESULT);
@@ -141,14 +133,10 @@ static void *setup(const MunitParameter params[], void *user_data)
 	SETUP_LOGGER;
 	SETUP_OPTIONS;
 	SETUP_VFS;
-#ifdef DQLITE_EXPERIMENTAL
 	SETUP_REGISTRY;
 	SETUP_RAFT;
 	RAFT_BECOME_LEADER;
 	SETUP_REPLICATION;
-#else
-	SETUP_STUB_REPLICATION;
-#endif /* DQLITE_EXPERIMENTAL */
 
 	callbacks.ctx = f;
 	callbacks.xFlush = fixture_flush_cb;
@@ -157,9 +145,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	f->gateway = munit_malloc(sizeof *f->gateway);
 	gateway__init(f->gateway, &callbacks, f->cluster, &f->logger,
 		      &f->options);
-#ifdef DQLITE_EXPERIMENTAL
 	f->gateway->registry = &f->registry;
-#endif /* DQLITE_EXPERIMENTAL */
 
 	f->request = munit_malloc(sizeof *f->request);
 
@@ -175,13 +161,9 @@ static void tear_down(void *data)
 	request_close(f->request);
 	gateway__close(f->gateway);
 	test_cluster_close(f->cluster);
-#ifdef DQLITE_EXPERIMENTAL
 	TEAR_DOWN_REPLICATION;
 	TEAR_DOWN_REGISTRY;
 	TEAR_DOWN_RAFT;
-#else
-	TEAR_DOWN_STUB_REPLICATION;
-#endif /* DQLITE_EXPERIMENTAL */
 	TEAR_DOWN_OPTIONS;
 	TEAR_DOWN_VFS;
 	TEAR_DOWN_SQLITE;
@@ -279,7 +261,7 @@ TEST_CASE(handle, heartbeat, NULL)
 	return MUNIT_OK;
 }
 
-#ifndef DQLITE_EXPERIMENTAL
+#if 0
 
 /* If the xServers method of the cluster implementation returns an error, it's
  * propagated to the client. */
@@ -371,7 +353,7 @@ TEST_CASE(handle, open_oom, test_open_oom_params)
 	return MUNIT_OK;
 }
 
-#endif /* !DQLITE_EXPERIMENTAL */
+#endif
 
 /* Handle an oper request. */
 TEST_CASE(handle, open, NULL)
@@ -533,10 +515,8 @@ TEST_CASE(handle, exec, NULL)
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
-#ifdef DQLITE_EXPERIMENTAL
 	RAFT_COMMIT;
 	RAFT_COMMIT;
-#endif /* !DQLITE_EXPERIMENTAL */
 
 	munit_assert_ptr_not_null(f->response);
 
@@ -581,9 +561,7 @@ TEST_CASE(handle, exec_params, NULL)
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
-#ifdef DQLITE_EXPERIMENTAL
 	RAFT_COMMIT;
-#endif /* !DQLITE_EXPERIMENTAL */
 
 	munit_assert_ptr_not_null(f->response);
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_RESULT);
@@ -662,7 +640,7 @@ TEST_CASE(handle, exec_bad_params, NULL)
 	return MUNIT_OK;
 }
 
-#ifndef DQLITE_EXPERIMENTAL
+#if 0
 
 /* If the execution of the statement fails, an error is returned. */
 TEST_CASE(handle, exec_fail, NULL)
@@ -706,7 +684,7 @@ TEST_CASE(handle, exec_fail, NULL)
 	return MUNIT_OK;
 }
 
-#endif /* !DQLITE_EXPERIMENTAL */
+#endif
 
 /* Handle a query request. */
 TEST_CASE(handle, query, NULL)
@@ -857,9 +835,7 @@ TEST_CASE(handle, exec_sql, NULL)
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
-#ifdef DQLITE_EXPERIMENTAL
 	RAFT_COMMIT;
-#endif
 
 	munit_assert_ptr_not_null(f->response);
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_RESULT);
@@ -890,11 +866,9 @@ TEST_CASE(handle, exec_sql_multi, NULL)
 	err = gateway__handle(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
-#ifdef DQLITE_EXPERIMENTAL
 	RAFT_COMMIT;
 	RAFT_COMMIT;
 	RAFT_COMMIT;
-#endif
 
 	munit_assert_ptr_not_null(f->response);
 	munit_assert_int(f->response->type, ==, DQLITE_RESPONSE_RESULT);
@@ -977,7 +951,7 @@ TEST_CASE(handle, exec_sql_bad_params, NULL)
 	return MUNIT_OK;
 }
 
-#ifndef DQLITE_EXPERIMENTAL
+#if 0
 
 /* If the execution of the statement fails, an error is returned. */
 TEST_CASE(handle, exec_sql_error, NULL)
@@ -1015,7 +989,7 @@ TEST_CASE(handle, exec_sql_error, NULL)
 	return MUNIT_OK;
 }
 
-#endif /* !DQLITE_EXPERIMENTAL */
+#endif
 
 /* Handle a query sql request. */
 TEST_CASE(handle, query_sql, NULL)
@@ -1201,7 +1175,7 @@ TEST_CASE(handle, max_requests, NULL)
 	return MUNIT_OK;
 }
 
-#ifndef DQLITE_EXPERIMENTAL
+#if 0
 
 /* If the number of frames in the WAL reaches the configured threshold, a
  * checkpoint is triggered. */
@@ -1556,4 +1530,4 @@ TEST_CASE(handle, interrupt_bad_request, NULL)
 	return MUNIT_OK;
 }
 
-#endif /* !DQLITE_EXPERIMENTAL */
+#endif

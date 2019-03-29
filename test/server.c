@@ -34,30 +34,10 @@ static struct test_server *test_server__create(const MunitParameter params[])
 
 	logger = test_logger();
 
-#ifdef DQLITE_EXPERIMENTAL
 	s->dir = test_dir_setup();
-#else
-	s->replication = test_replication();
 
-	err = sqlite3_wal_replication_register(s->replication, 0);
-	if (err != 0) {
-		munit_errorf("failed to register wal replication: %d", err);
-	}
-
-	s->vfs = dqlite_vfs_create(s->replication->zName, logger);
-	if (s->vfs == NULL) {
-		munit_error("failed to create volatile VFS: out of memory");
-	}
-
-	sqlite3_vfs_register(s->vfs, 0);
-#endif /* DQLITE_EXPERIMENTAL */
-
-#ifdef DQLITE_EXPERIMENTAL
 	err = dqlite_server_create2(s->dir, 1, "1", &s->service);
 	dqlite_server_bootstrap(s->service);
-#else
-	err = dqlite_server_create(test_cluster(), &s->service);
-#endif /* DQLITE_EXPERIMENTAL */
 	if (err != 0) {
 		munit_errorf("failed to create dqlite server: %d", err);
 	}
@@ -74,12 +54,7 @@ static struct test_server *test_server__create(const MunitParameter params[])
 		munit_errorf("failed to set checkpoint threshold: %d", err);
 	}
 
-#ifdef DQLITE_EXPERIMENTAL
 	name = "dqlite-1";
-#else
-	munit_assert_string_equal(s->vfs->zName, s->replication->zName);
-	name = s->vfs->zName;
-#endif /* DQLITE_EXPERIMENTAL */
 	err = dqlite_server_config(s->service, DQLITE_CONFIG_VFS, (void *)name);
 	if (err != 0) {
 		munit_errorf("failed to set VFS name: %d", err);
@@ -107,14 +82,7 @@ static void test_server__destroy(struct test_server *s)
 	assert(s != NULL);
 	assert(s->service != NULL);
 
-#ifdef DQLITE_EXPERIMENTAL
 	test_dir_tear_down(s->dir);
-#else
-	sqlite3_wal_replication_unregister(s->replication);
-	sqlite3_vfs_unregister(s->vfs);
-
-	dqlite_vfs_destroy(s->vfs);
-#endif
 
 	dqlite_server_destroy(s->service);
 

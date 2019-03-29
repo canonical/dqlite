@@ -5,9 +5,7 @@
 #include <stdio.h>
 
 #include <sqlite3.h>
-#ifdef DQLITE_EXPERIMENTAL
 #include <uv.h>
-#endif /* DQLITE_EXPERIMENTAL */
 
 /* #ifdef __cplusplus */
 /* extern "C" { */
@@ -128,13 +126,11 @@ void dqlite_server_destroy(dqlite_server *s);
  */
 int dqlite_server_config(dqlite_server *s, int op, void *arg);
 
-#ifdef DQLITE_EXPERIMENTAL
 int dqlite_server_create2(const char *dir,
 			  unsigned id,
 			  const char *address,
 			  dqlite_server **out);
 int dqlite_server_bootstrap(dqlite_server *s);
-#endif /* DQLITE_EXPERIMENTAL */
 
 /* Start a dqlite server.
  *
