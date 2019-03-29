@@ -372,9 +372,9 @@ int server__create(dqlite_cluster *cluster,
 	assert(err == 0);
 	err = fsm__init(&s->raft.fsm, s->logger, &s->registry);
 	assert(err == 0);
-	err =
-	    raft_init(&s->raft.raft, &s->raft.io, &s->raft.fsm, s, id, address);
+	err = raft_init(&s->raft.raft, &s->raft.io, &s->raft.fsm, id, address);
 	assert(err == 0);
+	s->raft.raft.data = s;
 	raft_set_election_timeout(&s->raft.raft, 250);
 	err = replication__init(&s->replication, s->logger, &s->raft.raft);
 	assert(err == 0);
