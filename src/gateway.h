@@ -12,10 +12,8 @@
 #include "options.h"
 #include "request.h"
 #include "response.h"
-#ifdef DQLITE_EXPERIMENTAL
 #include "registry.h"
 #include "leader.h"
-#endif /* DQLITE_EXPERIMENTAL */
 
 #define GATEWAY__MAX_REQUESTS 2
 
@@ -77,10 +75,8 @@ struct gateway
 
 	struct db_ *db; /* Open database */
 
-#ifdef DQLITE_EXPERIMENTAL
 	struct registry *registry;
 	struct leader *leader;
-#endif /* DQLITE_EXPERIMENTAL */
 };
 
 void gateway__init(struct gateway *g,

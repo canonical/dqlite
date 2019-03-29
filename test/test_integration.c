@@ -313,7 +313,7 @@ TEST_CASE(exec, large_query, NULL)
 	return MUNIT_OK;
 }
 
-#ifndef DQLITE_EXPERIMENTAL
+#if 0
 
 TEST_CASE(exec, multi_thread, NULL)
 {
@@ -366,4 +366,4 @@ TEST_CASE(exec, multi_thread, NULL)
 	return MUNIT_OK;
 }
 
-#endif /* !DQLITE_EXPERIMENTAL */
+#endif

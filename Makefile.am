@@ -12,8 +12,8 @@ pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = dqlite.pc
 
 AM_CFLAGS = -I$(top_srcdir)/include -Wall
-AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS)
-AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS)
+AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(CO_CFLAGS) $(RAFT_FLAGS)
+AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(CO_LIBS) $(RAFT_LIBS)
 if DEBUG
   AM_CFLAGS += -g -DDQLITE_DEBUG
 else
@@ -25,21 +25,20 @@ endif
 if SANITIZE
   AM_CFLAGS += -fsanitize=address
 endif
-if EXPERIMENTAL
-  AM_CFLAGS += -DDQLITE_EXPERIMENTAL
-  AM_CFLAGS += $(CO_CFLAGS) $(RAFT_FLAGS)
-  AM_LDFLAGS += $(CO_LIBS) $(RAFT_LIBS)
-endif
 
 lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
+  src/command.c \
   src/conn.c \
+  src/db.c \
   src/db_.c \
   src/error.c \
   src/file.c \
   src/format.c \
+  src/fsm.c \
   src/gateway.c \
+  src/leader.c \
   src/lib/fsm.c \
   src/lib/logger.c \
   src/lifecycle.c \
@@ -47,21 +46,14 @@ libdqlite_la_SOURCES = \
   src/metrics.c \
   src/options.c \
   src/queue.c \
+  src/registry.c \
+  src/replication.c \
   src/request.c \
   src/response.c \
   src/server.c \
   src/stmt.c \
+  src/tx.c \
   src/vfs.c
-if EXPERIMENTAL
-  libdqlite_la_SOURCES += \
-  src/command.c \
-  src/db.c \
-  src/fsm.c \
-  src/leader.c \
-  src/registry.c \
-  src/replication.c \
-  src/tx.c
-endif
 include_HEADERS += include/dqlite.h
 
 # Tests
@@ -87,6 +79,7 @@ test_lib_SOURCES = \
   test/server.c
 unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
 unit_test_SOURCES += \
+  test/lib/raft.c \
   test/test_conn.c \
   test/test_db.c \
   test/test_error.c \
@@ -101,20 +94,16 @@ unit_test_SOURCES += \
   test/test_server.c \
   test/test_stmt.c \
   test/test_vfs.c\
+  test/unit/ext/test_co.c \
   test/unit/ext/test_uv.c \
   test/unit/lib/test_registry.c \
   test/unit/lib/test_serialization.c \
-  test/unit/test_gateway.c \
-  test/unit/main.c
-if EXPERIMENTAL
-  unit_test_SOURCES += \
-  test/lib/raft.c \
-  test/unit/ext/test_co.c \
   test/unit/test_command.c \
+  test/unit/test_gateway.c \
   test/unit/test_leader.c \
   test/unit/test_registry.c \
-  test/unit/test_replication.c
-endif
+  test/unit/test_replication.c \
+  test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test
 unit_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=60

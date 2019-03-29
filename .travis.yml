@@ -7,13 +7,11 @@ before_install:
   - eval "${MATRIX_EVAL}"
   - sudo add-apt-repository ppa:dqlite-maintainers/master -y
   - sudo apt-get update -q
-  - sudo apt-get install libsqlite3-dev libuv1-dev -y --allow-unauthenticated
-  - if [ "$AC_FLAGS" = "--enable-experimental" ]; then
-      sudo apt-get install libco-dev libraft-dev -y --allow-unauthenticated; fi
+  - sudo apt-get install libsqlite3-dev libuv1-dev libco-dev libraft-dev -y --allow-unauthenticated
 
 script:
   - autoreconf -i
-  - ./configure --enable-debug --enable-coverage "${AC_FLAGS}"
+  - ./configure --enable-debug --enable-coverage
   - make
   - make ./unit-test
   - ./unit-test
@@ -33,16 +31,6 @@ matrix:
             - lcov
       env:
          - MATRIX_EVAL="CC=gcc-8"
-    - os: linux
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-            - gcc-8
-            - lcov
-      env:
-         - MATRIX_EVAL="CC=gcc-8 AC_FLAGS=--enable-experimental"
 
 after_success:
   - bash <(curl -s https://codecov.io/bash) -g "./test*"
