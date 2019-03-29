@@ -7,10 +7,6 @@
 #include <sqlite3.h>
 #include <uv.h>
 
-/* #ifdef __cplusplus */
-/* extern "C" { */
-/* #endif */
-
 /* Error codes */
 #define DQLITE_ERROR 1
 #define DQLITE_NOMEM 2
@@ -75,7 +71,8 @@
 /* Special value indicating that the result set is complete. */
 #define DQLITE_RESPONSE_ROWS_DONE 0xffffffffffffffff
 
-/* Initialize SQLite global state with values specific to dqlite
+/**
+ * Initialize SQLite global state with values specific to dqlite
  *
  * This API must be called exactly once before any other SQLite or dqlite API
  * call is invoked in a process.
@@ -114,7 +111,10 @@ typedef struct dqlite_cluster
 typedef struct dqlite__server dqlite_server;
 
 /* Allocate and initialize a dqlite server instance. */
-int dqlite_server_create(dqlite_cluster *cluster, dqlite_server **out);
+int dqlite_server_create(const char *dir,
+			 unsigned id,
+			 const char *address,
+			 dqlite_server **out);
 
 /* Destroy and deallocate a dqlite server instance. */
 void dqlite_server_destroy(dqlite_server *s);
@@ -126,10 +126,6 @@ void dqlite_server_destroy(dqlite_server *s);
  */
 int dqlite_server_config(dqlite_server *s, int op, void *arg);
 
-int dqlite_server_create2(const char *dir,
-			  unsigned id,
-			  const char *address,
-			  dqlite_server **out);
 int dqlite_server_bootstrap(dqlite_server *s);
 
 /* Start a dqlite server.
