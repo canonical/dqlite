@@ -1,6 +1,7 @@
 #include <sqlite3.h>
 
 #include "../src/db_.h"
+#include "../src/vfs.h"
 
 #include "replication.h"
 

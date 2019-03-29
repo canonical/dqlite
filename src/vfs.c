@@ -14,6 +14,7 @@
 
 #include "format.h"
 #include "log.h"
+#include "vfs.h"
 
 /* Maximum pathname length supported by this VFS. */
 #define VFS__MAX_PATHNAME 512

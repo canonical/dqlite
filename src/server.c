@@ -19,6 +19,7 @@
 #include "raft.h"
 #include "registry.h"
 #include "replication.h"
+#include "vfs.h"
 
 int dqlite_init(const char **errmsg)
 {

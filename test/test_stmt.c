@@ -7,6 +7,7 @@
 
 #include "../src/lib/byte.h"
 #include "../src/stmt.h"
+#include "../src/vfs.h"
 
 #include "case.h"
 #include "log.h"
