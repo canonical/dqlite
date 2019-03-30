@@ -1,6 +1,6 @@
 #include "../include/dqlite.h"
 
-#include "./lib/serialization.h"
+#include "./lib/serialize.h"
 
 #include "command.h"
 
@@ -13,11 +13,11 @@
 	X(uint8, _unused2, ##__VA_ARGS__) \
 	X(uint32, _unused3, ##__VA_ARGS__)
 
-SERIALIZATION__DEFINE(header, HEADER);
-SERIALIZATION__IMPLEMENT(header, HEADER);
+SERIALIZE__DEFINE(header, HEADER);
+SERIALIZE__IMPLEMENT(header, HEADER);
 
 #define COMMAND__IMPLEMENT(LOWER, UPPER, _) \
-	SERIALIZATION__IMPLEMENT(command_##LOWER, COMMAND__##UPPER);
+	SERIALIZE__IMPLEMENT(command_##LOWER, COMMAND__##UPPER);
 
 COMMAND__TYPES(COMMAND__IMPLEMENT, );
 
