@@ -276,10 +276,11 @@ TEST_CASE(decode, padding, NULL)
 {
 	struct fixture *f = data;
 	void *buf = munit_malloc(16 + 8);
+	const void *cursor = buf;
 	(void)params;
 	strcpy(buf, "John Doh");
 	*(uint64_t *)(buf + 16) = byte__flip64(40);
-	person__decode(buf, &f->person);
+	person__decode(&cursor, &f->person);
 	munit_assert_string_equal(f->person.name, "John Doh");
 	munit_assert_int(f->person.age, ==, 40);
 	free(buf);
@@ -291,10 +292,11 @@ TEST_CASE(decode, no_padding, NULL)
 {
 	struct fixture *f = data;
 	void *buf = munit_malloc(16 + 8);
+	const void *cursor = buf;
 	(void)params;
 	strcpy(buf, "Joe Doh");
 	*(uint64_t *)(buf + 8) = byte__flip64(40);
-	person__decode(buf, &f->person);
+	person__decode(&cursor, &f->person);
 	munit_assert_string_equal(f->person.name, "Joe Doh");
 	munit_assert_int(f->person.age, ==, 40);
 	free(buf);
@@ -310,13 +312,14 @@ TEST_CASE(decode, custom, NULL)
 				 2 +  /* page size  */
 				 4 +  /* unused  */
 				 8 * 2 /* page buffers */);
+	const void *cursor = buf;
 	(void)params;
 	strcpy(buf, "Les miserables");
 	*(uint16_t *)(buf + 16) = byte__flip16(2);
 	*(uint16_t *)(buf + 18) = byte__flip16(8);
 	strcpy(buf + 24, "Fantine");
 	strcpy(buf + 32, "Cosette");
-	book__decode(buf, &f->book);
+	book__decode(&cursor, &f->book);
 
 	munit_assert_string_equal(f->book.title, "Les miserables");
 	munit_assert_int(f->book.pages.n, ==, 2);
