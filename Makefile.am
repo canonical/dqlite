@@ -52,6 +52,7 @@ libdqlite_la_SOURCES = \
   src/response.c \
   src/server.c \
   src/stmt.c \
+  src/tuple.c \
   src/tx.c \
   src/vfs.c
 include_HEADERS += include/dqlite.h
@@ -102,6 +103,7 @@ unit_test_SOURCES += \
   test/unit/test_leader.c \
   test/unit/test_registry.c \
   test/unit/test_replication.c \
+  test/unit/test_tuple.c \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test

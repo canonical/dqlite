@@ -13,6 +13,27 @@
  */
 #define SERIALIZE__WORD_SIZE 8
 
+/* We rely on the size of double to be 64 bit, since that's what is sent over
+ * the wire.
+ *
+ * See https://stackoverflow.com/questions/752309/ensuring-c-doubles-are-64-bits
+ */
+#ifndef __STDC_IEC_559__
+#if __SIZEOF_DOUBLE__ != 8
+#error "Requires IEEE 754 floating point!"
+#endif
+#endif
+#ifdef static_assert
+static_assert(sizeof(double) == sizeof(uint64_t),
+	      "Size of 'double' is not 64 bits");
+#endif
+
+/**
+ * Basic type aliases to used by macro-based processing.
+ */
+typedef const char *text_t;
+typedef double float_t;
+
 /**
  * Cursor to progressively read a buffer.
  */
@@ -190,6 +211,30 @@ DQLITE_INLINE int uint64__decode(struct cursor *cursor, uint64_t *value)
 		return DQLITE_PARSE;
 	}
 	*value = byte__flip64(*(uint64_t *)cursor->p);
+	cursor->p += n;
+	cursor->cap -= n;
+	return 0;
+}
+
+DQLITE_INLINE int int64__decode(struct cursor *cursor, int64_t *value)
+{
+	size_t n = sizeof(int64_t);
+	if (n > cursor->cap) {
+		return DQLITE_PARSE;
+	}
+	*value = byte__flip64(*(int64_t *)cursor->p);
+	cursor->p += n;
+	cursor->cap -= n;
+	return 0;
+}
+
+DQLITE_INLINE int float__decode(struct cursor *cursor, float_t *value)
+{
+	size_t n = sizeof(double);
+	if (n > cursor->cap) {
+		return DQLITE_PARSE;
+	}
+	*(uint64_t *)value = byte__flip64(*(uint64_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
