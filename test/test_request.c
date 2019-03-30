@@ -56,9 +56,11 @@ TEST_CASE(serialize, leader, NULL)
 {
 	struct fixture *f = data;
 	struct request_leader request;
+	void *cursor;
 	(void)params;
 	ALLOC_BUF(request_leader__sizeof(&request));
-	request_leader__encode(&request, f->buf);
+	cursor = f->buf;
+	request_leader__encode(&request, &cursor);
 	request_leader__decode(&request, f->buf);
 	return MUNIT_OK;
 }
