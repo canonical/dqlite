@@ -50,16 +50,16 @@ static int command__encode_frames(const struct command_frames *c,
 	buf->len = header_size;
 
 	/* Fixed size part */
-	buf->len += byte__sizeof_text(c->filename);
-	buf->len += byte__sizeof_uint64(c->tx_id);
-	buf->len += byte__sizeof_uint32(c->truncate);
-	buf->len += byte__sizeof_uint16(c->page_size);
-	buf->len += byte__sizeof_uint8(c->is_commit);
-	buf->len += byte__sizeof_uint8(c->_unused);
-	buf->len += byte__sizeof_uint64(c->n_pages);
+	buf->len += text__sizeof(c->filename);
+	buf->len += uint64__sizeof(c->tx_id);
+	buf->len += uint32__sizeof(c->truncate);
+	buf->len += uint16__sizeof(c->page_size);
+	buf->len += uint8__sizeof(c->is_commit);
+	buf->len += uint8__sizeof(c->_unused);
+	buf->len += uint64__sizeof(c->n_pages);
 
 	/* Dynamic size part */
-	buf->len += byte__sizeof_uint64(0) * c->n_pages;
+	buf->len += uint64__sizeof(0) * c->n_pages;
 	buf->len += c->page_size * c->n_pages;
 	buf->base = raft_malloc(buf->len);
 	if (buf->base == NULL) {
@@ -68,18 +68,18 @@ static int command__encode_frames(const struct command_frames *c,
 	header__encode(&h, buf->base);
 
 	cursor = buf->base + header_size;
-	byte__encode_text(c->filename, &cursor);
-	byte__encode_uint64(c->tx_id, &cursor);
-	byte__encode_uint32(c->truncate, &cursor);
-	byte__encode_uint16(c->page_size, &cursor);
-	byte__encode_uint8(c->is_commit, &cursor);
-	byte__encode_uint8(c->_unused, &cursor);
-	byte__encode_uint64(c->n_pages, &cursor);
+	text__encode(c->filename, &cursor);
+	uint64__encode(c->tx_id, &cursor);
+	uint32__encode(c->truncate, &cursor);
+	uint16__encode(c->page_size, &cursor);
+	uint8__encode(c->is_commit, &cursor);
+	uint8__encode(c->_unused, &cursor);
+	uint64__encode(c->n_pages, &cursor);
 
 	frames = c->data;
 
 	for (i = 0; i < c->n_pages; i++) {
-		byte__encode_uint64(frames[i].pgno, &cursor);
+		uint64__encode(frames[i].pgno, &cursor);
 	}
 	for (i = 0; i < c->n_pages; i++) {
 		memcpy(cursor, frames[i].pBuf, c->page_size);
@@ -125,13 +125,13 @@ static int command__decode_frames(const struct raft_buffer *buf, void **command)
 	}
 
 	cursor = buf->base + header__sizeof(&h);
-	c->filename = byte__decode_text(&cursor);
-	c->tx_id = byte__decode_uint64(&cursor);
-	c->truncate = byte__decode_uint32(&cursor);
-	c->page_size = byte__decode_uint16(&cursor);
-	c->is_commit = byte__decode_uint8(&cursor);
-	c->_unused = byte__decode_uint8(&cursor);
-	c->n_pages = byte__decode_uint64(&cursor);
+	text__decode(&cursor, &c->filename);
+	uint64__decode(&cursor, &c->tx_id);
+	uint32__decode(&cursor, &c->truncate);
+	uint16__decode(&cursor, &c->page_size);
+	uint8__decode(&cursor, &c->is_commit);
+	uint8__decode(&cursor, &c->_unused);
+	uint64__decode(&cursor, &c->n_pages);
 	c->data = cursor;
 
 	*command = c;
@@ -173,7 +173,9 @@ int command_frames__page_numbers(const struct command_frames *c, unsigned *page_
 
 	cursor = c->data;
 	for (i = 0; i < c->n_pages; i++) {
-		(*page_numbers)[i] = byte__decode_uint64(&cursor);
+		uint64_t pgno;
+		uint64__decode(&cursor, &pgno);
+		(*page_numbers)[i] = pgno;
 	}
 
 	return 0;
