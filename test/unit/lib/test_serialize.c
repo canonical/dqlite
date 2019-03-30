@@ -1,8 +1,8 @@
-#include "../../../src/lib/serialization.h"
+#include "../../../src/lib/serialize.h"
 
 #include "../../lib/runner.h"
 
-TEST_MODULE(lib_serialization);
+TEST_MODULE(lib_serialize);
 
 /******************************************************************************
  *
@@ -14,8 +14,8 @@ TEST_MODULE(lib_serialization);
 	X(text, name, ##__VA_ARGS__) \
 	X(uint64, age, ##__VA_ARGS__)
 
-SERIALIZATION__DEFINE(person, PERSON);
-SERIALIZATION__IMPLEMENT(person, PERSON);
+SERIALIZE__DEFINE(person, PERSON);
+SERIALIZE__IMPLEMENT(person, PERSON);
 
 struct fixture
 {

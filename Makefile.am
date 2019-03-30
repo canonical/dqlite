@@ -96,7 +96,7 @@ unit_test_SOURCES += \
   test/unit/ext/test_co.c \
   test/unit/ext/test_uv.c \
   test/unit/lib/test_registry.c \
-  test/unit/lib/test_serialization.c \
+  test/unit/lib/test_serialize.c \
   test/unit/test_command.c \
   test/unit/test_gateway.c \
   test/unit/test_leader.c \
