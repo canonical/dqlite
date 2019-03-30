@@ -135,16 +135,16 @@ DQLITE_INLINE void byte__encode_uint8(uint8_t value, void **cursor)
 	*cursor += sizeof(uint8_t);
 }
 
-DQLITE_INLINE void byte__encode_uint32(uint32_t value, void **cursor)
-{
-	*(uint32_t *)(*cursor) = byte__flip32(value);
-	*cursor += sizeof(uint32_t);
-}
-
 DQLITE_INLINE void byte__encode_uint16(uint16_t value, void **cursor)
 {
 	*(uint16_t *)(*cursor) = byte__flip16(value);
 	*cursor += sizeof(uint16_t);
+}
+
+DQLITE_INLINE void byte__encode_uint32(uint32_t value, void **cursor)
+{
+	*(uint32_t *)(*cursor) = byte__flip32(value);
+	*cursor += sizeof(uint32_t);
 }
 
 DQLITE_INLINE void byte__encode_uint64(uint64_t value, void **cursor)
