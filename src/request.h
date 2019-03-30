@@ -56,19 +56,19 @@ SCHEMA__DEFINE(request_heartbeat, REQUEST__SCHEMA_HEARTBEAT);
 SCHEMA__DEFINE(request_open, REQUEST__SCHEMA_OPEN);
 SCHEMA__DEFINE(request_prepare, REQUEST__SCHEMA_PREPARE);
 SCHEMA__DEFINE(request_query, REQUEST__SCHEMA_QUERY);
-SCHEMA__DEFINE(request_exec, REQUEST__SCHEMA_EXEC);
+SCHEMA__DEFINE(request_exec_, REQUEST__SCHEMA_EXEC);
 SCHEMA__DEFINE(request_finalize, REQUEST__SCHEMA_FINALIZE);
 SCHEMA__DEFINE(request_exec_sql, REQUEST__SCHEMA_EXEC_SQL);
 SCHEMA__DEFINE(request_query_sql, REQUEST__SCHEMA_QUERY_SQL);
 SCHEMA__DEFINE(request_interrupt, REQUEST__SCHEMA_INTERRUPT);
 
 #define REQUEST__SCHEMA_TYPES(X, ...)                                          \
-	X(DQLITE_REQUEST_LEADER, request_leader_, leader, __VA_ARGS__)          \
+	X(DQLITE_REQUEST_LEADER, request_leader_, leader, __VA_ARGS__)         \
 	X(DQLITE_REQUEST_CLIENT, request_client, client, __VA_ARGS__)          \
 	X(DQLITE_REQUEST_HEARTBEAT, request_heartbeat, heartbeat, __VA_ARGS__) \
 	X(DQLITE_REQUEST_OPEN, request_open, open, __VA_ARGS__)                \
 	X(DQLITE_REQUEST_PREPARE, request_prepare, prepare, __VA_ARGS__)       \
-	X(DQLITE_REQUEST_EXEC, request_exec, exec, __VA_ARGS__)                \
+	X(DQLITE_REQUEST_EXEC, request_exec_, exec, __VA_ARGS__)               \
 	X(DQLITE_REQUEST_QUERY, request_query, query, __VA_ARGS__)             \
 	X(DQLITE_REQUEST_FINALIZE, request_finalize, finalize, __VA_ARGS__)    \
 	X(DQLITE_REQUEST_EXEC_SQL, request_exec_sql, exec_sql, __VA_ARGS__)    \
