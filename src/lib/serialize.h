@@ -31,9 +31,9 @@
 		FIELDS(SERIALIZE__DEFINE_FIELD) \
 	}
 
-#define SERIALIZE__DEFINE_METHODS(NAME, FIELDS)               \
-	size_t NAME##__sizeof(const struct NAME *p);          \
-	void NAME##__encode(const struct NAME *p, void *buf); \
+#define SERIALIZE__DEFINE_METHODS(NAME, FIELDS)                   \
+	size_t NAME##__sizeof(const struct NAME *p);              \
+	void NAME##__encode(const struct NAME *p, void **cursor); \
 	void NAME##__decode(void *buf, struct NAME *p)
 
 /* Define a single field in serializable struct.
@@ -45,22 +45,21 @@
 /**
  * Implement the sizeof, encode and decode function of a serializable struct.
  */
-#define SERIALIZE__IMPLEMENT(NAME, FIELDS)                   \
-	size_t NAME##__sizeof(const struct NAME *p)          \
-	{                                                    \
-		size_t size = 0;                             \
-		FIELDS(SERIALIZE__SIZEOF_FIELD, p);          \
-		return size;                                 \
-	}                                                    \
-	void NAME##__encode(const struct NAME *p, void *buf) \
-	{                                                    \
-		void *cursor = buf;                          \
-		FIELDS(SERIALIZE__ENCODE_FIELD, p, &cursor); \
-	}                                                    \
-	void NAME##__decode(void *buf, struct NAME *p)       \
-	{                                                    \
-		const void *cursor = buf;                    \
-		FIELDS(SERIALIZE__DECODE_FIELD, p, &cursor); \
+#define SERIALIZE__IMPLEMENT(NAME, FIELDS)                       \
+	size_t NAME##__sizeof(const struct NAME *p)              \
+	{                                                        \
+		size_t size = 0;                                 \
+		FIELDS(SERIALIZE__SIZEOF_FIELD, p);              \
+		return size;                                     \
+	}                                                        \
+	void NAME##__encode(const struct NAME *p, void **cursor) \
+	{                                                        \
+		FIELDS(SERIALIZE__ENCODE_FIELD, p, cursor);      \
+	}                                                        \
+	void NAME##__decode(void *buf, struct NAME *p)           \
+	{                                                        \
+		const void *cursor = buf;                        \
+		FIELDS(SERIALIZE__DECODE_FIELD, p, &cursor);     \
 	}
 
 #define SERIALIZE__SIZEOF_FIELD(KIND, MEMBER, P) \
