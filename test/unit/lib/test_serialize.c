@@ -28,12 +28,11 @@ struct pages
 	uint16_t n;    /* Number of pages */
 	uint16_t size; /* Size of each page */
 	uint32_t __unused__;
-	void **bufs;   /* Array of page buffers */
+	void **bufs; /* Array of page buffers */
 };
 
-static struct pages *create_pages(unsigned n, unsigned size)
+static void create_pages(unsigned n, unsigned size, struct pages *pages)
 {
-	struct pages *pages = munit_malloc(sizeof *pages);
 	unsigned i;
 	pages->n = n;
 	pages->size = size;
@@ -41,7 +40,6 @@ static struct pages *create_pages(unsigned n, unsigned size)
 	for (i = 0; i < pages->n; i++) {
 		pages->bufs[i] = munit_malloc(size);
 	}
-	return pages;
 }
 
 static void destroy_pages(struct pages *pages)
@@ -51,39 +49,33 @@ static void destroy_pages(struct pages *pages)
 		free(pages->bufs[i]);
 	}
 	free(pages->bufs);
-	free(pages);
 }
 
 /* Opaque pointer to a struct pages object. */
-typedef struct pages *pages_t;
+typedef struct pages pages_t;
 
 static size_t pages__sizeof(pages_t pages)
 {
-	size_t s = uint16__sizeof(0) /* n */ +
-		   uint16__sizeof(0) /* size */ +
-		   uint32__sizeof(0) /* unused */ +
-		   pages->size * pages->n /* buf */;
-	return s;
+	return uint16__sizeof(pages.n) + uint16__sizeof(pages.size) +
+	       uint32__sizeof(pages.__unused__) +
+	       pages.size * pages.n /* bufs */;
 }
 
-static void pages__encode(pages_t value, void **cursor)
+static void pages__encode(pages_t pages, void **cursor)
 {
-	struct pages *pages = value;
 	unsigned i;
-	uint16__encode(pages->n, cursor);
-	uint16__encode(pages->size, cursor);
+	uint16__encode(pages.n, cursor);
+	uint16__encode(pages.size, cursor);
 	uint32__encode(0, cursor);
-	for (i = 0; i < pages->n; i++) {
-		memcpy(*cursor, pages->bufs[i], pages->size);
-		*cursor += pages->size;
+	for (i = 0; i < pages.n; i++) {
+		memcpy(*cursor, pages.bufs[i], pages.size);
+		*cursor += pages.size;
 	}
 }
 
-static void pages__decode(const void **cursor, pages_t *value)
+static void pages__decode(const void **cursor, pages_t *pages)
 {
-	struct pages *pages;
 	unsigned i;
-	pages = munit_malloc(sizeof *pages);
 	uint16__decode(cursor, &pages->n);
 	uint16__decode(cursor, &pages->size);
 	uint32__decode(cursor, &pages->__unused__);
@@ -92,7 +84,6 @@ static void pages__decode(const void **cursor, pages_t *value)
 		pages->bufs[i] = (void *)*cursor;
 		*cursor += pages->size;
 	}
-	*value = pages;
 }
 
 #define BOOK(X, ...)                  \
@@ -237,9 +228,9 @@ TEST_CASE(encode, custom, NULL)
 	void *buf;
 	(void)params;
 	f->book.title = "Les miserables";
-	f->book.pages = create_pages(2, 8);
-	strcpy(f->book.pages->bufs[0], "Fantine");
-	strcpy(f->book.pages->bufs[1], "Cosette");
+	create_pages(2, 8, &f->book.pages);
+	strcpy(f->book.pages.bufs[0], "Fantine");
+	strcpy(f->book.pages.bufs[1], "Cosette");
 
 	size = book__sizeof(&f->book);
 	munit_assert_int(size, ==,
@@ -259,7 +250,7 @@ TEST_CASE(encode, custom, NULL)
 	munit_assert_string_equal(buf + 32, "Cosette");
 
 	free(buf);
-	destroy_pages(f->book.pages);
+	destroy_pages(&f->book.pages);
 
 	return MUNIT_OK;
 }
@@ -322,13 +313,12 @@ TEST_CASE(decode, custom, NULL)
 	book__decode(buf, &f->book);
 
 	munit_assert_string_equal(f->book.title, "Les miserables");
-	munit_assert_int(f->book.pages->n, ==, 2);
-	munit_assert_int(f->book.pages->size, ==, 8);
-	munit_assert_string_equal(f->book.pages->bufs[0], "Fantine");
-	munit_assert_string_equal(f->book.pages->bufs[1], "Cosette");
+	munit_assert_int(f->book.pages.n, ==, 2);
+	munit_assert_int(f->book.pages.size, ==, 8);
+	munit_assert_string_equal(f->book.pages.bufs[0], "Fantine");
+	munit_assert_string_equal(f->book.pages.bufs[1], "Cosette");
 
-	free(f->book.pages->bufs);
-	free(f->book.pages);
+	free(f->book.pages.bufs);
 
 	free(buf);
 	return MUNIT_OK;
