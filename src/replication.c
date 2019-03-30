@@ -215,11 +215,11 @@ int replication__frames(sqlite3_wal_replication *replication,
 
 	c.filename = leader->db->filename;
 	c.tx_id = tx->id;
-	c.page_size = page_size;
 	c.truncate = truncate;
 	c.is_commit = is_commit;
-	c.n_pages = n_frames;
-	c.data = frames;
+	c.frames.n_pages = n_frames;
+	c.frames.page_size = page_size;
+	c.frames.data = frames;
 
 	rc = apply(r, leader, COMMAND_FRAMES, &c);
 	if (rc != 0) {
