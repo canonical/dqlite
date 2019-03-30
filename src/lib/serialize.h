@@ -64,12 +64,99 @@
 	}
 
 #define SERIALIZE__SIZEOF_FIELD(KIND, MEMBER, P) \
-	size += byte__sizeof_##KIND(P->MEMBER);
+	size += KIND##__sizeof(P->MEMBER);
 
 #define SERIALIZE__ENCODE_FIELD(KIND, MEMBER, P, CURSOR) \
-	byte__encode_##KIND(P->MEMBER, CURSOR);
+	KIND##__encode(P->MEMBER, CURSOR);
 
 #define SERIALIZE__DECODE_FIELD(KIND, MEMBER, P, CURSOR) \
-	P->MEMBER = byte__decode_##KIND(CURSOR);
+	KIND##__decode(CURSOR, &((P)->MEMBER));
+
+DQLITE_INLINE size_t uint8__sizeof(uint8_t value)
+{
+	return sizeof(value);
+}
+
+DQLITE_INLINE size_t uint16__sizeof(uint16_t value)
+{
+	return sizeof(value);
+}
+
+DQLITE_INLINE size_t uint32__sizeof(uint32_t value)
+{
+	return sizeof(value);
+}
+
+DQLITE_INLINE size_t uint64__sizeof(uint64_t value)
+{
+	return sizeof(value);
+}
+
+DQLITE_INLINE size_t text__sizeof(text_t value)
+{
+	return byte__pad64(strlen(value) + 1);
+}
+
+DQLITE_INLINE void uint8__encode(uint8_t value, void **cursor)
+{
+	*(uint8_t *)(*cursor) = value;
+	*cursor += sizeof(uint8_t);
+}
+
+DQLITE_INLINE void uint16__encode(uint16_t value, void **cursor)
+{
+	*(uint16_t *)(*cursor) = byte__flip16(value);
+	*cursor += sizeof(uint16_t);
+}
+
+DQLITE_INLINE void uint32__encode(uint32_t value, void **cursor)
+{
+	*(uint32_t *)(*cursor) = byte__flip32(value);
+	*cursor += sizeof(uint32_t);
+}
+
+DQLITE_INLINE void uint64__encode(uint64_t value, void **cursor)
+{
+	*(uint64_t *)(*cursor) = byte__flip64(value);
+	*cursor += sizeof(uint64_t);
+}
+
+DQLITE_INLINE void text__encode(text_t value, void **cursor)
+{
+	size_t len = byte__pad64(strlen(value) + 1);
+	memset(*cursor, 0, len);
+	strcpy(*cursor, value);
+	*cursor += len;
+}
+
+DQLITE_INLINE void uint8__decode(const void **cursor, uint8_t *value)
+{
+	*value = *(uint8_t *)(*cursor);
+	*cursor += sizeof(uint8_t);
+}
+
+DQLITE_INLINE void uint16__decode(const void **cursor, uint16_t *value)
+{
+	*value = byte__flip16(*(uint16_t *)(*cursor));
+	*cursor += sizeof(uint16_t);
+}
+
+DQLITE_INLINE void uint32__decode(const void **cursor, uint32_t *value)
+{
+	*value = byte__flip32(*(uint32_t *)(*cursor));
+	*cursor += sizeof(uint32_t);
+}
+
+DQLITE_INLINE void uint64__decode(const void **cursor, uint64_t *value)
+{
+	*value = byte__flip64(*(uint64_t *)(*cursor));
+	*cursor += sizeof(uint64_t);
+}
+
+DQLITE_INLINE void text__decode(const void **cursor, text_t *value)
+{
+	*value = *cursor;
+	*cursor += byte__pad64(strlen(*value) + 1);
+}
 
 #endif /* ENCODING_H_ */
