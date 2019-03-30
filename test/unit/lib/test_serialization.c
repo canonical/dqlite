@@ -6,7 +6,7 @@ TEST_MODULE(lib_serialization);
 
 /******************************************************************************
  *
- * Helpers
+ * Fixture
  *
  ******************************************************************************/
 
@@ -74,7 +74,7 @@ TEST_CASE(sizeof, padding, NULL)
 	f->person.name = "John Doh";
 	f->person.age = 40;
 	size = person__sizeof(&f->person);
-	munit_assert_int(size, ==, 8 + 16);
+	munit_assert_int(size, ==, 16 /* name */ + 8 /* age */);
 	return MUNIT_OK;
 }
 
@@ -87,7 +87,7 @@ TEST_CASE(sizeof, no_padding, NULL)
 	f->person.name = "Joe Doh";
 	f->person.age = 40;
 	size = person__sizeof(&f->person);
-	munit_assert_int(size, ==, 8 + 8);
+	munit_assert_int(size, ==, 8 /* name */ + 8 /* age */);
 	return MUNIT_OK;
 }
 
