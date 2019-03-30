@@ -16,13 +16,13 @@
 SERIALIZE__DEFINE(header, HEADER);
 SERIALIZE__IMPLEMENT(header, HEADER);
 
-static size_t frames__sizeof(frames_t frames)
+static size_t frames__sizeof(const frames_t *frames)
 {
-	size_t s = uint32__sizeof(frames.n_pages) +
-		   uint16__sizeof(frames.page_size) +
-		   uint16__sizeof(frames.__unused__) +
-		   uint64__sizeof(0) * frames.n_pages + /* Page numbers */
-		   frames.page_size * frames.n_pages;   /* Page data */
+	size_t s = uint32__sizeof(&frames->n_pages) +
+		   uint16__sizeof(&frames->page_size) +
+		   uint16__sizeof(&frames->__unused__) +
+		   sizeof(uint64_t) * frames->n_pages + /* Page numbers */
+		   frames->page_size * frames->n_pages; /* Page data */
 	return s;
 }
 

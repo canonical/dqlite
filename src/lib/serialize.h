@@ -62,7 +62,7 @@
 	}
 
 #define SERIALIZE__SIZEOF_FIELD(KIND, MEMBER, P) \
-	size += KIND##__sizeof(P->MEMBER);
+	size += KIND##__sizeof(&((P)->MEMBER));
 
 #define SERIALIZE__ENCODE_FIELD(KIND, MEMBER, P, CURSOR) \
 	KIND##__encode(P->MEMBER, CURSOR);
@@ -70,29 +70,33 @@
 #define SERIALIZE__DECODE_FIELD(KIND, MEMBER, P, CURSOR) \
 	KIND##__decode(CURSOR, &((P)->MEMBER));
 
-DQLITE_INLINE size_t uint8__sizeof(uint8_t value)
+DQLITE_INLINE size_t uint8__sizeof(const uint8_t *value)
 {
-	return sizeof(value);
+	(void)value;
+	return sizeof(uint8_t);
 }
 
-DQLITE_INLINE size_t uint16__sizeof(uint16_t value)
+DQLITE_INLINE size_t uint16__sizeof(const uint16_t *value)
 {
-	return sizeof(value);
+	(void)value;
+	return sizeof(uint16_t);
 }
 
-DQLITE_INLINE size_t uint32__sizeof(uint32_t value)
+DQLITE_INLINE size_t uint32__sizeof(const uint32_t *value)
 {
-	return sizeof(value);
+	(void)value;
+	return sizeof(uint32_t);
 }
 
-DQLITE_INLINE size_t uint64__sizeof(uint64_t value)
+DQLITE_INLINE size_t uint64__sizeof(const uint64_t *value)
 {
-	return sizeof(value);
+	(void)value;
+	return sizeof(uint64_t);
 }
 
-DQLITE_INLINE size_t text__sizeof(text_t value)
+DQLITE_INLINE size_t text__sizeof(const text_t *value)
 {
-	return byte__pad64(strlen(value) + 1);
+	return byte__pad64(strlen(*value) + 1);
 }
 
 DQLITE_INLINE void uint8__encode(uint8_t value, void **cursor)
