@@ -56,13 +56,16 @@ TEST_CASE(serialize, leader, NULL)
 {
 	struct fixture *f = data;
 	struct request_leader request;
-	void *cursor;
+	void *cursor1;
+	struct cursor cursor2;
+	size_t n = request_leader__sizeof(&request);
 	(void)params;
-	ALLOC_BUF(request_leader__sizeof(&request));
-	cursor = f->buf;
-	request_leader__encode(&request, &cursor);
-	cursor = f->buf;
-	request_leader__decode((const void**)&cursor, &request);
+	ALLOC_BUF(n);
+	cursor1 = f->buf;
+	request_leader__encode(&request, &cursor1);
+	cursor2.p = f->buf;
+	cursor2.cap = n;
+	request_leader__decode(&cursor2, &request);
 	return MUNIT_OK;
 }
 
@@ -76,7 +79,8 @@ TEST_SUITE(decode);
 TEST_SETUP(decode, setup);
 TEST_TEAR_DOWN(decode, tear_down);
 
-TEST_CASE(decode, leader, NULL) {
+TEST_CASE(decode, leader, NULL)
+{
 	(void)data;
 	(void)params;
 	return MUNIT_OK;

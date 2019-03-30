@@ -44,12 +44,23 @@ static void frames__encode(const frames_t *frames, void **cursor)
 	}
 }
 
-static void frames__decode(const void **cursor, frames_t *frames)
+static int frames__decode(struct cursor *cursor, frames_t *frames)
 {
-	uint32__decode(cursor, &frames->n_pages);
-	uint16__decode(cursor, &frames->page_size);
-	uint16__decode(cursor, &frames->__unused__);
-	frames->data = *cursor;
+	int rc;
+	rc = uint32__decode(cursor, &frames->n_pages);
+	if (rc != 0) {
+		return rc;
+	}
+	rc = uint16__decode(cursor, &frames->page_size);
+	if (rc != 0) {
+		return rc;
+	}
+	rc = uint16__decode(cursor, &frames->__unused__);
+	if (rc != 0) {
+		return rc;
+	}
+	frames->data = cursor->p;
+	return 0;
 }
 
 #define COMMAND__IMPLEMENT(LOWER, UPPER, _) \
@@ -89,32 +100,46 @@ int command__encode(int type, const void *command, struct raft_buffer *buf)
 		if (*command == NULL) {                                 \
 			return DQLITE_NOMEM;                            \
 		}                                                       \
-		command_##LOWER##__decode(&cursor, *command);           \
+		rc = command_##LOWER##__decode(&cursor, *command);      \
 		break;
 
 int command__decode(const struct raft_buffer *buf, int *type, void **command)
 {
 	struct header h;
-	const void *cursor = buf->base;
-	int rc = 0;
-	header__decode(&cursor, &h);
+	struct cursor cursor;
+	int rc;
+
+	cursor.p = buf->base;
+	cursor.cap = buf->len;
+
+	rc = header__decode(&cursor, &h);
+	if (rc != 0) {
+		return rc;
+	}
 	if (h.format != FORMAT) {
 		return DQLITE_PROTO;
 	}
 	switch (h.type) {
 		COMMAND__TYPES(DECODE, )
 		default:
-			return DQLITE_PROTO;
+			rc = DQLITE_PROTO;
+			break;
 	};
+	if (rc != 0) {
+		return rc;
+	}
 	*type = h.type;
-	return rc;
+	return 0;
 }
 
 int command_frames__page_numbers(const struct command_frames *c,
 				 unsigned *page_numbers[])
 {
 	unsigned i;
-	const void *cursor;
+	struct cursor cursor;
+
+	cursor.p = c->frames.data;
+	cursor.cap = sizeof(uint64_t) * c->frames.n_pages;
 
 	*page_numbers =
 	    sqlite3_malloc(sizeof **page_numbers * c->frames.n_pages);
@@ -122,7 +147,6 @@ int command_frames__page_numbers(const struct command_frames *c,
 		return DQLITE_NOMEM;
 	}
 
-	cursor = c->frames.data;
 	for (i = 0; i < c->frames.n_pages; i++) {
 		uint64_t pgno;
 		uint64__decode(&cursor, &pgno);

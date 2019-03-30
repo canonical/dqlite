@@ -4,12 +4,23 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "../include/dqlite.h"
+
 #include "byte.h"
 
 /**
  * The size in bytes of a single serialized word.
  */
 #define SERIALIZE__WORD_SIZE 8
+
+/**
+ * Cursor to progressively read a buffer.
+ */
+struct cursor
+{
+	const void *p; /* Next byte to read */
+	size_t cap;    /* Number of bytes left in the buffer */
+};
 
 /**
  * Define a serializable struct.
@@ -34,7 +45,7 @@
 #define SERIALIZE__DEFINE_METHODS(NAME, FIELDS)                   \
 	size_t NAME##__sizeof(const struct NAME *p);              \
 	void NAME##__encode(const struct NAME *p, void **cursor); \
-	void NAME##__decode(const void **cursor, struct NAME *p)
+	int NAME##__decode(struct cursor *cursor, struct NAME *p)
 
 /* Define a single field in serializable struct.
  *
@@ -45,20 +56,22 @@
 /**
  * Implement the sizeof, encode and decode function of a serializable struct.
  */
-#define SERIALIZE__IMPLEMENT(NAME, FIELDS)                       \
-	size_t NAME##__sizeof(const struct NAME *p)              \
-	{                                                        \
-		size_t size = 0;                                 \
-		FIELDS(SERIALIZE__SIZEOF_FIELD, p);              \
-		return size;                                     \
-	}                                                        \
-	void NAME##__encode(const struct NAME *p, void **cursor) \
-	{                                                        \
-		FIELDS(SERIALIZE__ENCODE_FIELD, p, cursor);      \
-	}                                                        \
-	void NAME##__decode(const void **cursor, struct NAME *p) \
-	{                                                        \
-		FIELDS(SERIALIZE__DECODE_FIELD, p, cursor);      \
+#define SERIALIZE__IMPLEMENT(NAME, FIELDS)                        \
+	size_t NAME##__sizeof(const struct NAME *p)               \
+	{                                                         \
+		size_t size = 0;                                  \
+		FIELDS(SERIALIZE__SIZEOF_FIELD, p);               \
+		return size;                                      \
+	}                                                         \
+	void NAME##__encode(const struct NAME *p, void **cursor)  \
+	{                                                         \
+		FIELDS(SERIALIZE__ENCODE_FIELD, p, cursor);       \
+	}                                                         \
+	int NAME##__decode(struct cursor *cursor, struct NAME *p) \
+	{                                                         \
+		int rc;                                           \
+		FIELDS(SERIALIZE__DECODE_FIELD, p, cursor);       \
+		return 0;                                         \
 	}
 
 #define SERIALIZE__SIZEOF_FIELD(KIND, MEMBER, P) \
@@ -68,7 +81,10 @@
 	KIND##__encode(&((P)->MEMBER), CURSOR);
 
 #define SERIALIZE__DECODE_FIELD(KIND, MEMBER, P, CURSOR) \
-	KIND##__decode(CURSOR, &((P)->MEMBER));
+	rc = KIND##__decode(CURSOR, &((P)->MEMBER));     \
+	if (rc != 0) {                                   \
+		return rc;                               \
+	}
 
 DQLITE_INLINE size_t uint8__sizeof(const uint8_t *value)
 {
@@ -131,34 +147,67 @@ DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
 	*cursor += len;
 }
 
-DQLITE_INLINE void uint8__decode(const void **cursor, uint8_t *value)
+DQLITE_INLINE int uint8__decode(struct cursor *cursor, uint8_t *value)
 {
-	*value = *(uint8_t *)(*cursor);
-	*cursor += sizeof(uint8_t);
+	size_t n = sizeof(uint8_t);
+	if (n > cursor->cap) {
+		return DQLITE_PARSE;
+	}
+	*value = *(uint8_t *)cursor->p;
+	cursor->p += n;
+	cursor->cap -= n;
+	return 0;
 }
 
-DQLITE_INLINE void uint16__decode(const void **cursor, uint16_t *value)
+DQLITE_INLINE int uint16__decode(struct cursor *cursor, uint16_t *value)
 {
-	*value = byte__flip16(*(uint16_t *)(*cursor));
-	*cursor += sizeof(uint16_t);
+	size_t n = sizeof(uint16_t);
+	if (n > cursor->cap) {
+		return DQLITE_PARSE;
+	}
+	*value = byte__flip16(*(uint16_t *)cursor->p);
+	cursor->p += n;
+	cursor->cap -= n;
+	return 0;
 }
 
-DQLITE_INLINE void uint32__decode(const void **cursor, uint32_t *value)
+DQLITE_INLINE int uint32__decode(struct cursor *cursor, uint32_t *value)
 {
-	*value = byte__flip32(*(uint32_t *)(*cursor));
-	*cursor += sizeof(uint32_t);
+	size_t n = sizeof(uint32_t);
+	if (n > cursor->cap) {
+		return DQLITE_PARSE;
+	}
+	*value = byte__flip32(*(uint32_t *)cursor->p);
+	cursor->p += n;
+	cursor->cap -= n;
+	return 0;
 }
 
-DQLITE_INLINE void uint64__decode(const void **cursor, uint64_t *value)
+DQLITE_INLINE int uint64__decode(struct cursor *cursor, uint64_t *value)
 {
-	*value = byte__flip64(*(uint64_t *)(*cursor));
-	*cursor += sizeof(uint64_t);
+	size_t n = sizeof(uint64_t);
+	if (n > cursor->cap) {
+		return DQLITE_PARSE;
+	}
+	*value = byte__flip64(*(uint64_t *)cursor->p);
+	cursor->p += n;
+	cursor->cap -= n;
+	return 0;
 }
 
-DQLITE_INLINE void text__decode(const void **cursor, text_t *value)
+DQLITE_INLINE int text__decode(struct cursor *cursor, text_t *value)
 {
-	*value = *cursor;
-	*cursor += byte__pad64(strlen(*value) + 1);
+	/* Find the terminating null byte of the next string, if any. */
+	size_t len = strnlen(cursor->p, cursor->cap);
+	size_t n;
+	if (len == cursor->cap) {
+		return DQLITE_PARSE;
+	}
+	*value = cursor->p;
+	n = byte__pad64(strlen(*value) + 1);
+	cursor->p += n;
+	cursor->cap -= n;
+	return 0;
 }
 
 #endif /* ENCODING_H_ */
