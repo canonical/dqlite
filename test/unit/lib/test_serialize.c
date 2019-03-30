@@ -25,8 +25,9 @@ SERIALIZE__IMPLEMENT(person, PERSON);
 
 struct pages
 {
-	unsigned n;    /* Number of pages */
-	unsigned size; /* Size of each page */
+	uint16_t n;    /* Number of pages */
+	uint16_t size; /* Size of each page */
+	uint32_t __unused__;
 	void **bufs;   /* Array of page buffers */
 };
 
@@ -56,42 +57,42 @@ static void destroy_pages(struct pages *pages)
 /* Opaque pointer to a struct pages object. */
 typedef struct pages *pages_t;
 
-static size_t byte__sizeof_pages(pages_t pages)
+static size_t pages__sizeof(pages_t pages)
 {
-	size_t s = byte__sizeof_uint16(0) /* n */ +
-		   byte__sizeof_uint16(0) /* size */ +
-		   byte__sizeof_uint32(0) /* unused */ +
+	size_t s = uint16__sizeof(0) /* n */ +
+		   uint16__sizeof(0) /* size */ +
+		   uint32__sizeof(0) /* unused */ +
 		   pages->size * pages->n /* buf */;
 	return s;
 }
 
-static void byte__encode_pages(pages_t value, void **cursor)
+static void pages__encode(pages_t value, void **cursor)
 {
 	struct pages *pages = value;
 	unsigned i;
-	byte__encode_uint16(pages->n, cursor);
-	byte__encode_uint16(pages->size, cursor);
-	byte__encode_uint32(0, cursor);
+	uint16__encode(pages->n, cursor);
+	uint16__encode(pages->size, cursor);
+	uint32__encode(0, cursor);
 	for (i = 0; i < pages->n; i++) {
 		memcpy(*cursor, pages->bufs[i], pages->size);
 		*cursor += pages->size;
 	}
 }
 
-static pages_t byte__decode_pages(const void **cursor)
+static void pages__decode(const void **cursor, pages_t *value)
 {
 	struct pages *pages;
 	unsigned i;
 	pages = munit_malloc(sizeof *pages);
-	pages->n = byte__decode_uint16(cursor);
-	pages->size = byte__decode_uint16(cursor);
-	byte__decode_uint32(cursor); /* Unused */
+	uint16__decode(cursor, &pages->n);
+	uint16__decode(cursor, &pages->size);
+	uint32__decode(cursor, &pages->__unused__);
 	pages->bufs = munit_malloc(pages->n * sizeof *pages->bufs);
 	for (i = 0; i < pages->n; i++) {
 		pages->bufs[i] = (void *)*cursor;
 		*cursor += pages->size;
 	}
-	return pages;
+	*value = pages;
 }
 
 #define BOOK(X, ...)                  \
