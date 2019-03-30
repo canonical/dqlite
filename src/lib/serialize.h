@@ -65,7 +65,7 @@
 	size += KIND##__sizeof(&((P)->MEMBER));
 
 #define SERIALIZE__ENCODE_FIELD(KIND, MEMBER, P, CURSOR) \
-	KIND##__encode(P->MEMBER, CURSOR);
+	KIND##__encode(&((P)->MEMBER), CURSOR);
 
 #define SERIALIZE__DECODE_FIELD(KIND, MEMBER, P, CURSOR) \
 	KIND##__decode(CURSOR, &((P)->MEMBER));
@@ -99,35 +99,35 @@ DQLITE_INLINE size_t text__sizeof(const text_t *value)
 	return byte__pad64(strlen(*value) + 1);
 }
 
-DQLITE_INLINE void uint8__encode(uint8_t value, void **cursor)
+DQLITE_INLINE void uint8__encode(const uint8_t *value, void **cursor)
 {
-	*(uint8_t *)(*cursor) = value;
+	*(uint8_t *)(*cursor) = *value;
 	*cursor += sizeof(uint8_t);
 }
 
-DQLITE_INLINE void uint16__encode(uint16_t value, void **cursor)
+DQLITE_INLINE void uint16__encode(const uint16_t *value, void **cursor)
 {
-	*(uint16_t *)(*cursor) = byte__flip16(value);
+	*(uint16_t *)(*cursor) = byte__flip16(*value);
 	*cursor += sizeof(uint16_t);
 }
 
-DQLITE_INLINE void uint32__encode(uint32_t value, void **cursor)
+DQLITE_INLINE void uint32__encode(const uint32_t *value, void **cursor)
 {
-	*(uint32_t *)(*cursor) = byte__flip32(value);
+	*(uint32_t *)(*cursor) = byte__flip32(*value);
 	*cursor += sizeof(uint32_t);
 }
 
-DQLITE_INLINE void uint64__encode(uint64_t value, void **cursor)
+DQLITE_INLINE void uint64__encode(const uint64_t *value, void **cursor)
 {
-	*(uint64_t *)(*cursor) = byte__flip64(value);
+	*(uint64_t *)(*cursor) = byte__flip64(*value);
 	*cursor += sizeof(uint64_t);
 }
 
-DQLITE_INLINE void text__encode(text_t value, void **cursor)
+DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
 {
-	size_t len = byte__pad64(strlen(value) + 1);
+	size_t len = byte__pad64(strlen(*value) + 1);
 	memset(*cursor, 0, len);
-	strcpy(*cursor, value);
+	strcpy(*cursor, *value);
 	*cursor += len;
 }
 
