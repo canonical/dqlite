@@ -61,7 +61,8 @@ TEST_CASE(serialize, leader, NULL)
 	ALLOC_BUF(request_leader__sizeof(&request));
 	cursor = f->buf;
 	request_leader__encode(&request, &cursor);
-	request_leader__decode(&request, f->buf);
+	cursor = f->buf;
+	request_leader__decode((const void**)&cursor, &request);
 	return MUNIT_OK;
 }
 
