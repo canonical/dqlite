@@ -74,7 +74,7 @@ static void pages__encode(const pages_t *pages, void **cursor)
 	}
 }
 
-static void pages__decode(const void **cursor, pages_t *pages)
+static int pages__decode(struct cursor *cursor, pages_t *pages)
 {
 	unsigned i;
 	uint16__decode(cursor, &pages->n);
@@ -82,9 +82,11 @@ static void pages__decode(const void **cursor, pages_t *pages)
 	uint32__decode(cursor, &pages->__unused__);
 	pages->bufs = munit_malloc(pages->n * sizeof *pages->bufs);
 	for (i = 0; i < pages->n; i++) {
-		pages->bufs[i] = (void *)*cursor;
-		*cursor += pages->size;
+		pages->bufs[i] = (void *)cursor->p;
+		cursor->p += pages->size;
+		cursor->cap -= pages->size;
 	}
+	return 0;
 }
 
 #define BOOK(X, ...)                     \
@@ -300,7 +302,7 @@ TEST_CASE(decode, padding, NULL)
 {
 	struct fixture *f = data;
 	void *buf = munit_malloc(16 + 8);
-	const void *cursor = buf;
+	struct cursor cursor = {buf, 16 + 8};
 	(void)params;
 	strcpy(buf, "John Doh");
 	*(uint64_t *)(buf + 16) = byte__flip64(40);
@@ -316,7 +318,7 @@ TEST_CASE(decode, no_padding, NULL)
 {
 	struct fixture *f = data;
 	void *buf = munit_malloc(16 + 8);
-	const void *cursor = buf;
+	struct cursor cursor = {buf, 16 + 8};
 	(void)params;
 	strcpy(buf, "Joe Doh");
 	*(uint64_t *)(buf + 8) = byte__flip64(40);
@@ -327,44 +329,60 @@ TEST_CASE(decode, no_padding, NULL)
 	return MUNIT_OK;
 }
 
+/* The given buffer has not enough data. */
+TEST_CASE(decode, short, NULL)
+{
+	struct fixture *f = data;
+	void *buf = munit_malloc(16);
+	struct cursor cursor = {buf, 16};
+	int rc;
+	(void)params;
+	strcpy(buf, "John Doh");
+	rc = person__decode(&cursor, &f->person);
+	munit_assert_int(rc, ==, DQLITE_PARSE);
+	free(buf);
+	return MUNIT_OK;
+}
+
 /* Decode a custom complex field. */
 TEST_CASE(decode, custom, NULL)
 {
 	struct fixture *f = data;
-	void *buf = munit_malloc(16 + /* title */
-				 16 + /* author name */
-				 8 +  /* author age */
-				 2 +  /* n pages  */
-				 2 +  /* page size  */
-				 4 +  /* unused  */
-				 8 * 2 /* page buffers */);
-	void *cursor = buf;
+	size_t len = 16 + /* title */
+		     16 + /* author name */
+		     8 +  /* author age */
+		     2 +  /* n pages  */
+		     2 +  /* page size  */
+		     4 +  /* unused  */
+		     8 * 2 /* page buffers */;
+	void *buf = munit_malloc(len);
+	void *p = buf;
+	struct cursor cursor = {buf, len};
 	(void)params;
 
-	strcpy(cursor, "Les miserables");
-	cursor += 16;
+	strcpy(p, "Les miserables");
+	p += 16;
 
-	strcpy(cursor, "Victor Hugo");
-	cursor += 16;
+	strcpy(p, "Victor Hugo");
+	p += 16;
 
-	*(uint64_t *)cursor = byte__flip64(40);
-	cursor += 8;
+	*(uint64_t *)p = byte__flip64(40);
+	p += 8;
 
-	*(uint16_t *)cursor = byte__flip16(2);
-	cursor += 2;
+	*(uint16_t *)p = byte__flip16(2);
+	p += 2;
 
-	*(uint16_t *)cursor = byte__flip16(8);
-	cursor += 2;
+	*(uint16_t *)p = byte__flip16(8);
+	p += 2;
 
-	cursor += 4; /* Unused */
+	p += 4; /* Unused */
 
-	strcpy(cursor, "Fantine");
-	cursor += 8;
+	strcpy(p, "Fantine");
+	p += 8;
 
-	strcpy(cursor, "Cosette");
+	strcpy(p, "Cosette");
 
-	cursor = buf;
-	book__decode((const void **)&cursor, &f->book);
+	book__decode(&cursor, &f->book);
 
 	munit_assert_string_equal(f->book.title, "Les miserables");
 	munit_assert_string_equal(f->book.author.name, "Victor Hugo");
