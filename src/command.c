@@ -56,24 +56,26 @@ static void frames__decode(const void **cursor, frames_t *frames)
 
 COMMAND__TYPES(COMMAND__IMPLEMENT, );
 
-#define ENCODE(LOWER, UPPER, _)                                              \
-	case COMMAND_##UPPER:                                                \
-		h.type = COMMAND_##UPPER;                                    \
-		header_size = header__sizeof(&h);                            \
-		buf->len = header_size;                                      \
-		buf->len += command_##LOWER##__sizeof(command);              \
-		buf->base = raft_malloc(buf->len);                           \
-		if (buf->base == NULL) {                                     \
-			return DQLITE_NOMEM;                                 \
-		}                                                            \
-		header__encode(&h, buf->base);                               \
-		command_##LOWER##__encode(command, buf->base + header_size); \
+#define ENCODE(LOWER, UPPER, _)                                 \
+	case COMMAND_##UPPER:                                   \
+		h.type = COMMAND_##UPPER;                       \
+		header_size = header__sizeof(&h);               \
+		buf->len = header_size;                         \
+		buf->len += command_##LOWER##__sizeof(command); \
+		buf->base = raft_malloc(buf->len);              \
+		if (buf->base == NULL) {                        \
+			return DQLITE_NOMEM;                    \
+		}                                               \
+		cursor = buf->base;                             \
+		header__encode(&h, &cursor);                    \
+		command_##LOWER##__encode(command, &cursor);    \
 		break;
 
 int command__encode(int type, const void *command, struct raft_buffer *buf)
 {
 	struct header h;
 	size_t header_size;
+	void *cursor;
 	int rc = 0;
 	h.format = FORMAT;
 	switch (type) {

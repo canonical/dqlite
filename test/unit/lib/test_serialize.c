@@ -190,12 +190,14 @@ TEST_CASE(encode, padding, NULL)
 	struct fixture *f = data;
 	size_t size;
 	void *buf;
+	void *cursor;
 	(void)params;
 	f->person.name = "John Doh";
 	f->person.age = 40;
 	size = person__sizeof(&f->person);
 	buf = munit_malloc(size);
-	person__encode(&f->person, buf);
+	cursor = buf;
+	person__encode(&f->person, &cursor);
 	munit_assert_string_equal(buf, "John Doh");
 	munit_assert_int(byte__flip64(*(uint64_t *)(buf + 16)), ==, 40);
 	free(buf);
@@ -208,12 +210,14 @@ TEST_CASE(encode, no_padding, NULL)
 	struct fixture *f = data;
 	size_t size;
 	void *buf;
+	void *cursor;
 	(void)params;
 	f->person.name = "Joe Doh";
 	f->person.age = 40;
 	size = person__sizeof(&f->person);
 	buf = munit_malloc(size);
-	person__encode(&f->person, buf);
+	cursor = buf;
+	person__encode(&f->person, &cursor);
 	munit_assert_string_equal(buf, "Joe Doh");
 	munit_assert_int(byte__flip64(*(uint64_t *)(buf + 8)), ==, 40);
 	free(buf);
@@ -226,6 +230,7 @@ TEST_CASE(encode, custom, NULL)
 	struct fixture *f = data;
 	size_t size;
 	void *buf;
+	void *cursor;
 	(void)params;
 	f->book.title = "Les miserables";
 	create_pages(2, 8, &f->book.pages);
@@ -241,7 +246,8 @@ TEST_CASE(encode, custom, NULL)
 			     8 * 2 /* page buffers */);
 
 	buf = munit_malloc(size);
-	book__encode(&f->book, buf);
+	cursor = buf;
+	book__encode(&f->book, &cursor);
 
 	munit_assert_string_equal(buf, "Les miserables");
 	munit_assert_int(byte__flip16(*(uint16_t *)(buf + 16)), ==, 2);
