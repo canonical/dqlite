@@ -5,12 +5,6 @@
 #include <stdint.h>
 #include <string.h>
 
-/**
- * Basic type aliases to used by macro-based processing.
- */
-typedef const char *text_t;
-typedef double double_t;
-
 #if DQLITE_COVERAGE
 #define DQLITE_INLINE static inline
 #elif defined(__cplusplus) || \
