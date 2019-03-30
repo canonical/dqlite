@@ -54,11 +54,11 @@ static void destroy_pages(struct pages *pages)
 /* Opaque pointer to a struct pages object. */
 typedef struct pages pages_t;
 
-static size_t pages__sizeof(pages_t pages)
+static size_t pages__sizeof(const pages_t *pages)
 {
-	return uint16__sizeof(pages.n) + uint16__sizeof(pages.size) +
-	       uint32__sizeof(pages.__unused__) +
-	       pages.size * pages.n /* bufs */;
+	return uint16__sizeof(&pages->n) + uint16__sizeof(&pages->size) +
+	       uint32__sizeof(&pages->__unused__) +
+	       pages->size * pages->n /* bufs */;
 }
 
 static void pages__encode(pages_t pages, void **cursor)
