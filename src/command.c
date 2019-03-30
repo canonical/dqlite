@@ -59,8 +59,7 @@ COMMAND__TYPES(COMMAND__IMPLEMENT, );
 #define ENCODE(LOWER, UPPER, _)                                 \
 	case COMMAND_##UPPER:                                   \
 		h.type = COMMAND_##UPPER;                       \
-		header_size = header__sizeof(&h);               \
-		buf->len = header_size;                         \
+		buf->len = header__sizeof(&h);                  \
 		buf->len += command_##LOWER##__sizeof(command); \
 		buf->base = raft_malloc(buf->len);              \
 		if (buf->base == NULL) {                        \
@@ -74,7 +73,6 @@ COMMAND__TYPES(COMMAND__IMPLEMENT, );
 int command__encode(int type, const void *command, struct raft_buffer *buf)
 {
 	struct header h;
-	size_t header_size;
 	void *cursor;
 	int rc = 0;
 	h.format = FORMAT;
@@ -84,25 +82,24 @@ int command__encode(int type, const void *command, struct raft_buffer *buf)
 	return rc;
 }
 
-#define DECODE(LOWER, UPPER, _)                                               \
-	case COMMAND_##UPPER:                                                 \
-		*command = raft_malloc(sizeof(struct command_##LOWER));       \
-		if (*command == NULL) {                                       \
-			return DQLITE_NOMEM;                                  \
-		}                                                             \
-		command_##LOWER##__decode(buf->base + header_size, *command); \
+#define DECODE(LOWER, UPPER, _)                                         \
+	case COMMAND_##UPPER:                                           \
+		*command = raft_malloc(sizeof(struct command_##LOWER)); \
+		if (*command == NULL) {                                 \
+			return DQLITE_NOMEM;                            \
+		}                                                       \
+		command_##LOWER##__decode(&cursor, *command);           \
 		break;
 
 int command__decode(const struct raft_buffer *buf, int *type, void **command)
 {
 	struct header h;
-	size_t header_size;
+	const void *cursor = buf->base;
 	int rc = 0;
-	header__decode(buf->base, &h);
+	header__decode(&cursor, &h);
 	if (h.format != FORMAT) {
 		return DQLITE_PROTO;
 	}
-	header_size = header__sizeof(&h);
 	switch (h.type) {
 		COMMAND__TYPES(DECODE, )
 		default:
