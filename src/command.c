@@ -48,6 +48,8 @@ static int command__encode_frames(const struct command_frames *c,
 	h.type = COMMAND_FRAMES;
 	header_size = header__sizeof(&h);
 	buf->len = header_size;
+
+	/* Fixed size part */
 	buf->len += byte__sizeof_text(c->filename);
 	buf->len += byte__sizeof_uint64(c->tx_id);
 	buf->len += byte__sizeof_uint32(c->truncate);
@@ -55,6 +57,8 @@ static int command__encode_frames(const struct command_frames *c,
 	buf->len += byte__sizeof_uint8(c->is_commit);
 	buf->len += byte__sizeof_uint8(c->_unused);
 	buf->len += byte__sizeof_uint64(c->n_pages);
+
+	/* Dynamic size part */
 	buf->len += byte__sizeof_uint64(0) * c->n_pages;
 	buf->len += c->page_size * c->n_pages;
 	buf->base = raft_malloc(buf->len);
