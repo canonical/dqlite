@@ -1,7 +1,7 @@
 #ifndef DQLITE_REQUEST_H
 #define DQLITE_REQUEST_H
 
-#include "lib/serialization.h"
+#include "lib/serialize.h"
 
 #include "schema.h"
 
@@ -11,7 +11,7 @@
 
 #define REQUEST_LEADER(X, ...) X(uint64, __unused__, ##__VA_ARGS__)
 
-SERIALIZATION__DEFINE(request_leader, REQUEST_LEADER);
+SERIALIZE__DEFINE(request_leader, REQUEST_LEADER);
 
 #define REQUEST__SCHEMA_LEADER(X, ...) X(uint64, __unused__, __VA_ARGS__)
 

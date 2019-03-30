@@ -1,6 +1,6 @@
 #include "request.h"
 
-SERIALIZATION__IMPLEMENT(request_leader, REQUEST_LEADER);
+SERIALIZE__IMPLEMENT(request_leader, REQUEST_LEADER);
 
 SCHEMA__IMPLEMENT(request_leader_, REQUEST__SCHEMA_LEADER);
 SCHEMA__IMPLEMENT(request_client, REQUEST__SCHEMA_CLIENT);
