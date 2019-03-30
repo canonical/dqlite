@@ -8,31 +8,44 @@
 /* Command type codes */
 enum { COMMAND_OPEN = 1, COMMAND_FRAMES, COMMAND_UNDO };
 
+/* Hold information about an array of WAL frames. */
+struct frames
+{
+	uint32_t n_pages;
+	uint16_t page_size;
+	uint16_t __unused__;
+	/* TODO: because the sqlite3 replication APIs are asymmetrics, the
+	 * format differs between encode and decode. When encoding data is
+	 * expected to be a sqlite3_wal_replication_frame* array, and when
+	 * decoding it will be a pointer to raw memory which can be further
+	 * decoded with the command_frames__page_numbers() and
+	 * command_frames__pages() helpers. */
+	const void *data;
+};
+
+typedef struct frames frames_t;
+
 /* Serialization definitions for a raft FSM command. */
 #define COMMAND__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE_STRUCT(command_##LOWER, COMMAND__##UPPER);
 
 #define COMMAND__OPEN(X, ...) X(text, filename, ##__VA_ARGS__)
+#define COMMAND__FRAMES(X, ...)               \
+	X(text, filename, ##__VA_ARGS__)      \
+	X(uint64, tx_id, ##__VA_ARGS__)       \
+	X(uint32, truncate, ##__VA_ARGS__)    \
+	X(uint8, is_commit, ##__VA_ARGS__)    \
+	X(uint8, __unused1__, ##__VA_ARGS__)  \
+	X(uint16, __unused2__, ##__VA_ARGS__) \
+	X(frames, frames, ##__VA_ARGS__)
 #define COMMAND__UNDO(X, ...) X(uint64, tx_id, ##__VA_ARGS__)
 
-#define COMMAND__TYPES(X, ...)     \
-	X(open, OPEN, __VA_ARGS__) \
+#define COMMAND__TYPES(X, ...)         \
+	X(open, OPEN, __VA_ARGS__)     \
+	X(frames, FRAMES, __VA_ARGS__) \
 	X(undo, UNDO, __VA_ARGS__)
 
 COMMAND__TYPES(COMMAND__DEFINE);
-
-/* The frames command is implemented by hand since it has dynamic data */
-struct command_frames
-{
-	text_t filename;
-	uint64_t tx_id;
-	uint32_t truncate;
-	uint16_t page_size;
-	uint8_t is_commit;
-	uint8_t _unused;
-	uint64_t n_pages;
-	const void *data; /* Format differs between encode and decode */
-};
 
 int command__encode(int type, const void *command, struct raft_buffer *buf);
 
