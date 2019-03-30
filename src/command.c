@@ -26,20 +26,21 @@ static size_t frames__sizeof(const frames_t *frames)
 	return s;
 }
 
-static void frames__encode(frames_t frames, void **cursor)
+static void frames__encode(const frames_t *frames, void **cursor)
 {
 	const sqlite3_wal_replication_frame *list;
 	unsigned i;
-	uint32__encode(frames.n_pages, cursor);
-	uint16__encode(frames.page_size, cursor);
-	uint16__encode(0, cursor);
-	list = frames.data;
-	for (i = 0; i < frames.n_pages; i++) {
-		uint64__encode(list[i].pgno, cursor);
+	uint32__encode(&frames->n_pages, cursor);
+	uint16__encode(&frames->page_size, cursor);
+	uint16__encode(&frames->__unused__, cursor);
+	list = frames->data;
+	for (i = 0; i < frames->n_pages; i++) {
+		uint64_t pgno = list[i].pgno;
+		uint64__encode(&pgno, cursor);
 	}
-	for (i = 0; i < frames.n_pages; i++) {
-		memcpy(*cursor, list[i].pBuf, frames.page_size);
-		*cursor += frames.page_size;
+	for (i = 0; i < frames->n_pages; i++) {
+		memcpy(*cursor, list[i].pBuf, frames->page_size);
+		*cursor += frames->page_size;
 	}
 }
 

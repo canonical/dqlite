@@ -53,6 +53,7 @@ static void destroy_pages(struct pages *pages)
 
 /* Opaque pointer to a struct pages object. */
 typedef struct pages pages_t;
+typedef struct person person_t;
 
 static size_t pages__sizeof(const pages_t *pages)
 {
@@ -61,15 +62,15 @@ static size_t pages__sizeof(const pages_t *pages)
 	       pages->size * pages->n /* bufs */;
 }
 
-static void pages__encode(pages_t pages, void **cursor)
+static void pages__encode(const pages_t *pages, void **cursor)
 {
 	unsigned i;
-	uint16__encode(pages.n, cursor);
-	uint16__encode(pages.size, cursor);
-	uint32__encode(0, cursor);
-	for (i = 0; i < pages.n; i++) {
-		memcpy(*cursor, pages.bufs[i], pages.size);
-		*cursor += pages.size;
+	uint16__encode(&pages->n, cursor);
+	uint16__encode(&pages->size, cursor);
+	uint32__encode(&pages->__unused__, cursor);
+	for (i = 0; i < pages->n; i++) {
+		memcpy(*cursor, pages->bufs[i], pages->size);
+		*cursor += pages->size;
 	}
 }
 
@@ -86,8 +87,9 @@ static void pages__decode(const void **cursor, pages_t *pages)
 	}
 }
 
-#define BOOK(X, ...)                  \
-	X(text, title, ##__VA_ARGS__) \
+#define BOOK(X, ...)                     \
+	X(text, title, ##__VA_ARGS__)    \
+	X(person, author, ##__VA_ARGS__) \
 	X(pages, pages, ##__VA_ARGS__)
 
 SERIALIZE__DEFINE(book, BOOK);
@@ -233,27 +235,49 @@ TEST_CASE(encode, custom, NULL)
 	void *cursor;
 	(void)params;
 	f->book.title = "Les miserables";
+	f->book.author.name = "Victor Hugo";
+	f->book.author.age = 40;
 	create_pages(2, 8, &f->book.pages);
 	strcpy(f->book.pages.bufs[0], "Fantine");
 	strcpy(f->book.pages.bufs[1], "Cosette");
 
 	size = book__sizeof(&f->book);
 	munit_assert_int(size, ==,
-			 16 +    /* title                                   */
-			     2 + /* n pages                                 */
-			     2 + /* page size                               */
-			     4 + /* unused                                  */
+			 16 +     /* title                                   */
+			     16 + /* author name                             */
+			     8 +  /* author age                              */
+			     2 +  /* n pages                                 */
+			     2 +  /* page size                               */
+			     4 +  /* unused                                  */
 			     8 * 2 /* page buffers */);
 
 	buf = munit_malloc(size);
 	cursor = buf;
 	book__encode(&f->book, &cursor);
 
-	munit_assert_string_equal(buf, "Les miserables");
-	munit_assert_int(byte__flip16(*(uint16_t *)(buf + 16)), ==, 2);
-	munit_assert_int(byte__flip16(*(uint16_t *)(buf + 18)), ==, 8);
-	munit_assert_string_equal(buf + 24, "Fantine");
-	munit_assert_string_equal(buf + 32, "Cosette");
+	cursor = buf;
+
+	munit_assert_string_equal(cursor, "Les miserables");
+	cursor += 16;
+
+	munit_assert_string_equal(cursor, "Victor Hugo");
+	cursor += 16;
+
+	munit_assert_int(byte__flip64(*(uint64_t *)cursor), ==, 40);
+	cursor += 8;
+
+	munit_assert_int(byte__flip16(*(uint16_t *)cursor), ==, 2);
+	cursor += 2;
+
+	munit_assert_int(byte__flip16(*(uint16_t *)cursor), ==, 8);
+	cursor += 2;
+
+	cursor += 4; /* Unused */
+
+	munit_assert_string_equal(cursor, "Fantine");
+	cursor += 8;
+
+	munit_assert_string_equal(cursor, "Cosette");
 
 	free(buf);
 	destroy_pages(&f->book.pages);
@@ -308,20 +332,43 @@ TEST_CASE(decode, custom, NULL)
 {
 	struct fixture *f = data;
 	void *buf = munit_malloc(16 + /* title */
+				 16 + /* author name */
+				 8 +  /* author age */
 				 2 +  /* n pages  */
 				 2 +  /* page size  */
 				 4 +  /* unused  */
 				 8 * 2 /* page buffers */);
-	const void *cursor = buf;
+	void *cursor = buf;
 	(void)params;
-	strcpy(buf, "Les miserables");
-	*(uint16_t *)(buf + 16) = byte__flip16(2);
-	*(uint16_t *)(buf + 18) = byte__flip16(8);
-	strcpy(buf + 24, "Fantine");
-	strcpy(buf + 32, "Cosette");
-	book__decode(&cursor, &f->book);
+
+	strcpy(cursor, "Les miserables");
+	cursor += 16;
+
+	strcpy(cursor, "Victor Hugo");
+	cursor += 16;
+
+	*(uint64_t *)cursor = byte__flip64(40);
+	cursor += 8;
+
+	*(uint16_t *)cursor = byte__flip16(2);
+	cursor += 2;
+
+	*(uint16_t *)cursor = byte__flip16(8);
+	cursor += 2;
+
+	cursor += 4; /* Unused */
+
+	strcpy(cursor, "Fantine");
+	cursor += 8;
+
+	strcpy(cursor, "Cosette");
+
+	cursor = buf;
+	book__decode((const void **)&cursor, &f->book);
 
 	munit_assert_string_equal(f->book.title, "Les miserables");
+	munit_assert_string_equal(f->book.author.name, "Victor Hugo");
+	munit_assert_int(f->book.author.age, ==, 40);
 	munit_assert_int(f->book.pages.n, ==, 2);
 	munit_assert_int(f->book.pages.size, ==, 8);
 	munit_assert_string_equal(f->book.pages.bufs[0], "Fantine");
