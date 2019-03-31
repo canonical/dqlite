@@ -36,7 +36,7 @@
 #define RESPONSE__SCHEMA_EMPTY(X, ...) X(uint64, __unused__, __VA_ARGS__)
 
 SCHEMA__DEFINE(response_failure, RESPONSE__SCHEMA_FAILURE);
-SCHEMA__DEFINE(response_server, RESPONSE__SCHEMA_SERVER);
+SCHEMA__DEFINE(response_server_, RESPONSE__SCHEMA_SERVER);
 SCHEMA__DEFINE(response_welcome, RESPONSE__SCHEMA_WELCOME);
 SCHEMA__DEFINE(response_servers, RESPONSE__SCHEMA_SERVERS);
 SCHEMA__DEFINE(response_db, RESPONSE__SCHEMA_DB);
@@ -47,7 +47,7 @@ SCHEMA__DEFINE(response_empty, RESPONSE__SCHEMA_EMPTY);
 
 #define RESPONSE__SCHEMA_TYPES(X, ...)                                     \
 	X(DQLITE_RESPONSE_FAILURE, response_failure, failure, __VA_ARGS__) \
-	X(DQLITE_RESPONSE_SERVER, response_server, server, __VA_ARGS__)    \
+	X(DQLITE_RESPONSE_SERVER, response_server_, server, __VA_ARGS__)   \
 	X(DQLITE_RESPONSE_WELCOME, response_welcome, welcome, __VA_ARGS__) \
 	X(DQLITE_RESPONSE_SERVERS, response_servers, servers, __VA_ARGS__) \
 	X(DQLITE_RESPONSE_DB, response_db, db, __VA_ARGS__)                \
