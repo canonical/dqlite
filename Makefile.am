@@ -29,6 +29,7 @@ endif
 lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
+  src/buffer.c \
   src/command.c \
   src/conn.c \
   src/db.c \
@@ -98,6 +99,7 @@ unit_test_SOURCES += \
   test/unit/ext/test_uv.c \
   test/unit/lib/test_registry.c \
   test/unit/lib/test_serialize.c \
+  test/unit/test_buffer.c \
   test/unit/test_command.c \
   test/unit/test_gateway.c \
   test/unit/test_leader.c \
