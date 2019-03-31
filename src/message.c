@@ -12,6 +12,8 @@
 #include "lifecycle.h"
 #include "message.h"
 
+SERIALIZE__IMPLEMENT(message_header, MESSAGE_HEADER);
+
 /* This ensures that doubles are 64-bit long
  *
  * See https://stackoverflow.com/questions/752309/ensuring-c-doubles-are-64-bits
