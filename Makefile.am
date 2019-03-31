@@ -104,7 +104,6 @@ unit_test_SOURCES += \
   test/unit/test_gateway.c \
   test/unit/test_leader.c \
   test/unit/test_registry.c \
-  test/unit/test_replication.c \
   test/unit/test_tuple.c \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS)
