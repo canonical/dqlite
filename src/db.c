@@ -49,6 +49,7 @@ int db__open_follower(struct db *db)
 
 int db__create_tx(struct db *db, unsigned long long id, sqlite3 *conn)
 {
+	assert(db->tx == NULL);
 	db->tx = sqlite3_malloc(sizeof *db->tx);
 	if (db->tx == NULL) {
 		return DQLITE_NOMEM;
