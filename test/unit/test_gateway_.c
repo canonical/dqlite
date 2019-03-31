@@ -13,7 +13,7 @@
 #include "../../src/format.h"
 #include "../../src/gateway_.h"
 
-TEST_MODULE(gateway);
+TEST_MODULE(gateway_);
 
 /******************************************************************************
  *
