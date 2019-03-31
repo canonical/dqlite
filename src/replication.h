@@ -1,8 +1,8 @@
-/******************************************************************************
+/**
  *
  * Raft-based implementation of the SQLite replication interface.
  *
- *****************************************************************************/
+ */
 
 #ifndef DQLITE_REPLICATION_H_
 #define DQLITE_REPLICATION_H_
@@ -20,6 +20,10 @@ int replication__init(struct sqlite3_wal_replication *replication,
 		      struct dqlite_logger *logger,
 		      struct raft *raft);
 
+/**
+ * Release all memory associated with the given dqlite raft's based replication
+ * implementation.
+ */
 void replication__close(struct sqlite3_wal_replication *replication);
 
 #endif /* DQLITE_REPLICATION_H_ */
