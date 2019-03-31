@@ -10,11 +10,14 @@
  */
 
 #define RESPONSE_SERVER(X, ...) X(text, address, ##__VA_ARGS__)
+#define RESPONSE_WELCOME(X, ...) X(uint64, heartbeat_timeout, ##__VA_ARGS__)
 
 #define RESPONSE__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
 
-#define RESPONSE__TYPES(X, ...) X(server, SERVER, __VA_ARGS__)
+#define RESPONSE__TYPES(X, ...) \
+	X(server, SERVER, __VA_ARGS__) \
+	X(welcome, WELCOME, __VA_ARGS__)
 
 RESPONSE__TYPES(RESPONSE__DEFINE);
 

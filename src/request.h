@@ -10,11 +10,14 @@
  */
 
 #define REQUEST_LEADER(X, ...) X(uint64, __unused__, ##__VA_ARGS__)
+#define REQUEST_CLIENT(X, ...) X(uint64, id, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
 
-#define REQUEST__TYPES(X, ...) X(leader, LEADER, __VA_ARGS__)
+#define REQUEST__TYPES(X, ...)         \
+	X(leader, LEADER, __VA_ARGS__) \
+	X(client, CLIENT, __VA_ARGS__)
 
 REQUEST__TYPES(REQUEST__DEFINE);
 
