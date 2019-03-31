@@ -44,7 +44,10 @@
 #include <stdint.h>
 #include <unistd.h>
 
+#include "./lib/buffer.h"
 #include "./lib/serialize.h"
+
+enum { TUPLE__ROW = 1, TUPLE__PARAMS };
 
 /**
  * Hold a single database value.
@@ -57,7 +60,8 @@ struct value
 		double float_;
 		uint64_t null;
 		const char *text;
-		const char *iso8601; /* Date */
+		const char *iso8601; /* INT8601 date string */
+		int64_t unixtime;    /* Unix time in seconds since epoch */
 		uint64_t boolean;
 	};
 };
@@ -67,16 +71,18 @@ struct value
  */
 struct tuple_decoder
 {
-	bool is_row;	   /* Whether the tuple has row format */
 	unsigned n;	    /* Number of values in the tuple */
+	struct cursor *cursor; /* Reading cursor */
+	int format;	    /* Tuple format (row or params) */
 	unsigned i;	    /* Index of next value to decode */
 	const uint8_t *header; /* Pointer to tuple header */
-	struct cursor *cursor; /* Reading cursor */
 };
 
 /**
  * Initialize the state of the decoder, before starting to decode a new
- * tuple. If @n is zero, it means that the tuple is a sequence of statement
+ * tuple.
+ *
+ * If @n is zero, it means that the tuple is a sequence of statement
  * parameters. In that case the d->n field will be read from the first byte of
  * @cursor.
  */
@@ -85,8 +91,43 @@ int tuple_decoder__init(struct tuple_decoder *d,
 			struct cursor *cursor);
 
 /**
+ * Return the number of values in the tuple being decoded.
+ *
+ * In row format this will be the same @n passed to the constructor. In
+ * parameters format this is the value contained in the first byte of the tuple
+ * header.
+ */
+unsigned tuple_decoder__n(struct tuple_decoder *d);
+
+/**
  * Decode the next value of the tuple.
  */
 int tuple_decoder__next(struct tuple_decoder *d, struct value *value);
+
+/**
+ * Maintain state while encoding a single tuple.
+ */
+struct tuple_encoder
+{
+	unsigned n;	    /* Number of values in the tuple */
+	int format;	    /* Tuple format (row or params) */
+	struct buffer *buffer; /* Write buffer */
+	unsigned i;	    /* Index of next value to encode */
+	size_t header;	 /* Buffer offset of tuple header */
+};
+
+/**
+ * Initialize the state of the encoder, before starting to encode a new
+ * tuple. The @n parameter must always be greater than zero.
+ */
+int tuple_encoder__init(struct tuple_encoder *e,
+			unsigned n,
+			int format,
+			struct buffer *buffer);
+
+/**
+ * Encode the next value of the tuple.
+ */
+int tuple_encoder__next(struct tuple_encoder *e, struct value *value);
 
 #endif /* DQLITE_TUPLE_H_ */
