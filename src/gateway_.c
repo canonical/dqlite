@@ -7,7 +7,7 @@
 
 #include "error.h"
 #include "format.h"
-#include "gateway.h"
+#include "gateway_.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "request.h"
@@ -24,7 +24,7 @@ static int maybe_checkpoint(void *ctx,
 			    const char *schema,
 			    int pages)
 {
-	struct gateway *g;
+	struct gateway_ *g;
 	struct sqlite3_file *file;
 	volatile void *region;
 	uint32_t mx_frame;
@@ -122,7 +122,7 @@ static void reset_response(struct response *r)
 }
 
 /* Render a failure response. */
-static void gateway__failure(struct gateway *g,
+static void gateway__failure(struct gateway_ *g,
 			     struct gateway__ctx *ctx,
 			     int code)
 {
@@ -131,7 +131,7 @@ static void gateway__failure(struct gateway *g,
 	ctx->response.failure.message = g->error;
 }
 
-static void gateway__leader(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__leader(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	char *address;
 
@@ -153,7 +153,7 @@ static void gateway__leader(struct gateway *g, struct gateway__ctx *ctx)
 	ctx->response.server.address = address;
 }
 
-static void gateway__client(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__client(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	/* TODO: handle client registrations */
 
@@ -161,10 +161,10 @@ static void gateway__client(struct gateway *g, struct gateway__ctx *ctx)
 	ctx->response.welcome.heartbeat_timeout = g->options->heartbeat_timeout;
 }
 
-static void gateway__heartbeat(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__heartbeat(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	struct dqlite_server_info *servers = NULL;
-	//int rc;
+	// int rc;
 
 	/* Get the current list of servers in the cluster */
 	/*rc = g->cluster->xServers(g->cluster->ctx, &servers);
@@ -184,7 +184,7 @@ static void gateway__heartbeat(struct gateway *g, struct gateway__ctx *ctx)
 	g->heartbeat = ctx->request->timestamp;
 }
 
-static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__open(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	int rc;
 	struct db *db;
@@ -265,7 +265,7 @@ static void gateway__open(struct gateway *g, struct gateway__ctx *ctx)
 		return;                                                    \
 	}
 
-static void gateway__prepare(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__prepare(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	struct db_ *db;
 	struct stmt *stmt;
@@ -289,7 +289,7 @@ static void gateway__prepare(struct gateway *g, struct gateway__ctx *ctx)
 
 struct gateway_exec
 {
-	struct gateway *gateway;
+	struct gateway_ *gateway;
 	struct gateway__ctx *ctx;
 	struct stmt *stmt;
 	struct exec req;
@@ -298,7 +298,7 @@ struct gateway_exec
 static void gateway__exec_cb(struct exec *req, int status)
 {
 	struct gateway_exec *r = req->data;
-	struct gateway *g = r->gateway;
+	struct gateway_ *g = r->gateway;
 	struct stmt *stmt = r->stmt;
 	struct gateway__ctx *ctx = r->ctx;
 	uint64_t last_insert_id;
@@ -321,7 +321,7 @@ static void gateway__exec_cb(struct exec *req, int status)
 	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
 }
 
-static void gateway__exec(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__exec(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	int rc;
 	struct db_ *db;
@@ -365,7 +365,7 @@ static void gateway__exec(struct gateway *g, struct gateway__ctx *ctx)
  *
  * A single batch of rows is typically about the size of the static response
  * message body. */
-static void gateway__query_batch(struct gateway *g,
+static void gateway__query_batch(struct gateway_ *g,
 				 struct db_ *db,
 				 struct stmt *stmt,
 				 struct gateway__ctx *ctx)
@@ -411,7 +411,7 @@ static void gateway__query_batch(struct gateway *g,
 	}
 }
 
-static void gateway__query(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__query(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	int rc;
 	struct db_ *db;
@@ -437,7 +437,7 @@ static void gateway__query(struct gateway *g, struct gateway__ctx *ctx)
 	gateway__query_batch(g, db, stmt, ctx);
 }
 
-static void gateway__finalize(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__finalize(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	int rc;
 	struct db_ *db;
@@ -458,7 +458,7 @@ static void gateway__finalize(struct gateway *g, struct gateway__ctx *ctx)
 
 struct gateway_exec_sql
 {
-	struct gateway *gateway;
+	struct gateway_ *gateway;
 	struct gateway__ctx *ctx;
 	size_t db_id;
 	struct stmt *stmt;
@@ -466,13 +466,13 @@ struct gateway_exec_sql
 	struct exec req;
 };
 
-static void gateway__exec_sql_next(struct gateway *g,
+static void gateway__exec_sql_next(struct gateway_ *g,
 				   struct gateway_exec_sql *r);
 
 static void gateway__exec_sql_cb(struct exec *req, int status)
 {
 	struct gateway_exec_sql *r = req->data;
-	struct gateway *g = r->gateway;
+	struct gateway_ *g = r->gateway;
 	struct gateway__ctx *ctx = r->ctx;
 	struct stmt *stmt = r->stmt;
 	uint64_t last_insert_id;
@@ -493,7 +493,7 @@ static void gateway__exec_sql_cb(struct exec *req, int status)
 	}
 }
 
-static void gateway__exec_sql_next(struct gateway *g,
+static void gateway__exec_sql_next(struct gateway_ *g,
 				   struct gateway_exec_sql *r)
 {
 	struct db_ *db;
@@ -548,7 +548,7 @@ done:
 	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
 }
 
-static void gateway__exec_sql(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__exec_sql(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	struct gateway_exec_sql *r;
 	struct db_ *db;
@@ -575,7 +575,7 @@ static void gateway__exec_sql(struct gateway *g, struct gateway__ctx *ctx)
 	gateway__exec_sql_next(g, r);
 }
 
-static void gateway__query_sql(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__query_sql(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	int rc;
 	struct db_ *db;
@@ -607,7 +607,7 @@ static void gateway__query_sql(struct gateway *g, struct gateway__ctx *ctx)
 	gateway__query_batch(g, db, stmt, ctx);
 }
 
-static void gateway__interrupt(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__interrupt(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	assert(g != NULL);
 	assert(ctx != NULL);
@@ -642,7 +642,7 @@ out:
 }
 
 /* Dispatch a request to the appropriate request handler. */
-static void gateway__dispatch(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__dispatch(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	switch (ctx->request->type) {
 #define GATEWAY__HANDLE(CODE, STRUCT, NAME, _) \
@@ -665,10 +665,10 @@ static void gateway__dispatch(struct gateway *g, struct gateway__ctx *ctx)
 		g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
 	}
 }
-void gateway__init(struct gateway *g,
-		   struct gateway__cbs *callbacks,
-		   struct dqlite_logger *logger,
-		   struct options *options)
+void gateway__init_(struct gateway_ *g,
+		    struct gateway__cbs *callbacks,
+		    struct dqlite_logger *logger,
+		    struct options *options)
 {
 	int i;
 
@@ -702,7 +702,7 @@ void gateway__init(struct gateway *g,
 	g->db = NULL;
 }
 
-void gateway__close(struct gateway *g)
+void gateway__close_(struct gateway_ *g)
 {
 	int i;
 
@@ -726,7 +726,7 @@ void gateway__close(struct gateway *g)
 	dqlite__lifecycle_close(DQLITE__LIFECYCLE_GATEWAY);
 }
 
-int gateway__ctx_for(struct gateway *g, int type)
+int gateway__ctx_for(struct gateway_ *g, int type)
 {
 	int idx;
 	assert(g != NULL);
@@ -755,7 +755,7 @@ int gateway__ctx_for(struct gateway *g, int type)
 	return -1;
 }
 
-int gateway__handle(struct gateway *g, struct request *request)
+int gateway__handle(struct gateway_ *g, struct request *request)
 {
 	struct gateway__ctx *ctx;
 	int i;
@@ -788,7 +788,7 @@ err:
 
 /* Resume stepping through a query and send a new follow-up response
  * with more rows. */
-static void gateway__query_resume(struct gateway *g, struct gateway__ctx *ctx)
+static void gateway__query_resume(struct gateway_ *g, struct gateway__ctx *ctx)
 {
 	assert(ctx->db != NULL);
 	assert(ctx->stmt != NULL);
@@ -799,7 +799,7 @@ static void gateway__query_resume(struct gateway *g, struct gateway__ctx *ctx)
 	g->callbacks.xFlush(g->callbacks.ctx, &ctx->response);
 }
 
-void gateway__flushed(struct gateway *g, struct response *response)
+void gateway__flushed(struct gateway_ *g, struct response *response)
 {
 	int i;
 
@@ -824,7 +824,7 @@ void gateway__flushed(struct gateway *g, struct response *response)
 	assert(i < GATEWAY__MAX_REQUESTS);
 }
 
-void gateway__aborted(struct gateway *g, struct response *response)
+void gateway__aborted(struct gateway_ *g, struct response *response)
 {
 	assert(g != NULL);
 	assert(response != NULL);

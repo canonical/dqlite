@@ -14,7 +14,7 @@
 
 #include "conn.h"
 #include "error.h"
-#include "gateway.h"
+#include "gateway_.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "request.h"
@@ -647,7 +647,7 @@ void conn__init(struct conn *c,
 			 dqlite__transitions);
 	request_init(&c->request);
 
-	gateway__init(&c->gateway, &callbacks, logger, options);
+	gateway__init_(&c->gateway, &callbacks, logger, options);
 	response_init(&c->response);
 
 	c->fd = fd;
@@ -669,7 +669,7 @@ void conn__close(struct conn *c)
 	}
 
 	response_close(&c->response);
-	gateway__close(&c->gateway);
+	gateway__close_(&c->gateway);
 	dqlite__fsm_close(&c->fsm);
 	request_close(&c->request);
 	dqlite__error_close(&c->error);
