@@ -19,7 +19,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	for (i = 0; i < N_SERVERS; i++) {
 		struct gateway *g = &f->gateways[i];
 		gateway__init(g, CLUSTER_LOGGER(i), CLUSTER_OPTIONS(i),
-			      CLUSTER_REGISTRY(i));
+			      CLUSTER_REGISTRY(i), CLUSTER_RAFT(i));
 	}
 	return f;
 }
