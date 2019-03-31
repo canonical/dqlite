@@ -11,13 +11,18 @@
 
 #define REQUEST_LEADER(X, ...) X(uint64, __unused__, ##__VA_ARGS__)
 #define REQUEST_CLIENT(X, ...) X(uint64, id, ##__VA_ARGS__)
+#define REQUEST_OPEN(X, ...)             \
+	X(text, filename, ##__VA_ARGS__) \
+	X(uint64, flags, ##__VA_ARGS__)  \
+	X(text, vfs, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
 
 #define REQUEST__TYPES(X, ...)         \
 	X(leader, LEADER, __VA_ARGS__) \
-	X(client, CLIENT, __VA_ARGS__)
+	X(client, CLIENT, __VA_ARGS__) \
+	X(open, OPEN, __VA_ARGS__)
 
 REQUEST__TYPES(REQUEST__DEFINE);
 
@@ -61,7 +66,7 @@ REQUEST__TYPES(REQUEST__DEFINE);
 SCHEMA__DEFINE(request_leader_, REQUEST__SCHEMA_LEADER);
 SCHEMA__DEFINE(request_client_, REQUEST__SCHEMA_CLIENT);
 SCHEMA__DEFINE(request_heartbeat, REQUEST__SCHEMA_HEARTBEAT);
-SCHEMA__DEFINE(request_open, REQUEST__SCHEMA_OPEN);
+SCHEMA__DEFINE(request_open_, REQUEST__SCHEMA_OPEN);
 SCHEMA__DEFINE(request_prepare, REQUEST__SCHEMA_PREPARE);
 SCHEMA__DEFINE(request_query, REQUEST__SCHEMA_QUERY);
 SCHEMA__DEFINE(request_exec_, REQUEST__SCHEMA_EXEC);
@@ -74,7 +79,7 @@ SCHEMA__DEFINE(request_interrupt, REQUEST__SCHEMA_INTERRUPT);
 	X(DQLITE_REQUEST_LEADER, request_leader_, leader, __VA_ARGS__)         \
 	X(DQLITE_REQUEST_CLIENT, request_client_, client, __VA_ARGS__)         \
 	X(DQLITE_REQUEST_HEARTBEAT, request_heartbeat, heartbeat, __VA_ARGS__) \
-	X(DQLITE_REQUEST_OPEN, request_open, open, __VA_ARGS__)                \
+	X(DQLITE_REQUEST_OPEN, request_open_, open, __VA_ARGS__)               \
 	X(DQLITE_REQUEST_PREPARE, request_prepare, prepare, __VA_ARGS__)       \
 	X(DQLITE_REQUEST_EXEC, request_exec_, exec, __VA_ARGS__)               \
 	X(DQLITE_REQUEST_QUERY, request_query, query, __VA_ARGS__)             \
