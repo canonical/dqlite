@@ -755,7 +755,7 @@ int gateway__ctx_for(struct gateway_ *g, int type)
 	return -1;
 }
 
-int gateway__handle(struct gateway_ *g, struct request *request)
+int gateway__handle_(struct gateway_ *g, struct request *request)
 {
 	struct gateway__ctx *ctx;
 	int i;

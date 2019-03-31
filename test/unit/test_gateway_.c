@@ -54,7 +54,7 @@ static void __open(struct fixture *f, uint32_t *db_id)
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	f->request->open.vfs = f->replication.zName;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -77,7 +77,7 @@ static void __prepare(struct fixture *f,
 	f->request->prepare.db_id = db_id;
 	f->request->prepare.sql = sql;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -100,7 +100,7 @@ static void __exec(struct fixture *f, uint32_t db_id, uint32_t stmt_id)
 	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	if (f->gateway->leader->db->follower == NULL) {
@@ -170,7 +170,7 @@ static void tear_down(void *data)
 
 /******************************************************************************
  *
- * gateway__handle
+ * gateway__handle_
  *
  ******************************************************************************/
 
@@ -188,7 +188,7 @@ TEST_CASE(handle, leader, NULL)
 
 	f->request->type = DQLITE_REQUEST_LEADER;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -214,7 +214,7 @@ TEST_CASE(handle, client, NULL)
 	f->request->type = DQLITE_REQUEST_CLIENT;
 	f->request->client.id = 123;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -238,7 +238,7 @@ TEST_CASE(handle, heartbeat, NULL)
 	f->request->type = DQLITE_REQUEST_HEARTBEAT;
 	f->request->heartbeat.timestamp = 12345;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -271,7 +271,7 @@ TEST_CASE(handle, heartbeat_error, NULL)
 
 	test_cluster_servers_rc(SQLITE_IOERR_NOT_LEADER);
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -299,7 +299,7 @@ TEST_CASE(handle, open_error, NULL)
 	f->request->open.flags = SQLITE_OPEN_CREATE;
 	f->request->open.vfs = f->replication.zName;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -336,7 +336,7 @@ TEST_CASE(handle, open_oom, test_open_oom_params)
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	f->request->open.vfs = f->replication.zName;
 
-	rc = gateway__handle(f->gateway, f->request);
+	rc = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -362,7 +362,7 @@ TEST_CASE(handle, open, NULL)
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	f->request->open.vfs = f->replication.zName;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -386,14 +386,14 @@ TEST_CASE(handle, open_twice, NULL)
 	f->request->open.flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	f->request->open.vfs = f->replication.zName;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	gateway__flushed(f->gateway, f->response);
 
 	f->request->open.name = "test2.db";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -419,7 +419,7 @@ TEST_CASE(handle, prepare_bad_db, NULL)
 	f->request->prepare.db_id = 123;
 	f->request->prepare.sql = "SELECT 1";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -447,7 +447,7 @@ TEST_CASE(handle, prepare_bad_sql, NULL)
 	f->request->prepare.db_id = db_id;
 	f->request->prepare.sql = "FOO bar";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -475,7 +475,7 @@ TEST_CASE(handle, prepare, NULL)
 	f->request->prepare.db_id = db_id;
 	f->request->prepare.sql = "SELECT 1";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -506,7 +506,7 @@ TEST_CASE(handle, exec, NULL)
 	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	RAFT_COMMIT;
@@ -552,7 +552,7 @@ TEST_CASE(handle, exec_params, NULL)
 
 	f->request->message.offset1 = 8; /* rewind */
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	RAFT_COMMIT;
@@ -578,7 +578,7 @@ TEST_CASE(handle, exec_bad_stmt_id, NULL)
 	f->request->exec.db_id = db_id;
 	f->request->exec.stmt_id = 666;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -621,7 +621,7 @@ TEST_CASE(handle, exec_bad_params, NULL)
 
 	f->request->message.offset1 = 8; /* rewind */
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -663,7 +663,7 @@ TEST_CASE(handle, exec_fail, NULL)
 	f->request->message.words = 1;
 	f->request->message.offset1 = 8;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -704,7 +704,7 @@ TEST_CASE(handle, query, NULL)
 	f->request->query.db_id = db_id;
 	f->request->query.stmt_id = stmt_id;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -751,7 +751,7 @@ TEST_CASE(handle, query_bad_params, NULL)
 
 	f->request->message.offset1 = 8; /* rewind */
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -782,7 +782,7 @@ TEST_CASE(handle, finalize, NULL)
 	f->request->finalize.db_id = db_id;
 	f->request->finalize.stmt_id = stmt_id;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	return MUNIT_OK;
@@ -826,7 +826,7 @@ TEST_CASE(handle, exec_sql, NULL)
 
 	f->request->message.offset1 = 8; /* rewind */
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	RAFT_COMMIT;
@@ -857,7 +857,7 @@ TEST_CASE(handle, exec_sql_multi, NULL)
 	f->request->exec_sql.sql =
 	    "CREATE TABLE foo (n INT); CREATE TABLE bar (t TEXT)";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	RAFT_COMMIT;
@@ -891,7 +891,7 @@ TEST_CASE(handle, exec_sql_bad_sql, NULL)
 	f->request->exec_sql.db_id = db_id;
 	f->request->exec_sql.sql = "FOO bar";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -932,7 +932,7 @@ TEST_CASE(handle, exec_sql_bad_params, NULL)
 
 	f->request->message.offset1 = 8; /* rewind */
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -969,7 +969,7 @@ TEST_CASE(handle, exec_sql_error, NULL)
 	f->request->exec_sql.db_id = db_id;
 	f->request->exec_sql.sql = "INSERT INTO foo(n) VALUES(1)";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -1016,7 +1016,7 @@ TEST_CASE(handle, query_sql, NULL)
 
 	f->response->message.offset1 = 0;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -1064,7 +1064,7 @@ TEST_CASE(handle, query_sql_bad_sql, NULL)
 	f->request->query_sql.db_id = db_id;
 	f->request->query_sql.sql = "FOO bar";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -1105,7 +1105,7 @@ TEST_CASE(handle, query_sql_bad_params, NULL)
 
 	f->request->message.offset1 = 8; /* rewind */
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -1128,7 +1128,7 @@ TEST_CASE(handle, invalid_request_type, NULL)
 
 	f->request->type = 128;
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -1157,10 +1157,10 @@ TEST_CASE(handle, max_requests, NULL)
 	f->request->prepare.db_id = db_id;
 	f->request->prepare.sql = "SELECT 1";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, DQLITE_PROTO);
 
 	munit_assert_string_equal(f->gateway->error,
@@ -1196,7 +1196,7 @@ TEST_CASE(handle, checkpoint, NULL)
 	f->request->exec_sql.db_id = db_id;
 	f->request->exec_sql.sql = "CREATE TABLE test (n INT)";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	gateway__flushed(f->gateway, f->response);
@@ -1248,7 +1248,7 @@ TEST_CASE(handle, checkpoint_busy, NULL)
 	f->request->exec_sql.sql =
 	    "CREATE TABLE test (n INT); INSERT INTO test VALUES(1)";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	gateway__flushed(f->gateway, f->response);
@@ -1288,7 +1288,7 @@ TEST_CASE(handle, checkpoint_busy, NULL)
 	f->request->exec_sql.db_id = db1_id;
 	f->request->exec_sql.sql = "INSERT INTO test VALUES(1)";
 
-	err = gateway__handle(f->gateway, f->request);
+	err = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(err, ==, 0);
 
 	gateway__flushed(f->gateway, f->response);
@@ -1354,7 +1354,7 @@ TEST_CASE(handle, interrupt, NULL)
 
 	f->response->message.offset1 = 0;
 
-	rc = gateway__handle(f->gateway, f->request);
+	rc = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -1370,7 +1370,7 @@ TEST_CASE(handle, interrupt, NULL)
 
 	f->response->message.offset1 = 0;
 
-	rc = gateway__handle(f->gateway, f->request);
+	rc = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -1425,7 +1425,7 @@ TEST_CASE(handle, interrupt_finalize, NULL)
 
 	f->response->message.offset1 = 0;
 
-	rc = gateway__handle(f->gateway, f->request);
+	rc = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -1441,7 +1441,7 @@ TEST_CASE(handle, interrupt_finalize, NULL)
 
 	f->response->message.offset1 = 0;
 
-	rc = gateway__handle(f->gateway, f->request);
+	rc = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -1478,7 +1478,7 @@ TEST_CASE(handle, interrupt_no_request, NULL)
 
 	f->response->message.offset1 = 0;
 
-	rc = gateway__handle(f->gateway, f->request);
+	rc = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
@@ -1504,7 +1504,7 @@ TEST_CASE(handle, interrupt_bad_request, NULL)
 	f->request->prepare.db_id = db_id;
 	f->request->prepare.sql = "SELECT 1";
 
-	rc = gateway__handle(f->gateway, f->request);
+	rc = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
 
 	f->request->type = DQLITE_REQUEST_INTERRUPT;
@@ -1515,7 +1515,7 @@ TEST_CASE(handle, interrupt_bad_request, NULL)
 
 	f->response->message.offset1 = 0;
 
-	rc = gateway__handle(f->gateway, f->request);
+	rc = gateway__handle_(f->gateway, f->request);
 	munit_assert_int(rc, ==, 0);
 
 	munit_assert_ptr_not_null(f->response);
