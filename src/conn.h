@@ -11,7 +11,7 @@
 #include "./lib/fsm.h"
 
 #include "error.h"
-#include "gateway.h"
+#include "gateway_.h"
 #include "metrics.h"
 #include "options.h"
 #include "request.h"
@@ -39,7 +39,7 @@ struct conn
 	struct dqlite__metrics *metrics; /* Operational metrics */
 	struct options *options;	 /* Connection state machine */
 	struct dqlite__fsm fsm;		 /* Connection state machine */
-	struct gateway gateway;		 /* Client state and request handler */
+	struct gateway_ gateway;		 /* Client state and request handler */
 	struct request request;		 /* Incoming request */
 	struct response response;	/* Response for internal failures */
 

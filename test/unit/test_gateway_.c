@@ -11,7 +11,7 @@
 #include "../replication.h"
 
 #include "../../src/format.h"
-#include "../../src/gateway.h"
+#include "../../src/gateway_.h"
 
 TEST_MODULE(gateway);
 
@@ -29,7 +29,7 @@ struct fixture
 	FIXTURE_REGISTRY;
 	FIXTURE_RAFT;
 	FIXTURE_REPLICATION;
-	struct gateway *gateway;
+	struct gateway_ *gateway;
 	struct request *request;
 	struct response *response;
 };
@@ -139,7 +139,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	callbacks.xFlush = fixture_flush_cb;
 
 	f->gateway = munit_malloc(sizeof *f->gateway);
-	gateway__init(f->gateway, &callbacks, &f->logger, &f->options);
+	gateway__init_(f->gateway, &callbacks, &f->logger, &f->options);
 	f->gateway->registry = &f->registry;
 
 	f->request = munit_malloc(sizeof *f->request);
@@ -154,7 +154,7 @@ static void tear_down(void *data)
 	struct fixture *f = data;
 
 	request_close(f->request);
-	gateway__close(f->gateway);
+	gateway__close_(f->gateway);
 	TEAR_DOWN_REPLICATION;
 	TEAR_DOWN_REGISTRY;
 	TEAR_DOWN_RAFT;
