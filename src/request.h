@@ -1,5 +1,5 @@
-#ifndef DQLITE_REQUEST_H
-#define DQLITE_REQUEST_H
+#ifndef DQLITE_REQUEST_H_
+#define DQLITE_REQUEST_H_
 
 #include "lib/serialize.h"
 
@@ -82,4 +82,4 @@ SCHEMA__DEFINE(request_interrupt, REQUEST__SCHEMA_INTERRUPT);
 
 SCHEMA__HANDLER_DEFINE(request, REQUEST__SCHEMA_TYPES);
 
-#endif /* DQLITE_REQUEST_H */
+#endif /* DQLITE_REQUEST_H_ */
