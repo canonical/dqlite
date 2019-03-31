@@ -70,6 +70,13 @@ static int handle_client(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+static int handle_open(struct handle *req, struct cursor *cursor)
+{
+	HANDLE_START(open, db);
+	HANDLE_END(db, DB);
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
