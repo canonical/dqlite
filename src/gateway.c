@@ -62,6 +62,14 @@ static int handle_leader(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+static int handle_client(struct handle *req, struct cursor *cursor)
+{
+	HANDLE_START(client, welcome);
+	response.heartbeat_timeout = req->gateway->options->heartbeat_timeout;
+	HANDLE_END(welcome, WELCOME);
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
