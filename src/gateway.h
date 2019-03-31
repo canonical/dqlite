@@ -85,20 +85,6 @@ void gateway__init(struct gateway *g,
 
 void gateway__close(struct gateway *g);
 
-/* Start the gateway.
- *
- * This function will kick off the gateway loop which runs in its own coroutine
- * and has its own stack. Whenever blocking I/O is required (for example when
- * applying a new raft entry) control will be passed back to the main thread
- * loop, and the gateway loop will resume when the relevant I/O is completed.
- *
- * The 'now' parameter holds the current time, and it's used to set the initial
- * heartbeat timestamp.
- *
- * It's a separate function from gateway__init() since it must be called
- * from the main loop thread. */
-int gateway__start(struct gateway *g, uint64_t now);
-
 /* Start handling a new client request.
  *
  * Responses for requests that can be handled synchronously will be generated
