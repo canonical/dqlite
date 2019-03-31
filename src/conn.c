@@ -465,7 +465,7 @@ static int conn__body_read_cb(void *arg)
 
 	c->request.timestamp = uv_now(c->loop);
 
-	err = gateway__handle(&c->gateway, &c->request);
+	err = gateway__handle_(&c->gateway, &c->request);
 	if (err != 0) {
 		dqlite__error_wrapf(&c->error, &c->gateway.error,
 				    "failed to handle request");
