@@ -107,7 +107,7 @@ void gateway__close_(struct gateway_ *g);
  * User code can check whether the gateway would currently accept a request of a
  * certain type by calling gateway__ctx_for.
  */
-int gateway__handle(struct gateway_ *g, struct request *request);
+int gateway__handle_(struct gateway_ *g, struct request *request);
 
 /* Return the request ctx index that the gateway will use to handle a request of
  * the given type at this moment, or -1 if the gateway can't handle a request of
