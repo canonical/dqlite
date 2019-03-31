@@ -56,7 +56,7 @@ REQUEST__TYPES(REQUEST__DEFINE);
 #define REQUEST__SCHEMA_INTERRUPT(X, ...) X(uint64, db_id, __VA_ARGS__)
 
 SCHEMA__DEFINE(request_leader_, REQUEST__SCHEMA_LEADER);
-SCHEMA__DEFINE(request_client, REQUEST__SCHEMA_CLIENT);
+SCHEMA__DEFINE(request_client_, REQUEST__SCHEMA_CLIENT);
 SCHEMA__DEFINE(request_heartbeat, REQUEST__SCHEMA_HEARTBEAT);
 SCHEMA__DEFINE(request_open, REQUEST__SCHEMA_OPEN);
 SCHEMA__DEFINE(request_prepare, REQUEST__SCHEMA_PREPARE);
@@ -69,7 +69,7 @@ SCHEMA__DEFINE(request_interrupt, REQUEST__SCHEMA_INTERRUPT);
 
 #define REQUEST__SCHEMA_TYPES(X, ...)                                          \
 	X(DQLITE_REQUEST_LEADER, request_leader_, leader, __VA_ARGS__)         \
-	X(DQLITE_REQUEST_CLIENT, request_client, client, __VA_ARGS__)          \
+	X(DQLITE_REQUEST_CLIENT, request_client_, client, __VA_ARGS__)         \
 	X(DQLITE_REQUEST_HEARTBEAT, request_heartbeat, heartbeat, __VA_ARGS__) \
 	X(DQLITE_REQUEST_OPEN, request_open, open, __VA_ARGS__)                \
 	X(DQLITE_REQUEST_PREPARE, request_prepare, prepare, __VA_ARGS__)       \
