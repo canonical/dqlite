@@ -12,7 +12,7 @@
 #define REQUEST_LEADER(X, ...) X(uint64, __unused__, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
-	SERIALIZE__DEFINE_STRUCT(request_##LOWER, REQUEST_##UPPER);
+	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
 
 #define REQUEST__TYPES(X, ...) X(leader, LEADER, __VA_ARGS__)
 
