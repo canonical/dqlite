@@ -130,6 +130,7 @@ struct server
 #define CLUSTER_LOGGER(I) &f->servers[I].logger
 #define CLUSTER_LEADER(I) &f->servers[I].leader
 #define CLUSTER_REGISTRY(I) &f->servers[I].registry
+#define CLUSTER_RAFT(I) raft_fixture_get(&f->cluster, I)
 
 #define CLUSTER_ELECT(I) raft_fixture_elect(&f->cluster, I)
 #define CLUSTER_DEPOSE raft_fixture_depose(&f->cluster)
