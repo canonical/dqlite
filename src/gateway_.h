@@ -52,7 +52,7 @@ struct gateway__cbs
  * Handle requests from a single connected client and forward them to
  * SQLite.
  */
-struct gateway
+struct gateway_
 {
 	/* read-only */
 	uint64_t client_id;
@@ -78,12 +78,12 @@ struct gateway
 	struct leader *leader;
 };
 
-void gateway__init(struct gateway *g,
+void gateway__init_(struct gateway_ *g,
 		   struct gateway__cbs *callbacks,
 		   struct dqlite_logger *logger,
 		   struct options *options);
 
-void gateway__close(struct gateway *g);
+void gateway__close_(struct gateway_ *g);
 
 /* Start handling a new client request.
  *
@@ -107,19 +107,19 @@ void gateway__close(struct gateway *g);
  * User code can check whether the gateway would currently accept a request of a
  * certain type by calling gateway__ctx_for.
  */
-int gateway__handle(struct gateway *g, struct request *request);
+int gateway__handle(struct gateway_ *g, struct request *request);
 
 /* Return the request ctx index that the gateway will use to handle a request of
  * the given type at this moment, or -1 if the gateway can't handle a request of
  * that type right now. */
-int gateway__ctx_for(struct gateway *g, int type);
+int gateway__ctx_for(struct gateway_ *g, int type);
 
 /* Notify the gateway that a response has been completely flushed and its data
  * sent to the client. */
-void gateway__flushed(struct gateway *g, struct response *response);
+void gateway__flushed(struct gateway_ *g, struct response *response);
 
 /* Notify the gateway that this response has been aborted due to errors
  * (e.g. the client disconnected). */
-void gateway__aborted(struct gateway *g, struct response *response);
+void gateway__aborted(struct gateway_ *g, struct response *response);
 
 #endif /* DQLITE_GATEWAY_H */
