@@ -126,6 +126,8 @@ struct server
 		test_logger_tear_down(&s->logger);                   \
 	}
 
+#define CLUSTER_OPTIONS(I) &f->servers[I].options
+#define CLUSTER_LOGGER(I) &f->servers[I].logger
 #define CLUSTER_LEADER(I) &f->servers[I].leader
 #define CLUSTER_REGISTRY(I) &f->servers[I].registry
 

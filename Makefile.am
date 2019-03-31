@@ -37,6 +37,7 @@ libdqlite_la_SOURCES = \
   src/file.c \
   src/format.c \
   src/fsm.c \
+  src/gateway.c \
   src/gateway_.c \
   src/leader.c \
   src/lib/buffer.c \
@@ -101,6 +102,7 @@ unit_test_SOURCES += \
   test/unit/lib/test_registry.c \
   test/unit/lib/test_serialize.c \
   test/unit/test_command.c \
+  test/unit/test_gateway.c \
   test/unit/test_gateway_.c \
   test/unit/test_registry.c \
   test/unit/test_replication.c \
