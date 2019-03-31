@@ -43,7 +43,7 @@ void gateway__close(struct gateway *g);
 /**
  * Asynchronous request to handle a client command.
  */
-typedef void (*handle_cb)(struct handle *req, int status);
+typedef void (*handle_cb)(struct handle *req, int status, int type);
 struct handle
 {
 	void *data; /* User data */
@@ -67,6 +67,7 @@ int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
 		    struct cursor *cursor,
-		    struct buffer *buffer);
+		    struct buffer *buffer,
+		    handle_cb cb);
 
 #endif /* DQLITE_GATEWAY_H_ */

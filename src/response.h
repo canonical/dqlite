@@ -1,7 +1,22 @@
-#ifndef DQLITE_RESPONSE_H
-#define DQLITE_RESPONSE_H
+#ifndef DQLITE_RESPONSE_H_
+#define DQLITE_RESPONSE_H_
+
+#include "lib/serialize.h"
 
 #include "schema.h"
+
+/**
+ * Response types.
+ */
+
+#define RESPONSE_SERVER(X, ...) X(text, address, ##__VA_ARGS__)
+
+#define RESPONSE__DEFINE(LOWER, UPPER, _) \
+	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
+
+#define RESPONSE__TYPES(X, ...) X(server, SERVER, __VA_ARGS__)
+
+RESPONSE__TYPES(RESPONSE__DEFINE);
 
 /* The size of pre-allocated response buffer. This should generally fit in
  * a single IP packet, given typical MTU sizes */
@@ -58,4 +73,4 @@ SCHEMA__DEFINE(response_empty, RESPONSE__SCHEMA_EMPTY);
 
 SCHEMA__HANDLER_DEFINE(response, RESPONSE__SCHEMA_TYPES);
 
-#endif /* DQLITE_RESPONSE_H */
+#endif /* DQLITE_RESPONSE_H_ */

@@ -5,10 +5,19 @@
 
 #include "../include/dqlite.h"
 
-#include "./lib/assert.h"
+#include "lib/serialize.h"
+#include "lib/assert.h"
 
 #include "error.h"
 #include "lifecycle.h"
+
+#define MESSAGE_HEADER(X, ...)          \
+	X(uint32, words, ##__VA_ARGS__) \
+	X(uint8, type, ##__VA_ARGS__)   \
+	X(uint8, flags, ##__VA_ARGS__)  \
+	X(uint16, extra, ##__VA_ARGS__)
+
+SERIALIZE__DEFINE(message_header, MESSAGE_HEADER);
 
 /**
  * The size of the message header, always 8 bytes.
