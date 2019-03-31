@@ -6,6 +6,7 @@
 
 #include "../include/dqlite.h"
 
+#include "assert.h"
 #include "byte.h"
 
 /**
@@ -131,6 +132,18 @@ DQLITE_INLINE size_t uint64__sizeof(const uint64_t *value)
 	return sizeof(uint64_t);
 }
 
+DQLITE_INLINE size_t int64__sizeof(const int64_t *value)
+{
+	(void)value;
+	return sizeof(int64_t);
+}
+
+DQLITE_INLINE size_t float__sizeof(const float_t *value)
+{
+	(void)value;
+	return sizeof(double);
+}
+
 DQLITE_INLINE size_t text__sizeof(const text_t *value)
 {
 	return byte__pad64(strlen(*value) + 1);
@@ -157,6 +170,18 @@ DQLITE_INLINE void uint32__encode(const uint32_t *value, void **cursor)
 DQLITE_INLINE void uint64__encode(const uint64_t *value, void **cursor)
 {
 	*(uint64_t *)(*cursor) = byte__flip64(*value);
+	*cursor += sizeof(uint64_t);
+}
+
+DQLITE_INLINE void int64__encode(const int64_t *value, void **cursor)
+{
+	*(int64_t *)(*cursor) = byte__flip64(*value);
+	*cursor += sizeof(int64_t);
+}
+
+DQLITE_INLINE void float__encode(const float_t *value, void **cursor)
+{
+	*(uint64_t *)(*cursor) = byte__flip64(*(uint64_t*)value);
 	*cursor += sizeof(uint64_t);
 }
 
