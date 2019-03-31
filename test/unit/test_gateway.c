@@ -38,7 +38,26 @@ static void tear_down(void *data)
 
 /******************************************************************************
  *
- * Handle an open request.
+ * leader
+ *
+ ******************************************************************************/
+
+TEST_SUITE(leader);
+TEST_SETUP(leader, setup);
+TEST_TEAR_DOWN(leader, tear_down);
+
+/* Successfully a request to get the address of the current cluster leader. */
+TEST_CASE(leader, success, NULL)
+{
+	struct fixture *f = data;
+	(void)params;
+	(void)f;
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * open
  *
  ******************************************************************************/
 
