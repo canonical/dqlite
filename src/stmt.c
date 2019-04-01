@@ -124,7 +124,7 @@ static int stmt__bind_param(struct stmt *s,
 	return err;
 }
 
-int stmt__bind(struct stmt *s, struct message *message)
+int stmt__bind_(struct stmt *s, struct message *message)
 {
 	int err;
 	uint8_t pad = 0;
