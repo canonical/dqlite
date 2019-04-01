@@ -67,7 +67,7 @@ SCHEMA__DEFINE(request_leader_, REQUEST__SCHEMA_LEADER);
 SCHEMA__DEFINE(request_client_, REQUEST__SCHEMA_CLIENT);
 SCHEMA__DEFINE(request_heartbeat, REQUEST__SCHEMA_HEARTBEAT);
 SCHEMA__DEFINE(request_open_, REQUEST__SCHEMA_OPEN);
-SCHEMA__DEFINE(request_prepare, REQUEST__SCHEMA_PREPARE);
+SCHEMA__DEFINE(request_prepare_, REQUEST__SCHEMA_PREPARE);
 SCHEMA__DEFINE(request_query, REQUEST__SCHEMA_QUERY);
 SCHEMA__DEFINE(request_exec_, REQUEST__SCHEMA_EXEC);
 SCHEMA__DEFINE(request_finalize, REQUEST__SCHEMA_FINALIZE);
@@ -80,7 +80,7 @@ SCHEMA__DEFINE(request_interrupt, REQUEST__SCHEMA_INTERRUPT);
 	X(DQLITE_REQUEST_CLIENT, request_client_, client, __VA_ARGS__)         \
 	X(DQLITE_REQUEST_HEARTBEAT, request_heartbeat, heartbeat, __VA_ARGS__) \
 	X(DQLITE_REQUEST_OPEN, request_open_, open, __VA_ARGS__)               \
-	X(DQLITE_REQUEST_PREPARE, request_prepare, prepare, __VA_ARGS__)       \
+	X(DQLITE_REQUEST_PREPARE, request_prepare_, prepare, __VA_ARGS__)      \
 	X(DQLITE_REQUEST_EXEC, request_exec_, exec, __VA_ARGS__)               \
 	X(DQLITE_REQUEST_QUERY, request_query, query, __VA_ARGS__)             \
 	X(DQLITE_REQUEST_FINALIZE, request_finalize, finalize, __VA_ARGS__)    \
