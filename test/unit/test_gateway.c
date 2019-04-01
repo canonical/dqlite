@@ -4,6 +4,7 @@
 #include "../../src/gateway.h"
 #include "../../src/request.h"
 #include "../../src/response.h"
+#include "../../src/tuple.h"
 
 TEST_MODULE(gateway);
 
@@ -83,16 +84,16 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 
 /* Decode a response of the given lower/upper case name using the buffer that
  * was written by the gateway. */
-#define DECODE(LOWER, UPPER)                                             \
-	{                                                                \
-		struct cursor cursor;                                    \
-		int rc2;                                                 \
-		cursor.p = buffer__cursor(&f->buffer, 0);                \
-		cursor.cap = buffer__offset(&f->buffer);                 \
-		munit_assert_int(f->context.type, ==,                    \
-				 DQLITE_RESPONSE_##UPPER);               \
-		rc2 = response_##LOWER##__decode(&cursor, &f->response); \
-		munit_assert_int(rc2, ==, 0);                            \
+#define DECODE(RESPONSE, LOWER, UPPER)                               \
+	{                                                            \
+		struct cursor cursor;                                \
+		int rc2;                                             \
+		cursor.p = buffer__cursor(&f->buffer, 0);            \
+		cursor.cap = buffer__offset(&f->buffer);             \
+		munit_assert_int(f->context.type, ==,                \
+				 DQLITE_RESPONSE_##UPPER);           \
+		rc2 = response_##LOWER##__decode(&cursor, RESPONSE); \
+		munit_assert_int(rc2, ==, 0);                        \
 	}
 
 /* Handle a request of the given type and check that no error occurs. */
@@ -104,6 +105,20 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 				      DQLITE_REQUEST_##TYPE, &f->cursor, \
 				      &f->buffer, fixture_handle_cb);    \
 		munit_assert_int(rc2, ==, 0);                            \
+	}
+
+/* Create a statement. The ID will be saved in stmt_id. */
+#define PREPARE(SQL)                            \
+	{                                       \
+		struct request_prepare prepare; \
+		struct response_stmt stmt;      \
+		prepare.db_id = 0;              \
+		prepare.sql = SQL;              \
+		ENCODE(&prepare, prepare);      \
+		HANDLE(PREPARE);                \
+		ASSERT_STATUS(0);               \
+		DECODE(&stmt, stmt, STMT);      \
+		stmt_id = stmt.id;              \
 	}
 
 /******************************************************************************
@@ -168,7 +183,7 @@ TEST_CASE(leader, not_available, NULL)
 	ENCODE(&f->request, leader);
 	HANDLE(LEADER);
 	ASSERT_STATUS(0);
-	DECODE(server, SERVER);
+	DECODE(&f->response, server, SERVER);
 	munit_assert_string_equal(f->response.address, "");
 	return MUNIT_OK;
 }
@@ -182,7 +197,7 @@ TEST_CASE(leader, same_node, NULL)
 	ENCODE(&f->request, leader);
 	HANDLE(LEADER);
 	ASSERT_STATUS(0);
-	DECODE(server, SERVER);
+	DECODE(&f->response, server, SERVER);
 	munit_assert_string_equal(f->response.address, "1");
 	return MUNIT_OK;
 }
@@ -196,7 +211,7 @@ TEST_CASE(leader, other_node, NULL)
 	ENCODE(&f->request, leader);
 	HANDLE(LEADER);
 	ASSERT_STATUS(0);
-	DECODE(server, SERVER);
+	DECODE(&f->response, server, SERVER);
 	munit_assert_string_equal(f->response.address, "2");
 	return MUNIT_OK;
 }
@@ -238,7 +253,7 @@ TEST_CASE(open, success, NULL)
 	ENCODE(&f->request, open);
 	HANDLE(OPEN);
 	ASSERT_STATUS(0);
-	DECODE(db, DB);
+	DECODE(&f->response, db, DB);
 	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
 }
@@ -306,7 +321,7 @@ TEST_CASE(prepare, success, NULL)
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	ASSERT_STATUS(0);
-	DECODE(stmt, STMT);
+	DECODE(&f->response, stmt, STMT);
 	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
 }
@@ -329,17 +344,11 @@ TEST_SETUP(exec)
 {
 	struct exec_fixture *f = munit_malloc(sizeof *f);
 	struct request_open open;
-	struct request_prepare prepare;
 	SETUP;
 	open.filename = "test";
 	open.vfs = "";
 	ENCODE(&open, open);
 	HANDLE(OPEN);
-	ASSERT_STATUS(0);
-	prepare.db_id = 0;
-	prepare.sql = "CREATE TABLE test (INT n)";
-	ENCODE(&prepare, prepare);
-	HANDLE(PREPARE);
 	ASSERT_STATUS(0);
 	return f;
 }
@@ -350,20 +359,62 @@ TEST_TEAR_DOWN(exec)
 	free(f);
 }
 
-/* Successfully prepare a statement. */
-TEST_CASE(exec, success, NULL)
+/* Successfully execute a simple statement with no parameters. */
+TEST_CASE(exec, simple, NULL)
 {
 	struct exec_fixture *f = data;
+	uint64_t stmt_id;
 	(void)params;
 	CLUSTER_ELECT(0);
+	PREPARE("CREATE TABLE test (INT n)");
 	f->request.db_id = 0;
-	f->request.stmt_id = 0;
+	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, exec);
 	HANDLE(EXEC);
 	CLUSTER_APPLIED(3);
 	ASSERT_STATUS(0);
-	DECODE(result, RESULT);
+	DECODE(&f->response, result, RESULT);
 	munit_assert_int(f->response.last_insert_id, ==, 0);
 	munit_assert_int(f->response.rows_affected, ==, 0);
+	return MUNIT_OK;
+}
+
+/* Successfully execute a statement with a one parameter. */
+TEST_CASE(exec, one_param, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Create the test table */
+	PREPARE("CREATE TABLE test (INT n)");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	HANDLE(EXEC);
+	CLUSTER_APPLIED(3);
+
+	/* Insert a row with one parameter */
+	ASSERT_STATUS(0);
+	PREPARE("INSERT INTO test VALUES (1)");
+
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+
+	struct tuple_encoder encoder;
+	int rc2;
+	rc2 = tuple_encoder__init(&encoder, 1, TUPLE__PARAMS, &f->buffer);
+	munit_assert_int(rc2, ==, 0);
+	struct value value;
+	value.type = SQLITE_INTEGER;
+	value.integer = 7;
+	rc2 = tuple_encoder__next(&encoder, &value);
+	munit_assert_int(rc2, ==, 0);
+
+	HANDLE(EXEC);
+	CLUSTER_APPLIED(4);
+	ASSERT_STATUS(0);
+
 	return MUNIT_OK;
 }
