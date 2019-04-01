@@ -2,6 +2,14 @@
 #include "request.h"
 #include "response.h"
 
+/* Context for exec requests */
+struct gateway_exec
+{
+	struct handle *handle;
+	struct stmt *stmt;
+	struct exec exec;
+};
+
 void gateway__init(struct gateway *g,
 		   struct dqlite_logger *logger,
 		   struct options *options,
@@ -40,17 +48,17 @@ void gateway__close(struct gateway *g)
 	}
 
 /* Encode the given success response and invoke the request callback */
-#define SUCCESS(LOWER, UPPER)                                     \
-	{                                                         \
-		size_t n = response_##LOWER##__sizeof(&response); \
-		void *cursor;                                     \
-		assert(n % 8 == 0);                               \
-		cursor = buffer__advance(req->buffer, n);         \
-		if (cursor == NULL) {                             \
-			return DQLITE_NOMEM;                      \
-		}                                                 \
-		response_##LOWER##__encode(&response, &cursor);   \
-		req->cb(req, 0, DQLITE_RESPONSE_##UPPER);         \
+#define SUCCESS(LOWER, UPPER)                                                  \
+	{                                                                      \
+		size_t n = response_##LOWER##__sizeof(&response);              \
+		void *cursor;                                                  \
+		assert(n % 8 == 0);                                            \
+		cursor = buffer__advance(req->buffer, n);                      \
+		/* Since responses are small and the buffer it's at least 4096 \
+		 * bytes, this can't fail. */                                  \
+		assert(cursor != NULL);                                        \
+		response_##LOWER##__encode(&response, &cursor);                \
+		req->cb(req, 0, DQLITE_RESPONSE_##UPPER);                      \
 	}
 
 /* Lookup the database with the given ID.
@@ -60,6 +68,15 @@ void gateway__close(struct gateway *g)
 	if (ID != 0 || req->gateway->leader == NULL) {               \
 		failure(req, SQLITE_NOTFOUND, "no database opened"); \
 		return 0;                                            \
+	}
+
+/* Lookup the statement with the given ID. */
+#define LOOKUP_STMT(ID)                                      \
+	stmt = stmt__registry_get(&req->gateway->stmts, ID); \
+	if (stmt == NULL) {                                  \
+		failure(req, SQLITE_NOTFOUND,                \
+			"no statement with the given id");   \
+		return 0;                                    \
 	}
 
 /* Encode fa failure response and invoke the request callback */
@@ -125,6 +142,49 @@ static int handle_open(struct handle *req, struct cursor *cursor)
 	}
 	response.id = 0;
 	SUCCESS(db, DB);
+	return 0;
+}
+
+static void handle_exec_cb(struct exec *exec, int status)
+{
+	struct gateway_exec *r = exec->data;
+	struct handle *req = r->handle;
+	struct stmt *stmt = r->stmt;
+	struct response_result response;
+
+	sqlite3_free(r);
+
+	if (status == SQLITE_DONE) {
+		response.last_insert_id = sqlite3_last_insert_rowid(stmt->db);
+		response.rows_affected = sqlite3_changes(stmt->db);
+		SUCCESS(result, RESULT);
+	} else {
+		failure(r->handle, status, "exec error");
+		sqlite3_reset(stmt->stmt);
+	}
+}
+
+static int handle_exec(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	struct stmt *stmt;
+	struct gateway_exec *r;
+	int rc;
+	START(exec, result);
+	LOOKUP_DB(request.db_id);
+	LOOKUP_STMT(request.stmt_id);
+	(void)response;
+	r = sqlite3_malloc(sizeof *r);
+	if (r == NULL) {
+		return DQLITE_NOMEM;
+	}
+	r->handle = req;
+	r->stmt = stmt;
+	r->exec.data = r;
+	rc = leader__exec(g->leader, &r->exec, stmt->stmt, handle_exec_cb);
+	if (rc != 0) {
+		return rc;
+	}
 	return 0;
 }
 
