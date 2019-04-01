@@ -14,6 +14,9 @@
 #define RESPONSE_DB(X, ...)          \
 	X(uint32, id, ##__VA_ARGS__) \
 	X(uint32, __pad__, ##__VA_ARGS__)
+#define RESPONSE_FAILURE(X, ...)       \
+	X(uint64, code, ##__VA_ARGS__) \
+	X(text, message, ##__VA_ARGS__)
 
 #define RESPONSE__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
@@ -21,7 +24,8 @@
 #define RESPONSE__TYPES(X, ...)          \
 	X(server, SERVER, __VA_ARGS__)   \
 	X(welcome, WELCOME, __VA_ARGS__) \
-	X(db, DB, __VA_ARGS__)
+	X(db, DB, __VA_ARGS__)           \
+	X(failure, FAILURE, __VA_ARGS__)
 
 RESPONSE__TYPES(RESPONSE__DEFINE);
 
@@ -68,7 +72,7 @@ SCHEMA__DEFINE(response_rows, RESPONSE__SCHEMA_ROWS);
 SCHEMA__DEFINE(response_empty, RESPONSE__SCHEMA_EMPTY);
 
 #define RESPONSE__SCHEMA_TYPES(X, ...)                                      \
-	X(DQLITE_RESPONSE_FAILURE, response_failure_, failure, __VA_ARGS__)  \
+	X(DQLITE_RESPONSE_FAILURE, response_failure_, failure, __VA_ARGS__) \
 	X(DQLITE_RESPONSE_SERVER, response_server_, server, __VA_ARGS__)    \
 	X(DQLITE_RESPONSE_WELCOME, response_welcome_, welcome, __VA_ARGS__) \
 	X(DQLITE_RESPONSE_SERVERS, response_servers, servers, __VA_ARGS__)  \
