@@ -66,7 +66,7 @@ SCHEMA__DEFINE(response_server_, RESPONSE__SCHEMA_SERVER);
 SCHEMA__DEFINE(response_welcome_, RESPONSE__SCHEMA_WELCOME);
 SCHEMA__DEFINE(response_servers, RESPONSE__SCHEMA_SERVERS);
 SCHEMA__DEFINE(response_db_, RESPONSE__SCHEMA_DB);
-SCHEMA__DEFINE(response_stmt, RESPONSE__SCHEMA_STMT);
+SCHEMA__DEFINE(response_stmt_, RESPONSE__SCHEMA_STMT);
 SCHEMA__DEFINE(response_result, RESPONSE__SCHEMA_RESULT);
 SCHEMA__DEFINE(response_rows, RESPONSE__SCHEMA_ROWS);
 SCHEMA__DEFINE(response_empty, RESPONSE__SCHEMA_EMPTY);
@@ -77,7 +77,7 @@ SCHEMA__DEFINE(response_empty, RESPONSE__SCHEMA_EMPTY);
 	X(DQLITE_RESPONSE_WELCOME, response_welcome_, welcome, __VA_ARGS__) \
 	X(DQLITE_RESPONSE_SERVERS, response_servers, servers, __VA_ARGS__)  \
 	X(DQLITE_RESPONSE_DB, response_db_, db, __VA_ARGS__)                \
-	X(DQLITE_RESPONSE_STMT, response_stmt, stmt, __VA_ARGS__)           \
+	X(DQLITE_RESPONSE_STMT, response_stmt_, stmt, __VA_ARGS__)          \
 	X(DQLITE_RESPONSE_RESULT, response_result, result, __VA_ARGS__)     \
 	X(DQLITE_RESPONSE_ROWS, response_rows, rows, __VA_ARGS__)           \
 	X(DQLITE_RESPONSE_EMPTY, response_empty, empty, __VA_ARGS__)
