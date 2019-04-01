@@ -71,6 +71,9 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 	{                                                           \
 		size_t n2 = request_##LOWER##__sizeof(&f->request); \
 		void *cursor;                                       \
+		if (f->payload != NULL) {                           \
+			free(f->payload);                           \
+		}                                                   \
 		f->payload = munit_malloc(n2);                      \
 		cursor = f->payload;                                \
 		request_##LOWER##__encode(&f->request, &cursor);    \
@@ -80,20 +83,23 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 
 /* Decode a response of the given lower/upper case name using the buffer that
  * was written by the gateway. */
-#define DECODE(LOWER, UPPER)                                       \
-	{                                                          \
-		struct cursor cursor;                              \
-		cursor.p = buffer__cursor(&f->buffer, 0);          \
-		cursor.cap = buffer__offset(&f->buffer);           \
-		munit_assert_int(f->context.type, ==,              \
-				 DQLITE_RESPONSE_##UPPER);         \
-		response_##LOWER##__decode(&cursor, &f->response); \
+#define DECODE(LOWER, UPPER)                                             \
+	{                                                                \
+		struct cursor cursor;                                    \
+		int rc2;                                                 \
+		cursor.p = buffer__cursor(&f->buffer, 0);                \
+		cursor.cap = buffer__offset(&f->buffer);                 \
+		munit_assert_int(f->context.type, ==,                    \
+				 DQLITE_RESPONSE_##UPPER);               \
+		rc2 = response_##LOWER##__decode(&cursor, &f->response); \
+		munit_assert_int(rc2, ==, 0);                            \
 	}
 
 /* Handle a request of the given type and check that no error occurs. */
 #define HANDLE(TYPE)                                                     \
 	{                                                                \
 		int rc2;                                                 \
+		buffer__reset(&f->buffer);                               \
 		rc2 = gateway__handle(&f->gateway, &f->req,              \
 				      DQLITE_REQUEST_##TYPE, &f->cursor, \
 				      &f->buffer, fixture_handle_cb);    \
@@ -106,11 +112,26 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
  *
  ******************************************************************************/
 
-/* Assert that the handle callback has been invoked with the given status code
- */
+/* Assert that the handle callback has been invoked with the given status */
 #define ASSERT_STATUS(STATUS)                  \
 	munit_assert_true(f->context.invoked); \
 	munit_assert_int(f->context.status, ==, STATUS)
+
+/* Assert that the gateway has generated a failure response */
+#define ASSERT_FAILURE(CODE, MESSAGE)                                \
+	{                                                            \
+		struct response_failure failure;                     \
+		struct cursor cursor;                                \
+		int rc2;                                             \
+		cursor.p = buffer__cursor(&f->buffer, 0);            \
+		cursor.cap = buffer__offset(&f->buffer);             \
+		munit_assert_int(f->context.type, ==,                \
+				 DQLITE_RESPONSE_FAILURE);           \
+		rc2 = response_failure__decode(&cursor, &failure);   \
+		munit_assert_int(rc2, ==, 0);                        \
+		munit_assert_int(failure.code, ==, CODE);            \
+		munit_assert_string_equal(failure.message, MESSAGE); \
+	}
 
 /******************************************************************************
  *
@@ -219,5 +240,25 @@ TEST_CASE(open, success, NULL)
 	ASSERT_STATUS(0);
 	DECODE(db, DB);
 	munit_assert_int(f->response.id, ==, 0);
+	return MUNIT_OK;
+}
+
+TEST_GROUP(open, error);
+
+/* Attempting to open two databases on the same gateway results in an error. */
+TEST_CASE(open, error, twice, NULL)
+{
+	struct open_fixture *f = data;
+	(void)params;
+	f->request.filename = "test";
+	f->request.vfs = "";
+	ENCODE(open);
+	HANDLE(OPEN);
+	ASSERT_STATUS(0);
+	ENCODE(open);
+	HANDLE(OPEN);
+	ASSERT_STATUS(0);
+	ASSERT_FAILURE(SQLITE_BUSY,
+		       "a database for this connection is already open");
 	return MUNIT_OK;
 }
