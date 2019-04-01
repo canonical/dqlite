@@ -128,7 +128,7 @@ TEST_CASE(bind, none, NULL)
 
 	__prepare(f, "SELECT 1");
 
-	rc = stmt__bind(f->stmt, f->message);
+	rc = stmt__bind_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	return MUNIT_OK;
@@ -150,7 +150,7 @@ TEST_CASE(bind, missing_types, NULL)
 	f->message->words = 1;
 	f->message->body1[0] = 8;
 
-	rc = stmt__bind(f->stmt, f->message);
+	rc = stmt__bind_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error, "incomplete param types");
@@ -175,7 +175,7 @@ TEST_CASE(bind, no_params, NULL)
 	f->message->body1[0] = 1;
 	f->message->body1[1] = SQLITE_INTEGER;
 
-	rc = stmt__bind(f->stmt, f->message);
+	rc = stmt__bind_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error, "incomplete param values");
@@ -202,7 +202,7 @@ TEST_CASE(bind, missing_params, NULL)
 	f->message->body1[1] = SQLITE_INTEGER;
 	f->message->body1[2] = SQLITE_INTEGER;
 
-	rc = stmt__bind(f->stmt, f->message);
+	rc = stmt__bind_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error, "incomplete param values");
@@ -225,7 +225,7 @@ TEST_CASE(bind, bad_type, NULL)
 	f->message->body1[0] = 1;
 	f->message->body1[1] = 127;
 
-	rc = stmt__bind(f->stmt, f->message);
+	rc = stmt__bind_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error,
@@ -250,7 +250,7 @@ TEST_CASE(bind, bad_param, NULL)
 	f->message->body1[0] = 1;
 	f->message->body1[1] = SQLITE_INTEGER;
 
-	rc = stmt__bind(f->stmt, f->message);
+	rc = stmt__bind_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_RANGE);
 
 	munit_assert_string_equal(f->stmt->error, "column index out of range");
@@ -276,7 +276,7 @@ TEST_CASE(bind, integer, NULL)
 
 	memcpy(f->message->body1 + 8, &buf, sizeof buf);
 
-	rc = stmt__bind(f->stmt, f->message);
+	rc = stmt__bind_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The float parameter was correctly bound. */
@@ -311,7 +311,7 @@ TEST_CASE(bind, float, NULL)
 	buf = byte__flip64(buf);
 	memcpy(f->message->body1 + 8, &buf, sizeof buf);
 
-	rc = stmt__bind(f->stmt, f->message);
+	rc = stmt__bind_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The float parameter was correctly bound. */
@@ -343,7 +343,7 @@ TEST_CASE(bind, text, NULL)
 
 	strcpy(f->message->body1 + 8, "hello");
 
-	rc = stmt__bind(f->stmt, f->message);
+	rc = stmt__bind_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The float parameter was correctly bound. */
@@ -375,7 +375,7 @@ TEST_CASE(bind, iso8601, NULL)
 
 	strcpy(f->message->body1 + 8, "2018-07-20 09:49:05+00:00");
 
-	rc = stmt__bind(f->stmt, f->message);
+	rc = stmt__bind_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The float parameter was correctly bound. */
