@@ -93,7 +93,6 @@ unit_test_SOURCES += \
   test/test_response.c \
   test/test_schema.c \
   test/test_server.c \
-  test/test_stmt.c \
   test/test_vfs.c\
   test/unit/ext/test_co.c \
   test/unit/ext/test_uv.c \
@@ -106,6 +105,7 @@ unit_test_SOURCES += \
   test/unit/test_registry.c \
   test/unit/test_replication.c \
   test/unit/test_request.c \
+  test/unit/test_stmt.c \
   test/unit/test_tuple.c \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS)

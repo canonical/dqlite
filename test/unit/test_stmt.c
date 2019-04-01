@@ -5,13 +5,13 @@
 
 #include "../include/dqlite.h"
 
-#include "../src/lib/byte.h"
-#include "../src/stmt.h"
-#include "../src/vfs.h"
+#include "../../src/lib/byte.h"
+#include "../../src/stmt.h"
+#include "../../src/vfs.h"
 
-#include "case.h"
-#include "log.h"
-#include "./lib/runner.h"
+#include "../case.h"
+#include "../log.h"
+#include "../lib/runner.h"
 
 TEST_MODULE(stmt);
 
