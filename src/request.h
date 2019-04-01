@@ -18,6 +18,9 @@
 #define REQUEST_PREPARE(X, ...)         \
 	X(uint64, db_id, ##__VA_ARGS__) \
 	X(text, sql, ##__VA_ARGS__)
+#define REQUEST_EXEC(X, ...)            \
+	X(uint32, db_id, ##__VA_ARGS__) \
+	X(uint32, stmt_id, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
@@ -26,7 +29,8 @@
 	X(leader, LEADER, __VA_ARGS__) \
 	X(client, CLIENT, __VA_ARGS__) \
 	X(open, OPEN, __VA_ARGS__)     \
-	X(prepare, PREPARE, __VA_ARGS__)
+	X(prepare, PREPARE, __VA_ARGS__) \
+	X(exec, EXEC, __VA_ARGS__)
 
 REQUEST__TYPES(REQUEST__DEFINE);
 

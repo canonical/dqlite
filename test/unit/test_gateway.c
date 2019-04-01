@@ -310,3 +310,60 @@ TEST_CASE(prepare, success, NULL)
 	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * exec
+ *
+ ******************************************************************************/
+
+struct exec_fixture
+{
+	FIXTURE;
+	struct request_exec request;
+	struct response_result response;
+};
+
+TEST_SUITE(exec);
+TEST_SETUP(exec)
+{
+	struct exec_fixture *f = munit_malloc(sizeof *f);
+	struct request_open open;
+	struct request_prepare prepare;
+	SETUP;
+	open.filename = "test";
+	open.vfs = "";
+	ENCODE(&open, open);
+	HANDLE(OPEN);
+	ASSERT_STATUS(0);
+	prepare.db_id = 0;
+	prepare.sql = "CREATE TABLE test (INT n)";
+	ENCODE(&prepare, prepare);
+	HANDLE(PREPARE);
+	ASSERT_STATUS(0);
+	return f;
+}
+TEST_TEAR_DOWN(exec)
+{
+	struct exec_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Successfully prepare a statement. */
+TEST_CASE(exec, success, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	CLUSTER_ELECT(0);
+	f->request.db_id = 0;
+	f->request.stmt_id = 0;
+	ENCODE(&f->request, exec);
+	HANDLE(EXEC);
+	CLUSTER_APPLIED(3);
+	ASSERT_STATUS(0);
+	DECODE(result, RESULT);
+	munit_assert_int(f->response.last_insert_id, ==, 0);
+	munit_assert_int(f->response.rows_affected, ==, 0);
+	return MUNIT_OK;
+}
