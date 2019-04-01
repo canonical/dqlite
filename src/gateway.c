@@ -51,21 +51,22 @@ void gateway__close(struct gateway *g)
 	}
 
 /* Encode fa failure response and invoke the request callback */
-#define FAILURE(CODE, MESSAGE)                                 \
-	{                                                      \
-		struct response_failure failure;               \
-		size_t n = response_failure__sizeof(&failure); \
-		void *cursor;                                  \
-		assert(n % 8 == 0);                            \
-		failure.code = CODE;                           \
-		failure.message = MESSAGE;                     \
-		cursor = buffer__advance(req->buffer, n);      \
-		if (cursor == NULL) {                          \
-			return DQLITE_NOMEM;                   \
-		}                                              \
-		response_failure__encode(&failure, &cursor);   \
-		req->cb(req, 0, DQLITE_RESPONSE_FAILURE);      \
-	}
+static void failure(struct handle *req, int code, const char *message)
+{
+	struct response_failure failure;
+	size_t n;
+	void *cursor;
+	failure.code = code;
+	failure.message = message;
+	n = response_failure__sizeof(&failure);
+	assert(n % 8 == 0);
+	cursor = buffer__advance(req->buffer, n);
+	/* The buffer has at least 4096 bytes, and error messages are shorter
+	 * than that. So this can't fail. */
+	assert(cursor != NULL);
+	response_failure__encode(&failure, &cursor);
+	req->cb(req, 0, DQLITE_RESPONSE_FAILURE);
+}
 
 static int handle_leader(struct handle *req, struct cursor *cursor)
 {
@@ -94,23 +95,23 @@ static int handle_open(struct handle *req, struct cursor *cursor)
 	int rc;
 	START(open, db);
 	if (g->leader != NULL) {
-		FAILURE(SQLITE_BUSY,
+		failure(req, SQLITE_BUSY,
 			"a database for this connection is already open");
 		return 0;
 	}
 	rc = registry__db_get(g->registry, request.filename, &db);
 	if (rc != 0) {
-		FAILURE(rc, "get database");
+		failure(req, rc, "get database");
 		return 0;
 	}
 	g->leader = sqlite3_malloc(sizeof *g->leader);
 	if (g->leader == NULL) {
-		FAILURE(SQLITE_NOMEM, "unable to create database");
+		failure(req, SQLITE_NOMEM, "unable to create database");
 		return 0;
 	}
 	rc = leader__init(g->leader, db);
 	if (rc != 0) {
-		FAILURE(rc, "open database");
+		failure(req, rc, "open database");
 		sqlite3_free(g->leader);
 		g->leader = NULL;
 		return 0;
