@@ -17,7 +17,7 @@ TEST_MODULE(stmt);
 
 /******************************************************************************
  *
- * Helpers
+ * Fixture
  *
  ******************************************************************************/
 
@@ -50,12 +50,6 @@ static void __prepare(struct fixture *f, const char *sql)
 	rc = sqlite3_prepare(f->stmt->db, sql, -1, &f->stmt->stmt, &tail);
 	munit_assert_int(rc, ==, SQLITE_OK);
 }
-
-/******************************************************************************
- *
- * Setup and tear down
- *
- ******************************************************************************/
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
@@ -117,6 +111,8 @@ static void tear_down(void *data)
 TEST_SUITE(bind);
 TEST_SETUP(bind, setup);
 TEST_TEAR_DOWN(bind, tear_down);
+
+#if 0
 
 /* If a message carries no bindings, stmt__bind is a no-op. */
 TEST_CASE(bind, none, NULL)
@@ -946,3 +942,5 @@ TEST_CASE(query, large, NULL)
 
 	return MUNIT_OK;
 }
+
+#endif
