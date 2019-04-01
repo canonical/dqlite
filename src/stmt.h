@@ -49,6 +49,7 @@
 
 #include "./lib/registry.h"
 #include "./lib/serialize.h"
+#include "./lib/buffer.h"
 
 #include "error.h"
 #include "message.h"
@@ -87,9 +88,11 @@ int stmt__exec(struct stmt *s,
 	       uint64_t *last_insert_id,
 	       uint64_t *rows_affected);
 
+int stmt__query(struct stmt *s, struct buffer *buffer);
+
 /* Step through a query statement and fill the given message with the rows it
  * yields. */
-int stmt__query(struct stmt *s, struct message *message);
+int stmt__query_(struct stmt *s, struct message *message);
 
 REGISTRY(stmt__registry, stmt);
 

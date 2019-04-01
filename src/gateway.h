@@ -31,6 +31,8 @@ struct gateway
 	struct raft *raft;	    /* Raft instance */
 	struct leader *leader;	/* Leader connection to the database */
 	struct handle *req;	   /* Asynchronous request being handled */
+	struct stmt *stmt;
+	struct exec exec;
 	struct stmt__registry stmts;  /* Registry of prepared statements */
 };
 
