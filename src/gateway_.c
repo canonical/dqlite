@@ -334,7 +334,7 @@ static void gateway__exec(struct gateway_ *g, struct gateway__ctx *ctx)
 
 	assert(stmt != NULL);
 
-	rc = stmt__bind(stmt, &ctx->request->message);
+	rc = stmt__bind_(stmt, &ctx->request->message);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&g->error, stmt->error);
 		gateway__failure(g, ctx, rc);
@@ -423,7 +423,7 @@ static void gateway__query(struct gateway_ *g, struct gateway__ctx *ctx)
 
 	assert(stmt != NULL);
 
-	rc = stmt__bind(stmt, &ctx->request->message);
+	rc = stmt__bind_(stmt, &ctx->request->message);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&g->error, stmt->error);
 		gateway__failure(g, ctx, rc);
@@ -522,7 +522,7 @@ static void gateway__exec_sql_next(struct gateway_ *g,
 	}
 
 	/* TODO: what about bindings for multi-statement SQL text? */
-	rc = stmt__bind(stmt, &ctx->request->message);
+	rc = stmt__bind_(stmt, &ctx->request->message);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&g->error, stmt->error);
 		gateway__failure(g, ctx, rc);
@@ -593,7 +593,7 @@ static void gateway__query_sql(struct gateway_ *g, struct gateway__ctx *ctx)
 		return;
 	}
 
-	rc = stmt__bind(stmt, &ctx->request->message);
+	rc = stmt__bind_(stmt, &ctx->request->message);
 	if (rc != SQLITE_OK) {
 		dqlite__error_printf(&g->error, stmt->error);
 		gateway__failure(g, ctx, rc);
