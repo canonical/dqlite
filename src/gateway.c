@@ -25,7 +25,7 @@ void gateway__close(struct gateway *g)
 
 /* Declare a request struct and a response struct of the appropriate types and
  * decode the request. */
-#define HANDLE_START(REQ, RES)                                   \
+#define START(REQ, RES)                                          \
 	struct request_##REQ request;                            \
 	struct response_##RES response;                          \
 	{                                                        \
@@ -36,8 +36,8 @@ void gateway__close(struct gateway *g)
 		}                                                \
 	}
 
-/* Encode the given response and invoke the request callback */
-#define HANDLE_END(LOWER, UPPER)                                  \
+/* Encode the given success response and invoke the request callback */
+#define SUCCESS(LOWER, UPPER)                                     \
 	{                                                         \
 		size_t n = response_##LOWER##__sizeof(&response); \
 		void *cursor;                                     \
@@ -50,30 +50,73 @@ void gateway__close(struct gateway *g)
 		req->cb(req, 0, DQLITE_RESPONSE_##UPPER);         \
 	}
 
+/* Encode fa failure response and invoke the request callback */
+#define FAILURE(CODE, MESSAGE)                                 \
+	{                                                      \
+		struct response_failure failure;               \
+		size_t n = response_failure__sizeof(&failure); \
+		void *cursor;                                  \
+		assert(n % 8 == 0);                            \
+		failure.code = CODE;                           \
+		failure.message = MESSAGE;                     \
+		cursor = buffer__advance(req->buffer, n);      \
+		if (cursor == NULL) {                          \
+			return DQLITE_NOMEM;                   \
+		}                                              \
+		response_failure__encode(&failure, &cursor);   \
+		req->cb(req, 0, DQLITE_RESPONSE_FAILURE);      \
+	}
+
 static int handle_leader(struct handle *req, struct cursor *cursor)
 {
-	HANDLE_START(leader, server);
+	START(leader, server);
 	unsigned id;
 	raft_leader(req->gateway->raft, &id, &response.address);
 	if (response.address == NULL) {
 		response.address = "";
 	}
-	HANDLE_END(server, SERVER);
+	SUCCESS(server, SERVER);
 	return 0;
 }
 
 static int handle_client(struct handle *req, struct cursor *cursor)
 {
-	HANDLE_START(client, welcome);
+	START(client, welcome);
 	response.heartbeat_timeout = req->gateway->options->heartbeat_timeout;
-	HANDLE_END(welcome, WELCOME);
+	SUCCESS(welcome, WELCOME);
 	return 0;
 }
 
 static int handle_open(struct handle *req, struct cursor *cursor)
 {
-	HANDLE_START(open, db);
-	HANDLE_END(db, DB);
+	struct gateway *g = req->gateway;
+	struct db *db;
+	int rc;
+	START(open, db);
+	if (g->leader != NULL) {
+		FAILURE(SQLITE_BUSY,
+			"a database for this connection is already open");
+		return 0;
+	}
+	rc = registry__db_get(g->registry, request.filename, &db);
+	if (rc != 0) {
+		FAILURE(rc, "get database");
+		return 0;
+	}
+	g->leader = sqlite3_malloc(sizeof *g->leader);
+	if (g->leader == NULL) {
+		FAILURE(SQLITE_NOMEM, "unable to create database");
+		return 0;
+	}
+	rc = leader__init(g->leader, db);
+	if (rc != 0) {
+		FAILURE(rc, "open database");
+		sqlite3_free(g->leader);
+		g->leader = NULL;
+		return 0;
+	}
+	response.id = 0;
+	SUCCESS(db, DB);
 	return 0;
 }
 

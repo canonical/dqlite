@@ -189,6 +189,8 @@ TEST_CASE(leader, other_node, NULL)
 struct open_fixture
 {
 	FIXTURE;
+	struct request_open request;
+	struct response_db response;
 };
 
 TEST_SUITE(open);
@@ -210,6 +212,12 @@ TEST_CASE(open, success, NULL)
 {
 	struct open_fixture *f = data;
 	(void)params;
-	(void)f;
+	f->request.filename = "test";
+	f->request.vfs = "";
+	ENCODE(open);
+	HANDLE(OPEN);
+	ASSERT_STATUS(0);
+	DECODE(db, DB);
+	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
 }
