@@ -2,14 +2,6 @@
 #include "request.h"
 #include "response.h"
 
-/* Context for exec requests */
-struct gateway_exec
-{
-	struct handle *handle;
-	struct stmt *stmt;
-	struct exec exec;
-};
-
 void gateway__init(struct gateway *g,
 		   struct dqlite_logger *logger,
 		   struct options *options,
@@ -174,19 +166,20 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 
 static void handle_exec_cb(struct exec *exec, int status)
 {
-	struct gateway_exec *r = exec->data;
-	struct handle *req = r->handle;
-	struct stmt *stmt = r->stmt;
+	struct gateway *g = exec->data;
+	struct handle *req = g->req;
+	struct stmt *stmt = g->stmt;
 	struct response_result response;
 
-	sqlite3_free(r);
+	g->req = NULL;
+	g->stmt = NULL;
 
 	if (status == SQLITE_DONE) {
 		response.last_insert_id = sqlite3_last_insert_rowid(stmt->db);
 		response.rows_affected = sqlite3_changes(stmt->db);
 		SUCCESS(result, RESULT);
 	} else {
-		failure(r->handle, status, "exec error");
+		failure(req, status, "exec error");
 		sqlite3_reset(stmt->stmt);
 	}
 }
@@ -195,7 +188,6 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
-	struct gateway_exec *r;
 	int rc;
 	START(exec, result);
 	LOOKUP_DB(request.db_id);
@@ -206,18 +198,56 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 		failure(req, rc, "bind parameters");
 		return 0;
 	}
-	r = sqlite3_malloc(sizeof *r);
-	if (r == NULL) {
-		return DQLITE_NOMEM;
-	}
-	r->handle = req;
-	r->stmt = stmt;
-	r->exec.data = r;
-	rc = leader__exec(g->leader, &r->exec, stmt->stmt, handle_exec_cb);
+	g->req = req;
+	g->stmt = stmt;
+	g->exec.data = g;
+	rc = leader__exec(g->leader, &g->exec, stmt->stmt, handle_exec_cb);
 	if (rc != 0) {
-		sqlite3_free(r);
 		return rc;
 	}
+	return 0;
+}
+
+/* Step through the given statement and populate the response buffer of the
+ * given request with a single batch of rows.
+ *
+ * A single batch of rows is typically about the size of a memory page. */
+static void query_batch(struct stmt *stmt, struct handle *req)
+{
+	struct response_rows response;
+	int rc;
+
+	rc = stmt__query(stmt, req->buffer);
+	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+		sqlite3_reset(stmt->stmt);
+
+		failure(req, rc, "query error");
+		return;
+	}
+
+	if (rc == SQLITE_ROW) {
+		response.eof = DQLITE_RESPONSE_ROWS_PART;
+	} else {
+		response.eof = DQLITE_RESPONSE_ROWS_DONE;
+	}
+
+	SUCCESS(rows, ROWS);
+}
+
+static int handle_query(struct handle *req, struct cursor *cursor)
+{
+	struct stmt *stmt;
+	int rc;
+	START(query, rows);
+	LOOKUP_DB(request.db_id);
+	LOOKUP_STMT(request.stmt_id);
+	(void)response;
+	rc = stmt__bind(stmt, cursor);
+	if (rc != 0) {
+		failure(req, rc, "bind parameters");
+		return 0;
+	}
+	query_batch(stmt, req);
 	return 0;
 }
 
@@ -230,9 +260,8 @@ int gateway__handle(struct gateway *g,
 {
 	int rc;
 
-	/* Abort if we can't accept the request at this time */
 	if (g->req != NULL) {
-		return DQLITE_PROTO;
+		return SQLITE_BUSY;
 	}
 
 	req->gateway = g;

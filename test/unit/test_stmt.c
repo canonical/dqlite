@@ -410,7 +410,7 @@ TEST_CASE(query, no_columns, NULL)
 	/* This statement yields no columns. */
 	__prepare(f, "DELETE FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	munit_assert_string_equal(f->stmt->error,
@@ -431,7 +431,7 @@ TEST_CASE(query, none, NULL)
 
 	__prepare(f, "SELECT name FROM sqlite_master");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -464,7 +464,7 @@ TEST_CASE(query, integer, NULL)
 
 	__prepare(f, "SELECT n FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -499,7 +499,7 @@ TEST_CASE(query, float, NULL)
 
 	__prepare(f, "SELECT f FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -535,7 +535,7 @@ TEST_CASE(query, null, NULL)
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -570,7 +570,7 @@ TEST_CASE(query, text, NULL)
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -606,7 +606,7 @@ TEST_CASE(query, unixtime, NULL)
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -645,7 +645,7 @@ TEST_CASE(query, iso8601, NULL)
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -680,7 +680,7 @@ TEST_CASE(query, iso8601_null, NULL)
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -715,7 +715,7 @@ TEST_CASE(query, iso8601_empty, NULL)
 
 	__prepare(f, "SELECT t FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -750,7 +750,7 @@ TEST_CASE(query, boolean, NULL)
 
 	__prepare(f, "SELECT b FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -786,7 +786,7 @@ TEST_CASE(query, two_simple, NULL)
 
 	__prepare(f, "SELECT n FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -822,7 +822,7 @@ TEST_CASE(query, two_complex, NULL)
 
 	__prepare(f, "SELECT n, t, f FROM test");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -882,7 +882,7 @@ TEST_CASE(query, count, NULL)
 
 	__prepare(f, "SELECT COUNT(name) FROM sqlite_master");
 
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_DONE);
 
 	/* The first word written is the column count. */
@@ -923,7 +923,7 @@ TEST_CASE(query, large, NULL)
 
 	/* The return code is SQLITE_ROW, to indicate that not all rows were
 	 * fetched. */
-	rc = stmt__query(f->stmt, f->message);
+	rc = stmt__query_(f->stmt, f->message);
 	munit_assert_int(rc, ==, SQLITE_ROW);
 
 	/* The first word written is the column count. */
