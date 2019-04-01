@@ -14,13 +14,13 @@ TEST_MODULE(gateway);
  *
  ******************************************************************************/
 
-#define FIXTURE                              \
-	FIXTURE_CLUSTER;                     \
-	struct gateway gateway;              \
-	void *payload; /* Request payload */ \
-	struct cursor cursor;                \
-	struct buffer buffer;                \
-	struct handle req;                   \
+#define FIXTURE                                      \
+	FIXTURE_CLUSTER;                             \
+	struct gateway gateway;                      \
+	struct buffer payload; /* Request payload */ \
+	struct cursor cursor;                        \
+	struct buffer buffer;                        \
+	struct handle req;                           \
 	struct context context;
 
 #define SETUP                                                             \
@@ -28,19 +28,18 @@ TEST_MODULE(gateway);
 	SETUP_CLUSTER;                                                    \
 	gateway__init(&f->gateway, CLUSTER_LOGGER(0), CLUSTER_OPTIONS(0), \
 		      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0));              \
+	rc = buffer__init(&f->payload);                                   \
+	munit_assert_int(rc, ==, 0);                                      \
 	rc = buffer__init(&f->buffer);                                    \
 	munit_assert_int(rc, ==, 0);                                      \
-	f->payload = NULL;                                                \
 	f->req.data = &f->context;                                        \
 	f->context.invoked = false;                                       \
 	f->context.status = -1;                                           \
 	f->context.type = -1;
 
 #define TEAR_DOWN                    \
-	if (f->payload != NULL) {    \
-		free(f->payload);    \
-	}                            \
 	buffer__close(&f->buffer);   \
+	buffer__close(&f->payload);  \
 	gateway__close(&f->gateway); \
 	TEAR_DOWN_CLUSTER;
 
@@ -72,14 +71,24 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 	{                                                       \
 		size_t n2 = request_##LOWER##__sizeof(REQUEST); \
 		void *cursor;                                   \
-		if (f->payload != NULL) {                       \
-			free(f->payload);                       \
-		}                                               \
-		f->payload = munit_malloc(n2);                  \
-		cursor = f->payload;                            \
+		buffer__reset(&f->payload);                     \
+		cursor = buffer__advance(&f->payload, n2);      \
+		munit_assert_ptr_not_null(cursor);              \
 		request_##LOWER##__encode(REQUEST, &cursor);    \
-		f->cursor.p = f->payload;                       \
-		f->cursor.cap = n2;                             \
+	}
+
+#define ENCODE_PARAMS(N, VALUES)                                              \
+	{                                                                     \
+		struct tuple_encoder encoder;                                 \
+		int i2;                                                       \
+		int rc2;                                                      \
+		rc2 = tuple_encoder__init(&encoder, 1, TUPLE__PARAMS,         \
+					  &f->payload);                       \
+		munit_assert_int(rc2, ==, 0);                                 \
+		for (i2 = 0; i2 < N; i2++) {                                  \
+			rc2 = tuple_encoder__next(&encoder, &((VALUES)[i2])); \
+			munit_assert_int(rc2, ==, 0);                         \
+		}                                                             \
 	}
 
 /* Decode a response of the given lower/upper case name using the buffer that
@@ -100,6 +109,8 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 #define HANDLE(TYPE)                                                     \
 	{                                                                \
 		int rc2;                                                 \
+		f->cursor.p = buffer__cursor(&f->payload, 0);            \
+		f->cursor.cap = buffer__offset(&f->payload);             \
 		buffer__reset(&f->buffer);                               \
 		rc2 = gateway__handle(&f->gateway, &f->req,              \
 				      DQLITE_REQUEST_##TYPE, &f->cursor, \
@@ -383,6 +394,7 @@ TEST_CASE(exec, simple, NULL)
 TEST_CASE(exec, one_param, NULL)
 {
 	struct exec_fixture *f = data;
+	struct value value;
 	uint64_t stmt_id;
 	(void)params;
 	CLUSTER_ELECT(0);
@@ -397,20 +409,15 @@ TEST_CASE(exec, one_param, NULL)
 
 	/* Insert a row with one parameter */
 	ASSERT_STATUS(0);
-	PREPARE("INSERT INTO test VALUES (1)");
+	PREPARE("INSERT INTO test VALUES (?)");
 
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, exec);
 
-	struct tuple_encoder encoder;
-	int rc2;
-	rc2 = tuple_encoder__init(&encoder, 1, TUPLE__PARAMS, &f->buffer);
-	munit_assert_int(rc2, ==, 0);
-	struct value value;
 	value.type = SQLITE_INTEGER;
 	value.integer = 7;
-	rc2 = tuple_encoder__next(&encoder, &value);
-	munit_assert_int(rc2, ==, 0);
+
+	ENCODE_PARAMS(1, &value);
 
 	HANDLE(EXEC);
 	CLUSTER_APPLIED(4);

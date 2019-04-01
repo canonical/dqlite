@@ -145,6 +145,33 @@ static int handle_open(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+static int handle_prepare(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	struct stmt *stmt;
+	int rc;
+	START(prepare, stmt);
+	LOOKUP_DB(request.db_id);
+	response.id = 1;
+	rc = stmt__registry_add(&g->stmts, &stmt);
+	if (rc != 0) {
+		return rc;
+	}
+	assert(stmt != NULL);
+	stmt->db = g->leader->conn;
+	rc = sqlite3_prepare_v2(stmt->db, request.sql, -1, &stmt->stmt,
+				&stmt->tail);
+	if (rc != SQLITE_OK) {
+		failure(req, rc, sqlite3_errmsg(stmt->db));
+		return 0;
+	}
+	response.db_id = request.db_id;
+	response.id = stmt->id;
+	response.params = sqlite3_bind_parameter_count(stmt->stmt);
+	SUCCESS(stmt, STMT);
+	return 0;
+}
+
 static void handle_exec_cb(struct exec *exec, int status)
 {
 	struct gateway_exec *r = exec->data;
@@ -174,6 +201,11 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	(void)response;
+	rc = stmt__bind(stmt, cursor);
+	if (rc != 0) {
+		failure(req, rc, "bind parameters");
+		return 0;
+	}
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
 		return DQLITE_NOMEM;
@@ -183,35 +215,9 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 	r->exec.data = r;
 	rc = leader__exec(g->leader, &r->exec, stmt->stmt, handle_exec_cb);
 	if (rc != 0) {
+		sqlite3_free(r);
 		return rc;
 	}
-	return 0;
-}
-
-static int handle_prepare(struct handle *req, struct cursor *cursor)
-{
-	struct gateway *g = req->gateway;
-	struct stmt *stmt;
-	int rc;
-	START(prepare, stmt);
-	LOOKUP_DB(request.db_id);
-	response.id = 1;
-	rc = stmt__registry_add(&g->stmts, &stmt);
-	if (rc != 0) {
-		return rc;
-	}
-	assert(stmt != NULL);
-	stmt->db = g->leader->conn;
-	rc = sqlite3_prepare_v2(stmt->db, request.sql, -1, &stmt->stmt,
-				&stmt->tail);
-	if (rc != SQLITE_OK) {
-		failure(req, rc, sqlite3_errmsg(stmt->db));
-		return 0;
-	}
-	response.db_id = request.db_id;
-	response.id = stmt->id;
-	response.params = sqlite3_bind_parameter_count(stmt->stmt);
-	SUCCESS(stmt, STMT);
 	return 0;
 }
 
