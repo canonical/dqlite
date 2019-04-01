@@ -77,12 +77,13 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		request_##LOWER##__encode(REQUEST, &cursor);    \
 	}
 
+/* Encode N parameters with the given values */
 #define ENCODE_PARAMS(N, VALUES)                                              \
 	{                                                                     \
 		struct tuple_encoder encoder;                                 \
 		int i2;                                                       \
 		int rc2;                                                      \
-		rc2 = tuple_encoder__init(&encoder, 1, TUPLE__PARAMS,         \
+		rc2 = tuple_encoder__init(&encoder, N, TUPLE__PARAMS,         \
 					  &f->payload);                       \
 		munit_assert_int(rc2, ==, 0);                                 \
 		for (i2 = 0; i2 < N; i2++) {                                  \
@@ -93,22 +94,32 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 
 /* Decode a response of the given lower/upper case name using the buffer that
  * was written by the gateway. */
-#define DECODE(RESPONSE, LOWER, UPPER)                               \
-	{                                                            \
-		struct cursor cursor;                                \
-		int rc2;                                             \
-		cursor.p = buffer__cursor(&f->buffer, 0);            \
-		cursor.cap = buffer__offset(&f->buffer);             \
-		munit_assert_int(f->context.type, ==,                \
-				 DQLITE_RESPONSE_##UPPER);           \
-		rc2 = response_##LOWER##__decode(&cursor, RESPONSE); \
-		munit_assert_int(rc2, ==, 0);                        \
+#define DECODE(RESPONSE, LOWER)                                         \
+	{                                                               \
+		int rc2;                                                \
+		rc2 = response_##LOWER##__decode(&f->cursor, RESPONSE); \
+		munit_assert_int(rc2, ==, 0);                           \
+	}
+
+/* Decode a row with N columns filling the given values. */
+#define DECODE_ROW(N, VALUES)                                                 \
+	{                                                                     \
+		struct tuple_decoder decoder;                                 \
+		int i2;                                                       \
+		int rc2;                                                      \
+		rc2 = tuple_decoder__init(&decoder, N, &f->cursor);           \
+		munit_assert_int(rc2, ==, 0);                                 \
+		for (i2 = 0; i2 < N; i2++) {                                  \
+			rc2 = tuple_decoder__next(&decoder, &((VALUES)[i2])); \
+			munit_assert_int(rc2, ==, 0);                         \
+		}                                                             \
 	}
 
 /* Handle a request of the given type and check that no error occurs. */
 #define HANDLE(TYPE)                                                     \
 	{                                                                \
 		int rc2;                                                 \
+		f->context.invoked = false;                              \
 		f->cursor.p = buffer__cursor(&f->payload, 0);            \
 		f->cursor.cap = buffer__offset(&f->payload);             \
 		buffer__reset(&f->buffer);                               \
@@ -118,7 +129,18 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		munit_assert_int(rc2, ==, 0);                            \
 	}
 
-/* Create a statement. The ID will be saved in stmt_id. */
+/* Open a leader connection the the "test" database */
+#define OPEN                              \
+	{                                 \
+		struct request_open open; \
+		open.filename = "test";   \
+		open.vfs = "";            \
+		ENCODE(&open, open);      \
+		HANDLE(OPEN);             \
+		ASSERT_CALLBACK(0, DB);   \
+	}
+
+/* Prepare a statement. The ID will be saved in stmt_id. */
 #define PREPARE(SQL)                            \
 	{                                       \
 		struct request_prepare prepare; \
@@ -127,9 +149,29 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		prepare.sql = SQL;              \
 		ENCODE(&prepare, prepare);      \
 		HANDLE(PREPARE);                \
-		ASSERT_STATUS(0);               \
-		DECODE(&stmt, stmt, STMT);      \
+		ASSERT_CALLBACK(0, STMT);       \
+		DECODE(&stmt, stmt);            \
 		stmt_id = stmt.id;              \
+	}
+
+/* Prepare and exec a statement. */
+#define EXEC(SQL)                                 \
+	{                                         \
+		struct request_exec exec;         \
+		uint64_t stmt_id;                 \
+		unsigned i;                       \
+		PREPARE(SQL);                     \
+		exec.db_id = 0;                   \
+		exec.stmt_id = stmt_id;           \
+		ENCODE(&exec, exec);              \
+		HANDLE(EXEC);                     \
+		for (i = 0; i < 15; i++) {        \
+			CLUSTER_STEP;             \
+			if (f->context.invoked) { \
+				break;            \
+			}                         \
+		}                                 \
+		ASSERT_CALLBACK(0, RESULT);       \
 	}
 
 /******************************************************************************
@@ -138,25 +180,26 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
  *
  ******************************************************************************/
 
-/* Assert that the handle callback has been invoked with the given status */
-#define ASSERT_STATUS(STATUS)                  \
-	munit_assert_true(f->context.invoked); \
-	munit_assert_int(f->context.status, ==, STATUS)
+/* Assert that the handle callback has been invoked with the given status and
+ * response type. Also, initialize the fixture's cursor to read the response
+ * buffer. */
+#define ASSERT_CALLBACK(STATUS, UPPER)                                  \
+	munit_assert_true(f->context.invoked);                          \
+	munit_assert_int(f->context.status, ==, STATUS);                \
+	munit_assert_int(f->context.type, ==, DQLITE_RESPONSE_##UPPER); \
+	f->cursor.p = buffer__cursor(&f->buffer, 0);                    \
+	f->cursor.cap = buffer__offset(&f->buffer);
 
-/* Assert that the gateway has generated a failure response */
-#define ASSERT_FAILURE(CODE, MESSAGE)                                \
-	{                                                            \
-		struct response_failure failure;                     \
-		struct cursor cursor;                                \
-		int rc2;                                             \
-		cursor.p = buffer__cursor(&f->buffer, 0);            \
-		cursor.cap = buffer__offset(&f->buffer);             \
-		munit_assert_int(f->context.type, ==,                \
-				 DQLITE_RESPONSE_FAILURE);           \
-		rc2 = response_failure__decode(&cursor, &failure);   \
-		munit_assert_int(rc2, ==, 0);                        \
-		munit_assert_int(failure.code, ==, CODE);            \
-		munit_assert_string_equal(failure.message, MESSAGE); \
+/* Assert that the failure response generated by the gateway matches the given
+ * details. */
+#define ASSERT_FAILURE(CODE, MESSAGE)                                 \
+	{                                                             \
+		struct response_failure failure;                      \
+		int rc2;                                              \
+		rc2 = response_failure__decode(&f->cursor, &failure); \
+		munit_assert_int(rc2, ==, 0);                         \
+		munit_assert_int(failure.code, ==, CODE);             \
+		munit_assert_string_equal(failure.message, MESSAGE);  \
 	}
 
 /******************************************************************************
@@ -193,8 +236,8 @@ TEST_CASE(leader, not_available, NULL)
 	(void)params;
 	ENCODE(&f->request, leader);
 	HANDLE(LEADER);
-	ASSERT_STATUS(0);
-	DECODE(&f->response, server, SERVER);
+	ASSERT_CALLBACK(0, SERVER);
+	DECODE(&f->response, server);
 	munit_assert_string_equal(f->response.address, "");
 	return MUNIT_OK;
 }
@@ -207,8 +250,8 @@ TEST_CASE(leader, same_node, NULL)
 	CLUSTER_ELECT(0);
 	ENCODE(&f->request, leader);
 	HANDLE(LEADER);
-	ASSERT_STATUS(0);
-	DECODE(&f->response, server, SERVER);
+	ASSERT_CALLBACK(0, SERVER);
+	DECODE(&f->response, server);
 	munit_assert_string_equal(f->response.address, "1");
 	return MUNIT_OK;
 }
@@ -221,8 +264,8 @@ TEST_CASE(leader, other_node, NULL)
 	CLUSTER_ELECT(1);
 	ENCODE(&f->request, leader);
 	HANDLE(LEADER);
-	ASSERT_STATUS(0);
-	DECODE(&f->response, server, SERVER);
+	ASSERT_CALLBACK(0, SERVER);
+	DECODE(&f->response, server);
 	munit_assert_string_equal(f->response.address, "2");
 	return MUNIT_OK;
 }
@@ -263,8 +306,8 @@ TEST_CASE(open, success, NULL)
 	f->request.vfs = "";
 	ENCODE(&f->request, open);
 	HANDLE(OPEN);
-	ASSERT_STATUS(0);
-	DECODE(&f->response, db, DB);
+	ASSERT_CALLBACK(0, DB);
+	DECODE(&f->response, db);
 	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
 }
@@ -280,10 +323,10 @@ TEST_CASE(open, error, twice, NULL)
 	f->request.vfs = "";
 	ENCODE(&f->request, open);
 	HANDLE(OPEN);
-	ASSERT_STATUS(0);
+	ASSERT_CALLBACK(0, DB);
 	ENCODE(&f->request, open);
 	HANDLE(OPEN);
-	ASSERT_STATUS(0);
+	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_BUSY,
 		       "a database for this connection is already open");
 	return MUNIT_OK;
@@ -306,13 +349,8 @@ TEST_SUITE(prepare);
 TEST_SETUP(prepare)
 {
 	struct prepare_fixture *f = munit_malloc(sizeof *f);
-	struct request_open open;
 	SETUP;
-	open.filename = "test";
-	open.vfs = "";
-	ENCODE(&open, open);
-	HANDLE(OPEN);
-	ASSERT_STATUS(0);
+	OPEN;
 	return f;
 }
 TEST_TEAR_DOWN(prepare)
@@ -328,11 +366,11 @@ TEST_CASE(prepare, success, NULL)
 	struct prepare_fixture *f = data;
 	(void)params;
 	f->request.db_id = 0;
-	f->request.sql = "CREATE TABLE test (INT n)";
+	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
-	ASSERT_STATUS(0);
-	DECODE(&f->response, stmt, STMT);
+	ASSERT_CALLBACK(0, STMT);
+	DECODE(&f->response, stmt);
 	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
 }
@@ -354,13 +392,8 @@ TEST_SUITE(exec);
 TEST_SETUP(exec)
 {
 	struct exec_fixture *f = munit_malloc(sizeof *f);
-	struct request_open open;
 	SETUP;
-	open.filename = "test";
-	open.vfs = "";
-	ENCODE(&open, open);
-	HANDLE(OPEN);
-	ASSERT_STATUS(0);
+	OPEN;
 	return f;
 }
 TEST_TEAR_DOWN(exec)
@@ -377,14 +410,14 @@ TEST_CASE(exec, simple, NULL)
 	uint64_t stmt_id;
 	(void)params;
 	CLUSTER_ELECT(0);
-	PREPARE("CREATE TABLE test (INT n)");
+	PREPARE("CREATE TABLE test (n INT)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, exec);
 	HANDLE(EXEC);
 	CLUSTER_APPLIED(3);
-	ASSERT_STATUS(0);
-	DECODE(&f->response, result, RESULT);
+	ASSERT_CALLBACK(0, RESULT);
+	DECODE(&f->response, result);
 	munit_assert_int(f->response.last_insert_id, ==, 0);
 	munit_assert_int(f->response.rows_affected, ==, 0);
 	return MUNIT_OK;
@@ -400,28 +433,105 @@ TEST_CASE(exec, one_param, NULL)
 	CLUSTER_ELECT(0);
 
 	/* Create the test table */
-	PREPARE("CREATE TABLE test (INT n)");
-	f->request.db_id = 0;
-	f->request.stmt_id = stmt_id;
-	ENCODE(&f->request, exec);
-	HANDLE(EXEC);
-	CLUSTER_APPLIED(3);
+	EXEC("CREATE TABLE test (n INT)");
 
 	/* Insert a row with one parameter */
-	ASSERT_STATUS(0);
 	PREPARE("INSERT INTO test VALUES (?)");
-
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, exec);
-
 	value.type = SQLITE_INTEGER;
 	value.integer = 7;
-
 	ENCODE_PARAMS(1, &value);
-
 	HANDLE(EXEC);
 	CLUSTER_APPLIED(4);
-	ASSERT_STATUS(0);
+	ASSERT_CALLBACK(0, RESULT);
+	DECODE(&f->response, result);
+	munit_assert_int(f->response.last_insert_id, ==, 1);
+	munit_assert_int(f->response.rows_affected, ==, 1);
+
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * query
+ *
+ ******************************************************************************/
+
+struct query_fixture
+{
+	FIXTURE;
+	struct request_query request;
+	struct response_rows response;
+};
+
+TEST_SUITE(query);
+TEST_SETUP(query)
+{
+	struct query_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	OPEN;
+	CLUSTER_ELECT(0);
+	EXEC("CREATE TABLE test (n INT)");
+	return f;
+}
+TEST_TEAR_DOWN(query)
+{
+	struct query_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Successfully query a simple statement with no parameters and yielding no
+ * rows. */
+TEST_CASE(query, simple, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	(void)params;
+	PREPARE("SELECT n FROM test");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(&f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(&f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+	DECODE(&f->response, rows);
+	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	return MUNIT_OK;
+}
+
+/* Successfully query a simple statement with no parameters yielding one row. */
+TEST_CASE(query, one_row, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	(void)params;
+	EXEC("INSERT INTO test(n) VALUES(666)");
+	PREPARE("SELECT n FROM test");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(&f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(&f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, 666);
+	DECODE(&f->response, rows);
+	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
 
 	return MUNIT_OK;
 }

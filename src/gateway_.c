@@ -372,7 +372,7 @@ static void gateway__query_batch(struct gateway_ *g,
 {
 	int rc;
 
-	rc = stmt__query(stmt, &ctx->response.message);
+	rc = stmt__query_(stmt, &ctx->response.message);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		sqlite3_reset(stmt->stmt);
 
