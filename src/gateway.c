@@ -13,10 +13,13 @@ void gateway__init(struct gateway *g,
 	g->registry = registry;
 	g->raft = raft;
 	g->leader = NULL;
+	g->req = NULL;
+	stmt__registry_init(&g->stmts);
 }
 
 void gateway__close(struct gateway *g)
 {
+	stmt__registry_close(&g->stmts);
 	if (g->leader != NULL) {
 		leader__close(g->leader);
 		sqlite3_free(g->leader);
@@ -48,6 +51,15 @@ void gateway__close(struct gateway *g)
 		}                                                 \
 		response_##LOWER##__encode(&response, &cursor);   \
 		req->cb(req, 0, DQLITE_RESPONSE_##UPPER);         \
+	}
+
+/* Lookup the database with the given ID.
+ *
+ * TODO: support more than one database per connection? */
+#define LOOKUP_DB(ID)                                                \
+	if (ID != 0 || req->gateway->leader == NULL) {               \
+		failure(req, SQLITE_NOTFOUND, "no database opened"); \
+		return 0;                                            \
 	}
 
 /* Encode fa failure response and invoke the request callback */
@@ -101,23 +113,45 @@ static int handle_open(struct handle *req, struct cursor *cursor)
 	}
 	rc = registry__db_get(g->registry, request.filename, &db);
 	if (rc != 0) {
-		failure(req, rc, "get database");
-		return 0;
+		return rc;
 	}
 	g->leader = sqlite3_malloc(sizeof *g->leader);
 	if (g->leader == NULL) {
-		failure(req, SQLITE_NOMEM, "unable to create database");
-		return 0;
+		return DQLITE_NOMEM;
 	}
 	rc = leader__init(g->leader, db);
 	if (rc != 0) {
-		failure(req, rc, "open database");
-		sqlite3_free(g->leader);
-		g->leader = NULL;
-		return 0;
+		return rc;
 	}
 	response.id = 0;
 	SUCCESS(db, DB);
+	return 0;
+}
+
+static int handle_prepare(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	struct stmt *stmt;
+	int rc;
+	START(prepare, stmt);
+	LOOKUP_DB(request.db_id);
+	response.id = 1;
+	rc = stmt__registry_add(&g->stmts, &stmt);
+	if (rc != 0) {
+		return rc;
+	}
+	assert(stmt != NULL);
+	stmt->db = g->leader->conn;
+	rc = sqlite3_prepare_v2(stmt->db, request.sql, -1, &stmt->stmt,
+				&stmt->tail);
+	if (rc != SQLITE_OK) {
+		failure(req, rc, sqlite3_errmsg(stmt->db));
+		return 0;
+	}
+	response.db_id = request.db_id;
+	response.id = stmt->id;
+	response.params = sqlite3_bind_parameter_count(stmt->stmt);
+	SUCCESS(stmt, STMT);
 	return 0;
 }
 

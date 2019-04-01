@@ -11,12 +11,16 @@
 
 #define RESPONSE_SERVER(X, ...) X(text, address, ##__VA_ARGS__)
 #define RESPONSE_WELCOME(X, ...) X(uint64, heartbeat_timeout, ##__VA_ARGS__)
-#define RESPONSE_DB(X, ...)          \
-	X(uint32, id, ##__VA_ARGS__) \
-	X(uint32, __pad__, ##__VA_ARGS__)
 #define RESPONSE_FAILURE(X, ...)       \
 	X(uint64, code, ##__VA_ARGS__) \
 	X(text, message, ##__VA_ARGS__)
+#define RESPONSE_DB(X, ...)          \
+	X(uint32, id, ##__VA_ARGS__) \
+	X(uint32, __pad__, ##__VA_ARGS__)
+#define RESPONSE_STMT(X, ...)           \
+	X(uint32, db_id, ##__VA_ARGS__) \
+	X(uint32, id, ##__VA_ARGS__)    \
+	X(uint64, params, ##__VA_ARGS__)
 
 #define RESPONSE__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
@@ -24,8 +28,9 @@
 #define RESPONSE__TYPES(X, ...)          \
 	X(server, SERVER, __VA_ARGS__)   \
 	X(welcome, WELCOME, __VA_ARGS__) \
+	X(failure, FAILURE, __VA_ARGS__) \
 	X(db, DB, __VA_ARGS__)           \
-	X(failure, FAILURE, __VA_ARGS__)
+	X(stmt, STMT, __VA_ARGS__)
 
 RESPONSE__TYPES(RESPONSE__DEFINE);
 

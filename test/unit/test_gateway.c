@@ -67,18 +67,18 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 
 /* Allocate the payload buffer, encode a request of the given lower case name
  * and initialize the fixture cursor. */
-#define ENCODE(LOWER)                                               \
-	{                                                           \
-		size_t n2 = request_##LOWER##__sizeof(&f->request); \
-		void *cursor;                                       \
-		if (f->payload != NULL) {                           \
-			free(f->payload);                           \
-		}                                                   \
-		f->payload = munit_malloc(n2);                      \
-		cursor = f->payload;                                \
-		request_##LOWER##__encode(&f->request, &cursor);    \
-		f->cursor.p = f->payload;                           \
-		f->cursor.cap = n2;                                 \
+#define ENCODE(REQUEST, LOWER)                                  \
+	{                                                       \
+		size_t n2 = request_##LOWER##__sizeof(REQUEST); \
+		void *cursor;                                   \
+		if (f->payload != NULL) {                       \
+			free(f->payload);                       \
+		}                                               \
+		f->payload = munit_malloc(n2);                  \
+		cursor = f->payload;                            \
+		request_##LOWER##__encode(REQUEST, &cursor);    \
+		f->cursor.p = f->payload;                       \
+		f->cursor.cap = n2;                             \
 	}
 
 /* Decode a response of the given lower/upper case name using the buffer that
@@ -165,7 +165,7 @@ TEST_CASE(leader, not_available, NULL)
 {
 	struct leader_fixture *f = data;
 	(void)params;
-	ENCODE(leader);
+	ENCODE(&f->request, leader);
 	HANDLE(LEADER);
 	ASSERT_STATUS(0);
 	DECODE(server, SERVER);
@@ -179,7 +179,7 @@ TEST_CASE(leader, same_node, NULL)
 	struct leader_fixture *f = data;
 	(void)params;
 	CLUSTER_ELECT(0);
-	ENCODE(leader);
+	ENCODE(&f->request, leader);
 	HANDLE(LEADER);
 	ASSERT_STATUS(0);
 	DECODE(server, SERVER);
@@ -193,7 +193,7 @@ TEST_CASE(leader, other_node, NULL)
 	struct leader_fixture *f = data;
 	(void)params;
 	CLUSTER_ELECT(1);
-	ENCODE(leader);
+	ENCODE(&f->request, leader);
 	HANDLE(LEADER);
 	ASSERT_STATUS(0);
 	DECODE(server, SERVER);
@@ -235,7 +235,7 @@ TEST_CASE(open, success, NULL)
 	(void)params;
 	f->request.filename = "test";
 	f->request.vfs = "";
-	ENCODE(open);
+	ENCODE(&f->request, open);
 	HANDLE(OPEN);
 	ASSERT_STATUS(0);
 	DECODE(db, DB);
@@ -252,13 +252,61 @@ TEST_CASE(open, error, twice, NULL)
 	(void)params;
 	f->request.filename = "test";
 	f->request.vfs = "";
-	ENCODE(open);
+	ENCODE(&f->request, open);
 	HANDLE(OPEN);
 	ASSERT_STATUS(0);
-	ENCODE(open);
+	ENCODE(&f->request, open);
 	HANDLE(OPEN);
 	ASSERT_STATUS(0);
 	ASSERT_FAILURE(SQLITE_BUSY,
 		       "a database for this connection is already open");
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * prepare
+ *
+ ******************************************************************************/
+
+struct prepare_fixture
+{
+	FIXTURE;
+	struct request_prepare request;
+	struct response_stmt response;
+};
+
+TEST_SUITE(prepare);
+TEST_SETUP(prepare)
+{
+	struct prepare_fixture *f = munit_malloc(sizeof *f);
+	struct request_open open;
+	SETUP;
+	open.filename = "test";
+	open.vfs = "";
+	ENCODE(&open, open);
+	HANDLE(OPEN);
+	ASSERT_STATUS(0);
+	return f;
+}
+TEST_TEAR_DOWN(prepare)
+{
+	struct prepare_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Successfully prepare a statement. */
+TEST_CASE(prepare, success, NULL)
+{
+	struct prepare_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (INT n)";
+	ENCODE(&f->request, prepare);
+	HANDLE(PREPARE);
+	ASSERT_STATUS(0);
+	DECODE(stmt, STMT);
+	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
 }
