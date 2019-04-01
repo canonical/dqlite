@@ -15,6 +15,7 @@
 #include "leader.h"
 #include "options.h"
 #include "registry.h"
+#include "stmt.h"
 
 struct handle;
 
@@ -30,6 +31,7 @@ struct gateway
 	struct raft *raft;	    /* Raft instance */
 	struct leader *leader;	/* Leader connection to the database */
 	struct handle *req;	   /* Asynchronous request being handled */
+	struct stmt__registry stmts;  /* Registry of prepared statements */
 };
 
 void gateway__init(struct gateway *g,
