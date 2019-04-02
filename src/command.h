@@ -1,7 +1,5 @@
 /**
- *
  * Encode and decode dqlite Raft FSM commands.
- *
  */
 
 #ifndef COMMAND_H_
