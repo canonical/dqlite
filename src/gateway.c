@@ -388,6 +388,25 @@ static int handle_exec_sql(struct handle *req, struct cursor *cursor)
 	handle_exec_sql_next(req, cursor);
 	return 0;
 }
+
+static int handle_query_sql(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	const char *tail;
+	int rc;
+	START(query_sql, rows);
+	LOOKUP_DB(request.db_id);
+	(void)response;
+	rc = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt, &tail);
+	if (rc != SQLITE_OK) {
+		failure(req, rc, "prepare statement");
+		return 0;
+	}
+	g->stmt_finalize = true;
+	query_batch(g->stmt, req);
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,

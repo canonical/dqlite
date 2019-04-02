@@ -694,3 +694,46 @@ TEST_CASE(exec_sql, multi, NULL) {
 	ASSERT_CALLBACK(0, RESULT);
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * query_sql
+ *
+ ******************************************************************************/
+
+struct query_sql_fixture
+{
+	FIXTURE;
+	struct request_query_sql request;
+	struct response_rows response;
+};
+
+TEST_SUITE(query_sql);
+TEST_SETUP(query_sql)
+{
+	struct query_sql_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	CLUSTER_ELECT(0);
+	OPEN;
+	EXEC("CREATE TABLE test (n INT)");
+	return f;
+}
+TEST_TEAR_DOWN(query_sql)
+{
+	struct query_sql_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Exec a SQL query whose result set fits in a page. */
+TEST_CASE(query_sql, small, NULL) {
+	struct query_sql_fixture *f = data;
+	(void)params;
+	EXEC("INSERT INTO test VALUES(123)");
+	f->request.db_id = 0;
+	f->request.sql = "SELECT n FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, ROWS);
+	return MUNIT_OK;
+}
