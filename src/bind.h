@@ -5,7 +5,7 @@
 #ifndef BIND_H_
 #define BIND_H_
 
-#include "./lib/serialize.h"
+#include "lib/serialize.h"
 
 /* Bind the parameters of the underlying statement by decoding the given
  * message. */

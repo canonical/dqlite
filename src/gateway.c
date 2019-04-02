@@ -2,6 +2,7 @@
 #include "request.h"
 #include "response.h"
 #include "bind.h"
+#include "query.h"
 
 void gateway__init(struct gateway *g,
 		   struct dqlite_logger *logger,
@@ -221,7 +222,7 @@ static void query_batch(struct stmt *stmt, struct handle *req)
 	struct response_rows response;
 	int rc;
 
-	rc = stmt__query(stmt, req->buffer);
+	rc = query__batch(stmt->stmt, req->buffer);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		sqlite3_reset(stmt->stmt);
 		failure(req, rc, "query error");
