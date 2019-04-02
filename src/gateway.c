@@ -14,6 +14,8 @@ void gateway__init(struct gateway *g,
 	g->raft = raft;
 	g->leader = NULL;
 	g->req = NULL;
+	g->stmt = NULL;
+	g->stmt_finalize = false;
 	stmt__registry_init(&g->stmts);
 }
 
@@ -214,24 +216,36 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
  * A single batch of rows is typically about the size of a memory page. */
 static void query_batch(struct stmt *stmt, struct handle *req)
 {
+	struct gateway *g = req->gateway;
 	struct response_rows response;
 	int rc;
 
 	rc = stmt__query(stmt, req->buffer);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		sqlite3_reset(stmt->stmt);
-
 		failure(req, rc, "query error");
-		return;
+		goto done;
 	}
 
 	if (rc == SQLITE_ROW) {
 		response.eof = DQLITE_RESPONSE_ROWS_PART;
+		g->req = req;
+		g->stmt = stmt;
+		SUCCESS(rows, ROWS);
+		return;
 	} else {
 		response.eof = DQLITE_RESPONSE_ROWS_DONE;
+		SUCCESS(rows, ROWS);
 	}
 
-	SUCCESS(rows, ROWS);
+done:
+	if (g->stmt_finalize) {
+		/* TODO: do we care about errors? */
+		sqlite3_finalize(stmt->stmt);
+		g->stmt_finalize = false;
+	}
+	g->stmt = NULL;
+	g->req = NULL;
 }
 
 static int handle_query(struct handle *req, struct cursor *cursor)
@@ -260,10 +274,21 @@ int gateway__handle(struct gateway *g,
 {
 	int rc;
 
-	if (g->req != NULL) {
-		return SQLITE_BUSY;
+	/* Check if there is a request in progress. */
+	if (g->req != NULL && type != DQLITE_REQUEST_HEARTBEAT) {
+		if (g->req->type == DQLITE_REQUEST_QUERY ||
+		    g->req->type == DQLITE_REQUEST_QUERY_SQL) {
+			/* TODO: handle interrupt requests */
+			assert(0);
+		}
+		if (g->req->type == DQLITE_REQUEST_EXEC ||
+		    g->req->type == DQLITE_REQUEST_EXEC_SQL) {
+			return SQLITE_BUSY;
+		}
+		assert(0);
 	}
 
+	req->type = type;
 	req->gateway = g;
 	req->cb = cb;
 	req->buffer = buffer;
@@ -277,4 +302,14 @@ int gateway__handle(struct gateway *g,
 	}
 
 	return rc;
+}
+
+int gateway__resume(struct gateway *g)
+{
+	assert(g->req != NULL);
+	assert(g->req->type == DQLITE_REQUEST_QUERY ||
+	       g->req->type == DQLITE_REQUEST_QUERY_SQL);
+	assert(g->stmt != NULL);
+	query_batch(g->stmt, g->req);
+	return 0;
 }
