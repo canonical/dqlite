@@ -267,6 +267,22 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+static int handle_finalize(struct handle *req, struct cursor *cursor)
+{
+	struct stmt *stmt;
+	int rv;
+	START(finalize, empty);
+	LOOKUP_DB(request.db_id);
+	LOOKUP_STMT(request.stmt_id);
+	rv = stmt__registry_del(&req->gateway->stmts, stmt);
+	if (rv != 0) {
+		failure(req, rv, "finalize statement");
+		return 0;
+	}
+	SUCCESS(empty, EMPTY);
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,

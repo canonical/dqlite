@@ -24,6 +24,9 @@
 #define REQUEST_QUERY(X, ...)           \
 	X(uint32, db_id, ##__VA_ARGS__) \
 	X(uint32, stmt_id, ##__VA_ARGS__)
+#define REQUEST_FINALIZE(X, ...)        \
+	X(uint32, db_id, ##__VA_ARGS__) \
+	X(uint32, stmt_id, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
@@ -34,7 +37,8 @@
 	X(open, OPEN, __VA_ARGS__)       \
 	X(prepare, PREPARE, __VA_ARGS__) \
 	X(exec, EXEC, __VA_ARGS__) \
-	X(query, QUERY, __VA_ARGS__)
+	X(query, QUERY, __VA_ARGS__) \
+	X(finalize, FINALIZE, __VA_ARGS__)
 
 REQUEST__TYPES(REQUEST__DEFINE);
 
@@ -82,7 +86,7 @@ SCHEMA__DEFINE(request_open_, REQUEST__SCHEMA_OPEN);
 SCHEMA__DEFINE(request_prepare_, REQUEST__SCHEMA_PREPARE);
 SCHEMA__DEFINE(request_query_, REQUEST__SCHEMA_QUERY);
 SCHEMA__DEFINE(request_exec_, REQUEST__SCHEMA_EXEC);
-SCHEMA__DEFINE(request_finalize, REQUEST__SCHEMA_FINALIZE);
+SCHEMA__DEFINE(request_finalize_, REQUEST__SCHEMA_FINALIZE);
 SCHEMA__DEFINE(request_exec_sql, REQUEST__SCHEMA_EXEC_SQL);
 SCHEMA__DEFINE(request_query_sql, REQUEST__SCHEMA_QUERY_SQL);
 SCHEMA__DEFINE(request_interrupt, REQUEST__SCHEMA_INTERRUPT);
@@ -95,7 +99,7 @@ SCHEMA__DEFINE(request_interrupt, REQUEST__SCHEMA_INTERRUPT);
 	X(DQLITE_REQUEST_PREPARE, request_prepare_, prepare, __VA_ARGS__)      \
 	X(DQLITE_REQUEST_EXEC, request_exec_, exec, __VA_ARGS__)               \
 	X(DQLITE_REQUEST_QUERY, request_query_, query, __VA_ARGS__)            \
-	X(DQLITE_REQUEST_FINALIZE, request_finalize, finalize, __VA_ARGS__)    \
+	X(DQLITE_REQUEST_FINALIZE, request_finalize_, finalize, __VA_ARGS__)    \
 	X(DQLITE_REQUEST_EXEC_SQL, request_exec_sql, exec_sql, __VA_ARGS__)    \
 	X(DQLITE_REQUEST_QUERY_SQL, request_query_sql, query_sql, __VA_ARGS__) \
 	X(DQLITE_REQUEST_INTERRUPT, request_interrupt, interrupt, __VA_ARGS__)

@@ -25,6 +25,7 @@
 	X(uint64, last_insert_id, ##__VA_ARGS__) \
 	X(uint64, rows_affected, ##__VA_ARGS__)
 #define RESPONSE_ROWS(X, ...) X(uint64, eof, ##__VA_ARGS__)
+#define RESPONSE_EMPTY(X, ...) X(uint64, __unused__, ##__VA_ARGS__)
 
 #define RESPONSE__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
@@ -36,7 +37,8 @@
 	X(db, DB, __VA_ARGS__)           \
 	X(stmt, STMT, __VA_ARGS__)       \
 	X(result, RESULT, __VA_ARGS__)   \
-	X(rows, ROWS, __VA_ARGS__)
+	X(rows, ROWS, __VA_ARGS__) \
+	X(empty, EMPTY, __VA_ARGS__)
 
 RESPONSE__TYPES(RESPONSE__DEFINE);
 
@@ -80,7 +82,7 @@ SCHEMA__DEFINE(response_db_, RESPONSE__SCHEMA_DB);
 SCHEMA__DEFINE(response_stmt_, RESPONSE__SCHEMA_STMT);
 SCHEMA__DEFINE(response_result_, RESPONSE__SCHEMA_RESULT);
 SCHEMA__DEFINE(response_rows_, RESPONSE__SCHEMA_ROWS);
-SCHEMA__DEFINE(response_empty, RESPONSE__SCHEMA_EMPTY);
+SCHEMA__DEFINE(response_empty_, RESPONSE__SCHEMA_EMPTY);
 
 #define RESPONSE__SCHEMA_TYPES(X, ...)                                      \
 	X(DQLITE_RESPONSE_FAILURE, response_failure_, failure, __VA_ARGS__) \
@@ -91,7 +93,7 @@ SCHEMA__DEFINE(response_empty, RESPONSE__SCHEMA_EMPTY);
 	X(DQLITE_RESPONSE_STMT, response_stmt_, stmt, __VA_ARGS__)          \
 	X(DQLITE_RESPONSE_RESULT, response_result_, result, __VA_ARGS__)    \
 	X(DQLITE_RESPONSE_ROWS, response_rows_, rows, __VA_ARGS__)          \
-	X(DQLITE_RESPONSE_EMPTY, response_empty, empty, __VA_ARGS__)
+	X(DQLITE_RESPONSE_EMPTY, response_empty_, empty, __VA_ARGS__)
 
 SCHEMA__HANDLER_DEFINE(response, RESPONSE__SCHEMA_TYPES);
 
