@@ -1,6 +1,7 @@
 #include "gateway.h"
 #include "request.h"
 #include "response.h"
+#include "bind.h"
 
 void gateway__init(struct gateway *g,
 		   struct dqlite_logger *logger,
@@ -195,7 +196,7 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	(void)response;
-	rc = stmt__bind(stmt, cursor);
+	rc = bind__params(stmt->stmt, cursor);
 	if (rc != 0) {
 		failure(req, rc, "bind parameters");
 		return 0;
@@ -256,7 +257,7 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	(void)response;
-	rc = stmt__bind(stmt, cursor);
+	rc = bind__params(stmt->stmt, cursor);
 	if (rc != 0) {
 		failure(req, rc, "bind parameters");
 		return 0;
