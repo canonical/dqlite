@@ -31,8 +31,9 @@ struct gateway
 	struct raft *raft;	    /* Raft instance */
 	struct leader *leader;	/* Leader connection to the database */
 	struct handle *req;	   /* Asynchronous request being handled */
-	struct stmt *stmt;
-	struct exec exec;
+	struct stmt *stmt;	    /* Statement being processed */
+	bool *stmt_finalize;	  /* Whether to finalize the statement */
+	struct exec exec;	     /* Low-level exec async request */
 	struct stmt__registry stmts;  /* Registry of prepared statements */
 };
 
@@ -51,6 +52,7 @@ typedef void (*handle_cb)(struct handle *req, int status, int type);
 struct handle
 {
 	void *data; /* User data */
+	int type;   /* Request type */
 	struct gateway *gateway;
 	struct buffer *buffer;
 	handle_cb cb;
@@ -73,5 +75,12 @@ int gateway__handle(struct gateway *g,
 		    struct cursor *cursor,
 		    struct buffer *buffer,
 		    handle_cb cb);
+
+/**
+ * Resume execution of a query that was yielding a lot of rows and has been
+ * interrupted in order to start sending a first batch of rows. The response
+ * write buffer associated with the request must have been reset.
+ */
+int gateway__resume(struct gateway *g);
 
 #endif /* DQLITE_GATEWAY_H_ */
