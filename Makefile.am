@@ -29,6 +29,7 @@ endif
 lib_LTLIBRARIES += libdqlite.la
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
+  src/bind.c \
   src/command.c \
   src/conn.c \
   src/db.c \
@@ -48,6 +49,7 @@ libdqlite_la_SOURCES = \
   src/metrics.c \
   src/options.c \
   src/queue.c \
+  src/query.c \
   src/registry.c \
   src/replication.c \
   src/request.c \

@@ -81,7 +81,6 @@ const char *stmt__hash(struct stmt *stmt);
 
 /* Bind the parameters of the underlying statement by decoding the given
  * message. */
-int stmt__bind(struct stmt *s, struct cursor *cursor);
 int stmt__bind_(struct stmt *s, struct message *message);
 
 int stmt__exec(struct stmt *s,
