@@ -1,8 +1,8 @@
 #include "gateway.h"
-#include "request.h"
-#include "response.h"
 #include "bind.h"
 #include "query.h"
+#include "request.h"
+#include "response.h"
 
 void gateway__init(struct gateway *g,
 		   struct dqlite_logger *logger,
@@ -18,6 +18,7 @@ void gateway__init(struct gateway *g,
 	g->req = NULL;
 	g->stmt = NULL;
 	g->stmt_finalize = false;
+	g->sql = NULL;
 	stmt__registry_init(&g->stmts);
 }
 
@@ -168,23 +169,30 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+/* Fill a result response with the last inserted ID and number of rows
+ * affected. */
+static void fill_result(struct gateway *g, struct response_result *response)
+{
+	response->last_insert_id = sqlite3_last_insert_rowid(g->leader->conn);
+	response->rows_affected = sqlite3_changes(g->leader->conn);
+}
+
 static void handle_exec_cb(struct exec *exec, int status)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
-	struct stmt *stmt = g->stmt;
+	sqlite3_stmt *stmt = g->stmt;
 	struct response_result response;
 
 	g->req = NULL;
 	g->stmt = NULL;
 
 	if (status == SQLITE_DONE) {
-		response.last_insert_id = sqlite3_last_insert_rowid(stmt->db);
-		response.rows_affected = sqlite3_changes(stmt->db);
+		fill_result(g, &response);
 		SUCCESS(result, RESULT);
 	} else {
 		failure(req, status, "exec error");
-		sqlite3_reset(stmt->stmt);
+		sqlite3_reset(stmt);
 	}
 }
 
@@ -203,7 +211,7 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 		return 0;
 	}
 	g->req = req;
-	g->stmt = stmt;
+	g->stmt = stmt->stmt;
 	g->exec.data = g;
 	rc = leader__exec(g->leader, &g->exec, stmt->stmt, handle_exec_cb);
 	if (rc != 0) {
@@ -216,15 +224,15 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
  * given request with a single batch of rows.
  *
  * A single batch of rows is typically about the size of a memory page. */
-static void query_batch(struct stmt *stmt, struct handle *req)
+static void query_batch(sqlite3_stmt *stmt, struct handle *req)
 {
 	struct gateway *g = req->gateway;
 	struct response_rows response;
 	int rc;
 
-	rc = query__batch(stmt->stmt, req->buffer);
+	rc = query__batch(stmt, req->buffer);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
-		sqlite3_reset(stmt->stmt);
+		sqlite3_reset(stmt);
 		failure(req, rc, "query error");
 		goto done;
 	}
@@ -243,7 +251,7 @@ static void query_batch(struct stmt *stmt, struct handle *req)
 done:
 	if (g->stmt_finalize) {
 		/* TODO: do we care about errors? */
-		sqlite3_finalize(stmt->stmt);
+		sqlite3_finalize(stmt);
 		g->stmt_finalize = false;
 	}
 	g->stmt = NULL;
@@ -263,7 +271,7 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 		failure(req, rc, "bind parameters");
 		return 0;
 	}
-	query_batch(stmt, req);
+	query_batch(stmt->stmt, req);
 	return 0;
 }
 
@@ -283,6 +291,103 @@ static int handle_finalize(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+static void handle_exec_sql_next(struct handle *req, struct cursor *cursor);
+
+static void handle_exec_sql_cb(struct exec *exec, int status)
+{
+	struct gateway *g = exec->data;
+	struct handle *req = g->req;
+
+	if (status == SQLITE_DONE) {
+		handle_exec_sql_next(req, NULL);
+	} else {
+		failure(req, status, "exec error");
+		sqlite3_reset(g->stmt);
+		sqlite3_finalize(g->stmt);
+		g->req = NULL;
+		g->stmt = NULL;
+		g->sql = NULL;
+	}
+}
+
+static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	struct response_result response;
+	const char *tail;
+	sqlite3_stmt *stmt;
+	int rc;
+
+	if (g->sql == NULL || strcmp(g->sql, "") == 0) {
+		goto success;
+	}
+
+	if (g->stmt != NULL) {
+		sqlite3_finalize(g->stmt);
+		g->stmt = NULL;
+	}
+
+	rc = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &stmt, &tail);
+	if (rc != SQLITE_OK) {
+		failure(req, rc, "prepare statement");
+		goto done;
+	}
+
+	if (stmt == NULL) {
+		goto success;
+	}
+
+	/* TODO: what about bindings for multi-statement SQL text? */
+	if (cursor != NULL) {
+		rc = bind__params(stmt, cursor);
+		if (rc != SQLITE_OK) {
+			failure(req, rc, "bind parameters");
+			goto done_after_prepare;
+		}
+	}
+
+	g->sql = tail;
+
+	g->req = req;
+	g->stmt = stmt;
+	g->exec.data = g;
+	rc = leader__exec(g->leader, &g->exec, g->stmt, handle_exec_sql_cb);
+	if (rc != SQLITE_OK) {
+		failure(req, rc, "exec");
+		goto done_after_prepare;
+	}
+
+	return;
+
+success:
+	if (g->stmt != NULL) {
+		fill_result(g, &response);
+	}
+	SUCCESS(result, RESULT);
+
+done_after_prepare:
+	if (g->stmt != NULL) {
+		sqlite3_finalize(g->stmt);
+	}
+done:
+	g->req = NULL;
+	g->stmt = NULL;
+	g->sql = NULL;
+}
+
+static int handle_exec_sql(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	START(exec_sql, result);
+	LOOKUP_DB(request.db_id);
+	(void)response;
+	assert(g->req == NULL);
+	assert(g->sql == NULL);
+	assert(g->stmt == NULL);
+	req->gateway->sql = request.sql;
+	handle_exec_sql_next(req, cursor);
+	return 0;
+}
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,

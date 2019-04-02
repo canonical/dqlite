@@ -639,3 +639,58 @@ TEST_CASE(finalize, success, NULL) {
 	ASSERT_CALLBACK(0, EMPTY);
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * exec_sql
+ *
+ ******************************************************************************/
+
+struct exec_sql_fixture
+{
+	FIXTURE;
+	struct request_exec_sql request;
+	struct response_result response;
+};
+
+TEST_SUITE(exec_sql);
+TEST_SETUP(exec_sql)
+{
+	struct exec_sql_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	CLUSTER_ELECT(0);
+	OPEN;
+	return f;
+}
+TEST_TEAR_DOWN(exec_sql)
+{
+	struct exec_sql_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Exec a SQL text with a single query. */
+TEST_CASE(exec_sql, single, NULL) {
+	struct exec_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT)";
+	ENCODE(&f->request, exec_sql);
+	HANDLE(EXEC_SQL);
+	CLUSTER_APPLIED(3);
+	ASSERT_CALLBACK(0, RESULT);
+	return MUNIT_OK;
+}
+
+/* Exec a SQL text with a multiple queries. */
+TEST_CASE(exec_sql, multi, NULL) {
+	struct exec_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT); INSERT INTO test VALUES(1)";
+	ENCODE(&f->request, exec_sql);
+	HANDLE(EXEC_SQL);
+	CLUSTER_APPLIED(4);
+	ASSERT_CALLBACK(0, RESULT);
+	return MUNIT_OK;
+}
