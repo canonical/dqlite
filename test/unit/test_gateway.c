@@ -597,3 +597,45 @@ TEST_CASE(query, large, NULL)
 
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * finalize
+ *
+ ******************************************************************************/
+
+struct finalize_fixture
+{
+	FIXTURE;
+	struct request_finalize request;
+	struct response_empty response;
+};
+
+TEST_SUITE(finalize);
+TEST_SETUP(finalize)
+{
+	struct finalize_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	OPEN;
+	return f;
+}
+TEST_TEAR_DOWN(finalize)
+{
+	struct finalize_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Finalize a prepared statement. */
+TEST_CASE(finalize, success, NULL) {
+	uint64_t stmt_id;
+	struct finalize_fixture *f = data;
+	(void)params;
+	PREPARE("CREATE TABLE test (n INT)");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, finalize);
+	HANDLE(FINALIZE);
+	ASSERT_CALLBACK(0, EMPTY);
+	return MUNIT_OK;
+}
