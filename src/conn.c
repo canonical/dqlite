@@ -1,4 +1,5 @@
 #include "conn.h"
+#include "lib/logger.h"
 
 /* Initialize the given buffer for reading, ensure it has the given size. */
 static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
@@ -24,6 +25,11 @@ static void read_protocol_cb(struct transport *transport, int status)
 	cursor.cap = buffer__offset(&c->read);
 	rv = uint64__decode(&cursor, &c->protocol);
 	assert(rv == 0); /* Can't fail, we know we have enough bytes */
+
+	if (c->protocol != DQLITE_PROTOCOL_VERSION) {
+		errorf(c->logger, "unknown protocol version: %lx", c->protocol);
+		conn__stop(c);
+	}
 }
 
 /* Start reading the protocol format version */
@@ -87,10 +93,14 @@ err:
 	return rv;
 }
 
-static void close_cb(struct transport *transport) {
+static void close_cb(struct transport *transport)
+{
 	struct conn *c = transport->data;
 	buffer__close(&c->write);
 	buffer__close(&c->read);
+	if (c->close_cb != NULL) {
+		c->close_cb(c);
+	}
 }
 
 void conn__stop(struct conn *c)
