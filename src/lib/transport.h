@@ -1,6 +1,9 @@
 /**
- * Network transport utilities.
+ * Asynchronously read and write buffer from and to the network.
  */
+
+#ifndef LIB_TRANSPORT_H_
+#define LIB_TRANSPORT_H_
 
 #include <uv.h>
 
@@ -47,3 +50,5 @@ int transport__read(struct transport *t, uv_buf_t *buf, transport_read_cb cb);
  * Write the given buffer to the transport.
  */
 int transport__write(struct transport *t, uv_buf_t *buf, transport_write_cb cb);
+
+#endif /* LIB_TRANSPORT_H_ */

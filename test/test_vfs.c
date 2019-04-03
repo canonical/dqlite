@@ -7,8 +7,8 @@
 #include "../src/vfs.h"
 
 #include "./lib/runner.h"
+#include "./lib/fs.h"
 #include "case.h"
-#include "fs.h"
 #include "log.h"
 #include "mem.h"
 

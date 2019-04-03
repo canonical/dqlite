@@ -675,7 +675,7 @@ void conn__close_(struct conn_ *c)
 	dqlite__error_close(&c->error);
 }
 
-int conn__start(struct conn_ *c)
+int conn__start_(struct conn_ *c)
 {
 	struct uv_pipe_s *pipe;
 	struct uv_tcp_s *tcp;

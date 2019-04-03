@@ -1,5 +1,5 @@
-#ifndef DQLITE_REGISTRY_H
-#define DQLITE_REGISTRY_H
+#ifndef LIB_REGISTRY_H_
+#define LIB_REGISTRY_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -218,4 +218,4 @@
 		return 0;                                                           \
 	}
 
-#endif /* DQLITE_REGISTRY_H */
+#endif /* LIB_REGISTRY_H_ */

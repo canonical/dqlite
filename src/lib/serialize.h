@@ -1,5 +1,5 @@
-#ifndef ENCODING_H_
-#define ENCODING_H_
+#ifndef LIB_SERIALIZE_H_
+#define LIB_SERIALIZE_H_
 
 #include <stdint.h>
 #include <string.h>
@@ -280,4 +280,4 @@ DQLITE_INLINE int text__decode(struct cursor *cursor, text_t *value)
 	return 0;
 }
 
-#endif /* ENCODING_H_ */
+#endif /* LIB_SERIALIZE_H_ */

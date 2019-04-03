@@ -11,8 +11,8 @@
 
 #include <unistd.h>
 
-#ifndef DQLITE_BUFFER_H_
-#define DQLITE_BUFFER_H_
+#ifndef LIB_BUFFER_H_
+#define LIB_BUFFER_H_
 
 struct buffer
 {
@@ -55,4 +55,4 @@ void *buffer__cursor(struct buffer *b, size_t offset);
  */
 void buffer__reset(struct buffer *b);
 
-#endif /* DQLITE_BUFFER_H_ */
+#endif /* LIB_BUFFER_H_ */

@@ -57,7 +57,7 @@ static void dqlite__queue_item_process(struct dqlite__queue_item *i) {
 
 	assert(i != NULL);
 
-	err = conn__start(i->conn);
+	err = conn__start_(i->conn);
 	if (err != 0) {
 		dqlite__error_wrapf(
 		    &i->error, &i->conn->error, "failed to init connection");

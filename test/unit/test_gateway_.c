@@ -13,6 +13,7 @@
 #include "../../src/format.h"
 #include "../../src/gateway_.h"
 
+#if 0
 TEST_MODULE(gateway_);
 
 /******************************************************************************
@@ -225,8 +226,6 @@ TEST_CASE(handle, client, NULL)
 	return MUNIT_OK;
 }
 
-#if 0
-
 /* Handle a heartbeat request. */
 TEST_CASE(handle, heartbeat, NULL)
 {
@@ -346,8 +345,6 @@ TEST_CASE(handle, open_oom, test_open_oom_params)
 
 	return MUNIT_OK;
 }
-
-#endif
 
 /* Handle an oper request. */
 TEST_CASE(handle, open, NULL)
@@ -634,8 +631,6 @@ TEST_CASE(handle, exec_bad_params, NULL)
 	return MUNIT_OK;
 }
 
-#if 0
-
 /* If the execution of the statement fails, an error is returned. */
 TEST_CASE(handle, exec_fail, NULL)
 {
@@ -677,8 +672,6 @@ TEST_CASE(handle, exec_fail, NULL)
 
 	return MUNIT_OK;
 }
-
-#endif
 
 /* Handle a query request. */
 TEST_CASE(handle, query, NULL)
@@ -945,8 +938,6 @@ TEST_CASE(handle, exec_sql_bad_params, NULL)
 	return MUNIT_OK;
 }
 
-#if 0
-
 /* If the execution of the statement fails, an error is returned. */
 TEST_CASE(handle, exec_sql_error, NULL)
 {
@@ -982,8 +973,6 @@ TEST_CASE(handle, exec_sql_error, NULL)
 
 	return MUNIT_OK;
 }
-
-#endif
 
 /* Handle a query sql request. */
 TEST_CASE(handle, query_sql, NULL)
@@ -1168,8 +1157,6 @@ TEST_CASE(handle, max_requests, NULL)
 
 	return MUNIT_OK;
 }
-
-#if 0
 
 /* If the number of frames in the WAL reaches the configured threshold, a
  * checkpoint is triggered. */
