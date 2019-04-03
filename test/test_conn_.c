@@ -145,7 +145,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	options__init(&f->options);
 	dqlite__metrics_init(&f->metrics);
 
-	err = conn__start(f->conn);
+	err = conn__start_(f->conn);
 	munit_assert_int(err, ==, 0);
 
 	f->transport.data = f;

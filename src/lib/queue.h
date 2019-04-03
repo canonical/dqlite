@@ -1,5 +1,5 @@
-#ifndef QUEUE_H_
-#define QUEUE_H_
+#ifndef LIB_QUEUE_H_
+#define LIB_QUEUE_H_
 
 #include <stddef.h>
 
@@ -71,4 +71,4 @@ typedef void *queue[2];
 #define QUEUE__DATA(e, type, field) \
 	((type *)((char *)(e)-offsetof(type, field)))
 
-#endif /* QUEUE_H_*/
+#endif /* LIB_QUEUE_H_*/

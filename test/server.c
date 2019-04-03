@@ -15,7 +15,7 @@
 #include "munit.h"
 #include "replication.h"
 #include "server.h"
-#include "fs.h"
+#include "lib/fs.h"
 
 dqlite_logger *logger;
 
