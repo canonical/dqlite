@@ -11,13 +11,16 @@
 #include "error.h"
 #include "lifecycle.h"
 
-#define MESSAGE_HEADER(X, ...)          \
+/**
+ * Metadata about an incoming or outgoing RPC message.
+ */
+#define MESSAGE(X, ...)          \
 	X(uint32, words, ##__VA_ARGS__) \
 	X(uint8, type, ##__VA_ARGS__)   \
 	X(uint8, flags, ##__VA_ARGS__)  \
 	X(uint16, extra, ##__VA_ARGS__)
 
-SERIALIZE__DEFINE(message_header, MESSAGE_HEADER);
+SERIALIZE__DEFINE(message, MESSAGE);
 
 /**
  * The size of the message header, always 8 bytes.
@@ -49,7 +52,7 @@ SERIALIZE__DEFINE(message_header, MESSAGE_HEADER);
 #define MESSAGE__MAX_WORDS (1 << 25) /* ~250M */
 
 /**
- * Length of the statically allocated message body buffer of struct message. If
+ * Length of the statically allocated message body buffer of struct message_. If
  * a message body exeeds this size, a dynamically allocated buffer will be
  * used.
  */
@@ -85,7 +88,7 @@ static_assert(sizeof(double) == sizeof(uint64_t),
 /**
  * A message serializes dqlite requests and responses.
  */
-struct message
+struct message_
 {
 	/* public */
 	uint32_t words; /* Number of 64-bit words in the body (little endian) */
@@ -110,12 +113,12 @@ struct message
 /**
  * Initialize the message.
  */
-void message__init(struct message *m);
+void message__init(struct message_ *m);
 
 /**
  * Close the message, releasing any associated resources.
  */
-void message__close(struct message *m);
+void message__close(struct message_ *m);
 
 /**
  * Called when starting to receive a message header.
@@ -124,7 +127,7 @@ void message__close(struct message *m);
  * must be progressivelly filled with the received data as it gets received from
  * the client, until it's full.
  */
-void message__header_recv_start(struct message *m, uv_buf_t *buf);
+void message__header_recv_start(struct message_ *m, uv_buf_t *buf);
 
 /**
  * Called when the buffer returned by message__header_recv_start has been
@@ -132,7 +135,7 @@ void message__header_recv_start(struct message *m, uv_buf_t *buf);
  *
  * Return an error if the header data is invalid.
  */
-int message__header_recv_done(struct message *m);
+int message__header_recv_done(struct message_ *m);
 
 /**
  * Called when starting to receive a message body, after the message header
@@ -143,7 +146,7 @@ int message__header_recv_done(struct message *m);
  *
  * Return an error if there is not enough memory to hold the message body.
  */
-int message__body_recv_start(struct message *m, uv_buf_t *buf);
+int message__body_recv_start(struct message_ *m, uv_buf_t *buf);
 
 /**
  * APIs for decoding the message body.
@@ -151,38 +154,38 @@ int message__body_recv_start(struct message *m, uv_buf_t *buf);
  * They must be called once the body has been completely received and they
  * return DQLITE_EOM when the end of the body is reached.
  */
-int message__body_get_text(struct message *m, text_t *text);
-int message__body_get_uint8(struct message *m, uint8_t *value);
-int message__body_get_uint32(struct message *m, uint32_t *value);
-int message__body_get_uint64(struct message *m, uint64_t *value);
-int message__body_get_int64(struct message *m, int64_t *value);
-int message__body_get_double(struct message *m, double_t *value);
-int message__body_get_servers(struct message *m, servers_t *servers);
+int message__body_get_text(struct message_ *m, text_t *text);
+int message__body_get_uint8(struct message_ *m, uint8_t *value);
+int message__body_get_uint32(struct message_ *m, uint32_t *value);
+int message__body_get_uint64(struct message_ *m, uint64_t *value);
+int message__body_get_int64(struct message_ *m, int64_t *value);
+int message__body_get_double(struct message_ *m, double_t *value);
+int message__body_get_servers(struct message_ *m, servers_t *servers);
 
 /**
  * Called after the message body has been completely decoded and it has been
  * processed. It resets the internal state so the object can be re-used for
  * receiving another message
  */
-void message__recv_reset(struct message *m);
+void message__recv_reset(struct message_ *m);
 
 /**
  * Called when starting to render a message.
  *
  * It sets the message header with the given values.
  */
-void message__header_put(struct message *m, uint8_t type, uint8_t flags);
+void message__header_put(struct message_ *m, uint8_t type, uint8_t flags);
 
 /**
  * APIs for encoding the message body.
  */
-int message__body_put_text(struct message *m, text_t text);
-int message__body_put_uint8(struct message *m, uint8_t value);
-int message__body_put_uint32(struct message *m, uint32_t value);
-int message__body_put_int64(struct message *m, int64_t value);
-int message__body_put_uint64(struct message *m, uint64_t value);
-int message__body_put_double(struct message *m, double_t value);
-int message__body_put_servers(struct message *m, servers_t servers);
+int message__body_put_text(struct message_ *m, text_t text);
+int message__body_put_uint8(struct message_ *m, uint8_t value);
+int message__body_put_uint32(struct message_ *m, uint32_t value);
+int message__body_put_int64(struct message_ *m, int64_t value);
+int message__body_put_uint64(struct message_ *m, uint64_t value);
+int message__body_put_double(struct message_ *m, double_t value);
+int message__body_put_servers(struct message_ *m, servers_t servers);
 
 /**
  * Called when starting to send a message.
@@ -191,7 +194,7 @@ int message__body_put_servers(struct message *m, servers_t servers);
  * message body buffer, and optionally a dynamically allocated body buffer (if
  * the body size exeeds the size of the statically allocated body buffer).
  */
-void message__send_start(struct message *m, uv_buf_t bufs[3]);
+void message__send_start(struct message_ *m, uv_buf_t bufs[3]);
 
 /**
  * Called after the body has been completely sent to the client.
@@ -199,16 +202,16 @@ void message__send_start(struct message *m, uv_buf_t bufs[3]);
  * It resets the internal state so the object can be re-used for sending another
  * message.
  */
-void message__send_reset(struct message *m);
+void message__send_reset(struct message_ *m);
 
 /**
  Return true if the message has been completely read.
  */
-int message__has_been_fully_consumed(struct message *m);
+int message__has_been_fully_consumed(struct message_ *m);
 
 /**
  * Return true if the message is exceeding the static buffer size.
  */
-int message__is_large(struct message *m);
+int message__is_large(struct message_ *m);
 
 #endif /* DQLITE_MESSAGE_H */

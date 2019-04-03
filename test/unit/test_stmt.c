@@ -25,7 +25,7 @@ struct fixture
 {
 	sqlite3_vfs *vfs;
 	struct stmt *stmt;
-	struct message *message;
+	struct message_ *message;
 	dqlite_logger * logger;
 };
 

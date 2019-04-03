@@ -10,6 +10,7 @@
 #include "gateway.h"
 #include "lib/buffer.h"
 #include "lib/transport.h"
+#include "message.h"
 
 /**
  * Callbacks.
@@ -27,6 +28,10 @@ struct conn
 	struct buffer read;	 /* Read buffer */
 	struct buffer write;	/* Write buffer */
 	uint64_t protocol;	  /* Protocol format version */
+	struct message request;     /* Request message meta data */
+	struct message response;    /* Response message meta data */
+	struct handle handle;
+	bool closed;
 };
 
 /**
