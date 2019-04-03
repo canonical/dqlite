@@ -9,12 +9,27 @@
 
 #include "lib/buffer.h"
 
+#include "tuple.h"
+
 struct client
 {
 	int fd;		     /* Connected socket */
 	unsigned db_id;      /* Database ID provided by the server */
 	struct buffer read;  /* Read buffer */
 	struct buffer write; /* Write buffer */
+};
+
+struct row
+{
+	struct value *values;
+	struct row *next;
+};
+
+struct rows
+{
+	unsigned column_count;
+	const char **column_names;
+	struct row *next;
 };
 
 /**
@@ -59,10 +74,25 @@ int client__recv_stmt(struct client *c, unsigned *stmt_id);
 int client__send_exec(struct client *c, unsigned stmt_id);
 
 /**
- * Receive the response to a an exec request.
+ * Receive the response to an exec request.
  */
 int client__recv_result(struct client *c,
 			unsigned *last_insert_id,
 			unsigned *rows_affected);
+
+/**
+ * Send a request to perform a query.
+ */
+int client__send_query(struct client *c, unsigned stmt_id);
+
+/**
+ * Receive the response of a query request.
+ */
+int client__recv_rows(struct client *c, struct rows *rows);
+
+/**
+ * Release all memory used in the given rows object.
+ */
+void client__close_rows(struct rows *rows);
 
 #endif /* CLIENT_H_*/
