@@ -102,7 +102,8 @@ int client__send_handshake(struct client *c)
 		if (message.type != DQLITE_RESPONSE_##UPPER) {       \
 			return DQLITE_ERROR;                         \
 		}                                                    \
-		p = buffer__advance(&c->read, message.words * 8);    \
+		n = message.words * 8;                               \
+		p = buffer__advance(&c->read, n);                    \
 		if (p == NULL) {                                     \
 			return DQLITE_ERROR;                         \
 		}                                                    \
@@ -133,5 +134,22 @@ int client__recv_db(struct client *c)
 	struct response_db response;
 	RESPONSE(db, DB);
 	c->db_id = response.id;
+	return 0;
+}
+
+int client__send_prepare(struct client *c, const char *sql)
+{
+	struct request_prepare request;
+	request.db_id = c->db_id;
+	request.sql = sql;
+	REQUEST(prepare, PREPARE);
+	return 0;
+}
+
+int client__recv_stmt(struct client *c, unsigned *stmt_id)
+{
+	struct response_stmt response;
+	RESPONSE(stmt, STMT);
+	*stmt_id = response.id;
 	return 0;
 }

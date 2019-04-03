@@ -43,4 +43,15 @@ int client__send_open(struct client *c, const char *name);
  */
 int client__recv_db(struct client *c);
 
+/**
+ * Send a request to prepare a statement.
+ */
+int client__send_prepare(struct client *c, const char *sql);
+
+/**
+ * Receive the response to a prepare request.
+ */
+int client__recv_stmt(struct client *c, unsigned *stmt_id);
+
+
 #endif /* CLIENT_H_*/
