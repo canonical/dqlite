@@ -45,6 +45,7 @@ libdqlite_la_SOURCES = \
   src/lib/buffer.c \
   src/lib/fsm.c \
   src/lib/logger.c \
+  src/lib/transport.c \
   src/lifecycle.c \
   src/message.c \
   src/metrics.c \
@@ -102,6 +103,7 @@ unit_test_SOURCES += \
   test/unit/lib/test_buffer.c \
   test/unit/lib/test_registry.c \
   test/unit/lib/test_serialize.c \
+  test/unit/lib/test_transport.c \
   test/unit/test_command.c \
   test/unit/test_gateway.c \
   test/unit/test_gateway_.c \

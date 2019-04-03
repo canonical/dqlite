@@ -1,8 +1,6 @@
-/******************************************************************************
- *
- * Helper to create a connected pair of socket.
- *
- ******************************************************************************/
+/**
+ * Helper to create a connected pair of sockets.
+ */
 
 #ifndef DQLITE_TEST_SOCKET_H
 #define DQLITE_TEST_SOCKET_H
@@ -68,5 +66,10 @@ void test_socket_pair_client_disconnect(struct test_socket_pair *p);
  * Close the server socket.
  */
 void test_socket_pair_server_disconnect(struct test_socket_pair *p);
+
+/**
+ * Write the given data into the client socket.
+ */
+void test_socket_client_write(struct test_socket_pair *p, void *buf, size_t n);
 
 #endif /* DQLITE_TEST_SOCKET_H */
