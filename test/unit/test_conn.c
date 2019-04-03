@@ -96,6 +96,16 @@ TEST_MODULE(conn);
 		rv2 = client__recv_db(&f->client);           \
 	}
 
+/* Prepare a statement. */
+#define PREPARE(SQL, STMT_ID)                                 \
+	{                                                     \
+		int rv2;                                      \
+		rv2 = client__send_prepare(&f->client, SQL);  \
+		munit_assert_int(rv2, ==, 0);                 \
+		test_uv_run(&f->loop, 2);                     \
+		rv2 = client__recv_stmt(&f->client, STMT_ID); \
+	}
+
 /******************************************************************************
  *
  * Assertions.
@@ -170,5 +180,44 @@ TEST_CASE(open, success, NULL)
 	struct open_fixture *f = data;
 	(void)params;
 	OPEN;
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * Handle an prepare request
+ *
+ ******************************************************************************/
+
+TEST_SUITE(prepare);
+
+struct prepare_fixture
+{
+	FIXTURE;
+};
+
+TEST_SETUP(prepare)
+{
+	struct prepare_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	HANDSHAKE;
+	OPEN;
+	return f;
+}
+
+TEST_TEAR_DOWN(prepare)
+{
+	struct prepare_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(prepare, success, NULL)
+{
+	struct prepare_fixture *f = data;
+	unsigned stmt_id;
+	(void)params;
+	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+	munit_assert_int(stmt_id, ==, 0);
 	return MUNIT_OK;
 }

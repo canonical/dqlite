@@ -149,7 +149,6 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 	int rc;
 	START(prepare, stmt);
 	LOOKUP_DB(request.db_id);
-	response.id = 1;
 	rc = stmt__registry_add(&g->stmts, &stmt);
 	if (rc != 0) {
 		return rc;
