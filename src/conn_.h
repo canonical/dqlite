@@ -1,10 +1,10 @@
 #ifndef DQLITE_CONN_H
 #define DQLITE_CONN_H
 
+#include <raft/io_uv.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <uv.h>
-#include <raft/io_uv.h>
 
 #include "../include/dqlite.h"
 
@@ -26,7 +26,7 @@
 #define CONN__BUF_SIZE 1024
 
 /* Serve requests from a single connected client. */
-struct conn
+struct conn_
 {
 	/* public */
 	dqlite_logger *logger; /* Optional logger implementation */
@@ -39,7 +39,7 @@ struct conn
 	struct dqlite__metrics *metrics; /* Operational metrics */
 	struct options *options;	 /* Connection state machine */
 	struct dqlite__fsm fsm;		 /* Connection state machine */
-	struct gateway_ gateway;		 /* Client state and request handler */
+	struct gateway_ gateway;	 /* Client state and request handler */
 	struct request request;		 /* Incoming request */
 	struct response response;	/* Response for internal failures */
 
@@ -66,20 +66,20 @@ struct conn
 };
 
 /* Initialize a connection object */
-void conn__init(struct conn *c,
-		int fd,
-		dqlite_logger *logger,
-		uv_loop_t *loop,
-		struct options *options,
-		struct dqlite__metrics *metrics);
+void conn__init_(struct conn_ *c,
+		 int fd,
+		 dqlite_logger *logger,
+		 uv_loop_t *loop,
+		 struct options *options,
+		 struct dqlite__metrics *metrics);
 
 /* Close a connection object, releasing all associated resources. */
-void conn__close(struct conn *c);
+void conn__close_(struct conn_ *c);
 
 /* Start reading data from the client and processing requests. */
-int conn__start(struct conn *c);
+int conn__start(struct conn_ *c);
 
 /* Immediately close the connection with the client. */
-void conn__abort(struct conn *c);
+void conn__abort(struct conn_ *c);
 
 #endif /* DQLITE_CONN_H */

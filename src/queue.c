@@ -8,13 +8,13 @@
 
 #include "./lib/assert.h"
 
-#include "conn.h"
+#include "conn_.h"
 #include "error.h"
 #include "lifecycle.h"
 #include "queue.h"
 
 int dqlite__queue_item_init(struct dqlite__queue_item *i,
-                            struct conn *      conn) {
+                            struct conn_ *      conn) {
 	int err;
 
 	assert(i != NULL);
