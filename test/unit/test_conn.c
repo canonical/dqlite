@@ -120,6 +120,17 @@ TEST_MODULE(conn);
 		munit_assert_int(rv2, ==, 0);                         \
 	}
 
+/* Perform a query. */
+#define QUERY(STMT_ID, ROWS)                                   \
+	{                                                      \
+		int rv2;                                       \
+		rv2 = client__send_query(&f->client, STMT_ID); \
+		munit_assert_int(rv2, ==, 0);                  \
+		test_uv_run(&f->loop, 2);                      \
+		rv2 = client__recv_rows(&f->client, ROWS);     \
+		munit_assert_int(rv2, ==, 0);                  \
+	}
+
 /******************************************************************************
  *
  * Assertions.
@@ -285,11 +296,71 @@ TEST_CASE(exec, result, NULL)
 	unsigned last_insert_id;
 	unsigned rows_affected;
 	(void)params;
+	PREPARE("BEGIN", &f->stmt_id);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
 	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
 	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
 	PREPARE("INSERT INTO test (n) VALUES(123)", &f->stmt_id);
 	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
+	PREPARE("COMMIT", &f->stmt_id);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
 	munit_assert_int(last_insert_id, ==, 1);
 	munit_assert_int(rows_affected, ==, 1);
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * Handle a query
+ *
+ ******************************************************************************/
+
+TEST_SUITE(query);
+
+struct query_fixture
+{
+	FIXTURE;
+	unsigned stmt_id;
+	struct rows rows;
+};
+
+TEST_SETUP(query)
+{
+	struct query_fixture *f = munit_malloc(sizeof *f);
+	unsigned stmt_id;
+	unsigned last_insert_id;
+	unsigned rows_affected;
+	SETUP;
+	HANDSHAKE;
+	OPEN;
+	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	PREPARE("INSERT INTO test(n) VALUES (123)", &stmt_id);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	return f;
+}
+
+TEST_TEAR_DOWN(query)
+{
+	struct query_fixture *f = data;
+	client__close_rows(&f->rows);
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(query, success, NULL)
+{
+	struct query_fixture *f = data;
+	struct row *row;
+	(void)params;
+	PREPARE("SELECT n FROM test", &f->stmt_id);
+	QUERY(f->stmt_id, &f->rows);
+	munit_assert_int(f->rows.column_count, ==, 1);
+	munit_assert_string_equal(f->rows.column_names[0], "n");
+	row = f->rows.next;
+	munit_assert_ptr_not_null(row);
+	munit_assert_ptr_null(row->next);
+	munit_assert_int(row->values[0].type, ==, SQLITE_INTEGER);
+	munit_assert_int(row->values[0].integer, ==, 123);
 	return MUNIT_OK;
 }
