@@ -250,3 +250,9 @@ void test_socket_pair_server_disconnect(struct test_socket_pair *p)
 	}
 	p->server_disconnected = true;
 }
+
+void test_socket_client_write(struct test_socket_pair *p, void *buf, size_t n) {
+	int rv;
+	rv = write(p->client, buf, n);
+	munit_assert_int(rv, ==, n);
+}
