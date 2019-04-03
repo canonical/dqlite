@@ -53,5 +53,16 @@ int client__send_prepare(struct client *c, const char *sql);
  */
 int client__recv_stmt(struct client *c, unsigned *stmt_id);
 
+/**
+ * Send a request to execute a statement.
+ */
+int client__send_exec(struct client *c, unsigned stmt_id);
+
+/**
+ * Receive the response to a an exec request.
+ */
+int client__recv_result(struct client *c,
+			unsigned *last_insert_id,
+			unsigned *rows_affected);
 
 #endif /* CLIENT_H_*/

@@ -94,6 +94,7 @@ TEST_MODULE(conn);
 		munit_assert_int(rv2, ==, 0);                \
 		test_uv_run(&f->loop, 2);                    \
 		rv2 = client__recv_db(&f->client);           \
+		munit_assert_int(rv2, ==, 0);                \
 	}
 
 /* Prepare a statement. */
@@ -104,6 +105,19 @@ TEST_MODULE(conn);
 		munit_assert_int(rv2, ==, 0);                 \
 		test_uv_run(&f->loop, 2);                     \
 		rv2 = client__recv_stmt(&f->client, STMT_ID); \
+		munit_assert_int(rv2, ==, 0);                 \
+	}
+
+/* Execute a statement. */
+#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)                  \
+	{                                                             \
+		int rv2;                                              \
+		rv2 = client__send_exec(&f->client, STMT_ID);         \
+		munit_assert_int(rv2, ==, 0);                         \
+		test_uv_run(&f->loop, 6);                             \
+		rv2 = client__recv_result(&f->client, LAST_INSERT_ID, \
+					  ROWS_AFFECTED);             \
+		munit_assert_int(rv2, ==, 0);                         \
 	}
 
 /******************************************************************************
@@ -219,5 +233,63 @@ TEST_CASE(prepare, success, NULL)
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	munit_assert_int(stmt_id, ==, 0);
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * Handle an exec
+ *
+ ******************************************************************************/
+
+TEST_SUITE(exec);
+
+struct exec_fixture
+{
+	FIXTURE;
+	unsigned stmt_id;
+};
+
+TEST_SETUP(exec)
+{
+	struct exec_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	HANDSHAKE;
+	OPEN;
+	return f;
+}
+
+TEST_TEAR_DOWN(exec)
+{
+	struct exec_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(exec, success, NULL)
+{
+	struct exec_fixture *f = data;
+	unsigned last_insert_id;
+	unsigned rows_affected;
+	(void)params;
+	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
+	munit_assert_int(last_insert_id, ==, 0);
+	munit_assert_int(rows_affected, ==, 0);
+	return MUNIT_OK;
+}
+
+TEST_CASE(exec, result, NULL)
+{
+	struct exec_fixture *f = data;
+	unsigned last_insert_id;
+	unsigned rows_affected;
+	(void)params;
+	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
+	PREPARE("INSERT INTO test (n) VALUES(123)", &f->stmt_id);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
+	munit_assert_int(last_insert_id, ==, 1);
+	munit_assert_int(rows_affected, ==, 1);
 	return MUNIT_OK;
 }

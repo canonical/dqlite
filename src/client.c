@@ -153,3 +153,23 @@ int client__recv_stmt(struct client *c, unsigned *stmt_id)
 	*stmt_id = response.id;
 	return 0;
 }
+
+int client__send_exec(struct client *c, unsigned stmt_id)
+{
+	struct request_exec request;
+	request.db_id = c->db_id;
+	request.stmt_id = stmt_id;
+	REQUEST(exec, EXEC);
+	return 0;
+}
+
+int client__recv_result(struct client *c,
+			unsigned *last_insert_id,
+			unsigned *rows_affected)
+{
+	struct response_result response;
+	RESPONSE(result, RESULT);
+	*last_insert_id = response.last_insert_id;
+	*rows_affected = response.rows_affected;
+	return 0;
+}
