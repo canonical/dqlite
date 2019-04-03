@@ -12,6 +12,7 @@
 #include "../lib/vfs.h"
 
 #include "../../src/conn.h"
+#include "../../src/client.h"
 #include "../../src/gateway.h"
 #include "../../src/lib/transport.h"
 #include "../../src/transport.h"
@@ -33,6 +34,7 @@ struct fixture
 	FIXTURE_RAFT;
 	struct test_socket_pair sockets;
 	struct conn conn;
+	struct client client;
 };
 
 static void *setup(const MunitParameter params[], void *user_data)
@@ -50,14 +52,16 @@ static void *setup(const MunitParameter params[], void *user_data)
 	rv = conn__start(&f->conn, &f->logger, &f->loop, &f->options,
 			 &f->registry, &f->raft, f->sockets.server,
 			 &f->raft_transport, NULL);
-
+	client__init(&f->client, f->sockets.client);
 	return f;
 }
 
 static void tear_down(void *data)
 {
 	struct fixture *f = data;
+	client__close(&f->client);
 	conn__stop(&f->conn);
+	f->sockets.client_disconnected = true;
 	f->sockets.server_disconnected = true;
 	test_socket_pair_tear_down(&f->sockets);
 	TEAR_DOWN_RAFT;
