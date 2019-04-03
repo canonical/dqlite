@@ -6,6 +6,7 @@
 #include "message.h"
 #include "request.h"
 #include "response.h"
+#include "tuple.h"
 
 int client__init(struct client *c, int fd)
 {
@@ -79,45 +80,58 @@ int client__send_handshake(struct client *c)
 		}                                                   \
 	}
 
-/* Read a response. */
-#define RESPONSE(LOWER, UPPER)                                       \
+/* Read a response without decoding it. */
+#define READ(LOWER, UPPER)                                     \
+	{                                                      \
+		struct message message;                        \
+		struct cursor cursor;                          \
+		size_t n;                                      \
+		void *p;                                       \
+		int rv;                                        \
+		n = message__sizeof(&message);                 \
+		buffer__reset(&c->read);                       \
+		p = buffer__advance(&c->read, n);              \
+		assert(p != NULL);                             \
+		rv = read(c->fd, p, n);                        \
+		if (rv != (int)n) {                            \
+			return DQLITE_ERROR;                   \
+		}                                              \
+		cursor.p = p;                                  \
+		cursor.cap = n;                                \
+		rv = message__decode(&cursor, &message);       \
+		assert(rv == 0);                               \
+		if (message.type != DQLITE_RESPONSE_##UPPER) { \
+			return DQLITE_ERROR;                   \
+		}                                              \
+		buffer__reset(&c->read);                       \
+		n = message.words * 8;                         \
+		p = buffer__advance(&c->read, n);              \
+		if (p == NULL) {                               \
+			return DQLITE_ERROR;                   \
+		}                                              \
+		rv = read(c->fd, p, n);                        \
+		if (rv != (int)n) {                            \
+			return DQLITE_ERROR;                   \
+		}                                              \
+	}
+
+/* Decode a response. */
+#define DECODE(LOWER)                                                \
 	{                                                            \
-		struct message message;                              \
-		struct cursor cursor;                                \
-		size_t n;                                            \
-		void *p;                                             \
 		int rv;                                              \
-		n = message__sizeof(&message);                       \
-		buffer__reset(&c->read);                             \
-		p = buffer__advance(&c->read, n);                    \
-		assert(p != NULL);                                   \
-		rv = read(c->fd, p, n);                              \
-		if (rv != (int)n) {                                  \
-			return DQLITE_ERROR;                         \
-		}                                                    \
-		cursor.p = p;                                        \
-		cursor.cap = n;                                      \
-		rv = message__decode(&cursor, &message);             \
-		assert(rv == 0);                                     \
-		if (message.type != DQLITE_RESPONSE_##UPPER) {       \
-			return DQLITE_ERROR;                         \
-		}                                                    \
-		n = message.words * 8;                               \
-		p = buffer__advance(&c->read, n);                    \
-		if (p == NULL) {                                     \
-			return DQLITE_ERROR;                         \
-		}                                                    \
-		rv = read(c->fd, p, n);                              \
-		if (rv != (int)n) {                                  \
-			return DQLITE_ERROR;                         \
-		}                                                    \
-		cursor.p = p;                                        \
-		cursor.cap = n;                                      \
+		struct cursor cursor;                                \
+		cursor.p = buffer__cursor(&c->read, 0);              \
+		cursor.cap = buffer__offset(&c->read);               \
 		rv = response_##LOWER##__decode(&cursor, &response); \
 		if (rv != 0) {                                       \
 			return DQLITE_ERROR;                         \
 		}                                                    \
 	}
+
+/* Read and decode a response. */
+#define RESPONSE(LOWER, UPPER) \
+	READ(LOWER, UPPER);    \
+	DECODE(LOWER)
 
 int client__send_open(struct client *c, const char *name)
 {
@@ -172,4 +186,96 @@ int client__recv_result(struct client *c,
 	*last_insert_id = response.last_insert_id;
 	*rows_affected = response.rows_affected;
 	return 0;
+}
+
+int client__send_query(struct client *c, unsigned stmt_id)
+{
+	struct request_query request;
+	request.db_id = c->db_id;
+	request.stmt_id = stmt_id;
+	REQUEST(query, QUERY);
+	return 0;
+}
+
+int client__recv_rows(struct client *c, struct rows *rows)
+{
+	struct cursor cursor;
+	struct tuple_decoder decoder;
+	uint64_t column_count;
+	struct row *last;
+	unsigned i;
+	int rv;
+	READ(rows, ROWS);
+	cursor.p = buffer__cursor(&c->read, 0);
+	cursor.cap = buffer__offset(&c->read);
+	rv = uint64__decode(&cursor, &column_count);
+	if (rv != 0) {
+		return DQLITE_ERROR;
+	}
+	rows->column_count = column_count;
+	for (i = 0; i < rows->column_count; i++) {
+		rows->column_names =
+		    sqlite3_malloc(column_count * sizeof *rows->column_names);
+		if (rows->column_names == NULL) {
+			return DQLITE_ERROR;
+		}
+		rv = text__decode(&cursor, &rows->column_names[i]);
+		if (rv != 0) {
+			return DQLITE_ERROR;
+		}
+	}
+	rv = tuple_decoder__init(&decoder, column_count, &cursor);
+	if (rv != 0) {
+		return DQLITE_ERROR;
+	}
+	last = NULL;
+	while (1) {
+		uint64_t eof;
+		struct row *row;
+		if (cursor.cap < 8) {
+			/* No EOF marker fond */
+			return DQLITE_ERROR;
+		}
+		eof = byte__flip64(*(uint64_t *)cursor.p);
+		if (eof == DQLITE_RESPONSE_ROWS_DONE ||
+		    eof == DQLITE_RESPONSE_ROWS_PART) {
+			break;
+		}
+		row = sqlite3_malloc(sizeof *row);
+		if (row == NULL) {
+			return DQLITE_NOMEM;
+		}
+		row->values =
+		    sqlite3_malloc(column_count * sizeof *row->values);
+		if (row->values == NULL) {
+			return DQLITE_NOMEM;
+		}
+		row->next = NULL;
+		for (i = 0; i < rows->column_count; i++) {
+			rv = tuple_decoder__next(&decoder, &row->values[i]);
+			if (rv != 0) {
+				return DQLITE_ERROR;
+			}
+		}
+		if (last == NULL) {
+			rows->next = row;
+		} else {
+			last->next = row;
+			last = row;
+		}
+	}
+	return 0;
+}
+
+void client__close_rows(struct rows *rows)
+{
+	struct row *row = rows->next;
+	while (row != NULL) {
+		struct row *next;
+		next = row->next;
+		sqlite3_free(row->values);
+		sqlite3_free(row);
+		row = next;
+	}
+	sqlite3_free(rows->column_names);
 }
