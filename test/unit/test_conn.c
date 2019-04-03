@@ -11,8 +11,8 @@
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
 
-#include "../../src/conn.h"
 #include "../../src/client.h"
+#include "../../src/conn.h"
 #include "../../src/gateway.h"
 #include "../../src/lib/transport.h"
 #include "../../src/transport.h"
@@ -48,10 +48,13 @@ static void *setup(const MunitParameter params[], void *user_data)
 	SETUP_OPTIONS;
 	SETUP_REGISTRY;
 	SETUP_RAFT;
+	RAFT_BOOTSTRAP;
+	RAFT_START;
 	test_socket_pair_setup(params, &f->sockets);
 	rv = conn__start(&f->conn, &f->logger, &f->loop, &f->options,
 			 &f->registry, &f->raft, f->sockets.server,
 			 &f->raft_transport, NULL);
+	munit_assert_int(rv, ==, 0);
 	client__init(&f->client, f->sockets.client);
 	return f;
 }
@@ -80,6 +83,14 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
+/* Send the initial client handshake. */
+#define HANDSHAKE                                    \
+	{                                            \
+		int rv2;                             \
+		rv2 = client__handshake(&f->client); \
+		munit_assert_int(rv2, ==, 0);        \
+	}
+
 /******************************************************************************
  *
  * Assertions.
@@ -100,5 +111,7 @@ TEST_CASE(handshake, success, NULL)
 {
 	struct fixture *f = data;
 	(void)params;
+	HANDSHAKE;
+	test_uv_run(&f->loop, 1);
 	return MUNIT_OK;
 }

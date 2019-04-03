@@ -56,23 +56,22 @@
  * Bootstrap the fixture raft instance with a configuration containing only
  * itself.
  */
-#define RAFT_BOOTSTRAP                                                     \
-	{                                                                  \
-		struct raft_configuration configuration;                   \
-		int i;                                                     \
-		int rv;                                                    \
-		raft_configuration_init(&configuration);                   \
-		rv = raft_configuration_add(&configuration, 1, "1", true); \
-		munit_assert_int(rv, ==, 0);                               \
-		rv = raft_bootstrap(&f->raft, &configuration);             \
-		munit_assert_int(rv, ==, 0);                               \
-		raft_configuration_close(&configuration);                  \
+#define RAFT_BOOTSTRAP                                                      \
+	{                                                                   \
+		struct raft_configuration configuration;                    \
+		int rv2;                                                    \
+		raft_configuration_init(&configuration);                    \
+		rv2 = raft_configuration_add(&configuration, 1, "1", true); \
+		munit_assert_int(rv2, ==, 0);                               \
+		rv2 = raft_bootstrap(&f->raft, &configuration);             \
+		munit_assert_int(rv2, ==, 0);                               \
+		raft_configuration_close(&configuration);                   \
 	}
 
 #define RAFT_START                            \
 	{                                     \
-		int rv;                       \
-		rv = raft_start(&f->raft);    \
+		int rv2;                      \
+		rv2 = raft_start(&f->raft);   \
 		munit_assert_int(rv2, ==, 0); \
 	}
 
