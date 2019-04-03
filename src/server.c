@@ -9,7 +9,7 @@
 
 #include "./lib/assert.h"
 
-#include "conn.h"
+#include "conn_.h"
 #include "error.h"
 #include "fsm.h"
 #include "log.h"
@@ -87,7 +87,7 @@ struct dqlite__server
 static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 {
 	struct dqlite__server *s;
-	struct conn *conn;
+	struct conn_ *conn;
 
 	assert(handle != NULL);
 	assert(arg != NULL);
@@ -109,7 +109,7 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 		case UV_NAMED_PIPE:
 			assert(handle->data != NULL);
 
-			conn = (struct conn *)handle->data;
+			conn = (struct conn_ *)handle->data;
 
 			/* Abort the client connection and release any allocated
 			 * resources. */
@@ -580,7 +580,7 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg)
 {
 	int err;
 	dqlite__error e;
-	struct conn *conn;
+	struct conn_ *conn;
 	struct dqlite__queue_item item;
 
 	assert(s != NULL);
@@ -604,7 +604,7 @@ int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg)
 		err = DQLITE_NOMEM;
 		goto err_not_running_or_conn_malloc;
 	}
-	conn__init(conn, fd, s->logger, &s->loop, &s->options, s->metrics);
+	conn__init_(conn, fd, s->logger, &s->loop, &s->options, s->metrics);
 	conn->gateway.registry = &s->registry;
 
 	err = dqlite__queue_item_init(&item, conn);
@@ -651,7 +651,7 @@ err_incoming_send:
 	dqlite__queue_pop(&s->queue);
 
 err_item_init_or_queue_push:
-	conn__close(conn);
+	conn__close_(conn);
 	sqlite3_free(conn);
 
 err_not_running_or_conn_malloc:
@@ -666,7 +666,7 @@ err_not_running_or_conn_malloc:
 	return err;
 
 err_item_wait:
-	conn__close(conn);
+	conn__close_(conn);
 	sqlite3_free(conn);
 	dqlite__queue_item_close(&item);
 

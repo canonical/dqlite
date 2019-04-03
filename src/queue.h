@@ -9,13 +9,13 @@
 struct dqlite__queue_item {
 	/* read-only */
 	dqlite__error        error; /* Last error occurred, if any */
-	struct conn *conn;  /* Incoming connection */
+	struct conn_ *conn;  /* Incoming connection */
 
 	/* private */
 	sem_t pending; /* Block until the connection gets processed */
 };
 
-int dqlite__queue_item_init(struct dqlite__queue_item *i, struct conn *conn);
+int dqlite__queue_item_init(struct dqlite__queue_item *i, struct conn_ *conn);
 
 /* Must be called only once the queue is empty */
 void dqlite__queue_item_close(struct dqlite__queue_item *i);

@@ -12,7 +12,7 @@
 #include "./lib/assert.h"
 #include "./lib/byte.h"
 
-#include "conn.h"
+#include "conn_.h"
 #include "error.h"
 #include "gateway_.h"
 #include "lifecycle.h"
@@ -27,9 +27,9 @@
 enum { RAFT_CONNECT = 1, RAFT_JOIN, RAFT_LEAVE };
 
 /* Context attached to an uv_write_t write request */
-struct conn__write_ctx
+struct conn___write_ctx
 {
-	struct conn *conn;
+	struct conn_ *conn;
 	struct response *response;
 };
 
@@ -39,10 +39,10 @@ static void conn__read_cb(uv_stream_t *, ssize_t, const uv_buf_t *);
 static void conn__write_cb(uv_write_t *, int);
 
 /* Write out a response for the client */
-static int conn__write(struct conn *c, struct response *response)
+static int conn__write(struct conn_ *c, struct response *response)
 {
 	int err;
-	struct conn__write_ctx *ctx;
+	struct conn___write_ctx *ctx;
 	uv_write_t *req;
 	uv_buf_t bufs[3];
 
@@ -55,7 +55,7 @@ static int conn__write(struct conn *c, struct response *response)
 		return err;
 	}
 
-	ctx = (struct conn__write_ctx *)(((char *)req) + sizeof(*req));
+	ctx = (struct conn___write_ctx *)(((char *)req) + sizeof(*req));
 
 	ctx->conn = c;
 	ctx->response = response;
@@ -82,7 +82,7 @@ static int conn__write(struct conn *c, struct response *response)
 }
 
 /* Write out a failure response. */
-static int conn__write_failure(struct conn *c, int code)
+static int conn__write_failure(struct conn_ *c, int code)
 {
 	int err;
 
@@ -119,14 +119,14 @@ static int conn__write_failure(struct conn *c, int code)
 
 static void conn__write_cb(uv_write_t *req, int status)
 {
-	struct conn__write_ctx *ctx;
-	struct conn *c;
+	struct conn___write_ctx *ctx;
+	struct conn_ *c;
 	struct response *response;
 
 	assert(req != NULL);
 	assert(req->data != NULL);
 
-	ctx = (struct conn__write_ctx *)req->data;
+	ctx = (struct conn___write_ctx *)req->data;
 
 	c = ctx->conn;
 	response = ctx->response;
@@ -170,7 +170,7 @@ static void conn__write_cb(uv_write_t *req, int status)
  * and sent to the client. */
 static void conn__flush_cb(void *arg, struct response *response)
 {
-	struct conn *c;
+	struct conn_ *c;
 	int rc;
 
 	assert(arg != NULL);
@@ -212,7 +212,7 @@ response_failure:
  * request. 2) Reqest body: the body of the request is read.
  *
  * After 2) the state machine goes back to 1). */
-static void conn__buf_init(struct conn *c, uv_buf_t *buf)
+static void conn__buf_init(struct conn_ *c, uv_buf_t *buf)
 {
 	assert(c != NULL);
 	assert(buf->base != NULL);
@@ -227,7 +227,7 @@ static void conn__buf_init(struct conn *c, uv_buf_t *buf)
 /* Reset the connection read buffer. This should be called at the end of a read
  * phase, to signal that the FSM should be advanced and next phase should
  * start (this is done by conn__alloc_cb). */
-static void conn__buf_close(struct conn *c)
+static void conn__buf_close(struct conn_ *c)
 {
 	assert(c != NULL);
 	assert(c->buf.base != NULL);
@@ -258,12 +258,12 @@ static struct dqlite__fsm_event conn__events[] = {
 
 static int conn__handshake_alloc_cb(void *arg)
 {
-	struct conn *c;
+	struct conn_ *c;
 	uv_buf_t buf;
 
 	assert(arg != NULL);
 
-	c = (struct conn *)arg;
+	c = (struct conn_ *)arg;
 
 	/* The handshake read buffer is simply the protocol field of the
 	 * connection struct. */
@@ -278,11 +278,11 @@ static int conn__handshake_alloc_cb(void *arg)
 static int conn__handshake_read_cb(void *arg)
 {
 	int err;
-	struct conn *c;
+	struct conn_ *c;
 
 	assert(arg != NULL);
 
-	c = (struct conn *)arg;
+	c = (struct conn_ *)arg;
 
 	/* The buffer must point to our protocol field */
 	assert((c->buf.base - sizeof(c->protocol)) == (char *)(&c->protocol));
@@ -306,12 +306,12 @@ static struct dqlite__fsm_transition conn__transitions_handshake[] = {
 
 static int conn__header_alloc_cb(void *arg)
 {
-	struct conn *c;
+	struct conn_ *c;
 	uv_buf_t buf;
 
 	assert(arg != NULL);
 
-	c = (struct conn *)arg;
+	c = (struct conn_ *)arg;
 
 	if (c->protocol == RAFT_TAG) {
 		buf.base = (char *)c->raft.preamble;
@@ -335,12 +335,12 @@ done:
 static int conn__header_read_cb(void *arg)
 {
 	int err;
-	struct conn *c;
+	struct conn_ *c;
 	int ctx;
 
 	assert(arg != NULL);
 
-	c = (struct conn *)arg;
+	c = (struct conn_ *)arg;
 
 	if (c->protocol == RAFT_TAG) {
 		c->raft.command = byte__flip64(c->raft.preamble[0]);
@@ -391,12 +391,12 @@ static struct dqlite__fsm_transition conn__transitions_header[] = {
 static int conn__body_alloc_cb(void *arg)
 {
 	int err;
-	struct conn *c;
+	struct conn_ *c;
 	uv_buf_t buf;
 
 	assert(arg != NULL);
 
-	c = (struct conn *)arg;
+	c = (struct conn_ *)arg;
 
 	if (c->protocol == RAFT_TAG) {
 		switch (c->raft.command) {
@@ -435,11 +435,11 @@ done:
 static int conn__body_read_cb(void *arg)
 {
 	int err;
-	struct conn *c;
+	struct conn_ *c;
 
 	assert(arg != NULL);
 
-	c = (struct conn *)arg;
+	c = (struct conn_ *)arg;
 
 	if (c->protocol == RAFT_TAG) {
 		switch (c->raft.command) {
@@ -502,14 +502,14 @@ static struct dqlite__fsm_transition *dqlite__transitions[] = {
 static void conn__alloc_cb(uv_handle_t *stream, size_t _, uv_buf_t *buf)
 {
 	int err;
-	struct conn *c;
+	struct conn_ *c;
 
 	assert(stream != NULL);
 	assert(buf != NULL);
 
 	(void)_;
 
-	c = (struct conn *)stream->data;
+	c = (struct conn_ *)stream->data;
 
 	assert(c != NULL);
 
@@ -537,11 +537,11 @@ static void conn__alloc_cb(uv_handle_t *stream, size_t _, uv_buf_t *buf)
 static void conn__alive_cb(uv_timer_t *alive)
 {
 	uint64_t elapsed;
-	struct conn *c;
+	struct conn_ *c;
 
 	assert(alive != NULL);
 
-	c = (struct conn *)alive->data;
+	c = (struct conn_ *)alive->data;
 
 	assert(c != NULL);
 
@@ -560,12 +560,12 @@ static void conn__read_cb(uv_stream_t *stream,
 			  const uv_buf_t *buf)
 {
 	int err;
-	struct conn *c;
+	struct conn_ *c;
 
 	assert(stream != NULL);
 	assert(buf != NULL);
 
-	c = (struct conn *)stream->data;
+	c = (struct conn_ *)stream->data;
 
 	assert(c != NULL);
 
@@ -619,7 +619,7 @@ out:
 	return;
 }
 
-void conn__init(struct conn *c,
+void conn__init_(struct conn_ *c,
 		int fd,
 		dqlite_logger *logger,
 		uv_loop_t *loop,
@@ -661,7 +661,7 @@ void conn__init(struct conn *c,
 	c->paused = 0;
 }
 
-void conn__close(struct conn *c)
+void conn__close_(struct conn_ *c)
 {
 	assert(c != NULL);
 	if (c->stream != NULL) {
@@ -675,7 +675,7 @@ void conn__close(struct conn *c)
 	dqlite__error_close(&c->error);
 }
 
-int conn__start(struct conn *c)
+int conn__start(struct conn_ *c)
 {
 	struct uv_pipe_s *pipe;
 	struct uv_tcp_s *tcp;
@@ -790,9 +790,9 @@ err:
 	return err;
 }
 
-static void conn__destroy(struct conn *c)
+static void conn__destroy(struct conn_ *c)
 {
-	conn__close(c);
+	conn__close_(c);
 
 	/* FIXME: this is broken, we should close the alive handle and *then*
 	 * free the connection object in the close callback */
@@ -802,7 +802,7 @@ static void conn__destroy(struct conn *c)
 
 static void conn__stream_close_cb(uv_handle_t *handle)
 {
-	struct conn *c;
+	struct conn_ *c;
 
 	assert(handle != NULL);
 
@@ -812,7 +812,7 @@ static void conn__stream_close_cb(uv_handle_t *handle)
 
 /* Abort the connection, realeasing any memory allocated by the read buffer, and
  * closing the UV handle (which closes the underlying socket as well) */
-void conn__abort(struct conn *c)
+void conn__abort(struct conn_ *c)
 {
 	const char *state;
 

@@ -5,7 +5,7 @@
 
 #include "../include/dqlite.h"
 
-#include "../src/conn.h"
+#include "../src/conn_.h"
 #include "../src/lib/byte.h"
 #include "../src/metrics.h"
 #include "../src/options.h"
@@ -32,7 +32,7 @@ struct fixture
 	struct dqlite__metrics metrics;
 	dqlite_logger *logger;
 	uv_loop_t loop;
-	struct conn *conn;
+	struct conn_ *conn;
 	struct response response;
 	struct raft_io_uv_transport transport;
 	bool accept_cb_invoked;
@@ -137,8 +137,8 @@ static void *setup(const MunitParameter params[], void *user_data)
 	err = uv_loop_init(&f->loop);
 	munit_assert_int(err, ==, 0);
 
-	conn__init(f->conn, f->sockets.server, f->logger, &f->loop, &f->options,
-		   &f->metrics);
+	conn__init_(f->conn, f->sockets.server, f->logger, &f->loop,
+		    &f->options, &f->metrics);
 
 	response_init(&f->response);
 
