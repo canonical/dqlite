@@ -77,7 +77,7 @@ void conn__init_(struct conn_ *c,
 void conn__close_(struct conn_ *c);
 
 /* Start reading data from the client and processing requests. */
-int conn__start(struct conn_ *c);
+int conn__start_(struct conn_ *c);
 
 /* Immediately close the connection with the client. */
 void conn__abort(struct conn_ *c);

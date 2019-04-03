@@ -1,5 +1,5 @@
-#ifndef BYTE_H_
-#define BYTE_H_
+#ifndef LIB_BYTE_H_
+#define LIB_BYTE_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -98,4 +98,4 @@ DQLITE_INLINE size_t byte__pad64(size_t size)
 	return size;
 }
 
-#endif /* BYTE_H_ */
+#endif /* LIB_BYTE_H_ */

@@ -32,6 +32,7 @@ libdqlite_la_SOURCES = \
   src/bind.c \
   src/client.c \
   src/command.c \
+  src/conn.c \
   src/conn_.c \
   src/db.c \
   src/db_.c \
@@ -58,6 +59,7 @@ libdqlite_la_SOURCES = \
   src/response.c \
   src/server.c \
   src/stmt.c \
+  src/transport.c \
   src/tuple.c \
   src/tx.c \
   src/vfs.c
@@ -69,9 +71,9 @@ check_PROGRAMS += \
 test_lib_SOURCES = \
   test/case.c \
   test/client.c \
-  test/fs.c \
   test/leak.c \
   test/lib/fault.c \
+  test/lib/fs.c \
   test/lib/heap.c \
   test/lib/logger.c \
   test/lib/message.c \
@@ -105,6 +107,7 @@ unit_test_SOURCES += \
   test/unit/lib/test_serialize.c \
   test/unit/lib/test_transport.c \
   test/unit/test_command.c \
+  test/unit/test_conn.c \
   test/unit/test_gateway.c \
   test/unit/test_gateway_.c \
   test/unit/test_registry.c \

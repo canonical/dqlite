@@ -2,8 +2,8 @@
  * Define the assert() macro, either as the standard one or the test one.
  */
 
-#ifndef DQLITE_ASSERT_H
-#define DQLITE_ASSERT_H
+#ifndef LIB_ASSERT_H_
+#define LIB_ASSERT_H_
 
 #if defined(DQLITE_TEST)
   #include "../test/lib/munit.h"
@@ -12,4 +12,4 @@
   #include <assert.h>
 #endif
 
-#endif /* DQLITE_ASSERT_H */
+#endif /* LIB_ASSERT_H_ */
