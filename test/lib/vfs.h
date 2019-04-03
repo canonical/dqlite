@@ -8,16 +8,13 @@
 #include "../../src/vfs.h"
 
 #define FIXTURE_VFS sqlite3_vfs *vfs;
-#define SETUP_VFS SETUP_VFS_X(f, "test")
-#define TEAR_DOWN_VFS TEAR_DOWN_VFS_X(f)
+#define SETUP_VFS                                       \
+	f->vfs = dqlite_vfs_create("test", &f->logger); \
+	munit_assert_ptr_not_null(f->vfs);              \
+	sqlite3_vfs_register(f->vfs, 0);
 
-#define SETUP_VFS_X(F, NAME)                          \
-	F->vfs = dqlite_vfs_create(NAME, &F->logger); \
-	munit_assert_ptr_not_null(F->vfs);            \
-	sqlite3_vfs_register(F->vfs, 0);
-
-#define TEAR_DOWN_VFS_X(F)              \
-	sqlite3_vfs_unregister(F->vfs); \
-	dqlite_vfs_destroy(F->vfs);
+#define TEAR_DOWN_VFS                   \
+	sqlite3_vfs_unregister(f->vfs); \
+	dqlite_vfs_destroy(f->vfs);
 
 #endif /* TEST_VFS_H */

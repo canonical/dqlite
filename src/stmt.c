@@ -44,7 +44,7 @@ const char *stmt__hash(struct stmt *stmt)
 
 /* Bind a parameter. */
 static int stmt__bind_param(struct stmt *s,
-			    struct message *message,
+			    struct message_ *message,
 			    int i,
 			    int type,
 			    int *rc)
@@ -125,7 +125,7 @@ static int stmt__bind_param(struct stmt *s,
 	return err;
 }
 
-int stmt__bind_(struct stmt *s, struct message *message)
+int stmt__bind_(struct stmt *s, struct message_ *message)
 {
 	int err;
 	uint8_t pad = 0;
@@ -228,7 +228,7 @@ int stmt__exec(struct stmt *s,
 }
 
 /* Append a single row to the message. */
-static int stmt__row(struct stmt *s, struct message *message, int column_count)
+static int stmt__row(struct stmt *s, struct message_ *message, int column_count)
 {
 	int err;
 	int i;
@@ -386,7 +386,7 @@ out:
 	return SQLITE_OK;
 }
 
-int stmt__query_(struct stmt *s, struct message *message)
+int stmt__query_(struct stmt *s, struct message_ *message)
 {
 	int column_count;
 	int err;

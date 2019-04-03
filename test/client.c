@@ -185,7 +185,7 @@ void test_client_exec(struct test_client *c,
 	result->rows_affected = c->response.result.rows_affected;
 }
 
-static void test_client_get_row(struct message *m,
+static void test_client_get_row(struct message_ *m,
 				uint64_t column_count,
 				struct test_client_row **row,
 				int *done)
