@@ -32,7 +32,7 @@ libdqlite_la_SOURCES = \
   src/bind.c \
   src/client.c \
   src/command.c \
-  src/conn.c \
+  src/conn_.c \
   src/db.c \
   src/db_.c \
   src/error.c \
@@ -86,7 +86,7 @@ test_lib_SOURCES = \
 unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
 unit_test_SOURCES += \
   test/lib/raft.c \
-  test/test_conn.c \
+  test/test_conn_.c \
   test/test_db.c \
   test/test_error.c \
   test/test_file.c \

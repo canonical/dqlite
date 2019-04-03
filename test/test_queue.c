@@ -1,7 +1,7 @@
 #include <sqlite3.h>
 #include <uv.h>
 
-#include "../src/conn.h"
+#include "../src/conn_.h"
 #include "../src/error.h"
 #include "../src/metrics.h"
 #include "../src/options.h"
@@ -91,12 +91,12 @@ TEST_CASE(push, success, NULL)
 	struct fixture *f = data;
 	int err;
 
-	struct conn conn;
+	struct conn_ conn;
 	struct dqlite__queue_item item;
 
 	(void)params;
 
-	conn__init(&conn, 123, f->logger, &f->loop, &f->options, &f->metrics);
+	conn__init_(&conn, 123, f->logger, &f->loop, &f->options, &f->metrics);
 
 	err = dqlite__queue_item_init(&item, &conn);
 	munit_assert_int(err, ==, 0);
@@ -107,7 +107,7 @@ TEST_CASE(push, success, NULL)
 	munit_assert_ptr_equal(dqlite__queue_pop(&f->queue), &item);
 
 	dqlite__queue_item_close(&item);
-	conn__close(&conn);
+	conn__close_(&conn);
 
 	return MUNIT_OK;
 }
@@ -127,14 +127,14 @@ TEST_CASE(process, success, NULL)
 	struct fixture *f = data;
 	int err;
 	struct dqlite__queue_item item;
-	struct conn *conn;
+	struct conn_ *conn;
 
 	(void)params;
 
 	conn = munit_malloc(sizeof *conn);
 
-	conn__init(conn, f->sockets.server, f->logger, &f->loop, &f->options,
-		   &f->metrics);
+	conn__init_(conn, f->sockets.server, f->logger, &f->loop, &f->options,
+		    &f->metrics);
 
 	err = dqlite__queue_item_init(&item, conn);
 	munit_assert_int(err, ==, 0);
