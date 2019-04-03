@@ -6,8 +6,8 @@
 #include "./lib/message.h"
 #include "munit.h"
 
-void test_message_send(struct message *outgoing,
-                       struct message *incoming) {
+void test_message_send(struct message_ *outgoing,
+                       struct message_ *incoming) {
 	int      err;
 	uv_buf_t bufs[3];
 	uv_buf_t buf;

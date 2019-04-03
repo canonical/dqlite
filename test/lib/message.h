@@ -7,20 +7,20 @@
 
 /* Helper to initialize an 'incoming' message object with the data from an
  * 'outgoing' message object */
-void test_message_send(struct message *outgoing, struct message *incoming);
+void test_message_send(struct message_ *outgoing, struct message_ *incoming);
 
 #define TEST_MESSAGE_SEND_ARG(KIND, MEMBER, _) KIND##_t MEMBER,
 
 #define TEST_MESSAGE_SEND_DEFINE(NAME, SCHEMA) \
 	void test_message_send_##NAME(         \
-	    SCHEMA(TEST_MESSAGE_SEND_ARG) struct message *incoming)
+	    SCHEMA(TEST_MESSAGE_SEND_ARG) struct message_ *incoming)
 
 #define TEST_MESSAGE_SEND_ASSIGN(KIND, MEMBER, NAME) \
 	object.NAME.MEMBER = MEMBER;
 
 #define TEST_MESSAGE_SEND_IMPLEMENT(NAME, CODE, OBJECT, SCHEMA)     \
 	void test_message_send_##NAME(                              \
-	    SCHEMA(TEST_MESSAGE_SEND_ARG) struct message *incoming) \
+	    SCHEMA(TEST_MESSAGE_SEND_ARG) struct message_ *incoming) \
 	{                                                           \
 		int err;                                            \
                                                                     \

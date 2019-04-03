@@ -81,7 +81,7 @@ const char *stmt__hash(struct stmt *stmt);
 
 /* Bind the parameters of the underlying statement by decoding the given
  * message. */
-int stmt__bind_(struct stmt *s, struct message *message);
+int stmt__bind_(struct stmt *s, struct message_ *message);
 
 int stmt__exec(struct stmt *s,
 	       uint64_t *last_insert_id,
@@ -89,7 +89,7 @@ int stmt__exec(struct stmt *s,
 
 /* Step through a query statement and fill the given message with the rows it
  * yields. */
-int stmt__query_(struct stmt *s, struct message *message);
+int stmt__query_(struct stmt *s, struct message_ *message);
 
 REGISTRY(stmt__registry, stmt);
 

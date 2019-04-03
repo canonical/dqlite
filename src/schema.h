@@ -20,9 +20,9 @@
 		SCHEMA(SCHEMA__FIELD_DEFINE, )                               \
 	};                                                                   \
                                                                              \
-	int NAME##_put(struct NAME *p, struct message *m, dqlite__error *e); \
+	int NAME##_put(struct NAME *p, struct message_ *m, dqlite__error *e); \
                                                                              \
-	int NAME##_get(struct NAME *p, struct message *m, dqlite__error *e)
+	int NAME##_get(struct NAME *p, struct message_ *m, dqlite__error *e)
 
 /**
  * Implement a new schema object.
@@ -33,7 +33,7 @@
  */
 #define SCHEMA__IMPLEMENT(NAME, SCHEMA)                                     \
                                                                             \
-	int NAME##_put(struct NAME *p, struct message *m, dqlite__error *e) \
+	int NAME##_put(struct NAME *p, struct message_ *m, dqlite__error *e) \
 	{                                                                   \
 		int err;                                                    \
                                                                             \
@@ -45,7 +45,7 @@
 		return 0;                                                   \
 	};                                                                  \
                                                                             \
-	int NAME##_get(struct NAME *p, struct message *m, dqlite__error *e) \
+	int NAME##_get(struct NAME *p, struct message_ *m, dqlite__error *e) \
 	{                                                                   \
 		int err;                                                    \
                                                                             \
@@ -109,7 +109,7 @@
 #define SCHEMA__HANDLER_DEFINE(NAME, TYPES)                   \
 	struct NAME                                           \
 	{                                                     \
-		struct message message;                       \
+		struct message_ message;                       \
 		uint64_t timestamp;                           \
 		uint8_t type;                                 \
 		uint8_t flags;                                \

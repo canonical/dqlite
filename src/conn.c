@@ -1,14 +1,150 @@
-#include "conn.h"
 #include "lib/logger.h"
+
+#include "conn.h"
+#include "message.h"
 
 /* Initialize the given buffer for reading, ensure it has the given size. */
 static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
 {
+	buffer__reset(&c->read);
 	buf->base = buffer__advance(&c->read, size);
 	if (buf->base == NULL) {
 		return DQLITE_NOMEM;
 	}
 	buf->len = size;
+	return 0;
+}
+
+static int read_message(struct conn *c);
+static void write_cb(struct transport *transport, int status)
+{
+	struct conn *c = transport->data;
+	int rv;
+	if (status != 0) {
+		goto abort;
+	}
+	/* Start reading the next request */
+	rv = read_message(c);
+	if (rv != 0) {
+		goto abort;
+	}
+	return;
+abort:
+	conn__stop(c);
+}
+
+static void gateway_handle_cb(struct handle *req, int status, int type)
+{
+	struct conn *c = req->data;
+	size_t n;
+	void *cursor;
+	uv_buf_t buf;
+	int rv;
+
+	if (status != 0) {
+		goto abort;
+	}
+
+	n = buffer__offset(&c->write) - message__sizeof(&c->response);
+	assert(n % 8 == 0);
+
+	c->response.type = type;
+	c->response.words = n / 8;
+
+	cursor = buffer__cursor(&c->write, 0);
+	message__encode(&c->response, &cursor);
+
+	buf.base = buffer__cursor(&c->write, 0);
+	buf.len = buffer__offset(&c->write);
+
+	rv = transport__write(&c->transport, &buf, write_cb);
+	if (rv != 0) {
+		goto abort;
+	}
+	return;
+abort:
+	conn__stop(c);
+}
+
+static void read_request_cb(struct transport *transport, int status)
+{
+	struct conn *c = transport->data;
+	struct cursor cursor;
+	int rv;
+
+	if (status != 0) {
+		errorf(c->logger, "read error");
+		conn__stop(c);
+		return;
+	}
+
+	cursor.p = buffer__cursor(&c->read, 0);
+	cursor.cap = buffer__offset(&c->read);
+
+	buffer__reset(&c->write);
+	buffer__advance(&c->write, message__sizeof(&c->response)); /* Header */
+
+	rv = gateway__handle(&c->gateway, &c->handle, c->request.type, &cursor,
+			     &c->write, gateway_handle_cb);
+	if (rv != 0) {
+		conn__stop(c);
+	}
+}
+
+/* Start reading the body of the next request */
+static int read_request(struct conn *c)
+{
+	uv_buf_t buf;
+	int rv;
+	rv = init_read(c, &buf, c->request.words * 8);
+	if (rv != 0) {
+		return rv;
+	}
+	rv = transport__read(&c->transport, &buf, read_request_cb);
+	if (rv != 0) {
+		return rv;
+	}
+	return 0;
+}
+
+static void read_message_cb(struct transport *transport, int status)
+{
+	struct conn *c = transport->data;
+	struct cursor cursor;
+	int rv;
+
+	if (status != 0) {
+		errorf(c->logger, "read error");
+		conn__stop(c);
+		return;
+	}
+
+	cursor.p = buffer__cursor(&c->read, 0);
+	cursor.cap = buffer__offset(&c->read);
+
+	rv = message__decode(&cursor, &c->request);
+	assert(rv == 0); /* Can't fail, we know we have enough bytes */
+
+	rv = read_request(c);
+	if (rv != 0) {
+		conn__stop(c);
+		return;
+	}
+}
+
+/* Start reading metadata about the next message */
+static int read_message(struct conn *c)
+{
+	uv_buf_t buf;
+	int rv;
+	rv = init_read(c, &buf, message__sizeof(&c->request));
+	if (rv != 0) {
+		return rv;
+	}
+	rv = transport__read(&c->transport, &buf, read_message_cb);
+	if (rv != 0) {
+		return rv;
+	}
 	return 0;
 }
 
@@ -19,17 +155,29 @@ static void read_protocol_cb(struct transport *transport, int status)
 	int rv;
 
 	if (status != 0) {
+		errorf(c->logger, "read error");
+		goto abort;
 	}
 
 	cursor.p = buffer__cursor(&c->read, 0);
 	cursor.cap = buffer__offset(&c->read);
+
 	rv = uint64__decode(&cursor, &c->protocol);
 	assert(rv == 0); /* Can't fail, we know we have enough bytes */
 
 	if (c->protocol != DQLITE_PROTOCOL_VERSION) {
 		errorf(c->logger, "unknown protocol version: %lx", c->protocol);
-		conn__stop(c);
+		goto abort;
 	}
+
+	rv = read_message(c);
+	if (rv != 0) {
+		goto abort;
+	}
+
+	return;
+abort:
+	conn__stop(c);
 }
 
 /* Start reading the protocol format version */
@@ -76,6 +224,8 @@ int conn__start(struct conn *c,
 	if (rv != 0) {
 		goto err_after_read_buffer_init;
 	}
+	c->handle.data = c;
+	c->closed = false;
 	/* First, we expect the client to send us the protocol version. */
 	rv = read_protocol(c);
 	if (rv != 0) {
@@ -105,5 +255,10 @@ static void close_cb(struct transport *transport)
 
 void conn__stop(struct conn *c)
 {
+	if (c->closed) {
+		return;
+	}
+	c->closed = true;
+	gateway__close(&c->gateway);
 	transport__close(&c->transport, close_cb);
 }

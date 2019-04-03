@@ -22,7 +22,7 @@ TEST_MODULE(message);
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
-	struct message *message;
+	struct message_ *message;
 
 	(void)params;
 	(void)user_data;
@@ -35,7 +35,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 static void tear_down(void *data)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 
 	message__close(message);
 	free(message);
@@ -65,7 +65,7 @@ TEST_GROUP(send, start);
 /* The header buffer is the message itself. */
 TEST_CASE(recv, header, start_base, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	uv_buf_t buf;
 
 	(void)params;
@@ -79,7 +79,7 @@ TEST_CASE(recv, header, start_base, NULL)
 /* The header buffer lenght is 8 bytes. */
 TEST_CASE(recv, header, start_len, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	uv_buf_t buf;
 
 	(void)params;
@@ -102,7 +102,7 @@ TEST_CASE(recv, header, start_len, NULL)
 /* If the number of words of the message body is zero, an error is returned. */
 TEST_CASE(recv, header, done_empty_body, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	err = message__header_recv_done(message);
 
@@ -118,7 +118,7 @@ TEST_CASE(recv, header, done_empty_body, NULL)
  * error is returned. */
 TEST_CASE(recv, header, done_body_too_big, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uv_buf_t buf;
 
@@ -149,7 +149,7 @@ TEST_CASE(recv, header, done_body_too_big, NULL)
 /* The message body is 1 word long, the static buffer gets used. */
 TEST_CASE(recv, body, start_1, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uv_buf_t buf;
 
@@ -169,7 +169,7 @@ TEST_CASE(recv, body, start_1, NULL)
 /* The message body is 513 words long, and the dynamic buffer gets allocated. */
 TEST_CASE(recv, body, start_513, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uv_buf_t buf;
 
@@ -197,7 +197,7 @@ TEST_CASE(recv, body, start_513, NULL)
  * results in an error. */
 TEST_CASE(recv, body, get_text_misaligned, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 
 	char buf[8] = {0, 0, 'h', 'i', 0, 0, 0, 0};
 	uint8_t n;
@@ -224,7 +224,7 @@ TEST_CASE(recv, body, get_text_misaligned, NULL)
  * returned. */
 TEST_CASE(recv, body, get_text_not_found, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	text_t text;
 	char buf[8] = {255, 255, 255, 255, 255, 255, 255, 255};
@@ -246,7 +246,7 @@ TEST_CASE(recv, body, get_text_not_found, NULL)
 /* Read one string. */
 TEST_CASE(recv, body, get_text_one_string, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	text_t text;
 	char buf[8] = {'h', 'e', 'l', 'l', 'o', '!', '!', 0};
@@ -267,7 +267,7 @@ TEST_CASE(recv, body, get_text_one_string, NULL)
 /* Read two strings. */
 TEST_CASE(recv, body, get_text_two_strings, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	text_t text;
 	char buf[16] = {'h', 'e', 'l', 'l', 'o', 0, 0, 0,
@@ -292,7 +292,7 @@ TEST_CASE(recv, body, get_text_two_strings, NULL)
 /* Read a string from a message that uses the dynamic message body buffer. */
 TEST_CASE(recv, body, get_text_from_dyn_buf, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	text_t text;
 	uv_buf_t buf;
@@ -317,7 +317,7 @@ TEST_CASE(recv, body, get_text_from_dyn_buf, NULL)
 /* Read four uint8 values. */
 TEST_CASE(recv, body, get_uint8_four_values, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uint8_t buf;
 	uint8_t value;
@@ -365,7 +365,7 @@ TEST_CASE(recv, body, get_uint8_four_values, NULL)
  * error. */
 TEST_CASE(recv, body, get_uint8_overflow, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 
 	int i;
 	uint8_t value;
@@ -392,7 +392,7 @@ TEST_CASE(recv, body, get_uint8_overflow, NULL)
 /* Read two uint32 values. */
 TEST_CASE(recv, body, get_uint32_two_values, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uint32_t buf;
 	uint32_t value;
@@ -424,7 +424,7 @@ TEST_CASE(recv, body, get_uint32_two_values, NULL)
  * an error. */
 TEST_CASE(recv, body, get_uint32_misaligned, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 
 	uint8_t value1;
 	uint32_t value2;
@@ -449,7 +449,7 @@ TEST_CASE(recv, body, get_uint32_misaligned, NULL)
  * error. */
 TEST_CASE(recv, body, get_uint32_overflow, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 
 	uint32_t value;
 	int err;
@@ -473,7 +473,7 @@ TEST_CASE(recv, body, get_uint32_overflow, NULL)
 /* Read one uint64 value. */
 TEST_CASE(recv, body, get_uint64_one_value, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uint64_t buf;
 	uint64_t value;
@@ -496,7 +496,7 @@ TEST_CASE(recv, body, get_uint64_one_value, NULL)
 /* Read two uint64 values. */
 TEST_CASE(recv, body, get_uint64_two_values, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uint64_t buf;
 	uint64_t value;
@@ -528,7 +528,7 @@ TEST_CASE(recv, body, get_uint64_two_values, NULL)
  * an error. */
 TEST_CASE(recv, body, get_uint64_misaligned, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 
 	uint8_t value1;
 	uint64_t value2;
@@ -553,7 +553,7 @@ TEST_CASE(recv, body, get_uint64_misaligned, NULL)
  * error. */
 TEST_CASE(recv, body, get_uint64_overflow, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 
 	uint64_t value;
 	int err;
@@ -574,7 +574,7 @@ TEST_CASE(recv, body, get_uint64_overflow, NULL)
 /* Read one int64 value. */
 TEST_CASE(recv, body, get_int64_one_value, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uint64_t buf;
 	int64_t value;
@@ -597,7 +597,7 @@ TEST_CASE(recv, body, get_int64_one_value, NULL)
 /* Read two int64 values. */
 TEST_CASE(recv, body, get_int64_two_values, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uint64_t buf;
 	int64_t value;
@@ -628,7 +628,7 @@ TEST_CASE(recv, body, get_int64_two_values, NULL)
 /* Read a double value. */
 TEST_CASE(recv, body, get_double_one_value, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uint64_t *buf;
 	double pi = 3.1415926535;
@@ -652,7 +652,7 @@ TEST_CASE(recv, body, get_double_one_value, NULL)
 
 TEST_CASE(recv, body, get_servers_one, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	servers_t servers;
 	uv_buf_t buf;
@@ -683,7 +683,7 @@ TEST_CASE(recv, body, get_servers_one, NULL)
 
 TEST_CASE(recv, body, get_servers_two, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	servers_t servers;
 	uv_buf_t buf;
@@ -727,7 +727,7 @@ TEST_CASE(recv, body, get_servers_two, NULL)
 /* Set the type of a message. */
 TEST_CASE(send, header, put_type, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 
 	(void)params;
 
@@ -740,7 +740,7 @@ TEST_CASE(send, header, put_type, NULL)
 /* Set the message flags. */
 TEST_CASE(send, header, put_flags, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 
 	(void)params;
 
@@ -760,7 +760,7 @@ TEST_CASE(send, header, put_flags, NULL)
  * results in an error. */
 TEST_CASE(send, body, put_text_misaligned, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 
 	(void)params;
@@ -778,7 +778,7 @@ TEST_CASE(send, body, put_text_misaligned, NULL)
 
 TEST_CASE(send, body, put_text_one, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 
 	(void)params;
@@ -799,7 +799,7 @@ TEST_CASE(send, body, put_text_one, NULL)
 
 TEST_CASE(send, body, put_text_one_no_pad, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 
 	(void)params;
@@ -816,7 +816,7 @@ TEST_CASE(send, body, put_text_one_no_pad, NULL)
 
 TEST_CASE(send, body, put_text_two, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 
 	(void)params;
@@ -848,7 +848,7 @@ TEST_CASE(send, body, put_text_two, NULL)
  * buffer is allocated in order to hold the rest of it. */
 TEST_CASE(send, body, put_text_body2, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 
 	(void)params;
@@ -868,7 +868,7 @@ TEST_CASE(send, body, put_text_body2, NULL)
 
 TEST_CASE(send, body, put_uint8_four, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 
 	(void)params;
@@ -903,7 +903,7 @@ TEST_CASE(send, body, put_uint8_four, NULL)
 
 TEST_CASE(send, body, put_uint32_two, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 
 	(void)params;
@@ -927,7 +927,7 @@ TEST_CASE(send, body, put_uint32_two, NULL)
 
 TEST_CASE(send, body, put_int64_one, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 
 	(void)params;
@@ -945,7 +945,7 @@ TEST_CASE(send, body, put_int64_one, NULL)
 
 TEST_CASE(send, body, put_uint64_one, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 
 	(void)params;
@@ -962,7 +962,7 @@ TEST_CASE(send, body, put_uint64_one, NULL)
 
 TEST_CASE(send, body, put_double_one, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uint64_t buf;
 	double value;
@@ -985,7 +985,7 @@ TEST_CASE(send, body, put_double_one, NULL)
 
 TEST_CASE(send, body, put_dyn_buf, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uint64_t i;
 
@@ -1009,7 +1009,7 @@ TEST_CASE(send, body, put_dyn_buf, NULL)
 
 TEST_CASE(send, body, put_servers_one, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	dqlite_server_info servers[] = {
 	    {1, "1.2.3.4:666"},
 	    {0, NULL},
@@ -1042,10 +1042,10 @@ TEST_CASE(send, body, put_servers_one, NULL)
 
 TEST_CASE(send, start, no_dyn_buf, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uv_buf_t bufs[3];
-	struct message message2;
+	struct message_ message2;
 	uv_buf_t buf;
 	uint64_t value;
 	text_t text;
@@ -1107,11 +1107,11 @@ TEST_CASE(send, start, no_dyn_buf, NULL)
 
 TEST_CASE(send, start, dyn_buf, NULL)
 {
-	struct message *message = data;
+	struct message_ *message = data;
 	int err;
 	uint64_t i;
 	uv_buf_t bufs[3];
-	struct message message2;
+	struct message_ message2;
 	uv_buf_t buf;
 	uint64_t value;
 	text_t text;
