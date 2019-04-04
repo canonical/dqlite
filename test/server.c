@@ -17,6 +17,8 @@
 #include "server.h"
 #include "lib/fs.h"
 
+#if 0
+
 dqlite_logger *logger;
 
 static struct test_server *test_server__create(const MunitParameter params[])
@@ -335,3 +337,5 @@ void test_server_stop(struct test_server *t)
 
 	test_server__destroy(t);
 }
+
+#endif
