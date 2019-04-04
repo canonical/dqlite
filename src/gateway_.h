@@ -9,7 +9,7 @@
 
 #include "db_.h"
 #include "error.h"
-#include "options.h"
+#include "config.h"
 #include "request.h"
 #include "response.h"
 #include "registry.h"
@@ -61,7 +61,7 @@ struct gateway_
 
 	/* private */
 	struct gateway__cbs callbacks;   /* User callbacks */
-	struct options *options; /* Configuration options */
+	struct config *options; /* Configuration options */
 	struct dqlite_logger *logger;    /* Logger to use */
 
 	/* Buffer holding responses for in-progress requests. Clients are
@@ -81,7 +81,7 @@ struct gateway_
 void gateway__init_(struct gateway_ *g,
 		   struct gateway__cbs *callbacks,
 		   struct dqlite_logger *logger,
-		   struct options *options);
+		   struct config *options);
 
 void gateway__close_(struct gateway_ *g);
 

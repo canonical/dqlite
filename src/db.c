@@ -11,9 +11,9 @@ static int open_follower_conn(const char *filename,
 			      const char *vfs,
 			      sqlite3 **conn);
 
-void db__init(struct db *db, struct options *options, const char *filename)
+void db__init(struct db *db, struct config *config, const char *filename)
 {
-	db->options = options;
+	db->config = config;
 	db->filename = sqlite3_malloc(strlen(filename) + 1);
 	assert(db->filename != NULL); /* TODO: return an error instead */
 	strcpy(db->filename, filename);
@@ -40,7 +40,7 @@ int db__open_follower(struct db *db)
 {
 	int rc;
 	assert(db->follower == NULL);
-	rc = open_follower_conn(db->filename, db->options->vfs, &db->follower);
+	rc = open_follower_conn(db->filename, db->config->vfs, &db->follower);
 	if (rc != 0) {
 		return rc;
 	}

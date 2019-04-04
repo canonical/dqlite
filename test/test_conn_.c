@@ -8,7 +8,7 @@
 #include "../src/conn_.h"
 #include "../src/lib/byte.h"
 #include "../src/metrics.h"
-#include "../src/options.h"
+#include "../src/config.h"
 
 #include "./lib/heap.h"
 #include "./lib/runner.h"
@@ -28,7 +28,7 @@ TEST_MODULE(conn);
 struct fixture
 {
 	struct test_socket_pair sockets;
-	struct options options;
+	struct config options;
 	struct dqlite__metrics metrics;
 	dqlite_logger *logger;
 	uv_loop_t loop;
@@ -142,7 +142,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	response_init(&f->response);
 
-	options__init(&f->options);
+	config__init(&f->options);
 	dqlite__metrics_init(&f->metrics);
 
 	err = conn__start_(f->conn);

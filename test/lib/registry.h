@@ -3,8 +3,6 @@
 
 #include "../../src/registry.h"
 
-#include "options.h"
-
 #define FIXTURE_REGISTRY struct registry registry
 #define SETUP_REGISTRY registry__init(&f->registry, &f->options)
 #define TEAR_DOWN_REGISTRY registry__close(&f->registry);

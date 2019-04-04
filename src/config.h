@@ -1,10 +1,10 @@
-#ifndef DQLITE_OPTIONS_H
-#define DQLITE_OPTIONS_H
+#ifndef CONFIG_H_
+#define CONFIG_H_
 
 /**
- * Value object holding configuration options.
+ * Value object holding dqlite configuration.
  */
-struct options
+struct config
 {
 	const char *vfs;	       /* VFS to use when opening dbs */
 	const char *replication;       /* Replication to use when opening dbs */
@@ -14,23 +14,23 @@ struct options
 };
 
 /**
- * Apply default values to the given options object.
+ * Apply default values to the given config object.
  */
-void options__init(struct options *o);
+void config__init(struct config *c);
 
 /**
- * Release any memory held by the options object.
+ * Release any memory held by the config object.
  */
-void options__close(struct options *o);
+void config__close(struct config *c);
 
 /**
  * Set the vfs field, making a copy of the given string.
  */
-int options__set_vfs(struct options *o, const char *vfs);
+int config__set_vfs(struct config *c, const char *vfs);
 
 /**
  * Set the wal_replication field, making a copy of the given string.
  */
-int options__set_replication(struct options *o, const char *replication);
+int config__set_replication(struct config *c, const char *replication);
 
 #endif /* DQLITE_OPTIONS_H */
