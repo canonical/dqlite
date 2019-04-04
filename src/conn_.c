@@ -16,7 +16,6 @@
 #include "error.h"
 #include "gateway_.h"
 #include "lifecycle.h"
-#include "log.h"
 #include "request.h"
 #include "response.h"
 
@@ -88,9 +87,6 @@ static int conn__write_failure(struct conn_ *c, int code)
 
 	assert(c != NULL);
 	assert(code != 0);
-
-	dqlite__debugf(c, "failure (fd=%d code=%d msg=%s)", c->fd, code,
-		       c->error);
 
 	/* TODO: allocate the response object dynamically, to allow for
 	 *       concurrent failures (e.g. the client issues a second failing
@@ -521,8 +517,6 @@ static void conn__alloc_cb(uv_handle_t *stream, size_t _, uv_buf_t *buf)
 
 		err = dqlite__fsm_step(&c->fsm, CONN__ALLOC, (void *)c);
 		if (err != 0) {
-			dqlite__errorf(c, "alloc error (fd=%d err=%d)", c->fd,
-				       err);
 			conn__abort(c);
 			return;
 		}
@@ -833,14 +827,10 @@ void conn__abort(struct conn_ *c)
 
 #ifdef DQLITE_DEBUG
 	/* In debug mode always log disconnections. */
-	dqlite__debugf(c, "aborting (fd=%d state=%s msg=%s)", c->fd, state,
-		       c->error);
 #else
 	/* If the error is not due to a client disconnection, log an error
 	 * message */
 	if (!dqlite__error_is_disconnect(&c->error)) {
-		dqlite__errorf(c, "aborting (fd=%d state=%s msg=%s)", c->fd,
-			       state, c->error);
 	}
 #endif
 

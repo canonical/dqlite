@@ -8,7 +8,6 @@
 #include "./lib/assert.h"
 
 #include "format.h"
-#include "log.h"
 #include "vfs.h"
 
 /* Maximum pathname length supported by this VFS. */
@@ -285,10 +284,6 @@ static int content_page_get(struct content *c, int pgno, struct page **page)
 	/* SQLite should access pages progressively, without jumping more than
 	 * one page after the end. */
 	if (pgno > (c->pages_len + 1)) {
-		dqlite__errorf(c,
-			       "can't write page %d of file %s "
-			       "which has only %d pages",
-			       pgno, c->filename, c->pages_len);
 		rc = SQLITE_IOERR_WRITE;
 		goto err;
 	}
@@ -916,10 +911,6 @@ static int vfs__write(sqlite3_file *file,
 				/* The header must have been written and the
 				 * page size set. */
 				if (f->content->page_size == 0) {
-					dqlite__errorf(f->content,
-						       "first page of file %s "
-						       "was not yet written",
-						       f->content->filename);
 					return SQLITE_IOERR_WRITE;
 				}
 
@@ -1044,18 +1035,12 @@ static int vfs__truncate(sqlite3_file *file, sqlite_int64 size)
 
 	/* We expect calls to xTruncate only for database and WAL files. */
 	if (f->content->type != FORMAT__DB && f->content->type != FORMAT__WAL) {
-		dqlite__errorf(f->content,
-			       "truncate called on unexpected file %s",
-			       f->content->filename);
 		return SQLITE_IOERR_TRUNCATE;
 	}
 
 	/* Check if this file empty.*/
 	if (content_is_empty(f->content)) {
 		if (size > 0) {
-			dqlite__errorf(f->content,
-				       "truncate called to grow empty file %s",
-				       f->content->filename);
 			return SQLITE_IOERR_TRUNCATE;
 		}
 
@@ -1072,10 +1057,6 @@ static int vfs__truncate(sqlite3_file *file, sqlite_int64 size)
 			assert(f->content->page_size > 0);
 
 			if ((size % f->content->page_size) != 0) {
-				dqlite__errorf(f->content,
-					       "truncate database file %s to "
-					       "misaligned size %d",
-					       f->content->filename, size);
 				return SQLITE_IOERR_TRUNCATE;
 			}
 
