@@ -6,6 +6,8 @@
  */
 struct config
 {
+	unsigned id;		       /* Unique instance ID */
+	char *address;		       /* Instance address */
 	const char *vfs;	       /* VFS to use when opening dbs */
 	const char *replication;       /* Replication to use when opening dbs */
 	unsigned heartbeat_timeout;    /* In milliseconds */
@@ -14,9 +16,10 @@ struct config
 };
 
 /**
- * Apply default values to the given config object.
+ * Initialize the config object with required values and set the rest to sane
+ * defaults. A copy will be made of the given @address.
  */
-void config__init(struct config *c);
+int config__init(struct config *c, unsigned id, const char *address);
 
 /**
  * Release any memory held by the config object.

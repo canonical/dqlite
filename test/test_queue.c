@@ -1,10 +1,10 @@
 #include <sqlite3.h>
 #include <uv.h>
 
+#include "../src/config.h"
 #include "../src/conn_.h"
 #include "../src/error.h"
 #include "../src/metrics.h"
-#include "../src/config.h"
 #include "../src/queue.h"
 
 #include "./lib/heap.h"
@@ -52,7 +52,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	dqlite__queue_init(&f->queue);
 
-	config__init(&f->options);
+	config__init(&f->options, 1, "1");
 	dqlite__metrics_init(&f->metrics);
 
 	f->logger = test_logger();
@@ -65,6 +65,7 @@ static void tear_down(void *data)
 	struct fixture *f = data;
 
 	dqlite__queue_close(&f->queue);
+	config__close(&f->options);
 
 	test_uv_tear_down(&f->loop);
 
