@@ -1,8 +1,3 @@
-#include <errno.h>
-#include <pthread.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 
@@ -647,7 +642,7 @@ err:
 	return rc;
 }
 
-static int vfs__close(sqlite3_file *file)
+static int vfs__x_close(sqlite3_file *file)
 {
 	struct vfs__file *f = (struct vfs__file *)file;
 	struct root *root = (struct root *)(f->root);
@@ -1446,7 +1441,7 @@ static int shm_unmap(sqlite3_file *file, int delete_flag)
 
 static const sqlite3_io_methods io_methods = {
     2,				  // iVersion
-    vfs__close,			  // xClose
+    vfs__x_close,		  // xClose
     vfs__read,			  // xRead
     vfs__write,			  // xWrite
     vfs__truncate,		  // xTruncate
@@ -1784,33 +1779,16 @@ static int vfs__get_last_error(sqlite3_vfs *vfs, int x, char *y)
 	return rc;
 }
 
-sqlite3_vfs *dqlite_vfs_create(const char *name, dqlite_logger *logger)
+int vfs__init(struct sqlite3_vfs *vfs, struct dqlite_logger *logger)
 {
-	sqlite3_vfs *vfs;
-
-	assert(name != NULL);
-
-	vfs = sqlite3_malloc(sizeof *vfs);
-	if (vfs == NULL) {
-		goto err;
-	}
-
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfs__file);
 	vfs->mxPathname = VFS__MAX_PATHNAME;
 	vfs->pNext = NULL;
 
-	/* Make a copy of the provided name, so clients can free the string if
-	 * they need. */
-	vfs->zName = sqlite3_malloc(strlen(name) + 1);
-	if (vfs->zName == NULL) {
-		goto err_after_vfs_malloc;
-	}
-	strcpy((char *)vfs->zName, name);
-
 	vfs->pAppData = root_create(logger);
 	if (vfs->pAppData == NULL) {
-		goto err_after_name_copy;
+		return DQLITE_NOMEM;
 	}
 
 	vfs->xOpen = vfs__open;
@@ -1827,28 +1805,13 @@ sqlite3_vfs *dqlite_vfs_create(const char *name, dqlite_logger *logger)
 	vfs->xGetLastError = vfs__get_last_error;
 	vfs->xCurrentTimeInt64 = vfs__current_time_int64;
 
-	return vfs;
-
-err_after_name_copy:
-	sqlite3_free((char *)vfs->zName);
-
-err_after_vfs_malloc:
-	sqlite3_free(vfs);
-
-err:
-	return NULL;
+	return 0;
 }
 
-void dqlite_vfs_destroy(sqlite3_vfs *vfs)
+void vfs__close(struct sqlite3_vfs *vfs)
 {
 	struct root *root;
-
-	assert(vfs != NULL);
-
 	root = (struct root *)(vfs->pAppData);
 	root_destroy(root);
-
 	sqlite3_free(root);
-	sqlite3_free((char *)vfs->zName);
-	sqlite3_free(vfs);
 }
