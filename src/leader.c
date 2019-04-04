@@ -24,6 +24,7 @@ static struct exec *loop_arg_exec;     /* Next exec request to execute */
 
 int leader__init(struct leader *l, struct db *db)
 {
+	char name[256];
 	int rc;
 	l->db = db;
 	l->main = co_active();
@@ -31,8 +32,9 @@ int leader__init(struct leader *l, struct db *db)
 	if (rc != 0) {
 		goto err;
 	}
-	rc = open_conn(db->filename, db->config->vfs, db->config->replication,
-		       l, db->config->page_size, &l->conn);
+	sprintf(name, "dqlite-%u", db->config->id);
+	rc = open_conn(db->filename, name, name, l, db->config->page_size,
+		       &l->conn);
 	if (rc != 0) {
 		goto err_after_loop_create;
 	}

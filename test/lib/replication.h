@@ -13,7 +13,7 @@
 	{                                                                      \
 		int rc;                                                        \
 		rc = replication__init(&f->replication, &f->logger, &f->raft); \
-		f->replication.zName = "test";				\
+		f->replication.zName = "dqlite-1";                             \
 		munit_assert_int(rc, ==, 0);                                   \
 		sqlite3_wal_replication_register(&f->replication, 0);          \
 	}
