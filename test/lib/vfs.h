@@ -13,7 +13,7 @@
 		int rv2;                              \
 		rv2 = vfs__init(&f->vfs, &f->logger); \
 		munit_assert_int(rv2, ==, 0);         \
-		f->vfs.zName = "test";                \
+		f->vfs.zName = "dqlite-1";            \
 		sqlite3_vfs_register(&f->vfs, 0);     \
 	}
 
