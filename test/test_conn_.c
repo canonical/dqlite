@@ -142,7 +142,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	response_init(&f->response);
 
-	config__init(&f->options);
+	config__init(&f->options, 1, "1");
 	dqlite__metrics_init(&f->metrics);
 
 	err = conn__start_(f->conn);
@@ -160,6 +160,7 @@ static void tear_down(void *data)
 	int err;
 
 	response_close(&f->response);
+	config__close(&f->options);
 
 	err = uv_loop_close(&f->loop);
 	munit_assert_int(err, ==, 0);

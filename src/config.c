@@ -22,17 +22,25 @@
  * soon as possible. */
 #define DEFAULT_CHECKPOINT_THRESHOLD 1000
 
-void config__init(struct config *c)
+int config__init(struct config *c, unsigned id, const char *address)
 {
+	c->id = id;
+	c->address = sqlite3_malloc(strlen(address) + 1);
+	if (c->address == NULL) {
+		return DQLITE_NOMEM;
+	}
+	strcpy(c->address, address);
 	c->vfs = NULL;
 	c->replication = NULL;
 	c->heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT;
 	c->page_size = DEFAULT_PAGE_SIZE;
 	c->checkpoint_threshold = DEFAULT_CHECKPOINT_THRESHOLD;
+	return 0;
 }
 
 void config__close(struct config *c)
 {
+	sqlite3_free(c->address);
 	if (c->vfs != NULL) {
 		sqlite3_free((char *)c->vfs);
 	}
