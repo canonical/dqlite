@@ -9,7 +9,6 @@
 #include "format.h"
 #include "gateway_.h"
 #include "lifecycle.h"
-#include "log.h"
 #include "request.h"
 #include "response.h"
 

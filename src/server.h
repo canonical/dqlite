@@ -7,9 +7,8 @@
 
 struct dqlite
 {
-	char name[256];				    /* VFS/replication name */
 	struct dqlite_logger *logger;		    /* User-defined logger */
-	struct config options;			    /* Config values */
+	struct config config;			    /* Config values */
 	struct sqlite3_vfs vfs;			    /* In-memory VFS */
 	struct registry registry;		    /* Databases */
 	struct sqlite3_wal_replication replication; /* Raft replication */
@@ -21,8 +20,6 @@ struct dqlite
 	sem_t ready;				    /* Server is ready */
 	uv_timer_t startup;			    /* Unblock ready sem */
 	sem_t stopped;				    /* Notifiy loop stopped */
-	unsigned id;				    /* Raft server ID */
-	const char *address;			    /* Raft server address */
 	struct raft_io_uv_transport raft_transport; /* Raft libuv transport */
 	struct raft_io raft_io;			    /* libuv I/O */
 	struct raft_fsm raft_fsm;		    /* dqlite FSM */

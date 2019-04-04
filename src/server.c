@@ -2,7 +2,6 @@
 #include "string.h"
 
 int dqlite__init(struct dqlite *d) {
-	strcpy(d->name, "dqlite");
 	return 0;
 }
 
