@@ -199,7 +199,7 @@ static int read_protocol(struct conn *c)
 int conn__start(struct conn *c,
 		struct dqlite_logger *logger,
 		struct uv_loop_s *loop,
-		struct options *options,
+		struct config *config,
 		struct registry *registry,
 		struct raft *raft,
 		int fd,
@@ -215,7 +215,7 @@ int conn__start(struct conn *c,
 	c->transport.data = c;
 	c->uv_transport = uv_transport;
 	c->close_cb = close_cb;
-	gateway__init(&c->gateway, logger, options, registry, raft);
+	gateway__init(&c->gateway, logger, config, registry, raft);
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
 		goto err_after_transport_init;

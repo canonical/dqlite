@@ -9,17 +9,17 @@
 
 #include "./lib/queue.h"
 
-#include "options.h"
+#include "config.h"
 #include "tx.h"
 
 struct db
 {
-	struct options *options; /* Dqlite options */
-	char *filename;		 /* Filename identifying the database */
-	sqlite3 *follower;       /* Follower connection, used for replication */
-	queue leaders;		 /* All open leader connections */
-	struct tx *tx;		 /* Current ongoing transaction, if any */
-	queue queue;		 /* Prev/next database, used by the registry */
+	struct config *config; /* Dqlite configuration */
+	char *filename;	/* Database filename */
+	sqlite3 *follower;     /* Follower connection */
+	queue leaders;	 /* Open leader connections */
+	struct tx *tx;	 /* Current ongoing transaction, if any */
+	queue queue;	   /* Prev/next database, used by the registry */
 };
 
 /**
@@ -27,7 +27,7 @@ struct db
  *
  * The given @filename will be copied.
  */
-void db__init(struct db *db, struct options *options, const char *filename);
+void db__init(struct db *db, struct config *config, const char *filename);
 
 /**
  * Release all memory associated with a database object.

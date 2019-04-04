@@ -6,9 +6,9 @@
 
 #include "registry.h"
 
-void registry__init(struct registry *r, struct options *options)
+void registry__init(struct registry *r, struct config *config)
 {
-	r->options = options;
+	r->config = config;
 	QUEUE__INIT(&r->dbs);
 }
 
@@ -39,7 +39,7 @@ int registry__db_get(struct registry *r, const char *filename, struct db **db)
 	if (*db == NULL) {
 		return DQLITE_NOMEM;
 	}
-	db__init(*db, r->options, filename);
+	db__init(*db, r->config, filename);
 	QUEUE__PUSH(&r->dbs, &(*db)->queue);
 	return 0;
 }

@@ -19,7 +19,7 @@
 #include <raft/fixture.h>
 
 #include "../../src/fsm.h"
-#include "../../src/options.h"
+#include "../../src/config.h"
 #include "../../src/registry.h"
 #include "../../src/replication.h"
 #include "../../src/vfs.h"
@@ -35,7 +35,7 @@ struct server
 	char name[8];
 	struct dqlite_logger logger;
 	sqlite3_vfs vfs;
-	struct options options;
+	struct config options;
 	struct registry registry;
 	sqlite3_wal_replication replication;
 };
@@ -85,10 +85,10 @@ struct server
 		s->vfs.zName = s->name;                                        \
 		sqlite3_vfs_register(&s->vfs, 0);                              \
                                                                                \
-		options__init(&s->options);                                    \
-		rc = options__set_vfs(&s->options, s->name);                   \
+		config__init(&s->options);                                    \
+		rc = config__set_vfs(&s->options, s->name);                   \
 		munit_assert_int(rc, ==, 0);                                   \
-		rc = options__set_replication(&s->options, s->name);           \
+		rc = config__set_replication(&s->options, s->name);           \
 		munit_assert_int(rc, ==, 0);                                   \
                                                                                \
 		registry__init(&s->registry, &s->options);                     \
@@ -121,7 +121,7 @@ struct server
 		replication__close(&s->replication);                 \
 		fsm__close(fsm);                                     \
 		registry__close(&s->registry);                       \
-		options__close(&s->options);                         \
+		config__close(&s->options);                         \
 		sqlite3_vfs_unregister(&s->vfs);                     \
 		vfs__close(&s->vfs);                                 \
 		test_logger_tear_down(&s->logger);                   \

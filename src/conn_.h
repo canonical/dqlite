@@ -13,7 +13,7 @@
 #include "error.h"
 #include "gateway_.h"
 #include "metrics.h"
-#include "options.h"
+#include "config.h"
 #include "request.h"
 
 /* The size of pre-allocated read buffer for holding the payload of incoming
@@ -37,7 +37,7 @@ struct conn_
 
 	/* private */
 	struct dqlite__metrics *metrics; /* Operational metrics */
-	struct options *options;	 /* Connection state machine */
+	struct config *options;	 /* Connection state machine */
 	struct dqlite__fsm fsm;		 /* Connection state machine */
 	struct gateway_ gateway;	 /* Client state and request handler */
 	struct request request;		 /* Incoming request */
@@ -70,7 +70,7 @@ void conn__init_(struct conn_ *c,
 		 int fd,
 		 dqlite_logger *logger,
 		 uv_loop_t *loop,
-		 struct options *options,
+		 struct config *options,
 		 struct dqlite__metrics *metrics);
 
 /* Close a connection object, releasing all associated resources. */

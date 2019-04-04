@@ -12,8 +12,8 @@
 #include "./lib/buffer.h"
 #include "./lib/serialize.h"
 
+#include "config.h"
 #include "leader.h"
-#include "options.h"
 #include "registry.h"
 #include "stmt.h"
 
@@ -26,7 +26,7 @@ struct handle;
 struct gateway
 {
 	struct dqlite_logger *logger; /* Logger to use */
-	struct options *options;      /* Configuration options */
+	struct config *config;	/* Configuration */
 	struct registry *registry;    /* Register of existing databases */
 	struct raft *raft;	    /* Raft instance */
 	struct leader *leader;	/* Leader connection to the database */
@@ -40,7 +40,7 @@ struct gateway
 
 void gateway__init(struct gateway *g,
 		   struct dqlite_logger *logger,
-		   struct options *options,
+		   struct config *config,
 		   struct registry *registry,
 		   struct raft *raft);
 
