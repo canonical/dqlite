@@ -37,37 +37,37 @@ static struct test_server *test_server__create(const MunitParameter params[])
 
 	s->dir = test_dir_setup();
 
-	err = dqlite_server_create(s->dir, 1, "1", &s->service);
-	dqlite_server_bootstrap(s->service);
+	err = dqlite_create(s->dir, 1, "1", &s->service);
+	dqlite_bootstrap(s->service);
 	if (err != 0) {
 		munit_errorf("failed to create dqlite server: %d", err);
 	}
 
-	err = dqlite_server_config(s->service, DQLITE_CONFIG_LOGGER, logger);
+	err = dqlite_config(s->service, DQLITE_CONFIG_LOGGER, logger);
 	if (err != 0) {
 		munit_errorf("failed to set logger: %d", err);
 	}
 
 	err =
-	    dqlite_server_config(s->service, DQLITE_CONFIG_CHECKPOINT_THRESHOLD,
+	    dqlite_config(s->service, DQLITE_CONFIG_CHECKPOINT_THRESHOLD,
 				 (void *)(&checkpoint_threshold));
 	if (err != 0) {
 		munit_errorf("failed to set checkpoint threshold: %d", err);
 	}
 
 	name = "dqlite-1";
-	err = dqlite_server_config(s->service, DQLITE_CONFIG_VFS, (void *)name);
+	err = dqlite_config(s->service, DQLITE_CONFIG_VFS, (void *)name);
 	if (err != 0) {
 		munit_errorf("failed to set VFS name: %d", err);
 	}
 
-	err = dqlite_server_config(s->service, DQLITE_CONFIG_WAL_REPLICATION,
+	err = dqlite_config(s->service, DQLITE_CONFIG_WAL_REPLICATION,
 				   (void *)name);
 	if (err != 0) {
 		munit_errorf("failed to set WAL replication name: %d", err);
 	}
 
-	err = dqlite_server_config(s->service, DQLITE_CONFIG_METRICS,
+	err = dqlite_config(s->service, DQLITE_CONFIG_METRICS,
 				   (void *)(&metrics));
 	if (err != 0) {
 		munit_errorf("failed to enable metrics: %d", err);
@@ -85,7 +85,7 @@ static void test_server__destroy(struct test_server *s)
 
 	test_dir_tear_down(s->dir);
 
-	dqlite_server_destroy(s->service);
+	dqlite_destroy(s->service);
 
 	sqlite3_free(s);
 	free(logger);
@@ -242,7 +242,7 @@ static void *test__server_run(void *arg)
 	s = (struct test_server *)(arg);
 	assert(s != NULL);
 
-	rc = dqlite_server_run(s->service);
+	rc = dqlite_run(s->service);
 	if (rc) {
 		return (void *)1;
 	}
@@ -276,10 +276,10 @@ struct test_server *test_server_start(const char *family,
 		return 0;
 	}
 
-	ready = dqlite_server_ready(s->service);
+	ready = dqlite_ready(s->service);
 	if (!ready) {
 		munit_errorf("server did not start: %s",
-			     dqlite_server_errmsg(s->service));
+			     dqlite_errmsg(s->service));
 		return 0;
 	}
 
@@ -299,7 +299,7 @@ void test_server_connect(struct test_server *s, struct test_client **client)
 	clientFd = test_server__connect(s);
 	serverFd = test_server__accept(s);
 
-	err = dqlite_server_handle(s->service, serverFd, &errmsg);
+	err = dqlite_handle(s->service, serverFd, &errmsg);
 	if (err) {
 		munit_errorf("failed to notify server about new client: %s",
 			     errmsg);
@@ -318,7 +318,7 @@ void test_server_stop(struct test_server *t)
 
 	assert(t != NULL);
 
-	err = dqlite_server_stop(t->service, &errmsg);
+	err = dqlite_stop(t->service, &errmsg);
 	if (err) {
 		munit_errorf("failed to stop dqlite: %s", errmsg);
 	}
@@ -332,7 +332,7 @@ void test_server_stop(struct test_server *t)
 
 	if (retval) {
 		munit_errorf("test thread error: %s",
-			     dqlite_server_errmsg(t->service));
+			     dqlite_errmsg(t->service));
 	}
 
 	test_server__destroy(t);

@@ -13,7 +13,7 @@ struct test_server
 	FIXTURE_CLUSTER;
 	struct uv_idle_s idle;
 	char *dir;
-	dqlite_server *service;
+	dqlite *service;
 	int family;
 	union {
 		struct sockaddr_in in_address;

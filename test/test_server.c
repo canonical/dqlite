@@ -24,7 +24,7 @@ TEST_MODULE(server);
 dqlite_cluster *cluster;
 
 static void *setup(const MunitParameter params[], void *user_data) {
-	dqlite_server *server;
+	dqlite *server;
 	int            err;
 
 	(void)params;
@@ -35,16 +35,16 @@ static void *setup(const MunitParameter params[], void *user_data) {
 
 	cluster = test_cluster();
 
-	err = dqlite_server_create(cluster, &server);
+	err = dqlite_create(cluster, &server);
 	munit_assert_int(err, ==, 0);
 
 	return server;
 }
 
 static void tear_down(void *data) {
-	dqlite_server *server = data;
+	dqlite *server = data;
 
-	dqlite_server_destroy(server);
+	dqlite_destroy(server);
 	test_cluster_close(cluster);
 
 	test_sqlite_tear_down();
@@ -53,7 +53,7 @@ static void tear_down(void *data) {
 
 /******************************************************************************
  *
- * Tests dqlite_server_config
+ * Tests dqlite_config
  *
  ******************************************************************************/
 
@@ -63,16 +63,16 @@ TEST_TEAR_DOWN(config, tear_down);
 
 TEST_CASE(config, logger, NULL)
 {
-	dqlite_server *server = data;
+	dqlite *server = data;
 	dqlite_logger *logger = test_logger();
 	int            err;
 
 	(void)params;
 
-	err = dqlite_server_config(server, DQLITE_CONFIG_LOGGER, logger);
+	err = dqlite_config(server, DQLITE_CONFIG_LOGGER, logger);
 	munit_assert_int(err, ==, 0);
 
-	munit_assert_ptr_equal(dqlite_server_logger(server), logger);
+	munit_assert_ptr_equal(dqlite_logger(server), logger);
 
 	free(logger);
 
@@ -81,14 +81,14 @@ TEST_CASE(config, logger, NULL)
 
 TEST_CASE(config, heartbeat_timeout, NULL)
 {
-	dqlite_server *server  = data;
+	dqlite *server  = data;
 	int            timeout = 1000;
 	int            err;
 
 	(void)params;
 
 	err =
-	    dqlite_server_config(server, DQLITE_CONFIG_HEARTBEAT_TIMEOUT, &timeout);
+	    dqlite_config(server, DQLITE_CONFIG_HEARTBEAT_TIMEOUT, &timeout);
 	munit_assert_int(err, ==, 0);
 
 	return MUNIT_OK;
@@ -96,13 +96,13 @@ TEST_CASE(config, heartbeat_timeout, NULL)
 
 TEST_CASE(config, page_size, NULL)
 {
-	dqlite_server *server = data;
+	dqlite *server = data;
 	int            size   = 512;
 	int            err;
 
 	(void)params;
 
-	err = dqlite_server_config(server, DQLITE_CONFIG_PAGE_SIZE, &size);
+	err = dqlite_config(server, DQLITE_CONFIG_PAGE_SIZE, &size);
 	munit_assert_int(err, ==, 0);
 
 	return MUNIT_OK;
@@ -110,13 +110,13 @@ TEST_CASE(config, page_size, NULL)
 
 TEST_CASE(config, checkpoint_threshold, NULL)
 {
-	dqlite_server *server    = data;
+	dqlite *server    = data;
 	int            threshold = 1;
 	int            err;
 
 	(void)params;
 
-	err = dqlite_server_config(
+	err = dqlite_config(
 	    server, DQLITE_CONFIG_CHECKPOINT_THRESHOLD, &threshold);
 	munit_assert_int(err, ==, 0);
 

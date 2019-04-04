@@ -76,7 +76,7 @@ SERIALIZE__DEFINE(message, MESSAGE);
  */
 typedef const char *text_t;
 typedef double double_t;
-typedef dqlite_server_info *servers_t;
+typedef dqlite_info *servers_t;
 
 /* We rely on the size of double to be 64 bit, since that's what sent over the
  * wire. */

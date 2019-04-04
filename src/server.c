@@ -47,7 +47,7 @@ int dqlite_init(const char **errmsg)
 }
 
 /* Manage client TCP connections to a dqlite node */
-struct dqlite__server
+struct dqlite
 {
 	/* read-only */
 	dqlite__error error; /* Last error occurred, if any */
@@ -88,7 +88,7 @@ struct dqlite__server
  */
 static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 {
-	struct dqlite__server *s;
+	struct dqlite *s;
 	struct conn_ *conn;
 
 	assert(handle != NULL);
@@ -96,7 +96,7 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
 	assert(handle->type == UV_ASYNC || handle->type == UV_TIMER ||
 	       handle->type == UV_TCP || handle->type == UV_NAMED_PIPE);
 
-	s = (struct dqlite__server *)arg;
+	s = (struct dqlite *)arg;
 
 	switch (handle->type) {
 		case UV_ASYNC:
@@ -148,25 +148,25 @@ static void dqlite__server_stop_walk_cb(uv_handle_t *handle, void *arg)
  */
 static void raft_close_cb(struct raft *raft)
 {
-	struct dqlite__server *s = raft->data;
+	struct dqlite *s = raft->data;
 	uv_walk(&s->loop, dqlite__server_stop_walk_cb, (void *)s);
 }
 
 static void dqlite__server_stop_cb(uv_async_t *stop)
 {
-	struct dqlite__server *s;
+	struct dqlite *s;
 
 	assert(stop != NULL);
 	assert(stop->data != NULL);
 
-	s = (struct dqlite__server *)stop->data;
+	s = (struct dqlite *)stop->data;
 
-	/* We expect that we're being executed after dqlite_server_stop and so
+	/* We expect that we're being executed after dqlite_stop and so
 	 * the running flag is off. */
 	assert(!s->running);
 
 	/* Give a final pass to the incoming queue, to unblock any call to
-	 * dqlite_server_handle that might be blocked. There's no need to
+	 * dqlite_handle that might be blocked. There's no need to
 	 * acquire the mutex since now the running flag is off and no new
 	 * incoming connection can be enqueued. */
 	dqlite__queue_process(&s->queue);
@@ -180,11 +180,11 @@ static void dqlite__server_stop_cb(uv_async_t *stop)
  */
 static void dqlite__server_incoming_cb(uv_async_t *incoming)
 {
-	struct dqlite__server *s;
+	struct dqlite *s;
 
 	assert(incoming != NULL);
 	assert(incoming->data != NULL);
-	s = (struct dqlite__server *)incoming->data;
+	s = (struct dqlite *)incoming->data;
 
 	/* Acquire the queue lock, so no new incoming connection can be
 	 * pushed. */
@@ -202,12 +202,12 @@ static void dqlite__server_incoming_cb(uv_async_t *incoming)
 static void dqlite__service_startup_cb(uv_timer_t *startup)
 {
 	int err;
-	struct dqlite__server *s;
+	struct dqlite *s;
 
 	assert(startup != NULL);
 	assert(startup->data != NULL);
 
-	s = (struct dqlite__server *)startup->data;
+	s = (struct dqlite *)startup->data;
 
 	s->running = 1;
 
@@ -219,7 +219,7 @@ static int transport__init(struct raft_io_uv_transport *transport,
 			   unsigned id,
 			   const char *address)
 {
-	struct dqlite__server *s = transport->impl;
+	struct dqlite *s = transport->impl;
 	s->raft.id = id;
 	s->raft.address = address;
 	return 0;
@@ -228,7 +228,7 @@ static int transport__init(struct raft_io_uv_transport *transport,
 static int transport__listen(struct raft_io_uv_transport *transport,
 			     raft_io_uv_accept_cb cb)
 {
-	struct dqlite__server *s = transport->impl;
+	struct dqlite *s = transport->impl;
 	s->raft.accept_cb = cb;
 	return 0;
 }
@@ -253,7 +253,7 @@ static void transport__close(struct raft_io_uv_transport *transport,
 	cb(transport);
 }
 
-int dqlite_server_bootstrap(dqlite_server *s)
+int dqlite_bootstrap(dqlite *s)
 {
 	struct raft_configuration configuration;
 	int rc;
@@ -270,9 +270,9 @@ int dqlite_server_bootstrap(dqlite_server *s)
 int server__create(const char *dir,
 		   unsigned id,
 		   const char *address,
-		   dqlite_server **out)
+		   dqlite **out)
 {
-	dqlite_server *s;
+	dqlite *s;
 	int err;
 
 	assert(out != NULL);
@@ -349,15 +349,15 @@ err:
 	return err;
 }
 
-int dqlite_server_create(const char *dir,
+int dqlite_create(const char *dir,
 			 unsigned id,
 			 const char *address,
-			 dqlite_server **out)
+			 dqlite **out)
 {
 	return server__create(dir, id, address, out);
 }
 
-void dqlite_server_destroy(dqlite_server *s)
+void dqlite_destroy(dqlite *s)
 {
 	int err;
 
@@ -399,7 +399,7 @@ void dqlite_server_destroy(dqlite_server *s)
 }
 
 /* Set a config option */
-int dqlite_server_config(dqlite_server *s, int op, void *arg)
+int dqlite_config(dqlite *s, int op, void *arg)
 {
 	int err = 0;
 
@@ -457,7 +457,7 @@ int dqlite_server_config(dqlite_server *s, int op, void *arg)
 	return err;
 }
 
-int dqlite_server_run(struct dqlite__server *s)
+int dqlite_run(struct dqlite *s)
 {
 	int err;
 
@@ -512,7 +512,7 @@ int dqlite_server_run(struct dqlite__server *s)
 	}
 
 out:
-	/* Unblock any client of dqlite_server_ready (no reason for which
+	/* Unblock any client of dqlite_ready (no reason for which
 	 * posting should fail). */
 	assert(sem_post(&s->ready) == 0);
 
@@ -521,7 +521,7 @@ out:
 	return err;
 }
 
-int dqlite_server_ready(dqlite_server *s)
+int dqlite_ready(dqlite *s)
 {
 	assert(s != NULL);
 
@@ -531,7 +531,7 @@ int dqlite_server_ready(dqlite_server *s)
 	return s->running;
 }
 
-int dqlite_server_stop(dqlite_server *s, char **errmsg)
+int dqlite_stop(dqlite *s, char **errmsg)
 {
 	int err = 0;
 	dqlite__error e;
@@ -548,7 +548,7 @@ int dqlite_server_stop(dqlite_server *s, char **errmsg)
 	/* Create an error instance since the one on d is not thread-safe */
 	dqlite__error_init(&e);
 
-	/* Turn off the running flag, so calls to dqlite_server_handle will fail
+	/* Turn off the running flag, so calls to dqlite_handle will fail
 	 * with DQLITE_STOPPED. This needs to happen before we send the stop
 	 * signal since the stop callback expects to see that the flag is
 	 * off. */
@@ -578,7 +578,7 @@ int dqlite_server_stop(dqlite_server *s, char **errmsg)
 }
 
 /* Start handling a new connection */
-int dqlite_server_handle(dqlite_server *s, int fd, char **errmsg)
+int dqlite_handle(dqlite *s, int fd, char **errmsg)
 {
 	int err;
 	dqlite__error e;
@@ -675,12 +675,12 @@ err_item_wait:
 	return err;
 }
 
-const char *dqlite_server_errmsg(dqlite_server *s)
+const char *dqlite_errmsg(dqlite *s)
 {
 	return s->error;
 }
 
-dqlite_logger *dqlite_server_logger(dqlite_server *s)
+dqlite_logger *dqlite_logger(dqlite *s)
 {
 	assert(s != NULL);
 
