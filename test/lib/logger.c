@@ -23,16 +23,16 @@ static void test_logger__emit(void *data,
 	(void)data;
 
 	switch (level) {
-		case DQLITE_LOG_DEBUG:
+		case DQLITE_DEBUG:
 			level_name = "DEBUG";
 			break;
-		case DQLITE_LOG_INFO:
+		case DQLITE_INFO:
 			level_name = "INFO ";
 			break;
-		case DQLITE_LOG_WARN:
+		case DQLITE_WARN:
 			level_name = "WARN ";
 			break;
-		case DQLITE_LOG_ERROR:
+		case DQLITE_ERROR:
 			level_name = "ERROR";
 			break;
 	};

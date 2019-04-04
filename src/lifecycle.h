@@ -19,7 +19,7 @@
 #define DQLITE__LIFECYCLE_STMT 12
 #define DQLITE__LIFECYCLE_REPLICATION 13
 
-#ifdef DQLITE_DEBUG
+#if 0
 void dqlite__lifecycle_init(int type);
 
 void dqlite__lifecycle_close(int type);

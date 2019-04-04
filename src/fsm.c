@@ -1,7 +1,6 @@
 #include <raft.h>
 
 #include "./lib/assert.h"
-#include "./lib/logger.h"
 
 #include "command.h"
 #include "fsm.h"
@@ -113,7 +112,7 @@ static int fsm__apply(struct raft_fsm *fsm, const struct raft_buffer *buf)
 	int rc;
 	rc = command__decode(buf, &type, &command);
 	if (rc != 0) {
-		errorf(f->logger, "fsm: decode command: %d", rc);
+		//errorf(f->logger, "fsm: decode command: %d", rc);
 		goto err;
 	}
 	switch (type) {

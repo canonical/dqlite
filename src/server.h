@@ -7,7 +7,6 @@
 
 struct dqlite
 {
-	struct dqlite_logger *logger;		    /* User-defined logger */
 	struct config config;			    /* Config values */
 	struct sqlite3_vfs vfs;			    /* In-memory VFS */
 	struct registry registry;		    /* Databases */

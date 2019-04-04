@@ -4,7 +4,6 @@
 #include <sqlite3.h>
 
 #include "./lib/assert.h"
-#include "./lib/logger.h"
 
 #include "command.h"
 #include "leader.h"
@@ -12,7 +11,7 @@
 #include "replication.h"
 
 /* Set to 1 to enable tracing. */
-#if 1
+#if 0
 #define tracef(MSG, ...) debugf(r->logger, MSG, ##__VA_ARGS__)
 #else
 #define tracef(MSG, ...)

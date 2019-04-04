@@ -15,7 +15,7 @@ AM_CFLAGS = -I$(top_srcdir)/include -Wall
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(CO_CFLAGS) $(RAFT_FLAGS)
 AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(CO_LIBS) $(RAFT_LIBS)
 if DEBUG
-  AM_CFLAGS += -g -DDQLITE_DEBUG
+  AM_CFLAGS += -g
 else
   AM_CFLAGS += -O2
 endif
@@ -45,7 +45,6 @@ libdqlite_la_SOURCES = \
   src/leader.c \
   src/lib/buffer.c \
   src/lib/fsm.c \
-  src/lib/logger.c \
   src/lib/transport.c \
   src/lifecycle.c \
   src/message.c \
