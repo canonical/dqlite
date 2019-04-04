@@ -32,7 +32,7 @@
 
 struct server
 {
-	char name[8];
+	char name[16];
 	struct dqlite_logger logger;
 	sqlite3_vfs vfs;
 	struct config options;
@@ -72,23 +72,22 @@ struct server
 		struct server *s = &f->servers[I];                             \
 		struct raft_fsm *fsm = &f->fsms[I];                            \
 		struct raft *raft = raft_fixture_get(&f->cluster, I);          \
+		char address[16];                                              \
 		int rc;                                                        \
                                                                                \
 		raft_fixture_set_random(&f->cluster, I, munit_rand_int_range); \
                                                                                \
 		test_logger_setup(params, &s->logger);                         \
                                                                                \
-		sprintf(s->name, "test%d", I);                                 \
+		sprintf(s->name, "dqlite-%u", I + 1);                          \
                                                                                \
 		rc = vfs__init(&s->vfs, &s->logger);                           \
 		munit_assert_int(rc, ==, 0);                                   \
 		s->vfs.zName = s->name;                                        \
 		sqlite3_vfs_register(&s->vfs, 0);                              \
                                                                                \
-		config__init(&s->options, I + 1, "0");                         \
-		rc = config__set_vfs(&s->options, s->name);                    \
-		munit_assert_int(rc, ==, 0);                                   \
-		rc = config__set_replication(&s->options, s->name);            \
+		sprintf(address, "%d", I + 1);                                 \
+		rc = config__init(&s->options, I + 1, address);                \
 		munit_assert_int(rc, ==, 0);                                   \
                                                                                \
 		registry__init(&s->registry, &s->options);                     \
