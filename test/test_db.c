@@ -10,6 +10,8 @@
 
 TEST_MODULE(db);
 
+#if 0
+
 /******************************************************************************
  *
  * Helpers
@@ -176,3 +178,5 @@ TEST_CASE(prepare, bad_sql, NULL)
 
 	return MUNIT_OK;
 }
+
+#endif

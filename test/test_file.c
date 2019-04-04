@@ -55,7 +55,8 @@ dqlite_logger *logger;
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
-	sqlite3_vfs *vfs;
+	sqlite3_vfs *vfs = munit_malloc(sizeof *vfs);
+	int rv;
 
 	(void)user_data;
 
@@ -64,8 +65,9 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	logger = test_logger();
 
-	vfs = dqlite_vfs_create("volatile", logger);
-	munit_assert_ptr_not_null(vfs);
+	rv = vfs__init(vfs, logger);
+	munit_assert_int(rv, ==, 0);
+	vfs->zName = "volatile";
 
 	sqlite3_vfs_register(vfs, 0);
 
@@ -78,7 +80,8 @@ static void tear_down(void *data)
 
 	sqlite3_vfs_unregister(vfs);
 
-	dqlite_vfs_destroy(vfs);
+	vfs__close(vfs);
+	free(vfs);
 
 	test_sqlite_tear_down();
 	test_heap_tear_down(data);

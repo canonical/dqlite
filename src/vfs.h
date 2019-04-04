@@ -3,15 +3,16 @@
 
 #include "../include/dqlite.h"
 
-/* Allocate and initialize an in-memory dqlite VFS object, configured with the
- * given registration name.
- *
- * A copy of the provided name will be made, so clients can free it after the
- * function returns. */
-sqlite3_vfs *dqlite_vfs_create(const char *name, dqlite_logger *logger);
+/**
+ * Initialize the given SQLite VFS interface with dqlite's in-memory
+ * implementation.
+ */
+int vfs__init(struct sqlite3_vfs *vfs, struct dqlite_logger *logger);
 
-/* Destroy and deallocate an in-memory dqlite VFS object. */
-void dqlite_vfs_destroy(sqlite3_vfs *vfs);
-
+/**
+ * Release all memory associated with the given dqlite in-memory VFS
+ * implementation.
+ */
+void vfs__close(struct sqlite3_vfs *vfs);
 
 #endif /* DQLITE_VFS_H_ */

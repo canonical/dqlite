@@ -34,7 +34,7 @@ struct server
 {
 	char name[8];
 	struct dqlite_logger logger;
-	sqlite3_vfs *vfs;
+	sqlite3_vfs vfs;
 	struct options options;
 	struct registry registry;
 	sqlite3_wal_replication replication;
@@ -80,9 +80,10 @@ struct server
                                                                                \
 		sprintf(s->name, "test%d", I);                                 \
                                                                                \
-		s->vfs = dqlite_vfs_create(s->name, &s->logger);               \
-		munit_assert_ptr_not_null(s->vfs);                             \
-		sqlite3_vfs_register(s->vfs, 0);                               \
+		rc = vfs__init(&s->vfs, &s->logger);                           \
+		munit_assert_int(rc, ==, 0);                                   \
+		s->vfs.zName = s->name;                                        \
+		sqlite3_vfs_register(&s->vfs, 0);                              \
                                                                                \
 		options__init(&s->options);                                    \
 		rc = options__set_vfs(&s->options, s->name);                   \
@@ -96,8 +97,8 @@ struct server
 		munit_assert_int(rc, ==, 0);                                   \
                                                                                \
 		rc = replication__init(&s->replication, &s->logger, raft);     \
-		s->replication.zName = s->name;                                \
 		munit_assert_int(rc, ==, 0);                                   \
+		s->replication.zName = s->name;                                \
 		sqlite3_wal_replication_register(&s->replication, 0);          \
 	}
 
@@ -121,8 +122,8 @@ struct server
 		fsm__close(fsm);                                     \
 		registry__close(&s->registry);                       \
 		options__close(&s->options);                         \
-		sqlite3_vfs_unregister(s->vfs);                      \
-		dqlite_vfs_destroy(s->vfs);                          \
+		sqlite3_vfs_unregister(&s->vfs);                     \
+		vfs__close(&s->vfs);                                 \
 		test_logger_tear_down(&s->logger);                   \
 	}
 

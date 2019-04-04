@@ -7,14 +7,18 @@
 
 #include "../../src/vfs.h"
 
-#define FIXTURE_VFS sqlite3_vfs *vfs;
-#define SETUP_VFS                                       \
-	f->vfs = dqlite_vfs_create("test", &f->logger); \
-	munit_assert_ptr_not_null(f->vfs);              \
-	sqlite3_vfs_register(f->vfs, 0);
+#define FIXTURE_VFS struct sqlite3_vfs vfs;
+#define SETUP_VFS                                     \
+	{                                             \
+		int rv2;                              \
+		rv2 = vfs__init(&f->vfs, &f->logger); \
+		munit_assert_int(rv2, ==, 0);         \
+		f->vfs.zName = "test";                \
+		sqlite3_vfs_register(&f->vfs, 0);     \
+	}
 
-#define TEAR_DOWN_VFS                   \
-	sqlite3_vfs_unregister(f->vfs); \
-	dqlite_vfs_destroy(f->vfs);
+#define TEAR_DOWN_VFS                    \
+	sqlite3_vfs_unregister(&f->vfs); \
+	vfs__close(&f->vfs);
 
 #endif /* TEST_VFS_H */

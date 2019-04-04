@@ -21,6 +21,8 @@ TEST_MODULE(stmt);
  *
  ******************************************************************************/
 
+#if 0
+
 struct fixture
 {
 	sqlite3_vfs *vfs;
@@ -111,8 +113,6 @@ static void tear_down(void *data)
 TEST_SUITE(bind);
 TEST_SETUP(bind, setup);
 TEST_TEAR_DOWN(bind, tear_down);
-
-#if 0
 
 /* If a message carries no bindings, stmt__bind is a no-op. */
 TEST_CASE(bind, none, NULL)

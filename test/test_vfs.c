@@ -229,13 +229,15 @@ static dqlite_logger *logger;
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
-	sqlite3_vfs *vfs;
+	sqlite3_vfs *vfs = munit_malloc(sizeof *vfs);
+	int rv;
 
 	test_case_setup(params, user_data);
 
 	logger = test_logger();
-	vfs = dqlite_vfs_create("volatile", logger);
-	munit_assert_ptr_not_null(vfs);
+	rv = vfs__init(vfs, logger);
+	munit_assert_int(rv, ==, 0);
+	vfs->zName = "volatile";
 
 	return vfs;
 }
@@ -244,7 +246,8 @@ static void tear_down(void *data)
 {
 	sqlite3_vfs *vfs = data;
 
-	dqlite_vfs_destroy(vfs);
+	vfs__close(vfs);
+	free(vfs);
 
 	test_case_tear_down(data);
 	free(logger);
@@ -1737,7 +1740,7 @@ TEST_SUITE(create);
 TEST_SETUP(create, setup);
 TEST_TEAR_DOWN(create, tear_down);
 
-static char *test_create_oom_delay[] = {"0", "1", "2", "3", NULL};
+static char *test_create_oom_delay[] = {"0", "1", NULL};
 static char *test_create_oom_repeat[] = {"1", NULL};
 
 static MunitParameterEnum test_create_oom_params[] = {
@@ -1748,17 +1751,19 @@ static MunitParameterEnum test_create_oom_params[] = {
 
 TEST_CASE(create, oom, test_create_oom_params)
 {
-	sqlite3_vfs *vfs;
+	sqlite3_vfs *vfs = munit_malloc(sizeof *vfs);
 	dqlite_logger *logger = test_logger();
+	int rv;
 
 	(void)params;
 	(void)data;
 
 	test_mem_fault_enable();
 
-	vfs = dqlite_vfs_create("volatile", logger);
-	munit_assert_ptr_null(vfs);
+	rv = vfs__init(vfs, logger);
+	munit_assert_int(rv, ==, DQLITE_NOMEM);
 
+	free(vfs);
 	free(logger);
 
 	return MUNIT_OK;
