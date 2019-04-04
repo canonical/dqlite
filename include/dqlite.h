@@ -87,48 +87,48 @@ typedef struct dqlite_logger
 } dqlite_logger;
 
 /* Interface implementing cluster-related functionality */
-typedef struct dqlite_server_info
+typedef struct dqlite_info
 {
 	uint64_t id;
 	const char *address;
-} dqlite_server_info;
+} dqlite_info;
 
 /* Handle connections from dqlite clients */
-typedef struct dqlite__server dqlite_server;
+typedef struct dqlite dqlite;
 
 /* Allocate and initialize a dqlite server instance. */
-int dqlite_server_create(const char *dir,
-			 unsigned id,
-			 const char *address,
-			 dqlite_server **out);
+int dqlite_create(const char *dir,
+		  unsigned id,
+		  const char *address,
+		  dqlite **out);
 
 /* Destroy and deallocate a dqlite server instance. */
-void dqlite_server_destroy(dqlite_server *s);
+void dqlite_destroy(dqlite *s);
 
 /* Set a config option on a dqlite server
  *
- * This API must be called after dqlite_server_init and before
- * dqlite_server_run.
+ * This API must be called after dqlite_init and before
+ * dqlite_run.
  */
-int dqlite_server_config(dqlite_server *s, int op, void *arg);
+int dqlite_config(dqlite *s, int op, void *arg);
 
-int dqlite_server_bootstrap(dqlite_server *s);
+int dqlite_bootstrap(dqlite *s);
 
 /* Start a dqlite server.
  *
  * In case of error, a human-readable message describing the failure can be
- * obtained using dqlite_server_errmsg.
+ * obtained using dqlite_errmsg.
  */
-int dqlite_server_run(dqlite_server *s);
+int dqlite_run(dqlite *s);
 
 /* Wait until a dqlite server is ready and can handle connections.
 **
 ** Returns 1 if the server has been successfully started, 0 otherwise.
 **
 ** This is a thread-safe API, but must be invoked before any call to
-** dqlite_server_stop or dqlite_server_handle.
+** dqlite_stop or dqlite_handle.
 */
-int dqlite_server_ready(dqlite_server *s);
+int dqlite_ready(dqlite *s);
 
 /* Stop a dqlite server and wait for it to shutdown.
 **
@@ -137,7 +137,7 @@ int dqlite_server_ready(dqlite_server *s);
 ** In case of error, the caller must invoke sqlite3_free
 ** against the returned errmsg.
 */
-int dqlite_server_stop(dqlite_server *s, char **errmsg);
+int dqlite_stop(dqlite *s, char **errmsg);
 
 /* Start handling a new connection.
 **
@@ -146,21 +146,17 @@ int dqlite_server_stop(dqlite_server *s, char **errmsg);
 ** In case of error, the caller must invoke sqlite3_free
 ** against the returned errmsg.
 */
-int dqlite_server_handle(dqlite_server *s, int socket, char **errrmsg);
+int dqlite_handle(dqlite *s, int socket, char **errrmsg);
 
 /* Return a message describing the most recent error occurred.
  *
  * This is API not thread-safe.
  *
- * The memory holding returned string is managed by the dqlite_server object
- * internally, and will be valid until dqlite_server_close is invoked. However,
+ * The memory holding returned string is managed by the dqlite object
+ * internally, and will be valid until dqlite_close is invoked. However,
  * the message contained in the string itself might change if another error
  * occurs in the meantime.
  */
-const char *dqlite_server_errmsg(dqlite_server *s);
-
-/* Return the dqlite_logger object the server is using, if any was
- * configured. */
-dqlite_logger *dqlite_server_logger(dqlite_server *s);
+const char *dqlite_errmsg(dqlite *s);
 
 #endif /* DQLITE_H */
