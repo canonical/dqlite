@@ -8,15 +8,16 @@
 #include <uv.h>
 
 /* Error codes */
-#define DQLITE_ERROR 1
-#define DQLITE_NOMEM 2
-#define DQLITE_PROTO 3
-#define DQLITE_PARSE 4
-#define DQLITE_OVERFLOW 5
-#define DQLITE_EOM 6    /* End of message */
-#define DQLITE_ENGINE 7 /* A SQLite error occurred */
-#define DQLITE_NOTFOUND 8
-#define DQLITE_STOPPED 9 /* The server was stopped */
+enum { DQLITE_BADFD = 1,
+       DQLITE_NOMEM,
+       DQLITE_PROTO,
+       DQLITE_PARSE,
+       DQLITE_OVERFLOW,
+       DQLITE_EOM,    /* End of message */
+       DQLITE_ENGINE, /* A SQLite error occurred */
+       DQLITE_NOTFOUND,
+       DQLITE_STOPPED /* The server was stopped */
+};
 
 /* Current protocol version */
 #define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
@@ -51,10 +52,7 @@
 #define DQLITE_BOOLEAN 11
 
 /* Log levels */
-#define DQLITE_LOG_DEBUG 0
-#define DQLITE_LOG_INFO 1
-#define DQLITE_LOG_WARN 2
-#define DQLITE_LOG_ERROR 3
+enum { DQLITE_DEBUG = 0, DQLITE_INFO, DQLITE_WARN, DQLITE_ERROR };
 
 /* Config opcodes */
 #define DQLITE_CONFIG_LOGGER 0

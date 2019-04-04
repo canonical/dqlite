@@ -1,5 +1,3 @@
-#include "lib/logger.h"
-
 #include "conn.h"
 #include "message.h"
 
@@ -73,7 +71,7 @@ static void read_request_cb(struct transport *transport, int status)
 	int rv;
 
 	if (status != 0) {
-		errorf(c->logger, "read error");
+		//errorf(c->logger, "read error");
 		conn__stop(c);
 		return;
 	}
@@ -114,7 +112,7 @@ static void read_message_cb(struct transport *transport, int status)
 	int rv;
 
 	if (status != 0) {
-		errorf(c->logger, "read error");
+		//errorf(c->logger, "read error");
 		conn__stop(c);
 		return;
 	}
@@ -155,7 +153,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 	int rv;
 
 	if (status != 0) {
-		errorf(c->logger, "read error");
+		//errorf(c->logger, "read error");
 		goto abort;
 	}
 
@@ -166,7 +164,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 	assert(rv == 0); /* Can't fail, we know we have enough bytes */
 
 	if (c->protocol != DQLITE_PROTOCOL_VERSION) {
-		errorf(c->logger, "unknown protocol version: %lx", c->protocol);
+		//errorf(c->logger, "unknown protocol version: %lx", c->protocol);
 		goto abort;
 	}
 
