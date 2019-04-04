@@ -43,7 +43,7 @@ struct conn
 int conn__start(struct conn *c,
 		struct dqlite_logger *logger,
 		struct uv_loop_s *loop,
-		struct options *options,
+		struct config *config,
 		struct registry *registry,
 		struct raft *raft,
 		int fd,

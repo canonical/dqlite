@@ -1,25 +1,10 @@
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "server.h"
+#include "string.h"
 
-#include <sqlite3.h>
-#include <uv.h>
-
-#include "../include/dqlite.h"
-
-#include "./lib/assert.h"
-
-#include "conn_.h"
-#include "error.h"
-#include "fsm.h"
-#include "log.h"
-#include "metrics.h"
-#include "options.h"
-#include "queue.h"
-#include "raft.h"
-#include "registry.h"
-#include "replication.h"
-#include "vfs.h"
+int dqlite__init(struct dqlite *d) {
+	strcpy(d->name, "dqlite");
+	return 0;
+}
 
 #if 0
 
@@ -55,7 +40,7 @@ struct dqlite
 	/* private */
 	struct dqlite_logger *logger;    /* Optional logger implementation */
 	struct dqlite__metrics *metrics; /* Operational metrics */
-	struct options options;		 /* Configuration values */
+	struct config options;		 /* Configuration values */
 	char name[256];
 	sqlite3_vfs *vfs;
 	struct registry registry;
@@ -288,7 +273,7 @@ int server__create(const char *dir,
 	s->logger = NULL;
 	s->metrics = NULL;
 
-	options__init(&s->options);
+	config__init(&s->options);
 
 	dqlite__queue_init(&s->queue);
 
@@ -370,7 +355,7 @@ void dqlite_destroy(dqlite *s)
 		sqlite3_free(s->metrics);
 	}
 
-	options__close(&s->options);
+	config__close(&s->options);
 
 	/* The sem_destroy call should only fail if the given semaphore is
 	 * invalid, which must not be our case. */
@@ -412,11 +397,11 @@ int dqlite_config(dqlite *s, int op, void *arg)
 			break;
 
 		case DQLITE_CONFIG_VFS:
-			err = options__set_vfs(&s->options, (const char *)arg);
+			err = config__set_vfs(&s->options, (const char *)arg);
 			break;
 
 		case DQLITE_CONFIG_WAL_REPLICATION:
-			err = options__set_replication(&s->options,
+			err = config__set_replication(&s->options,
 						       (const char *)arg);
 			break;
 

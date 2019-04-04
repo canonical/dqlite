@@ -31,8 +31,8 @@ int leader__init(struct leader *l, struct db *db)
 	if (rc != 0) {
 		goto err;
 	}
-	rc = open_conn(db->filename, db->options->vfs, db->options->replication,
-		       l, db->options->page_size, &l->conn);
+	rc = open_conn(db->filename, db->config->vfs, db->config->replication,
+		       l, db->config->page_size, &l->conn);
 	if (rc != 0) {
 		goto err_after_loop_create;
 	}

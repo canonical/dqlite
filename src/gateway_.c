@@ -668,7 +668,7 @@ static void gateway__dispatch(struct gateway_ *g, struct gateway__ctx *ctx)
 void gateway__init_(struct gateway_ *g,
 		    struct gateway__cbs *callbacks,
 		    struct dqlite_logger *logger,
-		    struct options *options)
+		    struct config *options)
 {
 	int i;
 

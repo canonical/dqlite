@@ -1,6 +1,6 @@
 #include "../lib/heap.h"
 #include "../lib/logger.h"
-#include "../lib/options.h"
+#include "../lib/config.h"
 #include "../lib/raft.h"
 #include "../lib/registry.h"
 #include "../lib/replication.h"

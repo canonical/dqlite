@@ -6,12 +6,12 @@
 
 void gateway__init(struct gateway *g,
 		   struct dqlite_logger *logger,
-		   struct options *options,
+		   struct config *config,
 		   struct registry *registry,
 		   struct raft *raft)
 {
 	g->logger = logger;
-	g->options = options;
+	g->config = config;
 	g->registry = registry;
 	g->raft = raft;
 	g->leader = NULL;
@@ -109,7 +109,7 @@ static int handle_leader(struct handle *req, struct cursor *cursor)
 static int handle_client(struct handle *req, struct cursor *cursor)
 {
 	START(client, welcome);
-	response.heartbeat_timeout = req->gateway->options->heartbeat_timeout;
+	response.heartbeat_timeout = req->gateway->config->heartbeat_timeout;
 	SUCCESS(welcome, WELCOME);
 	return 0;
 }

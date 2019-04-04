@@ -50,7 +50,7 @@ libdqlite_la_SOURCES = \
   src/lifecycle.c \
   src/message.c \
   src/metrics.c \
-  src/options.c \
+  src/config.c \
   src/queue.c \
   src/query.c \
   src/registry.c \

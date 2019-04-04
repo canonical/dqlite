@@ -4,7 +4,7 @@
 #include "../src/conn_.h"
 #include "../src/error.h"
 #include "../src/metrics.h"
-#include "../src/options.h"
+#include "../src/config.h"
 #include "../src/queue.h"
 
 #include "./lib/heap.h"
@@ -27,7 +27,7 @@ struct fixture
 	struct test_socket_pair sockets;
 	uv_loop_t loop;
 	struct dqlite__queue queue;
-	struct options options;
+	struct config options;
 	struct dqlite__metrics metrics;
 	dqlite_logger *logger;
 };
@@ -52,7 +52,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	dqlite__queue_init(&f->queue);
 
-	options__init(&f->options);
+	config__init(&f->options);
 	dqlite__metrics_init(&f->metrics);
 
 	f->logger = test_logger();

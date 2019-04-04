@@ -623,7 +623,7 @@ void conn__init_(struct conn_ *c,
 		int fd,
 		dqlite_logger *logger,
 		uv_loop_t *loop,
-		struct options *options,
+		struct config *options,
 		struct dqlite__metrics *metrics)
 {
 	struct gateway__cbs callbacks;
