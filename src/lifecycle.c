@@ -4,7 +4,7 @@
 
 #include "lifecycle.h"
 
-#ifdef DQLITE_DEBUG
+#if 0
 
 /* End marker for the dqlite__lifecycle_refcount array */
 #define DQLITE__LIFECYCLE_REFCOUNT_NULL -(1 << 24)

@@ -825,15 +825,6 @@ void conn__abort(struct conn_ *c)
 
 	state = dqlite__fsm_state(&c->fsm);
 
-#ifdef DQLITE_DEBUG
-	/* In debug mode always log disconnections. */
-#else
-	/* If the error is not due to a client disconnection, log an error
-	 * message */
-	if (!dqlite__error_is_disconnect(&c->error)) {
-	}
-#endif
-
 	if (c->stream == NULL) {
 		conn__destroy(c);
 		return;
