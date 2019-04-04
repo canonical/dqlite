@@ -9,6 +9,8 @@
 
 TEST_MODULE(integration);
 
+#if 0
+
 /******************************************************************************
  *
  * Helpers
@@ -312,8 +314,6 @@ TEST_CASE(exec, large_query, NULL)
 
 	return MUNIT_OK;
 }
-
-#if 0
 
 TEST_CASE(exec, multi_thread, NULL)
 {

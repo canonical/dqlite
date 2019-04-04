@@ -21,6 +21,8 @@
 #include "replication.h"
 #include "vfs.h"
 
+#if 0
+
 int dqlite_init(const char **errmsg)
 {
 	int rc;
@@ -684,3 +686,5 @@ dqlite_logger *dqlite_server_logger(dqlite_server *s)
 
 	return s->logger;
 }
+
+#endif
