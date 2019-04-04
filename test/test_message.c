@@ -1010,7 +1010,7 @@ TEST_CASE(send, body, put_dyn_buf, NULL)
 TEST_CASE(send, body, put_servers_one, NULL)
 {
 	struct message_ *message = data;
-	dqlite_server_info servers[] = {
+	dqlite_info servers[] = {
 	    {1, "1.2.3.4:666"},
 	    {0, NULL},
 	};

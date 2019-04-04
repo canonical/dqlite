@@ -1,5 +1,5 @@
-#ifndef DQLITE_QUEUE_H
-#define DQLITE_QUEUE_H
+#ifndef QUEUE_H_
+#define QUEUE_H_
 
 #include <semaphore.h>
 
@@ -43,4 +43,4 @@ struct dqlite__queue_item *dqlite__queue_pop(struct dqlite__queue *q);
 
 void dqlite__queue_process(struct dqlite__queue *q);
 
-#endif /* DQLITE_QUEUE_H */
+#endif /* QUEUE_H_ */

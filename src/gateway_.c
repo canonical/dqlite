@@ -163,7 +163,7 @@ static void gateway__client(struct gateway_ *g, struct gateway__ctx *ctx)
 
 static void gateway__heartbeat(struct gateway_ *g, struct gateway__ctx *ctx)
 {
-	struct dqlite_server_info *servers = NULL;
+	struct dqlite_info *servers = NULL;
 	// int rc;
 
 	/* Get the current list of servers in the cluster */
