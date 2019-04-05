@@ -1,7 +1,7 @@
 #ifndef DQLITE_VFS_H_
 #define DQLITE_VFS_H_
 
-#include "logger.h"
+#include "config.h"
 
 /**
  * Initialize the given SQLite VFS interface with dqlite's in-memory
@@ -10,7 +10,7 @@
  * This function also automatically register the implementation in the global
  * SQLite registry, using the given @name.
  */
-int vfs__init(struct sqlite3_vfs *vfs, const char *name, struct logger *logger);
+int vfs__init(struct sqlite3_vfs *vfs, struct config *config);
 
 /**
  * Release all memory associated with the given dqlite in-memory VFS

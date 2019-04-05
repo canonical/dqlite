@@ -10,7 +10,7 @@
 #include <raft.h>
 #include <sqlite3.h>
 
-#include "logger.h"
+#include "config.h"
 
 /**
  * Initialize the given SQLite replication interface with dqlite's raft based
@@ -20,8 +20,7 @@
  * SQLite registry, using the given @name.
  */
 int replication__init(struct sqlite3_wal_replication *replication,
-		      const char *name,
-		      struct logger *logger,
+		      struct config *config,
 		      struct raft *raft);
 
 /**
