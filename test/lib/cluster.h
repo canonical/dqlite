@@ -81,7 +81,7 @@ struct server
 		rc = config__init(&s->config, I + 1, address);                 \
 		munit_assert_int(rc, ==, 0);                                   \
                                                                                \
-		rc = vfs__init(&s->vfs, s->config.name, &s->logger);           \
+		rc = vfs__init(&s->vfs, &s->config);                           \
 		munit_assert_int(rc, ==, 0);                                   \
                                                                                \
 		sprintf(address, "%d", I + 1);                                 \
@@ -91,8 +91,7 @@ struct server
 		rc = fsm__init(fsm, &s->logger, &s->registry);                 \
 		munit_assert_int(rc, ==, 0);                                   \
                                                                                \
-		rc = replication__init(&s->replication, s->config.name,        \
-				       &s->logger, raft);                      \
+		rc = replication__init(&s->replication, &s->config, raft);     \
 		munit_assert_int(rc, ==, 0);                                   \
 	}
 

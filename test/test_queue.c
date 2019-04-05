@@ -1,6 +1,8 @@
 #include <sqlite3.h>
 #include <uv.h>
 
+#include "../include/dqlite.h"
+
 #include "../src/config.h"
 #include "../src/conn_.h"
 #include "../src/error.h"

@@ -255,8 +255,7 @@ int replication__end(sqlite3_wal_replication *replication, void *arg)
 }
 
 int replication__init(struct sqlite3_wal_replication *replication,
-		      const char *name,
-		      struct logger *logger,
+		      struct config *config,
 		      struct raft *raft)
 {
 	struct replication *r = sqlite3_malloc(sizeof *r);
@@ -265,7 +264,7 @@ int replication__init(struct sqlite3_wal_replication *replication,
 		return DQLITE_NOMEM;
 	}
 
-	r->logger = logger;
+	r->logger = &config->logger;
 	r->raft = raft;
 	QUEUE__INIT(&r->apply_reqs);
 
@@ -276,7 +275,7 @@ int replication__init(struct sqlite3_wal_replication *replication,
 	replication->xFrames = replication__frames;
 	replication->xUndo = replication__undo;
 	replication->xEnd = replication__end;
-	replication->zName = name;
+	replication->zName = config->name;
 
 	sqlite3_wal_replication_register(replication, 0);
 
