@@ -3,6 +3,7 @@
 
 #include "../../include/dqlite.h"
 
+#include "../lib/client.h"
 #include "../lib/config.h"
 #include "../lib/heap.h"
 #include "../lib/logger.h"
@@ -28,16 +29,15 @@ TEST_MODULE(conn);
  *
  ******************************************************************************/
 
-#define FIXTURE                          \
-	FIXTURE_LOGGER;                  \
-	FIXTURE_VFS;                     \
-	FIXTURE_CONFIG;                  \
-	FIXTURE_REGISTRY;                \
-	FIXTURE_RAFT;                    \
-	FIXTURE_REPLICATION;             \
-	struct test_socket_pair sockets; \
-	struct conn conn;                \
-	struct client client
+#define FIXTURE              \
+	FIXTURE_LOGGER;      \
+	FIXTURE_VFS;         \
+	FIXTURE_CONFIG;      \
+	FIXTURE_REGISTRY;    \
+	FIXTURE_RAFT;        \
+	FIXTURE_REPLICATION; \
+	FIXTURE_CLIENT;      \
+	struct conn conn
 
 #define SETUP                                                             \
 	int rv;                                                           \
@@ -49,28 +49,24 @@ TEST_MODULE(conn);
 	SETUP_REGISTRY;                                                   \
 	SETUP_RAFT;                                                       \
 	SETUP_REPLICATION;                                                \
+	SETUP_CLIENT;                                                     \
 	RAFT_BOOTSTRAP;                                                   \
 	RAFT_START;                                                       \
-	test_socket_pair_setup(params, &f->sockets);                      \
 	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry,    \
 			 &f->raft, f->sockets.server, &f->raft_transport, \
 			 NULL);                                           \
-	munit_assert_int(rv, ==, 0);                                      \
-	client__init(&f->client, f->sockets.client)
+	munit_assert_int(rv, ==, 0)
 
-#define TEAR_DOWN                                \
-	client__close(&f->client);               \
-	conn__stop(&f->conn);                    \
-	f->sockets.client_disconnected = true;   \
-	f->sockets.server_disconnected = true;   \
-	test_socket_pair_tear_down(&f->sockets); \
-	TEAR_DOWN_REPLICATION;                   \
-	TEAR_DOWN_RAFT;                          \
-	TEAR_DOWN_REGISTRY;                      \
-	TEAR_DOWN_CONFIG;                        \
-	TEAR_DOWN_VFS;                           \
-	TEAR_DOWN_LOGGER;                        \
-	TEAR_DOWN_SQLITE;                        \
+#define TEAR_DOWN              \
+	conn__stop(&f->conn);  \
+	TEAR_DOWN_CLIENT;      \
+	TEAR_DOWN_REPLICATION; \
+	TEAR_DOWN_RAFT;        \
+	TEAR_DOWN_REGISTRY;    \
+	TEAR_DOWN_CONFIG;      \
+	TEAR_DOWN_VFS;         \
+	TEAR_DOWN_LOGGER;      \
+	TEAR_DOWN_SQLITE;      \
 	TEAR_DOWN_HEAP
 
 /******************************************************************************
@@ -132,12 +128,6 @@ TEST_MODULE(conn);
 		rv2 = client__recv_rows(&f->client, ROWS);     \
 		munit_assert_int(rv2, ==, 0);                  \
 	}
-
-/******************************************************************************
- *
- * Assertions.
- *
- ******************************************************************************/
 
 /******************************************************************************
  *
