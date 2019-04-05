@@ -139,7 +139,7 @@ int dqlite_stop(dqlite *d);
 ** In case of error, the caller must invoke sqlite3_free
 ** against the returned errmsg.
 */
-int dqlite_handle(dqlite *d, int socket, char **errrmsg);
+int dqlite_handle(dqlite *d, int fd);
 
 /* Return a message describing the most recent error occurred.
  *

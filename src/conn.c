@@ -71,7 +71,7 @@ static void read_request_cb(struct transport *transport, int status)
 	int rv;
 
 	if (status != 0) {
-		//errorf(c->logger, "read error");
+		// errorf(c->logger, "read error");
 		conn__stop(c);
 		return;
 	}
@@ -112,7 +112,7 @@ static void read_message_cb(struct transport *transport, int status)
 	int rv;
 
 	if (status != 0) {
-		//errorf(c->logger, "read error");
+		// errorf(c->logger, "read error");
 		conn__stop(c);
 		return;
 	}
@@ -153,7 +153,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 	int rv;
 
 	if (status != 0) {
-		//errorf(c->logger, "read error");
+		// errorf(c->logger, "read error");
 		goto abort;
 	}
 
@@ -164,7 +164,8 @@ static void read_protocol_cb(struct transport *transport, int status)
 	assert(rv == 0); /* Can't fail, we know we have enough bytes */
 
 	if (c->protocol != DQLITE_PROTOCOL_VERSION) {
-		//errorf(c->logger, "unknown protocol version: %lx", c->protocol);
+		// errorf(c->logger, "unknown protocol version: %lx",
+		// c->protocol);
 		goto abort;
 	}
 
@@ -195,9 +196,8 @@ static int read_protocol(struct conn *c)
 }
 
 int conn__start(struct conn *c,
-		struct logger *logger,
-		struct uv_loop_s *loop,
 		struct config *config,
+		struct uv_loop_s *loop,
 		struct registry *registry,
 		struct raft *raft,
 		int fd,
@@ -205,7 +205,6 @@ int conn__start(struct conn *c,
 		conn_close_cb close_cb)
 {
 	int rv;
-	c->logger = logger;
 	rv = transport__init(&c->transport, loop, fd);
 	if (rv != 0) {
 		goto err;
@@ -213,7 +212,7 @@ int conn__start(struct conn *c,
 	c->transport.data = c;
 	c->uv_transport = uv_transport;
 	c->close_cb = close_cb;
-	gateway__init(&c->gateway, logger, config, registry, raft);
+	gateway__init(&c->gateway, &config->logger, config, registry, raft);
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
 		goto err_after_transport_init;

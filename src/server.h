@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 
 #include "config.h"
+#include "lib/assert.h"
 #include "logger.h"
 #include "registry.h"
 
@@ -22,6 +23,8 @@ struct dqlite
 	sem_t ready;                                /* Server is ready */
 	sem_t stopped;                              /* Notifiy loop stopped */
 	pthread_mutex_t mutex;                      /* Access incoming queue */
+	queue queue;                                /* Incoming connections */
+	queue conns;                                /* Active connections */
 	bool running;                               /* Loop is running */
 	struct raft raft;                           /* Raft instance */
 	uv_async_t stop;                            /* Trigger UV loop stop */
