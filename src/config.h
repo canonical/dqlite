@@ -1,6 +1,8 @@
 #ifndef CONFIG_H_
 #define CONFIG_H_
 
+#include "logger.h"
+
 /**
  * Value object holding dqlite configuration.
  */
@@ -11,6 +13,7 @@ struct config
 	unsigned heartbeat_timeout;    /* In milliseconds */
 	unsigned page_size;            /* Database page size */
 	unsigned checkpoint_threshold; /* In outstanding WAL frames */
+	struct logger logger;          /* Custom logger */
 	char name[256];                /* VFS/replication registriatio name */
 };
 

@@ -3,9 +3,9 @@
 
 #include "../../include/dqlite.h"
 
+#include "../lib/config.h"
 #include "../lib/heap.h"
 #include "../lib/logger.h"
-#include "../lib/config.h"
 #include "../lib/raft.h"
 #include "../lib/registry.h"
 #include "../lib/replication.h"
@@ -31,7 +31,7 @@ TEST_MODULE(conn);
 #define FIXTURE                          \
 	FIXTURE_LOGGER;                  \
 	FIXTURE_VFS;                     \
-	FIXTURE_OPTIONS;                 \
+	FIXTURE_CONFIG;                  \
 	FIXTURE_REGISTRY;                \
 	FIXTURE_RAFT;                    \
 	FIXTURE_REPLICATION;             \
@@ -39,23 +39,23 @@ TEST_MODULE(conn);
 	struct conn conn;                \
 	struct client client
 
-#define SETUP                                                         \
-	int rv;                                                       \
-	SETUP_HEAP;                                                   \
-	SETUP_SQLITE;                                                 \
-	SETUP_LOGGER;                                                 \
-	SETUP_VFS;                                                    \
-	SETUP_OPTIONS;                                                \
-	SETUP_REGISTRY;                                               \
-	SETUP_RAFT;                                                   \
-	SETUP_REPLICATION;                                            \
-	RAFT_BOOTSTRAP;                                               \
-	RAFT_START;                                                   \
-	test_socket_pair_setup(params, &f->sockets);                  \
-	rv = conn__start(&f->conn, &f->logger, &f->loop, &f->options, \
-			 &f->registry, &f->raft, f->sockets.server,   \
-			 &f->raft_transport, NULL);                   \
-	munit_assert_int(rv, ==, 0);                                  \
+#define SETUP                                                        \
+	int rv;                                                      \
+	SETUP_HEAP;                                                  \
+	SETUP_SQLITE;                                                \
+	SETUP_LOGGER;                                                \
+	SETUP_VFS;                                                   \
+	SETUP_CONFIG;                                                \
+	SETUP_REGISTRY;                                              \
+	SETUP_RAFT;                                                  \
+	SETUP_REPLICATION;                                           \
+	RAFT_BOOTSTRAP;                                              \
+	RAFT_START;                                                  \
+	test_socket_pair_setup(params, &f->sockets);                 \
+	rv = conn__start(&f->conn, &f->logger, &f->loop, &f->config, \
+			 &f->registry, &f->raft, f->sockets.server,  \
+			 &f->raft_transport, NULL);                  \
+	munit_assert_int(rv, ==, 0);                                 \
 	client__init(&f->client, f->sockets.client)
 
 #define TEAR_DOWN                                \
@@ -67,7 +67,7 @@ TEST_MODULE(conn);
 	TEAR_DOWN_REPLICATION;                   \
 	TEAR_DOWN_RAFT;                          \
 	TEAR_DOWN_REGISTRY;                      \
-	TEAR_DOWN_OPTIONS;                       \
+	TEAR_DOWN_CONFIG;                        \
 	TEAR_DOWN_VFS;                           \
 	TEAR_DOWN_LOGGER;                        \
 	TEAR_DOWN_SQLITE;                        \

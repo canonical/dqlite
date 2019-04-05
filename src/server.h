@@ -9,7 +9,6 @@
 struct dqlite
 {
 	struct config config;                       /* Config values */
-	struct logger logger;                       /* Logger */
 	struct sqlite3_vfs vfs;                     /* In-memory VFS */
 	struct registry registry;                   /* Databases */
 	struct sqlite3_wal_replication replication; /* Raft replication */

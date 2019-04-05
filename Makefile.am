@@ -98,7 +98,6 @@ unit_test_SOURCES += \
   test/test_response.c \
   test/test_schema.c \
   test/test_server.c \
-  test/test_vfs.c\
   test/unit/ext/test_co.c \
   test/unit/ext/test_uv.c \
   test/unit/lib/test_buffer.c \
@@ -114,6 +113,7 @@ unit_test_SOURCES += \
   test/unit/test_request.c \
   test/unit/test_stmt.c \
   test/unit/test_tuple.c \
+  test/unit/test_vfs.c \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test

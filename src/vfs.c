@@ -1759,14 +1759,14 @@ static int vfs__get_last_error(sqlite3_vfs *vfs, int x, char *y)
 	return rc;
 }
 
-int vfs__init(struct sqlite3_vfs *vfs, const char *name, struct logger *logger)
+int vfs__init(struct sqlite3_vfs *vfs, struct config *config)
 {
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfs__file);
 	vfs->mxPathname = VFS__MAX_PATHNAME;
 	vfs->pNext = NULL;
 
-	vfs->pAppData = root_create(logger);
+	vfs->pAppData = root_create(&config->logger);
 	if (vfs->pAppData == NULL) {
 		return DQLITE_NOMEM;
 	}
@@ -1784,7 +1784,7 @@ int vfs__init(struct sqlite3_vfs *vfs, const char *name, struct logger *logger)
 	vfs->xCurrentTime = vfs__current_time;
 	vfs->xGetLastError = vfs__get_last_error;
 	vfs->xCurrentTimeInt64 = vfs__current_time_int64;
-	vfs->zName = name;
+	vfs->zName = config->name;
 
 	sqlite3_vfs_register(vfs, 0);
 
