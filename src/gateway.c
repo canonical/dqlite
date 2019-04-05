@@ -146,6 +146,7 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
+	const char *tail;
 	int rc;
 	START(prepare, stmt);
 	LOOKUP_DB(request.db_id);
@@ -154,11 +155,10 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 		return rc;
 	}
 	assert(stmt != NULL);
-	stmt->db = g->leader->conn;
-	rc = sqlite3_prepare_v2(stmt->db, request.sql, -1, &stmt->stmt,
-				&stmt->tail);
+	rc = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &stmt->stmt,
+				&tail);
 	if (rc != SQLITE_OK) {
-		failure(req, rc, sqlite3_errmsg(stmt->db));
+		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
 	response.db_id = request.db_id;
@@ -396,7 +396,8 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	START(query_sql, rows);
 	LOOKUP_DB(request.db_id);
 	(void)response;
-	rc = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt, &tail);
+	rc = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt,
+				&tail);
 	if (rc != SQLITE_OK) {
 		failure(req, rc, "prepare statement");
 		return 0;
