@@ -4,8 +4,6 @@
 #include "../include/dqlite.h"
 
 #include "./lib/runner.h"
-#include "client.h"
-#include "server.h"
 
 TEST_MODULE(integration);
 

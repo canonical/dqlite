@@ -65,21 +65,18 @@ check_PROGRAMS += \
   unit-test
 test_lib_SOURCES = \
   test/case.c \
-  test/client.c \
   test/leak.c \
   test/lib/fault.c \
   test/lib/fs.c \
   test/lib/heap.c \
   test/lib/logger.c \
-  test/lib/message.c \
   test/lib/munit.c \
   test/lib/socket.c \
   test/lib/sqlite.c \
   test/lib/uv.c \
   test/log.c \
   test/mem.c \
-  test/replication.c \
-  test/server.c
+  test/replication.c
 unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
 unit_test_SOURCES += \
   test/lib/raft.c \
@@ -87,9 +84,6 @@ unit_test_SOURCES += \
   test/test_file.c \
   test/test_format.c \
   test/test_integration.c \
-  test/test_message.c \
-  test/test_response.c \
-  test/test_schema.c \
   test/unit/ext/test_co.c \
   test/unit/ext/test_uv.c \
   test/unit/lib/test_buffer.c \
