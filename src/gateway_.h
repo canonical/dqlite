@@ -62,7 +62,7 @@ struct gateway_
 	/* private */
 	struct gateway__cbs callbacks;   /* User callbacks */
 	struct config *options; /* Configuration options */
-	struct dqlite_logger *logger;    /* Logger to use */
+	struct logger *logger;    /* Logger to use */
 
 	/* Buffer holding responses for in-progress requests. Clients are
 	 * expected to issue one SQL request at a time and wait for the
@@ -80,7 +80,7 @@ struct gateway_
 
 void gateway__init_(struct gateway_ *g,
 		   struct gateway__cbs *callbacks,
-		   struct dqlite_logger *logger,
+		   struct logger *logger,
 		   struct config *options);
 
 void gateway__close_(struct gateway_ *g);

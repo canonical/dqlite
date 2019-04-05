@@ -7,7 +7,7 @@
 
 struct fsm
 {
-	struct dqlite_logger *logger;
+	struct logger *logger;
 	struct registry *registry;
 };
 
@@ -150,7 +150,7 @@ static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 }
 
 int fsm__init(struct raft_fsm *fsm,
-	      struct dqlite_logger *logger,
+	      struct logger *logger,
 	      struct registry *registry)
 {
 	struct fsm *f = raft_malloc(sizeof *fsm);

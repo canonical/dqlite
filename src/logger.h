@@ -3,6 +3,12 @@
 
 #include "../../include/dqlite.h"
 
+struct logger
+{
+	void *data;
+	void (*emit)(void *data, int level, const char *fmt, va_list args);
+};
+
 /**
  * Emit a log message with a certain level.
  */

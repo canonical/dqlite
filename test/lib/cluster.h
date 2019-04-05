@@ -2,7 +2,7 @@
  * Helpers to setup a raft cluster in test fixtures.
  *
  * Each raft instance will use its own dqlite FSM, which in turn will be created
- * using its own registry, options and logger.
+ * using its own config, registry and logger.
  *
  * The fixture will also register a VFS and a SQLite replication object for each
  * raft instance, using "test<i>" as registration name, where <i> is the raft
@@ -32,10 +32,9 @@
 
 struct server
 {
-	char name[16];
-	struct dqlite_logger logger;
+	struct logger logger;
+	struct config config;
 	sqlite3_vfs vfs;
-	struct config options;
 	struct registry registry;
 	sqlite3_wal_replication replication;
 };
@@ -79,26 +78,22 @@ struct server
                                                                                \
 		test_logger_setup(params, &s->logger);                         \
                                                                                \
-		sprintf(s->name, "dqlite-%u", I + 1);                          \
-                                                                               \
-		rc = vfs__init(&s->vfs, &s->logger);                           \
+		rc = config__init(&s->config, I + 1, address);                 \
 		munit_assert_int(rc, ==, 0);                                   \
-		s->vfs.zName = s->name;                                        \
-		sqlite3_vfs_register(&s->vfs, 0);                              \
+                                                                               \
+		rc = vfs__init(&s->vfs, s->config.name, &s->logger);           \
+		munit_assert_int(rc, ==, 0);                                   \
                                                                                \
 		sprintf(address, "%d", I + 1);                                 \
-		rc = config__init(&s->options, I + 1, address);                \
-		munit_assert_int(rc, ==, 0);                                   \
                                                                                \
-		registry__init(&s->registry, &s->options);                     \
+		registry__init(&s->registry, &s->config);                      \
                                                                                \
 		rc = fsm__init(fsm, &s->logger, &s->registry);                 \
 		munit_assert_int(rc, ==, 0);                                   \
                                                                                \
-		rc = replication__init(&s->replication, &s->logger, raft);     \
+		rc = replication__init(&s->replication, s->config.name,        \
+				       &s->logger, raft);                      \
 		munit_assert_int(rc, ==, 0);                                   \
-		s->replication.zName = s->name;                                \
-		sqlite3_wal_replication_register(&s->replication, 0);          \
 	}
 
 #define TEAR_DOWN_CLUSTER                         \
@@ -112,21 +107,19 @@ struct server
 		TEAR_DOWN_HEAP;                   \
 	}
 
-#define TEAR_DOWN_SERVER(I)                                          \
-	{                                                            \
-		struct server *s = &f->servers[I];                   \
-		struct raft_fsm *fsm = &f->fsms[I];                  \
-		sqlite3_wal_replication_unregister(&s->replication); \
-		replication__close(&s->replication);                 \
-		fsm__close(fsm);                                     \
-		registry__close(&s->registry);                       \
-		config__close(&s->options);                          \
-		sqlite3_vfs_unregister(&s->vfs);                     \
-		vfs__close(&s->vfs);                                 \
-		test_logger_tear_down(&s->logger);                   \
+#define TEAR_DOWN_SERVER(I)                          \
+	{                                            \
+		struct server *s = &f->servers[I];   \
+		struct raft_fsm *fsm = &f->fsms[I];  \
+		replication__close(&s->replication); \
+		fsm__close(fsm);                     \
+		registry__close(&s->registry);       \
+		vfs__close(&s->vfs);                 \
+		config__close(&s->config);           \
+		test_logger_tear_down(&s->logger);   \
 	}
 
-#define CLUSTER_OPTIONS(I) &f->servers[I].options
+#define CLUSTER_OPTIONS(I) &f->servers[I].config
 #define CLUSTER_LOGGER(I) &f->servers[I].logger
 #define CLUSTER_LEADER(I) &f->servers[I].leader
 #define CLUSTER_REGISTRY(I) &f->servers[I].registry

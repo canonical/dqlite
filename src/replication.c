@@ -20,7 +20,7 @@
 /* Implementation of the sqlite3_wal_replication interface */
 struct replication
 {
-	struct dqlite_logger *logger;
+	struct logger *logger;
 	struct raft *raft;
 	queue apply_reqs;
 };
@@ -255,7 +255,8 @@ int replication__end(sqlite3_wal_replication *replication, void *arg)
 }
 
 int replication__init(struct sqlite3_wal_replication *replication,
-		      struct dqlite_logger *logger,
+		      const char *name,
+		      struct logger *logger,
 		      struct raft *raft)
 {
 	struct replication *r = sqlite3_malloc(sizeof *r);
@@ -275,6 +276,9 @@ int replication__init(struct sqlite3_wal_replication *replication,
 	replication->xFrames = replication__frames;
 	replication->xUndo = replication__undo;
 	replication->xEnd = replication__end;
+	replication->zName = name;
+
+	sqlite3_wal_replication_register(replication, 0);
 
 	return 0;
 }
@@ -282,5 +286,6 @@ int replication__init(struct sqlite3_wal_replication *replication,
 void replication__close(struct sqlite3_wal_replication *replication)
 {
 	struct replication *r = replication->pAppData;
+	sqlite3_wal_replication_unregister(replication);
 	sqlite3_free(r);
 }

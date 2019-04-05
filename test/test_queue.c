@@ -29,7 +29,7 @@ struct fixture
 	struct dqlite__queue queue;
 	struct config options;
 	struct dqlite__metrics metrics;
-	dqlite_logger *logger;
+	struct logger *logger;
 };
 
 /******************************************************************************

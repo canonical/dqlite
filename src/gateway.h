@@ -9,8 +9,8 @@
 
 #include "../include/dqlite.h"
 
-#include "./lib/buffer.h"
-#include "./lib/serialize.h"
+#include "lib/buffer.h"
+#include "lib/serialize.h"
 
 #include "config.h"
 #include "leader.h"
@@ -25,7 +25,7 @@ struct handle;
  */
 struct gateway
 {
-	struct dqlite_logger *logger; /* Logger to use */
+	struct logger *logger; /* Logger to use */
 	struct config *config;	/* Configuration */
 	struct registry *registry;    /* Register of existing databases */
 	struct raft *raft;	    /* Raft instance */
@@ -39,7 +39,7 @@ struct gateway
 };
 
 void gateway__init(struct gateway *g,
-		   struct dqlite_logger *logger,
+		   struct logger *logger,
 		   struct config *config,
 		   struct registry *registry,
 		   struct raft *raft);

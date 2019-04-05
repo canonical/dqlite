@@ -142,25 +142,24 @@ static void shm_destroy(struct shm *s)
 /* Hold content for a single file in the volatile file system. */
 struct content
 {
-	char *filename;		/* Name of the file. */
-	void *hdr;		/* File header (for WAL files). */
+	char *filename;         /* Name of the file. */
+	void *hdr;              /* File header (for WAL files). */
 	struct page **pages;    /* All pages in the file. */
-	int pages_len;		/* Number of pages in the file. */
+	int pages_len;          /* Number of pages in the file. */
 	unsigned int page_size; /* Page size of each page. */
 
 	int refcount; /* Number of open FDs referencing this file. */
 	int type;     /* Content type (either main db or WAL). */
 
-	struct shm *shm;     /* Shared memory (for db files). */
-	struct content *wal; /* WAL file content (for db files). */
-
-	dqlite_logger *logger; /* For error messages. */
+	struct shm *shm;       /* Shared memory (for db files). */
+	struct content *wal;   /* WAL file content (for db files). */
+	struct logger *logger; /* For error messages. */
 };
 
 /* Create the content structure for a new volatile file. */
 static struct content *content_create(const char *name,
 				      int type,
-				      dqlite_logger *logger)
+				      struct logger *logger)
 {
 	struct content *c;
 
@@ -406,7 +405,7 @@ struct vfs__file
 	sqlite3_file base;       /* Base class. Must be first. */
 	struct root *root;       /* Pointer to volatile VFS data. */
 	struct content *content; /* Handle to the file content. */
-	int flags;		 /* Flags passed to xOpen */
+	int flags;               /* Flags passed to xOpen */
 	sqlite3_file *temp;      /* For temp-files, actual VFS. */
 };
 
@@ -414,15 +413,15 @@ struct vfs__file
  * of all files that were created. */
 struct root
 {
-	dqlite_logger *logger;     /* Send log messages here. */
+	struct logger *logger;     /* Send log messages here. */
 	struct content **contents; /* Files content */
-	int contents_len;	  /* Number of files */
+	int contents_len;          /* Number of files */
 	pthread_mutex_t mutex;     /* Serialize to access */
-	int error;		   /* Last error occurred. */
+	int error;                 /* Last error occurred. */
 };
 
 /* Create a new root object. */
-static struct root *root_create(dqlite_logger *logger)
+static struct root *root_create(struct logger *logger)
 {
 	struct root *r;
 	int contents_size;
@@ -1242,7 +1241,7 @@ static int vfs__device_characteristics(sqlite3_file *file)
 static int shm_map(sqlite3_file *file, /* Handle open on database file */
 		   int region_index,   /* Region to retrieve */
 		   int region_size,    /* Size of regions */
-		   int extend,	 /* True to extend file if necessary */
+		   int extend,         /* True to extend file if necessary */
 		   void volatile **out /* OUT: Mapped memory */
 )
 {
@@ -1421,23 +1420,23 @@ static int shm_unmap(sqlite3_file *file, int delete_flag)
 }
 
 static const sqlite3_io_methods io_methods = {
-    2,				  // iVersion
-    vfs__x_close,		  // xClose
-    vfs__read,			  // xRead
-    vfs__write,			  // xWrite
-    vfs__truncate,		  // xTruncate
-    vfs__sync,			  // xSync
-    vfs__file_size,		  // xFileSize
-    vfs__lock,			  // xLock
-    vfs__unlock,		  // xUnlock
+    2,                            // iVersion
+    vfs__x_close,                 // xClose
+    vfs__read,                    // xRead
+    vfs__write,                   // xWrite
+    vfs__truncate,                // xTruncate
+    vfs__sync,                    // xSync
+    vfs__file_size,               // xFileSize
+    vfs__lock,                    // xLock
+    vfs__unlock,                  // xUnlock
     vfs__check_reserved_lock,     // xCheckReservedLock
-    vfs__file_control,		  // xFileControl
-    vfs__sector_size,		  // xSectorSize
+    vfs__file_control,            // xFileControl
+    vfs__sector_size,             // xSectorSize
     vfs__device_characteristics,  // xDeviceCharacteristics
-    shm_map,			  // xShmMap
-    shm_lock,			  // xShmLock
-    shm_barrier,		  // xShmBarrier
-    shm_unmap,			  // xShmUnmap
+    shm_map,                      // xShmMap
+    shm_lock,                     // xShmLock
+    shm_barrier,                  // xShmBarrier
+    shm_unmap,                    // xShmUnmap
     0,
     0,
 };
@@ -1760,7 +1759,7 @@ static int vfs__get_last_error(sqlite3_vfs *vfs, int x, char *y)
 	return rc;
 }
 
-int vfs__init(struct sqlite3_vfs *vfs, struct dqlite_logger *logger)
+int vfs__init(struct sqlite3_vfs *vfs, const char *name, struct logger *logger)
 {
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfs__file);
@@ -1785,6 +1784,9 @@ int vfs__init(struct sqlite3_vfs *vfs, struct dqlite_logger *logger)
 	vfs->xCurrentTime = vfs__current_time;
 	vfs->xGetLastError = vfs__get_last_error;
 	vfs->xCurrentTimeInt64 = vfs__current_time_int64;
+	vfs->zName = name;
+
+	sqlite3_vfs_register(vfs, 0);
 
 	return 0;
 }
@@ -1792,6 +1794,7 @@ int vfs__init(struct sqlite3_vfs *vfs, struct dqlite_logger *logger)
 void vfs__close(struct sqlite3_vfs *vfs)
 {
 	struct root *root;
+	sqlite3_vfs_unregister(vfs);
 	root = (struct root *)(vfs->pAppData);
 	root_destroy(root);
 	sqlite3_free(root);

@@ -1,9 +1,9 @@
 #ifndef DQLITE_TEST_LOG_H
 #define DQLITE_TEST_LOG_H
 
-#include "../include/dqlite.h"
+#include "../src/logger.h"
 
-dqlite_logger *test_logger();
+struct logger *test_logger();
 
 typedef struct test_log test_log;
 

@@ -5,7 +5,7 @@
 #include "response.h"
 
 void gateway__init(struct gateway *g,
-		   struct dqlite_logger *logger,
+		   struct logger *logger,
 		   struct config *config,
 		   struct registry *registry,
 		   struct raft *raft)
