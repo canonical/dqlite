@@ -3,8 +3,6 @@
 #include "./lib/assert.h"
 #include "./tuple.h"
 
-#include "error.h"
-#include "lifecycle.h"
 #include "stmt.h"
 
 /* The maximum number of columns we expect (for bindings or rows) is 255, which

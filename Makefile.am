@@ -41,9 +41,7 @@ libdqlite_la_SOURCES = \
   src/gateway.c \
   src/leader.c \
   src/lib/buffer.c \
-  src/lib/fsm.c \
   src/lib/transport.c \
-  src/lifecycle.c \
   src/message.c \
   src/metrics.c \
   src/config.c \
@@ -64,8 +62,6 @@ include_HEADERS += include/dqlite.h
 check_PROGRAMS += \
   unit-test
 test_lib_SOURCES = \
-  test/case.c \
-  test/leak.c \
   test/lib/fault.c \
   test/lib/fs.c \
   test/lib/heap.c \
@@ -73,13 +69,9 @@ test_lib_SOURCES = \
   test/lib/munit.c \
   test/lib/socket.c \
   test/lib/sqlite.c \
-  test/lib/uv.c \
-  test/log.c \
-  test/mem.c \
-  test/replication.c
+  test/lib/uv.c
 unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
 unit_test_SOURCES += \
-  test/lib/raft.c \
   test/test_error.c \
   test/test_file.c \
   test/test_format.c \
