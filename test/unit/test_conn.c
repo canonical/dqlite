@@ -39,23 +39,23 @@ TEST_MODULE(conn);
 	struct conn conn;                \
 	struct client client
 
-#define SETUP                                                        \
-	int rv;                                                      \
-	SETUP_HEAP;                                                  \
-	SETUP_SQLITE;                                                \
-	SETUP_LOGGER;                                                \
-	SETUP_VFS;                                                   \
-	SETUP_CONFIG;                                                \
-	SETUP_REGISTRY;                                              \
-	SETUP_RAFT;                                                  \
-	SETUP_REPLICATION;                                           \
-	RAFT_BOOTSTRAP;                                              \
-	RAFT_START;                                                  \
-	test_socket_pair_setup(params, &f->sockets);                 \
-	rv = conn__start(&f->conn, &f->logger, &f->loop, &f->config, \
-			 &f->registry, &f->raft, f->sockets.server,  \
-			 &f->raft_transport, NULL);                  \
-	munit_assert_int(rv, ==, 0);                                 \
+#define SETUP                                                             \
+	int rv;                                                           \
+	SETUP_HEAP;                                                       \
+	SETUP_SQLITE;                                                     \
+	SETUP_LOGGER;                                                     \
+	SETUP_VFS;                                                        \
+	SETUP_CONFIG;                                                     \
+	SETUP_REGISTRY;                                                   \
+	SETUP_RAFT;                                                       \
+	SETUP_REPLICATION;                                                \
+	RAFT_BOOTSTRAP;                                                   \
+	RAFT_START;                                                       \
+	test_socket_pair_setup(params, &f->sockets);                      \
+	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry,    \
+			 &f->raft, f->sockets.server, &f->raft_transport, \
+			 NULL);                                           \
+	munit_assert_int(rv, ==, 0);                                      \
 	client__init(&f->client, f->sockets.client)
 
 #define TEAR_DOWN                                \
