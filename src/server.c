@@ -2,8 +2,11 @@
 
 #include "lib/assert.h"
 
+#include "fsm.h"
+#include "replication.h"
 #include "server.h"
-#include "string.h"
+#include "transport.h"
+#include "vfs.h"
 
 int dqlite_initialize()
 {
@@ -31,9 +34,91 @@ int dqlite__init(struct dqlite *d,
 	int rv;
 	rv = config__init(&d->config, id, address);
 	if (rv != 0) {
-		return rv;
+		goto err;
 	}
+	rv = vfs__init(&d->vfs, &d->config);
+	if (rv != 0) {
+		goto err_after_vfs_init;
+	}
+	registry__init(&d->registry, &d->config);
+	rv = raft_uv_proxy__init(&d->raft_transport);
+	if (rv != 0) {
+		goto err_after_registry_init;
+	}
+	rv = uv_loop_init(&d->loop);
+	if (rv != 0) {
+		/* TODO: better error reporting */
+		rv = DQLITE_INTERNAL;
+		goto err_after_raft_transport_init;
+	}
+	rv = raft_io_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
+	if (rv != 0) {
+		/* TODO: better error reporting */
+		rv = DQLITE_INTERNAL;
+		goto err_after_loop_init;
+	}
+	rv = fsm__init(&d->raft_fsm, &d->config, &d->registry);
+	if (rv != 0) {
+		goto err_after_raft_io_init;
+	}
+	rv = replication__init(&d->replication, &d->config, &d->raft);
+	if (rv != 0) {
+		goto err_after_raft_fsm_init;
+	}
+	rv = sem_init(&d->ready, 0, 0);
+	if (rv != 0) {
+		/* TODO: better error reporting */
+		rv = DQLITE_INTERNAL;
+		goto err_after_raft_replication_init;
+	}
+	rv = sem_init(&d->stopped, 0, 0);
+	if (rv != 0) {
+		/* TODO: better error reporting */
+		rv = DQLITE_INTERNAL;
+		goto err_after_ready_init;
+	}
+	rv = pthread_mutex_init(&d->mutex, NULL);
+	assert(rv == 0); /* Docs say that pthread_mutex_init can't fail */
+	d->running = false;
 	return 0;
+
+ err_after_ready_init:
+	sem_destroy(&d->ready);
+ err_after_raft_replication_init:
+	replication__close(&d->replication);
+ err_after_raft_fsm_init:
+	fsm__close(&d->raft_fsm);
+ err_after_raft_io_init:
+	raft_io_uv_close(&d->raft_io);
+ err_after_loop_init:
+	uv_loop_close(&d->loop);
+ err_after_raft_transport_init:
+	raft_uv_proxy__close(&d->raft_transport);
+ err_after_registry_init:
+	registry__close(&d->registry);
+ err_after_vfs_init:
+	vfs__close(&d->vfs);
+ err:
+	return rv;
+}
+
+void dqlite__close(struct dqlite *d)
+{
+	int rv;
+	rv = pthread_mutex_destroy(&d->mutex); /* This is a no-op on Linux . */
+	assert(rv == 0);
+	rv = sem_destroy(&d->stopped);
+	assert(rv == 0); /* Fails only if sem object is not valid */
+	rv = sem_destroy(&d->ready);
+	assert(rv == 0); /* Fails only if sem object is not valid */
+	replication__close(&d->replication);
+	fsm__close(&d->raft_fsm);
+	raft_io_uv_close(&d->raft_io);
+	uv_loop_close(&d->loop);
+	raft_uv_proxy__close(&d->raft_transport);
+	vfs__close(&d->vfs);
+	registry__close(&d->registry);
+	config__close(&d->config);
 }
 
 #if 0
