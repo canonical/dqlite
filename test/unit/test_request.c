@@ -1,7 +1,6 @@
 #include "../../src/request.h"
 
 #include "../lib/heap.h"
-#include "../lib/message.h"
 #include "../lib/runner.h"
 
 TEST_MODULE(request);
