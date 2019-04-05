@@ -1,7 +1,8 @@
+#include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
-#include "../lib/fs.h"
+#include "../lib/thread.h"
 
 #include "../../src/server.h"
 
@@ -13,46 +14,77 @@ TEST_MODULE(server);
  *
  ******************************************************************************/
 
-struct fixture
-{
-	char *dir;
-	struct dqlite dqlite;
-};
+#define FIXTURE \
+	FIXTURE_THREAD;\
+	char *dir;\
+	struct dqlite dqlite
 
-static void *setup(const MunitParameter params[], void *user_data)
-{
-	struct fixture *f = munit_malloc(sizeof *f);
-	int rv;
-	SETUP_HEAP;
-	SETUP_SQLITE;
-	f->dir = test_dir_setup();
-	rv = dqlite__init(&f->dqlite, 0, "1", f->dir);
-	munit_assert_int(rv, ==, 0);
-	return f;
-}
+#define SETUP \
+	int rv;\
+	SETUP_HEAP;\
+	SETUP_SQLITE;\
+	f->dir = test_dir_setup();\
+	rv = dqlite__init(&f->dqlite, 1, "1", f->dir);\
+	munit_assert_int(rv, ==, 0)
 
-static void tear_down(void *data)
-{
-	struct fixture *f = data;
-	dqlite__close(&f->dqlite);
-	test_dir_tear_down(f->dir);
-	TEAR_DOWN_SQLITE;
-	TEAR_DOWN_HEAP;
-	free(f);
-}
+#define TEAR_DOWN \
+	dqlite__close(&f->dqlite);\
+	test_dir_tear_down(f->dir);\
+	TEAR_DOWN_SQLITE;\
+	TEAR_DOWN_HEAP
 
 /******************************************************************************
  *
- * dqlite__init
+ * Helper macros.
  *
  ******************************************************************************/
 
-TEST_SUITE(init);
-TEST_SETUP(init, setup);
-TEST_TEAR_DOWN(init, tear_down);
-
-TEST_CASE(init, success, NULL)
+static void *run(void *arg)
 {
+	struct dqlite *d = arg;
+	int rc;
+	rc = dqlite_run(d);
+	if (rc) {
+		return (void *)1;
+	}
+	return NULL;
+}
+
+/* Run the dqlite server in a thread */
+#define START THREAD_START(run, &f->dqlite)
+
+#define READY munit_assert_true(dqlite_ready(&f->dqlite))
+
+#define STOP dqlite_stop(&f->dqlite); THREAD_JOIN
+
+/******************************************************************************
+ *
+ * dqlite_run
+ *
+ ******************************************************************************/
+
+struct run_fixture {
+	FIXTURE;
+};
+
+TEST_SUITE(run);
+TEST_SETUP(run) {
+	struct run_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	return f;
+}
+TEST_TEAR_DOWN(run) {
+	struct run_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(run, success, NULL)
+{
+	struct run_fixture *f = data;
+	START;
+	READY;
+	STOP;
 	(void)params;
 	return MUNIT_OK;
 }

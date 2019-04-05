@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #include <sqlite3.h>
 #include <uv.h>
@@ -92,44 +93,44 @@ typedef struct dqlite dqlite;
 int dqlite_create(const char *dir,
 		  unsigned id,
 		  const char *address,
-		  dqlite **out);
+		  dqlite **d);
 
 /* Destroy and deallocate a dqlite server instance. */
-void dqlite_destroy(dqlite *s);
+void dqlite_destroy(dqlite *d);
 
 /* Set a config option on a dqlite server
  *
  * This API must be called after dqlite_init and before
  * dqlite_run.
  */
-int dqlite_config(dqlite *s, int op, void *arg);
+int dqlite_config(dqlite *d, int op, void *arg);
 
-int dqlite_bootstrap(dqlite *s);
+int dqlite_bootstrap(dqlite *d);
 
 /* Start a dqlite server.
  *
  * In case of error, a human-readable message describing the failure can be
  * obtained using dqlite_errmsg.
  */
-int dqlite_run(dqlite *s);
+int dqlite_run(dqlite *d);
 
 /* Wait until a dqlite server is ready and can handle connections.
 **
-** Returns 1 if the server has been successfully started, 0 otherwise.
+** Returns true if the server has been successfully started, false otherwise.
 **
 ** This is a thread-safe API, but must be invoked before any call to
 ** dqlite_stop or dqlite_handle.
 */
-int dqlite_ready(dqlite *s);
+bool dqlite_ready(dqlite *d);
 
-/* Stop a dqlite server and wait for it to shutdown.
+/* Stop a dqlite server.
 **
 ** This is a thread-safe API.
 **
 ** In case of error, the caller must invoke sqlite3_free
 ** against the returned errmsg.
 */
-int dqlite_stop(dqlite *s, char **errmsg);
+int dqlite_stop(dqlite *d);
 
 /* Start handling a new connection.
 **
@@ -138,7 +139,7 @@ int dqlite_stop(dqlite *s, char **errmsg);
 ** In case of error, the caller must invoke sqlite3_free
 ** against the returned errmsg.
 */
-int dqlite_handle(dqlite *s, int socket, char **errrmsg);
+int dqlite_handle(dqlite *d, int socket, char **errrmsg);
 
 /* Return a message describing the most recent error occurred.
  *
