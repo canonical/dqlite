@@ -1,7 +1,7 @@
-#ifndef LOGGING_H_
-#define LOGGING_H_
+#ifndef LOGGER_H_
+#define LOGGER_H_
 
-#include "../../include/dqlite.h"
+#include "../include/dqlite.h"
 
 struct logger
 {
@@ -15,4 +15,4 @@ struct logger
 #define debugf(L, FORMAT, ...) \
 	L->emit(L->data, DQLITE_DEBUG, FORMAT, ##__VA_ARGS__);
 
-#endif /* LOGGING_H_ */
+#endif /* LOGGER_H_ */

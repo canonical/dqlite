@@ -97,7 +97,6 @@ unit_test_SOURCES += \
   test/test_queue.c \
   test/test_response.c \
   test/test_schema.c \
-  test/test_server.c \
   test/unit/ext/test_co.c \
   test/unit/ext/test_uv.c \
   test/unit/lib/test_buffer.c \
@@ -111,6 +110,7 @@ unit_test_SOURCES += \
   test/unit/test_registry.c \
   test/unit/test_replication.c \
   test/unit/test_request.c \
+  test/unit/test_server.c \
   test/unit/test_stmt.c \
   test/unit/test_tuple.c \
   test/unit/test_vfs.c \

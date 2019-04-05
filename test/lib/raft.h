@@ -35,7 +35,7 @@
 		rv2 = raft_io_uv_init(&f->raft_io, &f->loop, f->dir,     \
 				      &f->raft_transport);               \
 		munit_assert_int(rv2, ==, 0);                            \
-		rv2 = fsm__init(&f->fsm, &f->logger, &f->registry);      \
+		rv2 = fsm__init(&f->fsm, &f->config, &f->registry);      \
 		munit_assert_int(rv2, ==, 0);                            \
 		rv2 = raft_init(&f->raft, &f->raft_io, &f->fsm, 1, "1"); \
 		munit_assert_int(rv2, ==, 0);                            \

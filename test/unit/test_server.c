@@ -1,19 +1,63 @@
-#include <pthread.h>
+#include "../lib/heap.h"
+#include "../lib/runner.h"
+#include "../lib/sqlite.h"
+#include "../lib/fs.h"
 
-#include <sqlite3.h>
-
-#include "../include/dqlite.h"
-
-#include "client.h"
-#include "log.h"
-#include "server.h"
-#include "./lib/runner.h"
-#include "./lib/sqlite.h"
-#include "./lib/heap.h"
-
-#if 0
+#include "../../src/server.h"
 
 TEST_MODULE(server);
+
+/******************************************************************************
+ *
+ * Fixture
+ *
+ ******************************************************************************/
+
+struct fixture
+{
+	char *dir;
+	struct dqlite dqlite;
+};
+
+static void *setup(const MunitParameter params[], void *user_data)
+{
+	struct fixture *f = munit_malloc(sizeof *f);
+	int rv;
+	SETUP_HEAP;
+	SETUP_SQLITE;
+	f->dir = test_dir_setup();
+	rv = dqlite__init(&f->dqlite, 0, "1", f->dir);
+	munit_assert_int(rv, ==, 0);
+	return f;
+}
+
+static void tear_down(void *data)
+{
+	struct fixture *f = data;
+	dqlite__close(&f->dqlite);
+	test_dir_tear_down(f->dir);
+	TEAR_DOWN_SQLITE;
+	TEAR_DOWN_HEAP;
+	free(f);
+}
+
+/******************************************************************************
+ *
+ * dqlite__init
+ *
+ ******************************************************************************/
+
+TEST_SUITE(init);
+TEST_SETUP(init, setup);
+TEST_TEAR_DOWN(init, tear_down);
+
+TEST_CASE(init, success, NULL)
+{
+	(void)params;
+	return MUNIT_OK;
+}
+
+#if 0
 
 /******************************************************************************
  *
