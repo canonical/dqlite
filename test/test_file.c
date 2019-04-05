@@ -1,11 +1,11 @@
-#include "../src/vfs.h"
 #include "../src/file.h"
+#include "../src/vfs.h"
 
-#include "case.h"
-#include "log.h"
 #include "./lib/heap.h"
 #include "./lib/runner.h"
 #include "./lib/sqlite.h"
+#include "case.h"
+#include "log.h"
 
 TEST_MODULE(file);
 
@@ -18,7 +18,7 @@ TEST_MODULE(file);
 /* Helper to execute a SQL statement. */
 static void __db_exec(sqlite3 *db, const char *sql)
 {
-	int   rc;
+	int rc;
 	char *errmsg;
 
 	rc = sqlite3_exec(db, sql, NULL, NULL, &errmsg);
@@ -29,13 +29,12 @@ static void __db_exec(sqlite3 *db, const char *sql)
  * WAL mode. */
 static sqlite3 *__db_open(sqlite3_vfs *vfs)
 {
-	int      rc;
+	int rc;
 	sqlite3 *db;
 
-	rc = sqlite3_open_v2("test.db",
-	                     &db,
-	                     SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-	                     vfs->zName);
+	rc = sqlite3_open_v2("test.db", &db,
+			     SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+			     vfs->zName);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	__db_exec(db, "PRAGMA page_size=512");
@@ -65,11 +64,8 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	logger = test_logger();
 
-	rv = vfs__init(vfs, logger);
+	rv = vfs__init(vfs, "volatile", logger);
 	munit_assert_int(rv, ==, 0);
-	vfs->zName = "volatile";
-
-	sqlite3_vfs_register(vfs, 0);
 
 	return vfs;
 }
@@ -77,8 +73,6 @@ static void *setup(const MunitParameter params[], void *user_data)
 static void tear_down(void *data)
 {
 	sqlite3_vfs *vfs = data;
-
-	sqlite3_vfs_unregister(vfs);
 
 	vfs__close(vfs);
 	free(vfs);
@@ -103,9 +97,9 @@ TEST_TEAR_DOWN(read, tear_down);
 TEST_CASE(read, cantopen, NULL)
 {
 	sqlite3_vfs *vfs = data;
-	uint8_t *    buf;
-	size_t       len;
-	int          rc;
+	uint8_t *buf;
+	size_t len;
+	int rc;
 
 	(void)params;
 
@@ -119,11 +113,11 @@ TEST_CASE(read, cantopen, NULL)
 TEST_CASE(read, empty, NULL)
 {
 	sqlite3_vfs *vfs = data;
-	sqlite3 *    db;
-	uint8_t *    buf;
-	size_t       len;
-	int          flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	int          rc;
+	sqlite3 *db;
+	uint8_t *buf;
+	size_t len;
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int rc;
 
 	(void)params;
 
@@ -145,15 +139,15 @@ TEST_CASE(read, empty, NULL)
 /* Read the content of a database and WAL files and then write them back. */
 TEST_CASE(read, then_write, NULL)
 {
-	sqlite3_vfs * vfs = data;
-	sqlite3 *     db  = __db_open(vfs);
-	int           rc;
-	uint8_t *     buf1;
-	uint8_t *     buf2;
-	size_t        len1;
-	size_t        len2;
+	sqlite3_vfs *vfs = data;
+	sqlite3 *db = __db_open(vfs);
+	int rc;
+	uint8_t *buf1;
+	uint8_t *buf2;
+	size_t len1;
+	size_t len2;
 	sqlite3_stmt *stmt;
-	const char *  tail;
+	const char *tail;
 
 	(void)params;
 
@@ -186,8 +180,8 @@ TEST_CASE(read, then_write, NULL)
 	rc = sqlite3_open_v2("test.db", &db, SQLITE_OPEN_READWRITE, "volatile");
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = sqlite3_prepare(
-	    db, "INSERT INTO test(n) VALUES(?)", -1, &stmt, &tail);
+	rc = sqlite3_prepare(db, "INSERT INTO test(n) VALUES(?)", -1, &stmt,
+			     &tail);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	rc = sqlite3_finalize(stmt);
@@ -199,7 +193,7 @@ TEST_CASE(read, then_write, NULL)
 	return MUNIT_OK;
 }
 
-static char *test_read_oom_delay[]  = {"0", "1", NULL};
+static char *test_read_oom_delay[] = {"0", "1", NULL};
 static char *test_read_oom_repeat[] = {"1", NULL};
 
 static MunitParameterEnum test_read_oom_params[] = {
@@ -212,10 +206,10 @@ static MunitParameterEnum test_read_oom_params[] = {
 TEST_CASE(read, oom, test_read_oom_params)
 {
 	sqlite3_vfs *vfs = data;
-	sqlite3 *    db  = __db_open(vfs);
-	uint8_t *    buf;
-	size_t       len;
-	int          rc;
+	sqlite3 *db = __db_open(vfs);
+	uint8_t *buf;
+	size_t len;
+	int rc;
 
 	(void)params;
 

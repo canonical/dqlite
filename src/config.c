@@ -24,6 +24,7 @@
 
 int config__init(struct config *c, unsigned id, const char *address)
 {
+	int rv;
 	c->id = id;
 	c->address = sqlite3_malloc(strlen(address) + 1);
 	if (c->address == NULL) {
@@ -33,6 +34,8 @@ int config__init(struct config *c, unsigned id, const char *address)
 	c->heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT;
 	c->page_size = DEFAULT_PAGE_SIZE;
 	c->checkpoint_threshold = DEFAULT_CHECKPOINT_THRESHOLD;
+	rv = snprintf(c->name, sizeof c->name, "dqlite-%u", id);
+	assert(rv < (int)(sizeof c->name));
 	return 0;
 }
 

@@ -1,6 +1,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "../../include/dqlite.h"
+
 #include "logger.h"
 #include "munit.h"
 
@@ -54,7 +56,7 @@ static void test_logger__emit(void *data,
 	munit_log(MUNIT_LOG_INFO, buf);
 }
 
-void test_logger_setup(const MunitParameter params[], struct dqlite_logger *l)
+void test_logger_setup(const MunitParameter params[], struct logger *l)
 {
 	struct test_logger *t;
 
@@ -67,7 +69,7 @@ void test_logger_setup(const MunitParameter params[], struct dqlite_logger *l)
 	l->emit = test_logger__emit;
 }
 
-void test_logger_tear_down(struct dqlite_logger *l)
+void test_logger_tear_down(struct logger *l)
 {
 	free(l->data);
 }

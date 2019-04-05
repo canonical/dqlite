@@ -8,7 +8,8 @@
 #include <uv.h>
 
 /* Error codes */
-enum { DQLITE_BADFD = 1,
+enum { DQLITE_BADSOCKET = 1,
+       DQLITE_MISUSE,
        DQLITE_NOMEM,
        DQLITE_PROTO,
        DQLITE_PARSE,
@@ -75,14 +76,7 @@ enum { DQLITE_DEBUG = 0, DQLITE_INFO, DQLITE_WARN, DQLITE_ERROR };
  * This API must be called exactly once before any other SQLite or dqlite API
  * call is invoked in a process.
  */
-int dqlite_init(const char **ermsg);
-
-/* Interface implementing logging functionality */
-typedef struct dqlite_logger
-{
-	void *data;
-	void (*emit)(void *data, int level, const char *fmt, va_list args);
-} dqlite_logger;
+int dqlite_initialize();
 
 /* Interface implementing cluster-related functionality */
 typedef struct dqlite_info

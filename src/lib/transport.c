@@ -88,7 +88,7 @@ int transport__init(struct transport *t, struct uv_loop_s *loop, int fd)
 			assert(rv == 0);
 			rv = uv_tcp_open(tcp, fd);
 			if (rv != 0) {
-				return DQLITE_BADFD;
+				return DQLITE_BADSOCKET;
 			}
 			t->stream = (struct uv_stream_s *)tcp;
 			break;
@@ -101,12 +101,12 @@ int transport__init(struct transport *t, struct uv_loop_s *loop, int fd)
 			assert(rv == 0);
 			rv = uv_pipe_open(pipe, fd);
 			if (rv != 0) {
-				return DQLITE_BADFD;
+				return DQLITE_BADSOCKET;
 			}
 			t->stream = (struct uv_stream_s *)pipe;
 			break;
 		default:
-			return DQLITE_BADFD;
+			return DQLITE_BADSOCKET;
 	};
 
 	t->stream->data = t;

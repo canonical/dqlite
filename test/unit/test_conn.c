@@ -1,6 +1,8 @@
 #include <raft.h>
 #include <raft/io_uv.h>
 
+#include "../../include/dqlite.h"
+
 #include "../lib/heap.h"
 #include "../lib/logger.h"
 #include "../lib/config.h"

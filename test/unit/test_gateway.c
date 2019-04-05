@@ -1,3 +1,5 @@
+#include "../../include/dqlite.h"
+
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
 

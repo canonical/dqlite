@@ -195,7 +195,7 @@ static int read_protocol(struct conn *c)
 }
 
 int conn__start(struct conn *c,
-		struct dqlite_logger *logger,
+		struct logger *logger,
 		struct uv_loop_s *loop,
 		struct config *config,
 		struct registry *registry,
