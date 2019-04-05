@@ -90,9 +90,9 @@ typedef struct dqlite_info
 typedef struct dqlite dqlite;
 
 /* Allocate and initialize a dqlite server instance. */
-int dqlite_create(const char *dir,
-		  unsigned id,
+int dqlite_create(unsigned id,
 		  const char *address,
+		  const char *dir,
 		  dqlite **d);
 
 /* Destroy and deallocate a dqlite server instance. */

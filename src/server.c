@@ -167,6 +167,25 @@ void dqlite__close(struct dqlite *d)
 	config__close(&d->config);
 }
 
+int dqlite_create(unsigned id, const char *address, const char *dir, dqlite **d)
+{
+	int rv;
+
+	*d = sqlite3_malloc(sizeof **d);
+
+	rv = dqlite__init(*d, id, address, dir);
+	if (rv != 0) {
+		return rv;
+	}
+
+	return 0;
+}
+
+void dqlite_destroy(dqlite *d) {
+	dqlite__close(d);
+	sqlite3_free(d);
+}
+
 int dqlite_bootstrap(dqlite *d)
 {
 	struct raft_configuration configuration;
@@ -200,7 +219,8 @@ static void raft_close_cb(struct raft *raft)
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
 }
 
-static void destroy_conn(struct conn *conn) {
+static void destroy_conn(struct conn *conn)
+{
 	QUEUE__REMOVE(&conn->queue);
 	sqlite3_free(conn);
 }
@@ -394,13 +414,6 @@ int dqlite_stop(dqlite *d)
 
 #if 0
 
-int dqlite_create(const char *dir,
-			 unsigned id,
-			 const char *address,
-			 dqlite **out)
-{
-	return server__create(dir, id, address, out);
-}
 /* Set a config option */
 int dqlite_config(dqlite *s, int op, void *arg)
 {
