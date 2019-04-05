@@ -11,7 +11,6 @@
 #include "./lib/assert.h"
 
 #include "error.h"
-#include "lifecycle.h"
 
 /* Fallback message returned when failing to allocate the error message
  * itself. */
@@ -19,8 +18,6 @@ static char *dqlite__error_oom_msg =
     "error message unavailable (out of memory)";
 
 void dqlite__error_init(dqlite__error *e) {
-	dqlite__lifecycle_init(DQLITE__LIFECYCLE_ERROR);
-
 	*e = NULL;
 }
 
@@ -28,8 +25,6 @@ void dqlite__error_close(dqlite__error *e) {
 	if (*e != NULL && *e != dqlite__error_oom_msg) {
 		sqlite3_free(*e);
 	}
-
-	dqlite__lifecycle_close(DQLITE__LIFECYCLE_ERROR);
 }
 
 /* Set an error message by rendering the given format against the given

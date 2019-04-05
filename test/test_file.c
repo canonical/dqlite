@@ -4,8 +4,6 @@
 #include "./lib/heap.h"
 #include "./lib/runner.h"
 #include "./lib/sqlite.h"
-#include "case.h"
-#include "log.h"
 
 TEST_MODULE(file);
 
