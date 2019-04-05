@@ -7,7 +7,6 @@
 
 #include "command.h"
 #include "leader.h"
-#include "queue.h"
 #include "replication.h"
 
 /* Set to 1 to enable tracing. */
