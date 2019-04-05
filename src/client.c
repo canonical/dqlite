@@ -279,3 +279,12 @@ void client__close_rows(struct rows *rows)
 	}
 	sqlite3_free(rows->column_names);
 }
+
+int client__send_connect(struct client *c, unsigned id, const char *address)
+{
+	struct request_connect request;
+	request.id = id;
+	request.address = address;
+	REQUEST(connect, CONNECT);
+	return 0;
+}

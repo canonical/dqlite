@@ -91,6 +91,11 @@ int client__send_query(struct client *c, unsigned stmt_id);
 int client__recv_rows(struct client *c, struct rows *rows);
 
 /**
+ * Send a raft connect request.
+ */
+int client__send_connect(struct client *c, unsigned id, const char *address);
+
+/**
  * Release all memory used in the given rows object.
  */
 void client__close_rows(struct rows *rows);
