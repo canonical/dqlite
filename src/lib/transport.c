@@ -1,4 +1,4 @@
-#include <sqlite3.h>
+#include <raft.h>
 
 #include "../../include/dqlite.h"
 
@@ -80,7 +80,7 @@ int transport__init(struct transport *t, struct uv_loop_s *loop, int fd)
 
 	switch (uv_guess_handle(fd)) {
 		case UV_TCP:
-			tcp = sqlite3_malloc(sizeof *tcp);
+			tcp = raft_malloc(sizeof *tcp);
 			if (tcp == NULL) {
 				return DQLITE_NOMEM;
 			}
@@ -93,7 +93,7 @@ int transport__init(struct transport *t, struct uv_loop_s *loop, int fd)
 			t->stream = (struct uv_stream_s *)tcp;
 			break;
 		case UV_NAMED_PIPE:
-			pipe = sqlite3_malloc(sizeof *pipe);
+			pipe = raft_malloc(sizeof *pipe);
 			if (pipe == NULL) {
 				return DQLITE_NOMEM;
 			}
@@ -123,7 +123,7 @@ int transport__init(struct transport *t, struct uv_loop_s *loop, int fd)
 static void close_cb(uv_handle_t *handle)
 {
 	struct transport *t = handle->data;
-	sqlite3_free(t->stream);
+	raft_free(t->stream);
 	if (t->close_cb != NULL) {
 		t->close_cb(t);
 	}
