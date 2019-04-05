@@ -30,12 +30,18 @@
 #define REQUEST_EXEC_SQL(X, ...)        \
 	X(uint64, db_id, ##__VA_ARGS__) \
 	X(text, sql, ##__VA_ARGS__)
-#define REQUEST_QUERY_SQL(X, ...) \
-	X(uint64, db_id, ##__VA_ARGS__)     \
+#define REQUEST_QUERY_SQL(X, ...)       \
+	X(uint64, db_id, ##__VA_ARGS__) \
 	X(text, sql, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
+
+#define REQUEST_CONNECT(X, ...)      \
+	X(uint64, id, ##__VA_ARGS__) \
+	X(text, address, ##__VA_ARGS__)
+
+SERIALIZE__DEFINE(request_connect, REQUEST_CONNECT);
 
 #define REQUEST__TYPES(X, ...)             \
 	X(leader, LEADER, __VA_ARGS__)     \

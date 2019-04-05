@@ -1,5 +1,7 @@
 #include "conn.h"
 #include "message.h"
+#include "request.h"
+#include "transport.h"
 
 /* Initialize the given buffer for reading, ensure it has the given size. */
 static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
@@ -64,6 +66,34 @@ abort:
 	conn__stop(c);
 }
 
+static void close_cb(struct transport *transport)
+{
+	struct conn *c = transport->data;
+	c->closed = true;
+	gateway__close(&c->gateway);
+	buffer__close(&c->write);
+	buffer__close(&c->read);
+	if (c->close_cb != NULL) {
+		c->close_cb(c);
+	}
+}
+
+static void raft_connect(struct conn *c, struct cursor *cursor)
+{
+	struct request_connect request;
+	int rv;
+	rv = request_connect__decode(cursor, &request);
+	if (rv != 0) {
+		conn__stop(c);
+		return;
+	}
+	raft_uv_proxy__accept(c->uv_transport, request.id, request.address,
+			      c->transport.stream);
+	/* Close the connection without actually closing the transport, since
+	 * the stream will be used by raft */
+	close_cb(&c->transport);
+}
+
 static void read_request_cb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
@@ -81,6 +111,12 @@ static void read_request_cb(struct transport *transport, int status)
 
 	buffer__reset(&c->write);
 	buffer__advance(&c->write, message__sizeof(&c->response)); /* Header */
+
+	switch (c->request.type) {
+		case DQLITE_REQUEST_CONNECT:
+			raft_connect(c, &cursor);
+			return;
+	}
 
 	rv = gateway__handle(&c->gateway, &c->handle, c->request.type, &cursor,
 			     &c->write, gateway_handle_cb);
@@ -240,22 +276,11 @@ err:
 	return rv;
 }
 
-static void close_cb(struct transport *transport)
-{
-	struct conn *c = transport->data;
-	buffer__close(&c->write);
-	buffer__close(&c->read);
-	if (c->close_cb != NULL) {
-		c->close_cb(c);
-	}
-}
-
 void conn__stop(struct conn *c)
 {
 	if (c->closed) {
 		return;
 	}
 	c->closed = true;
-	gateway__close(&c->gateway);
 	transport__close(&c->transport, close_cb);
 }
