@@ -15,6 +15,7 @@
 #include "metrics.h"
 #include "config.h"
 #include "request.h"
+#include "logger.h"
 
 /* The size of pre-allocated read buffer for holding the payload of incoming
  * requests. This should generally fit in a single IP packet, given typical MTU
@@ -29,7 +30,7 @@
 struct conn_
 {
 	/* public */
-	dqlite_logger *logger; /* Optional logger implementation */
+	struct logger *logger; /* Optional logger implementation */
 
 	/* read-only */
 	dqlite__error error; /* Last error occurred, if any */
@@ -68,7 +69,7 @@ struct conn_
 /* Initialize a connection object */
 void conn__init_(struct conn_ *c,
 		 int fd,
-		 dqlite_logger *logger,
+		 struct logger *logger,
 		 uv_loop_t *loop,
 		 struct config *options,
 		 struct dqlite__metrics *metrics);

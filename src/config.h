@@ -6,11 +6,12 @@
  */
 struct config
 {
-	unsigned id;		       /* Unique instance ID */
-	char *address;		       /* Instance address */
+	unsigned id;                   /* Unique instance ID */
+	char *address;                 /* Instance address */
 	unsigned heartbeat_timeout;    /* In milliseconds */
-	unsigned page_size;	    /* Database page size */
+	unsigned page_size;            /* Database page size */
 	unsigned checkpoint_threshold; /* In outstanding WAL frames */
+	char name[256];                /* VFS/replication registriatio name */
 };
 
 /**

@@ -1,17 +1,13 @@
+#include "../include/dqlite.h"
+
+#include "lib/assert.h"
+
 #include "server.h"
 #include "string.h"
 
-int dqlite__init(struct dqlite *d) {
-	return 0;
-}
-
-#if 0
-
-int dqlite_init(const char **errmsg)
+int dqlite_initialize()
 {
 	int rc;
-
-	assert(errmsg != NULL);
 
 	/* Configure SQLite for single-thread mode. This is a global config.
 	 *
@@ -21,14 +17,26 @@ int dqlite_init(const char **errmsg)
 	 */
 	rc = sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
 	if (rc != SQLITE_OK) {
-		*errmsg = "failed to set SQLite to single-thread mode";
-		return DQLITE_ERROR;
+		assert(rc == SQLITE_MISUSE);
+		return DQLITE_MISUSE;
 	}
-
-	*errmsg = NULL;
-
 	return 0;
 }
+
+int dqlite__init(struct dqlite *d,
+		 unsigned id,
+		 const char *address,
+		 const char *dir)
+{
+	int rv;
+	rv = config__init(&d->config, id, address);
+	if (rv != 0) {
+		return rv;
+	}
+	return 0;
+}
+
+#if 0
 
 /* Manage client TCP connections to a dqlite node */
 struct dqlite
@@ -37,7 +45,7 @@ struct dqlite
 	dqlite__error error; /* Last error occurred, if any */
 
 	/* private */
-	struct dqlite_logger *logger;    /* Optional logger implementation */
+	struct logger *logger;    /* Optional logger implementation */
 	struct dqlite__metrics *metrics; /* Operational metrics */
 	struct config options;		 /* Configuration values */
 	char name[256];
@@ -318,7 +326,7 @@ int server__create(const char *dir,
 	assert(err == 0);
 	s->raft.raft.data = s;
 	raft_set_election_timeout(&s->raft.raft, 250);
-	err = replication__init(&s->replication, s->logger, &s->raft.raft);
+	err = replication__init(&s->replication, c->config.name, s->logger, &s->raft.raft);
 	assert(err == 0);
 	s->replication.zName = s->name;
 	sqlite3_wal_replication_register(&s->replication, 0);

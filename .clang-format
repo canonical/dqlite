@@ -4,6 +4,6 @@ BraceWrapping:
  AfterFunction: true
  AfterStruct: true
 IndentWidth: 8
+UseTab: ForContinuationAndIndentation
 PointerAlignment: Right
-UseTab: Always
 AllowAllParametersOfDeclarationOnNextLine: false

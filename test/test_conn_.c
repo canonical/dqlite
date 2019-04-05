@@ -30,7 +30,7 @@ struct fixture
 	struct test_socket_pair sockets;
 	struct config options;
 	struct dqlite__metrics metrics;
-	dqlite_logger *logger;
+	struct logger *logger;
 	uv_loop_t loop;
 	struct conn_ *conn;
 	struct response response;

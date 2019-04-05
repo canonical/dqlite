@@ -6,8 +6,8 @@
 #include "../src/format.h"
 #include "../src/vfs.h"
 
-#include "./lib/runner.h"
 #include "./lib/fs.h"
+#include "./lib/runner.h"
 #include "case.h"
 #include "log.h"
 #include "mem.h"
@@ -225,7 +225,7 @@ static int __shm_shared_lock_held(sqlite3 *db, int i)
  *
  ******************************************************************************/
 
-static dqlite_logger *logger;
+static struct logger *logger;
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
@@ -235,9 +235,8 @@ static void *setup(const MunitParameter params[], void *user_data)
 	test_case_setup(params, user_data);
 
 	logger = test_logger();
-	rv = vfs__init(vfs, logger);
+	rv = vfs__init(vfs, "volatile", logger);
 	munit_assert_int(rv, ==, 0);
-	vfs->zName = "volatile";
 
 	return vfs;
 }
@@ -937,8 +936,8 @@ TEST_CASE(write, and_read_wal_frames, NULL)
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the page of the second frame. */
-	rc = file2->pMethods->xWrite(file2, buf_page_2, 512,
-				     32 + 24 + 512 + 24);
+	rc =
+	    file2->pMethods->xWrite(file2, buf_page_2, 512, 32 + 24 + 512 + 24);
 	munit_assert_int(rc, ==, 0);
 
 	/* Read the WAL header. */
@@ -1046,7 +1045,6 @@ TEST_CASE(write, oom_page_buf, NULL)
 	/* Write the database header, which triggers creating the first page. */
 	rc = file->pMethods->xWrite(file, buf_header_main, 100, 0);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
-
 
 	free(buf_header_main);
 	free(file);
@@ -1279,8 +1277,8 @@ TEST_CASE(truncate, wal, NULL)
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the page of the second frame. */
-	rc = file2->pMethods->xWrite(file2, buf_page_2, 512,
-				     32 + 24 + 512 + 24);
+	rc =
+	    file2->pMethods->xWrite(file2, buf_page_2, 512, 32 + 24 + 512 + 24);
 	munit_assert_int(rc, ==, 0);
 
 	/* The size is 1104. */
@@ -1752,7 +1750,7 @@ static MunitParameterEnum test_create_oom_params[] = {
 TEST_CASE(create, oom, test_create_oom_params)
 {
 	sqlite3_vfs *vfs = munit_malloc(sizeof *vfs);
-	dqlite_logger *logger = test_logger();
+	struct logger *logger = test_logger();
 	int rv;
 
 	(void)params;
@@ -1760,7 +1758,7 @@ TEST_CASE(create, oom, test_create_oom_params)
 
 	test_mem_fault_enable();
 
-	rv = vfs__init(vfs, logger);
+	rv = vfs__init(vfs, "volatile", logger);
 	munit_assert_int(rv, ==, DQLITE_NOMEM);
 
 	free(vfs);

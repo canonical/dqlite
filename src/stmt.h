@@ -47,9 +47,9 @@
 
 #include <sqlite3.h>
 
-#include "./lib/registry.h"
-#include "./lib/serialize.h"
-#include "./lib/buffer.h"
+#include "lib/registry.h"
+#include "lib/serialize.h"
+#include "lib/buffer.h"
 
 #include "error.h"
 #include "message.h"

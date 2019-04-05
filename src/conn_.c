@@ -615,7 +615,7 @@ out:
 
 void conn__init_(struct conn_ *c,
 		int fd,
-		dqlite_logger *logger,
+		struct logger *logger,
 		uv_loop_t *loop,
 		struct config *options,
 		struct dqlite__metrics *metrics)

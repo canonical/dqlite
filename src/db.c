@@ -38,11 +38,9 @@ void db__close(struct db *db)
 
 int db__open_follower(struct db *db)
 {
-	char name[256];
 	int rc;
-	sprintf(name, "dqlite-%u", db->config->id);
 	assert(db->follower == NULL);
-	rc = open_follower_conn(db->filename, name, &db->follower);
+	rc = open_follower_conn(db->filename, db->config->name, &db->follower);
 	if (rc != 0) {
 		return rc;
 	}

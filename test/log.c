@@ -5,6 +5,8 @@
 
 #include "../include/dqlite.h"
 
+#include "../src/logger.h"
+
 #include "log.h"
 #include "munit.h"
 
@@ -27,8 +29,8 @@ static void emit(void *ctx, int level, const char *format, va_list args) {
 	free(msg);
 }
 
-dqlite_logger *test_logger() {
-	dqlite_logger *logger = munit_malloc(sizeof *logger);
+struct logger *test_logger() {
+	struct logger *logger = munit_malloc(sizeof *logger);
 
 	logger->data   = NULL;
 	logger->emit = emit;
