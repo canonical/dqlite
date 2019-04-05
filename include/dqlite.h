@@ -15,7 +15,7 @@ enum { DQLITE_BADSOCKET = 1,
        DQLITE_PARSE,
        DQLITE_OVERFLOW,
        DQLITE_EOM,    /* End of message */
-       DQLITE_ENGINE, /* A SQLite error occurred */
+       DQLITE_INTERNAL, /* A SQLite error occurred */
        DQLITE_NOTFOUND,
        DQLITE_STOPPED /* The server was stopped */
 };

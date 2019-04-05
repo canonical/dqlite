@@ -88,7 +88,7 @@ struct server
                                                                                \
 		registry__init(&s->registry, &s->config);                      \
                                                                                \
-		rc = fsm__init(fsm, &s->logger, &s->registry);                 \
+		rc = fsm__init(fsm, &s->config, &s->registry);                 \
 		munit_assert_int(rc, ==, 0);                                   \
                                                                                \
 		rc = replication__init(&s->replication, &s->config, raft);     \

@@ -10,14 +10,14 @@
 #include <raft.h>
 
 #include "registry.h"
-#include "logger.h"
+#include "config.h"
 
 /**
  * Initialize the given SQLite replication interface with dqlite's raft based
  * implementation.
  */
 int fsm__init(struct raft_fsm *fsm,
-	      struct logger *logger,
+	      struct config *config,
 	      struct registry *registry);
 
 void fsm__close(struct raft_fsm *fsm);

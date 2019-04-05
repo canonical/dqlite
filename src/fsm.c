@@ -150,7 +150,7 @@ static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 }
 
 int fsm__init(struct raft_fsm *fsm,
-	      struct logger *logger,
+	      struct config *config,
 	      struct registry *registry)
 {
 	struct fsm *f = raft_malloc(sizeof *fsm);
@@ -159,7 +159,7 @@ int fsm__init(struct raft_fsm *fsm,
 		return DQLITE_NOMEM;
 	}
 
-	f->logger = logger;
+	f->logger = &config->logger;
 	f->registry = registry;
 
 	fsm->version = 1;
