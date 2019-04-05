@@ -99,6 +99,12 @@ int dqlite__init(struct dqlite *d,
 	if (rv != 0) {
 		goto err_after_raft_io_init;
 	}
+	/* TODO: properly handle closing the dqlite server without running it */
+	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id,
+		       d->config.address);
+	if (rv != 0) {
+		return rv;
+	}
 	rv = replication__init(&d->replication, &d->config, &d->raft);
 	if (rv != 0) {
 		goto err_after_raft_fsm_init;
@@ -156,9 +162,28 @@ void dqlite__close(struct dqlite *d)
 	raft_io_uv_close(&d->raft_io);
 	uv_loop_close(&d->loop);
 	raft_uv_proxy__close(&d->raft_transport);
-	vfs__close(&d->vfs);
 	registry__close(&d->registry);
+	vfs__close(&d->vfs);
 	config__close(&d->config);
+}
+
+int dqlite_bootstrap(dqlite *d)
+{
+	struct raft_configuration configuration;
+	int rv;
+	raft_configuration_init(&configuration);
+	rv = raft_configuration_add(&configuration, d->config.id,
+				    d->config.address, true);
+	if (rv != 0) {
+		assert(rv == RAFT_ENOMEM);
+		return DQLITE_NOMEM;
+	};
+	rv = raft_bootstrap(&d->raft, &configuration);
+	if (rv != 0) {
+		return DQLITE_INTERNAL;
+	}
+	raft_configuration_close(&configuration);
+	return 0;
 }
 
 /* Callback invoked when the stop async handle gets fired.
@@ -175,7 +200,13 @@ static void raft_close_cb(struct raft *raft)
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
 }
 
-static void process_incoming(struct dqlite *d) {
+static void destroy_conn(struct conn *conn) {
+	QUEUE__REMOVE(&conn->queue);
+	sqlite3_free(conn);
+}
+
+static void process_incoming(struct dqlite *d)
+{
 	while (!QUEUE__IS_EMPTY(&d->queue)) {
 		queue *head;
 		struct incoming *incoming;
@@ -192,7 +223,7 @@ static void process_incoming(struct dqlite *d) {
 		}
 		rv = conn__start(conn, &d->config, &d->loop, &d->registry,
 				 &d->raft, incoming->fd, &d->raft_transport,
-				 (conn_close_cb)sqlite3_free);
+				 destroy_conn);
 		if (rv != 0) {
 			status = rv;
 			goto done;
@@ -279,11 +310,6 @@ int dqlite_run(struct dqlite *d)
 	rv = uv_timer_start(&d->startup, startup_cb, 0, 0);
 	assert(rv == 0);
 
-	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id,
-		       d->config.address);
-	if (rv != 0) {
-		return rv;
-	}
 	d->raft.data = d;
 	rv = raft_start(&d->raft);
 	if (rv != 0) {
@@ -367,20 +393,6 @@ int dqlite_stop(dqlite *d)
 }
 
 #if 0
-
-int dqlite_bootstrap(dqlite *s)
-{
-	struct raft_configuration configuration;
-	int rc;
-	raft_configuration_init(&configuration);
-	rc = raft_configuration_add(&configuration, s->raft.raft.id,
-				    s->raft.raft.address, true);
-	assert(rc == 0);
-	rc = raft_bootstrap(&s->raft.raft, &configuration);
-	assert(rc == 0);
-	raft_configuration_close(&configuration);
-	return 0;
-}
 
 int dqlite_create(const char *dir,
 			 unsigned id,

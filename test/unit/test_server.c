@@ -1,3 +1,4 @@
+#include "../lib/client.h"
 #include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
@@ -5,6 +6,9 @@
 #include "../lib/sqlite.h"
 #include "../lib/thread.h"
 
+#include "../../include/dqlite.h"
+
+#include "../../src/client.h"
 #include "../../src/server.h"
 
 TEST_MODULE(server);
@@ -51,6 +55,14 @@ static void *run(void *arg)
 	return NULL;
 }
 
+/* Bootstrap the underlying raft configuration  */
+#define BOOTSTRAP                                   \
+	{                                           \
+		int rv2;                            \
+		rv2 = dqlite_bootstrap(&f->dqlite); \
+		munit_assert_int(rv2, ==, 0);       \
+	}
+
 /* Run the dqlite server in a thread */
 #define START THREAD_START(run, &f->dqlite)
 
@@ -68,6 +80,45 @@ static void *run(void *arg)
 		int rv2;                             \
 		rv2 = dqlite_handle(&f->dqlite, FD); \
 		munit_assert_int(rv2, ==, 0);        \
+	}
+
+/* Send the initial client handshake. */
+#define HANDSHAKE                                         \
+	{                                                 \
+		int rv2;                                  \
+		rv2 = client__send_handshake(&f->client); \
+		munit_assert_int(rv2, ==, 0);             \
+	}
+
+/* Open a test database. */
+#define OPEN                                                 \
+	{                                                    \
+		int rv2;                                     \
+		rv2 = client__send_open(&f->client, "test"); \
+		munit_assert_int(rv2, ==, 0);                \
+		rv2 = client__recv_db(&f->client);           \
+		munit_assert_int(rv2, ==, 0);                \
+	}
+
+/* Prepare a statement. */
+#define PREPARE(SQL, STMT_ID)                                 \
+	{                                                     \
+		int rv2;                                      \
+		rv2 = client__send_prepare(&f->client, SQL);  \
+		munit_assert_int(rv2, ==, 0);                 \
+		rv2 = client__recv_stmt(&f->client, STMT_ID); \
+		munit_assert_int(rv2, ==, 0);                 \
+	}
+
+/* Execute a statement. */
+#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)                  \
+	{                                                             \
+		int rv2;                                              \
+		rv2 = client__send_exec(&f->client, STMT_ID);         \
+		munit_assert_int(rv2, ==, 0);                         \
+		rv2 = client__recv_result(&f->client, LAST_INSERT_ID, \
+					  ROWS_AFFECTED);             \
+		munit_assert_int(rv2, ==, 0);                         \
 	}
 
 /******************************************************************************
@@ -140,7 +191,55 @@ TEST_CASE(handle, success, NULL)
 {
 	struct handle_fixture *f = data;
 	(void)params;
-	HANDLE(f->sockets.client);
+	HANDLE(f->sockets.server);
 	f->sockets.server_disconnected = true;
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * Handle client requests
+ *
+ ******************************************************************************/
+
+struct client_fixture
+{
+	FIXTURE;
+	FIXTURE_CLIENT;
+};
+
+TEST_SUITE(client);
+TEST_SETUP(client)
+{
+	struct client_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	SETUP_CLIENT;
+	BOOTSTRAP;
+	START;
+	READY;
+	HANDLE(f->sockets.server);
+	HANDSHAKE;
+	OPEN;
+	return f;
+}
+
+TEST_TEAR_DOWN(client)
+{
+	struct client_fixture *f = data;
+	STOP;
+	TEAR_DOWN_CLIENT;
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(client, exec, NULL)
+{
+	struct client_fixture *f = data;
+	unsigned stmt_id;
+	unsigned last_insert_id;
+	unsigned rows_affected;
+	(void)params;
+	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
 	return MUNIT_OK;
 }
