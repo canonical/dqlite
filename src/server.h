@@ -35,3 +35,5 @@ int dqlite__init(struct dqlite *d,
 		 const char *dir);
 
 void dqlite__close(struct dqlite *d);
+
+int dqlite__run(struct dqlite *d);

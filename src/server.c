@@ -82,23 +82,23 @@ int dqlite__init(struct dqlite *d,
 	d->running = false;
 	return 0;
 
- err_after_ready_init:
+err_after_ready_init:
 	sem_destroy(&d->ready);
- err_after_raft_replication_init:
+err_after_raft_replication_init:
 	replication__close(&d->replication);
- err_after_raft_fsm_init:
+err_after_raft_fsm_init:
 	fsm__close(&d->raft_fsm);
- err_after_raft_io_init:
+err_after_raft_io_init:
 	raft_io_uv_close(&d->raft_io);
- err_after_loop_init:
+err_after_loop_init:
 	uv_loop_close(&d->loop);
- err_after_raft_transport_init:
+err_after_raft_transport_init:
 	raft_uv_proxy__close(&d->raft_transport);
- err_after_registry_init:
+err_after_registry_init:
 	registry__close(&d->registry);
- err_after_vfs_init:
+err_after_vfs_init:
 	vfs__close(&d->vfs);
- err:
+err:
 	return rv;
 }
 
@@ -119,6 +119,139 @@ void dqlite__close(struct dqlite *d)
 	vfs__close(&d->vfs);
 	registry__close(&d->registry);
 	config__close(&d->config);
+}
+
+/* Callback invoked when the stop async handle gets fired.
+ *
+ * This callback will walk through all active handles and close them. After the
+ * last handle (which must be the 'stop' async handle) is closed, the loop gets
+ * stopped.
+ */
+static void raft_close_cb(struct raft *raft)
+{
+	struct dqlite *s = raft->data;
+	uv_close((struct uv_handle_s *)&s->stop, NULL);
+	uv_close((struct uv_handle_s *)&s->incoming, NULL);
+	uv_close((struct uv_handle_s *)&s->startup, NULL);
+	// uv_walk(&s->loop, dqlite__server_stop_walk_cb, (void *)s);
+}
+
+static void stop_cb(uv_async_t *stop)
+{
+	struct dqlite *d = stop->data;
+
+	/* We expect that we're being executed after dqlite__stop and so the
+	 * running flag is off. */
+	assert(!d->running);
+
+	/* Give a final pass to the incoming queue, to unblock any call to
+	 * dqlite_handle that might be blocked. There's no need to
+	 * acquire the mutex since now the running flag is off and no new
+	 * incoming connection can be enqueued. */
+	// dqlite__queue_process(&s->queue);
+
+	raft_close(&d->raft, raft_close_cb);
+}
+
+/* Callback invoked when the incoming async handle gets fired.
+ *
+ * This callback will scan the incoming queue and create new connections.
+ */
+static void incoming_cb(uv_async_t *incoming)
+{
+	struct dqlite *d = incoming->data;
+
+	/* Acquire the queue lock, so no new incoming connection can be
+	 * pushed. */
+	pthread_mutex_lock(&d->mutex);
+	// dqlite__queue_process(&s->queue);
+	pthread_mutex_unlock(&d->mutex);
+}
+
+/* Callback invoked as soon as the loop as started.
+ *
+ * It unblocks the s->ready semaphore.
+ */
+static void startup_cb(uv_timer_t *startup)
+{
+	struct dqlite *d = startup->data;
+	int rv;
+	d->running = true;
+	rv = sem_post(&d->ready);
+	assert(rv == 0); /* No reason for which posting should fail */
+}
+
+int dqlite_run(struct dqlite *d)
+{
+	int rv;
+
+	/* TODO: implement proper cleanup upon error by spinning the loop a few
+	 * times. */
+
+	/* Initialize notification handles. */
+	d->stop.data = d;
+	rv = uv_async_init(&d->loop, &d->stop, stop_cb);
+	assert(rv == 0);
+	d->incoming.data = d;
+	rv = uv_async_init(&d->loop, &d->incoming, incoming_cb);
+	assert(rv == 0);
+
+	/* Schedule startup_cb to be fired as soon as the loop starts. It will
+	 * unblock clients of dqlite_ready. */
+	d->startup.data = d;
+	rv = uv_timer_init(&d->loop, &d->startup);
+	assert(rv == 0);
+	rv = uv_timer_start(&d->startup, startup_cb, 0, 0);
+	assert(rv == 0);
+
+	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id,
+		       d->config.address);
+	if (rv != 0) {
+		return rv;
+	}
+	d->raft.data = d;
+	rv = raft_start(&d->raft);
+	if (rv != 0) {
+		return rv;
+	}
+
+	rv = uv_run(&d->loop, UV_RUN_DEFAULT);
+	assert(rv == 0);
+
+	/* Unblock any client of dqlite_ready */
+	rv = sem_post(&d->ready);
+	assert(rv == 0); /* no reason for which posting should fail */
+
+	return 0;
+}
+
+bool dqlite_ready(struct dqlite *d)
+{
+	/* Wait for the ready semaphore */
+	sem_wait(&d->ready);
+	return d->running;
+}
+
+int dqlite_stop(dqlite *d)
+{
+	int rv;
+
+	/* Grab the queue mutex, so we can be sure no new incoming request will
+	 * be enqueued from this point on. */
+	pthread_mutex_lock(&d->mutex);
+
+	/* Turn off the running flag, so calls to dqlite_handle will fail
+	 * with DQLITE_STOPPED. This needs to happen before we send the stop
+	 * signal since the stop callback expects to see that the flag is
+	 * off. */
+	d->running = false;
+
+	rv = uv_async_send(&d->stop);
+	assert(rv == 0);
+
+	pthread_mutex_unlock(&d->mutex);
+
+	return 0;
 }
 
 #if 0
@@ -610,48 +743,6 @@ int dqlite_ready(dqlite *s)
 
 int dqlite_stop(dqlite *s, char **errmsg)
 {
-	int err = 0;
-	dqlite__error e;
-
-	assert(s != NULL);
-	assert(errmsg != NULL);
-
-	dqlite__infof(s, "stopping event loop");
-
-	/* Grab the queue mutex, so we can be sure no new incoming request will
-	 * be enqueued from this point on. */
-	pthread_mutex_lock(&s->mutex);
-
-	/* Create an error instance since the one on d is not thread-safe */
-	dqlite__error_init(&e);
-
-	/* Turn off the running flag, so calls to dqlite_handle will fail
-	 * with DQLITE_STOPPED. This needs to happen before we send the stop
-	 * signal since the stop callback expects to see that the flag is
-	 * off. */
-	s->running = 0;
-
-	err = uv_async_send(&s->stop);
-	if (err != 0) {
-		dqlite__error_uv(&e, err, "failed to fire stop event");
-		err = dqlite__error_copy(&e, errmsg);
-		if (err != 0) {
-			*errmsg = "error message unavailable (out of memory)";
-		}
-		err = DQLITE_ERROR;
-	}
-
-	pthread_mutex_unlock(&s->mutex);
-
-	dqlite__error_close(&e);
-
-	if (err != 0) {
-		/* Wait for the stopped semaphore, which signals that the loop
-		 * has exited. */
-		sem_wait(&s->stopped);
-	}
-
-	return err;
 }
 
 /* Start handling a new connection */
