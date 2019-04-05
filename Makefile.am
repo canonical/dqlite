@@ -50,7 +50,6 @@ libdqlite_la_SOURCES = \
   src/message.c \
   src/metrics.c \
   src/config.c \
-  src/queue.c \
   src/query.c \
   src/registry.c \
   src/replication.c \
@@ -94,7 +93,6 @@ unit_test_SOURCES += \
   test/test_format.c \
   test/test_integration.c \
   test/test_message.c \
-  test/test_queue.c \
   test/test_response.c \
   test/test_schema.c \
   test/unit/ext/test_co.c \
