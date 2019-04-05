@@ -103,7 +103,6 @@ unit_test_SOURCES += \
   test/unit/test_replication.c \
   test/unit/test_request.c \
   test/unit/test_server.c \
-  test/unit/test_stmt.c \
   test/unit/test_tuple.c \
   test/unit/test_vfs.c \
   test/unit/main.c

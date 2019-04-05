@@ -58,10 +58,7 @@
 struct stmt
 {
 	size_t id;	   /* Statement ID */
-	sqlite3 *db;	 /* Underlying database info */
 	sqlite3_stmt *stmt;  /* Underlying SQLite statement handle */
-	const char *tail;    /* Unparsed SQL portion */
-	dqlite__error error; /* Last dqlite-specific error */
 };
 
 /* Initialize a statement state object */
@@ -78,18 +75,6 @@ const char *stmt__hash(struct stmt *stmt);
 #define stmt_init stmt__init
 #define stmt_close stmt__close
 #define stmt_hash stmt__hash
-
-/* Bind the parameters of the underlying statement by decoding the given
- * message. */
-int stmt__bind_(struct stmt *s, struct message_ *message);
-
-int stmt__exec(struct stmt *s,
-	       uint64_t *last_insert_id,
-	       uint64_t *rows_affected);
-
-/* Step through a query statement and fill the given message with the rows it
- * yields. */
-int stmt__query_(struct stmt *s, struct message_ *message);
 
 REGISTRY(stmt__registry, stmt);
 
