@@ -142,15 +142,4 @@ int dqlite_stop(dqlite *d);
 */
 int dqlite_handle(dqlite *d, int fd);
 
-/* Return a message describing the most recent error occurred.
- *
- * This is API not thread-safe.
- *
- * The memory holding returned string is managed by the dqlite object
- * internally, and will be valid until dqlite_close is invoked. However,
- * the message contained in the string itself might change if another error
- * occurs in the meantime.
- */
-const char *dqlite_errmsg(dqlite *s);
-
 #endif /* DQLITE_H */
