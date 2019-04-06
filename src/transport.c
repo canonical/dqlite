@@ -6,6 +6,7 @@
 
 struct impl
 {
+	struct uv_loop_s *loop;
 	unsigned id;
 	const char *address;
 	raft_io_uv_accept_cb accept_cb;
@@ -49,12 +50,14 @@ static void impl_close(struct raft_io_uv_transport *transport,
 	cb(transport);
 }
 
-int raft_uv_proxy__init(struct raft_io_uv_transport *transport)
+int raft_uv_proxy__init(struct raft_io_uv_transport *transport,
+			struct uv_loop_s *loop)
 {
 	struct impl *i = sqlite3_malloc(sizeof *i);
 	if (i == NULL) {
 		return DQLITE_NOMEM;
 	}
+	i->loop = loop;
 	transport->impl = i;
 	transport->init = impl_init;
 	transport->listen = impl_listen;

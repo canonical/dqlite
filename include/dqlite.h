@@ -1,9 +1,9 @@
 #ifndef DQLITE_H
 #define DQLITE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdbool.h>
 
 #include <sqlite3.h>
 #include <uv.h>
@@ -15,7 +15,7 @@ enum { DQLITE_BADSOCKET = 1,
        DQLITE_PROTO,
        DQLITE_PARSE,
        DQLITE_OVERFLOW,
-       DQLITE_EOM,    /* End of message */
+       DQLITE_EOM,      /* End of message */
        DQLITE_INTERNAL, /* A SQLite error occurred */
        DQLITE_NOTFOUND,
        DQLITE_STOPPED /* The server was stopped */
@@ -80,12 +80,12 @@ enum { DQLITE_DEBUG = 0, DQLITE_INFO, DQLITE_WARN, DQLITE_ERROR };
  */
 int dqlite_initialize();
 
-/* Interface implementing cluster-related functionality */
-typedef struct dqlite_info
+/* Information about a single dqlite server. */
+typedef struct dqlite_server
 {
-	uint64_t id;
+	unsigned id;
 	const char *address;
-} dqlite_info;
+} dqlite_server;
 
 /* Handle connections from dqlite clients */
 typedef struct dqlite dqlite;
@@ -106,7 +106,7 @@ void dqlite_destroy(dqlite *d);
  */
 int dqlite_config(dqlite *d, int op, void *arg);
 
-int dqlite_bootstrap(dqlite *d);
+int dqlite_bootstrap(dqlite *d, unsigned n, dqlite_server *servers);
 
 /* Start a dqlite server.
  *
