@@ -7,7 +7,8 @@
 
 #include <raft/io_uv.h>
 
-int raft_uv_proxy__init(struct raft_io_uv_transport *transport);
+int raft_uv_proxy__init(struct raft_io_uv_transport *transport,
+			struct uv_loop_s *loop);
 
 void raft_uv_proxy__close(struct raft_io_uv_transport *transport);
 
