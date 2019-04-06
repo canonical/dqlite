@@ -29,9 +29,10 @@ extern char *test_socket_param_values[];
 
 struct test_socket_pair
 {
-	int server;		  /* Server-side file descriptor */
-	int client;		  /* Client-side file descriptor */
-	int listen;		  /* Listener file descriptor, for cleanup */
+	int server;               /* Server-side file descriptor */
+	int client;               /* Client-side file descriptor */
+	int listen;               /* Listener file descriptor, for cleanup */
+	int listen_port;          /* Listening port (for TCP) */
 	bool server_disconnected; /* If the server was disconnected by tests */
 	bool client_disconnected; /* If the client was disconnected by tests */
 };

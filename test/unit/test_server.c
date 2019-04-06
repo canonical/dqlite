@@ -246,3 +246,65 @@ TEST_CASE(client, exec, NULL)
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * Transport connect
+ *
+ ******************************************************************************/
+
+struct raft_fixture
+{
+	FIXTURE;
+	struct test_socket_pair sockets;
+};
+
+TEST_SUITE(raft);
+TEST_SETUP(raft)
+{
+	struct raft_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	test_socket_pair_setup(params, &f->sockets);
+	return f;
+}
+TEST_TEAR_DOWN(raft)
+{
+	struct raft_fixture *f = data;
+	test_socket_pair_tear_down(&f->sockets);
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Run the test using only TCP. */
+char *raft_connect_socket_param[] = {"tcp", NULL};
+static MunitParameterEnum raft_connect_params[] = {
+    {TEST_SOCKET_FAMILY, raft_connect_socket_param},
+    {NULL, NULL},
+};
+
+/* Successfully establish a raft connection */
+TEST_CASE(raft, connect, raft_connect_params)
+{
+	struct raft_fixture *f = data;
+	struct dqlite_server servers[2];
+	char address[64];
+	int rv;
+	(void)params;
+
+	servers[0].id = f->dqlite.config.id;
+	servers[0].address = f->dqlite.config.address;
+
+	sprintf(address, "127.0.0.1:%d", f->sockets.listen_port);
+	servers[1].id = f->dqlite.config.id + 1;
+	servers[1].address = address;
+
+	rv = dqlite_bootstrap(&f->dqlite, 2, servers);
+	munit_assert_int(rv, ==, 0);
+
+	START;
+	READY;
+	sleep(2);
+	STOP;
+
+	return MUNIT_OK;
+}
