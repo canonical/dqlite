@@ -187,14 +187,14 @@ void dqlite_destroy(dqlite *d)
 	sqlite3_free(d);
 }
 
-int dqlite_bootstrap(dqlite *d, unsigned n, dqlite_server *servers)
+int dqlite_bootstrap(dqlite *d, unsigned n, const dqlite_server *servers)
 {
 	struct raft_configuration configuration;
 	unsigned i;
 	int rv;
 	raft_configuration_init(&configuration);
 	for (i = 0; i < n; i++) {
-		struct dqlite_server *server = &servers[i];
+		const struct dqlite_server *server = &servers[i];
 		rv = raft_configuration_add(&configuration, server->id,
 					    server->address, true);
 		if (rv != 0) {
