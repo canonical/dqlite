@@ -12,17 +12,6 @@
 #include "request.h"
 #include "transport.h"
 
-struct connect
-{
-	struct raft_io_uv_transport *transport;
-	struct raft_io_uv_connect *req;
-	struct uv_work_s work;
-	unsigned id;
-	const char *address;
-	int fd;
-	int status;
-};
-
 struct impl
 {
 	struct uv_loop_s *loop;
@@ -31,6 +20,17 @@ struct impl
 	unsigned id;
 	const char *address;
 	raft_io_uv_accept_cb accept_cb;
+};
+
+struct connect
+{
+	struct impl *impl;
+	struct raft_io_uv_connect *req;
+	struct uv_work_s work;
+	unsigned id;
+	const char *address;
+	int fd;
+	int status;
 };
 
 static int impl_init(struct raft_io_uv_transport *transport,
@@ -54,7 +54,7 @@ static int impl_listen(struct raft_io_uv_transport *transport,
 static void connect_work_cb(uv_work_t *work)
 {
 	struct connect *r = work->data;
-	struct impl *i = r->transport->data;
+	struct impl *i = r->impl;
 	struct dqlite_server server;
 	struct client client;
 	int rv;
@@ -67,7 +67,6 @@ static void connect_work_cb(uv_work_t *work)
 		rv = RAFT_ERR_IO_CONNECT;
 		goto err;
 	}
-
 	rv = client__init(&client, r->fd);
 	if (rv != 0) {
 		assert(rv == DQLITE_NOMEM);
@@ -104,12 +103,14 @@ err:
 static void connect_after_work_cb(uv_work_t *work, int status)
 {
 	struct connect *r = work->data;
-	struct impl *i = r->transport->data;
+	struct impl *i = r->impl;
 	struct transport transport;
 	struct uv_stream_s *stream = NULL;
 	int rv;
 
-	if (status != 0) {
+	assert(status == 0);
+
+	if (r->status != 0) {
 		goto out;
 	}
 
@@ -122,7 +123,6 @@ static void connect_after_work_cb(uv_work_t *work, int status)
 	}
 
 	stream = transport.stream;
-
 out:
 	r->req->cb(r->req, stream, r->status);
 	sqlite3_free(r);
@@ -144,7 +144,7 @@ static int impl_connect(struct raft_io_uv_transport *transport,
 		goto err;
 	}
 
-	r->transport = transport;
+	r->impl = i;
 	r->req = req;
 	r->work.data = r;
 	r->id = id;

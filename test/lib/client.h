@@ -15,7 +15,6 @@
 
 #define TEAR_DOWN_CLIENT                       \
 	client__close(&f->client);             \
-	f->sockets.client_disconnected = true; \
 	f->sockets.server_disconnected = true; \
 	test_socket_pair_tear_down(&f->sockets)
 
