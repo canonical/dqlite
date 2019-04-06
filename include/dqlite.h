@@ -90,6 +90,8 @@ typedef struct dqlite_server
 /* Handle connections from dqlite clients */
 typedef struct dqlite dqlite;
 
+typedef int (*dqlite_connect)(void *data, const dqlite_server *server, int *fd);
+
 /* Allocate and initialize a dqlite server instance. */
 int dqlite_create(unsigned id,
 		  const char *address,
@@ -106,7 +108,7 @@ void dqlite_destroy(dqlite *d);
  */
 int dqlite_config(dqlite *d, int op, void *arg);
 
-int dqlite_bootstrap(dqlite *d, unsigned n, dqlite_server *servers);
+int dqlite_bootstrap(dqlite *d, unsigned n, const dqlite_server *servers);
 
 /* Start a dqlite server.
  *

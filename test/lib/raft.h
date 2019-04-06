@@ -30,7 +30,7 @@
 		int rv2;                                                 \
 		f->dir = test_dir_setup();                               \
 		test_uv_setup(params, &f->loop);                         \
-		rv2 = raft_uv_proxy__init(&f->raft_transport);           \
+		rv2 = raft_uv_proxy__init(&f->raft_transport, &f->loop); \
 		munit_assert_int(rv2, ==, 0);                            \
 		rv2 = raft_io_uv_init(&f->raft_io, &f->loop, f->dir,     \
 				      &f->raft_transport);               \
