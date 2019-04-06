@@ -56,11 +56,14 @@ static void *run(void *arg)
 }
 
 /* Bootstrap the underlying raft configuration  */
-#define BOOTSTRAP                                   \
-	{                                           \
-		int rv2;                            \
-		rv2 = dqlite_bootstrap(&f->dqlite); \
-		munit_assert_int(rv2, ==, 0);       \
+#define BOOTSTRAP                                               \
+	{                                                       \
+		struct dqlite_server server;                    \
+		int rv2;                                        \
+		server.id = f->dqlite.config.id;                \
+		server.address = f->dqlite.config.address;      \
+		rv2 = dqlite_bootstrap(&f->dqlite, 1, &server); \
+		munit_assert_int(rv2, ==, 0);                   \
 	}
 
 /* Run the dqlite server in a thread */
