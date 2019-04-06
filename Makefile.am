@@ -74,7 +74,6 @@ unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
 unit_test_SOURCES += \
   test/test_error.c \
   test/test_file.c \
-  test/test_format.c \
   test/test_integration.c \
   test/unit/ext/test_co.c \
   test/unit/ext/test_uv.c \
@@ -84,6 +83,7 @@ unit_test_SOURCES += \
   test/unit/lib/test_transport.c \
   test/unit/test_command.c \
   test/unit/test_conn.c \
+  test/unit/test_format.c \
   test/unit/test_gateway.c \
   test/unit/test_registry.c \
   test/unit/test_replication.c \
