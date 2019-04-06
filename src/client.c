@@ -32,7 +32,6 @@ err:
 
 void client__close(struct client *c)
 {
-	close(c->fd);
 	buffer__close(&c->write);
 	buffer__close(&c->read);
 }

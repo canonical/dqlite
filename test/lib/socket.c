@@ -14,9 +14,10 @@ char *test_socket_param_values[] = {"tcp", "unix", NULL};
 struct server
 {
 	sa_family_t family; /* Address family (either AF_INET or AF_UNIX) */
-	int fd;		    /* Listener file descriptor */
+	int fd;             /* Listener file descriptor */
+	int port;           /* Listening port */
 	int client_fd;      /* Accepted client connection */
-	union {		    /* Server  address (either a TCP or Unix) */
+	union {             /* Server  address (either a TCP or Unix) */
 		struct sockaddr_in in_address;
 		struct sockaddr_un un_address;
 	};
@@ -24,10 +25,10 @@ struct server
 
 struct client
 {
-	sa_family_t family;		 /* Address family */
+	sa_family_t family;              /* Address family */
 	struct sockaddr *server_address; /* Address value */
 	socklen_t server_address_size;   /* Address struct size */
-	int fd;				 /* Connection to the server */
+	int fd;                          /* Connection to the server */
 };
 
 /* Assert that the read and write buffer size of the given socket is at least
@@ -109,6 +110,10 @@ static void bind_and_listen(struct server *s, int family)
 	if (rv != 0) {
 		munit_errorf("getsockname(): %s", strerror(errno));
 	}
+
+	if (s->family == AF_INET) {
+		s->port = htons(s->in_address.sin_port);
+	}
 }
 
 /* Create a client connection to the server. */
@@ -167,8 +172,7 @@ static void accept_client(struct server *s)
 
 static int parse_socket_family_param(const MunitParameter params[])
 {
-	const char *family =
-	    munit_parameters_get(params, TEST_SOCKET_FAMILY);
+	const char *family = munit_parameters_get(params, TEST_SOCKET_FAMILY);
 	if (family == NULL) {
 		family = "unix";
 	}
@@ -205,6 +209,7 @@ void test_socket_pair_setup(const MunitParameter params[],
 	p->client_disconnected = false;
 
 	p->listen = server.fd;
+	p->listen_port = server.port;
 }
 
 void test_socket_pair_tear_down(struct test_socket_pair *p)
@@ -251,7 +256,8 @@ void test_socket_pair_server_disconnect(struct test_socket_pair *p)
 	p->server_disconnected = true;
 }
 
-void test_socket_client_write(struct test_socket_pair *p, void *buf, size_t n) {
+void test_socket_client_write(struct test_socket_pair *p, void *buf, size_t n)
+{
 	int rv;
 	rv = write(p->client, buf, n);
 	munit_assert_int(rv, ==, n);
