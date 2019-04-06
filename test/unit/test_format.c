@@ -2,9 +2,9 @@
 
 #include <sqlite3.h>
 
-#include "../src/format.h"
+#include "../lib/runner.h"
 
-#include "./lib/runner.h"
+#include "../../src/format.h"
 
 TEST_MODULE(format);
 
