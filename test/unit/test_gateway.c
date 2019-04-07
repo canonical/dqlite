@@ -455,6 +455,37 @@ TEST_CASE(exec, one_param, NULL)
 	return MUNIT_OK;
 }
 
+/* Successfully execute a statement with a blob parameter. */
+TEST_CASE(exec, blob, NULL)
+{
+	struct exec_fixture *f = data;
+	struct value value;
+	char buf[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Create the test table */
+	EXEC("CREATE TABLE test (data BLOB)");
+
+	/* Insert a row with one parameter */
+	PREPARE("INSERT INTO test VALUES (?)");
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	value.type = SQLITE_BLOB;
+	value.blob.base = buf;
+	value.blob.len = sizeof buf;
+	ENCODE_PARAMS(1, &value);
+	HANDLE(EXEC);
+	CLUSTER_APPLIED(4);
+	ASSERT_CALLBACK(0, RESULT);
+	DECODE(&f->response, result);
+	munit_assert_int(f->response.last_insert_id, ==, 1);
+	munit_assert_int(f->response.rows_affected, ==, 1);
+
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * query
