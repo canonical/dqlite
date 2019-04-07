@@ -459,9 +459,12 @@ TEST_CASE(exec, one_param, NULL)
 TEST_CASE(exec, blob, NULL)
 {
 	struct exec_fixture *f = data;
+	struct request_query query;
 	struct value value;
 	char buf[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
 	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
 	(void)params;
 	CLUSTER_ELECT(0);
 
@@ -482,6 +485,23 @@ TEST_CASE(exec, blob, NULL)
 	DECODE(&f->response, result);
 	munit_assert_int(f->response.last_insert_id, ==, 1);
 	munit_assert_int(f->response.rows_affected, ==, 1);
+
+	PREPARE("SELECT data FROM test");
+	query.db_id = 0;
+	query.stmt_id = stmt_id;
+	ENCODE(&query, query);
+	HANDLE(QUERY);
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(&f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(&f->cursor, &column);
+	munit_assert_string_equal(column, "data");
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_BLOB);
+	munit_assert_int(value.blob.len, ==, sizeof buf);
+	munit_assert_int(value.blob.base[0], ==, 'a');
+	munit_assert_int(value.blob.base[7], ==, 'h');
 
 	return MUNIT_OK;
 }
@@ -506,7 +526,7 @@ TEST_SETUP(query)
 	SETUP;
 	OPEN;
 	CLUSTER_ELECT(0);
-	EXEC("CREATE TABLE test (n INT)");
+	EXEC("CREATE TABLE test (n INT, data BLOB)");
 	return f;
 }
 TEST_TEAR_DOWN(query)
@@ -573,7 +593,7 @@ TEST_CASE(query, one_row, NULL)
 }
 
 /* Successfully query that yields a large number of rows that need to be split
- * into several reponses.. */
+ * into several reponses. */
 TEST_CASE(query, large, NULL)
 {
 	struct query_fixture *f = data;
