@@ -21,7 +21,9 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 			rc = sqlite3_bind_double(stmt, n, value->float_);
 			break;
 		case SQLITE_BLOB:
-			assert(0); /* TODO */
+			rc = sqlite3_bind_blob(stmt, n, value->blob.base,
+					       value->blob.len,
+					       SQLITE_TRANSIENT);
 			break;
 		case SQLITE_NULL:
 			rc = sqlite3_bind_null(stmt, n);
@@ -46,7 +48,8 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 	return rc;
 }
 
-int bind__params(sqlite3_stmt *stmt, struct cursor *cursor) {
+int bind__params(sqlite3_stmt *stmt, struct cursor *cursor)
+{
 	struct tuple_decoder decoder;
 	unsigned i;
 	int rc;
