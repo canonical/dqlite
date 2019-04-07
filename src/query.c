@@ -55,7 +55,8 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 				    sqlite3_column_double(stmt, i);
 				break;
 			case SQLITE_BLOB:
-				assert(0); /* TODO */
+				value.blob.base = (char*)sqlite3_column_blob(stmt, i);
+				value.blob.len = sqlite3_column_bytes(stmt, i);
 				break;
 			case SQLITE_NULL:
 				/* TODO: allow null to be encoded with 0 bytes
