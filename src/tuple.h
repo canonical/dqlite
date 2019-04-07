@@ -58,6 +58,7 @@ struct value
 	union {
 		int64_t integer;
 		double float_;
+		uv_buf_t blob;
 		uint64_t null;
 		const char *text;
 		const char *iso8601; /* INT8601 date string */
