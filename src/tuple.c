@@ -110,7 +110,7 @@ int tuple_decoder__next(struct tuple_decoder *d, struct value *value)
 			rc = float__decode(d->cursor, &value->float_);
 			break;
 		case SQLITE_BLOB:
-			assert(0); /* TODO */
+			rc = blob__decode(d->cursor, &value->blob);
 			break;
 		case SQLITE_NULL:
 			/* TODO: allow null to be encoded with 0 bytes? */
@@ -212,7 +212,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 			size = float__sizeof(&value->float_);
 			break;
 		case SQLITE_BLOB:
-			assert(0); /* TODO */
+			size = blob__sizeof(&value->blob);
 			break;
 		case SQLITE_NULL:
 			/* TODO: allow null to be encoded with 0 bytes */
@@ -248,7 +248,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 			float__encode(&value->float_, &cursor);
 			break;
 		case SQLITE_BLOB:
-			assert(0); /* TODO */
+			blob__encode(&value->blob, &cursor);
 			break;
 		case SQLITE_NULL:
 			/* TODO: allow null to be encoded with 0 bytes */
