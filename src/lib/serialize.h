@@ -34,6 +34,7 @@ static_assert(sizeof(double) == sizeof(uint64_t),
  */
 typedef const char *text_t;
 typedef double float_t;
+typedef uv_buf_t blob_t;
 
 /**
  * Cursor to progressively read a buffer.
@@ -149,6 +150,11 @@ DQLITE_INLINE size_t text__sizeof(const text_t *value)
 	return byte__pad64(strlen(*value) + 1);
 }
 
+DQLITE_INLINE size_t blob__sizeof(const blob_t *value)
+{
+	return sizeof(uint64_t) /* length */ + value->len /* data */;
+}
+
 DQLITE_INLINE void uint8__encode(const uint8_t *value, void **cursor)
 {
 	*(uint8_t *)(*cursor) = *value;
@@ -190,6 +196,14 @@ DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
 	size_t len = byte__pad64(strlen(*value) + 1);
 	memset(*cursor, 0, len);
 	strcpy(*cursor, *value);
+	*cursor += len;
+}
+
+DQLITE_INLINE void blob__encode(const blob_t *value, void **cursor)
+{
+	size_t len = byte__pad64(value->len);
+	uint64__encode(&value->len, cursor);
+	memcpy(*cursor, value->base, value->len);
 	*cursor += len;
 }
 
@@ -275,6 +289,26 @@ DQLITE_INLINE int text__decode(struct cursor *cursor, text_t *value)
 	}
 	*value = cursor->p;
 	n = byte__pad64(strlen(*value) + 1);
+	cursor->p += n;
+	cursor->cap -= n;
+	return 0;
+}
+
+DQLITE_INLINE int blob__decode(struct cursor *cursor, blob_t *value)
+{
+	uint64_t len;
+	size_t n;
+	int rv;
+	rv = uint64__decode(cursor, &len);
+	if (rv != 0) {
+		return rv;
+	}
+	n = byte__pad64(len);
+	if (n > cursor->cap) {
+		return DQLITE_PARSE;
+	}
+	value->base = (char*)cursor->p;
+	value->len = len;
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
