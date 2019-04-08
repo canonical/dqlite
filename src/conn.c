@@ -19,10 +19,23 @@ static int read_message(struct conn *c);
 static void write_cb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
+	bool finished;
 	int rv;
 	if (status != 0) {
 		goto abort;
 	}
+
+	buffer__reset(&c->write);
+	buffer__advance(&c->write, message__sizeof(&c->response)); /* Header */
+
+	rv = gateway__resume(&c->gateway, &finished);
+	if (rv != 0) {
+		goto abort;
+	}
+	if (!finished) {
+		return;
+	}
+
 	/* Start reading the next request */
 	rv = read_message(c);
 	if (rv != 0) {
@@ -245,6 +258,7 @@ int conn__start(struct conn *c,
 	if (rv != 0) {
 		goto err;
 	}
+	c->config = config;
 	c->transport.data = c;
 	c->uv_transport = uv_transport;
 	c->close_cb = close_cb;

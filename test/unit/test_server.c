@@ -124,6 +124,16 @@ static void *run(void *arg)
 		munit_assert_int(rv2, ==, 0);                         \
 	}
 
+/* Perform a query. */
+#define QUERY(STMT_ID, ROWS)                                   \
+	{                                                      \
+		int rv2;                                       \
+		rv2 = client__send_query(&f->client, STMT_ID); \
+		munit_assert_int(rv2, ==, 0);                  \
+		rv2 = client__recv_rows(&f->client, ROWS);     \
+		munit_assert_int(rv2, ==, 0);                  \
+	}
+
 /******************************************************************************
  *
  * dqlite_run
@@ -244,6 +254,37 @@ TEST_CASE(client, exec, NULL)
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	return MUNIT_OK;
+}
+
+TEST_CASE(client, query, NULL)
+{
+	struct client_fixture *f = data;
+	unsigned stmt_id;
+	unsigned last_insert_id;
+	unsigned rows_affected;
+	unsigned i;
+	struct rows rows;
+	(void)params;
+	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+
+	PREPARE("BEGIN", &stmt_id);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+
+	PREPARE("INSERT INTO test (n) VALUES(123)", &stmt_id);
+	for (i = 0; i < 256; i++) {
+		EXEC(stmt_id, &last_insert_id, &rows_affected);
+	}
+
+	PREPARE("COMMIT", &stmt_id);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+
+	PREPARE("SELECT n FROM test", &stmt_id);
+	QUERY(stmt_id, &rows);
+
+	client__close_rows(&rows);
+
 	return MUNIT_OK;
 }
 

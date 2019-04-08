@@ -82,6 +82,6 @@ int gateway__handle(struct gateway *g,
  * interrupted in order to start sending a first batch of rows. The response
  * write buffer associated with the request must have been reset.
  */
-int gateway__resume(struct gateway *g);
+int gateway__resume(struct gateway *g, bool *finished);
 
 #endif /* DQLITE_GATEWAY_H_ */
