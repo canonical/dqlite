@@ -152,7 +152,8 @@ DQLITE_INLINE size_t text__sizeof(const text_t *value)
 
 DQLITE_INLINE size_t blob__sizeof(const blob_t *value)
 {
-	return sizeof(uint64_t) /* length */ + value->len /* data */;
+	return sizeof(uint64_t) /* length */ +
+	       byte__pad64(value->len) /* data */;
 }
 
 DQLITE_INLINE void uint8__encode(const uint8_t *value, void **cursor)
@@ -307,7 +308,7 @@ DQLITE_INLINE int blob__decode(struct cursor *cursor, blob_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	value->base = (char*)cursor->p;
+	value->base = (char *)cursor->p;
 	value->len = len;
 	cursor->p += n;
 	cursor->cap -= n;

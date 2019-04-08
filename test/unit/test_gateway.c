@@ -651,6 +651,36 @@ TEST_CASE(query, large, NULL)
 	return MUNIT_OK;
 }
 
+/* Perform a query using a prepared statement with parameters */
+TEST_CASE(query, params, NULL)
+{
+	struct query_fixture *f = data;
+	struct value values[2];
+	uint64_t stmt_id;
+	(void)params;
+	EXEC("BEGIN");
+	EXEC("INSERT INTO test(n) VALUES(1)");
+	EXEC("INSERT INTO test(n) VALUES(2)");
+	EXEC("INSERT INTO test(n) VALUES(3)");
+	EXEC("INSERT INTO test(n) VALUES(4)");
+	EXEC("COMMIT");
+
+	PREPARE("SELECT n FROM test WHERE n > ? AND n < ?");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+
+	ENCODE(&f->request, query);
+	values[0].type = SQLITE_INTEGER;
+	values[0].integer = 1;
+	values[1].type = SQLITE_INTEGER;
+	values[1].integer = 4;
+	ENCODE_PARAMS(2, values);
+
+	HANDLE(QUERY);
+	ASSERT_CALLBACK(0, ROWS);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * finalize
@@ -680,7 +710,8 @@ TEST_TEAR_DOWN(finalize)
 }
 
 /* Finalize a prepared statement. */
-TEST_CASE(finalize, success, NULL) {
+TEST_CASE(finalize, success, NULL)
+{
 	uint64_t stmt_id;
 	struct finalize_fixture *f = data;
 	(void)params;
@@ -723,7 +754,8 @@ TEST_TEAR_DOWN(exec_sql)
 }
 
 /* Exec a SQL text with a single query. */
-TEST_CASE(exec_sql, single, NULL) {
+TEST_CASE(exec_sql, single, NULL)
+{
 	struct exec_sql_fixture *f = data;
 	(void)params;
 	f->request.db_id = 0;
@@ -736,11 +768,13 @@ TEST_CASE(exec_sql, single, NULL) {
 }
 
 /* Exec a SQL text with a multiple queries. */
-TEST_CASE(exec_sql, multi, NULL) {
+TEST_CASE(exec_sql, multi, NULL)
+{
 	struct exec_sql_fixture *f = data;
 	(void)params;
 	f->request.db_id = 0;
-	f->request.sql = "CREATE TABLE test (n INT); INSERT INTO test VALUES(1)";
+	f->request.sql =
+	    "CREATE TABLE test (n INT); INSERT INTO test VALUES(1)";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
 	CLUSTER_APPLIED(4);
@@ -779,13 +813,41 @@ TEST_TEAR_DOWN(query_sql)
 }
 
 /* Exec a SQL query whose result set fits in a page. */
-TEST_CASE(query_sql, small, NULL) {
+TEST_CASE(query_sql, small, NULL)
+{
 	struct query_sql_fixture *f = data;
 	(void)params;
 	EXEC("INSERT INTO test VALUES(123)");
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, ROWS);
+	return MUNIT_OK;
+}
+
+/* Perform a query with parameters */
+TEST_CASE(query_sql, params, NULL)
+{
+	struct query_sql_fixture *f = data;
+	struct value values[2];
+	(void)params;
+	EXEC("BEGIN");
+	EXEC("INSERT INTO test(n) VALUES(1)");
+	EXEC("INSERT INTO test(n) VALUES(2)");
+	EXEC("INSERT INTO test(n) VALUES(3)");
+	EXEC("INSERT INTO test(n) VALUES(4)");
+	EXEC("COMMIT");
+
+	f->request.db_id = 0;
+	f->request.sql = "SELECT n FROM test WHERE n > ? AND n < ?";
+	ENCODE(&f->request, query_sql);
+	values[0].type = SQLITE_INTEGER;
+	values[0].integer = 1;
+	values[1].type = SQLITE_INTEGER;
+	values[1].integer = 4;
+	ENCODE_PARAMS(2, values);
+
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, ROWS);
 	return MUNIT_OK;

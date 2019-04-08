@@ -402,6 +402,11 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 		failure(req, rc, "prepare statement");
 		return 0;
 	}
+	rc = bind__params(g->stmt, cursor);
+	if (rc != 0) {
+		failure(req, rc, "bind parameters");
+		return 0;
+	}
 	g->stmt_finalize = true;
 	query_batch(g->stmt, req);
 	return 0;
