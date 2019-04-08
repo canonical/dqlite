@@ -42,6 +42,7 @@ libdqlite_la_SOURCES = \
   src/leader.c \
   src/lib/buffer.c \
   src/lib/transport.c \
+  src/logger.c \
   src/message.c \
   src/metrics.c \
   src/config.c \

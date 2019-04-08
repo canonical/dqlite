@@ -602,6 +602,7 @@ TEST_CASE(query, large, NULL)
 	uint64_t n;
 	const char *column;
 	struct value value;
+	bool finished;
 	(void)params;
 	EXEC("BEGIN");
 	for (i = 0; i < 500; i++) {
@@ -630,7 +631,8 @@ TEST_CASE(query, large, NULL)
 	DECODE(&f->response, rows);
 	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
 
-	gateway__resume(&f->gateway);
+	gateway__resume(&f->gateway, &finished);
+	munit_assert_false(finished);
 
 	ASSERT_CALLBACK(0, ROWS);
 
