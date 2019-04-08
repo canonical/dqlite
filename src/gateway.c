@@ -412,6 +412,24 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+static int handle_interrupt(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	START(interrupt, empty);
+
+	/* Take appropriate action depending on the cleanup code. */
+	if (g->stmt_finalize) {
+		sqlite3_finalize(g->stmt);
+		g->stmt_finalize = false;
+	}
+	g->stmt = NULL;
+	g->req = NULL;
+
+	SUCCESS(empty, EMPTY);
+
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
@@ -426,7 +444,8 @@ int gateway__handle(struct gateway *g,
 		if (g->req->type == DQLITE_REQUEST_QUERY ||
 		    g->req->type == DQLITE_REQUEST_QUERY_SQL) {
 			/* TODO: handle interrupt requests */
-			assert(0);
+			assert(type == DQLITE_REQUEST_INTERRUPT);
+			goto handle;
 		}
 		if (g->req->type == DQLITE_REQUEST_EXEC ||
 		    g->req->type == DQLITE_REQUEST_EXEC_SQL) {
@@ -435,6 +454,7 @@ int gateway__handle(struct gateway *g,
 		assert(0);
 	}
 
+handle:
 	req->type = type;
 	req->gateway = g;
 	req->cb = cb;
