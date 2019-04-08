@@ -54,6 +54,8 @@ int bind__params(sqlite3_stmt *stmt, struct cursor *cursor)
 	unsigned i;
 	int rc;
 
+	sqlite3_reset(stmt);
+
 	if (cursor->cap == 0) {
 		return 0;
 	}
