@@ -40,7 +40,7 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 		return SQLITE_ERROR;
 	}
 
-	/* Encode the orw values */
+	/* Encode the row values */
 	for (i = 0; i < n; i++) {
 		/* Figure the type */
 		struct value value;

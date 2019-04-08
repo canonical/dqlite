@@ -136,12 +136,19 @@ int tuple_decoder__next(struct tuple_decoder *d, struct value *value)
 	return 0;
 }
 
+/* Return a pointer to the tuple header. */
+static uint8_t *encoder__header(struct tuple_encoder *e)
+{
+	return buffer__cursor(e->buffer, e->header);
+}
+
 int tuple_encoder__init(struct tuple_encoder *e,
 			unsigned n,
 			int format,
 			struct buffer *buffer)
 {
 	void *cursor;
+	size_t n_header;
 
 	e->n = n;
 	e->format = format;
@@ -160,19 +167,17 @@ int tuple_encoder__init(struct tuple_encoder *e,
 
 	e->header = buffer__offset(buffer);
 
+	/* Reset the header */
+	n_header = calc_header_size(n, format);
+	memset(encoder__header(e), 0, n_header);
+
 	/* Advance the buffer write pointer past the tuple header. */
-	cursor = buffer__advance(buffer, calc_header_size(n, format));
+	cursor = buffer__advance(buffer, n_header);
 	if (cursor == NULL) {
 		return DQLITE_NOMEM;
 	}
 
 	return 0;
-}
-
-/* Return a pointer to the tuple header. */
-static uint8_t *encoder__header(struct tuple_encoder *e)
-{
-	return buffer__cursor(e->buffer, e->header);
 }
 
 /* Set the type of the i'th value of the tuple. */
