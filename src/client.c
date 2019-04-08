@@ -223,10 +223,6 @@ int client__recv_rows(struct client *c, struct rows *rows)
 			return DQLITE_ERROR;
 		}
 	}
-	rv = tuple_decoder__init(&decoder, column_count, &cursor);
-	if (rv != 0) {
-		return DQLITE_ERROR;
-	}
 	last = NULL;
 	while (1) {
 		uint64_t eof;
@@ -250,6 +246,10 @@ int client__recv_rows(struct client *c, struct rows *rows)
 			return DQLITE_NOMEM;
 		}
 		row->next = NULL;
+		rv = tuple_decoder__init(&decoder, column_count, &cursor);
+		if (rv != 0) {
+			return DQLITE_ERROR;
+		}
 		for (i = 0; i < rows->column_count; i++) {
 			rv = tuple_decoder__next(&decoder, &row->values[i]);
 			if (rv != 0) {
@@ -260,8 +260,8 @@ int client__recv_rows(struct client *c, struct rows *rows)
 			rows->next = row;
 		} else {
 			last->next = row;
-			last = row;
 		}
+		last = row;
 	}
 	return 0;
 }

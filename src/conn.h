@@ -22,7 +22,7 @@ typedef void (*conn_close_cb)(struct conn *c);
 
 struct conn
 {
-	struct logger *config;
+	struct config *config;
 	struct raft_io_uv_transport *uv_transport; /* Raft transport */
 	conn_close_cb close_cb;                    /* Close callback */
 	struct transport transport; /* Async network read/write */

@@ -471,12 +471,15 @@ handle:
 	return rc;
 }
 
-int gateway__resume(struct gateway *g)
+int gateway__resume(struct gateway *g, bool *finished)
 {
-	assert(g->req != NULL);
-	assert(g->req->type == DQLITE_REQUEST_QUERY ||
-	       g->req->type == DQLITE_REQUEST_QUERY_SQL);
+	if (g->req == NULL || (g->req->type != DQLITE_REQUEST_QUERY &&
+			       g->req->type != DQLITE_REQUEST_QUERY_SQL)) {
+		*finished = true;
+		return 0;
+	}
 	assert(g->stmt != NULL);
+	*finished = false;
 	query_batch(g->stmt, g->req);
 	return 0;
 }

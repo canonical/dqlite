@@ -322,6 +322,9 @@ struct query_fixture
 {
 	FIXTURE;
 	unsigned stmt_id;
+	unsigned insert_stmt_id;
+	unsigned last_insert_id;
+	unsigned rows_affected;
 	struct rows rows;
 };
 
@@ -329,15 +332,13 @@ TEST_SETUP(query)
 {
 	struct query_fixture *f = munit_malloc(sizeof *f);
 	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
 	SETUP;
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
-	PREPARE("INSERT INTO test(n) VALUES (123)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	EXEC(stmt_id, &f->last_insert_id, &f->rows_affected);
+	PREPARE("INSERT INTO test(n) VALUES (123)", &f->insert_stmt_id);
+	EXEC(f->insert_stmt_id, &f->last_insert_id, &f->rows_affected);
 	return f;
 }
 
@@ -349,7 +350,8 @@ TEST_TEAR_DOWN(query)
 	free(f);
 }
 
-TEST_CASE(query, success, NULL)
+/* Perform a query yielding one row. */
+TEST_CASE(query, one, NULL)
 {
 	struct query_fixture *f = data;
 	struct row *row;
