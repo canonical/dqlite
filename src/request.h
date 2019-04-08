@@ -31,6 +31,7 @@
 #define REQUEST_QUERY_SQL(X, ...)       \
 	X(uint64, db_id, ##__VA_ARGS__) \
 	X(text, sql, ##__VA_ARGS__)
+#define REQUEST_INTERRUPT(X, ...) X(uint64, db_id, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
@@ -44,7 +45,8 @@
 	X(query, QUERY, __VA_ARGS__)       \
 	X(finalize, FINALIZE, __VA_ARGS__) \
 	X(exec_sql, EXEC_SQL, __VA_ARGS__) \
-	X(query_sql, QUERY_SQL, __VA_ARGS__)
+	X(query_sql, QUERY_SQL, __VA_ARGS__) \
+	X(interrupt, INTERRUPT, __VA_ARGS__)
 
 REQUEST__TYPES(REQUEST__DEFINE);
 

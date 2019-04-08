@@ -681,6 +681,52 @@ TEST_CASE(query, params, NULL)
 	return MUNIT_OK;
 }
 
+/* Interrupt a large query. */
+TEST_CASE(query, interrupt, NULL)
+{
+	struct query_fixture *f = data;
+	struct request_interrupt interrupt;
+	unsigned i;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	(void)params;
+	EXEC("BEGIN");
+	for (i = 0; i < 500; i++) {
+		EXEC("INSERT INTO test(n) VALUES(123)");
+	}
+	EXEC("COMMIT");
+
+	PREPARE("SELECT n FROM test");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(&f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(&f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	for (i = 0; i < 255; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, 123);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	ENCODE(&interrupt, interrupt);
+	HANDLE(INTERRUPT);
+
+	ASSERT_CALLBACK(0, EMPTY);
+
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * finalize
