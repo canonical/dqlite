@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <uv.h>
+
 #include "../include/dqlite.h"
 
 #include "assert.h"
