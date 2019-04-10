@@ -116,7 +116,20 @@ static int maybe_handle_in_progress_tx(struct replication *r,
 
 	/* Check if the in-progress transaction is a leader. */
 	if (tx__is_leader(tx)) {
-		/* We reject concurrent leader transactions */
+		/* Check if the transaction was started by another connection.
+		 *
+		 * In that case it's not worth proceeding further, since most
+		 * probably the current in-progress transaction will complete
+		 * successfully and modify the database, so a further write
+		 * attempt from this other connection would fail with
+		 * SQLITE_BUSY_SNAPSHOT.
+		 *
+		 * No dqlite state has been modified, and the WAL write lock has
+		 * of course not been acquired.
+		 *
+		 * We just return SQLITE_BUSY, which has the same effect as the
+		 * call to sqlite3WalBeginWriteTransaction (invoked in pager.c
+		 * after a successful xBegin) would have. */
 		if (tx->conn != leader->conn) {
 			return SQLITE_BUSY;
 		}
@@ -188,6 +201,8 @@ int begin_hook(sqlite3_wal_replication *replication, void *arg)
 	if (raft_state(r->raft) != RAFT_LEADER) {
 		return SQLITE_IOERR_NOT_LEADER;
 	}
+
+	/* We are always invoked in the context of an exec request */
 	assert(leader->exec != NULL);
 
 	rc = maybe_add_follower(r, leader);
