@@ -5,7 +5,7 @@
 
 #include <sqlite3.h>
 
-#include "./lib/queue.h"
+#include "lib/queue.h"
 
 #include "db.h"
 

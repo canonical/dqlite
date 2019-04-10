@@ -1,7 +1,5 @@
 /**
- *
  * Raft-based implementation of the SQLite replication interface.
- *
  */
 
 #ifndef DQLITE_REPLICATION_H_

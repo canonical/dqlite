@@ -3,7 +3,7 @@
 #include <libco.h>
 #include <sqlite3.h>
 
-#include "./lib/assert.h"
+#include "lib/assert.h"
 
 #include "command.h"
 #include "leader.h"
