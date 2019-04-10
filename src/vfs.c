@@ -5,7 +5,7 @@
 
 #include "../include/dqlite.h"
 
-#include "./lib/assert.h"
+#include "lib/assert.h"
 
 #include "format.h"
 #include "vfs.h"

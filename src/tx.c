@@ -2,7 +2,7 @@
 
 #include <sqlite3.h>
 
-#include "./lib/assert.h"
+#include "lib/assert.h"
 
 #include "tx.h"
 

@@ -1,7 +1,5 @@
 /**
- *
  * Track the state of leader connection and execute statements asynchronously.
- *
  */
 
 #ifndef LEADER_H_

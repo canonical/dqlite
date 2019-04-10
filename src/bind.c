@@ -56,6 +56,8 @@ int bind__params(sqlite3_stmt *stmt, struct cursor *cursor)
 
 	sqlite3_reset(stmt);
 
+	/* If the payload has been fully consumed, it means there are no
+	 * parameters to bind. */
 	if (cursor->cap == 0) {
 		return 0;
 	}
@@ -64,7 +66,6 @@ int bind__params(sqlite3_stmt *stmt, struct cursor *cursor)
 	if (rc != 0) {
 		return rc;
 	}
-
 	for (i = 0; i < tuple_decoder__n(&decoder); i++) {
 		struct value value;
 		rc = tuple_decoder__next(&decoder, &value);

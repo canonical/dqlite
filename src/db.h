@@ -1,13 +1,11 @@
 /**
- *
  * State of a single database.
- *
  */
 
 #ifndef DB_H_
 #define DB_H_
 
-#include "./lib/queue.h"
+#include "lib/queue.h"
 
 #include "config.h"
 #include "tx.h"
