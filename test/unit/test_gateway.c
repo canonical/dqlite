@@ -130,7 +130,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		munit_assert_int(rc2, ==, 0);                            \
 	}
 
-/* Open a leader connection the the "test" database */
+/* Open a leader connection against the "test" database */
 #define OPEN                              \
 	{                                 \
 		struct request_open open; \

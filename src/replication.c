@@ -111,14 +111,17 @@ static int maybe_handle_in_progress_tx(struct replication *r,
 
 	/* Check if the in-progress transaction is a leader. */
 	if (tx__is_leader(tx)) {
-		/* We queue up and serialize concurrent leader transactions, and
-		 * SQLite prevents the same connection from entering a write
+		/* We reject concurrent leader transactions */
+		if (tx->conn != leader->conn) {
+			return SQLITE_BUSY;
+		}
+
+		/* SQLite prevents the same connection from entering a write
 		 * transaction twice, so this must be a zombie of ourselves,
 		 * meaning that a Frames command failed because we were not
 		 * leaders anymore at that time and that was a commit frames
 		 * command following one or more non-commit frames commands that
 		 * were successfully applied. */
-		assert(tx->conn == leader->conn);
 		assert(tx->is_zombie);
 		assert(tx->state == TX__WRITING);
 		/* Create a surrogate follower. We'll undo the transaction
@@ -135,7 +138,42 @@ static int maybe_handle_in_progress_tx(struct replication *r,
 	return 0;
 }
 
-int replication__begin(sqlite3_wal_replication *replication, void *arg)
+/* The main tasks of the begin hook are to check that no other write transaction
+ * is in progress and to cleanup any dangling follower transactions that might
+ * have been left open after a leadership change.
+ *
+ * Concurrent calls can happen because the xBegin hook is fired by SQLite before
+ * acquiring the WAL write lock (i.e. before calling WalBeginWriteTransaction),
+ * so different connections can enter the xBegin hook at any time.
+ *
+ * The errors that can be returned are:
+ *
+ *  - SQLITE_BUSY:  If we detect that a write transaction is in progress on
+ *                  another connection, or an Open request to create a follower
+ *                  connection has been submitted by and is in progress. The
+ *                  SQLite's call to sqlite3PagerBegin that triggered the xBegin
+ *                  hook will propagate the error to sqlite3BtreeBeginTrans and
+ *                  bubble up further, eventually failing the statement that
+ *                  triggered the write attempt. The client should then execute
+ *                  a ROLLBACK and then decide what to do.
+ *
+ *  - SQLITE_IOERR: This is returned if we are not the leader when the hook
+ *                  fires or if we fail to apply the Open follower command log,
+ *                  in case no follower for this database is open yet. We
+ *                  include the relevant extended code, either
+ *                  SQLITE_IOERR_NOT_LEADER if this server is not the leader
+ *                  anymore or it is being shutdown, or
+ *                  SQLITE_IOERR_LEADERSHIP_LOST if leadership was lost while
+ *                  applying the Open command. The SQLite's call to
+ *                  sqlite3PagerBegin that triggered the xBegin hook will
+ *                  propagate the error to sqlite3BtreeBeginTrans, which will in
+ *                  turn propagate it to the OP_Transaction case of vdbe.c,
+ *                  which will goto abort_due_to_error and finally call
+ *                  sqlite3VdbeHalt, automatically rolling back the
+ *                  transaction. Since no write transaction was actually started
+ *                  the xEnd hook is not fired.
+ */
+int begin_hook(sqlite3_wal_replication *replication, void *arg)
 {
 	struct replication *r = replication->pAppData;
 	struct leader *leader = arg;
@@ -269,7 +307,7 @@ int replication__init(struct sqlite3_wal_replication *replication,
 
 	replication->iVersion = 1;
 	replication->pAppData = r;
-	replication->xBegin = replication__begin;
+	replication->xBegin = begin_hook;
 	replication->xAbort = replication__abort;
 	replication->xFrames = replication__frames;
 	replication->xUndo = replication__undo;
