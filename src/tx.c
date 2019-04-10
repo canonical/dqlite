@@ -12,6 +12,7 @@ void tx__init(struct tx *tx, unsigned long long id, sqlite3 *conn)
 	tx->conn = conn;
 	tx->is_zombie = false;
 	tx->state = TX__PENDING;
+	tx->dry_run = tx__is_leader(tx);
 }
 
 void tx__close(struct tx *tx)
@@ -49,9 +50,10 @@ int tx__frames(struct tx *tx,
 		assert(tx->state == TX__WRITING);
 	}
 
-	if (tx__is_leader(tx)) {
-		/* In leader mode, don't actually invoke SQLite replication API,
-		 * since that will be done by SQLite internally.*/
+	if (tx->dry_run) {
+		/* In leader or surrogate mode, don't actually invoke SQLite
+		 * replication API, since that will be done by SQLite
+		 * internally.*/
 		goto out;
 	}
 
