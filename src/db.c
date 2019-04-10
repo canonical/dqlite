@@ -9,6 +9,7 @@
 /* Open a SQLite connection and set it to follower mode. */
 static int open_follower_conn(const char *filename,
 			      const char *vfs,
+			      unsigned page_size,
 			      sqlite3 **conn);
 
 void db__init(struct db *db, struct config *config, const char *filename)
@@ -41,7 +42,8 @@ int db__open_follower(struct db *db)
 {
 	int rc;
 	assert(db->follower == NULL);
-	rc = open_follower_conn(db->filename, db->config->name, &db->follower);
+	rc = open_follower_conn(db->filename, db->config->name,
+				db->config->page_size, &db->follower);
 	if (rc != 0) {
 		return rc;
 	}
@@ -68,8 +70,10 @@ void db__delete_tx(struct db *db)
 
 static int open_follower_conn(const char *filename,
 			      const char *vfs,
+			      unsigned page_size,
 			      sqlite3 **conn)
 {
+	char pragma[255];
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	char *msg = NULL;
 	int rc;
@@ -81,6 +85,13 @@ static int open_follower_conn(const char *filename,
 
 	/* Enable extended result codes */
 	rc = sqlite3_extended_result_codes(*conn, 1);
+	if (rc != SQLITE_OK) {
+		goto err_after_open;
+	}
+
+	/* Set the page size. */
+	sprintf(pragma, "PRAGMA page_size=%d", page_size);
+	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
 		goto err_after_open;
 	}

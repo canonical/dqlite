@@ -82,11 +82,13 @@ static int fsm__apply_frames(struct fsm *f, const struct command_frames *c)
 
 	rc = tx__frames(tx, is_begin, c->frames.page_size, c->frames.n_pages,
 			page_numbers, pages, c->truncate, c->is_commit);
-	if (rc != 0) {
-		return rc;
-	}
 
 	sqlite3_free(page_numbers);
+
+	if (rc != 0) {
+		printf("FAIL %d\n", rc);
+		return rc;
+	}
 
 	/* If the commit flag is on, this is the final write of a transaction,
 	 */
