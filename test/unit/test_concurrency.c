@@ -207,17 +207,9 @@ TEST_SUITE(exec);
 TEST_SETUP(exec)
 {
 	struct exec_fixture *f = munit_malloc(sizeof *f);
-	unsigned stmt_id;
 	SETUP;
 	f->c1 = &f->connections[0];
 	f->c2 = &f->connections[1];
-	/* Create a test table using connection 0 */
-	PREPARE(f->c1, "CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(f->c1, stmt_id);
-	WAIT(f->c1);
-	ASSERT_CALLBACK(f->c1, 0, RESULT);
-	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
-	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
 	return f;
 }
 TEST_TEAR_DOWN(exec)
@@ -227,12 +219,42 @@ TEST_TEAR_DOWN(exec)
 	free(f);
 }
 
-/* If an exec request is already in progress on another leader connection,
- * SQLITE_BUSY is returned. */
-TEST_CASE(exec, busy, NULL)
+/* If another leader connection has submitted an Open request and is waiting for
+ * it to complete, SQLITE_BUSY is returned. */
+TEST_CASE(exec, open, NULL)
 {
 	struct exec_fixture *f = data;
 	(void)params;
+
+	PREPARE(f->c1, "CREATE TABLE test1 (n INT)", &f->stmt_id1);
+	PREPARE(f->c2, "CREATE TABLE test2 (n INT)", &f->stmt_id2);
+
+	EXEC(f->c1, f->stmt_id1);
+	EXEC(f->c2, f->stmt_id2);
+	WAIT(f->c2);
+	ASSERT_CALLBACK(f->c2, 0, FAILURE);
+	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "exec error");
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	return MUNIT_OK;
+}
+
+/* If an exec request is already in progress on another leader connection,
+ * SQLITE_BUSY is returned. */
+TEST_CASE(exec, tx, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+
+	/* Create a test table using connection 0 */
+	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
+	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
+
 	EXEC(f->c1, f->stmt_id1);
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
