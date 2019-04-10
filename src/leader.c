@@ -22,10 +22,20 @@ static void loop();
 static struct leader *loop_arg_leader; /* For initializing the loop coroutine */
 static struct exec *loop_arg_exec;     /* Next exec request to execute */
 
-int leader__init(struct leader *l, struct db *db)
+/* Whether we need to submit a barrier request because there is no transaction
+ * in progress in the underlying database and the FSM is behind the last log
+ * index. */
+static bool needs_barrier(struct leader *l)
+{
+	return (l->db->tx == NULL || l->db->tx->is_zombie) &&
+	       raft_last_applied(l->raft) < raft_last_index(l->raft);
+}
+
+int leader__init(struct leader *l, struct db *db, struct raft *raft)
 {
 	int rc;
 	l->db = db;
+	l->raft = raft;
 	l->main = co_active();
 	rc = init_loop(l);
 	if (rc != 0) {
@@ -56,22 +66,72 @@ void leader__close(struct leader *l)
 	QUEUE__REMOVE(&l->queue);
 }
 
+static void exec_barrier_cb(struct barrier *barrier, int status)
+{
+	struct exec *req = barrier->data;
+	struct leader *l = req->leader;
+	if (status != 0) {
+		l->exec->done = true;
+		maybe_exec_done(l->exec);
+		return;
+	}
+	loop_arg_exec = l->exec;
+	co_switch(l->loop);
+	maybe_exec_done(l->exec);
+}
+
 int leader__exec(struct leader *l,
 		 struct exec *req,
 		 sqlite3_stmt *stmt,
 		 exec_cb cb)
 {
+	int rv;
 	if (l->exec != NULL) {
 		return SQLITE_BUSY;
 	}
 	l->exec = req;
+
 	req->leader = l;
 	req->stmt = stmt;
 	req->cb = cb;
 	req->done = false;
-	loop_arg_exec = req;
-	co_switch(l->loop);
-	maybe_exec_done(req);
+	req->barrier.data = req;
+
+	rv = leader__barrier(l, &req->barrier, exec_barrier_cb);
+	if (rv != 0) {
+		return rv;
+	}
+	return 0;
+}
+
+static void raft_barrier_cb(struct raft_apply *req, int status)
+{
+	struct barrier *barrier = req->data;
+	int rv = 0;
+	if (status != 0) {
+		if (status == RAFT_ERR_LEADERSHIP_LOST) {
+			rv = SQLITE_IOERR_LEADERSHIP_LOST;
+		} else {
+			rv = SQLITE_ERROR;
+		}
+	}
+	barrier->cb(barrier, rv);
+}
+
+int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
+{
+	int rv;
+	if (!needs_barrier(l)) {
+		cb(barrier, 0);
+		return 0;
+	}
+	barrier->cb = cb;
+	barrier->leader = l;
+	barrier->req.data = barrier;
+	rv = raft_barrier(l->raft, &barrier->req, raft_barrier_cb);
+	if (rv != 0) {
+		return rv;
+	}
 	return 0;
 }
 

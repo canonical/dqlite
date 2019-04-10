@@ -96,7 +96,7 @@ unit_test_SOURCES += \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test
-unit_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=60
+unit_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=65
 unit_test_LDFLAGS = -lpthread $(AM_LDFLAGS)
 TESTS = unit-test
 

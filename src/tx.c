@@ -74,6 +74,29 @@ out:
 	return 0;
 }
 
+int tx__undo(struct tx *tx) {
+	int rc;
+
+	if (tx->dry_run) {
+		/* In leader or surrogate mode, don't actually invoke SQLite
+		 * replication API, since that will be done by SQLite
+		 * internally.*/
+		goto out;
+	}
+
+	assert(tx->state == TX__PENDING || tx->state == TX__WRITING);
+
+	rc = sqlite3_wal_replication_undo(tx->conn, "main");
+	if (rc != 0) {
+		return rc;
+	}
+
+out:
+	tx->state = TX__UNDONE;
+
+	return 0;
+}
+
 void tx__zombie(struct tx *tx) {
 	assert(tx__is_leader(tx));
 	assert(!tx->is_zombie);

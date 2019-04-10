@@ -8,6 +8,7 @@
 #include <stdbool.h>
 
 #include <libco.h>
+#include <raft.h>
 #include <sqlite3.h>
 
 #include "./lib/queue.h"
@@ -15,17 +16,30 @@
 #include "db.h"
 
 struct exec;
+struct barrier;
+struct leader;
+
+typedef void (*exec_cb)(struct exec *req, int status);
+typedef void (*barrier_cb)(struct barrier *req, int status);
+
 struct leader
 {
 	struct db *db;     /* Database the connection is opened against */
 	cothread_t main;   /* Main coroutine */
 	cothread_t loop;   /* Leader loop coroutine, executing statements */
 	sqlite3 *conn;     /* Underlying SQLite connection */
+	struct raft *raft; /* Raft instance */
 	struct exec *exec; /* Exec request currently in progress, if any */
 	queue queue;       /* Prev/next leader connection, used by the db */
 };
 
-typedef void (*exec_cb)(struct exec *req, int status);
+struct barrier
+{
+	void *data;
+	struct leader *leader;
+	struct raft_apply req;
+	barrier_cb cb;
+};
 
 /**
  * Asynchronous request to execute a statement.
@@ -34,6 +48,7 @@ struct exec
 {
 	void *data;
 	struct leader *leader;
+	struct barrier barrier;
 	sqlite3_stmt *stmt;
 	bool done;
 	int status;
@@ -48,7 +63,7 @@ struct exec
  * transfering control back to main coroutine and then opening a new leader
  * connection against the given database.
  */
-int leader__init(struct leader *l, struct db *db);
+int leader__init(struct leader *l, struct db *db, struct raft *raft);
 
 void leader__close(struct leader *l);
 
@@ -71,5 +86,13 @@ int leader__exec(struct leader *l,
 		 struct exec *req,
 		 sqlite3_stmt *stmt,
 		 exec_cb cb);
+
+/**
+ * Submit a raft barrier request if there is no transaction in progress in the
+ * underlying database and the FSM is behind the last log index.
+ *
+ * Otherwise, just invoke the given @cb immediately.
+ */
+int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb);
 
 #endif /* LEADER_H_*/
