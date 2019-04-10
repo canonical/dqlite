@@ -25,21 +25,19 @@ struct handle;
  */
 struct gateway
 {
-	struct logger *logger; /* Logger to use */
-	struct config *config;	/* Configuration */
-	struct registry *registry;    /* Register of existing databases */
-	struct raft *raft;	    /* Raft instance */
-	struct leader *leader;	/* Leader connection to the database */
-	struct handle *req;	   /* Asynchronous request being handled */
-	sqlite3_stmt *stmt;	   /* Statement being processed */
-	bool stmt_finalize;	   /* Whether to finalize the statement */
-	struct exec exec;	     /* Low-level exec async request */
-	const char *sql;	      /* SQL query for exec_sql requests */
-	struct stmt__registry stmts;  /* Registry of prepared statements */
+	struct config *config;       /* Configuration */
+	struct registry *registry;   /* Register of existing databases */
+	struct raft *raft;           /* Raft instance */
+	struct leader *leader;       /* Leader connection to the database */
+	struct handle *req;          /* Asynchronous request being handled */
+	sqlite3_stmt *stmt;          /* Statement being processed */
+	bool stmt_finalize;          /* Whether to finalize the statement */
+	struct exec exec;            /* Low-level exec async request */
+	const char *sql;             /* SQL query for exec_sql requests */
+	struct stmt__registry stmts; /* Registry of prepared statements */
 };
 
 void gateway__init(struct gateway *g,
-		   struct logger *logger,
 		   struct config *config,
 		   struct registry *registry,
 		   struct raft *raft);

@@ -5,12 +5,10 @@
 #include "response.h"
 
 void gateway__init(struct gateway *g,
-		   struct logger *logger,
 		   struct config *config,
 		   struct registry *registry,
 		   struct raft *raft)
 {
-	g->logger = logger;
 	g->config = config;
 	g->registry = registry;
 	g->raft = raft;

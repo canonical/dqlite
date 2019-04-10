@@ -25,18 +25,24 @@ TEST_MODULE(gateway);
 	struct handle req;                           \
 	struct context context;
 
-#define SETUP                                                             \
-	int rc;                                                           \
-	SETUP_CLUSTER;                                                    \
-	gateway__init(&f->gateway, CLUSTER_LOGGER(0), CLUSTER_OPTIONS(0), \
-		      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0));              \
-	rc = buffer__init(&f->payload);                                   \
-	munit_assert_int(rc, ==, 0);                                      \
-	rc = buffer__init(&f->buffer);                                    \
-	munit_assert_int(rc, ==, 0);                                      \
-	f->req.data = &f->context;                                        \
-	f->context.invoked = false;                                       \
-	f->context.status = -1;                                           \
+#define SETUP                                                              \
+	unsigned i;                                                        \
+	int rc;                                                            \
+	SETUP_CLUSTER;                                                     \
+	for (i = 0; i < N_SERVERS; i++) {                                  \
+		struct config *config;                                     \
+		config = CLUSTER_CONFIG(i);                                \
+		config->page_size = 512;                                   \
+	}                                                                  \
+	gateway__init(&f->gateway, CLUSTER_CONFIG(0), CLUSTER_REGISTRY(0), \
+		      CLUSTER_RAFT(0));                                    \
+	rc = buffer__init(&f->payload);                                    \
+	munit_assert_int(rc, ==, 0);                                       \
+	rc = buffer__init(&f->buffer);                                     \
+	munit_assert_int(rc, ==, 0);                                       \
+	f->req.data = &f->context;                                         \
+	f->context.invoked = false;                                        \
+	f->context.status = -1;                                            \
 	f->context.type = -1;
 
 #define TEAR_DOWN                    \
@@ -155,17 +161,34 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		stmt_id = stmt.id;              \
 	}
 
+/* Finalize the statement with the given ID. */
+#define FINALIZE(STMT_ID)                         \
+	{                                         \
+		struct request_finalize finalize; \
+		finalize.db_id = 0;               \
+		finalize.stmt_id = STMT_ID;       \
+		ENCODE(&finalize, finalize);      \
+		HANDLE(FINALIZE);                 \
+		ASSERT_CALLBACK(0, EMPTY);        \
+	}
+
+/* Submit a request to execute the given statement. */
+#define EXEC_SUBMIT(STMT_ID)              \
+	{                                 \
+		struct request_exec exec; \
+		exec.db_id = 0;           \
+		exec.stmt_id = STMT_ID;   \
+		ENCODE(&exec, exec);      \
+		HANDLE(EXEC);             \
+	}
+
 /* Prepare and exec a statement. */
 #define EXEC(SQL)                                 \
 	{                                         \
-		struct request_exec exec;         \
 		uint64_t stmt_id;                 \
 		unsigned i;                       \
 		PREPARE(SQL);                     \
-		exec.db_id = 0;                   \
-		exec.stmt_id = stmt_id;           \
-		ENCODE(&exec, exec);              \
-		HANDLE(EXEC);                     \
+		EXEC_SUBMIT(stmt_id);             \
 		for (i = 0; i < 15; i++) {        \
 			CLUSTER_STEP;             \
 			if (f->context.invoked) { \
@@ -173,7 +196,13 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 			}                         \
 		}                                 \
 		ASSERT_CALLBACK(0, RESULT);       \
+		FINALIZE(stmt_id);                \
 	}
+
+/* Execute a pragma statement to lowers SQLite's page cache size, in order to
+ * force it to write uncommitted dirty pages to the WAL and hance trigger calls
+ * to the xFrames hook with non-commit batches. */
+#define LOWER_CACHE_SIZE EXEC("PRAGMA cache_size = 1")
 
 /******************************************************************************
  *
@@ -503,6 +532,27 @@ TEST_CASE(exec, blob, NULL)
 	munit_assert_int(value.blob.base[0], ==, 'a');
 	munit_assert_int(value.blob.base[7], ==, 'h');
 
+	return MUNIT_OK;
+}
+
+/* The server is not the leader anymore when the second xFrames hook for a
+ * non-commit frames batch fires. The same leader gets re-elected. */
+TEST_CASE(exec, re_elected_after_not_leader_upon_second_frames, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	unsigned i;
+	(void)params;
+	CLUSTER_ELECT(0);
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("BEGIN");
+	for (i = 0; i < 162; i++) {
+		EXEC("INSERT INTO test(n) VALUES(1)");
+	}
+	PREPARE("INSERT INTO test(n) VALUES(1)");
+	CLUSTER_DEPOSE;
+	EXEC_SUBMIT(stmt_id);
 	return MUNIT_OK;
 }
 
