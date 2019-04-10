@@ -137,15 +137,16 @@ static int maybe_handle_in_progress_tx(struct replication *r,
 		/* SQLite prevents the same connection from entering a write
 		 * transaction twice, so this must be a zombie of ourselves,
 		 * meaning that a Frames command failed because we were not
-		 * leaders anymore at that time and that was a commit frames
-		 * command following one or more non-commit frames commands that
-		 * were successfully applied. */
+		 * leaders anymore at that time and that frames command was
+		 * following one or more non-commit frames commands that were
+		 * successfully applied. */
 		assert(tx->is_zombie);
 		assert(tx->state == TX__WRITING);
+		assert(leader->db->follower != NULL);
+
 		/* Create a surrogate follower. We'll undo the transaction
 		 * below. */
-		/* TODO: actually implement this */
-		/* m.surrogateWriting(tracer, txn) */
+		tx__surrogate(tx, leader->db->follower);
 	}
 
 	c.tx_id = tx->id;
@@ -237,7 +238,7 @@ int begin_hook(sqlite3_wal_replication *replication, void *arg)
 	return SQLITE_OK;
 }
 
-int replication__abort(sqlite3_wal_replication *r, void *arg)
+int abort_hook(sqlite3_wal_replication *r, void *arg)
 {
 	(void)r;
 	(void)arg;
@@ -245,13 +246,32 @@ int replication__abort(sqlite3_wal_replication *r, void *arg)
 	return SQLITE_OK;
 }
 
-int replication__frames(sqlite3_wal_replication *replication,
-			void *arg,
-			int page_size,
-			int n_frames,
-			sqlite3_wal_replication_frame *frames,
-			unsigned truncate,
-			int is_commit)
+/* Handle xFrames failures due to this server not not being the leader. */
+static int abort_because_not_leader(struct tx *tx) {
+	if (tx->state == TX__PENDING) {
+		/* No Frames command was applied, so followers don't know about
+		 * this transaction. We don't need to do anything special, the
+		 * xUndo hook will just remove it. */
+	} else {
+		/* At least one Frames command was applied, so the transaction
+		 * exists on the followers. We mark the transaction as zombie,
+		 * the begin hook of next leader (either us or somebody else)
+		 * will detect a dangling transaction and issue an Undo command
+		 * to roll it back. In its apply Undo command logic our FSM will
+		 * detect that the rollback is for a zombie and just no-op
+		 * it. */
+		tx__zombie(tx);
+	}
+	return SQLITE_IOERR_NOT_LEADER;
+}
+
+int frames_hook(sqlite3_wal_replication *replication,
+		void *arg,
+		int page_size,
+		int n_frames,
+		sqlite3_wal_replication_frame *frames,
+		unsigned truncate,
+		int is_commit)
 {
 	struct replication *r = replication->pAppData;
 	struct leader *leader = arg;
@@ -263,11 +283,9 @@ int replication__frames(sqlite3_wal_replication *replication,
 	assert(tx->conn == leader->conn);
 	assert(tx->state == TX__PENDING || tx->state == TX__WRITING);
 
-	/* We checked that we were leader in the begin hook. If we had lost
-	 * leadership in the meantime, the relevant apply callback would have
-	 * fired with RAFT_ELEADERSHIPLOST and SQLite wouldn't have invoked the
-	 * frames hook. */
-	assert(raft_state(r->raft) == RAFT_LEADER);
+	if (raft_state(r->raft) != RAFT_LEADER) {
+		return abort_because_not_leader(tx);
+	}
 
 	c.filename = leader->db->filename;
 	c.tx_id = tx->id;
@@ -285,7 +303,7 @@ int replication__frames(sqlite3_wal_replication *replication,
 	return SQLITE_OK;
 }
 
-int replication__undo(sqlite3_wal_replication *r, void *arg)
+int undo_hook(sqlite3_wal_replication *r, void *arg)
 {
 	(void)r;
 	(void)arg;
@@ -293,7 +311,7 @@ int replication__undo(sqlite3_wal_replication *r, void *arg)
 	return SQLITE_OK;
 }
 
-int replication__end(sqlite3_wal_replication *replication, void *arg)
+int end_hook(sqlite3_wal_replication *replication, void *arg)
 {
 	struct leader *leader = arg;
 	struct tx *tx = leader->db->tx;
@@ -305,7 +323,7 @@ int replication__end(sqlite3_wal_replication *replication, void *arg)
 	} else {
 		assert(tx->conn == leader->conn);
 	}
-
+ 
 	db__delete_tx(leader->db);
 
 	return SQLITE_OK;
@@ -328,10 +346,10 @@ int replication__init(struct sqlite3_wal_replication *replication,
 	replication->iVersion = 1;
 	replication->pAppData = r;
 	replication->xBegin = begin_hook;
-	replication->xAbort = replication__abort;
-	replication->xFrames = replication__frames;
-	replication->xUndo = replication__undo;
-	replication->xEnd = replication__end;
+	replication->xAbort = abort_hook;
+	replication->xFrames = frames_hook;
+	replication->xUndo = undo_hook;
+	replication->xEnd = end_hook;
 	replication->zName = config->name;
 
 	sqlite3_wal_replication_register(replication, 0);

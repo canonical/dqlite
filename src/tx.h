@@ -34,4 +34,25 @@ int tx__frames(struct tx *tx,
 	       unsigned truncate,
 	       bool is_commit);
 
+/**
+ * Mark this transaction as zombie. It must be called only for leader
+ * transactions.
+ *
+ * A zombie transaction is one whose leader has lost leadership while applying
+ * the associated FSM command.
+ */
+void tx__zombie(struct tx *tx);
+
+/**
+ * Convert to a surrogate follower transaction.
+ *
+ * Surrogate follower transactions are used to replace leader transactions when
+ * a server loses leadership and are supposed to be undone by the next
+ * leader.
+ *
+ * The current transaction's @conn must be a leader connection, while the given
+ * @conn must be the follower connection associated with the same database.
+ */
+void tx__surrogate(struct tx *tx, sqlite3 *conn);
+
 #endif /* TX_H_*/

@@ -44,17 +44,17 @@ int tx__frames(struct tx *tx,
 {
 	int rc;
 
-	if (is_begin) {
-		assert(tx->state == TX__PENDING);
-	} else {
-		assert(tx->state == TX__WRITING);
-	}
-
 	if (tx->dry_run) {
 		/* In leader or surrogate mode, don't actually invoke SQLite
 		 * replication API, since that will be done by SQLite
 		 * internally.*/
 		goto out;
+	}
+
+	if (is_begin) {
+		assert(tx->state == TX__PENDING);
+	} else {
+		assert(tx->state == TX__WRITING);
 	}
 
 	rc = sqlite3_wal_replication_frames(tx->conn, "main", is_begin,
@@ -72,4 +72,20 @@ out:
 	}
 
 	return 0;
+}
+
+void tx__zombie(struct tx *tx) {
+	assert(tx__is_leader(tx));
+	assert(!tx->is_zombie);
+	tx->is_zombie = true;
+}
+
+void tx__surrogate(struct tx *tx, sqlite3 *conn) {
+	assert(tx__is_leader(tx));
+	assert(tx->dry_run);
+	assert(tx->is_zombie);
+	assert(tx->state == TX__WRITING);
+
+	tx->conn = conn;
+	tx->is_zombie = false;
 }
