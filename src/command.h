@@ -7,7 +7,7 @@
 
 #include <raft.h>
 
-#include "./lib/serialize.h"
+#include "lib/serialize.h"
 
 /* Command type codes */
 enum { COMMAND_OPEN = 1, COMMAND_FRAMES, COMMAND_UNDO };

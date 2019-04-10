@@ -1,6 +1,6 @@
 #include <raft.h>
 
-#include "./lib/assert.h"
+#include "lib/assert.h"
 
 #include "command.h"
 #include "fsm.h"

@@ -7,8 +7,9 @@
 
 #include "lib/serialize.h"
 
-/* Bind the parameters of the underlying statement by decoding the given
- * message. */
+/**
+ * Bind the parameters of the given statement by decoding the given payload.
+ */
 int bind__params(sqlite3_stmt *stmt, struct cursor *cursor);
 
 #endif /* BIND_H_*/

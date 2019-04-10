@@ -2,7 +2,7 @@
 
 #include "../include/dqlite.h"
 
-#include "./lib/assert.h"
+#include "lib/assert.h"
 
 #include "registry.h"
 

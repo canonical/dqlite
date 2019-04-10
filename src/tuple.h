@@ -44,8 +44,8 @@
 #include <stdint.h>
 #include <unistd.h>
 
-#include "./lib/buffer.h"
-#include "./lib/serialize.h"
+#include "lib/buffer.h"
+#include "lib/serialize.h"
 
 enum { TUPLE__ROW = 1, TUPLE__PARAMS };
 

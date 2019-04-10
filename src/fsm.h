@@ -1,7 +1,5 @@
 /**
- *
  * Dqlite Raft FSM
- *
  */
 
 #ifndef DQLITE_FSM_H_
