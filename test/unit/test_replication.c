@@ -30,7 +30,7 @@ TEST_MODULE(replication);
 	int rc2;                                          \
 	rc2 = registry__db_get(registry, "test.db", &db); \
 	munit_assert_int(rc2, ==, 0);                     \
-	leader__init(leader, db);
+	leader__init(leader, db, CLUSTER_RAFT(I));
 
 #define TEAR_DOWN                         \
 	unsigned i;                       \

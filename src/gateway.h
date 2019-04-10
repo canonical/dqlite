@@ -35,6 +35,7 @@ struct gateway
 	struct exec exec;            /* Low-level exec async request */
 	const char *sql;             /* SQL query for exec_sql requests */
 	struct stmt__registry stmts; /* Registry of prepared statements */
+	struct barrier barrier;      /* Barrier for query requests */
 };
 
 void gateway__init(struct gateway *g,

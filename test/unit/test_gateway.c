@@ -182,21 +182,28 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		HANDLE(EXEC);             \
 	}
 
+/* Wait for the last request to complete */
+#define WAIT                                           \
+	{                                              \
+		unsigned i;                            \
+		for (i = 0; i < 20; i++) {             \
+			CLUSTER_STEP;                  \
+			if (f->context.invoked) {      \
+				break;                 \
+			}                              \
+		}                                      \
+		munit_assert_true(f->context.invoked); \
+	}
+
 /* Prepare and exec a statement. */
-#define EXEC(SQL)                                 \
-	{                                         \
-		uint64_t stmt_id;                 \
-		unsigned i;                       \
-		PREPARE(SQL);                     \
-		EXEC_SUBMIT(stmt_id);             \
-		for (i = 0; i < 15; i++) {        \
-			CLUSTER_STEP;             \
-			if (f->context.invoked) { \
-				break;            \
-			}                         \
-		}                                 \
-		ASSERT_CALLBACK(0, RESULT);       \
-		FINALIZE(stmt_id);                \
+#define EXEC(SQL)                           \
+	{                                   \
+		uint64_t stmt_id;           \
+		PREPARE(SQL);               \
+		EXEC_SUBMIT(stmt_id);       \
+		WAIT;                       \
+		ASSERT_CALLBACK(0, RESULT); \
+		FINALIZE(stmt_id);          \
 	}
 
 /* Execute a pragma statement to lowers SQLite's page cache size, in order to
@@ -535,24 +542,103 @@ TEST_CASE(exec, blob, NULL)
 	return MUNIT_OK;
 }
 
-/* The server is not the leader anymore when the second xFrames hook for a
+/* The server is not the leader anymore when the first frames hook for a
  * non-commit frames batch fires. The same leader gets re-elected. */
-TEST_CASE(exec, re_elected_after_not_leader_upon_second_frames, NULL)
+TEST_CASE(exec, frames_not_leader_1st_non_commit_re_elected, NULL)
 {
 	struct exec_fixture *f = data;
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
 	CLUSTER_ELECT(0);
+
+	/* Accumulate enough dirty data to fill the page cache */
 	LOWER_CACHE_SIZE;
 	EXEC("CREATE TABLE test (n INT)");
 	EXEC("BEGIN");
 	for (i = 0; i < 162; i++) {
 		EXEC("INSERT INTO test(n) VALUES(1)");
 	}
+
+	/* Trigger a page cache flush to the WAL, which fails because we are not
+	 * leader anymore */
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "disk I/O error");
+
+	/* Re-elect ourselves and re-try */
+	CLUSTER_ELECT(0);
+	EXEC("INSERT INTO test(n) VALUES(1)");
+
+	return MUNIT_OK;
+}
+
+/* The server is not the leader anymore when the first frames hook for a
+ * non-commit frames batch fires. The same leader gets re-elected. */
+TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	unsigned i;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Accumulate enough dirty data to fill the page cache a first time,
+	 * flush it and then fill it a second time. */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("BEGIN");
+	for (i = 0; i < 234; i++) {
+		EXEC("INSERT INTO test(n) VALUES(1)");
+	}
+
+	/* Trigger a second page cache flush to the WAL, which fails because we
+	 * are not leader anymore */
+	PREPARE("INSERT INTO test(n) VALUES(1)");
+	CLUSTER_DEPOSE;
+	EXEC_SUBMIT(stmt_id);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "disk I/O error");
+
+	/* Re-elect ourselves and re-try */
+	CLUSTER_ELECT(0);
+	EXEC("INSERT INTO test(n) VALUES(1)");
+
+	return MUNIT_OK;
+}
+
+/* The server loses leadership after trying to apply the first Frames command
+ * for a non-commit frames batch. The same leader gets re-elected. */
+TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	unsigned i;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Accumulate enough dirty data to fill the page cache */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("BEGIN");
+	for (i = 0; i < 162; i++) {
+		EXEC("INSERT INTO test(n) VALUES(1)");
+	}
+
+	/* Trigger a page cache flush to the WAL, which fails because we are not
+	 * leader anymore */
+	PREPARE("INSERT INTO test(n) VALUES(1)");
+	EXEC_SUBMIT(stmt_id);
+	CLUSTER_DEPOSE;
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR_LEADERSHIP_LOST, "disk I/O error");
+
+	/* Re-elect ourselves and re-try */
+	CLUSTER_ELECT(0);
+	EXEC("INSERT INTO test(n) VALUES(1)");
+
 	return MUNIT_OK;
 }
 
@@ -779,6 +865,32 @@ TEST_CASE(query, interrupt, NULL)
 	return MUNIT_OK;
 }
 
+/* Submit a query request right after the server has been re-elected and needs
+ * to catch up with logs. */
+TEST_CASE(query, barrier, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+
+	PREPARE("INSERT INTO test(n) VALUES(1)");
+	EXEC_SUBMIT(stmt_id);
+	CLUSTER_DEPOSE;
+	ASSERT_CALLBACK(0, FAILURE);
+
+	/* Re-elect ourselves and issue a query request */
+	CLUSTER_ELECT(0);
+
+	PREPARE("SELECT n FROM test");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * finalize
@@ -875,7 +987,7 @@ TEST_CASE(exec_sql, multi, NULL)
 	    "CREATE TABLE test (n INT); INSERT INTO test VALUES(1)";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
-	CLUSTER_APPLIED(4);
+	WAIT;
 	ASSERT_CALLBACK(0, RESULT);
 	return MUNIT_OK;
 }
