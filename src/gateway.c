@@ -16,8 +16,10 @@ void gateway__init(struct gateway *g,
 	g->req = NULL;
 	g->stmt = NULL;
 	g->stmt_finalize = false;
+	g->exec.data = g;
 	g->sql = NULL;
 	stmt__registry_init(&g->stmts);
+	g->barrier.data = g;
 }
 
 void gateway__close(struct gateway *g)
@@ -131,7 +133,7 @@ static int handle_open(struct handle *req, struct cursor *cursor)
 	if (g->leader == NULL) {
 		return DQLITE_NOMEM;
 	}
-	rc = leader__init(g->leader, db);
+	rc = leader__init(g->leader, db, g->raft);
 	if (rc != 0) {
 		return rc;
 	}
@@ -174,7 +176,7 @@ static void fill_result(struct gateway *g, struct response_result *response)
 	response->rows_affected = sqlite3_changes(g->leader->conn);
 }
 
-static void handle_exec_cb(struct exec *exec, int status)
+static void leader_exec_cb(struct exec *exec, int status)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
@@ -188,7 +190,7 @@ static void handle_exec_cb(struct exec *exec, int status)
 		fill_result(g, &response);
 		SUCCESS(result, RESULT);
 	} else {
-		failure(req, status, "exec error");
+		failure(req, status, sqlite3_errmsg(g->leader->conn));
 		sqlite3_reset(stmt);
 	}
 }
@@ -197,22 +199,21 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
-	int rc;
+	int rv;
 	START(exec, result);
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	(void)response;
-	rc = bind__params(stmt->stmt, cursor);
-	if (rc != 0) {
-		failure(req, rc, "bind parameters");
+	rv = bind__params(stmt->stmt, cursor);
+	if (rv != 0) {
+		failure(req, rv, "bind parameters");
 		return 0;
 	}
 	g->req = req;
 	g->stmt = stmt->stmt;
-	g->exec.data = g;
-	rc = leader__exec(g->leader, &g->exec, stmt->stmt, handle_exec_cb);
-	if (rc != 0) {
-		return rc;
+	rv = leader__exec(g->leader, &g->exec, stmt->stmt, leader_exec_cb);
+	if (rv != 0) {
+		return rv;
 	}
 	return 0;
 }
@@ -255,20 +256,48 @@ done:
 	g->req = NULL;
 }
 
+static void query_barrier_cb(struct barrier *barrier, int status)
+{
+	struct gateway *g = barrier->data;
+	struct handle *handle = g->req;
+	sqlite3_stmt *stmt = g->stmt;
+
+	assert(handle != NULL);
+	assert(stmt != NULL);
+
+	g->stmt = NULL;
+	g->req = NULL;
+
+	if (status != 0) {
+		failure(handle, status, "barrier error");
+		return;
+	}
+
+	query_batch(stmt, handle);
+}
+
 static int handle_query(struct handle *req, struct cursor *cursor)
 {
+	struct gateway *g = req->gateway;
 	struct stmt *stmt;
-	int rc;
+	int rv;
 	START(query, rows);
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	(void)response;
-	rc = bind__params(stmt->stmt, cursor);
-	if (rc != 0) {
-		failure(req, rc, "bind parameters");
+	rv = bind__params(stmt->stmt, cursor);
+	if (rv != 0) {
+		failure(req, rv, "bind parameters");
 		return 0;
 	}
-	query_batch(stmt->stmt, req);
+	g->req = req;
+	g->stmt = stmt->stmt;
+	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
+	if (rv != 0) {
+		g->req = NULL;
+		g->stmt = NULL;
+		return rv;
+	}
 	return 0;
 }
 
@@ -313,7 +342,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 	struct response_result response;
 	const char *tail;
 	sqlite3_stmt *stmt;
-	int rc;
+	int rv;
 
 	if (g->sql == NULL || strcmp(g->sql, "") == 0) {
 		goto success;
@@ -324,9 +353,9 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 		g->stmt = NULL;
 	}
 
-	rc = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &stmt, &tail);
-	if (rc != SQLITE_OK) {
-		failure(req, rc, "prepare statement");
+	rv = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &stmt, &tail);
+	if (rv != SQLITE_OK) {
+		failure(req, rv, "prepare statement");
 		goto done;
 	}
 
@@ -336,21 +365,20 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 
 	/* TODO: what about bindings for multi-statement SQL text? */
 	if (cursor != NULL) {
-		rc = bind__params(stmt, cursor);
-		if (rc != SQLITE_OK) {
-			failure(req, rc, "bind parameters");
+		rv = bind__params(stmt, cursor);
+		if (rv != SQLITE_OK) {
+			failure(req, rv, "bind parameters");
 			goto done_after_prepare;
 		}
 	}
 
 	g->sql = tail;
-
 	g->req = req;
 	g->stmt = stmt;
-	g->exec.data = g;
-	rc = leader__exec(g->leader, &g->exec, g->stmt, handle_exec_sql_cb);
-	if (rc != SQLITE_OK) {
-		failure(req, rc, "exec");
+
+	rv = leader__exec(g->leader, &g->exec, g->stmt, handle_exec_sql_cb);
+	if (rv != SQLITE_OK) {
+		failure(req, rv, "exec");
 		goto done_after_prepare;
 	}
 
@@ -390,23 +418,29 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	const char *tail;
-	int rc;
+	int rv;
 	START(query_sql, rows);
 	LOOKUP_DB(request.db_id);
 	(void)response;
-	rc = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt,
+	rv = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt,
 				&tail);
-	if (rc != SQLITE_OK) {
-		failure(req, rc, "prepare statement");
+	if (rv != SQLITE_OK) {
+		failure(req, rv, "prepare statement");
 		return 0;
 	}
-	rc = bind__params(g->stmt, cursor);
-	if (rc != 0) {
-		failure(req, rc, "bind parameters");
+	rv = bind__params(g->stmt, cursor);
+	if (rv != 0) {
+		failure(req, rv, "bind parameters");
 		return 0;
 	}
 	g->stmt_finalize = true;
-	query_batch(g->stmt, req);
+	g->req = req;
+	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
+	if (rv != 0) {
+		g->req = NULL;
+		g->stmt = NULL;
+		return rv;
+	}
 	return 0;
 }
 

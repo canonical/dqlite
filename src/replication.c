@@ -24,17 +24,114 @@ struct replication
 	queue apply_reqs;
 };
 
+/* Wrapper around raft_apply, saving context information. */
+struct apply
+{
+	struct raft_apply req; /* Raft apply request */
+	int status;            /* Raft apply result */
+	struct leader *leader; /* Leader connection that triggered the hook */
+	int type;              /* Command type */
+	union {                /* Command-specific data */
+		struct
+		{
+			bool is_commit;
+		} frames;
+	};
+};
+
+static void frames_abort_because_leadership_lost(struct leader *leader,
+						 int is_commit)
+{
+	if (is_commit) {
+		/* Mark the transaction as zombie. Possible scenarios:
+		 *
+		 * 1. This server gets re-elected right away as leader.
+		 *
+		 *    In this case we'll try to apply this lost command log
+		 *    again. If we succeed, our FSM will transition this zombie
+		 *    transaction into to a surrogate follower and our next
+		 *    begin hook invokation will issue an Undo command, which
+		 *    (if successfull) will be a no-op on our FSM and an actual
+		 *    rollback on the followers (regardless of whether this was
+		 *    the first non-commit frames command or a further one). If
+		 *    we fail to re-apply the command there will be a new
+		 *    election, and we'll end up again in either this case (1)
+		 *    or the next one (2). Same if the Undo command fails.
+		 *
+		 * 2. Another server gets elected as leader.
+		 *
+		 *    In this case there are two possible scenarios.
+		 *
+		 *    2.1. No quorum was reached for the lost commit
+		 *         command. This means that no FSM (including ours) will
+		 *         ever try to apply it. If this lost non-commit frames
+		 *         command was the first one of a transaction, the new
+		 *         leader will see no dangling follower and will just
+		 *         start a new transaction with a new ID, sending a
+		 *         Frames command to our FSM. Our FSM will detect the
+		 *         zombie transaction and simply purge it from the
+		 *         registry.
+		 *
+		 *    2.2 A quorum was reached for the lost commit command. This
+		 *        means that the new leader will replicate it to every
+		 *        server that didn't apply it yet, which includes us,
+		 *        and then issue an Undo command to abort the
+		 *        transaction. In this case our FSM will behave like in
+		 *        case 1.*/
+		tx__zombie(leader->db->tx);
+	} else {
+		/* Mark the transaction as zombie. Possible scenarios:
+		 *
+		 * 1. This server gets re-elected right away as leader.
+		 *
+		 *    In this case we'll try to apply this lost command log
+		 *    again. If we succeed, our FSM will transition this zombie
+		 *    transaction into to a surrogate follower and our next
+		 *    Begin hook invokation will issue an Undo command, which
+		 *    (if successfull) will be a no-op on our FSM and an actual
+		 *    rollback on the followers (regardless of whether this was
+		 *    the first non-commit frames command or a further one). If
+		 *    we fail to re-apply the command there will be a new
+		 *    election, and we'll end up again in either this case (1)
+		 *    or the next one (2). Same if the Undo command fails.
+		 *
+		 * 2. Another server gets elected as leader.
+		 *
+		 *    In this case there are two possible scenarios.
+		 *
+		 *    2.1. No quorum was reached for the lost commit
+		 *         command. This means that no FSM (including ours) will
+		 *         ever try to apply it. If this lost non-commit frames
+		 *         command was the first one of a transaction, the new
+		 *         leader will see no dangling follower transaction and
+		 *         will just start a new transaction with a new ID,
+		 *         sending a Frames command to our FSM. Our FSM will
+		 *         detect the zombie transaction and simply purge it
+		 *         from the registry.
+		 *
+		 *    2.2 A quorum was reached for the lost commit command. This
+		 *        means that the new leader will replicate it to every
+		 *        server that didn't apply it yet, which includes us,
+		 *        and then issue an Undo command to abort the
+		 *        transaction. In this case our FSM will behave like in
+		 *        case 1.
+		 */
+		tx__zombie(leader->db->tx);
+	}
+}
+
 static void apply_cb(struct raft_apply *req, int status)
 {
+	struct apply *apply;
 	struct leader *leader;
 	struct exec *r;
-	leader = req->data;
-	raft_free(req);
-	if (status != 0) {
-		assert(0); /* TODO */
-	}
-	co_switch(leader->loop);
+	apply = req->data;
+	leader = apply->leader;
 	r = leader->exec;
+	apply->status = status;
+
+	co_switch(leader->loop); /* Resume apply() */
+
 	if (r != NULL && r->done) {
 		leader->exec = NULL;
 		if (r->cb != NULL) {
@@ -44,39 +141,54 @@ static void apply_cb(struct raft_apply *req, int status)
 }
 
 static int apply(struct replication *r,
+		 struct apply *apply,
 		 struct leader *leader,
 		 int type,
 		 const void *command)
 {
-	struct raft_apply *req;
 	struct raft_buffer buf;
 	int rc;
 
-	req = raft_malloc(sizeof *req);
-	if (req == NULL) {
-		rc = DQLITE_NOMEM;
-		goto err;
-	}
-	req->data = leader;
+	apply->leader = leader;
+	apply->req.data = apply;
+	apply->type = type;
 
 	rc = command__encode(type, command, &buf);
 	if (rc != 0) {
-		goto err_after_req_alloc;
+		goto err;
 	}
 
-	rc = raft_apply(r->raft, req, &buf, 1, apply_cb);
+	rc = raft_apply(r->raft, &apply->req, &buf, 1, apply_cb);
 	if (rc != 0) {
 		goto err_after_command_encode;
 	}
 
 	co_switch(leader->main);
-	return 0;
+
+	if (apply->status != 0) {
+		/* TODO: handle all possible errors */
+		assert(apply->status == RAFT_ERR_LEADERSHIP_LOST);
+		switch (apply->type) {
+			case COMMAND_FRAMES:
+				frames_abort_because_leadership_lost(
+				    leader, apply->frames.is_commit);
+				break;
+			default:
+				assert(0);
+		};
+		rc = SQLITE_IOERR_LEADERSHIP_LOST;
+	} else {
+		rc = SQLITE_OK;
+	}
+
+	raft_free(apply);
+
+	return rc;
 
 err_after_command_encode:
 	raft_free(buf.base);
-err_after_req_alloc:
-	raft_free(req);
 err:
+	raft_free(apply);
 	return rc;
 }
 
@@ -85,6 +197,7 @@ err:
 static int maybe_add_follower(struct replication *r, struct leader *leader)
 {
 	struct command_open c;
+	struct apply *req;
 	int rc;
 	if (leader->db->follower != NULL) {
 		return 0;
@@ -92,9 +205,14 @@ static int maybe_add_follower(struct replication *r, struct leader *leader)
 	if (leader->db->opening) {
 		return SQLITE_BUSY;
 	}
+	req = raft_malloc(sizeof *req);
+	if (req == NULL) {
+		return DQLITE_NOMEM;
+	}
+
 	c.filename = leader->db->filename;
 	leader->db->opening = true;
-	rc = apply(r, leader, COMMAND_OPEN, &c);
+	rc = apply(r, req, leader, COMMAND_OPEN, &c);
 	leader->db->opening = false;
 	if (rc != 0) {
 		return rc;
@@ -107,6 +225,7 @@ static int maybe_handle_in_progress_tx(struct replication *r,
 {
 	struct tx *tx = leader->db->tx;
 	struct command_undo c;
+	struct apply *req;
 	int rc;
 
 	if (tx == NULL) {
@@ -150,7 +269,13 @@ static int maybe_handle_in_progress_tx(struct replication *r,
 	}
 
 	c.tx_id = tx->id;
-	rc = apply(r, leader, COMMAND_UNDO, &c);
+
+	req = raft_malloc(sizeof *req);
+	if (req == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	rc = apply(r, req, leader, COMMAND_UNDO, &c);
 	if (rc != 0) {
 		return rc;
 	}
@@ -247,11 +372,18 @@ int abort_hook(sqlite3_wal_replication *r, void *arg)
 }
 
 /* Handle xFrames failures due to this server not not being the leader. */
-static int abort_because_not_leader(struct tx *tx) {
+static int frames_abort_because_not_leader(struct leader *leader, int is_commit)
+{
+	struct tx *tx = leader->db->tx;
 	if (tx->state == TX__PENDING) {
 		/* No Frames command was applied, so followers don't know about
-		 * this transaction. We don't need to do anything special, the
-		 * xUndo hook will just remove it. */
+		 * this transaction. If this is a commit frame, we don't need to
+		 * do anything special, the xUndo hook will just remove it. If
+		 * it's not a commit frame, the undo hook won't be fired and we
+		 * need to remove the transaction here. */
+		if (!is_commit) {
+			db__delete_tx(leader->db);
+		}
 	} else {
 		/* At least one Frames command was applied, so the transaction
 		 * exists on the followers. We mark the transaction as zombie,
@@ -277,6 +409,7 @@ int frames_hook(sqlite3_wal_replication *replication,
 	struct leader *leader = arg;
 	struct tx *tx = leader->db->tx;
 	struct command_frames c;
+	struct apply *req;
 	int rc;
 
 	assert(tx != NULL);
@@ -284,7 +417,7 @@ int frames_hook(sqlite3_wal_replication *replication,
 	assert(tx->state == TX__PENDING || tx->state == TX__WRITING);
 
 	if (raft_state(r->raft) != RAFT_LEADER) {
-		return abort_because_not_leader(tx);
+		return frames_abort_because_not_leader(leader, is_commit);
 	}
 
 	c.filename = leader->db->filename;
@@ -295,7 +428,14 @@ int frames_hook(sqlite3_wal_replication *replication,
 	c.frames.page_size = page_size;
 	c.frames.data = frames;
 
-	rc = apply(r, leader, COMMAND_FRAMES, &c);
+	req = raft_malloc(sizeof *req);
+	if (req == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	req->frames.is_commit = is_commit;
+
+	rc = apply(r, req, leader, COMMAND_FRAMES, &c);
 	if (rc != 0) {
 		return rc;
 	}
@@ -303,10 +443,72 @@ int frames_hook(sqlite3_wal_replication *replication,
 	return SQLITE_OK;
 }
 
-int undo_hook(sqlite3_wal_replication *r, void *arg)
+int undo_hook(sqlite3_wal_replication *replication, void *arg)
 {
-	(void)r;
-	(void)arg;
+	struct replication *r = replication->pAppData;
+	struct leader *leader = arg;
+	struct tx *tx = leader->db->tx;
+
+	assert(tx != NULL);
+	assert(tx->conn == leader->conn);
+
+	if (tx->is_zombie) {
+		/* This zombie originated from the Frames hook. There are two
+		 * scenarios:
+		 *
+		 * 1. Leadership was lost while applying the Frames command.
+		 *
+		 *    We can't simply remove the transaction since the Frames
+		 *    command might eventually get committed. We just ignore it,
+		 *    and let it handle by our FSM in that case (i.e. if we are
+		 *    re-elected or a quorum was reached and another leader
+		 *    tries to apply it).
+		 *
+		 * 2. This server was not the leader anymore when the Frames
+		 *    hook fired for a commit frames batch which was the last of
+		 *    a sequence of non-commit ones.
+		 *
+		 *    In this case we're being invoked by SQLite which is trying
+		 *    to rollback the transaction. We can't simply remove the
+		 *    transaction since the next leader will detect a dangling
+		 *    transaction and try to issue an Undo command. We just
+		 *    ignore the zombie and let our FSM handle it when the Undo
+		 *    command will be applied. */
+		return SQLITE_OK;
+	}
+
+	if (tx->state == TX__PENDING) {
+		/* This means that the Undo hook fired because this node was not
+		 * the leader when trying to apply the first Frames command, so
+		 * no follower knows about it. We can just return, the
+		 * transaction will be removed by the End hook. */
+		return SQLITE_OK;
+	}
+
+	// Check if we're the leader.
+	if (raft_state(r->raft) != RAFT_LEADER) {
+		/* If we have lost leadership we're in a state where the
+		 * transaction began on this node and a quorum of followers. We
+		 * return an error, and SQLite will ignore it, however we
+		 * need to create a surrogate follower, so the next leader will
+		 * try to undo it across all nodes. */
+		tx__surrogate(tx, leader->db->follower);
+		return SQLITE_IOERR_NOT_LEADER;
+	}
+
+	/* We don't really care whether the Undo command applied just below here
+	 * will be committed or not.If the command fails, we'll create a
+	 * surrogate follower: if the command still gets committed, then the
+	 * rollback succeeds and the next leader will start fresh, if if the
+	 * command does not get committed, the next leader will find a stale
+	 * follower and re-try to roll it back. */
+	/* if txn.State() != transaction.Pending { */
+	/* 	command := protocol.NewUndo(txn.ID()) */
+	/* 	if err := m.apply(tracer, conn, command); err != nil { */
+	/* 		m.surrogateWriting(tracer, txn) */
+	/* 		return errno(err) */
+	/* 	} */
+	/* } */
 
 	return SQLITE_OK;
 }
@@ -323,7 +525,7 @@ int end_hook(sqlite3_wal_replication *replication, void *arg)
 	} else {
 		assert(tx->conn == leader->conn);
 	}
- 
+
 	db__delete_tx(leader->db);
 
 	return SQLITE_OK;

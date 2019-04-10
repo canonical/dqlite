@@ -11,7 +11,7 @@ struct fsm
 	struct registry *registry;
 };
 
-static int fsm__apply_open(struct fsm *f, const struct command_open *c)
+static int apply_open(struct fsm *f, const struct command_open *c)
 {
 	struct db *db;
 	int rc;
@@ -28,7 +28,7 @@ static int fsm__apply_open(struct fsm *f, const struct command_open *c)
 	return 0;
 }
 
-static int fsm__apply_frames(struct fsm *f, const struct command_frames *c)
+static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
 	struct db *db;
 	struct tx *tx;
@@ -86,7 +86,6 @@ static int fsm__apply_frames(struct fsm *f, const struct command_frames *c)
 	sqlite3_free(page_numbers);
 
 	if (rc != 0) {
-		printf("FAIL %d\n", rc);
 		return rc;
 	}
 
@@ -106,6 +105,47 @@ static int fsm__apply_frames(struct fsm *f, const struct command_frames *c)
 	return 0;
 }
 
+static int apply_undo(struct fsm *f, const struct command_undo *c)
+{
+	struct db *db;
+	struct tx *tx;
+	int rc;
+
+	registry__db_by_tx_id(f->registry, c->tx_id, &db);
+	tx = db->tx;
+	assert(tx != NULL);
+
+	rc = tx__undo(tx);
+	if (rc != 0) {
+		return rc;
+	}
+
+	/* Let's decide whether to remove the transaction from the registry or
+	 * not. The following scenarios are possible:
+	 *
+	 * 1. This is a non-zombie leader transaction. We can assume that this
+	 *    command is being applied in the context of an undo hook execution,
+	 *    which will wait for the command to succeed and then remove the
+	 *    transaction by itself in the end hook, so no need to remove it
+	 *    here.
+	 *
+	 * 2. This is a follower transaction. We're done here, since undone is
+	 *    a final state, so let's remove the transaction.
+	 *
+	 * 3. This is a zombie leader transaction. This can happen if the leader
+	 *    lost leadership when applying the a non-commit frames, but the
+	 *    command was still committed (either by us is we were re-elected,
+	 *    or by another server if the command still reached a quorum). In
+	 *    that case we're handling an Undo command to rollback a dangling
+	 *    transaction, and we have to remove the zombie ourselves, because
+	 *    nobody else would do it otherwise. */
+	if (!tx__is_leader(tx) || tx->is_zombie) {
+		db__delete_tx(db);
+	}
+
+	return 0;
+}
+
 static int fsm__apply(struct raft_fsm *fsm, const struct raft_buffer *buf)
 {
 	struct fsm *f = fsm->data;
@@ -114,15 +154,18 @@ static int fsm__apply(struct raft_fsm *fsm, const struct raft_buffer *buf)
 	int rc;
 	rc = command__decode(buf, &type, &command);
 	if (rc != 0) {
-		//errorf(f->logger, "fsm: decode command: %d", rc);
+		// errorf(f->logger, "fsm: decode command: %d", rc);
 		goto err;
 	}
 	switch (type) {
 		case COMMAND_OPEN:
-			rc = fsm__apply_open(f, command);
+			rc = apply_open(f, command);
 			break;
 		case COMMAND_FRAMES:
-			rc = fsm__apply_frames(f, command);
+			rc = apply_frames(f, command);
+			break;
+		case COMMAND_UNDO:
+			rc = apply_undo(f, command);
 			break;
 		default:
 			rc = RAFT_ERR_IO_MALFORMED;

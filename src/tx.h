@@ -2,6 +2,7 @@
 #define TX_H_
 
 #include <stdbool.h>
+#include <unistd.h>
 
 #include <sqlite3.h>
 
@@ -13,11 +14,11 @@ enum { TX__PENDING = 0, /* Initial state right after creation */
 };
 struct tx
 {
-	unsigned long long id; /* Transaction ID. */
-	sqlite3 *conn;         /* Underlying SQLite connection */
-	bool is_zombie;        /* Whether this is a zombie transaction */
-	bool dry_run;          /* Don't invoke actual SQLite hooks. */
-	int state;             /* Current state */
+	size_t id;      /* Transaction ID. */
+	sqlite3 *conn;  /* Underlying SQLite connection */
+	bool is_zombie; /* Whether this is a zombie transaction */
+	bool dry_run;   /* Don't invoke actual SQLite hooks. */
+	int state;      /* Current state */
 };
 
 void tx__init(struct tx *tx, unsigned long long id, sqlite3 *conn);
@@ -33,6 +34,8 @@ int tx__frames(struct tx *tx,
 	       void *pages,
 	       unsigned truncate,
 	       bool is_commit);
+
+int tx__undo(struct tx *tx);
 
 /**
  * Mark this transaction as zombie. It must be called only for leader

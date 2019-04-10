@@ -11,12 +11,11 @@
 
 void stmt__init(struct stmt *s)
 {
-	assert(s != NULL);
+	s->stmt = NULL;
 }
 
 void stmt__close(struct stmt *s)
 {
-	assert(s != NULL);
 	if (s->stmt != NULL) {
 		/* Ignore the return code, since it will be non-zero in case the
 		 * most rececent evaluation of the statement failed. */

@@ -150,6 +150,16 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		HANDLE(C, EXEC);          \
 	}
 
+/* Submit a query request. */
+#define QUERY(C, STMT_ID)                   \
+	{                                   \
+		struct request_query query; \
+		query.db_id = 0;            \
+		query.stmt_id = STMT_ID;    \
+		ENCODE(C, &query, query);   \
+		HANDLE(C, QUERY);           \
+	}
+
 /* Wait for the gateway of the given connection to finish handling a request. */
 #define WAIT(C)                                        \
 	{                                              \
@@ -232,7 +242,7 @@ TEST_CASE(exec, open, NULL)
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
 	ASSERT_CALLBACK(f->c2, 0, FAILURE);
-	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "exec error");
+	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "database is locked");
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
 
@@ -258,8 +268,58 @@ TEST_CASE(exec, tx, NULL)
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
 	ASSERT_CALLBACK(f->c2, 0, FAILURE);
-	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "exec error");
+	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "database is locked");
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * Concurrent query requests
+ *
+ ******************************************************************************/
+
+struct query_fixture
+{
+	FIXTURE;
+	struct connection *c1;
+	struct connection *c2;
+	unsigned stmt_id1;
+	unsigned stmt_id2;
+};
+
+TEST_SUITE(query);
+TEST_SETUP(query)
+{
+	struct exec_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	f->c1 = &f->connections[0];
+	f->c2 = &f->connections[1];
+	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	return f;
+}
+TEST_TEAR_DOWN(query)
+{
+	struct exec_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Handle a query request while there is a transaction in progress. */
+TEST_CASE(query, tx, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	PREPARE(f->c1, "INSERT INTO test VALUES(1)", &f->stmt_id1);
+	PREPARE(f->c2, "SELECT n FROM test", &f->stmt_id2);
+	EXEC(f->c1, f->stmt_id1);
+	QUERY(f->c2, f->stmt_id2);
+	WAIT(f->c1);
+	WAIT(f->c2);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	ASSERT_CALLBACK(f->c2, 0, ROWS);
 	return MUNIT_OK;
 }

@@ -9,17 +9,15 @@
 #include "../../src/registry.h"
 
 #define FIXTURE_LEADER struct leader leader
-#define SETUP_LEADER SETUP_LEADER_X(f)
-#define TEAR_DOWN_LEADER TEAR_DOWN_LEADER_X(f)
-
-#define SETUP_LEADER_X(F)                                            \
+#define SETUP_LEADER                                                 \
 	{                                                            \
 		struct db *db;                                       \
-		int rc;                                              \
-		rc = registry__db_get(&F->registry, "test.db", &db); \
-		munit_assert_int(rc, ==, 0);                         \
-		leader__init(&F->leader, db);                        \
+		int rv;                                              \
+		rv = registry__db_get(&f->registry, "test.db", &db); \
+		munit_assert_int(rv, ==, 0);                         \
+		rv = leader__init(&f->leader, db, &f->raft);         \
+		munit_assert_int(rv, ==, 0);                         \
 	}
-#define TEAR_DOWN_LEADER_X(F) leader__close(&F->leader)
+#define TEAR_DOWN_LEADER leader__close(&f->leader)
 
 #endif /* TEST_LEADER_H */
