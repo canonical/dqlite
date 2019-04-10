@@ -89,8 +89,13 @@ static int maybe_add_follower(struct replication *r, struct leader *leader)
 	if (leader->db->follower != NULL) {
 		return 0;
 	}
+	if (leader->db->opening) {
+		return SQLITE_BUSY;
+	}
 	c.filename = leader->db->filename;
+	leader->db->opening = true;
 	rc = apply(r, leader, COMMAND_OPEN, &c);
+	leader->db->opening = false;
 	if (rc != 0) {
 		return rc;
 	}
