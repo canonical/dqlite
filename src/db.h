@@ -13,11 +13,12 @@
 struct db
 {
 	struct config *config; /* Dqlite configuration */
-	char *filename;	/* Database filename */
+	char *filename;        /* Database filename */
+	bool opening;          /* Whether an Open request is in progress */
 	sqlite3 *follower;     /* Follower connection */
-	queue leaders;	 /* Open leader connections */
-	struct tx *tx;	 /* Current ongoing transaction, if any */
-	queue queue;	   /* Prev/next database, used by the registry */
+	queue leaders;         /* Open leader connections */
+	struct tx *tx;         /* Current ongoing transaction, if any */
+	queue queue;           /* Prev/next database, used by the registry */
 };
 
 /**

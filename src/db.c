@@ -17,6 +17,7 @@ void db__init(struct db *db, struct config *config, const char *filename)
 	db->filename = sqlite3_malloc(strlen(filename) + 1);
 	assert(db->filename != NULL); /* TODO: return an error instead */
 	strcpy(db->filename, filename);
+	db->opening = false;
 	db->follower = NULL;
 	db->tx = NULL;
 	QUEUE__INIT(&db->leaders);
