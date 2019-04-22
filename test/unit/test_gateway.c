@@ -16,42 +16,7 @@ TEST_MODULE(gateway);
  *
  ******************************************************************************/
 
-#define FIXTURE                                      \
-	FIXTURE_CLUSTER;                             \
-	struct gateway gateway;                      \
-	struct buffer payload; /* Request payload */ \
-	struct cursor cursor;                        \
-	struct buffer buffer;                        \
-	struct handle req;                           \
-	struct context context;
-
-#define SETUP                                                              \
-	unsigned i;                                                        \
-	int rc;                                                            \
-	SETUP_CLUSTER;                                                     \
-	for (i = 0; i < N_SERVERS; i++) {                                  \
-		struct config *config;                                     \
-		config = CLUSTER_CONFIG(i);                                \
-		config->page_size = 512;                                   \
-	}                                                                  \
-	gateway__init(&f->gateway, CLUSTER_CONFIG(0), CLUSTER_REGISTRY(0), \
-		      CLUSTER_RAFT(0));                                    \
-	rc = buffer__init(&f->payload);                                    \
-	munit_assert_int(rc, ==, 0);                                       \
-	rc = buffer__init(&f->buffer);                                     \
-	munit_assert_int(rc, ==, 0);                                       \
-	f->req.data = &f->context;                                         \
-	f->context.invoked = false;                                        \
-	f->context.status = -1;                                            \
-	f->context.type = -1;
-
-#define TEAR_DOWN                    \
-	buffer__close(&f->buffer);   \
-	buffer__close(&f->payload);  \
-	gateway__close(&f->gateway); \
-	TEAR_DOWN_CLUSTER;
-
-/* Context for the fixture's handle request */
+/* Context for a gateway handle request. */
 struct context
 {
 	bool invoked;
@@ -59,7 +24,58 @@ struct context
 	int type;
 };
 
-static void fixture_handle_cb(struct handle *req, int status, int type)
+/* Drive a single gateway. Each gateway is associated with a different raft
+ * node. */
+struct connection
+{
+	struct gateway gateway;
+	struct buffer buf1;   /* Request payload */
+	struct buffer buf2;   /* Response payload */
+	struct cursor cursor; /* Response read cursor */
+	struct handle handle; /* Async handle request */
+	struct context context;
+};
+
+#define FIXTURE                                   \
+	FIXTURE_CLUSTER;                          \
+	struct connection connections[N_SERVERS]; \
+	struct gateway *gateway;                  \
+	struct buffer *buf1;                      \
+	struct cursor *cursor;                    \
+	struct buffer *buf2;                      \
+	struct handle *handle;                    \
+	struct context *context;
+
+#define SETUP                                                           \
+	unsigned i;                                                     \
+	int rc;                                                         \
+	SETUP_CLUSTER;                                                  \
+	for (i = 0; i < N_SERVERS; i++) {                               \
+		struct connection *c = &f->connections[i];              \
+		struct config *config;                                  \
+		config = CLUSTER_CONFIG(i);                             \
+		config->page_size = 512;                                \
+		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
+			      CLUSTER_RAFT(i));                         \
+		c->handle.data = &c->context;                           \
+		rc = buffer__init(&c->buf1);                            \
+		munit_assert_int(rc, ==, 0);                            \
+		rc = buffer__init(&c->buf2);                            \
+		munit_assert_int(rc, ==, 0);                            \
+	}                                                               \
+	SELECT(0)
+
+#define TEAR_DOWN                                          \
+	unsigned i;                                        \
+	for (i = 0; i < N_SERVERS; i++) {                  \
+		struct connection *c = &f->connections[i]; \
+		buffer__close(&c->buf1);                   \
+		buffer__close(&c->buf2);                   \
+		gateway__close(&c->gateway);               \
+	}                                                  \
+	TEAR_DOWN_CLUSTER;
+
+static void handleCb(struct handle *req, int status, int type)
 {
 	struct context *c = req->data;
 	c->invoked = true;
@@ -73,14 +89,23 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
  *
  ******************************************************************************/
 
+/* Select which gateway to use for performing requests. */
+#define SELECT(I)                                \
+	f->gateway = &f->connections[I].gateway; \
+	f->buf1 = &f->connections[I].buf1;       \
+	f->buf2 = &f->connections[I].buf2;       \
+	f->cursor = &f->connections[I].cursor;   \
+	f->context = &f->connections[I].context; \
+	f->handle = &f->connections[I].handle
+
 /* Allocate the payload buffer, encode a request of the given lower case name
  * and initialize the fixture cursor. */
 #define ENCODE(REQUEST, LOWER)                                  \
 	{                                                       \
 		size_t n2 = request_##LOWER##__sizeof(REQUEST); \
 		void *cursor;                                   \
-		buffer__reset(&f->payload);                     \
-		cursor = buffer__advance(&f->payload, n2);      \
+		buffer__reset(f->buf1);                         \
+		cursor = buffer__advance(f->buf1, n2);          \
 		munit_assert_ptr_not_null(cursor);              \
 		request_##LOWER##__encode(REQUEST, &cursor);    \
 	}
@@ -91,8 +116,8 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		struct tuple_encoder encoder;                                 \
 		int i2;                                                       \
 		int rc2;                                                      \
-		rc2 = tuple_encoder__init(&encoder, N, TUPLE__PARAMS,         \
-					  &f->payload);                       \
+		rc2 =                                                         \
+		    tuple_encoder__init(&encoder, N, TUPLE__PARAMS, f->buf1); \
 		munit_assert_int(rc2, ==, 0);                                 \
 		for (i2 = 0; i2 < N; i2++) {                                  \
 			rc2 = tuple_encoder__next(&encoder, &((VALUES)[i2])); \
@@ -102,11 +127,11 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 
 /* Decode a response of the given lower/upper case name using the buffer that
  * was written by the gateway. */
-#define DECODE(RESPONSE, LOWER)                                         \
-	{                                                               \
-		int rc2;                                                \
-		rc2 = response_##LOWER##__decode(&f->cursor, RESPONSE); \
-		munit_assert_int(rc2, ==, 0);                           \
+#define DECODE(RESPONSE, LOWER)                                        \
+	{                                                              \
+		int rc2;                                               \
+		rc2 = response_##LOWER##__decode(f->cursor, RESPONSE); \
+		munit_assert_int(rc2, ==, 0);                          \
 	}
 
 /* Decode a row with N columns filling the given values. */
@@ -115,7 +140,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		struct tuple_decoder decoder;                                 \
 		int i2;                                                       \
 		int rc2;                                                      \
-		rc2 = tuple_decoder__init(&decoder, N, &f->cursor);           \
+		rc2 = tuple_decoder__init(&decoder, N, f->cursor);            \
 		munit_assert_int(rc2, ==, 0);                                 \
 		for (i2 = 0; i2 < N; i2++) {                                  \
 			rc2 = tuple_decoder__next(&decoder, &((VALUES)[i2])); \
@@ -124,16 +149,19 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 	}
 
 /* Handle a request of the given type and check that no error occurs. */
-#define HANDLE(TYPE)                                                     \
-	{                                                                \
-		int rc2;                                                 \
-		f->cursor.p = buffer__cursor(&f->payload, 0);            \
-		f->cursor.cap = buffer__offset(&f->payload);             \
-		buffer__reset(&f->buffer);                               \
-		rc2 = gateway__handle(&f->gateway, &f->req,              \
-				      DQLITE_REQUEST_##TYPE, &f->cursor, \
-				      &f->buffer, fixture_handle_cb);    \
-		munit_assert_int(rc2, ==, 0);                            \
+#define HANDLE(TYPE)                                                    \
+	{                                                               \
+		int rc2;                                                \
+		f->cursor->p = buffer__cursor(f->buf1, 0);              \
+		f->cursor->cap = buffer__offset(f->buf1);               \
+		buffer__reset(f->buf2);                                 \
+		f->context->invoked = false;                            \
+		f->context->status = -1;                                \
+		f->context->type = -1;                                  \
+		rc2 = gateway__handle(f->gateway, f->handle,            \
+				      DQLITE_REQUEST_##TYPE, f->cursor, \
+				      f->buf2, handleCb);               \
+		munit_assert_int(rc2, ==, 0);                           \
 	}
 
 /* Open a leader connection against the "test" database */
@@ -183,16 +211,16 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 	}
 
 /* Wait for the last request to complete */
-#define WAIT                                           \
-	{                                              \
-		unsigned i;                            \
-		for (i = 0; i < 60; i++) {             \
-			CLUSTER_STEP;                  \
-			if (f->context.invoked) {      \
-				break;                 \
-			}                              \
-		}                                      \
-		munit_assert_true(f->context.invoked); \
+#define WAIT                                            \
+	{                                               \
+		unsigned i;                             \
+		for (i = 0; i < 60; i++) {              \
+			CLUSTER_STEP;                   \
+			if (f->context->invoked) {      \
+				break;                  \
+			}                               \
+		}                                       \
+		munit_assert_true(f->context->invoked); \
 	}
 
 /* Prepare and exec a statement. */
@@ -220,25 +248,25 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 /* Assert that the handle callback has been invoked with the given status and
  * response type. Also, initialize the fixture's cursor to read the response
  * buffer. */
-#define ASSERT_CALLBACK(STATUS, UPPER)                                  \
-	munit_assert_true(f->context.invoked);                          \
-	munit_assert_int(f->context.status, ==, STATUS);                \
-	munit_assert_int(f->context.type, ==, DQLITE_RESPONSE_##UPPER); \
-	f->cursor.p = buffer__cursor(&f->buffer, 0);                    \
-	f->cursor.cap = buffer__offset(&f->buffer);                     \
-	buffer__reset(&f->buffer);                                      \
-	f->context.invoked = false;
+#define ASSERT_CALLBACK(STATUS, UPPER)                                   \
+	munit_assert_true(f->context->invoked);                          \
+	munit_assert_int(f->context->status, ==, STATUS);                \
+	munit_assert_int(f->context->type, ==, DQLITE_RESPONSE_##UPPER); \
+	f->cursor->p = buffer__cursor(f->buf2, 0);                       \
+	f->cursor->cap = buffer__offset(f->buf2);                        \
+	buffer__reset(f->buf2);                                          \
+	f->context->invoked = false;
 
 /* Assert that the failure response generated by the gateway matches the given
  * details. */
-#define ASSERT_FAILURE(CODE, MESSAGE)                                 \
-	{                                                             \
-		struct response_failure failure;                      \
-		int rc2;                                              \
-		rc2 = response_failure__decode(&f->cursor, &failure); \
-		munit_assert_int(rc2, ==, 0);                         \
-		munit_assert_int(failure.code, ==, CODE);             \
-		munit_assert_string_equal(failure.message, MESSAGE);  \
+#define ASSERT_FAILURE(CODE, MESSAGE)                                \
+	{                                                            \
+		struct response_failure failure;                     \
+		int rc2;                                             \
+		rc2 = response_failure__decode(f->cursor, &failure); \
+		munit_assert_int(rc2, ==, 0);                        \
+		munit_assert_int(failure.code, ==, CODE);            \
+		munit_assert_string_equal(failure.message, MESSAGE); \
 	}
 
 /******************************************************************************
@@ -529,9 +557,9 @@ TEST_CASE(exec, blob, NULL)
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
-	uint64__decode(&f->cursor, &n);
+	uint64__decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(&f->cursor, &column);
+	text__decode(f->cursor, &column);
 	munit_assert_string_equal(column, "data");
 	DECODE_ROW(1, &value);
 	munit_assert_int(value.type, ==, SQLITE_BLOB);
@@ -576,6 +604,41 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_re_elected, NULL)
 }
 
 /* The server is not the leader anymore when the first frames hook for a
+ * non-commit frames batch fires. Another leader gets re-elected. */
+TEST_CASE(exec, frames_not_leader_1st_non_commit_other_elected, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	unsigned i;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Accumulate enough dirty data to fill the page cache */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("BEGIN");
+	for (i = 0; i < 162; i++) {
+		EXEC("INSERT INTO test(n) VALUES(1)");
+	}
+
+	/* Trigger a page cache flush to the WAL, which fails because we are not
+	 * leader anymore */
+	PREPARE("INSERT INTO test(n) VALUES(1)");
+	CLUSTER_DEPOSE;
+	EXEC_SUBMIT(stmt_id);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "disk I/O error");
+
+	/* Elect another leader and re-try */
+	CLUSTER_ELECT(1);
+	SELECT(1);
+	OPEN;
+	EXEC("INSERT INTO test(n) VALUES(1)");
+
+	return MUNIT_OK;
+}
+
+/* The server is not the leader anymore when the second frames hook for a
  * non-commit frames batch fires. The same leader gets re-elected. */
 TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 {
@@ -609,6 +672,42 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 	return MUNIT_OK;
 }
 
+/* The server is not the leader anymore when the second frames hook for a
+ * non-commit frames batch fires. Another leader gets elected. */
+TEST_CASE(exec, frames_not_leader_2nd_non_commit_other_elected, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	unsigned i;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Accumulate enough dirty data to fill the page cache a first time,
+	 * flush it and then fill it a second time. */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("BEGIN");
+	for (i = 0; i < 234; i++) {
+		EXEC("INSERT INTO test(n) VALUES(1)");
+	}
+
+	/* Trigger a second page cache flush to the WAL, which fails because we
+	 * are not leader anymore */
+	PREPARE("INSERT INTO test(n) VALUES(1)");
+	CLUSTER_DEPOSE;
+	EXEC_SUBMIT(stmt_id);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "disk I/O error");
+
+	/* Elect another leader and re-try */
+	CLUSTER_ELECT(1);
+	SELECT(1);
+	OPEN;
+	EXEC("INSERT INTO test(n) VALUES(1)");
+
+	return MUNIT_OK;
+}
+
 /* The server loses leadership after trying to apply the first Frames command
  * for a non-commit frames batch. The same leader gets re-elected. */
 TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
@@ -637,6 +736,105 @@ TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
+	EXEC("INSERT INTO test(n) VALUES(1)");
+
+	return MUNIT_OK;
+}
+
+/* The server loses leadership after trying to apply the first Frames command
+ * for a non-commit frames batch. Another leader gets re-elected. */
+TEST_CASE(exec, frames_leadership_lost_1st_non_commit_other_elected, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	unsigned i;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Accumulate enough dirty data to fill the page cache */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("BEGIN");
+	for (i = 0; i < 162; i++) {
+		EXEC("INSERT INTO test(n) VALUES(1)");
+	}
+
+	/* Trigger a page cache flush to the WAL, which fails because we are not
+	 * leader anymore */
+	PREPARE("INSERT INTO test(n) VALUES(1)");
+	EXEC_SUBMIT(stmt_id);
+	CLUSTER_DEPOSE;
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR_LEADERSHIP_LOST, "disk I/O error");
+
+	/* Elect another server and re-try */
+	CLUSTER_ELECT(1);
+	SELECT(1);
+	OPEN;
+	EXEC("INSERT INTO test(n) VALUES(1)");
+
+	return MUNIT_OK;
+}
+
+/* The server is not the leader anymore when the undo hook for a writing
+ * transaction fires. The same leader gets re-elected. */
+TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	unsigned i;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Accumulate enough dirty data to fill the page cache a first time */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("BEGIN");
+	for (i = 0; i < 163; i++) {
+		EXEC("INSERT INTO test(n) VALUES(1)");
+	}
+
+	/* Trying to rollback fails because we are not leader anymore */
+	PREPARE("ROLLBACK");
+	CLUSTER_DEPOSE;
+	EXEC_SUBMIT(stmt_id);
+	ASSERT_CALLBACK(0, RESULT);
+
+	/* Re-elect ourselves and re-try */
+	CLUSTER_ELECT(0);
+	EXEC("INSERT INTO test(n) VALUES(1)");
+
+	return MUNIT_OK;
+}
+
+/* The server is not the leader anymore when the undo hook for a writing
+ * transaction fires. Another leader gets elected. */
+TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	unsigned i;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Accumulate enough dirty data to fill the page cache a first time */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("BEGIN");
+	for (i = 0; i < 163; i++) {
+		EXEC("INSERT INTO test(n) VALUES(1)");
+	}
+
+	/* Trying to rollback fails because we are not leader anymore */
+	PREPARE("ROLLBACK");
+	CLUSTER_DEPOSE;
+	EXEC_SUBMIT(stmt_id);
+	ASSERT_CALLBACK(0, RESULT);
+
+	/* Re-elect ourselves and re-try */
+	CLUSTER_ELECT(1);
+	SELECT(1);
+	OPEN;
 	EXEC("INSERT INTO test(n) VALUES(1)");
 
 	return MUNIT_OK;
@@ -687,9 +885,9 @@ TEST_CASE(query, simple, NULL)
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
-	uint64__decode(&f->cursor, &n);
+	uint64__decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(&f->cursor, &column);
+	text__decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 	DECODE(&f->response, rows);
 	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
@@ -715,9 +913,9 @@ TEST_CASE(query, one_row, NULL)
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
-	uint64__decode(&f->cursor, &n);
+	uint64__decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(&f->cursor, &column);
+	text__decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 	DECODE_ROW(1, &value);
 	munit_assert_int(value.type, ==, SQLITE_INTEGER);
@@ -753,9 +951,9 @@ TEST_CASE(query, large, NULL)
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
-	uint64__decode(&f->cursor, &n);
+	uint64__decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(&f->cursor, &column);
+	text__decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 
 	for (i = 0; i < 255; i++) {
@@ -767,14 +965,14 @@ TEST_CASE(query, large, NULL)
 	DECODE(&f->response, rows);
 	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
 
-	gateway__resume(&f->gateway, &finished);
+	gateway__resume(f->gateway, &finished);
 	munit_assert_false(finished);
 
 	ASSERT_CALLBACK(0, ROWS);
 
-	uint64__decode(&f->cursor, &n);
+	uint64__decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(&f->cursor, &column);
+	text__decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 
 	for (i = 0; i < 245; i++) {
@@ -843,9 +1041,9 @@ TEST_CASE(query, interrupt, NULL)
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
-	uint64__decode(&f->cursor, &n);
+	uint64__decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(&f->cursor, &column);
+	text__decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 
 	for (i = 0; i < 255; i++) {
