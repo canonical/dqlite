@@ -74,8 +74,6 @@ struct server
 		char address[16];                                              \
 		int rc;                                                        \
                                                                                \
-		raft_fixture_set_random(&f->cluster, I, munit_rand_int_range); \
-                                                                               \
 		test_logger_setup(params, &s->logger);                         \
                                                                                \
 		rc = config__init(&s->config, I + 1, address);                 \

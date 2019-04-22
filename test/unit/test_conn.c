@@ -1,5 +1,5 @@
 #include <raft.h>
-#include <raft/io_uv.h>
+#include <raft/uv.h>
 
 #include "../../include/dqlite.h"
 

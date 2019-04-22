@@ -120,11 +120,12 @@ static void frames_abort_because_leadership_lost(struct leader *leader,
 	}
 }
 
-static void apply_cb(struct raft_apply *req, int status)
+static void apply_cb(struct raft_apply *req, int status, void *result)
 {
 	struct apply *apply;
 	struct leader *leader;
 	struct exec *r;
+	(void)result;
 	apply = req->data;
 	leader = apply->leader;
 	r = leader->exec;
@@ -167,7 +168,7 @@ static int apply(struct replication *r,
 
 	if (apply->status != 0) {
 		/* TODO: handle all possible errors */
-		assert(apply->status == RAFT_ERR_LEADERSHIP_LOST);
+		assert(apply->status == RAFT_LEADERSHIPLOST);
 		switch (apply->type) {
 			case COMMAND_FRAMES:
 				frames_abort_because_leadership_lost(
