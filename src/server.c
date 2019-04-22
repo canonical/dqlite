@@ -89,7 +89,7 @@ int dqlite__init(struct dqlite *d,
 	if (rv != 0) {
 		goto err_after_loop_init;
 	}
-	rv = raft_io_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
+	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
 	if (rv != 0) {
 		/* TODO: better error reporting */
 		rv = DQLITE_INTERNAL;
@@ -135,7 +135,7 @@ err_after_raft_replication_init:
 err_after_raft_fsm_init:
 	fsm__close(&d->raft_fsm);
 err_after_raft_io_init:
-	raft_io_uv_close(&d->raft_io);
+	raft_uv_close(&d->raft_io);
 err_after_raft_transport_init:
 	raft_uv_proxy__close(&d->raft_transport);
 err_after_loop_init:
@@ -159,7 +159,7 @@ void dqlite__close(struct dqlite *d)
 	assert(rv == 0); /* Fails only if sem object is not valid */
 	replication__close(&d->replication);
 	fsm__close(&d->raft_fsm);
-	raft_io_uv_close(&d->raft_io);
+	raft_uv_close(&d->raft_io);
 	uv_loop_close(&d->loop);
 	raft_uv_proxy__close(&d->raft_transport);
 	registry__close(&d->registry);
@@ -198,7 +198,7 @@ int dqlite_bootstrap(dqlite *d, unsigned n, const dqlite_server *servers)
 		rv = raft_configuration_add(&configuration, server->id,
 					    server->address, true);
 		if (rv != 0) {
-			assert(rv == RAFT_ENOMEM);
+			assert(rv == RAFT_NOMEM);
 			rv = DQLITE_NOMEM;
 			goto out;
 		};
@@ -219,7 +219,7 @@ out:
  * last handle (which must be the 'stop' async handle) is closed, the loop gets
  * stopped.
  */
-static void raft_close_cb(struct raft *raft)
+static void raftCloseCb(struct raft *raft)
 {
 	struct dqlite *s = raft->data;
 	uv_close((struct uv_handle_s *)&s->stop, NULL);
@@ -285,7 +285,7 @@ static void stop_cb(uv_async_t *stop)
 		conn__stop(conn);
 	}
 
-	raft_close(&d->raft, raft_close_cb);
+	raft_close(&d->raft, raftCloseCb);
 }
 
 /* Callback invoked when the incoming async handle gets fired.

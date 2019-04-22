@@ -250,7 +250,7 @@ int conn__start(struct conn *c,
 		struct registry *registry,
 		struct raft *raft,
 		int fd,
-		struct raft_io_uv_transport *uv_transport,
+		struct raft_uv_transport *uv_transport,
 		conn_close_cb close_cb)
 {
 	int rv;

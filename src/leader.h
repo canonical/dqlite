@@ -37,7 +37,7 @@ struct barrier
 {
 	void *data;
 	struct leader *leader;
-	struct raft_apply req;
+	struct raft_barrier req;
 	barrier_cb cb;
 };
 

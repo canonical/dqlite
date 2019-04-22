@@ -5,19 +5,19 @@
 #ifndef TRANSPORT_H_
 #define TRANSPORT_H_
 
-#include <raft/io_uv.h>
+#include <raft/uv.h>
 
 #include "../include/dqlite.h"
 
-int raft_uv_proxy__init(struct raft_io_uv_transport *transport,
+int raft_uv_proxy__init(struct raft_uv_transport *transport,
 			struct uv_loop_s *loop);
 
-void raft_uv_proxy__close(struct raft_io_uv_transport *transport);
+void raft_uv_proxy__close(struct raft_uv_transport *transport);
 
 /**
  * Invoke the accept callback configured on the transport object.
  */
-void raft_uv_proxy__accept(struct raft_io_uv_transport *transport,
+void raft_uv_proxy__accept(struct raft_uv_transport *transport,
 			   unsigned id,
 			   const char *address,
 			   struct uv_stream_s *stream);
@@ -25,7 +25,7 @@ void raft_uv_proxy__accept(struct raft_io_uv_transport *transport,
 /**
  * Set a custom connect function.
  */
-void raft_uv_proxy__set_connect_func(struct raft_io_uv_transport *transport,
+void raft_uv_proxy__set_connect_func(struct raft_uv_transport *transport,
 				     dqlite_connect connect);
 
 #endif /* TRANSPORT_H_*/

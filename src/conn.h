@@ -5,7 +5,7 @@
 #ifndef DQLITE_CONN_H_
 #define DQLITE_CONN_H_
 
-#include <raft/io_uv.h>
+#include <raft/uv.h>
 
 #include "lib/buffer.h"
 #include "lib/queue.h"
@@ -23,15 +23,15 @@ typedef void (*conn_close_cb)(struct conn *c);
 struct conn
 {
 	struct config *config;
-	struct raft_io_uv_transport *uv_transport; /* Raft transport */
-	conn_close_cb close_cb;                    /* Close callback */
-	struct transport transport; /* Async network read/write */
-	struct gateway gateway;     /* Request handler */
-	struct buffer read;         /* Read buffer */
-	struct buffer write;        /* Write buffer */
-	uint64_t protocol;          /* Protocol format version */
-	struct message request;     /* Request message meta data */
-	struct message response;    /* Response message meta data */
+	struct raft_uv_transport *uv_transport; /* Raft transport */
+	conn_close_cb close_cb;                 /* Close callback */
+	struct transport transport;             /* Async network read/write */
+	struct gateway gateway;                 /* Request handler */
+	struct buffer read;                     /* Read buffer */
+	struct buffer write;                    /* Write buffer */
+	uint64_t protocol;                      /* Protocol format version */
+	struct message request;                 /* Request message meta data */
+	struct message response;                /* Response message meta data */
 	struct handle handle;
 	bool closed;
 	queue queue;
@@ -49,7 +49,7 @@ int conn__start(struct conn *c,
 		struct registry *registry,
 		struct raft *raft,
 		int fd,
-		struct raft_io_uv_transport *uv_transport,
+		struct raft_uv_transport *uv_transport,
 		conn_close_cb close_cb);
 
 /**

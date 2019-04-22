@@ -146,7 +146,9 @@ static int apply_undo(struct fsm *f, const struct command_undo *c)
 	return 0;
 }
 
-static int fsm__apply(struct raft_fsm *fsm, const struct raft_buffer *buf)
+static int fsm__apply(struct raft_fsm *fsm,
+		      const struct raft_buffer *buf,
+		      void **result)
 {
 	struct fsm *f = fsm->data;
 	int type;
@@ -168,12 +170,15 @@ static int fsm__apply(struct raft_fsm *fsm, const struct raft_buffer *buf)
 			rc = apply_undo(f, command);
 			break;
 		default:
-			rc = RAFT_ERR_IO_MALFORMED;
+			rc = RAFT_MALFORMED;
 			goto err_after_command_decode;
 	}
 	raft_free(command);
 
+	*result = NULL;
+
 	return 0;
+
 err_after_command_decode:
 	raft_free(command);
 err:
@@ -185,12 +190,17 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 			 unsigned *n_bufs)
 {
 	struct fsm *f = fsm->data;
+	(void)bufs;
+	(void)n_bufs;
+	(void)f;
 	return 0;
 }
 
 static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 {
 	struct fsm *f = fsm->data;
+	(void)buf;
+	(void)f;
 	return 0;
 }
 
