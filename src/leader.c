@@ -104,12 +104,12 @@ int leader__exec(struct leader *l,
 	return 0;
 }
 
-static void raft_barrier_cb(struct raft_apply *req, int status)
+static void raftBarrierCb(struct raft_barrier *req, int status)
 {
 	struct barrier *barrier = req->data;
 	int rv = 0;
 	if (status != 0) {
-		if (status == RAFT_ERR_LEADERSHIP_LOST) {
+		if (status == RAFT_LEADERSHIPLOST) {
 			rv = SQLITE_IOERR_LEADERSHIP_LOST;
 		} else {
 			rv = SQLITE_ERROR;
@@ -128,7 +128,7 @@ int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
 	barrier->cb = cb;
 	barrier->leader = l;
 	barrier->req.data = barrier;
-	rv = raft_barrier(l->raft, &barrier->req, raft_barrier_cb);
+	rv = raft_barrier(l->raft, &barrier->req, raftBarrierCb);
 	if (rv != 0) {
 		return rv;
 	}

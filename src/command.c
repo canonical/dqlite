@@ -1,6 +1,6 @@
 #include "../include/dqlite.h"
 
-#include "./lib/serialize.h"
+#include "lib/serialize.h"
 
 #include "command.h"
 

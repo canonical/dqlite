@@ -1,5 +1,5 @@
 #include <raft.h>
-#include <raft/io_uv.h>
+#include <raft/uv.h>
 #include <sqlite3.h>
 
 #include "config.h"
@@ -16,7 +16,7 @@ struct dqlite
 	struct sqlite3_vfs vfs;                     /* In-memory VFS */
 	struct registry registry;                   /* Databases */
 	uv_loop_t loop;                             /* UV loop */
-	struct raft_io_uv_transport raft_transport; /* Raft libuv transport */
+	struct raft_uv_transport raft_transport;    /* Raft libuv transport */
 	struct raft_io raft_io;                     /* libuv I/O */
 	struct raft_fsm raft_fsm;                   /* dqlite FSM */
 	struct sqlite3_wal_replication replication; /* Raft replication */

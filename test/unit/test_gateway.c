@@ -186,7 +186,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 #define WAIT                                           \
 	{                                              \
 		unsigned i;                            \
-		for (i = 0; i < 20; i++) {             \
+		for (i = 0; i < 60; i++) {             \
 			CLUSTER_STEP;                  \
 			if (f->context.invoked) {      \
 				break;                 \

@@ -469,7 +469,7 @@ int gateway__handle(struct gateway *g,
 		    struct buffer *buffer,
 		    handle_cb cb)
 {
-	int rc;
+	int rc = 0;
 
 	/* Check if there is a request in progress. */
 	if (g->req != NULL && type != DQLITE_REQUEST_HEARTBEAT) {

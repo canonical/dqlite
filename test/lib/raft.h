@@ -6,7 +6,7 @@
 #define TEST_RAFT_H
 
 #include <raft.h>
-#include <raft/io_uv.h>
+#include <raft/uv.h>
 #include <uv.h>
 
 #include "fs.h"
@@ -17,12 +17,12 @@
 
 #include "munit.h"
 
-#define FIXTURE_RAFT                                \
-	char *dir;                                  \
-	struct uv_loop_s loop;                      \
-	struct raft_io_uv_transport raft_transport; \
-	struct raft_io raft_io;                     \
-	struct raft_fsm fsm;                        \
+#define FIXTURE_RAFT                             \
+	char *dir;                               \
+	struct uv_loop_s loop;                   \
+	struct raft_uv_transport raft_transport; \
+	struct raft_io raft_io;                  \
+	struct raft_fsm fsm;                     \
 	struct raft raft
 
 #define SETUP_RAFT                                                       \
@@ -32,8 +32,8 @@
 		test_uv_setup(params, &f->loop);                         \
 		rv2 = raft_uv_proxy__init(&f->raft_transport, &f->loop); \
 		munit_assert_int(rv2, ==, 0);                            \
-		rv2 = raft_io_uv_init(&f->raft_io, &f->loop, f->dir,     \
-				      &f->raft_transport);               \
+		rv2 = raft_uv_init(&f->raft_io, &f->loop, f->dir,        \
+				   &f->raft_transport);                  \
 		munit_assert_int(rv2, ==, 0);                            \
 		rv2 = fsm__init(&f->fsm, &f->config, &f->registry);      \
 		munit_assert_int(rv2, ==, 0);                            \
@@ -47,7 +47,7 @@
 		test_uv_stop(&f->loop);                   \
 		fsm__close(&f->fsm);                      \
 		test_uv_tear_down(&f->loop);              \
-		raft_io_uv_close(&f->raft_io);            \
+		raft_uv_close(&f->raft_io);               \
 		raft_uv_proxy__close(&f->raft_transport); \
 		test_dir_tear_down(f->dir);               \
 	}
