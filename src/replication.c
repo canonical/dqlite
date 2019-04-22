@@ -39,8 +39,8 @@ struct apply
 	};
 };
 
-static void frames_abort_because_leadership_lost(struct leader *leader,
-						 int is_commit)
+static void framesAbortBecauseLeadershipLost(struct leader *leader,
+					     int is_commit)
 {
 	if (is_commit) {
 		/* Mark the transaction as zombie. Possible scenarios:
@@ -120,7 +120,7 @@ static void frames_abort_because_leadership_lost(struct leader *leader,
 	}
 }
 
-static void apply_cb(struct raft_apply *req, int status, void *result)
+static void applyCb(struct raft_apply *req, int status, void *result)
 {
 	struct apply *apply;
 	struct leader *leader;
@@ -159,7 +159,7 @@ static int apply(struct replication *r,
 		goto err;
 	}
 
-	rc = raft_apply(r->raft, &apply->req, &buf, 1, apply_cb);
+	rc = raft_apply(r->raft, &apply->req, &buf, 1, applyCb);
 	if (rc != 0) {
 		goto err_after_command_encode;
 	}
@@ -171,7 +171,7 @@ static int apply(struct replication *r,
 		assert(apply->status == RAFT_LEADERSHIPLOST);
 		switch (apply->type) {
 			case COMMAND_FRAMES:
-				frames_abort_because_leadership_lost(
+				framesAbortBecauseLeadershipLost(
 				    leader, apply->frames.is_commit);
 				break;
 			default:
@@ -195,7 +195,7 @@ err:
 
 /* Check if a follower connection is already open for the leader's database, if
  * not open one with the open command. */
-static int maybe_add_follower(struct replication *r, struct leader *leader)
+static int maybeAddFollower(struct replication *r, struct leader *leader)
 {
 	struct command_open c;
 	struct apply *req;
@@ -221,8 +221,7 @@ static int maybe_add_follower(struct replication *r, struct leader *leader)
 	return 0;
 }
 
-static int maybe_handle_in_progress_tx(struct replication *r,
-				       struct leader *leader)
+static int maybeHandleInProgressTx(struct replication *r, struct leader *leader)
 {
 	struct tx *tx = leader->db->tx;
 	struct command_undo c;
@@ -318,7 +317,7 @@ static int maybe_handle_in_progress_tx(struct replication *r,
  *                  transaction. Since no write transaction was actually started
  *                  the xEnd hook is not fired.
  */
-int begin_hook(sqlite3_wal_replication *replication, void *arg)
+static int methodBegin(sqlite3_wal_replication *replication, void *arg)
 {
 	struct replication *r = replication->pAppData;
 	struct leader *leader = arg;
@@ -332,12 +331,12 @@ int begin_hook(sqlite3_wal_replication *replication, void *arg)
 	/* We are always invoked in the context of an exec request */
 	assert(leader->exec != NULL);
 
-	rc = maybe_add_follower(r, leader);
+	rc = maybeAddFollower(r, leader);
 	if (rc != 0) {
 		return rc;
 	}
 
-	rc = maybe_handle_in_progress_tx(r, leader);
+	rc = maybeHandleInProgressTx(r, leader);
 	if (rc != 0) {
 		return rc;
 	}
@@ -364,7 +363,7 @@ int begin_hook(sqlite3_wal_replication *replication, void *arg)
 	return SQLITE_OK;
 }
 
-int abort_hook(sqlite3_wal_replication *r, void *arg)
+static int methodAbort(sqlite3_wal_replication *r, void *arg)
 {
 	(void)r;
 	(void)arg;
@@ -373,7 +372,7 @@ int abort_hook(sqlite3_wal_replication *r, void *arg)
 }
 
 /* Handle xFrames failures due to this server not not being the leader. */
-static int frames_abort_because_not_leader(struct leader *leader, int is_commit)
+static int framesAbortBecauseNotLeader(struct leader *leader, int is_commit)
 {
 	struct tx *tx = leader->db->tx;
 	if (tx->state == TX__PENDING) {
@@ -398,13 +397,13 @@ static int frames_abort_because_not_leader(struct leader *leader, int is_commit)
 	return SQLITE_IOERR_NOT_LEADER;
 }
 
-int frames_hook(sqlite3_wal_replication *replication,
-		void *arg,
-		int page_size,
-		int n_frames,
-		sqlite3_wal_replication_frame *frames,
-		unsigned truncate,
-		int is_commit)
+static int methodFrames(sqlite3_wal_replication *replication,
+			void *arg,
+			int page_size,
+			int n_frames,
+			sqlite3_wal_replication_frame *frames,
+			unsigned truncate,
+			int is_commit)
 {
 	struct replication *r = replication->pAppData;
 	struct leader *leader = arg;
@@ -418,7 +417,7 @@ int frames_hook(sqlite3_wal_replication *replication,
 	assert(tx->state == TX__PENDING || tx->state == TX__WRITING);
 
 	if (raft_state(r->raft) != RAFT_LEADER) {
-		return frames_abort_because_not_leader(leader, is_commit);
+		return framesAbortBecauseNotLeader(leader, is_commit);
 	}
 
 	c.filename = leader->db->filename;
@@ -444,7 +443,7 @@ int frames_hook(sqlite3_wal_replication *replication,
 	return SQLITE_OK;
 }
 
-int undo_hook(sqlite3_wal_replication *replication, void *arg)
+static int methodUndo(sqlite3_wal_replication *replication, void *arg)
 {
 	struct replication *r = replication->pAppData;
 	struct leader *leader = arg;
@@ -514,7 +513,7 @@ int undo_hook(sqlite3_wal_replication *replication, void *arg)
 	return SQLITE_OK;
 }
 
-int end_hook(sqlite3_wal_replication *replication, void *arg)
+static int methodEnd(sqlite3_wal_replication *replication, void *arg)
 {
 	struct leader *leader = arg;
 	struct tx *tx = leader->db->tx;
@@ -548,11 +547,11 @@ int replication__init(struct sqlite3_wal_replication *replication,
 
 	replication->iVersion = 1;
 	replication->pAppData = r;
-	replication->xBegin = begin_hook;
-	replication->xAbort = abort_hook;
-	replication->xFrames = frames_hook;
-	replication->xUndo = undo_hook;
-	replication->xEnd = end_hook;
+	replication->xBegin = methodBegin;
+	replication->xAbort = methodAbort;
+	replication->xFrames = methodFrames;
+	replication->xUndo = methodUndo;
+	replication->xEnd = methodEnd;
 	replication->zName = config->name;
 
 	sqlite3_wal_replication_register(replication, 0);
