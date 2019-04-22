@@ -489,10 +489,10 @@ static int methodUndo(sqlite3_wal_replication *replication, void *arg)
 	if (raft_state(r->raft) != RAFT_LEADER) {
 		/* If we have lost leadership we're in a state where the
 		 * transaction began on this node and a quorum of followers. We
-		 * return an error, and SQLite will ignore it, however we
-		 * need to create a surrogate follower, so the next leader will
+		 * return an error, and SQLite will ignore it, however we need
+		 * to mark the transaction as zombie, so the next leader will
 		 * try to undo it across all nodes. */
-		tx__surrogate(tx, leader->db->follower);
+		tx__zombie(tx);
 		return SQLITE_IOERR_NOT_LEADER;
 	}
 
@@ -522,8 +522,15 @@ static int methodEnd(sqlite3_wal_replication *replication, void *arg)
 
 	if (tx == NULL) {
 		/* TODO */
+		assert(0);
 	} else {
 		assert(tx->conn == leader->conn);
+	}
+
+	if (tx->is_zombie) {
+		/* Ignore zombie transactions as we don't know what will happen
+		 * to them (either committed or not). */
+		return 0;
 	}
 
 	db__delete_tx(leader->db);
