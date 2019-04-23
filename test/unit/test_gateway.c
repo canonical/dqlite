@@ -840,6 +840,51 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 	return MUNIT_OK;
 }
 
+/* A follower remains behind and needs to restore state from a snapshot. */
+TEST_CASE(exec, restore, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	struct request_query request;
+	struct response_rows response;
+	struct value value;
+	uint64_t n;
+	const char *column;
+	(void)params;
+	CLUSTER_SNAPSHOT_THRESHOLD(0, 5);
+	CLUSTER_SNAPSHOT_TRAILING(0, 2);
+	CLUSTER_ELECT(0);
+	CLUSTER_DISCONNECT(0, 1);
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("INSERT INTO test(n) VALUES(1)");
+	EXEC("INSERT INTO test(n) VALUES(2)");
+	CLUSTER_RECONNECT(0, 1);
+	CLUSTER_APPLIED(5);
+
+	/* The follower contains the expected rows. */
+	SELECT(1);
+	OPEN;
+	PREPARE("SELECT n FROM test");
+	request.db_id = 0;
+	request.stmt_id = stmt_id;
+	ENCODE(&request, query);
+	HANDLE(QUERY);
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, 1);
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, 2);
+	DECODE(&response, rows);
+	munit_assert_ulong(response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * query

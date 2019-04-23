@@ -1812,9 +1812,9 @@ static int guess_file_type(const char *filename)
 }
 
 int vfsFileRead(const char *vfs_name,
-		     const char *filename,
-		     void **buf,
-		     size_t *len)
+		const char *filename,
+		void **buf,
+		size_t *len)
 {
 	sqlite3_vfs *vfs;
 	int type;
@@ -1946,9 +1946,9 @@ err:
 }
 
 int vfsFileWrite(const char *vfs_name,
-		      const char *filename,
-		      void *buf,
-		      size_t len)
+		 const char *filename,
+		 const void *buf,
+		 size_t len)
 {
 	sqlite3_vfs *vfs;
 	sqlite3_file *file;
@@ -1956,7 +1956,7 @@ int vfsFileWrite(const char *vfs_name,
 	int flags;
 	unsigned int page_size;
 	sqlite3_int64 offset;
-	uint8_t *pos;
+	const uint8_t *pos;
 	int rc;
 
 	assert(vfs_name != NULL);

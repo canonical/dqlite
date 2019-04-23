@@ -289,6 +289,44 @@ err:
 	return rv;
 }
 
+/* Decode the database contained in a snapshot. */
+static int decodeDatabase(struct fsm *f, struct cursor *cursor)
+{
+	struct snapshotDatabase header;
+	struct db *db;
+	char *walFilename;
+	int rv;
+
+	rv = snapshotDatabase__decode(cursor, &header);
+	if (rv != 0) {
+		return rv;
+	}
+	rv = registry__db_get(f->registry, header.filename, &db);
+	if (rv != 0) {
+		return rv;
+	}
+	rv = vfsFileWrite(db->config->name, db->filename, cursor->p,
+			  header.main_size);
+	if (rv != 0) {
+		return rv;
+	}
+	walFilename = generateWalFilename(db->filename);
+	if (walFilename == NULL) {
+		return RAFT_NOMEM;
+	}
+	cursor->p += header.main_size;
+	rv = vfsFileWrite(db->config->name, walFilename, cursor->p,
+			  header.wal_size);
+	if (rv != 0) {
+		sqlite3_free(walFilename);
+		return rv;
+	}
+	cursor->p += header.wal_size;
+	sqlite3_free(walFilename);
+
+	return 0;
+}
+
 static int fsm__snapshot(struct raft_fsm *fsm,
 			 struct raft_buffer *bufs[],
 			 unsigned *n_bufs)
@@ -353,8 +391,28 @@ err:
 static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 {
 	struct fsm *f = fsm->data;
-	(void)buf;
-	(void)f;
+	struct cursor cursor = {buf->base, buf->len};
+	struct snapshotHeader header;
+	unsigned i;
+	int rv;
+
+	rv = snapshotHeader__decode(&cursor, &header);
+	if (rv != 0) {
+		return rv;
+	}
+	if (header.format != SNAPSHOT_FORMAT) {
+		return RAFT_MALFORMED;
+	}
+
+	for (i = 0; i < header.n; i++) {
+		rv = decodeDatabase(f, &cursor);
+		if (rv != 0) {
+			return rv;
+		}
+	}
+
+	raft_free(buf->base);
+
 	return 0;
 }
 

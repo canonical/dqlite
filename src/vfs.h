@@ -30,7 +30,7 @@ int vfsFileRead(const char *vfs_name,
  * in-memory VFS. If the file already exists, it's overwritten. */
 int vfsFileWrite(const char *vfs_name,
 		 const char *filename,
-		 void *buf,
+		 const void *buf,
 		 size_t len);
 
 #endif /* VFS_H_ */
