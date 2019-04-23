@@ -468,7 +468,7 @@ struct change
 	struct raft_change req;
 };
 
-void raftAddCb(struct raft_change *change, int status)
+void raftChangeCb(struct raft_change *change, int status)
 {
 	struct change *r = change->data;
 	struct gateway *g = r->gateway;
@@ -503,7 +503,7 @@ static int handle_join(struct handle *req, struct cursor *cursor)
 	r->gateway = g;
 	r->req.data = r;
 
-	rv = raft_add(g->raft, &r->req, request.id, request.address, raftAddCb);
+	rv = raft_add(g->raft, &r->req, request.id, request.address, raftChangeCb);
 	if (rv != 0) {
 		sqlite3_free(r);
 		failure(req, rv, raft_strerror(rv));
@@ -513,6 +513,38 @@ static int handle_join(struct handle *req, struct cursor *cursor)
 
 	return 0;
 }
+
+static int handle_promote(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	struct change *r;
+	int rv;
+	START(promote, empty);
+	(void)response;
+
+	if (raft_state(g->raft) != RAFT_LEADER) {
+		failure(req, RAFT_NOTLEADER, "not leader");
+		return 0;
+	}
+
+	r = sqlite3_malloc(sizeof *r);
+	if (r == NULL) {
+		return DQLITE_NOMEM;
+	}
+	r->gateway = g;
+	r->req.data = r;
+
+	rv = raft_promote(g->raft, &r->req, request.id, raftChangeCb);
+	if (rv != 0) {
+		sqlite3_free(r);
+		failure(req, rv, raft_strerror(rv));
+		return 0;
+	}
+	g->req = req;
+
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
