@@ -35,6 +35,7 @@
 #define REQUEST_JOIN(X, ...)         \
 	X(uint64, id, ##__VA_ARGS__) \
 	X(text, address, ##__VA_ARGS__)
+#define REQUEST_PROMOTE(X, ...) X(uint64, id, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
@@ -50,7 +51,8 @@
 	X(exec_sql, EXEC_SQL, __VA_ARGS__)   \
 	X(query_sql, QUERY_SQL, __VA_ARGS__) \
 	X(interrupt, INTERRUPT, __VA_ARGS__) \
-	X(join, JOIN, __VA_ARGS__)
+	X(join, JOIN, __VA_ARGS__)           \
+	X(promote, PROMOTE, __VA_ARGS__)
 
 REQUEST__TYPES(REQUEST__DEFINE);
 
