@@ -66,31 +66,31 @@ struct server
 		munit_assert_int(rc, ==, 0);                              \
 	}
 
-#define SETUP_SERVER(I)                                                        \
-	{                                                                      \
-		struct server *s = &f->servers[I];                             \
-		struct raft_fsm *fsm = &f->fsms[I];                            \
-		struct raft *raft = raft_fixture_get(&f->cluster, I);          \
-		char address[16];                                              \
-		int rc;                                                        \
-                                                                               \
-		test_logger_setup(params, &s->logger);                         \
-                                                                               \
-		rc = config__init(&s->config, I + 1, address);                 \
-		munit_assert_int(rc, ==, 0);                                   \
-                                                                               \
-		rc = vfs__init(&s->vfs, &s->config);                           \
-		munit_assert_int(rc, ==, 0);                                   \
-                                                                               \
-		sprintf(address, "%d", I + 1);                                 \
-                                                                               \
-		registry__init(&s->registry, &s->config);                      \
-                                                                               \
-		rc = fsm__init(fsm, &s->config, &s->registry);                 \
-		munit_assert_int(rc, ==, 0);                                   \
-                                                                               \
-		rc = replication__init(&s->replication, &s->config, raft);     \
-		munit_assert_int(rc, ==, 0);                                   \
+#define SETUP_SERVER(I)                                                    \
+	{                                                                  \
+		struct server *s = &f->servers[I];                         \
+		struct raft_fsm *fsm = &f->fsms[I];                        \
+		struct raft *raft = raft_fixture_get(&f->cluster, I);      \
+		char address[16];                                          \
+		int rc;                                                    \
+                                                                           \
+		test_logger_setup(params, &s->logger);                     \
+                                                                           \
+		rc = config__init(&s->config, I + 1, address);             \
+		munit_assert_int(rc, ==, 0);                               \
+                                                                           \
+		rc = vfsInit(&s->vfs, &s->config);                         \
+		munit_assert_int(rc, ==, 0);                               \
+                                                                           \
+		sprintf(address, "%d", I + 1);                             \
+                                                                           \
+		registry__init(&s->registry, &s->config);                  \
+                                                                           \
+		rc = fsm__init(fsm, &s->config, &s->registry);             \
+		munit_assert_int(rc, ==, 0);                               \
+                                                                           \
+		rc = replication__init(&s->replication, &s->config, raft); \
+		munit_assert_int(rc, ==, 0);                               \
 	}
 
 #define TEAR_DOWN_CLUSTER                         \
@@ -111,7 +111,7 @@ struct server
 		replication__close(&s->replication); \
 		fsm__close(fsm);                     \
 		registry__close(&s->registry);       \
-		vfs__close(&s->vfs);                 \
+		vfsClose(&s->vfs);                   \
 		config__close(&s->config);           \
 		test_logger_tear_down(&s->logger);   \
 	}

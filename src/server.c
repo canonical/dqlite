@@ -74,7 +74,7 @@ int dqlite__init(struct dqlite *d,
 	if (rv != 0) {
 		goto err;
 	}
-	rv = vfs__init(&d->vfs, &d->config);
+	rv = vfsInit(&d->vfs, &d->config);
 	if (rv != 0) {
 		goto err_after_config_init;
 	}
@@ -141,7 +141,7 @@ err_after_raft_transport_init:
 err_after_loop_init:
 	uv_loop_close(&d->loop);
 err_after_vfs_init:
-	vfs__close(&d->vfs);
+	vfsClose(&d->vfs);
 err_after_config_init:
 	config__close(&d->config);
 err:
@@ -163,7 +163,7 @@ void dqlite__close(struct dqlite *d)
 	uv_loop_close(&d->loop);
 	raft_uv_proxy__close(&d->raft_transport);
 	registry__close(&d->registry);
-	vfs__close(&d->vfs);
+	vfsClose(&d->vfs);
 	config__close(&d->config);
 }
 

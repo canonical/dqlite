@@ -190,9 +190,14 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 			 unsigned *n_bufs)
 {
 	struct fsm *f = fsm->data;
+	queue *head;
+	QUEUE__FOREACH(head, &f->registry->dbs)
+	{
+		struct db *db;
+		db = QUEUE__DATA(head, struct db, queue);
+	}
 	(void)bufs;
 	(void)n_bufs;
-	(void)f;
 	return 0;
 }
 
