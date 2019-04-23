@@ -22,7 +22,7 @@ void vfsClose(struct sqlite3_vfs *vfs);
  * VFS. */
 int vfsFileRead(const char *vfs_name,
 		const char *filename,
-		uint8_t **buf,
+		void **buf,
 		size_t *len);
 
 /* Write the content of a file, using the VFS implementation registered under
@@ -30,7 +30,7 @@ int vfsFileRead(const char *vfs_name,
  * in-memory VFS. If the file already exists, it's overwritten. */
 int vfsFileWrite(const char *vfs_name,
 		 const char *filename,
-		 uint8_t *buf,
+		 void *buf,
 		 size_t len);
 
 #endif /* VFS_H_ */

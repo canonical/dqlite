@@ -2037,7 +2037,7 @@ TEST_TEAR_DOWN(file_read, tear_down);
 TEST_CASE(file_read, cantopen, NULL)
 {
 	struct fixture *f = data;
-	uint8_t *buf;
+	void *buf;
 	size_t len;
 	int rv;
 	(void)params;
@@ -2051,7 +2051,7 @@ TEST_CASE(file_read, empty, NULL)
 {
 	struct fixture *f = data;
 	sqlite3 *db;
-	uint8_t *buf;
+	void *buf;
 	size_t len;
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int rv;
@@ -2079,8 +2079,8 @@ TEST_CASE(file_read, then_write, NULL)
 	struct fixture *f = data;
 	sqlite3 *db = __db_open();
 	int rc;
-	uint8_t *buf1;
-	uint8_t *buf2;
+	void *buf1;
+	void *buf2;
 	size_t len1;
 	size_t len2;
 	sqlite3_stmt *stmt;
@@ -2144,7 +2144,7 @@ TEST_CASE(file_read, oom, file_read_oom_params)
 {
 	struct fixture *f = data;
 	sqlite3 *db = __db_open();
-	uint8_t *buf;
+	void *buf;
 	size_t len;
 	int rc;
 
