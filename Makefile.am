@@ -85,6 +85,7 @@ unit_test_SOURCES += \
   test/unit/test_format.c \
   test/unit/test_gateway.c \
   test/unit/test_concurrency.c \
+  test/unit/test_membership.c \
   test/unit/test_registry.c \
   test/unit/test_replication.c \
   test/unit/test_request.c \

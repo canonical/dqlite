@@ -1,5 +1,6 @@
 #include <string.h>
 #include <sys/time.h>
+#include <raft.h>
 
 #include <sqlite3.h>
 
@@ -1871,8 +1872,10 @@ int vfsFileRead(const char *vfs_name,
 		goto out;
 	}
 
-	/* Allocate the read buffer */
-	*buf = sqlite3_malloc(*len);
+	/* Allocate the read buffer.
+	 *
+	 * TODO: we should fix the tests and use sqlite3_malloc instead. */
+	*buf = raft_malloc(*len);
 	if (*buf == NULL) {
 		rc = SQLITE_NOMEM;
 		goto err_after_file_open;

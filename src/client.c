@@ -8,7 +8,7 @@
 #include "response.h"
 #include "tuple.h"
 
-int client__init(struct client *c, int fd)
+int clientInit(struct client *c, int fd)
 {
 	int rv;
 	c->fd = fd;
@@ -30,13 +30,13 @@ err:
 	return rv;
 }
 
-void client__close(struct client *c)
+void clientClose(struct client *c)
 {
 	buffer__close(&c->write);
 	buffer__close(&c->read);
 }
 
-int client__send_handshake(struct client *c)
+int clientSendHandshake(struct client *c)
 {
 	uint64_t protocol;
 	int rv;
@@ -132,7 +132,7 @@ int client__send_handshake(struct client *c)
 	READ(LOWER, UPPER);    \
 	DECODE(LOWER)
 
-int client__send_open(struct client *c, const char *name)
+int clientSendOpen(struct client *c, const char *name)
 {
 	struct request_open request;
 	request.filename = name;
@@ -142,7 +142,7 @@ int client__send_open(struct client *c, const char *name)
 	return 0;
 }
 
-int client__recv_db(struct client *c)
+int clientRecvDb(struct client *c)
 {
 	struct response_db response;
 	RESPONSE(db, DB);
@@ -150,7 +150,7 @@ int client__recv_db(struct client *c)
 	return 0;
 }
 
-int client__send_prepare(struct client *c, const char *sql)
+int clientSendPrepare(struct client *c, const char *sql)
 {
 	struct request_prepare request;
 	request.db_id = c->db_id;
@@ -159,7 +159,7 @@ int client__send_prepare(struct client *c, const char *sql)
 	return 0;
 }
 
-int client__recv_stmt(struct client *c, unsigned *stmt_id)
+int clientRecvStmt(struct client *c, unsigned *stmt_id)
 {
 	struct response_stmt response;
 	RESPONSE(stmt, STMT);
@@ -167,7 +167,7 @@ int client__recv_stmt(struct client *c, unsigned *stmt_id)
 	return 0;
 }
 
-int client__send_exec(struct client *c, unsigned stmt_id)
+int clientSendExec(struct client *c, unsigned stmt_id)
 {
 	struct request_exec request;
 	request.db_id = c->db_id;
@@ -176,7 +176,7 @@ int client__send_exec(struct client *c, unsigned stmt_id)
 	return 0;
 }
 
-int client__recv_result(struct client *c,
+int clientRecvResult(struct client *c,
 			unsigned *last_insert_id,
 			unsigned *rows_affected)
 {
@@ -187,7 +187,7 @@ int client__recv_result(struct client *c,
 	return 0;
 }
 
-int client__send_query(struct client *c, unsigned stmt_id)
+int clientSendQuery(struct client *c, unsigned stmt_id)
 {
 	struct request_query request;
 	request.db_id = c->db_id;
@@ -196,7 +196,7 @@ int client__send_query(struct client *c, unsigned stmt_id)
 	return 0;
 }
 
-int client__recv_rows(struct client *c, struct rows *rows)
+int clientRecvRows(struct client *c, struct rows *rows)
 {
 	struct cursor cursor;
 	struct tuple_decoder decoder;
@@ -266,7 +266,7 @@ int client__recv_rows(struct client *c, struct rows *rows)
 	return 0;
 }
 
-void client__close_rows(struct rows *rows)
+void clientCloseRows(struct rows *rows)
 {
 	struct row *row = rows->next;
 	while (row != NULL) {
@@ -279,7 +279,7 @@ void client__close_rows(struct rows *rows)
 	sqlite3_free(rows->column_names);
 }
 
-int client__send_connect(struct client *c, unsigned id, const char *address)
+int clientSendConnect(struct client *c, unsigned id, const char *address)
 {
 	struct request_connect request;
 	request.id = id;
@@ -287,3 +287,19 @@ int client__send_connect(struct client *c, unsigned id, const char *address)
 	REQUEST(connect, CONNECT);
 	return 0;
 }
+
+int clientSendJoin(struct client *c, unsigned id, const char *address) {
+	struct request_join request;
+	request.id = id;
+	request.address = address;
+	REQUEST(join, JOIN);
+	return 0;
+}
+
+int clientRecvEmpty(struct client *c)
+{
+	struct response_empty response;
+	RESPONSE(empty, EMPTY);
+	return 0;
+}
+

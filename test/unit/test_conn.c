@@ -79,7 +79,7 @@ TEST_MODULE(conn);
 #define HANDSHAKE                                         \
 	{                                                 \
 		int rv2;                                  \
-		rv2 = client__send_handshake(&f->client); \
+		rv2 = clientSendHandshake(&f->client); \
 		munit_assert_int(rv2, ==, 0);             \
 		test_uv_run(&f->loop, 1);                 \
 	}
@@ -88,10 +88,10 @@ TEST_MODULE(conn);
 #define OPEN                                                 \
 	{                                                    \
 		int rv2;                                     \
-		rv2 = client__send_open(&f->client, "test"); \
+		rv2 = clientSendOpen(&f->client, "test"); \
 		munit_assert_int(rv2, ==, 0);                \
 		test_uv_run(&f->loop, 2);                    \
-		rv2 = client__recv_db(&f->client);           \
+		rv2 = clientRecvDb(&f->client);           \
 		munit_assert_int(rv2, ==, 0);                \
 	}
 
@@ -99,10 +99,10 @@ TEST_MODULE(conn);
 #define PREPARE(SQL, STMT_ID)                                 \
 	{                                                     \
 		int rv2;                                      \
-		rv2 = client__send_prepare(&f->client, SQL);  \
+		rv2 = clientSendPrepare(&f->client, SQL);  \
 		munit_assert_int(rv2, ==, 0);                 \
 		test_uv_run(&f->loop, 2);                     \
-		rv2 = client__recv_stmt(&f->client, STMT_ID); \
+		rv2 = clientRecvStmt(&f->client, STMT_ID); \
 		munit_assert_int(rv2, ==, 0);                 \
 	}
 
@@ -110,10 +110,10 @@ TEST_MODULE(conn);
 #define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)                  \
 	{                                                             \
 		int rv2;                                              \
-		rv2 = client__send_exec(&f->client, STMT_ID);         \
+		rv2 = clientSendExec(&f->client, STMT_ID);         \
 		munit_assert_int(rv2, ==, 0);                         \
 		test_uv_run(&f->loop, 6);                             \
-		rv2 = client__recv_result(&f->client, LAST_INSERT_ID, \
+		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
 					  ROWS_AFFECTED);             \
 		munit_assert_int(rv2, ==, 0);                         \
 	}
@@ -122,10 +122,10 @@ TEST_MODULE(conn);
 #define QUERY(STMT_ID, ROWS)                                   \
 	{                                                      \
 		int rv2;                                       \
-		rv2 = client__send_query(&f->client, STMT_ID); \
+		rv2 = clientSendQuery(&f->client, STMT_ID); \
 		munit_assert_int(rv2, ==, 0);                  \
 		test_uv_run(&f->loop, 2);                      \
-		rv2 = client__recv_rows(&f->client, ROWS);     \
+		rv2 = clientRecvRows(&f->client, ROWS);     \
 		munit_assert_int(rv2, ==, 0);                  \
 	}
 
@@ -133,7 +133,7 @@ TEST_MODULE(conn);
 #define CONNECT(ID, ADDRESS)                                         \
 	{                                                            \
 		int rv2;                                             \
-		rv2 = client__send_connect(&f->client, ID, ADDRESS); \
+		rv2 = clientSendConnect(&f->client, ID, ADDRESS); \
 		munit_assert_int(rv2, ==, 0);                        \
 		test_uv_run(&f->loop, 1);                            \
 	}
@@ -345,7 +345,7 @@ TEST_SETUP(query)
 TEST_TEAR_DOWN(query)
 {
 	struct query_fixture *f = data;
-	client__close_rows(&f->rows);
+	clientCloseRows(&f->rows);
 	TEAR_DOWN;
 	free(f);
 }

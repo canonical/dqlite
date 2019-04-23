@@ -262,3 +262,15 @@ void test_socket_client_write(struct test_socket_pair *p, void *buf, size_t n)
 	rv = write(p->client, buf, n);
 	munit_assert_int(rv, ==, n);
 }
+
+int test_socket_client_accept(struct test_socket_pair *p) {
+	struct sockaddr_in address;
+	socklen_t size;
+	int fd;
+	size = sizeof address;
+	fd = accept(p->listen, (struct sockaddr *)&address, &size);
+	if (fd < 0) {
+		munit_errorf("accept client: %s", strerror(errno));
+	}
+	return fd;
+}
