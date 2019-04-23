@@ -122,6 +122,8 @@ struct server
 #define CLUSTER_REGISTRY(I) &f->servers[I].registry
 #define CLUSTER_RAFT(I) raft_fixture_get(&f->cluster, I)
 #define CLUSTER_LAST_INDEX(I) raft_last_index(CLUSTER_RAFT(I))
+#define CLUSTER_DISCONNECT(I, J) raft_fixture_disconnect(&f->cluster, I, J)
+#define CLUSTER_RECONNECT(I, J) raft_fixture_reconnect(&f->cluster, I, J)
 
 #define CLUSTER_ELECT(I) raft_fixture_elect(&f->cluster, I)
 #define CLUSTER_DEPOSE raft_fixture_depose(&f->cluster)
@@ -140,5 +142,7 @@ struct server
 
 #define CLUSTER_SNAPSHOT_THRESHOLD(I, N) \
 	raft_set_snapshot_threshold(CLUSTER_RAFT(I), N)
+#define CLUSTER_SNAPSHOT_TRAILING(I, N) \
+	raft_set_snapshot_trailing(CLUSTER_RAFT(I), N)
 
 #endif /* TEST_CLUSTER_H */
