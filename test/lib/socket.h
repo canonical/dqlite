@@ -73,4 +73,7 @@ void test_socket_pair_server_disconnect(struct test_socket_pair *p);
  */
 void test_socket_client_write(struct test_socket_pair *p, void *buf, size_t n);
 
+/* Accept a new client connection. */
+int test_socket_client_accept(struct test_socket_pair *p);
+
 #endif /* DQLITE_TEST_SOCKET_H */

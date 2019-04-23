@@ -67,32 +67,32 @@ static void connect_work_cb(uv_work_t *work)
 		rv = RAFT_NOCONNECTION;
 		goto err;
 	}
-	rv = client__init(&client, r->fd);
+	rv = clientInit(&client, r->fd);
 	if (rv != 0) {
 		assert(rv == DQLITE_NOMEM);
 		rv = RAFT_NOMEM;
 		goto err_after_connect;
 	}
 
-	rv = client__send_handshake(&client);
+	rv = clientSendHandshake(&client);
 	if (rv != 0) {
 		rv = RAFT_NOCONNECTION;
 		goto err_after_client_init;
 	}
 
-	rv = client__send_connect(&client, i->id, i->address);
+	rv = clientSendConnect(&client, i->id, i->address);
 	if (rv != 0) {
 		rv = RAFT_NOCONNECTION;
 		goto err_after_client_init;
 	}
 
-	client__close(&client);
+	clientClose(&client);
 
 	r->status = 0;
 	return;
 
 err_after_client_init:
-	client__close(&client);
+	clientClose(&client);
 err_after_connect:
 	close(r->fd);
 err:
@@ -213,7 +213,7 @@ static int default_connect(void *data, const dqlite_server *server, int *fd)
 		return RAFT_NOCONNECTION;
 	}
 
-	rv = connect(*fd, &addr, sizeof addr);
+	rv = connect(*fd, (const struct sockaddr *)&addr, sizeof addr);
 	if (rv == -1) {
 		close(*fd);
 		return RAFT_NOCONNECTION;
@@ -222,8 +222,7 @@ static int default_connect(void *data, const dqlite_server *server, int *fd)
 	return 0;
 }
 
-int raft_uv_proxy__init(struct raft_uv_transport *transport,
-			struct uv_loop_s *loop)
+int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 {
 	struct impl *i = sqlite3_malloc(sizeof *i);
 	if (i == NULL) {
@@ -240,17 +239,26 @@ int raft_uv_proxy__init(struct raft_uv_transport *transport,
 	return 0;
 }
 
-void raft_uv_proxy__close(struct raft_uv_transport *transport)
+void raftProxyClose(struct raft_uv_transport *transport)
 {
 	struct impl *i = transport->impl;
 	sqlite3_free(i);
 }
 
-void raft_uv_proxy__accept(struct raft_uv_transport *transport,
-			   unsigned id,
-			   const char *address,
-			   struct uv_stream_s *stream)
+void raftProxyAccept(struct raft_uv_transport *transport,
+		     unsigned id,
+		     const char *address,
+		     struct uv_stream_s *stream)
 {
 	struct impl *i = transport->impl;
 	i->accept_cb(transport, id, address, stream);
+}
+
+void raftProxyGetConnectFunc(struct raft_uv_transport *transport,
+			     dqlite_connect *connect,
+			     void **data)
+{
+	struct impl *i = transport->impl;
+	*connect = i->connect;
+	*data = i->data;
 }

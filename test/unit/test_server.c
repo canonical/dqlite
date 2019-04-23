@@ -67,7 +67,7 @@ static void *run(void *arg)
 	}
 
 /* Run the dqlite server in a thread */
-#define START THREAD_START(run, &f->dqlite)
+#define START THREAD_START(f->thread, run, &f->dqlite)
 
 /* Wait for the server to be ready */
 #define READY munit_assert_true(dqlite_ready(&f->dqlite))
@@ -75,63 +75,63 @@ static void *run(void *arg)
 /* Stop the server and wait for it to be done */
 #define STOP                     \
 	dqlite_stop(&f->dqlite); \
-	THREAD_JOIN
+	THREAD_JOIN(f->thread)
 
 /* Handle a new connection */
 #define HANDLE(FD)                                   \
 	{                                            \
-		int rv2;                             \
-		rv2 = dqlite_handle(&f->dqlite, FD); \
-		munit_assert_int(rv2, ==, 0);        \
+		int rv_;                             \
+		rv_ = dqlite_handle(&f->dqlite, FD); \
+		munit_assert_int(rv_, ==, 0);        \
 	}
 
 /* Send the initial client handshake. */
-#define HANDSHAKE                                         \
-	{                                                 \
-		int rv2;                                  \
-		rv2 = client__send_handshake(&f->client); \
-		munit_assert_int(rv2, ==, 0);             \
+#define HANDSHAKE                                      \
+	{                                              \
+		int rv_;                               \
+		rv_ = clientSendHandshake(&f->client); \
+		munit_assert_int(rv_, ==, 0);          \
 	}
 
 /* Open a test database. */
-#define OPEN                                                 \
-	{                                                    \
-		int rv2;                                     \
-		rv2 = client__send_open(&f->client, "test"); \
-		munit_assert_int(rv2, ==, 0);                \
-		rv2 = client__recv_db(&f->client);           \
-		munit_assert_int(rv2, ==, 0);                \
+#define OPEN                                              \
+	{                                                 \
+		int rv_;                                  \
+		rv_ = clientSendOpen(&f->client, "test"); \
+		munit_assert_int(rv_, ==, 0);             \
+		rv_ = clientRecvDb(&f->client);           \
+		munit_assert_int(rv_, ==, 0);             \
 	}
 
 /* Prepare a statement. */
-#define PREPARE(SQL, STMT_ID)                                 \
-	{                                                     \
-		int rv2;                                      \
-		rv2 = client__send_prepare(&f->client, SQL);  \
-		munit_assert_int(rv2, ==, 0);                 \
-		rv2 = client__recv_stmt(&f->client, STMT_ID); \
-		munit_assert_int(rv2, ==, 0);                 \
+#define PREPARE(SQL, STMT_ID)                              \
+	{                                                  \
+		int rv_;                                   \
+		rv_ = clientSendPrepare(&f->client, SQL);  \
+		munit_assert_int(rv_, ==, 0);              \
+		rv_ = clientRecvStmt(&f->client, STMT_ID); \
+		munit_assert_int(rv_, ==, 0);              \
 	}
 
 /* Execute a statement. */
-#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)                  \
-	{                                                             \
-		int rv2;                                              \
-		rv2 = client__send_exec(&f->client, STMT_ID);         \
-		munit_assert_int(rv2, ==, 0);                         \
-		rv2 = client__recv_result(&f->client, LAST_INSERT_ID, \
-					  ROWS_AFFECTED);             \
-		munit_assert_int(rv2, ==, 0);                         \
+#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)               \
+	{                                                          \
+		int rv_;                                           \
+		rv_ = clientSendExec(&f->client, STMT_ID);         \
+		munit_assert_int(rv_, ==, 0);                      \
+		rv_ = clientRecvResult(&f->client, LAST_INSERT_ID, \
+				       ROWS_AFFECTED);             \
+		munit_assert_int(rv_, ==, 0);                      \
 	}
 
 /* Perform a query. */
-#define QUERY(STMT_ID, ROWS)                                   \
-	{                                                      \
-		int rv2;                                       \
-		rv2 = client__send_query(&f->client, STMT_ID); \
-		munit_assert_int(rv2, ==, 0);                  \
-		rv2 = client__recv_rows(&f->client, ROWS);     \
-		munit_assert_int(rv2, ==, 0);                  \
+#define QUERY(STMT_ID, ROWS)                                \
+	{                                                   \
+		int rv_;                                    \
+		rv_ = clientSendQuery(&f->client, STMT_ID); \
+		munit_assert_int(rv_, ==, 0);               \
+		rv_ = clientRecvRows(&f->client, ROWS);     \
+		munit_assert_int(rv_, ==, 0);               \
 	}
 
 /******************************************************************************
@@ -283,7 +283,7 @@ TEST_CASE(client, query, NULL)
 	PREPARE("SELECT n FROM test", &stmt_id);
 	QUERY(stmt_id, &rows);
 
-	client__close_rows(&rows);
+	clientCloseRows(&rows);
 
 	return MUNIT_OK;
 }

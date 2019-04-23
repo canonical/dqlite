@@ -32,21 +32,25 @@
 	X(uint64, db_id, ##__VA_ARGS__) \
 	X(text, sql, ##__VA_ARGS__)
 #define REQUEST_INTERRUPT(X, ...) X(uint64, db_id, ##__VA_ARGS__)
+#define REQUEST_JOIN(X, ...)         \
+	X(uint64, id, ##__VA_ARGS__) \
+	X(text, address, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
 
-#define REQUEST__TYPES(X, ...)             \
-	X(leader, LEADER, __VA_ARGS__)     \
-	X(client, CLIENT, __VA_ARGS__)     \
-	X(open, OPEN, __VA_ARGS__)         \
-	X(prepare, PREPARE, __VA_ARGS__)   \
-	X(exec, EXEC, __VA_ARGS__)         \
-	X(query, QUERY, __VA_ARGS__)       \
-	X(finalize, FINALIZE, __VA_ARGS__) \
-	X(exec_sql, EXEC_SQL, __VA_ARGS__) \
+#define REQUEST__TYPES(X, ...)               \
+	X(leader, LEADER, __VA_ARGS__)       \
+	X(client, CLIENT, __VA_ARGS__)       \
+	X(open, OPEN, __VA_ARGS__)           \
+	X(prepare, PREPARE, __VA_ARGS__)     \
+	X(exec, EXEC, __VA_ARGS__)           \
+	X(query, QUERY, __VA_ARGS__)         \
+	X(finalize, FINALIZE, __VA_ARGS__)   \
+	X(exec_sql, EXEC_SQL, __VA_ARGS__)   \
 	X(query_sql, QUERY_SQL, __VA_ARGS__) \
-	X(interrupt, INTERRUPT, __VA_ARGS__)
+	X(interrupt, INTERRUPT, __VA_ARGS__) \
+	X(join, JOIN, __VA_ARGS__)
 
 REQUEST__TYPES(REQUEST__DEFINE);
 

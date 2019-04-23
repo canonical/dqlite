@@ -100,7 +100,7 @@ static void raft_connect(struct conn *c, struct cursor *cursor)
 		conn__stop(c);
 		return;
 	}
-	raft_uv_proxy__accept(c->uv_transport, request.id, request.address,
+	raftProxyAccept(c->uv_transport, request.id, request.address,
 			      c->transport.stream);
 	/* Close the connection without actually closing the transport, since
 	 * the stream will be used by raft */

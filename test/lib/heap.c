@@ -185,7 +185,6 @@ void test_heap_tear_down(void *data)
 
 	int malloc_count;
 	int memory_used;
-	return;
 
 	mem_stats(&malloc_count, &memory_used);
 	if (malloc_count > 0 || memory_used > 0) {
