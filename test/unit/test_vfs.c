@@ -34,7 +34,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	SETUP_HEAP;
 	SETUP_SQLITE;
 	SETUP_CONFIG;
-	rv = vfs__init(&f->vfs, &f->config);
+	rv = vfsInit(&f->vfs, &f->config);
 	munit_assert_int(rv, ==, 0);
 	return f;
 }
@@ -42,7 +42,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 static void tear_down(void *data)
 {
 	struct fixture *f = data;
-	vfs__close(&f->vfs);
+	vfsClose(&f->vfs);
 	TEAR_DOWN_CONFIG;
 	TEAR_DOWN_SQLITE;
 	TEAR_DOWN_HEAP;
@@ -179,9 +179,9 @@ static sqlite3 *__db_open()
 /* Helper to close a database. */
 static void __db_close(sqlite3 *db)
 {
-	int rc;
-	rc = sqlite3_close(db);
-	munit_assert_int(rc, ==, SQLITE_OK);
+	int rv;
+	rv = sqlite3_close(db);
+	munit_assert_int(rv, ==, SQLITE_OK);
 }
 
 /* Helper get the mxFrame value of the WAL index object associated with the
@@ -256,7 +256,7 @@ static int __shm_shared_lock_held(sqlite3 *db, int i)
 
 /******************************************************************************
  *
- * dqlite__vfs_open
+ * xOpen
  *
  ******************************************************************************/
 
@@ -577,7 +577,7 @@ TEST_CASE(open, tmp, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_delete
+ * xDelete
  *
  ******************************************************************************/
 
@@ -659,7 +659,7 @@ TEST_CASE(delete, enoent, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_access
+ * xAccess
  *
  ******************************************************************************/
 
@@ -716,7 +716,7 @@ TEST_CASE(access, noent, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_full_pathname
+ * xFullPathname
  *
  ******************************************************************************/
 
@@ -744,7 +744,7 @@ TEST_CASE(full_path_name, success, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_close
+ * xClose
  *
  ******************************************************************************/
 
@@ -779,7 +779,7 @@ TEST_CASE(close, then_delete, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_read
+ * xRead
  *
  ******************************************************************************/
 
@@ -811,7 +811,7 @@ TEST_CASE(read, never_written, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_write
+ * xWrite
  *
  ******************************************************************************/
 
@@ -1150,7 +1150,7 @@ TEST_CASE(write, beyond_last, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_truncate
+ * xTruncate
  *
  ******************************************************************************/
 
@@ -1408,7 +1408,7 @@ TEST_CASE(truncate, misaligned, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_shm_map
+ * xShmMap
  *
  ******************************************************************************/
 
@@ -1448,7 +1448,7 @@ TEST_CASE(shm_map, oom, test_shm_map_oom_params)
 
 /******************************************************************************
  *
- * dqlite__vfs_shm_lock
+ * xShmLock
  *
  ******************************************************************************/
 
@@ -1613,7 +1613,7 @@ TEST_CASE(shm_lock, release, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_file_control
+ * xFileControl
  *
  ******************************************************************************/
 
@@ -1682,7 +1682,7 @@ TEST_CASE(file_control, journal, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_current_time
+ * xCurrentTime
  *
  ******************************************************************************/
 
@@ -1708,7 +1708,7 @@ TEST_CASE(current_time, success, NULL)
 
 /******************************************************************************
  *
- * dqlite__vfs_sleep
+ * xSleep
  *
  ******************************************************************************/
 
@@ -1733,7 +1733,7 @@ TEST_CASE(sleep, success, NULL)
 
 /******************************************************************************
  *
- * dqlite_vfs_create
+ * vfsInit
  *
  ******************************************************************************/
 
@@ -1761,7 +1761,7 @@ TEST_CASE(create, oom, test_create_oom_params)
 
 	test_heap_fault_enable();
 
-	rv = vfs__init(&vfs, &f->config);
+	rv = vfsInit(&vfs, &f->config);
 	munit_assert_int(rv, ==, DQLITE_NOMEM);
 
 	return MUNIT_OK;
@@ -1781,7 +1781,6 @@ TEST_TEAR_DOWN(integration, tear_down);
  * database operations. */
 TEST_CASE(integration, db, NULL)
 {
-	struct fixture *f = data;
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
 	const char *tail;
@@ -1790,6 +1789,7 @@ TEST_CASE(integration, db, NULL)
 	int ckpt;
 	int rc;
 
+	(void)data;
 	(void)params;
 
 	db = __db_open();
@@ -1822,20 +1822,18 @@ TEST_CASE(integration, db, NULL)
 	rc = sqlite3_close(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	sqlite3_vfs_unregister(&f->vfs);
-
 	return MUNIT_OK;
 }
 
 /* Test our expections on the memory-mapped WAl index format. */
 TEST_CASE(integration, wal, NULL)
 {
-	struct fixture *f = data;
 	sqlite3 *db1;
 	sqlite3 *db2;
 	uint32_t *read_marks;
 	int i;
 
+	(void)data;
 	(void)params;
 
 	db1 = __db_open();
@@ -1926,15 +1924,12 @@ TEST_CASE(integration, wal, NULL)
 	__db_close(db1);
 	__db_close(db2);
 
-	sqlite3_vfs_unregister(&f->vfs);
-
 	return SQLITE_OK;
 }
 
 /* Full checkpoints are possible only when no read mark is set. */
 TEST_CASE(integration, checkpoint, NULL)
 {
-	struct fixture *f = data;
 	sqlite3 *db1;
 	sqlite3 *db2;
 	sqlite3_file *file1; /* main DB file */
@@ -1947,9 +1942,8 @@ TEST_CASE(integration, checkpoint, NULL)
 	int i;
 	int rv;
 
+	(void)data;
 	(void)params;
-
-	sqlite3_vfs_register(&f->vfs, 0);
 
 	db1 = __db_open();
 
@@ -2026,7 +2020,145 @@ TEST_CASE(integration, checkpoint, NULL)
 	__db_close(db1);
 	__db_close(db2);
 
-	sqlite3_vfs_unregister(&f->vfs);
-
 	return SQLITE_OK;
+}
+
+/******************************************************************************
+ *
+ * vfs file read/write
+ *
+ ******************************************************************************/
+
+TEST_SUITE(file_read);
+TEST_SETUP(file_read, setup);
+TEST_TEAR_DOWN(file_read, tear_down);
+
+/* If the file being read does not exists, an error is returned. */
+TEST_CASE(file_read, cantopen, NULL)
+{
+	struct fixture *f = data;
+	uint8_t *buf;
+	size_t len;
+	int rv;
+	(void)params;
+	rv = vfsFileRead(f->vfs.zName, "test.db", &buf, &len);
+	munit_assert_int(rv, ==, SQLITE_CANTOPEN);
+	return MUNIT_OK;
+}
+
+/* Read the content of an empty file. */
+TEST_CASE(file_read, empty, NULL)
+{
+	struct fixture *f = data;
+	sqlite3 *db;
+	uint8_t *buf;
+	size_t len;
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int rv;
+
+	(void)params;
+
+	rv = sqlite3_open_v2("test.db", &db, flags, f->vfs.zName);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	rv = vfsFileRead(f->vfs.zName, "test.db", &buf, &len);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	munit_assert_ptr_null(buf);
+	munit_assert_int(len, ==, 0);
+
+	rv = sqlite3_close(db);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	return MUNIT_OK;
+}
+
+/* Read the content of a database and WAL files and then write them back. */
+TEST_CASE(file_read, then_write, NULL)
+{
+	struct fixture *f = data;
+	sqlite3 *db = __db_open();
+	int rc;
+	uint8_t *buf1;
+	uint8_t *buf2;
+	size_t len1;
+	size_t len2;
+	sqlite3_stmt *stmt;
+	const char *tail;
+
+	(void)params;
+
+	__db_exec(db, "CREATE TABLE test (n INT)");
+
+	rc = vfsFileRead(f->vfs.zName, "test.db", &buf1, &len1);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	munit_assert_ptr_not_equal(buf1, NULL);
+	munit_assert_int(len1, ==, 512);
+
+	rc = vfsFileRead(f->vfs.zName, "test.db-wal", &buf2, &len2);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	munit_assert_ptr_not_equal(buf2, NULL);
+	munit_assert_int(len2, ==, 1104);
+
+	rc = sqlite3_close(db);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = vfsFileWrite(f->vfs.zName, "test.db", buf1, len1);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = vfsFileWrite(f->vfs.zName, "test.db-wal", buf2, len2);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	sqlite3_free(buf1);
+	sqlite3_free(buf2);
+
+	rc = sqlite3_open_v2("test.db", &db, SQLITE_OPEN_READWRITE,
+			     f->vfs.zName);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = sqlite3_prepare(db, "INSERT INTO test(n) VALUES(?)", -1, &stmt,
+			     &tail);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	rc = sqlite3_finalize(stmt);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	__db_close(db);
+
+	return MUNIT_OK;
+}
+
+static char *file_read_oom_delay[] = {"0", "1", NULL};
+static char *file_read_oom_repeat[] = {"1", NULL};
+
+static MunitParameterEnum file_read_oom_params[] = {
+    {TEST_HEAP_FAULT_DELAY, file_read_oom_delay},
+    {TEST_HEAP_FAULT_REPEAT, file_read_oom_repeat},
+    {NULL, NULL},
+};
+
+/* Test out of memory scenarios. */
+TEST_CASE(file_read, oom, file_read_oom_params)
+{
+	struct fixture *f = data;
+	sqlite3 *db = __db_open();
+	uint8_t *buf;
+	size_t len;
+	int rc;
+
+	(void)params;
+
+	__db_exec(db, "CREATE TABLE test (n INT)");
+
+	test_heap_fault_enable();
+
+	rc = vfsFileRead(f->vfs.zName, "test.db", &buf, &len);
+	munit_assert_int(rc, ==, SQLITE_NOMEM);
+
+	rc = sqlite3_close(db);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	return MUNIT_OK;
 }

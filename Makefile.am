@@ -35,7 +35,6 @@ libdqlite_la_SOURCES = \
   src/conn.c \
   src/db.c \
   src/error.c \
-  src/file.c \
   src/format.c \
   src/fsm.c \
   src/gateway.c \
@@ -74,7 +73,6 @@ test_lib_SOURCES = \
 unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
 unit_test_SOURCES += \
   test/test_error.c \
-  test/test_file.c \
   test/test_integration.c \
   test/unit/ext/test_co.c \
   test/unit/ext/test_uv.c \
