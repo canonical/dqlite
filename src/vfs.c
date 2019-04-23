@@ -1813,7 +1813,7 @@ static int guess_file_type(const char *filename)
 
 int vfsFileRead(const char *vfs_name,
 		     const char *filename,
-		     uint8_t **buf,
+		     void **buf,
 		     size_t *len)
 {
 	sqlite3_vfs *vfs;
@@ -1947,7 +1947,7 @@ err:
 
 int vfsFileWrite(const char *vfs_name,
 		      const char *filename,
-		      uint8_t *buf,
+		      void *buf,
 		      size_t len)
 {
 	sqlite3_vfs *vfs;

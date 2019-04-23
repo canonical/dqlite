@@ -26,8 +26,11 @@ TEST_MODULE(replication);
 #define SETUP_LEADER(I)                                   \
 	struct leader *leader = &f->leaders[I];           \
 	struct registry *registry = CLUSTER_REGISTRY(I);  \
+	struct config *config;                            \
 	struct db *db;                                    \
 	int rc2;                                          \
+	config = CLUSTER_CONFIG(i);                       \
+	config->page_size = 512;                          \
 	rc2 = registry__db_get(registry, "test.db", &db); \
 	munit_assert_int(rc2, ==, 0);                     \
 	leader__init(leader, db, CLUSTER_RAFT(I));
@@ -87,6 +90,13 @@ TEST_MODULE(replication);
 				   fixture_exec_cb);            \
 		munit_assert_int(rc2, ==, 0);                   \
 	}
+
+/* Convenience to prepare, execute and finalize a statement. */
+#define EXEC_SQL(I, SQL)                        \
+	PREPARE(I, SQL);                        \
+	EXEC(I);                                \
+	CLUSTER_APPLIED(CLUSTER_LAST_INDEX(I)); \
+	FINALIZE
 
 /******************************************************************************
  *
@@ -173,6 +183,44 @@ TEST_CASE(exec, success, NULL)
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
 	FINALIZE;
+	return MUNIT_OK;
+}
+
+/* A snapshot is taken after applying an entry. */
+TEST_CASE(exec, snapshot, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	CLUSTER_SNAPSHOT_THRESHOLD(0, 4);
+	CLUSTER_ELECT(0);
+	PREPARE(0, "CREATE TABLE test (n  INT)");
+	EXEC(0);
+	CLUSTER_APPLIED(3);
+	FINALIZE;
+	PREPARE(0, "INSERT INTO test(n) VALUES(1)");
+	EXEC(0);
+	CLUSTER_APPLIED(4);
+	munit_assert_true(f->invoked);
+	munit_assert_int(f->status, ==, SQLITE_DONE);
+	FINALIZE;
+	return MUNIT_OK;
+}
+
+/* If a transaction is in progress, no snapshot is taken. */
+TEST_CASE(exec, snapshot_busy, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	unsigned i;
+	CLUSTER_SNAPSHOT_THRESHOLD(0, 4);
+	CLUSTER_ELECT(0);
+	EXEC_SQL(0, "PRAGMA cache_size = 1");
+	EXEC_SQL(0, "CREATE TABLE test (n  INT)");
+	EXEC_SQL(0, "BEGIN");
+	/* Accumulate enough dirty data to fill the page cache */
+	for (i = 0; i < 163; i++) {
+		EXEC_SQL(0, "INSERT INTO test(n) VALUES(1)");
+	}
 	return MUNIT_OK;
 }
 

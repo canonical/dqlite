@@ -1,9 +1,11 @@
 #include <raft.h>
 
 #include "lib/assert.h"
+#include "lib/serialize.h"
 
 #include "command.h"
 #include "fsm.h"
+#include "vfs.h"
 
 struct fsm
 {
@@ -185,20 +187,167 @@ err:
 	return rc;
 }
 
+#define SNAPSHOT_FORMAT 1
+
+#define SNAPSHOT_HEADER(X, ...)          \
+	X(uint64, format, ##__VA_ARGS__) \
+	X(uint64, n, ##__VA_ARGS__)
+SERIALIZE__DEFINE(snapshotHeader, SNAPSHOT_HEADER);
+SERIALIZE__IMPLEMENT(snapshotHeader, SNAPSHOT_HEADER);
+
+#define SNAPSHOT_DATABASE(X, ...)           \
+	X(text, filename, ##__VA_ARGS__)    \
+	X(uint64, main_size, ##__VA_ARGS__) \
+	X(uint64, wal_size, ##__VA_ARGS__)
+SERIALIZE__DEFINE(snapshotDatabase, SNAPSHOT_DATABASE);
+SERIALIZE__IMPLEMENT(snapshotDatabase, SNAPSHOT_DATABASE);
+
+/* Encode the global snapshot header. */
+static int encodeSnapshotHeader(unsigned n, struct raft_buffer *buf)
+{
+	struct snapshotHeader header;
+	void *cursor;
+	header.format = SNAPSHOT_FORMAT;
+	header.n = n;
+	buf->len = snapshotHeader__sizeof(&header);
+	buf->base = raft_malloc(buf->len);
+	if (buf->base == NULL) {
+		return RAFT_NOMEM;
+	}
+	cursor = buf->base;
+	snapshotHeader__encode(&header, &cursor);
+	return 0;
+}
+
+/* Generate the WAL filename associated with the given main database
+ * filename. */
+static char *generateWalFilename(const char *filename)
+{
+	char *out;
+	out = sqlite3_malloc(strlen(filename) + strlen("-wal") + 1);
+	if (out == NULL) {
+		return out;
+	}
+	sprintf(out, "%s-wal", filename);
+	return out;
+}
+
+/* Encode the given database. */
+static int encodeDatabase(struct db *db, struct raft_buffer bufs[3])
+{
+	struct snapshotDatabase header;
+	char *walFilename;
+	void *cursor;
+	int rv;
+
+	walFilename = generateWalFilename(db->filename);
+	if (walFilename == NULL) {
+		rv = RAFT_NOMEM;
+		goto err;
+	}
+
+	header.filename = db->filename;
+
+	/* Main database file. */
+	rv = vfsFileRead(db->config->name, db->filename, &bufs[1].base,
+			 &bufs[1].len);
+	if (rv != 0) {
+		goto err_after_wal_filename_alloc;
+	}
+	header.main_size = bufs[1].len;
+
+	/* WAL file. */
+	rv = vfsFileRead(db->config->name, walFilename, &bufs[2].base,
+			 &bufs[2].len);
+	if (rv != 0) {
+		goto err_after_main_file_read;
+	}
+	header.wal_size = bufs[2].len;
+
+	/* Database header. */
+	bufs[0].len = snapshotDatabase__sizeof(&header);
+	bufs[0].base = raft_malloc(bufs[0].len);
+	if (bufs[0].base == NULL) {
+		rv = RAFT_NOMEM;
+		goto err_after_wal_file_read;
+	}
+	cursor = bufs[0].base;
+	snapshotDatabase__encode(&header, &cursor);
+
+	sqlite3_free(walFilename);
+
+	return 0;
+
+err_after_wal_file_read:
+	sqlite3_free(bufs[2].base);
+err_after_main_file_read:
+	sqlite3_free(bufs[1].base);
+err_after_wal_filename_alloc:
+	sqlite3_free(walFilename);
+err:
+	assert(rv != 0);
+	return rv;
+}
+
 static int fsm__snapshot(struct raft_fsm *fsm,
 			 struct raft_buffer *bufs[],
 			 unsigned *n_bufs)
 {
 	struct fsm *f = fsm->data;
 	queue *head;
+	struct db *db;
+	unsigned n = 0;
+	unsigned i;
+	int rv;
+
+	/* First count how many databases we have and check that no transaction
+	 * is in progress. */
 	QUEUE__FOREACH(head, &f->registry->dbs)
 	{
-		struct db *db;
 		db = QUEUE__DATA(head, struct db, queue);
+		if (db->tx != NULL) {
+			return RAFT_BUSY;
+		}
+		n++;
 	}
-	(void)bufs;
-	(void)n_bufs;
+
+	*n_bufs = 1;      /* Snapshot header */
+	*n_bufs += n * 3; /* Database header, main and wal */
+	*bufs = raft_malloc(*n_bufs * sizeof **bufs);
+	if (*bufs == NULL) {
+		rv = RAFT_NOMEM;
+		goto err;
+	}
+
+	rv = encodeSnapshotHeader(n, &(*bufs)[0]);
+	if (rv != 0) {
+		goto err_after_bufs_alloc;
+	}
+
+	/* Encode individual databases. */
+	i = 1;
+	QUEUE__FOREACH(head, &f->registry->dbs)
+	{
+		db = QUEUE__DATA(head, struct db, queue);
+		rv = encodeDatabase(db, &(*bufs)[i]);
+		if (rv != 0) {
+			goto err_after_encode_header;
+		}
+		i += 3;
+	}
+
 	return 0;
+
+err_after_encode_header:
+	do {
+		raft_free((*bufs)[i].base);
+		i--;
+	} while (i > 0);
+err_after_bufs_alloc:
+	raft_free(*bufs);
+err:
+	assert(rv != 0);
+	return rv;
 }
 
 static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
