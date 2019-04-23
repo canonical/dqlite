@@ -85,7 +85,7 @@ int dqlite__init(struct dqlite *d,
 		rv = DQLITE_INTERNAL;
 		goto err_after_vfs_init;
 	}
-	rv = raft_uv_proxy__init(&d->raft_transport, &d->loop);
+	rv = raftProxyInit(&d->raft_transport, &d->loop);
 	if (rv != 0) {
 		goto err_after_loop_init;
 	}
@@ -137,7 +137,7 @@ err_after_raft_fsm_init:
 err_after_raft_io_init:
 	raft_uv_close(&d->raft_io);
 err_after_raft_transport_init:
-	raft_uv_proxy__close(&d->raft_transport);
+	raftProxyClose(&d->raft_transport);
 err_after_loop_init:
 	uv_loop_close(&d->loop);
 err_after_vfs_init:
@@ -161,7 +161,7 @@ void dqlite__close(struct dqlite *d)
 	fsm__close(&d->raft_fsm);
 	raft_uv_close(&d->raft_io);
 	uv_loop_close(&d->loop);
-	raft_uv_proxy__close(&d->raft_transport);
+	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
 	vfsClose(&d->vfs);
 	config__close(&d->config);

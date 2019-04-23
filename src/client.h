@@ -1,6 +1,4 @@
-/**
- * Core dqlite client logic for encoding requests and decoding responses.
- */
+/* Core dqlite client logic for encoding requests and decoding responses. */
 
 #ifndef CLIENT_H_
 #define CLIENT_H_
@@ -32,72 +30,52 @@ struct rows
 	struct row *next;
 };
 
-/**
- * Initialize a new client, writing requests to fd.
- */
-int client__init(struct client *c, int fd);
+/* Initialize a new client, writing requests to fd. */
+int clientInit(struct client *c, int fd);
 
-/**
- * Release all memory used by the client, and close the client socket.
- */
-void client__close(struct client *c);
+/* Release all memory used by the client, and close the client socket. */
+void clientClose(struct client *c);
 
-/**
- * Initialize the connection by writing the protocol version. This must be
- * called before using any other API.
- */
-int client__send_handshake(struct client *c);
+/* Initialize the connection by writing the protocol version. This must be
+ * called before using any other API. */
+int clientSendHandshake(struct client *c);
 
-/**
- * Send a request to open a database
- */
-int client__send_open(struct client *c, const char *name);
+/* Send a request to open a database */
+int clientSendOpen(struct client *c, const char *name);
 
-/**
- * Receive the response to an open request.
- */
-int client__recv_db(struct client *c);
+/* Receive the response to an open request. */
+int clientRecvDb(struct client *c);
 
-/**
- * Send a request to prepare a statement.
- */
-int client__send_prepare(struct client *c, const char *sql);
+/* Send a request to prepare a statement. */
+int clientSendPrepare(struct client *c, const char *sql);
 
-/**
- * Receive the response to a prepare request.
- */
-int client__recv_stmt(struct client *c, unsigned *stmt_id);
+/* Receive the response to a prepare request. */
+int clientRecvStmt(struct client *c, unsigned *stmt_id);
 
-/**
- * Send a request to execute a statement.
- */
-int client__send_exec(struct client *c, unsigned stmt_id);
+/* Send a request to execute a statement. */
+int clientSendExec(struct client *c, unsigned stmt_id);
 
-/**
- * Receive the response to an exec request.
- */
-int client__recv_result(struct client *c,
+/* Receive the response to an exec request. */
+int clientRecvResult(struct client *c,
 			unsigned *last_insert_id,
 			unsigned *rows_affected);
 
-/**
- * Send a request to perform a query.
- */
-int client__send_query(struct client *c, unsigned stmt_id);
+/* Send a request to perform a query. */
+int clientSendQuery(struct client *c, unsigned stmt_id);
 
-/**
- * Receive the response of a query request.
- */
-int client__recv_rows(struct client *c, struct rows *rows);
+/* Receive the response of a query request. */
+int clientRecvRows(struct client *c, struct rows *rows);
 
-/**
- * Send a raft connect request.
- */
-int client__send_connect(struct client *c, unsigned id, const char *address);
+/* Send a raft connect request. */
+int clientSendConnect(struct client *c, unsigned id, const char *address);
 
-/**
- * Release all memory used in the given rows object.
- */
-void client__close_rows(struct rows *rows);
+/* Release all memory used in the given rows object. */
+void clientCloseRows(struct rows *rows);
+
+/* Send a request to join a dqlite cluster. */
+int clientSendJoin(struct client *c, unsigned id, const char *address);
+
+/* Receive an empty response. */
+int clientRecvEmpty(struct client *c);
 
 #endif /* CLIENT_H_*/

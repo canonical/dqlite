@@ -1,6 +1,7 @@
 #include <errno.h>
 
 #include <sqlite3.h>
+#include <raft.h>
 
 #include "../../include/dqlite.h"
 
@@ -2111,8 +2112,8 @@ TEST_CASE(file_read, then_write, NULL)
 	rc = vfsFileWrite(f->vfs.zName, "test.db-wal", buf2, len2);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	sqlite3_free(buf1);
-	sqlite3_free(buf2);
+	raft_free(buf1);
+	raft_free(buf2);
 
 	rc = sqlite3_open_v2("test.db", &db, SQLITE_OPEN_READWRITE,
 			     f->vfs.zName);
@@ -2130,7 +2131,7 @@ TEST_CASE(file_read, then_write, NULL)
 	return MUNIT_OK;
 }
 
-static char *file_read_oom_delay[] = {"0", "1", NULL};
+static char *file_read_oom_delay[] = {"0", NULL};
 static char *file_read_oom_repeat[] = {"1", NULL};
 
 static MunitParameterEnum file_read_oom_params[] = {
