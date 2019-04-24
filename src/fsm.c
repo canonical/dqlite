@@ -148,6 +148,31 @@ static int apply_undo(struct fsm *f, const struct command_undo *c)
 	return 0;
 }
 
+static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
+{
+	struct db *db;
+	int size;
+	int ckpt;
+	int rv;
+
+	rv = registry__db_get(f->registry, c->filename, &db);
+	assert(rv == 0);        /* We have registered this filename before. */
+	assert(db->tx == NULL); /* No transaction is in progress. */
+
+	rv = sqlite3_wal_checkpoint_v2(
+	    db->follower, "main", SQLITE_CHECKPOINT_TRUNCATE, &size, &ckpt);
+	if (rv != 0) {
+		return rv;
+	}
+
+	/* Since no reader transaction is in progress, we must be able to
+	 * checkpoint the entire WAL */
+	assert(size == 0);
+	assert(ckpt == 0);
+
+	return 0;
+}
+
 static int fsm__apply(struct raft_fsm *fsm,
 		      const struct raft_buffer *buf,
 		      void **result)
@@ -170,6 +195,9 @@ static int fsm__apply(struct raft_fsm *fsm,
 			break;
 		case COMMAND_UNDO:
 			rc = apply_undo(f, command);
+			break;
+		case COMMAND_CHECKPOINT:
+			rc = apply_checkpoint(f, command);
 			break;
 		default:
 			rc = RAFT_MALFORMED;
