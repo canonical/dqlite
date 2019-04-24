@@ -1,6 +1,7 @@
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
 
+#include "../../src/format.h"
 #include "../../src/leader.h"
 
 TEST_MODULE(replication);
@@ -97,6 +98,31 @@ TEST_MODULE(replication);
 	EXEC(I);                                \
 	CLUSTER_APPLIED(CLUSTER_LAST_INDEX(I)); \
 	FINALIZE
+
+/******************************************************************************
+ *
+ * Helper macros.
+ *
+ ******************************************************************************/
+
+/* Assert the number of pages in the WAL file on the I'th node. */
+#define ASSERT_WAL_PAGES(I, N)                                           \
+	{                                                                \
+		struct leader *leader_ = &f->leaders[I];                 \
+		sqlite3_file *file_;                                     \
+		sqlite_int64 size_;                                      \
+		int pages_;                                              \
+		int rv_;                                                 \
+		rv_ = sqlite3_file_control(leader_->conn, "main",        \
+					   SQLITE_FCNTL_JOURNAL_POINTER, \
+					   &file_);                      \
+		munit_assert_int(rv_, ==, 0);                            \
+		rv_ = file_->pMethods->xFileSize(file_, &size_);         \
+		munit_assert_int(rv_, ==, 0);                            \
+		pages_ = format__wal_calc_pages(                         \
+		    leader_->db->config->page_size, size_);              \
+		munit_assert_int(pages_, ==, N);                         \
+	}
 
 /******************************************************************************
  *
@@ -221,6 +247,59 @@ TEST_CASE(exec, snapshot_busy, NULL)
 	for (i = 0; i < 163; i++) {
 		EXEC_SQL(0, "INSERT INTO test(n) VALUES(1)");
 	}
+	return MUNIT_OK;
+}
+
+/* If the WAL size grows beyond the configured threshold, checkpoint it. */
+TEST_CASE(exec, checkpoint, NULL)
+{
+	struct exec_fixture *f = data;
+	struct config *config = CLUSTER_CONFIG(0);
+	(void)params;
+	config->checkpoint_threshold = 3;
+	CLUSTER_ELECT(0);
+	EXEC_SQL(0, "CREATE TABLE test (n  INT)");
+	EXEC_SQL(0, "INSERT INTO test(n) VALUES(1)");
+	/* The WAL was truncated. */
+	ASSERT_WAL_PAGES(0, 0);
+	return MUNIT_OK;
+}
+
+/* If a read transaction is in progress, no checkpoint is taken. */
+TEST_CASE(exec, checkpoint_read_lock, NULL)
+{
+	struct exec_fixture *f = data;
+	struct config *config = CLUSTER_CONFIG(0);
+	struct registry *registry = CLUSTER_REGISTRY(0);
+	struct db *db;
+	struct leader leader2;
+	char *errmsg;
+	int rv;
+	(void)params;
+	config->checkpoint_threshold = 3;
+
+	CLUSTER_ELECT(0);
+	EXEC_SQL(0, "CREATE TABLE test (n  INT)");
+
+	/* Initialize another leader. */
+	rv = registry__db_get(registry, "test.db", &db);
+	munit_assert_int(rv, ==, 0);
+	leader__init(&leader2, db, CLUSTER_RAFT(0));
+
+	/* Start a read transaction in the other leader. */
+	rv = sqlite3_exec(leader2.conn, "BEGIN", NULL, NULL, &errmsg);
+	munit_assert_int(rv, ==, 0);
+
+	rv = sqlite3_exec(leader2.conn, "SELECT * FROM test", NULL, NULL, &errmsg);
+	munit_assert_int(rv, ==, 0);
+
+	EXEC_SQL(0, "INSERT INTO test(n) VALUES(1)");
+
+	/* The WAL was not truncated. */
+	ASSERT_WAL_PAGES(0, 3);
+
+	leader__close(&leader2);
+
 	return MUNIT_OK;
 }
 

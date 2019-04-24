@@ -1971,7 +1971,6 @@ TEST_CASE(integration, checkpoint, NULL)
 
 	/* The WAL file has now 13 pages */
 	rv = file2->pMethods->xFileSize(file2, &size);
-	munit_logf(MUNIT_LOG_INFO, "size %lld", size);
 	munit_assert_int(format__wal_calc_pages(512, size), ==, 13);
 
 	mx_frame = __wal_idx_mx_frame(db1);

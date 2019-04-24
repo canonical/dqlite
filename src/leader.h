@@ -24,13 +24,14 @@ typedef void (*barrier_cb)(struct barrier *req, int status);
 
 struct leader
 {
-	struct db *db;     /* Database the connection is opened against */
-	cothread_t main;   /* Main coroutine */
-	cothread_t loop;   /* Leader loop coroutine, executing statements */
-	sqlite3 *conn;     /* Underlying SQLite connection */
-	struct raft *raft; /* Raft instance */
-	struct exec *exec; /* Exec request currently in progress, if any */
-	queue queue;       /* Prev/next leader connection, used by the db */
+	struct db *db;           /* Database the connection. */
+	cothread_t main;         /* Main coroutine. */
+	cothread_t loop;         /* Loop coroutine, executing statements. */
+	sqlite3 *conn;           /* Underlying SQLite connection. */
+	struct raft *raft;       /* Raft instance. */
+	struct exec *exec;       /* Exec request in progress, if any. */
+	struct raft_apply apply; /* To apply checkpoint commands */
+	queue queue;             /* Prev/next leader, used by struct db. */
 };
 
 struct barrier
