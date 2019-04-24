@@ -135,6 +135,26 @@ static void *run(void *arg)
 		munit_assert_int(rv_, ==, 0);                  \
 	}
 
+/* Send a promote request. */
+#define PROMOTE(ID)                                      \
+	{                                                \
+		int rv_;                                 \
+		rv_ = clientSendPromote(&f->client, ID); \
+		munit_assert_int(rv_, ==, 0);            \
+		rv_ = clientRecvEmpty(&f->client);       \
+		munit_assert_int(rv_, ==, 0);            \
+	}
+
+/* Send a remove request. */
+#define REMOVE(ID)                                      \
+	{                                               \
+		int rv_;                                \
+		rv_ = clientSendRemove(&f->client, ID); \
+		munit_assert_int(rv_, ==, 0);           \
+		rv_ = clientRecvEmpty(&f->client);      \
+		munit_assert_int(rv_, ==, 0);           \
+	}
+
 /* Open a test database. */
 #define OPEN                                              \
 	{                                                 \
@@ -168,7 +188,7 @@ static void *run(void *arg)
 
 /******************************************************************************
  *
- * dqlite_join
+ * join
  *
  ******************************************************************************/
 
@@ -227,8 +247,73 @@ TEST_CASE(join, success, params)
 	HANDLE(1, fd);
 	fd = test_socket_client_accept(&f->servers[0].sockets);
 	HANDLE(0, fd);
+	PROMOTE(id);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	/* TODO: fix the standalone test for remove */
+	REMOVE(id);
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * remove
+ *
+ ******************************************************************************/
+
+struct remove_fixture
+{
+	FIXTURE;
+	struct client client;
+};
+
+TEST_SUITE(remove);
+TEST_SETUP(remove)
+{
+	struct remove_fixture *f = munit_malloc(sizeof *f);
+	struct dqlite_server servers[N_SERVERS];
+	unsigned i;
+	int rv;
+	SETUP;
+	for (i = 0; i < N_SERVERS; i++) {
+		struct dqlite_server *server = &servers[i];
+		server->id = f->servers[i].dqlite.config.id;
+		server->address = f->servers[i].dqlite.config.address;
+	}
+	BOOTSTRAP(0, N_SERVERS, servers);
+	for (i = 0; i < N_SERVERS; i++) {
+		START(i);
+		READY(i);
+	};
+	HANDLE(0, f->servers[0].sockets.server);
+	rv = clientInit(&f->client, f->servers[0].sockets.client);
+	munit_assert_int(rv, ==, 0);
+	return f;
+}
+
+TEST_TEAR_DOWN(remove)
+{
+	struct join_fixture *f = data;
+	unsigned i;
+	clientClose(&f->client);
+	for (i = 0; i < N_SERVERS; i++) {
+		STOP(i);
+	};
+	f->servers[0].sockets.server_disconnected = true;
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(remove, success, params)
+{
+	struct join_fixture *f = data;
+	unsigned id = f->servers[1].dqlite.config.id;
+	(void)params;
+	HANDSHAKE;
+	/* TODO: we need a wait for wait for the leader and automatically
+	 * interconnect nodes. */
+	return MUNIT_SKIP;
+	REMOVE(id);
 	return MUNIT_OK;
 }

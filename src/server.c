@@ -284,7 +284,6 @@ static void stop_cb(uv_async_t *stop)
 		conn = QUEUE__DATA(head, struct conn, queue);
 		conn__stop(conn);
 	}
-
 	raft_close(&d->raft, raftCloseCb);
 }
 
