@@ -296,6 +296,20 @@ int clientSendJoin(struct client *c, unsigned id, const char *address) {
 	return 0;
 }
 
+int clientSendPromote(struct client *c, unsigned id) {
+	struct request_promote request;
+	request.id = id;
+	REQUEST(promote, PROMOTE);
+	return 0;
+}
+
+int clientSendRemove(struct client *c, unsigned id) {
+	struct request_remove request;
+	request.id = id;
+	REQUEST(remove, REMOVE);
+	return 0;
+}
+
 int clientRecvEmpty(struct client *c)
 {
 	struct response_empty response;
