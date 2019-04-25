@@ -67,7 +67,7 @@ test_lib_SOURCES = \
   test/lib/heap.c \
   test/lib/logger.c \
   test/lib/munit.c \
-  test/lib/socket.c \
+  test/lib/endpoint.c \
   test/lib/sqlite.c \
   test/lib/uv.c
 unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)

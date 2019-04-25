@@ -1,7 +1,9 @@
+#include <unistd.h>
+
 #include "../../../src/lib/transport.h"
 
 #include "../../lib/runner.h"
-#include "../../lib/socket.h"
+#include "../../lib/endpoint.h"
 #include "../../lib/uv.h"
 
 TEST_MODULE(lib_transport);
@@ -14,9 +16,10 @@ TEST_MODULE(lib_transport);
 
 struct fixture
 {
-	struct test_socket_pair sockets;
+	struct test_endpoint endpoint;
 	struct uv_loop_s loop;
 	struct transport transport;
+	int client;
 	struct
 	{
 		bool invoked;
@@ -43,20 +46,16 @@ static void write_cb(struct transport *transport, int status)
 	f->write.status = status;
 }
 
-static void close_cb(struct transport *transport)
-{
-	struct fixture *f = transport->data;
-	f->sockets.server_disconnected = true;
-}
-
 static void *setup(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	int rv;
+	int server;
 	(void)user_data;
-	test_socket_pair_setup(params, &f->sockets);
+	test_endpoint_setup(&f->endpoint, params);
+	test_endpoint_connect(&f->endpoint, &server, &f->client);
 	test_uv_setup(params, &f->loop);
-	rv = transport__init(&f->transport, &f->loop, f->sockets.server);
+	rv = transport__init(&f->transport, &f->loop, server);
 	munit_assert_int(rv, ==, 0);
 	f->transport.data = f;
 	f->read.invoked = false;
@@ -69,10 +68,13 @@ static void *setup(const MunitParameter params[], void *user_data)
 static void tear_down(void *data)
 {
 	struct fixture *f = data;
-	transport__close(&f->transport, close_cb);
+	int rv;
+	rv = close(f->client);
+	munit_assert_int(rv, ==, 0);
+	transport__close(&f->transport, NULL);
 	test_uv_stop(&f->loop);
 	test_uv_tear_down(&f->loop);
-	test_socket_pair_tear_down(&f->sockets);
+	test_endpoint_tear_down(&f->endpoint);
 	free(data);
 }
 
@@ -103,15 +105,17 @@ static void tear_down(void *data)
 
 /* Write N bytes into the client buffer. Each byte will contain a progressive
  * number starting from 1. */
-#define CLIENT_WRITE(N)                                         \
-	{                                                       \
-		uint8_t *buf2 = munit_malloc(N);                \
-		unsigned i2;                                    \
-		for (i2 = 0; i2 < N; i2++) {                    \
-			buf2[i2] = i2 + 1;                      \
-		}                                               \
-		test_socket_client_write(&f->sockets, buf2, N); \
-		free(buf2);                                     \
+#define CLIENT_WRITE(N)                          \
+	{                                        \
+		uint8_t *buf_ = munit_malloc(N); \
+		unsigned i_;                     \
+		int rv_;                         \
+		for (i_ = 0; i_ < N; i_++) {     \
+			buf_[i_] = i_ + 1;       \
+		}                                \
+		rv_ = write(f->client, buf_, N); \
+		munit_assert_int(rv_, ==, N);    \
+		free(buf_);                      \
 	}
 
 /******************************************************************************

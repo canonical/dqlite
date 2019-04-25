@@ -2,7 +2,6 @@
 #include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
-#include "../lib/socket.h"
 #include "../lib/sqlite.h"
 #include "../lib/thread.h"
 
@@ -178,7 +177,7 @@ TEST_CASE(run, success, NULL)
 struct handle_fixture
 {
 	FIXTURE;
-	struct test_socket_pair sockets;
+	struct test_endpoint endpoint;
 };
 
 TEST_SUITE(handle);
@@ -188,13 +187,13 @@ TEST_SETUP(handle)
 	SETUP;
 	START;
 	READY;
-	test_socket_pair_setup(params, &f->sockets);
+	test_endpoint_setup(&f->endpoint, params);
 	return f;
 }
 TEST_TEAR_DOWN(handle)
 {
 	struct handle_fixture *f = data;
-	test_socket_pair_tear_down(&f->sockets);
+	test_endpoint_tear_down(&f->endpoint);
 	STOP;
 	TEAR_DOWN;
 	free(f);
@@ -204,8 +203,11 @@ TEST_CASE(handle, success, NULL)
 {
 	struct handle_fixture *f = data;
 	(void)params;
-	HANDLE(f->sockets.server);
-	f->sockets.server_disconnected = true;
+	int server;
+	int client;
+	test_endpoint_connect(&f->endpoint, &server, &client);
+	HANDLE(server);
+	close(client);
 	return MUNIT_OK;
 }
 
@@ -230,7 +232,7 @@ TEST_SETUP(client)
 	BOOTSTRAP;
 	START;
 	READY;
-	HANDLE(f->sockets.server);
+	HANDLE(f->server);
 	HANDSHAKE;
 	OPEN;
 	return f;
@@ -297,7 +299,7 @@ TEST_CASE(client, query, NULL)
 struct raft_fixture
 {
 	FIXTURE;
-	struct test_socket_pair sockets;
+	struct test_endpoint endpoint;
 };
 
 TEST_SUITE(raft);
@@ -305,13 +307,13 @@ TEST_SETUP(raft)
 {
 	struct raft_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
-	test_socket_pair_setup(params, &f->sockets);
+	test_endpoint_setup(&f->endpoint, params);
 	return f;
 }
 TEST_TEAR_DOWN(raft)
 {
 	struct raft_fixture *f = data;
-	test_socket_pair_tear_down(&f->sockets);
+	test_endpoint_tear_down(&f->endpoint);
 	TEAR_DOWN;
 	free(f);
 }
@@ -319,7 +321,7 @@ TEST_TEAR_DOWN(raft)
 /* Run the test using only TCP. */
 char *raft_connect_socket_param[] = {"tcp", NULL};
 static MunitParameterEnum raft_connect_params[] = {
-    {TEST_SOCKET_FAMILY, raft_connect_socket_param},
+    {TEST_ENDPOINT_FAMILY, raft_connect_socket_param},
     {NULL, NULL},
 };
 
@@ -328,23 +330,21 @@ TEST_CASE(raft, connect, raft_connect_params)
 {
 	struct raft_fixture *f = data;
 	struct dqlite_server servers[2];
-	char address[64];
 	int rv;
 	(void)params;
 
 	servers[0].id = f->dqlite.config.id;
 	servers[0].address = f->dqlite.config.address;
 
-	sprintf(address, "127.0.0.1:%d", f->sockets.listen_port);
 	servers[1].id = f->dqlite.config.id + 1;
-	servers[1].address = address;
+	servers[1].address = test_endpoint_address(&f->endpoint);
 
 	rv = dqlite_bootstrap(&f->dqlite, 2, servers);
 	munit_assert_int(rv, ==, 0);
 
 	START;
 	READY;
-	sleep(2);
+	sleep(1);
 	STOP;
 
 	return MUNIT_OK;
