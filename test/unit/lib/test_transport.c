@@ -53,7 +53,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	int server;
 	(void)user_data;
 	test_endpoint_setup(&f->endpoint, params);
-	test_endpoint_connect(&f->endpoint, &server, &f->client);
+	test_endpoint_pair(&f->endpoint, &server, &f->client);
 	test_uv_setup(params, &f->loop);
 	rv = transport__init(&f->transport, &f->loop, server);
 	munit_assert_int(rv, ==, 0);

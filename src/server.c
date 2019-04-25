@@ -423,6 +423,8 @@ int dqlite_stop(dqlite *d)
 int dqlite_config(struct dqlite *d, int op, ...)
 {
 	va_list args;
+	dqlite_connect connectFunc;
+	void *data;
 	int rv = 0;
 	va_start(args, op);
 	switch (op) {
@@ -440,9 +442,11 @@ int dqlite_config(struct dqlite *d, int op, ...)
 			    *va_arg(args, unsigned *);
 			break;
 		case DQLITE_CONFIG_CONNECT:
+			connectFunc = va_arg(args, dqlite_connect);
+			data = va_arg(args, void *);
 			raftProxySetConnectFunc(&d->raft_transport,
-						va_arg(args, dqlite_connect),
-						va_arg(args, void *));
+						connectFunc,
+						data);
 			break;
 		default:
 			rv = DQLITE_MISUSE;

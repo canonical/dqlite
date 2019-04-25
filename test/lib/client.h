@@ -10,12 +10,12 @@
 	struct test_endpoint endpoint; \
 	int server
 
-#define SETUP_CLIENT                                                       \
-	{                                                                  \
-		int client_;                                               \
-		test_endpoint_setup(&f->endpoint, params);                 \
-		test_endpoint_connect(&f->endpoint, &f->server, &client_); \
-		clientInit(&f->client, client_);                           \
+#define SETUP_CLIENT                                                    \
+	{                                                               \
+		int client_;                                            \
+		test_endpoint_setup(&f->endpoint, params);              \
+		test_endpoint_pair(&f->endpoint, &f->server, &client_); \
+		clientInit(&f->client, client_);                        \
 	}
 
 #define TEAR_DOWN_CLIENT         \
