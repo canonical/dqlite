@@ -19,6 +19,7 @@ config.status
 configure
 coverage/
 unit-test
+integration-test
 dqlite.pc
 libtool
 stamp-h*
