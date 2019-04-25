@@ -62,12 +62,10 @@ enum { DQLITE_DEBUG = 0, DQLITE_INFO, DQLITE_WARN, DQLITE_ERROR };
 
 /* Config opcodes */
 #define DQLITE_CONFIG_LOGGER 0
-#define DQLITE_CONFIG_VFS 1
-#define DQLITE_CONFIG_WAL_REPLICATION 2
-#define DQLITE_CONFIG_HEARTBEAT_TIMEOUT 3
-#define DQLITE_CONFIG_PAGE_SIZE 4
-#define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 5
-#define DQLITE_CONFIG_METRICS 6
+#define DQLITE_CONFIG_HEARTBEAT_TIMEOUT 1
+#define DQLITE_CONFIG_PAGE_SIZE 2
+#define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 3
+#define DQLITE_CONFIG_CONNECT 4
 
 /* Special value indicating that a batch of rows is over, but there are more. */
 #define DQLITE_RESPONSE_ROWS_PART 0xeeeeeeeeeeeeeeee
@@ -109,7 +107,7 @@ void dqlite_destroy(dqlite *d);
  * This API must be called after dqlite_init and before
  * dqlite_run.
  */
-int dqlite_config(dqlite *d, int op, void *arg);
+int dqlite_config(dqlite *d, int op, ...);
 
 int dqlite_bootstrap(dqlite *d, unsigned n, const dqlite_server *servers);
 
