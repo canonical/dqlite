@@ -254,11 +254,11 @@ void raftProxyAccept(struct raft_uv_transport *transport,
 	i->accept_cb(transport, id, address, stream);
 }
 
-void raftProxyGetConnectFunc(struct raft_uv_transport *transport,
-			     dqlite_connect *connect,
-			     void **data)
+void raftProxySetConnectFunc(struct raft_uv_transport *transport,
+			     dqlite_connect connect,
+			     void *data)
 {
 	struct impl *i = transport->impl;
-	*connect = i->connect;
-	*data = i->data;
+	i->connect = connect;
+	i->data = data;
 }

@@ -22,9 +22,4 @@ void raftProxySetConnectFunc(struct raft_uv_transport *transport,
 			     dqlite_connect connect,
 			     void *data);
 
-/* Get the current connect function. */
-void raftProxyGetConnectFunc(struct raft_uv_transport *transport,
-			     dqlite_connect *connect,
-			     void **data);
-
 #endif /* TRANSPORT_H_*/

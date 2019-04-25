@@ -419,65 +419,35 @@ int dqlite_stop(dqlite *d)
 	return 0;
 }
 
-#if 0
-
 /* Set a config option */
-int dqlite_config(dqlite *s, int op, void *arg)
+int dqlite_config(struct dqlite *d, int op, ...)
 {
-	int err = 0;
-
-	assert(s != NULL);
-	(void)arg;
-
+	va_list args;
+	int rv = 0;
+	va_start(args, op);
 	switch (op) {
 		case DQLITE_CONFIG_LOGGER:
-			s->logger = arg;
+			assert(0);
 			break;
-
-		case DQLITE_CONFIG_VFS:
-			err = config__set_vfs(&s->options, (const char *)arg);
-			break;
-
-		case DQLITE_CONFIG_WAL_REPLICATION:
-			err = config__set_replication(&s->options,
-						       (const char *)arg);
-			break;
-
 		case DQLITE_CONFIG_HEARTBEAT_TIMEOUT:
-			s->options.heartbeat_timeout = *(uint16_t *)arg;
+			d->config.heartbeat_timeout = *va_arg(args, unsigned *);
 			break;
-
 		case DQLITE_CONFIG_PAGE_SIZE:
-			s->options.page_size = *(uint16_t *)arg;
+			d->config.page_size = *va_arg(args, unsigned *);
 			break;
-
 		case DQLITE_CONFIG_CHECKPOINT_THRESHOLD:
-			s->options.checkpoint_threshold = *(uint32_t *)arg;
+			d->config.checkpoint_threshold =
+			    *va_arg(args, unsigned *);
 			break;
-
-		case DQLITE_CONFIG_METRICS:
-			if (*(uint8_t *)arg == 1) {
-				if (s->metrics == NULL) {
-					s->metrics =
-					    sqlite3_malloc(sizeof *s->metrics);
-					dqlite__metrics_init(s->metrics);
-				}
-			} else {
-				if (s->metrics == NULL) {
-					sqlite3_free(s->metrics);
-					s->metrics = NULL;
-				}
-			}
+		case DQLITE_CONFIG_CONNECT:
+			raftProxySetConnectFunc(&d->raft_transport,
+						va_arg(args, dqlite_connect),
+						va_arg(args, void *));
 			break;
-
 		default:
-			dqlite__error_printf(&s->error, "unknown op code %d",
-					     op);
-			err = DQLITE_ERROR;
+			rv = DQLITE_MISUSE;
 			break;
 	}
-
-	return err;
+	va_end(args);
+	return rv;
 }
-
-#endif
