@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 #include "../../lib/runner.h"
-#include "../../lib/socket.h"
+#include "../../lib/endpoint.h"
 #include "../../lib/uv.h"
 
 TEST_MODULE(uv);
@@ -17,7 +17,8 @@ TEST_MODULE(uv);
 struct fixture
 {
 	uv_loop_t loop;
-	struct test_socket_pair sockets;
+	struct test_endpoint endpoint;
+	int client;
 	union {
 		uv_tcp_t tcp;
 		uv_pipe_t pipe;
@@ -49,7 +50,7 @@ static void buf_free(uv_buf_t *buf)
 
 /* Run the tests using both TCP and Unix sockets. */
 static MunitParameterEnum params[] = {
-    {TEST_SOCKET_FAMILY, test_socket_param_values},
+    {TEST_ENDPOINT_FAMILY, test_endpoint_family_values},
     {NULL, NULL},
 };
 
@@ -62,29 +63,27 @@ static MunitParameterEnum params[] = {
 static void *setup(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
+	int server;
 	int rv;
-
 	(void)user_data;
 
 	test_uv_setup(params, &f->loop);
-	test_socket_pair_setup(params, &f->sockets);
+	test_endpoint_setup(&f->endpoint, params);
+	test_endpoint_connect(&f->endpoint, &server, &f->client);
 
-	switch (uv_guess_handle(f->sockets.server)) {
+	switch (uv_guess_handle(server)) {
 		case UV_TCP:
 			rv = uv_tcp_init(&f->loop, &f->tcp);
 			munit_assert_int(rv, ==, 0);
-			rv = uv_tcp_open(&f->tcp, f->sockets.server);
+			rv = uv_tcp_open(&f->tcp, server);
 			munit_assert_int(rv, ==, 0);
 			break;
-
 		case UV_NAMED_PIPE:
 			rv = uv_pipe_init(&f->loop, &f->pipe, 0);
 			munit_assert_int(rv, ==, 0);
-			rv = uv_pipe_open(&f->pipe, f->sockets.server);
+			rv = uv_pipe_open(&f->pipe, server);
 			munit_assert_int(rv, ==, 0);
-
 			break;
-
 		default:
 			munit_error("unexpected handle type");
 	}
@@ -97,14 +96,13 @@ static void *setup(const MunitParameter params[], void *user_data)
 static void tear_down(void *data)
 {
 	struct fixture *f = data;
-
-	test_socket_pair_tear_down(&f->sockets);
-
+	int rv;
+	rv = close(f->client);
+	munit_assert_int(rv, ==, 0);
+	test_endpoint_tear_down(&f->endpoint);
 	uv_close((uv_handle_t *)(&f->stream), NULL);
-
 	test_uv_stop(&f->loop);
 	test_uv_tear_down(&f->loop);
-
 	free(f);
 }
 
@@ -133,7 +131,7 @@ TEST_CASE(write, sync, params)
 	rv = uv_write(&req, &f->stream, buf1, 1, NULL);
 	munit_assert_int(rv, ==, 0);
 
-	rv = read(f->sockets.client, buf2->base, buf2->len);
+	rv = read(f->client, buf2->base, buf2->len);
 	munit_assert_int(rv, ==, buf2->len);
 
 	test_uv_run(&f->loop, 1);
@@ -202,7 +200,7 @@ TEST_CASE(read, sync, params)
 	rv = uv_read_start(&f->stream, test_read_sync__alloc_cb,
 			   test_read_sync__read_cb);
 
-	rv = write(f->sockets.client, buf->base, buf->len);
+	rv = write(f->client, buf->base, buf->len);
 	munit_assert_int(rv, ==, buf->len);
 
 	test_uv_run(&f->loop, 1);

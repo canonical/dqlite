@@ -11,7 +11,6 @@
 #include "../lib/registry.h"
 #include "../lib/replication.h"
 #include "../lib/runner.h"
-#include "../lib/socket.h"
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
 
@@ -53,7 +52,7 @@ TEST_MODULE(conn);
 	RAFT_BOOTSTRAP;                                                   \
 	RAFT_START;                                                       \
 	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry,    \
-			 &f->raft, f->sockets.server, &f->raft_transport, \
+			 &f->raft, f->server, &f->raft_transport, \
 			 NULL);                                           \
 	munit_assert_int(rv, ==, 0)
 
