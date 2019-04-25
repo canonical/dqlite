@@ -4,7 +4,6 @@
 #define TEST_ENDPOINT_H
 
 #include <arpa/inet.h>
-#include <stdbool.h>
 #include <sys/un.h>
 
 #include "munit.h"
@@ -44,12 +43,14 @@ void test_endpoint_setup(struct test_endpoint *e,
 /* Tear down a listening endpoint. */
 void test_endpoint_tear_down(struct test_endpoint *e);
 
+/* Establish a new client connection. */
+int test_endpoint_connect(struct test_endpoint *e);
+
 /* Accept a new client connection. */
 int test_endpoint_accept(struct test_endpoint *e);
 
-/* Establish a client connection to the endpoint and return a pair of connected
- * sockets. */
-void test_endpoint_connect(struct test_endpoint *e, int *server, int *client);
+/* Connect and accept a connection, returning the pair of connected sockets. */
+void test_endpoint_pair(struct test_endpoint *e, int *server, int *client);
 
 /* Return the endpoint address. */
 const char *test_endpoint_address(struct test_endpoint *e);

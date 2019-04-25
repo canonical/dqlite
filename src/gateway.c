@@ -158,6 +158,7 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 	rc = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &stmt->stmt,
 				&tail);
 	if (rc != SQLITE_OK) {
+		printf("PREPARE %s on %d: %s\n", request.sql, g->raft->id, sqlite3_errmsg(g->leader->conn));
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
