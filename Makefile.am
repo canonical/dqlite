@@ -70,6 +70,7 @@ test_lib_SOURCES = \
   test/lib/logger.c \
   test/lib/munit.c \
   test/lib/endpoint.c \
+  test/lib/server.c \
   test/lib/sqlite.c \
   test/lib/uv.c
 
@@ -88,11 +89,9 @@ unit_test_SOURCES += \
   test/unit/test_format.c \
   test/unit/test_gateway.c \
   test/unit/test_concurrency.c \
-  test/unit/test_membership.c \
   test/unit/test_registry.c \
   test/unit/test_replication.c \
   test/unit/test_request.c \
-  test/unit/test_server.c \
   test/unit/test_tuple.c \
   test/unit/test_vfs.c \
   test/unit/main.c
@@ -103,6 +102,8 @@ unit_test_LDFLAGS = -lpthread $(AM_LDFLAGS)
 
 integration_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
 integration_test_SOURCES += \
+  test/integration/test_membership.c \
+  test/integration/test_server.c \
   test/integration/main.c
 integration_test_CFLAGS = $(AM_CFLAGS)
 integration_test_CFLAGS += -I$(top_srcdir)/test

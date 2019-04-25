@@ -67,7 +67,7 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 	}
 
 	/* Start listening. */
-	rv = listen(e->fd, 1);
+	rv = listen(e->fd, 16);
 	if (rv != 0) {
 		munit_errorf("listen(): %s", strerror(errno));
 	}
@@ -91,23 +91,6 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 	}
 }
 
-/* Return the abstract socket address of the listening socket. */
-static void getSockAddr(struct test_endpoint *e,
-			struct sockaddr **address,
-			socklen_t *size)
-{
-	switch (e->family) {
-		case AF_INET:
-			*address = (struct sockaddr *)&e->in_address;
-			*size = sizeof e->in_address;
-			break;
-		case AF_UNIX:
-			*address = (struct sockaddr *)&e->un_address;
-			*size = sizeof e->un_address;
-			break;
-	}
-}
-
 void test_endpoint_tear_down(struct test_endpoint *e)
 {
 	int rv;
@@ -115,18 +98,66 @@ void test_endpoint_tear_down(struct test_endpoint *e)
 	munit_assert_int(rv, ==, 0);
 }
 
-int test_endpoint_accept(struct test_endpoint *e)
+int test_endpoint_connect(struct test_endpoint *e)
 {
 	struct sockaddr *address;
 	socklen_t size;
 	int fd;
 	int rv;
 
-	getSockAddr(e, &address, &size);
+	switch (e->family) {
+		case AF_INET:
+			address = (struct sockaddr *)&e->in_address;
+			size = sizeof e->in_address;
+			break;
+		case AF_UNIX:
+			address = (struct sockaddr *)&e->un_address;
+			size = sizeof e->un_address;
+			break;
+	}
+
+	/* Create the socket. */
+	fd = socket(e->family, SOCK_STREAM, 0);
+	if (fd < 0) {
+		munit_errorf("socket(): %s", strerror(errno));
+	}
+
+	/* Connect to the server */
+	rv = connect(fd, address, size);
+	if (rv != 0 && errno != ECONNREFUSED) {
+		munit_errorf("connect(): %s", strerror(errno));
+	}
+
+	return fd;
+}
+
+int test_endpoint_accept(struct test_endpoint *e)
+{
+	struct sockaddr_in in_address;
+	struct sockaddr_un un_address;
+	struct sockaddr *address;
+	socklen_t size;
+	int fd;
+	int rv;
+
+	switch (e->family) {
+		case AF_INET:
+			address = (struct sockaddr *)&in_address;
+			size = sizeof in_address;
+			break;
+		case AF_UNIX:
+			address = (struct sockaddr *)&un_address;
+			size = sizeof un_address;
+			break;
+	}
 
 	/* Accept the client connection. */
-	fd = accept(e->fd, (struct sockaddr *)address, &size);
+	fd = accept(e->fd, address, &size);
 	if (fd < 0) {
+		/* Check if the endpoint has been closed, so this is benign. */
+		if (errno == EBADF || errno == EINVAL || errno == ENOTSOCK) {
+			return -1;
+		}
 		munit_errorf("accept(): %s", strerror(errno));
 	}
 
@@ -139,27 +170,9 @@ int test_endpoint_accept(struct test_endpoint *e)
 	return fd;
 }
 
-void test_endpoint_connect(struct test_endpoint *e, int *server, int *client)
+void test_endpoint_pair(struct test_endpoint *e, int *server, int *client)
 {
-	struct sockaddr *address;
-	socklen_t size;
-	int rv;
-
-	getSockAddr(e, &address, &size);
-
-	/* Create the socket. */
-	*client = socket(e->family, SOCK_STREAM, 0);
-	if (*client < 0) {
-		munit_errorf("socket(): %s", strerror(errno));
-	}
-
-	/* Connect to the server */
-	rv = connect(*client, address, size);
-	if (rv != 0) {
-		munit_errorf("connect(): %s", strerror(errno));
-	}
-
-	/* Accept the client connection. */
+	*client = test_endpoint_connect(e);
 	*server = test_endpoint_accept(e);
 }
 
