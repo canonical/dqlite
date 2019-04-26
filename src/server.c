@@ -187,7 +187,7 @@ void dqlite_destroy(dqlite *d)
 	sqlite3_free(d);
 }
 
-int dqlite_bootstrap(dqlite *d, unsigned n, const dqlite_server *servers)
+int dqlite_bootstrap(dqlite *d, unsigned n, const struct dqlite_server *servers)
 {
 	struct raft_configuration configuration;
 	unsigned i;
@@ -205,7 +205,11 @@ int dqlite_bootstrap(dqlite *d, unsigned n, const dqlite_server *servers)
 	}
 	rv = raft_bootstrap(&d->raft, &configuration);
 	if (rv != 0) {
-		rv = DQLITE_INTERNAL;
+		if (rv == RAFT_CANTBOOTSTRAP) {
+			rv = DQLITE_CANTBOOTSTRAP;
+		} else {
+			rv = DQLITE_INTERNAL;
+		}
 		goto out;
 	}
 out:
@@ -444,8 +448,7 @@ int dqlite_config(struct dqlite *d, int op, ...)
 		case DQLITE_CONFIG_CONNECT:
 			connectFunc = va_arg(args, dqlite_connect);
 			data = va_arg(args, void *);
-			raftProxySetConnectFunc(&d->raft_transport,
-						connectFunc,
+			raftProxySetConnectFunc(&d->raft_transport, connectFunc,
 						data);
 			break;
 		default:
@@ -454,4 +457,9 @@ int dqlite_config(struct dqlite *d, int op, ...)
 	}
 	va_end(args);
 	return rv;
+}
+
+bool dqlite_leader(dqlite *d, struct dqlite_server *server) {
+	raft_leader(&d->raft, &server->id, &server->address);
+	return server->id != 0;
 }
