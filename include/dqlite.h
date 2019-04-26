@@ -131,6 +131,12 @@ int dqlite_run(dqlite *d);
 */
 bool dqlite_ready(dqlite *d);
 
+/* Return information about all servers currently part of the dqlite cluster.
+ *
+ * In case of success, the caller is responsible for freeing the returned array
+ * using sqlite3_free().  */
+int dqlite_cluster(dqlite *d, struct dqlite_server *servers[], unsigned *n);
+
 /* Fill the given struct with info about the current cluster leader. Return
  * false if no leader is currently known. */
 bool dqlite_leader(dqlite *d, struct dqlite_server *server);
