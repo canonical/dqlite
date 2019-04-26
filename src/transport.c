@@ -197,7 +197,9 @@ static int parse_address(const char *address, struct sockaddr_in *addr)
 	return 0;
 }
 
-static int default_connect(void *data, const dqlite_server *server, int *fd)
+static int default_connect(void *data,
+			   const struct dqlite_server *server,
+			   int *fd)
 {
 	struct sockaddr_in addr;
 	int rv;

@@ -18,8 +18,8 @@ enum { DQLITE_BADSOCKET = 1,
        DQLITE_EOM,      /* End of message */
        DQLITE_INTERNAL, /* A SQLite error occurred */
        DQLITE_NOTFOUND,
-       DQLITE_STOPPED /* The server was stopped */
-};
+       DQLITE_STOPPED, /* The server was stopped */
+       DQLITE_CANTBOOTSTRAP };
 
 /* Current protocol version */
 #define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
@@ -82,16 +82,18 @@ enum { DQLITE_DEBUG = 0, DQLITE_INFO, DQLITE_WARN, DQLITE_ERROR };
 int dqlite_initialize();
 
 /* Information about a single dqlite server. */
-typedef struct dqlite_server
+struct dqlite_server
 {
 	unsigned id;
 	const char *address;
-} dqlite_server;
+};
 
 /* Handle connections from dqlite clients */
 typedef struct dqlite dqlite;
 
-typedef int (*dqlite_connect)(void *data, const dqlite_server *server, int *fd);
+typedef int (*dqlite_connect)(void *data,
+			      const struct dqlite_server *server,
+			      int *fd);
 
 /* Allocate and initialize a dqlite server instance. */
 int dqlite_create(unsigned id,
@@ -109,7 +111,9 @@ void dqlite_destroy(dqlite *d);
  */
 int dqlite_config(dqlite *d, int op, ...);
 
-int dqlite_bootstrap(dqlite *d, unsigned n, const dqlite_server *servers);
+int dqlite_bootstrap(dqlite *d,
+		     unsigned n,
+		     const struct dqlite_server *servers);
 
 /* Start a dqlite server.
  *
@@ -126,6 +130,10 @@ int dqlite_run(dqlite *d);
 ** dqlite_stop or dqlite_handle.
 */
 bool dqlite_ready(dqlite *d);
+
+/* Fill the given struct with info about the current cluster leader. Return
+ * false if no leader is currently known. */
+bool dqlite_leader(dqlite *d, struct dqlite_server *server);
 
 /* Stop a dqlite server.
 **
