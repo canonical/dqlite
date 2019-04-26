@@ -14,7 +14,9 @@ static void *run(void *arg)
 	return NULL;
 }
 
-static int endpointConnect(void *data, const dqlite_server *server, int *fd)
+static int endpointConnect(void *data,
+			   const struct dqlite_server *server,
+			   int *fd)
 {
 	struct test_server *s = data;
 	struct test_server *other = s->others[server->id - 1];
