@@ -22,6 +22,11 @@
  * soon as possible. */
 #define DEFAULT_CHECKPOINT_THRESHOLD 1000
 
+/* For generating unique replication/VFS registration names.
+ *
+ * TODO: make this thread safe. */
+static unsigned serial = 1;
+
 int config__init(struct config *c, unsigned id, const char *address)
 {
 	int rv;
@@ -34,8 +39,9 @@ int config__init(struct config *c, unsigned id, const char *address)
 	c->heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT;
 	c->page_size = DEFAULT_PAGE_SIZE;
 	c->checkpoint_threshold = DEFAULT_CHECKPOINT_THRESHOLD;
-	rv = snprintf(c->name, sizeof c->name, "dqlite-%u", id);
+	rv = snprintf(c->name, sizeof c->name, "dqlite-%u", serial);
 	assert(rv < (int)(sizeof c->name));
+	serial++;
 	return 0;
 }
 
