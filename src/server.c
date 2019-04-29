@@ -459,9 +459,7 @@ int dqlite_config(struct dqlite *d, int op, ...)
 	return rv;
 }
 
-int dqlite_cluster(dqlite *d,
-		   struct dqlite_server *servers[],
-		   unsigned *n)
+int dqlite_cluster(dqlite *d, struct dqlite_server *servers[], unsigned *n)
 {
 	unsigned i;
 	/* TODO: this is not thread-safe, we should use an async handle */
@@ -484,4 +482,9 @@ bool dqlite_leader(dqlite *d, struct dqlite_server *server)
 	/* TODO: this is not thread-safe, we should use an async handle */
 	raft_leader(&d->raft, &server->id, &server->address);
 	return server->id != 0;
+}
+
+int dqlite_dump(dqlite *d, const char *filename, void **buf, size_t *len)
+{
+	return vfsFileRead(d->config.name, filename, buf, len);
 }

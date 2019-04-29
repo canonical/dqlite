@@ -141,6 +141,9 @@ int dqlite_cluster(dqlite *d, struct dqlite_server *servers[], unsigned *n);
  * false if no leader is currently known. */
 bool dqlite_leader(dqlite *d, struct dqlite_server *server);
 
+/* Dump the content of a database file. */
+int dqlite_dump(dqlite *d, const char *filename, void **buf, size_t *len);
+
 /* Stop a dqlite server.
 **
 ** This is a thread-safe API.
