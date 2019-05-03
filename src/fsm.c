@@ -352,6 +352,11 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	cursor->p += header.wal_size;
 	sqlite3_free(walFilename);
 
+	rv = db__open_follower(db);
+	if (rv != 0) {
+		return rv;
+	}
+
 	return 0;
 }
 
