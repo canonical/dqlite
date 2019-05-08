@@ -328,7 +328,7 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 	if (status == SQLITE_DONE) {
 		handle_exec_sql_next(req, NULL);
 	} else {
-		failure(req, status, "exec error");
+		failure(req, status, sqlite3_errmsg(g->leader->conn));
 		sqlite3_reset(g->stmt);
 		sqlite3_finalize(g->stmt);
 		g->req = NULL;
