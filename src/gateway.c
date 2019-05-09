@@ -37,11 +37,17 @@ void gateway__close(struct gateway *g)
 	struct request_##REQ request;                            \
 	struct response_##RES response;                          \
 	{                                                        \
-		int rc2;                                         \
-		rc2 = request_##REQ##__decode(cursor, &request); \
-		if (rc2 != 0) {                                  \
-			return rc2;                              \
+		int rv_;                                         \
+		rv_ = request_##REQ##__decode(cursor, &request); \
+		if (rv_ != 0) {                                  \
+			return rv_;                              \
 		}                                                \
+	}
+
+#define CHECK_LEADER(REQ)                                    \
+	if (raft_state(req->gateway->raft) != RAFT_LEADER) { \
+		failure(req, SQLITE_BUSY, "not leader");     \
+		return 0;                                    \
 	}
 
 /* Encode the given success response and invoke the request callback */
@@ -158,7 +164,6 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 	rc = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &stmt->stmt,
 				&tail);
 	if (rc != SQLITE_OK) {
-		printf("PREPARE %s on %d: %s\n", request.sql, g->raft->id, sqlite3_errmsg(g->leader->conn));
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
@@ -283,6 +288,7 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	struct stmt *stmt;
 	int rv;
 	START(query, rows);
+	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	(void)response;
@@ -421,6 +427,7 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	const char *tail;
 	int rv;
 	START(query_sql, rows);
+	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	(void)response;
 	rv = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt,
@@ -504,7 +511,8 @@ static int handle_join(struct handle *req, struct cursor *cursor)
 	r->gateway = g;
 	r->req.data = r;
 
-	rv = raft_add(g->raft, &r->req, request.id, request.address, raftChangeCb);
+	rv = raft_add(g->raft, &r->req, request.id, request.address,
+		      raftChangeCb);
 	if (rv != 0) {
 		sqlite3_free(r);
 		failure(req, rv, raft_strerror(rv));
