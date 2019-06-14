@@ -8,6 +8,7 @@
 #include "./lib/assert.h"
 
 #include "config.h"
+#include "logger.h"
 
 /* Default heartbeat timeout in milliseconds.
  *
@@ -41,6 +42,8 @@ int config__init(struct config *c, unsigned id, const char *address)
 	c->checkpoint_threshold = DEFAULT_CHECKPOINT_THRESHOLD;
 	rv = snprintf(c->name, sizeof c->name, "dqlite-%u", serial);
 	assert(rv < (int)(sizeof c->name));
+	c->logger.data = NULL;
+	c->logger.emit = loggerDefaultEmit;
 	serial++;
 	return 0;
 }

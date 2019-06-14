@@ -104,6 +104,12 @@ int dqlite_create(unsigned id,
 /* Destroy and deallocate a dqlite server instance. */
 void dqlite_destroy(dqlite *d);
 
+/* Function to emit log messages. */
+typedef void (*dqlite_emit)(void *data,
+			    int level,
+			    const char *fmt,
+			    va_list args);
+
 /* Set a config option on a dqlite server
  *
  * This API must be called after dqlite_init and before

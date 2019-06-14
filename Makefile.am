@@ -64,12 +64,13 @@ check_PROGRAMS += \
   integration-test
 
 test_lib_SOURCES = \
+  test/lib/endpoint.c \
   test/lib/fault.c \
   test/lib/fs.c \
   test/lib/heap.c \
   test/lib/logger.c \
   test/lib/munit.c \
-  test/lib/endpoint.c \
+  test/lib/raft.c \
   test/lib/server.c \
   test/lib/sqlite.c \
   test/lib/uv.c
