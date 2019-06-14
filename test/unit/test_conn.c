@@ -38,22 +38,21 @@ TEST_MODULE(conn);
 	FIXTURE_CLIENT;      \
 	struct conn conn
 
-#define SETUP                                                             \
-	int rv;                                                           \
-	SETUP_HEAP;                                                       \
-	SETUP_SQLITE;                                                     \
-	SETUP_LOGGER;                                                     \
-	SETUP_VFS;                                                        \
-	SETUP_CONFIG;                                                     \
-	SETUP_REGISTRY;                                                   \
-	SETUP_RAFT;                                                       \
-	SETUP_REPLICATION;                                                \
-	SETUP_CLIENT;                                                     \
-	RAFT_BOOTSTRAP;                                                   \
-	RAFT_START;                                                       \
-	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry,    \
-			 &f->raft, f->server, &f->raft_transport, \
-			 NULL);                                           \
+#define SETUP                                                            \
+	int rv;                                                          \
+	SETUP_HEAP;                                                      \
+	SETUP_SQLITE;                                                    \
+	SETUP_LOGGER;                                                    \
+	SETUP_VFS;                                                       \
+	SETUP_CONFIG;                                                    \
+	SETUP_REGISTRY;                                                  \
+	SETUP_RAFT;                                                      \
+	SETUP_REPLICATION;                                               \
+	SETUP_CLIENT;                                                    \
+	RAFT_BOOTSTRAP;                                                  \
+	RAFT_START;                                                      \
+	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry,   \
+			 &f->raft, f->server, &f->raft_transport, NULL); \
 	munit_assert_int(rv, ==, 0)
 
 #define TEAR_DOWN              \
@@ -75,66 +74,66 @@ TEST_MODULE(conn);
  ******************************************************************************/
 
 /* Send the initial client handshake. */
-#define HANDSHAKE                                         \
-	{                                                 \
-		int rv2;                                  \
+#define HANDSHAKE                                      \
+	{                                              \
+		int rv2;                               \
 		rv2 = clientSendHandshake(&f->client); \
-		munit_assert_int(rv2, ==, 0);             \
-		test_uv_run(&f->loop, 1);                 \
+		munit_assert_int(rv2, ==, 0);          \
+		test_uv_run(&f->loop, 1);              \
 	}
 
 /* Open a test database. */
-#define OPEN                                                 \
-	{                                                    \
-		int rv2;                                     \
+#define OPEN                                              \
+	{                                                 \
+		int rv2;                                  \
 		rv2 = clientSendOpen(&f->client, "test"); \
-		munit_assert_int(rv2, ==, 0);                \
-		test_uv_run(&f->loop, 2);                    \
+		munit_assert_int(rv2, ==, 0);             \
+		test_uv_run(&f->loop, 2);                 \
 		rv2 = clientRecvDb(&f->client);           \
-		munit_assert_int(rv2, ==, 0);                \
+		munit_assert_int(rv2, ==, 0);             \
 	}
 
 /* Prepare a statement. */
-#define PREPARE(SQL, STMT_ID)                                 \
-	{                                                     \
-		int rv2;                                      \
+#define PREPARE(SQL, STMT_ID)                              \
+	{                                                  \
+		int rv2;                                   \
 		rv2 = clientSendPrepare(&f->client, SQL);  \
-		munit_assert_int(rv2, ==, 0);                 \
-		test_uv_run(&f->loop, 2);                     \
+		munit_assert_int(rv2, ==, 0);              \
+		test_uv_run(&f->loop, 2);                  \
 		rv2 = clientRecvStmt(&f->client, STMT_ID); \
-		munit_assert_int(rv2, ==, 0);                 \
+		munit_assert_int(rv2, ==, 0);              \
 	}
 
 /* Execute a statement. */
-#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)                  \
-	{                                                             \
-		int rv2;                                              \
+#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)               \
+	{                                                          \
+		int rv2;                                           \
 		rv2 = clientSendExec(&f->client, STMT_ID);         \
-		munit_assert_int(rv2, ==, 0);                         \
-		test_uv_run(&f->loop, 6);                             \
+		munit_assert_int(rv2, ==, 0);                      \
+		test_uv_run(&f->loop, 7);                          \
 		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
-					  ROWS_AFFECTED);             \
-		munit_assert_int(rv2, ==, 0);                         \
+				       ROWS_AFFECTED);             \
+		munit_assert_int(rv2, ==, 0);                      \
 	}
 
 /* Perform a query. */
-#define QUERY(STMT_ID, ROWS)                                   \
-	{                                                      \
-		int rv2;                                       \
+#define QUERY(STMT_ID, ROWS)                                \
+	{                                                   \
+		int rv2;                                    \
 		rv2 = clientSendQuery(&f->client, STMT_ID); \
-		munit_assert_int(rv2, ==, 0);                  \
-		test_uv_run(&f->loop, 2);                      \
+		munit_assert_int(rv2, ==, 0);               \
+		test_uv_run(&f->loop, 2);                   \
 		rv2 = clientRecvRows(&f->client, ROWS);     \
-		munit_assert_int(rv2, ==, 0);                  \
+		munit_assert_int(rv2, ==, 0);               \
 	}
 
 /* Perform a raft connect request. */
-#define CONNECT(ID, ADDRESS)                                         \
-	{                                                            \
-		int rv2;                                             \
+#define CONNECT(ID, ADDRESS)                                      \
+	{                                                         \
+		int rv2;                                          \
 		rv2 = clientSendConnect(&f->client, ID, ADDRESS); \
-		munit_assert_int(rv2, ==, 0);                        \
-		test_uv_run(&f->loop, 1);                            \
+		munit_assert_int(rv2, ==, 0);                     \
+		test_uv_run(&f->loop, 1);                         \
 	}
 
 /******************************************************************************

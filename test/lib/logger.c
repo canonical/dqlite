@@ -6,16 +6,7 @@
 #include "logger.h"
 #include "munit.h"
 
-struct test_logger
-{
-	unsigned id;
-	void *data;
-};
-
-static void test_logger__emit(void *data,
-			      int level,
-			      const char *format,
-			      va_list args)
+void test_logger_emit(void *data, int level, const char *format, va_list args)
 {
 	struct test_logger *t = data;
 	char buf[1024];
@@ -66,7 +57,7 @@ void test_logger_setup(const MunitParameter params[], struct logger *l)
 	t->data = NULL;
 
 	l->data = t;
-	l->emit = test_logger__emit;
+	l->emit = test_logger_emit;
 }
 
 void test_logger_tear_down(struct logger *l)

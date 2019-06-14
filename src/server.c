@@ -2,6 +2,7 @@
 
 #include "lib/assert.h"
 
+#include "logger.h"
 #include "conn.h"
 #include "fsm.h"
 #include "replication.h"
@@ -99,9 +100,13 @@ int dqlite__init(struct dqlite *d,
 	if (rv != 0) {
 		goto err_after_raft_io_init;
 	}
+	d->raft_logger.impl = &d->config.logger;
+	d->raft_logger.level = RAFT_INFO;
+	d->raft_logger.emit = loggerRaftEmit;
+
 	/* TODO: properly handle closing the dqlite server without running it */
-	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id,
-		       d->config.address);
+	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, &d->raft_logger,
+		       d->config.id, d->config.address);
 	if (rv != 0) {
 		return rv;
 	}
@@ -433,7 +438,8 @@ int dqlite_config(struct dqlite *d, int op, ...)
 	va_start(args, op);
 	switch (op) {
 		case DQLITE_CONFIG_LOGGER:
-			assert(0);
+			d->config.logger.emit = va_arg(args, dqlite_emit);
+			d->config.logger.data = va_arg(args, void *);
 			break;
 		case DQLITE_CONFIG_HEARTBEAT_TIMEOUT:
 			d->config.heartbeat_timeout = *va_arg(args, unsigned *);
