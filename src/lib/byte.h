@@ -5,13 +5,10 @@
 #include <stdint.h>
 #include <string.h>
 
-#if DQLITE_COVERAGE
-#define DQLITE_INLINE static inline
-#elif defined(__cplusplus) || \
-    (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L)
+#if defined(__cplusplus)
 #define DQLITE_INLINE inline
 #else
-#define DQLITE_INLINE static
+#define DQLITE_INLINE static inline
 #endif
 
 /* Flip a 16-bit number to network byte order (little endian) */
