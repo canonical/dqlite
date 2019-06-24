@@ -110,6 +110,9 @@ int dqlite__init(struct dqlite *d,
 	if (rv != 0) {
 		return rv;
 	}
+	/* TODO: expose these values through some API */
+	raft_set_election_timeout(&d->raft, 3000);
+	raft_set_heartbeat_timeout(&d->raft, 500);
 	rv = replication__init(&d->replication, &d->config, &d->raft);
 	if (rv != 0) {
 		goto err_after_raft_fsm_init;
