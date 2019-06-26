@@ -23,9 +23,11 @@ static size_t calc_header_size(unsigned n, int format)
 		size = byte__pad64(size);
 	} else {
 		assert(format == TUPLE__PARAMS);
-		size = n * sizeof(uint8_t);
+		 /* Include params count for the purpose of calculating possible
+		  * padding, but then exclude it as we have already read it. */
+		size = sizeof(uint8_t) + n * sizeof(uint8_t);
 		size = byte__pad64(size);
-		size -= sizeof(uint8_t); /* Exclude the params count */
+		size -= sizeof(uint8_t); 
 	}
 
 	return size;
