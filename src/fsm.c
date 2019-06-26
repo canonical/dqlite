@@ -343,11 +343,13 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 		return RAFT_NOMEM;
 	}
 	cursor->p += header.main_size;
-	rv = vfsFileWrite(db->config->name, walFilename, cursor->p,
-			  header.wal_size);
-	if (rv != 0) {
-		sqlite3_free(walFilename);
-		return rv;
+	if (header.wal_size > 0) {
+		rv = vfsFileWrite(db->config->name, walFilename, cursor->p,
+				  header.wal_size);
+		if (rv != 0) {
+			sqlite3_free(walFilename);
+			return rv;
+		}
 	}
 	cursor->p += header.wal_size;
 	sqlite3_free(walFilename);
