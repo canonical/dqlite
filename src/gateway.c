@@ -46,7 +46,7 @@ void gateway__close(struct gateway *g)
 
 #define CHECK_LEADER(REQ)                                    \
 	if (raft_state(req->gateway->raft) != RAFT_LEADER) { \
-		failure(req, SQLITE_BUSY, "not leader");     \
+		failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");     \
 		return 0;                                    \
 	}
 
