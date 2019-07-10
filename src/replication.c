@@ -259,6 +259,9 @@ static int maybeHandleInProgressTx(struct replication *r, struct leader *leader)
 		 * leaders anymore at that time and that frames command was
 		 * following one or more non-commit frames commands that were
 		 * successfully applied. */
+		if (!tx->is_zombie) {
+			printf("non-zombie tx id=%ld state=%d dry-run=%d\n", tx->id, tx->state, tx->dry_run);
+		}
 		assert(tx->is_zombie);
 		assert(tx->state == TX__WRITING);
 		assert(leader->db->follower != NULL);
