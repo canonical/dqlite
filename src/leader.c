@@ -250,6 +250,13 @@ void leader__close(struct leader *l)
 	assert(l->exec == NULL);
 	rc = sqlite3_close(l->conn);
 	assert(rc == 0);
+
+	/* TODO: untested: this is a temptative fix for the zombie tx assertion
+	 * failure. */
+	if (l->db->tx != NULL && l->db->tx->conn == l->conn) {
+		db__delete_tx(l->db);
+	}
+
 	co_delete(l->loop);
 	QUEUE__REMOVE(&l->queue);
 }
