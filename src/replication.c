@@ -260,6 +260,13 @@ static int maybeHandleInProgressTx(struct replication *r, struct leader *leader)
 		 * following one or more non-commit frames commands that were
 		 * successfully applied. */
 		if (!tx->is_zombie) {
+			/* TODO: if there's a pending leader tx for this
+			 * connection, let's just remove it, although it's not
+			 * clear how this could happen. */
+			if (tx->state == TX__PENDING && tx->dry_run) {
+				db__delete_tx(leader->db);
+				return 0;
+			}
 			printf("non-zombie tx id=%ld state=%d dry-run=%d\n", tx->id, tx->state, tx->dry_run);
 		}
 		assert(tx->is_zombie);
