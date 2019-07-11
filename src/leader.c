@@ -25,7 +25,7 @@ static void checkpointApplyCb(struct raft_apply *req, int status, void *result)
 {
 	struct leader *l = req->data;
 	(void)result;
-	(void)status; /* TODO: log a warning in case of errors. */
+	(void)status;       /* TODO: log a warning in case of errors. */
 	co_switch(l->loop); /* Resume apply() */
 	maybeExecDone(l->exec);
 }
@@ -247,7 +247,12 @@ err:
 void leader__close(struct leader *l)
 {
 	int rc;
-	assert(l->exec == NULL);
+	/* TODO: there shouldn't be any ongoing exec request. */
+	if (l->exec != NULL) {
+		l->exec->done = true;
+		l->exec->status = SQLITE_ERROR;
+		maybeExecDone(l->exec);
+	}
 	rc = sqlite3_close(l->conn);
 	assert(rc == 0);
 
