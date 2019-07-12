@@ -2,9 +2,9 @@
 
 #include "lib/assert.h"
 
-#include "logger.h"
 #include "conn.h"
 #include "fsm.h"
+#include "logger.h"
 #include "replication.h"
 #include "server.h"
 #include "transport.h"
@@ -65,6 +65,44 @@ int dqlite_initialize()
 	return 0;
 }
 
+/* Covert raft state code to dqlite one. */
+static int convertRaftState(int state)
+{
+	int converted;
+
+	switch (state) {
+		case RAFT_UNAVAILABLE:
+			converted = DQLITE_UNAVAILABLE;
+			break;
+		case RAFT_FOLLOWER:
+			converted = DQLITE_FOLLOWER;
+			break;
+		case RAFT_CANDIDATE:
+			converted = DQLITE_CANDIDATE;
+			break;
+		case RAFT_LEADER:
+			converted = DQLITE_LEADER;
+			break;
+		default:
+			assert(0); /* Can't happen */
+	}
+
+	return converted;
+}
+
+/* Invoke the configured state watch function, if any. */
+static void raftWatch(struct raft *r, int old_state)
+{
+	struct dqlite *d = r->data;
+	int new_state = raft_state(r);
+
+	if (d->config.watcher.f != NULL) {
+		d->config.watcher.f(d->config.watcher.data,
+				    convertRaftState(old_state),
+				    convertRaftState(new_state));
+	}
+}
+
 int dqlite__init(struct dqlite *d,
 		 unsigned id,
 		 const char *address,
@@ -113,6 +151,7 @@ int dqlite__init(struct dqlite *d,
 	/* TODO: expose these values through some API */
 	raft_set_election_timeout(&d->raft, 3000);
 	raft_set_heartbeat_timeout(&d->raft, 500);
+	raft_watch(&d->raft, raftWatch);
 	rv = replication__init(&d->replication, &d->config, &d->raft);
 	if (rv != 0) {
 		goto err_after_raft_fsm_init;
@@ -459,6 +498,10 @@ int dqlite_config(struct dqlite *d, int op, ...)
 			data = va_arg(args, void *);
 			raftProxySetConnectFunc(&d->raft_transport, connectFunc,
 						data);
+			break;
+		case DQLITE_CONFIG_WATCHER:
+			d->config.watcher.f = va_arg(args, dqlite_watch);
+			d->config.watcher.data = va_arg(args, void *);
 			break;
 		default:
 			rv = DQLITE_MISUSE;
