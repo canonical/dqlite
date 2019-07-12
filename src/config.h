@@ -15,6 +15,11 @@ struct config
 	unsigned checkpoint_threshold; /* In outstanding WAL frames */
 	struct logger logger;          /* Custom logger */
 	char name[256];                /* VFS/replication registriatio name */
+	struct
+	{
+		dqlite_watch f;
+		void *data;
+	} watcher;
 };
 
 /**
