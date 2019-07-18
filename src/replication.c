@@ -168,6 +168,9 @@ static int apply(struct replication *r,
 
 	if (apply->status != 0) {
 		/* TODO: handle all possible errors */
+		if (apply->status != RAFT_LEADERSHIPLOST) {
+			printf("apply failed with status %d\n", apply->status);
+		}
 		assert(apply->status == RAFT_LEADERSHIPLOST);
 		switch (apply->type) {
 			case COMMAND_FRAMES:
@@ -267,7 +270,8 @@ static int maybeHandleInProgressTx(struct replication *r, struct leader *leader)
 				db__delete_tx(leader->db);
 				return 0;
 			}
-			printf("non-zombie tx id=%ld state=%d dry-run=%d\n", tx->id, tx->state, tx->dry_run);
+			printf("non-zombie tx id=%ld state=%d dry-run=%d\n",
+			       tx->id, tx->state, tx->dry_run);
 		}
 		assert(tx->is_zombie);
 		assert(tx->state == TX__WRITING);
