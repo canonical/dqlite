@@ -82,8 +82,9 @@
 
 void test_raft_emit(struct raft_logger *l,
 		    int level,
-		    unsigned server_id,
 		    raft_time time,
+		    const char *file,
+		    int line,
 		    const char *format,
 		    ...);
 

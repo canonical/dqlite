@@ -43,15 +43,17 @@ void loggerDefaultEmit(void *data, int level, const char *fmt, va_list args)
 
 void loggerRaftEmit(struct raft_logger *l,
 		    int level,
-		    unsigned server_id,
 		    raft_time time,
+		    const char *file,
+		    int line,
 		    const char *format,
 		    ...)
 {
 	struct logger *logger = l->impl;
 	va_list args;
 
-	(void)server_id;
+	(void)file;
+	(void)line;
 	(void)time;
 
 	va_start(args, format);
