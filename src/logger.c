@@ -56,6 +56,9 @@ void loggerRaftEmit(struct raft_logger *l,
 	(void)line;
 	(void)time;
 
+	/* TODO: properly setup raft logging */
+	return;
+
 	va_start(args, format);
 	logger->emit(logger->data, level, format, args);
 	va_end(args);
