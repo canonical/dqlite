@@ -103,6 +103,57 @@ static void raftWatch(struct raft *r, int old_state)
 	}
 }
 
+void raftRingLoggerWalkCb(void *data,
+			  raft_time time,
+			  int level,
+			  const char *message)
+{
+	char buf[2048];
+	char *cursor = buf;
+	struct tm tm;
+	time_t secs = time / 1000;
+	unsigned msecs = time % 1000;
+
+	memset(buf, 0, sizeof buf);
+
+	gmtime_r(&secs, &tm);
+
+	strftime(cursor, 10, "%H:%M:%S", &tm);
+	cursor = buf + strlen(buf);
+
+	sprintf(cursor, ".%03d ", msecs);
+	cursor = buf + strlen(buf);
+
+	/* First, render the logging level. */
+	switch (level) {
+		case RAFT_DEBUG:
+			sprintf(cursor, "[DEBUG]: ");
+			break;
+		case RAFT_INFO:
+			sprintf(cursor, "[INFO ]: ");
+			break;
+		case RAFT_WARN:
+			sprintf(cursor, "[WARN ]: ");
+			break;
+		case RAFT_ERROR:
+			sprintf(cursor, "[ERROR]: ");
+			break;
+		default:
+			sprintf(cursor, "[     ]: ");
+			break;
+	};
+
+	cursor = buf + strlen(buf);
+
+	fprintf(stdout, "%s%s\n", buf, message);
+}
+
+/* Bump raft's ring logger to stdout. */
+static void dumpRaftRingLogger(struct dqlite *d)
+{
+	raft_ring_logger_walk(&d->raft_logger, raftRingLoggerWalkCb, NULL);
+}
+
 int dqlite__init(struct dqlite *d,
 		 unsigned id,
 		 const char *address,
@@ -147,6 +198,7 @@ int dqlite__init(struct dqlite *d,
 	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, &d->raft_logger,
 		       d->config.id, d->config.address);
 	if (rv != 0) {
+		dumpRaftRingLogger(d);
 		return rv;
 	}
 	/* TODO: expose these values through some API */
@@ -395,6 +447,7 @@ int dqlite_run(struct dqlite *d)
 	d->raft.data = d;
 	rv = raft_start(&d->raft);
 	if (rv != 0) {
+		dumpRaftRingLogger(d);
 		return rv;
 	}
 
