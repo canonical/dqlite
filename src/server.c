@@ -204,6 +204,8 @@ int dqlite__init(struct dqlite *d,
 	/* TODO: expose these values through some API */
 	raft_set_election_timeout(&d->raft, 3000);
 	raft_set_heartbeat_timeout(&d->raft, 500);
+	raft_set_snapshot_threshold(&d->raft, 1024);
+	raft_set_snapshot_trailing(&d->raft, 8192);
 	raft_watch(&d->raft, raftWatch);
 	rv = replication__init(&d->replication, &d->config, &d->raft);
 	if (rv != 0) {
