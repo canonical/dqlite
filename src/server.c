@@ -138,9 +138,10 @@ int dqlite__init(struct dqlite *d,
 	if (rv != 0) {
 		goto err_after_raft_io_init;
 	}
-	d->raft_logger.impl = &d->config.logger;
-	d->raft_logger.level = RAFT_INFO;
-	d->raft_logger.emit = loggerRaftEmit;
+	rv = raft_ring_logger_init(&d->raft_logger, 1024 * 1024);
+	if (rv != 0) {
+		goto err_after_raft_fsm_init;
+	}
 
 	/* TODO: properly handle closing the dqlite server without running it */
 	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, &d->raft_logger,
@@ -154,7 +155,7 @@ int dqlite__init(struct dqlite *d,
 	raft_watch(&d->raft, raftWatch);
 	rv = replication__init(&d->replication, &d->config, &d->raft);
 	if (rv != 0) {
-		goto err_after_raft_fsm_init;
+		goto err_after_raft_logger_init;
 	}
 	rv = sem_init(&d->ready, 0, 0);
 	if (rv != 0) {
@@ -179,6 +180,8 @@ err_after_ready_init:
 	sem_destroy(&d->ready);
 err_after_raft_replication_init:
 	replication__close(&d->replication);
+err_after_raft_logger_init:
+	raft_ring_logger_close(&d->raft_logger);
 err_after_raft_fsm_init:
 	fsm__close(&d->raft_fsm);
 err_after_raft_io_init:
@@ -204,6 +207,7 @@ void dqlite__close(struct dqlite *d)
 	assert(rv == 0); /* Fails only if sem object is not valid */
 	rv = sem_destroy(&d->ready);
 	assert(rv == 0); /* Fails only if sem object is not valid */
+	raft_ring_logger_close(&d->raft_logger);
 	replication__close(&d->replication);
 	fsm__close(&d->raft_fsm);
 	raft_uv_close(&d->raft_io);
