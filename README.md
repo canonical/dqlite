@@ -4,9 +4,9 @@ dqlite [![Build Status](https://travis-ci.org/canonical/dqlite.png)](https://tra
 dqlite is a C library that implements an embeddable and replicated SQL database
 engine with high-availability and automatic failover.
 
-The acronym "dqlite" stands for "distributed SQLite": it extends
+The acronym "dqlite" stands for "distributed SQLite", meaning that dqlite extends
 [SQLite](https://sqlite.org/) with a network protocol that can connect together
-various instances of your application and have them act as a high-available
+various instances of your application and have them act as a highly-available
 cluster, with no dependency on external databases.
 
 Design higlights
