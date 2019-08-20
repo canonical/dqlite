@@ -9,7 +9,7 @@ AC_USE_SYSTEM_EXTENSIONS
 AC_LANG([C])
 AC_PROG_CC
 
-AM_INIT_AUTOMAKE([subdir-objects -Wall -Werror foreign])
+AM_INIT_AUTOMAKE([subdir-objects -Wall -Werror -Wno-portability foreign])
 AM_SILENT_RULES([yes])
 
 LT_INIT
@@ -36,24 +36,8 @@ AM_COND_IF(DEBUG,
 AC_DEFINE(DEBUG, 1, [Define to 0 if this is a release build]),
 AC_DEFINE(DEBUG, 0, [Define to 1 or higher if this is a debug build]))
 
-# Enable test coverage.
-AC_ARG_ENABLE(coverage,
-  AS_HELP_STRING(
-    [--enable-coverage],
-    [enable code coverage, default: no]),
-  [case "${enableval}" in
-     yes) coverage=true ;;
-     no)  coverage=false ;;
-     *)   AC_MSG_ERROR([bad value ${enableval} for --enable-coverage]) ;;
-   esac],
-  [coverage=false])
-AM_CONDITIONAL(COVERAGE, test x"$coverage" = x"true")
-AM_COND_IF(COVERAGE,
-  [AC_DEFINE(DQLITE_COVERAGE)
-   # Remove all optimization flags from CFLAGS
-   changequote({,})
-   CFLAGS=`echo "$CFLAGS" | $SED -e 's/-O[0-9]*//g'`
-   changequote([,])])
+# Whether to enable code coverage.
+AX_CODE_COVERAGE
 
 # Enable memory sanitizer.
 AC_ARG_ENABLE(sanitize,

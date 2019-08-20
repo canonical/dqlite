@@ -13,11 +13,13 @@
 Makefile
 Makefile.in
 aclocal.m4
+aminclude_static.am
 autom4te*.cache
 confdefs.h
 config.status
 configure
 coverage/
+coverage.info
 unit-test
 integration-test
 dqlite.pc

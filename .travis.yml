@@ -11,10 +11,11 @@ before_install:
 
 script:
   - autoreconf -i
-  - ./configure --enable-debug --enable-coverage
+  - ./configure --enable-debug --enable-code-coverage --enable-sanitize
+  - CFLAGS=-O0
   - make
-  - make ./unit-test
-  - ./unit-test
+  - make check || cat ./test-suite.log
+  - if [ $TRAVIS_COMPILER = gcc ]; then make code-coverage-capture; fi
 
 compiler:
   - gcc
