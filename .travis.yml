@@ -1,14 +1,17 @@
 dist: xenial
-sudo: required
-
 language: c
-
-before_install:
-  - eval "${MATRIX_EVAL}"
-  - sudo add-apt-repository ppa:dqlite-maintainers/master -y
-  - sudo apt-get update -q
-  - sudo apt-get install libsqlite3-dev libuv1-dev libco-dev libraft-dev -y --allow-unauthenticated
-
+addons:
+  apt:
+    sources:
+    - sourceline: 'ppa:dqlite-maintainers/master'
+    packages:
+    - lcov
+    - libsqlite3-dev
+    - libuv1-dev
+    - libco-dev
+    - libraft-dev
+compiler:
+  - gcc
 script:
   - autoreconf -i
   - ./configure --enable-debug --enable-code-coverage --enable-sanitize
@@ -16,22 +19,5 @@ script:
   - make
   - make check || cat ./test-suite.log
   - if [ $TRAVIS_COMPILER = gcc ]; then make code-coverage-capture; fi
-
-compiler:
-  - gcc
-
-matrix:
-  include:
-    - os: linux
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-            - gcc-8
-            - lcov
-      env:
-         - MATRIX_EVAL="CC=gcc-8"
-
 after_success:
   - bash <(curl -s https://codecov.io/bash) -g "./test*"
