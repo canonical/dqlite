@@ -13,14 +13,12 @@ pkgconfig_DATA = dqlite.pc
 
 AM_CFLAGS = -I$(top_srcdir)/include -Wall
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(CO_CFLAGS) $(RAFT_FLAGS)
+AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
 AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(CO_LIBS) $(RAFT_LIBS)
 if DEBUG
   AM_CFLAGS += -g
 else
   AM_CFLAGS += -O2
-endif
-if COVERAGE
-  AM_CFLAGS += -O0 -fprofile-arcs -ftest-coverage
 endif
 if SANITIZE
   AM_CFLAGS += -fsanitize=address
@@ -113,24 +111,18 @@ integration_test_LDFLAGS = -lpthread $(AM_LDFLAGS)
 
 TESTS = unit-test integration-test
 
-cov-reset:
-if DEBUG
-	@lcov --directory src --zerocounters
-endif
+if CODE_COVERAGE_ENABLED
 
-cov-clean:
-	@rm -fr coverage
-	@find . -name "*.gcda" -o -name '*.gcno' -delete
+include $(top_srcdir)/aminclude_static.am
 
-cov-report:
-	@mkdir -p coverage
-	@lcov --compat-libtool --directory src --capture --output-file coverage/dqlite.info
-	@genhtml -o coverage/ coverage/dqlite.info
+CODE_COVERAGE_DIRECTORY=./src
+CODE_COVERAGE_OUTPUT_DIRECTORY=coverage
+CODE_COVERAGE_OUTPUT_FILE=coverage.info
+CODE_COVERAGE_IGNORE_PATTERN="/usr/include/*"
+CODE_COVERAGE_BRANCH_COVERAGE=1
+CODE_COVERAGE_LCOV_OPTIONS=$(CODE_COVERAGE_LCOV_OPTIONS_DEFAULT) --rc lcov_excl_br_line="assert\("
 
-clean-local:
-	@make cov-clean
+clean-local: code-coverage-clean
+distclean-local: code-coverage-dist-clean
 
-check: cov-reset
-if DEBUG
-	@make cov-report
-endif
+endif # CODE_COVERAGE_ENABLED
