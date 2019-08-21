@@ -557,7 +557,7 @@ int dqlite_handle(dqlite_task *d, int fd)
 	return 0;
 }
 
-int dqlite_stop(dqlite_task *d)
+int dqlite_task_stop(dqlite_task *d)
 {
 	void *result;
 	int rv;
