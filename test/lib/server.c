@@ -67,7 +67,7 @@ void test_server_start(struct test_server *s)
 
 	dqlite_task_attr_set_connect_func(attr, endpointConnect, s);
 
-	rv = dqlite_task_create(s->id, s->address, s->dir, attr, &s->dqlite);
+	rv = dqlite_task_start(s->id, s->address, s->dir, attr, &s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_config(s->dqlite, DQLITE_CONFIG_WATCHER, stateWatch, s);

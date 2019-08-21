@@ -98,11 +98,11 @@ void dqlite_task_attr_set_connect_func(
     void *arg);
 
 /* Allocate and initialize a dqlite server instance. */
-int dqlite_task_create(unsigned id,
-		       const char *address,
-		       const char *dir,
-		       dqlite_task_attr *attr,
-		       dqlite_task **t);
+int dqlite_task_start(unsigned id,
+		      const char *address,
+		      const char *dir,
+		      dqlite_task_attr *attr,
+		      dqlite_task **t);
 
 /* Function to emit log messages. */
 typedef void (*dqlite_emit)(void *data,
