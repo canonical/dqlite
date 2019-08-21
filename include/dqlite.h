@@ -77,14 +77,6 @@ enum { DQLITE_UNAVAILABLE, DQLITE_FOLLOWER, DQLITE_CANDIDATE, DQLITE_LEADER };
 /* Special value indicating that the result set is complete. */
 #define DQLITE_RESPONSE_ROWS_DONE 0xffffffffffffffff
 
-/**
- * Initialize SQLite global state with values specific to dqlite
- *
- * This API must be called exactly once before any other SQLite or dqlite API
- * call is invoked in a process.
- */
-int dqlite_initialize();
-
 /* Information about a single dqlite server. */
 struct dqlite_server
 {
