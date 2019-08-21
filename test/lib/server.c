@@ -50,7 +50,7 @@ void test_server_setup(struct test_server *s,
 	s->dir = test_dir_setup();
 	test_endpoint_setup(&s->endpoint, params);
 
-	rv = dqlite_task_create(id, s->address, s->dir, &s->dqlite);
+	rv = dqlite_task_create(id, s->address, s->dir, NULL, &s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
 	rv =

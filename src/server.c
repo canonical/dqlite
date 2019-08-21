@@ -254,9 +254,26 @@ void dqlite__close(struct dqlite_task *d)
 	config__close(&d->config);
 }
 
+dqlite_task_attr *dqlite_task_attr_create()
+{
+	dqlite_task_attr *a;
+	a = sqlite3_malloc(sizeof *a);
+	if (a == NULL) {
+		return NULL;
+	}
+	memset(a, 0, sizeof *a);
+	return a;
+}
+
+void dqlite_task_attr_destroy(dqlite_task_attr *a)
+{
+	sqlite3_free(a);
+}
+
 int dqlite_task_create(unsigned id,
 		       const char *address,
 		       const char *dir,
+		       dqlite_task_attr *attr,
 		       dqlite_task **d)
 {
 	int rv;
