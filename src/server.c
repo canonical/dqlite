@@ -254,7 +254,10 @@ void dqlite__close(struct dqlite_task *d)
 	config__close(&d->config);
 }
 
-int dqlite_create(unsigned id, const char *address, const char *dir, dqlite_task **d)
+int dqlite_task_create(unsigned id,
+		       const char *address,
+		       const char *dir,
+		       dqlite_task **d)
 {
 	int rv;
 
@@ -274,7 +277,9 @@ void dqlite_destroy(dqlite_task *d)
 	sqlite3_free(d);
 }
 
-int dqlite_bootstrap(dqlite_task *d, unsigned n, const struct dqlite_server *servers)
+int dqlite_bootstrap(dqlite_task *d,
+		     unsigned n,
+		     const struct dqlite_server *servers)
 {
 	struct raft_configuration configuration;
 	unsigned i;
