@@ -92,9 +92,10 @@ typedef int (*dqlite_connect)(void *data,
 			      int *fd);
 
 /* Allocate and initialize a dqlite server instance. */
-int dqlite_create(unsigned id,
-		  const char *address,
-		  const char *dir, dqlite_task **t);
+int dqlite_task_create(unsigned id,
+		       const char *address,
+		       const char *dir,
+		       dqlite_task **t);
 
 /* Destroy and deallocate a dqlite server instance. */
 void dqlite_destroy(dqlite_task *t);
