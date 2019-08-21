@@ -271,7 +271,7 @@ int dqlite_task_create(unsigned id,
 	return 0;
 }
 
-void dqlite_destroy(dqlite_task *d)
+void dqlite_task_destroy(dqlite_task *d)
 {
 	dqlite__close(d);
 	sqlite3_free(d);
