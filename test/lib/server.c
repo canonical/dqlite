@@ -42,29 +42,13 @@ void test_server_setup(struct test_server *s,
 		       const unsigned id,
 		       const MunitParameter params[])
 {
-	dqlite_task_attr *attr;
-	int rv;
-
 	s->id = id;
 	sprintf(s->address, "%u", id);
 
 	s->dir = test_dir_setup();
 	test_endpoint_setup(&s->endpoint, params);
 
-	attr = dqlite_task_attr_create();
-	munit_assert_ptr_not_null(attr);
-
-	dqlite_task_attr_set_connect_func(attr, endpointConnect, s);
-
-	rv = dqlite_task_create(id, s->address, s->dir, attr, &s->dqlite);
-	munit_assert_int(rv, ==, 0);
-
-	dqlite_task_attr_destroy(attr);
-
 	memset(s->others, 0, sizeof s->others);
-
-	rv = dqlite_config(s->dqlite, DQLITE_CONFIG_WATCHER, stateWatch, s);
-	munit_assert_int(rv, ==, 0);
 
 	s->state = -1;
 }
@@ -90,9 +74,23 @@ void test_server_tear_down(struct test_server *s)
 
 void test_server_start(struct test_server *s)
 {
-	int rv;
+	dqlite_task_attr *attr;
 	int client;
 	int server;
+	int rv;
+
+	attr = dqlite_task_attr_create();
+	munit_assert_ptr_not_null(attr);
+
+	dqlite_task_attr_set_connect_func(attr, endpointConnect, s);
+
+	rv = dqlite_task_create(s->id, s->address, s->dir, attr, &s->dqlite);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_config(s->dqlite, DQLITE_CONFIG_WATCHER, stateWatch, s);
+	munit_assert_int(rv, ==, 0);
+
+	dqlite_task_attr_destroy(attr);
 
 	rv = pthread_create(&s->run, 0, &run, s);
 	munit_assert_int(rv, ==, 0);
