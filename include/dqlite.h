@@ -120,13 +120,6 @@ typedef void (*dqlite_watch)(void *data, int old_state, int new_state);
  */
 int dqlite_config(dqlite_task *t, int op, ...);
 
-/* Start a dqlite server.
- *
- * In case of error, a human-readable message describing the failure can be
- * obtained using dqlite_errmsg.
- */
-int dqlite_run(dqlite_task *t);
-
 /* Wait until a dqlite server is ready and can handle connections.
 **
 ** Returns true if the server has been successfully started, false otherwise.

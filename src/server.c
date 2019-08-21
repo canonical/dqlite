@@ -309,69 +309,6 @@ out:
 	return rv;
 }
 
-static void *runTask(void *arg)
-{
-	struct dqlite_task *t = arg;
-	int rv;
-	rv = dqlite_run(t);
-	if (rv != 0) {
-		uintptr_t result = rv;
-		return (void *)result;
-	}
-	return NULL;
-}
-
-static void taskDestroy(dqlite_task *d)
-{
-	dqlite__close(d);
-	sqlite3_free(d);
-}
-
-int dqlite_task_start(unsigned id,
-		      const char *address,
-		      const char *dir,
-		      dqlite_task_attr *attr,
-		      dqlite_task **d)
-{
-	int rv;
-
-	*d = sqlite3_malloc(sizeof **d);
-
-	rv = dqlite__init(*d, id, address, dir);
-	if (rv != 0) {
-		return rv;
-	}
-
-	if (attr != NULL) {
-		if (attr->connect.f != NULL) {
-			raftProxySetConnectFunc(&(*d)->raft_transport,
-						attr->connect.f,
-						attr->connect.arg);
-		}
-	}
-
-	rv = maybeBootstrap(*d, id, address);
-	if (rv != 0) {
-		goto err;
-	}
-
-	rv = pthread_create(&(*d)->thread, 0, &runTask, *d);
-	if (rv != 0) {
-		goto err;
-	}
-
-	if (!dqlite_ready(*d)) {
-		rv = DQLITE_ERROR;
-		goto err;
-	}
-
-	return 0;
-
-err:
-	taskDestroy(*d);
-	return rv;
-}
-
 /* Callback invoked when the stop async handle gets fired.
  *
  * This callback will walk through all active handles and close them. After the
@@ -473,7 +410,7 @@ static void startup_cb(uv_timer_t *startup)
 	assert(rv == 0); /* No reason for which posting should fail */
 }
 
-int dqlite_run(struct dqlite_task *d)
+static int taskRun(struct dqlite_task *d)
 {
 	int rv;
 
@@ -511,6 +448,69 @@ int dqlite_run(struct dqlite_task *d)
 	assert(rv == 0); /* no reason for which posting should fail */
 
 	return 0;
+}
+
+static void *taskStart(void *arg)
+{
+	struct dqlite_task *t = arg;
+	int rv;
+	rv = taskRun(t);
+	if (rv != 0) {
+		uintptr_t result = rv;
+		return (void *)result;
+	}
+	return NULL;
+}
+
+static void taskDestroy(dqlite_task *d)
+{
+	dqlite__close(d);
+	sqlite3_free(d);
+}
+
+int dqlite_task_start(unsigned id,
+		      const char *address,
+		      const char *dir,
+		      dqlite_task_attr *attr,
+		      dqlite_task **d)
+{
+	int rv;
+
+	*d = sqlite3_malloc(sizeof **d);
+
+	rv = dqlite__init(*d, id, address, dir);
+	if (rv != 0) {
+		return rv;
+	}
+
+	if (attr != NULL) {
+		if (attr->connect.f != NULL) {
+			raftProxySetConnectFunc(&(*d)->raft_transport,
+						attr->connect.f,
+						attr->connect.arg);
+		}
+	}
+
+	rv = maybeBootstrap(*d, id, address);
+	if (rv != 0) {
+		goto err;
+	}
+
+	rv = pthread_create(&(*d)->thread, 0, &taskStart, *d);
+	if (rv != 0) {
+		goto err;
+	}
+
+	if (!dqlite_ready(*d)) {
+		rv = DQLITE_ERROR;
+		goto err;
+	}
+
+	return 0;
+
+err:
+	taskDestroy(*d);
+	return rv;
 }
 
 bool dqlite_ready(struct dqlite_task *d)
