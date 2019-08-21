@@ -104,9 +104,6 @@ int dqlite_task_create(unsigned id,
 		       dqlite_task_attr *attr,
 		       dqlite_task **t);
 
-/* Destroy and deallocate a dqlite server instance. */
-void dqlite_task_destroy(dqlite_task *t);
-
 /* Function to emit log messages. */
 typedef void (*dqlite_emit)(void *data,
 			    int level,

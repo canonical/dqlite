@@ -321,6 +321,12 @@ static void *runTask(void *arg)
 	return NULL;
 }
 
+static void taskDestroy(dqlite_task *d)
+{
+	dqlite__close(d);
+	sqlite3_free(d);
+}
+
 int dqlite_task_create(unsigned id,
 		       const char *address,
 		       const char *dir,
@@ -362,14 +368,8 @@ int dqlite_task_create(unsigned id,
 	return 0;
 
 err:
-	dqlite__close(*d);
+	taskDestroy(*d);
 	return rv;
-}
-
-void dqlite_task_destroy(dqlite_task *d)
-{
-	dqlite__close(d);
-	sqlite3_free(d);
 }
 
 /* Callback invoked when the stop async handle gets fired.
@@ -580,7 +580,11 @@ int dqlite_stop(dqlite_task *d)
 	rv = pthread_join(d->thread, &result);
 	assert(rv == 0);
 
-	return (uintptr_t)result;
+	rv = (uintptr_t)result;
+
+	taskDestroy(d);
+
+	return rv;
 }
 
 /* Set a config option */
