@@ -327,11 +327,11 @@ static void taskDestroy(dqlite_task *d)
 	sqlite3_free(d);
 }
 
-int dqlite_task_create(unsigned id,
-		       const char *address,
-		       const char *dir,
-		       dqlite_task_attr *attr,
-		       dqlite_task **d)
+int dqlite_task_start(unsigned id,
+		      const char *address,
+		      const char *dir,
+		      dqlite_task_attr *attr,
+		      dqlite_task **d)
 {
 	int rv;
 
