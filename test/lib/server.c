@@ -84,7 +84,7 @@ void test_server_tear_down(struct test_server *s)
 	munit_assert_int(rv, ==, 0);
 	munit_assert_ptr_null(retval);
 
-	dqlite_destroy(s->dqlite);
+	dqlite_task_destroy(s->dqlite);
 
 	test_dir_tear_down(s->dir);
 }
