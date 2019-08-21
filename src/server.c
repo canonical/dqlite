@@ -426,7 +426,7 @@ static int taskRun(struct dqlite_task *d)
 	assert(rv == 0);
 
 	/* Schedule startup_cb to be fired as soon as the loop starts. It will
-	 * unblock clients of dqlite_ready. */
+	 * unblock clients of taskReady. */
 	d->startup.data = d;
 	rv = uv_timer_init(&d->loop, &d->startup);
 	assert(rv == 0);
@@ -443,7 +443,7 @@ static int taskRun(struct dqlite_task *d)
 	rv = uv_run(&d->loop, UV_RUN_DEFAULT);
 	assert(rv == 0);
 
-	/* Unblock any client of dqlite_ready */
+	/* Unblock any client of taskReady */
 	rv = sem_post(&d->ready);
 	assert(rv == 0); /* no reason for which posting should fail */
 
@@ -466,6 +466,20 @@ static void taskDestroy(dqlite_task *d)
 {
 	dqlite__close(d);
 	sqlite3_free(d);
+}
+
+/* Wait until a dqlite server is ready and can handle connections.
+**
+** Returns true if the server has been successfully started, false otherwise.
+**
+** This is a thread-safe API, but must be invoked before any call to
+** dqlite_stop or dqlite_handle.
+*/
+static bool taskReady(struct dqlite_task *d)
+{
+	/* Wait for the ready semaphore */
+	sem_wait(&d->ready);
+	return d->running;
 }
 
 int dqlite_task_start(unsigned id,
@@ -501,7 +515,7 @@ int dqlite_task_start(unsigned id,
 		goto err;
 	}
 
-	if (!dqlite_ready(*d)) {
+	if (!taskReady(*d)) {
 		rv = DQLITE_ERROR;
 		goto err;
 	}
@@ -511,13 +525,6 @@ int dqlite_task_start(unsigned id,
 err:
 	taskDestroy(*d);
 	return rv;
-}
-
-bool dqlite_ready(struct dqlite_task *d)
-{
-	/* Wait for the ready semaphore */
-	sem_wait(&d->ready);
-	return d->running;
 }
 
 int dqlite_handle(dqlite_task *d, int fd)

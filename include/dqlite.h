@@ -120,15 +120,6 @@ typedef void (*dqlite_watch)(void *data, int old_state, int new_state);
  */
 int dqlite_config(dqlite_task *t, int op, ...);
 
-/* Wait until a dqlite server is ready and can handle connections.
-**
-** Returns true if the server has been successfully started, false otherwise.
-**
-** This is a thread-safe API, but must be invoked before any call to
-** dqlite_stop or dqlite_handle.
-*/
-bool dqlite_ready(dqlite_task *t);
-
 /* Return information about all servers currently part of the dqlite cluster.
  *
  * In case of success, the caller is responsible for freeing the returned array
