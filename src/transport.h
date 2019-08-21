@@ -18,8 +18,9 @@ void raftProxyAccept(struct raft_uv_transport *transport,
 		     struct uv_stream_s *stream);
 
 /* Set a custom connect function. */
-void raftProxySetConnectFunc(struct raft_uv_transport *transport,
-			     dqlite_connect connect,
-			     void *data);
+void raftProxySetConnectFunc(
+    struct raft_uv_transport *transport,
+    int (*f)(void *arg, unsigned id, const char *address, int *fd),
+    void *arg);
 
 #endif /* TRANSPORT_H_*/

@@ -15,8 +15,12 @@
 struct impl
 {
 	struct uv_loop_s *loop;
-	void *data;             /* Passed back to connect */
-	dqlite_connect connect; /* Connect function */
+	struct
+	{
+		int (*f)(void *arg, unsigned id, const char *address, int *fd);
+		void *arg;
+
+	} connect;
 	unsigned id;
 	const char *address;
 	raft_uv_accept_cb accept_cb;
@@ -55,14 +59,10 @@ static void connect_work_cb(uv_work_t *work)
 {
 	struct connect *r = work->data;
 	struct impl *i = r->impl;
-	struct dqlite_server server;
 	struct client client;
 	int rv;
 
-	server.id = r->id;           /* Remote server ID */
-	server.address = r->address; /* Remote server address */
-
-	rv = i->connect(i->data, &server, &r->fd);
+	rv = i->connect.f(i->connect.arg, r->id, r->address, &r->fd);
 	if (rv != 0) {
 		rv = RAFT_NOCONNECTION;
 		goto err;
@@ -197,15 +197,17 @@ static int parse_address(const char *address, struct sockaddr_in *addr)
 	return 0;
 }
 
-static int default_connect(void *data,
-			   const struct dqlite_server *server,
+static int default_connect(void *arg,
+			   const unsigned id,
+			   const char *address,
 			   int *fd)
 {
 	struct sockaddr_in addr;
 	int rv;
-	(void)data;
+	(void)arg;
+	(void)id;
 
-	rv = parse_address(server->address, &addr);
+	rv = parse_address(address, &addr);
 	if (rv != 0) {
 		return RAFT_NOCONNECTION;
 	}
@@ -231,8 +233,8 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 		return DQLITE_NOMEM;
 	}
 	i->loop = loop;
-	i->data = NULL;
-	i->connect = default_connect;
+	i->connect.f = default_connect;
+	i->connect.arg = NULL;
 	transport->impl = i;
 	transport->init = impl_init;
 	transport->listen = impl_listen;
@@ -256,11 +258,12 @@ void raftProxyAccept(struct raft_uv_transport *transport,
 	i->accept_cb(transport, id, address, stream);
 }
 
-void raftProxySetConnectFunc(struct raft_uv_transport *transport,
-			     dqlite_connect connect,
-			     void *data)
+void raftProxySetConnectFunc(
+    struct raft_uv_transport *transport,
+    int (*f)(void *arg, unsigned id, const char *address, int *fd),
+    void *arg)
 {
 	struct impl *i = transport->impl;
-	i->connect = connect;
-	i->data = data;
+	i->connect.f = f;
+	i->connect.arg = arg;
 }

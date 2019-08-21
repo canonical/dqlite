@@ -68,7 +68,6 @@ enum { DQLITE_UNAVAILABLE, DQLITE_FOLLOWER, DQLITE_CANDIDATE, DQLITE_LEADER };
 #define DQLITE_CONFIG_HEARTBEAT_TIMEOUT 1
 #define DQLITE_CONFIG_PAGE_SIZE 2
 #define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 3
-#define DQLITE_CONFIG_CONNECT 4
 #define DQLITE_CONFIG_WATCHER 5
 
 /* Special value indicating that a batch of rows is over, but there are more. */
@@ -89,13 +88,14 @@ typedef struct dqlite_task_attr dqlite_task_attr;
 /* Handle connections from dqlite clients */
 typedef struct dqlite_task dqlite_task;
 
-typedef int (*dqlite_connect)(void *data,
-			      const struct dqlite_server *server,
-			      int *fd);
-
 dqlite_task_attr *dqlite_task_attr_create();
 
 void dqlite_task_attr_destroy(dqlite_task_attr *a);
+
+void dqlite_task_attr_set_connect_func(
+    dqlite_task_attr *a,
+    int (*f)(void *arg, unsigned id, const char *address, int *fd),
+    void *arg);
 
 /* Allocate and initialize a dqlite server instance. */
 int dqlite_task_create(unsigned id,

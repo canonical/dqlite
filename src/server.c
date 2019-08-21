@@ -270,6 +270,15 @@ void dqlite_task_attr_destroy(dqlite_task_attr *a)
 	sqlite3_free(a);
 }
 
+void dqlite_task_attr_set_connect_func(
+    dqlite_task_attr *a,
+    int (*f)(void *arg, unsigned id, const char *address, int *fd),
+    void *arg)
+{
+	a->connect.f = f;
+	a->connect.arg = arg;
+}
+
 int dqlite_task_create(unsigned id,
 		       const char *address,
 		       const char *dir,
@@ -283,6 +292,14 @@ int dqlite_task_create(unsigned id,
 	rv = dqlite__init(*d, id, address, dir);
 	if (rv != 0) {
 		return rv;
+	}
+
+	if (attr != NULL) {
+		if (attr->connect.f != NULL) {
+			raftProxySetConnectFunc(&(*d)->raft_transport,
+						attr->connect.f,
+						attr->connect.arg);
+		}
 	}
 
 	return 0;
@@ -537,8 +554,6 @@ int dqlite_stop(dqlite_task *d)
 int dqlite_config(struct dqlite_task *d, int op, ...)
 {
 	va_list args;
-	dqlite_connect connectFunc;
-	void *data;
 	int rv = 0;
 	va_start(args, op);
 	switch (op) {
@@ -555,12 +570,6 @@ int dqlite_config(struct dqlite_task *d, int op, ...)
 		case DQLITE_CONFIG_CHECKPOINT_THRESHOLD:
 			d->config.checkpoint_threshold =
 			    *va_arg(args, unsigned *);
-			break;
-		case DQLITE_CONFIG_CONNECT:
-			connectFunc = va_arg(args, dqlite_connect);
-			data = va_arg(args, void *);
-			raftProxySetConnectFunc(&d->raft_transport, connectFunc,
-						data);
 			break;
 		case DQLITE_CONFIG_WATCHER:
 			d->config.watcher.f = va_arg(args, dqlite_watch);
