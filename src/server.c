@@ -47,24 +47,6 @@ void incoming__close(struct incoming *i)
 	assert(rv == 0);
 }
 
-int dqlite_initialize()
-{
-	int rc;
-
-	/* Configure SQLite for single-thread mode. This is a global config.
-	 *
-	 * TODO: add an option to turn failures into warnings instead. This
-	 * would degrade performance but allow clients to use this process'
-	 * SQLite instance for other purposes that require multi-thread.
-	 */
-	rc = sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
-	if (rc != SQLITE_OK) {
-		assert(rc == SQLITE_MISUSE);
-		return DQLITE_MISUSE;
-	}
-	return 0;
-}
-
 /* Covert raft state code to dqlite one. */
 static int convertRaftState(int state)
 {
