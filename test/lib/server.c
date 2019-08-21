@@ -15,13 +15,15 @@ static void *run(void *arg)
 }
 
 static int endpointConnect(void *data,
-			   const struct dqlite_server *server,
+			   const unsigned id,
+			   const char *address,
 			   int *fd)
 {
 	struct test_server *s = data;
-	struct test_server *other = s->others[server->id - 1];
+	struct test_server *other = s->others[id - 1];
 	int fd_server;
 	int rv;
+	(void)address;
 	munit_assert_ptr_not_null(other);
 	test_endpoint_pair(&other->endpoint, &fd_server, fd);
 	rv = dqlite_handle(other->dqlite, fd_server);
@@ -42,6 +44,7 @@ void test_server_setup(struct test_server *s,
 		       unsigned n_servers,
 		       const MunitParameter params[])
 {
+	dqlite_task_attr *attr;
 	int rv;
 
 	s->id = id;
@@ -50,12 +53,15 @@ void test_server_setup(struct test_server *s,
 	s->dir = test_dir_setup();
 	test_endpoint_setup(&s->endpoint, params);
 
-	rv = dqlite_task_create(id, s->address, s->dir, NULL, &s->dqlite);
+	attr = dqlite_task_attr_create();
+	munit_assert_ptr_not_null(attr);
+
+	dqlite_task_attr_set_connect_func(attr, endpointConnect, s);
+
+	rv = dqlite_task_create(id, s->address, s->dir, attr, &s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
-	rv =
-	    dqlite_config(s->dqlite, DQLITE_CONFIG_CONNECT, endpointConnect, s);
-	munit_assert_int(rv, ==, 0);
+	dqlite_task_attr_destroy(attr);
 
 	if (servers != NULL) {
 		rv = dqlite_bootstrap(s->dqlite, n_servers, servers);

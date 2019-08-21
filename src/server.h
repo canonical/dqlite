@@ -11,8 +11,8 @@ struct dqlite_task_attr
 {
 	struct
 	{
-		int (*f)(void *data, unsigned id, const char *address, int *fd);
-		void *data;
+		int (*f)(void *arg, unsigned id, const char *address, int *fd);
+		void *arg;
 	} connect;
 };
 
