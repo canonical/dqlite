@@ -158,7 +158,7 @@ int dqlite_dump(dqlite_task *t, const char *filename, void **buf, size_t *len);
 ** In case of error, the caller must invoke sqlite3_free
 ** against the returned errmsg.
 */
-int dqlite_stop(dqlite_task *t);
+int dqlite_task_stop(dqlite_task *t);
 
 /* Start handling a new connection.
 **
