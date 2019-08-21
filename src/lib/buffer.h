@@ -9,10 +9,10 @@
  * TODO: consider using mremap.
  */
 
-#include <unistd.h>
-
 #ifndef LIB_BUFFER_H_
 #define LIB_BUFFER_H_
+
+#include <unistd.h>
 
 struct buffer
 {

@@ -75,7 +75,7 @@ static int convertRaftState(int state)
 /* Invoke the configured state watch function, if any. */
 static void raftWatch(struct raft *r, int old_state)
 {
-	struct dqlite *d = r->data;
+	struct dqlite_task *d = r->data;
 	int new_state = raft_state(r);
 
 	if (d->config.watcher.f != NULL) {
@@ -131,12 +131,12 @@ void raftRingLoggerWalkCb(void *data,
 }
 
 /* Bump raft's ring logger to stdout. */
-static void dumpRaftRingLogger(struct dqlite *d)
+static void dumpRaftRingLogger(struct dqlite_task *d)
 {
 	raft_ring_logger_walk(&d->raft_logger, raftRingLoggerWalkCb, NULL);
 }
 
-int dqlite__init(struct dqlite *d,
+int dqlite__init(struct dqlite_task *d,
 		 unsigned id,
 		 const char *address,
 		 const char *dir)
@@ -234,7 +234,7 @@ err:
 	return rv;
 }
 
-void dqlite__close(struct dqlite *d)
+void dqlite__close(struct dqlite_task *d)
 {
 	int rv;
 	rv = pthread_mutex_destroy(&d->mutex); /* This is a no-op on Linux . */
@@ -254,7 +254,7 @@ void dqlite__close(struct dqlite *d)
 	config__close(&d->config);
 }
 
-int dqlite_create(unsigned id, const char *address, const char *dir, dqlite **d)
+int dqlite_create(unsigned id, const char *address, const char *dir, dqlite_task **d)
 {
 	int rv;
 
@@ -268,13 +268,13 @@ int dqlite_create(unsigned id, const char *address, const char *dir, dqlite **d)
 	return 0;
 }
 
-void dqlite_destroy(dqlite *d)
+void dqlite_destroy(dqlite_task *d)
 {
 	dqlite__close(d);
 	sqlite3_free(d);
 }
 
-int dqlite_bootstrap(dqlite *d, unsigned n, const struct dqlite_server *servers)
+int dqlite_bootstrap(dqlite_task *d, unsigned n, const struct dqlite_server *servers)
 {
 	struct raft_configuration configuration;
 	unsigned i;
@@ -312,7 +312,7 @@ out:
  */
 static void raftCloseCb(struct raft *raft)
 {
-	struct dqlite *s = raft->data;
+	struct dqlite_task *s = raft->data;
 	uv_close((struct uv_handle_s *)&s->stop, NULL);
 	uv_close((struct uv_handle_s *)&s->incoming, NULL);
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
@@ -324,7 +324,7 @@ static void destroy_conn(struct conn *conn)
 	sqlite3_free(conn);
 }
 
-static void process_incoming(struct dqlite *d)
+static void process_incoming(struct dqlite_task *d)
 {
 	while (!QUEUE__IS_EMPTY(&d->queue)) {
 		queue *head;
@@ -356,7 +356,7 @@ static void process_incoming(struct dqlite *d)
 
 static void stop_cb(uv_async_t *stop)
 {
-	struct dqlite *d = stop->data;
+	struct dqlite_task *d = stop->data;
 	queue *head;
 	struct conn *conn;
 
@@ -384,7 +384,7 @@ static void stop_cb(uv_async_t *stop)
  */
 static void incoming_cb(uv_async_t *incoming)
 {
-	struct dqlite *d = incoming->data;
+	struct dqlite_task *d = incoming->data;
 	/* Acquire the queue lock, so no new incoming connection can be
 	 * pushed. */
 	pthread_mutex_lock(&d->mutex);
@@ -398,14 +398,14 @@ static void incoming_cb(uv_async_t *incoming)
  */
 static void startup_cb(uv_timer_t *startup)
 {
-	struct dqlite *d = startup->data;
+	struct dqlite_task *d = startup->data;
 	int rv;
 	d->running = true;
 	rv = sem_post(&d->ready);
 	assert(rv == 0); /* No reason for which posting should fail */
 }
 
-int dqlite_run(struct dqlite *d)
+int dqlite_run(struct dqlite_task *d)
 {
 	int rv;
 
@@ -445,14 +445,14 @@ int dqlite_run(struct dqlite *d)
 	return 0;
 }
 
-bool dqlite_ready(struct dqlite *d)
+bool dqlite_ready(struct dqlite_task *d)
 {
 	/* Wait for the ready semaphore */
 	sem_wait(&d->ready);
 	return d->running;
 }
 
-int dqlite_handle(dqlite *d, int fd)
+int dqlite_handle(dqlite_task *d, int fd)
 {
 	struct incoming *incoming;
 	int rv;
@@ -489,7 +489,7 @@ int dqlite_handle(dqlite *d, int fd)
 	return 0;
 }
 
-int dqlite_stop(dqlite *d)
+int dqlite_stop(dqlite_task *d)
 {
 	int rv;
 
@@ -512,7 +512,7 @@ int dqlite_stop(dqlite *d)
 }
 
 /* Set a config option */
-int dqlite_config(struct dqlite *d, int op, ...)
+int dqlite_config(struct dqlite_task *d, int op, ...)
 {
 	va_list args;
 	dqlite_connect connectFunc;
@@ -552,7 +552,7 @@ int dqlite_config(struct dqlite *d, int op, ...)
 	return rv;
 }
 
-int dqlite_cluster(dqlite *d, struct dqlite_server *servers[], unsigned *n)
+int dqlite_cluster(dqlite_task *d, struct dqlite_server *servers[], unsigned *n)
 {
 	unsigned i;
 	/* TODO: this is not thread-safe, we should use an async handle */
@@ -570,14 +570,14 @@ int dqlite_cluster(dqlite *d, struct dqlite_server *servers[], unsigned *n)
 	return 0;
 }
 
-bool dqlite_leader(dqlite *d, struct dqlite_server *server)
+bool dqlite_leader(dqlite_task *d, struct dqlite_server *server)
 {
 	/* TODO: this is not thread-safe, we should use an async handle */
 	raft_leader(&d->raft, &server->id, &server->address);
 	return server->id != 0;
 }
 
-int dqlite_dump(dqlite *d, const char *filename, void **buf, size_t *len)
+int dqlite_dump(dqlite_task *d, const char *filename, void **buf, size_t *len)
 {
 	return vfsFileRead(d->config.name, filename, buf, len);
 }

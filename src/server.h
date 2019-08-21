@@ -10,7 +10,7 @@
 /**
  * A single dqlite server instance.
  */
-struct dqlite
+struct dqlite_task
 {
 	struct config config;                       /* Config values */
 	struct sqlite3_vfs vfs;                     /* In-memory VFS */
@@ -33,11 +33,11 @@ struct dqlite
 	uv_timer_t startup;                         /* Unblock ready sem */
 };
 
-int dqlite__init(struct dqlite *d,
+int dqlite__init(struct dqlite_task *d,
 		 unsigned id,
 		 const char *address,
 		 const char *dir);
 
-void dqlite__close(struct dqlite *d);
+void dqlite__close(struct dqlite_task *d);
 
-int dqlite__run(struct dqlite *d);
+int dqlite__run(struct dqlite_task *d);
