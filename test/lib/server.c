@@ -3,17 +3,6 @@
 #include "fs.h"
 #include "server.h"
 
-static void *run(void *arg)
-{
-	struct test_server *s = arg;
-	int rv;
-	rv = dqlite_run(s->dqlite);
-	if (rv != 0) {
-		return (void *)1;
-	}
-	return NULL;
-}
-
 static int endpointConnect(void *data,
 			   const unsigned id,
 			   const char *address,
@@ -55,18 +44,13 @@ void test_server_setup(struct test_server *s,
 
 void test_server_tear_down(struct test_server *s)
 {
-	void *retval;
 	int rv;
 
 	test_endpoint_tear_down(&s->endpoint);
 	clientClose(&s->client);
 	close(s->client.fd);
-	dqlite_stop(s->dqlite);
-
-	rv = pthread_join(s->run, &retval);
+	rv = dqlite_stop(s->dqlite);
 	munit_assert_int(rv, ==, 0);
-	munit_assert_ptr_null(retval);
-
 	dqlite_task_destroy(s->dqlite);
 
 	test_dir_tear_down(s->dir);
@@ -91,12 +75,6 @@ void test_server_start(struct test_server *s)
 	munit_assert_int(rv, ==, 0);
 
 	dqlite_task_attr_destroy(attr);
-
-	rv = pthread_create(&s->run, 0, &run, s);
-	munit_assert_int(rv, ==, 0);
-
-	/* Wait for the server to be ready */
-	munit_assert_true(dqlite_ready(s->dqlite));
 
 	/* Connect a client. */
 	test_endpoint_pair(&s->endpoint, &server, &client);

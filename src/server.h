@@ -21,6 +21,7 @@ struct dqlite_task_attr
  */
 struct dqlite_task
 {
+	pthread_t thread;                           /* Main run loop thread. */
 	struct config config;                       /* Config values */
 	struct sqlite3_vfs vfs;                     /* In-memory VFS */
 	struct registry registry;                   /* Databases */

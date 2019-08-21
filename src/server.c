@@ -309,6 +309,18 @@ out:
 	return rv;
 }
 
+static void *runTask(void *arg)
+{
+	struct dqlite_task *t = arg;
+	int rv;
+	rv = dqlite_run(t);
+	if (rv != 0) {
+		uintptr_t result = rv;
+		return (void *)result;
+	}
+	return NULL;
+}
+
 int dqlite_task_create(unsigned id,
 		       const char *address,
 		       const char *dir,
@@ -334,11 +346,24 @@ int dqlite_task_create(unsigned id,
 
 	rv = maybeBootstrap(*d, id, address);
 	if (rv != 0) {
-		dqlite__close(*d);
-		return rv;
+		goto err;
+	}
+
+	rv = pthread_create(&(*d)->thread, 0, &runTask, *d);
+	if (rv != 0) {
+		goto err;
+	}
+
+	if (!dqlite_ready(*d)) {
+		rv = DQLITE_ERROR;
+		goto err;
 	}
 
 	return 0;
+
+err:
+	dqlite__close(*d);
+	return rv;
 }
 
 void dqlite_task_destroy(dqlite_task *d)
@@ -534,6 +559,7 @@ int dqlite_handle(dqlite_task *d, int fd)
 
 int dqlite_stop(dqlite_task *d)
 {
+	void *result;
 	int rv;
 
 	/* Grab the queue mutex, so we can be sure no new incoming request will
@@ -551,7 +577,10 @@ int dqlite_stop(dqlite_task *d)
 
 	pthread_mutex_unlock(&d->mutex);
 
-	return 0;
+	rv = pthread_join(d->thread, &result);
+	assert(rv == 0);
+
+	return (uintptr_t)result;
 }
 
 /* Set a config option */
