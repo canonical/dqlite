@@ -85,7 +85,7 @@ struct dqlite_server
 };
 
 /* Handle connections from dqlite clients */
-typedef struct dqlite dqlite;
+typedef struct dqlite_task dqlite_task;
 
 typedef int (*dqlite_connect)(void *data,
 			      const struct dqlite_server *server,
@@ -94,11 +94,10 @@ typedef int (*dqlite_connect)(void *data,
 /* Allocate and initialize a dqlite server instance. */
 int dqlite_create(unsigned id,
 		  const char *address,
-		  const char *dir,
-		  dqlite **d);
+		  const char *dir, dqlite_task **t);
 
 /* Destroy and deallocate a dqlite server instance. */
-void dqlite_destroy(dqlite *d);
+void dqlite_destroy(dqlite_task *t);
 
 /* Function to emit log messages. */
 typedef void (*dqlite_emit)(void *data,
@@ -114,9 +113,9 @@ typedef void (*dqlite_watch)(void *data, int old_state, int new_state);
  * This API must be called after dqlite_init and before
  * dqlite_run.
  */
-int dqlite_config(dqlite *d, int op, ...);
+int dqlite_config(dqlite_task *t, int op, ...);
 
-int dqlite_bootstrap(dqlite *d,
+int dqlite_bootstrap(dqlite_task *t,
 		     unsigned n,
 		     const struct dqlite_server *servers);
 
@@ -125,7 +124,7 @@ int dqlite_bootstrap(dqlite *d,
  * In case of error, a human-readable message describing the failure can be
  * obtained using dqlite_errmsg.
  */
-int dqlite_run(dqlite *d);
+int dqlite_run(dqlite_task *t);
 
 /* Wait until a dqlite server is ready and can handle connections.
 **
@@ -134,20 +133,22 @@ int dqlite_run(dqlite *d);
 ** This is a thread-safe API, but must be invoked before any call to
 ** dqlite_stop or dqlite_handle.
 */
-bool dqlite_ready(dqlite *d);
+bool dqlite_ready(dqlite_task *t);
 
 /* Return information about all servers currently part of the dqlite cluster.
  *
  * In case of success, the caller is responsible for freeing the returned array
  * using sqlite3_free().  */
-int dqlite_cluster(dqlite *d, struct dqlite_server *servers[], unsigned *n);
+int dqlite_cluster(dqlite_task *t,
+		   struct dqlite_server *servers[],
+		   unsigned *n);
 
 /* Fill the given struct with info about the current cluster leader. Return
  * false if no leader is currently known. */
-bool dqlite_leader(dqlite *d, struct dqlite_server *server);
+bool dqlite_leader(dqlite_task *t, struct dqlite_server *server);
 
 /* Dump the content of a database file. */
-int dqlite_dump(dqlite *d, const char *filename, void **buf, size_t *len);
+int dqlite_dump(dqlite_task *t, const char *filename, void **buf, size_t *len);
 
 /* Stop a dqlite server.
 **
@@ -156,7 +157,7 @@ int dqlite_dump(dqlite *d, const char *filename, void **buf, size_t *len);
 ** In case of error, the caller must invoke sqlite3_free
 ** against the returned errmsg.
 */
-int dqlite_stop(dqlite *d);
+int dqlite_stop(dqlite_task *t);
 
 /* Start handling a new connection.
 **
@@ -165,6 +166,6 @@ int dqlite_stop(dqlite *d);
 ** In case of error, the caller must invoke sqlite3_free
 ** against the returned errmsg.
 */
-int dqlite_handle(dqlite *d, int fd);
+int dqlite_handle(dqlite_task *t, int fd);
 
 #endif /* DQLITE_H */
