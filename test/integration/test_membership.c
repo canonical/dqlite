@@ -21,29 +21,19 @@ TEST_MODULE(membership);
 	struct test_server servers[N_SERVERS]; \
 	struct client *client
 
-#define SETUP                                                              \
-	unsigned i_;                                                       \
-	struct dqlite_server info;                                         \
-	info.id = 1;                                                       \
-	info.address = "1";                                                \
-	test_heap_setup(params, user_data);                                \
-	test_sqlite_setup(params);                                         \
-	for (i_ = 0; i_ < N_SERVERS; i_++) {                               \
-		struct test_server *server = &f->servers[i_];              \
-		struct dqlite_server *infos = NULL;                        \
-		unsigned n_infos = 0;                                      \
-		/* Only the first server is part of the configuration */   \
-		if (i_ == 0) {                                             \
-			infos = &info;                                     \
-			n_infos = 1;                                       \
-		}                                                          \
-		test_server_setup(server, i_ + 1, infos, n_infos, params); \
-	}                                                                  \
-	test_server_network(f->servers, N_SERVERS);                        \
-	for (i_ = 0; i_ < N_SERVERS; i_++) {                               \
-		struct test_server *server = &f->servers[i_];              \
-		test_server_start(server);                                 \
-	}                                                                  \
+#define SETUP                                                 \
+	unsigned i_;                                          \
+	test_heap_setup(params, user_data);                   \
+	test_sqlite_setup(params);                            \
+	for (i_ = 0; i_ < N_SERVERS; i_++) {                  \
+		struct test_server *server = &f->servers[i_]; \
+		test_server_setup(server, i_ + 1, params);    \
+	}                                                     \
+	test_server_network(f->servers, N_SERVERS);           \
+	for (i_ = 0; i_ < N_SERVERS; i_++) {                  \
+		struct test_server *server = &f->servers[i_]; \
+		test_server_start(server);                    \
+	}                                                     \
 	SELECT(1)
 
 #define TEAR_DOWN                                       \

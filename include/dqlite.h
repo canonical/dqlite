@@ -123,10 +123,6 @@ typedef void (*dqlite_watch)(void *data, int old_state, int new_state);
  */
 int dqlite_config(dqlite_task *t, int op, ...);
 
-int dqlite_bootstrap(dqlite_task *t,
-		     unsigned n,
-		     const struct dqlite_server *servers);
-
 /* Start a dqlite server.
  *
  * In case of error, a human-readable message describing the failure can be

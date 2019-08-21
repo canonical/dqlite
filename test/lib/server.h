@@ -29,8 +29,6 @@ struct test_server
 /* Initialize the test server. */
 void test_server_setup(struct test_server *s,
 		       unsigned id,
-		       struct dqlite_server *servers,
-		       unsigned n_servers,
 		       const MunitParameter params[]);
 
 /* Cleanup the test server. */

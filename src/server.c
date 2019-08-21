@@ -279,6 +279,36 @@ void dqlite_task_attr_set_connect_func(
 	a->connect.arg = arg;
 }
 
+static int maybeBootstrap(dqlite_task *d,
+			  const unsigned id,
+			  const char *address)
+{
+	struct raft_configuration configuration;
+	int rv;
+	if (id != 1) {
+		return 0;
+	}
+	raft_configuration_init(&configuration);
+	rv = raft_configuration_add(&configuration, id, address, true);
+	if (rv != 0) {
+		assert(rv == RAFT_NOMEM);
+		rv = DQLITE_NOMEM;
+		goto out;
+	};
+	rv = raft_bootstrap(&d->raft, &configuration);
+	if (rv != 0) {
+		if (rv == RAFT_CANTBOOTSTRAP) {
+			rv = 0;
+		} else {
+			rv = DQLITE_INTERNAL;
+		}
+		goto out;
+	}
+out:
+	raft_configuration_close(&configuration);
+	return rv;
+}
+
 int dqlite_task_create(unsigned id,
 		       const char *address,
 		       const char *dir,
@@ -302,6 +332,12 @@ int dqlite_task_create(unsigned id,
 		}
 	}
 
+	rv = maybeBootstrap(*d, id, address);
+	if (rv != 0) {
+		dqlite__close(*d);
+		return rv;
+	}
+
 	return 0;
 }
 
@@ -309,38 +345,6 @@ void dqlite_task_destroy(dqlite_task *d)
 {
 	dqlite__close(d);
 	sqlite3_free(d);
-}
-
-int dqlite_bootstrap(dqlite_task *d,
-		     unsigned n,
-		     const struct dqlite_server *servers)
-{
-	struct raft_configuration configuration;
-	unsigned i;
-	int rv;
-	raft_configuration_init(&configuration);
-	for (i = 0; i < n; i++) {
-		const struct dqlite_server *server = &servers[i];
-		rv = raft_configuration_add(&configuration, server->id,
-					    server->address, true);
-		if (rv != 0) {
-			assert(rv == RAFT_NOMEM);
-			rv = DQLITE_NOMEM;
-			goto out;
-		};
-	}
-	rv = raft_bootstrap(&d->raft, &configuration);
-	if (rv != 0) {
-		if (rv == RAFT_CANTBOOTSTRAP) {
-			rv = DQLITE_CANTBOOTSTRAP;
-		} else {
-			rv = DQLITE_INTERNAL;
-		}
-		goto out;
-	}
-out:
-	raft_configuration_close(&configuration);
-	return rv;
 }
 
 /* Callback invoked when the stop async handle gets fired.

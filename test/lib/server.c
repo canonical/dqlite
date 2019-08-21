@@ -40,8 +40,6 @@ static void stateWatch(void *data, int old_state, int new_state)
 
 void test_server_setup(struct test_server *s,
 		       const unsigned id,
-		       struct dqlite_server *servers,
-		       unsigned n_servers,
 		       const MunitParameter params[])
 {
 	dqlite_task_attr *attr;
@@ -62,11 +60,6 @@ void test_server_setup(struct test_server *s,
 	munit_assert_int(rv, ==, 0);
 
 	dqlite_task_attr_destroy(attr);
-
-	if (servers != NULL) {
-		rv = dqlite_bootstrap(s->dqlite, n_servers, servers);
-		munit_assert_int(rv, ==, 0);
-	}
 
 	memset(s->others, 0, sizeof s->others);
 

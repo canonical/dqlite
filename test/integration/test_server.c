@@ -16,13 +16,10 @@ TEST_MODULE(server);
  ******************************************************************************/
 
 #define FIXTURE struct test_server server
-#define SETUP                                               \
-	struct dqlite_server info;                          \
-	info.id = 1;                                        \
-	info.address = "1";                                 \
-	test_heap_setup(params, user_data);                 \
-	test_sqlite_setup(params);                          \
-	test_server_setup(&f->server, 1, &info, 1, params); \
+#define SETUP                                     \
+	test_heap_setup(params, user_data);       \
+	test_sqlite_setup(params);                \
+	test_server_setup(&f->server, 1, params); \
 	test_server_start(&f->server)
 #define TEAR_DOWN                          \
 	test_server_tear_down(&f->server); \
