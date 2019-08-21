@@ -84,6 +84,8 @@ struct dqlite_server
 	const char *address;
 };
 
+typedef struct dqlite_task_attr dqlite_task_attr;
+
 /* Handle connections from dqlite clients */
 typedef struct dqlite_task dqlite_task;
 
@@ -91,10 +93,15 @@ typedef int (*dqlite_connect)(void *data,
 			      const struct dqlite_server *server,
 			      int *fd);
 
+dqlite_task_attr *dqlite_task_attr_create();
+
+void dqlite_task_attr_destroy(dqlite_task_attr *a);
+
 /* Allocate and initialize a dqlite server instance. */
 int dqlite_task_create(unsigned id,
 		       const char *address,
 		       const char *dir,
+		       dqlite_task_attr *attr,
 		       dqlite_task **t);
 
 /* Destroy and deallocate a dqlite server instance. */
