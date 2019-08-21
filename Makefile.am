@@ -14,7 +14,7 @@ pkgconfig_DATA = dqlite.pc
 AM_CFLAGS = -I$(top_srcdir)/include -Wall
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(CO_CFLAGS) $(RAFT_FLAGS)
 AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
-AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(CO_LIBS) $(RAFT_LIBS)
+AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(CO_LIBS) $(RAFT_LIBS) -lpthread
 if DEBUG
   AM_CFLAGS += -g
 else
@@ -97,7 +97,7 @@ unit_test_SOURCES += \
 unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_CFLAGS += -I$(top_srcdir)/test
 unit_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=70
-unit_test_LDFLAGS = -lpthread $(AM_LDFLAGS)
+unit_test_LDFLAGS = $(AM_LDFLAGS)
 
 integration_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
 integration_test_SOURCES += \
@@ -107,7 +107,7 @@ integration_test_SOURCES += \
 integration_test_CFLAGS = $(AM_CFLAGS)
 integration_test_CFLAGS += -I$(top_srcdir)/test
 integration_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=70
-integration_test_LDFLAGS = -lpthread $(AM_LDFLAGS)
+integration_test_LDFLAGS = $(AM_LDFLAGS)
 
 TESTS = unit-test integration-test
 
