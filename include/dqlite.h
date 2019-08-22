@@ -89,6 +89,7 @@ typedef struct dqlite_task dqlite_task;
 int dqlite_task_create(unsigned server_id,
 		       const char *server_address,
 		       const char *data_dir,
+		       int listen_fd,
 		       dqlite_task **t);
 
 void dqlite_task_destroy(dqlite_task *t);

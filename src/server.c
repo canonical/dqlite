@@ -257,6 +257,7 @@ void dqlite__close(struct dqlite_task *d)
 int dqlite_task_create(unsigned server_id,
 		       const char *server_address,
 		       const char *data_dir,
+		       int listen_fd,
 		       dqlite_task **t)
 {
 	int rv;
