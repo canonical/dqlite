@@ -1,3 +1,5 @@
+#include <sys/un.h>
+
 #include "../include/dqlite.h"
 
 #include "lib/assert.h"
@@ -240,11 +242,30 @@ int dqlite_task_create(unsigned server_id,
 	return 0;
 }
 
-int dqlite_task_set_listen_fd(dqlite_task *t, int fd) {
+int dqlite_task_set_bind_address(dqlite_task *t, const char *address)
+{
+	struct sockaddr_un addr;
+	int fd;
 	int rv;
 	if (t->running) {
 		return DQLITE_ERROR;
 	}
+	if (address[0] != '@') {
+		return DQLITE_ERROR;
+	}
+	fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (fd == -1) {
+		return DQLITE_ERROR;
+	}
+
+	memset(&addr, 0, sizeof addr);
+	addr.sun_family = AF_UNIX;
+	strcpy(addr.sun_path + 1, address + 1);
+	rv = bind(fd, (const struct sockaddr*)&addr, sizeof(sa_family_t) + strlen(address));
+	if (rv != 0) {
+		return DQLITE_ERROR;
+	}
+
 	rv = transport__stream(&t->loop, fd, &t->listener);
 	if (rv != 0) {
 		return rv;
