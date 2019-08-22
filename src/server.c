@@ -104,8 +104,7 @@ static void dumpRaftRingLogger(struct dqlite_task *d)
 int dqlite__init(struct dqlite_task *d,
 		 unsigned id,
 		 const char *address,
-		 const char *dir,
-		 int listen_fd)
+		 const char *dir)
 {
 	int rv;
 	rv = config__init(&d->config, id, address);
@@ -177,17 +176,10 @@ int dqlite__init(struct dqlite_task *d,
 	QUEUE__INIT(&d->queue);
 	QUEUE__INIT(&d->conns);
 	d->running = false;
-
-	rv = transport__stream(&d->loop, listen_fd, &d->listener);
-	if (rv != 0) {
-		goto err_after_stopped_init;
-	}
-	d->listener->data = d;
+	d->listener = NULL;
 
 	return 0;
 
-err_after_stopped_init:
-	sem_destroy(&d->stopped);
 err_after_ready_init:
 	sem_destroy(&d->ready);
 err_after_raft_replication_init:
@@ -234,18 +226,29 @@ void dqlite__close(struct dqlite_task *d)
 int dqlite_task_create(unsigned server_id,
 		       const char *server_address,
 		       const char *data_dir,
-		       int listen_fd,
 		       dqlite_task **t)
 {
 	int rv;
 
 	*t = sqlite3_malloc(sizeof **t);
 
-	rv = dqlite__init(*t, server_id, server_address, data_dir, listen_fd);
+	rv = dqlite__init(*t, server_id, server_address, data_dir);
 	if (rv != 0) {
 		return rv;
 	}
 
+	return 0;
+}
+
+int dqlite_task_set_listen_fd(dqlite_task *t, int fd) {
+	int rv;
+	if (t->running) {
+		return DQLITE_ERROR;
+	}
+	rv = transport__stream(&t->loop, fd, &t->listener);
+	if (rv != 0) {
+		return rv;
+	}
 	return 0;
 }
 
@@ -405,10 +408,13 @@ static int taskRun(struct dqlite_task *d)
 
 	/* TODO: implement proper cleanup upon error by spinning the loop a few
 	 * times. */
+	assert(d->listener != NULL);
+
 	rv = uv_listen(d->listener, 128, listenCb);
 	if (rv != 0) {
 		return rv;
 	}
+	d->listener->data = d;
 
 	/* Initialize notification handles. */
 	d->stop.data = d;

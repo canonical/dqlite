@@ -58,8 +58,10 @@ void test_server_start(struct test_server *s)
 	int client;
 	int rv;
 
-	rv = dqlite_task_create(s->id, s->address, s->dir, s->endpoint.fd,
-				&s->dqlite);
+	rv = dqlite_task_create(s->id, s->address, s->dir, &s->dqlite);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_task_set_listen_fd(s->dqlite, s->endpoint.fd);
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_task_set_connect_func(s->dqlite, endpointConnect, s);
