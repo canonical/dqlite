@@ -93,7 +93,7 @@ int dqlite_task_create(unsigned server_id,
 
 void dqlite_task_destroy(dqlite_task *t);
 
-int dqlite_task_set_listen_fd(dqlite_task *t, int fd);
+int dqlite_task_set_bind_address(dqlite_task *t, const char *address);
 
 int dqlite_task_set_connect_func(
     dqlite_task *t,
