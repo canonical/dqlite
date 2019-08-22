@@ -37,8 +37,7 @@ struct dqlite_task
 int dqlite__init(struct dqlite_task *d,
 		 unsigned id,
 		 const char *address,
-		 const char *dir,
-		 int listen_fd);
+		 const char *dir);
 
 void dqlite__close(struct dqlite_task *d);
 
