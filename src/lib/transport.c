@@ -114,15 +114,9 @@ int transport__stream(struct uv_loop_s *loop,
 	return 0;
 }
 
-int transport__init(struct transport *t, struct uv_loop_s *loop, int fd)
+int transport__init(struct transport *t, struct uv_stream_s *stream)
 {
-	int rv;
-
-	rv = transport__stream(loop, fd, &t->stream);
-	if (rv != 0) {
-		return 0;
-	}
-
+	t->stream = stream;
 	t->stream->data = t;
 	t->read.base = NULL;
 	t->read.len = 0;

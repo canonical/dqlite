@@ -48,7 +48,7 @@ int conn__start(struct conn *c,
 		struct uv_loop_s *loop,
 		struct registry *registry,
 		struct raft *raft,
-		int fd,
+		struct uv_stream_s *stream,
 		struct raft_uv_transport *uv_transport,
 		conn_close_cb close_cb);
 

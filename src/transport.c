@@ -104,7 +104,6 @@ static void connect_after_work_cb(uv_work_t *work, int status)
 {
 	struct connect *r = work->data;
 	struct impl *i = r->impl;
-	struct transport transport;
 	struct uv_stream_s *stream = NULL;
 	int rv;
 
@@ -114,15 +113,12 @@ static void connect_after_work_cb(uv_work_t *work, int status)
 		goto out;
 	}
 
-	/* TODO: extract the logic to guess the handle type */
-	rv = transport__init(&transport, i->loop, r->fd);
+	rv = transport__stream(i->loop, r->fd, &stream);
 	if (rv != 0) {
 		r->status = RAFT_NOCONNECTION;
 		close(r->fd);
 		goto out;
 	}
-
-	stream = transport.stream;
 out:
 	r->req->cb(r->req, stream, r->status);
 	sqlite3_free(r);
