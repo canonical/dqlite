@@ -237,7 +237,7 @@ static void query_batch(sqlite3_stmt *stmt, struct handle *req)
 	rc = query__batch(stmt, req->buffer);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		sqlite3_reset(stmt);
-		failure(req, rc, "query error");
+		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		goto done;
 	}
 
@@ -294,7 +294,7 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	(void)response;
 	rv = bind__params(stmt->stmt, cursor);
 	if (rv != 0) {
-		failure(req, rv, "bind parameters");
+		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
 	g->req = req;
@@ -362,7 +362,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 
 	rv = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &stmt, &tail);
 	if (rv != SQLITE_OK) {
-		failure(req, rv, "prepare statement");
+		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto done;
 	}
 
@@ -374,7 +374,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 	if (cursor != NULL) {
 		rv = bind__params(stmt, cursor);
 		if (rv != SQLITE_OK) {
-			failure(req, rv, "bind parameters");
+			failure(req, rv, sqlite3_errmsg(g->leader->conn));
 			goto done_after_prepare;
 		}
 	}
@@ -385,7 +385,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 
 	rv = leader__exec(g->leader, &g->exec, g->stmt, handle_exec_sql_cb);
 	if (rv != SQLITE_OK) {
-		failure(req, rv, "exec");
+		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto done_after_prepare;
 	}
 
@@ -433,12 +433,12 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	rv = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt,
 				&tail);
 	if (rv != SQLITE_OK) {
-		failure(req, rv, "prepare statement");
+		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
 	rv = bind__params(g->stmt, cursor);
 	if (rv != 0) {
-		failure(req, rv, "bind parameters");
+		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
 	g->stmt_finalize = true;
