@@ -54,7 +54,6 @@ void test_server_tear_down(struct test_server *s)
 
 	dqlite_task_destroy(s->dqlite);
 
-
 	test_dir_tear_down(s->dir);
 }
 
@@ -64,10 +63,12 @@ void test_server_start(struct test_server *s)
 	int server;
 	int rv;
 
-	rv = dqlite_task_create(s->id, s->address, s->dir, s->endpoint.fd, &s->dqlite);
+	rv = dqlite_task_create(s->id, s->address, s->dir, s->endpoint.fd,
+				&s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
-	dqlite_task_set_connect_func(s->dqlite, endpointConnect, s);
+	rv = dqlite_task_set_connect_func(s->dqlite, endpointConnect, s);
+	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_task_start(s->dqlite);
 	munit_assert_int(rv, ==, 0);

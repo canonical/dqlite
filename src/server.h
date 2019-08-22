@@ -16,7 +16,7 @@ struct dqlite_task
 	struct config config;                       /* Config values */
 	struct sqlite3_vfs vfs;                     /* In-memory VFS */
 	struct registry registry;                   /* Databases */
-	uv_loop_t loop;                             /* UV loop */
+	struct uv_loop_s loop;                      /* UV loop */
 	struct raft_uv_transport raft_transport;    /* Raft libuv transport */
 	struct raft_io raft_io;                     /* libuv I/O */
 	struct raft_fsm raft_fsm;                   /* dqlite FSM */
@@ -29,15 +29,17 @@ struct dqlite_task
 	queue conns;                                /* Active connections */
 	bool running;                               /* Loop is running */
 	struct raft raft;                           /* Raft instance */
-	uv_async_t stop;                            /* Trigger UV loop stop */
-	uv_async_t incoming;                        /* Trigger process queue */
-	uv_timer_t startup;                         /* Unblock ready sem */
+	struct uv_stream_s *listener;               /* Listening socket */
+	struct uv_async_s stop;                     /* Trigger UV loop stop */
+	struct uv_async_s incoming;                 /* Trigger process queue */
+	struct uv_timer_s startup;                  /* Unblock ready sem */
 };
 
 int dqlite__init(struct dqlite_task *d,
 		 unsigned id,
 		 const char *address,
-		 const char *dir);
+		 const char *dir,
+		 int listen_fd);
 
 void dqlite__close(struct dqlite_task *d);
 
