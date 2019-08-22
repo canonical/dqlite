@@ -72,7 +72,9 @@ static void read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 	read_done(t, nread);
 }
 
-int transport__init(struct transport *t, struct uv_loop_s *loop, int fd)
+int transport__stream(struct uv_loop_s *loop,
+		      int fd,
+		      struct uv_stream_s **stream)
 {
 	struct uv_pipe_s *pipe;
 	struct uv_tcp_s *tcp;
@@ -90,7 +92,7 @@ int transport__init(struct transport *t, struct uv_loop_s *loop, int fd)
 			if (rv != 0) {
 				return DQLITE_BADSOCKET;
 			}
-			t->stream = (struct uv_stream_s *)tcp;
+			*stream = (struct uv_stream_s *)tcp;
 			break;
 		case UV_NAMED_PIPE:
 			pipe = raft_malloc(sizeof *pipe);
@@ -103,11 +105,23 @@ int transport__init(struct transport *t, struct uv_loop_s *loop, int fd)
 			if (rv != 0) {
 				return DQLITE_BADSOCKET;
 			}
-			t->stream = (struct uv_stream_s *)pipe;
+			*stream = (struct uv_stream_s *)pipe;
 			break;
 		default:
 			return DQLITE_BADSOCKET;
 	};
+
+	return 0;
+}
+
+int transport__init(struct transport *t, struct uv_loop_s *loop, int fd)
+{
+	int rv;
+
+	rv = transport__stream(loop, fd, &t->stream);
+	if (rv != 0) {
+		return 0;
+	}
 
 	t->stream->data = t;
 	t->read.base = NULL;
@@ -151,7 +165,8 @@ int transport__read(struct transport *t, uv_buf_t *buf, transport_read_cb cb)
 	return 0;
 }
 
-static void write_cb(uv_write_t *req, int status) {
+static void write_cb(uv_write_t *req, int status)
+{
 	struct transport *t = req->data;
 	transport_write_cb cb = t->write_cb;
 

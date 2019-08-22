@@ -139,7 +139,8 @@ static void dumpRaftRingLogger(struct dqlite_task *d)
 int dqlite__init(struct dqlite_task *d,
 		 unsigned id,
 		 const char *address,
-		 const char *dir)
+		 const char *dir,
+		 int listen_fd)
 {
 	int rv;
 	rv = config__init(&d->config, id, address);
@@ -205,13 +206,29 @@ int dqlite__init(struct dqlite_task *d,
 		rv = DQLITE_INTERNAL;
 		goto err_after_ready_init;
 	}
+	switch (uv_guess_handle(listen_fd)) {
+		case UV_TCP:
+			break;
+		case UV_NAMED_PIPE:
+			break;
+		default:
+			return DQLITE_BADSOCKET;
+	}
+
 	rv = pthread_mutex_init(&d->mutex, NULL);
 	assert(rv == 0); /* Docs say that pthread_mutex_init can't fail */
 	QUEUE__INIT(&d->queue);
 	QUEUE__INIT(&d->conns);
 	d->running = false;
+
+	rv = transport__stream(&d->loop, listen_fd, &d->listener);
+	if (rv != 0) {
+		goto err_after_stopped_init;
+	}
 	return 0;
 
+err_after_stopped_init:
+	sem_destroy(&d->stopped);
 err_after_ready_init:
 	sem_destroy(&d->ready);
 err_after_raft_replication_init:
@@ -237,6 +254,7 @@ err:
 void dqlite__close(struct dqlite_task *d)
 {
 	int rv;
+	sqlite3_free(d->listener);
 	rv = pthread_mutex_destroy(&d->mutex); /* This is a no-op on Linux . */
 	assert(rv == 0);
 	rv = sem_destroy(&d->stopped);
@@ -264,7 +282,7 @@ int dqlite_task_create(unsigned server_id,
 
 	*t = sqlite3_malloc(sizeof **t);
 
-	rv = dqlite__init(*t, server_id, server_address, data_dir);
+	rv = dqlite__init(*t, server_id, server_address, data_dir, listen_fd);
 	if (rv != 0) {
 		return rv;
 	}
