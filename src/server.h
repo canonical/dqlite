@@ -31,7 +31,6 @@ struct dqlite_task
 	struct raft raft;                           /* Raft instance */
 	struct uv_stream_s *listener;               /* Listening socket */
 	struct uv_async_s stop;                     /* Trigger UV loop stop */
-	struct uv_async_s incoming;                 /* Trigger process queue */
 	struct uv_timer_s startup;                  /* Unblock ready sem */
 };
 

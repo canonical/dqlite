@@ -49,13 +49,18 @@ static void write_cb(struct transport *transport, int status)
 static void *setup(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
+	struct uv_stream_s *stream;
 	int rv;
 	int server;
 	(void)user_data;
 	test_endpoint_setup(&f->endpoint, params);
+	rv = listen(f->endpoint.fd, 16);
+	munit_assert_int(rv, ==, 0);
 	test_endpoint_pair(&f->endpoint, &server, &f->client);
 	test_uv_setup(params, &f->loop);
-	rv = transport__init(&f->transport, &f->loop, server);
+	rv = transport__stream(&f->loop, server, &stream);
+	munit_assert_int(rv, ==, 0);
+	rv = transport__init(&f->transport, stream);
 	munit_assert_int(rv, ==, 0);
 	f->transport.data = f;
 	f->read.invoked = false;

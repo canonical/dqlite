@@ -10,43 +10,6 @@
 #include "transport.h"
 #include "vfs.h"
 
-/* Information about incoming connection */
-struct incoming
-{
-	int fd;        /* Connection file descriptor */
-	sem_t pending; /* Block until the connection gets processed */
-	int status;    /* Result status code */
-	queue queue;   /* Incoming queue */
-};
-
-void incoming__init(struct incoming *i, int fd)
-{
-	int rv;
-	i->fd = fd;
-	rv = sem_init(&i->pending, 0, 0);
-	assert(rv == 0);
-}
-
-void incoming__done(struct incoming *i, int status)
-{
-	int rv;
-	i->status = status;
-	rv = sem_post(&i->pending);
-	assert(rv == 0);
-}
-
-void incoming__wait(struct incoming *i)
-{
-	sem_wait(&i->pending);
-}
-
-void incoming__close(struct incoming *i)
-{
-	int rv;
-	rv = sem_destroy(&i->pending);
-	assert(rv == 0);
-}
-
 /* Covert raft state code to dqlite one. */
 static int convertRaftState(int state)
 {
@@ -95,6 +58,8 @@ void raftRingLoggerWalkCb(void *data,
 	struct tm tm;
 	time_t secs = time / 1000;
 	unsigned msecs = time % 1000;
+
+	(void)data;
 
 	memset(buf, 0, sizeof buf);
 
@@ -206,14 +171,6 @@ int dqlite__init(struct dqlite_task *d,
 		rv = DQLITE_INTERNAL;
 		goto err_after_ready_init;
 	}
-	switch (uv_guess_handle(listen_fd)) {
-		case UV_TCP:
-			break;
-		case UV_NAMED_PIPE:
-			break;
-		default:
-			return DQLITE_BADSOCKET;
-	}
 
 	rv = pthread_mutex_init(&d->mutex, NULL);
 	assert(rv == 0); /* Docs say that pthread_mutex_init can't fail */
@@ -225,6 +182,8 @@ int dqlite__init(struct dqlite_task *d,
 	if (rv != 0) {
 		goto err_after_stopped_init;
 	}
+	d->listener->data = d;
+
 	return 0;
 
 err_after_stopped_init:
@@ -254,7 +213,7 @@ err:
 void dqlite__close(struct dqlite_task *d)
 {
 	int rv;
-	sqlite3_free(d->listener);
+	raft_free(d->listener);
 	rv = pthread_mutex_destroy(&d->mutex); /* This is a no-op on Linux . */
 	assert(rv == 0);
 	rv = sem_destroy(&d->stopped);
@@ -342,44 +301,14 @@ static void raftCloseCb(struct raft *raft)
 {
 	struct dqlite_task *s = raft->data;
 	uv_close((struct uv_handle_s *)&s->stop, NULL);
-	uv_close((struct uv_handle_s *)&s->incoming, NULL);
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
+	uv_close((struct uv_handle_s *)s->listener, NULL);
 }
 
 static void destroy_conn(struct conn *conn)
 {
 	QUEUE__REMOVE(&conn->queue);
 	sqlite3_free(conn);
-}
-
-static void process_incoming(struct dqlite_task *d)
-{
-	while (!QUEUE__IS_EMPTY(&d->queue)) {
-		queue *head;
-		struct incoming *incoming;
-		struct conn *conn;
-		int rv;
-		int status;
-		head = QUEUE__HEAD(&d->queue);
-		QUEUE__REMOVE(head);
-		incoming = QUEUE__DATA(head, struct incoming, queue);
-		conn = sqlite3_malloc(sizeof *conn);
-		if (conn == NULL) {
-			status = DQLITE_NOMEM;
-			goto done;
-		}
-		rv = conn__start(conn, &d->config, &d->loop, &d->registry,
-				 &d->raft, incoming->fd, &d->raft_transport,
-				 destroy_conn);
-		if (rv != 0) {
-			status = rv;
-			goto done;
-		}
-		QUEUE__PUSH(&d->conns, &conn->queue);
-		status = 0;
-	done:
-		incoming__done(incoming, status);
-	}
 }
 
 static void stop_cb(uv_async_t *stop)
@@ -392,32 +321,12 @@ static void stop_cb(uv_async_t *stop)
 	 * running flag is off. */
 	assert(!d->running);
 
-	/* Give a final pass to the incoming queue, to unblock any call to
-	 * dqlite_handle that might be blocked. There's no need to
-	 * acquire the mutex since now the running flag is off and no new
-	 * incoming connection can be enqueued. */
-	process_incoming(d);
-
 	QUEUE__FOREACH(head, &d->conns)
 	{
 		conn = QUEUE__DATA(head, struct conn, queue);
 		conn__stop(conn);
 	}
 	raft_close(&d->raft, raftCloseCb);
-}
-
-/* Callback invoked when the incoming async handle gets fired.
- *
- * This callback will scan the incoming queue and create new connections.
- */
-static void incoming_cb(uv_async_t *incoming)
-{
-	struct dqlite_task *d = incoming->data;
-	/* Acquire the queue lock, so no new incoming connection can be
-	 * pushed. */
-	pthread_mutex_lock(&d->mutex);
-	process_incoming(d);
-	pthread_mutex_unlock(&d->mutex);
 }
 
 /* Callback invoked as soon as the loop as started.
@@ -433,19 +342,77 @@ static void startup_cb(uv_timer_t *startup)
 	assert(rv == 0); /* No reason for which posting should fail */
 }
 
+static void listenCb(uv_stream_t *listener, int status)
+{
+	struct dqlite_task *t = listener->data;
+	struct uv_stream_s *stream;
+	struct conn *conn;
+	int rv;
+
+	if (status != 0) {
+		/* TODO: log the error. */
+		return;
+	}
+
+	switch (listener->type) {
+		case UV_TCP:
+			stream = raft_malloc(sizeof(struct uv_tcp_s));
+			if (stream == NULL) {
+				return;
+			}
+			rv = uv_tcp_init(&t->loop, (struct uv_tcp_s *)stream);
+			assert(rv == 0);
+			break;
+		case UV_NAMED_PIPE:
+			stream = raft_malloc(sizeof(struct uv_pipe_s));
+			if (stream == NULL) {
+				return;
+			}
+			rv = uv_pipe_init(&t->loop, (struct uv_pipe_s *)stream,
+					  0);
+			assert(rv == 0);
+			break;
+		default:
+			assert(0);
+	}
+
+	rv = uv_accept(listener, stream);
+	if (rv != 0) {
+		goto err;
+	}
+
+	conn = sqlite3_malloc(sizeof *conn);
+	if (conn == NULL) {
+		goto err;
+	}
+	rv = conn__start(conn, &t->config, &t->loop, &t->registry, &t->raft,
+			 stream, &t->raft_transport, destroy_conn);
+	if (rv != 0) {
+		goto err;
+	}
+
+	QUEUE__PUSH(&t->conns, &conn->queue);
+
+	return;
+
+err:
+	uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
+}
+
 static int taskRun(struct dqlite_task *d)
 {
 	int rv;
 
 	/* TODO: implement proper cleanup upon error by spinning the loop a few
 	 * times. */
+	rv = uv_listen(d->listener, 128, listenCb);
+	if (rv != 0) {
+		return rv;
+	}
 
 	/* Initialize notification handles. */
 	d->stop.data = d;
 	rv = uv_async_init(&d->loop, &d->stop, stop_cb);
-	assert(rv == 0);
-	d->incoming.data = d;
-	rv = uv_async_init(&d->loop, &d->incoming, incoming_cb);
 	assert(rv == 0);
 
 	/* Schedule startup_cb to be fired as soon as the loop starts. It will
@@ -528,43 +495,6 @@ int dqlite_task_start(dqlite_task *t)
 
 err:
 	return rv;
-}
-
-int dqlite_handle(dqlite_task *d, int fd)
-{
-	struct incoming *incoming;
-	int rv;
-
-	pthread_mutex_lock(&d->mutex);
-
-	if (!d->running) {
-		pthread_mutex_unlock(&d->mutex);
-		return DQLITE_STOPPED;
-	}
-
-	incoming = sqlite3_malloc(sizeof *incoming);
-	if (incoming == NULL) {
-		pthread_mutex_unlock(&d->mutex);
-		return DQLITE_NOMEM;
-	}
-
-	incoming__init(incoming, fd);
-	QUEUE__PUSH(&d->queue, &incoming->queue);
-
-	rv = uv_async_send(&d->incoming);
-	assert(rv == 0);
-
-	pthread_mutex_unlock(&d->mutex);
-
-	/* Wait for the pending mutex to be released by the main dqlite loop */
-	incoming__wait(incoming);
-
-	rv = incoming->status;
-	incoming__close(incoming);
-	sqlite3_free(incoming);
-	return rv;
-
-	return 0;
 }
 
 int dqlite_task_stop(dqlite_task *d)

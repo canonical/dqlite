@@ -34,7 +34,7 @@ struct transport
  * Initialize a transport of the appropriate type (TCP or PIPE) attached to the
  * given file descriptor.
  */
-int transport__init(struct transport *t, struct uv_loop_s *loop, int fd);
+int transport__init(struct transport *t, struct uv_stream_s *stream);
 
 /**
  * Start closing by the transport.

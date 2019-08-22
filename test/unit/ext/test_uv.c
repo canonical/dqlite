@@ -1,12 +1,14 @@
+#include <raft.h>
 #include <uv.h>
 
 #include <unistd.h>
 
-#include "../../lib/runner.h"
+#include "../../../src/lib/transport.h"
 #include "../../lib/endpoint.h"
+#include "../../lib/runner.h"
 #include "../../lib/uv.h"
 
-TEST_MODULE(uv);
+TEST_MODULE(ext_uv);
 
 /******************************************************************************
  *
@@ -16,7 +18,8 @@ TEST_MODULE(uv);
 
 struct fixture
 {
-	uv_loop_t loop;
+	struct uv_loop_s loop;
+	struct uv_stream_s *listener;
 	struct test_endpoint endpoint;
 	int client;
 	union {
@@ -60,35 +63,49 @@ static MunitParameterEnum params[] = {
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data)
+static void listenCb(uv_stream_t *listener, int status)
 {
-	struct fixture *f = munit_malloc(sizeof *f);
-	int server;
+	struct fixture *f = listener->data;
 	int rv;
-	(void)user_data;
+	munit_assert_int(status, ==, 0);
 
-	test_uv_setup(params, &f->loop);
-	test_endpoint_setup(&f->endpoint, params);
-	test_endpoint_pair(&f->endpoint, &server, &f->client);
-
-	switch (uv_guess_handle(server)) {
+	switch (listener->type) {
 		case UV_TCP:
 			rv = uv_tcp_init(&f->loop, &f->tcp);
-			munit_assert_int(rv, ==, 0);
-			rv = uv_tcp_open(&f->tcp, server);
 			munit_assert_int(rv, ==, 0);
 			break;
 		case UV_NAMED_PIPE:
 			rv = uv_pipe_init(&f->loop, &f->pipe, 0);
 			munit_assert_int(rv, ==, 0);
-			rv = uv_pipe_open(&f->pipe, server);
-			munit_assert_int(rv, ==, 0);
 			break;
 		default:
-			munit_error("unexpected handle type");
+			munit_assert(0);
 	}
 
-	f->stream.data = NULL;
+	rv = uv_accept(listener, &f->stream);
+	munit_assert_int(rv, ==, 0);
+}
+
+static void *setup(const MunitParameter params[], void *user_data)
+{
+	struct fixture *f = munit_malloc(sizeof *f);
+	int rv;
+	(void)user_data;
+
+	test_uv_setup(params, &f->loop);
+	test_endpoint_setup(&f->endpoint, params);
+
+	rv = transport__stream(&f->loop, f->endpoint.fd, &f->listener);
+	munit_assert_int(rv, ==, 0);
+
+	f->listener->data = f;
+
+	rv = uv_listen(f->listener, 128, listenCb);
+	munit_assert_int(rv, ==, 0);
+
+	f->client = test_endpoint_connect(&f->endpoint);
+
+	test_uv_run(&f->loop, 1);
 
 	return f;
 }
@@ -99,6 +116,7 @@ static void tear_down(void *data)
 	int rv;
 	rv = close(f->client);
 	munit_assert_int(rv, ==, 0);
+	uv_close((struct uv_handle_s *)f->listener, (uv_close_cb)raft_free);
 	test_endpoint_tear_down(&f->endpoint);
 	uv_close((uv_handle_t *)(&f->stream), NULL);
 	test_uv_stop(&f->loop);

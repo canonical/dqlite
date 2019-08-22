@@ -38,21 +38,24 @@ TEST_MODULE(conn);
 	FIXTURE_CLIENT;      \
 	struct conn conn
 
-#define SETUP                                                            \
-	int rv;                                                          \
-	SETUP_HEAP;                                                      \
-	SETUP_SQLITE;                                                    \
-	SETUP_LOGGER;                                                    \
-	SETUP_VFS;                                                       \
-	SETUP_CONFIG;                                                    \
-	SETUP_REGISTRY;                                                  \
-	SETUP_RAFT;                                                      \
-	SETUP_REPLICATION;                                               \
-	SETUP_CLIENT;                                                    \
-	RAFT_BOOTSTRAP;                                                  \
-	RAFT_START;                                                      \
-	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry,   \
-			 &f->raft, f->server, &f->raft_transport, NULL); \
+#define SETUP                                                          \
+	struct uv_stream_s *stream;                                    \
+	int rv;                                                        \
+	SETUP_HEAP;                                                    \
+	SETUP_SQLITE;                                                  \
+	SETUP_LOGGER;                                                  \
+	SETUP_VFS;                                                     \
+	SETUP_CONFIG;                                                  \
+	SETUP_REGISTRY;                                                \
+	SETUP_RAFT;                                                    \
+	SETUP_REPLICATION;                                             \
+	SETUP_CLIENT;                                                  \
+	RAFT_BOOTSTRAP;                                                \
+	RAFT_START;                                                    \
+	rv = transport__stream(&f->loop, f->server, &stream);          \
+	munit_assert_int(rv, ==, 0);                                   \
+	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry, \
+			 &f->raft, stream, &f->raft_transport, NULL);  \
 	munit_assert_int(rv, ==, 0)
 
 #define TEAR_DOWN              \

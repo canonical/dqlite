@@ -10,13 +10,9 @@ static int endpointConnect(void *data,
 {
 	struct test_server *s = data;
 	struct test_server *other = s->others[id - 1];
-	int fd_server;
-	int rv;
 	(void)address;
 	munit_assert_ptr_not_null(other);
-	test_endpoint_pair(&other->endpoint, &fd_server, fd);
-	rv = dqlite_handle(other->dqlite, fd_server);
-	munit_assert_int(rv, ==, 0);
+	*fd = test_endpoint_connect(&other->endpoint);
 	return 0;
 }
 
@@ -60,7 +56,6 @@ void test_server_tear_down(struct test_server *s)
 void test_server_start(struct test_server *s)
 {
 	int client;
-	int server;
 	int rv;
 
 	rv = dqlite_task_create(s->id, s->address, s->dir, s->endpoint.fd,
@@ -77,10 +72,8 @@ void test_server_start(struct test_server *s)
 	munit_assert_int(rv, ==, 0);
 
 	/* Connect a client. */
-	test_endpoint_pair(&s->endpoint, &server, &client);
+	client = test_endpoint_connect(&s->endpoint);
 	rv = clientInit(&s->client, client);
-	munit_assert_int(rv, ==, 0);
-	rv = dqlite_handle(s->dqlite, server);
 	munit_assert_int(rv, ==, 0);
 }
 

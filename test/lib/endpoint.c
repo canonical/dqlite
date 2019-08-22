@@ -66,12 +66,6 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 		munit_errorf("bind(): %s", strerror(errno));
 	}
 
-	/* Start listening. */
-	rv = listen(e->fd, 16);
-	if (rv != 0) {
-		munit_errorf("listen(): %s", strerror(errno));
-	}
-
 	/* Get the actual addressed assigned by the kernel and save it back in
 	 * the relevant struct server field (pointed to by address). */
 	rv = getsockname(e->fd, address, &size);
@@ -93,9 +87,7 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 
 void test_endpoint_tear_down(struct test_endpoint *e)
 {
-	int rv;
-	rv = close(e->fd);
-	munit_assert_int(rv, ==, 0);
+	//close(e->fd);
 }
 
 int test_endpoint_connect(struct test_endpoint *e)
