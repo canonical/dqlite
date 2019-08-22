@@ -83,26 +83,23 @@ struct dqlite_server
 	const char *address;
 };
 
-typedef struct dqlite_task_attr dqlite_task_attr;
-
 /* Handle connections from dqlite clients */
 typedef struct dqlite_task dqlite_task;
 
-dqlite_task_attr *dqlite_task_attr_create();
+int dqlite_task_create(unsigned server_id,
+		       const char *server_address,
+		       const char *data_dir,
+		       dqlite_task **t);
 
-void dqlite_task_attr_destroy(dqlite_task_attr *a);
+void dqlite_task_destroy(dqlite_task *t);
 
-void dqlite_task_attr_set_connect_func(
-    dqlite_task_attr *a,
+int dqlite_task_set_connect_func(
+    dqlite_task *t,
     int (*f)(void *arg, unsigned id, const char *address, int *fd),
     void *arg);
 
 /* Allocate and initialize a dqlite server instance. */
-int dqlite_task_start(unsigned id,
-		      const char *address,
-		      const char *dir,
-		      dqlite_task_attr *attr,
-		      dqlite_task **t);
+int dqlite_task_start(dqlite_task *t);
 
 /* Function to emit log messages. */
 typedef void (*dqlite_emit)(void *data,

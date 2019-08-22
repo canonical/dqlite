@@ -254,29 +254,33 @@ void dqlite__close(struct dqlite_task *d)
 	config__close(&d->config);
 }
 
-dqlite_task_attr *dqlite_task_attr_create()
+int dqlite_task_create(unsigned server_id,
+		       const char *server_address,
+		       const char *data_dir,
+		       dqlite_task **t)
 {
-	dqlite_task_attr *a;
-	a = sqlite3_malloc(sizeof *a);
-	if (a == NULL) {
-		return NULL;
+	int rv;
+
+	*t = sqlite3_malloc(sizeof **t);
+
+	rv = dqlite__init(*t, server_id, server_address, data_dir);
+	if (rv != 0) {
+		return rv;
 	}
-	memset(a, 0, sizeof *a);
-	return a;
+
+	return 0;
 }
 
-void dqlite_task_attr_destroy(dqlite_task_attr *a)
-{
-	sqlite3_free(a);
-}
-
-void dqlite_task_attr_set_connect_func(
-    dqlite_task_attr *a,
+int dqlite_task_set_connect_func(
+    dqlite_task *t,
     int (*f)(void *arg, unsigned id, const char *address, int *fd),
     void *arg)
 {
-	a->connect.f = f;
-	a->connect.arg = arg;
+	if (t->running) {
+		return DQLITE_ERROR;
+	}
+	raftProxySetConnectFunc(&t->raft_transport, f, arg);
+	return 0;
 }
 
 static int maybeBootstrap(dqlite_task *d,
@@ -462,7 +466,7 @@ static void *taskStart(void *arg)
 	return NULL;
 }
 
-static void taskDestroy(dqlite_task *d)
+void dqlite_task_destroy(dqlite_task *d)
 {
 	dqlite__close(d);
 	sqlite3_free(d);
@@ -482,40 +486,21 @@ static bool taskReady(struct dqlite_task *d)
 	return d->running;
 }
 
-int dqlite_task_start(unsigned id,
-		      const char *address,
-		      const char *dir,
-		      dqlite_task_attr *attr,
-		      dqlite_task **d)
+int dqlite_task_start(dqlite_task *t)
 {
 	int rv;
 
-	*d = sqlite3_malloc(sizeof **d);
-
-	rv = dqlite__init(*d, id, address, dir);
-	if (rv != 0) {
-		return rv;
-	}
-
-	if (attr != NULL) {
-		if (attr->connect.f != NULL) {
-			raftProxySetConnectFunc(&(*d)->raft_transport,
-						attr->connect.f,
-						attr->connect.arg);
-		}
-	}
-
-	rv = maybeBootstrap(*d, id, address);
+	rv = maybeBootstrap(t, t->config.id, t->config.address);
 	if (rv != 0) {
 		goto err;
 	}
 
-	rv = pthread_create(&(*d)->thread, 0, &taskStart, *d);
+	rv = pthread_create(&t->thread, 0, &taskStart, t);
 	if (rv != 0) {
 		goto err;
 	}
 
-	if (!taskReady(*d)) {
+	if (!taskReady(t)) {
 		rv = DQLITE_ERROR;
 		goto err;
 	}
@@ -523,7 +508,6 @@ int dqlite_task_start(unsigned id,
 	return 0;
 
 err:
-	taskDestroy(*d);
 	return rv;
 }
 
@@ -587,11 +571,7 @@ int dqlite_task_stop(dqlite_task *d)
 	rv = pthread_join(d->thread, &result);
 	assert(rv == 0);
 
-	rv = (uintptr_t)result;
-
-	taskDestroy(d);
-
-	return rv;
+	return (uintptr_t)result;
 }
 
 /* Set a config option */

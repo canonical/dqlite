@@ -7,15 +7,6 @@
 #include "logger.h"
 #include "registry.h"
 
-struct dqlite_task_attr
-{
-	struct
-	{
-		int (*f)(void *arg, unsigned id, const char *address, int *fd);
-		void *arg;
-	} connect;
-};
-
 /**
  * A single dqlite server instance.
  */
