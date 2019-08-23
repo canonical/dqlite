@@ -127,10 +127,6 @@ int dqlite_cluster(dqlite_task *t,
 		   struct dqlite_server *servers[],
 		   unsigned *n);
 
-/* Fill the given struct with info about the current cluster leader. Return
- * false if no leader is currently known. */
-bool dqlite_leader(dqlite_task *t, struct dqlite_server *server);
-
 /* Dump the content of a database file. */
 int dqlite_dump(dqlite_task *t, const char *filename, void **buf, size_t *len);
 

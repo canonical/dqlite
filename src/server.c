@@ -601,13 +601,6 @@ int dqlite_cluster(dqlite_task *d, struct dqlite_server *servers[], unsigned *n)
 	return 0;
 }
 
-bool dqlite_leader(dqlite_task *d, struct dqlite_server *server)
-{
-	/* TODO: this is not thread-safe, we should use an async handle */
-	raft_leader(&d->raft, &server->id, &server->address);
-	return server->id != 0;
-}
-
 int dqlite_dump(dqlite_task *d, const char *filename, void **buf, size_t *len)
 {
 	return vfsFileRead(d->config.name, filename, buf, len);
