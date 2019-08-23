@@ -40,6 +40,7 @@ enum { DQLITE_BADSOCKET = 1,
 #define DQLITE_REQUEST_JOIN 12
 #define DQLITE_REQUEST_PROMOTE 13
 #define DQLITE_REQUEST_REMOVE 14
+#define DQLITE_REQUEST_DUMP 15
 
 /* Response types */
 #define DQLITE_RESPONSE_FAILURE 0
@@ -51,6 +52,7 @@ enum { DQLITE_BADSOCKET = 1,
 #define DQLITE_RESPONSE_RESULT 6
 #define DQLITE_RESPONSE_ROWS 7
 #define DQLITE_RESPONSE_EMPTY 8
+#define DQLITE_RESPONSE_FILES 9
 
 /* Special datatypes */
 #define DQLITE_UNIXTIME 9
@@ -84,7 +86,7 @@ struct dqlite_server
 typedef struct dqlite_task dqlite_task;
 
 int dqlite_task_create(unsigned server_id,
-		       const char *server_address,
+		       const char *advertise_address,
 		       const char *data_dir,
 		       dqlite_task **t);
 
@@ -123,9 +125,6 @@ int dqlite_config(dqlite_task *t, int op, ...);
 int dqlite_cluster(dqlite_task *t,
 		   struct dqlite_server *servers[],
 		   unsigned *n);
-
-/* Dump the content of a database file. */
-int dqlite_dump(dqlite_task *t, const char *filename, void **buf, size_t *len);
 
 /* Stop a dqlite server.
 **

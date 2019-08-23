@@ -3,6 +3,7 @@
 #include "query.h"
 #include "request.h"
 #include "response.h"
+#include "vfs.h"
 
 void gateway__init(struct gateway *g,
 		   struct config *config,
@@ -44,10 +45,10 @@ void gateway__close(struct gateway *g)
 		}                                                \
 	}
 
-#define CHECK_LEADER(REQ)                                    \
-	if (raft_state(req->gateway->raft) != RAFT_LEADER) { \
-		failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");     \
-		return 0;                                    \
+#define CHECK_LEADER(REQ)                                            \
+	if (raft_state(req->gateway->raft) != RAFT_LEADER) {         \
+		failure(req, SQLITE_IOERR_NOT_LEADER, "not leader"); \
+		return 0;                                            \
 	}
 
 /* Encode the given success response and invoke the request callback */
@@ -581,6 +582,86 @@ static int handle_remove(struct handle *req, struct cursor *cursor)
 		return 0;
 	}
 	g->req = req;
+
+	return 0;
+}
+
+static int dumpFile(struct gateway *g,
+		    const char *filename,
+		    struct buffer *buffer)
+{
+	void *cur;
+	void *buf;
+	uint64_t len;
+	int rv;
+
+	rv = vfsFileRead(g->config->name, filename, &buf, &len);
+	if (rv != 0) {
+		return rv;
+	}
+
+	cur = buffer__advance(buffer, text__sizeof(&filename));
+	if (cur == NULL) {
+		goto oom;
+	}
+	text__encode(&filename, &cur);
+	cur = buffer__advance(buffer, uint64__sizeof(&len));
+	if (cur == NULL) {
+		goto oom;
+	}
+	uint64__encode(&len, &cur);
+
+	if (len == 0) {
+		return 0;
+	}
+
+	assert(len % 8 == 0);
+	assert(buf != NULL);
+
+	cur = buffer__advance(buffer, len);
+	if (cur == NULL) {
+		goto oom;
+	}
+	memcpy(cur, buf, len);
+
+	sqlite3_free(buf);
+
+	return 0;
+
+oom:
+	sqlite3_free(buf);
+	return DQLITE_NOMEM;
+}
+
+static int handle_dump(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	void *cur;
+	int rv;
+	char filename[1024];
+	START(dump, files);
+
+	response.n = 2;
+	cur = buffer__advance(req->buffer, response_files__sizeof(&response));
+	assert(cur != NULL);
+	response_files__encode(&response, &cur);
+
+	/* Main database file. */
+	rv = dumpFile(g, request.filename, req->buffer);
+	if (rv != 0) {
+		failure(req, rv, "failed to dump database");
+		return 0;
+	}
+
+	strcpy(filename, request.filename);
+	strcat(filename, "-wal");
+	rv = dumpFile(g, filename, req->buffer);
+	if (rv != 0) {
+		failure(req, rv, "failed to dump wal file");
+		return 0;
+	}
+
+	req->cb(req, 0, DQLITE_RESPONSE_FILES);
 
 	return 0;
 }
