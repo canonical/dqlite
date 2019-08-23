@@ -65,9 +65,6 @@ enum { DQLITE_UNAVAILABLE, DQLITE_FOLLOWER, DQLITE_CANDIDATE, DQLITE_LEADER };
 
 /* Config opcodes */
 #define DQLITE_CONFIG_LOGGER 0
-#define DQLITE_CONFIG_HEARTBEAT_TIMEOUT 1
-#define DQLITE_CONFIG_PAGE_SIZE 2
-#define DQLITE_CONFIG_CHECKPOINT_THRESHOLD 3
 #define DQLITE_CONFIG_WATCHER 5
 
 /* Special value indicating that a batch of rows is over, but there are more. */
