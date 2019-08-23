@@ -561,16 +561,6 @@ int dqlite_config(struct dqlite_task *d, int op, ...)
 			d->config.logger.emit = va_arg(args, dqlite_emit);
 			d->config.logger.data = va_arg(args, void *);
 			break;
-		case DQLITE_CONFIG_HEARTBEAT_TIMEOUT:
-			d->config.heartbeat_timeout = *va_arg(args, unsigned *);
-			break;
-		case DQLITE_CONFIG_PAGE_SIZE:
-			d->config.page_size = *va_arg(args, unsigned *);
-			break;
-		case DQLITE_CONFIG_CHECKPOINT_THRESHOLD:
-			d->config.checkpoint_threshold =
-			    *va_arg(args, unsigned *);
-			break;
 		case DQLITE_CONFIG_WATCHER:
 			d->config.watcher.f = va_arg(args, dqlite_watch);
 			d->config.watcher.data = va_arg(args, void *);
