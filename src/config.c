@@ -44,8 +44,6 @@ int config__init(struct config *c, unsigned id, const char *address)
 	assert(rv < (int)(sizeof c->name));
 	c->logger.data = NULL;
 	c->logger.emit = loggerDefaultEmit;
-	c->watcher.f = NULL;
-	c->watcher.data = NULL;
 	serial++;
 	return 0;
 }

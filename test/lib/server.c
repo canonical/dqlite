@@ -24,13 +24,6 @@ static int endpointConnect(void *data,
 	return 0;
 }
 
-static void stateWatch(void *data, int old_state, int new_state)
-{
-	struct test_server *s = data;
-	(void)old_state;
-	s->state = new_state;
-}
-
 void test_server_setup(struct test_server *s,
 		       const unsigned id,
 		       const MunitParameter params[])
@@ -42,8 +35,6 @@ void test_server_setup(struct test_server *s,
 	test_endpoint_setup(&s->endpoint, params);
 
 	memset(s->others, 0, sizeof s->others);
-
-	s->state = -1;
 }
 
 void test_server_tear_down(struct test_server *s)
@@ -78,9 +69,6 @@ void test_server_start(struct test_server *s)
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_task_start(s->dqlite);
-	munit_assert_int(rv, ==, 0);
-
-	rv = dqlite_config(s->dqlite, DQLITE_CONFIG_WATCHER, stateWatch, s);
 	munit_assert_int(rv, ==, 0);
 
 	/* Connect a client. */

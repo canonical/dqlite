@@ -22,7 +22,6 @@ struct test_server
 	dqlite_task *dqlite;           /* Dqlite instance. */
 	struct client client;          /* Connected client. */
 	struct test_server *others[5]; /* Other servers, by ID-1. */
-	int state;                     /* Current server state */
 };
 
 /* Initialize the test server. */
