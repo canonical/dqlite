@@ -568,21 +568,3 @@ int dqlite_config(struct dqlite_task *d, int op, ...)
 	va_end(args);
 	return rv;
 }
-
-int dqlite_cluster(dqlite_task *d, struct dqlite_server *servers[], unsigned *n)
-{
-	unsigned i;
-	/* TODO: this is not thread-safe, we should use an async handle */
-	*n = d->raft.configuration.n;
-	*servers = sqlite3_malloc(*n * sizeof **servers);
-	if (*servers == NULL) {
-		return DQLITE_NOMEM;
-	}
-	for (i = 0; i < *n; i++) {
-		struct dqlite_server *server = &(*servers)[i];
-		server->id = d->raft.configuration.servers[i].id;
-		/* TODO: make a copy of the address? */
-		server->address = d->raft.configuration.servers[i].address;
-	}
-	return 0;
-}
