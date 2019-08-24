@@ -38,6 +38,7 @@
 #define REQUEST_PROMOTE(X, ...) X(uint64, id, ##__VA_ARGS__)
 #define REQUEST_REMOVE(X, ...) X(uint64, id, ##__VA_ARGS__)
 #define REQUEST_DUMP(X, ...) X(text, filename, ##__VA_ARGS__)
+#define REQUEST_CLUSTER(X, ...) X(uint64, __unused__, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
@@ -56,7 +57,8 @@
 	X(join, JOIN, __VA_ARGS__)           \
 	X(promote, PROMOTE, __VA_ARGS__)     \
 	X(remove, REMOVE, __VA_ARGS__) \
-	X(dump, DUMP, __VA_ARGS__)
+	X(dump, DUMP, __VA_ARGS__) \
+	X(cluster, CLUSTER, __VA_ARGS__)
 
 REQUEST__TYPES(REQUEST__DEFINE);
 
