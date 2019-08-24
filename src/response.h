@@ -25,6 +25,7 @@
 #define RESPONSE_ROWS(X, ...) X(uint64, eof, ##__VA_ARGS__)
 #define RESPONSE_EMPTY(X, ...) X(uint64, __unused__, ##__VA_ARGS__)
 #define RESPONSE_FILES(X, ...) X(uint64, n, ##__VA_ARGS__)
+#define RESPONSE_SERVERS(X, ...) X(uint64, n, ##__VA_ARGS__)
 
 #define RESPONSE__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
@@ -38,7 +39,8 @@
 	X(result, RESULT, __VA_ARGS__)   \
 	X(rows, ROWS, __VA_ARGS__) \
 	X(empty, EMPTY, __VA_ARGS__) \
-	X(files, FILES, __VA_ARGS__)
+	X(files, FILES, __VA_ARGS__) \
+	X(servers, SERVERS, __VA_ARGS__)
 
 RESPONSE__TYPES(RESPONSE__DEFINE);
 

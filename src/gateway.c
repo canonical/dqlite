@@ -666,6 +666,56 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+static int encodeServer(struct gateway *g, unsigned i, struct buffer *buffer)
+{
+	void *cur;
+	uint64_t id;
+	text_t address;
+
+	id = g->raft->configuration.servers[i].id;
+	address = g->raft->configuration.servers[i].address;
+
+	cur = buffer__advance(buffer, uint64__sizeof(&id));
+	if (cur == NULL) {
+		return DQLITE_NOMEM;
+	}
+	uint64__encode(&id, &cur);
+
+	cur = buffer__advance(buffer, text__sizeof(&address));
+	if (cur == NULL) {
+		return DQLITE_NOMEM;
+	}
+	text__encode(&address, &cur);
+
+	return 0;
+}
+
+static int handle_cluster(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	unsigned i;
+	void *cur;
+	int rv;
+	START(cluster, servers);
+
+	response.n = g->raft->configuration.n;
+	cur = buffer__advance(req->buffer, response_servers__sizeof(&response));
+	assert(cur != NULL);
+	response_servers__encode(&response, &cur);
+
+	for (i = 0; i < response.n; i++) {
+		rv = encodeServer(g, i, req->buffer);
+		if (rv != 0) {
+			failure(req, rv, "failed to encode server");
+			return 0;
+		}
+	}
+
+	req->cb(req, 0, DQLITE_RESPONSE_SERVERS);
+
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
