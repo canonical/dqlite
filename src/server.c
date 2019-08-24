@@ -12,44 +12,6 @@
 #include "transport.h"
 #include "vfs.h"
 
-/* Covert raft state code to dqlite one. */
-static int convertRaftState(int state)
-{
-	int converted;
-
-	switch (state) {
-		case RAFT_UNAVAILABLE:
-			converted = DQLITE_UNAVAILABLE;
-			break;
-		case RAFT_FOLLOWER:
-			converted = DQLITE_FOLLOWER;
-			break;
-		case RAFT_CANDIDATE:
-			converted = DQLITE_CANDIDATE;
-			break;
-		case RAFT_LEADER:
-			converted = DQLITE_LEADER;
-			break;
-		default:
-			assert(0); /* Can't happen */
-	}
-
-	return converted;
-}
-
-/* Invoke the configured state watch function, if any. */
-static void raftWatch(struct raft *r, int old_state)
-{
-	struct dqlite_task *d = r->data;
-	int new_state = raft_state(r);
-
-	if (d->config.watcher.f != NULL) {
-		d->config.watcher.f(d->config.watcher.data,
-				    convertRaftState(old_state),
-				    convertRaftState(new_state));
-	}
-}
-
 void raftRingLoggerWalkCb(void *data,
 			  raft_time time,
 			  int level,
@@ -155,7 +117,6 @@ int dqlite__init(struct dqlite_task *d,
 	raft_set_heartbeat_timeout(&d->raft, 500);
 	raft_set_snapshot_threshold(&d->raft, 1024);
 	raft_set_snapshot_trailing(&d->raft, 8192);
-	raft_watch(&d->raft, raftWatch);
 	rv = replication__init(&d->replication, &d->config, &d->raft);
 	if (rv != 0) {
 		goto err_after_raft_logger_init;
@@ -548,23 +509,4 @@ int dqlite_task_stop(dqlite_task *d)
 	assert(rv == 0);
 
 	return (uintptr_t)result;
-}
-
-/* Set a config option */
-int dqlite_config(struct dqlite_task *d, int op, ...)
-{
-	va_list args;
-	int rv = 0;
-	va_start(args, op);
-	switch (op) {
-		case DQLITE_CONFIG_WATCHER:
-			d->config.watcher.f = va_arg(args, dqlite_watch);
-			d->config.watcher.data = va_arg(args, void *);
-			break;
-		default:
-			rv = DQLITE_MISUSE;
-			break;
-	}
-	va_end(args);
-	return rv;
 }
