@@ -5,6 +5,12 @@
 
 #include "../include/dqlite.h"
 
+/* Function to emit log messages. */
+typedef void (*dqlite_emit)(void *data,
+			    int level,
+			    const char *fmt,
+			    va_list args);
+
 struct logger
 {
 	void *data;

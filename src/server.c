@@ -557,10 +557,6 @@ int dqlite_config(struct dqlite_task *d, int op, ...)
 	int rv = 0;
 	va_start(args, op);
 	switch (op) {
-		case DQLITE_CONFIG_LOGGER:
-			d->config.logger.emit = va_arg(args, dqlite_emit);
-			d->config.logger.data = va_arg(args, void *);
-			break;
 		case DQLITE_CONFIG_WATCHER:
 			d->config.watcher.f = va_arg(args, dqlite_watch);
 			d->config.watcher.data = va_arg(args, void *);

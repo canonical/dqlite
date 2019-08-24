@@ -66,7 +66,6 @@ enum { DQLITE_DEBUG = 0, DQLITE_INFO, DQLITE_WARN, DQLITE_ERROR };
 enum { DQLITE_UNAVAILABLE, DQLITE_FOLLOWER, DQLITE_CANDIDATE, DQLITE_LEADER };
 
 /* Config opcodes */
-#define DQLITE_CONFIG_LOGGER 0
 #define DQLITE_CONFIG_WATCHER 5
 
 /* Special value indicating that a batch of rows is over, but there are more. */
@@ -101,12 +100,6 @@ int dqlite_task_set_connect_func(
 
 /* Allocate and initialize a dqlite server instance. */
 int dqlite_task_start(dqlite_task *t);
-
-/* Function to emit log messages. */
-typedef void (*dqlite_emit)(void *data,
-			    int level,
-			    const char *fmt,
-			    va_list args);
 
 /* Function to be notified about state changes. */
 typedef void (*dqlite_watch)(void *data, int old_state, int new_state);
