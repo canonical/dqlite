@@ -83,7 +83,7 @@ int dqlite__init(struct dqlite_task *d,
 	rv = uv_loop_init(&d->loop);
 	if (rv != 0) {
 		/* TODO: better error reporting */
-		rv = DQLITE_INTERNAL;
+		rv = DQLITE_ERROR;
 		goto err_after_vfs_init;
 	}
 	rv = raftProxyInit(&d->raft_transport, &d->loop);
@@ -93,7 +93,7 @@ int dqlite__init(struct dqlite_task *d,
 	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
 	if (rv != 0) {
 		/* TODO: better error reporting */
-		rv = DQLITE_INTERNAL;
+		rv = DQLITE_ERROR;
 		goto err_after_raft_transport_init;
 	}
 	rv = fsm__init(&d->raft_fsm, &d->config, &d->registry);
@@ -124,13 +124,13 @@ int dqlite__init(struct dqlite_task *d,
 	rv = sem_init(&d->ready, 0, 0);
 	if (rv != 0) {
 		/* TODO: better error reporting */
-		rv = DQLITE_INTERNAL;
+		rv = DQLITE_ERROR;
 		goto err_after_raft_replication_init;
 	}
 	rv = sem_init(&d->stopped, 0, 0);
 	if (rv != 0) {
 		/* TODO: better error reporting */
-		rv = DQLITE_INTERNAL;
+		rv = DQLITE_ERROR;
 		goto err_after_ready_init;
 	}
 
@@ -209,10 +209,10 @@ int dqlite_task_set_bind_address(dqlite_task *t, const char *address)
 	int fd;
 	int rv;
 	if (t->running) {
-		return DQLITE_ERROR;
+		return DQLITE_MISUSE;
 	}
 	if (address[0] != '@') {
-		return DQLITE_ERROR;
+		return DQLITE_MISUSE;
 	}
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd == -1) {
@@ -230,7 +230,7 @@ int dqlite_task_set_bind_address(dqlite_task *t, const char *address)
 
 	rv = transport__stream(&t->loop, fd, &t->listener);
 	if (rv != 0) {
-		return rv;
+		return DQLITE_ERROR;
 	}
 	return 0;
 }
@@ -241,7 +241,7 @@ int dqlite_task_set_connect_func(
     void *arg)
 {
 	if (t->running) {
-		return DQLITE_ERROR;
+		return DQLITE_MISUSE;
 	}
 	raftProxySetConnectFunc(&t->raft_transport, f, arg);
 	return 0;
@@ -268,7 +268,7 @@ static int maybeBootstrap(dqlite_task *d,
 		if (rv == RAFT_CANTBOOTSTRAP) {
 			rv = 0;
 		} else {
-			rv = DQLITE_INTERNAL;
+			rv = DQLITE_ERROR;
 		}
 		goto out;
 	}

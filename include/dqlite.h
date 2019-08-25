@@ -4,17 +4,16 @@
 #include <stddef.h>
 
 /* Error codes */
+#define DQLITE_ERROR 1
 #define DQLITE_MISUSE 2
 #define DQLITE_NOMEM 3
 #define DQLITE_PROTO 4
 #define DQLITE_PARSE 5
 #define DQLITE_OVERFLOW 6
 #define DQLITE_EOM 7
-#define DQLITE_INTERNAL 8
 #define DQLITE_NOTFOUND 9
 #define DQLITE_STOPPED 10
 #define DQLITE_CANTBOOTSTRAP 11
-#define DQLITE_ERROR 12
 
 /* Handle connections from dqlite clients */
 typedef struct dqlite_task dqlite_task;
