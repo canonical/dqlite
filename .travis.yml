@@ -3,7 +3,7 @@ language: c
 addons:
   apt:
     sources:
-    - sourceline: 'ppa:dqlite-maintainers/master'
+    - sourceline: 'ppa:dqlite/master'
     packages:
     - lcov
     - libsqlite3-dev
