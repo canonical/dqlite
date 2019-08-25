@@ -24,7 +24,7 @@ void loggerDefaultEmit(void *data, int level, const char *fmt, va_list args)
 		case DQLITE_WARN:
 			sprintf(cursor, "[WARN ]: ");
 			break;
-		case DQLITE_ERROR:
+		case DQLITE_LOG_ERROR:
 			sprintf(cursor, "[ERROR]: ");
 			break;
 		default:

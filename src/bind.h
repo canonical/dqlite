@@ -5,6 +5,8 @@
 #ifndef BIND_H_
 #define BIND_H_
 
+#include <sqlite3.h>
+
 #include "lib/serialize.h"
 
 /**

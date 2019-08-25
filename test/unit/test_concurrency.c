@@ -4,6 +4,7 @@
 #include "../../src/gateway.h"
 #include "../../src/request.h"
 #include "../../src/response.h"
+#include "../../src/protocol.h"
 
 TEST_MODULE(concurrency);
 

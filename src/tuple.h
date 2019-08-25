@@ -47,6 +47,8 @@
 #include "lib/buffer.h"
 #include "lib/serialize.h"
 
+#include "protocol.h"
+
 enum { TUPLE__ROW = 1, TUPLE__PARAMS };
 
 /**

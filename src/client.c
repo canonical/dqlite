@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <sqlite3.h>
 
 #include "lib/assert.h"
 
@@ -7,6 +8,7 @@
 #include "request.h"
 #include "response.h"
 #include "tuple.h"
+#include "protocol.h"
 
 int clientInit(struct client *c, int fd)
 {
