@@ -7,7 +7,7 @@
 
 #include <uv.h>
 
-#define TRANSPORT__BADSOCKET 1
+#define TRANSPORT__BADSOCKET 1000
 
 /**
  * Callbacks.

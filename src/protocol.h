@@ -6,6 +6,8 @@
 #define DQLITE_ISO8601 10
 #define DQLITE_BOOLEAN 11
 
+#define DQLITE_PROTO 1001 /* Protocol error */
+
 /* Current protocol version */
 #define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
 

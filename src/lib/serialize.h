@@ -11,6 +11,8 @@
 #include "assert.h"
 #include "byte.h"
 
+#define DQLITE_PARSE 1005
+
 /**
  * The size in bytes of a single serialized word.
  */

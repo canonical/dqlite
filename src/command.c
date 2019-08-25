@@ -5,6 +5,7 @@
 #include "lib/serialize.h"
 
 #include "command.h"
+#include "protocol.h"
 
 #define FORMAT 1 /* Format version */
 
