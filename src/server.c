@@ -222,7 +222,8 @@ int dqlite_task_set_bind_address(dqlite_task *t, const char *address)
 	memset(&addr, 0, sizeof addr);
 	addr.sun_family = AF_UNIX;
 	strcpy(addr.sun_path + 1, address + 1);
-	rv = bind(fd, (const struct sockaddr*)&addr, sizeof(sa_family_t) + strlen(address));
+	rv = bind(fd, (const struct sockaddr *)&addr,
+		  sizeof(sa_family_t) + strlen(address));
 	if (rv != 0) {
 		return DQLITE_ERROR;
 	}
@@ -366,6 +367,22 @@ static void listenCb(uv_stream_t *listener, int status)
 		goto err;
 	}
 
+	/* We accept unix socket connections only from the same process. */
+	if (listener->type == UV_NAMED_PIPE) {
+		struct ucred cred;
+		socklen_t len;
+		int fd;
+		fd = stream->io_watcher.fd;
+		len = sizeof cred;
+		rv = getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len);
+		if (rv != 0) {
+			goto err;
+		}
+		if (cred.pid != getpid()) {
+			goto err;
+		}
+	}
+
 	conn = sqlite3_malloc(sizeof *conn);
 	if (conn == NULL) {
 		goto err;
@@ -373,13 +390,15 @@ static void listenCb(uv_stream_t *listener, int status)
 	rv = conn__start(conn, &t->config, &t->loop, &t->registry, &t->raft,
 			 stream, &t->raft_transport, destroy_conn);
 	if (rv != 0) {
-		goto err;
+		goto err_after_conn_alloc;
 	}
 
 	QUEUE__PUSH(&t->conns, &conn->queue);
 
 	return;
 
+err_after_conn_alloc:
+	sqlite3_free(conn);
 err:
 	uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
 }
