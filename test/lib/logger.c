@@ -25,7 +25,7 @@ void test_logger_emit(void *data, int level, const char *format, va_list args)
 		case DQLITE_WARN:
 			level_name = "WARN ";
 			break;
-		case DQLITE_ERROR:
+		case DQLITE_LOG_ERROR:
 			level_name = "ERROR";
 			break;
 	};

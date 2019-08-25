@@ -1,3 +1,5 @@
+#include <sqlite3.h>
+
 #include "../include/dqlite.h"
 
 #include "lib/serialize.h"

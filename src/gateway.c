@@ -4,6 +4,7 @@
 #include "request.h"
 #include "response.h"
 #include "vfs.h"
+#include "protocol.h"
 
 void gateway__init(struct gateway *g,
 		   struct config *config,

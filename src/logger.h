@@ -5,6 +5,9 @@
 
 #include "../include/dqlite.h"
 
+/* Log levels */
+enum { DQLITE_DEBUG = 0, DQLITE_INFO, DQLITE_WARN, DQLITE_LOG_ERROR };
+
 /* Function to emit log messages. */
 typedef void (*dqlite_emit)(void *data,
 			    int level,
