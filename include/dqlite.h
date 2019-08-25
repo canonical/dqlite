@@ -4,18 +4,17 @@
 #include <stddef.h>
 
 /* Error codes */
-enum { DQLITE_BADSOCKET = 1,
-       DQLITE_MISUSE,
-       DQLITE_NOMEM,
-       DQLITE_PROTO,
-       DQLITE_PARSE,
-       DQLITE_OVERFLOW,
-       DQLITE_EOM,      /* End of message */
-       DQLITE_INTERNAL, /* A SQLite error occurred */
-       DQLITE_NOTFOUND,
-       DQLITE_STOPPED, /* The server was stopped */
-       DQLITE_CANTBOOTSTRAP,
-       DQLITE_ERROR };
+#define DQLITE_MISUSE 2
+#define DQLITE_NOMEM 3
+#define DQLITE_PROTO 4
+#define DQLITE_PARSE 5
+#define DQLITE_OVERFLOW 6
+#define DQLITE_EOM 7
+#define DQLITE_INTERNAL 8
+#define DQLITE_NOTFOUND 9
+#define DQLITE_STOPPED 10
+#define DQLITE_CANTBOOTSTRAP 11
+#define DQLITE_ERROR 12
 
 /* Handle connections from dqlite clients */
 typedef struct dqlite_task dqlite_task;
