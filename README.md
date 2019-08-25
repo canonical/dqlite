@@ -18,6 +18,19 @@ Design higlights
 * Data replication based on the [Raft](https://raft.github.io/) algorithm and its
   efficient [C-raft](https://github.com/canonical/raft) implementation.
 
+Try it
+-------
+
+The simplest way to see dqlite in action is to use the demo program that comes
+with the Go dqlite bindings. Please see the [relevant
+documentation](https://github.com/canonical/go-dqlite#demo) in that project.
+
+Wire protocol
+-------------
+
+If wish to write a client, please refer to the [wire protocol](doc/protocol.md)
+documentation.
+
 Install
 -------
 
