@@ -21,11 +21,11 @@ Design higlights
 Install
 -------
 
-If you are on a Debian-based system, you can install daily built packages from
-dqlite's [PPA](https://launchpad.net/~dqlite-maintainers/+archive/ubuntu/master):
+If you are on a Debian-based system, you can the latest stable release from
+dqlite's [v1 PPA](https://launchpad.net/~dqlite/+archive/ubuntu/v1):
 
 ```
-sudo add-apt-repository ppa:dqlite-maintainers/master
+sudo add-apt-repository ppa:dqlite/v1
 sudo apt-get update
 sudo apt-get install libdqlite-dev
 ```
