@@ -7,11 +7,6 @@
 #define DQLITE_ERROR 1  /* Generic error */
 #define DQLITE_MISUSE 2 /* Library used incorrectly */
 #define DQLITE_NOMEM 3  /* A malloc() failed */
-#define DQLITE_OVERFLOW 6
-#define DQLITE_EOM 7
-#define DQLITE_NOTFOUND 9
-#define DQLITE_STOPPED 10
-#define DQLITE_CANTBOOTSTRAP 11
 
 /* Handle connections from dqlite clients */
 typedef struct dqlite_task dqlite_task;
