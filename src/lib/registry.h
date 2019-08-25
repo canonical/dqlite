@@ -11,6 +11,8 @@
 
 #include "assert.h"
 
+#define DQLITE_NOTFOUND 1002
+
 /**
  * Define a type-safe registry able to allocate and lookup items of a given
  * type.
