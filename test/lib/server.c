@@ -44,10 +44,10 @@ void test_server_tear_down(struct test_server *s)
 	test_endpoint_tear_down(&s->endpoint);
 	clientClose(&s->client);
 	close(s->client.fd);
-	rv = dqlite_task_stop(s->dqlite);
+	rv = dqlite_node_stop(s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
-	dqlite_task_destroy(s->dqlite);
+	dqlite_node_destroy(s->dqlite);
 
 	test_dir_tear_down(s->dir);
 }
@@ -58,17 +58,17 @@ void test_server_start(struct test_server *s)
 	int client;
 	int rv;
 
-	rv = dqlite_task_create(s->id, s->address, s->dir, &s->dqlite);
+	rv = dqlite_node_create(s->id, s->address, s->dir, &s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
 	sprintf(address, "@%d", s->id);
-	rv = dqlite_task_set_bind_address(s->dqlite, address);
+	rv = dqlite_node_set_bind_address(s->dqlite, address);
 	munit_assert_int(rv, ==, 0);
 
-	rv = dqlite_task_set_connect_func(s->dqlite, endpointConnect, s);
+	rv = dqlite_node_set_connect_func(s->dqlite, endpointConnect, s);
 	munit_assert_int(rv, ==, 0);
 
-	rv = dqlite_task_start(s->dqlite);
+	rv = dqlite_node_start(s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
 	/* Connect a client. */

@@ -10,7 +10,7 @@
 /**
  * A single dqlite server instance.
  */
-struct dqlite_task
+struct dqlite_node
 {
 	pthread_t thread;                           /* Main run loop thread. */
 	struct config config;                       /* Config values */
@@ -34,11 +34,11 @@ struct dqlite_task
 	struct uv_timer_s startup;                  /* Unblock ready sem */
 };
 
-int dqlite__init(struct dqlite_task *d,
+int dqlite__init(struct dqlite_node *d,
 		 unsigned id,
 		 const char *address,
 		 const char *dir);
 
-void dqlite__close(struct dqlite_task *d);
+void dqlite__close(struct dqlite_node *d);
 
-int dqlite__run(struct dqlite_task *d);
+int dqlite__run(struct dqlite_node *d);

@@ -19,7 +19,7 @@ struct test_server
 	char address[8];               /* Server address. */
 	char *dir;                     /* Data directory. */
 	struct test_endpoint endpoint; /* For network connections. */
-	dqlite_task *dqlite;           /* Dqlite instance. */
+	dqlite_node *dqlite;           /* Dqlite instance. */
 	struct client client;          /* Connected client. */
 	struct test_server *others[5]; /* Other servers, by ID-1. */
 };
