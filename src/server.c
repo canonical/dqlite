@@ -60,12 +60,12 @@ void raftRingLoggerWalkCb(void *data,
 }
 
 /* Bump raft's ring logger to stdout. */
-static void dumpRaftRingLogger(struct dqlite_task *d)
+static void dumpRaftRingLogger(struct dqlite_node *d)
 {
 	raft_ring_logger_walk(&d->raft_logger, raftRingLoggerWalkCb, NULL);
 }
 
-int dqlite__init(struct dqlite_task *d,
+int dqlite__init(struct dqlite_node *d,
 		 unsigned id,
 		 const char *address,
 		 const char *dir)
@@ -165,7 +165,7 @@ err:
 	return rv;
 }
 
-void dqlite__close(struct dqlite_task *d)
+void dqlite__close(struct dqlite_node *d)
 {
 	int rv;
 	raft_free(d->listener);
@@ -186,10 +186,10 @@ void dqlite__close(struct dqlite_task *d)
 	config__close(&d->config);
 }
 
-int dqlite_task_create(unsigned server_id,
+int dqlite_node_create(unsigned server_id,
 		       const char *server_address,
 		       const char *data_dir,
-		       dqlite_task **t)
+		       dqlite_node **t)
 {
 	int rv;
 
@@ -203,7 +203,7 @@ int dqlite_task_create(unsigned server_id,
 	return 0;
 }
 
-int dqlite_task_set_bind_address(dqlite_task *t, const char *address)
+int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 {
 	struct sockaddr_un addr;
 	int fd;
@@ -235,8 +235,8 @@ int dqlite_task_set_bind_address(dqlite_task *t, const char *address)
 	return 0;
 }
 
-int dqlite_task_set_connect_func(
-    dqlite_task *t,
+int dqlite_node_set_connect_func(
+    dqlite_node *t,
     int (*f)(void *arg, unsigned id, const char *address, int *fd),
     void *arg)
 {
@@ -247,7 +247,7 @@ int dqlite_task_set_connect_func(
 	return 0;
 }
 
-static int maybeBootstrap(dqlite_task *d,
+static int maybeBootstrap(dqlite_node *d,
 			  const unsigned id,
 			  const char *address)
 {
@@ -285,7 +285,7 @@ out:
  */
 static void raftCloseCb(struct raft *raft)
 {
-	struct dqlite_task *s = raft->data;
+	struct dqlite_node *s = raft->data;
 	uv_close((struct uv_handle_s *)&s->stop, NULL);
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
 	uv_close((struct uv_handle_s *)s->listener, NULL);
@@ -299,7 +299,7 @@ static void destroy_conn(struct conn *conn)
 
 static void stop_cb(uv_async_t *stop)
 {
-	struct dqlite_task *d = stop->data;
+	struct dqlite_node *d = stop->data;
 	queue *head;
 	struct conn *conn;
 
@@ -321,7 +321,7 @@ static void stop_cb(uv_async_t *stop)
  */
 static void startup_cb(uv_timer_t *startup)
 {
-	struct dqlite_task *d = startup->data;
+	struct dqlite_node *d = startup->data;
 	int rv;
 	d->running = true;
 	rv = sem_post(&d->ready);
@@ -330,7 +330,7 @@ static void startup_cb(uv_timer_t *startup)
 
 static void listenCb(uv_stream_t *listener, int status)
 {
-	struct dqlite_task *t = listener->data;
+	struct dqlite_node *t = listener->data;
 	struct uv_stream_s *stream;
 	struct conn *conn;
 	int rv;
@@ -403,7 +403,7 @@ err:
 	uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
 }
 
-static int taskRun(struct dqlite_task *d)
+static int taskRun(struct dqlite_node *d)
 {
 	int rv;
 
@@ -449,7 +449,7 @@ static int taskRun(struct dqlite_task *d)
 
 static void *taskStart(void *arg)
 {
-	struct dqlite_task *t = arg;
+	struct dqlite_node *t = arg;
 	int rv;
 	rv = taskRun(t);
 	if (rv != 0) {
@@ -459,7 +459,7 @@ static void *taskStart(void *arg)
 	return NULL;
 }
 
-void dqlite_task_destroy(dqlite_task *d)
+void dqlite_node_destroy(dqlite_node *d)
 {
 	dqlite__close(d);
 	sqlite3_free(d);
@@ -472,14 +472,14 @@ void dqlite_task_destroy(dqlite_task *d)
 ** This is a thread-safe API, but must be invoked before any call to
 ** dqlite_stop or dqlite_handle.
 */
-static bool taskReady(struct dqlite_task *d)
+static bool taskReady(struct dqlite_node *d)
 {
 	/* Wait for the ready semaphore */
 	sem_wait(&d->ready);
 	return d->running;
 }
 
-int dqlite_task_start(dqlite_task *t)
+int dqlite_node_start(dqlite_node *t)
 {
 	int rv;
 
@@ -504,7 +504,7 @@ err:
 	return rv;
 }
 
-int dqlite_task_stop(dqlite_task *d)
+int dqlite_node_stop(dqlite_node *d)
 {
 	void *result;
 	int rv;
