@@ -164,7 +164,7 @@ TEST_CASE(join, success, params)
 {
 	struct join_fixture *f = data;
 	unsigned id = 2;
-	const char *address = "2";
+	const char *address = "@2";
 	unsigned stmt_id;
 	unsigned last_insert_id;
 	unsigned rows_affected;

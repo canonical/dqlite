@@ -85,22 +85,23 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address);
  * Get the network address that the dqlite node is using to accept incoming
  * connections.
  */
-const char * dqlite_node_get_bind_address(dqlite_node *t);
+const char *dqlite_node_get_bind_address(dqlite_node *t);
 
 /**
  * Set a custom connect function.
  *
- * The function should block until a connection with the dqlite node identified
- * by the given @id and @address is established, or an error occurs.
+ * The function should block until a network connection with the dqlite node at
+ * the given @address is established, or an error occurs.
  *
  * In case of success, the file descriptor of the connected socket must be saved
  * into the location pointed by the @fd argument. The socket must be either a
  * TCP or a Unix socket.
  */
-int dqlite_node_set_connect_func(
-    dqlite_node *t,
-    int (*f)(void *arg, unsigned id, const char *address, int *fd),
-    void *arg);
+int dqlite_node_set_connect_func(dqlite_node *t,
+				 int (*f)(void *arg,
+					  const char *address,
+					  int *fd),
+				 void *arg);
 
 /**
  * Start a dqlite node.

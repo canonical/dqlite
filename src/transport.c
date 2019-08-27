@@ -17,7 +17,7 @@ struct impl
 	struct uv_loop_s *loop;
 	struct
 	{
-		int (*f)(void *arg, unsigned id, const char *address, int *fd);
+		int (*f)(void *arg, const char *address, int *fd);
 		void *arg;
 
 	} connect;
@@ -62,7 +62,7 @@ static void connect_work_cb(uv_work_t *work)
 	struct client client;
 	int rv;
 
-	rv = i->connect.f(i->connect.arg, r->id, r->address, &r->fd);
+	rv = i->connect.f(i->connect.arg, r->address, &r->fd);
 	if (rv != 0) {
 		rv = RAFT_NOCONNECTION;
 		goto err;
@@ -194,14 +194,12 @@ static int parse_address(const char *address, struct sockaddr_in *addr)
 }
 
 static int default_connect(void *arg,
-			   const unsigned id,
 			   const char *address,
 			   int *fd)
 {
 	struct sockaddr_in addr;
 	int rv;
 	(void)arg;
-	(void)id;
 
 	rv = parse_address(address, &addr);
 	if (rv != 0) {
@@ -254,10 +252,9 @@ void raftProxyAccept(struct raft_uv_transport *transport,
 	i->accept_cb(transport, id, address, stream);
 }
 
-void raftProxySetConnectFunc(
-    struct raft_uv_transport *transport,
-    int (*f)(void *arg, unsigned id, const char *address, int *fd),
-    void *arg)
+void raftProxySetConnectFunc(struct raft_uv_transport *transport,
+			     int (*f)(void *arg, const char *address, int *fd),
+			     void *arg)
 {
 	struct impl *i = transport->impl;
 	i->connect.f = f;

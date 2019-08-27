@@ -4,22 +4,19 @@
 #include "server.h"
 
 static int endpointConnect(void *data,
-			   const unsigned id,
 			   const char *address,
 			   int *fd)
 {
 	struct sockaddr_un addr;
-	char buf[64];
 	int rv;
 	(void)address;
 	(void)data;
-	sprintf(buf, "%u", id);
 	memset(&addr, 0, sizeof addr);
 	addr.sun_family = AF_UNIX;
-	strcpy(addr.sun_path + 1, buf);
+	strcpy(addr.sun_path + 1, address + 1);
 	*fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	munit_assert_int(*fd, !=, -1);
-	rv = connect(*fd, (struct sockaddr *)&addr, sizeof(sa_family_t) + strlen(buf) + 1);
+	rv = connect(*fd, (struct sockaddr *)&addr, sizeof(sa_family_t) + strlen(address + 1) + 1);
 	munit_assert_int(rv, ==, 0);
 	return 0;
 }
@@ -29,7 +26,7 @@ void test_server_setup(struct test_server *s,
 		       const MunitParameter params[])
 {
 	s->id = id;
-	sprintf(s->address, "%u", id);
+	sprintf(s->address, "@%u", id);
 
 	s->dir = test_dir_setup();
 	test_endpoint_setup(&s->endpoint, params);
@@ -54,15 +51,13 @@ void test_server_tear_down(struct test_server *s)
 
 void test_server_start(struct test_server *s)
 {
-	char address[64];
 	int client;
 	int rv;
 
 	rv = dqlite_node_create(s->id, s->address, s->dir, &s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
-	sprintf(address, "@%d", s->id);
-	rv = dqlite_node_set_bind_address(s->dqlite, address);
+	rv = dqlite_node_set_bind_address(s->dqlite, s->address);
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_set_connect_func(s->dqlite, endpointConnect, s);
@@ -72,7 +67,7 @@ void test_server_start(struct test_server *s)
 	munit_assert_int(rv, ==, 0);
 
 	/* Connect a client. */
-	rv = endpointConnect(NULL, s->id, NULL, &client);
+	rv = endpointConnect(NULL, s->address, &client);
 	munit_assert_int(rv, ==, 0);
 
 	rv = clientInit(&s->client, client);
