@@ -1,4 +1,4 @@
-How does it compare to rqlite?
+How does dqlite compare to rqlite?
 ------------------------------
 
 The main differences from [rqlite](https://github.com/rqlite/rqlite) are:
