@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <sys/un.h>
 
 #include "../include/dqlite.h"
@@ -206,56 +207,103 @@ int dqlite_node_create(unsigned server_id,
 	return 0;
 }
 
+static int ipParse(const char *address, struct sockaddr_in *addr)
+{
+	char buf[256];
+	char *host;
+	char *port;
+	char *colon = ":";
+	int rv;
+
+	/* TODO: turn this poor man parsing into proper one */
+	strcpy(buf, address);
+	host = strtok(buf, colon);
+	port = strtok(NULL, ":");
+	if (port == NULL) {
+		port = "8080";
+	}
+
+	rv = uv_ip4_addr(host, atoi(port), addr);
+	if (rv != 0) {
+		return RAFT_NOCONNECTION;
+	}
+
+	return 0;
+}
+
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 {
-	struct sockaddr_un addr;
+	struct sockaddr_un addr_un;
+	struct sockaddr_in addr_in;
+	struct sockaddr *addr;
 	size_t len;
 	int fd;
 	int rv;
+	int domain = address[0] == '@' ? AF_UNIX : AF_INET;
 	if (t->running) {
 		return DQLITE_MISUSE;
 	}
-	if (address[0] != '@') {
-		return DQLITE_MISUSE;
+	if (domain == AF_INET) {
+		memset(&addr_in, 0, sizeof addr_in);
+		rv = ipParse(address, &addr_in);
+		if (rv != 0) {
+			return DQLITE_MISUSE;
+		}
+		len = sizeof addr_in;
+		addr = (struct sockaddr *)&addr_in;
+	} else {
+		memset(&addr_un, 0, sizeof addr_un);
+		addr_un.sun_family = AF_UNIX;
+		len = strlen(address);
+		if (len == 1) {
+			/* Auto bind */
+			len = 0;
+		} else {
+			strcpy(addr_un.sun_path + 1, address + 1);
+		}
+		len += sizeof(sa_family_t);
+		addr = (struct sockaddr *)&addr_un;
 	}
-	fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	fd = socket(domain, SOCK_STREAM, 0);
 	if (fd == -1) {
 		return DQLITE_ERROR;
 	}
 
-	memset(&addr, 0, sizeof addr);
-	addr.sun_family = AF_UNIX;
-	len = strlen(address);
-	if (len == 1) {
-		/* Auto bind */
-		len = 0;
-	} else {
-		strcpy(addr.sun_path + 1, address + 1);
-	}
-	rv =
-	    bind(fd, (const struct sockaddr *)&addr, sizeof(sa_family_t) + len);
+	rv = bind(fd, addr, len);
 	if (rv != 0) {
+		close(fd);
 		return DQLITE_ERROR;
 	}
 
 	rv = transport__stream(&t->loop, fd, &t->listener);
 	if (rv != 0) {
+		close(fd);
 		return DQLITE_ERROR;
 	}
 
-	len = sizeof addr.sun_path;
-	t->bind_address = sqlite3_malloc(len);
-	if (t->bind_address == NULL) {
-		/* TODO: cleanup */
-		return DQLITE_NOMEM;
+	if (domain == AF_INET) {
+		t->bind_address = sqlite3_malloc(strlen(address));
+		if (t->bind_address == NULL) {
+			/* TODO: cleanup */
+			return DQLITE_NOMEM;
+		}
+		strcpy(t->bind_address, address);
+	} else {
+		len = sizeof addr_un.sun_path;
+		t->bind_address = sqlite3_malloc(len);
+		if (t->bind_address == NULL) {
+			/* TODO: cleanup */
+			return DQLITE_NOMEM;
+		}
+		memset(t->bind_address, 0, len);
+		rv = uv_pipe_getsockname((struct uv_pipe_s *)t->listener,
+					 t->bind_address, &len);
+		if (rv != 0) {
+			/* TODO: cleanup */
+			return DQLITE_ERROR;
+		}
+		t->bind_address[0] = '@';
 	}
-	memset(t->bind_address, 0, len);
-	rv = uv_pipe_getsockname((struct uv_pipe_s *)t->listener, t->bind_address, &len);
-	if (rv != 0) {
-		/* TODO: cleanup */
-		return DQLITE_ERROR;
-	}
-	t->bind_address[0] = '@';
 
 	return 0;
 }
