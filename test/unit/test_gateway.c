@@ -305,6 +305,7 @@ TEST_CASE(leader, not_available, NULL)
 	HANDLE(LEADER);
 	ASSERT_CALLBACK(0, SERVER);
 	DECODE(&f->response, server);
+	munit_assert_int(f->response.id, ==, 0);
 	munit_assert_string_equal(f->response.address, "");
 	return MUNIT_OK;
 }

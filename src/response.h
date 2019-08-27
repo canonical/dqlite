@@ -7,7 +7,10 @@
  * Response types.
  */
 
-#define RESPONSE_SERVER(X, ...) X(text, address, ##__VA_ARGS__)
+#define RESPONSE_SERVER(X, ...)      \
+	X(uint64, id, ##__VA_ARGS__) \
+	X(text, address, ##__VA_ARGS__)
+#define RESPONSE_SERVER_LEGACY(X, ...) X(text, address, ##__VA_ARGS__)
 #define RESPONSE_WELCOME(X, ...) X(uint64, heartbeat_timeout, ##__VA_ARGS__)
 #define RESPONSE_FAILURE(X, ...)       \
 	X(uint64, code, ##__VA_ARGS__) \
@@ -30,16 +33,17 @@
 #define RESPONSE__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
 
-#define RESPONSE__TYPES(X, ...)          \
-	X(server, SERVER, __VA_ARGS__)   \
-	X(welcome, WELCOME, __VA_ARGS__) \
-	X(failure, FAILURE, __VA_ARGS__) \
-	X(db, DB, __VA_ARGS__)           \
-	X(stmt, STMT, __VA_ARGS__)       \
-	X(result, RESULT, __VA_ARGS__)   \
-	X(rows, ROWS, __VA_ARGS__) \
-	X(empty, EMPTY, __VA_ARGS__) \
-	X(files, FILES, __VA_ARGS__) \
+#define RESPONSE__TYPES(X, ...)                      \
+	X(server, SERVER, __VA_ARGS__)               \
+	X(server_legacy, SERVER_LEGACY, __VA_ARGS__) \
+	X(welcome, WELCOME, __VA_ARGS__)             \
+	X(failure, FAILURE, __VA_ARGS__)             \
+	X(db, DB, __VA_ARGS__)                       \
+	X(stmt, STMT, __VA_ARGS__)                   \
+	X(result, RESULT, __VA_ARGS__)               \
+	X(rows, ROWS, __VA_ARGS__)                   \
+	X(empty, EMPTY, __VA_ARGS__)                 \
+	X(files, FILES, __VA_ARGS__)                 \
 	X(servers, SERVERS, __VA_ARGS__)
 
 RESPONSE__TYPES(RESPONSE__DEFINE);

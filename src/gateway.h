@@ -36,6 +36,7 @@ struct gateway
 	const char *sql;             /* SQL query for exec_sql requests */
 	struct stmt__registry stmts; /* Registry of prepared statements */
 	struct barrier barrier;      /* Barrier for query requests */
+	uint64_t protocol;           /* Protocol format version */
 };
 
 void gateway__init(struct gateway *g,

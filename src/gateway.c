@@ -22,6 +22,7 @@ void gateway__init(struct gateway *g,
 	g->sql = NULL;
 	stmt__registry_init(&g->stmts);
 	g->barrier.data = g;
+	g->protocol = DQLITE_PROTOCOL_VERSION;
 }
 
 void gateway__close(struct gateway *g)
@@ -102,11 +103,26 @@ static void failure(struct handle *req, int code, const char *message)
 	req->cb(req, 0, DQLITE_RESPONSE_FAILURE);
 }
 
+static int handle_leader_legacy(struct handle *req, struct cursor *cursor) {
+	START(leader, server_legacy);
+	unsigned id;
+	raft_leader(req->gateway->raft, &id, &response.address);
+	if (response.address == NULL) {
+		response.address = "";
+	}
+	SUCCESS(server_legacy, SERVER_LEGACY);
+	return 0;
+}
+
 static int handle_leader(struct handle *req, struct cursor *cursor)
 {
+	if (req->gateway->protocol == DQLITE_PROTOCOL_VERSION_LEGACY) {
+		return handle_leader_legacy(req, cursor);
+	}
 	START(leader, server);
 	unsigned id;
 	raft_leader(req->gateway->raft, &id, &response.address);
+	response.id = id;
 	if (response.address == NULL) {
 		response.address = "";
 	}
