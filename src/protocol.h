@@ -9,7 +9,10 @@
 #define DQLITE_PROTO 1001 /* Protocol error */
 
 /* Current protocol version */
-#define DQLITE_PROTOCOL_VERSION 0x86104dd760433fe5
+#define DQLITE_PROTOCOL_VERSION 1
+
+/* Legacly pre-1.0 version. */
+#define DQLITE_PROTOCOL_VERSION_LEGACY 0x86104dd760433fe5
 
 /* Special value indicating that a batch of rows is over, but there are more. */
 #define DQLITE_RESPONSE_ROWS_PART 0xeeeeeeeeeeeeeeee

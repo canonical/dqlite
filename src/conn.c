@@ -64,6 +64,8 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 
 	c->response.type = type;
 	c->response.words = n / 8;
+	c->response.flags = 0;
+	c->response.extra = 0;
 
 	cursor = buffer__cursor(&c->write, 0);
 	message__encode(&c->response, &cursor);
@@ -213,9 +215,11 @@ static void read_protocol_cb(struct transport *transport, int status)
 	rv = uint64__decode(&cursor, &c->protocol);
 	assert(rv == 0); /* Can't fail, we know we have enough bytes */
 
-	if (c->protocol != DQLITE_PROTOCOL_VERSION) {
-		// errorf(c->logger, "unknown protocol version: %lx",
-		// c->protocol);
+	if (c->protocol != DQLITE_PROTOCOL_VERSION && c->protocol != DQLITE_PROTOCOL_PRE_1_0_VERSION) {
+		/* errorf(c->logger, "unknown protocol version: %lx", */
+		/* c->protocol); */
+		/* TODO: instead of closing the connection we should return
+		 * error messages */
 		goto abort;
 	}
 

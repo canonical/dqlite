@@ -43,7 +43,8 @@ int clientSendHandshake(struct client *c)
 	uint64_t protocol;
 	int rv;
 
-	protocol = byte__flip64(DQLITE_PROTOCOL_VERSION);
+	/* TODO: update to version 1 */
+	protocol = byte__flip64(DQLITE_PROTOCOL_VERSION_LEGACY);
 
 	rv = write(c->fd, &protocol, sizeof(protocol));
 	if (rv < 0) {
