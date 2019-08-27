@@ -140,7 +140,7 @@ int dqlite__init(struct dqlite_node *d,
 	QUEUE__INIT(&d->conns);
 	d->running = false;
 	d->listener = NULL;
-
+	d->bind_address = NULL;
 	return 0;
 
 err_after_ready_init:
@@ -184,6 +184,9 @@ void dqlite__close(struct dqlite_node *d)
 	registry__close(&d->registry);
 	vfsClose(&d->vfs);
 	config__close(&d->config);
+	if (d->bind_address != NULL) {
+		sqlite3_free(d->bind_address);
+	}
 }
 
 int dqlite_node_create(unsigned server_id,
@@ -206,6 +209,7 @@ int dqlite_node_create(unsigned server_id,
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 {
 	struct sockaddr_un addr;
+	size_t len;
 	int fd;
 	int rv;
 	if (t->running) {
@@ -221,9 +225,15 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 
 	memset(&addr, 0, sizeof addr);
 	addr.sun_family = AF_UNIX;
-	strcpy(addr.sun_path + 1, address + 1);
-	rv = bind(fd, (const struct sockaddr *)&addr,
-		  sizeof(sa_family_t) + strlen(address));
+	len = strlen(address);
+	if (len == 1) {
+		/* Auto bind */
+		len = 0;
+	} else {
+		strcpy(addr.sun_path + 1, address + 1);
+	}
+	rv =
+	    bind(fd, (const struct sockaddr *)&addr, sizeof(sa_family_t) + len);
 	if (rv != 0) {
 		return DQLITE_ERROR;
 	}
@@ -232,7 +242,28 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	if (rv != 0) {
 		return DQLITE_ERROR;
 	}
+
+	assert(t->listener->type == UV_NAMED_PIPE);
+	len = sizeof addr.sun_path;
+	t->bind_address = sqlite3_malloc(len);
+	if (t->bind_address == NULL) {
+		/* TODO: cleanup */
+		return DQLITE_NOMEM;
+	}
+	memset(t->bind_address, 0, len);
+	rv = uv_pipe_getsockname((struct uv_pipe_s *)t->listener, t->bind_address, &len);
+	if (rv != 0) {
+		/* TODO: cleanup */
+		return DQLITE_ERROR;
+	}
+	t->bind_address[0] = '@';
+
 	return 0;
+}
+
+const char *dqlite_node_get_bind_address(dqlite_node *t)
+{
+	return t->bind_address;
 }
 
 int dqlite_node_set_connect_func(

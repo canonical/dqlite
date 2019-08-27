@@ -32,6 +32,7 @@ struct dqlite_node
 	struct uv_stream_s *listener;               /* Listening socket */
 	struct uv_async_s stop;                     /* Trigger UV loop stop */
 	struct uv_timer_s startup;                  /* Unblock ready sem */
+	char *bind_address;                         /* Listen address */
 };
 
 int dqlite__init(struct dqlite_node *d,
