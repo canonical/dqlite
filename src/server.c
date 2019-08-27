@@ -266,10 +266,11 @@ const char *dqlite_node_get_bind_address(dqlite_node *t)
 	return t->bind_address;
 }
 
-int dqlite_node_set_connect_func(
-    dqlite_node *t,
-    int (*f)(void *arg, unsigned id, const char *address, int *fd),
-    void *arg)
+int dqlite_node_set_connect_func(dqlite_node *t,
+				 int (*f)(void *arg,
+					  const char *address,
+					  int *fd),
+				 void *arg)
 {
 	if (t->running) {
 		return DQLITE_MISUSE;
