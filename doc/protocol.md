@@ -121,13 +121,15 @@ values in sequence, encoded using type-specific rules.
 The codes of available types for tuple values and the associated encoding
 formats are:
 
-- **1**: Integer value stored using the **int64** encoding.
-- **2**: An IEEE 754 floating point number stored in a single word (little endian).
-- **3**: A string value using the **text** encoding.
-- **4**: A binary blob: the first word of the value is the length of the blob (little endian).
-- **5**: A SQL NULL value encoded as a zeroed word.
-- **10**: An ISO-8601 date value using the **text** encoding.
-- **11**: A boolean value using **uint64** encoding (0 for false and 1 for true)
+| Code   | Value                         |
+|--------| ----------------------------- |
+| **1**  | Integer value stored using the **int64** encoding |
+| **2**  | An IEEE 754 floating point number stored in a single word (little endian) |
+| **3**  | A string value using the **text** encoding |
+| **4**  | A binary blob: the first word of the value is the length of the blob (little endian) |
+| **5**  | A SQL NULL value encoded as a zeroed word |
+| **10** | An ISO-8601 date value using the **text** encoding |
+| **11** | A boolean value using **uint64** encoding (0 for false and 1 for true) |
 
 ### **node-info**
 
