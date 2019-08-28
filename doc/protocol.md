@@ -88,11 +88,13 @@ yielded by a query.
 
 For a tuple of parameters the format of the header is:
 
-- 8 bits: Number of values in the tuple.
-- 8 bits: Type code of the 1st value of the tuple.
-- 8 bits: Type code of the 2nd value of the tuple, or 0.
-- 8 bits: Type code of the 3rd value of the tuple, or 0.
-- ...
+| Size   | Content |
+|--------| ----------------------------- |
+| 8 bits | Number of values in the tuple |
+| 8 bits | Type code of the 1st value of the tuple |
+| 8 bits | Type code of the 2nd value of the tuple, or 0 |
+| 8 bits | Type code of the 3rd value of the tuple, or 0 |
+| ...    | |
 
 This repeats until reaching a full 64-bit word. If there are more than 7
 parameters to bind, the header will grow additional 64-bit words as needed,
@@ -101,10 +103,12 @@ parameters followed by a sequence of zero bits, until word boundary is reached.
 
 For a tuple of row values the format of the header is:
 
-- 4 bits: Type code of the 1st value of the tuple.
-- 4 bits: Type code of the 2nd value of the tuple, or 0.
-- 4 bits: Type code of the 3rd value of the tuple, or 0.
-- ...
+| Size   | Content |
+|--------| ----------------------------- |
+| 4 bits | Type code of the 1st value of the tuple |
+| 4 bits | Type code of the 2nd value of the tuple, or 0 |
+| 4 bits | Type code of the 3rd value of the tuple, or 0 |
+| ...    | |
 
 This repeats until reaching a full 64-bit word. If there are more than 16
 values, the header will grow additional 64-bit words as needed, following the
