@@ -243,7 +243,6 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		return DQLITE_ERROR;
 	}
 
-	assert(t->listener->type == UV_NAMED_PIPE);
 	len = sizeof addr.sun_path;
 	t->bind_address = sqlite3_malloc(len);
 	if (t->bind_address == NULL) {
