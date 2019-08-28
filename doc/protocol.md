@@ -136,6 +136,12 @@ formats are:
 Information about a node in the cluster. It consists of the node ID (in
 **uint64** encoding) followed by the node address (in **text** encoding).
 
+### **file**
+
+A single database file. It consists of the file name (in **text** encoding),
+followed by the file size (in **uint64** encoding) and finally a blob with the
+file content.
+
 Client messages
 ---------------
 
@@ -268,9 +274,7 @@ associated schemas:
 
 | Type  | Value                          |
 |-------|--------------------------------|
-| node-info | First node |
-| node-info | Second node (if any) |
-| ... | |
+| uint64 | Currently unused |
 
 Server messages
 ---------------
@@ -284,3 +288,73 @@ associated schemas:
 |-------|--------------------------------|
 | uint64 | Code identifying the failure type |
 | text | Human-readable failure message |
+
+### **1** - Node information
+
+| Type  | Value                          |
+|-------|--------------------------------|
+| node-info | Information about a single node |
+
+### **2** - Welcome
+
+| Type  | Value                          |
+|-------|--------------------------------|
+| uint64 | Currently unused |
+
+### **3** - Cluster information
+
+| Type  | Value                          |
+|-------|--------------------------------|
+| node-info | First node |
+| node-info | Second node (if any) |
+| ... | |
+
+### **4** - Database information
+
+| Type  | Value                          |
+|-------|--------------------------------|
+| uint32 | Database ID |
+| uint32 | Unused |
+
+### **5** - Prepared statement information
+
+| Type  | Value                          |
+|-------|--------------------------------|
+| uint32 | Database ID |
+| uint32 | Statement ID |
+| uint64 | Number of parameters |
+
+### **6** - Statement execution result
+
+| Type  | Value                          |
+|-------|--------------------------------|
+| uint64 | ID of last row inserted, or 0 |
+| uint64 | Number of rows affected or 0 |
+
+### **7** - Batch of table rows
+
+| Type  | Value                          |
+|-------|--------------------------------|
+| tuple | Column values of the first row in the batch |
+| tuple | Column values of the second row in the batch (if any) |
+| ... | |
+| uint64 | End marker |
+
+The end marker is the value ```0xffffffffffffffff``` if the statement currently
+yielding rows has completed and there are no more rows, or otherwise
+```0xeeeeeeeeeeeeeeee``` if there are more rows and another batch will be sent.
+
+### **8** - Aknowledgment
+
+| Type  | Value                          |
+|-------|--------------------------------|
+| uint64 | Unused |
+
+### **9** - Database files
+
+| Type  | Value                          |
+|-------|--------------------------------|
+| file | Main database file |
+| file | Write-ahead log file |
+
+
