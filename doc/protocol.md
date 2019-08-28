@@ -137,66 +137,66 @@ The client can send to the server messages with the following type codes and
 associated schemas:
 
 - **0**: Get current leader. Schema:
- - uint64: Unused field.
+  - uint64: Unused field.
 
 - **1**: Client registration. Schema:
- - uint64: ID of the client.
+  - uint64: ID of the client.
  
 - **3**: Open a database. Schema:
- - text: The name of the database.
- - uint64: Currently unused.
- - text: Currently unused.
+  - text: The name of the database.
+  - uint64: Currently unused.
+  - text: Currently unused.
  
 - **4**: Prepare a statement.
- - uint64: ID of the open database to use.
- - text: SQL text of the statement.
+  - uint64: ID of the open database to use.
+  - text: SQL text of the statement.
 
 - **5**: Execute a prepared statement.
- - uint32: ID of the open database to use.
- - uint32: ID of the prepared statement to execute.
- - tuple: A tuple of parameters to bind to the prepared statement.
+  - uint32: ID of the open database to use.
+  - uint32: ID of the prepared statement to execute.
+  - tuple: A tuple of parameters to bind to the prepared statement.
 
 - **6**: Execute a prepared statement yielding rows.
- - uint32: ID of the open database to use.
- - uint32: ID of the prepared statement to execute.
- - tuple: A tuple of parameters to bind to the prepared statement.
+  - uint32: ID of the open database to use.
+  - uint32: ID of the prepared statement to execute.
+  - tuple: A tuple of parameters to bind to the prepared statement.
 
 - **7**: Finalize a prepared statement.
- - uint32: ID of the open database to use.
- - uint32: ID of the prepared statement to finalize.
+  - uint32: ID of the open database to use.
+  - uint32: ID of the prepared statement to finalize.
 
 - **8**: Execute a SQL text.
- - uint64: ID of the open database to use.
- - text: SQL text to execute.
- - tuple: A tuple of parameters to bind.
+  - uint64: ID of the open database to use.
+  - text: SQL text to execute.
+  - tuple: A tuple of parameters to bind.
 
 - **9**: Execute a SQL text yielding rows.
- - uint64: ID of the open database to use.
- - text: SQL text to execute.
- - tuple: A tuple of parameters to bind.
+  - uint64: ID of the open database to use.
+  - text: SQL text to execute.
+  - tuple: A tuple of parameters to bind.
 
 - **10**: Interrupt the execution of a statement yielding rows.
- - uint64: ID of the open database currently executing the query.
+  - uint64: ID of the open database currently executing the query.
 
 - **11**: Start pushing replication data.
- - node-info: ID and address of the node pushing the data.
+  - node-info: ID and address of the node pushing the data.
 
 - **12**: Add a non-voting node to the cluster.
- - node-info: ID and address of the node to add.
+  - node-info: ID and address of the node to add.
 
 - **13**: Promote a non-voting node to voting.
- - uint64: ID of the node to promote.
+  - uint64: ID of the node to promote.
 
 - **14**: Remove a node from the cluster.
- - uint64: ID of the node to remove.
+  - uint64: ID of the node to remove.
 
 - **15**: Dump the content of a database.
- - text: Name of the database to dump.
+  - text: Name of the database to dump.
  
 - **16**: List all nodes of the cluster.
- - node-info: First node.
- - node-info: Second node (if any)
- - ...
+  - node-info: First node.
+  - node-info: Second node (if any)
+  - ...
 
 Server messages
 ---------------
