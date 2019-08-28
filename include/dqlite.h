@@ -96,12 +96,26 @@ const char *dqlite_node_get_bind_address(dqlite_node *t);
  * In case of success, the file descriptor of the connected socket must be saved
  * into the location pointed by the @fd argument. The socket must be either a
  * TCP or a Unix socket.
+ *
+ * This function must be called before calling dqlite_node_start().
  */
 int dqlite_node_set_connect_func(dqlite_node *t,
 				 int (*f)(void *arg,
 					  const char *address,
 					  int *fd),
 				 void *arg);
+
+/**
+ * Set the average one-way network latency, expressed in nanoseconds.
+ *
+ * This value is used internally by dqlite to decide how frequently the leader
+ * node should send heartbeats to other nodes in order to maintain its
+ * leadership, and how long other nodes should wait before deciding that the
+ * leader has died and initiate a failover.
+ *
+ * This function must be called before calling dqlite_node_start().
+ */
+int dqlite_node_set_network_latency(dqlite_node *t, unsigned long long nanoseconds);
 
 /**
  * Start a dqlite node.

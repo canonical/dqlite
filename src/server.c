@@ -326,6 +326,21 @@ int dqlite_node_set_connect_func(dqlite_node *t,
 	return 0;
 }
 
+int dqlite_node_set_network_latency(dqlite_node *t, unsigned long long nanoseconds) {
+	unsigned milliseconds;
+	if (t->running) {
+		return DQLITE_MISUSE;
+	}
+	/* Currently we accept at most 500 microseconds latency. */
+	if (nanoseconds < 500 * 1000) {
+		return DQLITE_MISUSE;
+	}
+	milliseconds = nanoseconds / (1000 * 1000);
+	raft_set_heartbeat_timeout(&t->raft, (milliseconds * 15) / 10);
+	raft_set_election_timeout(&t->raft, milliseconds * 15);
+	return 0;
+}
+
 static int maybeBootstrap(dqlite_node *d,
 			  const unsigned id,
 			  const char *address)
