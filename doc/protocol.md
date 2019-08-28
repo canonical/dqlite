@@ -154,27 +154,27 @@ associated schemas:
 |--------| ----------------------------- |
 | uint64 | ID of the client |
  
-#### **3** - Open a database. Schema
+#### **3** - Open a database
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | text | The name of the database |
-  - uint64: Currently unused.
-  - text: Currently unused.
+| uint64 | Currently unused |
+| text | Currently unused |
 
-#### **0** - Get current leader. Schema
+#### **0** - Get current leader
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | uint64 | Unused field |
 
-#### **1** - Client registration. Schema
+#### **1** - Client registration
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | uint64 | ID of the client |
  
-#### **3** - Open a database. Schema
+#### **3** - Open a database
 
 | Type  | Value                          |
 |-------|--------------------------------|
@@ -278,7 +278,7 @@ Server messages
 The server can send to the client messages with the following type codes and
 associated schemas:
 
-#### **0** - Failure response. Schema
+#### **0** - Failure response
 
 | Type  | Value                          |
 |-------|--------------------------------|
