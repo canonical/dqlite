@@ -7,7 +7,7 @@
  * of parameters to bind to a statement, or a sequence of values of a single row
  * yielded by a query.
  *
- * For a tutple of parameters the format of the header is:
+ * For a tuple of parameters the format of the header is:
  *
  *  8 bits: Number of values in the tuple.
  *  8 bits: Type code of the 1st value of the tuple.
