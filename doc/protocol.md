@@ -142,19 +142,19 @@ Client messages
 The client can send to the server messages with the following type codes and
 associated schemas:
 
-#### **0** - Get current leader
+### **0** - Get current leader
 
 | Type   | Value                         |
 |--------| ----------------------------- |
 | uint64 | Unused field |
 
-#### **1** - Client registration
+### **1** - Client registration
 
 | Type   | Value                         |
 |--------| ----------------------------- |
 | uint64 | ID of the client |
  
-#### **3** - Open a database
+### **3** - Open a database
 
 | Type  | Value                          |
 |-------|--------------------------------|
@@ -162,19 +162,19 @@ associated schemas:
 | uint64 | Currently unused |
 | text | Currently unused |
 
-#### **0** - Get current leader
+### **0** - Get current leader
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | uint64 | Unused field |
 
-#### **1** - Client registration
+### **1** - Client registration
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | uint64 | ID of the client |
  
-#### **3** - Open a database
+### **3** - Open a database
 
 | Type  | Value                          |
 |-------|--------------------------------|
@@ -182,14 +182,14 @@ associated schemas:
 | uint64 | Currently unused |
 | text | Currently unused |
  
-#### **4** - Prepare a statement
+### **4** - Prepare a statement
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | uint64 | ID of the open database to use |
 | text | SQL text of the statement |
 
-#### **5** - Execute a prepared statement
+### **5** - Execute a prepared statement
 
 | Type  | Value                          |
 |-------|--------------------------------|
@@ -197,7 +197,7 @@ associated schemas:
 | uint32 | ID of the prepared statement to execute |
 | tuple | A tuple of parameters to bind to the prepared statement |
 
-#### **6** - Execute a prepared statement yielding rows
+### **6** - Execute a prepared statement yielding rows
 
 | Type  | Value                          |
 |-------|--------------------------------|
@@ -205,14 +205,14 @@ associated schemas:
 | uint32 | ID of the prepared statement to execute |
 | tuple | A tuple of parameters to bind to the prepared statement |
 
-#### **7** - Finalize a prepared statement
+### **7** - Finalize a prepared statement
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | uint32 | ID of the open database to use |
 | uint32 | ID of the prepared statement to finalize |
 
-#### **8** - Execute a SQL text
+### **8** - Execute a SQL text
 
 | Type  | Value                          |
 |-------|--------------------------------|
@@ -220,7 +220,7 @@ associated schemas:
 | text | SQL text to execute |
 | tuple | A tuple of parameters to bind |
 
-#### **9** - Execute a SQL text yielding rows
+### **9** - Execute a SQL text yielding rows
 
 | Type  | Value                          |
 |-------|--------------------------------|
@@ -228,43 +228,43 @@ associated schemas:
 | text | SQL text to execute |
 | tuple | A tuple of parameters to bind |
 
-#### **10** - Interrupt the execution of a statement yielding rows
+### **10** - Interrupt the execution of a statement yielding rows
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | uint64 | ID of the open database currently executing the query |
 
-#### **11** - Start pushing replication data
+### **11** - Start pushing replication data
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | node-info | ID and address of the node pushing the data |
 
-#### **12** - Add a non-voting node to the cluster
+### **12** - Add a non-voting node to the cluster
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | node-info | ID and address of the node to add |
 
-#### **13** - Promote a non-voting node to voting
+### **13** - Promote a non-voting node to voting
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | uint64 | ID of the node to promote |
 
-#### **14** - Remove a node from the cluster
+### **14** - Remove a node from the cluster
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | uint64 | ID of the node to remove |
 
-#### **15** - Dump the content of a database
+### **15** - Dump the content of a database
 
 | Type  | Value                          |
 |-------|--------------------------------|
 | text | Name of the database to dump |
  
-#### **16** - List all nodes of the cluster
+### **16** - List all nodes of the cluster
 
 | Type  | Value                          |
 |-------|--------------------------------|
@@ -278,7 +278,7 @@ Server messages
 The server can send to the client messages with the following type codes and
 associated schemas:
 
-#### **0** - Failure response
+### **0** - Failure response
 
 | Type  | Value                          |
 |-------|--------------------------------|
