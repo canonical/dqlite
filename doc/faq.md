@@ -14,7 +14,6 @@ layout: docs
 8. [How does dqlite compare to rqlite?](#how-does-dqlite-compare-to-rqlite)
 9. [Why C?](#why-c)
 
-# FAQ
 
 What are the use cases?
 -----------------------
