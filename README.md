@@ -28,7 +28,7 @@ documentation](https://github.com/canonical/go-dqlite#demo) in that project.
 Wire protocol
 -------------
 
-If wish to write a client, please refer to the [wire protocol](doc/protocol.md)
+If you wish to write a client, please refer to the [wire protocol](doc/protocol.md)
 documentation.
 
 Install
