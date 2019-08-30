@@ -1,5 +1,7 @@
-Dqlite documentation
---------------------
+---
+title: Dqlite documentation
+layout: docs
+---
 
 If you want to see dqlite in action, please the [demo
 program](https://github.com/canonical/go-dqlite#demo) that comes with the Go
