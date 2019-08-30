@@ -1,7 +1,7 @@
 ##### Table of Contents
 1. [What are the use cases?](#what-are-the-use-cases)
 2. [Who's using dqlite?](#whos-using-dqlite)
-3. [Are Windows and OSX supported?](#are-windows-and-osx-supported)
+3. [Are Windows and macOS supported?](#are-windows-and-macos-supported)
 4. [Is there 24/7 support available?](#is-there-247-support-available)
 5. [Is there a commitment to long term releases?](#is-there-a-commitment-to-long-term-releases)
 6. [How does dqlite behave during conflict situations?](#how-does-dqlite-behave-during-conflict-situations)
@@ -31,10 +31,10 @@ which uses dqlite to implement high-availability when run in cluster mode. See
 the relevant
 [documentation](https://github.com/lxc/lxd/blob/master/doc/clustering.md).
 
-Are Windows and OSX supported?
+Are Windows and macOS supported?
 ------------------------------
 
-Not the moment, because under the hood dqlite uses the Linux-specific
+Not at the moment, because under the hood dqlite uses the Linux-specific
 ```io_submit``` asynchronous file system write API. That code leaves behind an
 interface that could be adapted to OSX and Windows though. See also this
 [issue](https://github.com/canonical/go-dqlite/issues/21).
