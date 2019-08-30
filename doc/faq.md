@@ -1,3 +1,15 @@
+What are the use cases?
+-----------------------
+
+If don't want to depend on an external database (e.g. you'd like to use SQLite)
+but yet you want your application to be highly-available (e.g you have 3 nodes,
+and you want your data and service uptime to survive in case a node is lost),
+then dqlite is for you.
+
+We think this choice is particularly appropriate for IoT and Edge devices, but
+also for agents and backend cloud services that wish to simplify their
+operation.
+
 How does dqlite behave during conflict situations?
 --------------------------------------------------
 
