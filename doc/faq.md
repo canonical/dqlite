@@ -1,3 +1,15 @@
+##### Table of Contents
+1. [What are the use cases?](#what-are-the-use-cases)
+2. [Who's using dqlite?](#whos-using-dqlite)
+3. [Are Windows and OSX supported?](#are-windows-and-osx-supported)
+4. [Is there 24/7 support available?](#is-there-247-support-available)
+5. [Is there a commitment to long term releases?](#is-there-a-commitment-to-long-term-releases)
+6. [How does dqlite behave during conflict situations?](#how-does-dqlite-behave-during-conflict-situations)
+7. [When not enough nodes are available, are writes hung until consensus?](#when-not-enough-nodes-are-available,-are-writes-hung-until-consensus)
+8. [How does dqlite compare to rqlite?](#how-does-dqlite-compare-to-rqlite)
+9. [Why C?](#why-c)
+## Headers
+
 What are the use cases?
 -----------------------
 
@@ -9,6 +21,35 @@ then dqlite is for you.
 We think this choice is particularly appropriate for IoT and Edge devices, but
 also for agents and backend cloud services that wish to simplify their
 operation.
+
+Who's using dqlite?
+-------------------
+
+At the moment the biggest user of dqlite is the
+[LXD](https://linuxcontainers.org/lxd/introduction/) system containers manager,
+which uses dqlite to implement high-availability when run in cluster mode. See
+the relevant
+[documentation](https://github.com/lxc/lxd/blob/master/doc/clustering.md).
+
+Are Windows and OSX supported?
+------------------------------
+
+Not the moment, because under the hood dqlite uses the Linux-specific
+```io_submit``` asynchronous file system write API. That code leaves behind an
+interface that could be adapted to OSX and Windows though. See also this
+[issue](https://github.com/canonical/go-dqlite/issues/21).
+
+Is there 24/7 support available?
+--------------------------------
+
+Not at the moment. But [Canonical](https://www.canonical.com), the company who's
+funding dqlite, can arrange a support contract if desired.
+
+Is there a commitment to long term releases?
+--------------------------------------------
+
+The v1 series will be maintained, improved and bug-fixed for the foreseeable
+future and backward compatibility is guaranteed.
 
 How does dqlite behave during conflict situations?
 --------------------------------------------------
@@ -56,32 +97,3 @@ issue](https://github.com/golang/go/issues/19574) in the Go bug tracker.
 The added benefit of the rewrite in C is that it's now easy to embed dqlite into
 project written in effectively any language, since all major languages have
 provisions to create C bindings.
-
-Who's using dqlite?
--------------------
-
-At the moment the biggest user of dqlite is the
-[LXD](https://linuxcontainers.org/lxd/introduction/) system containers manager,
-which uses dqlite to implement high-availability when run in cluster mode. See
-the relevant
-[documentation](https://github.com/lxc/lxd/blob/master/doc/clustering.md).
-
-Are Windows and OSX supported?
-------------------------------
-
-Not the moment, because under the hood dqlite uses the Linux-specific
-```io_submit``` asynchronous file system write API. That code leaves behind an
-interface that could be adapted to OSX and Windows though. See also this
-[issue](https://github.com/canonical/go-dqlite/issues/21).
-
-Is there 24/7 support available?
---------------------------------
-
-Not at the moment. But [Canonical](https://www.canonical.com), the company who's
-funding dqlite, can arrange a support contract if desired.
-
-Is there a commitment to long term releases?
---------------------------------------------
-
-The v1 series will be maintained, improved and bug-fixed for the foreseeable
-future and backward compatibility is guaranteed.
