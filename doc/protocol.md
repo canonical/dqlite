@@ -1,5 +1,8 @@
-Wire protocol
-=============
+---
+title: Wire protocol
+layout: docs
+---
+
 
 Definitions
 -----------
