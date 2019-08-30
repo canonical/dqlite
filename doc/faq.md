@@ -73,3 +73,15 @@ Not the moment, because under the hood dqlite uses the Linux-specific
 ```io_submit``` asynchronous file system write API. That code leaves behind an
 interface that could be adapted to OSX and Windows though. See also this
 [issue](https://github.com/canonical/go-dqlite/issues/21).
+
+Is there 24/7 support available?
+--------------------------------
+
+Not at the moment. But [Canonical](https://www.canonical.com), the company who's
+funding dqlite, can arrange a support contract if desired.
+
+Is there a commitment to long term releases?
+--------------------------------------------
+
+The v1 series will be maintained, improved and bug-fixed for the foreseeable
+future and backward compatibility is guaranteed.
