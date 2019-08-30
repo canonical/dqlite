@@ -1,3 +1,8 @@
+---
+title: FAQ
+layout: docs
+---
+
 ##### Table of Contents
 1. [What are the use cases?](#what-are-the-use-cases)
 2. [Who's using dqlite?](#whos-using-dqlite)
@@ -8,7 +13,8 @@
 7. [When not enough nodes are available, are writes hung until consensus?](#when-not-enough-nodes-are-available,-are-writes-hung-until-consensus)
 8. [How does dqlite compare to rqlite?](#how-does-dqlite-compare-to-rqlite)
 9. [Why C?](#why-c)
-## Headers
+
+# FAQ
 
 What are the use cases?
 -----------------------
