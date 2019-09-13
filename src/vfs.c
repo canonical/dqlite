@@ -1,6 +1,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include <raft.h>
 
