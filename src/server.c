@@ -528,6 +528,8 @@ static int taskRun(struct dqlite_node *d)
 	rv = raft_start(&d->raft);
 	if (rv != 0) {
 		dumpRaftRingLogger(d);
+		/* Unblock any client of taskReady */
+		sem_post(&d->ready);
 		return rv;
 	}
 
