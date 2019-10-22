@@ -1,13 +1,12 @@
-#include <stddef.h>
+#include "replication.h"
 
 #include <libco.h>
 #include <sqlite3.h>
-
-#include "lib/assert.h"
+#include <stddef.h>
 
 #include "command.h"
 #include "leader.h"
-#include "replication.h"
+#include "lib/assert.h"
 
 /* Set to 1 to enable tracing. */
 #if 0
@@ -161,6 +160,14 @@ static int apply(struct replication *r,
 
 	rc = raft_apply(r->raft, &apply->req, &buf, 1, applyCb);
 	if (rc != 0) {
+		switch (rc) {
+			case RAFT_TOOBIG:
+				rc = SQLITE_TOOBIG;
+				break;
+			default:
+				rc = SQLITE_ERROR;
+				break;
+		}
 		goto err_after_command_encode;
 	}
 
