@@ -609,13 +609,15 @@ static int dumpFile(struct gateway *g,
 {
 	void *cur;
 	void *buf;
+	size_t file_size;
 	uint64_t len;
 	int rv;
 
-	rv = vfsFileRead(g->config->name, filename, &buf, &len);
+	rv = vfsFileRead(g->config->name, filename, &buf, &file_size);
 	if (rv != 0) {
 		return rv;
 	}
+	len = file_size;
 
 	cur = buffer__advance(buffer, text__sizeof(&filename));
 	if (cur == NULL) {
