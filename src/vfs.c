@@ -1824,6 +1824,7 @@ int vfsFileRead(const char *vfs_name,
 	int type;
 	int flags;
 	sqlite3_file *file;
+	sqlite3_int64 file_size;
 	unsigned page_size;
 	sqlite3_int64 offset;
 	int rc;
@@ -1864,10 +1865,11 @@ int vfsFileRead(const char *vfs_name,
 	}
 
 	/* Get the file size */
-	rc = file->pMethods->xFileSize(file, (sqlite3_int64 *)len);
+	rc = file->pMethods->xFileSize(file, &file_size);
 	if (rc != SQLITE_OK) {
 		goto err_after_file_open;
 	}
+	*len = file_size;
 
 	/* Check if the file is empty. */
 	if (*len == 0) {
