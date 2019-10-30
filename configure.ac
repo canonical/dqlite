@@ -17,6 +17,11 @@ LT_INIT
 AC_PROG_INSTALL
 AC_PROG_LN_S
 
+# Enable large file support. This is mandatory in order to interoperate with
+# libuv, which enables large file support by default, making the size of 'off_t'
+# on 32-bit architecture be 8 bytes instead of the normal 4.
+AC_SYS_LARGEFILE
+
 # TODO: eventually enable this
 # AX_CHECK_COMPILE_FLAG([-Weverything], AM_CFLAGS+=" -Weverything")
 
