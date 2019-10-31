@@ -47,7 +47,7 @@ typedef struct dqlite_node dqlite_node;
 int dqlite_node_create(unsigned id,
 		       const char *address,
 		       const char *data_dir,
-		       dqlite_node **t);
+		       dqlite_node **n);
 
 /**
  * Destroy a dqlite node object.
@@ -56,7 +56,7 @@ int dqlite_node_create(unsigned id,
  * dqlite_node_start() was successfully invoked, then dqlite_node_stop() must be
  * invoked before destroying the node.
  */
-void dqlite_node_destroy(dqlite_node *t);
+void dqlite_node_destroy(dqlite_node *n);
 
 /**
  * Instruct the dqlite node to bind a network address when starting, and
@@ -79,13 +79,13 @@ void dqlite_node_destroy(dqlite_node *t);
  *
  * This function must be called before calling dqlite_node_start().
  */
-int dqlite_node_set_bind_address(dqlite_node *t, const char *address);
+int dqlite_node_set_bind_address(dqlite_node *n, const char *address);
 
 /**
  * Get the network address that the dqlite node is using to accept incoming
  * connections.
  */
-const char *dqlite_node_get_bind_address(dqlite_node *t);
+const char *dqlite_node_get_bind_address(dqlite_node *n);
 
 /**
  * Set a custom connect function.
@@ -99,7 +99,7 @@ const char *dqlite_node_get_bind_address(dqlite_node *t);
  *
  * This function must be called before calling dqlite_node_start().
  */
-int dqlite_node_set_connect_func(dqlite_node *t,
+int dqlite_node_set_connect_func(dqlite_node *n,
 				 int (*f)(void *arg,
 					  const char *address,
 					  int *fd),
@@ -115,7 +115,8 @@ int dqlite_node_set_connect_func(dqlite_node *t,
  *
  * This function must be called before calling dqlite_node_start().
  */
-int dqlite_node_set_network_latency(dqlite_node *t, unsigned long long nanoseconds);
+int dqlite_node_set_network_latency(dqlite_node *n,
+				    unsigned long long nanoseconds);
 
 /**
  * Start a dqlite node.
@@ -124,7 +125,7 @@ int dqlite_node_set_network_latency(dqlite_node *t, unsigned long long nanosecon
  * this function returns successfully, the dqlite node is ready to accept new
  * connections.
  */
-int dqlite_node_start(dqlite_node *t);
+int dqlite_node_start(dqlite_node *n);
 
 /**
  * Stop a dqlite node.
@@ -133,6 +134,40 @@ int dqlite_node_start(dqlite_node *t);
  * will not accept any new client connections. Once inflight requests are
  * completed, open client connections get closed and then the thread exits.
  */
-int dqlite_node_stop(dqlite_node *t);
+int dqlite_node_stop(dqlite_node *n);
+
+struct dqlite_node_info
+{
+	unsigned id;
+	const char *address;
+};
+
+/**
+ * Force recovering a dqlite node which is part of a cluster whose majority of
+ * nodes have died, and therefore has become unavailable.
+ *
+ * In order for this operation to be safe you must follow these steps:
+ *
+ * 1. Make sure no dqlite node in the cluster is running.
+ *
+ * 2. Identify all dqlite nodes that have survived and that you want to be part
+ *    of the recovered cluster.
+ *
+ * 3. Among the survived dqlite nodes, find the one with the most up-to-date
+ *    raft term and log.
+ *
+ * 4. Invoke @dqlite_node_recover exactly one time, on the node you found in
+ *    step 3, and pass it an array of #dqlite_node_info filled with the IDs and
+ *    addresses of the survived nodes, including the one being recovered.
+ *
+ * 5. Copy the data directory of the node you ran @dqlite_node_recover on to all
+ *    other non-dead nodes in the cluster, replacing their current data
+ *    directory.
+ *
+ * 6. Restart all nodes.
+ */
+int dqlite_node_recover(dqlite_node *n,
+			struct dqlite_node_info info[],
+			int n_info);
 
 #endif /* DQLITE_H */
