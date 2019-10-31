@@ -1,15 +1,14 @@
+#include "server.h"
+
 #include <stdlib.h>
 #include <sys/un.h>
 
 #include "../include/dqlite.h"
-
-#include "lib/assert.h"
-
 #include "conn.h"
 #include "fsm.h"
+#include "lib/assert.h"
 #include "logger.h"
 #include "replication.h"
-#include "server.h"
 #include "transport.h"
 #include "vfs.h"
 
@@ -326,7 +325,9 @@ int dqlite_node_set_connect_func(dqlite_node *t,
 	return 0;
 }
 
-int dqlite_node_set_network_latency(dqlite_node *t, unsigned long long nanoseconds) {
+int dqlite_node_set_network_latency(dqlite_node *t,
+				    unsigned long long nanoseconds)
+{
 	unsigned milliseconds;
 	if (t->running) {
 		return DQLITE_MISUSE;
@@ -624,4 +625,35 @@ int dqlite_node_stop(dqlite_node *d)
 	assert(rv == 0);
 
 	return (uintptr_t)result;
+}
+
+int dqlite_node_recover(dqlite_node *n,
+			struct dqlite_node_info infos[],
+			int n_info)
+{
+	struct raft_configuration configuration;
+	int i;
+	int rv;
+
+	raft_configuration_init(&configuration);
+	for (i = 0; i < n_info; i++) {
+		struct dqlite_node_info *info = &infos[i];
+		rv = raft_configuration_add(&configuration, info->id,
+					    info->address, true);
+		if (rv != 0) {
+			assert(rv == RAFT_NOMEM);
+			rv = DQLITE_NOMEM;
+			goto out;
+		};
+	}
+
+	rv = raft_recover(&n->raft, &configuration);
+	if (rv != 0) {
+		rv = DQLITE_ERROR;
+		goto out;
+	}
+
+out:
+	raft_configuration_close(&configuration);
+	return rv;
 }
