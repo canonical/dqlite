@@ -141,6 +141,7 @@ struct dqlite_node_info
 	unsigned id;
 	const char *address;
 };
+typedef struct dqlite_node_info dqlite_node_info;
 
 /**
  * Force recovering a dqlite node which is part of a cluster whose majority of
@@ -167,7 +168,7 @@ struct dqlite_node_info
  * 6. Restart all nodes.
  */
 int dqlite_node_recover(dqlite_node *n,
-			struct dqlite_node_info infos[],
+			dqlite_node_info infos[],
 			int n_info);
 
 #endif /* DQLITE_H */
