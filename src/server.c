@@ -263,7 +263,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		len += sizeof(sa_family_t);
 		addr = (struct sockaddr *)&addr_un;
 	}
-	fd = socket(domain, SOCK_STREAM, 0);
+	fd = socket(domain, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd == -1) {
 		return DQLITE_ERROR;
 	}
