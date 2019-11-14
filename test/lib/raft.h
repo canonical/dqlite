@@ -9,14 +9,12 @@
 #include <raft/uv.h>
 #include <uv.h>
 
-#include "fs.h"
-#include "logger.h"
-#include "uv.h"
-
 #include "../../src/fsm.h"
 #include "../../src/transport.h"
-
+#include "fs.h"
+#include "logger.h"
 #include "munit.h"
+#include "uv.h"
 
 #define FIXTURE_RAFT                             \
 	char *dir;                               \
@@ -49,10 +47,10 @@
 #define TEAR_DOWN_RAFT                              \
 	{                                           \
 		raft_close(&f->raft, NULL);         \
+		raft_uv_close(&f->raft_io, NULL);   \
 		test_uv_stop(&f->loop);             \
 		fsm__close(&f->fsm);                \
 		test_uv_tear_down(&f->loop);        \
-		raft_uv_close(&f->raft_io);         \
 		raftProxyClose(&f->raft_transport); \
 		test_dir_tear_down(f->dir);         \
 	}
