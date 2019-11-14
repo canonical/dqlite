@@ -107,7 +107,7 @@ integration_test_SOURCES += \
 integration_test_CFLAGS = $(AM_CFLAGS)
 integration_test_CFLAGS += -I$(top_srcdir)/test
 integration_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=70
-integration_test_LDFLAGS = $(AM_LDFLAGS)
+integration_test_LDFLAGS =  -no-install $(AM_LDFLAGS)
 
 TESTS = unit-test integration-test
 
