@@ -1,3 +1,5 @@
+#include "lib/transport.h"
+
 #include <raft.h>
 #include <sqlite3.h>
 #include <stdlib.h>
@@ -5,9 +7,6 @@
 #include <unistd.h>
 
 #include "../include/dqlite.h"
-
-#include "lib/transport.h"
-
 #include "client.h"
 #include "request.h"
 #include "transport.h"
@@ -37,18 +36,16 @@ struct connect
 	int status;
 };
 
-static int impl_init(struct raft_uv_transport *transport,
-		     unsigned id,
-		     const char *address)
+static void impl_config(struct raft_uv_transport *transport,
+			unsigned id,
+			const char *address)
 {
 	struct impl *i = transport->impl;
 	i->id = id;
 	i->address = address;
-	return 0;
 }
 
-static int impl_listen(struct raft_uv_transport *transport,
-		       raft_uv_accept_cb cb)
+static int impl_start(struct raft_uv_transport *transport, raft_uv_accept_cb cb)
 {
 	struct impl *i = transport->impl;
 	i->accept_cb = cb;
@@ -163,10 +160,11 @@ err:
 	return rv;
 }
 
-static void impl_close(struct raft_uv_transport *transport,
-		       raft_uv_transport_close_cb cb)
+static int impl_stop(struct raft_uv_transport *transport)
 {
-	cb(transport);
+	struct impl *i = transport->impl;
+	i->accept_cb = NULL;
+	return 0;
 }
 
 static int parse_address(const char *address, struct sockaddr_in *addr)
@@ -193,9 +191,7 @@ static int parse_address(const char *address, struct sockaddr_in *addr)
 	return 0;
 }
 
-static int default_connect(void *arg,
-			   const char *address,
-			   int *fd)
+static int default_connect(void *arg, const char *address, int *fd)
 {
 	struct sockaddr_in addr;
 	int rv;
@@ -229,11 +225,12 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 	i->loop = loop;
 	i->connect.f = default_connect;
 	i->connect.arg = NULL;
+	i->accept_cb = NULL;
 	transport->impl = i;
-	transport->init = impl_init;
-	transport->listen = impl_listen;
+	transport->config = impl_config;
+	transport->start = impl_start;
+	transport->stop = impl_stop;
 	transport->connect = impl_connect;
-	transport->close = impl_close;
 	return 0;
 }
 
@@ -249,6 +246,10 @@ void raftProxyAccept(struct raft_uv_transport *transport,
 		     struct uv_stream_s *stream)
 {
 	struct impl *i = transport->impl;
+	/* If the accept callback is NULL it means we were stopped. */
+	if (i->accept_cb == NULL) {
+		uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
+	}
 	i->accept_cb(transport, id, address, stream);
 }
 
