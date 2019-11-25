@@ -43,10 +43,10 @@ Install
 -------
 
 If you are on a Debian-based system, you can the latest stable release from
-dqlite's [v1 PPA](https://launchpad.net/~dqlite/+archive/ubuntu/v1):
+dqlite's [stable PPA](https://launchpad.net/~dqlite/+archive/ubuntu/stable):
 
 ```
-sudo add-apt-repository ppa:dqlite/v1
+sudo add-apt-repository ppa:dqlite/stable
 sudo apt-get update
 sudo apt-get install libdqlite-dev
 ```
