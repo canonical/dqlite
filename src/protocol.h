@@ -5,7 +5,6 @@
 #define DQLITE_UNIXTIME 9
 #define DQLITE_ISO8601 10
 #define DQLITE_BOOLEAN 11
-#define DQLITE_ISODATE 12
 
 #define DQLITE_PROTO 1001 /* Protocol error */
 
