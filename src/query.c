@@ -1,6 +1,7 @@
 #include "query.h"
 #include "tuple.h"
 
+
 /* Return the type code of the i'th column value.
  *
  * TODO: find a better way to handle time types. */
@@ -9,7 +10,8 @@ static int value_type(sqlite3_stmt *stmt, int i)
 	int type = sqlite3_column_type(stmt, i);
 	const char *column_type_name = sqlite3_column_decltype(stmt, i);
 	if (column_type_name != NULL) {
-		if (strcmp(column_type_name, "DATETIME") == 0) {
+		if ((strcasecmp(column_type_name, "DATETIME") == 0)  ||
+                    (strcasecmp(column_type_name, "TIMESTAMP") == 0)) {
 			if (type == SQLITE_INTEGER) {
 				type = DQLITE_UNIXTIME;
 			} else {
@@ -17,8 +19,11 @@ static int value_type(sqlite3_stmt *stmt, int i)
 				       type == SQLITE_NULL);
 				type = DQLITE_ISO8601;
 			}
-		}
-		if (strcmp(column_type_name, "BOOLEAN") == 0) {
+		} else if (strcasecmp(column_type_name, "DATE") == 0) {
+			assert(type == SQLITE_TEXT ||
+			       type == SQLITE_NULL);
+			type = DQLITE_ISODATE;
+		} else if (strcasecmp(column_type_name, "BOOLEAN") == 0) {
 			assert(type == SQLITE_INTEGER || type == SQLITE_NULL);
 			type = DQLITE_BOOLEAN;
 		}
