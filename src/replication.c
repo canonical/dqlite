@@ -174,11 +174,17 @@ static int apply(struct replication *r,
 	co_switch(leader->main);
 
 	if (apply->status != 0) {
-		/* TODO: handle all possible errors */
-		if (apply->status != RAFT_LEADERSHIPLOST) {
-			printf("apply failed with status %d\n", apply->status);
+		switch (apply->status) {
+			case RAFT_LEADERSHIPLOST:
+				rc = SQLITE_IOERR_LEADERSHIP_LOST;
+				break;
+			case RAFT_NOSPACE:
+				rc = SQLITE_IOERR_WRITE;
+				break;
+			default:
+				rc = SQLITE_IOERR;
+				break;
 		}
-		assert(apply->status == RAFT_LEADERSHIPLOST);
 		switch (apply->type) {
 			case COMMAND_FRAMES:
 				framesAbortBecauseLeadershipLost(
@@ -187,7 +193,6 @@ static int apply(struct replication *r,
 			default:
 				assert(0);
 		};
-		rc = SQLITE_IOERR_LEADERSHIP_LOST;
 	} else {
 		rc = SQLITE_OK;
 	}
