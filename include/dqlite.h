@@ -171,4 +171,9 @@ int dqlite_node_recover(dqlite_node *n,
 			dqlite_node_info infos[],
 			int n_info);
 
+/**
+ * Return a human-readable description of the last error occurred.
+ */
+const char *dqlite_node_errmsg(dqlite_node *n);
+
 #endif /* DQLITE_H */

@@ -18,6 +18,7 @@ int dqlite__init(struct dqlite_node *d,
 		 const char *dir)
 {
 	int rv;
+	memset(d->errmsg, 0, sizeof d->errmsg);
 	rv = config__init(&d->config, id, address);
 	if (rv != 0) {
 		goto err;
@@ -52,6 +53,8 @@ int dqlite__init(struct dqlite_node *d,
 	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id,
 		       d->config.address);
 	if (rv != 0) {
+		snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_init(): %s",
+			 raft_errmsg(&d->raft));
 		return rv;
 	}
 	/* TODO: expose these values through some API */
@@ -467,6 +470,8 @@ static int taskRun(struct dqlite_node *d)
 	d->raft.data = d;
 	rv = raft_start(&d->raft);
 	if (rv != 0) {
+		snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_start(): %s",
+			 raft_errmsg(&d->raft));
 		/* Unblock any client of taskReady */
 		sem_post(&d->ready);
 		return rv;
@@ -480,6 +485,11 @@ static int taskRun(struct dqlite_node *d)
 	assert(rv == 0); /* no reason for which posting should fail */
 
 	return 0;
+}
+
+const char *dqlite_node_errmsg(dqlite_node *n)
+{
+	return n->errmsg;
 }
 
 static void *taskStart(void *arg)
