@@ -92,7 +92,7 @@ err_after_raft_replication_init:
 err_after_raft_fsm_init:
 	fsm__close(&d->raft_fsm);
 err_after_raft_io_init:
-	raft_uv_close(&d->raft_io, NULL);
+	raft_uv_close(&d->raft_io);
 err_after_raft_transport_init:
 	raftProxyClose(&d->raft_transport);
 err_after_loop_init:
@@ -319,7 +319,7 @@ out:
 static void raftCloseCb(struct raft *raft)
 {
 	struct dqlite_node *s = raft->data;
-	raft_uv_close(&s->raft_io, NULL);
+	raft_uv_close(&s->raft_io);
 	uv_close((struct uv_handle_s *)&s->stop, NULL);
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
 	uv_close((struct uv_handle_s *)s->listener, NULL);

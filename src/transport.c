@@ -36,16 +36,17 @@ struct connect
 	int status;
 };
 
-static void impl_config(struct raft_uv_transport *transport,
+static int impl_init(struct raft_uv_transport *transport,
 			unsigned id,
 			const char *address)
 {
 	struct impl *i = transport->impl;
 	i->id = id;
 	i->address = address;
+	return 0;
 }
 
-static int impl_start(struct raft_uv_transport *transport, raft_uv_accept_cb cb)
+static int impl_listen(struct raft_uv_transport *transport, raft_uv_accept_cb cb)
 {
 	struct impl *i = transport->impl;
 	i->accept_cb = cb;
@@ -160,11 +161,9 @@ err:
 	return rv;
 }
 
-static int impl_stop(struct raft_uv_transport *transport)
+static void impl_close(struct raft_uv_transport *transport, raft_uv_transport_close_cb cb)
 {
-	struct impl *i = transport->impl;
-	i->accept_cb = NULL;
-	return 0;
+	cb(transport);
 }
 
 static int parse_address(const char *address, struct sockaddr_in *addr)
@@ -227,10 +226,10 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 	i->connect.arg = NULL;
 	i->accept_cb = NULL;
 	transport->impl = i;
-	transport->config = impl_config;
-	transport->start = impl_start;
-	transport->stop = impl_stop;
+	transport->init = impl_init;
+	transport->listen = impl_listen;
 	transport->connect = impl_connect;
+	transport->close = impl_close;
 	return 0;
 }
 
