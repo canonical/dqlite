@@ -43,8 +43,8 @@
 #define TEAR_DOWN_RAFT                              \
 	{                                           \
 		raft_close(&f->raft, NULL);         \
-		raft_uv_close(&f->raft_io, NULL);   \
 		test_uv_stop(&f->loop);             \
+		raft_uv_close(&f->raft_io);         \
 		fsm__close(&f->fsm);                \
 		test_uv_tear_down(&f->loop);        \
 		raftProxyClose(&f->raft_transport); \
