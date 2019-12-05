@@ -68,7 +68,6 @@ test_lib_SOURCES = \
   test/lib/heap.c \
   test/lib/logger.c \
   test/lib/munit.c \
-  test/lib/raft.c \
   test/lib/server.c \
   test/lib/sqlite.c \
   test/lib/uv.c

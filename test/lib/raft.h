@@ -74,12 +74,4 @@
 		munit_assert_int(rv2, ==, 0); \
 	}
 
-void test_raft_emit(struct raft_logger *l,
-		    int level,
-		    raft_time time,
-		    const char *file,
-		    int line,
-		    const char *format,
-		    ...);
-
 #endif /* TEST_RAFT_H */

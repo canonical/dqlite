@@ -40,26 +40,3 @@ void loggerDefaultEmit(void *data, int level, const char *fmt, va_list args)
 
 	fprintf(stderr, "%s\n", buf);
 }
-
-void loggerRaftEmit(struct raft_logger *l,
-		    int level,
-		    raft_time time,
-		    const char *file,
-		    int line,
-		    const char *format,
-		    ...)
-{
-	struct logger *logger = l->impl;
-	va_list args;
-
-	(void)file;
-	(void)line;
-	(void)time;
-
-	/* TODO: properly setup raft logging */
-	return;
-
-	va_start(args, format);
-	logger->emit(logger->data, level, format, args);
-	va_end(args);
-}
