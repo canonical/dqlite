@@ -23,15 +23,6 @@ struct logger
 /* Default implementation of dqlite_emit, using stderr. */
 void loggerDefaultEmit(void *data, int level, const char *fmt, va_list args);
 
-/* Forward log messages to a dqlite logger. */
-void loggerRaftEmit(struct raft_logger *l,
-		    int level,
-		    raft_time time,
-		    const char *file,
-		    int line,
-		    const char *format,
-		    ...);
-
 /* Emit a log message with a certain level. */
 /* #define debugf(L, FORMAT, ...) \ */
 /* 	logger__emit(L, DQLITE_DEBUG, FORMAT, ##__VA_ARGS__) */
