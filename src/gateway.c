@@ -1,10 +1,11 @@
 #include "gateway.h"
+
 #include "bind.h"
+#include "protocol.h"
 #include "query.h"
 #include "request.h"
 #include "response.h"
 #include "vfs.h"
-#include "protocol.h"
 
 void gateway__init(struct gateway *g,
 		   struct config *config,
@@ -103,7 +104,8 @@ static void failure(struct handle *req, int code, const char *message)
 	req->cb(req, 0, DQLITE_RESPONSE_FAILURE);
 }
 
-static int handle_leader_legacy(struct handle *req, struct cursor *cursor) {
+static int handle_leader_legacy(struct handle *req, struct cursor *cursor)
+{
 	START(leader, server_legacy);
 	unsigned id;
 	raft_leader(req->gateway->raft, &id, &response.address);
