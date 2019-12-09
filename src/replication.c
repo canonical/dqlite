@@ -140,6 +140,32 @@ static void applyCb(struct raft_apply *req, int status, void *result)
 	}
 }
 
+/* Handle xFrames failures due to this server not not being the leader. */
+static int framesAbortBecauseNotLeader(struct leader *leader, int is_commit)
+{
+	struct tx *tx = leader->db->tx;
+	if (tx->state == TX__PENDING) {
+		/* No Frames command was applied, so followers don't know about
+		 * this transaction. If this is a commit frame, we don't need to
+		 * do anything special, the xUndo hook will just remove it. If
+		 * it's not a commit frame, the undo hook won't be fired and we
+		 * need to remove the transaction here. */
+		if (!is_commit) {
+			db__delete_tx(leader->db);
+		}
+	} else {
+		/* At least one Frames command was applied, so the transaction
+		 * exists on the followers. We mark the transaction as zombie,
+		 * the begin hook of next leader (either us or somebody else)
+		 * will detect a dangling transaction and issue an Undo command
+		 * to roll it back. In its apply Undo command logic our FSM will
+		 * detect that the rollback is for a zombie and just no-op
+		 * it. */
+		tx__zombie(tx);
+	}
+	return SQLITE_IOERR_NOT_LEADER;
+}
+
 static int apply(struct replication *r,
 		 struct apply *apply,
 		 struct leader *leader,
@@ -187,11 +213,23 @@ static int apply(struct replication *r,
 		}
 		switch (apply->type) {
 			case COMMAND_FRAMES:
-				framesAbortBecauseLeadershipLost(
-				    leader, apply->frames.is_commit);
+				if (apply->status == RAFT_LEADERSHIPLOST) {
+					framesAbortBecauseLeadershipLost(
+					    leader, apply->frames.is_commit);
+				} else {
+					/* TODO: are all errors equivalent to
+					 * not leader? */
+					framesAbortBecauseNotLeader(
+					    leader, apply->frames.is_commit);
+				}
 				break;
 			default:
+				printf(
+				    "unexpected apply failure for command type "
+				    "%d\n",
+				    apply->type);
 				assert(0);
+				break;
 		};
 	} else {
 		rc = SQLITE_OK;
@@ -395,32 +433,6 @@ static int methodAbort(sqlite3_wal_replication *r, void *arg)
 	(void)arg;
 
 	return SQLITE_OK;
-}
-
-/* Handle xFrames failures due to this server not not being the leader. */
-static int framesAbortBecauseNotLeader(struct leader *leader, int is_commit)
-{
-	struct tx *tx = leader->db->tx;
-	if (tx->state == TX__PENDING) {
-		/* No Frames command was applied, so followers don't know about
-		 * this transaction. If this is a commit frame, we don't need to
-		 * do anything special, the xUndo hook will just remove it. If
-		 * it's not a commit frame, the undo hook won't be fired and we
-		 * need to remove the transaction here. */
-		if (!is_commit) {
-			db__delete_tx(leader->db);
-		}
-	} else {
-		/* At least one Frames command was applied, so the transaction
-		 * exists on the followers. We mark the transaction as zombie,
-		 * the begin hook of next leader (either us or somebody else)
-		 * will detect a dangling transaction and issue an Undo command
-		 * to roll it back. In its apply Undo command logic our FSM will
-		 * detect that the rollback is for a zombie and just no-op
-		 * it. */
-		tx__zombie(tx);
-	}
-	return SQLITE_IOERR_NOT_LEADER;
 }
 
 static int methodFrames(sqlite3_wal_replication *replication,
