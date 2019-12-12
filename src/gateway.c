@@ -563,7 +563,8 @@ static int handle_promote(struct handle *req, struct cursor *cursor)
 	r->gateway = g;
 	r->req.data = r;
 
-	rv = raft_promote(g->raft, &r->req, request.id, raftChangeCb);
+	rv = raft_promote(g->raft, &r->req, request.id, RAFT_VOTER,
+			  raftChangeCb);
 	if (rv != 0) {
 		sqlite3_free(r);
 		failure(req, rv, raft_strerror(rv));
