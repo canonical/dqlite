@@ -20,7 +20,7 @@ struct impl
 		void *arg;
 
 	} connect;
-	unsigned id;
+	raft_id id;
 	const char *address;
 	raft_uv_accept_cb accept_cb;
 };
@@ -30,14 +30,14 @@ struct connect
 	struct impl *impl;
 	struct raft_uv_connect *req;
 	struct uv_work_s work;
-	unsigned id;
+	raft_id id;
 	const char *address;
 	int fd;
 	int status;
 };
 
 static int impl_init(struct raft_uv_transport *transport,
-			unsigned id,
+			raft_id id,
 			const char *address)
 {
 	struct impl *i = transport->impl;
@@ -124,7 +124,7 @@ out:
 
 static int impl_connect(struct raft_uv_transport *transport,
 			struct raft_uv_connect *req,
-			unsigned id,
+			raft_id id,
 			const char *address,
 			raft_uv_connect_cb cb)
 {
