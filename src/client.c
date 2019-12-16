@@ -282,7 +282,7 @@ void clientCloseRows(struct rows *rows)
 	sqlite3_free(rows->column_names);
 }
 
-int clientSendConnect(struct client *c, unsigned id, const char *address)
+int clientSendConnect(struct client *c, raft_id id, const char *address)
 {
 	struct request_connect request;
 	request.id = id;

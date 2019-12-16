@@ -3,6 +3,8 @@
 #ifndef CLIENT_H_
 #define CLIENT_H_
 
+#include <raft.h>
+
 #include <stdint.h>
 
 #include "lib/buffer.h"
@@ -67,7 +69,7 @@ int clientSendQuery(struct client *c, unsigned stmt_id);
 int clientRecvRows(struct client *c, struct rows *rows);
 
 /* Send a raft connect request. */
-int clientSendConnect(struct client *c, unsigned id, const char *address);
+int clientSendConnect(struct client *c, raft_id id, const char *address);
 
 /* Release all memory used in the given rows object. */
 void clientCloseRows(struct rows *rows);
