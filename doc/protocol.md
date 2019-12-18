@@ -150,26 +150,6 @@ associated schemas:
 
 ### **0** - Get current leader
 
-| Type   | Value                         |
-|--------| ----------------------------- |
-| uint64 | Unused field |
-
-### **1** - Client registration
-
-| Type   | Value                         |
-|--------| ----------------------------- |
-| uint64 | ID of the client |
- 
-### **3** - Open a database
-
-| Type  | Value                          |
-|-------|--------------------------------|
-| text | The name of the database |
-| uint64 | Currently unused |
-| text | Currently unused |
-
-### **0** - Get current leader
-
 | Type  | Value                          |
 |-------|--------------------------------|
 | uint64 | Unused field |
