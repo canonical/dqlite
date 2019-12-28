@@ -36,7 +36,7 @@ struct dqlite_node
 };
 
 int dqlite__init(struct dqlite_node *d,
-		 unsigned id,
+		 dqlite_node_id id,
 		 const char *address,
 		 const char *dir);
 

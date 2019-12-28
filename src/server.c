@@ -13,7 +13,7 @@
 #include "vfs.h"
 
 int dqlite__init(struct dqlite_node *d,
-		 unsigned id,
+		 dqlite_node_id id,
 		 const char *address,
 		 const char *dir)
 {
@@ -130,8 +130,8 @@ void dqlite__close(struct dqlite_node *d)
 	}
 }
 
-int dqlite_node_create(unsigned server_id,
-		       const char *server_address,
+int dqlite_node_create(dqlite_node_id id,
+		       const char *address,
 		       const char *data_dir,
 		       dqlite_node **t)
 {
@@ -139,7 +139,7 @@ int dqlite_node_create(unsigned server_id,
 
 	*t = sqlite3_malloc(sizeof **t);
 
-	rv = dqlite__init(*t, server_id, server_address, data_dir);
+	rv = dqlite__init(*t, id, address, data_dir);
 	if (rv != 0) {
 		return rv;
 	}

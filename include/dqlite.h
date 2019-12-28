@@ -20,6 +20,11 @@
 typedef struct dqlite_node dqlite_node;
 
 /**
+ * Hold the value of a dqlite node ID. Guaranteed to be at least 64-bit long.
+ */
+typedef unsigned long long dqlite_node_id;
+
+/**
  * Create a new dqlite node object.
  *
  * The @id argument a is positive number that identifies this particular dqlite
@@ -44,7 +49,7 @@ typedef struct dqlite_node dqlite_node;
  * the dqlite library, so any memory associated with them can be released after
  * the function returns.
  */
-int dqlite_node_create(unsigned id,
+int dqlite_node_create(dqlite_node_id id,
 		       const char *address,
 		       const char *data_dir,
 		       dqlite_node **n);

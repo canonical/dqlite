@@ -8,7 +8,7 @@
  */
 struct config
 {
-	unsigned id;                   /* Unique instance ID */
+	dqlite_node_id id;             /* Unique instance ID */
 	char *address;                 /* Instance address */
 	unsigned heartbeat_timeout;    /* In milliseconds */
 	unsigned page_size;            /* Database page size */
@@ -21,7 +21,7 @@ struct config
  * Initialize the config object with required values and set the rest to sane
  * defaults. A copy will be made of the given @address.
  */
-int config__init(struct config *c, unsigned id, const char *address);
+int config__init(struct config *c, dqlite_node_id id, const char *address);
 
 /**
  * Release any memory held by the config object.
