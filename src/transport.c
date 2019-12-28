@@ -240,7 +240,7 @@ void raftProxyClose(struct raft_uv_transport *transport)
 }
 
 void raftProxyAccept(struct raft_uv_transport *transport,
-		     unsigned id,
+		     raft_id id,
 		     const char *address,
 		     struct uv_stream_s *stream)
 {
