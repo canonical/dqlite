@@ -143,7 +143,7 @@ int dqlite_node_stop(dqlite_node *n);
 
 struct dqlite_node_info
 {
-	unsigned id;
+	dqlite_node_id id;
 	const char *address;
 };
 typedef struct dqlite_node_info dqlite_node_info;
