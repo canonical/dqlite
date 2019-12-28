@@ -28,7 +28,7 @@
  * TODO: make this thread safe. */
 static unsigned serial = 1;
 
-int config__init(struct config *c, unsigned id, const char *address)
+int config__init(struct config *c, dqlite_node_id id, const char *address)
 {
 	int rv;
 	c->id = id;

@@ -107,7 +107,7 @@ static void failure(struct handle *req, int code, const char *message)
 static int handle_leader_legacy(struct handle *req, struct cursor *cursor)
 {
 	START(leader, server_legacy);
-	unsigned id;
+	raft_id id;
 	raft_leader(req->gateway->raft, &id, &response.address);
 	if (response.address == NULL) {
 		response.address = "";
@@ -122,7 +122,7 @@ static int handle_leader(struct handle *req, struct cursor *cursor)
 		return handle_leader_legacy(req, cursor);
 	}
 	START(leader, server);
-	unsigned id;
+	raft_id id;
 	raft_leader(req->gateway->raft, &id, &response.address);
 	response.id = id;
 	if (response.address == NULL) {
