@@ -415,7 +415,8 @@ static void listenCb(uv_stream_t *listener, int status)
 		if (rv != 0) {
 			goto err;
 		}
-		if (cred.pid != getpid()) {
+		// no need to call ourself
+		if (cred.pid == getpid()) {
 			goto err;
 		}
 	}
