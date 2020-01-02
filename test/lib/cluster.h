@@ -76,13 +76,13 @@ struct server
                                                                            \
 		test_logger_setup(params, &s->logger);                     \
                                                                            \
+		sprintf(address, "%d", I + 1);                             \
+                                                                           \
 		rc = config__init(&s->config, I + 1, address);             \
 		munit_assert_int(rc, ==, 0);                               \
                                                                            \
 		rc = vfsInit(&s->vfs, &s->config);                         \
 		munit_assert_int(rc, ==, 0);                               \
-                                                                           \
-		sprintf(address, "%d", I + 1);                             \
                                                                            \
 		registry__init(&s->registry, &s->config);                  \
                                                                            \
