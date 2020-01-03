@@ -519,10 +519,7 @@ static int handle_join(struct handle *req, struct cursor *cursor)
 	START(join, empty);
 	(void)response;
 
-	if (raft_state(g->raft) != RAFT_LEADER) {
-		failure(req, RAFT_NOTLEADER, "not leader");
-		return 0;
-	}
+	CHECK_LEADER(req);
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
@@ -551,10 +548,7 @@ static int handle_promote(struct handle *req, struct cursor *cursor)
 	START(promote, empty);
 	(void)response;
 
-	if (raft_state(g->raft) != RAFT_LEADER) {
-		failure(req, RAFT_NOTLEADER, "not leader");
-		return 0;
-	}
+	CHECK_LEADER(req);
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
