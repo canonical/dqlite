@@ -38,7 +38,7 @@
 #define REQUEST_PROMOTE(X, ...) X(uint64, id, ##__VA_ARGS__)
 #define REQUEST_REMOVE(X, ...) X(uint64, id, ##__VA_ARGS__)
 #define REQUEST_DUMP(X, ...) X(text, filename, ##__VA_ARGS__)
-#define REQUEST_CLUSTER(X, ...) X(uint64, __unused__, ##__VA_ARGS__)
+#define REQUEST_CLUSTER(X, ...) X(uint64, format, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);

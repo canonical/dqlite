@@ -39,6 +39,10 @@
 #define DQLITE_REQUEST_DUMP 15
 #define DQLITE_REQUEST_CLUSTER 16
 
+#define DQLITE_REQUEST_CLUSTER_FORMAT_V0 0 /* ID and address */
+#define DQLITE_REQUEST_CLUSTER_FORMAT_V1 1 /* ID, address and role */
+
+
 /* Response types */
 #define DQLITE_RESPONSE_FAILURE 0
 #define DQLITE_RESPONSE_SERVER 1

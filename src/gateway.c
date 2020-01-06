@@ -694,14 +694,16 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
-static int encodeServer(struct gateway *g, unsigned i, struct buffer *buffer)
+static int encodeServer(struct gateway *g, unsigned i, struct buffer *buffer, int format)
 {
 	void *cur;
 	uint64_t id;
+	uint64_t role;
 	text_t address;
 
 	id = g->raft->configuration.servers[i].id;
 	address = g->raft->configuration.servers[i].address;
+	role = g->raft->configuration.servers[i].role;
 
 	cur = buffer__advance(buffer, uint64__sizeof(&id));
 	if (cur == NULL) {
@@ -714,6 +716,16 @@ static int encodeServer(struct gateway *g, unsigned i, struct buffer *buffer)
 		return DQLITE_NOMEM;
 	}
 	text__encode(&address, &cur);
+
+	if (format == DQLITE_REQUEST_CLUSTER_FORMAT_V0) {
+		return 0;
+	}
+
+	cur = buffer__advance(buffer, uint64__sizeof(&role));
+	if (cur == NULL) {
+		return DQLITE_NOMEM;
+	}
+	uint64__encode(&role, &cur);
 
 	return 0;
 }
@@ -732,7 +744,7 @@ static int handle_cluster(struct handle *req, struct cursor *cursor)
 	response_servers__encode(&response, &cur);
 
 	for (i = 0; i < response.n; i++) {
-		rv = encodeServer(g, i, req->buffer);
+		rv = encodeServer(g, i, req->buffer, request.format);
 		if (rv != 0) {
 			failure(req, rv, "failed to encode server");
 			return 0;
