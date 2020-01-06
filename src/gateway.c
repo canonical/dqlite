@@ -527,12 +527,12 @@ void raftChangeCb(struct raft_change *change, int status)
 	}
 }
 
-static int handle_join(struct handle *req, struct cursor *cursor)
+static int handle_add(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	struct change *r;
 	int rv;
-	START(join, empty);
+	START(add, empty);
 	(void)response;
 
 	CHECK_LEADER(req);
