@@ -520,7 +520,8 @@ void raftChangeCb(struct raft_change *change, int status)
 	g->req = NULL;
 	sqlite3_free(r);
 	if (status != 0) {
-		failure(req, translateRaftErrCode(status), raft_strerror(status));
+		failure(req, translateRaftErrCode(status),
+			raft_strerror(status));
 	} else {
 		SUCCESS(empty, EMPTY);
 	}
@@ -559,11 +560,21 @@ static int handle_promote(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	struct change *r;
+	uint64_t role = RAFT_VOTER;
 	int rv;
 	START(promote, empty);
 	(void)response;
 
 	CHECK_LEADER(req);
+
+	/* Detect if this is an assign role request, instead of the former
+	 * promote request. */
+	if (cursor->cap > 0) {
+		rv = uint64__decode(cursor, &role);
+		if (rv != 0) {
+			return rv;
+		}
+	}
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
@@ -572,7 +583,7 @@ static int handle_promote(struct handle *req, struct cursor *cursor)
 	r->gateway = g;
 	r->req.data = r;
 
-	rv = raft_promote(g->raft, &r->req, request.id, RAFT_VOTER,
+	rv = raft_promote(g->raft, &r->req, request.id, role,
 			  raftChangeCb);
 	if (rv != 0) {
 		sqlite3_free(r);
@@ -694,7 +705,10 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
-static int encodeServer(struct gateway *g, unsigned i, struct buffer *buffer, int format)
+static int encodeServer(struct gateway *g,
+			unsigned i,
+			struct buffer *buffer,
+			int format)
 {
 	void *cur;
 	uint64_t id;
