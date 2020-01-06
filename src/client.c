@@ -299,8 +299,10 @@ int clientSendJoin(struct client *c, unsigned id, const char *address) {
 	return 0;
 }
 
-int clientSendAssign(struct client *c, unsigned id) {
+int clientSendAssign(struct client *c, unsigned id, int role) {
 	struct request_assign request;
+	(void)role;
+	/* TODO: actually send an assign request, not a legacy promote one. */
 	request.id = id;
 	REQUEST(assign, ASSIGN);
 	return 0;
