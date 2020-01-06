@@ -490,6 +490,21 @@ static int handle_interrupt(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+/* Translate a raft error to a dqlite one. */
+static int translateRaftErrCode(int code)
+{
+	switch (code) {
+		case RAFT_NOTLEADER:
+			return SQLITE_IOERR_NOT_LEADER;
+		case RAFT_LEADERSHIPLOST:
+			return SQLITE_IOERR_LEADERSHIP_LOST;
+		case RAFT_CANTCHANGE:
+			return SQLITE_BUSY;
+		default:
+			return SQLITE_ERROR;
+	}
+}
+
 struct change
 {
 	struct gateway *gateway;
@@ -505,7 +520,7 @@ void raftChangeCb(struct raft_change *change, int status)
 	g->req = NULL;
 	sqlite3_free(r);
 	if (status != 0) {
-		failure(req, status, raft_strerror(status));
+		failure(req, translateRaftErrCode(status), raft_strerror(status));
 	} else {
 		SUCCESS(empty, EMPTY);
 	}
@@ -532,7 +547,7 @@ static int handle_join(struct handle *req, struct cursor *cursor)
 		      raftChangeCb);
 	if (rv != 0) {
 		sqlite3_free(r);
-		failure(req, rv, raft_strerror(rv));
+		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
 	g->req = req;
@@ -561,7 +576,7 @@ static int handle_promote(struct handle *req, struct cursor *cursor)
 			  raftChangeCb);
 	if (rv != 0) {
 		sqlite3_free(r);
-		failure(req, rv, raft_strerror(rv));
+		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
 	g->req = req;
@@ -577,10 +592,7 @@ static int handle_remove(struct handle *req, struct cursor *cursor)
 	START(remove, empty);
 	(void)response;
 
-	if (raft_state(g->raft) != RAFT_LEADER) {
-		failure(req, RAFT_NOTLEADER, "not leader");
-		return 0;
-	}
+	CHECK_LEADER(req);
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
@@ -592,7 +604,7 @@ static int handle_remove(struct handle *req, struct cursor *cursor)
 	rv = raft_remove(g->raft, &r->req, request.id, raftChangeCb);
 	if (rv != 0) {
 		sqlite3_free(r);
-		failure(req, rv, raft_strerror(rv));
+		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
 	g->req = req;
