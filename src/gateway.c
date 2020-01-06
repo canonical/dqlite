@@ -556,11 +556,27 @@ static int handle_add(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+/* Translate a dqlite role code to its raft equivalent. */
+static int translateDqliteRole(int role)
+{
+	switch (role) {
+		case DQLITE_VOTER:
+			return RAFT_VOTER;
+		case DQLITE_STANDBY:
+			return RAFT_STANDBY;
+		case DQLITE_SPARE:
+			return RAFT_SPARE;
+		default:
+			assert(0);
+			return -1;
+	}
+}
+
 static int handle_assign(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	struct change *r;
-	uint64_t role = RAFT_VOTER;
+	uint64_t role = DQLITE_VOTER;
 	int rv;
 	START(assign, empty);
 	(void)response;
@@ -583,7 +599,8 @@ static int handle_assign(struct handle *req, struct cursor *cursor)
 	r->gateway = g;
 	r->req.data = r;
 
-	rv = raft_assign(g->raft, &r->req, request.id, role, raftChangeCb);
+	rv = raft_assign(g->raft, &r->req, request.id,
+			 translateDqliteRole(role), raftChangeCb);
 	if (rv != 0) {
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
@@ -704,6 +721,22 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+/* Translate a raft role code to its dqlite equivalent. */
+static int translateRaftRole(int role)
+{
+	switch (role) {
+		case RAFT_VOTER:
+			return DQLITE_VOTER;
+		case RAFT_STANDBY:
+			return DQLITE_STANDBY;
+		case RAFT_SPARE:
+			return DQLITE_SPARE;
+		default:
+			assert(0);
+			return -1;
+	}
+}
+
 static int encodeServer(struct gateway *g,
 			unsigned i,
 			struct buffer *buffer,
@@ -716,7 +749,7 @@ static int encodeServer(struct gateway *g,
 
 	id = g->raft->configuration.servers[i].id;
 	address = g->raft->configuration.servers[i].address;
-	role = g->raft->configuration.servers[i].role;
+	role = translateRaftRole(g->raft->configuration.servers[i].role);
 
 	cur = buffer__advance(buffer, uint64__sizeof(&id));
 	if (cur == NULL) {
