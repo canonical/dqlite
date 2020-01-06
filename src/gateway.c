@@ -583,8 +583,7 @@ static int handle_assign(struct handle *req, struct cursor *cursor)
 	r->gateway = g;
 	r->req.data = r;
 
-	rv = raft_promote(g->raft, &r->req, request.id, role,
-			  raftChangeCb);
+	rv = raft_assign(g->raft, &r->req, request.id, role, raftChangeCb);
 	if (rv != 0) {
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
