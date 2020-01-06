@@ -511,7 +511,7 @@ struct change
 	struct raft_change req;
 };
 
-void raftChangeCb(struct raft_change *change, int status)
+static void raftChangeCb(struct raft_change *change, int status)
 {
 	struct change *r = change->data;
 	struct gateway *g = r->gateway;
@@ -798,6 +798,47 @@ static int handle_cluster(struct handle *req, struct cursor *cursor)
 	}
 
 	req->cb(req, 0, DQLITE_RESPONSE_SERVERS);
+
+	return 0;
+}
+
+void raftTransferCb(struct raft_transfer *r)
+{
+	struct gateway *g = r->data;
+	struct handle *req = g->req;
+	struct response_empty response;
+	g->req = NULL;
+	sqlite3_free(r);
+	if (g->raft->state == RAFT_LEADER) {
+		failure(req, DQLITE_ERROR, "leadership transfer failed");
+	} else {
+		SUCCESS(empty, EMPTY);
+	}
+}
+
+static int handle_transfer(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	struct raft_transfer *r;
+	int rv;
+	START(transfer, empty);
+	(void)response;
+
+	CHECK_LEADER(req);
+
+	r = sqlite3_malloc(sizeof *r);
+	if (r == NULL) {
+		return DQLITE_NOMEM;
+	}
+	r->data = g;
+
+	rv = raft_transfer(g->raft, r, request.id, raftTransferCb);
+	if (rv != 0) {
+		sqlite3_free(r);
+		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
+		return 0;
+	}
+	g->req = req;
 
 	return 0;
 }

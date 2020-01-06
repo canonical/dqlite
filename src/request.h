@@ -39,6 +39,7 @@
 #define REQUEST_REMOVE(X, ...) X(uint64, id, ##__VA_ARGS__)
 #define REQUEST_DUMP(X, ...) X(text, filename, ##__VA_ARGS__)
 #define REQUEST_CLUSTER(X, ...) X(uint64, format, ##__VA_ARGS__)
+#define REQUEST_TRANSFER(X, ...) X(uint64, id, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
@@ -58,7 +59,8 @@
 	X(assign, ASSIGN, __VA_ARGS__)       \
 	X(remove, REMOVE, __VA_ARGS__)       \
 	X(dump, DUMP, __VA_ARGS__)           \
-	X(cluster, CLUSTER, __VA_ARGS__)
+	X(cluster, CLUSTER, __VA_ARGS__) \
+	X(transfer, TRANSFER, __VA_ARGS__)
 
 REQUEST__TYPES(REQUEST__DEFINE);
 
