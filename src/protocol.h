@@ -8,6 +8,11 @@
 
 #define DQLITE_PROTO 1001 /* Protocol error */
 
+/* Role codes */
+#define DQLITE_VOTER 0
+#define DQLITE_STANDBY 1
+#define DQLITE_SPARE 2
+
 /* Current protocol version */
 #define DQLITE_PROTOCOL_VERSION 1
 
@@ -41,7 +46,6 @@
 
 #define DQLITE_REQUEST_CLUSTER_FORMAT_V0 0 /* ID and address */
 #define DQLITE_REQUEST_CLUSTER_FORMAT_V1 1 /* ID, address and role */
-
 
 /* Response types */
 #define DQLITE_RESPONSE_FAILURE 0
