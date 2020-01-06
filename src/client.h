@@ -74,8 +74,8 @@ int clientSendConnect(struct client *c, raft_id id, const char *address);
 /* Release all memory used in the given rows object. */
 void clientCloseRows(struct rows *rows);
 
-/* Send a request to join a dqlite cluster. */
-int clientSendJoin(struct client *c, unsigned id, const char *address);
+/* Send a request to add a dqlite node. */
+int clientSendAdd(struct client *c, unsigned id, const char *address);
 
 /* Send a request to assign a role to a node. */
 int clientSendAssign(struct client *c, unsigned id, int role);

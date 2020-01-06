@@ -291,11 +291,11 @@ int clientSendConnect(struct client *c, raft_id id, const char *address)
 	return 0;
 }
 
-int clientSendJoin(struct client *c, unsigned id, const char *address) {
-	struct request_join request;
+int clientSendAdd(struct client *c, unsigned id, const char *address) {
+	struct request_add request;
 	request.id = id;
 	request.address = address;
-	REQUEST(join, JOIN);
+	REQUEST(add, ADD);
 	return 0;
 }
 

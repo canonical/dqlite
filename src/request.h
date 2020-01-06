@@ -32,7 +32,7 @@
 	X(uint64, db_id, ##__VA_ARGS__) \
 	X(text, sql, ##__VA_ARGS__)
 #define REQUEST_INTERRUPT(X, ...) X(uint64, db_id, ##__VA_ARGS__)
-#define REQUEST_JOIN(X, ...)         \
+#define REQUEST_ADD(X, ...)         \
 	X(uint64, id, ##__VA_ARGS__) \
 	X(text, address, ##__VA_ARGS__)
 #define REQUEST_ASSIGN(X, ...) X(uint64, id, ##__VA_ARGS__)
@@ -54,7 +54,7 @@
 	X(exec_sql, EXEC_SQL, __VA_ARGS__)   \
 	X(query_sql, QUERY_SQL, __VA_ARGS__) \
 	X(interrupt, INTERRUPT, __VA_ARGS__) \
-	X(join, JOIN, __VA_ARGS__)           \
+	X(add, ADD, __VA_ARGS__)           \
 	X(assign, ASSIGN, __VA_ARGS__)       \
 	X(remove, REMOVE, __VA_ARGS__)       \
 	X(dump, DUMP, __VA_ARGS__)           \
