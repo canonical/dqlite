@@ -84,13 +84,13 @@ static MunitParameterEnum params[] = {
 	}
 
 /* Send an assign role request. */
-#define ASSIGN(ID)                                     \
-	{                                              \
-		int rv_;                               \
-		rv_ = clientSendAssign(f->client, ID); \
-		munit_assert_int(rv_, ==, 0);          \
-		rv_ = clientRecvEmpty(f->client);      \
-		munit_assert_int(rv_, ==, 0);          \
+#define ASSIGN(ID, ROLE)                                     \
+	{                                                    \
+		int rv_;                                     \
+		rv_ = clientSendAssign(f->client, ID, ROLE); \
+		munit_assert_int(rv_, ==, 0);                \
+		rv_ = clientRecvEmpty(f->client);            \
+		munit_assert_int(rv_, ==, 0);                \
 	}
 
 /* Send a remove request. */
@@ -170,7 +170,7 @@ TEST_CASE(join, success, params)
 	(void)params;
 	HANDSHAKE;
 	JOIN(id, address);
-	ASSIGN(id);
+	ASSIGN(id, 1 /* voter */);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);

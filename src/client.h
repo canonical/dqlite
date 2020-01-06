@@ -78,7 +78,7 @@ void clientCloseRows(struct rows *rows);
 int clientSendJoin(struct client *c, unsigned id, const char *address);
 
 /* Send a request to assign a role to a node. */
-int clientSendAssign(struct client *c, unsigned id);
+int clientSendAssign(struct client *c, unsigned id, int role);
 
 /* Send a request to remove a server from the cluster. */
 int clientSendRemove(struct client *c, unsigned id);
