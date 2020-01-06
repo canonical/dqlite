@@ -556,13 +556,13 @@ static int handle_join(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
-static int handle_promote(struct handle *req, struct cursor *cursor)
+static int handle_assign(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	struct change *r;
 	uint64_t role = RAFT_VOTER;
 	int rv;
-	START(promote, empty);
+	START(assign, empty);
 	(void)response;
 
 	CHECK_LEADER(req);

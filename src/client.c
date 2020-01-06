@@ -299,10 +299,10 @@ int clientSendJoin(struct client *c, unsigned id, const char *address) {
 	return 0;
 }
 
-int clientSendPromote(struct client *c, unsigned id) {
-	struct request_promote request;
+int clientSendAssign(struct client *c, unsigned id) {
+	struct request_assign request;
 	request.id = id;
-	REQUEST(promote, PROMOTE);
+	REQUEST(assign, ASSIGN);
 	return 0;
 }
 

@@ -77,8 +77,8 @@ void clientCloseRows(struct rows *rows);
 /* Send a request to join a dqlite cluster. */
 int clientSendJoin(struct client *c, unsigned id, const char *address);
 
-/* Send a request to promote a server to voting. */
-int clientSendPromote(struct client *c, unsigned id);
+/* Send a request to assign a role to a node. */
+int clientSendAssign(struct client *c, unsigned id);
 
 /* Send a request to remove a server from the cluster. */
 int clientSendRemove(struct client *c, unsigned id);

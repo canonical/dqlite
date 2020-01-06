@@ -1,12 +1,11 @@
+#include "../../src/client.h"
+#include "../../src/server.h"
 #include "../lib/endpoint.h"
 #include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
 #include "../lib/server.h"
 #include "../lib/sqlite.h"
-
-#include "../../src/client.h"
-#include "../../src/server.h"
 
 TEST_MODULE(membership);
 
@@ -84,14 +83,14 @@ static MunitParameterEnum params[] = {
 		munit_assert_int(rv_, ==, 0);                 \
 	}
 
-/* Send a promote request. */
-#define PROMOTE(ID)                                     \
-	{                                               \
-		int rv_;                                \
-		rv_ = clientSendPromote(f->client, ID); \
-		munit_assert_int(rv_, ==, 0);           \
-		rv_ = clientRecvEmpty(f->client);       \
-		munit_assert_int(rv_, ==, 0);           \
+/* Send an assign role request. */
+#define ASSIGN(ID)                                     \
+	{                                              \
+		int rv_;                               \
+		rv_ = clientSendAssign(f->client, ID); \
+		munit_assert_int(rv_, ==, 0);          \
+		rv_ = clientRecvEmpty(f->client);      \
+		munit_assert_int(rv_, ==, 0);          \
 	}
 
 /* Send a remove request. */
@@ -171,7 +170,7 @@ TEST_CASE(join, success, params)
 	(void)params;
 	HANDSHAKE;
 	JOIN(id, address);
-	PROMOTE(id);
+	ASSIGN(id);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
