@@ -567,8 +567,9 @@ static int translateDqliteRole(int role)
 		case DQLITE_SPARE:
 			return RAFT_SPARE;
 		default:
-			assert(0);
-			return -1;
+			/* For backward compat with clients that don't set a
+			 * role. */
+			return DQLITE_VOTER;
 	}
 }
 
