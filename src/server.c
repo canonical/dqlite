@@ -208,6 +208,15 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	if (fd == -1) {
 		return DQLITE_ERROR;
 	}
+	if (domain == AF_INET) {
+		int reuse = 1;
+		rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
+				(const char *)&reuse, sizeof(reuse));
+		if (rv != 0) {
+			close(fd);
+			return DQLITE_ERROR;
+		}
+	}
 
 	rv = bind(fd, addr, len);
 	if (rv != 0) {
