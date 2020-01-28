@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <sys/un.h>
+#include <time.h>
 
 #include "../include/dqlite.h"
 #include "conn.h"
@@ -11,6 +12,9 @@
 #include "replication.h"
 #include "transport.h"
 #include "vfs.h"
+
+/* Special ID for the bootstrap node. Equals to raft_digest("1", 0). */
+#define BOOTSTRAP_ID 0x2dc171858c3155be
 
 int dqlite__init(struct dqlite_node *d,
 		 dqlite_node_id id,
@@ -293,12 +297,12 @@ int dqlite_node_set_network_latency(dqlite_node *t,
 }
 
 static int maybeBootstrap(dqlite_node *d,
-			  const unsigned id,
+			  dqlite_node_id id,
 			  const char *address)
 {
 	struct raft_configuration configuration;
 	int rv;
-	if (id != 1) {
+	if (id != 1 && id != BOOTSTRAP_ID) {
 		return 0;
 	}
 	raft_configuration_init(&configuration);
@@ -613,4 +617,18 @@ int dqlite_node_recover(dqlite_node *n,
 out:
 	raft_configuration_close(&configuration);
 	return rv;
+}
+
+dqlite_node_id dqlite_generate_node_id(const char *address)
+{
+	struct timespec ts;
+	int rv;
+	unsigned long long n;
+
+	rv = clock_gettime(CLOCK_REALTIME, &ts);
+	assert(rv == 0);
+
+	n = ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec;
+
+	return raft_digest(address, n);
 }

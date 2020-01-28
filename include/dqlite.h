@@ -181,4 +181,9 @@ int dqlite_node_recover(dqlite_node *n,
  */
 const char *dqlite_node_errmsg(dqlite_node *n);
 
+/**
+ * Generate a unique ID for the given address.
+ */
+dqlite_node_id dqlite_generate_node_id(const char *address);
+
 #endif /* DQLITE_H */
