@@ -619,7 +619,6 @@ static int vfs__delete_content(struct root *root, const char *filename)
 	/* Check that there are no consumers of this file. */
 	if (content->refcount > 0) {
 		root->error = EBUSY;
-		pthread_mutex_unlock(&root->mutex);
 		rc = SQLITE_IOERR_DELETE;
 		goto err;
 	}
@@ -629,8 +628,6 @@ static int vfs__delete_content(struct root *root, const char *filename)
 
 	/* Reset the file content slot. */
 	*(root->contents + content_index) = NULL;
-
-	pthread_mutex_unlock(&root->mutex);
 
 	return SQLITE_OK;
 
