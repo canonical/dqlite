@@ -639,12 +639,11 @@ err:
 
 static int vfs__x_close(sqlite3_file *file)
 {
+	int rc = SQLITE_OK;
 	struct vfs__file *f = (struct vfs__file *)file;
 	struct root *root = (struct root *)(f->root);
 
 	if (f->temp != NULL) {
-		int rc;
-
 		/* Close the actual temporary file. */
 		rc = f->temp->pMethods->xClose(f->temp);
 		sqlite3_free(f->temp);
@@ -665,12 +664,12 @@ static int vfs__x_close(sqlite3_file *file)
 	}
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
-		vfs__delete_content(root, f->content->filename);
+		rc = vfs__delete_content(root, f->content->filename);
 	}
 
 	pthread_mutex_unlock(&root->mutex);
 
-	return SQLITE_OK;
+	return rc;
 }
 
 static int vfs__read(sqlite3_file *file,
