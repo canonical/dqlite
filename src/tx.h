@@ -58,4 +58,6 @@ void tx__zombie(struct tx *tx);
  */
 void tx__surrogate(struct tx *tx, sqlite3 *conn);
 
+#include "debug.h"
+
 #endif /* TX_H_*/

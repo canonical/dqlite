@@ -33,6 +33,7 @@ void db__close(struct db *db)
 		assert(rc == SQLITE_OK);
 	}
 	if (db->tx != NULL) {
+		DEBUG_TX(db->tx, "freeing open transaction");
 		sqlite3_free(db->tx);
 	}
 	sqlite3_free(db->filename);
@@ -47,6 +48,7 @@ int db__open_follower(struct db *db)
 	if (rc != 0) {
 		return rc;
 	}
+	DEBUG_MSG("LEADERSHIP: false");
 	return 0;
 }
 
@@ -63,6 +65,7 @@ int db__create_tx(struct db *db, unsigned long long id, sqlite3 *conn)
 
 void db__delete_tx(struct db *db)
 {
+	DEBUG_TX(db->tx, "deleting");
 	tx__close(db->tx);
 	sqlite3_free(db->tx);
 	db->tx = NULL;

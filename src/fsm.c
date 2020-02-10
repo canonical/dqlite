@@ -53,26 +53,31 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 		if (tx__is_leader(tx)) {
 			if (tx->is_zombie) {
+				DEBUG_TX(tx, "we are a zombie");
 				/* TODO */
 			} else {
 				/* We're executing this FSM command in during
 				 * the execution of the replication->frames()
 				 * hook. */
+				DEBUG_TX(tx, "we are the leader");
 			}
 		} else {
 			/* We're executing the Frames command as followers. The
 			 * transaction must be in the Writing state. */
 			assert(tx->state == TX__WRITING);
 			is_begin = false;
+			DEBUG_TX(tx, "we are a follower");
 		}
 	} else {
 		/* We don't know about this transaction, it must be a new
 		 * follower transaction. */
+		DEBUG_TX(tx, "create follower transaction");
 		rc = db__create_tx(db, c->tx_id, db->follower);
 		if (rc != 0) {
 			return rc;
 		}
 		tx = db->tx;
+		DEBUG_TX(tx, "new follower transaction");
 	}
 
 	rc = command_frames__page_numbers(c, &page_numbers);
@@ -100,7 +105,10 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 		/* If it's a follower, we also unregister it. */
 		if (!tx__is_leader(tx)) {
+			DEBUG_TX(tx, "commit follower");
 			db__delete_tx(db);
+		} else {
+			DEBUG_TX(tx, "commit leader");
 		}
 	}
 
@@ -117,6 +125,7 @@ static int apply_undo(struct fsm *f, const struct command_undo *c)
 	tx = db->tx;
 	assert(tx != NULL);
 
+	DEBUG_TX(tx, "undo");
 	rc = tx__undo(tx);
 	if (rc != 0) {
 		return rc;
@@ -142,6 +151,7 @@ static int apply_undo(struct fsm *f, const struct command_undo *c)
 	 *    transaction, and we have to remove the zombie ourselves, because
 	 *    nobody else would do it otherwise. */
 	if (!tx__is_leader(tx) || tx->is_zombie) {
+		DEBUG_TX(tx, (tx->is_zombie ? "zombie" : "follower"));
 		db__delete_tx(db);
 	}
 

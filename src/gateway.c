@@ -437,6 +437,7 @@ static int handle_exec_sql(struct handle *req, struct cursor *cursor)
 	assert(g->sql == NULL);
 	assert(g->stmt == NULL);
 	req->gateway->sql = request.sql;
+	DEBUG_MSG(request.sql);
 	handle_exec_sql_next(req, cursor);
 	return 0;
 }
@@ -805,15 +806,18 @@ static int handle_cluster(struct handle *req, struct cursor *cursor)
 
 void raftTransferCb(struct raft_transfer *r)
 {
+	DEBUG_MSG("begin");
 	struct gateway *g = r->data;
 	struct handle *req = g->req;
 	struct response_empty response;
 	g->req = NULL;
 	sqlite3_free(r);
 	if (g->raft->state == RAFT_LEADER) {
+		DEBUG_MSG("failed");
 		failure(req, DQLITE_ERROR, "leadership transfer failed");
 	} else {
 		SUCCESS(empty, EMPTY);
+		DEBUG_MSG("ok");
 	}
 }
 
@@ -822,6 +826,7 @@ static int handle_transfer(struct handle *req, struct cursor *cursor)
 	struct gateway *g = req->gateway;
 	struct raft_transfer *r;
 	int rv;
+	DEBUG_MSG("start transfer");
 	START(transfer, empty);
 	(void)response;
 
@@ -833,12 +838,15 @@ static int handle_transfer(struct handle *req, struct cursor *cursor)
 	}
 	r->data = g;
 
+	DEBUG_MSG("raft_transfer: begin");
 	rv = raft_transfer(g->raft, r, request.id, raftTransferCb);
 	if (rv != 0) {
+		DEBUG_MSG("raft_transfer: failed");
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
+	DEBUG_MSG("raft_transfer: completed");
 	g->req = req;
 
 	return 0;

@@ -51,6 +51,7 @@ void registry__db_by_tx_id(struct registry *r, size_t id, struct db **db)
 	{
 		*db = QUEUE__DATA(head, struct db, queue);
 		if ((*db)->tx != NULL && (*db)->tx->id == id) {
+			DEBUG_TX((*db)->tx, "db not found");
 			return;
 		}
 	}

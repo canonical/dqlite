@@ -26,7 +26,9 @@ static void checkpointApplyCb(struct raft_apply *req, int status, void *result)
 	struct leader *l = req->data;
 	(void)result;
 	(void)status;       /* TODO: log a warning in case of errors. */
+	DEBUG_MSG("pre co_switch");
 	co_switch(l->loop); /* Resume apply() */
+	DEBUG_MSG("post co_switch");
 	maybeExecDone(l->exec);
 }
 
@@ -99,7 +101,9 @@ static int maybeCheckpoint(void *ctx,
 	if (rv != 0) {
 		goto abort_after_command_encode;
 	}
+	DEBUG_MSG("pre co_switch");
 	co_switch(l->main);
+	DEBUG_MSG("post co_switch");
 
 	return SQLITE_OK;
 
@@ -192,7 +196,9 @@ static void loop()
 		rc = sqlite3_step(req->stmt);
 		req->done = true;
 		req->status = rc;
+		DEBUG_MSG("pre co_switch");
 		co_switch(l->main);
+		DEBUG_MSG("post co_switch");
 	};
 }
 
@@ -236,6 +242,7 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 	l->exec = NULL;
 	l->apply.data = l;
 	QUEUE__PUSH(&db->leaders, &l->queue);
+	DEBUG_MSG("we are the leader");
 	return 0;
 
 err_after_loop_create:
@@ -253,12 +260,14 @@ void leader__close(struct leader *l)
 		l->exec->status = SQLITE_ERROR;
 		maybeExecDone(l->exec);
 	}
+	DEBUG_MSG("closing connection");
 	rc = sqlite3_close(l->conn);
 	assert(rc == 0);
 
 	/* TODO: untested: this is a temptative fix for the zombie tx assertion
 	 * failure. */
 	if (l->db->tx != NULL && l->db->tx->conn == l->conn) {
+		DEBUG_TX(l->db->tx, "deleting tx");
 		db__delete_tx(l->db);
 	}
 
@@ -276,7 +285,9 @@ static void execBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 	loop_arg_exec = l->exec;
+	DEBUG_MSG("pre co_switch");
 	co_switch(l->loop);
+	DEBUG_MSG("post co_switch");
 	maybeExecDone(l->exec);
 }
 

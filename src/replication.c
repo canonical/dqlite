@@ -77,6 +77,7 @@ static void framesAbortBecauseLeadershipLost(struct leader *leader,
 		 *        and then issue an Undo command to abort the
 		 *        transaction. In this case our FSM will behave like in
 		 *        case 1.*/
+		DEBUG_TX(leader->db->tx, "is_commit");
 		tx__zombie(leader->db->tx);
 	} else {
 		/* Mark the transaction as zombie. Possible scenarios:
@@ -115,6 +116,7 @@ static void framesAbortBecauseLeadershipLost(struct leader *leader,
 		 *        transaction. In this case our FSM will behave like in
 		 *        case 1.
 		 */
+		DEBUG_TX(leader->db->tx, "no commit");
 		tx__zombie(leader->db->tx);
 	}
 }
@@ -130,7 +132,9 @@ static void applyCb(struct raft_apply *req, int status, void *result)
 	r = leader->exec;
 	apply->status = status;
 
+	DEBUG_MSG("pre co_switch");
 	co_switch(leader->loop); /* Resume apply() */
+	DEBUG_MSG("post co_switch");
 
 	if (r != NULL && r->done) {
 		leader->exec = NULL;
@@ -145,6 +149,7 @@ static int framesAbortBecauseNotLeader(struct leader *leader, int is_commit)
 {
 	struct tx *tx = leader->db->tx;
 	if (tx->state == TX__PENDING) {
+		DEBUG_TX(tx, "framesAbortBecauseNotLeader: tx pending");
 		/* No Frames command was applied, so followers don't know about
 		 * this transaction. If this is a commit frame, we don't need to
 		 * do anything special, the xUndo hook will just remove it. If
@@ -154,6 +159,7 @@ static int framesAbortBecauseNotLeader(struct leader *leader, int is_commit)
 			db__delete_tx(leader->db);
 		}
 	} else {
+		DEBUG_TX(tx, "framesAbortBecauseNotLeader: zombie");
 		/* At least one Frames command was applied, so the transaction
 		 * exists on the followers. We mark the transaction as zombie,
 		 * the begin hook of next leader (either us or somebody else)
@@ -197,7 +203,9 @@ static int apply(struct replication *r,
 		goto err_after_command_encode;
 	}
 
+	DEBUG_MSG("pre co_switch");
 	co_switch(leader->main);
+	DEBUG_MSG("post co_switch");
 
 	if (apply->status != 0) {
 		switch (apply->status) {
@@ -282,12 +290,14 @@ static int maybeHandleInProgressTx(struct replication *r, struct leader *leader)
 	int rc;
 
 	if (tx == NULL) {
+		DEBUG_MSG("no tx!");
 		return 0;
 	}
 	assert(tx->id != 0);
 
 	/* Check if the in-progress transaction is a leader. */
 	if (tx__is_leader(tx)) {
+		DEBUG_TX(tx, "is leader");
 		/* Check if the transaction was started by another connection.
 		 *
 		 * In that case it's not worth proceeding further, since most
@@ -313,9 +323,14 @@ static int maybeHandleInProgressTx(struct replication *r, struct leader *leader)
 		 * following one or more non-commit frames commands that were
 		 * successfully applied. */
 		if (!tx->is_zombie) {
+			DEBUG_TX(tx, "ZOMBIE! TODO -- FIX");
 			/* TODO: if there's a pending leader tx for this
 			 * connection, let's just remove it, although it's not
 			 * clear how this could happen. */
+			if (tx->state == TX__PENDING) {
+				DEBUG_TX(tx, "ZOMBIE! PENDING");
+			}
+			DEBUG_TX(tx, (tx->dry_run ? "dry run" : "real tx"));
 			if (tx->state == TX__PENDING && tx->dry_run) {
 				db__delete_tx(leader->db);
 				return 0;
@@ -330,6 +345,7 @@ static int maybeHandleInProgressTx(struct replication *r, struct leader *leader)
 		/* Create a surrogate follower. We'll undo the transaction
 		 * below. */
 		tx__surrogate(tx, leader->db->follower);
+
 	}
 
 	c.tx_id = tx->id;
