@@ -33,6 +33,12 @@ The simplest way to see dqlite in action is to use the demo program that comes
 with the Go dqlite bindings. Please see the [relevant
 documentation](https://github.com/canonical/go-dqlite#demo) in that project.
 
+Media
+-----
+
+A talk about dqlite was given at FOSDEM 2020, you can watch it
+[here](https://fosdem.org/2020/schedule/event/dqlite/).
+
 Wire protocol
 -------------
 
