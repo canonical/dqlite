@@ -459,6 +459,8 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	}
 	rv = bind__params(g->stmt, cursor);
 	if (rv != 0) {
+		sqlite3_finalize(g->stmt);
+		g->stmt = NULL;
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
