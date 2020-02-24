@@ -390,6 +390,8 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 		goto success;
 	}
 
+	g->stmt = stmt;
+
 	/* TODO: what about bindings for multi-statement SQL text? */
 	if (cursor != NULL) {
 		rv = bind__params(stmt, cursor);
@@ -401,7 +403,6 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 
 	g->sql = tail;
 	g->req = req;
-	g->stmt = stmt;
 
 	rv = leader__exec(g->leader, &g->exec, g->stmt, handle_exec_sql_cb);
 	if (rv != SQLITE_OK) {
