@@ -5,15 +5,14 @@
 #ifndef LEADER_H_
 #define LEADER_H_
 
-#include <stdbool.h>
-
 #include <libco.h>
 #include <raft.h>
 #include <sqlite3.h>
+#include <stdbool.h>
 
 #include "./lib/queue.h"
-
 #include "db.h"
+#include "replication.h"
 
 struct exec;
 struct barrier;
@@ -32,6 +31,7 @@ struct leader
 	struct exec *exec;       /* Exec request in progress, if any. */
 	struct raft_apply apply; /* To apply checkpoint commands */
 	queue queue;             /* Prev/next leader, used by struct db. */
+	struct apply *inflight;  /* TODO: make leader__close async */
 };
 
 struct barrier

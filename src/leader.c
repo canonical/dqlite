@@ -235,6 +235,7 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 
 	l->exec = NULL;
 	l->apply.data = l;
+	l->inflight = NULL;
 	QUEUE__PUSH(&db->leaders, &l->queue);
 	return 0;
 
@@ -249,6 +250,10 @@ void leader__close(struct leader *l)
 	int rc;
 	/* TODO: there shouldn't be any ongoing exec request. */
 	if (l->exec != NULL) {
+		if (l->inflight != NULL) {
+			/* TODO: make leader_close async instead */
+			l->inflight->leader = NULL;
+		}
 		l->exec->done = true;
 		l->exec->status = SQLITE_ERROR;
 		maybeExecDone(l->exec);

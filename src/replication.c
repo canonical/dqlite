@@ -23,21 +23,6 @@ struct replication
 	queue apply_reqs;
 };
 
-/* Wrapper around raft_apply, saving context information. */
-struct apply
-{
-	struct raft_apply req; /* Raft apply request */
-	int status;            /* Raft apply result */
-	struct leader *leader; /* Leader connection that triggered the hook */
-	int type;              /* Command type */
-	union {                /* Command-specific data */
-		struct
-		{
-			bool is_commit;
-		} frames;
-	};
-};
-
 static void framesAbortBecauseLeadershipLost(struct leader *leader,
 					     int is_commit)
 {
@@ -127,6 +112,10 @@ static void applyCb(struct raft_apply *req, int status, void *result)
 	(void)result;
 	apply = req->data;
 	leader = apply->leader;
+	if (leader == NULL) {
+		sqlite3_free(apply);
+		return;
+	}
 	r = leader->exec;
 	apply->status = status;
 
@@ -196,8 +185,11 @@ static int apply(struct replication *r,
 		}
 		goto err_after_command_encode;
 	}
+	leader->inflight = apply;
 
 	co_switch(leader->main);
+
+	leader->inflight = NULL;
 
 	if (apply->status != 0) {
 		switch (apply->status) {
