@@ -1,12 +1,10 @@
 #include "../../include/dqlite.h"
-
-#include "../lib/cluster.h"
-#include "../lib/runner.h"
-
 #include "../../src/gateway.h"
 #include "../../src/request.h"
 #include "../../src/response.h"
 #include "../../src/tuple.h"
+#include "../lib/cluster.h"
+#include "../lib/runner.h"
 
 TEST_MODULE(gateway);
 
@@ -208,6 +206,16 @@ static void handleCb(struct handle *req, int status, int type)
 		exec.stmt_id = STMT_ID;   \
 		ENCODE(&exec, exec);      \
 		HANDLE(EXEC);             \
+	}
+
+/* Submit a request to execute the given statement. */
+#define EXEC_SQL_SUBMIT(SQL)                      \
+	{                                         \
+		struct request_exec_sql exec_sql; \
+		exec_sql.db_id = 0;               \
+		exec_sql.sql = SQL;               \
+		ENCODE(&exec_sql, exec_sql);      \
+		HANDLE(EXEC_SQL);                 \
 	}
 
 /* Wait for the last request to complete */
@@ -670,6 +678,30 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 	CLUSTER_ELECT(0);
 	EXEC("INSERT INTO test(n) VALUES(1)");
 
+	return MUNIT_OK;
+}
+
+/* The gateway is closed while a raft commit is in flight. */
+TEST_CASE(exec, close_while_in_flight, NULL)
+{
+	struct exec_fixture *f = data;
+	/* uint64_t stmt_id; */
+	unsigned i;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Accumulate enough dirty data to fill the page cache a first time,
+	 * flush it and then fill it a second time. */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("BEGIN");
+	for (i = 0; i < 234; i++) {
+		EXEC("INSERT INTO test(n) VALUES(1)");
+	}
+
+	/* Trigger a second page cache flush to the WAL, and abort before it's
+	 * done. */
+	EXEC_SQL_SUBMIT("INSERT INTO test(n) VALUES(1)");
 	return MUNIT_OK;
 }
 

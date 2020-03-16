@@ -10,6 +10,21 @@
 
 #include "config.h"
 
+/* Wrapper around raft_apply, saving context information. */
+struct apply
+{
+	struct raft_apply req; /* Raft apply request */
+	int status;            /* Raft apply result */
+	struct leader *leader; /* Leader connection that triggered the hook */
+	int type;              /* Command type */
+	union {                /* Command-specific data */
+		struct
+		{
+			bool is_commit;
+		} frames;
+	};
+};
+
 /**
  * Initialize the given SQLite replication interface with dqlite's raft based
  * implementation.
