@@ -277,6 +277,7 @@ static void execBarrierCb(struct barrier *barrier, int status)
 	struct leader *l = req->leader;
 	if (status != 0) {
 		l->exec->done = true;
+		l->exec->status = status;
 		maybeExecDone(l->exec);
 		return;
 	}
