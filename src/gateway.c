@@ -123,13 +123,26 @@ static int handle_leader_legacy(struct handle *req, struct cursor *cursor)
 
 static int handle_leader(struct handle *req, struct cursor *cursor)
 {
-	if (req->gateway->protocol == DQLITE_PROTOCOL_VERSION_LEGACY) {
+	struct gateway *g = req->gateway;
+	raft_id id = 0;
+	const char *address = NULL;
+	unsigned i;
+	if (g->protocol == DQLITE_PROTOCOL_VERSION_LEGACY) {
 		return handle_leader_legacy(req, cursor);
 	}
 	START(leader, server);
-	raft_id id;
-	raft_leader(req->gateway->raft, &id, &response.address);
+
+	/* Only voters might now who the leader is. */
+	for (i = 0; i < g->raft->configuration.n; i++) {
+		struct raft_server *server = &g->raft->configuration.servers[i];
+		if (server->id == g->raft->id && server->role == RAFT_VOTER) {
+			raft_leader(req->gateway->raft, &id, &address);
+			break;
+		}
+	}
+
 	response.id = id;
+	response.address = address;
 	if (response.address == NULL) {
 		response.address = "";
 	}
