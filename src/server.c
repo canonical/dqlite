@@ -66,6 +66,7 @@ int dqlite__init(struct dqlite_node *d,
 	raft_set_heartbeat_timeout(&d->raft, 500);
 	raft_set_snapshot_threshold(&d->raft, 1024);
 	raft_set_snapshot_trailing(&d->raft, 8192);
+	raft_set_pre_vote(&d->raft, true);
 	rv = replication__init(&d->replication, &d->config, &d->raft);
 	if (rv != 0) {
 		goto err_after_raft_fsm_init;
