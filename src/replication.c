@@ -179,6 +179,12 @@ static int apply(struct replication *r,
 			case RAFT_TOOBIG:
 				rc = SQLITE_TOOBIG;
 				break;
+			case RAFT_TOOMANY:
+				/* The only case where raft returns RAFT_TOOMANY
+				 * is when the AIO events system limit gets
+				 * reached. */
+				rc = SQLITE_IOERR_WRITE;
+				break;
 			default:
 				rc = SQLITE_ERROR;
 				break;
