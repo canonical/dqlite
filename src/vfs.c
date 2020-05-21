@@ -420,7 +420,6 @@ struct root
 	struct logger *logger;     /* Send log messages here. */
 	struct content **contents; /* Files content */
 	int contents_len;          /* Number of files */
-	pthread_mutex_t mutex;     /* Serialize to access */
 	int error;                 /* Last error occurred. */
 };
 
@@ -429,7 +428,6 @@ static struct root *root_create(struct logger *logger)
 {
 	struct root *r;
 	int contents_size;
-	int err;
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
@@ -447,9 +445,6 @@ static struct root *root_create(struct logger *logger)
 	}
 
 	memset(r->contents, 0, contents_size);
-
-	err = pthread_mutex_init(&r->mutex, NULL);
-	assert(err == 0); /* Docs say that pthread_mutex_init can't fail */
 
 	return r;
 
@@ -651,8 +646,6 @@ static int vfs__x_close(sqlite3_file *file)
 		return rc;
 	}
 
-	pthread_mutex_lock(&root->mutex);
-
 	assert(f->content->refcount);
 	f->content->refcount--;
 
@@ -666,8 +659,6 @@ static int vfs__x_close(sqlite3_file *file)
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
 		rc = vfs__delete_content(root, f->content->filename);
 	}
-
-	pthread_mutex_unlock(&root->mutex);
 
 	return rc;
 }
@@ -1510,8 +1501,6 @@ static int vfs__open(sqlite3_vfs *vfs,
 		return SQLITE_OK;
 	}
 
-	pthread_mutex_lock(&root->mutex);
-
 	/* Search if the file exists already, and (if it doesn't) if there are
 	 * free slots. */
 	free_slot = root_content_lookup(root, filename, &content);
@@ -1591,8 +1580,6 @@ static int vfs__open(sqlite3_vfs *vfs,
 
 	content->refcount++;
 
-	pthread_mutex_unlock(&root->mutex);
-
 	return SQLITE_OK;
 
 err_after_content_create:
@@ -1600,8 +1587,6 @@ err_after_content_create:
 
 err:
 	assert(rc != SQLITE_OK);
-
-	pthread_mutex_unlock(&root->mutex);
 
 	return rc;
 }
@@ -1618,11 +1603,7 @@ static int vfs__delete(sqlite3_vfs *vfs, const char *filename, int dir_sync)
 
 	(void)dir_sync;
 
-	pthread_mutex_lock(&root->mutex);
-
 	rc = vfs__delete_content(root, filename);
-
-	pthread_mutex_unlock(&root->mutex);
 
 	return rc;
 }
@@ -1642,8 +1623,6 @@ static int vfs__access(sqlite3_vfs *vfs,
 
 	root = (struct root *)(vfs->pAppData);
 
-	pthread_mutex_lock(&root->mutex);
-
 	/* If the file exists, access is always granted. */
 	root_content_lookup(root, filename, &content);
 	if (content == NULL) {
@@ -1652,8 +1631,6 @@ static int vfs__access(sqlite3_vfs *vfs,
 	} else {
 		*result = 1;
 	}
-
-	pthread_mutex_unlock(&root->mutex);
 
 	return SQLITE_OK;
 }
@@ -1752,9 +1729,7 @@ static int vfs__get_last_error(sqlite3_vfs *vfs, int x, char *y)
 	(void)x;
 	(void)y;
 
-	pthread_mutex_lock(&root->mutex);
 	rc = root->error;
-	pthread_mutex_unlock(&root->mutex);
 
 	return rc;
 }
