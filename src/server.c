@@ -143,6 +143,9 @@ int dqlite_node_create(dqlite_node_id id,
 	int rv;
 
 	*t = sqlite3_malloc(sizeof **t);
+	if (*t == NULL) {
+		return DQLITE_NOMEM;
+	}
 
 	rv = dqlite__init(*t, id, address, data_dir);
 	if (rv != 0) {
