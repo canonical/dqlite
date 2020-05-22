@@ -9,7 +9,7 @@ The acronym "dqlite" stands for "distributed SQLite", meaning that dqlite extend
 various instances of your application and have them act as a highly-available
 cluster, with no dependency on external databases.
 
-Design higlights
+Design highlights
 ----------------
 
 * Asynchronous single-threaded implementation using [libuv](https://libuv.org/)
@@ -18,7 +18,7 @@ Design higlights
 * Data replication based on the [Raft](https://raft.github.io/) algorithm and its
   efficient [C-raft](https://github.com/canonical/raft) implementation.
 
-Licence
+License
 -------
 
 The dqlite library is released under a slightly modified version of LGPLv3, that
