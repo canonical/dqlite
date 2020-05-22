@@ -1,5 +1,11 @@
-dist: xenial
+dist: bionic
+arch: amd64
 language: c
+
+env:
+  global:
+   - secure: "GxlcNLTNfiUDOmi4zbYckObe9mVQhWucfNDENog0w0K6QoFtNodxgUPSBqD1N6Tar9v7PxdADM6Z5pHvY8V3gE0fndkkcibXBi7FvZ8eQaLtTYkvQfGnCqDKEGME0594Z4Klr8txOaKfZDLSwYhYuoWVCWJe9hyOOWJdYmaD6u4="
+
 addons:
   apt:
     sources:
@@ -10,8 +16,23 @@ addons:
     - libuv1-dev
     - libco-dev
     - libraft-dev
+
+  coverity_scan:
+    build_script_url: https://dl.stgraber.org/coverity_travis.sh
+    project:
+      name: "canonical/dqlite"
+      description: "Embeddable and replicated SQL database"
+
+    # Where email notification of build analysis results will be sent
+    notification_email: free.ekanayaka@canonical.com
+
+    build_command_prepend: "autoreconf -i && ./configure"
+    build_command: "make"
+    branch_pattern: master
+
 compiler:
   - gcc
+
 script:
   - autoreconf -i
   - ./configure --enable-debug --enable-code-coverage --enable-sanitize
