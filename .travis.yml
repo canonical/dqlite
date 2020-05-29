@@ -38,7 +38,7 @@ script:
   - ./configure --enable-debug --enable-code-coverage --enable-sanitize
   - CFLAGS=-O0
   - make
-  - make check || cat ./test-suite.log
+  - make check || (cat ./test-suite.log && false)
   - if [ $TRAVIS_COMPILER = gcc ]; then make code-coverage-capture; fi
 after_success:
   - bash <(curl -s https://codecov.io/bash) -g "./test*"
