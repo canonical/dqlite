@@ -31,9 +31,10 @@ void gateway__close(struct gateway *g)
 	stmt__registry_close(&g->stmts);
 	if (g->leader != NULL) {
 		if (g->stmt != NULL) {
-			assert(g->req != NULL);
-			g->exec.cb = NULL;
-			sqlite3_finalize(g->stmt);
+			struct raft_apply *req = &g->leader->inflight->req;
+			req->cb(req, RAFT_SHUTDOWN, NULL);
+			assert(g->req == NULL);
+			assert(g->stmt == NULL);
 		}
 		leader__close(g->leader);
 		sqlite3_free(g->leader);
