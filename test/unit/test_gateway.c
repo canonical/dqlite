@@ -603,7 +603,7 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_re_elected, NULL)
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "disk I/O error");
+	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
@@ -636,7 +636,7 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_other_elected, NULL)
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "disk I/O error");
+	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Elect another leader and re-try */
 	CLUSTER_ELECT(1);
@@ -672,7 +672,7 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "disk I/O error");
+	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
@@ -730,7 +730,6 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_other_elected, NULL)
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "disk I/O error");
 
 	/* Elect another leader and re-try */
 	CLUSTER_ELECT(1);
@@ -831,7 +830,8 @@ TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
 	PREPARE("ROLLBACK");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, RESULT);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
@@ -862,7 +862,8 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 	PREPARE("ROLLBACK");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, RESULT);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(1);
