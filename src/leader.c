@@ -250,10 +250,7 @@ void leader__close(struct leader *l)
 	int rc;
 	/* TODO: there shouldn't be any ongoing exec request. */
 	if (l->exec != NULL) {
-		if (l->inflight != NULL) {
-			/* TODO: make leader_close async instead */
-			l->inflight->leader = NULL;
-		}
+		assert(l->inflight == NULL);
 		l->exec->done = true;
 		l->exec->status = SQLITE_ERROR;
 		maybeExecDone(l->exec);

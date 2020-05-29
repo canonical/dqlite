@@ -205,6 +205,18 @@ static int apply(struct replication *r,
 			case RAFT_NOSPACE:
 				rc = SQLITE_IOERR_WRITE;
 				break;
+			case RAFT_SHUTDOWN:
+				/* If we got here it means we have manually
+				 * fired the apply callback from
+				 * gateway__close(). In this case we don't
+				 * free() the apply object, since it will be
+				 * freed when the callback is fired again by
+				 * raft.
+				 *
+				 * TODO: we should instead make gatewa__close()
+				 * itself asynchronous. */
+				apply->leader = NULL;
+				return SQLITE_ABORT;
 			default:
 				rc = SQLITE_IOERR;
 				break;
