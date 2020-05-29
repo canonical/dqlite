@@ -67,9 +67,9 @@ struct connection
 	unsigned i;                                        \
 	for (i = 0; i < N_SERVERS; i++) {                  \
 		struct connection *c = &f->connections[i]; \
+		gateway__close(&c->gateway);               \
 		buffer__close(&c->buf1);                   \
 		buffer__close(&c->buf2);                   \
-		gateway__close(&c->gateway);               \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 
@@ -685,17 +685,16 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 TEST_CASE(exec, close_while_in_flight, NULL)
 {
 	struct exec_fixture *f = data;
-	/* uint64_t stmt_id; */
 	unsigned i;
 	(void)params;
 	CLUSTER_ELECT(0);
 
-	/* Accumulate enough dirty data to fill the page cache a first time,
-	 * flush it and then fill it a second time. */
+	/* Accumulate enough dirty data to fill the page cache and trigger
+	 * an apply request. */
 	LOWER_CACHE_SIZE;
 	EXEC("CREATE TABLE test (n INT)");
 	EXEC("BEGIN");
-	for (i = 0; i < 234; i++) {
+	for (i = 0; i < 162; i++) {
 		EXEC("INSERT INTO test(n) VALUES(1)");
 	}
 

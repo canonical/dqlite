@@ -28,6 +28,12 @@ TEST_MODULE(conn);
  *
  ******************************************************************************/
 
+static void connCloseCb(struct conn *conn)
+{
+	bool *closed = conn->queue[0];
+	*closed = true;
+}
+
 #define FIXTURE              \
 	FIXTURE_LOGGER;      \
 	FIXTURE_VFS;         \
@@ -36,38 +42,44 @@ TEST_MODULE(conn);
 	FIXTURE_RAFT;        \
 	FIXTURE_REPLICATION; \
 	FIXTURE_CLIENT;      \
-	struct conn conn
+	struct conn conn;    \
+	bool closed;
 
-#define SETUP                                                          \
-	struct uv_stream_s *stream;                                    \
-	int rv;                                                        \
-	SETUP_HEAP;                                                    \
-	SETUP_SQLITE;                                                  \
-	SETUP_LOGGER;                                                  \
-	SETUP_VFS;                                                     \
-	SETUP_CONFIG;                                                  \
-	SETUP_REGISTRY;                                                \
-	SETUP_RAFT;                                                    \
-	SETUP_REPLICATION;                                             \
-	SETUP_CLIENT;                                                  \
-	RAFT_BOOTSTRAP;                                                \
-	RAFT_START;                                                    \
-	rv = transport__stream(&f->loop, f->server, &stream);          \
-	munit_assert_int(rv, ==, 0);                                   \
-	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry, \
-			 &f->raft, stream, &f->raft_transport, NULL);  \
+#define SETUP                                                                \
+	struct uv_stream_s *stream;                                          \
+	int rv;                                                              \
+	SETUP_HEAP;                                                          \
+	SETUP_SQLITE;                                                        \
+	SETUP_LOGGER;                                                        \
+	SETUP_VFS;                                                           \
+	SETUP_CONFIG;                                                        \
+	SETUP_REGISTRY;                                                      \
+	SETUP_RAFT;                                                          \
+	SETUP_REPLICATION;                                                   \
+	SETUP_CLIENT;                                                        \
+	RAFT_BOOTSTRAP;                                                      \
+	RAFT_START;                                                          \
+	rv = transport__stream(&f->loop, f->server, &stream);                \
+	munit_assert_int(rv, ==, 0);                                         \
+	f->closed = false;                                                   \
+	f->conn.queue[0] = &f->closed;                                       \
+	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry,       \
+			 &f->raft, stream, &f->raft_transport, connCloseCb); \
 	munit_assert_int(rv, ==, 0)
 
-#define TEAR_DOWN              \
-	conn__stop(&f->conn);  \
-	TEAR_DOWN_REPLICATION; \
-	TEAR_DOWN_RAFT;        \
-	TEAR_DOWN_CLIENT;      \
-	TEAR_DOWN_REGISTRY;    \
-	TEAR_DOWN_CONFIG;      \
-	TEAR_DOWN_VFS;         \
-	TEAR_DOWN_LOGGER;      \
-	TEAR_DOWN_SQLITE;      \
+#define TEAR_DOWN                         \
+	conn__stop(&f->conn);             \
+	while (!f->closed) {              \
+		test_uv_run(&f->loop, 1); \
+	};                                \
+	TEAR_DOWN_REPLICATION;            \
+	TEAR_DOWN_RAFT;                   \
+	TEAR_DOWN_CLIENT;                 \
+	TEAR_DOWN_REGISTRY;               \
+	TEAR_DOWN_CONFIG;                 \
+	TEAR_DOWN_VFS;                    \
+	TEAR_DOWN_LOGGER;                 \
+	TEAR_DOWN_SQLITE;                 \
 	TEAR_DOWN_HEAP
 
 /******************************************************************************
@@ -108,12 +120,24 @@ TEST_MODULE(conn);
 	}
 
 /* Execute a statement. */
-#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)               \
+#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)         \
 	{                                                          \
 		int rv2;                                           \
 		rv2 = clientSendExec(&f->client, STMT_ID);         \
 		munit_assert_int(rv2, ==, 0);                      \
-		test_uv_run(&f->loop, 7);                          \
+		test_uv_run(&f->loop, LOOP);                       \
+		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
+				       ROWS_AFFECTED);             \
+		munit_assert_int(rv2, ==, 0);                      \
+	}
+
+/* Execute a non-prepared statement. */
+#define EXEC_SQL(SQL, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)         \
+	{                                                          \
+		int rv2;                                           \
+		rv2 = clientSendExecSQL(&f->client, SQL);          \
+		munit_assert_int(rv2, ==, 0);                      \
+		test_uv_run(&f->loop, LOOP);                       \
 		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
 				       ROWS_AFFECTED);             \
 		munit_assert_int(rv2, ==, 0);                      \
@@ -286,7 +310,7 @@ TEST_CASE(exec, success, NULL)
 	unsigned rows_affected;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 7);
 	munit_assert_int(last_insert_id, ==, 0);
 	munit_assert_int(rows_affected, ==, 0);
 	return MUNIT_OK;
@@ -299,15 +323,32 @@ TEST_CASE(exec, result, NULL)
 	unsigned rows_affected;
 	(void)params;
 	PREPARE("BEGIN", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 1);
 	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 4);
 	PREPARE("INSERT INTO test (n) VALUES(123)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 1);
 	PREPARE("COMMIT", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 4);
 	munit_assert_int(last_insert_id, ==, 1);
 	munit_assert_int(rows_affected, ==, 1);
+	return MUNIT_OK;
+}
+
+TEST_CASE(exec, close_while_in_flight, NULL)
+{
+	struct exec_fixture *f = data;
+	unsigned last_insert_id;
+	unsigned rows_affected;
+	int rv;
+	(void)params;
+
+	EXEC_SQL("CREATE TABLE test (n)", &last_insert_id, &rows_affected, 7);
+	rv = clientSendExecSQL(&f->client, "INSERT INTO test(n) VALUES(1)");
+	munit_assert_int(rv, ==, 0);
+
+	test_uv_run(&f->loop, 1);
+
 	return MUNIT_OK;
 }
 
@@ -337,9 +378,9 @@ TEST_SETUP(query)
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &f->last_insert_id, &f->rows_affected);
+	EXEC(stmt_id, &f->last_insert_id, &f->rows_affected, 7);
 	PREPARE("INSERT INTO test(n) VALUES (123)", &f->insert_stmt_id);
-	EXEC(f->insert_stmt_id, &f->last_insert_id, &f->rows_affected);
+	EXEC(f->insert_stmt_id, &f->last_insert_id, &f->rows_affected, 3);
 	return f;
 }
 

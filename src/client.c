@@ -179,6 +179,15 @@ int clientSendExec(struct client *c, unsigned stmt_id)
 	return 0;
 }
 
+int clientSendExecSQL(struct client *c, const char *sql)
+{
+	struct request_exec_sql request;
+	request.db_id = c->db_id;
+	request.sql = sql;
+	REQUEST(exec_sql, EXEC_SQL);
+	return 0;
+}
+
 int clientRecvResult(struct client *c,
 			unsigned *last_insert_id,
 			unsigned *rows_affected)
