@@ -55,6 +55,12 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 	uv_buf_t buf;
 	int rv;
 
+	/* Ignore results firing after we started closing. TODO: instead, we
+	 * should make gateway__close() asynchronous. */
+	if (c->closed) {
+		return;
+	}
+
 	if (status != 0) {
 		goto abort;
 	}
@@ -85,7 +91,6 @@ abort:
 static void close_cb(struct transport *transport)
 {
 	struct conn *c = transport->data;
-	c->closed = true;
 	gateway__close(&c->gateway);
 	buffer__close(&c->write);
 	buffer__close(&c->read);
@@ -107,6 +112,7 @@ static void raft_connect(struct conn *c, struct cursor *cursor)
 			      c->transport.stream);
 	/* Close the connection without actually closing the transport, since
 	 * the stream will be used by raft */
+	c->closed = true;
 	close_cb(&c->transport);
 }
 

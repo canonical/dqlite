@@ -57,6 +57,9 @@ int clientRecvStmt(struct client *c, unsigned *stmt_id);
 /* Send a request to execute a statement. */
 int clientSendExec(struct client *c, unsigned stmt_id);
 
+/* Send a request to execute a non-prepared statement. */
+int clientSendExecSQL(struct client *c, const char *sql);
+
 /* Receive the response to an exec request. */
 int clientRecvResult(struct client *c,
 			unsigned *last_insert_id,
