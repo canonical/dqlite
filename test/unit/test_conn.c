@@ -114,7 +114,7 @@ static void connCloseCb(struct conn *conn)
 		int rv2;                                   \
 		rv2 = clientSendPrepare(&f->client, SQL);  \
 		munit_assert_int(rv2, ==, 0);              \
-		test_uv_run(&f->loop, 2);                  \
+		test_uv_run(&f->loop, 1);                  \
 		rv2 = clientRecvStmt(&f->client, STMT_ID); \
 		munit_assert_int(rv2, ==, 0);              \
 	}
@@ -149,7 +149,7 @@ static void connCloseCb(struct conn *conn)
 		int rv2;                                    \
 		rv2 = clientSendQuery(&f->client, STMT_ID); \
 		munit_assert_int(rv2, ==, 0);               \
-		test_uv_run(&f->loop, 2);                   \
+		test_uv_run(&f->loop, 1);                   \
 		rv2 = clientRecvRows(&f->client, ROWS);     \
 		munit_assert_int(rv2, ==, 0);               \
 	}
@@ -380,7 +380,7 @@ TEST_SETUP(query)
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &f->last_insert_id, &f->rows_affected, 7);
 	PREPARE("INSERT INTO test(n) VALUES (123)", &f->insert_stmt_id);
-	EXEC(f->insert_stmt_id, &f->last_insert_id, &f->rows_affected, 3);
+	EXEC(f->insert_stmt_id, &f->last_insert_id, &f->rows_affected, 4);
 	return f;
 }
 
