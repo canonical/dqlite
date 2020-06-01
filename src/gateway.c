@@ -452,6 +452,7 @@ static int handle_exec_sql(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	START(exec_sql, result);
+	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	(void)response;
 	assert(g->req == NULL);
