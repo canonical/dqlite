@@ -1,7 +1,7 @@
 #include <errno.h>
 
-#include <sqlite3.h>
 #include <raft.h>
+#include <sqlite3.h>
 
 #include "../../include/dqlite.h"
 
@@ -1536,15 +1536,22 @@ TEST_CASE(shm_lock, release_unix, NULL)
 	int flags =
 	    SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	char *dir = test_dir_setup();
-	char path[256];
+	char buf[1024];
+	char *path;
 	volatile void *region;
 	int rc;
 
 	(void)params;
 	(void)data;
 
+	/* The SQLite pager stores the Database filename, Journal filename, and
+	 * WAL filename consecutively in memory, in that order. The database
+	 * filename is prefixed by four zero bytes. Emulate that behavior here,
+	 * since the internal SQLite code triggered by the xShmMap unix
+	 * implementation relies on that.*/
+	memset(buf, 0, sizeof buf);
+	path = buf + 4;
 	sprintf(path, "%s/test.db", dir);
-	path[strlen(path) + 1] = 0;
 
 	rc = vfs->xOpen(vfs, path, file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
@@ -1853,7 +1860,6 @@ TEST_CASE(integration, wal, NULL)
 	free(read_marks);
 
 	/* Start a read transaction on db2 */
-	munit_log(MUNIT_LOG_INFO, "BEGIN");
 	__db_exec(db2, "BEGIN");
 	__db_exec(db2, "SELECT * FROM test");
 
