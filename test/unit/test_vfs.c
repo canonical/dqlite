@@ -22,7 +22,6 @@
 
 struct fixture
 {
-	FIXTURE_CONFIG;
 	struct sqlite3_vfs vfs;
 };
 
@@ -32,8 +31,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	int rv;
 	SETUP_HEAP;
 	SETUP_SQLITE;
-	SETUP_CONFIG;
-	rv = vfsInit(&f->vfs, &f->config);
+	rv = vfsInit(&f->vfs, "dqlite");
 	munit_assert_int(rv, ==, 0);
 	return f;
 }
@@ -42,7 +40,6 @@ static void tearDown(void *data)
 {
 	struct fixture *f = data;
 	vfsClose(&f->vfs);
-	TEAR_DOWN_CONFIG;
 	TEAR_DOWN_SQLITE;
 	TEAR_DOWN_HEAP;
 	free(f);
@@ -165,7 +162,7 @@ static sqlite3 *__db_open()
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int rc;
 
-	rc = sqlite3_open_v2("test.db", &db, flags, "dqlite-1");
+	rc = sqlite3_open_v2("test.db", &db, flags, "dqlite");
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	__db_exec(db, "PRAGMA page_size=512");
@@ -1730,7 +1727,6 @@ static MunitParameterEnum test_create_oom_params[] = {
 
 TEST(VfsInit, oom, setUp, tearDown, 0, test_create_oom_params)
 {
-	struct fixture *f = data;
 	struct sqlite3_vfs vfs;
 	int rv;
 
@@ -1739,7 +1735,7 @@ TEST(VfsInit, oom, setUp, tearDown, 0, test_create_oom_params)
 
 	test_heap_fault_enable();
 
-	rv = vfsInit(&vfs, &f->config);
+	rv = vfsInit(&vfs, "dqlite");
 	munit_assert_int(rv, ==, DQLITE_NOMEM);
 
 	return MUNIT_OK;

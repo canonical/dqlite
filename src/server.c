@@ -27,7 +27,7 @@ int dqlite__init(struct dqlite_node *d,
 	if (rv != 0) {
 		goto err;
 	}
-	rv = vfsInit(&d->vfs, &d->config);
+	rv = vfsInit(&d->vfs, d->config.name);
 	if (rv != 0) {
 		goto err_after_config_init;
 	}

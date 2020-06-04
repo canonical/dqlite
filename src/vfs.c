@@ -1728,7 +1728,7 @@ static int vfs__get_last_error(sqlite3_vfs *vfs, int x, char *y)
 	return rc;
 }
 
-int vfsInit(struct sqlite3_vfs *vfs, struct config *config)
+int vfsInit(struct sqlite3_vfs *vfs, const char *name)
 {
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfs__file);
@@ -1753,7 +1753,7 @@ int vfsInit(struct sqlite3_vfs *vfs, struct config *config)
 	vfs->xCurrentTime = vfs__current_time;
 	vfs->xGetLastError = vfs__get_last_error;
 	vfs->xCurrentTimeInt64 = vfs__current_time_int64;
-	vfs->zName = config->name;
+	vfs->zName = name;
 
 	sqlite3_vfs_register(vfs, 0);
 
