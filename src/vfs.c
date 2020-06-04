@@ -413,14 +413,13 @@ struct vfs__file
  * of all files that were created. */
 struct root
 {
-	struct logger *logger;     /* Send log messages here. */
 	struct content **contents; /* Files content */
 	int contents_len;          /* Number of files */
 	int error;                 /* Last error occurred. */
 };
 
 /* Create a new root object. */
-static struct root *root_create(struct logger *logger)
+static struct root *root_create()
 {
 	struct root *r;
 	int contents_size;
@@ -430,7 +429,6 @@ static struct root *root_create(struct logger *logger)
 		goto oom;
 	}
 
-	r->logger = logger;
 	r->contents_len = VFS__MAX_FILES;
 
 	contents_size = r->contents_len * sizeof *r->contents;
@@ -1737,7 +1735,7 @@ int vfsInit(struct sqlite3_vfs *vfs, struct config *config)
 	vfs->mxPathname = VFS__MAX_PATHNAME;
 	vfs->pNext = NULL;
 
-	vfs->pAppData = root_create(&config->logger);
+	vfs->pAppData = root_create();
 	if (vfs->pAppData == NULL) {
 		return DQLITE_NOMEM;
 	}
