@@ -10,7 +10,7 @@
  *
  * This function also automatically register the implementation in the global
  * SQLite registry, using the given @name. */
-int vfsInit(struct sqlite3_vfs *vfs, struct config *config);
+int vfsInit(struct sqlite3_vfs *vfs, const char *name);
 
 /* Release all memory associated with the given dqlite in-memory VFS
  * implementation.
