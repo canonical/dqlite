@@ -418,8 +418,8 @@ struct vfs
 	int error;                 /* Last error occurred. */
 };
 
-/* Create a new root object. */
-static struct vfs *root_create()
+/* Create a new vfs object. */
+static struct vfs *vfsCreate()
 {
 	struct vfs *r;
 	int contents_size;
@@ -1728,14 +1728,14 @@ static int vfs__get_last_error(sqlite3_vfs *vfs, int x, char *y)
 	return rc;
 }
 
-int vfsInit(struct sqlite3_vfs *vfs, const char *name)
+int VfsInit(struct sqlite3_vfs *vfs, const char *name)
 {
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfs__file);
 	vfs->mxPathname = VFS__MAX_PATHNAME;
 	vfs->pNext = NULL;
 
-	vfs->pAppData = root_create();
+	vfs->pAppData = vfsCreate();
 	if (vfs->pAppData == NULL) {
 		return DQLITE_NOMEM;
 	}
@@ -1760,7 +1760,7 @@ int vfsInit(struct sqlite3_vfs *vfs, const char *name)
 	return 0;
 }
 
-void vfsClose(struct sqlite3_vfs *vfs)
+void VfsClose(struct sqlite3_vfs *vfs)
 {
 	struct vfs *root;
 	sqlite3_vfs_unregister(vfs);
@@ -1780,7 +1780,7 @@ static int guess_file_type(const char *filename)
 	return FORMAT__DB;
 }
 
-int vfsFileRead(const char *vfs_name,
+int VfsFileRead(const char *vfs_name,
 		const char *filename,
 		void **buf,
 		size_t *len)
@@ -1918,7 +1918,7 @@ err:
 	return rc;
 }
 
-int vfsFileWrite(const char *vfs_name,
+int VfsFileWrite(const char *vfs_name,
 		 const char *filename,
 		 const void *buf,
 		 size_t len)

@@ -10,19 +10,19 @@
  *
  * This function also automatically register the implementation in the global
  * SQLite registry, using the given @name. */
-int vfsInit(struct sqlite3_vfs *vfs, const char *name);
+int VfsInit(struct sqlite3_vfs *vfs, const char *name);
 
 /* Release all memory associated with the given dqlite in-memory VFS
  * implementation.
  *
  * This function also automatically unregister the implementation from the
  * SQLite global registry. */
-void vfsClose(struct sqlite3_vfs *vfs);
+void VfsClose(struct sqlite3_vfs *vfs);
 
 /* Read the content of a file, using the VFS implementation registered under the
  * given name. Used to take database snapshots using the dqlite in-memory
  * VFS. */
-int vfsFileRead(const char *vfs_name,
+int VfsFileRead(const char *vfs_name,
 		const char *filename,
 		void **buf,
 		size_t *len);
@@ -30,7 +30,7 @@ int vfsFileRead(const char *vfs_name,
 /* Write the content of a file, using the VFS implementation registered under
  * the given name. Used to restore database snapshots against the dqlite
  * in-memory VFS. If the file already exists, it's overwritten. */
-int vfsFileWrite(const char *vfs_name,
+int VfsFileWrite(const char *vfs_name,
 		 const char *filename,
 		 const void *buf,
 		 size_t len);

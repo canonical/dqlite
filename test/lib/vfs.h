@@ -11,10 +11,10 @@
 #define SETUP_VFS                                       \
 	{                                               \
 		int rv_;                                \
-		rv_ = vfsInit(&f->vfs, f->config.name); \
+		rv_ = VfsInit(&f->vfs, f->config.name); \
 		munit_assert_int(rv_, ==, 0);           \
 	}
 
-#define TEAR_DOWN_VFS vfsClose(&f->vfs);
+#define TEAR_DOWN_VFS VfsClose(&f->vfs);
 
 #endif /* TEST_VFS_H */

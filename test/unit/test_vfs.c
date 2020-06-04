@@ -31,7 +31,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	int rv;
 	SETUP_HEAP;
 	SETUP_SQLITE;
-	rv = vfsInit(&f->vfs, "dqlite");
+	rv = VfsInit(&f->vfs, "dqlite");
 	munit_assert_int(rv, ==, 0);
 	return f;
 }
@@ -39,7 +39,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 static void tearDown(void *data)
 {
 	struct fixture *f = data;
-	vfsClose(&f->vfs);
+	VfsClose(&f->vfs);
 	TEAR_DOWN_SQLITE;
 	TEAR_DOWN_HEAP;
 	free(f);
@@ -1710,7 +1710,7 @@ TEST(VfsSleep, success, setUp, tearDown, 0, NULL)
 
 /******************************************************************************
  *
- * vfsInit
+ * VfsInit
  *
  ******************************************************************************/
 
@@ -1735,7 +1735,7 @@ TEST(VfsInit, oom, setUp, tearDown, 0, test_create_oom_params)
 
 	test_heap_fault_enable();
 
-	rv = vfsInit(&vfs, "dqlite");
+	rv = VfsInit(&vfs, "dqlite");
 	munit_assert_int(rv, ==, DQLITE_NOMEM);
 
 	return MUNIT_OK;
@@ -2009,7 +2009,7 @@ TEST(VfsFileRead, cantOpen, setUp, tearDown, 0, NULL)
 	size_t len;
 	int rv;
 	(void)params;
-	rv = vfsFileRead(f->vfs.zName, "test.db", &buf, &len);
+	rv = VfsFileRead(f->vfs.zName, "test.db", &buf, &len);
 	munit_assert_int(rv, ==, SQLITE_CANTOPEN);
 	return MUNIT_OK;
 }
@@ -2029,7 +2029,7 @@ TEST(VfsFileRead, empty, setUp, tearDown, 0, NULL)
 	rv = sqlite3_open_v2("test.db", &db, flags, f->vfs.zName);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
-	rv = vfsFileRead(f->vfs.zName, "test.db", &buf, &len);
+	rv = VfsFileRead(f->vfs.zName, "test.db", &buf, &len);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	munit_assert_ptr_null(buf);
@@ -2058,13 +2058,13 @@ TEST(VfsFileRead, thenWrite, setUp, tearDown, 0, NULL)
 
 	__db_exec(db, "CREATE TABLE test (n INT)");
 
-	rc = vfsFileRead(f->vfs.zName, "test.db", &buf1, &len1);
+	rc = VfsFileRead(f->vfs.zName, "test.db", &buf1, &len1);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	munit_assert_ptr_not_equal(buf1, NULL);
 	munit_assert_int(len1, ==, 512);
 
-	rc = vfsFileRead(f->vfs.zName, "test.db-wal", &buf2, &len2);
+	rc = VfsFileRead(f->vfs.zName, "test.db-wal", &buf2, &len2);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	munit_assert_ptr_not_equal(buf2, NULL);
@@ -2073,10 +2073,10 @@ TEST(VfsFileRead, thenWrite, setUp, tearDown, 0, NULL)
 	rc = sqlite3_close(db);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = vfsFileWrite(f->vfs.zName, "test.db", buf1, len1);
+	rc = VfsFileWrite(f->vfs.zName, "test.db", buf1, len1);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = vfsFileWrite(f->vfs.zName, "test.db-wal", buf2, len2);
+	rc = VfsFileWrite(f->vfs.zName, "test.db-wal", buf2, len2);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	raft_free(buf1);
@@ -2122,7 +2122,7 @@ TEST(VfsFileRead, oom, setUp, tearDown, 0, file_read_oom_params)
 
 	test_heap_fault_enable();
 
-	rc = vfsFileRead(f->vfs.zName, "test.db", &buf, &len);
+	rc = VfsFileRead(f->vfs.zName, "test.db", &buf, &len);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
 	rc = sqlite3_close(db);
