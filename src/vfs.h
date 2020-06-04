@@ -1,6 +1,8 @@
 #ifndef VFS_H_
 #define VFS_H_
 
+#include <sqlite3.h>
+
 #include "config.h"
 
 /* Initialize the given SQLite VFS interface with dqlite's in-memory
