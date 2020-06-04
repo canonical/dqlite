@@ -411,7 +411,7 @@ struct vfs__file
 
 /* Root of the volatile file system. Contains pointers to the content
  * of all files that were created. */
-struct root
+struct vfs
 {
 	struct content **contents; /* Files content */
 	int contents_len;          /* Number of files */
@@ -419,9 +419,9 @@ struct root
 };
 
 /* Create a new root object. */
-static struct root *root_create()
+static struct vfs *root_create()
 {
-	struct root *r;
+	struct vfs *r;
 	int contents_size;
 
 	r = sqlite3_malloc(sizeof *r);
@@ -454,7 +454,7 @@ oom:
  * All file content will be de-allocated, so dangling open FDs against
  * those files will be broken.
  */
-static void root_destroy(struct root *r)
+static void root_destroy(struct vfs *r)
 {
 	struct content **cursor; /* Iterator for r->contents */
 	int i;
@@ -485,7 +485,7 @@ static void root_destroy(struct root *r)
  * of a free slot (or -1, if there are no free slots).
  */
 static int root_content_lookup(
-    struct root *r,
+    struct vfs *r,
     const char *filename,
     struct content **out  // OUT: content object or NULL
 )
@@ -526,7 +526,7 @@ static int root_content_lookup(
 }
 
 /* Find the database content object associated with the given WAL file name. */
-static int root_database_content_lookup(struct root *r,
+static int root_database_content_lookup(struct vfs *r,
 					const char *wal_filename,
 					struct content **out)
 {
@@ -566,7 +566,7 @@ static int root_database_content_lookup(struct root *r,
 /* Return the size of the database file whose WAL file has the given name.
  *
  * The size must have been previously set when this routine is called. */
-static int root_database_page_size(struct root *r,
+static int root_database_page_size(struct vfs *r,
 				   const char *wal_filename,
 				   unsigned int *page_size)
 {
@@ -591,7 +591,7 @@ static int root_database_page_size(struct root *r,
 	return SQLITE_OK;
 }
 
-static int vfs__delete_content(struct root *root, const char *filename)
+static int vfs__delete_content(struct vfs *root, const char *filename)
 {
 	struct content *content;
 	int content_index;
@@ -630,7 +630,7 @@ static int vfs__x_close(sqlite3_file *file)
 {
 	int rc = SQLITE_OK;
 	struct vfs__file *f = (struct vfs__file *)file;
-	struct root *root = (struct root *)(f->root);
+	struct vfs *root = (struct vfs *)(f->root);
 
 	if (f->temp != NULL) {
 		/* Close the actual temporary file. */
@@ -1432,7 +1432,7 @@ static int vfs__open(sqlite3_vfs *vfs,
 		     int flags,
 		     int *out_flags)
 {
-	struct root *root;
+	struct vfs *root;
 	struct vfs__file *f;
 	struct content *content;
 
@@ -1452,7 +1452,7 @@ static int vfs__open(sqlite3_vfs *vfs,
 
 	(void)out_flags;
 
-	root = (struct root *)(vfs->pAppData);
+	root = (struct vfs *)(vfs->pAppData);
 	f = (struct vfs__file *)file;
 
 	/* This signals SQLite to not call Close() in case we return an error.
@@ -1587,13 +1587,13 @@ err:
 
 static int vfs__delete(sqlite3_vfs *vfs, const char *filename, int dir_sync)
 {
-	struct root *root;
+	struct vfs *root;
 	int rc;
 
 	assert(vfs != NULL);
 	assert(vfs->pAppData != NULL);
 
-	root = (struct root *)(vfs->pAppData);
+	root = (struct vfs *)(vfs->pAppData);
 
 	(void)dir_sync;
 
@@ -1607,7 +1607,7 @@ static int vfs__access(sqlite3_vfs *vfs,
 		       int flags,
 		       int *result)
 {
-	struct root *root;
+	struct vfs *root;
 	struct content *content;
 
 	assert(vfs != NULL);
@@ -1615,7 +1615,7 @@ static int vfs__access(sqlite3_vfs *vfs,
 
 	(void)flags;
 
-	root = (struct root *)(vfs->pAppData);
+	root = (struct vfs *)(vfs->pAppData);
 
 	/* If the file exists, access is always granted. */
 	root_content_lookup(root, filename, &content);
@@ -1716,7 +1716,7 @@ static int vfs__current_time(sqlite3_vfs *vfs, double *piNow)
 
 static int vfs__get_last_error(sqlite3_vfs *vfs, int x, char *y)
 {
-	struct root *root = (struct root *)(vfs->pAppData);
+	struct vfs *root = (struct vfs *)(vfs->pAppData);
 	int rc;
 
 	(void)vfs;
@@ -1762,9 +1762,9 @@ int vfsInit(struct sqlite3_vfs *vfs, const char *name)
 
 void vfsClose(struct sqlite3_vfs *vfs)
 {
-	struct root *root;
+	struct vfs *root;
 	sqlite3_vfs_unregister(vfs);
-	root = (struct root *)(vfs->pAppData);
+	root = (struct vfs *)(vfs->pAppData);
 	root_destroy(root);
 	sqlite3_free(root);
 }
