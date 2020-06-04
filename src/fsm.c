@@ -277,7 +277,7 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[3])
 	header.filename = db->filename;
 
 	/* Main database file. */
-	rv = vfsFileRead(db->config->name, db->filename, &bufs[1].base,
+	rv = VfsFileRead(db->config->name, db->filename, &bufs[1].base,
 			 &bufs[1].len);
 	if (rv != 0) {
 		goto err_after_wal_filename_alloc;
@@ -285,7 +285,7 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[3])
 	header.main_size = bufs[1].len;
 
 	/* WAL file. */
-	rv = vfsFileRead(db->config->name, walFilename, &bufs[2].base,
+	rv = VfsFileRead(db->config->name, walFilename, &bufs[2].base,
 			 &bufs[2].len);
 	if (rv != 0) {
 		goto err_after_main_file_read;
@@ -333,7 +333,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = vfsFileWrite(db->config->name, db->filename, cursor->p,
+	rv = VfsFileWrite(db->config->name, db->filename, cursor->p,
 			  header.main_size);
 	if (rv != 0) {
 		return rv;
@@ -344,7 +344,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	}
 	cursor->p += header.main_size;
 	if (header.wal_size > 0) {
-		rv = vfsFileWrite(db->config->name, walFilename, cursor->p,
+		rv = VfsFileWrite(db->config->name, walFilename, cursor->p,
 				  header.wal_size);
 		if (rv != 0) {
 			sqlite3_free(walFilename);

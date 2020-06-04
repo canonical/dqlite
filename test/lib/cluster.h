@@ -81,7 +81,7 @@ struct server
 		rc = config__init(&s->config, I + 1, address);             \
 		munit_assert_int(rc, ==, 0);                               \
                                                                            \
-		rc = vfsInit(&s->vfs, s->config.name);                     \
+		rc = VfsInit(&s->vfs, s->config.name);                     \
 		munit_assert_int(rc, ==, 0);                               \
                                                                            \
 		registry__init(&s->registry, &s->config);                  \
@@ -111,7 +111,7 @@ struct server
 		replication__close(&s->replication); \
 		fsm__close(fsm);                     \
 		registry__close(&s->registry);       \
-		vfsClose(&s->vfs);                   \
+		VfsClose(&s->vfs);                   \
 		config__close(&s->config);           \
 		test_logger_tear_down(&s->logger);   \
 	}
