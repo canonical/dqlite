@@ -157,13 +157,11 @@ struct content
 
 	struct shm *shm;       /* Shared memory (for db files). */
 	struct content *wal;   /* WAL file content (for db files). */
-	struct logger *logger; /* For error messages. */
 };
 
 /* Create the content structure for a new volatile file. */
 static struct content *content_create(const char *name,
-				      int type,
-				      struct logger *logger)
+				      int type)
 {
 	struct content *c;
 
@@ -175,8 +173,6 @@ static struct content *content_create(const char *name,
 	if (c == NULL) {
 		goto oom;
 	}
-
-	c->logger = logger;
 
 	// Copy the name, since when called from Go, the pointer will be freed.
 	c->filename = sqlite3_malloc(strlen(name) + 1);
@@ -1549,7 +1545,7 @@ static int vfs__open(sqlite3_vfs *vfs,
 			type = FORMAT__OTHER;
 		}
 
-		content = content_create(filename, type, root->logger);
+		content = content_create(filename, type);
 		if (content == NULL) {
 			root->error = ENOMEM;
 			rc = SQLITE_NOMEM;
