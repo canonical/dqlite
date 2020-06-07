@@ -152,7 +152,8 @@ int command_frames__page_numbers(const struct command_frames *c,
 
 	for (i = 0; i < c->frames.n_pages; i++) {
 		uint64_t pgno;
-		uint64__decode(&cursor, &pgno);
+		int r = uint64__decode(&cursor, &pgno);
+		if (r != 0) return r;
 		(*page_numbers)[i] = pgno;
 	}
 
