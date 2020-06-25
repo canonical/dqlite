@@ -124,6 +124,14 @@ int dqlite_node_set_network_latency(dqlite_node *n,
 				    unsigned long long nanoseconds);
 
 /**
+ * Set the failure domain associated with this node.
+ *
+ * This is effectively a tag applied to the node and that can be inspected later
+ * with the "Describe node" client request.
+ */
+int dqlite_node_set_failure_domain(dqlite_node *n, unsigned long long code);
+
+/**
  * Start a dqlite node.
  *
  * A background thread will be spawned which will run the node's main loop. If
