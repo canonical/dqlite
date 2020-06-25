@@ -868,6 +868,19 @@ static int handle_transfer(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+static int handle_describe(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	START(describe, metadata);
+	if (request.format != DQLITE_REQUEST_DESCRIBE_FORMAT_V0) {
+		failure(req, SQLITE_PROTOCOL, "bad format version");
+	}
+	response.failure_domain = g->config->failure_domain;
+	response.weight = g->config->weight;
+	SUCCESS(metadata, METADATA);
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
