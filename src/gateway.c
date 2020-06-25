@@ -881,6 +881,15 @@ static int handle_describe(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
+static int handle_weight(struct handle *req, struct cursor *cursor)
+{
+	struct gateway *g = req->gateway;
+	START(weight, empty);
+	g->config->weight = request.weight;
+	SUCCESS(empty, EMPTY);
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
