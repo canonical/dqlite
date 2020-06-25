@@ -41,6 +41,7 @@
 #define REQUEST_CLUSTER(X, ...) X(uint64, format, ##__VA_ARGS__)
 #define REQUEST_TRANSFER(X, ...) X(uint64, id, ##__VA_ARGS__)
 #define REQUEST_DESCRIBE(X, ...) X(uint64, format, ##__VA_ARGS__)
+#define REQUEST_WEIGHT(X, ...) X(uint64, weight, ##__VA_ARGS__)
 
 #define REQUEST__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
@@ -62,7 +63,8 @@
 	X(dump, DUMP, __VA_ARGS__)           \
 	X(cluster, CLUSTER, __VA_ARGS__)     \
 	X(transfer, TRANSFER, __VA_ARGS__)   \
-	X(describe, DESCRIBE, __VA_ARGS__)
+	X(describe, DESCRIBE, __VA_ARGS__)   \
+	X(weight, WEIGHT, __VA_ARGS__)
 
 REQUEST__TYPES(REQUEST__DEFINE);
 
