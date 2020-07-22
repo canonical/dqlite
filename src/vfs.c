@@ -92,16 +92,10 @@ struct vfsShm
 	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
 };
 
-/* Create a new shared memory mapping for a database file. */
-static struct vfsShm *vfsShmCreate()
+/* Initialize the shared memory mapping of a database file. */
+static void vfsShmInit(struct vfsShm *s)
 {
-	struct vfsShm *s;
 	int i;
-
-	s = sqlite3_malloc(sizeof *s);
-	if (s == NULL) {
-		goto oom;
-	}
 
 	s->regions = NULL;
 	s->regions_len = 0;
@@ -110,15 +104,10 @@ static struct vfsShm *vfsShmCreate()
 		s->shared[i] = 0;
 		s->exclusive[i] = 0;
 	}
-
-	return s;
-
-oom:
-	return NULL;
 }
 
-/* Destroy a shared memory mapping. */
-static void vfsShmDestroy(struct vfsShm *s)
+/* Release all resources used by a shared memory mapping. */
+static void vfsShmClose(struct vfsShm *s)
 {
 	void *region;
 	int i;
@@ -137,7 +126,7 @@ static void vfsShmDestroy(struct vfsShm *s)
 		sqlite3_free(s->regions);
 	}
 
-	sqlite3_free(s);
+	vfsShmInit(s);
 }
 
 enum vfsContentType {
@@ -158,7 +147,7 @@ struct vfsContent
 	union {
 		struct /* VFS__DATABASE */
 		{
-			struct vfsShm *shm;     /* Shared memory. */
+			struct vfsShm shm;      /* Shared memory. */
 			struct vfsContent *wal; /* WAL content. */
 		};
 		struct /* VFS__WAL */
@@ -198,7 +187,7 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 	// For WAL files, also allocate the WAL file header.
 	switch (type) {
 		case VFS__DATABASE:
-			c->shm = NULL;
+			vfsShmInit(&c->shm);
 			c->wal = NULL;
 			break;
 		case VFS__WAL:
@@ -248,9 +237,7 @@ static void vfsContentDestroy(struct vfsContent *c)
 
 	switch (c->type) {
 		case VFS__DATABASE:
-			if (c->shm != NULL) {
-				vfsShmDestroy(c->shm);
-			}
+			vfsShmClose(&c->shm);
 		case VFS__JOURNAL:
 			break;
 		case VFS__WAL:
@@ -603,10 +590,7 @@ static int vfsFileClose(sqlite3_file *file)
 	/* If we got zero references, free the shared memory mapping, if
 	 * present. */
 	if (f->content->refcount == 0 && f->content->type == VFS__DATABASE) {
-		if (f->content->shm != NULL) {
-			vfsShmDestroy(f->content->shm);
-			f->content->shm = NULL;
-		}
+		vfsShmClose(&f->content->shm);
 	}
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
@@ -1205,23 +1189,15 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 
 	assert(f->content->type == VFS__DATABASE);
 
-	if (f->content->shm == NULL) {
-		f->content->shm = vfsShmCreate();
-		if (f->content->shm == NULL) {
-			rc = SQLITE_NOMEM;
-			goto err;
-		}
-	}
-
-	if (f->content->shm->regions != NULL &&
-	    region_index < f->content->shm->regions_len) {
+	if (f->content->shm.regions != NULL &&
+	    region_index < f->content->shm.regions_len) {
 		/* The region was already allocated. */
-		region = *(f->content->shm->regions + region_index);
+		region = *(f->content->shm.regions + region_index);
 		assert(region != NULL);
 	} else {
 		if (extend) {
 			/* We should grow the map one region at a time. */
-			assert(region_index == f->content->shm->regions_len);
+			assert(region_index == f->content->shm.regions_len);
 			region = sqlite3_malloc(region_size);
 			if (region == NULL) {
 				rc = SQLITE_NOMEM;
@@ -1230,17 +1206,17 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 
 			memset(region, 0, region_size);
 
-			f->content->shm->regions = sqlite3_realloc(
-			    f->content->shm->regions,
+			f->content->shm.regions = sqlite3_realloc(
+			    f->content->shm.regions,
 			    sizeof(void *) * (region_index + 1));
 
-			if (f->content->shm->regions == NULL) {
+			if (f->content->shm.regions == NULL) {
 				rc = SQLITE_NOMEM;
 				goto err_after_region_malloc;
 			}
 
-			*(f->content->shm->regions + region_index) = region;
-			f->content->shm->regions_len++;
+			*(f->content->shm.regions + region_index) = region;
+			f->content->shm.regions_len++;
 
 		} else {
 			/* The region was not allocated and we don't have to
@@ -1291,18 +1267,17 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 	f = (struct vfsFile *)file;
 
 	assert(f->content != NULL);
-	assert(f->content->shm != NULL);
 
 	if (flags & SQLITE_SHM_UNLOCK) {
 		unsigned *these_locks;
 		unsigned *other_locks;
 
 		if (flags & SQLITE_SHM_SHARED) {
-			these_locks = f->content->shm->shared;
-			other_locks = f->content->shm->exclusive;
+			these_locks = f->content->shm.shared;
+			other_locks = f->content->shm.exclusive;
 		} else {
-			these_locks = f->content->shm->exclusive;
-			other_locks = f->content->shm->shared;
+			these_locks = f->content->shm.exclusive;
+			other_locks = f->content->shm.shared;
 		}
 
 		for (i = ofst; i < ofst + n; i++) {
@@ -1322,26 +1297,26 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 			/* No shared or exclusive lock must be held in the
 			 * region. */
 			for (i = ofst; i < ofst + n; i++) {
-				if (f->content->shm->shared[i] > 0 ||
-				    f->content->shm->exclusive[i] > 0) {
+				if (f->content->shm.shared[i] > 0 ||
+				    f->content->shm.exclusive[i] > 0) {
 					return SQLITE_BUSY;
 				}
 			}
 
 			for (i = ofst; i < ofst + n; i++) {
-				assert(f->content->shm->exclusive[i] == 0);
-				f->content->shm->exclusive[i] = 1;
+				assert(f->content->shm.exclusive[i] == 0);
+				f->content->shm.exclusive[i] = 1;
 			}
 		} else {
 			/* No exclusive lock must be held in the region. */
 			for (i = ofst; i < ofst + n; i++) {
-				if (f->content->shm->exclusive[i] > 0) {
+				if (f->content->shm.exclusive[i] > 0) {
 					return SQLITE_BUSY;
 				}
 			}
 
 			for (i = ofst; i < ofst + n; i++) {
-				f->content->shm->shared[i]++;
+				f->content->shm.shared[i]++;
 			}
 		}
 	}
@@ -1359,19 +1334,8 @@ static void vfsFileShmBarrier(sqlite3_file *file)
 
 static int vfsFileShmUnmap(sqlite3_file *file, int delete_flag)
 {
-	struct vfsFile *f;
-
-	assert(file != NULL);
-
+	(void)file;
 	(void)delete_flag;
-
-	f = (struct vfsFile *)file;
-
-	// If the shm pointer is NULL no shared memory mapping is set.
-	if (f->content->shm == NULL) {
-		return SQLITE_OK;
-	}
-
 	return SQLITE_OK;
 }
 
