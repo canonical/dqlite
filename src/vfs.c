@@ -149,17 +149,15 @@ enum vfsContentType {
 /* Hold content for a single file in the volatile file system. */
 struct vfsContent
 {
-	char *filename;         /* Name of the file. */
-	void *hdr;              /* File header (for WAL files). */
-	struct vfsPage **pages; /* All pages in the file. */
-	int pages_len;          /* Number of pages in the file. */
-	unsigned int page_size; /* Page size of each page. */
-
-	int refcount;             /* N. of files referencing this content. */
+	char *filename;           /* Name of the file. */
+	void *hdr;                /* File header (for WAL files). */
+	struct vfsPage **pages;   /* All pages in the file. */
+	int pages_len;            /* Number of pages in the file. */
+	unsigned int page_size;   /* Page size of each page. */
+	unsigned refcount;        /* N. of files referencing this content. */
 	enum vfsContentType type; /* Content type (either main db or WAL). */
-
-	struct vfsShm *shm;     /* Shared memory (for db files). */
-	struct vfsContent *wal; /* WAL file content (for db files). */
+	struct vfsShm *shm;       /* Shared memory (for db files). */
+	struct vfsContent *wal;   /* WAL file content (for db files). */
 };
 
 /* Create the content structure for a new volatile file. */
