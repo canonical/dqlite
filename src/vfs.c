@@ -45,6 +45,7 @@ struct vfsFrame
 /* WAL-specific content */
 struct vfsWal
 {
+	struct vfsDatabase *database;      /* Associated database */
 	uint8_t hdr[FORMAT__WAL_HDR_SIZE]; /* Header. */
 	struct vfsFrame **frames;          /* All frames. */
 	unsigned n_frames;                 /* Number of frames. */
@@ -158,8 +159,9 @@ static void vfsDatabaseInit(struct vfsDatabase *d)
 }
 
 /* Initialize a new WAL object. */
-static void vfsWalInit(struct vfsWal *w)
+static void vfsWalInit(struct vfsWal *w, struct vfsDatabase *database)
 {
+	w->database = database;
 	memset(w->hdr, 0, FORMAT__WAL_HDR_SIZE);
 	w->frames = NULL;
 	w->n_frames = 0;
@@ -189,15 +191,6 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 	c->page_size = 0;
 	c->refcount = 0;
 	c->type = type;
-
-	switch (type) {
-		case VFS__DATABASE:
-			vfsDatabaseInit(&c->database);
-			break;
-		case VFS__WAL:
-			vfsWalInit(&c->wal);
-			break;
-	}
 
 	return c;
 
@@ -1566,6 +1559,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	}
 
 	if (!exists) {
+		struct vfsContent *database;
 		struct vfsContent **contents;
 		unsigned n = v->n_contents + 1;
 
@@ -1596,6 +1590,15 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			return SQLITE_CANTOPEN;
 		}
 
+		if (type == VFS__WAL) {
+			/* An associated database file must have been opened. */
+			rc = vfsDatabaseContentLookup(v, filename, &database);
+			if (rc != SQLITE_OK) {
+				v->error = ENOMEM;
+				goto err;
+			}
+		}
+
 		content = vfsContentCreate(filename, type);
 		if (content == NULL) {
 			v->error = ENOMEM;
@@ -1603,14 +1606,15 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			goto err;
 		}
 
-		if (type == VFS__WAL) {
-			/* An associated database file must have been opened. */
-			struct vfsContent *database;
-			rc = vfsDatabaseContentLookup(v, filename, &database);
-			if (rc != SQLITE_OK) {
-				v->error = ENOMEM;
-				goto err_after_vfs_content_create;
-			}
+		switch (type) {
+			case VFS__DATABASE:
+				vfsDatabaseInit(&content->database);
+				break;
+			case VFS__WAL:
+				vfsWalInit(&content->wal, &database->database);
+				break;
+			case VFS__JOURNAL:
+				break;
 		}
 
 		v->contents[n - 1] = content;
@@ -1625,9 +1629,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	content->refcount++;
 
 	return SQLITE_OK;
-
-err_after_vfs_content_create:
-	vfsContentDestroy(content);
 
 err:
 	assert(rc != SQLITE_OK);

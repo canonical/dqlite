@@ -481,27 +481,6 @@ TEST(VfsOpen, oomFilename, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Out of memory when creating the WAL file header. */
-TEST(VfsOpen, oomWal, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
-	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL;
-	int rc;
-
-	(void)params;
-
-	test_heap_fault_config(2, 1);
-	test_heap_fault_enable();
-
-	rc = f->vfs.xOpen(&f->vfs, "test.db-wal", file, flags, &flags);
-	munit_assert_int(rc, ==, SQLITE_NOMEM);
-
-	free(file);
-
-	return MUNIT_OK;
-}
-
 /* Open a temporary file. */
 TEST(VfsOpen, tmp, setUp, tearDown, 0, NULL)
 {
