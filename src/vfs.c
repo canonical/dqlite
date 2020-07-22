@@ -139,20 +139,22 @@ enum vfsContentType {
 struct vfsContent
 {
 	char *filename;           /* Name of the file. */
-	struct vfsPage **pages;   /* All pages in the file. */
-	unsigned n_pages;         /* Number of pages in the file. */
 	unsigned page_size;       /* Page size of each page. */
 	unsigned refcount;        /* N. of files referencing this content. */
 	enum vfsContentType type; /* Content type (either main db or WAL). */
 	union {
 		struct /* VFS__DATABASE */
 		{
-			struct vfsShm shm;      /* Shared memory. */
+			struct vfsPage **pages; /* All pages in the file. */
+			unsigned n_pages;  /* Number of pages in the file. */
+			struct vfsShm shm; /* Shared memory. */
 			struct vfsContent *wal; /* WAL content. */
 		};
 		struct /* VFS__WAL */
 		{
 			uint8_t hdr[FORMAT__WAL_HDR_SIZE];
+			struct vfsPage **frames; /* All frames. */
+			unsigned n_frames;       /* Number of frames. */
 		};
 	};
 };
@@ -178,8 +180,6 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 	}
 	strcpy(c->filename, name);
 
-	c->pages = 0;
-	c->n_pages = 0;
 	c->page_size = 0;
 	c->refcount = 0;
 	c->type = type;
@@ -188,10 +188,14 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 	switch (type) {
 		case VFS__DATABASE:
 			vfsShmInit(&c->shm);
+			c->pages = 0;
+			c->n_pages = 0;
 			c->wal = NULL;
 			break;
 		case VFS__WAL:
 			memset(c->hdr, 0, FORMAT__WAL_HDR_SIZE);
+			c->frames = NULL;
+			c->n_frames = 0;
 			break;
 	}
 
@@ -216,24 +220,29 @@ static void vfsContentDestroy(struct vfsContent *c)
 	/* Free the filename. */
 	sqlite3_free(c->filename);
 
-	/* Free all pages. */
-	for (i = 0; i < c->n_pages; i++) {
-		page = *(c->pages + i);
-		assert(page != NULL);
-		vfsPageDestroy(page);
-	}
-
-	/* Free the page array. */
-	if (c->pages != NULL) {
-		sqlite3_free(c->pages);
-	}
-
 	switch (c->type) {
 		case VFS__DATABASE:
 			vfsShmClose(&c->shm);
+			for (i = 0; i < c->n_pages; i++) {
+				page = *(c->pages + i);
+				assert(page != NULL);
+				vfsPageDestroy(page);
+			}
+			if (c->pages != NULL) {
+				sqlite3_free(c->pages);
+			}
+			break;
 		case VFS__JOURNAL:
 			break;
 		case VFS__WAL:
+			for (i = 0; i < c->n_frames; i++) {
+				page = *(c->frames + i);
+				assert(page != NULL);
+				vfsPageDestroy(page);
+			}
+			if (c->frames != NULL) {
+				sqlite3_free(c->frames);
+			}
 			break;
 	}
 
@@ -245,13 +254,32 @@ static int vfsContentIsEmpty(struct vfsContent *c)
 {
 	assert(c != NULL);
 
-	if (c->n_pages == 0) {
-		assert(c->pages == NULL);
-		return 1;
-	}
+	switch (c->type) {
+		case VFS__DATABASE:
+			if (c->n_pages == 0) {
+				assert(c->pages == NULL);
+				return 1;
+			}
 
-	// If it was written, a page list and a page size must have been set.
-	assert(c->pages != NULL && c->n_pages > 0 && c->page_size > 0);
+			// If it was written, a page list and a page size must
+			// have been set.
+			assert(c->pages != NULL && c->n_pages > 0 &&
+			       c->page_size > 0);
+			break;
+		case VFS__WAL:
+			if (c->n_frames == 0) {
+				assert(c->frames == NULL);
+				return 1;
+			}
+
+			// If it was written, a page list and a page size must
+			// have been set.
+			assert(c->frames != NULL && c->n_frames > 0 &&
+			       c->page_size > 0);
+			break;
+		case VFS__JOURNAL:
+			return 1;
+	}
 
 	return 0;
 }
@@ -330,15 +358,15 @@ static int vfsWalFrameGet(struct vfsContent *c, int pgno, struct vfsPage **page)
 
 	/* SQLite should access pages progressively, without jumping more than
 	 * one page after the end. */
-	if (pgno > (int)(c->n_pages + 1)) {
+	if (pgno > (int)(c->n_frames + 1)) {
 		rc = SQLITE_IOERR_WRITE;
 		goto err;
 	}
 
-	if (pgno == (int)(c->n_pages + 1)) {
+	if (pgno == (int)(c->n_frames + 1)) {
 		/* Create a new page, grow the page array, and append the
 		 * new page to it. */
-		struct vfsPage **pages; /* New page array. */
+		struct vfsPage **frames; /* New frames array. */
 
 		/* We assume that the page size has been set, either by
 		 * intercepting the first main database file write, or by
@@ -353,22 +381,22 @@ static int vfsWalFrameGet(struct vfsContent *c, int pgno, struct vfsPage **page)
 			goto err;
 		}
 
-		pages = sqlite3_realloc(c->pages, (sizeof *pages) * pgno);
-		if (pages == NULL) {
+		frames = sqlite3_realloc(c->frames, (sizeof *frames) * pgno);
+		if (frames == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err_after_vfs_page_create;
 		}
 
 		/* Append the new page to the new page array. */
-		*(pages + pgno - 1) = *page;
+		*(frames + pgno - 1) = *page;
 
 		/* Update the page array. */
-		c->pages = pages;
-		c->n_pages = (unsigned)pgno;
+		c->frames = frames;
+		c->n_frames = (unsigned)pgno;
 	} else {
 		/* Return the existing page. */
-		assert(c->pages != NULL);
-		*page = *(c->pages + pgno - 1);
+		assert(c->frames != NULL);
+		*page = *(c->frames + pgno - 1);
 	}
 
 	return SQLITE_OK;
@@ -410,12 +438,12 @@ static struct vfsPage *vfsWalFrameLookup(struct vfsContent *c, unsigned n)
 	assert(c != NULL);
 	assert(n > 0);
 
-	if (n > c->n_pages) {
+	if (n > c->n_frames) {
 		/* This page hasn't been written yet. */
 		return NULL;
 	}
 
-	page = *(c->pages + n - 1);
+	page = *(c->frames + n - 1);
 
 	assert(page != NULL);
 
@@ -468,20 +496,20 @@ static void vfsWalTruncate(struct vfsContent *content)
 
 	/* We expect callers to only invoke us if some actual content has been
 	 * written already. */
-	assert(content->pages != NULL);
-	assert(content->n_pages > 0);
+	assert(content->frames != NULL);
+	assert(content->n_frames > 0);
 
 	/* Reset the file header (for WAL files). */
 	memset(content->hdr, 0, FORMAT__WAL_HDR_SIZE);
 
 	/* Destroy all frames. */
-	for (i = 0; i < content->n_pages; i++) {
-		vfsPageDestroy(content->pages[i]);
+	for (i = 0; i < content->n_frames; i++) {
+		vfsPageDestroy(content->frames[i]);
 	}
-	sqlite3_free(content->pages);
+	sqlite3_free(content->frames);
 
-	content->pages = NULL;
-	content->n_pages = 0;
+	content->frames = NULL;
+	content->n_frames = 0;
 }
 
 /* Implementation of the abstract sqlite3_file base class. */
@@ -1129,9 +1157,9 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 		case VFS__WAL:
 			/* TODO? here we assume that FileSize() is never invoked
 			 * between a header write and a page write. */
-			*size =
-			    (f->content->n_pages * (FORMAT__WAL_FRAME_HDR_SIZE +
-						    f->content->page_size));
+			*size = (f->content->n_frames *
+				 (FORMAT__WAL_FRAME_HDR_SIZE +
+				  f->content->page_size));
 			if (*size > 0) {
 				*size += FORMAT__WAL_HDR_SIZE;
 			}
