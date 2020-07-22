@@ -1101,6 +1101,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	const char *right;
 
 	assert(f != NULL);
+	assert(f->content->type == VFS__DATABASE);
 	assert(fnctl != NULL);
 
 	left = fnctl[1];
