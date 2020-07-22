@@ -140,8 +140,8 @@ struct vfsContent
 {
 	char *filename;           /* Name of the file. */
 	struct vfsPage **pages;   /* All pages in the file. */
-	int pages_len;            /* Number of pages in the file. */
-	unsigned int page_size;   /* Page size of each page. */
+	unsigned n_pages;         /* Number of pages in the file. */
+	unsigned page_size;       /* Page size of each page. */
 	unsigned refcount;        /* N. of files referencing this content. */
 	enum vfsContentType type; /* Content type (either main db or WAL). */
 	union {
@@ -179,7 +179,7 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 	strcpy(c->filename, name);
 
 	c->pages = 0;
-	c->pages_len = 0;
+	c->n_pages = 0;
 	c->page_size = 0;
 	c->refcount = 0;
 	c->type = type;
@@ -214,7 +214,7 @@ oom:
 /* Destroy the content of a volatile file. */
 static void vfsContentDestroy(struct vfsContent *c)
 {
-	int i;
+	unsigned i;
 	struct vfsPage *page;
 
 	assert(c != NULL);
@@ -224,7 +224,7 @@ static void vfsContentDestroy(struct vfsContent *c)
 	sqlite3_free(c->filename);
 
 	/* Free all pages. */
-	for (i = 0; i < c->pages_len; i++) {
+	for (i = 0; i < c->n_pages; i++) {
 		page = *(c->pages + i);
 		assert(page != NULL);
 		vfsPageDestroy(page);
@@ -254,13 +254,13 @@ static int vfsContentIsEmpty(struct vfsContent *c)
 {
 	assert(c != NULL);
 
-	if (c->pages_len == 0) {
+	if (c->n_pages == 0) {
 		assert(c->pages == NULL);
 		return 1;
 	}
 
 	// If it was written, a page list and a page size must have been set.
-	assert(c->pages != NULL && c->pages_len > 0 && c->page_size > 0);
+	assert(c->pages != NULL && c->n_pages > 0 && c->page_size > 0);
 
 	return 0;
 }
@@ -280,12 +280,12 @@ static int vfsContentPageGet(struct vfsContent *c,
 
 	/* SQLite should access pages progressively, without jumping more than
 	 * one page after the end. */
-	if (pgno > (c->pages_len + 1)) {
+	if (pgno > (int)(c->n_pages + 1)) {
 		rc = SQLITE_IOERR_WRITE;
 		goto err;
 	}
 
-	if (pgno == (c->pages_len + 1)) {
+	if (pgno == (int)(c->n_pages + 1)) {
 		/* Create a new page, grow the page array, and append the
 		 * new page to it. */
 		struct vfsPage **pages; /* New page array. */
@@ -314,7 +314,7 @@ static int vfsContentPageGet(struct vfsContent *c,
 
 		/* Update the page array. */
 		c->pages = pages;
-		c->pages_len = pgno;
+		c->n_pages = (unsigned)pgno;
 	} else {
 		/* Return the existing page. */
 		assert(c->pages != NULL);
@@ -340,7 +340,7 @@ static struct vfsPage *vfsContentPageLookup(struct vfsContent *c, int pgno)
 	assert(c != NULL);
 	assert(pgno > 0);
 
-	if (pgno > c->pages_len) {
+	if (pgno > (int)c->n_pages) {
 		/* This page hasn't been written yet. */
 		return NULL;
 	}
@@ -357,22 +357,22 @@ static struct vfsPage *vfsContentPageLookup(struct vfsContent *c, int pgno)
 }
 
 /* Truncate the file to be exactly the given number of pages. */
-static void vfsContentTruncate(struct vfsContent *content, int pages_len)
+static void vfsContentTruncate(struct vfsContent *content, unsigned n_pages)
 {
 	struct vfsPage **cursor;
-	int i;
+	unsigned i;
 
 	/* We expect callers to only invoke us if some actual content has been
 	 * written already. */
-	assert(content->pages_len > 0);
+	assert(content->n_pages > 0);
 
 	/* Truncate should always shrink a file. */
-	assert(pages_len <= content->pages_len);
+	assert(n_pages <= content->n_pages);
 	assert(content->pages != NULL);
 
 	/* Destroy pages beyond pages_len. */
-	cursor = content->pages + pages_len;
-	for (i = 0; i < (content->pages_len - pages_len); i++) {
+	cursor = content->pages + n_pages;
+	for (i = 0; i < (content->n_pages - n_pages); i++) {
 		vfsPageDestroy(*cursor);
 		cursor++;
 	}
@@ -380,7 +380,7 @@ static void vfsContentTruncate(struct vfsContent *content, int pages_len)
 	/* Reset the file header (for WAL files). */
 	if (content->type == VFS__WAL) {
 		/* We expect callers to always truncate the WAL to zero. */
-		assert(pages_len == 0);
+		assert(n_pages == 0);
 		assert(content->hdr != NULL);
 		memset(content->hdr, 0, FORMAT__WAL_HDR_SIZE);
 	}
@@ -388,11 +388,11 @@ static void vfsContentTruncate(struct vfsContent *content, int pages_len)
 	/* Shrink the page array, possibly to 0.
 	 *
 	 * TODO: in principle realloc could fail also when shrinking. */
-	content->pages = sqlite3_realloc(
-	    content->pages, (sizeof *(content->pages)) * pages_len);
+	content->pages = sqlite3_realloc(content->pages,
+					 (sizeof *(content->pages)) * n_pages);
 
 	/* Update the page count. */
-	content->pages_len = pages_len;
+	content->n_pages = n_pages;
 }
 
 /* Implementation of the abstract sqlite3_file base class. */
@@ -1045,7 +1045,7 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 
 	switch (f->content->type) {
 		case VFS__DATABASE:
-			*size = f->content->pages_len * f->content->page_size;
+			*size = f->content->n_pages * f->content->page_size;
 			break;
 
 		case VFS__JOURNAL:
@@ -1055,10 +1055,10 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 		case VFS__WAL:
 			/* TODO? here we assume that FileSize() is never invoked
 			 * between a header write and a page write. */
-			*size = FORMAT__WAL_HDR_SIZE +
-				(f->content->pages_len *
-				 (FORMAT__WAL_FRAME_HDR_SIZE +
-				  f->content->page_size));
+			*size =
+			    FORMAT__WAL_HDR_SIZE +
+			    (f->content->n_pages * (FORMAT__WAL_FRAME_HDR_SIZE +
+						    f->content->page_size));
 			break;
 	}
 
@@ -1553,7 +1553,6 @@ static int vfsAccess(sqlite3_vfs *vfs,
 	/* If the file exists, access is always granted. */
 	content = vfsContentLookup(v, filename);
 	if (content == NULL) {
-		v->error = ENOENT;
 		*result = 0;
 	} else {
 		*result = 1;
