@@ -152,7 +152,7 @@ struct vfsContent
 		};
 		struct /* VFS__WAL */
 		{
-			void *hdr; /* WAL header. */
+			uint8_t hdr[FORMAT__WAL_HDR_SIZE];
 		};
 	};
 };
@@ -191,18 +191,11 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 			c->wal = NULL;
 			break;
 		case VFS__WAL:
-			c->hdr = sqlite3_malloc(FORMAT__WAL_HDR_SIZE);
-			if (c->hdr == NULL) {
-				goto oom_after_filename_malloc;
-			}
 			memset(c->hdr, 0, FORMAT__WAL_HDR_SIZE);
 			break;
 	}
 
 	return c;
-
-oom_after_filename_malloc:
-	sqlite3_free(c->filename);
 
 oom_after_content_malloc:
 	sqlite3_free(c);
@@ -241,8 +234,6 @@ static void vfsContentDestroy(struct vfsContent *c)
 		case VFS__JOURNAL:
 			break;
 		case VFS__WAL:
-			assert(c->hdr != NULL);
-			sqlite3_free(c->hdr);
 			break;
 	}
 
@@ -348,10 +339,6 @@ static struct vfsPage *vfsContentPageLookup(struct vfsContent *c, int pgno)
 	page = *(c->pages + pgno - 1);
 
 	assert(page != NULL);
-
-	if (c->type == VFS__WAL) {
-		assert(page->hdr != NULL);
-	}
 
 	return page;
 }
