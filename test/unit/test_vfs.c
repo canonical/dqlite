@@ -962,7 +962,7 @@ TEST(VfsWrite, oomPageArray, setUp, tearDown, 0, NULL)
 	char buf[512];
 	int rc;
 
-	test_heap_fault_config(2, 1);
+	test_heap_fault_config(1, 1);
 	test_heap_fault_enable();
 
 	(void)params;
@@ -1001,47 +1001,6 @@ TEST(VfsWrite, oomPageBuf, setUp, tearDown, 0, NULL)
 
 	free(buf_header_main);
 	free(file);
-
-	return MUNIT_OK;
-}
-
-/* Out of memory when trying to create the header buffer of a new WAL page. */
-TEST(VfsWrite, oomPageHdr, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *file1 = __file_create_main_db(&f->vfs);
-	sqlite3_file *file2 = __file_create_wal(&f->vfs);
-	void *buf_header_main = __buf_header_main_db();
-	void *buf_header_wal = __buf_header_wal();
-	void *buf_header_wal_frame = __buf_header_wal_frame();
-	char buf[512];
-	int rc;
-
-	(void)params;
-
-	memset(buf, 0, 512);
-
-	test_heap_fault_config(6, 1);
-	test_heap_fault_enable();
-
-	/* First write the main database header, which sets the page size. */
-	rc = file1->pMethods->xWrite(file1, buf_header_main, 100, 0);
-	munit_assert_int(rc, ==, 0);
-
-	/* Write the WAL header */
-	rc = file2->pMethods->xWrite(file2, buf_header_wal, 32, 0);
-	munit_assert_int(rc, ==, 0);
-
-	/* Write the header of the first frame, which triggers creating the
-	 * first page. */
-	rc = file2->pMethods->xWrite(file2, buf_header_wal_frame, 24, 32);
-	munit_assert_int(rc, ==, SQLITE_NOMEM);
-
-	free(buf_header_main);
-	free(buf_header_wal);
-	free(buf_header_wal_frame);
-	free(file1);
-	free(file2);
 
 	return MUNIT_OK;
 }
