@@ -115,7 +115,15 @@ enum vfsContentType {
 	VFS__WAL       /* Write-Ahead Log */
 };
 
-/* Hold content for a single file in the volatile file system. */
+/* Database-specific content */
+struct vfsDatabase
+{
+	void **pages;      /* All database. */
+	unsigned n_pages;  /* Number of pages. */
+	struct vfsShm shm; /* Shared memory. */
+};
+
+/* Hold content for a single file in the custom dqlite VFS. */
 struct vfsContent
 {
 	char *filename;           /* Name of the file. */
@@ -123,13 +131,8 @@ struct vfsContent
 	unsigned page_size;       /* Page size of each page. */
 	unsigned refcount;        /* N. of files referencing this content. */
 	union {
-		struct /* VFS__DATABASE */
-		{
-			void **pages;      /* All pages in the file. */
-			unsigned n_pages;  /* Number of pages in the file. */
-			struct vfsShm shm; /* Shared memory. */
-		};
-		struct /* VFS__WAL */
+		struct vfsDatabase database; /* VFS__DATABASE */
+		struct                       /* VFS__WAL */
 		{
 			uint8_t hdr[FORMAT__WAL_HDR_SIZE];
 			struct vfsFrame **frames; /* All frames. */
@@ -166,9 +169,9 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 	// For WAL files, also allocate the WAL file header.
 	switch (type) {
 		case VFS__DATABASE:
-			vfsShmInit(&c->shm);
-			c->pages = NULL;
-			c->n_pages = 0;
+			vfsShmInit(&c->database.shm);
+			c->database.pages = NULL;
+			c->database.n_pages = 0;
 			break;
 		case VFS__WAL:
 			memset(c->hdr, 0, FORMAT__WAL_HDR_SIZE);
@@ -199,12 +202,12 @@ static void vfsContentDestroy(struct vfsContent *c)
 
 	switch (c->type) {
 		case VFS__DATABASE:
-			vfsShmClose(&c->shm);
-			for (i = 0; i < c->n_pages; i++) {
-				sqlite3_free(*(c->pages + i));
+			vfsShmClose(&c->database.shm);
+			for (i = 0; i < c->database.n_pages; i++) {
+				sqlite3_free(*(c->database.pages + i));
 			}
-			if (c->pages != NULL) {
-				sqlite3_free(c->pages);
+			if (c->database.pages != NULL) {
+				sqlite3_free(c->database.pages);
 			}
 			break;
 		case VFS__JOURNAL:
@@ -229,15 +232,15 @@ static int vfsContentIsEmpty(struct vfsContent *c)
 
 	switch (c->type) {
 		case VFS__DATABASE:
-			if (c->n_pages == 0) {
-				assert(c->pages == NULL);
+			if (c->database.n_pages == 0) {
+				assert(c->database.pages == NULL);
 				return 1;
 			}
 
 			// If it was written, a page list and a page size must
 			// have been set.
-			assert(c->pages != NULL && c->n_pages > 0 &&
-			       c->page_size > 0);
+			assert(c->database.pages != NULL &&
+			       c->database.n_pages > 0 && c->page_size > 0);
 			break;
 		case VFS__WAL:
 			if (c->n_frames == 0) {
@@ -258,9 +261,7 @@ static int vfsContentIsEmpty(struct vfsContent *c)
 }
 
 /* Get a page from the given database, possibly creating a new one. */
-static int vfsDatabasePageGet(struct vfsContent *c,
-			      int pgno,
-			      void **page)
+static int vfsDatabasePageGet(struct vfsContent *c, int pgno, void **page)
 {
 	int rc;
 
@@ -269,12 +270,12 @@ static int vfsDatabasePageGet(struct vfsContent *c,
 
 	/* SQLite should access pages progressively, without jumping more than
 	 * one page after the end. */
-	if (pgno > (int)(c->n_pages + 1)) {
+	if (pgno > (int)(c->database.n_pages + 1)) {
 		rc = SQLITE_IOERR_WRITE;
 		goto err;
 	}
 
-	if (pgno == (int)(c->n_pages + 1)) {
+	if (pgno == (int)(c->database.n_pages + 1)) {
 		/* Create a new page, grow the page array, and append the
 		 * new page to it. */
 		void **pages; /* New page array. */
@@ -292,7 +293,8 @@ static int vfsDatabasePageGet(struct vfsContent *c,
 			goto err;
 		}
 
-		pages = sqlite3_realloc(c->pages, (sizeof *pages) * pgno);
+		pages =
+		    sqlite3_realloc(c->database.pages, (sizeof *pages) * pgno);
 		if (pages == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err_after_vfs_page_create;
@@ -302,12 +304,12 @@ static int vfsDatabasePageGet(struct vfsContent *c,
 		*(pages + pgno - 1) = *page;
 
 		/* Update the page array. */
-		c->pages = pages;
-		c->n_pages = (unsigned)pgno;
+		c->database.pages = pages;
+		c->database.n_pages = (unsigned)pgno;
 	} else {
 		/* Return the existing page. */
-		assert(c->pages != NULL);
-		*page = *(c->pages + pgno - 1);
+		assert(c->database.pages != NULL);
+		*page = *(c->database.pages + pgno - 1);
 	}
 
 	return SQLITE_OK;
@@ -391,12 +393,12 @@ static void *vfsDatabasePageLookup(struct vfsContent *c, int pgno)
 	assert(c != NULL);
 	assert(pgno > 0);
 
-	if (pgno > (int)c->n_pages) {
+	if (pgno > (int)c->database.n_pages) {
 		/* This page hasn't been written yet. */
 		return NULL;
 	}
 
-	page = *(c->pages + pgno - 1);
+	page = *(c->database.pages + pgno - 1);
 
 	assert(page != NULL);
 
@@ -431,15 +433,15 @@ static void vfsContentTruncate(struct vfsContent *content, unsigned n_pages)
 
 	/* We expect callers to only invoke us if some actual content has been
 	 * written already. */
-	assert(content->n_pages > 0);
+	assert(content->database.n_pages > 0);
 
 	/* Truncate should always shrink a file. */
-	assert(n_pages <= content->n_pages);
-	assert(content->pages != NULL);
+	assert(n_pages <= content->database.n_pages);
+	assert(content->database.pages != NULL);
 
 	/* Destroy pages beyond pages_len. */
-	cursor = content->pages + n_pages;
-	for (i = 0; i < (content->n_pages - n_pages); i++) {
+	cursor = content->database.pages + n_pages;
+	for (i = 0; i < (content->database.n_pages - n_pages); i++) {
 		sqlite3_free(*cursor);
 		cursor++;
 	}
@@ -455,11 +457,12 @@ static void vfsContentTruncate(struct vfsContent *content, unsigned n_pages)
 	/* Shrink the page array, possibly to 0.
 	 *
 	 * TODO: in principle realloc could fail also when shrinking. */
-	content->pages = sqlite3_realloc(content->pages,
-					 (sizeof *(content->pages)) * n_pages);
+	content->database.pages =
+	    sqlite3_realloc(content->database.pages,
+			    (sizeof *(content->database.pages)) * n_pages);
 
 	/* Update the page count. */
-	content->n_pages = n_pages;
+	content->database.n_pages = n_pages;
 }
 
 /* Truncate a WAL file to zero. */
@@ -680,7 +683,7 @@ static int vfsFileClose(sqlite3_file *file)
 	/* If we got zero references, free the shared memory mapping, if
 	 * present. */
 	if (f->content->refcount == 0 && f->content->type == VFS__DATABASE) {
-		vfsShmClose(&f->content->shm);
+		vfsShmClose(&f->content->database.shm);
 	}
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
@@ -1122,7 +1125,8 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 
 	switch (f->content->type) {
 		case VFS__DATABASE:
-			*size = f->content->n_pages * f->content->page_size;
+			*size = f->content->database.n_pages *
+				f->content->page_size;
 			break;
 
 		case VFS__JOURNAL:
@@ -1269,15 +1273,16 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 
 	assert(f->content->type == VFS__DATABASE);
 
-	if (f->content->shm.regions != NULL &&
-	    region_index < f->content->shm.regions_len) {
+	if (f->content->database.shm.regions != NULL &&
+	    region_index < f->content->database.shm.regions_len) {
 		/* The region was already allocated. */
-		region = *(f->content->shm.regions + region_index);
+		region = *(f->content->database.shm.regions + region_index);
 		assert(region != NULL);
 	} else {
 		if (extend) {
 			/* We should grow the map one region at a time. */
-			assert(region_index == f->content->shm.regions_len);
+			assert(region_index ==
+			       f->content->database.shm.regions_len);
 			region = sqlite3_malloc(region_size);
 			if (region == NULL) {
 				rc = SQLITE_NOMEM;
@@ -1286,17 +1291,18 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 
 			memset(region, 0, region_size);
 
-			f->content->shm.regions = sqlite3_realloc(
-			    f->content->shm.regions,
+			f->content->database.shm.regions = sqlite3_realloc(
+			    f->content->database.shm.regions,
 			    sizeof(void *) * (region_index + 1));
 
-			if (f->content->shm.regions == NULL) {
+			if (f->content->database.shm.regions == NULL) {
 				rc = SQLITE_NOMEM;
 				goto err_after_region_malloc;
 			}
 
-			*(f->content->shm.regions + region_index) = region;
-			f->content->shm.regions_len++;
+			*(f->content->database.shm.regions + region_index) =
+			    region;
+			f->content->database.shm.regions_len++;
 
 		} else {
 			/* The region was not allocated and we don't have to
@@ -1353,11 +1359,11 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 		unsigned *other_locks;
 
 		if (flags & SQLITE_SHM_SHARED) {
-			these_locks = f->content->shm.shared;
-			other_locks = f->content->shm.exclusive;
+			these_locks = f->content->database.shm.shared;
+			other_locks = f->content->database.shm.exclusive;
 		} else {
-			these_locks = f->content->shm.exclusive;
-			other_locks = f->content->shm.shared;
+			these_locks = f->content->database.shm.exclusive;
+			other_locks = f->content->database.shm.shared;
 		}
 
 		for (i = ofst; i < ofst + n; i++) {
@@ -1377,26 +1383,27 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 			/* No shared or exclusive lock must be held in the
 			 * region. */
 			for (i = ofst; i < ofst + n; i++) {
-				if (f->content->shm.shared[i] > 0 ||
-				    f->content->shm.exclusive[i] > 0) {
+				if (f->content->database.shm.shared[i] > 0 ||
+				    f->content->database.shm.exclusive[i] > 0) {
 					return SQLITE_BUSY;
 				}
 			}
 
 			for (i = ofst; i < ofst + n; i++) {
-				assert(f->content->shm.exclusive[i] == 0);
-				f->content->shm.exclusive[i] = 1;
+				assert(f->content->database.shm.exclusive[i] ==
+				       0);
+				f->content->database.shm.exclusive[i] = 1;
 			}
 		} else {
 			/* No exclusive lock must be held in the region. */
 			for (i = ofst; i < ofst + n; i++) {
-				if (f->content->shm.exclusive[i] > 0) {
+				if (f->content->database.shm.exclusive[i] > 0) {
 					return SQLITE_BUSY;
 				}
 			}
 
 			for (i = ofst; i < ofst + n; i++) {
-				f->content->shm.shared[i]++;
+				f->content->database.shm.shared[i]++;
 			}
 		}
 	}
