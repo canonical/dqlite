@@ -382,6 +382,29 @@ static void vfsContentTruncate(struct vfsContent *content, unsigned n_pages)
 	content->n_pages = n_pages;
 }
 
+/* Truncate a WAL file to zero. */
+static void vfsWalTruncate(struct vfsContent *content)
+{
+	unsigned i;
+
+	/* We expect callers to only invoke us if some actual content has been
+	 * written already. */
+	assert(content->pages != NULL);
+	assert(content->n_pages > 0);
+
+	/* Reset the file header (for WAL files). */
+	memset(content->hdr, 0, FORMAT__WAL_HDR_SIZE);
+
+	/* Destroy all frames. */
+	for (i = 0; i < content->n_pages; i++) {
+		vfsPageDestroy(content->pages[i]);
+	}
+	sqlite3_free(content->pages);
+
+	content->pages = NULL;
+	content->n_pages = 0;
+}
+
 /* Implementation of the abstract sqlite3_file base class. */
 struct vfsFile
 {
@@ -978,6 +1001,7 @@ static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 			}
 
 			pgno = size / f->content->page_size;
+			vfsContentTruncate(f->content, pgno);
 			break;
 
 		case VFS__WAL:
@@ -992,14 +1016,12 @@ static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 			if (size != 0) {
 				return SQLITE_PROTOCOL;
 			}
-			pgno = 0;
+			vfsWalTruncate(f->content);
 			break;
 
 		default:
 			return SQLITE_IOERR_TRUNCATE;
 	}
-
-	vfsContentTruncate(f->content, pgno);
 
 	return SQLITE_OK;
 }
