@@ -160,9 +160,9 @@ static void vfsDatabaseInit(struct vfsDatabase *d)
 }
 
 /* Initialize a new WAL object. */
-static void vfsWalInit(struct vfsWal *w, struct vfsDatabase *database)
+static void vfsWalInit(struct vfsWal *w)
 {
-	w->database = database;
+	w->database = NULL;
 	memset(w->hdr, 0, FORMAT__WAL_HDR_SIZE);
 	w->frames = NULL;
 	w->n_frames = 0;
@@ -191,6 +191,17 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 
 	c->refcount = 0;
 	c->type = type;
+
+	switch (type) {
+		case VFS__DATABASE:
+			vfsDatabaseInit(&c->database);
+			break;
+		case VFS__WAL:
+			vfsWalInit(&c->wal);
+			break;
+		case VFS__JOURNAL:
+			break;
+	}
 
 	return c;
 
@@ -584,42 +595,28 @@ static struct vfsContent *vfsContentLookup(struct vfs *r, const char *filename)
 	return NULL;
 }
 
-/* Find the database content object associated with the given WAL file name. */
-static int vfsDatabaseContentLookup(struct vfs *r,
-				    const char *wal_filename,
-				    struct vfsContent **out)
+/* Find the database object associated with the given WAL file name. */
+static struct vfsDatabase *vfsDatabaseLookup(struct vfs *v,
+					     const char *wal_filename)
 {
-	struct vfsContent *content;
-	int main_filename_len;
-	char *main_filename;
+	size_t database_filename_len;
+	unsigned i;
 
-	assert(r != NULL);
+	assert(v != NULL);
 	assert(wal_filename != NULL);
-	assert(out != NULL);
 
-	*out = NULL; /* In case of errors */
+	database_filename_len = strlen(wal_filename) - strlen("-wal");
 
-	main_filename_len = strlen(wal_filename) - strlen("-wal") + 1;
-	main_filename = sqlite3_malloc(main_filename_len);
-
-	if (main_filename == NULL) {
-		return SQLITE_NOMEM;
+	for (i = 0; i < v->n_contents; i++) {
+		struct vfsContent *content = v->contents[i];
+		if (strncmp(content->filename, wal_filename,
+			    database_filename_len) == 0) {
+			// Found matching file.
+			return &content->database;
+		}
 	}
 
-	strncpy(main_filename, wal_filename, main_filename_len - 1);
-	main_filename[main_filename_len - 1] = '\0';
-
-	content = vfsContentLookup(r, main_filename);
-
-	sqlite3_free(main_filename);
-
-	if (content == NULL) {
-		return SQLITE_CORRUPT;
-	}
-
-	*out = content;
-
-	return SQLITE_OK;
+	return NULL;
 }
 
 static int vfsDeleteContent(struct vfs *r, const char *filename)
@@ -1514,7 +1511,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	}
 
 	if (!exists) {
-		struct vfsContent *database = NULL;
 		struct vfsContent **contents;
 		unsigned n = v->n_contents + 1;
 
@@ -1524,15 +1520,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			rc = SQLITE_CANTOPEN;
 			goto err;
 		}
-
-		/* Create a new entry. */
-		contents = sqlite3_realloc(v->contents, (sizeof *contents) * n);
-		if (contents == NULL) {
-			v->error = ENOMEM;
-			rc = SQLITE_CANTOPEN;
-			goto err;
-		}
-		v->contents = contents;
 
 		if (flags & SQLITE_OPEN_MAIN_DB) {
 			type = VFS__DATABASE;
@@ -1545,14 +1532,14 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			return SQLITE_CANTOPEN;
 		}
 
-		if (type == VFS__WAL) {
-			/* An associated database file must have been opened. */
-			rc = vfsDatabaseContentLookup(v, filename, &database);
-			if (rc != SQLITE_OK) {
-				v->error = ENOMEM;
-				goto err;
-			}
+		/* Create a new entry. */
+		contents = sqlite3_realloc(v->contents, (sizeof *contents) * n);
+		if (contents == NULL) {
+			v->error = ENOMEM;
+			rc = SQLITE_CANTOPEN;
+			goto err;
 		}
+		v->contents = contents;
 
 		content = vfsContentCreate(filename, type);
 		if (content == NULL) {
@@ -1561,15 +1548,16 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			goto err;
 		}
 
-		switch (type) {
-			case VFS__DATABASE:
-				vfsDatabaseInit(&content->database);
-				break;
-			case VFS__WAL:
-				vfsWalInit(&content->wal, &database->database);
-				break;
-			case VFS__JOURNAL:
-				break;
+		if (type == VFS__WAL) {
+			struct vfsDatabase *database;
+			/* An associated database file must have been
+			 * opened. */
+			database = vfsDatabaseLookup(v, filename);
+			if (database == NULL) {
+				rc = SQLITE_CANTOPEN;
+				goto err_after_content_create;
+			}
+			content->wal.database = database;
 		}
 
 		v->contents[n - 1] = content;
@@ -1585,27 +1573,25 @@ static int vfsOpen(sqlite3_vfs *vfs,
 
 	return SQLITE_OK;
 
+err_after_content_create:
+	vfsContentDestroy(content);
 err:
 	assert(rc != SQLITE_OK);
-
 	return rc;
 }
 
 static int vfsDelete(sqlite3_vfs *vfs, const char *filename, int dir_sync)
 {
 	struct vfs *v;
-	int rc;
+
+	(void)dir_sync;
 
 	assert(vfs != NULL);
 	assert(vfs->pAppData != NULL);
 
 	v = (struct vfs *)(vfs->pAppData);
 
-	(void)dir_sync;
-
-	rc = vfsDeleteContent(v, filename);
-
-	return rc;
+	return vfsDeleteContent(v, filename);
 }
 
 static int vfsAccess(sqlite3_vfs *vfs,
@@ -1616,10 +1602,10 @@ static int vfsAccess(sqlite3_vfs *vfs,
 	struct vfs *v;
 	struct vfsContent *content;
 
+	(void)flags;
+
 	assert(vfs != NULL);
 	assert(vfs->pAppData != NULL);
-
-	(void)flags;
 
 	v = (struct vfs *)(vfs->pAppData);
 
