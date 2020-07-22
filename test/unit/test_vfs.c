@@ -353,7 +353,7 @@ TEST(VfsOpen, walBeforeDb, setUp, tearDown, 0, NULL)
 	flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL;
 	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
 
-	munit_assert_int(rc, ==, SQLITE_CORRUPT);
+	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 
 	free(file);
 
