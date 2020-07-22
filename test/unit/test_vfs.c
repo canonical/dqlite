@@ -338,37 +338,6 @@ TEST(VfsOpen, noent, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* There's an hard-coded limit for the number of files that can be opened. */
-TEST(VfsOpen, entfile, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
-
-	int flags;
-	int rc;
-	int i;
-	char name[20];
-
-	(void)params;
-
-	flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
-
-	for (i = 0; i < 64; i++) {
-		sprintf(name, "test-%d.db", i);
-		rc = f->vfs.xOpen(&f->vfs, name, file, flags, &flags);
-		munit_assert_int(rc, ==, 0);
-	}
-
-	rc = f->vfs.xOpen(&f->vfs, "test-64.db", file, flags, &flags);
-
-	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
-	munit_assert_int(ENFILE, ==, f->vfs.xGetLastError(&f->vfs, 0, 0));
-
-	free(file);
-
-	return MUNIT_OK;
-}
-
 /* Trying to open a WAL file before its main database file results in an
  * error. */
 TEST(VfsOpen, walBeforeDb, setUp, tearDown, 0, NULL)
@@ -484,7 +453,7 @@ TEST(VfsOpen, oom, setUp, tearDown, 0, NULL)
 	test_heap_fault_enable();
 
 	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
-	munit_assert_int(rc, ==, SQLITE_NOMEM);
+	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 
 	free(file);
 
@@ -1716,7 +1685,7 @@ TEST(VfsSleep, success, setUp, tearDown, 0, NULL)
 
 SUITE(VfsInit);
 
-static char *test_create_oom_delay[] = {"0", "1", NULL};
+static char *test_create_oom_delay[] = {"0", NULL};
 static char *test_create_oom_repeat[] = {"1", NULL};
 
 static MunitParameterEnum test_create_oom_params[] = {
