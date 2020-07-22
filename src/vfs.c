@@ -152,6 +152,14 @@ static void vfsDatabaseInit(struct vfsDatabase *d)
 	vfsShmInit(&d->shm);
 }
 
+/* Initialize a new WAL object. */
+static void vfsWalInit(struct vfsWal *w)
+{
+	memset(w->hdr, 0, FORMAT__WAL_HDR_SIZE);
+	w->frames = NULL;
+	w->n_frames = 0;
+}
+
 /* Create the content structure for a new volatile file. */
 static struct vfsContent *vfsContentCreate(const char *name, int type)
 {
@@ -182,9 +190,7 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 			vfsDatabaseInit(&c->database);
 			break;
 		case VFS__WAL:
-			memset(c->wal.hdr, 0, FORMAT__WAL_HDR_SIZE);
-			c->wal.frames = NULL;
-			c->wal.n_frames = 0;
+			vfsWalInit(&c->wal);
 			break;
 	}
 
@@ -192,7 +198,6 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 
 oom_after_content_malloc:
 	sqlite3_free(c);
-
 oom:
 	return NULL;
 }
