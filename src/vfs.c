@@ -150,14 +150,22 @@ enum vfsContentType {
 struct vfsContent
 {
 	char *filename;           /* Name of the file. */
-	void *hdr;                /* File header (for WAL files). */
 	struct vfsPage **pages;   /* All pages in the file. */
 	int pages_len;            /* Number of pages in the file. */
 	unsigned int page_size;   /* Page size of each page. */
 	unsigned refcount;        /* N. of files referencing this content. */
 	enum vfsContentType type; /* Content type (either main db or WAL). */
-	struct vfsShm *shm;       /* Shared memory (for db files). */
-	struct vfsContent *wal;   /* WAL file content (for db files). */
+	union {
+		struct /* VFS__DATABASE */
+		{
+			struct vfsShm *shm;     /* Shared memory. */
+			struct vfsContent *wal; /* WAL content. */
+		};
+		struct /* VFS__WAL */
+		{
+			void *hdr; /* WAL header. */
+		};
+	};
 };
 
 /* Create the content structure for a new volatile file. */
@@ -181,24 +189,26 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 	}
 	strcpy(c->filename, name);
 
-	// For WAL files, also allocate the WAL file header.
-	if (type == VFS__WAL) {
-		c->hdr = sqlite3_malloc(FORMAT__WAL_HDR_SIZE);
-		if (c->hdr == NULL) {
-			goto oom_after_filename_malloc;
-		}
-		memset(c->hdr, 0, FORMAT__WAL_HDR_SIZE);
-	} else {
-		c->hdr = NULL;
-	}
-
 	c->pages = 0;
 	c->pages_len = 0;
 	c->page_size = 0;
 	c->refcount = 0;
 	c->type = type;
-	c->shm = NULL;
-	c->wal = NULL;
+
+	// For WAL files, also allocate the WAL file header.
+	switch (type) {
+		case VFS__DATABASE:
+			c->shm = NULL;
+			c->wal = NULL;
+			break;
+		case VFS__WAL:
+			c->hdr = sqlite3_malloc(FORMAT__WAL_HDR_SIZE);
+			if (c->hdr == NULL) {
+				goto oom_after_filename_malloc;
+			}
+			memset(c->hdr, 0, FORMAT__WAL_HDR_SIZE);
+			break;
+	}
 
 	return c;
 
@@ -224,14 +234,6 @@ static void vfsContentDestroy(struct vfsContent *c)
 	/* Free the filename. */
 	sqlite3_free(c->filename);
 
-	/* Free the header if it's a WAL file. */
-	if (c->type == VFS__WAL) {
-		assert(c->hdr != NULL);
-		sqlite3_free(c->hdr);
-	} else {
-		assert(c->hdr == NULL);
-	}
-
 	/* Free all pages. */
 	for (i = 0; i < c->pages_len; i++) {
 		page = *(c->pages + i);
@@ -244,10 +246,17 @@ static void vfsContentDestroy(struct vfsContent *c)
 		sqlite3_free(c->pages);
 	}
 
-	/* Free the SHM mappping */
-	if (c->shm != NULL) {
-		assert(c->type == VFS__DATABASE);
-		vfsShmDestroy(c->shm);
+	switch (c->type) {
+		case VFS__DATABASE:
+			if (c->shm != NULL) {
+				vfsShmDestroy(c->shm);
+			}
+		case VFS__JOURNAL:
+			break;
+		case VFS__WAL:
+			assert(c->hdr != NULL);
+			sqlite3_free(c->hdr);
+			break;
 	}
 
 	sqlite3_free(c);
@@ -387,8 +396,6 @@ static void vfsContentTruncate(struct vfsContent *content, int pages_len)
 		assert(pages_len == 0);
 		assert(content->hdr != NULL);
 		memset(content->hdr, 0, FORMAT__WAL_HDR_SIZE);
-	} else {
-		assert(content->hdr == NULL);
 	}
 
 	/* Shrink the page array, possibly to 0.
@@ -595,9 +602,11 @@ static int vfsFileClose(sqlite3_file *file)
 
 	/* If we got zero references, free the shared memory mapping, if
 	 * present. */
-	if (f->content->refcount == 0 && f->content->shm != NULL) {
-		vfsShmDestroy(f->content->shm);
-		f->content->shm = NULL;
+	if (f->content->refcount == 0 && f->content->type == VFS__DATABASE) {
+		if (f->content->shm != NULL) {
+			vfsShmDestroy(f->content->shm);
+			f->content->shm = NULL;
+		}
 	}
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
@@ -1193,6 +1202,8 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 	struct vfsFile *f = (struct vfsFile *)file;
 	void *region;
 	int rc;
+
+	assert(f->content->type == VFS__DATABASE);
 
 	if (f->content->shm == NULL) {
 		f->content->shm = vfsShmCreate();
