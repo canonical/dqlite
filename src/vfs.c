@@ -404,14 +404,14 @@ static void vfsContentTruncate(struct vfsContent *content, int pages_len)
 struct vfsFile
 {
 	sqlite3_file base;          /* Base class. Must be first. */
-	struct vfs *root;           /* Pointer to volatile VFS data. */
+	struct vfs *vfs;            /* Pointer to volatile VFS data. */
 	struct vfsContent *content; /* Handle to the file content. */
 	int flags;                  /* Flags passed to xOpen */
 	sqlite3_file *temp;         /* For temp-files, actual VFS. */
 };
 
-/* Root of the volatile file system. Contains pointers to the content
- * of all files that were created. */
+/* Custom dqlite VFS. Contains pointers to the content of all files that were
+ * created. */
 struct vfs
 {
 	struct vfsContent **contents; /* Files content */
@@ -422,35 +422,35 @@ struct vfs
 /* Create a new vfs object. */
 static struct vfs *vfsCreate()
 {
-	struct vfs *r;
+	struct vfs *v;
 	int contents_size;
 
-	r = sqlite3_malloc(sizeof *r);
-	if (r == NULL) {
+	v = sqlite3_malloc(sizeof *v);
+	if (v == NULL) {
 		goto oom;
 	}
 
-	r->contents_len = VFS__MAX_FILES;
+	v->contents_len = VFS__MAX_FILES;
 
-	contents_size = r->contents_len * sizeof *r->contents;
+	contents_size = v->contents_len * sizeof *v->contents;
 
-	r->contents = sqlite3_malloc(contents_size);
-	if (r->contents == NULL) {
-		goto oom_after_root_alloc;
+	v->contents = sqlite3_malloc(contents_size);
+	if (v->contents == NULL) {
+		goto oom_after_vfs_alloc;
 	}
 
-	memset(r->contents, 0, contents_size);
+	memset(v->contents, 0, contents_size);
 
-	return r;
+	return v;
 
-oom_after_root_alloc:
-	sqlite3_free(r);
+oom_after_vfs_alloc:
+	sqlite3_free(v);
 
 oom:
 	return NULL;
 }
 
-/* Release the memory used internally by root object.
+/* Release the memory used internally by the VFS object.
  *
  * All file content will be de-allocated, so dangling open FDs against
  * those files will be broken.
@@ -592,23 +592,23 @@ static int vfsDatabasePageSize(struct vfs *r,
 	return SQLITE_OK;
 }
 
-static int vfsDeleteContent(struct vfs *root, const char *filename)
+static int vfsDeleteContent(struct vfs *v, const char *filename)
 {
 	struct vfsContent *content;
 	int content_index;
 	int rc;
 
 	/* Check if the file exists. */
-	content_index = vfsContentLookup(root, filename, &content);
+	content_index = vfsContentLookup(v, filename, &content);
 	if (content == NULL) {
-		root->error = ENOENT;
+		v->error = ENOENT;
 		rc = SQLITE_IOERR_DELETE_NOENT;
 		goto err;
 	}
 
 	/* Check that there are no consumers of this file. */
 	if (content->refcount > 0) {
-		root->error = EBUSY;
+		v->error = EBUSY;
 		rc = SQLITE_IOERR_DELETE;
 		goto err;
 	}
@@ -617,7 +617,7 @@ static int vfsDeleteContent(struct vfs *root, const char *filename)
 	vfsContentDestroy(content);
 
 	/* Reset the file content slot. */
-	*(root->contents + content_index) = NULL;
+	*(v->contents + content_index) = NULL;
 
 	return SQLITE_OK;
 
@@ -631,7 +631,7 @@ static int vfsFileClose(sqlite3_file *file)
 {
 	int rc = SQLITE_OK;
 	struct vfsFile *f = (struct vfsFile *)file;
-	struct vfs *root = (struct vfs *)(f->root);
+	struct vfs *v = (struct vfs *)(f->vfs);
 
 	if (f->temp != NULL) {
 		/* Close the actual temporary file. */
@@ -652,7 +652,7 @@ static int vfsFileClose(sqlite3_file *file)
 	}
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
-		rc = vfsDeleteContent(root, f->content->filename);
+		rc = vfsDeleteContent(v, f->content->filename);
 	}
 
 	return rc;
@@ -751,7 +751,7 @@ static int vfsFileRead(sqlite3_file *file,
 				 * by copy the one from the associated main
 				 * database file. */
 				int err = vfsDatabasePageSize(
-				    f->root, f->content->filename,
+				    f->vfs, f->content->filename,
 				    &f->content->page_size);
 				if (err != 0) {
 					return err;
@@ -929,7 +929,7 @@ static int vfsFileWrite(sqlite3_file *file,
 				 * by copy the one from the associated main
 				 * database file. */
 				int err = vfsDatabasePageSize(
-				    f->root, f->content->filename,
+				    f->vfs, f->content->filename,
 				    &f->content->page_size);
 				if (err != 0) {
 					return err;
@@ -1433,7 +1433,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		   int flags,
 		   int *out_flags)
 {
-	struct vfs *root;
+	struct vfs *v;
 	struct vfsFile *f;
 	struct vfsContent *content;
 
@@ -1453,7 +1453,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 
 	(void)out_flags;
 
-	root = (struct vfs *)(vfs->pAppData);
+	v = (struct vfs *)(vfs->pAppData);
 	f = (struct vfsFile *)file;
 
 	/* This signals SQLite to not call Close() in case we return an error.
@@ -1480,7 +1480,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 
 		f->temp = sqlite3_malloc(vfs->szOsFile);
 		if (f->temp == NULL) {
-			root->error = ENOENT;
+			v->error = ENOENT;
 			return SQLITE_CANTOPEN;
 		}
 		rc = vfs->xOpen(vfs, NULL, f->temp, flags, out_flags);
@@ -1490,7 +1490,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		}
 
 		f->base.pMethods = &vfsFileMethods;
-		f->root = NULL;
+		f->vfs = NULL;
 		f->content = NULL;
 
 		return SQLITE_OK;
@@ -1498,7 +1498,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 
 	/* Search if the file exists already, and (if it doesn't) if there are
 	 * free slots. */
-	free_slot = vfsContentLookup(root, filename, &content);
+	free_slot = vfsContentLookup(v, filename, &content);
 	exists = content != NULL;
 
 	/* If file exists, and the exclusive flag is on, then return an error.
@@ -1515,7 +1515,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	 */
 	assert(!SQLITE_OPEN_EXCLUSIVE || SQLITE_OPEN_CREATE);
 	if (exists && exclusive && create) {
-		root->error = EEXIST;
+		v->error = EEXIST;
 		rc = SQLITE_CANTOPEN;
 		goto err;
 	}
@@ -1523,7 +1523,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	if (!exists) {
 		/* Check the create flag. */
 		if (!create) {
-			root->error = ENOENT;
+			v->error = ENOENT;
 			rc = SQLITE_CANTOPEN;
 			goto err;
 		}
@@ -1531,7 +1531,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		/* This is a new file, so try to create a new entry. */
 		if (free_slot == -1) {
 			/* No more file content slots available. */
-			root->error = ENFILE;
+			v->error = ENFILE;
 			rc = SQLITE_CANTOPEN;
 			goto err;
 		}
@@ -1546,7 +1546,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 
 		content = vfsContentCreate(filename, type);
 		if (content == NULL) {
-			root->error = ENOMEM;
+			v->error = ENOMEM;
 			rc = SQLITE_NOMEM;
 			goto err;
 		}
@@ -1554,10 +1554,9 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		if (type == FORMAT__WAL) {
 			/* An associated database file must have been opened. */
 			struct vfsContent *database;
-			rc =
-			    vfsDatabaseContentLookup(root, filename, &database);
+			rc = vfsDatabaseContentLookup(v, filename, &database);
 			if (rc != SQLITE_OK) {
-				root->error = ENOMEM;
+				v->error = ENOMEM;
 				goto err_after_vfs_content_create;
 			}
 			database->wal = content;
@@ -1565,12 +1564,12 @@ static int vfsOpen(sqlite3_vfs *vfs,
 
 		/* Save the new file content in a free entry of the root file
 		 * content array. */
-		*(root->contents + free_slot) = content;
+		*(v->contents + free_slot) = content;
 	}
 
 	// Populate the new file handle.
 	f->base.pMethods = &vfsFileMethods;
-	f->root = root;
+	f->vfs = v;
 	f->content = content;
 
 	content->refcount++;
@@ -1588,17 +1587,17 @@ err:
 
 static int vfsDelete(sqlite3_vfs *vfs, const char *filename, int dir_sync)
 {
-	struct vfs *root;
+	struct vfs *v;
 	int rc;
 
 	assert(vfs != NULL);
 	assert(vfs->pAppData != NULL);
 
-	root = (struct vfs *)(vfs->pAppData);
+	v = (struct vfs *)(vfs->pAppData);
 
 	(void)dir_sync;
 
-	rc = vfsDeleteContent(root, filename);
+	rc = vfsDeleteContent(v, filename);
 
 	return rc;
 }
@@ -1608,7 +1607,7 @@ static int vfsAccess(sqlite3_vfs *vfs,
 		     int flags,
 		     int *result)
 {
-	struct vfs *root;
+	struct vfs *v;
 	struct vfsContent *content;
 
 	assert(vfs != NULL);
@@ -1616,12 +1615,12 @@ static int vfsAccess(sqlite3_vfs *vfs,
 
 	(void)flags;
 
-	root = (struct vfs *)(vfs->pAppData);
+	v = (struct vfs *)(vfs->pAppData);
 
 	/* If the file exists, access is always granted. */
-	vfsContentLookup(root, filename, &content);
+	vfsContentLookup(v, filename, &content);
 	if (content == NULL) {
-		root->error = ENOENT;
+		v->error = ENOENT;
 		*result = 0;
 	} else {
 		*result = 1;
@@ -1717,14 +1716,14 @@ static int vfsCurrentTime(sqlite3_vfs *vfs, double *piNow)
 
 static int vfsGetLastError(sqlite3_vfs *vfs, int x, char *y)
 {
-	struct vfs *root = (struct vfs *)(vfs->pAppData);
+	struct vfs *v = (struct vfs *)(vfs->pAppData);
 	int rc;
 
 	(void)vfs;
 	(void)x;
 	(void)y;
 
-	rc = root->error;
+	rc = v->error;
 
 	return rc;
 }
@@ -1763,11 +1762,11 @@ int VfsInit(struct sqlite3_vfs *vfs, const char *name)
 
 void VfsClose(struct sqlite3_vfs *vfs)
 {
-	struct vfs *root;
+	struct vfs *v;
 	sqlite3_vfs_unregister(vfs);
-	root = (struct vfs *)(vfs->pAppData);
-	vfsDestroy(root);
-	sqlite3_free(root);
+	v = (struct vfs *)(vfs->pAppData);
+	vfsDestroy(v);
+	sqlite3_free(v);
 }
 
 /* Guess the file type by looking the filename. */
