@@ -1029,20 +1029,6 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 {
 	struct vfsFile *f = (struct vfsFile *)file;
 
-	/* Check if this file empty. */
-	if (vfsContentIsEmpty(f->content)) {
-		*size = 0;
-		return SQLITE_OK;
-	}
-
-	/* Since we don't allow writing any other file, this must be
-	 * either a database file or WAL file. */
-	assert(f->content->type == VFS__DATABASE ||
-	       f->content->type == VFS__WAL);
-
-	/* Since this file is not empty, the page size must have been set. */
-	assert(f->content->page_size > 0);
-
 	switch (f->content->type) {
 		case VFS__DATABASE:
 			*size = f->content->n_pages * f->content->page_size;
@@ -1056,9 +1042,11 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 			/* TODO? here we assume that FileSize() is never invoked
 			 * between a header write and a page write. */
 			*size =
-			    FORMAT__WAL_HDR_SIZE +
 			    (f->content->n_pages * (FORMAT__WAL_FRAME_HDR_SIZE +
 						    f->content->page_size));
+			if (*size > 0) {
+				*size += FORMAT__WAL_HDR_SIZE;
+			}
 			break;
 	}
 
