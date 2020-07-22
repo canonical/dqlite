@@ -1382,7 +1382,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	struct vfsFile *f;
 	struct vfsContent *content;
 
-	int exists = 0; /* Whether the file exists already. */
+	bool exists = 0; /* Whether the file exists already. */
 
 	int type; /* File content type (e.g. database or WAL). */
 	int rc;   /* Return code. */
@@ -1395,13 +1395,24 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	assert(vfs->pAppData != NULL);
 	assert(file != NULL);
 
+	/* From sqlite3.h.in:
+	 *
+	 *   The SQLITE_OPEN_EXCLUSIVE flag is always used in conjunction with
+	 *   the SQLITE_OPEN_CREATE flag, which are both directly analogous to
+	 *   the O_EXCL and O_CREAT flags of the POSIX open() API.  The
+	 *   SQLITE_OPEN_EXCLUSIVE flag, when paired with the
+	 *   SQLITE_OPEN_CREATE, is used to indicate that file should always be
+	 *   created, and that it is an error if it already exists.  It is not
+	 *   used to indicate the file should be opened for exclusive access.
+	 */
+	assert(!exclusive || create);
+
 	(void)out_flags;
 
 	v = (struct vfs *)(vfs->pAppData);
 	f = (struct vfsFile *)file;
 
-	/* This signals SQLite to not call Close() in case we return an error.
-	 */
+	/* This tells SQLite to not call Close() in case we return an error. */
 	f->base.pMethods = 0;
 	f->temp = NULL;
 
@@ -1444,19 +1455,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	content = vfsContentLookup(v, filename);
 	exists = content != NULL;
 
-	/* If file exists, and the exclusive flag is on, then return an error.
-	 *
-	 * From sqlite3.h.in:
-	 *
-	 *   The SQLITE_OPEN_EXCLUSIVE flag is always used in conjunction with
-	 *   the SQLITE_OPEN_CREATE flag, which are both directly analogous to
-	 *   the O_EXCL and O_CREAT flags of the POSIX open() API.  The
-	 *   SQLITE_OPEN_EXCLUSIVE flag, when paired with the
-	 *   SQLITE_OPEN_CREATE, is used to indicate that file should always be
-	 *   created, and that it is an error if it already exists.  It is not
-	 *   used to indicate the file should be opened for exclusive access.
-	 */
-	assert(!SQLITE_OPEN_EXCLUSIVE || SQLITE_OPEN_CREATE);
+	/* If file exists, and the exclusive flag is on, return an error. */
 	if (exists && exclusive && create) {
 		v->error = EEXIST;
 		rc = SQLITE_CANTOPEN;
