@@ -144,6 +144,14 @@ static void vfsShmClose(struct vfsShm *s)
 	vfsShmInit(s);
 }
 
+/* Initialize a new database object. */
+static void vfsDatabaseInit(struct vfsDatabase *d)
+{
+	d->pages = NULL;
+	d->n_pages = 0;
+	vfsShmInit(&d->shm);
+}
+
 /* Create the content structure for a new volatile file. */
 static struct vfsContent *vfsContentCreate(const char *name, int type)
 {
@@ -169,12 +177,9 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 	c->refcount = 0;
 	c->type = type;
 
-	// For WAL files, also allocate the WAL file header.
 	switch (type) {
 		case VFS__DATABASE:
-			vfsShmInit(&c->database.shm);
-			c->database.pages = NULL;
-			c->database.n_pages = 0;
+			vfsDatabaseInit(&c->database);
 			break;
 		case VFS__WAL:
 			memset(c->wal.hdr, 0, FORMAT__WAL_HDR_SIZE);
