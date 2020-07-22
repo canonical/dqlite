@@ -140,7 +140,12 @@ static void vfsShmClose(struct vfsShm *s)
 	if (s->regions != NULL) {
 		sqlite3_free(s->regions);
 	}
+}
 
+/* Revert the shared mamory to its initial state. */
+static void vfsShmReset(struct vfsShm *s)
+{
+	vfsShmClose(s);
 	vfsShmInit(s);
 }
 
@@ -706,10 +711,9 @@ static int vfsFileClose(sqlite3_file *file)
 	assert(f->content->refcount);
 	f->content->refcount--;
 
-	/* If we got zero references, free the shared memory mapping, if
-	 * present. */
+	/* If we got zero references, reset the shared memory mapping. */
 	if (f->content->refcount == 0 && f->content->type == VFS__DATABASE) {
-		vfsShmClose(&f->content->database.shm);
+		vfsShmReset(&f->content->database.shm);
 	}
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
