@@ -323,8 +323,8 @@ err:
 	return rc;
 }
 
-/* Lookup a page from this file, returning NULL if it doesn't exist. */
-static struct vfsPage *vfsContentPageLookup(struct vfsContent *c, int pgno)
+/* Lookup a page from the given database, returning NULL if it doesn't exist. */
+static struct vfsPage *vfsDatabasePageLookup(struct vfsContent *c, int pgno)
 {
 	struct vfsPage *page;
 
@@ -337,6 +337,26 @@ static struct vfsPage *vfsContentPageLookup(struct vfsContent *c, int pgno)
 	}
 
 	page = *(c->pages + pgno - 1);
+
+	assert(page != NULL);
+
+	return page;
+}
+
+/* Lookup a frame from the WAL, returning NULL if it doesn't exist. */
+static struct vfsPage *vfsWalFrameLookup(struct vfsContent *c, unsigned n)
+{
+	struct vfsPage *page;
+
+	assert(c != NULL);
+	assert(n > 0);
+
+	if (n > c->n_pages) {
+		/* This page hasn't been written yet. */
+		return NULL;
+	}
+
+	page = *(c->pages + n - 1);
 
 	assert(page != NULL);
 
@@ -684,7 +704,7 @@ static int vfsFileRead(sqlite3_file *file,
 
 			assert(pgno > 0);
 
-			page = vfsContentPageLookup(f->content, pgno);
+			page = vfsDatabasePageLookup(f->content, pgno);
 
 			if (pgno == 1) {
 				/* Read the desired part of page 1. */
@@ -766,7 +786,7 @@ static int vfsFileRead(sqlite3_file *file,
 				return SQLITE_IOERR_SHORT_READ;
 			}
 
-			page = vfsContentPageLookup(f->content, pgno);
+			page = vfsWalFrameLookup(f->content, pgno);
 
 			if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
 				memcpy(buf, page->hdr, amount);
@@ -950,9 +970,9 @@ static int vfsFileWrite(sqlite3_file *file,
 				pgno = format__wal_calc_pgno(
 				    f->content->page_size, offset);
 
-				// The header for the this frame must already
-				// have been written, so the page is there.
-				page = vfsContentPageLookup(f->content, pgno);
+				/* The header for the this frame must already
+				 * have been written, so the page is there. */
+				page = vfsWalFrameLookup(f->content, pgno);
 
 				assert(page != NULL);
 
