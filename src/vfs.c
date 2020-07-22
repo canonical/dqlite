@@ -119,16 +119,15 @@ enum vfsContentType {
 struct vfsContent
 {
 	char *filename;           /* Name of the file. */
+	enum vfsContentType type; /* Content type (either main db or WAL). */
 	unsigned page_size;       /* Page size of each page. */
 	unsigned refcount;        /* N. of files referencing this content. */
-	enum vfsContentType type; /* Content type (either main db or WAL). */
 	union {
 		struct /* VFS__DATABASE */
 		{
 			void **pages;      /* All pages in the file. */
 			unsigned n_pages;  /* Number of pages in the file. */
 			struct vfsShm shm; /* Shared memory. */
-			struct vfsContent *wal; /* WAL content. */
 		};
 		struct /* VFS__WAL */
 		{
@@ -170,7 +169,6 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 			vfsShmInit(&c->shm);
 			c->pages = NULL;
 			c->n_pages = 0;
-			c->wal = NULL;
 			break;
 		case VFS__WAL:
 			memset(c->hdr, 0, FORMAT__WAL_HDR_SIZE);
@@ -1575,7 +1573,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 				v->error = ENOMEM;
 				goto err_after_vfs_content_create;
 			}
-			database->wal = content;
 		}
 
 		v->contents[n - 1] = content;
