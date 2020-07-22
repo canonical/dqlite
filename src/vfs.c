@@ -17,9 +17,6 @@
 /* Maximum pathname length supported by this VFS. */
 #define VFS__MAX_PATHNAME 512
 
-/* Maximum number of files this VFS can create. */
-#define VFS__MAX_FILES 64
-
 /* Hold content for a single page or frame in a volatile file. */
 struct vfsPage
 {
@@ -423,31 +420,16 @@ struct vfs
 static struct vfs *vfsCreate()
 {
 	struct vfs *v;
-	int contents_size;
 
 	v = sqlite3_malloc(sizeof *v);
 	if (v == NULL) {
-		goto oom;
+		return NULL;
 	}
 
-	v->n_contents = VFS__MAX_FILES;
-
-	contents_size = v->n_contents * sizeof *v->contents;
-
-	v->contents = sqlite3_malloc(contents_size);
-	if (v->contents == NULL) {
-		goto oom_after_vfs_alloc;
-	}
-
-	memset(v->contents, 0, contents_size);
+	v->contents = NULL;
+	v->n_contents = 0;
 
 	return v;
-
-oom_after_vfs_alloc:
-	sqlite3_free(v);
-
-oom:
-	return NULL;
 }
 
 /* Release the memory used internally by the VFS object.
@@ -457,73 +439,37 @@ oom:
  */
 static void vfsDestroy(struct vfs *r)
 {
-	struct vfsContent **cursor; /* Iterator for r->contents */
 	unsigned i;
 
 	assert(r != NULL);
-	assert(r->contents != NULL);
-
-	cursor = r->contents;
-
-	/* The content array has been allocated and has at least one slot. */
-	assert(cursor != NULL);
-	assert(r->n_contents > 0);
 
 	for (i = 0; i < r->n_contents; i++) {
-		struct vfsContent *content = *cursor;
-		if (content != NULL) {
-			vfsContentDestroy(content);
-		}
-		cursor++;
+		struct vfsContent *content = r->contents[i];
+		vfsContentDestroy(content);
 	}
 
-	sqlite3_free(r->contents);
+	if (r->contents != NULL) {
+		sqlite3_free(r->contents);
+	}
 }
 
-/* Find a content object by name.
- *
- * Fill out and return its index if found, otherwise return the index
- * of a free slot (or -1, if there are no free slots).
- */
-static int vfsContentLookup(
-    struct vfs *r,
-    const char *filename,
-    struct vfsContent **out  // OUT: content object or NULL
-)
+/* Find a content object by filename. */
+static struct vfsContent *vfsContentLookup(struct vfs *r, const char *filename)
 {
-	struct vfsContent **cursor; /* Iterator for r->contents */
 	unsigned i;
-
-	/* Index of the content or of a free slot in the contents array. */
-	int free_slot = -1;
 
 	assert(r != NULL);
 	assert(filename != NULL);
 
-	cursor = r->contents;
-
-	// The content array has been allocated and has at least one slot.
-	assert(cursor != NULL);
-	assert(r->n_contents > 0);
-
 	for (i = 0; i < r->n_contents; i++) {
-		struct vfsContent *content = *cursor;
-		if (content && strcmp(content->filename, filename) == 0) {
+		struct vfsContent *content = r->contents[i];
+		if (strcmp(content->filename, filename) == 0) {
 			// Found matching file.
-			*out = content;
-			return i;
+			return content;
 		}
-		if (content == NULL && free_slot == -1) {
-			// Keep track of the index of this empty slot.
-			free_slot = i;
-		}
-		cursor++;
 	}
 
-	// No matching content object.
-	*out = 0;
-
-	return free_slot;
+	return NULL;
 }
 
 /* Find the database content object associated with the given WAL file name. */
@@ -551,7 +497,7 @@ static int vfsDatabaseContentLookup(struct vfs *r,
 	strncpy(main_filename, wal_filename, main_filename_len - 1);
 	main_filename[main_filename_len - 1] = '\0';
 
-	vfsContentLookup(r, main_filename, &content);
+	content = vfsContentLookup(r, main_filename);
 
 	sqlite3_free(main_filename);
 
@@ -592,39 +538,38 @@ static int vfsDatabasePageSize(struct vfs *r,
 	return SQLITE_OK;
 }
 
-static int vfsDeleteContent(struct vfs *v, const char *filename)
+static int vfsDeleteContent(struct vfs *r, const char *filename)
 {
-	struct vfsContent *content;
-	int content_index;
-	int rc;
+	unsigned i;
 
-	/* Check if the file exists. */
-	content_index = vfsContentLookup(v, filename, &content);
-	if (content == NULL) {
-		v->error = ENOENT;
-		rc = SQLITE_IOERR_DELETE_NOENT;
-		goto err;
+	for (i = 0; i < r->n_contents; i++) {
+		struct vfsContent *content = r->contents[i];
+		unsigned j;
+
+		if (strcmp(content->filename, filename) != 0) {
+			continue;
+		}
+
+		/* Check that there are no consumers of this file. */
+		if (content->refcount > 0) {
+			r->error = EBUSY;
+			return SQLITE_IOERR_DELETE;
+		}
+
+		/* Free all memory allocated for this file. */
+		vfsContentDestroy(content);
+
+		/* Shift all other contents objects. */
+		for (j = i + 1; j < r->n_contents; j++) {
+			r->contents[j - 1] = r->contents[j];
+		}
+		r->n_contents--;
+
+		return SQLITE_OK;
 	}
 
-	/* Check that there are no consumers of this file. */
-	if (content->refcount > 0) {
-		v->error = EBUSY;
-		rc = SQLITE_IOERR_DELETE;
-		goto err;
-	}
-
-	/* Free all memory allocated for this file. */
-	vfsContentDestroy(content);
-
-	/* Reset the file content slot. */
-	*(v->contents + content_index) = NULL;
-
-	return SQLITE_OK;
-
-err:
-	assert(rc != SQLITE_OK);
-
-	return rc;
+	r->error = ENOENT;
+	return SQLITE_IOERR_DELETE_NOENT;
 }
 
 static int vfsFileClose(sqlite3_file *file)
@@ -1437,8 +1382,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	struct vfsFile *f;
 	struct vfsContent *content;
 
-	int free_slot = -1; /* Index of a free slot in root->acontent. */
-	int exists = 0;     /* Whether the file exists already. */
+	int exists = 0; /* Whether the file exists already. */
 
 	int type; /* File content type (e.g. database or WAL). */
 	int rc;   /* Return code. */
@@ -1496,9 +1440,8 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		return SQLITE_OK;
 	}
 
-	/* Search if the file exists already, and (if it doesn't) if there are
-	 * free slots. */
-	free_slot = vfsContentLookup(v, filename, &content);
+	/* Search if the file exists already. */
+	content = vfsContentLookup(v, filename);
 	exists = content != NULL;
 
 	/* If file exists, and the exclusive flag is on, then return an error.
@@ -1521,6 +1464,9 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	}
 
 	if (!exists) {
+		struct vfsContent **contents;
+		unsigned n = v->n_contents + 1;
+
 		/* Check the create flag. */
 		if (!create) {
 			v->error = ENOENT;
@@ -1528,13 +1474,14 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			goto err;
 		}
 
-		/* This is a new file, so try to create a new entry. */
-		if (free_slot == -1) {
-			/* No more file content slots available. */
-			v->error = ENFILE;
+		/* Create a new entry. */
+		contents = sqlite3_realloc(v->contents, (sizeof *contents) * n);
+		if (contents == NULL) {
+			v->error = ENOMEM;
 			rc = SQLITE_CANTOPEN;
 			goto err;
 		}
+		v->contents = contents;
 
 		if (flags & SQLITE_OPEN_MAIN_DB) {
 			type = FORMAT__DB;
@@ -1562,9 +1509,8 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			database->wal = content;
 		}
 
-		/* Save the new file content in a free entry of the root file
-		 * content array. */
-		*(v->contents + free_slot) = content;
+		v->contents[n - 1] = content;
+		v->n_contents = n;
 	}
 
 	// Populate the new file handle.
@@ -1618,7 +1564,7 @@ static int vfsAccess(sqlite3_vfs *vfs,
 	v = (struct vfs *)(vfs->pAppData);
 
 	/* If the file exists, access is always granted. */
-	vfsContentLookup(v, filename, &content);
+	content = vfsContentLookup(v, filename);
 	if (content == NULL) {
 		v->error = ENOENT;
 		*result = 0;
