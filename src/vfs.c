@@ -411,19 +411,19 @@ err:
 }
 
 /* Lookup a page from the given database, returning NULL if it doesn't exist. */
-static void *vfsDatabasePageLookup(struct vfsContent *c, int pgno)
+static void *vfsDatabasePageLookup(struct vfsDatabase *d, unsigned pgno)
 {
-	struct vfsFrame *page;
+	void *page;
 
-	assert(c != NULL);
+	assert(d != NULL);
 	assert(pgno > 0);
 
-	if (pgno > (int)c->database.n_pages) {
+	if (pgno > d->n_pages) {
 		/* This page hasn't been written yet. */
 		return NULL;
 	}
 
-	page = *(c->database.pages + pgno - 1);
+	page = d->pages[pgno - 1];
 
 	assert(page != NULL);
 
@@ -431,23 +431,23 @@ static void *vfsDatabasePageLookup(struct vfsContent *c, int pgno)
 }
 
 /* Lookup a frame from the WAL, returning NULL if it doesn't exist. */
-static struct vfsFrame *vfsWalFrameLookup(struct vfsContent *c, unsigned n)
+static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 {
-	struct vfsFrame *page;
+	struct vfsFrame *frame;
 
-	assert(c != NULL);
+	assert(w != NULL);
 	assert(n > 0);
 
-	if (n > c->wal.n_frames) {
+	if (n > w->n_frames) {
 		/* This page hasn't been written yet. */
 		return NULL;
 	}
 
-	page = *(c->wal.frames + n - 1);
+	frame = w->frames[n - 1];
 
-	assert(page != NULL);
+	assert(frame != NULL);
 
-	return page;
+	return frame;
 }
 
 /* Truncate the file to be exactly the given number of pages. */
@@ -717,16 +717,123 @@ static int vfsFileClose(sqlite3_file *file)
 	return rc;
 }
 
+/* Read data from the main database. */
+static int vfsDatabaseRead(struct vfsDatabase *d,
+			   void *buf,
+			   int amount,
+			   sqlite_int64 offset)
+{
+	unsigned page_size = d->page_size;
+	unsigned pgno;
+	void *page;
+
+	/* If the main database file is not empty, we expect the
+	 * page size to have been set by an initial write. */
+	assert(page_size > 0);
+
+	if (offset < page_size) {
+		/* Reading from page 1. We expect the read to be
+		 * at most page_size bytes. */
+		assert(amount <= (int)page_size);
+		pgno = 1;
+	} else {
+		/* For pages greater than 1, we expect a full
+		 * page read, with an offset that starts exectly
+		 * at the page boundary. */
+		assert(amount == (int)page_size);
+		assert((offset % page_size) == 0);
+		pgno = (offset / page_size) + 1;
+	}
+
+	assert(pgno > 0);
+
+	page = vfsDatabasePageLookup(d, pgno);
+
+	if (pgno == 1) {
+		/* Read the desired part of page 1. */
+		memcpy(buf, page + offset, amount);
+	} else {
+		/* Read the full page. */
+		memcpy(buf, page, amount);
+	}
+
+	return SQLITE_OK;
+}
+
+/* Read data from the WAL. */
+static int vfsWalRead(struct vfsWal *w,
+		      void *buf,
+		      int amount,
+		      sqlite_int64 offset)
+{
+	unsigned page_size = w->database->page_size;
+	unsigned pgno;
+	struct vfsFrame *frame;
+
+	if (offset == 0) {
+		/* Read the header. */
+		assert(amount == FORMAT__WAL_HDR_SIZE);
+		memcpy(buf, w->hdr, FORMAT__WAL_HDR_SIZE);
+		return SQLITE_OK;
+	}
+
+	/* For any other frame, we expect either a header read,
+	 * a checksum read, a page read or a full frame read. */
+	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
+		assert(((offset - FORMAT__WAL_HDR_SIZE) %
+			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+		pgno = format__wal_calc_pgno(page_size, offset);
+	} else if (amount == sizeof(uint32_t) * 2) {
+		if (offset == FORMAT__WAL_FRAME_HDR_SIZE) {
+			/* Read the checksum from the WAL
+			 * header. */
+			memcpy(buf, w->hdr + offset, amount);
+			return SQLITE_OK;
+		}
+		assert(((offset - 16 - FORMAT__WAL_HDR_SIZE) %
+			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+		pgno = (offset - 16 - FORMAT__WAL_HDR_SIZE) /
+			   (page_size + FORMAT__WAL_FRAME_HDR_SIZE) +
+		       1;
+	} else if (amount == (int)page_size) {
+		assert(((offset - FORMAT__WAL_HDR_SIZE -
+			 FORMAT__WAL_FRAME_HDR_SIZE) %
+			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+		pgno = format__wal_calc_pgno(page_size, offset);
+	} else {
+		assert(amount == (FORMAT__WAL_FRAME_HDR_SIZE + (int)page_size));
+		pgno = format__wal_calc_pgno(page_size, offset);
+	}
+
+	if (pgno == 0) {
+		// This is an attempt to read a page that was
+		// never written.
+		memset(buf, 0, amount);
+		return SQLITE_IOERR_SHORT_READ;
+	}
+
+	frame = vfsWalFrameLookup(w, pgno);
+
+	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
+		memcpy(buf, frame->hdr, amount);
+	} else if (amount == sizeof(uint32_t) * 2) {
+		memcpy(buf, frame->hdr + 16, amount);
+	} else if (amount == (int)page_size) {
+		memcpy(buf, frame->buf, amount);
+	} else {
+		memcpy(buf, frame->hdr, FORMAT__WAL_FRAME_HDR_SIZE);
+		memcpy(buf + FORMAT__WAL_FRAME_HDR_SIZE, frame->buf, page_size);
+	}
+
+	return SQLITE_OK;
+}
+
 static int vfsFileRead(sqlite3_file *file,
 		       void *buf,
 		       int amount,
 		       sqlite_int64 offset)
 {
 	struct vfsFile *f = (struct vfsFile *)file;
-
-	int pgno;
-	void *page;
-	struct vfsFrame *frame;
 
 	assert(buf != NULL);
 	assert(amount > 0);
@@ -768,146 +875,14 @@ static int vfsFileRead(sqlite3_file *file,
 
 	switch (f->content->type) {
 		case VFS__DATABASE:
-			/* Main database */
-
-			/* If the main database file is not empty, we expect the
-			 * page size to have been set by an initial write. */
-			assert(f->content->database.page_size > 0);
-
-			if (offset < f->content->database.page_size) {
-				/* Reading from page 1. We expect the read to be
-				 * at most page_size bytes. */
-				assert(amount <=
-				       (int)f->content->database.page_size);
-
-				pgno = 1;
-			} else {
-				/* For pages greater than 1, we expect a full
-				 * page read, with an offset that starts exectly
-				 * at the page boundary. */
-				assert(amount ==
-				       (int)f->content->database.page_size);
-				assert((offset %
-					f->content->database.page_size) == 0);
-
-				pgno =
-				    (offset / f->content->database.page_size) +
-				    1;
-			}
-
-			assert(pgno > 0);
-
-			page = vfsDatabasePageLookup(f->content, pgno);
-
-			if (pgno == 1) {
-				/* Read the desired part of page 1. */
-				memcpy(buf, page + offset, amount);
-			} else {
-				/* Read the full page. */
-				memcpy(buf, page, amount);
-			}
-			return SQLITE_OK;
-
-		case VFS__JOURNAL:
-			return SQLITE_IOERR_READ;
-
+			return vfsDatabaseRead(&f->content->database, buf,
+					       amount, offset);
 		case VFS__WAL:
-			/* WAL file */
-
-			if (f->content->wal.database->page_size == 0) {
-				/* If the page size hasn't been set yet, set it
-				 * by copy the one from the associated main
-				 * database file. */
-				int err = vfsDatabasePageSize(
-				    f->vfs, f->content->filename,
-				    &f->content->wal.database->page_size);
-				if (err != 0) {
-					return err;
-				}
-			}
-
-			if (offset == 0) {
-				/* Read the header. */
-				assert(amount == FORMAT__WAL_HDR_SIZE);
-				assert(f->content->wal.hdr != NULL);
-				memcpy(buf, f->content->wal.hdr,
-				       FORMAT__WAL_HDR_SIZE);
-				return SQLITE_OK;
-			}
-
-			/* For any other frame, we expect either a header read,
-			 * a checksum read, a page read or a full frame read. */
-			if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
-				assert(((offset - FORMAT__WAL_HDR_SIZE) %
-					(f->content->wal.database->page_size +
-					 FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-				pgno = format__wal_calc_pgno(
-				    f->content->wal.database->page_size,
-				    offset);
-			} else if (amount == sizeof(uint32_t) * 2) {
-				if (offset == FORMAT__WAL_FRAME_HDR_SIZE) {
-					/* Read the checksum from the WAL
-					 * header. */
-					memcpy(buf,
-					       f->content->wal.hdr + offset,
-					       amount);
-					return SQLITE_OK;
-				}
-				assert(((offset - 16 - FORMAT__WAL_HDR_SIZE) %
-					(f->content->wal.database->page_size +
-					 FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-				pgno =
-				    (offset - 16 - FORMAT__WAL_HDR_SIZE) /
-					(f->content->wal.database->page_size +
-					 FORMAT__WAL_FRAME_HDR_SIZE) +
-				    1;
-			} else if (amount ==
-				   (int)f->content->wal.database->page_size) {
-				assert(((offset - FORMAT__WAL_HDR_SIZE -
-					 FORMAT__WAL_FRAME_HDR_SIZE) %
-					(f->content->wal.database->page_size +
-					 FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-				pgno = format__wal_calc_pgno(
-				    f->content->wal.database->page_size,
-				    offset);
-			} else {
-				assert(
-				    amount ==
-				    (FORMAT__WAL_FRAME_HDR_SIZE +
-				     (int)f->content->wal.database->page_size));
-				pgno = format__wal_calc_pgno(
-				    f->content->wal.database->page_size,
-				    offset);
-			}
-
-			if (pgno == 0) {
-				// This is an attempt to read a page that was
-				// never written.
-				memset(buf, 0, amount);
-				return SQLITE_IOERR_SHORT_READ;
-			}
-
-			frame = vfsWalFrameLookup(f->content, pgno);
-
-			if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
-				memcpy(buf, frame->hdr, amount);
-			} else if (amount == sizeof(uint32_t) * 2) {
-				memcpy(buf, frame->hdr + 16, amount);
-			} else if (amount ==
-				   (int)f->content->wal.database->page_size) {
-				memcpy(buf, frame->buf, amount);
-			} else {
-				memcpy(buf, frame->hdr,
-				       FORMAT__WAL_FRAME_HDR_SIZE);
-				memcpy(buf + FORMAT__WAL_FRAME_HDR_SIZE,
-				       frame->buf,
-				       f->content->wal.database->page_size);
-			}
-
-			return SQLITE_OK;
+			return vfsWalRead(&f->content->wal, buf, amount,
+					  offset);
+		default:
+			return SQLITE_IOERR_READ;
 	}
-
-	return SQLITE_IOERR_READ;
 }
 
 static int vfsFileWrite(sqlite3_file *file,
@@ -1086,7 +1061,8 @@ static int vfsFileWrite(sqlite3_file *file,
 
 				/* The header for the this frame must already
 				 * have been written, so the page is there. */
-				frame = vfsWalFrameLookup(f->content, pgno);
+				frame =
+				    vfsWalFrameLookup(&f->content->wal, pgno);
 
 				assert(frame != NULL);
 
