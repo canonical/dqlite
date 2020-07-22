@@ -552,12 +552,12 @@ TEST(VfsDelete, success, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
 
-	int flags;
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	int rc;
 
 	(void)params;
 
-	rc = f->vfs.xOpen(&f->vfs, "test.db", file, SQLITE_OPEN_CREATE, &flags);
+	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
 	rc = file->pMethods->xClose(file);
@@ -582,12 +582,12 @@ TEST(VfsDelete, busy, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
 
-	int flags;
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	int rc;
 
 	(void)params;
 
-	rc = f->vfs.xOpen(&f->vfs, "test.db", file, SQLITE_OPEN_CREATE, &flags);
+	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
 	rc = f->vfs.xDelete(&f->vfs, "test.db", 0);
@@ -632,13 +632,13 @@ TEST(VfsAccess, success, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
 
-	int flags;
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	int rc;
 	int exists;
 
 	(void)params;
 
-	rc = f->vfs.xOpen(&f->vfs, "test.db", file, SQLITE_OPEN_CREATE, &flags);
+	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
 
 	munit_assert_int(rc, ==, 0);
 
@@ -713,12 +713,12 @@ TEST(VfsClose, thenDelete, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
 
-	int flags;
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	int rc;
 
 	(void)params;
 
-	rc = f->vfs.xOpen(&f->vfs, "test.db", file, SQLITE_OPEN_CREATE, &flags);
+	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
 	rc = file->pMethods->xClose(file);

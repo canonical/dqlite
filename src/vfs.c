@@ -140,6 +140,12 @@ static void vfsShmDestroy(struct vfsShm *s)
 	sqlite3_free(s);
 }
 
+enum vfsContentType {
+	VFS__DATABASE, /* Main database file */
+	VFS__JOURNAL,  /* Default SQLite journal file */
+	VFS__WAL       /* Write-Ahead Log */
+};
+
 /* Hold content for a single file in the volatile file system. */
 struct vfsContent
 {
@@ -149,8 +155,8 @@ struct vfsContent
 	int pages_len;          /* Number of pages in the file. */
 	unsigned int page_size; /* Page size of each page. */
 
-	int refcount; /* Number of open FDs referencing this file. */
-	int type;     /* Content type (either main db or WAL). */
+	int refcount;             /* N. of files referencing this content. */
+	enum vfsContentType type; /* Content type (either main db or WAL). */
 
 	struct vfsShm *shm;     /* Shared memory (for db files). */
 	struct vfsContent *wal; /* WAL file content (for db files). */
@@ -162,8 +168,8 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 	struct vfsContent *c;
 
 	assert(name != NULL);
-	assert(type == FORMAT__DB || type == FORMAT__WAL ||
-	       type == FORMAT__OTHER);
+	assert(type == VFS__DATABASE || type == VFS__JOURNAL ||
+	       type == VFS__WAL);
 
 	c = sqlite3_malloc(sizeof *c);
 	if (c == NULL) {
@@ -178,7 +184,7 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 	strcpy(c->filename, name);
 
 	// For WAL files, also allocate the WAL file header.
-	if (type == FORMAT__WAL) {
+	if (type == VFS__WAL) {
 		c->hdr = sqlite3_malloc(FORMAT__WAL_HDR_SIZE);
 		if (c->hdr == NULL) {
 			goto oom_after_filename_malloc;
@@ -221,7 +227,7 @@ static void vfsContentDestroy(struct vfsContent *c)
 	sqlite3_free(c->filename);
 
 	/* Free the header if it's a WAL file. */
-	if (c->type == FORMAT__WAL) {
+	if (c->type == VFS__WAL) {
 		assert(c->hdr != NULL);
 		sqlite3_free(c->hdr);
 	} else {
@@ -242,7 +248,7 @@ static void vfsContentDestroy(struct vfsContent *c)
 
 	/* Free the SHM mappping */
 	if (c->shm != NULL) {
-		assert(c->type == FORMAT__DB);
+		assert(c->type == VFS__DATABASE);
 		vfsShmDestroy(c->shm);
 	}
 
@@ -276,7 +282,7 @@ static int vfsContentPageGet(struct vfsContent *c,
 	assert(c != NULL);
 	assert(pgno > 0);
 
-	is_wal = c->type == FORMAT__WAL;
+	is_wal = c->type == VFS__WAL;
 
 	/* SQLite should access pages progressively, without jumping more than
 	 * one page after the end. */
@@ -349,7 +355,7 @@ static struct vfsPage *vfsContentPageLookup(struct vfsContent *c, int pgno)
 
 	assert(page != NULL);
 
-	if (c->type == FORMAT__WAL) {
+	if (c->type == VFS__WAL) {
 		assert(page->hdr != NULL);
 	}
 
@@ -378,7 +384,7 @@ static void vfsContentTruncate(struct vfsContent *content, int pages_len)
 	}
 
 	/* Reset the file header (for WAL files). */
-	if (content->type == FORMAT__WAL) {
+	if (content->type == VFS__WAL) {
 		/* We expect callers to always truncate the WAL to zero. */
 		assert(pages_len == 0);
 		assert(content->hdr != NULL);
@@ -648,11 +654,11 @@ static int vfsFileRead(sqlite3_file *file,
 	 * no-ops and the associated content object remains empty, we expect the
 	 * content type to be either FORMAT__DB or
 	 * FORMAT__WAL. */
-	assert(f->content->type == FORMAT__DB ||
-	       f->content->type == FORMAT__WAL);
+	assert(f->content->type == VFS__DATABASE ||
+	       f->content->type == VFS__WAL);
 
 	switch (f->content->type) {
-		case FORMAT__DB:
+		case VFS__DATABASE:
 			/* Main database */
 
 			/* If the main database file is not empty, we expect the
@@ -688,7 +694,10 @@ static int vfsFileRead(sqlite3_file *file,
 			}
 			return SQLITE_OK;
 
-		case FORMAT__WAL:
+		case VFS__JOURNAL:
+			return SQLITE_IOERR_READ;
+
+		case VFS__WAL:
 			/* WAL file */
 
 			if (f->content->page_size == 0) {
@@ -802,7 +811,7 @@ static int vfsFileWrite(sqlite3_file *file,
 	assert(f->content->refcount > 0);
 
 	switch (f->content->type) {
-		case FORMAT__DB:
+		case VFS__DATABASE:
 			/* Main database. */
 			if (offset == 0) {
 				unsigned int page_size;
@@ -866,7 +875,11 @@ static int vfsFileWrite(sqlite3_file *file,
 
 			return SQLITE_OK;
 
-		case FORMAT__WAL:
+		case VFS__JOURNAL:
+			// Silently swallow writes to any other file.
+			return SQLITE_OK;
+
+		case VFS__WAL:
 			/* WAL file. */
 
 			if (f->content->page_size == 0) {
@@ -946,10 +959,6 @@ static int vfsFileWrite(sqlite3_file *file,
 			}
 
 			return SQLITE_OK;
-
-		case FORMAT__OTHER:
-			// Silently swallow writes to any other file.
-			return SQLITE_OK;
 	}
 
 	return SQLITE_IOERR_WRITE;
@@ -964,7 +973,7 @@ static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 	assert(f->content != NULL);
 
 	/* We expect calls to xTruncate only for database and WAL files. */
-	if (f->content->type != FORMAT__DB && f->content->type != FORMAT__WAL) {
+	if (f->content->type != VFS__DATABASE && f->content->type != VFS__WAL) {
 		return SQLITE_IOERR_TRUNCATE;
 	}
 
@@ -979,7 +988,7 @@ static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 	}
 
 	switch (f->content->type) {
-		case FORMAT__DB:
+		case VFS__DATABASE:
 			/* Main database. */
 
 			/* Since the file size is not zero, some content must
@@ -993,7 +1002,7 @@ static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 			pgno = size / f->content->page_size;
 			break;
 
-		case FORMAT__WAL:
+		case VFS__WAL:
 			/* WAL file. */
 
 			/* We expect SQLite to only truncate to zero, after a
@@ -1007,6 +1016,9 @@ static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 			}
 			pgno = 0;
 			break;
+
+		default:
+			return SQLITE_IOERR_TRUNCATE;
 	}
 
 	vfsContentTruncate(f->content, pgno);
@@ -1034,18 +1046,22 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 
 	/* Since we don't allow writing any other file, this must be
 	 * either a database file or WAL file. */
-	assert(f->content->type == FORMAT__DB ||
-	       f->content->type == FORMAT__WAL);
+	assert(f->content->type == VFS__DATABASE ||
+	       f->content->type == VFS__WAL);
 
 	/* Since this file is not empty, the page size must have been set. */
 	assert(f->content->page_size > 0);
 
 	switch (f->content->type) {
-		case FORMAT__DB:
+		case VFS__DATABASE:
 			*size = f->content->pages_len * f->content->page_size;
 			break;
 
-		case FORMAT__WAL:
+		case VFS__JOURNAL:
+			*size = 0;
+			break;
+
+		case VFS__WAL:
 			/* TODO? here we assume that FileSize() is never invoked
 			 * between a header write and a page write. */
 			*size = FORMAT__WAL_HDR_SIZE +
@@ -1381,15 +1397,13 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	struct vfs *v;
 	struct vfsFile *f;
 	struct vfsContent *content;
-
-	bool exists = 0; /* Whether the file exists already. */
-
-	int type; /* File content type (e.g. database or WAL). */
-	int rc;   /* Return code. */
-
-	/* Flags */
+	enum vfsContentType type;
+	bool exists;
 	int exclusive = flags & SQLITE_OPEN_EXCLUSIVE;
 	int create = flags & SQLITE_OPEN_CREATE;
+	int rc;
+
+	(void)out_flags;
 
 	assert(vfs != NULL);
 	assert(vfs->pAppData != NULL);
@@ -1406,8 +1420,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	 *   used to indicate the file should be opened for exclusive access.
 	 */
 	assert(!exclusive || create);
-
-	(void)out_flags;
 
 	v = (struct vfs *)(vfs->pAppData);
 	f = (struct vfsFile *)file;
@@ -1483,11 +1495,14 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		v->contents = contents;
 
 		if (flags & SQLITE_OPEN_MAIN_DB) {
-			type = FORMAT__DB;
+			type = VFS__DATABASE;
+		} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
+			type = VFS__JOURNAL;
 		} else if (flags & SQLITE_OPEN_WAL) {
-			type = FORMAT__WAL;
+			type = VFS__WAL;
 		} else {
-			type = FORMAT__OTHER;
+			v->error = ENOENT;
+			return SQLITE_CANTOPEN;
 		}
 
 		content = vfsContentCreate(filename, type);
@@ -1497,7 +1512,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			goto err;
 		}
 
-		if (type == FORMAT__WAL) {
+		if (type == VFS__WAL) {
 			/* An associated database file must have been opened. */
 			struct vfsContent *database;
 			rc = vfsDatabaseContentLookup(v, filename, &database);
