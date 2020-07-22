@@ -20,8 +20,8 @@
 /* Hold content for a single page or frame in a volatile file. */
 struct vfsPage
 {
+	uint8_t hdr[FORMAT__WAL_FRAME_HDR_SIZE];
 	void *buf; /* Content of the page. */
-	void *hdr; /* Page header (only for WAL pages). */
 };
 
 /* Create a new volatile page for a database or WAL file.
@@ -46,19 +46,10 @@ static struct vfsPage *vfsPageCreate(int size, int wal)
 	memset(p->buf, 0, size);
 
 	if (wal) {
-		p->hdr = sqlite3_malloc(FORMAT__WAL_FRAME_HDR_SIZE);
-		if (p->hdr == NULL) {
-			goto oom_after_buf_malloc;
-		}
 		memset(p->hdr, 0, FORMAT__WAL_FRAME_HDR_SIZE);
-	} else {
-		p->hdr = NULL;
 	}
 
 	return p;
-
-oom_after_buf_malloc:
-	sqlite3_free(p->buf);
 
 oom_after_page_alloc:
 	sqlite3_free(p);
@@ -74,10 +65,6 @@ static void vfsPageDestroy(struct vfsPage *p)
 	assert(p->buf != NULL);
 
 	sqlite3_free(p->buf);
-
-	if (p->hdr != NULL) {
-		sqlite3_free(p->hdr);
-	}
 
 	sqlite3_free(p);
 }
