@@ -17,11 +17,56 @@
 /* Maximum pathname length supported by this VFS. */
 #define VFS__MAX_PATHNAME 512
 
+/* Hold content for a shared memory mapping. */
+struct vfsShm
+{
+	void **regions;  /* Pointers to shared memory regions. */
+	int regions_len; /* Number of shared memory regions. */
+
+	unsigned shared[SQLITE_SHM_NLOCK];    /* Count of shared locks */
+	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
+};
+
+/* Database-specific content */
+struct vfsDatabase
+{
+	void **pages;      /* All database. */
+	unsigned n_pages;  /* Number of pages. */
+	struct vfsShm shm; /* Shared memory. */
+};
+
 /* Hold the content of a single WAL frame. */
 struct vfsFrame
 {
 	uint8_t hdr[FORMAT__WAL_FRAME_HDR_SIZE];
 	void *buf; /* Content of the page. */
+};
+
+/* WAL-specific content */
+struct vfsWal
+{
+	uint8_t hdr[FORMAT__WAL_HDR_SIZE]; /* Header. */
+	struct vfsFrame **frames;          /* All frames. */
+	unsigned n_frames;                 /* Number of frames. */
+};
+
+enum vfsContentType {
+	VFS__DATABASE, /* Main database file */
+	VFS__JOURNAL,  /* Default SQLite journal file */
+	VFS__WAL       /* Write-Ahead Log */
+};
+
+/* Hold content for a single file in the custom dqlite VFS. */
+struct vfsContent
+{
+	char *filename;           /* Name of the file. */
+	enum vfsContentType type; /* Content type (either main db or WAL). */
+	unsigned page_size;       /* Page size of each page. */
+	unsigned refcount;        /* N. of files referencing this content. */
+	union {
+		struct vfsDatabase database; /* VFS__DATABASE */
+		struct vfsWal wal;           /* VFS__WAL */
+	};
 };
 
 /* Create a new frame of a WAL file. */
@@ -62,16 +107,6 @@ static void vfsFrameDestroy(struct vfsFrame *f)
 	sqlite3_free(f);
 }
 
-/* Hold content for a shared memory mapping. */
-struct vfsShm
-{
-	void **regions;  /* Pointers to shared memory regions. */
-	int regions_len; /* Number of shared memory regions. */
-
-	unsigned shared[SQLITE_SHM_NLOCK];    /* Count of shared locks */
-	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
-};
-
 /* Initialize the shared memory mapping of a database file. */
 static void vfsShmInit(struct vfsShm *s)
 {
@@ -108,41 +143,6 @@ static void vfsShmClose(struct vfsShm *s)
 
 	vfsShmInit(s);
 }
-
-enum vfsContentType {
-	VFS__DATABASE, /* Main database file */
-	VFS__JOURNAL,  /* Default SQLite journal file */
-	VFS__WAL       /* Write-Ahead Log */
-};
-
-/* Database-specific content */
-struct vfsDatabase
-{
-	void **pages;      /* All database. */
-	unsigned n_pages;  /* Number of pages. */
-	struct vfsShm shm; /* Shared memory. */
-};
-
-/* WAL-specific content */
-struct vfsWal
-{
-	uint8_t hdr[FORMAT__WAL_HDR_SIZE]; /* Header. */
-	struct vfsFrame **frames;          /* All frames. */
-	unsigned n_frames;                 /* Number of frames. */
-};
-
-/* Hold content for a single file in the custom dqlite VFS. */
-struct vfsContent
-{
-	char *filename;           /* Name of the file. */
-	enum vfsContentType type; /* Content type (either main db or WAL). */
-	unsigned page_size;       /* Page size of each page. */
-	unsigned refcount;        /* N. of files referencing this content. */
-	union {
-		struct vfsDatabase database; /* VFS__DATABASE */
-		struct vfsWal wal;           /* VFS__WAL */
-	};
-};
 
 /* Create the content structure for a new volatile file. */
 static struct vfsContent *vfsContentCreate(const char *name, int type)
