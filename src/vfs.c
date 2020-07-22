@@ -415,7 +415,7 @@ struct vfsFile
 struct vfs
 {
 	struct vfsContent **contents; /* Files content */
-	int contents_len;             /* Number of files */
+	unsigned n_contents;          /* Number of files */
 	int error;                    /* Last error occurred. */
 };
 
@@ -430,9 +430,9 @@ static struct vfs *vfsCreate()
 		goto oom;
 	}
 
-	v->contents_len = VFS__MAX_FILES;
+	v->n_contents = VFS__MAX_FILES;
 
-	contents_size = v->contents_len * sizeof *v->contents;
+	contents_size = v->n_contents * sizeof *v->contents;
 
 	v->contents = sqlite3_malloc(contents_size);
 	if (v->contents == NULL) {
@@ -458,7 +458,7 @@ oom:
 static void vfsDestroy(struct vfs *r)
 {
 	struct vfsContent **cursor; /* Iterator for r->contents */
-	int i;
+	unsigned i;
 
 	assert(r != NULL);
 	assert(r->contents != NULL);
@@ -467,9 +467,9 @@ static void vfsDestroy(struct vfs *r)
 
 	/* The content array has been allocated and has at least one slot. */
 	assert(cursor != NULL);
-	assert(r->contents_len > 0);
+	assert(r->n_contents > 0);
 
-	for (i = 0; i < r->contents_len; i++) {
+	for (i = 0; i < r->n_contents; i++) {
 		struct vfsContent *content = *cursor;
 		if (content != NULL) {
 			vfsContentDestroy(content);
@@ -492,7 +492,7 @@ static int vfsContentLookup(
 )
 {
 	struct vfsContent **cursor; /* Iterator for r->contents */
-	int i;
+	unsigned i;
 
 	/* Index of the content or of a free slot in the contents array. */
 	int free_slot = -1;
@@ -504,9 +504,9 @@ static int vfsContentLookup(
 
 	// The content array has been allocated and has at least one slot.
 	assert(cursor != NULL);
-	assert(r->contents_len > 0);
+	assert(r->n_contents > 0);
 
-	for (i = 0; i < r->contents_len; i++) {
+	for (i = 0; i < r->n_contents; i++) {
 		struct vfsContent *content = *cursor;
 		if (content && strcmp(content->filename, filename) == 0) {
 			// Found matching file.
