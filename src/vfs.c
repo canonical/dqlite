@@ -202,11 +202,34 @@ oom:
 	return NULL;
 }
 
+/* Release all memory used by a database object. */
+static void vfsDatabaseClose(struct vfsDatabase *d)
+{
+	unsigned i;
+	for (i = 0; i < d->n_pages; i++) {
+		sqlite3_free(d->pages[i]);
+	}
+	if (d->pages != NULL) {
+		sqlite3_free(d->pages);
+	}
+	vfsShmClose(&d->shm);
+}
+
+/* Release all memory used by a WAL object. */
+static void vfsWalClose(struct vfsWal *w)
+{
+	unsigned i;
+	for (i = 0; i < w->n_frames; i++) {
+		vfsFrameDestroy(w->frames[i]);
+	}
+	if (w->frames != NULL) {
+		sqlite3_free(w->frames);
+	}
+}
+
 /* Destroy the content of a volatile file. */
 static void vfsContentDestroy(struct vfsContent *c)
 {
-	unsigned i;
-
 	assert(c != NULL);
 	assert(c->filename != NULL);
 
@@ -215,23 +238,12 @@ static void vfsContentDestroy(struct vfsContent *c)
 
 	switch (c->type) {
 		case VFS__DATABASE:
-			vfsShmClose(&c->database.shm);
-			for (i = 0; i < c->database.n_pages; i++) {
-				sqlite3_free(*(c->database.pages + i));
-			}
-			if (c->database.pages != NULL) {
-				sqlite3_free(c->database.pages);
-			}
+			vfsDatabaseClose(&c->database);
 			break;
 		case VFS__JOURNAL:
 			break;
 		case VFS__WAL:
-			for (i = 0; i < c->wal.n_frames; i++) {
-				vfsFrameDestroy(*(c->wal.frames + i));
-			}
-			if (c->wal.frames != NULL) {
-				sqlite3_free(c->wal.frames);
-			}
+			vfsWalClose(&c->wal);
 			break;
 	}
 
