@@ -42,7 +42,10 @@ check_PROGRAMS = \
   integration-test
 TESTS = unit-test integration-test
 
-test_lib_SOURCES = \
+check_LTLIBRARIES = libtest.la
+
+libtest_la_CFLAGS = $(AM_CFLAGS) -DMUNIT_TEST_NAME_LEN=60 -Wno-unused-result -Wno-conversion
+libtest_la_SOURCES = \
   test/lib/endpoint.c \
   test/lib/fault.c \
   test/lib/fs.c \
@@ -53,7 +56,7 @@ test_lib_SOURCES = \
   test/lib/sqlite.c \
   test/lib/uv.c
 
-unit_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
+unit_test_SOURCES = $(libdqlite_la_SOURCES)
 unit_test_SOURCES += \
   test/test_error.c \
   test/test_integration.c \
@@ -75,19 +78,17 @@ unit_test_SOURCES += \
   test/unit/test_vfs.c \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS)
-unit_test_CFLAGS += -I$(top_srcdir)/test
-unit_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=70
 unit_test_LDFLAGS = $(AM_LDFLAGS)
+unit_test_LDADD = libtest.la
 
-integration_test_SOURCES = $(libdqlite_la_SOURCES) $(test_lib_SOURCES)
+integration_test_SOURCES = $(libdqlite_la_SOURCES)
 integration_test_SOURCES += \
   test/integration/test_membership.c \
   test/integration/test_server.c \
   test/integration/main.c
 integration_test_CFLAGS = $(AM_CFLAGS)
-integration_test_CFLAGS += -I$(top_srcdir)/test
-integration_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=70
 integration_test_LDFLAGS =  -no-install $(AM_LDFLAGS)
+integration_test_LDADD = libtest.la
 
 if DEBUG_ENABLED
   AM_CFLAGS += -g
