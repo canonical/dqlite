@@ -15,12 +15,12 @@ AM_CFLAGS = -I$(top_srcdir)/include -Wall
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(CO_CFLAGS) $(RAFT_CFLAGS)
 AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
 AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(CO_LIBS) $(RAFT_LIBS) -lpthread
-if DEBUG
+if DEBUG_ENABLED
   AM_CFLAGS += -g
 else
   AM_CFLAGS += -O2
 endif
-if SANITIZE
+if SANITIZE_ENABLED
   AM_CFLAGS += -fsanitize=address
 endif
 
