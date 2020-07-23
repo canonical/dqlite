@@ -81,14 +81,13 @@ unit_test_CFLAGS = $(AM_CFLAGS)
 unit_test_LDFLAGS = $(AM_LDFLAGS)
 unit_test_LDADD = libtest.la
 
-integration_test_SOURCES = $(libdqlite_la_SOURCES)
-integration_test_SOURCES += \
+integration_test_SOURCES = \
   test/integration/test_membership.c \
   test/integration/test_server.c \
   test/integration/main.c
 integration_test_CFLAGS = $(AM_CFLAGS)
 integration_test_LDFLAGS =  -no-install $(AM_LDFLAGS)
-integration_test_LDADD = libtest.la
+integration_test_LDADD = libtest.la libdqlite.la
 
 if DEBUG_ENABLED
   AM_CFLAGS += -g
