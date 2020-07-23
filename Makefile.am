@@ -1,30 +1,12 @@
 ACLOCAL_AMFLAGS = -I m4
-AUTOMAKE_OPTIONS = foreign subdir-objects
-
-lib_LTLIBRARIES =
-check_PROGRAMS =
-EXTRA_DIST =
-noinst_HEADERS =
-include_HEADERS =
-
-EXTRA_DIST += dqlite.pc.in
-pkgconfigdir = $(libdir)/pkgconfig
-pkgconfig_DATA = dqlite.pc
-
-AM_CFLAGS = -I$(top_srcdir)/include -Wall
-AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(CO_CFLAGS) $(RAFT_CFLAGS)
+AM_CFLAGS += -Wall
 AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
+AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(CO_CFLAGS) $(RAFT_CFLAGS)
 AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(CO_LIBS) $(RAFT_LIBS) -lpthread
-if DEBUG_ENABLED
-  AM_CFLAGS += -g
-else
-  AM_CFLAGS += -O2
-endif
-if SANITIZE_ENABLED
-  AM_CFLAGS += -fsanitize=address
-endif
 
-lib_LTLIBRARIES += libdqlite.la
+include_HEADERS = include/dqlite.h
+
+lib_LTLIBRARIES = libdqlite.la
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
   src/bind.c \
@@ -54,12 +36,11 @@ libdqlite_la_SOURCES = \
   src/tuple.c \
   src/tx.c \
   src/vfs.c
-include_HEADERS += include/dqlite.h
 
-# Tests
-check_PROGRAMS += \
+check_PROGRAMS = \
   unit-test \
   integration-test
+TESTS = unit-test integration-test
 
 test_lib_SOURCES = \
   test/lib/endpoint.c \
@@ -108,7 +89,14 @@ integration_test_CFLAGS += -I$(top_srcdir)/test
 integration_test_CFLAGS += -DDQLITE_TEST -DMUNIT_TEST_NAME_LEN=70
 integration_test_LDFLAGS =  -no-install $(AM_LDFLAGS)
 
-TESTS = unit-test integration-test
+if DEBUG_ENABLED
+  AM_CFLAGS += -g
+else
+  AM_CFLAGS += -O2
+endif
+if SANITIZE_ENABLED
+  AM_CFLAGS += -fsanitize=address
+endif
 
 if CODE_COVERAGE_ENABLED
 
@@ -125,3 +113,6 @@ clean-local: code-coverage-clean
 distclean-local: code-coverage-dist-clean
 
 endif # CODE_COVERAGE_ENABLED
+
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = dqlite.pc
