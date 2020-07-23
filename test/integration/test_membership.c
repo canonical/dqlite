@@ -7,8 +7,6 @@
 #include "../lib/server.h"
 #include "../lib/sqlite.h"
 
-TEST_MODULE(membership);
-
 /******************************************************************************
  *
  * Fixture
@@ -140,28 +138,30 @@ static MunitParameterEnum endpointParams[] = {
  *
  ******************************************************************************/
 
-struct join_fixture
+SUITE(membership)
+
+struct fixture
 {
 	FIXTURE;
 };
 
-TEST_SUITE(join);
-TEST_SETUP(join)
+static void *setUp(const MunitParameter params[], void *user_data)
 {
-	struct join_fixture *f = munit_malloc(sizeof *f);
+	struct fixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	return f;
 }
-TEST_TEAR_DOWN(join)
+
+static void tearDown(void *data)
 {
-	struct join_fixture *f = data;
+	struct fixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
 
-TEST_CASE(join, success, endpointParams)
+TEST(membership, join, setUp, tearDown, 0, endpointParams)
 {
-	struct join_fixture *f = data;
+	struct fixture *f = data;
 	unsigned id = 2;
 	const char *address = "@2";
 	unsigned stmt_id;
