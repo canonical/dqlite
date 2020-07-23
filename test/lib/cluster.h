@@ -44,64 +44,64 @@ struct server
 	struct raft_fsm fsms[N_SERVERS];  \
 	struct raft_fixture cluster;
 
-#define SETUP_CLUSTER                                                     \
-	{                                                                 \
-		struct raft_configuration configuration;                  \
-		unsigned i;                                               \
-		int rc;                                                   \
-		SETUP_HEAP;                                               \
-		SETUP_SQLITE;                                             \
-		rc = raft_fixture_init(&f->cluster, N_SERVERS, f->fsms);  \
-		munit_assert_int(rc, ==, 0);                              \
-		for (i = 0; i < N_SERVERS; i++) {                         \
-			SETUP_SERVER(i);                                  \
-		}                                                         \
-		rc = raft_fixture_configuration(&f->cluster, N_SERVERS,   \
-						&configuration);          \
-		munit_assert_int(rc, ==, 0);                              \
-		rc = raft_fixture_bootstrap(&f->cluster, &configuration); \
-		munit_assert_int(rc, ==, 0);                              \
-		raft_configuration_close(&configuration);                 \
-		rc = raft_fixture_start(&f->cluster);                     \
-		munit_assert_int(rc, ==, 0);                              \
+#define SETUP_CLUSTER                                                       \
+	{                                                                   \
+		struct raft_configuration _configuration;                   \
+		unsigned _i;                                                \
+		int _rv;                                                    \
+		SETUP_HEAP;                                                 \
+		SETUP_SQLITE;                                               \
+		_rv = raft_fixture_init(&f->cluster, N_SERVERS, f->fsms);   \
+		munit_assert_int(_rv, ==, 0);                               \
+		for (_i = 0; _i < N_SERVERS; _i++) {                        \
+			SETUP_SERVER(_i);                                   \
+		}                                                           \
+		_rv = raft_fixture_configuration(&f->cluster, N_SERVERS,    \
+						 &_configuration);          \
+		munit_assert_int(_rv, ==, 0);                               \
+		_rv = raft_fixture_bootstrap(&f->cluster, &_configuration); \
+		munit_assert_int(_rv, ==, 0);                               \
+		raft_configuration_close(&_configuration);                  \
+		_rv = raft_fixture_start(&f->cluster);                      \
+		munit_assert_int(_rv, ==, 0);                               \
 	}
 
-#define SETUP_SERVER(I)                                                    \
-	{                                                                  \
-		struct server *s = &f->servers[I];                         \
-		struct raft_fsm *fsm = &f->fsms[I];                        \
-		struct raft *raft = raft_fixture_get(&f->cluster, I);      \
-		char address[16];                                          \
-		int rc;                                                    \
-                                                                           \
-		test_logger_setup(params, &s->logger);                     \
-                                                                           \
-		sprintf(address, "%d", I + 1);                             \
-                                                                           \
-		rc = config__init(&s->config, I + 1, address);             \
-		munit_assert_int(rc, ==, 0);                               \
-                                                                           \
-		rc = VfsInit(&s->vfs, s->config.name);                     \
-		munit_assert_int(rc, ==, 0);                               \
-                                                                           \
-		registry__init(&s->registry, &s->config);                  \
-                                                                           \
-		rc = fsm__init(fsm, &s->config, &s->registry);             \
-		munit_assert_int(rc, ==, 0);                               \
-                                                                           \
-		rc = replication__init(&s->replication, &s->config, raft); \
-		munit_assert_int(rc, ==, 0);                               \
+#define SETUP_SERVER(I)                                                        \
+	{                                                                      \
+		struct server *_s = &f->servers[I];                            \
+		struct raft_fsm *_fsm = &f->fsms[I];                           \
+		struct raft *_raft = raft_fixture_get(&f->cluster, I);         \
+		char address[16];                                              \
+		int _rc;                                                       \
+                                                                               \
+		test_logger_setup(params, &_s->logger);                        \
+                                                                               \
+		sprintf(address, "%d", I + 1);                                 \
+                                                                               \
+		_rc = config__init(&_s->config, I + 1, address);               \
+		munit_assert_int(_rc, ==, 0);                                  \
+                                                                               \
+		_rc = VfsInit(&_s->vfs, _s->config.name);                      \
+		munit_assert_int(_rc, ==, 0);                                  \
+                                                                               \
+		registry__init(&_s->registry, &_s->config);                    \
+                                                                               \
+		_rc = fsm__init(_fsm, &_s->config, &_s->registry);             \
+		munit_assert_int(_rc, ==, 0);                                  \
+                                                                               \
+		_rc = replication__init(&_s->replication, &_s->config, _raft); \
+		munit_assert_int(_rc, ==, 0);                                  \
 	}
 
-#define TEAR_DOWN_CLUSTER                         \
-	{                                         \
-		int i;                            \
-		for (i = 0; i < N_SERVERS; i++) { \
-			TEAR_DOWN_SERVER(i);      \
-		}                                 \
-		raft_fixture_close(&f->cluster);  \
-		TEAR_DOWN_SQLITE;                 \
-		TEAR_DOWN_HEAP;                   \
+#define TEAR_DOWN_CLUSTER                            \
+	{                                            \
+		int _i;                              \
+		for (_i = 0; _i < N_SERVERS; _i++) { \
+			TEAR_DOWN_SERVER(_i);        \
+		}                                    \
+		raft_fixture_close(&f->cluster);     \
+		TEAR_DOWN_SQLITE;                    \
+		TEAR_DOWN_HEAP;                      \
 	}
 
 #define TEAR_DOWN_SERVER(I)                          \
@@ -127,15 +127,15 @@ struct server
 
 #define CLUSTER_ELECT(I) raft_fixture_elect(&f->cluster, I)
 #define CLUSTER_DEPOSE raft_fixture_depose(&f->cluster)
-#define CLUSTER_APPLIED(N)                                                     \
-	{                                                                      \
-		int i;                                                         \
-		for (i = 0; i < N_SERVERS; i++) {                              \
-			bool done;                                             \
-			done = raft_fixture_step_until_applied(&f->cluster, i, \
-							       N, 1000);       \
-			munit_assert_true(done);                               \
-		}                                                              \
+#define CLUSTER_APPLIED(N)                                                   \
+	{                                                                    \
+		int _i;                                                      \
+		for (_i = 0; _i < N_SERVERS; _i++) {                         \
+			bool done;                                           \
+			done = raft_fixture_step_until_applied(&f->cluster,  \
+							       _i, N, 1000); \
+			munit_assert_true(done);                             \
+		}                                                            \
 	}
 
 #define CLUSTER_STEP raft_fixture_step(&f->cluster)

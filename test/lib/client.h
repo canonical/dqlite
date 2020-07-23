@@ -12,13 +12,13 @@
 
 #define SETUP_CLIENT                                                    \
 	{                                                               \
-		int rv;                                                 \
-		int client_;                                            \
+		int _rv;                                                \
+		int _client;                                            \
 		test_endpoint_setup(&f->endpoint, params);              \
-		rv = listen(f->endpoint.fd, 16);                        \
-		munit_assert_int(rv, ==, 0);                            \
-		test_endpoint_pair(&f->endpoint, &f->server, &client_); \
-		clientInit(&f->client, client_);                        \
+		_rv = listen(f->endpoint.fd, 16);                       \
+		munit_assert_int(_rv, ==, 0);                           \
+		test_endpoint_pair(&f->endpoint, &f->server, &_client); \
+		clientInit(&f->client, _client);                        \
 	}
 
 #define TEAR_DOWN_CLIENT         \

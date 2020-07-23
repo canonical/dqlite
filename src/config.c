@@ -32,7 +32,7 @@ int config__init(struct config *c, dqlite_node_id id, const char *address)
 {
 	int rv;
 	c->id = id;
-	c->address = sqlite3_malloc(strlen(address) + 1);
+	c->address = sqlite3_malloc((int)strlen(address) + 1);
 	if (c->address == NULL) {
 		return DQLITE_NOMEM;
 	}

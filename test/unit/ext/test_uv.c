@@ -30,7 +30,7 @@ struct fixture
 };
 
 /* Return a buffer of size TEST_SOCKET_MIN_BUF_SIZE */
-static uv_buf_t *buf_malloc()
+static uv_buf_t *buf_malloc(void)
 {
 	uv_buf_t *buf = munit_malloc(sizeof *buf);
 	buf->base = munit_malloc(TEST_SOCKET_MIN_BUF_SIZE);
@@ -52,7 +52,7 @@ static void buf_free(uv_buf_t *buf)
  ******************************************************************************/
 
 /* Run the tests using both TCP and Unix sockets. */
-static MunitParameterEnum params[] = {
+static MunitParameterEnum endpointParams[] = {
     {TEST_ENDPOINT_FAMILY, test_endpoint_family_values},
     {NULL, NULL},
 };
@@ -136,7 +136,7 @@ TEST_TEAR_DOWN(write, tear_down);
 
 /* Writing an amount of data below the buffer size makes that data immediately
  * available for reading. */
-TEST_CASE(write, sync, params)
+TEST_CASE(write, sync, endpointParams)
 {
 	struct fixture *f = data;
 	uv_write_t req;
@@ -204,7 +204,7 @@ static void test_read_sync__read_cb(uv_stream_t *stream,
 }
 
 /* Reading an amount of data below the buffer happens synchronously. */
-TEST_CASE(read, sync, params)
+TEST_CASE(read, sync, endpointParams)
 {
 	struct fixture *f = data;
 	uv_buf_t *buf = buf_malloc();

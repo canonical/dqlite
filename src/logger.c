@@ -9,7 +9,7 @@ void loggerDefaultEmit(void *data, int level, const char *fmt, va_list args)
 {
 	char buf[EMIT_BUF_LEN];
 	char *cursor = buf;
-	int n;
+	size_t n;
 
 	(void)data;
 

@@ -18,15 +18,15 @@ extern int _main_suites_n;
 #define TEST__CAP SUITE__CAP
 
 /* Define the top-level suites array and the main() function of the test. */
-#define RUNNER(NAME)                                               \
-    MunitSuite _main_suites[SUITE__CAP];                           \
-    int _main_suites_n = 0;                                        \
-                                                                   \
-    int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc + 1)])    \
-    {                                                              \
-        MunitSuite suite = {(char *)"", NULL, _main_suites, 1, 0}; \
-        return munit_suite_main(&suite, (void *)NAME, argc, argv); \
-    }
+#define RUNNER(NAME)                                                       \
+	MunitSuite _main_suites[SUITE__CAP];                               \
+	int _main_suites_n = 0;                                            \
+                                                                           \
+	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc + 1)])        \
+	{                                                                  \
+		MunitSuite suite = {(char *)"", NULL, _main_suites, 1, 0}; \
+		return munit_suite_main(&suite, (void *)NAME, argc, argv); \
+	}
 
 /* Declare and register a new test suite #S belonging to the file's test module.
  *
@@ -38,77 +38,78 @@ extern int _main_suites_n;
  * The tests and suites attributes of the next available MunitSuite slot in the
  * _module_suites array will be set to the suite's tests and suites arrays, and
  * the prefix attribute of the slot will be set to /S. */
-#define SUITE(S)      \
-    SUITE__DECLARE(S) \
-    SUITE__ADD_CHILD(main, #S, S)
+#define SUITE(S)          \
+	SUITE__DECLARE(S) \
+	SUITE__ADD_CHILD(main, #S, S)
 
 /* Declare and register a new test. */
-#define TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)                \
-    static MunitResult test_##S##_##C(const MunitParameter params[], \
-                                      void *data);                   \
-    TEST__ADD_TO_SUITE(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)      \
-    static MunitResult test_##S##_##C(                               \
-        MUNIT_UNUSED const MunitParameter params[], MUNIT_UNUSED void *data)
+#define TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)                    \
+	static MunitResult test_##S##_##C(const MunitParameter params[], \
+					  void *data);                   \
+	TEST__ADD_TO_SUITE(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)      \
+	static MunitResult test_##S##_##C(                               \
+	    MUNIT_UNUSED const MunitParameter params[],                  \
+	    MUNIT_UNUSED void *data)
 
-#define SKIP_IF_NO_FIXTURE \
-    if (f == NULL) {       \
-        return MUNIT_SKIP; \
-    }
+#define SKIP_IF_NO_FIXTURE         \
+	if (f == NULL) {           \
+		return MUNIT_SKIP; \
+	}
 
 /* Declare the MunitSuite[] and the MunitTest[] arrays that compose the test
  * suite identified by S. */
-#define SUITE__DECLARE(S)                                      \
-    static MunitSuite _##S##_suites[SUITE__CAP];               \
-    static MunitTest _##S##_tests[SUITE__CAP];                 \
-    static MunitTestSetup _##S##_setup = NULL;                 \
-    static MunitTestTearDown _##S##_tear_down = NULL;          \
-    static int _##S##_suites_n = 0;                            \
-    static int _##S##_tests_n = 0;                             \
-    __attribute__((constructor)) static void _##S##_init(void) \
-    {                                                          \
-        memset(_##S##_suites, 0, sizeof(_##S##_suites));       \
-        memset(_##S##_tests, 0, sizeof(_##S##_tests));         \
-        (void)_##S##_suites_n;                                 \
-        (void)_##S##_tests_n;                                  \
-        (void)_##S##_setup;                                    \
-        (void)_##S##_tear_down;                                \
-    }
+#define SUITE__DECLARE(S)                                          \
+	static MunitSuite _##S##_suites[SUITE__CAP];               \
+	static MunitTest _##S##_tests[SUITE__CAP];                 \
+	static MunitTestSetup _##S##_setup = NULL;                 \
+	static MunitTestTearDown _##S##_tear_down = NULL;          \
+	static int _##S##_suites_n = 0;                            \
+	static int _##S##_tests_n = 0;                             \
+	__attribute__((constructor)) static void _##S##_init(void) \
+	{                                                          \
+		memset(_##S##_suites, 0, sizeof(_##S##_suites));   \
+		memset(_##S##_tests, 0, sizeof(_##S##_tests));     \
+		(void)_##S##_suites_n;                             \
+		(void)_##S##_tests_n;                              \
+		(void)_##S##_setup;                                \
+		(void)_##S##_tear_down;                            \
+	}
 
 /* Set the tests and suites attributes of the next available slot of the
  * MunitSuite[] array of S1 to the MunitTest[] and MunitSuite[] arrays of S2,
  * using the given PREXIX. */
-#define SUITE__ADD_CHILD(S1, PREFIX, S2)                               \
-    __attribute__((constructor)) static void _##S1##_##S2##_init(void) \
-    {                                                                  \
-        int n = _##S1##_suites_n;                                      \
-        _##S1##_suites[n].prefix = PREFIX;                             \
-        _##S1##_suites[n].tests = _##S2##_tests;                       \
-        _##S1##_suites[n].suites = _##S2##_suites;                     \
-        _##S1##_suites[n].iterations = 0;                              \
-        _##S1##_suites[n].options = 0;                                 \
-        _##S1##_suites_n = n + 1;                                      \
-    }
+#define SUITE__ADD_CHILD(S1, PREFIX, S2)                                   \
+	__attribute__((constructor)) static void _##S1##_##S2##_init(void) \
+	{                                                                  \
+		int n = _##S1##_suites_n;                                  \
+		_##S1##_suites[n].prefix = PREFIX;                         \
+		_##S1##_suites[n].tests = _##S2##_tests;                   \
+		_##S1##_suites[n].suites = _##S2##_suites;                 \
+		_##S1##_suites[n].iterations = 0;                          \
+		_##S1##_suites[n].options = 0;                             \
+		_##S1##_suites_n = n + 1;                                  \
+	}
 
 /* Add a test case to the MunitTest[] array of suite S. */
 #define TEST__ADD_TO_SUITE(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)            \
-    __attribute__((constructor)) static void _##S##_tests_##C##_init(void)     \
-    {                                                                          \
-        MunitTest *tests = _##S##_tests;                                       \
-        int n = _##S##_tests_n;                                                \
-        TEST__SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C, SETUP, TEAR_DOWN, \
-                           OPTIONS, PARAMS);                                   \
-        _##S##_tests_n = n + 1;                                                \
-    }
+	__attribute__((constructor)) static void _##S##_tests_##C##_init(void) \
+	{                                                                      \
+		MunitTest *tests = _##S##_tests;                               \
+		int n = _##S##_tests_n;                                        \
+		TEST__SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C, SETUP,    \
+				   TEAR_DOWN, OPTIONS, PARAMS);                \
+		_##S##_tests_n = n + 1;                                        \
+	}
 
 /* Set the values of the I'th test case slot in the given test array */
 #define TEST__SET_IN_ARRAY(TESTS, I, NAME, FUNC, SETUP, TEAR_DOWN, OPTIONS, \
-                           PARAMS)                                          \
-    TESTS[I].name = NAME;                                                   \
-    TESTS[I].test = FUNC;                                                   \
-    TESTS[I].setup = SETUP;                                                 \
-    TESTS[I].tear_down = TEAR_DOWN;                                         \
-    TESTS[I].options = OPTIONS;                                             \
-    TESTS[I].parameters = PARAMS
+			   PARAMS)                                          \
+	TESTS[I].name = NAME;                                               \
+	TESTS[I].test = FUNC;                                               \
+	TESTS[I].setup = SETUP;                                             \
+	TESTS[I].tear_down = TEAR_DOWN;                                     \
+	TESTS[I].options = OPTIONS;                                         \
+	TESTS[I].parameters = PARAMS
 
 /**
  * Declare and register a new test module #M.
@@ -200,50 +201,50 @@ extern int _main_suites_n;
 
 /* Declare the MunitSuite[] and the MunitTest[] arrays that compose the test
  * suite identified by S. */
-#define TEST_SUITE__DECLARE(S)                                   \
-	static MunitSuite _##S##_suites[TEST__CAP];              \
-	static MunitTest _##S##_tests[TEST__CAP];                \
-	static MunitTestSetup _##S##_setup = NULL;               \
-	static MunitTestTearDown _##S##_tear_down = NULL;        \
-	static int _##S##_suites_n = 0;                          \
-	static int _##S##_tests_n = 0;                           \
-	__attribute__((constructor)) static void _##S##_init()   \
-	{                                                        \
-		memset(_##S##_suites, 0, sizeof(_##S##_suites)); \
-		memset(_##S##_tests, 0, sizeof(_##S##_tests));   \
-		(void)_##S##_suites_n;                           \
-		(void)_##S##_tests_n;                            \
-		(void)_##S##_setup;                              \
-		(void)_##S##_tear_down;                          \
+#define TEST_SUITE__DECLARE(S)                                     \
+	static MunitSuite _##S##_suites[TEST__CAP];                \
+	static MunitTest _##S##_tests[TEST__CAP];                  \
+	static MunitTestSetup _##S##_setup = NULL;                 \
+	static MunitTestTearDown _##S##_tear_down = NULL;          \
+	static int _##S##_suites_n = 0;                            \
+	static int _##S##_tests_n = 0;                             \
+	__attribute__((constructor)) static void _##S##_init(void) \
+	{                                                          \
+		memset(_##S##_suites, 0, sizeof(_##S##_suites));   \
+		memset(_##S##_tests, 0, sizeof(_##S##_tests));     \
+		(void)_##S##_suites_n;                             \
+		(void)_##S##_tests_n;                              \
+		(void)_##S##_setup;                                \
+		(void)_##S##_tear_down;                            \
 	}
 
 /* Set the tests and suites attributes of the next available slot of the
  * MunitSuite[] array of S1 to the MunitTest[] and MunitSuite[] arrays of S2,
  * using the given PREXIX. */
-#define TEST_SUITE__ADD_CHILD(S1, PREFIX, S2)                          \
-	__attribute__((constructor)) static void _##S1##_##S2##_init() \
-	{                                                              \
-		int n = _##S1##_suites_n;                              \
-		_##S1##_suites[n].prefix = PREFIX;                     \
-		_##S1##_suites[n].tests = _##S2##_tests;               \
-		_##S1##_suites[n].suites = _##S2##_suites;             \
-		_##S1##_suites[n].iterations = 0;                      \
-		_##S1##_suites[n].options = 0;                         \
-		_##S1##_suites_n = n + 1;                              \
+#define TEST_SUITE__ADD_CHILD(S1, PREFIX, S2)                              \
+	__attribute__((constructor)) static void _##S1##_##S2##_init(void) \
+	{                                                                  \
+		int n = _##S1##_suites_n;                                  \
+		_##S1##_suites[n].prefix = PREFIX;                         \
+		_##S1##_suites[n].tests = _##S2##_tests;                   \
+		_##S1##_suites[n].suites = _##S2##_suites;                 \
+		_##S1##_suites[n].iterations = 0;                          \
+		_##S1##_suites[n].options = 0;                             \
+		_##S1##_suites_n = n + 1;                                  \
 	}
 
 /* Set the tests attribute of the next available slot of the MunitSuite[] array
  * of S to the MunitTest[] array of G, using /G as prefix. */
-#define TEST_SUITE__ADD_GROUP(S, G)                                  \
-	__attribute__((constructor)) static void _##S##_##G##_init() \
-	{                                                            \
-		int n = _##S##_suites_n;                             \
-		_##S##_suites[n].prefix = "/" #G;                    \
-		_##S##_suites[n].tests = _##S##_##G##_tests;         \
-		_##S##_suites[n].suites = NULL;                      \
-		_##S##_suites[n].iterations = 0;                     \
-		_##S##_suites[n].options = 0;                        \
-		_##S##_suites_n = n + 1;                             \
+#define TEST_SUITE__ADD_GROUP(S, G)                                      \
+	__attribute__((constructor)) static void _##S##_##G##_init(void) \
+	{                                                                \
+		int n = _##S##_suites_n;                                 \
+		_##S##_suites[n].prefix = "/" #G;                        \
+		_##S##_suites[n].tests = _##S##_##G##_tests;             \
+		_##S##_suites[n].suites = NULL;                          \
+		_##S##_suites[n].iterations = 0;                         \
+		_##S##_suites[n].options = 0;                            \
+		_##S##_suites_n = n + 1;                                 \
 	}
 
 /* Choose the appropriate TEST_SETUP__N_ARGS() macro depending on the number of
@@ -251,18 +252,18 @@ extern int _main_suites_n;
 #define TEST_SETUP__MACRO_CHOOSER(...) \
 	TEST__GET_3RD_ARG(__VA_ARGS__, TEST_SETUP__2_ARGS, TEST_SETUP__1_ARGS)
 
-#define TEST_SETUP__1_ARGS(S)                                        \
-	static void *S##__setup(const MunitParameter[], void *);     \
-	__attribute__((constructor)) static void _##S##_setup_init() \
-	{                                                            \
-		_##S##_setup = S##__setup;                           \
-	}                                                            \
+#define TEST_SETUP__1_ARGS(S)                                            \
+	static void *S##__setup(const MunitParameter[], void *);         \
+	__attribute__((constructor)) static void _##S##_setup_init(void) \
+	{                                                                \
+		_##S##_setup = S##__setup;                               \
+	}                                                                \
 	static void *S##__setup(const MunitParameter params[], void *user_data)
 
-#define TEST_SETUP__2_ARGS(S, F)                                     \
-	__attribute__((constructor)) static void _##S##_setup_init() \
-	{                                                            \
-		_##S##_setup = F;                                    \
+#define TEST_SETUP__2_ARGS(S, F)                                         \
+	__attribute__((constructor)) static void _##S##_setup_init(void) \
+	{                                                                \
+		_##S##_setup = F;                                        \
 	}
 
 /* Choose the appropriate TEST_TEAR_DOWN__N_ARGS() macro depending on the number
@@ -271,18 +272,18 @@ extern int _main_suites_n;
 	TEST__GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN__2_ARGS, \
 			  TEST_TEAR_DOWN__1_ARGS)
 
-#define TEST_TEAR_DOWN__1_ARGS(S)                                         \
-	static void S##__tear_down(void *data);                           \
-	__attribute__((constructor)) static void _##S##__tear_down_init() \
-	{                                                                 \
-		_##S##_tear_down = S##__tear_down;                        \
-	}                                                                 \
+#define TEST_TEAR_DOWN__1_ARGS(S)                                             \
+	static void S##__tear_down(void *data);                               \
+	__attribute__((constructor)) static void _##S##__tear_down_init(void) \
+	{                                                                     \
+		_##S##_tear_down = S##__tear_down;                            \
+	}                                                                     \
 	static void S##__tear_down(void *data)
 
-#define TEST_TEAR_DOWN__2_ARGS(S, F)                                     \
-	__attribute__((constructor)) static void _##S##_tear_down_init() \
-	{                                                                \
-		_##S##_tear_down = F;                                    \
+#define TEST_TEAR_DOWN__2_ARGS(S, F)                                         \
+	__attribute__((constructor)) static void _##S##_tear_down_init(void) \
+	{                                                                    \
+		_##S##_tear_down = F;                                        \
 	}
 
 /* Choose the appropriate TEST_CASE__N_ARGS() macro depending on the number of
@@ -313,39 +314,40 @@ extern int _main_suites_n;
 						void *data)
 
 /* Add a test case to the MunitTest[] array of the file module. */
-#define TEST_CASE__ADD_TO_MODULE(C, PARAMS)                                 \
-	__attribute__((constructor)) static void _module_tests_##C##_init() \
-	{                                                                   \
-		MunitTest *tests = _module_tests;                           \
-		int n = _module_tests_n;                                    \
-		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C, test_##C, NULL,   \
-					NULL, PARAMS);                      \
-		_module_tests_n = n + 1;                                    \
+#define TEST_CASE__ADD_TO_MODULE(C, PARAMS)                                \
+	__attribute__((constructor)) static void _module_tests_##C##_init( \
+	    void)                                                          \
+	{                                                                  \
+		MunitTest *tests = _module_tests;                          \
+		int n = _module_tests_n;                                   \
+		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C, test_##C, NULL,  \
+					NULL, PARAMS);                     \
+		_module_tests_n = n + 1;                                   \
 	}
 
 /* Add a test case to the MunitTest[] array of suite S. */
-#define TEST_CASE__ADD_TO_SUITE(S, C, PARAMS)                              \
-	__attribute__((constructor)) static void _##S##_tests_##C##_init() \
-	{                                                                  \
-		MunitTest *tests = _##S##_tests;                           \
-		int n = _##S##_tests_n;                                    \
-		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C,  \
-					_##S##_setup, _##S##_tear_down,    \
-					PARAMS);                           \
-		_##S##_tests_n = n + 1;                                    \
+#define TEST_CASE__ADD_TO_SUITE(S, C, PARAMS)                                  \
+	__attribute__((constructor)) static void _##S##_tests_##C##_init(void) \
+	{                                                                      \
+		MunitTest *tests = _##S##_tests;                               \
+		int n = _##S##_tests_n;                                        \
+		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C,      \
+					_##S##_setup, _##S##_tear_down,        \
+					PARAMS);                               \
+		_##S##_tests_n = n + 1;                                        \
 	}
 
 /* Add a test case to MunitTest[] array of group G in suite S. */
-#define TEST_CASE__ADD_TO_GROUP(S, G, C, PARAMS)                          \
-	__attribute__(                                                    \
-	    (constructor)) static void _##S##_##G##_tests_##C##_init()    \
-	{                                                                 \
-		MunitTest *tests = _##S##_##G##_tests;                    \
-		int n = _##S##_##G##_tests_n;                             \
-		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C,                 \
+#define TEST_CASE__ADD_TO_GROUP(S, G, C, PARAMS)                            \
+	__attribute__(                                                      \
+	    (constructor)) static void _##S##_##G##_tests_##C##_init(void)  \
+	{                                                                   \
+		MunitTest *tests = _##S##_##G##_tests;                      \
+		int n = _##S##_##G##_tests_n;                               \
+		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C,                   \
 					test_##S##_##G##_##C, _##S##_setup, \
 					_##S##_tear_down, PARAMS);          \
-		_##S##_##G##_tests_n = n + 1;                             \
+		_##S##_##G##_tests_n = n + 1;                               \
 	}
 
 /* Set the values of the I'th test case slot in the given test array */

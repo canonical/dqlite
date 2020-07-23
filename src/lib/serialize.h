@@ -6,7 +6,7 @@
 
 #include <uv.h>
 
-#include "../include/dqlite.h"
+#include "../../include/dqlite.h"
 
 #include "assert.h"
 #include "byte.h"
@@ -186,7 +186,7 @@ DQLITE_INLINE void uint64__encode(const uint64_t *value, void **cursor)
 
 DQLITE_INLINE void int64__encode(const int64_t *value, void **cursor)
 {
-	*(int64_t *)(*cursor) = byte__flip64(*value);
+	*(int64_t *)(*cursor) = (int64_t)byte__flip64((uint64_t)*value);
 	*cursor += sizeof(int64_t);
 }
 
@@ -267,7 +267,7 @@ DQLITE_INLINE int int64__decode(struct cursor *cursor, int64_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = byte__flip64(*(int64_t *)cursor->p);
+	*value = (int64_t)byte__flip64((uint64_t)*(int64_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;

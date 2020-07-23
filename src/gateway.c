@@ -63,14 +63,14 @@ void gateway__close(struct gateway *g)
 /* Encode the given success response and invoke the request callback */
 #define SUCCESS(LOWER, UPPER)                                                  \
 	{                                                                      \
-		size_t n = response_##LOWER##__sizeof(&response);              \
-		void *cursor;                                                  \
-		assert(n % 8 == 0);                                            \
-		cursor = buffer__advance(req->buffer, n);                      \
+		size_t _n = response_##LOWER##__sizeof(&response);             \
+		void *_cursor;                                                 \
+		assert(_n % 8 == 0);                                           \
+		_cursor = buffer__advance(req->buffer, _n);                    \
 		/* Since responses are small and the buffer it's at least 4096 \
 		 * bytes, this can't fail. */                                  \
-		assert(cursor != NULL);                                        \
-		response_##LOWER##__encode(&response, &cursor);                \
+		assert(_cursor != NULL);                                       \
+		response_##LOWER##__encode(&response, &_cursor);               \
 		req->cb(req, 0, DQLITE_RESPONSE_##UPPER);                      \
 	}
 
@@ -98,7 +98,7 @@ static void failure(struct handle *req, int code, const char *message)
 	struct response_failure failure;
 	size_t n;
 	void *cursor;
-	failure.code = code;
+	failure.code = (uint64_t)code;
 	failure.message = message;
 	n = response_failure__sizeof(&failure);
 	assert(n % 8 == 0);
@@ -206,9 +206,9 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
-	response.db_id = request.db_id;
-	response.id = stmt->id;
-	response.params = sqlite3_bind_parameter_count(stmt->stmt);
+	response.db_id = (uint32_t)request.db_id;
+	response.id = (uint32_t)stmt->id;
+	response.params = (uint64_t)sqlite3_bind_parameter_count(stmt->stmt);
 	SUCCESS(stmt, STMT);
 	return 0;
 }
@@ -217,8 +217,9 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
  * affected. */
 static void fill_result(struct gateway *g, struct response_result *response)
 {
-	response->last_insert_id = sqlite3_last_insert_rowid(g->leader->conn);
-	response->rows_affected = sqlite3_changes(g->leader->conn);
+	response->last_insert_id =
+	    (uint64_t)sqlite3_last_insert_rowid(g->leader->conn);
+	response->rows_affected = (uint64_t)sqlite3_changes(g->leader->conn);
 }
 
 static void leader_exec_cb(struct exec *exec, int status)
@@ -625,7 +626,7 @@ static int handle_assign(struct handle *req, struct cursor *cursor)
 	r->req.data = r;
 
 	rv = raft_assign(g->raft, &r->req, request.id,
-			 translateDqliteRole(role), raftChangeCb);
+			 translateDqliteRole((int)role), raftChangeCb);
 	if (rv != 0) {
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
@@ -774,7 +775,8 @@ static int encodeServer(struct gateway *g,
 
 	id = g->raft->configuration.servers[i].id;
 	address = g->raft->configuration.servers[i].address;
-	role = translateRaftRole(g->raft->configuration.servers[i].role);
+	role =
+	    (uint64_t)translateRaftRole(g->raft->configuration.servers[i].role);
 
 	cur = buffer__advance(buffer, uint64__sizeof(&id));
 	if (cur == NULL) {
@@ -815,7 +817,7 @@ static int handle_cluster(struct handle *req, struct cursor *cursor)
 	response_servers__encode(&response, &cur);
 
 	for (i = 0; i < response.n; i++) {
-		rv = encodeServer(g, i, req->buffer, request.format);
+		rv = encodeServer(g, i, req->buffer, (int)request.format);
 		if (rv != 0) {
 			failure(req, rv, "failed to encode server");
 			return 0;

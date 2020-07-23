@@ -15,7 +15,7 @@ struct mem_fault
  * instance has been installed using sqlite3_config(), and after
  * sqlite3_initialize() has been called, there's no way to retrieve it back with
  * sqlite3_config(). */
-static struct mem_fault mem_fault;
+static struct mem_fault memFault;
 
 /* A version of sqlite3_mem_methods.xMalloc() that includes fault simulation
  * logic.*/
@@ -23,8 +23,8 @@ static void *mem_fault_malloc(int n)
 {
 	void *p = NULL;
 
-	if (!test_fault_tick(&mem_fault.fault)) {
-		p = mem_fault.m.xMalloc(n);
+	if (!test_fault_tick(&memFault.fault)) {
+		p = memFault.m.xMalloc(n);
 	}
 
 	return p;
@@ -36,8 +36,8 @@ static void *mem_fault_realloc(void *old, int n)
 {
 	void *p = NULL;
 
-	if (!test_fault_tick(&mem_fault.fault)) {
-		p = mem_fault.m.xRealloc(old, n);
+	if (!test_fault_tick(&memFault.fault)) {
+		p = memFault.m.xRealloc(old, n);
 	}
 
 	return p;
@@ -54,37 +54,37 @@ static void *mem_fault_realloc(void *old, int n)
  */
 static void mem_fault_free(void *p)
 {
-	mem_fault.m.xFree(p);
+	memFault.m.xFree(p);
 }
 
 static int mem_fault_size(void *p)
 {
-	return mem_fault.m.xSize(p);
+	return memFault.m.xSize(p);
 }
 
 static int mem_fault_roundup(int n)
 {
-	return mem_fault.m.xRoundup(n);
+	return memFault.m.xRoundup(n);
 }
 
 static int mem_fault_init(void *p)
 {
 	(void)p;
-	return mem_fault.m.xInit(mem_fault.m.pAppData);
+	return memFault.m.xInit(memFault.m.pAppData);
 }
 
 static void mem_fault_shutdown(void *p)
 {
 	(void)p;
-	mem_fault.m.xShutdown(mem_fault.m.pAppData);
+	memFault.m.xShutdown(memFault.m.pAppData);
 }
 
 /* Wrap the given SQLite memory management instance with the faulty memory
  * management interface. By default no faults will be triggered. */
 static void mem_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
 {
-	test_fault_init(&mem_fault.fault);
-	mem_fault.m = *m;
+	test_fault_init(&memFault.fault);
+	memFault.m = *m;
 
 	wrap->xMalloc = mem_fault_malloc;
 	wrap->xFree = mem_fault_free;
@@ -94,7 +94,7 @@ static void mem_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
 	wrap->xInit = mem_fault_init;
 	wrap->xShutdown = mem_fault_shutdown;
 
-	wrap->pAppData = &mem_fault;
+	wrap->pAppData = &memFault;
 }
 
 /* Unwrap the given faulty memory management instance returning the original
@@ -103,7 +103,7 @@ static void mem_unwrap(sqlite3_mem_methods *wrap, sqlite3_mem_methods *m)
 {
 	(void)wrap;
 
-	*m = mem_fault.m;
+	*m = memFault.m;
 }
 
 /* Get the current number of outstanding malloc()'s without a matching free()
@@ -209,9 +209,9 @@ void test_heap_tear_down(void *data)
 
 void test_heap_fault_config(int delay, int repeat)
 {
-	test_fault_config(&mem_fault.fault, delay, repeat);
+	test_fault_config(&memFault.fault, delay, repeat);
 }
 
 void test_heap_fault_enable() {
-	test_fault_enable(&mem_fault.fault);
+	test_fault_enable(&memFault.fault);
 }

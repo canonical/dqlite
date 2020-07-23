@@ -471,9 +471,9 @@ static int methodFrames(sqlite3_wal_replication *replication,
 	c.filename = leader->db->filename;
 	c.tx_id = tx->id;
 	c.truncate = truncate;
-	c.is_commit = is_commit;
-	c.frames.n_pages = n_frames;
-	c.frames.page_size = page_size;
+	c.is_commit = (uint8_t)is_commit;
+	c.frames.n_pages = (uint32_t)n_frames;
+	c.frames.page_size = (uint16_t)page_size;
 	c.frames.data = frames;
 
 	req = raft_malloc(sizeof *req);

@@ -226,7 +226,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		}
 	}
 
-	rv = bind(fd, addr, len);
+	rv = bind(fd, addr, (socklen_t)len);
 	if (rv != 0) {
 		close(fd);
 		return DQLITE_ERROR;
@@ -239,7 +239,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	}
 
 	if (domain == AF_INET) {
-		t->bind_address = sqlite3_malloc(strlen(address));
+		t->bind_address = sqlite3_malloc((int)strlen(address));
 		if (t->bind_address == NULL) {
 			/* TODO: cleanup */
 			return DQLITE_NOMEM;
@@ -247,7 +247,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		strcpy(t->bind_address, address);
 	} else {
 		len = sizeof addr_un.sun_path;
-		t->bind_address = sqlite3_malloc(len);
+		t->bind_address = sqlite3_malloc((int)len);
 		if (t->bind_address == NULL) {
 			/* TODO: cleanup */
 			return DQLITE_NOMEM;
@@ -294,7 +294,7 @@ int dqlite_node_set_network_latency(dqlite_node *t,
 	if (nanoseconds < 500 * 1000) {
 		return DQLITE_MISUSE;
 	}
-	milliseconds = nanoseconds / (1000 * 1000);
+	milliseconds = (unsigned)(nanoseconds / (1000 * 1000));
 	raft_set_heartbeat_timeout(&t->raft, (milliseconds * 15) / 10);
 	raft_set_election_timeout(&t->raft, milliseconds * 15);
 	return 0;
@@ -521,7 +521,7 @@ static void *taskStart(void *arg)
 	int rv;
 	rv = taskRun(t);
 	if (rv != 0) {
-		uintptr_t result = rv;
+		uintptr_t result = (uintptr_t)rv;
 		return (void *)result;
 	}
 	return NULL;
@@ -595,7 +595,7 @@ int dqlite_node_stop(dqlite_node *d)
 	rv = pthread_join(d->thread, &result);
 	assert(rv == 0);
 
-	return (uintptr_t)result;
+	return (int)((uintptr_t)result);
 }
 
 int dqlite_node_recover(dqlite_node *n,
@@ -638,7 +638,7 @@ dqlite_node_id dqlite_generate_node_id(const char *address)
 	rv = clock_gettime(CLOCK_REALTIME, &ts);
 	assert(rv == 0);
 
-	n = ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec;
+	n = (unsigned long long)(ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec);
 
 	return raft_digest(address, n);
 }

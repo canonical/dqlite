@@ -29,7 +29,7 @@ static size_t calc_header_size(unsigned n, int format)
 		  * padding, but then exclude it as we have already read it. */
 		size = sizeof(uint8_t) + n * sizeof(uint8_t);
 		size = byte__pad64(size);
-		size -= sizeof(uint8_t); 
+		size -= sizeof(uint8_t);
 	}
 
 	return size;
@@ -166,7 +166,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 		if (header == NULL) {
 			return DQLITE_NOMEM;
 		}
-		header[0] = n;
+		header[0] = (uint8_t)n;
 	}
 
 	e->header = buffer__offset(buffer);
@@ -195,12 +195,12 @@ static void set_type(struct tuple_encoder *e, unsigned i, int type)
 		uint8_t *slot;
 		slot = &header[i / 2];
 		if (i % 2 == 0) {
-			*slot = type;
+			*slot = (uint8_t)type;
 		} else {
-			*slot |= type << 4;
+			*slot |= (uint8_t)(type << 4);
 		}
 	} else {
-		header[i] = type;
+		header[i] = (uint8_t)type;
 	}
 }
 

@@ -82,8 +82,9 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 	command_frames__pages(c, &pages);
 
-	rc = tx__frames(tx, is_begin, c->frames.page_size, c->frames.n_pages,
-			page_numbers, pages, c->truncate, c->is_commit);
+	rc = tx__frames(tx, is_begin, c->frames.page_size,
+			(int)c->frames.n_pages, page_numbers, pages,
+			c->truncate, c->is_commit);
 
 	sqlite3_free(page_numbers);
 
@@ -252,7 +253,7 @@ static int encodeSnapshotHeader(unsigned n, struct raft_buffer *buf)
 static char *generateWalFilename(const char *filename)
 {
 	char *out;
-	out = sqlite3_malloc(strlen(filename) + strlen("-wal") + 1);
+	out = sqlite3_malloc((int)(strlen(filename) + strlen("-wal") + 1));
 	if (out == NULL) {
 		return out;
 	}

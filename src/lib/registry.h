@@ -108,7 +108,7 @@
 		/* If we are full, then	 double the capacity. */                    \
 		if (r->len + 1 > r->cap) {                                          \
 			cap = (r->cap == 0) ? 1 : r->cap * 2;                       \
-			buf = sqlite3_realloc(r->buf, cap * sizeof(*r->buf));       \
+			buf = sqlite3_realloc(r->buf, (int)(cap * sizeof(*r->buf))); \
 			if (buf == NULL) {                                          \
 				return DQLITE_NOMEM;                                \
 			}                                                           \
@@ -210,7 +210,7 @@
 		 * try to shrink the registry. */                                   \
 		if (r->len < (r->cap / 2)) {                                        \
 			cap = r->cap / 2;                                           \
-			buf = sqlite3_realloc(r->buf, cap * sizeof *r->buf);        \
+			buf = sqlite3_realloc(r->buf, (int)(cap * sizeof *r->buf)); \
 			if (buf != NULL) {                                          \
 				r->buf = buf;                                       \
 				r->cap = cap;                                       \

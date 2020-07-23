@@ -37,7 +37,7 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 	int rc;
 	int i;
 
-	rc = tuple_encoder__init(&encoder, n, TUPLE__ROW, buffer);
+	rc = tuple_encoder__init(&encoder, (unsigned)n, TUPLE__ROW, buffer);
 	if (rc != 0) {
 		return SQLITE_ERROR;
 	}
@@ -58,7 +58,7 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 				break;
 			case SQLITE_BLOB:
 				value.blob.base = (char*)sqlite3_column_blob(stmt, i);
-				value.blob.len = sqlite3_column_bytes(stmt, i);
+				value.blob.len = (size_t)sqlite3_column_bytes(stmt, i);
 				break;
 			case SQLITE_NULL:
 				/* TODO: allow null to be encoded with 0 bytes
@@ -108,7 +108,7 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer) {
 	if (n <= 0) {
 		return SQLITE_ERROR;
 	}
-	n64 = n;
+	n64 = (uint64_t)n;
 
 	/* Insert the column count */
 	cursor = buffer__advance(buffer, sizeof(uint64_t));
@@ -146,4 +146,3 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer) {
 
 	return rc;
 }
-
