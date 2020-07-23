@@ -145,7 +145,7 @@ int command_frames__page_numbers(const struct command_frames *c,
 	cursor.cap = sizeof(uint64_t) * c->frames.n_pages;
 
 	*page_numbers =
-	    sqlite3_malloc(sizeof **page_numbers * c->frames.n_pages);
+	    sqlite3_malloc((int)(sizeof **page_numbers * c->frames.n_pages));
 	if (*page_numbers == NULL) {
 		return DQLITE_NOMEM;
 	}
@@ -153,8 +153,10 @@ int command_frames__page_numbers(const struct command_frames *c,
 	for (i = 0; i < c->frames.n_pages; i++) {
 		uint64_t pgno;
 		int r = uint64__decode(&cursor, &pgno);
-		if (r != 0) return r;
-		(*page_numbers)[i] = pgno;
+		if (r != 0) {
+			return r;
+		}
+		(*page_numbers)[i] = (unsigned)pgno;
 	}
 
 	return 0;

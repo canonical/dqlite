@@ -16,7 +16,7 @@ struct ctx
 static struct ctx *ctx; /* Argument for test coroutines */
 
 /* Test coroutine entry point */
-static void coro()
+static void coro(void)
 {
 	struct ctx *c = ctx;
 	c->v1 = 1;

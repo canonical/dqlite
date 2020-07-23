@@ -128,7 +128,7 @@ int dqlite__error_copy(dqlite__error *e, char **msg) {
 
 	len = strlen(*e) + 1;
 
-	copy = sqlite3_malloc(len * sizeof *copy);
+	copy = sqlite3_malloc((int)(len * sizeof *copy));
 	if (copy == NULL) {
 		*msg = NULL;
 		return DQLITE_NOMEM;

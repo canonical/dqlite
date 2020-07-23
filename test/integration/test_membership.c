@@ -51,7 +51,7 @@ TEST_MODULE(membership);
 
 /* Run the test using only TCP. */
 char *socket_family[] = {"tcp", NULL};
-static MunitParameterEnum params[] = {
+static MunitParameterEnum endpointParams[] = {
     {TEST_ENDPOINT_FAMILY, socket_family},
     {NULL, NULL},
 };
@@ -159,7 +159,7 @@ TEST_TEAR_DOWN(join)
 	free(f);
 }
 
-TEST_CASE(join, success, params)
+TEST_CASE(join, success, endpointParams)
 {
 	struct join_fixture *f = data;
 	unsigned id = 2;

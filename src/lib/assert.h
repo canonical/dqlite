@@ -6,7 +6,7 @@
 #define LIB_ASSERT_H_
 
 #if defined(DQLITE_TEST)
-  #include "../test/lib/munit.h"
+  #include "../../test/lib/munit.h"
   #define assert(expr) munit_assert(expr)
 #else
   #include <assert.h>

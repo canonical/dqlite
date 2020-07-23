@@ -22,7 +22,7 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 			break;
 		case SQLITE_BLOB:
 			rc = sqlite3_bind_blob(stmt, n, value->blob.base,
-					       value->blob.len,
+					       (int)value->blob.len,
 					       SQLITE_TRANSIENT);
 			break;
 		case SQLITE_NULL:
@@ -72,7 +72,7 @@ int bind__params(sqlite3_stmt *stmt, struct cursor *cursor)
 		if (rc != 0) {
 			return rc;
 		}
-		rc = bind_one(stmt, i + 1, &value);
+		rc = bind_one(stmt, (int)(i + 1), &value);
 		if (rc != 0) {
 			return rc;
 		}

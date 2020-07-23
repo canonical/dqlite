@@ -4,7 +4,7 @@
 #define TEST__DIR_TEMPLATE "/tmp/dqlite-test-XXXXXX"
 
 /* Setup a temporary directory. */
-char *test_dir_setup();
+char *test_dir_setup(void);
 
 /* Remove the temporary directory. */
 void test_dir_tear_down(char *dir);

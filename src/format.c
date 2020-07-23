@@ -8,19 +8,21 @@
 
 #include "format.h"
 
-int format__get_page_size(int type, const uint8_t *buf, unsigned *page_size) {
+int format__get_page_size(int type, const uint8_t *buf, unsigned *page_size)
+{
 	assert(buf != NULL);
 	assert(page_size != NULL);
 	assert(type == FORMAT__DB || type == FORMAT__WAL);
 
 	if (type == FORMAT__DB) {
-		/* The page size is stored in the 16th and 17th bytes (big-endian) */
-		*page_size = (buf[16] << 8) + buf[17];
+		/* The page size is stored in the 16th and 17th bytes
+		 * (big-endian) */
+		*page_size = (unsigned)((buf[16] << 8) + buf[17]);
 	} else {
 		/* The page size is stored in the 4 bytes starting at 8
 		 * (big-endian) */
-		*page_size =
-		    ((buf[8] << 24) + (buf[9] << 16) + (buf[10] << 8) + buf[11]);
+		*page_size = (unsigned)((buf[8] << 24) + (buf[9] << 16) +
+					(buf[10] << 8) + buf[11]);
 	}
 
 	/* Validate the page size ("Must be a power of two between 512 and 32768
@@ -38,7 +40,8 @@ int format__get_page_size(int type, const uint8_t *buf, unsigned *page_size) {
 	return SQLITE_OK;
 }
 
-void format__get_mx_frame(const uint8_t *buf, uint32_t *mx_frame) {
+void format__get_mx_frame(const uint8_t *buf, uint32_t *mx_frame)
+{
 	assert(buf != NULL);
 	assert(mx_frame != NULL);
 
@@ -48,7 +51,8 @@ void format__get_mx_frame(const uint8_t *buf, uint32_t *mx_frame) {
 }
 
 void format__get_read_marks(const uint8_t *buf,
-                                   uint32_t read_marks[FORMAT__WAL_NREADER]) {
+			    uint32_t read_marks[FORMAT__WAL_NREADER])
+{
 	uint32_t *idx;
 
 	assert(buf != NULL);

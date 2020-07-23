@@ -14,7 +14,7 @@
 
 int buffer__init(struct buffer *b)
 {
-	b->page_size = sysconf(_SC_PAGESIZE);
+	b->page_size = (unsigned)sysconf(_SC_PAGESIZE);
 	b->n_pages = 1;
 	b->data = malloc(SIZE(b));
 	if (b->data == NULL) {

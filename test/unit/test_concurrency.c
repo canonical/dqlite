@@ -2,9 +2,9 @@
 #include "../lib/runner.h"
 
 #include "../../src/gateway.h"
+#include "../../src/protocol.h"
 #include "../../src/request.h"
 #include "../../src/response.h"
-#include "../../src/protocol.h"
 
 TEST_MODULE(concurrency);
 
@@ -164,8 +164,8 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 /* Wait for the gateway of the given connection to finish handling a request. */
 #define WAIT(C)                                        \
 	{                                              \
-		unsigned i;                            \
-		for (i = 0; i < 50; i++) {             \
+		unsigned _i;                           \
+		for (_i = 0; _i < 50; _i++) {          \
 			CLUSTER_STEP;                  \
 			if (C->context.invoked) {      \
 				break;                 \

@@ -182,7 +182,7 @@ err:
 static struct leader *loop_arg_leader; /* For initializing the loop coroutine */
 static struct exec *loop_arg_exec;     /* Next exec request to execute */
 
-static void loop()
+static void loop(void)
 {
 	struct leader *l = loop_arg_leader;
 	co_switch(l->main);

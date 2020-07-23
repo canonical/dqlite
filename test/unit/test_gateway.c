@@ -221,8 +221,8 @@ static void handleCb(struct handle *req, int status, int type)
 /* Wait for the last request to complete */
 #define WAIT                                            \
 	{                                               \
-		unsigned i;                             \
-		for (i = 0; i < 60; i++) {              \
+		unsigned _i;                            \
+		for (_i = 0; _i < 60; _i++) {           \
 			CLUSTER_STEP;                   \
 			if (f->context->invoked) {      \
 				break;                  \
@@ -232,14 +232,22 @@ static void handleCb(struct handle *req, int status, int type)
 	}
 
 /* Prepare and exec a statement. */
-#define EXEC(SQL)                           \
-	{                                   \
-		uint64_t stmt_id;           \
-		PREPARE(SQL);               \
-		EXEC_SUBMIT(stmt_id);       \
-		WAIT;                       \
-		ASSERT_CALLBACK(0, RESULT); \
-		FINALIZE(stmt_id);          \
+#define EXEC(SQL)                               \
+	{                                       \
+		uint64_t _stmt_id;              \
+		struct request_prepare prepare; \
+		struct response_stmt stmt;      \
+		prepare.db_id = 0;              \
+		prepare.sql = SQL;              \
+		ENCODE(&prepare, prepare);      \
+		HANDLE(PREPARE);                \
+		ASSERT_CALLBACK(0, STMT);       \
+		DECODE(&stmt, stmt);            \
+		_stmt_id = stmt.id;             \
+		EXEC_SUBMIT(_stmt_id);          \
+		WAIT;                           \
+		ASSERT_CALLBACK(0, RESULT);     \
+		FINALIZE(_stmt_id);             \
 	}
 
 /* Execute a pragma statement to lowers SQLite's page cache size, in order to

@@ -904,7 +904,7 @@ static munit_uint32_t
 munit_rand_generate_seed(void) {
   munit_uint32_t seed, state;
 #if defined(MUNIT_ENABLE_TIMING)
-  struct PsnipClockTimespec wc = { 0, };
+  struct PsnipClockTimespec wc = { 0, 0 };
 
   psnip_clock_get_time(PSNIP_CLOCK_TYPE_WALL, &wc);
   seed = (munit_uint32_t) wc.nanoseconds;
@@ -1172,8 +1172,8 @@ munit_test_runner_exec(MunitTestRunner* runner, const MunitTest* test, const Mun
   unsigned int iterations = runner->iterations;
   MunitResult result = MUNIT_FAIL;
 #if defined(MUNIT_ENABLE_TIMING)
-  struct PsnipClockTimespec wall_clock_begin = { 0, }, wall_clock_end = { 0, };
-  struct PsnipClockTimespec cpu_clock_begin = { 0, }, cpu_clock_end = { 0, };
+  struct PsnipClockTimespec wall_clock_begin = { 0, 0 }, wall_clock_end = { 0, 0 };
+  struct PsnipClockTimespec cpu_clock_begin = { 0, 0 }, cpu_clock_end = { 0, 0 };
 #endif
   unsigned int i = 0;
 
@@ -1296,7 +1296,6 @@ munit_test_runner_run_test_with_params(MunitTestRunner* runner, const MunitTest*
 #if !defined(MUNIT_NO_FORK)
   int pipefd[2];
   pid_t fork_pid;
-  int orig_stderr;
   ssize_t bytes_written = 0;
   ssize_t write_res;
   ssize_t bytes_read = 0;
@@ -1350,6 +1349,8 @@ munit_test_runner_run_test_with_params(MunitTestRunner* runner, const MunitTest*
 
     fork_pid = fork();
     if (fork_pid == 0) {
+      int orig_stderr;
+
       close(pipefd[0]);
 
       orig_stderr = munit_replace_stderr(stderr_buf);

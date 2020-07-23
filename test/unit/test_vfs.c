@@ -83,7 +83,7 @@ static sqlite3_file *__file_create_wal(sqlite3_vfs *vfs)
 
 /* Helper for allocating a buffer of 100 bytes containing a database header with
  * a page size field set to 512 bytes. */
-static void *__buf_header_main_db()
+static void *__buf_header_main_db(void)
 {
 	char *buf = munit_malloc(100 * sizeof *buf);
 
@@ -96,7 +96,7 @@ static void *__buf_header_main_db()
 
 /* Helper for allocating a buffer of 32 bytes containing a WAL header with
  * a page size field set to 512 bytes. */
-static void *__buf_header_wal()
+static void *__buf_header_wal(void)
 {
 	char *buf = munit_malloc(32 * sizeof *buf);
 
@@ -108,7 +108,7 @@ static void *__buf_header_wal()
 }
 
 /* Helper for allocating a buffer of 24 bytes containing a WAL frame header. */
-static void *__buf_header_wal_frame()
+static void *__buf_header_wal_frame(void)
 {
 	char *buf = munit_malloc(24 * sizeof *buf);
 
@@ -117,7 +117,7 @@ static void *__buf_header_wal_frame()
 
 /* Helper for allocating a buffer with the content of the first page, i.e. the
  * the header and some other bytes. */
-static void *__buf_page_1()
+static void *__buf_page_1(void)
 {
 	char *buf = munit_malloc(512 * sizeof *buf);
 
@@ -134,7 +134,7 @@ static void *__buf_page_1()
 }
 
 /* Helper for allocating a buffer with the content of the second page. */
-static void *__buf_page_2()
+static void *__buf_page_2(void)
 {
 	char *buf = munit_malloc(512 * sizeof *buf);
 
@@ -156,7 +156,7 @@ static void __db_exec(sqlite3 *db, const char *sql)
 
 /* Helper to open and initialize a database, setting the page size and
  * WAL mode. */
-static sqlite3 *__db_open()
+static sqlite3 *__db_open(void)
 {
 	sqlite3 *db;
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;

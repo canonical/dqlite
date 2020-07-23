@@ -24,7 +24,7 @@ void test_heap_fault_config(int delay, int repeat);
 
 /* Enable the faulty behavior, which from this point on will honor the
  * parameters passed to test_mem_fault_config(). */
-void test_heap_fault_enable();
+void test_heap_fault_enable(void);
 
 #define SETUP_HEAP test_heap_setup(params, user_data);
 #define TEAR_DOWN_HEAP test_heap_tear_down(data);

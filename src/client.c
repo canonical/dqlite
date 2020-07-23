@@ -1,14 +1,14 @@
-#include <unistd.h>
 #include <sqlite3.h>
+#include <unistd.h>
 
 #include "lib/assert.h"
 
 #include "client.h"
 #include "message.h"
+#include "protocol.h"
 #include "request.h"
 #include "response.h"
 #include "tuple.h"
-#include "protocol.h"
 
 int clientInit(struct client *c, int fd)
 {
@@ -41,12 +41,12 @@ void clientClose(struct client *c)
 int clientSendHandshake(struct client *c)
 {
 	uint64_t protocol;
-	int rv;
+	ssize_t rv;
 
 	/* TODO: update to version 1 */
 	protocol = byte__flip64(DQLITE_PROTOCOL_VERSION_LEGACY);
 
-	rv = write(c->fd, &protocol, sizeof(protocol));
+	rv = write(c->fd, &protocol, sizeof protocol);
 	if (rv < 0) {
 		return DQLITE_ERROR;
 	}
@@ -62,7 +62,7 @@ int clientSendHandshake(struct client *c)
 		size_t n1;                                          \
 		size_t n2;                                          \
 		void *cursor;                                       \
-		int rv;                                             \
+		ssize_t rv;                                         \
 		n1 = message__sizeof(&message);                     \
 		n2 = request_##LOWER##__sizeof(&request);           \
 		n = n1 + n2;                                        \
@@ -73,7 +73,7 @@ int clientSendHandshake(struct client *c)
 		}                                                   \
 		assert(n2 % 8 == 0);                                \
 		message.type = DQLITE_REQUEST_##UPPER;              \
-		message.words = n2 / 8;                             \
+		message.words = (uint32_t)(n2 / 8);                 \
 		message__encode(&message, &cursor);                 \
 		request_##LOWER##__encode(&request, &cursor);       \
 		rv = write(c->fd, buffer__cursor(&c->write, 0), n); \
@@ -83,38 +83,38 @@ int clientSendHandshake(struct client *c)
 	}
 
 /* Read a response without decoding it. */
-#define READ(LOWER, UPPER)                                     \
-	{                                                      \
-		struct message message;                        \
-		struct cursor cursor;                          \
-		size_t n;                                      \
-		void *p;                                       \
-		int rv;                                        \
-		n = message__sizeof(&message);                 \
-		buffer__reset(&c->read);                       \
-		p = buffer__advance(&c->read, n);              \
-		assert(p != NULL);                             \
-		rv = read(c->fd, p, n);                        \
-		if (rv != (int)n) {                            \
-			return DQLITE_ERROR;                   \
-		}                                              \
-		cursor.p = p;                                  \
-		cursor.cap = n;                                \
-		rv = message__decode(&cursor, &message);       \
-		assert(rv == 0);                               \
-		if (message.type != DQLITE_RESPONSE_##UPPER) { \
-			return DQLITE_ERROR;                   \
-		}                                              \
-		buffer__reset(&c->read);                       \
-		n = message.words * 8;                         \
-		p = buffer__advance(&c->read, n);              \
-		if (p == NULL) {                               \
-			return DQLITE_ERROR;                   \
-		}                                              \
-		rv = read(c->fd, p, n);                        \
-		if (rv != (int)n) {                            \
-			return DQLITE_ERROR;                   \
-		}                                              \
+#define READ(LOWER, UPPER)                                      \
+	{                                                       \
+		struct message _message;                        \
+		struct cursor _cursor;                          \
+		size_t _n;                                      \
+		void *_p;                                       \
+		ssize_t _rv;                                    \
+		_n = message__sizeof(&_message);                \
+		buffer__reset(&c->read);                        \
+		_p = buffer__advance(&c->read, _n);             \
+		assert(_p != NULL);                             \
+		_rv = read(c->fd, _p, _n);                      \
+		if (_rv != (int)_n) {                           \
+			return DQLITE_ERROR;                    \
+		}                                               \
+		_cursor.p = _p;                                 \
+		_cursor.cap = _n;                               \
+		_rv = message__decode(&_cursor, &_message);     \
+		assert(_rv == 0);                               \
+		if (_message.type != DQLITE_RESPONSE_##UPPER) { \
+			return DQLITE_ERROR;                    \
+		}                                               \
+		buffer__reset(&c->read);                        \
+		_n = _message.words * 8;                        \
+		_p = buffer__advance(&c->read, _n);             \
+		if (_p == NULL) {                               \
+			return DQLITE_ERROR;                    \
+		}                                               \
+		_rv = read(c->fd, _p, _n);                      \
+		if (_rv != (int)_n) {                           \
+			return DQLITE_ERROR;                    \
+		}                                               \
 	}
 
 /* Decode a response. */
@@ -189,13 +189,13 @@ int clientSendExecSQL(struct client *c, const char *sql)
 }
 
 int clientRecvResult(struct client *c,
-			unsigned *last_insert_id,
-			unsigned *rows_affected)
+		     unsigned *last_insert_id,
+		     unsigned *rows_affected)
 {
 	struct response_result response;
 	RESPONSE(result, RESULT);
-	*last_insert_id = response.last_insert_id;
-	*rows_affected = response.rows_affected;
+	*last_insert_id = (unsigned)response.last_insert_id;
+	*rows_affected = (unsigned)response.rows_affected;
 	return 0;
 }
 
@@ -223,10 +223,10 @@ int clientRecvRows(struct client *c, struct rows *rows)
 	if (rv != 0) {
 		return DQLITE_ERROR;
 	}
-	rows->column_count = column_count;
+	rows->column_count = (unsigned)column_count;
 	for (i = 0; i < rows->column_count; i++) {
-		rows->column_names =
-		    sqlite3_malloc(column_count * sizeof *rows->column_names);
+		rows->column_names = sqlite3_malloc(
+		    (int)(column_count * sizeof *rows->column_names));
 		if (rows->column_names == NULL) {
 			return DQLITE_ERROR;
 		}
@@ -253,12 +253,13 @@ int clientRecvRows(struct client *c, struct rows *rows)
 			return DQLITE_NOMEM;
 		}
 		row->values =
-		    sqlite3_malloc(column_count * sizeof *row->values);
+		    sqlite3_malloc((int)(column_count * sizeof *row->values));
 		if (row->values == NULL) {
 			return DQLITE_NOMEM;
 		}
 		row->next = NULL;
-		rv = tuple_decoder__init(&decoder, column_count, &cursor);
+		rv = tuple_decoder__init(&decoder, (unsigned)column_count,
+					 &cursor);
 		if (rv != 0) {
 			return DQLITE_ERROR;
 		}
@@ -300,7 +301,8 @@ int clientSendConnect(struct client *c, raft_id id, const char *address)
 	return 0;
 }
 
-int clientSendAdd(struct client *c, unsigned id, const char *address) {
+int clientSendAdd(struct client *c, unsigned id, const char *address)
+{
 	struct request_add request;
 	request.id = id;
 	request.address = address;
@@ -308,7 +310,8 @@ int clientSendAdd(struct client *c, unsigned id, const char *address) {
 	return 0;
 }
 
-int clientSendAssign(struct client *c, unsigned id, int role) {
+int clientSendAssign(struct client *c, unsigned id, int role)
+{
 	struct request_assign request;
 	(void)role;
 	/* TODO: actually send an assign request, not a legacy promote one. */
@@ -317,7 +320,8 @@ int clientSendAssign(struct client *c, unsigned id, int role) {
 	return 0;
 }
 
-int clientSendRemove(struct client *c, unsigned id) {
+int clientSendRemove(struct client *c, unsigned id)
+{
 	struct request_remove request;
 	request.id = id;
 	REQUEST(remove, REMOVE);
@@ -330,4 +334,3 @@ int clientRecvEmpty(struct client *c)
 	RESPONSE(empty, EMPTY);
 	return 0;
 }
-

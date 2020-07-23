@@ -68,8 +68,8 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 	n = buffer__offset(&c->write) - message__sizeof(&c->response);
 	assert(n % 8 == 0);
 
-	c->response.type = type;
-	c->response.words = n / 8;
+	c->response.type = (uint8_t)type;
+	c->response.words = (uint32_t)(n / 8);
 	c->response.flags = 0;
 	c->response.extra = 0;
 
@@ -88,7 +88,7 @@ abort:
 	conn__stop(c);
 }
 
-static void close_cb(struct transport *transport)
+static void closeCb(struct transport *transport)
 {
 	struct conn *c = transport->data;
 	gateway__close(&c->gateway);
@@ -113,7 +113,7 @@ static void raft_connect(struct conn *c, struct cursor *cursor)
 	/* Close the connection without actually closing the transport, since
 	 * the stream will be used by raft */
 	c->closed = true;
-	close_cb(&c->transport);
+	closeCb(&c->transport);
 }
 
 static void read_request_cb(struct transport *transport, int status)
@@ -309,5 +309,5 @@ void conn__stop(struct conn *c)
 		return;
 	}
 	c->closed = true;
-	transport__close(&c->transport, close_cb);
+	transport__close(&c->transport, closeCb);
 }
