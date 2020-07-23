@@ -1748,7 +1748,7 @@ static int vfsGetLastError(sqlite3_vfs *vfs, int x, char *y)
 	return rc;
 }
 
-int VfsInit(struct sqlite3_vfs *vfs, const char *name)
+int VfsInitV1(struct sqlite3_vfs *vfs, const char *name)
 {
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfsFile);

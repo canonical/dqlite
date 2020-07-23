@@ -9,8 +9,11 @@
  * implementation.
  *
  * This function also automatically register the implementation in the global
- * SQLite registry, using the given @name. */
-int VfsInit(struct sqlite3_vfs *vfs, const char *name);
+ * SQLite registry, using the given @name.
+ *
+ * NOTE: This will make the VFS implement the legacy behavior which depends on
+ * patching SQLite. */
+int VfsInitV1(struct sqlite3_vfs *vfs, const char *name);
 
 /* Release all memory associated with the given dqlite in-memory VFS
  * implementation.

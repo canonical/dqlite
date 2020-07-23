@@ -8,11 +8,11 @@
 #include "../../src/vfs.h"
 
 #define FIXTURE_VFS struct sqlite3_vfs vfs;
-#define SETUP_VFS                                       \
-	{                                               \
-		int rv_;                                \
-		rv_ = VfsInit(&f->vfs, f->config.name); \
-		munit_assert_int(rv_, ==, 0);           \
+#define SETUP_VFS                                         \
+	{                                                 \
+		int rv_;                                  \
+		rv_ = VfsInitV1(&f->vfs, f->config.name); \
+		munit_assert_int(rv_, ==, 0);             \
 	}
 
 #define TEAR_DOWN_VFS VfsClose(&f->vfs);
