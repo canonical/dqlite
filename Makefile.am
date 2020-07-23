@@ -13,6 +13,7 @@ libdqlite_la_SOURCES = \
   src/command.c \
   src/conn.c \
   src/db.c \
+  src/dqlite.c \
   src/error.c \
   src/format.c \
   src/fsm.c \
@@ -81,9 +82,10 @@ unit_test_LDFLAGS = $(AM_LDFLAGS)
 unit_test_LDADD = libtest.la
 
 integration_test_SOURCES = \
+  test/integration/test_client.c \
   test/integration/test_membership.c \
   test/integration/test_server.c \
-  test/integration/test_client.c \
+  test/integration/test_vfs.c \
   test/integration/main.c
 integration_test_CFLAGS = $(AM_CFLAGS)
 integration_test_LDFLAGS = $(AM_LDFLAGS) -no-install

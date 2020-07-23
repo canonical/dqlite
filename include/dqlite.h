@@ -2,6 +2,7 @@
 #define DQLITE_H
 
 #include <stddef.h>
+#include <sqlite3.h>
 
 /**
  * Error codes.
@@ -193,5 +194,17 @@ const char *dqlite_node_errmsg(dqlite_node *n);
  * Generate a unique ID for the given address.
  */
 dqlite_node_id dqlite_generate_node_id(const char *address);
+
+/**
+ * Initialize the given SQLite VFS interface object with dqlite's custom
+ * implementation, which can be used for replication.
+ */
+int dqlite_vfs_init(sqlite3_vfs *vfs, const char *name);
+
+/**
+ * Release all memory used internally by a SQLite VFS object that was
+ * initialized using @qlite_vfs_init.
+ */
+void dqlite_vfs_close(sqlite3_vfs *vfs);
 
 #endif /* DQLITE_H */
