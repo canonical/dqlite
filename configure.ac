@@ -49,6 +49,41 @@ PKG_CHECK_MODULES(UV, [libuv >= 1.8.0], [], [])
 PKG_CHECK_MODULES(RAFT, [raft], [], [])
 PKG_CHECK_MODULES(CO, [libco], [], [])
 
+CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
+  -std=c11 \
+  -g \
+  --mcet \
+  -fcf-protection \
+  --param=ssp-buffer-size=4 \
+  -pipe \
+  -fno-strict-aliasing \
+  -fdiagnostics-color \
+  -fexceptions \
+  -fstack-clash-protection \
+  -fstack-protector-strong \
+  -fasynchronous-unwind-tables \
+  -fdiagnostics-show-option \
+  -Wall \
+  -Wextra \
+  -Wimplicit-fallthrough=5 \
+  -Wcast-align \
+  -Wstrict-prototypes \
+  -Wlogical-op \
+  -Wmissing-include-dirs \
+  -Wold-style-definition \
+  -Winit-self \
+  -Wfloat-equal \
+  -Wsuggest-attribute=noreturn \
+  -Wformat=2 \
+  -Wshadow \
+  -Wendif-labels \
+  -Wdate-time \
+  -Wnested-externs \
+  -Wconversion \
+])
+# To enable:
+#
+#  -Wpedantic \
 AC_SUBST(AM_CFLAGS)
 
 AC_CONFIG_FILES([dqlite.pc Makefile])
