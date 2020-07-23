@@ -15,6 +15,10 @@
  * patching SQLite. */
 int VfsInitV1(struct sqlite3_vfs *vfs, const char *name);
 
+/* Initialize the given SQLite VFS interface with dqlite's custom
+ * implementation. */
+int VfsInitV2(struct sqlite3_vfs *vfs, const char *name);
+
 /* Release all memory associated with the given dqlite in-memory VFS
  * implementation.
  *

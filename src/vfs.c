@@ -15,6 +15,9 @@
 #include "format.h"
 #include "vfs.h"
 
+#define VFS__V1 1
+#define VFS__V2 2
+
 /* Maximum pathname length supported by this VFS. */
 #define VFS__MAX_PATHNAME 512
 
@@ -389,7 +392,8 @@ static int vfsWalFrameGet(struct vfsWal *w, int pgno, struct vfsFrame **page)
 			goto err;
 		}
 
-		frames = sqlite3_realloc(w->frames, (int)(sizeof *frames) * pgno);
+		frames =
+		    sqlite3_realloc(w->frames, (int)(sizeof *frames) * pgno);
 		if (frames == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err_after_vfs_page_create;
@@ -538,10 +542,11 @@ struct vfs
 	struct vfsContent **contents; /* Files content */
 	unsigned n_contents;          /* Number of files */
 	int error;                    /* Last error occurred. */
+	int version;
 };
 
 /* Create a new vfs object. */
-static struct vfs *vfsCreate(void)
+static struct vfs *vfsCreate(int version)
 {
 	struct vfs *v;
 
@@ -552,6 +557,7 @@ static struct vfs *vfsCreate(void)
 
 	v->contents = NULL;
 	v->n_contents = 0;
+	v->version = version;
 
 	return v;
 }
@@ -1562,7 +1568,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		}
 
 		/* Create a new entry. */
-		contents = sqlite3_realloc(v->contents, (int)(sizeof *contents * n));
+		contents = sqlite3_realloc64(v->contents, sizeof *contents * n);
 		if (contents == NULL) {
 			v->error = ENOMEM;
 			rc = SQLITE_CANTOPEN;
@@ -1748,14 +1754,14 @@ static int vfsGetLastError(sqlite3_vfs *vfs, int x, char *y)
 	return rc;
 }
 
-int VfsInitV1(struct sqlite3_vfs *vfs, const char *name)
+static int vfsInit(struct sqlite3_vfs *vfs, const char *name, int version)
 {
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfsFile);
 	vfs->mxPathname = VFS__MAX_PATHNAME;
 	vfs->pNext = NULL;
 
-	vfs->pAppData = vfsCreate();
+	vfs->pAppData = vfsCreate(version);
 	if (vfs->pAppData == NULL) {
 		return DQLITE_NOMEM;
 	}
@@ -1775,16 +1781,34 @@ int VfsInitV1(struct sqlite3_vfs *vfs, const char *name)
 	vfs->xCurrentTimeInt64 = vfsCurrentTimeInt64;
 	vfs->zName = name;
 
+	return 0;
+}
+
+int VfsInitV1(struct sqlite3_vfs *vfs, const char *name)
+{
+	int rv;
+
+	rv = vfsInit(vfs, name, VFS__V1);
+	if (rv != 0) {
+		return rv;
+	}
+
 	sqlite3_vfs_register(vfs, 0);
 
 	return 0;
 }
 
+int VfsInitV2(struct sqlite3_vfs *vfs, const char *name)
+{
+	return vfsInit(vfs, name, VFS__V2);
+}
+
 void VfsClose(struct sqlite3_vfs *vfs)
 {
-	struct vfs *v;
-	sqlite3_vfs_unregister(vfs);
-	v = (struct vfs *)(vfs->pAppData);
+	struct vfs *v = vfs->pAppData;
+	if (v->version == VFS__V1) {
+		sqlite3_vfs_unregister(vfs);
+	}
 	vfsDestroy(v);
 	sqlite3_free(v);
 }
