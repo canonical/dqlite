@@ -692,6 +692,10 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 	unsigned pgno;
 	void *page;
 
+	if (d->n_pages == 0) {
+		return SQLITE_IOERR_SHORT_READ;
+	}
+
 	/* If the main database file is not empty, we expect the
 	 * page size to have been set by an initial write. */
 	assert(page_size > 0);
@@ -734,6 +738,10 @@ static int vfsWalRead(struct vfsWal *w,
 	unsigned page_size = w->database->page_size;
 	unsigned pgno;
 	struct vfsFrame *frame;
+
+	if (w->n_frames == 0) {
+		return SQLITE_IOERR_SHORT_READ;
+	}
 
 	if (offset == 0) {
 		/* Read the header. */
@@ -799,6 +807,7 @@ static int vfsFileRead(sqlite3_file *file,
 		       sqlite_int64 offset)
 {
 	struct vfsFile *f = (struct vfsFile *)file;
+	int rv;
 
 	assert(buf != NULL);
 	assert(amount > 0);
@@ -813,6 +822,19 @@ static int vfsFileRead(sqlite3_file *file,
 	assert(f->content->filename != NULL);
 	assert(f->content->refcount > 0);
 
+	switch (f->content->type) {
+		case VFS__DATABASE:
+			rv = vfsDatabaseRead(&f->content->database, buf, amount,
+					     offset);
+			break;
+		case VFS__WAL:
+			rv = vfsWalRead(&f->content->wal, buf, amount, offset);
+			break;
+		default:
+			rv = SQLITE_IOERR_READ;
+			break;
+	}
+
 	/* From SQLite docs:
 	 *
 	 *   If xRead() returns SQLITE_IOERR_SHORT_READ it must also fill
@@ -821,33 +843,11 @@ static int vfsFileRead(sqlite3_file *file,
 	 *   failure to zero-fill short reads will eventually lead to
 	 *   database corruption.
 	 */
-
-	/* Check if the file is empty. */
-	if (vfsContentIsEmpty(f->content)) {
+	if (rv == SQLITE_IOERR_SHORT_READ) {
 		memset(buf, 0, (size_t)amount);
-		return SQLITE_IOERR_SHORT_READ;
 	}
 
-	/* From this point on we can assume that the file was written at least
-	 * once. */
-
-	/* Since writes to all files other than the main database or the WAL are
-	 * no-ops and the associated content object remains empty, we expect the
-	 * content type to be either FORMAT__DB or
-	 * FORMAT__WAL. */
-	assert(f->content->type == VFS__DATABASE ||
-	       f->content->type == VFS__WAL);
-
-	switch (f->content->type) {
-		case VFS__DATABASE:
-			return vfsDatabaseRead(&f->content->database, buf,
-					       amount, offset);
-		case VFS__WAL:
-			return vfsWalRead(&f->content->wal, buf, amount,
-					  offset);
-		default:
-			return SQLITE_IOERR_READ;
-	}
+	return rv;
 }
 
 static int vfsDatabaseWrite(struct vfsDatabase *d,
@@ -997,6 +997,7 @@ static int vfsFileWrite(sqlite3_file *file,
 			sqlite_int64 offset)
 {
 	struct vfsFile *f = (struct vfsFile *)file;
+	int rv;
 
 	assert(buf != NULL);
 	assert(amount > 0);
@@ -1013,17 +1014,22 @@ static int vfsFileWrite(sqlite3_file *file,
 
 	switch (f->content->type) {
 		case VFS__DATABASE:
-			return vfsDatabaseWrite(&f->content->database, buf,
-						amount, offset);
+			rv = vfsDatabaseWrite(&f->content->database, buf,
+					      amount, offset);
+			break;
 		case VFS__WAL:
-			return vfsWalWrite(&f->content->wal, buf, amount,
-					   offset);
+			rv = vfsWalWrite(&f->content->wal, buf, amount, offset);
+			break;
 		case VFS__JOURNAL:
-			// Silently swallow writes to any other file.
-			return SQLITE_OK;
+			/* Silently swallow writes to the journal */
+			rv = SQLITE_OK;
+			break;
+		default:
+			rv = SQLITE_IOERR_WRITE;
+			break;
 	}
 
-	return SQLITE_IOERR_WRITE;
+	return rv;
 }
 
 static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
