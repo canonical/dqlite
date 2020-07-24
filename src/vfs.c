@@ -1314,12 +1314,76 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 			 (unsigned)region_size, extend, out);
 }
 
+static int vfsShmLock(struct vfsShm *s, int ofst, int n, int flags)
+{
+	int i;
+
+	if (flags & SQLITE_SHM_EXCLUSIVE) {
+		/* No shared or exclusive lock must be held in the region. */
+		for (i = ofst; i < ofst + n; i++) {
+			if (s->shared[i] > 0 || s->exclusive[i] > 0) {
+				return SQLITE_BUSY;
+			}
+		}
+
+		for (i = ofst; i < ofst + n; i++) {
+			assert(s->exclusive[i] == 0);
+			s->exclusive[i] = 1;
+		}
+	} else {
+		/* No exclusive lock must be held in the region. */
+		for (i = ofst; i < ofst + n; i++) {
+			if (s->exclusive[i] > 0) {
+				return SQLITE_BUSY;
+			}
+		}
+
+		for (i = ofst; i < ofst + n; i++) {
+			s->shared[i]++;
+		}
+	}
+
+	return SQLITE_OK;
+}
+
+static int vfsShmUnlock(struct vfsShm *s, int ofst, int n, int flags)
+{
+	unsigned *these_locks;
+	unsigned *other_locks;
+	int i;
+
+	if (flags & SQLITE_SHM_SHARED) {
+		these_locks = s->shared;
+		other_locks = s->exclusive;
+	} else {
+		these_locks = s->exclusive;
+		other_locks = s->shared;
+	}
+
+	for (i = ofst; i < ofst + n; i++) {
+		/* Sanity check that no lock of the other type is held in this
+		 * region. */
+		assert(other_locks[i] == 0);
+
+		/* Only decrease the lock count if it's positive. In other words
+		 * releasing a never acquired lock is legal and idemponent. */
+		if (these_locks[i] > 0) {
+			these_locks[i]--;
+		}
+	}
+
+	return SQLITE_OK;
+}
+
 static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 {
 	struct vfsFile *f;
-	int i;
+	struct vfsShm *shm;
+	int rv;
 
 	assert(file != NULL);
+	assert(ofst >= 0);
+	assert(n >= 0);
 
 	/* Legal values for the offset and the range */
 	assert(ofst >= 0 && ofst + n <= SQLITE_SHM_NLOCK);
@@ -1342,61 +1406,14 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 
 	assert(f->content != NULL);
 
+	shm = &f->content->database.shm;
 	if (flags & SQLITE_SHM_UNLOCK) {
-		unsigned *these_locks;
-		unsigned *other_locks;
-
-		if (flags & SQLITE_SHM_SHARED) {
-			these_locks = f->content->database.shm.shared;
-			other_locks = f->content->database.shm.exclusive;
-		} else {
-			these_locks = f->content->database.shm.exclusive;
-			other_locks = f->content->database.shm.shared;
-		}
-
-		for (i = ofst; i < ofst + n; i++) {
-			/* Sanity check that no lock of the other type is held
-			 * in this region. */
-			assert(other_locks[i] == 0);
-
-			/* Only decrease the lock count if it's positive. In
-			 * other words releasing a never acquired lock is legal
-			 * and idemponent. */
-			if (these_locks[i] > 0) {
-				these_locks[i]--;
-			}
-		}
+		rv = vfsShmUnlock(shm, ofst, n, flags);
 	} else {
-		if (flags & SQLITE_SHM_EXCLUSIVE) {
-			/* No shared or exclusive lock must be held in the
-			 * region. */
-			for (i = ofst; i < ofst + n; i++) {
-				if (f->content->database.shm.shared[i] > 0 ||
-				    f->content->database.shm.exclusive[i] > 0) {
-					return SQLITE_BUSY;
-				}
-			}
-
-			for (i = ofst; i < ofst + n; i++) {
-				assert(f->content->database.shm.exclusive[i] ==
-				       0);
-				f->content->database.shm.exclusive[i] = 1;
-			}
-		} else {
-			/* No exclusive lock must be held in the region. */
-			for (i = ofst; i < ofst + n; i++) {
-				if (f->content->database.shm.exclusive[i] > 0) {
-					return SQLITE_BUSY;
-				}
-			}
-
-			for (i = ofst; i < ofst + n; i++) {
-				f->content->database.shm.shared[i]++;
-			}
-		}
+		rv = vfsShmLock(shm, ofst, n, flags);
 	}
 
-	return SQLITE_OK;
+	return rv;
 }
 
 static void vfsFileShmBarrier(sqlite3_file *file)
