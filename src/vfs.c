@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <stdlib.h>
 
 #include <raft.h>
 
@@ -762,7 +763,7 @@ static int vfsWalRead(struct vfsWal *w,
 	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
 		assert(((offset - FORMAT__WAL_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		pgno = format__wal_calc_pgno(page_size, (unsigned)offset);
+		pgno = formatWalCalcPgno(page_size, (unsigned)offset);
 	} else if (amount == sizeof(uint32_t) * 2) {
 		if (offset == FORMAT__WAL_FRAME_HDR_SIZE) {
 			/* Read the checksum from the WAL
@@ -779,10 +780,10 @@ static int vfsWalRead(struct vfsWal *w,
 		assert(((offset - FORMAT__WAL_HDR_SIZE -
 			 FORMAT__WAL_FRAME_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		pgno = format__wal_calc_pgno(page_size, (unsigned)offset);
+		pgno = formatWalCalcPgno(page_size, (unsigned)offset);
 	} else {
 		assert(amount == (FORMAT__WAL_FRAME_HDR_SIZE + (int)page_size));
-		pgno = format__wal_calc_pgno(page_size, (unsigned)offset);
+		pgno = formatWalCalcPgno(page_size, (unsigned)offset);
 	}
 
 	if (pgno == 0) {
@@ -969,7 +970,7 @@ static int vfsWalWrite(struct vfsWal *w,
 		assert(((offset - FORMAT__WAL_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 
-		pgno = format__wal_calc_pgno(page_size, (unsigned)offset);
+		pgno = formatWalCalcPgno(page_size, (unsigned)offset);
 
 		vfsWalFrameGet(w, (int)pgno, &frame);
 		if (frame == NULL) {
@@ -983,7 +984,7 @@ static int vfsWalWrite(struct vfsWal *w,
 			 FORMAT__WAL_FRAME_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 
-		pgno = format__wal_calc_pgno(page_size, (unsigned)offset);
+		pgno = formatWalCalcPgno(page_size, (unsigned)offset);
 
 		/* The header for the this frame must already
 		 * have been written, so the page is there. */

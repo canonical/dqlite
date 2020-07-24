@@ -63,10 +63,10 @@ static int maybeCheckpoint(void *ctx,
 	assert(rv == SQLITE_OK); /* Should never fail */
 
 	/* Get the current value of mxFrame. */
-	format__get_mx_frame((const uint8_t *)region, &mx_frame);
+	formatWalGetMxFrame((const uint8_t *)region, &mx_frame);
 
 	/* Get the content of the read marks. */
-	format__get_read_marks((const uint8_t *)region, read_marks);
+	formatWalGetReadMarks((const uint8_t *)region, read_marks);
 
 	/* Check each mark and associated lock. This logic is similar to the one
 	 * in the walCheckpoint function of wal.c, in the SQLite code. */

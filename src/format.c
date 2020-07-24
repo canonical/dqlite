@@ -52,25 +52,25 @@ void formatDatabaseGetPageSize(const uint8_t *header, unsigned *page_size)
 	*page_size = formatDecodePageSize(buf);
 }
 
-void format__get_mx_frame(const uint8_t *buf, uint32_t *mx_frame)
+void formatWalGetMxFrame(const uint8_t *header, uint32_t *mx_frame)
 {
-	assert(buf != NULL);
+	assert(header != NULL);
 	assert(mx_frame != NULL);
 
 	/* The mxFrame number is 16th byte of the WAL index header. See also
 	 * https://sqlite.org/walformat.html. */
-	*mx_frame = ((uint32_t *)buf)[4];
+	*mx_frame = ((uint32_t *)header)[4];
 }
 
-void format__get_read_marks(const uint8_t *buf,
+void formatWalGetReadMarks(const uint8_t *header,
 			    uint32_t read_marks[FORMAT__WAL_NREADER])
 {
 	uint32_t *idx;
 
-	assert(buf != NULL);
+	assert(header != NULL);
 	assert(read_marks != NULL);
 
-	idx = (uint32_t *)buf;
+	idx = (uint32_t *)header;
 
 	/* The read-mark array starts at the 100th byte of the WAL index
 	 * header. See also https://sqlite.org/walformat.html. */

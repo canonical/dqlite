@@ -195,7 +195,7 @@ static uint32_t __wal_idx_mx_frame(sqlite3 *db)
 	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	format__get_mx_frame((const uint8_t *)region, &mx_frame);
+	formatWalGetMxFrame((const uint8_t *)region, &mx_frame);
 
 	return mx_frame;
 }
@@ -217,7 +217,7 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	format__get_read_marks((const uint8_t *)region, marks);
+	formatWalGetReadMarks((const uint8_t *)region, marks);
 
 	return marks;
 }
@@ -1848,7 +1848,7 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 
 	/* The WAL file has now 13 pages */
 	rv = file2->pMethods->xFileSize(file2, &size);
-	munit_assert_int(format__wal_calc_pages(512, size), ==, 13);
+	munit_assert_int(formatWalCalcPages(512, size), ==, 13);
 
 	mx_frame = __wal_idx_mx_frame(db1);
 	munit_assert_int(mx_frame, ==, 13);
