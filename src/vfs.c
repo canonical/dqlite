@@ -867,16 +867,16 @@ static int vfsDatabaseWrite(struct vfsDatabase *d,
 	int rc;
 
 	if (offset == 0) {
-		unsigned int page_size;
+		unsigned page_size;
 
 		/* This is the first database page. We expect
 		 * the data to contain at least the header. */
 		assert(amount >= FORMAT__DB_HDR_SIZE);
 
 		/* Extract the page size from the header. */
-		rc = format__get_page_size(FORMAT__DB, buf, &page_size);
-		if (rc != SQLITE_OK) {
-			return rc;
+		formatDatabaseGetPageSize(buf, &page_size);
+		if (page_size == 0) {
+			return SQLITE_CORRUPT;
 		}
 
 		if (d->page_size > 0) {
@@ -939,7 +939,6 @@ static int vfsWalWrite(struct vfsWal *w,
 	if (offset == 0) {
 		/* This is the WAL header. */
 		unsigned int new_page_size;
-		int rc;
 
 		/* We expect the data to contain exactly 32
 		 * bytes. */
@@ -948,8 +947,8 @@ static int vfsWalWrite(struct vfsWal *w,
 		/* The page size indicated in the header must be
 		 * valid
 		 * and match the one of the database file. */
-		rc = format__get_page_size(FORMAT__WAL, buf, &new_page_size);
-		if (rc != SQLITE_OK) {
+		formatWalGetPageSize(buf, &new_page_size);
+		if (new_page_size == 0) {
 			return SQLITE_CORRUPT;
 		}
 
@@ -1813,15 +1812,15 @@ void VfsClose(struct sqlite3_vfs *vfs)
 	sqlite3_free(v);
 }
 
-/* Guess the file type by looking the filename. */
-static int vfsGuessFileType(const char *filename)
+/* Check if the given filename is a WAL filename. */
+static bool vfsIsWalFilename(const char *filename)
 {
 	/* TODO: improve the check. */
 	if (strstr(filename, "-wal") != NULL) {
-		return FORMAT__WAL;
+		return true;
 	}
 
-	return FORMAT__DB;
+	return false;
 }
 
 int VfsFileRead(const char *vfs_name,
@@ -1830,7 +1829,7 @@ int VfsFileRead(const char *vfs_name,
 		size_t *len)
 {
 	sqlite3_vfs *vfs;
-	int type;
+	bool is_wal;
 	int flags;
 	sqlite3_file *file;
 	sqlite3_int64 file_size;
@@ -1850,15 +1849,15 @@ int VfsFileRead(const char *vfs_name,
 		goto err;
 	}
 
-	type = vfsGuessFileType(filename);
+	is_wal = vfsIsWalFilename(filename);
 
 	/* Common flags */
 	flags = SQLITE_OPEN_READWRITE;
 
-	if (type == FORMAT__DB) {
-		flags |= SQLITE_OPEN_MAIN_DB;
-	} else {
+	if (is_wal) {
 		flags |= SQLITE_OPEN_WAL;
+	} else {
+		flags |= SQLITE_OPEN_MAIN_DB;
 	}
 
 	/* Open the file */
@@ -1903,8 +1902,13 @@ int VfsFileRead(const char *vfs_name,
 	}
 
 	/* Figure the page size. */
-	rc = format__get_page_size(type, *buf, &page_size);
-	if (rc != SQLITE_OK) {
+	if (is_wal) {
+		formatWalGetPageSize(*buf, &page_size);
+	} else {
+		formatDatabaseGetPageSize(*buf, &page_size);
+	}
+	if (page_size == 0) {
+		rc = SQLITE_CORRUPT;
 		goto err_after_buf_malloc;
 	}
 
@@ -1912,14 +1916,14 @@ int VfsFileRead(const char *vfs_name,
 
 	/* If this is a WAL file , we have already read the header and we can
 	 * move on. */
-	if (type == FORMAT__WAL) {
+	if (is_wal) {
 		offset += FORMAT__WAL_HDR_SIZE;
 	}
 
 	while ((size_t)offset < *len) {
 		uint8_t *pos = (*buf) + offset;
 
-		if (type == FORMAT__WAL) {
+		if (is_wal) {
 			/* Read the frame header */
 			rc = file->pMethods->xRead(
 			    file, pos, FORMAT__WAL_FRAME_HDR_SIZE, offset);
@@ -1969,7 +1973,7 @@ int VfsFileWrite(const char *vfs_name,
 {
 	sqlite3_vfs *vfs;
 	sqlite3_file *file;
-	int type;
+	bool is_wal;
 	int flags;
 	unsigned int page_size;
 	sqlite3_int64 offset;
@@ -1989,15 +1993,15 @@ int VfsFileWrite(const char *vfs_name,
 	}
 
 	/* Determine if this is a database or a WAL file. */
-	type = vfsGuessFileType(filename);
+	is_wal = vfsIsWalFilename(filename);
 
 	/* Common flags */
 	flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 
-	if (type == FORMAT__DB) {
-		flags |= SQLITE_OPEN_MAIN_DB;
-	} else {
+	if (is_wal) {
 		flags |= SQLITE_OPEN_WAL;
+	} else {
+		flags |= SQLITE_OPEN_MAIN_DB;
 	}
 
 	/* Open the file */
@@ -2018,8 +2022,13 @@ int VfsFileWrite(const char *vfs_name,
 	}
 
 	/* Figure out the page size */
-	rc = format__get_page_size(type, buf, &page_size);
-	if (rc != SQLITE_OK) {
+	if (is_wal) {
+		formatWalGetPageSize(buf, &page_size);
+	} else {
+		formatDatabaseGetPageSize(buf, &page_size);
+	}
+	if (page_size == 0) {
+		rc = SQLITE_CORRUPT;
 		goto err_after_file_open;
 	}
 
@@ -2027,7 +2036,7 @@ int VfsFileWrite(const char *vfs_name,
 	pos = buf;
 
 	/* If this is a WAL file , write the header first. */
-	if (type == FORMAT__WAL) {
+	if (is_wal) {
 		rc = file->pMethods->xWrite(file, pos, FORMAT__WAL_HDR_SIZE,
 					    offset);
 		if (rc != SQLITE_OK) {
@@ -2038,7 +2047,7 @@ int VfsFileWrite(const char *vfs_name,
 	}
 
 	while ((size_t)offset < len) {
-		if (type == FORMAT__WAL) {
+		if (is_wal) {
 			/* Write the frame header */
 			rc = file->pMethods->xWrite(
 			    file, pos, FORMAT__WAL_FRAME_HDR_SIZE, offset);

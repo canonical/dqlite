@@ -1,5 +1,5 @@
 /**
-  * Utilities around SQLite file formats.
+ * Utilities around SQLite file formats.
  *
  * See https://sqlite.org/fileformat.html.
  */
@@ -9,13 +9,6 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-
-/**
- * Possible file types.
- */
-#define FORMAT__DB 0
-#define FORMAT__WAL 1
-#define FORMAT__OTHER 2
 
 /**
  * Minumum and maximum page size.
@@ -71,19 +64,19 @@
 	format__wal_calc_pages(                  \
 	    PAGE_SIZE, OFFSET + format__wal_calc_frame_size(PAGE_SIZE))
 
-/**
- * Extract the page size from the content of the first database page or from the
- * WAL header.
+/* Extract the page size from the content of the WAL header.
  *
- * If type is FORMAT__DB the given buffer must hold at least
- * FORMAT__DB_HDR_SIZE bytes.
+ * The given buffer must hold at least FORMAT__WAL_HDR_SIZE.
  *
- * If type is FORMAT__WAL the given buffer must hold at least
- * FORMAT__WAL_HDR_SIZE.
- */
-int format__get_page_size(int type,
-			  const uint8_t *buf,
-			  unsigned int *page_size);
+ * If the page size is invalid, 0 is returned. */
+void formatWalGetPageSize(const uint8_t *header, unsigned *page_size);
+
+/* Extract the page size from the content of the database header.
+ *
+ * The given buffer must hold at least FORMAT__DB_HDR_SIZE bytes.
+ *
+ * If the page size is invalid, 0 is returned. */
+void formatDatabaseGetPageSize(const uint8_t *header, unsigned *page_size);
 
 /**
  * Extract the mxFrame field from the WAL index header stored in the given
