@@ -41,6 +41,11 @@ static void tearDown(void *data)
 	free(f);
 }
 
+/* Helper to execute a SQL statement on the given DB. */
+#define EXEC(DB, SQL)                                  \
+	_rv = sqlite3_exec(DB, SQL, NULL, NULL, NULL); \
+	munit_assert_int(_rv, ==, SQLITE_OK);
+
 /* Open a new database connection. */
 #define OPEN(DB)                                                         \
 	do {                                                             \
@@ -48,6 +53,9 @@ static void tearDown(void *data)
 		int _rv;                                                 \
 		_rv = sqlite3_open_v2("test.db", &DB, _flags, "dqlite"); \
 		munit_assert_int(_rv, ==, SQLITE_OK);                    \
+		EXEC(DB, "PRAGMA page_size=512");                        \
+		EXEC(DB, "PRAGMA synchronous=OFF");                      \
+		EXEC(DB, "PRAGMA journal_mode=WAL");                     \
 	} while (0)
 
 /* Close a database connection. */

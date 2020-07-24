@@ -8,36 +8,48 @@
 
 #include "format.h"
 
-int format__get_page_size(int type, const uint8_t *buf, unsigned *page_size)
+/* Decode the page size ("Must be a power of two between 512 and 32768
+ * inclusive, or the value 1 representing a page size of 65536").
+ *
+ * Return 0 if the page size is out of bound. */
+static unsigned formatDecodePageSize(uint8_t buf[4])
 {
-	assert(buf != NULL);
-	assert(page_size != NULL);
-	assert(type == FORMAT__DB || type == FORMAT__WAL);
+	uint64_t page_size = 0;
 
-	if (type == FORMAT__DB) {
-		/* The page size is stored in the 16th and 17th bytes
-		 * (big-endian) */
-		*page_size = (unsigned)((buf[16] << 8) + buf[17]);
-	} else {
-		/* The page size is stored in the 4 bytes starting at 8
-		 * (big-endian) */
-		*page_size = (unsigned)((buf[8] << 24) + (buf[9] << 16) +
-					(buf[10] << 8) + buf[11]);
+	page_size += (uint64_t)(buf[0] << 24);
+	page_size += (uint64_t)(buf[1] << 16);
+	page_size += (uint64_t)(buf[2] << 8);
+	page_size += (uint64_t)(buf[3]);
+
+	if (page_size == 1) {
+		page_size = FORMAT__PAGE_SIZE_MAX;
+	} else if (page_size < FORMAT__PAGE_SIZE_MIN) {
+		page_size = 0;
+	} else if (page_size > (FORMAT__PAGE_SIZE_MAX / 2)) {
+		page_size = 0;
+	} else if (((page_size - 1) & page_size) != 0) {
+		page_size = 0;
 	}
 
-	/* Validate the page size ("Must be a power of two between 512 and 32768
-	 * inclusive, or the value 1 representing a page size of 65536"). */
-	if (*page_size == 1) {
-		*page_size = FORMAT__PAGE_SIZE_MAX;
-	} else if (*page_size < FORMAT__PAGE_SIZE_MIN) {
-		return SQLITE_CORRUPT;
-	} else if (*page_size > (FORMAT__PAGE_SIZE_MAX / 2)) {
-		return SQLITE_CORRUPT;
-	} else if (((*page_size - 1) & *page_size) != 0) {
-		return SQLITE_CORRUPT;
-	}
+	return (unsigned)page_size;
+}
 
-	return SQLITE_OK;
+void formatWalGetPageSize(const uint8_t *header, unsigned *page_size)
+{
+	/* The page size is stored in the 4 bytes starting at 8
+	 * (big-endian) */
+	uint8_t buf[4] = {header[8], header[9], header[10], header[11]};
+
+	*page_size = formatDecodePageSize(buf);
+}
+
+void formatDatabaseGetPageSize(const uint8_t *header, unsigned *page_size)
+{
+	/* The page size is stored in the 16th and 17th bytes
+	 * (big-endian) */
+	uint8_t buf[4] = {0, 0, header[16], header[17]};
+
+	*page_size = formatDecodePageSize(buf);
 }
 
 void format__get_mx_frame(const uint8_t *buf, uint32_t *mx_frame)
