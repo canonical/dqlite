@@ -301,7 +301,7 @@ static int vfsContentIsEmpty(struct vfsContent *c)
 }
 
 /* Get a page from the given database, possibly creating a new one. */
-static int vfsDatabasePageGet(struct vfsDatabase *d, int pgno, void **page)
+static int vfsDatabasePageGet(struct vfsDatabase *d, unsigned pgno, void **page)
 {
 	int rc;
 
@@ -310,12 +310,12 @@ static int vfsDatabasePageGet(struct vfsDatabase *d, int pgno, void **page)
 
 	/* SQLite should access pages progressively, without jumping more than
 	 * one page after the end. */
-	if (pgno > (int)(d->n_pages + 1)) {
+	if (pgno > d->n_pages + 1) {
 		rc = SQLITE_IOERR_WRITE;
 		goto err;
 	}
 
-	if (pgno == (int)(d->n_pages + 1)) {
+	if (pgno == d->n_pages + 1) {
 		/* Create a new page, grow the page array, and append the
 		 * new page to it. */
 		void **pages; /* New page array. */
@@ -333,7 +333,7 @@ static int vfsDatabasePageGet(struct vfsDatabase *d, int pgno, void **page)
 			goto err;
 		}
 
-		pages = sqlite3_realloc(d->pages, (int)(sizeof *pages) * pgno);
+		pages = sqlite3_realloc(d->pages, (int)((sizeof *pages) * pgno));
 		if (pages == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err_after_vfs_page_create;
@@ -344,7 +344,7 @@ static int vfsDatabasePageGet(struct vfsDatabase *d, int pgno, void **page)
 
 		/* Update the page array. */
 		d->pages = pages;
-		d->n_pages = (unsigned)pgno;
+		d->n_pages = pgno;
 	} else {
 		/* Return the existing page. */
 		assert(d->pages != NULL);
@@ -881,42 +881,36 @@ static int vfsDatabaseWrite(struct vfsDatabase *d,
 		}
 
 		if (d->page_size > 0) {
-			/* Check that the given page size
-			 * actually matches what we have
-			 * recorded. Since we make 'PRAGMA
-			 * page_size=N' fail if the page is
-			 * already set (see struct
-			 * vfs__fileControl), there should be
-			 * no way for the user to change it. */
+			/* Check that the given page size actually matches what
+			 * we have recorded. Since we make 'PRAGMA page_size=N'
+			 * fail if the page is already set (see struct
+			 * vfs__fileControl), there should be no way for the
+			 * user to change it. */
 			assert(page_size == d->page_size);
 		} else {
-			/* This must be the very first write to
-			 * the
-			 * database. Keep track of the page
-			 * size. */
+			/* This must be the very first write to the
+			 * database. Keep track of the page size. */
 			d->page_size = page_size;
 		}
 
 		pgno = 1;
 	} else {
-		/* The header must have been written and the
-		 * page size set. */
+		/* The header must have been written and the page size set. */
 		if (d->page_size == 0) {
 			return SQLITE_IOERR_WRITE;
 		}
 
-		/* For pages beyond the first we expect offset
-		 * to be a multiple of the page size. */
+		/* For pages beyond the first we expect offset to be a multiple
+		 * of the page size. */
 		assert((offset % d->page_size) == 0);
 
-		/* We expect that SQLite writes a page at time.
-		 */
+		/* We expect that SQLite writes a page at time. */
 		assert(amount == (int)d->page_size);
 
 		pgno = ((unsigned)offset / d->page_size) + 1;
 	}
 
-	rc = vfsDatabasePageGet(d, (int)pgno, &page);
+	rc = vfsDatabasePageGet(d, pgno, &page);
 	if (rc != SQLITE_OK) {
 		return rc;
 	}
