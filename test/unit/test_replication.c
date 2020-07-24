@@ -106,22 +106,22 @@ TEST_MODULE(replication);
  ******************************************************************************/
 
 /* Assert the number of pages in the WAL file on the I'th node. */
-#define ASSERT_WAL_PAGES(I, N)                                           \
-	{                                                                \
-		struct leader *leader_ = &f->leaders[I];                 \
-		sqlite3_file *file_;                                     \
-		sqlite_int64 size_;                                      \
-		int pages_;                                              \
-		int rv_;                                                 \
-		rv_ = sqlite3_file_control(leader_->conn, "main",        \
-					   SQLITE_FCNTL_JOURNAL_POINTER, \
-					   &file_);                      \
-		munit_assert_int(rv_, ==, 0);                            \
-		rv_ = file_->pMethods->xFileSize(file_, &size_);         \
-		munit_assert_int(rv_, ==, 0);                            \
-		pages_ = format__wal_calc_pages(                         \
-		    leader_->db->config->page_size, size_);              \
-		munit_assert_int(pages_, ==, N);                         \
+#define ASSERT_WAL_PAGES(I, N)                                                 \
+	{                                                                      \
+		struct leader *leader_ = &f->leaders[I];                       \
+		sqlite3_file *file_;                                           \
+		sqlite_int64 size_;                                            \
+		int pages_;                                                    \
+		int rv_;                                                       \
+		rv_ = sqlite3_file_control(leader_->conn, "main",              \
+					   SQLITE_FCNTL_JOURNAL_POINTER,       \
+					   &file_);                            \
+		munit_assert_int(rv_, ==, 0);                                  \
+		rv_ = file_->pMethods->xFileSize(file_, &size_);               \
+		munit_assert_int(rv_, ==, 0);                                  \
+		pages_ =                                                       \
+		    formatWalCalcPages(leader_->db->config->page_size, size_); \
+		munit_assert_int(pages_, ==, N);                               \
 	}
 
 /******************************************************************************
@@ -290,7 +290,8 @@ TEST_CASE(exec, checkpoint_read_lock, NULL)
 	rv = sqlite3_exec(leader2.conn, "BEGIN", NULL, NULL, &errmsg);
 	munit_assert_int(rv, ==, 0);
 
-	rv = sqlite3_exec(leader2.conn, "SELECT * FROM test", NULL, NULL, &errmsg);
+	rv = sqlite3_exec(leader2.conn, "SELECT * FROM test", NULL, NULL,
+			  &errmsg);
 	munit_assert_int(rv, ==, 0);
 
 	EXEC_SQL(0, "INSERT INTO test(n) VALUES(1)");
