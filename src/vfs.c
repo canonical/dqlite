@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <pthread.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 
@@ -20,8 +21,8 @@
 /* Hold content for a shared memory mapping. */
 struct vfsShm
 {
-	void **regions;  /* Pointers to shared memory regions. */
-	int regions_len; /* Number of shared memory regions. */
+	void **regions;     /* Pointers to shared memory regions. */
+	unsigned n_regions; /* Number of shared memory regions. */
 
 	unsigned shared[SQLITE_SHM_NLOCK];    /* Count of shared locks */
 	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
@@ -114,7 +115,7 @@ static void vfsShmInit(struct vfsShm *s)
 	int i;
 
 	s->regions = NULL;
-	s->regions_len = 0;
+	s->n_regions = 0;
 
 	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
 		s->shared[i] = 0;
@@ -126,12 +127,12 @@ static void vfsShmInit(struct vfsShm *s)
 static void vfsShmClose(struct vfsShm *s)
 {
 	void *region;
-	int i;
+	unsigned i;
 
 	assert(s != NULL);
 
 	/* Free all regions. */
-	for (i = 0; i < s->regions_len; i++) {
+	for (i = 0; i < s->n_regions; i++) {
 		region = *(s->regions + i);
 		assert(region != NULL);
 		sqlite3_free(region);
@@ -1241,50 +1242,42 @@ static int vfsFileDeviceCharacteristics(sqlite3_file *file)
 	return 0;
 }
 
-/* Simulate shared memory by allocating on the C heap. */
-static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
-			 int region_index,   /* Region to retrieve */
-			 int region_size,    /* Size of regions */
-			 int extend, /* True to extend file if necessary */
-			 void volatile **out /* OUT: Mapped memory */
-)
+static int vfsShmMap(struct vfsShm *s,
+		     unsigned region_index,
+		     unsigned region_size,
+		     bool extend,
+		     void volatile **out)
 {
-	struct vfsFile *f = (struct vfsFile *)file;
 	void *region;
-	int rc;
+	int rv;
 
-	assert(f->content->type == VFS__DATABASE);
-
-	if (f->content->database.shm.regions != NULL &&
-	    region_index < f->content->database.shm.regions_len) {
+	if (s->regions != NULL && region_index < s->n_regions) {
 		/* The region was already allocated. */
-		region = *(f->content->database.shm.regions + region_index);
+		region = s->regions[region_index];
 		assert(region != NULL);
 	} else {
 		if (extend) {
 			/* We should grow the map one region at a time. */
-			assert(region_index ==
-			       f->content->database.shm.regions_len);
-			region = sqlite3_malloc(region_size);
+			assert(region_index == s->n_regions);
+			region = sqlite3_malloc64(region_size);
 			if (region == NULL) {
-				rc = SQLITE_NOMEM;
+				rv = SQLITE_NOMEM;
 				goto err;
 			}
 
-			memset(region, 0, (size_t)region_size);
+			memset(region, 0, region_size);
 
-			f->content->database.shm.regions = sqlite3_realloc(
-			    f->content->database.shm.regions,
-			    (int)sizeof(void *) * (region_index + 1));
+			s->regions = sqlite3_realloc64(
+			    s->regions,
+			    sizeof *s->regions * (region_index + 1));
 
-			if (f->content->database.shm.regions == NULL) {
-				rc = SQLITE_NOMEM;
+			if (s->regions == NULL) {
+				rv = SQLITE_NOMEM;
 				goto err_after_region_malloc;
 			}
 
-			*(f->content->database.shm.regions + region_index) =
-			    region;
-			f->content->database.shm.regions_len++;
+			s->regions[region_index] = region;
+			s->n_regions++;
 
 		} else {
 			/* The region was not allocated and we don't have to
@@ -1299,13 +1292,26 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 
 err_after_region_malloc:
 	sqlite3_free(region);
-
 err:
-	assert(rc != SQLITE_OK);
-
+	assert(rv != SQLITE_OK);
 	*out = NULL;
+	return rv;
+}
 
-	return rc;
+/* Simulate shared memory by allocating on the C heap. */
+static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
+			 int region_index,   /* Region to retrieve */
+			 int region_size,    /* Size of regions */
+			 int extend, /* True to extend file if necessary */
+			 void volatile **out /* OUT: Mapped memory */
+)
+{
+	struct vfsFile *f = (struct vfsFile *)file;
+
+	assert(f->content->type == VFS__DATABASE);
+
+	return vfsShmMap(&f->content->database.shm, (unsigned)region_index,
+			 (unsigned)region_size, extend, out);
 }
 
 static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
