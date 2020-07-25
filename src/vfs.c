@@ -61,6 +61,7 @@ struct vfsWal
 	unsigned n_frames;                 /* Number of committed frames. */
 	struct vfsFrame **tx;              /* Frames added by a transaction. */
 	unsigned n_tx;                     /* Number of added frames. */
+	int version;
 };
 
 enum vfsContentType {
@@ -171,7 +172,7 @@ static void vfsDatabaseInit(struct vfsDatabase *d)
 }
 
 /* Initialize a new WAL object. */
-static void vfsWalInit(struct vfsWal *w)
+static void vfsWalInit(struct vfsWal *w, int version)
 {
 	w->database = NULL;
 	memset(w->hdr, 0, FORMAT__WAL_HDR_SIZE);
@@ -179,10 +180,13 @@ static void vfsWalInit(struct vfsWal *w)
 	w->n_frames = 0;
 	w->tx = NULL;
 	w->n_tx = 0;
+	w->version = version;
 }
 
 /* Create the content structure for a new volatile file. */
-static struct vfsContent *vfsContentCreate(const char *name, int type)
+static struct vfsContent *vfsContentCreate(const char *name,
+					   int type,
+					   int version)
 {
 	struct vfsContent *c;
 
@@ -210,7 +214,7 @@ static struct vfsContent *vfsContentCreate(const char *name, int type)
 			vfsDatabaseInit(&c->database);
 			break;
 		case VFS__WAL:
-			vfsWalInit(&c->wal);
+			vfsWalInit(&c->wal, version);
 			break;
 		case VFS__JOURNAL:
 			break;
@@ -368,7 +372,7 @@ err:
 	return rc;
 }
 
-// Get a frame from the WAL, possibly creating a new one.
+/* Get a frame from the WAL, possibly creating a new one. */
 static int vfsWalFrameGet(struct vfsWal *w, int pgno, struct vfsFrame **page)
 {
 	int rc;
@@ -1344,6 +1348,7 @@ static int vfsShmLock(struct vfsShm *s, int ofst, int n, int flags)
 		 * of a write transaction, let's make a copy of the WAL
 		 * header. */
 		if (s->regions != NULL && ofst == 0 && n == 1) {
+			/* We expect to have no dangly transaction. */
 			memcpy(s->header, s->regions[0], sizeof s->header);
 		}
 	} else {
@@ -1586,7 +1591,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		}
 		v->contents = contents;
 
-		content = vfsContentCreate(filename, type);
+		content = vfsContentCreate(filename, type, v->version);
 		if (content == NULL) {
 			v->error = ENOMEM;
 			rc = SQLITE_NOMEM;
