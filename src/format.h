@@ -39,16 +39,15 @@
 #define formatWalCalcFrameSize(PAGE_SIZE) \
 	(FORMAT__WAL_FRAME_HDR_SIZE + PAGE_SIZE)
 
-/* Given the page size and the WAL file size, calculate the number of pages
- * currently in the WAL. */
-#define formatWalCalcPages(PAGE_SIZE, SIZE) \
+/* Given the page size and the WAL file size, calculate the number of frames it
+ * has. */
+#define formatWalCalcFramesNumber(PAGE_SIZE, SIZE) \
 	((SIZE - FORMAT__WAL_HDR_SIZE) / formatWalCalcFrameSize(PAGE_SIZE))
 
 /* Given the page size, calculate the WAL page number of the frame starting at
  * the given offset. */
-#define formatWalCalcPgno(PAGE_SIZE, OFFSET) \
-	formatWalCalcPages(PAGE_SIZE,        \
-			   OFFSET + formatWalCalcFrameSize(PAGE_SIZE))
+#define formatWalCalcFrameIndex(PAGE_SIZE, OFFSET) \
+	(formatWalCalcFramesNumber(PAGE_SIZE, OFFSET) + 1)
 
 /* Extract the page size from the content of the WAL header.
  *
