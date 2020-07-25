@@ -1258,6 +1258,7 @@ static int vfsShmMap(struct vfsShm *s,
 	} else {
 		if (extend) {
 			/* We should grow the map one region at a time. */
+			assert(region_size == FORMAT__WAL_IDX_PAGE_SIZE);
 			assert(region_index == s->n_regions);
 			region = sqlite3_malloc64(region_size);
 			if (region == NULL) {

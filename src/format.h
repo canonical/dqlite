@@ -27,6 +27,10 @@
  * WAL_READ_LOCK definition in the wal.c file of the SQLite source code. */
 #define FORMAT__WAL_READ_LOCK(I) (3 + (I))
 
+/* Size of each memory region in the WAL index. Same as WALINDEX_PGSZ defined in
+ * wal.c of SQLite. */
+#define FORMAT__WAL_IDX_PAGE_SIZE 32768
+
 /* Given the page size, calculate the size of a full WAL frame (frame header
  * plus page data). */
 #define formatWalCalcFrameSize(PAGE_SIZE) \

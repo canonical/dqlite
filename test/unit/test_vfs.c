@@ -1323,7 +1323,7 @@ TEST(VfsShmMap, oom, setUp, tearDown, 0, test_shm_map_oom_params)
 
 	test_heap_fault_enable();
 
-	rc = file->pMethods->xShmMap(file, 0, 512, 1, &region);
+	rc = file->pMethods->xShmMap(file, 0, 32768, 1, &region);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
 	free(file);
@@ -1355,7 +1355,7 @@ TEST(VfsShmLock, sharedBusy, setUp, tearDown, 0, NULL)
 	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
-	rc = file->pMethods->xShmMap(file, 0, 512, 1, &region);
+	rc = file->pMethods->xShmMap(file, 0, 32768, 1, &region);
 	munit_assert_int(rc, ==, 0);
 
 	/* Take an exclusive lock on a range. */
@@ -1389,7 +1389,7 @@ TEST(VfsShmLock, exclBusy, setUp, tearDown, 0, NULL)
 	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
-	rc = file->pMethods->xShmMap(file, 0, 512, 1, &region);
+	rc = file->pMethods->xShmMap(file, 0, 32768, 1, &region);
 	munit_assert_int(rc, ==, 0);
 
 	/* Take a shared lock on index 3. */
@@ -1438,7 +1438,7 @@ TEST(VfsShmLock, releaseUnix, setUp, tearDown, 0, NULL)
 	rc = vfs->xOpen(vfs, path, file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
-	rc = file->pMethods->xShmMap(file, 0, 4096, 1, &region);
+	rc = file->pMethods->xShmMap(file, 0, 32768, 1, &region);
 	munit_assert_int(rc, ==, 0);
 
 	flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
@@ -1479,7 +1479,7 @@ TEST(VfsShmLock, release, setUp, tearDown, 0, NULL)
 	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
-	rc = file->pMethods->xShmMap(file, 0, 512, 1, &region);
+	rc = file->pMethods->xShmMap(file, 0, 32768, 1, &region);
 	munit_assert_int(rc, ==, 0);
 
 	flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED;
