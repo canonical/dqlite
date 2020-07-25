@@ -57,8 +57,10 @@ struct vfsWal
 {
 	struct vfsDatabase *database;      /* Associated database */
 	uint8_t hdr[FORMAT__WAL_HDR_SIZE]; /* Header. */
-	struct vfsFrame **frames;          /* All frames. */
-	unsigned n_frames;                 /* Number of frames. */
+	struct vfsFrame **frames;          /* All frames committed. */
+	unsigned n_frames;                 /* Number of committed frames. */
+	struct vfsFrame **tx;              /* Frames added by a transaction. */
+	unsigned n_tx;                     /* Number of added frames. */
 };
 
 enum vfsContentType {
@@ -175,6 +177,8 @@ static void vfsWalInit(struct vfsWal *w)
 	memset(w->hdr, 0, FORMAT__WAL_HDR_SIZE);
 	w->frames = NULL;
 	w->n_frames = 0;
+	w->tx = NULL;
+	w->n_tx = 0;
 }
 
 /* Create the content structure for a new volatile file. */
