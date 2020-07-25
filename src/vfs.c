@@ -28,6 +28,10 @@ struct vfsShm
 	void **regions;     /* Pointers to shared memory regions. */
 	unsigned n_regions; /* Number of shared memory regions. */
 
+	/* Copy of first part of the WAL header, taken at the beginning of a
+	 * write transaction */
+	uint8_t header[FORMAT__WAL_IDX_HDR_SIZE];
+
 	unsigned shared[SQLITE_SHM_NLOCK];    /* Count of shared locks */
 	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
 };
@@ -1330,6 +1334,13 @@ static int vfsShmLock(struct vfsShm *s, int ofst, int n, int flags)
 		for (i = ofst; i < ofst + n; i++) {
 			assert(s->exclusive[i] == 0);
 			s->exclusive[i] = 1;
+		}
+
+		/* If we're acquiring a write lock, this might be the beginning
+		 * of a write transaction, let's make a copy of the WAL
+		 * header. */
+		if (s->regions != NULL && ofst == 0 && n == 1) {
+			memcpy(s->header, s->regions[0], sizeof s->header);
 		}
 	} else {
 		/* No exclusive lock must be held in the region. */
