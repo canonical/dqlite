@@ -1848,7 +1848,7 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 
 	/* The WAL file has now 13 pages */
 	rv = file2->pMethods->xFileSize(file2, &size);
-	munit_assert_int(formatWalCalcPages(512, size), ==, 13);
+	munit_assert_int(formatWalCalcFramesNumber(512, size), ==, 13);
 
 	mx_frame = __wal_idx_mx_frame(db1);
 	munit_assert_int(mx_frame, ==, 13);

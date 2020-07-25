@@ -756,7 +756,7 @@ static int vfsWalRead(struct vfsWal *w,
 		      sqlite_int64 offset)
 {
 	unsigned page_size = w->database->page_size;
-	unsigned pgno;
+	unsigned index;
 	struct vfsFrame *frame;
 
 	if (w->n_frames == 0) {
@@ -775,7 +775,7 @@ static int vfsWalRead(struct vfsWal *w,
 	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
 		assert(((offset - FORMAT__WAL_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		pgno = formatWalCalcPgno(page_size, (unsigned)offset);
+		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 	} else if (amount == sizeof(uint32_t) * 2) {
 		if (offset == FORMAT__WAL_FRAME_HDR_SIZE) {
 			/* Read the checksum from the WAL
@@ -785,27 +785,27 @@ static int vfsWalRead(struct vfsWal *w,
 		}
 		assert(((offset - 16 - FORMAT__WAL_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		pgno = ((unsigned)offset - 16 - FORMAT__WAL_HDR_SIZE) /
+		index = ((unsigned)offset - 16 - FORMAT__WAL_HDR_SIZE) /
 			   (page_size + FORMAT__WAL_FRAME_HDR_SIZE) +
 		       1;
 	} else if (amount == (int)page_size) {
 		assert(((offset - FORMAT__WAL_HDR_SIZE -
 			 FORMAT__WAL_FRAME_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		pgno = formatWalCalcPgno(page_size, (unsigned)offset);
+		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 	} else {
 		assert(amount == (FORMAT__WAL_FRAME_HDR_SIZE + (int)page_size));
-		pgno = formatWalCalcPgno(page_size, (unsigned)offset);
+		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 	}
 
-	if (pgno == 0) {
+	if (index == 0) {
 		// This is an attempt to read a page that was
 		// never written.
 		memset(buf, 0, (size_t)amount);
 		return SQLITE_IOERR_SHORT_READ;
 	}
 
-	frame = vfsWalFrameLookup(w, pgno);
+	frame = vfsWalFrameLookup(w, index);
 
 	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
 		memcpy(buf, frame->hdr, (size_t)amount);
@@ -940,7 +940,7 @@ static int vfsWalWrite(struct vfsWal *w,
 		       sqlite_int64 offset)
 {
 	unsigned page_size = w->database->page_size;
-	unsigned pgno;
+	unsigned index;
 	struct vfsFrame *frame;
 
 	if (offset == 0) {
@@ -976,9 +976,9 @@ static int vfsWalWrite(struct vfsWal *w,
 		assert(((offset - FORMAT__WAL_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 
-		pgno = formatWalCalcPgno(page_size, (unsigned)offset);
+		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 
-		vfsWalFrameGet(w, (int)pgno, &frame);
+		vfsWalFrameGet(w, (int)index, &frame);
 		if (frame == NULL) {
 			return SQLITE_NOMEM;
 		}
@@ -990,11 +990,11 @@ static int vfsWalWrite(struct vfsWal *w,
 			 FORMAT__WAL_FRAME_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 
-		pgno = formatWalCalcPgno(page_size, (unsigned)offset);
+		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 
 		/* The header for the this frame must already
 		 * have been written, so the page is there. */
-		frame = vfsWalFrameLookup(w, pgno);
+		frame = vfsWalFrameLookup(w, index);
 
 		assert(frame != NULL);
 
