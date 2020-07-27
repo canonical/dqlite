@@ -84,7 +84,7 @@ struct vfsContent
 };
 
 /* Create a new frame of a WAL file. */
-static struct vfsFrame *vfsFrameCreate(int size)
+static struct vfsFrame *vfsFrameCreate(unsigned size)
 {
 	struct vfsFrame *f;
 
@@ -253,6 +253,12 @@ static void vfsWalClose(struct vfsWal *w)
 	if (w->frames != NULL) {
 		sqlite3_free(w->frames);
 	}
+	for (i = 0; i < w->n_tx; i++) {
+		vfsFrameDestroy(w->tx[i]);
+	}
+	if (w->tx != NULL) {
+		sqlite3_free(w->tx);
+	}
 }
 
 /* Destroy the content of a volatile file. */
@@ -375,7 +381,7 @@ err:
 }
 
 /* Get a frame from the WAL, possibly creating a new one. */
-static int vfsWalFrameGet(struct vfsWal *w, int pgno, struct vfsFrame **page)
+static int vfsWalFrameGetV1(struct vfsWal *w, int pgno, struct vfsFrame **page)
 {
 	int rc;
 
@@ -401,7 +407,7 @@ static int vfsWalFrameGet(struct vfsWal *w, int pgno, struct vfsFrame **page)
 		 * vfsFileWrite(). */
 		assert(w->database->page_size > 0);
 
-		*page = vfsFrameCreate((int)w->database->page_size);
+		*page = vfsFrameCreate(w->database->page_size);
 		if (*page == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err;
@@ -437,6 +443,68 @@ err:
 	return rc;
 }
 
+/* Get a frame from the current transaction, possibly creating a new one. */
+static int vfsWalFrameGetV2(struct vfsWal *w,
+			    unsigned index,
+			    struct vfsFrame **frame)
+{
+	int rv;
+
+	assert(w != NULL);
+	assert(index > 0);
+
+	/* SQLite should access pages progressively, without jumping more than
+	 * one page after the end. */
+	if (index > w->n_frames + w->n_tx + 1) {
+		rv = SQLITE_IOERR_WRITE;
+		goto err;
+	}
+
+	if (index == w->n_frames + w->n_tx + 1) {
+		/* Create a new frame, grow the transaction array, and append
+		 * the new frame to it. */
+		struct vfsFrame **tx;
+
+		/* We assume that the page size has been set, either by
+		 * intervepting the first main database file write, or by
+		 * handling a 'PRAGMA page_size=N' command in
+		 * vfs__file_control(). This assumption is enforved in
+		 * vfsFileWrite(). */
+		assert(w->database->page_size > 0);
+
+		*frame = vfsFrameCreate(w->database->page_size);
+		if (*frame == NULL) {
+			rv = SQLITE_NOMEM;
+			goto err;
+		}
+
+		tx = sqlite3_realloc64(w->tx, sizeof *tx * w->n_tx + 1);
+		if (tx == NULL) {
+			rv = SQLITE_NOMEM;
+			goto err_after_vfs_frame_create;
+		}
+
+		/* Append the new page to the new page array. */
+		tx[index - w->n_frames - 1] = *frame;
+
+		/* Update the page array. */
+		w->tx = tx;
+		w->n_tx++;
+	} else {
+		/* Return the existing page. */
+		assert(w->tx != NULL);
+		*frame = w->tx[index - w->n_frames - 1];
+	}
+
+	return SQLITE_OK;
+
+err_after_vfs_frame_create:
+	vfsFrameDestroy(*frame);
+err:
+	*frame = NULL;
+	return rv;
+}
+
 /* Lookup a page from the given database, returning NULL if it doesn't exist. */
 static void *vfsDatabasePageLookup(struct vfsDatabase *d, unsigned pgno)
 {
@@ -465,12 +533,19 @@ static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 	assert(w != NULL);
 	assert(n > 0);
 
-	if (n > w->n_frames) {
-		/* This page hasn't been written yet. */
-		return NULL;
+	if (w->version == VFS__V1) {
+		if (n > w->n_frames) {
+			/* This page hasn't been written yet. */
+			return NULL;
+		}
+		frame = w->frames[n - 1];
+	} else {
+		if (n > w->n_frames + w->n_tx) {
+			/* This page hasn't been written yet. */
+			return NULL;
+		}
+		frame = w->tx[n - w->n_frames - 1];
 	}
-
-	frame = w->frames[n - 1];
 
 	assert(frame != NULL);
 
@@ -980,7 +1055,11 @@ static int vfsWalWrite(struct vfsWal *w,
 
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 
-		vfsWalFrameGet(w, (int)index, &frame);
+		if (w->version == VFS__V1) {
+			vfsWalFrameGetV1(w, (int)index, &frame);
+		} else {
+			vfsWalFrameGetV2(w, index, &frame);
+		}
 		if (frame == NULL) {
 			return SQLITE_NOMEM;
 		}
