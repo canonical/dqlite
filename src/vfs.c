@@ -43,6 +43,7 @@ struct vfsDatabase
 	void **pages;       /* All database. */
 	unsigned n_pages;   /* Number of pages. */
 	struct vfsShm shm;  /* Shared memory. */
+	int version;
 };
 
 /* Hold the content of a single WAL frame. */
@@ -163,12 +164,13 @@ static void vfsShmReset(struct vfsShm *s)
 }
 
 /* Initialize a new database object. */
-static void vfsDatabaseInit(struct vfsDatabase *d)
+static void vfsDatabaseInit(struct vfsDatabase *d, int version)
 {
 	d->page_size = 0;
 	d->pages = NULL;
 	d->n_pages = 0;
 	vfsShmInit(&d->shm);
+	d->version = version;
 }
 
 /* Initialize a new WAL object. */
@@ -211,7 +213,7 @@ static struct vfsContent *vfsContentCreate(const char *name,
 
 	switch (type) {
 		case VFS__DATABASE:
-			vfsDatabaseInit(&c->database);
+			vfsDatabaseInit(&c->database, version);
 			break;
 		case VFS__WAL:
 			vfsWalInit(&c->wal, version);
@@ -786,8 +788,8 @@ static int vfsWalRead(struct vfsWal *w,
 		assert(((offset - 16 - FORMAT__WAL_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 		index = ((unsigned)offset - 16 - FORMAT__WAL_HDR_SIZE) /
-			   (page_size + FORMAT__WAL_FRAME_HDR_SIZE) +
-		       1;
+			    (page_size + FORMAT__WAL_FRAME_HDR_SIZE) +
+			1;
 	} else if (amount == (int)page_size) {
 		assert(((offset - FORMAT__WAL_HDR_SIZE -
 			 FORMAT__WAL_FRAME_HDR_SIZE) %
@@ -1228,16 +1230,43 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	return SQLITE_NOTFOUND;
 }
 
+static void vfsShmEndTransaction(struct vfsShm *s)
+{
+	if (s->regions == NULL) {
+		return;
+	}
+	memcpy(s->regions[0], s->header, sizeof s->header);
+	memcpy(s->regions[0] + sizeof s->header, s->header, sizeof s->header);
+}
+
+/* The SQLITE_FCNTL_COMMIT_PHASETWO file control op code is trigged by the
+ * SQLite pager after completing a transaction. */
+static int vfsFileControlCommitPhaseTwo(struct vfsFile *f)
+{
+	if (f->content->database.version == VFS__V2) {
+		vfsShmEndTransaction(&f->content->database.shm);
+	}
+	return 0;
+}
+
 static int vfsFileControl(sqlite3_file *file, int op, void *arg)
 {
 	struct vfsFile *f = (struct vfsFile *)file;
+	int rv;
 
 	switch (op) {
 		case SQLITE_FCNTL_PRAGMA:
-			return vfsFileControlPragma(f, arg);
+			rv = vfsFileControlPragma(f, arg);
+			break;
+		case SQLITE_FCNTL_COMMIT_PHASETWO:
+			rv = vfsFileControlCommitPhaseTwo(f);
+			break;
+		default:
+			rv = SQLITE_OK;
+			break;
 	}
 
-	return SQLITE_OK;
+	return rv;
 }
 
 static int vfsFileSectorSize(sqlite3_file *file)
