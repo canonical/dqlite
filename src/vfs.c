@@ -36,6 +36,8 @@ struct vfsShm
 	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
 };
 
+struct vfsWal;
+
 /* Database-specific content */
 struct vfsDatabase
 {
@@ -43,6 +45,7 @@ struct vfsDatabase
 	void **pages;       /* All database. */
 	unsigned n_pages;   /* Number of pages. */
 	struct vfsShm shm;  /* Shared memory. */
+	struct vfsWal *wal; /* Associated WAL. */
 	int version;
 };
 
@@ -171,6 +174,7 @@ static void vfsDatabaseInit(struct vfsDatabase *d, int version)
 	d->n_pages = 0;
 	vfsShmInit(&d->shm);
 	d->version = version;
+	d->wal = NULL;
 }
 
 /* Initialize a new WAL object. */
@@ -1716,6 +1720,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 				goto err_after_content_create;
 			}
 			content->wal.database = database;
+			database->wal = &content->wal;
 		}
 
 		v->contents[n - 1] = content;
