@@ -1,8 +1,8 @@
 #ifndef DQLITE_H
 #define DQLITE_H
 
-#include <stddef.h>
 #include <sqlite3.h>
+#include <stddef.h>
 
 /**
  * Error codes.
@@ -181,9 +181,7 @@ typedef struct dqlite_node_info dqlite_node_info;
  *
  * 6. Restart all nodes.
  */
-int dqlite_node_recover(dqlite_node *n,
-			dqlite_node_info infos[],
-			int n_info);
+int dqlite_node_recover(dqlite_node *n, dqlite_node_info infos[], int n_info);
 
 /**
  * Return a human-readable description of the last error occurred.
@@ -206,5 +204,41 @@ int dqlite_vfs_init(sqlite3_vfs *vfs, const char *name);
  * initialized using @qlite_vfs_init.
  */
 void dqlite_vfs_close(sqlite3_vfs *vfs);
+
+/**
+ * A single WAL frame to be replicated.
+ */
+struct dqlite_vfs_frame
+{
+	unsigned page_number; /* Database page number. */
+	void *data;           /* Content of the database page. */
+};
+typedef struct dqlite_vfs_frame dqlite_vfs_frame;
+
+/**
+ * Check if the last call to sqlite3_step() has triggered a write transaction on
+ * the database with the given filename, and in that case acquire a write lock
+ * to prevent further write transactions and return the WAL frames to be
+ * replicated.
+ */
+int dqlite_vfs_poll(sqlite3_vfs *vfs,
+		    const char *filename,
+		    dqlite_vfs_frame **frames,
+		    unsigned *n);
+
+/**
+ * Asynchronouly commit a write transaction that was triggered by sqlite3_step()
+ * and whose content have been safely replicated.
+ *
+ * This interface is designed to match the typical use case of a node obtaining
+ * the various parameters by sequentially reading a byte stream from a network
+ * socket and passing the data to this routine directly without any copy or
+ * futher allocation, possibly except for integer encoding/decoding.
+ */
+int dqlite_vfs_commit(sqlite3_vfs *vfs,
+		      const char *filename,
+		      unsigned n,
+		      unsigned *page_numbers,
+		      void *frames);
 
 #endif /* DQLITE_H */
