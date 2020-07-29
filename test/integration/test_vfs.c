@@ -80,12 +80,29 @@ static void tearDown(void *data)
 		}                                                   \
 	} while (0)
 
+/* Reset a statement. */
+#define RESET(STMT, RV)                        \
+	do {                                   \
+		int _rv;                       \
+		_rv = sqlite3_reset(STMT);     \
+		munit_assert_int(_rv, ==, RV); \
+	} while (0)
+
 /* Finalize a statement. */
 #define FINALIZE(STMT)                                \
 	do {                                          \
 		int _rv;                              \
 		_rv = sqlite3_finalize(STMT);         \
 		munit_assert_int(_rv, ==, SQLITE_OK); \
+	} while (0)
+
+/* Poll the vfs. */
+#define POLL(FRAMES, N)                                             \
+	do {                                                        \
+		sqlite3_vfs *vfs = sqlite3_vfs_find("dqlite");      \
+		int _rv;                                            \
+		_rv = dqlite_vfs_poll(vfs, "test.db", &FRAMES, &N); \
+		munit_assert_int(_rv, ==, 0);                       \
 	} while (0)
 
 /* Step through a statement and assert that the given value is returned. */
@@ -129,6 +146,77 @@ TEST(vfs, unreplicatedCommitIsNotVisible, setUp, tearDown, 0, NULL)
 
 	CLOSE(db1);
 	CLOSE(db2);
+
+	return MUNIT_OK;
+}
+
+/* A call to dqlite_vfs_poll() after a sqlite3_step() triggered a write
+ * transaction returns the newly appended WAL frames. */
+TEST(vfs, pollAfterWriteTransaction, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	dqlite_vfs_frame *frames;
+	unsigned n;
+	unsigned i;
+
+	OPEN(db);
+	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
+	STEP(stmt, SQLITE_DONE);
+
+	POLL(frames, n);
+
+	munit_assert_ptr_not_null(frames);
+	munit_assert_int(n, ==, 2);
+
+	for (i = 0; i < n; i++) {
+		munit_assert_int(frames[i].page_number, ==, i + 1);
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
+
+	FINALIZE(stmt);
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* A call to dqlite_vfs_poll() after a sqlite3_step() triggered a write
+ * transaction sets a write lock on the WAL. */
+TEST(vfs, pollWriteLock, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	sqlite3_stmt *stmt1;
+	sqlite3_stmt *stmt2;
+	dqlite_vfs_frame *frames;
+	unsigned n;
+	unsigned i;
+
+	OPEN(db1);
+	OPEN(db2);
+
+	PREPARE(db1, stmt1, "CREATE TABLE test(n INT)");
+	PREPARE(db2, stmt2, "CREATE TABLE test2(n INT)");
+
+	STEP(stmt1, SQLITE_DONE);
+	POLL(frames, n);
+	munit_assert_ptr_not_null(frames);
+
+	STEP(stmt2, SQLITE_BUSY);
+	RESET(stmt2, SQLITE_BUSY);
+
+	FINALIZE(stmt1);
+	FINALIZE(stmt2);
+
+	CLOSE(db1);
+	CLOSE(db2);
+
+	for (i = 0; i < n; i++) {
+		munit_assert_int(frames[i].page_number, ==, i + 1);
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
 
 	return MUNIT_OK;
 }

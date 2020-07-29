@@ -63,7 +63,7 @@ void formatWalGetMxFrame(const uint8_t *header, uint32_t *mx_frame)
 }
 
 void formatWalGetReadMarks(const uint8_t *header,
-			    uint32_t read_marks[FORMAT__WAL_NREADER])
+			   uint32_t read_marks[FORMAT__WAL_NREADER])
 {
 	uint32_t *idx;
 
@@ -75,4 +75,15 @@ void formatWalGetReadMarks(const uint8_t *header,
 	/* The read-mark array starts at the 100th byte of the WAL index
 	 * header. See also https://sqlite.org/walformat.html. */
 	memcpy(read_marks, &idx[25], (sizeof *idx) * FORMAT__WAL_NREADER);
+}
+
+void formatWalGetFramePageNumber(const uint8_t *header, unsigned *page_number)
+{
+	/* The page number is stored in the first 4 bytes of the header
+	 * (big-endian) */
+	*page_number = 0;
+	*page_number += (unsigned)(header[0] << 24);
+	*page_number += (unsigned)(header[1] << 16);
+	*page_number += (unsigned)(header[2] << 8);
+	*page_number += (unsigned)(header[3]);
 }

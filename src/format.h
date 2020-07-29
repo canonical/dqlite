@@ -72,4 +72,7 @@ void formatWalGetMxFrame(const uint8_t *header, uint32_t *mx_frame);
 void formatWalGetReadMarks(const uint8_t *header,
 			   uint32_t read_marks[FORMAT__WAL_NREADER]);
 
+/* Extract the page number from a WAL frame header. */
+void formatWalGetFramePageNumber(const uint8_t *header, unsigned *page_number);
+
 #endif /* FORMAT_H */

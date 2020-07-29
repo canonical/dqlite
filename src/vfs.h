@@ -26,6 +26,13 @@ int VfsInitV2(struct sqlite3_vfs *vfs, const char *name);
  * SQLite global registry. */
 void VfsClose(struct sqlite3_vfs *vfs);
 
+/* Check if the last sqlite3_step() call triggered a write transaction, and
+ * return its content if so. */
+int VfsPoll(sqlite3_vfs *vfs,
+	    const char *database,
+	    dqlite_vfs_frame **frames,
+	    unsigned *n);
+
 /* Read the content of a file, using the VFS implementation registered under the
  * given name. Used to take database snapshots using the dqlite in-memory
  * VFS. */
