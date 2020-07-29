@@ -98,7 +98,7 @@ static struct vfsFrame *vfsFrameCreate(unsigned size)
 		goto oom;
 	}
 
-	f->buf = sqlite3_malloc(size);
+	f->buf = sqlite3_malloc64(size);
 	if (f->buf == NULL) {
 		goto oom_after_page_alloc;
 	}
@@ -1939,6 +1939,78 @@ void VfsClose(struct sqlite3_vfs *vfs)
 	}
 	vfsDestroy(v);
 	sqlite3_free(v);
+}
+
+static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
+{
+	unsigned i;
+
+	if (w->n_tx == 0) {
+		assert(w->tx == NULL);
+		*frames = NULL;
+		*n = 0;
+		return 0;
+	}
+
+	*frames = sqlite3_malloc64(sizeof **frames * w->n_tx);
+	if (*frames == NULL) {
+		return DQLITE_NOMEM;
+	}
+	*n = w->n_tx;
+
+	for (i = 0; i < w->n_tx; i++) {
+		dqlite_vfs_frame *frame = &(*frames)[i];
+		frame->data = w->tx[i]->buf;
+		formatWalGetFramePageNumber(w->tx[i]->hdr, &frame->page_number);
+		/* Release the vfsFrame object, but not its buf attribute, since
+		 * responsibility for that memory has been transferred to the
+		 * caller. */
+		sqlite3_free(w->tx[i]);
+	}
+
+	w->n_tx = 0;
+
+	return 0;
+}
+
+int VfsPoll(sqlite3_vfs *vfs,
+	    const char *filename,
+	    dqlite_vfs_frame **frames,
+	    unsigned *n)
+{
+	struct vfs *v;
+	struct vfsContent *content;
+	struct vfsShm *shm;
+	struct vfsWal *wal;
+	int rv;
+
+	v = (struct vfs *)(vfs->pAppData);
+	content = vfsContentLookup(v, filename);
+
+	if (content == NULL || content->type != VFS__DATABASE) {
+		return DQLITE_ERROR;
+	}
+
+	shm = &content->database.shm;
+	wal = content->database.wal;
+
+	if (wal == NULL) {
+		*frames = NULL;
+		*n = 0;
+		return 0;
+	}
+
+	rv = vfsShmUnlock(shm, 0, 1, SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);
+	if (rv != 0) {
+		return rv;
+	}
+
+	rv = vfsWalPoll(wal, frames, n);
+	if (rv != 0) {
+		return rv;
+	}
+
+	return 0;
 }
 
 /* Check if the given filename is a WAL filename. */
