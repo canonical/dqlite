@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-#include <stdlib.h>
 
 #include <raft.h>
 
@@ -27,10 +26,6 @@ struct vfsShm
 {
 	void **regions;     /* Pointers to shared memory regions. */
 	unsigned n_regions; /* Number of shared memory regions. */
-
-	/* Copy of first part of the WAL header, taken at the beginning of a
-	 * write transaction */
-	uint8_t header[FORMAT__WAL_IDX_HDR_SIZE];
 
 	unsigned shared[SQLITE_SHM_NLOCK];    /* Count of shared locks */
 	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
@@ -357,7 +352,8 @@ static int vfsDatabasePageGet(struct vfsDatabase *d, unsigned pgno, void **page)
 			goto err;
 		}
 
-		pages = sqlite3_realloc(d->pages, (int)((sizeof *pages) * pgno));
+		pages =
+		    sqlite3_realloc(d->pages, (int)((sizeof *pages) * pgno));
 		if (pages == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err_after_vfs_page_create;
@@ -548,7 +544,11 @@ static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 			/* This page hasn't been written yet. */
 			return NULL;
 		}
-		frame = w->tx[n - w->n_frames - 1];
+		if (n <= w->n_frames) {
+			frame = w->frames[n - 1];
+		} else {
+			frame = w->tx[n - w->n_frames - 1];
+		}
 	}
 
 	assert(frame != NULL);
@@ -1313,21 +1313,44 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	return SQLITE_NOTFOUND;
 }
 
-static void vfsShmEndTransaction(struct vfsShm *s)
+/* Revert the WAL index header as it was before the transaction started and save
+ * the header as it is now after the transaction ended. */
+static void vfsWalReverIndexHeader(struct vfsWal *w)
 {
-	if (s->regions == NULL) {
-		return;
+	struct vfsShm *shm = &w->database->shm;
+	uint8_t *hdr = shm->regions[0];
+	unsigned i;
+	unsigned max_frame = 0;
+	unsigned frame_checksum1 = 0;
+	unsigned frame_checksum2 = 0;
+	unsigned n_pages = w->database->n_pages;
+
+	for (i = 0; i < w->n_frames; i++) {
+		struct vfsFrame *frame = w->frames[i];
+		unsigned page_number;
+		formatWalGetFramePageNumber(frame->hdr, &page_number);
+		if (page_number > n_pages) {
+			n_pages = page_number;
+		}
+		max_frame++;
+		if (i == w->n_frames - 1) {
+			formatWalGetFrameChecksums(frame->hdr, &frame_checksum1,
+						   &frame_checksum2);
+		}
 	}
-	memcpy(s->regions[0], s->header, sizeof s->header);
-	memcpy(s->regions[0] + sizeof s->header, s->header, sizeof s->header);
+
+	formatWalIndexHeaderRevert(hdr, max_frame, n_pages, frame_checksum1,
+				   frame_checksum2);
 }
 
 /* The SQLITE_FCNTL_COMMIT_PHASETWO file control op code is trigged by the
  * SQLite pager after completing a transaction. */
 static int vfsFileControlCommitPhaseTwo(struct vfsFile *f)
 {
-	if (f->content->database.version == VFS__V2) {
-		vfsShmEndTransaction(&f->content->database.shm);
+	struct vfsDatabase *database = &f->content->database;
+	struct vfsWal *wal = database->wal;
+	if (database->version == VFS__V2 && wal != NULL && wal->n_tx > 0) {
+		vfsWalReverIndexHeader(wal);
 	}
 	return 0;
 }
@@ -1343,6 +1366,12 @@ static int vfsFileControl(sqlite3_file *file, int op, void *arg)
 			break;
 		case SQLITE_FCNTL_COMMIT_PHASETWO:
 			rv = vfsFileControlCommitPhaseTwo(f);
+			break;
+		case SQLITE_FCNTL_PERSIST_WAL:
+			/* This prevents SQLite from deleting the WAL after the
+			 * last connection is closed. */
+			*(int *)(arg) = 1;
+			rv = SQLITE_OK;
 			break;
 		default:
 			rv = SQLITE_OK;
@@ -1454,14 +1483,6 @@ static int vfsShmLock(struct vfsShm *s, int ofst, int n, int flags)
 		for (i = ofst; i < ofst + n; i++) {
 			assert(s->exclusive[i] == 0);
 			s->exclusive[i] = 1;
-		}
-
-		/* If we're acquiring a write lock, this might be the beginning
-		 * of a write transaction, let's make a copy of the WAL
-		 * header. */
-		if (s->regions != NULL && ofst == 0 && n == 1) {
-			/* We expect to have no dangly transaction. */
-			memcpy(s->header, s->regions[0], sizeof s->header);
 		}
 	} else {
 		/* No exclusive lock must be held in the region. */
@@ -2000,12 +2021,109 @@ int VfsPoll(sqlite3_vfs *vfs,
 		return 0;
 	}
 
-	rv = vfsShmUnlock(shm, 0, 1, SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);
+	rv = vfsShmLock(shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
 	if (rv != 0) {
 		return rv;
 	}
 
 	rv = vfsWalPoll(wal, frames, n);
+	if (rv != 0) {
+		return rv;
+	}
+
+	return 0;
+}
+
+static int vfsWalCommit(struct vfsWal *w,
+			unsigned n,
+			unsigned *page_numbers,
+			void *data)
+{
+	struct vfsFrame **frames; /* New frames array. */
+	struct vfsShm *shm;
+	unsigned page_size = w->database->page_size;
+	unsigned i;
+	unsigned j;
+	bool native;
+	unsigned salt1;
+	unsigned salt2;
+	unsigned checksum1;
+	unsigned checksum2;
+
+	formatWalGetNativeChecksum(w->hdr, &native);
+	formatWalGetSalt(w->hdr, &salt1, &salt2);
+	if (w->n_frames == 0) {
+		formatWalGetChecksums(w->hdr, &checksum1, &checksum2);
+	} else {
+		struct vfsFrame *frame = w->frames[w->n_frames - 1];
+		formatWalGetFrameChecksums(frame->hdr, &checksum1, &checksum2);
+	}
+
+	frames =
+	    sqlite3_realloc64(w->frames, sizeof *frames * (w->n_frames + n));
+	if (frames == NULL) {
+		goto oom;
+	}
+	w->frames = frames;
+
+	for (i = 0; i < n; i++) {
+		struct vfsFrame *frame = vfsFrameCreate(page_size);
+		unsigned database_size;
+		void *page = data + i * page_size;
+
+		if (frame == NULL) {
+			goto oom_after_frames_alloc;
+		}
+
+		/* For commit records, the size of the database file in pages
+		 * after the commit. For all other records, zero. */
+		database_size = i == n - 1 ? page_numbers[i] : 0;
+
+		formatWalPutFrameHeader(native, page_numbers[i], database_size,
+					salt1, salt2, &checksum1, &checksum2,
+					frame->hdr, page, page_size);
+		memcpy(frame->buf, page, page_size);
+
+		frames[w->n_frames + i] = frame;
+	}
+
+	w->n_frames += n;
+
+	/* A write lock is held it means that this is the VFS that orginated
+	 * this commit. Let's release the lock and update the WAL index. */
+	shm = &w->database->shm;
+	if (shm->exclusive[0] == 1) {
+		shm->exclusive[0] = 0;
+		vfsWalReverIndexHeader(w);
+	}
+
+	return 0;
+
+oom_after_frames_alloc:
+	for (j = 0; j < i; j++) {
+		vfsFrameDestroy(frames[w->n_frames + j]);
+	}
+oom:
+	return DQLITE_NOMEM;
+}
+
+int VfsCommit(sqlite3_vfs *vfs,
+	      const char *filename,
+	      unsigned n,
+	      unsigned *page_numbers,
+	      void *frames)
+{
+	struct vfs *v;
+	struct vfsContent *content;
+	struct vfsWal *wal;
+	int rv;
+
+	v = (struct vfs *)(vfs->pAppData);
+	content = vfsContentLookup(v, filename);
+
+	wal = content->database.wal;
+
+	rv = vfsWalCommit(wal, n, page_numbers, frames);
 	if (rv != 0) {
 		return rv;
 	}
