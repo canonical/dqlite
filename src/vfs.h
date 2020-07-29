@@ -33,6 +33,13 @@ int VfsPoll(sqlite3_vfs *vfs,
 	    dqlite_vfs_frame **frames,
 	    unsigned *n);
 
+/* Append the given frames to the WAL. */
+int VfsCommit(sqlite3_vfs *vfs,
+	      const char *filename,
+	      unsigned n,
+	      unsigned *page_numbers,
+	      void *frames);
+
 /* Read the content of a file, using the VFS implementation registered under the
  * given name. Used to take database snapshots using the dqlite in-memory
  * VFS. */

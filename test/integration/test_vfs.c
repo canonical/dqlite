@@ -41,23 +41,28 @@ static void tearDown(void *data)
 	free(f);
 }
 
+#define PAGE_SIZE 512
+
 /* Helper to execute a SQL statement on the given DB. */
 #define EXEC(DB, SQL)                                  \
 	_rv = sqlite3_exec(DB, SQL, NULL, NULL, NULL); \
 	munit_assert_int(_rv, ==, SQLITE_OK);
 
 /* Open a new database connection. */
-#define OPEN(DB)                                                         \
-	do {                                                             \
-		int _flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE; \
-		int _rv;                                                 \
-		_rv = sqlite3_open_v2("test.db", &DB, _flags, "dqlite"); \
-		munit_assert_int(_rv, ==, SQLITE_OK);                    \
-		_rv = sqlite3_extended_result_codes(DB, 1);              \
-		munit_assert_int(_rv, ==, SQLITE_OK);                    \
-		EXEC(DB, "PRAGMA page_size=512");                        \
-		EXEC(DB, "PRAGMA synchronous=OFF");                      \
-		EXEC(DB, "PRAGMA journal_mode=WAL");                     \
+#define OPEN(DB)                                                              \
+	do {                                                                  \
+		int _flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;      \
+		int _rv;                                                      \
+		_rv = sqlite3_open_v2("test.db", &DB, _flags, "dqlite");      \
+		munit_assert_int(_rv, ==, SQLITE_OK);                         \
+		_rv = sqlite3_extended_result_codes(DB, 1);                   \
+		munit_assert_int(_rv, ==, SQLITE_OK);                         \
+		EXEC(DB, "PRAGMA page_size=512");                             \
+		EXEC(DB, "PRAGMA synchronous=OFF");                           \
+		EXEC(DB, "PRAGMA journal_mode=WAL");                          \
+		_rv = sqlite3_db_config(DB, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, \
+					1, NULL);                             \
+		munit_assert_int(_rv, ==, SQLITE_OK);                         \
 	} while (0)
 
 /* Close a database connection. */
@@ -115,6 +120,16 @@ static void tearDown(void *data)
 				     sqlite3_errmsg(sqlite3_db_handle(STMT)), \
 				     _rv);                                    \
 		}                                                             \
+	} while (0)
+
+/* Commit WAL frames. */
+#define COMMIT(N, PAGE_NUMBERS, FRAMES)                                  \
+	do {                                                             \
+		sqlite3_vfs *vfs = sqlite3_vfs_find("dqlite");           \
+		int _rv;                                                 \
+		_rv = dqlite_vfs_commit(vfs, "test.db", N, PAGE_NUMBERS, \
+					FRAMES);                         \
+		munit_assert_int(_rv, ==, 0);                            \
 	} while (0)
 
 /* Open and close a new connection using the dqlite VFS. */
@@ -217,6 +232,230 @@ TEST(vfs, pollWriteLock, setUp, tearDown, 0, NULL)
 		sqlite3_free(frames[i].data);
 	}
 	sqlite3_free(frames);
+
+	return MUNIT_OK;
+}
+
+/* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
+ * then perform a read transaction and check that it can see the committed
+ * changes. */
+TEST(vfs, commitThenRead, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	dqlite_vfs_frame *frames;
+	unsigned *page_numbers;
+	void *buf;
+	unsigned n;
+	unsigned i;
+
+	OPEN(db);
+
+	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
+	STEP(stmt, SQLITE_DONE);
+
+	POLL(frames, n);
+
+	page_numbers = munit_malloc(sizeof *page_numbers * n);
+	buf = munit_malloc(n * PAGE_SIZE);
+	for (i = 0; i < n; i++) {
+		page_numbers[i] = frames[i].page_number;
+		memcpy(buf + i * PAGE_SIZE, frames[i].data, PAGE_SIZE);
+	}
+
+	COMMIT(n, page_numbers, buf);
+
+	for (i = 0; i < n; i++) {
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
+
+	free(page_numbers);
+	free(buf);
+
+	FINALIZE(stmt);
+
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
+ * then perform another commit and finally run a read transaction and check that
+ * it can see all committed changes. */
+TEST(vfs, commitThenCommitAgainThenRead, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	dqlite_vfs_frame *frames;
+	unsigned *page_numbers;
+	void *buf;
+	unsigned n;
+	unsigned i;
+
+	OPEN(db);
+
+	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
+	STEP(stmt, SQLITE_DONE);
+
+	POLL(frames, n);
+
+	page_numbers = munit_malloc(sizeof *page_numbers * n);
+	buf = munit_malloc(n * PAGE_SIZE);
+	for (i = 0; i < n; i++) {
+		page_numbers[i] = frames[i].page_number;
+		memcpy(buf + i * PAGE_SIZE, frames[i].data, PAGE_SIZE);
+	}
+
+	COMMIT(n, page_numbers, buf);
+
+	for (i = 0; i < n; i++) {
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
+
+	free(page_numbers);
+	free(buf);
+
+	FINALIZE(stmt);
+
+	PREPARE(db, stmt, "INSERT INTO test(n) VALUES(123)");
+	STEP(stmt, SQLITE_DONE);
+
+	POLL(frames, n);
+
+	page_numbers = munit_malloc(sizeof *page_numbers * n);
+	buf = munit_malloc(n * PAGE_SIZE);
+	for (i = 0; i < n; i++) {
+		page_numbers[i] = frames[i].page_number;
+		memcpy(buf + i * PAGE_SIZE, frames[i].data, PAGE_SIZE);
+	}
+
+	COMMIT(n, page_numbers, buf);
+
+	for (i = 0; i < n; i++) {
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
+
+	free(page_numbers);
+	free(buf);
+
+	FINALIZE(stmt);
+
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_ROW);
+	munit_assert_int(sqlite3_column_int(stmt, 0), ==, 123);
+	STEP(stmt, SQLITE_DONE);
+
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
+ * then open a new connection. A read transaction started in the second
+ * connection can see the changes committed by the first one. */
+TEST(vfs, commitThenReadOnNewConn, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	sqlite3_stmt *stmt;
+	dqlite_vfs_frame *frames;
+	unsigned *page_numbers;
+	void *buf;
+	unsigned n;
+	unsigned i;
+
+	OPEN(db1);
+	OPEN(db2);
+
+	PREPARE(db1, stmt, "CREATE TABLE test(n INT)");
+	STEP(stmt, SQLITE_DONE);
+
+	POLL(frames, n);
+
+	page_numbers = munit_malloc(sizeof *page_numbers * n);
+	buf = munit_malloc(n * PAGE_SIZE);
+	for (i = 0; i < n; i++) {
+		page_numbers[i] = frames[i].page_number;
+		memcpy(buf + i * PAGE_SIZE, frames[i].data, PAGE_SIZE);
+	}
+
+	COMMIT(n, page_numbers, buf);
+
+	for (i = 0; i < n; i++) {
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
+
+	free(page_numbers);
+	free(buf);
+
+	FINALIZE(stmt);
+
+	PREPARE(db2, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	CLOSE(db1);
+	CLOSE(db2);
+
+	return MUNIT_OK;
+}
+
+/* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
+ * then close the committing connection and open a new one. A read transaction
+ * started in the second connection can see the changes committed by the first
+ * one. */
+TEST(vfs, commitThenCloseThenReadOnNewConn, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	dqlite_vfs_frame *frames;
+	unsigned *page_numbers;
+	void *buf;
+	unsigned n;
+	unsigned i;
+
+	OPEN(db);
+	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
+	STEP(stmt, SQLITE_DONE);
+
+	POLL(frames, n);
+
+	page_numbers = munit_malloc(sizeof *page_numbers * n);
+	buf = munit_malloc(n * PAGE_SIZE);
+	for (i = 0; i < n; i++) {
+		page_numbers[i] = frames[i].page_number;
+		memcpy(buf + i * PAGE_SIZE, frames[i].data, PAGE_SIZE);
+	}
+
+	COMMIT(n, page_numbers, buf);
+
+	for (i = 0; i < n; i++) {
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
+
+	free(page_numbers);
+	free(buf);
+
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	OPEN(db);
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+	CLOSE(db);
 
 	return MUNIT_OK;
 }
