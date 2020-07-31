@@ -10,6 +10,14 @@ SUITE(vfs);
 
 #define N_VFS 2
 
+/* Hold WAL replication information about a single transaction. */
+struct tx
+{
+	unsigned n;
+	unsigned *page_numbers;
+	void *frames;
+};
+
 struct fixture
 {
 	struct sqlite3_vfs vfs[N_VFS]; /* A "cluster" of VFS objects. */
@@ -53,9 +61,8 @@ static void tearDown(void *data)
 
 #define PAGE_SIZE 512
 
-/* Helper to execute a SQL statement on the given DB. */
-#define EXEC(DB, SQL)                                  \
-	_rv = sqlite3_exec(DB, SQL, NULL, NULL, NULL); \
+#define PRAGMA(DB, COMMAND)                                          \
+	_rv = sqlite3_exec(DB, "PRAGMA " COMMAND, NULL, NULL, NULL); \
 	munit_assert_int(_rv, ==, SQLITE_OK);
 
 /* Open a new database connection on the given VFS. */
@@ -67,9 +74,9 @@ static void tearDown(void *data)
 		munit_assert_int(_rv, ==, SQLITE_OK);                         \
 		_rv = sqlite3_extended_result_codes(DB, 1);                   \
 		munit_assert_int(_rv, ==, SQLITE_OK);                         \
-		EXEC(DB, "PRAGMA page_size=512");                             \
-		EXEC(DB, "PRAGMA synchronous=OFF");                           \
-		EXEC(DB, "PRAGMA journal_mode=WAL");                          \
+		PRAGMA(DB, "page_size=512");                                  \
+		PRAGMA(DB, "synchronous=OFF");                                \
+		PRAGMA(DB, "journal_mode=WAL");                               \
 		_rv = sqlite3_db_config(DB, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, \
 					1, NULL);                             \
 		munit_assert_int(_rv, ==, SQLITE_OK);                         \
@@ -111,6 +118,15 @@ static void tearDown(void *data)
 		munit_assert_int(_rv, ==, SQLITE_OK); \
 	} while (0)
 
+/* Shortcut for PREPARE, STEP, FINALIZE. */
+#define EXEC(DB, SQL)                     \
+	do {                              \
+		sqlite3_stmt *_stmt;      \
+		PREPARE(DB, _stmt, SQL);  \
+		STEP(_stmt, SQLITE_DONE); \
+		FINALIZE(_stmt);          \
+	} while (0)
+
 /* Step through a statement and assert that the given value is returned. */
 #define STEP(STMT, RV)                                                        \
 	do {                                                                  \
@@ -123,23 +139,47 @@ static void tearDown(void *data)
 		}                                                             \
 	} while (0)
 
-/* Poll the given VFS object. */
-#define POLL(VFS, FRAMES, N)                                        \
-	do {                                                        \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);           \
-		int _rv;                                            \
-		_rv = dqlite_vfs_poll(vfs, "test.db", &FRAMES, &N); \
-		munit_assert_int(_rv, ==, 0);                       \
+/* Poll the given VFS object and serialize the transaction data into the given
+ * tx object. */
+#define POLL(VFS, TX)                                                      \
+	do {                                                               \
+		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                  \
+		dqlite_vfs_frame *_frames;                                 \
+		unsigned _i;                                               \
+		int _rv;                                                   \
+		memset(&TX, 0, sizeof TX);                                 \
+		_rv = dqlite_vfs_poll(vfs, "test.db", &_frames, &TX.n);    \
+		munit_assert_int(_rv, ==, 0);                              \
+		if (_frames != NULL) {                                     \
+			TX.page_numbers =                                  \
+			    munit_malloc(sizeof *TX.page_numbers * TX.n);  \
+			TX.frames = munit_malloc(PAGE_SIZE * TX.n);        \
+			for (_i = 0; _i < TX.n; _i++) {                    \
+				dqlite_vfs_frame *_frame = &_frames[_i];   \
+				TX.page_numbers[_i] = _frame->page_number; \
+				memcpy(TX.frames + _i * PAGE_SIZE,         \
+				       _frame->data, PAGE_SIZE);           \
+				sqlite3_free(_frame->data);                \
+			}                                                  \
+			sqlite3_free(_frames);                             \
+		}                                                          \
 	} while (0)
 
 /* Commit WAL frames to the given VFS. */
-#define COMMIT(VFS, N, PAGE_NUMBERS, FRAMES)                             \
-	do {                                                             \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                \
-		int _rv;                                                 \
-		_rv = dqlite_vfs_commit(vfs, "test.db", N, PAGE_NUMBERS, \
-					FRAMES);                         \
-		munit_assert_int(_rv, ==, 0);                            \
+#define COMMIT(VFS, TX)                                                        \
+	do {                                                                   \
+		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                      \
+		int _rv;                                                       \
+		_rv = dqlite_vfs_commit(vfs, "test.db", TX.n, TX.page_numbers, \
+					TX.frames);                            \
+		munit_assert_int(_rv, ==, 0);                                  \
+	} while (0)
+
+/* Release all memory used by a struct tx object. */
+#define DONE(TX)                               \
+	do {                                   \
+		sqlite3_free(TX.frames);       \
+		sqlite3_free(TX.page_numbers); \
 	} while (0)
 
 /* Open and close a new connection using the dqlite VFS. */
@@ -157,16 +197,14 @@ TEST(vfs, unreplicatedCommitIsNotVisible, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
-	sqlite3_stmt *stmt1;
-	sqlite3_stmt *stmt2;
+	sqlite3_stmt *stmt;
 	int rv;
+
 	OPEN("1", db1);
-	PREPARE(db1, stmt1, "CREATE TABLE test(n INT)");
-	STEP(stmt1, SQLITE_DONE);
-	FINALIZE(stmt1);
+	EXEC(db1, "CREATE TABLE test(n INT)");
 
 	OPEN("1", db2);
-	rv = sqlite3_prepare_v2(db2, "SELECT * FROM test", -1, &stmt2, NULL);
+	rv = sqlite3_prepare_v2(db2, "SELECT * FROM test", -1, &stmt, NULL);
 	munit_assert_int(rv, ==, SQLITE_ERROR);
 
 	CLOSE(db1);
@@ -181,24 +219,23 @@ TEST(vfs, pollAfterWriteTransaction, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	dqlite_vfs_frame *frames;
-	unsigned n;
+	struct tx tx;
 	unsigned i;
 
 	OPEN("1", db);
+
 	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
 	STEP(stmt, SQLITE_DONE);
 
-	POLL("1", frames, n);
+	POLL("1", tx);
 
-	munit_assert_ptr_not_null(frames);
-	munit_assert_int(n, ==, 2);
-
-	for (i = 0; i < n; i++) {
-		munit_assert_int(frames[i].page_number, ==, i + 1);
-		sqlite3_free(frames[i].data);
+	munit_assert_ptr_not_null(tx.frames);
+	munit_assert_int(tx.n, ==, 2);
+	for (i = 0; i < tx.n; i++) {
+		munit_assert_int(tx.page_numbers[i], ==, i + 1);
 	}
-	sqlite3_free(frames);
+
+	DONE(tx);
 
 	FINALIZE(stmt);
 	CLOSE(db);
@@ -214,9 +251,7 @@ TEST(vfs, pollWriteLock, setUp, tearDown, 0, NULL)
 	sqlite3 *db2;
 	sqlite3_stmt *stmt1;
 	sqlite3_stmt *stmt2;
-	dqlite_vfs_frame *frames;
-	unsigned n;
-	unsigned i;
+	struct tx tx;
 
 	OPEN("1", db1);
 	OPEN("1", db2);
@@ -225,8 +260,7 @@ TEST(vfs, pollWriteLock, setUp, tearDown, 0, NULL)
 	PREPARE(db2, stmt2, "CREATE TABLE test2(n INT)");
 
 	STEP(stmt1, SQLITE_DONE);
-	POLL("1", frames, n);
-	munit_assert_ptr_not_null(frames);
+	POLL("1", tx);
 
 	STEP(stmt2, SQLITE_BUSY);
 	RESET(stmt2, SQLITE_BUSY);
@@ -237,11 +271,7 @@ TEST(vfs, pollWriteLock, setUp, tearDown, 0, NULL)
 	CLOSE(db1);
 	CLOSE(db2);
 
-	for (i = 0; i < n; i++) {
-		munit_assert_int(frames[i].page_number, ==, i + 1);
-		sqlite3_free(frames[i].data);
-	}
-	sqlite3_free(frames);
+	DONE(tx);
 
 	return MUNIT_OK;
 }
@@ -253,37 +283,15 @@ TEST(vfs, commitThenRead, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	dqlite_vfs_frame *frames;
-	unsigned *page_numbers;
-	void *buf;
-	unsigned n;
-	unsigned i;
+	struct tx tx;
 
 	OPEN("1", db);
 
-	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
-	STEP(stmt, SQLITE_DONE);
+	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", frames, n);
-
-	page_numbers = munit_malloc(sizeof *page_numbers * n);
-	buf = munit_malloc(n * PAGE_SIZE);
-	for (i = 0; i < n; i++) {
-		page_numbers[i] = frames[i].page_number;
-		memcpy(buf + i * PAGE_SIZE, frames[i].data, PAGE_SIZE);
-	}
-
-	COMMIT("1", n, page_numbers, buf);
-
-	for (i = 0; i < n; i++) {
-		sqlite3_free(frames[i].data);
-	}
-	sqlite3_free(frames);
-
-	free(page_numbers);
-	free(buf);
-
-	FINALIZE(stmt);
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
 
 	PREPARE(db, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
@@ -301,61 +309,21 @@ TEST(vfs, commitThenCommitAgainThenRead, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	dqlite_vfs_frame *frames;
-	unsigned *page_numbers;
-	void *buf;
-	unsigned n;
-	unsigned i;
+	struct tx tx;
 
 	OPEN("1", db);
 
-	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
-	STEP(stmt, SQLITE_DONE);
+	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", frames, n);
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
 
-	page_numbers = munit_malloc(sizeof *page_numbers * n);
-	buf = munit_malloc(n * PAGE_SIZE);
-	for (i = 0; i < n; i++) {
-		page_numbers[i] = frames[i].page_number;
-		memcpy(buf + i * PAGE_SIZE, frames[i].data, PAGE_SIZE);
-	}
+	EXEC(db, "INSERT INTO test(n) VALUES(123)");
 
-	COMMIT("1", n, page_numbers, buf);
-
-	for (i = 0; i < n; i++) {
-		sqlite3_free(frames[i].data);
-	}
-	sqlite3_free(frames);
-
-	free(page_numbers);
-	free(buf);
-
-	FINALIZE(stmt);
-
-	PREPARE(db, stmt, "INSERT INTO test(n) VALUES(123)");
-	STEP(stmt, SQLITE_DONE);
-
-	POLL("1", frames, n);
-
-	page_numbers = munit_malloc(sizeof *page_numbers * n);
-	buf = munit_malloc(n * PAGE_SIZE);
-	for (i = 0; i < n; i++) {
-		page_numbers[i] = frames[i].page_number;
-		memcpy(buf + i * PAGE_SIZE, frames[i].data, PAGE_SIZE);
-	}
-
-	COMMIT("1", n, page_numbers, buf);
-
-	for (i = 0; i < n; i++) {
-		sqlite3_free(frames[i].data);
-	}
-	sqlite3_free(frames);
-
-	free(page_numbers);
-	free(buf);
-
-	FINALIZE(stmt);
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
 
 	PREPARE(db, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_ROW);
@@ -377,38 +345,16 @@ TEST(vfs, commitThenReadOnNewConn, setUp, tearDown, 0, NULL)
 	sqlite3 *db1;
 	sqlite3 *db2;
 	sqlite3_stmt *stmt;
-	dqlite_vfs_frame *frames;
-	unsigned *page_numbers;
-	void *buf;
-	unsigned n;
-	unsigned i;
+	struct tx tx;
 
 	OPEN("1", db1);
 	OPEN("1", db2);
 
-	PREPARE(db1, stmt, "CREATE TABLE test(n INT)");
-	STEP(stmt, SQLITE_DONE);
+	EXEC(db1, "CREATE TABLE test(n INT)");
 
-	POLL("1", frames, n);
-
-	page_numbers = munit_malloc(sizeof *page_numbers * n);
-	buf = munit_malloc(n * PAGE_SIZE);
-	for (i = 0; i < n; i++) {
-		page_numbers[i] = frames[i].page_number;
-		memcpy(buf + i * PAGE_SIZE, frames[i].data, PAGE_SIZE);
-	}
-
-	COMMIT("1", n, page_numbers, buf);
-
-	for (i = 0; i < n; i++) {
-		sqlite3_free(frames[i].data);
-	}
-	sqlite3_free(frames);
-
-	free(page_numbers);
-	free(buf);
-
-	FINALIZE(stmt);
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
 
 	PREPARE(db2, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
@@ -428,36 +374,15 @@ TEST(vfs, commitThenCloseThenReadOnNewConn, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	dqlite_vfs_frame *frames;
-	unsigned *page_numbers;
-	void *buf;
-	unsigned n;
-	unsigned i;
+	struct tx tx;
 
 	OPEN("1", db);
-	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
-	STEP(stmt, SQLITE_DONE);
 
-	POLL("1", frames, n);
+	EXEC(db, "CREATE TABLE test(n INT)");
 
-	page_numbers = munit_malloc(sizeof *page_numbers * n);
-	buf = munit_malloc(n * PAGE_SIZE);
-	for (i = 0; i < n; i++) {
-		page_numbers[i] = frames[i].page_number;
-		memcpy(buf + i * PAGE_SIZE, frames[i].data, PAGE_SIZE);
-	}
-
-	COMMIT("1", n, page_numbers, buf);
-
-	for (i = 0; i < n; i++) {
-		sqlite3_free(frames[i].data);
-	}
-	sqlite3_free(frames);
-
-	free(page_numbers);
-	free(buf);
-
-	FINALIZE(stmt);
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
 
 	CLOSE(db);
 
