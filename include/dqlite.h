@@ -210,8 +210,8 @@ void dqlite_vfs_close(sqlite3_vfs *vfs);
  */
 struct dqlite_vfs_frame
 {
-	unsigned page_number; /* Database page number. */
-	void *data;           /* Content of the database page. */
+	unsigned long page_number; /* Database page number. */
+	void *data;                /* Content of the database page. */
 };
 typedef struct dqlite_vfs_frame dqlite_vfs_frame;
 
@@ -238,7 +238,7 @@ int dqlite_vfs_poll(sqlite3_vfs *vfs,
 int dqlite_vfs_commit(sqlite3_vfs *vfs,
 		      const char *filename,
 		      unsigned n,
-		      unsigned *page_numbers,
+		      unsigned long *page_numbers,
 		      void *frames);
 
 #endif /* DQLITE_H */

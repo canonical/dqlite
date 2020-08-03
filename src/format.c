@@ -105,13 +105,11 @@ void formatWalGetReadMarks(const uint8_t *header,
 	memcpy(read_marks, &idx[25], (sizeof *idx) * FORMAT__WAL_NREADER);
 }
 
-void formatWalGetFramePageNumber(const uint8_t *header, unsigned *page_number)
+void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number)
 {
 	/* The page number is stored in the first 4 bytes of the header
 	 * (big-endian) */
-	uint32_t v;
-	formatGet32(header, &v);
-	*page_number = v;
+	formatGet32(header, page_number);
 }
 
 void formatWalGetFrameChecksums(const uint8_t *header, uint32_t checksum[2])
@@ -189,19 +187,19 @@ static void formatWalChecksumBytes(
 }
 
 void formatWalPutFrameHeader(bool native,
-			     unsigned page_number,
-			     unsigned database_size,
+			     uint32_t page_number,
+			     uint32_t database_size,
 			     uint32_t salt[2],
 			     uint32_t checksum[2],
 			     uint8_t *header,
-			     uint8_t *page,
-			     unsigned page_size)
+			     uint8_t *data,
+			     unsigned n_data)
 {
 	formatPut32(page_number, header);
 	formatPut32(database_size, header + 4);
 
 	formatWalChecksumBytes(native, header, 8, checksum, checksum);
-	formatWalChecksumBytes(native, page, page_size, checksum, checksum);
+	formatWalChecksumBytes(native, data, n_data, checksum, checksum);
 
 	memcpy(header + 8, &salt[0], sizeof salt[0]);
 	memcpy(header + 12, &salt[1], sizeof salt[1]);
@@ -211,8 +209,8 @@ void formatWalPutFrameHeader(bool native,
 }
 
 void formatWalPutIndexHeader(uint8_t *header,
-			     unsigned max_frame,
-			     unsigned n_pages,
+			     uint32_t max_frame,
+			     uint32_t n_pages,
 			     unsigned frame_checksum[2])
 {
 	uint32_t checksum[2] = {0, 0};

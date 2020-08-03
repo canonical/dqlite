@@ -310,14 +310,13 @@ static int vfsDatabasePageGet(struct vfsDatabase *d, unsigned pgno, void **page)
 		 * vfsFileWrite(). */
 		assert(d->page_size > 0);
 
-		*page = sqlite3_malloc((int)d->page_size);
+		*page = sqlite3_malloc64(d->page_size);
 		if (*page == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err;
 		}
 
-		pages =
-		    sqlite3_realloc(d->pages, (int)((sizeof *pages) * pgno));
+		pages = sqlite3_realloc64(d->pages, sizeof *pages * pgno);
 		if (pages == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err_after_vfs_page_create;
@@ -1264,20 +1263,20 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	return SQLITE_NOTFOUND;
 }
 
-/* Revert the WAL index header as it was before the transaction started and save
- * the header as it is now after the transaction ended. */
-static void vfsWalReverIndexHeader(struct vfsWal *w)
+/* Overwrite the WAL index header to reflect the current committed content of
+ * the WAL. */
+static void vfsWalRewriteIndexHeader(struct vfsWal *w)
 {
 	struct vfsShm *shm = &w->database->shm;
 	uint8_t *hdr = shm->regions[0];
 	unsigned i;
-	unsigned max_frame = 0;
+	uint32_t max_frame = 0;
 	uint32_t frame_checksum[2] = {0, 0};
-	unsigned n_pages = w->database->n_pages;
+	uint32_t n_pages = (uint32_t)w->database->n_pages;
 
 	for (i = 0; i < w->n_frames; i++) {
 		struct vfsFrame *frame = w->frames[i];
-		unsigned page_number;
+		uint32_t page_number;
 		formatWalGetFramePageNumber(frame->hdr, &page_number);
 		if (page_number > n_pages) {
 			n_pages = page_number;
@@ -1298,7 +1297,7 @@ static int vfsFileControlCommitPhaseTwo(struct vfsFile *f)
 	struct vfsDatabase *database = &f->content->database;
 	struct vfsWal *wal = database->wal;
 	if (database->version == VFS__V2 && wal != NULL && wal->n_tx > 0) {
-		vfsWalReverIndexHeader(wal);
+		vfsWalRewriteIndexHeader(wal);
 	}
 	return 0;
 }
@@ -1929,8 +1928,10 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 
 	for (i = 0; i < w->n_tx; i++) {
 		dqlite_vfs_frame *frame = &(*frames)[i];
+		uint32_t page_number;
+		formatWalGetFramePageNumber(w->tx[i]->hdr, &page_number);
 		frame->data = w->tx[i]->buf;
-		formatWalGetFramePageNumber(w->tx[i]->hdr, &frame->page_number);
+		frame->page_number = page_number;
 		/* Release the vfsFrame object, but not its buf attribute, since
 		 * responsibility for that memory has been transferred to the
 		 * caller. */
@@ -1984,7 +1985,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 
 static int vfsWalCommit(struct vfsWal *w,
 			unsigned n,
-			unsigned *page_numbers,
+			unsigned long *page_numbers,
 			void *data)
 {
 	struct vfsFrame **frames; /* New frames array. */
@@ -2014,7 +2015,8 @@ static int vfsWalCommit(struct vfsWal *w,
 
 	for (i = 0; i < n; i++) {
 		struct vfsFrame *frame = vfsFrameCreate(page_size);
-		unsigned database_size;
+		uint32_t database_size;
+		uint32_t page_number = (uint32_t)page_numbers[i];
 		void *page = data + i * page_size;
 
 		if (frame == NULL) {
@@ -2023,9 +2025,9 @@ static int vfsWalCommit(struct vfsWal *w,
 
 		/* For commit records, the size of the database file in pages
 		 * after the commit. For all other records, zero. */
-		database_size = i == n - 1 ? page_numbers[i] : 0;
+		database_size = i == n - 1 ? page_number : 0;
 
-		formatWalPutFrameHeader(native, page_numbers[i], database_size,
+		formatWalPutFrameHeader(native, page_number, database_size,
 					salt, checksum, frame->hdr, page,
 					page_size);
 		memcpy(frame->buf, page, page_size);
@@ -2040,7 +2042,7 @@ static int vfsWalCommit(struct vfsWal *w,
 	shm = &w->database->shm;
 	if (shm->exclusive[0] == 1) {
 		shm->exclusive[0] = 0;
-		vfsWalReverIndexHeader(w);
+		vfsWalRewriteIndexHeader(w);
 	}
 
 	return 0;
@@ -2056,7 +2058,7 @@ oom:
 int VfsCommit(sqlite3_vfs *vfs,
 	      const char *filename,
 	      unsigned n,
-	      unsigned *page_numbers,
+	      unsigned long *page_numbers,
 	      void *frames)
 {
 	struct vfs *v;
