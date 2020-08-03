@@ -295,8 +295,8 @@ static int vfsContentIsEmpty(struct vfsContent *c)
 				return 1;
 			}
 
-			// If it was written, a page list and a page size must
-			// have been set.
+			/* If it was written, a page list and a page size must
+			 * have been set. */
 			assert(c->database.pages != NULL &&
 			       c->database.n_pages > 0 &&
 			       c->database.page_size > 0);
@@ -307,8 +307,8 @@ static int vfsContentIsEmpty(struct vfsContent *c)
 				return 1;
 			}
 
-			// If it was written, a page list and a page size must
-			// have been set.
+			/* If it was written, a page list and a page size must
+			 * have been set. */
 			assert(c->wal.frames != NULL && c->wal.n_frames > 0 &&
 			       c->wal.database->page_size > 0);
 			break;
@@ -556,44 +556,34 @@ static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 	return frame;
 }
 
-/* Truncate the file to be exactly the given number of pages. */
-static void vfsContentTruncate(struct vfsContent *content, unsigned n_pages)
+/* Truncate a database file to be exactly the given number of pages. */
+static void vfsDatabaseTruncate(struct vfsDatabase *d, unsigned n_pages)
 {
 	void **cursor;
 	unsigned i;
 
 	/* We expect callers to only invoke us if some actual content has been
 	 * written already. */
-	assert(content->database.n_pages > 0);
+	assert(d->n_pages > 0);
 
 	/* Truncate should always shrink a file. */
-	assert(n_pages <= content->database.n_pages);
-	assert(content->database.pages != NULL);
+	assert(n_pages <= d->n_pages);
+	assert(d->pages != NULL);
 
 	/* Destroy pages beyond pages_len. */
-	cursor = content->database.pages + n_pages;
-	for (i = 0; i < (content->database.n_pages - n_pages); i++) {
+	cursor = d->pages + n_pages;
+	for (i = 0; i < (d->n_pages - n_pages); i++) {
 		sqlite3_free(*cursor);
 		cursor++;
-	}
-
-	/* Reset the file header (for WAL files). */
-	if (content->type == VFS__WAL) {
-		/* We expect callers to always truncate the WAL to zero. */
-		assert(n_pages == 0);
-		assert(content->wal.hdr != NULL);
-		memset(content->wal.hdr, 0, FORMAT__WAL_HDR_SIZE);
 	}
 
 	/* Shrink the page array, possibly to 0.
 	 *
 	 * TODO: in principle realloc could fail also when shrinking. */
-	content->database.pages =
-	    sqlite3_realloc(content->database.pages,
-			    (int)(sizeof *(content->database.pages) * n_pages));
+	d->pages = sqlite3_realloc64(d->pages, sizeof *d->pages * n_pages);
 
 	/* Update the page count. */
-	content->database.n_pages = n_pages;
+	d->n_pages = n_pages;
 }
 
 /* Truncate a WAL file to zero. */
@@ -1166,7 +1156,7 @@ static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 			}
 
 			pgno = (int)(size / f->content->database.page_size);
-			vfsContentTruncate(f->content, (unsigned)pgno);
+			vfsDatabaseTruncate(&f->content->database, (unsigned)pgno);
 			break;
 
 		case VFS__WAL:
