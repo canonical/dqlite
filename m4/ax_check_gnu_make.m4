@@ -69,7 +69,7 @@
 #   and this notice are preserved. This file is offered as-is, without any
 #   warranty.
 
-#serial 11
+#serial 12
 
 AC_DEFUN([AX_CHECK_GNU_MAKE],dnl
   [AC_PROG_AWK
@@ -87,7 +87,7 @@ dnl Search all the common names for GNU make
     done ;])
 dnl If there was a GNU version, then set @ifGNUmake@ to the empty string, '#' otherwise
   AS_VAR_IF([_cv_gnu_make_command], [""], [AS_VAR_SET([ifGNUmake], ["#"])],   [AS_VAR_SET([ifGNUmake], [""])])
-  AS_VAR_IF([_cv_gnu_make_command], [""], [AS_VAR_SET([ifnGNUmake], [""])],   [AS_VAR_SET([ifGNUmake], ["#"])])
+  AS_VAR_IF([_cv_gnu_make_command], [""], [AS_VAR_SET([ifnGNUmake], [""])],   [AS_VAR_SET([ifnGNUmake], ["#"])])
   AS_VAR_IF([_cv_gnu_make_command], [""], [AS_UNSET(ax_cv_gnu_make_command)], [AS_VAR_SET([ax_cv_gnu_make_command], [${_cv_gnu_make_command}])])
   AS_VAR_IF([_cv_gnu_make_command], [""],[$2],[$1])
   AC_SUBST([ifGNUmake])
