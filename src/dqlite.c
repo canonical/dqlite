@@ -23,9 +23,8 @@ int dqlite_vfs_poll(sqlite3_vfs *vfs,
 int dqlite_vfs_commit(sqlite3_vfs *vfs,
 		      const char *filename,
 		      unsigned n,
-		      unsigned *page_numbers,
+		      unsigned long *page_numbers,
 		      void *frames)
 {
 	return VfsCommit(vfs, filename, n, page_numbers, frames);
 }
-

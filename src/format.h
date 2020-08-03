@@ -81,12 +81,12 @@ void formatWalGetReadMarks(const uint8_t *header,
 
 /* Overwrite the WAL index header. */
 void formatWalPutIndexHeader(uint8_t *header,
-			     unsigned max_frame,
-			     unsigned n_pages,
+			     uint32_t max_frame,
+			     uint32_t n_pages,
 			     uint32_t frame_checksum[2]);
 
 /* Extract the page number from a WAL frame header. */
-void formatWalGetFramePageNumber(const uint8_t *header, unsigned *page_number);
+void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number);
 
 /* Extract the checksums from a WAL frame header. */
 void formatWalGetFrameChecksums(const uint8_t *header, uint32_t checksum[2]);
@@ -97,8 +97,8 @@ void formatWalGetNativeChecksum(const uint8_t *header, bool *native);
 
 /* Encode a frame header and return the calculated checksums. */
 void formatWalPutFrameHeader(bool native,
-			     unsigned page_number,
-			     unsigned database_size,
+			     uint32_t page_number,
+			     uint32_t database_size,
 			     uint32_t salt[2],
 			     uint32_t checksum[2],
 			     uint8_t *header,

@@ -37,7 +37,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 int VfsCommit(sqlite3_vfs *vfs,
 	      const char *filename,
 	      unsigned n,
-	      unsigned *page_numbers,
+	      unsigned long *page_numbers,
 	      void *frames);
 
 /* Read the content of a file, using the VFS implementation registered under the

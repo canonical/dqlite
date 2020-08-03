@@ -14,7 +14,7 @@ SUITE(vfs);
 struct tx
 {
 	unsigned n;
-	unsigned *page_numbers;
+	unsigned long *page_numbers;
 	void *frames;
 };
 
