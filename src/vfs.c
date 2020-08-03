@@ -608,12 +608,13 @@ static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 /* Implementation of the abstract sqlite3_file base class. */
 struct vfsFile
 {
-	sqlite3_file base;          /* Base class. Must be first. */
-	struct vfs *vfs;            /* Pointer to volatile VFS data. */
-	enum vfsFileType type;      /* Associated file (main db or WAL). */
-	struct vfsContent *content; /* Handle to the file content. */
-	int flags;                  /* Flags passed to xOpen */
-	sqlite3_file *temp;         /* For temp-files, actual VFS. */
+	sqlite3_file base;            /* Base class. Must be first. */
+	struct vfs *vfs;              /* Pointer to volatile VFS data. */
+	enum vfsFileType type;        /* Associated file (main db or WAL). */
+	struct vfsDatabase *database; /* Underlying database content. */
+	struct vfsContent *content;   /* Handle to the file content. */
+	int flags;                    /* Flags passed to xOpen */
+	sqlite3_file *temp;           /* For temp-files, actual VFS. */
 };
 
 /* Custom dqlite VFS. Contains pointers to the content of all files that were
@@ -1508,6 +1509,7 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 
 	assert(f->content != NULL);
 	assert(f->type == VFS__DATABASE);
+	assert(f->database != NULL);
 
 	shm = &f->content->database.shm;
 	if (flags & SQLITE_SHM_UNLOCK) {
@@ -1680,21 +1682,40 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			goto err;
 		}
 
-		if (type == VFS__WAL) {
-			struct vfsDatabase *database;
-			/* An associated database file must have been
-			 * opened. */
-			database = vfsDatabaseLookup(v, filename);
-			if (database == NULL) {
-				rc = SQLITE_CANTOPEN;
-				goto err_after_content_create;
-			}
-			content->wal.database = database;
-			database->wal = &content->wal;
+		switch (type) {
+			case VFS__DATABASE:
+				f->database = &content->database;
+				break;
+			case VFS__WAL:
+				/* An associated database file must have been
+				 * opened. */
+				f->database = vfsDatabaseLookup(v, filename);
+				if (f->database == NULL) {
+					rc = SQLITE_CANTOPEN;
+					goto err_after_content_create;
+				}
+				content->wal.database = f->database;
+				f->database->wal = &content->wal;
+				break;
+			default:
+				f->database = NULL;
+				break;
 		}
 
 		v->contents[n - 1] = content;
 		v->n_contents = n;
+	} else {
+		switch (type) {
+			case VFS__DATABASE:
+				f->database = &content->database;
+				break;
+			case VFS__WAL:
+				f->database = content->wal.database;
+				break;
+			default:
+				f->database = NULL;
+				break;
+		}
 	}
 
 	// Populate the new file handle.
