@@ -705,7 +705,7 @@ static int dumpFile(struct gateway *g,
 	}
 	memcpy(cur, buf, len);
 
-	sqlite3_free(buf);
+	raft_free(buf);
 
 	return 0;
 

@@ -113,7 +113,7 @@ static void applyCb(struct raft_apply *req, int status, void *result)
 	apply = req->data;
 	leader = apply->leader;
 	if (leader == NULL) {
-		sqlite3_free(apply);
+		raft_free(apply);
 		return;
 	}
 	r = leader->exec;
