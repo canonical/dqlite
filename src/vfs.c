@@ -610,6 +610,7 @@ struct vfsFile
 {
 	sqlite3_file base;          /* Base class. Must be first. */
 	struct vfs *vfs;            /* Pointer to volatile VFS data. */
+	enum vfsFileType type;      /* Associated file (main db or WAL). */
 	struct vfsContent *content; /* Handle to the file content. */
 	int flags;                  /* Flags passed to xOpen */
 	sqlite3_file *temp;         /* For temp-files, actual VFS. */
@@ -1506,6 +1507,7 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 	f = (struct vfsFile *)file;
 
 	assert(f->content != NULL);
+	assert(f->type == VFS__DATABASE);
 
 	shm = &f->content->database.shm;
 	if (flags & SQLITE_SHM_UNLOCK) {
@@ -1629,6 +1631,17 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		return SQLITE_OK;
 	}
 
+	if (flags & SQLITE_OPEN_MAIN_DB) {
+		type = VFS__DATABASE;
+	} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
+		type = VFS__JOURNAL;
+	} else if (flags & SQLITE_OPEN_WAL) {
+		type = VFS__WAL;
+	} else {
+		v->error = ENOENT;
+		return SQLITE_CANTOPEN;
+	}
+
 	/* Search if the file exists already. */
 	content = vfsContentLookup(v, filename);
 	exists = content != NULL;
@@ -1649,17 +1662,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			v->error = ENOENT;
 			rc = SQLITE_CANTOPEN;
 			goto err;
-		}
-
-		if (flags & SQLITE_OPEN_MAIN_DB) {
-			type = VFS__DATABASE;
-		} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
-			type = VFS__JOURNAL;
-		} else if (flags & SQLITE_OPEN_WAL) {
-			type = VFS__WAL;
-		} else {
-			v->error = ENOENT;
-			return SQLITE_CANTOPEN;
 		}
 
 		/* Create a new entry. */
@@ -1698,6 +1700,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	// Populate the new file handle.
 	f->base.pMethods = &vfsFileMethods;
 	f->vfs = v;
+	f->type = type;
 	f->content = content;
 
 	content->refcount++;

@@ -398,7 +398,7 @@ TEST(VfsOpen, noPageSize, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	sqlite3 *db;
 	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	sqlite3_int64 size;
 	int rc;
 	(void)params;
