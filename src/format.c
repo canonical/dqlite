@@ -68,24 +68,16 @@ void formatWalGetPageSize(const uint8_t *header, unsigned *page_size)
 	*page_size = formatDecodePageSize(buf);
 }
 
-void formatWalGetChecksums(const uint8_t *header,
-			   unsigned *checksum1,
-			   unsigned *checksum2)
+void formatWalGetChecksums(const uint8_t *header, uint32_t checksum[2])
 {
-	uint32_t v;
-	formatGet32(header + 24, &v);
-	*checksum1 = (unsigned)v;
-	formatGet32(header + 28, &v);
-	*checksum2 = (unsigned)v;
+	formatGet32(header + 24, &checksum[0]);
+	formatGet32(header + 28, &checksum[1]);
 }
 
-void formatWalGetSalt(const uint8_t *header, unsigned *salt1, unsigned *salt2)
+void formatWalGetSalt(const uint8_t *header, uint32_t salt[2])
 {
-	uint32_t v;
-	v = *(uint32_t *)(header + 16);
-	*salt1 = v;
-	v = *(uint32_t *)(header + 20);
-	*salt2 = v;
+	salt[0] = *(uint32_t *)(header + 16);
+	salt[1] = *(uint32_t *)(header + 20);
 }
 
 void formatWalGetMxFrame(const uint8_t *header, uint32_t *mx_frame)
@@ -122,15 +114,10 @@ void formatWalGetFramePageNumber(const uint8_t *header, unsigned *page_number)
 	*page_number = v;
 }
 
-void formatWalGetFrameChecksums(const uint8_t *header,
-				unsigned *checksum1,
-				unsigned *checksum2)
+void formatWalGetFrameChecksums(const uint8_t *header, uint32_t checksum[2])
 {
-	uint32_t v;
-	formatGet32(header + 16, &v);
-	*checksum1 = (unsigned)v;
-	formatGet32(header + 20, &v);
-	*checksum2 = (unsigned)v;
+	formatGet32(header + 16, &checksum[0]);
+	formatGet32(header + 20, &checksum[1]);
 }
 
 void formatWalGetNativeChecksum(const uint8_t *header, bool *native)
@@ -159,11 +146,11 @@ static void formatPut32(uint32_t v, uint8_t *buf)
  *
  * n must be a positive multiple of 8. */
 static void formatWalChecksumBytes(
-    bool native,        /* True for native byte-order, false for non-native */
-    uint8_t *data,      /* Content to be checksummed */
-    unsigned n,         /* Bytes of content in a[].  Must be a multiple of 8. */
-    const uint32_t *in, /* Initial checksum value input */
-    uint32_t *out       /* OUT: Final checksum value output */
+    bool native,   /* True for native byte-order, false for non-native */
+    uint8_t *data, /* Content to be checksummed */
+    unsigned n,    /* Bytes of content in a[].  Must be a multiple of 8. */
+    const uint32_t in[2], /* Initial checksum value input */
+    uint32_t out[2]       /* OUT: Final checksum value output */
 )
 {
 	uint32_t s1, s2;
@@ -204,47 +191,37 @@ static void formatWalChecksumBytes(
 void formatWalPutFrameHeader(bool native,
 			     unsigned page_number,
 			     unsigned database_size,
-			     unsigned salt1,
-			     unsigned salt2,
-			     unsigned *checksum1,
-			     unsigned *checksum2,
+			     uint32_t salt[2],
+			     uint32_t checksum[2],
 			     uint8_t *header,
 			     uint8_t *page,
 			     unsigned page_size)
 {
-	uint32_t checksum[2] = {*checksum1, *checksum2};
-	uint32_t salt;
 	formatPut32(page_number, header);
 	formatPut32(database_size, header + 4);
 
 	formatWalChecksumBytes(native, header, 8, checksum, checksum);
 	formatWalChecksumBytes(native, page, page_size, checksum, checksum);
 
-	salt = salt1;
-	memcpy(header + 8, &salt, sizeof salt);
-	salt = salt2;
-	memcpy(header + 12, &salt, sizeof salt);
+	memcpy(header + 8, &salt[0], sizeof salt[0]);
+	memcpy(header + 12, &salt[1], sizeof salt[1]);
 
 	formatPut32(checksum[0], header + 16);
 	formatPut32(checksum[1], header + 20);
-
-	*checksum1 = checksum[0];
-	*checksum2 = checksum[1];
 }
 
-void formatWalIndexHeaderRevert(uint8_t *header,
-				unsigned max_frame,
-				unsigned n_pages,
-				unsigned frame_checksum1,
-				unsigned frame_checksum2)
+void formatWalPutIndexHeader(uint8_t *header,
+			     unsigned max_frame,
+			     unsigned n_pages,
+			     unsigned frame_checksum[2])
 {
 	uint32_t checksum[2] = {0, 0};
 	bool native = !header[13];
 
 	*(uint32_t *)(header + 16) = max_frame;
 	*(uint32_t *)(header + 20) = n_pages;
-	*(uint32_t *)(header + 24) = frame_checksum1;
-	*(uint32_t *)(header + 28) = frame_checksum2;
+	*(uint32_t *)(header + 24) = frame_checksum[0];
+	*(uint32_t *)(header + 28) = frame_checksum[1];
 
 	formatWalChecksumBytes(native, header, 40, checksum, checksum);
 

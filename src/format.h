@@ -65,14 +65,10 @@ void formatDatabaseGetPageSize(const uint8_t *header, unsigned *page_size);
 void formatWalGetPageSize(const uint8_t *header, unsigned *page_size);
 
 /* Get checksums from the WAL header. */
-void formatWalGetChecksums(const uint8_t *header,
-			   unsigned *checksum1,
-			   unsigned *checksum2);
+void formatWalGetChecksums(const uint8_t *header, uint32_t checksum[2]);
 
 /* Get the Salt-1 and Salt-2 fields stored in the WAL header. */
-void formatWalGetSalt(const uint8_t *header, unsigned *salt1, unsigned *salt2);
-
-void formatWalGetFramePageNumber(const uint8_t *header, unsigned *page_number);
+void formatWalGetSalt(const uint8_t *header, uint32_t salt[2]);
 
 /* Extract the mxFrame field from the WAL index header stored in the given
  * buffer */
@@ -83,20 +79,17 @@ void formatWalGetMxFrame(const uint8_t *header, uint32_t *mx_frame);
 void formatWalGetReadMarks(const uint8_t *header,
 			   uint32_t read_marks[FORMAT__WAL_NREADER]);
 
-/* Revert the WAL index header as it was before a write transaction. */
-void formatWalIndexHeaderRevert(uint8_t *header,
-				unsigned max_frame,
-				unsigned n_pages,
-				unsigned frame_checksum1,
-				unsigned frame_checksum2);
+/* Overwrite the WAL index header. */
+void formatWalPutIndexHeader(uint8_t *header,
+			     unsigned max_frame,
+			     unsigned n_pages,
+			     uint32_t frame_checksum[2]);
 
 /* Extract the page number from a WAL frame header. */
 void formatWalGetFramePageNumber(const uint8_t *header, unsigned *page_number);
 
 /* Extract the checksums from a WAL frame header. */
-void formatWalGetFrameChecksums(const uint8_t *header,
-				unsigned *checksum1,
-				unsigned *checksum2);
+void formatWalGetFrameChecksums(const uint8_t *header, uint32_t checksum[2]);
 
 /* Return true if native byte order should be used when calculating WAL
  * checksums, or false if bit-endian byte order should be used instead. */
@@ -106,10 +99,8 @@ void formatWalGetNativeChecksum(const uint8_t *header, bool *native);
 void formatWalPutFrameHeader(bool native,
 			     unsigned page_number,
 			     unsigned database_size,
-			     unsigned salt1,
-			     unsigned salt2,
-			     unsigned *checksum1,
-			     unsigned *checksum2,
+			     uint32_t salt[2],
+			     uint32_t checksum[2],
 			     uint8_t *header,
 			     uint8_t *data,
 			     unsigned n_data);
