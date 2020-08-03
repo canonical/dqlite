@@ -63,7 +63,7 @@ struct vfsWal
 	int version;
 };
 
-enum vfsContentType {
+enum vfsFileType {
 	VFS__DATABASE, /* Main database file */
 	VFS__JOURNAL,  /* Default SQLite journal file */
 	VFS__WAL       /* Write-Ahead Log */
@@ -72,9 +72,9 @@ enum vfsContentType {
 /* Hold content for a single file in the custom dqlite VFS. */
 struct vfsContent
 {
-	char *filename;           /* Name of the file. */
-	enum vfsContentType type; /* Content type (either main db or WAL). */
-	unsigned refcount;        /* N. of files referencing this content. */
+	char *filename;        /* Name of the file. */
+	enum vfsFileType type; /* Content type (either main db or WAL). */
+	unsigned refcount;     /* N. of files referencing this content. */
 	union {
 		struct vfsDatabase database; /* VFS__DATABASE */
 		struct vfsWal wal;           /* VFS__WAL */
@@ -1563,7 +1563,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	struct vfs *v;
 	struct vfsFile *f;
 	struct vfsContent *content;
-	enum vfsContentType type;
+	enum vfsFileType type;
 	bool exists;
 	int exclusive = flags & SQLITE_OPEN_EXCLUSIVE;
 	int create = flags & SQLITE_OPEN_CREATE;
