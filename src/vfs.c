@@ -907,17 +907,14 @@ static int vfsFileRead(sqlite3_file *file,
 		return f->temp->pMethods->xRead(f->temp, buf, amount, offset);
 	}
 
-	assert(f->content != NULL);
-	assert(f->content->filename != NULL);
 	assert(f->content->refcount > 0);
 
-	switch (f->content->type) {
+	switch (f->type) {
 		case VFS__DATABASE:
-			rv = vfsDatabaseRead(&f->content->database, buf, amount,
-					     offset);
+			rv = vfsDatabaseRead(f->database, buf, amount, offset);
 			break;
 		case VFS__WAL:
-			rv = vfsWalRead(&f->content->wal, buf, amount, offset);
+			rv = vfsWalRead(f->database->wal, buf, amount, offset);
 			break;
 		default:
 			rv = SQLITE_IOERR_READ;
@@ -1094,17 +1091,14 @@ static int vfsFileWrite(sqlite3_file *file,
 		return f->temp->pMethods->xWrite(f->temp, buf, amount, offset);
 	}
 
-	assert(f->content != NULL);
-	assert(f->content->filename != NULL);
 	assert(f->content->refcount > 0);
 
-	switch (f->content->type) {
+	switch (f->type) {
 		case VFS__DATABASE:
-			rv = vfsDatabaseWrite(&f->content->database, buf,
-					      amount, offset);
+			rv = vfsDatabaseWrite(f->database, buf, amount, offset);
 			break;
 		case VFS__WAL:
-			rv = vfsWalWrite(&f->content->wal, buf, amount, offset);
+			rv = vfsWalWrite(f->database->wal, buf, amount, offset);
 			break;
 		case VFS__JOURNAL:
 			/* Silently swallow writes to the journal */
@@ -1124,15 +1118,14 @@ static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 	int rv;
 
 	assert(f != NULL);
-	assert(f->content != NULL);
 
-	switch (f->content->type) {
+	switch (f->type) {
 		case VFS__DATABASE:
-			rv = vfsDatabaseTruncate(&f->content->database, size);
+			rv = vfsDatabaseTruncate(f->database, size);
 			break;
 
 		case VFS__WAL:
-			rv = vfsWalTruncate(&f->content->wal, size);
+			rv = vfsWalTruncate(f->database->wal, size);
 			break;
 
 		default:
@@ -1155,10 +1148,9 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 {
 	struct vfsFile *f = (struct vfsFile *)file;
 
-	switch (f->content->type) {
+	switch (f->type) {
 		case VFS__DATABASE:
-			*size = f->content->database.n_pages *
-				f->content->database.page_size;
+			*size = f->database->n_pages * f->database->page_size;
 			break;
 
 		case VFS__JOURNAL:
@@ -1168,9 +1160,9 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 		case VFS__WAL:
 			/* TODO? here we assume that FileSize() is never invoked
 			 * between a header write and a page write. */
-			*size = (f->content->wal.n_frames *
+			*size = (f->database->wal->n_frames *
 				 (FORMAT__WAL_FRAME_HDR_SIZE +
-				  f->content->wal.database->page_size));
+				  f->database->page_size));
 			if (*size > 0) {
 				*size += FORMAT__WAL_HDR_SIZE;
 			}
@@ -1216,7 +1208,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	const char *right;
 
 	assert(f != NULL);
-	assert(f->content->type == VFS__DATABASE);
+	assert(f->type == VFS__DATABASE);
 	assert(fnctl != NULL);
 
 	left = fnctl[1];
@@ -1241,13 +1233,13 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 		if (page_size >= FORMAT__PAGE_SIZE_MIN &&
 		    page_size <= FORMAT__PAGE_SIZE_MAX &&
 		    ((page_size - 1) & page_size) == 0) {
-			if (f->content->database.page_size &&
+			if (f->database->page_size &&
 			    page_size != (int)f->content->database.page_size) {
 				fnctl[0] =
 				    "changing page size is not supported";
 				return SQLITE_IOERR;
 			}
-			f->content->database.page_size = (unsigned)page_size;
+			f->database->page_size = (unsigned)page_size;
 		}
 	} else if (strcmp(left, "journal_mode") == 0 && right) {
 		/* When the user executes 'PRAGMA journal_mode=x' we ensure
@@ -1296,7 +1288,7 @@ static void vfsWalRewriteIndexHeader(struct vfsWal *w)
  * SQLite pager after completing a transaction. */
 static int vfsFileControlCommitPhaseTwo(struct vfsFile *f)
 {
-	struct vfsDatabase *database = &f->content->database;
+	struct vfsDatabase *database = f->database;
 	struct vfsWal *wal = database->wal;
 	if (database->version == VFS__V2 && wal != NULL && wal->n_tx > 0) {
 		vfsWalRewriteIndexHeader(wal);
@@ -1411,9 +1403,9 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 {
 	struct vfsFile *f = (struct vfsFile *)file;
 
-	assert(f->content->type == VFS__DATABASE);
+	assert(f->type == VFS__DATABASE);
 
-	return vfsShmMap(&f->content->database.shm, (unsigned)region_index,
+	return vfsShmMap(&f->database->shm, (unsigned)region_index,
 			 (unsigned)region_size, extend, out);
 }
 
@@ -1507,11 +1499,10 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 
 	f = (struct vfsFile *)file;
 
-	assert(f->content != NULL);
 	assert(f->type == VFS__DATABASE);
 	assert(f->database != NULL);
 
-	shm = &f->content->database.shm;
+	shm = &f->database->shm;
 	if (flags & SQLITE_SHM_UNLOCK) {
 		rv = vfsShmUnlock(shm, ofst, n, flags);
 	} else {
