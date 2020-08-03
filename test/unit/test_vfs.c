@@ -398,7 +398,7 @@ TEST(VfsOpen, noPageSize, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	sqlite3 *db;
 	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	sqlite3_int64 size;
 	int rc;
 	(void)params;
@@ -415,14 +415,16 @@ TEST(VfsOpen, noPageSize, setUp, tearDown, 0, NULL)
 	rc = sqlite3_exec(db, "CREATE TABLE foo (n INT)", NULL, NULL, NULL);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
+	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags | SQLITE_OPEN_MAIN_DB,
+			  &flags);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	rc = file->pMethods->xFileSize(file, &size);
 	munit_assert_int(rc, ==, 0);
 	munit_assert_int(size, ==, 4096);
 
-	rc = f->vfs.xOpen(&f->vfs, "test.db-wal", file, flags, &flags);
+	rc = f->vfs.xOpen(&f->vfs, "test.db-wal", file, flags | SQLITE_OPEN_WAL,
+			  &flags);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	rc = file->pMethods->xFileSize(file, &size);
