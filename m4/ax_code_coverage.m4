@@ -74,7 +74,7 @@
 #   You should have received a copy of the GNU Lesser General Public License
 #   along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#serial 32
+#serial 34
 
 m4_define(_AX_CODE_COVERAGE_RULES,[
 AX_ADD_AM_MACRO_STATIC([
@@ -138,7 +138,7 @@ CODE_COVERAGE_GENHTML_OPTIONS_DEFAULT ?=\
 CODE_COVERAGE_GENHTML_OPTIONS ?= \$(CODE_COVERAGE_GENHTML_OPTIONS_DEFAULT)
 CODE_COVERAGE_IGNORE_PATTERN ?=
 
-GITIGNOREFILES = \$(GITIGNOREFILES) \$(CODE_COVERAGE_OUTPUT_FILE) \$(CODE_COVERAGE_OUTPUT_DIRECTORY)
+GITIGNOREFILES := \$(GITIGNOREFILES) \$(CODE_COVERAGE_OUTPUT_FILE) \$(CODE_COVERAGE_OUTPUT_DIRECTORY)
 code_coverage_v_lcov_cap = \$(code_coverage_v_lcov_cap_\$(V))
 code_coverage_v_lcov_cap_ = \$(code_coverage_v_lcov_cap_\$(AM_DEFAULT_VERBOSITY))
 code_coverage_v_lcov_cap_0 = @echo \"  LCOV   --capture\" \$(CODE_COVERAGE_OUTPUT_FILE);
@@ -175,7 +175,7 @@ code-coverage-clean:
 
 code-coverage-dist-clean:
 
-A][M_DISTCHECK_CONFIGURE_FLAGS = \$(A][M_DISTCHECK_CONFIGURE_FLAGS) --disable-code-coverage
+A][M_DISTCHECK_CONFIGURE_FLAGS := \$(A][M_DISTCHECK_CONFIGURE_FLAGS) --disable-code-coverage
  else # ifneq (\$(abs_builddir), \$(abs_top_builddir))
 check-code-coverage:
 
