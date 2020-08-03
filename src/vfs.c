@@ -283,42 +283,6 @@ static void vfsContentDestroy(struct vfsContent *c)
 	sqlite3_free(c);
 }
 
-/* Return 1 if this file has no content. */
-static int vfsContentIsEmpty(struct vfsContent *c)
-{
-	assert(c != NULL);
-
-	switch (c->type) {
-		case VFS__DATABASE:
-			if (c->database.n_pages == 0) {
-				assert(c->database.pages == NULL);
-				return 1;
-			}
-
-			/* If it was written, a page list and a page size must
-			 * have been set. */
-			assert(c->database.pages != NULL &&
-			       c->database.n_pages > 0 &&
-			       c->database.page_size > 0);
-			break;
-		case VFS__WAL:
-			if (c->wal.n_frames == 0) {
-				assert(c->wal.frames == NULL);
-				return 1;
-			}
-
-			/* If it was written, a page list and a page size must
-			 * have been set. */
-			assert(c->wal.frames != NULL && c->wal.n_frames > 0 &&
-			       c->wal.database->page_size > 0);
-			break;
-		case VFS__JOURNAL:
-			return 1;
-	}
-
-	return 0;
-}
-
 /* Get a page from the given database, possibly creating a new one. */
 static int vfsDatabasePageGet(struct vfsDatabase *d, unsigned pgno, void **page)
 {
@@ -557,10 +521,28 @@ static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 }
 
 /* Truncate a database file to be exactly the given number of pages. */
-static void vfsDatabaseTruncate(struct vfsDatabase *d, unsigned n_pages)
+static int vfsDatabaseTruncate(struct vfsDatabase *d, sqlite_int64 size)
 {
 	void **cursor;
+	unsigned n_pages;
 	unsigned i;
+
+	if (d->n_pages == 0) {
+		if (size > 0) {
+			return SQLITE_IOERR_TRUNCATE;
+		}
+		return SQLITE_OK;
+	}
+
+	/* Since the file size is not zero, some content must
+	 * have been written and the page size must be known. */
+	assert(d->page_size > 0);
+
+	if ((size % d->page_size) != 0) {
+		return SQLITE_IOERR_TRUNCATE;
+	}
+
+	n_pages = (unsigned)(size / d->page_size);
 
 	/* We expect callers to only invoke us if some actual content has been
 	 * written already. */
@@ -584,29 +566,44 @@ static void vfsDatabaseTruncate(struct vfsDatabase *d, unsigned n_pages)
 
 	/* Update the page count. */
 	d->n_pages = n_pages;
+
+	return SQLITE_OK;
 }
 
 /* Truncate a WAL file to zero. */
-static void vfsWalTruncate(struct vfsContent *content)
+static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 {
 	unsigned i;
 
-	/* We expect callers to only invoke us if some actual content has been
-	 * written already. */
-	assert(content->wal.frames != NULL);
-	assert(content->wal.n_frames > 0);
+	/* We expect SQLite to only truncate to zero, after a
+	 * full checkpoint.
+	 *
+	 * TODO: figure out other case where SQLite might
+	 * truncate to a different size.
+	 */
+	if (size != 0) {
+		return SQLITE_PROTOCOL;
+	}
+
+	if (w->n_frames == 0) {
+		return SQLITE_OK;
+	}
+
+	assert(w->frames != NULL);
 
 	/* Reset the file header (for WAL files). */
-	memset(content->wal.hdr, 0, FORMAT__WAL_HDR_SIZE);
+	memset(w->hdr, 0, FORMAT__WAL_HDR_SIZE);
 
 	/* Destroy all frames. */
-	for (i = 0; i < content->wal.n_frames; i++) {
-		vfsFrameDestroy(content->wal.frames[i]);
+	for (i = 0; i < w->n_frames; i++) {
+		vfsFrameDestroy(w->frames[i]);
 	}
-	sqlite3_free(content->wal.frames);
+	sqlite3_free(w->frames);
 
-	content->wal.frames = NULL;
-	content->wal.n_frames = 0;
+	w->frames = NULL;
+	w->n_frames = 0;
+
+	return SQLITE_OK;
 }
 
 /* Implementation of the abstract sqlite3_file base class. */
@@ -1123,62 +1120,26 @@ static int vfsFileWrite(sqlite3_file *file,
 static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 {
 	struct vfsFile *f = (struct vfsFile *)file;
-	int pgno;
+	int rv;
 
 	assert(f != NULL);
 	assert(f->content != NULL);
 
-	/* We expect calls to xTruncate only for database and WAL files. */
-	if (f->content->type != VFS__DATABASE && f->content->type != VFS__WAL) {
-		return SQLITE_IOERR_TRUNCATE;
-	}
-
-	/* Check if this file empty.*/
-	if (vfsContentIsEmpty(f->content)) {
-		if (size > 0) {
-			return SQLITE_IOERR_TRUNCATE;
-		}
-
-		/* Nothing to do. */
-		return SQLITE_OK;
-	}
-
 	switch (f->content->type) {
 		case VFS__DATABASE:
-			/* Main database. */
-
-			/* Since the file size is not zero, some content must
-			 * have been written and the page size must be known. */
-			assert(f->content->database.page_size > 0);
-
-			if ((size % f->content->database.page_size) != 0) {
-				return SQLITE_IOERR_TRUNCATE;
-			}
-
-			pgno = (int)(size / f->content->database.page_size);
-			vfsDatabaseTruncate(&f->content->database, (unsigned)pgno);
+			rv = vfsDatabaseTruncate(&f->content->database, size);
 			break;
 
 		case VFS__WAL:
-			/* WAL file. */
-
-			/* We expect SQLite to only truncate to zero, after a
-			 * full checkpoint.
-			 *
-			 * TODO: figure out other case where SQLite might
-			 * truncate to a different size.
-			 */
-			if (size != 0) {
-				return SQLITE_PROTOCOL;
-			}
-			vfsWalTruncate(f->content);
+			rv = vfsWalTruncate(&f->content->wal, size);
 			break;
 
 		default:
-			return SQLITE_IOERR_TRUNCATE;
+			rv = SQLITE_IOERR_TRUNCATE;
+			break;
 	}
 
-	return SQLITE_OK;
+	return rv;
 }
 
 static int vfsFileSync(sqlite3_file *file, int flags)
