@@ -178,8 +178,8 @@ static void tearDown(void *data)
 /* Release all memory used by a struct tx object. */
 #define DONE(TX)                               \
 	do {                                   \
-		sqlite3_free(TX.frames);       \
-		sqlite3_free(TX.page_numbers); \
+		free(TX.frames);       \
+		free(TX.page_numbers); \
 	} while (0)
 
 /* Open and close a new connection using the dqlite VFS. */
