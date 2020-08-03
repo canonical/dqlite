@@ -36,6 +36,7 @@ struct vfsWal;
 /* Database-specific content */
 struct vfsDatabase
 {
+	char *name;         /* Database name. */
 	unsigned page_size; /* Page size of each page. */
 	void **pages;       /* All database. */
 	unsigned n_pages;   /* Number of pages. */
@@ -760,8 +761,8 @@ static int vfsFileClose(sqlite3_file *file)
 	f->content->refcount--;
 
 	/* If we got zero references, reset the shared memory mapping. */
-	if (f->content->refcount == 0 && f->content->type == VFS__DATABASE) {
-		vfsShmReset(&f->content->database.shm);
+	if (f->content->refcount == 0 && f->type == VFS__DATABASE) {
+		vfsShmReset(&f->database->shm);
 	}
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
