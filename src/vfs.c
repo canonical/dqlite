@@ -1272,8 +1272,7 @@ static void vfsWalReverIndexHeader(struct vfsWal *w)
 	uint8_t *hdr = shm->regions[0];
 	unsigned i;
 	unsigned max_frame = 0;
-	unsigned frame_checksum1 = 0;
-	unsigned frame_checksum2 = 0;
+	uint32_t frame_checksum[2] = {0, 0};
 	unsigned n_pages = w->database->n_pages;
 
 	for (i = 0; i < w->n_frames; i++) {
@@ -1285,13 +1284,11 @@ static void vfsWalReverIndexHeader(struct vfsWal *w)
 		}
 		max_frame++;
 		if (i == w->n_frames - 1) {
-			formatWalGetFrameChecksums(frame->hdr, &frame_checksum1,
-						   &frame_checksum2);
+			formatWalGetFrameChecksums(frame->hdr, frame_checksum);
 		}
 	}
 
-	formatWalIndexHeaderRevert(hdr, max_frame, n_pages, frame_checksum1,
-				   frame_checksum2);
+	formatWalPutIndexHeader(hdr, max_frame, n_pages, frame_checksum);
 }
 
 /* The SQLITE_FCNTL_COMMIT_PHASETWO file control op code is trigged by the
@@ -1996,18 +1993,16 @@ static int vfsWalCommit(struct vfsWal *w,
 	unsigned i;
 	unsigned j;
 	bool native;
-	unsigned salt1;
-	unsigned salt2;
-	unsigned checksum1;
-	unsigned checksum2;
+	uint32_t salt[2];
+	uint32_t checksum[2];
 
 	formatWalGetNativeChecksum(w->hdr, &native);
-	formatWalGetSalt(w->hdr, &salt1, &salt2);
+	formatWalGetSalt(w->hdr, salt);
 	if (w->n_frames == 0) {
-		formatWalGetChecksums(w->hdr, &checksum1, &checksum2);
+		formatWalGetChecksums(w->hdr, checksum);
 	} else {
 		struct vfsFrame *frame = w->frames[w->n_frames - 1];
-		formatWalGetFrameChecksums(frame->hdr, &checksum1, &checksum2);
+		formatWalGetFrameChecksums(frame->hdr, checksum);
 	}
 
 	frames =
@@ -2031,8 +2026,8 @@ static int vfsWalCommit(struct vfsWal *w,
 		database_size = i == n - 1 ? page_numbers[i] : 0;
 
 		formatWalPutFrameHeader(native, page_numbers[i], database_size,
-					salt1, salt2, &checksum1, &checksum2,
-					frame->hdr, page, page_size);
+					salt, checksum, frame->hdr, page,
+					page_size);
 		memcpy(frame->buf, page, page_size);
 
 		frames[w->n_frames + i] = frame;
