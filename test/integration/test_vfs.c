@@ -178,6 +178,15 @@ static void tearDown(void *data)
 		munit_assert_int(_rv, ==, 0);                                  \
 	} while (0)
 
+/* Abort a transaction on the given VFS. */
+#define ABORT(VFS)                                        \
+	do {                                              \
+		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS); \
+		int _rv;                                  \
+		_rv = dqlite_vfs_abort(vfs, "test.db");   \
+		munit_assert_int(_rv, ==, 0);             \
+	} while (0)
+
 /* Release all memory used by a struct tx object. */
 #define DONE(TX)                       \
 	do {                           \
@@ -423,7 +432,7 @@ TEST(vfs, commitFollower, setUp, tearDown, 0, NULL) {
 }
 
 /* Simulate a failover between a leader and a follower. */
-TEST(vfs, failover, setUp, tearDown, 0, NULL) {
+TEST(vfs, commitFailover, setUp, tearDown, 0, NULL) {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
 	struct tx tx;
@@ -448,6 +457,39 @@ TEST(vfs, failover, setUp, tearDown, 0, NULL) {
 	STEP(stmt, SQLITE_DONE);
 	FINALIZE(stmt);
 	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Calling dqlite_vfs_abort() to cancel a transaction releases the write
+ * lock on the WAL. */
+TEST(vfs, abort, setUp, tearDown, 0, NULL) {
+	sqlite3 *db1;
+	sqlite3 *db2;
+	sqlite3_stmt *stmt1;
+	sqlite3_stmt *stmt2;
+	struct tx tx;
+
+	/* Create a table on VFS 1 and replicate the transaction. */
+	OPEN("1", db1);
+	OPEN("1", db2);
+
+	PREPARE(db1, stmt1, "CREATE TABLE test(n INT)");
+	PREPARE(db2, stmt2, "CREATE TABLE test2(n INT)");
+
+	STEP(stmt1, SQLITE_DONE);
+	POLL("1", tx);
+	ABORT("1");
+
+	STEP(stmt2, SQLITE_DONE);
+
+	FINALIZE(stmt1);
+	FINALIZE(stmt2);
+
+	CLOSE(db1);
+	CLOSE(db2);
+
+	DONE(tx);
 
 	return MUNIT_OK;
 }

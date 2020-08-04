@@ -241,4 +241,12 @@ int dqlite_vfs_commit(sqlite3_vfs *vfs,
 		      unsigned long *page_numbers,
 		      void *frames);
 
+/**
+ * Abort a pending write transaction that was returned by dqlite_vfs_poll().
+ *
+ * This should be called if the transaction could not be safely replicated. In
+ * particular it will release the write lock acquired by dqlite_vfs_poll().
+ */
+int dqlite_vfs_abort(sqlite3_vfs *vfs, const char *filename);
+
 #endif /* DQLITE_H */
