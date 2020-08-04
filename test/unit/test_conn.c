@@ -149,7 +149,7 @@ static void connCloseCb(struct conn *conn)
 		int rv2;                                    \
 		rv2 = clientSendQuery(&f->client, STMT_ID); \
 		munit_assert_int(rv2, ==, 0);               \
-		test_uv_run(&f->loop, 1);                   \
+		test_uv_run(&f->loop, 2);                   \
 		rv2 = clientRecvRows(&f->client, ROWS);     \
 		munit_assert_int(rv2, ==, 0);               \
 	}
@@ -310,7 +310,7 @@ TEST_CASE(exec, success, NULL)
 	unsigned rows_affected;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 7);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 8);
 	munit_assert_int(last_insert_id, ==, 0);
 	munit_assert_int(rows_affected, ==, 0);
 	return MUNIT_OK;
@@ -323,13 +323,13 @@ TEST_CASE(exec, result, NULL)
 	unsigned rows_affected;
 	(void)params;
 	PREPARE("BEGIN", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 1);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 2);
 	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 4);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 5);
 	PREPARE("INSERT INTO test (n) VALUES(123)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 1);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 2);
 	PREPARE("COMMIT", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 4);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 5);
 	munit_assert_int(last_insert_id, ==, 1);
 	munit_assert_int(rows_affected, ==, 1);
 	return MUNIT_OK;
