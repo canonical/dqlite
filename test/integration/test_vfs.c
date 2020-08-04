@@ -28,6 +28,7 @@ SUITE(vfs);
 		PRAGMA(DB, "page_size=512");                                  \
 		PRAGMA(DB, "synchronous=OFF");                                \
 		PRAGMA(DB, "journal_mode=WAL");                               \
+		PRAGMA(DB, "cache_size=1");                                   \
 		_rv = sqlite3_db_config(DB, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, \
 					1, NULL);                             \
 		munit_assert_int(_rv, ==, SQLITE_OK);                         \
@@ -288,6 +289,66 @@ TEST(vfs, pollWriteLock, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
+/* If a the page cache limit is exceeded during write transaction, some
+ * non-commit WAL frames will be written before the final commit. */
+TEST(vfs, pollAfterPageStress, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+	unsigned i;
+
+	OPEN("1", db);
+
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
+
+	/* Start a transaction and accumulate enough dirty data to fill the page
+	 * cache and trigger a WAL write of the uncommitted frames. */
+	EXEC(db, "BEGIN");
+	for (i = 0; i < 163; i++) {
+		char sql[64];
+		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
+		EXEC(db, sql);
+	}
+	for (i = 0; i < 163; i++) {
+		char sql[64];
+		sprintf(sql, "UPDATE test SET n=%d WHERE n=%d", i, i + 1);
+		EXEC(db, sql);
+	}
+	EXEC(db, "COMMIT");
+
+	POLL("1", tx);
+
+	/* Five frames were replicated and the first frame actually contains a
+	 * spill of the third page. */
+	munit_assert_int(tx.n, ==, 6);
+	munit_assert_int(tx.page_numbers[0], ==, 3);
+	munit_assert_int(tx.page_numbers[1], ==, 4);
+	munit_assert_int(tx.page_numbers[2], ==, 5);
+	munit_assert_int(tx.page_numbers[3], ==, 1);
+	munit_assert_int(tx.page_numbers[4], ==, 2);
+
+	COMMIT("1", tx);
+	DONE(tx);
+
+	/* All records have been inserted. */
+	PREPARE(db, stmt, "SELECT * FROM test");
+	for (i = 0; i < 163; i++) {
+		STEP(stmt, SQLITE_ROW);
+		munit_assert_int(sqlite3_column_int(stmt, 0), ==, i);
+	}
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
 /* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
  * then perform a read transaction and check that it can see the committed
  * changes. */
@@ -408,7 +469,8 @@ TEST(vfs, commitThenCloseThenReadOnNewConn, setUp, tearDown, 0, NULL)
 }
 
 /* Use dqlite_vfs_commit() to replicate changes on a "follower" VFS. */
-TEST(vfs, commitFollower, setUp, tearDown, 0, NULL) {
+TEST(vfs, commitFollower, setUp, tearDown, 0, NULL)
+{
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
 	struct tx tx;
@@ -432,7 +494,8 @@ TEST(vfs, commitFollower, setUp, tearDown, 0, NULL) {
 }
 
 /* Simulate a failover between a leader and a follower. */
-TEST(vfs, commitFailover, setUp, tearDown, 0, NULL) {
+TEST(vfs, commitFailover, setUp, tearDown, 0, NULL)
+{
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
 	struct tx tx;
@@ -463,7 +526,8 @@ TEST(vfs, commitFailover, setUp, tearDown, 0, NULL) {
 
 /* Calling dqlite_vfs_abort() to cancel a transaction releases the write
  * lock on the WAL. */
-TEST(vfs, abort, setUp, tearDown, 0, NULL) {
+TEST(vfs, abort, setUp, tearDown, 0, NULL)
+{
 	sqlite3 *db1;
 	sqlite3 *db2;
 	sqlite3_stmt *stmt1;
