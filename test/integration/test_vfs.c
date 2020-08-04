@@ -10,55 +10,6 @@ SUITE(vfs);
 
 #define N_VFS 2
 
-/* Hold WAL replication information about a single transaction. */
-struct tx
-{
-	unsigned n;
-	unsigned long *page_numbers;
-	void *frames;
-};
-
-struct fixture
-{
-	struct sqlite3_vfs vfs[N_VFS]; /* A "cluster" of VFS objects. */
-	char names[8][N_VFS];          /* Registration names */
-};
-
-static void *setUp(const MunitParameter params[], void *user_data)
-{
-	struct fixture *f = munit_malloc(sizeof *f);
-	unsigned i;
-	int rv;
-
-	SETUP_HEAP;
-	SETUP_SQLITE;
-
-	for (i = 0; i < N_VFS; i++) {
-		sprintf(f->names[i], "%u", i);
-		rv = dqlite_vfs_init(&f->vfs[i], f->names[i]);
-		munit_assert_int(rv, ==, 0);
-		sqlite3_vfs_register(&f->vfs[i], 0);
-	}
-
-	return f;
-}
-
-static void tearDown(void *data)
-{
-	struct fixture *f = data;
-	unsigned i;
-
-	for (i = 0; i < N_VFS; i++) {
-		sqlite3_vfs_unregister(&f->vfs[i]);
-		dqlite_vfs_close(&f->vfs[i]);
-	}
-
-	TEAR_DOWN_SQLITE;
-	TEAR_DOWN_HEAP;
-
-	free(f);
-}
-
 #define PAGE_SIZE 512
 
 #define PRAGMA(DB, COMMAND)                                          \
@@ -89,6 +40,58 @@ static void tearDown(void *data)
 		_rv = sqlite3_close(DB);              \
 		munit_assert_int(_rv, ==, SQLITE_OK); \
 	} while (0)
+
+/* Hold WAL replication information about a single transaction. */
+struct tx
+{
+	unsigned n;
+	unsigned long *page_numbers;
+	void *frames;
+};
+
+struct fixture
+{
+	struct sqlite3_vfs vfs[N_VFS]; /* A "cluster" of VFS objects. */
+	char names[8][N_VFS];          /* Registration names */
+	sqlite3 *dbs[N_VFS];           /* For replication */
+};
+
+static void *setUp(const MunitParameter params[], void *user_data)
+{
+	struct fixture *f = munit_malloc(sizeof *f);
+	unsigned i;
+	int rv;
+
+	SETUP_HEAP;
+	SETUP_SQLITE;
+
+	for (i = 0; i < N_VFS; i++) {
+		sprintf(f->names[i], "%u", i + 1);
+		rv = dqlite_vfs_init(&f->vfs[i], f->names[i]);
+		munit_assert_int(rv, ==, 0);
+		sqlite3_vfs_register(&f->vfs[i], 0);
+		OPEN(f->names[i], f->dbs[i]);
+		CLOSE(f->dbs[i]);
+	}
+
+	return f;
+}
+
+static void tearDown(void *data)
+{
+	struct fixture *f = data;
+	unsigned i;
+
+	for (i = 0; i < N_VFS; i++) {
+		sqlite3_vfs_unregister(&f->vfs[i]);
+		dqlite_vfs_close(&f->vfs[i]);
+	}
+
+	TEAR_DOWN_SQLITE;
+	TEAR_DOWN_HEAP;
+
+	free(f);
+}
 
 /* Prepare a statement. */
 #define PREPARE(DB, STMT, SQL)                                      \
@@ -176,8 +179,8 @@ static void tearDown(void *data)
 	} while (0)
 
 /* Release all memory used by a struct tx object. */
-#define DONE(TX)                               \
-	do {                                   \
+#define DONE(TX)                       \
+	do {                           \
 		free(TX.frames);       \
 		free(TX.page_numbers); \
 	} while (0)
@@ -387,6 +390,60 @@ TEST(vfs, commitThenCloseThenReadOnNewConn, setUp, tearDown, 0, NULL)
 	CLOSE(db);
 
 	OPEN("1", db);
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Use dqlite_vfs_commit() to replicate changes on a "follower" VFS. */
+TEST(vfs, commitFollower, setUp, tearDown, 0, NULL) {
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	OPEN("1", db);
+
+	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
+	STEP(stmt, SQLITE_DONE);
+
+	POLL("1", tx);
+
+	COMMIT("1", tx);
+	COMMIT("2", tx);
+
+	DONE(tx);
+
+	FINALIZE(stmt);
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Simulate a failover between a leader and a follower. */
+TEST(vfs, failover, setUp, tearDown, 0, NULL) {
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	/* Create a table on VFS 1 and replicate the transaction. */
+	OPEN("1", db);
+
+	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
+	STEP(stmt, SQLITE_DONE);
+
+	POLL("1", tx);
+	COMMIT("1", tx);
+	COMMIT("2", tx);
+	DONE(tx);
+
+	FINALIZE(stmt);
+	CLOSE(db);
+
+	/* Connect to VFS 2 and check that the table is there. */
+	OPEN("2", db);
 	PREPARE(db, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
 	FINALIZE(stmt);
