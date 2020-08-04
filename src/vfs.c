@@ -1118,12 +1118,10 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 		case VFS__WAL:
 			/* TODO? here we assume that FileSize() is never invoked
 			 * between a header write and a page write. */
-			*size = (f->database->wal.n_frames *
+			*size = FORMAT__WAL_HDR_SIZE;
+			*size += (f->database->wal.n_frames *
 				 (FORMAT__WAL_FRAME_HDR_SIZE +
 				  f->database->page_size));
-			if (*size > 0) {
-				*size += FORMAT__WAL_HDR_SIZE;
-			}
 			break;
 	}
 
@@ -1205,6 +1203,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 			fnctl[0] = "only WAL mode is supported";
 			return SQLITE_IOERR;
 		}
+		formatWalInitHeader(f->database->wal.hdr, f->database->page_size);
 	}
 
 	/* We're returning NOTFOUND here to tell SQLite that we wish it to go on
