@@ -95,6 +95,9 @@ void formatWalGetFrameChecksums(const uint8_t *header, uint32_t checksum[2]);
  * checksums, or false if bit-endian byte order should be used instead. */
 void formatWalGetNativeChecksum(const uint8_t *header, bool *native);
 
+/* Initialize the header of a new WAL file. */
+void formatWalInitHeader(uint8_t *header, unsigned page_size);
+
 /* Encode a frame header and return the calculated checksums. */
 void formatWalPutFrameHeader(bool native,
 			     uint32_t page_number,

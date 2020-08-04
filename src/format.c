@@ -18,6 +18,8 @@
  * little-endian words. */
 #define FORMAT__WAL_MAGIC 0x377f0682
 
+#define FORMAT__WAL_MAX_VERSION 3007000
+
 static void formatGet32(const uint8_t buf[4], uint32_t *v)
 {
 	*v = 0;
@@ -184,6 +186,19 @@ static void formatWalChecksumBytes(
 
 	out[0] = s1;
 	out[1] = s2;
+}
+
+void formatWalInitHeader(uint8_t *header, unsigned page_size)
+{
+	uint32_t checksum[2] = {0, 0};
+	formatPut32(FORMAT__WAL_MAGIC, &header[0]);
+	formatPut32(FORMAT__WAL_MAX_VERSION, &header[4]);
+	formatPut32(page_size, &header[8]);
+	formatPut32(0, &header[12]);
+	sqlite3_randomness(8, &header[16]);
+	formatWalChecksumBytes(true, header, 24, checksum, checksum);
+	formatPut32(checksum[0], header + 24);
+	formatPut32(checksum[1], header + 28);
 }
 
 void formatWalPutFrameHeader(bool native,
