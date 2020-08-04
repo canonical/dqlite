@@ -195,6 +195,20 @@ static void tearDown(void *data)
 		free(TX.page_numbers); \
 	} while (0)
 
+/* Peform a full checkpoint on the given database. */
+#define CHECKPOINT(DB)                                                       \
+	do {                                                                 \
+		int _size;                                                   \
+		int _ckpt;                                                   \
+		int _rv;                                                     \
+		_rv = sqlite3_wal_checkpoint_v2(                             \
+		    DB, "main", SQLITE_CHECKPOINT_TRUNCATE, &_size, &_ckpt); \
+		if (_rv != SQLITE_OK) {                                      \
+			munit_errorf("checkpoint: %s (%d)",                  \
+				     sqlite3_errmsg(DB), _rv);               \
+		}                                                            \
+	} while (0)
+
 /* Open and close a new connection using the dqlite VFS. */
 TEST(vfs, open, setUp, tearDown, 0, NULL)
 {
@@ -554,6 +568,40 @@ TEST(vfs, abort, setUp, tearDown, 0, NULL)
 	CLOSE(db2);
 
 	DONE(tx);
+
+	return MUNIT_OK;
+}
+
+/* Perform a checkpoint after a write transaction has completed. */
+TEST(vfs, checkpoint, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	OPEN("1", db1);
+
+	EXEC(db1, "CREATE TABLE test(n INT)");
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
+	EXEC(db1, "INSERT INTO test(n) VALUES(123)");
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
+
+	OPEN("1", db2);
+	CHECKPOINT(db2);
+	CLOSE(db2);
+
+	PREPARE(db1, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_ROW);
+	munit_assert_int(sqlite3_column_int(stmt, 0), ==, 123);
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	CLOSE(db1);
 
 	return MUNIT_OK;
 }
