@@ -43,19 +43,6 @@
 
 /******************************************************************************
  *
- * Common parameters.
- *
- ******************************************************************************/
-
-/* Run the test using only TCP. */
-char *socket_family[] = {"tcp", NULL};
-static MunitParameterEnum endpointParams[] = {
-    {TEST_ENDPOINT_FAMILY, socket_family},
-    {NULL, NULL},
-};
-
-/******************************************************************************
- *
  * Helper macros.
  *
  ******************************************************************************/
@@ -159,7 +146,7 @@ static void tearDown(void *data)
 	free(f);
 }
 
-TEST(membership, join, setUp, tearDown, 0, endpointParams)
+TEST(membership, join, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	unsigned id = 2;
@@ -167,7 +154,7 @@ TEST(membership, join, setUp, tearDown, 0, endpointParams)
 	unsigned stmt_id;
 	unsigned last_insert_id;
 	unsigned rows_affected;
-	(void)params;
+
 	HANDSHAKE;
 	ADD(id, address);
 	ASSIGN(id, 1 /* voter */);
