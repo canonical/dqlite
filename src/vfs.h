@@ -40,6 +40,8 @@ int VfsCommit(sqlite3_vfs *vfs,
 	      unsigned long *page_numbers,
 	      void *frames);
 
+int VfsAbort(sqlite3_vfs *vfs, const char *filename);
+
 /* Read the content of a file, using the VFS implementation registered under the
  * given name. Used to take database snapshots using the dqlite in-memory
  * VFS. */

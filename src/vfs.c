@@ -2035,6 +2035,22 @@ int VfsCommit(sqlite3_vfs *vfs,
 	return 0;
 }
 
+int VfsAbort(sqlite3_vfs *vfs, const char *filename) {
+	struct vfs *v;
+	struct vfsDatabase *database;
+	int rv;
+
+	v = (struct vfs *)(vfs->pAppData);
+	database = vfsDatabaseLookup(v, filename);
+
+	rv = vfsShmUnlock(&database->shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
+	if (rv != 0) {
+		return rv;
+	}
+
+	return 0;
+}
+
 /* Check if the given filename is a WAL filename. */
 static bool vfsIsWalFilename(const char *filename)
 {

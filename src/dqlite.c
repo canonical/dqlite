@@ -28,3 +28,7 @@ int dqlite_vfs_commit(sqlite3_vfs *vfs,
 {
 	return VfsCommit(vfs, filename, n, page_numbers, frames);
 }
+
+int dqlite_vfs_abort(sqlite3_vfs *vfs, const char *filename) {
+	return VfsAbort(vfs, filename);
+}
