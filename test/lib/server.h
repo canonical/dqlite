@@ -40,22 +40,4 @@ void test_server_network(struct test_server *servers, unsigned n_servers);
 /* Return a client connected to the server. */
 struct client *test_server_client(struct test_server *s);
 
-#define FIXTURE_THREAD pthread_t thread;
-
-#define THREAD_START(T, FUNC, DATA)                       \
-	{                                                 \
-		int rv2;                                  \
-		rv2 = pthread_create(&T, 0, &FUNC, DATA); \
-		munit_assert_int(rv2, ==, 0);             \
-	}
-
-#define THREAD_JOIN(T)                          \
-	{                                       \
-		void *retval;                   \
-		int rv2;                        \
-		rv2 = pthread_join(T, &retval); \
-		munit_assert_int(rv2, ==, 0);   \
-		munit_assert_ptr_null(retval);  \
-	}
-
 #endif /* TEST_SERVER_H */
