@@ -25,11 +25,12 @@ void test_server_setup(struct test_server *s,
 		       const unsigned id,
 		       const MunitParameter params[])
 {
+	(void)params;
+
 	s->id = id;
 	sprintf(s->address, "@%u", id);
 
 	s->dir = test_dir_setup();
-	test_endpoint_setup(&s->endpoint, params);
 
 	memset(s->others, 0, sizeof s->others);
 }
@@ -38,7 +39,6 @@ void test_server_tear_down(struct test_server *s)
 {
 	int rv;
 
-	test_endpoint_tear_down(&s->endpoint);
 	clientClose(&s->client);
 	close(s->client.fd);
 	rv = dqlite_node_stop(s->dqlite);
