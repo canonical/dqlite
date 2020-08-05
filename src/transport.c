@@ -6,8 +6,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "../include/dqlite.h"
 #include "client.h"
+#include "message.h"
 #include "request.h"
 #include "transport.h"
 
@@ -37,8 +37,8 @@ struct connect
 };
 
 static int impl_init(struct raft_uv_transport *transport,
-			raft_id id,
-			const char *address)
+		     raft_id id,
+		     const char *address)
 {
 	struct impl *i = transport->impl;
 	i->id = id;
@@ -46,7 +46,8 @@ static int impl_init(struct raft_uv_transport *transport,
 	return 0;
 }
 
-static int impl_listen(struct raft_uv_transport *transport, raft_uv_accept_cb cb)
+static int impl_listen(struct raft_uv_transport *transport,
+		       raft_uv_accept_cb cb)
 {
 	struct impl *i = transport->impl;
 	i->accept_cb = cb;
@@ -57,40 +58,66 @@ static void connect_work_cb(uv_work_t *work)
 {
 	struct connect *r = work->data;
 	struct impl *i = r->impl;
-	struct client client;
+	struct message message;
+	struct request_connect request;
+	uint64_t protocol;
+	void *buf;
+	void *cursor;
+	size_t n;
+	size_t n1;
+	size_t n2;
 	int rv;
 
+	/* Establish a connection to the other node using the provided connect
+	 * function. */
 	rv = i->connect.f(i->connect.arg, r->address, &r->fd);
 	if (rv != 0) {
 		rv = RAFT_NOCONNECTION;
 		goto err;
 	}
-	rv = clientInit(&client, r->fd);
-	if (rv != 0) {
-		assert(rv == DQLITE_NOMEM);
-		rv = RAFT_NOMEM;
+
+	/* Send the initial dqlite protocol handshake. */
+	protocol = byte__flip64(DQLITE_PROTOCOL_VERSION);
+	rv = (int)write(r->fd, &protocol, sizeof protocol);
+	if (rv != sizeof protocol) {
+		rv = RAFT_NOCONNECTION;
 		goto err_after_connect;
 	}
 
-	rv = clientSendHandshake(&client);
-	if (rv != 0) {
+	/* Send a CONNECT dqlite protocol command, which will transfer control
+	 * to the underlying raft UV backend. */
+	request.id = i->id;
+	request.address = i->address;
+
+	n1 = message__sizeof(&message);
+	n2 = request_connect__sizeof(&request);
+
+	message.type = DQLITE_REQUEST_CONNECT;
+	message.words = (uint32_t)(n2 / 8);
+
+	n = n1 + n2;
+
+	buf = sqlite3_malloc64(n);
+	if (buf == NULL) {
 		rv = RAFT_NOCONNECTION;
-		goto err_after_client_init;
+		goto err_after_connect;
 	}
 
-	rv = clientSendConnect(&client, i->id, i->address);
-	if (rv != 0) {
-		rv = RAFT_NOCONNECTION;
-		goto err_after_client_init;
-	}
+	cursor = buf;
+	message__encode(&message, &cursor);
+	request_connect__encode(&request, &cursor);
 
-	clientClose(&client);
+	rv = (int)write(r->fd, buf, n);
+	sqlite3_free(buf);
+
+	if (rv != (int)n) {
+		rv = RAFT_NOCONNECTION;
+		goto err_after_connect;
+	}
 
 	r->status = 0;
 	return;
 
-err_after_client_init:
-	clientClose(&client);
 err_after_connect:
 	close(r->fd);
 err:
@@ -161,7 +188,8 @@ err:
 	return rv;
 }
 
-static void impl_close(struct raft_uv_transport *transport, raft_uv_transport_close_cb cb)
+static void impl_close(struct raft_uv_transport *transport,
+		       raft_uv_transport_close_cb cb)
 {
 	cb(transport);
 }
