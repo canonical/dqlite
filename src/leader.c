@@ -117,6 +117,7 @@ static int openConnection(const char *filename,
 			  const char *replication,
 			  void *replication_arg,
 			  unsigned page_size,
+			  bool v2,
 			  sqlite3 **conn)
 {
 	char pragma[255];
@@ -154,12 +155,14 @@ static int openConnection(const char *filename,
 		goto err_after_open;
 	}
 
-	/* Set WAL replication. */
-	rc = sqlite3_wal_replication_leader(*conn, "main", replication,
-					    replication_arg);
+	if (!v2) {
+		/* Set WAL replication. */
+		rc = sqlite3_wal_replication_leader(*conn, "main", replication,
+						    replication_arg);
 
-	if (rc != SQLITE_OK) {
-		goto err_after_open;
+		if (rc != SQLITE_OK) {
+			goto err_after_open;
+		}
 	}
 
 	/* TODO: make setting foreign keys optional. */
@@ -221,17 +224,21 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 	int rc;
 	l->db = db;
 	l->raft = raft;
-	l->main = co_active();
-	rc = initLoopCoroutine(l);
-	if (rc != 0) {
-		goto err;
+	if (!db->config->v2) {
+		l->main = co_active();
+		rc = initLoopCoroutine(l);
+		if (rc != 0) {
+			goto err;
+		}
 	}
 	rc = openConnection(db->filename, db->config->name, db->config->name, l,
-			    db->config->page_size, &l->conn);
+			    db->config->page_size, db->config->v2, &l->conn);
 	if (rc != 0) {
 		goto err_after_loop_create;
 	}
-	sqlite3_wal_hook(l->conn, maybeCheckpoint, l);
+	if (!db->config->v2) {
+		sqlite3_wal_hook(l->conn, maybeCheckpoint, l);
+	}
 
 	l->exec = NULL;
 	l->apply.data = l;
@@ -240,7 +247,9 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 	return 0;
 
 err_after_loop_create:
-	co_delete(l->loop);
+	if (!db->config->v2) {
+		co_delete(l->loop);
+	}
 err:
 	return rc;
 }
@@ -264,7 +273,9 @@ void leader__close(struct leader *l)
 		db__delete_tx(l->db);
 	}
 
-	co_delete(l->loop);
+	if (!l->db->config->v2) {
+		co_delete(l->loop);
+	}
 	QUEUE__REMOVE(&l->queue);
 }
 

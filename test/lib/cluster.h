@@ -116,17 +116,19 @@ struct server
 		TEAR_DOWN_HEAP;                      \
 	}
 
-#define TEAR_DOWN_SERVER(I)                          \
-	{                                            \
-		struct server *s = &f->servers[I];   \
-		struct raft_fsm *fsm = &f->fsms[I];  \
-		replication__close(&s->replication); \
-		fsm__close(fsm);                     \
-		registry__close(&s->registry);       \
-		sqlite3_vfs_unregister(&s->vfs);     \
-		VfsClose(&s->vfs);                   \
-		config__close(&s->config);           \
-		test_logger_tear_down(&s->logger);   \
+#define TEAR_DOWN_SERVER(I)                              \
+	{                                                \
+		struct server *s = &f->servers[I];       \
+		struct raft_fsm *fsm = &f->fsms[I];      \
+		replication__close(&s->replication);     \
+		fsm__close(fsm);                         \
+		registry__close(&s->registry);           \
+		if (s->config.v2) {                      \
+			sqlite3_vfs_unregister(&s->vfs); \
+		}                                        \
+		VfsClose(&s->vfs);                       \
+		config__close(&s->config);               \
+		test_logger_tear_down(&s->logger);       \
 	}
 
 #define CLUSTER_CONFIG(I) &f->servers[I].config

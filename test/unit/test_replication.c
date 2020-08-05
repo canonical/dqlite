@@ -4,7 +4,7 @@
 #include "../../src/format.h"
 #include "../../src/leader.h"
 
-TEST_MODULE(replication);
+TEST_MODULE(replication_v1);
 
 /******************************************************************************
  *
@@ -34,7 +34,8 @@ TEST_MODULE(replication);
 	config->page_size = 512;                          \
 	rc2 = registry__db_get(registry, "test.db", &db); \
 	munit_assert_int(rc2, ==, 0);                     \
-	leader__init(leader, db, CLUSTER_RAFT(I));
+	rc2 = leader__init(leader, db, CLUSTER_RAFT(I));  \
+	munit_assert_int(rc2, ==, 0)
 
 #define TEAR_DOWN                         \
 	unsigned i;                       \
@@ -318,5 +319,46 @@ TEST_CASE(exec, error, begin_not_leader, NULL)
 	munit_assert_int(f->status, ==, SQLITE_IOERR_NOT_LEADER);
 	RESET(SQLITE_IOERR_NOT_LEADER);
 	FINALIZE;
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * Fixture
+ *
+ ******************************************************************************/
+
+struct fixture
+{
+	FIXTURE_CLUSTER;
+	struct leader leaders[N_SERVERS];
+};
+
+static void *setUp(const MunitParameter params[], void *user_data)
+{
+	struct fixture *f = munit_malloc(sizeof *f);
+	unsigned i;
+	SETUP_CLUSTER(V2);
+	for (i = 0; i < N_SERVERS; i++) {
+		SETUP_LEADER(i);
+	}
+	return f;
+}
+
+static void tearDown(void *data)
+{
+	struct fixture *f = data;
+	unsigned i;
+	for (i = 0; i < N_SERVERS; i++) {
+		TEAR_DOWN_LEADER(i);
+	}
+	TEAR_DOWN_CLUSTER;
+	free(f);
+}
+
+SUITE(replication)
+
+TEST(replication, exec, setUp, tearDown, 0, NULL)
+{
 	return MUNIT_OK;
 }
