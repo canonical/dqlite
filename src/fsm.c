@@ -11,6 +11,7 @@ struct fsm
 {
 	struct logger *logger;
 	struct registry *registry;
+	bool v2;
 };
 
 static int apply_open(struct fsm *f, const struct command_open *c)
@@ -464,6 +465,7 @@ int fsm__init(struct raft_fsm *fsm,
 
 	f->logger = &config->logger;
 	f->registry = registry;
+	f->v2 = config->v2;
 
 	fsm->version = 1;
 	fsm->data = f;
