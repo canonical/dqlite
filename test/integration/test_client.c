@@ -5,23 +5,6 @@
 
 /******************************************************************************
  *
- * Fixture
- *
- ******************************************************************************/
-
-#define FIXTURE struct test_server server
-#define SETUP                                     \
-	test_heap_setup(params, user_data);       \
-	test_sqlite_setup(params);                \
-	test_server_setup(&f->server, 1, params); \
-	test_server_start(&f->server)
-#define TEAR_DOWN                          \
-	test_server_tear_down(&f->server); \
-	test_sqlite_tear_down();           \
-	test_heap_tear_down(data)
-
-/******************************************************************************
- *
  * Helper macros.
  *
  ******************************************************************************/
@@ -85,7 +68,7 @@ SUITE(client);
 
 struct fixture
 {
-	FIXTURE;
+	struct test_server server;
 	struct client *client;
 };
 
@@ -93,7 +76,10 @@ static void *setUp(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	(void)user_data;
-	SETUP;
+	test_heap_setup(params, user_data);
+	test_sqlite_setup(params);
+	test_server_setup(&f->server, 1, params);
+	test_server_start(&f->server);
 	f->client = test_server_client(&f->server);
 	HANDSHAKE;
 	OPEN;
@@ -103,7 +89,10 @@ static void *setUp(const MunitParameter params[], void *user_data)
 static void tearDown(void *data)
 {
 	struct fixture *f = data;
-	TEAR_DOWN;
+	test_server_tear_down(&f->server);
+	test_sqlite_tear_down();
+	test_heap_tear_down(data);
+
 	free(f);
 }
 
