@@ -1,7 +1,9 @@
 #include "../lib/heap.h"
 #include "../lib/runner.h"
-#include "../lib/server.h"
+#include "../lib/fs.h"
 #include "../lib/sqlite.h"
+
+#include "../../include/dqlite.h"
 
 /******************************************************************************
  *
@@ -9,16 +11,43 @@
  *
  ******************************************************************************/
 
-#define FIXTURE struct test_server server
-#define SETUP                                     \
-	test_heap_setup(params, user_data);       \
-	test_sqlite_setup(params);                \
-	test_server_setup(&f->server, 1, params); \
-	test_server_start(&f->server)
-#define TEAR_DOWN                          \
-	test_server_tear_down(&f->server); \
-	test_sqlite_tear_down();           \
-	test_heap_tear_down(data)
+struct fixture
+{
+	char *dir;         /* Data directory. */
+	dqlite_node *node; /* Node instance. */
+};
+
+static void *setUp(const MunitParameter params[], void *user_data)
+{
+	struct fixture *f = munit_malloc(sizeof *f);
+	int rv;
+	test_heap_setup(params, user_data);
+	test_sqlite_setup(params);
+
+	f->dir = test_dir_setup();
+
+	rv = dqlite_node_create(1, "1", f->dir, &f->node);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_set_bind_address(f->node, "@123");
+	munit_assert_int(rv, ==, 0);
+
+	return f;
+}
+
+static void tearDown(void *data)
+{
+	struct fixture *f = data;
+
+	dqlite_node_destroy(f->node);
+
+	test_dir_tear_down(f->dir);
+	test_sqlite_tear_down();
+	test_heap_tear_down(data);
+	free(f);
+}
+
+SUITE(node);
 
 /******************************************************************************
  *
@@ -26,31 +55,16 @@
  *
  ******************************************************************************/
 
-SUITE(dqlite_node_start);
-
-struct fixture
-{
-	FIXTURE;
-};
-
-static void *setUp(const MunitParameter params[], void *user_data)
-{
-	struct fixture *f = munit_malloc(sizeof *f);
-	SETUP;
-	return f;
-}
-
-static void tearDown(void *data)
+TEST(node, start, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	TEAR_DOWN;
-	free(f);
-}
+	int rv;
 
-TEST(dqlite_node_start, success, setUp, tearDown, 0, NULL)
-{
-	struct run_fixture *f = data;
-	(void)params;
-	(void)f;
+	rv = dqlite_node_start(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, 0);
+
 	return MUNIT_OK;
 }
