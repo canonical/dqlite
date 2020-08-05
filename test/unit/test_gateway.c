@@ -47,7 +47,7 @@ struct connection
 #define SETUP                                                           \
 	unsigned i;                                                     \
 	int rc;                                                         \
-	SETUP_CLUSTER;                                                  \
+	SETUP_CLUSTER(V1);						\
 	for (i = 0; i < N_SERVERS; i++) {                               \
 		struct connection *c = &f->connections[i];              \
 		struct config *config;                                  \

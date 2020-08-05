@@ -70,7 +70,8 @@ static void *setUp(const MunitParameter params[], void *user_data)
 		sprintf(f->names[i], "%u", i + 1);
 		rv = dqlite_vfs_init(&f->vfs[i], f->names[i]);
 		munit_assert_int(rv, ==, 0);
-		sqlite3_vfs_register(&f->vfs[i], 0);
+		rv = sqlite3_vfs_register(&f->vfs[i], 0);
+		munit_assert_int(rv, ==, 0);
 		OPEN(f->names[i], f->dbs[i]);
 		CLOSE(f->dbs[i]);
 	}
@@ -82,9 +83,11 @@ static void tearDown(void *data)
 {
 	struct fixture *f = data;
 	unsigned i;
+	int rv;
 
 	for (i = 0; i < N_VFS; i++) {
-		sqlite3_vfs_unregister(&f->vfs[i]);
+		rv = sqlite3_vfs_unregister(&f->vfs[i]);
+		munit_assert_int(rv, ==, 0);
 		dqlite_vfs_close(&f->vfs[i]);
 	}
 
