@@ -1,5 +1,6 @@
 #include <sqlite3.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "lib/assert.h"
 
@@ -290,15 +291,6 @@ void clientCloseRows(struct rows *rows)
 		row = next;
 	}
 	sqlite3_free(rows->column_names);
-}
-
-int clientSendConnect(struct client *c, raft_id id, const char *address)
-{
-	struct request_connect request;
-	request.id = id;
-	request.address = address;
-	REQUEST(connect, CONNECT);
-	return 0;
 }
 
 int clientSendAdd(struct client *c, unsigned id, const char *address)

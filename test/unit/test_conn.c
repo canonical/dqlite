@@ -154,15 +154,6 @@ static void connCloseCb(struct conn *conn)
 		munit_assert_int(rv2, ==, 0);               \
 	}
 
-/* Perform a raft connect request. */
-#define CONNECT(ID, ADDRESS)                                      \
-	{                                                         \
-		int rv2;                                          \
-		rv2 = clientSendConnect(&f->client, ID, ADDRESS); \
-		munit_assert_int(rv2, ==, 0);                     \
-		test_uv_run(&f->loop, 1);                         \
-	}
-
 /******************************************************************************
  *
  * Handle the handshake
@@ -407,41 +398,5 @@ TEST_CASE(query, one, NULL)
 	munit_assert_ptr_null(row->next);
 	munit_assert_int(row->values[0].type, ==, SQLITE_INTEGER);
 	munit_assert_int(row->values[0].integer, ==, 123);
-	return MUNIT_OK;
-}
-
-/******************************************************************************
- *
- * Handle a raft connect request
- *
- ******************************************************************************/
-
-TEST_SUITE(connect);
-
-struct connect_fixture
-{
-	FIXTURE;
-};
-
-TEST_SETUP(connect)
-{
-	struct connect_fixture *f = munit_malloc(sizeof *f);
-	SETUP;
-	HANDSHAKE;
-	return f;
-}
-
-TEST_TEAR_DOWN(connect)
-{
-	struct connect_fixture *f = data;
-	TEAR_DOWN;
-	free(f);
-}
-
-TEST_CASE(connect, success, NULL)
-{
-	struct connect_fixture *f = data;
-	(void)params;
-	CONNECT(2, "2");
 	return MUNIT_OK;
 }
