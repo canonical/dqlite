@@ -30,6 +30,9 @@
 
 #define N_SERVERS 3
 
+#define V1 0
+#define V2 1
+
 struct server
 {
 	struct logger logger;
@@ -44,7 +47,7 @@ struct server
 	struct raft_fsm fsms[N_SERVERS];  \
 	struct raft_fixture cluster;
 
-#define SETUP_CLUSTER                                                       \
+#define SETUP_CLUSTER(VERSION)                                              \
 	{                                                                   \
 		struct raft_configuration _configuration;                   \
 		unsigned _i;                                                \
@@ -54,7 +57,7 @@ struct server
 		_rv = raft_fixture_init(&f->cluster, N_SERVERS, f->fsms);   \
 		munit_assert_int(_rv, ==, 0);                               \
 		for (_i = 0; _i < N_SERVERS; _i++) {                        \
-			SETUP_SERVER(_i);                                   \
+			SETUP_SERVER(_i, VERSION);                          \
 		}                                                           \
 		_rv = raft_fixture_configuration(&f->cluster, N_SERVERS,    \
 						 &_configuration);          \
@@ -66,7 +69,7 @@ struct server
 		munit_assert_int(_rv, ==, 0);                               \
 	}
 
-#define SETUP_SERVER(I)                                                        \
+#define SETUP_SERVER(I, VERSION)                                               \
 	{                                                                      \
 		struct server *_s = &f->servers[I];                            \
 		struct raft_fsm *_fsm = &f->fsms[I];                           \
@@ -81,15 +84,24 @@ struct server
 		_rc = config__init(&_s->config, I + 1, address);               \
 		munit_assert_int(_rc, ==, 0);                                  \
                                                                                \
-		_rc = VfsInitV1(&_s->vfs, _s->config.name);                    \
-		munit_assert_int(_rc, ==, 0);                                  \
-                                                                               \
 		registry__init(&_s->registry, &_s->config);                    \
                                                                                \
-		_rc = fsm__init(_fsm, &_s->config, &_s->registry);             \
-		munit_assert_int(_rc, ==, 0);                                  \
+		if (VERSION == V2) {                                           \
+			_s->config.v2 = true;                                  \
+			_rc = VfsInitV2(&_s->vfs, _s->config.name);            \
+			munit_assert_int(_rc, ==, 0);                          \
+			_rc = sqlite3_vfs_register(&_s->vfs, 0);               \
+			munit_assert_int(_rc, ==, 0);                          \
+		} else {                                                       \
+			_rc = VfsInitV1(&_s->vfs, _s->config.name);            \
+			munit_assert_int(_rc, ==, 0);                          \
                                                                                \
-		_rc = replication__init(&_s->replication, &_s->config, _raft); \
+			_rc = replication__init(&_s->replication, &_s->config, \
+						_raft);                        \
+			munit_assert_int(_rc, ==, 0);                          \
+		}                                                              \
+                                                                               \
+		_rc = fsm__init(_fsm, &_s->config, &_s->registry);             \
 		munit_assert_int(_rc, ==, 0);                                  \
 	}
 
@@ -111,6 +123,7 @@ struct server
 		replication__close(&s->replication); \
 		fsm__close(fsm);                     \
 		registry__close(&s->registry);       \
+		sqlite3_vfs_unregister(&s->vfs);     \
 		VfsClose(&s->vfs);                   \
 		config__close(&s->config);           \
 		test_logger_tear_down(&s->logger);   \

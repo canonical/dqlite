@@ -19,7 +19,7 @@ TEST_MODULE(replication);
 
 #define SETUP                             \
 	unsigned i;                       \
-	SETUP_CLUSTER                     \
+	SETUP_CLUSTER(V1)                 \
 	for (i = 0; i < N_SERVERS; i++) { \
 		SETUP_LEADER(i);          \
 	}
