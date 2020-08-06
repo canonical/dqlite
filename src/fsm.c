@@ -31,6 +31,41 @@ static int apply_open(struct fsm *f, const struct command_open *c)
 	return 0;
 }
 
+static int apply_frames_v2(struct fsm *f, const struct command_frames *c)
+{
+	struct db *db;
+	sqlite3_vfs *vfs;
+	unsigned long *page_numbers;
+	void *pages;
+	int rv;
+
+	rv = registry__db_get(f->registry, c->filename, &db);
+	if (rv != 0) {
+		return rv;
+	}
+
+	if (db->follower == NULL) {
+		rv = db__open_follower(db);
+		if (rv != 0) {
+			return rv;
+		}
+	}
+
+	rv = command_frames__page_numbers2(c, &page_numbers);
+	if (rv != 0) {
+		return rv;
+	}
+
+	command_frames__pages(c, &pages);
+
+	vfs = sqlite3_vfs_find(db->config->name);
+	VfsCommit(vfs, db->filename, c->frames.n_pages, page_numbers, pages);
+
+	sqlite3_free(page_numbers);
+
+	return 0;
+}
+
 static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
 	struct db *db;
@@ -39,6 +74,10 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	void *pages;
 	bool is_begin = true;
 	int rc;
+
+	if (f->v2) {
+		return apply_frames_v2(f, c);
+	}
 
 	rc = registry__db_get(f->registry, c->filename, &db);
 	assert(rc == 0); /* We have registered this filename before */
@@ -188,6 +227,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 		// errorf(f->logger, "fsm: decode command: %d", rc);
 		goto err;
 	}
+
 	switch (type) {
 		case COMMAND_OPEN:
 			rc = apply_open(f, command);

@@ -7,6 +7,7 @@
 #include "command.h"
 #include "format.h"
 #include "leader.h"
+#include "vfs.h"
 
 #define LOOP_CORO_STACK_SIZE 1024 * 1024 /* TODO: make this configurable? */
 
@@ -279,6 +280,139 @@ void leader__close(struct leader *l)
 	QUEUE__REMOVE(&l->queue);
 }
 
+static void leaderApplyFramesCb(struct raft_apply *req,
+				int status,
+				void *result)
+{
+	struct apply *apply = req->data;
+	struct leader *l = apply->leader;
+
+	(void)result;
+
+	if (status != 0) {
+		sqlite3_vfs *vfs = sqlite3_vfs_find(l->db->config->name);
+		switch (status) {
+			case RAFT_LEADERSHIPLOST:
+				l->exec->status = SQLITE_IOERR_LEADERSHIP_LOST;
+				break;
+			case RAFT_NOSPACE:
+				l->exec->status = SQLITE_IOERR_WRITE;
+				break;
+			case RAFT_SHUTDOWN:
+				/* If we got here it means we have manually
+				 * fired the apply callback from
+				 * gateway__close(). In this case we don't
+				 * free() the apply object, since it will be
+				 * freed when the callback is fired again by
+				 * raft.
+				 *
+				 * TODO: we should instead make gatewa__close()
+				 * itself asynchronous. */
+				apply->leader = NULL;
+				l->exec->status = SQLITE_ABORT;
+				goto finish;
+				break;
+			default:
+				l->exec->status = SQLITE_IOERR;
+				break;
+		}
+		VfsAbort(vfs, l->db->filename);
+	}
+
+	raft_free(apply);
+
+ finish:
+	l->exec->done = true;
+	maybeExecDone(l->exec);
+}
+
+static int leaderApplyFrames(struct exec *req,
+			     dqlite_vfs_frame *frames,
+			     unsigned n)
+{
+	struct leader *l = req->leader;
+	struct db *db = l->db;
+	struct command_frames2 c;
+	struct raft_buffer buf;
+	struct apply *apply;
+	int rv;
+
+	c.filename = db->filename;
+	c.tx_id = 0;
+	c.truncate = 0;
+	c.is_commit = 1;
+	c.frames.n_pages = (uint32_t)n;
+	c.frames.page_size = (uint16_t)db->config->page_size;
+	c.frames.data = frames;
+
+	apply = raft_malloc(sizeof *req);
+	if (apply == NULL) {
+		rv = DQLITE_NOMEM;
+		goto err;
+	}
+
+	rv = command__encode(COMMAND_FRAMES2, &c, &buf);
+	if (rv != 0) {
+		goto err_after_apply_alloc;
+	}
+
+	apply->leader = req->leader;
+	apply->req.data = apply;
+	apply->type = COMMAND_FRAMES;
+
+	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
+	if (rv != 0) {
+		goto err_after_command_encode;
+	}
+
+	return 0;
+
+err_after_command_encode:
+	raft_free(buf.base);
+err_after_apply_alloc:
+	raft_free(apply);
+err:
+	assert(rv == 0);
+	return rv;
+}
+
+static void leaderExecV2(struct exec *req)
+{
+	struct leader *l = req->leader;
+	struct db *db = l->db;
+	sqlite3_vfs *vfs = sqlite3_vfs_find(db->config->name);
+	dqlite_vfs_frame *frames;
+	unsigned n;
+	unsigned i;
+	int rv;
+
+	req->status = sqlite3_step(req->stmt);
+
+	rv = VfsPoll(vfs, l->db->filename, &frames, &n);
+	if (rv != 0 || n == 0) {
+		goto finish;
+	}
+
+	rv = leaderApplyFrames(req, frames, n);
+	for (i = 0; i < n; i++) {
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
+	if (rv != 0) {
+		VfsAbort(vfs, l->db->filename);
+		goto finish;
+	}
+
+	return;
+
+finish:
+	l->exec->done = true;
+	if (rv != 0) {
+		l->exec->status = rv;
+	}
+	maybeExecDone(l->exec);
+}
+
 static void execBarrierCb(struct barrier *barrier, int status)
 {
 	struct exec *req = barrier->data;
@@ -289,9 +423,13 @@ static void execBarrierCb(struct barrier *barrier, int status)
 		maybeExecDone(l->exec);
 		return;
 	}
-	loop_arg_exec = l->exec;
-	co_switch(l->loop);
-	maybeExecDone(l->exec);
+	if (l->db->config->v2) {
+		leaderExecV2(req);
+	} else {
+		loop_arg_exec = l->exec;
+		co_switch(l->loop);
+		maybeExecDone(l->exec);
+	}
 }
 
 int leader__exec(struct leader *l,
