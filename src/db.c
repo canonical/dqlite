@@ -10,6 +10,7 @@
 static int open_follower_conn(const char *filename,
 			      const char *vfs,
 			      unsigned page_size,
+			      bool v2,
 			      sqlite3 **conn);
 
 void db__init(struct db *db, struct config *config, const char *filename)
@@ -43,7 +44,8 @@ int db__open_follower(struct db *db)
 	int rc;
 	assert(db->follower == NULL);
 	rc = open_follower_conn(db->filename, db->config->name,
-				db->config->page_size, &db->follower);
+				db->config->page_size, db->config->v2,
+				&db->follower);
 	if (rc != 0) {
 		return rc;
 	}
@@ -71,6 +73,7 @@ void db__delete_tx(struct db *db)
 static int open_follower_conn(const char *filename,
 			      const char *vfs,
 			      unsigned page_size,
+			      bool v2,
 			      sqlite3 **conn)
 {
 	char pragma[255];
@@ -109,9 +112,11 @@ static int open_follower_conn(const char *filename,
 	}
 
 	/* Set WAL replication. */
-	rc = sqlite3_wal_replication_follower(*conn, "main");
-	if (rc != SQLITE_OK) {
-		goto err_after_open;
+	if (!v2) {
+		rc = sqlite3_wal_replication_follower(*conn, "main");
+		if (rc != SQLITE_OK) {
+			goto err_after_open;
+		}
 	}
 
 	return 0;

@@ -24,18 +24,17 @@ TEST_MODULE(replication_v1);
 		SETUP_LEADER(i);          \
 	}
 
-#define SETUP_LEADER(I)                                   \
-	struct leader *leader = &f->leaders[I];           \
-	struct registry *registry = CLUSTER_REGISTRY(I);  \
-	struct config *config;                            \
-	struct db *db;                                    \
-	int rc2;                                          \
-	config = CLUSTER_CONFIG(i);                       \
-	config->page_size = 512;                          \
-	rc2 = registry__db_get(registry, "test.db", &db); \
-	munit_assert_int(rc2, ==, 0);                     \
-	rc2 = leader__init(leader, db, CLUSTER_RAFT(I));  \
-	munit_assert_int(rc2, ==, 0)
+#define SETUP_LEADER(I)                                           \
+	do {                                                      \
+		struct leader *leader = &f->leaders[I];           \
+		struct registry *registry = CLUSTER_REGISTRY(I);  \
+		struct db *db;                                    \
+		int rc2;                                          \
+		rc2 = registry__db_get(registry, "test.db", &db); \
+		munit_assert_int(rc2, ==, 0);                     \
+		rc2 = leader__init(leader, db, CLUSTER_RAFT(I));  \
+		munit_assert_int(rc2, ==, 0);                     \
+	} while (0)
 
 #define TEAR_DOWN                         \
 	unsigned i;                       \
@@ -44,9 +43,11 @@ TEST_MODULE(replication_v1);
 	}                                 \
 	TEAR_DOWN_CLUSTER
 
-#define TEAR_DOWN_LEADER(I)                     \
-	struct leader *leader = &f->leaders[I]; \
-	leader__close(leader);
+#define TEAR_DOWN_LEADER(I)                             \
+	do {                                            \
+		struct leader *leader = &f->leaders[I]; \
+		leader__close(leader);                  \
+	} while (0)
 
 /******************************************************************************
  *
@@ -332,33 +333,68 @@ struct fixture
 {
 	FIXTURE_CLUSTER;
 	struct leader leaders[N_SERVERS];
+	sqlite3_stmt *stmt;
+	struct exec req;
+	bool invoked;
+	int status;
 };
 
 static void *setUp(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
-	unsigned i;
 	SETUP_CLUSTER(V2);
-	for (i = 0; i < N_SERVERS; i++) {
-		SETUP_LEADER(i);
-	}
+	SETUP_LEADER(0);
+	f->req.data = f;
 	return f;
 }
 
 static void tearDown(void *data)
 {
 	struct fixture *f = data;
-	unsigned i;
-	for (i = 0; i < N_SERVERS; i++) {
-		TEAR_DOWN_LEADER(i);
-	}
+	TEAR_DOWN_LEADER(0);
 	TEAR_DOWN_CLUSTER;
 	free(f);
 }
 
 SUITE(replication)
 
+static void execCb(struct exec *req, int status)
+{
+	struct fixture *f = req->data;
+	f->invoked = true;
+	f->status = status;
+}
+
 TEST(replication, exec, setUp, tearDown, 0, NULL)
 {
+	struct fixture *f = data;
+	int rv;
+
+	CLUSTER_ELECT(0);
+
+	PREPARE(0, "BEGIN");
+	rv = leader__exec(LEADER(0), &f->req, f->stmt, execCb);
+	munit_assert_int(rv, ==, 0);
+	munit_assert_true(f->invoked);
+	munit_assert_int(f->status, ==, SQLITE_DONE);
+	FINALIZE;
+
+	PREPARE(0, "CREATE TABLE test (a  INT)");
+	rv = leader__exec(LEADER(0), &f->req, f->stmt, execCb);
+	munit_assert_int(rv, ==, 0);
+	munit_assert_true(f->invoked);
+	munit_assert_int(f->status, ==, SQLITE_DONE);
+	FINALIZE;
+
+	return MUNIT_OK;
+
+	PREPARE(0, "SELECT * FROM test");
+	FINALIZE;
+
+	SETUP_LEADER(1);
+	PREPARE(1, "SELECT * FROM test");
+	FINALIZE;
+	TEAR_DOWN_LEADER(1);
+
 	return MUNIT_OK;
 }
