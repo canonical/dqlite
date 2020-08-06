@@ -1056,7 +1056,8 @@ static int vfsFileWrite(sqlite3_file *file,
 			rv = vfsDatabaseWrite(f->database, buf, amount, offset);
 			break;
 		case VFS__WAL:
-			rv = vfsWalWrite(&f->database->wal, buf, amount, offset);
+			rv =
+			    vfsWalWrite(&f->database->wal, buf, amount, offset);
 			break;
 		case VFS__JOURNAL:
 			/* Silently swallow writes to the journal */
@@ -1120,8 +1121,8 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 			 * between a header write and a page write. */
 			*size = FORMAT__WAL_HDR_SIZE;
 			*size += (f->database->wal.n_frames *
-				 (FORMAT__WAL_FRAME_HDR_SIZE +
-				  f->database->page_size));
+				  (FORMAT__WAL_FRAME_HDR_SIZE +
+				   f->database->page_size));
 			break;
 	}
 
@@ -1203,7 +1204,8 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 			fnctl[0] = "only WAL mode is supported";
 			return SQLITE_IOERR;
 		}
-		formatWalInitHeader(f->database->wal.hdr, f->database->page_size);
+		formatWalInitHeader(f->database->wal.hdr,
+				    f->database->page_size);
 	}
 
 	/* We're returning NOTFOUND here to tell SQLite that we wish it to go on
@@ -1867,10 +1869,21 @@ void VfsClose(struct sqlite3_vfs *vfs)
 
 static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 {
+	struct vfsFrame *last;
+	uint32_t commit;
 	unsigned i;
 
 	if (w->n_tx == 0) {
-		assert(w->tx == NULL);
+		*frames = NULL;
+		*n = 0;
+		return 0;
+	}
+
+	/* Check if the last frame in the transaction has the commit marker. */
+	last = w->tx[w->n_tx-1];
+	formatWalGetFrameDatabaseSize(last->hdr, &commit);
+
+	if (commit == 0) {
 		*frames = NULL;
 		*n = 0;
 		return 0;
@@ -1926,14 +1939,17 @@ int VfsPoll(sqlite3_vfs *vfs,
 		return 0;
 	}
 
-	rv = vfsShmLock(shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
+	rv = vfsWalPoll(wal, frames, n);
 	if (rv != 0) {
 		return rv;
 	}
 
-	rv = vfsWalPoll(wal, frames, n);
-	if (rv != 0) {
-		return rv;
+	/* If some frames have been written take the write immediately. */
+	if (*n > 0) {
+		rv = vfsShmLock(shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
+		if (rv != 0) {
+			return rv;
+		}
 	}
 
 	return 0;
@@ -2035,7 +2051,8 @@ int VfsCommit(sqlite3_vfs *vfs,
 	return 0;
 }
 
-int VfsAbort(sqlite3_vfs *vfs, const char *filename) {
+int VfsAbort(sqlite3_vfs *vfs, const char *filename)
+{
 	struct vfs *v;
 	struct vfsDatabase *database;
 	int rv;

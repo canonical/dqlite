@@ -330,10 +330,14 @@ TEST(vfs, pollAfterPageStress, setUp, tearDown, 0, NULL)
 		char sql[64];
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
 		EXEC(db, sql);
+		POLL("1", tx);
+		munit_assert_int(tx.n, ==, 0);
 	}
 	for (i = 0; i < 163; i++) {
 		char sql[64];
 		sprintf(sql, "UPDATE test SET n=%d WHERE n=%d", i, i + 1);
+		POLL("1", tx);
+		munit_assert_int(tx.n, ==, 0);
 		EXEC(db, sql);
 	}
 	EXEC(db, "COMMIT");
@@ -391,6 +395,38 @@ TEST(vfs, commitThenRead, setUp, tearDown, 0, NULL)
 
 	return MUNIT_OK;
 }
+
+/* Execute an explicit transaction with BEGIN/COMMIT. */
+TEST(vfs, explicitTransaction, setUp, tearDown, 0, NULL) {
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	OPEN("1", db);
+
+	PREPARE(db, stmt, "BEGIN");
+	STEP(stmt, SQLITE_DONE);
+	POLL("1", tx);
+	munit_assert_int(tx.n, ==, 0);
+	FINALIZE(stmt);
+
+	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
+	STEP(stmt, SQLITE_DONE);
+	POLL("1", tx);
+	munit_assert_int(tx.n, ==, 0);
+	FINALIZE(stmt);
+
+	PREPARE(db, stmt, "COMMIT");
+	STEP(stmt, SQLITE_DONE);
+	POLL("1", tx);
+	munit_assert_int(tx.n, ==, 2);
+	COMMIT("1", tx);
+	DONE(tx);
+	FINALIZE(stmt);
+
+	return MUNIT_OK;
+}
+
 
 /* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
  * then perform another commit and finally run a read transaction and check that
