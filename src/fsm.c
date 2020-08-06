@@ -200,6 +200,16 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 	assert(rv == 0);        /* We have registered this filename before. */
 	assert(db->tx == NULL); /* No transaction is in progress. */
 
+	/* Use a new connection to force re-opening the WAL. */
+	if (f->v2) {
+		sqlite3_close(db->follower);
+		db->follower = NULL;
+		rv = db__open_follower(db);
+		if (rv != 0) {
+			return rv;
+		}
+	}
+
 	rv = sqlite3_wal_checkpoint_v2(
 	    db->follower, "main", SQLITE_CHECKPOINT_TRUNCATE, &size, &ckpt);
 	if (rv != 0) {

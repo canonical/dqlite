@@ -377,6 +377,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	munit_assert_int(rv, ==, 0);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
+	f->invoked = false;
 	FINALIZE;
 
 	PREPARE(0, "CREATE TABLE test (a  INT)");
@@ -384,9 +385,19 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	munit_assert_int(rv, ==, 0);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
+	f->invoked = false;
 	FINALIZE;
 
-	return MUNIT_OK;
+	PREPARE(0, "COMMIT");
+	rv = leader__exec(LEADER(0), &f->req, f->stmt, execCb);
+	munit_assert_int(rv, ==, 0);
+	munit_assert_false(f->invoked);
+	FINALIZE;
+
+	CLUSTER_APPLIED(2);
+
+	munit_assert_true(f->invoked);
+	munit_assert_int(f->status, ==, SQLITE_DONE);
 
 	PREPARE(0, "SELECT * FROM test");
 	FINALIZE;
@@ -395,6 +406,37 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	PREPARE(1, "SELECT * FROM test");
 	FINALIZE;
 	TEAR_DOWN_LEADER(1);
+
+	return MUNIT_OK;
+}
+
+/* If the WAL size grows beyond the configured threshold, checkpoint it. */
+TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	struct config *config = CLUSTER_CONFIG(0);
+	int rv;
+
+	config->checkpoint_threshold = 3;
+
+	CLUSTER_ELECT(0);
+
+	PREPARE(0, "CREATE TABLE test (n  INT)");
+	rv = leader__exec(LEADER(0), &f->req, f->stmt, execCb);
+	munit_assert_int(rv, ==, 0);
+	FINALIZE;
+
+	CLUSTER_APPLIED(2);
+
+	PREPARE(0, "INSERT INTO test(n) VALUES(1)");
+	rv = leader__exec(LEADER(0), &f->req, f->stmt, execCb);
+	munit_assert_int(rv, ==, 0);
+	FINALIZE;
+
+	CLUSTER_APPLIED(4);
+
+	/* The WAL was truncated. */
+	ASSERT_WAL_PAGES(0, 0);
 
 	return MUNIT_OK;
 }

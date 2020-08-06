@@ -34,6 +34,23 @@ SUITE(vfs);
 		munit_assert_int(_rv, ==, SQLITE_OK);                         \
 	} while (0)
 
+/* Return the database file associated with the given connection. */
+#define FILE(DB, FILE)                                                        \
+	do {                                                                  \
+		int _rv;                                                      \
+		_rv = sqlite3_file_control(DB, "main",                        \
+					   SQLITE_FCNTL_FILE_POINTER, &FILE); \
+		munit_assert_int(_rv, ==, SQLITE_OK);                         \
+	} while (0)
+
+/* Acquire or release a SHM lock. */
+#define LOCK(FILE, I, FLAGS)                                       \
+	do {                                                       \
+		int _rv;                                           \
+		_rv = FILE->pMethods->xShmLock(FILE, I, 1, FLAGS); \
+		munit_assert_int(_rv, ==, SQLITE_OK);              \
+	} while (0)
+
 /* Close a database connection. */
 #define CLOSE(DB)                                     \
 	do {                                          \
@@ -397,7 +414,8 @@ TEST(vfs, commitThenRead, setUp, tearDown, 0, NULL)
 }
 
 /* Execute an explicit transaction with BEGIN/COMMIT. */
-TEST(vfs, explicitTransaction, setUp, tearDown, 0, NULL) {
+TEST(vfs, explicitTransaction, setUp, tearDown, 0, NULL)
+{
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
 	struct tx tx;
@@ -426,7 +444,6 @@ TEST(vfs, explicitTransaction, setUp, tearDown, 0, NULL) {
 
 	return MUNIT_OK;
 }
-
 
 /* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
  * then perform another commit and finally run a read transaction and check that
@@ -641,6 +658,43 @@ TEST(vfs, checkpoint, setUp, tearDown, 0, NULL)
 	FINALIZE(stmt);
 
 	CLOSE(db1);
+
+	return MUNIT_OK;
+}
+
+/* Acquiring all locks prevents both read and write transactions. */
+TEST(vfs, lock, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_file *file;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+	unsigned i;
+
+	OPEN("1", db);
+
+	EXEC(db, "CREATE TABLE test(n INT)");
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
+
+	FILE(db, file);
+
+	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
+		LOCK(file, i, SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);
+	}
+
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_PROTOCOL);
+	RESET(stmt, SQLITE_PROTOCOL);
+	FINALIZE(stmt);
+
+	PREPARE(db, stmt, "INSERT INTO test(n) VALUES(123)");
+	STEP(stmt, SQLITE_PROTOCOL);
+	RESET(stmt, SQLITE_PROTOCOL);
+	FINALIZE(stmt);
+
+	CLOSE(db);
 
 	return MUNIT_OK;
 }
