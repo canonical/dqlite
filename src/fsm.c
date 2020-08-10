@@ -37,6 +37,7 @@ static int apply_frames_v2(struct fsm *f, const struct command_frames *c)
 	sqlite3_vfs *vfs;
 	unsigned long *page_numbers;
 	void *pages;
+	int exists;
 	int rv;
 
 	rv = registry__db_get(f->registry, c->filename, &db);
@@ -44,11 +45,20 @@ static int apply_frames_v2(struct fsm *f, const struct command_frames *c)
 		return rv;
 	}
 
-	if (db->follower == NULL) {
+	vfs = sqlite3_vfs_find(db->config->name);
+
+	/* Check if the database file exists, and create it by opening a
+	 * connection if it doesn't. */
+	rv = vfs->xAccess(vfs, c->filename, 0, &exists);
+	assert(rv == 0);
+
+	if (!exists) {
 		rv = db__open_follower(db);
 		if (rv != 0) {
 			return rv;
 		}
+		sqlite3_close(db->follower);
+		db->follower = NULL;
 	}
 
 	rv = command_frames__page_numbers2(c, &page_numbers);
@@ -58,7 +68,6 @@ static int apply_frames_v2(struct fsm *f, const struct command_frames *c)
 
 	command_frames__pages(c, &pages);
 
-	vfs = sqlite3_vfs_find(db->config->name);
 	VfsCommit(vfs, db->filename, c->frames.n_pages, page_numbers, pages);
 
 	sqlite3_free(page_numbers);
