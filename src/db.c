@@ -112,7 +112,13 @@ static int open_follower_conn(const char *filename,
 	}
 
 	/* Set WAL replication. */
-	if (!v2) {
+	if (v2) {
+		rc = sqlite3_db_config(*conn, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+				       1, NULL);
+		if (rc != SQLITE_OK) {
+			goto err_after_open;
+		}
+	} else {
 		rc = sqlite3_wal_replication_follower(*conn, "main");
 		if (rc != SQLITE_OK) {
 			goto err_after_open;

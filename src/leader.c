@@ -156,7 +156,13 @@ static int openConnection(const char *filename,
 		goto err_after_open;
 	}
 
-	if (!v2) {
+	if (v2) {
+		rc = sqlite3_db_config(*conn, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+				       1, NULL);
+		if (rc != SQLITE_OK) {
+			goto err_after_open;
+		}
+	} else {
 		/* Set WAL replication. */
 		rc = sqlite3_wal_replication_leader(*conn, "main", replication,
 						    replication_arg);
