@@ -1136,10 +1136,10 @@ TEST(VfsTruncate, wal, setUp, tearDown, 0, NULL)
 	rc = file1->pMethods->xWrite(file1, buf_header_main, 100, 0);
 	munit_assert_int(rc, ==, 0);
 
-	/* Initial size of the WAL file is equal to the header length. */
+	/* Initial size of the WAL file is zero. */
 	rc = file2->pMethods->xFileSize(file2, &size);
 	munit_assert_int(rc, ==, 0);
-	munit_assert_int(size, ==, 32);
+	munit_assert_int(size, ==, 0);
 
 	/* Write the WAL header. */
 	rc = file2->pMethods->xWrite(file2, buf_header_wal, 32, 0);
@@ -1172,10 +1172,10 @@ TEST(VfsTruncate, wal, setUp, tearDown, 0, NULL)
 	rc = file2->pMethods->xTruncate(file2, 0);
 	munit_assert_int(rc, ==, 0);
 
-	/* The size is equal to the header size. */
+	/* The size is zero. */
 	rc = file2->pMethods->xFileSize(file2, &size);
 	munit_assert_int(rc, ==, 0);
-	munit_assert_int(size, ==, 32);
+	munit_assert_int(size, ==, 0);
 
 	free(buf_header_wal_frame_2);
 	free(buf_header_wal_frame_1);
