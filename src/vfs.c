@@ -1119,10 +1119,13 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 		case VFS__WAL:
 			/* TODO? here we assume that FileSize() is never invoked
 			 * between a header write and a page write. */
-			*size = FORMAT__WAL_HDR_SIZE;
-			*size += (f->database->wal.n_frames *
-				  (FORMAT__WAL_FRAME_HDR_SIZE +
-				   f->database->page_size));
+			*size = 0;
+			if (f->database->wal.n_frames > 0) {
+				*size += FORMAT__WAL_HDR_SIZE;
+				*size += (f->database->wal.n_frames *
+					  (FORMAT__WAL_FRAME_HDR_SIZE +
+					   f->database->page_size));
+			}
 			break;
 	}
 
