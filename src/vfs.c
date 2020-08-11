@@ -1883,7 +1883,7 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 	}
 
 	/* Check if the last frame in the transaction has the commit marker. */
-	last = w->tx[w->n_tx-1];
+	last = w->tx[w->n_tx - 1];
 	formatWalGetFrameDatabaseSize(last->hdr, &commit);
 
 	if (commit == 0) {
@@ -1966,19 +1966,26 @@ static int vfsWalCommit(struct vfsWal *w,
 	struct vfsFrame **frames; /* New frames array. */
 	struct vfsShm *shm;
 	unsigned page_size = w->database->page_size;
+	uint32_t database_size = 0;
 	unsigned i;
 	unsigned j;
 	bool native;
 	uint32_t salt[2];
 	uint32_t checksum[2];
 
+	/* Get the salt from the WAL header. */
 	formatWalGetNativeChecksum(w->hdr, &native);
 	formatWalGetSalt(w->hdr, salt);
+
+	/* Get the checksum either from the WAL header if there are no frames or
+	 * from the frame header of the last frame (and in that case get the
+	 * current database size in pages as well. */
 	if (w->n_frames == 0) {
 		formatWalGetChecksums(w->hdr, checksum);
 	} else {
 		struct vfsFrame *frame = w->frames[w->n_frames - 1];
 		formatWalGetFrameChecksums(frame->hdr, checksum);
+		formatWalGetFrameDatabaseSize(frame->hdr, &database_size);
 	}
 
 	frames =
@@ -1990,21 +1997,26 @@ static int vfsWalCommit(struct vfsWal *w,
 
 	for (i = 0; i < n; i++) {
 		struct vfsFrame *frame = vfsFrameCreate(page_size);
-		uint32_t database_size;
 		uint32_t page_number = (uint32_t)page_numbers[i];
+		uint32_t commit = 0;
 		void *page = data + i * page_size;
 
 		if (frame == NULL) {
 			goto oom_after_frames_alloc;
 		}
 
+		if (page_number > database_size) {
+			database_size = page_number;
+		}
+
 		/* For commit records, the size of the database file in pages
 		 * after the commit. For all other records, zero. */
-		database_size = i == n - 1 ? page_number : 0;
+		if (i == n - 1) {
+			commit = database_size;
+		}
 
-		formatWalPutFrameHeader(native, page_number, database_size,
-					salt, checksum, frame->hdr, page,
-					page_size);
+		formatWalPutFrameHeader(native, page_number, commit, salt,
+					checksum, frame->hdr, page, page_size);
 		memcpy(frame->buf, page, page_size);
 
 		frames[w->n_frames + i] = frame;

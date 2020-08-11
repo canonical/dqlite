@@ -14,7 +14,10 @@ SUITE(vfs);
 
 #define PRAGMA(DB, COMMAND)                                          \
 	_rv = sqlite3_exec(DB, "PRAGMA " COMMAND, NULL, NULL, NULL); \
-	munit_assert_int(_rv, ==, SQLITE_OK);
+	if (_rv != SQLITE_OK) {                                      \
+		munit_errorf("PRAGMA " COMMAND ": %s (%d)",          \
+			     sqlite3_errmsg(DB), _rv);               \
+	}
 
 /* Open a new database connection on the given VFS. */
 #define OPEN(VFS, DB)                                                         \
@@ -122,7 +125,6 @@ static void tearDown(void *data)
 		if (_rv != SQLITE_OK) {                             \
 			munit_errorf("prepare '%s': %s (%d)", SQL,  \
 				     sqlite3_errmsg(DB), _rv);      \
-			munit_assert_int(_rv, ==, SQLITE_OK);       \
 		}                                                   \
 	} while (0)
 
@@ -589,6 +591,43 @@ TEST(vfs, commitFailover, setUp, tearDown, 0, NULL)
 	PREPARE(db, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
 	FINALIZE(stmt);
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Execute multiple commits and re-open the database. */
+TEST(vfs, multipleCommits, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	OPEN("1", db);
+
+	EXEC(db, "CREATE TABLE foo(id INT)");
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
+
+	EXEC(db, "CREATE TABLE bar (id INT)");
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
+
+	EXEC(db, "INSERT INTO foo(id) VALUES(1)");
+	POLL("1", tx);
+	COMMIT("1", tx);
+	DONE(tx);
+
+	CLOSE(db);
+
+	OPEN("1", db);
+
+	PREPARE(db, stmt, "SELECT * FROM sqlite_master");
+	STEP(stmt, SQLITE_ROW);
+	FINALIZE(stmt);
+
 	CLOSE(db);
 
 	return MUNIT_OK;
