@@ -476,7 +476,7 @@ TEST(VfsOpen, oomFilename, setUp, tearDown, 0, NULL)
 	test_heap_fault_enable();
 
 	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
-	munit_assert_int(rc, ==, SQLITE_NOMEM);
+	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 
 	free(file);
 
