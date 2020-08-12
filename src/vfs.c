@@ -169,36 +169,6 @@ static void vfsDatabaseInit(struct vfsDatabase *d, int version)
 	d->version = version;
 }
 
-/* Create a database object. */
-static struct vfsDatabase *vfsDatabaseCreate(const char *name, int version)
-{
-	struct vfsDatabase *d;
-
-	assert(name != NULL);
-
-	d = sqlite3_malloc(sizeof *d);
-	if (d == NULL) {
-		goto oom;
-	}
-
-	d->name = sqlite3_malloc64(strlen(name) + 1);
-	if (d->name == NULL) {
-		goto oom_after_database_malloc;
-	}
-	strcpy(d->name, name);
-
-	d->refcount = 0;
-
-	vfsDatabaseInit(d, version);
-
-	return d;
-
-oom_after_database_malloc:
-	sqlite3_free(d);
-oom:
-	return NULL;
-}
-
 /* Release all memory used by a WAL object. */
 static void vfsWalClose(struct vfsWal *w)
 {
@@ -1512,6 +1482,48 @@ static const sqlite3_io_methods vfsFileMethods = {
     0,
 };
 
+/* Create a database object and add it to the databases array. */
+static struct vfsDatabase *vfsCreateDatabase(struct vfs *v, const char *name)
+{
+	unsigned n = v->n_databases + 1;
+	struct vfsDatabase **databases;
+	struct vfsDatabase *d;
+
+	assert(name != NULL);
+
+	/* Create a new entry. */
+	databases = sqlite3_realloc64(v->databases, sizeof *databases * n);
+	if (databases == NULL) {
+		goto oom;
+	}
+	v->databases = databases;
+
+	d = sqlite3_malloc(sizeof *d);
+	if (d == NULL) {
+		goto oom;
+	}
+
+	d->name = sqlite3_malloc64(strlen(name) + 1);
+	if (d->name == NULL) {
+		goto oom_after_database_malloc;
+	}
+	strcpy(d->name, name);
+
+	d->refcount = 0;
+
+	vfsDatabaseInit(d, v->version);
+
+	v->databases[n - 1] = d;
+	v->n_databases = n;
+
+	return d;
+
+oom_after_database_malloc:
+	sqlite3_free(d);
+oom:
+	return NULL;
+}
+
 static int vfsOpen(sqlite3_vfs *vfs,
 		   const char *filename,
 		   sqlite3_file *file,
@@ -1610,9 +1622,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	}
 
 	if (!exists) {
-		struct vfsDatabase **databases;
-		unsigned n = v->n_databases + 1;
-
 		/* When opening a WAL or journal file we expect the main
 		 * database file to have already been created. */
 		if (type == VFS__WAL || type == VFS__JOURNAL) {
@@ -1628,25 +1637,12 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			goto err;
 		}
 
-		/* Create a new entry. */
-		databases =
-		    sqlite3_realloc64(v->databases, sizeof *databases * n);
-		if (databases == NULL) {
+		database = vfsCreateDatabase(v, filename);
+		if (database == NULL) {
 			v->error = ENOMEM;
 			rc = SQLITE_CANTOPEN;
 			goto err;
 		}
-		v->databases = databases;
-
-		database = vfsDatabaseCreate(filename, v->version);
-		if (database == NULL) {
-			v->error = ENOMEM;
-			rc = SQLITE_NOMEM;
-			goto err;
-		}
-
-		v->databases[n - 1] = database;
-		v->n_databases = n;
 	}
 
 	// Populate the new file handle.
