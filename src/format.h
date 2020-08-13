@@ -85,6 +85,8 @@ void formatWalPutIndexHeader(uint8_t *header,
 			     uint32_t n_pages,
 			     uint32_t frame_checksum[2]);
 
+void formatWalInvalidateIndexHeader(uint8_t *header);
+
 /* Extract the page number from a WAL frame header. */
 void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number);
 
