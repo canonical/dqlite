@@ -1314,7 +1314,6 @@ static int vfsShmMap(struct vfsShm *s,
 
 	if (region_index == 0 && region != NULL) {
 		s->refcount++;
-
 	}
 
 	return SQLITE_OK;
@@ -1454,7 +1453,8 @@ static void vfsFileShmBarrier(sqlite3_file *file)
 	 * defined, see sqliteInt.h). */
 }
 
-static void vfsShmUnmap(struct vfsShm *s) {
+static void vfsShmUnmap(struct vfsShm *s)
+{
 	s->refcount--;
 	if (s->refcount == 0) {
 		vfsShmReset(s);
@@ -2349,6 +2349,19 @@ int VfsFileWrite(const char *vfs_name,
 		offset += page_size;
 		pos += page_size;
 	};
+
+	if (is_wal) {
+		struct vfsFile *f = (struct vfsFile *)file;
+		if (f->database->version == VFS__V2) {
+			struct vfsWal *w = &f->database->wal;
+			assert(w->frames == NULL);
+			assert(w->n_frames == 0);
+			w->frames = w->tx;
+			w->n_frames = w->n_tx;
+			w->tx = NULL;
+			w->n_tx = 0;
+		}
+	}
 
 	file->pMethods->xClose(file);
 	sqlite3_free(file);
