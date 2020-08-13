@@ -211,8 +211,6 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 
 	/* Use a new connection to force re-opening the WAL. */
 	if (f->v2) {
-		sqlite3_close(db->follower);
-		db->follower = NULL;
 		rv = db__open_follower(db);
 		if (rv != 0) {
 			return rv;
@@ -415,9 +413,11 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	cursor->p += header.wal_size;
 	sqlite3_free(walFilename);
 
-	rv = db__open_follower(db);
-	if (rv != 0) {
-		return rv;
+	if (!f->v2) {
+		rv = db__open_follower(db);
+		if (rv != 0) {
+			return rv;
+		}
 	}
 
 	return 0;
