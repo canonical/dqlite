@@ -273,3 +273,9 @@ void formatWalPutIndexHeader(uint8_t *header,
 	memcpy(header + FORMAT__WAL_IDX_HDR_SIZE, header,
 	       FORMAT__WAL_IDX_HDR_SIZE);
 }
+
+void formatWalInvalidateIndexHeader(uint8_t *header) {
+	header[0] = 1;
+	header[FORMAT__WAL_IDX_HDR_SIZE] = 0;
+}
+
