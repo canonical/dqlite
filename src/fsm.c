@@ -222,6 +222,10 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 	if (rv != 0) {
 		return rv;
 	}
+	if (f->v2) {
+		sqlite3_close(db->follower);
+		db->follower = NULL;
+	}
 
 	/* Since no reader transaction is in progress, we must be able to
 	 * checkpoint the entire WAL */
