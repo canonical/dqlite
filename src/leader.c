@@ -343,6 +343,9 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	/* Get the content of the read marks. */
 	formatWalGetReadMarks((const uint8_t *)region, read_marks);
 
+	rv = main->pMethods->xShmUnmap(main, 0);
+	assert(rv == SQLITE_OK); /* Should never fail */
+
 	/* Try to acquire all locks. */
 	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
 		int flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
