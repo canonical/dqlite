@@ -205,6 +205,30 @@ void formatWalInitHeader(uint8_t *header, unsigned page_size)
 	formatPut32(checksum[1], header + 28);
 }
 
+void formatWalRestartHeader(uint8_t *header) {
+	uint32_t checksum[2] = {0, 0};
+	uint32_t checkpoint;
+	uint32_t salt1;
+
+	/* Increase the checkpoint sequence. */
+	formatGet32(&header[12], &checkpoint);
+	checkpoint++;
+	formatPut32(checkpoint, &header[12]);
+
+	/* Increase salt1. */
+	formatGet32(&header[16], &salt1);
+	salt1++;
+	formatPut32(salt1, &header[16]);
+
+	/* Generate a random salt2. */
+	sqlite3_randomness(4, &header[20]);
+
+	/* Update the checksum. */
+	formatWalChecksumBytes(true, header, 24, checksum, checksum);
+	formatPut32(checksum[0], header + 24);
+	formatPut32(checksum[1], header + 28);
+}
+
 void formatWalPutFrameHeader(bool native,
 			     uint32_t page_number,
 			     uint32_t database_size,
