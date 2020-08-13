@@ -1971,7 +1971,7 @@ static int vfsWalCommit(struct vfsWal *w,
 	struct vfsFrame **frames; /* New frames array. */
 	struct vfsShm *shm;
 	unsigned page_size = w->database->page_size;
-	uint32_t database_size = 0;
+	uint32_t database_size = w->database->n_pages;
 	unsigned i;
 	unsigned j;
 	bool native;
@@ -2060,6 +2060,8 @@ int VfsCommit(sqlite3_vfs *vfs,
 
 	v = (struct vfs *)(vfs->pAppData);
 	database = vfsDatabaseLookup(v, filename);
+
+	assert(database != NULL);
 
 	wal = &database->wal;
 
