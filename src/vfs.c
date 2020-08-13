@@ -26,7 +26,7 @@ struct vfsShm
 {
 	void **regions;     /* Pointers to shared memory regions. */
 	unsigned n_regions; /* Number of shared memory regions. */
-
+	unsigned refcount;  /* Number of outstanding mappings. */
 	unsigned shared[SQLITE_SHM_NLOCK];    /* Count of shared locks */
 	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
 };
@@ -110,6 +110,7 @@ static void vfsShmInit(struct vfsShm *s)
 
 	s->regions = NULL;
 	s->n_regions = 0;
+	s->refcount = 0;
 
 	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
 		s->shared[i] = 0;
@@ -686,11 +687,6 @@ static int vfsFileClose(sqlite3_file *file)
 
 	assert(f->database->refcount);
 	f->database->refcount--;
-
-	/* If we got zero references, reset the shared memory mapping. */
-	if (f->database->refcount == 0 && f->type == VFS__DATABASE) {
-		vfsShmReset(&f->database->shm);
-	}
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
 		rc = vfsDeleteDatabase(v, f->database->name);
@@ -1316,6 +1312,11 @@ static int vfsShmMap(struct vfsShm *s,
 
 	*out = region;
 
+	if (region_index == 0 && region != NULL) {
+		s->refcount++;
+
+	}
+
 	return SQLITE_OK;
 
 err_after_region_malloc:
@@ -1453,10 +1454,18 @@ static void vfsFileShmBarrier(sqlite3_file *file)
 	 * defined, see sqliteInt.h). */
 }
 
+static void vfsShmUnmap(struct vfsShm *s) {
+	s->refcount--;
+	if (s->refcount == 0) {
+		vfsShmReset(s);
+	}
+}
+
 static int vfsFileShmUnmap(sqlite3_file *file, int delete_flag)
 {
-	(void)file;
+	struct vfsFile *f = (struct vfsFile *)file;
 	(void)delete_flag;
+	vfsShmUnmap(&f->database->shm);
 	return SQLITE_OK;
 }
 
