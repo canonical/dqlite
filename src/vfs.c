@@ -2034,7 +2034,12 @@ static int vfsWalCommit(struct vfsWal *w,
 	shm = &w->database->shm;
 	if (shm->exclusive[0] == 1) {
 		shm->exclusive[0] = 0;
+		assert(shm->n_regions > 0);
 		vfsWalRewriteIndexHeader(w);
+	} else {
+		if (shm->n_regions > 0) {
+			formatWalInvalidateIndexHeader(shm->regions[0]);
+		}
 	}
 
 	return 0;
