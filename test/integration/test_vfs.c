@@ -10,14 +10,6 @@ SUITE(vfs);
 
 #define N_VFS 2
 
-/* Hold WAL replication information about a single transaction. */
-struct tx
-{
-	unsigned n;
-	unsigned long *page_numbers;
-	void *frames;
-};
-
 struct fixture
 {
 	struct sqlite3_vfs vfs[N_VFS]; /* A "cluster" of VFS objects. */
@@ -89,23 +81,6 @@ static void tearDown(void *data)
 		munit_assert_int(_rv, ==, SQLITE_OK);                         \
 	} while (0)
 
-/* Return the database file associated with the given connection. */
-#define FILE(DB, FILE)                                                        \
-	do {                                                                  \
-		int _rv;                                                      \
-		_rv = sqlite3_file_control(DB, "main",                        \
-					   SQLITE_FCNTL_FILE_POINTER, &FILE); \
-		munit_assert_int(_rv, ==, SQLITE_OK);                         \
-	} while (0)
-
-/* Acquire or release a SHM lock. */
-#define LOCK(FILE, I, FLAGS)                                       \
-	do {                                                       \
-		int _rv;                                           \
-		_rv = FILE->pMethods->xShmLock(FILE, I, 1, FLAGS); \
-		munit_assert_int(_rv, ==, SQLITE_OK);              \
-	} while (0)
-
 /* Close a database connection. */
 #define CLOSE(DB)                                     \
 	do {                                          \
@@ -162,6 +137,14 @@ static void tearDown(void *data)
 		}                                                             \
 	} while (0)
 
+/* Hold WAL replication information about a single transaction. */
+struct tx
+{
+	unsigned n;
+	unsigned long *page_numbers;
+	void *frames;
+};
+
 /* Poll the given VFS object and serialize the transaction data into the given
  * tx object. */
 #define POLL(VFS, TX)                                                      \
@@ -188,14 +171,14 @@ static void tearDown(void *data)
 		}                                                          \
 	} while (0)
 
-/* Commit WAL frames to the given VFS. */
-#define COMMIT(VFS, TX)                                                        \
-	do {                                                                   \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                      \
-		int _rv;                                                       \
-		_rv = dqlite_vfs_commit(vfs, "test.db", TX.n, TX.page_numbers, \
-					TX.frames);                            \
-		munit_assert_int(_rv, ==, 0);                                  \
+/* Apply WAL frames to the given VFS. */
+#define APPLY(VFS, TX)                                                        \
+	do {                                                                  \
+		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                     \
+		int _rv;                                                      \
+		_rv = dqlite_vfs_apply(vfs, "test.db", TX.n, TX.page_numbers, \
+				       TX.frames);                            \
+		munit_assert_int(_rv, ==, 0);                                 \
 	} while (0)
 
 /* Abort a transaction on the given VFS. */
@@ -237,9 +220,10 @@ TEST(vfs, open, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Write transactions are not committed synchronously, so they are not visible
- * from other connections yet when sqlite3_step() returns. */
-TEST(vfs, unreplicatedCommitIsNotVisible, setUp, tearDown, 0, NULL)
+/* New frames appended to the WAL file by a sqlite3_step() call that has
+ * triggered a write transactions are not immediately visible to other
+ * connections after sqlite3_step() has returned. */
+TEST(vfs, writeTransactionNotImmediatelyVisible, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -252,6 +236,7 @@ TEST(vfs, unreplicatedCommitIsNotVisible, setUp, tearDown, 0, NULL)
 	OPEN("1", db2);
 	rv = sqlite3_prepare_v2(db2, "SELECT * FROM test", -1, &stmt, NULL);
 	munit_assert_int(rv, ==, SQLITE_ERROR);
+	munit_assert_string_equal(sqlite3_errmsg(db2), "no such table: test");
 
 	CLOSE(db1);
 	CLOSE(db2);
@@ -259,8 +244,8 @@ TEST(vfs, unreplicatedCommitIsNotVisible, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* A call to dqlite_vfs_poll() after a sqlite3_step() triggered a write
- * transaction returns the newly appended WAL frames. */
+/* Invoking dqlite_vfs_poll() after a call to sqlite3_step() has triggered a
+ * write transaction returns the newly appended WAL frames. */
 TEST(vfs, pollAfterWriteTransaction, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
@@ -289,9 +274,11 @@ TEST(vfs, pollAfterWriteTransaction, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* A call to dqlite_vfs_poll() after a sqlite3_step() triggered a write
- * transaction sets a write lock on the WAL. */
-TEST(vfs, pollWriteLock, setUp, tearDown, 0, NULL)
+/* Invoking dqlite_vfs_poll() after a call to sqlite3_step() has triggered a
+ * write transaction sets a write lock on the WAL, so calls to sqlite3_step()
+ * from other connections return SQLITE_BUSY if they try to start a write
+ * transaction. */
+TEST(vfs, pollAcquireWriteLock, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -322,39 +309,38 @@ TEST(vfs, pollWriteLock, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* If a the page cache limit is exceeded during write transaction, some
- * non-commit WAL frames will be written before the final commit. */
+/* If the page cache limit is exceeded during a call to sqlite3_step() that has
+ * triggered a write transaction, some WAL frames will be written and then
+ * overwritten before the final commit. Only the final version of the frame is
+ * included in the set returned by dqlite_vfs_poll(). */
 TEST(vfs, pollAfterPageStress, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
 	struct tx tx;
 	unsigned i;
+	char sql[64];
 
 	OPEN("1", db);
 
 	EXEC(db, "CREATE TABLE test(n INT)");
 
 	POLL("1", tx);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 
-	/* Start a transaction and accumulate enough dirty data to fill the page
-	 * cache and trigger a WAL write of the uncommitted frames. */
 	EXEC(db, "BEGIN");
 	for (i = 0; i < 163; i++) {
-		char sql[64];
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
 		EXEC(db, sql);
 		POLL("1", tx);
 		munit_assert_int(tx.n, ==, 0);
 	}
 	for (i = 0; i < 163; i++) {
-		char sql[64];
 		sprintf(sql, "UPDATE test SET n=%d WHERE n=%d", i, i + 1);
+		EXEC(db, sql);
 		POLL("1", tx);
 		munit_assert_int(tx.n, ==, 0);
-		EXEC(db, sql);
 	}
 	EXEC(db, "COMMIT");
 
@@ -369,7 +355,7 @@ TEST(vfs, pollAfterPageStress, setUp, tearDown, 0, NULL)
 	munit_assert_int(tx.page_numbers[3], ==, 1);
 	munit_assert_int(tx.page_numbers[4], ==, 2);
 
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 
 	/* All records have been inserted. */
@@ -386,10 +372,10 @@ TEST(vfs, pollAfterPageStress, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
- * then perform a read transaction and check that it can see the committed
- * changes. */
-TEST(vfs, commitThenRead, setUp, tearDown, 0, NULL)
+/* Use dqlite_vfs_apply() to actually modify the WAL after a write transaction
+ * was triggered by a call to sqlite3_step(), then perform a read transaction
+ * and check that it can see the transaction changes. */
+TEST(vfs, applyMakesTransactionVisible, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -400,7 +386,7 @@ TEST(vfs, commitThenRead, setUp, tearDown, 0, NULL)
 	EXEC(db, "CREATE TABLE test(n INT)");
 
 	POLL("1", tx);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 
 	PREPARE(db, stmt, "SELECT * FROM test");
@@ -412,8 +398,10 @@ TEST(vfs, commitThenRead, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Execute an explicit transaction with BEGIN/COMMIT. */
-TEST(vfs, explicitTransaction, setUp, tearDown, 0, NULL)
+/* Use dqlite_vfs_apply() to actually modify the WAL after a write transaction
+ * was triggered by an explicit "COMMIT" statement and check that changes are
+ * visible. */
+TEST(vfs, applyExplicitTransaction, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -437,17 +425,21 @@ TEST(vfs, explicitTransaction, setUp, tearDown, 0, NULL)
 	STEP(stmt, SQLITE_DONE);
 	POLL("1", tx);
 	munit_assert_int(tx.n, ==, 2);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
+	FINALIZE(stmt);
+
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
 	FINALIZE(stmt);
 
 	return MUNIT_OK;
 }
 
-/* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
- * then perform another commit and finally run a read transaction and check that
- * it can see all committed changes. */
-TEST(vfs, commitThenCommitAgainThenRead, setUp, tearDown, 0, NULL)
+/* Perform two consecutive full write transactions using sqlite3_step(),
+ * dqlite_vfs_poll() and dqlite_vfs_apply(), then run a read transaction and
+ * check that it can see all committed changes. */
+TEST(vfs, consecutiveWriteTransactions, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -458,13 +450,13 @@ TEST(vfs, commitThenCommitAgainThenRead, setUp, tearDown, 0, NULL)
 	EXEC(db, "CREATE TABLE test(n INT)");
 
 	POLL("1", tx);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 
 	EXEC(db, "INSERT INTO test(n) VALUES(123)");
 
 	POLL("1", tx);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 
 	PREPARE(db, stmt, "SELECT * FROM test");
@@ -479,132 +471,10 @@ TEST(vfs, commitThenCommitAgainThenRead, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
- * then open a new connection. A read transaction started in the second
- * connection can see the changes committed by the first one. */
-TEST(vfs, commitThenReadOnNewConn, setUp, tearDown, 0, NULL)
-{
-	sqlite3 *db1;
-	sqlite3 *db2;
-	sqlite3_stmt *stmt;
-	struct tx tx;
-
-	OPEN("1", db1);
-	OPEN("1", db2);
-
-	EXEC(db1, "CREATE TABLE test(n INT)");
-
-	POLL("1", tx);
-	COMMIT("1", tx);
-	DONE(tx);
-
-	PREPARE(db2, stmt, "SELECT * FROM test");
-	STEP(stmt, SQLITE_DONE);
-	FINALIZE(stmt);
-
-	CLOSE(db1);
-	CLOSE(db2);
-
-	return MUNIT_OK;
-}
-
-/* Use dqlite_vfs_commit() to actually modify the WAL after quorum is reached,
- * then close the committing connection and open a new one. A read transaction
- * started in the second connection can see the changes committed by the first
- * one. */
-TEST(vfs, commitThenCloseThenReadOnNewConn, setUp, tearDown, 0, NULL)
-{
-	sqlite3 *db;
-	sqlite3_stmt *stmt;
-	struct tx tx;
-
-	OPEN("1", db);
-
-	EXEC(db, "CREATE TABLE test(n INT)");
-
-	POLL("1", tx);
-	COMMIT("1", tx);
-	DONE(tx);
-
-	CLOSE(db);
-
-	OPEN("1", db);
-	PREPARE(db, stmt, "SELECT * FROM test");
-	STEP(stmt, SQLITE_DONE);
-	FINALIZE(stmt);
-	CLOSE(db);
-
-	return MUNIT_OK;
-}
-
-/* Use dqlite_vfs_commit() to replicate changes on a "follower" VFS. */
-TEST(vfs, commitFollower, setUp, tearDown, 0, NULL)
-{
-	sqlite3 *db1;
-	sqlite3 *db2;
-	sqlite3_stmt *stmt;
-	struct tx tx;
-
-	OPEN("1", db1);
-
-	PREPARE(db1, stmt, "CREATE TABLE test(n INT)");
-	STEP(stmt, SQLITE_DONE);
-
-	POLL("1", tx);
-
-	COMMIT("1", tx);
-
-	OPEN("2", db2);
-	CLOSE(db2);
-	COMMIT("2", tx);
-
-	DONE(tx);
-
-	FINALIZE(stmt);
-	CLOSE(db1);
-
-	return MUNIT_OK;
-}
-
-/* Simulate a failover between a leader and a follower. */
-TEST(vfs, commitFailover, setUp, tearDown, 0, NULL)
-{
-	sqlite3 *db1;
-	sqlite3 *db2;
-	sqlite3_stmt *stmt;
-	struct tx tx;
-
-	/* Create a table on VFS 1 and replicate the transaction. */
-	OPEN("1", db1);
-
-	PREPARE(db1, stmt, "CREATE TABLE test(n INT)");
-	STEP(stmt, SQLITE_DONE);
-
-	POLL("1", tx);
-
-	COMMIT("1", tx);
-
-	OPEN("2", db2);
-	CLOSE(db2);
-	COMMIT("2", tx);
-
-	DONE(tx);
-
-	FINALIZE(stmt);
-	CLOSE(db1);
-
-	/* Connect to VFS 2 and check that the table is there. */
-	OPEN("2", db1);
-	PREPARE(db1, stmt, "SELECT * FROM test");
-	STEP(stmt, SQLITE_DONE);
-	FINALIZE(stmt);
-	CLOSE(db1);
-
-	return MUNIT_OK;
-}
-
-/* Execute multiple commits and re-open the database. */
-TEST(vfs, multipleCommits, setUp, tearDown, 0, NULL)
+/* Perform three consecutive write transactions, then re-open the database and
+ * finally run a read transaction and check that it can see all committed
+ * changes. */
+TEST(vfs, reopenAfterConsecutiveWriteTransactions, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -614,17 +484,17 @@ TEST(vfs, multipleCommits, setUp, tearDown, 0, NULL)
 
 	EXEC(db, "CREATE TABLE foo(id INT)");
 	POLL("1", tx);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 
 	EXEC(db, "CREATE TABLE bar (id INT)");
 	POLL("1", tx);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 
 	EXEC(db, "INSERT INTO foo(id) VALUES(1)");
 	POLL("1", tx);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 
 	CLOSE(db);
@@ -640,6 +510,192 @@ TEST(vfs, multipleCommits, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
+/* Use dqlite_vfs_apply() to actually modify the WAL after a write transaction
+ * was triggered by sqlite3_step(), and verify that the transaction is visible
+ * from another existing connection. */
+TEST(vfs, transactionIsVisibleFromExistingConnection, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	OPEN("1", db1);
+	OPEN("1", db2);
+
+	EXEC(db1, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	PREPARE(db2, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	CLOSE(db1);
+	CLOSE(db2);
+
+	return MUNIT_OK;
+}
+
+/* Use dqlite_vfs_apply() to actually modify the WAL after a write transaction
+ * was triggered by sqlite3_step(), and verify that the transaction is visible
+ * from a brand new connection. */
+TEST(vfs, transactionIsVisibleFromNewConnection, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	OPEN("1", db1);
+
+	EXEC(db1, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	OPEN("1", db2);
+
+	PREPARE(db2, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	CLOSE(db1);
+	CLOSE(db2);
+
+	return MUNIT_OK;
+}
+
+/* Use dqlite_vfs_apply() to actually modify the WAL after a write transaction
+ * was triggered by sqlite3_step(), then close the connection and open a new
+ * one. A read transaction started in the new connection can see the changes
+ * committed by the first one. */
+TEST(vfs, transactionIsVisibleFromReopenedConnection, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	OPEN("1", db);
+
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	CLOSE(db);
+
+	OPEN("1", db);
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Use dqlite_vfs_apply() to replicate the very first write transaction on a
+ * different VFS than the one that initially generated it. In that case it's
+ * necessary to initialize the database file on the other VFS by opening and
+ * closing a connection. */
+TEST(vfs, firstApplyOnDifferentVfs, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	OPEN("1", db1);
+
+	PREPARE(db1, stmt, "CREATE TABLE test(n INT)");
+	STEP(stmt, SQLITE_DONE);
+
+	POLL("1", tx);
+
+	APPLY("1", tx);
+
+	OPEN("2", db2);
+	CLOSE(db2);
+	APPLY("2", tx);
+
+	DONE(tx);
+
+	FINALIZE(stmt);
+	CLOSE(db1);
+
+	return MUNIT_OK;
+}
+
+/* Use dqlite_vfs_apply() to replicate a second write transaction on a different
+ * VFS than the one that initially generated it. In that case it's not necessary
+ * to do anything special before calling dqlite_vfs_apply(). */
+TEST(vfs, secondApplyOnDifferentVfs, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	struct tx tx;
+
+	OPEN("1", db1);
+
+	EXEC(db1, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+
+	APPLY("1", tx);
+
+	OPEN("2", db2);
+	CLOSE(db2);
+	APPLY("2", tx);
+
+	DONE(tx);
+
+	EXEC(db1, "INSERT INTO test(n) VALUES(123)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	APPLY("2", tx);
+	DONE(tx);
+
+	CLOSE(db1);
+
+	return MUNIT_OK;
+}
+
+/* A write transaction that gets replicated to a different VFS is visible to a
+ * new connection opened on that VFS. */
+TEST(vfs, transactionVisibleOnDifferentVfs, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	OPEN("1", db1);
+
+	EXEC(db1, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	OPEN("2", db2);
+	CLOSE(db2);
+	APPLY("2", tx);
+	DONE(tx);
+
+	CLOSE(db1);
+
+	OPEN("2", db1);
+	PREPARE(db1, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+	CLOSE(db1);
+
+	return MUNIT_OK;
+}
+
 /* Calling dqlite_vfs_abort() to cancel a transaction releases the write
  * lock on the WAL. */
 TEST(vfs, abort, setUp, tearDown, 0, NULL)
@@ -650,7 +706,6 @@ TEST(vfs, abort, setUp, tearDown, 0, NULL)
 	sqlite3_stmt *stmt2;
 	struct tx tx;
 
-	/* Create a table on VFS 1 and replicate the transaction. */
 	OPEN("1", db1);
 	OPEN("1", db2);
 
@@ -674,7 +729,9 @@ TEST(vfs, abort, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Perform a checkpoint after a write transaction has completed. */
+/* Perform a checkpoint after a write transaction has completed, then perform
+ * another write transaction and check that changes both before and after the
+ * checkpoint are visible. */
 TEST(vfs, checkpoint, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
@@ -686,11 +743,11 @@ TEST(vfs, checkpoint, setUp, tearDown, 0, NULL)
 
 	EXEC(db1, "CREATE TABLE test(n INT)");
 	POLL("1", tx);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 	EXEC(db1, "INSERT INTO test(n) VALUES(123)");
 	POLL("1", tx);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 
 	OPEN("1", db2);
@@ -699,7 +756,7 @@ TEST(vfs, checkpoint, setUp, tearDown, 0, NULL)
 
 	EXEC(db1, "INSERT INTO test(n) VALUES(456)");
 	POLL("1", tx);
-	COMMIT("1", tx);
+	APPLY("1", tx);
 	DONE(tx);
 
 	PREPARE(db1, stmt, "SELECT * FROM test");
@@ -715,39 +772,109 @@ TEST(vfs, checkpoint, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Acquiring all locks prevents both read and write transactions. */
-TEST(vfs, lock, setUp, tearDown, 0, NULL)
+/* Replicate a write transaction that happens after a checkpoint. */
+TEST(vfs, applyOnDifferentVfsAfterCheckpoint, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
-	sqlite3_file *file;
 	sqlite3_stmt *stmt;
-	struct tx tx;
-	unsigned i;
+	struct tx tx1;
+	struct tx tx2;
+	struct tx tx3;
 
 	OPEN("1", db);
 
 	EXEC(db, "CREATE TABLE test(n INT)");
-	POLL("1", tx);
-	COMMIT("1", tx);
-	DONE(tx);
+	POLL("1", tx1);
+	APPLY("1", tx1);
+	EXEC(db, "INSERT INTO test(n) VALUES(123)");
+	POLL("1", tx2);
+	APPLY("1", tx2);
 
-	FILE(db, file);
+	CHECKPOINT(db);
 
-	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
-		LOCK(file, i, SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);
-	}
-
-	PREPARE(db, stmt, "SELECT * FROM test");
-	STEP(stmt, SQLITE_PROTOCOL);
-	RESET(stmt, SQLITE_PROTOCOL);
-	FINALIZE(stmt);
-
-	PREPARE(db, stmt, "INSERT INTO test(n) VALUES(123)");
-	STEP(stmt, SQLITE_PROTOCOL);
-	RESET(stmt, SQLITE_PROTOCOL);
-	FINALIZE(stmt);
+	EXEC(db, "INSERT INTO test(n) VALUES(456)");
+	POLL("1", tx3);
+	APPLY("1", tx3);
 
 	CLOSE(db);
+
+	OPEN("2", db);
+	CLOSE(db);
+
+	APPLY("2", tx1);
+	APPLY("2", tx2);
+
+	OPEN("2", db);
+	CHECKPOINT(db);
+	CLOSE(db);
+
+	APPLY("2", tx3);
+
+	OPEN("2", db);
+	PREPARE(db, stmt, "SELECT * FROM test ORDER BY n");
+	STEP(stmt, SQLITE_ROW);
+	munit_assert_int(sqlite3_column_int(stmt, 0), ==, 123);
+	STEP(stmt, SQLITE_ROW);
+	munit_assert_int(sqlite3_column_int(stmt, 0), ==, 456);
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+	CLOSE(db);
+
+	DONE(tx1);
+	DONE(tx2);
+	DONE(tx3);
+
+	return MUNIT_OK;
+}
+
+/* Replicate to another VFS a series of changes including a checkpoint, then
+ * perform a new write transaction on that other VFS. */
+TEST(vfs, replicateCheckpointThenPerformTransaction, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	struct tx tx1;
+	struct tx tx2;
+	struct tx tx3;
+
+	OPEN("1", db1);
+
+	EXEC(db1, "CREATE TABLE test(n INT)");
+	POLL("1", tx1);
+	APPLY("1", tx1);
+	EXEC(db1, "INSERT INTO test(n) VALUES(123)");
+	POLL("1", tx2);
+	APPLY("1", tx2);
+
+	CHECKPOINT(db1);
+
+	EXEC(db1, "INSERT INTO test(n) VALUES(456)");
+	POLL("1", tx3);
+	APPLY("1", tx3);
+
+	CLOSE(db1);
+
+	OPEN("2", db1);
+
+	APPLY("2", tx1);
+	APPLY("2", tx2);
+
+	OPEN("2", db2);
+	CHECKPOINT(db2);
+	CLOSE(db2);
+
+	APPLY("2", tx3);
+
+	DONE(tx1);
+	DONE(tx2);
+	DONE(tx3);
+
+	EXEC(db1, "INSERT INTO test(n) VALUES(789)");
+	POLL("2", tx1);
+	APPLY("2", tx1);
+	DONE(tx1);
+
+	CLOSE(db1);
 
 	return MUNIT_OK;
 }
