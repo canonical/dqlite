@@ -520,8 +520,8 @@ static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 
 	assert(w->frames != NULL);
 
-	/* Reset the file header (for WAL files). */
-	memset(w->hdr, 0, FORMAT__WAL_HDR_SIZE);
+	/* Restart the header. */
+	formatWalRestartHeader(w->hdr);
 
 	/* Destroy all frames. */
 	for (i = 0; i < w->n_frames; i++) {
