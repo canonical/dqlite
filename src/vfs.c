@@ -1173,8 +1173,10 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 			fnctl[0] = "only WAL mode is supported";
 			return SQLITE_IOERR;
 		}
-		formatWalInitHeader(f->database->wal.hdr,
-				    f->database->page_size);
+		if (f->database->wal.n_frames == 0) {
+			formatWalInitHeader(f->database->wal.hdr,
+					    f->database->page_size);
+		}
 	}
 
 	/* We're returning NOTFOUND here to tell SQLite that we wish it to go on
