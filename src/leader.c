@@ -480,7 +480,7 @@ err_after_command_encode:
 err_after_apply_alloc:
 	raft_free(apply);
 err:
-	assert(rv == 0);
+	assert(rv != 0);
 	return rv;
 }
 
