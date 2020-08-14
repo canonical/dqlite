@@ -1980,6 +1980,9 @@ static int vfsWalApply(struct vfsWal *w,
 	uint32_t salt[2];
 	uint32_t checksum[2];
 
+	/* No pending transactions. */
+	assert(w->n_tx == 0);
+
 	/* Get the salt from the WAL header. */
 	formatWalGetNativeChecksum(w->hdr, &native);
 	formatWalGetSalt(w->hdr, salt);

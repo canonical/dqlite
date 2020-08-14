@@ -5,7 +5,6 @@
 #include "./lib/assert.h"
 
 #include "command.h"
-#include "format.h"
 #include "leader.h"
 #include "vfs.h"
 
@@ -41,8 +40,6 @@ static int maybeCheckpoint(void *ctx,
 	struct raft_buffer buf;
 	struct command_checkpoint command;
 	volatile void *region;
-	uint32_t mx_frame;
-	uint32_t read_marks[FORMAT__WAL_NREADER];
 	int i;
 	int rv;
 	(void)db;
@@ -62,12 +59,6 @@ static int maybeCheckpoint(void *ctx,
 	/* Get the first SHM region, which contains the WAL header. */
 	rv = file->pMethods->xShmMap(file, 0, 0, 0, &region);
 	assert(rv == SQLITE_OK); /* Should never fail */
-
-	/* Get the current value of mxFrame. */
-	formatWalGetMxFrame((const uint8_t *)region, &mx_frame);
-
-	/* Get the content of the read marks. */
-	formatWalGetReadMarks((const uint8_t *)region, read_marks);
 
 	/* Check each mark and associated lock. This logic is similar to the one
 	 * in the walCheckpoint function of wal.c, in the SQLite code. */
@@ -306,8 +297,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	struct command_checkpoint command;
 	volatile void *region;
 	sqlite3_int64 size;
-	uint32_t mx_frame;
-	uint32_t read_marks[FORMAT__WAL_NREADER];
+	unsigned page_size = l->db->config->page_size;
 	unsigned pages;
 	int i;
 	int rv;
@@ -320,8 +310,8 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	rv = wal->pMethods->xFileSize(wal, &size);
 	assert(rv == SQLITE_OK); /* Should never fail */
 
-	pages =
-	    formatWalCalcFramesNumber(l->db->config->page_size, (unsigned)size);
+	/* Calculate the number of frames. */
+	pages = ((unsigned)size - 32) / (24 + page_size);
 
 	/* Check if the size of the WAL is beyond the threshold. */
 	if (pages < l->db->config->checkpoint_threshold) {
@@ -336,12 +326,6 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	/* Get the first SHM region, which contains the WAL header. */
 	rv = main->pMethods->xShmMap(main, 0, 0, 0, &region);
 	assert(rv == SQLITE_OK); /* Should never fail */
-
-	/* Get the current value of mxFrame. */
-	formatWalGetMxFrame((const uint8_t *)region, &mx_frame);
-
-	/* Get the content of the read marks. */
-	formatWalGetReadMarks((const uint8_t *)region, read_marks);
 
 	rv = main->pMethods->xShmUnmap(main, 0);
 	assert(rv == SQLITE_OK); /* Should never fail */

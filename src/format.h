@@ -70,15 +70,6 @@ void formatWalGetChecksums(const uint8_t *header, uint32_t checksum[2]);
 /* Get the Salt-1 and Salt-2 fields stored in the WAL header. */
 void formatWalGetSalt(const uint8_t *header, uint32_t salt[2]);
 
-/* Extract the mxFrame field from the WAL index header stored in the given
- * buffer */
-void formatWalGetMxFrame(const uint8_t *header, uint32_t *mx_frame);
-
-/* Extract the read marks array from the WAL index header stored in the given
- * buffer. */
-void formatWalGetReadMarks(const uint8_t *header,
-			   uint32_t read_marks[FORMAT__WAL_NREADER]);
-
 /* Overwrite the WAL index header. */
 void formatWalPutIndexHeader(uint8_t *header,
 			     uint32_t max_frame,
