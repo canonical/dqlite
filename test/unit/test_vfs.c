@@ -195,7 +195,9 @@ static uint32_t __wal_idx_mx_frame(sqlite3 *db)
 	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	formatWalGetMxFrame((const uint8_t *)region, &mx_frame);
+	/* The mxFrame number is 16th byte of the WAL index header. See also
+	 * https://sqlite.org/walformat.html. */
+	mx_frame = ((uint32_t *)region)[4];
 
 	return mx_frame;
 }
@@ -206,6 +208,7 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 {
 	sqlite3_file *file;
 	volatile void *region;
+	uint32_t *idx;
 	uint32_t *marks;
 	int rc;
 
@@ -217,7 +220,10 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	formatWalGetReadMarks((const uint8_t *)region, marks);
+	/* The read-mark array starts at the 100th byte of the WAL index
+	 * header. See also https://sqlite.org/walformat.html. */
+	idx = (uint32_t *)region;
+	memcpy(marks, &idx[25], (sizeof *idx) * FORMAT__WAL_NREADER);
 
 	return marks;
 }
