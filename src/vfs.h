@@ -34,11 +34,11 @@ int VfsPoll(sqlite3_vfs *vfs,
 	    unsigned *n);
 
 /* Append the given frames to the WAL. */
-int VfsCommit(sqlite3_vfs *vfs,
-	      const char *filename,
-	      unsigned n,
-	      unsigned long *page_numbers,
-	      void *frames);
+int VfsApply(sqlite3_vfs *vfs,
+	     const char *filename,
+	     unsigned n,
+	     unsigned long *page_numbers,
+	     void *frames);
 
 int VfsAbort(sqlite3_vfs *vfs, const char *filename);
 

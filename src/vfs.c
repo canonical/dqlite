@@ -1965,10 +1965,10 @@ int VfsPoll(sqlite3_vfs *vfs,
 	return 0;
 }
 
-static int vfsWalCommit(struct vfsWal *w,
-			unsigned n,
-			unsigned long *page_numbers,
-			void *data)
+static int vfsWalApply(struct vfsWal *w,
+		       unsigned n,
+		       unsigned long *page_numbers,
+		       void *data)
 {
 	struct vfsFrame **frames; /* New frames array. */
 	struct vfsShm *shm;
@@ -2054,11 +2054,11 @@ oom:
 	return DQLITE_NOMEM;
 }
 
-int VfsCommit(sqlite3_vfs *vfs,
-	      const char *filename,
-	      unsigned n,
-	      unsigned long *page_numbers,
-	      void *frames)
+int VfsApply(sqlite3_vfs *vfs,
+	     const char *filename,
+	     unsigned n,
+	     unsigned long *page_numbers,
+	     void *frames)
 {
 	struct vfs *v;
 	struct vfsDatabase *database;
@@ -2072,7 +2072,7 @@ int VfsCommit(sqlite3_vfs *vfs,
 
 	wal = &database->wal;
 
-	rv = vfsWalCommit(wal, n, page_numbers, frames);
+	rv = vfsWalApply(wal, n, page_numbers, frames);
 	if (rv != 0) {
 		return rv;
 	}

@@ -68,7 +68,7 @@ static int apply_frames_v2(struct fsm *f, const struct command_frames *c)
 
 	command_frames__pages(c, &pages);
 
-	VfsCommit(vfs, db->filename, c->frames.n_pages, page_numbers, pages);
+	VfsApply(vfs, db->filename, c->frames.n_pages, page_numbers, pages);
 
 	sqlite3_free(page_numbers);
 

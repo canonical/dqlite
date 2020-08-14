@@ -20,15 +20,16 @@ int dqlite_vfs_poll(sqlite3_vfs *vfs,
 	return VfsPoll(vfs, filename, frames, n);
 }
 
-int dqlite_vfs_commit(sqlite3_vfs *vfs,
-		      const char *filename,
-		      unsigned n,
-		      unsigned long *page_numbers,
-		      void *frames)
+int dqlite_vfs_apply(sqlite3_vfs *vfs,
+		     const char *filename,
+		     unsigned n,
+		     unsigned long *page_numbers,
+		     void *frames)
 {
-	return VfsCommit(vfs, filename, n, page_numbers, frames);
+	return VfsApply(vfs, filename, n, page_numbers, frames);
 }
 
-int dqlite_vfs_abort(sqlite3_vfs *vfs, const char *filename) {
+int dqlite_vfs_abort(sqlite3_vfs *vfs, const char *filename)
+{
 	return VfsAbort(vfs, filename);
 }
