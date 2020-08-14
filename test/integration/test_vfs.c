@@ -211,6 +211,22 @@ struct tx
 		}                                                            \
 	} while (0)
 
+struct snapshot
+{
+	void *data;
+	size_t n;
+};
+
+/* Take a snapshot of the database on the given VFS. */
+#define SNAPSHOT(VFS, SNAPSHOT)                                           \
+	do {                                                              \
+		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                 \
+		int _rv;                                                  \
+		_rv = dqlite_vfs_snapshot(vfs, "test.db", &SNAPSHOT.data, \
+					  &SNAPSHOT.n);                   \
+		munit_assert_int(_rv, ==, 0);                             \
+	} while (0)
+
 /* Open and close a new connection using the dqlite VFS. */
 TEST(vfs, open, setUp, tearDown, 0, NULL)
 {
@@ -432,6 +448,8 @@ TEST(vfs, applyExplicitTransaction, setUp, tearDown, 0, NULL)
 	PREPARE(db, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
 	FINALIZE(stmt);
+
+	CLOSE(db);
 
 	return MUNIT_OK;
 }
@@ -877,4 +895,99 @@ TEST(vfs, replicateCheckpointThenPerformTransaction, setUp, tearDown, 0, NULL)
 	CLOSE(db1);
 
 	return MUNIT_OK;
+}
+
+/* A snapshot of an empty database that has been just initialized contains just
+ * the first page of the main database file. */
+TEST(vfs, snapshotEmptyDatabase, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	struct snapshot snapshot;
+	uint8_t *page;
+	uint8_t page_size[2] = {2, 0};           /* Big-endian page size */
+	uint8_t database_size[4] = {0, 0, 0, 1}; /* Big-endian database size */
+
+	OPEN("1", db);
+	CLOSE(db);
+
+	SNAPSHOT("1", snapshot);
+
+	munit_assert_int(snapshot.n, ==, PAGE_SIZE);
+	page = snapshot.data;
+
+	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
+	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
+
+	sqlite3_free(snapshot.data);
+
+	return 0;
+}
+
+/* A snapshot of a database after the first write transaction gets applied
+ * contains the first page of the database plus the WAL file containing the
+ * transaction frames. */
+TEST(vfs, snapshotAfterFirstTransaction, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	struct snapshot snapshot;
+	struct tx tx;
+	uint8_t *page;
+	uint8_t page_size[2] = {2, 0};           /* Big-endian page size */
+	uint8_t database_size[4] = {0, 0, 0, 1}; /* Big-endian database size */
+
+	OPEN("1", db);
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	CLOSE(db);
+
+	SNAPSHOT("1", snapshot);
+
+	munit_assert_int(snapshot.n, ==, PAGE_SIZE + 32 + (24 + PAGE_SIZE) * 2);
+	page = snapshot.data;
+
+	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
+	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
+
+	sqlite3_free(snapshot.data);
+
+	return 0;
+}
+
+/* A snapshot of a database after a checkpoint contains all checkpointed pages
+ * and no WAL frames. */
+TEST(vfs, snapshotAfterCheckpoint, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	struct snapshot snapshot;
+	struct tx tx;
+	uint8_t *page;
+	uint8_t page_size[2] = {2, 0};           /* Big-endian page size */
+	uint8_t database_size[4] = {0, 0, 0, 2}; /* Big-endian database size */
+
+	OPEN("1", db);
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	CHECKPOINT(db);
+
+	CLOSE(db);
+
+	SNAPSHOT("1", snapshot);
+
+	munit_assert_int(snapshot.n, ==, PAGE_SIZE * 2);
+	page = snapshot.data;
+
+	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
+	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
+
+	sqlite3_free(snapshot.data);
+
+	return 0;
 }

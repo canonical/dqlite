@@ -253,4 +253,12 @@ int dqlite_vfs_apply(sqlite3_vfs *vfs,
  */
 int dqlite_vfs_abort(sqlite3_vfs *vfs, const char *filename);
 
+/**
+ * Return a snapshot of the main database file and of the WAL file.
+ */
+int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
+			const char *filename,
+			void **data,
+			size_t *n);
+
 #endif /* DQLITE_H */

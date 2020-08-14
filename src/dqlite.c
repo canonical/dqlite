@@ -33,3 +33,10 @@ int dqlite_vfs_abort(sqlite3_vfs *vfs, const char *filename)
 {
 	return VfsAbort(vfs, filename);
 }
+
+int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
+			const char *filename,
+			void **data,
+			size_t *n) {
+	return VfsSnapshot(vfs, filename, data, n);
+}
