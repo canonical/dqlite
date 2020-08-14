@@ -2158,7 +2158,8 @@ int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
 	wal = &database->wal;
 
 	*n = vfsDatabaseFileSize(database) + vfsWalFileSize(wal);
-	*data = sqlite3_malloc64(*n);
+	/* TODO: we should fix the tests and use sqlite3_malloc instead. */
+	*data = raft_malloc(*n);
 	if (*data == NULL) {
 		return DQLITE_NOMEM;
 	}

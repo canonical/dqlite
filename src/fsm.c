@@ -324,57 +324,47 @@ static char *generateWalFilename(const char *filename)
 }
 
 /* Encode the given database. */
-static int encodeDatabase(struct db *db, struct raft_buffer bufs[3])
+static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 {
 	struct snapshotDatabase header;
-	char *walFilename;
+	sqlite3_vfs *vfs;
+	uint32_t database_size = 0;
+	uint8_t *page;
 	void *cursor;
 	int rv;
 
-	walFilename = generateWalFilename(db->filename);
-	if (walFilename == NULL) {
-		rv = RAFT_NOMEM;
+	header.filename = db->filename;
+
+	vfs = sqlite3_vfs_find(db->config->name);
+	rv = VfsSnapshot(vfs, db->filename, &bufs[1].base, &bufs[1].len);
+	if (rv != 0) {
 		goto err;
 	}
 
-	header.filename = db->filename;
+	/* Extract the database size from the first page. */
+	page = bufs[1].base;
+	database_size += (uint32_t)(page[28] << 24);
+	database_size += (uint32_t)(page[29] << 16);
+	database_size += (uint32_t)(page[30] << 8);
+	database_size += (uint32_t)(page[31]);
 
-	/* Main database file. */
-	rv = VfsFileRead(db->config->name, db->filename, &bufs[1].base,
-			 &bufs[1].len);
-	if (rv != 0) {
-		goto err_after_wal_filename_alloc;
-	}
-	header.main_size = bufs[1].len;
-
-	/* WAL file. */
-	rv = VfsFileRead(db->config->name, walFilename, &bufs[2].base,
-			 &bufs[2].len);
-	if (rv != 0) {
-		goto err_after_main_file_read;
-	}
-	header.wal_size = bufs[2].len;
+	header.main_size = database_size * db->config->page_size;
+	header.wal_size = bufs[1].len - header.main_size;
 
 	/* Database header. */
 	bufs[0].len = snapshotDatabase__sizeof(&header);
 	bufs[0].base = raft_malloc(bufs[0].len);
 	if (bufs[0].base == NULL) {
 		rv = RAFT_NOMEM;
-		goto err_after_wal_file_read;
+		goto err_after_snapshot;
 	}
 	cursor = bufs[0].base;
 	snapshotDatabase__encode(&header, &cursor);
 
-	sqlite3_free(walFilename);
-
 	return 0;
 
-err_after_wal_file_read:
-	sqlite3_free(bufs[2].base);
-err_after_main_file_read:
+err_after_snapshot:
 	sqlite3_free(bufs[1].base);
-err_after_wal_filename_alloc:
-	sqlite3_free(walFilename);
 err:
 	assert(rv != 0);
 	return rv;
@@ -450,7 +440,7 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	}
 
 	*n_bufs = 1;      /* Snapshot header */
-	*n_bufs += n * 3; /* Database header, main and wal */
+	*n_bufs += n * 2; /* Database header an content */
 	*bufs = raft_malloc(*n_bufs * sizeof **bufs);
 	if (*bufs == NULL) {
 		rv = RAFT_NOMEM;
@@ -471,7 +461,7 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 		if (rv != 0) {
 			goto err_after_encode_header;
 		}
-		i += 3;
+		i += 2;
 	}
 
 	return 0;
