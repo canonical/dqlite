@@ -190,7 +190,7 @@ void test_heap_tear_down(void *data)
 	if (malloc_count > 0 || memory_used > 0) {
 		munit_errorf(
 		    "teardown memory:\n    bytes: %11d\n    allocations: %5d\n",
-		    malloc_count, memory_used);
+		    memory_used, malloc_count);
 	}
 
 	/* Restore default memory management. */
