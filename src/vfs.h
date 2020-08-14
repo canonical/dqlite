@@ -46,6 +46,12 @@ int VfsAbort(sqlite3_vfs *vfs, const char *filename);
 /* Make a full snapshot of a database. */
 int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n);
 
+/* Restore a database snapshot. */
+int VfsRestore(sqlite3_vfs *vfs,
+	       const char *filename,
+	       const void *data,
+	       size_t n);
+
 /* Read the content of a file, using the VFS implementation registered under the
  * given name. Used to take database snapshots using the dqlite in-memory
  * VFS. */

@@ -37,8 +37,16 @@
 /* Index of the write lock in the WAL-index header locks area. */
 #define VFS__WAL_WRITE_LOCK 0
 
+/* Write ahead log header size. */
+#define VFS__WAL_HEADER_SIZE 32
+
 /* Size of the first part of the WAL index header. */
 #define VFS__WAL_INDEX_HEADER_SIZE 48
+
+/* Write ahead log frame header size. */
+#define VFS__FRAME_HEADER_SIZE 24
+
+#define vfsFrameSize(PAGE_SIZE) (VFS__FRAME_HEADER_SIZE + PAGE_SIZE)
 
 /* Hold content for a shared memory mapping. */
 struct vfsShm
@@ -50,12 +58,10 @@ struct vfsShm
 	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
 };
 
-struct vfsDatabase;
-
 /* Hold the content of a single WAL frame. */
 struct vfsFrame
 {
-	uint8_t header[FORMAT__WAL_FRAME_HDR_SIZE];
+	uint8_t header[VFS__FRAME_HEADER_SIZE];
 	uint8_t *page; /* Content of the page. */
 };
 
@@ -2314,7 +2320,8 @@ static void vfsWalStartHeader(struct vfsWal *w, uint32_t page_size)
  * start a read transaction to rebuild the WAL index by reading the WAL.
  *
  * No read or write lock must be currently held. */
-static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d) {
+static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
+{
 	struct vfsShm *shm = &d->shm;
 	uint8_t *header = shm->regions[0];
 	unsigned i;
@@ -2470,6 +2477,163 @@ int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
 
 	vfsDatabaseSnapshot(database, &cursor);
 	vfsWalSnapshot(wal, &cursor);
+
+	return 0;
+}
+
+static int vfsDatabaseRestore(struct vfsDatabase *d,
+			      const uint8_t *data,
+			      size_t n)
+{
+	uint32_t page_size = vfsParsePageSize(vfsGet16(&data[16]));
+	unsigned n_pages;
+	void **pages;
+	unsigned i;
+	int rv;
+
+	assert(page_size > 0);
+
+	/* Check that the page size of the snapshot is consistent with what we
+	 * have here. */
+	assert(vfsDatabaseGetPageSize(d) == page_size);
+
+	n_pages = (unsigned)vfsGet32(&data[28]);
+
+	if (n < n_pages * page_size) {
+		return DQLITE_ERROR;
+	}
+
+	pages = sqlite3_malloc64(sizeof *pages * n_pages);
+	if (pages == NULL) {
+		goto oom;
+	}
+
+	for (i = 0; i < n_pages; i++) {
+		void *page = sqlite3_malloc64(page_size);
+		if (page == NULL) {
+			unsigned j;
+			for (j = 0; j < i; j++) {
+				sqlite3_free(pages[j]);
+			}
+			goto oom_after_pages_alloc;
+		}
+		pages[i] = page;
+		memcpy(page, &data[i * page_size], page_size);
+	}
+
+	/* Truncate any existing content. */
+	rv = vfsDatabaseTruncate(d, 0);
+	assert(rv == 0);
+
+	d->pages = pages;
+	d->n_pages = n_pages;
+
+	return 0;
+
+oom_after_pages_alloc:
+	sqlite3_free(pages);
+oom:
+	return DQLITE_NOMEM;
+}
+
+static int vfsWalRestore(struct vfsWal *w,
+			 const uint8_t *data,
+			 size_t n,
+			 uint32_t page_size)
+{
+	struct vfsFrame **frames;
+	unsigned n_frames;
+	unsigned i;
+	int rv;
+
+	if (n == 0) {
+		return 0;
+	}
+
+	assert(w->n_tx == 0);
+
+	assert(n > VFS__WAL_HEADER_SIZE);
+	assert(((n - VFS__WAL_HEADER_SIZE) % vfsFrameSize(page_size)) == 0);
+
+	n_frames =
+	    (unsigned)((n - VFS__WAL_HEADER_SIZE) / vfsFrameSize(page_size));
+
+	frames = sqlite3_malloc64(sizeof *frames * n_frames);
+	if (frames == NULL) {
+		goto oom;
+	}
+
+	for (i = 0; i < n_frames; i++) {
+		struct vfsFrame *frame = vfsFrameCreate(page_size);
+		const uint8_t *p;
+
+		if (frame == NULL) {
+			unsigned j;
+			for (j = 0; j < i; j++) {
+				vfsFrameDestroy(frames[j]);
+				goto oom_after_frames_alloc;
+			}
+		}
+		frames[i] = frame;
+
+		p = &data[VFS__WAL_HEADER_SIZE + i * vfsFrameSize(page_size)];
+		memcpy(frame->header, p, VFS__FRAME_HEADER_SIZE);
+		memcpy(frame->page, p + VFS__FRAME_HEADER_SIZE, page_size);
+	}
+
+	memcpy(w->hdr, data, FORMAT__WAL_HDR_SIZE);
+
+	rv = vfsWalTruncate(w, 0);
+	assert(rv == 0);
+
+	w->frames = frames;
+	w->n_frames = n_frames;
+
+	return 0;
+
+oom_after_frames_alloc:
+	sqlite3_free(frames);
+oom:
+	return DQLITE_NOMEM;
+}
+
+int VfsRestore(sqlite3_vfs *vfs,
+	       const char *filename,
+	       const void *data,
+	       size_t n)
+{
+	struct vfs *v;
+	struct vfsDatabase *database;
+	struct vfsWal *wal;
+	uint32_t page_size;
+	size_t offset;
+	int rv;
+
+	v = (struct vfs *)(vfs->pAppData);
+	database = vfsDatabaseLookup(v, filename);
+	assert(database != NULL);
+
+	wal = &database->wal;
+
+	/* Truncate any existing content. */
+	rv = vfsWalTruncate(wal, 0);
+	if (rv != 0) {
+		return rv;
+	}
+
+	/* Restore the content of the main database and of the WAL. */
+	rv = vfsDatabaseRestore(database, data, n);
+	if (rv != 0) {
+		return rv;
+	}
+
+	page_size = vfsDatabaseGetPageSize(database);
+	offset = database->n_pages * page_size;
+
+	rv = vfsWalRestore(wal, data + offset, n - offset, page_size);
+	if (rv != 0) {
+		return rv;
+	}
 
 	return 0;
 }
