@@ -1069,31 +1069,44 @@ static int vfsFileSync(sqlite3_file *file, int flags)
 	return SQLITE_IOERR_FSYNC;
 }
 
+/* Return the size of the database file in bytes. */
+static size_t vfsDatabaseFileSize(struct vfsDatabase *d)
+{
+	return d->n_pages * d->page_size;
+}
+
+/* Return the size of the WAL file in bytes. */
+static size_t vfsWalFileSize(struct vfsWal *w)
+{
+	size_t size = 0;
+	if (w->n_frames > 0) {
+		size += FORMAT__WAL_HDR_SIZE;
+		size += w->n_frames *
+			(FORMAT__WAL_FRAME_HDR_SIZE + w->database->page_size);
+	}
+	return size;
+}
+
 static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 {
 	struct vfsFile *f = (struct vfsFile *)file;
+	size_t n;
 
 	switch (f->type) {
 		case VFS__DATABASE:
-			*size = f->database->n_pages * f->database->page_size;
+			n = vfsDatabaseFileSize(f->database);
 			break;
-
-		case VFS__JOURNAL:
-			*size = 0;
-			break;
-
 		case VFS__WAL:
 			/* TODO? here we assume that FileSize() is never invoked
 			 * between a header write and a page write. */
-			*size = 0;
-			if (f->database->wal.n_frames > 0) {
-				*size += FORMAT__WAL_HDR_SIZE;
-				*size += (f->database->wal.n_frames *
-					  (FORMAT__WAL_FRAME_HDR_SIZE +
-					   f->database->page_size));
-			}
+			n = vfsWalFileSize(&f->database->wal);
+			break;
+		default:
+			n = 0;
 			break;
 	}
+
+	*size = (sqlite3_int64)n;
 
 	return SQLITE_OK;
 }
@@ -2096,6 +2109,64 @@ int VfsAbort(sqlite3_vfs *vfs, const char *filename)
 	if (rv != 0) {
 		return rv;
 	}
+
+	return 0;
+}
+
+static void vfsDatabaseSnapshot(struct vfsDatabase *d, uint8_t **cursor)
+{
+	unsigned i;
+
+	for (i = 0; i < d->n_pages; i++) {
+		memcpy(*cursor, d->pages[i], d->page_size);
+		*cursor += d->page_size;
+	}
+}
+
+static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
+{
+	unsigned i;
+
+	if (w->n_frames == 0) {
+		return;
+	}
+
+	memcpy(*cursor, w->hdr, FORMAT__WAL_HDR_SIZE);
+	*cursor += FORMAT__WAL_HDR_SIZE;
+
+	for (i = 0; i < w->n_frames; i++) {
+		struct vfsFrame *frame = w->frames[i];
+		memcpy(*cursor, frame->hdr, FORMAT__WAL_FRAME_HDR_SIZE);
+		*cursor += FORMAT__WAL_FRAME_HDR_SIZE;
+		memcpy(*cursor, frame->buf, w->database->page_size);
+		*cursor += w->database->page_size;
+	}
+}
+
+int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
+{
+	struct vfs *v;
+	struct vfsDatabase *database;
+	struct vfsWal *wal;
+	uint8_t *cursor;
+
+	v = (struct vfs *)(vfs->pAppData);
+	database = vfsDatabaseLookup(v, filename);
+
+	assert(database != NULL);
+
+	wal = &database->wal;
+
+	*n = vfsDatabaseFileSize(database) + vfsWalFileSize(wal);
+	*data = sqlite3_malloc64(*n);
+	if (*data == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	cursor = *data;
+
+	vfsDatabaseSnapshot(database, &cursor);
+	vfsWalSnapshot(wal, &cursor);
 
 	return 0;
 }
