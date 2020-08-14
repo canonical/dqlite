@@ -261,4 +261,12 @@ int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
 			void **data,
 			size_t *n);
 
+/**
+ * Restore a snapshot of the main database file and of the WAL file.
+ */
+int dqlite_vfs_restore(sqlite3_vfs *vfs,
+		       const char *filename,
+		       const void *data,
+		       size_t n);
+
 #endif /* DQLITE_H */

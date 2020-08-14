@@ -227,6 +227,16 @@ struct snapshot
 		munit_assert_int(_rv, ==, 0);                             \
 	} while (0)
 
+/* Restore a snapshot onto the given VFS. */
+#define RESTORE(VFS, SNAPSHOT)                                          \
+	do {                                                            \
+		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);               \
+		int _rv;                                                \
+		_rv = dqlite_vfs_restore(vfs, "test.db", SNAPSHOT.data, \
+					 SNAPSHOT.n);                   \
+		munit_assert_int(_rv, ==, 0);                           \
+	} while (0)
+
 /* Open and close a new connection using the dqlite VFS. */
 TEST(vfs, open, setUp, tearDown, 0, NULL)
 {
@@ -683,6 +693,52 @@ TEST(vfs, secondApplyOnDifferentVfs, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
+/* Use dqlite_vfs_apply() to replicate a second write transaction on a different
+ * VFS than the one that initially generated it and that has an open connection
+ * which has built the WAL index header by preparing a statement. */
+TEST(vfs, applyOnDifferentVfsWithOpenConnection, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+
+	OPEN("1", db1);
+
+	PREPARE(db1, stmt, "CREATE TABLE test(n INT)");
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	OPEN("2", db2);
+	CLOSE(db2);
+	APPLY("2", tx);
+	DONE(tx);
+
+	EXEC(db1, "INSERT INTO test(n) VALUES(123)");
+
+	POLL("1", tx);
+
+	CLOSE(db1);
+
+	OPEN("2", db2);
+	PREPARE(db2, stmt, "PRAGMA cache_size=-5000");
+	FINALIZE(stmt);
+
+	APPLY("2", tx);
+
+	PREPARE(db2, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_ROW);
+	FINALIZE(stmt);
+
+	DONE(tx);
+
+	CLOSE(db2);
+
+	return MUNIT_OK;
+}
+
 /* A write transaction that gets replicated to a different VFS is visible to a
  * new connection opened on that VFS. */
 TEST(vfs, transactionVisibleOnDifferentVfs, setUp, tearDown, 0, NULL)
@@ -847,7 +903,7 @@ TEST(vfs, applyOnDifferentVfsAfterCheckpoint, setUp, tearDown, 0, NULL)
 
 /* Replicate to another VFS a series of changes including a checkpoint, then
  * perform a new write transaction on that other VFS. */
-TEST(vfs, replicateCheckpointThenPerformTransaction, setUp, tearDown, 0, NULL)
+TEST(vfs, checkpointThenPerformTransaction, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -897,9 +953,97 @@ TEST(vfs, replicateCheckpointThenPerformTransaction, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* A snapshot of an empty database that has been just initialized contains just
- * the first page of the main database file. */
-TEST(vfs, snapshotEmptyDatabase, setUp, tearDown, 0, NULL)
+
+/* Rollback a transaction that didn't hit the page cache limit and hence didn't
+ * perform any pre-commit WAL writes. */
+TEST(vfs, rollbackTransactionWithoutPageStress, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	struct tx tx;
+	sqlite3_stmt *stmt;
+
+	OPEN("1", db);
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	EXEC(db, "BEGIN");
+	EXEC(db, "INSERT INTO test(n) VALUES(1)");
+	EXEC(db, "ROLLBACK");
+
+	POLL("1", tx);
+	munit_assert_int(tx.n, ==, 0);
+
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	RESET(stmt, SQLITE_OK);
+
+	EXEC(db, "INSERT INTO test(n) VALUES(1)");
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	STEP(stmt, SQLITE_ROW);
+
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Rollback a transaction that hit the page cache limit and hence performed some
+ * pre-commit WAL writes. */
+TEST(vfs, rollbackTransactionWithPageStress, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+	unsigned i;
+
+	OPEN("1", db);
+
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	EXEC(db, "BEGIN");
+	for (i = 0; i < 163; i++) {
+		char sql[64];
+		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
+		EXEC(db, sql);
+		POLL("1", tx);
+		munit_assert_int(tx.n, ==, 0);
+	}
+	EXEC(db, "ROLLBACK");
+
+	POLL("1", tx);
+	munit_assert_int(tx.n, ==, 0);
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	RESET(stmt, SQLITE_OK);
+
+	EXEC(db, "INSERT INTO test(n) VALUES(1)");
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	STEP(stmt, SQLITE_ROW);
+
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* A snapshot of a brand new database that has been just initialized contains
+ * just the first page of the main database file. */
+TEST(vfs, snapshotInitialDatabase, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	struct snapshot snapshot;
@@ -992,89 +1136,96 @@ TEST(vfs, snapshotAfterCheckpoint, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Rollback a transaction that didn't hit the page cache limit and hence didn't
- * perform any pre-commit WAL writes. */
-TEST(vfs, rollbackTransactionWithoutPageStress, setUp, tearDown, 0, NULL)
+/* Restore a snapshot taken after a brand new database has been just
+ * initialized. */
+TEST(vfs, restoreInitialDatabase, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
-	struct tx tx;
-	sqlite3_stmt *stmt;
+	struct snapshot snapshot;
 
 	OPEN("1", db);
-	EXEC(db, "CREATE TABLE test(n INT)");
-
-	POLL("1", tx);
-	APPLY("1", tx);
-	DONE(tx);
-
-	EXEC(db, "BEGIN");
-	EXEC(db, "INSERT INTO test(n) VALUES(1)");
-	EXEC(db, "ROLLBACK");
-
-	POLL("1", tx);
-	munit_assert_int(tx.n, ==, 0);
-
-	PREPARE(db, stmt, "SELECT * FROM test");
-	STEP(stmt, SQLITE_DONE);
-	RESET(stmt, SQLITE_OK);
-
-	EXEC(db, "INSERT INTO test(n) VALUES(1)");
-	POLL("1", tx);
-	APPLY("1",tx);
-	DONE(tx);
-
-	STEP(stmt, SQLITE_ROW);
-
-	FINALIZE(stmt);
-
 	CLOSE(db);
+
+	SNAPSHOT("1", snapshot);
+
+	OPEN("2", db);
+	CLOSE(db);
+
+	RESTORE("2", snapshot);
+
+	sqlite3_free(snapshot.data);
 
 	return MUNIT_OK;
 }
 
-/* Rollback a transaction that hit the page cache limit and hence performed some
- * pre-commit WAL writes. */
-TEST(vfs, rollbackTransactionWithPageStress, setUp, tearDown, 0, NULL)
+/* Restore a snapshot of a database taken after the first write transaction gets
+ * applied. */
+TEST(vfs, restoreAfterFirstTransaction, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
+	struct snapshot snapshot;
 	struct tx tx;
-	unsigned i;
 
 	OPEN("1", db);
-
 	EXEC(db, "CREATE TABLE test(n INT)");
 
 	POLL("1", tx);
 	APPLY("1", tx);
 	DONE(tx);
 
-	EXEC(db, "BEGIN");
-	for (i = 0; i < 163; i++) {
-		char sql[64];
-		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
-		EXEC(db, sql);
-		POLL("1", tx);
-		munit_assert_int(tx.n, ==, 0);
-	}
-	EXEC(db, "ROLLBACK");
+	CLOSE(db);
 
-	POLL("1", tx);
-	munit_assert_int(tx.n, ==, 0);
+	SNAPSHOT("1", snapshot);
+
+	OPEN("2", db);
+	CLOSE(db);
+
+	RESTORE("2", snapshot);
+
+	OPEN("2", db);
+
 	PREPARE(db, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
-	RESET(stmt, SQLITE_OK);
-
-	EXEC(db, "INSERT INTO test(n) VALUES(1)");
-	POLL("1", tx);
-	APPLY("1",tx);
-	DONE(tx);
-
-	STEP(stmt, SQLITE_ROW);
-
 	FINALIZE(stmt);
 
 	CLOSE(db);
+
+	sqlite3_free(snapshot.data);
+
+	return MUNIT_OK;
+}
+
+/* Restore a snapshot of a database while a connection is open. */
+TEST(vfs, restoreWithOpenConnection, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct snapshot snapshot;
+	struct tx tx;
+
+	OPEN("1", db);
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	CLOSE(db);
+
+	SNAPSHOT("1", snapshot);
+
+	OPEN("2", db);
+
+	RESTORE("2", snapshot);
+
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	sqlite3_free(snapshot.data);
 
 	return MUNIT_OK;
 }
