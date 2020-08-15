@@ -65,6 +65,35 @@ struct vfsDatabase
 	int version;
 };
 
+/* Flip a 32-bit number back and forth to or from big-endian representation. */
+static uint32_t vfsFlip32(uint32_t v)
+{
+#if defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN)
+	return v;
+#elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN) && \
+    defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
+	return __builtin_bswap32(v);
+#else
+	union {
+		uint32_t u;
+		uint8_t v[4];
+	} s;
+
+	s.v[0] = (uint8_t)(v >> 24);
+	s.v[1] = (uint8_t)(v >> 16);
+	s.v[2] = (uint8_t)(v >> 8);
+	s.v[3] = (uint8_t)v;
+
+	return s.u;
+#endif
+}
+
+/* Load a 32-bit number stored in big-endian representation. */
+static void vfsGet32(const uint8_t buf[4], uint32_t *v)
+{
+	*v = vfsFlip32(*(const uint32_t *)buf);
+}
+
 /* Create a new frame of a WAL file. */
 static struct vfsFrame *vfsFrameCreate(unsigned size)
 {
@@ -1980,6 +2009,13 @@ int VfsPoll(sqlite3_vfs *vfs,
 	return 0;
 }
 
+/* Return the checksum stored in the WAL header.*/
+static void vfsWalGetChecksum(struct vfsWal *w, uint32_t checksum[2])
+{
+	vfsGet32(&w->hdr[24], &checksum[0]);
+	vfsGet32(&w->hdr[28], &checksum[1]);
+}
+
 /* Append the given pages as new frames. */
 static int vfsWalAppend(struct vfsWal *w,
 			unsigned n,
@@ -2006,7 +2042,7 @@ static int vfsWalAppend(struct vfsWal *w,
 	 * from the frame header of the last frame (and in that case get the
 	 * current database size in pages as well. */
 	if (w->n_frames == 0) {
-		formatWalGetChecksums(w->hdr, checksum);
+		vfsWalGetChecksum(w, checksum);
 	} else {
 		struct vfsFrame *frame = w->frames[w->n_frames - 1];
 		formatWalGetFrameChecksums(frame->header, checksum);
