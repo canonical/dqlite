@@ -1229,6 +1229,12 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	return SQLITE_NOTFOUND;
 }
 
+/* Return the checksum stored in the header of the given frame. */
+static void vfsFrameGetChecksum(struct vfsFrame *f, uint32_t checksum[2]) {
+	vfsGet32(&f->header[16], &checksum[0]);
+	vfsGet32(&f->header[20], &checksum[1]);
+}
+
 /* Overwrite the WAL index header to reflect the current committed content of
  * the WAL. */
 static void vfsWalRewriteIndexHeader(struct vfsWal *w)
@@ -1249,8 +1255,7 @@ static void vfsWalRewriteIndexHeader(struct vfsWal *w)
 		}
 		max_frame++;
 		if (i == w->n_frames - 1) {
-			formatWalGetFrameChecksums(frame->header,
-						   frame_checksum);
+			vfsFrameGetChecksum(frame, frame_checksum);
 		}
 	}
 
@@ -2045,7 +2050,7 @@ static int vfsWalAppend(struct vfsWal *w,
 		vfsWalGetChecksum(w, checksum);
 	} else {
 		struct vfsFrame *frame = w->frames[w->n_frames - 1];
-		formatWalGetFrameChecksums(frame->header, checksum);
+		vfsFrameGetChecksum(frame, checksum);
 		formatWalGetFrameDatabaseSize(frame->header, &database_size);
 	}
 

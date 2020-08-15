@@ -81,9 +81,6 @@ void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number);
 /* Extract from a WAL frame header the database size in pages. */
 void formatWalGetFrameDatabaseSize(const uint8_t *header, uint32_t *n);
 
-/* Extract the checksums from a WAL frame header. */
-void formatWalGetFrameChecksums(const uint8_t *header, uint32_t checksum[2]);
-
 /* Return true if native byte order should be used when calculating WAL
  * checksums, or false if bit-endian byte order should be used instead. */
 void formatWalGetNativeChecksum(const uint8_t *header, bool *native);
