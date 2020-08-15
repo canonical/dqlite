@@ -87,12 +87,6 @@ void formatWalGetFrameDatabaseSize(const uint8_t *header, uint32_t *n) {
 	formatGet32(header + 4, n);
 }
 
-void formatWalGetFrameChecksums(const uint8_t *header, uint32_t checksum[2])
-{
-	formatGet32(header + 16, &checksum[0]);
-	formatGet32(header + 20, &checksum[1]);
-}
-
 void formatWalGetNativeChecksum(const uint8_t *header, bool *native)
 {
 	uint32_t magic;
