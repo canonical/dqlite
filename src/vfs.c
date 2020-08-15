@@ -954,39 +954,57 @@ static int vfsDatabaseWrite(struct vfsDatabase *d,
 	return SQLITE_OK;
 }
 
+/* Decode the page size ("Must be a power of two between 512 and 32768
+ * inclusive, or the value 1 representing a page size of 65536").
+ *
+ * Return 0 if the page size is out of bound. */
+static uint32_t vfsDecodePageSize(uint8_t* buf)
+{
+	uint32_t page_size;
+
+	vfsGet32(buf, &page_size);
+
+	if (page_size == 1) {
+		page_size = FORMAT__PAGE_SIZE_MAX;
+	} else if (page_size < FORMAT__PAGE_SIZE_MIN) {
+		page_size = 0;
+	} else if (page_size > (FORMAT__PAGE_SIZE_MAX / 2)) {
+		page_size = 0;
+	} else if (((page_size - 1) & page_size) != 0) {
+		page_size = 0;
+	}
+
+	return page_size;
+}
+
+/* Get the page size stored in the WAL header. */
+static void vfsWalGetPageSize(struct vfsWal *w, uint32_t *page_size)
+{
+	/* The page size is stored in the 4 bytes starting at 8
+	 * (big-endian) */
+	*page_size = vfsDecodePageSize(&w->hdr[8]);
+}
+
 static int vfsWalWrite(struct vfsWal *w,
 		       const void *buf,
 		       int amount,
 		       sqlite_int64 offset)
 {
-	unsigned page_size = w->database->page_size;
+	uint32_t page_size;
 	unsigned index;
 	struct vfsFrame *frame;
 
+	/* WAL header. */
 	if (offset == 0) {
-		/* This is the WAL header. */
-		unsigned int new_page_size;
-
 		/* We expect the data to contain exactly 32
 		 * bytes. */
 		assert(amount == FORMAT__WAL_HDR_SIZE);
-
-		/* The page size indicated in the header must be
-		 * valid
-		 * and match the one of the database file. */
-		formatWalGetPageSize(buf, &new_page_size);
-		if (new_page_size == 0) {
-			return SQLITE_CORRUPT;
-		}
-
-		if (new_page_size != page_size) {
-			return SQLITE_CORRUPT;
-		}
 
 		memcpy(w->hdr, buf, (size_t)amount);
 		return SQLITE_OK;
 	}
 
+	vfsWalGetPageSize(w, &page_size);
 	assert(page_size > 0);
 
 	/* This is a WAL frame write. We expect either a frame
