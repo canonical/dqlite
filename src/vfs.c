@@ -808,7 +808,8 @@ static int vfsWalRead(struct vfsWal *w,
 		memcpy(buf, frame->page, (size_t)amount);
 	} else {
 		memcpy(buf, frame->header, FORMAT__WAL_FRAME_HDR_SIZE);
-		memcpy(buf + FORMAT__WAL_FRAME_HDR_SIZE, frame->page, page_size);
+		memcpy(buf + FORMAT__WAL_FRAME_HDR_SIZE, frame->page,
+		       page_size);
 	}
 
 	return SQLITE_OK;
@@ -1983,7 +1984,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 static int vfsWalAppend(struct vfsWal *w,
 			unsigned n,
 			unsigned long *page_numbers,
-			void *data)
+			uint8_t *pages)
 {
 	struct vfsFrame **frames; /* New frames array. */
 	unsigned page_size = w->database->page_size;
@@ -2023,7 +2024,7 @@ static int vfsWalAppend(struct vfsWal *w,
 		struct vfsFrame *frame = vfsFrameCreate(page_size);
 		uint32_t page_number = (uint32_t)page_numbers[i];
 		uint32_t commit = 0;
-		void *page = data + i * page_size;
+		uint8_t *page = &pages[i * page_size];
 
 		if (frame == NULL) {
 			goto oom_after_frames_alloc;
