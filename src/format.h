@@ -64,9 +64,6 @@ void formatDatabaseGetPageSize(const uint8_t *header, unsigned *page_size);
  * If the page size is invalid, 0 is returned. */
 void formatWalGetPageSize(const uint8_t *header, unsigned *page_size);
 
-/* Get checksums from the WAL header. */
-void formatWalGetChecksums(const uint8_t *header, uint32_t checksum[2]);
-
 /* Get the Salt-1 and Salt-2 fields stored in the WAL header. */
 void formatWalGetSalt(const uint8_t *header, uint32_t salt[2]);
 

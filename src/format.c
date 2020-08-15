@@ -70,12 +70,6 @@ void formatWalGetPageSize(const uint8_t *header, unsigned *page_size)
 	*page_size = formatDecodePageSize(buf);
 }
 
-void formatWalGetChecksums(const uint8_t *header, uint32_t checksum[2])
-{
-	formatGet32(header + 24, &checksum[0]);
-	formatGet32(header + 28, &checksum[1]);
-}
-
 void formatWalGetSalt(const uint8_t *header, uint32_t salt[2])
 {
 	salt[0] = *(uint32_t *)(header + 16);
