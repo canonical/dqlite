@@ -1241,20 +1241,13 @@ static void vfsWalRewriteIndexHeader(struct vfsWal *w)
 {
 	struct vfsShm *shm = &w->database->shm;
 	uint8_t *hdr = shm->regions[0];
-	unsigned i;
 	uint32_t frame_checksum[2] = {0, 0};
 	uint32_t n_pages = (uint32_t)w->database->n_pages;
 
-	for (i = 0; i < w->n_frames; i++) {
-		struct vfsFrame *frame = w->frames[i];
-		uint32_t page_number;
-		formatWalGetFramePageNumber(frame->header, &page_number);
-		if (page_number > n_pages) {
-			n_pages = page_number;
-		}
-		if (i == w->n_frames - 1) {
-			vfsFrameGetChecksum(frame, frame_checksum);
-		}
+	if (w->n_frames > 0) {
+		struct vfsFrame *last = w->frames[w->n_frames - 1];
+		vfsFrameGetChecksum(last, frame_checksum);
+		formatWalGetFrameDatabaseSize(last->header, &n_pages);
 	}
 
 	formatWalPutIndexHeader(hdr, w->n_frames, n_pages, frame_checksum);
