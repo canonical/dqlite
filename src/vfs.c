@@ -1978,13 +1978,13 @@ int VfsPoll(sqlite3_vfs *vfs,
 	return 0;
 }
 
-static int vfsWalApply(struct vfsWal *w,
-		       unsigned n,
-		       unsigned long *page_numbers,
-		       void *data)
+/* Append the given pages as new frames. */
+static int vfsWalAppend(struct vfsWal *w,
+			unsigned n,
+			unsigned long *page_numbers,
+			void *data)
 {
 	struct vfsFrame **frames; /* New frames array. */
-	struct vfsShm *shm;
 	unsigned page_size = w->database->page_size;
 	uint32_t database_size = w->database->n_pages;
 	unsigned i;
@@ -2047,19 +2047,6 @@ static int vfsWalApply(struct vfsWal *w,
 
 	w->n_frames += n;
 
-	/* A write lock is held it means that this is the VFS that orginated
-	 * this commit. Let's release the lock and update the WAL index. */
-	shm = &w->database->shm;
-	if (shm->exclusive[0] == 1) {
-		shm->exclusive[0] = 0;
-		assert(shm->n_regions > 0);
-		vfsWalRewriteIndexHeader(w);
-	} else {
-		if (shm->n_regions > 0) {
-			formatWalInvalidateIndexHeader(shm->regions[0]);
-		}
-	}
-
 	return 0;
 
 oom_after_frames_alloc:
@@ -2079,6 +2066,7 @@ int VfsApply(sqlite3_vfs *vfs,
 	struct vfs *v;
 	struct vfsDatabase *database;
 	struct vfsWal *wal;
+	struct vfsShm *shm;
 	int rv;
 
 	v = (struct vfs *)(vfs->pAppData);
@@ -2087,10 +2075,23 @@ int VfsApply(sqlite3_vfs *vfs,
 	assert(database != NULL);
 
 	wal = &database->wal;
+	shm = &database->shm;
 
-	rv = vfsWalApply(wal, n, page_numbers, frames);
+	rv = vfsWalAppend(wal, n, page_numbers, frames);
 	if (rv != 0) {
 		return rv;
+	}
+
+	/* A write lock is held it means that this is the VFS that orginated
+	 * this commit. Let's release the lock and update the WAL index. */
+	if (shm->exclusive[0] == 1) {
+		vfsShmUnlock(shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
+		assert(shm->n_regions > 0);
+		vfsWalRewriteIndexHeader(wal);
+	} else {
+		if (shm->n_regions > 0) {
+			formatWalInvalidateIndexHeader(shm->regions[0]);
+		}
 	}
 
 	return 0;
