@@ -1242,7 +1242,6 @@ static void vfsWalRewriteIndexHeader(struct vfsWal *w)
 	struct vfsShm *shm = &w->database->shm;
 	uint8_t *hdr = shm->regions[0];
 	unsigned i;
-	uint32_t max_frame = 0;
 	uint32_t frame_checksum[2] = {0, 0};
 	uint32_t n_pages = (uint32_t)w->database->n_pages;
 
@@ -1253,13 +1252,12 @@ static void vfsWalRewriteIndexHeader(struct vfsWal *w)
 		if (page_number > n_pages) {
 			n_pages = page_number;
 		}
-		max_frame++;
 		if (i == w->n_frames - 1) {
 			vfsFrameGetChecksum(frame, frame_checksum);
 		}
 	}
 
-	formatWalPutIndexHeader(hdr, max_frame, n_pages, frame_checksum);
+	formatWalPutIndexHeader(hdr, w->n_frames, n_pages, frame_checksum);
 }
 
 /* The SQLITE_FCNTL_COMMIT_PHASETWO file control op code is trigged by the
