@@ -36,8 +36,8 @@ struct vfsDatabase;
 /* Hold the content of a single WAL frame. */
 struct vfsFrame
 {
-	uint8_t hdr[FORMAT__WAL_FRAME_HDR_SIZE];
-	void *buf; /* Content of the page. */
+	uint8_t header[FORMAT__WAL_FRAME_HDR_SIZE];
+	uint8_t *page; /* Content of the page. */
 };
 
 /* WAL-specific content */
@@ -77,13 +77,13 @@ static struct vfsFrame *vfsFrameCreate(unsigned size)
 		goto oom;
 	}
 
-	f->buf = sqlite3_malloc64(size);
-	if (f->buf == NULL) {
+	f->page = sqlite3_malloc64(size);
+	if (f->page == NULL) {
 		goto oom_after_page_alloc;
 	}
 
-	memset(f->buf, 0, (size_t)size);
-	memset(f->hdr, 0, FORMAT__WAL_FRAME_HDR_SIZE);
+	memset(f->header, 0, FORMAT__WAL_FRAME_HDR_SIZE);
+	memset(f->page, 0, (size_t)size);
 
 	return f;
 
@@ -97,9 +97,9 @@ oom:
 static void vfsFrameDestroy(struct vfsFrame *f)
 {
 	assert(f != NULL);
-	assert(f->buf != NULL);
+	assert(f->page != NULL);
 
-	sqlite3_free(f->buf);
+	sqlite3_free(f->page);
 	sqlite3_free(f);
 }
 
@@ -801,14 +801,14 @@ static int vfsWalRead(struct vfsWal *w,
 	frame = vfsWalFrameLookup(w, index);
 
 	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
-		memcpy(buf, frame->hdr, (size_t)amount);
+		memcpy(buf, frame->header, (size_t)amount);
 	} else if (amount == sizeof(uint32_t) * 2) {
-		memcpy(buf, frame->hdr + 16, (size_t)amount);
+		memcpy(buf, frame->header + 16, (size_t)amount);
 	} else if (amount == (int)page_size) {
-		memcpy(buf, frame->buf, (size_t)amount);
+		memcpy(buf, frame->page, (size_t)amount);
 	} else {
-		memcpy(buf, frame->hdr, FORMAT__WAL_FRAME_HDR_SIZE);
-		memcpy(buf + FORMAT__WAL_FRAME_HDR_SIZE, frame->buf, page_size);
+		memcpy(buf, frame->header, FORMAT__WAL_FRAME_HDR_SIZE);
+		memcpy(buf + FORMAT__WAL_FRAME_HDR_SIZE, frame->page, page_size);
 	}
 
 	return SQLITE_OK;
@@ -976,7 +976,7 @@ static int vfsWalWrite(struct vfsWal *w,
 		if (frame == NULL) {
 			return SQLITE_NOMEM;
 		}
-		memcpy(frame->hdr, buf, (size_t)amount);
+		memcpy(frame->header, buf, (size_t)amount);
 	} else {
 		/* Frame page write. */
 		assert(amount == (int)page_size);
@@ -992,7 +992,7 @@ static int vfsWalWrite(struct vfsWal *w,
 
 		assert(frame != NULL);
 
-		memcpy(frame->buf, buf, (size_t)amount);
+		memcpy(frame->page, buf, (size_t)amount);
 	}
 
 	return SQLITE_OK;
@@ -1213,13 +1213,14 @@ static void vfsWalRewriteIndexHeader(struct vfsWal *w)
 	for (i = 0; i < w->n_frames; i++) {
 		struct vfsFrame *frame = w->frames[i];
 		uint32_t page_number;
-		formatWalGetFramePageNumber(frame->hdr, &page_number);
+		formatWalGetFramePageNumber(frame->header, &page_number);
 		if (page_number > n_pages) {
 			n_pages = page_number;
 		}
 		max_frame++;
 		if (i == w->n_frames - 1) {
-			formatWalGetFrameChecksums(frame->hdr, frame_checksum);
+			formatWalGetFrameChecksums(frame->header,
+						   frame_checksum);
 		}
 	}
 
@@ -1904,7 +1905,7 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 
 	/* Check if the last frame in the transaction has the commit marker. */
 	last = w->tx[w->n_tx - 1];
-	formatWalGetFrameDatabaseSize(last->hdr, &commit);
+	formatWalGetFrameDatabaseSize(last->header, &commit);
 
 	if (commit == 0) {
 		*frames = NULL;
@@ -1921,8 +1922,8 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 	for (i = 0; i < w->n_tx; i++) {
 		dqlite_vfs_frame *frame = &(*frames)[i];
 		uint32_t page_number;
-		formatWalGetFramePageNumber(w->tx[i]->hdr, &page_number);
-		frame->data = w->tx[i]->buf;
+		formatWalGetFramePageNumber(w->tx[i]->header, &page_number);
+		frame->data = w->tx[i]->page;
 		frame->page_number = page_number;
 		/* Release the vfsFrame object, but not its buf attribute, since
 		 * responsibility for that memory has been transferred to the
@@ -2007,8 +2008,8 @@ static int vfsWalAppend(struct vfsWal *w,
 		formatWalGetChecksums(w->hdr, checksum);
 	} else {
 		struct vfsFrame *frame = w->frames[w->n_frames - 1];
-		formatWalGetFrameChecksums(frame->hdr, checksum);
-		formatWalGetFrameDatabaseSize(frame->hdr, &database_size);
+		formatWalGetFrameChecksums(frame->header, checksum);
+		formatWalGetFrameDatabaseSize(frame->header, &database_size);
 	}
 
 	frames =
@@ -2039,8 +2040,9 @@ static int vfsWalAppend(struct vfsWal *w,
 		}
 
 		formatWalPutFrameHeader(native, page_number, commit, salt,
-					checksum, frame->hdr, page, page_size);
-		memcpy(frame->buf, page, page_size);
+					checksum, frame->header, page,
+					page_size);
+		memcpy(frame->page, page, page_size);
 
 		frames[w->n_frames + i] = frame;
 	}
@@ -2137,9 +2139,9 @@ static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
 
 	for (i = 0; i < w->n_frames; i++) {
 		struct vfsFrame *frame = w->frames[i];
-		memcpy(*cursor, frame->hdr, FORMAT__WAL_FRAME_HDR_SIZE);
+		memcpy(*cursor, frame->header, FORMAT__WAL_FRAME_HDR_SIZE);
 		*cursor += FORMAT__WAL_FRAME_HDR_SIZE;
-		memcpy(*cursor, frame->buf, w->database->page_size);
+		memcpy(*cursor, frame->page, w->database->page_size);
 		*cursor += w->database->page_size;
 	}
 }
