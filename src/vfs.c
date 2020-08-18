@@ -786,11 +786,11 @@ static uint32_t vfsDecodePageSize(uint8_t *buf)
 }
 
 /* Get the page size stored in the WAL header. */
-static void vfsWalGetPageSize(struct vfsWal *w, uint32_t *page_size)
+static uint32_t vfsWalGetPageSize(struct vfsWal *w)
 {
 	/* The page size is stored in the 4 bytes starting at 8
 	 * (big-endian) */
-	*page_size = vfsDecodePageSize(&w->hdr[8]);
+	return vfsDecodePageSize(&w->hdr[8]);
 }
 
 /* Read data from the WAL. */
@@ -814,7 +814,7 @@ static int vfsWalRead(struct vfsWal *w,
 		return SQLITE_OK;
 	}
 
-	vfsWalGetPageSize(w, &page_size);
+	page_size = vfsWalGetPageSize(w);
 	assert(page_size > 0);
 
 	/* For any other frame, we expect either a header read,
@@ -996,7 +996,7 @@ static int vfsWalWrite(struct vfsWal *w,
 		return SQLITE_OK;
 	}
 
-	vfsWalGetPageSize(w, &page_size);
+	page_size = vfsWalGetPageSize(w);
 	assert(page_size > 0);
 
 	/* This is a WAL frame write. We expect either a frame
@@ -1119,7 +1119,7 @@ static size_t vfsWalFileSize(struct vfsWal *w)
 	size_t size = 0;
 	if (w->n_frames > 0) {
 		uint32_t page_size;
-		vfsWalGetPageSize(w, &page_size);
+		page_size = vfsWalGetPageSize(w);
 		size += FORMAT__WAL_HDR_SIZE;
 		size += w->n_frames * (FORMAT__WAL_FRAME_HDR_SIZE + page_size);
 	}
@@ -2043,7 +2043,7 @@ static int vfsWalAppend(struct vfsWal *w,
 	/* No pending transactions. */
 	assert(w->n_tx == 0);
 
-	vfsWalGetPageSize(w, &page_size);
+	page_size = vfsWalGetPageSize(w);
 	assert(page_size > 0);
 
 	/* Get the salt from the WAL header. */
@@ -2190,7 +2190,7 @@ static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
 	memcpy(*cursor, w->hdr, FORMAT__WAL_HDR_SIZE);
 	*cursor += FORMAT__WAL_HDR_SIZE;
 
-	vfsWalGetPageSize(w, &page_size);
+	page_size = vfsWalGetPageSize(w);
 	assert(page_size > 0);
 
 	for (i = 0; i < w->n_frames; i++) {
