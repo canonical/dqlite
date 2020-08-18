@@ -1333,6 +1333,8 @@ static int vfsShmMap(struct vfsShm *s,
 		assert(region != NULL);
 	} else {
 		if (extend) {
+			void **regions;
+
 			/* We should grow the map one region at a time. */
 			assert(region_size == FORMAT__WAL_IDX_PAGE_SIZE);
 			assert(region_index == s->n_regions);
@@ -1344,15 +1346,16 @@ static int vfsShmMap(struct vfsShm *s,
 
 			memset(region, 0, region_size);
 
-			s->regions = sqlite3_realloc64(
+			regions = sqlite3_realloc64(
 			    s->regions,
-			    sizeof *s->regions * (region_index + 1));
+			    sizeof *s->regions * (s->n_regions + 1));
 
-			if (s->regions == NULL) {
+			if (regions == NULL) {
 				rv = SQLITE_NOMEM;
 				goto err_after_region_malloc;
 			}
 
+			s->regions = regions;
 			s->regions[region_index] = region;
 			s->n_regions++;
 
@@ -1392,7 +1395,7 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 	assert(f->type == VFS__DATABASE);
 
 	return vfsShmMap(&f->database->shm, (unsigned)region_index,
-			 (unsigned)region_size, extend, out);
+			 (unsigned)region_size, extend != 0, out);
 }
 
 static int vfsShmLock(struct vfsShm *s, int ofst, int n, int flags)
