@@ -2041,13 +2041,14 @@ static void vfsWalGetChecksum(struct vfsWal *w, uint32_t checksum[2])
 
 /* Append the given pages as new frames. */
 static int vfsWalAppend(struct vfsWal *w,
+			unsigned database_n_pages,
 			unsigned n,
 			unsigned long *page_numbers,
 			uint8_t *pages)
 {
 	struct vfsFrame **frames; /* New frames array. */
 	uint32_t page_size;
-	uint32_t database_size = w->database->n_pages;
+	uint32_t database_size;
 	unsigned i;
 	unsigned j;
 	bool native;
@@ -2064,10 +2065,13 @@ static int vfsWalAppend(struct vfsWal *w,
 	formatWalGetNativeChecksum(w->hdr, &native);
 	formatWalGetSalt(w->hdr, salt);
 
-	/* Get the checksum either from the WAL header if there are no frames or
-	 * from the frame header of the last frame (and in that case get the
-	 * current database size in pages as well. */
+	/* If there are currently no frames in the WAL, the starting database
+	 * size will be equal to the current number of pages in the main
+	 * database, and the starting checksum should be set to the one stored
+	 * in the WAL header. Otherwise, the starting database size and checksum
+	 * will be the ones stored in the last frame of the WAL. */
 	if (w->n_frames == 0) {
+		database_size = (uint32_t)database_n_pages;
 		vfsWalGetChecksum(w, checksum);
 	} else {
 		struct vfsFrame *frame = w->frames[w->n_frames - 1];
@@ -2142,7 +2146,7 @@ int VfsApply(sqlite3_vfs *vfs,
 	wal = &database->wal;
 	shm = &database->shm;
 
-	rv = vfsWalAppend(wal, n, page_numbers, frames);
+	rv = vfsWalAppend(wal, database->n_pages, n, page_numbers, frames);
 	if (rv != 0) {
 		return rv;
 	}
