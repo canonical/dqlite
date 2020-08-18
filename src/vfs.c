@@ -2191,6 +2191,7 @@ static void vfsDatabaseSnapshot(struct vfsDatabase *d, uint8_t **cursor)
 
 static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
 {
+	uint32_t page_size;
 	unsigned i;
 
 	if (w->n_frames == 0) {
@@ -2200,12 +2201,15 @@ static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
 	memcpy(*cursor, w->hdr, FORMAT__WAL_HDR_SIZE);
 	*cursor += FORMAT__WAL_HDR_SIZE;
 
+	vfsWalGetPageSize(w, &page_size);
+	assert(page_size > 0);
+
 	for (i = 0; i < w->n_frames; i++) {
 		struct vfsFrame *frame = w->frames[i];
 		memcpy(*cursor, frame->header, FORMAT__WAL_FRAME_HDR_SIZE);
 		*cursor += FORMAT__WAL_FRAME_HDR_SIZE;
-		memcpy(*cursor, frame->page, w->database->page_size);
-		*cursor += w->database->page_size;
+		memcpy(*cursor, frame->page, page_size);
+		*cursor += page_size;
 	}
 }
 
