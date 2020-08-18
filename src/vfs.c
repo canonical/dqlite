@@ -1690,6 +1690,8 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			goto err;
 		}
 
+		assert(type == VFS__DATABASE);
+
 		/* Check the create flag. */
 		if (!create) {
 			v->error = ENOENT;
