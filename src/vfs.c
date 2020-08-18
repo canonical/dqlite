@@ -303,7 +303,10 @@ err:
 }
 
 /* Get a frame from the WAL, possibly creating a new one. */
-static int vfsWalFrameGetV1(struct vfsWal *w, int pgno, struct vfsFrame **page)
+static int vfsWalFrameGetV1(struct vfsWal *w,
+			    int pgno,
+			    uint32_t page_size,
+			    struct vfsFrame **page)
 {
 	int rc;
 
@@ -327,9 +330,9 @@ static int vfsWalFrameGetV1(struct vfsWal *w, int pgno, struct vfsFrame **page)
 		 * handling a 'PRAGMA page_size=N' command in
 		 * vfs__file_control(). This assumption is enforced in
 		 * vfsFileWrite(). */
-		assert(w->database->page_size > 0);
+		assert(page_size > 0);
 
-		*page = vfsFrameCreate(w->database->page_size);
+		*page = vfsFrameCreate(page_size);
 		if (*page == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err;
@@ -368,6 +371,7 @@ err:
 /* Get a frame from the current transaction, possibly creating a new one. */
 static int vfsWalFrameGetV2(struct vfsWal *w,
 			    unsigned index,
+			    uint32_t page_size,
 			    struct vfsFrame **frame)
 {
 	int rv;
@@ -392,9 +396,9 @@ static int vfsWalFrameGetV2(struct vfsWal *w,
 		 * handling a 'PRAGMA page_size=N' command in
 		 * vfs__file_control(). This assumption is enforved in
 		 * vfsFileWrite(). */
-		assert(w->database->page_size > 0);
+		assert(page_size > 0);
 
-		*frame = vfsFrameCreate(w->database->page_size);
+		*frame = vfsFrameCreate(page_size);
 		if (*frame == NULL) {
 			rv = SQLITE_NOMEM;
 			goto err;
@@ -958,7 +962,7 @@ static int vfsDatabaseWrite(struct vfsDatabase *d,
  * inclusive, or the value 1 representing a page size of 65536").
  *
  * Return 0 if the page size is out of bound. */
-static uint32_t vfsDecodePageSize(uint8_t* buf)
+static uint32_t vfsDecodePageSize(uint8_t *buf)
 {
 	uint32_t page_size;
 
@@ -1017,9 +1021,9 @@ static int vfsWalWrite(struct vfsWal *w,
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 
 		if (w->version == VFS__V1) {
-			vfsWalFrameGetV1(w, (int)index, &frame);
+			vfsWalFrameGetV1(w, (int)index, page_size, &frame);
 		} else {
-			vfsWalFrameGetV2(w, index, &frame);
+			vfsWalFrameGetV2(w, index, page_size, &frame);
 		}
 		if (frame == NULL) {
 			return SQLITE_NOMEM;
@@ -1248,7 +1252,8 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 }
 
 /* Return the checksum stored in the header of the given frame. */
-static void vfsFrameGetChecksum(struct vfsFrame *f, uint32_t checksum[2]) {
+static void vfsFrameGetChecksum(struct vfsFrame *f, uint32_t checksum[2])
+{
 	vfsGet32(&f->header[16], &checksum[0]);
 	vfsGet32(&f->header[20], &checksum[1]);
 }
