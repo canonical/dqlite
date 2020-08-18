@@ -87,9 +87,9 @@ static uint32_t vfsFlip32(uint32_t v)
 }
 
 /* Load a 32-bit number stored in big-endian representation. */
-static void vfsGet32(const uint8_t buf[4], uint32_t *v)
+static uint32_t vfsGet32(const uint8_t buf[4])
 {
-	*v = vfsFlip32(*(const uint32_t *)buf);
+	return vfsFlip32(*(const uint32_t *)buf);
 }
 
 /* Create a new frame of a WAL file. */
@@ -770,7 +770,7 @@ static uint32_t vfsDecodePageSize(uint8_t *buf)
 {
 	uint32_t page_size;
 
-	vfsGet32(buf, &page_size);
+	page_size = vfsGet32(buf);
 
 	if (page_size == 1) {
 		page_size = FORMAT__PAGE_SIZE_MAX;
@@ -1238,11 +1238,16 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	return SQLITE_NOTFOUND;
 }
 
-/* Return the checksum stored in the header of the given frame. */
-static void vfsFrameGetChecksum(struct vfsFrame *f, uint32_t checksum[2])
+/* Return the checksum-1 field stored in the header of the given frame. */
+static uint32_t vfsFrameGetChecksum1(struct vfsFrame *f)
 {
-	vfsGet32(&f->header[16], &checksum[0]);
-	vfsGet32(&f->header[20], &checksum[1]);
+	return vfsGet32(&f->header[16]);
+}
+
+/* Return the checksum-2 field stored in the header of the given frame. */
+static uint32_t vfsFrameGetChecksum2(struct vfsFrame *f)
+{
+	return vfsGet32(&f->header[20]);
 }
 
 /* Overwrite the WAL index header to reflect the current committed content of
@@ -1257,7 +1262,8 @@ static void vfsRewriteWalIndexHeader(struct vfsDatabase *d)
 
 	if (wal->n_frames > 0) {
 		struct vfsFrame *last = wal->frames[wal->n_frames - 1];
-		vfsFrameGetChecksum(last, frame_checksum);
+		frame_checksum[0] = vfsFrameGetChecksum1(last);
+		frame_checksum[1] = vfsFrameGetChecksum2(last);
 		formatWalGetFrameDatabaseSize(last->header, &n_pages);
 	}
 
@@ -2017,12 +2023,17 @@ int VfsPoll(sqlite3_vfs *vfs,
 	return 0;
 }
 
-/* Return the checksum stored in the WAL header.*/
-static void vfsWalGetChecksum(struct vfsWal *w, uint32_t checksum[2])
+/* Return the checksum-1 field stored in the WAL header.*/
+static uint32_t vfsWalGetChecksum1(struct vfsWal *w)
 {
-	vfsGet32(&w->hdr[24], &checksum[0]);
-	vfsGet32(&w->hdr[28], &checksum[1]);
+	return vfsGet32(&w->hdr[24]);
 }
+
+/* Return the checksum-2 field stored in the WAL header.*/
+static uint32_t vfsWalGetChecksum2(struct vfsWal *w)
+{
+	return vfsGet32(&w->hdr[28]);
+ }
 
 /* Append the given pages as new frames. */
 static int vfsWalAppend(struct vfsWal *w,
@@ -2057,10 +2068,12 @@ static int vfsWalAppend(struct vfsWal *w,
 	 * will be the ones stored in the last frame of the WAL. */
 	if (w->n_frames == 0) {
 		database_size = (uint32_t)database_n_pages;
-		vfsWalGetChecksum(w, checksum);
+		checksum[0] = vfsWalGetChecksum1(w);
+		checksum[1] = vfsWalGetChecksum2(w);
 	} else {
 		struct vfsFrame *frame = w->frames[w->n_frames - 1];
-		vfsFrameGetChecksum(frame, checksum);
+		checksum[0] = vfsFrameGetChecksum1(frame);
+		checksum[1] = vfsFrameGetChecksum2(frame);
 		formatWalGetFrameDatabaseSize(frame->header, &database_size);
 	}
 
