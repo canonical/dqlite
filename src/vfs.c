@@ -60,7 +60,6 @@ struct vfsDatabase
 	unsigned n_pages;   /* Number of pages. */
 	struct vfsShm shm;  /* Shared memory. */
 	struct vfsWal wal;  /* Associated WAL. */
-	unsigned refcount;  /* N. of files referencing this database. */
 	int version;
 };
 
@@ -679,12 +678,6 @@ static int vfsDeleteDatabase(struct vfs *r, const char *name)
 			continue;
 		}
 
-		/* Check that there are no consumers of this file. */
-		if (database->refcount > 0) {
-			r->error = EBUSY;
-			return SQLITE_IOERR_DELETE;
-		}
-
 		/* Free all memory allocated for this file. */
 		vfsDatabaseDestroy(database);
 
@@ -714,9 +707,6 @@ static int vfsFileClose(sqlite3_file *file)
 
 		return rc;
 	}
-
-	assert(f->database->refcount);
-	f->database->refcount--;
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
 		rc = vfsDeleteDatabase(v, f->database->name);
@@ -896,8 +886,6 @@ static int vfsFileRead(sqlite3_file *file,
 		return f->temp->pMethods->xRead(f->temp, buf, amount, offset);
 	}
 
-	assert(f->database->refcount > 0);
-
 	switch (f->type) {
 		case VFS__DATABASE:
 			rv = vfsDatabaseRead(f->database, buf, amount, offset);
@@ -1066,8 +1054,6 @@ static int vfsFileWrite(sqlite3_file *file,
 		/* Write to the actual temporary file. */
 		return f->temp->pMethods->xWrite(f->temp, buf, amount, offset);
 	}
-
-	assert(f->database->refcount > 0);
 
 	switch (f->type) {
 		case VFS__DATABASE:
@@ -1585,8 +1571,6 @@ static struct vfsDatabase *vfsCreateDatabase(struct vfs *v, const char *name)
 	}
 	strcpy(d->name, name);
 
-	d->refcount = 0;
-
 	vfsDatabaseInit(d, v->version);
 
 	v->databases[n - 1] = d;
@@ -1726,8 +1710,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	f->vfs = v;
 	f->type = type;
 	f->database = database;
-
-	database->refcount++;
 
 	return SQLITE_OK;
 
