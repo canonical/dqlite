@@ -1135,9 +1135,10 @@ static size_t vfsWalFileSize(struct vfsWal *w)
 {
 	size_t size = 0;
 	if (w->n_frames > 0) {
+		uint32_t page_size;
+		vfsWalGetPageSize(w, &page_size);
 		size += FORMAT__WAL_HDR_SIZE;
-		size += w->n_frames *
-			(FORMAT__WAL_FRAME_HDR_SIZE + w->database->page_size);
+		size += w->n_frames * (FORMAT__WAL_FRAME_HDR_SIZE + page_size);
 	}
 	return size;
 }
