@@ -43,7 +43,6 @@ struct vfsFrame
 /* WAL-specific content */
 struct vfsWal
 {
-	struct vfsDatabase *database;      /* Associated database */
 	uint8_t hdr[FORMAT__WAL_HDR_SIZE]; /* Header. */
 	struct vfsFrame **frames;          /* All frames committed. */
 	unsigned n_frames;                 /* Number of committed frames. */
@@ -178,7 +177,6 @@ static void vfsShmReset(struct vfsShm *s)
 /* Initialize a new WAL object. */
 static void vfsWalInit(struct vfsWal *w, int version)
 {
-	w->database = NULL;
 	memset(w->hdr, 0, FORMAT__WAL_HDR_SIZE);
 	w->frames = NULL;
 	w->n_frames = 0;
@@ -195,7 +193,6 @@ static void vfsDatabaseInit(struct vfsDatabase *d, int version)
 	d->n_pages = 0;
 	vfsShmInit(&d->shm);
 	vfsWalInit(&d->wal, version);
-	d->wal.database = d;
 	d->version = version;
 }
 
@@ -1264,20 +1261,21 @@ static void vfsFrameGetChecksum(struct vfsFrame *f, uint32_t checksum[2])
 
 /* Overwrite the WAL index header to reflect the current committed content of
  * the WAL. */
-static void vfsWalRewriteIndexHeader(struct vfsWal *w)
+static void vfsRewriteWalIndexHeader(struct vfsDatabase *d)
 {
-	struct vfsShm *shm = &w->database->shm;
+	struct vfsShm *shm = &d->shm;
+	struct vfsWal *wal = &d->wal;
 	uint8_t *hdr = shm->regions[0];
 	uint32_t frame_checksum[2] = {0, 0};
-	uint32_t n_pages = (uint32_t)w->database->n_pages;
+	uint32_t n_pages = (uint32_t)d->n_pages;
 
-	if (w->n_frames > 0) {
-		struct vfsFrame *last = w->frames[w->n_frames - 1];
+	if (wal->n_frames > 0) {
+		struct vfsFrame *last = wal->frames[wal->n_frames - 1];
 		vfsFrameGetChecksum(last, frame_checksum);
 		formatWalGetFrameDatabaseSize(last->header, &n_pages);
 	}
 
-	formatWalPutIndexHeader(hdr, w->n_frames, n_pages, frame_checksum);
+	formatWalPutIndexHeader(hdr, wal->n_frames, n_pages, frame_checksum);
 }
 
 /* The SQLITE_FCNTL_COMMIT_PHASETWO file control op code is trigged by the
@@ -1287,7 +1285,7 @@ static int vfsFileControlCommitPhaseTwo(struct vfsFile *f)
 	struct vfsDatabase *database = f->database;
 	struct vfsWal *wal = &database->wal;
 	if (database->version == VFS__V2 && wal->n_tx > 0) {
-		vfsWalRewriteIndexHeader(wal);
+		vfsRewriteWalIndexHeader(database);
 	}
 	return 0;
 }
@@ -2156,7 +2154,7 @@ int VfsApply(sqlite3_vfs *vfs,
 	if (shm->exclusive[0] == 1) {
 		vfsShmUnlock(shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
 		assert(shm->n_regions > 0);
-		vfsWalRewriteIndexHeader(wal);
+		vfsRewriteWalIndexHeader(database);
 	} else {
 		if (shm->n_regions > 0) {
 			formatWalInvalidateIndexHeader(shm->regions[0]);
