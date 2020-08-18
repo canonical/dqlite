@@ -775,13 +775,44 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 	return SQLITE_OK;
 }
 
+/* Decode the page size ("Must be a power of two between 512 and 32768
+ * inclusive, or the value 1 representing a page size of 65536").
+ *
+ * Return 0 if the page size is out of bound. */
+static uint32_t vfsDecodePageSize(uint8_t *buf)
+{
+	uint32_t page_size;
+
+	vfsGet32(buf, &page_size);
+
+	if (page_size == 1) {
+		page_size = FORMAT__PAGE_SIZE_MAX;
+	} else if (page_size < FORMAT__PAGE_SIZE_MIN) {
+		page_size = 0;
+	} else if (page_size > (FORMAT__PAGE_SIZE_MAX / 2)) {
+		page_size = 0;
+	} else if (((page_size - 1) & page_size) != 0) {
+		page_size = 0;
+	}
+
+	return page_size;
+}
+
+/* Get the page size stored in the WAL header. */
+static void vfsWalGetPageSize(struct vfsWal *w, uint32_t *page_size)
+{
+	/* The page size is stored in the 4 bytes starting at 8
+	 * (big-endian) */
+	*page_size = vfsDecodePageSize(&w->hdr[8]);
+}
+
 /* Read data from the WAL. */
 static int vfsWalRead(struct vfsWal *w,
 		      void *buf,
 		      int amount,
 		      sqlite_int64 offset)
 {
-	unsigned page_size = w->database->page_size;
+	uint32_t page_size;
 	unsigned index;
 	struct vfsFrame *frame;
 
@@ -795,6 +826,9 @@ static int vfsWalRead(struct vfsWal *w,
 		memcpy(buf, w->hdr, FORMAT__WAL_HDR_SIZE);
 		return SQLITE_OK;
 	}
+
+	vfsWalGetPageSize(w, &page_size);
+	assert(page_size > 0);
 
 	/* For any other frame, we expect either a header read,
 	 * a checksum read, a page read or a full frame read. */
@@ -956,37 +990,6 @@ static int vfsDatabaseWrite(struct vfsDatabase *d,
 	memcpy(page, buf, (size_t)amount);
 
 	return SQLITE_OK;
-}
-
-/* Decode the page size ("Must be a power of two between 512 and 32768
- * inclusive, or the value 1 representing a page size of 65536").
- *
- * Return 0 if the page size is out of bound. */
-static uint32_t vfsDecodePageSize(uint8_t *buf)
-{
-	uint32_t page_size;
-
-	vfsGet32(buf, &page_size);
-
-	if (page_size == 1) {
-		page_size = FORMAT__PAGE_SIZE_MAX;
-	} else if (page_size < FORMAT__PAGE_SIZE_MIN) {
-		page_size = 0;
-	} else if (page_size > (FORMAT__PAGE_SIZE_MAX / 2)) {
-		page_size = 0;
-	} else if (((page_size - 1) & page_size) != 0) {
-		page_size = 0;
-	}
-
-	return page_size;
-}
-
-/* Get the page size stored in the WAL header. */
-static void vfsWalGetPageSize(struct vfsWal *w, uint32_t *page_size)
-{
-	/* The page size is stored in the 4 bytes starting at 8
-	 * (big-endian) */
-	*page_size = vfsDecodePageSize(&w->hdr[8]);
 }
 
 static int vfsWalWrite(struct vfsWal *w,
