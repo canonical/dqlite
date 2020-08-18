@@ -665,21 +665,13 @@ static int handle_remove(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
-static int dumpFile(struct gateway *g,
-		    const char *filename,
+static int dumpFile(const char *filename,
+		    uint8_t *data,
+		    size_t n,
 		    struct buffer *buffer)
 {
 	void *cur;
-	void *buf;
-	size_t file_size;
-	uint64_t len;
-	int rv;
-
-	rv = VfsFileRead(g->config->name, filename, &buf, &file_size);
-	if (rv != 0) {
-		return rv;
-	}
-	len = file_size;
+	uint64_t len = n;
 
 	cur = buffer__advance(buffer, text__sizeof(&filename));
 	if (cur == NULL) {
@@ -692,34 +684,40 @@ static int dumpFile(struct gateway *g,
 	}
 	uint64__encode(&len, &cur);
 
-	if (len == 0) {
+	if (n == 0) {
 		return 0;
 	}
 
-	assert(len % 8 == 0);
-	assert(buf != NULL);
+	assert(n % 8 == 0);
+	assert(data != NULL);
 
-	cur = buffer__advance(buffer, len);
+	cur = buffer__advance(buffer, n);
 	if (cur == NULL) {
 		goto oom;
 	}
-	memcpy(cur, buf, len);
-
-	raft_free(buf);
+	memcpy(cur, data, n);
 
 	return 0;
 
 oom:
-	sqlite3_free(buf);
 	return DQLITE_NOMEM;
 }
 
 static int handle_dump(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
+	sqlite3_vfs *vfs;
 	void *cur;
-	int rv;
 	char filename[1024];
+	void *data;
+	size_t n;
+	uint8_t *page;
+	uint32_t database_size = 0;
+	uint8_t* database;
+	uint8_t* wal;
+	size_t n_database;
+	size_t n_wal;
+	int rv;
 	START(dump, files);
 
 	response.n = 2;
@@ -727,8 +725,27 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	assert(cur != NULL);
 	response_files__encode(&response, &cur);
 
-	/* Main database file. */
-	rv = dumpFile(g, request.filename, req->buffer);
+	vfs = sqlite3_vfs_find(g->config->name);
+	rv = VfsSnapshot(vfs, request.filename, &data, &n);
+	if (rv != 0) {
+		failure(req, rv, "failed to dump database");
+		return 0;
+	}
+
+	/* Extract the database size from the first page. */
+	page = data;
+	database_size += (uint32_t)(page[28] << 24);
+	database_size += (uint32_t)(page[29] << 16);
+	database_size += (uint32_t)(page[30] << 8);
+	database_size += (uint32_t)(page[31]);
+
+	n_database = database_size * g->config->page_size;
+	n_wal = n - n_database;
+
+	database = data;
+	wal = database + n_database;
+
+	rv = dumpFile(request.filename, database, n_database, req->buffer);
 	if (rv != 0) {
 		failure(req, rv, "failed to dump database");
 		return 0;
@@ -736,11 +753,13 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 
 	strcpy(filename, request.filename);
 	strcat(filename, "-wal");
-	rv = dumpFile(g, filename, req->buffer);
+	rv = dumpFile(filename, wal, n_wal, req->buffer);
 	if (rv != 0) {
 		failure(req, rv, "failed to dump wal file");
 		return 0;
 	}
+
+	raft_free(data);
 
 	req->cb(req, 0, DQLITE_RESPONSE_FILES);
 
