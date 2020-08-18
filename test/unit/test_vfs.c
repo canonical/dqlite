@@ -563,32 +563,6 @@ TEST(VfsDelete, success, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Attempt to delete a file with open file descriptors. */
-TEST(VfsDelete, busy, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
-
-	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
-	int rc;
-
-	(void)params;
-
-	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
-	munit_assert_int(rc, ==, 0);
-
-	rc = f->vfs.xDelete(&f->vfs, "test.db", 0);
-	munit_assert_int(rc, ==, SQLITE_IOERR_DELETE);
-	munit_assert_int(EBUSY, ==, f->vfs.xGetLastError(&f->vfs, 0, 0));
-
-	rc = file->pMethods->xClose(file);
-	munit_assert_int(rc, ==, 0);
-
-	free(file);
-
-	return MUNIT_OK;
-}
-
 /* Trying to delete a non-existing file results in an error. */
 TEST(VfsDelete, enoent, setUp, tearDown, 0, NULL)
 {
