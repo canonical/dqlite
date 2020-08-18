@@ -2046,7 +2046,7 @@ static int vfsWalAppend(struct vfsWal *w,
 			uint8_t *pages)
 {
 	struct vfsFrame **frames; /* New frames array. */
-	unsigned page_size = w->database->page_size;
+	uint32_t page_size;
 	uint32_t database_size = w->database->n_pages;
 	unsigned i;
 	unsigned j;
@@ -2056,6 +2056,9 @@ static int vfsWalAppend(struct vfsWal *w,
 
 	/* No pending transactions. */
 	assert(w->n_tx == 0);
+
+	vfsWalGetPageSize(w, &page_size);
+	assert(page_size > 0);
 
 	/* Get the salt from the WAL header. */
 	formatWalGetNativeChecksum(w->hdr, &native);
