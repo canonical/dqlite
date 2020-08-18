@@ -75,6 +75,27 @@ struct vfsDatabase
 	int version;
 };
 
+/* Flip a 16-bit number back and forth to or from big-endian representation. */
+static uint16_t vfsFlip16(uint16_t v)
+{
+#if defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN)
+	return v;
+#elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN) && \
+    defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
+	return __builtin_bswap16(v);
+#else
+	union {
+		uint16_t u;
+		uint8_t v[4];
+	} s;
+
+	s.v[0] = (uint8_t)(v >> 8);
+	s.v[1] = (uint8_t)v;
+
+	return s.u;
+#endif
+}
+
 /* Flip a 32-bit number back and forth to or from big-endian representation. */
 static uint32_t vfsFlip32(uint32_t v)
 {
@@ -98,8 +119,14 @@ static uint32_t vfsFlip32(uint32_t v)
 #endif
 }
 
+/* Load a 16-bit number stored in big-endian representation. */
+static uint32_t vfsGet16(const uint8_t *buf)
+{
+	return vfsFlip16(*(const uint16_t *)buf);
+}
+
 /* Load a 32-bit number stored in big-endian representation. */
-static uint32_t vfsGet32(const uint8_t buf[4])
+static uint32_t vfsGet32(const uint8_t *buf)
 {
 	return vfsFlip32(*(const uint32_t *)buf);
 }
@@ -820,16 +847,12 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 	return SQLITE_OK;
 }
 
-/* Decode the page size ("Must be a power of two between 512 and 32768
+/* Parse the page size ("Must be a power of two between 512 and 32768
  * inclusive, or the value 1 representing a page size of 65536").
  *
  * Return 0 if the page size is out of bound. */
-static uint32_t vfsDecodePageSize(uint8_t *buf)
+static uint32_t vfsParsePageSize(uint32_t page_size)
 {
-	uint32_t page_size;
-
-	page_size = vfsGet32(buf);
-
 	if (page_size == 1) {
 		page_size = FORMAT__PAGE_SIZE_MAX;
 	} else if (page_size < FORMAT__PAGE_SIZE_MIN) {
@@ -848,7 +871,7 @@ static uint32_t vfsWalGetPageSize(struct vfsWal *w)
 {
 	/* The page size is stored in the 4 bytes starting at 8
 	 * (big-endian) */
-	return vfsDecodePageSize(&w->hdr[8]);
+	return vfsParsePageSize(vfsGet32(&w->hdr[8]));
 }
 
 /* Read data from the WAL. */
@@ -981,9 +1004,7 @@ static uint32_t vfsDatabaseGetPageSize(struct vfsDatabase *d)
 
 	/* The page size is stored in the 16th and 17th bytes of the first
 	 * database page (big-endian) */
-	uint8_t buf[4] = {0, 0, page[16], page[17]};
-
-	return vfsDecodePageSize(buf);
+	return vfsParsePageSize(vfsGet16(&page[16]));
 }
 
 static int vfsDatabaseWrite(struct vfsDatabase *d,
@@ -2102,7 +2123,7 @@ static uint32_t vfsWalGetChecksum1(struct vfsWal *w)
 static uint32_t vfsWalGetChecksum2(struct vfsWal *w)
 {
 	return vfsGet32(&w->hdr[28]);
- }
+}
 
 /* Append the given pages as new frames. */
 static int vfsWalAppend(struct vfsWal *w,
