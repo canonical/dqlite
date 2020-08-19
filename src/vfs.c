@@ -33,6 +33,9 @@
 
 #define VFS__WAL_MAX_VERSION 3007000
 
+/* Index of the write lock in the WAL-index header locks area. */
+#define VFS__WAL_WRITE_LOCK 0
+
 /* Hold content for a shared memory mapping. */
 struct vfsShm
 {
@@ -1550,10 +1553,36 @@ static int vfsShmUnlock(struct vfsShm *s, int ofst, int n, int flags)
 	return SQLITE_OK;
 }
 
+/* If there's a uncommitted transaction, roll it back. */
+static void vfsWalRollbackIfUncommitted(struct vfsWal *w)
+{
+	struct vfsFrame *last;
+	uint32_t commit;
+	unsigned i;
+
+	if (w->n_tx == 0) {
+		return;
+	}
+
+	last = w->tx[w->n_tx - 1];
+	commit = vfsFrameGetDatabaseSize(last);
+
+	if (commit > 0) {
+		return;
+	}
+
+	for (i = 0; i < w->n_tx; i++) {
+		vfsFrameDestroy(w->tx[i]);
+	}
+
+	w->n_tx = 0;
+}
+
 static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 {
 	struct vfsFile *f;
 	struct vfsShm *shm;
+	struct vfsWal *wal;
 	int rv;
 
 	assert(file != NULL);
@@ -1587,6 +1616,22 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 		rv = vfsShmUnlock(shm, ofst, n, flags);
 	} else {
 		rv = vfsShmLock(shm, ofst, n, flags);
+	}
+
+	wal = &f->database->wal;
+	if (rv == SQLITE_OK && ofst == VFS__WAL_WRITE_LOCK) {
+		assert(n == 1);
+		/* When acquiring the write lock, make sure there's no
+		 * transaction that hasn't been rolled back or polled. */
+		if (flags == (SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE)) {
+			assert(wal->n_tx == 0);
+		}
+		/* When releasing the write lock, if we find a pending
+		 * uncommitted transaction then a rollback must have occurred.
+		 * In that case we delete the pending transaction. */
+		if (flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE)) {
+			vfsWalRollbackIfUncommitted(wal);
+		}
 	}
 
 	return rv;
@@ -2097,7 +2142,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 		return rv;
 	}
 
-	/* If some frames have been written take the write immediately. */
+	/* If some frames have been written take the write lock. */
 	if (*n > 0) {
 		rv = vfsShmLock(shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
 		if (rv != 0) {

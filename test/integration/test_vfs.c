@@ -920,7 +920,7 @@ TEST(vfs, snapshotEmptyDatabase, setUp, tearDown, 0, NULL)
 
 	sqlite3_free(snapshot.data);
 
-	return 0;
+	return MUNIT_OK;
 }
 
 /* A snapshot of a database after the first write transaction gets applied
@@ -954,7 +954,7 @@ TEST(vfs, snapshotAfterFirstTransaction, setUp, tearDown, 0, NULL)
 
 	sqlite3_free(snapshot.data);
 
-	return 0;
+	return MUNIT_OK;
 }
 
 /* A snapshot of a database after a checkpoint contains all checkpointed pages
@@ -989,5 +989,92 @@ TEST(vfs, snapshotAfterCheckpoint, setUp, tearDown, 0, NULL)
 
 	sqlite3_free(snapshot.data);
 
-	return 0;
+	return MUNIT_OK;
+}
+
+/* Rollback a transaction that didn't hit the page cache limit and hence didn't
+ * perform any pre-commit WAL writes. */
+TEST(vfs, rollbackTransactionWithoutPageStress, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	struct tx tx;
+	sqlite3_stmt *stmt;
+
+	OPEN("1", db);
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	EXEC(db, "BEGIN");
+	EXEC(db, "INSERT INTO test(n) VALUES(1)");
+	EXEC(db, "ROLLBACK");
+
+	POLL("1", tx);
+	munit_assert_int(tx.n, ==, 0);
+
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	RESET(stmt, SQLITE_OK);
+
+	EXEC(db, "INSERT INTO test(n) VALUES(1)");
+	POLL("1", tx);
+	APPLY("1",tx);
+	DONE(tx);
+
+	STEP(stmt, SQLITE_ROW);
+
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Rollback a transaction that hit the page cache limit and hence performed some
+ * pre-commit WAL writes. */
+TEST(vfs, rollbackTransactionWithPageStress, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+	unsigned i;
+
+	OPEN("1", db);
+
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	EXEC(db, "BEGIN");
+	for (i = 0; i < 163; i++) {
+		char sql[64];
+		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
+		EXEC(db, sql);
+		POLL("1", tx);
+		munit_assert_int(tx.n, ==, 0);
+	}
+	EXEC(db, "ROLLBACK");
+
+	POLL("1", tx);
+	munit_assert_int(tx.n, ==, 0);
+	PREPARE(db, stmt, "SELECT * FROM test");
+	STEP(stmt, SQLITE_DONE);
+	RESET(stmt, SQLITE_OK);
+
+	EXEC(db, "INSERT INTO test(n) VALUES(1)");
+	POLL("1", tx);
+	APPLY("1",tx);
+	DONE(tx);
+
+	STEP(stmt, SQLITE_ROW);
+
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
 }
