@@ -85,9 +85,6 @@ void formatWalGetFrameDatabaseSize(const uint8_t *header, uint32_t *n);
  * checksums, or false if bit-endian byte order should be used instead. */
 void formatWalGetNativeChecksum(const uint8_t *header, bool *native);
 
-/* Initialize the header of a new WAL file. */
-void formatWalInitHeader(uint8_t *header, unsigned page_size);
-
 /* Restart the header of a WAL file after a checkpoint. */
 void formatWalRestartHeader(uint8_t *header);
 
