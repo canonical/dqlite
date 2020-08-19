@@ -713,8 +713,8 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	size_t n;
 	uint8_t *page;
 	uint32_t database_size = 0;
-	uint8_t* database;
-	uint8_t* wal;
+	uint8_t *database;
+	uint8_t *wal;
 	size_t n_database;
 	size_t n_wal;
 	int rv;
@@ -732,18 +732,28 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 		return 0;
 	}
 
-	/* Extract the database size from the first page. */
-	page = data;
-	database_size += (uint32_t)(page[28] << 24);
-	database_size += (uint32_t)(page[29] << 16);
-	database_size += (uint32_t)(page[30] << 8);
-	database_size += (uint32_t)(page[31]);
+	if (data != NULL) {
+		/* Extract the database size from the first page. */
+		page = data;
+		database_size += (uint32_t)(page[28] << 24);
+		database_size += (uint32_t)(page[29] << 16);
+		database_size += (uint32_t)(page[30] << 8);
+		database_size += (uint32_t)(page[31]);
 
-	n_database = database_size * g->config->page_size;
-	n_wal = n - n_database;
+		n_database = database_size * g->config->page_size;
+		n_wal = n - n_database;
 
-	database = data;
-	wal = database + n_database;
+		database = data;
+		wal = database + n_database;
+	} else {
+		assert(n == 0);
+
+		n_database = 0;
+		n_wal = 0;
+
+		database = NULL;
+		wal = NULL;
+	}
 
 	rv = dumpFile(request.filename, database, n_database, req->buffer);
 	if (rv != 0) {
@@ -759,7 +769,9 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 		return 0;
 	}
 
-	raft_free(data);
+	if (data != NULL) {
+		raft_free(data);
+	}
 
 	req->cb(req, 0, DQLITE_RESPONSE_FILES);
 
