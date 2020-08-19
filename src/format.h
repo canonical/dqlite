@@ -78,9 +78,6 @@ void formatWalInvalidateIndexHeader(uint8_t *header);
 /* Extract the page number from a WAL frame header. */
 void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number);
 
-/* Extract from a WAL frame header the database size in pages. */
-void formatWalGetFrameDatabaseSize(const uint8_t *header, uint32_t *n);
-
 /* Return true if native byte order should be used when calculating WAL
  * checksums, or false if bit-endian byte order should be used instead. */
 void formatWalGetNativeChecksum(const uint8_t *header, bool *native);
