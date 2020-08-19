@@ -870,6 +870,7 @@ static int vfsDatabaseWrite(struct vfsDatabase *d,
 	int rc;
 
 	if (offset == 0) {
+		const uint8_t *header = buf;
 		unsigned page_size;
 
 		/* This is the first database page. We expect
@@ -877,7 +878,7 @@ static int vfsDatabaseWrite(struct vfsDatabase *d,
 		assert(amount >= FORMAT__DB_HDR_SIZE);
 
 		/* Extract the page size from the header. */
-		formatDatabaseGetPageSize(buf, &page_size);
+		page_size = vfsParsePageSize(vfsGet16(&header[16]));
 		if (page_size == 0) {
 			return SQLITE_CORRUPT;
 		}
@@ -2153,7 +2154,11 @@ int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
 	v = (struct vfs *)(vfs->pAppData);
 	database = vfsDatabaseLookup(v, filename);
 
-	assert(database != NULL);
+	if (database == NULL) {
+		*data = NULL;
+		*n = 0;
+		return 0;
+	}
 
 	wal = &database->wal;
 
