@@ -66,12 +66,11 @@ struct vfsWal
 /* Database-specific content */
 struct vfsDatabase
 {
-	char *name;         /* Database name. */
-	unsigned page_size; /* Page size of each page. */
-	void **pages;       /* All database. */
-	unsigned n_pages;   /* Number of pages. */
-	struct vfsShm shm;  /* Shared memory. */
-	struct vfsWal wal;  /* Associated WAL. */
+	char *name;        /* Database name. */
+	void **pages;      /* All database. */
+	unsigned n_pages;  /* Number of pages. */
+	struct vfsShm shm; /* Shared memory. */
+	struct vfsWal wal; /* Associated WAL. */
 	int version;
 };
 
@@ -272,7 +271,6 @@ static void vfsWalInit(struct vfsWal *w, int version)
 /* Initialize a new database object. */
 static void vfsDatabaseInit(struct vfsDatabase *d, int version)
 {
-	d->page_size = 0;
 	d->pages = NULL;
 	d->n_pages = 0;
 	vfsShmInit(&d->shm);
@@ -324,7 +322,10 @@ static void vfsDatabaseDestroy(struct vfsDatabase *d)
 }
 
 /* Get a page from the given database, possibly creating a new one. */
-static int vfsDatabasePageGet(struct vfsDatabase *d, unsigned pgno, void **page)
+static int vfsDatabaseGetPage(struct vfsDatabase *d,
+			      uint32_t page_size,
+			      unsigned pgno,
+			      void **page)
 {
 	int rc;
 
@@ -343,14 +344,7 @@ static int vfsDatabasePageGet(struct vfsDatabase *d, unsigned pgno, void **page)
 		 * new page to it. */
 		void **pages; /* New page array. */
 
-		/* We assume that the page size has been set, either by
-		 * intercepting the first main database file write, or by
-		 * handling a 'PRAGMA page_size=N' command in
-		 * vfs__file_control(). This assumption is enforced in
-		 * vfsFileWrite(). */
-		assert(d->page_size > 0);
-
-		*page = sqlite3_malloc64(d->page_size);
+		*page = sqlite3_malloc64(page_size);
 		if (*page == NULL) {
 			rc = SQLITE_NOMEM;
 			goto err;
@@ -563,10 +557,43 @@ static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 	return frame;
 }
 
+/* Parse the page size ("Must be a power of two between 512 and 32768
+ * inclusive, or the value 1 representing a page size of 65536").
+ *
+ * Return 0 if the page size is out of bound. */
+static uint32_t vfsParsePageSize(uint32_t page_size)
+{
+	if (page_size == 1) {
+		page_size = FORMAT__PAGE_SIZE_MAX;
+	} else if (page_size < FORMAT__PAGE_SIZE_MIN) {
+		page_size = 0;
+	} else if (page_size > (FORMAT__PAGE_SIZE_MAX / 2)) {
+		page_size = 0;
+	} else if (((page_size - 1) & page_size) != 0) {
+		page_size = 0;
+	}
+
+	return page_size;
+}
+
+static uint32_t vfsDatabaseGetPageSize(struct vfsDatabase *d)
+{
+	uint8_t *page;
+
+	assert(d->n_pages > 0);
+
+	page = d->pages[0];
+
+	/* The page size is stored in the 16th and 17th bytes of the first
+	 * database page (big-endian) */
+	return vfsParsePageSize(vfsGet16(&page[16]));
+}
+
 /* Truncate a database file to be exactly the given number of pages. */
 static int vfsDatabaseTruncate(struct vfsDatabase *d, sqlite_int64 size)
 {
 	void **cursor;
+	uint32_t page_size;
 	unsigned n_pages;
 	unsigned i;
 
@@ -579,13 +606,14 @@ static int vfsDatabaseTruncate(struct vfsDatabase *d, sqlite_int64 size)
 
 	/* Since the file size is not zero, some content must
 	 * have been written and the page size must be known. */
-	assert(d->page_size > 0);
+	page_size = vfsDatabaseGetPageSize(d);
+	assert(page_size > 0);
 
-	if ((size % d->page_size) != 0) {
+	if ((size % page_size) != 0) {
 		return SQLITE_IOERR_TRUNCATE;
 	}
 
-	n_pages = (unsigned)(size / d->page_size);
+	n_pages = (unsigned)(size / page_size);
 
 	/* We expect callers to only invoke us if some actual content has been
 	 * written already. */
@@ -806,7 +834,7 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 			   int amount,
 			   sqlite_int64 offset)
 {
-	unsigned page_size = d->page_size;
+	unsigned page_size;
 	unsigned pgno;
 	void *page;
 
@@ -816,6 +844,7 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 
 	/* If the main database file is not empty, we expect the
 	 * page size to have been set by an initial write. */
+	page_size = vfsDatabaseGetPageSize(d);
 	assert(page_size > 0);
 
 	if (offset < page_size) {
@@ -845,25 +874,6 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 	}
 
 	return SQLITE_OK;
-}
-
-/* Parse the page size ("Must be a power of two between 512 and 32768
- * inclusive, or the value 1 representing a page size of 65536").
- *
- * Return 0 if the page size is out of bound. */
-static uint32_t vfsParsePageSize(uint32_t page_size)
-{
-	if (page_size == 1) {
-		page_size = FORMAT__PAGE_SIZE_MAX;
-	} else if (page_size < FORMAT__PAGE_SIZE_MIN) {
-		page_size = 0;
-	} else if (page_size > (FORMAT__PAGE_SIZE_MAX / 2)) {
-		page_size = 0;
-	} else if (((page_size - 1) & page_size) != 0) {
-		page_size = 0;
-	}
-
-	return page_size;
 }
 
 /* Get the page size stored in the WAL header. */
@@ -994,72 +1004,47 @@ static int vfsFileRead(sqlite3_file *file,
 	return rv;
 }
 
-static uint32_t vfsDatabaseGetPageSize(struct vfsDatabase *d)
-{
-	uint8_t *page;
-
-	assert(d->n_pages > 0);
-
-	page = d->pages[0];
-
-	/* The page size is stored in the 16th and 17th bytes of the first
-	 * database page (big-endian) */
-	return vfsParsePageSize(vfsGet16(&page[16]));
-}
-
 static int vfsDatabaseWrite(struct vfsDatabase *d,
 			    const void *buf,
 			    int amount,
 			    sqlite_int64 offset)
 {
 	unsigned pgno;
+	uint32_t page_size;
 	void *page;
 	int rc;
 
 	if (offset == 0) {
-		unsigned page_size;
+		const uint8_t *header = buf;
 
 		/* This is the first database page. We expect
 		 * the data to contain at least the header. */
 		assert(amount >= FORMAT__DB_HDR_SIZE);
 
 		/* Extract the page size from the header. */
-		formatDatabaseGetPageSize(buf, &page_size);
+		page_size = vfsParsePageSize(vfsGet16(&header[16]));
 		if (page_size == 0) {
 			return SQLITE_CORRUPT;
 		}
 
-		if (d->page_size > 0) {
-			/* Check that the given page size actually matches what
-			 * we have recorded. Since we make 'PRAGMA page_size=N'
-			 * fail if the page is already set (see struct
-			 * vfs__fileControl), there should be no way for the
-			 * user to change it. */
-			assert(page_size == d->page_size);
-		} else {
-			/* This must be the very first write to the
-			 * database. Keep track of the page size. */
-			d->page_size = page_size;
-		}
-
 		pgno = 1;
 	} else {
+		page_size = vfsDatabaseGetPageSize(d);
+
 		/* The header must have been written and the page size set. */
-		if (d->page_size == 0) {
-			return SQLITE_IOERR_WRITE;
-		}
+		assert(page_size > 0);
 
 		/* For pages beyond the first we expect offset to be a multiple
 		 * of the page size. */
-		assert((offset % d->page_size) == 0);
+		assert((offset % page_size) == 0);
 
 		/* We expect that SQLite writes a page at time. */
-		assert(amount == (int)d->page_size);
+		assert(amount == (int)page_size);
 
-		pgno = ((unsigned)offset / d->page_size) + 1;
+		pgno = ((unsigned)offset / page_size) + 1;
 	}
 
-	rc = vfsDatabasePageGet(d, pgno, &page);
+	rc = vfsDatabaseGetPage(d, page_size, pgno, &page);
 	if (rc != SQLITE_OK) {
 		return rc;
 	}
@@ -1204,7 +1189,11 @@ static int vfsFileSync(sqlite3_file *file, int flags)
 /* Return the size of the database file in bytes. */
 static size_t vfsDatabaseFileSize(struct vfsDatabase *d)
 {
-	return d->n_pages * d->page_size;
+	size_t size = 0;
+	if (d->n_pages > 0) {
+		size = d->n_pages * vfsDatabaseGetPageSize(d);
+	}
+	return size;
 }
 
 /* Return the size of the WAL file in bytes. */
@@ -1304,13 +1293,13 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 		if (page_size >= FORMAT__PAGE_SIZE_MIN &&
 		    page_size <= FORMAT__PAGE_SIZE_MAX &&
 		    ((page_size - 1) & page_size) == 0) {
-			if (f->database->page_size &&
-			    page_size != (int)f->database->page_size) {
+			if (f->database->n_pages > 0 &&
+			    page_size !=
+				(int)vfsDatabaseGetPageSize(f->database)) {
 				fnctl[0] =
 				    "changing page size is not supported";
 				return SQLITE_IOERR;
 			}
-			f->database->page_size = (unsigned)page_size;
 		}
 	} else if (strcmp(left, "journal_mode") == 0 && right) {
 		/* When the user executes 'PRAGMA journal_mode=x' we ensure
@@ -2295,11 +2284,15 @@ int VfsAbort(sqlite3_vfs *vfs, const char *filename)
 
 static void vfsDatabaseSnapshot(struct vfsDatabase *d, uint8_t **cursor)
 {
+	uint32_t page_size;
 	unsigned i;
 
+	page_size = vfsDatabaseGetPageSize(d);
+	assert(page_size > 0);
+
 	for (i = 0; i < d->n_pages; i++) {
-		memcpy(*cursor, d->pages[i], d->page_size);
-		*cursor += d->page_size;
+		memcpy(*cursor, d->pages[i], page_size);
+		*cursor += page_size;
 	}
 }
 

@@ -966,30 +966,6 @@ TEST(VfsWrite, oomPageBuf, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Trying to write the second page without writing the first results in an
- * error. */
-TEST(VfsWrite, beyondFirst, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
-	void *buf_page_1 = __buf_page_1();
-	char buf[512];
-	int rc;
-
-	(void)params;
-
-	memset(buf, 0, 512);
-
-	/* Write the second page, without writing the first. */
-	rc = file->pMethods->xWrite(file, buf_page_1, 512, 512);
-	munit_assert_int(rc, ==, SQLITE_IOERR_WRITE);
-
-	free(buf_page_1);
-	free(file);
-
-	return MUNIT_OK;
-}
-
 /* Trying to write two pages beyond the last one results in an error. */
 TEST(VfsWrite, beyondLast, setUp, tearDown, 0, NULL)
 {
@@ -1483,38 +1459,6 @@ TEST(VfsShmLock, release, setUp, tearDown, 0, NULL)
  ******************************************************************************/
 
 SUITE(VfsFileControl)
-
-/* Trying to set the page size to a value different than the current one
- * produces an error. */
-TEST(VfsFileControl, pageSize, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
-	char *fnctl[] = {
-	    "",
-	    "page_size",
-	    "512",
-	    "",
-	};
-	int rc;
-
-	(void)params;
-	(void)data;
-
-	/* Setting the page size a first time returns NOTFOUND, which is what
-	 * SQLite effectively expects. */
-	rc = file->pMethods->xFileControl(file, SQLITE_FCNTL_PRAGMA, fnctl);
-	munit_assert_int(rc, ==, SQLITE_NOTFOUND);
-
-	/* Trying to change the page size results in an error. */
-	fnctl[2] = "1024";
-	rc = file->pMethods->xFileControl(file, SQLITE_FCNTL_PRAGMA, fnctl);
-	munit_assert_int(rc, ==, SQLITE_IOERR);
-
-	free(file);
-
-	return MUNIT_OK;
-}
 
 /* Trying to set the journal mode to anything other than "wal" produces an
  * error. */
