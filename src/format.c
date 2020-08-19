@@ -83,10 +83,6 @@ void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number)
 	formatGet32(header, page_number);
 }
 
-void formatWalGetFrameDatabaseSize(const uint8_t *header, uint32_t *n) {
-	formatGet32(header + 4, n);
-}
-
 void formatWalGetNativeChecksum(const uint8_t *header, bool *native)
 {
 	uint32_t magic;

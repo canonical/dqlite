@@ -1317,6 +1317,12 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	return SQLITE_NOTFOUND;
 }
 
+/* Return the database size field stored in the header of the given frame. */
+static uint32_t vfsFrameGetDatabaseSize(struct vfsFrame *f)
+{
+	return vfsGet32(&f->header[4]);
+}
+
 /* Return the checksum-1 field stored in the header of the given frame. */
 static uint32_t vfsFrameGetChecksum1(struct vfsFrame *f)
 {
@@ -1343,7 +1349,7 @@ static void vfsRewriteWalIndexHeader(struct vfsDatabase *d)
 		struct vfsFrame *last = wal->frames[wal->n_frames - 1];
 		frame_checksum[0] = vfsFrameGetChecksum1(last);
 		frame_checksum[1] = vfsFrameGetChecksum2(last);
-		formatWalGetFrameDatabaseSize(last->header, &n_pages);
+		n_pages = vfsFrameGetDatabaseSize(last);
 	}
 
 	formatWalPutIndexHeader(hdr, wal->n_frames, n_pages, frame_checksum);
@@ -2028,7 +2034,7 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 
 	/* Check if the last frame in the transaction has the commit marker. */
 	last = w->tx[w->n_tx - 1];
-	formatWalGetFrameDatabaseSize(last->header, &commit);
+	commit = vfsFrameGetDatabaseSize(last);
 
 	if (commit == 0) {
 		*frames = NULL;
@@ -2153,7 +2159,7 @@ static int vfsWalAppend(struct vfsWal *w,
 		struct vfsFrame *frame = w->frames[w->n_frames - 1];
 		checksum[0] = vfsFrameGetChecksum1(frame);
 		checksum[1] = vfsFrameGetChecksum2(frame);
-		formatWalGetFrameDatabaseSize(frame->header, &database_size);
+		database_size = vfsFrameGetDatabaseSize(frame);
 	}
 
 	frames =
