@@ -52,20 +52,4 @@ int VfsRestore(sqlite3_vfs *vfs,
 	       const void *data,
 	       size_t n);
 
-/* Read the content of a file, using the VFS implementation registered under the
- * given name. Used to take database snapshots using the dqlite in-memory
- * VFS. */
-int VfsFileRead(const char *vfs_name,
-		const char *filename,
-		void **buf,
-		size_t *len);
-
-/* Write the content of a file, using the VFS implementation registered under
- * the given name. Used to restore database snapshots against the dqlite
- * in-memory VFS. If the file already exists, it's overwritten. */
-int VfsFileWrite(const char *vfs_name,
-		 const char *filename,
-		 const void *buf,
-		 size_t len);
-
 #endif /* VFS_H_ */
