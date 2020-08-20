@@ -67,12 +67,6 @@ void formatWalGetPageSize(const uint8_t *header, unsigned *page_size);
 /* Get the Salt-1 and Salt-2 fields stored in the WAL header. */
 void formatWalGetSalt(const uint8_t *header, uint32_t salt[2]);
 
-/* Overwrite the WAL index header. */
-void formatWalPutIndexHeader(uint8_t *header,
-			     uint32_t max_frame,
-			     uint32_t n_pages,
-			     uint32_t frame_checksum[2]);
-
 void formatWalInvalidateIndexHeader(uint8_t *header);
 
 /* Extract the page number from a WAL frame header. */

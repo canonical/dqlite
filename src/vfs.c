@@ -31,10 +31,14 @@
  * little-endian words. */
 #define VFS__WAL_MAGIC 0x377f0682
 
-#define VFS__WAL_MAX_VERSION 3007000
+/* WAL format version (same for WAL index). */
+#define VFS__WAL_VERSION 3007000
 
 /* Index of the write lock in the WAL-index header locks area. */
 #define VFS__WAL_WRITE_LOCK 0
+
+/* Size of the first part of the WAL index header. */
+#define VFS__WAL_INDEX_HEADER_SIZE 48
 
 /* Hold content for a shared memory mapping. */
 struct vfsShm
@@ -1338,15 +1342,32 @@ static uint32_t vfsFrameGetChecksum2(struct vfsFrame *f)
 	return vfsGet32(&f->header[20]);
 }
 
-/* Overwrite the WAL index header to reflect the current committed content of
- * the WAL. */
-static void vfsRewriteWalIndexHeader(struct vfsDatabase *d)
+/* This function modifies part of the WAL index header to reflect the current
+ * content of the WAL.
+ *
+ * It is called in two cases. First, after a write transaction gets completed
+ * and the SQLITE_FCNTL_COMMIT_PHASETWO file control op code is triggered, in
+ * order to "rewind" the mxFrame and szPage fields of the WAL index header back
+ * to when the write transaction started, effectively "shadowing" the
+ * transaction, which will be replicated asynchronously. Second, when the
+ * replication actually succeeds and dqlite_vfs_apply() is called on the VFS
+ * that originated the transaction, in order to make the transaction visible.
+ *
+ * Note that the hash table contained in the WAL index does not get modified,
+ * and even after a rewind following a write transaction it will still contain
+ * entries for the frames committed by the transaction. That's safe because
+ * mxFrame will make clients ignore those hash table entries. However it means
+ * that in case the replication is not actually successful and
+ * dqlite_vfs_abort() is called the WAL index must be invalidated.
+ **/
+static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 {
 	struct vfsShm *shm = &d->shm;
 	struct vfsWal *wal = &d->wal;
-	uint8_t *hdr = shm->regions[0];
+	uint8_t *index;
 	uint32_t frame_checksum[2] = {0, 0};
 	uint32_t n_pages = (uint32_t)d->n_pages;
+	uint32_t checksum[2] = {0, 0};
 
 	if (wal->n_frames > 0) {
 		struct vfsFrame *last = wal->frames[wal->n_frames - 1];
@@ -1355,7 +1376,26 @@ static void vfsRewriteWalIndexHeader(struct vfsDatabase *d)
 		n_pages = vfsFrameGetDatabaseSize(last);
 	}
 
-	formatWalPutIndexHeader(hdr, wal->n_frames, n_pages, frame_checksum);
+	assert(shm->n_regions > 0);
+	index = shm->regions[0];
+
+	assert(*(uint32_t *)(&index[0]) == VFS__WAL_VERSION); /* iVersion */
+	assert(index[12] == 1);                               /* isInit */
+	assert(index[13] == 0);                               /* bigEndCksum */
+
+	*(uint32_t *)(&index[16]) = wal->n_frames;
+	*(uint32_t *)(&index[20]) = n_pages;
+	*(uint32_t *)(&index[24]) = frame_checksum[0];
+	*(uint32_t *)(&index[28]) = frame_checksum[1];
+
+	vfsChecksum(index, 40, checksum, checksum);
+
+	*(uint32_t *)(&index[40]) = checksum[0];
+	*(uint32_t *)(&index[44]) = checksum[1];
+
+	/* Update the second copy of the first part of the WAL index header. */
+	memcpy(index + VFS__WAL_INDEX_HEADER_SIZE, index,
+	       VFS__WAL_INDEX_HEADER_SIZE);
 }
 
 /* The SQLITE_FCNTL_COMMIT_PHASETWO file control op code is trigged by the
@@ -1365,7 +1405,7 @@ static int vfsFileControlCommitPhaseTwo(struct vfsFile *f)
 	struct vfsDatabase *database = f->database;
 	struct vfsWal *wal = &database->wal;
 	if (database->version == VFS__V2 && wal->n_tx > 0) {
-		vfsRewriteWalIndexHeader(database);
+		vfsAmendWalIndexHeader(database);
 	}
 	return 0;
 }
@@ -2260,7 +2300,7 @@ static void vfsWalStartHeader(struct vfsWal *w, uint32_t page_size)
 	assert(page_size > 0);
 	uint32_t checksum[2] = {0, 0};
 	vfsPut32(VFS__WAL_MAGIC, &w->hdr[0]);
-	vfsPut32(VFS__WAL_MAX_VERSION, &w->hdr[4]);
+	vfsPut32(VFS__WAL_VERSION, &w->hdr[4]);
 	vfsPut32(page_size, &w->hdr[8]);
 	vfsPut32(0, &w->hdr[12]);
 	sqlite3_randomness(8, &w->hdr[16]);
@@ -2304,9 +2344,8 @@ int VfsApply(sqlite3_vfs *vfs,
 	/* A write lock is held it means that this is the VFS that orginated
 	 * this commit. Let's release the lock and update the WAL index. */
 	if (shm->exclusive[0] == 1) {
-		vfsShmUnlock(shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
-		assert(shm->n_regions > 0);
-		vfsRewriteWalIndexHeader(database);
+		shm->exclusive[0] = 0;
+		vfsAmendWalIndexHeader(database);
 	} else {
 		if (shm->n_regions > 0) {
 			formatWalInvalidateIndexHeader(shm->regions[0]);

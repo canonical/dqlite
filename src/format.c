@@ -197,29 +197,6 @@ void formatWalPutFrameHeader(bool native,
 	formatPut32(checksum[1], header + 20);
 }
 
-void formatWalPutIndexHeader(uint8_t *header,
-			     uint32_t max_frame,
-			     uint32_t n_pages,
-			     unsigned frame_checksum[2])
-{
-	uint32_t checksum[2] = {0, 0};
-	bool native = !header[13];
-
-	*(uint32_t *)(header + 16) = max_frame;
-	*(uint32_t *)(header + 20) = n_pages;
-	*(uint32_t *)(header + 24) = frame_checksum[0];
-	*(uint32_t *)(header + 28) = frame_checksum[1];
-
-	formatWalChecksumBytes(native, header, 40, checksum, checksum);
-
-	*(uint32_t *)(header + 40) = checksum[0];
-	*(uint32_t *)(header + 44) = checksum[1];
-
-	/* Update the second copy of the first part of the WAL index header. */
-	memcpy(header + FORMAT__WAL_IDX_HDR_SIZE, header,
-	       FORMAT__WAL_IDX_HDR_SIZE);
-}
-
 void formatWalInvalidateIndexHeader(uint8_t *header) {
 	header[0] = 1;
 	header[FORMAT__WAL_IDX_HDR_SIZE] = 0;
