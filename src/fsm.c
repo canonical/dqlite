@@ -310,19 +310,6 @@ static int encodeSnapshotHeader(unsigned n, struct raft_buffer *buf)
 	return 0;
 }
 
-/* Generate the WAL filename associated with the given main database
- * filename. */
-static char *generateWalFilename(const char *filename)
-{
-	char *out;
-	out = sqlite3_malloc((int)(strlen(filename) + strlen("-wal") + 1));
-	if (out == NULL) {
-		return out;
-	}
-	sprintf(out, "%s-wal", filename);
-	return out;
-}
-
 /* Encode the given database. */
 static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 {
@@ -375,7 +362,9 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 {
 	struct snapshotDatabase header;
 	struct db *db;
-	char *walFilename;
+	sqlite3_vfs *vfs;
+	size_t n;
+	int exists;
 	int rv;
 
 	rv = snapshotDatabase__decode(cursor, &header);
@@ -386,26 +375,29 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = VfsFileWrite(db->config->name, db->filename, cursor->p,
-			  header.main_size);
+
+	vfs = sqlite3_vfs_find(db->config->name);
+
+	/* Check if the database file exists, and create it by opening a
+	 * connection if it doesn't. */
+	rv = vfs->xAccess(vfs, header.filename, 0, &exists);
+	assert(rv == 0);
+
+	if (!exists) {
+		rv = db__open_follower(db);
+		if (rv != 0) {
+			return rv;
+		}
+		sqlite3_close(db->follower);
+		db->follower = NULL;
+	}
+
+	n = header.main_size + header.wal_size;
+	rv = VfsRestore(vfs, db->filename, cursor->p, n);
 	if (rv != 0) {
 		return rv;
 	}
-	walFilename = generateWalFilename(db->filename);
-	if (walFilename == NULL) {
-		return RAFT_NOMEM;
-	}
-	cursor->p += header.main_size;
-	if (header.wal_size > 0) {
-		rv = VfsFileWrite(db->config->name, walFilename, cursor->p,
-				  header.wal_size);
-		if (rv != 0) {
-			sqlite3_free(walFilename);
-			return rv;
-		}
-	}
-	cursor->p += header.wal_size;
-	sqlite3_free(walFilename);
+	cursor->p += n;
 
 	if (!f->v2) {
 		rv = db__open_follower(db);
