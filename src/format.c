@@ -196,9 +196,3 @@ void formatWalPutFrameHeader(bool native,
 	formatPut32(checksum[0], header + 16);
 	formatPut32(checksum[1], header + 20);
 }
-
-void formatWalInvalidateIndexHeader(uint8_t *header) {
-	header[0] = 1;
-	header[FORMAT__WAL_IDX_HDR_SIZE] = 0;
-}
-

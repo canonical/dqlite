@@ -1886,7 +1886,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		}
 	}
 
-	// Populate the new file handle.
+	/* Populate the new file handle. */
 	f->base.pMethods = &vfsFileMethods;
 	f->vfs = v;
 	f->type = type;
@@ -1954,7 +1954,7 @@ static int vfsFullPathname(sqlite3_vfs *vfs,
 {
 	(void)vfs;
 
-	// Just return the path unchanged.
+	/* Just return the path unchanged. */
 	sqlite3_snprintf(pathname_len, pathname, "%s", filename);
 	return SQLITE_OK;
 }
@@ -2188,6 +2188,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 		if (rv != 0) {
 			return rv;
 		}
+		vfsAmendWalIndexHeader(database);
 	}
 
 	return 0;
@@ -2309,6 +2310,29 @@ static void vfsWalStartHeader(struct vfsWal *w, uint32_t page_size)
 	vfsPut32(checksum[1], w->hdr + 28);
 }
 
+/* Invalidate the WAL index header, forcing the next connection that tries to
+ * start a read transaction to rebuild the WAL index by reading the WAL.
+ *
+ * No read or write lock must be currently held. */
+static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d) {
+	struct vfsShm *shm = &d->shm;
+	uint8_t *header = shm->regions[0];
+	unsigned i;
+
+	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
+		assert(shm->shared[i] == 0);
+		assert(shm->exclusive[i] == 0);
+	}
+
+	/* The walIndexTryHdr function in sqlite/wal.c (which is indirectly
+	 * called by sqlite3WalBeginReadTransaction), compares the first and
+	 * second copy of the WAL index header to see if it is valid. Changing
+	 * the first byte of each of the two copies is enough to make the check
+	 * fail. */
+	header[0] = 1;
+	header[VFS__WAL_INDEX_HEADER_SIZE] = 0;
+}
+
 int VfsApply(sqlite3_vfs *vfs,
 	     const char *filename,
 	     unsigned n,
@@ -2341,14 +2365,21 @@ int VfsApply(sqlite3_vfs *vfs,
 		return rv;
 	}
 
-	/* A write lock is held it means that this is the VFS that orginated
-	 * this commit. Let's release the lock and update the WAL index. */
+	/* If a write lock is held it means that this is the VFS that orginated
+	 * this commit and on which dqlite_vfs_poll() was called. In that case
+	 * we release the lock and update the WAL index.
+	 *
+	 * Otherwise, if the WAL index header is mapped it means that this VFS
+	 * has one or more open connections even if it's not the one that
+	 * originated the transaction (this can happen for example when applying
+	 * a Raft barrier and replaying the Raft log in order to serve a request
+	 * of a newly connected client). */
 	if (shm->exclusive[0] == 1) {
 		shm->exclusive[0] = 0;
 		vfsAmendWalIndexHeader(database);
 	} else {
 		if (shm->n_regions > 0) {
-			formatWalInvalidateIndexHeader(shm->regions[0]);
+			vfsInvalidateWalIndexHeader(database);
 		}
 	}
 
