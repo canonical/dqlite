@@ -10,11 +10,7 @@
 #include "lib/serialize.h"
 
 /* Command type codes */
-enum { COMMAND_OPEN = 1,
-       COMMAND_FRAMES,
-       COMMAND_UNDO,
-       COMMAND_CHECKPOINT,
-       COMMAND_FRAMES2 };
+enum { COMMAND_OPEN = 1, COMMAND_FRAMES, COMMAND_UNDO, COMMAND_CHECKPOINT };
 
 /* Hold information about an array of WAL frames. */
 struct frames
@@ -33,8 +29,6 @@ struct frames
 
 typedef struct frames frames_t;
 
-typedef struct frames frames2_t;
-
 /* Serialization definitions for a raft FSM command. */
 #define COMMAND__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE_STRUCT(command_##LOWER, COMMAND__##UPPER);
@@ -48,22 +42,13 @@ typedef struct frames frames2_t;
 	X(uint8, __unused1__, ##__VA_ARGS__)  \
 	X(uint16, __unused2__, ##__VA_ARGS__) \
 	X(frames, frames, ##__VA_ARGS__)
-#define COMMAND__FRAMES2(X, ...)              \
-	X(text, filename, ##__VA_ARGS__)      \
-	X(uint64, tx_id, ##__VA_ARGS__)       \
-	X(uint32, truncate, ##__VA_ARGS__)    \
-	X(uint8, is_commit, ##__VA_ARGS__)    \
-	X(uint8, __unused1__, ##__VA_ARGS__)  \
-	X(uint16, __unused2__, ##__VA_ARGS__) \
-	X(frames2, frames, ##__VA_ARGS__)
 #define COMMAND__UNDO(X, ...) X(uint64, tx_id, ##__VA_ARGS__)
 #define COMMAND__CHECKPOINT(X, ...) X(text, filename, ##__VA_ARGS__)
 
-#define COMMAND__TYPES(X, ...)           \
-	X(open, OPEN, __VA_ARGS__)       \
-	X(frames, FRAMES, __VA_ARGS__)   \
-	X(frames2, FRAMES2, __VA_ARGS__) \
-	X(undo, UNDO, __VA_ARGS__)       \
+#define COMMAND__TYPES(X, ...)         \
+	X(open, OPEN, __VA_ARGS__)     \
+	X(frames, FRAMES, __VA_ARGS__) \
+	X(undo, UNDO, __VA_ARGS__)     \
 	X(checkpoint, CHECKPOINT, __VA_ARGS__)
 
 COMMAND__TYPES(COMMAND__DEFINE);
@@ -73,10 +58,7 @@ int command__encode(int type, const void *command, struct raft_buffer *buf);
 int command__decode(const struct raft_buffer *buf, int *type, void **command);
 
 int command_frames__page_numbers(const struct command_frames *c,
-				 unsigned *page_numbers[]);
-
-int command_frames__page_numbers2(const struct command_frames *c,
-				  unsigned long *page_numbers[]);
+				 unsigned long *page_numbers[]);
 
 void command_frames__pages(const struct command_frames *c, void **pages);
 

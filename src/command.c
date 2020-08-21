@@ -29,35 +29,7 @@ static size_t frames__sizeof(const frames_t *frames)
 	return s;
 }
 
-static size_t frames2__sizeof(const frames2_t *frames)
-{
-	size_t s = uint32__sizeof(&frames->n_pages) +
-		   uint16__sizeof(&frames->page_size) +
-		   uint16__sizeof(&frames->__unused__) +
-		   sizeof(uint64_t) * frames->n_pages + /* Page numbers */
-		   frames->page_size * frames->n_pages; /* Page data */
-	return s;
-}
-
 static void frames__encode(const frames_t *frames, void **cursor)
-{
-	const sqlite3_wal_replication_frame *list;
-	unsigned i;
-	uint32__encode(&frames->n_pages, cursor);
-	uint16__encode(&frames->page_size, cursor);
-	uint16__encode(&frames->__unused__, cursor);
-	list = frames->data;
-	for (i = 0; i < frames->n_pages; i++) {
-		uint64_t pgno = list[i].pgno;
-		uint64__encode(&pgno, cursor);
-	}
-	for (i = 0; i < frames->n_pages; i++) {
-		memcpy(*cursor, list[i].pBuf, frames->page_size);
-		*cursor += frames->page_size;
-	}
-}
-
-static void frames2__encode(const frames2_t *frames, void **cursor)
 {
 	const dqlite_vfs_frame *list;
 	unsigned i;
@@ -94,25 +66,6 @@ static int frames__decode(struct cursor *cursor, frames_t *frames)
 	return 0;
 }
 
-static int frames2__decode(struct cursor *cursor, frames2_t *frames)
-{
-	int rc;
-	rc = uint32__decode(cursor, &frames->n_pages);
-	if (rc != 0) {
-		return rc;
-	}
-	rc = uint16__decode(cursor, &frames->page_size);
-	if (rc != 0) {
-		return rc;
-	}
-	rc = uint16__decode(cursor, &frames->__unused__);
-	if (rc != 0) {
-		return rc;
-	}
-	frames->data = cursor->p;
-	return 0;
-}
-
 #define COMMAND__IMPLEMENT(LOWER, UPPER, _) \
 	SERIALIZE__IMPLEMENT(command_##LOWER, COMMAND__##UPPER);
 
@@ -121,9 +74,6 @@ COMMAND__TYPES(COMMAND__IMPLEMENT, );
 #define ENCODE(LOWER, UPPER, _)                                 \
 	case COMMAND_##UPPER:                                   \
 		h.type = COMMAND_##UPPER;                       \
-		if (h.type == COMMAND_FRAMES2) {                \
-			h.type = COMMAND_FRAMES;                \
-		}                                               \
 		buf->len = header__sizeof(&h);                  \
 		buf->len += command_##LOWER##__sizeof(command); \
 		buf->base = raft_malloc(buf->len);              \
@@ -186,34 +136,7 @@ int command__decode(const struct raft_buffer *buf, int *type, void **command)
 }
 
 int command_frames__page_numbers(const struct command_frames *c,
-				 unsigned *page_numbers[])
-{
-	unsigned i;
-	struct cursor cursor;
-
-	cursor.p = c->frames.data;
-	cursor.cap = sizeof(uint64_t) * c->frames.n_pages;
-
-	*page_numbers =
-	    sqlite3_malloc((int)(sizeof **page_numbers * c->frames.n_pages));
-	if (*page_numbers == NULL) {
-		return DQLITE_NOMEM;
-	}
-
-	for (i = 0; i < c->frames.n_pages; i++) {
-		uint64_t pgno;
-		int r = uint64__decode(&cursor, &pgno);
-		if (r != 0) {
-			return r;
-		}
-		(*page_numbers)[i] = (unsigned)pgno;
-	}
-
-	return 0;
-}
-
-int command_frames__page_numbers2(const struct command_frames *c,
-				  unsigned long *page_numbers[])
+				 unsigned long *page_numbers[])
 {
 	unsigned i;
 	struct cursor cursor;

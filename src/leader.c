@@ -292,7 +292,7 @@ static int leaderApplyFrames(struct exec *req,
 {
 	struct leader *l = req->leader;
 	struct db *db = l->db;
-	struct command_frames2 c;
+	struct command_frames c;
 	struct raft_buffer buf;
 	struct apply *apply;
 	int rv;
@@ -311,7 +311,7 @@ static int leaderApplyFrames(struct exec *req,
 		goto err;
 	}
 
-	rv = command__encode(COMMAND_FRAMES2, &c, &buf);
+	rv = command__encode(COMMAND_FRAMES, &c, &buf);
 	if (rv != 0) {
 		goto err_after_apply_alloc;
 	}
