@@ -27,7 +27,7 @@ int dqlite__init(struct dqlite_node *d,
 	if (rv != 0) {
 		goto err;
 	}
-	d->config.v2 = getenv("DQLITE_ENGINE_V2") != NULL;
+	d->config.v2 = true;
 	if (d->config.v2) {
 		rv = VfsInitV2(&d->vfs, d->config.name);
 		sqlite3_vfs_register(&d->vfs, 0);

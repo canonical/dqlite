@@ -47,7 +47,7 @@ struct connection
 #define SETUP                                                           \
 	unsigned i;                                                     \
 	int rc;                                                         \
-	SETUP_CLUSTER(V1);						\
+	SETUP_CLUSTER(V2);						\
 	for (i = 0; i < N_SERVERS; i++) {                               \
 		struct connection *c = &f->connections[i];              \
 		struct config *config;                                  \
@@ -499,7 +499,7 @@ TEST_CASE(exec, simple, NULL)
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, exec);
 	HANDLE(EXEC);
-	CLUSTER_APPLIED(3);
+	CLUSTER_APPLIED(2);
 	ASSERT_CALLBACK(0, RESULT);
 	DECODE(&f->response, result);
 	munit_assert_int(f->response.last_insert_id, ==, 0);
@@ -527,7 +527,7 @@ TEST_CASE(exec, one_param, NULL)
 	value.integer = 7;
 	ENCODE_PARAMS(1, &value);
 	HANDLE(EXEC);
-	CLUSTER_APPLIED(4);
+	CLUSTER_APPLIED(3);
 	ASSERT_CALLBACK(0, RESULT);
 	DECODE(&f->response, result);
 	munit_assert_int(f->response.last_insert_id, ==, 1);
@@ -561,7 +561,7 @@ TEST_CASE(exec, blob, NULL)
 	value.blob.len = sizeof buf;
 	ENCODE_PARAMS(1, &value);
 	HANDLE(EXEC);
-	CLUSTER_APPLIED(4);
+	CLUSTER_APPLIED(3);
 	ASSERT_CALLBACK(0, RESULT);
 	DECODE(&f->response, result);
 	munit_assert_int(f->response.last_insert_id, ==, 1);
@@ -765,9 +765,11 @@ TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
 		EXEC("INSERT INTO test(n) VALUES(1)");
 	}
 
-	/* Trigger a page cache flush to the WAL, which fails because we are not
-	 * leader anymore */
-	PREPARE("INSERT INTO test(n) VALUES(1)");
+	/* Trigger a page cache flush to the WAL */
+	EXEC("INSERT INTO test(n) VALUES(1)");
+
+	/* Try to commit */
+	PREPARE("COMMIT");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
 	ASSERT_CALLBACK(0, FAILURE);
@@ -775,41 +777,6 @@ TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
-	EXEC("INSERT INTO test(n) VALUES(1)");
-
-	return MUNIT_OK;
-}
-
-/* The server loses leadership after trying to apply the first Frames command
- * for a non-commit frames batch. Another leader gets re-elected. */
-TEST_CASE(exec, frames_leadership_lost_1st_non_commit_other_elected, NULL)
-{
-	struct exec_fixture *f = data;
-	uint64_t stmt_id;
-	unsigned i;
-	(void)params;
-	CLUSTER_ELECT(0);
-
-	/* Accumulate enough dirty data to fill the page cache */
-	LOWER_CACHE_SIZE;
-	EXEC("CREATE TABLE test (n INT)");
-	EXEC("BEGIN");
-	for (i = 0; i < 162; i++) {
-		EXEC("INSERT INTO test(n) VALUES(1)");
-	}
-
-	/* Trigger a page cache flush to the WAL, which fails because we are not
-	 * leader anymore */
-	PREPARE("INSERT INTO test(n) VALUES(1)");
-	EXEC_SUBMIT(stmt_id);
-	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_LEADERSHIP_LOST, "disk I/O error");
-
-	/* Elect another server and re-try */
-	CLUSTER_ELECT(1);
-	SELECT(1);
-	OPEN;
 	EXEC("INSERT INTO test(n) VALUES(1)");
 
 	return MUNIT_OK;
@@ -900,7 +867,7 @@ TEST_CASE(exec, restore, NULL)
 	EXEC("INSERT INTO test(n) VALUES(1)");
 	EXEC("INSERT INTO test(n) VALUES(2)");
 	CLUSTER_RECONNECT(0, 1);
-	CLUSTER_APPLIED(5);
+	CLUSTER_APPLIED(4);
 
 	/* TODO: the query below fails because we can exec queries only against
 	 * the leader. */
@@ -1260,7 +1227,7 @@ TEST_CASE(exec_sql, single, NULL)
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
-	CLUSTER_APPLIED(3);
+	CLUSTER_APPLIED(2);
 	ASSERT_CALLBACK(0, RESULT);
 	return MUNIT_OK;
 }
