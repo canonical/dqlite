@@ -17,7 +17,6 @@ struct config
 	char name[256];                /* VFS/replication registriatio name */
 	unsigned long long failure_domain; /* User-provided failure domain */
 	unsigned long long int weight;     /* User-provided node weight */
-	bool v2;                           /* Use custom VFS version 2 */
 };
 
 /**

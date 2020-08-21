@@ -27,13 +27,8 @@ int dqlite__init(struct dqlite_node *d,
 	if (rv != 0) {
 		goto err;
 	}
-	d->config.v2 = true;
-	if (d->config.v2) {
-		rv = VfsInitV2(&d->vfs, d->config.name);
-		sqlite3_vfs_register(&d->vfs, 0);
-	} else {
-		rv = VfsInitV1(&d->vfs, d->config.name);
-	}
+	rv = VfsInitV2(&d->vfs, d->config.name);
+	sqlite3_vfs_register(&d->vfs, 0);
 	if (rv != 0) {
 		goto err_after_config_init;
 	}
@@ -136,9 +131,7 @@ void dqlite__close(struct dqlite_node *d)
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
-	if (d->config.v2) {
-		sqlite3_vfs_unregister(&d->vfs);
-	}
+	sqlite3_vfs_unregister(&d->vfs);
 	VfsClose(&d->vfs);
 	config__close(&d->config);
 	if (d->bind_address != NULL) {
