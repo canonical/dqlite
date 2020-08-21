@@ -29,38 +29,6 @@ static void formatGet32(const uint8_t buf[4], uint32_t *v)
 	*v += (uint32_t)(buf[3]);
 }
 
-/* Decode the page size ("Must be a power of two between 512 and 32768
- * inclusive, or the value 1 representing a page size of 65536").
- *
- * Return 0 if the page size is out of bound. */
-static unsigned formatDecodePageSize(uint8_t buf[4])
-{
-	uint32_t page_size;
-
-	formatGet32(buf, &page_size);
-
-	if (page_size == 1) {
-		page_size = FORMAT__PAGE_SIZE_MAX;
-	} else if (page_size < FORMAT__PAGE_SIZE_MIN) {
-		page_size = 0;
-	} else if (page_size > (FORMAT__PAGE_SIZE_MAX / 2)) {
-		page_size = 0;
-	} else if (((page_size - 1) & page_size) != 0) {
-		page_size = 0;
-	}
-
-	return (unsigned)page_size;
-}
-
-void formatDatabaseGetPageSize(const uint8_t *header, unsigned *page_size)
-{
-	/* The page size is stored in the 16th and 17th bytes
-	 * (big-endian) */
-	uint8_t buf[4] = {0, 0, header[16], header[17]};
-
-	*page_size = formatDecodePageSize(buf);
-}
-
 void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number)
 {
 	/* The page number is stored in the first 4 bytes of the header

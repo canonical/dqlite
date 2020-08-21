@@ -68,7 +68,6 @@ unit_test_SOURCES += \
   test/unit/lib/test_transport.c \
   test/unit/test_command.c \
   test/unit/test_conn.c \
-  test/unit/test_format.c \
   test/unit/test_gateway.c \
   test/unit/test_concurrency.c \
   test/unit/test_registry.c \
