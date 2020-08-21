@@ -18,6 +18,7 @@ struct db
 	sqlite3 *follower;     /* Follower connection */
 	queue leaders;         /* Open leader connections */
 	struct tx *tx;         /* Current ongoing transaction, if any */
+	unsigned tx_id;        /* Current ongoing transaction ID, if any */
 	queue queue;           /* Prev/next database, used by the registry */
 };
 

@@ -22,6 +22,7 @@ void db__init(struct db *db, struct config *config, const char *filename)
 	db->opening = false;
 	db->follower = NULL;
 	db->tx = NULL;
+	db->tx_id = 0;
 	QUEUE__INIT(&db->leaders);
 }
 
