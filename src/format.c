@@ -70,12 +70,6 @@ void formatWalGetPageSize(const uint8_t *header, unsigned *page_size)
 	*page_size = formatDecodePageSize(buf);
 }
 
-void formatWalGetSalt(const uint8_t *header, uint32_t salt[2])
-{
-	salt[0] = *(uint32_t *)(header + 16);
-	salt[1] = *(uint32_t *)(header + 20);
-}
-
 void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number)
 {
 	/* The page number is stored in the first 4 bytes of the header
