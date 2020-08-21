@@ -174,25 +174,3 @@ void formatWalRestartHeader(uint8_t *header) {
 	formatPut32(checksum[0], header + 24);
 	formatPut32(checksum[1], header + 28);
 }
-
-void formatWalPutFrameHeader(bool native,
-			     uint32_t page_number,
-			     uint32_t database_size,
-			     uint32_t salt[2],
-			     uint32_t checksum[2],
-			     uint8_t *header,
-			     uint8_t *data,
-			     unsigned n_data)
-{
-	formatPut32(page_number, header);
-	formatPut32(database_size, header + 4);
-
-	formatWalChecksumBytes(native, header, 8, checksum, checksum);
-	formatWalChecksumBytes(native, data, n_data, checksum, checksum);
-
-	memcpy(header + 8, &salt[0], sizeof salt[0]);
-	memcpy(header + 12, &salt[1], sizeof salt[1]);
-
-	formatPut32(checksum[0], header + 16);
-	formatPut32(checksum[1], header + 20);
-}
