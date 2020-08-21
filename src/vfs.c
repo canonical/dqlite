@@ -40,11 +40,14 @@
 /* Write ahead log header size. */
 #define VFS__WAL_HEADER_SIZE 32
 
+/* Write ahead log frame header size. */
+#define VFS__FRAME_HEADER_SIZE 24
+
 /* Size of the first part of the WAL index header. */
 #define VFS__WAL_INDEX_HEADER_SIZE 48
 
-/* Write ahead log frame header size. */
-#define VFS__FRAME_HEADER_SIZE 24
+/* Size of a single memory-mapped WAL index region. */
+#define VFS__WAL_INDEX_REGION_SIZE 32768
 
 #define vfsFrameSize(PAGE_SIZE) (VFS__FRAME_HEADER_SIZE + PAGE_SIZE)
 
@@ -68,7 +71,7 @@ struct vfsFrame
 /* WAL-specific content */
 struct vfsWal
 {
-	uint8_t hdr[FORMAT__WAL_HDR_SIZE]; /* Header. */
+	uint8_t hdr[VFS__WAL_HEADER_SIZE]; /* Header. */
 	struct vfsFrame **frames;          /* All frames committed. */
 	unsigned n_frames;                 /* Number of committed frames. */
 	struct vfsFrame **tx;              /* Frames added by a transaction. */
@@ -273,7 +276,7 @@ static void vfsShmReset(struct vfsShm *s)
 /* Initialize a new WAL object. */
 static void vfsWalInit(struct vfsWal *w, int version)
 {
-	memset(w->hdr, 0, FORMAT__WAL_HDR_SIZE);
+	memset(w->hdr, 0, VFS__WAL_HEADER_SIZE);
 	w->frames = NULL;
 	w->n_frames = 0;
 	w->tx = NULL;
@@ -913,8 +916,8 @@ static int vfsWalRead(struct vfsWal *w,
 
 	if (offset == 0) {
 		/* Read the header. */
-		assert(amount == FORMAT__WAL_HDR_SIZE);
-		memcpy(buf, w->hdr, FORMAT__WAL_HDR_SIZE);
+		assert(amount == VFS__WAL_HEADER_SIZE);
+		memcpy(buf, w->hdr, VFS__WAL_HEADER_SIZE);
 		return SQLITE_OK;
 	}
 
@@ -924,7 +927,7 @@ static int vfsWalRead(struct vfsWal *w,
 	/* For any other frame, we expect either a header read,
 	 * a checksum read, a page read or a full frame read. */
 	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
-		assert(((offset - FORMAT__WAL_HDR_SIZE) %
+		assert(((offset - VFS__WAL_HEADER_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 	} else if (amount == sizeof(uint32_t) * 2) {
@@ -934,13 +937,13 @@ static int vfsWalRead(struct vfsWal *w,
 			memcpy(buf, w->hdr + offset, (size_t)amount);
 			return SQLITE_OK;
 		}
-		assert(((offset - 16 - FORMAT__WAL_HDR_SIZE) %
+		assert(((offset - 16 - VFS__WAL_HEADER_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		index = ((unsigned)offset - 16 - FORMAT__WAL_HDR_SIZE) /
+		index = ((unsigned)offset - 16 - VFS__WAL_HEADER_SIZE) /
 			    (page_size + FORMAT__WAL_FRAME_HDR_SIZE) +
 			1;
 	} else if (amount == (int)page_size) {
-		assert(((offset - FORMAT__WAL_HDR_SIZE -
+		assert(((offset - VFS__WAL_HEADER_SIZE -
 			 FORMAT__WAL_FRAME_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
@@ -1082,7 +1085,7 @@ static int vfsWalWrite(struct vfsWal *w,
 	if (offset == 0) {
 		/* We expect the data to contain exactly 32
 		 * bytes. */
-		assert(amount == FORMAT__WAL_HDR_SIZE);
+		assert(amount == VFS__WAL_HEADER_SIZE);
 
 		memcpy(w->hdr, buf, (size_t)amount);
 		return SQLITE_OK;
@@ -1095,7 +1098,7 @@ static int vfsWalWrite(struct vfsWal *w,
 	 * header or page write. */
 	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
 		/* Frame header write. */
-		assert(((offset - FORMAT__WAL_HDR_SIZE) %
+		assert(((offset - VFS__WAL_HEADER_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
@@ -1112,7 +1115,7 @@ static int vfsWalWrite(struct vfsWal *w,
 	} else {
 		/* Frame page write. */
 		assert(amount == (int)page_size);
-		assert(((offset - FORMAT__WAL_HDR_SIZE -
+		assert(((offset - VFS__WAL_HEADER_SIZE -
 			 FORMAT__WAL_FRAME_HDR_SIZE) %
 			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 
@@ -1216,7 +1219,7 @@ static size_t vfsWalFileSize(struct vfsWal *w)
 	if (w->n_frames > 0) {
 		uint32_t page_size;
 		page_size = vfsWalGetPageSize(w);
-		size += FORMAT__WAL_HDR_SIZE;
+		size += VFS__WAL_HEADER_SIZE;
 		size += w->n_frames * (FORMAT__WAL_FRAME_HDR_SIZE + page_size);
 	}
 	return size;
@@ -1507,7 +1510,7 @@ static int vfsShmMap(struct vfsShm *s,
 			void **regions;
 
 			/* We should grow the map one region at a time. */
-			assert(region_size == FORMAT__WAL_IDX_PAGE_SIZE);
+			assert(region_size == VFS__WAL_INDEX_REGION_SIZE);
 			assert(region_index == s->n_regions);
 			region = sqlite3_malloc64(region_size);
 			if (region == NULL) {
@@ -2472,8 +2475,8 @@ static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
 		return;
 	}
 
-	memcpy(*cursor, w->hdr, FORMAT__WAL_HDR_SIZE);
-	*cursor += FORMAT__WAL_HDR_SIZE;
+	memcpy(*cursor, w->hdr, VFS__WAL_HEADER_SIZE);
+	*cursor += VFS__WAL_HEADER_SIZE;
 
 	page_size = vfsWalGetPageSize(w);
 	assert(page_size > 0);
@@ -2620,7 +2623,7 @@ static int vfsWalRestore(struct vfsWal *w,
 		memcpy(frame->page, p + VFS__FRAME_HEADER_SIZE, page_size);
 	}
 
-	memcpy(w->hdr, data, FORMAT__WAL_HDR_SIZE);
+	memcpy(w->hdr, data, VFS__WAL_HEADER_SIZE);
 
 	rv = vfsWalTruncate(w, 0);
 	assert(rv == 0);

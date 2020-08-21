@@ -24,17 +24,6 @@
 /* Number of reader marks in the wal index header. */
 #define FORMAT__WAL_NREADER 5
 
-/* Lock index given the offset I in the aReadMark array. See the equivalent
- * WAL_READ_LOCK definition in the wal.c file of the SQLite source code. */
-#define FORMAT__WAL_READ_LOCK(I) (3 + (I))
-
-/* Size of the first part of the WAL index header. */
-#define FORMAT__WAL_IDX_HDR_SIZE 48
-
-/* Size of each memory region in the WAL index. Same as WALINDEX_PGSZ defined in
- * wal.c of SQLite. */
-#define FORMAT__WAL_IDX_PAGE_SIZE 32768
-
 /* Given the page size, calculate the size of a full WAL frame (frame header
  * plus page data). */
 #define formatWalCalcFrameSize(PAGE_SIZE) \
