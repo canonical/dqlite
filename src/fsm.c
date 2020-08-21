@@ -11,6 +11,12 @@ struct fsm
 {
 	struct logger *logger;
 	struct registry *registry;
+	struct
+	{
+		unsigned n_pages;
+		unsigned long *page_numbers;
+		uint8_t *pages;
+	} pending; /* For upgrades from V1 */
 	bool v2;
 };
 
@@ -18,6 +24,10 @@ static int apply_open(struct fsm *f, const struct command_open *c)
 {
 	struct db *db;
 	int rc;
+
+	if (f->v2) {
+		return 0;
+	}
 
 	rc = registry__db_get(f->registry, c->filename, &db);
 	if (rc != 0) {
@@ -27,6 +37,39 @@ static int apply_open(struct fsm *f, const struct command_open *c)
 	if (rc != 0) {
 		return rc;
 	}
+
+	return 0;
+}
+
+static int add_pending_pages(struct fsm *f,
+			     unsigned long *page_numbers,
+			     uint8_t *pages,
+			     unsigned n_pages,
+			     unsigned page_size)
+{
+	unsigned n = f->pending.n_pages + n_pages;
+	unsigned i;
+
+	f->pending.page_numbers = sqlite3_realloc64(
+	    f->pending.page_numbers, n * sizeof *f->pending.page_numbers);
+
+	if (f->pending.page_numbers == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	f->pending.pages = sqlite3_realloc64(f->pending.pages, n * page_size);
+
+	if (f->pending.pages == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	for (i = 0; i < n_pages; i++) {
+		unsigned j = f->pending.n_pages + i;
+		f->pending.page_numbers[j] = page_numbers[i];
+		memcpy(f->pending.pages + j * page_size,
+		       (uint8_t *)pages + i * page_size, page_size);
+	}
+	f->pending.n_pages = n;
 
 	return 0;
 }
@@ -68,7 +111,44 @@ static int apply_frames_v2(struct fsm *f, const struct command_frames *c)
 
 	command_frames__pages(c, &pages);
 
-	VfsApply(vfs, db->filename, c->frames.n_pages, page_numbers, pages);
+	/* If the commit marker is set, we apply the changes directly to the
+	 * VFS. Otherwise, if the commit marker is not set, this must be an
+	 * upgrade from V1, we accumulate uncommitted frames in memory until the
+	 * final commit or a rollback. */
+	if (c->is_commit) {
+		if (f->pending.n_pages > 0) {
+			rv = add_pending_pages(f, page_numbers, pages,
+					       c->frames.n_pages,
+					       db->config->page_size);
+			if (rv != 0) {
+				return DQLITE_NOMEM;
+			}
+			rv =
+			    VfsApply(vfs, db->filename, f->pending.n_pages,
+				     f->pending.page_numbers, f->pending.pages);
+			if (rv != 0) {
+				return rv;
+			}
+			sqlite3_free(f->pending.page_numbers);
+			sqlite3_free(f->pending.pages);
+			f->pending.n_pages = 0;
+			f->pending.page_numbers = NULL;
+			f->pending.pages = NULL;
+		} else {
+			rv = VfsApply(vfs, db->filename, c->frames.n_pages,
+				      page_numbers, pages);
+			if (rv != 0) {
+				return rv;
+			}
+		}
+	} else {
+		rv =
+		    add_pending_pages(f, page_numbers, pages, c->frames.n_pages,
+				      db->config->page_size);
+		if (rv != 0) {
+			return DQLITE_NOMEM;
+		}
+	}
 
 	sqlite3_free(page_numbers);
 
@@ -157,11 +237,32 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	return 0;
 }
 
+static int apply_undo_v2(struct fsm *f, const struct command_undo *c)
+{
+	(void)c;
+
+	if (f->pending.n_pages == 0) {
+		return 0;
+	}
+
+	sqlite3_free(f->pending.page_numbers);
+	sqlite3_free(f->pending.pages);
+	f->pending.n_pages = 0;
+	f->pending.page_numbers = NULL;
+	f->pending.pages = NULL;
+
+	return 0;
+}
+
 static int apply_undo(struct fsm *f, const struct command_undo *c)
 {
 	struct db *db;
 	struct tx *tx;
 	int rc;
+
+	if (f->v2) {
+		return apply_undo_v2(f, c);
+	}
 
 	registry__db_by_tx_id(f->registry, c->tx_id, &db);
 	tx = db->tx;
@@ -502,7 +603,7 @@ int fsm__init(struct raft_fsm *fsm,
 	      struct config *config,
 	      struct registry *registry)
 {
-	struct fsm *f = raft_malloc(sizeof *fsm);
+	struct fsm *f = raft_malloc(sizeof *f);
 
 	if (f == NULL) {
 		return DQLITE_NOMEM;
@@ -510,6 +611,9 @@ int fsm__init(struct raft_fsm *fsm,
 
 	f->logger = &config->logger;
 	f->registry = registry;
+	f->pending.n_pages = 0;
+	f->pending.page_numbers = NULL;
+	f->pending.pages = NULL;
 	f->v2 = config->v2;
 
 	fsm->version = 1;
