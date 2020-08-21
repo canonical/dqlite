@@ -70,10 +70,6 @@ void formatWalGetSalt(const uint8_t *header, uint32_t salt[2]);
 /* Extract the page number from a WAL frame header. */
 void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number);
 
-/* Return true if native byte order should be used when calculating WAL
- * checksums, or false if bit-endian byte order should be used instead. */
-void formatWalGetNativeChecksum(const uint8_t *header, bool *native);
-
 /* Restart the header of a WAL file after a checkpoint. */
 void formatWalRestartHeader(uint8_t *header);
 
