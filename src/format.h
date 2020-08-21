@@ -50,9 +50,6 @@
 #define formatWalCalcFrameIndex(PAGE_SIZE, OFFSET) \
 	(formatWalCalcFramesNumber(PAGE_SIZE, OFFSET) + 1)
 
-/* Extract the page number from a WAL frame header. */
-void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number);
-
 /* Restart the header of a WAL file after a checkpoint. */
 void formatWalRestartHeader(uint8_t *header);
 

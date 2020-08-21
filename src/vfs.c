@@ -1330,6 +1330,12 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	return SQLITE_NOTFOUND;
 }
 
+/* Return the page number field stored in the header of the given frame. */
+static uint32_t vfsFrameGetPageNumber(struct vfsFrame *f)
+{
+	return vfsGet32(&f->header[0]);
+}
+
 /* Return the database size field stored in the header of the given frame. */
 static uint32_t vfsFrameGetDatabaseSize(struct vfsFrame *f)
 {
@@ -2166,8 +2172,7 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 
 	for (i = 0; i < w->n_tx; i++) {
 		dqlite_vfs_frame *frame = &(*frames)[i];
-		uint32_t page_number;
-		formatWalGetFramePageNumber(w->tx[i]->header, &page_number);
+		uint32_t page_number = vfsFrameGetPageNumber(w->tx[i]);
 		frame->data = w->tx[i]->page;
 		frame->page_number = page_number;
 		/* Release the vfsFrame object, but not its buf attribute, since
