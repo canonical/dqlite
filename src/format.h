@@ -50,13 +50,6 @@
 #define formatWalCalcFrameIndex(PAGE_SIZE, OFFSET) \
 	(formatWalCalcFramesNumber(PAGE_SIZE, OFFSET) + 1)
 
-/* Extract the page size from the content of the database header.
- *
- * The given buffer must hold at least FORMAT__DB_HDR_SIZE bytes.
- *
- * If the page size is invalid, 0 is returned. */
-void formatDatabaseGetPageSize(const uint8_t *header, unsigned *page_size);
-
 /* Extract the page number from a WAL frame header. */
 void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number);
 
