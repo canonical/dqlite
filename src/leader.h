@@ -12,7 +12,6 @@
 
 #include "./lib/queue.h"
 #include "db.h"
-#include "replication.h"
 
 struct exec;
 struct barrier;
@@ -20,6 +19,21 @@ struct leader;
 
 typedef void (*exec_cb)(struct exec *req, int status);
 typedef void (*barrier_cb)(struct barrier *req, int status);
+
+/* Wrapper around raft_apply, saving context information. */
+struct apply
+{
+	struct raft_apply req; /* Raft apply request */
+	int status;            /* Raft apply result */
+	struct leader *leader; /* Leader connection that triggered the hook */
+	int type;              /* Command type */
+	union {                /* Command-specific data */
+		struct
+		{
+			bool is_commit;
+		} frames;
+	};
+};
 
 struct leader
 {

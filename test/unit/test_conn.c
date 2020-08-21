@@ -9,7 +9,6 @@
 #include "../lib/logger.h"
 #include "../lib/raft.h"
 #include "../lib/registry.h"
-#include "../lib/replication.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
@@ -40,7 +39,6 @@ static void connCloseCb(struct conn *conn)
 	FIXTURE_CONFIG;      \
 	FIXTURE_REGISTRY;    \
 	FIXTURE_RAFT;        \
-	FIXTURE_REPLICATION; \
 	FIXTURE_CLIENT;      \
 	struct conn conn;    \
 	bool closed;
@@ -55,7 +53,6 @@ static void connCloseCb(struct conn *conn)
 	SETUP_CONFIG;                                                        \
 	SETUP_REGISTRY;                                                      \
 	SETUP_RAFT;                                                          \
-	SETUP_REPLICATION;                                                   \
 	SETUP_CLIENT;                                                        \
 	RAFT_BOOTSTRAP;                                                      \
 	RAFT_START;                                                          \
@@ -72,7 +69,6 @@ static void connCloseCb(struct conn *conn)
 	while (!f->closed) {              \
 		test_uv_run(&f->loop, 1); \
 	};                                \
-	TEAR_DOWN_REPLICATION;            \
 	TEAR_DOWN_RAFT;                   \
 	TEAR_DOWN_CLIENT;                 \
 	TEAR_DOWN_REGISTRY;               \

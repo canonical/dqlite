@@ -27,7 +27,6 @@ libdqlite_la_SOURCES = \
   src/config.c \
   src/query.c \
   src/registry.c \
-  src/replication.c \
   src/request.c \
   src/response.c \
   src/server.c \
