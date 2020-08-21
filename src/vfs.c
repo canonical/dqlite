@@ -2249,7 +2249,6 @@ static int vfsWalAppend(struct vfsWal *w,
 	uint32_t database_size;
 	unsigned i;
 	unsigned j;
-	bool native;
 	uint32_t salt[2];
 	uint32_t checksum[2];
 
@@ -2260,7 +2259,6 @@ static int vfsWalAppend(struct vfsWal *w,
 	assert(page_size > 0);
 
 	/* Get the salt from the WAL header. */
-	formatWalGetNativeChecksum(w->hdr, &native);
 	formatWalGetSalt(w->hdr, salt);
 
 	/* If there are currently no frames in the WAL, the starting database

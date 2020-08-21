@@ -83,14 +83,6 @@ void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number)
 	formatGet32(header, page_number);
 }
 
-void formatWalGetNativeChecksum(const uint8_t *header, bool *native)
-{
-	uint32_t magic;
-	formatGet32(header, &magic);
-	assert((magic & 0xFFFFFFFE) == FORMAT__WAL_MAGIC);
-	*native = !(bool)(magic & 0x00000001);
-}
-
 /* Encode a 32-bit number to big endian format */
 static void formatPut32(uint32_t v, uint8_t *buf)
 {
