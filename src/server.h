@@ -20,7 +20,6 @@ struct dqlite_node
 	struct raft_uv_transport raft_transport;    /* Raft libuv transport */
 	struct raft_io raft_io;                     /* libuv I/O */
 	struct raft_fsm raft_fsm;                   /* dqlite FSM */
-	struct sqlite3_wal_replication replication; /* Raft replication */
 	sem_t ready;                                /* Server is ready */
 	sem_t stopped;                              /* Notifiy loop stopped */
 	pthread_mutex_t mutex;                      /* Access incoming queue */
