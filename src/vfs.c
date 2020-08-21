@@ -2225,6 +2225,18 @@ int VfsPoll(sqlite3_vfs *vfs,
 	return 0;
 }
 
+/* Return the salt-1 field stored in the WAL header.*/
+static uint32_t vfsWalGetSalt1(struct vfsWal *w)
+{
+	return *(uint32_t*)(&w->hdr[16]);
+}
+
+/* Return the salt-2 field stored in the WAL header.*/
+static uint32_t vfsWalGetSalt2(struct vfsWal *w)
+{
+	return *(uint32_t*)(&w->hdr[20]);
+}
+
 /* Return the checksum-1 field stored in the WAL header.*/
 static uint32_t vfsWalGetChecksum1(struct vfsWal *w)
 {
@@ -2259,7 +2271,8 @@ static int vfsWalAppend(struct vfsWal *w,
 	assert(page_size > 0);
 
 	/* Get the salt from the WAL header. */
-	formatWalGetSalt(w->hdr, salt);
+	salt[0] = vfsWalGetSalt1(w);
+	salt[1] = vfsWalGetSalt2(w);
 
 	/* If there are currently no frames in the WAL, the starting database
 	 * size will be equal to the current number of pages in the main

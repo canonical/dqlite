@@ -64,9 +64,6 @@ void formatDatabaseGetPageSize(const uint8_t *header, unsigned *page_size);
  * If the page size is invalid, 0 is returned. */
 void formatWalGetPageSize(const uint8_t *header, unsigned *page_size);
 
-/* Get the Salt-1 and Salt-2 fields stored in the WAL header. */
-void formatWalGetSalt(const uint8_t *header, uint32_t salt[2]);
-
 /* Extract the page number from a WAL frame header. */
 void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number);
 
