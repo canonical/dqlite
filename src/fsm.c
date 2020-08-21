@@ -89,7 +89,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		db->follower = NULL;
 	}
 
-	rv = command_frames__page_numbers2(c, &page_numbers);
+	rv = command_frames__page_numbers(c, &page_numbers);
 	if (rv != 0) {
 		return rv;
 	}
