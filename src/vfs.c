@@ -1348,6 +1348,31 @@ static uint32_t vfsFrameGetChecksum2(struct vfsFrame *f)
 	return vfsGet32(&f->header[20]);
 }
 
+/* Fill the header and the content of a WAL frame. The given checksum is the
+ * rolling one of all preceeding frames and is updated by this function. */
+static void vfsFrameFill(struct vfsFrame *f,
+			 uint32_t page_number,
+			 uint32_t database_size,
+			 uint32_t salt[2],
+			 uint32_t checksum[2],
+			 uint8_t *page,
+			 uint32_t page_size)
+{
+	vfsPut32(page_number, &f->header[0]);
+	vfsPut32(database_size, &f->header[4]);
+
+	vfsChecksum(f->header, 8, checksum, checksum);
+	vfsChecksum(page, page_size, checksum, checksum);
+
+	memcpy(&f->header[8], &salt[0], sizeof salt[0]);
+	memcpy(&f->header[12], &salt[1], sizeof salt[1]);
+
+	vfsPut32(checksum[0], &f->header[16]);
+	vfsPut32(checksum[1], &f->header[20]);
+
+	memcpy(f->page, page, page_size);
+}
+
 /* This function modifies part of the WAL index header to reflect the current
  * content of the WAL.
  *
@@ -2281,10 +2306,8 @@ static int vfsWalAppend(struct vfsWal *w,
 			commit = database_size;
 		}
 
-		formatWalPutFrameHeader(native, page_number, commit, salt,
-					checksum, frame->header, page,
-					page_size);
-		memcpy(frame->page, page, page_size);
+		vfsFrameFill(frame, page_number, commit, salt, checksum, page,
+			     page_size);
 
 		frames[w->n_frames + i] = frame;
 	}

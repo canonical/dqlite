@@ -77,14 +77,4 @@ void formatWalGetNativeChecksum(const uint8_t *header, bool *native);
 /* Restart the header of a WAL file after a checkpoint. */
 void formatWalRestartHeader(uint8_t *header);
 
-/* Encode a frame header and return the calculated checksums. */
-void formatWalPutFrameHeader(bool native,
-			     uint32_t page_number,
-			     uint32_t database_size,
-			     uint32_t salt[2],
-			     uint32_t checksum[2],
-			     uint8_t *header,
-			     uint8_t *data,
-			     unsigned n_data);
-
 #endif /* FORMAT_H */
