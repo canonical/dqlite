@@ -19,7 +19,7 @@ TEST_MODULE(replication_v1);
 
 #define SETUP                             \
 	unsigned i;                       \
-	SETUP_CLUSTER(V1)                 \
+	SETUP_CLUSTER(V2)                 \
 	for (i = 0; i < N_SERVERS; i++) { \
 		SETUP_LEADER(i);          \
 	}
@@ -207,7 +207,7 @@ TEST_CASE(exec, success, NULL)
 	CLUSTER_ELECT(0);
 	PREPARE(0, "CREATE TABLE test (a  INT)");
 	EXEC(0);
-	CLUSTER_APPLIED(3);
+	CLUSTER_APPLIED(2);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
 	FINALIZE;
@@ -223,11 +223,11 @@ TEST_CASE(exec, snapshot, NULL)
 	CLUSTER_ELECT(0);
 	PREPARE(0, "CREATE TABLE test (n  INT)");
 	EXEC(0);
-	CLUSTER_APPLIED(3);
+	CLUSTER_APPLIED(2);
 	FINALIZE;
 	PREPARE(0, "INSERT INTO test(n) VALUES(1)");
 	EXEC(0);
-	CLUSTER_APPLIED(4);
+	CLUSTER_APPLIED(3);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
 	FINALIZE;
@@ -303,23 +303,6 @@ TEST_CASE(exec, checkpoint_read_lock, NULL)
 
 	leader__close(&leader2);
 
-	return MUNIT_OK;
-}
-
-TEST_GROUP(exec, error);
-
-/* The local server is not the leader. */
-TEST_CASE(exec, error, begin_not_leader, NULL)
-{
-	struct exec_fixture *f = data;
-	(void)params;
-	CLUSTER_ELECT(1);
-	PREPARE(0, "CREATE TABLE test (a  INT)");
-	EXEC(0);
-	munit_assert_true(f->invoked);
-	munit_assert_int(f->status, ==, SQLITE_IOERR_NOT_LEADER);
-	RESET(SQLITE_IOERR_NOT_LEADER);
-	FINALIZE;
 	return MUNIT_OK;
 }
 
