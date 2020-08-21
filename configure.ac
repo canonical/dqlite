@@ -50,7 +50,6 @@ AC_SYS_LARGEFILE
 PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.22.0], [], [])
 PKG_CHECK_MODULES(UV, [libuv >= 1.8.0], [], [])
 PKG_CHECK_MODULES(RAFT, [raft], [], [])
-PKG_CHECK_MODULES(CO, [libco], [], [])
 
 CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -std=c11 \

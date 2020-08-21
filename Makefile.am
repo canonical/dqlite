@@ -1,7 +1,7 @@
 ACLOCAL_AMFLAGS = -I m4
 AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
-AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(CO_CFLAGS) $(RAFT_CFLAGS) $(PTHREAD_CFLAGS)
-AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(CO_LIBS) $(RAFT_LIBS) $(PTHREAD_LIBS)
+AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(RAFT_CFLAGS) $(PTHREAD_CFLAGS)
+AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(RAFT_LIBS) $(PTHREAD_LIBS)
 
 include_HEADERS = include/dqlite.h
 
@@ -59,7 +59,6 @@ unit_test_SOURCES = $(libdqlite_la_SOURCES)
 unit_test_SOURCES += \
   test/test_error.c \
   test/test_integration.c \
-  test/unit/ext/test_co.c \
   test/unit/ext/test_uv.c \
   test/unit/lib/test_buffer.c \
   test/unit/lib/test_registry.c \

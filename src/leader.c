@@ -8,8 +8,6 @@
 #include "leader.h"
 #include "vfs.h"
 
-#define LOOP_CORO_STACK_SIZE 1024 * 1024 /* TODO: make this configurable? */
-
 static void maybeExecDone(struct exec *req)
 {
 	if (!req->done) {
