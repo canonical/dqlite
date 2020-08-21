@@ -213,8 +213,13 @@ static int initLoopCoroutine(struct leader *l)
  * index. */
 static bool needsBarrier(struct leader *l)
 {
-	return (l->db->tx == NULL || l->db->tx->is_zombie) &&
-	       raft_last_applied(l->raft) < raft_last_index(l->raft);
+	bool no_tx;
+	if (l->db->config->v2) {
+		no_tx = l->db->tx_id == 0;
+	} else {
+		no_tx = l->db->tx == NULL || l->db->tx->is_zombie;
+	}
+	return no_tx && raft_last_applied(l->raft) < raft_last_index(l->raft);
 }
 
 int leader__init(struct leader *l, struct db *db, struct raft *raft)
@@ -284,6 +289,7 @@ static void leaderCheckpointApplyCb(struct raft_apply *req,
 	struct leader *l = req->data;
 	(void)result;
 	(void)status; /* TODO: log a warning in case of errors. */
+	l->db->tx_id = 0;
 	l->exec->done = true;
 	maybeExecDone(l->exec);
 }
@@ -411,12 +417,13 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 
 	raft_free(apply);
 
-	if (leaderMaybeCheckpoint(l)) {
+	if (status == 0 && leaderMaybeCheckpoint(l)) {
 		/* Wait for the checkpoint to finish. */
 		return;
 	}
 
 finish:
+	l->db->tx_id = 0;
 	l->exec->done = true;
 	maybeExecDone(l->exec);
 }
@@ -459,6 +466,8 @@ static int leaderApplyFrames(struct exec *req,
 	if (rv != 0) {
 		goto err_after_command_encode;
 	}
+
+	db->tx_id = 1;
 
 	return 0;
 
