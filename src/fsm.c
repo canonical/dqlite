@@ -17,27 +17,12 @@ struct fsm
 		unsigned long *page_numbers;
 		uint8_t *pages;
 	} pending; /* For upgrades from V1 */
-	bool v2;
 };
 
 static int apply_open(struct fsm *f, const struct command_open *c)
 {
-	struct db *db;
-	int rc;
-
-	if (f->v2) {
-		return 0;
-	}
-
-	rc = registry__db_get(f->registry, c->filename, &db);
-	if (rc != 0) {
-		return rc;
-	}
-	rc = db__open_follower(db);
-	if (rc != 0) {
-		return rc;
-	}
-
+	(void)f;
+	(void)c;
 	return 0;
 }
 
@@ -74,7 +59,7 @@ static int add_pending_pages(struct fsm *f,
 	return 0;
 }
 
-static int apply_frames_v2(struct fsm *f, const struct command_frames *c)
+static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
 	struct db *db;
 	sqlite3_vfs *vfs;
@@ -155,89 +140,7 @@ static int apply_frames_v2(struct fsm *f, const struct command_frames *c)
 	return 0;
 }
 
-static int apply_frames(struct fsm *f, const struct command_frames *c)
-{
-	struct db *db;
-	struct tx *tx;
-	unsigned *page_numbers;
-	void *pages;
-	bool is_begin = true;
-	int rc;
-
-	if (f->v2) {
-		return apply_frames_v2(f, c);
-	}
-
-	rc = registry__db_get(f->registry, c->filename, &db);
-	assert(rc == 0); /* We have registered this filename before */
-
-	assert(db->follower != NULL); /* We have issued an open command */
-
-	tx = db->tx;
-
-	if (tx != NULL) {
-		/* TODO: handle leftover leader zombie transactions with lower
-		 * ID */
-		assert(tx->id == c->tx_id);
-
-		if (tx__is_leader(tx)) {
-			if (tx->is_zombie) {
-				/* TODO */
-			} else {
-				/* We're executing this FSM command in during
-				 * the execution of the replication->frames()
-				 * hook. */
-			}
-		} else {
-			/* We're executing the Frames command as followers. The
-			 * transaction must be in the Writing state. */
-			assert(tx->state == TX__WRITING);
-			is_begin = false;
-		}
-	} else {
-		/* We don't know about this transaction, it must be a new
-		 * follower transaction. */
-		rc = db__create_tx(db, c->tx_id, db->follower);
-		if (rc != 0) {
-			return rc;
-		}
-		tx = db->tx;
-	}
-
-	rc = command_frames__page_numbers(c, &page_numbers);
-	if (rc != 0) {
-		return rc;
-	}
-
-	command_frames__pages(c, &pages);
-
-	rc = tx__frames(tx, is_begin, c->frames.page_size,
-			(int)c->frames.n_pages, page_numbers, pages,
-			c->truncate, c->is_commit);
-
-	sqlite3_free(page_numbers);
-
-	if (rc != 0) {
-		return rc;
-	}
-
-	/* If the commit flag is on, this is the final write of a transaction,
-	 */
-	if (c->is_commit) {
-		/* Save the ID of this transaction in the buffer of recently
-		 * committed transactions. */
-		/* TODO: f.registry.TxnCommittedAdd(txn) */
-
-		/* If it's a follower, we also unregister it. */
-		if (!tx__is_leader(tx)) {
-			db__delete_tx(db);
-		}
-	}
-
-	return 0;
-}
-
-static int apply_undo_v2(struct fsm *f, const struct command_undo *c)
+static int apply_undo(struct fsm *f, const struct command_undo *c)
 {
 	(void)c;
 
@@ -254,51 +157,6 @@ static int apply_undo_v2(struct fsm *f, const struct command_undo *c)
 	return 0;
 }
 
-static int apply_undo(struct fsm *f, const struct command_undo *c)
-{
-	struct db *db;
-	struct tx *tx;
-	int rc;
-
-	if (f->v2) {
-		return apply_undo_v2(f, c);
-	}
-
-	registry__db_by_tx_id(f->registry, c->tx_id, &db);
-	tx = db->tx;
-	assert(tx != NULL);
-
-	rc = tx__undo(tx);
-	if (rc != 0) {
-		return rc;
-	}
-
-	/* Let's decide whether to remove the transaction from the registry or
-	 * not. The following scenarios are possible:
-	 *
-	 * 1. This is a non-zombie leader transaction. We can assume that this
-	 *    command is being applied in the context of an undo hook execution,
-	 *    which will wait for the command to succeed and then remove the
-	 *    transaction by itself in the end hook, so no need to remove it
-	 *    here.
-	 *
-	 * 2. This is a follower transaction. We're done here, since undone is
-	 *    a final state, so let's remove the transaction.
-	 *
-	 * 3. This is a zombie leader transaction. This can happen if the leader
-	 *    lost leadership when applying the a non-commit frames, but the
-	 *    command was still committed (either by us is we were re-elected,
-	 *    or by another server if the command still reached a quorum). In
-	 *    that case we're handling an Undo command to rollback a dangling
-	 *    transaction, and we have to remove the zombie ourselves, because
-	 *    nobody else would do it otherwise. */
-	if (!tx__is_leader(tx) || tx->is_zombie) {
-		db__delete_tx(db);
-	}
-
-	return 0;
-}
-
 static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 {
 	struct db *db;
@@ -311,11 +169,9 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 	assert(db->tx == NULL); /* No transaction is in progress. */
 
 	/* Use a new connection to force re-opening the WAL. */
-	if (f->v2) {
-		rv = db__open_follower(db);
-		if (rv != 0) {
-			return rv;
-		}
+	rv = db__open_follower(db);
+	if (rv != 0) {
+		return rv;
 	}
 
 	rv = sqlite3_wal_checkpoint_v2(
@@ -323,10 +179,9 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 	if (rv != 0) {
 		return rv;
 	}
-	if (f->v2) {
-		sqlite3_close(db->follower);
-		db->follower = NULL;
-	}
+
+	sqlite3_close(db->follower);
+	db->follower = NULL;
 
 	/* Since no reader transaction is in progress, we must be able to
 	 * checkpoint the entire WAL */
@@ -500,13 +355,6 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	}
 	cursor->p += n;
 
-	if (!f->v2) {
-		rv = db__open_follower(db);
-		if (rv != 0) {
-			return rv;
-		}
-	}
-
 	return 0;
 }
 
@@ -614,7 +462,6 @@ int fsm__init(struct raft_fsm *fsm,
 	f->pending.n_pages = 0;
 	f->pending.page_numbers = NULL;
 	f->pending.pages = NULL;
-	f->v2 = config->v2;
 
 	fsm->version = 1;
 	fsm->data = f;
