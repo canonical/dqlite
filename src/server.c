@@ -9,7 +9,6 @@
 #include "fsm.h"
 #include "lib/assert.h"
 #include "logger.h"
-#include "replication.h"
 #include "transport.h"
 #include "vfs.h"
 
@@ -70,15 +69,11 @@ int dqlite__init(struct dqlite_node *d,
 	raft_set_pre_vote(&d->raft, true);
 	raft_set_max_catch_up_rounds(&d->raft, 100);
 	raft_set_max_catch_up_round_duration(&d->raft, 50 * 1000); /* 50 secs */
-	rv = replication__init(&d->replication, &d->config, &d->raft);
-	if (rv != 0) {
-		goto err_after_raft_fsm_init;
-	}
 	rv = sem_init(&d->ready, 0, 0);
 	if (rv != 0) {
 		/* TODO: better error reporting */
 		rv = DQLITE_ERROR;
-		goto err_after_raft_replication_init;
+		goto err_after_raft_fsm_init;
 	}
 	rv = sem_init(&d->stopped, 0, 0);
 	if (rv != 0) {
@@ -98,8 +93,6 @@ int dqlite__init(struct dqlite_node *d,
 
 err_after_ready_init:
 	sem_destroy(&d->ready);
-err_after_raft_replication_init:
-	replication__close(&d->replication);
 err_after_raft_fsm_init:
 	fsm__close(&d->raft_fsm);
 err_after_raft_io_init:
@@ -126,7 +119,6 @@ void dqlite__close(struct dqlite_node *d)
 	assert(rv == 0); /* Fails only if sem object is not valid */
 	rv = sem_destroy(&d->ready);
 	assert(rv == 0); /* Fails only if sem object is not valid */
-	replication__close(&d->replication);
 	fsm__close(&d->raft_fsm);
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
