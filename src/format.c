@@ -29,13 +29,6 @@ static void formatGet32(const uint8_t buf[4], uint32_t *v)
 	*v += (uint32_t)(buf[3]);
 }
 
-void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number)
-{
-	/* The page number is stored in the first 4 bytes of the header
-	 * (big-endian) */
-	formatGet32(header, page_number);
-}
-
 /* Encode a 32-bit number to big endian format */
 static void formatPut32(uint32_t v, uint8_t *buf)
 {
