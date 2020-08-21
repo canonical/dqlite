@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <raft.h>
 
 #include "../lib/heap.h"
 #include "../lib/runner.h"
@@ -1062,7 +1063,7 @@ TEST(vfs, snapshotInitialDatabase, setUp, tearDown, 0, NULL)
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
 	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
 
-	sqlite3_free(snapshot.data);
+	raft_free(snapshot.data);
 
 	return MUNIT_OK;
 }
@@ -1096,7 +1097,7 @@ TEST(vfs, snapshotAfterFirstTransaction, setUp, tearDown, 0, NULL)
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
 	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
 
-	sqlite3_free(snapshot.data);
+	raft_free(snapshot.data);
 
 	return MUNIT_OK;
 }
@@ -1131,7 +1132,7 @@ TEST(vfs, snapshotAfterCheckpoint, setUp, tearDown, 0, NULL)
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
 	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
 
-	sqlite3_free(snapshot.data);
+	raft_free(snapshot.data);
 
 	return MUNIT_OK;
 }
@@ -1153,7 +1154,7 @@ TEST(vfs, restoreInitialDatabase, setUp, tearDown, 0, NULL)
 
 	RESTORE("2", snapshot);
 
-	sqlite3_free(snapshot.data);
+	raft_free(snapshot.data);
 
 	return MUNIT_OK;
 }
@@ -1191,7 +1192,7 @@ TEST(vfs, restoreAfterFirstTransaction, setUp, tearDown, 0, NULL)
 
 	CLOSE(db);
 
-	sqlite3_free(snapshot.data);
+	raft_free(snapshot.data);
 
 	return MUNIT_OK;
 }
@@ -1225,7 +1226,7 @@ TEST(vfs, restoreWithOpenConnection, setUp, tearDown, 0, NULL)
 
 	CLOSE(db);
 
-	sqlite3_free(snapshot.data);
+	raft_free(snapshot.data);
 
 	return MUNIT_OK;
 }
