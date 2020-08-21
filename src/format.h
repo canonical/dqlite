@@ -57,13 +57,6 @@
  * If the page size is invalid, 0 is returned. */
 void formatDatabaseGetPageSize(const uint8_t *header, unsigned *page_size);
 
-/* Extract the page size from the content of the WAL header.
- *
- * The given buffer must hold at least FORMAT__WAL_HDR_SIZE.
- *
- * If the page size is invalid, 0 is returned. */
-void formatWalGetPageSize(const uint8_t *header, unsigned *page_size);
-
 /* Extract the page number from a WAL frame header. */
 void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number);
 

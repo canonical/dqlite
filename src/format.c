@@ -61,15 +61,6 @@ void formatDatabaseGetPageSize(const uint8_t *header, unsigned *page_size)
 	*page_size = formatDecodePageSize(buf);
 }
 
-void formatWalGetPageSize(const uint8_t *header, unsigned *page_size)
-{
-	/* The page size is stored in the 4 bytes starting at 8
-	 * (big-endian) */
-	uint8_t buf[4] = {header[8], header[9], header[10], header[11]};
-
-	*page_size = formatDecodePageSize(buf);
-}
-
 void formatWalGetFramePageNumber(const uint8_t *header, uint32_t *page_number)
 {
 	/* The page number is stored in the first 4 bytes of the header
