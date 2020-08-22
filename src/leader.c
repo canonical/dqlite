@@ -289,6 +289,7 @@ static void leaderCheckpointApplyCb(struct raft_apply *req,
 	struct leader *l = req->data;
 	(void)result;
 	(void)status; /* TODO: log a warning in case of errors. */
+	l->inflight = NULL;
 	l->db->tx_id = 0;
 	l->exec->done = true;
 	maybeExecDone(l->exec);
@@ -382,6 +383,10 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 {
 	struct apply *apply = req->data;
 	struct leader *l = apply->leader;
+	if (l == NULL) {
+		sqlite3_free(apply);
+		return;
+	}
 
 	(void)result;
 
@@ -423,6 +428,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 	}
 
 finish:
+	l->inflight = NULL;
 	l->db->tx_id = 0;
 	l->exec->done = true;
 	maybeExecDone(l->exec);
@@ -468,6 +474,7 @@ static int leaderApplyFrames(struct exec *req,
 	}
 
 	db->tx_id = 1;
+	l->inflight = apply;
 
 	return 0;
 
