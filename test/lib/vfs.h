@@ -11,7 +11,7 @@
 #define SETUP_VFS                                         \
 	{                                                 \
 		int rv_;                                  \
-		rv_ = VfsInitV2(&f->vfs, f->config.name); \
+		rv_ = VfsInit(&f->vfs, f->config.name); \
 		munit_assert_int(rv_, ==, 0);             \
 		rv_ = sqlite3_vfs_register(&f->vfs, 0);   \
 		munit_assert_int(rv_, ==, 0);             \
