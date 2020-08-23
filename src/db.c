@@ -20,7 +20,6 @@ void db__init(struct db *db, struct config *config, const char *filename)
 	strcpy(db->filename, filename);
 	db->opening = false;
 	db->follower = NULL;
-	db->tx = NULL;
 	db->tx_id = 0;
 	QUEUE__INIT(&db->leaders);
 }
@@ -32,9 +31,6 @@ void db__close(struct db *db)
 		int rc;
 		rc = sqlite3_close(db->follower);
 		assert(rc == SQLITE_OK);
-	}
-	if (db->tx != NULL) {
-		sqlite3_free(db->tx);
 	}
 	sqlite3_free(db->filename);
 }
@@ -49,24 +45,6 @@ int db__open_follower(struct db *db)
 		return rc;
 	}
 	return 0;
-}
-
-int db__create_tx(struct db *db, unsigned long long id, sqlite3 *conn)
-{
-	assert(db->tx == NULL);
-	db->tx = sqlite3_malloc(sizeof *db->tx);
-	if (db->tx == NULL) {
-		return DQLITE_NOMEM;
-	}
-	tx__init(db->tx, id, conn);
-	return 0;
-}
-
-void db__delete_tx(struct db *db)
-{
-	tx__close(db->tx);
-	sqlite3_free(db->tx);
-	db->tx = NULL;
 }
 
 static int open_follower_conn(const char *filename,
