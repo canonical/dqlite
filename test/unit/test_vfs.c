@@ -31,7 +31,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	int rv;
 	SETUP_HEAP;
 	SETUP_SQLITE;
-	rv = VfsInitV2(&f->vfs, "dqlite");
+	rv = VfsInit(&f->vfs, "dqlite");
 	munit_assert_int(rv, ==, 0);
 	rv = sqlite3_vfs_register(&f->vfs, 0);
 	munit_assert_int(rv, ==, 0);
@@ -1333,7 +1333,7 @@ TEST(VfsInit, oom, setUp, tearDown, 0, test_create_oom_params)
 
 	test_heap_fault_enable();
 
-	rv = VfsInitV2(&vfs, "dqlite");
+	rv = VfsInit(&vfs, "dqlite");
 	munit_assert_int(rv, ==, DQLITE_NOMEM);
 
 	return MUNIT_OK;
