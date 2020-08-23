@@ -33,7 +33,6 @@ libdqlite_la_SOURCES = \
   src/stmt.c \
   src/transport.c \
   src/tuple.c \
-  src/tx.c \
   src/vfs.c
 
 check_PROGRAMS = \

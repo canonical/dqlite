@@ -166,7 +166,6 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 
 	rv = registry__db_get(f->registry, c->filename, &db);
 	assert(rv == 0);        /* We have registered this filename before. */
-	assert(db->tx == NULL); /* No transaction is in progress. */
 
 	/* Use a new connection to force re-opening the WAL. */
 	rv = db__open_follower(db);
@@ -374,7 +373,7 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	QUEUE__FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE__DATA(head, struct db, queue);
-		if (db->tx != NULL) {
+		if (db->tx_id != 0) {
 			return RAFT_BUSY;
 		}
 		n++;

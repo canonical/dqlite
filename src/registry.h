@@ -23,9 +23,4 @@ void registry__close(struct registry *r);
  */
 int registry__db_get(struct registry *r, const char *filename, struct db **db);
 
-/**
- * Get the db whose current transaction matches the given ID.
- */
-void registry__db_by_tx_id(struct registry *r, size_t id, struct db **db);
-
 #endif /* REGISTRY_H_*/

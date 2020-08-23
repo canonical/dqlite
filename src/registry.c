@@ -43,16 +43,3 @@ int registry__db_get(struct registry *r, const char *filename, struct db **db)
 	QUEUE__PUSH(&r->dbs, &(*db)->queue);
 	return 0;
 }
-
-void registry__db_by_tx_id(struct registry *r, size_t id, struct db **db)
-{
-	queue *head;
-	QUEUE__FOREACH(head, &r->dbs)
-	{
-		*db = QUEUE__DATA(head, struct db, queue);
-		if ((*db)->tx != NULL && (*db)->tx->id == id) {
-			return;
-		}
-	}
-	*db = NULL;
-}
