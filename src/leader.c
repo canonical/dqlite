@@ -384,7 +384,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 	struct apply *apply = req->data;
 	struct leader *l = apply->leader;
 	if (l == NULL) {
-		sqlite3_free(apply);
+		raft_free(apply);
 		return;
 	}
 
