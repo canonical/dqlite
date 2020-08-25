@@ -63,28 +63,14 @@ Build
 To build ``libdqlite`` from source you'll need:
 
 * A reasonably recent version of [libuv](http://libuv.org/) (v1.8.0 or beyond).
-* A [patched version of SQLite](https://github.com/canonical/sqlite/releases/latest)
-  with support for WAL-based replication.
 * A build of the [C-raft](https://github.com/canonical/raft) Raft library.
-* A build of the [libco](https://github.com/canonical/libco) coroutine library.
 
 Your distribution should already provide you a pre-built libuv shared
 library.
 
-To build the other libraries:
+To build the raft library:
 
 ```
-git clone --depth 100 https://github.com/canonical/sqlite.git
-cd sqlite
-./configure --enable-replication
-make
-sudo make install
-cd ..
-git clone https://github.com/canonical/libco.git
-cd libco
-make
-sudo make install
-cd ..
 git clone https://github.com/canonical/raft.git
 cd raft
 autoreconf -i
