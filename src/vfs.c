@@ -638,7 +638,7 @@ struct vfs
 };
 
 /* Create a new vfs object. */
-static struct vfs *vfsCreate()
+static struct vfs *vfsCreate(void)
 {
 	struct vfs *v;
 

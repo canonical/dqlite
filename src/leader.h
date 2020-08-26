@@ -5,7 +5,6 @@
 #ifndef LEADER_H_
 #define LEADER_H_
 
-#include <libco.h>
 #include <raft.h>
 #include <sqlite3.h>
 #include <stdbool.h>
@@ -41,8 +40,6 @@ struct apply
 struct leader
 {
 	struct db *db;           /* Database the connection. */
-	cothread_t main;         /* Main coroutine. */
-	cothread_t loop;         /* Loop coroutine, executing statements. */
 	sqlite3 *conn;           /* Underlying SQLite connection. */
 	struct raft *raft;       /* Raft instance. */
 	struct exec *exec;       /* Exec request in progress, if any. */
