@@ -7,15 +7,15 @@ ENV GOROOT=/usr/local/go
 ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:$GOROOT/bin:$PATH
 
-RUN apt-get update && apt-get install -y git build-essential dh-autoreconf pkg-config libuv1-dev tcl8.6 wget
+RUN apt-get update && apt-get install -y git build-essential dh-autoreconf pkg-config libuv1-dev libsqlite3-dev tcl8.6 wget
 
-WORKDIR /opt
+# WORKDIR /opt
 
-RUN git clone --depth 100 https://github.com/canonical/sqlite.git
+# RUN git clone --depth 100 https://github.com/canonical/sqlite.git
 
-WORKDIR /opt/sqlite
+# WORKDIR /opt/sqlite
 
-RUN ./configure --enable-replication && make && make install
+# RUN ./configure --enable-replication && make && make install
 
 WORKDIR /opt
 
