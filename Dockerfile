@@ -77,6 +77,10 @@ COPY --from=dqlite-lib-builder \
     /usr/lib/x86_64-linux-gnu/libuv.so.1.0.0\
     /usr/lib/
 
+COPY --from=dqlite-lib-builder \
+    /lib/x86_64-linux-gnu \
+    /usr/lib/x86_64-linux-gnu/  
+
 COPY --from=dqlite-lib-builder \    
     /usr/include/libco.h \
     /usr/include/    
