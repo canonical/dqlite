@@ -61,8 +61,6 @@ FROM debian:buster-slim
 ARG DEBIAN_FRONTEND="noninteractive"
 ENV TZ=Europe/London
 ENV LD_LIBRARY_PATH=/usr/local/lib
-ENV GOROOT=/usr/local/go
-ENV GOPATH=/go
 ENV PATH=/opt:$PATH
 
 COPY --from=dqlite-lib-builder /go/bin /opt/
