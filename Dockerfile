@@ -35,9 +35,9 @@ RUN autoreconf -i && ./configure && make && make install
 
 WORKDIR /opt
 
-RUN git clone https://github.com/canonical/dqlite.git
-
 WORKDIR /opt/dqlite
+
+COPY . .
 
 RUN autoreconf -i && ./configure && make && make install
 
