@@ -14,7 +14,6 @@ addons:
     - lcov
     - libsqlite3-dev
     - libuv1-dev
-    - libco-dev
     - libraft-dev
 
   coverity_scan:
