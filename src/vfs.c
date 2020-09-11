@@ -15,6 +15,16 @@
 #include "format.h"
 #include "vfs.h"
 
+/* Byte order */
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
+#define VFS__BIGENDIAN 0
+#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __BIG_ENDIAN__)
+#define VFS__BIGENDIAN 1
+#else
+const int vfsOne = 1;
+#define VFS__BIGENDIAN (*(char *)(&vfsOne) == 0)
+#endif
+
 /* Maximum pathname length supported by this VFS. */
 #define VFS__MAX_PATHNAME 512
 
@@ -1334,7 +1344,7 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 
 	assert(*(uint32_t *)(&index[0]) == VFS__WAL_VERSION); /* iVersion */
 	assert(index[12] == 1);                               /* isInit */
-	assert(index[13] == 0);                               /* bigEndCksum */
+	assert(index[13] == VFS__BIGENDIAN);                  /* bigEndCksum */
 
 	*(uint32_t *)(&index[16]) = wal->n_frames;
 	*(uint32_t *)(&index[20]) = n_pages;
@@ -2244,7 +2254,20 @@ static void vfsWalStartHeader(struct vfsWal *w, uint32_t page_size)
 {
 	assert(page_size > 0);
 	uint32_t checksum[2] = {0, 0};
-	vfsPut32(VFS__WAL_MAGIC, &w->hdr[0]);
+	/* SQLite calculates checksums for the WAL header and frames either
+	 * using little endian or big endian byte order when adding up 32-bit
+	 * words. The byte order that should be used is recorded in the WAL file
+	 * header by setting the least significant bit of the magic value stored
+	 * in the first 32 bits. This allows portability of the WAL file across
+	 * hosts with different native byte order.
+	 *
+	 * When creating a brand new WAL file, SQLite will set the byte order
+	 * bit to match the host's native byte order, so checksums are a bit
+	 * more efficient.
+	 *
+	 * In Dqlite the WAL file image is always generated at run time on the
+	 * host, so we can always use the native byte order. */
+	vfsPut32(VFS__WAL_MAGIC | VFS__BIGENDIAN, &w->hdr[0]);
 	vfsPut32(VFS__WAL_VERSION, &w->hdr[4]);
 	vfsPut32(page_size, &w->hdr[8]);
 	vfsPut32(0, &w->hdr[12]);
