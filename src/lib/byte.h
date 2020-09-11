@@ -14,9 +14,9 @@
 /* Flip a 16-bit number to network byte order (little endian) */
 DQLITE_INLINE uint16_t byte__flip16(uint16_t v)
 {
-#if defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN)
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
 	return v;
-#elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN) && \
+#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __BIG_ENDIAN__) && \
     defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
 	return __builtin_bswap16(v);
 #else
@@ -35,9 +35,9 @@ DQLITE_INLINE uint16_t byte__flip16(uint16_t v)
 /* Flip a 32-bit number to network byte order (little endian) */
 DQLITE_INLINE uint32_t byte__flip32(uint32_t v)
 {
-#if defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN)
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
 	return v;
-#elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN) && \
+#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __BIG_ENDIAN__) && \
     defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
 	return __builtin_bswap32(v);
 #else
@@ -58,9 +58,9 @@ DQLITE_INLINE uint32_t byte__flip32(uint32_t v)
 /* Flip a 64-bit number to network byte order (little endian) */
 DQLITE_INLINE uint64_t byte__flip64(uint64_t v)
 {
-#if defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN)
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
 	return v;
-#elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN) && \
+#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __BIG_ENDIAN__) && \
     defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
 	return __builtin_bswap64(v);
 #else
