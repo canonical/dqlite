@@ -92,6 +92,27 @@ void gateway__close(struct gateway *g)
 		return 0;                                    \
 	}
 
+#define FAIL_IF_CHECKPOINTING                                                  \
+	{                                                                      \
+		struct sqlite3_file *_file;                                    \
+		int _rv;                                                       \
+		_rv = sqlite3_file_control(g->leader->conn, "main",            \
+					   SQLITE_FCNTL_FILE_POINTER, &_file); \
+		assert(_rv == SQLITE_OK); /* Should never fail */              \
+                                                                               \
+		_rv = _file->pMethods->xShmLock(                               \
+		    _file, 1 /* checkpoint lock */, 1,                         \
+		    SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);                   \
+		if (_rv != 0) {                                                \
+			assert(_rv == SQLITE_BUSY);                            \
+			failure(req, SQLITE_BUSY, "checkpoint in progress");   \
+			return 0;                                              \
+		}                                                              \
+		_file->pMethods->xShmLock(                                     \
+		    _file, 1 /* checkpoint lock */, 1,                         \
+		    SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);                 \
+	}
+
 /* Encode fa failure response and invoke the request callback */
 static void failure(struct handle *req, int code, const char *message)
 {
@@ -263,6 +284,7 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
+	FAIL_IF_CHECKPOINTING;
 	(void)response;
 	rv = bind__params(stmt->stmt, cursor);
 	if (rv != 0) {
@@ -345,6 +367,7 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
+	FAIL_IF_CHECKPOINTING;
 	(void)response;
 	rv = bind__params(stmt->stmt, cursor);
 	if (rv != 0) {
@@ -468,6 +491,7 @@ static int handle_exec_sql(struct handle *req, struct cursor *cursor)
 	START(exec_sql, result);
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
+	FAIL_IF_CHECKPOINTING;
 	(void)response;
 	assert(g->req == NULL);
 	assert(g->sql == NULL);
@@ -485,6 +509,7 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	START(query_sql, rows);
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
+	FAIL_IF_CHECKPOINTING;
 	(void)response;
 	rv = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt,
 				&tail);

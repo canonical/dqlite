@@ -132,7 +132,15 @@ static void leaderCheckpointApplyCb(struct raft_apply *req,
 {
 	struct leader *l = req->data;
 	(void)result;
-	(void)status; /* TODO: log a warning in case of errors. */
+	/* In case of failure, release the chekcpoint lock. */
+	if (status != 0) {
+		struct sqlite3_file *file;
+		sqlite3_file_control(l->conn, "main", SQLITE_FCNTL_FILE_POINTER,
+				     &file);
+		file->pMethods->xShmLock(
+		    file, 1 /* checkpoint lock */, 1,
+		    SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);
+	}
 	l->inflight = NULL;
 	l->db->tx_id = 0;
 	l->exec->done = true;
@@ -207,10 +215,15 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	if (rv != 0) {
 		goto abort;
 	}
+
 	rv = raft_apply(l->raft, &l->apply, &buf, 1, leaderCheckpointApplyCb);
 	if (rv != 0) {
 		goto abort_after_command_encode;
 	}
+
+	rv = main->pMethods->xShmLock(main, 1 /* checkpoint lock */, 1,
+				      SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);
+	assert(rv == 0);
 
 	return true;
 
