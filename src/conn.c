@@ -91,7 +91,6 @@ abort:
 static void closeCb(struct transport *transport)
 {
 	struct conn *c = transport->data;
-	gateway__close(&c->gateway);
 	buffer__close(&c->write);
 	buffer__close(&c->read);
 	if (c->close_cb != NULL) {
@@ -309,5 +308,6 @@ void conn__stop(struct conn *c)
 		return;
 	}
 	c->closed = true;
+	gateway__close(&c->gateway);
 	transport__close(&c->transport, closeCb);
 }
