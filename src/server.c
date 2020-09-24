@@ -86,6 +86,7 @@ int dqlite__init(struct dqlite_node *d,
 	assert(rv == 0); /* Docs say that pthread_mutex_init can't fail */
 	QUEUE__INIT(&d->queue);
 	QUEUE__INIT(&d->conns);
+	d->raft_state = RAFT_UNAVAILABLE;
 	d->running = false;
 	d->listener = NULL;
 	d->bind_address = NULL;
@@ -344,6 +345,7 @@ static void raftCloseCb(struct raft *raft)
 	raft_uv_close(&s->raft_io);
 	uv_close((struct uv_handle_s *)&s->stop, NULL);
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
+	uv_close((struct uv_handle_s *)&s->monitor, NULL);
 	uv_close((struct uv_handle_s *)s->listener, NULL);
 }
 
@@ -459,6 +461,28 @@ err:
 	uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
 }
 
+static void monitor_cb(uv_prepare_t *monitor)
+{
+	struct dqlite_node *d = monitor->data;
+	int state = raft_state(&d->raft);
+	queue *head;
+	struct conn *conn;
+
+	if (state == RAFT_UNAVAILABLE) {
+		return;
+	}
+
+	if (d->raft_state == RAFT_LEADER && state != RAFT_LEADER) {
+		QUEUE__FOREACH(head, &d->conns)
+		{
+			conn = QUEUE__DATA(head, struct conn, queue);
+			conn__stop(conn);
+		}
+	}
+
+	d->raft_state = state;
+}
+
 static int taskRun(struct dqlite_node *d)
 {
 	int rv;
@@ -484,6 +508,13 @@ static int taskRun(struct dqlite_node *d)
 	rv = uv_timer_init(&d->loop, &d->startup);
 	assert(rv == 0);
 	rv = uv_timer_start(&d->startup, startup_cb, 0, 0);
+	assert(rv == 0);
+
+	/* Schedule raft state change monitor. */
+	d->monitor.data = d;
+	rv = uv_prepare_init(&d->loop, &d->monitor);
+	assert(rv == 0);
+	rv = uv_prepare_start(&d->monitor, monitor_cb);
 	assert(rv == 0);
 
 	d->raft.data = d;
