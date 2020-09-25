@@ -2371,6 +2371,20 @@ int VfsAbort(sqlite3_vfs *vfs, const char *filename)
 	return 0;
 }
 
+/* Extract the number of pages field from the database header. */
+static uint32_t vfsDatabaseGetNumberOfPages(struct vfsDatabase *d)
+{
+	uint8_t *page;
+
+	assert(d->n_pages > 0);
+
+	page = d->pages[0];
+
+	/* The page size is stored in the 16th and 17th bytes of the first
+	 * database page (big-endian) */
+	return vfsGet32(&page[28]);
+}
+
 static void vfsDatabaseSnapshot(struct vfsDatabase *d, uint8_t **cursor)
 {
 	uint32_t page_size;
@@ -2378,6 +2392,7 @@ static void vfsDatabaseSnapshot(struct vfsDatabase *d, uint8_t **cursor)
 
 	page_size = vfsDatabaseGetPageSize(d);
 	assert(page_size > 0);
+	assert(d->n_pages == vfsDatabaseGetNumberOfPages(d));
 
 	for (i = 0; i < d->n_pages; i++) {
 		memcpy(*cursor, d->pages[i], page_size);
@@ -2423,6 +2438,10 @@ int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
 		*data = NULL;
 		*n = 0;
 		return 0;
+	}
+
+	if (database->n_pages != vfsDatabaseGetNumberOfPages(database)) {
+		return SQLITE_CORRUPT;
 	}
 
 	wal = &database->wal;
