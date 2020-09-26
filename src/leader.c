@@ -60,6 +60,12 @@ static int openConnection(const char *filename,
 		goto err_after_open;
 	}
 
+	rc = sqlite3_exec(*conn, "PRAGMA wal_autocheckpoint=0", NULL, NULL,
+			  &msg);
+	if (rc != SQLITE_OK) {
+		goto err_after_open;
+	}
+
 	rc =
 	    sqlite3_db_config(*conn, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, NULL);
 	if (rc != SQLITE_OK) {
