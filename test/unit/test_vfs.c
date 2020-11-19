@@ -922,7 +922,7 @@ TEST(VfsTruncate, database, setUp, tearDown, 0, NULL)
 TEST(VfsTruncate, unexpected, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *main = __file_create_main_db(&f->vfs);
+	sqlite3_file *main_db = __file_create_main_db(&f->vfs);
 	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
 	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_JOURNAL;
 	char buf[32];
@@ -943,7 +943,7 @@ TEST(VfsTruncate, unexpected, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, SQLITE_IOERR_TRUNCATE);
 
 	free(file);
-	free(main);
+	free(main_db);
 
 	return MUNIT_OK;
 }
