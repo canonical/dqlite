@@ -97,7 +97,7 @@ struct cursor
 	int NAME##__decode(struct cursor *cursor, struct NAME *p) \
 	{                                                         \
 		int rc;                                           \
-		FIELDS(SERIALIZE__DECODE_FIELD, p, cursor);       \
+		FIELDS(SERIALIZE_DECODE_FIELD, p, cursor);        \
 		return 0;                                         \
 	}
 
@@ -107,10 +107,10 @@ struct cursor
 #define SERIALIZE__ENCODE_FIELD(KIND, MEMBER, P, CURSOR) \
 	KIND##__encode(&((P)->MEMBER), CURSOR);
 
-#define SERIALIZE__DECODE_FIELD(KIND, MEMBER, P, CURSOR) \
-	rc = KIND##__decode(CURSOR, &((P)->MEMBER));     \
-	if (rc != 0) {                                   \
-		return rc;                               \
+#define SERIALIZE_DECODE_FIELD(KIND, MEMBER, P, CURSOR) \
+	rc = KIND##__decode(CURSOR, &((P)->MEMBER));    \
+	if (rc != 0) {                                  \
+		return rc;                              \
 	}
 
 DQLITE_INLINE size_t uint8__sizeof(const uint8_t *value)
