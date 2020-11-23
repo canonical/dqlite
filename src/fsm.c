@@ -26,11 +26,11 @@ static int apply_open(struct fsm *f, const struct command_open *c)
 	return 0;
 }
 
-static int add_pending_pages(struct fsm *f,
-			     unsigned long *page_numbers,
-			     uint8_t *pages,
-			     unsigned n_pages,
-			     unsigned page_size)
+static int addPendingPages(struct fsm *f,
+			   unsigned long *page_numbers,
+			   uint8_t *pages,
+			   unsigned n_pages,
+			   unsigned page_size)
 {
 	unsigned n = f->pending.n_pages + n_pages;
 	unsigned i;
@@ -102,9 +102,9 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	 * final commit or a rollback. */
 	if (c->is_commit) {
 		if (f->pending.n_pages > 0) {
-			rv = add_pending_pages(f, page_numbers, pages,
-					       c->frames.n_pages,
-					       db->config->page_size);
+			rv = addPendingPages(f, page_numbers, pages,
+					     c->frames.n_pages,
+					     db->config->page_size);
 			if (rv != 0) {
 				return DQLITE_NOMEM;
 			}
@@ -127,9 +127,8 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 			}
 		}
 	} else {
-		rv =
-		    add_pending_pages(f, page_numbers, pages, c->frames.n_pages,
-				      db->config->page_size);
+		rv = addPendingPages(f, page_numbers, pages, c->frames.n_pages,
+				     db->config->page_size);
 		if (rv != 0) {
 			return DQLITE_NOMEM;
 		}
