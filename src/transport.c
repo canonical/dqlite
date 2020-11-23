@@ -218,7 +218,7 @@ static int parse_address(const char *address, struct sockaddr_in *addr)
 	return 0;
 }
 
-static int default_connect(void *arg, const char *address, int *fd)
+static int defaultConnect(void *arg, const char *address, int *fd)
 {
 	struct sockaddr_in addr;
 	int rv;
@@ -250,7 +250,7 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 		return DQLITE_NOMEM;
 	}
 	i->loop = loop;
-	i->connect.f = default_connect;
+	i->connect.f = defaultConnect;
 	i->connect.arg = NULL;
 	i->accept_cb = NULL;
 	transport->impl = i;
