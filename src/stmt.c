@@ -14,7 +14,7 @@ void stmt__init(struct stmt *s)
 	s->stmt = NULL;
 }
 
-void stmt__close(struct stmt *s)
+void stmt_close(struct stmt *s)
 {
 	if (s->stmt != NULL) {
 		/* Ignore the return code, since it will be non-zero in case the
