@@ -300,7 +300,7 @@ DQLITE_INLINE int text__decode(struct cursor *cursor, text_t *value)
 	return 0;
 }
 
-DQLITE_INLINE int blob_decode(struct cursor *cursor, blob_t *value)
+DQLITE_INLINE int blobDecode(struct cursor *cursor, blob_t *value)
 {
 	uint64_t len;
 	size_t n;

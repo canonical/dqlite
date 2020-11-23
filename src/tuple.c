@@ -114,7 +114,7 @@ int tuple_decoder__next(struct tuple_decoder *d, struct value *value)
 			rc = float__decode(d->cursor, &value->float_);
 			break;
 		case SQLITE_BLOB:
-			rc = blob_decode(d->cursor, &value->blob);
+			rc = blobDecode(d->cursor, &value->blob);
 			break;
 		case SQLITE_NULL:
 			/* TODO: allow null to be encoded with 0 bytes? */
