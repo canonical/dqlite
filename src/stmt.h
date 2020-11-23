@@ -64,12 +64,12 @@ void stmt_close(struct stmt *s);
 
 /* No-op hash function (hashing is not supported for stmt). This is
  * required by the registry interface. */
-const char *stmt__hash(struct stmt *stmt);
+const char *stmt_hash(struct stmt *stmt);
 
 /* TODO: change registry naming pattern */
 #define stmt_init stmt__init
 #define stmt_close stmt_close
-#define stmt_hash stmt__hash
+#define stmt_hash stmt_hash
 
 REGISTRY(stmt__registry, stmt);
 

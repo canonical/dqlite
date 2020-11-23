@@ -23,7 +23,7 @@ void stmt_close(struct stmt *s)
 	}
 }
 
-const char *stmt__hash(struct stmt *stmt)
+const char *stmt_hash(struct stmt *stmt)
 {
 	(void)stmt;
 	return NULL;
