@@ -270,7 +270,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 				 * freed when the callback is fired again by
 				 * raft.
 				 *
-				 * TODO: we should instead make gatewa__close()
+				 * TODO: we should instead make gatewa_close()
 				 * itself asynchronous. */
 				apply->leader = NULL;
 				l->exec->status = SQLITE_ABORT;
