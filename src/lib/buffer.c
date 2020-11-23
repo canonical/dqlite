@@ -7,7 +7,7 @@
 #include "../../include/dqlite.h"
 
 /* How large is the buffer currently */
-#define SIZE(B) (B->n_pages * B->page_size)
+#define SIZE(B) (B->nPages * B->page_size)
 
 /* How many remaining bytes the buffer currently */
 #define CAP(B) (SIZE(B) - B->offset)
@@ -15,7 +15,7 @@
 int bufferInit(struct buffer *b)
 {
 	b->page_size = (unsigned)sysconf(_SC_PAGESIZE);
-	b->n_pages = 1;
+	b->nPages = 1;
 	b->data = malloc(SIZE(b));
 	if (b->data == NULL) {
 		return DQLITE_NOMEM;
@@ -35,7 +35,7 @@ static bool ensure(struct buffer *b, size_t size)
 	/* Double the buffer until we have enough capacity */
 	while (size > CAP(b)) {
 		void *data;
-		b->n_pages *= 2;
+		b->nPages *= 2;
 		data = realloc(b->data, SIZE(b));
 		if (data == NULL) {
 			return false;

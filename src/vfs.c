@@ -90,7 +90,7 @@ struct vfsDatabase
 {
 	char *name;        /* Database name. */
 	void **pages;      /* All database. */
-	unsigned n_pages;  /* Number of pages. */
+	unsigned nPages;   /* Number of pages. */
 	struct vfsShm shm; /* Shared memory. */
 	struct vfsWal wal; /* Associated WAL. */
 };
@@ -292,7 +292,7 @@ static void vfsWalInit(struct vfsWal *w)
 static void vfsDatabaseInit(struct vfsDatabase *d)
 {
 	d->pages = NULL;
-	d->n_pages = 0;
+	d->nPages = 0;
 	vfsShmInit(&d->shm);
 	vfsWalInit(&d->wal);
 }
@@ -319,7 +319,7 @@ static void vfsWalClose(struct vfsWal *w)
 static void vfsDatabaseClose(struct vfsDatabase *d)
 {
 	unsigned i;
-	for (i = 0; i < d->n_pages; i++) {
+	for (i = 0; i < d->nPages; i++) {
 		sqlite3_free(d->pages[i]);
 	}
 	if (d->pages != NULL) {
@@ -353,12 +353,12 @@ static int vfsDatabaseGetPage(struct vfsDatabase *d,
 
 	/* SQLite should access pages progressively, without jumping more than
 	 * one page after the end. */
-	if (pgno > d->n_pages + 1) {
+	if (pgno > d->nPages + 1) {
 		rc = SQLITE_IOERR_WRITE;
 		goto err;
 	}
 
-	if (pgno == d->n_pages + 1) {
+	if (pgno == d->nPages + 1) {
 		/* Create a new page, grow the page array, and append the
 		 * new page to it. */
 		void **pages; /* New page array. */
@@ -380,7 +380,7 @@ static int vfsDatabaseGetPage(struct vfsDatabase *d,
 
 		/* Update the page array. */
 		d->pages = pages;
-		d->n_pages = pgno;
+		d->nPages = pgno;
 	} else {
 		/* Return the existing page. */
 		assert(d->pages != NULL);
@@ -467,7 +467,7 @@ static void *vfsDatabasePageLookup(struct vfsDatabase *d, unsigned pgno)
 	assert(d != NULL);
 	assert(pgno > 0);
 
-	if (pgno > d->n_pages) {
+	if (pgno > d->nPages) {
 		/* This page hasn't been written yet. */
 		return NULL;
 	}
@@ -525,7 +525,7 @@ static uint32_t vfsDatabaseGetPageSize(struct vfsDatabase *d)
 {
 	uint8_t *page;
 
-	assert(d->n_pages > 0);
+	assert(d->nPages > 0);
 
 	page = d->pages[0];
 
@@ -539,10 +539,10 @@ static int vfsDatabaseTruncate(struct vfsDatabase *d, sqlite_int64 size)
 {
 	void **cursor;
 	uint32_t page_size;
-	unsigned n_pages;
+	unsigned nPages;
 	unsigned i;
 
-	if (d->n_pages == 0) {
+	if (d->nPages == 0) {
 		if (size > 0) {
 			return SQLITE_IOERR_TRUNCATE;
 		}
@@ -558,19 +558,19 @@ static int vfsDatabaseTruncate(struct vfsDatabase *d, sqlite_int64 size)
 		return SQLITE_IOERR_TRUNCATE;
 	}
 
-	n_pages = (unsigned)(size / page_size);
+	nPages = (unsigned)(size / page_size);
 
 	/* We expect callers to only invoke us if some actual content has been
 	 * written already. */
-	assert(d->n_pages > 0);
+	assert(d->nPages > 0);
 
 	/* Truncate should always shrink a file. */
-	assert(n_pages <= d->n_pages);
+	assert(nPages <= d->nPages);
 	assert(d->pages != NULL);
 
 	/* Destroy pages beyond pages_len. */
-	cursor = d->pages + n_pages;
-	for (i = 0; i < (d->n_pages - n_pages); i++) {
+	cursor = d->pages + nPages;
+	for (i = 0; i < (d->nPages - nPages); i++) {
 		sqlite3_free(*cursor);
 		cursor++;
 	}
@@ -578,10 +578,10 @@ static int vfsDatabaseTruncate(struct vfsDatabase *d, sqlite_int64 size)
 	/* Shrink the page array, possibly to 0.
 	 *
 	 * TODO: in principle realloc could fail also when shrinking. */
-	d->pages = sqlite3_realloc64(d->pages, sizeof *d->pages * n_pages);
+	d->pages = sqlite3_realloc64(d->pages, sizeof *d->pages * nPages);
 
 	/* Update the page count. */
-	d->n_pages = n_pages;
+	d->nPages = nPages;
 
 	return SQLITE_OK;
 }
@@ -781,7 +781,7 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 	unsigned pgno;
 	void *page;
 
-	if (d->n_pages == 0) {
+	if (d->nPages == 0) {
 		return SQLITE_IOERR_SHORT_READ;
 	}
 
@@ -1128,8 +1128,8 @@ static int vfsFileSync(sqlite3_file *file, int flags)
 static size_t vfsDatabaseFileSize(struct vfsDatabase *d)
 {
 	size_t size = 0;
-	if (d->n_pages > 0) {
-		size = d->n_pages * vfsDatabaseGetPageSize(d);
+	if (d->nPages > 0) {
+		size = d->nPages * vfsDatabaseGetPageSize(d);
 	}
 	return size;
 }
@@ -1231,7 +1231,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 		if (page_size >= FORMAT_PAGE_SIZE_MIN &&
 		    page_size <= FORMAT_PAGE_SIZE_MAX &&
 		    ((page_size - 1) & page_size) == 0) {
-			if (f->database->n_pages > 0 &&
+			if (f->database->nPages > 0 &&
 			    page_size !=
 				(int)vfsDatabaseGetPageSize(f->database)) {
 				fnctl[0] =
@@ -1328,14 +1328,14 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 	struct vfsWal *wal = &d->wal;
 	uint8_t *index;
 	uint32_t frameChecksum[2] = {0, 0};
-	uint32_t n_pages = (uint32_t)d->n_pages;
+	uint32_t nPages = (uint32_t)d->nPages;
 	uint32_t checksum[2] = {0, 0};
 
 	if (wal->nFrames > 0) {
 		struct vfsFrame *last = wal->frames[wal->nFrames - 1];
 		frameChecksum[0] = vfsFrameGetChecksum1(last);
 		frameChecksum[1] = vfsFrameGetChecksum2(last);
-		n_pages = vfsFrameGetDatabaseSize(last);
+		nPages = vfsFrameGetDatabaseSize(last);
 	}
 
 	assert(shm->n_regions > 0);
@@ -1346,7 +1346,7 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 	assert(index[13] == VFS__BIGENDIAN);                  /* bigEndCksum */
 
 	*(uint32_t *)(&index[16]) = wal->nFrames;
-	*(uint32_t *)(&index[20]) = n_pages;
+	*(uint32_t *)(&index[20]) = nPages;
 	*(uint32_t *)(&index[24]) = frameChecksum[0];
 	*(uint32_t *)(&index[28]) = frameChecksum[1];
 
@@ -2327,7 +2327,7 @@ int VfsApply(sqlite3_vfs *vfs,
 		vfsWalStartHeader(wal, vfsDatabaseGetPageSize(database));
 	}
 
-	rv = vfsWalAppend(wal, database->n_pages, n, page_numbers, frames);
+	rv = vfsWalAppend(wal, database->nPages, n, page_numbers, frames);
 	if (rv != 0) {
 		return rv;
 	}
@@ -2375,7 +2375,7 @@ static uint32_t vfsDatabaseGetNumberOfPages(struct vfsDatabase *d)
 {
 	uint8_t *page;
 
-	assert(d->n_pages > 0);
+	assert(d->nPages > 0);
 
 	page = d->pages[0];
 
@@ -2391,9 +2391,9 @@ static void vfsDatabaseSnapshot(struct vfsDatabase *d, uint8_t **cursor)
 
 	page_size = vfsDatabaseGetPageSize(d);
 	assert(page_size > 0);
-	assert(d->n_pages == vfsDatabaseGetNumberOfPages(d));
+	assert(d->nPages == vfsDatabaseGetNumberOfPages(d));
 
-	for (i = 0; i < d->n_pages; i++) {
+	for (i = 0; i < d->nPages; i++) {
 		memcpy(*cursor, d->pages[i], page_size);
 		*cursor += page_size;
 	}
@@ -2439,7 +2439,7 @@ int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
 		return 0;
 	}
 
-	if (database->n_pages != vfsDatabaseGetNumberOfPages(database)) {
+	if (database->nPages != vfsDatabaseGetNumberOfPages(database)) {
 		return SQLITE_CORRUPT;
 	}
 
@@ -2465,7 +2465,7 @@ static int vfsDatabaseRestore(struct vfsDatabase *d,
 			      size_t n)
 {
 	uint32_t page_size = vfsParsePageSize(vfsGet16(&data[16]));
-	unsigned n_pages;
+	unsigned nPages;
 	void **pages;
 	unsigned i;
 	int rv;
@@ -2476,18 +2476,18 @@ static int vfsDatabaseRestore(struct vfsDatabase *d,
 	 * have here. */
 	assert(vfsDatabaseGetPageSize(d) == page_size);
 
-	n_pages = (unsigned)vfsGet32(&data[28]);
+	nPages = (unsigned)vfsGet32(&data[28]);
 
-	if (n < n_pages * page_size) {
+	if (n < nPages * page_size) {
 		return DQLITE_ERROR;
 	}
 
-	pages = sqlite3_malloc64(sizeof *pages * n_pages);
+	pages = sqlite3_malloc64(sizeof *pages * nPages);
 	if (pages == NULL) {
 		goto oom;
 	}
 
-	for (i = 0; i < n_pages; i++) {
+	for (i = 0; i < nPages; i++) {
 		void *page = sqlite3_malloc64(page_size);
 		if (page == NULL) {
 			unsigned j;
@@ -2505,7 +2505,7 @@ static int vfsDatabaseRestore(struct vfsDatabase *d,
 	assert(rv == 0);
 
 	d->pages = pages;
-	d->n_pages = n_pages;
+	d->nPages = nPages;
 
 	return 0;
 
@@ -2607,7 +2607,7 @@ int VfsRestore(sqlite3_vfs *vfs,
 	}
 
 	page_size = vfsDatabaseGetPageSize(database);
-	offset = database->n_pages * page_size;
+	offset = database->nPages * page_size;
 
 	rv = vfsWalRestore(wal, data + offset, n - offset, page_size);
 	if (rv != 0) {

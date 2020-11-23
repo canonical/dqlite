@@ -13,7 +13,7 @@ struct fsm
 	struct registry *registry;
 	struct
 	{
-		unsigned n_pages;
+		unsigned nPages;
 		unsigned long *page_numbers;
 		uint8_t *pages;
 	} pending; /* For upgrades from V1 */
@@ -29,10 +29,10 @@ static int applyOpen(struct fsm *f, const struct command_open *c)
 static int addPendingPages(struct fsm *f,
 			   unsigned long *page_numbers,
 			   uint8_t *pages,
-			   unsigned n_pages,
+			   unsigned nPages,
 			   unsigned page_size)
 {
-	unsigned n = f->pending.n_pages + n_pages;
+	unsigned n = f->pending.nPages + nPages;
 	unsigned i;
 
 	f->pending.page_numbers = sqlite3_realloc64(
@@ -48,13 +48,13 @@ static int addPendingPages(struct fsm *f,
 		return DQLITE_NOMEM;
 	}
 
-	for (i = 0; i < n_pages; i++) {
-		unsigned j = f->pending.n_pages + i;
+	for (i = 0; i < nPages; i++) {
+		unsigned j = f->pending.nPages + i;
 		f->pending.page_numbers[j] = page_numbers[i];
 		memcpy(f->pending.pages + j * page_size,
 		       (uint8_t *)pages + i * page_size, page_size);
 	}
-	f->pending.n_pages = n;
+	f->pending.nPages = n;
 
 	return 0;
 }
@@ -101,33 +101,33 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 	 * upgrade from V1, we accumulate uncommitted frames in memory until the
 	 * final commit or a rollback. */
 	if (c->isCommit) {
-		if (f->pending.n_pages > 0) {
+		if (f->pending.nPages > 0) {
 			rv = addPendingPages(f, page_numbers, pages,
-					     c->frames.n_pages,
+					     c->frames.nPages,
 					     db->config->page_size);
 			if (rv != 0) {
 				return DQLITE_NOMEM;
 			}
 			rv =
-			    VfsApply(vfs, db->filename, f->pending.n_pages,
+			    VfsApply(vfs, db->filename, f->pending.nPages,
 				     f->pending.page_numbers, f->pending.pages);
 			if (rv != 0) {
 				return rv;
 			}
 			sqlite3_free(f->pending.page_numbers);
 			sqlite3_free(f->pending.pages);
-			f->pending.n_pages = 0;
+			f->pending.nPages = 0;
 			f->pending.page_numbers = NULL;
 			f->pending.pages = NULL;
 		} else {
-			rv = VfsApply(vfs, db->filename, c->frames.n_pages,
+			rv = VfsApply(vfs, db->filename, c->frames.nPages,
 				      page_numbers, pages);
 			if (rv != 0) {
 				return rv;
 			}
 		}
 	} else {
-		rv = addPendingPages(f, page_numbers, pages, c->frames.n_pages,
+		rv = addPendingPages(f, page_numbers, pages, c->frames.nPages,
 				     db->config->page_size);
 		if (rv != 0) {
 			return DQLITE_NOMEM;
@@ -143,13 +143,13 @@ static int applyUndo(struct fsm *f, const struct command_undo *c)
 {
 	(void)c;
 
-	if (f->pending.n_pages == 0) {
+	if (f->pending.nPages == 0) {
 		return 0;
 	}
 
 	sqlite3_free(f->pending.page_numbers);
 	sqlite3_free(f->pending.pages);
-	f->pending.n_pages = 0;
+	f->pending.nPages = 0;
 	f->pending.page_numbers = NULL;
 	f->pending.pages = NULL;
 
@@ -468,7 +468,7 @@ int fsmInit(struct raft_fsm *fsm,
 
 	f->logger = &config->logger;
 	f->registry = registry;
-	f->pending.n_pages = 0;
+	f->pending.nPages = 0;
 	f->pending.page_numbers = NULL;
 	f->pending.pages = NULL;
 

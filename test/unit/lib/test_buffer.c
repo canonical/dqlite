@@ -51,7 +51,7 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
-#define ASSERT_N_PAGES(N) munit_assert_int(f->buffer.n_pages, ==, N)
+#define ASSERT_N_PAGES(N) munit_assert_int(f->buffer.nPages, ==, N)
 
 /******************************************************************************
  *
@@ -65,7 +65,7 @@ TEST_TEAR_DOWN(init, tear_down);
 
 /* If n is 0, then the prefix is used to dermine the number of elements of the
  * tuple. */
-TEST_CASE(init, n_pages, NULL)
+TEST_CASE(init, nPages, NULL)
 {
 	struct fixture *f = data;
 	(void)params;

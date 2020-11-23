@@ -21,11 +21,11 @@ SERIALIZE__IMPLEMENT(header, HEADER);
 
 static size_t frames__sizeof(const frames_t *frames)
 {
-	size_t s = uint32__sizeof(&frames->n_pages) +
+	size_t s = uint32__sizeof(&frames->nPages) +
 		   uint16__sizeof(&frames->page_size) +
 		   uint16__sizeof(&frames->__unused__) +
-		   sizeof(uint64_t) * frames->n_pages + /* Page numbers */
-		   frames->page_size * frames->n_pages; /* Page data */
+		   sizeof(uint64_t) * frames->nPages + /* Page numbers */
+		   frames->page_size * frames->nPages; /* Page data */
 	return s;
 }
 
@@ -33,15 +33,15 @@ static void frames__encode(const frames_t *frames, void **cursor)
 {
 	const dqlite_vfs_frame *list;
 	unsigned i;
-	uint32__encode(&frames->n_pages, cursor);
+	uint32__encode(&frames->nPages, cursor);
 	uint16__encode(&frames->page_size, cursor);
 	uint16__encode(&frames->__unused__, cursor);
 	list = frames->data;
-	for (i = 0; i < frames->n_pages; i++) {
+	for (i = 0; i < frames->nPages; i++) {
 		uint64_t pgno = list[i].page_number;
 		uint64__encode(&pgno, cursor);
 	}
-	for (i = 0; i < frames->n_pages; i++) {
+	for (i = 0; i < frames->nPages; i++) {
 		memcpy(*cursor, list[i].data, frames->page_size);
 		*cursor += frames->page_size;
 	}
@@ -50,7 +50,7 @@ static void frames__encode(const frames_t *frames, void **cursor)
 static int frames__decode(struct cursor *cursor, frames_t *frames)
 {
 	int rc;
-	rc = uint32__decode(cursor, &frames->n_pages);
+	rc = uint32__decode(cursor, &frames->nPages);
 	if (rc != 0) {
 		return rc;
 	}
@@ -142,15 +142,15 @@ int commandFramesPageNumbers(const struct command_frames *c,
 	struct cursor cursor;
 
 	cursor.p = c->frames.data;
-	cursor.cap = sizeof(uint64_t) * c->frames.n_pages;
+	cursor.cap = sizeof(uint64_t) * c->frames.nPages;
 
 	*page_numbers =
-	    sqlite3_malloc64(sizeof **page_numbers * c->frames.n_pages);
+	    sqlite3_malloc64(sizeof **page_numbers * c->frames.nPages);
 	if (*page_numbers == NULL) {
 		return DQLITE_NOMEM;
 	}
 
-	for (i = 0; i < c->frames.n_pages; i++) {
+	for (i = 0; i < c->frames.nPages; i++) {
 		uint64_t pgno;
 		int r = uint64__decode(&cursor, &pgno);
 		if (r != 0) {
@@ -165,5 +165,5 @@ int commandFramesPageNumbers(const struct command_frames *c,
 void commandFramesPages(const struct command_frames *c, void **pages)
 {
 	*pages =
-	    (void *)(c->frames.data + (sizeof(uint64_t) * c->frames.n_pages));
+	    (void *)(c->frames.data + (sizeof(uint64_t) * c->frames.nPages));
 }

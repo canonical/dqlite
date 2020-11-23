@@ -312,7 +312,7 @@ static int leaderApplyFrames(struct exec *req,
 	c.tx_id = 0;
 	c.truncate = 0;
 	c.isCommit = 1;
-	c.frames.n_pages = (uint32_t)n;
+	c.frames.nPages = (uint32_t)n;
 	c.frames.page_size = (uint16_t)db->config->page_size;
 	c.frames.data = frames;
 

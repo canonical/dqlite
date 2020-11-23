@@ -15,7 +15,7 @@ enum { COMMAND_OPEN = 1, COMMAND_FRAMES, COMMAND_UNDO, COMMAND_CHECKPOINT };
 /* Hold information about an array of WAL frames. */
 struct frames
 {
-	uint32_t n_pages;
+	uint32_t nPages;
 	uint16_t page_size;
 	uint16_t __unused__;
 	/* TODO: because the sqlite3 replication APIs are asymmetrics, the

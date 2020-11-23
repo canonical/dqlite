@@ -18,7 +18,7 @@ struct buffer
 {
 	void *data;	 /* Allocated buffer */
 	unsigned page_size; /* Size of an OS page */
-	unsigned n_pages;   /* Number of pages allocated */
+	unsigned nPages;    /* Number of pages allocated */
 	size_t offset;      /* Next byte to write in the buffer */
 };
 
