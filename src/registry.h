@@ -21,6 +21,6 @@ void registry_close(struct registry *r);
 /**
  * Get the db with the given filename. If no one is registered, create one.
  */
-int registry__db_get(struct registry *r, const char *filename, struct db **db);
+int registry_db_get(struct registry *r, const char *filename, struct db **db);
 
 #endif /* REGISTRY_H_*/

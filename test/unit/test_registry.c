@@ -62,7 +62,7 @@ TEST_CASE(db, getNew, NULL)
 	struct db *db;
 	(void)params;
 	int rc;
-	rc = registry__db_get(&f->registry, "test.db", &db);
+	rc = registry_db_get(&f->registry, "test.db", &db);
 	munit_assert_int(rc, ==, 0);
 	munit_assert_string_equal(db->filename, "test.db");
 	return MUNIT_OK;
@@ -76,9 +76,9 @@ TEST_CASE(db, getExisting, NULL)
 	struct db *db2;
 	(void)params;
 	int rc;
-	rc = registry__db_get(&f->registry, "test.db", &db1);
+	rc = registry_db_get(&f->registry, "test.db", &db1);
 	munit_assert_int(rc, ==, 0);
-	rc = registry__db_get(&f->registry, "test.db", &db2);
+	rc = registry_db_get(&f->registry, "test.db", &db2);
 	munit_assert_int(rc, ==, 0);
 	munit_assert_ptr_equal(db1, db2);
 	return MUNIT_OK;

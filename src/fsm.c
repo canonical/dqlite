@@ -68,7 +68,7 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 	int exists;
 	int rv;
 
-	rv = registry__db_get(f->registry, c->filename, &db);
+	rv = registry_db_get(f->registry, c->filename, &db);
 	if (rv != 0) {
 		return rv;
 	}
@@ -163,7 +163,7 @@ static int applyCheckpoint(struct fsm *f, const struct command_checkpoint *c)
 	int ckpt;
 	int rv;
 
-	rv = registry__db_get(f->registry, c->filename, &db);
+	rv = registry_db_get(f->registry, c->filename, &db);
 	assert(rv == 0); /* We have registered this filename before. */
 
 	/* Use a new connection to force re-opening the WAL. */
@@ -335,7 +335,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = registry__db_get(f->registry, header.filename, &db);
+	rv = registry_db_get(f->registry, header.filename, &db);
 	if (rv != 0) {
 		return rv;
 	}
