@@ -2,7 +2,7 @@
 #include "tuple.h"
 
 /* Bind a single parameter. */
-static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
+static int bindOne(sqlite3_stmt *stmt, int n, struct value *value)
 {
 	int rc;
 
@@ -72,7 +72,7 @@ int bind__params(sqlite3_stmt *stmt, struct cursor *cursor)
 		if (rc != 0) {
 			return rc;
 		}
-		rc = bind_one(stmt, (int)(i + 1), &value);
+		rc = bindOne(stmt, (int)(i + 1), &value);
 		if (rc != 0) {
 			return rc;
 		}
