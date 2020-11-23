@@ -151,13 +151,12 @@ DQLITE_INLINE size_t float__sizeof(const float_t *value)
 
 DQLITE_INLINE size_t text__sizeof(const text_t *value)
 {
-	return byte_pad64(strlen(*value) + 1);
+	return bytePad64(strlen(*value) + 1);
 }
 
 DQLITE_INLINE size_t blobSizeof(const blobT *value)
 {
-	return sizeof(uint64_t) /* length */ +
-	       byte_pad64(value->len) /* data */;
+	return sizeof(uint64_t) /* length */ + bytePad64(value->len) /* data */;
 }
 
 DQLITE_INLINE void uint8__encode(const uint8_t *value, void **cursor)
@@ -198,7 +197,7 @@ DQLITE_INLINE void float__encode(const float_t *value, void **cursor)
 
 DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
 {
-	size_t len = byte_pad64(strlen(*value) + 1);
+	size_t len = bytePad64(strlen(*value) + 1);
 	memset(*cursor, 0, len);
 	strcpy(*cursor, *value);
 	*cursor += len;
@@ -206,7 +205,7 @@ DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
 
 DQLITE_INLINE void blobEncode(const blobT *value, void **cursor)
 {
-	size_t len = byte_pad64(value->len);
+	size_t len = bytePad64(value->len);
 	uint64_t value_len = value->len;
 	uint64__encode(&value_len, cursor);
 	memcpy(*cursor, value->base, value->len);
@@ -294,7 +293,7 @@ DQLITE_INLINE int text__decode(struct cursor *cursor, text_t *value)
 		return DQLITE_PARSE;
 	}
 	*value = cursor->p;
-	n = byte_pad64(strlen(*value) + 1);
+	n = bytePad64(strlen(*value) + 1);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -309,7 +308,7 @@ DQLITE_INLINE int blobDecode(struct cursor *cursor, blobT *value)
 	if (rv != 0) {
 		return rv;
 	}
-	n = byte_pad64(len);
+	n = bytePad64(len);
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
