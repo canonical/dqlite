@@ -93,7 +93,7 @@ TEST_CASE(decode, client, NULL)
 
 	(void)params;
 
-	test_message_send_client(123, &request->message);
+	testMessageSendClient(123, &request->message);
 
 	err = requestDecode(request);
 	munit_assert_int(err, ==, 0);
