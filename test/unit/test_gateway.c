@@ -508,7 +508,7 @@ TEST_CASE(exec, simple, NULL)
 }
 
 /* Successfully execute a statement with a one parameter. */
-TEST_CASE(exec, one_param, NULL)
+TEST_CASE(exec, oneParam, NULL)
 {
 	struct execFixture *f = data;
 	struct value value;
