@@ -132,7 +132,7 @@ void test_heap_setup(const MunitParameter params[], void *user_data)
 {
 	int malloc_count;
 	int memory_used;
-	const char *fault_delay;
+	const char *faultDelay;
 	const char *fault_repeat;
 	sqlite3_mem_methods mem;
 	sqlite3_mem_methods mem_fault;
@@ -163,14 +163,14 @@ void test_heap_setup(const MunitParameter params[], void *user_data)
 	}
 
 	/* Optionally inject memory allocation failures. */
-	fault_delay = munit_parameters_get(params, "mem-fault-delay");
+	faultDelay = munit_parameters_get(params, "mem-fault-delay");
 	fault_repeat = munit_parameters_get(params, "mem-fault-repeat");
 
-	munit_assert((fault_delay != NULL && fault_repeat != NULL) ||
-		     (fault_delay == NULL && fault_repeat == NULL));
+	munit_assert((faultDelay != NULL && fault_repeat != NULL) ||
+		     (faultDelay == NULL && fault_repeat == NULL));
 
-	if (fault_delay != NULL) {
-		test_heap_fault_config(atoi(fault_delay), atoi(fault_repeat));
+	if (faultDelay != NULL) {
+		test_heap_fault_config(atoi(faultDelay), atoi(fault_repeat));
 	}
 }
 
