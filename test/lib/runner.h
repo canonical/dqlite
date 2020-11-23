@@ -62,7 +62,7 @@ extern int _main_suites_n;
 	static MunitSuite _##S##_suites[SUITE__CAP];               \
 	static MunitTest _##S##_tests[SUITE__CAP];                 \
 	static MunitTestSetup _##S##Setup = NULL;                  \
-	static MunitTestTearDown _##S##_tear_down = NULL;          \
+	static MunitTestTearDown _##S##TearDown = NULL;            \
 	static int _##S##_suites_n = 0;                            \
 	static int _##S##_tests_n = 0;                             \
 	__attribute__((constructor)) static void _##S##_init(void) \
@@ -72,7 +72,7 @@ extern int _main_suites_n;
 		(void)_##S##_suites_n;                             \
 		(void)_##S##_tests_n;                              \
 		(void)_##S##Setup;                                 \
-		(void)_##S##_tear_down;                            \
+		(void)_##S##TearDown;                              \
 	}
 
 /* Set the tests and suites attributes of the next available slot of the
@@ -205,7 +205,7 @@ extern int _main_suites_n;
 	static MunitSuite _##S##_suites[TEST__CAP];                \
 	static MunitTest _##S##_tests[TEST__CAP];                  \
 	static MunitTestSetup _##S##Setup = NULL;                  \
-	static MunitTestTearDown _##S##_tear_down = NULL;          \
+	static MunitTestTearDown _##S##TearDown = NULL;            \
 	static int _##S##_suites_n = 0;                            \
 	static int _##S##_tests_n = 0;                             \
 	__attribute__((constructor)) static void _##S##_init(void) \
@@ -215,7 +215,7 @@ extern int _main_suites_n;
 		(void)_##S##_suites_n;                             \
 		(void)_##S##_tests_n;                              \
 		(void)_##S##Setup;                                 \
-		(void)_##S##_tear_down;                            \
+		(void)_##S##TearDown;                              \
 	}
 
 /* Set the tests and suites attributes of the next available slot of the
@@ -272,18 +272,18 @@ extern int _main_suites_n;
 	TEST__GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN__2_ARGS, \
 			  TEST_TEAR_DOWN__1_ARGS)
 
-#define TEST_TEAR_DOWN__1_ARGS(S)                                            \
-	static void S##_tear_down(void *data);                               \
-	__attribute__((constructor)) static void _##S##_tear_down_init(void) \
-	{                                                                    \
-		_##S##_tear_down = S##_tear_down;                            \
-	}                                                                    \
-	static void S##_tear_down(void *data)
+#define TEST_TEAR_DOWN__1_ARGS(S)                                          \
+	static void S##TearDown(void *data);                               \
+	__attribute__((constructor)) static void _##S##TearDown_init(void) \
+	{                                                                  \
+		_##S##TearDown = S##TearDown;                              \
+	}                                                                  \
+	static void S##TearDown(void *data)
 
-#define TEST_TEAR_DOWN__2_ARGS(S, F)                                         \
-	__attribute__((constructor)) static void _##S##_tear_down_init(void) \
-	{                                                                    \
-		_##S##_tear_down = F;                                        \
+#define TEST_TEAR_DOWN__2_ARGS(S, F)                                       \
+	__attribute__((constructor)) static void _##S##TearDown_init(void) \
+	{                                                                  \
+		_##S##TearDown = F;                                        \
 	}
 
 /* Choose the appropriate TEST_CASE__N_ARGS() macro depending on the number of
@@ -332,8 +332,7 @@ extern int _main_suites_n;
 		MunitTest *tests = _##S##_tests;                               \
 		int n = _##S##_tests_n;                                        \
 		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C,      \
-					_##S##Setup, _##S##_tear_down,         \
-					PARAMS);                               \
+					_##S##Setup, _##S##TearDown, PARAMS);  \
 		_##S##_tests_n = n + 1;                                        \
 	}
 
@@ -346,7 +345,7 @@ extern int _main_suites_n;
 		int n = _##S##_##G##_tests_n;                              \
 		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C,                  \
 					test_##S##_##G##_##C, _##S##Setup, \
-					_##S##_tear_down, PARAMS);         \
+					_##S##TearDown, PARAMS);           \
 		_##S##_##G##_tests_n = n + 1;                              \
 	}
 
