@@ -69,7 +69,7 @@ struct connection
 		struct connection *c = &f->connections[i]; \
 		bufferClose(&c->request);                  \
 		bufferClose(&c->response);                 \
-		gateway__close(&c->gateway);               \
+		gateway_close(&c->gateway);                \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 

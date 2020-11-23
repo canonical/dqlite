@@ -56,7 +56,7 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 	int rv;
 
 	/* Ignore results firing after we started closing. TODO: instead, we
-	 * should make gateway__close() asynchronous. */
+	 * should make gateway_close() asynchronous. */
 	if (c->closed) {
 		return;
 	}
@@ -308,6 +308,6 @@ void connStop(struct conn *c)
 		return;
 	}
 	c->closed = true;
-	gateway__close(&c->gateway);
+	gateway_close(&c->gateway);
 	transport__close(&c->transport, closeCb);
 }
