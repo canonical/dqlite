@@ -154,7 +154,7 @@ DQLITE_INLINE size_t text__sizeof(const text_t *value)
 	return byte__pad64(strlen(*value) + 1);
 }
 
-DQLITE_INLINE size_t blob__sizeof(const blob_t *value)
+DQLITE_INLINE size_t blob_sizeof(const blob_t *value)
 {
 	return sizeof(uint64_t) /* length */ +
 	       byte__pad64(value->len) /* data */;
