@@ -101,11 +101,11 @@ static void tear_down(void *data)
 	}
 
 /* Start writing the current buffer into the stream */
-#define WRITE(BUF)                                                    \
-	{                                                             \
-		int rv2;                                              \
-		rv2 = transport__write(&f->transport, BUF, write_cb); \
-		munit_assert_int(rv2, ==, 0);                         \
+#define WRITE(BUF)                                                   \
+	{                                                            \
+		int rv2;                                             \
+		rv2 = transport_write(&f->transport, BUF, write_cb); \
+		munit_assert_int(rv2, ==, 0);                        \
 	}
 
 /* Write N bytes into the client buffer. Each byte will contain a progressive
@@ -170,7 +170,7 @@ TEST_CASE(read, success, NULL)
 
 /******************************************************************************
  *
- * transport__write
+ * transport_write
  *
  ******************************************************************************/
 

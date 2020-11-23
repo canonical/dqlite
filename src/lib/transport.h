@@ -51,7 +51,7 @@ int transportRead(struct transport *t, uv_buf_t *buf, transportReadCb cb);
 /**
  * Write the given buffer to the transport.
  */
-int transport__write(struct transport *t, uv_buf_t *buf, transport_write_cb cb);
+int transport_write(struct transport *t, uv_buf_t *buf, transport_write_cb cb);
 
 /* Create an UV stream object from the given fd. */
 int transportStream(struct uv_loop_s *loop,

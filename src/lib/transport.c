@@ -168,7 +168,7 @@ static void write_cb(uv_write_t *req, int status)
 	cb(t, status);
 }
 
-int transport__write(struct transport *t, uv_buf_t *buf, transport_write_cb cb)
+int transport_write(struct transport *t, uv_buf_t *buf, transport_write_cb cb)
 {
 	int rv;
 	assert(t->write_cb == NULL);
