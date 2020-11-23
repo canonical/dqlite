@@ -510,7 +510,7 @@ static uint32_t vfsParsePageSize(uint32_t page_size)
 {
 	if (page_size == 1) {
 		page_size = FORMAT_PAGE_SIZE_MAX;
-	} else if (page_size < FORMAT__PAGE_SIZE_MIN) {
+	} else if (page_size < FORMAT_PAGE_SIZE_MIN) {
 		page_size = 0;
 	} else if (page_size > (FORMAT_PAGE_SIZE_MAX / 2)) {
 		page_size = 0;
@@ -1229,7 +1229,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 		 */
 		int page_size = atoi(right);
 
-		if (page_size >= FORMAT__PAGE_SIZE_MIN &&
+		if (page_size >= FORMAT_PAGE_SIZE_MIN &&
 		    page_size <= FORMAT_PAGE_SIZE_MAX &&
 		    ((page_size - 1) & page_size) == 0) {
 			if (f->database->n_pages > 0 &&

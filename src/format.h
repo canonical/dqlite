@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 /* Minumum and maximum page size. */
-#define FORMAT__PAGE_SIZE_MIN 512
+#define FORMAT_PAGE_SIZE_MIN 512
 #define FORMAT_PAGE_SIZE_MAX 65536
 
 /* Database header size. */
