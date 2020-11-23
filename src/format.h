@@ -16,7 +16,7 @@
 #define FORMAT_DB_HDR_SIZE 100
 
 /* Write ahead log header size. */
-#define FORMAT__WAL_HDR_SIZE 32
+#define FORMAT_WAL_HDR_SIZE 32
 
 /* Write ahead log frame header size. */
 #define FORMAT_WAL_FRAME_HDR_SIZE 24
@@ -32,7 +32,7 @@
 /* Given the page size and the WAL file size, calculate the number of frames it
  * has. */
 #define formatWalCalcFramesNumber(PAGE_SIZE, SIZE) \
-	((SIZE - FORMAT__WAL_HDR_SIZE) / formatWalCalcFrameSize(PAGE_SIZE))
+	((SIZE - FORMAT_WAL_HDR_SIZE) / formatWalCalcFrameSize(PAGE_SIZE))
 
 /* Given the page size, calculate the WAL page number of the frame starting at
  * the given offset. */
