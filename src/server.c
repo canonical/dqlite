@@ -79,7 +79,7 @@ int dqliteInit(struct dqlite_node *d,
 	if (rv != 0) {
 		/* TODO: better error reporting */
 		rv = DQLITE_ERROR;
-		goto err_after_ready_init;
+		goto errAfterReadyInit;
 	}
 
 	rv = pthread_mutex_init(&d->mutex, NULL);
@@ -92,7 +92,7 @@ int dqliteInit(struct dqlite_node *d,
 	d->bind_address = NULL;
 	return 0;
 
-err_after_ready_init:
+errAfterReadyInit:
 	sem_destroy(&d->ready);
 errAfterRaftFsmInit:
 	fsm__close(&d->raft_fsm);
