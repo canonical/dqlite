@@ -47,7 +47,7 @@ struct connection
 #define SETUP                                                           \
 	unsigned i;                                                     \
 	int rc;                                                         \
-	SETUP_CLUSTER(V2);						\
+	SETUP_CLUSTER(V2);                                              \
 	for (i = 0; i < N_SERVERS; i++) {                               \
 		struct connection *c = &f->connections[i];              \
 		struct config *config;                                  \
@@ -56,9 +56,9 @@ struct connection
 		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
 			      CLUSTER_RAFT(i));                         \
 		c->handle.data = &c->context;                           \
-		rc = buffer__init(&c->buf1);                            \
+		rc = buffer_init(&c->buf1);                             \
 		munit_assert_int(rc, ==, 0);                            \
-		rc = buffer__init(&c->buf2);                            \
+		rc = buffer_init(&c->buf2);                             \
 		munit_assert_int(rc, ==, 0);                            \
 	}                                                               \
 	SELECT(0)

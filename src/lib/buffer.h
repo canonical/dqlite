@@ -25,7 +25,7 @@ struct buffer
 /**
  * Initialize the buffer. It will initially have 1 memory  page.
  */
-int buffer__init(struct buffer *b);
+int buffer_init(struct buffer *b);
 
 /**
  * Release the memory of the buffer.

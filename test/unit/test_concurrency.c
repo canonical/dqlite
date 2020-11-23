@@ -41,7 +41,7 @@ struct connection
 #define SETUP                                                        \
 	unsigned i;                                                  \
 	int rc;                                                      \
-	SETUP_CLUSTER(V2);					     \
+	SETUP_CLUSTER(V2);                                           \
 	CLUSTER_ELECT(0);                                            \
 	for (i = 0; i < N_GATEWAYS; i++) {                           \
 		struct connection *c = &f->connections[i];           \
@@ -50,9 +50,9 @@ struct connection
 		gateway__init(&c->gateway, CLUSTER_CONFIG(0),        \
 			      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0)); \
 		c->handle.data = &c->context;                        \
-		rc = buffer__init(&c->request);                      \
+		rc = buffer_init(&c->request);                       \
 		munit_assert_int(rc, ==, 0);                         \
-		rc = buffer__init(&c->response);                     \
+		rc = buffer_init(&c->response);                      \
 		munit_assert_int(rc, ==, 0);                         \
 		open.filename = "test";                              \
 		open.vfs = "";                                       \

@@ -312,7 +312,7 @@ TEST_SETUP(encoder)
 	int rc;
 	(void)params;
 	(void)user_data;
-	rc = buffer__init(&f->buffer);
+	rc = buffer_init(&f->buffer);
 	munit_assert_int(rc, ==, 0);
 	return f;
 }

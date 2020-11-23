@@ -12,7 +12,7 @@
 /* How many remaining bytes the buffer currently */
 #define CAP(B) (SIZE(B) - B->offset)
 
-int buffer__init(struct buffer *b)
+int buffer_init(struct buffer *b)
 {
 	b->page_size = (unsigned)sysconf(_SC_PAGESIZE);
 	b->n_pages = 1;

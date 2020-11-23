@@ -21,7 +21,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	int rc;
 	(void)params;
 	(void)user_data;
-	rc = buffer__init(&f->buffer);
+	rc = buffer_init(&f->buffer);
 	munit_assert_int(rc, ==, 0);
 	return f;
 }
@@ -55,7 +55,7 @@ static void tear_down(void *data)
 
 /******************************************************************************
  *
- * buffer__init
+ * buffer_init
  *
  ******************************************************************************/
 

@@ -16,11 +16,11 @@ int clientInit(struct client *c, int fd)
 	int rv;
 	c->fd = fd;
 
-	rv = buffer__init(&c->read);
+	rv = buffer_init(&c->read);
 	if (rv != 0) {
 		goto err;
 	}
-	rv = buffer__init(&c->write);
+	rv = buffer_init(&c->write);
 	if (rv != 0) {
 		goto err_after_read_buffer_init;
 	}

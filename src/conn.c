@@ -275,11 +275,11 @@ int conn__start(struct conn *c,
 	c->uv_transport = uv_transport;
 	c->close_cb = close_cb;
 	gateway__init(&c->gateway, config, registry, raft);
-	rv = buffer__init(&c->read);
+	rv = buffer_init(&c->read);
 	if (rv != 0) {
 		goto err_after_transport_init;
 	}
-	rv = buffer__init(&c->write);
+	rv = buffer_init(&c->write);
 	if (rv != 0) {
 		goto err_after_read_buffer_init;
 	}
