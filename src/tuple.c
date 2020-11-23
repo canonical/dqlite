@@ -141,15 +141,15 @@ int tupleDecoder__next(struct tupleDecoder *d, struct value *value)
 }
 
 /* Return a pointer to the tuple header. */
-static uint8_t *encoderHeader(struct tuple_encoder *e)
+static uint8_t *encoderHeader(struct tupleEncoder *e)
 {
 	return bufferCursor(e->buffer, e->header);
 }
 
-int tuple_encoder__init(struct tuple_encoder *e,
-			unsigned n,
-			int format,
-			struct buffer *buffer)
+int tupleEncoder__init(struct tupleEncoder *e,
+		       unsigned n,
+		       int format,
+		       struct buffer *buffer)
 {
 	void *cursor;
 	size_t nHeader;
@@ -185,7 +185,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 }
 
 /* Set the type of the i'th value of the tuple. */
-static void setType(struct tuple_encoder *e, unsigned i, int type)
+static void setType(struct tupleEncoder *e, unsigned i, int type)
 {
 	uint8_t *header = encoderHeader(e);
 
@@ -204,7 +204,7 @@ static void setType(struct tuple_encoder *e, unsigned i, int type)
 	}
 }
 
-int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
+int tupleEncoder__next(struct tupleEncoder *e, struct value *value)
 {
 	void *cursor;
 	size_t size;

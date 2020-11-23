@@ -110,7 +110,7 @@ int tupleDecoder__next(struct tupleDecoder *d, struct value *value);
 /**
  * Maintain state while encoding a single tuple.
  */
-struct tuple_encoder
+struct tupleEncoder
 {
 	unsigned n;	    /* Number of values in the tuple */
 	int format;	    /* Tuple format (row or params) */
@@ -123,14 +123,14 @@ struct tuple_encoder
  * Initialize the state of the encoder, before starting to encode a new
  * tuple. The @n parameter must always be greater than zero.
  */
-int tuple_encoder__init(struct tuple_encoder *e,
-			unsigned n,
-			int format,
-			struct buffer *buffer);
+int tupleEncoder__init(struct tupleEncoder *e,
+		       unsigned n,
+		       int format,
+		       struct buffer *buffer);
 
 /**
  * Encode the next value of the tuple.
  */
-int tuple_encoder__next(struct tuple_encoder *e, struct value *value);
+int tupleEncoder__next(struct tupleEncoder *e, struct value *value);
 
 #endif /* DQLITE_TUPLE_H_ */

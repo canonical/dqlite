@@ -33,11 +33,11 @@ static int value_type(sqlite3_stmt *stmt, int i)
 /* Append a single row to the message. */
 static int encodeRow(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 {
-	struct tuple_encoder encoder;
+	struct tupleEncoder encoder;
 	int rc;
 	int i;
 
-	rc = tuple_encoder__init(&encoder, (unsigned)n, TUPLE__ROW, buffer);
+	rc = tupleEncoder__init(&encoder, (unsigned)n, TUPLE__ROW, buffer);
 	if (rc != 0) {
 		return SQLITE_ERROR;
 	}
@@ -88,7 +88,7 @@ static int encodeRow(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 				return SQLITE_ERROR;
 		}
 
-		rc = tuple_encoder__next(&encoder, &value);
+		rc = tupleEncoder__next(&encoder, &value);
 		if (rc != 0) {
 			return rc;
 		}
