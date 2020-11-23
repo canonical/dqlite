@@ -110,7 +110,7 @@ err:
 	return rv;
 }
 
-void dqlite_close(struct dqlite_node *d)
+void dqliteClose(struct dqlite_node *d)
 {
 	int rv;
 	raft_free(d->listener);
@@ -563,7 +563,7 @@ static void *taskStart(void *arg)
 
 void dqlite_node_destroy(dqlite_node *d)
 {
-	dqlite_close(d);
+	dqliteClose(d);
 	sqlite3_free(d);
 }
 
