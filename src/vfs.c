@@ -1327,14 +1327,14 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 	struct vfsShm *shm = &d->shm;
 	struct vfsWal *wal = &d->wal;
 	uint8_t *index;
-	uint32_t frame_checksum[2] = {0, 0};
+	uint32_t frameChecksum[2] = {0, 0};
 	uint32_t n_pages = (uint32_t)d->n_pages;
 	uint32_t checksum[2] = {0, 0};
 
 	if (wal->n_frames > 0) {
 		struct vfsFrame *last = wal->frames[wal->n_frames - 1];
-		frame_checksum[0] = vfsFrameGetChecksum1(last);
-		frame_checksum[1] = vfsFrameGetChecksum2(last);
+		frameChecksum[0] = vfsFrameGetChecksum1(last);
+		frameChecksum[1] = vfsFrameGetChecksum2(last);
 		n_pages = vfsFrameGetDatabaseSize(last);
 	}
 
@@ -1347,8 +1347,8 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 
 	*(uint32_t *)(&index[16]) = wal->n_frames;
 	*(uint32_t *)(&index[20]) = n_pages;
-	*(uint32_t *)(&index[24]) = frame_checksum[0];
-	*(uint32_t *)(&index[28]) = frame_checksum[1];
+	*(uint32_t *)(&index[24]) = frameChecksum[0];
+	*(uint32_t *)(&index[28]) = frameChecksum[1];
 
 	vfsChecksum(index, 40, checksum, checksum);
 
