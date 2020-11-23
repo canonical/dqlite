@@ -250,7 +250,7 @@ extern int _main_suites_n;
 /* Choose the appropriate TEST_SETUP__N_ARGS() macro depending on the number of
  * arguments passed to TEST_SETUP(). */
 #define TEST_SETUP__MACRO_CHOOSER(...) \
-	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_SETUP__2_ARGS, TEST_SETUP_1_ARGS)
+	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_SETUP_2_ARGS, TEST_SETUP_1_ARGS)
 
 #define TEST_SETUP_1_ARGS(S)                                            \
 	static void *S##Setup(const MunitParameter[], void *);          \
@@ -260,7 +260,7 @@ extern int _main_suites_n;
 	}                                                               \
 	static void *S##Setup(const MunitParameter params[], void *user_data)
 
-#define TEST_SETUP__2_ARGS(S, F)                                        \
+#define TEST_SETUP_2_ARGS(S, F)                                         \
 	__attribute__((constructor)) static void _##S##Setup_init(void) \
 	{                                                               \
 		_##S##Setup = F;                                        \
