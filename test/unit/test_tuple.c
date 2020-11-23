@@ -90,7 +90,7 @@ TEST_CASE(decoder, init, row, NULL)
 TEST_GROUP(decoder, row);
 
 /* Decode a tuple with row format and only one value. */
-TEST_CASE(decoder, row, one_value, NULL)
+TEST_CASE(decoder, row, oneValue, NULL)
 {
 	struct tuple_decoder decoder;
 	uint8_t buf[][8] = {
@@ -144,7 +144,7 @@ TEST_CASE(decoder, row, two_values, NULL)
 TEST_GROUP(decoder, params);
 
 /* Decode a tuple with params format and only one value. */
-TEST_CASE(decoder, params, one_value, NULL)
+TEST_CASE(decoder, params, oneValue, NULL)
 {
 	struct tuple_decoder decoder;
 	uint8_t buf[][8] = {
@@ -326,7 +326,7 @@ TEST_TEAR_DOWN(encoder)
 TEST_GROUP(encoder, row);
 
 /* Encode a tuple with row format and only one value. */
-TEST_CASE(encoder, row, one_value, NULL)
+TEST_CASE(encoder, row, oneValue, NULL)
 {
 	struct encoderFixture *f = data;
 	struct value value;
@@ -373,7 +373,7 @@ TEST_CASE(encoder, row, two_values, NULL)
 TEST_GROUP(encoder, params);
 
 /* Encode a tuple with params format and only one value. */
-TEST_CASE(encoder, params, one_value, NULL)
+TEST_CASE(encoder, params, oneValue, NULL)
 {
 	struct encoderFixture *f = data;
 	struct value value;
