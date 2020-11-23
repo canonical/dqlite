@@ -314,15 +314,15 @@ extern int _main_suites_n;
 						void *data)
 
 /* Add a test case to the MunitTest[] array of the file module. */
-#define TEST_CASE_ADD_TO_MODULE(C, PARAMS)                                 \
-	__attribute__((constructor)) static void _module_tests_##C##_init( \
-	    void)                                                          \
-	{                                                                  \
-		MunitTest *tests = _module_tests;                          \
-		int n = _module_tests_n;                                   \
-		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C, test_##C, NULL,  \
-					NULL, PARAMS);                     \
-		_module_tests_n = n + 1;                                   \
+#define TEST_CASE_ADD_TO_MODULE(C, PARAMS)                                     \
+	__attribute__((constructor)) static void _module_tests_##C##_init(     \
+	    void)                                                              \
+	{                                                                      \
+		MunitTest *tests = _module_tests;                              \
+		int n = _module_tests_n;                                       \
+		TEST_CASE_SET_IN_ARRAY(tests, n, "/" #C, test_##C, NULL, NULL, \
+				       PARAMS);                                \
+		_module_tests_n = n + 1;                                       \
 	}
 
 /* Add a test case to the MunitTest[] array of suite S. */
@@ -331,32 +331,30 @@ extern int _main_suites_n;
 	{                                                                      \
 		MunitTest *tests = _##S##_tests;                               \
 		int n = _##S##_tests_n;                                        \
-		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C,      \
-					_##S##Setup, _##S##TearDown, PARAMS);  \
+		TEST_CASE_SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C,       \
+				       _##S##Setup, _##S##TearDown, PARAMS);   \
 		_##S##_tests_n = n + 1;                                        \
 	}
 
 /* Add a test case to MunitTest[] array of group G in suite S. */
-#define TEST_CASE_ADD_TO_GROUP(S, G, C, PARAMS)                            \
-	__attribute__(                                                     \
-	    (constructor)) static void _##S##_##G##_tests_##C##_init(void) \
-	{                                                                  \
-		MunitTest *tests = _##S##_##G##_tests;                     \
-		int n = _##S##_##G##_tests_n;                              \
-		TEST_CASE__SET_IN_ARRAY(tests, n, "/" #C,                  \
-					test_##S##_##G##_##C, _##S##Setup, \
-					_##S##TearDown, PARAMS);           \
-		_##S##_##G##_tests_n = n + 1;                              \
+#define TEST_CASE_ADD_TO_GROUP(S, G, C, PARAMS)                                \
+	__attribute__(                                                         \
+	    (constructor)) static void _##S##_##G##_tests_##C##_init(void)     \
+	{                                                                      \
+		MunitTest *tests = _##S##_##G##_tests;                         \
+		int n = _##S##_##G##_tests_n;                                  \
+		TEST_CASE_SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##G##_##C, \
+				       _##S##Setup, _##S##TearDown, PARAMS);   \
+		_##S##_##G##_tests_n = n + 1;                                  \
 	}
 
 /* Set the values of the I'th test case slot in the given test array */
-#define TEST_CASE__SET_IN_ARRAY(TESTS, I, NAME, FUNC, SETUP, TEAR_DOWN, \
-				PARAMS)                                 \
-	TESTS[I].name = NAME;                                           \
-	TESTS[I].test = FUNC;                                           \
-	TESTS[I].setup = SETUP;                                         \
-	TESTS[I].tear_down = TEAR_DOWN;                                 \
-	TESTS[I].options = 0;                                           \
+#define TEST_CASE_SET_IN_ARRAY(TESTS, I, NAME, FUNC, SETUP, TEAR_DOWN, PARAMS) \
+	TESTS[I].name = NAME;                                                  \
+	TESTS[I].test = FUNC;                                                  \
+	TESTS[I].setup = SETUP;                                                \
+	TESTS[I].tear_down = TEAR_DOWN;                                        \
+	TESTS[I].options = 0;                                                  \
 	TESTS[I].parameters = PARAMS
 
 #define TEST__GET_3RD_ARG(arg1, arg2, arg3, ...) arg3
