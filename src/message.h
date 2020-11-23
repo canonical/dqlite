@@ -14,4 +14,4 @@
 
 SERIALIZE__DEFINE(message, MESSAGE);
 
-#endif /* MESSAGE_H_x */
+#endif /* MESSAGE_HX */
