@@ -81,7 +81,7 @@ unsigned tuple_decoder__n(struct tuple_decoder *d)
 }
 
 /* Return the type of the i'th value of the tuple. */
-static int get_type(struct tuple_decoder *d, unsigned i)
+static int getType(struct tuple_decoder *d, unsigned i)
 {
 	int type;
 
@@ -105,7 +105,7 @@ int tuple_decoder__next(struct tuple_decoder *d, struct value *value)
 {
 	int rc;
 	assert(d->i < d->n);
-	value->type = get_type(d, d->i);
+	value->type = getType(d, d->i);
 	switch (value->type) {
 		case SQLITE_INTEGER:
 			rc = int64__decode(d->cursor, &value->integer);
