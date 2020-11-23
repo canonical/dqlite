@@ -108,13 +108,13 @@ static void mem_unwrap(sqlite3_mem_methods *wrap, sqlite3_mem_methods *m)
 
 /* Get the current number of outstanding malloc()'s without a matching free()
  * and the total number of used memory. */
-static void mem_stats(int *malloc_count, int *memory_used)
+static void mem_stats(int *mallocCount, int *memory_used)
 {
 	int rc;
 	int watermark;
 
-	rc = sqlite3_status(SQLITE_STATUS_MALLOC_COUNT, malloc_count,
-			    &watermark, 1);
+	rc = sqlite3_status(SQLITE_STATUS_MALLOC_COUNT, mallocCount, &watermark,
+			    1);
 	if (rc != SQLITE_OK) {
 		munit_errorf("can't get malloc count: %s", sqlite3_errstr(rc));
 	}
@@ -130,7 +130,7 @@ static void mem_stats(int *malloc_count, int *memory_used)
  * optionally inject malloc failures. */
 void test_heap_setup(const MunitParameter params[], void *user_data)
 {
-	int malloc_count;
+	int mallocCount;
 	int memory_used;
 	const char *faultDelay;
 	const char *faultRepeat;
@@ -155,11 +155,11 @@ void test_heap_setup(const MunitParameter params[], void *user_data)
 	}
 
 	/* Check that memory is clean. */
-	mem_stats(&malloc_count, &memory_used);
-	if (malloc_count > 0 || memory_used > 0) {
+	mem_stats(&mallocCount, &memory_used);
+	if (mallocCount > 0 || memory_used > 0) {
 		munit_errorf(
 		    "setup memory:\n    bytes: %11d\n    allocations: %5d\n",
-		    malloc_count, memory_used);
+		    mallocCount, memory_used);
 	}
 
 	/* Optionally inject memory allocation failures. */
@@ -183,14 +183,14 @@ void test_heap_tear_down(void *data)
 
 	(void)data;
 
-	int malloc_count;
+	int mallocCount;
 	int memory_used;
 
-	mem_stats(&malloc_count, &memory_used);
-	if (malloc_count > 0 || memory_used > 0) {
+	mem_stats(&mallocCount, &memory_used);
+	if (mallocCount > 0 || memory_used > 0) {
 		munit_errorf(
 		    "teardown memory:\n    bytes: %11d\n    allocations: %5d\n",
-		    memory_used, malloc_count);
+		    memory_used, mallocCount);
 	}
 
 	/* Restore default memory management. */
