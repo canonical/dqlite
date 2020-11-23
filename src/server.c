@@ -360,7 +360,7 @@ static void stop_cb(uv_async_t *stop)
 	queue *head;
 	struct conn *conn;
 
-	/* We expect that we're being executed after dqlite_stop and so the
+	/* We expect that we're being executed after dqliteStop and so the
 	 * running flag is off. */
 	assert(!d->running);
 
@@ -571,7 +571,7 @@ void dqlite_node_destroy(dqlite_node *d)
 ** Returns true if the server has been successfully started, false otherwise.
 **
 ** This is a thread-safe API, but must be invoked before any call to
-** dqlite_stop or dqliteHandle.
+** dqliteStop or dqliteHandle.
 */
 static bool taskReady(struct dqlite_node *d)
 {
