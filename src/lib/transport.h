@@ -46,7 +46,7 @@ void transport_close(struct transport *t, transport_close_cb cb);
 /**
  * Read from the transport file descriptor until the given buffer is full.
  */
-int transport__read(struct transport *t, uv_buf_t *buf, transport_readCb cb);
+int transport_read(struct transport *t, uv_buf_t *buf, transport_readCb cb);
 
 /**
  * Write the given buffer to the transport.

@@ -144,7 +144,7 @@ void transport_close(struct transport *t, transport_close_cb cb)
 	uv_close((uv_handle_t *)t->stream, close_cb);
 }
 
-int transport__read(struct transport *t, uv_buf_t *buf, transport_readCb cb)
+int transport_read(struct transport *t, uv_buf_t *buf, transport_readCb cb)
 {
 	int rv;
 

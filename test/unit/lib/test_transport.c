@@ -93,11 +93,11 @@ static void tear_down(void *data)
 #define BUF_ALLOC(N) {munit_malloc(N), N};
 
 /* Start reading into the current buffer */
-#define READ(BUF)                                                  \
-	{                                                          \
-		int rv2;                                           \
-		rv2 = transport__read(&f->transport, BUF, readCb); \
-		munit_assert_int(rv2, ==, 0);                      \
+#define READ(BUF)                                                 \
+	{                                                         \
+		int rv2;                                          \
+		rv2 = transport_read(&f->transport, BUF, readCb); \
+		munit_assert_int(rv2, ==, 0);                     \
 	}
 
 /* Start writing the current buffer into the stream */
@@ -145,7 +145,7 @@ static void tear_down(void *data)
 
 /******************************************************************************
  *
- * transport__read
+ * transport_read
  *
  ******************************************************************************/
 

@@ -155,7 +155,7 @@ static int readRequest(struct conn *c)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = transport__read(&c->transport, &buf, readRequest_cb);
+	rv = transport_read(&c->transport, &buf, readRequest_cb);
 	if (rv != 0) {
 		return rv;
 	}
@@ -196,7 +196,7 @@ static int readMessage(struct conn *c)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = transport__read(&c->transport, &buf, readMessage_cb);
+	rv = transport_read(&c->transport, &buf, readMessage_cb);
 	if (rv != 0) {
 		return rv;
 	}
@@ -248,7 +248,7 @@ static int readProtocol(struct conn *c)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = transport__read(&c->transport, &buf, readProtocol_cb);
+	rv = transport_read(&c->transport, &buf, readProtocol_cb);
 	if (rv != 0) {
 		return rv;
 	}
