@@ -6,13 +6,13 @@
 
 TEST_MODULE(libRegistry);
 
-struct test_item
+struct testItem
 {
 	size_t id;
 	int *ptr;
 };
 
-static void test_item_init(struct test_item *i)
+static void testItem_init(struct testItem *i)
 {
 	munit_assert(i != NULL);
 
@@ -20,7 +20,7 @@ static void test_item_init(struct test_item *i)
 	*i->ptr = 123;
 }
 
-static void test_item_close(struct test_item *i)
+static void testItem_close(struct testItem *i)
 {
 	munit_assert(i != NULL);
 	munit_assert(i->ptr != NULL);
@@ -28,15 +28,15 @@ static void test_item_close(struct test_item *i)
 	sqlite3_free(i->ptr);
 }
 
-static const char *test_item_hash(struct test_item *i)
+static const char *testItem_hash(struct testItem *i)
 {
 	munit_assert(i != NULL);
 
 	return "x";
 }
 
-REGISTRY(test_registry, test_item);
-REGISTRY_METHODS(test_registry, test_item);
+REGISTRY(test_registry, testItem);
+REGISTRY_METHODS(test_registry, testItem);
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
@@ -76,7 +76,7 @@ TEST_CASE(add, basic, testAddParams)
 {
 	struct test_registry *registry = data;
 	int err;
-	struct test_item *item;
+	struct testItem *item;
 	int n;
 	int i;
 
@@ -101,10 +101,10 @@ TEST_CASE(add, delAdd, NULL)
 {
 	struct test_registry *registry = data;
 	int err;
-	struct test_item *item1;
-	struct test_item *item2;
-	struct test_item *item3;
-	struct test_item *item4;
+	struct testItem *item1;
+	struct testItem *item2;
+	struct testItem *item3;
+	struct testItem *item4;
 	int item2Id;
 
 	(void)params;
@@ -135,7 +135,7 @@ TEST_CASE(add, andDel, testAddParams)
 {
 	struct test_registry *registry = data;
 	int err;
-	struct test_item **items;
+	struct testItem **items;
 	int n;
 	int i;
 
@@ -168,7 +168,7 @@ TEST_CASE(get, basic, NULL)
 {
 	struct test_registry *registry = data;
 	int err;
-	struct test_item *item;
+	struct testItem *item;
 
 	(void)params;
 
@@ -186,7 +186,7 @@ TEST_CASE(get, deleted, NULL)
 {
 	struct test_registry *registry = data;
 	int err;
-	struct test_item *item;
+	struct testItem *item;
 	size_t id;
 
 	(void)params;
@@ -208,7 +208,7 @@ TEST_CASE(get, deleted, NULL)
 TEST_CASE(get, outOfBound, NULL)
 {
 	struct test_registry *registry = data;
-	struct test_item *item = test_registry_get(registry, 123);
+	struct testItem *item = test_registry_get(registry, 123);
 
 	(void)params;
 
@@ -225,7 +225,7 @@ TEST_TEAR_DOWN(idx, tear_down);
 TEST_CASE(idx, found, NULL)
 {
 	struct test_registry *registry = data;
-	struct test_item *item;
+	struct testItem *item;
 	size_t i;
 	int err;
 
@@ -246,8 +246,8 @@ TEST_CASE(idx, found, NULL)
 TEST_CASE(idx, notFound, NULL)
 {
 	struct test_registry *registry = data;
-	struct test_item *item1;
-	struct test_item *item2;
+	struct testItem *item1;
+	struct testItem *item2;
 	size_t i;
 	int err;
 
@@ -277,7 +277,7 @@ TEST_CASE(del, basic, NULL)
 {
 	struct test_registry *registry = data;
 	int err;
-	struct test_item *item;
+	struct testItem *item;
 
 	(void)params;
 
@@ -295,8 +295,8 @@ TEST_CASE(del, twice, NULL)
 {
 	struct test_registry *registry = data;
 	int err;
-	struct test_item *item;
-	struct test_item itemClone;
+	struct testItem *item;
+	struct testItem itemClone;
 
 	(void)params;
 
@@ -319,9 +319,9 @@ TEST_CASE(del, twice_middle, NULL)
 {
 	struct test_registry *registry = data;
 	int err;
-	struct test_item *item1;
-	struct test_item *item2;
-	struct test_item item1Clone;
+	struct testItem *item1;
+	struct testItem *item2;
+	struct testItem item1Clone;
 
 	(void)params;
 
@@ -345,7 +345,7 @@ TEST_CASE(del, twice_middle, NULL)
 TEST_CASE(del, outOfBounds, NULL)
 {
 	struct test_registry *registry = data;
-	struct test_item item;
+	struct testItem item;
 	int err;
 
 	(void)params;
@@ -364,9 +364,9 @@ TEST_CASE(del, many, NULL)
 {
 	struct test_registry *registry = data;
 	int err;
-	struct test_item *item1;
-	struct test_item *item2;
-	struct test_item *item3;
+	struct testItem *item1;
+	struct testItem *item2;
+	struct testItem *item3;
 
 	(void)params;
 
