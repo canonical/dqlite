@@ -115,7 +115,7 @@ static void raftConnect(struct conn *c, struct cursor *cursor)
 	closeCb(&c->transport);
 }
 
-static void read_request_cb(struct transport *transport, int status)
+static void readRequest_cb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
 	struct cursor cursor;
@@ -147,7 +147,7 @@ static void read_request_cb(struct transport *transport, int status)
 }
 
 /* Start reading the body of the next request */
-static int read_request(struct conn *c)
+static int readRequest(struct conn *c)
 {
 	uv_buf_t buf;
 	int rv;
@@ -155,7 +155,7 @@ static int read_request(struct conn *c)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = transport__read(&c->transport, &buf, read_request_cb);
+	rv = transport__read(&c->transport, &buf, readRequest_cb);
 	if (rv != 0) {
 		return rv;
 	}
@@ -180,7 +180,7 @@ static void readMessage_cb(struct transport *transport, int status)
 	rv = message__decode(&cursor, &c->request);
 	assert(rv == 0); /* Can't fail, we know we have enough bytes */
 
-	rv = read_request(c);
+	rv = readRequest(c);
 	if (rv != 0) {
 		connStop(c);
 		return;
