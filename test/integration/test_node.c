@@ -43,7 +43,7 @@ static void tearDown(void *data)
 
 	testDirTearDown(f->dir);
 	test_sqlite_tear_down();
-	test_heap_tear_down(data);
+	testHeapTearDown(data);
 	free(f);
 }
 

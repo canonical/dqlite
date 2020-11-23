@@ -10,7 +10,7 @@
 #define TEST_HEAP_FAULT_REPEAT "mem-fault-repeat"
 
 void testHeapSetup(const MunitParameter params[], void *user_data);
-void test_heap_tear_down(void *data);
+void testHeapTearDown(void *data);
 
 /* Configure the faulty memory management implementation so malloc()-related
  * functions start returning NULL pointers after 'delay' calls, and keep failing
@@ -27,6 +27,6 @@ void testHeapFaultConfig(int delay, int repeat);
 void testHeapFaultEnable(void);
 
 #define SETUP_HEAP testHeapSetup(params, user_data);
-#define TEAR_DOWN_HEAP test_heap_tear_down(data);
+#define TEAR_DOWN_HEAP testHeapTearDown(data);
 
 #endif /* DQLITE_TEST_HEAP_H */

@@ -39,7 +39,7 @@
 		test_server_tear_down(&f->servers[i_]); \
 	}                                               \
 	test_sqlite_tear_down();                        \
-	test_heap_tear_down(data)
+	testHeapTearDown(data)
 
 /******************************************************************************
  *

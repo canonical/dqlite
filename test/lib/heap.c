@@ -175,7 +175,7 @@ void testHeapSetup(const MunitParameter params[], void *user_data)
 }
 
 /* Ensure we're starting leaving a clean memory behind. */
-void test_heap_tear_down(void *data)
+void testHeapTearDown(void *data)
 {
 	sqlite3_mem_methods mem;
 	sqlite3_mem_methods mem_fault;

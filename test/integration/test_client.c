@@ -91,7 +91,7 @@ static void tearDown(void *data)
 	struct fixture *f = data;
 	test_server_tear_down(&f->server);
 	test_sqlite_tear_down();
-	test_heap_tear_down(data);
+	testHeapTearDown(data);
 
 	free(f);
 }
