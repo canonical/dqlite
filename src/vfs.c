@@ -568,7 +568,7 @@ static int vfsDatabaseTruncate(struct vfsDatabase *d, sqlite_int64 size)
 	assert(nPages <= d->nPages);
 	assert(d->pages != NULL);
 
-	/* Destroy pages beyond pages_len. */
+	/* Destroy pages beyond pagesLen. */
 	cursor = d->pages + nPages;
 	for (i = 0; i < (d->nPages - nPages); i++) {
 		sqlite3_free(*cursor);
