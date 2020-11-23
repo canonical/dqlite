@@ -17,7 +17,7 @@ static int initRead(struct conn *c, uv_buf_t *buf, size_t size)
 }
 
 static int readMessage(struct conn *c);
-static void write_cb(struct transport *transport, int status)
+static void writeCb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
 	bool finished;
@@ -79,7 +79,7 @@ static void gatewayHandle_cb(struct handle *req, int status, int type)
 	buf.base = bufferCursor(&c->write, 0);
 	buf.len = bufferOffset(&c->write);
 
-	rv = transportWrite(&c->transport, &buf, write_cb);
+	rv = transportWrite(&c->transport, &buf, writeCb);
 	if (rv != 0) {
 		goto abort;
 	}

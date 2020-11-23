@@ -28,7 +28,7 @@ struct transport
 	uv_buf_t read;		     /* Read buffer */
 	uv_write_t write;	    /* Write request */
 	transportReadCb readCb;     /* Read callback */
-	transportWrite_cb write_cb; /* Write callback */
+	transportWrite_cb writeCb;  /* Write callback */
 	transport_close_cb close_cb; /* Close callback */
 };
 

@@ -120,7 +120,7 @@ int transportInit(struct transport *t, struct uv_stream_s *stream)
 	t->read.len = 0;
 	t->write.data = t;
 	t->readCb = NULL;
-	t->write_cb = NULL;
+	t->writeCb = NULL;
 	t->close_cb = NULL;
 
 	return 0;
@@ -157,13 +157,13 @@ int transportRead(struct transport *t, uv_buf_t *buf, transportReadCb cb)
 	return 0;
 }
 
-static void write_cb(uv_write_t *req, int status)
+static void writeCb(uv_write_t *req, int status)
 {
 	struct transport *t = req->data;
-	transportWrite_cb cb = t->write_cb;
+	transportWrite_cb cb = t->writeCb;
 
 	assert(cb != NULL);
-	t->write_cb = NULL;
+	t->writeCb = NULL;
 
 	cb(t, status);
 }
@@ -171,9 +171,9 @@ static void write_cb(uv_write_t *req, int status)
 int transportWrite(struct transport *t, uv_buf_t *buf, transportWrite_cb cb)
 {
 	int rv;
-	assert(t->write_cb == NULL);
-	t->write_cb = cb;
-	rv = uv_write(&t->write, t->stream, buf, 1, write_cb);
+	assert(t->writeCb == NULL);
+	t->writeCb = cb;
+	rv = uv_write(&t->write, t->stream, buf, 1, writeCb);
 	if (rv != 0) {
 		return rv;
 	}

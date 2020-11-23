@@ -39,7 +39,7 @@ static void readCb(struct transport *transport, int status)
 	f->read.status = status;
 }
 
-static void write_cb(struct transport *transport, int status)
+static void writeCb(struct transport *transport, int status)
 {
 	struct fixture *f = transport->data;
 	f->write.invoked = true;
@@ -101,11 +101,11 @@ static void tear_down(void *data)
 	}
 
 /* Start writing the current buffer into the stream */
-#define WRITE(BUF)                                                  \
-	{                                                           \
-		int rv2;                                            \
-		rv2 = transportWrite(&f->transport, BUF, write_cb); \
-		munit_assert_int(rv2, ==, 0);                       \
+#define WRITE(BUF)                                                 \
+	{                                                          \
+		int rv2;                                           \
+		rv2 = transportWrite(&f->transport, BUF, writeCb); \
+		munit_assert_int(rv2, ==, 0);                      \
 	}
 
 /* Write N bytes into the client buffer. Each byte will contain a progressive
