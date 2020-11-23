@@ -68,7 +68,7 @@ void *bufferCursor(struct buffer *b, size_t offset)
 	return b->data + offset;
 }
 
-void buffer_reset(struct buffer *b)
+void bufferReset(struct buffer *b)
 {
 	b->offset = 0;
 }
