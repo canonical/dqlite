@@ -34,7 +34,7 @@ void dbClose(struct db *db)
 	sqlite3_free(db->filename);
 }
 
-int db__open_follower(struct db *db)
+int db_open_follower(struct db *db)
 {
 	int rc;
 	assert(db->follower == NULL);
