@@ -45,7 +45,7 @@
 		raft_close(&f->raft, NULL);         \
 		test_uv_stop(&f->loop);             \
 		raft_uv_close(&f->raft_io);         \
-		fsm__close(&f->fsm);                \
+		fsm_close(&f->fsm);                 \
 		test_uv_tear_down(&f->loop);        \
 		raftProxyClose(&f->raft_transport); \
 		test_dir_tear_down(f->dir);         \

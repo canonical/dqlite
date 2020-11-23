@@ -18,6 +18,6 @@ int fsm__init(struct raft_fsm *fsm,
 	      struct config *config,
 	      struct registry *registry);
 
-void fsm__close(struct raft_fsm *fsm);
+void fsm_close(struct raft_fsm *fsm);
 
 #endif /* DQLITE_REPLICATION_METHODS_H_ */

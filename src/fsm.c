@@ -481,7 +481,7 @@ int fsm__init(struct raft_fsm *fsm,
 	return 0;
 }
 
-void fsm__close(struct raft_fsm *fsm)
+void fsm_close(struct raft_fsm *fsm)
 {
 	struct fsm *f = fsm->data;
 	raft_free(f);
