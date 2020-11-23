@@ -36,18 +36,18 @@
 #define RESPONSE_DEFINE(LOWER, UPPER, _) \
 	SERIALIZE_DEFINE(response_##LOWER, RESPONSE_##UPPER);
 
-#define RESPONSE_TYPES(X, ...)                       \
-	X(server, SERVER, __VA_ARGS__)               \
-	X(server_legacy, SERVER_LEGACY, __VA_ARGS__) \
-	X(welcome, WELCOME, __VA_ARGS__)             \
-	X(failure, FAILURE, __VA_ARGS__)             \
-	X(db, DB, __VA_ARGS__)                       \
-	X(stmt, STMT, __VA_ARGS__)                   \
-	X(result, RESULT, __VA_ARGS__)               \
-	X(rows, ROWS, __VA_ARGS__)                   \
-	X(empty, EMPTY, __VA_ARGS__)                 \
-	X(files, FILES, __VA_ARGS__)                 \
-	X(servers, SERVERS, __VA_ARGS__)             \
+#define RESPONSE_TYPES(X, ...)                      \
+	X(server, SERVER, __VA_ARGS__)              \
+	X(serverLegacy, SERVER_LEGACY, __VA_ARGS__) \
+	X(welcome, WELCOME, __VA_ARGS__)            \
+	X(failure, FAILURE, __VA_ARGS__)            \
+	X(db, DB, __VA_ARGS__)                      \
+	X(stmt, STMT, __VA_ARGS__)                  \
+	X(result, RESULT, __VA_ARGS__)              \
+	X(rows, ROWS, __VA_ARGS__)                  \
+	X(empty, EMPTY, __VA_ARGS__)                \
+	X(files, FILES, __VA_ARGS__)                \
+	X(servers, SERVERS, __VA_ARGS__)            \
 	X(metadata, METADATA, __VA_ARGS__)
 
 RESPONSE_TYPES(RESPONSE_DEFINE);

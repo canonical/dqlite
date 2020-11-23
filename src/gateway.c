@@ -133,13 +133,13 @@ static void failure(struct handle *req, int code, const char *message)
 
 static int handleLeaderLegacy(struct handle *req, struct cursor *cursor)
 {
-	START(leader, server_legacy);
+	START(leader, serverLegacy);
 	raft_id id;
 	raft_leader(req->gateway->raft, &id, &response.address);
 	if (response.address == NULL) {
 		response.address = "";
 	}
-	SUCCESS(server_legacy, SERVER_LEGACY);
+	SUCCESS(serverLegacy, SERVER_LEGACY);
 	return 0;
 }
 
