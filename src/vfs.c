@@ -372,7 +372,7 @@ static int vfsDatabaseGetPage(struct vfsDatabase *d,
 		pages = sqlite3_realloc64(d->pages, sizeof *pages * pgno);
 		if (pages == NULL) {
 			rc = SQLITE_NOMEM;
-			goto err_after_vfs_page_create;
+			goto errAfterVfsPageCreate;
 		}
 
 		/* Append the new page to the new page array. */
@@ -389,7 +389,7 @@ static int vfsDatabaseGetPage(struct vfsDatabase *d,
 
 	return SQLITE_OK;
 
-err_after_vfs_page_create:
+errAfterVfsPageCreate:
 	sqlite3_free(*page);
 err:
 	*page = NULL;
