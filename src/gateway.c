@@ -454,7 +454,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 		rv = bindParams(stmt, cursor);
 		if (rv != SQLITE_OK) {
 			failure(req, rv, sqlite3_errmsg(g->leader->conn));
-			goto done_after_prepare;
+			goto doneAfterPrepare;
 		}
 	}
 
@@ -464,7 +464,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 	rv = leader__exec(g->leader, &g->exec, g->stmt, handle_exec_sql_cb);
 	if (rv != SQLITE_OK) {
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
-		goto done_after_prepare;
+		goto doneAfterPrepare;
 	}
 
 	return;
@@ -475,7 +475,7 @@ success:
 	}
 	SUCCESS(result, RESULT);
 
-done_after_prepare:
+doneAfterPrepare:
 	if (g->stmt != NULL) {
 		sqlite3_finalize(g->stmt);
 	}
