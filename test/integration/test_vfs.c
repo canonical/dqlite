@@ -1050,7 +1050,7 @@ TEST(vfs, snapshotInitialDatabase, setUp, tearDown, 0, NULL)
 	struct snapshot snapshot;
 	uint8_t *page;
 	uint8_t page_size[2] = {2, 0};           /* Big-endian page size */
-	uint8_t database_size[4] = {0, 0, 0, 1}; /* Big-endian database size */
+	uint8_t databaseSize[4] = {0, 0, 0, 1};  /* Big-endian database size */
 
 	OPEN("1", db);
 	CLOSE(db);
@@ -1061,7 +1061,7 @@ TEST(vfs, snapshotInitialDatabase, setUp, tearDown, 0, NULL)
 	page = snapshot.data;
 
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
-	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
+	munit_assert_int(memcmp(&page[28], databaseSize, 4), ==, 0);
 
 	raft_free(snapshot.data);
 
@@ -1078,7 +1078,7 @@ TEST(vfs, snapshotAfterFirstTransaction, setUp, tearDown, 0, NULL)
 	struct tx tx;
 	uint8_t *page;
 	uint8_t page_size[2] = {2, 0};           /* Big-endian page size */
-	uint8_t database_size[4] = {0, 0, 0, 1}; /* Big-endian database size */
+	uint8_t databaseSize[4] = {0, 0, 0, 1};  /* Big-endian database size */
 
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
@@ -1095,7 +1095,7 @@ TEST(vfs, snapshotAfterFirstTransaction, setUp, tearDown, 0, NULL)
 	page = snapshot.data;
 
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
-	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
+	munit_assert_int(memcmp(&page[28], databaseSize, 4), ==, 0);
 
 	raft_free(snapshot.data);
 
@@ -1111,7 +1111,7 @@ TEST(vfs, snapshotAfterCheckpoint, setUp, tearDown, 0, NULL)
 	struct tx tx;
 	uint8_t *page;
 	uint8_t page_size[2] = {2, 0};           /* Big-endian page size */
-	uint8_t database_size[4] = {0, 0, 0, 2}; /* Big-endian database size */
+	uint8_t databaseSize[4] = {0, 0, 0, 2};  /* Big-endian database size */
 
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
@@ -1130,7 +1130,7 @@ TEST(vfs, snapshotAfterCheckpoint, setUp, tearDown, 0, NULL)
 	page = snapshot.data;
 
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
-	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
+	munit_assert_int(memcmp(&page[28], databaseSize, 4), ==, 0);
 
 	raft_free(snapshot.data);
 

@@ -280,7 +280,7 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 {
 	struct snapshotDatabase header;
 	sqlite3_vfs *vfs;
-	uint32_t database_size = 0;
+	uint32_t databaseSize = 0;
 	uint8_t *page;
 	void *cursor;
 	int rv;
@@ -295,12 +295,12 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 
 	/* Extract the database size from the first page. */
 	page = bufs[1].base;
-	database_size += (uint32_t)(page[28] << 24);
-	database_size += (uint32_t)(page[29] << 16);
-	database_size += (uint32_t)(page[30] << 8);
-	database_size += (uint32_t)(page[31]);
+	databaseSize += (uint32_t)(page[28] << 24);
+	databaseSize += (uint32_t)(page[29] << 16);
+	databaseSize += (uint32_t)(page[30] << 8);
+	databaseSize += (uint32_t)(page[31]);
 
-	header.main_size = database_size * db->config->page_size;
+	header.main_size = databaseSize * db->config->page_size;
 	header.wal_size = bufs[1].len - header.main_size;
 
 	/* Database header. */

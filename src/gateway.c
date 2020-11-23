@@ -750,7 +750,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	void *data;
 	size_t n;
 	uint8_t *page;
-	uint32_t database_size = 0;
+	uint32_t databaseSize = 0;
 	uint8_t *database;
 	uint8_t *wal;
 	size_t n_database;
@@ -773,12 +773,12 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	if (data != NULL) {
 		/* Extract the database size from the first page. */
 		page = data;
-		database_size += (uint32_t)(page[28] << 24);
-		database_size += (uint32_t)(page[29] << 16);
-		database_size += (uint32_t)(page[30] << 8);
-		database_size += (uint32_t)(page[31]);
+		databaseSize += (uint32_t)(page[28] << 24);
+		databaseSize += (uint32_t)(page[29] << 16);
+		databaseSize += (uint32_t)(page[30] << 8);
+		databaseSize += (uint32_t)(page[31]);
 
-		n_database = database_size * g->config->page_size;
+		n_database = databaseSize * g->config->page_size;
 		n_wal = n - n_database;
 
 		database = data;

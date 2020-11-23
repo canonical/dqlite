@@ -1284,14 +1284,14 @@ static uint32_t vfsFrameGetChecksum2(struct vfsFrame *f)
  * rolling one of all preceeding frames and is updated by this function. */
 static void vfsFrameFill(struct vfsFrame *f,
 			 uint32_t page_number,
-			 uint32_t database_size,
+			 uint32_t databaseSize,
 			 uint32_t salt[2],
 			 uint32_t checksum[2],
 			 uint8_t *page,
 			 uint32_t page_size)
 {
 	vfsPut32(page_number, &f->header[0]);
-	vfsPut32(database_size, &f->header[4]);
+	vfsPut32(databaseSize, &f->header[4]);
 
 	vfsChecksum(f->header, 8, checksum, checksum);
 	vfsChecksum(page, page_size, checksum, checksum);
@@ -2172,7 +2172,7 @@ static int vfsWalAppend(struct vfsWal *w,
 {
 	struct vfsFrame **frames; /* New frames array. */
 	uint32_t page_size;
-	uint32_t database_size;
+	uint32_t databaseSize;
 	unsigned i;
 	unsigned j;
 	uint32_t salt[2];
@@ -2194,14 +2194,14 @@ static int vfsWalAppend(struct vfsWal *w,
 	 * in the WAL header. Otherwise, the starting database size and checksum
 	 * will be the ones stored in the last frame of the WAL. */
 	if (w->n_frames == 0) {
-		database_size = (uint32_t)databaseNPages;
+		databaseSize = (uint32_t)databaseNPages;
 		checksum[0] = vfsWalGetChecksum1(w);
 		checksum[1] = vfsWalGetChecksum2(w);
 	} else {
 		struct vfsFrame *frame = w->frames[w->n_frames - 1];
 		checksum[0] = vfsFrameGetChecksum1(frame);
 		checksum[1] = vfsFrameGetChecksum2(frame);
-		database_size = vfsFrameGetDatabaseSize(frame);
+		databaseSize = vfsFrameGetDatabaseSize(frame);
 	}
 
 	frames =
@@ -2221,14 +2221,14 @@ static int vfsWalAppend(struct vfsWal *w,
 			goto oom_after_frames_alloc;
 		}
 
-		if (page_number > database_size) {
-			database_size = page_number;
+		if (page_number > databaseSize) {
+			databaseSize = page_number;
 		}
 
 		/* For commit records, the size of the database file in pages
 		 * after the commit. For all other records, zero. */
 		if (i == n - 1) {
-			commit = database_size;
+			commit = databaseSize;
 		}
 
 		vfsFrameFill(frame, page_number, commit, salt, checksum, page,
