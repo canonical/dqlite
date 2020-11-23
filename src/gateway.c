@@ -238,7 +238,7 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
  * affected. */
 static void fillResult(struct gateway *g, struct response_result *response)
 {
-	response->last_insert_id =
+	response->lastInsertId =
 	    (uint64_t)sqlite3_last_insert_rowid(g->leader->conn);
 	response->rows_affected = (uint64_t)sqlite3_changes(g->leader->conn);
 }

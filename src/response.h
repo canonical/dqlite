@@ -22,8 +22,8 @@
 	X(uint32, dbId, ##__VA_ARGS__) \
 	X(uint32, id, ##__VA_ARGS__)   \
 	X(uint64, params, ##__VA_ARGS__)
-#define RESPONSE_RESULT(X, ...)                  \
-	X(uint64, last_insert_id, ##__VA_ARGS__) \
+#define RESPONSE_RESULT(X, ...)                \
+	X(uint64, lastInsertId, ##__VA_ARGS__) \
 	X(uint64, rows_affected, ##__VA_ARGS__)
 #define RESPONSE_ROWS(X, ...) X(uint64, eof, ##__VA_ARGS__)
 #define RESPONSE_EMPTY(X, ...) X(uint64, __unused__, ##__VA_ARGS__)

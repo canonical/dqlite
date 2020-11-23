@@ -190,12 +190,12 @@ int clientSendExecSQL(struct client *c, const char *sql)
 }
 
 int clientRecvResult(struct client *c,
-		     unsigned *last_insert_id,
+		     unsigned *lastInsertId,
 		     unsigned *rows_affected)
 {
 	struct response_result response;
 	RESPONSE(result, RESULT);
-	*last_insert_id = (unsigned)response.last_insert_id;
+	*lastInsertId = (unsigned)response.lastInsertId;
 	*rows_affected = (unsigned)response.rows_affected;
 	return 0;
 }

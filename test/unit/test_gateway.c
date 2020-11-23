@@ -502,7 +502,7 @@ TEST_CASE(exec, simple, NULL)
 	CLUSTER_APPLIED(2);
 	ASSERT_CALLBACK(0, RESULT);
 	DECODE(&f->response, result);
-	munit_assert_int(f->response.last_insert_id, ==, 0);
+	munit_assert_int(f->response.lastInsertId, ==, 0);
 	munit_assert_int(f->response.rows_affected, ==, 0);
 	return MUNIT_OK;
 }
@@ -530,7 +530,7 @@ TEST_CASE(exec, one_param, NULL)
 	CLUSTER_APPLIED(3);
 	ASSERT_CALLBACK(0, RESULT);
 	DECODE(&f->response, result);
-	munit_assert_int(f->response.last_insert_id, ==, 1);
+	munit_assert_int(f->response.lastInsertId, ==, 1);
 	munit_assert_int(f->response.rows_affected, ==, 1);
 
 	return MUNIT_OK;
@@ -564,7 +564,7 @@ TEST_CASE(exec, blob, NULL)
 	CLUSTER_APPLIED(3);
 	ASSERT_CALLBACK(0, RESULT);
 	DECODE(&f->response, result);
-	munit_assert_int(f->response.last_insert_id, ==, 1);
+	munit_assert_int(f->response.lastInsertId, ==, 1);
 	munit_assert_int(f->response.rows_affected, ==, 1);
 
 	PREPARE("SELECT data FROM test");

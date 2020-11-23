@@ -152,7 +152,7 @@ TEST(membership, join, setUp, tearDown, 0, NULL)
 	unsigned id = 2;
 	const char *address = "@2";
 	unsigned stmt_id;
-	unsigned last_insert_id;
+	unsigned lastInsertId;
 	unsigned rows_affected;
 
 	HANDSHAKE;
@@ -160,9 +160,9 @@ TEST(membership, join, setUp, tearDown, 0, NULL)
 	ASSIGN(id, 1 /* voter */);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	EXEC(stmt_id, &lastInsertId, &rows_affected);
 	PREPARE("INSERT INTO test(n) VALUES(1)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	EXEC(stmt_id, &lastInsertId, &rows_affected);
 
 	/* The table is visible from the new node */
 	SELECT(2);

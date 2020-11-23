@@ -100,11 +100,11 @@ TEST(client, exec, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	unsigned stmt_id;
-	unsigned last_insert_id;
+	unsigned lastInsertId;
 	unsigned rows_affected;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	EXEC(stmt_id, &lastInsertId, &rows_affected);
 	return MUNIT_OK;
 }
 
@@ -112,24 +112,24 @@ TEST(client, query, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	unsigned stmt_id;
-	unsigned last_insert_id;
+	unsigned lastInsertId;
 	unsigned rows_affected;
 	unsigned i;
 	struct rows rows;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	EXEC(stmt_id, &lastInsertId, &rows_affected);
 
 	PREPARE("BEGIN", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	EXEC(stmt_id, &lastInsertId, &rows_affected);
 
 	PREPARE("INSERT INTO test (n) VALUES(123)", &stmt_id);
 	for (i = 0; i < 256; i++) {
-		EXEC(stmt_id, &last_insert_id, &rows_affected);
+		EXEC(stmt_id, &lastInsertId, &rows_affected);
 	}
 
 	PREPARE("COMMIT", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	EXEC(stmt_id, &lastInsertId, &rows_affected);
 
 	PREPARE("SELECT n FROM test", &stmt_id);
 	QUERY(stmt_id, &rows);

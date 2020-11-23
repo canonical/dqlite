@@ -210,7 +210,7 @@ TEST_CASE(exec, single_query, NULL)
 
 	test_client_exec(client, dbId, stmt_id, &result);
 
-	munit_assert_int(result.last_insert_id, ==, 1);
+	munit_assert_int(result.lastInsertId, ==, 1);
 	munit_assert_int(result.rows_affected, ==, 1);
 
 	test_client_finalize(client, dbId, stmt_id);

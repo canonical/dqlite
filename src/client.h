@@ -58,8 +58,8 @@ int clientSendExecSQL(struct client *c, const char *sql);
 
 /* Receive the response to an exec request. */
 int clientRecvResult(struct client *c,
-			unsigned *last_insert_id,
-			unsigned *rows_affected);
+		     unsigned *lastInsertId,
+		     unsigned *rows_affected);
 
 /* Send a request to perform a query. */
 int clientSendQuery(struct client *c, unsigned stmt_id);
