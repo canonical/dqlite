@@ -1656,10 +1656,10 @@ static void vfsShmUnmap(struct vfsShm *s)
 	}
 }
 
-static int vfsFileShmUnmap(sqlite3_file *file, int delete_flag)
+static int vfsFileShmUnmap(sqlite3_file *file, int deleteFlag)
 {
 	struct vfsFile *f = (struct vfsFile *)file;
-	(void)delete_flag;
+	(void)deleteFlag;
 	vfsShmUnmap(&f->database->shm);
 	return SQLITE_OK;
 }
