@@ -16,7 +16,7 @@ struct registry
 };
 
 void registry__init(struct registry *r, struct config *config);
-void registry__close(struct registry *r);
+void registry_close(struct registry *r);
 
 /**
  * Get the db with the given filename. If no one is registered, create one.
