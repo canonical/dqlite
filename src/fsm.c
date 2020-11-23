@@ -253,7 +253,7 @@ SERIALIZE_IMPLEMENT(snapshotHeader, SNAPSHOT_HEADER);
 #define SNAPSHOT_DATABASE(X, ...)          \
 	X(text, filename, ##__VA_ARGS__)   \
 	X(uint64, mainSize, ##__VA_ARGS__) \
-	X(uint64, wal_size, ##__VA_ARGS__)
+	X(uint64, walSize, ##__VA_ARGS__)
 SERIALIZE_DEFINE(snapshotDatabase, SNAPSHOT_DATABASE);
 SERIALIZE_IMPLEMENT(snapshotDatabase, SNAPSHOT_DATABASE);
 
@@ -300,7 +300,7 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 	databaseSize += (uint32_t)(page[31]);
 
 	header.mainSize = databaseSize * db->config->page_size;
-	header.wal_size = bufs[1].len - header.mainSize;
+	header.walSize = bufs[1].len - header.mainSize;
 
 	/* Database header. */
 	bufs[0].len = snapshotDatabase__sizeof(&header);
@@ -356,7 +356,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 		db->follower = NULL;
 	}
 
-	n = header.mainSize + header.wal_size;
+	n = header.mainSize + header.walSize;
 	rv = VfsRestore(vfs, db->filename, cursor->p, n);
 	if (rv != 0) {
 		return rv;
