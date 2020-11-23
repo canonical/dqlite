@@ -14,9 +14,9 @@
  * Initialize the given SQLite replication interface with dqlite's raft based
  * implementation.
  */
-int fsm__init(struct raft_fsm *fsm,
-	      struct config *config,
-	      struct registry *registry);
+int fsm_init(struct raft_fsm *fsm,
+	     struct config *config,
+	     struct registry *registry);
 
 void fsmClose(struct raft_fsm *fsm);
 

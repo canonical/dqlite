@@ -48,7 +48,7 @@ int dqliteInit(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto errAfterRaftTransportInit;
 	}
-	rv = fsm__init(&d->raft_fsm, &d->config, &d->registry);
+	rv = fsm_init(&d->raft_fsm, &d->config, &d->registry);
 	if (rv != 0) {
 		goto errAfterRaftIoInit;
 	}
