@@ -180,7 +180,7 @@ static uint32_t __wal_idx_mxFrame(sqlite3 *db)
 
 /* Helper get the read mark array of the WAL index object associated with the
  * given database. */
-static uint32_t *__wal_idx_read_marks(sqlite3 *db)
+static uint32_t *__wal_idx_readMarks(sqlite3 *db)
 {
 	sqlite3_file *file;
 	volatile void *region;
@@ -1352,7 +1352,7 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
-	uint32_t *read_marks;
+	uint32_t *readMarks;
 	int i;
 
 	(void)data;
@@ -1367,13 +1367,13 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 
 	munit_assert_int(__wal_idx_mxFrame(db1), ==, 2);
 
-	read_marks = __wal_idx_read_marks(db1);
-	munit_assert_uint32(read_marks[0], ==, 0);
-	munit_assert_uint32(read_marks[1], ==, 0);
-	munit_assert_uint32(read_marks[2], ==, 0xffffffff);
-	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
-	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
-	free(read_marks);
+	readMarks = __wal_idx_readMarks(db1);
+	munit_assert_uint32(readMarks[0], ==, 0);
+	munit_assert_uint32(readMarks[1], ==, 0);
+	munit_assert_uint32(readMarks[2], ==, 0xffffffff);
+	munit_assert_uint32(readMarks[3], ==, 0xffffffff);
+	munit_assert_uint32(readMarks[4], ==, 0xffffffff);
+	free(readMarks);
 
 	/* Start a read transaction on db2 */
 	__db_exec(db2, "BEGIN");
@@ -1383,13 +1383,13 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	munit_assert_int(__wal_idx_mxFrame(db2), ==, 2);
 
 	/* The starting mx frame value has been saved in the read marks */
-	read_marks = __wal_idx_read_marks(db2);
-	munit_assert_uint32(read_marks[0], ==, 0);
-	munit_assert_uint32(read_marks[1], ==, 2);
-	munit_assert_uint32(read_marks[2], ==, 0xffffffff);
-	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
-	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
-	free(read_marks);
+	readMarks = __wal_idx_readMarks(db2);
+	munit_assert_uint32(readMarks[0], ==, 0);
+	munit_assert_uint32(readMarks[1], ==, 2);
+	munit_assert_uint32(readMarks[2], ==, 0xffffffff);
+	munit_assert_uint32(readMarks[3], ==, 0xffffffff);
+	munit_assert_uint32(readMarks[4], ==, 0xffffffff);
+	free(readMarks);
 
 	/* A shared lock is held on the second read mark (read locks start at
 	 * 3). */
@@ -1406,13 +1406,13 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	munit_assert_int(__wal_idx_mxFrame(db1), ==, 2);
 
 	/* No extra read mark wal taken. */
-	read_marks = __wal_idx_read_marks(db1);
-	munit_assert_uint32(read_marks[0], ==, 0);
-	munit_assert_uint32(read_marks[1], ==, 2);
-	munit_assert_uint32(read_marks[2], ==, 0xffffffff);
-	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
-	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
-	free(read_marks);
+	readMarks = __wal_idx_readMarks(db1);
+	munit_assert_uint32(readMarks[0], ==, 0);
+	munit_assert_uint32(readMarks[1], ==, 2);
+	munit_assert_uint32(readMarks[2], ==, 0xffffffff);
+	munit_assert_uint32(readMarks[3], ==, 0xffffffff);
+	munit_assert_uint32(readMarks[4], ==, 0xffffffff);
+	free(readMarks);
 
 	__db_exec(db1, "COMMIT");
 
@@ -1430,13 +1430,13 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	munit_assert_int(__wal_idx_mxFrame(db1), ==, 6);
 
 	/* A new read mark was taken. */
-	read_marks = __wal_idx_read_marks(db1);
-	munit_assert_uint32(read_marks[0], ==, 0);
-	munit_assert_uint32(read_marks[1], ==, 2);
-	munit_assert_uint32(read_marks[2], ==, 6);
-	munit_assert_uint32(read_marks[3], ==, 0xffffffff);
-	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
-	free(read_marks);
+	readMarks = __wal_idx_readMarks(db1);
+	munit_assert_uint32(readMarks[0], ==, 0);
+	munit_assert_uint32(readMarks[1], ==, 2);
+	munit_assert_uint32(readMarks[2], ==, 6);
+	munit_assert_uint32(readMarks[3], ==, 0xffffffff);
+	munit_assert_uint32(readMarks[4], ==, 0xffffffff);
+	free(readMarks);
 
 	/* The old read lock is still in place. */
 	munit_assert_true(__shm_shared_lock_held(db2, 3 + 1));
@@ -1458,7 +1458,7 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 	sqlite3_file *file1; /* main DB file */
 	sqlite3_file *file2; /* WAL file */
 	sqlite_int64 size;
-	uint32_t *read_marks;
+	uint32_t *readMarks;
 	unsigned mxFrame;
 	char stmt[128];
 	int log, ckpt;
@@ -1506,9 +1506,9 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 	__db_exec(db2, "BEGIN");
 	__db_exec(db2, "SELECT * FROM test");
 
-	read_marks = __wal_idx_read_marks(db1);
-	munit_assert_int(read_marks[1], ==, 13);
-	free(read_marks);
+	readMarks = __wal_idx_readMarks(db1);
+	munit_assert_int(readMarks[1], ==, 13);
+	free(readMarks);
 
 	rv = file1->pMethods->xShmLock(file1, 3 + 1, 1,
 				       SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);
