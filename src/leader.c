@@ -265,7 +265,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 			case RAFT_SHUTDOWN:
 				/* If we got here it means we have manually
 				 * fired the apply callback from
-				 * gateway_close(). In this case we don't
+				 * gatewayClose(). In this case we don't
 				 * free() the apply object, since it will be
 				 * freed when the callback is fired again by
 				 * raft.

@@ -44,7 +44,7 @@ void gateway__init(struct gateway *g,
 		   struct registry *registry,
 		   struct raft *raft);
 
-void gateway_close(struct gateway *g);
+void gatewayClose(struct gateway *g);
 
 /**
  * Asynchronous request to handle a client command.

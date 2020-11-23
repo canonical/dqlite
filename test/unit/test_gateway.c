@@ -67,7 +67,7 @@ struct connection
 	unsigned i;                                        \
 	for (i = 0; i < N_SERVERS; i++) {                  \
 		struct connection *c = &f->connections[i]; \
-		gateway_close(&c->gateway);                \
+		gatewayClose(&c->gateway);                 \
 		bufferClose(&c->buf1);                     \
 		bufferClose(&c->buf2);                     \
 	}                                                  \

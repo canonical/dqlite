@@ -26,7 +26,7 @@ void gateway__init(struct gateway *g,
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 }
 
-void gateway_close(struct gateway *g)
+void gatewayClose(struct gateway *g)
 {
 	stmt__registry_close(&g->stmts);
 	if (g->leader != NULL) {
