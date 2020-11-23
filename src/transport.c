@@ -54,7 +54,7 @@ static int impl_listen(struct raft_uv_transport *transport,
 	return 0;
 }
 
-static void connect_work_cb(uv_work_t *work)
+static void connectWorkCb(uv_work_t *work)
 {
 	struct connect *r = work->data;
 	struct impl *i = r->impl;
@@ -173,8 +173,8 @@ static int impl_connect(struct raft_uv_transport *transport,
 
 	req->cb = cb;
 
-	rv = uv_queue_work(i->loop, &r->work, connect_work_cb,
-			   connectAfterWorkCb);
+	rv =
+	    uv_queue_work(i->loop, &r->work, connectWorkCb, connectAfterWorkCb);
 	if (rv != 0) {
 		rv = RAFT_NOCONNECTION;
 		goto err_after_connect_alloc;
