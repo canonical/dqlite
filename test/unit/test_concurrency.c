@@ -93,7 +93,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 	{                                                       \
 		size_t n2 = request_##LOWER##__sizeof(REQUEST); \
 		void *cursor;                                   \
-		buffer__reset(&C->request);                     \
+		buffer_reset(&C->request);                      \
 		cursor = bufferAdvance(&C->request, n2);        \
 		munit_assert_ptr_not_null(cursor);              \
 		request_##LOWER##__encode(REQUEST, &cursor);    \
@@ -119,7 +119,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		int rc2;                                                \
 		cursor.p = bufferCursor(&C->request, 0);                \
 		cursor.cap = bufferOffset(&C->request);                 \
-		buffer__reset(&C->response);                            \
+		buffer_reset(&C->response);                             \
 		rc2 = gateway__handle(&C->gateway, &C->handle,          \
 				      DQLITE_REQUEST_##TYPE, &cursor,   \
 				      &C->response, fixture_handle_cb); \

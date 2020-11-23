@@ -53,6 +53,6 @@ void *bufferCursor(struct buffer *b, size_t offset);
 /**
  * Reset the write offset of the buffer.
  */
-void buffer__reset(struct buffer *b);
+void buffer_reset(struct buffer *b);
 
 #endif /* LIB_BUFFER_H_ */

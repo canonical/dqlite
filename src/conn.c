@@ -7,7 +7,7 @@
 /* Initialize the given buffer for reading, ensure it has the given size. */
 static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
 {
-	buffer__reset(&c->read);
+	buffer_reset(&c->read);
 	buf->base = bufferAdvance(&c->read, size);
 	if (buf->base == NULL) {
 		return DQLITE_NOMEM;
@@ -26,7 +26,7 @@ static void write_cb(struct transport *transport, int status)
 		goto abort;
 	}
 
-	buffer__reset(&c->write);
+	buffer_reset(&c->write);
 	bufferAdvance(&c->write, message__sizeof(&c->response)); /* Header */
 
 	rv = gateway__resume(&c->gateway, &finished);
@@ -130,7 +130,7 @@ static void read_request_cb(struct transport *transport, int status)
 	cursor.p = bufferCursor(&c->read, 0);
 	cursor.cap = bufferOffset(&c->read);
 
-	buffer__reset(&c->write);
+	buffer_reset(&c->write);
 	bufferAdvance(&c->write, message__sizeof(&c->response)); /* Header */
 
 	switch (c->request.type) {
