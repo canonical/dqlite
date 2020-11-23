@@ -16,7 +16,7 @@
 /**
  * The size in bytes of a single serialized word.
  */
-#define SERIALIZE__WORD_SIZE 8
+#define SERIALIZE_WORD_SIZE 8
 
 /* We rely on the size of double to be 64 bit, since that's what is sent over
  * the wire.
