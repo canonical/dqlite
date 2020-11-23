@@ -14,16 +14,16 @@
 
 /* Fallback message returned when failing to allocate the error message
  * itself. */
-static char *dqlite_error_oom_msg = "error message unavailable (out of memory)";
+static char *dqliteError_oom_msg = "error message unavailable (out of memory)";
 
-void dqlite_error_init(dqlite_error *e)
+void dqliteError_init(dqliteError *e)
 {
 	*e = NULL;
 }
 
-void dqlite_error_close(dqlite_error *e)
+void dqliteError_close(dqliteError *e)
 {
-	if (*e != NULL && *e != dqlite_error_oom_msg) {
+	if (*e != NULL && *e != dqliteError_oom_msg) {
 		sqlite3_free(*e);
 	}
 }
@@ -32,13 +32,13 @@ void dqlite_error_close(dqlite_error *e)
  * parameters.
  *
  * Any previously set error message will be cleared. */
-static void dqlite_error_vprintf(dqlite_error *e, const char *fmt, va_list args)
+static void dqliteError_vprintf(dqliteError *e, const char *fmt, va_list args)
 {
 	assert(fmt != NULL);
 
 	/* If a previous error was set (other than the hard-coded OOM fallback
 	 * fallback), let's free it. */
-	if (*e != NULL && *e != dqlite_error_oom_msg) {
+	if (*e != NULL && *e != dqliteError_oom_msg) {
 		sqlite3_free(*e);
 	}
 
@@ -46,80 +46,80 @@ static void dqlite_error_vprintf(dqlite_error *e, const char *fmt, va_list args)
 	 * OOM fallback message. */
 	*e = sqlite3_vmprintf(fmt, args);
 	if (*e == NULL) {
-		*e = dqlite_error_oom_msg;
+		*e = dqliteError_oom_msg;
 	}
 }
 
-void dqlite_error_printf(dqlite_error *e, const char *fmt, ...)
+void dqliteError_printf(dqliteError *e, const char *fmt, ...)
 {
 	va_list args;
 
 	va_start(args, fmt);
-	dqlite_error_vprintf(e, fmt, args);
+	dqliteError_vprintf(e, fmt, args);
 	va_end(args);
 }
 
-static void dqlite_error_vwrapf(dqlite_error *e,
-				const char *cause,
-				const char *fmt,
-				va_list args)
+static void dqliteError_vwrapf(dqliteError *e,
+			       const char *cause,
+			       const char *fmt,
+			       va_list args)
 {
-	dqlite_error tmp;
+	dqliteError tmp;
 	char *        msg;
 
 	/* First, print the format and arguments, using a temporary error. */
-	dqlite_error_init(&tmp);
+	dqliteError_init(&tmp);
 
-	dqlite_error_vprintf(&tmp, fmt, args);
+	dqliteError_vprintf(&tmp, fmt, args);
 
 	if (cause == NULL) {
 		/* Special case the cause error being empty. */
-		dqlite_error_printf(e, "%s: (null)", tmp);
+		dqliteError_printf(e, "%s: (null)", tmp);
 	} else if (cause == *e) {
 		/* When the error is wrapping itself, we need to make a copy */
-		dqlite_error_copy(e, &msg);
-		dqlite_error_printf(e, "%s: %s", tmp, msg);
+		dqliteError_copy(e, &msg);
+		dqliteError_printf(e, "%s: %s", tmp, msg);
 		sqlite3_free(msg);
 	} else {
-		dqlite_error_printf(e, "%s: %s", tmp, cause);
+		dqliteError_printf(e, "%s: %s", tmp, cause);
 	}
 
-	dqlite_error_close(&tmp);
+	dqliteError_close(&tmp);
 }
 
-void dqlite_error_wrapf(dqlite_error *e,
-			const dqlite_error *cause,
-			const char *fmt,
-			...)
+void dqliteError_wrapf(dqliteError *e,
+		       const dqliteError *cause,
+		       const char *fmt,
+		       ...)
 {
 	va_list args;
 
 	va_start(args, fmt);
-	dqlite_error_vwrapf(e, (const char *)(*cause), fmt, args);
+	dqliteError_vwrapf(e, (const char *)(*cause), fmt, args);
 	va_end(args);
 }
 
-void dqlite_error_oom(dqlite_error *e, const char *msg, ...)
+void dqliteError_oom(dqliteError *e, const char *msg, ...)
 {
 	va_list args;
 
 	va_start(args, msg);
-	dqlite_error_vwrapf(e, "out of memory", msg, args);
+	dqliteError_vwrapf(e, "out of memory", msg, args);
 	va_end(args);
 }
 
-void dqlite_error_sys(dqlite_error *e, const char *msg)
+void dqliteError_sys(dqliteError *e, const char *msg)
 {
-	dqlite_error_printf(e, "%s: %s", msg, strerror(errno));
+	dqliteError_printf(e, "%s: %s", msg, strerror(errno));
 }
 
-void dqlite_error_uv(dqlite_error *e, int err, const char *msg)
+void dqliteError_uv(dqliteError *e, int err, const char *msg)
 {
-	dqlite_error_printf(e, "%s: %s (%s)", msg, uv_strerror(err),
-			    uv_err_name(err));
+	dqliteError_printf(e, "%s: %s (%s)", msg, uv_strerror(err),
+			   uv_err_name(err));
 }
 
-int dqlite_error_copy(dqlite_error *e, char **msg)
+int dqliteError_copy(dqliteError *e, char **msg)
 {
 	char * copy;
 	size_t len;
@@ -148,12 +148,12 @@ int dqlite_error_copy(dqlite_error *e, char **msg)
 	return 0;
 }
 
-int dqlite_error_is_null(dqlite_error *e)
+int dqliteError_is_null(dqliteError *e)
 {
 	return *e == NULL;
 }
 
-int dqlite_error_is_disconnect(dqlite_error *e)
+int dqliteError_is_disconnect(dqliteError *e)
 {
 	if (*e == NULL)
 		return 0;
