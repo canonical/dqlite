@@ -243,7 +243,8 @@ static void fill_result(struct gateway *g, struct response_result *response)
 	response->rows_affected = (uint64_t)sqlite3_changes(g->leader->conn);
 }
 
-static const char *error_message(sqlite3 *db, int rc) {
+static const char *errorMessage(sqlite3 *db, int rc)
+{
 	switch (rc) {
 	case SQLITE_IOERR_LEADERSHIP_LOST:
 		return "disk I/O error";
@@ -270,7 +271,7 @@ static void leader_exec_cb(struct exec *exec, int status)
 		fill_result(g, &response);
 		SUCCESS(result, RESULT);
 	} else {
-		failure(req, status, error_message(g->leader->conn, status));
+		failure(req, status, errorMessage(g->leader->conn, status));
 		sqlite3_reset(stmt);
 	}
 }
@@ -411,7 +412,7 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 	if (status == SQLITE_DONE) {
 		handle_exec_sql_next(req, NULL);
 	} else {
-		failure(req, status, error_message(g->leader->conn, status));
+		failure(req, status, errorMessage(g->leader->conn, status));
 		sqlite3_reset(g->stmt);
 		sqlite3_finalize(g->stmt);
 		g->req = NULL;
