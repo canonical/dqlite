@@ -42,7 +42,7 @@ static void createPages(unsigned n, unsigned size, struct pages *pages)
 	}
 }
 
-static void destroy_pages(struct pages *pages)
+static void destroyPages(struct pages *pages)
 {
 	unsigned i;
 	for (i = 0; i < pages->n; i++) {
@@ -282,7 +282,7 @@ TEST_CASE(encode, custom, NULL)
 	munit_assert_string_equal(cursor, "Cosette");
 
 	free(buf);
-	destroy_pages(&f->book.pages);
+	destroyPages(&f->book.pages);
 
 	return MUNIT_OK;
 }
