@@ -116,7 +116,7 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 	return 0;
 }
 
-void leader__close(struct leader *l)
+void leader_close(struct leader *l)
 {
 	int rc;
 	/* TODO: there shouldn't be any ongoing exec request. */

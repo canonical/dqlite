@@ -45,7 +45,7 @@ struct leader
 	struct exec *exec;       /* Exec request in progress, if any. */
 	struct raft_apply apply; /* To apply checkpoint commands */
 	queue queue;             /* Prev/next leader, used by struct db. */
-	struct apply *inflight;  /* TODO: make leader__close async */
+	struct apply *inflight;  /* TODO: make leader_close async */
 };
 
 struct barrier
@@ -80,7 +80,7 @@ struct exec
  */
 int leader__init(struct leader *l, struct db *db, struct raft *raft);
 
-void leader__close(struct leader *l);
+void leader_close(struct leader *l);
 
 /**
  * Submit a request to step a SQLite statement.

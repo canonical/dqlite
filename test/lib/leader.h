@@ -18,6 +18,6 @@
 		rv = leader__init(&f->leader, db, &f->raft);         \
 		munit_assert_int(rv, ==, 0);                         \
 	}
-#define TEAR_DOWN_LEADER leader__close(&f->leader)
+#define TEAR_DOWN_LEADER leader_close(&f->leader)
 
 #endif /* TEST_LEADER_H */

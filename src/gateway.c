@@ -36,7 +36,7 @@ void gatewayClose(struct gateway *g)
 			assert(g->req == NULL);
 			assert(g->stmt == NULL);
 		}
-		leader__close(g->leader);
+		leader_close(g->leader);
 		sqlite3_free(g->leader);
 	}
 }
