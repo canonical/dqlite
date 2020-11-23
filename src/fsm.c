@@ -94,7 +94,7 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 		return rv;
 	}
 
-	command_frames_pages(c, &pages);
+	commandFramesPages(c, &pages);
 
 	/* If the commit marker is set, we apply the changes directly to the
 	 * VFS. Otherwise, if the commit marker is not set, this must be an

@@ -23,7 +23,7 @@ struct frames
 	 * expected to be a sqlite3_wal_replication_frame* array, and when
 	 * decoding it will be a pointer to raw memory which can be further
 	 * decoded with the commandFramesPageNumbers() and
-	 * command_frames_pages() helpers. */
+	 * commandFramesPages() helpers. */
 	const void *data;
 };
 
@@ -60,6 +60,6 @@ int commandDecode(const struct raft_buffer *buf, int *type, void **command);
 int commandFramesPageNumbers(const struct command_frames *c,
 			     unsigned long *page_numbers[]);
 
-void command_frames_pages(const struct command_frames *c, void **pages);
+void commandFramesPages(const struct command_frames *c, void **pages);
 
 #endif /* COMMAND_H_*/
