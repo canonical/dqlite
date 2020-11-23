@@ -31,7 +31,7 @@ struct pages
 	void **bufs; /* Array of page buffers */
 };
 
-static void create_pages(unsigned n, unsigned size, struct pages *pages)
+static void createPages(unsigned n, unsigned size, struct pages *pages)
 {
 	unsigned i;
 	pages->n = n;
@@ -239,7 +239,7 @@ TEST_CASE(encode, custom, NULL)
 	f->book.title = "Les miserables";
 	f->book.author.name = "Victor Hugo";
 	f->book.author.age = 40;
-	create_pages(2, 8, &f->book.pages);
+	createPages(2, 8, &f->book.pages);
 	strcpy(f->book.pages.bufs[0], "Fantine");
 	strcpy(f->book.pages.bufs[1], "Cosette");
 
