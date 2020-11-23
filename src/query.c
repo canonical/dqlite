@@ -5,7 +5,7 @@
 /* Return the type code of the i'th column value.
  *
  * TODO: find a better way to handle time types. */
-static int value_type(sqlite3_stmt *stmt, int i)
+static int valueType(sqlite3_stmt *stmt, int i)
 {
 	int type = sqlite3_column_type(stmt, i);
 	const char *columnTypeName = sqlite3_column_decltype(stmt, i);
@@ -46,7 +46,7 @@ static int encodeRow(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 	for (i = 0; i < n; i++) {
 		/* Figure the type */
 		struct value value;
-		value.type = value_type(stmt, i);
+		value.type = valueType(stmt, i);
 		switch (value.type) {
 			case SQLITE_INTEGER:
 				value.integer =
