@@ -62,7 +62,7 @@ static int mem_fault_size(void *p)
 	return memFault.m.xSize(p);
 }
 
-static int mem_fault_roundup(int n)
+static int memFaultRoundup(int n)
 {
 	return memFault.m.xRoundup(n);
 }
@@ -90,7 +90,7 @@ static void mem_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
 	wrap->xFree = memFaultFree;
 	wrap->xRealloc = memFaultRealloc;
 	wrap->xSize = mem_fault_size;
-	wrap->xRoundup = mem_fault_roundup;
+	wrap->xRoundup = memFaultRoundup;
 	wrap->xInit = memFaultInit;
 	wrap->xShutdown = mem_fault_shutdown;
 
