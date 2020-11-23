@@ -168,7 +168,7 @@ DQLITE_INLINE void uint8__encode(const uint8_t *value, void **cursor)
 
 DQLITE_INLINE void uint16__encode(const uint16_t *value, void **cursor)
 {
-	*(uint16_t *)(*cursor) = byte_flip16(*value);
+	*(uint16_t *)(*cursor) = byteFlip16(*value);
 	*cursor += sizeof(uint16_t);
 }
 
@@ -231,7 +231,7 @@ DQLITE_INLINE int uint16__decode(struct cursor *cursor, uint16_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = byte_flip16(*(uint16_t *)cursor->p);
+	*value = byteFlip16(*(uint16_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
