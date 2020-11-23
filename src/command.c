@@ -135,8 +135,8 @@ int commandDecode(const struct raft_buffer *buf, int *type, void **command)
 	return 0;
 }
 
-int command_frames_page_numbers(const struct command_frames *c,
-				unsigned long *page_numbers[])
+int commandFramesPageNumbers(const struct command_frames *c,
+			     unsigned long *page_numbers[])
 {
 	unsigned i;
 	struct cursor cursor;
