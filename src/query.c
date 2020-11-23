@@ -31,7 +31,7 @@ static int value_type(sqlite3_stmt *stmt, int i)
 }
 
 /* Append a single row to the message. */
-static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
+static int encodeRow(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 {
 	struct tuple_encoder encoder;
 	int rc;
@@ -137,7 +137,7 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer) {
 		if (rc != SQLITE_ROW) {
 			break;
 		}
-		rc = encode_row(stmt, buffer, n);
+		rc = encodeRow(stmt, buffer, n);
 		if (rc != SQLITE_OK) {
 			break;
 		}
