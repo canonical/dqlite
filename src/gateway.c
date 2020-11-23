@@ -754,7 +754,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	uint32_t databaseSize = 0;
 	uint8_t *database;
 	uint8_t *wal;
-	size_t n_database;
+	size_t nDatabase;
 	size_t n_wal;
 	int rv;
 	START(dump, files);
@@ -779,22 +779,22 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 		databaseSize += (uint32_t)(page[30] << 8);
 		databaseSize += (uint32_t)(page[31]);
 
-		n_database = databaseSize * g->config->page_size;
-		n_wal = n - n_database;
+		nDatabase = databaseSize * g->config->page_size;
+		n_wal = n - nDatabase;
 
 		database = data;
-		wal = database + n_database;
+		wal = database + nDatabase;
 	} else {
 		assert(n == 0);
 
-		n_database = 0;
+		nDatabase = 0;
 		n_wal = 0;
 
 		database = NULL;
 		wal = NULL;
 	}
 
-	rv = dumpFile(request.filename, database, n_database, req->buffer);
+	rv = dumpFile(request.filename, database, nDatabase, req->buffer);
 	if (rv != 0) {
 		failure(req, rv, "failed to dump database");
 		return 0;

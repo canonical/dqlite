@@ -643,7 +643,7 @@ struct vfsFile
 struct vfs
 {
 	struct vfsDatabase **databases; /* Database objects */
-	unsigned n_databases;           /* Number of databases */
+	unsigned nDatabases;            /* Number of databases */
 	int error;                      /* Last error occurred. */
 };
 
@@ -658,7 +658,7 @@ static struct vfs *vfsCreate(void)
 	}
 
 	v->databases = NULL;
-	v->n_databases = 0;
+	v->nDatabases = 0;
 
 	return v;
 }
@@ -674,7 +674,7 @@ static void vfsDestroy(struct vfs *r)
 
 	assert(r != NULL);
 
-	for (i = 0; i < r->n_databases; i++) {
+	for (i = 0; i < r->nDatabases; i++) {
 		struct vfsDatabase *database = r->databases[i];
 		vfsDatabaseDestroy(database);
 	}
@@ -711,7 +711,7 @@ static struct vfsDatabase *vfsDatabaseLookup(struct vfs *v,
 		n -= strlen("-journal");
 	}
 
-	for (i = 0; i < v->n_databases; i++) {
+	for (i = 0; i < v->nDatabases; i++) {
 		struct vfsDatabase *database = v->databases[i];
 		if (strncmp(database->name, filename, n) == 0) {
 			// Found matching file.
@@ -726,7 +726,7 @@ static int vfsDeleteDatabase(struct vfs *r, const char *name)
 {
 	unsigned i;
 
-	for (i = 0; i < r->n_databases; i++) {
+	for (i = 0; i < r->nDatabases; i++) {
 		struct vfsDatabase *database = r->databases[i];
 		unsigned j;
 
@@ -738,10 +738,10 @@ static int vfsDeleteDatabase(struct vfs *r, const char *name)
 		vfsDatabaseDestroy(database);
 
 		/* Shift all other contents objects. */
-		for (j = i + 1; j < r->n_databases; j++) {
+		for (j = i + 1; j < r->nDatabases; j++) {
 			r->databases[j - 1] = r->databases[j];
 		}
-		r->n_databases--;
+		r->nDatabases--;
 
 		return SQLITE_OK;
 	}
@@ -1688,7 +1688,7 @@ static const sqlite3_io_methods vfsFileMethods = {
 /* Create a database object and add it to the databases array. */
 static struct vfsDatabase *vfsCreateDatabase(struct vfs *v, const char *name)
 {
-	unsigned n = v->n_databases + 1;
+	unsigned n = v->nDatabases + 1;
 	struct vfsDatabase **databases;
 	struct vfsDatabase *d;
 
@@ -1715,7 +1715,7 @@ static struct vfsDatabase *vfsCreateDatabase(struct vfs *v, const char *name)
 	vfsDatabaseInit(d);
 
 	v->databases[n - 1] = d;
-	v->n_databases = n;
+	v->nDatabases = n;
 
 	return d;
 
