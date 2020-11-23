@@ -214,7 +214,7 @@ static struct vfsFrame *vfsFrameCreate(unsigned size)
 		goto oom_after_page_alloc;
 	}
 
-	memset(f->header, 0, FORMAT__WAL_FRAME_HDR_SIZE);
+	memset(f->header, 0, FORMAT_WAL_FRAME_HDR_SIZE);
 	memset(f->page, 0, (size_t)size);
 
 	return f;
@@ -853,29 +853,29 @@ static int vfsWalRead(struct vfsWal *w,
 
 	/* For any other frame, we expect either a header read,
 	 * a checksum read, a page read or a full frame read. */
-	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
+	if (amount == FORMAT_WAL_FRAME_HDR_SIZE) {
 		assert(((offset - VFS__WAL_HEADER_SIZE) %
-			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+			(page_size + FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 	} else if (amount == sizeof(uint32_t) * 2) {
-		if (offset == FORMAT__WAL_FRAME_HDR_SIZE) {
+		if (offset == FORMAT_WAL_FRAME_HDR_SIZE) {
 			/* Read the checksum from the WAL
 			 * header. */
 			memcpy(buf, w->hdr + offset, (size_t)amount);
 			return SQLITE_OK;
 		}
 		assert(((offset - 16 - VFS__WAL_HEADER_SIZE) %
-			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+			(page_size + FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 		index = ((unsigned)offset - 16 - VFS__WAL_HEADER_SIZE) /
-			    (page_size + FORMAT__WAL_FRAME_HDR_SIZE) +
+			    (page_size + FORMAT_WAL_FRAME_HDR_SIZE) +
 			1;
 	} else if (amount == (int)page_size) {
 		assert(((offset - VFS__WAL_HEADER_SIZE -
-			 FORMAT__WAL_FRAME_HDR_SIZE) %
-			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+			 FORMAT_WAL_FRAME_HDR_SIZE) %
+			(page_size + FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 	} else {
-		assert(amount == (FORMAT__WAL_FRAME_HDR_SIZE + (int)page_size));
+		assert(amount == (FORMAT_WAL_FRAME_HDR_SIZE + (int)page_size));
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 	}
 
@@ -888,16 +888,15 @@ static int vfsWalRead(struct vfsWal *w,
 
 	frame = vfsWalFrameLookup(w, index);
 
-	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
+	if (amount == FORMAT_WAL_FRAME_HDR_SIZE) {
 		memcpy(buf, frame->header, (size_t)amount);
 	} else if (amount == sizeof(uint32_t) * 2) {
 		memcpy(buf, frame->header + 16, (size_t)amount);
 	} else if (amount == (int)page_size) {
 		memcpy(buf, frame->page, (size_t)amount);
 	} else {
-		memcpy(buf, frame->header, FORMAT__WAL_FRAME_HDR_SIZE);
-		memcpy(buf + FORMAT__WAL_FRAME_HDR_SIZE, frame->page,
-		       page_size);
+		memcpy(buf, frame->header, FORMAT_WAL_FRAME_HDR_SIZE);
+		memcpy(buf + FORMAT_WAL_FRAME_HDR_SIZE, frame->page, page_size);
 	}
 
 	return SQLITE_OK;
@@ -1023,10 +1022,10 @@ static int vfsWalWrite(struct vfsWal *w,
 
 	/* This is a WAL frame write. We expect either a frame
 	 * header or page write. */
-	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
+	if (amount == FORMAT_WAL_FRAME_HDR_SIZE) {
 		/* Frame header write. */
 		assert(((offset - VFS__WAL_HEADER_SIZE) %
-			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+			(page_size + FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 
@@ -1039,8 +1038,8 @@ static int vfsWalWrite(struct vfsWal *w,
 		/* Frame page write. */
 		assert(amount == (int)page_size);
 		assert(((offset - VFS__WAL_HEADER_SIZE -
-			 FORMAT__WAL_FRAME_HDR_SIZE) %
-			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+			 FORMAT_WAL_FRAME_HDR_SIZE) %
+			(page_size + FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 
@@ -1143,7 +1142,7 @@ static size_t vfsWalFileSize(struct vfsWal *w)
 		uint32_t page_size;
 		page_size = vfsWalGetPageSize(w);
 		size += VFS__WAL_HEADER_SIZE;
-		size += w->n_frames * (FORMAT__WAL_FRAME_HDR_SIZE + page_size);
+		size += w->n_frames * (FORMAT_WAL_FRAME_HDR_SIZE + page_size);
 	}
 	return size;
 }
@@ -2417,8 +2416,8 @@ static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
 
 	for (i = 0; i < w->n_frames; i++) {
 		struct vfsFrame *frame = w->frames[i];
-		memcpy(*cursor, frame->header, FORMAT__WAL_FRAME_HDR_SIZE);
-		*cursor += FORMAT__WAL_FRAME_HDR_SIZE;
+		memcpy(*cursor, frame->header, FORMAT_WAL_FRAME_HDR_SIZE);
+		*cursor += FORMAT_WAL_FRAME_HDR_SIZE;
 		memcpy(*cursor, frame->page, page_size);
 		*cursor += page_size;
 	}

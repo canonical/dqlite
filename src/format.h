@@ -19,7 +19,7 @@
 #define FORMAT__WAL_HDR_SIZE 32
 
 /* Write ahead log frame header size. */
-#define FORMAT__WAL_FRAME_HDR_SIZE 24
+#define FORMAT_WAL_FRAME_HDR_SIZE 24
 
 /* Number of reader marks in the wal index header. */
 #define FORMAT__WAL_NREADER 5
@@ -27,7 +27,7 @@
 /* Given the page size, calculate the size of a full WAL frame (frame header
  * plus page data). */
 #define formatWalCalcFrameSize(PAGE_SIZE) \
-	(FORMAT__WAL_FRAME_HDR_SIZE + PAGE_SIZE)
+	(FORMAT_WAL_FRAME_HDR_SIZE + PAGE_SIZE)
 
 /* Given the page size and the WAL file size, calculate the number of frames it
  * has. */
