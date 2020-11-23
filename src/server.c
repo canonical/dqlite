@@ -22,7 +22,7 @@ int dqlite__init(struct dqlite_node *d,
 {
 	int rv;
 	memset(d->errmsg, 0, sizeof d->errmsg);
-	rv = config__init(&d->config, id, address);
+	rv = config_init(&d->config, id, address);
 	if (rv != 0) {
 		goto err;
 	}
