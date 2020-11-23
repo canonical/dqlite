@@ -399,7 +399,7 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 
 	rv = encodeSnapshotHeader(n, &(*bufs)[0]);
 	if (rv != 0) {
-		goto err_after_bufs_alloc;
+		goto errAfterBufsAlloc;
 	}
 
 	/* Encode individual databases. */
@@ -421,7 +421,7 @@ err_after_encode_header:
 		raft_free((*bufs)[i].base);
 		i--;
 	} while (i > 0);
-err_after_bufs_alloc:
+errAfterBufsAlloc:
 	raft_free(*bufs);
 err:
 	assert(rv != 0);
