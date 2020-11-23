@@ -749,7 +749,7 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_other_elected, NULL)
 
 /* The server loses leadership after trying to apply the first Frames command
  * for a non-commit frames batch. The same leader gets re-elected. */
-TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
+TEST_CASE(exec, framesLeadershipLost_1stNonCommitReElected, NULL)
 {
 	struct execFixture *f = data;
 	uint64_t stmt_id;
