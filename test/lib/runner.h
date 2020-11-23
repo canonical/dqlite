@@ -143,7 +143,7 @@ extern int _main_suites_n;
  * static MunitTest _##S##_tests[TEST__CAP]
  *
  * The tests and suites attributes of the next available MunitSuite slot in the
- * #_module_suites array will be set to the suite's tests and suites arrays, and
+ * #ModuleSuites array will be set to the suite's tests and suites arrays, and
  * the prefix attribute of the slot will be set to /S.
  *
  * All tests in the suite will use the same setup and tear down functions.
