@@ -95,7 +95,7 @@ int dqliteInit(struct dqlite_node *d,
 errAfterReadyInit:
 	sem_destroy(&d->ready);
 errAfterRaftFsmInit:
-	fsm_close(&d->raft_fsm);
+	fsmClose(&d->raft_fsm);
 errAfterRaftIoInit:
 	raft_uv_close(&d->raft_io);
 errAfterRaftTransportInit:
@@ -120,7 +120,7 @@ void dqliteClose(struct dqlite_node *d)
 	assert(rv == 0); /* Fails only if sem object is not valid */
 	rv = sem_destroy(&d->ready);
 	assert(rv == 0); /* Fails only if sem object is not valid */
-	fsm_close(&d->raft_fsm);
+	fsmClose(&d->raft_fsm);
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
