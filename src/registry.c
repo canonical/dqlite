@@ -39,7 +39,7 @@ int registry__db_get(struct registry *r, const char *filename, struct db **db)
 	if (*db == NULL) {
 		return DQLITE_NOMEM;
 	}
-	db_init(*db, r->config, filename);
+	dbInit(*db, r->config, filename);
 	QUEUE__PUSH(&r->dbs, &(*db)->queue);
 	return 0;
 }
