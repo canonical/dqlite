@@ -40,7 +40,7 @@ extern int _main_suites_n;
  * the prefix attribute of the slot will be set to /S. */
 #define SUITE(S)          \
 	SUITE__DECLARE(S) \
-	SUITE__ADD_CHILD(main, #S, S)
+	SUITE_ADD_CHILD(main, #S, S)
 
 /* Declare and register a new test. */
 #define TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)                    \
@@ -78,7 +78,7 @@ extern int _main_suites_n;
 /* Set the tests and suites attributes of the next available slot of the
  * MunitSuite[] array of S1 to the MunitTest[] and MunitSuite[] arrays of S2,
  * using the given PREXIX. */
-#define SUITE__ADD_CHILD(S1, PREFIX, S2)                                   \
+#define SUITE_ADD_CHILD(S1, PREFIX, S2)                                    \
 	__attribute__((constructor)) static void _##S1##_##S2##_init(void) \
 	{                                                                  \
 		int n = _##S1##_suites_n;                                  \
@@ -132,7 +132,7 @@ extern int _main_suites_n;
  */
 #define TEST_MODULE(M)               \
 	TEST_SUITE__DECLARE(module); \
-	TEST_SUITE__ADD_CHILD(main, #M, module);
+	TEST_SUITE_ADD_CHILD(main, #M, module);
 
 /**
  * Declare and register a new test suite #S belonging to the file's test module.
@@ -150,7 +150,7 @@ extern int _main_suites_n;
  */
 #define TEST_SUITE(S)           \
 	TEST_SUITE__DECLARE(S); \
-	TEST_SUITE__ADD_CHILD(module, "/" #S, S);
+	TEST_SUITE_ADD_CHILD(module, "/" #S, S);
 
 /**
  * Declare a setup function.
@@ -221,7 +221,7 @@ extern int _main_suites_n;
 /* Set the tests and suites attributes of the next available slot of the
  * MunitSuite[] array of S1 to the MunitTest[] and MunitSuite[] arrays of S2,
  * using the given PREXIX. */
-#define TEST_SUITE__ADD_CHILD(S1, PREFIX, S2)                              \
+#define TEST_SUITE_ADD_CHILD(S1, PREFIX, S2)                               \
 	__attribute__((constructor)) static void _##S1##_##S2##_init(void) \
 	{                                                                  \
 		int n = _##S1##_suites_n;                                  \
