@@ -4,7 +4,7 @@
 #include "assert.h"
 
 /* True if a tuple decoder or decoder is using parameter format. */
-#define HAS_PARAMS_FORMAT(P) (P->format == TUPLE__PARAMS)
+#define HAS_PARAMS_FORMAT(P) (P->format == TUPLE_PARAMS)
 
 /* True if a tuple decoder or decoder is using row format. */
 #define HAS_ROW_FORMAT(P) (P->format == TUPLE__ROW)
@@ -24,9 +24,9 @@ static size_t calcHeaderSize(unsigned n, int format)
 		}
 		size = bytePad64(size);
 	} else {
-		assert(format == TUPLE__PARAMS);
-		 /* Include params count for the purpose of calculating possible
-		  * padding, but then exclude it as we have already read it. */
+		assert(format == TUPLE_PARAMS);
+		/* Include params count for the purpose of calculating possible
+		 * padding, but then exclude it as we have already read it. */
 		size = sizeof(uint8_t) + n * sizeof(uint8_t);
 		size = bytePad64(size);
 		size -= sizeof(uint8_t);
@@ -42,7 +42,7 @@ int tupleDecoder__init(struct tupleDecoder *d,
 	size_t headerSize;
 	int rc;
 
-	d->format = n == 0 ? TUPLE__PARAMS : TUPLE__ROW;
+	d->format = n == 0 ? TUPLE_PARAMS : TUPLE__ROW;
 
 	/* When using row format the number of values is the given one,
 	 * otherwise we have to read it from the header. */

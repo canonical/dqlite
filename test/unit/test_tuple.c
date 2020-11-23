@@ -380,7 +380,7 @@ TEST_CASE(encoder, params, oneValue, NULL)
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
 
-	ENCODER_INIT(1, TUPLE__PARAMS);
+	ENCODER_INIT(1, TUPLE_PARAMS);
 
 	value.type = SQLITE_INTEGER;
 	value.integer = 7;
@@ -401,7 +401,7 @@ TEST_CASE(encoder, params, two_values, NULL)
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
 
-	ENCODER_INIT(2, TUPLE__PARAMS);
+	ENCODER_INIT(2, TUPLE_PARAMS);
 
 	value.type = SQLITE_INTEGER;
 	value.integer = 7;

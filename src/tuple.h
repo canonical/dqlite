@@ -49,7 +49,7 @@
 
 #include "protocol.h"
 
-enum { TUPLE__ROW = 1, TUPLE__PARAMS };
+enum { TUPLE__ROW = 1, TUPLE_PARAMS };
 
 /**
  * Hold a single database value.

@@ -109,17 +109,17 @@ static void handleCb(struct handle *req, int status, int type)
 	}
 
 /* Encode N parameters with the given values */
-#define ENCODE_PARAMS(N, VALUES)                                               \
-	{                                                                      \
-		struct tupleEncoder encoder;                                   \
-		int i2;                                                        \
-		int rc2;                                                       \
-		rc2 = tupleEncoder__init(&encoder, N, TUPLE__PARAMS, f->buf1); \
-		munit_assert_int(rc2, ==, 0);                                  \
-		for (i2 = 0; i2 < N; i2++) {                                   \
-			rc2 = tupleEncoder__next(&encoder, &((VALUES)[i2]));   \
-			munit_assert_int(rc2, ==, 0);                          \
-		}                                                              \
+#define ENCODE_PARAMS(N, VALUES)                                              \
+	{                                                                     \
+		struct tupleEncoder encoder;                                  \
+		int i2;                                                       \
+		int rc2;                                                      \
+		rc2 = tupleEncoder__init(&encoder, N, TUPLE_PARAMS, f->buf1); \
+		munit_assert_int(rc2, ==, 0);                                 \
+		for (i2 = 0; i2 < N; i2++) {                                  \
+			rc2 = tupleEncoder__next(&encoder, &((VALUES)[i2]));  \
+			munit_assert_int(rc2, ==, 0);                         \
+		}                                                             \
 	}
 
 /* Decode a response of the given lower/upper case name using the buffer that
