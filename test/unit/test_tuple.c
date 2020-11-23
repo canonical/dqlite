@@ -299,7 +299,7 @@ TEST_CASE(decoder, type, boolean, NULL)
  *
  ******************************************************************************/
 
-struct encoder_fixture
+struct encoderFixture
 {
 	struct buffer buffer;
 	struct tuple_encoder encoder;
@@ -308,7 +308,7 @@ struct encoder_fixture
 TEST_SUITE(encoder);
 TEST_SETUP(encoder)
 {
-	struct encoder_fixture *f = munit_malloc(sizeof *f);
+	struct encoderFixture *f = munit_malloc(sizeof *f);
 	int rc;
 	(void)params;
 	(void)user_data;
@@ -318,7 +318,7 @@ TEST_SETUP(encoder)
 }
 TEST_TEAR_DOWN(encoder)
 {
-	struct encoder_fixture *f = data;
+	struct encoderFixture *f = data;
 	bufferClose(&f->buffer);
 	free(data);
 }
@@ -328,7 +328,7 @@ TEST_GROUP(encoder, row);
 /* Encode a tuple with row format and only one value. */
 TEST_CASE(encoder, row, one_value, NULL)
 {
-	struct encoder_fixture *f = data;
+	struct encoderFixture *f = data;
 	struct value value;
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
@@ -348,7 +348,7 @@ TEST_CASE(encoder, row, one_value, NULL)
 /* Encode a tuple with row format and two values. */
 TEST_CASE(encoder, row, two_values, NULL)
 {
-	struct encoder_fixture *f = data;
+	struct encoderFixture *f = data;
 	struct value value;
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
@@ -375,7 +375,7 @@ TEST_GROUP(encoder, params);
 /* Encode a tuple with params format and only one value. */
 TEST_CASE(encoder, params, one_value, NULL)
 {
-	struct encoder_fixture *f = data;
+	struct encoderFixture *f = data;
 	struct value value;
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
@@ -396,7 +396,7 @@ TEST_CASE(encoder, params, one_value, NULL)
 /* Encode a tuple with params format and two values. */
 TEST_CASE(encoder, params, two_values, NULL)
 {
-	struct encoder_fixture *f = data;
+	struct encoderFixture *f = data;
 	struct value value;
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
@@ -425,7 +425,7 @@ TEST_GROUP(encoder, type);
 /* Encode a float parameter. */
 TEST_CASE(encoder, type, float, NULL)
 {
-	struct encoder_fixture *f = data;
+	struct encoderFixture *f = data;
 	struct value value;
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
@@ -446,7 +446,7 @@ TEST_CASE(encoder, type, float, NULL)
 /* Encode a unix time parameter. */
 TEST_CASE(encoder, type, unixtime, NULL)
 {
-	struct encoder_fixture *f = data;
+	struct encoderFixture *f = data;
 	struct value value;
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
@@ -466,7 +466,7 @@ TEST_CASE(encoder, type, unixtime, NULL)
 /* Encode an ISO8601 date string time parameter. */
 TEST_CASE(encoder, type, iso8601, NULL)
 {
-	struct encoder_fixture *f = data;
+	struct encoderFixture *f = data;
 	struct value value;
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
@@ -486,7 +486,7 @@ TEST_CASE(encoder, type, iso8601, NULL)
 /* Encode a boolean parameter. */
 TEST_CASE(encoder, type, boolean, NULL)
 {
-	struct encoder_fixture *f = data;
+	struct encoderFixture *f = data;
 	struct value value;
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
