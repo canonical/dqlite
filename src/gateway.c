@@ -286,7 +286,7 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
-	rv = bind_params(stmt->stmt, cursor);
+	rv = bindParams(stmt->stmt, cursor);
 	if (rv != 0) {
 		failure(req, rv, "bind parameters");
 		return 0;
@@ -369,7 +369,7 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
-	rv = bind_params(stmt->stmt, cursor);
+	rv = bindParams(stmt->stmt, cursor);
 	if (rv != 0) {
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
@@ -451,7 +451,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 
 	/* TODO: what about bindings for multi-statement SQL text? */
 	if (cursor != NULL) {
-		rv = bind_params(stmt, cursor);
+		rv = bindParams(stmt, cursor);
 		if (rv != SQLITE_OK) {
 			failure(req, rv, sqlite3_errmsg(g->leader->conn));
 			goto done_after_prepare;
@@ -517,7 +517,7 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
-	rv = bind_params(g->stmt, cursor);
+	rv = bindParams(g->stmt, cursor);
 	if (rv != 0) {
 		sqlite3_finalize(g->stmt);
 		g->stmt = NULL;

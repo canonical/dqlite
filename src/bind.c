@@ -48,7 +48,7 @@ static int bindOne(sqlite3_stmt *stmt, int n, struct value *value)
 	return rc;
 }
 
-int bind_params(sqlite3_stmt *stmt, struct cursor *cursor)
+int bindParams(sqlite3_stmt *stmt, struct cursor *cursor)
 {
 	struct tuple_decoder decoder;
 	unsigned i;
