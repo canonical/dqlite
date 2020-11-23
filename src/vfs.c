@@ -80,7 +80,7 @@ struct vfsWal
 {
 	uint8_t hdr[VFS__WAL_HEADER_SIZE]; /* Header. */
 	struct vfsFrame **frames;          /* All frames committed. */
-	unsigned n_frames;                 /* Number of committed frames. */
+	unsigned nFrames;                  /* Number of committed frames. */
 	struct vfsFrame **tx;              /* Frames added by a transaction. */
 	unsigned n_tx;                     /* Number of added frames. */
 };
@@ -283,7 +283,7 @@ static void vfsWalInit(struct vfsWal *w)
 {
 	memset(w->hdr, 0, VFS__WAL_HEADER_SIZE);
 	w->frames = NULL;
-	w->n_frames = 0;
+	w->nFrames = 0;
 	w->tx = NULL;
 	w->n_tx = 0;
 }
@@ -301,7 +301,7 @@ static void vfsDatabaseInit(struct vfsDatabase *d)
 static void vfsWalClose(struct vfsWal *w)
 {
 	unsigned i;
-	for (i = 0; i < w->n_frames; i++) {
+	for (i = 0; i < w->nFrames; i++) {
 		vfsFrameDestroy(w->frames[i]);
 	}
 	if (w->frames != NULL) {
@@ -409,12 +409,12 @@ static int vfsWalFrameGet(struct vfsWal *w,
 
 	/* SQLite should access pages progressively, without jumping more than
 	 * one page after the end. */
-	if (index > w->n_frames + w->n_tx + 1) {
+	if (index > w->nFrames + w->n_tx + 1) {
 		rv = SQLITE_IOERR_WRITE;
 		goto err;
 	}
 
-	if (index == w->n_frames + w->n_tx + 1) {
+	if (index == w->nFrames + w->n_tx + 1) {
 		/* Create a new frame, grow the transaction array, and append
 		 * the new frame to it. */
 		struct vfsFrame **tx;
@@ -439,7 +439,7 @@ static int vfsWalFrameGet(struct vfsWal *w,
 		}
 
 		/* Append the new page to the new page array. */
-		tx[index - w->n_frames - 1] = *frame;
+		tx[index - w->nFrames - 1] = *frame;
 
 		/* Update the page array. */
 		w->tx = tx;
@@ -447,7 +447,7 @@ static int vfsWalFrameGet(struct vfsWal *w,
 	} else {
 		/* Return the existing page. */
 		assert(w->tx != NULL);
-		*frame = w->tx[index - w->n_frames - 1];
+		*frame = w->tx[index - w->nFrames - 1];
 	}
 
 	return SQLITE_OK;
@@ -487,14 +487,14 @@ static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 	assert(w != NULL);
 	assert(n > 0);
 
-	if (n > w->n_frames + w->n_tx) {
+	if (n > w->nFrames + w->n_tx) {
 		/* This page hasn't been written yet. */
 		return NULL;
 	}
-	if (n <= w->n_frames) {
+	if (n <= w->nFrames) {
 		frame = w->frames[n - 1];
 	} else {
-		frame = w->tx[n - w->n_frames - 1];
+		frame = w->tx[n - w->nFrames - 1];
 	}
 
 	assert(frame != NULL);
@@ -601,7 +601,7 @@ static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 		return SQLITE_PROTOCOL;
 	}
 
-	if (w->n_frames == 0) {
+	if (w->nFrames == 0) {
 		return SQLITE_OK;
 	}
 
@@ -611,13 +611,13 @@ static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 	formatWalRestartHeader(w->hdr);
 
 	/* Destroy all frames. */
-	for (i = 0; i < w->n_frames; i++) {
+	for (i = 0; i < w->nFrames; i++) {
 		vfsFrameDestroy(w->frames[i]);
 	}
 	sqlite3_free(w->frames);
 
 	w->frames = NULL;
-	w->n_frames = 0;
+	w->nFrames = 0;
 
 	return SQLITE_OK;
 }
@@ -837,7 +837,7 @@ static int vfsWalRead(struct vfsWal *w,
 	unsigned index;
 	struct vfsFrame *frame;
 
-	if (w->n_frames == 0) {
+	if (w->nFrames == 0) {
 		return SQLITE_IOERR_SHORT_READ;
 	}
 
@@ -1138,11 +1138,11 @@ static size_t vfsDatabaseFileSize(struct vfsDatabase *d)
 static size_t vfsWalFileSize(struct vfsWal *w)
 {
 	size_t size = 0;
-	if (w->n_frames > 0) {
+	if (w->nFrames > 0) {
 		uint32_t page_size;
 		page_size = vfsWalGetPageSize(w);
 		size += VFS__WAL_HEADER_SIZE;
-		size += w->n_frames * (FORMAT_WAL_FRAME_HDR_SIZE + page_size);
+		size += w->nFrames * (FORMAT_WAL_FRAME_HDR_SIZE + page_size);
 	}
 	return size;
 }
@@ -1331,8 +1331,8 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 	uint32_t n_pages = (uint32_t)d->n_pages;
 	uint32_t checksum[2] = {0, 0};
 
-	if (wal->n_frames > 0) {
-		struct vfsFrame *last = wal->frames[wal->n_frames - 1];
+	if (wal->nFrames > 0) {
+		struct vfsFrame *last = wal->frames[wal->nFrames - 1];
 		frameChecksum[0] = vfsFrameGetChecksum1(last);
 		frameChecksum[1] = vfsFrameGetChecksum2(last);
 		n_pages = vfsFrameGetDatabaseSize(last);
@@ -1345,7 +1345,7 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 	assert(index[12] == 1);                               /* isInit */
 	assert(index[13] == VFS__BIGENDIAN);                  /* bigEndCksum */
 
-	*(uint32_t *)(&index[16]) = wal->n_frames;
+	*(uint32_t *)(&index[16]) = wal->nFrames;
 	*(uint32_t *)(&index[20]) = n_pages;
 	*(uint32_t *)(&index[24]) = frameChecksum[0];
 	*(uint32_t *)(&index[28]) = frameChecksum[1];
@@ -2192,19 +2192,19 @@ static int vfsWalAppend(struct vfsWal *w,
 	 * database, and the starting checksum should be set to the one stored
 	 * in the WAL header. Otherwise, the starting database size and checksum
 	 * will be the ones stored in the last frame of the WAL. */
-	if (w->n_frames == 0) {
+	if (w->nFrames == 0) {
 		databaseSize = (uint32_t)databaseNPages;
 		checksum[0] = vfsWalGetChecksum1(w);
 		checksum[1] = vfsWalGetChecksum2(w);
 	} else {
-		struct vfsFrame *frame = w->frames[w->n_frames - 1];
+		struct vfsFrame *frame = w->frames[w->nFrames - 1];
 		checksum[0] = vfsFrameGetChecksum1(frame);
 		checksum[1] = vfsFrameGetChecksum2(frame);
 		databaseSize = vfsFrameGetDatabaseSize(frame);
 	}
 
 	frames =
-	    sqlite3_realloc64(w->frames, sizeof *frames * (w->n_frames + n));
+	    sqlite3_realloc64(w->frames, sizeof *frames * (w->nFrames + n));
 	if (frames == NULL) {
 		goto oom;
 	}
@@ -2233,16 +2233,16 @@ static int vfsWalAppend(struct vfsWal *w,
 		vfsFrameFill(frame, page_number, commit, salt, checksum, page,
 			     page_size);
 
-		frames[w->n_frames + i] = frame;
+		frames[w->nFrames + i] = frame;
 	}
 
-	w->n_frames += n;
+	w->nFrames += n;
 
 	return 0;
 
 oom_after_frames_alloc:
 	for (j = 0; j < i; j++) {
-		vfsFrameDestroy(frames[w->n_frames + j]);
+		vfsFrameDestroy(frames[w->nFrames + j]);
 	}
 oom:
 	return DQLITE_NOMEM;
@@ -2404,7 +2404,7 @@ static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
 	uint32_t page_size;
 	unsigned i;
 
-	if (w->n_frames == 0) {
+	if (w->nFrames == 0) {
 		return;
 	}
 
@@ -2414,7 +2414,7 @@ static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
 	page_size = vfsWalGetPageSize(w);
 	assert(page_size > 0);
 
-	for (i = 0; i < w->n_frames; i++) {
+	for (i = 0; i < w->nFrames; i++) {
 		struct vfsFrame *frame = w->frames[i];
 		memcpy(*cursor, frame->header, FORMAT_WAL_FRAME_HDR_SIZE);
 		*cursor += FORMAT_WAL_FRAME_HDR_SIZE;
@@ -2521,7 +2521,7 @@ static int vfsWalRestore(struct vfsWal *w,
 			 uint32_t page_size)
 {
 	struct vfsFrame **frames;
-	unsigned n_frames;
+	unsigned nFrames;
 	unsigned i;
 	int rv;
 
@@ -2534,15 +2534,15 @@ static int vfsWalRestore(struct vfsWal *w,
 	assert(n > VFS__WAL_HEADER_SIZE);
 	assert(((n - VFS__WAL_HEADER_SIZE) % vfsFrameSize(page_size)) == 0);
 
-	n_frames =
+	nFrames =
 	    (unsigned)((n - VFS__WAL_HEADER_SIZE) / vfsFrameSize(page_size));
 
-	frames = sqlite3_malloc64(sizeof *frames * n_frames);
+	frames = sqlite3_malloc64(sizeof *frames * nFrames);
 	if (frames == NULL) {
 		goto oom;
 	}
 
-	for (i = 0; i < n_frames; i++) {
+	for (i = 0; i < nFrames; i++) {
 		struct vfsFrame *frame = vfsFrameCreate(page_size);
 		const uint8_t *p;
 
@@ -2566,7 +2566,7 @@ static int vfsWalRestore(struct vfsWal *w,
 	assert(rv == 0);
 
 	w->frames = frames;
-	w->n_frames = n_frames;
+	w->nFrames = nFrames;
 
 	return 0;
 
