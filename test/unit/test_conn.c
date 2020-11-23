@@ -351,7 +351,7 @@ struct query_fixture
 {
 	FIXTURE;
 	unsigned stmt_id;
-	unsigned insert_stmt_id;
+	unsigned insertStmtId;
 	unsigned last_insert_id;
 	unsigned rows_affected;
 	struct rows rows;
@@ -366,8 +366,8 @@ TEST_SETUP(query)
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &f->last_insert_id, &f->rows_affected, 7);
-	PREPARE("INSERT INTO test(n) VALUES (123)", &f->insert_stmt_id);
-	EXEC(f->insert_stmt_id, &f->last_insert_id, &f->rows_affected, 4);
+	PREPARE("INSERT INTO test(n) VALUES (123)", &f->insertStmtId);
+	EXEC(f->insertStmtId, &f->last_insert_id, &f->rows_affected, 4);
 	return f;
 }
 
