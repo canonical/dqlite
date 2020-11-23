@@ -36,6 +36,6 @@ void dbClose(struct db *db);
 /**
  * Open the follower connection associated with this database.
  */
-int db_open_follower(struct db *db);
+int dbOpenFollower(struct db *db);
 
 #endif /* DB_H_*/

@@ -81,7 +81,7 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 	assert(rv == 0);
 
 	if (!exists) {
-		rv = db_open_follower(db);
+		rv = dbOpenFollower(db);
 		if (rv != 0) {
 			return rv;
 		}
@@ -168,7 +168,7 @@ static int applyCheckpoint(struct fsm *f, const struct command_checkpoint *c)
 	assert(rv == 0); /* We have registered this filename before. */
 
 	/* Use a new connection to force re-opening the WAL. */
-	rv = db_open_follower(db);
+	rv = dbOpenFollower(db);
 	if (rv != 0) {
 		return rv;
 	}
@@ -349,7 +349,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	assert(rv == 0);
 
 	if (!exists) {
-		rv = db_open_follower(db);
+		rv = dbOpenFollower(db);
 		if (rv != 0) {
 			return rv;
 		}
