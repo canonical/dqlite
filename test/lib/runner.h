@@ -272,13 +272,13 @@ extern int _main_suites_n;
 	TEST__GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN__2_ARGS, \
 			  TEST_TEAR_DOWN__1_ARGS)
 
-#define TEST_TEAR_DOWN__1_ARGS(S)                                             \
-	static void S##__tear_down(void *data);                               \
-	__attribute__((constructor)) static void _##S##__tear_down_init(void) \
-	{                                                                     \
-		_##S##_tear_down = S##__tear_down;                            \
-	}                                                                     \
-	static void S##__tear_down(void *data)
+#define TEST_TEAR_DOWN__1_ARGS(S)                                            \
+	static void S##_tear_down(void *data);                               \
+	__attribute__((constructor)) static void _##S##_tear_down_init(void) \
+	{                                                                    \
+		_##S##_tear_down = S##_tear_down;                            \
+	}                                                                    \
+	static void S##_tear_down(void *data)
 
 #define TEST_TEAR_DOWN__2_ARGS(S, F)                                         \
 	__attribute__((constructor)) static void _##S##_tear_down_init(void) \
