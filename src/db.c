@@ -7,10 +7,10 @@
 #include "db.h"
 
 /* Open a SQLite connection and set it to follower mode. */
-static int open_follower_conn(const char *filename,
-			      const char *vfs,
-			      unsigned page_size,
-			      sqlite3 **conn);
+static int openFollowerConn(const char *filename,
+			    const char *vfs,
+			    unsigned page_size,
+			    sqlite3 **conn);
 
 void dbInit(struct db *db, struct config *config, const char *filename)
 {
@@ -38,18 +38,18 @@ int dbOpenFollower(struct db *db)
 {
 	int rc;
 	assert(db->follower == NULL);
-	rc = open_follower_conn(db->filename, db->config->name,
-				db->config->page_size, &db->follower);
+	rc = openFollowerConn(db->filename, db->config->name,
+			      db->config->page_size, &db->follower);
 	if (rc != 0) {
 		return rc;
 	}
 	return 0;
 }
 
-static int open_follower_conn(const char *filename,
-			      const char *vfs,
-			      unsigned page_size,
-			      sqlite3 **conn)
+static int openFollowerConn(const char *filename,
+			    const char *vfs,
+			    unsigned page_size,
+			    sqlite3 **conn)
 {
 	char pragma[255];
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
