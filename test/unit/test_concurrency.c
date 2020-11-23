@@ -105,7 +105,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 	{                                                            \
 		struct cursor cursor;                                \
 		int rc2;                                             \
-		cursor.p = buffer__cursor(&C->response, 0);          \
+		cursor.p = buffer_cursor(&C->response, 0);           \
 		cursor.cap = buffer__offset(&C->response);           \
 		rc2 = response_##LOWER##__decode(&cursor, RESPONSE); \
 		munit_assert_int(rc2, ==, 0);                        \
@@ -117,7 +117,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 	{                                                               \
 		struct cursor cursor;                                   \
 		int rc2;                                                \
-		cursor.p = buffer__cursor(&C->request, 0);              \
+		cursor.p = buffer_cursor(&C->request, 0);               \
 		cursor.cap = buffer__offset(&C->request);               \
 		buffer__reset(&C->response);                            \
 		rc2 = gateway__handle(&C->gateway, &C->handle,          \

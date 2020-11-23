@@ -73,10 +73,10 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 	c->response.flags = 0;
 	c->response.extra = 0;
 
-	cursor = buffer__cursor(&c->write, 0);
+	cursor = buffer_cursor(&c->write, 0);
 	message__encode(&c->response, &cursor);
 
-	buf.base = buffer__cursor(&c->write, 0);
+	buf.base = buffer_cursor(&c->write, 0);
 	buf.len = buffer__offset(&c->write);
 
 	rv = transport__write(&c->transport, &buf, write_cb);
@@ -127,7 +127,7 @@ static void read_request_cb(struct transport *transport, int status)
 		return;
 	}
 
-	cursor.p = buffer__cursor(&c->read, 0);
+	cursor.p = buffer_cursor(&c->read, 0);
 	cursor.cap = buffer__offset(&c->read);
 
 	buffer__reset(&c->write);
@@ -174,7 +174,7 @@ static void read_message_cb(struct transport *transport, int status)
 		return;
 	}
 
-	cursor.p = buffer__cursor(&c->read, 0);
+	cursor.p = buffer_cursor(&c->read, 0);
 	cursor.cap = buffer__offset(&c->read);
 
 	rv = message__decode(&cursor, &c->request);
@@ -214,7 +214,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 		goto abort;
 	}
 
-	cursor.p = buffer__cursor(&c->read, 0);
+	cursor.p = buffer_cursor(&c->read, 0);
 	cursor.cap = buffer__offset(&c->read);
 
 	rv = uint64__decode(&cursor, &c->protocol);

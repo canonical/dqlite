@@ -143,7 +143,7 @@ int tuple_decoder__next(struct tuple_decoder *d, struct value *value)
 /* Return a pointer to the tuple header. */
 static uint8_t *encoder__header(struct tuple_encoder *e)
 {
-	return buffer__cursor(e->buffer, e->header);
+	return buffer_cursor(e->buffer, e->header);
 }
 
 int tuple_encoder__init(struct tuple_encoder *e,

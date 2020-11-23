@@ -150,7 +150,7 @@ static void handleCb(struct handle *req, int status, int type)
 #define HANDLE(TYPE)                                                    \
 	{                                                               \
 		int rc2;                                                \
-		f->cursor->p = buffer__cursor(f->buf1, 0);              \
+		f->cursor->p = buffer_cursor(f->buf1, 0);               \
 		f->cursor->cap = buffer__offset(f->buf1);               \
 		buffer__reset(f->buf2);                                 \
 		f->context->invoked = false;                            \
@@ -268,7 +268,7 @@ static void handleCb(struct handle *req, int status, int type)
 	munit_assert_true(f->context->invoked);                          \
 	munit_assert_int(f->context->status, ==, STATUS);                \
 	munit_assert_int(f->context->type, ==, DQLITE_RESPONSE_##UPPER); \
-	f->cursor->p = buffer__cursor(f->buf2, 0);                       \
+	f->cursor->p = buffer_cursor(f->buf2, 0);                        \
 	f->cursor->cap = buffer__offset(f->buf2);                        \
 	buffer__reset(f->buf2);                                          \
 	f->context->invoked = false;

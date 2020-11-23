@@ -48,7 +48,7 @@ size_t buffer__offset(struct buffer *b);
 /**
  * Return a write cursor pointing to the @offset'th byte of the buffer.
  */
-void *buffer__cursor(struct buffer *b, size_t offset);
+void *buffer_cursor(struct buffer *b, size_t offset);
 
 /**
  * Reset the write offset of the buffer.
