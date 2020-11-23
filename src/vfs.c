@@ -1527,15 +1527,15 @@ static int vfsShmLock(struct vfsShm *s, int ofst, int n, int flags)
 
 static int vfsShmUnlock(struct vfsShm *s, int ofst, int n, int flags)
 {
-	unsigned *these_locks;
+	unsigned *theseLocks;
 	unsigned *otherLocks;
 	int i;
 
 	if (flags & SQLITE_SHM_SHARED) {
-		these_locks = s->shared;
+		theseLocks = s->shared;
 		otherLocks = s->exclusive;
 	} else {
-		these_locks = s->exclusive;
+		theseLocks = s->exclusive;
 		otherLocks = s->shared;
 	}
 
@@ -1546,8 +1546,8 @@ static int vfsShmUnlock(struct vfsShm *s, int ofst, int n, int flags)
 
 		/* Only decrease the lock count if it's positive. In other words
 		 * releasing a never acquired lock is legal and idemponent. */
-		if (these_locks[i] > 0) {
-			these_locks[i]--;
+		if (theseLocks[i] > 0) {
+			theseLocks[i]--;
 		}
 	}
 
