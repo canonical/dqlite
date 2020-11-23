@@ -28,9 +28,9 @@
 #error "Requires IEEE 754 floating point!"
 #endif
 #endif
-#ifdef static_assert
-static_assert(sizeof(double) == sizeof(uint64_t),
-	      "Size of 'double' is not 64 bits");
+#ifdef staticAssert
+staticAssert(sizeof(double) == sizeof(uint64_t),
+	     "Size of 'double' is not 64 bits");
 #endif
 
 /**
