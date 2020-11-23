@@ -313,7 +313,7 @@ TEST_CASE(exec, largeQuery, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(exec, multi_thread, NULL)
+TEST_CASE(exec, multiThread, NULL)
 {
 	struct test_server *server = data;
 	struct worker *workers;
