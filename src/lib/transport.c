@@ -6,10 +6,10 @@
 #include "transport.h"
 
 /* Called to allocate a buffer for the next stream read. */
-static void allocCb(uv_handle_t *stream, size_t suggested_size, uv_buf_t *buf)
+static void allocCb(uv_handle_t *stream, size_t suggestedSize, uv_buf_t *buf)
 {
 	struct transport *t;
-	(void)suggested_size;
+	(void)suggestedSize;
 	t = stream->data;
 	assert(t->read.base != NULL);
 	assert(t->read.len > 0);
