@@ -322,13 +322,13 @@ TEST_CASE(del, twice_middle, NULL)
 	int err;
 	struct test_item *item1;
 	struct test_item *item2;
-	struct test_item item1_clone;
+	struct test_item item1Clone;
 
 	(void)params;
 
 	err = test_registry_add(registry, &item1);
 	munit_assert_int(err, ==, 0);
-	item1_clone.id = item1->id;
+	item1Clone.id = item1->id;
 
 	err = test_registry_add(registry, &item2);
 	munit_assert_int(err, ==, 0);
@@ -336,7 +336,7 @@ TEST_CASE(del, twice_middle, NULL)
 	err = test_registry_del(registry, item1);
 	munit_assert_int(err, ==, 0);
 
-	err = test_registry_del(registry, &item1_clone);
+	err = test_registry_del(registry, &item1Clone);
 	munit_assert_int(err, ==, DQLITE_NOTFOUND);
 
 	return MUNIT_OK;
