@@ -1315,11 +1315,11 @@ TEST(VfsSleep, success, setUp, tearDown, 0, NULL)
 SUITE(VfsInit);
 
 static char *testCreateOomDelay[] = {"0", NULL};
-static char *test_create_oom_repeat[] = {"1", NULL};
+static char *testCreateOomRepeat[] = {"1", NULL};
 
 static MunitParameterEnum testCreateOomParams[] = {
     {TEST_HEAP_FAULT_DELAY, testCreateOomDelay},
-    {TEST_HEAP_FAULT_REPEAT, test_create_oom_repeat},
+    {TEST_HEAP_FAULT_REPEAT, testCreateOomRepeat},
     {NULL, NULL},
 };
 
