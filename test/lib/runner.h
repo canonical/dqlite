@@ -197,7 +197,7 @@ extern int _main_suites_n;
  *
  * The test body declaration must follow the macro.
  */
-#define TEST_CASE(...) TEST_CASE__MACRO_CHOOSER(__VA_ARGS__)(__VA_ARGS__)
+#define TEST_CASE(...) TEST_CASE_MACRO_CHOOSER(__VA_ARGS__)(__VA_ARGS__)
 
 /* Declare the MunitSuite[] and the MunitTest[] arrays that compose the test
  * suite identified by S. */
@@ -288,7 +288,7 @@ extern int _main_suites_n;
 
 /* Choose the appropriate TEST_CASE__N_ARGS() macro depending on the number of
  * arguments passed to TEST_CASE(). */
-#define TEST_CASE__MACRO_CHOOSER(...)                                      \
+#define TEST_CASE_MACRO_CHOOSER(...)                                       \
 	TEST__GET_5TH_ARG(__VA_ARGS__, TEST_CASE_4_ARGS, TEST_CASE_3_ARGS, \
 			  TEST_CASE_2_ARGS)
 
