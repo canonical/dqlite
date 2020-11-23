@@ -229,14 +229,14 @@ TEST_CASE(open, success, NULL)
 
 TEST_SUITE(prepare);
 
-struct prepare_fixture
+struct prepareFixture
 {
 	FIXTURE;
 };
 
 TEST_SETUP(prepare)
 {
-	struct prepare_fixture *f = munit_malloc(sizeof *f);
+	struct prepareFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	HANDSHAKE;
 	OPEN;
@@ -245,14 +245,14 @@ TEST_SETUP(prepare)
 
 TEST_TEAR_DOWN(prepare)
 {
-	struct prepare_fixture *f = data;
+	struct prepareFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
 
 TEST_CASE(prepare, success, NULL)
 {
-	struct prepare_fixture *f = data;
+	struct prepareFixture *f = data;
 	unsigned stmt_id;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);

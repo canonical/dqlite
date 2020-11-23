@@ -422,7 +422,7 @@ TEST_CASE(open, error, twice, NULL)
  *
  ******************************************************************************/
 
-struct prepare_fixture
+struct prepareFixture
 {
 	FIXTURE;
 	struct request_prepare request;
@@ -432,14 +432,14 @@ struct prepare_fixture
 TEST_SUITE(prepare);
 TEST_SETUP(prepare)
 {
-	struct prepare_fixture *f = munit_malloc(sizeof *f);
+	struct prepareFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	OPEN;
 	return f;
 }
 TEST_TEAR_DOWN(prepare)
 {
-	struct prepare_fixture *f = data;
+	struct prepareFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -447,7 +447,7 @@ TEST_TEAR_DOWN(prepare)
 /* Successfully prepare a statement. */
 TEST_CASE(prepare, success, NULL)
 {
-	struct prepare_fixture *f = data;
+	struct prepareFixture *f = data;
 	(void)params;
 	f->request.dbId = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
