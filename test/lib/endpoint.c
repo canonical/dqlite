@@ -35,12 +35,12 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 	switch (e->family) {
 		case AF_INET:
 			/* TCP socket on loopback device */
-			memset(&e->in_address, 0, sizeof e->in_address);
-			e->in_address.sin_family = AF_INET;
-			e->in_address.sin_addr.s_addr = inet_addr("127.0.0.1");
-			e->in_address.sin_port = 0; /* Get a random free port */
-			address = (struct sockaddr *)(&e->in_address);
-			size = sizeof e->in_address;
+			memset(&e->inAddress, 0, sizeof e->inAddress);
+			e->inAddress.sin_family = AF_INET;
+			e->inAddress.sin_addr.s_addr = inet_addr("127.0.0.1");
+			e->inAddress.sin_port = 0; /* Get a random free port */
+			address = (struct sockaddr *)(&e->inAddress);
+			size = sizeof e->inAddress;
 			break;
 		case AF_UNIX:
 			/* Abstract Unix socket */
@@ -77,7 +77,7 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 	switch (e->family) {
 		case AF_INET:
 			sprintf(e->address, "127.0.0.1:%d",
-				htons(e->in_address.sin_port));
+				htons(e->inAddress.sin_port));
 			break;
 		case AF_UNIX:
 			/* TODO */
@@ -99,8 +99,8 @@ int test_endpoint_connect(struct test_endpoint *e)
 
 	switch (e->family) {
 		case AF_INET:
-			address = (struct sockaddr *)&e->in_address;
-			size = sizeof e->in_address;
+			address = (struct sockaddr *)&e->inAddress;
+			size = sizeof e->inAddress;
 			break;
 		case AF_UNIX:
 			address = (struct sockaddr *)&e->un_address;
@@ -125,7 +125,7 @@ int test_endpoint_connect(struct test_endpoint *e)
 
 int test_endpoint_accept(struct test_endpoint *e)
 {
-	struct sockaddr_in in_address;
+	struct sockaddr_in inAddress;
 	struct sockaddr_un un_address;
 	struct sockaddr *address;
 	socklen_t size;
@@ -134,8 +134,8 @@ int test_endpoint_accept(struct test_endpoint *e)
 
 	switch (e->family) {
 		case AF_INET:
-			address = (struct sockaddr *)&in_address;
-			size = sizeof in_address;
+			address = (struct sockaddr *)&inAddress;
+			size = sizeof inAddress;
 			break;
 		case AF_UNIX:
 			address = (struct sockaddr *)&un_address;

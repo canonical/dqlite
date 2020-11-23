@@ -29,7 +29,7 @@ struct test_endpoint
 	sa_family_t family; /* Address family (either AF_INET or AF_UNIX) */
 	int fd;             /* Listening socket. */
 	union {             /* Server  address (either a TCP or Unix) */
-		struct sockaddr_in in_address;
+		struct sockaddr_in inAddress;
 		struct sockaddr_un un_address;
 	};
 };
