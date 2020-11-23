@@ -4,7 +4,7 @@
 #include "../../src/format.h"
 #include "../../src/leader.h"
 
-TEST_MODULE(replication_v1);
+TEST_MODULE(replicationV1);
 
 /******************************************************************************
  *
