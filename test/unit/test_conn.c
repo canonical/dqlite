@@ -65,7 +65,7 @@ static void connCloseCb(struct conn *conn)
 	munit_assert_int(rv, ==, 0)
 
 #define TEAR_DOWN                         \
-	conn__stop(&f->conn);             \
+	conn_stop(&f->conn);              \
 	while (!f->closed) {              \
 		test_uv_run(&f->loop, 1); \
 	};                                \

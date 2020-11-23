@@ -44,7 +44,7 @@ static void write_cb(struct transport *transport, int status)
 	}
 	return;
 abort:
-	conn__stop(c);
+	conn_stop(c);
 }
 
 static void gateway_handle_cb(struct handle *req, int status, int type)
@@ -85,7 +85,7 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 	}
 	return;
 abort:
-	conn__stop(c);
+	conn_stop(c);
 }
 
 static void closeCb(struct transport *transport)
@@ -104,7 +104,7 @@ static void raft_connect(struct conn *c, struct cursor *cursor)
 	int rv;
 	rv = request_connect__decode(cursor, &request);
 	if (rv != 0) {
-		conn__stop(c);
+		conn_stop(c);
 		return;
 	}
 	raftProxyAccept(c->uv_transport, request.id, request.address,
@@ -123,7 +123,7 @@ static void read_request_cb(struct transport *transport, int status)
 
 	if (status != 0) {
 		// errorf(c->logger, "read error");
-		conn__stop(c);
+		conn_stop(c);
 		return;
 	}
 
@@ -142,7 +142,7 @@ static void read_request_cb(struct transport *transport, int status)
 	rv = gateway__handle(&c->gateway, &c->handle, c->request.type, &cursor,
 			     &c->write, gateway_handle_cb);
 	if (rv != 0) {
-		conn__stop(c);
+		conn_stop(c);
 	}
 }
 
@@ -170,7 +170,7 @@ static void read_message_cb(struct transport *transport, int status)
 
 	if (status != 0) {
 		// errorf(c->logger, "read error");
-		conn__stop(c);
+		conn_stop(c);
 		return;
 	}
 
@@ -182,7 +182,7 @@ static void read_message_cb(struct transport *transport, int status)
 
 	rv = read_request(c);
 	if (rv != 0) {
-		conn__stop(c);
+		conn_stop(c);
 		return;
 	}
 }
@@ -236,7 +236,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 
 	return;
 abort:
-	conn__stop(c);
+	conn_stop(c);
 }
 
 /* Start reading the protocol format version */
@@ -302,7 +302,7 @@ err:
 	return rv;
 }
 
-void conn__stop(struct conn *c)
+void conn_stop(struct conn *c)
 {
 	if (c->closed) {
 		return;
