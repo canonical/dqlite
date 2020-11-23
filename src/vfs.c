@@ -1728,7 +1728,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		   const char *filename,
 		   sqlite3_file *file,
 		   int flags,
-		   int *out_flags)
+		   int *outFlags)
 {
 	struct vfs *v;
 	struct vfsFile *f;
@@ -1739,7 +1739,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	int create = flags & SQLITE_OPEN_CREATE;
 	int rc;
 
-	(void)out_flags;
+	(void)outFlags;
 
 	assert(vfs != NULL);
 	assert(vfs->pAppData != NULL);
@@ -1786,7 +1786,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			v->error = ENOENT;
 			return SQLITE_CANTOPEN;
 		}
-		rc = vfs->xOpen(vfs, NULL, f->temp, flags, out_flags);
+		rc = vfs->xOpen(vfs, NULL, f->temp, flags, outFlags);
 		if (rc != SQLITE_OK) {
 			sqlite3_free(f->temp);
 			return rc;
