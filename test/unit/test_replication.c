@@ -46,7 +46,7 @@ TEST_MODULE(replication_v1);
 #define TEAR_DOWN_LEADER(I)                             \
 	do {                                            \
 		struct leader *leader = &f->leaders[I]; \
-		leader_close(leader);                   \
+		leaderClose(leader);                    \
 	} while (0)
 
 /******************************************************************************
@@ -301,7 +301,7 @@ TEST_CASE(exec, checkpointReadLock, NULL)
 	/* The WAL was not truncated. */
 	ASSERT_WAL_PAGES(0, 3);
 
-	leader_close(&leader2);
+	leaderClose(&leader2);
 
 	return MUNIT_OK;
 }
