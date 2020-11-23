@@ -1416,7 +1416,7 @@ static int vfsFileDeviceCharacteristics(sqlite3_file *file)
 
 static int vfsShmMap(struct vfsShm *s,
 		     unsigned regionIndex,
-		     unsigned region_size,
+		     unsigned regionSize,
 		     bool extend,
 		     void volatile **out)
 {
@@ -1432,15 +1432,15 @@ static int vfsShmMap(struct vfsShm *s,
 			void **regions;
 
 			/* We should grow the map one region at a time. */
-			assert(region_size == VFS__WAL_INDEX_REGION_SIZE);
+			assert(regionSize == VFS__WAL_INDEX_REGION_SIZE);
 			assert(regionIndex == s->nRegions);
-			region = sqlite3_malloc64(region_size);
+			region = sqlite3_malloc64(regionSize);
 			if (region == NULL) {
 				rv = SQLITE_NOMEM;
 				goto err;
 			}
 
-			memset(region, 0, region_size);
+			memset(region, 0, regionSize);
 
 			regions = sqlite3_realloc64(
 			    s->regions, sizeof *s->regions * (s->nRegions + 1));
@@ -1480,7 +1480,7 @@ err:
 /* Simulate shared memory by allocating on the C heap. */
 static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 			 int regionIndex,    /* Region to retrieve */
-			 int region_size,    /* Size of regions */
+			 int regionSize,     /* Size of regions */
 			 int extend, /* True to extend file if necessary */
 			 void volatile **out /* OUT: Mapped memory */
 )
@@ -1490,7 +1490,7 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 	assert(f->type == VFS__DATABASE);
 
 	return vfsShmMap(&f->database->shm, (unsigned)regionIndex,
-			 (unsigned)region_size, extend != 0, out);
+			 (unsigned)regionSize, extend != 0, out);
 }
 
 static int vfsShmLock(struct vfsShm *s, int ofst, int n, int flags)
