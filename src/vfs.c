@@ -17,12 +17,12 @@
 
 /* Byte order */
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
-#define VFS__BIGENDIAN 0
+#define VFS_BIGENDIAN 0
 #elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __BIG_ENDIAN__)
-#define VFS__BIGENDIAN 1
+#define VFS_BIGENDIAN 1
 #else
 const int vfsOne = 1;
-#define VFS__BIGENDIAN (*(char *)(&vfsOne) == 0)
+#define VFS_BIGENDIAN (*(char *)(&vfsOne) == 0)
 #endif
 
 /* Maximum pathname length supported by this VFS. */
@@ -1343,7 +1343,7 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 
 	assert(*(uint32_t *)(&index[0]) == VFS__WAL_VERSION); /* iVersion */
 	assert(index[12] == 1);                               /* isInit */
-	assert(index[13] == VFS__BIGENDIAN);                  /* bigEndCksum */
+	assert(index[13] == VFS_BIGENDIAN);                   /* bigEndCksum */
 
 	*(uint32_t *)(&index[16]) = wal->nFrames;
 	*(uint32_t *)(&index[20]) = nPages;
@@ -2265,7 +2265,7 @@ static void vfsWalStartHeader(struct vfsWal *w, uint32_t page_size)
 	 *
 	 * In Dqlite the WAL file image is always generated at run time on the
 	 * host, so we can always use the native byte order. */
-	vfsPut32(VFS__WAL_MAGIC | VFS__BIGENDIAN, &w->hdr[0]);
+	vfsPut32(VFS__WAL_MAGIC | VFS_BIGENDIAN, &w->hdr[0]);
 	vfsPut32(VFS__WAL_VERSION, &w->hdr[4]);
 	vfsPut32(page_size, &w->hdr[8]);
 	vfsPut32(0, &w->hdr[12]);
