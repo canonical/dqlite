@@ -266,7 +266,7 @@ extern int _main_suites_n;
 		_##S##Setup = F;                                        \
 	}
 
-/* Choose the appropriate TEST_TEAR_DOWN__N_ARGS() macro depending on the number
+/* Choose the appropriate TEST_TEAR_DOWN_N_ARGS() macro depending on the number
  * of arguments passed to TEST_TEAR_DOWN(). */
 #define TEST_TEAR_DOWN_MACRO_CHOOSER(...)                    \
 	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN_2_ARGS, \
