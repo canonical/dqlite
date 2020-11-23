@@ -125,7 +125,7 @@ err:
 	return;
 }
 
-static void connect_after_work_cb(uv_work_t *work, int status)
+static void connectAfterWorkCb(uv_work_t *work, int status)
 {
 	struct connect *r = work->data;
 	struct impl *i = r->impl;
@@ -174,7 +174,7 @@ static int impl_connect(struct raft_uv_transport *transport,
 	req->cb = cb;
 
 	rv = uv_queue_work(i->loop, &r->work, connect_work_cb,
-			   connect_after_work_cb);
+			   connectAfterWorkCb);
 	if (rv != 0) {
 		rv = RAFT_NOCONNECTION;
 		goto err_after_connect_alloc;
