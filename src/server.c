@@ -229,7 +229,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		return DQLITE_ERROR;
 	}
 
-	rv = transport__stream(&t->loop, fd, &t->listener);
+	rv = transport_stream(&t->loop, fd, &t->listener);
 	if (rv != 0) {
 		close(fd);
 		return DQLITE_ERROR;

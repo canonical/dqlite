@@ -137,7 +137,7 @@ static void connectAfterWorkCb(uv_work_t *work, int status)
 		goto out;
 	}
 
-	rv = transport__stream(i->loop, r->fd, &stream);
+	rv = transport_stream(i->loop, r->fd, &stream);
 	if (rv != 0) {
 		r->status = RAFT_NOCONNECTION;
 		close(r->fd);

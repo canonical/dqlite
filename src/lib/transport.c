@@ -72,9 +72,9 @@ static void readCb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 	readDone(t, nread);
 }
 
-int transport__stream(struct uv_loop_s *loop,
-		      int fd,
-		      struct uv_stream_s **stream)
+int transport_stream(struct uv_loop_s *loop,
+		     int fd,
+		     struct uv_stream_s **stream)
 {
 	struct uv_pipe_s *pipe;
 	struct uv_tcp_s *tcp;

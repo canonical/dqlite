@@ -95,7 +95,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	testUv_setup(params, &f->loop);
 	testEndpoint_setup(&f->endpoint, params);
 
-	rv = transport__stream(&f->loop, f->endpoint.fd, &f->listener);
+	rv = transport_stream(&f->loop, f->endpoint.fd, &f->listener);
 	munit_assert_int(rv, ==, 0);
 
 	f->listener->data = f;
