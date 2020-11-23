@@ -26,7 +26,7 @@ const int vfsOne = 1;
 #endif
 
 /* Maximum pathname length supported by this VFS. */
-#define VFS__MAX_PATHNAME 512
+#define VFS_MAX_PATHNAME 512
 
 /* WAL magic value. Either this value, or the same value with the least
  * significant bit also set (FORMAT_WAL_MAGIC | 0x00000001) is stored in 32-bit
@@ -2011,7 +2011,7 @@ static int vfsInit(struct sqlite3_vfs *vfs, const char *name)
 {
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfsFile);
-	vfs->mxPathname = VFS__MAX_PATHNAME;
+	vfs->mxPathname = VFS_MAX_PATHNAME;
 	vfs->pNext = NULL;
 
 	vfs->pAppData = vfsCreate();
