@@ -64,11 +64,10 @@ TEST_SUITE(add);
 TEST_SETUP(add, setup);
 TEST_TEAR_DOWN(add, tear_down);
 
-static char *test_add_n[] = {"1", "2", "3", "5",  "6",
-			     "7", "8", "9", "10", NULL};
+static char *testAddN[] = {"1", "2", "3", "5", "6", "7", "8", "9", "10", NULL};
 
 static MunitParameterEnum test_add_params[] = {
-    {"n", test_add_n},
+    {"n", testAddN},
     {NULL, NULL},
 };
 
