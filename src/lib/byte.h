@@ -56,7 +56,7 @@ DQLITE_INLINE uint32_t byteFlip32(uint32_t v)
 }
 
 /* Flip a 64-bit number to network byte order (little endian) */
-DQLITE_INLINE uint64_t byte_flip64(uint64_t v)
+DQLITE_INLINE uint64_t byteFlip64(uint64_t v)
 {
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
 	return v;
