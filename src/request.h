@@ -55,7 +55,7 @@
 	X(query, QUERY, __VA_ARGS__)         \
 	X(finalize, FINALIZE, __VA_ARGS__)   \
 	X(execSql, EXEC_SQL, __VA_ARGS__)    \
-	X(query_sql, QUERY_SQL, __VA_ARGS__) \
+	X(querySql, QUERY_SQL, __VA_ARGS__)  \
 	X(interrupt, INTERRUPT, __VA_ARGS__) \
 	X(add, ADD, __VA_ARGS__)             \
 	X(assign, ASSIGN, __VA_ARGS__)       \

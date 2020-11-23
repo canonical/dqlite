@@ -1249,52 +1249,52 @@ TEST_CASE(execSql, multi, NULL)
 
 /******************************************************************************
  *
- * query_sql
+ * querySql
  *
  ******************************************************************************/
 
-struct query_sql_fixture
+struct querySql_fixture
 {
 	FIXTURE;
-	struct request_query_sql request;
+	struct request_querySql request;
 	struct response_rows response;
 };
 
-TEST_SUITE(query_sql);
-TEST_SETUP(query_sql)
+TEST_SUITE(querySql);
+TEST_SETUP(querySql)
 {
-	struct query_sql_fixture *f = munit_malloc(sizeof *f);
+	struct querySql_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	CLUSTER_ELECT(0);
 	OPEN;
 	EXEC("CREATE TABLE test (n INT)");
 	return f;
 }
-TEST_TEAR_DOWN(query_sql)
+TEST_TEAR_DOWN(querySql)
 {
-	struct query_sql_fixture *f = data;
+	struct querySql_fixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
 
 /* Exec a SQL query whose result set fits in a page. */
-TEST_CASE(query_sql, small, NULL)
+TEST_CASE(querySql, small, NULL)
 {
-	struct query_sql_fixture *f = data;
+	struct querySql_fixture *f = data;
 	(void)params;
 	EXEC("INSERT INTO test VALUES(123)");
 	f->request.dbId = 0;
 	f->request.sql = "SELECT n FROM test";
-	ENCODE(&f->request, query_sql);
+	ENCODE(&f->request, querySql);
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, ROWS);
 	return MUNIT_OK;
 }
 
 /* Perform a query with parameters */
-TEST_CASE(query_sql, params, NULL)
+TEST_CASE(querySql, params, NULL)
 {
-	struct query_sql_fixture *f = data;
+	struct querySql_fixture *f = data;
 	struct value values[2];
 	(void)params;
 	EXEC("BEGIN");
@@ -1306,7 +1306,7 @@ TEST_CASE(query_sql, params, NULL)
 
 	f->request.dbId = 0;
 	f->request.sql = "SELECT n FROM test WHERE n > ? AND n < ?";
-	ENCODE(&f->request, query_sql);
+	ENCODE(&f->request, querySql);
 	values[0].type = SQLITE_INTEGER;
 	values[0].integer = 1;
 	values[1].type = SQLITE_INTEGER;

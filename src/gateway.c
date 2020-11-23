@@ -502,12 +502,12 @@ static int handle_execSql(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
-static int handle_query_sql(struct handle *req, struct cursor *cursor)
+static int handle_querySql(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	const char *tail;
 	int rv;
-	START(query_sql, rows);
+	START(querySql, rows);
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.dbId);
 	FAIL_IF_CHECKPOINTING;
