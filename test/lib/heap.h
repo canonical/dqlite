@@ -17,7 +17,7 @@ void testHeapTearDown(void *data);
  * for 'repeat' consecutive times.
  *
  * Note that the faults won't automatically take place, an explicit call to
- * test_mem_fault_enable() is needed. This allows configuration and actual
+ * testMemFaultEnable() is needed. This allows configuration and actual
  * behavior to happen at different times (e.g. configure at test setup time and
  * enable at test case time). */
 void testHeapFaultConfig(int delay, int repeat);
