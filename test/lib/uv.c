@@ -34,13 +34,14 @@ int test_uv_run(struct uv_loop_s *l, unsigned n)
 
 void test_uv_stop(struct uv_loop_s *l)
 {
-    unsigned n_handles;
+	unsigned nHandles;
 
-    /* Spin a few times to trigger pending callbacks. */
-    n_handles = test_uv_run(l, TEST_UV_MAX_LOOP_RUN);
-    if (n_handles > 0) {
-        munit_errorf("loop has still %d pending active handles", n_handles);
-    }
+	/* Spin a few times to trigger pending callbacks. */
+	nHandles = test_uv_run(l, TEST_UV_MAX_LOOP_RUN);
+	if (nHandles > 0) {
+		munit_errorf("loop has still %d pending active handles",
+			     nHandles);
+	}
 }
 
 static void test_uv__walk_cb(uv_handle_t *handle, void *arg)
