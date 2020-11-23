@@ -46,7 +46,7 @@ extern int _main_suites_n;
 #define TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)                    \
 	static MunitResult test_##S##_##C(const MunitParameter params[], \
 					  void *data);                   \
-	TEST__ADD_TO_SUITE(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)      \
+	TEST_ADD_TO_SUITE(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)       \
 	static MunitResult test_##S##_##C(                               \
 	    MUNIT_UNUSED const MunitParameter params[],                  \
 	    MUNIT_UNUSED void *data)
@@ -91,7 +91,7 @@ extern int _main_suites_n;
 	}
 
 /* Add a test case to the MunitTest[] array of suite S. */
-#define TEST__ADD_TO_SUITE(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)            \
+#define TEST_ADD_TO_SUITE(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)             \
 	__attribute__((constructor)) static void _##S##_tests_##C##_init(void) \
 	{                                                                      \
 		MunitTest *tests = _##S##_tests;                               \
