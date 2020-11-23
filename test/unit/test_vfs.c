@@ -110,7 +110,7 @@ static void *__bufPage_1(void)
 }
 
 /* Helper for allocating a buffer with the content of the second page. */
-static void *__buf_page_2(void)
+static void *__bufPage_2(void)
 {
 	char *buf = munit_malloc(512 * sizeof *buf);
 
@@ -690,7 +690,7 @@ TEST(VfsWrite, andReadPages, setUp, tearDown, 0, NULL)
 	char buf[512];
 	void *bufHeaderMain = __bufHeaderMain_db();
 	void *bufPage_1 = __bufPage_1();
-	void *buf_page_2 = __buf_page_2();
+	void *bufPage_2 = __bufPage_2();
 
 	(void)params;
 
@@ -705,7 +705,7 @@ TEST(VfsWrite, andReadPages, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, 0);
 
 	/* Write a second page. */
-	rc = file->pMethods->xWrite(file, buf_page_2, 512, 512);
+	rc = file->pMethods->xWrite(file, bufPage_2, 512, 512);
 	munit_assert_int(rc, ==, 0);
 
 	/* Read the page header. */
@@ -729,7 +729,7 @@ TEST(VfsWrite, andReadPages, setUp, tearDown, 0, NULL)
 
 	free(bufHeaderMain);
 	free(bufPage_1);
-	free(buf_page_2);
+	free(bufPage_2);
 	free(file);
 
 	return MUNIT_OK;
@@ -820,7 +820,7 @@ TEST(VfsWrite, beyondLast, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	sqlite3_file *file = __file_create_main_db(&f->vfs);
 	void *bufPage_1 = __bufPage_1();
-	void *buf_page_2 = __buf_page_2();
+	void *bufPage_2 = __bufPage_2();
 	char buf[512];
 	int rc;
 
@@ -833,11 +833,11 @@ TEST(VfsWrite, beyondLast, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the third page, without writing the second. */
-	rc = file->pMethods->xWrite(file, buf_page_2, 512, 1024);
+	rc = file->pMethods->xWrite(file, bufPage_2, 512, 1024);
 	munit_assert_int(rc, ==, SQLITE_IOERR_WRITE);
 
 	free(bufPage_1);
-	free(buf_page_2);
+	free(bufPage_2);
 	free(file);
 
 	return MUNIT_OK;
@@ -857,7 +857,7 @@ TEST(VfsTruncate, database, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	sqlite3_file *file = __file_create_main_db(&f->vfs);
 	void *bufPage_1 = __bufPage_1();
-	void *buf_page_2 = __buf_page_2();
+	void *bufPage_2 = __bufPage_2();
 
 	int rc;
 
@@ -884,7 +884,7 @@ TEST(VfsTruncate, database, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, 0);
 
 	/* Write a second page. */
-	rc = file->pMethods->xWrite(file, buf_page_2, 512, 512);
+	rc = file->pMethods->xWrite(file, bufPage_2, 512, 512);
 	munit_assert_int(rc, ==, 0);
 
 	/* The size is 1024. */
@@ -911,7 +911,7 @@ TEST(VfsTruncate, database, setUp, tearDown, 0, NULL)
 	munit_assert_int(size, ==, 0);
 
 	free(bufPage_1);
-	free(buf_page_2);
+	free(bufPage_2);
 	free(file);
 
 	return MUNIT_OK;
