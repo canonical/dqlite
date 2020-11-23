@@ -268,7 +268,7 @@ TEST_CASE(prepare, success, NULL)
 
 TEST_SUITE(exec);
 
-struct exec_fixture
+struct execFixture
 {
 	FIXTURE;
 	unsigned stmt_id;
@@ -276,7 +276,7 @@ struct exec_fixture
 
 TEST_SETUP(exec)
 {
-	struct exec_fixture *f = munit_malloc(sizeof *f);
+	struct execFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	HANDSHAKE;
 	OPEN;
@@ -285,14 +285,14 @@ TEST_SETUP(exec)
 
 TEST_TEAR_DOWN(exec)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
 
 TEST_CASE(exec, success, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	unsigned last_insert_id;
 	unsigned rows_affected;
 	(void)params;
@@ -305,7 +305,7 @@ TEST_CASE(exec, success, NULL)
 
 TEST_CASE(exec, result, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	unsigned last_insert_id;
 	unsigned rows_affected;
 	(void)params;
@@ -324,7 +324,7 @@ TEST_CASE(exec, result, NULL)
 
 TEST_CASE(exec, closeWhileInFlight, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	unsigned last_insert_id;
 	unsigned rows_affected;
 	int rv;

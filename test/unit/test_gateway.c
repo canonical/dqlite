@@ -465,7 +465,7 @@ TEST_CASE(prepare, success, NULL)
  *
  ******************************************************************************/
 
-struct exec_fixture
+struct execFixture
 {
 	FIXTURE;
 	struct request_exec request;
@@ -475,14 +475,14 @@ struct exec_fixture
 TEST_SUITE(exec);
 TEST_SETUP(exec)
 {
-	struct exec_fixture *f = munit_malloc(sizeof *f);
+	struct execFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	OPEN;
 	return f;
 }
 TEST_TEAR_DOWN(exec)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -490,7 +490,7 @@ TEST_TEAR_DOWN(exec)
 /* Successfully execute a simple statement with no parameters. */
 TEST_CASE(exec, simple, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	uint64_t stmt_id;
 	(void)params;
 	CLUSTER_ELECT(0);
@@ -510,7 +510,7 @@ TEST_CASE(exec, simple, NULL)
 /* Successfully execute a statement with a one parameter. */
 TEST_CASE(exec, one_param, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	struct value value;
 	uint64_t stmt_id;
 	(void)params;
@@ -539,7 +539,7 @@ TEST_CASE(exec, one_param, NULL)
 /* Successfully execute a statement with a blob parameter. */
 TEST_CASE(exec, blob, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	struct request_query query;
 	struct value value;
 	char buf[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
@@ -591,7 +591,7 @@ TEST_CASE(exec, blob, NULL)
  * non-commit frames batch fires. The same leader gets re-elected. */
 TEST_CASE(exec, frames_not_leader_1st_non_commit_re_elected, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
@@ -624,7 +624,7 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_re_elected, NULL)
  * non-commit frames batch fires. Another leader gets re-elected. */
 TEST_CASE(exec, frames_not_leader_1st_non_commit_other_elected, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
@@ -659,7 +659,7 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_other_elected, NULL)
  * non-commit frames batch fires. The same leader gets re-elected. */
 TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
@@ -692,7 +692,7 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 /* The gateway is closed while a raft commit is in flight. */
 TEST_CASE(exec, closeWhileInFlight, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	unsigned i;
 	(void)params;
 	CLUSTER_ELECT(0);
@@ -716,7 +716,7 @@ TEST_CASE(exec, closeWhileInFlight, NULL)
  * non-commit frames batch fires. Another leader gets elected. */
 TEST_CASE(exec, frames_not_leader_2nd_non_commit_other_elected, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
@@ -751,7 +751,7 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_other_elected, NULL)
  * for a non-commit frames batch. The same leader gets re-elected. */
 TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
@@ -786,7 +786,7 @@ TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
  * transaction fires. The same leader gets re-elected. */
 TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
@@ -818,7 +818,7 @@ TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
  * transaction fires. Another leader gets elected. */
 TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
@@ -851,7 +851,7 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 /* A follower remains behind and needs to restore state from a snapshot. */
 TEST_CASE(exec, restore, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	uint64_t stmt_id;
 	struct request_query request;
 	struct response_rows response;

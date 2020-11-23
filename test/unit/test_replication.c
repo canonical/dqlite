@@ -170,7 +170,7 @@ TEST_CASE(init, conn, NULL)
  *
  ******************************************************************************/
 
-struct exec_fixture
+struct execFixture
 {
 	FIXTURE;
 	struct exec req;
@@ -180,7 +180,7 @@ struct exec_fixture
 
 static void fixture_exec_cb(struct exec *req, int status)
 {
-	struct exec_fixture *f = req->data;
+	struct execFixture *f = req->data;
 	f->invoked = true;
 	f->status = status;
 }
@@ -188,21 +188,21 @@ static void fixture_exec_cb(struct exec *req, int status)
 TEST_SUITE(exec);
 TEST_SETUP(exec)
 {
-	struct exec_fixture *f = munit_malloc(sizeof *f);
+	struct execFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	f->req.data = f;
 	return f;
 }
 TEST_TEAR_DOWN(exec)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
 
 TEST_CASE(exec, success, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	(void)params;
 	CLUSTER_ELECT(0);
 	PREPARE(0, "CREATE TABLE test (a  INT)");
@@ -217,7 +217,7 @@ TEST_CASE(exec, success, NULL)
 /* A snapshot is taken after applying an entry. */
 TEST_CASE(exec, snapshot, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	(void)params;
 	CLUSTER_SNAPSHOT_THRESHOLD(0, 4);
 	CLUSTER_ELECT(0);
@@ -237,7 +237,7 @@ TEST_CASE(exec, snapshot, NULL)
 /* If a transaction is in progress, no snapshot is taken. */
 TEST_CASE(exec, snapshot_busy, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	(void)params;
 	unsigned i;
 	CLUSTER_SNAPSHOT_THRESHOLD(0, 4);
@@ -255,7 +255,7 @@ TEST_CASE(exec, snapshot_busy, NULL)
 /* If the WAL size grows beyond the configured threshold, checkpoint it. */
 TEST_CASE(exec, checkpoint, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	struct config *config = CLUSTER_CONFIG(0);
 	(void)params;
 	config->checkpointThreshold = 3;
@@ -270,7 +270,7 @@ TEST_CASE(exec, checkpoint, NULL)
 /* If a read transaction is in progress, no checkpoint is taken. */
 TEST_CASE(exec, checkpointReadLock, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	struct config *config = CLUSTER_CONFIG(0);
 	struct registry *registry = CLUSTER_REGISTRY(0);
 	struct db *db;

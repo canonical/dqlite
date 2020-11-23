@@ -204,7 +204,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
  *
  ******************************************************************************/
 
-struct exec_fixture
+struct execFixture
 {
 	FIXTURE;
 	struct connection *c1;
@@ -216,7 +216,7 @@ struct exec_fixture
 TEST_SUITE(exec);
 TEST_SETUP(exec)
 {
-	struct exec_fixture *f = munit_malloc(sizeof *f);
+	struct execFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	f->c1 = &f->connections[0];
 	f->c2 = &f->connections[1];
@@ -224,7 +224,7 @@ TEST_SETUP(exec)
 }
 TEST_TEAR_DOWN(exec)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -233,7 +233,7 @@ TEST_TEAR_DOWN(exec)
  * it to complete, SQLITE_BUSY is returned. */
 TEST_CASE(exec, open, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	(void)params;
 
 	PREPARE(f->c1, "CREATE TABLE test1 (n INT)", &f->stmt_id1);
@@ -254,7 +254,7 @@ TEST_CASE(exec, open, NULL)
  * SQLITE_BUSY is returned. */
 TEST_CASE(exec, tx, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	(void)params;
 
 	/* Create a test table using connection 0 */
@@ -293,7 +293,7 @@ struct query_fixture
 TEST_SUITE(query);
 TEST_SETUP(query)
 {
-	struct exec_fixture *f = munit_malloc(sizeof *f);
+	struct execFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	f->c1 = &f->connections[0];
 	f->c2 = &f->connections[1];
@@ -304,7 +304,7 @@ TEST_SETUP(query)
 }
 TEST_TEAR_DOWN(query)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -312,7 +312,7 @@ TEST_TEAR_DOWN(query)
 /* Handle a query request while there is a transaction in progress. */
 TEST_CASE(query, tx, NULL)
 {
-	struct exec_fixture *f = data;
+	struct execFixture *f = data;
 	(void)params;
 	PREPARE(f->c1, "INSERT INTO test VALUES(1)", &f->stmt_id1);
 	PREPARE(f->c2, "SELECT n FROM test", &f->stmt_id2);
