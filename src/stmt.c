@@ -7,7 +7,7 @@
 
 /* The maximum number of columns we expect (for bindings or rows) is 255, which
  * can fit in one byte. */
-#define STMT__MAX_COLUMNS (1 << 8) - 1
+#define STMT_MAX_COLUMNS (1 << 8) - 1
 
 void stmt_init(struct stmt *s)
 {
