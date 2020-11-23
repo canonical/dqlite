@@ -572,7 +572,7 @@ void dqlite_node_destroy(dqlite_node *d)
 ** Returns true if the server has been successfully started, false otherwise.
 **
 ** This is a thread-safe API, but must be invoked before any call to
-** dqlite_stop or dqlite_handle.
+** dqlite_stop or dqliteHandle.
 */
 static bool taskReady(struct dqlite_node *d)
 {
@@ -615,7 +615,7 @@ int dqlite_node_stop(dqlite_node *d)
 	 * be enqueued from this point on. */
 	pthread_mutex_lock(&d->mutex);
 
-	/* Turn off the running flag, so calls to dqlite_handle will fail
+	/* Turn off the running flag, so calls to dqliteHandle will fail
 	 * with DQLITE_STOPPED. This needs to happen before we send the stop
 	 * signal since the stop callback expects to see that the flag is
 	 * off. */
