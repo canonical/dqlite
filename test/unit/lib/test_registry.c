@@ -206,7 +206,7 @@ TEST_CASE(get, deleted, NULL)
 }
 
 /* Retrieve an item with an ID bigger than the current registry's length. */
-TEST_CASE(get, out_of_bound, NULL)
+TEST_CASE(get, outOfBound, NULL)
 {
 	struct test_registry *registry = data;
 	struct test_item *item = test_registry_get(registry, 123);
@@ -343,7 +343,7 @@ TEST_CASE(del, twice_middle, NULL)
 }
 
 /* Deleting an item with an unknown ID results in an error. */
-TEST_CASE(del, out_of_bounds, NULL)
+TEST_CASE(del, outOfBounds, NULL)
 {
 	struct test_registry *registry = data;
 	struct test_item item;
