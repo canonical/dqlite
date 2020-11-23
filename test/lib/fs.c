@@ -7,7 +7,8 @@
 #include "fs.h"
 #include "munit.h"
 
-char *test_dir_setup() {
+char *testDirSetup()
+{
 	char *dir = munit_malloc(strlen(TEST__DIR_TEMPLATE) + 1);
 
 	strcpy(dir, TEST__DIR_TEMPLATE);

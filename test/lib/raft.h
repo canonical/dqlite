@@ -27,7 +27,7 @@
 #define SETUP_RAFT                                                       \
 	{                                                                \
 		int rv2;                                                 \
-		f->dir = test_dir_setup();                               \
+		f->dir = testDirSetup();                                 \
 		test_uv_setup(params, &f->loop);                         \
 		rv2 = raftProxyInit(&f->raftTransport, &f->loop);        \
 		munit_assert_int(rv2, ==, 0);                            \

@@ -30,7 +30,7 @@ void test_server_setup(struct test_server *s,
 	s->id = id;
 	sprintf(s->address, "@%u", id);
 
-	s->dir = test_dir_setup();
+	s->dir = testDirSetup();
 
 	memset(s->others, 0, sizeof s->others);
 }

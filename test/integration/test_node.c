@@ -24,7 +24,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	test_heap_setup(params, user_data);
 	test_sqlite_setup(params);
 
-	f->dir = test_dir_setup();
+	f->dir = testDirSetup();
 
 	rv = dqlite_node_create(1, "1", f->dir, &f->node);
 	munit_assert_int(rv, ==, 0);

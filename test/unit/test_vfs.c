@@ -1140,7 +1140,7 @@ TEST(VfsShmLock, releaseUnix, setUp, tearDown, 0, NULL)
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 	int flags =
 	    SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
-	char *dir = test_dir_setup();
+	char *dir = testDirSetup();
 	char buf[1024];
 	char *path;
 	volatile void *region;
