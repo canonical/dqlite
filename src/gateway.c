@@ -18,7 +18,7 @@ void gatewayInit(struct gateway *g,
 	g->leader = NULL;
 	g->req = NULL;
 	g->stmt = NULL;
-	g->stmt_finalize = false;
+	g->stmtFinalize = false;
 	g->exec.data = g;
 	g->sql = NULL;
 	stmt__registry_init(&g->stmts);
@@ -330,10 +330,10 @@ static void queryBatch(sqlite3_stmt *stmt, struct handle *req)
 	}
 
 done:
-	if (g->stmt_finalize) {
+	if (g->stmtFinalize) {
 		/* TODO: do we care about errors? */
 		sqlite3_finalize(stmt);
-		g->stmt_finalize = false;
+		g->stmtFinalize = false;
 	}
 	g->stmt = NULL;
 	g->req = NULL;
@@ -525,7 +525,7 @@ static int handle_querySql(struct handle *req, struct cursor *cursor)
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
-	g->stmt_finalize = true;
+	g->stmtFinalize = true;
 	g->req = req;
 	rv = leaderBarrier(g->leader, &g->barrier, query_barrierCb);
 	if (rv != 0) {
@@ -542,9 +542,9 @@ static int handle_interrupt(struct handle *req, struct cursor *cursor)
 	START(interrupt, empty);
 
 	/* Take appropriate action depending on the cleanup code. */
-	if (g->stmt_finalize) {
+	if (g->stmtFinalize) {
 		sqlite3_finalize(g->stmt);
-		g->stmt_finalize = false;
+		g->stmtFinalize = false;
 	}
 	g->stmt = NULL;
 	g->req = NULL;

@@ -31,7 +31,7 @@ struct gateway
 	struct leader *leader;       /* Leader connection to the database */
 	struct handle *req;          /* Asynchronous request being handled */
 	sqlite3_stmt *stmt;          /* Statement being processed */
-	bool stmt_finalize;          /* Whether to finalize the statement */
+	bool stmtFinalize;           /* Whether to finalize the statement */
 	struct exec exec;            /* Low-level exec async request */
 	const char *sql;             /* SQL query for execSql requests */
 	struct stmt__registry stmts; /* Registry of prepared statements */
