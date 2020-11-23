@@ -286,7 +286,7 @@ extern int _main_suites_n;
 		_##S##TearDown = F;                                        \
 	}
 
-/* Choose the appropriate TEST_CASE__N_ARGS() macro depending on the number of
+/* Choose the appropriate TEST_CASE_N_ARGS() macro depending on the number of
  * arguments passed to TEST_CASE(). */
 #define TEST_CASE_MACRO_CHOOSER(...)                                       \
 	TEST__GET_5TH_ARG(__VA_ARGS__, TEST_CASE_4_ARGS, TEST_CASE_3_ARGS, \
