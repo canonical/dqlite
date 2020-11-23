@@ -175,7 +175,7 @@ extern int _main_suites_n;
  * - TEST_SETUP(S, F): Set the tear down function for suite S to F.
  */
 #define TEST_TEAR_DOWN(...) \
-	TEST_TEAR_DOWN__MACRO_CHOOSER(__VA_ARGS__)(__VA_ARGS__)
+	TEST_TEAR_DOWN_MACRO_CHOOSER(__VA_ARGS__)(__VA_ARGS__)
 
 /**
  * Declare and register a new group of tests #G, belonging to suite #S in the
@@ -268,7 +268,7 @@ extern int _main_suites_n;
 
 /* Choose the appropriate TEST_TEAR_DOWN__N_ARGS() macro depending on the number
  * of arguments passed to TEST_TEAR_DOWN(). */
-#define TEST_TEAR_DOWN__MACRO_CHOOSER(...)                   \
+#define TEST_TEAR_DOWN_MACRO_CHOOSER(...)                    \
 	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN_2_ARGS, \
 			 TEST_TEAR_DOWN_1_ARGS)
 
