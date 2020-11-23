@@ -5,7 +5,7 @@
 #include "protocol.h"
 
 /* Initialize the given buffer for reading, ensure it has the given size. */
-static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
+static int initRead(struct conn *c, uv_buf_t *buf, size_t size)
 {
 	bufferReset(&c->read);
 	buf->base = bufferAdvance(&c->read, size);
@@ -151,7 +151,7 @@ static int read_request(struct conn *c)
 {
 	uv_buf_t buf;
 	int rv;
-	rv = init_read(c, &buf, c->request.words * 8);
+	rv = initRead(c, &buf, c->request.words * 8);
 	if (rv != 0) {
 		return rv;
 	}
@@ -192,7 +192,7 @@ static int read_message(struct conn *c)
 {
 	uv_buf_t buf;
 	int rv;
-	rv = init_read(c, &buf, message__sizeof(&c->request));
+	rv = initRead(c, &buf, message__sizeof(&c->request));
 	if (rv != 0) {
 		return rv;
 	}
@@ -244,7 +244,7 @@ static int read_protocol(struct conn *c)
 {
 	uv_buf_t buf;
 	int rv;
-	rv = init_read(c, &buf, sizeof c->protocol);
+	rv = initRead(c, &buf, sizeof c->protocol);
 	if (rv != 0) {
 		return rv;
 	}
