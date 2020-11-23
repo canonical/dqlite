@@ -224,7 +224,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 
 	rv = raft_apply(l->raft, &l->apply, &buf, 1, leaderCheckpointApplyCb);
 	if (rv != 0) {
-		goto abort_after_command_encode;
+		goto abortAfterCommandEncode;
 	}
 
 	rv = main_f->pMethods->xShmLock(main_f, 1 /* checkpoint lock */, 1,
@@ -233,7 +233,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 
 	return true;
 
-abort_after_command_encode:
+abortAfterCommandEncode:
 	raft_free(buf.base);
 abort:
 	assert(rv != 0);
