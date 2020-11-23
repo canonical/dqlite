@@ -14,7 +14,7 @@ struct fsm
 	struct
 	{
 		unsigned nPages;
-		unsigned long *page_numbers;
+		unsigned long *pageNumbers;
 		uint8_t *pages;
 	} pending; /* For upgrades from V1 */
 };
@@ -27,7 +27,7 @@ static int applyOpen(struct fsm *f, const struct command_open *c)
 }
 
 static int addPendingPages(struct fsm *f,
-			   unsigned long *page_numbers,
+			   unsigned long *pageNumbers,
 			   uint8_t *pages,
 			   unsigned nPages,
 			   unsigned page_size)
@@ -35,10 +35,10 @@ static int addPendingPages(struct fsm *f,
 	unsigned n = f->pending.nPages + nPages;
 	unsigned i;
 
-	f->pending.page_numbers = sqlite3_realloc64(
-	    f->pending.page_numbers, n * sizeof *f->pending.page_numbers);
+	f->pending.pageNumbers = sqlite3_realloc64(
+	    f->pending.pageNumbers, n * sizeof *f->pending.pageNumbers);
 
-	if (f->pending.page_numbers == NULL) {
+	if (f->pending.pageNumbers == NULL) {
 		return DQLITE_NOMEM;
 	}
 
@@ -50,7 +50,7 @@ static int addPendingPages(struct fsm *f,
 
 	for (i = 0; i < nPages; i++) {
 		unsigned j = f->pending.nPages + i;
-		f->pending.page_numbers[j] = page_numbers[i];
+		f->pending.pageNumbers[j] = pageNumbers[i];
 		memcpy(f->pending.pages + j * page_size,
 		       (uint8_t *)pages + i * page_size, page_size);
 	}
@@ -63,7 +63,7 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 {
 	struct db *db;
 	sqlite3_vfs *vfs;
-	unsigned long *page_numbers;
+	unsigned long *pageNumbers;
 	void *pages;
 	int exists;
 	int rv;
@@ -89,7 +89,7 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 		db->follower = NULL;
 	}
 
-	rv = commandFramesPageNumbers(c, &page_numbers);
+	rv = commandFramesPageNumbers(c, &pageNumbers);
 	if (rv != 0) {
 		return rv;
 	}
@@ -102,39 +102,38 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 	 * final commit or a rollback. */
 	if (c->isCommit) {
 		if (f->pending.nPages > 0) {
-			rv = addPendingPages(f, page_numbers, pages,
+			rv = addPendingPages(f, pageNumbers, pages,
 					     c->frames.nPages,
 					     db->config->page_size);
 			if (rv != 0) {
 				return DQLITE_NOMEM;
 			}
-			rv =
-			    VfsApply(vfs, db->filename, f->pending.nPages,
-				     f->pending.page_numbers, f->pending.pages);
+			rv = VfsApply(vfs, db->filename, f->pending.nPages,
+				      f->pending.pageNumbers, f->pending.pages);
 			if (rv != 0) {
 				return rv;
 			}
-			sqlite3_free(f->pending.page_numbers);
+			sqlite3_free(f->pending.pageNumbers);
 			sqlite3_free(f->pending.pages);
 			f->pending.nPages = 0;
-			f->pending.page_numbers = NULL;
+			f->pending.pageNumbers = NULL;
 			f->pending.pages = NULL;
 		} else {
 			rv = VfsApply(vfs, db->filename, c->frames.nPages,
-				      page_numbers, pages);
+				      pageNumbers, pages);
 			if (rv != 0) {
 				return rv;
 			}
 		}
 	} else {
-		rv = addPendingPages(f, page_numbers, pages, c->frames.nPages,
+		rv = addPendingPages(f, pageNumbers, pages, c->frames.nPages,
 				     db->config->page_size);
 		if (rv != 0) {
 			return DQLITE_NOMEM;
 		}
 	}
 
-	sqlite3_free(page_numbers);
+	sqlite3_free(pageNumbers);
 
 	return 0;
 }
@@ -147,10 +146,10 @@ static int applyUndo(struct fsm *f, const struct command_undo *c)
 		return 0;
 	}
 
-	sqlite3_free(f->pending.page_numbers);
+	sqlite3_free(f->pending.pageNumbers);
 	sqlite3_free(f->pending.pages);
 	f->pending.nPages = 0;
-	f->pending.page_numbers = NULL;
+	f->pending.pageNumbers = NULL;
 	f->pending.pages = NULL;
 
 	return 0;
@@ -469,7 +468,7 @@ int fsmInit(struct raft_fsm *fsm,
 	f->logger = &config->logger;
 	f->registry = registry;
 	f->pending.nPages = 0;
-	f->pending.page_numbers = NULL;
+	f->pending.pageNumbers = NULL;
 	f->pending.pages = NULL;
 
 	fsm->version = 1;

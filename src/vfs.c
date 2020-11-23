@@ -2165,7 +2165,7 @@ static uint32_t vfsWalGetChecksum2(struct vfsWal *w)
 static int vfsWalAppend(struct vfsWal *w,
 			unsigned databaseNPages,
 			unsigned n,
-			unsigned long *page_numbers,
+			unsigned long *pageNumbers,
 			uint8_t *pages)
 {
 	struct vfsFrame **frames; /* New frames array. */
@@ -2211,7 +2211,7 @@ static int vfsWalAppend(struct vfsWal *w,
 
 	for (i = 0; i < n; i++) {
 		struct vfsFrame *frame = vfsFrameCreate(page_size);
-		uint32_t page_number = (uint32_t)page_numbers[i];
+		uint32_t page_number = (uint32_t)pageNumbers[i];
 		uint32_t commit = 0;
 		uint8_t *page = &pages[i * page_size];
 
@@ -2302,7 +2302,7 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 int VfsApply(sqlite3_vfs *vfs,
 	     const char *filename,
 	     unsigned n,
-	     unsigned long *page_numbers,
+	     unsigned long *pageNumbers,
 	     void *frames)
 {
 	struct vfs *v;
@@ -2326,7 +2326,7 @@ int VfsApply(sqlite3_vfs *vfs,
 		vfsWalStartHeader(wal, vfsDatabaseGetPageSize(database));
 	}
 
-	rv = vfsWalAppend(wal, database->nPages, n, page_numbers, frames);
+	rv = vfsWalAppend(wal, database->nPages, n, pageNumbers, frames);
 	if (rv != 0) {
 		return rv;
 	}

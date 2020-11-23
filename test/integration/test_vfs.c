@@ -142,44 +142,44 @@ static void tearDown(void *data)
 struct tx
 {
 	unsigned n;
-	unsigned long *page_numbers;
+	unsigned long *pageNumbers;
 	void *frames;
 };
 
 /* Poll the given VFS object and serialize the transaction data into the given
  * tx object. */
-#define POLL(VFS, TX)                                                      \
-	do {                                                               \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                  \
-		dqlite_vfs_frame *_frames;                                 \
-		unsigned _i;                                               \
-		int _rv;                                                   \
-		memset(&TX, 0, sizeof TX);                                 \
-		_rv = dqlite_vfs_poll(vfs, "test.db", &_frames, &TX.n);    \
-		munit_assert_int(_rv, ==, 0);                              \
-		if (_frames != NULL) {                                     \
-			TX.page_numbers =                                  \
-			    munit_malloc(sizeof *TX.page_numbers * TX.n);  \
-			TX.frames = munit_malloc(PAGE_SIZE * TX.n);        \
-			for (_i = 0; _i < TX.n; _i++) {                    \
-				dqlite_vfs_frame *_frame = &_frames[_i];   \
-				TX.page_numbers[_i] = _frame->page_number; \
-				memcpy(TX.frames + _i * PAGE_SIZE,         \
-				       _frame->data, PAGE_SIZE);           \
-				sqlite3_free(_frame->data);                \
-			}                                                  \
-			sqlite3_free(_frames);                             \
-		}                                                          \
+#define POLL(VFS, TX)                                                     \
+	do {                                                              \
+		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                 \
+		dqlite_vfs_frame *_frames;                                \
+		unsigned _i;                                              \
+		int _rv;                                                  \
+		memset(&TX, 0, sizeof TX);                                \
+		_rv = dqlite_vfs_poll(vfs, "test.db", &_frames, &TX.n);   \
+		munit_assert_int(_rv, ==, 0);                             \
+		if (_frames != NULL) {                                    \
+			TX.pageNumbers =                                  \
+			    munit_malloc(sizeof *TX.pageNumbers * TX.n);  \
+			TX.frames = munit_malloc(PAGE_SIZE * TX.n);       \
+			for (_i = 0; _i < TX.n; _i++) {                   \
+				dqlite_vfs_frame *_frame = &_frames[_i];  \
+				TX.pageNumbers[_i] = _frame->page_number; \
+				memcpy(TX.frames + _i * PAGE_SIZE,        \
+				       _frame->data, PAGE_SIZE);          \
+				sqlite3_free(_frame->data);               \
+			}                                                 \
+			sqlite3_free(_frames);                            \
+		}                                                         \
 	} while (0)
 
 /* Apply WAL frames to the given VFS. */
-#define APPLY(VFS, TX)                                                        \
-	do {                                                                  \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                     \
-		int _rv;                                                      \
-		_rv = dqlite_vfs_apply(vfs, "test.db", TX.n, TX.page_numbers, \
-				       TX.frames);                            \
-		munit_assert_int(_rv, ==, 0);                                 \
+#define APPLY(VFS, TX)                                                       \
+	do {                                                                 \
+		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                    \
+		int _rv;                                                     \
+		_rv = dqlite_vfs_apply(vfs, "test.db", TX.n, TX.pageNumbers, \
+				       TX.frames);                           \
+		munit_assert_int(_rv, ==, 0);                                \
 	} while (0)
 
 /* Abort a transaction on the given VFS. */
@@ -192,10 +192,10 @@ struct tx
 	} while (0)
 
 /* Release all memory used by a struct tx object. */
-#define DONE(TX)                       \
-	do {                           \
-		free(TX.frames);       \
-		free(TX.page_numbers); \
+#define DONE(TX)                      \
+	do {                          \
+		free(TX.frames);      \
+		free(TX.pageNumbers); \
 	} while (0)
 
 /* Peform a full checkpoint on the given database. */
@@ -290,7 +290,7 @@ TEST(vfs, pollAfterWriteTransaction, setUp, tearDown, 0, NULL)
 	munit_assert_ptr_not_null(tx.frames);
 	munit_assert_int(tx.n, ==, 2);
 	for (i = 0; i < tx.n; i++) {
-		munit_assert_int(tx.page_numbers[i], ==, i + 1);
+		munit_assert_int(tx.pageNumbers[i], ==, i + 1);
 	}
 
 	DONE(tx);
@@ -376,11 +376,11 @@ TEST(vfs, pollAfterPageStress, setUp, tearDown, 0, NULL)
 	/* Five frames were replicated and the first frame actually contains a
 	 * spill of the third page. */
 	munit_assert_int(tx.n, ==, 6);
-	munit_assert_int(tx.page_numbers[0], ==, 3);
-	munit_assert_int(tx.page_numbers[1], ==, 4);
-	munit_assert_int(tx.page_numbers[2], ==, 5);
-	munit_assert_int(tx.page_numbers[3], ==, 1);
-	munit_assert_int(tx.page_numbers[4], ==, 2);
+	munit_assert_int(tx.pageNumbers[0], ==, 3);
+	munit_assert_int(tx.pageNumbers[1], ==, 4);
+	munit_assert_int(tx.pageNumbers[2], ==, 5);
+	munit_assert_int(tx.pageNumbers[3], ==, 1);
+	munit_assert_int(tx.pageNumbers[4], ==, 2);
 
 	APPLY("1", tx);
 	DONE(tx);

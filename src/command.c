@@ -136,7 +136,7 @@ int commandDecode(const struct raft_buffer *buf, int *type, void **command)
 }
 
 int commandFramesPageNumbers(const struct command_frames *c,
-			     unsigned long *page_numbers[])
+			     unsigned long *pageNumbers[])
 {
 	unsigned i;
 	struct cursor cursor;
@@ -144,9 +144,9 @@ int commandFramesPageNumbers(const struct command_frames *c,
 	cursor.p = c->frames.data;
 	cursor.cap = sizeof(uint64_t) * c->frames.nPages;
 
-	*page_numbers =
-	    sqlite3_malloc64(sizeof **page_numbers * c->frames.nPages);
-	if (*page_numbers == NULL) {
+	*pageNumbers =
+	    sqlite3_malloc64(sizeof **pageNumbers * c->frames.nPages);
+	if (*pageNumbers == NULL) {
 		return DQLITE_NOMEM;
 	}
 
@@ -156,7 +156,7 @@ int commandFramesPageNumbers(const struct command_frames *c,
 		if (r != 0) {
 			return r;
 		}
-		(*page_numbers)[i] = pgno;
+		(*pageNumbers)[i] = pgno;
 	}
 
 	return 0;
