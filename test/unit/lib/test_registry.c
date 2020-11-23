@@ -98,7 +98,7 @@ TEST_CASE(add, basic, test_add_params)
 
 /* Add three items, delete the second, and then add another one. The original ID
  * of the deleted item gets reused. */
-TEST_CASE(add, del_add, NULL)
+TEST_CASE(add, delAdd, NULL)
 {
 	struct test_registry *registry = data;
 	int err;
