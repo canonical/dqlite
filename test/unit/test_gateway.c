@@ -313,7 +313,7 @@ TEST_TEAR_DOWN(leader)
 }
 
 /* If the leader is not available, an empty string is returned. */
-TEST_CASE(leader, not_available, NULL)
+TEST_CASE(leader, notAvailable, NULL)
 {
 	struct leaderFixture *f = data;
 	(void)params;
