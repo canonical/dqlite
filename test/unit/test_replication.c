@@ -132,7 +132,7 @@ TEST_MODULE(replication_v1);
  *
  ******************************************************************************/
 
-struct init_fixture
+struct initFixture
 {
 	FIXTURE;
 };
@@ -140,13 +140,13 @@ struct init_fixture
 TEST_SUITE(init);
 TEST_SETUP(init)
 {
-	struct init_fixture *f = munit_malloc(sizeof *f);
+	struct initFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	return f;
 }
 TEST_TEAR_DOWN(init)
 {
-	struct init_fixture *f = data;
+	struct initFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -154,7 +154,7 @@ TEST_TEAR_DOWN(init)
 /* The connection is open and can be used. */
 TEST_CASE(init, conn, NULL)
 {
-	struct init_fixture *f = data;
+	struct initFixture *f = data;
 	sqlite3_stmt *stmt;
 	int rc;
 	(void)params;
