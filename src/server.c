@@ -360,7 +360,7 @@ static void stop_cb(uv_async_t *stop)
 	queue *head;
 	struct conn *conn;
 
-	/* We expect that we're being executed after dqlite__stop and so the
+	/* We expect that we're being executed after dqlite_stop and so the
 	 * running flag is off. */
 	assert(!d->running);
 
