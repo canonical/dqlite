@@ -28,7 +28,7 @@ void registry__close(struct registry *r)
 int registry__db_get(struct registry *r, const char *filename, struct db **db)
 {
 	queue *head;
-	QUEUE__FOREACH(head, &r->dbs)
+	QUEUE_FOREACH(head, &r->dbs)
 	{
 		*db = QUEUE_DATA(head, struct db, queue);
 		if (strcmp((*db)->filename, filename) == 0) {

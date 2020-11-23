@@ -364,7 +364,7 @@ static void stop_cb(uv_async_t *stop)
 	 * running flag is off. */
 	assert(!d->running);
 
-	QUEUE__FOREACH(head, &d->conns)
+	QUEUE_FOREACH(head, &d->conns)
 	{
 		conn = QUEUE_DATA(head, struct conn, queue);
 		connStop(conn);
@@ -478,7 +478,7 @@ static void monitorCb(uv_prepare_t *monitor)
 	 * transfer leadership.  */
 	/*
 	if (d->raft_state == RAFT_LEADER && state != RAFT_LEADER) {
-		QUEUE__FOREACH(head, &d->conns)
+		QUEUE_FOREACH(head, &d->conns)
 		{
 			conn = QUEUE_DATA(head, struct conn, queue);
 			connStop(conn);

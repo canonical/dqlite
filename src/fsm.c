@@ -379,7 +379,7 @@ static int fsmSnapshot(struct raft_fsm *fsm,
 
 	/* First count how many databases we have and check that no transaction
 	 * is in progress. */
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE_DATA(head, struct db, queue);
 		if (db->tx_id != 0) {
@@ -403,7 +403,7 @@ static int fsmSnapshot(struct raft_fsm *fsm,
 
 	/* Encode individual databases. */
 	i = 1;
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE_DATA(head, struct db, queue);
 		rv = encodeDatabase(db, &(*bufs)[i]);

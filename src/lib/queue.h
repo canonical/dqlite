@@ -62,7 +62,7 @@ typedef void *queue[2];
  *
  * Mutating the queue while iterating results in undefined behavior.
  */
-#define QUEUE__FOREACH(q, e) \
+#define QUEUE_FOREACH(q, e) \
 	for ((q) = QUEUE__NEXT(e); (q) != (e); (q) = QUEUE__NEXT(q))
 
 /**
