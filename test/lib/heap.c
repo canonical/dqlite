@@ -7,7 +7,7 @@
  * malloc() fault simulation. */
 struct mem_fault
 {
-	struct test_fault fault; /* Fault trigger */
+	struct testFault fault;  /* Fault trigger */
 	sqlite3_mem_methods m;   /* Actual malloc implementation */
 };
 
@@ -23,7 +23,7 @@ static void *memFaultMalloc(int n)
 {
 	void *p = NULL;
 
-	if (!test_fault_tick(&memFault.fault)) {
+	if (!testFault_tick(&memFault.fault)) {
 		p = memFault.m.xMalloc(n);
 	}
 
@@ -36,7 +36,7 @@ static void *memFaultRealloc(void *old, int n)
 {
 	void *p = NULL;
 
-	if (!test_fault_tick(&memFault.fault)) {
+	if (!testFault_tick(&memFault.fault)) {
 		p = memFault.m.xRealloc(old, n);
 	}
 
@@ -83,7 +83,7 @@ static void memFaultShutdown(void *p)
  * management interface. By default no faults will be triggered. */
 static void memWrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
 {
-	test_fault_init(&memFault.fault);
+	testFault_init(&memFault.fault);
 	memFault.m = *m;
 
 	wrap->xMalloc = memFaultMalloc;
@@ -209,9 +209,9 @@ void test_heap_tear_down(void *data)
 
 void test_heap_fault_config(int delay, int repeat)
 {
-	test_fault_config(&memFault.fault, delay, repeat);
+	testFault_config(&memFault.fault, delay, repeat);
 }
 
 void test_heap_fault_enable() {
-	test_fault_enable(&memFault.fault);
+	testFault_enable(&memFault.fault);
 }
