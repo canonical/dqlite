@@ -53,7 +53,7 @@ void *bufferAdvance(struct buffer *b, size_t size)
 		return NULL;
 	}
 
-	cursor = buffer_cursor(b, b->offset);
+	cursor = bufferCursor(b, b->offset);
 	b->offset += size;
 	return cursor;
 }
@@ -62,7 +62,7 @@ size_t buffer__offset(struct buffer *b) {
 	return b->offset;
 }
 
-void *buffer_cursor(struct buffer *b, size_t offset)
+void *bufferCursor(struct buffer *b, size_t offset)
 {
 	return b->data + offset;
 }

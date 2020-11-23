@@ -56,31 +56,31 @@ int clientSendHandshake(struct client *c)
 }
 
 /* Write out a request. */
-#define REQUEST(LOWER, UPPER)                                      \
-	{                                                          \
-		struct message message;                            \
-		size_t n;                                          \
-		size_t n1;                                         \
-		size_t n2;                                         \
-		void *cursor;                                      \
-		ssize_t rv;                                        \
-		n1 = message__sizeof(&message);                    \
-		n2 = request_##LOWER##__sizeof(&request);          \
-		n = n1 + n2;                                       \
-		buffer__reset(&c->write);                          \
-		cursor = bufferAdvance(&c->write, n);              \
-		if (cursor == NULL) {                              \
-			return DQLITE_NOMEM;                       \
-		}                                                  \
-		assert(n2 % 8 == 0);                               \
-		message.type = DQLITE_REQUEST_##UPPER;             \
-		message.words = (uint32_t)(n2 / 8);                \
-		message__encode(&message, &cursor);                \
-		request_##LOWER##__encode(&request, &cursor);      \
-		rv = write(c->fd, buffer_cursor(&c->write, 0), n); \
-		if (rv != (int)n) {                                \
-			return DQLITE_ERROR;                       \
-		}                                                  \
+#define REQUEST(LOWER, UPPER)                                     \
+	{                                                         \
+		struct message message;                           \
+		size_t n;                                         \
+		size_t n1;                                        \
+		size_t n2;                                        \
+		void *cursor;                                     \
+		ssize_t rv;                                       \
+		n1 = message__sizeof(&message);                   \
+		n2 = request_##LOWER##__sizeof(&request);         \
+		n = n1 + n2;                                      \
+		buffer__reset(&c->write);                         \
+		cursor = bufferAdvance(&c->write, n);             \
+		if (cursor == NULL) {                             \
+			return DQLITE_NOMEM;                      \
+		}                                                 \
+		assert(n2 % 8 == 0);                              \
+		message.type = DQLITE_REQUEST_##UPPER;            \
+		message.words = (uint32_t)(n2 / 8);               \
+		message__encode(&message, &cursor);               \
+		request_##LOWER##__encode(&request, &cursor);     \
+		rv = write(c->fd, bufferCursor(&c->write, 0), n); \
+		if (rv != (int)n) {                               \
+			return DQLITE_ERROR;                      \
+		}                                                 \
 	}
 
 /* Read a response without decoding it. */
@@ -123,7 +123,7 @@ int clientSendHandshake(struct client *c)
 	{                                                            \
 		int rv;                                              \
 		struct cursor cursor;                                \
-		cursor.p = buffer_cursor(&c->read, 0);               \
+		cursor.p = bufferCursor(&c->read, 0);                \
 		cursor.cap = buffer__offset(&c->read);               \
 		rv = response_##LOWER##__decode(&cursor, &response); \
 		if (rv != 0) {                                       \
@@ -218,7 +218,7 @@ int clientRecvRows(struct client *c, struct rows *rows)
 	unsigned i;
 	int rv;
 	READ(rows, ROWS);
-	cursor.p = buffer_cursor(&c->read, 0);
+	cursor.p = bufferCursor(&c->read, 0);
 	cursor.cap = buffer__offset(&c->read);
 	rv = uint64__decode(&cursor, &column_count);
 	if (rv != 0) {
