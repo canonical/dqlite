@@ -291,7 +291,7 @@ static void handleCb(struct handle *req, int status, int type)
  *
  ******************************************************************************/
 
-struct leader_fixture
+struct leaderFixture
 {
 	FIXTURE;
 	struct request_leader request;
@@ -301,13 +301,13 @@ struct leader_fixture
 TEST_SUITE(leader);
 TEST_SETUP(leader)
 {
-	struct leader_fixture *f = munit_malloc(sizeof *f);
+	struct leaderFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	return f;
 }
 TEST_TEAR_DOWN(leader)
 {
-	struct leader_fixture *f = data;
+	struct leaderFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -315,7 +315,7 @@ TEST_TEAR_DOWN(leader)
 /* If the leader is not available, an empty string is returned. */
 TEST_CASE(leader, not_available, NULL)
 {
-	struct leader_fixture *f = data;
+	struct leaderFixture *f = data;
 	(void)params;
 	ENCODE(&f->request, leader);
 	HANDLE(LEADER);
@@ -329,7 +329,7 @@ TEST_CASE(leader, not_available, NULL)
 /* The leader is the same node serving the request. */
 TEST_CASE(leader, same_node, NULL)
 {
-	struct leader_fixture *f = data;
+	struct leaderFixture *f = data;
 	(void)params;
 	CLUSTER_ELECT(0);
 	ENCODE(&f->request, leader);
@@ -343,7 +343,7 @@ TEST_CASE(leader, same_node, NULL)
 /* The leader is a different node than the one serving the request. */
 TEST_CASE(leader, other_node, NULL)
 {
-	struct leader_fixture *f = data;
+	struct leaderFixture *f = data;
 	(void)params;
 	CLUSTER_ELECT(1);
 	ENCODE(&f->request, leader);
