@@ -95,7 +95,7 @@ TEST_CASE(decode, client, NULL)
 
 	test_message_send_client(123, &request->message);
 
-	err = request_decode(request);
+	err = requestDecode(request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_int(request->client.id, ==, 123);
@@ -112,7 +112,7 @@ TEST_CASE(decode, heartbeat, NULL)
 
 	test_message_send_heartbeat(666, &request->message);
 
-	err = request_decode(request);
+	err = requestDecode(request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_int(request->heartbeat.timestamp, ==, 666);
@@ -129,7 +129,7 @@ TEST_CASE(decode, open, NULL)
 
 	test_message_send_open("test.db", 123, "volatile", &request->message);
 
-	err = request_decode(request);
+	err = requestDecode(request);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_string_equal(request->open.name, "test.db");
