@@ -327,7 +327,7 @@ TEST_CASE(leader, notAvailable, NULL)
 }
 
 /* The leader is the same node serving the request. */
-TEST_CASE(leader, same_node, NULL)
+TEST_CASE(leader, sameNode, NULL)
 {
 	struct leaderFixture *f = data;
 	(void)params;
