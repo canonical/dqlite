@@ -32,7 +32,7 @@ struct fixture
 	} write;
 };
 
-static void read_cb(struct transport *transport, int status)
+static void readCb(struct transport *transport, int status)
 {
 	struct fixture *f = transport->data;
 	f->read.invoked = true;
@@ -93,11 +93,11 @@ static void tear_down(void *data)
 #define BUF_ALLOC(N) {munit_malloc(N), N};
 
 /* Start reading into the current buffer */
-#define READ(BUF)                                                   \
-	{                                                           \
-		int rv2;                                            \
-		rv2 = transport__read(&f->transport, BUF, read_cb); \
-		munit_assert_int(rv2, ==, 0);                       \
+#define READ(BUF)                                                  \
+	{                                                          \
+		int rv2;                                           \
+		rv2 = transport__read(&f->transport, BUF, readCb); \
+		munit_assert_int(rv2, ==, 0);                      \
 	}
 
 /* Start writing the current buffer into the stream */

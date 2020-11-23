@@ -13,7 +13,7 @@
  * Callbacks.
  */
 struct transport;
-typedef void (*transport_read_cb)(struct transport *t, int status);
+typedef void (*transport_readCb)(struct transport *t, int status);
 typedef void (*transport_write_cb)(struct transport *t, int status);
 typedef void (*transport_close_cb)(struct transport *t);
 
@@ -27,7 +27,7 @@ struct transport
 	struct uv_stream_s *stream;  /* Data stream */
 	uv_buf_t read;		     /* Read buffer */
 	uv_write_t write;	    /* Write request */
-	transport_read_cb read_cb;   /* Read callback */
+	transport_readCb readCb;    /* Read callback */
 	transport_write_cb write_cb; /* Write callback */
 	transport_close_cb close_cb; /* Close callback */
 };
@@ -46,7 +46,7 @@ void transport__close(struct transport *t, transport_close_cb cb);
 /**
  * Read from the transport file descriptor until the given buffer is full.
  */
-int transport__read(struct transport *t, uv_buf_t *buf, transport_read_cb cb);
+int transport__read(struct transport *t, uv_buf_t *buf, transport_readCb cb);
 
 /**
  * Write the given buffer to the transport.

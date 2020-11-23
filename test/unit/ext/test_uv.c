@@ -181,11 +181,11 @@ static void test_read_sync__allocCb(uv_handle_t *stream,
 	buf->base = munit_malloc(TEST_SOCKET_MIN_BUF_SIZE);
 }
 
-static void test_read_sync__read_cb(uv_stream_t *stream,
-				    ssize_t nread,
-				    const uv_buf_t *buf)
+static void test_read_sync__readCb(uv_stream_t *stream,
+				   ssize_t nread,
+				   const uv_buf_t *buf)
 {
-	bool *read_cb_called;
+	bool *readCb_called;
 
 	/* Apprently there's an empty read before the actual one. */
 	if (nread == 0) {
@@ -196,9 +196,9 @@ static void test_read_sync__read_cb(uv_stream_t *stream,
 	munit_assert_int(nread, ==, TEST_SOCKET_MIN_BUF_SIZE);
 	munit_assert_int(buf->len, ==, TEST_SOCKET_MIN_BUF_SIZE);
 
-	read_cb_called = stream->data;
+	readCb_called = stream->data;
 
-	*read_cb_called = true;
+	*readCb_called = true;
 
 	free(buf->base);
 }
@@ -209,21 +209,21 @@ TEST_CASE(read, sync, endpointParams)
 	struct fixture *f = data;
 	uv_buf_t *buf = bufMalloc();
 	int rv;
-	bool read_cb_called;
+	bool readCb_called;
 
 	(void)params;
 
-	f->stream.data = &read_cb_called;
+	f->stream.data = &readCb_called;
 
 	rv = uv_read_start(&f->stream, test_read_sync__allocCb,
-			   test_read_sync__read_cb);
+			   test_read_sync__readCb);
 
 	rv = write(f->client, buf->base, buf->len);
 	munit_assert_int(rv, ==, buf->len);
 
 	test_uv_run(&f->loop, 1);
 
-	munit_assert_true(read_cb_called);
+	munit_assert_true(readCb_called);
 
 	bufFree(buf);
 

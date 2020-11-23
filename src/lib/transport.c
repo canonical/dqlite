@@ -19,19 +19,19 @@ static void allocCb(uv_handle_t *stream, size_t suggested_size, uv_buf_t *buf)
 /* Invoke the read callback. */
 static void read_done(struct transport *t, ssize_t status)
 {
-	transport_read_cb cb;
+	transport_readCb cb;
 	int rv;
 	rv = uv_read_stop(t->stream);
 	assert(rv == 0);
-	cb = t->read_cb;
+	cb = t->readCb;
 	assert(cb != NULL);
-	t->read_cb = NULL;
+	t->readCb = NULL;
 	t->read.base = NULL;
 	t->read.len = 0;
 	cb(t, (int)status);
 }
 
-static void read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
+static void readCb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 {
 	struct transport *t;
 	(void)buf;
@@ -121,7 +121,7 @@ int transport__init(struct transport *t, struct uv_stream_s *stream)
 	t->read.base = NULL;
 	t->read.len = 0;
 	t->write.data = t;
-	t->read_cb = NULL;
+	t->readCb = NULL;
 	t->write_cb = NULL;
 	t->close_cb = NULL;
 
@@ -144,15 +144,15 @@ void transport__close(struct transport *t, transport_close_cb cb)
 	uv_close((uv_handle_t *)t->stream, close_cb);
 }
 
-int transport__read(struct transport *t, uv_buf_t *buf, transport_read_cb cb)
+int transport__read(struct transport *t, uv_buf_t *buf, transport_readCb cb)
 {
 	int rv;
 
 	assert(t->read.base == NULL);
 	assert(t->read.len == 0);
 	t->read = *buf;
-	t->read_cb = cb;
-	rv = uv_read_start(t->stream, allocCb, read_cb);
+	t->readCb = cb;
+	rv = uv_read_start(t->stream, allocCb, readCb);
 	if (rv != 0) {
 		return DQLITE_ERROR;
 	}
