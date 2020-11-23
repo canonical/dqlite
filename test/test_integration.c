@@ -174,7 +174,7 @@ TEST_TEAR_DOWN(exec, tear_down);
 
 #include <unistd.h>
 
-TEST_CASE(exec, single_query, NULL)
+TEST_CASE(exec, singleQuery, NULL)
 {
 	struct test_server *server = data;
 	struct test_client *client;
