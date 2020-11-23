@@ -189,7 +189,7 @@ DQLITE_INLINE void int64__encode(const int64_t *value, void **cursor)
 	*cursor += sizeof(int64_t);
 }
 
-DQLITE_INLINE void float__encode(const float_t *value, void **cursor)
+DQLITE_INLINE void float_encode(const float_t *value, void **cursor)
 {
 	*(uint64_t *)(*cursor) = byteFlip64(*(uint64_t *)value);
 	*cursor += sizeof(uint64_t);
