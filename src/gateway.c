@@ -240,7 +240,7 @@ static void fillResult(struct gateway *g, struct response_result *response)
 {
 	response->lastInsertId =
 	    (uint64_t)sqlite3_last_insert_rowid(g->leader->conn);
-	response->rows_affected = (uint64_t)sqlite3_changes(g->leader->conn);
+	response->rowsAffected = (uint64_t)sqlite3_changes(g->leader->conn);
 }
 
 static const char *errorMessage(sqlite3 *db, int rc)

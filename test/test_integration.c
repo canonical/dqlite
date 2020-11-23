@@ -61,7 +61,7 @@ static void *__worker_run(void *arg)
 		test_client_prepare(w->client, dbId, sql, &stmt_id);
 		test_client_exec(w->client, dbId, stmt_id, &result);
 
-		munit_assert_int(result.rows_affected, ==, 1);
+		munit_assert_int(result.rowsAffected, ==, 1);
 
 		test_client_finalize(w->client, dbId, stmt_id);
 
@@ -211,7 +211,7 @@ TEST_CASE(exec, single_query, NULL)
 	test_client_exec(client, dbId, stmt_id, &result);
 
 	munit_assert_int(result.lastInsertId, ==, 1);
-	munit_assert_int(result.rows_affected, ==, 1);
+	munit_assert_int(result.rowsAffected, ==, 1);
 
 	test_client_finalize(client, dbId, stmt_id);
 
@@ -279,7 +279,7 @@ TEST_CASE(exec, largeQuery, NULL)
 	for (i = 0; i < 256; i++) {
 		munit_assert_int(stmt_id, ==, 0);
 		test_client_exec(client, dbId, stmt_id, &result);
-		munit_assert_int(result.rows_affected, ==, 1);
+		munit_assert_int(result.rowsAffected, ==, 1);
 	}
 
 	test_client_finalize(client, dbId, stmt_id);

@@ -294,12 +294,12 @@ TEST_CASE(exec, success, NULL)
 {
 	struct execFixture *f = data;
 	unsigned lastInsertId;
-	unsigned rows_affected;
+	unsigned rowsAffected;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &lastInsertId, &rows_affected, 8);
+	EXEC(f->stmt_id, &lastInsertId, &rowsAffected, 8);
 	munit_assert_int(lastInsertId, ==, 0);
-	munit_assert_int(rows_affected, ==, 0);
+	munit_assert_int(rowsAffected, ==, 0);
 	return MUNIT_OK;
 }
 
@@ -307,18 +307,18 @@ TEST_CASE(exec, result, NULL)
 {
 	struct execFixture *f = data;
 	unsigned lastInsertId;
-	unsigned rows_affected;
+	unsigned rowsAffected;
 	(void)params;
 	PREPARE("BEGIN", &f->stmt_id);
-	EXEC(f->stmt_id, &lastInsertId, &rows_affected, 2);
+	EXEC(f->stmt_id, &lastInsertId, &rowsAffected, 2);
 	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &lastInsertId, &rows_affected, 5);
+	EXEC(f->stmt_id, &lastInsertId, &rowsAffected, 5);
 	PREPARE("INSERT INTO test (n) VALUES(123)", &f->stmt_id);
-	EXEC(f->stmt_id, &lastInsertId, &rows_affected, 2);
+	EXEC(f->stmt_id, &lastInsertId, &rowsAffected, 2);
 	PREPARE("COMMIT", &f->stmt_id);
-	EXEC(f->stmt_id, &lastInsertId, &rows_affected, 5);
+	EXEC(f->stmt_id, &lastInsertId, &rowsAffected, 5);
 	munit_assert_int(lastInsertId, ==, 1);
-	munit_assert_int(rows_affected, ==, 1);
+	munit_assert_int(rowsAffected, ==, 1);
 	return MUNIT_OK;
 }
 
@@ -326,11 +326,11 @@ TEST_CASE(exec, closeWhileInFlight, NULL)
 {
 	struct execFixture *f = data;
 	unsigned lastInsertId;
-	unsigned rows_affected;
+	unsigned rowsAffected;
 	int rv;
 	(void)params;
 
-	EXEC_SQL("CREATE TABLE test (n)", &lastInsertId, &rows_affected, 7);
+	EXEC_SQL("CREATE TABLE test (n)", &lastInsertId, &rowsAffected, 7);
 	rv = clientSendExecSQL(&f->client, "INSERT INTO test(n) VALUES(1)");
 	munit_assert_int(rv, ==, 0);
 
@@ -353,7 +353,7 @@ struct queryFixture
 	unsigned stmt_id;
 	unsigned insertStmtId;
 	unsigned lastInsertId;
-	unsigned rows_affected;
+	unsigned rowsAffected;
 	struct rows rows;
 };
 
@@ -365,9 +365,9 @@ TEST_SETUP(query)
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &f->lastInsertId, &f->rows_affected, 7);
+	EXEC(stmt_id, &f->lastInsertId, &f->rowsAffected, 7);
 	PREPARE("INSERT INTO test(n) VALUES (123)", &f->insertStmtId);
-	EXEC(f->insertStmtId, &f->lastInsertId, &f->rows_affected, 4);
+	EXEC(f->insertStmtId, &f->lastInsertId, &f->rowsAffected, 4);
 	return f;
 }
 
