@@ -48,7 +48,7 @@ const int vfsOne = 1;
 #define VFS__WAL_HEADER_SIZE 32
 
 /* Write ahead log frame header size. */
-#define VFS__FRAME_HEADER_SIZE 24
+#define VFS_FRAME_HEADER_SIZE 24
 
 /* Size of the first part of the WAL index header. */
 #define VFS__WAL_INDEX_HEADER_SIZE 48
@@ -56,7 +56,7 @@ const int vfsOne = 1;
 /* Size of a single memory-mapped WAL index region. */
 #define VFS__WAL_INDEX_REGION_SIZE 32768
 
-#define vfsFrameSize(PAGE_SIZE) (VFS__FRAME_HEADER_SIZE + PAGE_SIZE)
+#define vfsFrameSize(PAGE_SIZE) (VFS_FRAME_HEADER_SIZE + PAGE_SIZE)
 
 /* Hold content for a shared memory mapping. */
 struct vfsShm
@@ -71,7 +71,7 @@ struct vfsShm
 /* Hold the content of a single WAL frame. */
 struct vfsFrame
 {
-	uint8_t header[VFS__FRAME_HEADER_SIZE];
+	uint8_t header[VFS_FRAME_HEADER_SIZE];
 	uint8_t *page; /* Content of the page. */
 };
 
@@ -2555,8 +2555,8 @@ static int vfsWalRestore(struct vfsWal *w,
 		frames[i] = frame;
 
 		p = &data[VFS__WAL_HEADER_SIZE + i * vfsFrameSize(page_size)];
-		memcpy(frame->header, p, VFS__FRAME_HEADER_SIZE);
-		memcpy(frame->page, p + VFS__FRAME_HEADER_SIZE, page_size);
+		memcpy(frame->header, p, VFS_FRAME_HEADER_SIZE);
+		memcpy(frame->page, p + VFS_FRAME_HEADER_SIZE, page_size);
 	}
 
 	memcpy(w->hdr, data, VFS__WAL_HEADER_SIZE);
