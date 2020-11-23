@@ -211,7 +211,7 @@ static struct vfsFrame *vfsFrameCreate(unsigned size)
 
 	f->page = sqlite3_malloc64(size);
 	if (f->page == NULL) {
-		goto oom_after_page_alloc;
+		goto oomAfterPageAlloc;
 	}
 
 	memset(f->header, 0, FORMAT_WAL_FRAME_HDR_SIZE);
@@ -219,7 +219,7 @@ static struct vfsFrame *vfsFrameCreate(unsigned size)
 
 	return f;
 
-oom_after_page_alloc:
+oomAfterPageAlloc:
 	sqlite3_free(f);
 oom:
 	return NULL;
