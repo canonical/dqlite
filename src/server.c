@@ -134,7 +134,7 @@ void dqlite__close(struct dqlite_node *d)
 
 int dqlite_node_create(dqlite_node_id id,
 		       const char *address,
-		       const char *data_dir,
+		       const char *dataDir,
 		       dqlite_node **t)
 {
 	int rv;
@@ -144,7 +144,7 @@ int dqlite_node_create(dqlite_node_id id,
 		return DQLITE_NOMEM;
 	}
 
-	rv = dqlite__init(*t, id, address, data_dir);
+	rv = dqlite__init(*t, id, address, dataDir);
 	if (rv != 0) {
 		return rv;
 	}
