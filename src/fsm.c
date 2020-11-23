@@ -100,7 +100,7 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 	 * VFS. Otherwise, if the commit marker is not set, this must be an
 	 * upgrade from V1, we accumulate uncommitted frames in memory until the
 	 * final commit or a rollback. */
-	if (c->is_commit) {
+	if (c->isCommit) {
 		if (f->pending.n_pages > 0) {
 			rv = addPendingPages(f, page_numbers, pages,
 					     c->frames.n_pages,

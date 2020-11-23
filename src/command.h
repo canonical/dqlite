@@ -38,7 +38,7 @@ typedef struct frames frames_t;
 	X(text, filename, ##__VA_ARGS__)      \
 	X(uint64, tx_id, ##__VA_ARGS__)       \
 	X(uint32, truncate, ##__VA_ARGS__)    \
-	X(uint8, is_commit, ##__VA_ARGS__)    \
+	X(uint8, isCommit, ##__VA_ARGS__)     \
 	X(uint8, __unused1__, ##__VA_ARGS__)  \
 	X(uint16, __unused2__, ##__VA_ARGS__) \
 	X(frames, frames, ##__VA_ARGS__)

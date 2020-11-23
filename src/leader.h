@@ -32,7 +32,7 @@ struct apply
 	union {                /* Command-specific data */
 		struct
 		{
-			bool is_commit;
+			bool isCommit;
 		} frames;
 	};
 };
