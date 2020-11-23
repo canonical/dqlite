@@ -663,7 +663,7 @@ out:
 	return rv;
 }
 
-dqlite_node_id dqlite_generate_node_id(const char *address)
+dqlite_node_id dqliteGenerateNodeId(const char *address)
 {
 	struct timespec ts;
 	int rv;
