@@ -39,7 +39,7 @@ static uv_buf_t *buf_malloc(void)
 }
 
 /* Free the buffer returned by buf_malloc() */
-static void buf_free(uv_buf_t *buf)
+static void bufFree(uv_buf_t *buf)
 {
 	free(buf->base);
 	free(buf);
@@ -154,8 +154,8 @@ TEST_CASE(write, sync, endpointParams)
 
 	test_uv_run(&f->loop, 1);
 
-	buf_free(buf1);
-	buf_free(buf2);
+	bufFree(buf1);
+	bufFree(buf2);
 
 	return MUNIT_OK;
 }
@@ -225,7 +225,7 @@ TEST_CASE(read, sync, endpointParams)
 
 	munit_assert_true(read_cb_called);
 
-	buf_free(buf);
+	bufFree(buf);
 
 	return MUNIT_OK;
 }
