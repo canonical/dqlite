@@ -143,7 +143,7 @@ DQLITE_INLINE size_t int64__sizeof(const int64_t *value)
 	return sizeof(int64_t);
 }
 
-DQLITE_INLINE size_t float_sizeof(const float_t *value)
+DQLITE_INLINE size_t floatSizeof(const float_t *value)
 {
 	(void)value;
 	return sizeof(double);
