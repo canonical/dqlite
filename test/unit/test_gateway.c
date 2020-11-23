@@ -1022,7 +1022,7 @@ TEST_CASE(query, large, NULL)
 	DECODE(&f->response, rows);
 	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
 
-	gateway__resume(f->gateway, &finished);
+	gateway_resume(f->gateway, &finished);
 	munit_assert_false(finished);
 
 	ASSERT_CALLBACK(0, ROWS);
