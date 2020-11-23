@@ -74,7 +74,7 @@ struct server
 		char address[16];                                \
 		int _rc;                                         \
                                                                  \
-		test_logger_setup(params, &_s->logger);          \
+		testLogger_setup(params, &_s->logger);           \
                                                                  \
 		sprintf(address, "%d", I + 1);                   \
                                                                  \
@@ -112,7 +112,7 @@ struct server
 		sqlite3_vfs_unregister(&s->vfs);    \
 		VfsClose(&s->vfs);                  \
 		configClose(&s->config);            \
-		test_logger_tear_down(&s->logger);  \
+		testLogger_tear_down(&s->logger);   \
 	}
 
 #define CLUSTER_CONFIG(I) &f->servers[I].config

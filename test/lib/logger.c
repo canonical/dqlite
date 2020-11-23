@@ -6,9 +6,9 @@
 #include "logger.h"
 #include "munit.h"
 
-void test_loggerEmit(void *data, int level, const char *format, va_list args)
+void testLoggerEmit(void *data, int level, const char *format, va_list args)
 {
-	struct test_logger *t = data;
+	struct testLogger *t = data;
 	char buf[1024];
 	const char *levelName;
 	int i;
@@ -47,9 +47,9 @@ void test_loggerEmit(void *data, int level, const char *format, va_list args)
 	munit_log(MUNIT_LOG_INFO, buf);
 }
 
-void test_logger_setup(const MunitParameter params[], struct logger *l)
+void testLogger_setup(const MunitParameter params[], struct logger *l)
 {
-	struct test_logger *t;
+	struct testLogger *t;
 
 	(void)params;
 
@@ -57,10 +57,10 @@ void test_logger_setup(const MunitParameter params[], struct logger *l)
 	t->data = NULL;
 
 	l->data = t;
-	l->emit = test_loggerEmit;
+	l->emit = testLoggerEmit;
 }
 
-void test_logger_tear_down(struct logger *l)
+void testLogger_tear_down(struct logger *l)
 {
 	free(l->data);
 }
