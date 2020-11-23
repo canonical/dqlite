@@ -16,7 +16,7 @@ static int initRead(struct conn *c, uv_buf_t *buf, size_t size)
 	return 0;
 }
 
-static int read_message(struct conn *c);
+static int readMessage(struct conn *c);
 static void write_cb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
@@ -38,7 +38,7 @@ static void write_cb(struct transport *transport, int status)
 	}
 
 	/* Start reading the next request */
-	rv = read_message(c);
+	rv = readMessage(c);
 	if (rv != 0) {
 		goto abort;
 	}
@@ -162,7 +162,7 @@ static int read_request(struct conn *c)
 	return 0;
 }
 
-static void read_message_cb(struct transport *transport, int status)
+static void readMessage_cb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
 	struct cursor cursor;
@@ -188,7 +188,7 @@ static void read_message_cb(struct transport *transport, int status)
 }
 
 /* Start reading metadata about the next message */
-static int read_message(struct conn *c)
+static int readMessage(struct conn *c)
 {
 	uv_buf_t buf;
 	int rv;
@@ -196,7 +196,7 @@ static int read_message(struct conn *c)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = transport__read(&c->transport, &buf, read_message_cb);
+	rv = transport__read(&c->transport, &buf, readMessage_cb);
 	if (rv != 0) {
 		return rv;
 	}
@@ -229,7 +229,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 	}
 	c->gateway.protocol = c->protocol;
 
-	rv = read_message(c);
+	rv = readMessage(c);
 	if (rv != 0) {
 		goto abort;
 	}
