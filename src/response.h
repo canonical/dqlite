@@ -33,7 +33,7 @@
 	X(uint64, failureDomain, ##__VA_ARGS__) \
 	X(uint64, weight, ##__VA_ARGS__)
 
-#define RESPONSE__DEFINE(LOWER, UPPER, _) \
+#define RESPONSE_DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
 
 #define RESPONSE__TYPES(X, ...)                      \
@@ -50,6 +50,6 @@
 	X(servers, SERVERS, __VA_ARGS__)             \
 	X(metadata, METADATA, __VA_ARGS__)
 
-RESPONSE__TYPES(RESPONSE__DEFINE);
+RESPONSE__TYPES(RESPONSE_DEFINE);
 
 #endif /* RESPONSE_H_ */
