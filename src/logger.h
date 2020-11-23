@@ -9,18 +9,18 @@
 enum { DQLITE_DEBUG = 0, DQLITE_INFO, DQLITE_WARN, DQLITE_LOG_ERROR };
 
 /* Function to emit log messages. */
-typedef void (*dqlite_emit)(void *data,
-			    int level,
-			    const char *fmt,
-			    va_list args);
+typedef void (*dqliteEmit)(void *data,
+			   int level,
+			   const char *fmt,
+			   va_list args);
 
 struct logger
 {
 	void *data;
-	dqlite_emit emit;
+	dqliteEmit emit;
 };
 
-/* Default implementation of dqlite_emit, using stderr. */
+/* Default implementation of dqliteEmit, using stderr. */
 void loggerDefaultEmit(void *data, int level, const char *fmt, va_list args);
 
 /* Emit a log message with a certain level. */
