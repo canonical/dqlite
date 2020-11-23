@@ -20,7 +20,7 @@
 
 #define SETUP                                                \
 	unsigned i_;                                         \
-	testHeapSetup(params, user_data);                    \
+	testHeapSetup(params, userData);                     \
 	testSqliteSetup(params);                             \
 	for (i_ = 0; i_ < N_SERVERS; i_++) {                 \
 		struct testServer *server = &f->servers[i_]; \
@@ -132,7 +132,7 @@ struct fixture
 	FIXTURE;
 };
 
-static void *setUp(const MunitParameter params[], void *user_data)
+static void *setUp(const MunitParameter params[], void *userData)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	SETUP;

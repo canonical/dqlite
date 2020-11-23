@@ -311,7 +311,7 @@ TEST_SETUP(encoder)
 	struct encoderFixture *f = munit_malloc(sizeof *f);
 	int rc;
 	(void)params;
-	(void)user_data;
+	(void)userData;
 	rc = bufferInit(&f->buffer);
 	munit_assert_int(rc, ==, 0);
 	return f;

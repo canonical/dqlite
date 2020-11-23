@@ -15,12 +15,12 @@ struct fixture
 	struct buffer buffer;
 };
 
-static void *setup(const MunitParameter params[], void *user_data)
+static void *setup(const MunitParameter params[], void *userData)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	int rc;
 	(void)params;
-	(void)user_data;
+	(void)userData;
 	rc = bufferInit(&f->buffer);
 	munit_assert_int(rc, ==, 0);
 	return f;

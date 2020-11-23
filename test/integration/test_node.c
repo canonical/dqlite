@@ -17,11 +17,11 @@ struct fixture
 	dqlite_node *node; /* Node instance. */
 };
 
-static void *setUp(const MunitParameter params[], void *user_data)
+static void *setUp(const MunitParameter params[], void *userData)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	int rv;
-	testHeapSetup(params, user_data);
+	testHeapSetup(params, userData);
 	testSqliteSetup(params);
 
 	f->dir = testDirSetup();

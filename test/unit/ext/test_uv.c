@@ -86,11 +86,11 @@ static void listenCb(uv_stream_t *listener, int status)
 	munit_assert_int(rv, ==, 0);
 }
 
-static void *setup(const MunitParameter params[], void *user_data)
+static void *setup(const MunitParameter params[], void *userData)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	int rv;
-	(void)user_data;
+	(void)userData;
 
 	testUv_setup(params, &f->loop);
 	testEndpoint_setup(&f->endpoint, params);

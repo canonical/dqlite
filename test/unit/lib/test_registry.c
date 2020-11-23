@@ -38,12 +38,12 @@ static const char *testItem_hash(struct testItem *i)
 REGISTRY(testRegistry, testItem);
 REGISTRY_METHODS(testRegistry, testItem);
 
-static void *setup(const MunitParameter params[], void *user_data)
+static void *setup(const MunitParameter params[], void *userData)
 {
 	struct testRegistry *registry;
 
 	(void)params;
-	(void)user_data;
+	(void)userData;
 
 	registry = (struct testRegistry *)munit_malloc(sizeof(*registry));
 

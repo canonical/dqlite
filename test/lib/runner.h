@@ -164,7 +164,7 @@ extern int _main_suites_n;
 #define TEST_SETUP_(S)                                         \
 	static void *S##Setup(const MunitParameter[], void *); \
 	_##S##Setup = S##Setup;                                \
-	static void *S##Setup(const MunitParameter params[], void *user_data)
+	static void *S##Setup(const MunitParameter params[], void *userData)
 
 /**
  * Declare a tear down function.
@@ -258,7 +258,7 @@ extern int _main_suites_n;
 	{                                                               \
 		_##S##Setup = S##Setup;                                 \
 	}                                                               \
-	static void *S##Setup(const MunitParameter params[], void *user_data)
+	static void *S##Setup(const MunitParameter params[], void *userData)
 
 #define TEST_SETUP_2_ARGS(S, F)                                         \
 	__attribute__((constructor)) static void _##S##Setup_init(void) \

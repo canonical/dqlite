@@ -17,7 +17,7 @@ struct fixture
 	char names[8][N_VFS];          /* Registration names */
 };
 
-static void *setUp(const MunitParameter params[], void *user_data)
+static void *setUp(const MunitParameter params[], void *userData)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	unsigned i;

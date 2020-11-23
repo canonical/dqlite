@@ -134,13 +134,13 @@ static void __worker_wait(struct worker *w)
  *
  ******************************************************************************/
 
-static void *setup(const MunitParameter params[], void *user_data)
+static void *setup(const MunitParameter params[], void *userData)
 {
 	struct testServer *server;
 	const char *errmsg;
 	int err;
 
-	(void)user_data;
+	(void)userData;
 	(void)params;
 
 	err = dqliteInit(&errmsg);

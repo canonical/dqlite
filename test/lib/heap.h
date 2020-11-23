@@ -9,7 +9,7 @@
 /* Munit parameter defining the repeat of the faulty memory implementation. */
 #define TEST_HEAP_FAULT_REPEAT "mem-fault-repeat"
 
-void testHeapSetup(const MunitParameter params[], void *user_data);
+void testHeapSetup(const MunitParameter params[], void *userData);
 void testHeapTearDown(void *data);
 
 /* Configure the faulty memory management implementation so malloc()-related
@@ -26,7 +26,7 @@ void testHeapFaultConfig(int delay, int repeat);
  * parameters passed to testMemFaultConfig(). */
 void testHeapFaultEnable(void);
 
-#define SETUP_HEAP testHeapSetup(params, user_data);
+#define SETUP_HEAP testHeapSetup(params, userData);
 #define TEAR_DOWN_HEAP testHeapTearDown(data);
 
 #endif /* DQLITE_TEST_HEAP_H */

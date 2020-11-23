@@ -109,11 +109,11 @@ struct fixture
 	struct book book;
 };
 
-static void *setup(const MunitParameter params[], void *user_data)
+static void *setup(const MunitParameter params[], void *userData)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	(void)params;
-	(void)user_data;
+	(void)userData;
 	return f;
 }
 

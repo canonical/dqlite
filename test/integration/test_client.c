@@ -72,11 +72,11 @@ struct fixture
 	struct client *client;
 };
 
-static void *setUp(const MunitParameter params[], void *user_data)
+static void *setUp(const MunitParameter params[], void *userData)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
-	(void)user_data;
-	testHeapSetup(params, user_data);
+	(void)userData;
+	testHeapSetup(params, userData);
 	testSqliteSetup(params);
 	testServer_setup(&f->server, 1, params);
 	testServer_start(&f->server);

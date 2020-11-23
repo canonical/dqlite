@@ -25,7 +25,7 @@ struct fixture
 	struct sqlite3_vfs vfs;
 };
 
-static void *setUp(const MunitParameter params[], void *user_data)
+static void *setUp(const MunitParameter params[], void *userData)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	int rv;

@@ -128,7 +128,7 @@ static void memStats(int *mallocCount, int *memoryUsed)
 
 /* Ensure we're starting from a clean memory state with no allocations and
  * optionally inject malloc failures. */
-void testHeapSetup(const MunitParameter params[], void *user_data)
+void testHeapSetup(const MunitParameter params[], void *userData)
 {
 	int mallocCount;
 	int memoryUsed;
@@ -139,7 +139,7 @@ void testHeapSetup(const MunitParameter params[], void *user_data)
 	int rc;
 
 	(void)params;
-	(void)user_data;
+	(void)userData;
 
 	/* Install the faulty malloc implementation */
 	rc = sqlite3_config(SQLITE_CONFIG_GETMALLOC, &mem);
