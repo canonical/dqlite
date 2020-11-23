@@ -114,7 +114,7 @@ int transport__stream(struct uv_loop_s *loop,
 	return 0;
 }
 
-int transport__init(struct transport *t, struct uv_stream_s *stream)
+int transport_init(struct transport *t, struct uv_stream_s *stream)
 {
 	t->stream = stream;
 	t->stream->data = t;

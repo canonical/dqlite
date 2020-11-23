@@ -60,7 +60,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	testUv_setup(params, &f->loop);
 	rv = transport__stream(&f->loop, server, &stream);
 	munit_assert_int(rv, ==, 0);
-	rv = transport__init(&f->transport, stream);
+	rv = transport_init(&f->transport, stream);
 	munit_assert_int(rv, ==, 0);
 	f->transport.data = f;
 	f->read.invoked = false;

@@ -266,7 +266,7 @@ int connStart(struct conn *c,
 {
 	int rv;
 	(void)loop;
-	rv = transport__init(&c->transport, stream);
+	rv = transport_init(&c->transport, stream);
 	if (rv != 0) {
 		goto err;
 	}
