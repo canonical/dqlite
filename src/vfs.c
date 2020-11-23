@@ -1707,7 +1707,7 @@ static struct vfsDatabase *vfsCreateDatabase(struct vfs *v, const char *name)
 
 	d->name = sqlite3_malloc64(strlen(name) + 1);
 	if (d->name == NULL) {
-		goto oom_after_database_malloc;
+		goto oomAfterDatabaseMalloc;
 	}
 	strcpy(d->name, name);
 
@@ -1718,7 +1718,7 @@ static struct vfsDatabase *vfsCreateDatabase(struct vfs *v, const char *name)
 
 	return d;
 
-oom_after_database_malloc:
+oomAfterDatabaseMalloc:
 	sqlite3_free(d);
 oom:
 	return NULL;
