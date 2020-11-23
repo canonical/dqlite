@@ -69,7 +69,7 @@ TEST_CASE(db, get_new, NULL)
 }
 
 /* Get a previously registered db. */
-TEST_CASE(db, get_existing, NULL)
+TEST_CASE(db, getExisting, NULL)
 {
 	struct dbFixture *f = data;
 	struct db *db1;
