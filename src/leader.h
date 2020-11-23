@@ -20,7 +20,7 @@ struct barrier;
 struct leader;
 
 typedef void (*exec_cb)(struct exec *req, int status);
-typedef void (*barrier_cb)(struct barrier *req, int status);
+typedef void (*barrierCb)(struct barrier *req, int status);
 
 /* Wrapper around raft_apply, saving context information. */
 struct apply
@@ -53,7 +53,7 @@ struct barrier
 	void *data;
 	struct leader *leader;
 	struct raft_barrier req;
-	barrier_cb cb;
+	barrierCb cb;
 };
 
 /**
@@ -108,6 +108,6 @@ int leader__exec(struct leader *l,
  *
  * Otherwise, just invoke the given @cb immediately.
  */
-int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb);
+int leader__barrier(struct leader *l, struct barrier *barrier, barrierCb cb);
 
 #endif /* LEADER_H_*/

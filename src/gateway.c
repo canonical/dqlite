@@ -338,7 +338,7 @@ done:
 	g->req = NULL;
 }
 
-static void query_barrier_cb(struct barrier *barrier, int status)
+static void query_barrierCb(struct barrier *barrier, int status)
 {
 	struct gateway *g = barrier->data;
 	struct handle *handle = g->req;
@@ -376,7 +376,7 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	}
 	g->req = req;
 	g->stmt = stmt->stmt;
-	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
+	rv = leader__barrier(g->leader, &g->barrier, query_barrierCb);
 	if (rv != 0) {
 		g->req = NULL;
 		g->stmt = NULL;
@@ -526,7 +526,7 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	}
 	g->stmt_finalize = true;
 	g->req = req;
-	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
+	rv = leader__barrier(g->leader, &g->barrier, query_barrierCb);
 	if (rv != 0) {
 		g->req = NULL;
 		g->stmt = NULL;

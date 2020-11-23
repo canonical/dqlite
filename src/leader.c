@@ -438,7 +438,7 @@ static void raftBarrierCb(struct raft_barrier *req, int status)
 	barrier->cb(barrier, rv);
 }
 
-int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
+int leader__barrier(struct leader *l, struct barrier *barrier, barrierCb cb)
 {
 	int rv;
 	if (!needsBarrier(l)) {
