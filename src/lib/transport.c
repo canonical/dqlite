@@ -17,7 +17,7 @@ static void allocCb(uv_handle_t *stream, size_t suggested_size, uv_buf_t *buf)
 }
 
 /* Invoke the read callback. */
-static void read_done(struct transport *t, ssize_t status)
+static void readDone(struct transport *t, ssize_t status)
 {
 	transport_readCb cb;
 	int rv;
@@ -55,7 +55,7 @@ static void readCb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 		}
 
 		/* Read completed, invoke the callback. */
-		read_done(t, 0);
+		readDone(t, 0);
 		return;
 	}
 
@@ -69,7 +69,7 @@ static void readCb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 	assert(nread < 0);
 
 	/* Failure. */
-	read_done(t, nread);
+	readDone(t, nread);
 }
 
 int transport__stream(struct uv_loop_s *loop,
