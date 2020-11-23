@@ -18,7 +18,7 @@
  * little-endian words. */
 #define FORMAT_WAL_MAGIC 0x377f0682
 
-#define FORMAT__WAL_MAX_VERSION 3007000
+#define FORMAT_WAL_MAX_VERSION 3007000
 
 static void formatGet32(const uint8_t buf[4], uint32_t *v)
 {
