@@ -50,7 +50,7 @@ typedef void *queue[2];
 /**
  * Return the element at the front of the queue.
  */
-#define QUEUE__HEAD(q) (QUEUE__NEXT(q))
+#define QUEUE_HEAD(q) (QUEUE__NEXT(q))
 
 /**
  * Return the element at the back of the queue.

@@ -17,7 +17,7 @@ void registry__close(struct registry *r)
 	while (!QUEUE__IS_EMPTY(&r->dbs)) {
 		struct db *db;
 		queue *head;
-		head = QUEUE__HEAD(&r->dbs);
+		head = QUEUE_HEAD(&r->dbs);
 		QUEUE__REMOVE(head);
 		db = QUEUE_DATA(head, struct db, queue);
 		dbClose(db);
