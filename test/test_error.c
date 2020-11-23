@@ -313,15 +313,15 @@ TEST_CASE(copy, oom, NULL)
 
 /******************************************************************************
  *
- * dqliteError_is_disconnect
+ * dqliteError_isDisconnect
  *
  ******************************************************************************/
 
-TEST_SUITE(is_disconnect);
-TEST_SETUP(is_disconnect, setup);
-TEST_TEAR_DOWN(is_disconnect, tear_down);
+TEST_SUITE(isDisconnect);
+TEST_SETUP(isDisconnect, setup);
+TEST_TEAR_DOWN(isDisconnect, tear_down);
 
-TEST_CASE(is_disconnect, eof, NULL)
+TEST_CASE(isDisconnect, eof, NULL)
 {
 	dqliteError *error = data;
 
@@ -329,12 +329,12 @@ TEST_CASE(is_disconnect, eof, NULL)
 
 	dqliteError_uv(error, UV_EOF, "boom");
 
-	munit_assert_true(dqliteError_is_disconnect(error));
+	munit_assert_true(dqliteError_isDisconnect(error));
 
 	return MUNIT_OK;
 }
 
-TEST_CASE(is_disconnect, econnreset, NULL)
+TEST_CASE(isDisconnect, econnreset, NULL)
 {
 	dqliteError *error = data;
 
@@ -342,12 +342,12 @@ TEST_CASE(is_disconnect, econnreset, NULL)
 
 	dqliteError_uv(error, UV_ECONNRESET, "boom");
 
-	munit_assert_true(dqliteError_is_disconnect(error));
+	munit_assert_true(dqliteError_isDisconnect(error));
 
 	return MUNIT_OK;
 }
 
-TEST_CASE(is_disconnect, other, NULL)
+TEST_CASE(isDisconnect, other, NULL)
 {
 	dqliteError *error = data;
 
@@ -355,18 +355,18 @@ TEST_CASE(is_disconnect, other, NULL)
 
 	dqliteError_printf(error, "boom");
 
-	munit_assert_true(!dqliteError_is_disconnect(error));
+	munit_assert_true(!dqliteError_isDisconnect(error));
 
 	return MUNIT_OK;
 }
 
-TEST_CASE(is_disconnect, null, NULL)
+TEST_CASE(isDisconnect, null, NULL)
 {
 	dqliteError *error = data;
 
 	(void)params;
 
-	munit_assert_true(!dqliteError_is_disconnect(error));
+	munit_assert_true(!dqliteError_isDisconnect(error));
 
 	return MUNIT_OK;
 }

@@ -153,7 +153,7 @@ int dqliteError_is_null(dqliteError *e)
 	return *e == NULL;
 }
 
-int dqliteError_is_disconnect(dqliteError *e)
+int dqliteError_isDisconnect(dqliteError *e)
 {
 	if (*e == NULL)
 		return 0;

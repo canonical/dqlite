@@ -43,6 +43,6 @@ int dqliteError_copy(dqliteError *e, char **msg);
 int dqliteError_is_null(dqliteError *e);
 
 /* Whether the error is due to client disconnection */
-int dqliteError_is_disconnect(dqliteError *e);
+int dqliteError_isDisconnect(dqliteError *e);
 
 #endif /* DQLITE_ERROR_H */
