@@ -20,7 +20,7 @@ void dbInit(struct db *db, struct config *config, const char *filename)
 	strcpy(db->filename, filename);
 	db->follower = NULL;
 	db->tx_id = 0;
-	QUEUE__INIT(&db->leaders);
+	QUEUE_INIT(&db->leaders);
 }
 
 void dbClose(struct db *db)

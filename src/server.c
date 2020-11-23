@@ -84,8 +84,8 @@ int dqliteInit(struct dqlite_node *d,
 
 	rv = pthread_mutex_init(&d->mutex, NULL);
 	assert(rv == 0); /* Docs say that pthread_mutex_init can't fail */
-	QUEUE__INIT(&d->queue);
-	QUEUE__INIT(&d->conns);
+	QUEUE_INIT(&d->queue);
+	QUEUE_INIT(&d->conns);
 	d->raft_state = RAFT_UNAVAILABLE;
 	d->running = false;
 	d->listener = NULL;

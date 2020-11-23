@@ -9,7 +9,7 @@
 void registry__init(struct registry *r, struct config *config)
 {
 	r->config = config;
-	QUEUE__INIT(&r->dbs);
+	QUEUE_INIT(&r->dbs);
 }
 
 void registry__close(struct registry *r)

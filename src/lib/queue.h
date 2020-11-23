@@ -15,7 +15,7 @@ typedef void *queue[2];
 /**
  * Initialize an empty queue.
  */
-#define QUEUE__INIT(q)                \
+#define QUEUE_INIT(q)                 \
 	{                             \
 		QUEUE__NEXT(q) = (q); \
 		QUEUE__PREV(q) = (q); \
