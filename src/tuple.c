@@ -7,7 +7,7 @@
 #define HAS_PARAMS_FORMAT(P) (P->format == TUPLE_PARAMS)
 
 /* True if a tuple decoder or decoder is using row format. */
-#define HAS_ROW_FORMAT(P) (P->format == TUPLE__ROW)
+#define HAS_ROW_FORMAT(P) (P->format == TUPLE_ROW)
 
 /* Return the tuple header size in bytes, for a tuple of @n values.
  *
@@ -17,7 +17,7 @@ static size_t calcHeaderSize(unsigned n, int format)
 {
 	size_t size;
 
-	if (format == TUPLE__ROW) {
+	if (format == TUPLE_ROW) {
 		size = (n / 2) * sizeof(uint8_t);
 		if (n % 2 != 0) {
 			size += sizeof(uint8_t);
@@ -42,7 +42,7 @@ int tupleDecoder__init(struct tupleDecoder *d,
 	size_t headerSize;
 	int rc;
 
-	d->format = n == 0 ? TUPLE_PARAMS : TUPLE__ROW;
+	d->format = n == 0 ? TUPLE_PARAMS : TUPLE_ROW;
 
 	/* When using row format the number of values is the given one,
 	 * otherwise we have to read it from the header. */

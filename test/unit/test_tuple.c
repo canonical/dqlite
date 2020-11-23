@@ -333,7 +333,7 @@ TEST_CASE(encoder, row, oneValue, NULL)
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
 
-	ENCODER_INIT(1, TUPLE__ROW);
+	ENCODER_INIT(1, TUPLE_ROW);
 
 	value.type = SQLITE_INTEGER;
 	value.integer = 7;
@@ -353,7 +353,7 @@ TEST_CASE(encoder, row, two_values, NULL)
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
 
-	ENCODER_INIT(2, TUPLE__ROW);
+	ENCODER_INIT(2, TUPLE_ROW);
 
 	value.type = SQLITE_INTEGER;
 	value.integer = 7;
@@ -430,7 +430,7 @@ TEST_CASE(encoder, type, float, NULL)
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
 
-	ENCODER_INIT(1, TUPLE__ROW);
+	ENCODER_INIT(1, TUPLE_ROW);
 
 	value.type = SQLITE_FLOAT;
 	value.float_ = 3.1415;
@@ -451,7 +451,7 @@ TEST_CASE(encoder, type, unixtime, NULL)
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
 
-	ENCODER_INIT(1, TUPLE__ROW);
+	ENCODER_INIT(1, TUPLE_ROW);
 
 	value.type = DQLITE_UNIXTIME;
 	value.unixtime = 12345;
@@ -471,7 +471,7 @@ TEST_CASE(encoder, type, iso8601, NULL)
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
 
-	ENCODER_INIT(1, TUPLE__ROW);
+	ENCODER_INIT(1, TUPLE_ROW);
 
 	value.type = DQLITE_ISO8601;
 	value.iso8601 = "2018-07-20 09:49:05+00:00";
@@ -491,7 +491,7 @@ TEST_CASE(encoder, type, boolean, NULL)
 	uint8_t(*buf)[8] = f->buffer.data;
 	(void)params;
 
-	ENCODER_INIT(1, TUPLE__ROW);
+	ENCODER_INIT(1, TUPLE_ROW);
 
 	value.type = DQLITE_BOOLEAN;
 	value.boolean = 1;
