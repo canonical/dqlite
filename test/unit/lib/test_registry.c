@@ -132,7 +132,7 @@ TEST_CASE(add, del_add, NULL)
 }
 
 /* Add N items and then delete them all. */
-TEST_CASE(add, and_del, test_add_params)
+TEST_CASE(add, andDel, test_add_params)
 {
 	struct test_registry *registry = data;
 	int err;
