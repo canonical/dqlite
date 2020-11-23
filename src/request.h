@@ -43,7 +43,7 @@
 #define REQUEST_DESCRIBE(X, ...) X(uint64, format, ##__VA_ARGS__)
 #define REQUEST_WEIGHT(X, ...) X(uint64, weight, ##__VA_ARGS__)
 
-#define REQUEST__DEFINE(LOWER, UPPER, _) \
+#define REQUEST_DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
 
 #define REQUEST__TYPES(X, ...)               \
@@ -66,7 +66,7 @@
 	X(describe, DESCRIBE, __VA_ARGS__)   \
 	X(weight, WEIGHT, __VA_ARGS__)
 
-REQUEST__TYPES(REQUEST__DEFINE);
+REQUEST__TYPES(REQUEST_DEFINE);
 
 #define REQUEST_CONNECT(X, ...)      \
 	X(uint64, id, ##__VA_ARGS__) \
