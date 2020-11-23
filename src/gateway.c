@@ -755,7 +755,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	uint8_t *database;
 	uint8_t *wal;
 	size_t nDatabase;
-	size_t n_wal;
+	size_t nWal;
 	int rv;
 	START(dump, files);
 
@@ -780,7 +780,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 		databaseSize += (uint32_t)(page[31]);
 
 		nDatabase = databaseSize * g->config->page_size;
-		n_wal = n - nDatabase;
+		nWal = n - nDatabase;
 
 		database = data;
 		wal = database + nDatabase;
@@ -788,7 +788,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 		assert(n == 0);
 
 		nDatabase = 0;
-		n_wal = 0;
+		nWal = 0;
 
 		database = NULL;
 		wal = NULL;
@@ -802,7 +802,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 
 	strcpy(filename, request.filename);
 	strcat(filename, "-wal");
-	rv = dumpFile(filename, wal, n_wal, req->buffer);
+	rv = dumpFile(filename, wal, nWal, req->buffer);
 	if (rv != 0) {
 		failure(req, rv, "failed to dump wal file");
 		return 0;
