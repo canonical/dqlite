@@ -247,7 +247,7 @@ extern int _main_suites_n;
 		_##S##_suites_n = n + 1;                                 \
 	}
 
-/* Choose the appropriate TEST_SETUP__N_ARGS() macro depending on the number of
+/* Choose the appropriate TEST_SETUP_N_ARGS() macro depending on the number of
  * arguments passed to TEST_SETUP(). */
 #define TEST_SETUP_MACRO_CHOOSER(...) \
 	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_SETUP_2_ARGS, TEST_SETUP_1_ARGS)
