@@ -349,7 +349,7 @@ static void raftCloseCb(struct raft *raft)
 	uv_close((struct uv_handle_s *)s->listener, NULL);
 }
 
-static void destroy_conn(struct conn *conn)
+static void destroyConn(struct conn *conn)
 {
 	QUEUE__REMOVE(&conn->queue);
 	sqlite3_free(conn);
@@ -446,7 +446,7 @@ static void listenCb(uv_stream_t *listener, int status)
 		goto err;
 	}
 	rv = connStart(conn, &t->config, &t->loop, &t->registry, &t->raft,
-		       stream, &t->raft_transport, destroy_conn);
+		       stream, &t->raft_transport, destroyConn);
 	if (rv != 0) {
 		goto err_after_conn_alloc;
 	}
