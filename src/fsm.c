@@ -428,7 +428,7 @@ err:
 	return rv;
 }
 
-static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
+static int fsm_restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 {
 	struct fsm *f = fsm->data;
 	struct cursor cursor = {buf->base, buf->len};
@@ -476,7 +476,7 @@ int fsmInit(struct raft_fsm *fsm,
 	fsm->data = f;
 	fsm->apply = fsmApply;
 	fsm->snapshot = fsm__snapshot;
-	fsm->restore = fsm__restore;
+	fsm->restore = fsm_restore;
 
 	return 0;
 }
