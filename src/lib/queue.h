@@ -7,18 +7,18 @@ typedef void *queue[2];
 
 /* Private macros. */
 #define QUEUE_NEXT(q) (*(queue **)&((*(q))[0]))
-#define QUEUE__PREV(q) (*(queue **)&((*(q))[1]))
+#define QUEUE_PREV(q) (*(queue **)&((*(q))[1]))
 
-#define QUEUE__PREV_NEXT(q) (QUEUE_NEXT(QUEUE__PREV(q)))
-#define QUEUE_NEXT_PREV(q) (QUEUE__PREV(QUEUE_NEXT(q)))
+#define QUEUE_PREV_NEXT(q) (QUEUE_NEXT(QUEUE_PREV(q)))
+#define QUEUE_NEXT_PREV(q) (QUEUE_PREV(QUEUE_NEXT(q)))
 
 /**
  * Initialize an empty queue.
  */
-#define QUEUE_INIT(q)                 \
-	{                             \
-		QUEUE_NEXT(q) = (q);  \
-		QUEUE__PREV(q) = (q); \
+#define QUEUE_INIT(q)                \
+	{                            \
+		QUEUE_NEXT(q) = (q); \
+		QUEUE_PREV(q) = (q); \
 	}
 
 /**
@@ -29,22 +29,22 @@ typedef void *queue[2];
 /**
  * Insert an element at the back of a queue.
  */
-#define QUEUE__PUSH(q, e)                        \
-	{                                        \
-		QUEUE_NEXT(e) = (q);             \
-		QUEUE__PREV(e) = QUEUE__PREV(q); \
-		QUEUE__PREV_NEXT(e) = (e);       \
-		QUEUE__PREV(q) = (e);            \
+#define QUEUE__PUSH(q, e)                      \
+	{                                      \
+		QUEUE_NEXT(e) = (q);           \
+		QUEUE_PREV(e) = QUEUE_PREV(q); \
+		QUEUE_PREV_NEXT(e) = (e);      \
+		QUEUE_PREV(q) = (e);           \
 	}
 
 /**
  * Remove the given element from the queue. Any element can be removed at any
  * time.
  */
-#define QUEUE__REMOVE(e)                             \
-	{                                            \
-		QUEUE__PREV_NEXT(e) = QUEUE_NEXT(e); \
-		QUEUE_NEXT_PREV(e) = QUEUE__PREV(e); \
+#define QUEUE__REMOVE(e)                            \
+	{                                           \
+		QUEUE_PREV_NEXT(e) = QUEUE_NEXT(e); \
+		QUEUE_NEXT_PREV(e) = QUEUE_PREV(e); \
 	}
 
 /**
@@ -55,7 +55,7 @@ typedef void *queue[2];
 /**
  * Return the element at the back of the queue.
  */
-#define QUEUE__TAIL(q) (QUEUE__PREV(q))
+#define QUEUE__TAIL(q) (QUEUE_PREV(q))
 
 /**
  * Iternate over the element of a queue.
