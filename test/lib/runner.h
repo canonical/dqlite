@@ -250,7 +250,7 @@ extern int _main_suites_n;
 /* Choose the appropriate TEST_SETUP__N_ARGS() macro depending on the number of
  * arguments passed to TEST_SETUP(). */
 #define TEST_SETUP__MACRO_CHOOSER(...) \
-	TEST__GET_3RD_ARG(__VA_ARGS__, TEST_SETUP__2_ARGS, TEST_SETUP__1_ARGS)
+	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_SETUP__2_ARGS, TEST_SETUP__1_ARGS)
 
 #define TEST_SETUP__1_ARGS(S)                                           \
 	static void *S##Setup(const MunitParameter[], void *);          \
@@ -268,9 +268,9 @@ extern int _main_suites_n;
 
 /* Choose the appropriate TEST_TEAR_DOWN__N_ARGS() macro depending on the number
  * of arguments passed to TEST_TEAR_DOWN(). */
-#define TEST_TEAR_DOWN__MACRO_CHOOSER(...)                     \
-	TEST__GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN__2_ARGS, \
-			  TEST_TEAR_DOWN__1_ARGS)
+#define TEST_TEAR_DOWN__MACRO_CHOOSER(...)                    \
+	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN__2_ARGS, \
+			 TEST_TEAR_DOWN__1_ARGS)
 
 #define TEST_TEAR_DOWN__1_ARGS(S)                                          \
 	static void S##TearDown(void *data);                               \
@@ -357,7 +357,7 @@ extern int _main_suites_n;
 	TESTS[I].options = 0;                                                  \
 	TESTS[I].parameters = PARAMS
 
-#define TEST__GET_3RD_ARG(arg1, arg2, arg3, ...) arg3
+#define TEST_GET_3RD_ARG(arg1, arg2, arg3, ...) arg3
 #define TEST__GET_5TH_ARG(arg1, arg2, arg3, arg4, arg5, ...) arg5
 
 #endif /* TEST_RUNNER_H */
