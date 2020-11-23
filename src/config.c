@@ -44,7 +44,7 @@ int configInit(struct config *c, dqlite_node_id id, const char *address)
 	assert(rv < (int)(sizeof c->name));
 	c->logger.data = NULL;
 	c->logger.emit = loggerDefaultEmit;
-	c->failure_domain = 0;
+	c->failureDomain = 0;
 	c->weight = 0;
 	serial++;
 	return 0;

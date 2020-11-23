@@ -15,7 +15,7 @@ struct config
 	unsigned checkpointThreshold;  /* In outstanding WAL frames */
 	struct logger logger;          /* Custom logger */
 	char name[256];                /* VFS/replication registriatio name */
-	unsigned long long failure_domain; /* User-provided failure domain */
+	unsigned long long failureDomain;  /* User-provided failure domain */
 	unsigned long long int weight;     /* User-provided node weight */
 };
 

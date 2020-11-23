@@ -29,8 +29,8 @@
 #define RESPONSE_EMPTY(X, ...) X(uint64, __unused__, ##__VA_ARGS__)
 #define RESPONSE_FILES(X, ...) X(uint64, n, ##__VA_ARGS__)
 #define RESPONSE_SERVERS(X, ...) X(uint64, n, ##__VA_ARGS__)
-#define RESPONSE_METADATA(X, ...)                \
-	X(uint64, failure_domain, ##__VA_ARGS__) \
+#define RESPONSE_METADATA(X, ...)               \
+	X(uint64, failureDomain, ##__VA_ARGS__) \
 	X(uint64, weight, ##__VA_ARGS__)
 
 #define RESPONSE__DEFINE(LOWER, UPPER, _) \

@@ -947,7 +947,7 @@ static int handle_describe(struct handle *req, struct cursor *cursor)
 	if (request.format != DQLITE_REQUEST_DESCRIBE_FORMAT_V0) {
 		failure(req, SQLITE_PROTOCOL, "bad format version");
 	}
-	response.failure_domain = g->config->failure_domain;
+	response.failureDomain = g->config->failureDomain;
 	response.weight = g->config->weight;
 	SUCCESS(metadata, METADATA);
 	return 0;
