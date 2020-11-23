@@ -24,7 +24,7 @@ struct db
  *
  * The given @filename will be copied.
  */
-void db__init(struct db *db, struct config *config, const char *filename);
+void db_init(struct db *db, struct config *config, const char *filename);
 
 /**
  * Release all memory associated with a database object.

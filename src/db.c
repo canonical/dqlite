@@ -12,7 +12,7 @@ static int open_follower_conn(const char *filename,
 			      unsigned page_size,
 			      sqlite3 **conn);
 
-void db__init(struct db *db, struct config *config, const char *filename)
+void db_init(struct db *db, struct config *config, const char *filename)
 {
 	db->config = config;
 	db->filename = sqlite3_malloc((int)(strlen(filename) + 1));
