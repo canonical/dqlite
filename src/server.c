@@ -633,14 +633,14 @@ int dqlite_node_stop(dqlite_node *d)
 
 int dqliteNodeRecover(dqlite_node *n,
 		      struct dqlite_node_info infos[],
-		      int n_info)
+		      int nInfo)
 {
 	struct raft_configuration configuration;
 	int i;
 	int rv;
 
 	raft_configuration_init(&configuration);
-	for (i = 0; i < n_info; i++) {
+	for (i = 0; i < nInfo; i++) {
 		struct dqlite_node_info *info = &infos[i];
 		rv = raft_configuration_add(&configuration, info->id,
 					    info->address, true);
