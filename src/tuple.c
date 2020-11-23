@@ -152,7 +152,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 			struct buffer *buffer)
 {
 	void *cursor;
-	size_t n_header;
+	size_t nHeader;
 
 	e->n = n;
 	e->format = format;
@@ -172,11 +172,11 @@ int tuple_encoder__init(struct tuple_encoder *e,
 	e->header = bufferOffset(buffer);
 
 	/* Reset the header */
-	n_header = calcHeaderSize(n, format);
-	memset(encoderHeader(e), 0, n_header);
+	nHeader = calcHeaderSize(n, format);
+	memset(encoderHeader(e), 0, nHeader);
 
 	/* Advance the buffer write pointer past the tuple header. */
-	cursor = bufferAdvance(buffer, n_header);
+	cursor = bufferAdvance(buffer, nHeader);
 	if (cursor == NULL) {
 		return DQLITE_NOMEM;
 	}
