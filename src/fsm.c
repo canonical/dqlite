@@ -139,7 +139,7 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 	return 0;
 }
 
-static int apply_undo(struct fsm *f, const struct command_undo *c)
+static int applyUndo(struct fsm *f, const struct command_undo *c)
 {
 	(void)c;
 
@@ -222,7 +222,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 			rc = applyFrames(f, command);
 			break;
 		case COMMAND_UNDO:
-			rc = apply_undo(f, command);
+			rc = applyUndo(f, command);
 			break;
 		case COMMAND_CHECKPOINT:
 			rc = applyCheckpoint(f, command);
