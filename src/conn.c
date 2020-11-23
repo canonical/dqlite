@@ -277,7 +277,7 @@ int connStart(struct conn *c,
 	gateway__init(&c->gateway, config, registry, raft);
 	rv = bufferInit(&c->read);
 	if (rv != 0) {
-		goto err_after_transport_init;
+		goto errAfterTransportInit;
 	}
 	rv = bufferInit(&c->write);
 	if (rv != 0) {
@@ -296,7 +296,7 @@ err_after_write_bufferInit:
 	bufferClose(&c->write);
 err_after_read_bufferInit:
 	bufferClose(&c->read);
-err_after_transport_init:
+errAfterTransportInit:
 	transport__close(&c->transport, NULL);
 err:
 	return rv;
