@@ -85,12 +85,12 @@ static void setOther(struct test_server *s, struct test_server *other)
 	munit_assert_ptr_null(s->others[i]);
 	s->others[i] = other;
 }
-void test_server_network(struct test_server *servers, unsigned n_servers)
+void test_server_network(struct test_server *servers, unsigned nServers)
 {
 	unsigned i;
 	unsigned j;
-	for (i = 0; i < n_servers; i++) {
-		for (j = 0; j < n_servers; j++) {
+	for (i = 0; i < nServers; i++) {
+		for (j = 0; j < nServers; j++) {
 			struct test_server *server = &servers[i];
 			struct test_server *other = &servers[j];
 			if (i == j) {
