@@ -6,43 +6,43 @@
 #include <sqlite3.h>
 
 /* A message describing the last error occurred on an object */
-typedef char *dqlite__error;
+typedef char *dqlite_error;
 
 /* Initialize the error with an empty message */
-void dqlite__error_init(dqlite__error *e);
+void dqlite_error_init(dqlite_error *e);
 
 /* Release the memory of the error message, if any is set */
-void dqlite__error_close(dqlite__error *e);
+void dqlite_error_close(dqlite_error *e);
 
 /* Set the error message */
-void dqlite__error_printf(dqlite__error *e, const char *fmt, ...);
+void dqlite_error_printf(dqlite_error *e, const char *fmt, ...);
 
 /* Wrap an error with an additional message */
-void dqlite__error_wrapf(dqlite__error *      e,
-                         const dqlite__error *cause,
-                         const char *         fmt,
-                         ...);
+void dqlite_error_wrapf(dqlite_error *e,
+			const dqlite_error *cause,
+			const char *fmt,
+			...);
 
 /* Out of memory error */
-void dqlite__error_oom(dqlite__error *e, const char *msg, ...);
+void dqlite_error_oom(dqlite_error *e, const char *msg, ...);
 
 /* Wrap a system error */
-void dqlite__error_sys(dqlite__error *e, const char *msg);
+void dqlite_error_sys(dqlite_error *e, const char *msg);
 
 /* Wrap an error from libuv */
-void dqlite__error_uv(dqlite__error *e, int err, const char *msg);
+void dqlite_error_uv(dqlite_error *e, int err, const char *msg);
 
 /* Copy the underlying error message.
  *
  * Client code is responsible of invoking sqlite3_free to deallocate the
  * returned string.
  */
-int dqlite__error_copy(dqlite__error *e, char **msg);
+int dqlite_error_copy(dqlite_error *e, char **msg);
 
 /* Whether the error is not set */
-int dqlite__error_is_null(dqlite__error *e);
+int dqlite_error_is_null(dqlite_error *e);
 
 /* Whether the error is due to client disconnection */
-int dqlite__error_is_disconnect(dqlite__error *e);
+int dqlite_error_is_disconnect(dqlite_error *e);
 
 #endif /* DQLITE_ERROR_H */
