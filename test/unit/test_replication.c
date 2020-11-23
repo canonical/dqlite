@@ -86,12 +86,12 @@ TEST_MODULE(replication_v1);
 	}
 
 /* Submit an exec request using the I'th leader. */
-#define EXEC(I)                                                 \
-	{                                                       \
-		int rc2;                                        \
-		rc2 = leader__exec(LEADER(I), &f->req, f->stmt, \
-				   fixture_exec_cb);            \
-		munit_assert_int(rc2, ==, 0);                   \
+#define EXEC(I)                                                               \
+	{                                                                     \
+		int rc2;                                                      \
+		rc2 =                                                         \
+		    leader__exec(LEADER(I), &f->req, f->stmt, fixtureExecCb); \
+		munit_assert_int(rc2, ==, 0);                                 \
 	}
 
 /* Convenience to prepare, execute and finalize a statement. */
@@ -178,7 +178,7 @@ struct execFixture
 	int status;
 };
 
-static void fixture_exec_cb(struct exec *req, int status)
+static void fixtureExecCb(struct exec *req, int status)
 {
 	struct execFixture *f = req->data;
 	f->invoked = true;
