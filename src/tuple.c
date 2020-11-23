@@ -185,7 +185,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 }
 
 /* Set the type of the i'th value of the tuple. */
-static void set_type(struct tuple_encoder *e, unsigned i, int type)
+static void setType(struct tuple_encoder *e, unsigned i, int type)
 {
 	uint8_t *header = encoderHeader(e);
 
@@ -211,7 +211,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 
 	assert(e->i < e->n);
 
-	set_type(e, e->i, value->type);
+	setType(e, e->i, value->type);
 
 	switch (value->type) {
 		case SQLITE_INTEGER:
