@@ -110,7 +110,7 @@ TEST_CASE(decode, heartbeat, NULL)
 
 	(void)params;
 
-	test_message_send_heartbeat(666, &request->message);
+	testMessageSendHeartbeat(666, &request->message);
 
 	err = requestDecode(request);
 	munit_assert_int(err, ==, 0);
