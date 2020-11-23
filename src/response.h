@@ -36,7 +36,7 @@
 #define RESPONSE_DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
 
-#define RESPONSE__TYPES(X, ...)                      \
+#define RESPONSE_TYPES(X, ...)                       \
 	X(server, SERVER, __VA_ARGS__)               \
 	X(server_legacy, SERVER_LEGACY, __VA_ARGS__) \
 	X(welcome, WELCOME, __VA_ARGS__)             \
@@ -50,6 +50,6 @@
 	X(servers, SERVERS, __VA_ARGS__)             \
 	X(metadata, METADATA, __VA_ARGS__)
 
-RESPONSE__TYPES(RESPONSE_DEFINE);
+RESPONSE_TYPES(RESPONSE_DEFINE);
 
 #endif /* RESPONSE_H_ */
