@@ -139,8 +139,8 @@ static void read_request_cb(struct transport *transport, int status)
 			return;
 	}
 
-	rv = gateway__handle(&c->gateway, &c->handle, c->request.type, &cursor,
-			     &c->write, gateway_handle_cb);
+	rv = gateway_handle(&c->gateway, &c->handle, c->request.type, &cursor,
+			    &c->write, gateway_handle_cb);
 	if (rv != 0) {
 		connStop(c);
 	}

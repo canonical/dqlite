@@ -70,12 +70,12 @@ struct handle
  * @cursor parameter holds a cursor for reading the request payload, and the
  * @buffer parameter is a buffer for writing the response.
  */
-int gateway__handle(struct gateway *g,
-		    struct handle *req,
-		    int type,
-		    struct cursor *cursor,
-		    struct buffer *buffer,
-		    handle_cb cb);
+int gateway_handle(struct gateway *g,
+		   struct handle *req,
+		   int type,
+		   struct cursor *cursor,
+		   struct buffer *buffer,
+		   handle_cb cb);
 
 /**
  * Resume execution of a query that was yielding a lot of rows and has been

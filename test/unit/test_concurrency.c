@@ -113,17 +113,17 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
 
 /* Submit a request of the given type to the given connection and check that no
  * error occurs. */
-#define HANDLE(C, TYPE)                                               \
-	{                                                             \
-		struct cursor cursor;                                 \
-		int rc2;                                              \
-		cursor.p = bufferCursor(&C->request, 0);              \
-		cursor.cap = bufferOffset(&C->request);               \
-		bufferReset(&C->response);                            \
-		rc2 = gateway__handle(&C->gateway, &C->handle,        \
-				      DQLITE_REQUEST_##TYPE, &cursor, \
-				      &C->response, fixtureHandleCb); \
-		munit_assert_int(rc2, ==, 0);                         \
+#define HANDLE(C, TYPE)                                              \
+	{                                                            \
+		struct cursor cursor;                                \
+		int rc2;                                             \
+		cursor.p = bufferCursor(&C->request, 0);             \
+		cursor.cap = bufferOffset(&C->request);              \
+		bufferReset(&C->response);                           \
+		rc2 = gateway_handle(&C->gateway, &C->handle,        \
+				     DQLITE_REQUEST_##TYPE, &cursor, \
+				     &C->response, fixtureHandleCb); \
+		munit_assert_int(rc2, ==, 0);                        \
 	}
 
 /* Prepare a statement on the given connection. The ID will be saved in
