@@ -8,7 +8,7 @@
 #include "../../lib/runner.h"
 #include "../../lib/uv.h"
 
-TEST_MODULE(ext_uv);
+TEST_MODULE(extUv);
 
 /******************************************************************************
  *
