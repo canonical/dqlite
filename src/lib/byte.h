@@ -86,7 +86,7 @@ DQLITE_INLINE uint64_t byteFlip64(uint64_t v)
  * Add padding to size if it's not a multiple of 8. E.g. if 11 is passed, 16 is
  * returned.
  */
-DQLITE_INLINE size_t byte__pad64(size_t size)
+DQLITE_INLINE size_t byte_pad64(size_t size)
 {
 	size_t rest = size % sizeof(uint64_t);
 	if (rest != 0) {
