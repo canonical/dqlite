@@ -36,9 +36,9 @@ struct connect
 	int status;
 };
 
-static int impl_init(struct raft_uv_transport *transport,
-		     raft_id id,
-		     const char *address)
+static int implInit(struct raft_uv_transport *transport,
+		    raft_id id,
+		    const char *address)
 {
 	struct impl *i = transport->impl;
 	i->id = id;
@@ -254,7 +254,7 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 	i->connect.arg = NULL;
 	i->accept_cb = NULL;
 	transport->impl = i;
-	transport->init = impl_init;
+	transport->init = implInit;
 	transport->listen = impl_listen;
 	transport->connect = implConnect;
 	transport->close = implClose;
