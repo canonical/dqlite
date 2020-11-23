@@ -2493,7 +2493,7 @@ static int vfsDatabaseRestore(struct vfsDatabase *d,
 			for (j = 0; j < i; j++) {
 				sqlite3_free(pages[j]);
 			}
-			goto oom_after_pages_alloc;
+			goto oomAfterPagesAlloc;
 		}
 		pages[i] = page;
 		memcpy(page, &data[i * page_size], page_size);
@@ -2508,7 +2508,7 @@ static int vfsDatabaseRestore(struct vfsDatabase *d,
 
 	return 0;
 
-oom_after_pages_alloc:
+oomAfterPagesAlloc:
 	sqlite3_free(pages);
 oom:
 	return DQLITE_NOMEM;
