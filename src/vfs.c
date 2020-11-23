@@ -2165,7 +2165,7 @@ static uint32_t vfsWalGetChecksum2(struct vfsWal *w)
 
 /* Append the given pages as new frames. */
 static int vfsWalAppend(struct vfsWal *w,
-			unsigned database_n_pages,
+			unsigned databaseNPages,
 			unsigned n,
 			unsigned long *page_numbers,
 			uint8_t *pages)
@@ -2194,7 +2194,7 @@ static int vfsWalAppend(struct vfsWal *w,
 	 * in the WAL header. Otherwise, the starting database size and checksum
 	 * will be the ones stored in the last frame of the WAL. */
 	if (w->n_frames == 0) {
-		database_size = (uint32_t)database_n_pages;
+		database_size = (uint32_t)databaseNPages;
 		checksum[0] = vfsWalGetChecksum1(w);
 		checksum[1] = vfsWalGetChecksum2(w);
 	} else {
