@@ -156,7 +156,7 @@ static int apply_undo(struct fsm *f, const struct command_undo *c)
 	return 0;
 }
 
-static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
+static int applyCheckpoint(struct fsm *f, const struct command_checkpoint *c)
 {
 	struct db *db;
 	struct sqlite3_file *file;
@@ -225,7 +225,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 			rc = apply_undo(f, command);
 			break;
 		case COMMAND_CHECKPOINT:
-			rc = apply_checkpoint(f, command);
+			rc = applyCheckpoint(f, command);
 			break;
 		default:
 			rc = RAFT_MALFORMED;
