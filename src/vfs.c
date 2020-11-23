@@ -36,25 +36,25 @@ const int vfsOne = 1;
  * calculated by treating all data as an array of 32-bit big-endian
  * words. Otherwise, they are calculated by interpreting all data as 32-bit
  * little-endian words. */
-#define VFS__WAL_MAGIC 0x377f0682
+#define VFS_WAL_MAGIC 0x377f0682
 
 /* WAL format version (same for WAL index). */
-#define VFS__WAL_VERSION 3007000
+#define VFS_WAL_VERSION 3007000
 
 /* Index of the write lock in the WAL-index header locks area. */
-#define VFS__WAL_WRITE_LOCK 0
+#define VFS_WAL_WRITE_LOCK 0
 
 /* Write ahead log header size. */
-#define VFS__WAL_HEADER_SIZE 32
+#define VFS_WAL_HEADER_SIZE 32
 
 /* Write ahead log frame header size. */
 #define VFS_FRAME_HEADER_SIZE 24
 
 /* Size of the first part of the WAL index header. */
-#define VFS__WAL_INDEX_HEADER_SIZE 48
+#define VFS_WAL_INDEX_HEADER_SIZE 48
 
 /* Size of a single memory-mapped WAL index region. */
-#define VFS__WAL_INDEX_REGION_SIZE 32768
+#define VFS_WAL_INDEX_REGION_SIZE 32768
 
 #define vfsFrameSize(PAGE_SIZE) (VFS_FRAME_HEADER_SIZE + PAGE_SIZE)
 
@@ -78,7 +78,7 @@ struct vfsFrame
 /* WAL-specific content */
 struct vfsWal
 {
-	uint8_t hdr[VFS__WAL_HEADER_SIZE]; /* Header. */
+	uint8_t hdr[VFS_WAL_HEADER_SIZE];  /* Header. */
 	struct vfsFrame **frames;          /* All frames committed. */
 	unsigned nFrames;                  /* Number of committed frames. */
 	struct vfsFrame **tx;              /* Frames added by a transaction. */
@@ -281,7 +281,7 @@ static void vfsShmReset(struct vfsShm *s)
 /* Initialize a new WAL object. */
 static void vfsWalInit(struct vfsWal *w)
 {
-	memset(w->hdr, 0, VFS__WAL_HEADER_SIZE);
+	memset(w->hdr, 0, VFS_WAL_HEADER_SIZE);
 	w->frames = NULL;
 	w->nFrames = 0;
 	w->tx = NULL;
@@ -625,7 +625,7 @@ static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 enum vfsFileType {
 	VFS_DATABASE, /* Main database file */
 	VFS_JOURNAL,  /* Default SQLite journal file */
-	VFS__WAL      /* Write-Ahead Log */
+	VFS_WAL       /* Write-Ahead Log */
 };
 
 /* Implementation of the abstract sqlite3_file base class. */
@@ -843,8 +843,8 @@ static int vfsWalRead(struct vfsWal *w,
 
 	if (offset == 0) {
 		/* Read the header. */
-		assert(amount == VFS__WAL_HEADER_SIZE);
-		memcpy(buf, w->hdr, VFS__WAL_HEADER_SIZE);
+		assert(amount == VFS_WAL_HEADER_SIZE);
+		memcpy(buf, w->hdr, VFS_WAL_HEADER_SIZE);
 		return SQLITE_OK;
 	}
 
@@ -854,7 +854,7 @@ static int vfsWalRead(struct vfsWal *w,
 	/* For any other frame, we expect either a header read,
 	 * a checksum read, a page read or a full frame read. */
 	if (amount == FORMAT_WAL_FRAME_HDR_SIZE) {
-		assert(((offset - VFS__WAL_HEADER_SIZE) %
+		assert(((offset - VFS_WAL_HEADER_SIZE) %
 			(page_size + FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
 	} else if (amount == sizeof(uint32_t) * 2) {
@@ -864,13 +864,13 @@ static int vfsWalRead(struct vfsWal *w,
 			memcpy(buf, w->hdr + offset, (size_t)amount);
 			return SQLITE_OK;
 		}
-		assert(((offset - 16 - VFS__WAL_HEADER_SIZE) %
+		assert(((offset - 16 - VFS_WAL_HEADER_SIZE) %
 			(page_size + FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
-		index = ((unsigned)offset - 16 - VFS__WAL_HEADER_SIZE) /
+		index = ((unsigned)offset - 16 - VFS_WAL_HEADER_SIZE) /
 			    (page_size + FORMAT_WAL_FRAME_HDR_SIZE) +
 			1;
 	} else if (amount == (int)page_size) {
-		assert(((offset - VFS__WAL_HEADER_SIZE -
+		assert(((offset - VFS_WAL_HEADER_SIZE -
 			 FORMAT_WAL_FRAME_HDR_SIZE) %
 			(page_size + FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
@@ -923,7 +923,7 @@ static int vfsFileRead(sqlite3_file *file,
 		case VFS_DATABASE:
 			rv = vfsDatabaseRead(f->database, buf, amount, offset);
 			break;
-		case VFS__WAL:
+		case VFS_WAL:
 			rv = vfsWalRead(&f->database->wal, buf, amount, offset);
 			break;
 		default:
@@ -1011,7 +1011,7 @@ static int vfsWalWrite(struct vfsWal *w,
 	if (offset == 0) {
 		/* We expect the data to contain exactly 32
 		 * bytes. */
-		assert(amount == VFS__WAL_HEADER_SIZE);
+		assert(amount == VFS_WAL_HEADER_SIZE);
 
 		memcpy(w->hdr, buf, (size_t)amount);
 		return SQLITE_OK;
@@ -1024,7 +1024,7 @@ static int vfsWalWrite(struct vfsWal *w,
 	 * header or page write. */
 	if (amount == FORMAT_WAL_FRAME_HDR_SIZE) {
 		/* Frame header write. */
-		assert(((offset - VFS__WAL_HEADER_SIZE) %
+		assert(((offset - VFS_WAL_HEADER_SIZE) %
 			(page_size + FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 
 		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
@@ -1037,7 +1037,7 @@ static int vfsWalWrite(struct vfsWal *w,
 	} else {
 		/* Frame page write. */
 		assert(amount == (int)page_size);
-		assert(((offset - VFS__WAL_HEADER_SIZE -
+		assert(((offset - VFS_WAL_HEADER_SIZE -
 			 FORMAT_WAL_FRAME_HDR_SIZE) %
 			(page_size + FORMAT_WAL_FRAME_HDR_SIZE)) == 0);
 
@@ -1076,7 +1076,7 @@ static int vfsFileWrite(sqlite3_file *file,
 		case VFS_DATABASE:
 			rv = vfsDatabaseWrite(f->database, buf, amount, offset);
 			break;
-		case VFS__WAL:
+		case VFS_WAL:
 			rv =
 			    vfsWalWrite(&f->database->wal, buf, amount, offset);
 			break;
@@ -1104,7 +1104,7 @@ static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 			rv = vfsDatabaseTruncate(f->database, size);
 			break;
 
-		case VFS__WAL:
+		case VFS_WAL:
 			rv = vfsWalTruncate(&f->database->wal, size);
 			break;
 
@@ -1141,7 +1141,7 @@ static size_t vfsWalFileSize(struct vfsWal *w)
 	if (w->nFrames > 0) {
 		uint32_t page_size;
 		page_size = vfsWalGetPageSize(w);
-		size += VFS__WAL_HEADER_SIZE;
+		size += VFS_WAL_HEADER_SIZE;
 		size += w->nFrames * (FORMAT_WAL_FRAME_HDR_SIZE + page_size);
 	}
 	return size;
@@ -1156,7 +1156,7 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 		case VFS_DATABASE:
 			n = vfsDatabaseFileSize(f->database);
 			break;
-		case VFS__WAL:
+		case VFS_WAL:
 			/* TODO? here we assume that FileSize() is never invoked
 			 * between a header write and a page write. */
 			n = vfsWalFileSize(&f->database->wal);
@@ -1341,7 +1341,7 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 	assert(shm->nRegions > 0);
 	index = shm->regions[0];
 
-	assert(*(uint32_t *)(&index[0]) == VFS__WAL_VERSION); /* iVersion */
+	assert(*(uint32_t *)(&index[0]) == VFS_WAL_VERSION);  /* iVersion */
 	assert(index[12] == 1);                               /* isInit */
 	assert(index[13] == VFS_BIGENDIAN);                   /* bigEndCksum */
 
@@ -1356,8 +1356,8 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 	*(uint32_t *)(&index[44]) = checksum[1];
 
 	/* Update the second copy of the first part of the WAL index header. */
-	memcpy(index + VFS__WAL_INDEX_HEADER_SIZE, index,
-	       VFS__WAL_INDEX_HEADER_SIZE);
+	memcpy(index + VFS_WAL_INDEX_HEADER_SIZE, index,
+	       VFS_WAL_INDEX_HEADER_SIZE);
 }
 
 /* The SQLITE_FCNTL_COMMIT_PHASETWO file control op code is trigged by the
@@ -1432,7 +1432,7 @@ static int vfsShmMap(struct vfsShm *s,
 			void **regions;
 
 			/* We should grow the map one region at a time. */
-			assert(regionSize == VFS__WAL_INDEX_REGION_SIZE);
+			assert(regionSize == VFS_WAL_INDEX_REGION_SIZE);
 			assert(regionIndex == s->nRegions);
 			region = sqlite3_malloc64(regionSize);
 			if (region == NULL) {
@@ -1620,7 +1620,7 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 	}
 
 	wal = &f->database->wal;
-	if (rv == SQLITE_OK && ofst == VFS__WAL_WRITE_LOCK) {
+	if (rv == SQLITE_OK && ofst == VFS_WAL_WRITE_LOCK) {
 		assert(n == 1);
 		/* When acquiring the write lock, make sure there's no
 		 * transaction that hasn't been rolled back or polled. */
@@ -1808,7 +1808,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
 		type = VFS_JOURNAL;
 	} else if (flags & SQLITE_OPEN_WAL) {
-		type = VFS__WAL;
+		type = VFS_WAL;
 	} else {
 		v->error = ENOENT;
 		return SQLITE_CANTOPEN;
@@ -1824,7 +1824,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	if (!exists) {
 		/* When opening a WAL or journal file we expect the main
 		 * database file to have already been created. */
-		if (type == VFS__WAL || type == VFS_JOURNAL) {
+		if (type == VFS_WAL || type == VFS_JOURNAL) {
 			v->error = ENOENT;
 			rc = SQLITE_CANTOPEN;
 			goto err;
@@ -2265,8 +2265,8 @@ static void vfsWalStartHeader(struct vfsWal *w, uint32_t page_size)
 	 *
 	 * In Dqlite the WAL file image is always generated at run time on the
 	 * host, so we can always use the native byte order. */
-	vfsPut32(VFS__WAL_MAGIC | VFS_BIGENDIAN, &w->hdr[0]);
-	vfsPut32(VFS__WAL_VERSION, &w->hdr[4]);
+	vfsPut32(VFS_WAL_MAGIC | VFS_BIGENDIAN, &w->hdr[0]);
+	vfsPut32(VFS_WAL_VERSION, &w->hdr[4]);
 	vfsPut32(page_size, &w->hdr[8]);
 	vfsPut32(0, &w->hdr[12]);
 	sqlite3_randomness(8, &w->hdr[16]);
@@ -2296,7 +2296,7 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 	 * the first byte of each of the two copies is enough to make the check
 	 * fail. */
 	header[0] = 1;
-	header[VFS__WAL_INDEX_HEADER_SIZE] = 0;
+	header[VFS_WAL_INDEX_HEADER_SIZE] = 0;
 }
 
 int VfsApply(sqlite3_vfs *vfs,
@@ -2407,8 +2407,8 @@ static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
 		return;
 	}
 
-	memcpy(*cursor, w->hdr, VFS__WAL_HEADER_SIZE);
-	*cursor += VFS__WAL_HEADER_SIZE;
+	memcpy(*cursor, w->hdr, VFS_WAL_HEADER_SIZE);
+	*cursor += VFS_WAL_HEADER_SIZE;
 
 	page_size = vfsWalGetPageSize(w);
 	assert(page_size > 0);
@@ -2530,11 +2530,11 @@ static int vfsWalRestore(struct vfsWal *w,
 
 	assert(w->nTx == 0);
 
-	assert(n > VFS__WAL_HEADER_SIZE);
-	assert(((n - VFS__WAL_HEADER_SIZE) % vfsFrameSize(page_size)) == 0);
+	assert(n > VFS_WAL_HEADER_SIZE);
+	assert(((n - VFS_WAL_HEADER_SIZE) % vfsFrameSize(page_size)) == 0);
 
 	nFrames =
-	    (unsigned)((n - VFS__WAL_HEADER_SIZE) / vfsFrameSize(page_size));
+	    (unsigned)((n - VFS_WAL_HEADER_SIZE) / vfsFrameSize(page_size));
 
 	frames = sqlite3_malloc64(sizeof *frames * nFrames);
 	if (frames == NULL) {
@@ -2554,12 +2554,12 @@ static int vfsWalRestore(struct vfsWal *w,
 		}
 		frames[i] = frame;
 
-		p = &data[VFS__WAL_HEADER_SIZE + i * vfsFrameSize(page_size)];
+		p = &data[VFS_WAL_HEADER_SIZE + i * vfsFrameSize(page_size)];
 		memcpy(frame->header, p, VFS_FRAME_HEADER_SIZE);
 		memcpy(frame->page, p + VFS_FRAME_HEADER_SIZE, page_size);
 	}
 
-	memcpy(w->hdr, data, VFS__WAL_HEADER_SIZE);
+	memcpy(w->hdr, data, VFS_WAL_HEADER_SIZE);
 
 	rv = vfsWalTruncate(w, 0);
 	assert(rv == 0);
