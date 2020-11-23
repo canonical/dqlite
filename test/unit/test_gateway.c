@@ -783,7 +783,7 @@ TEST_CASE(exec, framesLeadershipLost_1stNonCommitReElected, NULL)
 
 /* The server is not the leader anymore when the undo hook for a writing
  * transaction fires. The same leader gets re-elected. */
-TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
+TEST_CASE(exec, undoNotLeaderPendingReElected, NULL)
 {
 	struct execFixture *f = data;
 	uint64_t stmtId;
