@@ -44,23 +44,23 @@ struct connection
 	struct handle *handle;                    \
 	struct context *context;
 
-#define SETUP                                                           \
-	unsigned i;                                                     \
-	int rc;                                                         \
-	SETUP_CLUSTER(V2);                                              \
-	for (i = 0; i < N_SERVERS; i++) {                               \
-		struct connection *c = &f->connections[i];              \
-		struct config *config;                                  \
-		config = CLUSTER_CONFIG(i);                             \
-		config->page_size = 512;                                \
-		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
-			      CLUSTER_RAFT(i));                         \
-		c->handle.data = &c->context;                           \
-		rc = bufferInit(&c->buf1);                              \
-		munit_assert_int(rc, ==, 0);                            \
-		rc = bufferInit(&c->buf2);                              \
-		munit_assert_int(rc, ==, 0);                            \
-	}                                                               \
+#define SETUP                                                          \
+	unsigned i;                                                    \
+	int rc;                                                        \
+	SETUP_CLUSTER(V2);                                             \
+	for (i = 0; i < N_SERVERS; i++) {                              \
+		struct connection *c = &f->connections[i];             \
+		struct config *config;                                 \
+		config = CLUSTER_CONFIG(i);                            \
+		config->page_size = 512;                               \
+		gateway_init(&c->gateway, config, CLUSTER_REGISTRY(i), \
+			     CLUSTER_RAFT(i));                         \
+		c->handle.data = &c->context;                          \
+		rc = bufferInit(&c->buf1);                             \
+		munit_assert_int(rc, ==, 0);                           \
+		rc = bufferInit(&c->buf2);                             \
+		munit_assert_int(rc, ==, 0);                           \
+	}                                                              \
 	SELECT(0)
 
 #define TEAR_DOWN                                          \

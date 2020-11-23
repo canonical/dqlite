@@ -39,10 +39,10 @@ struct gateway
 	uint64_t protocol;           /* Protocol format version */
 };
 
-void gateway__init(struct gateway *g,
-		   struct config *config,
-		   struct registry *registry,
-		   struct raft *raft);
+void gateway_init(struct gateway *g,
+		  struct config *config,
+		  struct registry *registry,
+		  struct raft *raft);
 
 void gatewayClose(struct gateway *g);
 

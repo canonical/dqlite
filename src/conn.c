@@ -274,7 +274,7 @@ int connStart(struct conn *c,
 	c->transport.data = c;
 	c->uv_transport = uv_transport;
 	c->close_cb = close_cb;
-	gateway__init(&c->gateway, config, registry, raft);
+	gateway_init(&c->gateway, config, registry, raft);
 	rv = bufferInit(&c->read);
 	if (rv != 0) {
 		goto errAfterTransportInit;
