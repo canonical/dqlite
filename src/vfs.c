@@ -623,9 +623,9 @@ static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 }
 
 enum vfsFileType {
-	VFS__DATABASE, /* Main database file */
-	VFS__JOURNAL,  /* Default SQLite journal file */
-	VFS__WAL       /* Write-Ahead Log */
+	VFS_DATABASE, /* Main database file */
+	VFS__JOURNAL, /* Default SQLite journal file */
+	VFS__WAL      /* Write-Ahead Log */
 };
 
 /* Implementation of the abstract sqlite3_file base class. */
@@ -920,7 +920,7 @@ static int vfsFileRead(sqlite3_file *file,
 	}
 
 	switch (f->type) {
-		case VFS__DATABASE:
+		case VFS_DATABASE:
 			rv = vfsDatabaseRead(f->database, buf, amount, offset);
 			break;
 		case VFS__WAL:
@@ -1073,7 +1073,7 @@ static int vfsFileWrite(sqlite3_file *file,
 	}
 
 	switch (f->type) {
-		case VFS__DATABASE:
+		case VFS_DATABASE:
 			rv = vfsDatabaseWrite(f->database, buf, amount, offset);
 			break;
 		case VFS__WAL:
@@ -1100,7 +1100,7 @@ static int vfsFileTruncate(sqlite3_file *file, sqlite_int64 size)
 	assert(f != NULL);
 
 	switch (f->type) {
-		case VFS__DATABASE:
+		case VFS_DATABASE:
 			rv = vfsDatabaseTruncate(f->database, size);
 			break;
 
@@ -1153,7 +1153,7 @@ static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
 	size_t n;
 
 	switch (f->type) {
-		case VFS__DATABASE:
+		case VFS_DATABASE:
 			n = vfsDatabaseFileSize(f->database);
 			break;
 		case VFS__WAL:
@@ -1377,7 +1377,7 @@ static int vfsFileControl(sqlite3_file *file, int op, void *arg)
 	struct vfsFile *f = (struct vfsFile *)file;
 	int rv;
 
-	assert(f->type == VFS__DATABASE);
+	assert(f->type == VFS_DATABASE);
 
 	switch (op) {
 		case SQLITE_FCNTL_PRAGMA:
@@ -1487,7 +1487,7 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 {
 	struct vfsFile *f = (struct vfsFile *)file;
 
-	assert(f->type == VFS__DATABASE);
+	assert(f->type == VFS_DATABASE);
 
 	return vfsShmMap(&f->database->shm, (unsigned)regionIndex,
 			 (unsigned)regionSize, extend != 0, out);
@@ -1609,7 +1609,7 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 
 	f = (struct vfsFile *)file;
 
-	assert(f->type == VFS__DATABASE);
+	assert(f->type == VFS_DATABASE);
 	assert(f->database != NULL);
 
 	shm = &f->database->shm;
@@ -1804,7 +1804,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	exists = database != NULL;
 
 	if (flags & SQLITE_OPEN_MAIN_DB) {
-		type = VFS__DATABASE;
+		type = VFS_DATABASE;
 	} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
 		type = VFS__JOURNAL;
 	} else if (flags & SQLITE_OPEN_WAL) {
@@ -1815,7 +1815,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	}
 
 	/* If file exists, and the exclusive flag is on, return an error. */
-	if (exists && exclusive && create && type == VFS__DATABASE) {
+	if (exists && exclusive && create && type == VFS_DATABASE) {
 		v->error = EEXIST;
 		rc = SQLITE_CANTOPEN;
 		goto err;
@@ -1830,7 +1830,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			goto err;
 		}
 
-		assert(type == VFS__DATABASE);
+		assert(type == VFS_DATABASE);
 
 		/* Check the create flag. */
 		if (!create) {
