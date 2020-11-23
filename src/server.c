@@ -280,8 +280,7 @@ int dqlite_node_set_connect_func(dqlite_node *t,
 	return 0;
 }
 
-int dqlite_node_set_network_latency(dqlite_node *t,
-				    unsigned long long nanoseconds)
+int dqliteNodeSetNetworkLatency(dqlite_node *t, unsigned long long nanoseconds)
 {
 	unsigned milliseconds;
 	if (t->running) {
