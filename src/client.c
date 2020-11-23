@@ -16,18 +16,18 @@ int clientInit(struct client *c, int fd)
 	int rv;
 	c->fd = fd;
 
-	rv = buffer_init(&c->read);
+	rv = bufferInit(&c->read);
 	if (rv != 0) {
 		goto err;
 	}
-	rv = buffer_init(&c->write);
+	rv = bufferInit(&c->write);
 	if (rv != 0) {
-		goto err_after_read_buffer_init;
+		goto err_after_read_bufferInit;
 	}
 
 	return 0;
 
-err_after_read_buffer_init:
+err_after_read_bufferInit:
 	bufferClose(&c->read);
 err:
 	return rv;

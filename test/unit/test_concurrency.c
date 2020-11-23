@@ -50,9 +50,9 @@ struct connection
 		gateway__init(&c->gateway, CLUSTER_CONFIG(0),        \
 			      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0)); \
 		c->handle.data = &c->context;                        \
-		rc = buffer_init(&c->request);                       \
+		rc = bufferInit(&c->request);                        \
 		munit_assert_int(rc, ==, 0);                         \
-		rc = buffer_init(&c->response);                      \
+		rc = bufferInit(&c->response);                       \
 		munit_assert_int(rc, ==, 0);                         \
 		open.filename = "test";                              \
 		open.vfs = "";                                       \

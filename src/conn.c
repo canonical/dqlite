@@ -275,26 +275,26 @@ int conn__start(struct conn *c,
 	c->uv_transport = uv_transport;
 	c->close_cb = close_cb;
 	gateway__init(&c->gateway, config, registry, raft);
-	rv = buffer_init(&c->read);
+	rv = bufferInit(&c->read);
 	if (rv != 0) {
 		goto err_after_transport_init;
 	}
-	rv = buffer_init(&c->write);
+	rv = bufferInit(&c->write);
 	if (rv != 0) {
-		goto err_after_read_buffer_init;
+		goto err_after_read_bufferInit;
 	}
 	c->handle.data = c;
 	c->closed = false;
 	/* First, we expect the client to send us the protocol version. */
 	rv = read_protocol(c);
 	if (rv != 0) {
-		goto err_after_write_buffer_init;
+		goto err_after_write_bufferInit;
 	}
 	return 0;
 
-err_after_write_buffer_init:
+err_after_write_bufferInit:
 	bufferClose(&c->write);
-err_after_read_buffer_init:
+err_after_read_bufferInit:
 	bufferClose(&c->read);
 err_after_transport_init:
 	transport__close(&c->transport, NULL);

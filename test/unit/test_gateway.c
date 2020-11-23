@@ -56,9 +56,9 @@ struct connection
 		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
 			      CLUSTER_RAFT(i));                         \
 		c->handle.data = &c->context;                           \
-		rc = buffer_init(&c->buf1);                             \
+		rc = bufferInit(&c->buf1);                              \
 		munit_assert_int(rc, ==, 0);                            \
-		rc = buffer_init(&c->buf2);                             \
+		rc = bufferInit(&c->buf2);                              \
 		munit_assert_int(rc, ==, 0);                            \
 	}                                                               \
 	SELECT(0)
