@@ -162,7 +162,7 @@ int commandFramesPageNumbers(const struct command_frames *c,
 	return 0;
 }
 
-void command_frames__pages(const struct command_frames *c, void **pages)
+void command_frames_pages(const struct command_frames *c, void **pages)
 {
 	*pages =
 	    (void *)(c->frames.data + (sizeof(uint64_t) * c->frames.n_pages));
