@@ -50,7 +50,7 @@ int dqliteInit(struct dqlite_node *d,
 	}
 	rv = fsm__init(&d->raft_fsm, &d->config, &d->registry);
 	if (rv != 0) {
-		goto err_after_raft_io_init;
+		goto errAfterRaftIoInit;
 	}
 
 	/* TODO: properly handle closing the dqlite server without running it */
@@ -96,7 +96,7 @@ err_after_ready_init:
 	sem_destroy(&d->ready);
 errAfterRaftFsmInit:
 	fsm__close(&d->raft_fsm);
-err_after_raft_io_init:
+errAfterRaftIoInit:
 	raft_uv_close(&d->raft_io);
 err_after_raft_transport_init:
 	raftProxyClose(&d->raft_transport);
