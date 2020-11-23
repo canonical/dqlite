@@ -297,18 +297,18 @@ TEST_CASE(del, twice, NULL)
 	struct test_registry *registry = data;
 	int err;
 	struct test_item *item;
-	struct test_item item_clone;
+	struct test_item itemClone;
 
 	(void)params;
 
 	err = test_registry_add(registry, &item);
 	munit_assert_int(err, ==, 0);
-	item_clone.id = item->id;
+	itemClone.id = item->id;
 
 	err = test_registry_del(registry, item);
 	munit_assert_int(err, ==, 0);
 
-	err = test_registry_del(registry, &item_clone);
+	err = test_registry_del(registry, &itemClone);
 	munit_assert_int(err, ==, DQLITE_NOTFOUND);
 
 	return MUNIT_OK;
