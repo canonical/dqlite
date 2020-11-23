@@ -200,9 +200,9 @@ static int applyCheckpoint(struct fsm *f, const struct command_checkpoint *c)
 	return 0;
 }
 
-static int fsm_apply(struct raft_fsm *fsm,
-		     const struct raft_buffer *buf,
-		     void **result)
+static int fsmApply(struct raft_fsm *fsm,
+		    const struct raft_buffer *buf,
+		    void **result)
 {
 	struct fsm *f = fsm->data;
 	int type;
@@ -474,7 +474,7 @@ int fsm__init(struct raft_fsm *fsm,
 
 	fsm->version = 1;
 	fsm->data = f;
-	fsm->apply = fsm_apply;
+	fsm->apply = fsmApply;
 	fsm->snapshot = fsm__snapshot;
 	fsm->restore = fsm__restore;
 
