@@ -257,7 +257,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 			float__encode(&value->float_, &cursor);
 			break;
 		case SQLITE_BLOB:
-			blob_encode(&value->blob, &cursor);
+			blobEncode(&value->blob, &cursor);
 			break;
 		case SQLITE_NULL:
 			/* TODO: allow null to be encoded with 0 bytes */

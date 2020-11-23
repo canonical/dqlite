@@ -204,7 +204,7 @@ DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
 	*cursor += len;
 }
 
-DQLITE_INLINE void blob_encode(const blob_t *value, void **cursor)
+DQLITE_INLINE void blobEncode(const blob_t *value, void **cursor)
 {
 	size_t len = byte__pad64(value->len);
 	uint64_t value_len = value->len;
