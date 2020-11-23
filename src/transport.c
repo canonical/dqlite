@@ -149,11 +149,11 @@ out:
 	sqlite3_free(r);
 }
 
-static int impl_connect(struct raft_uv_transport *transport,
-			struct raft_uv_connect *req,
-			raft_id id,
-			const char *address,
-			raft_uv_connect_cb cb)
+static int implConnect(struct raft_uv_transport *transport,
+		       struct raft_uv_connect *req,
+		       raft_id id,
+		       const char *address,
+		       raft_uv_connect_cb cb)
 {
 	struct impl *i = transport->impl;
 	struct connect *r;
@@ -256,7 +256,7 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 	transport->impl = i;
 	transport->init = impl_init;
 	transport->listen = impl_listen;
-	transport->connect = impl_connect;
+	transport->connect = implConnect;
 	transport->close = implClose;
 	return 0;
 }
