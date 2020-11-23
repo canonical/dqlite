@@ -188,8 +188,8 @@ err:
 	return rv;
 }
 
-static void impl_close(struct raft_uv_transport *transport,
-		       raft_uv_transport_close_cb cb)
+static void implClose(struct raft_uv_transport *transport,
+		      raft_uv_transport_close_cb cb)
 {
 	cb(transport);
 }
@@ -257,7 +257,7 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 	transport->init = impl_init;
 	transport->listen = impl_listen;
 	transport->connect = impl_connect;
-	transport->close = impl_close;
+	transport->close = implClose;
 	return 0;
 }
 
