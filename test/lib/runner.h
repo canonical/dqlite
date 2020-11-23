@@ -290,10 +290,10 @@ extern int _main_suites_n;
  * arguments passed to TEST_CASE(). */
 #define TEST_CASE__MACRO_CHOOSER(...)                                        \
 	TEST__GET_5TH_ARG(__VA_ARGS__, TEST_CASE__4_ARGS, TEST_CASE__3_ARGS, \
-			  TEST_CASE__2_ARGS)
+			  TEST_CASE_2_ARGS)
 
 /* Add the test case to the module's MunitTest[] array. */
-#define TEST_CASE__2_ARGS(C, PARAMS)                                 \
+#define TEST_CASE_2_ARGS(C, PARAMS)                                  \
 	static MunitResult test_##C(const MunitParameter[], void *); \
 	TEST_CASE__ADD_TO_MODULE(C, PARAMS);                         \
 	static MunitResult test_##C(const MunitParameter params[], void *data)
