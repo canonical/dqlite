@@ -30,7 +30,7 @@ struct fixture
 };
 
 /* Return a buffer of size TEST_SOCKET_MIN_BUF_SIZE */
-static uv_buf_t *buf_malloc(void)
+static uv_buf_t *bufMalloc(void)
 {
 	uv_buf_t *buf = munit_malloc(sizeof *buf);
 	buf->base = munit_malloc(TEST_SOCKET_MIN_BUF_SIZE);
@@ -38,7 +38,7 @@ static uv_buf_t *buf_malloc(void)
 	return buf;
 }
 
-/* Free the buffer returned by buf_malloc() */
+/* Free the buffer returned by bufMalloc() */
 static void bufFree(uv_buf_t *buf)
 {
 	free(buf->base);
@@ -140,8 +140,8 @@ TEST_CASE(write, sync, endpointParams)
 {
 	struct fixture *f = data;
 	uv_write_t req;
-	uv_buf_t *buf1 = buf_malloc();
-	uv_buf_t *buf2 = buf_malloc();
+	uv_buf_t *buf1 = bufMalloc();
+	uv_buf_t *buf2 = bufMalloc();
 	int rv;
 
 	(void)params;
@@ -207,7 +207,7 @@ static void test_read_sync__read_cb(uv_stream_t *stream,
 TEST_CASE(read, sync, endpointParams)
 {
 	struct fixture *f = data;
-	uv_buf_t *buf = buf_malloc();
+	uv_buf_t *buf = bufMalloc();
 	int rv;
 	bool read_cb_called;
 
