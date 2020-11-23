@@ -350,7 +350,7 @@ static void raftCloseCb(struct raft *raft)
 
 static void destroyConn(struct conn *conn)
 {
-	QUEUE__REMOVE(&conn->queue);
+	QUEUE_REMOVE(&conn->queue);
 	sqlite3_free(conn);
 }
 

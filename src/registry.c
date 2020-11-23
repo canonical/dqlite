@@ -18,7 +18,7 @@ void registry__close(struct registry *r)
 		struct db *db;
 		queue *head;
 		head = QUEUE_HEAD(&r->dbs);
-		QUEUE__REMOVE(head);
+		QUEUE_REMOVE(head);
 		db = QUEUE_DATA(head, struct db, queue);
 		dbClose(db);
 		sqlite3_free(db);

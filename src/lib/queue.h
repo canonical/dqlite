@@ -41,7 +41,7 @@ typedef void *queue[2];
  * Remove the given element from the queue. Any element can be removed at any
  * time.
  */
-#define QUEUE__REMOVE(e)                            \
+#define QUEUE_REMOVE(e)                             \
 	{                                           \
 		QUEUE_PREV_NEXT(e) = QUEUE_NEXT(e); \
 		QUEUE_NEXT_PREV(e) = QUEUE_PREV(e); \

@@ -129,7 +129,7 @@ void leaderClose(struct leader *l)
 	rc = sqlite3_close(l->conn);
 	assert(rc == 0);
 
-	QUEUE__REMOVE(&l->queue);
+	QUEUE_REMOVE(&l->queue);
 }
 
 static void leaderCheckpointApplyCb(struct raft_apply *req,
