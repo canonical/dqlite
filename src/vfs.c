@@ -1599,7 +1599,7 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 
 	/* Legal values for the flags.
 	 *
-	 * See https://sqlite.org/c3ref/c_shm_exclusive.html. */
+	 * See https://sqlite.org/c3ref/cShmExclusive.html. */
 	assert(flags == (SQLITE_SHM_LOCK | SQLITE_SHM_SHARED) ||
 	       flags == (SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE) ||
 	       flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED) ||
