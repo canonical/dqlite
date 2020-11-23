@@ -99,7 +99,7 @@ static void mem_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
 
 /* Unwrap the given faulty memory management instance returning the original
  * one. */
-static void mem_unwrap(sqlite3_mem_methods *wrap, sqlite3_mem_methods *m)
+static void memUnwrap(sqlite3_mem_methods *wrap, sqlite3_mem_methods *m)
 {
 	(void)wrap;
 
@@ -199,7 +199,7 @@ void test_heap_tear_down(void *data)
 		munit_errorf("can't get faulty mem: %s", sqlite3_errstr(rc));
 	}
 
-	mem_unwrap(&mem_fault, &mem);
+	memUnwrap(&mem_fault, &mem);
 
 	rc = sqlite3_config(SQLITE_CONFIG_MALLOC, &mem);
 	if (rc != SQLITE_OK) {
