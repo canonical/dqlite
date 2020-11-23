@@ -322,7 +322,7 @@ TEST_CASE(exec, result, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(exec, close_while_in_flight, NULL)
+TEST_CASE(exec, closeWhileInFlight, NULL)
 {
 	struct exec_fixture *f = data;
 	unsigned last_insert_id;

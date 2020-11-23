@@ -690,7 +690,7 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 }
 
 /* The gateway is closed while a raft commit is in flight. */
-TEST_CASE(exec, close_while_in_flight, NULL)
+TEST_CASE(exec, closeWhileInFlight, NULL)
 {
 	struct exec_fixture *f = data;
 	unsigned i;
