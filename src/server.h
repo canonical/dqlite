@@ -41,6 +41,6 @@ int dqlite__init(struct dqlite_node *d,
 		 const char *address,
 		 const char *dir);
 
-void dqlite__close(struct dqlite_node *d);
+void dqlite_close(struct dqlite_node *d);
 
 int dqlite__run(struct dqlite_node *d);
