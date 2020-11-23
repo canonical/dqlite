@@ -33,7 +33,7 @@ DQLITE_INLINE uint16_t byteFlip16(uint16_t v)
 }
 
 /* Flip a 32-bit number to network byte order (little endian) */
-DQLITE_INLINE uint32_t byte__flip32(uint32_t v)
+DQLITE_INLINE uint32_t byte_flip32(uint32_t v)
 {
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
 	return v;
