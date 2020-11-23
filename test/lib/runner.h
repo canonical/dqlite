@@ -96,19 +96,19 @@ extern int _main_suites_n;
 	{                                                                      \
 		MunitTest *tests = _##S##_tests;                               \
 		int n = _##S##_tests_n;                                        \
-		TEST__SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C, SETUP,    \
-				   TEAR_DOWN, OPTIONS, PARAMS);                \
+		TEST_SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C, SETUP,     \
+				  TEAR_DOWN, OPTIONS, PARAMS);                 \
 		_##S##_tests_n = n + 1;                                        \
 	}
 
 /* Set the values of the I'th test case slot in the given test array */
-#define TEST__SET_IN_ARRAY(TESTS, I, NAME, FUNC, SETUP, TEAR_DOWN, OPTIONS, \
-			   PARAMS)                                          \
-	TESTS[I].name = NAME;                                               \
-	TESTS[I].test = FUNC;                                               \
-	TESTS[I].setup = SETUP;                                             \
-	TESTS[I].tear_down = TEAR_DOWN;                                     \
-	TESTS[I].options = OPTIONS;                                         \
+#define TEST_SET_IN_ARRAY(TESTS, I, NAME, FUNC, SETUP, TEAR_DOWN, OPTIONS, \
+			  PARAMS)                                          \
+	TESTS[I].name = NAME;                                              \
+	TESTS[I].test = FUNC;                                              \
+	TESTS[I].setup = SETUP;                                            \
+	TESTS[I].tear_down = TEAR_DOWN;                                    \
+	TESTS[I].options = OPTIONS;                                        \
 	TESTS[I].parameters = PARAMS
 
 /**
