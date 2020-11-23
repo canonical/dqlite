@@ -28,7 +28,7 @@
 	{                                                                \
 		int rv2;                                                 \
 		f->dir = testDirSetup();                                 \
-		test_uv_setup(params, &f->loop);                         \
+		testUv_setup(params, &f->loop);                          \
 		rv2 = raftProxyInit(&f->raftTransport, &f->loop);        \
 		munit_assert_int(rv2, ==, 0);                            \
 		rv2 = raft_uv_init(&f->raft_io, &f->loop, f->dir,        \
@@ -43,10 +43,10 @@
 #define TEAR_DOWN_RAFT                             \
 	{                                          \
 		raft_close(&f->raft, NULL);        \
-		test_uv_stop(&f->loop);            \
+		testUv_stop(&f->loop);             \
 		raft_uv_close(&f->raft_io);        \
 		fsmClose(&f->fsm);                 \
-		test_uv_tear_down(&f->loop);       \
+		testUv_tear_down(&f->loop);        \
 		raftProxyClose(&f->raftTransport); \
 		testDirTearDown(f->dir);           \
 	}

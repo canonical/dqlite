@@ -92,7 +92,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	int rv;
 	(void)user_data;
 
-	test_uv_setup(params, &f->loop);
+	testUv_setup(params, &f->loop);
 	testEndpoint_setup(&f->endpoint, params);
 
 	rv = transport__stream(&f->loop, f->endpoint.fd, &f->listener);
@@ -105,7 +105,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 
 	f->client = testEndpoint_connect(&f->endpoint);
 
-	test_uv_run(&f->loop, 1);
+	testUv_run(&f->loop, 1);
 
 	return f;
 }
@@ -119,8 +119,8 @@ static void tear_down(void *data)
 	uv_close((struct uv_handle_s *)f->listener, (uv_close_cb)raft_free);
 	testEndpoint_tear_down(&f->endpoint);
 	uv_close((uv_handle_t *)(&f->stream), NULL);
-	test_uv_stop(&f->loop);
-	test_uv_tear_down(&f->loop);
+	testUv_stop(&f->loop);
+	testUv_tear_down(&f->loop);
 	free(f);
 }
 
@@ -152,7 +152,7 @@ TEST_CASE(write, sync, endpointParams)
 	rv = read(f->client, buf2->base, buf2->len);
 	munit_assert_int(rv, ==, buf2->len);
 
-	test_uv_run(&f->loop, 1);
+	testUv_run(&f->loop, 1);
 
 	bufFree(buf1);
 	bufFree(buf2);
@@ -221,7 +221,7 @@ TEST_CASE(read, sync, endpointParams)
 	rv = write(f->client, buf->base, buf->len);
 	munit_assert_int(rv, ==, buf->len);
 
-	test_uv_run(&f->loop, 1);
+	testUv_run(&f->loop, 1);
 
 	munit_assert_true(readCb_called);
 

@@ -57,7 +57,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	rv = listen(f->endpoint.fd, 16);
 	munit_assert_int(rv, ==, 0);
 	testEndpoint_pair(&f->endpoint, &server, &f->client);
-	test_uv_setup(params, &f->loop);
+	testUv_setup(params, &f->loop);
 	rv = transport__stream(&f->loop, server, &stream);
 	munit_assert_int(rv, ==, 0);
 	rv = transport__init(&f->transport, stream);
@@ -77,8 +77,8 @@ static void tear_down(void *data)
 	rv = close(f->client);
 	munit_assert_int(rv, ==, 0);
 	transport__close(&f->transport, NULL);
-	test_uv_stop(&f->loop);
-	test_uv_tear_down(&f->loop);
+	testUv_stop(&f->loop);
+	testUv_tear_down(&f->loop);
 	testEndpoint_tear_down(&f->endpoint);
 	free(data);
 }
@@ -160,7 +160,7 @@ TEST_CASE(read, success, NULL)
 	(void)params;
 	CLIENT_WRITE(2);
 	READ(&buf);
-	test_uv_run(&f->loop, 1);
+	testUv_run(&f->loop, 1);
 	ASSERT_READ(0);
 	munit_assert_int(((uint8_t *)buf.base)[0], ==, 1);
 	munit_assert_int(((uint8_t *)buf.base)[1], ==, 2);
@@ -184,7 +184,7 @@ TEST_CASE(write, success, NULL)
 	uv_buf_t buf = BUF_ALLOC(2);
 	(void)params;
 	WRITE(&buf);
-	test_uv_run(&f->loop, 1);
+	testUv_run(&f->loop, 1);
 	ASSERT_WRITE(0);
 	free(buf.base);
 	return MUNIT_OK;
