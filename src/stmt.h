@@ -71,6 +71,6 @@ const char *stmt_hash(struct stmt *stmt);
 #define stmt_close stmt_close
 #define stmt_hash stmt_hash
 
-REGISTRY(stmt__registry, stmt);
+REGISTRY(stmt_registry, stmt);
 
 #endif /* DQLITE_STMT_H */
