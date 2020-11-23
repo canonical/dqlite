@@ -7,10 +7,10 @@
 #include "response.h"
 #include "vfs.h"
 
-void gateway_init(struct gateway *g,
-		  struct config *config,
-		  struct registry *registry,
-		  struct raft *raft)
+void gatewayInit(struct gateway *g,
+		 struct config *config,
+		 struct registry *registry,
+		 struct raft *raft)
 {
 	g->config = config;
 	g->registry = registry;

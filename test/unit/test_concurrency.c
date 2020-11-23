@@ -38,29 +38,29 @@ struct connection
 	FIXTURE_CLUSTER; \
 	struct connection connections[N_GATEWAYS]
 
-#define SETUP                                                       \
-	unsigned i;                                                 \
-	int rc;                                                     \
-	SETUP_CLUSTER(V2);                                          \
-	CLUSTER_ELECT(0);                                           \
-	for (i = 0; i < N_GATEWAYS; i++) {                          \
-		struct connection *c = &f->connections[i];          \
-		struct request_open open;                           \
-		struct response_db db;                              \
-		gateway_init(&c->gateway, CLUSTER_CONFIG(0),        \
-			     CLUSTER_REGISTRY(0), CLUSTER_RAFT(0)); \
-		c->handle.data = &c->context;                       \
-		rc = bufferInit(&c->request);                       \
-		munit_assert_int(rc, ==, 0);                        \
-		rc = bufferInit(&c->response);                      \
-		munit_assert_int(rc, ==, 0);                        \
-		open.filename = "test";                             \
-		open.vfs = "";                                      \
-		ENCODE(c, &open, open);                             \
-		HANDLE(c, OPEN);                                    \
-		ASSERT_CALLBACK(c, 0, DB);                          \
-		DECODE(c, &db, db);                                 \
-		munit_assert_int(db.id, ==, 0);                     \
+#define SETUP                                                      \
+	unsigned i;                                                \
+	int rc;                                                    \
+	SETUP_CLUSTER(V2);                                         \
+	CLUSTER_ELECT(0);                                          \
+	for (i = 0; i < N_GATEWAYS; i++) {                         \
+		struct connection *c = &f->connections[i];         \
+		struct request_open open;                          \
+		struct response_db db;                             \
+		gatewayInit(&c->gateway, CLUSTER_CONFIG(0),        \
+			    CLUSTER_REGISTRY(0), CLUSTER_RAFT(0)); \
+		c->handle.data = &c->context;                      \
+		rc = bufferInit(&c->request);                      \
+		munit_assert_int(rc, ==, 0);                       \
+		rc = bufferInit(&c->response);                     \
+		munit_assert_int(rc, ==, 0);                       \
+		open.filename = "test";                            \
+		open.vfs = "";                                     \
+		ENCODE(c, &open, open);                            \
+		HANDLE(c, OPEN);                                   \
+		ASSERT_CALLBACK(c, 0, DB);                         \
+		DECODE(c, &db, db);                                \
+		munit_assert_int(db.id, ==, 0);                    \
 	}
 
 #define TEAR_DOWN                                          \
