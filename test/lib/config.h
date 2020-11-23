@@ -14,7 +14,7 @@
 #define SETUP_CONFIG                                          \
 	{                                                     \
 		int rc;                                       \
-		rc = config_init(&f->config, 1, "1");         \
+		rc = configInit(&f->config, 1, "1");          \
 		munit_assert_int(rc, ==, 0);                  \
 		test_logger_setup(params, &f->config.logger); \
 	}

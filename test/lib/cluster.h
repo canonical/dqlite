@@ -78,7 +78,7 @@ struct server
                                                                    \
 		sprintf(address, "%d", I + 1);                     \
                                                                    \
-		_rc = config_init(&_s->config, I + 1, address);    \
+		_rc = configInit(&_s->config, I + 1, address);     \
 		munit_assert_int(_rc, ==, 0);                      \
                                                                    \
 		registry__init(&_s->registry, &_s->config);        \

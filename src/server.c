@@ -22,14 +22,14 @@ int dqlite__init(struct dqlite_node *d,
 {
 	int rv;
 	memset(d->errmsg, 0, sizeof d->errmsg);
-	rv = config_init(&d->config, id, address);
+	rv = configInit(&d->config, id, address);
 	if (rv != 0) {
 		goto err;
 	}
 	rv = VfsInit(&d->vfs, d->config.name);
 	sqlite3_vfs_register(&d->vfs, 0);
 	if (rv != 0) {
-		goto err_after_config_init;
+		goto err_after_configInit;
 	}
 	registry__init(&d->registry, &d->config);
 	rv = uv_loop_init(&d->loop);
@@ -104,7 +104,7 @@ err_after_loop_init:
 	uv_loop_close(&d->loop);
 err_after_vfs_init:
 	VfsClose(&d->vfs);
-err_after_config_init:
+err_after_configInit:
 	configClose(&d->config);
 err:
 	return rv;

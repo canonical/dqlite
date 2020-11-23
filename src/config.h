@@ -23,7 +23,7 @@ struct config
  * Initialize the config object with required values and set the rest to sane
  * defaults. A copy will be made of the given @address.
  */
-int config_init(struct config *c, dqlite_node_id id, const char *address);
+int configInit(struct config *c, dqlite_node_id id, const char *address);
 
 /**
  * Release any memory held by the config object.
