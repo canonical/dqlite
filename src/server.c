@@ -460,7 +460,7 @@ err:
 	uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
 }
 
-static void monitor_cb(uv_prepare_t *monitor)
+static void monitorCb(uv_prepare_t *monitor)
 {
 	struct dqlite_node *d = monitor->data;
 	int state = raft_state(&d->raft);
@@ -520,7 +520,7 @@ static int taskRun(struct dqlite_node *d)
 	d->monitor.data = d;
 	rv = uv_prepare_init(&d->loop, &d->monitor);
 	assert(rv == 0);
-	rv = uv_prepare_start(&d->monitor, monitor_cb);
+	rv = uv_prepare_start(&d->monitor, monitorCb);
 	assert(rv == 0);
 
 	d->raft.data = d;
