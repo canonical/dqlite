@@ -38,8 +38,8 @@ extern int _main_suites_n;
  * The tests and suites attributes of the next available MunitSuite slot in the
  * _module_suites array will be set to the suite's tests and suites arrays, and
  * the prefix attribute of the slot will be set to /S. */
-#define SUITE(S)          \
-	SUITE__DECLARE(S) \
+#define SUITE(S)         \
+	SUITE_DECLARE(S) \
 	SUITE_ADD_CHILD(main, #S, S)
 
 /* Declare and register a new test. */
@@ -58,7 +58,7 @@ extern int _main_suites_n;
 
 /* Declare the MunitSuite[] and the MunitTest[] arrays that compose the test
  * suite identified by S. */
-#define SUITE__DECLARE(S)                                          \
+#define SUITE_DECLARE(S)                                           \
 	static MunitSuite _##S##_suites[SUITE_CAP];                \
 	static MunitTest _##S##_tests[SUITE_CAP];                  \
 	static MunitTestSetup _##S##Setup = NULL;                  \
@@ -130,8 +130,8 @@ extern int _main_suites_n;
  *
  * Each test file should declare one and only one test module.
  */
-#define TEST_MODULE(M)               \
-	TEST_SUITE__DECLARE(module); \
+#define TEST_MODULE(M)              \
+	TEST_SUITE_DECLARE(module); \
 	TEST_SUITE_ADD_CHILD(main, #M, module);
 
 /**
@@ -148,8 +148,8 @@ extern int _main_suites_n;
  *
  * All tests in the suite will use the same setup and tear down functions.
  */
-#define TEST_SUITE(S)           \
-	TEST_SUITE__DECLARE(S); \
+#define TEST_SUITE(S)          \
+	TEST_SUITE_DECLARE(S); \
 	TEST_SUITE_ADD_CHILD(module, "/" #S, S);
 
 /**
@@ -201,7 +201,7 @@ extern int _main_suites_n;
 
 /* Declare the MunitSuite[] and the MunitTest[] arrays that compose the test
  * suite identified by S. */
-#define TEST_SUITE__DECLARE(S)                                     \
+#define TEST_SUITE_DECLARE(S)                                      \
 	static MunitSuite _##S##_suites[TEST__CAP];                \
 	static MunitTest _##S##_tests[TEST__CAP];                  \
 	static MunitTestSetup _##S##Setup = NULL;                  \
