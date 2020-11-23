@@ -622,7 +622,7 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_re_elected, NULL)
 
 /* The server is not the leader anymore when the first frames hook for a
  * non-commit frames batch fires. Another leader gets re-elected. */
-TEST_CASE(exec, frames_not_leader_1st_non_commit_other_elected, NULL)
+TEST_CASE(exec, framesNotLeader_1stNonCommitOtherElected, NULL)
 {
 	struct execFixture *f = data;
 	uint64_t stmt_id;
