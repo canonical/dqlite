@@ -106,7 +106,7 @@ TEST_CASE(add, delAdd, NULL)
 	struct test_item *item2;
 	struct test_item *item3;
 	struct test_item *item4;
-	int item2_id;
+	int item2Id;
 
 	(void)params;
 
@@ -115,7 +115,7 @@ TEST_CASE(add, delAdd, NULL)
 
 	err = test_registry_add(registry, &item2);
 	munit_assert_int(err, ==, 0);
-	item2_id = item2->id;
+	item2Id = item2->id;
 
 	err = test_registry_add(registry, &item3);
 	munit_assert_int(err, ==, 0);
@@ -126,7 +126,7 @@ TEST_CASE(add, delAdd, NULL)
 	err = test_registry_add(registry, &item4);
 	munit_assert_int(err, ==, 0);
 
-	munit_assert_int(item4->id, ==, item2_id);
+	munit_assert_int(item4->id, ==, item2Id);
 
 	return MUNIT_OK;
 }
