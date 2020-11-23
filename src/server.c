@@ -354,7 +354,7 @@ static void destroyConn(struct conn *conn)
 	sqlite3_free(conn);
 }
 
-static void stop_cb(uv_async_t *stop)
+static void stopCb(uv_async_t *stop)
 {
 	struct dqlite_node *d = stop->data;
 	queue *head;
@@ -505,7 +505,7 @@ static int taskRun(struct dqlite_node *d)
 
 	/* Initialize notification handles. */
 	d->stop.data = d;
-	rv = uv_async_init(&d->loop, &d->stop, stop_cb);
+	rv = uv_async_init(&d->loop, &d->stop, stopCb);
 	assert(rv == 0);
 
 	/* Schedule startupCb to be fired as soon as the loop starts. It will
