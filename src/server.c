@@ -368,7 +368,7 @@ static void stop_cb(uv_async_t *stop)
 	QUEUE__FOREACH(head, &d->conns)
 	{
 		conn = QUEUE__DATA(head, struct conn, queue);
-		conn_stop(conn);
+		connStop(conn);
 	}
 	raft_close(&d->raft, raftCloseCb);
 }
@@ -482,7 +482,7 @@ static void monitor_cb(uv_prepare_t *monitor)
 		QUEUE__FOREACH(head, &d->conns)
 		{
 			conn = QUEUE__DATA(head, struct conn, queue);
-			conn_stop(conn);
+			connStop(conn);
 		}
 	}
 	*/

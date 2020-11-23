@@ -56,6 +56,6 @@ int connStart(struct conn *c,
  * Force closing the connection. The close callback will be invoked when it's
  * safe to release the memory of the connection object.
  */
-void conn_stop(struct conn *c);
+void connStop(struct conn *c);
 
 #endif /* DQLITE_CONN_H_ */
