@@ -1910,13 +1910,13 @@ static int vfsAccess(sqlite3_vfs *vfs,
 
 static int vfsFullPathname(sqlite3_vfs *vfs,
 			   const char *filename,
-			   int pathname_len,
+			   int pathnameLen,
 			   char *pathname)
 {
 	(void)vfs;
 
 	/* Just return the path unchanged. */
-	sqlite3_snprintf(pathname_len, pathname, "%s", filename);
+	sqlite3_snprintf(pathnameLen, pathname, "%s", filename);
 	return SQLITE_OK;
 }
 
