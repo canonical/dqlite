@@ -953,7 +953,7 @@ TEST_CASE(query, simple, NULL)
 }
 
 /* Successfully query a simple statement with no parameters yielding one row. */
-TEST_CASE(query, one_row, NULL)
+TEST_CASE(query, oneRow, NULL)
 {
 	struct query_fixture *f = data;
 	uint64_t stmt_id;
