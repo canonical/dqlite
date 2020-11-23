@@ -23,7 +23,7 @@ static int getFamily(const MunitParameter params[])
 	return -1;
 }
 
-void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
+void testEndpoint_setup(struct testEndpoint *e, const MunitParameter params[])
 {
 	struct sockaddr *address;
 	socklen_t size;
@@ -85,12 +85,12 @@ void test_endpoint_setup(struct test_endpoint *e, const MunitParameter params[])
 	}
 }
 
-void test_endpoint_tear_down(struct test_endpoint *e)
+void testEndpoint_tear_down(struct testEndpoint *e)
 {
 	close(e->fd);
 }
 
-int test_endpoint_connect(struct test_endpoint *e)
+int testEndpoint_connect(struct testEndpoint *e)
 {
 	struct sockaddr *address;
 	socklen_t size;
@@ -123,7 +123,7 @@ int test_endpoint_connect(struct test_endpoint *e)
 	return fd;
 }
 
-int test_endpoint_accept(struct test_endpoint *e)
+int testEndpoint_accept(struct testEndpoint *e)
 {
 	struct sockaddr_in inAddress;
 	struct sockaddr_un un_address;
@@ -162,15 +162,15 @@ int test_endpoint_accept(struct test_endpoint *e)
 	return fd;
 }
 
-void test_endpoint_pair(struct test_endpoint *e, int *server, int *client)
+void testEndpoint_pair(struct testEndpoint *e, int *server, int *client)
 {
-	*client = test_endpoint_connect(e);
-	*server = test_endpoint_accept(e);
+	*client = testEndpoint_connect(e);
+	*server = testEndpoint_accept(e);
 }
 
-const char *test_endpoint_address(struct test_endpoint *e)
+const char *testEndpoint_address(struct testEndpoint *e)
 {
 	return e->address;
 }
 
-char *test_endpoint_family_values[] = {"tcp", "unix", NULL};
+char *testEndpoint_family_values[] = {"tcp", "unix", NULL};

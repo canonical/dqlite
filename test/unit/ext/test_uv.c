@@ -20,7 +20,7 @@ struct fixture
 {
 	struct uv_loop_s loop;
 	struct uv_stream_s *listener;
-	struct test_endpoint endpoint;
+	struct testEndpoint endpoint;
 	int client;
 	union {
 		uv_tcp_t tcp;
@@ -53,7 +53,7 @@ static void bufFree(uv_buf_t *buf)
 
 /* Run the tests using both TCP and Unix sockets. */
 static MunitParameterEnum endpointParams[] = {
-    {TEST_ENDPOINT_FAMILY, test_endpoint_family_values},
+    {TEST_ENDPOINT_FAMILY, testEndpoint_family_values},
     {NULL, NULL},
 };
 
@@ -93,7 +93,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	(void)user_data;
 
 	test_uv_setup(params, &f->loop);
-	test_endpoint_setup(&f->endpoint, params);
+	testEndpoint_setup(&f->endpoint, params);
 
 	rv = transport__stream(&f->loop, f->endpoint.fd, &f->listener);
 	munit_assert_int(rv, ==, 0);
@@ -103,7 +103,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	rv = uv_listen(f->listener, 128, listenCb);
 	munit_assert_int(rv, ==, 0);
 
-	f->client = test_endpoint_connect(&f->endpoint);
+	f->client = testEndpoint_connect(&f->endpoint);
 
 	test_uv_run(&f->loop, 1);
 
@@ -117,7 +117,7 @@ static void tear_down(void *data)
 	rv = close(f->client);
 	munit_assert_int(rv, ==, 0);
 	uv_close((struct uv_handle_s *)f->listener, (uv_close_cb)raft_free);
-	test_endpoint_tear_down(&f->endpoint);
+	testEndpoint_tear_down(&f->endpoint);
 	uv_close((uv_handle_t *)(&f->stream), NULL);
 	test_uv_stop(&f->loop);
 	test_uv_tear_down(&f->loop);

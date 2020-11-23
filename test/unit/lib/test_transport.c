@@ -16,7 +16,7 @@ TEST_MODULE(libTransport);
 
 struct fixture
 {
-	struct test_endpoint endpoint;
+	struct testEndpoint endpoint;
 	struct uv_loop_s loop;
 	struct transport transport;
 	int client;
@@ -53,10 +53,10 @@ static void *setup(const MunitParameter params[], void *user_data)
 	int rv;
 	int server;
 	(void)user_data;
-	test_endpoint_setup(&f->endpoint, params);
+	testEndpoint_setup(&f->endpoint, params);
 	rv = listen(f->endpoint.fd, 16);
 	munit_assert_int(rv, ==, 0);
-	test_endpoint_pair(&f->endpoint, &server, &f->client);
+	testEndpoint_pair(&f->endpoint, &server, &f->client);
 	test_uv_setup(params, &f->loop);
 	rv = transport__stream(&f->loop, server, &stream);
 	munit_assert_int(rv, ==, 0);
@@ -79,7 +79,7 @@ static void tear_down(void *data)
 	transport__close(&f->transport, NULL);
 	test_uv_stop(&f->loop);
 	test_uv_tear_down(&f->loop);
-	test_endpoint_tear_down(&f->endpoint);
+	testEndpoint_tear_down(&f->endpoint);
 	free(data);
 }
 
