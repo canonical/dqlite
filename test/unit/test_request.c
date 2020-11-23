@@ -127,7 +127,7 @@ TEST_CASE(decode, open, NULL)
 
 	(void)params;
 
-	test_message_send_open("test.db", 123, "volatile", &request->message);
+	testMessageSendOpen("test.db", 123, "volatile", &request->message);
 
 	err = requestDecode(request);
 	munit_assert_int(err, ==, 0);
