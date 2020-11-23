@@ -98,7 +98,7 @@ static void closeCb(struct transport *transport)
 	}
 }
 
-static void raft_connect(struct conn *c, struct cursor *cursor)
+static void raftConnect(struct conn *c, struct cursor *cursor)
 {
 	struct request_connect request;
 	int rv;
@@ -135,7 +135,7 @@ static void read_request_cb(struct transport *transport, int status)
 
 	switch (c->request.type) {
 		case DQLITE_REQUEST_CONNECT:
-			raft_connect(c, &cursor);
+			raftConnect(c, &cursor);
 			return;
 	}
 
