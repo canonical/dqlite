@@ -184,7 +184,7 @@ extern int _main_suites_n;
 #define TEST_GROUP(C, T)                               \
 	static MunitTest _##C##_##T##_tests[TEST_CAP]; \
 	static int _##C##_##T##_tests_n = 0;           \
-	TEST_SUITE__ADD_GROUP(C, T);
+	TEST_SUITE_ADD_GROUP(C, T);
 
 /**
  * Declare and register a new test case.
@@ -235,7 +235,7 @@ extern int _main_suites_n;
 
 /* Set the tests attribute of the next available slot of the MunitSuite[] array
  * of S to the MunitTest[] array of G, using /G as prefix. */
-#define TEST_SUITE__ADD_GROUP(S, G)                                      \
+#define TEST_SUITE_ADD_GROUP(S, G)                                       \
 	__attribute__((constructor)) static void _##S##_##G##_init(void) \
 	{                                                                \
 		int n = _##S##_suites_n;                                 \
