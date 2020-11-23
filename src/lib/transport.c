@@ -90,7 +90,7 @@ int transport__stream(struct uv_loop_s *loop,
 			assert(rv == 0);
 			rv = uv_tcp_open(tcp, fd);
 			if (rv != 0) {
-				return TRANSPORT__BADSOCKET;
+				return TRANSPORT_BADSOCKET;
 			}
 			*stream = (struct uv_stream_s *)tcp;
 			break;
@@ -103,12 +103,12 @@ int transport__stream(struct uv_loop_s *loop,
 			assert(rv == 0);
 			rv = uv_pipe_open(pipe, fd);
 			if (rv != 0) {
-				return TRANSPORT__BADSOCKET;
+				return TRANSPORT_BADSOCKET;
 			}
 			*stream = (struct uv_stream_s *)pipe;
 			break;
 		default:
-			return TRANSPORT__BADSOCKET;
+			return TRANSPORT_BADSOCKET;
 	};
 
 	return 0;
