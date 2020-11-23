@@ -417,7 +417,7 @@ int leader__exec(struct leader *l,
 	req->done = false;
 	req->barrier.data = req;
 
-	rv = leader__barrier(l, &req->barrier, execBarrierCb);
+	rv = leader_barrier(l, &req->barrier, execBarrierCb);
 	if (rv != 0) {
 		return rv;
 	}
@@ -438,7 +438,7 @@ static void raftBarrierCb(struct raft_barrier *req, int status)
 	barrier->cb(barrier, rv);
 }
 
-int leader__barrier(struct leader *l, struct barrier *barrier, barrierCb cb)
+int leader_barrier(struct leader *l, struct barrier *barrier, barrierCb cb)
 {
 	int rv;
 	if (!needsBarrier(l)) {
