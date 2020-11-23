@@ -381,7 +381,7 @@ static int fsmSnapshot(struct raft_fsm *fsm,
 	 * is in progress. */
 	QUEUE__FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		if (db->tx_id != 0) {
 			return RAFT_BUSY;
 		}
@@ -405,7 +405,7 @@ static int fsmSnapshot(struct raft_fsm *fsm,
 	i = 1;
 	QUEUE__FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		rv = encodeDatabase(db, &(*bufs)[i]);
 		if (rv != 0) {
 			goto errAfterEncodeHeader;

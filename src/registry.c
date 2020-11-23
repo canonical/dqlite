@@ -19,7 +19,7 @@ void registry__close(struct registry *r)
 		queue *head;
 		head = QUEUE__HEAD(&r->dbs);
 		QUEUE__REMOVE(head);
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		dbClose(db);
 		sqlite3_free(db);
 	}
@@ -30,7 +30,7 @@ int registry__db_get(struct registry *r, const char *filename, struct db **db)
 	queue *head;
 	QUEUE__FOREACH(head, &r->dbs)
 	{
-		*db = QUEUE__DATA(head, struct db, queue);
+		*db = QUEUE_DATA(head, struct db, queue);
 		if (strcmp((*db)->filename, filename) == 0) {
 			return 0;
 		}
