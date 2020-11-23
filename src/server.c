@@ -40,7 +40,7 @@ int dqliteInit(struct dqlite_node *d,
 	}
 	rv = raftProxyInit(&d->raft_transport, &d->loop);
 	if (rv != 0) {
-		goto err_after_loop_init;
+		goto errAfterLoopInit;
 	}
 	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
 	if (rv != 0) {
@@ -100,7 +100,7 @@ err_after_raft_io_init:
 	raft_uv_close(&d->raft_io);
 err_after_raft_transport_init:
 	raftProxyClose(&d->raft_transport);
-err_after_loop_init:
+errAfterLoopInit:
 	uv_loop_close(&d->loop);
 err_after_vfs_init:
 	VfsClose(&d->vfs);
