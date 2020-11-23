@@ -81,7 +81,7 @@ static void connectWorkCb(uv_work_t *work)
 	rv = (int)write(r->fd, &protocol, sizeof protocol);
 	if (rv != sizeof protocol) {
 		rv = RAFT_NOCONNECTION;
-		goto err_after_connect;
+		goto errAfterConnect;
 	}
 
 	/* Send a CONNECT dqlite protocol command, which will transfer control
@@ -100,7 +100,7 @@ static void connectWorkCb(uv_work_t *work)
 	buf = sqlite3_malloc64(n);
 	if (buf == NULL) {
 		rv = RAFT_NOCONNECTION;
-		goto err_after_connect;
+		goto errAfterConnect;
 	}
 
 	cursor = buf;
@@ -112,13 +112,13 @@ static void connectWorkCb(uv_work_t *work)
 
 	if (rv != (int)n) {
 		rv = RAFT_NOCONNECTION;
-		goto err_after_connect;
+		goto errAfterConnect;
 	}
 
 	r->status = 0;
 	return;
 
-err_after_connect:
+errAfterConnect:
 	close(r->fd);
 err:
 	r->status = rv;
@@ -177,12 +177,12 @@ static int impl_connect(struct raft_uv_transport *transport,
 	    uv_queue_work(i->loop, &r->work, connectWorkCb, connectAfterWorkCb);
 	if (rv != 0) {
 		rv = RAFT_NOCONNECTION;
-		goto err_after_connect_alloc;
+		goto errAfterConnect_alloc;
 	}
 
 	return 0;
 
-err_after_connect_alloc:
+errAfterConnect_alloc:
 	sqlite3_free(r);
 err:
 	return rv;
