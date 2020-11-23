@@ -226,12 +226,12 @@ int clientRecvRows(struct client *c, struct rows *rows)
 	}
 	rows->column_count = (unsigned)column_count;
 	for (i = 0; i < rows->column_count; i++) {
-		rows->column_names = sqlite3_malloc(
-		    (int)(column_count * sizeof *rows->column_names));
-		if (rows->column_names == NULL) {
+		rows->columnNames = sqlite3_malloc(
+		    (int)(column_count * sizeof *rows->columnNames));
+		if (rows->columnNames == NULL) {
 			return DQLITE_ERROR;
 		}
-		rv = text__decode(&cursor, &rows->column_names[i]);
+		rv = text__decode(&cursor, &rows->columnNames[i]);
 		if (rv != 0) {
 			return DQLITE_ERROR;
 		}
@@ -290,7 +290,7 @@ void clientCloseRows(struct rows *rows)
 		sqlite3_free(row);
 		row = next;
 	}
-	sqlite3_free(rows->column_names);
+	sqlite3_free(rows->columnNames);
 }
 
 int clientSendAdd(struct client *c, unsigned id, const char *address)

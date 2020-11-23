@@ -73,7 +73,7 @@ static void *__worker_run(void *arg)
 		test_client_query(w->client, db_id, stmt_id, &rows);
 
 		munit_assert_int(rows.column_count, ==, 1);
-		munit_assert_string_equal(rows.column_names[0], "n");
+		munit_assert_string_equal(rows.columnNames[0], "n");
 
 		row = rows.next;
 		for (j = w->a; j <= i; j++) {
@@ -223,7 +223,7 @@ TEST_CASE(exec, single_query, NULL)
 	test_client_query(client, db_id, stmt_id, &rows);
 
 	munit_assert_int(rows.column_count, ==, 1);
-	munit_assert_string_equal(rows.column_names[0], "n");
+	munit_assert_string_equal(rows.columnNames[0], "n");
 
 	munit_assert_ptr_not_null(rows.next);
 	munit_assert_int(rows.next->types[0], ==, SQLITE_INTEGER);
@@ -296,7 +296,7 @@ TEST_CASE(exec, large_query, NULL)
 	test_client_query(client, db_id, stmt_id, &rows);
 
 	munit_assert_int(rows.column_count, ==, 1);
-	munit_assert_string_equal(rows.column_names[0], "n");
+	munit_assert_string_equal(rows.columnNames[0], "n");
 
 	munit_assert_ptr_not_null(rows.next);
 	munit_assert_int(rows.next->types[0], ==, SQLITE_INTEGER);

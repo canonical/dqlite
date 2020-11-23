@@ -24,7 +24,7 @@ struct row
 struct rows
 {
 	unsigned column_count;
-	const char **column_names;
+	const char **columnNames;
 	struct row *next;
 };
 
