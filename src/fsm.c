@@ -367,9 +367,9 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	return 0;
 }
 
-static int fsm__snapshot(struct raft_fsm *fsm,
-			 struct raft_buffer *bufs[],
-			 unsigned *n_bufs)
+static int fsm_snapshot(struct raft_fsm *fsm,
+			struct raft_buffer *bufs[],
+			unsigned *n_bufs)
 {
 	struct fsm *f = fsm->data;
 	queue *head;
@@ -475,7 +475,7 @@ int fsmInit(struct raft_fsm *fsm,
 	fsm->version = 1;
 	fsm->data = f;
 	fsm->apply = fsmApply;
-	fsm->snapshot = fsm__snapshot;
+	fsm->snapshot = fsm_snapshot;
 	fsm->restore = fsmRestore;
 
 	return 0;
