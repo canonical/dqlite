@@ -35,9 +35,9 @@ static size_t calcHeaderSize(unsigned n, int format)
 	return size;
 }
 
-int tuple_decoder__init(struct tuple_decoder *d,
-			unsigned n,
-			struct cursor *cursor)
+int tupleDecoder__init(struct tupleDecoder *d,
+		       unsigned n,
+		       struct cursor *cursor)
 {
 	size_t headerSize;
 	int rc;
@@ -75,13 +75,13 @@ int tuple_decoder__init(struct tuple_decoder *d,
 }
 
 /* Return the number of values in the decoder's tuple. */
-unsigned tuple_decoder__n(struct tuple_decoder *d)
+unsigned tupleDecoder__n(struct tupleDecoder *d)
 {
 	return d->n;
 }
 
 /* Return the type of the i'th value of the tuple. */
-static int getType(struct tuple_decoder *d, unsigned i)
+static int getType(struct tupleDecoder *d, unsigned i)
 {
 	int type;
 
@@ -101,7 +101,7 @@ static int getType(struct tuple_decoder *d, unsigned i)
 	return type;
 }
 
-int tuple_decoder__next(struct tuple_decoder *d, struct value *value)
+int tupleDecoder__next(struct tupleDecoder *d, struct value *value)
 {
 	int rc;
 	assert(d->i < d->n);

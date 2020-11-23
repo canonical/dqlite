@@ -12,18 +12,18 @@ TEST_MODULE(tuple);
  *
  ******************************************************************************/
 
-#define DECODER_INIT(N)                                          \
-	{                                                        \
-		int rc2;                                         \
-		rc2 = tuple_decoder__init(&decoder, N, &cursor); \
-		munit_assert_int(rc2, ==, 0);                    \
+#define DECODER_INIT(N)                                         \
+	{                                                       \
+		int rc2;                                        \
+		rc2 = tupleDecoder__init(&decoder, N, &cursor); \
+		munit_assert_int(rc2, ==, 0);                   \
 	}
 
-#define DECODER_NEXT                                         \
-	{                                                    \
-		int rc2;                                     \
-		rc2 = tuple_decoder__next(&decoder, &value); \
-		munit_assert_int(rc2, ==, 0);                \
+#define DECODER_NEXT                                        \
+	{                                                   \
+		int rc2;                                    \
+		rc2 = tupleDecoder__next(&decoder, &value); \
+		munit_assert_int(rc2, ==, 0);               \
 	}
 
 #define ENCODER_INIT(N, FORMAT)                                                \
@@ -62,28 +62,28 @@ TEST_GROUP(decoder, init);
  * elements of the tuple. */
 TEST_CASE(decoder, init, param, NULL)
 {
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	char buf[] = {2, 0, 0, 0, 0, 0, 0, 0, 0};
 	struct cursor cursor = {buf, sizeof buf};
 	(void)data;
 	(void)params;
 	DECODER_INIT(0);
 	munit_assert_int(decoder.n, ==, 2);
-	munit_assert_int(tuple_decoder__n(&decoder), ==, 2);
+	munit_assert_int(tupleDecoder__n(&decoder), ==, 2);
 	return MUNIT_OK;
 }
 
 /* If n is not 0, then it is the number of elements. */
 TEST_CASE(decoder, init, row, NULL)
 {
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	char buf[] = {2, 0, 0, 0, 0, 0, 0, 0, 0};
 	struct cursor cursor = {buf, sizeof buf};
 	(void)data;
 	(void)params;
 	DECODER_INIT(3);
 	munit_assert_int(decoder.n, ==, 3);
-	munit_assert_int(tuple_decoder__n(&decoder), ==, 3);
+	munit_assert_int(tupleDecoder__n(&decoder), ==, 3);
 	return MUNIT_OK;
 }
 
@@ -92,7 +92,7 @@ TEST_GROUP(decoder, row);
 /* Decode a tuple with row format and only one value. */
 TEST_CASE(decoder, row, oneValue, NULL)
 {
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	uint8_t buf[][8] = {
 	    {SQLITE_INTEGER, 0, 0, 0, 0, 0, 0, 0},
 	    {7, 0, 0, 0, 0, 0, 0, 0},
@@ -115,7 +115,7 @@ TEST_CASE(decoder, row, oneValue, NULL)
 /* Decode a tuple with row format and two values. */
 TEST_CASE(decoder, row, two_values, NULL)
 {
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	uint8_t buf[][8] = {
 	    {SQLITE_INTEGER | SQLITE_TEXT << 4, 0, 0, 0, 0, 0, 0, 0},
 	    {7, 0, 0, 0, 0, 0, 0, 0},
@@ -146,7 +146,7 @@ TEST_GROUP(decoder, params);
 /* Decode a tuple with params format and only one value. */
 TEST_CASE(decoder, params, oneValue, NULL)
 {
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	uint8_t buf[][8] = {
 	    {1, SQLITE_INTEGER, 0, 0, 0, 0, 0, 0},
 	    {7, 0, 0, 0, 0, 0, 0, 0},
@@ -169,7 +169,7 @@ TEST_CASE(decoder, params, oneValue, NULL)
 /* Decode a tuple with params format and two values. */
 TEST_CASE(decoder, params, two_values, NULL)
 {
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	uint8_t buf[][8] = {
 	    {2, SQLITE_INTEGER, SQLITE_TEXT, 0, 0, 0, 0, 0},
 	    {7, 0, 0, 0, 0, 0, 0, 0},
@@ -200,7 +200,7 @@ TEST_GROUP(decoder, type);
 /* Decode a floating point number. */
 TEST_CASE(decoder, type, float, NULL)
 {
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	uint8_t buf[][8] = {
 	    {SQLITE_FLOAT, 0, 0, 0, 0, 0, 0, 0},
 	    {0, 0, 0, 0, 0, 0, 0, 0},
@@ -227,7 +227,7 @@ TEST_CASE(decoder, type, float, NULL)
 /* Decode a null value. */
 TEST_CASE(decoder, type, null, NULL)
 {
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	uint8_t buf[][8] = {
 	    {SQLITE_NULL, 0, 0, 0, 0, 0, 0, 0},
 	    {0, 0, 0, 0, 0, 0, 0, 0},
@@ -249,7 +249,7 @@ TEST_CASE(decoder, type, null, NULL)
 /* Decode a date string in ISO8601 format. */
 TEST_CASE(decoder, type, iso8601, NULL)
 {
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	uint8_t buf[5][8] = {
 	    {DQLITE_ISO8601, 0, 0, 0, 0, 0, 0, 0},
 	};
@@ -273,7 +273,7 @@ TEST_CASE(decoder, type, iso8601, NULL)
 /* Decode a boolean. */
 TEST_CASE(decoder, type, boolean, NULL)
 {
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	uint8_t buf[][8] = {
 	    {DQLITE_BOOLEAN, 0, 0, 0, 0, 0, 0, 0},
 	    {1, 0, 0, 0, 0, 0, 0, 0},

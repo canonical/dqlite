@@ -212,7 +212,7 @@ int clientSendQuery(struct client *c, unsigned stmtId)
 int clientRecvRows(struct client *c, struct rows *rows)
 {
 	struct cursor cursor;
-	struct tuple_decoder decoder;
+	struct tupleDecoder decoder;
 	uint64_t column_count;
 	struct row *last;
 	unsigned i;
@@ -259,13 +259,13 @@ int clientRecvRows(struct client *c, struct rows *rows)
 			return DQLITE_NOMEM;
 		}
 		row->next = NULL;
-		rv = tuple_decoder__init(&decoder, (unsigned)column_count,
-					 &cursor);
+		rv = tupleDecoder__init(&decoder, (unsigned)column_count,
+					&cursor);
 		if (rv != 0) {
 			return DQLITE_ERROR;
 		}
 		for (i = 0; i < rows->column_count; i++) {
-			rv = tuple_decoder__next(&decoder, &row->values[i]);
+			rv = tupleDecoder__next(&decoder, &row->values[i]);
 			if (rv != 0) {
 				return DQLITE_ERROR;
 			}
