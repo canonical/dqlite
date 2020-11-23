@@ -22,7 +22,7 @@ TEST_CASE(open, encode, NULL)
 	(void)data;
 	(void)params;
 	c.filename = "test.db";
-	rc = command_encode(COMMAND_OPEN, &c, &buf);
+	rc = commandEncode(COMMAND_OPEN, &c, &buf);
 	munit_assert_int(rc, ==, 0);
 	munit_assert_int(buf.len, ==, 16);
 	raft_free(buf.base);
@@ -39,7 +39,7 @@ TEST_CASE(open, decode, NULL)
 	(void)data;
 	(void)params;
 	c1.filename = "db";
-	rc = command_encode(COMMAND_OPEN, &c1, &buf);
+	rc = commandEncode(COMMAND_OPEN, &c1, &buf);
 	munit_assert_int(rc, ==, 0);
 	rc = commandDecode(&buf, &type, &c2);
 	munit_assert_int(rc, ==, 0);

@@ -85,7 +85,7 @@ COMMAND__TYPES(COMMAND__IMPLEMENT, );
 		command_##LOWER##__encode(command, &cursor);    \
 		break;
 
-int command_encode(int type, const void *command, struct raft_buffer *buf)
+int commandEncode(int type, const void *command, struct raft_buffer *buf)
 {
 	struct header h;
 	void *cursor;

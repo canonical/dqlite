@@ -53,7 +53,7 @@ typedef struct frames frames_t;
 
 COMMAND__TYPES(COMMAND_DEFINE);
 
-int command_encode(int type, const void *command, struct raft_buffer *buf);
+int commandEncode(int type, const void *command, struct raft_buffer *buf);
 
 int commandDecode(const struct raft_buffer *buf, int *type, void **command);
 

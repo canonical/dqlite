@@ -217,7 +217,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	 * TODO: reason about if it's indeed fine to ignore all kind of
 	 * errors. */
 	command.filename = l->db->filename;
-	rv = command_encode(COMMAND_CHECKPOINT, &command, &buf);
+	rv = commandEncode(COMMAND_CHECKPOINT, &command, &buf);
 	if (rv != 0) {
 		goto abort;
 	}
@@ -322,7 +322,7 @@ static int leaderApplyFrames(struct exec *req,
 		goto err;
 	}
 
-	rv = command_encode(COMMAND_FRAMES, &c, &buf);
+	rv = commandEncode(COMMAND_FRAMES, &c, &buf);
 	if (rv != 0) {
 		goto err_after_apply_alloc;
 	}
@@ -333,7 +333,7 @@ static int leaderApplyFrames(struct exec *req,
 
 	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
 	if (rv != 0) {
-		goto err_after_command_encode;
+		goto err_after_commandEncode;
 	}
 
 	db->tx_id = 1;
@@ -341,7 +341,7 @@ static int leaderApplyFrames(struct exec *req,
 
 	return 0;
 
-err_after_command_encode:
+err_after_commandEncode:
 	raft_free(buf.base);
 err_after_apply_alloc:
 	raft_free(apply);
