@@ -38,11 +38,11 @@ int dqliteInit(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto errAfterVfsInit;
 	}
-	rv = raftProxyInit(&d->raft_transport, &d->loop);
+	rv = raftProxyInit(&d->raftTransport, &d->loop);
 	if (rv != 0) {
 		goto errAfterLoopInit;
 	}
-	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
+	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raftTransport);
 	if (rv != 0) {
 		/* TODO: better error reporting */
 		rv = DQLITE_ERROR;
@@ -99,7 +99,7 @@ errAfterRaftFsmInit:
 errAfterRaftIoInit:
 	raft_uv_close(&d->raft_io);
 errAfterRaftTransportInit:
-	raftProxyClose(&d->raft_transport);
+	raftProxyClose(&d->raftTransport);
 errAfterLoopInit:
 	uv_loop_close(&d->loop);
 errAfterVfsInit:
@@ -122,7 +122,7 @@ void dqliteClose(struct dqlite_node *d)
 	assert(rv == 0); /* Fails only if sem object is not valid */
 	fsmClose(&d->raft_fsm);
 	uv_loop_close(&d->loop);
-	raftProxyClose(&d->raft_transport);
+	raftProxyClose(&d->raftTransport);
 	registry__close(&d->registry);
 	sqlite3_vfs_unregister(&d->vfs);
 	VfsClose(&d->vfs);
@@ -276,7 +276,7 @@ int dqlite_node_set_connect_func(dqlite_node *t,
 	if (t->running) {
 		return DQLITE_MISUSE;
 	}
-	raftProxySetConnectFunc(&t->raft_transport, f, arg);
+	raftProxySetConnectFunc(&t->raftTransport, f, arg);
 	return 0;
 }
 
@@ -445,7 +445,7 @@ static void listenCb(uv_stream_t *listener, int status)
 		goto err;
 	}
 	rv = connStart(conn, &t->config, &t->loop, &t->registry, &t->raft,
-		       stream, &t->raft_transport, destroyConn);
+		       stream, &t->raftTransport, destroyConn);
 	if (rv != 0) {
 		goto errAfterConnAlloc;
 	}

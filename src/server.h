@@ -17,7 +17,7 @@ struct dqlite_node
 	struct sqlite3_vfs vfs;                  /* In-memory VFS */
 	struct registry registry;                /* Databases */
 	struct uv_loop_s loop;                   /* UV loop */
-	struct raft_uv_transport raft_transport; /* Raft libuv transport */
+	struct raft_uv_transport raftTransport;  /* Raft libuv transport */
 	struct raft_io raft_io;                  /* libuv I/O */
 	struct raft_fsm raft_fsm;                /* dqlite FSM */
 	sem_t ready;                             /* Server is ready */
