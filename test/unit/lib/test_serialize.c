@@ -203,7 +203,7 @@ TEST_CASE(encode, padding, NULL)
 	cursor = buf;
 	person__encode(&f->person, &cursor);
 	munit_assert_string_equal(buf, "John Doh");
-	munit_assert_int(byte__flip64(*(uint64_t *)(buf + 16)), ==, 40);
+	munit_assert_int(byte_flip64(*(uint64_t *)(buf + 16)), ==, 40);
 	free(buf);
 	return MUNIT_OK;
 }
@@ -223,7 +223,7 @@ TEST_CASE(encode, no_padding, NULL)
 	cursor = buf;
 	person__encode(&f->person, &cursor);
 	munit_assert_string_equal(buf, "Joe Doh");
-	munit_assert_int(byte__flip64(*(uint64_t *)(buf + 8)), ==, 40);
+	munit_assert_int(byte_flip64(*(uint64_t *)(buf + 8)), ==, 40);
 	free(buf);
 	return MUNIT_OK;
 }
@@ -265,7 +265,7 @@ TEST_CASE(encode, custom, NULL)
 	munit_assert_string_equal(cursor, "Victor Hugo");
 	cursor += 16;
 
-	munit_assert_int(byte__flip64(*(uint64_t *)cursor), ==, 40);
+	munit_assert_int(byte_flip64(*(uint64_t *)cursor), ==, 40);
 	cursor += 8;
 
 	munit_assert_int(byteFlip16(*(uint16_t *)cursor), ==, 2);
@@ -305,7 +305,7 @@ TEST_CASE(decode, padding, NULL)
 	struct cursor cursor = {buf, 16 + 8};
 	(void)params;
 	strcpy(buf, "John Doh");
-	*(uint64_t *)(buf + 16) = byte__flip64(40);
+	*(uint64_t *)(buf + 16) = byte_flip64(40);
 	person__decode(&cursor, &f->person);
 	munit_assert_string_equal(f->person.name, "John Doh");
 	munit_assert_int(f->person.age, ==, 40);
@@ -321,7 +321,7 @@ TEST_CASE(decode, no_padding, NULL)
 	struct cursor cursor = {buf, 16 + 8};
 	(void)params;
 	strcpy(buf, "Joe Doh");
-	*(uint64_t *)(buf + 8) = byte__flip64(40);
+	*(uint64_t *)(buf + 8) = byte_flip64(40);
 	person__decode(&cursor, &f->person);
 	munit_assert_string_equal(f->person.name, "Joe Doh");
 	munit_assert_int(f->person.age, ==, 40);
@@ -366,7 +366,7 @@ TEST_CASE(decode, custom, NULL)
 	strcpy(p, "Victor Hugo");
 	p += 16;
 
-	*(uint64_t *)p = byte__flip64(40);
+	*(uint64_t *)p = byte_flip64(40);
 	p += 8;
 
 	*(uint16_t *)p = byteFlip16(2);

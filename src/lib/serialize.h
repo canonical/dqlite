@@ -180,19 +180,19 @@ DQLITE_INLINE void uint32__encode(const uint32_t *value, void **cursor)
 
 DQLITE_INLINE void uint64__encode(const uint64_t *value, void **cursor)
 {
-	*(uint64_t *)(*cursor) = byte__flip64(*value);
+	*(uint64_t *)(*cursor) = byte_flip64(*value);
 	*cursor += sizeof(uint64_t);
 }
 
 DQLITE_INLINE void int64__encode(const int64_t *value, void **cursor)
 {
-	*(int64_t *)(*cursor) = (int64_t)byte__flip64((uint64_t)*value);
+	*(int64_t *)(*cursor) = (int64_t)byte_flip64((uint64_t)*value);
 	*cursor += sizeof(int64_t);
 }
 
 DQLITE_INLINE void float__encode(const float_t *value, void **cursor)
 {
-	*(uint64_t *)(*cursor) = byte__flip64(*(uint64_t *)value);
+	*(uint64_t *)(*cursor) = byte_flip64(*(uint64_t *)value);
 	*cursor += sizeof(uint64_t);
 }
 
@@ -255,7 +255,7 @@ DQLITE_INLINE int uint64__decode(struct cursor *cursor, uint64_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = byte__flip64(*(uint64_t *)cursor->p);
+	*value = byte_flip64(*(uint64_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -267,7 +267,7 @@ DQLITE_INLINE int int64__decode(struct cursor *cursor, int64_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = (int64_t)byte__flip64((uint64_t)*(int64_t *)cursor->p);
+	*value = (int64_t)byte_flip64((uint64_t) * (int64_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -279,7 +279,7 @@ DQLITE_INLINE int float__decode(struct cursor *cursor, float_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*(uint64_t *)value = byte__flip64(*(uint64_t *)cursor->p);
+	*(uint64_t *)value = byte_flip64(*(uint64_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
