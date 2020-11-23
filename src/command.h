@@ -30,7 +30,7 @@ struct frames
 typedef struct frames frames_t;
 
 /* Serialization definitions for a raft FSM command. */
-#define COMMAND__DEFINE(LOWER, UPPER, _) \
+#define COMMAND_DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE_STRUCT(command_##LOWER, COMMAND__##UPPER);
 
 #define COMMAND__OPEN(X, ...) X(text, filename, ##__VA_ARGS__)
@@ -51,7 +51,7 @@ typedef struct frames frames_t;
 	X(undo, UNDO, __VA_ARGS__)     \
 	X(checkpoint, CHECKPOINT, __VA_ARGS__)
 
-COMMAND__TYPES(COMMAND__DEFINE);
+COMMAND__TYPES(COMMAND_DEFINE);
 
 int command__encode(int type, const void *command, struct raft_buffer *buf);
 
