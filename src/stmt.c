@@ -29,4 +29,4 @@ const char *stmt_hash(struct stmt *stmt)
 	return NULL;
 }
 
-REGISTRY_METHODS(stmt_registry, stmt);
+REGISTRY_METHODS(stmtRegistry, stmt);

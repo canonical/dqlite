@@ -21,14 +21,14 @@ void gatewayInit(struct gateway *g,
 	g->stmtFinalize = false;
 	g->exec.data = g;
 	g->sql = NULL;
-	stmt_registry_init(&g->stmts);
+	stmtRegistry_init(&g->stmts);
 	g->barrier.data = g;
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 }
 
 void gatewayClose(struct gateway *g)
 {
-	stmt_registry_close(&g->stmts);
+	stmtRegistry_close(&g->stmts);
 	if (g->leader != NULL) {
 		if (g->stmt != NULL) {
 			struct raft_apply *req = &g->leader->inflight->req;
@@ -84,12 +84,12 @@ void gatewayClose(struct gateway *g)
 	}
 
 /* Lookup the statement with the given ID. */
-#define LOOKUP_STMT(ID)                                     \
-	stmt = stmt_registry_get(&req->gateway->stmts, ID); \
-	if (stmt == NULL) {                                 \
-		failure(req, SQLITE_NOTFOUND,               \
-			"no statement with the given id");  \
-		return 0;                                   \
+#define LOOKUP_STMT(ID)                                    \
+	stmt = stmtRegistry_get(&req->gateway->stmts, ID); \
+	if (stmt == NULL) {                                \
+		failure(req, SQLITE_NOTFOUND,              \
+			"no statement with the given id"); \
+		return 0;                                  \
 	}
 
 #define FAIL_IF_CHECKPOINTING                                                  \
@@ -216,7 +216,7 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 	int rc;
 	START(prepare, stmt);
 	LOOKUP_DB(request.dbId);
-	rc = stmt_registry_add(&g->stmts, &stmt);
+	rc = stmtRegistry_add(&g->stmts, &stmt);
 	if (rc != 0) {
 		return rc;
 	}
@@ -393,7 +393,7 @@ static int handle_finalize(struct handle *req, struct cursor *cursor)
 	START(finalize, empty);
 	LOOKUP_DB(request.dbId);
 	LOOKUP_STMT(request.stmtId);
-	rv = stmt_registry_del(&req->gateway->stmts, stmt);
+	rv = stmtRegistry_del(&req->gateway->stmts, stmt);
 	if (rv != 0) {
 		failure(req, rv, "finalize statement");
 		return 0;
