@@ -1415,7 +1415,7 @@ static int vfsFileDeviceCharacteristics(sqlite3_file *file)
 }
 
 static int vfsShmMap(struct vfsShm *s,
-		     unsigned region_index,
+		     unsigned regionIndex,
 		     unsigned region_size,
 		     bool extend,
 		     void volatile **out)
@@ -1423,9 +1423,9 @@ static int vfsShmMap(struct vfsShm *s,
 	void *region;
 	int rv;
 
-	if (s->regions != NULL && region_index < s->nRegions) {
+	if (s->regions != NULL && regionIndex < s->nRegions) {
 		/* The region was already allocated. */
-		region = s->regions[region_index];
+		region = s->regions[regionIndex];
 		assert(region != NULL);
 	} else {
 		if (extend) {
@@ -1433,7 +1433,7 @@ static int vfsShmMap(struct vfsShm *s,
 
 			/* We should grow the map one region at a time. */
 			assert(region_size == VFS__WAL_INDEX_REGION_SIZE);
-			assert(region_index == s->nRegions);
+			assert(regionIndex == s->nRegions);
 			region = sqlite3_malloc64(region_size);
 			if (region == NULL) {
 				rv = SQLITE_NOMEM;
@@ -1451,7 +1451,7 @@ static int vfsShmMap(struct vfsShm *s,
 			}
 
 			s->regions = regions;
-			s->regions[region_index] = region;
+			s->regions[regionIndex] = region;
 			s->nRegions++;
 
 		} else {
@@ -1463,7 +1463,7 @@ static int vfsShmMap(struct vfsShm *s,
 
 	*out = region;
 
-	if (region_index == 0 && region != NULL) {
+	if (regionIndex == 0 && region != NULL) {
 		s->refcount++;
 	}
 
@@ -1479,7 +1479,7 @@ err:
 
 /* Simulate shared memory by allocating on the C heap. */
 static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
-			 int region_index,   /* Region to retrieve */
+			 int regionIndex,    /* Region to retrieve */
 			 int region_size,    /* Size of regions */
 			 int extend, /* True to extend file if necessary */
 			 void volatile **out /* OUT: Mapped memory */
@@ -1489,7 +1489,7 @@ static int vfsFileShmMap(sqlite3_file *file, /* Handle open on database file */
 
 	assert(f->type == VFS__DATABASE);
 
-	return vfsShmMap(&f->database->shm, (unsigned)region_index,
+	return vfsShmMap(&f->database->shm, (unsigned)regionIndex,
 			 (unsigned)region_size, extend != 0, out);
 }
 
