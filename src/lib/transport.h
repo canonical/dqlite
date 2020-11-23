@@ -41,7 +41,7 @@ int transport__init(struct transport *t, struct uv_stream_s *stream);
 /**
  * Start closing by the transport.
  */
-void transport__close(struct transport *t, transport_close_cb cb);
+void transport_close(struct transport *t, transport_close_cb cb);
 
 /**
  * Read from the transport file descriptor until the given buffer is full.

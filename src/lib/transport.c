@@ -137,7 +137,7 @@ static void close_cb(uv_handle_t *handle)
 	}
 }
 
-void transport__close(struct transport *t, transport_close_cb cb)
+void transport_close(struct transport *t, transport_close_cb cb)
 {
 	assert(t->close_cb == NULL);
 	t->close_cb = cb;
