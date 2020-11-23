@@ -2216,7 +2216,7 @@ static int vfsWalAppend(struct vfsWal *w,
 		uint8_t *page = &pages[i * page_size];
 
 		if (frame == NULL) {
-			goto oom_after_frames_alloc;
+			goto oomAfterFramesAlloc;
 		}
 
 		if (page_number > databaseSize) {
@@ -2239,7 +2239,7 @@ static int vfsWalAppend(struct vfsWal *w,
 
 	return 0;
 
-oom_after_frames_alloc:
+oomAfterFramesAlloc:
 	for (j = 0; j < i; j++) {
 		vfsFrameDestroy(frames[w->nFrames + j]);
 	}
@@ -2549,7 +2549,7 @@ static int vfsWalRestore(struct vfsWal *w,
 			unsigned j;
 			for (j = 0; j < i; j++) {
 				vfsFrameDestroy(frames[j]);
-				goto oom_after_frames_alloc;
+				goto oomAfterFramesAlloc;
 			}
 		}
 		frames[i] = frame;
@@ -2569,7 +2569,7 @@ static int vfsWalRestore(struct vfsWal *w,
 
 	return 0;
 
-oom_after_frames_alloc:
+oomAfterFramesAlloc:
 	sqlite3_free(frames);
 oom:
 	return DQLITE_NOMEM;
