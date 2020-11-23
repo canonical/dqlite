@@ -255,14 +255,14 @@ static int read_protocol(struct conn *c)
 	return 0;
 }
 
-int conn__start(struct conn *c,
-		struct config *config,
-		struct uv_loop_s *loop,
-		struct registry *registry,
-		struct raft *raft,
-		struct uv_stream_s *stream,
-		struct raft_uv_transport *uv_transport,
-		conn_close_cb close_cb)
+int conn_start(struct conn *c,
+	       struct config *config,
+	       struct uv_loop_s *loop,
+	       struct registry *registry,
+	       struct raft *raft,
+	       struct uv_stream_s *stream,
+	       struct raft_uv_transport *uv_transport,
+	       conn_close_cb close_cb)
 {
 	int rv;
 	(void)loop;

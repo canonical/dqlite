@@ -445,8 +445,8 @@ static void listenCb(uv_stream_t *listener, int status)
 	if (conn == NULL) {
 		goto err;
 	}
-	rv = conn__start(conn, &t->config, &t->loop, &t->registry, &t->raft,
-			 stream, &t->raft_transport, destroy_conn);
+	rv = conn_start(conn, &t->config, &t->loop, &t->registry, &t->raft,
+			stream, &t->raft_transport, destroy_conn);
 	if (rv != 0) {
 		goto err_after_conn_alloc;
 	}

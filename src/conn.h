@@ -43,14 +43,14 @@ struct conn
  * If no error is returned, the connection should be considered started. Any
  * error occurring after this point will trigger the @close_cb callback.
  */
-int conn__start(struct conn *c,
-		struct config *config,
-		struct uv_loop_s *loop,
-		struct registry *registry,
-		struct raft *raft,
-		struct uv_stream_s *stream,
-		struct raft_uv_transport *uv_transport,
-		conn_close_cb close_cb);
+int conn_start(struct conn *c,
+	       struct config *config,
+	       struct uv_loop_s *loop,
+	       struct registry *registry,
+	       struct raft *raft,
+	       struct uv_stream_s *stream,
+	       struct raft_uv_transport *uv_transport,
+	       conn_close_cb close_cb);
 
 /**
  * Force closing the connection. The close callback will be invoked when it's
