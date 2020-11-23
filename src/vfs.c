@@ -1528,21 +1528,21 @@ static int vfsShmLock(struct vfsShm *s, int ofst, int n, int flags)
 static int vfsShmUnlock(struct vfsShm *s, int ofst, int n, int flags)
 {
 	unsigned *these_locks;
-	unsigned *other_locks;
+	unsigned *otherLocks;
 	int i;
 
 	if (flags & SQLITE_SHM_SHARED) {
 		these_locks = s->shared;
-		other_locks = s->exclusive;
+		otherLocks = s->exclusive;
 	} else {
 		these_locks = s->exclusive;
-		other_locks = s->shared;
+		otherLocks = s->shared;
 	}
 
 	for (i = ofst; i < ofst + n; i++) {
 		/* Sanity check that no lock of the other type is held in this
 		 * region. */
-		assert(other_locks[i] == 0);
+		assert(otherLocks[i] == 0);
 
 		/* Only decrease the lock count if it's positive. In other words
 		 * releasing a never acquired lock is legal and idemponent. */
