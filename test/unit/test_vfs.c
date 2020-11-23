@@ -1317,13 +1317,13 @@ SUITE(VfsInit);
 static char *testCreateOomDelay[] = {"0", NULL};
 static char *test_create_oom_repeat[] = {"1", NULL};
 
-static MunitParameterEnum test_create_oom_params[] = {
+static MunitParameterEnum testCreateOomParams[] = {
     {TEST_HEAP_FAULT_DELAY, testCreateOomDelay},
     {TEST_HEAP_FAULT_REPEAT, test_create_oom_repeat},
     {NULL, NULL},
 };
 
-TEST(VfsInit, oom, setUp, tearDown, 0, test_create_oom_params)
+TEST(VfsInit, oom, setUp, tearDown, 0, testCreateOomParams)
 {
 	struct sqlite3_vfs vfs;
 	int rv;
