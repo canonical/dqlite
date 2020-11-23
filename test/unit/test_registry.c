@@ -56,7 +56,7 @@ TEST_TEAR_DOWN(db)
 }
 
 /* Get a db that didn't exist before. */
-TEST_CASE(db, get_new, NULL)
+TEST_CASE(db, getNew, NULL)
 {
 	struct dbFixture *f = data;
 	struct db *db;
