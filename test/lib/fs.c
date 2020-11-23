@@ -9,9 +9,9 @@
 
 char *testDirSetup()
 {
-	char *dir = munit_malloc(strlen(TEST__DIR_TEMPLATE) + 1);
+	char *dir = munit_malloc(strlen(TEST_DIR_TEMPLATE) + 1);
 
-	strcpy(dir, TEST__DIR_TEMPLATE);
+	strcpy(dir, TEST_DIR_TEMPLATE);
 
 	munit_assert_ptr_not_null(mkdtemp(dir));
 
