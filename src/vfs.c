@@ -624,7 +624,7 @@ static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 
 enum vfsFileType {
 	VFS_DATABASE, /* Main database file */
-	VFS__JOURNAL, /* Default SQLite journal file */
+	VFS_JOURNAL,  /* Default SQLite journal file */
 	VFS__WAL      /* Write-Ahead Log */
 };
 
@@ -1080,7 +1080,7 @@ static int vfsFileWrite(sqlite3_file *file,
 			rv =
 			    vfsWalWrite(&f->database->wal, buf, amount, offset);
 			break;
-		case VFS__JOURNAL:
+		case VFS_JOURNAL:
 			/* Silently swallow writes to the journal */
 			rv = SQLITE_OK;
 			break;
@@ -1806,7 +1806,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	if (flags & SQLITE_OPEN_MAIN_DB) {
 		type = VFS_DATABASE;
 	} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
-		type = VFS__JOURNAL;
+		type = VFS_JOURNAL;
 	} else if (flags & SQLITE_OPEN_WAL) {
 		type = VFS__WAL;
 	} else {
@@ -1824,7 +1824,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	if (!exists) {
 		/* When opening a WAL or journal file we expect the main
 		 * database file to have already been created. */
-		if (type == VFS__WAL || type == VFS__JOURNAL) {
+		if (type == VFS__WAL || type == VFS_JOURNAL) {
 			v->error = ENOENT;
 			rc = SQLITE_CANTOPEN;
 			goto err;
