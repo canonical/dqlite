@@ -262,7 +262,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	return 0;
 }
 
-const char *dqlite_node_get_bind_address(dqlite_node *t)
+const char *dqliteNodeGetBindAddress(dqlite_node *t)
 {
 	return t->bind_address;
 }
