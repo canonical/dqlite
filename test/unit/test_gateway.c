@@ -1152,7 +1152,7 @@ TEST_CASE(query, barrier, NULL)
  *
  ******************************************************************************/
 
-struct finalize_fixture
+struct finalizeFixture
 {
 	FIXTURE;
 	struct request_finalize request;
@@ -1162,14 +1162,14 @@ struct finalize_fixture
 TEST_SUITE(finalize);
 TEST_SETUP(finalize)
 {
-	struct finalize_fixture *f = munit_malloc(sizeof *f);
+	struct finalizeFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	OPEN;
 	return f;
 }
 TEST_TEAR_DOWN(finalize)
 {
-	struct finalize_fixture *f = data;
+	struct finalizeFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -1178,7 +1178,7 @@ TEST_TEAR_DOWN(finalize)
 TEST_CASE(finalize, success, NULL)
 {
 	uint64_t stmt_id;
-	struct finalize_fixture *f = data;
+	struct finalizeFixture *f = data;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.dbId = 0;
