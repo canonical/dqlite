@@ -1027,14 +1027,14 @@ SUITE(VfsShmMap);
 static char *testShmMapOomDelay[] = {"0", "1", NULL};
 static char *test_shm_map_oom_repeat[] = {"1", NULL};
 
-static MunitParameterEnum test_shm_map_oom_params[] = {
+static MunitParameterEnum testShmMapOomParams[] = {
     {TEST_HEAP_FAULT_DELAY, testShmMapOomDelay},
     {TEST_HEAP_FAULT_REPEAT, test_shm_map_oom_repeat},
     {NULL, NULL},
 };
 
 /* Out of memory when trying to initialize the internal VFS shm data struct. */
-TEST(VfsShmMap, oom, setUp, tearDown, 0, test_shm_map_oom_params)
+TEST(VfsShmMap, oom, setUp, tearDown, 0, testShmMapOomParams)
 {
 	struct fixture *f = data;
 	sqlite3_file *file = __file_create_mainDb(&f->vfs);
