@@ -149,7 +149,7 @@ static sqlite3 *__db_open(void)
 }
 
 /* Helper to close a database. */
-static void __db_close(sqlite3 *db)
+static void __dbClose(sqlite3 *db)
 {
 	int rv;
 	rv = sqlite3_close(db);
@@ -366,7 +366,7 @@ TEST(VfsOpen, synchronous, setUp, tearDown, 0, NULL)
 
 	munit_assert_string_equal(sqlite3_errmsg(db), "disk I/O error");
 
-	__db_close(db);
+	__dbClose(db);
 
 	rc = sqlite3_vfs_unregister(&f->vfs);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -1444,8 +1444,8 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	/* The new read lock is in place as well. */
 	munit_assert_true(__shm_shared_lock_held(db2, 3 + 2));
 
-	__db_close(db1);
-	__db_close(db2);
+	__dbClose(db1);
+	__dbClose(db2);
 
 	return SQLITE_OK;
 }
@@ -1541,8 +1541,8 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 				       &log, &ckpt);
 	munit_assert_int(rv, ==, 0);
 
-	__db_close(db1);
-	__db_close(db2);
+	__dbClose(db1);
+	__dbClose(db2);
 
 	return SQLITE_OK;
 }

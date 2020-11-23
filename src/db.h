@@ -31,7 +31,7 @@ void db__init(struct db *db, struct config *config, const char *filename);
  *
  * If the follower connection was opened, it will be closed.
  */
-void db_close(struct db *db);
+void dbClose(struct db *db);
 
 /**
  * Open the follower connection associated with this database.
