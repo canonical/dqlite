@@ -19,7 +19,7 @@ static struct mem_fault memFault;
 
 /* A version of sqlite3_mem_methods.xMalloc() that includes fault simulation
  * logic.*/
-static void *mem_fault_malloc(int n)
+static void *memFaultMalloc(int n)
 {
 	void *p = NULL;
 
@@ -86,7 +86,7 @@ static void mem_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
 	test_fault_init(&memFault.fault);
 	memFault.m = *m;
 
-	wrap->xMalloc = mem_fault_malloc;
+	wrap->xMalloc = memFaultMalloc;
 	wrap->xFree = memFaultFree;
 	wrap->xRealloc = mem_fault_realloc;
 	wrap->xSize = mem_fault_size;
