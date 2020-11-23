@@ -191,7 +191,7 @@ static int handle_open(struct handle *req, struct cursor *cursor)
 			"a database for this connection is already open");
 		return 0;
 	}
-	rc = registry_db_get(g->registry, request.filename, &db);
+	rc = registryDbGet(g->registry, request.filename, &db);
 	if (rc != 0) {
 		return rc;
 	}

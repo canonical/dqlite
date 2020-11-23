@@ -30,7 +30,7 @@ TEST_MODULE(replication_v1);
 		struct registry *registry = CLUSTER_REGISTRY(I); \
 		struct db *db;                                   \
 		int rc2;                                         \
-		rc2 = registry_db_get(registry, "test.db", &db); \
+		rc2 = registryDbGet(registry, "test.db", &db);   \
 		munit_assert_int(rc2, ==, 0);                    \
 		rc2 = leaderInit(leader, db, CLUSTER_RAFT(I));   \
 		munit_assert_int(rc2, ==, 0);                    \
@@ -283,7 +283,7 @@ TEST_CASE(exec, checkpointReadLock, NULL)
 	EXEC_SQL(0, "CREATE TABLE test (n  INT)");
 
 	/* Initialize another leader. */
-	rv = registry_db_get(registry, "test.db", &db);
+	rv = registryDbGet(registry, "test.db", &db);
 	munit_assert_int(rv, ==, 0);
 	leaderInit(&leader2, db, CLUSTER_RAFT(0));
 

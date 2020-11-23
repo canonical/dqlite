@@ -25,7 +25,7 @@ void registry_close(struct registry *r)
 	}
 }
 
-int registry_db_get(struct registry *r, const char *filename, struct db **db)
+int registryDbGet(struct registry *r, const char *filename, struct db **db)
 {
 	queue *head;
 	QUEUE_FOREACH(head, &r->dbs)
