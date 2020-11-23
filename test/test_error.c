@@ -87,7 +87,7 @@ TEST_CASE(printf, oom, NULL)
 	(void)params;
 
 	testHeapFaultConfig(0, 1);
-	test_heap_fault_enable();
+	testHeapFaultEnable();
 
 	dqliteError_printf(error, "hello %s", "world");
 
@@ -299,7 +299,7 @@ TEST_CASE(copy, oom, NULL)
 	return MUNIT_SKIP;
 
 	testHeapFaultConfig(2, 1);
-	test_heap_fault_enable();
+	testHeapFaultEnable();
 
 	dqliteError_printf(error, "hello");
 

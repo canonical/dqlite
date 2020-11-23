@@ -212,6 +212,7 @@ void testHeapFaultConfig(int delay, int repeat)
 	testFault_config(&memFault.fault, delay, repeat);
 }
 
-void test_heap_fault_enable() {
+void testHeapFaultEnable()
+{
 	testFault_enable(&memFault.fault);
 }

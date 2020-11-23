@@ -385,7 +385,7 @@ TEST(VfsOpen, oom, setUp, tearDown, 0, NULL)
 	(void)params;
 
 	testHeapFaultConfig(0, 1);
-	test_heap_fault_enable();
+	testHeapFaultEnable();
 
 	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
@@ -406,7 +406,7 @@ TEST(VfsOpen, oomFilename, setUp, tearDown, 0, NULL)
 	(void)params;
 
 	testHeapFaultConfig(1, 1);
-	test_heap_fault_enable();
+	testHeapFaultEnable();
 
 	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
@@ -745,7 +745,7 @@ TEST(VfsWrite, oomPage, setUp, tearDown, 0, NULL)
 	int rc;
 
 	testHeapFaultConfig(0, 1);
-	test_heap_fault_enable();
+	testHeapFaultEnable();
 
 	(void)params;
 
@@ -772,7 +772,7 @@ TEST(VfsWrite, oomPageArray, setUp, tearDown, 0, NULL)
 	int rc;
 
 	testHeapFaultConfig(1, 1);
-	test_heap_fault_enable();
+	testHeapFaultEnable();
 
 	(void)params;
 
@@ -798,7 +798,7 @@ TEST(VfsWrite, oomPageBuf, setUp, tearDown, 0, NULL)
 	int rc;
 
 	testHeapFaultConfig(1, 1);
-	test_heap_fault_enable();
+	testHeapFaultEnable();
 
 	(void)params;
 
@@ -1044,7 +1044,7 @@ TEST(VfsShmMap, oom, setUp, tearDown, 0, test_shm_map_oom_params)
 	(void)params;
 	(void)data;
 
-	test_heap_fault_enable();
+	testHeapFaultEnable();
 
 	rc = file->pMethods->xShmMap(file, 0, 32768, 1, &region);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
@@ -1331,7 +1331,7 @@ TEST(VfsInit, oom, setUp, tearDown, 0, testCreateOomParams)
 	(void)params;
 	(void)data;
 
-	test_heap_fault_enable();
+	testHeapFaultEnable();
 
 	rv = VfsInit(&vfs, "dqlite");
 	munit_assert_int(rv, ==, DQLITE_NOMEM);
