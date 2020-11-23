@@ -50,7 +50,7 @@ int config__init(struct config *c, dqlite_node_id id, const char *address)
 	return 0;
 }
 
-void config__close(struct config *c)
+void config_close(struct config *c)
 {
 	sqlite3_free(c->address);
 }

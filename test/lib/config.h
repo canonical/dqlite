@@ -21,6 +21,6 @@
 
 #define TEAR_DOWN_CONFIG                          \
 	test_logger_tear_down(&f->config.logger); \
-	config__close(&f->config)
+	config_close(&f->config)
 
 #endif /* TEST_OPTIONS_H */

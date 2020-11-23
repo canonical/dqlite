@@ -28,6 +28,6 @@ int config__init(struct config *c, dqlite_node_id id, const char *address);
 /**
  * Release any memory held by the config object.
  */
-void config__close(struct config *c);
+void config_close(struct config *c);
 
 #endif /* DQLITE_OPTIONS_H */
