@@ -59,17 +59,17 @@ struct cursor
  * A new struct called NAME will be defined, along with sizeof, encode and
  * decode functions.
  */
-#define SERIALIZE__DEFINE(NAME, FIELDS)         \
-	SERIALIZE__DEFINE_STRUCT(NAME, FIELDS); \
-	SERIALIZE__DEFINE_METHODS(NAME, FIELDS)
+#define SERIALIZE_DEFINE(NAME, FIELDS)         \
+	SERIALIZE_DEFINE_STRUCT(NAME, FIELDS); \
+	SERIALIZE_DEFINE_METHODS(NAME, FIELDS)
 
-#define SERIALIZE__DEFINE_STRUCT(NAME, FIELDS)  \
-	struct NAME                             \
-	{                                       \
-		FIELDS(SERIALIZE__DEFINE_FIELD) \
+#define SERIALIZE_DEFINE_STRUCT(NAME, FIELDS)  \
+	struct NAME                            \
+	{                                      \
+		FIELDS(SERIALIZE_DEFINE_FIELD) \
 	}
 
-#define SERIALIZE__DEFINE_METHODS(NAME, FIELDS)                   \
+#define SERIALIZE_DEFINE_METHODS(NAME, FIELDS)                    \
 	size_t NAME##__sizeof(const struct NAME *p);              \
 	void NAME##__encode(const struct NAME *p, void **cursor); \
 	int NAME##__decode(struct cursor *cursor, struct NAME *p)
@@ -78,7 +78,7 @@ struct cursor
  *
  * KIND:   Type code (e.g. uint64, text, etc).
  * MEMBER: Field name. */
-#define SERIALIZE__DEFINE_FIELD(KIND, MEMBER) KIND##_t MEMBER;
+#define SERIALIZE_DEFINE_FIELD(KIND, MEMBER) KIND##_t MEMBER;
 
 /**
  * Implement the sizeof, encode and decode function of a serializable struct.

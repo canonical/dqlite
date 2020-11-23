@@ -34,7 +34,7 @@
 	X(uint64, weight, ##__VA_ARGS__)
 
 #define RESPONSE_DEFINE(LOWER, UPPER, _) \
-	SERIALIZE__DEFINE(response_##LOWER, RESPONSE_##UPPER);
+	SERIALIZE_DEFINE(response_##LOWER, RESPONSE_##UPPER);
 
 #define RESPONSE_TYPES(X, ...)                       \
 	X(server, SERVER, __VA_ARGS__)               \

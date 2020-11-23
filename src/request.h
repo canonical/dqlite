@@ -44,7 +44,7 @@
 #define REQUEST_WEIGHT(X, ...) X(uint64, weight, ##__VA_ARGS__)
 
 #define REQUEST_DEFINE(LOWER, UPPER, _) \
-	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
+	SERIALIZE_DEFINE(request_##LOWER, REQUEST_##UPPER);
 
 #define REQUEST_TYPES(X, ...)                \
 	X(leader, LEADER, __VA_ARGS__)       \
@@ -72,6 +72,6 @@ REQUEST_TYPES(REQUEST_DEFINE);
 	X(uint64, id, ##__VA_ARGS__) \
 	X(text, address, ##__VA_ARGS__)
 
-SERIALIZE__DEFINE(requestConnect, REQUEST_CONNECT);
+SERIALIZE_DEFINE(requestConnect, REQUEST_CONNECT);
 
 #endif /* REQUEST_H_ */

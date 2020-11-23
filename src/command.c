@@ -16,7 +16,7 @@
 	X(uint8, _unused2, ##__VA_ARGS__) \
 	X(uint32, _unused3, ##__VA_ARGS__)
 
-SERIALIZE__DEFINE(header, HEADER);
+SERIALIZE_DEFINE(header, HEADER);
 SERIALIZE__IMPLEMENT(header, HEADER);
 
 static size_t frames__sizeof(const frames_t *frames)

@@ -247,14 +247,14 @@ err:
 #define SNAPSHOT_HEADER(X, ...)          \
 	X(uint64, format, ##__VA_ARGS__) \
 	X(uint64, n, ##__VA_ARGS__)
-SERIALIZE__DEFINE(snapshotHeader, SNAPSHOT_HEADER);
+SERIALIZE_DEFINE(snapshotHeader, SNAPSHOT_HEADER);
 SERIALIZE__IMPLEMENT(snapshotHeader, SNAPSHOT_HEADER);
 
 #define SNAPSHOT_DATABASE(X, ...)          \
 	X(text, filename, ##__VA_ARGS__)   \
 	X(uint64, mainSize, ##__VA_ARGS__) \
 	X(uint64, wal_size, ##__VA_ARGS__)
-SERIALIZE__DEFINE(snapshotDatabase, SNAPSHOT_DATABASE);
+SERIALIZE_DEFINE(snapshotDatabase, SNAPSHOT_DATABASE);
 SERIALIZE__IMPLEMENT(snapshotDatabase, SNAPSHOT_DATABASE);
 
 /* Encode the global snapshot header. */
