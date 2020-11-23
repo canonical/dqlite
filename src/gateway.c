@@ -131,7 +131,7 @@ static void failure(struct handle *req, int code, const char *message)
 	req->cb(req, 0, DQLITE_RESPONSE_FAILURE);
 }
 
-static int handle_leader_legacy(struct handle *req, struct cursor *cursor)
+static int handleLeaderLegacy(struct handle *req, struct cursor *cursor)
 {
 	START(leader, server_legacy);
 	raft_id id;
@@ -150,7 +150,7 @@ static int handle_leader(struct handle *req, struct cursor *cursor)
 	const char *address = NULL;
 	unsigned i;
 	if (g->protocol == DQLITE_PROTOCOL_VERSION_LEGACY) {
-		return handle_leader_legacy(req, cursor);
+		return handleLeaderLegacy(req, cursor);
 	}
 	START(leader, server);
 
