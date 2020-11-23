@@ -128,7 +128,7 @@ static void memStats(int *mallocCount, int *memoryUsed)
 
 /* Ensure we're starting from a clean memory state with no allocations and
  * optionally inject malloc failures. */
-void test_heap_setup(const MunitParameter params[], void *user_data)
+void testHeapSetup(const MunitParameter params[], void *user_data)
 {
 	int mallocCount;
 	int memoryUsed;

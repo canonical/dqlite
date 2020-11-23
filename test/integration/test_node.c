@@ -21,7 +21,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	int rv;
-	test_heap_setup(params, user_data);
+	testHeapSetup(params, user_data);
 	test_sqlite_setup(params);
 
 	f->dir = testDirSetup();
