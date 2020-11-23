@@ -160,7 +160,7 @@ int transportRead(struct transport *t, uv_buf_t *buf, transportReadCb cb)
 static void write_cb(uv_write_t *req, int status)
 {
 	struct transport *t = req->data;
-	transport_write_cb cb = t->write_cb;
+	transportWrite_cb cb = t->write_cb;
 
 	assert(cb != NULL);
 	t->write_cb = NULL;
@@ -168,7 +168,7 @@ static void write_cb(uv_write_t *req, int status)
 	cb(t, status);
 }
 
-int transport_write(struct transport *t, uv_buf_t *buf, transport_write_cb cb)
+int transportWrite(struct transport *t, uv_buf_t *buf, transportWrite_cb cb)
 {
 	int rv;
 	assert(t->write_cb == NULL);

@@ -79,7 +79,7 @@ static void gatewayHandle_cb(struct handle *req, int status, int type)
 	buf.base = bufferCursor(&c->write, 0);
 	buf.len = bufferOffset(&c->write);
 
-	rv = transport_write(&c->transport, &buf, write_cb);
+	rv = transportWrite(&c->transport, &buf, write_cb);
 	if (rv != 0) {
 		goto abort;
 	}
