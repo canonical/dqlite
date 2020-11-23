@@ -111,7 +111,7 @@ struct server
 		registry__close(&s->registry);      \
 		sqlite3_vfs_unregister(&s->vfs);    \
 		VfsClose(&s->vfs);                  \
-		config_close(&s->config);           \
+		configClose(&s->config);            \
 		test_logger_tear_down(&s->logger);  \
 	}
 

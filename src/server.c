@@ -105,7 +105,7 @@ err_after_loop_init:
 err_after_vfs_init:
 	VfsClose(&d->vfs);
 err_after_config_init:
-	config_close(&d->config);
+	configClose(&d->config);
 err:
 	return rv;
 }
@@ -126,7 +126,7 @@ void dqlite__close(struct dqlite_node *d)
 	registry__close(&d->registry);
 	sqlite3_vfs_unregister(&d->vfs);
 	VfsClose(&d->vfs);
-	config_close(&d->config);
+	configClose(&d->config);
 	if (d->bind_address != NULL) {
 		sqlite3_free(d->bind_address);
 	}
