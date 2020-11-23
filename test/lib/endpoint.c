@@ -44,11 +44,11 @@ void testEndpoint_setup(struct testEndpoint *e, const MunitParameter params[])
 			break;
 		case AF_UNIX:
 			/* Abstract Unix socket */
-			memset(&e->un_address, 0, sizeof e->un_address);
-			e->un_address.sun_family = AF_UNIX;
-			strcpy(e->un_address.sun_path, ""); /* Random address */
-			address = (struct sockaddr *)(&e->un_address);
-			size = sizeof e->un_address;
+			memset(&e->unAddress, 0, sizeof e->unAddress);
+			e->unAddress.sun_family = AF_UNIX;
+			strcpy(e->unAddress.sun_path, ""); /* Random address */
+			address = (struct sockaddr *)(&e->unAddress);
+			size = sizeof e->unAddress;
 			break;
 		default:
 			munit_errorf("unexpected socket family: %d", e->family);
@@ -103,8 +103,8 @@ int testEndpoint_connect(struct testEndpoint *e)
 			size = sizeof e->inAddress;
 			break;
 		case AF_UNIX:
-			address = (struct sockaddr *)&e->un_address;
-			size = sizeof e->un_address;
+			address = (struct sockaddr *)&e->unAddress;
+			size = sizeof e->unAddress;
 			break;
 	}
 
@@ -126,7 +126,7 @@ int testEndpoint_connect(struct testEndpoint *e)
 int testEndpoint_accept(struct testEndpoint *e)
 {
 	struct sockaddr_in inAddress;
-	struct sockaddr_un un_address;
+	struct sockaddr_un unAddress;
 	struct sockaddr *address;
 	socklen_t size;
 	int fd;
@@ -138,8 +138,8 @@ int testEndpoint_accept(struct testEndpoint *e)
 			size = sizeof inAddress;
 			break;
 		case AF_UNIX:
-			address = (struct sockaddr *)&un_address;
-			size = sizeof un_address;
+			address = (struct sockaddr *)&unAddress;
+			size = sizeof unAddress;
 			break;
 	}
 

@@ -30,7 +30,7 @@ struct testEndpoint
 	int fd;             /* Listening socket. */
 	union {             /* Server  address (either a TCP or Unix) */
 		struct sockaddr_in inAddress;
-		struct sockaddr_un un_address;
+		struct sockaddr_un unAddress;
 	};
 };
 
