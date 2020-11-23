@@ -158,28 +158,28 @@ static void connCloseCb(struct conn *conn)
 
 TEST_SUITE(handshake);
 
-struct handshake_fixture
+struct handshakeFixture
 {
 	FIXTURE;
 };
 
 TEST_SETUP(handshake)
 {
-	struct handshake_fixture *f = munit_malloc(sizeof *f);
+	struct handshakeFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	return f;
 }
 
 TEST_TEAR_DOWN(handshake)
 {
-	struct handshake_fixture *f = data;
+	struct handshakeFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
 
 TEST_CASE(handshake, success, NULL)
 {
-	struct handshake_fixture *f = data;
+	struct handshakeFixture *f = data;
 	(void)params;
 	HANDSHAKE;
 	return MUNIT_OK;
