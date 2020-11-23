@@ -170,7 +170,7 @@ void test_heap_setup(const MunitParameter params[], void *user_data)
 		     (faultDelay == NULL && faultRepeat == NULL));
 
 	if (faultDelay != NULL) {
-		test_heap_fault_config(atoi(faultDelay), atoi(faultRepeat));
+		testHeapFaultConfig(atoi(faultDelay), atoi(faultRepeat));
 	}
 }
 
@@ -207,7 +207,7 @@ void test_heap_tear_down(void *data)
 	}
 }
 
-void test_heap_fault_config(int delay, int repeat)
+void testHeapFaultConfig(int delay, int repeat)
 {
 	testFault_config(&memFault.fault, delay, repeat);
 }

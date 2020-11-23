@@ -20,7 +20,7 @@ void test_heap_tear_down(void *data);
  * test_mem_fault_enable() is needed. This allows configuration and actual
  * behavior to happen at different times (e.g. configure at test setup time and
  * enable at test case time). */
-void test_heap_fault_config(int delay, int repeat);
+void testHeapFaultConfig(int delay, int repeat);
 
 /* Enable the faulty behavior, which from this point on will honor the
  * parameters passed to test_mem_fault_config(). */

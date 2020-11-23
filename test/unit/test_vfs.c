@@ -384,7 +384,7 @@ TEST(VfsOpen, oom, setUp, tearDown, 0, NULL)
 
 	(void)params;
 
-	test_heap_fault_config(0, 1);
+	testHeapFaultConfig(0, 1);
 	test_heap_fault_enable();
 
 	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
@@ -405,7 +405,7 @@ TEST(VfsOpen, oomFilename, setUp, tearDown, 0, NULL)
 
 	(void)params;
 
-	test_heap_fault_config(1, 1);
+	testHeapFaultConfig(1, 1);
 	test_heap_fault_enable();
 
 	rc = f->vfs.xOpen(&f->vfs, "test.db", file, flags, &flags);
@@ -744,7 +744,7 @@ TEST(VfsWrite, oomPage, setUp, tearDown, 0, NULL)
 	char buf[512];
 	int rc;
 
-	test_heap_fault_config(0, 1);
+	testHeapFaultConfig(0, 1);
 	test_heap_fault_enable();
 
 	(void)params;
@@ -771,7 +771,7 @@ TEST(VfsWrite, oomPageArray, setUp, tearDown, 0, NULL)
 	char buf[512];
 	int rc;
 
-	test_heap_fault_config(1, 1);
+	testHeapFaultConfig(1, 1);
 	test_heap_fault_enable();
 
 	(void)params;
@@ -797,7 +797,7 @@ TEST(VfsWrite, oomPageBuf, setUp, tearDown, 0, NULL)
 	char buf[512];
 	int rc;
 
-	test_heap_fault_config(1, 1);
+	testHeapFaultConfig(1, 1);
 	test_heap_fault_enable();
 
 	(void)params;
