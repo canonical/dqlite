@@ -42,7 +42,7 @@ static void tearDown(void *data)
 	dqlite_node_destroy(f->node);
 
 	testDirTearDown(f->dir);
-	test_sqlite_tear_down();
+	testSqliteTearDown();
 	testHeapTearDown(data);
 	free(f);
 }

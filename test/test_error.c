@@ -35,7 +35,7 @@ static void tear_down(void *data)
 
 	dqliteError_close(error);
 
-	test_sqlite_tear_down();
+	testSqliteTearDown();
 	testHeapTearDown(data);
 
 	free(error);

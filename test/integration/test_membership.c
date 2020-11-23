@@ -38,7 +38,7 @@
 	for (i_ = 0; i_ < N_SERVERS; i_++) {           \
 		testServer_tear_down(&f->servers[i_]); \
 	}                                              \
-	test_sqlite_tear_down();                       \
+	testSqliteTearDown();                          \
 	testHeapTearDown(data)
 
 /******************************************************************************

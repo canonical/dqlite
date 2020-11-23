@@ -12,7 +12,8 @@ void testSqliteSetup(const MunitParameter params[])
 	}
 }
 
-void test_sqlite_tear_down() {
+void testSqliteTearDown()
+{
 	int rc;
 	rc = sqlite3_shutdown();
 	if (rc != SQLITE_OK) {
