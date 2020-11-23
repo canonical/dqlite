@@ -127,7 +127,7 @@ TEST_CASE(wrapf, success, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(wrapf, null_cause, NULL)
+TEST_CASE(wrapf, nullCause, NULL)
 {
 	dqliteError *error = data;
 	dqliteError cause;
