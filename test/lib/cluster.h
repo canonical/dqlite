@@ -81,7 +81,7 @@ struct server
 		_rc = configInit(&_s->config, I + 1, address);   \
 		munit_assert_int(_rc, ==, 0);                    \
                                                                  \
-		registry__init(&_s->registry, &_s->config);      \
+		registry_init(&_s->registry, &_s->config);       \
                                                                  \
 		_rc = VfsInit(&_s->vfs, _s->config.name);        \
 		munit_assert_int(_rc, ==, 0);                    \

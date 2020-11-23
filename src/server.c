@@ -31,7 +31,7 @@ int dqliteInit(struct dqlite_node *d,
 	if (rv != 0) {
 		goto err_after_configInit;
 	}
-	registry__init(&d->registry, &d->config);
+	registry_init(&d->registry, &d->config);
 	rv = uv_loop_init(&d->loop);
 	if (rv != 0) {
 		/* TODO: better error reporting */
