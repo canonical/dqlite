@@ -447,14 +447,14 @@ static void listenCb(uv_stream_t *listener, int status)
 	rv = connStart(conn, &t->config, &t->loop, &t->registry, &t->raft,
 		       stream, &t->raft_transport, destroyConn);
 	if (rv != 0) {
-		goto err_after_conn_alloc;
+		goto errAfterConnAlloc;
 	}
 
 	QUEUE__PUSH(&t->conns, &conn->queue);
 
 	return;
 
-err_after_conn_alloc:
+errAfterConnAlloc:
 	sqlite3_free(conn);
 err:
 	uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
