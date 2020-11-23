@@ -435,7 +435,7 @@ static int vfsWalFrameGet(struct vfsWal *w,
 		tx = sqlite3_realloc64(w->tx, sizeof *tx * w->n_tx + 1);
 		if (tx == NULL) {
 			rv = SQLITE_NOMEM;
-			goto err_after_vfs_frame_create;
+			goto errAfterVfsFrameCreate;
 		}
 
 		/* Append the new page to the new page array. */
@@ -452,7 +452,7 @@ static int vfsWalFrameGet(struct vfsWal *w,
 
 	return SQLITE_OK;
 
-err_after_vfs_frame_create:
+errAfterVfsFrameCreate:
 	vfsFrameDestroy(*frame);
 err:
 	*frame = NULL;
