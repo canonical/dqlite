@@ -422,7 +422,7 @@ static int vfsWalFrameGet(struct vfsWal *w,
 		/* We assume that the page size has been set, either by
 		 * intervepting the first main database file write, or by
 		 * handling a 'PRAGMA page_size=N' command in
-		 * vfs__file_control(). This assumption is enforved in
+		 * vfs_file_control(). This assumption is enforved in
 		 * vfsFileWrite(). */
 		assert(page_size > 0);
 
