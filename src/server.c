@@ -297,7 +297,7 @@ int dqlite_node_set_network_latency(dqlite_node *t,
 	return 0;
 }
 
-int dqlite_node_set_failure_domain(dqlite_node *n, unsigned long long code)
+int dqliteNodeSetFailureDomain(dqlite_node *n, unsigned long long code)
 {
 	n->config.failure_domain = code;
 	return 0;
