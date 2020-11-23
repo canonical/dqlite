@@ -20,7 +20,7 @@ void registry__close(struct registry *r)
 		head = QUEUE__HEAD(&r->dbs);
 		QUEUE__REMOVE(head);
 		db = QUEUE__DATA(head, struct db, queue);
-		db__close(db);
+		db_close(db);
 		sqlite3_free(db);
 	}
 }

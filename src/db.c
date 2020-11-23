@@ -23,7 +23,7 @@ void db__init(struct db *db, struct config *config, const char *filename)
 	QUEUE__INIT(&db->leaders);
 }
 
-void db__close(struct db *db)
+void db_close(struct db *db)
 {
 	assert(QUEUE__IS_EMPTY(&db->leaders));
 	if (db->follower != NULL) {
