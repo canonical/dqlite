@@ -160,7 +160,7 @@ extern int _main_suites_n;
  * - TEST_SETUP(S): Declare the setup function for suite S inline.
  * - TEST_SETUP(S, F): Set the setup function for suite S to F.
  */
-#define TEST_SETUP(...) TEST_SETUP__MACRO_CHOOSER(__VA_ARGS__)(__VA_ARGS__)
+#define TEST_SETUP(...) TEST_SETUP_MACRO_CHOOSER(__VA_ARGS__)(__VA_ARGS__)
 #define TEST_SETUP_(S)                                         \
 	static void *S##Setup(const MunitParameter[], void *); \
 	_##S##Setup = S##Setup;                                \
@@ -249,7 +249,7 @@ extern int _main_suites_n;
 
 /* Choose the appropriate TEST_SETUP__N_ARGS() macro depending on the number of
  * arguments passed to TEST_SETUP(). */
-#define TEST_SETUP__MACRO_CHOOSER(...) \
+#define TEST_SETUP_MACRO_CHOOSER(...) \
 	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_SETUP_2_ARGS, TEST_SETUP_1_ARGS)
 
 #define TEST_SETUP_1_ARGS(S)                                            \
