@@ -81,7 +81,7 @@ static void memFaultShutdown(void *p)
 
 /* Wrap the given SQLite memory management instance with the faulty memory
  * management interface. By default no faults will be triggered. */
-static void mem_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
+static void memWrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
 {
 	test_fault_init(&memFault.fault);
 	memFault.m = *m;
@@ -147,7 +147,7 @@ void test_heap_setup(const MunitParameter params[], void *user_data)
 		munit_errorf("can't get default mem: %s", sqlite3_errstr(rc));
 	}
 
-	mem_wrap(&mem, &mem_fault);
+	memWrap(&mem, &mem_fault);
 
 	rc = sqlite3_config(SQLITE_CONFIG_MALLOC, &mem_fault);
 	if (rc != SQLITE_OK) {
