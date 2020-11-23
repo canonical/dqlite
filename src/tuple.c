@@ -141,7 +141,7 @@ int tuple_decoder__next(struct tuple_decoder *d, struct value *value)
 }
 
 /* Return a pointer to the tuple header. */
-static uint8_t *encoder__header(struct tuple_encoder *e)
+static uint8_t *encoder_header(struct tuple_encoder *e)
 {
 	return bufferCursor(e->buffer, e->header);
 }
@@ -173,7 +173,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 
 	/* Reset the header */
 	n_header = calcHeaderSize(n, format);
-	memset(encoder__header(e), 0, n_header);
+	memset(encoder_header(e), 0, n_header);
 
 	/* Advance the buffer write pointer past the tuple header. */
 	cursor = bufferAdvance(buffer, n_header);
@@ -187,7 +187,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 /* Set the type of the i'th value of the tuple. */
 static void set_type(struct tuple_encoder *e, unsigned i, int type)
 {
-	uint8_t *header = encoder__header(e);
+	uint8_t *header = encoder_header(e);
 
 	/* In row format the type slot size is 4 bits, while in params format
 	 * the slot is 8 bits. */
