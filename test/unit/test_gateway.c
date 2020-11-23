@@ -68,8 +68,8 @@ struct connection
 	for (i = 0; i < N_SERVERS; i++) {                  \
 		struct connection *c = &f->connections[i]; \
 		gateway__close(&c->gateway);               \
-		buffer_close(&c->buf1);                    \
-		buffer_close(&c->buf2);                    \
+		bufferClose(&c->buf1);                     \
+		bufferClose(&c->buf2);                     \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 

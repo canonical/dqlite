@@ -24,7 +24,7 @@ int buffer__init(struct buffer *b)
 	return 0;
 }
 
-void buffer_close(struct buffer *b)
+void bufferClose(struct buffer *b)
 {
 	free(b->data);
 }

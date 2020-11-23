@@ -91,8 +91,8 @@ abort:
 static void closeCb(struct transport *transport)
 {
 	struct conn *c = transport->data;
-	buffer_close(&c->write);
-	buffer_close(&c->read);
+	bufferClose(&c->write);
+	bufferClose(&c->read);
 	if (c->close_cb != NULL) {
 		c->close_cb(c);
 	}
@@ -293,9 +293,9 @@ int conn__start(struct conn *c,
 	return 0;
 
 err_after_write_buffer_init:
-	buffer_close(&c->write);
+	bufferClose(&c->write);
 err_after_read_buffer_init:
-	buffer_close(&c->read);
+	bufferClose(&c->read);
 err_after_transport_init:
 	transport__close(&c->transport, NULL);
 err:
