@@ -369,7 +369,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 
 static int fsmSnapshot(struct raft_fsm *fsm,
 		       struct raft_buffer *bufs[],
-		       unsigned *n_bufs)
+		       unsigned *nBufs)
 {
 	struct fsm *f = fsm->data;
 	queue *head;
@@ -389,9 +389,9 @@ static int fsmSnapshot(struct raft_fsm *fsm,
 		n++;
 	}
 
-	*n_bufs = 1;      /* Snapshot header */
-	*n_bufs += n * 2; /* Database header an content */
-	*bufs = raft_malloc(*n_bufs * sizeof **bufs);
+	*nBufs = 1;      /* Snapshot header */
+	*nBufs += n * 2; /* Database header an content */
+	*bufs = raft_malloc(*nBufs * sizeof **bufs);
 	if (*bufs == NULL) {
 		rv = RAFT_NOMEM;
 		goto err;
