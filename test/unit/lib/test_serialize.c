@@ -15,7 +15,7 @@ TEST_MODULE(libSerialize);
 	X(uint64, age, ##__VA_ARGS__)
 
 SERIALIZE_DEFINE(person, PERSON);
-SERIALIZE__IMPLEMENT(person, PERSON);
+SERIALIZE_IMPLEMENT(person, PERSON);
 
 /******************************************************************************
  *
@@ -95,7 +95,7 @@ static int pages__decode(struct cursor *cursor, pages_t *pages)
 	X(pages, pages, ##__VA_ARGS__)
 
 SERIALIZE_DEFINE(book, BOOK);
-SERIALIZE__IMPLEMENT(book, BOOK);
+SERIALIZE_IMPLEMENT(book, BOOK);
 
 /******************************************************************************
  *

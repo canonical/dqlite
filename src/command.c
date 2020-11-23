@@ -17,7 +17,7 @@
 	X(uint32, _unused3, ##__VA_ARGS__)
 
 SERIALIZE_DEFINE(header, HEADER);
-SERIALIZE__IMPLEMENT(header, HEADER);
+SERIALIZE_IMPLEMENT(header, HEADER);
 
 static size_t frames__sizeof(const frames_t *frames)
 {
@@ -67,7 +67,7 @@ static int frames__decode(struct cursor *cursor, frames_t *frames)
 }
 
 #define COMMAND_IMPLEMENT(LOWER, UPPER, _) \
-	SERIALIZE__IMPLEMENT(command_##LOWER, COMMAND__##UPPER);
+	SERIALIZE_IMPLEMENT(command_##LOWER, COMMAND__##UPPER);
 
 COMMAND_TYPES(COMMAND_IMPLEMENT, );
 

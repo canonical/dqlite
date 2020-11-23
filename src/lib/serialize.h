@@ -83,7 +83,7 @@ struct cursor
 /**
  * Implement the sizeof, encode and decode function of a serializable struct.
  */
-#define SERIALIZE__IMPLEMENT(NAME, FIELDS)                        \
+#define SERIALIZE_IMPLEMENT(NAME, FIELDS)                         \
 	size_t NAME##__sizeof(const struct NAME *p)               \
 	{                                                         \
 		size_t size = 0;                                  \
