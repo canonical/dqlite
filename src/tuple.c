@@ -169,7 +169,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 		header[0] = (uint8_t)n;
 	}
 
-	e->header = buffer__offset(buffer);
+	e->header = buffer_offset(buffer);
 
 	/* Reset the header */
 	n_header = calc_header_size(n, format);

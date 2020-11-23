@@ -106,7 +106,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		struct cursor cursor;                                \
 		int rc2;                                             \
 		cursor.p = bufferCursor(&C->response, 0);            \
-		cursor.cap = buffer__offset(&C->response);           \
+		cursor.cap = buffer_offset(&C->response);            \
 		rc2 = response_##LOWER##__decode(&cursor, RESPONSE); \
 		munit_assert_int(rc2, ==, 0);                        \
 	}
@@ -118,7 +118,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		struct cursor cursor;                                   \
 		int rc2;                                                \
 		cursor.p = bufferCursor(&C->request, 0);                \
-		cursor.cap = buffer__offset(&C->request);               \
+		cursor.cap = buffer_offset(&C->request);                \
 		buffer__reset(&C->response);                            \
 		rc2 = gateway__handle(&C->gateway, &C->handle,          \
 				      DQLITE_REQUEST_##TYPE, &cursor,   \

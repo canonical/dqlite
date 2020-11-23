@@ -65,7 +65,7 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 		goto abort;
 	}
 
-	n = buffer__offset(&c->write) - message__sizeof(&c->response);
+	n = buffer_offset(&c->write) - message__sizeof(&c->response);
 	assert(n % 8 == 0);
 
 	c->response.type = (uint8_t)type;
@@ -77,7 +77,7 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 	message__encode(&c->response, &cursor);
 
 	buf.base = bufferCursor(&c->write, 0);
-	buf.len = buffer__offset(&c->write);
+	buf.len = buffer_offset(&c->write);
 
 	rv = transport__write(&c->transport, &buf, write_cb);
 	if (rv != 0) {
@@ -128,7 +128,7 @@ static void read_request_cb(struct transport *transport, int status)
 	}
 
 	cursor.p = bufferCursor(&c->read, 0);
-	cursor.cap = buffer__offset(&c->read);
+	cursor.cap = buffer_offset(&c->read);
 
 	buffer__reset(&c->write);
 	bufferAdvance(&c->write, message__sizeof(&c->response)); /* Header */
@@ -175,7 +175,7 @@ static void read_message_cb(struct transport *transport, int status)
 	}
 
 	cursor.p = bufferCursor(&c->read, 0);
-	cursor.cap = buffer__offset(&c->read);
+	cursor.cap = buffer_offset(&c->read);
 
 	rv = message__decode(&cursor, &c->request);
 	assert(rv == 0); /* Can't fail, we know we have enough bytes */
@@ -215,7 +215,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 	}
 
 	cursor.p = bufferCursor(&c->read, 0);
-	cursor.cap = buffer__offset(&c->read);
+	cursor.cap = buffer_offset(&c->read);
 
 	rv = uint64__decode(&cursor, &c->protocol);
 	assert(rv == 0); /* Can't fail, we know we have enough bytes */

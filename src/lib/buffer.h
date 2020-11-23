@@ -43,7 +43,7 @@ void *bufferAdvance(struct buffer *b, size_t size);
 /**
  * Return the offset of next byte to write.
  */
-size_t buffer__offset(struct buffer *b);
+size_t buffer_offset(struct buffer *b);
 
 /**
  * Return a write cursor pointing to the @offset'th byte of the buffer.

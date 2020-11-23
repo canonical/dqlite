@@ -124,7 +124,7 @@ int clientSendHandshake(struct client *c)
 		int rv;                                              \
 		struct cursor cursor;                                \
 		cursor.p = bufferCursor(&c->read, 0);                \
-		cursor.cap = buffer__offset(&c->read);               \
+		cursor.cap = buffer_offset(&c->read);                \
 		rv = response_##LOWER##__decode(&cursor, &response); \
 		if (rv != 0) {                                       \
 			return DQLITE_ERROR;                         \
@@ -219,7 +219,7 @@ int clientRecvRows(struct client *c, struct rows *rows)
 	int rv;
 	READ(rows, ROWS);
 	cursor.p = bufferCursor(&c->read, 0);
-	cursor.cap = buffer__offset(&c->read);
+	cursor.cap = buffer_offset(&c->read);
 	rv = uint64__decode(&cursor, &column_count);
 	if (rv != 0) {
 		return DQLITE_ERROR;
