@@ -308,14 +308,14 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 	bufs[0].base = raft_malloc(bufs[0].len);
 	if (bufs[0].base == NULL) {
 		rv = RAFT_NOMEM;
-		goto err_after_snapshot;
+		goto errAfterSnapshot;
 	}
 	cursor = bufs[0].base;
 	snapshotDatabase__encode(&header, &cursor);
 
 	return 0;
 
-err_after_snapshot:
+errAfterSnapshot:
 	sqlite3_free(bufs[1].base);
 err:
 	assert(rv != 0);
