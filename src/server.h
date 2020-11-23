@@ -36,10 +36,10 @@ struct dqlite_node
 	char errmsg[RAFT_ERRMSG_BUF_SIZE];       /* Last error occurred */
 };
 
-int dqlite__init(struct dqlite_node *d,
-		 dqlite_node_id id,
-		 const char *address,
-		 const char *dir);
+int dqlite_init(struct dqlite_node *d,
+		dqlite_node_id id,
+		const char *address,
+		const char *dir);
 
 void dqliteClose(struct dqlite_node *d);
 

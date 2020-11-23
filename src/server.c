@@ -15,10 +15,10 @@
 /* Special ID for the bootstrap node. Equals to raft_digest("1", 0). */
 #define BOOTSTRAP_ID 0x2dc171858c3155be
 
-int dqlite__init(struct dqlite_node *d,
-		 dqlite_node_id id,
-		 const char *address,
-		 const char *dir)
+int dqlite_init(struct dqlite_node *d,
+		dqlite_node_id id,
+		const char *address,
+		const char *dir)
 {
 	int rv;
 	memset(d->errmsg, 0, sizeof d->errmsg);
@@ -144,7 +144,7 @@ int dqlite_node_create(dqlite_node_id id,
 		return DQLITE_NOMEM;
 	}
 
-	rv = dqlite__init(*t, id, address, dataDir);
+	rv = dqlite_init(*t, id, address, dataDir);
 	if (rv != 0) {
 		return rv;
 	}
