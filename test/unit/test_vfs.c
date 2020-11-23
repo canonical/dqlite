@@ -188,7 +188,7 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 	uint32_t *marks;
 	int rc;
 
-	marks = munit_malloc(FORMAT__WAL_NREADER * sizeof *marks);
+	marks = munit_malloc(FORMAT_WAL_NREADER * sizeof *marks);
 
 	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -199,7 +199,7 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 	/* The read-mark array starts at the 100th byte of the WAL index
 	 * header. See also https://sqlite.org/walformat.html. */
 	idx = (uint32_t *)region;
-	memcpy(marks, &idx[25], (sizeof *idx) * FORMAT__WAL_NREADER);
+	memcpy(marks, &idx[25], (sizeof *idx) * FORMAT_WAL_NREADER);
 
 	return marks;
 }

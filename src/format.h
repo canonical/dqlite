@@ -22,7 +22,7 @@
 #define FORMAT_WAL_FRAME_HDR_SIZE 24
 
 /* Number of reader marks in the wal index header. */
-#define FORMAT__WAL_NREADER 5
+#define FORMAT_WAL_NREADER 5
 
 /* Given the page size, calculate the size of a full WAL frame (frame header
  * plus page data). */
