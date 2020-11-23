@@ -270,9 +270,9 @@ extern int _main_suites_n;
  * of arguments passed to TEST_TEAR_DOWN(). */
 #define TEST_TEAR_DOWN__MACRO_CHOOSER(...)                    \
 	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN__2_ARGS, \
-			 TEST_TEAR_DOWN__1_ARGS)
+			 TEST_TEAR_DOWN_1_ARGS)
 
-#define TEST_TEAR_DOWN__1_ARGS(S)                                          \
+#define TEST_TEAR_DOWN_1_ARGS(S)                                           \
 	static void S##TearDown(void *data);                               \
 	__attribute__((constructor)) static void _##S##TearDown_init(void) \
 	{                                                                  \
