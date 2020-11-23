@@ -103,7 +103,7 @@ static void handleCb(struct handle *req, int status, int type)
 		size_t n2 = request_##LOWER##__sizeof(REQUEST); \
 		void *cursor;                                   \
 		buffer__reset(f->buf1);                         \
-		cursor = buffer__advance(f->buf1, n2);          \
+		cursor = buffer_advance(f->buf1, n2);           \
 		munit_assert_ptr_not_null(cursor);              \
 		request_##LOWER##__encode(REQUEST, &cursor);    \
 	}

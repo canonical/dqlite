@@ -8,7 +8,7 @@
 static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
 {
 	buffer__reset(&c->read);
-	buf->base = buffer__advance(&c->read, size);
+	buf->base = buffer_advance(&c->read, size);
 	if (buf->base == NULL) {
 		return DQLITE_NOMEM;
 	}
@@ -27,7 +27,7 @@ static void write_cb(struct transport *transport, int status)
 	}
 
 	buffer__reset(&c->write);
-	buffer__advance(&c->write, message__sizeof(&c->response)); /* Header */
+	buffer_advance(&c->write, message__sizeof(&c->response)); /* Header */
 
 	rv = gateway__resume(&c->gateway, &finished);
 	if (rv != 0) {
@@ -131,7 +131,7 @@ static void read_request_cb(struct transport *transport, int status)
 	cursor.cap = buffer__offset(&c->read);
 
 	buffer__reset(&c->write);
-	buffer__advance(&c->write, message__sizeof(&c->response)); /* Header */
+	buffer_advance(&c->write, message__sizeof(&c->response)); /* Header */
 
 	switch (c->request.type) {
 		case DQLITE_REQUEST_CONNECT:

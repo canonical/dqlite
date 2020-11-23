@@ -68,7 +68,7 @@ int clientSendHandshake(struct client *c)
 		n2 = request_##LOWER##__sizeof(&request);           \
 		n = n1 + n2;                                        \
 		buffer__reset(&c->write);                           \
-		cursor = buffer__advance(&c->write, n);             \
+		cursor = buffer_advance(&c->write, n);              \
 		if (cursor == NULL) {                               \
 			return DQLITE_NOMEM;                        \
 		}                                                   \
@@ -93,7 +93,7 @@ int clientSendHandshake(struct client *c)
 		ssize_t _rv;                                    \
 		_n = message__sizeof(&_message);                \
 		buffer__reset(&c->read);                        \
-		_p = buffer__advance(&c->read, _n);             \
+		_p = buffer_advance(&c->read, _n);              \
 		assert(_p != NULL);                             \
 		_rv = read(c->fd, _p, _n);                      \
 		if (_rv != (int)_n) {                           \
@@ -108,7 +108,7 @@ int clientSendHandshake(struct client *c)
 		}                                               \
 		buffer__reset(&c->read);                        \
 		_n = _message.words * 8;                        \
-		_p = buffer__advance(&c->read, _n);             \
+		_p = buffer_advance(&c->read, _n);              \
 		if (_p == NULL) {                               \
 			return DQLITE_ERROR;                    \
 		}                                               \

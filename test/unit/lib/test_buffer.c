@@ -39,10 +39,10 @@ static void tear_down(void *data)
  *
  ******************************************************************************/
 
-#define ADVANCE(SIZE)                                       \
-	{                                                   \
-		cursor = buffer__advance(&f->buffer, SIZE); \
-		munit_assert_ptr_not_null(cursor);          \
+#define ADVANCE(SIZE)                                      \
+	{                                                  \
+		cursor = buffer_advance(&f->buffer, SIZE); \
+		munit_assert_ptr_not_null(cursor);         \
 	}
 
 /******************************************************************************
@@ -76,7 +76,7 @@ TEST_CASE(init, n_pages, NULL)
 
 /******************************************************************************
  *
- * buffer__advance
+ * buffer_advance
  *
  ******************************************************************************/
 

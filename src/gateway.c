@@ -66,7 +66,7 @@ void gateway__close(struct gateway *g)
 		size_t _n = response_##LOWER##__sizeof(&response);             \
 		void *_cursor;                                                 \
 		assert(_n % 8 == 0);                                           \
-		_cursor = buffer__advance(req->buffer, _n);                    \
+		_cursor = buffer_advance(req->buffer, _n);                     \
 		/* Since responses are small and the buffer it's at least 4096 \
 		 * bytes, this can't fail. */                                  \
 		assert(_cursor != NULL);                                       \
@@ -123,7 +123,7 @@ static void failure(struct handle *req, int code, const char *message)
 	failure.message = message;
 	n = response_failure__sizeof(&failure);
 	assert(n % 8 == 0);
-	cursor = buffer__advance(req->buffer, n);
+	cursor = buffer_advance(req->buffer, n);
 	/* The buffer has at least 4096 bytes, and error messages are shorter
 	 * than that. So this can't fail. */
 	assert(cursor != NULL);
@@ -711,12 +711,12 @@ static int dumpFile(const char *filename,
 	void *cur;
 	uint64_t len = n;
 
-	cur = buffer__advance(buffer, text__sizeof(&filename));
+	cur = buffer_advance(buffer, text__sizeof(&filename));
 	if (cur == NULL) {
 		goto oom;
 	}
 	text__encode(&filename, &cur);
-	cur = buffer__advance(buffer, uint64__sizeof(&len));
+	cur = buffer_advance(buffer, uint64__sizeof(&len));
 	if (cur == NULL) {
 		goto oom;
 	}
@@ -729,7 +729,7 @@ static int dumpFile(const char *filename,
 	assert(n % 8 == 0);
 	assert(data != NULL);
 
-	cur = buffer__advance(buffer, n);
+	cur = buffer_advance(buffer, n);
 	if (cur == NULL) {
 		goto oom;
 	}
@@ -759,7 +759,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	START(dump, files);
 
 	response.n = 2;
-	cur = buffer__advance(req->buffer, response_files__sizeof(&response));
+	cur = buffer_advance(req->buffer, response_files__sizeof(&response));
 	assert(cur != NULL);
 	response_files__encode(&response, &cur);
 
@@ -847,13 +847,13 @@ static int encodeServer(struct gateway *g,
 	role =
 	    (uint64_t)translateRaftRole(g->raft->configuration.servers[i].role);
 
-	cur = buffer__advance(buffer, uint64__sizeof(&id));
+	cur = buffer_advance(buffer, uint64__sizeof(&id));
 	if (cur == NULL) {
 		return DQLITE_NOMEM;
 	}
 	uint64__encode(&id, &cur);
 
-	cur = buffer__advance(buffer, text__sizeof(&address));
+	cur = buffer_advance(buffer, text__sizeof(&address));
 	if (cur == NULL) {
 		return DQLITE_NOMEM;
 	}
@@ -863,7 +863,7 @@ static int encodeServer(struct gateway *g,
 		return 0;
 	}
 
-	cur = buffer__advance(buffer, uint64__sizeof(&role));
+	cur = buffer_advance(buffer, uint64__sizeof(&role));
 	if (cur == NULL) {
 		return DQLITE_NOMEM;
 	}
@@ -881,7 +881,7 @@ static int handle_cluster(struct handle *req, struct cursor *cursor)
 	START(cluster, servers);
 
 	response.n = g->raft->configuration.n;
-	cur = buffer__advance(req->buffer, response_servers__sizeof(&response));
+	cur = buffer_advance(req->buffer, response_servers__sizeof(&response));
 	assert(cur != NULL);
 	response_servers__encode(&response, &cur);
 

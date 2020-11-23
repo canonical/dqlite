@@ -111,13 +111,13 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer) {
 	n64 = (uint64_t)n;
 
 	/* Insert the column count */
-	cursor = buffer__advance(buffer, sizeof(uint64_t));
+	cursor = buffer_advance(buffer, sizeof(uint64_t));
 	uint64__encode(&n64, &cursor);
 
 	/* Insert the column names */
 	for (i = 0; i < n; i++) {
 		const char *name = sqlite3_column_name(stmt, i);
-		cursor = buffer__advance(buffer, text__sizeof(&name));
+		cursor = buffer_advance(buffer, text__sizeof(&name));
 		if (cursor == NULL) {
 			return SQLITE_NOMEM;
 		}
