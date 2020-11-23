@@ -38,7 +38,7 @@ static_assert(sizeof(double) == sizeof(uint64_t),
  */
 typedef const char *text_t;
 typedef double float_t;
-typedef uv_buf_t blob_t;
+typedef uv_buf_t blobT;
 
 /**
  * Cursor to progressively read a buffer.
@@ -154,7 +154,7 @@ DQLITE_INLINE size_t text__sizeof(const text_t *value)
 	return byte__pad64(strlen(*value) + 1);
 }
 
-DQLITE_INLINE size_t blobSizeof(const blob_t *value)
+DQLITE_INLINE size_t blobSizeof(const blobT *value)
 {
 	return sizeof(uint64_t) /* length */ +
 	       byte__pad64(value->len) /* data */;
@@ -204,7 +204,7 @@ DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
 	*cursor += len;
 }
 
-DQLITE_INLINE void blobEncode(const blob_t *value, void **cursor)
+DQLITE_INLINE void blobEncode(const blobT *value, void **cursor)
 {
 	size_t len = byte__pad64(value->len);
 	uint64_t value_len = value->len;
@@ -300,7 +300,7 @@ DQLITE_INLINE int text__decode(struct cursor *cursor, text_t *value)
 	return 0;
 }
 
-DQLITE_INLINE int blobDecode(struct cursor *cursor, blob_t *value)
+DQLITE_INLINE int blobDecode(struct cursor *cursor, blobT *value)
 {
 	uint64_t len;
 	size_t n;
