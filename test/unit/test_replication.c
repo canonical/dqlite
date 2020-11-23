@@ -268,7 +268,7 @@ TEST_CASE(exec, checkpoint, NULL)
 }
 
 /* If a read transaction is in progress, no checkpoint is taken. */
-TEST_CASE(exec, checkpoint_read_lock, NULL)
+TEST_CASE(exec, checkpointReadLock, NULL)
 {
 	struct exec_fixture *f = data;
 	struct config *config = CLUSTER_CONFIG(0);
