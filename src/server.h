@@ -43,4 +43,4 @@ int dqliteInit(struct dqlite_node *d,
 
 void dqliteClose(struct dqlite_node *d);
 
-int dqlite__run(struct dqlite_node *d);
+int dqlite_run(struct dqlite_node *d);
