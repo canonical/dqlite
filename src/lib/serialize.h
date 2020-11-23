@@ -272,7 +272,7 @@ DQLITE_INLINE int int64__decode(struct cursor *cursor, int64_t *value)
 	return 0;
 }
 
-DQLITE_INLINE int float__decode(struct cursor *cursor, float_t *value)
+DQLITE_INLINE int float_decode(struct cursor *cursor, float_t *value)
 {
 	size_t n = sizeof(double);
 	if (n > cursor->cap) {
