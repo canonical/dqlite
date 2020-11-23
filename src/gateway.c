@@ -236,7 +236,7 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 
 /* Fill a result response with the last inserted ID and number of rows
  * affected. */
-static void fill_result(struct gateway *g, struct response_result *response)
+static void fillResult(struct gateway *g, struct response_result *response)
 {
 	response->last_insert_id =
 	    (uint64_t)sqlite3_last_insert_rowid(g->leader->conn);
@@ -268,7 +268,7 @@ static void leader_exec_cb(struct exec *exec, int status)
 	g->stmt = NULL;
 
 	if (status == SQLITE_DONE) {
-		fill_result(g, &response);
+		fillResult(g, &response);
 		SUCCESS(result, RESULT);
 	} else {
 		failure(req, status, errorMessage(g->leader->conn, status));
@@ -472,7 +472,7 @@ static void handle_execSql_next(struct handle *req, struct cursor *cursor)
 
 success:
 	if (g->stmt != NULL) {
-		fill_result(g, &response);
+		fillResult(g, &response);
 	}
 	SUCCESS(result, RESULT);
 
