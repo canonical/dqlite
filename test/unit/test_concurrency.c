@@ -281,7 +281,7 @@ TEST_CASE(exec, tx, NULL)
  *
  ******************************************************************************/
 
-struct query_fixture
+struct queryFixture
 {
 	FIXTURE;
 	struct connection *c1;

@@ -903,7 +903,7 @@ TEST_CASE(exec, restore, NULL)
  *
  ******************************************************************************/
 
-struct query_fixture
+struct queryFixture
 {
 	FIXTURE;
 	struct request_query request;
@@ -913,7 +913,7 @@ struct query_fixture
 TEST_SUITE(query);
 TEST_SETUP(query)
 {
-	struct query_fixture *f = munit_malloc(sizeof *f);
+	struct queryFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	OPEN;
 	CLUSTER_ELECT(0);
@@ -922,7 +922,7 @@ TEST_SETUP(query)
 }
 TEST_TEAR_DOWN(query)
 {
-	struct query_fixture *f = data;
+	struct queryFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -931,7 +931,7 @@ TEST_TEAR_DOWN(query)
  * rows. */
 TEST_CASE(query, simple, NULL)
 {
-	struct query_fixture *f = data;
+	struct queryFixture *f = data;
 	uint64_t stmt_id;
 	uint64_t n;
 	const char *column;
@@ -955,7 +955,7 @@ TEST_CASE(query, simple, NULL)
 /* Successfully query a simple statement with no parameters yielding one row. */
 TEST_CASE(query, oneRow, NULL)
 {
-	struct query_fixture *f = data;
+	struct queryFixture *f = data;
 	uint64_t stmt_id;
 	uint64_t n;
 	const char *column;
@@ -987,7 +987,7 @@ TEST_CASE(query, oneRow, NULL)
  * into several reponses. */
 TEST_CASE(query, large, NULL)
 {
-	struct query_fixture *f = data;
+	struct queryFixture *f = data;
 	unsigned i;
 	uint64_t stmt_id;
 	uint64_t n;
@@ -1047,7 +1047,7 @@ TEST_CASE(query, large, NULL)
 /* Perform a query using a prepared statement with parameters */
 TEST_CASE(query, params, NULL)
 {
-	struct query_fixture *f = data;
+	struct queryFixture *f = data;
 	struct value values[2];
 	uint64_t stmt_id;
 	(void)params;
@@ -1077,7 +1077,7 @@ TEST_CASE(query, params, NULL)
 /* Interrupt a large query. */
 TEST_CASE(query, interrupt, NULL)
 {
-	struct query_fixture *f = data;
+	struct queryFixture *f = data;
 	struct request_interrupt interrupt;
 	unsigned i;
 	uint64_t stmt_id;
@@ -1124,7 +1124,7 @@ TEST_CASE(query, interrupt, NULL)
  * to catch up with logs. */
 TEST_CASE(query, barrier, NULL)
 {
-	struct query_fixture *f = data;
+	struct queryFixture *f = data;
 	uint64_t stmt_id;
 	(void)params;
 

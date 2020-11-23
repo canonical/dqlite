@@ -347,7 +347,7 @@ TEST_CASE(exec, closeWhileInFlight, NULL)
 
 TEST_SUITE(query);
 
-struct query_fixture
+struct queryFixture
 {
 	FIXTURE;
 	unsigned stmt_id;
@@ -359,7 +359,7 @@ struct query_fixture
 
 TEST_SETUP(query)
 {
-	struct query_fixture *f = munit_malloc(sizeof *f);
+	struct queryFixture *f = munit_malloc(sizeof *f);
 	unsigned stmt_id;
 	SETUP;
 	HANDSHAKE;
@@ -373,7 +373,7 @@ TEST_SETUP(query)
 
 TEST_TEAR_DOWN(query)
 {
-	struct query_fixture *f = data;
+	struct queryFixture *f = data;
 	clientCloseRows(&f->rows);
 	TEAR_DOWN;
 	free(f);
@@ -382,7 +382,7 @@ TEST_TEAR_DOWN(query)
 /* Perform a query yielding one row. */
 TEST_CASE(query, one, NULL)
 {
-	struct query_fixture *f = data;
+	struct queryFixture *f = data;
 	struct row *row;
 	(void)params;
 	PREPARE("SELECT n FROM test", &f->stmt_id);
