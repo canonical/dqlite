@@ -52,7 +52,7 @@ static void *mem_fault_realloc(void *old, int n)
  *     xInit
  *     xShutdown
  */
-static void mem_fault_free(void *p)
+static void memFaultFree(void *p)
 {
 	memFault.m.xFree(p);
 }
@@ -87,7 +87,7 @@ static void mem_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
 	memFault.m = *m;
 
 	wrap->xMalloc = mem_fault_malloc;
-	wrap->xFree = mem_fault_free;
+	wrap->xFree = memFaultFree;
 	wrap->xRealloc = mem_fault_realloc;
 	wrap->xSize = mem_fault_size;
 	wrap->xRoundup = mem_fault_roundup;
