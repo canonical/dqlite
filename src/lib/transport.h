@@ -54,8 +54,8 @@ int transportRead(struct transport *t, uv_buf_t *buf, transportReadCb cb);
 int transport__write(struct transport *t, uv_buf_t *buf, transport_write_cb cb);
 
 /* Create an UV stream object from the given fd. */
-int transport_stream(struct uv_loop_s *loop,
-		     int fd,
-		     struct uv_stream_s **stream);
+int transportStream(struct uv_loop_s *loop,
+		    int fd,
+		    struct uv_stream_s **stream);
 
 #endif /* LIB_TRANSPORT_H_ */

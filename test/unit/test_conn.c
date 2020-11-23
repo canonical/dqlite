@@ -56,7 +56,7 @@ static void connCloseCb(struct conn *conn)
 	SETUP_CLIENT;                                                          \
 	RAFT_BOOTSTRAP;                                                        \
 	RAFT_START;                                                            \
-	rv = transport_stream(&f->loop, f->server, &stream);                   \
+	rv = transportStream(&f->loop, f->server, &stream);                    \
 	munit_assert_int(rv, ==, 0);                                           \
 	f->closed = false;                                                     \
 	f->conn.queue[0] = &f->closed;                                         \
