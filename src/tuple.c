@@ -221,7 +221,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 			size = float__sizeof(&value->float_);
 			break;
 		case SQLITE_BLOB:
-			size = blob_sizeof(&value->blob);
+			size = blobSizeof(&value->blob);
 			break;
 		case SQLITE_NULL:
 			/* TODO: allow null to be encoded with 0 bytes */
