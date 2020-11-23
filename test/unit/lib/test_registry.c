@@ -66,13 +66,13 @@ TEST_TEAR_DOWN(add, tear_down);
 
 static char *testAddN[] = {"1", "2", "3", "5", "6", "7", "8", "9", "10", NULL};
 
-static MunitParameterEnum test_add_params[] = {
+static MunitParameterEnum testAddParams[] = {
     {"n", testAddN},
     {NULL, NULL},
 };
 
 /* Add N items. */
-TEST_CASE(add, basic, test_add_params)
+TEST_CASE(add, basic, testAddParams)
 {
 	struct test_registry *registry = data;
 	int err;
@@ -131,7 +131,7 @@ TEST_CASE(add, delAdd, NULL)
 }
 
 /* Add N items and then delete them all. */
-TEST_CASE(add, andDel, test_add_params)
+TEST_CASE(add, andDel, testAddParams)
 {
 	struct test_registry *registry = data;
 	int err;
