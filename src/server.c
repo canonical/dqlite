@@ -46,7 +46,7 @@ int dqliteInit(struct dqlite_node *d,
 	if (rv != 0) {
 		/* TODO: better error reporting */
 		rv = DQLITE_ERROR;
-		goto err_after_raft_transport_init;
+		goto errAfterRaftTransportInit;
 	}
 	rv = fsm__init(&d->raft_fsm, &d->config, &d->registry);
 	if (rv != 0) {
@@ -98,7 +98,7 @@ errAfterRaftFsmInit:
 	fsm__close(&d->raft_fsm);
 errAfterRaftIoInit:
 	raft_uv_close(&d->raft_io);
-err_after_raft_transport_init:
+errAfterRaftTransportInit:
 	raftProxyClose(&d->raft_transport);
 errAfterLoopInit:
 	uv_loop_close(&d->loop);
