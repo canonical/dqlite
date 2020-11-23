@@ -962,7 +962,7 @@ static int vfsDatabaseWrite(struct vfsDatabase *d,
 
 		/* This is the first database page. We expect
 		 * the data to contain at least the header. */
-		assert(amount >= FORMAT__DB_HDR_SIZE);
+		assert(amount >= FORMAT_DB_HDR_SIZE);
 
 		/* Extract the page size from the header. */
 		page_size = vfsParsePageSize(vfsGet16(&header[16]));

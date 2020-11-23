@@ -13,7 +13,7 @@
 #define FORMAT__PAGE_SIZE_MAX 65536
 
 /* Database header size. */
-#define FORMAT__DB_HDR_SIZE 100
+#define FORMAT_DB_HDR_SIZE 100
 
 /* Write ahead log header size. */
 #define FORMAT__WAL_HDR_SIZE 32
