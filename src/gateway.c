@@ -997,7 +997,7 @@ handle:
 	case DQLITE_REQUEST_##UPPER:              \
 		rc = handle_##LOWER(req, cursor); \
 		break;
-		REQUEST__TYPES(DISPATCH);
+		REQUEST_TYPES(DISPATCH);
 	}
 
 	return rc;

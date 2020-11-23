@@ -46,7 +46,7 @@
 #define REQUEST_DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE(request_##LOWER, REQUEST_##UPPER);
 
-#define REQUEST__TYPES(X, ...)               \
+#define REQUEST_TYPES(X, ...)                \
 	X(leader, LEADER, __VA_ARGS__)       \
 	X(client, CLIENT, __VA_ARGS__)       \
 	X(open, OPEN, __VA_ARGS__)           \
@@ -66,7 +66,7 @@
 	X(describe, DESCRIBE, __VA_ARGS__)   \
 	X(weight, WEIGHT, __VA_ARGS__)
 
-REQUEST__TYPES(REQUEST_DEFINE);
+REQUEST_TYPES(REQUEST_DEFINE);
 
 #define REQUEST_CONNECT(X, ...)      \
 	X(uint64, id, ##__VA_ARGS__) \
