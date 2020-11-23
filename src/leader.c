@@ -324,7 +324,7 @@ static int leaderApplyFrames(struct exec *req,
 
 	rv = commandEncode(COMMAND_FRAMES, &c, &buf);
 	if (rv != 0) {
-		goto err_after_apply_alloc;
+		goto errAfterApplyAlloc;
 	}
 
 	apply->leader = req->leader;
@@ -343,7 +343,7 @@ static int leaderApplyFrames(struct exec *req,
 
 err_after_commandEncode:
 	raft_free(buf.base);
-err_after_apply_alloc:
+errAfterApplyAlloc:
 	raft_free(apply);
 err:
 	assert(rv != 0);
