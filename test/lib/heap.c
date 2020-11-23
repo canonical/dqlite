@@ -108,7 +108,7 @@ static void mem_unwrap(sqlite3_mem_methods *wrap, sqlite3_mem_methods *m)
 
 /* Get the current number of outstanding malloc()'s without a matching free()
  * and the total number of used memory. */
-static void mem_stats(int *mallocCount, int *memoryUsed)
+static void memStats(int *mallocCount, int *memoryUsed)
 {
 	int rc;
 	int watermark;
@@ -155,7 +155,7 @@ void test_heap_setup(const MunitParameter params[], void *user_data)
 	}
 
 	/* Check that memory is clean. */
-	mem_stats(&mallocCount, &memoryUsed);
+	memStats(&mallocCount, &memoryUsed);
 	if (mallocCount > 0 || memoryUsed > 0) {
 		munit_errorf(
 		    "setup memory:\n    bytes: %11d\n    allocations: %5d\n",
@@ -186,7 +186,7 @@ void test_heap_tear_down(void *data)
 	int mallocCount;
 	int memoryUsed;
 
-	mem_stats(&mallocCount, &memoryUsed);
+	memStats(&mallocCount, &memoryUsed);
 	if (mallocCount > 0 || memoryUsed > 0) {
 		munit_errorf(
 		    "teardown memory:\n    bytes: %11d\n    allocations: %5d\n",
