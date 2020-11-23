@@ -36,7 +36,7 @@ TEST_MODULE(registry);
  *
  ******************************************************************************/
 
-struct db_fixture
+struct dbFixture
 {
 	FIXTURE;
 };
@@ -44,13 +44,13 @@ struct db_fixture
 TEST_SUITE(db);
 TEST_SETUP(db)
 {
-	struct db_fixture *f = munit_malloc(sizeof *f);
+	struct dbFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	return f;
 }
 TEST_TEAR_DOWN(db)
 {
-	struct db_fixture *f = data;
+	struct dbFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -58,7 +58,7 @@ TEST_TEAR_DOWN(db)
 /* Get a db that didn't exist before. */
 TEST_CASE(db, get_new, NULL)
 {
-	struct db_fixture *f = data;
+	struct dbFixture *f = data;
 	struct db *db;
 	(void)params;
 	int rc;
@@ -71,7 +71,7 @@ TEST_CASE(db, get_new, NULL)
 /* Get a previously registered db. */
 TEST_CASE(db, get_existing, NULL)
 {
-	struct db_fixture *f = data;
+	struct dbFixture *f = data;
 	struct db *db1;
 	struct db *db2;
 	(void)params;
