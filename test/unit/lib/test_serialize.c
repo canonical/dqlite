@@ -166,7 +166,7 @@ TEST_CASE(sizeof, padding, NULL)
 }
 
 /* Padding is not added if a string ends exactly at word boundary. */
-TEST_CASE(sizeof, no_padding, NULL)
+TEST_CASE(sizeof, noPadding, NULL)
 {
 	struct fixture *f = data;
 	size_t size;
@@ -209,7 +209,7 @@ TEST_CASE(encode, padding, NULL)
 }
 
 /* Padding is not added if a string ends exactly at word boundary. */
-TEST_CASE(encode, no_padding, NULL)
+TEST_CASE(encode, noPadding, NULL)
 {
 	struct fixture *f = data;
 	size_t size;
@@ -314,7 +314,7 @@ TEST_CASE(decode, padding, NULL)
 }
 
 /* Padding is not added if a string ends exactly at word boundary. */
-TEST_CASE(decode, no_padding, NULL)
+TEST_CASE(decode, noPadding, NULL)
 {
 	struct fixture *f = data;
 	void *buf = munit_malloc(16 + 8);
