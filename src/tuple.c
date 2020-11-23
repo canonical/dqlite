@@ -39,7 +39,7 @@ int tuple_decoder__init(struct tuple_decoder *d,
 			unsigned n,
 			struct cursor *cursor)
 {
-	size_t header_size;
+	size_t headerSize;
 	int rc;
 
 	d->format = n == 0 ? TUPLE__PARAMS : TUPLE__ROW;
@@ -61,15 +61,15 @@ int tuple_decoder__init(struct tuple_decoder *d,
 	d->header = cursor->p;
 
 	/* Check that there is enough room to hold n type code slots. */
-	header_size = calcHeaderSize(d->n, d->format);
+	headerSize = calcHeaderSize(d->n, d->format);
 
-	if (header_size > cursor->cap) {
+	if (headerSize > cursor->cap) {
 		return DQLITE_PARSE;
 	}
 
 	d->cursor = cursor;
-	d->cursor->p += header_size;
-	d->cursor->cap -= header_size;
+	d->cursor->p += headerSize;
+	d->cursor->cap -= headerSize;
 
 	return 0;
 }
