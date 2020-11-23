@@ -193,7 +193,7 @@ static void implClose(struct raft_uv_transport *transport,
 	cb(transport);
 }
 
-static int parse_address(const char *address, struct sockaddr_in *addr)
+static int parseAddress(const char *address, struct sockaddr_in *addr)
 {
 	char buf[256];
 	char *host;
@@ -223,7 +223,7 @@ static int defaultConnect(void *arg, const char *address, int *fd)
 	int rv;
 	(void)arg;
 
-	rv = parse_address(address, &addr);
+	rv = parseAddress(address, &addr);
 	if (rv != 0) {
 		return RAFT_NOCONNECTION;
 	}
