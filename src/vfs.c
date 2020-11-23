@@ -82,7 +82,7 @@ struct vfsWal
 	struct vfsFrame **frames;          /* All frames committed. */
 	unsigned nFrames;                  /* Number of committed frames. */
 	struct vfsFrame **tx;              /* Frames added by a transaction. */
-	unsigned n_tx;                     /* Number of added frames. */
+	unsigned nTx;                      /* Number of added frames. */
 };
 
 /* Database-specific content */
@@ -285,7 +285,7 @@ static void vfsWalInit(struct vfsWal *w)
 	w->frames = NULL;
 	w->nFrames = 0;
 	w->tx = NULL;
-	w->n_tx = 0;
+	w->nTx = 0;
 }
 
 /* Initialize a new database object. */
@@ -307,7 +307,7 @@ static void vfsWalClose(struct vfsWal *w)
 	if (w->frames != NULL) {
 		sqlite3_free(w->frames);
 	}
-	for (i = 0; i < w->n_tx; i++) {
+	for (i = 0; i < w->nTx; i++) {
 		vfsFrameDestroy(w->tx[i]);
 	}
 	if (w->tx != NULL) {
@@ -409,12 +409,12 @@ static int vfsWalFrameGet(struct vfsWal *w,
 
 	/* SQLite should access pages progressively, without jumping more than
 	 * one page after the end. */
-	if (index > w->nFrames + w->n_tx + 1) {
+	if (index > w->nFrames + w->nTx + 1) {
 		rv = SQLITE_IOERR_WRITE;
 		goto err;
 	}
 
-	if (index == w->nFrames + w->n_tx + 1) {
+	if (index == w->nFrames + w->nTx + 1) {
 		/* Create a new frame, grow the transaction array, and append
 		 * the new frame to it. */
 		struct vfsFrame **tx;
@@ -432,7 +432,7 @@ static int vfsWalFrameGet(struct vfsWal *w,
 			goto err;
 		}
 
-		tx = sqlite3_realloc64(w->tx, sizeof *tx * w->n_tx + 1);
+		tx = sqlite3_realloc64(w->tx, sizeof *tx * w->nTx + 1);
 		if (tx == NULL) {
 			rv = SQLITE_NOMEM;
 			goto errAfterVfsFrameCreate;
@@ -443,7 +443,7 @@ static int vfsWalFrameGet(struct vfsWal *w,
 
 		/* Update the page array. */
 		w->tx = tx;
-		w->n_tx++;
+		w->nTx++;
 	} else {
 		/* Return the existing page. */
 		assert(w->tx != NULL);
@@ -487,7 +487,7 @@ static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 	assert(w != NULL);
 	assert(n > 0);
 
-	if (n > w->nFrames + w->n_tx) {
+	if (n > w->nFrames + w->nTx) {
 		/* This page hasn't been written yet. */
 		return NULL;
 	}
@@ -1366,7 +1366,7 @@ static int vfsFileControlCommitPhaseTwo(struct vfsFile *f)
 {
 	struct vfsDatabase *database = f->database;
 	struct vfsWal *wal = &database->wal;
-	if (wal->n_tx > 0) {
+	if (wal->nTx > 0) {
 		vfsAmendWalIndexHeader(database);
 	}
 	return 0;
@@ -1561,22 +1561,22 @@ static void vfsWalRollbackIfUncommitted(struct vfsWal *w)
 	uint32_t commit;
 	unsigned i;
 
-	if (w->n_tx == 0) {
+	if (w->nTx == 0) {
 		return;
 	}
 
-	last = w->tx[w->n_tx - 1];
+	last = w->tx[w->nTx - 1];
 	commit = vfsFrameGetDatabaseSize(last);
 
 	if (commit > 0) {
 		return;
 	}
 
-	for (i = 0; i < w->n_tx; i++) {
+	for (i = 0; i < w->nTx; i++) {
 		vfsFrameDestroy(w->tx[i]);
 	}
 
-	w->n_tx = 0;
+	w->nTx = 0;
 }
 
 static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
@@ -1625,7 +1625,7 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 		/* When acquiring the write lock, make sure there's no
 		 * transaction that hasn't been rolled back or polled. */
 		if (flags == (SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE)) {
-			assert(wal->n_tx == 0);
+			assert(wal->nTx == 0);
 		}
 		/* When releasing the write lock, if we find a pending
 		 * uncommitted transaction then a rollback must have occurred.
@@ -2055,14 +2055,14 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 	uint32_t commit;
 	unsigned i;
 
-	if (w->n_tx == 0) {
+	if (w->nTx == 0) {
 		*frames = NULL;
 		*n = 0;
 		return 0;
 	}
 
 	/* Check if the last frame in the transaction has the commit marker. */
-	last = w->tx[w->n_tx - 1];
+	last = w->tx[w->nTx - 1];
 	commit = vfsFrameGetDatabaseSize(last);
 
 	if (commit == 0) {
@@ -2071,13 +2071,13 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 		return 0;
 	}
 
-	*frames = sqlite3_malloc64(sizeof **frames * w->n_tx);
+	*frames = sqlite3_malloc64(sizeof **frames * w->nTx);
 	if (*frames == NULL) {
 		return DQLITE_NOMEM;
 	}
-	*n = w->n_tx;
+	*n = w->nTx;
 
-	for (i = 0; i < w->n_tx; i++) {
+	for (i = 0; i < w->nTx; i++) {
 		dqlite_vfs_frame *frame = &(*frames)[i];
 		uint32_t page_number = vfsFrameGetPageNumber(w->tx[i]);
 		frame->data = w->tx[i]->page;
@@ -2088,7 +2088,7 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 		sqlite3_free(w->tx[i]);
 	}
 
-	w->n_tx = 0;
+	w->nTx = 0;
 
 	return 0;
 }
@@ -2177,7 +2177,7 @@ static int vfsWalAppend(struct vfsWal *w,
 	uint32_t checksum[2];
 
 	/* No pending transactions. */
-	assert(w->n_tx == 0);
+	assert(w->nTx == 0);
 
 	page_size = vfsWalGetPageSize(w);
 	assert(page_size > 0);
@@ -2528,7 +2528,7 @@ static int vfsWalRestore(struct vfsWal *w,
 		return 0;
 	}
 
-	assert(w->n_tx == 0);
+	assert(w->nTx == 0);
 
 	assert(n > VFS__WAL_HEADER_SIZE);
 	assert(((n - VFS__WAL_HEADER_SIZE) % vfsFrameSize(page_size)) == 0);
