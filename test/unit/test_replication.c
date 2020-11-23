@@ -258,7 +258,7 @@ TEST_CASE(exec, checkpoint, NULL)
 	struct exec_fixture *f = data;
 	struct config *config = CLUSTER_CONFIG(0);
 	(void)params;
-	config->checkpoint_threshold = 3;
+	config->checkpointThreshold = 3;
 	CLUSTER_ELECT(0);
 	EXEC_SQL(0, "CREATE TABLE test (n  INT)");
 	EXEC_SQL(0, "INSERT INTO test(n) VALUES(1)");
@@ -278,7 +278,7 @@ TEST_CASE(exec, checkpointReadLock, NULL)
 	char *errmsg;
 	int rv;
 	(void)params;
-	config->checkpoint_threshold = 3;
+	config->checkpointThreshold = 3;
 
 	CLUSTER_ELECT(0);
 	EXEC_SQL(0, "CREATE TABLE test (n  INT)");
@@ -400,7 +400,7 @@ TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
 	struct config *config = CLUSTER_CONFIG(0);
 	int rv;
 
-	config->checkpoint_threshold = 3;
+	config->checkpointThreshold = 3;
 
 	CLUSTER_ELECT(0);
 

@@ -12,7 +12,7 @@ struct config
 	char *address;                 /* Instance address */
 	unsigned heartbeat_timeout;    /* In milliseconds */
 	unsigned page_size;            /* Database page size */
-	unsigned checkpoint_threshold; /* In outstanding WAL frames */
+	unsigned checkpointThreshold;  /* In outstanding WAL frames */
 	struct logger logger;          /* Custom logger */
 	char name[256];                /* VFS/replication registriatio name */
 	unsigned long long failure_domain; /* User-provided failure domain */

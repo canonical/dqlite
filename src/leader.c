@@ -179,7 +179,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	pages = ((unsigned)size - 32) / (24 + page_size);
 
 	/* Check if the size of the WAL is beyond the threshold. */
-	if (pages < l->db->config->checkpoint_threshold) {
+	if (pages < l->db->config->checkpointThreshold) {
 		return false;
 	}
 
