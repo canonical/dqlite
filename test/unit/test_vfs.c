@@ -73,7 +73,7 @@ static sqlite3_file *__file_create(sqlite3_vfs *vfs,
 }
 
 /* Helper for creating a new database file */
-static sqlite3_file *__file_create_main_db(sqlite3_vfs *vfs)
+static sqlite3_file *__file_create_mainDb(sqlite3_vfs *vfs)
 {
 	return __file_create(vfs, "test.db", SQLITE_OPEN_MAIN_DB);
 }
@@ -632,7 +632,7 @@ SUITE(VfsRead)
 TEST(VfsRead, neverWritten, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 
 	int rc;
 	char buf[1] = {123};
@@ -662,7 +662,7 @@ SUITE(VfsWrite)
 TEST(VfsWrite, dbHeader, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 
 	void *buf = __bufHeaderMain_db();
 
@@ -684,7 +684,7 @@ TEST(VfsWrite, dbHeader, setUp, tearDown, 0, NULL)
 TEST(VfsWrite, andReadPages, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 
 	int rc;
 	char buf[512];
@@ -739,7 +739,7 @@ TEST(VfsWrite, andReadPages, setUp, tearDown, 0, NULL)
 TEST(VfsWrite, oomPage, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 	void *bufHeaderMain = __bufHeaderMain_db();
 	char buf[512];
 	int rc;
@@ -766,7 +766,7 @@ TEST(VfsWrite, oomPage, setUp, tearDown, 0, NULL)
 TEST(VfsWrite, oomPageArray, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 	void *bufHeaderMain = __bufHeaderMain_db();
 	char buf[512];
 	int rc;
@@ -792,7 +792,7 @@ TEST(VfsWrite, oomPageArray, setUp, tearDown, 0, NULL)
 TEST(VfsWrite, oomPageBuf, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 	void *bufHeaderMain = __bufHeaderMain_db();
 	char buf[512];
 	int rc;
@@ -818,7 +818,7 @@ TEST(VfsWrite, oomPageBuf, setUp, tearDown, 0, NULL)
 TEST(VfsWrite, beyondLast, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 	void *bufPage_1 = __bufPage_1();
 	void *bufPage_2 = __bufPage_2();
 	char buf[512];
@@ -855,7 +855,7 @@ SUITE(VfsTruncate);
 TEST(VfsTruncate, database, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 	void *bufPage_1 = __bufPage_1();
 	void *bufPage_2 = __bufPage_2();
 
@@ -922,7 +922,7 @@ TEST(VfsTruncate, database, setUp, tearDown, 0, NULL)
 TEST(VfsTruncate, unexpected, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *main_db = __file_create_main_db(&f->vfs);
+	sqlite3_file *mainDb = __file_create_mainDb(&f->vfs);
 	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
 	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_JOURNAL;
 	char buf[32];
@@ -943,7 +943,7 @@ TEST(VfsTruncate, unexpected, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, SQLITE_IOERR_TRUNCATE);
 
 	free(file);
-	free(main_db);
+	free(mainDb);
 
 	return MUNIT_OK;
 }
@@ -952,7 +952,7 @@ TEST(VfsTruncate, unexpected, setUp, tearDown, 0, NULL)
 TEST(VfsTruncate, empty, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 	sqlite_int64 size;
 	int rc;
 
@@ -976,7 +976,7 @@ TEST(VfsTruncate, empty, setUp, tearDown, 0, NULL)
 TEST(VfsTruncate, emptyGrow, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 	int rc;
 
 	(void)params;
@@ -995,7 +995,7 @@ TEST(VfsTruncate, emptyGrow, setUp, tearDown, 0, NULL)
 TEST(VfsTruncate, misaligned, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 	void *bufPage_1 = __bufPage_1();
 
 	int rc;
@@ -1037,7 +1037,7 @@ static MunitParameterEnum test_shm_map_oom_params[] = {
 TEST(VfsShmMap, oom, setUp, tearDown, 0, test_shm_map_oom_params)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 	volatile void *region;
 	int rc;
 
@@ -1237,7 +1237,7 @@ SUITE(VfsFileControl)
 TEST(VfsFileControl, journal, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(&f->vfs);
+	sqlite3_file *file = __file_create_mainDb(&f->vfs);
 	char *fnctl[] = {
 	    "",
 	    "journal_mode",
