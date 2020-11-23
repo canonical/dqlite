@@ -288,8 +288,8 @@ extern int _main_suites_n;
 
 /* Choose the appropriate TEST_CASE__N_ARGS() macro depending on the number of
  * arguments passed to TEST_CASE(). */
-#define TEST_CASE__MACRO_CHOOSER(...)                                        \
-	TEST__GET_5TH_ARG(__VA_ARGS__, TEST_CASE__4_ARGS, TEST_CASE__3_ARGS, \
+#define TEST_CASE__MACRO_CHOOSER(...)                                       \
+	TEST__GET_5TH_ARG(__VA_ARGS__, TEST_CASE__4_ARGS, TEST_CASE_3_ARGS, \
 			  TEST_CASE_2_ARGS)
 
 /* Add the test case to the module's MunitTest[] array. */
@@ -299,7 +299,7 @@ extern int _main_suites_n;
 	static MunitResult test_##C(const MunitParameter params[], void *data)
 
 /* Add test case C to the MunitTest[] array of suite S. */
-#define TEST_CASE__3_ARGS(S, C, PARAMS)                                    \
+#define TEST_CASE_3_ARGS(S, C, PARAMS)                                     \
 	static MunitResult test_##S##_##C(const MunitParameter[], void *); \
 	TEST_CASE__ADD_TO_SUITE(S, C, PARAMS);                             \
 	static MunitResult test_##S##_##C(const MunitParameter params[],   \
