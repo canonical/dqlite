@@ -686,12 +686,12 @@ static void vfsDestroy(struct vfs *r)
 
 static bool vfsFilenameEndsWith(const char *filename, const char *suffix)
 {
-	size_t n_filename = strlen(filename);
+	size_t nFilename = strlen(filename);
 	size_t n_suffix = strlen(suffix);
-	if (n_suffix > n_filename) {
+	if (n_suffix > nFilename) {
 		return false;
 	}
-	return strncmp(filename + n_filename - n_suffix, suffix, n_suffix) == 0;
+	return strncmp(filename + nFilename - n_suffix, suffix, n_suffix) == 0;
 }
 
 /* Find the database object associated with the given filename. */
