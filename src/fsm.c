@@ -251,9 +251,9 @@ err:
 SERIALIZE__DEFINE(snapshotHeader, SNAPSHOT_HEADER);
 SERIALIZE__IMPLEMENT(snapshotHeader, SNAPSHOT_HEADER);
 
-#define SNAPSHOT_DATABASE(X, ...)           \
-	X(text, filename, ##__VA_ARGS__)    \
-	X(uint64, main_size, ##__VA_ARGS__) \
+#define SNAPSHOT_DATABASE(X, ...)          \
+	X(text, filename, ##__VA_ARGS__)   \
+	X(uint64, mainSize, ##__VA_ARGS__) \
 	X(uint64, wal_size, ##__VA_ARGS__)
 SERIALIZE__DEFINE(snapshotDatabase, SNAPSHOT_DATABASE);
 SERIALIZE__IMPLEMENT(snapshotDatabase, SNAPSHOT_DATABASE);
@@ -300,8 +300,8 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 	databaseSize += (uint32_t)(page[30] << 8);
 	databaseSize += (uint32_t)(page[31]);
 
-	header.main_size = databaseSize * db->config->page_size;
-	header.wal_size = bufs[1].len - header.main_size;
+	header.mainSize = databaseSize * db->config->page_size;
+	header.wal_size = bufs[1].len - header.mainSize;
 
 	/* Database header. */
 	bufs[0].len = snapshotDatabase__sizeof(&header);
@@ -357,7 +357,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 		db->follower = NULL;
 	}
 
-	n = header.main_size + header.wal_size;
+	n = header.mainSize + header.wal_size;
 	rv = VfsRestore(vfs, db->filename, cursor->p, n);
 	if (rv != 0) {
 		return rv;
