@@ -1449,7 +1449,7 @@ static int vfsShmMap(struct vfsShm *s,
 
 			if (regions == NULL) {
 				rv = SQLITE_NOMEM;
-				goto err_after_region_malloc;
+				goto errAfterRegionMalloc;
 			}
 
 			s->regions = regions;
@@ -1471,7 +1471,7 @@ static int vfsShmMap(struct vfsShm *s,
 
 	return SQLITE_OK;
 
-err_after_region_malloc:
+errAfterRegionMalloc:
 	sqlite3_free(region);
 err:
 	assert(rv != SQLITE_OK);
