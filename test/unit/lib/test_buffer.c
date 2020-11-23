@@ -29,7 +29,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 static void tear_down(void *data)
 {
 	struct fixture *f = data;
-	buffer__close(&f->buffer);
+	buffer_close(&f->buffer);
 	free(f);
 }
 

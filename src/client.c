@@ -28,15 +28,15 @@ int clientInit(struct client *c, int fd)
 	return 0;
 
 err_after_read_buffer_init:
-	buffer__close(&c->read);
+	buffer_close(&c->read);
 err:
 	return rv;
 }
 
 void clientClose(struct client *c)
 {
-	buffer__close(&c->write);
-	buffer__close(&c->read);
+	buffer_close(&c->write);
+	buffer_close(&c->read);
 }
 
 int clientSendHandshake(struct client *c)

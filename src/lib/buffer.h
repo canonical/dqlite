@@ -30,7 +30,7 @@ int buffer__init(struct buffer *b);
 /**
  * Release the memory of the buffer.
  */
-void buffer__close(struct buffer *b);
+void buffer_close(struct buffer *b);
 
 /**
  * Return a write cursor pointing to the next byte to write, ensuring that the

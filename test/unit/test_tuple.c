@@ -319,7 +319,7 @@ TEST_SETUP(encoder)
 TEST_TEAR_DOWN(encoder)
 {
 	struct encoder_fixture *f = data;
-	buffer__close(&f->buffer);
+	buffer_close(&f->buffer);
 	free(data);
 }
 

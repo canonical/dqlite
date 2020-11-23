@@ -67,8 +67,8 @@ struct connection
 	unsigned i;                                        \
 	for (i = 0; i < N_GATEWAYS; i++) {                 \
 		struct connection *c = &f->connections[i]; \
-		buffer__close(&c->request);                \
-		buffer__close(&c->response);               \
+		buffer_close(&c->request);                 \
+		buffer_close(&c->response);                \
 		gateway__close(&c->gateway);               \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
