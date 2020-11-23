@@ -94,7 +94,7 @@ err:
  * index. */
 static bool needsBarrier(struct leader *l)
 {
-	return l->db->tx_id == 0 &&
+	return l->db->txId == 0 &&
 	       raft_last_applied(l->raft) < raft_last_index(l->raft);
 }
 
@@ -148,7 +148,7 @@ static void leaderCheckpointApplyCb(struct raft_apply *req,
 		    SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);
 	}
 	l->inflight = NULL;
-	l->db->tx_id = 0;
+	l->db->txId = 0;
 	l->exec->done = true;
 	maybeExecDone(l->exec);
 }
@@ -292,7 +292,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 
 finish:
 	l->inflight = NULL;
-	l->db->tx_id = 0;
+	l->db->txId = 0;
 	l->exec->done = true;
 	maybeExecDone(l->exec);
 }
@@ -309,7 +309,7 @@ static int leaderApplyFrames(struct exec *req,
 	int rv;
 
 	c.filename = db->filename;
-	c.tx_id = 0;
+	c.txId = 0;
 	c.truncate = 0;
 	c.isCommit = 1;
 	c.frames.nPages = (uint32_t)n;
@@ -336,7 +336,7 @@ static int leaderApplyFrames(struct exec *req,
 		goto err_after_commandEncode;
 	}
 
-	db->tx_id = 1;
+	db->txId = 1;
 	l->inflight = apply;
 
 	return 0;

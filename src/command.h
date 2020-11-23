@@ -36,13 +36,13 @@ typedef struct frames frames_t;
 #define COMMAND__OPEN(X, ...) X(text, filename, ##__VA_ARGS__)
 #define COMMAND__FRAMES(X, ...)               \
 	X(text, filename, ##__VA_ARGS__)      \
-	X(uint64, tx_id, ##__VA_ARGS__)       \
+	X(uint64, txId, ##__VA_ARGS__)        \
 	X(uint32, truncate, ##__VA_ARGS__)    \
 	X(uint8, isCommit, ##__VA_ARGS__)     \
 	X(uint8, __unused1__, ##__VA_ARGS__)  \
 	X(uint16, __unused2__, ##__VA_ARGS__) \
 	X(frames, frames, ##__VA_ARGS__)
-#define COMMAND__UNDO(X, ...) X(uint64, tx_id, ##__VA_ARGS__)
+#define COMMAND__UNDO(X, ...) X(uint64, txId, ##__VA_ARGS__)
 #define COMMAND__CHECKPOINT(X, ...) X(text, filename, ##__VA_ARGS__)
 
 #define COMMAND_TYPES(X, ...)          \

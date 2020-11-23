@@ -19,7 +19,7 @@ void dbInit(struct db *db, struct config *config, const char *filename)
 	assert(db->filename != NULL); /* TODO: return an error instead */
 	strcpy(db->filename, filename);
 	db->follower = NULL;
-	db->tx_id = 0;
+	db->txId = 0;
 	QUEUE_INIT(&db->leaders);
 }
 

@@ -382,7 +382,7 @@ static int fsmSnapshot(struct raft_fsm *fsm,
 	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE_DATA(head, struct db, queue);
-		if (db->tx_id != 0) {
+		if (db->txId != 0) {
 			return RAFT_BUSY;
 		}
 		n++;

@@ -15,7 +15,7 @@ struct db
 	char *filename;        /* Database filename */
 	sqlite3 *follower;     /* Follower connection */
 	queue leaders;         /* Open leader connections */
-	unsigned tx_id;        /* Current ongoing transaction ID, if any */
+	unsigned txId;         /* Current ongoing transaction ID, if any */
 	queue queue;           /* Prev/next database, used by the registry */
 };
 
