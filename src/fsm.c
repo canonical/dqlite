@@ -59,7 +59,7 @@ static int addPendingPages(struct fsm *f,
 	return 0;
 }
 
-static int apply_frames(struct fsm *f, const struct command_frames *c)
+static int applyFrames(struct fsm *f, const struct command_frames *c)
 {
 	struct db *db;
 	sqlite3_vfs *vfs;
@@ -219,7 +219,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 			rc = apply_open(f, command);
 			break;
 		case COMMAND_FRAMES:
-			rc = apply_frames(f, command);
+			rc = applyFrames(f, command);
 			break;
 		case COMMAND_UNDO:
 			rc = apply_undo(f, command);
