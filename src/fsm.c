@@ -456,9 +456,9 @@ static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 	return 0;
 }
 
-int fsm_init(struct raft_fsm *fsm,
-	     struct config *config,
-	     struct registry *registry)
+int fsmInit(struct raft_fsm *fsm,
+	    struct config *config,
+	    struct registry *registry)
 {
 	struct fsm *f = raft_malloc(sizeof *f);
 
