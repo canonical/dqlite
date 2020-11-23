@@ -360,7 +360,7 @@ TEST_CASE(leader, other_node, NULL)
  *
  ******************************************************************************/
 
-struct open_fixture
+struct openFixture
 {
 	FIXTURE;
 	struct request_open request;
@@ -370,13 +370,13 @@ struct open_fixture
 TEST_SUITE(open);
 TEST_SETUP(open)
 {
-	struct open_fixture *f = munit_malloc(sizeof *f);
+	struct openFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	return f;
 }
 TEST_TEAR_DOWN(open)
 {
-	struct open_fixture *f = data;
+	struct openFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -384,7 +384,7 @@ TEST_TEAR_DOWN(open)
 /* Successfully open a database connection. */
 TEST_CASE(open, success, NULL)
 {
-	struct open_fixture *f = data;
+	struct openFixture *f = data;
 	(void)params;
 	f->request.filename = "test";
 	f->request.vfs = "";
@@ -401,7 +401,7 @@ TEST_GROUP(open, error);
 /* Attempting to open two databases on the same gateway results in an error. */
 TEST_CASE(open, error, twice, NULL)
 {
-	struct open_fixture *f = data;
+	struct openFixture *f = data;
 	(void)params;
 	f->request.filename = "test";
 	f->request.vfs = "";

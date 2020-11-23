@@ -193,14 +193,14 @@ TEST_CASE(handshake, success, NULL)
 
 TEST_SUITE(open);
 
-struct open_fixture
+struct openFixture
 {
 	FIXTURE;
 };
 
 TEST_SETUP(open)
 {
-	struct open_fixture *f = munit_malloc(sizeof *f);
+	struct openFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	HANDSHAKE;
 	return f;
@@ -208,14 +208,14 @@ TEST_SETUP(open)
 
 TEST_TEAR_DOWN(open)
 {
-	struct open_fixture *f = data;
+	struct openFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
 
 TEST_CASE(open, success, NULL)
 {
-	struct open_fixture *f = data;
+	struct openFixture *f = data;
 	(void)params;
 	OPEN;
 	return MUNIT_OK;
