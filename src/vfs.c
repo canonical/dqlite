@@ -1862,11 +1862,11 @@ err:
 	return rc;
 }
 
-static int vfsDelete(sqlite3_vfs *vfs, const char *filename, int dir_sync)
+static int vfsDelete(sqlite3_vfs *vfs, const char *filename, int dirSync)
 {
 	struct vfs *v;
 
-	(void)dir_sync;
+	(void)dirSync;
 
 	assert(vfs != NULL);
 	assert(vfs->pAppData != NULL);
