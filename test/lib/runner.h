@@ -309,7 +309,7 @@ extern int _main_suites_n;
 #define TEST_CASE_4_ARGS(S, G, C, PARAMS)                                      \
 	static MunitResult test_##S##_##G##_##C(const MunitParameter[],        \
 						void *);                       \
-	TEST_CASE__ADD_TO_GROUP(S, G, C, PARAMS);                              \
+	TEST_CASE_ADD_TO_GROUP(S, G, C, PARAMS);                               \
 	static MunitResult test_##S##_##G##_##C(const MunitParameter params[], \
 						void *data)
 
@@ -337,7 +337,7 @@ extern int _main_suites_n;
 	}
 
 /* Add a test case to MunitTest[] array of group G in suite S. */
-#define TEST_CASE__ADD_TO_GROUP(S, G, C, PARAMS)                           \
+#define TEST_CASE_ADD_TO_GROUP(S, G, C, PARAMS)                            \
 	__attribute__(                                                     \
 	    (constructor)) static void _##S##_##G##_tests_##C##_init(void) \
 	{                                                                  \
