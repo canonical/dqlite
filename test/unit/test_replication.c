@@ -234,7 +234,7 @@ TEST_CASE(exec, snapshot, NULL)
 }
 
 /* If a transaction is in progress, no snapshot is taken. */
-TEST_CASE(exec, snapshot_busy, NULL)
+TEST_CASE(exec, snapshotBusy, NULL)
 {
 	struct execFixture *f = data;
 	(void)params;
