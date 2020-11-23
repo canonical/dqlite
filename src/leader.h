@@ -108,6 +108,6 @@ int leader__exec(struct leader *l,
  *
  * Otherwise, just invoke the given @cb immediately.
  */
-int leader_barrier(struct leader *l, struct barrier *barrier, barrierCb cb);
+int leaderBarrier(struct leader *l, struct barrier *barrier, barrierCb cb);
 
 #endif /* LEADER_H_*/

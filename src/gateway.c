@@ -377,7 +377,7 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	}
 	g->req = req;
 	g->stmt = stmt->stmt;
-	rv = leader_barrier(g->leader, &g->barrier, query_barrierCb);
+	rv = leaderBarrier(g->leader, &g->barrier, query_barrierCb);
 	if (rv != 0) {
 		g->req = NULL;
 		g->stmt = NULL;
@@ -527,7 +527,7 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	}
 	g->stmt_finalize = true;
 	g->req = req;
-	rv = leader_barrier(g->leader, &g->barrier, query_barrierCb);
+	rv = leaderBarrier(g->leader, &g->barrier, query_barrierCb);
 	if (rv != 0) {
 		g->req = NULL;
 		g->stmt = NULL;
