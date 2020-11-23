@@ -21,7 +21,7 @@
 #define SETUP                                                \
 	unsigned i_;                                         \
 	testHeapSetup(params, user_data);                    \
-	test_sqlite_setup(params);                           \
+	testSqliteSetup(params);                             \
 	for (i_ = 0; i_ < N_SERVERS; i_++) {                 \
 		struct testServer *server = &f->servers[i_]; \
 		testServer_setup(server, i_ + 1, params);    \

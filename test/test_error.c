@@ -20,7 +20,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	dqliteError *error;
 
 	testHeapSetup(params, user_data);
-	test_sqlite_setup(params);
+	testSqliteSetup(params);
 
 	error = (dqliteError *)munit_malloc(sizeof(*error));
 

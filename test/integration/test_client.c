@@ -77,7 +77,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	struct fixture *f = munit_malloc(sizeof *f);
 	(void)user_data;
 	testHeapSetup(params, user_data);
-	test_sqlite_setup(params);
+	testSqliteSetup(params);
 	testServer_setup(&f->server, 1, params);
 	testServer_start(&f->server);
 	f->client = testServer_client(&f->server);
