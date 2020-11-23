@@ -2,7 +2,7 @@
 
 #include "../../lib/runner.h"
 
-TEST_MODULE(lib_buffer);
+TEST_MODULE(libBuffer);
 
 /******************************************************************************
  *
