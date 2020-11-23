@@ -86,11 +86,11 @@ TEST_MODULE(replication_v1);
 	}
 
 /* Submit an exec request using the I'th leader. */
-#define EXEC(I)                                                                \
-	{                                                                      \
-		int rc2;                                                       \
-		rc2 = leader_exec(LEADER(I), &f->req, f->stmt, fixtureExecCb); \
-		munit_assert_int(rc2, ==, 0);                                  \
+#define EXEC(I)                                                               \
+	{                                                                     \
+		int rc2;                                                      \
+		rc2 = leaderExec(LEADER(I), &f->req, f->stmt, fixtureExecCb); \
+		munit_assert_int(rc2, ==, 0);                                 \
 	}
 
 /* Convenience to prepare, execute and finalize a statement. */
@@ -165,7 +165,7 @@ TEST_CASE(init, conn, NULL)
 
 /******************************************************************************
  *
- * leader_exec
+ * leaderExec
  *
  ******************************************************************************/
 
@@ -355,7 +355,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	CLUSTER_ELECT(0);
 
 	PREPARE(0, "BEGIN");
-	rv = leader_exec(LEADER(0), &f->req, f->stmt, execCb);
+	rv = leaderExec(LEADER(0), &f->req, f->stmt, execCb);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
@@ -363,7 +363,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	FINALIZE;
 
 	PREPARE(0, "CREATE TABLE test (a  INT)");
-	rv = leader_exec(LEADER(0), &f->req, f->stmt, execCb);
+	rv = leaderExec(LEADER(0), &f->req, f->stmt, execCb);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
@@ -371,7 +371,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	FINALIZE;
 
 	PREPARE(0, "COMMIT");
-	rv = leader_exec(LEADER(0), &f->req, f->stmt, execCb);
+	rv = leaderExec(LEADER(0), &f->req, f->stmt, execCb);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_false(f->invoked);
 	FINALIZE;
@@ -404,14 +404,14 @@ TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
 	CLUSTER_ELECT(0);
 
 	PREPARE(0, "CREATE TABLE test (n  INT)");
-	rv = leader_exec(LEADER(0), &f->req, f->stmt, execCb);
+	rv = leaderExec(LEADER(0), &f->req, f->stmt, execCb);
 	munit_assert_int(rv, ==, 0);
 	FINALIZE;
 
 	CLUSTER_APPLIED(2);
 
 	PREPARE(0, "INSERT INTO test(n) VALUES(1)");
-	rv = leader_exec(LEADER(0), &f->req, f->stmt, execCb);
+	rv = leaderExec(LEADER(0), &f->req, f->stmt, execCb);
 	munit_assert_int(rv, ==, 0);
 	FINALIZE;
 

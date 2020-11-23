@@ -257,7 +257,7 @@ static const char *errorMessage(sqlite3 *db, int rc)
 	return sqlite3_errmsg(db);
 }
 
-static void leader_exec_cb(struct exec *exec, int status)
+static void leaderExec_cb(struct exec *exec, int status)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
@@ -294,7 +294,7 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 	}
 	g->req = req;
 	g->stmt = stmt->stmt;
-	rv = leader_exec(g->leader, &g->exec, stmt->stmt, leader_exec_cb);
+	rv = leaderExec(g->leader, &g->exec, stmt->stmt, leaderExec_cb);
 	if (rv != 0) {
 		return rv;
 	}
@@ -462,7 +462,7 @@ static void handle_execSql_next(struct handle *req, struct cursor *cursor)
 	g->sql = tail;
 	g->req = req;
 
-	rv = leader_exec(g->leader, &g->exec, g->stmt, handle_execSql_cb);
+	rv = leaderExec(g->leader, &g->exec, g->stmt, handle_execSql_cb);
 	if (rv != SQLITE_OK) {
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto doneAfterPrepare;
