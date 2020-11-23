@@ -9,7 +9,7 @@
  * can fit in one byte. */
 #define STMT__MAX_COLUMNS (1 << 8) - 1
 
-void stmt__init(struct stmt *s)
+void stmt_init(struct stmt *s)
 {
 	s->stmt = NULL;
 }

@@ -57,7 +57,7 @@ struct stmt
 };
 
 /* Initialize a statement state object */
-void stmt__init(struct stmt *s);
+void stmt_init(struct stmt *s);
 
 /* Close a statement state object, releasing all associated resources. */
 void stmt_close(struct stmt *s);
@@ -67,7 +67,7 @@ void stmt_close(struct stmt *s);
 const char *stmt_hash(struct stmt *stmt);
 
 /* TODO: change registry naming pattern */
-#define stmt_init stmt__init
+#define stmt_init stmt_init
 #define stmt_close stmt_close
 #define stmt_hash stmt_hash
 
