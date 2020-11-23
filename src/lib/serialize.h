@@ -92,7 +92,7 @@ struct cursor
 	}                                                         \
 	void NAME##__encode(const struct NAME *p, void **cursor)  \
 	{                                                         \
-		FIELDS(SERIALIZE__ENCODE_FIELD, p, cursor);       \
+		FIELDS(SERIALIZE_ENCODE_FIELD, p, cursor);        \
 	}                                                         \
 	int NAME##__decode(struct cursor *cursor, struct NAME *p) \
 	{                                                         \
@@ -104,7 +104,7 @@ struct cursor
 #define SERIALIZE__SIZEOF_FIELD(KIND, MEMBER, P) \
 	size += KIND##__sizeof(&((P)->MEMBER));
 
-#define SERIALIZE__ENCODE_FIELD(KIND, MEMBER, P, CURSOR) \
+#define SERIALIZE_ENCODE_FIELD(KIND, MEMBER, P, CURSOR) \
 	KIND##__encode(&((P)->MEMBER), CURSOR);
 
 #define SERIALIZE_DECODE_FIELD(KIND, MEMBER, P, CURSOR) \
