@@ -147,19 +147,19 @@ static void handleCb(struct handle *req, int status, int type)
 	}
 
 /* Handle a request of the given type and check that no error occurs. */
-#define HANDLE(TYPE)                                                   \
-	{                                                              \
-		int rc2;                                               \
-		f->cursor->p = bufferCursor(f->buf1, 0);               \
-		f->cursor->cap = bufferOffset(f->buf1);                \
-		bufferReset(f->buf2);                                  \
-		f->context->invoked = false;                           \
-		f->context->status = -1;                               \
-		f->context->type = -1;                                 \
-		rc2 = gateway_handle(f->gateway, f->handle,            \
-				     DQLITE_REQUEST_##TYPE, f->cursor, \
-				     f->buf2, handleCb);               \
-		munit_assert_int(rc2, ==, 0);                          \
+#define HANDLE(TYPE)                                                           \
+	{                                                                      \
+		int rc2;                                                       \
+		f->cursor->p = bufferCursor(f->buf1, 0);                       \
+		f->cursor->cap = bufferOffset(f->buf1);                        \
+		bufferReset(f->buf2);                                          \
+		f->context->invoked = false;                                   \
+		f->context->status = -1;                                       \
+		f->context->type = -1;                                         \
+		rc2 = gatewayHandle(f->gateway, f->handle,                     \
+				    DQLITE_REQUEST_##TYPE, f->cursor, f->buf2, \
+				    handleCb);                                 \
+		munit_assert_int(rc2, ==, 0);                                  \
 	}
 
 /* Open a leader connection against the "test" database */

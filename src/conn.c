@@ -47,7 +47,7 @@ abort:
 	connStop(c);
 }
 
-static void gateway_handle_cb(struct handle *req, int status, int type)
+static void gatewayHandle_cb(struct handle *req, int status, int type)
 {
 	struct conn *c = req->data;
 	size_t n;
@@ -139,8 +139,8 @@ static void read_request_cb(struct transport *transport, int status)
 			return;
 	}
 
-	rv = gateway_handle(&c->gateway, &c->handle, c->request.type, &cursor,
-			    &c->write, gateway_handle_cb);
+	rv = gatewayHandle(&c->gateway, &c->handle, c->request.type, &cursor,
+			   &c->write, gatewayHandle_cb);
 	if (rv != 0) {
 		connStop(c);
 	}

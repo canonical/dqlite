@@ -962,12 +962,12 @@ static int handle_weight(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
-int gateway_handle(struct gateway *g,
-		   struct handle *req,
-		   int type,
-		   struct cursor *cursor,
-		   struct buffer *buffer,
-		   handle_cb cb)
+int gatewayHandle(struct gateway *g,
+		  struct handle *req,
+		  int type,
+		  struct cursor *cursor,
+		  struct buffer *buffer,
+		  handle_cb cb)
 {
 	int rc = 0;
 
