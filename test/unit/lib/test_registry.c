@@ -4,7 +4,7 @@
 
 #include "../../lib/runner.h"
 
-TEST_MODULE(lib_registry);
+TEST_MODULE(libRegistry);
 
 struct test_item
 {
