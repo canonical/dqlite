@@ -4,7 +4,7 @@
 
 #include "metrics.h"
 
-void dqlite_metrics_init(struct dqlite_metrics *m)
+void dqliteMetrics_init(struct dqliteMetrics *m)
 {
 	assert(m != NULL);
 

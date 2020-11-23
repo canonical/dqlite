@@ -9,12 +9,12 @@
 
 #include <stdint.h>
 
-struct dqlite_metrics
+struct dqliteMetrics
 {
 	uint64_t requests; /* Total number of requests served. */
 	uint64_t duration; /* Total time spent to server requests. */
 };
 
-void dqlite_metrics_init(struct dqlite_metrics *m);
+void dqliteMetrics_init(struct dqliteMetrics *m);
 
 #endif /* DQLITE_METRICS_H */
