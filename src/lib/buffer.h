@@ -38,7 +38,7 @@ void buffer__close(struct buffer *b);
  *
  * Return #NULL in case of out-of-memory errors.
  */
-void *buffer_advance(struct buffer *b, size_t size);
+void *bufferAdvance(struct buffer *b, size_t size);
 
 /**
  * Return the offset of next byte to write.

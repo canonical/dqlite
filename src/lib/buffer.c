@@ -45,7 +45,7 @@ static bool ensure(struct buffer *b, size_t size)
 	return true;
 }
 
-void *buffer_advance(struct buffer *b, size_t size)
+void *bufferAdvance(struct buffer *b, size_t size)
 {
 	void *cursor;
 

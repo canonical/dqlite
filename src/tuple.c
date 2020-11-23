@@ -162,7 +162,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 	/* With params format we need to fill the first byte of the header with
 	 * the params count. */
 	if (HAS_PARAMS_FORMAT(e)) {
-		uint8_t *header = buffer_advance(buffer, 1);
+		uint8_t *header = bufferAdvance(buffer, 1);
 		if (header == NULL) {
 			return DQLITE_NOMEM;
 		}
@@ -176,7 +176,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 	memset(encoder__header(e), 0, n_header);
 
 	/* Advance the buffer write pointer past the tuple header. */
-	cursor = buffer_advance(buffer, n_header);
+	cursor = bufferAdvance(buffer, n_header);
 	if (cursor == NULL) {
 		return DQLITE_NOMEM;
 	}
@@ -244,7 +244,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 	};
 
 	/* Advance the buffer write pointer. */
-	cursor = buffer_advance(e->buffer, size);
+	cursor = bufferAdvance(e->buffer, size);
 	if (cursor == NULL) {
 		return DQLITE_NOMEM;
 	}
