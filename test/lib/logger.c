@@ -10,29 +10,29 @@ void test_logger_emit(void *data, int level, const char *format, va_list args)
 {
 	struct test_logger *t = data;
 	char buf[1024];
-	const char *level_name;
+	const char *levelName;
 	int i;
 
 	(void)data;
 
 	switch (level) {
 		case DQLITE_DEBUG:
-			level_name = "DEBUG";
+			levelName = "DEBUG";
 			break;
 		case DQLITE_INFO:
-			level_name = "INFO ";
+			levelName = "INFO ";
 			break;
 		case DQLITE_WARN:
-			level_name = "WARN ";
+			levelName = "WARN ";
 			break;
 		case DQLITE_LOG_ERROR:
-			level_name = "ERROR";
+			levelName = "ERROR";
 			break;
 	};
 
 	buf[0] = 0;
 
-	sprintf(buf + strlen(buf), "%2d -> [%s] ", t->id, level_name);
+	sprintf(buf + strlen(buf), "%2d -> [%s] ", t->id, levelName);
 
 	vsnprintf(buf + strlen(buf), 1024 - strlen(buf), format, args);
 	munit_log(MUNIT_LOG_INFO, buf);
