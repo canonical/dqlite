@@ -244,7 +244,7 @@ TEST_CASE(idx, found, NULL)
 }
 
 /* No matching item. */
-TEST_CASE(idx, not_found, NULL)
+TEST_CASE(idx, notFound, NULL)
 {
 	struct test_registry *registry = data;
 	struct test_item *item1;
