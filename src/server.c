@@ -376,7 +376,7 @@ static void stop_cb(uv_async_t *stop)
  *
  * It unblocks the s->ready semaphore.
  */
-static void startup_cb(uv_timer_t *startup)
+static void startupCb(uv_timer_t *startup)
 {
 	struct dqlite_node *d = startup->data;
 	int rv;
@@ -508,12 +508,12 @@ static int taskRun(struct dqlite_node *d)
 	rv = uv_async_init(&d->loop, &d->stop, stop_cb);
 	assert(rv == 0);
 
-	/* Schedule startup_cb to be fired as soon as the loop starts. It will
+	/* Schedule startupCb to be fired as soon as the loop starts. It will
 	 * unblock clients of taskReady. */
 	d->startup.data = d;
 	rv = uv_timer_init(&d->loop, &d->startup);
 	assert(rv == 0);
-	rv = uv_timer_start(&d->startup, startup_cb, 0, 0);
+	rv = uv_timer_start(&d->startup, startupCb, 0, 0);
 	assert(rv == 0);
 
 	/* Schedule raft state change monitor. */
