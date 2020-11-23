@@ -409,14 +409,14 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 		db = QUEUE__DATA(head, struct db, queue);
 		rv = encodeDatabase(db, &(*bufs)[i]);
 		if (rv != 0) {
-			goto err_after_encode_header;
+			goto errAfterEncodeHeader;
 		}
 		i += 2;
 	}
 
 	return 0;
 
-err_after_encode_header:
+errAfterEncodeHeader:
 	do {
 		raft_free((*bufs)[i].base);
 		i--;
