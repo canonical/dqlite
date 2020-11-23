@@ -19,7 +19,7 @@ struct fsm
 	} pending; /* For upgrades from V1 */
 };
 
-static int apply_open(struct fsm *f, const struct command_open *c)
+static int applyOpen(struct fsm *f, const struct command_open *c)
 {
 	(void)f;
 	(void)c;
@@ -216,7 +216,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 
 	switch (type) {
 		case COMMAND_OPEN:
-			rc = apply_open(f, command);
+			rc = applyOpen(f, command);
 			break;
 		case COMMAND_FRAMES:
 			rc = applyFrames(f, command);
