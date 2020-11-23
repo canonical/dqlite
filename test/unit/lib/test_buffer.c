@@ -107,7 +107,7 @@ TEST_CASE(advance, double, NULL)
 }
 
 /* The buffer needs to double its sice twice. */
-TEST_CASE(advance, double_twice, NULL)
+TEST_CASE(advance, doubleTwice, NULL)
 {
 	struct fixture *f = data;
 	void *cursor;
