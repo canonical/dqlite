@@ -80,7 +80,7 @@ static sqlite3_file *__file_create_main_db(sqlite3_vfs *vfs)
 
 /* Helper for allocating a buffer of 100 bytes containing a database header with
  * a page size field set to 512 bytes. */
-static void *__buf_header_main_db(void)
+static void *__bufHeaderMain_db(void)
 {
 	char *buf = munit_malloc(100 * sizeof *buf);
 
@@ -664,7 +664,7 @@ TEST(VfsWrite, dbHeader, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	sqlite3_file *file = __file_create_main_db(&f->vfs);
 
-	void *buf = __buf_header_main_db();
+	void *buf = __bufHeaderMain_db();
 
 	int rc;
 
@@ -688,7 +688,7 @@ TEST(VfsWrite, andReadPages, setUp, tearDown, 0, NULL)
 
 	int rc;
 	char buf[512];
-	void *buf_header_main = __buf_header_main_db();
+	void *bufHeaderMain = __bufHeaderMain_db();
 	void *buf_page_1 = __buf_page_1();
 	void *buf_page_2 = __buf_page_2();
 
@@ -697,7 +697,7 @@ TEST(VfsWrite, andReadPages, setUp, tearDown, 0, NULL)
 	memset(buf, 0, 512);
 
 	/* Write the header. */
-	rc = file->pMethods->xWrite(file, buf_header_main, 100, 0);
+	rc = file->pMethods->xWrite(file, bufHeaderMain, 100, 0);
 	munit_assert_int(rc, ==, 0);
 
 	/* Write the first page, containing the header and some content. */
@@ -727,7 +727,7 @@ TEST(VfsWrite, andReadPages, setUp, tearDown, 0, NULL)
 	munit_assert_int(buf[256], ==, 5);
 	munit_assert_int(buf[511], ==, 6);
 
-	free(buf_header_main);
+	free(bufHeaderMain);
 	free(buf_page_1);
 	free(buf_page_2);
 	free(file);
@@ -740,7 +740,7 @@ TEST(VfsWrite, oomPage, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	sqlite3_file *file = __file_create_main_db(&f->vfs);
-	void *buf_header_main = __buf_header_main_db();
+	void *bufHeaderMain = __bufHeaderMain_db();
 	char buf[512];
 	int rc;
 
@@ -752,10 +752,10 @@ TEST(VfsWrite, oomPage, setUp, tearDown, 0, NULL)
 	memset(buf, 0, 512);
 
 	/* Write the database header, which triggers creating the first page. */
-	rc = file->pMethods->xWrite(file, buf_header_main, 100, 0);
+	rc = file->pMethods->xWrite(file, bufHeaderMain, 100, 0);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
-	free(buf_header_main);
+	free(bufHeaderMain);
 	free(file);
 
 	return MUNIT_OK;
@@ -767,7 +767,7 @@ TEST(VfsWrite, oomPageArray, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	sqlite3_file *file = __file_create_main_db(&f->vfs);
-	void *buf_header_main = __buf_header_main_db();
+	void *bufHeaderMain = __bufHeaderMain_db();
 	char buf[512];
 	int rc;
 
@@ -779,10 +779,10 @@ TEST(VfsWrite, oomPageArray, setUp, tearDown, 0, NULL)
 	memset(buf, 0, 512);
 
 	/* Write the database header, which triggers creating the first page. */
-	rc = file->pMethods->xWrite(file, buf_header_main, 100, 0);
+	rc = file->pMethods->xWrite(file, bufHeaderMain, 100, 0);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
-	free(buf_header_main);
+	free(bufHeaderMain);
 	free(file);
 
 	return MUNIT_OK;
@@ -793,7 +793,7 @@ TEST(VfsWrite, oomPageBuf, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	sqlite3_file *file = __file_create_main_db(&f->vfs);
-	void *buf_header_main = __buf_header_main_db();
+	void *bufHeaderMain = __bufHeaderMain_db();
 	char buf[512];
 	int rc;
 
@@ -805,10 +805,10 @@ TEST(VfsWrite, oomPageBuf, setUp, tearDown, 0, NULL)
 	memset(buf, 0, 512);
 
 	/* Write the database header, which triggers creating the first page. */
-	rc = file->pMethods->xWrite(file, buf_header_main, 100, 0);
+	rc = file->pMethods->xWrite(file, bufHeaderMain, 100, 0);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
-	free(buf_header_main);
+	free(bufHeaderMain);
 	free(file);
 
 	return MUNIT_OK;
