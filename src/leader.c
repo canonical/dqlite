@@ -112,7 +112,7 @@ int leaderInit(struct leader *l, struct db *db, struct raft *raft)
 	l->exec = NULL;
 	l->apply.data = l;
 	l->inflight = NULL;
-	QUEUE__PUSH(&db->leaders, &l->queue);
+	QUEUE_PUSH(&db->leaders, &l->queue);
 	return 0;
 }
 

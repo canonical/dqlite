@@ -29,7 +29,7 @@ typedef void *queue[2];
 /**
  * Insert an element at the back of a queue.
  */
-#define QUEUE__PUSH(q, e)                      \
+#define QUEUE_PUSH(q, e)                       \
 	{                                      \
 		QUEUE_NEXT(e) = (q);           \
 		QUEUE_PREV(e) = QUEUE_PREV(q); \

@@ -450,7 +450,7 @@ static void listenCb(uv_stream_t *listener, int status)
 		goto errAfterConnAlloc;
 	}
 
-	QUEUE__PUSH(&t->conns, &conn->queue);
+	QUEUE_PUSH(&t->conns, &conn->queue);
 
 	return;
 
