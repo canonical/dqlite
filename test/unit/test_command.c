@@ -41,7 +41,7 @@ TEST_CASE(open, decode, NULL)
 	c1.filename = "db";
 	rc = command__encode(COMMAND_OPEN, &c1, &buf);
 	munit_assert_int(rc, ==, 0);
-	rc = command__decode(&buf, &type, &c2);
+	rc = command_decode(&buf, &type, &c2);
 	munit_assert_int(rc, ==, 0);
 	munit_assert_int(type, ==, COMMAND_OPEN);
 	munit_assert_string_equal(((struct command_open *)c2)->filename, "db");

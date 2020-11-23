@@ -208,7 +208,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 	int type;
 	void *command;
 	int rc;
-	rc = command__decode(buf, &type, &command);
+	rc = command_decode(buf, &type, &command);
 	if (rc != 0) {
 		// errorf(f->logger, "fsm: decode command: %d", rc);
 		goto err;

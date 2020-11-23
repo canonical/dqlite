@@ -106,7 +106,7 @@ int command__encode(int type, const void *command, struct raft_buffer *buf)
 		rc = command_##LOWER##__decode(&cursor, *command);      \
 		break;
 
-int command__decode(const struct raft_buffer *buf, int *type, void **command)
+int command_decode(const struct raft_buffer *buf, int *type, void **command)
 {
 	struct header h;
 	struct cursor cursor;
