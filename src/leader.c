@@ -217,7 +217,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	 * TODO: reason about if it's indeed fine to ignore all kind of
 	 * errors. */
 	command.filename = l->db->filename;
-	rv = command__encode(COMMAND_CHECKPOINT, &command, &buf);
+	rv = command_encode(COMMAND_CHECKPOINT, &command, &buf);
 	if (rv != 0) {
 		goto abort;
 	}
@@ -322,7 +322,7 @@ static int leaderApplyFrames(struct exec *req,
 		goto err;
 	}
 
-	rv = command__encode(COMMAND_FRAMES, &c, &buf);
+	rv = command_encode(COMMAND_FRAMES, &c, &buf);
 	if (rv != 0) {
 		goto err_after_apply_alloc;
 	}
