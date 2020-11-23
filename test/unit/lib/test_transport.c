@@ -6,7 +6,7 @@
 #include "../../lib/endpoint.h"
 #include "../../lib/uv.h"
 
-TEST_MODULE(lib_transport);
+TEST_MODULE(libTransport);
 
 /******************************************************************************
  *
