@@ -87,7 +87,7 @@ struct cursor
 	size_t NAME##__sizeof(const struct NAME *p)               \
 	{                                                         \
 		size_t size = 0;                                  \
-		FIELDS(SERIALIZE__SIZEOF_FIELD, p);               \
+		FIELDS(SERIALIZE_SIZEOF_FIELD, p);                \
 		return size;                                      \
 	}                                                         \
 	void NAME##__encode(const struct NAME *p, void **cursor)  \
@@ -101,7 +101,7 @@ struct cursor
 		return 0;                                         \
 	}
 
-#define SERIALIZE__SIZEOF_FIELD(KIND, MEMBER, P) \
+#define SERIALIZE_SIZEOF_FIELD(KIND, MEMBER, P) \
 	size += KIND##__sizeof(&((P)->MEMBER));
 
 #define SERIALIZE_ENCODE_FIELD(KIND, MEMBER, P, CURSOR) \
