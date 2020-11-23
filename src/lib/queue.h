@@ -55,7 +55,7 @@ typedef void *queue[2];
 /**
  * Return the element at the back of the queue.
  */
-#define QUEUE__TAIL(q) (QUEUE_PREV(q))
+#define QUEUE_TAIL(q) (QUEUE_PREV(q))
 
 /**
  * Iternate over the element of a queue.
