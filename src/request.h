@@ -13,25 +13,25 @@
 	X(text, filename, ##__VA_ARGS__) \
 	X(uint64, flags, ##__VA_ARGS__)  \
 	X(text, vfs, ##__VA_ARGS__)
-#define REQUEST_PREPARE(X, ...)         \
-	X(uint64, db_id, ##__VA_ARGS__) \
+#define REQUEST_PREPARE(X, ...)        \
+	X(uint64, dbId, ##__VA_ARGS__) \
 	X(text, sql, ##__VA_ARGS__)
-#define REQUEST_EXEC(X, ...)            \
-	X(uint32, db_id, ##__VA_ARGS__) \
+#define REQUEST_EXEC(X, ...)           \
+	X(uint32, dbId, ##__VA_ARGS__) \
 	X(uint32, stmt_id, ##__VA_ARGS__)
-#define REQUEST_QUERY(X, ...)           \
-	X(uint32, db_id, ##__VA_ARGS__) \
+#define REQUEST_QUERY(X, ...)          \
+	X(uint32, dbId, ##__VA_ARGS__) \
 	X(uint32, stmt_id, ##__VA_ARGS__)
-#define REQUEST_FINALIZE(X, ...)        \
-	X(uint32, db_id, ##__VA_ARGS__) \
+#define REQUEST_FINALIZE(X, ...)       \
+	X(uint32, dbId, ##__VA_ARGS__) \
 	X(uint32, stmt_id, ##__VA_ARGS__)
-#define REQUEST_EXEC_SQL(X, ...)        \
-	X(uint64, db_id, ##__VA_ARGS__) \
+#define REQUEST_EXEC_SQL(X, ...)       \
+	X(uint64, dbId, ##__VA_ARGS__) \
 	X(text, sql, ##__VA_ARGS__)
-#define REQUEST_QUERY_SQL(X, ...)       \
-	X(uint64, db_id, ##__VA_ARGS__) \
+#define REQUEST_QUERY_SQL(X, ...)      \
+	X(uint64, dbId, ##__VA_ARGS__) \
 	X(text, sql, ##__VA_ARGS__)
-#define REQUEST_INTERRUPT(X, ...) X(uint64, db_id, ##__VA_ARGS__)
+#define REQUEST_INTERRUPT(X, ...) X(uint64, dbId, ##__VA_ARGS__)
 #define REQUEST_ADD(X, ...)          \
 	X(uint64, id, ##__VA_ARGS__) \
 	X(text, address, ##__VA_ARGS__)

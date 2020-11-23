@@ -31,7 +31,7 @@ static void *__worker_run(void *arg)
 	struct worker *w;
 	char *leader;
 	uint64_t heartbeat;
-	uint32_t db_id;
+	uint32_t dbId;
 	int b;
 	int i;
 
@@ -43,7 +43,7 @@ static void *__worker_run(void *arg)
 	test_client_handshake(w->client);
 	test_client_leader(w->client, &leader);
 	test_client_client(w->client, &heartbeat);
-	test_client_open(w->client, "test.db", &db_id);
+	test_client_open(w->client, "test.db", &dbId);
 
 	b = w->a + w->n;
 
@@ -58,19 +58,19 @@ static void *__worker_run(void *arg)
 		/* Insert a row in the test table. */
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i);
 
-		test_client_prepare(w->client, db_id, sql, &stmt_id);
-		test_client_exec(w->client, db_id, stmt_id, &result);
+		test_client_prepare(w->client, dbId, sql, &stmt_id);
+		test_client_exec(w->client, dbId, stmt_id, &result);
 
 		munit_assert_int(result.rows_affected, ==, 1);
 
-		test_client_finalize(w->client, db_id, stmt_id);
+		test_client_finalize(w->client, dbId, stmt_id);
 
 		/* Fetch all rows within our own working range. */
 		sprintf(sql, "SELECT n FROM test WHERE n >= %d AND n < %d",
 			w->a, b);
 
-		test_client_prepare(w->client, db_id, sql, &stmt_id);
-		test_client_query(w->client, db_id, stmt_id, &rows);
+		test_client_prepare(w->client, dbId, sql, &stmt_id);
+		test_client_query(w->client, dbId, stmt_id, &rows);
 
 		munit_assert_int(rows.column_count, ==, 1);
 		munit_assert_string_equal(rows.columnNames[0], "n");
@@ -86,7 +86,7 @@ static void *__worker_run(void *arg)
 		}
 
 		test_client_rows_close(&rows);
-		test_client_finalize(w->client, db_id, stmt_id);
+		test_client_finalize(w->client, dbId, stmt_id);
 	}
 
 	return 0;
@@ -180,7 +180,7 @@ TEST_CASE(exec, single_query, NULL)
 	struct test_client *client;
 	char *leader;
 	uint64_t heartbeat;
-	uint32_t db_id;
+	uint32_t dbId;
 	uint32_t stmt_id;
 	struct test_client_result result;
 	struct test_client_rows rows;
@@ -193,34 +193,34 @@ TEST_CASE(exec, single_query, NULL)
 	test_client_handshake(client);
 	test_client_leader(client, &leader);
 	test_client_client(client, &heartbeat);
-	test_client_open(client, "test.db", &db_id);
-	munit_assert_int(db_id, ==, 0);
+	test_client_open(client, "test.db", &dbId);
+	munit_assert_int(dbId, ==, 0);
 
 	/* Create a test table. */
-	test_client_prepare(client, db_id, "CREATE TABLE test (n INT)",
+	test_client_prepare(client, dbId, "CREATE TABLE test (n INT)",
 			    &stmt_id);
-	test_client_exec(client, db_id, stmt_id, &result);
-	test_client_finalize(client, db_id, stmt_id);
+	test_client_exec(client, dbId, stmt_id, &result);
+	test_client_finalize(client, dbId, stmt_id);
 
 	/* Insert a row in the test table. */
-	test_client_prepare(client, db_id, "INSERT INTO test VALUES(123)",
+	test_client_prepare(client, dbId, "INSERT INTO test VALUES(123)",
 			    &stmt_id);
 
 	munit_assert_int(stmt_id, ==, 0);
 
-	test_client_exec(client, db_id, stmt_id, &result);
+	test_client_exec(client, dbId, stmt_id, &result);
 
 	munit_assert_int(result.last_insert_id, ==, 1);
 	munit_assert_int(result.rows_affected, ==, 1);
 
-	test_client_finalize(client, db_id, stmt_id);
+	test_client_finalize(client, dbId, stmt_id);
 
 	/* Select rows from the test table. */
-	test_client_prepare(client, db_id, "SELECT n FROM test", &stmt_id);
+	test_client_prepare(client, dbId, "SELECT n FROM test", &stmt_id);
 
 	munit_assert_int(stmt_id, ==, 0);
 
-	test_client_query(client, db_id, stmt_id, &rows);
+	test_client_query(client, dbId, stmt_id, &rows);
 
 	munit_assert_int(rows.column_count, ==, 1);
 	munit_assert_string_equal(rows.columnNames[0], "n");
@@ -231,7 +231,7 @@ TEST_CASE(exec, single_query, NULL)
 
 	test_client_rows_close(&rows);
 
-	test_client_finalize(client, db_id, stmt_id);
+	test_client_finalize(client, dbId, stmt_id);
 
 	test_client_close(client);
 	free(client);
@@ -245,7 +245,7 @@ TEST_CASE(exec, large_query, NULL)
 	struct test_client *client;
 	char *leader;
 	uint64_t heartbeat;
-	uint32_t db_id;
+	uint32_t dbId;
 	uint32_t stmt_id;
 	struct test_client_result result;
 	struct test_client_rows rows;
@@ -259,41 +259,41 @@ TEST_CASE(exec, large_query, NULL)
 	test_client_handshake(client);
 	test_client_leader(client, &leader);
 	test_client_client(client, &heartbeat);
-	test_client_open(client, "test.db", &db_id);
-	munit_assert_int(db_id, ==, 0);
+	test_client_open(client, "test.db", &dbId);
+	munit_assert_int(dbId, ==, 0);
 
 	/* Create a test table. */
-	test_client_prepare(client, db_id, "CREATE TABLE test (n INT)",
+	test_client_prepare(client, dbId, "CREATE TABLE test (n INT)",
 			    &stmt_id);
-	test_client_exec(client, db_id, stmt_id, &result);
-	test_client_finalize(client, db_id, stmt_id);
+	test_client_exec(client, dbId, stmt_id, &result);
+	test_client_finalize(client, dbId, stmt_id);
 
-	test_client_prepare(client, db_id, "BEGIN", &stmt_id);
-	test_client_exec(client, db_id, stmt_id, &result);
-	test_client_finalize(client, db_id, stmt_id);
+	test_client_prepare(client, dbId, "BEGIN", &stmt_id);
+	test_client_exec(client, dbId, stmt_id, &result);
+	test_client_finalize(client, dbId, stmt_id);
 
 	/* Insert lots of rows in the test table. */
-	test_client_prepare(client, db_id, "INSERT INTO test VALUES(123456789)",
+	test_client_prepare(client, dbId, "INSERT INTO test VALUES(123456789)",
 			    &stmt_id);
 
 	for (i = 0; i < 256; i++) {
 		munit_assert_int(stmt_id, ==, 0);
-		test_client_exec(client, db_id, stmt_id, &result);
+		test_client_exec(client, dbId, stmt_id, &result);
 		munit_assert_int(result.rows_affected, ==, 1);
 	}
 
-	test_client_finalize(client, db_id, stmt_id);
+	test_client_finalize(client, dbId, stmt_id);
 
-	test_client_prepare(client, db_id, "COMMIT", &stmt_id);
-	test_client_exec(client, db_id, stmt_id, &result);
-	test_client_finalize(client, db_id, stmt_id);
+	test_client_prepare(client, dbId, "COMMIT", &stmt_id);
+	test_client_exec(client, dbId, stmt_id, &result);
+	test_client_finalize(client, dbId, stmt_id);
 
 	/* Select all rows from the test table. */
-	test_client_prepare(client, db_id, "SELECT n FROM test", &stmt_id);
+	test_client_prepare(client, dbId, "SELECT n FROM test", &stmt_id);
 
 	munit_assert_int(stmt_id, ==, 0);
 
-	test_client_query(client, db_id, stmt_id, &rows);
+	test_client_query(client, dbId, stmt_id, &rows);
 
 	munit_assert_int(rows.column_count, ==, 1);
 	munit_assert_string_equal(rows.columnNames[0], "n");
@@ -304,7 +304,7 @@ TEST_CASE(exec, large_query, NULL)
 
 	test_client_rows_close(&rows);
 
-	test_client_finalize(client, db_id, stmt_id);
+	test_client_finalize(client, dbId, stmt_id);
 
 	test_client_close(client);
 
@@ -321,7 +321,7 @@ TEST_CASE(exec, multi_thread, NULL)
 	struct test_client_result result;
 	char *leader;
 	uint64_t heartbeat;
-	uint32_t db_id;
+	uint32_t dbId;
 	uint32_t stmt_id;
 
 	(void)params;
@@ -335,14 +335,14 @@ TEST_CASE(exec, multi_thread, NULL)
 	test_client_handshake(client);
 	test_client_leader(client, &leader);
 	test_client_client(client, &heartbeat);
-	test_client_open(client, "test.db", &db_id);
-	munit_assert_int(db_id, ==, 0);
+	test_client_open(client, "test.db", &dbId);
+	munit_assert_int(dbId, ==, 0);
 
 	/* Create a test table and close this client. */
-	test_client_prepare(client, db_id, "CREATE TABLE test (n INT)",
+	test_client_prepare(client, dbId, "CREATE TABLE test (n INT)",
 			    &stmt_id);
-	test_client_exec(client, db_id, stmt_id, &result);
-	test_client_finalize(client, db_id, stmt_id);
+	test_client_exec(client, dbId, stmt_id, &result);
+	test_client_finalize(client, dbId, stmt_id);
 
 	test_client_close(client);
 

@@ -10,7 +10,7 @@
 struct client
 {
 	int fd;		     /* Connected socket */
-	unsigned db_id;      /* Database ID provided by the server */
+	unsigned dbId;       /* Database ID provided by the server */
 	struct buffer read;  /* Read buffer */
 	struct buffer write; /* Write buffer */
 };

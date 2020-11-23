@@ -18,9 +18,9 @@
 #define RESPONSE_DB(X, ...)          \
 	X(uint32, id, ##__VA_ARGS__) \
 	X(uint32, __pad__, ##__VA_ARGS__)
-#define RESPONSE_STMT(X, ...)           \
-	X(uint32, db_id, ##__VA_ARGS__) \
-	X(uint32, id, ##__VA_ARGS__)    \
+#define RESPONSE_STMT(X, ...)          \
+	X(uint32, dbId, ##__VA_ARGS__) \
+	X(uint32, id, ##__VA_ARGS__)   \
 	X(uint64, params, ##__VA_ARGS__)
 #define RESPONSE_RESULT(X, ...)                  \
 	X(uint64, last_insert_id, ##__VA_ARGS__) \

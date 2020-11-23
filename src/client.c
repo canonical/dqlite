@@ -150,14 +150,14 @@ int clientRecvDb(struct client *c)
 {
 	struct response_db response;
 	RESPONSE(db, DB);
-	c->db_id = response.id;
+	c->dbId = response.id;
 	return 0;
 }
 
 int clientSendPrepare(struct client *c, const char *sql)
 {
 	struct request_prepare request;
-	request.db_id = c->db_id;
+	request.dbId = c->dbId;
 	request.sql = sql;
 	REQUEST(prepare, PREPARE);
 	return 0;
@@ -174,7 +174,7 @@ int clientRecvStmt(struct client *c, unsigned *stmt_id)
 int clientSendExec(struct client *c, unsigned stmt_id)
 {
 	struct request_exec request;
-	request.db_id = c->db_id;
+	request.dbId = c->dbId;
 	request.stmt_id = stmt_id;
 	REQUEST(exec, EXEC);
 	return 0;
@@ -183,7 +183,7 @@ int clientSendExec(struct client *c, unsigned stmt_id)
 int clientSendExecSQL(struct client *c, const char *sql)
 {
 	struct request_exec_sql request;
-	request.db_id = c->db_id;
+	request.dbId = c->dbId;
 	request.sql = sql;
 	REQUEST(exec_sql, EXEC_SQL);
 	return 0;
@@ -203,7 +203,7 @@ int clientRecvResult(struct client *c,
 int clientSendQuery(struct client *c, unsigned stmt_id)
 {
 	struct request_query request;
-	request.db_id = c->db_id;
+	request.dbId = c->dbId;
 	request.stmt_id = stmt_id;
 	REQUEST(query, QUERY);
 	return 0;

@@ -132,7 +132,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 	{                                       \
 		struct request_prepare prepare; \
 		struct response_stmt stmt;      \
-		prepare.db_id = 0;              \
+		prepare.dbId = 0;               \
 		prepare.sql = SQL;              \
 		ENCODE(C, &prepare, prepare);   \
 		HANDLE(C, PREPARE);             \
@@ -145,7 +145,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 #define EXEC(C, STMT_ID)                  \
 	{                                 \
 		struct request_exec exec; \
-		exec.db_id = 0;           \
+		exec.dbId = 0;            \
 		exec.stmt_id = STMT_ID;   \
 		ENCODE(C, &exec, exec);   \
 		HANDLE(C, EXEC);          \
@@ -155,7 +155,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 #define QUERY(C, STMT_ID)                   \
 	{                                   \
 		struct request_query query; \
-		query.db_id = 0;            \
+		query.dbId = 0;             \
 		query.stmt_id = STMT_ID;    \
 		ENCODE(C, &query, query);   \
 		HANDLE(C, QUERY);           \

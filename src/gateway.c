@@ -215,7 +215,7 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 	const char *tail;
 	int rc;
 	START(prepare, stmt);
-	LOOKUP_DB(request.db_id);
+	LOOKUP_DB(request.dbId);
 	rc = stmt__registry_add(&g->stmts, &stmt);
 	if (rc != 0) {
 		return rc;
@@ -227,7 +227,7 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
-	response.db_id = (uint32_t)request.db_id;
+	response.dbId = (uint32_t)request.dbId;
 	response.id = (uint32_t)stmt->id;
 	response.params = (uint64_t)sqlite3_bind_parameter_count(stmt->stmt);
 	SUCCESS(stmt, STMT);
@@ -282,7 +282,7 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 	int rv;
 	START(exec, result);
 	CHECK_LEADER(req);
-	LOOKUP_DB(request.db_id);
+	LOOKUP_DB(request.dbId);
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
@@ -365,7 +365,7 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	int rv;
 	START(query, rows);
 	CHECK_LEADER(req);
-	LOOKUP_DB(request.db_id);
+	LOOKUP_DB(request.dbId);
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
@@ -390,7 +390,7 @@ static int handle_finalize(struct handle *req, struct cursor *cursor)
 	struct stmt *stmt;
 	int rv;
 	START(finalize, empty);
-	LOOKUP_DB(request.db_id);
+	LOOKUP_DB(request.dbId);
 	LOOKUP_STMT(request.stmt_id);
 	rv = stmt__registry_del(&req->gateway->stmts, stmt);
 	if (rv != 0) {
@@ -490,7 +490,7 @@ static int handle_exec_sql(struct handle *req, struct cursor *cursor)
 	struct gateway *g = req->gateway;
 	START(exec_sql, result);
 	CHECK_LEADER(req);
-	LOOKUP_DB(request.db_id);
+	LOOKUP_DB(request.dbId);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
 	assert(g->req == NULL);
@@ -508,7 +508,7 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	int rv;
 	START(query_sql, rows);
 	CHECK_LEADER(req);
-	LOOKUP_DB(request.db_id);
+	LOOKUP_DB(request.dbId);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
 	rv = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt,

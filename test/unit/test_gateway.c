@@ -178,7 +178,7 @@ static void handleCb(struct handle *req, int status, int type)
 	{                                       \
 		struct request_prepare prepare; \
 		struct response_stmt stmt;      \
-		prepare.db_id = 0;              \
+		prepare.dbId = 0;               \
 		prepare.sql = SQL;              \
 		ENCODE(&prepare, prepare);      \
 		HANDLE(PREPARE);                \
@@ -191,7 +191,7 @@ static void handleCb(struct handle *req, int status, int type)
 #define FINALIZE(STMT_ID)                         \
 	{                                         \
 		struct request_finalize finalize; \
-		finalize.db_id = 0;               \
+		finalize.dbId = 0;                \
 		finalize.stmt_id = STMT_ID;       \
 		ENCODE(&finalize, finalize);      \
 		HANDLE(FINALIZE);                 \
@@ -202,7 +202,7 @@ static void handleCb(struct handle *req, int status, int type)
 #define EXEC_SUBMIT(STMT_ID)              \
 	{                                 \
 		struct request_exec exec; \
-		exec.db_id = 0;           \
+		exec.dbId = 0;            \
 		exec.stmt_id = STMT_ID;   \
 		ENCODE(&exec, exec);      \
 		HANDLE(EXEC);             \
@@ -212,7 +212,7 @@ static void handleCb(struct handle *req, int status, int type)
 #define EXEC_SQL_SUBMIT(SQL)                      \
 	{                                         \
 		struct request_exec_sql exec_sql; \
-		exec_sql.db_id = 0;               \
+		exec_sql.dbId = 0;                \
 		exec_sql.sql = SQL;               \
 		ENCODE(&exec_sql, exec_sql);      \
 		HANDLE(EXEC_SQL);                 \
@@ -237,7 +237,7 @@ static void handleCb(struct handle *req, int status, int type)
 		uint64_t _stmt_id;              \
 		struct request_prepare prepare; \
 		struct response_stmt stmt;      \
-		prepare.db_id = 0;              \
+		prepare.dbId = 0;               \
 		prepare.sql = SQL;              \
 		ENCODE(&prepare, prepare);      \
 		HANDLE(PREPARE);                \
@@ -449,7 +449,7 @@ TEST_CASE(prepare, success, NULL)
 {
 	struct prepare_fixture *f = data;
 	(void)params;
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
@@ -495,7 +495,7 @@ TEST_CASE(exec, simple, NULL)
 	(void)params;
 	CLUSTER_ELECT(0);
 	PREPARE("CREATE TABLE test (n INT)");
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, exec);
 	HANDLE(EXEC);
@@ -568,7 +568,7 @@ TEST_CASE(exec, blob, NULL)
 	munit_assert_int(f->response.rows_affected, ==, 1);
 
 	PREPARE("SELECT data FROM test");
-	query.db_id = 0;
+	query.dbId = 0;
 	query.stmt_id = stmt_id;
 	ENCODE(&query, query);
 	HANDLE(QUERY);
@@ -877,7 +877,7 @@ TEST_CASE(exec, restore, NULL)
 	SELECT(1);
 	OPEN;
 	PREPARE("SELECT n FROM test");
-	request.db_id = 0;
+	request.dbId = 0;
 	request.stmt_id = stmt_id;
 	ENCODE(&request, query);
 	HANDLE(QUERY);
@@ -937,7 +937,7 @@ TEST_CASE(query, simple, NULL)
 	const char *column;
 	(void)params;
 	PREPARE("SELECT n FROM test");
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
@@ -964,7 +964,7 @@ TEST_CASE(query, one_row, NULL)
 	EXEC("INSERT INTO test(n) VALUES(666)");
 
 	PREPARE("SELECT n FROM test");
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
@@ -1002,7 +1002,7 @@ TEST_CASE(query, large, NULL)
 	EXEC("COMMIT");
 
 	PREPARE("SELECT n FROM test");
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
@@ -1059,7 +1059,7 @@ TEST_CASE(query, params, NULL)
 	EXEC("COMMIT");
 
 	PREPARE("SELECT n FROM test WHERE n > ? AND n < ?");
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.stmt_id = stmt_id;
 
 	ENCODE(&f->request, query);
@@ -1092,7 +1092,7 @@ TEST_CASE(query, interrupt, NULL)
 	EXEC("COMMIT");
 
 	PREPARE("SELECT n FROM test");
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
@@ -1137,7 +1137,7 @@ TEST_CASE(query, barrier, NULL)
 	CLUSTER_ELECT(0);
 
 	PREPARE("SELECT n FROM test");
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
@@ -1181,7 +1181,7 @@ TEST_CASE(finalize, success, NULL)
 	struct finalize_fixture *f = data;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)");
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, finalize);
 	HANDLE(FINALIZE);
@@ -1223,7 +1223,7 @@ TEST_CASE(exec_sql, single, NULL)
 {
 	struct exec_sql_fixture *f = data;
 	(void)params;
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
@@ -1237,7 +1237,7 @@ TEST_CASE(exec_sql, multi, NULL)
 {
 	struct exec_sql_fixture *f = data;
 	(void)params;
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.sql =
 	    "CREATE TABLE test (n INT); INSERT INTO test VALUES(1)";
 	ENCODE(&f->request, exec_sql);
@@ -1283,7 +1283,7 @@ TEST_CASE(query_sql, small, NULL)
 	struct query_sql_fixture *f = data;
 	(void)params;
 	EXEC("INSERT INTO test VALUES(123)");
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
@@ -1304,7 +1304,7 @@ TEST_CASE(query_sql, params, NULL)
 	EXEC("INSERT INTO test(n) VALUES(4)");
 	EXEC("COMMIT");
 
-	f->request.db_id = 0;
+	f->request.dbId = 0;
 	f->request.sql = "SELECT n FROM test WHERE n > ? AND n < ?";
 	ENCODE(&f->request, query_sql);
 	values[0].type = SQLITE_INTEGER;
