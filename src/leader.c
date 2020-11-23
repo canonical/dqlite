@@ -400,10 +400,10 @@ static void execBarrierCb(struct barrier *barrier, int status)
 	leaderExecV2(req);
 }
 
-int leader__exec(struct leader *l,
-		 struct exec *req,
-		 sqlite3_stmt *stmt,
-		 exec_cb cb)
+int leader_exec(struct leader *l,
+		struct exec *req,
+		sqlite3_stmt *stmt,
+		exec_cb cb)
 {
 	int rv;
 	if (l->exec != NULL) {

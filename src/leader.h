@@ -97,10 +97,10 @@ void leaderClose(struct leader *l);
  * loop which will then have completed the request and transfer control back to
  * the main coroutine, pausing until the next request.
  */
-int leader__exec(struct leader *l,
-		 struct exec *req,
-		 sqlite3_stmt *stmt,
-		 exec_cb cb);
+int leader_exec(struct leader *l,
+		struct exec *req,
+		sqlite3_stmt *stmt,
+		exec_cb cb);
 
 /**
  * Submit a raft barrier request if there is no transaction in progress in the
