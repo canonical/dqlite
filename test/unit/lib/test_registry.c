@@ -315,7 +315,7 @@ TEST_CASE(del, twice, NULL)
 
 /* Deleting an item twice results in an error, also if the item being deleted
  * again has an ID lower than the highest one. */
-TEST_CASE(del, twice_middle, NULL)
+TEST_CASE(del, twiceMiddle, NULL)
 {
 	struct testRegistry *registry = data;
 	int err;
