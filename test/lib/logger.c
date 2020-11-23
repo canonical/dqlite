@@ -6,7 +6,7 @@
 #include "logger.h"
 #include "munit.h"
 
-void test_logger_emit(void *data, int level, const char *format, va_list args)
+void test_loggerEmit(void *data, int level, const char *format, va_list args)
 {
 	struct test_logger *t = data;
 	char buf[1024];
@@ -57,7 +57,7 @@ void test_logger_setup(const MunitParameter params[], struct logger *l)
 	t->data = NULL;
 
 	l->data = t;
-	l->emit = test_logger_emit;
+	l->emit = test_loggerEmit;
 }
 
 void test_logger_tear_down(struct logger *l)

@@ -25,7 +25,7 @@ void loggerDefaultEmit(void *data, int level, const char *fmt, va_list args);
 
 /* Emit a log message with a certain level. */
 /* #define debugf(L, FORMAT, ...) \ */
-/* 	logger_emit(L, DQLITE_DEBUG, FORMAT, ##__VA_ARGS__) */
+/* 	loggerEmit(L, DQLITE_DEBUG, FORMAT, ##__VA_ARGS__) */
 #define debugf(C, FORMAT, ...)                                             \
 	C->gateway.raft->io->emit(C->gateway.raft->io, RAFT_DEBUG, FORMAT, \
 				  ##__VA_ARGS__)

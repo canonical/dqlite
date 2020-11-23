@@ -18,7 +18,7 @@ struct test_logger
 	void *data;
 };
 
-void test_logger_emit(void *data, int level, const char *fmt, va_list args);
+void test_loggerEmit(void *data, int level, const char *fmt, va_list args);
 
 #define FIXTURE_LOGGER struct logger logger;
 #define SETUP_LOGGER test_logger_setup(params, &f->logger);
