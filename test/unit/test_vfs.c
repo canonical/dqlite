@@ -1025,11 +1025,11 @@ TEST(VfsTruncate, misaligned, setUp, tearDown, 0, NULL)
 SUITE(VfsShmMap);
 
 static char *testShmMapOomDelay[] = {"0", "1", NULL};
-static char *test_shm_map_oom_repeat[] = {"1", NULL};
+static char *testShmMapOomRepeat[] = {"1", NULL};
 
 static MunitParameterEnum testShmMapOomParams[] = {
     {TEST_HEAP_FAULT_DELAY, testShmMapOomDelay},
-    {TEST_HEAP_FAULT_REPEAT, test_shm_map_oom_repeat},
+    {TEST_HEAP_FAULT_REPEAT, testShmMapOomRepeat},
     {NULL, NULL},
 };
 
