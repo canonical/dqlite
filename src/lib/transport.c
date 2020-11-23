@@ -6,7 +6,7 @@
 #include "transport.h"
 
 /* Called to allocate a buffer for the next stream read. */
-static void alloc_cb(uv_handle_t *stream, size_t suggested_size, uv_buf_t *buf)
+static void allocCb(uv_handle_t *stream, size_t suggested_size, uv_buf_t *buf)
 {
 	struct transport *t;
 	(void)suggested_size;
@@ -152,7 +152,7 @@ int transport__read(struct transport *t, uv_buf_t *buf, transport_read_cb cb)
 	assert(t->read.len == 0);
 	t->read = *buf;
 	t->read_cb = cb;
-	rv = uv_read_start(t->stream, alloc_cb, read_cb);
+	rv = uv_read_start(t->stream, allocCb, read_cb);
 	if (rv != 0) {
 		return DQLITE_ERROR;
 	}
