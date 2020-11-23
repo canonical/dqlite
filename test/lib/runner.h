@@ -253,12 +253,12 @@ extern int _main_suites_n;
 	TEST__GET_3RD_ARG(__VA_ARGS__, TEST_SETUP__2_ARGS, TEST_SETUP__1_ARGS)
 
 #define TEST_SETUP__1_ARGS(S)                                            \
-	static void *S##__setup(const MunitParameter[], void *);         \
+	static void *S##_setup(const MunitParameter[], void *);          \
 	__attribute__((constructor)) static void _##S##_setup_init(void) \
 	{                                                                \
-		_##S##_setup = S##__setup;                               \
+		_##S##_setup = S##_setup;                                \
 	}                                                                \
-	static void *S##__setup(const MunitParameter params[], void *user_data)
+	static void *S##_setup(const MunitParameter params[], void *user_data)
 
 #define TEST_SETUP__2_ARGS(S, F)                                         \
 	__attribute__((constructor)) static void _##S##_setup_init(void) \
