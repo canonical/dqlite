@@ -218,7 +218,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 			size = int64__sizeof(&value->integer);
 			break;
 		case SQLITE_FLOAT:
-			size = float__sizeof(&value->float_);
+			size = float_sizeof(&value->float_);
 			break;
 		case SQLITE_BLOB:
 			size = blobSizeof(&value->blob);
