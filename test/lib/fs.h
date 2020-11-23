@@ -7,6 +7,6 @@
 char *testDirSetup(void);
 
 /* Remove the temporary directory. */
-void test_dir_tear_down(char *dir);
+void testDirTearDown(char *dir);
 
 #endif /* DQLITE_TEST_FS_H */

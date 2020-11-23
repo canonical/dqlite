@@ -46,7 +46,7 @@ void test_server_tear_down(struct test_server *s)
 
 	dqlite_node_destroy(s->dqlite);
 
-	test_dir_tear_down(s->dir);
+	testDirTearDown(s->dir);
 }
 
 void test_server_start(struct test_server *s)

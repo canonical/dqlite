@@ -1178,7 +1178,7 @@ TEST(VfsShmLock, releaseUnix, setUp, tearDown, 0, NULL)
 	rc = file->pMethods->xClose(file);
 	munit_assert_int(rc, ==, 0);
 
-	test_dir_tear_down(dir);
+	testDirTearDown(dir);
 
 	free(file);
 

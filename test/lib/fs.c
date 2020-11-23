@@ -34,7 +34,8 @@ static int test__dir_tear_down_nftw_fn(const char *       path,
 	return 0;
 }
 
-void test_dir_tear_down(char *dir) {
+void testDirTearDown(char *dir)
+{
 	int rc;
 
 	rc = nftw(dir,
