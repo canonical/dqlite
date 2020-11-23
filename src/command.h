@@ -45,13 +45,13 @@ typedef struct frames frames_t;
 #define COMMAND__UNDO(X, ...) X(uint64, tx_id, ##__VA_ARGS__)
 #define COMMAND__CHECKPOINT(X, ...) X(text, filename, ##__VA_ARGS__)
 
-#define COMMAND__TYPES(X, ...)         \
+#define COMMAND_TYPES(X, ...)          \
 	X(open, OPEN, __VA_ARGS__)     \
 	X(frames, FRAMES, __VA_ARGS__) \
 	X(undo, UNDO, __VA_ARGS__)     \
 	X(checkpoint, CHECKPOINT, __VA_ARGS__)
 
-COMMAND__TYPES(COMMAND_DEFINE);
+COMMAND_TYPES(COMMAND_DEFINE);
 
 int commandEncode(int type, const void *command, struct raft_buffer *buf);
 

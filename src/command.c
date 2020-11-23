@@ -69,7 +69,7 @@ static int frames__decode(struct cursor *cursor, frames_t *frames)
 #define COMMAND_IMPLEMENT(LOWER, UPPER, _) \
 	SERIALIZE__IMPLEMENT(command_##LOWER, COMMAND__##UPPER);
 
-COMMAND__TYPES(COMMAND_IMPLEMENT, );
+COMMAND_TYPES(COMMAND_IMPLEMENT, );
 
 #define ENCODE(LOWER, UPPER, _)                                 \
 	case COMMAND_##UPPER:                                   \
@@ -92,7 +92,7 @@ int commandEncode(int type, const void *command, struct raft_buffer *buf)
 	int rc = 0;
 	h.format = FORMAT;
 	switch (type) {
-		COMMAND__TYPES(ENCODE, )
+		COMMAND_TYPES(ENCODE, )
 	};
 	return rc;
 }
@@ -123,7 +123,7 @@ int commandDecode(const struct raft_buffer *buf, int *type, void **command)
 		return DQLITE_PROTO;
 	}
 	switch (h.type) {
-		COMMAND__TYPES(DECODE, )
+		COMMAND_TYPES(DECODE, )
 		default:
 			rc = DQLITE_PROTO;
 			break;
