@@ -12,7 +12,7 @@
 #endif
 
 /* Flip a 16-bit number to network byte order (little endian) */
-DQLITE_INLINE uint16_t byte__flip16(uint16_t v)
+DQLITE_INLINE uint16_t byte_flip16(uint16_t v)
 {
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
 	return v;

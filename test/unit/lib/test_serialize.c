@@ -268,10 +268,10 @@ TEST_CASE(encode, custom, NULL)
 	munit_assert_int(byte__flip64(*(uint64_t *)cursor), ==, 40);
 	cursor += 8;
 
-	munit_assert_int(byte__flip16(*(uint16_t *)cursor), ==, 2);
+	munit_assert_int(byte_flip16(*(uint16_t *)cursor), ==, 2);
 	cursor += 2;
 
-	munit_assert_int(byte__flip16(*(uint16_t *)cursor), ==, 8);
+	munit_assert_int(byte_flip16(*(uint16_t *)cursor), ==, 8);
 	cursor += 2;
 
 	cursor += 4; /* Unused */
@@ -369,10 +369,10 @@ TEST_CASE(decode, custom, NULL)
 	*(uint64_t *)p = byte__flip64(40);
 	p += 8;
 
-	*(uint16_t *)p = byte__flip16(2);
+	*(uint16_t *)p = byte_flip16(2);
 	p += 2;
 
-	*(uint16_t *)p = byte__flip16(8);
+	*(uint16_t *)p = byte_flip16(8);
 	p += 2;
 
 	p += 4; /* Unused */
