@@ -48,10 +48,10 @@ int clientRecvDb(struct client *c);
 int clientSendPrepare(struct client *c, const char *sql);
 
 /* Receive the response to a prepare request. */
-int clientRecvStmt(struct client *c, unsigned *stmt_id);
+int clientRecvStmt(struct client *c, unsigned *stmtId);
 
 /* Send a request to execute a statement. */
-int clientSendExec(struct client *c, unsigned stmt_id);
+int clientSendExec(struct client *c, unsigned stmtId);
 
 /* Send a request to execute a non-prepared statement. */
 int clientSendExecSQL(struct client *c, const char *sql);
@@ -62,7 +62,7 @@ int clientRecvResult(struct client *c,
 		     unsigned *rowsAffected);
 
 /* Send a request to perform a query. */
-int clientSendQuery(struct client *c, unsigned stmt_id);
+int clientSendQuery(struct client *c, unsigned stmtId);
 
 /* Receive the response of a query request. */
 int clientRecvRows(struct client *c, struct rows *rows);

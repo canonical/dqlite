@@ -284,7 +284,7 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 	START(exec, result);
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.dbId);
-	LOOKUP_STMT(request.stmt_id);
+	LOOKUP_STMT(request.stmtId);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
 	rv = bindParams(stmt->stmt, cursor);
@@ -367,7 +367,7 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	START(query, rows);
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.dbId);
-	LOOKUP_STMT(request.stmt_id);
+	LOOKUP_STMT(request.stmtId);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
 	rv = bindParams(stmt->stmt, cursor);
@@ -392,7 +392,7 @@ static int handle_finalize(struct handle *req, struct cursor *cursor)
 	int rv;
 	START(finalize, empty);
 	LOOKUP_DB(request.dbId);
-	LOOKUP_STMT(request.stmt_id);
+	LOOKUP_STMT(request.stmtId);
 	rv = stmt__registry_del(&req->gateway->stmts, stmt);
 	if (rv != 0) {
 		failure(req, rv, "finalize statement");

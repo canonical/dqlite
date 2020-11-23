@@ -151,7 +151,7 @@ TEST(membership, join, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	unsigned id = 2;
 	const char *address = "@2";
-	unsigned stmt_id;
+	unsigned stmtId;
 	unsigned lastInsertId;
 	unsigned rowsAffected;
 
@@ -159,16 +159,16 @@ TEST(membership, join, setUp, tearDown, 0, NULL)
 	ADD(id, address);
 	ASSIGN(id, 1 /* voter */);
 	OPEN;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &lastInsertId, &rowsAffected);
-	PREPARE("INSERT INTO test(n) VALUES(1)", &stmt_id);
-	EXEC(stmt_id, &lastInsertId, &rowsAffected);
+	PREPARE("CREATE TABLE test (n INT)", &stmtId);
+	EXEC(stmtId, &lastInsertId, &rowsAffected);
+	PREPARE("INSERT INTO test(n) VALUES(1)", &stmtId);
+	EXEC(stmtId, &lastInsertId, &rowsAffected);
 
 	/* The table is visible from the new node */
 	SELECT(2);
 	HANDSHAKE;
 	OPEN;
-	PREPARE("SELECT * FROM test", &stmt_id);
+	PREPARE("SELECT * FROM test", &stmtId);
 
 	/* TODO: fix the standalone test for remove */
 	SELECT(1);

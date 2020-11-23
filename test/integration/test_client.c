@@ -99,40 +99,40 @@ static void tearDown(void *data)
 TEST(client, exec, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	unsigned stmt_id;
+	unsigned stmtId;
 	unsigned lastInsertId;
 	unsigned rowsAffected;
 	(void)params;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &lastInsertId, &rowsAffected);
+	PREPARE("CREATE TABLE test (n INT)", &stmtId);
+	EXEC(stmtId, &lastInsertId, &rowsAffected);
 	return MUNIT_OK;
 }
 
 TEST(client, query, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	unsigned stmt_id;
+	unsigned stmtId;
 	unsigned lastInsertId;
 	unsigned rowsAffected;
 	unsigned i;
 	struct rows rows;
 	(void)params;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &lastInsertId, &rowsAffected);
+	PREPARE("CREATE TABLE test (n INT)", &stmtId);
+	EXEC(stmtId, &lastInsertId, &rowsAffected);
 
-	PREPARE("BEGIN", &stmt_id);
-	EXEC(stmt_id, &lastInsertId, &rowsAffected);
+	PREPARE("BEGIN", &stmtId);
+	EXEC(stmtId, &lastInsertId, &rowsAffected);
 
-	PREPARE("INSERT INTO test (n) VALUES(123)", &stmt_id);
+	PREPARE("INSERT INTO test (n) VALUES(123)", &stmtId);
 	for (i = 0; i < 256; i++) {
-		EXEC(stmt_id, &lastInsertId, &rowsAffected);
+		EXEC(stmtId, &lastInsertId, &rowsAffected);
 	}
 
-	PREPARE("COMMIT", &stmt_id);
-	EXEC(stmt_id, &lastInsertId, &rowsAffected);
+	PREPARE("COMMIT", &stmtId);
+	EXEC(stmtId, &lastInsertId, &rowsAffected);
 
-	PREPARE("SELECT n FROM test", &stmt_id);
-	QUERY(stmt_id, &rows);
+	PREPARE("SELECT n FROM test", &stmtId);
+	QUERY(stmtId, &rows);
 
 	clientCloseRows(&rows);
 

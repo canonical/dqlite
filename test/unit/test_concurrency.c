@@ -146,7 +146,7 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
 	{                                 \
 		struct request_exec exec; \
 		exec.dbId = 0;            \
-		exec.stmt_id = STMT_ID;   \
+		exec.stmtId = STMT_ID;    \
 		ENCODE(C, &exec, exec);   \
 		HANDLE(C, EXEC);          \
 	}
@@ -156,7 +156,7 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
 	{                                   \
 		struct request_query query; \
 		query.dbId = 0;             \
-		query.stmt_id = STMT_ID;    \
+		query.stmtId = STMT_ID;     \
 		ENCODE(C, &query, query);   \
 		HANDLE(C, QUERY);           \
 	}
@@ -209,8 +209,8 @@ struct execFixture
 	FIXTURE;
 	struct connection *c1;
 	struct connection *c2;
-	unsigned stmt_id1;
-	unsigned stmt_id2;
+	unsigned stmtId1;
+	unsigned stmtId2;
 };
 
 TEST_SUITE(exec);
@@ -236,11 +236,11 @@ TEST_CASE(exec, open, NULL)
 	struct execFixture *f = data;
 	(void)params;
 
-	PREPARE(f->c1, "CREATE TABLE test1 (n INT)", &f->stmt_id1);
-	PREPARE(f->c2, "CREATE TABLE test2 (n INT)", &f->stmt_id2);
+	PREPARE(f->c1, "CREATE TABLE test1 (n INT)", &f->stmtId1);
+	PREPARE(f->c2, "CREATE TABLE test2 (n INT)", &f->stmtId2);
 
-	EXEC(f->c1, f->stmt_id1);
-	EXEC(f->c2, f->stmt_id2);
+	EXEC(f->c1, f->stmtId1);
+	EXEC(f->c2, f->stmtId2);
 	WAIT(f->c2);
 	ASSERT_CALLBACK(f->c2, 0, FAILURE);
 	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "database is locked");
@@ -258,15 +258,15 @@ TEST_CASE(exec, tx, NULL)
 	(void)params;
 
 	/* Create a test table using connection 0 */
-	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmt_id1);
-	EXEC(f->c1, f->stmt_id1);
+	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmtId1);
+	EXEC(f->c1, f->stmtId1);
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
-	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
-	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
+	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmtId1);
+	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmtId2);
 
-	EXEC(f->c1, f->stmt_id1);
-	EXEC(f->c2, f->stmt_id2);
+	EXEC(f->c1, f->stmtId1);
+	EXEC(f->c2, f->stmtId2);
 	WAIT(f->c2);
 	ASSERT_CALLBACK(f->c2, 0, FAILURE);
 	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "database is locked");
@@ -286,8 +286,8 @@ struct queryFixture
 	FIXTURE;
 	struct connection *c1;
 	struct connection *c2;
-	unsigned stmt_id1;
-	unsigned stmt_id2;
+	unsigned stmtId1;
+	unsigned stmtId2;
 };
 
 TEST_SUITE(query);
@@ -297,8 +297,8 @@ TEST_SETUP(query)
 	SETUP;
 	f->c1 = &f->connections[0];
 	f->c2 = &f->connections[1];
-	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmt_id1);
-	EXEC(f->c1, f->stmt_id1);
+	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmtId1);
+	EXEC(f->c1, f->stmtId1);
 	WAIT(f->c1);
 	return f;
 }
@@ -314,10 +314,10 @@ TEST_CASE(query, tx, NULL)
 {
 	struct execFixture *f = data;
 	(void)params;
-	PREPARE(f->c1, "INSERT INTO test VALUES(1)", &f->stmt_id1);
-	PREPARE(f->c2, "SELECT n FROM test", &f->stmt_id2);
-	EXEC(f->c1, f->stmt_id1);
-	QUERY(f->c2, f->stmt_id2);
+	PREPARE(f->c1, "INSERT INTO test VALUES(1)", &f->stmtId1);
+	PREPARE(f->c2, "SELECT n FROM test", &f->stmtId2);
+	EXEC(f->c1, f->stmtId1);
+	QUERY(f->c2, f->stmtId2);
 	WAIT(f->c1);
 	WAIT(f->c2);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);

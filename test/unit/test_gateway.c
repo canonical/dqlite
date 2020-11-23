@@ -173,7 +173,7 @@ static void handleCb(struct handle *req, int status, int type)
 		ASSERT_CALLBACK(0, DB);   \
 	}
 
-/* Prepare a statement. The ID will be saved in stmt_id. */
+/* Prepare a statement. The ID will be saved in stmtId. */
 #define PREPARE(SQL)                            \
 	{                                       \
 		struct request_prepare prepare; \
@@ -184,7 +184,7 @@ static void handleCb(struct handle *req, int status, int type)
 		HANDLE(PREPARE);                \
 		ASSERT_CALLBACK(0, STMT);       \
 		DECODE(&stmt, stmt);            \
-		stmt_id = stmt.id;              \
+		stmtId = stmt.id;               \
 	}
 
 /* Finalize the statement with the given ID. */
@@ -192,7 +192,7 @@ static void handleCb(struct handle *req, int status, int type)
 	{                                         \
 		struct request_finalize finalize; \
 		finalize.dbId = 0;                \
-		finalize.stmt_id = STMT_ID;       \
+		finalize.stmtId = STMT_ID;        \
 		ENCODE(&finalize, finalize);      \
 		HANDLE(FINALIZE);                 \
 		ASSERT_CALLBACK(0, EMPTY);        \
@@ -203,7 +203,7 @@ static void handleCb(struct handle *req, int status, int type)
 	{                                 \
 		struct request_exec exec; \
 		exec.dbId = 0;            \
-		exec.stmt_id = STMT_ID;   \
+		exec.stmtId = STMT_ID;    \
 		ENCODE(&exec, exec);      \
 		HANDLE(EXEC);             \
 	}
@@ -234,7 +234,7 @@ static void handleCb(struct handle *req, int status, int type)
 /* Prepare and exec a statement. */
 #define EXEC(SQL)                               \
 	{                                       \
-		uint64_t _stmt_id;              \
+		uint64_t _stmtId;               \
 		struct request_prepare prepare; \
 		struct response_stmt stmt;      \
 		prepare.dbId = 0;               \
@@ -243,11 +243,11 @@ static void handleCb(struct handle *req, int status, int type)
 		HANDLE(PREPARE);                \
 		ASSERT_CALLBACK(0, STMT);       \
 		DECODE(&stmt, stmt);            \
-		_stmt_id = stmt.id;             \
-		EXEC_SUBMIT(_stmt_id);          \
+		_stmtId = stmt.id;              \
+		EXEC_SUBMIT(_stmtId);           \
 		WAIT;                           \
 		ASSERT_CALLBACK(0, RESULT);     \
-		FINALIZE(_stmt_id);             \
+		FINALIZE(_stmtId);              \
 	}
 
 /* Execute a pragma statement to lowers SQLite's page cache size, in order to
@@ -491,12 +491,12 @@ TEST_TEAR_DOWN(exec)
 TEST_CASE(exec, simple, NULL)
 {
 	struct execFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	(void)params;
 	CLUSTER_ELECT(0);
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.dbId = 0;
-	f->request.stmt_id = stmt_id;
+	f->request.stmtId = stmtId;
 	ENCODE(&f->request, exec);
 	HANDLE(EXEC);
 	CLUSTER_APPLIED(2);
@@ -512,7 +512,7 @@ TEST_CASE(exec, oneParam, NULL)
 {
 	struct execFixture *f = data;
 	struct value value;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	(void)params;
 	CLUSTER_ELECT(0);
 
@@ -521,7 +521,7 @@ TEST_CASE(exec, oneParam, NULL)
 
 	/* Insert a row with one parameter */
 	PREPARE("INSERT INTO test VALUES (?)");
-	f->request.stmt_id = stmt_id;
+	f->request.stmtId = stmtId;
 	ENCODE(&f->request, exec);
 	value.type = SQLITE_INTEGER;
 	value.integer = 7;
@@ -543,7 +543,7 @@ TEST_CASE(exec, blob, NULL)
 	struct request_query query;
 	struct value value;
 	char buf[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	uint64_t n;
 	const char *column;
 	(void)params;
@@ -554,7 +554,7 @@ TEST_CASE(exec, blob, NULL)
 
 	/* Insert a row with one parameter */
 	PREPARE("INSERT INTO test VALUES (?)");
-	f->request.stmt_id = stmt_id;
+	f->request.stmtId = stmtId;
 	ENCODE(&f->request, exec);
 	value.type = SQLITE_BLOB;
 	value.blob.base = buf;
@@ -569,7 +569,7 @@ TEST_CASE(exec, blob, NULL)
 
 	PREPARE("SELECT data FROM test");
 	query.dbId = 0;
-	query.stmt_id = stmt_id;
+	query.stmtId = stmtId;
 	ENCODE(&query, query);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
@@ -592,7 +592,7 @@ TEST_CASE(exec, blob, NULL)
 TEST_CASE(exec, framesNotLeader_1stNonCommitReElected, NULL)
 {
 	struct execFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	unsigned i;
 	(void)params;
 	CLUSTER_ELECT(0);
@@ -609,7 +609,7 @@ TEST_CASE(exec, framesNotLeader_1stNonCommitReElected, NULL)
 	 * leader anymore */
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
-	EXEC_SUBMIT(stmt_id);
+	EXEC_SUBMIT(stmtId);
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
@@ -625,7 +625,7 @@ TEST_CASE(exec, framesNotLeader_1stNonCommitReElected, NULL)
 TEST_CASE(exec, framesNotLeader_1stNonCommitOtherElected, NULL)
 {
 	struct execFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	unsigned i;
 	(void)params;
 	CLUSTER_ELECT(0);
@@ -642,7 +642,7 @@ TEST_CASE(exec, framesNotLeader_1stNonCommitOtherElected, NULL)
 	 * leader anymore */
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
-	EXEC_SUBMIT(stmt_id);
+	EXEC_SUBMIT(stmtId);
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
@@ -660,7 +660,7 @@ TEST_CASE(exec, framesNotLeader_1stNonCommitOtherElected, NULL)
 TEST_CASE(exec, framesNotLeader_2ndNonCommitReElected, NULL)
 {
 	struct execFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	unsigned i;
 	(void)params;
 	CLUSTER_ELECT(0);
@@ -678,7 +678,7 @@ TEST_CASE(exec, framesNotLeader_2ndNonCommitReElected, NULL)
 	 * are not leader anymore */
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
-	EXEC_SUBMIT(stmt_id);
+	EXEC_SUBMIT(stmtId);
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
@@ -717,7 +717,7 @@ TEST_CASE(exec, closeWhileInFlight, NULL)
 TEST_CASE(exec, framesNotLeader_2ndNonCommitOtherElected, NULL)
 {
 	struct execFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	unsigned i;
 	(void)params;
 	CLUSTER_ELECT(0);
@@ -735,7 +735,7 @@ TEST_CASE(exec, framesNotLeader_2ndNonCommitOtherElected, NULL)
 	 * are not leader anymore */
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
-	EXEC_SUBMIT(stmt_id);
+	EXEC_SUBMIT(stmtId);
 	ASSERT_CALLBACK(0, FAILURE);
 
 	/* Elect another leader and re-try */
@@ -752,7 +752,7 @@ TEST_CASE(exec, framesNotLeader_2ndNonCommitOtherElected, NULL)
 TEST_CASE(exec, framesLeadershipLost_1stNonCommitReElected, NULL)
 {
 	struct execFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	unsigned i;
 	(void)params;
 	CLUSTER_ELECT(0);
@@ -770,7 +770,7 @@ TEST_CASE(exec, framesLeadershipLost_1stNonCommitReElected, NULL)
 
 	/* Try to commit */
 	PREPARE("COMMIT");
-	EXEC_SUBMIT(stmt_id);
+	EXEC_SUBMIT(stmtId);
 	CLUSTER_DEPOSE;
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_LEADERSHIP_LOST, "disk I/O error");
@@ -787,7 +787,7 @@ TEST_CASE(exec, framesLeadershipLost_1stNonCommitReElected, NULL)
 TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
 {
 	struct execFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	unsigned i;
 	(void)params;
 	CLUSTER_ELECT(0);
@@ -803,7 +803,7 @@ TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
 	/* Trying to rollback fails because we are not leader anymore */
 	PREPARE("ROLLBACK");
 	CLUSTER_DEPOSE;
-	EXEC_SUBMIT(stmt_id);
+	EXEC_SUBMIT(stmtId);
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
@@ -819,7 +819,7 @@ TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
 TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 {
 	struct execFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	unsigned i;
 	(void)params;
 	CLUSTER_ELECT(0);
@@ -835,7 +835,7 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 	/* Trying to rollback fails because we are not leader anymore */
 	PREPARE("ROLLBACK");
 	CLUSTER_DEPOSE;
-	EXEC_SUBMIT(stmt_id);
+	EXEC_SUBMIT(stmtId);
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
@@ -852,7 +852,7 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 TEST_CASE(exec, restore, NULL)
 {
 	struct execFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	struct request_query request;
 	struct response_rows response;
 	struct value value;
@@ -878,7 +878,7 @@ TEST_CASE(exec, restore, NULL)
 	OPEN;
 	PREPARE("SELECT n FROM test");
 	request.dbId = 0;
-	request.stmt_id = stmt_id;
+	request.stmtId = stmtId;
 	ENCODE(&request, query);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
@@ -932,13 +932,13 @@ TEST_TEAR_DOWN(query)
 TEST_CASE(query, simple, NULL)
 {
 	struct queryFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	uint64_t n;
 	const char *column;
 	(void)params;
 	PREPARE("SELECT n FROM test");
 	f->request.dbId = 0;
-	f->request.stmt_id = stmt_id;
+	f->request.stmtId = stmtId;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
@@ -956,7 +956,7 @@ TEST_CASE(query, simple, NULL)
 TEST_CASE(query, oneRow, NULL)
 {
 	struct queryFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	uint64_t n;
 	const char *column;
 	struct value value;
@@ -965,7 +965,7 @@ TEST_CASE(query, oneRow, NULL)
 
 	PREPARE("SELECT n FROM test");
 	f->request.dbId = 0;
-	f->request.stmt_id = stmt_id;
+	f->request.stmtId = stmtId;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
@@ -989,7 +989,7 @@ TEST_CASE(query, large, NULL)
 {
 	struct queryFixture *f = data;
 	unsigned i;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	uint64_t n;
 	const char *column;
 	struct value value;
@@ -1003,7 +1003,7 @@ TEST_CASE(query, large, NULL)
 
 	PREPARE("SELECT n FROM test");
 	f->request.dbId = 0;
-	f->request.stmt_id = stmt_id;
+	f->request.stmtId = stmtId;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
@@ -1049,7 +1049,7 @@ TEST_CASE(query, params, NULL)
 {
 	struct queryFixture *f = data;
 	struct value values[2];
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	(void)params;
 	EXEC("BEGIN");
 	EXEC("INSERT INTO test(n) VALUES(1)");
@@ -1060,7 +1060,7 @@ TEST_CASE(query, params, NULL)
 
 	PREPARE("SELECT n FROM test WHERE n > ? AND n < ?");
 	f->request.dbId = 0;
-	f->request.stmt_id = stmt_id;
+	f->request.stmtId = stmtId;
 
 	ENCODE(&f->request, query);
 	values[0].type = SQLITE_INTEGER;
@@ -1080,7 +1080,7 @@ TEST_CASE(query, interrupt, NULL)
 	struct queryFixture *f = data;
 	struct request_interrupt interrupt;
 	unsigned i;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	uint64_t n;
 	const char *column;
 	struct value value;
@@ -1093,7 +1093,7 @@ TEST_CASE(query, interrupt, NULL)
 
 	PREPARE("SELECT n FROM test");
 	f->request.dbId = 0;
-	f->request.stmt_id = stmt_id;
+	f->request.stmtId = stmtId;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
@@ -1125,11 +1125,11 @@ TEST_CASE(query, interrupt, NULL)
 TEST_CASE(query, barrier, NULL)
 {
 	struct queryFixture *f = data;
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	(void)params;
 
 	PREPARE("INSERT INTO test(n) VALUES(1)");
-	EXEC_SUBMIT(stmt_id);
+	EXEC_SUBMIT(stmtId);
 	CLUSTER_DEPOSE;
 	ASSERT_CALLBACK(0, FAILURE);
 
@@ -1138,7 +1138,7 @@ TEST_CASE(query, barrier, NULL)
 
 	PREPARE("SELECT n FROM test");
 	f->request.dbId = 0;
-	f->request.stmt_id = stmt_id;
+	f->request.stmtId = stmtId;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
 	WAIT;
@@ -1177,12 +1177,12 @@ TEST_TEAR_DOWN(finalize)
 /* Finalize a prepared statement. */
 TEST_CASE(finalize, success, NULL)
 {
-	uint64_t stmt_id;
+	uint64_t stmtId;
 	struct finalizeFixture *f = data;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.dbId = 0;
-	f->request.stmt_id = stmt_id;
+	f->request.stmtId = stmtId;
 	ENCODE(&f->request, finalize);
 	HANDLE(FINALIZE);
 	ASSERT_CALLBACK(0, EMPTY);

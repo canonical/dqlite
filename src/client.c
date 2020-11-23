@@ -163,19 +163,19 @@ int clientSendPrepare(struct client *c, const char *sql)
 	return 0;
 }
 
-int clientRecvStmt(struct client *c, unsigned *stmt_id)
+int clientRecvStmt(struct client *c, unsigned *stmtId)
 {
 	struct response_stmt response;
 	RESPONSE(stmt, STMT);
-	*stmt_id = response.id;
+	*stmtId = response.id;
 	return 0;
 }
 
-int clientSendExec(struct client *c, unsigned stmt_id)
+int clientSendExec(struct client *c, unsigned stmtId)
 {
 	struct request_exec request;
 	request.dbId = c->dbId;
-	request.stmt_id = stmt_id;
+	request.stmtId = stmtId;
 	REQUEST(exec, EXEC);
 	return 0;
 }
@@ -200,11 +200,11 @@ int clientRecvResult(struct client *c,
 	return 0;
 }
 
-int clientSendQuery(struct client *c, unsigned stmt_id)
+int clientSendQuery(struct client *c, unsigned stmtId)
 {
 	struct request_query request;
 	request.dbId = c->dbId;
-	request.stmt_id = stmt_id;
+	request.stmtId = stmtId;
 	REQUEST(query, QUERY);
 	return 0;
 }

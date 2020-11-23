@@ -253,10 +253,10 @@ TEST_TEAR_DOWN(prepare)
 TEST_CASE(prepare, success, NULL)
 {
 	struct prepareFixture *f = data;
-	unsigned stmt_id;
+	unsigned stmtId;
 	(void)params;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	munit_assert_int(stmt_id, ==, 0);
+	PREPARE("CREATE TABLE test (n INT)", &stmtId);
+	munit_assert_int(stmtId, ==, 0);
 	return MUNIT_OK;
 }
 
@@ -271,7 +271,7 @@ TEST_SUITE(exec);
 struct execFixture
 {
 	FIXTURE;
-	unsigned stmt_id;
+	unsigned stmtId;
 };
 
 TEST_SETUP(exec)
@@ -296,8 +296,8 @@ TEST_CASE(exec, success, NULL)
 	unsigned lastInsertId;
 	unsigned rowsAffected;
 	(void)params;
-	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &lastInsertId, &rowsAffected, 8);
+	PREPARE("CREATE TABLE test (n INT)", &f->stmtId);
+	EXEC(f->stmtId, &lastInsertId, &rowsAffected, 8);
 	munit_assert_int(lastInsertId, ==, 0);
 	munit_assert_int(rowsAffected, ==, 0);
 	return MUNIT_OK;
@@ -309,14 +309,14 @@ TEST_CASE(exec, result, NULL)
 	unsigned lastInsertId;
 	unsigned rowsAffected;
 	(void)params;
-	PREPARE("BEGIN", &f->stmt_id);
-	EXEC(f->stmt_id, &lastInsertId, &rowsAffected, 2);
-	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &lastInsertId, &rowsAffected, 5);
-	PREPARE("INSERT INTO test (n) VALUES(123)", &f->stmt_id);
-	EXEC(f->stmt_id, &lastInsertId, &rowsAffected, 2);
-	PREPARE("COMMIT", &f->stmt_id);
-	EXEC(f->stmt_id, &lastInsertId, &rowsAffected, 5);
+	PREPARE("BEGIN", &f->stmtId);
+	EXEC(f->stmtId, &lastInsertId, &rowsAffected, 2);
+	PREPARE("CREATE TABLE test (n INT)", &f->stmtId);
+	EXEC(f->stmtId, &lastInsertId, &rowsAffected, 5);
+	PREPARE("INSERT INTO test (n) VALUES(123)", &f->stmtId);
+	EXEC(f->stmtId, &lastInsertId, &rowsAffected, 2);
+	PREPARE("COMMIT", &f->stmtId);
+	EXEC(f->stmtId, &lastInsertId, &rowsAffected, 5);
 	munit_assert_int(lastInsertId, ==, 1);
 	munit_assert_int(rowsAffected, ==, 1);
 	return MUNIT_OK;
@@ -350,7 +350,7 @@ TEST_SUITE(query);
 struct queryFixture
 {
 	FIXTURE;
-	unsigned stmt_id;
+	unsigned stmtId;
 	unsigned insertStmtId;
 	unsigned lastInsertId;
 	unsigned rowsAffected;
@@ -360,12 +360,12 @@ struct queryFixture
 TEST_SETUP(query)
 {
 	struct queryFixture *f = munit_malloc(sizeof *f);
-	unsigned stmt_id;
+	unsigned stmtId;
 	SETUP;
 	HANDSHAKE;
 	OPEN;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &f->lastInsertId, &f->rowsAffected, 7);
+	PREPARE("CREATE TABLE test (n INT)", &stmtId);
+	EXEC(stmtId, &f->lastInsertId, &f->rowsAffected, 7);
 	PREPARE("INSERT INTO test(n) VALUES (123)", &f->insertStmtId);
 	EXEC(f->insertStmtId, &f->lastInsertId, &f->rowsAffected, 4);
 	return f;
@@ -385,8 +385,8 @@ TEST_CASE(query, one, NULL)
 	struct queryFixture *f = data;
 	struct row *row;
 	(void)params;
-	PREPARE("SELECT n FROM test", &f->stmt_id);
-	QUERY(f->stmt_id, &f->rows);
+	PREPARE("SELECT n FROM test", &f->stmtId);
+	QUERY(f->stmtId, &f->rows);
 	munit_assert_int(f->rows.column_count, ==, 1);
 	munit_assert_string_equal(f->rows.columnNames[0], "n");
 	row = f->rows.next;
