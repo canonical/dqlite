@@ -57,14 +57,14 @@ static void tearDown(void *data)
 /* Helper for creating a new file */
 static sqlite3_file *__file_create(sqlite3_vfs *vfs,
 				   const char *name,
-				   int type_flag)
+				   int typeFlag)
 {
 	sqlite3_file *file = munit_malloc(vfs->szOsFile);
 
 	int flags;
 	int rc;
 
-	flags = SQLITE_OPEN_EXCLUSIVE | SQLITE_OPEN_CREATE | type_flag;
+	flags = SQLITE_OPEN_EXCLUSIVE | SQLITE_OPEN_CREATE | typeFlag;
 
 	rc = vfs->xOpen(vfs, name, file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
