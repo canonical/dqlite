@@ -209,13 +209,13 @@ static void handleCb(struct handle *req, int status, int type)
 	}
 
 /* Submit a request to execute the given statement. */
-#define EXEC_SQL_SUBMIT(SQL)                      \
-	{                                         \
-		struct request_exec_sql exec_sql; \
-		exec_sql.dbId = 0;                \
-		exec_sql.sql = SQL;               \
-		ENCODE(&exec_sql, exec_sql);      \
-		HANDLE(EXEC_SQL);                 \
+#define EXEC_SQL_SUBMIT(SQL)                    \
+	{                                       \
+		struct request_execSql execSql; \
+		execSql.dbId = 0;               \
+		execSql.sql = SQL;              \
+		ENCODE(&execSql, execSql);      \
+		HANDLE(EXEC_SQL);               \
 	}
 
 /* Wait for the last request to complete */
@@ -1191,41 +1191,41 @@ TEST_CASE(finalize, success, NULL)
 
 /******************************************************************************
  *
- * exec_sql
+ * execSql
  *
  ******************************************************************************/
 
-struct exec_sql_fixture
+struct execSql_fixture
 {
 	FIXTURE;
-	struct request_exec_sql request;
+	struct request_execSql request;
 	struct response_result response;
 };
 
-TEST_SUITE(exec_sql);
-TEST_SETUP(exec_sql)
+TEST_SUITE(execSql);
+TEST_SETUP(execSql)
 {
-	struct exec_sql_fixture *f = munit_malloc(sizeof *f);
+	struct execSql_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	CLUSTER_ELECT(0);
 	OPEN;
 	return f;
 }
-TEST_TEAR_DOWN(exec_sql)
+TEST_TEAR_DOWN(execSql)
 {
-	struct exec_sql_fixture *f = data;
+	struct execSql_fixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
 
 /* Exec a SQL text with a single query. */
-TEST_CASE(exec_sql, single, NULL)
+TEST_CASE(execSql, single, NULL)
 {
-	struct exec_sql_fixture *f = data;
+	struct execSql_fixture *f = data;
 	(void)params;
 	f->request.dbId = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
-	ENCODE(&f->request, exec_sql);
+	ENCODE(&f->request, execSql);
 	HANDLE(EXEC_SQL);
 	CLUSTER_APPLIED(2);
 	ASSERT_CALLBACK(0, RESULT);
@@ -1233,14 +1233,14 @@ TEST_CASE(exec_sql, single, NULL)
 }
 
 /* Exec a SQL text with a multiple queries. */
-TEST_CASE(exec_sql, multi, NULL)
+TEST_CASE(execSql, multi, NULL)
 {
-	struct exec_sql_fixture *f = data;
+	struct execSql_fixture *f = data;
 	(void)params;
 	f->request.dbId = 0;
 	f->request.sql =
 	    "CREATE TABLE test (n INT); INSERT INTO test VALUES(1)";
-	ENCODE(&f->request, exec_sql);
+	ENCODE(&f->request, execSql);
 	HANDLE(EXEC_SQL);
 	WAIT;
 	ASSERT_CALLBACK(0, RESULT);

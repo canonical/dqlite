@@ -33,7 +33,7 @@ struct gateway
 	sqlite3_stmt *stmt;          /* Statement being processed */
 	bool stmt_finalize;          /* Whether to finalize the statement */
 	struct exec exec;            /* Low-level exec async request */
-	const char *sql;             /* SQL query for exec_sql requests */
+	const char *sql;             /* SQL query for execSql requests */
 	struct stmt__registry stmts; /* Registry of prepared statements */
 	struct barrier barrier;      /* Barrier for query requests */
 	uint64_t protocol;           /* Protocol format version */

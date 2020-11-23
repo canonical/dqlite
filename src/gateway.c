@@ -402,15 +402,15 @@ static int handle_finalize(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
-static void handle_exec_sql_next(struct handle *req, struct cursor *cursor);
+static void handle_execSql_next(struct handle *req, struct cursor *cursor);
 
-static void handle_exec_sql_cb(struct exec *exec, int status)
+static void handle_execSql_cb(struct exec *exec, int status)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
 
 	if (status == SQLITE_DONE) {
-		handle_exec_sql_next(req, NULL);
+		handle_execSql_next(req, NULL);
 	} else {
 		failure(req, status, errorMessage(g->leader->conn, status));
 		sqlite3_reset(g->stmt);
@@ -421,7 +421,7 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 	}
 }
 
-static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
+static void handle_execSql_next(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	struct response_result response;
@@ -462,7 +462,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 	g->sql = tail;
 	g->req = req;
 
-	rv = leader__exec(g->leader, &g->exec, g->stmt, handle_exec_sql_cb);
+	rv = leader__exec(g->leader, &g->exec, g->stmt, handle_execSql_cb);
 	if (rv != SQLITE_OK) {
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto doneAfterPrepare;
@@ -486,10 +486,10 @@ done:
 	g->sql = NULL;
 }
 
-static int handle_exec_sql(struct handle *req, struct cursor *cursor)
+static int handle_execSql(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
-	START(exec_sql, result);
+	START(execSql, result);
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.dbId);
 	FAIL_IF_CHECKPOINTING;
@@ -498,7 +498,7 @@ static int handle_exec_sql(struct handle *req, struct cursor *cursor)
 	assert(g->sql == NULL);
 	assert(g->stmt == NULL);
 	req->gateway->sql = request.sql;
-	handle_exec_sql_next(req, cursor);
+	handle_execSql_next(req, cursor);
 	return 0;
 }
 
