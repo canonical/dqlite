@@ -288,9 +288,9 @@ extern int _main_suites_n;
 
 /* Choose the appropriate TEST_CASE_N_ARGS() macro depending on the number of
  * arguments passed to TEST_CASE(). */
-#define TEST_CASE_MACRO_CHOOSER(...)                                       \
-	TEST__GET_5TH_ARG(__VA_ARGS__, TEST_CASE_4_ARGS, TEST_CASE_3_ARGS, \
-			  TEST_CASE_2_ARGS)
+#define TEST_CASE_MACRO_CHOOSER(...)                                      \
+	TEST_GET_5TH_ARG(__VA_ARGS__, TEST_CASE_4_ARGS, TEST_CASE_3_ARGS, \
+			 TEST_CASE_2_ARGS)
 
 /* Add the test case to the module's MunitTest[] array. */
 #define TEST_CASE_2_ARGS(C, PARAMS)                                  \
@@ -358,6 +358,6 @@ extern int _main_suites_n;
 	TESTS[I].parameters = PARAMS
 
 #define TEST_GET_3RD_ARG(arg1, arg2, arg3, ...) arg3
-#define TEST__GET_5TH_ARG(arg1, arg2, arg3, arg4, arg5, ...) arg5
+#define TEST_GET_5TH_ARG(arg1, arg2, arg3, arg4, arg5, ...) arg5
 
 #endif /* TEST_RUNNER_H */
