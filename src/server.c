@@ -544,7 +544,7 @@ static int taskRun(struct dqlite_node *d)
 	return 0;
 }
 
-const char *dqlite_node_errmsg(dqlite_node *n)
+const char *dqliteNodeErrmsg(dqlite_node *n)
 {
 	return n->errmsg;
 }
