@@ -36,7 +36,7 @@ int dqliteInit(struct dqlite_node *d,
 	if (rv != 0) {
 		/* TODO: better error reporting */
 		rv = DQLITE_ERROR;
-		goto err_after_vfs_init;
+		goto errAfterVfsInit;
 	}
 	rv = raftProxyInit(&d->raft_transport, &d->loop);
 	if (rv != 0) {
@@ -102,7 +102,7 @@ errAfterRaftTransportInit:
 	raftProxyClose(&d->raft_transport);
 errAfterLoopInit:
 	uv_loop_close(&d->loop);
-err_after_vfs_init:
+errAfterVfsInit:
 	VfsClose(&d->vfs);
 err_after_configInit:
 	configClose(&d->config);
