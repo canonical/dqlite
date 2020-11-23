@@ -98,7 +98,7 @@ static bool needsBarrier(struct leader *l)
 	       raft_last_applied(l->raft) < raft_last_index(l->raft);
 }
 
-int leader__init(struct leader *l, struct db *db, struct raft *raft)
+int leader_init(struct leader *l, struct db *db, struct raft *raft)
 {
 	int rc;
 	l->db = db;

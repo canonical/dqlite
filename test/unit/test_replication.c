@@ -32,7 +32,7 @@ TEST_MODULE(replication_v1);
 		int rc2;                                          \
 		rc2 = registry__db_get(registry, "test.db", &db); \
 		munit_assert_int(rc2, ==, 0);                     \
-		rc2 = leader__init(leader, db, CLUSTER_RAFT(I));  \
+		rc2 = leader_init(leader, db, CLUSTER_RAFT(I));   \
 		munit_assert_int(rc2, ==, 0);                     \
 	} while (0)
 
@@ -127,7 +127,7 @@ TEST_MODULE(replication_v1);
 
 /******************************************************************************
  *
- * leader__init
+ * leader_init
  *
  ******************************************************************************/
 
@@ -285,7 +285,7 @@ TEST_CASE(exec, checkpointReadLock, NULL)
 	/* Initialize another leader. */
 	rv = registry__db_get(registry, "test.db", &db);
 	munit_assert_int(rv, ==, 0);
-	leader__init(&leader2, db, CLUSTER_RAFT(0));
+	leader_init(&leader2, db, CLUSTER_RAFT(0));
 
 	/* Start a read transaction in the other leader. */
 	rv = sqlite3_exec(leader2.conn, "BEGIN", NULL, NULL, &errmsg);
