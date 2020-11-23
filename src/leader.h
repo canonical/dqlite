@@ -78,7 +78,7 @@ struct exec
  * transfering control back to main coroutine and then opening a new leader
  * connection against the given database.
  */
-int leader_init(struct leader *l, struct db *db, struct raft *raft);
+int leaderInit(struct leader *l, struct db *db, struct raft *raft);
 
 void leaderClose(struct leader *l);
 

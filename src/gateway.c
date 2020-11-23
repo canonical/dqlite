@@ -199,7 +199,7 @@ static int handle_open(struct handle *req, struct cursor *cursor)
 	if (g->leader == NULL) {
 		return DQLITE_NOMEM;
 	}
-	rc = leader_init(g->leader, db, g->raft);
+	rc = leaderInit(g->leader, db, g->raft);
 	if (rc != 0) {
 		return rc;
 	}
