@@ -66,10 +66,10 @@ static int frames__decode(struct cursor *cursor, frames_t *frames)
 	return 0;
 }
 
-#define COMMAND__IMPLEMENT(LOWER, UPPER, _) \
+#define COMMAND_IMPLEMENT(LOWER, UPPER, _) \
 	SERIALIZE__IMPLEMENT(command_##LOWER, COMMAND__##UPPER);
 
-COMMAND__TYPES(COMMAND__IMPLEMENT, );
+COMMAND__TYPES(COMMAND_IMPLEMENT, );
 
 #define ENCODE(LOWER, UPPER, _)                                 \
 	case COMMAND_##UPPER:                                   \
