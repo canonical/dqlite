@@ -18,10 +18,10 @@ char *testDirSetup()
 	return dir;
 }
 
-static int test_dir_tear_down_nftw_fn(const char *path,
-				      const struct stat *sb,
-				      int type,
-				      struct FTW *ftwb)
+static int testDirTearDownNftwFn(const char *path,
+				 const struct stat *sb,
+				 int type,
+				 struct FTW *ftwb)
 {
 	int rc;
 
@@ -39,7 +39,7 @@ void testDirTearDown(char *dir)
 {
 	int rc;
 
-	rc = nftw(dir, test_dir_tear_down_nftw_fn, 10,
+	rc = nftw(dir, testDirTearDownNftwFn, 10,
 		  FTW_DEPTH | FTW_MOUNT | FTW_PHYS);
 	munit_assert_int(rc, ==, 0);
 	free(dir);
