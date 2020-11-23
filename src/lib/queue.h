@@ -24,7 +24,7 @@ typedef void *queue[2];
 /**
  * Return true if the queue has no element.
  */
-#define QUEUE__IS_EMPTY(q) ((const queue *)(q) == (const queue *)QUEUE__NEXT(q))
+#define QUEUE_IS_EMPTY(q) ((const queue *)(q) == (const queue *)QUEUE__NEXT(q))
 
 /**
  * Insert an element at the back of a queue.

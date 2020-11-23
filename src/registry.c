@@ -14,7 +14,7 @@ void registry__init(struct registry *r, struct config *config)
 
 void registry__close(struct registry *r)
 {
-	while (!QUEUE__IS_EMPTY(&r->dbs)) {
+	while (!QUEUE_IS_EMPTY(&r->dbs)) {
 		struct db *db;
 		queue *head;
 		head = QUEUE_HEAD(&r->dbs);

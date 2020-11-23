@@ -25,7 +25,7 @@ void dbInit(struct db *db, struct config *config, const char *filename)
 
 void dbClose(struct db *db)
 {
-	assert(QUEUE__IS_EMPTY(&db->leaders));
+	assert(QUEUE_IS_EMPTY(&db->leaders));
 	if (db->follower != NULL) {
 		int rc;
 		rc = sqlite3_close(db->follower);
