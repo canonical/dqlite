@@ -208,7 +208,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 	int type;
 	void *command;
 	int rc;
-	rc = command_decode(buf, &type, &command);
+	rc = commandDecode(buf, &type, &command);
 	if (rc != 0) {
 		// errorf(f->logger, "fsm: decode command: %d", rc);
 		goto err;
@@ -229,7 +229,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 			break;
 		default:
 			rc = RAFT_MALFORMED;
-			goto err_after_command_decode;
+			goto err_after_commandDecode;
 	}
 	raft_free(command);
 
@@ -237,7 +237,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 
 	return 0;
 
-err_after_command_decode:
+err_after_commandDecode:
 	raft_free(command);
 err:
 	return rc;

@@ -55,7 +55,7 @@ COMMAND__TYPES(COMMAND__DEFINE);
 
 int command__encode(int type, const void *command, struct raft_buffer *buf);
 
-int command_decode(const struct raft_buffer *buf, int *type, void **command);
+int commandDecode(const struct raft_buffer *buf, int *type, void **command);
 
 int command_frames__page_numbers(const struct command_frames *c,
 				 unsigned long *page_numbers[]);
