@@ -13,7 +13,7 @@
  *
  * If the tuple is a row, then each slot is 4 bits, otherwise if the tuple is a
  * sequence of parameters each slot is 8 bits. */
-static size_t calc_header_size(unsigned n, int format)
+static size_t calcHeaderSize(unsigned n, int format)
 {
 	size_t size;
 
@@ -61,7 +61,7 @@ int tuple_decoder__init(struct tuple_decoder *d,
 	d->header = cursor->p;
 
 	/* Check that there is enough room to hold n type code slots. */
-	header_size = calc_header_size(d->n, d->format);
+	header_size = calcHeaderSize(d->n, d->format);
 
 	if (header_size > cursor->cap) {
 		return DQLITE_PARSE;
@@ -172,7 +172,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 	e->header = bufferOffset(buffer);
 
 	/* Reset the header */
-	n_header = calc_header_size(n, format);
+	n_header = calcHeaderSize(n, format);
 	memset(encoder__header(e), 0, n_header);
 
 	/* Advance the buffer write pointer past the tuple header. */
