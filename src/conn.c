@@ -29,7 +29,7 @@ static void write_cb(struct transport *transport, int status)
 	bufferReset(&c->write);
 	bufferAdvance(&c->write, message__sizeof(&c->response)); /* Header */
 
-	rv = gateway_resume(&c->gateway, &finished);
+	rv = gatewayResume(&c->gateway, &finished);
 	if (rv != 0) {
 		goto abort;
 	}

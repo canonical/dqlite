@@ -1003,7 +1003,7 @@ handle:
 	return rc;
 }
 
-int gateway_resume(struct gateway *g, bool *finished)
+int gatewayResume(struct gateway *g, bool *finished)
 {
 	if (g->req == NULL || (g->req->type != DQLITE_REQUEST_QUERY &&
 			       g->req->type != DQLITE_REQUEST_QUERY_SQL)) {
