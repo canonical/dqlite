@@ -43,25 +43,25 @@ static void connCloseCb(struct conn *conn)
 	struct conn conn;    \
 	bool closed;
 
-#define SETUP                                                               \
-	struct uv_stream_s *stream;                                         \
-	int rv;                                                             \
-	SETUP_HEAP;                                                         \
-	SETUP_SQLITE;                                                       \
-	SETUP_LOGGER;                                                       \
-	SETUP_VFS;                                                          \
-	SETUP_CONFIG;                                                       \
-	SETUP_REGISTRY;                                                     \
-	SETUP_RAFT;                                                         \
-	SETUP_CLIENT;                                                       \
-	RAFT_BOOTSTRAP;                                                     \
-	RAFT_START;                                                         \
-	rv = transport__stream(&f->loop, f->server, &stream);               \
-	munit_assert_int(rv, ==, 0);                                        \
-	f->closed = false;                                                  \
-	f->conn.queue[0] = &f->closed;                                      \
-	rv = conn_start(&f->conn, &f->config, &f->loop, &f->registry,       \
-			&f->raft, stream, &f->raft_transport, connCloseCb); \
+#define SETUP                                                                  \
+	struct uv_stream_s *stream;                                            \
+	int rv;                                                                \
+	SETUP_HEAP;                                                            \
+	SETUP_SQLITE;                                                          \
+	SETUP_LOGGER;                                                          \
+	SETUP_VFS;                                                             \
+	SETUP_CONFIG;                                                          \
+	SETUP_REGISTRY;                                                        \
+	SETUP_RAFT;                                                            \
+	SETUP_CLIENT;                                                          \
+	RAFT_BOOTSTRAP;                                                        \
+	RAFT_START;                                                            \
+	rv = transport__stream(&f->loop, f->server, &stream);                  \
+	munit_assert_int(rv, ==, 0);                                           \
+	f->closed = false;                                                     \
+	f->conn.queue[0] = &f->closed;                                         \
+	rv = connStart(&f->conn, &f->config, &f->loop, &f->registry, &f->raft, \
+		       stream, &f->raft_transport, connCloseCb);               \
 	munit_assert_int(rv, ==, 0)
 
 #define TEAR_DOWN                         \
