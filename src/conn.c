@@ -203,7 +203,7 @@ static int readMessage(struct conn *c)
 	return 0;
 }
 
-static void read_protocol_cb(struct transport *transport, int status)
+static void readProtocol_cb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
 	struct cursor cursor;
@@ -240,7 +240,7 @@ abort:
 }
 
 /* Start reading the protocol format version */
-static int read_protocol(struct conn *c)
+static int readProtocol(struct conn *c)
 {
 	uv_buf_t buf;
 	int rv;
@@ -248,7 +248,7 @@ static int read_protocol(struct conn *c)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = transport__read(&c->transport, &buf, read_protocol_cb);
+	rv = transport__read(&c->transport, &buf, readProtocol_cb);
 	if (rv != 0) {
 		return rv;
 	}
@@ -286,7 +286,7 @@ int connStart(struct conn *c,
 	c->handle.data = c;
 	c->closed = false;
 	/* First, we expect the client to send us the protocol version. */
-	rv = read_protocol(c);
+	rv = readProtocol(c);
 	if (rv != 0) {
 		goto err_after_write_bufferInit;
 	}
