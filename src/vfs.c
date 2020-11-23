@@ -29,7 +29,7 @@ const int vfsOne = 1;
 #define VFS__MAX_PATHNAME 512
 
 /* WAL magic value. Either this value, or the same value with the least
- * significant bit also set (FORMAT__WAL_MAGIC | 0x00000001) is stored in 32-bit
+ * significant bit also set (FORMAT_WAL_MAGIC | 0x00000001) is stored in 32-bit
  * big-endian format in the first 4 bytes of a WAL file.
  *
  * If the LSB is set, then the checksums for each frame within the WAL file are
