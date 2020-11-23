@@ -68,7 +68,7 @@ SUITE(client);
 
 struct fixture
 {
-	struct test_server server;
+	struct testServer server;
 	struct client *client;
 };
 
@@ -78,9 +78,9 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	(void)user_data;
 	testHeapSetup(params, user_data);
 	test_sqlite_setup(params);
-	test_server_setup(&f->server, 1, params);
-	test_server_start(&f->server);
-	f->client = test_server_client(&f->server);
+	testServer_setup(&f->server, 1, params);
+	testServer_start(&f->server);
+	f->client = testServer_client(&f->server);
 	HANDSHAKE;
 	OPEN;
 	return f;
@@ -89,7 +89,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 static void tearDown(void *data)
 {
 	struct fixture *f = data;
-	test_server_tear_down(&f->server);
+	testServer_tear_down(&f->server);
 	test_sqlite_tear_down();
 	testHeapTearDown(data);
 

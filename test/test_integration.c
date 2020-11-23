@@ -93,7 +93,7 @@ static void *__worker_run(void *arg)
 }
 
 static void __worker_start(struct worker *w,
-			   struct test_server *server,
+			   struct testServer *server,
 			   int i,
 			   int a,
 			   int n)
@@ -104,7 +104,7 @@ static void __worker_start(struct worker *w,
 	w->a = a;
 	w->n = n;
 
-	test_server_connect(server, &w->client);
+	testServer_connect(server, &w->client);
 
 	err = pthread_create(&w->thread, 0, &__worker_run, (void *)w);
 	if (err) {
@@ -136,7 +136,7 @@ static void __worker_wait(struct worker *w)
 
 static void *setup(const MunitParameter params[], void *user_data)
 {
-	struct test_server *server;
+	struct testServer *server;
 	const char *errmsg;
 	int err;
 
@@ -146,17 +146,17 @@ static void *setup(const MunitParameter params[], void *user_data)
 	err = dqliteInit(&errmsg);
 	munit_assert_int(err, ==, 0);
 
-	server = test_server_start("unix", params);
+	server = testServer_start("unix", params);
 
 	return server;
 }
 
 static void tear_down(void *data)
 {
-	struct test_server *server = data;
+	struct testServer *server = data;
 	int rc;
 
-	test_server_stop(server);
+	testServer_stop(server);
 
 	rc = sqlite3_shutdown();
 	munit_assert_int(rc, ==, 0);
@@ -176,7 +176,7 @@ TEST_TEAR_DOWN(exec, tear_down);
 
 TEST_CASE(exec, singleQuery, NULL)
 {
-	struct test_server *server = data;
+	struct testServer *server = data;
 	struct testClient *client;
 	char *leader;
 	uint64_t heartbeat;
@@ -187,7 +187,7 @@ TEST_CASE(exec, singleQuery, NULL)
 
 	(void)params;
 
-	test_server_connect(server, &client);
+	testServer_connect(server, &client);
 
 	/* Initialize the connection and open a database. */
 	testClient_handshake(client);
@@ -241,7 +241,7 @@ TEST_CASE(exec, singleQuery, NULL)
 
 TEST_CASE(exec, largeQuery, NULL)
 {
-	struct test_server *server = data;
+	struct testServer *server = data;
 	struct testClient *client;
 	char *leader;
 	uint64_t heartbeat;
@@ -253,7 +253,7 @@ TEST_CASE(exec, largeQuery, NULL)
 
 	(void)params;
 
-	test_server_connect(server, &client);
+	testServer_connect(server, &client);
 
 	/* Initialize the connection and open a database. */
 	testClient_handshake(client);
@@ -315,7 +315,7 @@ TEST_CASE(exec, largeQuery, NULL)
 
 TEST_CASE(exec, multiThread, NULL)
 {
-	struct test_server *server = data;
+	struct testServer *server = data;
 	struct worker *workers;
 	struct testClient *client;
 	struct testClient_result result;
@@ -329,7 +329,7 @@ TEST_CASE(exec, multiThread, NULL)
 	int n = 2;
 	int i;
 
-	test_server_connect(server, &client);
+	testServer_connect(server, &client);
 
 	/* Initialize the connection and open a database. */
 	testClient_handshake(client);

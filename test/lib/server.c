@@ -21,9 +21,9 @@ static int endpointConnect(void *data,
 	return 0;
 }
 
-void test_server_setup(struct test_server *s,
-		       const unsigned id,
-		       const MunitParameter params[])
+void testServer_setup(struct testServer *s,
+		      const unsigned id,
+		      const MunitParameter params[])
 {
 	(void)params;
 
@@ -35,7 +35,7 @@ void test_server_setup(struct test_server *s,
 	memset(s->others, 0, sizeof s->others);
 }
 
-void test_server_tear_down(struct test_server *s)
+void testServer_tear_down(struct testServer *s)
 {
 	int rv;
 
@@ -49,7 +49,7 @@ void test_server_tear_down(struct test_server *s)
 	testDirTearDown(s->dir);
 }
 
-void test_server_start(struct test_server *s)
+void testServer_start(struct testServer *s)
 {
 	int client;
 	int rv;
@@ -74,25 +74,25 @@ void test_server_start(struct test_server *s)
 	munit_assert_int(rv, ==, 0);
 }
 
-struct client *test_server_client(struct test_server *s)
+struct client *testServer_client(struct testServer *s)
 {
 	return &s->client;
 }
 
-static void setOther(struct test_server *s, struct test_server *other)
+static void setOther(struct testServer *s, struct testServer *other)
 {
 	unsigned i = other->id - 1;
 	munit_assert_ptr_null(s->others[i]);
 	s->others[i] = other;
 }
-void test_server_network(struct test_server *servers, unsigned nServers)
+void testServer_network(struct testServer *servers, unsigned nServers)
 {
 	unsigned i;
 	unsigned j;
 	for (i = 0; i < nServers; i++) {
 		for (j = 0; j < nServers; j++) {
-			struct test_server *server = &servers[i];
-			struct test_server *other = &servers[j];
+			struct testServer *server = &servers[i];
+			struct testServer *other = &servers[j];
 			if (i == j) {
 				continue;
 			}

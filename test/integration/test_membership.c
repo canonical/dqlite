@@ -14,31 +14,31 @@
  ******************************************************************************/
 
 #define N_SERVERS 3
-#define FIXTURE                                \
-	struct test_server servers[N_SERVERS]; \
+#define FIXTURE                               \
+	struct testServer servers[N_SERVERS]; \
 	struct client *client
 
-#define SETUP                                                 \
-	unsigned i_;                                          \
-	testHeapSetup(params, user_data);                     \
-	test_sqlite_setup(params);                            \
-	for (i_ = 0; i_ < N_SERVERS; i_++) {                  \
-		struct test_server *server = &f->servers[i_]; \
-		test_server_setup(server, i_ + 1, params);    \
-	}                                                     \
-	test_server_network(f->servers, N_SERVERS);           \
-	for (i_ = 0; i_ < N_SERVERS; i_++) {                  \
-		struct test_server *server = &f->servers[i_]; \
-		test_server_start(server);                    \
-	}                                                     \
+#define SETUP                                                \
+	unsigned i_;                                         \
+	testHeapSetup(params, user_data);                    \
+	test_sqlite_setup(params);                           \
+	for (i_ = 0; i_ < N_SERVERS; i_++) {                 \
+		struct testServer *server = &f->servers[i_]; \
+		testServer_setup(server, i_ + 1, params);    \
+	}                                                    \
+	testServer_network(f->servers, N_SERVERS);           \
+	for (i_ = 0; i_ < N_SERVERS; i_++) {                 \
+		struct testServer *server = &f->servers[i_]; \
+		testServer_start(server);                    \
+	}                                                    \
 	SELECT(1)
 
-#define TEAR_DOWN                                       \
-	unsigned i_;                                    \
-	for (i_ = 0; i_ < N_SERVERS; i_++) {            \
-		test_server_tear_down(&f->servers[i_]); \
-	}                                               \
-	test_sqlite_tear_down();                        \
+#define TEAR_DOWN                                      \
+	unsigned i_;                                   \
+	for (i_ = 0; i_ < N_SERVERS; i_++) {           \
+		testServer_tear_down(&f->servers[i_]); \
+	}                                              \
+	test_sqlite_tear_down();                       \
 	testHeapTearDown(data)
 
 /******************************************************************************
@@ -48,7 +48,7 @@
  ******************************************************************************/
 
 /* Use the client connected to the server with the given ID. */
-#define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
+#define SELECT(ID) f->client = testServer_client(&f->servers[ID - 1])
 
 /* Send the initial client handshake. */
 #define HANDSHAKE                                     \
