@@ -62,7 +62,7 @@ const int vfsOne = 1;
 struct vfsShm
 {
 	void **regions;     /* Pointers to shared memory regions. */
-	unsigned n_regions; /* Number of shared memory regions. */
+	unsigned nRegions;  /* Number of shared memory regions. */
 	unsigned refcount;  /* Number of outstanding mappings. */
 	unsigned shared[SQLITE_SHM_NLOCK];    /* Count of shared locks */
 	unsigned exclusive[SQLITE_SHM_NLOCK]; /* Count of exclusive locks */
@@ -241,7 +241,7 @@ static void vfsShmInit(struct vfsShm *s)
 	int i;
 
 	s->regions = NULL;
-	s->n_regions = 0;
+	s->nRegions = 0;
 	s->refcount = 0;
 
 	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
@@ -259,7 +259,7 @@ static void vfsShmClose(struct vfsShm *s)
 	assert(s != NULL);
 
 	/* Free all regions. */
-	for (i = 0; i < s->n_regions; i++) {
+	for (i = 0; i < s->nRegions; i++) {
 		region = *(s->regions + i);
 		assert(region != NULL);
 		sqlite3_free(region);
@@ -1338,7 +1338,7 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 		nPages = vfsFrameGetDatabaseSize(last);
 	}
 
-	assert(shm->n_regions > 0);
+	assert(shm->nRegions > 0);
 	index = shm->regions[0];
 
 	assert(*(uint32_t *)(&index[0]) == VFS__WAL_VERSION); /* iVersion */
@@ -1423,7 +1423,7 @@ static int vfsShmMap(struct vfsShm *s,
 	void *region;
 	int rv;
 
-	if (s->regions != NULL && region_index < s->n_regions) {
+	if (s->regions != NULL && region_index < s->nRegions) {
 		/* The region was already allocated. */
 		region = s->regions[region_index];
 		assert(region != NULL);
@@ -1433,7 +1433,7 @@ static int vfsShmMap(struct vfsShm *s,
 
 			/* We should grow the map one region at a time. */
 			assert(region_size == VFS__WAL_INDEX_REGION_SIZE);
-			assert(region_index == s->n_regions);
+			assert(region_index == s->nRegions);
 			region = sqlite3_malloc64(region_size);
 			if (region == NULL) {
 				rv = SQLITE_NOMEM;
@@ -1443,8 +1443,7 @@ static int vfsShmMap(struct vfsShm *s,
 			memset(region, 0, region_size);
 
 			regions = sqlite3_realloc64(
-			    s->regions,
-			    sizeof *s->regions * (s->n_regions + 1));
+			    s->regions, sizeof *s->regions * (s->nRegions + 1));
 
 			if (regions == NULL) {
 				rv = SQLITE_NOMEM;
@@ -1453,7 +1452,7 @@ static int vfsShmMap(struct vfsShm *s,
 
 			s->regions = regions;
 			s->regions[region_index] = region;
-			s->n_regions++;
+			s->nRegions++;
 
 		} else {
 			/* The region was not allocated and we don't have to
@@ -2345,7 +2344,7 @@ int VfsApply(sqlite3_vfs *vfs,
 		shm->exclusive[0] = 0;
 		vfsAmendWalIndexHeader(database);
 	} else {
-		if (shm->n_regions > 0) {
+		if (shm->nRegions > 0) {
 			vfsInvalidateWalIndexHeader(database);
 		}
 	}
