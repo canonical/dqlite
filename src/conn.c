@@ -100,9 +100,9 @@ static void closeCb(struct transport *transport)
 
 static void raftConnect(struct conn *c, struct cursor *cursor)
 {
-	struct request_connect request;
+	struct requestConnect request;
 	int rv;
-	rv = request_connect__decode(cursor, &request);
+	rv = requestConnect__decode(cursor, &request);
 	if (rv != 0) {
 		connStop(c);
 		return;

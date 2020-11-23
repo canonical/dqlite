@@ -58,7 +58,7 @@ static void connectWorkCb(uv_work_t *work)
 	struct connect *r = work->data;
 	struct impl *i = r->impl;
 	struct message message;
-	struct request_connect request;
+	struct requestConnect request;
 	uint64_t protocol;
 	void *buf;
 	void *cursor;
@@ -89,7 +89,7 @@ static void connectWorkCb(uv_work_t *work)
 	request.address = i->address;
 
 	n1 = message__sizeof(&message);
-	n2 = request_connect__sizeof(&request);
+	n2 = requestConnect__sizeof(&request);
 
 	message.type = DQLITE_REQUEST_CONNECT;
 	message.words = (uint32_t)(n2 / 8);
@@ -104,7 +104,7 @@ static void connectWorkCb(uv_work_t *work)
 
 	cursor = buf;
 	message__encode(&message, &cursor);
-	request_connect__encode(&request, &cursor);
+	requestConnect__encode(&request, &cursor);
 
 	rv = (int)write(r->fd, buf, n);
 	sqlite3_free(buf);

@@ -72,6 +72,6 @@ REQUEST__TYPES(REQUEST__DEFINE);
 	X(uint64, id, ##__VA_ARGS__) \
 	X(text, address, ##__VA_ARGS__)
 
-SERIALIZE__DEFINE(request_connect, REQUEST_CONNECT);
+SERIALIZE__DEFINE(requestConnect, REQUEST_CONNECT);
 
 #endif /* REQUEST_H_ */
