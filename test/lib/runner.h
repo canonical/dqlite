@@ -268,8 +268,8 @@ extern int _main_suites_n;
 
 /* Choose the appropriate TEST_TEAR_DOWN__N_ARGS() macro depending on the number
  * of arguments passed to TEST_TEAR_DOWN(). */
-#define TEST_TEAR_DOWN__MACRO_CHOOSER(...)                    \
-	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN__2_ARGS, \
+#define TEST_TEAR_DOWN__MACRO_CHOOSER(...)                   \
+	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN_2_ARGS, \
 			 TEST_TEAR_DOWN_1_ARGS)
 
 #define TEST_TEAR_DOWN_1_ARGS(S)                                           \
@@ -280,7 +280,7 @@ extern int _main_suites_n;
 	}                                                                  \
 	static void S##TearDown(void *data)
 
-#define TEST_TEAR_DOWN__2_ARGS(S, F)                                       \
+#define TEST_TEAR_DOWN_2_ARGS(S, F)                                        \
 	__attribute__((constructor)) static void _##S##TearDown_init(void) \
 	{                                                                  \
 		_##S##TearDown = F;                                        \
