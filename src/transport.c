@@ -46,8 +46,7 @@ static int implInit(struct raft_uv_transport *transport,
 	return 0;
 }
 
-static int impl_listen(struct raft_uv_transport *transport,
-		       raft_uv_accept_cb cb)
+static int implListen(struct raft_uv_transport *transport, raft_uv_accept_cb cb)
 {
 	struct impl *i = transport->impl;
 	i->accept_cb = cb;
@@ -255,7 +254,7 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 	i->accept_cb = NULL;
 	transport->impl = i;
 	transport->init = implInit;
-	transport->listen = impl_listen;
+	transport->listen = implListen;
 	transport->connect = implConnect;
 	transport->close = implClose;
 	return 0;
