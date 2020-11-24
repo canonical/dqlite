@@ -288,11 +288,11 @@ int connStart(struct conn *c,
 	/* First, we expect the client to send us the protocol version. */
 	rv = readProtocol(c);
 	if (rv != 0) {
-		goto err_after_write_bufferInit;
+		goto errAfterWriteBufferInit;
 	}
 	return 0;
 
-err_after_write_bufferInit:
+errAfterWriteBufferInit:
 	bufferClose(&c->write);
 errAfterReadBufferInit:
 	bufferClose(&c->read);
