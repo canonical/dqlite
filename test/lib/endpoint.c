@@ -90,7 +90,7 @@ void testEndpoint_tear_down(struct testEndpoint *e)
 	close(e->fd);
 }
 
-int testEndpoint_connect(struct testEndpoint *e)
+int testEndpointConnect(struct testEndpoint *e)
 {
 	struct sockaddr *address;
 	socklen_t size;
@@ -164,7 +164,7 @@ int testEndpointAccept(struct testEndpoint *e)
 
 void testEndpoint_pair(struct testEndpoint *e, int *server, int *client)
 {
-	*client = testEndpoint_connect(e);
+	*client = testEndpointConnect(e);
 	*server = testEndpointAccept(e);
 }
 

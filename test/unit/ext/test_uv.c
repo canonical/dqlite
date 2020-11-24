@@ -103,7 +103,7 @@ static void *setup(const MunitParameter params[], void *userData)
 	rv = uv_listen(f->listener, 128, listenCb);
 	munit_assert_int(rv, ==, 0);
 
-	f->client = testEndpoint_connect(&f->endpoint);
+	f->client = testEndpointConnect(&f->endpoint);
 
 	testUv_run(&f->loop, 1);
 

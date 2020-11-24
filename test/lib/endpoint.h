@@ -43,7 +43,7 @@ void testEndpoint_setup(struct testEndpoint *e, const MunitParameter params[]);
 void testEndpoint_tear_down(struct testEndpoint *e);
 
 /* Establish a new client connection. */
-int testEndpoint_connect(struct testEndpoint *e);
+int testEndpointConnect(struct testEndpoint *e);
 
 /* Accept a new client connection. */
 int testEndpointAccept(struct testEndpoint *e);
