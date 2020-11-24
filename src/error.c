@@ -16,7 +16,7 @@
  * itself. */
 static char *dqliteError_oom_msg = "error message unavailable (out of memory)";
 
-void dqliteError_init(dqliteError *e)
+void dqliteErrorInit(dqliteError *e)
 {
 	*e = NULL;
 }
@@ -68,7 +68,7 @@ static void dqliteError_vwrapf(dqliteError *e,
 	char *        msg;
 
 	/* First, print the format and arguments, using a temporary error. */
-	dqliteError_init(&tmp);
+	dqliteErrorInit(&tmp);
 
 	dqliteError_vprintf(&tmp, fmt, args);
 

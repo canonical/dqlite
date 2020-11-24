@@ -9,7 +9,7 @@
 typedef char *dqliteError;
 
 /* Initialize the error with an empty message */
-void dqliteError_init(dqliteError *e);
+void dqliteErrorInit(dqliteError *e);
 
 /* Release the memory of the error message, if any is set */
 void dqliteErrorClose(dqliteError *e);

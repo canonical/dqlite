@@ -24,7 +24,7 @@ static void *setup(const MunitParameter params[], void *userData)
 
 	error = (dqliteError *)munit_malloc(sizeof(*error));
 
-	dqliteError_init(error);
+	dqliteErrorInit(error);
 
 	return error;
 }
@@ -114,7 +114,7 @@ TEST_CASE(wrapf, success, NULL)
 
 	(void)params;
 
-	dqliteError_init(&cause);
+	dqliteErrorInit(&cause);
 
 	dqliteError_printf(&cause, "hello %s", "world");
 
@@ -134,7 +134,7 @@ TEST_CASE(wrapf, nullCause, NULL)
 
 	(void)params;
 
-	dqliteError_init(&cause);
+	dqliteErrorInit(&cause);
 
 	dqliteError_wrapf(error, &cause, "boom");
 
