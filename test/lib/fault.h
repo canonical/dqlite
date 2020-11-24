@@ -20,7 +20,7 @@ struct testFault
 /**
  * Initialize a fault.
  */
-void testFault_init(struct testFault *f);
+void testFaultInit(struct testFault *f);
 
 /**
  * Advance the counters of the fault. Return true if the fault should be

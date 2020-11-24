@@ -1,7 +1,7 @@
 #include "fault.h"
 #include "munit.h"
 
-void testFault_init(struct testFault *f)
+void testFaultInit(struct testFault *f)
 {
     f->countdown = -1;
     f->n = -1;

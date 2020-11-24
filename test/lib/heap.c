@@ -83,7 +83,7 @@ static void memFaultShutdown(void *p)
  * management interface. By default no faults will be triggered. */
 static void memWrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
 {
-	testFault_init(&memFault.fault);
+	testFaultInit(&memFault.fault);
 	memFault.m = *m;
 
 	wrap->xMalloc = memFaultMalloc;
