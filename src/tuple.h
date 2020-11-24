@@ -121,10 +121,10 @@ struct tupleEncoder
  * Initialize the state of the encoder, before starting to encode a new
  * tuple. The @n parameter must always be greater than zero.
  */
-int tupleEncoder_init(struct tupleEncoder *e,
-		      unsigned n,
-		      int format,
-		      struct buffer *buffer);
+int tupleEncoderInit(struct tupleEncoder *e,
+		     unsigned n,
+		     int format,
+		     struct buffer *buffer);
 
 /**
  * Encode the next value of the tuple.

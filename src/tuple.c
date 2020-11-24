@@ -144,10 +144,10 @@ static uint8_t *encoderHeader(struct tupleEncoder *e)
 	return bufferCursor(e->buffer, e->header);
 }
 
-int tupleEncoder_init(struct tupleEncoder *e,
-		      unsigned n,
-		      int format,
-		      struct buffer *buffer)
+int tupleEncoderInit(struct tupleEncoder *e,
+		     unsigned n,
+		     int format,
+		     struct buffer *buffer)
 {
 	void *cursor;
 	size_t nHeader;
