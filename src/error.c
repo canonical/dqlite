@@ -108,7 +108,7 @@ void dqliteErrorOom(dqliteError *e, const char *msg, ...)
 	va_end(args);
 }
 
-void dqliteError_sys(dqliteError *e, const char *msg)
+void dqliteErrorSys(dqliteError *e, const char *msg)
 {
 	dqliteErrorPrintf(e, "%s: %s", msg, strerror(errno));
 }

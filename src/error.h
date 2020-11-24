@@ -27,7 +27,7 @@ void dqliteError_wrapf(dqliteError *e,
 void dqliteErrorOom(dqliteError *e, const char *msg, ...);
 
 /* Wrap a system error */
-void dqliteError_sys(dqliteError *e, const char *msg);
+void dqliteErrorSys(dqliteError *e, const char *msg);
 
 /* Wrap an error from libuv */
 void dqliteError_uv(dqliteError *e, int err, const char *msg);

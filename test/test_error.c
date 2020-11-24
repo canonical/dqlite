@@ -198,7 +198,7 @@ TEST_CASE(oom, vargs, NULL)
 
 /******************************************************************************
  *
- * dqliteError_sys
+ * dqliteErrorSys
  *
  ******************************************************************************/
 
@@ -213,7 +213,7 @@ TEST_CASE(sys, success, NULL)
 	(void)params;
 
 	open("/foo/bar/egg/baz", 0);
-	dqliteError_sys(error, "boom");
+	dqliteErrorSys(error, "boom");
 
 	munit_assert_string_equal(*error, "boom: No such file or directory");
 
