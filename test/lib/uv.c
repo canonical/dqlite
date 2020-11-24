@@ -44,7 +44,7 @@ void testUvStop(struct uv_loop_s *l)
 	}
 }
 
-static void testUv_walk_cb(uv_handle_t *handle, void *arg)
+static void testUvWalkCb(uv_handle_t *handle, void *arg)
 {
     (void)arg;
 
@@ -57,7 +57,7 @@ void testUvTearDown(struct uv_loop_s *l)
 
     rv = uv_loop_close(l);
     if (rv != 0) {
-	    uv_walk(l, testUv_walk_cb, NULL);
+	    uv_walk(l, testUvWalkCb, NULL);
 	    munit_errorf("uv_loop_close: %s (%d)", uv_strerror(rv), rv);
     }
 
