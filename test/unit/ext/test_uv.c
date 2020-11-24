@@ -179,9 +179,9 @@ static void testReadSyncAllocCb(uv_handle_t *stream, size_t _, uv_buf_t *buf)
 	buf->base = munit_malloc(TEST_SOCKET_MIN_BUF_SIZE);
 }
 
-static void test_read_sync__readCb(uv_stream_t *stream,
-				   ssize_t nread,
-				   const uv_buf_t *buf)
+static void test_read_sync_readCb(uv_stream_t *stream,
+				  ssize_t nread,
+				  const uv_buf_t *buf)
 {
 	bool *readCbCalled;
 
@@ -214,7 +214,7 @@ TEST_CASE(read, sync, endpointParams)
 	f->stream.data = &readCbCalled;
 
 	rv = uv_read_start(&f->stream, testReadSyncAllocCb,
-			   test_read_sync__readCb);
+			   test_read_sync_readCb);
 
 	rv = write(f->client, buf->base, buf->len);
 	munit_assert_int(rv, ==, buf->len);
