@@ -26,7 +26,7 @@
 		struct testServer *server = &f->servers[i_]; \
 		testServer_setup(server, i_ + 1, params);    \
 	}                                                    \
-	testServer_network(f->servers, N_SERVERS);           \
+	testServerNetwork(f->servers, N_SERVERS);            \
 	for (i_ = 0; i_ < N_SERVERS; i_++) {                 \
 		struct testServer *server = &f->servers[i_]; \
 		testServer_start(server);                    \
