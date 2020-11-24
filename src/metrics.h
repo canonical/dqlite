@@ -15,6 +15,6 @@ struct dqliteMetrics
 	uint64_t duration; /* Total time spent to server requests. */
 };
 
-void dqliteMetrics_init(struct dqliteMetrics *m);
+void dqliteMetricsInit(struct dqliteMetrics *m);
 
 #endif /* DQLITE_METRICS_H */
