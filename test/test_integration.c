@@ -59,7 +59,7 @@ static void *__worker_run(void *arg)
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i);
 
 		testClient_prepare(w->client, dbId, sql, &stmtId);
-		testClient_exec(w->client, dbId, stmtId, &result);
+		testClientExec(w->client, dbId, stmtId, &result);
 
 		munit_assert_int(result.rowsAffected, ==, 1);
 
@@ -199,7 +199,7 @@ TEST_CASE(exec, singleQuery, NULL)
 	/* Create a test table. */
 	testClient_prepare(client, dbId, "CREATE TABLE test (n INT)",
 			    &stmtId);
-	testClient_exec(client, dbId, stmtId, &result);
+	testClientExec(client, dbId, stmtId, &result);
 	testClient_finalize(client, dbId, stmtId);
 
 	/* Insert a row in the test table. */
@@ -208,7 +208,7 @@ TEST_CASE(exec, singleQuery, NULL)
 
 	munit_assert_int(stmtId, ==, 0);
 
-	testClient_exec(client, dbId, stmtId, &result);
+	testClientExec(client, dbId, stmtId, &result);
 
 	munit_assert_int(result.lastInsertId, ==, 1);
 	munit_assert_int(result.rowsAffected, ==, 1);
@@ -265,11 +265,11 @@ TEST_CASE(exec, largeQuery, NULL)
 	/* Create a test table. */
 	testClient_prepare(client, dbId, "CREATE TABLE test (n INT)",
 			    &stmtId);
-	testClient_exec(client, dbId, stmtId, &result);
+	testClientExec(client, dbId, stmtId, &result);
 	testClient_finalize(client, dbId, stmtId);
 
 	testClient_prepare(client, dbId, "BEGIN", &stmtId);
-	testClient_exec(client, dbId, stmtId, &result);
+	testClientExec(client, dbId, stmtId, &result);
 	testClient_finalize(client, dbId, stmtId);
 
 	/* Insert lots of rows in the test table. */
@@ -278,14 +278,14 @@ TEST_CASE(exec, largeQuery, NULL)
 
 	for (i = 0; i < 256; i++) {
 		munit_assert_int(stmtId, ==, 0);
-		testClient_exec(client, dbId, stmtId, &result);
+		testClientExec(client, dbId, stmtId, &result);
 		munit_assert_int(result.rowsAffected, ==, 1);
 	}
 
 	testClient_finalize(client, dbId, stmtId);
 
 	testClient_prepare(client, dbId, "COMMIT", &stmtId);
-	testClient_exec(client, dbId, stmtId, &result);
+	testClientExec(client, dbId, stmtId, &result);
 	testClient_finalize(client, dbId, stmtId);
 
 	/* Select all rows from the test table. */
@@ -341,7 +341,7 @@ TEST_CASE(exec, multiThread, NULL)
 	/* Create a test table and close this client. */
 	testClient_prepare(client, dbId, "CREATE TABLE test (n INT)",
 			    &stmtId);
-	testClient_exec(client, dbId, stmtId, &result);
+	testClientExec(client, dbId, stmtId, &result);
 	testClient_finalize(client, dbId, stmtId);
 
 	testClientClose(client);
