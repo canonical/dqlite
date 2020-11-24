@@ -1252,7 +1252,7 @@ TEST_CASE(execSql, multi, NULL)
  *
  ******************************************************************************/
 
-struct querySql_fixture
+struct querySqlFixture
 {
 	FIXTURE;
 	struct request_querySql request;
@@ -1262,7 +1262,7 @@ struct querySql_fixture
 TEST_SUITE(querySql);
 TEST_SETUP(querySql)
 {
-	struct querySql_fixture *f = munit_malloc(sizeof *f);
+	struct querySqlFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	CLUSTER_ELECT(0);
 	OPEN;
@@ -1271,7 +1271,7 @@ TEST_SETUP(querySql)
 }
 TEST_TEAR_DOWN(querySql)
 {
-	struct querySql_fixture *f = data;
+	struct querySqlFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -1279,7 +1279,7 @@ TEST_TEAR_DOWN(querySql)
 /* Exec a SQL query whose result set fits in a page. */
 TEST_CASE(querySql, small, NULL)
 {
-	struct querySql_fixture *f = data;
+	struct querySqlFixture *f = data;
 	(void)params;
 	EXEC("INSERT INTO test VALUES(123)");
 	f->request.dbId = 0;
@@ -1293,7 +1293,7 @@ TEST_CASE(querySql, small, NULL)
 /* Perform a query with parameters */
 TEST_CASE(querySql, params, NULL)
 {
-	struct querySql_fixture *f = data;
+	struct querySqlFixture *f = data;
 	struct value values[2];
 	(void)params;
 	EXEC("BEGIN");
