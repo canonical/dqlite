@@ -6,7 +6,7 @@
 
 #include "registry.h"
 
-void registry_init(struct registry *r, struct config *config)
+void registryInit(struct registry *r, struct config *config)
 {
 	r->config = config;
 	QUEUE_INIT(&r->dbs);

@@ -15,7 +15,7 @@ struct registry
 	queue dbs;
 };
 
-void registry_init(struct registry *r, struct config *config);
+void registryInit(struct registry *r, struct config *config);
 void registryClose(struct registry *r);
 
 /**
