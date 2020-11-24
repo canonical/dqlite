@@ -35,7 +35,7 @@ void testServerSetup(struct testServer *s,
 	memset(s->others, 0, sizeof s->others);
 }
 
-void testServer_tear_down(struct testServer *s)
+void testServerTearDown(struct testServer *s)
 {
 	int rv;
 

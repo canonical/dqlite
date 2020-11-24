@@ -33,12 +33,12 @@
 	}                                                    \
 	SELECT(1)
 
-#define TEAR_DOWN                                      \
-	unsigned i_;                                   \
-	for (i_ = 0; i_ < N_SERVERS; i_++) {           \
-		testServer_tear_down(&f->servers[i_]); \
-	}                                              \
-	testSqliteTearDown();                          \
+#define TEAR_DOWN                                    \
+	unsigned i_;                                 \
+	for (i_ = 0; i_ < N_SERVERS; i_++) {         \
+		testServerTearDown(&f->servers[i_]); \
+	}                                            \
+	testSqliteTearDown();                        \
 	testHeapTearDown(data)
 
 /******************************************************************************

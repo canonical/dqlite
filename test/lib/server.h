@@ -29,7 +29,7 @@ void testServerSetup(struct testServer *s,
 		     const MunitParameter params[]);
 
 /* Cleanup the test server. */
-void testServer_tear_down(struct testServer *s);
+void testServerTearDown(struct testServer *s);
 
 /* Start the test server. */
 void testServerStart(struct testServer *s);

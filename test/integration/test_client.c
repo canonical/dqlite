@@ -89,7 +89,7 @@ static void *setUp(const MunitParameter params[], void *userData)
 static void tearDown(void *data)
 {
 	struct fixture *f = data;
-	testServer_tear_down(&f->server);
+	testServerTearDown(&f->server);
 	testSqliteTearDown();
 	testHeapTearDown(data);
 
