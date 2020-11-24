@@ -51,7 +51,7 @@ bool testFault_tick(struct testFault *f)
     return false;
 }
 
-void testFault_config(struct testFault *f, int delay, int repeat)
+void testFaultConfig(struct testFault *f, int delay, int repeat)
 {
     f->countdown = delay;
     f->n = repeat;

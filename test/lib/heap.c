@@ -209,7 +209,7 @@ void testHeapTearDown(void *data)
 
 void testHeapFaultConfig(int delay, int repeat)
 {
-	testFault_config(&memFault.fault, delay, repeat);
+	testFaultConfig(&memFault.fault, delay, repeat);
 }
 
 void testHeapFaultEnable()
