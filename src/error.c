@@ -32,7 +32,7 @@ void dqliteErrorClose(dqliteError *e)
  * parameters.
  *
  * Any previously set error message will be cleared. */
-static void dqliteError_vprintf(dqliteError *e, const char *fmt, va_list args)
+static void dqliteErrorVprintf(dqliteError *e, const char *fmt, va_list args)
 {
 	assert(fmt != NULL);
 
@@ -55,7 +55,7 @@ void dqliteErrorPrintf(dqliteError *e, const char *fmt, ...)
 	va_list args;
 
 	va_start(args, fmt);
-	dqliteError_vprintf(e, fmt, args);
+	dqliteErrorVprintf(e, fmt, args);
 	va_end(args);
 }
 
@@ -70,7 +70,7 @@ static void dqliteError_vwrapf(dqliteError *e,
 	/* First, print the format and arguments, using a temporary error. */
 	dqliteErrorInit(&tmp);
 
-	dqliteError_vprintf(&tmp, fmt, args);
+	dqliteErrorVprintf(&tmp, fmt, args);
 
 	if (cause == NULL) {
 		/* Special case the cause error being empty. */
