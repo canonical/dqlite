@@ -43,7 +43,7 @@
 #define TEAR_DOWN_RAFT                             \
 	{                                          \
 		raft_close(&f->raft, NULL);        \
-		testUv_stop(&f->loop);             \
+		testUvStop(&f->loop);              \
 		raft_uv_close(&f->raft_io);        \
 		fsmClose(&f->fsm);                 \
 		testUv_tear_down(&f->loop);        \

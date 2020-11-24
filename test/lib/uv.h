@@ -25,7 +25,7 @@ void testUvSetup(const MunitParameter params[], struct uv_loop_s *l);
  *
  * This is meant to be used in tear down functions.
  */
-void testUv_stop(struct uv_loop_s *l);
+void testUvStop(struct uv_loop_s *l);
 
 /**
  * Tear down the loop making sure no active handles are left.

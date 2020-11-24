@@ -119,7 +119,7 @@ static void tear_down(void *data)
 	uv_close((struct uv_handle_s *)f->listener, (uv_close_cb)raft_free);
 	testEndpointTearDown(&f->endpoint);
 	uv_close((uv_handle_t *)(&f->stream), NULL);
-	testUv_stop(&f->loop);
+	testUvStop(&f->loop);
 	testUv_tear_down(&f->loop);
 	free(f);
 }

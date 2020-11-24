@@ -32,7 +32,7 @@ int testUvRun(struct uv_loop_s *l, unsigned n)
     return rv;
 }
 
-void testUv_stop(struct uv_loop_s *l)
+void testUvStop(struct uv_loop_s *l)
 {
 	unsigned nHandles;
 
