@@ -99,7 +99,7 @@ TEST_CASE(printf, oom, NULL)
 
 /******************************************************************************
  *
- * dqliteError_wrapf
+ * dqliteErrorWrapf
  *
  ******************************************************************************/
 
@@ -118,7 +118,7 @@ TEST_CASE(wrapf, success, NULL)
 
 	dqliteErrorPrintf(&cause, "hello %s", "world");
 
-	dqliteError_wrapf(error, &cause, "boom");
+	dqliteErrorWrapf(error, &cause, "boom");
 
 	dqliteErrorClose(&cause);
 
@@ -136,7 +136,7 @@ TEST_CASE(wrapf, nullCause, NULL)
 
 	dqliteErrorInit(&cause);
 
-	dqliteError_wrapf(error, &cause, "boom");
+	dqliteErrorWrapf(error, &cause, "boom");
 
 	dqliteErrorClose(&cause);
 
@@ -153,7 +153,7 @@ TEST_CASE(wrapf, itself, NULL)
 
 	dqliteErrorPrintf(error, "I'm %s!", "here");
 
-	dqliteError_wrapf(error, error, "boom");
+	dqliteErrorWrapf(error, error, "boom");
 
 	munit_assert_string_equal(*error, "boom: I'm here!");
 

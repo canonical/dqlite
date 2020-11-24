@@ -87,10 +87,10 @@ static void dqliteErrorVwrapf(dqliteError *e,
 	dqliteErrorClose(&tmp);
 }
 
-void dqliteError_wrapf(dqliteError *e,
-		       const dqliteError *cause,
-		       const char *fmt,
-		       ...)
+void dqliteErrorWrapf(dqliteError *e,
+		      const dqliteError *cause,
+		      const char *fmt,
+		      ...)
 {
 	va_list args;
 
