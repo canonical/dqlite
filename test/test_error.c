@@ -222,7 +222,7 @@ TEST_CASE(sys, success, NULL)
 
 /******************************************************************************
  *
- * dqliteError_uv
+ * dqliteErrorUv
  *
  ******************************************************************************/
 
@@ -236,7 +236,7 @@ TEST_CASE(uv, success, NULL)
 
 	(void)params;
 
-	dqliteError_uv(error, UV_EBUSY, "boom");
+	dqliteErrorUv(error, UV_EBUSY, "boom");
 
 	munit_assert_string_equal(*error,
 				  "boom: resource busy or locked (EBUSY)");
@@ -327,7 +327,7 @@ TEST_CASE(isDisconnect, eof, NULL)
 
 	(void)params;
 
-	dqliteError_uv(error, UV_EOF, "boom");
+	dqliteErrorUv(error, UV_EOF, "boom");
 
 	munit_assert_true(dqliteErrorIsDisconnect(error));
 
@@ -340,7 +340,7 @@ TEST_CASE(isDisconnect, econnreset, NULL)
 
 	(void)params;
 
-	dqliteError_uv(error, UV_ECONNRESET, "boom");
+	dqliteErrorUv(error, UV_ECONNRESET, "boom");
 
 	munit_assert_true(dqliteErrorIsDisconnect(error));
 

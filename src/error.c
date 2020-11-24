@@ -113,7 +113,7 @@ void dqliteErrorSys(dqliteError *e, const char *msg)
 	dqliteErrorPrintf(e, "%s: %s", msg, strerror(errno));
 }
 
-void dqliteError_uv(dqliteError *e, int err, const char *msg)
+void dqliteErrorUv(dqliteError *e, int err, const char *msg)
 {
 	dqliteErrorPrintf(e, "%s: %s (%s)", msg, uv_strerror(err),
 			  uv_err_name(err));

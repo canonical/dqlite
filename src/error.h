@@ -30,7 +30,7 @@ void dqliteErrorOom(dqliteError *e, const char *msg, ...);
 void dqliteErrorSys(dqliteError *e, const char *msg);
 
 /* Wrap an error from libuv */
-void dqliteError_uv(dqliteError *e, int err, const char *msg);
+void dqliteErrorUv(dqliteError *e, int err, const char *msg);
 
 /* Copy the underlying error message.
  *
