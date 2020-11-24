@@ -15,7 +15,7 @@ void dqliteErrorInit(dqliteError *e);
 void dqliteErrorClose(dqliteError *e);
 
 /* Set the error message */
-void dqliteError_printf(dqliteError *e, const char *fmt, ...);
+void dqliteErrorPrintf(dqliteError *e, const char *fmt, ...);
 
 /* Wrap an error with an additional message */
 void dqliteError_wrapf(dqliteError *e,

@@ -43,7 +43,7 @@ static void tear_down(void *data)
 
 /******************************************************************************
  *
- * dqliteError_printf
+ * dqliteErrorPrintf
  *
  ******************************************************************************/
 
@@ -59,7 +59,7 @@ TEST_CASE(printf, success, NULL)
 
 	munit_assert_true(dqliteErrorIsNull(error));
 
-	dqliteError_printf(error, "hello %s", "world");
+	dqliteErrorPrintf(error, "hello %s", "world");
 
 	munit_assert_string_equal(*error, "hello world");
 
@@ -72,8 +72,8 @@ TEST_CASE(printf, override, NULL)
 
 	(void)params;
 
-	dqliteError_printf(error, "hello %s", "world");
-	dqliteError_printf(error, "I'm %s!", "here");
+	dqliteErrorPrintf(error, "hello %s", "world");
+	dqliteErrorPrintf(error, "I'm %s!", "here");
 
 	munit_assert_string_equal(*error, "I'm here!");
 
@@ -89,7 +89,7 @@ TEST_CASE(printf, oom, NULL)
 	testHeapFaultConfig(0, 1);
 	testHeapFaultEnable();
 
-	dqliteError_printf(error, "hello %s", "world");
+	dqliteErrorPrintf(error, "hello %s", "world");
 
 	munit_assert_string_equal(*error,
 				  "error message unavailable (out of memory)");
@@ -116,7 +116,7 @@ TEST_CASE(wrapf, success, NULL)
 
 	dqliteErrorInit(&cause);
 
-	dqliteError_printf(&cause, "hello %s", "world");
+	dqliteErrorPrintf(&cause, "hello %s", "world");
 
 	dqliteError_wrapf(error, &cause, "boom");
 
@@ -151,7 +151,7 @@ TEST_CASE(wrapf, itself, NULL)
 
 	(void)params;
 
-	dqliteError_printf(error, "I'm %s!", "here");
+	dqliteErrorPrintf(error, "I'm %s!", "here");
 
 	dqliteError_wrapf(error, error, "boom");
 
@@ -262,7 +262,7 @@ TEST_CASE(copy, success, NULL)
 
 	(void)params;
 
-	dqliteError_printf(error, "hello %s", "world");
+	dqliteErrorPrintf(error, "hello %s", "world");
 	err = dqliteErrorCopy(error, &msg);
 
 	munit_assert_int(err, ==, 0);
@@ -301,7 +301,7 @@ TEST_CASE(copy, oom, NULL)
 	testHeapFaultConfig(2, 1);
 	testHeapFaultEnable();
 
-	dqliteError_printf(error, "hello");
+	dqliteErrorPrintf(error, "hello");
 
 	err = dqliteErrorCopy(error, &msg);
 
@@ -353,7 +353,7 @@ TEST_CASE(isDisconnect, other, NULL)
 
 	(void)params;
 
-	dqliteError_printf(error, "boom");
+	dqliteErrorPrintf(error, "boom");
 
 	munit_assert_true(!dqliteErrorIsDisconnect(error));
 

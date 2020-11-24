@@ -50,7 +50,7 @@ static void dqliteError_vprintf(dqliteError *e, const char *fmt, va_list args)
 	}
 }
 
-void dqliteError_printf(dqliteError *e, const char *fmt, ...)
+void dqliteErrorPrintf(dqliteError *e, const char *fmt, ...)
 {
 	va_list args;
 
@@ -74,14 +74,14 @@ static void dqliteError_vwrapf(dqliteError *e,
 
 	if (cause == NULL) {
 		/* Special case the cause error being empty. */
-		dqliteError_printf(e, "%s: (null)", tmp);
+		dqliteErrorPrintf(e, "%s: (null)", tmp);
 	} else if (cause == *e) {
 		/* When the error is wrapping itself, we need to make a copy */
 		dqliteErrorCopy(e, &msg);
-		dqliteError_printf(e, "%s: %s", tmp, msg);
+		dqliteErrorPrintf(e, "%s: %s", tmp, msg);
 		sqlite3_free(msg);
 	} else {
-		dqliteError_printf(e, "%s: %s", tmp, cause);
+		dqliteErrorPrintf(e, "%s: %s", tmp, cause);
 	}
 
 	dqliteErrorClose(&tmp);
@@ -110,13 +110,13 @@ void dqliteErrorOom(dqliteError *e, const char *msg, ...)
 
 void dqliteError_sys(dqliteError *e, const char *msg)
 {
-	dqliteError_printf(e, "%s: %s", msg, strerror(errno));
+	dqliteErrorPrintf(e, "%s: %s", msg, strerror(errno));
 }
 
 void dqliteError_uv(dqliteError *e, int err, const char *msg)
 {
-	dqliteError_printf(e, "%s: %s (%s)", msg, uv_strerror(err),
-			   uv_err_name(err));
+	dqliteErrorPrintf(e, "%s: %s (%s)", msg, uv_strerror(err),
+			  uv_err_name(err));
 }
 
 int dqliteErrorCopy(dqliteError *e, char **msg)
