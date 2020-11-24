@@ -132,17 +132,17 @@ static void handleCb(struct handle *req, int status, int type)
 	}
 
 /* Decode a row with N columns filling the given values. */
-#define DECODE_ROW(N, VALUES)                                                \
-	{                                                                    \
-		struct tupleDecoder decoder;                                 \
-		int i2;                                                      \
-		int rc2;                                                     \
-		rc2 = tupleDecoderInit(&decoder, N, f->cursor);              \
-		munit_assert_int(rc2, ==, 0);                                \
-		for (i2 = 0; i2 < N; i2++) {                                 \
-			rc2 = tupleDecoder__next(&decoder, &((VALUES)[i2])); \
-			munit_assert_int(rc2, ==, 0);                        \
-		}                                                            \
+#define DECODE_ROW(N, VALUES)                                               \
+	{                                                                   \
+		struct tupleDecoder decoder;                                \
+		int i2;                                                     \
+		int rc2;                                                    \
+		rc2 = tupleDecoderInit(&decoder, N, f->cursor);             \
+		munit_assert_int(rc2, ==, 0);                               \
+		for (i2 = 0; i2 < N; i2++) {                                \
+			rc2 = tupleDecoder_next(&decoder, &((VALUES)[i2])); \
+			munit_assert_int(rc2, ==, 0);                       \
+		}                                                           \
 	}
 
 /* Handle a request of the given type and check that no error occurs. */

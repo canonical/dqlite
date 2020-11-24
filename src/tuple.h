@@ -98,12 +98,12 @@ int tupleDecoderInit(struct tupleDecoder *d, unsigned n, struct cursor *cursor);
  * parameters format this is the value contained in the first byte of the tuple
  * header.
  */
-unsigned tupleDecoder__n(struct tupleDecoder *d);
+unsigned tupleDecoder_n(struct tupleDecoder *d);
 
 /**
  * Decode the next value of the tuple.
  */
-int tupleDecoder__next(struct tupleDecoder *d, struct value *value);
+int tupleDecoder_next(struct tupleDecoder *d, struct value *value);
 
 /**
  * Maintain state while encoding a single tuple.
