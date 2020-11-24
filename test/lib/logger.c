@@ -47,7 +47,7 @@ void testLoggerEmit(void *data, int level, const char *format, va_list args)
 	munit_log(MUNIT_LOG_INFO, buf);
 }
 
-void testLogger_setup(const MunitParameter params[], struct logger *l)
+void testLoggerSetup(const MunitParameter params[], struct logger *l)
 {
 	struct testLogger *t;
 

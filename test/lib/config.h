@@ -11,12 +11,12 @@
 
 #define FIXTURE_CONFIG struct config config;
 
-#define SETUP_CONFIG                                         \
-	{                                                    \
-		int rc;                                      \
-		rc = configInit(&f->config, 1, "1");         \
-		munit_assert_int(rc, ==, 0);                 \
-		testLogger_setup(params, &f->config.logger); \
+#define SETUP_CONFIG                                        \
+	{                                                   \
+		int rc;                                     \
+		rc = configInit(&f->config, 1, "1");        \
+		munit_assert_int(rc, ==, 0);                \
+		testLoggerSetup(params, &f->config.logger); \
 	}
 
 #define TEAR_DOWN_CONFIG                         \

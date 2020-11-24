@@ -74,7 +74,7 @@ struct server
 		char address[16];                                \
 		int _rc;                                         \
                                                                  \
-		testLogger_setup(params, &_s->logger);           \
+		testLoggerSetup(params, &_s->logger);            \
                                                                  \
 		sprintf(address, "%d", I + 1);                   \
                                                                  \
