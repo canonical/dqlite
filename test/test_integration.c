@@ -43,7 +43,7 @@ static void *__worker_run(void *arg)
 	testClientHandshake(w->client);
 	testClientLeader(w->client, &leader);
 	testClientClient(w->client, &heartbeat);
-	testClient_open(w->client, "test.db", &dbId);
+	testClientOpen(w->client, "test.db", &dbId);
 
 	b = w->a + w->n;
 
@@ -193,7 +193,7 @@ TEST_CASE(exec, singleQuery, NULL)
 	testClientHandshake(client);
 	testClientLeader(client, &leader);
 	testClientClient(client, &heartbeat);
-	testClient_open(client, "test.db", &dbId);
+	testClientOpen(client, "test.db", &dbId);
 	munit_assert_int(dbId, ==, 0);
 
 	/* Create a test table. */
@@ -259,7 +259,7 @@ TEST_CASE(exec, largeQuery, NULL)
 	testClientHandshake(client);
 	testClientLeader(client, &leader);
 	testClientClient(client, &heartbeat);
-	testClient_open(client, "test.db", &dbId);
+	testClientOpen(client, "test.db", &dbId);
 	munit_assert_int(dbId, ==, 0);
 
 	/* Create a test table. */
@@ -335,7 +335,7 @@ TEST_CASE(exec, multiThread, NULL)
 	testClientHandshake(client);
 	testClientLeader(client, &leader);
 	testClientClient(client, &heartbeat);
-	testClient_open(client, "test.db", &dbId);
+	testClientOpen(client, "test.db", &dbId);
 	munit_assert_int(dbId, ==, 0);
 
 	/* Create a test table and close this client. */
