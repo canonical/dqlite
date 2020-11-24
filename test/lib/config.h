@@ -19,8 +19,8 @@
 		testLoggerSetup(params, &f->config.logger); \
 	}
 
-#define TEAR_DOWN_CONFIG                         \
-	testLogger_tear_down(&f->config.logger); \
+#define TEAR_DOWN_CONFIG                       \
+	testLoggerTearDown(&f->config.logger); \
 	configClose(&f->config)
 
 #endif /* TEST_OPTIONS_H */

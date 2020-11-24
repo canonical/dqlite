@@ -60,7 +60,7 @@ void testLoggerSetup(const MunitParameter params[], struct logger *l)
 	l->emit = testLoggerEmit;
 }
 
-void testLogger_tear_down(struct logger *l)
+void testLoggerTearDown(struct logger *l)
 {
 	free(l->data);
 }

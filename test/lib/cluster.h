@@ -112,7 +112,7 @@ struct server
 		sqlite3_vfs_unregister(&s->vfs);    \
 		VfsClose(&s->vfs);                  \
 		configClose(&s->config);            \
-		testLogger_tear_down(&s->logger);   \
+		testLoggerTearDown(&s->logger);     \
 	}
 
 #define CLUSTER_CONFIG(I) &f->servers[I].config
