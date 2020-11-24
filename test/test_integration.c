@@ -104,7 +104,7 @@ static void __worker_start(struct worker *w,
 	w->a = a;
 	w->n = n;
 
-	testServer_connect(server, &w->client);
+	testServerConnect(server, &w->client);
 
 	err = pthread_create(&w->thread, 0, &__worker_run, (void *)w);
 	if (err) {
@@ -187,7 +187,7 @@ TEST_CASE(exec, singleQuery, NULL)
 
 	(void)params;
 
-	testServer_connect(server, &client);
+	testServerConnect(server, &client);
 
 	/* Initialize the connection and open a database. */
 	testClientHandshake(client);
@@ -253,7 +253,7 @@ TEST_CASE(exec, largeQuery, NULL)
 
 	(void)params;
 
-	testServer_connect(server, &client);
+	testServerConnect(server, &client);
 
 	/* Initialize the connection and open a database. */
 	testClientHandshake(client);
@@ -329,7 +329,7 @@ TEST_CASE(exec, multiThread, NULL)
 	int n = 2;
 	int i;
 
-	testServer_connect(server, &client);
+	testServerConnect(server, &client);
 
 	/* Initialize the connection and open a database. */
 	testClientHandshake(client);
