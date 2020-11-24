@@ -33,11 +33,11 @@ TEST_MODULE(tuple);
 		munit_assert_int(rc2, ==, 0);                               \
 	}
 
-#define ENCODER_NEXT                                          \
-	{                                                     \
-		int rc2;                                      \
-		rc2 = tupleEncoder_next(&f->encoder, &value); \
-		munit_assert_int(rc2, ==, 0);                 \
+#define ENCODER_NEXT                                         \
+	{                                                    \
+		int rc2;                                     \
+		rc2 = tupleEncoderNext(&f->encoder, &value); \
+		munit_assert_int(rc2, ==, 0);                \
 	}
 
 /******************************************************************************

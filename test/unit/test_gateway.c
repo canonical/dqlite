@@ -117,7 +117,7 @@ static void handleCb(struct handle *req, int status, int type)
 		rc2 = tupleEncoderInit(&encoder, N, TUPLE_PARAMS, f->buf1); \
 		munit_assert_int(rc2, ==, 0);                               \
 		for (i2 = 0; i2 < N; i2++) {                                \
-			rc2 = tupleEncoder_next(&encoder, &((VALUES)[i2])); \
+			rc2 = tupleEncoderNext(&encoder, &((VALUES)[i2]));  \
 			munit_assert_int(rc2, ==, 0);                       \
 		}                                                           \
 	}

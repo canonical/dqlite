@@ -202,7 +202,7 @@ static void setType(struct tupleEncoder *e, unsigned i, int type)
 	}
 }
 
-int tupleEncoder_next(struct tupleEncoder *e, struct value *value)
+int tupleEncoderNext(struct tupleEncoder *e, struct value *value)
 {
 	void *cursor;
 	size_t size;

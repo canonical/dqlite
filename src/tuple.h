@@ -129,6 +129,6 @@ int tupleEncoderInit(struct tupleEncoder *e,
 /**
  * Encode the next value of the tuple.
  */
-int tupleEncoder_next(struct tupleEncoder *e, struct value *value);
+int tupleEncoderNext(struct tupleEncoder *e, struct value *value);
 
 #endif /* DQLITE_TUPLE_H_ */
