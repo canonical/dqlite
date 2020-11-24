@@ -124,7 +124,7 @@ static void __worker_wait(struct worker *w)
 			     strerror(errno));
 	}
 
-	testClient_close(w->client);
+	testClientClose(w->client);
 	free(w->client);
 }
 
@@ -233,7 +233,7 @@ TEST_CASE(exec, singleQuery, NULL)
 
 	testClient_finalize(client, dbId, stmtId);
 
-	testClient_close(client);
+	testClientClose(client);
 	free(client);
 
 	return MUNIT_OK;
@@ -306,7 +306,7 @@ TEST_CASE(exec, largeQuery, NULL)
 
 	testClient_finalize(client, dbId, stmtId);
 
-	testClient_close(client);
+	testClientClose(client);
 
 	free(client);
 
@@ -344,7 +344,7 @@ TEST_CASE(exec, multiThread, NULL)
 	testClient_exec(client, dbId, stmtId, &result);
 	testClient_finalize(client, dbId, stmtId);
 
-	testClient_close(client);
+	testClientClose(client);
 
 	/* Spawn the workers. */
 	workers = munit_malloc(n * sizeof *workers);
