@@ -85,7 +85,7 @@ void testEndpointSetup(struct testEndpoint *e, const MunitParameter params[])
 	}
 }
 
-void testEndpoint_tear_down(struct testEndpoint *e)
+void testEndpointTearDown(struct testEndpoint *e)
 {
 	close(e->fd);
 }

@@ -40,7 +40,7 @@ struct testEndpoint
 void testEndpointSetup(struct testEndpoint *e, const MunitParameter params[]);
 
 /* Tear down a listening endpoint. */
-void testEndpoint_tear_down(struct testEndpoint *e);
+void testEndpointTearDown(struct testEndpoint *e);
 
 /* Establish a new client connection. */
 int testEndpointConnect(struct testEndpoint *e);

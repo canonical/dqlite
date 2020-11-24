@@ -79,7 +79,7 @@ static void tear_down(void *data)
 	transport_close(&f->transport, NULL);
 	testUv_stop(&f->loop);
 	testUv_tear_down(&f->loop);
-	testEndpoint_tear_down(&f->endpoint);
+	testEndpointTearDown(&f->endpoint);
 	free(data);
 }
 

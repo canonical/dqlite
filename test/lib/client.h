@@ -23,6 +23,6 @@
 
 #define TEAR_DOWN_CLIENT         \
 	clientClose(&f->client); \
-	testEndpoint_tear_down(&f->endpoint)
+	testEndpointTearDown(&f->endpoint)
 
 #endif /* TEST_CLIENT_H */

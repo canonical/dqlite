@@ -117,7 +117,7 @@ static void tear_down(void *data)
 	rv = close(f->client);
 	munit_assert_int(rv, ==, 0);
 	uv_close((struct uv_handle_s *)f->listener, (uv_close_cb)raft_free);
-	testEndpoint_tear_down(&f->endpoint);
+	testEndpointTearDown(&f->endpoint);
 	uv_close((uv_handle_t *)(&f->stream), NULL);
 	testUv_stop(&f->loop);
 	testUv_tear_down(&f->loop);
