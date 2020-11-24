@@ -29,7 +29,7 @@ int dqliteInit(struct dqlite_node *d,
 	rv = VfsInit(&d->vfs, d->config.name);
 	sqlite3_vfs_register(&d->vfs, 0);
 	if (rv != 0) {
-		goto err_after_configInit;
+		goto errAfterConfigInit;
 	}
 	registry_init(&d->registry, &d->config);
 	rv = uv_loop_init(&d->loop);
@@ -104,7 +104,7 @@ errAfterLoopInit:
 	uv_loop_close(&d->loop);
 errAfterVfsInit:
 	VfsClose(&d->vfs);
-err_after_configInit:
+errAfterConfigInit:
 	configClose(&d->config);
 err:
 	return rv;
