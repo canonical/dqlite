@@ -88,7 +88,7 @@ static int encodeRow(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 				return SQLITE_ERROR;
 		}
 
-		rc = tupleEncoder__next(&encoder, &value);
+		rc = tupleEncoder_next(&encoder, &value);
 		if (rc != 0) {
 			return rc;
 		}
