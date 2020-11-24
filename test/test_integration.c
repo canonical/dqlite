@@ -63,7 +63,7 @@ static void *__worker_run(void *arg)
 
 		munit_assert_int(result.rowsAffected, ==, 1);
 
-		testClient_finalize(w->client, dbId, stmtId);
+		testClientFinalize(w->client, dbId, stmtId);
 
 		/* Fetch all rows within our own working range. */
 		sprintf(sql, "SELECT n FROM test WHERE n >= %d AND n < %d",
@@ -86,7 +86,7 @@ static void *__worker_run(void *arg)
 		}
 
 		testClient_rows_close(&rows);
-		testClient_finalize(w->client, dbId, stmtId);
+		testClientFinalize(w->client, dbId, stmtId);
 	}
 
 	return 0;
@@ -200,7 +200,7 @@ TEST_CASE(exec, singleQuery, NULL)
 	testClient_prepare(client, dbId, "CREATE TABLE test (n INT)",
 			    &stmtId);
 	testClientExec(client, dbId, stmtId, &result);
-	testClient_finalize(client, dbId, stmtId);
+	testClientFinalize(client, dbId, stmtId);
 
 	/* Insert a row in the test table. */
 	testClient_prepare(client, dbId, "INSERT INTO test VALUES(123)",
@@ -213,7 +213,7 @@ TEST_CASE(exec, singleQuery, NULL)
 	munit_assert_int(result.lastInsertId, ==, 1);
 	munit_assert_int(result.rowsAffected, ==, 1);
 
-	testClient_finalize(client, dbId, stmtId);
+	testClientFinalize(client, dbId, stmtId);
 
 	/* Select rows from the test table. */
 	testClient_prepare(client, dbId, "SELECT n FROM test", &stmtId);
@@ -231,7 +231,7 @@ TEST_CASE(exec, singleQuery, NULL)
 
 	testClient_rows_close(&rows);
 
-	testClient_finalize(client, dbId, stmtId);
+	testClientFinalize(client, dbId, stmtId);
 
 	testClientClose(client);
 	free(client);
@@ -266,11 +266,11 @@ TEST_CASE(exec, largeQuery, NULL)
 	testClient_prepare(client, dbId, "CREATE TABLE test (n INT)",
 			    &stmtId);
 	testClientExec(client, dbId, stmtId, &result);
-	testClient_finalize(client, dbId, stmtId);
+	testClientFinalize(client, dbId, stmtId);
 
 	testClient_prepare(client, dbId, "BEGIN", &stmtId);
 	testClientExec(client, dbId, stmtId, &result);
-	testClient_finalize(client, dbId, stmtId);
+	testClientFinalize(client, dbId, stmtId);
 
 	/* Insert lots of rows in the test table. */
 	testClient_prepare(client, dbId, "INSERT INTO test VALUES(123456789)",
@@ -282,11 +282,11 @@ TEST_CASE(exec, largeQuery, NULL)
 		munit_assert_int(result.rowsAffected, ==, 1);
 	}
 
-	testClient_finalize(client, dbId, stmtId);
+	testClientFinalize(client, dbId, stmtId);
 
 	testClient_prepare(client, dbId, "COMMIT", &stmtId);
 	testClientExec(client, dbId, stmtId, &result);
-	testClient_finalize(client, dbId, stmtId);
+	testClientFinalize(client, dbId, stmtId);
 
 	/* Select all rows from the test table. */
 	testClient_prepare(client, dbId, "SELECT n FROM test", &stmtId);
@@ -304,7 +304,7 @@ TEST_CASE(exec, largeQuery, NULL)
 
 	testClient_rows_close(&rows);
 
-	testClient_finalize(client, dbId, stmtId);
+	testClientFinalize(client, dbId, stmtId);
 
 	testClientClose(client);
 
@@ -342,7 +342,7 @@ TEST_CASE(exec, multiThread, NULL)
 	testClient_prepare(client, dbId, "CREATE TABLE test (n INT)",
 			    &stmtId);
 	testClientExec(client, dbId, stmtId, &result);
-	testClient_finalize(client, dbId, stmtId);
+	testClientFinalize(client, dbId, stmtId);
 
 	testClientClose(client);
 
