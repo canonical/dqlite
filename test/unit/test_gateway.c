@@ -1194,7 +1194,7 @@ TEST_CASE(finalize, success, NULL)
  *
  ******************************************************************************/
 
-struct execSql_fixture
+struct execSqlFixture
 {
 	FIXTURE;
 	struct request_execSql request;
@@ -1204,7 +1204,7 @@ struct execSql_fixture
 TEST_SUITE(execSql);
 TEST_SETUP(execSql)
 {
-	struct execSql_fixture *f = munit_malloc(sizeof *f);
+	struct execSqlFixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	CLUSTER_ELECT(0);
 	OPEN;
@@ -1212,7 +1212,7 @@ TEST_SETUP(execSql)
 }
 TEST_TEAR_DOWN(execSql)
 {
-	struct execSql_fixture *f = data;
+	struct execSqlFixture *f = data;
 	TEAR_DOWN;
 	free(f);
 }
@@ -1220,7 +1220,7 @@ TEST_TEAR_DOWN(execSql)
 /* Exec a SQL text with a single query. */
 TEST_CASE(execSql, single, NULL)
 {
-	struct execSql_fixture *f = data;
+	struct execSqlFixture *f = data;
 	(void)params;
 	f->request.dbId = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
@@ -1234,7 +1234,7 @@ TEST_CASE(execSql, single, NULL)
 /* Exec a SQL text with a multiple queries. */
 TEST_CASE(execSql, multi, NULL)
 {
-	struct execSql_fixture *f = data;
+	struct execSqlFixture *f = data;
 	(void)params;
 	f->request.dbId = 0;
 	f->request.sql =
