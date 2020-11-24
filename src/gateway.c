@@ -404,7 +404,7 @@ static int handle_finalize(struct handle *req, struct cursor *cursor)
 
 static void handle_execSql_next(struct handle *req, struct cursor *cursor);
 
-static void handle_execSql_cb(struct exec *exec, int status)
+static void handleExecSqlCb(struct exec *exec, int status)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
@@ -462,7 +462,7 @@ static void handle_execSql_next(struct handle *req, struct cursor *cursor)
 	g->sql = tail;
 	g->req = req;
 
-	rv = leaderExec(g->leader, &g->exec, g->stmt, handle_execSql_cb);
+	rv = leaderExec(g->leader, &g->exec, g->stmt, handleExecSqlCb);
 	if (rv != SQLITE_OK) {
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto doneAfterPrepare;
