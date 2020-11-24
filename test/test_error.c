@@ -162,7 +162,7 @@ TEST_CASE(wrapf, itself, NULL)
 
 /******************************************************************************
  *
- * dqliteError_oom
+ * dqliteErrorOom
  *
  ******************************************************************************/
 
@@ -176,7 +176,7 @@ TEST_CASE(oom, success, NULL)
 
 	(void)params;
 
-	dqliteError_oom(error, "boom");
+	dqliteErrorOom(error, "boom");
 
 	munit_assert_string_equal(*error, "boom: out of memory");
 
@@ -189,7 +189,7 @@ TEST_CASE(oom, vargs, NULL)
 
 	(void)params;
 
-	dqliteError_oom(error, "boom %d", 123);
+	dqliteErrorOom(error, "boom %d", 123);
 
 	munit_assert_string_equal(*error, "boom 123: out of memory");
 

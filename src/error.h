@@ -24,7 +24,7 @@ void dqliteError_wrapf(dqliteError *e,
 		       ...);
 
 /* Out of memory error */
-void dqliteError_oom(dqliteError *e, const char *msg, ...);
+void dqliteErrorOom(dqliteError *e, const char *msg, ...);
 
 /* Wrap a system error */
 void dqliteError_sys(dqliteError *e, const char *msg);

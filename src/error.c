@@ -14,7 +14,7 @@
 
 /* Fallback message returned when failing to allocate the error message
  * itself. */
-static char *dqliteError_oom_msg = "error message unavailable (out of memory)";
+static char *dqliteErrorOom_msg = "error message unavailable (out of memory)";
 
 void dqliteErrorInit(dqliteError *e)
 {
@@ -23,7 +23,7 @@ void dqliteErrorInit(dqliteError *e)
 
 void dqliteErrorClose(dqliteError *e)
 {
-	if (*e != NULL && *e != dqliteError_oom_msg) {
+	if (*e != NULL && *e != dqliteErrorOom_msg) {
 		sqlite3_free(*e);
 	}
 }
@@ -38,7 +38,7 @@ static void dqliteError_vprintf(dqliteError *e, const char *fmt, va_list args)
 
 	/* If a previous error was set (other than the hard-coded OOM fallback
 	 * fallback), let's free it. */
-	if (*e != NULL && *e != dqliteError_oom_msg) {
+	if (*e != NULL && *e != dqliteErrorOom_msg) {
 		sqlite3_free(*e);
 	}
 
@@ -46,7 +46,7 @@ static void dqliteError_vprintf(dqliteError *e, const char *fmt, va_list args)
 	 * OOM fallback message. */
 	*e = sqlite3_vmprintf(fmt, args);
 	if (*e == NULL) {
-		*e = dqliteError_oom_msg;
+		*e = dqliteErrorOom_msg;
 	}
 }
 
@@ -99,7 +99,7 @@ void dqliteError_wrapf(dqliteError *e,
 	va_end(args);
 }
 
-void dqliteError_oom(dqliteError *e, const char *msg, ...)
+void dqliteErrorOom(dqliteError *e, const char *msg, ...)
 {
 	va_list args;
 
