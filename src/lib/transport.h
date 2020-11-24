@@ -14,7 +14,7 @@
  */
 struct transport;
 typedef void (*transportReadCb)(struct transport *t, int status);
-typedef void (*transportWrite_cb)(struct transport *t, int status);
+typedef void (*transportWriteCb)(struct transport *t, int status);
 typedef void (*transport_close_cb)(struct transport *t);
 
 /**
@@ -28,7 +28,7 @@ struct transport
 	uv_buf_t read;		     /* Read buffer */
 	uv_write_t write;	    /* Write request */
 	transportReadCb readCb;     /* Read callback */
-	transportWrite_cb writeCb;  /* Write callback */
+	transportWriteCb writeCb;   /* Write callback */
 	transport_close_cb close_cb; /* Close callback */
 };
 
@@ -51,7 +51,7 @@ int transportRead(struct transport *t, uv_buf_t *buf, transportReadCb cb);
 /**
  * Write the given buffer to the transport.
  */
-int transportWrite(struct transport *t, uv_buf_t *buf, transportWrite_cb cb);
+int transportWrite(struct transport *t, uv_buf_t *buf, transportWriteCb cb);
 
 /* Create an UV stream object from the given fd. */
 int transportStream(struct uv_loop_s *loop,
