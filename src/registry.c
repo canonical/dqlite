@@ -12,7 +12,7 @@ void registry_init(struct registry *r, struct config *config)
 	QUEUE_INIT(&r->dbs);
 }
 
-void registry_close(struct registry *r)
+void registryClose(struct registry *r)
 {
 	while (!QUEUE_IS_EMPTY(&r->dbs)) {
 		struct db *db;

@@ -123,7 +123,7 @@ void dqliteClose(struct dqlite_node *d)
 	fsmClose(&d->raft_fsm);
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raftTransport);
-	registry_close(&d->registry);
+	registryClose(&d->registry);
 	sqlite3_vfs_unregister(&d->vfs);
 	VfsClose(&d->vfs);
 	configClose(&d->config);

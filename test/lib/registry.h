@@ -5,6 +5,6 @@
 
 #define FIXTURE_REGISTRY struct registry registry
 #define SETUP_REGISTRY registry_init(&f->registry, &f->config)
-#define TEAR_DOWN_REGISTRY registry_close(&f->registry);
+#define TEAR_DOWN_REGISTRY registryClose(&f->registry);
 
 #endif /* TEST_REGISTRY_H */

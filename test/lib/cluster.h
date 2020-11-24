@@ -108,7 +108,7 @@ struct server
 		struct server *s = &f->servers[I];  \
 		struct raft_fsm *fsm = &f->fsms[I]; \
 		fsmClose(fsm);                      \
-		registry_close(&s->registry);       \
+		registryClose(&s->registry);        \
 		sqlite3_vfs_unregister(&s->vfs);    \
 		VfsClose(&s->vfs);                  \
 		configClose(&s->config);            \
