@@ -21,9 +21,9 @@ static int endpointConnect(void *data,
 	return 0;
 }
 
-void testServer_setup(struct testServer *s,
-		      const unsigned id,
-		      const MunitParameter params[])
+void testServerSetup(struct testServer *s,
+		     const unsigned id,
+		     const MunitParameter params[])
 {
 	(void)params;
 

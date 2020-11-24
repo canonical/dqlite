@@ -24,9 +24,9 @@ struct testServer
 };
 
 /* Initialize the test server. */
-void testServer_setup(struct testServer *s,
-		      unsigned id,
-		      const MunitParameter params[]);
+void testServerSetup(struct testServer *s,
+		     unsigned id,
+		     const MunitParameter params[]);
 
 /* Cleanup the test server. */
 void testServer_tear_down(struct testServer *s);
