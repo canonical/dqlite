@@ -185,7 +185,7 @@ static void test_read_sync__readCb(uv_stream_t *stream,
 				   ssize_t nread,
 				   const uv_buf_t *buf)
 {
-	bool *readCb_called;
+	bool *readCbCalled;
 
 	/* Apprently there's an empty read before the actual one. */
 	if (nread == 0) {
@@ -196,9 +196,9 @@ static void test_read_sync__readCb(uv_stream_t *stream,
 	munit_assert_int(nread, ==, TEST_SOCKET_MIN_BUF_SIZE);
 	munit_assert_int(buf->len, ==, TEST_SOCKET_MIN_BUF_SIZE);
 
-	readCb_called = stream->data;
+	readCbCalled = stream->data;
 
-	*readCb_called = true;
+	*readCbCalled = true;
 
 	free(buf->base);
 }
@@ -209,11 +209,11 @@ TEST_CASE(read, sync, endpointParams)
 	struct fixture *f = data;
 	uv_buf_t *buf = bufMalloc();
 	int rv;
-	bool readCb_called;
+	bool readCbCalled;
 
 	(void)params;
 
-	f->stream.data = &readCb_called;
+	f->stream.data = &readCbCalled;
 
 	rv = uv_read_start(&f->stream, test_read_sync__allocCb,
 			   test_read_sync__readCb);
@@ -223,7 +223,7 @@ TEST_CASE(read, sync, endpointParams)
 
 	testUv_run(&f->loop, 1);
 
-	munit_assert_true(readCb_called);
+	munit_assert_true(readCbCalled);
 
 	bufFree(buf);
 
