@@ -40,7 +40,7 @@ void dqliteError_uv(dqliteError *e, int err, const char *msg);
 int dqliteErrorCopy(dqliteError *e, char **msg);
 
 /* Whether the error is not set */
-int dqliteError_is_null(dqliteError *e);
+int dqliteErrorIsNull(dqliteError *e);
 
 /* Whether the error is due to client disconnection */
 int dqliteErrorIsDisconnect(dqliteError *e);

@@ -148,7 +148,7 @@ int dqliteErrorCopy(dqliteError *e, char **msg)
 	return 0;
 }
 
-int dqliteError_is_null(dqliteError *e)
+int dqliteErrorIsNull(dqliteError *e)
 {
 	return *e == NULL;
 }

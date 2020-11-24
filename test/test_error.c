@@ -57,7 +57,7 @@ TEST_CASE(printf, success, NULL)
 
 	(void)params;
 
-	munit_assert_true(dqliteError_is_null(error));
+	munit_assert_true(dqliteErrorIsNull(error));
 
 	dqliteError_printf(error, "hello %s", "world");
 
