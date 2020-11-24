@@ -23,7 +23,7 @@ static void *memFaultMalloc(int n)
 {
 	void *p = NULL;
 
-	if (!testFault_tick(&memFault.fault)) {
+	if (!testFaultTick(&memFault.fault)) {
 		p = memFault.m.xMalloc(n);
 	}
 
@@ -36,7 +36,7 @@ static void *memFaultRealloc(void *old, int n)
 {
 	void *p = NULL;
 
-	if (!testFault_tick(&memFault.fault)) {
+	if (!testFaultTick(&memFault.fault)) {
 		p = memFault.m.xRealloc(old, n);
 	}
 

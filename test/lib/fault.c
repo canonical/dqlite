@@ -8,7 +8,7 @@ void testFaultInit(struct testFault *f)
     f->enabled = false;
 }
 
-bool testFault_tick(struct testFault *f)
+bool testFaultTick(struct testFault *f)
 {
     if (MUNIT_UNLIKELY(!f->enabled)) {
         return false;
