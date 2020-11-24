@@ -85,7 +85,7 @@ static void *__worker_run(void *arg)
 			row = row->next;
 		}
 
-		testClientRows_close(&rows);
+		testClientRowsClose(&rows);
 		testClientFinalize(w->client, dbId, stmtId);
 	}
 
@@ -229,7 +229,7 @@ TEST_CASE(exec, singleQuery, NULL)
 	munit_assert_int(rows.next->types[0], ==, SQLITE_INTEGER);
 	munit_assert_int(*(int64_t *)rows.next->values[0], ==, 123);
 
-	testClientRows_close(&rows);
+	testClientRowsClose(&rows);
 
 	testClientFinalize(client, dbId, stmtId);
 
@@ -302,7 +302,7 @@ TEST_CASE(exec, largeQuery, NULL)
 	munit_assert_int(rows.next->types[0], ==, SQLITE_INTEGER);
 	munit_assert_int(*(int64_t *)rows.next->values[0], ==, 123456789);
 
-	testClientRows_close(&rows);
+	testClientRowsClose(&rows);
 
 	testClientFinalize(client, dbId, stmtId);
 
