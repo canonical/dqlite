@@ -50,7 +50,7 @@ static void *__worker_run(void *arg)
 	for (i = w->a; i < b; i++) {
 		uint32_t stmtId;
 		char sql[128];
-		struct testClient_result result;
+		struct testClientResult result;
 		struct testClient_rows rows;
 		struct testClient_row *row;
 		int j;
@@ -182,7 +182,7 @@ TEST_CASE(exec, singleQuery, NULL)
 	uint64_t heartbeat;
 	uint32_t dbId;
 	uint32_t stmtId;
-	struct testClient_result result;
+	struct testClientResult result;
 	struct testClient_rows rows;
 
 	(void)params;
@@ -247,7 +247,7 @@ TEST_CASE(exec, largeQuery, NULL)
 	uint64_t heartbeat;
 	uint32_t dbId;
 	uint32_t stmtId;
-	struct testClient_result result;
+	struct testClientResult result;
 	struct testClient_rows rows;
 	int i;
 
@@ -318,7 +318,7 @@ TEST_CASE(exec, multiThread, NULL)
 	struct testServer *server = data;
 	struct worker *workers;
 	struct testClient *client;
-	struct testClient_result result;
+	struct testClientResult result;
 	char *leader;
 	uint64_t heartbeat;
 	uint32_t dbId;
