@@ -168,7 +168,7 @@ void testEndpoint_pair(struct testEndpoint *e, int *server, int *client)
 	*server = testEndpointAccept(e);
 }
 
-const char *testEndpoint_address(struct testEndpoint *e)
+const char *testEndpointAddress(struct testEndpoint *e)
 {
 	return e->address;
 }

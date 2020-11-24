@@ -52,6 +52,6 @@ int testEndpointAccept(struct testEndpoint *e);
 void testEndpoint_pair(struct testEndpoint *e, int *server, int *client);
 
 /* Return the endpoint address. */
-const char *testEndpoint_address(struct testEndpoint *e);
+const char *testEndpointAddress(struct testEndpoint *e);
 
 #endif /* TEST_ENDPOINT_H */
