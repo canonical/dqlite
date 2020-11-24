@@ -333,7 +333,7 @@ static int leaderApplyFrames(struct exec *req,
 
 	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
 	if (rv != 0) {
-		goto err_after_commandEncode;
+		goto errAfterCommandEncode;
 	}
 
 	db->txId = 1;
@@ -341,7 +341,7 @@ static int leaderApplyFrames(struct exec *req,
 
 	return 0;
 
-err_after_commandEncode:
+errAfterCommandEncode:
 	raft_free(buf.base);
 errAfterApplyAlloc:
 	raft_free(apply);
