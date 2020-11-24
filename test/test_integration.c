@@ -51,8 +51,8 @@ static void *__worker_run(void *arg)
 		uint32_t stmtId;
 		char sql[128];
 		struct testClientResult result;
-		struct testClient_rows rows;
-		struct testClient_row *row;
+		struct testClientRows rows;
+		struct testClientRow *row;
 		int j;
 
 		/* Insert a row in the test table. */
@@ -85,7 +85,7 @@ static void *__worker_run(void *arg)
 			row = row->next;
 		}
 
-		testClient_rows_close(&rows);
+		testClientRows_close(&rows);
 		testClientFinalize(w->client, dbId, stmtId);
 	}
 
@@ -183,7 +183,7 @@ TEST_CASE(exec, singleQuery, NULL)
 	uint32_t dbId;
 	uint32_t stmtId;
 	struct testClientResult result;
-	struct testClient_rows rows;
+	struct testClientRows rows;
 
 	(void)params;
 
@@ -229,7 +229,7 @@ TEST_CASE(exec, singleQuery, NULL)
 	munit_assert_int(rows.next->types[0], ==, SQLITE_INTEGER);
 	munit_assert_int(*(int64_t *)rows.next->values[0], ==, 123);
 
-	testClient_rows_close(&rows);
+	testClientRows_close(&rows);
 
 	testClientFinalize(client, dbId, stmtId);
 
@@ -248,7 +248,7 @@ TEST_CASE(exec, largeQuery, NULL)
 	uint32_t dbId;
 	uint32_t stmtId;
 	struct testClientResult result;
-	struct testClient_rows rows;
+	struct testClientRows rows;
 	int i;
 
 	(void)params;
@@ -302,7 +302,7 @@ TEST_CASE(exec, largeQuery, NULL)
 	munit_assert_int(rows.next->types[0], ==, SQLITE_INTEGER);
 	munit_assert_int(*(int64_t *)rows.next->values[0], ==, 123456789);
 
-	testClient_rows_close(&rows);
+	testClientRows_close(&rows);
 
 	testClientFinalize(client, dbId, stmtId);
 
