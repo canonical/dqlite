@@ -162,7 +162,7 @@ int testEndpointAccept(struct testEndpoint *e)
 	return fd;
 }
 
-void testEndpoint_pair(struct testEndpoint *e, int *server, int *client)
+void testEndpointPair(struct testEndpoint *e, int *server, int *client)
 {
 	*client = testEndpointConnect(e);
 	*server = testEndpointAccept(e);

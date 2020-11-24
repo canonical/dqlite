@@ -56,7 +56,7 @@ static void *setup(const MunitParameter params[], void *userData)
 	testEndpoint_setup(&f->endpoint, params);
 	rv = listen(f->endpoint.fd, 16);
 	munit_assert_int(rv, ==, 0);
-	testEndpoint_pair(&f->endpoint, &server, &f->client);
+	testEndpointPair(&f->endpoint, &server, &f->client);
 	testUv_setup(params, &f->loop);
 	rv = transportStream(&f->loop, server, &stream);
 	munit_assert_int(rv, ==, 0);

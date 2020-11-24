@@ -49,7 +49,7 @@ int testEndpointConnect(struct testEndpoint *e);
 int testEndpointAccept(struct testEndpoint *e);
 
 /* Connect and accept a connection, returning the pair of connected sockets. */
-void testEndpoint_pair(struct testEndpoint *e, int *server, int *client);
+void testEndpointPair(struct testEndpoint *e, int *server, int *client);
 
 /* Return the endpoint address. */
 const char *testEndpointAddress(struct testEndpoint *e);
