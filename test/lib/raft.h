@@ -28,7 +28,7 @@
 	{                                                                \
 		int rv2;                                                 \
 		f->dir = testDirSetup();                                 \
-		testUv_setup(params, &f->loop);                          \
+		testUvSetup(params, &f->loop);                           \
 		rv2 = raftProxyInit(&f->raftTransport, &f->loop);        \
 		munit_assert_int(rv2, ==, 0);                            \
 		rv2 = raft_uv_init(&f->raft_io, &f->loop, f->dir,        \

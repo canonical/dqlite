@@ -2,7 +2,7 @@
 
 #define TEST_UV_MAX_LOOP_RUN 10 /* Max n. of loop iterations upon teardown */
 
-void testUv_setup(const MunitParameter params[], struct uv_loop_s *l)
+void testUvSetup(const MunitParameter params[], struct uv_loop_s *l)
 {
     int rv;
 

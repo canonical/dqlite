@@ -92,7 +92,7 @@ static void *setup(const MunitParameter params[], void *userData)
 	int rv;
 	(void)userData;
 
-	testUv_setup(params, &f->loop);
+	testUvSetup(params, &f->loop);
 	testEndpointSetup(&f->endpoint, params);
 
 	rv = transportStream(&f->loop, f->endpoint.fd, &f->listener);
