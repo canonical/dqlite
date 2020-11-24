@@ -46,7 +46,7 @@
 		testUvStop(&f->loop);              \
 		raft_uv_close(&f->raft_io);        \
 		fsmClose(&f->fsm);                 \
-		testUv_tear_down(&f->loop);        \
+		testUvTearDown(&f->loop);          \
 		raftProxyClose(&f->raftTransport); \
 		testDirTearDown(f->dir);           \
 	}

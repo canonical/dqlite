@@ -51,7 +51,7 @@ static void testUv__walk_cb(uv_handle_t *handle, void *arg)
     munit_logf(MUNIT_LOG_INFO, "handle %d", handle->type);
 }
 
-void testUv_tear_down(struct uv_loop_s *l)
+void testUvTearDown(struct uv_loop_s *l)
 {
     int rv;
 

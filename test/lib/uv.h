@@ -30,7 +30,7 @@ void testUvStop(struct uv_loop_s *l);
 /**
  * Tear down the loop making sure no active handles are left.
  */
-void testUv_tear_down(struct uv_loop_s *l);
+void testUvTearDown(struct uv_loop_s *l);
 
 /**
  * Run the loop until there are no pending active handles or the given amount of
