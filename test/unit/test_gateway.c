@@ -137,7 +137,7 @@ static void handleCb(struct handle *req, int status, int type)
 		struct tupleDecoder decoder;                                 \
 		int i2;                                                      \
 		int rc2;                                                     \
-		rc2 = tupleDecoder_init(&decoder, N, f->cursor);             \
+		rc2 = tupleDecoderInit(&decoder, N, f->cursor);              \
 		munit_assert_int(rc2, ==, 0);                                \
 		for (i2 = 0; i2 < N; i2++) {                                 \
 			rc2 = tupleDecoder__next(&decoder, &((VALUES)[i2])); \

@@ -35,7 +35,7 @@ static size_t calcHeaderSize(unsigned n, int format)
 	return size;
 }
 
-int tupleDecoder_init(struct tupleDecoder *d, unsigned n, struct cursor *cursor)
+int tupleDecoderInit(struct tupleDecoder *d, unsigned n, struct cursor *cursor)
 {
 	size_t headerSize;
 	int rc;

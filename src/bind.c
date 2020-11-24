@@ -62,7 +62,7 @@ int bindParams(sqlite3_stmt *stmt, struct cursor *cursor)
 		return 0;
 	}
 
-	rc = tupleDecoder_init(&decoder, 0, cursor);
+	rc = tupleDecoderInit(&decoder, 0, cursor);
 	if (rc != 0) {
 		return rc;
 	}
