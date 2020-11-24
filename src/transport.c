@@ -176,12 +176,12 @@ static int implConnect(struct raft_uv_transport *transport,
 	    uv_queue_work(i->loop, &r->work, connectWorkCb, connectAfterWorkCb);
 	if (rv != 0) {
 		rv = RAFT_NOCONNECTION;
-		goto errAfterConnect_alloc;
+		goto errAfterConnectAlloc;
 	}
 
 	return 0;
 
-errAfterConnect_alloc:
+errAfterConnectAlloc:
 	sqlite3_free(r);
 err:
 	return rv;
