@@ -77,7 +77,7 @@ static void dqliteError_vwrapf(dqliteError *e,
 		dqliteError_printf(e, "%s: (null)", tmp);
 	} else if (cause == *e) {
 		/* When the error is wrapping itself, we need to make a copy */
-		dqliteError_copy(e, &msg);
+		dqliteErrorCopy(e, &msg);
 		dqliteError_printf(e, "%s: %s", tmp, msg);
 		sqlite3_free(msg);
 	} else {
@@ -119,7 +119,7 @@ void dqliteError_uv(dqliteError *e, int err, const char *msg)
 			   uv_err_name(err));
 }
 
-int dqliteError_copy(dqliteError *e, char **msg)
+int dqliteErrorCopy(dqliteError *e, char **msg)
 {
 	char * copy;
 	size_t len;

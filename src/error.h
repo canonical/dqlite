@@ -37,7 +37,7 @@ void dqliteError_uv(dqliteError *e, int err, const char *msg);
  * Client code is responsible of invoking sqlite3_free to deallocate the
  * returned string.
  */
-int dqliteError_copy(dqliteError *e, char **msg);
+int dqliteErrorCopy(dqliteError *e, char **msg);
 
 /* Whether the error is not set */
 int dqliteError_is_null(dqliteError *e);

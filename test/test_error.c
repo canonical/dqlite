@@ -246,7 +246,7 @@ TEST_CASE(uv, success, NULL)
 
 /******************************************************************************
  *
- * dqliteError_copy
+ * dqliteErrorCopy
  *
  ******************************************************************************/
 
@@ -263,7 +263,7 @@ TEST_CASE(copy, success, NULL)
 	(void)params;
 
 	dqliteError_printf(error, "hello %s", "world");
-	err = dqliteError_copy(error, &msg);
+	err = dqliteErrorCopy(error, &msg);
 
 	munit_assert_int(err, ==, 0);
 	munit_assert_string_equal(msg, "hello world");
@@ -281,7 +281,7 @@ TEST_CASE(copy, null, NULL)
 
 	(void)params;
 
-	err = dqliteError_copy(error, &msg);
+	err = dqliteErrorCopy(error, &msg);
 
 	munit_assert_int(err, ==, DQLITE_ERROR);
 	munit_assert_ptr_equal(msg, NULL);
@@ -303,7 +303,7 @@ TEST_CASE(copy, oom, NULL)
 
 	dqliteError_printf(error, "hello");
 
-	err = dqliteError_copy(error, &msg);
+	err = dqliteErrorCopy(error, &msg);
 
 	munit_assert_int(err, ==, DQLITE_NOMEM);
 	munit_assert_ptr_equal(msg, NULL);
