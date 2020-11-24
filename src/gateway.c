@@ -402,7 +402,7 @@ static int handle_finalize(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
-static void handle_execSql_next(struct handle *req, struct cursor *cursor);
+static void handleExecSqlNext(struct handle *req, struct cursor *cursor);
 
 static void handleExecSqlCb(struct exec *exec, int status)
 {
@@ -410,7 +410,7 @@ static void handleExecSqlCb(struct exec *exec, int status)
 	struct handle *req = g->req;
 
 	if (status == SQLITE_DONE) {
-		handle_execSql_next(req, NULL);
+		handleExecSqlNext(req, NULL);
 	} else {
 		failure(req, status, errorMessage(g->leader->conn, status));
 		sqlite3_reset(g->stmt);
@@ -421,7 +421,7 @@ static void handleExecSqlCb(struct exec *exec, int status)
 	}
 }
 
-static void handle_execSql_next(struct handle *req, struct cursor *cursor)
+static void handleExecSqlNext(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
 	struct response_result response;
@@ -498,7 +498,7 @@ static int handle_execSql(struct handle *req, struct cursor *cursor)
 	assert(g->sql == NULL);
 	assert(g->stmt == NULL);
 	req->gateway->sql = request.sql;
-	handle_execSql_next(req, cursor);
+	handleExecSqlNext(req, cursor);
 	return 0;
 }
 
