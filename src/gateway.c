@@ -311,7 +311,7 @@ static void queryBatch(sqlite3_stmt *stmt, struct handle *req)
 	struct response_rows response;
 	int rc;
 
-	rc = query__batch(stmt, req->buffer);
+	rc = query_batch(stmt, req->buffer);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		sqlite3_reset(stmt);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
