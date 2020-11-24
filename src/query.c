@@ -37,7 +37,7 @@ static int encodeRow(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 	int rc;
 	int i;
 
-	rc = tupleEncoder__init(&encoder, (unsigned)n, TUPLE_ROW, buffer);
+	rc = tupleEncoder_init(&encoder, (unsigned)n, TUPLE_ROW, buffer);
 	if (rc != 0) {
 		return SQLITE_ERROR;
 	}

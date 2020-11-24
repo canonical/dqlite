@@ -26,11 +26,11 @@ TEST_MODULE(tuple);
 		munit_assert_int(rc2, ==, 0);             \
 	}
 
-#define ENCODER_INIT(N, FORMAT)                                               \
-	{                                                                     \
-		int rc2;                                                      \
-		rc2 = tupleEncoder__init(&f->encoder, N, FORMAT, &f->buffer); \
-		munit_assert_int(rc2, ==, 0);                                 \
+#define ENCODER_INIT(N, FORMAT)                                              \
+	{                                                                    \
+		int rc2;                                                     \
+		rc2 = tupleEncoder_init(&f->encoder, N, FORMAT, &f->buffer); \
+		munit_assert_int(rc2, ==, 0);                                \
 	}
 
 #define ENCODER_NEXT                                           \
