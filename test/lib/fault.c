@@ -57,7 +57,7 @@ void testFaultConfig(struct testFault *f, int delay, int repeat)
     f->n = repeat;
 }
 
-void testFault_enable(struct testFault *f)
+void testFaultEnable(struct testFault *f)
 {
     f->enabled = true;
 }

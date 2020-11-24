@@ -36,6 +36,6 @@ void testFaultConfig(struct testFault *f, int delay, int repeat);
 /**
  * Enable fault triggering.
  */
-void testFault_enable(struct testFault *f);
+void testFaultEnable(struct testFault *f);
 
 #endif /* TEST_FAULT_H */
