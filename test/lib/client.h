@@ -14,7 +14,7 @@
 	{                                                             \
 		int _rv;                                              \
 		int _client;                                          \
-		testEndpoint_setup(&f->endpoint, params);             \
+		testEndpointSetup(&f->endpoint, params);              \
 		_rv = listen(f->endpoint.fd, 16);                     \
 		munit_assert_int(_rv, ==, 0);                         \
 		testEndpointPair(&f->endpoint, &f->server, &_client); \

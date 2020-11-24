@@ -12,7 +12,7 @@
  * and will happen immediately. */
 #define TEST_SOCKET_MIN_BUF_SIZE 4096
 
-/* Munit parameter defining the socket type to use in testEndpoint_setup.
+/* Munit parameter defining the socket type to use in testEndpointSetup.
  *
  * If set to "unix" a pair of unix abstract sockets will be created. If set to
  * "tcp" a pair of TCP sockets using the loopback interface will be created. */
@@ -37,7 +37,7 @@ struct testEndpoint
 /* Create a listening endpoint.
  *
  * This will bind a random address and start listening to it. */
-void testEndpoint_setup(struct testEndpoint *e, const MunitParameter params[]);
+void testEndpointSetup(struct testEndpoint *e, const MunitParameter params[]);
 
 /* Tear down a listening endpoint. */
 void testEndpoint_tear_down(struct testEndpoint *e);

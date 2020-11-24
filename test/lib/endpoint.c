@@ -23,7 +23,7 @@ static int getFamily(const MunitParameter params[])
 	return -1;
 }
 
-void testEndpoint_setup(struct testEndpoint *e, const MunitParameter params[])
+void testEndpointSetup(struct testEndpoint *e, const MunitParameter params[])
 {
 	struct sockaddr *address;
 	socklen_t size;
