@@ -170,9 +170,7 @@ TEST_SUITE(read);
 TEST_SETUP(read, setup);
 TEST_TEAR_DOWN(read, tear_down);
 
-static void test_read_sync__allocCb(uv_handle_t *stream,
-				    size_t _,
-				    uv_buf_t *buf)
+static void test_read_sync_allocCb(uv_handle_t *stream, size_t _, uv_buf_t *buf)
 {
 	(void)stream;
 	(void)_;
@@ -215,7 +213,7 @@ TEST_CASE(read, sync, endpointParams)
 
 	f->stream.data = &readCbCalled;
 
-	rv = uv_read_start(&f->stream, test_read_sync__allocCb,
+	rv = uv_read_start(&f->stream, test_read_sync_allocCb,
 			   test_read_sync__readCb);
 
 	rv = write(f->client, buf->base, buf->len);
