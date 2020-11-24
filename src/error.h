@@ -12,7 +12,7 @@ typedef char *dqliteError;
 void dqliteError_init(dqliteError *e);
 
 /* Release the memory of the error message, if any is set */
-void dqliteError_close(dqliteError *e);
+void dqliteErrorClose(dqliteError *e);
 
 /* Set the error message */
 void dqliteError_printf(dqliteError *e, const char *fmt, ...);

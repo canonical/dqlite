@@ -21,7 +21,7 @@ void dqliteError_init(dqliteError *e)
 	*e = NULL;
 }
 
-void dqliteError_close(dqliteError *e)
+void dqliteErrorClose(dqliteError *e)
 {
 	if (*e != NULL && *e != dqliteError_oom_msg) {
 		sqlite3_free(*e);
@@ -84,7 +84,7 @@ static void dqliteError_vwrapf(dqliteError *e,
 		dqliteError_printf(e, "%s: %s", tmp, cause);
 	}
 
-	dqliteError_close(&tmp);
+	dqliteErrorClose(&tmp);
 }
 
 void dqliteError_wrapf(dqliteError *e,

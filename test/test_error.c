@@ -33,7 +33,7 @@ static void tear_down(void *data)
 {
 	dqliteError *error = data;
 
-	dqliteError_close(error);
+	dqliteErrorClose(error);
 
 	testSqliteTearDown();
 	testHeapTearDown(data);
@@ -120,7 +120,7 @@ TEST_CASE(wrapf, success, NULL)
 
 	dqliteError_wrapf(error, &cause, "boom");
 
-	dqliteError_close(&cause);
+	dqliteErrorClose(&cause);
 
 	munit_assert_string_equal(*error, "boom: hello world");
 
@@ -138,7 +138,7 @@ TEST_CASE(wrapf, nullCause, NULL)
 
 	dqliteError_wrapf(error, &cause, "boom");
 
-	dqliteError_close(&cause);
+	dqliteErrorClose(&cause);
 
 	munit_assert_string_equal(*error, "boom: (null)");
 
