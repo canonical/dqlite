@@ -40,7 +40,7 @@ static void *__worker_run(void *arg)
 	w = (struct worker *)arg;
 
 	/* Initialize the connection and open a database. */
-	testClient_handshake(w->client);
+	testClientHandshake(w->client);
 	testClient_leader(w->client, &leader);
 	testClientClient(w->client, &heartbeat);
 	testClient_open(w->client, "test.db", &dbId);
@@ -190,7 +190,7 @@ TEST_CASE(exec, singleQuery, NULL)
 	testServer_connect(server, &client);
 
 	/* Initialize the connection and open a database. */
-	testClient_handshake(client);
+	testClientHandshake(client);
 	testClient_leader(client, &leader);
 	testClientClient(client, &heartbeat);
 	testClient_open(client, "test.db", &dbId);
@@ -256,7 +256,7 @@ TEST_CASE(exec, largeQuery, NULL)
 	testServer_connect(server, &client);
 
 	/* Initialize the connection and open a database. */
-	testClient_handshake(client);
+	testClientHandshake(client);
 	testClient_leader(client, &leader);
 	testClientClient(client, &heartbeat);
 	testClient_open(client, "test.db", &dbId);
@@ -332,7 +332,7 @@ TEST_CASE(exec, multiThread, NULL)
 	testServer_connect(server, &client);
 
 	/* Initialize the connection and open a database. */
-	testClient_handshake(client);
+	testClientHandshake(client);
 	testClient_leader(client, &leader);
 	testClientClient(client, &heartbeat);
 	testClient_open(client, "test.db", &dbId);
