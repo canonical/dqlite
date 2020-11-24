@@ -59,10 +59,10 @@ void dqliteErrorPrintf(dqliteError *e, const char *fmt, ...)
 	va_end(args);
 }
 
-static void dqliteError_vwrapf(dqliteError *e,
-			       const char *cause,
-			       const char *fmt,
-			       va_list args)
+static void dqliteErrorVwrapf(dqliteError *e,
+			      const char *cause,
+			      const char *fmt,
+			      va_list args)
 {
 	dqliteError tmp;
 	char *        msg;
@@ -95,7 +95,7 @@ void dqliteError_wrapf(dqliteError *e,
 	va_list args;
 
 	va_start(args, fmt);
-	dqliteError_vwrapf(e, (const char *)(*cause), fmt, args);
+	dqliteErrorVwrapf(e, (const char *)(*cause), fmt, args);
 	va_end(args);
 }
 
@@ -104,7 +104,7 @@ void dqliteErrorOom(dqliteError *e, const char *msg, ...)
 	va_list args;
 
 	va_start(args, msg);
-	dqliteError_vwrapf(e, "out of memory", msg, args);
+	dqliteErrorVwrapf(e, "out of memory", msg, args);
 	va_end(args);
 }
 
