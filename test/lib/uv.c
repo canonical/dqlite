@@ -12,7 +12,7 @@ void testUv_setup(const MunitParameter params[], struct uv_loop_s *l)
     munit_assert_int(rv, ==, 0);
 }
 
-int testUv_run(struct uv_loop_s *l, unsigned n)
+int testUvRun(struct uv_loop_s *l, unsigned n)
 {
     unsigned i;
     int rv;
@@ -37,7 +37,7 @@ void testUv_stop(struct uv_loop_s *l)
 	unsigned nHandles;
 
 	/* Spin a few times to trigger pending callbacks. */
-	nHandles = testUv_run(l, TEST_UV_MAX_LOOP_RUN);
+	nHandles = testUvRun(l, TEST_UV_MAX_LOOP_RUN);
 	if (nHandles > 0) {
 		munit_errorf("loop has still %d pending active handles",
 			     nHandles);

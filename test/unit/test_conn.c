@@ -64,18 +64,18 @@ static void connCloseCb(struct conn *conn)
 		       stream, &f->raftTransport, connCloseCb);                \
 	munit_assert_int(rv, ==, 0)
 
-#define TEAR_DOWN                        \
-	connStop(&f->conn);              \
-	while (!f->closed) {             \
-		testUv_run(&f->loop, 1); \
-	};                               \
-	TEAR_DOWN_RAFT;                  \
-	TEAR_DOWN_CLIENT;                \
-	TEAR_DOWN_REGISTRY;              \
-	TEAR_DOWN_CONFIG;                \
-	TEAR_DOWN_VFS;                   \
-	TEAR_DOWN_LOGGER;                \
-	TEAR_DOWN_SQLITE;                \
+#define TEAR_DOWN                       \
+	connStop(&f->conn);             \
+	while (!f->closed) {            \
+		testUvRun(&f->loop, 1); \
+	};                              \
+	TEAR_DOWN_RAFT;                 \
+	TEAR_DOWN_CLIENT;               \
+	TEAR_DOWN_REGISTRY;             \
+	TEAR_DOWN_CONFIG;               \
+	TEAR_DOWN_VFS;                  \
+	TEAR_DOWN_LOGGER;               \
+	TEAR_DOWN_SQLITE;               \
 	TEAR_DOWN_HEAP
 
 /******************************************************************************
@@ -90,7 +90,7 @@ static void connCloseCb(struct conn *conn)
 		int rv2;                               \
 		rv2 = clientSendHandshake(&f->client); \
 		munit_assert_int(rv2, ==, 0);          \
-		testUv_run(&f->loop, 1);               \
+		testUvRun(&f->loop, 1);                \
 	}
 
 /* Open a test database. */
@@ -99,7 +99,7 @@ static void connCloseCb(struct conn *conn)
 		int rv2;                                  \
 		rv2 = clientSendOpen(&f->client, "test"); \
 		munit_assert_int(rv2, ==, 0);             \
-		testUv_run(&f->loop, 2);                  \
+		testUvRun(&f->loop, 2);                   \
 		rv2 = clientRecvDb(&f->client);           \
 		munit_assert_int(rv2, ==, 0);             \
 	}
@@ -110,7 +110,7 @@ static void connCloseCb(struct conn *conn)
 		int rv2;                                   \
 		rv2 = clientSendPrepare(&f->client, SQL);  \
 		munit_assert_int(rv2, ==, 0);              \
-		testUv_run(&f->loop, 1);                   \
+		testUvRun(&f->loop, 1);                    \
 		rv2 = clientRecvStmt(&f->client, STMT_ID); \
 		munit_assert_int(rv2, ==, 0);              \
 	}
@@ -121,7 +121,7 @@ static void connCloseCb(struct conn *conn)
 		int rv2;                                           \
 		rv2 = clientSendExec(&f->client, STMT_ID);         \
 		munit_assert_int(rv2, ==, 0);                      \
-		testUv_run(&f->loop, LOOP);                        \
+		testUvRun(&f->loop, LOOP);                         \
 		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
 				       ROWS_AFFECTED);             \
 		munit_assert_int(rv2, ==, 0);                      \
@@ -133,7 +133,7 @@ static void connCloseCb(struct conn *conn)
 		int rv2;                                           \
 		rv2 = clientSendExecSQL(&f->client, SQL);          \
 		munit_assert_int(rv2, ==, 0);                      \
-		testUv_run(&f->loop, LOOP);                        \
+		testUvRun(&f->loop, LOOP);                         \
 		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
 				       ROWS_AFFECTED);             \
 		munit_assert_int(rv2, ==, 0);                      \
@@ -145,7 +145,7 @@ static void connCloseCb(struct conn *conn)
 		int rv2;                                    \
 		rv2 = clientSendQuery(&f->client, STMT_ID); \
 		munit_assert_int(rv2, ==, 0);               \
-		testUv_run(&f->loop, 2);                    \
+		testUvRun(&f->loop, 2);                     \
 		rv2 = clientRecvRows(&f->client, ROWS);     \
 		munit_assert_int(rv2, ==, 0);               \
 	}
@@ -334,7 +334,7 @@ TEST_CASE(exec, closeWhileInFlight, NULL)
 	rv = clientSendExecSQL(&f->client, "INSERT INTO test(n) VALUES(1)");
 	munit_assert_int(rv, ==, 0);
 
-	testUv_run(&f->loop, 1);
+	testUvRun(&f->loop, 1);
 
 	return MUNIT_OK;
 }

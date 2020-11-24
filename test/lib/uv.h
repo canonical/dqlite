@@ -38,7 +38,7 @@ void testUv_tear_down(struct uv_loop_s *l);
  *
  * Return non-zero if there are pending handles.
  */
-int testUv_run(struct uv_loop_s *l, unsigned n);
+int testUvRun(struct uv_loop_s *l, unsigned n);
 
 /**
  * Run the loop until the given function returns true.
@@ -46,7 +46,7 @@ int testUv_run(struct uv_loop_s *l, unsigned n);
  * If the loop exhausts all active handles or if #TEST_UV_MAX_LOOP_RUN is
  * reached without @f returning #true, the test fails.
  */
-#define testUv_run_until(DATA, FUNC)                                         \
+#define testUvRun_until(DATA, FUNC)                                          \
 	{                                                                    \
 		unsigned i;                                                  \
 		int rv;                                                      \

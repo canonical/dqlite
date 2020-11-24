@@ -160,7 +160,7 @@ TEST_CASE(read, success, NULL)
 	(void)params;
 	CLIENT_WRITE(2);
 	READ(&buf);
-	testUv_run(&f->loop, 1);
+	testUvRun(&f->loop, 1);
 	ASSERT_READ(0);
 	munit_assert_int(((uint8_t *)buf.base)[0], ==, 1);
 	munit_assert_int(((uint8_t *)buf.base)[1], ==, 2);
@@ -184,7 +184,7 @@ TEST_CASE(write, success, NULL)
 	uv_buf_t buf = BUF_ALLOC(2);
 	(void)params;
 	WRITE(&buf);
-	testUv_run(&f->loop, 1);
+	testUvRun(&f->loop, 1);
 	ASSERT_WRITE(0);
 	free(buf.base);
 	return MUNIT_OK;

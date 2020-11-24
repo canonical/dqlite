@@ -105,7 +105,7 @@ static void *setup(const MunitParameter params[], void *userData)
 
 	f->client = testEndpointConnect(&f->endpoint);
 
-	testUv_run(&f->loop, 1);
+	testUvRun(&f->loop, 1);
 
 	return f;
 }
@@ -152,7 +152,7 @@ TEST_CASE(write, sync, endpointParams)
 	rv = read(f->client, buf2->base, buf2->len);
 	munit_assert_int(rv, ==, buf2->len);
 
-	testUv_run(&f->loop, 1);
+	testUvRun(&f->loop, 1);
 
 	bufFree(buf1);
 	bufFree(buf2);
@@ -218,7 +218,7 @@ TEST_CASE(read, sync, endpointParams)
 	rv = write(f->client, buf->base, buf->len);
 	munit_assert_int(rv, ==, buf->len);
 
-	testUv_run(&f->loop, 1);
+	testUvRun(&f->loop, 1);
 
 	munit_assert_true(readCbCalled);
 
