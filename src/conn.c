@@ -115,7 +115,7 @@ static void raftConnect(struct conn *c, struct cursor *cursor)
 	closeCb(&c->transport);
 }
 
-static void readRequest_cb(struct transport *transport, int status)
+static void readRequestCb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
 	struct cursor cursor;
@@ -155,7 +155,7 @@ static int readRequest(struct conn *c)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = transportRead(&c->transport, &buf, readRequest_cb);
+	rv = transportRead(&c->transport, &buf, readRequestCb);
 	if (rv != 0) {
 		return rv;
 	}
