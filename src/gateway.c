@@ -257,7 +257,7 @@ static const char *errorMessage(sqlite3 *db, int rc)
 	return sqlite3_errmsg(db);
 }
 
-static void leaderExec_cb(struct exec *exec, int status)
+static void leaderExecCb(struct exec *exec, int status)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
@@ -294,7 +294,7 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 	}
 	g->req = req;
 	g->stmt = stmt->stmt;
-	rv = leaderExec(g->leader, &g->exec, stmt->stmt, leaderExec_cb);
+	rv = leaderExec(g->leader, &g->exec, stmt->stmt, leaderExecCb);
 	if (rv != 0) {
 		return rv;
 	}
