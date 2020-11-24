@@ -42,7 +42,7 @@ static void *__worker_run(void *arg)
 	/* Initialize the connection and open a database. */
 	testClient_handshake(w->client);
 	testClient_leader(w->client, &leader);
-	testClient_client(w->client, &heartbeat);
+	testClientClient(w->client, &heartbeat);
 	testClient_open(w->client, "test.db", &dbId);
 
 	b = w->a + w->n;
@@ -192,7 +192,7 @@ TEST_CASE(exec, singleQuery, NULL)
 	/* Initialize the connection and open a database. */
 	testClient_handshake(client);
 	testClient_leader(client, &leader);
-	testClient_client(client, &heartbeat);
+	testClientClient(client, &heartbeat);
 	testClient_open(client, "test.db", &dbId);
 	munit_assert_int(dbId, ==, 0);
 
@@ -258,7 +258,7 @@ TEST_CASE(exec, largeQuery, NULL)
 	/* Initialize the connection and open a database. */
 	testClient_handshake(client);
 	testClient_leader(client, &leader);
-	testClient_client(client, &heartbeat);
+	testClientClient(client, &heartbeat);
 	testClient_open(client, "test.db", &dbId);
 	munit_assert_int(dbId, ==, 0);
 
@@ -334,7 +334,7 @@ TEST_CASE(exec, multiThread, NULL)
 	/* Initialize the connection and open a database. */
 	testClient_handshake(client);
 	testClient_leader(client, &leader);
-	testClient_client(client, &heartbeat);
+	testClientClient(client, &heartbeat);
 	testClient_open(client, "test.db", &dbId);
 	munit_assert_int(dbId, ==, 0);
 
