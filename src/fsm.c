@@ -228,7 +228,7 @@ static int fsmApply(struct raft_fsm *fsm,
 			break;
 		default:
 			rc = RAFT_MALFORMED;
-			goto err_after_commandDecode;
+			goto errAfterCommandDecode;
 	}
 	raft_free(command);
 
@@ -236,7 +236,7 @@ static int fsmApply(struct raft_fsm *fsm,
 
 	return 0;
 
-err_after_commandDecode:
+errAfterCommandDecode:
 	raft_free(command);
 err:
 	return rc;
