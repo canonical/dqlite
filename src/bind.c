@@ -66,9 +66,9 @@ int bindParams(sqlite3_stmt *stmt, struct cursor *cursor)
 	if (rc != 0) {
 		return rc;
 	}
-	for (i = 0; i < tupleDecoder_n(&decoder); i++) {
+	for (i = 0; i < tupleDecoderN(&decoder); i++) {
 		struct value value;
-		rc = tupleDecoder_next(&decoder, &value);
+		rc = tupleDecoderNext(&decoder, &value);
 		if (rc != 0) {
 			return rc;
 		}

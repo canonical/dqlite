@@ -19,11 +19,11 @@ TEST_MODULE(tuple);
 		munit_assert_int(rc2, ==, 0);                 \
 	}
 
-#define DECODER_NEXT                                       \
-	{                                                  \
-		int rc2;                                   \
-		rc2 = tupleDecoder_next(&decoder, &value); \
-		munit_assert_int(rc2, ==, 0);              \
+#define DECODER_NEXT                                      \
+	{                                                 \
+		int rc2;                                  \
+		rc2 = tupleDecoderNext(&decoder, &value); \
+		munit_assert_int(rc2, ==, 0);             \
 	}
 
 #define ENCODER_INIT(N, FORMAT)                                               \
@@ -69,7 +69,7 @@ TEST_CASE(decoder, init, param, NULL)
 	(void)params;
 	DECODER_INIT(0);
 	munit_assert_int(decoder.n, ==, 2);
-	munit_assert_int(tupleDecoder_n(&decoder), ==, 2);
+	munit_assert_int(tupleDecoderN(&decoder), ==, 2);
 	return MUNIT_OK;
 }
 
@@ -83,7 +83,7 @@ TEST_CASE(decoder, init, row, NULL)
 	(void)params;
 	DECODER_INIT(3);
 	munit_assert_int(decoder.n, ==, 3);
-	munit_assert_int(tupleDecoder_n(&decoder), ==, 3);
+	munit_assert_int(tupleDecoderN(&decoder), ==, 3);
 	return MUNIT_OK;
 }
 

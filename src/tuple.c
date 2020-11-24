@@ -73,7 +73,7 @@ int tupleDecoderInit(struct tupleDecoder *d, unsigned n, struct cursor *cursor)
 }
 
 /* Return the number of values in the decoder's tuple. */
-unsigned tupleDecoder_n(struct tupleDecoder *d)
+unsigned tupleDecoderN(struct tupleDecoder *d)
 {
 	return d->n;
 }
@@ -99,7 +99,7 @@ static int getType(struct tupleDecoder *d, unsigned i)
 	return type;
 }
 
-int tupleDecoder_next(struct tupleDecoder *d, struct value *value)
+int tupleDecoderNext(struct tupleDecoder *d, struct value *value)
 {
 	int rc;
 	assert(d->i < d->n);
