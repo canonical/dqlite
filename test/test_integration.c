@@ -156,7 +156,7 @@ static void tear_down(void *data)
 	struct testServer *server = data;
 	int rc;
 
-	testServer_stop(server);
+	testServerStop(server);
 
 	rc = sqlite3_shutdown();
 	munit_assert_int(rc, ==, 0);
