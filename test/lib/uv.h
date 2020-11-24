@@ -46,7 +46,7 @@ int testUvRun(struct uv_loop_s *l, unsigned n);
  * If the loop exhausts all active handles or if #TEST_UV_MAX_LOOP_RUN is
  * reached without @f returning #true, the test fails.
  */
-#define testUvRun_until(DATA, FUNC)                                          \
+#define testUvRunUntil(DATA, FUNC)                                           \
 	{                                                                    \
 		unsigned i;                                                  \
 		int rv;                                                      \
