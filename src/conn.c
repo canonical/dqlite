@@ -162,7 +162,7 @@ static int readRequest(struct conn *c)
 	return 0;
 }
 
-static void readMessage_cb(struct transport *transport, int status)
+static void readMessageCb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
 	struct cursor cursor;
@@ -196,7 +196,7 @@ static int readMessage(struct conn *c)
 	if (rv != 0) {
 		return rv;
 	}
-	rv = transportRead(&c->transport, &buf, readMessage_cb);
+	rv = transportRead(&c->transport, &buf, readMessageCb);
 	if (rv != 0) {
 		return rv;
 	}
