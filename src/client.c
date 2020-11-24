@@ -259,8 +259,8 @@ int clientRecvRows(struct client *c, struct rows *rows)
 			return DQLITE_NOMEM;
 		}
 		row->next = NULL;
-		rv = tupleDecoder__init(&decoder, (unsigned)column_count,
-					&cursor);
+		rv = tupleDecoder_init(&decoder, (unsigned)column_count,
+				       &cursor);
 		if (rv != 0) {
 			return DQLITE_ERROR;
 		}

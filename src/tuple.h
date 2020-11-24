@@ -89,9 +89,9 @@ struct tupleDecoder
  * parameters. In that case the d->n field will be read from the first byte of
  * @cursor.
  */
-int tupleDecoder__init(struct tupleDecoder *d,
-		       unsigned n,
-		       struct cursor *cursor);
+int tupleDecoder_init(struct tupleDecoder *d,
+		      unsigned n,
+		      struct cursor *cursor);
 
 /**
  * Return the number of values in the tuple being decoded.
