@@ -22,12 +22,12 @@ int clientInit(struct client *c, int fd)
 	}
 	rv = bufferInit(&c->write);
 	if (rv != 0) {
-		goto err_after_read_bufferInit;
+		goto errAfterReadBufferInit;
 	}
 
 	return 0;
 
-err_after_read_bufferInit:
+errAfterReadBufferInit:
 	bufferClose(&c->read);
 err:
 	return rv;

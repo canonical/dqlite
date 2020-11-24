@@ -281,7 +281,7 @@ int connStart(struct conn *c,
 	}
 	rv = bufferInit(&c->write);
 	if (rv != 0) {
-		goto err_after_read_bufferInit;
+		goto errAfterReadBufferInit;
 	}
 	c->handle.data = c;
 	c->closed = false;
@@ -294,7 +294,7 @@ int connStart(struct conn *c,
 
 err_after_write_bufferInit:
 	bufferClose(&c->write);
-err_after_read_bufferInit:
+errAfterReadBufferInit:
 	bufferClose(&c->read);
 errAfterTransportInit:
 	transport_close(&c->transport, NULL);
