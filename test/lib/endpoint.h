@@ -20,7 +20,7 @@
 
 /* Null-terminated list of legal values for TEST_ENDPOINT_FAMILY. Currently
  * "unix" and "tcp". */
-extern char *testEndpoint_family_values[];
+extern char *testEndpointFamilyValues[];
 
 /* Listening socket endpoint. */
 struct testEndpoint

@@ -53,7 +53,7 @@ static void bufFree(uv_buf_t *buf)
 
 /* Run the tests using both TCP and Unix sockets. */
 static MunitParameterEnum endpointParams[] = {
-    {TEST_ENDPOINT_FAMILY, testEndpoint_family_values},
+    {TEST_ENDPOINT_FAMILY, testEndpointFamilyValues},
     {NULL, NULL},
 };
 

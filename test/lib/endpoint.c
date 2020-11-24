@@ -173,4 +173,4 @@ const char *testEndpointAddress(struct testEndpoint *e)
 	return e->address;
 }
 
-char *testEndpoint_family_values[] = {"tcp", "unix", NULL};
+char *testEndpointFamilyValues[] = {"tcp", "unix", NULL};
