@@ -29,7 +29,7 @@
 	testServerNetwork(f->servers, N_SERVERS);            \
 	for (i_ = 0; i_ < N_SERVERS; i_++) {                 \
 		struct testServer *server = &f->servers[i_]; \
-		testServer_start(server);                    \
+		testServerStart(server);                     \
 	}                                                    \
 	SELECT(1)
 

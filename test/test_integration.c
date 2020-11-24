@@ -146,7 +146,7 @@ static void *setup(const MunitParameter params[], void *userData)
 	err = dqliteInit(&errmsg);
 	munit_assert_int(err, ==, 0);
 
-	server = testServer_start("unix", params);
+	server = testServerStart("unix", params);
 
 	return server;
 }

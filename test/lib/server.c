@@ -49,7 +49,7 @@ void testServer_tear_down(struct testServer *s)
 	testDirTearDown(s->dir);
 }
 
-void testServer_start(struct testServer *s)
+void testServerStart(struct testServer *s)
 {
 	int client;
 	int rv;

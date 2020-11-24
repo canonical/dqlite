@@ -32,7 +32,7 @@ void testServerSetup(struct testServer *s,
 void testServer_tear_down(struct testServer *s);
 
 /* Start the test server. */
-void testServer_start(struct testServer *s);
+void testServerStart(struct testServer *s);
 
 /* Connect all the given the servers to each other. */
 void testServerNetwork(struct testServer *servers, unsigned nServers);
