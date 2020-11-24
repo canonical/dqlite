@@ -123,7 +123,7 @@ int testEndpoint_connect(struct testEndpoint *e)
 	return fd;
 }
 
-int testEndpoint_accept(struct testEndpoint *e)
+int testEndpointAccept(struct testEndpoint *e)
 {
 	struct sockaddr_in inAddress;
 	struct sockaddr_un unAddress;
@@ -165,7 +165,7 @@ int testEndpoint_accept(struct testEndpoint *e)
 void testEndpoint_pair(struct testEndpoint *e, int *server, int *client)
 {
 	*client = testEndpoint_connect(e);
-	*server = testEndpoint_accept(e);
+	*server = testEndpointAccept(e);
 }
 
 const char *testEndpoint_address(struct testEndpoint *e)

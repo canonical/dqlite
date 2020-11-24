@@ -46,7 +46,7 @@ void testEndpoint_tear_down(struct testEndpoint *e);
 int testEndpoint_connect(struct testEndpoint *e);
 
 /* Accept a new client connection. */
-int testEndpoint_accept(struct testEndpoint *e);
+int testEndpointAccept(struct testEndpoint *e);
 
 /* Connect and accept a connection, returning the pair of connected sockets. */
 void testEndpoint_pair(struct testEndpoint *e, int *server, int *client);
