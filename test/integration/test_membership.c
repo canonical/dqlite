@@ -48,7 +48,7 @@
  ******************************************************************************/
 
 /* Use the client connected to the server with the given ID. */
-#define SELECT(ID) f->client = testServer_client(&f->servers[ID - 1])
+#define SELECT(ID) f->client = testServerClient(&f->servers[ID - 1])
 
 /* Send the initial client handshake. */
 #define HANDSHAKE                                     \

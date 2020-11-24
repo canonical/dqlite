@@ -80,7 +80,7 @@ static void *setUp(const MunitParameter params[], void *userData)
 	testSqliteSetup(params);
 	testServer_setup(&f->server, 1, params);
 	testServer_start(&f->server);
-	f->client = testServer_client(&f->server);
+	f->client = testServerClient(&f->server);
 	HANDSHAKE;
 	OPEN;
 	return f;

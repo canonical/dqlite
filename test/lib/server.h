@@ -38,6 +38,6 @@ void testServer_start(struct testServer *s);
 void testServer_network(struct testServer *servers, unsigned nServers);
 
 /* Return a client connected to the server. */
-struct client *testServer_client(struct testServer *s);
+struct client *testServerClient(struct testServer *s);
 
 #endif /* TEST_SERVER_H */

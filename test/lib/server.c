@@ -74,7 +74,7 @@ void testServer_start(struct testServer *s)
 	munit_assert_int(rv, ==, 0);
 }
 
-struct client *testServer_client(struct testServer *s)
+struct client *testServerClient(struct testServer *s)
 {
 	return &s->client;
 }
