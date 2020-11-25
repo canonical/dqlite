@@ -48,7 +48,7 @@ int tupleDecoderInit(struct tupleDecoder *d, unsigned n, struct cursor *cursor)
 		d->n = n;
 	} else {
 		uint8_t byte;
-		rc = uint8__decode(cursor, &byte);
+		rc = uint8_decode(cursor, &byte);
 		if (rc != 0) {
 			return rc;
 		}
@@ -106,7 +106,7 @@ int tupleDecoderNext(struct tupleDecoder *d, struct value *value)
 	value->type = getType(d, d->i);
 	switch (value->type) {
 		case SQLITE_INTEGER:
-			rc = int64__decode(d->cursor, &value->integer);
+			rc = int64_decode(d->cursor, &value->integer);
 			break;
 		case SQLITE_FLOAT:
 			rc = floatDecode(d->cursor, &value->float_);
@@ -116,16 +116,16 @@ int tupleDecoderNext(struct tupleDecoder *d, struct value *value)
 			break;
 		case SQLITE_NULL:
 			/* TODO: allow null to be encoded with 0 bytes? */
-			rc = uint64__decode(d->cursor, &value->null);
+			rc = uint64_decode(d->cursor, &value->null);
 			break;
 		case SQLITE_TEXT:
-			rc = text__decode(d->cursor, &value->text);
+			rc = text_decode(d->cursor, &value->text);
 			break;
 		case DQLITE_ISO8601:
-			rc = text__decode(d->cursor, &value->iso8601);
+			rc = text_decode(d->cursor, &value->iso8601);
 			break;
 		case DQLITE_BOOLEAN:
-			rc = uint64__decode(d->cursor, &value->boolean);
+			rc = uint64_decode(d->cursor, &value->boolean);
 			break;
 		default:
 			rc = DQLITE_PARSE;

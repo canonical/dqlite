@@ -43,15 +43,15 @@ void gatewayClose(struct gateway *g)
 
 /* Declare a request struct and a response struct of the appropriate types and
  * decode the request. */
-#define START(REQ, RES)                                          \
-	struct request_##REQ request;                            \
-	struct response_##RES response;                          \
-	{                                                        \
-		int rv_;                                         \
-		rv_ = request_##REQ##__decode(cursor, &request); \
-		if (rv_ != 0) {                                  \
-			return rv_;                              \
-		}                                                \
+#define START(REQ, RES)                                         \
+	struct request_##REQ request;                           \
+	struct response_##RES response;                         \
+	{                                                       \
+		int rv_;                                        \
+		rv_ = request_##REQ##_decode(cursor, &request); \
+		if (rv_ != 0) {                                 \
+			return rv_;                             \
+		}                                               \
 	}
 
 #define CHECK_LEADER(REQ)                                            \
@@ -651,7 +651,7 @@ static int handle_assign(struct handle *req, struct cursor *cursor)
 	/* Detect if this is an assign role request, instead of the former
 	 * promote request. */
 	if (cursor->cap > 0) {
-		rv = uint64__decode(cursor, &role);
+		rv = uint64_decode(cursor, &role);
 		if (rv != 0) {
 			return rv;
 		}

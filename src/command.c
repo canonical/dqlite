@@ -47,18 +47,18 @@ static void frames__encode(const frames_t *frames, void **cursor)
 	}
 }
 
-static int frames__decode(struct cursor *cursor, frames_t *frames)
+static int frames_decode(struct cursor *cursor, frames_t *frames)
 {
 	int rc;
-	rc = uint32__decode(cursor, &frames->nPages);
+	rc = uint32_decode(cursor, &frames->nPages);
 	if (rc != 0) {
 		return rc;
 	}
-	rc = uint16__decode(cursor, &frames->page_size);
+	rc = uint16_decode(cursor, &frames->page_size);
 	if (rc != 0) {
 		return rc;
 	}
-	rc = uint16__decode(cursor, &frames->__unused__);
+	rc = uint16_decode(cursor, &frames->__unused__);
 	if (rc != 0) {
 		return rc;
 	}
@@ -103,7 +103,7 @@ int commandEncode(int type, const void *command, struct raft_buffer *buf)
 		if (*command == NULL) {                                 \
 			return DQLITE_NOMEM;                            \
 		}                                                       \
-		rc = command_##LOWER##__decode(&cursor, *command);      \
+		rc = command_##LOWER##_decode(&cursor, *command);       \
 		break;
 
 int commandDecode(const struct raft_buffer *buf, int *type, void **command)
@@ -115,7 +115,7 @@ int commandDecode(const struct raft_buffer *buf, int *type, void **command)
 	cursor.p = buf->base;
 	cursor.cap = buf->len;
 
-	rc = header__decode(&cursor, &h);
+	rc = header_decode(&cursor, &h);
 	if (rc != 0) {
 		return rc;
 	}
@@ -152,7 +152,7 @@ int commandFramesPageNumbers(const struct command_frames *c,
 
 	for (i = 0; i < c->frames.nPages; i++) {
 		uint64_t pgno;
-		int r = uint64__decode(&cursor, &pgno);
+		int r = uint64_decode(&cursor, &pgno);
 		if (r != 0) {
 			return r;
 		}

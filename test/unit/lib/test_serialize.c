@@ -74,12 +74,12 @@ static void pages__encode(const pages_t *pages, void **cursor)
 	}
 }
 
-static int pages__decode(struct cursor *cursor, pages_t *pages)
+static int pages_decode(struct cursor *cursor, pages_t *pages)
 {
 	unsigned i;
-	uint16__decode(cursor, &pages->n);
-	uint16__decode(cursor, &pages->size);
-	uint32__decode(cursor, &pages->__unused__);
+	uint16_decode(cursor, &pages->n);
+	uint16_decode(cursor, &pages->size);
+	uint32_decode(cursor, &pages->__unused__);
 	pages->bufs = munit_malloc(pages->n * sizeof *pages->bufs);
 	for (i = 0; i < pages->n; i++) {
 		pages->bufs[i] = (void *)cursor->p;
@@ -306,7 +306,7 @@ TEST_CASE(decode, padding, NULL)
 	(void)params;
 	strcpy(buf, "John Doh");
 	*(uint64_t *)(buf + 16) = byteFlip64(40);
-	person__decode(&cursor, &f->person);
+	person_decode(&cursor, &f->person);
 	munit_assert_string_equal(f->person.name, "John Doh");
 	munit_assert_int(f->person.age, ==, 40);
 	free(buf);
@@ -322,7 +322,7 @@ TEST_CASE(decode, noPadding, NULL)
 	(void)params;
 	strcpy(buf, "Joe Doh");
 	*(uint64_t *)(buf + 8) = byteFlip64(40);
-	person__decode(&cursor, &f->person);
+	person_decode(&cursor, &f->person);
 	munit_assert_string_equal(f->person.name, "Joe Doh");
 	munit_assert_int(f->person.age, ==, 40);
 	free(buf);
@@ -338,7 +338,7 @@ TEST_CASE(decode, short, NULL)
 	int rc;
 	(void)params;
 	strcpy(buf, "John Doh");
-	rc = person__decode(&cursor, &f->person);
+	rc = person_decode(&cursor, &f->person);
 	munit_assert_int(rc, ==, DQLITE_PARSE);
 	free(buf);
 	return MUNIT_OK;
@@ -382,7 +382,7 @@ TEST_CASE(decode, custom, NULL)
 
 	strcpy(p, "Cosette");
 
-	book__decode(&cursor, &f->book);
+	book_decode(&cursor, &f->book);
 
 	munit_assert_string_equal(f->book.title, "Les miserables");
 	munit_assert_string_equal(f->book.author.name, "Victor Hugo");

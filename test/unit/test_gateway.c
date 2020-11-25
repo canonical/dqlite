@@ -124,11 +124,11 @@ static void handleCb(struct handle *req, int status, int type)
 
 /* Decode a response of the given lower/upper case name using the buffer that
  * was written by the gateway. */
-#define DECODE(RESPONSE, LOWER)                                        \
-	{                                                              \
-		int rc2;                                               \
-		rc2 = response_##LOWER##__decode(f->cursor, RESPONSE); \
-		munit_assert_int(rc2, ==, 0);                          \
+#define DECODE(RESPONSE, LOWER)                                       \
+	{                                                             \
+		int rc2;                                              \
+		rc2 = response_##LOWER##_decode(f->cursor, RESPONSE); \
+		munit_assert_int(rc2, ==, 0);                         \
 	}
 
 /* Decode a row with N columns filling the given values. */
@@ -278,7 +278,7 @@ static void handleCb(struct handle *req, int status, int type)
 	{                                                            \
 		struct response_failure failure;                     \
 		int rc2;                                             \
-		rc2 = response_failure__decode(f->cursor, &failure); \
+		rc2 = response_failure_decode(f->cursor, &failure);  \
 		munit_assert_int(rc2, ==, 0);                        \
 		munit_assert_int(failure.code, ==, CODE);            \
 		munit_assert_string_equal(failure.message, MESSAGE); \
@@ -573,9 +573,9 @@ TEST_CASE(exec, blob, NULL)
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
-	uint64__decode(f->cursor, &n);
+	uint64_decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(f->cursor, &column);
+	text_decode(f->cursor, &column);
 	munit_assert_string_equal(column, "data");
 	DECODE_ROW(1, &value);
 	munit_assert_int(value.type, ==, SQLITE_BLOB);
@@ -881,9 +881,9 @@ TEST_CASE(exec, restore, NULL)
 	ENCODE(&request, query);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
-	uint64__decode(f->cursor, &n);
+	uint64_decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(f->cursor, &column);
+	text_decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 	DECODE_ROW(1, &value);
 	munit_assert_int(value.type, ==, SQLITE_INTEGER);
@@ -941,9 +941,9 @@ TEST_CASE(query, simple, NULL)
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
-	uint64__decode(f->cursor, &n);
+	uint64_decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(f->cursor, &column);
+	text_decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 	DECODE(&f->response, rows);
 	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
@@ -969,9 +969,9 @@ TEST_CASE(query, oneRow, NULL)
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
-	uint64__decode(f->cursor, &n);
+	uint64_decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(f->cursor, &column);
+	text_decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 	DECODE_ROW(1, &value);
 	munit_assert_int(value.type, ==, SQLITE_INTEGER);
@@ -1007,9 +1007,9 @@ TEST_CASE(query, large, NULL)
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
-	uint64__decode(f->cursor, &n);
+	uint64_decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(f->cursor, &column);
+	text_decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 
 	for (i = 0; i < 255; i++) {
@@ -1026,9 +1026,9 @@ TEST_CASE(query, large, NULL)
 
 	ASSERT_CALLBACK(0, ROWS);
 
-	uint64__decode(f->cursor, &n);
+	uint64_decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(f->cursor, &column);
+	text_decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 
 	for (i = 0; i < 245; i++) {
@@ -1097,9 +1097,9 @@ TEST_CASE(query, interrupt, NULL)
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
-	uint64__decode(f->cursor, &n);
+	uint64_decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
-	text__decode(f->cursor, &column);
+	text_decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 
 	for (i = 0; i < 255; i++) {

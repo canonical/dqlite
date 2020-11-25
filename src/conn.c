@@ -102,7 +102,7 @@ static void raftConnect(struct conn *c, struct cursor *cursor)
 {
 	struct requestConnect request;
 	int rv;
-	rv = requestConnect__decode(cursor, &request);
+	rv = requestConnect_decode(cursor, &request);
 	if (rv != 0) {
 		connStop(c);
 		return;
@@ -177,7 +177,7 @@ static void readMessageCb(struct transport *transport, int status)
 	cursor.p = bufferCursor(&c->read, 0);
 	cursor.cap = bufferOffset(&c->read);
 
-	rv = message__decode(&cursor, &c->request);
+	rv = message_decode(&cursor, &c->request);
 	assert(rv == 0); /* Can't fail, we know we have enough bytes */
 
 	rv = readRequest(c);
@@ -217,7 +217,7 @@ static void readProtocolCb(struct transport *transport, int status)
 	cursor.p = bufferCursor(&c->read, 0);
 	cursor.cap = bufferOffset(&c->read);
 
-	rv = uint64__decode(&cursor, &c->protocol);
+	rv = uint64_decode(&cursor, &c->protocol);
 	assert(rv == 0); /* Can't fail, we know we have enough bytes */
 
 	if (c->protocol != DQLITE_PROTOCOL_VERSION && c->protocol != DQLITE_PROTOCOL_VERSION_LEGACY) {

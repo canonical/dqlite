@@ -72,7 +72,7 @@ struct cursor
 #define SERIALIZE_DEFINE_METHODS(NAME, FIELDS)                    \
 	size_t NAME##__sizeof(const struct NAME *p);              \
 	void NAME##__encode(const struct NAME *p, void **cursor); \
-	int NAME##__decode(struct cursor *cursor, struct NAME *p)
+	int NAME##_decode(struct cursor *cursor, struct NAME *p)
 
 /* Define a single field in serializable struct.
  *
@@ -83,22 +83,22 @@ struct cursor
 /**
  * Implement the sizeof, encode and decode function of a serializable struct.
  */
-#define SERIALIZE_IMPLEMENT(NAME, FIELDS)                         \
-	size_t NAME##__sizeof(const struct NAME *p)               \
-	{                                                         \
-		size_t size = 0;                                  \
-		FIELDS(SERIALIZE_SIZEOF_FIELD, p);                \
-		return size;                                      \
-	}                                                         \
-	void NAME##__encode(const struct NAME *p, void **cursor)  \
-	{                                                         \
-		FIELDS(SERIALIZE_ENCODE_FIELD, p, cursor);        \
-	}                                                         \
-	int NAME##__decode(struct cursor *cursor, struct NAME *p) \
-	{                                                         \
-		int rc;                                           \
-		FIELDS(SERIALIZE_DECODE_FIELD, p, cursor);        \
-		return 0;                                         \
+#define SERIALIZE_IMPLEMENT(NAME, FIELDS)                        \
+	size_t NAME##__sizeof(const struct NAME *p)              \
+	{                                                        \
+		size_t size = 0;                                 \
+		FIELDS(SERIALIZE_SIZEOF_FIELD, p);               \
+		return size;                                     \
+	}                                                        \
+	void NAME##__encode(const struct NAME *p, void **cursor) \
+	{                                                        \
+		FIELDS(SERIALIZE_ENCODE_FIELD, p, cursor);       \
+	}                                                        \
+	int NAME##_decode(struct cursor *cursor, struct NAME *p) \
+	{                                                        \
+		int rc;                                          \
+		FIELDS(SERIALIZE_DECODE_FIELD, p, cursor);       \
+		return 0;                                        \
 	}
 
 #define SERIALIZE_SIZEOF_FIELD(KIND, MEMBER, P) \
@@ -108,7 +108,7 @@ struct cursor
 	KIND##__encode(&((P)->MEMBER), CURSOR);
 
 #define SERIALIZE_DECODE_FIELD(KIND, MEMBER, P, CURSOR) \
-	rc = KIND##__decode(CURSOR, &((P)->MEMBER));    \
+	rc = KIND##_decode(CURSOR, &((P)->MEMBER));     \
 	if (rc != 0) {                                  \
 		return rc;                              \
 	}
@@ -212,7 +212,7 @@ DQLITE_INLINE void blobEncode(const blobT *value, void **cursor)
 	*cursor += len;
 }
 
-DQLITE_INLINE int uint8__decode(struct cursor *cursor, uint8_t *value)
+DQLITE_INLINE int uint8_decode(struct cursor *cursor, uint8_t *value)
 {
 	size_t n = sizeof(uint8_t);
 	if (n > cursor->cap) {
@@ -224,7 +224,7 @@ DQLITE_INLINE int uint8__decode(struct cursor *cursor, uint8_t *value)
 	return 0;
 }
 
-DQLITE_INLINE int uint16__decode(struct cursor *cursor, uint16_t *value)
+DQLITE_INLINE int uint16_decode(struct cursor *cursor, uint16_t *value)
 {
 	size_t n = sizeof(uint16_t);
 	if (n > cursor->cap) {
@@ -236,7 +236,7 @@ DQLITE_INLINE int uint16__decode(struct cursor *cursor, uint16_t *value)
 	return 0;
 }
 
-DQLITE_INLINE int uint32__decode(struct cursor *cursor, uint32_t *value)
+DQLITE_INLINE int uint32_decode(struct cursor *cursor, uint32_t *value)
 {
 	size_t n = sizeof(uint32_t);
 	if (n > cursor->cap) {
@@ -248,7 +248,7 @@ DQLITE_INLINE int uint32__decode(struct cursor *cursor, uint32_t *value)
 	return 0;
 }
 
-DQLITE_INLINE int uint64__decode(struct cursor *cursor, uint64_t *value)
+DQLITE_INLINE int uint64_decode(struct cursor *cursor, uint64_t *value)
 {
 	size_t n = sizeof(uint64_t);
 	if (n > cursor->cap) {
@@ -260,7 +260,7 @@ DQLITE_INLINE int uint64__decode(struct cursor *cursor, uint64_t *value)
 	return 0;
 }
 
-DQLITE_INLINE int int64__decode(struct cursor *cursor, int64_t *value)
+DQLITE_INLINE int int64_decode(struct cursor *cursor, int64_t *value)
 {
 	size_t n = sizeof(int64_t);
 	if (n > cursor->cap) {
@@ -284,7 +284,7 @@ DQLITE_INLINE int floatDecode(struct cursor *cursor, floatT *value)
 	return 0;
 }
 
-DQLITE_INLINE int text__decode(struct cursor *cursor, text_t *value)
+DQLITE_INLINE int text_decode(struct cursor *cursor, text_t *value)
 {
 	/* Find the terminating null byte of the next string, if any. */
 	size_t len = strnlen(cursor->p, cursor->cap);
@@ -304,7 +304,7 @@ DQLITE_INLINE int blobDecode(struct cursor *cursor, blobT *value)
 	uint64_t len;
 	size_t n;
 	int rv;
-	rv = uint64__decode(cursor, &len);
+	rv = uint64_decode(cursor, &len);
 	if (rv != 0) {
 		return rv;
 	}
