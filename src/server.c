@@ -179,7 +179,7 @@ static int ipParse(const char *address, struct sockaddr_in *addr)
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 {
 	struct sockaddr_un addr_un;
-	struct sockaddr_in addr_in;
+	struct sockaddr_in addrIn;
 	struct sockaddr *addr;
 	size_t len;
 	int fd;
@@ -189,13 +189,13 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		return DQLITE_MISUSE;
 	}
 	if (domain == AF_INET) {
-		memset(&addr_in, 0, sizeof addr_in);
-		rv = ipParse(address, &addr_in);
+		memset(&addrIn, 0, sizeof addrIn);
+		rv = ipParse(address, &addrIn);
 		if (rv != 0) {
 			return DQLITE_MISUSE;
 		}
-		len = sizeof addr_in;
-		addr = (struct sockaddr *)&addr_in;
+		len = sizeof addrIn;
+		addr = (struct sockaddr *)&addrIn;
 	} else {
 		memset(&addr_un, 0, sizeof addr_un);
 		addr_un.sun_family = AF_UNIX;
