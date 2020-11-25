@@ -48,13 +48,13 @@ int dqliteInit(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto errAfterRaftTransportInit;
 	}
-	rv = fsmInit(&d->raft_fsm, &d->config, &d->registry);
+	rv = fsmInit(&d->raftFsm, &d->config, &d->registry);
 	if (rv != 0) {
 		goto errAfterRaftIoInit;
 	}
 
 	/* TODO: properly handle closing the dqlite server without running it */
-	rv = raft_init(&d->raft, &d->raftIo, &d->raft_fsm, d->config.id,
+	rv = raft_init(&d->raft, &d->raftIo, &d->raftFsm, d->config.id,
 		       d->config.address);
 	if (rv != 0) {
 		snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_init(): %s",
@@ -95,7 +95,7 @@ int dqliteInit(struct dqlite_node *d,
 errAfterReadyInit:
 	sem_destroy(&d->ready);
 errAfterRaftFsmInit:
-	fsmClose(&d->raft_fsm);
+	fsmClose(&d->raftFsm);
 errAfterRaftIoInit:
 	raft_uv_close(&d->raftIo);
 errAfterRaftTransportInit:
@@ -120,7 +120,7 @@ void dqliteClose(struct dqlite_node *d)
 	assert(rv == 0); /* Fails only if sem object is not valid */
 	rv = sem_destroy(&d->ready);
 	assert(rv == 0); /* Fails only if sem object is not valid */
-	fsmClose(&d->raft_fsm);
+	fsmClose(&d->raftFsm);
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raftTransport);
 	registryClose(&d->registry);

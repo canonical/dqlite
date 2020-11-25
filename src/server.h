@@ -19,7 +19,7 @@ struct dqlite_node
 	struct uv_loop_s loop;                   /* UV loop */
 	struct raft_uv_transport raftTransport;  /* Raft libuv transport */
 	struct raft_io raftIo;                   /* libuv I/O */
-	struct raft_fsm raft_fsm;                /* dqlite FSM */
+	struct raft_fsm raftFsm;                 /* dqlite FSM */
 	sem_t ready;                             /* Server is ready */
 	sem_t stopped;                           /* Notifiy loop stopped */
 	pthread_mutex_t mutex;                   /* Access incoming queue */
