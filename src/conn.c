@@ -297,7 +297,7 @@ errAfterWriteBufferInit:
 errAfterReadBufferInit:
 	bufferClose(&c->read);
 errAfterTransportInit:
-	transport_close(&c->transport, NULL);
+	transportClose(&c->transport, NULL);
 err:
 	return rv;
 }
@@ -309,5 +309,5 @@ void connStop(struct conn *c)
 	}
 	c->closed = true;
 	gatewayClose(&c->gateway);
-	transport_close(&c->transport, closeCb);
+	transportClose(&c->transport, closeCb);
 }

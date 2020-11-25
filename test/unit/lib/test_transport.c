@@ -76,7 +76,7 @@ static void tear_down(void *data)
 	int rv;
 	rv = close(f->client);
 	munit_assert_int(rv, ==, 0);
-	transport_close(&f->transport, NULL);
+	transportClose(&f->transport, NULL);
 	testUvStop(&f->loop);
 	testUvTearDown(&f->loop);
 	testEndpointTearDown(&f->endpoint);
