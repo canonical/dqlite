@@ -23,7 +23,7 @@ struct row
 
 struct rows
 {
-	unsigned column_count;
+	unsigned columnCount;
 	const char **columnNames;
 	struct row *next;
 };

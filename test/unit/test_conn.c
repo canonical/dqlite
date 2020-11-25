@@ -387,7 +387,7 @@ TEST_CASE(query, one, NULL)
 	(void)params;
 	PREPARE("SELECT n FROM test", &f->stmtId);
 	QUERY(f->stmtId, &f->rows);
-	munit_assert_int(f->rows.column_count, ==, 1);
+	munit_assert_int(f->rows.columnCount, ==, 1);
 	munit_assert_string_equal(f->rows.columnNames[0], "n");
 	row = f->rows.next;
 	munit_assert_ptr_not_null(row);

@@ -213,21 +213,21 @@ int clientRecvRows(struct client *c, struct rows *rows)
 {
 	struct cursor cursor;
 	struct tupleDecoder decoder;
-	uint64_t column_count;
+	uint64_t columnCount;
 	struct row *last;
 	unsigned i;
 	int rv;
 	READ(rows, ROWS);
 	cursor.p = bufferCursor(&c->read, 0);
 	cursor.cap = bufferOffset(&c->read);
-	rv = uint64Decode(&cursor, &column_count);
+	rv = uint64Decode(&cursor, &columnCount);
 	if (rv != 0) {
 		return DQLITE_ERROR;
 	}
-	rows->column_count = (unsigned)column_count;
-	for (i = 0; i < rows->column_count; i++) {
+	rows->columnCount = (unsigned)columnCount;
+	for (i = 0; i < rows->columnCount; i++) {
 		rows->columnNames = sqlite3_malloc(
-		    (int)(column_count * sizeof *rows->columnNames));
+		    (int)(columnCount * sizeof *rows->columnNames));
 		if (rows->columnNames == NULL) {
 			return DQLITE_ERROR;
 		}
@@ -254,17 +254,16 @@ int clientRecvRows(struct client *c, struct rows *rows)
 			return DQLITE_NOMEM;
 		}
 		row->values =
-		    sqlite3_malloc((int)(column_count * sizeof *row->values));
+		    sqlite3_malloc((int)(columnCount * sizeof *row->values));
 		if (row->values == NULL) {
 			return DQLITE_NOMEM;
 		}
 		row->next = NULL;
-		rv =
-		    tupleDecoderInit(&decoder, (unsigned)column_count, &cursor);
+		rv = tupleDecoderInit(&decoder, (unsigned)columnCount, &cursor);
 		if (rv != 0) {
 			return DQLITE_ERROR;
 		}
-		for (i = 0; i < rows->column_count; i++) {
+		for (i = 0; i < rows->columnCount; i++) {
 			rv = tupleDecoderNext(&decoder, &row->values[i]);
 			if (rv != 0) {
 				return DQLITE_ERROR;
