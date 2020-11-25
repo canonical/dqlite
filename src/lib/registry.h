@@ -18,7 +18,7 @@
  * type.
  *
  * The item TYPE is required to implement three methods: TYPE##_init,
- * TYPE##_close and TYPE##_hash.
+ * TYPE##_close and TYPE##Hash.
  */
 #define REGISTRY(NAME, TYPE)                                                   \
                                                                                \
@@ -175,7 +175,7 @@
 				continue;                                    \
 			}                                                    \
                                                                              \
-			hash = TYPE##_hash(item);                            \
+			hash = TYPE##Hash(item);                             \
                                                                              \
 			if (hash != NULL && strcmp(hash, key) == 0) {        \
 				return 0;                                    \

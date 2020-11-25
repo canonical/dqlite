@@ -28,7 +28,7 @@ static void testItem_close(struct testItem *i)
 	sqlite3_free(i->ptr);
 }
 
-static const char *testItem_hash(struct testItem *i)
+static const char *testItemHash(struct testItem *i)
 {
 	munit_assert(i != NULL);
 
