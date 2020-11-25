@@ -252,18 +252,18 @@ extern int _main_suites_n;
 #define TEST_SETUP_MACRO_CHOOSER(...) \
 	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_SETUP_2_ARGS, TEST_SETUP_1_ARGS)
 
-#define TEST_SETUP_1_ARGS(S)                                            \
-	static void *S##Setup(const MunitParameter[], void *);          \
-	__attribute__((constructor)) static void _##S##Setup_init(void) \
-	{                                                               \
-		_##S##Setup = S##Setup;                                 \
-	}                                                               \
+#define TEST_SETUP_1_ARGS(S)                                           \
+	static void *S##Setup(const MunitParameter[], void *);         \
+	__attribute__((constructor)) static void _##S##SetupInit(void) \
+	{                                                              \
+		_##S##Setup = S##Setup;                                \
+	}                                                              \
 	static void *S##Setup(const MunitParameter params[], void *userData)
 
-#define TEST_SETUP_2_ARGS(S, F)                                         \
-	__attribute__((constructor)) static void _##S##Setup_init(void) \
-	{                                                               \
-		_##S##Setup = F;                                        \
+#define TEST_SETUP_2_ARGS(S, F)                                        \
+	__attribute__((constructor)) static void _##S##SetupInit(void) \
+	{                                                              \
+		_##S##Setup = F;                                       \
 	}
 
 /* Choose the appropriate TEST_TEAR_DOWN_N_ARGS() macro depending on the number
