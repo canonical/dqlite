@@ -89,7 +89,7 @@ int dqliteInit(struct dqlite_node *d,
 	d->raftState = RAFT_UNAVAILABLE;
 	d->running = false;
 	d->listener = NULL;
-	d->bind_address = NULL;
+	d->bindAddress = NULL;
 	return 0;
 
 errAfterReadyInit:
@@ -127,8 +127,8 @@ void dqliteClose(struct dqlite_node *d)
 	sqlite3_vfs_unregister(&d->vfs);
 	VfsClose(&d->vfs);
 	configClose(&d->config);
-	if (d->bind_address != NULL) {
-		sqlite3_free(d->bind_address);
+	if (d->bindAddress != NULL) {
+		sqlite3_free(d->bindAddress);
 	}
 }
 
@@ -236,27 +236,27 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	}
 
 	if (domain == AF_INET) {
-		t->bind_address = sqlite3_malloc((int)strlen(address));
-		if (t->bind_address == NULL) {
+		t->bindAddress = sqlite3_malloc((int)strlen(address));
+		if (t->bindAddress == NULL) {
 			/* TODO: cleanup */
 			return DQLITE_NOMEM;
 		}
-		strcpy(t->bind_address, address);
+		strcpy(t->bindAddress, address);
 	} else {
 		len = sizeof addr_un.sun_path;
-		t->bind_address = sqlite3_malloc((int)len);
-		if (t->bind_address == NULL) {
+		t->bindAddress = sqlite3_malloc((int)len);
+		if (t->bindAddress == NULL) {
 			/* TODO: cleanup */
 			return DQLITE_NOMEM;
 		}
-		memset(t->bind_address, 0, len);
+		memset(t->bindAddress, 0, len);
 		rv = uv_pipe_getsockname((struct uv_pipe_s *)t->listener,
-					 t->bind_address, &len);
+					 t->bindAddress, &len);
 		if (rv != 0) {
 			/* TODO: cleanup */
 			return DQLITE_ERROR;
 		}
-		t->bind_address[0] = '@';
+		t->bindAddress[0] = '@';
 	}
 
 	return 0;
@@ -264,7 +264,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 
 const char *dqliteNodeGetBindAddress(dqlite_node *t)
 {
-	return t->bind_address;
+	return t->bindAddress;
 }
 
 int dqlite_node_set_connect_func(dqlite_node *t,

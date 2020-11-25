@@ -32,7 +32,7 @@ struct dqlite_node
 	struct uv_timer_s startup;               /* Unblock ready sem */
 	struct uv_prepare_s monitor;             /* Raft state change monitor */
 	int raftState;                           /* Previous raft state */
-	char *bind_address;                      /* Listen address */
+	char *bindAddress;                       /* Listen address */
 	char errmsg[RAFT_ERRMSG_BUF_SIZE];       /* Last error occurred */
 };
 
