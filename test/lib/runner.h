@@ -11,7 +11,7 @@
  * and then set as child suites of a root suite created at runtime by the test
  * runner's main(). This can be done using the RUNNER macro. */
 extern MunitSuite _mainSuites[];
-extern int _mainSuites_n;
+extern int _mainSuitesN;
 
 /* Maximum number of test cases for each suite */
 #define SUITE_CAP 128
@@ -20,7 +20,7 @@ extern int _mainSuites_n;
 /* Define the top-level suites array and the main() function of the test. */
 #define RUNNER(NAME)                                                       \
 	MunitSuite _mainSuites[SUITE_CAP];                                 \
-	int _mainSuites_n = 0;                                             \
+	int _mainSuitesN = 0;                                              \
                                                                            \
 	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc + 1)])        \
 	{                                                                  \
@@ -63,13 +63,13 @@ extern int _mainSuites_n;
 	static MunitTest _##S##Tests[SUITE_CAP];                   \
 	static MunitTestSetup _##S##Setup = NULL;                  \
 	static MunitTestTearDown _##S##TearDown = NULL;            \
-	static int _##S##Suites_n = 0;                             \
+	static int _##S##SuitesN = 0;                              \
 	static int _##S##TestsN = 0;                               \
 	__attribute__((constructor)) static void _##S##_init(void) \
 	{                                                          \
 		memset(_##S##Suites, 0, sizeof(_##S##Suites));     \
 		memset(_##S##Tests, 0, sizeof(_##S##Tests));       \
-		(void)_##S##Suites_n;                              \
+		(void)_##S##SuitesN;                               \
 		(void)_##S##TestsN;                                \
 		(void)_##S##Setup;                                 \
 		(void)_##S##TearDown;                              \
@@ -81,13 +81,13 @@ extern int _mainSuites_n;
 #define SUITE_ADD_CHILD(S1, PREFIX, S2)                                    \
 	__attribute__((constructor)) static void _##S1##_##S2##_init(void) \
 	{                                                                  \
-		int n = _##S1##Suites_n;                                   \
+		int n = _##S1##SuitesN;                                    \
 		_##S1##Suites[n].prefix = PREFIX;                          \
 		_##S1##Suites[n].tests = _##S2##Tests;                     \
 		_##S1##Suites[n].suites = _##S2##Suites;                   \
 		_##S1##Suites[n].iterations = 0;                           \
 		_##S1##Suites[n].options = 0;                              \
-		_##S1##Suites_n = n + 1;                                   \
+		_##S1##SuitesN = n + 1;                                    \
 	}
 
 /* Add a test case to the MunitTest[] array of suite S. */
@@ -206,13 +206,13 @@ extern int _mainSuites_n;
 	static MunitTest _##S##Tests[TEST_CAP];                    \
 	static MunitTestSetup _##S##Setup = NULL;                  \
 	static MunitTestTearDown _##S##TearDown = NULL;            \
-	static int _##S##Suites_n = 0;                             \
+	static int _##S##SuitesN = 0;                              \
 	static int _##S##TestsN = 0;                               \
 	__attribute__((constructor)) static void _##S##_init(void) \
 	{                                                          \
 		memset(_##S##Suites, 0, sizeof(_##S##Suites));     \
 		memset(_##S##Tests, 0, sizeof(_##S##Tests));       \
-		(void)_##S##Suites_n;                              \
+		(void)_##S##SuitesN;                               \
 		(void)_##S##TestsN;                                \
 		(void)_##S##Setup;                                 \
 		(void)_##S##TearDown;                              \
@@ -224,13 +224,13 @@ extern int _mainSuites_n;
 #define TEST_SUITE_ADD_CHILD(S1, PREFIX, S2)                               \
 	__attribute__((constructor)) static void _##S1##_##S2##_init(void) \
 	{                                                                  \
-		int n = _##S1##Suites_n;                                   \
+		int n = _##S1##SuitesN;                                    \
 		_##S1##Suites[n].prefix = PREFIX;                          \
 		_##S1##Suites[n].tests = _##S2##Tests;                     \
 		_##S1##Suites[n].suites = _##S2##Suites;                   \
 		_##S1##Suites[n].iterations = 0;                           \
 		_##S1##Suites[n].options = 0;                              \
-		_##S1##Suites_n = n + 1;                                   \
+		_##S1##SuitesN = n + 1;                                    \
 	}
 
 /* Set the tests attribute of the next available slot of the MunitSuite[] array
@@ -238,13 +238,13 @@ extern int _mainSuites_n;
 #define TEST_SUITE_ADD_GROUP(S, G)                                       \
 	__attribute__((constructor)) static void _##S##_##G##_init(void) \
 	{                                                                \
-		int n = _##S##Suites_n;                                  \
+		int n = _##S##SuitesN;                                   \
 		_##S##Suites[n].prefix = "/" #G;                         \
 		_##S##Suites[n].tests = _##S##_##G##Tests;               \
 		_##S##Suites[n].suites = NULL;                           \
 		_##S##Suites[n].iterations = 0;                          \
 		_##S##Suites[n].options = 0;                             \
-		_##S##Suites_n = n + 1;                                  \
+		_##S##SuitesN = n + 1;                                   \
 	}
 
 /* Choose the appropriate TEST_SETUP_N_ARGS() macro depending on the number of
