@@ -178,7 +178,7 @@ static int ipParse(const char *address, struct sockaddr_in *addr)
 
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 {
-	struct sockaddr_un addr_un;
+	struct sockaddr_un addrUn;
 	struct sockaddr_in addrIn;
 	struct sockaddr *addr;
 	size_t len;
@@ -197,17 +197,17 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		len = sizeof addrIn;
 		addr = (struct sockaddr *)&addrIn;
 	} else {
-		memset(&addr_un, 0, sizeof addr_un);
-		addr_un.sun_family = AF_UNIX;
+		memset(&addrUn, 0, sizeof addrUn);
+		addrUn.sun_family = AF_UNIX;
 		len = strlen(address);
 		if (len == 1) {
 			/* Auto bind */
 			len = 0;
 		} else {
-			strcpy(addr_un.sun_path + 1, address + 1);
+			strcpy(addrUn.sun_path + 1, address + 1);
 		}
 		len += sizeof(sa_family_t);
-		addr = (struct sockaddr *)&addr_un;
+		addr = (struct sockaddr *)&addrUn;
 	}
 	fd = socket(domain, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd == -1) {
@@ -243,7 +243,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		}
 		strcpy(t->bindAddress, address);
 	} else {
-		len = sizeof addr_un.sun_path;
+		len = sizeof addrUn.sun_path;
 		t->bindAddress = sqlite3_malloc((int)len);
 		if (t->bindAddress == NULL) {
 			/* TODO: cleanup */
