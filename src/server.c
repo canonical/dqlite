@@ -42,7 +42,7 @@ int dqliteInit(struct dqlite_node *d,
 	if (rv != 0) {
 		goto errAfterLoopInit;
 	}
-	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raftTransport);
+	rv = raft_uv_init(&d->raftIo, &d->loop, dir, &d->raftTransport);
 	if (rv != 0) {
 		/* TODO: better error reporting */
 		rv = DQLITE_ERROR;
@@ -54,7 +54,7 @@ int dqliteInit(struct dqlite_node *d,
 	}
 
 	/* TODO: properly handle closing the dqlite server without running it */
-	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id,
+	rv = raft_init(&d->raft, &d->raftIo, &d->raft_fsm, d->config.id,
 		       d->config.address);
 	if (rv != 0) {
 		snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_init(): %s",
@@ -97,7 +97,7 @@ errAfterReadyInit:
 errAfterRaftFsmInit:
 	fsmClose(&d->raft_fsm);
 errAfterRaftIoInit:
-	raft_uv_close(&d->raft_io);
+	raft_uv_close(&d->raftIo);
 errAfterRaftTransportInit:
 	raftProxyClose(&d->raftTransport);
 errAfterLoopInit:
@@ -341,7 +341,7 @@ out:
 static void raftCloseCb(struct raft *raft)
 {
 	struct dqlite_node *s = raft->data;
-	raft_uv_close(&s->raft_io);
+	raft_uv_close(&s->raftIo);
 	uv_close((struct uv_handle_s *)&s->stop, NULL);
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
 	uv_close((struct uv_handle_s *)&s->monitor, NULL);
