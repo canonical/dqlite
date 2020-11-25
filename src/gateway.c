@@ -175,7 +175,7 @@ static int handle_leader(struct handle *req, struct cursor *cursor)
 static int handle_client(struct handle *req, struct cursor *cursor)
 {
 	START(client, welcome);
-	response.heartbeat_timeout = req->gateway->config->heartbeat_timeout;
+	response.heartbeatTimeout = req->gateway->config->heartbeatTimeout;
 	SUCCESS(welcome, WELCOME);
 	return 0;
 }

@@ -11,7 +11,7 @@
 	X(uint64, id, ##__VA_ARGS__) \
 	X(text, address, ##__VA_ARGS__)
 #define RESPONSE_SERVER_LEGACY(X, ...) X(text, address, ##__VA_ARGS__)
-#define RESPONSE_WELCOME(X, ...) X(uint64, heartbeat_timeout, ##__VA_ARGS__)
+#define RESPONSE_WELCOME(X, ...) X(uint64, heartbeatTimeout, ##__VA_ARGS__)
 #define RESPONSE_FAILURE(X, ...)       \
 	X(uint64, code, ##__VA_ARGS__) \
 	X(text, message, ##__VA_ARGS__)
