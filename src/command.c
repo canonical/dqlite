@@ -29,17 +29,17 @@ static size_t frames__sizeof(const frames_t *frames)
 	return s;
 }
 
-static void frames__encode(const frames_t *frames, void **cursor)
+static void frames_encode(const frames_t *frames, void **cursor)
 {
 	const dqlite_vfs_frame *list;
 	unsigned i;
-	uint32__encode(&frames->nPages, cursor);
-	uint16__encode(&frames->page_size, cursor);
-	uint16__encode(&frames->__unused__, cursor);
+	uint32_encode(&frames->nPages, cursor);
+	uint16_encode(&frames->page_size, cursor);
+	uint16_encode(&frames->__unused__, cursor);
 	list = frames->data;
 	for (i = 0; i < frames->nPages; i++) {
 		uint64_t pgno = list[i].page_number;
-		uint64__encode(&pgno, cursor);
+		uint64_encode(&pgno, cursor);
 	}
 	for (i = 0; i < frames->nPages; i++) {
 		memcpy(*cursor, list[i].data, frames->page_size);
@@ -81,8 +81,8 @@ COMMAND_TYPES(COMMAND_IMPLEMENT, );
 			return DQLITE_NOMEM;                    \
 		}                                               \
 		cursor = buf->base;                             \
-		header__encode(&h, &cursor);                    \
-		command_##LOWER##__encode(command, &cursor);    \
+		header_encode(&h, &cursor);                     \
+		command_##LOWER##_encode(command, &cursor);     \
 		break;
 
 int commandEncode(int type, const void *command, struct raft_buffer *buf)

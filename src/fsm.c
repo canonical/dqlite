@@ -270,7 +270,7 @@ static int encodeSnapshotHeader(unsigned n, struct raft_buffer *buf)
 		return RAFT_NOMEM;
 	}
 	cursor = buf->base;
-	snapshotHeader__encode(&header, &cursor);
+	snapshotHeader_encode(&header, &cursor);
 	return 0;
 }
 
@@ -310,7 +310,7 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 		goto errAfterSnapshot;
 	}
 	cursor = bufs[0].base;
-	snapshotDatabase__encode(&header, &cursor);
+	snapshotDatabase_encode(&header, &cursor);
 
 	return 0;
 

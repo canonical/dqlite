@@ -113,7 +113,7 @@ int query_batch(sqlite3_stmt *stmt, struct buffer *buffer)
 
 	/* Insert the column count */
 	cursor = bufferAdvance(buffer, sizeof(uint64_t));
-	uint64__encode(&n64, &cursor);
+	uint64_encode(&n64, &cursor);
 
 	/* Insert the column names */
 	for (i = 0; i < n; i++) {
@@ -122,7 +122,7 @@ int query_batch(sqlite3_stmt *stmt, struct buffer *buffer)
 		if (cursor == NULL) {
 			return SQLITE_NOMEM;
 		}
-		text__encode(&name, &cursor);
+		text_encode(&name, &cursor);
 	}
 
 	/* Insert the rows. */

@@ -103,8 +103,8 @@ static void connectWorkCb(uv_work_t *work)
 	}
 
 	cursor = buf;
-	message__encode(&message, &cursor);
-	requestConnect__encode(&request, &cursor);
+	message_encode(&message, &cursor);
+	requestConnect_encode(&request, &cursor);
 
 	rv = (int)write(r->fd, buf, n);
 	sqlite3_free(buf);

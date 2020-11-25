@@ -74,7 +74,7 @@ static void gatewayHandleCb(struct handle *req, int status, int type)
 	c->response.extra = 0;
 
 	cursor = bufferCursor(&c->write, 0);
-	message__encode(&c->response, &cursor);
+	message_encode(&c->response, &cursor);
 
 	buf.base = bufferCursor(&c->write, 0);
 	buf.len = bufferOffset(&c->write);

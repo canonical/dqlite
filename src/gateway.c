@@ -70,7 +70,7 @@ void gatewayClose(struct gateway *g)
 		/* Since responses are small and the buffer it's at least 4096 \
 		 * bytes, this can't fail. */                                  \
 		assert(_cursor != NULL);                                       \
-		response_##LOWER##__encode(&response, &_cursor);               \
+		response_##LOWER##_encode(&response, &_cursor);                \
 		req->cb(req, 0, DQLITE_RESPONSE_##UPPER);                      \
 	}
 
@@ -127,7 +127,7 @@ static void failure(struct handle *req, int code, const char *message)
 	/* The buffer has at least 4096 bytes, and error messages are shorter
 	 * than that. So this can't fail. */
 	assert(cursor != NULL);
-	response_failure__encode(&failure, &cursor);
+	response_failure_encode(&failure, &cursor);
 	req->cb(req, 0, DQLITE_RESPONSE_FAILURE);
 }
 
@@ -716,12 +716,12 @@ static int dumpFile(const char *filename,
 	if (cur == NULL) {
 		goto oom;
 	}
-	text__encode(&filename, &cur);
+	text_encode(&filename, &cur);
 	cur = bufferAdvance(buffer, uint64__sizeof(&len));
 	if (cur == NULL) {
 		goto oom;
 	}
-	uint64__encode(&len, &cur);
+	uint64_encode(&len, &cur);
 
 	if (n == 0) {
 		return 0;
@@ -762,7 +762,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	response.n = 2;
 	cur = bufferAdvance(req->buffer, response_files__sizeof(&response));
 	assert(cur != NULL);
-	response_files__encode(&response, &cur);
+	response_files_encode(&response, &cur);
 
 	vfs = sqlite3_vfs_find(g->config->name);
 	rv = VfsSnapshot(vfs, request.filename, &data, &n);
@@ -852,13 +852,13 @@ static int encodeServer(struct gateway *g,
 	if (cur == NULL) {
 		return DQLITE_NOMEM;
 	}
-	uint64__encode(&id, &cur);
+	uint64_encode(&id, &cur);
 
 	cur = bufferAdvance(buffer, text__sizeof(&address));
 	if (cur == NULL) {
 		return DQLITE_NOMEM;
 	}
-	text__encode(&address, &cur);
+	text_encode(&address, &cur);
 
 	if (format == DQLITE_REQUEST_CLUSTER_FORMAT_V0) {
 		return 0;
@@ -868,7 +868,7 @@ static int encodeServer(struct gateway *g,
 	if (cur == NULL) {
 		return DQLITE_NOMEM;
 	}
-	uint64__encode(&role, &cur);
+	uint64_encode(&role, &cur);
 
 	return 0;
 }
@@ -884,7 +884,7 @@ static int handle_cluster(struct handle *req, struct cursor *cursor)
 	response.n = g->raft->configuration.n;
 	cur = bufferAdvance(req->buffer, response_servers__sizeof(&response));
 	assert(cur != NULL);
-	response_servers__encode(&response, &cur);
+	response_servers_encode(&response, &cur);
 
 	for (i = 0; i < response.n; i++) {
 		rv = encodeServer(g, i, req->buffer, (int)request.format);

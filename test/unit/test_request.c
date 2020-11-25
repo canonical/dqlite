@@ -61,7 +61,7 @@ TEST_CASE(serialize, leader, NULL)
 	(void)params;
 	ALLOC_BUF(n);
 	cursor1 = f->buf;
-	request_leader__encode(&request, &cursor1);
+	request_leader_encode(&request, &cursor1);
 	cursor2.p = f->buf;
 	cursor2.cap = n;
 	request_leaderDecode(&cursor2, &request);

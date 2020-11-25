@@ -105,7 +105,7 @@ static void handleCb(struct handle *req, int status, int type)
 		bufferReset(f->buf1);                           \
 		cursor = bufferAdvance(f->buf1, n2);            \
 		munit_assert_ptr_not_null(cursor);              \
-		request_##LOWER##__encode(REQUEST, &cursor);    \
+		request_##LOWER##_encode(REQUEST, &cursor);     \
 	}
 
 /* Encode N parameters with the given values */
