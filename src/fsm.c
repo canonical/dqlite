@@ -264,7 +264,7 @@ static int encodeSnapshotHeader(unsigned n, struct raft_buffer *buf)
 	void *cursor;
 	header.format = SNAPSHOT_FORMAT;
 	header.n = n;
-	buf->len = snapshotHeader__sizeof(&header);
+	buf->len = snapshotHeader_sizeof(&header);
 	buf->base = raft_malloc(buf->len);
 	if (buf->base == NULL) {
 		return RAFT_NOMEM;
@@ -303,7 +303,7 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 	header.walSize = bufs[1].len - header.mainSize;
 
 	/* Database header. */
-	bufs[0].len = snapshotDatabase__sizeof(&header);
+	bufs[0].len = snapshotDatabase_sizeof(&header);
 	bufs[0].base = raft_malloc(bufs[0].len);
 	if (bufs[0].base == NULL) {
 		rv = RAFT_NOMEM;

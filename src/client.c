@@ -64,8 +64,8 @@ int clientSendHandshake(struct client *c)
 		size_t n2;                                        \
 		void *cursor;                                     \
 		ssize_t rv;                                       \
-		n1 = message__sizeof(&message);                   \
-		n2 = request_##LOWER##__sizeof(&request);         \
+		n1 = message_sizeof(&message);                    \
+		n2 = request_##LOWER##_sizeof(&request);          \
 		n = n1 + n2;                                      \
 		bufferReset(&c->write);                           \
 		cursor = bufferAdvance(&c->write, n);             \
@@ -91,7 +91,7 @@ int clientSendHandshake(struct client *c)
 		size_t _n;                                      \
 		void *_p;                                       \
 		ssize_t _rv;                                    \
-		_n = message__sizeof(&_message);                \
+		_n = message_sizeof(&_message);                 \
 		bufferReset(&c->read);                          \
 		_p = bufferAdvance(&c->read, _n);               \
 		assert(_p != NULL);                             \

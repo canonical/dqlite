@@ -27,7 +27,7 @@ static void writeCb(struct transport *transport, int status)
 	}
 
 	bufferReset(&c->write);
-	bufferAdvance(&c->write, message__sizeof(&c->response)); /* Header */
+	bufferAdvance(&c->write, message_sizeof(&c->response)); /* Header */
 
 	rv = gatewayResume(&c->gateway, &finished);
 	if (rv != 0) {
@@ -65,7 +65,7 @@ static void gatewayHandleCb(struct handle *req, int status, int type)
 		goto abort;
 	}
 
-	n = bufferOffset(&c->write) - message__sizeof(&c->response);
+	n = bufferOffset(&c->write) - message_sizeof(&c->response);
 	assert(n % 8 == 0);
 
 	c->response.type = (uint8_t)type;
@@ -131,7 +131,7 @@ static void readRequestCb(struct transport *transport, int status)
 	cursor.cap = bufferOffset(&c->read);
 
 	bufferReset(&c->write);
-	bufferAdvance(&c->write, message__sizeof(&c->response)); /* Header */
+	bufferAdvance(&c->write, message_sizeof(&c->response)); /* Header */
 
 	switch (c->request.type) {
 		case DQLITE_REQUEST_CONNECT:
@@ -192,7 +192,7 @@ static int readMessage(struct conn *c)
 {
 	uv_buf_t buf;
 	int rv;
-	rv = initRead(c, &buf, message__sizeof(&c->request));
+	rv = initRead(c, &buf, message_sizeof(&c->request));
 	if (rv != 0) {
 		return rv;
 	}

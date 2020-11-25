@@ -19,11 +19,11 @@
 SERIALIZE_DEFINE(header, HEADER);
 SERIALIZE_IMPLEMENT(header, HEADER);
 
-static size_t frames__sizeof(const frames_t *frames)
+static size_t frames_sizeof(const frames_t *frames)
 {
-	size_t s = uint32__sizeof(&frames->nPages) +
-		   uint16__sizeof(&frames->page_size) +
-		   uint16__sizeof(&frames->__unused__) +
+	size_t s = uint32_sizeof(&frames->nPages) +
+		   uint16_sizeof(&frames->page_size) +
+		   uint16_sizeof(&frames->__unused__) +
 		   sizeof(uint64_t) * frames->nPages + /* Page numbers */
 		   frames->page_size * frames->nPages; /* Page data */
 	return s;
@@ -71,18 +71,18 @@ static int framesDecode(struct cursor *cursor, frames_t *frames)
 
 COMMAND_TYPES(COMMAND_IMPLEMENT, );
 
-#define ENCODE(LOWER, UPPER, _)                                 \
-	case COMMAND_##UPPER:                                   \
-		h.type = COMMAND_##UPPER;                       \
-		buf->len = header__sizeof(&h);                  \
-		buf->len += command_##LOWER##__sizeof(command); \
-		buf->base = raft_malloc(buf->len);              \
-		if (buf->base == NULL) {                        \
-			return DQLITE_NOMEM;                    \
-		}                                               \
-		cursor = buf->base;                             \
-		headerEncode(&h, &cursor);                      \
-		command_##LOWER##Encode(command, &cursor);      \
+#define ENCODE(LOWER, UPPER, _)                                \
+	case COMMAND_##UPPER:                                  \
+		h.type = COMMAND_##UPPER;                      \
+		buf->len = header_sizeof(&h);                  \
+		buf->len += command_##LOWER##_sizeof(command); \
+		buf->base = raft_malloc(buf->len);             \
+		if (buf->base == NULL) {                       \
+			return DQLITE_NOMEM;                   \
+		}                                              \
+		cursor = buf->base;                            \
+		headerEncode(&h, &cursor);                     \
+		command_##LOWER##Encode(command, &cursor);     \
 		break;
 
 int commandEncode(int type, const void *command, struct raft_buffer *buf)
