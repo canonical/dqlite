@@ -96,7 +96,7 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
 		bufferReset(&C->request);                       \
 		cursor = bufferAdvance(&C->request, n2);        \
 		munit_assert_ptr_not_null(cursor);              \
-		request_##LOWER##_encode(REQUEST, &cursor);     \
+		request_##LOWER##Encode(REQUEST, &cursor);      \
 	}
 
 /* Decode a response of the given lower/upper case name using the response

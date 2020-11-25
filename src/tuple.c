@@ -249,7 +249,7 @@ int tupleEncoderNext(struct tupleEncoder *e, struct value *value)
 
 	switch (value->type) {
 		case SQLITE_INTEGER:
-			int64_encode(&value->integer, &cursor);
+			int64Encode(&value->integer, &cursor);
 			break;
 		case SQLITE_FLOAT:
 			floatEncode(&value->float_, &cursor);
@@ -259,19 +259,19 @@ int tupleEncoderNext(struct tupleEncoder *e, struct value *value)
 			break;
 		case SQLITE_NULL:
 			/* TODO: allow null to be encoded with 0 bytes */
-			uint64_encode(&value->null, &cursor);
+			uint64Encode(&value->null, &cursor);
 			break;
 		case SQLITE_TEXT:
-			text_encode(&value->text, &cursor);
+			textEncode(&value->text, &cursor);
 			break;
 		case DQLITE_UNIXTIME:
-			int64_encode(&value->unixtime, &cursor);
+			int64Encode(&value->unixtime, &cursor);
 			break;
 		case DQLITE_ISO8601:
-			text_encode(&value->iso8601, &cursor);
+			textEncode(&value->iso8601, &cursor);
 			break;
 		case DQLITE_BOOLEAN:
-			uint64_encode(&value->boolean, &cursor);
+			uint64Encode(&value->boolean, &cursor);
 			break;
 	};
 

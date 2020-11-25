@@ -62,12 +62,12 @@ static size_t pages__sizeof(const pages_t *pages)
 	       pages->size * pages->n /* bufs */;
 }
 
-static void pages_encode(const pages_t *pages, void **cursor)
+static void pagesEncode(const pages_t *pages, void **cursor)
 {
 	unsigned i;
-	uint16_encode(&pages->n, cursor);
-	uint16_encode(&pages->size, cursor);
-	uint32_encode(&pages->__unused__, cursor);
+	uint16Encode(&pages->n, cursor);
+	uint16Encode(&pages->size, cursor);
+	uint32Encode(&pages->__unused__, cursor);
 	for (i = 0; i < pages->n; i++) {
 		memcpy(*cursor, pages->bufs[i], pages->size);
 		*cursor += pages->size;
@@ -201,7 +201,7 @@ TEST_CASE(encode, padding, NULL)
 	size = person__sizeof(&f->person);
 	buf = munit_malloc(size);
 	cursor = buf;
-	person_encode(&f->person, &cursor);
+	personEncode(&f->person, &cursor);
 	munit_assert_string_equal(buf, "John Doh");
 	munit_assert_int(byteFlip64(*(uint64_t *)(buf + 16)), ==, 40);
 	free(buf);
@@ -221,7 +221,7 @@ TEST_CASE(encode, noPadding, NULL)
 	size = person__sizeof(&f->person);
 	buf = munit_malloc(size);
 	cursor = buf;
-	person_encode(&f->person, &cursor);
+	personEncode(&f->person, &cursor);
 	munit_assert_string_equal(buf, "Joe Doh");
 	munit_assert_int(byteFlip64(*(uint64_t *)(buf + 8)), ==, 40);
 	free(buf);
@@ -255,7 +255,7 @@ TEST_CASE(encode, custom, NULL)
 
 	buf = munit_malloc(size);
 	cursor = buf;
-	book_encode(&f->book, &cursor);
+	bookEncode(&f->book, &cursor);
 
 	cursor = buf;
 

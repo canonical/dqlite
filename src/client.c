@@ -75,8 +75,8 @@ int clientSendHandshake(struct client *c)
 		assert(n2 % 8 == 0);                              \
 		message.type = DQLITE_REQUEST_##UPPER;            \
 		message.words = (uint32_t)(n2 / 8);               \
-		message_encode(&message, &cursor);                \
-		request_##LOWER##_encode(&request, &cursor);      \
+		messageEncode(&message, &cursor);                 \
+		request_##LOWER##Encode(&request, &cursor);       \
 		rv = write(c->fd, bufferCursor(&c->write, 0), n); \
 		if (rv != (int)n) {                               \
 			return DQLITE_ERROR;                      \
