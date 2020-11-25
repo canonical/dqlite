@@ -15,7 +15,7 @@
 struct transport;
 typedef void (*transportReadCb)(struct transport *t, int status);
 typedef void (*transportWriteCb)(struct transport *t, int status);
-typedef void (*transport_close_cb)(struct transport *t);
+typedef void (*transportCloseCb)(struct transport *t);
 
 /**
  * Light wrapper around a libuv stream handle, providing a more convenient way
@@ -29,7 +29,7 @@ struct transport
 	uv_write_t write;	    /* Write request */
 	transportReadCb readCb;     /* Read callback */
 	transportWriteCb writeCb;   /* Write callback */
-	transport_close_cb close_cb; /* Close callback */
+	transportCloseCb close_cb;  /* Close callback */
 };
 
 /**
@@ -41,7 +41,7 @@ int transportInit(struct transport *t, struct uv_stream_s *stream);
 /**
  * Start closing by the transport.
  */
-void transportClose(struct transport *t, transport_close_cb cb);
+void transportClose(struct transport *t, transportCloseCb cb);
 
 /**
  * Read from the transport file descriptor until the given buffer is full.
