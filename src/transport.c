@@ -88,8 +88,8 @@ static void connectWorkCb(uv_work_t *work)
 	request.id = i->id;
 	request.address = i->address;
 
-	n1 = message_sizeof(&message);
-	n2 = requestConnect_sizeof(&request);
+	n1 = messageSizeof(&message);
+	n2 = requestConnectSizeof(&request);
 
 	message.type = DQLITE_REQUEST_CONNECT;
 	message.words = (uint32_t)(n2 / 8);

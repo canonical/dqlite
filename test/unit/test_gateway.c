@@ -98,14 +98,14 @@ static void handleCb(struct handle *req, int status, int type)
 
 /* Allocate the payload buffer, encode a request of the given lower case name
  * and initialize the fixture cursor. */
-#define ENCODE(REQUEST, LOWER)                                 \
-	{                                                      \
-		size_t n2 = request_##LOWER##_sizeof(REQUEST); \
-		void *cursor;                                  \
-		bufferReset(f->buf1);                          \
-		cursor = bufferAdvance(f->buf1, n2);           \
-		munit_assert_ptr_not_null(cursor);             \
-		request_##LOWER##Encode(REQUEST, &cursor);     \
+#define ENCODE(REQUEST, LOWER)                                \
+	{                                                     \
+		size_t n2 = request_##LOWER##Sizeof(REQUEST); \
+		void *cursor;                                 \
+		bufferReset(f->buf1);                         \
+		cursor = bufferAdvance(f->buf1, n2);          \
+		munit_assert_ptr_not_null(cursor);            \
+		request_##LOWER##Encode(REQUEST, &cursor);    \
 	}
 
 /* Encode N parameters with the given values */

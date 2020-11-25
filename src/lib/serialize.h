@@ -70,7 +70,7 @@ struct cursor
 	}
 
 #define SERIALIZE_DEFINE_METHODS(NAME, FIELDS)                  \
-	size_t NAME##_sizeof(const struct NAME *p);             \
+	size_t NAME##Sizeof(const struct NAME *p);              \
 	void NAME##Encode(const struct NAME *p, void **cursor); \
 	int NAME##Decode(struct cursor *cursor, struct NAME *p)
 
@@ -84,7 +84,7 @@ struct cursor
  * Implement the sizeof, encode and decode function of a serializable struct.
  */
 #define SERIALIZE_IMPLEMENT(NAME, FIELDS)                       \
-	size_t NAME##_sizeof(const struct NAME *p)              \
+	size_t NAME##Sizeof(const struct NAME *p)               \
 	{                                                       \
 		size_t size = 0;                                \
 		FIELDS(SERIALIZE_SIZEOF_FIELD, p);              \
@@ -102,7 +102,7 @@ struct cursor
 	}
 
 #define SERIALIZE_SIZEOF_FIELD(KIND, MEMBER, P) \
-	size += KIND##_sizeof(&((P)->MEMBER));
+	size += KIND##Sizeof(&((P)->MEMBER));
 
 #define SERIALIZE_ENCODE_FIELD(KIND, MEMBER, P, CURSOR) \
 	KIND##Encode(&((P)->MEMBER), CURSOR);
@@ -113,31 +113,31 @@ struct cursor
 		return rc;                              \
 	}
 
-DQLITE_INLINE size_t uint8_sizeof(const uint8_t *value)
+DQLITE_INLINE size_t uint8Sizeof(const uint8_t *value)
 {
 	(void)value;
 	return sizeof(uint8_t);
 }
 
-DQLITE_INLINE size_t uint16_sizeof(const uint16_t *value)
+DQLITE_INLINE size_t uint16Sizeof(const uint16_t *value)
 {
 	(void)value;
 	return sizeof(uint16_t);
 }
 
-DQLITE_INLINE size_t uint32_sizeof(const uint32_t *value)
+DQLITE_INLINE size_t uint32Sizeof(const uint32_t *value)
 {
 	(void)value;
 	return sizeof(uint32_t);
 }
 
-DQLITE_INLINE size_t uint64_sizeof(const uint64_t *value)
+DQLITE_INLINE size_t uint64Sizeof(const uint64_t *value)
 {
 	(void)value;
 	return sizeof(uint64_t);
 }
 
-DQLITE_INLINE size_t int64_sizeof(const int64_t *value)
+DQLITE_INLINE size_t int64Sizeof(const int64_t *value)
 {
 	(void)value;
 	return sizeof(int64_t);
@@ -149,7 +149,7 @@ DQLITE_INLINE size_t floatSizeof(const floatT *value)
 	return sizeof(double);
 }
 
-DQLITE_INLINE size_t text_sizeof(const text_t *value)
+DQLITE_INLINE size_t textSizeof(const text_t *value)
 {
 	return bytePad64(strlen(*value) + 1);
 }

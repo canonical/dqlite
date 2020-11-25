@@ -89,14 +89,14 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
 
 /* Reset the request buffer of the given connection and encode a request of the
  * given lower case name. */
-#define ENCODE(C, REQUEST, LOWER)                              \
-	{                                                      \
-		size_t n2 = request_##LOWER##_sizeof(REQUEST); \
-		void *cursor;                                  \
-		bufferReset(&C->request);                      \
-		cursor = bufferAdvance(&C->request, n2);       \
-		munit_assert_ptr_not_null(cursor);             \
-		request_##LOWER##Encode(REQUEST, &cursor);     \
+#define ENCODE(C, REQUEST, LOWER)                             \
+	{                                                     \
+		size_t n2 = request_##LOWER##Sizeof(REQUEST); \
+		void *cursor;                                 \
+		bufferReset(&C->request);                     \
+		cursor = bufferAdvance(&C->request, n2);      \
+		munit_assert_ptr_not_null(cursor);            \
+		request_##LOWER##Encode(REQUEST, &cursor);    \
 	}
 
 /* Decode a response of the given lower/upper case name using the response

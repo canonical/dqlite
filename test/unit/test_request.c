@@ -57,7 +57,7 @@ TEST_CASE(serialize, leader, NULL)
 	struct request_leader request;
 	void *cursor1;
 	struct cursor cursor2;
-	size_t n = request_leader_sizeof(&request);
+	size_t n = request_leaderSizeof(&request);
 	(void)params;
 	ALLOC_BUF(n);
 	cursor1 = f->buf;

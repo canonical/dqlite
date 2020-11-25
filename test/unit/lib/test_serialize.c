@@ -55,10 +55,10 @@ static void destroyPages(struct pages *pages)
 typedef struct pages pages_t;
 typedef struct person person_t;
 
-static size_t pages_sizeof(const pages_t *pages)
+static size_t pagesSizeof(const pages_t *pages)
 {
-	return uint16_sizeof(&pages->n) + uint16_sizeof(&pages->size) +
-	       uint32_sizeof(&pages->__unused__) +
+	return uint16Sizeof(&pages->n) + uint16Sizeof(&pages->size) +
+	       uint32Sizeof(&pages->__unused__) +
 	       pages->size * pages->n /* bufs */;
 }
 
@@ -160,7 +160,7 @@ TEST_CASE(sizeof, padding, NULL)
 	(void)params;
 	f->person.name = "John Doh";
 	f->person.age = 40;
-	size = person_sizeof(&f->person);
+	size = personSizeof(&f->person);
 	munit_assert_int(size, ==, 16 /* name */ + 8 /* age */);
 	return MUNIT_OK;
 }
@@ -173,7 +173,7 @@ TEST_CASE(sizeof, noPadding, NULL)
 	(void)params;
 	f->person.name = "Joe Doh";
 	f->person.age = 40;
-	size = person_sizeof(&f->person);
+	size = personSizeof(&f->person);
 	munit_assert_int(size, ==, 8 /* name */ + 8 /* age */);
 	return MUNIT_OK;
 }
@@ -198,7 +198,7 @@ TEST_CASE(encode, padding, NULL)
 	(void)params;
 	f->person.name = "John Doh";
 	f->person.age = 40;
-	size = person_sizeof(&f->person);
+	size = personSizeof(&f->person);
 	buf = munit_malloc(size);
 	cursor = buf;
 	personEncode(&f->person, &cursor);
@@ -218,7 +218,7 @@ TEST_CASE(encode, noPadding, NULL)
 	(void)params;
 	f->person.name = "Joe Doh";
 	f->person.age = 40;
-	size = person_sizeof(&f->person);
+	size = personSizeof(&f->person);
 	buf = munit_malloc(size);
 	cursor = buf;
 	personEncode(&f->person, &cursor);
@@ -243,7 +243,7 @@ TEST_CASE(encode, custom, NULL)
 	strcpy(f->book.pages.bufs[0], "Fantine");
 	strcpy(f->book.pages.bufs[1], "Cosette");
 
-	size = book_sizeof(&f->book);
+	size = bookSizeof(&f->book);
 	munit_assert_int(size, ==,
 			 16 +     /* title                                   */
 			     16 + /* author name                             */

@@ -118,7 +118,7 @@ int query_batch(sqlite3_stmt *stmt, struct buffer *buffer)
 	/* Insert the column names */
 	for (i = 0; i < n; i++) {
 		const char *name = sqlite3_column_name(stmt, i);
-		cursor = bufferAdvance(buffer, text_sizeof(&name));
+		cursor = bufferAdvance(buffer, textSizeof(&name));
 		if (cursor == NULL) {
 			return SQLITE_NOMEM;
 		}

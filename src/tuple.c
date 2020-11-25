@@ -213,7 +213,7 @@ int tupleEncoderNext(struct tupleEncoder *e, struct value *value)
 
 	switch (value->type) {
 		case SQLITE_INTEGER:
-			size = int64_sizeof(&value->integer);
+			size = int64Sizeof(&value->integer);
 			break;
 		case SQLITE_FLOAT:
 			size = floatSizeof(&value->float_);
@@ -223,19 +223,19 @@ int tupleEncoderNext(struct tupleEncoder *e, struct value *value)
 			break;
 		case SQLITE_NULL:
 			/* TODO: allow null to be encoded with 0 bytes */
-			size = uint64_sizeof(&value->null);
+			size = uint64Sizeof(&value->null);
 			break;
 		case SQLITE_TEXT:
-			size = text_sizeof(&value->text);
+			size = textSizeof(&value->text);
 			break;
 		case DQLITE_UNIXTIME:
-			size = int64_sizeof(&value->unixtime);
+			size = int64Sizeof(&value->unixtime);
 			break;
 		case DQLITE_ISO8601:
-			size = text_sizeof(&value->iso8601);
+			size = textSizeof(&value->iso8601);
 			break;
 		case DQLITE_BOOLEAN:
-			size = uint64_sizeof(&value->boolean);
+			size = uint64Sizeof(&value->boolean);
 			break;
 		default:
 			assert(0);
