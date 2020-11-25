@@ -86,7 +86,7 @@ int dqliteInit(struct dqlite_node *d,
 	assert(rv == 0); /* Docs say that pthread_mutex_init can't fail */
 	QUEUE_INIT(&d->queue);
 	QUEUE_INIT(&d->conns);
-	d->raft_state = RAFT_UNAVAILABLE;
+	d->raftState = RAFT_UNAVAILABLE;
 	d->running = false;
 	d->listener = NULL;
 	d->bind_address = NULL;
@@ -477,7 +477,7 @@ static void monitorCb(uv_prepare_t *monitor)
 	 * but not the ones which are doing management-requests, such as
 	 * transfer leadership.  */
 	/*
-	if (d->raft_state == RAFT_LEADER && state != RAFT_LEADER) {
+	if (d->raftState == RAFT_LEADER && state != RAFT_LEADER) {
 		QUEUE_FOREACH(head, &d->conns)
 		{
 			conn = QUEUE_DATA(head, struct conn, queue);
@@ -486,7 +486,7 @@ static void monitorCb(uv_prepare_t *monitor)
 	}
 	*/
 
-	d->raft_state = state;
+	d->raftState = state;
 }
 
 static int taskRun(struct dqlite_node *d)
