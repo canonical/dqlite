@@ -272,18 +272,18 @@ extern int _main_suites_n;
 	TEST_GET_3RD_ARG(__VA_ARGS__, TEST_TEAR_DOWN_2_ARGS, \
 			 TEST_TEAR_DOWN_1_ARGS)
 
-#define TEST_TEAR_DOWN_1_ARGS(S)                                           \
-	static void S##TearDown(void *data);                               \
-	__attribute__((constructor)) static void _##S##TearDown_init(void) \
-	{                                                                  \
-		_##S##TearDown = S##TearDown;                              \
-	}                                                                  \
+#define TEST_TEAR_DOWN_1_ARGS(S)                                          \
+	static void S##TearDown(void *data);                              \
+	__attribute__((constructor)) static void _##S##TearDownInit(void) \
+	{                                                                 \
+		_##S##TearDown = S##TearDown;                             \
+	}                                                                 \
 	static void S##TearDown(void *data)
 
-#define TEST_TEAR_DOWN_2_ARGS(S, F)                                        \
-	__attribute__((constructor)) static void _##S##TearDown_init(void) \
-	{                                                                  \
-		_##S##TearDown = F;                                        \
+#define TEST_TEAR_DOWN_2_ARGS(S, F)                                       \
+	__attribute__((constructor)) static void _##S##TearDownInit(void) \
+	{                                                                 \
+		_##S##TearDown = F;                                       \
 	}
 
 /* Choose the appropriate TEST_CASE_N_ARGS() macro depending on the number of
