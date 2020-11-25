@@ -64,7 +64,7 @@ TEST_CASE(serialize, leader, NULL)
 	request_leader__encode(&request, &cursor1);
 	cursor2.p = f->buf;
 	cursor2.cap = n;
-	request_leader_decode(&cursor2, &request);
+	request_leaderDecode(&cursor2, &request);
 	return MUNIT_OK;
 }
 

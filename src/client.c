@@ -101,7 +101,7 @@ int clientSendHandshake(struct client *c)
 		}                                               \
 		_cursor.p = _p;                                 \
 		_cursor.cap = _n;                               \
-		_rv = message_decode(&_cursor, &_message);      \
+		_rv = messageDecode(&_cursor, &_message);       \
 		assert(_rv == 0);                               \
 		if (_message.type != DQLITE_RESPONSE_##UPPER) { \
 			return DQLITE_ERROR;                    \
@@ -119,16 +119,16 @@ int clientSendHandshake(struct client *c)
 	}
 
 /* Decode a response. */
-#define DECODE(LOWER)                                               \
-	{                                                           \
-		int rv;                                             \
-		struct cursor cursor;                               \
-		cursor.p = bufferCursor(&c->read, 0);               \
-		cursor.cap = bufferOffset(&c->read);                \
-		rv = response_##LOWER##_decode(&cursor, &response); \
-		if (rv != 0) {                                      \
-			return DQLITE_ERROR;                        \
-		}                                                   \
+#define DECODE(LOWER)                                              \
+	{                                                          \
+		int rv;                                            \
+		struct cursor cursor;                              \
+		cursor.p = bufferCursor(&c->read, 0);              \
+		cursor.cap = bufferOffset(&c->read);               \
+		rv = response_##LOWER##Decode(&cursor, &response); \
+		if (rv != 0) {                                     \
+			return DQLITE_ERROR;                       \
+		}                                                  \
 	}
 
 /* Read and decode a response. */
@@ -220,7 +220,7 @@ int clientRecvRows(struct client *c, struct rows *rows)
 	READ(rows, ROWS);
 	cursor.p = bufferCursor(&c->read, 0);
 	cursor.cap = bufferOffset(&c->read);
-	rv = uint64_decode(&cursor, &column_count);
+	rv = uint64Decode(&cursor, &column_count);
 	if (rv != 0) {
 		return DQLITE_ERROR;
 	}
@@ -231,7 +231,7 @@ int clientRecvRows(struct client *c, struct rows *rows)
 		if (rows->columnNames == NULL) {
 			return DQLITE_ERROR;
 		}
-		rv = text_decode(&cursor, &rows->columnNames[i]);
+		rv = textDecode(&cursor, &rows->columnNames[i]);
 		if (rv != 0) {
 			return DQLITE_ERROR;
 		}

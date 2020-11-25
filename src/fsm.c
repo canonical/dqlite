@@ -331,7 +331,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	int exists;
 	int rv;
 
-	rv = snapshotDatabase_decode(cursor, &header);
+	rv = snapshotDatabaseDecode(cursor, &header);
 	if (rv != 0) {
 		return rv;
 	}
@@ -435,7 +435,7 @@ static int fsmRestore(struct raft_fsm *fsm, struct raft_buffer *buf)
 	unsigned i;
 	int rv;
 
-	rv = snapshotHeader_decode(&cursor, &header);
+	rv = snapshotHeaderDecode(&cursor, &header);
 	if (rv != 0) {
 		return rv;
 	}

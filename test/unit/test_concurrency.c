@@ -101,14 +101,14 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
 
 /* Decode a response of the given lower/upper case name using the response
  * buffer of the given connection. */
-#define DECODE(C, RESPONSE, LOWER)                                  \
-	{                                                           \
-		struct cursor cursor;                               \
-		int rc2;                                            \
-		cursor.p = bufferCursor(&C->response, 0);           \
-		cursor.cap = bufferOffset(&C->response);            \
-		rc2 = response_##LOWER##_decode(&cursor, RESPONSE); \
-		munit_assert_int(rc2, ==, 0);                       \
+#define DECODE(C, RESPONSE, LOWER)                                 \
+	{                                                          \
+		struct cursor cursor;                              \
+		int rc2;                                           \
+		cursor.p = bufferCursor(&C->response, 0);          \
+		cursor.cap = bufferOffset(&C->response);           \
+		rc2 = response_##LOWER##Decode(&cursor, RESPONSE); \
+		munit_assert_int(rc2, ==, 0);                      \
 	}
 
 /* Submit a request of the given type to the given connection and check that no
