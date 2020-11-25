@@ -234,7 +234,7 @@ TEST_CASE(idx, found, NULL)
 	err = testRegistry_add(registry, &item);
 	munit_assert_int(err, ==, 0);
 
-	err = testRegistry_idx(registry, "x", &i);
+	err = testRegistryIdx(registry, "x", &i);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_int(i, ==, item->id);
@@ -262,7 +262,7 @@ TEST_CASE(idx, notFound, NULL)
 	err = testRegistryDel(registry, item1);
 	munit_assert_int(err, ==, 0);
 
-	err = testRegistry_idx(registry, "y", &i);
+	err = testRegistryIdx(registry, "y", &i);
 	munit_assert_int(err, ==, DQLITE_NOTFOUND);
 
 	return MUNIT_OK;

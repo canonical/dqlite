@@ -48,7 +48,7 @@
                                                                                \
 	/* Get the index of the first item matching the given hash key. Return \
 	 * 0 on success and DQLITE_NOTFOUND otherwise. */                      \
-	int NAME##_idx(struct NAME *r, const char *key, size_t *i);            \
+	int NAME##Idx(struct NAME *r, const char *key, size_t *i);             \
                                                                                \
 	/* Delete a previously added item. */                                  \
 	int NAME##Del(struct NAME *r, struct TYPE *item)
@@ -158,7 +158,7 @@
 		return item;                                                 \
 	}                                                                    \
                                                                              \
-	int NAME##_idx(struct NAME *r, const char *key, size_t *i)           \
+	int NAME##Idx(struct NAME *r, const char *key, size_t *i)            \
 	{                                                                    \
 		struct TYPE *item;                                           \
                                                                              \

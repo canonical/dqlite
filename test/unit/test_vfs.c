@@ -158,7 +158,7 @@ static void __dbClose(sqlite3 *db)
 
 /* Helper get the mxFrame value of the WAL index object associated with the
  * given database. */
-static uint32_t __wal_idx_mxFrame(sqlite3 *db)
+static uint32_t __walIdx_mxFrame(sqlite3 *db)
 {
 	sqlite3_file *file;
 	volatile void *region;
@@ -180,7 +180,7 @@ static uint32_t __wal_idx_mxFrame(sqlite3 *db)
 
 /* Helper get the read mark array of the WAL index object associated with the
  * given database. */
-static uint32_t *__wal_idx_readMarks(sqlite3 *db)
+static uint32_t *__walIdx_readMarks(sqlite3 *db)
 {
 	sqlite3_file *file;
 	volatile void *region;
@@ -1365,9 +1365,9 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 
 	__db_exec(db1, "CREATE TABLE test (n INT)");
 
-	munit_assert_int(__wal_idx_mxFrame(db1), ==, 2);
+	munit_assert_int(__walIdx_mxFrame(db1), ==, 2);
 
-	readMarks = __wal_idx_readMarks(db1);
+	readMarks = __walIdx_readMarks(db1);
 	munit_assert_uint32(readMarks[0], ==, 0);
 	munit_assert_uint32(readMarks[1], ==, 0);
 	munit_assert_uint32(readMarks[2], ==, 0xffffffff);
@@ -1380,10 +1380,10 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	__db_exec(db2, "SELECT * FROM test");
 
 	/* The max frame is set to 2, which is the current size of the WAL. */
-	munit_assert_int(__wal_idx_mxFrame(db2), ==, 2);
+	munit_assert_int(__walIdx_mxFrame(db2), ==, 2);
 
 	/* The starting mx frame value has been saved in the read marks */
-	readMarks = __wal_idx_readMarks(db2);
+	readMarks = __walIdx_readMarks(db2);
 	munit_assert_uint32(readMarks[0], ==, 0);
 	munit_assert_uint32(readMarks[1], ==, 2);
 	munit_assert_uint32(readMarks[2], ==, 0xffffffff);
@@ -1403,10 +1403,10 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	}
 
 	/* The mx frame is still 2 since the transaction is not committed. */
-	munit_assert_int(__wal_idx_mxFrame(db1), ==, 2);
+	munit_assert_int(__walIdx_mxFrame(db1), ==, 2);
 
 	/* No extra read mark wal taken. */
-	readMarks = __wal_idx_readMarks(db1);
+	readMarks = __walIdx_readMarks(db1);
 	munit_assert_uint32(readMarks[0], ==, 0);
 	munit_assert_uint32(readMarks[1], ==, 2);
 	munit_assert_uint32(readMarks[2], ==, 0xffffffff);
@@ -1417,7 +1417,7 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	__db_exec(db1, "COMMIT");
 
 	/* The mx frame is now 6. */
-	munit_assert_int(__wal_idx_mxFrame(db1), ==, 6);
+	munit_assert_int(__walIdx_mxFrame(db1), ==, 6);
 
 	/* The old read lock is still in place. */
 	munit_assert_true(__shm_shared_lock_held(db2, 3 + 1));
@@ -1427,10 +1427,10 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	__db_exec(db1, "SELECT * FROM test");
 
 	/* The mx frame is still unchanged. */
-	munit_assert_int(__wal_idx_mxFrame(db1), ==, 6);
+	munit_assert_int(__walIdx_mxFrame(db1), ==, 6);
 
 	/* A new read mark was taken. */
-	readMarks = __wal_idx_readMarks(db1);
+	readMarks = __walIdx_readMarks(db1);
 	munit_assert_uint32(readMarks[0], ==, 0);
 	munit_assert_uint32(readMarks[1], ==, 2);
 	munit_assert_uint32(readMarks[2], ==, 6);
@@ -1497,7 +1497,7 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 	rv = file2->pMethods->xFileSize(file2, &size);
 	munit_assert_int(formatWalCalcFramesNumber(512, size), ==, 13);
 
-	mxFrame = __wal_idx_mxFrame(db1);
+	mxFrame = __walIdx_mxFrame(db1);
 	munit_assert_int(mxFrame, ==, 13);
 
 	/* Start a read transaction on a different connection, acquiring a
@@ -1506,7 +1506,7 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 	__db_exec(db2, "BEGIN");
 	__db_exec(db2, "SELECT * FROM test");
 
-	readMarks = __wal_idx_readMarks(db1);
+	readMarks = __walIdx_readMarks(db1);
 	munit_assert_int(readMarks[1], ==, 13);
 	free(readMarks);
 
