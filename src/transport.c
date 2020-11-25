@@ -22,7 +22,7 @@ struct impl
 	} connect;
 	raft_id id;
 	const char *address;
-	raft_uv_accept_cb accept_cb;
+	raft_uv_accept_cb acceptCb;
 };
 
 struct connect
@@ -49,7 +49,7 @@ static int implInit(struct raft_uv_transport *transport,
 static int implListen(struct raft_uv_transport *transport, raft_uv_accept_cb cb)
 {
 	struct impl *i = transport->impl;
-	i->accept_cb = cb;
+	i->acceptCb = cb;
 	return 0;
 }
 
@@ -251,7 +251,7 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 	i->loop = loop;
 	i->connect.f = defaultConnect;
 	i->connect.arg = NULL;
-	i->accept_cb = NULL;
+	i->acceptCb = NULL;
 	transport->impl = i;
 	transport->init = implInit;
 	transport->listen = implListen;
@@ -273,10 +273,10 @@ void raftProxyAccept(struct raft_uv_transport *transport,
 {
 	struct impl *i = transport->impl;
 	/* If the accept callback is NULL it means we were stopped. */
-	if (i->accept_cb == NULL) {
+	if (i->acceptCb == NULL) {
 		uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
 	}
-	i->accept_cb(transport, id, address, stream);
+	i->acceptCb(transport, id, address, stream);
 }
 
 void raftProxySetConnectFunc(struct raft_uv_transport *transport,
