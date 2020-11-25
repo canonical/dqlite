@@ -23,7 +23,7 @@ typedef void (*conn_close_cb)(struct conn *c);
 struct conn
 {
 	struct config *config;
-	struct raft_uv_transport *uv_transport; /* Raft transport */
+	struct raft_uv_transport *uvTransport;  /* Raft transport */
 	conn_close_cb close_cb;                 /* Close callback */
 	struct transport transport;             /* Async network read/write */
 	struct gateway gateway;                 /* Request handler */
@@ -49,7 +49,7 @@ int connStart(struct conn *c,
 	      struct registry *registry,
 	      struct raft *raft,
 	      struct uv_stream_s *stream,
-	      struct raft_uv_transport *uv_transport,
+	      struct raft_uv_transport *uvTransport,
 	      conn_close_cb close_cb);
 
 /**

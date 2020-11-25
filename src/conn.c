@@ -107,8 +107,8 @@ static void raftConnect(struct conn *c, struct cursor *cursor)
 		connStop(c);
 		return;
 	}
-	raftProxyAccept(c->uv_transport, request.id, request.address,
-			      c->transport.stream);
+	raftProxyAccept(c->uvTransport, request.id, request.address,
+			c->transport.stream);
 	/* Close the connection without actually closing the transport, since
 	 * the stream will be used by raft */
 	c->closed = true;
@@ -261,7 +261,7 @@ int connStart(struct conn *c,
 	      struct registry *registry,
 	      struct raft *raft,
 	      struct uv_stream_s *stream,
-	      struct raft_uv_transport *uv_transport,
+	      struct raft_uv_transport *uvTransport,
 	      conn_close_cb close_cb)
 {
 	int rv;
@@ -272,7 +272,7 @@ int connStart(struct conn *c,
 	}
 	c->config = config;
 	c->transport.data = c;
-	c->uv_transport = uv_transport;
+	c->uvTransport = uvTransport;
 	c->close_cb = close_cb;
 	gatewayInit(&c->gateway, config, registry, raft);
 	rv = bufferInit(&c->read);
