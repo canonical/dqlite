@@ -64,13 +64,13 @@ extern int _mainSuites_n;
 	static MunitTestSetup _##S##Setup = NULL;                  \
 	static MunitTestTearDown _##S##TearDown = NULL;            \
 	static int _##S##Suites_n = 0;                             \
-	static int _##S##Tests_n = 0;                              \
+	static int _##S##TestsN = 0;                               \
 	__attribute__((constructor)) static void _##S##_init(void) \
 	{                                                          \
 		memset(_##S##Suites, 0, sizeof(_##S##Suites));     \
 		memset(_##S##Tests, 0, sizeof(_##S##Tests));       \
 		(void)_##S##Suites_n;                              \
-		(void)_##S##Tests_n;                               \
+		(void)_##S##TestsN;                                \
 		(void)_##S##Setup;                                 \
 		(void)_##S##TearDown;                              \
 	}
@@ -95,10 +95,10 @@ extern int _mainSuites_n;
 	__attribute__((constructor)) static void _##S##Tests_##C##_init(void) \
 	{                                                                     \
 		MunitTest *tests = _##S##Tests;                               \
-		int n = _##S##Tests_n;                                        \
+		int n = _##S##TestsN;                                         \
 		TEST_SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C, SETUP,    \
 				  TEAR_DOWN, OPTIONS, PARAMS);                \
-		_##S##Tests_n = n + 1;                                        \
+		_##S##TestsN = n + 1;                                         \
 	}
 
 /* Set the values of the I'th test case slot in the given test array */
@@ -183,7 +183,7 @@ extern int _mainSuites_n;
  */
 #define TEST_GROUP(C, T)                              \
 	static MunitTest _##C##_##T##Tests[TEST_CAP]; \
-	static int _##C##_##T##Tests_n = 0;           \
+	static int _##C##_##T##TestsN = 0;            \
 	TEST_SUITE_ADD_GROUP(C, T);
 
 /**
@@ -207,13 +207,13 @@ extern int _mainSuites_n;
 	static MunitTestSetup _##S##Setup = NULL;                  \
 	static MunitTestTearDown _##S##TearDown = NULL;            \
 	static int _##S##Suites_n = 0;                             \
-	static int _##S##Tests_n = 0;                              \
+	static int _##S##TestsN = 0;                               \
 	__attribute__((constructor)) static void _##S##_init(void) \
 	{                                                          \
 		memset(_##S##Suites, 0, sizeof(_##S##Suites));     \
 		memset(_##S##Tests, 0, sizeof(_##S##Tests));       \
 		(void)_##S##Suites_n;                              \
-		(void)_##S##Tests_n;                               \
+		(void)_##S##TestsN;                                \
 		(void)_##S##Setup;                                 \
 		(void)_##S##TearDown;                              \
 	}
@@ -318,10 +318,10 @@ extern int _mainSuites_n;
 	__attribute__((constructor)) static void _moduleTests_##C##_init(void) \
 	{                                                                      \
 		MunitTest *tests = _moduleTests;                               \
-		int n = _moduleTests_n;                                        \
+		int n = _moduleTestsN;                                         \
 		TEST_CASE_SET_IN_ARRAY(tests, n, "/" #C, test_##C, NULL, NULL, \
 				       PARAMS);                                \
-		_moduleTests_n = n + 1;                                        \
+		_moduleTestsN = n + 1;                                         \
 	}
 
 /* Add a test case to the MunitTest[] array of suite S. */
@@ -329,10 +329,10 @@ extern int _mainSuites_n;
 	__attribute__((constructor)) static void _##S##Tests_##C##_init(void) \
 	{                                                                     \
 		MunitTest *tests = _##S##Tests;                               \
-		int n = _##S##Tests_n;                                        \
+		int n = _##S##TestsN;                                         \
 		TEST_CASE_SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C,      \
 				       _##S##Setup, _##S##TearDown, PARAMS);  \
-		_##S##Tests_n = n + 1;                                        \
+		_##S##TestsN = n + 1;                                         \
 	}
 
 /* Add a test case to MunitTest[] array of group G in suite S. */
@@ -341,10 +341,10 @@ extern int _mainSuites_n;
 	    void)                                                              \
 	{                                                                      \
 		MunitTest *tests = _##S##_##G##Tests;                          \
-		int n = _##S##_##G##Tests_n;                                   \
+		int n = _##S##_##G##TestsN;                                    \
 		TEST_CASE_SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##G##_##C, \
 				       _##S##Setup, _##S##TearDown, PARAMS);   \
-		_##S##_##G##Tests_n = n + 1;                                   \
+		_##S##_##G##TestsN = n + 1;                                    \
 	}
 
 /* Set the values of the I'th test case slot in the given test array */
