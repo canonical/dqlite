@@ -119,7 +119,7 @@ TEST_CASE(add, delAdd, NULL)
 	err = testRegistry_add(registry, &item3);
 	munit_assert_int(err, ==, 0);
 
-	err = testRegistry_del(registry, item2);
+	err = testRegistryDel(registry, item2);
 	munit_assert_int(err, ==, 0);
 
 	err = testRegistry_add(registry, &item4);
@@ -150,7 +150,7 @@ TEST_CASE(add, andDel, testAddParams)
 	}
 
 	for (i = 0; i < n; i++) {
-		err = testRegistry_del(registry, items[i]);
+		err = testRegistryDel(registry, items[i]);
 		munit_assert_int(err, ==, 0);
 	}
 
@@ -196,7 +196,7 @@ TEST_CASE(get, deleted, NULL)
 
 	id = item->id;
 
-	err = testRegistry_del(registry, item);
+	err = testRegistryDel(registry, item);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_ptr_equal(testRegistry_get(registry, id), NULL);
@@ -259,7 +259,7 @@ TEST_CASE(idx, notFound, NULL)
 	err = testRegistry_add(registry, &item2);
 	munit_assert_int(err, ==, 0);
 
-	err = testRegistry_del(registry, item1);
+	err = testRegistryDel(registry, item1);
 	munit_assert_int(err, ==, 0);
 
 	err = testRegistry_idx(registry, "y", &i);
@@ -284,7 +284,7 @@ TEST_CASE(del, basic, NULL)
 	err = testRegistry_add(registry, &item);
 	munit_assert_int(err, ==, 0);
 
-	err = testRegistry_del(registry, item);
+	err = testRegistryDel(registry, item);
 	munit_assert_int(err, ==, 0);
 
 	return MUNIT_OK;
@@ -304,10 +304,10 @@ TEST_CASE(del, twice, NULL)
 	munit_assert_int(err, ==, 0);
 	itemClone.id = item->id;
 
-	err = testRegistry_del(registry, item);
+	err = testRegistryDel(registry, item);
 	munit_assert_int(err, ==, 0);
 
-	err = testRegistry_del(registry, &itemClone);
+	err = testRegistryDel(registry, &itemClone);
 	munit_assert_int(err, ==, DQLITE_NOTFOUND);
 
 	return MUNIT_OK;
@@ -332,10 +332,10 @@ TEST_CASE(del, twiceMiddle, NULL)
 	err = testRegistry_add(registry, &item2);
 	munit_assert_int(err, ==, 0);
 
-	err = testRegistry_del(registry, item1);
+	err = testRegistryDel(registry, item1);
 	munit_assert_int(err, ==, 0);
 
-	err = testRegistry_del(registry, &item1Clone);
+	err = testRegistryDel(registry, &item1Clone);
 	munit_assert_int(err, ==, DQLITE_NOTFOUND);
 
 	return MUNIT_OK;
@@ -352,7 +352,7 @@ TEST_CASE(del, outOfBounds, NULL)
 
 	item.id = 123;
 
-	err = testRegistry_del(registry, &item);
+	err = testRegistryDel(registry, &item);
 
 	munit_assert_int(err, ==, DQLITE_NOTFOUND);
 
@@ -388,13 +388,13 @@ TEST_CASE(del, many, NULL)
 	munit_assert_int(3, ==, registry->len);
 	munit_assert_int(4, ==, registry->cap);
 
-	err = testRegistry_del(registry, item3);
+	err = testRegistryDel(registry, item3);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_int(2, ==, registry->len);
 	munit_assert_int(4, ==, registry->cap);
 
-	err = testRegistry_del(registry, item2);
+	err = testRegistryDel(registry, item2);
 	munit_assert_int(err, ==, 0);
 
 	munit_assert_int(1, ==, registry->len);

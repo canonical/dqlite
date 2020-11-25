@@ -20,37 +20,38 @@
  * The item TYPE is required to implement three methods: TYPE##_init,
  * TYPE##_close and TYPE##_hash.
  */
-#define REGISTRY(NAME, TYPE)                                                \
-                                                                                    \
-	struct NAME {                                                               \
-		struct TYPE **buf; /* Array of registry item slots */               \
-		size_t        len; /* Index of the highest used slot */             \
-		size_t        cap; /* Total number of slots */                      \
-	};                                                                          \
-                                                                                    \
-	/* Initialize the registry. */                                              \
-	void NAME##_init(struct NAME *r);                                           \
-                                                                                    \
-	/* Close the registry. */                                                   \
-	void NAME##_close(struct NAME *r);                                          \
-                                                                                    \
-	/* Add an item to the registry.                                             \
-	 *                                                                          \
-	 * Return a pointer to a newly allocated an initialized item.               \
-	 * The "id" field of the item will be set to a unique value                 \
-	 * identifying the item in the registry. */                                 \
-	int NAME##_add(struct NAME *r, struct TYPE **item);                         \
-                                                                                    \
-	/* Given its ID, retrieve an item previously added to the                   \
-	 * registry. */                                                             \
-	struct TYPE *NAME##_get(struct NAME *r, size_t id);                         \
-                                                                                    \
-	/* Get the index of the first item matching the given hash key. Return      \
-	 * 0 on success and DQLITE_NOTFOUND otherwise. */                           \
-	int NAME##_idx(struct NAME *r, const char *key, size_t *i);                 \
-                                                                                    \
-	/* Delete a previously added item. */                                       \
-	int NAME##_del(struct NAME *r, struct TYPE *item)
+#define REGISTRY(NAME, TYPE)                                                   \
+                                                                               \
+	struct NAME                                                            \
+	{                                                                      \
+		struct TYPE **buf; /* Array of registry item slots */          \
+		size_t len;        /* Index of the highest used slot */        \
+		size_t cap;        /* Total number of slots */                 \
+	};                                                                     \
+                                                                               \
+	/* Initialize the registry. */                                         \
+	void NAME##_init(struct NAME *r);                                      \
+                                                                               \
+	/* Close the registry. */                                              \
+	void NAME##_close(struct NAME *r);                                     \
+                                                                               \
+	/* Add an item to the registry.                                        \
+	 *                                                                     \
+	 * Return a pointer to a newly allocated an initialized item.          \
+	 * The "id" field of the item will be set to a unique value            \
+	 * identifying the item in the registry. */                            \
+	int NAME##_add(struct NAME *r, struct TYPE **item);                    \
+                                                                               \
+	/* Given its ID, retrieve an item previously added to the              \
+	 * registry. */                                                        \
+	struct TYPE *NAME##_get(struct NAME *r, size_t id);                    \
+                                                                               \
+	/* Get the index of the first item matching the given hash key. Return \
+	 * 0 on success and DQLITE_NOTFOUND otherwise. */                      \
+	int NAME##_idx(struct NAME *r, const char *key, size_t *i);            \
+                                                                               \
+	/* Delete a previously added item. */                                  \
+	int NAME##Del(struct NAME *r, struct TYPE *item)
 
 /**
  * Define the methods of a registry
@@ -184,7 +185,7 @@
 		return DQLITE_NOTFOUND;                                      \
 	}                                                                    \
                                                                              \
-	int NAME##_del(struct NAME *r, struct TYPE *item)                    \
+	int NAME##Del(struct NAME *r, struct TYPE *item)                     \
 	{                                                                    \
 		struct TYPE **buf;                                           \
 		size_t cap;                                                  \

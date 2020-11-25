@@ -393,7 +393,7 @@ static int handle_finalize(struct handle *req, struct cursor *cursor)
 	START(finalize, empty);
 	LOOKUP_DB(request.dbId);
 	LOOKUP_STMT(request.stmtId);
-	rv = stmtRegistry_del(&req->gateway->stmts, stmt);
+	rv = stmtRegistryDel(&req->gateway->stmts, stmt);
 	if (rv != 0) {
 		failure(req, rv, "finalize statement");
 		return 0;
