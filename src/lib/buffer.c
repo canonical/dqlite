@@ -7,14 +7,14 @@
 #include "../../include/dqlite.h"
 
 /* How large is the buffer currently */
-#define SIZE(B) (B->nPages * B->page_size)
+#define SIZE(B) (B->nPages * B->pageSize)
 
 /* How many remaining bytes the buffer currently */
 #define CAP(B) (SIZE(B) - B->offset)
 
 int bufferInit(struct buffer *b)
 {
-	b->page_size = (unsigned)sysconf(_SC_PAGESIZE);
+	b->pageSize = (unsigned)sysconf(_SC_PAGESIZE);
 	b->nPages = 1;
 	b->data = malloc(SIZE(b));
 	if (b->data == NULL) {

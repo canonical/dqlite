@@ -16,7 +16,7 @@ enum { COMMAND_OPEN = 1, COMMAND_FRAMES, COMMAND_UNDO, COMMAND_CHECKPOINT };
 struct frames
 {
 	uint32_t nPages;
-	uint16_t page_size;
+	uint16_t pageSize;
 	uint16_t __unused__;
 	/* TODO: because the sqlite3 replication APIs are asymmetrics, the
 	 * format differs between encode and decode. When encoding data is

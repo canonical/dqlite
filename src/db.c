@@ -9,7 +9,7 @@
 /* Open a SQLite connection and set it to follower mode. */
 static int openFollowerConn(const char *filename,
 			    const char *vfs,
-			    unsigned page_size,
+			    unsigned pageSize,
 			    sqlite3 **conn);
 
 void dbInit(struct db *db, struct config *config, const char *filename)
@@ -39,7 +39,7 @@ int dbOpenFollower(struct db *db)
 	int rc;
 	assert(db->follower == NULL);
 	rc = openFollowerConn(db->filename, db->config->name,
-			      db->config->page_size, &db->follower);
+			      db->config->pageSize, &db->follower);
 	if (rc != 0) {
 		return rc;
 	}
@@ -48,7 +48,7 @@ int dbOpenFollower(struct db *db)
 
 static int openFollowerConn(const char *filename,
 			    const char *vfs,
-			    unsigned page_size,
+			    unsigned pageSize,
 			    sqlite3 **conn)
 {
 	char pragma[255];
@@ -68,7 +68,7 @@ static int openFollowerConn(const char *filename,
 	}
 
 	/* Set the page size. */
-	sprintf(pragma, "PRAGMA page_size=%d", page_size);
+	sprintf(pragma, "PRAGMA page_size=%d", pageSize);
 	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
 		goto errAfterOpen;

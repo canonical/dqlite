@@ -52,7 +52,7 @@ struct connection
 		struct connection *c = &f->connections[i];            \
 		struct config *config;                                \
 		config = CLUSTER_CONFIG(i);                           \
-		config->page_size = 512;                              \
+		config->pageSize = 512;                               \
 		gatewayInit(&c->gateway, config, CLUSTER_REGISTRY(i), \
 			    CLUSTER_RAFT(i));                         \
 		c->handle.data = &c->context;                         \

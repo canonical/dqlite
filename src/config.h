@@ -11,7 +11,7 @@ struct config
 	dqlite_node_id id;             /* Unique instance ID */
 	char *address;                 /* Instance address */
 	unsigned heartbeatTimeout;     /* In milliseconds */
-	unsigned page_size;            /* Database page size */
+	unsigned pageSize;             /* Database page size */
 	unsigned checkpointThreshold;  /* In outstanding WAL frames */
 	struct logger logger;          /* Custom logger */
 	char name[256];                /* VFS/replication registriatio name */

@@ -127,7 +127,7 @@ int query_batch(sqlite3_stmt *stmt, struct buffer *buffer)
 
 	/* Insert the rows. */
 	do {
-		if (bufferOffset(buffer) >= buffer->page_size) {
+		if (bufferOffset(buffer) >= buffer->pageSize) {
 			/* If we are already filled a memory page, let's break
 			 * for now, we'll send more rows in a separate
 			 * response. */

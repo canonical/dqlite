@@ -121,7 +121,7 @@ TEST_MODULE(replicationV1);
 		rv_ = file_->pMethods->xFileSize(file_, &size_);         \
 		munit_assert_int(rv_, ==, 0);                            \
 		pages_ = formatWalCalcFramesNumber(                      \
-		    leader_->db->config->page_size, size_);              \
+		    leader_->db->config->pageSize, size_);               \
 		munit_assert_int(pages_, ==, N);                         \
 	}
 

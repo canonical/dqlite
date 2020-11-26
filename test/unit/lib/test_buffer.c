@@ -70,7 +70,7 @@ TEST_CASE(init, nPages, NULL)
 	struct fixture *f = data;
 	(void)params;
 	ASSERT_N_PAGES(1);
-	munit_assert_int(f->buffer.page_size, ==, 4096);
+	munit_assert_int(f->buffer.pageSize, ==, 4096);
 	return MUNIT_OK;
 }
 
@@ -101,7 +101,7 @@ TEST_CASE(advance, double, NULL)
 	struct fixture *f = data;
 	void *cursor;
 	(void)params;
-	ADVANCE(16 + f->buffer.page_size);
+	ADVANCE(16 + f->buffer.pageSize);
 	ASSERT_N_PAGES(2);
 	return MUNIT_OK;
 }
@@ -112,7 +112,7 @@ TEST_CASE(advance, doubleTwice, NULL)
 	struct fixture *f = data;
 	void *cursor;
 	(void)params;
-	ADVANCE(16 + 3 * f->buffer.page_size);
+	ADVANCE(16 + 3 * f->buffer.pageSize);
 	ASSERT_N_PAGES(4);
 	return MUNIT_OK;
 }

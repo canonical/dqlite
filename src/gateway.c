@@ -779,7 +779,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 		databaseSize += (uint32_t)(page[30] << 8);
 		databaseSize += (uint32_t)(page[31]);
 
-		nDatabase = databaseSize * g->config->page_size;
+		nDatabase = databaseSize * g->config->pageSize;
 		nWal = n - nDatabase;
 
 		database = data;

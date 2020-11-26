@@ -22,7 +22,7 @@ static void maybeExecDone(struct exec *req)
 /* Open a SQLite connection and set it to leader replication mode. */
 static int openConnection(const char *filename,
 			  const char *vfs,
-			  unsigned page_size,
+			  unsigned pageSize,
 			  sqlite3 **conn)
 {
 	char pragma[255];
@@ -42,7 +42,7 @@ static int openConnection(const char *filename,
 	}
 
 	/* Set the page size. */
-	sprintf(pragma, "PRAGMA page_size=%d", page_size);
+	sprintf(pragma, "PRAGMA page_size=%d", pageSize);
 	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
 		goto errAfterOpen;
@@ -104,7 +104,7 @@ int leaderInit(struct leader *l, struct db *db, struct raft *raft)
 	l->db = db;
 	l->raft = raft;
 	rc = openConnection(db->filename, db->config->name,
-			    db->config->page_size, &l->conn);
+			    db->config->pageSize, &l->conn);
 	if (rc != 0) {
 		return rc;
 	}
@@ -162,7 +162,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	struct command_checkpoint command;
 	volatile void *region;
 	sqlite3_int64 size;
-	unsigned page_size = l->db->config->page_size;
+	unsigned pageSize = l->db->config->pageSize;
 	unsigned pages;
 	int i;
 	int rv;
@@ -176,7 +176,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	assert(rv == SQLITE_OK); /* Should never fail */
 
 	/* Calculate the number of frames. */
-	pages = ((unsigned)size - 32) / (24 + page_size);
+	pages = ((unsigned)size - 32) / (24 + pageSize);
 
 	/* Check if the size of the WAL is beyond the threshold. */
 	if (pages < l->db->config->checkpointThreshold) {
@@ -313,7 +313,7 @@ static int leaderApplyFrames(struct exec *req,
 	c.truncate = 0;
 	c.isCommit = 1;
 	c.frames.nPages = (uint32_t)n;
-	c.frames.page_size = (uint16_t)db->config->page_size;
+	c.frames.pageSize = (uint16_t)db->config->pageSize;
 	c.frames.data = frames;
 
 	apply = raft_malloc(sizeof *req);

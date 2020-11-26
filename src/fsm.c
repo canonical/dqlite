@@ -30,7 +30,7 @@ static int addPendingPages(struct fsm *f,
 			   unsigned long *pageNumbers,
 			   uint8_t *pages,
 			   unsigned nPages,
-			   unsigned page_size)
+			   unsigned pageSize)
 {
 	unsigned n = f->pending.nPages + nPages;
 	unsigned i;
@@ -42,7 +42,7 @@ static int addPendingPages(struct fsm *f,
 		return DQLITE_NOMEM;
 	}
 
-	f->pending.pages = sqlite3_realloc64(f->pending.pages, n * page_size);
+	f->pending.pages = sqlite3_realloc64(f->pending.pages, n * pageSize);
 
 	if (f->pending.pages == NULL) {
 		return DQLITE_NOMEM;
@@ -51,8 +51,8 @@ static int addPendingPages(struct fsm *f,
 	for (i = 0; i < nPages; i++) {
 		unsigned j = f->pending.nPages + i;
 		f->pending.pageNumbers[j] = pageNumbers[i];
-		memcpy(f->pending.pages + j * page_size,
-		       (uint8_t *)pages + i * page_size, page_size);
+		memcpy(f->pending.pages + j * pageSize,
+		       (uint8_t *)pages + i * pageSize, pageSize);
 	}
 	f->pending.nPages = n;
 
@@ -104,7 +104,7 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 		if (f->pending.nPages > 0) {
 			rv = addPendingPages(f, pageNumbers, pages,
 					     c->frames.nPages,
-					     db->config->page_size);
+					     db->config->pageSize);
 			if (rv != 0) {
 				return DQLITE_NOMEM;
 			}
@@ -127,7 +127,7 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 		}
 	} else {
 		rv = addPendingPages(f, pageNumbers, pages, c->frames.nPages,
-				     db->config->page_size);
+				     db->config->pageSize);
 		if (rv != 0) {
 			return DQLITE_NOMEM;
 		}
@@ -299,7 +299,7 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 	databaseSize += (uint32_t)(page[30] << 8);
 	databaseSize += (uint32_t)(page[31]);
 
-	header.mainSize = databaseSize * db->config->page_size;
+	header.mainSize = databaseSize * db->config->pageSize;
 	header.walSize = bufs[1].len - header.mainSize;
 
 	/* Database header. */

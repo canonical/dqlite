@@ -38,7 +38,7 @@ int configInit(struct config *c, dqlite_node_id id, const char *address)
 	}
 	strcpy(c->address, address);
 	c->heartbeatTimeout = DEFAULT_HEARTBEAT_TIMEOUT;
-	c->page_size = DEFAULT_PAGE_SIZE;
+	c->pageSize = DEFAULT_PAGE_SIZE;
 	c->checkpointThreshold = DEFAULT_CHECKPOINT_THRESHOLD;
 	rv = snprintf(c->name, sizeof c->name, "dqlite-%u", serial);
 	assert(rv < (int)(sizeof c->name));

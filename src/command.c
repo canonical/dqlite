@@ -22,10 +22,10 @@ SERIALIZE_IMPLEMENT(header, HEADER);
 static size_t framesSizeof(const frames_t *frames)
 {
 	size_t s = uint32Sizeof(&frames->nPages) +
-		   uint16Sizeof(&frames->page_size) +
+		   uint16Sizeof(&frames->pageSize) +
 		   uint16Sizeof(&frames->__unused__) +
 		   sizeof(uint64_t) * frames->nPages + /* Page numbers */
-		   frames->page_size * frames->nPages; /* Page data */
+		   frames->pageSize * frames->nPages;  /* Page data */
 	return s;
 }
 
@@ -34,7 +34,7 @@ static void framesEncode(const frames_t *frames, void **cursor)
 	const dqlite_vfs_frame *list;
 	unsigned i;
 	uint32Encode(&frames->nPages, cursor);
-	uint16Encode(&frames->page_size, cursor);
+	uint16Encode(&frames->pageSize, cursor);
 	uint16Encode(&frames->__unused__, cursor);
 	list = frames->data;
 	for (i = 0; i < frames->nPages; i++) {
@@ -42,8 +42,8 @@ static void framesEncode(const frames_t *frames, void **cursor)
 		uint64Encode(&pgno, cursor);
 	}
 	for (i = 0; i < frames->nPages; i++) {
-		memcpy(*cursor, list[i].data, frames->page_size);
-		*cursor += frames->page_size;
+		memcpy(*cursor, list[i].data, frames->pageSize);
+		*cursor += frames->pageSize;
 	}
 }
 
@@ -54,7 +54,7 @@ static int framesDecode(struct cursor *cursor, frames_t *frames)
 	if (rc != 0) {
 		return rc;
 	}
-	rc = uint16Decode(cursor, &frames->page_size);
+	rc = uint16Decode(cursor, &frames->pageSize);
 	if (rc != 0) {
 		return rc;
 	}
