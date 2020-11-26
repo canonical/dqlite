@@ -31,10 +31,10 @@ typedef struct frames frames_t;
 
 /* Serialization definitions for a raft FSM command. */
 #define COMMAND_DEFINE(LOWER, UPPER, _) \
-	SERIALIZE_DEFINE_STRUCT(command##LOWER, COMMAND__##UPPER);
+	SERIALIZE_DEFINE_STRUCT(command##LOWER, COMMAND_##UPPER);
 
-#define COMMAND__OPEN(X, ...) X(text, filename, ##__VA_ARGS__)
-#define COMMAND__FRAMES(X, ...)               \
+#define COMMAND_OPEN(X, ...) X(text, filename, ##__VA_ARGS__)
+#define COMMAND_FRAMES(X, ...)               \
 	X(text, filename, ##__VA_ARGS__)      \
 	X(uint64, txId, ##__VA_ARGS__)        \
 	X(uint32, truncate, ##__VA_ARGS__)    \
@@ -42,8 +42,8 @@ typedef struct frames frames_t;
 	X(uint8, __unused1__, ##__VA_ARGS__)  \
 	X(uint16, __unused2__, ##__VA_ARGS__) \
 	X(frames, frames, ##__VA_ARGS__)
-#define COMMAND__UNDO(X, ...) X(uint64, txId, ##__VA_ARGS__)
-#define COMMAND__CHECKPOINT(X, ...) X(text, filename, ##__VA_ARGS__)
+#define COMMAND_UNDO(X, ...) X(uint64, txId, ##__VA_ARGS__)
+#define COMMAND_CHECKPOINT(X, ...) X(text, filename, ##__VA_ARGS__)
 
 #define COMMAND_TYPES(X, ...)          \
 	X(open, OPEN, __VA_ARGS__)     \

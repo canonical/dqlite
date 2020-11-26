@@ -67,7 +67,7 @@ static int framesDecode(struct cursor *cursor, frames_t *frames)
 }
 
 #define COMMAND_IMPLEMENT(LOWER, UPPER, _) \
-	SERIALIZE_IMPLEMENT(command##LOWER, COMMAND__##UPPER);
+	SERIALIZE_IMPLEMENT(command##LOWER, COMMAND_##UPPER);
 
 COMMAND_TYPES(COMMAND_IMPLEMENT, );
 
