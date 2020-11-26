@@ -97,7 +97,7 @@ static int encodeRow(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 	return SQLITE_OK;
 }
 
-int query_batch(sqlite3_stmt *stmt, struct buffer *buffer)
+int queryBatch(sqlite3_stmt *stmt, struct buffer *buffer)
 {
 	int n; /* Column count */
 	int i;
