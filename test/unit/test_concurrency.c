@@ -45,7 +45,7 @@ struct connection
 	CLUSTER_ELECT(0);                                          \
 	for (i = 0; i < N_GATEWAYS; i++) {                         \
 		struct connection *c = &f->connections[i];         \
-		struct request_open open;                          \
+		struct requestopen open;                           \
 		struct response_db db;                             \
 		gatewayInit(&c->gateway, CLUSTER_CONFIG(0),        \
 			    CLUSTER_REGISTRY(0), CLUSTER_RAFT(0)); \
@@ -89,14 +89,14 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
 
 /* Reset the request buffer of the given connection and encode a request of the
  * given lower case name. */
-#define ENCODE(C, REQUEST, LOWER)                             \
-	{                                                     \
-		size_t n2 = request_##LOWER##Sizeof(REQUEST); \
-		void *cursor;                                 \
-		bufferReset(&C->request);                     \
-		cursor = bufferAdvance(&C->request, n2);      \
-		munit_assert_ptr_not_null(cursor);            \
-		request_##LOWER##Encode(REQUEST, &cursor);    \
+#define ENCODE(C, REQUEST, LOWER)                            \
+	{                                                    \
+		size_t n2 = request##LOWER##Sizeof(REQUEST); \
+		void *cursor;                                \
+		bufferReset(&C->request);                    \
+		cursor = bufferAdvance(&C->request, n2);     \
+		munit_assert_ptr_not_null(cursor);           \
+		request##LOWER##Encode(REQUEST, &cursor);    \
 	}
 
 /* Decode a response of the given lower/upper case name using the response
@@ -128,37 +128,37 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
 
 /* Prepare a statement on the given connection. The ID will be saved in
  * the STMT_ID pointer. */
-#define PREPARE(C, SQL, STMT_ID)                \
-	{                                       \
-		struct request_prepare prepare; \
-		struct response_stmt stmt;      \
-		prepare.dbId = 0;               \
-		prepare.sql = SQL;              \
-		ENCODE(C, &prepare, prepare);   \
-		HANDLE(C, PREPARE);             \
-		ASSERT_CALLBACK(C, 0, STMT);    \
-		DECODE(C, &stmt, stmt);         \
-		*(STMT_ID) = stmt.id;           \
+#define PREPARE(C, SQL, STMT_ID)               \
+	{                                      \
+		struct requestprepare prepare; \
+		struct response_stmt stmt;     \
+		prepare.dbId = 0;              \
+		prepare.sql = SQL;             \
+		ENCODE(C, &prepare, prepare);  \
+		HANDLE(C, PREPARE);            \
+		ASSERT_CALLBACK(C, 0, STMT);   \
+		DECODE(C, &stmt, stmt);        \
+		*(STMT_ID) = stmt.id;          \
 	}
 
 /* Submit a request to exec a statement. */
-#define EXEC(C, STMT_ID)                  \
-	{                                 \
-		struct request_exec exec; \
-		exec.dbId = 0;            \
-		exec.stmtId = STMT_ID;    \
-		ENCODE(C, &exec, exec);   \
-		HANDLE(C, EXEC);          \
+#define EXEC(C, STMT_ID)                 \
+	{                                \
+		struct requestexec exec; \
+		exec.dbId = 0;           \
+		exec.stmtId = STMT_ID;   \
+		ENCODE(C, &exec, exec);  \
+		HANDLE(C, EXEC);         \
 	}
 
 /* Submit a query request. */
-#define QUERY(C, STMT_ID)                   \
-	{                                   \
-		struct request_query query; \
-		query.dbId = 0;             \
-		query.stmtId = STMT_ID;     \
-		ENCODE(C, &query, query);   \
-		HANDLE(C, QUERY);           \
+#define QUERY(C, STMT_ID)                  \
+	{                                  \
+		struct requestquery query; \
+		query.dbId = 0;            \
+		query.stmtId = STMT_ID;    \
+		ENCODE(C, &query, query);  \
+		HANDLE(C, QUERY);          \
 	}
 
 /* Wait for the gateway of the given connection to finish handling a request. */

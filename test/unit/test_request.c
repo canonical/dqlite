@@ -54,17 +54,17 @@ TEST_TEAR_DOWN(serialize, tear_down);
 TEST_CASE(serialize, leader, NULL)
 {
 	struct fixture *f = data;
-	struct request_leader request;
+	struct requestleader request;
 	void *cursor1;
 	struct cursor cursor2;
-	size_t n = request_leaderSizeof(&request);
+	size_t n = requestleaderSizeof(&request);
 	(void)params;
 	ALLOC_BUF(n);
 	cursor1 = f->buf;
-	request_leaderEncode(&request, &cursor1);
+	requestleaderEncode(&request, &cursor1);
 	cursor2.p = f->buf;
 	cursor2.cap = n;
-	request_leaderDecode(&cursor2, &request);
+	requestleaderDecode(&cursor2, &request);
 	return MUNIT_OK;
 }
 

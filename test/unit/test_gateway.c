@@ -98,14 +98,14 @@ static void handleCb(struct handle *req, int status, int type)
 
 /* Allocate the payload buffer, encode a request of the given lower case name
  * and initialize the fixture cursor. */
-#define ENCODE(REQUEST, LOWER)                                \
-	{                                                     \
-		size_t n2 = request_##LOWER##Sizeof(REQUEST); \
-		void *cursor;                                 \
-		bufferReset(f->buf1);                         \
-		cursor = bufferAdvance(f->buf1, n2);          \
-		munit_assert_ptr_not_null(cursor);            \
-		request_##LOWER##Encode(REQUEST, &cursor);    \
+#define ENCODE(REQUEST, LOWER)                               \
+	{                                                    \
+		size_t n2 = request##LOWER##Sizeof(REQUEST); \
+		void *cursor;                                \
+		bufferReset(f->buf1);                        \
+		cursor = bufferAdvance(f->buf1, n2);         \
+		munit_assert_ptr_not_null(cursor);           \
+		request##LOWER##Encode(REQUEST, &cursor);    \
 	}
 
 /* Encode N parameters with the given values */
@@ -162,59 +162,59 @@ static void handleCb(struct handle *req, int status, int type)
 	}
 
 /* Open a leader connection against the "test" database */
-#define OPEN                              \
-	{                                 \
-		struct request_open open; \
-		open.filename = "test";   \
-		open.vfs = "";            \
-		ENCODE(&open, open);      \
-		HANDLE(OPEN);             \
-		ASSERT_CALLBACK(0, DB);   \
+#define OPEN                             \
+	{                                \
+		struct requestopen open; \
+		open.filename = "test";  \
+		open.vfs = "";           \
+		ENCODE(&open, open);     \
+		HANDLE(OPEN);            \
+		ASSERT_CALLBACK(0, DB);  \
 	}
 
 /* Prepare a statement. The ID will be saved in stmtId. */
-#define PREPARE(SQL)                            \
-	{                                       \
-		struct request_prepare prepare; \
-		struct response_stmt stmt;      \
-		prepare.dbId = 0;               \
-		prepare.sql = SQL;              \
-		ENCODE(&prepare, prepare);      \
-		HANDLE(PREPARE);                \
-		ASSERT_CALLBACK(0, STMT);       \
-		DECODE(&stmt, stmt);            \
-		stmtId = stmt.id;               \
+#define PREPARE(SQL)                           \
+	{                                      \
+		struct requestprepare prepare; \
+		struct response_stmt stmt;     \
+		prepare.dbId = 0;              \
+		prepare.sql = SQL;             \
+		ENCODE(&prepare, prepare);     \
+		HANDLE(PREPARE);               \
+		ASSERT_CALLBACK(0, STMT);      \
+		DECODE(&stmt, stmt);           \
+		stmtId = stmt.id;              \
 	}
 
 /* Finalize the statement with the given ID. */
-#define FINALIZE(STMT_ID)                         \
-	{                                         \
-		struct request_finalize finalize; \
-		finalize.dbId = 0;                \
-		finalize.stmtId = STMT_ID;        \
-		ENCODE(&finalize, finalize);      \
-		HANDLE(FINALIZE);                 \
-		ASSERT_CALLBACK(0, EMPTY);        \
+#define FINALIZE(STMT_ID)                        \
+	{                                        \
+		struct requestfinalize finalize; \
+		finalize.dbId = 0;               \
+		finalize.stmtId = STMT_ID;       \
+		ENCODE(&finalize, finalize);     \
+		HANDLE(FINALIZE);                \
+		ASSERT_CALLBACK(0, EMPTY);       \
 	}
 
 /* Submit a request to execute the given statement. */
-#define EXEC_SUBMIT(STMT_ID)              \
-	{                                 \
-		struct request_exec exec; \
-		exec.dbId = 0;            \
-		exec.stmtId = STMT_ID;    \
-		ENCODE(&exec, exec);      \
-		HANDLE(EXEC);             \
+#define EXEC_SUBMIT(STMT_ID)             \
+	{                                \
+		struct requestexec exec; \
+		exec.dbId = 0;           \
+		exec.stmtId = STMT_ID;   \
+		ENCODE(&exec, exec);     \
+		HANDLE(EXEC);            \
 	}
 
 /* Submit a request to execute the given statement. */
-#define EXEC_SQL_SUBMIT(SQL)                    \
-	{                                       \
-		struct request_execSql execSql; \
-		execSql.dbId = 0;               \
-		execSql.sql = SQL;              \
-		ENCODE(&execSql, execSql);      \
-		HANDLE(EXEC_SQL);               \
+#define EXEC_SQL_SUBMIT(SQL)                   \
+	{                                      \
+		struct requestexecSql execSql; \
+		execSql.dbId = 0;              \
+		execSql.sql = SQL;             \
+		ENCODE(&execSql, execSql);     \
+		HANDLE(EXEC_SQL);              \
 	}
 
 /* Wait for the last request to complete */
@@ -231,22 +231,22 @@ static void handleCb(struct handle *req, int status, int type)
 	}
 
 /* Prepare and exec a statement. */
-#define EXEC(SQL)                               \
-	{                                       \
-		uint64_t _stmtId;               \
-		struct request_prepare prepare; \
-		struct response_stmt stmt;      \
-		prepare.dbId = 0;               \
-		prepare.sql = SQL;              \
-		ENCODE(&prepare, prepare);      \
-		HANDLE(PREPARE);                \
-		ASSERT_CALLBACK(0, STMT);       \
-		DECODE(&stmt, stmt);            \
-		_stmtId = stmt.id;              \
-		EXEC_SUBMIT(_stmtId);           \
-		WAIT;                           \
-		ASSERT_CALLBACK(0, RESULT);     \
-		FINALIZE(_stmtId);              \
+#define EXEC(SQL)                              \
+	{                                      \
+		uint64_t _stmtId;              \
+		struct requestprepare prepare; \
+		struct response_stmt stmt;     \
+		prepare.dbId = 0;              \
+		prepare.sql = SQL;             \
+		ENCODE(&prepare, prepare);     \
+		HANDLE(PREPARE);               \
+		ASSERT_CALLBACK(0, STMT);      \
+		DECODE(&stmt, stmt);           \
+		_stmtId = stmt.id;             \
+		EXEC_SUBMIT(_stmtId);          \
+		WAIT;                          \
+		ASSERT_CALLBACK(0, RESULT);    \
+		FINALIZE(_stmtId);             \
 	}
 
 /* Execute a pragma statement to lowers SQLite's page cache size, in order to
@@ -293,7 +293,7 @@ static void handleCb(struct handle *req, int status, int type)
 struct leaderFixture
 {
 	FIXTURE;
-	struct request_leader request;
+	struct requestleader request;
 	struct response_server response;
 };
 
@@ -362,7 +362,7 @@ TEST_CASE(leader, otherNode, NULL)
 struct openFixture
 {
 	FIXTURE;
-	struct request_open request;
+	struct requestopen request;
 	struct response_db response;
 };
 
@@ -424,7 +424,7 @@ TEST_CASE(open, error, twice, NULL)
 struct prepareFixture
 {
 	FIXTURE;
-	struct request_prepare request;
+	struct requestprepare request;
 	struct response_stmt response;
 };
 
@@ -467,7 +467,7 @@ TEST_CASE(prepare, success, NULL)
 struct execFixture
 {
 	FIXTURE;
-	struct request_exec request;
+	struct requestexec request;
 	struct response_result response;
 };
 
@@ -539,7 +539,7 @@ TEST_CASE(exec, oneParam, NULL)
 TEST_CASE(exec, blob, NULL)
 {
 	struct execFixture *f = data;
-	struct request_query query;
+	struct requestquery query;
 	struct value value;
 	char buf[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
 	uint64_t stmtId;
@@ -852,7 +852,7 @@ TEST_CASE(exec, restore, NULL)
 {
 	struct execFixture *f = data;
 	uint64_t stmtId;
-	struct request_query request;
+	struct requestquery request;
 	struct response_rows response;
 	struct value value;
 	uint64_t n;
@@ -905,7 +905,7 @@ TEST_CASE(exec, restore, NULL)
 struct queryFixture
 {
 	FIXTURE;
-	struct request_query request;
+	struct requestquery request;
 	struct response_rows response;
 };
 
@@ -1077,7 +1077,7 @@ TEST_CASE(query, params, NULL)
 TEST_CASE(query, interrupt, NULL)
 {
 	struct queryFixture *f = data;
-	struct request_interrupt interrupt;
+	struct requestinterrupt interrupt;
 	unsigned i;
 	uint64_t stmtId;
 	uint64_t n;
@@ -1154,7 +1154,7 @@ TEST_CASE(query, barrier, NULL)
 struct finalizeFixture
 {
 	FIXTURE;
-	struct request_finalize request;
+	struct requestfinalize request;
 	struct response_empty response;
 };
 
@@ -1197,7 +1197,7 @@ TEST_CASE(finalize, success, NULL)
 struct execSqlFixture
 {
 	FIXTURE;
-	struct request_execSql request;
+	struct requestexecSql request;
 	struct response_result response;
 };
 
@@ -1255,7 +1255,7 @@ TEST_CASE(execSql, multi, NULL)
 struct querySqlFixture
 {
 	FIXTURE;
-	struct request_querySql request;
+	struct requestquerySql request;
 	struct response_rows response;
 };
 

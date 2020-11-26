@@ -65,7 +65,7 @@ int clientSendHandshake(struct client *c)
 		void *cursor;                                     \
 		ssize_t rv;                                       \
 		n1 = messageSizeof(&message);                     \
-		n2 = request_##LOWER##Sizeof(&request);           \
+		n2 = request##LOWER##Sizeof(&request);            \
 		n = n1 + n2;                                      \
 		bufferReset(&c->write);                           \
 		cursor = bufferAdvance(&c->write, n);             \
@@ -76,7 +76,7 @@ int clientSendHandshake(struct client *c)
 		message.type = DQLITE_REQUEST_##UPPER;            \
 		message.words = (uint32_t)(n2 / 8);               \
 		messageEncode(&message, &cursor);                 \
-		request_##LOWER##Encode(&request, &cursor);       \
+		request##LOWER##Encode(&request, &cursor);        \
 		rv = write(c->fd, bufferCursor(&c->write, 0), n); \
 		if (rv != (int)n) {                               \
 			return DQLITE_ERROR;                      \
@@ -138,7 +138,7 @@ int clientSendHandshake(struct client *c)
 
 int clientSendOpen(struct client *c, const char *name)
 {
-	struct request_open request;
+	struct requestopen request;
 	request.filename = name;
 	request.flags = 0;    /* TODO: this is unused, should we drop it? */
 	request.vfs = "test"; /* TODO: this is unused, should we drop it? */
@@ -156,7 +156,7 @@ int clientRecvDb(struct client *c)
 
 int clientSendPrepare(struct client *c, const char *sql)
 {
-	struct request_prepare request;
+	struct requestprepare request;
 	request.dbId = c->dbId;
 	request.sql = sql;
 	REQUEST(prepare, PREPARE);
@@ -173,7 +173,7 @@ int clientRecvStmt(struct client *c, unsigned *stmtId)
 
 int clientSendExec(struct client *c, unsigned stmtId)
 {
-	struct request_exec request;
+	struct requestexec request;
 	request.dbId = c->dbId;
 	request.stmtId = stmtId;
 	REQUEST(exec, EXEC);
@@ -182,7 +182,7 @@ int clientSendExec(struct client *c, unsigned stmtId)
 
 int clientSendExecSQL(struct client *c, const char *sql)
 {
-	struct request_execSql request;
+	struct requestexecSql request;
 	request.dbId = c->dbId;
 	request.sql = sql;
 	REQUEST(execSql, EXEC_SQL);
@@ -202,7 +202,7 @@ int clientRecvResult(struct client *c,
 
 int clientSendQuery(struct client *c, unsigned stmtId)
 {
-	struct request_query request;
+	struct requestquery request;
 	request.dbId = c->dbId;
 	request.stmtId = stmtId;
 	REQUEST(query, QUERY);
@@ -294,7 +294,7 @@ void clientCloseRows(struct rows *rows)
 
 int clientSendAdd(struct client *c, unsigned id, const char *address)
 {
-	struct request_add request;
+	struct requestadd request;
 	request.id = id;
 	request.address = address;
 	REQUEST(add, ADD);
@@ -303,7 +303,7 @@ int clientSendAdd(struct client *c, unsigned id, const char *address)
 
 int clientSendAssign(struct client *c, unsigned id, int role)
 {
-	struct request_assign request;
+	struct requestassign request;
 	(void)role;
 	/* TODO: actually send an assign request, not a legacy promote one. */
 	request.id = id;
@@ -313,7 +313,7 @@ int clientSendAssign(struct client *c, unsigned id, int role)
 
 int clientSendRemove(struct client *c, unsigned id)
 {
-	struct request_remove request;
+	struct requestremove request;
 	request.id = id;
 	REQUEST(remove, REMOVE);
 	return 0;

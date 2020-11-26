@@ -44,7 +44,7 @@
 #define REQUEST_WEIGHT(X, ...) X(uint64, weight, ##__VA_ARGS__)
 
 #define REQUEST_DEFINE(LOWER, UPPER, _) \
-	SERIALIZE_DEFINE(request_##LOWER, REQUEST_##UPPER);
+	SERIALIZE_DEFINE(request##LOWER, REQUEST_##UPPER);
 
 #define REQUEST_TYPES(X, ...)                \
 	X(leader, LEADER, __VA_ARGS__)       \

@@ -43,15 +43,15 @@ void gatewayClose(struct gateway *g)
 
 /* Declare a request struct and a response struct of the appropriate types and
  * decode the request. */
-#define START(REQ, RES)                                        \
-	struct request_##REQ request;                          \
-	struct response_##RES response;                        \
-	{                                                      \
-		int rv_;                                       \
-		rv_ = request_##REQ##Decode(cursor, &request); \
-		if (rv_ != 0) {                                \
-			return rv_;                            \
-		}                                              \
+#define START(REQ, RES)                                       \
+	struct request##REQ request;                          \
+	struct response_##RES response;                       \
+	{                                                     \
+		int rv_;                                      \
+		rv_ = request##REQ##Decode(cursor, &request); \
+		if (rv_ != 0) {                               \
+			return rv_;                           \
+		}                                             \
 	}
 
 #define CHECK_LEADER(REQ)                                            \
