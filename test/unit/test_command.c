@@ -16,7 +16,7 @@ TEST_SUITE(open);
 
 TEST_CASE(open, encode, NULL)
 {
-	struct command_open c;
+	struct commandopen c;
 	struct raft_buffer buf;
 	int rc;
 	(void)data;
@@ -31,7 +31,7 @@ TEST_CASE(open, encode, NULL)
 
 TEST_CASE(open, decode, NULL)
 {
-	struct command_open c1;
+	struct commandopen c1;
 	void *c2;
 	int type;
 	struct raft_buffer buf;
@@ -44,7 +44,7 @@ TEST_CASE(open, decode, NULL)
 	rc = commandDecode(&buf, &type, &c2);
 	munit_assert_int(rc, ==, 0);
 	munit_assert_int(type, ==, COMMAND_OPEN);
-	munit_assert_string_equal(((struct command_open *)c2)->filename, "db");
+	munit_assert_string_equal(((struct commandopen *)c2)->filename, "db");
 	raft_free(c2);
 	raft_free(buf.base);
 	return MUNIT_OK;

@@ -19,7 +19,7 @@ struct fsm
 	} pending; /* For upgrades from V1 */
 };
 
-static int applyOpen(struct fsm *f, const struct command_open *c)
+static int applyOpen(struct fsm *f, const struct commandopen *c)
 {
 	(void)f;
 	(void)c;
@@ -59,7 +59,7 @@ static int addPendingPages(struct fsm *f,
 	return 0;
 }
 
-static int applyFrames(struct fsm *f, const struct command_frames *c)
+static int applyFrames(struct fsm *f, const struct commandframes *c)
 {
 	struct db *db;
 	sqlite3_vfs *vfs;
@@ -138,7 +138,7 @@ static int applyFrames(struct fsm *f, const struct command_frames *c)
 	return 0;
 }
 
-static int applyUndo(struct fsm *f, const struct command_undo *c)
+static int applyUndo(struct fsm *f, const struct commandundo *c)
 {
 	(void)c;
 
@@ -155,7 +155,7 @@ static int applyUndo(struct fsm *f, const struct command_undo *c)
 	return 0;
 }
 
-static int applyCheckpoint(struct fsm *f, const struct command_checkpoint *c)
+static int applyCheckpoint(struct fsm *f, const struct commandcheckpoint *c)
 {
 	struct db *db;
 	struct sqlite3_file *file;

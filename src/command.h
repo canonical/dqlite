@@ -31,7 +31,7 @@ typedef struct frames frames_t;
 
 /* Serialization definitions for a raft FSM command. */
 #define COMMAND_DEFINE(LOWER, UPPER, _) \
-	SERIALIZE_DEFINE_STRUCT(command_##LOWER, COMMAND__##UPPER);
+	SERIALIZE_DEFINE_STRUCT(command##LOWER, COMMAND__##UPPER);
 
 #define COMMAND__OPEN(X, ...) X(text, filename, ##__VA_ARGS__)
 #define COMMAND__FRAMES(X, ...)               \
@@ -57,9 +57,9 @@ int commandEncode(int type, const void *command, struct raft_buffer *buf);
 
 int commandDecode(const struct raft_buffer *buf, int *type, void **command);
 
-int commandFramesPageNumbers(const struct command_frames *c,
+int commandFramesPageNumbers(const struct commandframes *c,
 			     unsigned long *pageNumbers[]);
 
-void commandFramesPages(const struct command_frames *c, void **pages);
+void commandFramesPages(const struct commandframes *c, void **pages);
 
 #endif /* COMMAND_H_*/

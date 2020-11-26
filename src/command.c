@@ -67,22 +67,22 @@ static int framesDecode(struct cursor *cursor, frames_t *frames)
 }
 
 #define COMMAND_IMPLEMENT(LOWER, UPPER, _) \
-	SERIALIZE_IMPLEMENT(command_##LOWER, COMMAND__##UPPER);
+	SERIALIZE_IMPLEMENT(command##LOWER, COMMAND__##UPPER);
 
 COMMAND_TYPES(COMMAND_IMPLEMENT, );
 
-#define ENCODE(LOWER, UPPER, _)                               \
-	case COMMAND_##UPPER:                                 \
-		h.type = COMMAND_##UPPER;                     \
-		buf->len = headerSizeof(&h);                  \
-		buf->len += command_##LOWER##Sizeof(command); \
-		buf->base = raft_malloc(buf->len);            \
-		if (buf->base == NULL) {                      \
-			return DQLITE_NOMEM;                  \
-		}                                             \
-		cursor = buf->base;                           \
-		headerEncode(&h, &cursor);                    \
-		command_##LOWER##Encode(command, &cursor);    \
+#define ENCODE(LOWER, UPPER, _)                              \
+	case COMMAND_##UPPER:                                \
+		h.type = COMMAND_##UPPER;                    \
+		buf->len = headerSizeof(&h);                 \
+		buf->len += command##LOWER##Sizeof(command); \
+		buf->base = raft_malloc(buf->len);           \
+		if (buf->base == NULL) {                     \
+			return DQLITE_NOMEM;                 \
+		}                                            \
+		cursor = buf->base;                          \
+		headerEncode(&h, &cursor);                   \
+		command##LOWER##Encode(command, &cursor);    \
 		break;
 
 int commandEncode(int type, const void *command, struct raft_buffer *buf)
@@ -97,13 +97,13 @@ int commandEncode(int type, const void *command, struct raft_buffer *buf)
 	return rc;
 }
 
-#define DECODE(LOWER, UPPER, _)                                         \
-	case COMMAND_##UPPER:                                           \
-		*command = raft_malloc(sizeof(struct command_##LOWER)); \
-		if (*command == NULL) {                                 \
-			return DQLITE_NOMEM;                            \
-		}                                                       \
-		rc = command_##LOWER##Decode(&cursor, *command);        \
+#define DECODE(LOWER, UPPER, _)                                        \
+	case COMMAND_##UPPER:                                          \
+		*command = raft_malloc(sizeof(struct command##LOWER)); \
+		if (*command == NULL) {                                \
+			return DQLITE_NOMEM;                           \
+		}                                                      \
+		rc = command##LOWER##Decode(&cursor, *command);        \
 		break;
 
 int commandDecode(const struct raft_buffer *buf, int *type, void **command)
@@ -135,7 +135,7 @@ int commandDecode(const struct raft_buffer *buf, int *type, void **command)
 	return 0;
 }
 
-int commandFramesPageNumbers(const struct command_frames *c,
+int commandFramesPageNumbers(const struct commandframes *c,
 			     unsigned long *pageNumbers[])
 {
 	unsigned i;
@@ -162,7 +162,7 @@ int commandFramesPageNumbers(const struct command_frames *c,
 	return 0;
 }
 
-void commandFramesPages(const struct command_frames *c, void **pages)
+void commandFramesPages(const struct commandframes *c, void **pages)
 {
 	*pages =
 	    (void *)(c->frames.data + (sizeof(uint64_t) * c->frames.nPages));

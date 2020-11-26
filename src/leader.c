@@ -159,7 +159,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	struct sqlite3_file *mainF;
 	struct sqlite3_file *wal;
 	struct raft_buffer buf;
-	struct command_checkpoint command;
+	struct commandcheckpoint command;
 	volatile void *region;
 	sqlite3_int64 size;
 	unsigned pageSize = l->db->config->pageSize;
@@ -303,7 +303,7 @@ static int leaderApplyFrames(struct exec *req,
 {
 	struct leader *l = req->leader;
 	struct db *db = l->db;
-	struct command_frames c;
+	struct commandframes c;
 	struct raft_buffer buf;
 	struct apply *apply;
 	int rv;
