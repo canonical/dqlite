@@ -305,7 +305,7 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
  * given request with a single batch of rows.
  *
  * A single batch of rows is typically about the size of a memory page. */
-static void queryBatch(sqlite3_stmt *stmt, struct handle *req)
+static void gatewayQueryBatch(sqlite3_stmt *stmt, struct handle *req)
 {
 	struct gateway *g = req->gateway;
 	struct responserows response;
@@ -356,7 +356,7 @@ static void queryBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	queryBatch(stmt, handle);
+	gatewayQueryBatch(stmt, handle);
 }
 
 static int handle_query(struct handle *req, struct cursor *cursor)
@@ -1012,6 +1012,6 @@ int gatewayResume(struct gateway *g, bool *finished)
 	}
 	assert(g->stmt != NULL);
 	*finished = false;
-	queryBatch(g->stmt, g->req);
+	gatewayQueryBatch(g->stmt, g->req);
 	return 0;
 }
