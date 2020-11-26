@@ -18,13 +18,13 @@
  * Callbacks.
  */
 struct conn;
-typedef void (*conn_close_cb)(struct conn *c);
+typedef void (*conn_closeCb)(struct conn *c);
 
 struct conn
 {
 	struct config *config;
 	struct raft_uv_transport *uvTransport;  /* Raft transport */
-	conn_close_cb close_cb;                 /* Close callback */
+	conn_closeCb closeCb;                   /* Close callback */
 	struct transport transport;             /* Async network read/write */
 	struct gateway gateway;                 /* Request handler */
 	struct buffer read;                     /* Read buffer */
@@ -41,7 +41,7 @@ struct conn
  * Initialize and start a connection.
  *
  * If no error is returned, the connection should be considered started. Any
- * error occurring after this point will trigger the @close_cb callback.
+ * error occurring after this point will trigger the @closeCb callback.
  */
 int connStart(struct conn *c,
 	      struct config *config,
@@ -50,7 +50,7 @@ int connStart(struct conn *c,
 	      struct raft *raft,
 	      struct uv_stream_s *stream,
 	      struct raft_uv_transport *uvTransport,
-	      conn_close_cb close_cb);
+	      conn_closeCb closeCb);
 
 /**
  * Force closing the connection. The close callback will be invoked when it's

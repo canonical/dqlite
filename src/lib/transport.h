@@ -29,7 +29,7 @@ struct transport
 	uv_write_t write;	    /* Write request */
 	transportReadCb readCb;     /* Read callback */
 	transportWriteCb writeCb;   /* Write callback */
-	transportCloseCb close_cb;  /* Close callback */
+	transportCloseCb closeCb;   /* Close callback */
 };
 
 /**

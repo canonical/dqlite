@@ -93,8 +93,8 @@ static void closeCb(struct transport *transport)
 	struct conn *c = transport->data;
 	bufferClose(&c->write);
 	bufferClose(&c->read);
-	if (c->close_cb != NULL) {
-		c->close_cb(c);
+	if (c->closeCb != NULL) {
+		c->closeCb(c);
 	}
 }
 
@@ -262,7 +262,7 @@ int connStart(struct conn *c,
 	      struct raft *raft,
 	      struct uv_stream_s *stream,
 	      struct raft_uv_transport *uvTransport,
-	      conn_close_cb close_cb)
+	      conn_closeCb close_cb)
 {
 	int rv;
 	(void)loop;
@@ -273,7 +273,7 @@ int connStart(struct conn *c,
 	c->config = config;
 	c->transport.data = c;
 	c->uvTransport = uvTransport;
-	c->close_cb = close_cb;
+	c->closeCb = close_cb;
 	gatewayInit(&c->gateway, config, registry, raft);
 	rv = bufferInit(&c->read);
 	if (rv != 0) {

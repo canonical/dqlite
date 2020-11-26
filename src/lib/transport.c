@@ -121,25 +121,25 @@ int transportInit(struct transport *t, struct uv_stream_s *stream)
 	t->write.data = t;
 	t->readCb = NULL;
 	t->writeCb = NULL;
-	t->close_cb = NULL;
+	t->closeCb = NULL;
 
 	return 0;
 }
 
-static void close_cb(uv_handle_t *handle)
+static void closeCb(uv_handle_t *handle)
 {
 	struct transport *t = handle->data;
 	raft_free(t->stream);
-	if (t->close_cb != NULL) {
-		t->close_cb(t);
+	if (t->closeCb != NULL) {
+		t->closeCb(t);
 	}
 }
 
 void transportClose(struct transport *t, transportCloseCb cb)
 {
-	assert(t->close_cb == NULL);
-	t->close_cb = cb;
-	uv_close((uv_handle_t *)t->stream, close_cb);
+	assert(t->closeCb == NULL);
+	t->closeCb = cb;
+	uv_close((uv_handle_t *)t->stream, closeCb);
 }
 
 int transportRead(struct transport *t, uv_buf_t *buf, transportReadCb cb)
