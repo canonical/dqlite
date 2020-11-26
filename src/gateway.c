@@ -45,7 +45,7 @@ void gatewayClose(struct gateway *g)
  * decode the request. */
 #define START(REQ, RES)                                       \
 	struct request##REQ request;                          \
-	struct response_##RES response;                       \
+	struct response##RES response;                        \
 	{                                                     \
 		int rv_;                                      \
 		rv_ = request##REQ##Decode(cursor, &request); \
@@ -63,14 +63,14 @@ void gatewayClose(struct gateway *g)
 /* Encode the given success response and invoke the request callback */
 #define SUCCESS(LOWER, UPPER)                                                  \
 	{                                                                      \
-		size_t _n = response_##LOWER##Sizeof(&response);               \
+		size_t _n = response##LOWER##Sizeof(&response);                \
 		void *_cursor;                                                 \
 		assert(_n % 8 == 0);                                           \
 		_cursor = bufferAdvance(req->buffer, _n);                      \
 		/* Since responses are small and the buffer it's at least 4096 \
 		 * bytes, this can't fail. */                                  \
 		assert(_cursor != NULL);                                       \
-		response_##LOWER##Encode(&response, &_cursor);                 \
+		response##LOWER##Encode(&response, &_cursor);                  \
 		req->cb(req, 0, DQLITE_RESPONSE_##UPPER);                      \
 	}
 
@@ -116,18 +116,18 @@ void gatewayClose(struct gateway *g)
 /* Encode fa failure response and invoke the request callback */
 static void failure(struct handle *req, int code, const char *message)
 {
-	struct response_failure failure;
+	struct responsefailure failure;
 	size_t n;
 	void *cursor;
 	failure.code = (uint64_t)code;
 	failure.message = message;
-	n = response_failureSizeof(&failure);
+	n = responsefailureSizeof(&failure);
 	assert(n % 8 == 0);
 	cursor = bufferAdvance(req->buffer, n);
 	/* The buffer has at least 4096 bytes, and error messages are shorter
 	 * than that. So this can't fail. */
 	assert(cursor != NULL);
-	response_failureEncode(&failure, &cursor);
+	responsefailureEncode(&failure, &cursor);
 	req->cb(req, 0, DQLITE_RESPONSE_FAILURE);
 }
 
@@ -236,7 +236,7 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 
 /* Fill a result response with the last inserted ID and number of rows
  * affected. */
-static void fillResult(struct gateway *g, struct response_result *response)
+static void fillResult(struct gateway *g, struct responseresult *response)
 {
 	response->lastInsertId =
 	    (uint64_t)sqlite3_last_insert_rowid(g->leader->conn);
@@ -262,7 +262,7 @@ static void leaderExecCb(struct exec *exec, int status)
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
 	sqlite3_stmt *stmt = g->stmt;
-	struct response_result response;
+	struct responseresult response;
 
 	g->req = NULL;
 	g->stmt = NULL;
@@ -308,7 +308,7 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 static void queryBatch(sqlite3_stmt *stmt, struct handle *req)
 {
 	struct gateway *g = req->gateway;
-	struct response_rows response;
+	struct responserows response;
 	int rc;
 
 	rc = query_batch(stmt, req->buffer);
@@ -424,7 +424,7 @@ static void handleExecSqlCb(struct exec *exec, int status)
 static void handleExecSqlNext(struct handle *req, struct cursor *cursor)
 {
 	struct gateway *g = req->gateway;
-	struct response_result response;
+	struct responseresult response;
 	const char *tail;
 	sqlite3_stmt *stmt;
 	int rv;
@@ -580,7 +580,7 @@ static void raftChangeCb(struct raft_change *change, int status)
 	struct change *r = change->data;
 	struct gateway *g = r->gateway;
 	struct handle *req = g->req;
-	struct response_empty response;
+	struct responseempty response;
 	g->req = NULL;
 	sqlite3_free(r);
 	if (status != 0) {
@@ -760,9 +760,9 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	START(dump, files);
 
 	response.n = 2;
-	cur = bufferAdvance(req->buffer, response_filesSizeof(&response));
+	cur = bufferAdvance(req->buffer, responsefilesSizeof(&response));
 	assert(cur != NULL);
-	response_filesEncode(&response, &cur);
+	responsefilesEncode(&response, &cur);
 
 	vfs = sqlite3_vfs_find(g->config->name);
 	rv = VfsSnapshot(vfs, request.filename, &data, &n);
@@ -882,9 +882,9 @@ static int handle_cluster(struct handle *req, struct cursor *cursor)
 	START(cluster, servers);
 
 	response.n = g->raft->configuration.n;
-	cur = bufferAdvance(req->buffer, response_serversSizeof(&response));
+	cur = bufferAdvance(req->buffer, responseserversSizeof(&response));
 	assert(cur != NULL);
-	response_serversEncode(&response, &cur);
+	responseserversEncode(&response, &cur);
 
 	for (i = 0; i < response.n; i++) {
 		rv = encodeServer(g, i, req->buffer, (int)request.format);
@@ -903,7 +903,7 @@ void raftTransferCb(struct raft_transfer *r)
 {
 	struct gateway *g = r->data;
 	struct handle *req = g->req;
-	struct response_empty response;
+	struct responseempty response;
 	g->req = NULL;
 	sqlite3_free(r);
 	if (g->raft->state == RAFT_LEADER) {

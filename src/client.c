@@ -119,16 +119,16 @@ int clientSendHandshake(struct client *c)
 	}
 
 /* Decode a response. */
-#define DECODE(LOWER)                                              \
-	{                                                          \
-		int rv;                                            \
-		struct cursor cursor;                              \
-		cursor.p = bufferCursor(&c->read, 0);              \
-		cursor.cap = bufferOffset(&c->read);               \
-		rv = response_##LOWER##Decode(&cursor, &response); \
-		if (rv != 0) {                                     \
-			return DQLITE_ERROR;                       \
-		}                                                  \
+#define DECODE(LOWER)                                             \
+	{                                                         \
+		int rv;                                           \
+		struct cursor cursor;                             \
+		cursor.p = bufferCursor(&c->read, 0);             \
+		cursor.cap = bufferOffset(&c->read);              \
+		rv = response##LOWER##Decode(&cursor, &response); \
+		if (rv != 0) {                                    \
+			return DQLITE_ERROR;                      \
+		}                                                 \
 	}
 
 /* Read and decode a response. */
@@ -148,7 +148,7 @@ int clientSendOpen(struct client *c, const char *name)
 
 int clientRecvDb(struct client *c)
 {
-	struct response_db response;
+	struct responsedb response;
 	RESPONSE(db, DB);
 	c->dbId = response.id;
 	return 0;
@@ -165,7 +165,7 @@ int clientSendPrepare(struct client *c, const char *sql)
 
 int clientRecvStmt(struct client *c, unsigned *stmtId)
 {
-	struct response_stmt response;
+	struct responsestmt response;
 	RESPONSE(stmt, STMT);
 	*stmtId = response.id;
 	return 0;
@@ -193,7 +193,7 @@ int clientRecvResult(struct client *c,
 		     unsigned *lastInsertId,
 		     unsigned *rowsAffected)
 {
-	struct response_result response;
+	struct responseresult response;
 	RESPONSE(result, RESULT);
 	*lastInsertId = (unsigned)response.lastInsertId;
 	*rowsAffected = (unsigned)response.rowsAffected;
@@ -321,7 +321,7 @@ int clientSendRemove(struct client *c, unsigned id)
 
 int clientRecvEmpty(struct client *c)
 {
-	struct response_empty response;
+	struct responseempty response;
 	RESPONSE(empty, EMPTY);
 	return 0;
 }

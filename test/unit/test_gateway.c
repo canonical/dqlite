@@ -124,11 +124,11 @@ static void handleCb(struct handle *req, int status, int type)
 
 /* Decode a response of the given lower/upper case name using the buffer that
  * was written by the gateway. */
-#define DECODE(RESPONSE, LOWER)                                      \
-	{                                                            \
-		int rc2;                                             \
-		rc2 = response_##LOWER##Decode(f->cursor, RESPONSE); \
-		munit_assert_int(rc2, ==, 0);                        \
+#define DECODE(RESPONSE, LOWER)                                     \
+	{                                                           \
+		int rc2;                                            \
+		rc2 = response##LOWER##Decode(f->cursor, RESPONSE); \
+		munit_assert_int(rc2, ==, 0);                       \
 	}
 
 /* Decode a row with N columns filling the given values. */
@@ -176,7 +176,7 @@ static void handleCb(struct handle *req, int status, int type)
 #define PREPARE(SQL)                           \
 	{                                      \
 		struct requestprepare prepare; \
-		struct response_stmt stmt;     \
+		struct responsestmt stmt;      \
 		prepare.dbId = 0;              \
 		prepare.sql = SQL;             \
 		ENCODE(&prepare, prepare);     \
@@ -235,7 +235,7 @@ static void handleCb(struct handle *req, int status, int type)
 	{                                      \
 		uint64_t _stmtId;              \
 		struct requestprepare prepare; \
-		struct response_stmt stmt;     \
+		struct responsestmt stmt;      \
 		prepare.dbId = 0;              \
 		prepare.sql = SQL;             \
 		ENCODE(&prepare, prepare);     \
@@ -276,9 +276,9 @@ static void handleCb(struct handle *req, int status, int type)
  * details. */
 #define ASSERT_FAILURE(CODE, MESSAGE)                                \
 	{                                                            \
-		struct response_failure failure;                     \
+		struct responsefailure failure;                      \
 		int rc2;                                             \
-		rc2 = response_failureDecode(f->cursor, &failure);   \
+		rc2 = responsefailureDecode(f->cursor, &failure);    \
 		munit_assert_int(rc2, ==, 0);                        \
 		munit_assert_int(failure.code, ==, CODE);            \
 		munit_assert_string_equal(failure.message, MESSAGE); \
@@ -294,7 +294,7 @@ struct leaderFixture
 {
 	FIXTURE;
 	struct requestleader request;
-	struct response_server response;
+	struct responseserver response;
 };
 
 TEST_SUITE(leader);
@@ -363,7 +363,7 @@ struct openFixture
 {
 	FIXTURE;
 	struct requestopen request;
-	struct response_db response;
+	struct responsedb response;
 };
 
 TEST_SUITE(open);
@@ -425,7 +425,7 @@ struct prepareFixture
 {
 	FIXTURE;
 	struct requestprepare request;
-	struct response_stmt response;
+	struct responsestmt response;
 };
 
 TEST_SUITE(prepare);
@@ -468,7 +468,7 @@ struct execFixture
 {
 	FIXTURE;
 	struct requestexec request;
-	struct response_result response;
+	struct responseresult response;
 };
 
 TEST_SUITE(exec);
@@ -853,7 +853,7 @@ TEST_CASE(exec, restore, NULL)
 	struct execFixture *f = data;
 	uint64_t stmtId;
 	struct requestquery request;
-	struct response_rows response;
+	struct responserows response;
 	struct value value;
 	uint64_t n;
 	const char *column;
@@ -906,7 +906,7 @@ struct queryFixture
 {
 	FIXTURE;
 	struct requestquery request;
-	struct response_rows response;
+	struct responserows response;
 };
 
 TEST_SUITE(query);
@@ -1155,7 +1155,7 @@ struct finalizeFixture
 {
 	FIXTURE;
 	struct requestfinalize request;
-	struct response_empty response;
+	struct responseempty response;
 };
 
 TEST_SUITE(finalize);
@@ -1198,7 +1198,7 @@ struct execSqlFixture
 {
 	FIXTURE;
 	struct requestexecSql request;
-	struct response_result response;
+	struct responseresult response;
 };
 
 TEST_SUITE(execSql);
@@ -1256,7 +1256,7 @@ struct querySqlFixture
 {
 	FIXTURE;
 	struct requestquerySql request;
-	struct response_rows response;
+	struct responserows response;
 };
 
 TEST_SUITE(querySql);

@@ -46,7 +46,7 @@ struct connection
 	for (i = 0; i < N_GATEWAYS; i++) {                         \
 		struct connection *c = &f->connections[i];         \
 		struct requestopen open;                           \
-		struct response_db db;                             \
+		struct responsedb db;                              \
 		gatewayInit(&c->gateway, CLUSTER_CONFIG(0),        \
 			    CLUSTER_REGISTRY(0), CLUSTER_RAFT(0)); \
 		c->handle.data = &c->context;                      \
@@ -101,14 +101,14 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
 
 /* Decode a response of the given lower/upper case name using the response
  * buffer of the given connection. */
-#define DECODE(C, RESPONSE, LOWER)                                 \
-	{                                                          \
-		struct cursor cursor;                              \
-		int rc2;                                           \
-		cursor.p = bufferCursor(&C->response, 0);          \
-		cursor.cap = bufferOffset(&C->response);           \
-		rc2 = response_##LOWER##Decode(&cursor, RESPONSE); \
-		munit_assert_int(rc2, ==, 0);                      \
+#define DECODE(C, RESPONSE, LOWER)                                \
+	{                                                         \
+		struct cursor cursor;                             \
+		int rc2;                                          \
+		cursor.p = bufferCursor(&C->response, 0);         \
+		cursor.cap = bufferOffset(&C->response);          \
+		rc2 = response##LOWER##Decode(&cursor, RESPONSE); \
+		munit_assert_int(rc2, ==, 0);                     \
 	}
 
 /* Submit a request of the given type to the given connection and check that no
@@ -131,7 +131,7 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
 #define PREPARE(C, SQL, STMT_ID)               \
 	{                                      \
 		struct requestprepare prepare; \
-		struct response_stmt stmt;     \
+		struct responsestmt stmt;      \
 		prepare.dbId = 0;              \
 		prepare.sql = SQL;             \
 		ENCODE(C, &prepare, prepare);  \
@@ -192,7 +192,7 @@ static void fixtureHandleCb(struct handle *req, int status, int type)
  * connection matches the given details. */
 #define ASSERT_FAILURE(C, CODE, MESSAGE)                             \
 	{                                                            \
-		struct response_failure failure;                     \
+		struct responsefailure failure;                      \
 		DECODE(C, &failure, failure);                        \
 		munit_assert_int(failure.code, ==, CODE);            \
 		munit_assert_string_equal(failure.message, MESSAGE); \
