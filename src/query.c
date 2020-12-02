@@ -112,6 +112,7 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer) {
 
 	/* Insert the column count */
 	cursor = buffer__advance(buffer, sizeof(uint64_t));
+	assert(cursor != NULL);
 	uint64__encode(&n64, &cursor);
 
 	/* Insert the column names */
