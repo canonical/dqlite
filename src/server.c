@@ -146,6 +146,8 @@ int dqlite_node_create(dqlite_node_id id,
 
 	rv = dqlite__init(*t, id, address, data_dir);
 	if (rv != 0) {
+		sqlite3_free(*t);
+		*t = NULL;
 		return rv;
 	}
 
