@@ -201,6 +201,8 @@ static int handle_open(struct handle *req, struct cursor *cursor)
 	}
 	rc = leader__init(g->leader, db, g->raft);
 	if (rc != 0) {
+		sqlite3_free(g->leader);
+		g->leader = NULL;
 		return rc;
 	}
 	response.id = 0;
