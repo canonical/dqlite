@@ -276,8 +276,9 @@ void raftProxyAccept(struct raft_uv_transport *transport,
 	/* If the accept callback is NULL it means we were stopped. */
 	if (i->accept_cb == NULL) {
 		uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
+	} else {
+		i->accept_cb(transport, id, address, stream);
 	}
-	i->accept_cb(transport, id, address, stream);
 }
 
 void raftProxySetConnectFunc(struct raft_uv_transport *transport,
