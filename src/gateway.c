@@ -201,6 +201,8 @@ static int handle_open(struct handle *req, struct cursor *cursor)
 	}
 	rc = leaderInit(g->leader, db, g->raft);
 	if (rc != 0) {
+		sqlite3_free(g->leader);
+		g->leader = NULL;
 		return rc;
 	}
 	response.id = 0;
@@ -744,6 +746,7 @@ oom:
 
 static int handle_dump(struct handle *req, struct cursor *cursor)
 {
+	bool err = true;
 	struct gateway *g = req->gateway;
 	sqlite3_vfs *vfs;
 	void *cur;
@@ -797,7 +800,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	rv = dumpFile(request.filename, database, nDatabase, req->buffer);
 	if (rv != 0) {
 		failure(req, rv, "failed to dump database");
-		return 0;
+		goto out_free_data;
 	}
 
 	strcpy(filename, request.filename);
@@ -805,14 +808,18 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	rv = dumpFile(filename, wal, nWal, req->buffer);
 	if (rv != 0) {
 		failure(req, rv, "failed to dump wal file");
-		return 0;
+		goto out_free_data;
 	}
 
+	err = false;
+
+out_free_data:
 	if (data != NULL) {
 		raft_free(data);
 	}
 
-	req->cb(req, 0, DQLITE_RESPONSE_FILES);
+	if (!err)
+		req->cb(req, 0, DQLITE_RESPONSE_FILES);
 
 	return 0;
 }

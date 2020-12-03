@@ -113,6 +113,7 @@ int queryBatch(sqlite3_stmt *stmt, struct buffer *buffer)
 
 	/* Insert the column count */
 	cursor = bufferAdvance(buffer, sizeof(uint64_t));
+	assert(cursor != NULL);
 	uint64Encode(&n64, &cursor);
 
 	/* Insert the column names */

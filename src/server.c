@@ -146,6 +146,8 @@ int dqlite_node_create(dqlite_node_id id,
 
 	rv = dqliteInit(*t, id, address, dataDir);
 	if (rv != 0) {
+		sqlite3_free(*t);
+		*t = NULL;
 		return rv;
 	}
 
@@ -238,7 +240,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	if (domain == AF_INET) {
 		t->bindAddress = sqlite3_malloc((int)strlen(address));
 		if (t->bindAddress == NULL) {
-			/* TODO: cleanup */
+			close(fd);
 			return DQLITE_NOMEM;
 		}
 		strcpy(t->bindAddress, address);
@@ -246,14 +248,16 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		len = sizeof addrUn.sun_path;
 		t->bindAddress = sqlite3_malloc((int)len);
 		if (t->bindAddress == NULL) {
-			/* TODO: cleanup */
+			close(fd);
 			return DQLITE_NOMEM;
 		}
 		memset(t->bindAddress, 0, len);
 		rv = uv_pipe_getsockname((struct uv_pipe_s *)t->listener,
 					 t->bindAddress, &len);
 		if (rv != 0) {
-			/* TODO: cleanup */
+			close(fd);
+			sqlite3_free(t->bindAddress);
+			t->bindAddress = NULL;
 			return DQLITE_ERROR;
 		}
 		t->bindAddress[0] = '@';

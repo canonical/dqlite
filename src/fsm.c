@@ -315,7 +315,7 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 	return 0;
 
 errAfterSnapshot:
-	sqlite3_free(bufs[1].base);
+	raft_free(bufs[1].base);
 err:
 	assert(rv != 0);
 	return rv;
