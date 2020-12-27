@@ -48,7 +48,7 @@ documentation.
 Install
 -------
 
-If you are on a Debian-based system, you can the latest stable release from
+If you are on a Debian-based system, you can get the latest stable release from
 dqlite's [stable PPA](https://launchpad.net/~dqlite/+archive/ubuntu/stable):
 
 ```
@@ -80,8 +80,8 @@ sudo make install
 cd ..
 ```
 
-Once all required libraries are installed, to in order to build the dqlite
-shared library itself you can run:
+Once all the required libraries are installed, in order to build the dqlite
+shared library itself, you can run:
 
 ```
 autoreconf -i
