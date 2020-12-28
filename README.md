@@ -22,7 +22,7 @@ License
 -------
 
 The dqlite library is released under a slightly modified version of LGPLv3, that
-includes a copyright exception letting users to statically link the library code
+includes a copyright exception allowing users to statically link the library code
 in their project and release the final work under their own terms. See the full
 [license](https://github.com/canonical/dqlite/blob/LICENSE) text.
 
@@ -65,7 +65,7 @@ To build ``libdqlite`` from source you'll need:
 * A reasonably recent version of [libuv](http://libuv.org/) (v1.8.0 or beyond).
 * A build of the [C-raft](https://github.com/canonical/raft) Raft library.
 
-Your distribution should already provide you a pre-built libuv shared
+Your distribution should already provide you with a pre-built libuv shared
 library.
 
 To build the raft library:
