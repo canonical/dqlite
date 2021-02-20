@@ -69,6 +69,10 @@ int dqlite__init(struct dqlite_node *d,
 	raft_set_pre_vote(&d->raft, true);
 	raft_set_max_catch_up_rounds(&d->raft, 100);
 	raft_set_max_catch_up_round_duration(&d->raft, 50 * 1000); /* 50 secs */
+#ifdef __APPLE__
+	d->ready = dispatch_semaphore_create(0);
+	d->stopped = dispatch_semaphore_create(0);
+#else
 	rv = sem_init(&d->ready, 0, 0);
 	if (rv != 0) {
 		/* TODO: better error reporting */
@@ -81,6 +85,7 @@ int dqlite__init(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto err_after_ready_init;
 	}
+#endif
 
 	rv = pthread_mutex_init(&d->mutex, NULL);
 	assert(rv == 0); /* Docs say that pthread_mutex_init can't fail */
@@ -93,7 +98,11 @@ int dqlite__init(struct dqlite_node *d,
 	return 0;
 
 err_after_ready_init:
+#ifdef __APPLE__
+	dispatch_release(d->ready);
+#else
 	sem_destroy(&d->ready);
+#endif
 err_after_raft_fsm_init:
 	fsm__close(&d->raft_fsm);
 err_after_raft_io_init:
@@ -116,10 +125,15 @@ void dqlite__close(struct dqlite_node *d)
 	raft_free(d->listener);
 	rv = pthread_mutex_destroy(&d->mutex); /* This is a no-op on Linux . */
 	assert(rv == 0);
+#ifdef __APPLE__
+	dispatch_release(d->stopped);
+	dispatch_release(d->ready);
+#else
 	rv = sem_destroy(&d->stopped);
 	assert(rv == 0); /* Fails only if sem object is not valid */
 	rv = sem_destroy(&d->ready);
 	assert(rv == 0); /* Fails only if sem object is not valid */
+#endif
 	fsm__close(&d->raft_fsm);
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
@@ -211,10 +225,16 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		len += sizeof(sa_family_t);
 		addr = (struct sockaddr *)&addr_un;
 	}
-	fd = socket(domain, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	fd = socket(domain, SOCK_STREAM, 0);
 	if (fd == -1) {
 		return DQLITE_ERROR;
 	}
+	rv = fcntl(fd, FD_CLOEXEC);
+	if (rv != 0) {
+		close(fd);
+		return DQLITE_ERROR;
+	}
+
 	if (domain == AF_INET) {
 		int reuse = 1;
 		rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
@@ -328,6 +348,8 @@ static int maybeBootstrap(dqlite_node *d,
 		if (rv == RAFT_CANTBOOTSTRAP) {
 			rv = 0;
 		} else {
+			snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_bootstrap(): %s",
+				 raft_errmsg(&d->raft));
 			rv = DQLITE_ERROR;
 		}
 		goto out;
@@ -386,8 +408,12 @@ static void startup_cb(uv_timer_t *startup)
 	struct dqlite_node *d = startup->data;
 	int rv;
 	d->running = true;
+#ifdef __APPLE__
+	dispatch_semaphore_signal(d->ready);
+#else
 	rv = sem_post(&d->ready);
 	assert(rv == 0); /* No reason for which posting should fail */
+#endif
 }
 
 static void listenCb(uv_stream_t *listener, int status)
@@ -431,11 +457,20 @@ static void listenCb(uv_stream_t *listener, int status)
 
 	/* We accept unix socket connections only from the same process. */
 	if (listener->type == UV_NAMED_PIPE) {
+		int fd = stream->io_watcher.fd;
+#if defined(__APPLE__) || defined(__FreeBSD__)
+		pid_t pid = -1;
+		socklen_t len = sizeof(pid);
+		rv = getsockopt(fd, SOL_SOCKET, LOCAL_PEERPID, &pid, &len);
+		if (rv != 0) {
+			goto err;
+		}
+		if (pid != getpid()) {
+			goto err;
+		}
+#else
 		struct ucred cred;
-		socklen_t len;
-		int fd;
-		fd = stream->io_watcher.fd;
-		len = sizeof cred;
+		socklen_t len = sizeof(cred);
 		rv = getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len);
 		if (rv != 0) {
 			goto err;
@@ -443,6 +478,7 @@ static void listenCb(uv_stream_t *listener, int status)
 		if (cred.pid != getpid()) {
 			goto err;
 		}
+#endif
 	}
 
 	conn = sqlite3_malloc(sizeof *conn);
@@ -534,7 +570,11 @@ static int taskRun(struct dqlite_node *d)
 		snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_start(): %s",
 			 raft_errmsg(&d->raft));
 		/* Unblock any client of taskReady */
+#ifdef __APPLE__
+		dispatch_semaphore_signal(d->ready);
+#else
 		sem_post(&d->ready);
+#endif
 		return rv;
 	}
 
@@ -542,8 +582,12 @@ static int taskRun(struct dqlite_node *d)
 	assert(rv == 0);
 
 	/* Unblock any client of taskReady */
+#ifdef __APPLE__
+	dispatch_semaphore_signal(d->ready);
+#else
 	rv = sem_post(&d->ready);
 	assert(rv == 0); /* no reason for which posting should fail */
+#endif
 
 	return 0;
 }
@@ -581,7 +625,11 @@ void dqlite_node_destroy(dqlite_node *d)
 static bool taskReady(struct dqlite_node *d)
 {
 	/* Wait for the ready semaphore */
+#ifdef __APPLE__
+	dispatch_semaphore_wait(d->ready, DISPATCH_TIME_FOREVER);
+#else
 	sem_wait(&d->ready);
+#endif
 	return d->running;
 }
 
