@@ -608,15 +608,16 @@ static int handle_add(struct handle *req, struct cursor *cursor)
 	}
 	r->gateway = g;
 	r->req.data = r;
+	g->req = req;
 
 	rv = raft_add(g->raft, &r->req, request.id, request.address,
 		      raftChangeCb);
 	if (rv != 0) {
+        g->req = NULL;
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
-	g->req = req;
 
 	return 0;
 }
@@ -664,15 +665,16 @@ static int handle_assign(struct handle *req, struct cursor *cursor)
 	}
 	r->gateway = g;
 	r->req.data = r;
+	g->req = req;
 
 	rv = raft_assign(g->raft, &r->req, request.id,
 			 translateDqliteRole((int)role), raftChangeCb);
 	if (rv != 0) {
+        g->req = NULL;
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
-	g->req = req;
 
 	return 0;
 }
@@ -693,14 +695,15 @@ static int handle_remove(struct handle *req, struct cursor *cursor)
 	}
 	r->gateway = g;
 	r->req.data = r;
+	g->req = req;
 
 	rv = raft_remove(g->raft, &r->req, request.id, raftChangeCb);
 	if (rv != 0) {
+        g->req = NULL;
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
-	g->req = req;
 
 	return 0;
 }
@@ -934,14 +937,15 @@ static int handle_transfer(struct handle *req, struct cursor *cursor)
 		return DQLITE_NOMEM;
 	}
 	r->data = g;
+	g->req = req;
 
 	rv = raft_transfer(g->raft, r, request.id, raftTransferCb);
 	if (rv != 0) {
+        g->req = NULL;
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
-	g->req = req;
 
 	return 0;
 }
