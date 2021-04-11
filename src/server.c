@@ -220,7 +220,14 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 			/* Auto bind */
 			len = 0;
 		} else {
-			strcpy(addr_un.sun_path + 1, address + 1);
+#if defined(__linux__)
+			// Linux abstract socket requires \0 in sun_path[0]
+			strncat(addr_un.sun_path + 1, address + 1, sizeof(addr_un.sun_path) - 1);
+#else
+			// MacOS do not support abstract sockets
+			strncat(addr_un.sun_path, address + 1, sizeof(addr_un.sun_path));
+			(void)unlink(addr_un.sun_path);
+#endif
 		}
 		len += sizeof(sa_family_t);
 		addr = (struct sockaddr *)&addr_un;
@@ -458,17 +465,7 @@ static void listenCb(uv_stream_t *listener, int status)
 	/* We accept unix socket connections only from the same process. */
 	if (listener->type == UV_NAMED_PIPE) {
 		int fd = stream->io_watcher.fd;
-#if defined(__APPLE__) || defined(__FreeBSD__)
-		pid_t pid = -1;
-		socklen_t len = sizeof(pid);
-		rv = getsockopt(fd, SOL_SOCKET, LOCAL_PEERPID, &pid, &len);
-		if (rv != 0) {
-			goto err;
-		}
-		if (pid != getpid()) {
-			goto err;
-		}
-#else
+#if defined(SO_PEERCRED) // Linux
 		struct ucred cred;
 		socklen_t len = sizeof(cred);
 		rv = getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len);
@@ -478,6 +475,20 @@ static void listenCb(uv_stream_t *listener, int status)
 		if (cred.pid != getpid()) {
 			goto err;
 		}
+#elif defined(LOCAL_PEERPID) // BSD
+		pid_t pid = -1;
+		socklen_t len = sizeof(pid);
+		rv = getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len);
+		if (rv != 0) {
+			goto err;
+		}
+		if (pid != getpid()) {
+			goto err;
+		}
+#else
+        // The unix socket connection can't be verified and from
+        // security perspective it's better to block it entirely
+        goto err;
 #endif
 	}
 
