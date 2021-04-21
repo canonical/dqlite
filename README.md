@@ -1,7 +1,7 @@
 dqlite [![Build Status](https://travis-ci.org/canonical/dqlite.png)](https://travis-ci.org/canonical/dqlite) [![codecov](https://codecov.io/gh/canonical/dqlite/branch/master/graph/badge.svg)](https://codecov.io/gh/canonical/dqlite)
 ======
 
-dqlite is a C library that implements an embeddable and replicated SQL database
+[dqlite](https://dqlite.io) is a C library that implements an embeddable and replicated SQL database
 engine with high-availability and automatic failover.
 
 The acronym "dqlite" stands for "distributed SQLite", meaning that dqlite extends
