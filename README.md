@@ -42,7 +42,7 @@ A talk about dqlite was given at FOSDEM 2020, you can watch it
 Wire protocol
 -------------
 
-If you wish to write a client, please refer to the [wire protocol](doc/protocol.md)
+If you wish to write a client, please refer to the [wire protocol](https://dqlite.io/docs/protocol)
 documentation.
 
 Install
