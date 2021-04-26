@@ -55,6 +55,15 @@ static void tearDown(void *data)
 	free(f);
 }
 
+extern unsigned dq_sqlite_pending_byte;
+static void tearDownRestorePendingByte(void *data)
+{
+    sqlite3_test_control(SQLITE_TESTCTRL_PENDING_BYTE, 0x40000000);
+    dq_sqlite_pending_byte = 0x40000000;
+    tearDown(data);
+}
+
+
 #define PAGE_SIZE 512
 
 #define PRAGMA(DB, COMMAND)                                          \
@@ -388,6 +397,59 @@ TEST(vfs, pollAfterPageStress, setUp, tearDown, 0, NULL)
 	/* All records have been inserted. */
 	PREPARE(db, stmt, "SELECT * FROM test");
 	for (i = 0; i < 163; i++) {
+		STEP(stmt, SQLITE_ROW);
+		munit_assert_int(sqlite3_column_int(stmt, 0), ==, i);
+	}
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Set the SQLite PENDING_BYTE at the start of the second page and make sure
+ * all data entry is successful.
+ */
+TEST(vfs, adaptPendingByte, setUp, tearDownRestorePendingByte, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx;
+	int i;
+        int n;
+	char sql[64];
+
+        /* Set the pending byte at the start of the second page */
+        const unsigned new_pending_byte = 512;
+        dq_sqlite_pending_byte = new_pending_byte;
+        sqlite3_test_control(SQLITE_TESTCTRL_PENDING_BYTE, new_pending_byte);
+
+	OPEN("1", db);
+
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	EXEC(db, "BEGIN");
+        n = 65536;
+	for (i = 0; i < n; i++) {
+		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i);
+		EXEC(db, sql);
+		POLL("1", tx);
+		munit_assert_uint(tx.n, ==, 0);
+	}
+	EXEC(db, "COMMIT");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	/* All records have been inserted. */
+	PREPARE(db, stmt, "SELECT * FROM test");
+	for (i = 0; i < n; i++) {
 		STEP(stmt, SQLITE_ROW);
 		munit_assert_int(sqlite3_column_int(stmt, 0), ==, i);
 	}
