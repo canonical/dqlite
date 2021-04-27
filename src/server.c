@@ -486,9 +486,9 @@ static void listenCb(uv_stream_t *listener, int status)
 			goto err;
 		}
 #else
-        // The unix socket connection can't be verified and from
-        // security perspective it's better to block it entirely
-        goto err;
+		// The unix socket connection can't be verified and from
+		// security perspective it's better to block it entirely
+		goto err;
 #endif
 	}
 
