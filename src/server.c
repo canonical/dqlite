@@ -220,12 +220,17 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 			/* Auto bind */
 			len = 0;
 		} else {
+			size_t n = sizeof(addr_un.sun_path);
 #if defined(__linux__)
-			// Linux abstract socket requires \0 in sun_path[0]
-			strncat(addr_un.sun_path + 1, address + 1, sizeof(addr_un.sun_path) - 1);
+			/* Linux abstract socket requires \0 in sun_path[0].
+			 * Copy at most n-2 bytes because we start writing at
+			 * byte 1 and want to leave room to '\0' terminate */
+			strncpy(addr_un.sun_path + 1, address + 1, n - 2);
+			addr_un.sun_path[n-1] = '\0';
 #else
-			// MacOS do not support abstract sockets
-			strncat(addr_un.sun_path, address + 1, sizeof(addr_un.sun_path));
+			/* MacOS do not support abstract sockets */
+			strncpy(addr_un.sun_path, address + 1, n - 1);
+			addr_un.sun_path[n-1] = '\0';
 			(void)unlink(addr_un.sun_path);
 #endif
 		}
