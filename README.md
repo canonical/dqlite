@@ -63,10 +63,11 @@ Build
 To build ``libdqlite`` from source you'll need:
 
 * A reasonably recent version of [libuv](http://libuv.org/) (v1.8.0 or beyond).
+* A reasonably recent version of sqlite3-dev
 * A build of the [C-raft](https://github.com/canonical/raft) Raft library.
 
 Your distribution should already provide you with a pre-built libuv shared
-library.
+library and libsqlite3-dev.
 
 To build the raft library:
 
