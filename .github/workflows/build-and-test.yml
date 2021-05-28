@@ -1,0 +1,49 @@
+name: CI Tests
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-18.04
+          - ubuntu-20.04
+        compiler:
+          - gcc
+          - clang
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup dependencies
+      run: |
+          sudo add-apt-repository -y ppa:dqlite/master
+          sudo apt update
+          sudo apt install -y clang lcov libsqlite3-dev liblz4-dev libuv1-dev libraft-dev
+
+    - name: Build
+      env:
+        CC: ${{ matrix.compiler }}
+      run: |
+          autoreconf -i
+          ./configure --enable-debug --enable-code-coverage --enable-sanitize
+          make CFLAGS=-O0 -j2
+
+    - name: Test
+      env:
+        CC: ${{ matrix.compiler }}
+      run: make CFLAGS=-O0 -j2 check || (cat ./test-suite.log && false)
+
+    - name: Coverage
+      env:
+        CC: ${{ matrix.compiler }}
+      run: if [ "${CC}" = "gcc" ]; then make code-coverage-capture; fi
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        verbose: true
