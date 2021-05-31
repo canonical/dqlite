@@ -1,0 +1,53 @@
+name: Coverity
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Download Coverity Build Tool
+        run: |
+          wget -q https://scan.coverity.com/download/cxx/linux64 --post-data "token=$TOKEN&project=canonical/dqlite" -O cov-analysis-linux64.tar.gz
+          mkdir cov-analysis-linux64
+          tar xzf cov-analysis-linux64.tar.gz --strip 1 -C cov-analysis-linux64
+        env:
+          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+
+      - name: Install dependencies
+        run: |
+          sudo add-apt-repository -y ppa:dqlite/master
+          sudo apt-get update -qq
+          sudo apt-get install -qq gcc libsqlite3-dev liblz4-dev libuv1-dev libraft-dev
+
+      - name: Run coverity
+        run: |
+          export PATH="$(pwd)/cov-analysis-linux64/bin:${PATH}"
+
+          # Configure
+          autoreconf -i
+          mkdir build
+          cd build
+          ../configure
+
+          # Build
+          cov-build --dir cov-int make -j4
+          tar czvf dqlite.tgz cov-int
+
+          # Submit the results
+          curl \
+            --form project=canonical/dqlite \
+            --form token=${TOKEN} \
+            --form email=mathieu.bordere@canonical.com \
+            --form file=@dqlite.tgz \
+            --form version=master \
+            --form description="${GITHUB_SHA}" \
+            https://scan.coverity.com/builds?project=canonical/dqlite
+        env:
+          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+
