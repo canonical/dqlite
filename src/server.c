@@ -339,6 +339,29 @@ int dqlite_node_set_failure_domain(dqlite_node *n, unsigned long long code)
 	return 0;
 }
 
+int dqlite_node_set_snapshot_params(dqlite_node *n, unsigned snapshot_threshold,
+                                    unsigned snapshot_trailing)
+{
+    if (n->running) {
+        return DQLITE_MISUSE;
+    }
+
+    if (snapshot_trailing < 1024) {
+        return DQLITE_MISUSE;
+    }
+
+    /* This is a safety precaution and allows to recover data from the second
+     * last raft snapshot and segment files in case the last raft snapshot is
+     * unusable. */
+    if (snapshot_trailing < snapshot_threshold) {
+        return DQLITE_MISUSE;
+    }
+
+    raft_set_snapshot_threshold(&n->raft, snapshot_threshold);
+    raft_set_snapshot_trailing(&n->raft, snapshot_trailing);
+    return 0;
+}
+
 static int maybeBootstrap(dqlite_node *d,
 			  dqlite_node_id id,
 			  const char *address)
