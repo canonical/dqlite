@@ -133,6 +133,26 @@ int dqlite_node_set_network_latency(dqlite_node *n,
 int dqlite_node_set_failure_domain(dqlite_node *n, unsigned long long code);
 
 /**
+ * Set the snapshot parameters for this node.
+ *
+ * This function determines how frequently a node will snapshot the state
+ * of the database and how many raft log entries will be kept around after
+ * a snapshot has been taken.
+ *
+ * `snapshot_threshold` : Determines the frequency of taking a snapshot, the
+ * lower the number, the higher the frequency.
+ *
+ * `snapshot_trailing` : Determines the amount of log entries kept around after
+ * taking a snapshot. Lowering this number decreases disk and memory footprint
+ * but increases the chance of having to send a full snapshot (instead of a
+ * number of log entries to a node that has fallen behind.
+ *
+ * This function must be called before calling dqlite_node_start().
+ */
+int dqlite_node_set_snapshot_params(dqlite_node *n, unsigned snapshot_threshold,
+                                    unsigned snapshot_trailing);
+
+/**
  * Start a dqlite node.
  *
  * A background thread will be spawned which will run the node's main loop. If
