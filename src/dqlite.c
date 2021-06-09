@@ -2,6 +2,11 @@
 
 #include "vfs.h"
 
+int dqlite_version_number (void)
+{
+        return DQLITE_VERSION_NUMBER;
+}
+
 int dqlite_vfs_init(sqlite3_vfs *vfs, const char *name)
 {
 	return VfsInit(vfs, name);
