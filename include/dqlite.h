@@ -5,6 +5,16 @@
 #include <stddef.h>
 
 /**
+ * Version.
+ */
+#define DQLITE_VERSION_MAJOR    1
+#define DQLITE_VERSION_MINOR    8
+#define DQLITE_VERSION_RELEASE  0
+#define DQLITE_VERSION_NUMBER (DQLITE_VERSION_MAJOR *100*100 + DQLITE_VERSION_MINOR *100 + DQLITE_VERSION_RELEASE)
+
+int dqlite_version_number (void);
+
+/**
  * Error codes.
  */
 #define DQLITE_ERROR 1  /* Generic error */
