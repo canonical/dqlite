@@ -1581,7 +1581,7 @@ static int vfsShmUnlock(struct vfsShm *s, int ofst, int n, int flags)
 	}
 
 	for (i = ofst; i < ofst + n; i++) {
-		/* Sanity check that no lock of the other type is held in this
+		/* Coherence check that no lock of the other type is held in this
 		 * region. */
 		assert(other_locks[i] == 0);
 
