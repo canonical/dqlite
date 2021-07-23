@@ -9,7 +9,10 @@
 #include "fsm.h"
 #include "lib/assert.h"
 #include "logger.h"
+#include "protocol.h"
+#include "translate.h"
 #include "transport.h"
+#include "utils.h"
 #include "vfs.h"
 
 /* Special ID for the bootstrap node. Equals to raft_digest("1", 0). */
@@ -727,15 +730,74 @@ int dqlite_node_recover(dqlite_node *n,
 			struct dqlite_node_info infos[],
 			int n_info)
 {
+    int i;
+    int ret;
+
+    struct dqlite_node_info_ext *infos_ext = calloc((size_t)n_info, sizeof(*infos_ext));
+    if (infos_ext == NULL) {
+        return DQLITE_NOMEM;
+    }
+    for (i = 0; i < n_info; i++) {
+        infos_ext[i].size = sizeof(*infos_ext);
+        infos_ext[i].id = infos[i].id;
+        infos_ext[i].address = PTR_TO_UINT64(infos[i].address);
+        infos_ext[i].dqlite_role = DQLITE_VOTER;
+    }
+
+    ret = dqlite_node_recover_ext(n, infos_ext, n_info);
+    free(infos_ext);
+    return ret;
+}
+
+static bool node_info_valid(struct dqlite_node_info_ext *info)
+{
+    /* Reject any size smaller than the original definition of the extensible
+     * struct. */
+    if (info->size < DQLITE_NODE_INFO_EXT_SZ_ORIG) {
+        return false;
+    }
+
+    /* Require 8 byte allignment */
+    if (info->size % sizeof(uint64_t)) {
+        return false;
+    }
+
+    /* If the user uses a newer, and larger version of the struct, make sure the unknown
+     * fields are zeroed out. */
+    uint64_t known_size = sizeof(struct dqlite_node_info_ext);
+    if (info->size > known_size) {
+        const uint64_t num_known_fields = known_size / sizeof(uint64_t);
+        const uint64_t num_extra_fields = (info->size - known_size) / sizeof(uint64_t);
+        const uint64_t *extra_fields = ((const uint64_t *)info) + num_known_fields;
+        for (uint64_t i = 0; i < num_extra_fields; i++) {
+            if (extra_fields[i] != (uint64_t)0) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+int dqlite_node_recover_ext(dqlite_node *n,
+			struct dqlite_node_info_ext infos[],
+			int n_info)
+{
 	struct raft_configuration configuration;
 	int i;
 	int rv;
 
 	raft_configuration_init(&configuration);
 	for (i = 0; i < n_info; i++) {
-		struct dqlite_node_info *info = &infos[i];
+		struct dqlite_node_info_ext *info = &infos[i];
+		if (!node_info_valid(info)) {
+		    rv = DQLITE_MISUSE;
+                    goto out;
+		}
+		int raft_role = translateDqliteRole((int)info->dqlite_role);
+		const char *address = UINT64_TO_PTR(info->address, const char *);
 		rv = raft_configuration_add(&configuration, info->id,
-					    info->address, true);
+					    address, raft_role);
 		if (rv != 0) {
 			assert(rv == RAFT_NOMEM);
 			rv = DQLITE_NOMEM;
