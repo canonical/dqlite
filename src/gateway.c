@@ -5,6 +5,7 @@
 #include "query.h"
 #include "request.h"
 #include "response.h"
+#include "translate.h"
 #include "vfs.h"
 
 void gateway__init(struct gateway *g,
@@ -555,21 +556,6 @@ static int handle_interrupt(struct handle *req, struct cursor *cursor)
 	return 0;
 }
 
-/* Translate a raft error to a dqlite one. */
-static int translateRaftErrCode(int code)
-{
-	switch (code) {
-		case RAFT_NOTLEADER:
-			return SQLITE_IOERR_NOT_LEADER;
-		case RAFT_LEADERSHIPLOST:
-			return SQLITE_IOERR_LEADERSHIP_LOST;
-		case RAFT_CANTCHANGE:
-			return SQLITE_BUSY;
-		default:
-			return SQLITE_ERROR;
-	}
-}
-
 struct change
 {
 	struct gateway *gateway;
@@ -620,23 +606,6 @@ static int handle_add(struct handle *req, struct cursor *cursor)
 	}
 
 	return 0;
-}
-
-/* Translate a dqlite role code to its raft equivalent. */
-static int translateDqliteRole(int role)
-{
-	switch (role) {
-		case DQLITE_VOTER:
-			return RAFT_VOTER;
-		case DQLITE_STANDBY:
-			return RAFT_STANDBY;
-		case DQLITE_SPARE:
-			return RAFT_SPARE;
-		default:
-			/* For backward compat with clients that don't set a
-			 * role. */
-			return DQLITE_VOTER;
-	}
 }
 
 static int handle_assign(struct handle *req, struct cursor *cursor)
@@ -824,22 +793,6 @@ out_free_data:
 		req->cb(req, 0, DQLITE_RESPONSE_FILES);
 
 	return 0;
-}
-
-/* Translate a raft role code to its dqlite equivalent. */
-static int translateRaftRole(int role)
-{
-	switch (role) {
-		case RAFT_VOTER:
-			return DQLITE_VOTER;
-		case RAFT_STANDBY:
-			return DQLITE_STANDBY;
-		case RAFT_SPARE:
-			return DQLITE_SPARE;
-		default:
-			assert(0);
-			return -1;
-	}
 }
 
 static int encodeServer(struct gateway *g,
