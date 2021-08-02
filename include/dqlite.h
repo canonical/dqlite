@@ -3,6 +3,7 @@
 
 #include <sqlite3.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /**
  * Version.
@@ -187,7 +188,22 @@ struct dqlite_node_info
 };
 typedef struct dqlite_node_info dqlite_node_info;
 
+/* Defined to be an extensible struct, future additions to this struct should be
+ * 64-bits wide and 0 should not be used as a valid value. */
+struct dqlite_node_info_ext
+{
+        uint64_t size; /* The size of this struct */
+        uint64_t id; /* dqlite_node_id */
+        uint64_t address;
+        uint64_t dqlite_role;
+};
+typedef struct dqlite_node_info_ext dqlite_node_info_ext;
+#define DQLITE_NODE_INFO_EXT_SZ_ORIG 32U /* (4 * 64) / 8 */
+
 /**
+ * !!! Deprecated, use `dqlite_node_recover_ext` instead which also includes
+ * dqlite roles. !!!
+ *
  * Force recovering a dqlite node which is part of a cluster whose majority of
  * nodes have died, and therefore has become unavailable.
  *
@@ -212,6 +228,32 @@ typedef struct dqlite_node_info dqlite_node_info;
  * 6. Restart all nodes.
  */
 int dqlite_node_recover(dqlite_node *n, dqlite_node_info infos[], int n_info);
+
+/**
+ * Force recovering a dqlite node which is part of a cluster whose majority of
+ * nodes have died, and therefore has become unavailable.
+ *
+ * In order for this operation to be safe you must follow these steps:
+ *
+ * 1. Make sure no dqlite node in the cluster is running.
+ *
+ * 2. Identify all dqlite nodes that have survived and that you want to be part
+ *    of the recovered cluster.
+ *
+ * 3. Among the survived dqlite nodes, find the one with the most up-to-date
+ *    raft term and log.
+ *
+ * 4. Invoke @dqlite_node_recover_ext exactly one time, on the node you found in
+ *    step 3, and pass it an array of #dqlite_node_info filled with the IDs,
+ *    addresses and roles of the survived nodes, including the one being recovered.
+ *
+ * 5. Copy the data directory of the node you ran @dqlite_node_recover_ext on to all
+ *    other non-dead nodes in the cluster, replacing their current data
+ *    directory.
+ *
+ * 6. Restart all nodes.
+ */
+int dqlite_node_recover_ext(dqlite_node *n, dqlite_node_info_ext infos[], int n_info);
 
 /**
  * Return a human-readable description of the last error occurred.
