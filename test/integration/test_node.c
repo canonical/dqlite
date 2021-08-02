@@ -148,6 +148,103 @@ TEST(node, snapshotParamsThresholdLargerThanTrailing, setUp, tearDown, 0, NULL)
         return MUNIT_OK;
 }
 
+TEST(node, networkLatency, setUp, tearDown, 0, NULL)
+{
+        struct fixture *f = data;
+        int rv;
+
+        rv = dqlite_node_set_network_latency(f->node, 3600000000000ULL);
+        munit_assert_int(rv, ==, 0);
+
+        startStopNode(f);
+        return MUNIT_OK;
+}
+
+TEST(node, networkLatencyRunning, setUp, tearDown, 0, NULL)
+{
+        struct fixture *f = data;
+        int rv;
+
+        rv = dqlite_node_start(f->node);
+        munit_assert_int(rv, ==, 0);
+
+        rv = dqlite_node_set_network_latency(f->node, 3600000000000ULL);
+        munit_assert_int(rv, ==, DQLITE_MISUSE);
+
+        rv = dqlite_node_stop(f->node);
+        munit_assert_int(rv, ==, 0);
+
+        return MUNIT_OK;
+}
+
+TEST(node, networkLatencyTooLarge, setUp, tearDown, 0, NULL)
+{
+        struct fixture *f = data;
+        int rv;
+
+        rv = dqlite_node_set_network_latency(f->node, 3600000000000ULL + 1ULL);
+        munit_assert_int(rv, ==, DQLITE_MISUSE);
+
+        startStopNode(f);
+        return MUNIT_OK;
+}
+
+TEST(node, networkLatencyMs, setUp, tearDown, 0, NULL)
+{
+        struct fixture *f = data;
+        int rv;
+
+        rv = dqlite_node_set_network_latency_ms(f->node, 5);
+        munit_assert_int(rv, ==, 0);
+        rv = dqlite_node_set_network_latency_ms(f->node, (3600U * 1000U));
+        munit_assert_int(rv, ==, 0);
+
+        startStopNode(f);
+        return MUNIT_OK;
+}
+
+TEST(node, networkLatencyMsRunning, setUp, tearDown, 0, NULL)
+{
+        struct fixture *f = data;
+        int rv;
+
+        rv = dqlite_node_start(f->node);
+        munit_assert_int(rv, ==, 0);
+
+        rv = dqlite_node_set_network_latency_ms(f->node, 2);
+        munit_assert_int(rv, ==, DQLITE_MISUSE);
+
+        rv = dqlite_node_stop(f->node);
+        munit_assert_int(rv, ==, 0);
+
+        return MUNIT_OK;
+}
+
+TEST(node, networkLatencyMsTooSmall, setUp, tearDown, 0, NULL)
+{
+        struct fixture *f = data;
+        int rv;
+
+        rv = dqlite_node_set_network_latency_ms(f->node, 0);
+        munit_assert_int(rv, ==, DQLITE_MISUSE);
+
+        startStopNode(f);
+        return MUNIT_OK;
+}
+
+TEST(node, networkLatencyMsTooLarge, setUp, tearDown, 0, NULL)
+{
+        struct fixture *f = data;
+        int rv;
+
+        rv = dqlite_node_set_network_latency_ms(f->node, (3600U * 1000U) + 1);
+        munit_assert_int(rv, ==, DQLITE_MISUSE);
+
+        startStopNode(f);
+        return MUNIT_OK;
+}
+
+
 /******************************************************************************
  *
  * dqlite_node_recover

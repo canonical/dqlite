@@ -326,11 +326,29 @@ int dqlite_node_set_network_latency(dqlite_node *t,
 	if (t->running) {
 		return DQLITE_MISUSE;
 	}
-	/* Currently we accept at most 500 microseconds latency. */
-	if (nanoseconds < 500 * 1000) {
+
+        /* 1 hour latency should be more than sufficient, also avoids overflow
+         * issues when converting to unsigned milliseconds later on */
+	if (nanoseconds > 3600000000000ULL) {
 		return DQLITE_MISUSE;
 	}
-	milliseconds = (unsigned)(nanoseconds / (1000 * 1000));
+
+	milliseconds = (unsigned)(nanoseconds / (1000000ULL));
+	return dqlite_node_set_network_latency_ms(t, milliseconds);
+}
+
+int dqlite_node_set_network_latency_ms(dqlite_node *t,
+				       unsigned milliseconds)
+{
+	if (t->running) {
+		return DQLITE_MISUSE;
+	}
+
+	/* Currently we accept at least 1 millisecond latency and maximum 3600 s
+	 * of latency */
+	if (milliseconds == 0 || milliseconds > 3600U * 1000U) {
+		return DQLITE_MISUSE;
+	}
 	raft_set_heartbeat_timeout(&t->raft, (milliseconds * 15) / 10);
 	raft_set_election_timeout(&t->raft, milliseconds * 15);
 	return 0;
