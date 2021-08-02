@@ -123,6 +123,7 @@ int dqlite_node_set_connect_func(dqlite_node *n,
 				 void *arg);
 
 /**
+ * DEPRECATED - USE `dqlite_node_set_network_latency_ms`
  * Set the average one-way network latency, expressed in nanoseconds.
  *
  * This value is used internally by dqlite to decide how frequently the leader
@@ -134,6 +135,21 @@ int dqlite_node_set_connect_func(dqlite_node *n,
  */
 int dqlite_node_set_network_latency(dqlite_node *n,
 				    unsigned long long nanoseconds);
+
+
+/**
+ * Set the average one-way network latency, expressed in milliseconds.
+ *
+ * This value is used internally by dqlite to decide how frequently the leader
+ * node should send heartbeats to other nodes in order to maintain its
+ * leadership, and how long other nodes should wait before deciding that the
+ * leader has died and initiate a failover.
+ *
+ * This function must be called before calling dqlite_node_start().
+ *
+ * Latency should not be 0 or larger than 3600000 milliseconds.
+ */
+int dqlite_node_set_network_latency_ms(dqlite_node *t, unsigned milliseconds);
 
 /**
  * Set the failure domain associated with this node.
