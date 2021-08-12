@@ -15,6 +15,9 @@ jobs:
         compiler:
           - gcc
           - clang
+        tracing:
+          - LIBDQLITE_TRACE=1
+          - NOLIBDQLITE_TRACE=1
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -36,7 +39,9 @@ jobs:
     - name: Test
       env:
         CC: ${{ matrix.compiler }}
-      run: make CFLAGS=-O0 -j2 check || (cat ./test-suite.log && false)
+      run: |
+           export ${{ matrix.tracing }}
+           make CFLAGS=-O0 -j2 check || (cat ./test-suite.log && false)
 
     - name: Coverage
       env:

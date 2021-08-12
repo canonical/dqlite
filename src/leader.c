@@ -6,6 +6,7 @@
 
 #include "command.h"
 #include "leader.h"
+#include "tracing.h"
 #include "vfs.h"
 
 static void maybeExecDone(struct exec *req)
@@ -25,6 +26,7 @@ static int openConnection(const char *filename,
 			  unsigned page_size,
 			  sqlite3 **conn)
 {
+        tracef("open connection filename %s", filename);
 	char pragma[255];
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	char *msg = NULL;
@@ -32,12 +34,14 @@ static int openConnection(const char *filename,
 
 	rc = sqlite3_open_v2(filename, conn, flags, vfs);
 	if (rc != SQLITE_OK) {
+                tracef("open failed %d", rc);
 		goto err;
 	}
 
 	/* Enable extended result codes */
 	rc = sqlite3_extended_result_codes(*conn, 1);
 	if (rc != SQLITE_OK) {
+                tracef("extended codes failed %d", rc);
 		goto err_after_open;
 	}
 
@@ -45,36 +49,42 @@ static int openConnection(const char *filename,
 	sprintf(pragma, "PRAGMA page_size=%d", page_size);
 	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
+                tracef("page size set failed %d page size %u", rc, page_size);
 		goto err_after_open;
 	}
 
 	/* Disable syncs. */
 	rc = sqlite3_exec(*conn, "PRAGMA synchronous=OFF", NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
+                tracef("sync off failed %d", rc);
 		goto err_after_open;
 	}
 
 	/* Set WAL journaling. */
 	rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
+                tracef("wal on failed %d", rc);
 		goto err_after_open;
 	}
 
 	rc = sqlite3_exec(*conn, "PRAGMA wal_autocheckpoint=0", NULL, NULL,
 			  &msg);
 	if (rc != SQLITE_OK) {
+                tracef("wal autocheckpoint off failed %d", rc);
 		goto err_after_open;
 	}
 
 	rc =
 	    sqlite3_db_config(*conn, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, NULL);
 	if (rc != SQLITE_OK) {
+                tracef("db config failed %d", rc);
 		goto err_after_open;
 	}
 
 	/* TODO: make setting foreign keys optional. */
 	rc = sqlite3_exec(*conn, "PRAGMA foreign_keys=1", NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
+                tracef("enable foreign keys failed %d", rc);
 		goto err_after_open;
 	}
 
@@ -100,12 +110,14 @@ static bool needsBarrier(struct leader *l)
 
 int leader__init(struct leader *l, struct db *db, struct raft *raft)
 {
+        tracef("leader init");
 	int rc;
 	l->db = db;
 	l->raft = raft;
 	rc = openConnection(db->filename, db->config->name,
 			    db->config->page_size, &l->conn);
 	if (rc != 0) {
+                tracef("open failed %d", rc);
 		return rc;
 	}
 
@@ -118,6 +130,7 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 
 void leader__close(struct leader *l)
 {
+        tracef("leader close");
 	int rc;
 	/* TODO: there shouldn't be any ongoing exec request. */
 	if (l->exec != NULL) {
@@ -140,6 +153,7 @@ static void leaderCheckpointApplyCb(struct raft_apply *req,
 	(void)result;
 	/* In case of failure, release the chekcpoint lock. */
 	if (status != 0) {
+                tracef("checkpoint apply failed %d", status);
 		struct sqlite3_file *file;
 		sqlite3_file_control(l->conn, "main", SQLITE_FCNTL_FILE_POINTER,
 				     &file);
@@ -156,6 +170,7 @@ static void leaderCheckpointApplyCb(struct raft_apply *req,
 /* Attempt to perform a checkpoint if possible. */
 static bool leaderMaybeCheckpoint(struct leader *l)
 {
+        tracef("leader maybe checkpoint");
 	struct sqlite3_file *main_f;
 	struct sqlite3_file *wal;
 	struct raft_buffer buf;
@@ -180,6 +195,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 
 	/* Check if the size of the WAL is beyond the threshold. */
 	if (pages < l->db->config->checkpoint_threshold) {
+                tracef("wal size < threshold");
 		return false;
 	}
 
@@ -203,6 +219,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 		if (rv == SQLITE_BUSY) {
 			/* There's a reader. Let's postpone the checkpoint
 			 * for now. */
+                        tracef("busy reader");
 			return false;
 		}
 
@@ -219,11 +236,13 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	command.filename = l->db->filename;
 	rv = command__encode(COMMAND_CHECKPOINT, &command, &buf);
 	if (rv != 0) {
+                tracef("encode failed %d", rv);
 		goto abort;
 	}
 
 	rv = raft_apply(l->raft, &l->apply, &buf, 1, leaderCheckpointApplyCb);
 	if (rv != 0) {
+                tracef("raft_apply failed %d", rv);
 		goto abort_after_command_encode;
 	}
 
@@ -244,6 +263,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 				int status,
 				void *result)
 {
+        tracef("apply frames cb");
 	struct apply *apply = req->data;
 	struct leader *l = apply->leader;
 	if (l == NULL) {
@@ -254,6 +274,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 	(void)result;
 
 	if (status != 0) {
+                tracef("apply frames cb failed status %d", status);
 		sqlite3_vfs *vfs = sqlite3_vfs_find(l->db->config->name);
 		switch (status) {
 			case RAFT_LEADERSHIPLOST:
@@ -318,12 +339,14 @@ static int leaderApplyFrames(struct exec *req,
 
 	apply = raft_malloc(sizeof *req);
 	if (apply == NULL) {
+                tracef("malloc");
 		rv = DQLITE_NOMEM;
 		goto err;
 	}
 
 	rv = command__encode(COMMAND_FRAMES, &c, &buf);
 	if (rv != 0) {
+                tracef("encode %d", rv);
 		goto err_after_apply_alloc;
 	}
 
@@ -333,6 +356,7 @@ static int leaderApplyFrames(struct exec *req,
 
 	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
 	if (rv != 0) {
+                tracef("raft apply failed %d", rv);
 		goto err_after_command_encode;
 	}
 
@@ -364,6 +388,7 @@ static void leaderExecV2(struct exec *req)
 
 	rv = VfsPoll(vfs, l->db->filename, &frames, &n);
 	if (rv != 0 || n == 0) {
+                tracef("vfs poll");
 		goto finish;
 	}
 
@@ -382,6 +407,7 @@ static void leaderExecV2(struct exec *req)
 finish:
 	l->exec->done = true;
 	if (rv != 0) {
+                tracef("exec v2 failed %d", rv);
 		l->exec->status = rv;
 	}
 	maybeExecDone(l->exec);
@@ -389,6 +415,7 @@ finish:
 
 static void execBarrierCb(struct barrier *barrier, int status)
 {
+        tracef("exec barrier cb status %d", status);
 	struct exec *req = barrier->data;
 	struct leader *l = req->leader;
 	if (status != 0) {
@@ -405,8 +432,10 @@ int leader__exec(struct leader *l,
 		 sqlite3_stmt *stmt,
 		 exec_cb cb)
 {
+        tracef("leader exec");
 	int rv;
 	if (l->exec != NULL) {
+                tracef("busy");
 		return SQLITE_BUSY;
 	}
 	l->exec = req;
@@ -426,6 +455,7 @@ int leader__exec(struct leader *l,
 
 static void raftBarrierCb(struct raft_barrier *req, int status)
 {
+        tracef("raft barrier cb status %d", status);
 	struct barrier *barrier = req->data;
 	int rv = 0;
 	if (status != 0) {
@@ -440,8 +470,10 @@ static void raftBarrierCb(struct raft_barrier *req, int status)
 
 int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
 {
+        tracef("leader barrier");
 	int rv;
 	if (!needsBarrier(l)) {
+                tracef("not needed");
 		cb(barrier, 0);
 		return 0;
 	}
@@ -450,6 +482,7 @@ int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
 	barrier->req.data = barrier;
 	rv = raft_barrier(l->raft, &barrier->req, raftBarrierCb);
 	if (rv != 0) {
+                tracef("raft barrier failed %d", rv);
 		return rv;
 	}
 	return 0;

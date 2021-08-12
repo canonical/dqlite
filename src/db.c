@@ -5,6 +5,7 @@
 #include "./lib/assert.h"
 
 #include "db.h"
+#include "tracing.h"
 
 /* Open a SQLite connection and set it to follower mode. */
 static int open_follower_conn(const char *filename,
@@ -14,6 +15,7 @@ static int open_follower_conn(const char *filename,
 
 void db__init(struct db *db, struct config *config, const char *filename)
 {
+        tracef("db init %s", filename);
 	db->config = config;
 	db->filename = sqlite3_malloc((int)(strlen(filename) + 1));
 	assert(db->filename != NULL); /* TODO: return an error instead */

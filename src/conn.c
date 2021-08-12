@@ -1,6 +1,7 @@
 #include "conn.h"
 #include "message.h"
 #include "request.h"
+#include "tracing.h"
 #include "transport.h"
 #include "protocol.h"
 
@@ -23,6 +24,7 @@ static void write_cb(struct transport *transport, int status)
 	bool finished;
 	int rv;
 	if (status != 0) {
+                tracef("write cb status %d", status);
 		goto abort;
 	}
 
@@ -58,10 +60,12 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 	/* Ignore results firing after we started closing. TODO: instead, we
 	 * should make gateway__close() asynchronous. */
 	if (c->closed) {
+                tracef("gateway handle cb closed");
 		return;
 	}
 
 	if (status != 0) {
+                tracef("gateway handle cb closed status %d", status);
 		goto abort;
 	}
 
@@ -81,6 +85,7 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 
 	rv = transport__write(&c->transport, &buf, write_cb);
 	if (rv != 0) {
+                tracef("transport write failed %d", rv);
 		goto abort;
 	}
 	return;
@@ -102,8 +107,10 @@ static void raft_connect(struct conn *c, struct cursor *cursor)
 {
 	struct request_connect request;
 	int rv;
+        tracef("raft_connect");
 	rv = request_connect__decode(cursor, &request);
 	if (rv != 0) {
+                tracef("request connect decode failed %d", rv);
 		conn__stop(c);
 		return;
 	}
@@ -122,7 +129,8 @@ static void read_request_cb(struct transport *transport, int status)
 	int rv;
 
 	if (status != 0) {
-		// errorf(c->logger, "read error");
+                tracef("read error %d", status);
+		//errorf(c->logger, "read error");
 		conn__stop(c);
 		return;
 	}
@@ -142,6 +150,7 @@ static void read_request_cb(struct transport *transport, int status)
 	rv = gateway__handle(&c->gateway, &c->handle, c->request.type, &cursor,
 			     &c->write, gateway_handle_cb);
 	if (rv != 0) {
+                tracef("read gateway handle error %d", rv);
 		conn__stop(c);
 	}
 }
@@ -153,10 +162,12 @@ static int read_request(struct conn *c)
 	int rv;
 	rv = init_read(c, &buf, c->request.words * 8);
 	if (rv != 0) {
+                tracef("init read failed %d", rv);
 		return rv;
 	}
 	rv = transport__read(&c->transport, &buf, read_request_cb);
 	if (rv != 0) {
+                tracef("transport read failed %d", rv);
 		return rv;
 	}
 	return 0;
@@ -170,6 +181,7 @@ static void read_message_cb(struct transport *transport, int status)
 
 	if (status != 0) {
 		// errorf(c->logger, "read error");
+                tracef("read error %d", status);
 		conn__stop(c);
 		return;
 	}
@@ -182,6 +194,7 @@ static void read_message_cb(struct transport *transport, int status)
 
 	rv = read_request(c);
 	if (rv != 0) {
+                tracef("read request error %d", rv);
 		conn__stop(c);
 		return;
 	}
@@ -194,10 +207,12 @@ static int read_message(struct conn *c)
 	int rv;
 	rv = init_read(c, &buf, message__sizeof(&c->request));
 	if (rv != 0) {
+                tracef("init read failed %d", rv);
 		return rv;
 	}
 	rv = transport__read(&c->transport, &buf, read_message_cb);
 	if (rv != 0) {
+                tracef("transport read failed %d", rv);
 		return rv;
 	}
 	return 0;
@@ -211,6 +226,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 
 	if (status != 0) {
 		// errorf(c->logger, "read error");
+                tracef("read error %d", status);
 		goto abort;
 	}
 
@@ -225,6 +241,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 		/* c->protocol); */
 		/* TODO: instead of closing the connection we should return
 		 * error messages */
+                tracef("unknown protocol version %lx", c->protocol);
 		goto abort;
 	}
 	c->gateway.protocol = c->protocol;
@@ -246,10 +263,12 @@ static int read_protocol(struct conn *c)
 	int rv;
 	rv = init_read(c, &buf, sizeof c->protocol);
 	if (rv != 0) {
+                tracef("init read failed %d", rv);
 		return rv;
 	}
 	rv = transport__read(&c->transport, &buf, read_protocol_cb);
 	if (rv != 0) {
+                tracef("transport read failed %d", rv);
 		return rv;
 	}
 	return 0;
@@ -266,8 +285,10 @@ int conn__start(struct conn *c,
 {
 	int rv;
 	(void)loop;
+        tracef("conn start");
 	rv = transport__init(&c->transport, stream);
 	if (rv != 0) {
+                tracef("conn start - transport init failed %d", rv);
 		goto err;
 	}
 	c->config = config;
@@ -304,6 +325,7 @@ err:
 
 void conn__stop(struct conn *c)
 {
+        tracef("conn stop");
 	if (c->closed) {
 		return;
 	}

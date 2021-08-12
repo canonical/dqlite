@@ -13,6 +13,7 @@
 #include "lib/assert.h"
 
 #include "format.h"
+#include "tracing.h"
 #include "vfs.h"
 
 /* Byte order */
@@ -2080,11 +2081,13 @@ static int vfsInit(struct sqlite3_vfs *vfs, const char *name)
 
 int VfsInit(struct sqlite3_vfs *vfs, const char *name)
 {
+	tracef("vfs init");
 	return vfsInit(vfs, name);
 }
 
 void VfsClose(struct sqlite3_vfs *vfs)
 {
+	tracef("vfs close");
 	struct vfs *v = vfs->pAppData;
 	vfsDestroy(v);
 	sqlite3_free(v);
@@ -2139,6 +2142,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 	    dqlite_vfs_frame **frames,
 	    unsigned *n)
 {
+	tracef("vfs poll filename:%s", filename);
 	struct vfs *v;
 	struct vfsDatabase *database;
 	struct vfsShm *shm;
@@ -2149,6 +2153,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 	database = vfsDatabaseLookup(v, filename);
 
 	if (database == NULL) {
+		tracef("not found");
 		return DQLITE_ERROR;
 	}
 
@@ -2163,6 +2168,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 
 	rv = vfsWalPoll(wal, frames, n);
 	if (rv != 0) {
+		tracef("wal poll failed %d", rv);
 		return rv;
 	}
 
@@ -2170,6 +2176,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 	if (*n > 0) {
 		rv = vfsShmLock(shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
 		if (rv != 0) {
+			tracef("shm lock failed %d", rv);
 			return rv;
 		}
 		vfsAmendWalIndexHeader(database);
@@ -2346,6 +2353,7 @@ int VfsApply(sqlite3_vfs *vfs,
 	     unsigned long *page_numbers,
 	     void *frames)
 {
+	tracef("vfs apply filename %s n %u", filename, n);
 	struct vfs *v;
 	struct vfsDatabase *database;
 	struct vfsWal *wal;
@@ -2369,6 +2377,7 @@ int VfsApply(sqlite3_vfs *vfs,
 
 	rv = vfsWalAppend(wal, database->n_pages, n, page_numbers, frames);
 	if (rv != 0) {
+		tracef("wal append failed rv:%d n_pages:%u n:%u", rv, database->n_pages, n);
 		return rv;
 	}
 
@@ -2395,6 +2404,7 @@ int VfsApply(sqlite3_vfs *vfs,
 
 int VfsAbort(sqlite3_vfs *vfs, const char *filename)
 {
+	tracef("vfs abort filename %s", filename);
 	struct vfs *v;
 	struct vfsDatabase *database;
 	int rv;
@@ -2404,6 +2414,7 @@ int VfsAbort(sqlite3_vfs *vfs, const char *filename)
 
 	rv = vfsShmUnlock(&database->shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
 	if (rv != 0) {
+		tracef("shm unlock failed %d", rv);
 		return rv;
 	}
 
@@ -2465,6 +2476,7 @@ static void vfsWalSnapshot(struct vfsWal *w, uint8_t **cursor)
 
 int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
 {
+	tracef("vfs snapshot filename %s", filename);
 	struct vfs *v;
 	struct vfsDatabase *database;
 	struct vfsWal *wal;
@@ -2474,12 +2486,14 @@ int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
 	database = vfsDatabaseLookup(v, filename);
 
 	if (database == NULL) {
+		tracef("not found");
 		*data = NULL;
 		*n = 0;
 		return 0;
 	}
 
 	if (database->n_pages != vfsDatabaseGetNumberOfPages(database)) {
+		tracef("corrupt");
 		return SQLITE_CORRUPT;
 	}
 
@@ -2489,6 +2503,7 @@ int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
 	/* TODO: we should fix the tests and use sqlite3_malloc instead. */
 	*data = raft_malloc(*n);
 	if (*data == NULL) {
+		tracef("malloc");
 		return DQLITE_NOMEM;
 	}
 
@@ -2621,6 +2636,7 @@ int VfsRestore(sqlite3_vfs *vfs,
 	       const void *data,
 	       size_t n)
 {
+        tracef("vfs restore filename %s size %ld", filename, n);
 	struct vfs *v;
 	struct vfsDatabase *database;
 	struct vfsWal *wal;
@@ -2637,12 +2653,14 @@ int VfsRestore(sqlite3_vfs *vfs,
 	/* Truncate any existing content. */
 	rv = vfsWalTruncate(wal, 0);
 	if (rv != 0) {
+        	tracef("wal truncate failed %d", rv);
 		return rv;
 	}
 
 	/* Restore the content of the main database and of the WAL. */
 	rv = vfsDatabaseRestore(database, data, n);
 	if (rv != 0) {
+        	tracef("database restore failed %d", rv);
 		return rv;
 	}
 
@@ -2651,6 +2669,7 @@ int VfsRestore(sqlite3_vfs *vfs,
 
 	rv = vfsWalRestore(wal, data + offset, n - offset, page_size);
 	if (rv != 0) {
+        	tracef("wal restore failed %d", rv);
 		return rv;
 	}
 

@@ -31,6 +31,7 @@ libdqlite_la_SOURCES = \
   src/response.c \
   src/server.c \
   src/stmt.c \
+  src/tracing.c \
   src/transport.c \
   src/translate.c \
   src/tuple.c \

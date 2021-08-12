@@ -57,6 +57,11 @@ sudo apt-get update
 sudo apt-get install libdqlite-dev
 ```
 
+Usage Notes
+-----------
+
+Detailed tracing will be enabled when the environment variable `LIBDQLITE_TRACE` is set before startup.
+
 Build
 -----
 
