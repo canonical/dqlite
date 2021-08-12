@@ -5,6 +5,7 @@
 
 #include "command.h"
 #include "fsm.h"
+#include "tracing.h"
 #include "vfs.h"
 
 struct fsm
@@ -21,6 +22,7 @@ struct fsm
 
 static int apply_open(struct fsm *f, const struct command_open *c)
 {
+        tracef("fsm apply open");
 	(void)f;
 	(void)c;
 	return 0;
@@ -61,6 +63,7 @@ static int add_pending_pages(struct fsm *f,
 
 static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
+        tracef("fsm apply frames");
 	struct db *db;
 	sqlite3_vfs *vfs;
 	unsigned long *page_numbers;
@@ -70,6 +73,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 	rv = registry__db_get(f->registry, c->filename, &db);
 	if (rv != 0) {
+                tracef("db get failed %d", rv);
 		return rv;
 	}
 
@@ -83,6 +87,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	if (!exists) {
 		rv = db__open_follower(db);
 		if (rv != 0) {
+                        tracef("open follower failed %d", rv);
 			return rv;
 		}
 		sqlite3_close(db->follower);
@@ -91,6 +96,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 	rv = command_frames__page_numbers(c, &page_numbers);
 	if (rv != 0) {
+                tracef("page numbers failed %d", rv);
 		return rv;
 	}
 
@@ -106,12 +112,14 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 					       c->frames.n_pages,
 					       db->config->page_size);
 			if (rv != 0) {
+                                tracef("malloc");
 				return DQLITE_NOMEM;
 			}
 			rv =
 			    VfsApply(vfs, db->filename, f->pending.n_pages,
 				     f->pending.page_numbers, f->pending.pages);
 			if (rv != 0) {
+                                tracef("VfsApply failed %d", rv);
 				return rv;
 			}
 			sqlite3_free(f->pending.page_numbers);
@@ -123,6 +131,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 			rv = VfsApply(vfs, db->filename, c->frames.n_pages,
 				      page_numbers, pages);
 			if (rv != 0) {
+                                tracef("VfsApply failed %d", rv);
 				return rv;
 			}
 		}
@@ -131,6 +140,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		    add_pending_pages(f, page_numbers, pages, c->frames.n_pages,
 				      db->config->page_size);
 		if (rv != 0) {
+                        tracef("add pending pages failed %d", rv);
 			return DQLITE_NOMEM;
 		}
 	}
@@ -142,6 +152,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 static int apply_undo(struct fsm *f, const struct command_undo *c)
 {
+        tracef("apply undo %lx", c->tx_id);
 	(void)c;
 
 	if (f->pending.n_pages == 0) {
@@ -159,6 +170,7 @@ static int apply_undo(struct fsm *f, const struct command_undo *c)
 
 static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 {
+        tracef("apply checkpoint");
 	struct db *db;
 	struct sqlite3_file *file;
 	int size;
@@ -171,6 +183,7 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 	/* Use a new connection to force re-opening the WAL. */
 	rv = db__open_follower(db);
 	if (rv != 0) {
+                tracef("open failed %d", rv);
 		return rv;
 	}
 
@@ -187,6 +200,7 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 	rv = sqlite3_wal_checkpoint_v2(
 	    db->follower, "main", SQLITE_CHECKPOINT_TRUNCATE, &size, &ckpt);
 	if (rv != 0) {
+                tracef("sqlite wal checkpoint failed %d", rv);
 		return rv;
 	}
 
@@ -205,6 +219,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 		      const struct raft_buffer *buf,
 		      void **result)
 {
+        tracef("fsm apply");
 	struct fsm *f = fsm->data;
 	int type;
 	void *command;
@@ -431,6 +446,7 @@ err:
 
 static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 {
+        tracef("fsm restore");
 	struct fsm *f = fsm->data;
 	struct cursor cursor = {buf->base, buf->len};
 	struct snapshotHeader header;
@@ -439,15 +455,18 @@ static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 
 	rv = snapshotHeader__decode(&cursor, &header);
 	if (rv != 0) {
+                tracef("decode failed %d", rv);
 		return rv;
 	}
 	if (header.format != SNAPSHOT_FORMAT) {
+                tracef("bad format");
 		return RAFT_MALFORMED;
 	}
 
 	for (i = 0; i < header.n; i++) {
 		rv = decodeDatabase(f, &cursor);
 		if (rv != 0) {
+                        tracef("decode failed");
 			return rv;
 		}
 	}
@@ -461,6 +480,7 @@ int fsm__init(struct raft_fsm *fsm,
 	      struct config *config,
 	      struct registry *registry)
 {
+        tracef("fsm init");
 	struct fsm *f = raft_malloc(sizeof *f);
 
 	if (f == NULL) {
@@ -484,6 +504,7 @@ int fsm__init(struct raft_fsm *fsm,
 
 void fsm__close(struct raft_fsm *fsm)
 {
+        tracef("fsm close");
 	struct fsm *f = fsm->data;
 	raft_free(f);
 }
