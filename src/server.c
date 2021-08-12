@@ -10,6 +10,7 @@
 #include "lib/assert.h"
 #include "logger.h"
 #include "protocol.h"
+#include "tracing.h"
 #include "translate.h"
 #include "transport.h"
 #include "utils.h"
@@ -697,6 +698,7 @@ int dqlite_node_start(dqlite_node *t)
 {
 	int rv;
 
+	dqliteTracingMaybeEnable(true);
 	rv = maybeBootstrap(t, t->config.id, t->config.address);
 	if (rv != 0) {
 		goto err;
