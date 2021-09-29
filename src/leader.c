@@ -195,7 +195,7 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 
 	/* Check if the size of the WAL is beyond the threshold. */
 	if (pages < l->db->config->checkpoint_threshold) {
-                tracef("wal size < threshold");
+	        tracef("wal size (%u) < threshold (%u)", pages, l->db->config->checkpoint_threshold);
 		return false;
 	}
 

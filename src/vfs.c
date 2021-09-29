@@ -1543,6 +1543,8 @@ static int vfsShmLock(struct vfsShm *s, int ofst, int n, int flags)
 		/* No shared or exclusive lock must be held in the region. */
 		for (i = ofst; i < ofst + n; i++) {
 			if (s->shared[i] > 0 || s->exclusive[i] > 0) {
+			        tracef("EXCLUSIVE lock contention ofst:%d n:%d exclusive[%d]=%d shared[%d]=%d",
+			                ofst, n, i, s->exclusive[i], i, s->shared[i]);
 				return SQLITE_BUSY;
 			}
 		}
@@ -1555,6 +1557,8 @@ static int vfsShmLock(struct vfsShm *s, int ofst, int n, int flags)
 		/* No exclusive lock must be held in the region. */
 		for (i = ofst; i < ofst + n; i++) {
 			if (s->exclusive[i] > 0) {
+			        tracef("SHARED lock contention ofst:%d n:%d exclusive[%d]=%d shared[%d]=%d",
+			                ofst, n, i, s->exclusive[i], i, s->shared[i]);
 				return SQLITE_BUSY;
 			}
 		}
@@ -1607,10 +1611,12 @@ static void vfsWalRollbackIfUncommitted(struct vfsWal *w)
 		return;
 	}
 
+        tracef("rollback n_tx:%d", w->n_tx);
 	last = w->tx[w->n_tx - 1];
 	commit = vfsFrameGetDatabaseSize(last);
 
 	if (commit > 0) {
+                tracef("rollback commit:%u", commit);
 		return;
 	}
 
