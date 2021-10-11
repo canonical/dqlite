@@ -34,7 +34,7 @@ void gateway__close(struct gateway *g)
         tracef("gateway close");
 	stmt__registry_close(&g->stmts);
 	if (g->leader != NULL) {
-		if (g->stmt != NULL) {
+		if (g->stmt != NULL && g->leader->inflight != NULL) {
 			struct raft_apply *req = &g->leader->inflight->req;
 			req->cb(req, RAFT_SHUTDOWN, NULL);
 			assert(g->req == NULL);
