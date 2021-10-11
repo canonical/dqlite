@@ -564,7 +564,9 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	if (rv != 0) {
                 tracef("barrier failed %d", rv);
 		g->req = NULL;
+		sqlite3_finalize(g->stmt);
 		g->stmt = NULL;
+		g->stmt_finalize = false;
 		return rv;
 	}
 	return 0;
