@@ -445,6 +445,7 @@ int leader__exec(struct leader *l,
 	req->cb = cb;
 	req->done = false;
 	req->barrier.data = req;
+	req->barrier.cb = NULL;
 
 	rv = leader__barrier(l, &req->barrier, execBarrierCb);
 	if (rv != 0) {
@@ -465,7 +466,13 @@ static void raftBarrierCb(struct raft_barrier *req, int status)
 			rv = SQLITE_ERROR;
 		}
 	}
-	barrier->cb(barrier, rv);
+	barrier_cb cb = barrier->cb;
+	if (cb == NULL) {
+		tracef("barrier cb already fired");
+		return;
+	}
+	barrier->cb = NULL;
+	cb(barrier, rv);
 }
 
 int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
@@ -483,6 +490,9 @@ int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
 	rv = raft_barrier(l->raft, &barrier->req, raftBarrierCb);
 	if (rv != 0) {
                 tracef("raft barrier failed %d", rv);
+		barrier->req.data = NULL;
+		barrier->leader = NULL;
+		barrier->cb = NULL;
 		return rv;
 	}
 	return 0;

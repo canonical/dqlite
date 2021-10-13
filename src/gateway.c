@@ -26,23 +26,44 @@ void gateway__init(struct gateway *g,
 	g->sql = NULL;
 	stmt__registry_init(&g->stmts);
 	g->barrier.data = g;
+	g->barrier.cb = NULL;
+	g->barrier.leader = NULL;
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 }
 
 void gateway__close(struct gateway *g)
 {
         tracef("gateway close");
-	stmt__registry_close(&g->stmts);
-	if (g->leader != NULL) {
-		if (g->stmt != NULL && g->leader->inflight != NULL) {
-			struct raft_apply *req = &g->leader->inflight->req;
-			req->cb(req, RAFT_SHUTDOWN, NULL);
-			assert(g->req == NULL);
-			assert(g->stmt == NULL);
-		}
-		leader__close(g->leader);
-		sqlite3_free(g->leader);
-	}
+	if (g->leader == NULL) {
+	        stmt__registry_close(&g->stmts);
+	        return;
+        }
+
+        if (g->stmt != NULL) {
+            if (g->leader->inflight != NULL) {
+                tracef("finish inflight apply request");
+                struct raft_apply *req = &g->leader->inflight->req;
+                req->cb(req, RAFT_SHUTDOWN, NULL);
+                assert(g->req == NULL);
+                assert(g->stmt == NULL);
+            } else if (g->barrier.cb != NULL) {
+                tracef("finish inflight query barrier");
+                /* This is not a typo, g->barrier.req.cb is a wrapper
+                 * around g->barrier.cb and when called, will set g->barrier.cb to NULL.
+                 * */
+                struct raft_barrier *b = &g->barrier.req;
+                b->cb(b, RAFT_SHUTDOWN);
+                assert(g->barrier.cb == NULL);
+            } else if (g->leader->exec != NULL && g->leader->exec->barrier.cb != NULL) {
+                tracef("finish inflight exec barrier");
+                struct raft_barrier *b = &g->leader->exec->barrier.req;
+                b->cb(b, RAFT_SHUTDOWN);
+                assert(g->leader->exec == NULL);
+            }
+        }
+        stmt__registry_close(&g->stmts);
+        leader__close(g->leader);
+        sqlite3_free(g->leader);
 }
 
 /* Declare a request struct and a response struct of the appropriate types and

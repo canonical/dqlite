@@ -310,13 +310,13 @@ TEST_CASE(exec, result, NULL)
 	unsigned rows_affected;
 	(void)params;
 	PREPARE("BEGIN", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 2);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 3);
 	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 5);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 6);
 	PREPARE("INSERT INTO test (n) VALUES(123)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 2);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 3);
 	PREPARE("COMMIT", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 5);
+	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 6);
 	munit_assert_int(last_insert_id, ==, 1);
 	munit_assert_int(rows_affected, ==, 1);
 	return MUNIT_OK;
