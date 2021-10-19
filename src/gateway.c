@@ -382,7 +382,7 @@ done:
 
 static void query_barrier_cb(struct barrier *barrier, int status)
 {
-        tracef("query barrier cb");
+	tracef("query barrier cb status:%d", status);
 	struct gateway *g = barrier->data;
 	struct handle *handle = g->req;
 	sqlite3_stmt *stmt = g->stmt;
@@ -394,6 +394,10 @@ static void query_barrier_cb(struct barrier *barrier, int status)
 	g->req = NULL;
 
 	if (status != 0) {
+		if (g->stmt_finalize) {
+			sqlite3_finalize(stmt);
+			g->stmt_finalize = false;
+		}
 		failure(handle, status, "barrier error");
 		return;
 	}
