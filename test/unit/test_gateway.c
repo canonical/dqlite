@@ -218,6 +218,16 @@ static void handleCb(struct handle *req, int status, int type)
 		HANDLE(EXEC_SQL);                 \
 	}
 
+/* Submit a request to execute the given statement. */
+#define QUERY_SQL_SUBMIT(SQL)                       \
+	{                                           \
+		struct request_query_sql query_sql; \
+		query_sql.db_id = 0;                \
+		query_sql.sql = SQL;                \
+		ENCODE(&query_sql, query_sql);      \
+		HANDLE(QUERY_SQL);                  \
+	}
+
 /* Wait for the last request to complete */
 #define WAIT                                            \
 	{                                               \
@@ -1167,6 +1177,26 @@ TEST_CASE(query, barrierInFlightQuery, NULL)
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
+	return MUNIT_OK;
+}
+
+/* Submit a query sql request right after the server has been re-elected and needs
+ * to catch up with logs, but close early */
+TEST_CASE(query, barrierInFlightQuerySql, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+
+	PREPARE("INSERT INTO test(n) VALUES(1)");
+	EXEC_SUBMIT(stmt_id);
+	CLUSTER_DEPOSE;
+	ASSERT_CALLBACK(0, FAILURE);
+
+	/* Re-elect ourselves and issue a query request */
+	CLUSTER_ELECT(0);
+
+	QUERY_SQL_SUBMIT("SELECT n FROM test");
 	return MUNIT_OK;
 }
 

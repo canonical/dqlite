@@ -230,6 +230,16 @@ int clientSendQuery(struct client *c, unsigned stmt_id)
 	return 0;
 }
 
+int clientSendQuerySql(struct client *c, const char *sql)
+{
+	tracef("client send query sql fd %d sql %s", c->fd, sql);
+	struct request_query_sql request;
+	request.db_id = c->db_id;
+	request.sql = sql;
+	REQUEST(query_sql, QUERY_SQL);
+	return 0;
+}
+
 int clientRecvRows(struct client *c, struct rows *rows)
 {
 	tracef("client recv rows fd %d", c->fd);
