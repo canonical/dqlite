@@ -181,7 +181,8 @@ static int ipParse(const char *address, struct sockaddr_in *addr)
 	int rv;
 
 	/* TODO: turn this poor man parsing into proper one */
-	strcpy(buf, address);
+	strncpy(buf, address, sizeof(buf)-1);
+	buf[sizeof(buf)-1] = '\0';
 	host = strtok(buf, colon);
 	port = strtok(NULL, ":");
 	if (port == NULL) {
