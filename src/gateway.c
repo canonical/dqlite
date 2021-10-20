@@ -792,7 +792,7 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	struct gateway *g = req->gateway;
 	sqlite3_vfs *vfs;
 	void *cur;
-	char filename[1024];
+	char filename[1024] = {0};
 	void *data;
 	size_t n;
 	uint8_t *page;
@@ -847,8 +847,13 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 		goto out_free_data;
 	}
 
-	strcpy(filename, request.filename);
-	strcat(filename, "-wal");
+	/* filename is zero inited and initially we allow only writing 1024 - 4
+	 * - 1 bytes to it, so after strncpy filename will be zero-terminated
+	 * and will not have overflowed. strcat adds the 4 byte suffix and
+	 * also zero terminates the resulting string. */
+	const char * wal_suffix = "-wal";
+	strncpy(filename, request.filename, sizeof(filename) - strlen(wal_suffix) - 1);
+	strcat(filename, wal_suffix);
 	rv = dumpFile(filename, wal, n_wal, req->buffer);
 	if (rv != 0) {
                 tracef("wal dump failed");
