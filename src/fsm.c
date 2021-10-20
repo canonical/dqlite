@@ -112,14 +112,16 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 					       c->frames.n_pages,
 					       db->config->page_size);
 			if (rv != 0) {
-                                tracef("malloc");
+				tracef("malloc");
+				sqlite3_free(page_numbers);
 				return DQLITE_NOMEM;
 			}
 			rv =
 			    VfsApply(vfs, db->filename, f->pending.n_pages,
 				     f->pending.page_numbers, f->pending.pages);
 			if (rv != 0) {
-                                tracef("VfsApply failed %d", rv);
+				tracef("VfsApply failed %d", rv);
+				sqlite3_free(page_numbers);
 				return rv;
 			}
 			sqlite3_free(f->pending.page_numbers);
@@ -131,7 +133,8 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 			rv = VfsApply(vfs, db->filename, c->frames.n_pages,
 				      page_numbers, pages);
 			if (rv != 0) {
-                                tracef("VfsApply failed %d", rv);
+				tracef("VfsApply failed %d", rv);
+				sqlite3_free(page_numbers);
 				return rv;
 			}
 		}
@@ -140,13 +143,13 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		    add_pending_pages(f, page_numbers, pages, c->frames.n_pages,
 				      db->config->page_size);
 		if (rv != 0) {
-                        tracef("add pending pages failed %d", rv);
+			tracef("add pending pages failed %d", rv);
+			sqlite3_free(page_numbers);
 			return DQLITE_NOMEM;
 		}
 	}
 
 	sqlite3_free(page_numbers);
-
 	return 0;
 }
 

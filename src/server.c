@@ -181,7 +181,8 @@ static int ipParse(const char *address, struct sockaddr_in *addr)
 	int rv;
 
 	/* TODO: turn this poor man parsing into proper one */
-	strcpy(buf, address);
+	strncpy(buf, address, sizeof(buf)-1);
+	buf[sizeof(buf)-1] = '\0';
 	host = strtok(buf, colon);
 	port = strtok(NULL, ":");
 	if (port == NULL) {
@@ -274,7 +275,8 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 	}
 
 	if (domain == AF_INET) {
-		t->bind_address = sqlite3_malloc((int)strlen(address));
+		int sz = ((int)strlen(address)) + 1; /* Room for '\0' */
+		t->bind_address = sqlite3_malloc(sz);
 		if (t->bind_address == NULL) {
 			close(fd);
 			return DQLITE_NOMEM;

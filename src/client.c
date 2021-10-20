@@ -291,6 +291,7 @@ int clientRecvRows(struct client *c, struct rows *rows)
 		    sqlite3_malloc((int)(column_count * sizeof *row->values));
 		if (row->values == NULL) {
 			tracef("malloc");
+			sqlite3_free(row);
 			return DQLITE_NOMEM;
 		}
 		row->next = NULL;
@@ -298,12 +299,16 @@ int clientRecvRows(struct client *c, struct rows *rows)
 					 &cursor);
 		if (rv != 0) {
 			tracef("decode init error %d", rv);
+			sqlite3_free(row->values);
+			sqlite3_free(row);
 			return DQLITE_ERROR;
 		}
 		for (i = 0; i < rows->column_count; i++) {
 			rv = tuple_decoder__next(&decoder, &row->values[i]);
 			if (rv != 0) {
 				tracef("decode error %d", rv);
+				sqlite3_free(row->values);
+				sqlite3_free(row);
 				return DQLITE_ERROR;
 			}
 		}

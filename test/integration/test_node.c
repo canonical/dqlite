@@ -37,6 +37,24 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	return f;
 }
 
+static void *setUpInet(const MunitParameter params[], void *user_data)
+{
+	struct fixture *f = munit_malloc(sizeof *f);
+	int rv;
+	test_heap_setup(params, user_data);
+	test_sqlite_setup(params);
+
+	f->dir = test_dir_setup();
+
+	rv = dqlite_node_create(1, "1", f->dir, &f->node);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_set_bind_address(f->node, "127.0.0.1:9001");
+	munit_assert_int(rv, ==, 0);
+
+	return f;
+}
+
 /* Tests if node starts/stops successfully and also performs some memory cleanup */
 static void startStopNode(struct fixture *f)
 {
@@ -82,6 +100,20 @@ SUITE(node);
  ******************************************************************************/
 
 TEST(node, start, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	int rv;
+
+	rv = dqlite_node_start(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	return MUNIT_OK;
+}
+
+TEST(node, startInet, setUpInet, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	int rv;
