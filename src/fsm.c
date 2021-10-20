@@ -66,7 +66,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
         tracef("fsm apply frames");
 	struct db *db;
 	sqlite3_vfs *vfs;
-	unsigned long *page_numbers;
+	unsigned long *page_numbers = NULL;
 	void *pages;
 	int exists;
 	int rv;
@@ -96,7 +96,10 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 	rv = command_frames__page_numbers(c, &page_numbers);
 	if (rv != 0) {
-                tracef("page numbers failed %d", rv);
+		if (page_numbers != NULL) {
+			sqlite3_free(page_numbers);
+		}
+		tracef("page numbers failed %d", rv);
 		return rv;
 	}
 
