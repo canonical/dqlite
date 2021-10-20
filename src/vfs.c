@@ -2611,8 +2611,8 @@ static int vfsWalRestore(struct vfsWal *w,
 			unsigned j;
 			for (j = 0; j < i; j++) {
 				vfsFrameDestroy(frames[j]);
-				goto oom_after_frames_alloc;
 			}
+			goto oom_after_frames_alloc;
 		}
 		frames[i] = frame;
 
