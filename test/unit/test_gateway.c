@@ -993,6 +993,16 @@ TEST_CASE(query, one_row, NULL)
 	return MUNIT_OK;
 }
 
+/* Calculate max amount of rows that can fit in 1 response buffer.
+ * A response buffer has _SC_PAGESIZE size.
+ * A response consists of n tuples each row_sz in size
+ * and an 8B EOF marker. */
+static unsigned max_rows_buffer(unsigned tuple_row_sz) {
+	unsigned buf_sz = sysconf(_SC_PAGESIZE);
+	unsigned eof_sz = 8;
+	return (buf_sz - eof_sz) / tuple_row_sz;
+}
+
 /* Successfully query that yields a large number of rows that need to be split
  * into several reponses. */
 TEST_CASE(query, large, NULL)
@@ -1006,7 +1016,12 @@ TEST_CASE(query, large, NULL)
 	bool finished;
 	(void)params;
 	EXEC("BEGIN");
-	for (i = 0; i < 500; i++) {
+
+	/* 16 = 8B header + 8B value (int) */
+	unsigned n_rows_buffer = max_rows_buffer(16);
+	/* Insert 1 less than 2 response buffers worth of rows, otherwise we need
+	 * 3 responses, of which the last one contains no rows. */
+	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
 		EXEC("INSERT INTO test(n) VALUES(123)");
 	}
 	EXEC("COMMIT");
@@ -1023,7 +1038,8 @@ TEST_CASE(query, large, NULL)
 	text__decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 
-	for (i = 0; i < 255; i++) {
+	/* First response contains max amount of rows */
+	for (i = 0; i < n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
 		munit_assert_int(value.integer, ==, 123);
@@ -1042,7 +1058,8 @@ TEST_CASE(query, large, NULL)
 	text__decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 
-	for (i = 0; i < 245; i++) {
+	/* Second, and last, response contains 1 less than maximum amount */
+	for (i = 0; i < n_rows_buffer - 1; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
 		munit_assert_int(value.integer, ==, 123);
@@ -1051,6 +1068,8 @@ TEST_CASE(query, large, NULL)
 	DECODE(&f->response, rows);
 	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
 
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
 	return MUNIT_OK;
 }
 
@@ -1096,7 +1115,11 @@ TEST_CASE(query, interrupt, NULL)
 	struct value value;
 	(void)params;
 	EXEC("BEGIN");
-	for (i = 0; i < 500; i++) {
+
+	/* 16 = 8B header + 8B value (int) */
+	unsigned n_rows_buffer = max_rows_buffer(16);
+	/* Insert 2 response buffers worth of rows */
+	for (i = 0; i < 2 * n_rows_buffer; i++) {
 		EXEC("INSERT INTO test(n) VALUES(123)");
 	}
 	EXEC("COMMIT");
@@ -1113,7 +1136,7 @@ TEST_CASE(query, interrupt, NULL)
 	text__decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 
-	for (i = 0; i < 255; i++) {
+	for (i = 0; i < n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
 		munit_assert_int(value.integer, ==, 123);

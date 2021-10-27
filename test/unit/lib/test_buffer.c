@@ -70,7 +70,7 @@ TEST_CASE(init, n_pages, NULL)
 	struct fixture *f = data;
 	(void)params;
 	ASSERT_N_PAGES(1);
-	munit_assert_int(f->buffer.page_size, ==, 4096);
+	munit_assert_long(f->buffer.page_size, ==, sysconf(_SC_PAGESIZE));
 	return MUNIT_OK;
 }
 
