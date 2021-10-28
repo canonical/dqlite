@@ -92,7 +92,7 @@ integration_test_LDADD = libtest.la libdqlite.la
 if DEBUG_ENABLED
   AM_CFLAGS += -g
 else
-  AM_CFLAGS += -O2
+  AM_CFLAGS += -O2 -DNDEBUG
 endif
 if SANITIZE_ENABLED
   AM_CFLAGS += -fsanitize=address
