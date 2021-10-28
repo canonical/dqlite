@@ -59,6 +59,10 @@ void gateway__close(struct gateway *g)
                 struct raft_barrier *b = &g->leader->exec->barrier.req;
                 b->cb(b, RAFT_SHUTDOWN);
                 assert(g->leader->exec == NULL);
+            } else if (g->req != NULL && g->req->type != DQLITE_REQUEST_QUERY && g->req->type != DQLITE_REQUEST_EXEC) {
+		tracef("finalize exec_sql or query_sql type:%d", g->req->type);
+		sqlite3_finalize(g->stmt);
+		g->stmt = NULL;
             }
         }
         stmt__registry_close(&g->stmts);
