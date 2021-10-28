@@ -479,7 +479,6 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 	struct gateway *g = req->gateway;
 	struct response_result response;
 	const char *tail;
-	sqlite3_stmt *stmt;
 	int rv;
 
 	if (g->sql == NULL || strcmp(g->sql, "") == 0) {
@@ -491,21 +490,20 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 		g->stmt = NULL;
 	}
 
-	rv = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &stmt, &tail);
+	/* g->stmt will be set to NULL by sqlite when an error occurs. */
+	rv = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &g->stmt, &tail);
 	if (rv != SQLITE_OK) {
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto done;
 	}
 
-	if (stmt == NULL) {
+	if (g->stmt == NULL) {
 		goto success;
 	}
 
-	g->stmt = stmt;
-
 	/* TODO: what about bindings for multi-statement SQL text? */
 	if (cursor != NULL) {
-		rv = bind__params(stmt, cursor);
+		rv = bind__params(g->stmt, cursor);
 		if (rv != SQLITE_OK) {
 			failure(req, rv, sqlite3_errmsg(g->leader->conn));
 			goto done_after_prepare;
