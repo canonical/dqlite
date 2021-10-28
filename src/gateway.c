@@ -33,37 +33,44 @@ void gateway__init(struct gateway *g,
 
 void gateway__close(struct gateway *g)
 {
-        tracef("gateway close");
+	tracef("gateway close");
 	if (g->leader == NULL) {
-	        stmt__registry_close(&g->stmts);
-	        return;
-        }
+		stmt__registry_close(&g->stmts);
+		return;
+	}
 
-        if (g->stmt != NULL) {
-            if (g->leader->inflight != NULL) {
-                tracef("finish inflight apply request");
-                struct raft_apply *req = &g->leader->inflight->req;
-                req->cb(req, RAFT_SHUTDOWN, NULL);
-                assert(g->req == NULL);
-                assert(g->stmt == NULL);
-            } else if (g->barrier.cb != NULL) {
-                tracef("finish inflight query barrier");
-                /* This is not a typo, g->barrier.req.cb is a wrapper
-                 * around g->barrier.cb and when called, will set g->barrier.cb to NULL.
-                 * */
-                struct raft_barrier *b = &g->barrier.req;
-                b->cb(b, RAFT_SHUTDOWN);
-                assert(g->barrier.cb == NULL);
-            } else if (g->leader->exec != NULL && g->leader->exec->barrier.cb != NULL) {
-                tracef("finish inflight exec barrier");
-                struct raft_barrier *b = &g->leader->exec->barrier.req;
-                b->cb(b, RAFT_SHUTDOWN);
-                assert(g->leader->exec == NULL);
-            }
-        }
-        stmt__registry_close(&g->stmts);
-        leader__close(g->leader);
-        sqlite3_free(g->leader);
+	if (g->stmt != NULL) {
+		if (g->leader->inflight != NULL) {
+			tracef("finish inflight apply request");
+			struct raft_apply *req = &g->leader->inflight->req;
+			req->cb(req, RAFT_SHUTDOWN, NULL);
+			assert(g->req == NULL);
+			assert(g->stmt == NULL);
+		} else if (g->barrier.cb != NULL) {
+			tracef("finish inflight query barrier");
+			/* This is not a typo, g->barrier.req.cb is a wrapper
+			 * around g->barrier.cb and when called, will set g->barrier.cb to NULL.
+			 * */
+			struct raft_barrier *b = &g->barrier.req;
+			b->cb(b, RAFT_SHUTDOWN);
+			assert(g->barrier.cb == NULL);
+		} else if (g->leader->exec != NULL && g->leader->exec->barrier.cb != NULL) {
+			tracef("finish inflight exec barrier");
+			struct raft_barrier *b = &g->leader->exec->barrier.req;
+			b->cb(b, RAFT_SHUTDOWN);
+			assert(g->leader->exec == NULL);
+		} else if (g->req != NULL && g->req->type != DQLITE_REQUEST_QUERY
+					  && g->req->type != DQLITE_REQUEST_EXEC) {
+			/* Regular exec and query stmt's will be closed when the
+			 * registry is closed below. */
+			tracef("finalize exec_sql or query_sql type:%d", g->req->type);
+			sqlite3_finalize(g->stmt);
+			g->stmt = NULL;
+		}
+	}
+	stmt__registry_close(&g->stmts);
+	leader__close(g->leader);
+	sqlite3_free(g->leader);
 }
 
 /* Declare a request struct and a response struct of the appropriate types and
@@ -479,7 +486,6 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 	struct gateway *g = req->gateway;
 	struct response_result response;
 	const char *tail;
-	sqlite3_stmt *stmt;
 	int rv;
 
 	if (g->sql == NULL || strcmp(g->sql, "") == 0) {
@@ -491,21 +497,20 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 		g->stmt = NULL;
 	}
 
-	rv = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &stmt, &tail);
+	/* g->stmt will be set to NULL by sqlite when an error occurs. */
+	rv = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &g->stmt, &tail);
 	if (rv != SQLITE_OK) {
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto done;
 	}
 
-	if (stmt == NULL) {
+	if (g->stmt == NULL) {
 		goto success;
 	}
 
-	g->stmt = stmt;
-
 	/* TODO: what about bindings for multi-statement SQL text? */
 	if (cursor != NULL) {
-		rv = bind__params(stmt, cursor);
+		rv = bind__params(g->stmt, cursor);
 		if (rv != SQLITE_OK) {
 			failure(req, rv, sqlite3_errmsg(g->leader->conn));
 			goto done_after_prepare;

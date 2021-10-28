@@ -1153,6 +1153,50 @@ TEST_CASE(query, interrupt, NULL)
 	return MUNIT_OK;
 }
 
+/* Close the gateway during a large query. */
+TEST_CASE(query, largeClose, NULL)
+{
+	struct query_fixture *f = data;
+	unsigned i;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	(void)params;
+	EXEC("BEGIN");
+
+	/* 16 = 8B header + 8B value (int) */
+	unsigned n_rows_buffer = max_rows_buffer(16);
+	/* Insert 2 response buffers worth of rows */
+	for (i = 0; i < 2 * n_rows_buffer; i++) {
+		EXEC("INSERT INTO test(n) VALUES(123)");
+	}
+	EXEC("COMMIT");
+
+	PREPARE("SELECT n FROM test");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	for (i = 0; i < n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, 123);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	return MUNIT_OK;
+}
+
 /* Submit a query request right after the server has been re-elected and needs
  * to catch up with logs. */
 TEST_CASE(query, barrier, NULL)
@@ -1386,6 +1430,118 @@ TEST_CASE(query_sql, small, NULL)
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, ROWS);
+	return MUNIT_OK;
+}
+
+/* Exec a SQL query whose result set needs multiple pages. */
+TEST_CASE(query_sql, large, NULL)
+{
+	struct query_sql_fixture *f = data;
+	(void)params;
+	unsigned i;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	EXEC("BEGIN");
+
+	/* 16 = 8B header + 8B value (int) */
+	unsigned n_rows_buffer = max_rows_buffer(16);
+	/* Insert 1 less than 2 response buffers worth of rows, otherwise we need
+	 * 3 responses, of which the last one contains no rows. */
+	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
+		EXEC("INSERT INTO test(n) VALUES(123)");
+	}
+	EXEC("COMMIT");
+
+	f->request.db_id = 0;
+	f->request.sql = "SELECT n FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 0; i < n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, 123);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
+
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* Second, and last, response contains 1 less than maximum amount */
+	for (i = 0; i < n_rows_buffer - 1; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, 123);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+/* Exec a SQL query whose result set needs multiple pages and close before
+ * receiving the full result set. */
+TEST_CASE(query_sql, largeClose, NULL)
+{
+	struct query_sql_fixture *f = data;
+	(void)params;
+	unsigned i;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	EXEC("BEGIN");
+
+	/* 16 = 8B header + 8B value (int) */
+	unsigned n_rows_buffer = max_rows_buffer(16);
+	/* Insert 1 less than 2 response buffers worth of rows, otherwise we need
+	 * 3 responses, of which the last one contains no rows. */
+	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
+		EXEC("INSERT INTO test(n) VALUES(123)");
+	}
+	EXEC("COMMIT");
+
+	f->request.db_id = 0;
+	f->request.sql = "SELECT n FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 0; i < n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, 123);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
 	return MUNIT_OK;
 }
 
