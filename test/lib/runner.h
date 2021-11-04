@@ -22,7 +22,7 @@ extern int _main_suites_n;
 	MunitSuite _main_suites[SUITE__CAP];                               \
 	int _main_suites_n = 0;                                            \
                                                                            \
-	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc + 1)])        \
+	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])            \
 	{                                                                  \
 		MunitSuite suite = {(char *)"", NULL, _main_suites, 1, 0}; \
 		return munit_suite_main(&suite, (void *)NAME, argc, argv); \
