@@ -1,0 +1,50 @@
+name: Build PPA source packages
+on:
+  - push
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - bionic
+          - focal
+          - impish
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Clone the repositories
+      run: |
+          git clone https://github.com/canonical/dqlite
+          git clone https://github.com/canonical/dqlite-ppa -b dqlite --depth 1
+
+    - name: Setup dependencies
+      run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq debhelper devscripts
+
+    - name: Build source package
+      env:
+        DEBFULLNAME: "Github Actions"
+        DEBEMAIL: "noreply@linuxcontainers.org"
+        TARGET: ${{ matrix.target }}
+      run: |
+          cp -R dqlite-ppa/debian dqlite/
+          cd dqlite/
+          VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
+          dch --create \
+            --distribution ${TARGET} \
+            --package dqlite \
+            --newversion ${VERSION}~${TARGET}1 \
+            "Automatic build from Github"
+          debuild -S -sa -us -uc -d
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: debian-${{ matrix.target }}
+        if-no-files-found: error
+        path: |
+          *.buildinfo
+          *.changes
+          *.dsc
+          *.tar.*
