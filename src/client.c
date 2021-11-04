@@ -65,7 +65,7 @@ int clientSendHandshake(struct client *c)
 /* Write out a request. */
 #define REQUEST(LOWER, UPPER)                                       \
 	{                                                           \
-		struct message message;                             \
+		struct message message = {0};                       \
 		size_t n;                                           \
 		size_t n1;                                          \
 		size_t n2;                                          \
@@ -94,7 +94,7 @@ int clientSendHandshake(struct client *c)
 /* Read a response without decoding it. */
 #define READ(LOWER, UPPER)                                          \
 	{                                                           \
-		struct message _message;                            \
+		struct message _message = {0};                      \
 		struct cursor _cursor;                              \
 		size_t _n;                                          \
 		void *_p;                                           \
