@@ -3,6 +3,8 @@
 #ifndef TEST_RUNNER_H
 #define TEST_RUNNER_H
 
+#include <signal.h>
+
 #include "munit.h"
 
 /* Top-level suites array declaration.
@@ -24,6 +26,7 @@ extern int _main_suites_n;
                                                                            \
 	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])            \
 	{                                                                  \
+		signal(SIGPIPE, SIG_IGN);                                  \
 		MunitSuite suite = {(char *)"", NULL, _main_suites, 1, 0}; \
 		return munit_suite_main(&suite, (void *)NAME, argc, argv); \
 	}
