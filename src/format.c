@@ -55,8 +55,14 @@ static void formatWalChecksumBytes(
 )
 {
 	uint32_t s1, s2;
-	uint32_t *cur = (uint32_t *)data;
-	uint32_t *end = (uint32_t *)&data[n];
+	/* `data` is an alias for the `hdr` member of a `struct vfsWal`. `hdr`
+	 * is the first member of this struct. Because `struct vfsWal` contains
+	 * pointer members, the struct itself will have the alignment of the pointer
+	 * members. As `hdr` is the first member, it will have this alignment too.
+	 * Therefore it is safe to assume pointer alignment (and silence the compiler).
+	 * more info -> http://www.catb.org/esr/structure-packing/ */
+	uint32_t *cur = (uint32_t *) __builtin_assume_aligned(data, sizeof(void*));
+	uint32_t *end = (uint32_t *) __builtin_assume_aligned(&data[n], sizeof(void*));
 
 	if (in) {
 		s1 = in[0];

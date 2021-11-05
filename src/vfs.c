@@ -76,7 +76,9 @@ struct vfsFrame
 	uint8_t *page; /* Content of the page. */
 };
 
-/* WAL-specific content */
+/* WAL-specific content.
+ * Watch out when changing the members of this struct, see
+ * comment in `formatWalChecksumBytes`. */
 struct vfsWal
 {
 	uint8_t hdr[VFS__WAL_HEADER_SIZE]; /* Header. */
