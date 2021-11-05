@@ -158,7 +158,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 static int apply_undo(struct fsm *f, const struct command_undo *c)
 {
-        tracef("apply undo %lx", c->tx_id);
+	tracef("apply undo %" PRIu64, c->tx_id);
 	(void)c;
 
 	if (f->pending.n_pages == 0) {
