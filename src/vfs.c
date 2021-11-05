@@ -2644,7 +2644,7 @@ int VfsRestore(sqlite3_vfs *vfs,
 	       const void *data,
 	       size_t n)
 {
-        tracef("vfs restore filename %s size %ld", filename, n);
+	tracef("vfs restore filename %s size %zd", filename, n);
 	struct vfs *v;
 	struct vfsDatabase *database;
 	struct vfsWal *wal;
