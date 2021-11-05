@@ -145,13 +145,31 @@ static uint32_t vfsFlip32(uint32_t v)
 /* Load a 16-bit number stored in big-endian representation. */
 static uint32_t vfsGet16(const uint8_t *buf)
 {
-	return vfsFlip16(*(const uint16_t *)buf);
+	union {
+		uint16_t u;
+		uint8_t v[2];
+	} s;
+
+	s.v[0] = buf[0];
+	s.v[1] = buf[1];
+
+	return vfsFlip16(s.u);
 }
 
 /* Load a 32-bit number stored in big-endian representation. */
 static uint32_t vfsGet32(const uint8_t *buf)
 {
-	return vfsFlip32(*(const uint32_t *)buf);
+	union {
+		uint32_t u;
+		uint8_t v[4];
+	} s;
+
+	s.v[0] = buf[0];
+	s.v[1] = buf[1];
+	s.v[2] = buf[2];
+	s.v[3] = buf[3];
+
+	return vfsFlip32(s.u);
 }
 
 /* Store a 32-bit number in big endian format */
