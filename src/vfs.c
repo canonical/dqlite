@@ -194,9 +194,11 @@ static void vfsChecksum(
     uint32_t out[2]       /* OUT: Final checksum value output */
 )
 {
+	assert((((uintptr_t)data) % sizeof(uint32_t)) == 0);
+
 	uint32_t s1, s2;
-	uint32_t *cur = (uint32_t *)data;
-	uint32_t *end = (uint32_t *)&data[n];
+	uint32_t *cur = (uint32_t *)__builtin_assume_aligned(data, sizeof(uint32_t));
+	uint32_t *end = (uint32_t *)__builtin_assume_aligned(&data[n], sizeof(uint32_t));
 
 	if (in) {
 		s1 = in[0];
