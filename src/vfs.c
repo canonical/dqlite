@@ -76,7 +76,9 @@ struct vfsFrame
 	uint8_t *page; /* Content of the page. */
 };
 
-/* WAL-specific content */
+/* WAL-specific content.
+ * Watch out when changing the members of this struct, see
+ * comment in `formatWalChecksumBytes`. */
 struct vfsWal
 {
 	uint8_t hdr[VFS__WAL_HEADER_SIZE]; /* Header. */
@@ -143,13 +145,31 @@ static uint32_t vfsFlip32(uint32_t v)
 /* Load a 16-bit number stored in big-endian representation. */
 static uint32_t vfsGet16(const uint8_t *buf)
 {
-	return vfsFlip16(*(const uint16_t *)buf);
+	union {
+		uint16_t u;
+		uint8_t v[2];
+	} s;
+
+	s.v[0] = buf[0];
+	s.v[1] = buf[1];
+
+	return vfsFlip16(s.u);
 }
 
 /* Load a 32-bit number stored in big-endian representation. */
 static uint32_t vfsGet32(const uint8_t *buf)
 {
-	return vfsFlip32(*(const uint32_t *)buf);
+	union {
+		uint32_t u;
+		uint8_t v[4];
+	} s;
+
+	s.v[0] = buf[0];
+	s.v[1] = buf[1];
+	s.v[2] = buf[2];
+	s.v[3] = buf[3];
+
+	return vfsFlip32(s.u);
 }
 
 /* Store a 32-bit number in big endian format */
@@ -174,9 +194,11 @@ static void vfsChecksum(
     uint32_t out[2]       /* OUT: Final checksum value output */
 )
 {
+	assert((((uintptr_t)data) % sizeof(uint32_t)) == 0);
+
 	uint32_t s1, s2;
-	uint32_t *cur = (uint32_t *)data;
-	uint32_t *end = (uint32_t *)&data[n];
+	uint32_t *cur = (uint32_t *)__builtin_assume_aligned(data, sizeof(uint32_t));
+	uint32_t *end = (uint32_t *)__builtin_assume_aligned(&data[n], sizeof(uint32_t));
 
 	if (in) {
 		s1 = in[0];
@@ -1382,19 +1404,22 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 	assert(shm->n_regions > 0);
 	index = shm->regions[0];
 
-	assert(*(uint32_t *)(&index[0]) == VFS__WAL_VERSION); /* iVersion */
+	/* index is an alias for shm->regions[0] which is a void* that points to
+	 * memory allocated by `sqlite3_malloc64` and has the required alignment */
+	assert(*(uint32_t *)(__builtin_assume_aligned(&index[0], sizeof(uint32_t)))
+			     == VFS__WAL_VERSION); /* iVersion */
 	assert(index[12] == 1);                               /* isInit */
 	assert(index[13] == VFS__BIGENDIAN);                  /* bigEndCksum */
 
-	*(uint32_t *)(&index[16]) = wal->n_frames;
-	*(uint32_t *)(&index[20]) = n_pages;
-	*(uint32_t *)(&index[24]) = frame_checksum[0];
-	*(uint32_t *)(&index[28]) = frame_checksum[1];
+	*(uint32_t *)(__builtin_assume_aligned(&index[16], sizeof(uint32_t))) = wal->n_frames;
+	*(uint32_t *)(__builtin_assume_aligned(&index[20], sizeof(uint32_t))) = n_pages;
+	*(uint32_t *)(__builtin_assume_aligned(&index[24], sizeof(uint32_t))) = frame_checksum[0];
+	*(uint32_t *)(__builtin_assume_aligned(&index[28], sizeof(uint32_t))) = frame_checksum[1];
 
 	vfsChecksum(index, 40, checksum, checksum);
 
-	*(uint32_t *)(&index[40]) = checksum[0];
-	*(uint32_t *)(&index[44]) = checksum[1];
+	*(uint32_t *)__builtin_assume_aligned(&index[40], sizeof(uint32_t)) = checksum[0];
+	*(uint32_t *)__builtin_assume_aligned(&index[44], sizeof(uint32_t)) = checksum[1];
 
 	/* Update the second copy of the first part of the WAL index header. */
 	memcpy(index + VFS__WAL_INDEX_HEADER_SIZE, index,
@@ -2194,13 +2219,16 @@ int VfsPoll(sqlite3_vfs *vfs,
 /* Return the salt-1 field stored in the WAL header.*/
 static uint32_t vfsWalGetSalt1(struct vfsWal *w)
 {
-	return *(uint32_t *)(&w->hdr[16]);
+
+	/* `hdr` field is pointer aligned, cast is safe */
+	return *(uint32_t *)__builtin_assume_aligned(&w->hdr[16], sizeof(uint32_t));
 }
 
 /* Return the salt-2 field stored in the WAL header.*/
 static uint32_t vfsWalGetSalt2(struct vfsWal *w)
 {
-	return *(uint32_t *)(&w->hdr[20]);
+	/* `hdr` field is pointer aligned, cast is safe */
+	return *(uint32_t *)__builtin_assume_aligned(&w->hdr[20], sizeof(uint32_t));
 }
 
 /* Return the checksum-1 field stored in the WAL header.*/
@@ -2642,7 +2670,7 @@ int VfsRestore(sqlite3_vfs *vfs,
 	       const void *data,
 	       size_t n)
 {
-        tracef("vfs restore filename %s size %ld", filename, n);
+	tracef("vfs restore filename %s size %zd", filename, n);
 	struct vfs *v;
 	struct vfsDatabase *database;
 	struct vfsWal *wal;

@@ -158,7 +158,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 static int apply_undo(struct fsm *f, const struct command_undo *c)
 {
-        tracef("apply undo %lx", c->tx_id);
+	tracef("apply undo %" PRIu64, c->tx_id);
 	(void)c;
 
 	if (f->pending.n_pages == 0) {
@@ -379,7 +379,13 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 		db->follower = NULL;
 	}
 
-	n = header.main_size + header.wal_size;
+	if (header.main_size + header.wal_size > SIZE_MAX) {
+		tracef("main_size + wal_size would overflow max DB size");
+		return -1;
+	}
+
+	/* Due to the check above, this cast is safe. */
+	n = (size_t)(header.main_size + header.wal_size);
 	rv = VfsRestore(vfs, db->filename, cursor->p, n);
 	if (rv != 0) {
 		return rv;

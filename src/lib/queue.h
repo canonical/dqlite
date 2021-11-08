@@ -69,6 +69,6 @@ typedef void *queue[2];
  * Return the structure holding the given element.
  */
 #define QUEUE__DATA(e, type, field) \
-	((type *)((char *)(e)-offsetof(type, field)))
+	((type *)(uintptr_t)((char *)(e)-offsetof(type, field)))
 
 #endif /* LIB_QUEUE_H_*/

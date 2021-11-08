@@ -156,7 +156,7 @@ int command_frames__page_numbers(const struct command_frames *c,
 		if (r != 0) {
 			return r;
 		}
-		(*page_numbers)[i] = pgno;
+		(*page_numbers)[i] = (unsigned long)pgno;
 	}
 
 	return 0;

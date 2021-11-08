@@ -903,7 +903,7 @@ TEST_CASE(exec, restore, NULL)
 	munit_assert_int(value.type, ==, SQLITE_INTEGER);
 	munit_assert_int(value.integer, ==, 2);
 	DECODE(&response, rows);
-	munit_assert_ulong(response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+	munit_assert_ullong(response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
 	return MUNIT_OK;
 }
 
@@ -957,7 +957,7 @@ TEST_CASE(query, simple, NULL)
 	text__decode(f->cursor, &column);
 	munit_assert_string_equal(column, "n");
 	DECODE(&f->response, rows);
-	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
 
 	return MUNIT_OK;
 }
@@ -988,7 +988,7 @@ TEST_CASE(query, one_row, NULL)
 	munit_assert_int(value.type, ==, SQLITE_INTEGER);
 	munit_assert_int(value.integer, ==, 666);
 	DECODE(&f->response, rows);
-	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
 
 	return MUNIT_OK;
 }
@@ -1046,7 +1046,7 @@ TEST_CASE(query, large, NULL)
 	}
 
 	DECODE(&f->response, rows);
-	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_false(finished);
@@ -1066,7 +1066,7 @@ TEST_CASE(query, large, NULL)
 	}
 
 	DECODE(&f->response, rows);
-	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_true(finished);
@@ -1143,7 +1143,7 @@ TEST_CASE(query, interrupt, NULL)
 	}
 
 	DECODE(&f->response, rows);
-	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
 
 	ENCODE(&interrupt, interrupt);
 	HANDLE(INTERRUPT);
@@ -1192,7 +1192,7 @@ TEST_CASE(query, largeClose, NULL)
 	}
 
 	DECODE(&f->response, rows);
-	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
 
 	return MUNIT_OK;
 }
@@ -1473,7 +1473,7 @@ TEST_CASE(query_sql, large, NULL)
 	}
 
 	DECODE(&f->response, rows);
-	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_false(finished);
@@ -1493,7 +1493,7 @@ TEST_CASE(query_sql, large, NULL)
 	}
 
 	DECODE(&f->response, rows);
-	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_true(finished);
@@ -1540,7 +1540,7 @@ TEST_CASE(query_sql, largeClose, NULL)
 	}
 
 	DECODE(&f->response, rows);
-	munit_assert_ulong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
 
 	return MUNIT_OK;
 }

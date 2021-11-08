@@ -241,7 +241,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 		/* c->protocol); */
 		/* TODO: instead of closing the connection we should return
 		 * error messages */
-                tracef("unknown protocol version %lx", c->protocol);
+                tracef("unknown protocol version %" PRIu64, c->protocol);
 		goto abort;
 	}
 	c->gateway.protocol = c->protocol;

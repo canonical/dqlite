@@ -309,12 +309,12 @@ DQLITE_INLINE int blob__decode(struct cursor *cursor, blob_t *value)
 	if (rv != 0) {
 		return rv;
 	}
-	n = byte__pad64(len);
+	n = byte__pad64((size_t)len);
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
 	value->base = (char *)cursor->p;
-	value->len = len;
+	value->len = (size_t)len;
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;

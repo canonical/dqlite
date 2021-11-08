@@ -55,7 +55,7 @@ int clientSendHandshake(struct client *c)
 
 	rv = write(c->fd, &protocol, sizeof protocol);
 	if (rv < 0) {
-		tracef("client send handshake failed");
+		tracef("client send handshake failed %zd", rv);
 		return DQLITE_ERROR;
 	}
 
@@ -86,7 +86,7 @@ int clientSendHandshake(struct client *c)
 		request_##LOWER##__encode(&request, &cursor);       \
 		rv = write(c->fd, buffer__cursor(&c->write, 0), n); \
 		if (rv != (int)n) {                                 \
-			tracef("request write failed rv %ld", rv);  \
+			tracef("request write failed rv %zd", rv);  \
 			return DQLITE_ERROR;                        \
 		}                                                   \
 	}
@@ -105,7 +105,7 @@ int clientSendHandshake(struct client *c)
 		assert(_p != NULL);                                 \
 		_rv = read(c->fd, _p, _n);                          \
 		if (_rv != (int)_n) {                               \
-			tracef("read failed rv %ld)", _rv);         \
+			tracef("read failed rv %zd)", _rv);         \
 			return DQLITE_ERROR;                        \
 		}                                                   \
 		_cursor.p = _p;                                     \
@@ -113,19 +113,19 @@ int clientSendHandshake(struct client *c)
 		_rv = message__decode(&_cursor, &_message);         \
 		assert(_rv == 0);                                   \
 		if (_message.type != DQLITE_RESPONSE_##UPPER) {     \
-			tracef("read decode failed rv %ld)", _rv);  \
+			tracef("read decode failed rv %zd)", _rv);  \
 			return DQLITE_ERROR;                        \
 		}                                                   \
 		buffer__reset(&c->read);                            \
 		_n = _message.words * 8;                            \
 		_p = buffer__advance(&c->read, _n);                 \
 		if (_p == NULL) {                                   \
-			tracef("read buf adv failed rv %ld)", _rv); \
+			tracef("read buf adv failed rv %zd)", _rv); \
 			return DQLITE_ERROR;                        \
 		}                                                   \
 		_rv = read(c->fd, _p, _n);                          \
 		if (_rv != (int)_n) {                               \
-			tracef("read failed rv %ld)", _rv);         \
+			tracef("read failed rv %zd)", _rv);         \
 			return DQLITE_ERROR;                        \
 		}                                                   \
 	}
