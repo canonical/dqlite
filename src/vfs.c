@@ -1404,19 +1404,22 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 	assert(shm->n_regions > 0);
 	index = shm->regions[0];
 
-	assert(*(uint32_t *)(&index[0]) == VFS__WAL_VERSION); /* iVersion */
+	/* index is an alias for shm->regions[0] which is a void* that points to
+	 * memory allocated by `sqlite3_malloc64` and has the required alignment */
+	assert(*(uint32_t *)(__builtin_assume_aligned(&index[0], sizeof(uint32_t)))
+			     == VFS__WAL_VERSION); /* iVersion */
 	assert(index[12] == 1);                               /* isInit */
 	assert(index[13] == VFS__BIGENDIAN);                  /* bigEndCksum */
 
-	*(uint32_t *)(&index[16]) = wal->n_frames;
-	*(uint32_t *)(&index[20]) = n_pages;
-	*(uint32_t *)(&index[24]) = frame_checksum[0];
-	*(uint32_t *)(&index[28]) = frame_checksum[1];
+	*(uint32_t *)(__builtin_assume_aligned(&index[16], sizeof(uint32_t))) = wal->n_frames;
+	*(uint32_t *)(__builtin_assume_aligned(&index[20], sizeof(uint32_t))) = n_pages;
+	*(uint32_t *)(__builtin_assume_aligned(&index[24], sizeof(uint32_t))) = frame_checksum[0];
+	*(uint32_t *)(__builtin_assume_aligned(&index[28], sizeof(uint32_t))) = frame_checksum[1];
 
 	vfsChecksum(index, 40, checksum, checksum);
 
-	*(uint32_t *)(&index[40]) = checksum[0];
-	*(uint32_t *)(&index[44]) = checksum[1];
+	*(uint32_t *)__builtin_assume_aligned(&index[40], sizeof(uint32_t)) = checksum[0];
+	*(uint32_t *)__builtin_assume_aligned(&index[44], sizeof(uint32_t)) = checksum[1];
 
 	/* Update the second copy of the first part of the WAL index header. */
 	memcpy(index + VFS__WAL_INDEX_HEADER_SIZE, index,
