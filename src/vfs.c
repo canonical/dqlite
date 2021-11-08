@@ -2216,13 +2216,16 @@ int VfsPoll(sqlite3_vfs *vfs,
 /* Return the salt-1 field stored in the WAL header.*/
 static uint32_t vfsWalGetSalt1(struct vfsWal *w)
 {
-	return *(uint32_t *)(&w->hdr[16]);
+
+	/* `hdr` field is pointer aligned, cast is safe */
+	return *(uint32_t *)__builtin_assume_aligned(&w->hdr[16], sizeof(uint32_t));
 }
 
 /* Return the salt-2 field stored in the WAL header.*/
 static uint32_t vfsWalGetSalt2(struct vfsWal *w)
 {
-	return *(uint32_t *)(&w->hdr[20]);
+	/* `hdr` field is pointer aligned, cast is safe */
+	return *(uint32_t *)__builtin_assume_aligned(&w->hdr[20], sizeof(uint32_t));
 }
 
 /* Return the checksum-1 field stored in the WAL header.*/
