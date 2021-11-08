@@ -68,8 +68,8 @@ TEST_CASE(decoder, init, param, NULL)
 	(void)data;
 	(void)params;
 	DECODER_INIT(0);
-	munit_assert_int(decoder.n, ==, 2);
-	munit_assert_int(tuple_decoder__n(&decoder), ==, 2);
+	munit_assert_uint(decoder.n, ==, 2);
+	munit_assert_uint(tuple_decoder__n(&decoder), ==, 2);
 	return MUNIT_OK;
 }
 
@@ -82,8 +82,8 @@ TEST_CASE(decoder, init, row, NULL)
 	(void)data;
 	(void)params;
 	DECODER_INIT(3);
-	munit_assert_int(decoder.n, ==, 3);
-	munit_assert_int(tuple_decoder__n(&decoder), ==, 3);
+	munit_assert_uint(decoder.n, ==, 3);
+	munit_assert_uint(tuple_decoder__n(&decoder), ==, 3);
 	return MUNIT_OK;
 }
 
@@ -107,7 +107,7 @@ TEST_CASE(decoder, row, one_value, NULL)
 	DECODER_NEXT;
 
 	ASSERT_VALUE_TYPE(SQLITE_INTEGER);
-	munit_assert_int(value.integer, ==, 7);
+	munit_assert_int64(value.integer, ==, 7);
 
 	return MUNIT_OK;
 }
@@ -131,7 +131,7 @@ TEST_CASE(decoder, row, two_values, NULL)
 	DECODER_NEXT;
 
 	ASSERT_VALUE_TYPE(SQLITE_INTEGER);
-	munit_assert_int(value.integer, ==, 7);
+	munit_assert_int64(value.integer, ==, 7);
 
 	DECODER_NEXT;
 
@@ -161,7 +161,7 @@ TEST_CASE(decoder, params, one_value, NULL)
 	DECODER_NEXT;
 
 	ASSERT_VALUE_TYPE(SQLITE_INTEGER);
-	munit_assert_int(value.integer, ==, 7);
+	munit_assert_int64(value.integer, ==, 7);
 
 	return MUNIT_OK;
 }
@@ -185,7 +185,7 @@ TEST_CASE(decoder, params, two_values, NULL)
 	DECODER_NEXT;
 
 	ASSERT_VALUE_TYPE(SQLITE_INTEGER);
-	munit_assert_int(value.integer, ==, 7);
+	munit_assert_int64(value.integer, ==, 7);
 
 	DECODER_NEXT;
 
@@ -201,7 +201,7 @@ TEST_GROUP(decoder, type);
 TEST_CASE(decoder, type, float, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] = {
+	uint8_t buf[][8] __attribute__((aligned(sizeof(uint64_t)))) = {
 	    {SQLITE_FLOAT, 0, 0, 0, 0, 0, 0, 0},
 	    {0, 0, 0, 0, 0, 0, 0, 0},
 	};
@@ -213,7 +213,8 @@ TEST_CASE(decoder, type, float, NULL)
 	(void)params;
 
 	memcpy(buf[1], &pi, sizeof pi);
-	*(uint64_t *)buf[1] = byte__flip64(*(uint64_t *)buf[1]);
+	uint64_t *buf_value = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
+	*buf_value = byte__flip64(*buf_value);
 
 	DECODER_INIT(1);
 	DECODER_NEXT;
@@ -228,7 +229,7 @@ TEST_CASE(decoder, type, float, NULL)
 TEST_CASE(decoder, type, null, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] = {
+	uint8_t buf[][8] __attribute__((aligned(sizeof(uint64_t)))) = {
 	    {SQLITE_NULL, 0, 0, 0, 0, 0, 0, 0},
 	    {0, 0, 0, 0, 0, 0, 0, 0},
 	};
@@ -250,7 +251,7 @@ TEST_CASE(decoder, type, null, NULL)
 TEST_CASE(decoder, type, iso8601, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[5][8] = {
+	uint8_t buf[5][8] __attribute__((aligned(sizeof(uint64_t)))) = {
 	    {DQLITE_ISO8601, 0, 0, 0, 0, 0, 0, 0},
 	};
 	struct cursor cursor = {buf, sizeof buf};
@@ -274,7 +275,7 @@ TEST_CASE(decoder, type, iso8601, NULL)
 TEST_CASE(decoder, type, boolean, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] = {
+	uint8_t buf[][8] __attribute__((aligned(sizeof(uint64_t)))) = {
 	    {DQLITE_BOOLEAN, 0, 0, 0, 0, 0, 0, 0},
 	    {1, 0, 0, 0, 0, 0, 0, 0},
 	};
@@ -288,7 +289,7 @@ TEST_CASE(decoder, type, boolean, NULL)
 	DECODER_NEXT;
 
 	ASSERT_VALUE_TYPE(DQLITE_BOOLEAN);
-	munit_assert_int(value.boolean, ==, 1);
+	munit_assert_uint64(value.boolean, ==, 1);
 
 	return MUNIT_OK;
 }
@@ -340,7 +341,9 @@ TEST_CASE(encoder, row, one_value, NULL)
 	ENCODER_NEXT;
 
 	munit_assert_int(buf[0][0], ==, SQLITE_INTEGER);
-	munit_assert_int(*(uint64_t *)buf[1], ==, byte__flip64(7));
+	/* malloc'ed buffer is aligned suitably */
+	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
+	munit_assert_uint64(*value_ptr, ==, byte__flip64(7));
 
 	return MUNIT_OK;
 }
@@ -364,7 +367,9 @@ TEST_CASE(encoder, row, two_values, NULL)
 	ENCODER_NEXT;
 
 	munit_assert_int(buf[0][0], ==, SQLITE_INTEGER | SQLITE_TEXT << 4);
-	munit_assert_int(*(uint64_t *)buf[1], ==, byte__flip64(7));
+	/* malloc'ed buffer is aligned suitably */
+	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
+	munit_assert_uint64(*value_ptr, ==, byte__flip64(7));
 	munit_assert_string_equal((const char *)buf[2], "hello");
 
 	return MUNIT_OK;
@@ -388,7 +393,8 @@ TEST_CASE(encoder, params, one_value, NULL)
 
 	munit_assert_int(buf[0][0], ==, 1);
 	munit_assert_int(buf[0][1], ==, SQLITE_INTEGER);
-	munit_assert_int(*(uint64_t *)buf[1], ==, byte__flip64(7));
+	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
+	munit_assert_uint64(*value_ptr, ==, byte__flip64(7));
 
 	return MUNIT_OK;
 }
@@ -414,7 +420,8 @@ TEST_CASE(encoder, params, two_values, NULL)
 	munit_assert_int(buf[0][0], ==, 2);
 	munit_assert_int(buf[0][1], ==, SQLITE_INTEGER);
 	munit_assert_int(buf[0][2], ==, SQLITE_TEXT);
-	munit_assert_int(*(uint64_t *)buf[1], ==, byte__flip64(7));
+	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
+	munit_assert_uint64(*value_ptr, ==, byte__flip64(7));
 	munit_assert_string_equal((const char *)buf[2], "hello");
 
 	return MUNIT_OK;
@@ -437,8 +444,8 @@ TEST_CASE(encoder, type, float, NULL)
 	ENCODER_NEXT;
 
 	munit_assert_int(buf[0][0], ==, SQLITE_FLOAT);
-	munit_assert_int(*(uint64_t *)buf[1], ==,
-			 byte__flip64(*(uint64_t *)&value.float_));
+	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
+	munit_assert_uint64(*value_ptr, ==, byte__flip64(*(uint64_t *)&value.float_));
 
 	return MUNIT_OK;
 }
@@ -458,7 +465,8 @@ TEST_CASE(encoder, type, unixtime, NULL)
 	ENCODER_NEXT;
 
 	munit_assert_int(buf[0][0], ==, DQLITE_UNIXTIME);
-	munit_assert_int(*(int64_t *)buf[1], ==, byte__flip64(value.unixtime));
+	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
+	munit_assert_uint64(*value_ptr, ==, byte__flip64((uint64_t)value.unixtime));
 
 	return MUNIT_OK;
 }
@@ -498,7 +506,8 @@ TEST_CASE(encoder, type, boolean, NULL)
 	ENCODER_NEXT;
 
 	munit_assert_int(buf[0][0], ==, DQLITE_BOOLEAN);
-	munit_assert_int(*(uint64_t *)buf[1], ==, byte__flip64(value.boolean));
+	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
+	munit_assert_uint64(*value_ptr, ==, byte__flip64(value.boolean));
 
 	return MUNIT_OK;
 }
