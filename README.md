@@ -48,19 +48,14 @@ documentation.
 Install
 -------
 
-If you are on a Debian-based system, you can get the latest stable release from
-dqlite's [stable PPA](https://launchpad.net/~dqlite/+archive/ubuntu/stable):
+If you are on a Debian-based system, you can get the latest development release from
+dqlite's [dev PPA](https://launchpad.net/~dqlite/+archive/ubuntu/dev):
 
 ```
-sudo add-apt-repository ppa:dqlite/stable
+sudo add-apt-repository ppa:dqlite/dev
 sudo apt-get update
 sudo apt-get install libdqlite-dev
 ```
-
-Usage Notes
------------
-
-Detailed tracing will be enabled when the environment variable `LIBDQLITE_TRACE` is set before startup.
 
 Build
 -----
@@ -95,3 +90,9 @@ autoreconf -i
 make
 sudo make install
 ```
+
+Usage Notes
+-----------
+
+Detailed tracing will be enabled when the environment variable `LIBDQLITE_TRACE` is set before startup.
+
