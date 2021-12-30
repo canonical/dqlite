@@ -24,7 +24,7 @@ License
 The dqlite library is released under a slightly modified version of LGPLv3, that
 includes a copyright exception allowing users to statically link the library code
 in their project and release the final work under their own terms. See the full
-[license](https://github.com/canonical/dqlite/blob/LICENSE) text.
+[license](https://github.com/canonical/dqlite/blob/master/LICENSE) text.
 
 Try it
 -------
