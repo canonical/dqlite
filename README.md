@@ -52,7 +52,7 @@ If you are on a Debian-based system, you can get the latest stable release from
 dqlite's [stable PPA](https://launchpad.net/~dqlite/+archive/ubuntu/stable):
 
 ```
-sudo add-apt-repository ppa:dqlite/stable
+sudo add-apt-repository ppa:dqlite/dev
 sudo apt-get update
 sudo apt-get install libdqlite-dev
 ```
