@@ -631,7 +631,7 @@ TEST_CASE(exec, simple, NULL)
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, exec);
 	HANDLE(EXEC);
-	CLUSTER_APPLIED(2);
+	WAIT;
 	ASSERT_CALLBACK(0, RESULT);
 	DECODE(&f->response, result);
 	munit_assert_int(f->response.last_insert_id, ==, 0);
@@ -659,7 +659,7 @@ TEST_CASE(exec, one_param, NULL)
 	value.integer = 7;
 	ENCODE_PARAMS(1, &value, TUPLE__PARAMS);
 	HANDLE(EXEC);
-	CLUSTER_APPLIED(3);
+	WAIT;
 	ASSERT_CALLBACK(0, RESULT);
 	DECODE(&f->response, result);
 	munit_assert_int(f->response.last_insert_id, ==, 1);
@@ -693,7 +693,7 @@ TEST_CASE(exec, blob, NULL)
 	value.blob.len = sizeof buf;
 	ENCODE_PARAMS(1, &value, TUPLE__PARAMS);
 	HANDLE(EXEC);
-	CLUSTER_APPLIED(3);
+	WAIT;
 	ASSERT_CALLBACK(0, RESULT);
 	DECODE(&f->response, result);
 	munit_assert_int(f->response.last_insert_id, ==, 1);
@@ -1598,7 +1598,7 @@ TEST_CASE(exec_sql, single, NULL)
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
-	CLUSTER_APPLIED(2);
+	CLUSTER_APPLIED(4);
 	ASSERT_CALLBACK(0, RESULT);
 	return MUNIT_OK;
 }
@@ -1612,6 +1612,7 @@ TEST_CASE(exec_sql, empty1, NULL)
 	f->request.sql = "";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, RESULT);
 	return MUNIT_OK;
 }
@@ -1625,6 +1626,7 @@ TEST_CASE(exec_sql, empty2, NULL)
 	f->request.sql = " --   Comment";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, RESULT);
 	return MUNIT_OK;
 }
@@ -1638,6 +1640,7 @@ TEST_CASE(exec_sql, invalid, NULL)
 	f->request.sql = "NOT SQL";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
 	return MUNIT_OK;
@@ -1667,6 +1670,7 @@ TEST_CASE(exec_sql, attach, NULL)
 	f->request.sql = "ATTACH DATABASE foo AS foo";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "too many attached databases - max 0");
 	return MUNIT_OK;

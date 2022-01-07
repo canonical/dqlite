@@ -321,13 +321,13 @@ TEST_CASE(exec, result, NULL)
 	unsigned rows_affected;
 	(void)params;
 	PREPARE_CONN("BEGIN", &f->stmt_id);
-	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 3);
+	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 5);
 	PREPARE_CONN("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 6);
+	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 8);
 	PREPARE_CONN("INSERT INTO test (n) VALUES(123)", &f->stmt_id);
-	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 3);
+	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 5);
 	PREPARE_CONN("COMMIT", &f->stmt_id);
-	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 6);
+	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 8);
 	munit_assert_int(last_insert_id, ==, 1);
 	munit_assert_int(rows_affected, ==, 1);
 	return MUNIT_OK;
@@ -341,7 +341,7 @@ TEST_CASE(exec, close_while_in_flight, NULL)
 	int rv;
 	(void)params;
 
-	EXEC_SQL_CONN("CREATE TABLE test (n)", &last_insert_id, &rows_affected, 7);
+	EXEC_SQL_CONN("CREATE TABLE test (n)", &last_insert_id, &rows_affected, 9);
 	rv = clientSendExecSQL(&f->client, "INSERT INTO test(n) VALUES(1)");
 	munit_assert_int(rv, ==, 0);
 
