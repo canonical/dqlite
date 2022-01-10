@@ -91,8 +91,6 @@ int dqlite__init(struct dqlite_node *d,
 	}
 #endif
 
-	rv = pthread_mutex_init(&d->mutex, NULL);
-	assert(rv == 0); /* Docs say that pthread_mutex_init can't fail */
 	QUEUE__INIT(&d->queue);
 	QUEUE__INIT(&d->conns);
 	d->raft_state = RAFT_UNAVAILABLE;
@@ -127,8 +125,6 @@ void dqlite__close(struct dqlite_node *d)
 {
 	int rv;
 	raft_free(d->listener);
-	rv = pthread_mutex_destroy(&d->mutex); /* This is a no-op on Linux . */
-	assert(rv == 0);
 #ifdef __APPLE__
 	dispatch_release(d->stopped);
 	dispatch_release(d->ready);
@@ -446,9 +442,12 @@ static void stop_cb(uv_async_t *stop)
 	queue *head;
 	struct conn *conn;
 
-	/* We expect that we're being executed after dqlite__stop and so the
-	 * running flag is off. */
-	assert(!d->running);
+	/* Nothing to do. */
+	if (!d->running) {
+	    tracef("not running or already stopped");
+	    return;
+	}
+	d->running = false;
 
 	QUEUE__FOREACH(head, &d->conns)
 	{
@@ -481,6 +480,11 @@ static void listenCb(uv_stream_t *listener, int status)
 	struct uv_stream_s *stream;
 	struct conn *conn;
 	int rv;
+
+	if (!t->running) {
+	    tracef("not running");
+	    return;
+	}
 
 	if (status != 0) {
 		/* TODO: log the error. */
@@ -732,20 +736,8 @@ int dqlite_node_stop(dqlite_node *d)
 	void *result;
 	int rv;
 
-	/* Grab the queue mutex, so we can be sure no new incoming request will
-	 * be enqueued from this point on. */
-	pthread_mutex_lock(&d->mutex);
-
-	/* Turn off the running flag, so calls to dqlite_handle will fail
-	 * with DQLITE_STOPPED. This needs to happen before we send the stop
-	 * signal since the stop callback expects to see that the flag is
-	 * off. */
-	d->running = false;
-
 	rv = uv_async_send(&d->stop);
 	assert(rv == 0);
-
-	pthread_mutex_unlock(&d->mutex);
 
 	rv = pthread_join(d->thread, &result);
 	assert(rv == 0);
