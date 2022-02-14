@@ -661,7 +661,10 @@ static int taskRun(struct dqlite_node *d)
 
 const char *dqlite_node_errmsg(dqlite_node *n)
 {
-	return n->errmsg;
+	if (n != NULL) {
+	    return n->errmsg;
+	}
+	return "node is NULL";
 }
 
 static void *taskStart(void *arg)

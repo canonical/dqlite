@@ -409,3 +409,31 @@ TEST(node, recoverExtNewFieldsNotZero, setUpForRecovery, tearDown, 0, NULL)
         startStopNode(f);
         return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * dqlite_node_errmsg
+ *
+ ******************************************************************************/
+
+TEST(node, errMsgNodeNull, NULL, NULL, 0, NULL)
+{
+	munit_assert_string_equal(dqlite_node_errmsg(NULL), "node is NULL");
+	return MUNIT_OK;
+}
+
+TEST(node, errMsg, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	int rv;
+
+	munit_assert_string_equal(dqlite_node_errmsg(f->node), "");
+
+	rv = dqlite_node_start(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	return MUNIT_OK;
+}
