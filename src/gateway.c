@@ -76,8 +76,8 @@ void gateway__close(struct gateway *g)
 /* Declare a request struct and a response struct of the appropriate types and
  * decode the request. */
 #define START(REQ, RES)                                          \
-	struct request_##REQ request;                            \
-	struct response_##RES response;                          \
+	struct request_##REQ request = {0};                      \
+	struct response_##RES response = {0};                    \
 	{                                                        \
 		int rv_;                                         \
 		rv_ = request_##REQ##__decode(cursor, &request); \
@@ -484,7 +484,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 {
         tracef("handle exec sql next");
 	struct gateway *g = req->gateway;
-	struct response_result response;
+	struct response_result response = {0};
 	const char *tail;
 	int rv;
 
@@ -633,7 +633,7 @@ static void raftChangeCb(struct raft_change *change, int status)
 	struct change *r = change->data;
 	struct gateway *g = r->gateway;
 	struct handle *req = g->req;
-	struct response_empty response;
+	struct response_empty response = {0};
 	g->req = NULL;
 	sqlite3_free(r);
 	if (status != 0) {
@@ -951,7 +951,7 @@ void raftTransferCb(struct raft_transfer *r)
 {
 	struct gateway *g = r->data;
 	struct handle *req = g->req;
-	struct response_empty response;
+	struct response_empty response = {0};
 	g->req = NULL;
 	sqlite3_free(r);
 	if (g->raft->state == RAFT_LEADER) {
