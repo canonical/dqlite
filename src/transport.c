@@ -62,8 +62,8 @@ static void connect_work_cb(uv_work_t *work)
         tracef("connect work cb");
 	struct connect *r = work->data;
 	struct impl *i = r->impl;
-	struct message message;
-	struct request_connect request;
+	struct message message = {0};
+	struct request_connect request = {0};
 	uint64_t protocol;
 	void *buf;
 	void *cursor;
