@@ -269,10 +269,19 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 	rc = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &stmt->stmt,
 				&tail);
 	if (rc != SQLITE_OK) {
-                tracef("handle prepare sqlite prepare failed %d", rc);
+		tracef("handle prepare sqlite prepare failed %d", rc);
+		stmt__registry_del(&g->stmts, stmt);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
+
+	if (stmt->stmt == NULL) {
+		tracef("handle prepare empty statement");
+		stmt__registry_del(&g->stmts, stmt);
+		failure(req, rc, "empty statement");
+		return 0;
+	}
+
 	response.db_id = (uint32_t)request.db_id;
 	response.id = (uint32_t)stmt->id;
 	response.params = (uint64_t)sqlite3_bind_parameter_count(stmt->stmt);
@@ -500,6 +509,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 	/* g->stmt will be set to NULL by sqlite when an error occurs. */
 	rv = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &g->stmt, &tail);
 	if (rv != SQLITE_OK) {
+		tracef("exec sql prepare failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto done;
 	}
@@ -576,10 +586,17 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	rv = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt,
 				&tail);
 	if (rv != SQLITE_OK) {
-                tracef("handle query sql prepare failed %d", rv);
+		tracef("handle query sql prepare failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
+
+	if (g->stmt == NULL) {
+		tracef("handle query sql empty statement");
+		failure(req, rv, "empty statement");
+		return 0;
+	}
+
 	rv = bind__params(g->stmt, cursor);
 	if (rv != 0) {
                 tracef("handle query sql bind failed %d", rv);
