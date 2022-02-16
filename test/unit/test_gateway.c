@@ -469,6 +469,51 @@ TEST_CASE(prepare, success, NULL)
 	return MUNIT_OK;
 }
 
+/* Prepare an empty statement. */
+TEST_CASE(prepare, empty1, NULL)
+{
+	struct prepare_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "";
+	ENCODE(&f->request, prepare);
+	HANDLE(PREPARE);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(0, "empty statement");
+	munit_assert_int(f->response.id, ==, 0);
+	return MUNIT_OK;
+}
+
+/* Prepare an empty statement. */
+TEST_CASE(prepare, empty2, NULL)
+{
+	struct prepare_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = " -- This is a comment";
+	ENCODE(&f->request, prepare);
+	HANDLE(PREPARE);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(0, "empty statement");
+	munit_assert_int(f->response.id, ==, 0);
+	return MUNIT_OK;
+}
+
+/* Prepare an invalid statement. */
+TEST_CASE(prepare, invalid, NULL)
+{
+	struct prepare_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "NOT SQL";
+	ENCODE(&f->request, prepare);
+	HANDLE(PREPARE);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
+	munit_assert_int(f->response.id, ==, 0);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * exec
@@ -1374,6 +1419,46 @@ TEST_CASE(exec_sql, single, NULL)
 	return MUNIT_OK;
 }
 
+/* Exec a SQL text with a single query. */
+TEST_CASE(exec_sql, empty1, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "";
+	ENCODE(&f->request, exec_sql);
+	HANDLE(EXEC_SQL);
+	ASSERT_CALLBACK(0, RESULT);
+	return MUNIT_OK;
+}
+
+/* Exec a SQL text with a single query. */
+TEST_CASE(exec_sql, empty2, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = " --   Comment";
+	ENCODE(&f->request, exec_sql);
+	HANDLE(EXEC_SQL);
+	ASSERT_CALLBACK(0, RESULT);
+	return MUNIT_OK;
+}
+
+/* Exec an invalid SQL text with a single query. */
+TEST_CASE(exec_sql, invalid, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "NOT SQL";
+	ENCODE(&f->request, exec_sql);
+	HANDLE(EXEC_SQL);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
+	return MUNIT_OK;
+}
+
 /* Exec a SQL text with a multiple queries. */
 TEST_CASE(exec_sql, multi, NULL)
 {
@@ -1430,6 +1515,51 @@ TEST_CASE(query_sql, small, NULL)
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, ROWS);
+	return MUNIT_OK;
+}
+
+/* Exec an empty query sql. */
+TEST_CASE(query_sql, empty1, NULL)
+{
+	struct query_sql_fixture *f = data;
+	(void)params;
+	EXEC("INSERT INTO test VALUES(123)");
+	f->request.db_id = 0;
+	f->request.sql = "";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(0, "empty statement");
+	return MUNIT_OK;
+}
+
+/* Exec an empty query sql. */
+TEST_CASE(query_sql, empty2, NULL)
+{
+	struct query_sql_fixture *f = data;
+	(void)params;
+	EXEC("INSERT INTO test VALUES(123)");
+	f->request.db_id = 0;
+	f->request.sql = "               -- a comment";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(0, "empty statement");
+	return MUNIT_OK;
+}
+
+/* Exec an invalid query sql. */
+TEST_CASE(query_sql, invalid, NULL)
+{
+	struct query_sql_fixture *f = data;
+	(void)params;
+	EXEC("INSERT INTO test VALUES(123)");
+	f->request.db_id = 0;
+	f->request.sql = "NOT SQL";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
 	return MUNIT_OK;
 }
 
