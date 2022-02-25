@@ -17,8 +17,7 @@ static int endpointConnect(void *data,
 	*fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	munit_assert_int(*fd, !=, -1);
 	rv = connect(*fd, (struct sockaddr *)&addr, sizeof(sa_family_t) + strlen(address + 1) + 1);
-	munit_assert_int(rv, ==, 0);
-	return 0;
+	return rv;
 }
 
 void test_server_setup(struct test_server *s,
