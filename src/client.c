@@ -365,6 +365,15 @@ int clientSendRemove(struct client *c, unsigned id)
 	return 0;
 }
 
+int clientSendTransfer(struct client *c, unsigned id)
+{
+	tracef("client send transfer fd %d id %u", c->fd, id);
+	struct request_transfer request;
+	request.id = id;
+	REQUEST(transfer, TRANSFER);
+	return 0;
+}
+
 int clientRecvEmpty(struct client *c)
 {
 	tracef("client recv empty fd %d", c->fd);
