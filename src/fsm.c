@@ -456,6 +456,24 @@ err:
 	return rv;
 }
 
+static int fsm__snapshot_finalize(struct raft_fsm *fsm,
+				  struct raft_buffer *bufs[],
+				  unsigned *n_bufs)
+{
+	(void) fsm;
+	if (bufs == NULL) {
+		return 0;
+	}
+
+	for (unsigned i = 0; i < *n_bufs; i++) {
+	    raft_free((*bufs)[i].base);
+	}
+	raft_free(*bufs);
+	*bufs = NULL;
+	*n_bufs = 0;
+	return 0;
+}
+
 static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 {
         tracef("fsm restore");
@@ -505,10 +523,11 @@ int fsm__init(struct raft_fsm *fsm,
 	f->pending.page_numbers = NULL;
 	f->pending.pages = NULL;
 
-	fsm->version = 1;
+	fsm->version = 2;
 	fsm->data = f;
 	fsm->apply = fsm__apply;
 	fsm->snapshot = fsm__snapshot;
+	fsm->snapshot_finalize = fsm__snapshot_finalize;
 	fsm->restore = fsm__restore;
 
 	return 0;
