@@ -17,6 +17,7 @@ struct db
 	queue leaders;         /* Open leader connections */
 	unsigned tx_id;        /* Current ongoing transaction ID, if any */
 	queue queue;           /* Prev/next database, used by the registry */
+	int read_lock;         /* Lock used by snapshots & checkpoints */
 };
 
 /**

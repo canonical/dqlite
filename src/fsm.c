@@ -61,6 +61,124 @@ static int add_pending_pages(struct fsm *f,
 	return 0;
 }
 
+static int databaseReadLock(struct db *db)
+{
+    if (!db->read_lock) {
+	    db->read_lock = 1;
+	    return 0;
+    } else {
+	    return -1;
+    }
+}
+
+static int databaseReadUnlock(struct db *db)
+{
+    if (db->read_lock) {
+	    db->read_lock = 0;
+	    return 0;
+    } else {
+	    return -1;
+    }
+}
+
+static void maybeCheckpoint(struct db *db)
+{
+	tracef("maybe checkpoint");
+	struct sqlite3_file *main_f;
+	struct sqlite3_file *wal;
+	volatile void *region;
+	sqlite3_int64 size;
+	unsigned page_size;
+	unsigned pages;
+	int wal_size;
+	int ckpt;
+	int i;
+	int rv;
+
+	/* Don't run when a snapshot is busy. Running a checkpoint while a snapshot
+	 * is busy will result in illegal memory accesses by the routines that try
+	 * to access database page pointers contained in the snapshot. */
+	rv = databaseReadLock(db);
+	if (rv != 0) {
+		tracef("busy snapshot %d", rv);
+		return;
+	}
+
+	assert(db->follower == NULL);
+	rv = db__open_follower(db);
+	if (rv != 0) {
+		tracef("open follower failed %d", rv);
+		goto err_after_db_lock;
+	}
+
+	page_size = db->config->page_size;
+	/* Get the database wal file associated with this connection */
+	rv = sqlite3_file_control(db->follower, "main", SQLITE_FCNTL_JOURNAL_POINTER,
+				  &wal);
+	assert(rv == SQLITE_OK); /* Should never fail */
+
+	rv = wal->pMethods->xFileSize(wal, &size);
+	assert(rv == SQLITE_OK); /* Should never fail */
+
+	/* Calculate the number of frames. */
+	pages = ((unsigned)size - 32) / (24 + page_size);
+
+	/* Check if the size of the WAL is beyond the threshold. */
+	if (pages < db->config->checkpoint_threshold) {
+		tracef("wal size (%u) < threshold (%u)", pages, db->config->checkpoint_threshold);
+		goto err_after_db_open;
+	}
+
+	/* Get the database file associated with this db->follower connection */
+	rv = sqlite3_file_control(db->follower, "main", SQLITE_FCNTL_FILE_POINTER,
+				  &main_f);
+	assert(rv == SQLITE_OK); /* Should never fail */
+
+	/* Get the first SHM region, which contains the WAL header. */
+	rv = main_f->pMethods->xShmMap(main_f, 0, 0, 0, &region);
+	assert(rv == SQLITE_OK); /* Should never fail */
+
+	rv = main_f->pMethods->xShmUnmap(main_f, 0);
+	assert(rv == SQLITE_OK); /* Should never fail */
+
+	/* Try to acquire all locks. */
+	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
+		int flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
+
+		rv = main_f->pMethods->xShmLock(main_f, i, 1, flags);
+		if (rv == SQLITE_BUSY) {
+			tracef("busy reader or writer - retry next time");
+			goto err_after_db_open;
+		}
+
+		/* Not locked. Let's release the lock we just
+		 * acquired. */
+		flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
+		main_f->pMethods->xShmLock(main_f, i, 1, flags);
+	}
+
+	rv = sqlite3_wal_checkpoint_v2(
+	     db->follower, "main", SQLITE_CHECKPOINT_TRUNCATE, &wal_size, &ckpt);
+	/* TODO assert(rv == 0) here? Which failure modes do we expect? */
+	if (rv != 0) {
+		tracef("sqlite3_wal_checkpoint_v2 failed %d", rv);
+		goto err_after_db_open;
+	}
+	tracef("sqlite3_wal_checkpoint_v2 success");
+
+	/* Since no reader transaction is in progress, we must be able to
+	 * checkpoint the entire WAL */
+	assert(wal_size == 0);
+	assert(ckpt == 0);
+
+err_after_db_open:
+	sqlite3_close(db->follower);
+	db->follower = NULL;
+err_after_db_lock:
+	rv = databaseReadUnlock(db);
+	assert(rv == 0);
+}
+
 static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
         tracef("fsm apply frames");
@@ -153,6 +271,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	}
 
 	sqlite3_free(page_numbers);
+	maybeCheckpoint(db);
 	return 0;
 }
 
@@ -407,14 +526,22 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	int rv;
 
 	/* First count how many databases we have and check that no transaction
-	 * is in progress. */
+	 * nor checkpoint nor other snapshot is in progress. */
 	QUEUE__FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE__DATA(head, struct db, queue);
-		if (db->tx_id != 0) {
+		if (db->tx_id != 0 || db->read_lock) {
 			return RAFT_BUSY;
 		}
 		n++;
+	}
+
+	/* Lock all databases, preventing the checkpoint from running */
+	QUEUE__FOREACH(head, &f->registry->dbs)
+	{
+		db = QUEUE__DATA(head, struct db, queue);
+		rv = databaseReadLock(db);
+		assert(rv == 0);
 	}
 
 	*n_bufs = 1;      /* Snapshot header */
@@ -452,6 +579,11 @@ err_after_encode_header:
 err_after_bufs_alloc:
 	raft_free(*bufs);
 err:
+	QUEUE__FOREACH(head, &f->registry->dbs)
+	{
+		db = QUEUE__DATA(head, struct db, queue);
+		databaseReadUnlock(db);
+	}
 	assert(rv != 0);
 	return rv;
 }
@@ -460,7 +592,16 @@ static int fsm__snapshot_finalize(struct raft_fsm *fsm,
 				  struct raft_buffer *bufs[],
 				  unsigned *n_bufs)
 {
-	(void) fsm;
+	struct fsm *f = fsm->data;
+	queue *head;
+	struct db *db;
+
+	QUEUE__FOREACH(head, &f->registry->dbs)
+	{
+		db = QUEUE__DATA(head, struct db, queue);
+		databaseReadUnlock(db);
+	}
+
 	if (bufs == NULL) {
 		return 0;
 	}

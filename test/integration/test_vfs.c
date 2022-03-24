@@ -219,6 +219,29 @@ struct tx
 			munit_errorf("checkpoint: %s (%d)",                  \
 				     sqlite3_errmsg(DB), _rv);               \
 		}                                                            \
+		munit_assert_int(_size, ==, 0);                              \
+		munit_assert_int(_ckpt, ==, 0);                              \
+	} while (0)
+
+/* Perform a full checkpoint on a fresh connection, mimicking dqlite's
+ * checkpoint behavior. */
+#define CHECKPOINT_FRESH(VFS)                                                \
+	do {                                                                 \
+		sqlite3 *_db;                                                \
+		OPEN(VFS, _db);                                              \
+		CHECKPOINT(_db);                                             \
+		CLOSE(_db);                                                  \
+	} while(0)
+
+/* Attempt to perform a full checkpoint on the given database, but fail. */
+#define CHECKPOINT_FAIL(DB, RV)                                              \
+	do {                                                                 \
+		int _size;                                                   \
+		int _ckpt;                                                   \
+		int _rv;                                                     \
+		_rv = sqlite3_wal_checkpoint_v2(                             \
+		    DB, "main", SQLITE_CHECKPOINT_TRUNCATE, &_size, &_ckpt); \
+		munit_assert_int(_rv, ==, RV);                               \
 	} while (0)
 
 struct snapshot
@@ -964,12 +987,152 @@ TEST(vfs, applyOnDifferentVfsAfterCheckpoint, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
+/* Replicate a write transaction that happens after a checkpoint, without
+ * performing the checkpoint on the replicated DB. */
+TEST(vfs, applyOnDifferentVfsAfterCheckpointOtherVfsNoCheckpoint, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx1;
+	struct tx tx2;
+	struct tx tx3;
+	struct tx tx4;
+
+	/* Create transactions and checkpoint the DB after every transaction */
+	OPEN("1", db);
+
+	EXEC(db, "CREATE TABLE test(n INT)");
+	POLL("1", tx1);
+	APPLY("1", tx1);
+	CHECKPOINT_FRESH("1");
+
+	EXEC(db, "CREATE TABLE test2(n INT)");
+	POLL("1", tx2);
+	APPLY("1", tx2);
+	CHECKPOINT_FRESH("1");
+
+	EXEC(db, "INSERT INTO test(n) VALUES(123)");
+	POLL("1", tx3);
+	APPLY("1", tx3);
+	CHECKPOINT_FRESH("1");
+
+	EXEC(db, "INSERT INTO test2(n) VALUES(456)");
+	POLL("1", tx4);
+	APPLY("1", tx4);
+	CHECKPOINT_FRESH("1");
+
+	CLOSE(db);
+
+	/* Create a second VFS and Apply the transactions without checkpointing
+	 * the DB in between. */
+	OPEN("2", db);
+
+	APPLY("2", tx1);
+	APPLY("2", tx2);
+	APPLY("2", tx3);
+	APPLY("2", tx4);
+
+	/* Ensure data is there. */
+	PREPARE(db, stmt, "SELECT * FROM test ORDER BY n");
+	STEP(stmt, SQLITE_ROW);
+	munit_assert_int(sqlite3_column_int(stmt, 0), ==, 123);
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	PREPARE(db, stmt, "SELECT * FROM test2 ORDER BY n");
+	STEP(stmt, SQLITE_ROW);
+	munit_assert_int(sqlite3_column_int(stmt, 0), ==, 456);
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	/* Make sure checkpoint succeeds */
+	CHECKPOINT_FRESH("2");
+	CLOSE(db);
+
+	DONE(tx1);
+	DONE(tx2);
+	DONE(tx3);
+	DONE(tx4);
+
+	return MUNIT_OK;
+}
+
+/* Replicate a write transaction that happens before a checkpoint, and is
+ * replicated on a DB that has been checkpointed. */
+TEST(vfs, applyOnDifferentVfsExtraCheckpointsOnOtherVfs, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	struct tx tx1;
+	struct tx tx2;
+	struct tx tx3;
+	struct tx tx4;
+
+	/* Create transactions */
+	OPEN("1", db);
+
+	EXEC(db, "CREATE TABLE test(n INT)");
+	POLL("1", tx1);
+	APPLY("1", tx1);
+
+	EXEC(db, "CREATE TABLE test2(n INT)");
+	POLL("1", tx2);
+	APPLY("1", tx2);
+
+	EXEC(db, "INSERT INTO test(n) VALUES(123)");
+	POLL("1", tx3);
+	APPLY("1", tx3);
+
+	EXEC(db, "INSERT INTO test2(n) VALUES(456)");
+	POLL("1", tx4);
+	APPLY("1", tx4);
+
+	CLOSE(db);
+
+	/* Create a second VFS and Apply the transactions while checkpointing
+	 * after every transaction. */
+	OPEN("2", db);
+	CLOSE(db);
+
+	APPLY("2", tx1);
+	CHECKPOINT_FRESH("2");
+	APPLY("2", tx2);
+	CHECKPOINT_FRESH("2");
+	APPLY("2", tx3);
+	CHECKPOINT_FRESH("2");
+	APPLY("2", tx4);
+	CHECKPOINT_FRESH("2");
+
+	/* Ensure all the data is there. */
+	OPEN("2", db);
+
+	PREPARE(db, stmt, "SELECT * FROM test ORDER BY n");
+	STEP(stmt, SQLITE_ROW);
+	munit_assert_int(sqlite3_column_int(stmt, 0), ==, 123);
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	PREPARE(db, stmt, "SELECT * FROM test2 ORDER BY n");
+	STEP(stmt, SQLITE_ROW);
+	munit_assert_int(sqlite3_column_int(stmt, 0), ==, 456);
+	STEP(stmt, SQLITE_DONE);
+	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	DONE(tx1);
+	DONE(tx2);
+	DONE(tx3);
+	DONE(tx4);
+
+	return MUNIT_OK;
+}
+
 /* Replicate to another VFS a series of changes including a checkpoint, then
  * perform a new write transaction on that other VFS. */
 TEST(vfs, checkpointThenPerformTransaction, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
-	sqlite3 *db2;
 	struct tx tx1;
 	struct tx tx2;
 	struct tx tx3;
@@ -996,9 +1159,7 @@ TEST(vfs, checkpointThenPerformTransaction, setUp, tearDown, 0, NULL)
 	APPLY("2", tx1);
 	APPLY("2", tx2);
 
-	OPEN("2", db2);
-	CHECKPOINT(db2);
-	CLOSE(db2);
+	CHECKPOINT_FRESH("2");
 
 	APPLY("2", tx3);
 
@@ -1098,6 +1259,37 @@ TEST(vfs, rollbackTransactionWithPageStress, setUp, tearDown, 0, NULL)
 	STEP(stmt, SQLITE_ROW);
 
 	FINALIZE(stmt);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Try and fail to checkpoint a WAL that performed some pre-commit WAL writes. */
+TEST(vfs, checkpointTransactionWithPageStress, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	struct tx tx;
+	unsigned i;
+
+	OPEN("1", db);
+
+	EXEC(db, "CREATE TABLE test(n INT)");
+
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	EXEC(db, "BEGIN");
+	for (i = 0; i < 163; i++) {
+		char sql[64];
+		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
+		EXEC(db, sql);
+		POLL("1", tx);
+		munit_assert_int(tx.n, ==, 0);
+	}
+
+	CHECKPOINT_FAIL(db, SQLITE_LOCKED);
 
 	CLOSE(db);
 

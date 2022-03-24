@@ -416,7 +416,7 @@ TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
 	munit_assert_int(rv, ==, 0);
 	FINALIZE;
 
-	CLUSTER_APPLIED(4);
+	CLUSTER_APPLIED(3);
 
 	/* The WAL was truncated. */
 	ASSERT_WAL_PAGES(0, 0);
