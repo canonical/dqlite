@@ -407,7 +407,7 @@ static int encodeSnapshotHeader(unsigned n, struct raft_buffer *buf)
 	header.format = SNAPSHOT_FORMAT;
 	header.n = n;
 	buf->len = snapshotHeader__sizeof(&header);
-	buf->base = raft_malloc(buf->len);
+	buf->base = sqlite3_malloc64(buf->len);
 	if (buf->base == NULL) {
 		return RAFT_NOMEM;
 	}
@@ -417,19 +417,20 @@ static int encodeSnapshotHeader(unsigned n, struct raft_buffer *buf)
 }
 
 /* Encode the given database. */
-static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
+static int encodeDatabase(struct db *db, struct raft_buffer r_bufs[], uint32_t n)
 {
 	struct snapshotDatabase header;
 	sqlite3_vfs *vfs;
 	uint32_t database_size = 0;
 	uint8_t *page;
 	void *cursor;
+	struct dqlite_buffer *bufs = (struct dqlite_buffer*) r_bufs;
 	int rv;
 
 	header.filename = db->filename;
 
 	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsSnapshot(vfs, db->filename, &bufs[1].base, &bufs[1].len);
+	rv = VfsShallowSnapshot(vfs, db->filename, &bufs[1], n-1);
 	if (rv != 0) {
 		goto err;
 	}
@@ -442,11 +443,11 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 	database_size += (uint32_t)(page[31]);
 
 	header.main_size = database_size * db->config->page_size;
-	header.wal_size = bufs[1].len - header.main_size;
+	header.wal_size = bufs[n-1].len;
 
 	/* Database header. */
 	bufs[0].len = snapshotDatabase__sizeof(&header);
-	bufs[0].base = raft_malloc(bufs[0].len);
+	bufs[0].base = sqlite3_malloc64(bufs[0].len);
 	if (bufs[0].base == NULL) {
 		rv = RAFT_NOMEM;
 		goto err_after_snapshot;
@@ -457,7 +458,8 @@ static int encodeDatabase(struct db *db, struct raft_buffer bufs[2])
 	return 0;
 
 err_after_snapshot:
-	raft_free(bufs[1].base);
+	/* Free the wal buffer */
+	sqlite3_free(bufs[n-1].base);
 err:
 	assert(rv != 0);
 	return rv;
@@ -514,6 +516,77 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	return 0;
 }
 
+static unsigned dbNumPages(struct db *db)
+{
+	sqlite3_vfs *vfs;
+	int rv;
+	uint32_t n;
+
+	vfs = sqlite3_vfs_find(db->config->name);
+	rv = VfsDatabaseNumPages(vfs, db->filename, &n);
+	assert(rv == 0);
+	return n;
+}
+
+/* Determine the total number of raft buffers needed for a snapshot */
+static unsigned snapshotNumBufs(struct fsm *f)
+{
+	struct db *db;
+	queue *head;
+	unsigned n = 1; /* snapshot header */
+
+	QUEUE__FOREACH(head, &f->registry->dbs)
+	{
+		n += 2; /* database header & wal */
+		db = QUEUE__DATA(head, struct db, queue);
+		n += dbNumPages(db); /* 1 buffer per page (zero copy) */
+	}
+
+	return n;
+}
+
+/* An example array of snapshot buffers looks like this:
+ *
+ * bufs:  SH DH1 P1 P2 P3 WAL1 DH2 P1 P2 WAL2
+ * index:  0   1  2  3  4    5   6  7  8    9
+ *
+ * SH:   Snapshot Header
+ * DHx:  Database Header
+ * Px:   Database Page (not to be freed)
+ * WALx: a WAL
+ * */
+static void freeSnapshotBufs(struct fsm *f,
+			     struct raft_buffer bufs[],
+			     unsigned n_bufs)
+{
+	queue *head;
+	struct db *db;
+	unsigned i;
+
+	if (bufs == NULL || n_bufs == 0) {
+		return;
+	}
+
+	/* Free snapshot header */
+	sqlite3_free(bufs[0].base);
+
+	i = 1;
+	/* Free all database headers & WAL buffers */
+	QUEUE__FOREACH(head, &f->registry->dbs)
+	{
+		if (i == n_bufs) {
+		    break;
+		}
+		db = QUEUE__DATA(head, struct db, queue);
+		/* i is the index of the database header */
+		sqlite3_free(bufs[i].base);
+		/* i is now the index of the next database header (if any) */
+		i += 1 /* db header */ + dbNumPages(db) + 1 /* WAL */;
+		/* free WAL buffer */
+		sqlite3_free(bufs[i-1].base);
+	}
+}
+
 static int fsm__snapshot(struct raft_fsm *fsm,
 			 struct raft_buffer *bufs[],
 			 unsigned *n_bufs)
@@ -521,7 +594,7 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	struct fsm *f = fsm->data;
 	queue *head;
 	struct db *db;
-	unsigned n = 0;
+	unsigned n_db = 0;
 	unsigned i;
 	int rv;
 
@@ -533,7 +606,7 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 		if (db->tx_id != 0 || db->read_lock) {
 			return RAFT_BUSY;
 		}
-		n++;
+		n_db++;
 	}
 
 	/* Lock all databases, preventing the checkpoint from running */
@@ -544,15 +617,14 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 		assert(rv == 0);
 	}
 
-	*n_bufs = 1;      /* Snapshot header */
-	*n_bufs += n * 2; /* Database header an content */
-	*bufs = raft_malloc(*n_bufs * sizeof **bufs);
+	*n_bufs = snapshotNumBufs(f);
+	*bufs = sqlite3_malloc64(*n_bufs * sizeof **bufs);
 	if (*bufs == NULL) {
 		rv = RAFT_NOMEM;
 		goto err;
 	}
 
-	rv = encodeSnapshotHeader(n, &(*bufs)[0]);
+	rv = encodeSnapshotHeader(n_db, &(*bufs)[0]);
 	if (rv != 0) {
 		goto err_after_bufs_alloc;
 	}
@@ -562,22 +634,22 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	QUEUE__FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE__DATA(head, struct db, queue);
-		rv = encodeDatabase(db, &(*bufs)[i]);
+		/* database_header + num_pages + wal */
+		unsigned n = 1 + dbNumPages(db) + 1;
+		rv = encodeDatabase(db, &(*bufs)[i], n);
 		if (rv != 0) {
 			goto err_after_encode_header;
 		}
-		i += 2;
+		i += n;
 	}
 
+	assert(i == *n_bufs);
 	return 0;
 
 err_after_encode_header:
-	do {
-		raft_free((*bufs)[i].base);
-		i--;
-	} while (i > 0);
+	freeSnapshotBufs(f, *bufs, i);
 err_after_bufs_alloc:
-	raft_free(*bufs);
+	sqlite3_free(*bufs);
 err:
 	QUEUE__FOREACH(head, &f->registry->dbs)
 	{
@@ -595,23 +667,45 @@ static int fsm__snapshot_finalize(struct raft_fsm *fsm,
 	struct fsm *f = fsm->data;
 	queue *head;
 	struct db *db;
-
-	QUEUE__FOREACH(head, &f->registry->dbs)
-	{
-		db = QUEUE__DATA(head, struct db, queue);
-		databaseReadUnlock(db);
-	}
+	unsigned n_db;
+	struct snapshotHeader header;
+	int rv;
 
 	if (bufs == NULL) {
 		return 0;
 	}
 
-	for (unsigned i = 0; i < *n_bufs; i++) {
-	    raft_free((*bufs)[i].base);
+	/* Decode the header to determine the number of databases. */
+	struct cursor cursor = {(*bufs)[0].base, (*bufs)[0].len};
+	rv = snapshotHeader__decode(&cursor, &header);
+	if (rv != 0) {
+		tracef("decode failed %d", rv);
+		return -1;
 	}
-	raft_free(*bufs);
+	if (header.format != SNAPSHOT_FORMAT) {
+		tracef("bad format");
+		return -1;
+	}
+
+	/* Free allocated buffers */
+	freeSnapshotBufs(f, *bufs, *n_bufs);
+	sqlite3_free(*bufs);
 	*bufs = NULL;
 	*n_bufs = 0;
+
+	/* Unlock all databases that were locked for the snapshot, this is safe
+	 * because DB's are only ever added at the back of the queue. */
+	n_db = 0;
+	QUEUE__FOREACH(head, &f->registry->dbs)
+	{
+		if (n_db == header.n) {
+			break;
+		}
+		db = QUEUE__DATA(head, struct db, queue);
+		databaseReadUnlock(db);
+		n_db++;
+	}
+
 	return 0;
 }
 
@@ -642,6 +736,7 @@ static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 		}
 	}
 
+	/* Don't use sqlite3_free as this buffer is allocated by raft. */
 	raft_free(buf->base);
 
 	return 0;

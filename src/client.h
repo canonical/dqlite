@@ -82,4 +82,7 @@ int clientSendRemove(struct client *c, unsigned id);
 /* Receive an empty response. */
 int clientRecvEmpty(struct client *c);
 
+/* Receive a failure response. */
+int clientRecvFailure(struct client *c, unsigned long *code, const char **msg);
+
 #endif /* CLIENT_H_*/

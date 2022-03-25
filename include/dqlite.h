@@ -350,6 +350,32 @@ int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
 			size_t *n);
 
 /**
+ * A data buffer.
+ */
+struct dqlite_buffer
+{
+	void *base; /* Pointer to the buffer data. */
+	size_t len; /* Length of the buffer. */
+};
+
+/**
+ * Return a shallow snapshot of the main database file and of the WAL file.
+ * Expects a bufs array of size x + 1, where x is obtained from
+ * `dqlite_vfs_num_pages`.
+ */
+int dqlite_vfs_shallow_snapshot(sqlite3_vfs *vfs,
+				const char *filename,
+				struct dqlite_buffer bufs[],
+				unsigned n);
+
+/**
+ * Return the number of database pages (excluding WAL).
+ */
+int dqlite_vfs_num_pages(sqlite3_vfs *vfs,
+			 const char *filename,
+			 unsigned *n);
+
+/**
  * Restore a snapshot of the main database file and of the WAL file.
  */
 int dqlite_vfs_restore(sqlite3_vfs *vfs,
