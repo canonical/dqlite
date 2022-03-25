@@ -161,7 +161,7 @@ TEST(node, snapshotParamsTrailingTooSmall, setUp, tearDown, 0, NULL)
         struct fixture *f = data;
         int rv;
 
-        rv = dqlite_node_set_snapshot_params(f->node, 512, 512);
+        rv = dqlite_node_set_snapshot_params(f->node, 2, 2);
         munit_assert_int(rv, !=, 0);
 
         startStopNode(f);

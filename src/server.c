@@ -366,7 +366,7 @@ int dqlite_node_set_snapshot_params(dqlite_node *n, unsigned snapshot_threshold,
         return DQLITE_MISUSE;
     }
 
-    if (snapshot_trailing < 1024) {
+    if (snapshot_trailing < 4) {
         return DQLITE_MISUSE;
     }
 
