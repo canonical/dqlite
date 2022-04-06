@@ -35,7 +35,7 @@ void test_server_setup(struct test_server *s,
 	memset(s->others, 0, sizeof s->others);
 }
 
-void test_server_tear_down(struct test_server *s)
+void test_server_stop(struct test_server *s)
 {
 	int rv;
 
@@ -43,9 +43,12 @@ void test_server_tear_down(struct test_server *s)
 	close(s->client.fd);
 	rv = dqlite_node_stop(s->dqlite);
 	munit_assert_int(rv, ==, 0);
-
 	dqlite_node_destroy(s->dqlite);
+}
 
+void test_server_tear_down(struct test_server *s)
+{
+	test_server_stop(s);
 	test_dir_tear_down(s->dir);
 }
 
@@ -61,6 +64,9 @@ void test_server_start(struct test_server *s)
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_set_connect_func(s->dqlite, endpointConnect, s);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_set_network_latency_ms(s->dqlite, 10);
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_start(s->dqlite);
