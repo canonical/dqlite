@@ -293,50 +293,14 @@ static int apply_undo(struct fsm *f, const struct command_undo *c)
 	return 0;
 }
 
+/* Checkpoints used to be coordinated cluster-wide, these days a node
+ * checkpoints independently in `apply_frames`, the checkpoint command becomes a
+ * no-op for modern nodes. */
 static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 {
-        tracef("apply checkpoint");
-	struct db *db;
-	struct sqlite3_file *file;
-	int size;
-	int ckpt;
-	int rv;
-
-	rv = registry__db_get(f->registry, c->filename, &db);
-	assert(rv == 0); /* We have registered this filename before. */
-
-	/* Use a new connection to force re-opening the WAL. */
-	rv = db__open_follower(db);
-	if (rv != 0) {
-                tracef("open failed %d", rv);
-		return rv;
-	}
-
-	rv = sqlite3_file_control(db->follower, "main",
-				  SQLITE_FCNTL_FILE_POINTER, &file);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	/* If there's a checkpoint lock in place, we must be the node that
-	 * originated the checkpoint command in the first place, let's release
-	 * it. */
-	file->pMethods->xShmLock(file, 1 /* checkpoint lock */, 1,
-				 SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);
-
-	rv = sqlite3_wal_checkpoint_v2(
-	    db->follower, "main", SQLITE_CHECKPOINT_TRUNCATE, &size, &ckpt);
-	if (rv != 0) {
-                tracef("sqlite wal checkpoint failed %d", rv);
-		return rv;
-	}
-
-	sqlite3_close(db->follower);
-	db->follower = NULL;
-
-	/* Since no reader transaction is in progress, we must be able to
-	 * checkpoint the entire WAL */
-	assert(size == 0);
-	assert(ckpt == 0);
-
+	(void) f;
+	(void) c;
+	tracef("apply no-op checkpoint");
 	return 0;
 }
 
