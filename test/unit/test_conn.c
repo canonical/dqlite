@@ -85,7 +85,7 @@ static void connCloseCb(struct conn *conn)
  ******************************************************************************/
 
 /* Send the initial client handshake. */
-#define HANDSHAKE                                      \
+#define HANDSHAKE_CONN                                 \
 	{                                              \
 		int rv2;                               \
 		rv2 = clientSendHandshake(&f->client); \
@@ -94,7 +94,7 @@ static void connCloseCb(struct conn *conn)
 	}
 
 /* Open a test database. */
-#define OPEN                                              \
+#define OPEN_CONN                                         \
 	{                                                 \
 		int rv2;                                  \
 		rv2 = clientSendOpen(&f->client, "test"); \
@@ -105,7 +105,7 @@ static void connCloseCb(struct conn *conn)
 	}
 
 /* Prepare a statement. */
-#define PREPARE(SQL, STMT_ID)                              \
+#define PREPARE_CONN(SQL, STMT_ID)                         \
 	{                                                  \
 		int rv2;                                   \
 		rv2 = clientSendPrepare(&f->client, SQL);  \
@@ -116,7 +116,7 @@ static void connCloseCb(struct conn *conn)
 	}
 
 /* Execute a statement. */
-#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)         \
+#define EXEC_CONN(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)    \
 	{                                                          \
 		int rv2;                                           \
 		rv2 = clientSendExec(&f->client, STMT_ID);         \
@@ -128,7 +128,7 @@ static void connCloseCb(struct conn *conn)
 	}
 
 /* Execute a non-prepared statement. */
-#define EXEC_SQL(SQL, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)         \
+#define EXEC_SQL_CONN(SQL, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)    \
 	{                                                          \
 		int rv2;                                           \
 		rv2 = clientSendExecSQL(&f->client, SQL);          \
@@ -140,7 +140,7 @@ static void connCloseCb(struct conn *conn)
 	}
 
 /* Perform a query. */
-#define QUERY(STMT_ID, ROWS)                                \
+#define QUERY_CONN(STMT_ID, ROWS)                           \
 	{                                                   \
 		int rv2;                                    \
 		rv2 = clientSendQuery(&f->client, STMT_ID); \
@@ -151,7 +151,7 @@ static void connCloseCb(struct conn *conn)
 	}
 
 /* Perform a non-prepared query. */
-#define QUERY_SQL(SQL, ROWS)                                   \
+#define QUERY_SQL_CONN(SQL, ROWS)                              \
 	{                                                      \
 		int rv2;                                       \
 		rv2 = clientSendQuerySql(&f->client, SQL);     \
@@ -192,7 +192,7 @@ TEST_CASE(handshake, success, NULL)
 {
 	struct handshake_fixture *f = data;
 	(void)params;
-	HANDSHAKE;
+	HANDSHAKE_CONN;
 	return MUNIT_OK;
 }
 
@@ -213,7 +213,7 @@ TEST_SETUP(open)
 {
 	struct open_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
-	HANDSHAKE;
+	HANDSHAKE_CONN;
 	return f;
 }
 
@@ -228,7 +228,7 @@ TEST_CASE(open, success, NULL)
 {
 	struct open_fixture *f = data;
 	(void)params;
-	OPEN;
+	OPEN_CONN;
 	return MUNIT_OK;
 }
 
@@ -249,8 +249,8 @@ TEST_SETUP(prepare)
 {
 	struct prepare_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
-	HANDSHAKE;
-	OPEN;
+	HANDSHAKE_CONN;
+	OPEN_CONN;
 	return f;
 }
 
@@ -266,7 +266,7 @@ TEST_CASE(prepare, success, NULL)
 	struct prepare_fixture *f = data;
 	unsigned stmt_id;
 	(void)params;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+	PREPARE_CONN("CREATE TABLE test (n INT)", &stmt_id);
 	munit_assert_int(stmt_id, ==, 0);
 	return MUNIT_OK;
 }
@@ -289,8 +289,8 @@ TEST_SETUP(exec)
 {
 	struct exec_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
-	HANDSHAKE;
-	OPEN;
+	HANDSHAKE_CONN;
+	OPEN_CONN;
 	return f;
 }
 
@@ -307,8 +307,8 @@ TEST_CASE(exec, success, NULL)
 	unsigned last_insert_id;
 	unsigned rows_affected;
 	(void)params;
-	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 8);
+	PREPARE_CONN("CREATE TABLE test (n INT)", &f->stmt_id);
+	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 8);
 	munit_assert_int(last_insert_id, ==, 0);
 	munit_assert_int(rows_affected, ==, 0);
 	return MUNIT_OK;
@@ -320,14 +320,14 @@ TEST_CASE(exec, result, NULL)
 	unsigned last_insert_id;
 	unsigned rows_affected;
 	(void)params;
-	PREPARE("BEGIN", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 3);
-	PREPARE("CREATE TABLE test (n INT)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 6);
-	PREPARE("INSERT INTO test (n) VALUES(123)", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 3);
-	PREPARE("COMMIT", &f->stmt_id);
-	EXEC(f->stmt_id, &last_insert_id, &rows_affected, 6);
+	PREPARE_CONN("BEGIN", &f->stmt_id);
+	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 3);
+	PREPARE_CONN("CREATE TABLE test (n INT)", &f->stmt_id);
+	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 6);
+	PREPARE_CONN("INSERT INTO test (n) VALUES(123)", &f->stmt_id);
+	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 3);
+	PREPARE_CONN("COMMIT", &f->stmt_id);
+	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 6);
 	munit_assert_int(last_insert_id, ==, 1);
 	munit_assert_int(rows_affected, ==, 1);
 	return MUNIT_OK;
@@ -341,7 +341,7 @@ TEST_CASE(exec, close_while_in_flight, NULL)
 	int rv;
 	(void)params;
 
-	EXEC_SQL("CREATE TABLE test (n)", &last_insert_id, &rows_affected, 7);
+	EXEC_SQL_CONN("CREATE TABLE test (n)", &last_insert_id, &rows_affected, 7);
 	rv = clientSendExecSQL(&f->client, "INSERT INTO test(n) VALUES(1)");
 	munit_assert_int(rv, ==, 0);
 
@@ -373,12 +373,12 @@ TEST_SETUP(query)
 	struct query_fixture *f = munit_malloc(sizeof *f);
 	unsigned stmt_id;
 	SETUP;
-	HANDSHAKE;
-	OPEN;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &f->last_insert_id, &f->rows_affected, 7);
-	PREPARE("INSERT INTO test(n) VALUES (123)", &f->insert_stmt_id);
-	EXEC(f->insert_stmt_id, &f->last_insert_id, &f->rows_affected, 4);
+	HANDSHAKE_CONN;
+	OPEN_CONN;
+	PREPARE_CONN("CREATE TABLE test (n INT)", &stmt_id);
+	EXEC_CONN(stmt_id, &f->last_insert_id, &f->rows_affected, 7);
+	PREPARE_CONN("INSERT INTO test(n) VALUES (123)", &f->insert_stmt_id);
+	EXEC_CONN(f->insert_stmt_id, &f->last_insert_id, &f->rows_affected, 4);
 	return f;
 }
 
@@ -396,8 +396,8 @@ TEST_CASE(query, one, NULL)
 	struct query_fixture *f = data;
 	struct row *row;
 	(void)params;
-	PREPARE("SELECT n FROM test", &f->stmt_id);
-	QUERY(f->stmt_id, &f->rows);
+	PREPARE_CONN("SELECT n FROM test", &f->stmt_id);
+	QUERY_CONN(f->stmt_id, &f->rows);
 	munit_assert_int(f->rows.column_count, ==, 1);
 	munit_assert_string_equal(f->rows.column_names[0], "n");
 	row = f->rows.next;

@@ -42,22 +42,16 @@
 	test_sqlite_tear_down();                        \
 	test_heap_tear_down(data)
 
-/******************************************************************************
- *
- * Helper macros.
- *
- ******************************************************************************/
-
 /* Use the client connected to the server with the given ID. */
 #define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
 
 /******************************************************************************
  *
- * join
+ * cluster
  *
  ******************************************************************************/
 
-SUITE(membership)
+SUITE(cluster)
 
 struct fixture
 {
@@ -78,32 +72,96 @@ static void tearDown(void *data)
 	free(f);
 }
 
-TEST(membership, join, setUp, tearDown, 0, NULL)
+static char* num_records[] = {
+    "0", "1", "256",
+    /* WAL will just have been checkpointed after 993 writes. */
+    "993",
+    /* Non-empty WAL, checkpointed twice, 2 snapshots taken */
+    "2200", NULL
+};
+
+static MunitParameterEnum num_records_params[] = {
+    { "num_records", num_records },
+    { NULL, NULL },
+};
+
+/* Restart a node and check if all data is there */
+TEST(cluster, restart, setUp, tearDown, 0, num_records_params)
 {
 	struct fixture *f = data;
-	unsigned id = 2;
-	const char *address = "@2";
 	unsigned stmt_id;
 	unsigned last_insert_id;
 	unsigned rows_affected;
+	struct rows rows;
+	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
+	char sql[128];
 
 	HANDSHAKE;
-	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
-	PREPARE("INSERT INTO test(n) VALUES(1)", &stmt_id);
+
+	for (unsigned i = 0; i < n_records; ++i) {
+		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
+		PREPARE(sql, &stmt_id);
+		EXEC(stmt_id, &last_insert_id, &rows_affected);
+	}
+
+	struct test_server *server = &f->servers[0];
+	test_server_stop(server);
+	test_server_start(server);
+
+	/* The table is visible after restart. */
+	HANDSHAKE;
+	OPEN;
+	PREPARE("SELECT COUNT(*) from test", &stmt_id);
+	QUERY(stmt_id, &rows);
+	munit_assert_long(rows.next->values->integer, ==, n_records);
+	clientCloseRows(&rows);
+	return MUNIT_OK;
+}
+
+/* Add data to a node, add a new node and make sure data is there. */
+TEST(cluster, dataOnNewNode, setUp, tearDown, 0, num_records_params)
+{
+	struct fixture *f = data;
+	unsigned stmt_id;
+	unsigned last_insert_id;
+	unsigned rows_affected;
+	struct rows rows;
+	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
+	char sql[128];
+	unsigned id = 2;
+	const char *address = "@2";
+
+	HANDSHAKE;
+	OPEN;
+	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	/* The table is visible from the new node */
+	for (unsigned i = 0; i < n_records; ++i) {
+		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
+		PREPARE(sql, &stmt_id);
+		EXEC(stmt_id, &last_insert_id, &rows_affected);
+	}
+
+	/* Add a second voting server, this one will receive all data from the
+	 * original leader. */
+	ADD(id, address);
+	ASSIGN(id, 1 /* voter */);
+
+	/* Remove original server so second server becomes leader after election
+	 * timeout */
+	REMOVE(1);
+	sleep(1);
+
+	/* The full table is visible from the new node */
 	SELECT(2);
 	HANDSHAKE;
 	OPEN;
-	PREPARE("SELECT * FROM test", &stmt_id);
-
-	/* TODO: fix the standalone test for remove */
-	SELECT(1);
-	REMOVE(id);
+	PREPARE("SELECT COUNT(*) from test", &stmt_id);
+	QUERY(stmt_id, &rows);
+	munit_assert_long(rows.next->values->integer, ==, n_records);
+	clientCloseRows(&rows);
 	return MUNIT_OK;
 }

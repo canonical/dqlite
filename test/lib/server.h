@@ -34,6 +34,9 @@ void test_server_tear_down(struct test_server *s);
 /* Start the test server. */
 void test_server_start(struct test_server *s);
 
+/* Stop the test server. */
+void test_server_stop(struct test_server *s);
+
 /* Connect all the given the servers to each other. */
 void test_server_network(struct test_server *servers, unsigned n_servers);
 

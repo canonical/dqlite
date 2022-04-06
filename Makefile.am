@@ -81,6 +81,7 @@ unit_test_LDADD = libtest.la
 
 integration_test_SOURCES = \
   test/integration/test_client.c \
+  test/integration/test_cluster.c \
   test/integration/test_membership.c \
   test/integration/test_node.c \
   test/integration/test_vfs.c \
