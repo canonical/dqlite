@@ -1,5 +1,6 @@
 #include "../../src/client.h"
 #include "../../src/server.h"
+#include "../lib/client.h"
 #include "../lib/endpoint.h"
 #include "../lib/fs.h"
 #include "../lib/heap.h"
@@ -49,75 +50,6 @@
 
 /* Use the client connected to the server with the given ID. */
 #define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
-
-/* Send the initial client handshake. */
-#define HANDSHAKE                                     \
-	{                                             \
-		int rv_;                              \
-		rv_ = clientSendHandshake(f->client); \
-		munit_assert_int(rv_, ==, 0);         \
-	}
-
-/* Send an add request. */
-#define ADD(ID, ADDRESS)                                     \
-	{                                                    \
-		int rv_;                                     \
-		rv_ = clientSendAdd(f->client, ID, ADDRESS); \
-		munit_assert_int(rv_, ==, 0);                \
-		rv_ = clientRecvEmpty(f->client);            \
-		munit_assert_int(rv_, ==, 0);                \
-	}
-
-/* Send an assign role request. */
-#define ASSIGN(ID, ROLE)                                     \
-	{                                                    \
-		int rv_;                                     \
-		rv_ = clientSendAssign(f->client, ID, ROLE); \
-		munit_assert_int(rv_, ==, 0);                \
-		rv_ = clientRecvEmpty(f->client);            \
-		munit_assert_int(rv_, ==, 0);                \
-	}
-
-/* Send a remove request. */
-#define REMOVE(ID)                                     \
-	{                                              \
-		int rv_;                               \
-		rv_ = clientSendRemove(f->client, ID); \
-		munit_assert_int(rv_, ==, 0);          \
-		rv_ = clientRecvEmpty(f->client);      \
-		munit_assert_int(rv_, ==, 0);          \
-	}
-
-/* Open a test database. */
-#define OPEN                                             \
-	{                                                \
-		int rv_;                                 \
-		rv_ = clientSendOpen(f->client, "test"); \
-		munit_assert_int(rv_, ==, 0);            \
-		rv_ = clientRecvDb(f->client);           \
-		munit_assert_int(rv_, ==, 0);            \
-	}
-
-/* Prepare a statement. */
-#define PREPARE(SQL, STMT_ID)                             \
-	{                                                 \
-		int rv_;                                  \
-		rv_ = clientSendPrepare(f->client, SQL);  \
-		munit_assert_int(rv_, ==, 0);             \
-		rv_ = clientRecvStmt(f->client, STMT_ID); \
-		munit_assert_int(rv_, ==, 0);             \
-	}
-
-/* Execute a statement. */
-#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)              \
-	{                                                         \
-		int rv_;                                          \
-		rv_ = clientSendExec(f->client, STMT_ID);         \
-		munit_assert_int(rv_, ==, 0);                     \
-		rv_ = clientRecvResult(f->client, LAST_INSERT_ID, \
-				       ROWS_AFFECTED);            \
-		munit_assert_int(rv_, ==, 0);                     \
-	}
 
 /******************************************************************************
  *
