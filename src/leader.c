@@ -145,6 +145,70 @@ void leader__close(struct leader *l)
 	QUEUE__REMOVE(&l->queue);
 }
 
+/* A checkpoint command that fails to commit is not a huge issue.
+ * The WAL will not be checkpointed this time around on these nodes,
+ * a new checkpoint command will be issued once the WAL on the leader reaches
+ * threshold size again. It's improbable that the WAL in this way could grow
+ * without bound, it would mean that apply frames commands commit without
+ * issues, while the checkpoint command would somehow always fail to commit. */
+static void leaderCheckpointApplyCb(struct raft_apply *req,
+				    int status,
+				    void *result)
+{
+	(void)req;
+	(void)result;
+	if (status != 0) {
+                tracef("checkpoint apply failed %d", status);
+	}
+}
+
+/* Attempt to perform a checkpoint on nodes running a version of dqlite that
+ * doens't perform autonomous checkpoints. For recent nodes, the checkpoint
+ * command will just be a no-op.
+ * This function will run after the WAL might have been checkpointed during a call
+ * to `apply_frames`.
+ * */
+static void leaderMaybeCheckpointLegacy(struct leader *l)
+{
+	tracef("leader maybe checkpoint legacy");
+	struct sqlite3_file *wal;
+	struct raft_buffer buf;
+	struct command_checkpoint command;
+	sqlite3_int64 size;
+	int rv;
+
+	/* Get the database file associated with this connection */
+	rv = sqlite3_file_control(l->conn, "main", SQLITE_FCNTL_JOURNAL_POINTER,
+				  &wal);
+	assert(rv == SQLITE_OK); /* Should never fail */
+
+	rv = wal->pMethods->xFileSize(wal, &size);
+	assert(rv == SQLITE_OK); /* Should never fail */
+
+	/* size of the WAL will be 0 if it has just been checkpointed on this
+	 * leader as a result of running apply_frames. */
+	if (size != 0) {
+		return;
+	}
+
+	tracef("issue checkpoint command");
+
+	/* Attempt to perfom a checkpoint across nodes that don't perform
+	 * autonomous snapshots. */
+	command.filename = l->db->filename;
+	rv = command__encode(COMMAND_CHECKPOINT, &command, &buf);
+	if (rv != 0) {
+		tracef("encode failed %d", rv);
+		return;
+	}
+
+	rv = raft_apply(l->raft, &l->apply, &buf, 1, leaderCheckpointApplyCb);
+	if (rv != 0) {
+		tracef("raft_apply failed %d", rv);
+		raft_free(buf.base);
+	}
+}
+
 static void leaderApplyFramesCb(struct raft_apply *req,
 				int status,
 				void *result)
@@ -191,6 +255,10 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 	}
 
 	raft_free(apply);
+
+	if (status == 0) {
+		leaderMaybeCheckpointLegacy(l);
+	}
 
 finish:
 	l->inflight = NULL;
