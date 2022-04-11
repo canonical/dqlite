@@ -122,7 +122,6 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 	}
 
 	l->exec = NULL;
-	l->apply.data = l;
 	l->inflight = NULL;
 	QUEUE__PUSH(&db->leaders, &l->queue);
 	return 0;
@@ -155,8 +154,8 @@ static void leaderCheckpointApplyCb(struct raft_apply *req,
 				    int status,
 				    void *result)
 {
-	(void)req;
 	(void)result;
+	raft_free(req);
 	if (status != 0) {
                 tracef("checkpoint apply failed %d", status);
 	}
@@ -202,11 +201,22 @@ static void leaderMaybeCheckpointLegacy(struct leader *l)
 		return;
 	}
 
-	rv = raft_apply(l->raft, &l->apply, &buf, 1, leaderCheckpointApplyCb);
+	struct raft_apply *apply = raft_malloc(sizeof(*apply));
+	if (apply == NULL) {
+		tracef("raft_malloc - no mem");
+		goto err_after_buf_alloc;
+	}
+	rv = raft_apply(l->raft, apply, &buf, 1, leaderCheckpointApplyCb);
 	if (rv != 0) {
 		tracef("raft_apply failed %d", rv);
-		raft_free(buf.base);
+		raft_free(apply);
+		goto err_after_buf_alloc;
 	}
+
+	return;
+
+err_after_buf_alloc:
+	raft_free(buf.base);
 }
 
 static void leaderApplyFramesCb(struct raft_apply *req,
