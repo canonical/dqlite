@@ -10,6 +10,7 @@ jobs:
           - bionic
           - focal
           - impish
+          - jammy
     runs-on: ubuntu-20.04
     steps:
     - name: Clone the repositories
