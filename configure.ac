@@ -49,7 +49,7 @@ AC_SYS_LARGEFILE
 # Checks for libraries
 PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.22.0], [], [])
 PKG_CHECK_MODULES(UV, [libuv >= 1.8.0], [], [])
-PKG_CHECK_MODULES(RAFT, [raft], [], [])
+PKG_CHECK_MODULES(RAFT, [raft >= 0.13.0], [], [])
 
 CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -std=c11 \

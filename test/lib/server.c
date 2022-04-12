@@ -85,6 +85,14 @@ struct client *test_server_client(struct test_server *s)
 	return &s->client;
 }
 
+int test_server_client_reconnect(struct test_server *s)
+{
+	clientClose(&s->client);
+	close(s->client.fd);
+	endpointConnect(NULL, s->address, &s->client.fd);
+	return clientInit(&s->client, s->client.fd);
+}
+
 static void setOther(struct test_server *s, struct test_server *other)
 {
 	unsigned i = other->id - 1;

@@ -2469,6 +2469,23 @@ static uint32_t vfsDatabaseGetNumberOfPages(struct vfsDatabase *d)
 	return vfsGet32(&page[28]);
 }
 
+int VfsDatabaseNumPages(sqlite3_vfs *vfs,
+		        const char* filename,
+		        uint32_t *n)
+{
+	struct vfs *v;
+	struct vfsDatabase *d;
+
+	v = (struct vfs *)(vfs->pAppData);
+	d = vfsDatabaseLookup(v, filename);
+	if (d == NULL) {
+		return -1;
+	}
+
+	*n = vfsDatabaseGetNumberOfPages(d);
+	return 0;
+}
+
 static void vfsDatabaseSnapshot(struct vfsDatabase *d, uint8_t **cursor)
 {
 	uint32_t page_size;
@@ -2546,6 +2563,62 @@ int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
 	vfsDatabaseSnapshot(database, &cursor);
 	vfsWalSnapshot(wal, &cursor);
 
+	return 0;
+}
+
+static void vfsDatabaseShallowSnapshot(struct vfsDatabase *d, struct dqlite_buffer *bufs)
+{
+	uint32_t page_size;
+
+	page_size = vfsDatabaseGetPageSize(d);
+	assert(page_size > 0);
+
+	/* Fill the buffers with pointers to all of the database pages */
+	for (unsigned i = 0; i < d->n_pages; ++i) {
+		bufs[i].base = d->pages[i];
+		bufs[i].len = page_size;
+	}
+}
+
+int VfsShallowSnapshot(sqlite3_vfs *vfs, const char *filename, struct dqlite_buffer bufs[], uint32_t n)
+{
+	tracef("vfs snapshot filename %s", filename);
+	struct vfs *v;
+	struct vfsDatabase *database;
+	struct vfsWal *wal;
+	uint8_t *cursor;
+
+	v = (struct vfs *)(vfs->pAppData);
+	database = vfsDatabaseLookup(v, filename);
+
+	if (database == NULL) {
+		tracef("not found");
+		return -1;
+	}
+
+	if (database->n_pages != vfsDatabaseGetNumberOfPages(database)) {
+		tracef("corrupt");
+		return SQLITE_CORRUPT;
+	}
+
+	if (database->n_pages != n - 1) {
+		tracef("not enough buffers provided");
+		return SQLITE_MISUSE;
+	}
+
+	/* Copy WAL to last buffer. */
+	wal = &database->wal;
+	bufs[n-1].len = vfsWalFileSize(wal);
+	bufs[n-1].base = sqlite3_malloc64(bufs[n-1].len);
+	/* WAL can have 0 length! */
+	if (bufs[n-1].base == NULL && bufs[n-1].len != 0) {
+		return SQLITE_NOMEM;
+	}
+	cursor = bufs[n-1].base;
+	vfsWalSnapshot(wal, &cursor);
+
+	/* Copy page pointers to first n-1 buffers */
+	vfsDatabaseShallowSnapshot(database, bufs);
 	return 0;
 }
 

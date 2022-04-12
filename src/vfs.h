@@ -36,10 +36,22 @@ int VfsAbort(sqlite3_vfs *vfs, const char *filename);
 /* Make a full snapshot of a database. */
 int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n);
 
+/* Makes a full, shallow snapshot of a database. The first n-1 buffers will each
+ * contain a pointer to the actual database pages, while the n'th buffer
+ * will contain a copy of the wal. `bufs` MUST point to an array of n
+ * `dqlite_buffer` structs and n MUST equal 1 + the number of pages in
+ * the database. */
+int VfsShallowSnapshot(sqlite3_vfs *vfs, const char *filename, struct dqlite_buffer bufs[], uint32_t n);
+
 /* Restore a database snapshot. */
 int VfsRestore(sqlite3_vfs *vfs,
 	       const char *filename,
 	       const void *data,
 	       size_t n);
+
+/* Number of pages in the database. */
+int VfsDatabaseNumPages(sqlite3_vfs *vfs,
+			const char* filename,
+			uint32_t *n);
 
 #endif /* VFS_H_ */

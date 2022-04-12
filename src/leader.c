@@ -122,7 +122,6 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 	}
 
 	l->exec = NULL;
-	l->apply.data = l;
 	l->inflight = NULL;
 	QUEUE__PUSH(&db->leaders, &l->queue);
 	return 0;
@@ -145,41 +144,36 @@ void leader__close(struct leader *l)
 	QUEUE__REMOVE(&l->queue);
 }
 
+/* A checkpoint command that fails to commit is not a huge issue.
+ * The WAL will not be checkpointed this time around on these nodes,
+ * a new checkpoint command will be issued once the WAL on the leader reaches
+ * threshold size again. It's improbable that the WAL in this way could grow
+ * without bound, it would mean that apply frames commands commit without
+ * issues, while the checkpoint command would somehow always fail to commit. */
 static void leaderCheckpointApplyCb(struct raft_apply *req,
 				    int status,
 				    void *result)
 {
-	struct leader *l = req->data;
 	(void)result;
-	/* In case of failure, release the chekcpoint lock. */
+	raft_free(req);
 	if (status != 0) {
                 tracef("checkpoint apply failed %d", status);
-		struct sqlite3_file *file;
-		sqlite3_file_control(l->conn, "main", SQLITE_FCNTL_FILE_POINTER,
-				     &file);
-		file->pMethods->xShmLock(
-		    file, 1 /* checkpoint lock */, 1,
-		    SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);
 	}
-	l->inflight = NULL;
-	l->db->tx_id = 0;
-	l->exec->done = true;
-	maybeExecDone(l->exec);
 }
 
-/* Attempt to perform a checkpoint if possible. */
-static bool leaderMaybeCheckpoint(struct leader *l)
+/* Attempt to perform a checkpoint on nodes running a version of dqlite that
+ * doens't perform autonomous checkpoints. For recent nodes, the checkpoint
+ * command will just be a no-op.
+ * This function will run after the WAL might have been checkpointed during a call
+ * to `apply_frames`.
+ * */
+static void leaderMaybeCheckpointLegacy(struct leader *l)
 {
-        tracef("leader maybe checkpoint");
-	struct sqlite3_file *main_f;
+	tracef("leader maybe checkpoint legacy");
 	struct sqlite3_file *wal;
 	struct raft_buffer buf;
 	struct command_checkpoint command;
-	volatile void *region;
 	sqlite3_int64 size;
-	unsigned page_size = l->db->config->page_size;
-	unsigned pages;
-	int i;
 	int rv;
 
 	/* Get the database file associated with this connection */
@@ -190,73 +184,39 @@ static bool leaderMaybeCheckpoint(struct leader *l)
 	rv = wal->pMethods->xFileSize(wal, &size);
 	assert(rv == SQLITE_OK); /* Should never fail */
 
-	/* Calculate the number of frames. */
-	pages = ((unsigned)size - 32) / (24 + page_size);
-
-	/* Check if the size of the WAL is beyond the threshold. */
-	if (pages < l->db->config->checkpoint_threshold) {
-	        tracef("wal size (%u) < threshold (%u)", pages, l->db->config->checkpoint_threshold);
-		return false;
+	/* size of the WAL will be 0 if it has just been checkpointed on this
+	 * leader as a result of running apply_frames. */
+	if (size != 0) {
+		return;
 	}
 
-	/* Get the database file associated with this connection */
-	rv = sqlite3_file_control(l->conn, "main", SQLITE_FCNTL_FILE_POINTER,
-				  &main_f);
-	assert(rv == SQLITE_OK); /* Should never fail */
+	tracef("issue checkpoint command");
 
-	/* Get the first SHM region, which contains the WAL header. */
-	rv = main_f->pMethods->xShmMap(main_f, 0, 0, 0, &region);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	rv = main_f->pMethods->xShmUnmap(main_f, 0);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	/* Try to acquire all locks. */
-	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
-		int flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
-
-		rv = main_f->pMethods->xShmLock(main_f, i, 1, flags);
-		if (rv == SQLITE_BUSY) {
-			/* There's a reader. Let's postpone the checkpoint
-			 * for now. */
-                        tracef("busy reader");
-			return false;
-		}
-
-		/* Not locked. Let's release the lock we just
-		 * acquired. */
-		flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
-		main_f->pMethods->xShmLock(main_f, i, 1, flags);
-	}
-
-	/* Attempt to perfom a checkpoint across all nodes.
-	 *
-	 * TODO: reason about if it's indeed fine to ignore all kind of
-	 * errors. */
+	/* Attempt to perfom a checkpoint across nodes that don't perform
+	 * autonomous snapshots. */
 	command.filename = l->db->filename;
 	rv = command__encode(COMMAND_CHECKPOINT, &command, &buf);
 	if (rv != 0) {
-                tracef("encode failed %d", rv);
-		goto abort;
+		tracef("encode failed %d", rv);
+		return;
 	}
 
-	rv = raft_apply(l->raft, &l->apply, &buf, 1, leaderCheckpointApplyCb);
+	struct raft_apply *apply = raft_malloc(sizeof(*apply));
+	if (apply == NULL) {
+		tracef("raft_malloc - no mem");
+		goto err_after_buf_alloc;
+	}
+	rv = raft_apply(l->raft, apply, &buf, 1, leaderCheckpointApplyCb);
 	if (rv != 0) {
-                tracef("raft_apply failed %d", rv);
-		goto abort_after_command_encode;
+		tracef("raft_apply failed %d", rv);
+		raft_free(apply);
+		goto err_after_buf_alloc;
 	}
 
-	rv = main_f->pMethods->xShmLock(main_f, 1 /* checkpoint lock */, 1,
-				      SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);
-	assert(rv == 0);
+	return;
 
-	return true;
-
-abort_after_command_encode:
+err_after_buf_alloc:
 	raft_free(buf.base);
-abort:
-	assert(rv != 0);
-	return false;
 }
 
 static void leaderApplyFramesCb(struct raft_apply *req,
@@ -306,9 +266,8 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 
 	raft_free(apply);
 
-	if (status == 0 && leaderMaybeCheckpoint(l)) {
-		/* Wait for the checkpoint to finish. */
-		return;
+	if (status == 0) {
+		leaderMaybeCheckpointLegacy(l);
 	}
 
 finish:
