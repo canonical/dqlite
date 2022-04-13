@@ -373,7 +373,7 @@ int clientRecvEmpty(struct client *c)
 	return 0;
 }
 
-int clientRecvFailure(struct client *c, unsigned long *code, const char **msg)
+int clientRecvFailure(struct client *c, uint64_t *code, const char **msg)
 {
 	tracef("client recv failure fd %d", c->fd);
 	struct response_failure response;
