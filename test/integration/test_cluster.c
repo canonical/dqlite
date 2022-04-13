@@ -101,7 +101,7 @@ TEST(cluster, restart, setUp, tearDown, 0, num_records_params)
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	for (unsigned i = 0; i < n_records; ++i) {
+	for (int i = 0; i < n_records; ++i) {
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
 		PREPARE(sql, &stmt_id);
 		EXEC(stmt_id, &last_insert_id, &rows_affected);
@@ -139,7 +139,7 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, num_records_params)
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	for (unsigned i = 0; i < n_records; ++i) {
+	for (int i = 0; i < n_records; ++i) {
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
 		PREPARE(sql, &stmt_id);
 		EXEC(stmt_id, &last_insert_id, &rows_affected);

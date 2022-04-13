@@ -371,7 +371,7 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, num_writes_params)
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
-	for (unsigned i = 0; i < n_records; ++i) {
+	for (int i = 0; i < n_records; ++i) {
 	    sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
 	    PREPARE(sql, &stmt_id);
 	    EXEC(stmt_id, &last_insert_id, &rows_affected);
@@ -401,7 +401,7 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, num_writes_params)
 	clientCloseRows(&rows);
 
 	/* Still possible to insert entries */
-	for (unsigned i = 0; i < n_records; ++i) {
+	for (int i = 0; i < n_records; ++i) {
 	    sprintf(sql, "INSERT INTO test(n) VALUES(%ld)", n_records + i + 1);
 	    PREPARE(sql, &stmt_id);
 	    EXEC(stmt_id, &last_insert_id, &rows_affected);
