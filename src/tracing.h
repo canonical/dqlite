@@ -8,12 +8,14 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "lib/util.h"
+
 /* This global variable is only written once at startup and is only read
  * from there on. Users should not manipulate the value of this variable. */
 extern bool _dqliteTracingEnabled;
 
 #define tracef(...) do {                                                                   \
-    if (_dqliteTracingEnabled) {                                                           \
+    if (UNLIKELY(_dqliteTracingEnabled)) {                                                 \
         static char _msg[1024];                                                            \
         snprintf(_msg, sizeof(_msg), __VA_ARGS__);                                         \
         struct timespec ts = {0};                                                          \
