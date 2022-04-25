@@ -39,6 +39,14 @@
 		munit_assert_int(rv_, ==, 0);         \
 	}
 
+/* Send the initial client handshake for a specific client. */
+#define HANDSHAKE_C(CLIENT)                           \
+	{                                             \
+		int rv_;                              \
+		rv_ = clientSendHandshake(CLIENT);    \
+		munit_assert_int(rv_, ==, 0);         \
+	}
+
 /* Send an add request. */
 #define ADD(ID, ADDRESS)                                     \
 	{                                                    \
@@ -67,6 +75,16 @@
 		munit_assert_int(rv_, ==, 0);          \
 		rv_ = clientRecvEmpty(f->client);      \
 		munit_assert_int(rv_, ==, 0);          \
+	}
+
+/* Send a transfer request. */
+#define TRANSFER(ID, CLIENT)                             \
+	{                                                \
+		int rv_;                                 \
+		rv_ = clientSendTransfer(CLIENT, ID);    \
+		munit_assert_int(rv_, ==, 0);            \
+		rv_ = clientRecvEmpty(CLIENT);           \
+		munit_assert_int(rv_, ==, 0);            \
 	}
 
 /* Open a test database. */

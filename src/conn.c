@@ -333,3 +333,19 @@ void conn__stop(struct conn *c)
 	gateway__close(&c->gateway);
 	transport__close(&c->transport, closeCb);
 }
+
+/**
+ * Close any connection that has an opened SQLite leader connection after
+ * leadership has been lost.
+ */
+void conn__leadership_lost(struct conn *c)
+{
+	tracef("conn leadership lost");
+	struct gateway *g;
+	g = &c->gateway;
+	if (g == NULL || g->leader == NULL) {
+		return;
+	}
+
+	conn__stop(c);
+}

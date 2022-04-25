@@ -79,6 +79,9 @@ int clientSendAssign(struct client *c, unsigned id, int role);
 /* Send a request to remove a server from the cluster. */
 int clientSendRemove(struct client *c, unsigned id);
 
+/* Send a request to transfer leadership to node with id `id`. */
+int clientSendTransfer(struct client *c, unsigned id);
+
 /* Receive an empty response. */
 int clientRecvEmpty(struct client *c);
 
