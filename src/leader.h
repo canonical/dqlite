@@ -64,7 +64,6 @@ struct exec
 	struct leader *leader;
 	struct barrier barrier;
 	sqlite3_stmt *stmt;
-	bool done;
 	int status;
 	queue queue;
 	exec_cb cb;

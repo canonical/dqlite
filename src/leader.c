@@ -9,11 +9,10 @@
 #include "tracing.h"
 #include "vfs.h"
 
-static void maybeExecDone(struct exec *req)
+/* Called when a leader exec request terminates and the associated callback can
+ * be invoked. */
+static void leaderExecDone(struct exec *req)
 {
-	if (!req->done) {
-		return;
-	}
 	req->leader->exec = NULL;
 	if (req->cb != NULL) {
 		req->cb(req, req->status);
@@ -134,9 +133,8 @@ void leader__close(struct leader *l)
 	/* TODO: there shouldn't be any ongoing exec request. */
 	if (l->exec != NULL) {
 		assert(l->inflight == NULL);
-		l->exec->done = true;
 		l->exec->status = SQLITE_ERROR;
-		maybeExecDone(l->exec);
+		leaderExecDone(l->exec);
 	}
 	rc = sqlite3_close(l->conn);
 	assert(rc == 0);
@@ -273,8 +271,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 finish:
 	l->inflight = NULL;
 	l->db->tx_id = 0;
-	l->exec->done = true;
-	maybeExecDone(l->exec);
+	leaderExecDone(l->exec);
 }
 
 static int leaderApplyFrames(struct exec *req,
@@ -364,12 +361,11 @@ static void leaderExecV2(struct exec *req)
 	return;
 
 finish:
-	l->exec->done = true;
 	if (rv != 0) {
                 tracef("exec v2 failed %d", rv);
 		l->exec->status = rv;
 	}
-	maybeExecDone(l->exec);
+	leaderExecDone(l->exec);
 }
 
 static void execBarrierCb(struct barrier *barrier, int status)
@@ -378,9 +374,8 @@ static void execBarrierCb(struct barrier *barrier, int status)
 	struct exec *req = barrier->data;
 	struct leader *l = req->leader;
 	if (status != 0) {
-		l->exec->done = true;
 		l->exec->status = status;
-		maybeExecDone(l->exec);
+		leaderExecDone(l->exec);
 		return;
 	}
 	leaderExecV2(req);
@@ -402,7 +397,6 @@ int leader__exec(struct leader *l,
 	req->leader = l;
 	req->stmt = stmt;
 	req->cb = cb;
-	req->done = false;
 	req->barrier.data = req;
 	req->barrier.cb = NULL;
 
