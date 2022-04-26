@@ -47,6 +47,12 @@ void gateway__init(struct gateway *g,
 void gateway__close(struct gateway *g);
 
 /**
+ * Closes the leader connection to the database, reason should contain a raft
+ * error code.
+ */
+void gateway__leader_close(struct gateway *g, int reason);
+
+/**
  * Asynchronous request to handle a client command.
  */
 typedef void (*handle_cb)(struct handle *req, int status, int type);
