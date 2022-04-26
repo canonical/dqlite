@@ -572,21 +572,27 @@ static void monitor_cb(uv_prepare_t *monitor)
 {
 	struct dqlite_node *d = monitor->data;
 	int state = raft_state(&d->raft);
+	/*
 	queue *head;
 	struct conn *conn;
+	*/
 
 	if (state == RAFT_UNAVAILABLE) {
 		return;
 	}
 
+	/* TODO: we should shutdown clients that are performing SQL requests,
+	 * but not the ones which are doing management-requests, such as
+	 * transfer leadership.  */
+	/*
 	if (d->raft_state == RAFT_LEADER && state != RAFT_LEADER) {
-		tracef("leadership lost");
 		QUEUE__FOREACH(head, &d->conns)
 		{
 			conn = QUEUE__DATA(head, struct conn, queue);
-			conn__leadership_lost(conn);
+			conn__stop(conn);
 		}
 	}
+	*/
 
 	d->raft_state = state;
 }

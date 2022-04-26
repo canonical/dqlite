@@ -17,7 +17,8 @@ static int endpointConnect(void *data,
 	*fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	munit_assert_int(*fd, !=, -1);
 	rv = connect(*fd, (struct sockaddr *)&addr, sizeof(sa_family_t) + strlen(address + 1) + 1);
-	return rv;
+	munit_assert_int(rv, ==, 0);
+	return 0;
 }
 
 void test_server_setup(struct test_server *s,
@@ -38,7 +39,8 @@ void test_server_stop(struct test_server *s)
 {
 	int rv;
 
-	test_server_client_close(s, &s->client);
+	clientClose(&s->client);
+	close(s->client.fd);
 	rv = dqlite_node_stop(s->dqlite);
 	munit_assert_int(rv, ==, 0);
 	dqlite_node_destroy(s->dqlite);
@@ -52,6 +54,7 @@ void test_server_tear_down(struct test_server *s)
 
 void test_server_start(struct test_server *s)
 {
+	int client;
 	int rv;
 
 	rv = dqlite_node_create(s->id, s->address, s->dir, &s->dqlite);
@@ -69,7 +72,12 @@ void test_server_start(struct test_server *s)
 	rv = dqlite_node_start(s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
-	test_server_client_connect(s, &s->client);
+	/* Connect a client. */
+	rv = endpointConnect(NULL, s->address, &client);
+	munit_assert_int(rv, ==, 0);
+
+	rv = clientInit(&s->client, client);
+	munit_assert_int(rv, ==, 0);
 }
 
 struct client *test_server_client(struct test_server *s)
@@ -77,29 +85,12 @@ struct client *test_server_client(struct test_server *s)
 	return &s->client;
 }
 
-void test_server_client_reconnect(struct test_server *s, struct client *c)
+int test_server_client_reconnect(struct test_server *s)
 {
-	test_server_client_close(s, c);
-	test_server_client_connect(s, c);
-}
-
-void test_server_client_connect(struct test_server *s, struct client *c)
-{
-	int rv;
-	int fd;
-
-	rv = endpointConnect(NULL, s->address, &fd);
-	munit_assert_int(rv, ==, 0);
-
-	rv = clientInit(c, fd);
-	munit_assert_int(rv, ==, 0);
-}
-
-void test_server_client_close(struct test_server *s, struct client *c)
-{
-	(void) s;
-	clientClose(c);
-	close(c->fd);
+	clientClose(&s->client);
+	close(s->client.fd);
+	endpointConnect(NULL, s->address, &s->client.fd);
+	return clientInit(&s->client, s->client.fd);
 }
 
 static void setOther(struct test_server *s, struct test_server *other)

@@ -188,7 +188,8 @@ TEST(fsm, snapshotHeapFaultTwoDB, setUp, tearDown, 0, NULL)
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
 	/* Close and reopen the client and open a second database */
-	test_server_client_reconnect(&f->servers[0], &f->servers[0].client);
+	rv = test_server_client_reconnect(&f->servers[0]);
+	munit_assert_int(rv, ==, 0);
 
 	HANDSHAKE;
 	OPEN_NAME("test2");
@@ -252,7 +253,8 @@ TEST(fsm, snapshotNewDbAddedBeforeFinalize, setUp, tearDown, 0, NULL)
 
 	/* Close and reopen the client and open a second database,
 	 * and ensure finalize succeeds. */
-	test_server_client_reconnect(&f->servers[0], &f->servers[0].client);
+	rv = test_server_client_reconnect(&f->servers[0]);
+	munit_assert_int(rv, ==, 0);
 
 	HANDSHAKE;
 	OPEN_NAME("test2");
@@ -389,7 +391,8 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, num_writes_params)
 	munit_assert_int(rv, ==, 0);
 
 	/* Table is there on fresh connection. */
-	test_server_client_reconnect(&f->servers[0], &f->servers[0].client);
+	rv = test_server_client_reconnect(&f->servers[0]);
+	munit_assert_int(rv, ==, 0);
 	HANDSHAKE;
 	OPEN;
 	PREPARE("SELECT COUNT(*) from test", &stmt_id);
@@ -466,7 +469,8 @@ TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	test_server_client_reconnect(&f->servers[0], &f->servers[0].client);
+	rv = test_server_client_reconnect(&f->servers[0]);
+	munit_assert_int(rv, ==, 0);
 	HANDSHAKE;
 	OPEN_NAME("test2");
 	PREPARE("CREATE TABLE test2a (n INT)", &stmt_id);
@@ -494,7 +498,8 @@ TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, NULL)
 	munit_assert_int(rv, ==, 0);
 
 	/* Reopen connection */
-	test_server_client_reconnect(&f->servers[0], &f->servers[0].client);
+	rv = test_server_client_reconnect(&f->servers[0]);
+	munit_assert_int(rv, ==, 0);
 	HANDSHAKE;
 	OPEN_NAME("test2");
 
@@ -509,7 +514,8 @@ TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, NULL)
 	munit_assert_string_equal(msg, "no such table: test2b");
 
 	/* Table is there on first DB */
-	test_server_client_reconnect(&f->servers[0], &f->servers[0].client);
+	rv = test_server_client_reconnect(&f->servers[0]);
+	munit_assert_int(rv, ==, 0);
 	HANDSHAKE;
 	OPEN_NAME("test");
 	PREPARE("SELECT * from test", &stmt_id);
