@@ -31,11 +31,10 @@ void gateway__init(struct gateway *g,
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 }
 
-void gateway__close(struct gateway *g)
+void gateway__leader_close(struct gateway *g, int reason)
 {
-	tracef("gateway close");
-	if (g->leader == NULL) {
-		stmt__registry_close(&g->stmts);
+	if (g == NULL || g->leader == NULL) {
+		tracef("gateway:%p or gateway->leader are NULL", g);
 		return;
 	}
 
@@ -43,7 +42,7 @@ void gateway__close(struct gateway *g)
 		if (g->leader->inflight != NULL) {
 			tracef("finish inflight apply request");
 			struct raft_apply *req = &g->leader->inflight->req;
-			req->cb(req, RAFT_SHUTDOWN, NULL);
+			req->cb(req, reason, NULL);
 			assert(g->req == NULL);
 			assert(g->stmt == NULL);
 		} else if (g->barrier.cb != NULL) {
@@ -52,12 +51,12 @@ void gateway__close(struct gateway *g)
 			 * around g->barrier.cb and when called, will set g->barrier.cb to NULL.
 			 * */
 			struct raft_barrier *b = &g->barrier.req;
-			b->cb(b, RAFT_SHUTDOWN);
+			b->cb(b, reason);
 			assert(g->barrier.cb == NULL);
 		} else if (g->leader->exec != NULL && g->leader->exec->barrier.cb != NULL) {
 			tracef("finish inflight exec barrier");
 			struct raft_barrier *b = &g->leader->exec->barrier.req;
-			b->cb(b, RAFT_SHUTDOWN);
+			b->cb(b, reason);
 			assert(g->leader->exec == NULL);
 		} else if (g->req != NULL && g->req->type != DQLITE_REQUEST_QUERY
 					  && g->req->type != DQLITE_REQUEST_EXEC) {
@@ -71,6 +70,18 @@ void gateway__close(struct gateway *g)
 	stmt__registry_close(&g->stmts);
 	leader__close(g->leader);
 	sqlite3_free(g->leader);
+	g->leader = NULL;
+}
+
+void gateway__close(struct gateway *g)
+{
+	tracef("gateway close");
+	if (g->leader == NULL) {
+		stmt__registry_close(&g->stmts);
+		return;
+	}
+
+	gateway__leader_close(g, RAFT_SHUTDOWN);
 }
 
 /* Declare a request struct and a response struct of the appropriate types and
@@ -293,6 +304,7 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
  * affected. */
 static void fill_result(struct gateway *g, struct response_result *response)
 {
+	assert(g->leader != NULL);
 	response->last_insert_id =
 	    (uint64_t)sqlite3_last_insert_rowid(g->leader->conn);
 	response->rows_affected = (uint64_t)sqlite3_changes(g->leader->conn);
@@ -325,6 +337,7 @@ static void leader_exec_cb(struct exec *exec, int status)
 		fill_result(g, &response);
 		SUCCESS(result, RESULT);
 	} else {
+		assert(g->leader != NULL);
 		failure(req, status, error_message(g->leader->conn, status));
 		sqlite3_reset(stmt);
 	}
@@ -371,6 +384,7 @@ static void query_batch(sqlite3_stmt *stmt, struct handle *req)
 	rc = query__batch(stmt, req->buffer);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		sqlite3_reset(stmt);
+		assert(g->leader != NULL);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		goto done;
 	}
@@ -480,6 +494,7 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 	if (status == SQLITE_DONE) {
 		handle_exec_sql_next(req, NULL);
 	} else {
+		assert(g->leader != NULL);
 		failure(req, status, error_message(g->leader->conn, status));
 		sqlite3_reset(g->stmt);
 		sqlite3_finalize(g->stmt);
@@ -507,6 +522,7 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 	}
 
 	/* g->stmt will be set to NULL by sqlite when an error occurs. */
+	assert(g->leader != NULL);
 	rv = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &g->stmt, &tail);
 	if (rv != SQLITE_OK) {
 		tracef("exec sql prepare failed %d", rv);
