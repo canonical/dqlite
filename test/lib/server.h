@@ -43,13 +43,7 @@ void test_server_network(struct test_server *servers, unsigned n_servers);
 /* Return a client connected to the server. */
 struct client *test_server_client(struct test_server *s);
 
-/* Closes and reopens a client connection to the server. */
-void test_server_client_reconnect(struct test_server *s, struct client *c);
-
-/* Opens a client connection to the server. */
-void test_server_client_connect(struct test_server *s, struct client *c);
-
-/* Closes a client connection to ther server. */
-void test_server_client_close(struct test_server *s, struct client *c);
+/* Closes and reopens the client connection to the server. */
+int test_server_client_reconnect(struct test_server *s);
 
 #endif /* TEST_SERVER_H */

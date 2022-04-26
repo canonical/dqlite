@@ -58,9 +58,4 @@ int conn__start(struct conn *c,
  */
 void conn__stop(struct conn *c);
 
-/**
- * Called in case Raft leadership is lost.
- */
-void conn__leadership_lost(struct conn *c);
-
 #endif /* DQLITE_CONN_H_ */
