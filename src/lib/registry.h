@@ -55,7 +55,7 @@
 /**
  * Define the methods of a registry
  */
-#define REGISTRY_METHODS(NAME, TYPE)                                        \
+#define REGISTRY_METHODS(NAME, TYPE)                                                \
 	void NAME##_init(struct NAME *r) {                                          \
 		assert(r != NULL);                                                  \
                                                                                     \
@@ -82,8 +82,11 @@
 			}                                                           \
 		}                                                                   \
                                                                                     \
+		r->len = 0;                                                         \
+		r->cap = 0;                                                         \
 		if (r->buf != NULL) {                                               \
 			sqlite3_free(r->buf);                                       \
+			r->buf = NULL;                                              \
 		}                                                                   \
 	}                                                                           \
                                                                                     \
