@@ -1198,10 +1198,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	assert(left != NULL);
 
 	if (strcmp(left, "page_size") == 0 && right) {
-		/* When the user executes 'PRAGMA page_size=N' we save the
-		 * size internally.
-		 *
-		 * The page size must be between 512 and 65536, and be a
+		/* The page size must be between 512 and 65536, and be a
 		 * power of two. The check below was copied from
 		 * sqlite3BtreeSetPageSize in btree.c.
 		 *
