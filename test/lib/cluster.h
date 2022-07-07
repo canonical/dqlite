@@ -52,10 +52,11 @@ struct server
 		int _rv;                                                    \
 		SETUP_HEAP;                                                 \
 		SETUP_SQLITE;                                               \
-		_rv = raft_fixture_init(&f->cluster, N_SERVERS, f->fsms);   \
+		_rv = raft_fixture_initialize(&f->cluster);                 \
 		munit_assert_int(_rv, ==, 0);                               \
 		for (_i = 0; _i < N_SERVERS; _i++) {                        \
 			SETUP_SERVER(_i, VERSION);                          \
+			raft_fixture_grow(&f->cluster, &f->fsms[_i]);       \
 		}                                                           \
 		_rv = raft_fixture_configuration(&f->cluster, N_SERVERS,    \
 						 &_configuration);          \
