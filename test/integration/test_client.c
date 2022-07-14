@@ -25,7 +25,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	test_heap_setup(params, user_data);
 	test_sqlite_setup(params);
 	test_server_setup(&f->server, 1, params);
-	test_server_start(&f->server);
+	test_server_start(&f->server, params);
 	f->client = test_server_client(&f->server);
 	HANDSHAKE;
 	OPEN;

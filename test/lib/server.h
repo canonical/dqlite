@@ -13,6 +13,8 @@
 #include "endpoint.h"
 #include "munit.h"
 
+#define SNAPSHOT_THRESHOLD_PARAM "snapshot-threshold"
+
 struct test_server
 {
 	unsigned id;                   /* Server ID. */
@@ -32,7 +34,7 @@ void test_server_setup(struct test_server *s,
 void test_server_tear_down(struct test_server *s);
 
 /* Start the test server. */
-void test_server_start(struct test_server *s);
+void test_server_start(struct test_server *s, const MunitParameter params[]);
 
 /* Stop the test server. */
 void test_server_stop(struct test_server *s);
