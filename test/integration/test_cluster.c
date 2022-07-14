@@ -30,7 +30,7 @@
 	test_server_network(f->servers, N_SERVERS);           \
 	for (i_ = 0; i_ < N_SERVERS; i_++) {                  \
 		struct test_server *server = &f->servers[i_]; \
-		test_server_start(server);                    \
+		test_server_start(server, params);            \
 	}                                                     \
 	SELECT(1)
 
@@ -109,7 +109,7 @@ TEST(cluster, restart, setUp, tearDown, 0, num_records_params)
 
 	struct test_server *server = &f->servers[0];
 	test_server_stop(server);
-	test_server_start(server);
+	test_server_start(server, params);
 
 	/* The table is visible after restart. */
 	HANDSHAKE;

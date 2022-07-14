@@ -28,7 +28,7 @@
 	test_server_network(f->servers, N_SERVERS);           \
 	for (i_ = 0; i_ < N_SERVERS; i_++) {                  \
 		struct test_server *server = &f->servers[i_]; \
-		test_server_start(server);                    \
+		test_server_start(server, params);            \
 	}                                                     \
 	SELECT(1)
 
@@ -48,6 +48,14 @@
 
 /* Use the client connected to the server with the given ID. */
 #define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
+
+/* Make sure the snapshots scheduled by raft don't interfere with the snapshots
+ * scheduled by the tests. */
+static char *snapshot_threshold[] = {"8192", NULL};
+static MunitParameterEnum snapshot_params[] = {
+	{SNAPSHOT_THRESHOLD_PARAM, snapshot_threshold},
+	{NULL, NULL},
+};
 
 /******************************************************************************
  *
@@ -76,7 +84,7 @@ static void tearDown(void *data)
 	free(f);
 }
 
-TEST(fsm, snapshotFreshDb, setUp, tearDown, 0, NULL)
+TEST(fsm, snapshotFreshDb, setUp, tearDown, 0, snapshot_params)
 {
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
@@ -95,7 +103,7 @@ TEST(fsm, snapshotFreshDb, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-TEST(fsm, snapshotWrittenDb, setUp, tearDown, 0, NULL)
+TEST(fsm, snapshotWrittenDb, setUp, tearDown, 0, snapshot_params)
 {
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
@@ -126,7 +134,7 @@ TEST(fsm, snapshotWrittenDb, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-TEST(fsm, snapshotHeapFaultSingleDB, setUp, tearDown, 0, NULL)
+TEST(fsm, snapshotHeapFaultSingleDB, setUp, tearDown, 0, snapshot_params)
 {
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
@@ -167,7 +175,7 @@ TEST(fsm, snapshotHeapFaultSingleDB, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-TEST(fsm, snapshotHeapFaultTwoDB, setUp, tearDown, 0, NULL)
+TEST(fsm, snapshotHeapFaultTwoDB, setUp, tearDown, 0, snapshot_params)
 {
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
@@ -226,7 +234,7 @@ TEST(fsm, snapshotHeapFaultTwoDB, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-TEST(fsm, snapshotNewDbAddedBeforeFinalize, setUp, tearDown, 0, NULL)
+TEST(fsm, snapshotNewDbAddedBeforeFinalize, setUp, tearDown, 0, snapshot_params)
 {
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
@@ -268,7 +276,7 @@ TEST(fsm, snapshotNewDbAddedBeforeFinalize, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-TEST(fsm, snapshotWritesBeforeFinalize, setUp, tearDown, 0, NULL)
+TEST(fsm, snapshotWritesBeforeFinalize, setUp, tearDown, 0, snapshot_params)
 {
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
@@ -344,12 +352,13 @@ static char* num_records[] = {
     "2200", NULL
 };
 
-static MunitParameterEnum num_writes_params[] = {
+static MunitParameterEnum restore_params[] = {
     { "num_records", num_records },
+    { SNAPSHOT_THRESHOLD_PARAM, snapshot_threshold},
     { NULL, NULL },
 };
 
-TEST(fsm, snapshotRestore, setUp, tearDown, 0, num_writes_params)
+TEST(fsm, snapshotRestore, setUp, tearDown, 0, restore_params)
 {
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
@@ -407,7 +416,7 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, num_writes_params)
 	return MUNIT_OK;
 }
 
-TEST(fsm, concurrentSnapshots, setUp, tearDown, 0, NULL)
+TEST(fsm, concurrentSnapshots, setUp, tearDown, 0, snapshot_params)
 {
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
@@ -443,7 +452,7 @@ TEST(fsm, concurrentSnapshots, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, NULL)
+TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, snapshot_params)
 {
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
