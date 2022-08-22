@@ -26,6 +26,13 @@ includes a copyright exception allowing users to statically link the library cod
 in their project and release the final work under their own terms. See the full
 [license](https://github.com/canonical/dqlite/blob/master/LICENSE) text.
 
+Compatibility
+-------------
+
+dqlite runs on Linux and requires a kernel with support for
+[AIO](https://man7.org/linux/man-pages/man7/aio.7.html), which is used by the
+libuv backend of C-raft.
+
 Try it
 -------
 
