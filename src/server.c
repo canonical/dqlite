@@ -710,6 +710,7 @@ int dqlite_node_start(dqlite_node *t)
 	rv = pthread_create(&t->thread, 0, &taskStart, t);
 	if (rv != 0) {
 		tracef("pthread create failed %d", rv);
+		rv = DQLITE_ERROR;
 		goto err;
 	}
 
