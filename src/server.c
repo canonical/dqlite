@@ -61,9 +61,7 @@ int dqlite__init(struct dqlite_node *d,
 	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id,
 		       d->config.address);
 	if (rv != 0) {
-		snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_init(): %s",
-			 raft_errmsg(&d->raft));
-		return rv;
+		return DQLITE_ERROR;
 	}
 	/* TODO: expose these values through some API */
 	raft_set_election_timeout(&d->raft, 3000);
