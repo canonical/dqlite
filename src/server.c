@@ -400,7 +400,7 @@ static int maybeBootstrap(dqlite_node *d,
 		if (rv == RAFT_CANTBOOTSTRAP) {
 			rv = 0;
 		} else {
-			snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_bootstrap(): %s",
+			snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_bootstrap(): %s",
 				 raft_errmsg(&d->raft));
 			rv = DQLITE_ERROR;
 		}
@@ -625,7 +625,7 @@ static int taskRun(struct dqlite_node *d)
 	d->raft.data = d;
 	rv = raft_start(&d->raft);
 	if (rv != 0) {
-		snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_start(): %s",
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_start(): %s",
 			 raft_errmsg(&d->raft));
 		/* Unblock any client of taskReady */
 #ifdef __APPLE__

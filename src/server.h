@@ -13,6 +13,8 @@
 #include "logger.h"
 #include "registry.h"
 
+#define DQLITE_ERRMSG_BUF_SIZE 300
+
 /**
  * A single dqlite server instance.
  */
@@ -45,7 +47,7 @@ struct dqlite_node
 	struct uv_prepare_s monitor;             /* Raft state change monitor */
 	int raft_state;                          /* Previous raft state */
 	char *bind_address;                      /* Listen address */
-	char errmsg[RAFT_ERRMSG_BUF_SIZE];       /* Last error occurred */
+	char errmsg[DQLITE_ERRMSG_BUF_SIZE];     /* Last error occurred */
 };
 
 int dqlite__init(struct dqlite_node *d,
