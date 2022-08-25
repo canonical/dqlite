@@ -29,9 +29,10 @@ in their project and release the final work under their own terms. See the full
 Compatibility
 -------------
 
-dqlite runs on Linux and requires a kernel with support for
-[AIO](https://man7.org/linux/man-pages/man7/aio.7.html), which is used by the
-libuv backend of C-raft.
+dqlite runs on Linux and requires a kernel with support for [native async
+I/O](https://man7.org/linux/man-pages/man2/io_setup.2.html) (not to be confused
+with [POSIX AIO](https://man7.org/linux/man-pages/man7/aio.7.html)), which is
+used by the libuv backend of C-raft.
 
 Try it
 -------
