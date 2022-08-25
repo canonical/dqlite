@@ -18,9 +18,11 @@ int dqlite_version_number (void);
 /**
  * Error codes.
  */
-#define DQLITE_ERROR 1  /* Generic error */
-#define DQLITE_MISUSE 2 /* Library used incorrectly */
-#define DQLITE_NOMEM 3  /* A malloc() failed */
+enum {
+    DQLITE_ERROR = 1, /* Generic error */
+    DQLITE_MISUSE,    /* Library used incorrectly */
+    DQLITE_NOMEM      /* A malloc() failed */
+};
 
 /**
  * Dqlite node handle.
