@@ -18,6 +18,8 @@
  */
 struct dqlite_node
 {
+	bool initialized;                        /* dqlite__init succeeded */
+
 	pthread_t thread;                        /* Main run loop thread. */
 	struct config config;                    /* Config values */
 	struct sqlite3_vfs vfs;                  /* In-memory VFS */

@@ -25,6 +25,7 @@ int dqlite__init(struct dqlite_node *d,
 		 const char *dir)
 {
 	int rv;
+	d->initialized = false;
 	memset(d->errmsg, 0, sizeof d->errmsg);
 	rv = config__init(&d->config, id, address);
 	if (rv != 0) {
@@ -95,6 +96,7 @@ int dqlite__init(struct dqlite_node *d,
 	d->running = false;
 	d->listener = NULL;
 	d->bind_address = NULL;
+	d->initialized = true;
 	return 0;
 
 err_after_ready_init:
@@ -122,6 +124,9 @@ err:
 void dqlite__close(struct dqlite_node *d)
 {
 	int rv;
+	if (!d->initialized) {
+		return;
+	}
 	raft_free(d->listener);
 #ifdef __APPLE__
 	dispatch_release(d->stopped);
@@ -157,13 +162,7 @@ int dqlite_node_create(dqlite_node_id id,
 	}
 
 	rv = dqlite__init(*t, id, address, data_dir);
-	if (rv != 0) {
-		sqlite3_free(*t);
-		*t = NULL;
-		return rv;
-	}
-
-	return 0;
+	return rv;
 }
 
 static int ipParse(const char *address, struct sockaddr_in *addr)
