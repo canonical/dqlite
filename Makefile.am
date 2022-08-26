@@ -62,6 +62,7 @@ unit_test_SOURCES += \
   test/test_error.c \
   test/test_integration.c \
   test/unit/ext/test_uv.c \
+  test/unit/lib/test_addr.c \
   test/unit/lib/test_buffer.c \
   test/unit/lib/test_registry.c \
   test/unit/lib/test_serialize.c \
