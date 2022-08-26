@@ -46,14 +46,17 @@ typedef unsigned long long dqlite_node_id;
  * created with a different ID. The very first node, used to bootstrap a new
  * cluster, must have ID #1. Every time a node is started again, it must be
  * passed the same ID.
- *
+
  * The @address argument is the network address that clients or other nodes in
  * the cluster must use to connect to this dqlite node. If no custom connect
  * function is going to be set using dqlite_node_set_connect_func(), then the
- * format of the string must be "<HOST>:<PORT>", where <HOST> is an IPv4/IPv6
- * address or a DNS name, and <PORT> is a port number. Otherwise if a custom
- * connect function is used, then the format of the string must by whatever the
- * custom connect function accepts.
+ * format of the string must be "<HOST>" or "<HOST>:<PORT">, where <HOST> is a
+ * numeric IPv4/IPv6 address and <PORT> is a port number. The port number
+ * defaults to 8080 if not specified. If a port number is specified with an
+ * IPv6 address, the address must be enclosed in square brackets "[]".
+ *
+ * If a custom connect function is used, then the format of the string must by
+ * whatever the custom connect function accepts.
  *
  * The @data_dir argument the file system path where the node should store its
  * durable data, such as Raft log entries containing WAL frames of the SQLite
@@ -84,12 +87,19 @@ void dqlite_node_destroy(dqlite_node *n);
  * The given address might match the one passed to @dqlite_node_create or be a
  * different one (for example if the application wants to proxy it).
  *
- * The format of the @address argument must be either "<HOST>:<PORT>", where
- * <HOST> is an IPv4/IPv6 address or a DNS name and <PORT> is a port number, or
- * "@<PATH>", where <PATH> is an abstract Unix socket path. The special string
- * "@" can be used to automatically select an available abstract Unix socket
+ * The format of the @address argument must be one of 
+ *
+ * 1. "<HOST>"
+ * 2. "<HOST>:<PORT>"
+ * 3. "@<PATH>"
+ *
+ * Where <HOST> is a numeric IPv4/IPv6 address, <PORT> is a port number, and
+ * <PATH> is an abstract Unix socket path. The port number defaults to 8080 if
+ * not specified. In the second form, if <HOST> is an IPv6 address, it must be
+ * enclosed in square brackets "[]". In the third form, if <PATH> is empty, the
+ * implementation will automatically select an available abstract Unix socket
  * path, which can then be retrieved with dqlite_node_get_bind_address().
-
+ *
  * If an abstract Unix socket is used the dqlite node will accept only
  * connections originating from the same process.
  *
