@@ -7,6 +7,7 @@
 #include "../include/dqlite.h"
 #include "conn.h"
 #include "fsm.h"
+#include "lib/addr.h"
 #include "lib/assert.h"
 #include "logger.h"
 #include "protocol.h"
@@ -166,76 +167,26 @@ int dqlite_node_create(dqlite_node_id id,
 	return 0;
 }
 
-static int ipParse(const char *address, struct sockaddr_in *addr)
-{
-	char buf[256];
-	char *host;
-	char *port;
-	char *colon = ":";
-	int rv;
-
-	/* TODO: turn this poor man parsing into proper one */
-	strncpy(buf, address, sizeof(buf)-1);
-	buf[sizeof(buf)-1] = '\0';
-	host = strtok(buf, colon);
-	port = strtok(NULL, ":");
-	if (port == NULL) {
-		port = "8080";
-	}
-
-	rv = uv_ip4_addr(host, atoi(port), addr);
-	if (rv != 0) {
-		return RAFT_NOCONNECTION;
-	}
-
-	return 0;
-}
-
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 {
+	/* sockaddr_un is large enough for our purposes */
 	struct sockaddr_un addr_un;
-	struct sockaddr_in addr_in;
-	struct sockaddr *addr;
-	size_t len;
+	struct sockaddr *addr = (struct sockaddr *)&addr_un;
+	socklen_t addr_len = sizeof(addr_un);
+	sa_family_t domain;
+	size_t path_len;
 	int fd;
 	int rv;
-	int domain = address[0] == '@' ? AF_UNIX : AF_INET;
 	if (t->running) {
 		return DQLITE_MISUSE;
 	}
-	if (domain == AF_INET) {
-		memset(&addr_in, 0, sizeof addr_in);
-		rv = ipParse(address, &addr_in);
-		if (rv != 0) {
-			return DQLITE_MISUSE;
-		}
-		len = sizeof addr_in;
-		addr = (struct sockaddr *)&addr_in;
-	} else {
-		memset(&addr_un, 0, sizeof addr_un);
-		addr_un.sun_family = AF_UNIX;
-		len = strlen(address);
-		if (len == 1) {
-			/* Auto bind */
-			len = 0;
-		} else {
-			size_t n = sizeof(addr_un.sun_path);
-#if defined(__linux__)
-			/* Linux abstract socket requires \0 in sun_path[0].
-			 * Copy at most n-2 bytes because we start writing at
-			 * byte 1 and want to leave room to '\0' terminate */
-			strncpy(addr_un.sun_path + 1, address + 1, n - 2);
-			addr_un.sun_path[n-1] = '\0';
-#else
-			/* MacOS do not support abstract sockets */
-			strncpy(addr_un.sun_path, address + 1, n - 1);
-			addr_un.sun_path[n-1] = '\0';
-			(void)unlink(addr_un.sun_path);
-#endif
-		}
-		len += sizeof(sa_family_t);
-		addr = (struct sockaddr *)&addr_un;
+
+	rv = AddrParse(address, addr, &addr_len, "8080", DQLITE_ADDR_PARSE_UNIX);
+	if (rv != 0) {
+		return rv;
 	}
+	domain = addr->sa_family;
+
 	fd = socket(domain, SOCK_STREAM, 0);
 	if (fd == -1) {
 		return DQLITE_ERROR;
@@ -246,7 +197,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		return DQLITE_ERROR;
 	}
 
-	if (domain == AF_INET) {
+	if (domain == AF_INET || domain == AF_INET6) {
 		int reuse = 1;
 		rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
 				(const char *)&reuse, sizeof(reuse));
@@ -256,7 +207,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		}
 	}
 
-	rv = bind(fd, addr, (socklen_t)len);
+	rv = bind(fd, addr, addr_len);
 	if (rv != 0) {
 		close(fd);
 		return DQLITE_ERROR;
@@ -268,7 +219,7 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		return DQLITE_ERROR;
 	}
 
-	if (domain == AF_INET) {
+	if (domain == AF_INET || domain == AF_INET6) {
 		int sz = ((int)strlen(address)) + 1; /* Room for '\0' */
 		t->bind_address = sqlite3_malloc(sz);
 		if (t->bind_address == NULL) {
@@ -277,15 +228,15 @@ int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
 		}
 		strcpy(t->bind_address, address);
 	} else {
-		len = sizeof addr_un.sun_path;
-		t->bind_address = sqlite3_malloc((int)len);
+		path_len = sizeof addr_un.sun_path;
+		t->bind_address = sqlite3_malloc((int)path_len);
 		if (t->bind_address == NULL) {
 			close(fd);
 			return DQLITE_NOMEM;
 		}
-		memset(t->bind_address, 0, len);
+		memset(t->bind_address, 0, path_len);
 		rv = uv_pipe_getsockname((struct uv_pipe_s *)t->listener,
-					 t->bind_address, &len);
+					 t->bind_address, &path_len);
 		if (rv != 0) {
 			close(fd);
 			sqlite3_free(t->bind_address);
