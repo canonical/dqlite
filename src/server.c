@@ -1,5 +1,6 @@
 #include "server.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <sys/un.h>
 #include <time.h>
@@ -39,7 +40,8 @@ int dqlite__init(struct dqlite_node *d,
 	registry__init(&d->registry, &d->config);
 	rv = uv_loop_init(&d->loop);
 	if (rv != 0) {
-		/* TODO: better error reporting */
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "uv_loop_init(): %s",
+			 uv_strerror(rv));
 		rv = DQLITE_ERROR;
 		goto err_after_vfs_init;
 	}
@@ -49,7 +51,8 @@ int dqlite__init(struct dqlite_node *d,
 	}
 	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
 	if (rv != 0) {
-		/* TODO: better error reporting */
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_uv_init(): %s",
+			 d->raft_io.errmsg);
 		rv = DQLITE_ERROR;
 		goto err_after_raft_transport_init;
 	}
@@ -62,6 +65,8 @@ int dqlite__init(struct dqlite_node *d,
 	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id,
 		       d->config.address);
 	if (rv != 0) {
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_init(): %s",
+			 raft_errmsg(&d->raft));
 		return DQLITE_ERROR;
 	}
 	/* TODO: expose these values through some API */
@@ -78,13 +83,15 @@ int dqlite__init(struct dqlite_node *d,
 #else
 	rv = sem_init(&d->ready, 0, 0);
 	if (rv != 0) {
-		/* TODO: better error reporting */
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
+			 strerror(errno));
 		rv = DQLITE_ERROR;
 		goto err_after_raft_fsm_init;
 	}
 	rv = sem_init(&d->stopped, 0, 0);
 	if (rv != 0) {
-		/* TODO: better error reporting */
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
+			 strerror(errno));
 		rv = DQLITE_ERROR;
 		goto err_after_ready_init;
 	}
