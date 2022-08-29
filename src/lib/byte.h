@@ -11,13 +11,22 @@
 #define DQLITE_INLINE static inline
 #endif
 
-/* Flip a 16-bit number to network byte order (little endian) */
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#define DQLITE_LITTLE_ENDIAN
+#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#define DQLITE_BIG_ENDIAN
+#endif
+
+#if defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
+#define DQLITE_HAVE_BSWAP
+#endif
+
+/* Flip a 16-bit number to little-endian byte order */
 DQLITE_INLINE uint16_t byte__flip16(uint16_t v)
 {
-#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
+#if defined(DQLITE_LITTLE_ENDIAN)
 	return v;
-#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __BIG_ENDIAN__) && \
-    defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
+#elif defined(DQLITE_BIG_ENDIAN) && defined(DQLITE_HAVE_BSWAP)
 	return __builtin_bswap16(v);
 #else
 	union {
@@ -32,13 +41,12 @@ DQLITE_INLINE uint16_t byte__flip16(uint16_t v)
 #endif
 }
 
-/* Flip a 32-bit number to network byte order (little endian) */
+/* Flip a 32-bit number to little-endian byte order */
 DQLITE_INLINE uint32_t byte__flip32(uint32_t v)
 {
-#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
+#if defined(DQLITE_LITTLE_ENDIAN)
 	return v;
-#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __BIG_ENDIAN__) && \
-    defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
+#elif defined(DQLITE_BIG_ENDIAN) && defined(DQLITE_HAVE_BSWAP)
 	return __builtin_bswap32(v);
 #else
 	union {
@@ -55,13 +63,12 @@ DQLITE_INLINE uint32_t byte__flip32(uint32_t v)
 #endif
 }
 
-/* Flip a 64-bit number to network byte order (little endian) */
+/* Flip a 64-bit number to little-endian byte order */
 DQLITE_INLINE uint64_t byte__flip64(uint64_t v)
 {
-#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
+#if defined(DQLITE_LITTLE_ENDIAN)
 	return v;
-#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __BIG_ENDIAN__) && \
-    defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
+#elif defined(DQLITE_BIG_ENDIAN) && defined(DQLITE_HAVE_BSWAP)
 	return __builtin_bswap64(v);
 #else
 	union {
