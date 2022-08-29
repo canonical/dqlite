@@ -89,6 +89,25 @@ DQLITE_INLINE uint64_t ByteFlipLe64(uint64_t v)
 #endif
 }
 
+DQLITE_INLINE uint16_t ByteGetBe16(const uint8_t *buf)
+{
+	return ((uint16_t)(buf[0]) << 8) | (uint16_t)(buf[1]);
+}
+
+DQLITE_INLINE uint32_t ByteGetBe32(const uint8_t *buf)
+{
+	return ((uint32_t)(buf[0]) << 24) | ((uint32_t)(buf[1]) << 16) |
+	       ((uint32_t)(buf[2]) << 8) | (uint32_t)(buf[3]);
+}
+
+DQLITE_INLINE void BytePutBe32(uint32_t v, uint8_t *buf)
+{
+	buf[0] = (uint8_t)(v >> 24);
+	buf[1] = (uint8_t)(v >> 16);
+	buf[2] = (uint8_t)(v >> 8);
+	buf[3] = (uint8_t)v;
+}
+
 /**
  * Add padding to size if it's not a multiple of 8. E.g. if 11 is passed, 16 is
  * returned.

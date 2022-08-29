@@ -11,15 +11,16 @@
 #include "../include/dqlite.h"
 
 #include "lib/assert.h"
+#include "lib/byte.h"
 
 #include "format.h"
 #include "tracing.h"
 #include "vfs.h"
 
 /* Byte order */
-#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __LITTLE_ENDIAN__)
+#if defined(DQLITE_LITTLE_ENDIAN)
 #define VFS__BIGENDIAN 0
-#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __BIG_ENDIAN__)
+#elif defined(DQLITE_BIG_ENDIAN)
 #define VFS__BIGENDIAN 1
 #else
 const int vfsOne = 1;
@@ -97,87 +98,6 @@ struct vfsDatabase
 	struct vfsShm shm; /* Shared memory. */
 	struct vfsWal wal; /* Associated WAL. */
 };
-
-/* Flip a 16-bit number back and forth to or from big-endian representation. */
-static uint16_t vfsFlip16(uint16_t v)
-{
-#if defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN)
-	return v;
-#elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN) && \
-    defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
-	return __builtin_bswap16(v);
-#else
-	union {
-		uint16_t u;
-		uint8_t v[4];
-	} s;
-
-	s.v[0] = (uint8_t)(v >> 8);
-	s.v[1] = (uint8_t)v;
-
-	return s.u;
-#endif
-}
-
-/* Flip a 32-bit number back and forth to or from big-endian representation. */
-static uint32_t vfsFlip32(uint32_t v)
-{
-#if defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN)
-	return v;
-#elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN) && \
-    defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
-	return __builtin_bswap32(v);
-#else
-	union {
-		uint32_t u;
-		uint8_t v[4];
-	} s;
-
-	s.v[0] = (uint8_t)(v >> 24);
-	s.v[1] = (uint8_t)(v >> 16);
-	s.v[2] = (uint8_t)(v >> 8);
-	s.v[3] = (uint8_t)v;
-
-	return s.u;
-#endif
-}
-
-/* Load a 16-bit number stored in big-endian representation. */
-static uint32_t vfsGet16(const uint8_t *buf)
-{
-	union {
-		uint16_t u;
-		uint8_t v[2];
-	} s;
-
-	s.v[0] = buf[0];
-	s.v[1] = buf[1];
-
-	return vfsFlip16(s.u);
-}
-
-/* Load a 32-bit number stored in big-endian representation. */
-static uint32_t vfsGet32(const uint8_t *buf)
-{
-	union {
-		uint32_t u;
-		uint8_t v[4];
-	} s;
-
-	s.v[0] = buf[0];
-	s.v[1] = buf[1];
-	s.v[2] = buf[2];
-	s.v[3] = buf[3];
-
-	return vfsFlip32(s.u);
-}
-
-/* Store a 32-bit number in big endian format */
-static void vfsPut32(uint32_t v, uint8_t *buf)
-{
-	uint32_t u = vfsFlip32(v);
-	memcpy(buf, &u, sizeof u);
-}
 
 /*
  * Generate or extend an 8 byte checksum based on the data in array data[] and
@@ -593,7 +513,7 @@ static uint32_t vfsDatabaseGetPageSize(struct vfsDatabase *d)
 
 	/* The page size is stored in the 16th and 17th bytes of the first
 	 * database page (big-endian) */
-	return vfsParsePageSize(vfsGet16(&page[16]));
+	return vfsParsePageSize(ByteGetBe16(&page[16]));
 }
 
 /* Truncate a database file to be exactly the given number of pages. */
@@ -886,7 +806,7 @@ static uint32_t vfsWalGetPageSize(struct vfsWal *w)
 {
 	/* The page size is stored in the 4 bytes starting at 8
 	 * (big-endian) */
-	return vfsParsePageSize(vfsGet32(&w->hdr[8]));
+	return vfsParsePageSize(ByteGetBe32(&w->hdr[8]));
 }
 
 /* Read data from the WAL. */
@@ -1027,7 +947,7 @@ static int vfsDatabaseWrite(struct vfsDatabase *d,
 		assert(amount >= FORMAT__DB_HDR_SIZE);
 
 		/* Extract the page size from the header. */
-		page_size = vfsParsePageSize(vfsGet16(&header[16]));
+		page_size = vfsParsePageSize(ByteGetBe16(&header[16]));
 		if (page_size == 0) {
 			return SQLITE_CORRUPT;
 		}
@@ -1321,25 +1241,25 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 /* Return the page number field stored in the header of the given frame. */
 static uint32_t vfsFrameGetPageNumber(struct vfsFrame *f)
 {
-	return vfsGet32(&f->header[0]);
+	return ByteGetBe32(&f->header[0]);
 }
 
 /* Return the database size field stored in the header of the given frame. */
 static uint32_t vfsFrameGetDatabaseSize(struct vfsFrame *f)
 {
-	return vfsGet32(&f->header[4]);
+	return ByteGetBe32(&f->header[4]);
 }
 
 /* Return the checksum-1 field stored in the header of the given frame. */
 static uint32_t vfsFrameGetChecksum1(struct vfsFrame *f)
 {
-	return vfsGet32(&f->header[16]);
+	return ByteGetBe32(&f->header[16]);
 }
 
 /* Return the checksum-2 field stored in the header of the given frame. */
 static uint32_t vfsFrameGetChecksum2(struct vfsFrame *f)
 {
-	return vfsGet32(&f->header[20]);
+	return ByteGetBe32(&f->header[20]);
 }
 
 /* Fill the header and the content of a WAL frame. The given checksum is the
@@ -1352,8 +1272,8 @@ static void vfsFrameFill(struct vfsFrame *f,
 			 uint8_t *page,
 			 uint32_t page_size)
 {
-	vfsPut32(page_number, &f->header[0]);
-	vfsPut32(database_size, &f->header[4]);
+	BytePutBe32(page_number, &f->header[0]);
+	BytePutBe32(database_size, &f->header[4]);
 
 	vfsChecksum(f->header, 8, checksum, checksum);
 	vfsChecksum(page, page_size, checksum, checksum);
@@ -1361,8 +1281,8 @@ static void vfsFrameFill(struct vfsFrame *f,
 	memcpy(&f->header[8], &salt[0], sizeof salt[0]);
 	memcpy(&f->header[12], &salt[1], sizeof salt[1]);
 
-	vfsPut32(checksum[0], &f->header[16]);
-	vfsPut32(checksum[1], &f->header[20]);
+	BytePutBe32(checksum[0], &f->header[16]);
+	BytePutBe32(checksum[1], &f->header[20]);
 
 	memcpy(f->page, page, page_size);
 }
@@ -2234,13 +2154,13 @@ static uint32_t vfsWalGetSalt2(struct vfsWal *w)
 /* Return the checksum-1 field stored in the WAL header.*/
 static uint32_t vfsWalGetChecksum1(struct vfsWal *w)
 {
-	return vfsGet32(&w->hdr[24]);
+	return ByteGetBe32(&w->hdr[24]);
 }
 
 /* Return the checksum-2 field stored in the WAL header.*/
 static uint32_t vfsWalGetChecksum2(struct vfsWal *w)
 {
-	return vfsGet32(&w->hdr[28]);
+	return ByteGetBe32(&w->hdr[28]);
 }
 
 /* Append the given pages as new frames. */
@@ -2347,14 +2267,14 @@ static void vfsWalStartHeader(struct vfsWal *w, uint32_t page_size)
 	 *
 	 * In Dqlite the WAL file image is always generated at run time on the
 	 * host, so we can always use the native byte order. */
-	vfsPut32(VFS__WAL_MAGIC | VFS__BIGENDIAN, &w->hdr[0]);
-	vfsPut32(VFS__WAL_VERSION, &w->hdr[4]);
-	vfsPut32(page_size, &w->hdr[8]);
-	vfsPut32(0, &w->hdr[12]);
+	BytePutBe32(VFS__WAL_MAGIC | VFS__BIGENDIAN, &w->hdr[0]);
+	BytePutBe32(VFS__WAL_VERSION, &w->hdr[4]);
+	BytePutBe32(page_size, &w->hdr[8]);
+	BytePutBe32(0, &w->hdr[12]);
 	sqlite3_randomness(8, &w->hdr[16]);
 	vfsChecksum(w->hdr, 24, checksum, checksum);
-	vfsPut32(checksum[0], w->hdr + 24);
-	vfsPut32(checksum[1], w->hdr + 28);
+	BytePutBe32(checksum[0], w->hdr + 24);
+	BytePutBe32(checksum[1], w->hdr + 28);
 }
 
 /* Invalidate the WAL index header, forcing the next connection that tries to
@@ -2466,7 +2386,7 @@ static uint32_t vfsDatabaseGetNumberOfPages(struct vfsDatabase *d)
 
 	/* The page size is stored in the 16th and 17th bytes of the first
 	 * database page (big-endian) */
-	return vfsGet32(&page[28]);
+	return ByteGetBe32(&page[28]);
 }
 
 int VfsDatabaseNumPages(sqlite3_vfs *vfs,
@@ -2626,7 +2546,7 @@ static int vfsDatabaseRestore(struct vfsDatabase *d,
 			      const uint8_t *data,
 			      size_t n)
 {
-	uint32_t page_size = vfsParsePageSize(vfsGet16(&data[16]));
+	uint32_t page_size = vfsParsePageSize(ByteGetBe16(&data[16]));
 	unsigned n_pages;
 	void **pages;
 	unsigned i;
@@ -2638,7 +2558,7 @@ static int vfsDatabaseRestore(struct vfsDatabase *d,
 	 * have here. */
 	assert(vfsDatabaseGetPageSize(d) == page_size);
 
-	n_pages = (unsigned)vfsGet32(&data[28]);
+	n_pages = (unsigned)ByteGetBe32(&data[28]);
 
 	if (n < n_pages * page_size) {
 		return DQLITE_ERROR;
