@@ -22,7 +22,7 @@
 #endif
 
 /* Flip a 16-bit number to little-endian byte order */
-DQLITE_INLINE uint16_t byte__flip16(uint16_t v)
+DQLITE_INLINE uint16_t ByteFlipLe16(uint16_t v)
 {
 #if defined(DQLITE_LITTLE_ENDIAN)
 	return v;
@@ -42,7 +42,7 @@ DQLITE_INLINE uint16_t byte__flip16(uint16_t v)
 }
 
 /* Flip a 32-bit number to little-endian byte order */
-DQLITE_INLINE uint32_t byte__flip32(uint32_t v)
+DQLITE_INLINE uint32_t ByteFlipLe32(uint32_t v)
 {
 #if defined(DQLITE_LITTLE_ENDIAN)
 	return v;
@@ -64,7 +64,7 @@ DQLITE_INLINE uint32_t byte__flip32(uint32_t v)
 }
 
 /* Flip a 64-bit number to little-endian byte order */
-DQLITE_INLINE uint64_t byte__flip64(uint64_t v)
+DQLITE_INLINE uint64_t ByteFlipLe64(uint64_t v)
 {
 #if defined(DQLITE_LITTLE_ENDIAN)
 	return v;
@@ -93,7 +93,7 @@ DQLITE_INLINE uint64_t byte__flip64(uint64_t v)
  * Add padding to size if it's not a multiple of 8. E.g. if 11 is passed, 16 is
  * returned.
  */
-DQLITE_INLINE size_t byte__pad64(size_t size)
+DQLITE_INLINE size_t BytePad64(size_t size)
 {
 	size_t rest = size % sizeof(uint64_t);
 	if (rest != 0) {

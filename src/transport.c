@@ -83,7 +83,7 @@ static void connect_work_cb(uv_work_t *work)
 	}
 
 	/* Send the initial dqlite protocol handshake. */
-	protocol = byte__flip64(DQLITE_PROTOCOL_VERSION);
+	protocol = ByteFlipLe64(DQLITE_PROTOCOL_VERSION);
 	rv = (int)write(r->fd, &protocol, sizeof protocol);
 	if (rv != sizeof protocol) {
                 tracef("write failed");
