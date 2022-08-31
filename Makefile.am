@@ -64,6 +64,7 @@ unit_test_SOURCES += \
   test/unit/ext/test_uv.c \
   test/unit/lib/test_addr.c \
   test/unit/lib/test_buffer.c \
+  test/unit/lib/test_byte.c \
   test/unit/lib/test_registry.c \
   test/unit/lib/test_serialize.c \
   test/unit/lib/test_transport.c \
