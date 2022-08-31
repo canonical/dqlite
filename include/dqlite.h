@@ -65,6 +65,12 @@ typedef unsigned long long dqlite_node_id;
  * No reference to the memory pointed to by @address and @data_dir is kept by
  * the dqlite library, so any memory associated with them can be released after
  * the function returns.
+ *
+ * Even if an error is returned, the caller should call dqlite_node_destroy()
+ * on the dqlite_node* value pointed to by @n, and calling dqlite_node_errmsg()
+ * with that value will return a valid error string. (In some cases *n will be
+ * set to NULL, but dqlite_node_destroy() and dqlite_node_errmsg() will handle
+ * this gracefully.)
  */
 int dqlite_node_create(dqlite_node_id id,
 		       const char *address,

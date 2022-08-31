@@ -1,5 +1,6 @@
 #include "server.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <sys/un.h>
 #include <time.h>
@@ -26,6 +27,7 @@ int dqlite__init(struct dqlite_node *d,
 		 const char *dir)
 {
 	int rv;
+	d->initialized = false;
 	memset(d->errmsg, 0, sizeof d->errmsg);
 	rv = config__init(&d->config, id, address);
 	if (rv != 0) {
@@ -39,7 +41,8 @@ int dqlite__init(struct dqlite_node *d,
 	registry__init(&d->registry, &d->config);
 	rv = uv_loop_init(&d->loop);
 	if (rv != 0) {
-		/* TODO: better error reporting */
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "uv_loop_init(): %s",
+			 uv_strerror(rv));
 		rv = DQLITE_ERROR;
 		goto err_after_vfs_init;
 	}
@@ -49,7 +52,8 @@ int dqlite__init(struct dqlite_node *d,
 	}
 	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
 	if (rv != 0) {
-		/* TODO: better error reporting */
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_uv_init(): %s",
+			 d->raft_io.errmsg);
 		rv = DQLITE_ERROR;
 		goto err_after_raft_transport_init;
 	}
@@ -62,6 +66,8 @@ int dqlite__init(struct dqlite_node *d,
 	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id,
 		       d->config.address);
 	if (rv != 0) {
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_init(): %s",
+			 raft_errmsg(&d->raft));
 		return DQLITE_ERROR;
 	}
 	/* TODO: expose these values through some API */
@@ -78,13 +84,15 @@ int dqlite__init(struct dqlite_node *d,
 #else
 	rv = sem_init(&d->ready, 0, 0);
 	if (rv != 0) {
-		/* TODO: better error reporting */
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
+			 strerror(errno));
 		rv = DQLITE_ERROR;
 		goto err_after_raft_fsm_init;
 	}
 	rv = sem_init(&d->stopped, 0, 0);
 	if (rv != 0) {
-		/* TODO: better error reporting */
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
+			 strerror(errno));
 		rv = DQLITE_ERROR;
 		goto err_after_ready_init;
 	}
@@ -96,6 +104,7 @@ int dqlite__init(struct dqlite_node *d,
 	d->running = false;
 	d->listener = NULL;
 	d->bind_address = NULL;
+	d->initialized = true;
 	return 0;
 
 err_after_ready_init:
@@ -123,6 +132,9 @@ err:
 void dqlite__close(struct dqlite_node *d)
 {
 	int rv;
+	if (!d->initialized) {
+		return;
+	}
 	raft_free(d->listener);
 #ifdef __APPLE__
 	dispatch_release(d->stopped);
@@ -158,13 +170,7 @@ int dqlite_node_create(dqlite_node_id id,
 	}
 
 	rv = dqlite__init(*t, id, address, data_dir);
-	if (rv != 0) {
-		sqlite3_free(*t);
-		*t = NULL;
-		return rv;
-	}
-
-	return 0;
+	return rv;
 }
 
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
@@ -352,7 +358,7 @@ static int maybeBootstrap(dqlite_node *d,
 		if (rv == RAFT_CANTBOOTSTRAP) {
 			rv = 0;
 		} else {
-			snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_bootstrap(): %s",
+			snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_bootstrap(): %s",
 				 raft_errmsg(&d->raft));
 			rv = DQLITE_ERROR;
 		}
@@ -577,7 +583,7 @@ static int taskRun(struct dqlite_node *d)
 	d->raft.data = d;
 	rv = raft_start(&d->raft);
 	if (rv != 0) {
-		snprintf(d->errmsg, RAFT_ERRMSG_BUF_SIZE, "raft_start(): %s",
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_start(): %s",
 			 raft_errmsg(&d->raft));
 		/* Unblock any client of taskReady */
 #ifdef __APPLE__
