@@ -36,7 +36,10 @@ void loggerDefaultEmit(void *data, int level, const char *fmt, va_list args)
 
 	/* Then render the message, possibly truncating it. */
 	n = EMIT_BUF_LEN - strlen(buf) - 1;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 	vsnprintf(cursor, n, fmt, args);
+#pragma GCC diagnostic pop
 
 	fprintf(stderr, "%s\n", buf);
 }
