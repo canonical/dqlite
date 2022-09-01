@@ -45,7 +45,7 @@ TESTS = unit-test integration-test
 
 check_LTLIBRARIES = libtest.la
 
-libtest_la_CFLAGS = $(AM_CFLAGS) -DMUNIT_TEST_NAME_LEN=60 -Wno-unused-result -Wno-conversion -Wno-maybe-uninitialized -Wno-strict-prototypes -Wno-old-style-definition
+libtest_la_CFLAGS = $(AM_CFLAGS) -DMUNIT_TEST_NAME_LEN=60 -Wno-unknown-warning-option -Wno-unused-result -Wno-conversion -Wno-maybe-uninitialized -Wno-strict-prototypes -Wno-old-style-definition
 libtest_la_SOURCES = \
   test/lib/endpoint.c \
   test/lib/fault.c \
@@ -78,7 +78,7 @@ unit_test_SOURCES += \
   test/unit/test_tuple.c \
   test/unit/test_vfs.c \
   test/unit/main.c
-unit_test_CFLAGS = $(AM_CFLAGS) -Wno-maybe-uninitialized -Wno-float-equal -Wno-conversion
+unit_test_CFLAGS = $(AM_CFLAGS) -Wno-unknown-warning-option -Wno-maybe-uninitialized -Wno-float-equal -Wno-conversion
 unit_test_LDFLAGS = $(AM_LDFLAGS)
 unit_test_LDADD = libtest.la
 
