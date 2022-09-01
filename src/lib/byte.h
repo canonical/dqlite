@@ -91,13 +91,22 @@ DQLITE_INLINE uint64_t ByteFlipLe64(uint64_t v)
 
 DQLITE_INLINE uint16_t ByteGetBe16(const uint8_t *buf)
 {
-	return ((uint16_t)(buf[0]) << 8) | (uint16_t)(buf[1]);
+	uint16_t x = buf[0];
+	uint16_t y = buf[1];
+	x <<= 8;
+	return x | y;
 }
 
 DQLITE_INLINE uint32_t ByteGetBe32(const uint8_t *buf)
 {
-	return ((uint32_t)(buf[0]) << 24) | ((uint32_t)(buf[1]) << 16) |
-	       ((uint32_t)(buf[2]) << 8) | (uint32_t)(buf[3]);
+	uint32_t w = buf[0];
+	uint32_t x = buf[1];
+	uint32_t y = buf[2];
+	uint32_t z = buf[3];
+	w <<= 24;
+	x <<= 16;
+	y <<= 8;
+	return w | x | y | z;
 }
 
 DQLITE_INLINE void BytePutBe32(uint32_t v, uint8_t *buf)
