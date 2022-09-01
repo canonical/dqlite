@@ -89,6 +89,12 @@ DQLITE_INLINE uint64_t ByteFlipLe64(uint64_t v)
 #endif
 }
 
+/* -Wconversion before GCC 10 is overly sensitive. */
+#if defined(__GNUC__) && __GNUC__ < 10
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+#endif
+
 DQLITE_INLINE uint16_t ByteGetBe16(const uint8_t *buf)
 {
 	uint16_t x = buf[0];
@@ -129,5 +135,9 @@ DQLITE_INLINE size_t BytePad64(size_t size)
 	}
 	return size;
 }
+
+#if defined(__GNUC__) && __GNUC__ < 10
+#pragma GCC diagnostic pop
+#endif
 
 #endif /* LIB_BYTE_H_ */
