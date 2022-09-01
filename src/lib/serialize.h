@@ -151,13 +151,13 @@ DQLITE_INLINE size_t float__sizeof(const float_t *value)
 
 DQLITE_INLINE size_t text__sizeof(const text_t *value)
 {
-	return byte__pad64(strlen(*value) + 1);
+	return BytePad64(strlen(*value) + 1);
 }
 
 DQLITE_INLINE size_t blob__sizeof(const blob_t *value)
 {
 	return sizeof(uint64_t) /* length */ +
-	       byte__pad64(value->len) /* data */;
+	       BytePad64(value->len) /* data */;
 }
 
 DQLITE_INLINE void uint8__encode(const uint8_t *value, void **cursor)
@@ -168,37 +168,37 @@ DQLITE_INLINE void uint8__encode(const uint8_t *value, void **cursor)
 
 DQLITE_INLINE void uint16__encode(const uint16_t *value, void **cursor)
 {
-	*(uint16_t *)(*cursor) = byte__flip16(*value);
+	*(uint16_t *)(*cursor) = ByteFlipLe16(*value);
 	*cursor += sizeof(uint16_t);
 }
 
 DQLITE_INLINE void uint32__encode(const uint32_t *value, void **cursor)
 {
-	*(uint32_t *)(*cursor) = byte__flip32(*value);
+	*(uint32_t *)(*cursor) = ByteFlipLe32(*value);
 	*cursor += sizeof(uint32_t);
 }
 
 DQLITE_INLINE void uint64__encode(const uint64_t *value, void **cursor)
 {
-	*(uint64_t *)(*cursor) = byte__flip64(*value);
+	*(uint64_t *)(*cursor) = ByteFlipLe64(*value);
 	*cursor += sizeof(uint64_t);
 }
 
 DQLITE_INLINE void int64__encode(const int64_t *value, void **cursor)
 {
-	*(int64_t *)(*cursor) = (int64_t)byte__flip64((uint64_t)*value);
+	*(int64_t *)(*cursor) = (int64_t)ByteFlipLe64((uint64_t)*value);
 	*cursor += sizeof(int64_t);
 }
 
 DQLITE_INLINE void float__encode(const float_t *value, void **cursor)
 {
-	*(uint64_t *)(*cursor) = byte__flip64(*(uint64_t *)value);
+	*(uint64_t *)(*cursor) = ByteFlipLe64(*(uint64_t *)value);
 	*cursor += sizeof(uint64_t);
 }
 
 DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
 {
-	size_t len = byte__pad64(strlen(*value) + 1);
+	size_t len = BytePad64(strlen(*value) + 1);
 	memset(*cursor, 0, len);
 	strcpy(*cursor, *value);
 	*cursor += len;
@@ -206,7 +206,7 @@ DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
 
 DQLITE_INLINE void blob__encode(const blob_t *value, void **cursor)
 {
-	size_t len = byte__pad64(value->len);
+	size_t len = BytePad64(value->len);
 	uint64_t value_len = value->len;
 	uint64__encode(&value_len, cursor);
 	memcpy(*cursor, value->base, value->len);
@@ -231,7 +231,7 @@ DQLITE_INLINE int uint16__decode(struct cursor *cursor, uint16_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = byte__flip16(*(uint16_t *)cursor->p);
+	*value = ByteFlipLe16(*(uint16_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -243,7 +243,7 @@ DQLITE_INLINE int uint32__decode(struct cursor *cursor, uint32_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = byte__flip32(*(uint32_t *)cursor->p);
+	*value = ByteFlipLe32(*(uint32_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -255,7 +255,7 @@ DQLITE_INLINE int uint64__decode(struct cursor *cursor, uint64_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = byte__flip64(*(uint64_t *)cursor->p);
+	*value = ByteFlipLe64(*(uint64_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -267,7 +267,7 @@ DQLITE_INLINE int int64__decode(struct cursor *cursor, int64_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = (int64_t)byte__flip64((uint64_t)*(int64_t *)cursor->p);
+	*value = (int64_t)ByteFlipLe64((uint64_t)*(int64_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -279,7 +279,7 @@ DQLITE_INLINE int float__decode(struct cursor *cursor, float_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*(uint64_t *)value = byte__flip64(*(uint64_t *)cursor->p);
+	*(uint64_t *)value = ByteFlipLe64(*(uint64_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -294,7 +294,7 @@ DQLITE_INLINE int text__decode(struct cursor *cursor, text_t *value)
 		return DQLITE_PARSE;
 	}
 	*value = cursor->p;
-	n = byte__pad64(strlen(*value) + 1);
+	n = BytePad64(strlen(*value) + 1);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -309,7 +309,7 @@ DQLITE_INLINE int blob__decode(struct cursor *cursor, blob_t *value)
 	if (rv != 0) {
 		return rv;
 	}
-	n = byte__pad64((size_t)len);
+	n = BytePad64((size_t)len);
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}

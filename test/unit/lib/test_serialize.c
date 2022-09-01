@@ -203,7 +203,7 @@ TEST_CASE(encode, padding, NULL)
 	cursor = buf;
 	person__encode(&f->person, &cursor);
 	munit_assert_string_equal(buf, "John Doh");
-	munit_assert_int(byte__flip64(*(uint64_t *)(buf + 16)), ==, 40);
+	munit_assert_int(ByteFlipLe64(*(uint64_t *)(buf + 16)), ==, 40);
 	free(buf);
 	return MUNIT_OK;
 }
@@ -223,7 +223,7 @@ TEST_CASE(encode, no_padding, NULL)
 	cursor = buf;
 	person__encode(&f->person, &cursor);
 	munit_assert_string_equal(buf, "Joe Doh");
-	munit_assert_int(byte__flip64(*(uint64_t *)(buf + 8)), ==, 40);
+	munit_assert_int(ByteFlipLe64(*(uint64_t *)(buf + 8)), ==, 40);
 	free(buf);
 	return MUNIT_OK;
 }
@@ -265,13 +265,13 @@ TEST_CASE(encode, custom, NULL)
 	munit_assert_string_equal(cursor, "Victor Hugo");
 	cursor += 16;
 
-	munit_assert_int(byte__flip64(*(uint64_t *)cursor), ==, 40);
+	munit_assert_int(ByteFlipLe64(*(uint64_t *)cursor), ==, 40);
 	cursor += 8;
 
-	munit_assert_int(byte__flip16(*(uint16_t *)cursor), ==, 2);
+	munit_assert_int(ByteFlipLe16(*(uint16_t *)cursor), ==, 2);
 	cursor += 2;
 
-	munit_assert_int(byte__flip16(*(uint16_t *)cursor), ==, 8);
+	munit_assert_int(ByteFlipLe16(*(uint16_t *)cursor), ==, 8);
 	cursor += 2;
 
 	cursor += 4; /* Unused */
@@ -305,7 +305,7 @@ TEST_CASE(decode, padding, NULL)
 	struct cursor cursor = {buf, 16 + 8};
 	(void)params;
 	strcpy(buf, "John Doh");
-	*(uint64_t *)(buf + 16) = byte__flip64(40);
+	*(uint64_t *)(buf + 16) = ByteFlipLe64(40);
 	person__decode(&cursor, &f->person);
 	munit_assert_string_equal(f->person.name, "John Doh");
 	munit_assert_int(f->person.age, ==, 40);
@@ -321,7 +321,7 @@ TEST_CASE(decode, no_padding, NULL)
 	struct cursor cursor = {buf, 16 + 8};
 	(void)params;
 	strcpy(buf, "Joe Doh");
-	*(uint64_t *)(buf + 8) = byte__flip64(40);
+	*(uint64_t *)(buf + 8) = ByteFlipLe64(40);
 	person__decode(&cursor, &f->person);
 	munit_assert_string_equal(f->person.name, "Joe Doh");
 	munit_assert_int(f->person.age, ==, 40);
@@ -366,13 +366,13 @@ TEST_CASE(decode, custom, NULL)
 	strcpy(p, "Victor Hugo");
 	p += 16;
 
-	*(uint64_t *)p = byte__flip64(40);
+	*(uint64_t *)p = ByteFlipLe64(40);
 	p += 8;
 
-	*(uint16_t *)p = byte__flip16(2);
+	*(uint16_t *)p = ByteFlipLe16(2);
 	p += 2;
 
-	*(uint16_t *)p = byte__flip16(8);
+	*(uint16_t *)p = ByteFlipLe16(8);
 	p += 2;
 
 	p += 4; /* Unused */

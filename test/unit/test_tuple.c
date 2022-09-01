@@ -214,7 +214,7 @@ TEST_CASE(decoder, type, float, NULL)
 
 	memcpy(buf[1], &pi, sizeof pi);
 	uint64_t *buf_value = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
-	*buf_value = byte__flip64(*buf_value);
+	*buf_value = ByteFlipLe64(*buf_value);
 
 	DECODER_INIT(1);
 	DECODER_NEXT;
@@ -343,7 +343,7 @@ TEST_CASE(encoder, row, one_value, NULL)
 	munit_assert_int(buf[0][0], ==, SQLITE_INTEGER);
 	/* malloc'ed buffer is aligned suitably */
 	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
-	munit_assert_uint64(*value_ptr, ==, byte__flip64(7));
+	munit_assert_uint64(*value_ptr, ==, ByteFlipLe64(7));
 
 	return MUNIT_OK;
 }
@@ -369,7 +369,7 @@ TEST_CASE(encoder, row, two_values, NULL)
 	munit_assert_int(buf[0][0], ==, SQLITE_INTEGER | SQLITE_TEXT << 4);
 	/* malloc'ed buffer is aligned suitably */
 	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
-	munit_assert_uint64(*value_ptr, ==, byte__flip64(7));
+	munit_assert_uint64(*value_ptr, ==, ByteFlipLe64(7));
 	munit_assert_string_equal((const char *)buf[2], "hello");
 
 	return MUNIT_OK;
@@ -394,7 +394,7 @@ TEST_CASE(encoder, params, one_value, NULL)
 	munit_assert_int(buf[0][0], ==, 1);
 	munit_assert_int(buf[0][1], ==, SQLITE_INTEGER);
 	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
-	munit_assert_uint64(*value_ptr, ==, byte__flip64(7));
+	munit_assert_uint64(*value_ptr, ==, ByteFlipLe64(7));
 
 	return MUNIT_OK;
 }
@@ -421,7 +421,7 @@ TEST_CASE(encoder, params, two_values, NULL)
 	munit_assert_int(buf[0][1], ==, SQLITE_INTEGER);
 	munit_assert_int(buf[0][2], ==, SQLITE_TEXT);
 	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
-	munit_assert_uint64(*value_ptr, ==, byte__flip64(7));
+	munit_assert_uint64(*value_ptr, ==, ByteFlipLe64(7));
 	munit_assert_string_equal((const char *)buf[2], "hello");
 
 	return MUNIT_OK;
@@ -445,7 +445,7 @@ TEST_CASE(encoder, type, float, NULL)
 
 	munit_assert_int(buf[0][0], ==, SQLITE_FLOAT);
 	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
-	munit_assert_uint64(*value_ptr, ==, byte__flip64(*(uint64_t *)&value.float_));
+	munit_assert_uint64(*value_ptr, ==, ByteFlipLe64(*(uint64_t *)&value.float_));
 
 	return MUNIT_OK;
 }
@@ -466,7 +466,7 @@ TEST_CASE(encoder, type, unixtime, NULL)
 
 	munit_assert_int(buf[0][0], ==, DQLITE_UNIXTIME);
 	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
-	munit_assert_uint64(*value_ptr, ==, byte__flip64((uint64_t)value.unixtime));
+	munit_assert_uint64(*value_ptr, ==, ByteFlipLe64((uint64_t)value.unixtime));
 
 	return MUNIT_OK;
 }
@@ -507,7 +507,7 @@ TEST_CASE(encoder, type, boolean, NULL)
 
 	munit_assert_int(buf[0][0], ==, DQLITE_BOOLEAN);
 	uint64_t *value_ptr = __builtin_assume_aligned(buf[1], sizeof(uint64_t));
-	munit_assert_uint64(*value_ptr, ==, byte__flip64(value.boolean));
+	munit_assert_uint64(*value_ptr, ==, ByteFlipLe64(value.boolean));
 
 	return MUNIT_OK;
 }

@@ -51,7 +51,7 @@ int clientSendHandshake(struct client *c)
 
 	tracef("client send handshake fd %d", c->fd);
 	/* TODO: update to version 1 */
-	protocol = byte__flip64(DQLITE_PROTOCOL_VERSION_LEGACY);
+	protocol = ByteFlipLe64(DQLITE_PROTOCOL_VERSION_LEGACY);
 
 	rv = write(c->fd, &protocol, sizeof protocol);
 	if (rv < 0) {
@@ -277,7 +277,7 @@ int clientRecvRows(struct client *c, struct rows *rows)
 			/* No EOF marker fond */
 			return DQLITE_ERROR;
 		}
-		eof = byte__flip64(*(uint64_t *)cursor.p);
+		eof = ByteFlipLe64(*(uint64_t *)cursor.p);
 		if (eof == DQLITE_RESPONSE_ROWS_DONE ||
 		    eof == DQLITE_RESPONSE_ROWS_PART) {
 			break;
