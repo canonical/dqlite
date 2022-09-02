@@ -29,19 +29,27 @@ void buffer__close(struct buffer *b)
 	free(b->data);
 }
 
-/* Ensure that the buffer as at least @size spare bytes */
-static bool ensure(struct buffer *b, size_t size)
+/* Ensure that the buffer has at least @size spare bytes */
+static inline bool ensure(struct buffer *b, size_t size)
 {
+	void *data;
+	uint32_t n_pages = b->n_pages;
+
 	/* Double the buffer until we have enough capacity */
 	while (size > CAP(b)) {
-		void *data;
 		b->n_pages *= 2;
+	}
+
+	/* CAP(b) was insufficient */
+	if (b->n_pages > n_pages) {
 		data = realloc(b->data, SIZE(b));
 		if (data == NULL) {
+			b->n_pages = n_pages;
 			return false;
 		}
 		b->data = data;
 	}
+
 	return true;
 }
 
