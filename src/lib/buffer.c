@@ -12,8 +12,6 @@
 /* How many remaining bytes the buffer currently */
 #define CAP(B) (SIZE(B) - B->offset)
 
-#define MAX_REASONABLE_SIZE (1 << 30) // XXX
-
 int buffer__init(struct buffer *b)
 {
 	b->page_size = (unsigned)sysconf(_SC_PAGESIZE);
@@ -50,10 +48,6 @@ static bool ensure(struct buffer *b, size_t size)
 void *buffer__advance(struct buffer *b, size_t size)
 {
 	void *cursor;
-
-	if (size > MAX_REASONABLE_SIZE) {
-		return NULL;
-	}
 
 	if (!ensure(b, size)) {
 		return NULL;
