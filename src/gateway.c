@@ -655,6 +655,7 @@ static int handle_exec_sql(struct handle *req)
 	g->sql = request.sql;
 	rc = leader__barrier(g->leader, &g->barrier, execSqlBarrierCb);
 	if (rc != 0) {
+		g->req = NULL;
 		tracef("handle exec sql barrier failed %d", rc);
 		g->req = NULL;
 		g->sql = NULL;
@@ -663,49 +664,71 @@ static int handle_exec_sql(struct handle *req)
 	return 0;
 }
 
+static void querySqlBarrierCb(struct barrier *barrier, int status)
+{
+	tracef("query sql barrier cb status:%d", status);
+	struct cursor *cursor;
+	struct gateway *g = barrier->data;
+	struct handle *req = g->req;
+	const char *sql = g->sql;
+	sqlite3_stmt *stmt;
+	const char *tail;
+	int rv;
+
+	assert(g->req != NULL);
+	cursor = &req->cursor;
+	g->req = NULL;
+	assert(g->stmt == NULL);
+	g->sql = NULL;
+	if (status != 0) {
+		failure(req, status, "barrier error");
+		return;
+	}
+
+	rv = sqlite3_prepare_v2(g->leader->conn, sql, -1, &stmt,
+				&tail);
+	if (rv != SQLITE_OK) {
+		tracef("handle query sql prepare failed %d", rv);
+		failure(req, rv, sqlite3_errmsg(g->leader->conn));
+		return;
+	}
+
+	if (stmt == NULL) {
+		tracef("handle query sql empty statement");
+		failure(req, rv, "empty statement");
+		return;
+	}
+
+	rv = bind__params(stmt, cursor);
+	if (rv != 0) {
+                tracef("handle query sql bind failed %d", rv);
+		sqlite3_finalize(stmt);
+		failure(req, rv, sqlite3_errmsg(g->leader->conn));
+		return;
+	}
+
+	g->stmt_finalize = true;
+	query_batch(stmt, req);
+}
+
 static int handle_query_sql(struct handle *req)
 {
         tracef("handle query sql");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
-	const char *tail;
 	int rv;
 	START(query_sql, rows);
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
-	rv = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt,
-				&tail);
-	if (rv != SQLITE_OK) {
-		tracef("handle query sql prepare failed %d", rv);
-		failure(req, rv, sqlite3_errmsg(g->leader->conn));
-		return 0;
-	}
-
-	if (g->stmt == NULL) {
-		tracef("handle query sql empty statement");
-		failure(req, rv, "empty statement");
-		return 0;
-	}
-
-	rv = bind__params(g->stmt, cursor);
-	if (rv != 0) {
-                tracef("handle query sql bind failed %d", rv);
-		sqlite3_finalize(g->stmt);
-		g->stmt = NULL;
-		failure(req, rv, sqlite3_errmsg(g->leader->conn));
-		return 0;
-	}
-	g->stmt_finalize = true;
 	g->req = req;
-	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
+	g->sql = request.sql;
+	rv = leader__barrier(g->leader, &g->barrier, querySqlBarrierCb);
 	if (rv != 0) {
-                tracef("barrier failed %d", rv);
+		tracef("handle query sql barrier failed %d", rv);
 		g->req = NULL;
-		sqlite3_finalize(g->stmt);
-		g->stmt = NULL;
-		g->stmt_finalize = false;
+		g->sql = NULL;
 		return rv;
 	}
 	return 0;
