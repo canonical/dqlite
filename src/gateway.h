@@ -62,6 +62,7 @@ struct handle
 	int type;   /* Request type */
 	struct gateway *gateway;
 	struct buffer *buffer;
+	struct cursor cursor;
 	handle_cb cb;
 };
 
@@ -72,14 +73,12 @@ struct handle
  * return an error if user code calls it and there's already a request in
  * progress.
  *
- * The @type parameter holds the request type code (e.g. #REQUEST_LEADER), the
- * @cursor parameter holds a cursor for reading the request payload, and the
- * @buffer parameter is a buffer for writing the response.
+ * The @type parameter holds the request type code (e.g. #REQUEST_LEADER), and
+ * the @buffer parameter is a buffer for writing the response.
  */
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
-		    struct cursor *cursor,
 		    struct buffer *buffer,
 		    handle_cb cb);
 

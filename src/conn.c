@@ -103,8 +103,9 @@ static void closeCb(struct transport *transport)
 	}
 }
 
-static void raft_connect(struct conn *c, struct cursor *cursor)
+static void raft_connect(struct conn *c)
 {
+	struct cursor *cursor = &c->handle.cursor;
 	struct request_connect request;
 	int rv;
         tracef("raft_connect");
@@ -125,7 +126,7 @@ static void raft_connect(struct conn *c, struct cursor *cursor)
 static void read_request_cb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
-	struct cursor cursor;
+	struct cursor *cursor = &c->handle.cursor;
 	int rv;
 
 	if (status != 0) {
@@ -135,19 +136,19 @@ static void read_request_cb(struct transport *transport, int status)
 		return;
 	}
 
-	cursor.p = buffer__cursor(&c->read, 0);
-	cursor.cap = buffer__offset(&c->read);
+	cursor->p = buffer__cursor(&c->read, 0);
+	cursor->cap = buffer__offset(&c->read);
 
 	buffer__reset(&c->write);
 	buffer__advance(&c->write, message__sizeof(&c->response)); /* Header */
 
 	switch (c->request.type) {
 		case DQLITE_REQUEST_CONNECT:
-			raft_connect(c, &cursor);
+			raft_connect(c);
 			return;
 	}
 
-	rv = gateway__handle(&c->gateway, &c->handle, c->request.type, &cursor,
+	rv = gateway__handle(&c->gateway, &c->handle, c->request.type,
 			     &c->write, gateway_handle_cb);
 	if (rv != 0) {
                 tracef("read gateway handle error %d", rv);
