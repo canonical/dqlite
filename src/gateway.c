@@ -618,21 +618,48 @@ done:
 	g->sql = NULL;
 }
 
+static void execSqlBarrierCb(struct barrier *barrier, int status)
+{
+	tracef("exec sql barrier cb status:%d", status);
+	struct gateway *g = barrier->data;
+	struct handle *req = g->req;
+	const char *sql = g->sql;
+
+	assert(req != NULL);
+	g->req = NULL;
+	g->sql = NULL;
+	if (status != 0) {
+		failure(req, status, "barrier error");
+		return;
+	}
+
+	assert(g->req == NULL);
+	assert(g->sql == NULL);
+	assert(g->stmt == NULL);
+	req->gateway->sql = sql;
+	handle_exec_sql_next(req, false);
+}
+
 static int handle_exec_sql(struct handle *req)
 {
-        tracef("handle exec sql");
+	tracef("handle exec sql");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
+	int rc;
 	START(exec_sql, result);
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
-	assert(g->req == NULL);
-	assert(g->sql == NULL);
-	assert(g->stmt == NULL);
-	req->gateway->sql = request.sql;
-	handle_exec_sql_next(req, false);
+	g->req = req;
+	g->sql = request.sql;
+	rc = leader__barrier(g->leader, &g->barrier, execSqlBarrierCb);
+	if (rc != 0) {
+		tracef("handle exec sql barrier failed %d", rc);
+		g->req = NULL;
+		g->sql = NULL;
+		return rc;
+	}
 	return 0;
 }
 
