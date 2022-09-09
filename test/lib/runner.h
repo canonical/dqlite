@@ -7,6 +7,8 @@
 
 #include "munit.h"
 
+#include "../../src/tracing.h"
+
 /* Top-level suites array declaration.
  *
  * These top-level suites hold all module-level child suites and must be defined
@@ -27,6 +29,7 @@ extern int _main_suites_n;
 	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])            \
 	{                                                                  \
 		signal(SIGPIPE, SIG_IGN);                                  \
+		dqliteTracingMaybeEnable(true);                            \
 		MunitSuite suite = {(char *)"", NULL, _main_suites, 1, 0}; \
 		return munit_suite_main(&suite, (void *)NAME, argc, argv); \
 	}
