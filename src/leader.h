@@ -15,6 +15,11 @@
 #define SQLITE_IOERR_NOT_LEADER        (SQLITE_IOERR | (40<<8))
 #define SQLITE_IOERR_LEADERSHIP_LOST   (SQLITE_IOERR | (41<<8))
 
+enum {
+	DQLITE_LEADER_BARRIER_SIMPLE,
+	DQLITE_LEADER_BARRIER_CONFIG
+};
+
 struct exec;
 struct barrier;
 struct leader;
@@ -106,6 +111,6 @@ int leader__exec(struct leader *l,
  *
  * Otherwise, just invoke the given @cb immediately.
  */
-int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb);
+int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb, int mode);
 
 #endif /* LEADER_H_*/

@@ -107,6 +107,12 @@ static bool needsBarrier(struct leader *l)
 	       raft_last_applied(l->raft) < raft_last_index(l->raft);
 }
 
+static bool needsConfigBarrier(struct leader *l)
+{
+	return raft_configuration_uncommitted_index(l->raft) != 0 &&
+	       raft_last_log_term(l->raft) < raft_current_term(l->raft);
+}
+
 int leader__init(struct leader *l, struct db *db, struct raft *raft)
 {
         tracef("leader init");
@@ -400,7 +406,7 @@ int leader__exec(struct leader *l,
 	req->barrier.data = req;
 	req->barrier.cb = NULL;
 
-	rv = leader__barrier(l, &req->barrier, execBarrierCb);
+	rv = leader__barrier(l, &req->barrier, execBarrierCb, DQLITE_LEADER_BARRIER_SIMPLE);
 	if (rv != 0) {
 		return rv;
 	}
@@ -428,11 +434,12 @@ static void raftBarrierCb(struct raft_barrier *req, int status)
 	cb(barrier, rv);
 }
 
-int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
+int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb, int mode)
 {
         tracef("leader barrier");
 	int rv;
-	if (!needsBarrier(l)) {
+	if ((mode == DQLITE_LEADER_BARRIER_SIMPLE && !needsBarrier(l)) ||
+	    (mode == DQLITE_LEADER_BARRIER_CONFIG && !needsConfigBarrier(l))) {
                 tracef("not needed");
 		cb(barrier, 0);
 		return 0;

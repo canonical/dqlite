@@ -502,7 +502,7 @@ static int handle_query(struct handle *req)
 	}
 	g->req = req;
 	g->stmt = stmt->stmt;
-	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
+	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb, DQLITE_LEADER_BARRIER_SIMPLE);
 	if (rv != 0) {
                 tracef("handle query leader barrier failed %d", rv);
 		g->req = NULL;
@@ -726,7 +726,7 @@ static int handle_query_sql(struct handle *req)
 	(void)response;
 	g->req = req;
 	g->sql = request.sql;
-	rv = leader__barrier(g->leader, &g->barrier, querySqlBarrierCb);
+	rv = leader__barrier(g->leader, &g->barrier, querySqlBarrierCb, DQLITE_LEADER_BARRIER_SIMPLE);
 	if (rv != 0) {
 		tracef("handle query sql barrier failed %d", rv);
 		g->req = NULL;
