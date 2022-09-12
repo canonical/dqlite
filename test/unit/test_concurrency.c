@@ -135,6 +135,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		prepare.sql = SQL;              \
 		ENCODE(C, &prepare, prepare);   \
 		HANDLE(C, PREPARE);             \
+		WAIT(C);                        \
 		ASSERT_CALLBACK(C, 0, STMT);    \
 		DECODE(C, &stmt, stmt);         \
 		*(STMT_ID) = stmt.id;           \

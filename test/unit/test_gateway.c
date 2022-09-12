@@ -182,6 +182,7 @@ static void handleCb(struct handle *req, int status, int type)
 		prepare.sql = SQL;              \
 		ENCODE(&prepare, prepare);      \
 		HANDLE(PREPARE);                \
+		WAIT;                           \
 		ASSERT_CALLBACK(0, STMT);       \
 		DECODE(&stmt, stmt);            \
 		stmt_id = stmt.id;              \
@@ -251,6 +252,7 @@ static void handleCb(struct handle *req, int status, int type)
 		prepare.sql = SQL;              \
 		ENCODE(&prepare, prepare);      \
 		HANDLE(PREPARE);                \
+		WAIT;                           \
 		ASSERT_CALLBACK(0, STMT);       \
 		DECODE(&stmt, stmt);            \
 		_stmt_id = stmt.id;             \
@@ -461,8 +463,10 @@ TEST_CASE(prepare, success, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
+	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
+	WAIT;
 	ASSERT_CALLBACK(0, STMT);
 	DECODE(&f->response, stmt);
 	munit_assert_int(f->response.id, ==, 0);
@@ -476,8 +480,10 @@ TEST_CASE(prepare, empty1, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = "";
+	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
+	WAIT;
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(0, "empty statement");
 	munit_assert_int(f->response.id, ==, 0);
@@ -491,8 +497,10 @@ TEST_CASE(prepare, empty2, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = " -- This is a comment";
+	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
+	WAIT;
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(0, "empty statement");
 	munit_assert_int(f->response.id, ==, 0);
@@ -506,8 +514,10 @@ TEST_CASE(prepare, invalid, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = "NOT SQL";
+	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
+	WAIT;
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
 	munit_assert_int(f->response.id, ==, 0);
@@ -1367,6 +1377,7 @@ TEST_CASE(finalize, success, NULL)
 	uint64_t stmt_id;
 	struct finalize_fixture *f = data;
 	(void)params;
+	CLUSTER_ELECT(0);
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
