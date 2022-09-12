@@ -150,14 +150,14 @@ static void handleCb(struct handle *req, int status, int type)
 #define HANDLE(TYPE)                                                    \
 	{                                                               \
 		int rc2;                                                \
-		f->cursor->p = buffer__cursor(f->buf1, 0);              \
-		f->cursor->cap = buffer__offset(f->buf1);               \
+		f->handle->cursor.p = buffer__cursor(f->buf1, 0);       \
+		f->handle->cursor.cap = buffer__offset(f->buf1);        \
 		buffer__reset(f->buf2);                                 \
 		f->context->invoked = false;                            \
 		f->context->status = -1;                                \
 		f->context->type = -1;                                  \
 		rc2 = gateway__handle(f->gateway, f->handle,            \
-				      DQLITE_REQUEST_##TYPE, f->cursor, \
+				      DQLITE_REQUEST_##TYPE,            \
 				      f->buf2, handleCb);               \
 		munit_assert_int(rc2, ==, 0);                           \
 	}
