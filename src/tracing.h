@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <time.h>
 
-#include "lib/util.h"
+#include "utils.h"
 
 /* This global variable is only written once at startup and is only read
  * from there on. Users should not manipulate the value of this variable. */
