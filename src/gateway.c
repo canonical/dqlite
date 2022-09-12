@@ -38,7 +38,7 @@ void gateway__leader_close(struct gateway *g, int reason)
 		return;
 	}
 
-	if (g->stmt != NULL) {
+	if (g->req != NULL) {
 		if (g->leader->inflight != NULL) {
 			tracef("finish inflight apply request");
 			struct raft_apply *req = &g->leader->inflight->req;
@@ -46,7 +46,7 @@ void gateway__leader_close(struct gateway *g, int reason)
 			assert(g->req == NULL);
 			assert(g->stmt == NULL);
 		} else if (g->barrier.cb != NULL) {
-			tracef("finish inflight query barrier");
+			tracef("finish inflight barrier");
 			/* This is not a typo, g->barrier.req.cb is a wrapper
 			 * around g->barrier.cb and when called, will set g->barrier.cb to NULL.
 			 * */
@@ -58,8 +58,8 @@ void gateway__leader_close(struct gateway *g, int reason)
 			struct raft_barrier *b = &g->leader->exec->barrier.req;
 			b->cb(b, reason);
 			assert(g->leader->exec == NULL);
-		} else if (g->req != NULL && g->req->type != DQLITE_REQUEST_QUERY
-					  && g->req->type != DQLITE_REQUEST_EXEC) {
+		} else if (g->stmt != NULL && g->req->type != DQLITE_REQUEST_QUERY
+					   && g->req->type != DQLITE_REQUEST_EXEC) {
 			/* Regular exec and query stmt's will be closed when the
 			 * registry is closed below. */
 			tracef("finalize exec_sql or query_sql type:%d", g->req->type);
