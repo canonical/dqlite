@@ -1218,7 +1218,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 			    page_size !=
 				(int)vfsDatabaseGetPageSize(f->database)) {
 				fnctl[0] =
-				    "changing page size is not supported";
+				    sqlite3_mprintf("changing page size is not supported");
 				return SQLITE_IOERR;
 			}
 		}
@@ -1226,7 +1226,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 		/* When the user executes 'PRAGMA journal_mode=x' we ensure
 		 * that the desired mode is 'wal'. */
 		if (strcasecmp(right, "wal") != 0) {
-			fnctl[0] = "only WAL mode is supported";
+			fnctl[0] = sqlite3_mprintf("only WAL mode is supported");
 			return SQLITE_IOERR;
 		}
 	}

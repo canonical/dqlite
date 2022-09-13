@@ -1256,6 +1256,9 @@ TEST(VfsFileControl, journal, setUp, tearDown, 0, NULL)
 
 	free(file);
 
+	/* Free allocated memory from call to sqlite3_mprintf */
+	sqlite3_free(fnctl[0]);
+
 	return MUNIT_OK;
 }
 
