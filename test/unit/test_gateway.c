@@ -524,6 +524,20 @@ TEST_CASE(prepare, invalid, NULL)
 	return MUNIT_OK;
 }
 
+/* Prepare a statement and close the gateway early. */
+TEST_CASE(prepare, closing, NULL)
+{
+	struct prepare_fixture *f = data;
+	(void)params;
+
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT)";
+	ENCODE(&f->request, prepare);
+	CLUSTER_ELECT(0);
+	HANDLE(PREPARE);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * exec
@@ -1485,6 +1499,18 @@ TEST_CASE(exec_sql, multi, NULL)
 	return MUNIT_OK;
 }
 
+/* Exec an SQL text and close the gateway early. */
+TEST_CASE(exec_sql, closing, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT)";
+	ENCODE(&f->request, exec_sql);
+	HANDLE(EXEC_SQL);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * query_sql
@@ -1710,5 +1736,18 @@ TEST_CASE(query_sql, params, NULL)
 
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, ROWS);
+	return MUNIT_OK;
+}
+
+/* Perform a query and close the gateway early. */
+TEST_CASE(query_sql, closing, NULL)
+{
+	struct query_sql_fixture *f = data;
+	(void)params;
+	EXEC("INSERT INTO test VALUES(123)");
+	f->request.db_id = 0;
+	f->request.sql = "SELECT n FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
 	return MUNIT_OK;
 }
