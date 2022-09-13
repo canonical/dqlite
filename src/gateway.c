@@ -1101,6 +1101,8 @@ handle:
 	req->gateway = g;
 	req->cb = cb;
 	req->buffer = buffer;
+	req->db_id = 0;
+	req->stmt_id = 0;
 
 	switch (type) {
 #define DISPATCH(LOWER, UPPER, _)                 \
