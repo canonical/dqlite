@@ -1552,3 +1552,35 @@ TEST(vfs, restoreWithOpenConnection, setUp, tearDown, 0, snapshot_params)
 
 	return MUNIT_OK;
 }
+
+/* Changing page_size to non-default value fails. */
+TEST(vfs, changePageSize, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	int rv;
+
+	OPEN("1", db);
+
+	rv = sqlite3_exec(db, "PRAGMA page_size=1024", NULL, NULL, NULL);
+	munit_assert_int(rv, !=, 0);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
+
+/* Changing page_size to current value succeeds. */
+TEST(vfs, changePageSizeSameValue, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	int rv;
+
+	OPEN("1", db);
+
+	rv = sqlite3_exec(db, "PRAGMA page_size=512", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, 0);
+
+	CLOSE(db);
+
+	return MUNIT_OK;
+}
