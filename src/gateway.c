@@ -266,42 +266,80 @@ static int handle_open(struct handle *req)
 	return 0;
 }
 
-static int handle_prepare(struct handle *req)
+static void prepareBarrierCb(struct barrier *barrier, int status)
 {
-        tracef("handle prepare");
-	struct cursor *cursor = &req->cursor;
-	struct gateway *g = req->gateway;
+	tracef("prepare barrier cb status:%d", status);
+	struct gateway *g = barrier->data;
+	struct handle *req = g->req;
+	struct response_stmt response = {0};
+	const char *sql = g->sql;
 	struct stmt *stmt;
 	const char *tail;
 	int rc;
+
+	assert(req != NULL);
+	stmt = stmt__registry_get(&g->stmts, req->stmt_id);
+	assert(stmt != NULL);
+	g->req = NULL;
+	g->sql = NULL;
+	if (status != 0) {
+		stmt__registry_del(&g->stmts, stmt);
+		failure(req, status, "barrier error");
+		return;
+	}
+
+	rc = sqlite3_prepare_v2(g->leader->conn, sql, -1, &stmt->stmt,
+				&tail);
+	if (rc != SQLITE_OK) {
+		tracef("prepare barrier cb sqlite prepare failed %d", rc);
+		stmt__registry_del(&g->stmts, stmt);
+		failure(req, rc, sqlite3_errmsg(g->leader->conn));
+		return;
+	}
+
+	if (stmt->stmt == NULL) {
+		tracef("prepare barrier cb empty statement");
+		stmt__registry_del(&g->stmts, stmt);
+		/* FIXME Should we use a code other than 0 here? */
+		failure(req, 0, "empty statement");
+		return;
+	}
+
+	response.db_id = (uint32_t)req->db_id;
+	response.id = (uint32_t)stmt->id;
+	response.params = (uint64_t)sqlite3_bind_parameter_count(stmt->stmt);
+	SUCCESS(stmt, STMT);
+}
+
+static int handle_prepare(struct handle *req)
+{
+	tracef("handle prepare");
+	struct cursor *cursor = &req->cursor;
+	struct gateway *g = req->gateway;
+	struct stmt *stmt;
+	int rc;
 	START(prepare, stmt);
+	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
+	(void)response;
 	rc = stmt__registry_add(&g->stmts, &stmt);
 	if (rc != 0) {
                 tracef("handle prepare registry add failed %d", rc);
 		return rc;
 	}
 	assert(stmt != NULL);
-	rc = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &stmt->stmt,
-				&tail);
-	if (rc != SQLITE_OK) {
-		tracef("handle prepare sqlite prepare failed %d", rc);
+	req->db_id = request.db_id;
+	req->stmt_id = stmt->id;
+	g->req = req;
+	g->sql = request.sql;
+	rc = leader__barrier(g->leader, &g->barrier, prepareBarrierCb);
+	if (rc != 0) {
+		tracef("handle prepare barrier failed %d", rc);
 		stmt__registry_del(&g->stmts, stmt);
-		failure(req, rc, sqlite3_errmsg(g->leader->conn));
-		return 0;
+		g->req = NULL;
+		g->sql = NULL;
+		return rc;
 	}
-
-	if (stmt->stmt == NULL) {
-		tracef("handle prepare empty statement");
-		stmt__registry_del(&g->stmts, stmt);
-		failure(req, rc, "empty statement");
-		return 0;
-	}
-
-	response.db_id = (uint32_t)request.db_id;
-	response.id = (uint32_t)stmt->id;
-	response.params = (uint64_t)sqlite3_bind_parameter_count(stmt->stmt);
-	SUCCESS(stmt, STMT);
 	return 0;
 }
 
