@@ -4,6 +4,7 @@
 #include "../../src/response.h"
 #include "../../src/tuple.h"
 #include "../lib/cluster.h"
+#include "../lib/raft_heap.h"
 #include "../lib/runner.h"
 
 TEST_MODULE(gateway);
@@ -61,10 +62,12 @@ struct connection
 		rc = buffer__init(&c->buf2);                            \
 		munit_assert_int(rc, ==, 0);                            \
 	}                                                               \
+	test_raft_heap_setup(params, user_data);                        \
 	SELECT(0)
 
 #define TEAR_DOWN                                          \
 	unsigned i;                                        \
+	test_raft_heap_tear_down(data);                    \
 	for (i = 0; i < N_SERVERS; i++) {                  \
 		struct connection *c = &f->connections[i]; \
 		gateway__close(&c->gateway);               \
@@ -146,21 +149,24 @@ static void handleCb(struct handle *req, int status, int type)
 		}                                                             \
 	}
 
-/* Handle a request of the given type and check that no error occurs. */
-#define HANDLE(TYPE)                                                    \
-	{                                                               \
-		int rc2;                                                \
-		f->handle->cursor.p = buffer__cursor(f->buf1, 0);       \
-		f->handle->cursor.cap = buffer__offset(f->buf1);        \
-		buffer__reset(f->buf2);                                 \
-		f->context->invoked = false;                            \
-		f->context->status = -1;                                \
-		f->context->type = -1;                                  \
-		rc2 = gateway__handle(f->gateway, f->handle,            \
-				      DQLITE_REQUEST_##TYPE,            \
-				      f->buf2, handleCb);               \
-		munit_assert_int(rc2, ==, 0);                           \
+/* Handle a request of the given type and check for the given return code. */
+#define HANDLE_STATUS(TYPE, RC)                                   \
+	{                                                         \
+		int rc2;                                          \
+		f->handle->cursor.p = buffer__cursor(f->buf1, 0); \
+		f->handle->cursor.cap = buffer__offset(f->buf1);  \
+		buffer__reset(f->buf2);                           \
+		f->context->invoked = false;                      \
+		f->context->status = -1;                          \
+		f->context->type = -1;                            \
+		rc2 = gateway__handle(f->gateway, f->handle,      \
+				      TYPE,                       \
+				      f->buf2, handleCb);         \
+		munit_assert_int(rc2, ==, RC);                    \
 	}
+
+/* Handle a request of the given type and check that no error occurs. */
+#define HANDLE(TYPE) HANDLE_STATUS(DQLITE_REQUEST_##TYPE, 0)
 
 /* Open a leader connection against the "test" database */
 #define OPEN                              \
@@ -535,6 +541,33 @@ TEST_CASE(prepare, closing, NULL)
 	ENCODE(&f->request, prepare);
 	CLUSTER_ELECT(0);
 	HANDLE(PREPARE);
+	return MUNIT_OK;
+}
+
+/* Submit a prepare request that triggers a failed barrier operation. */
+TEST_CASE(prepare, barrier_error, NULL)
+{
+	struct prepare_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+
+	/* Set up an uncommitted exec operation */
+	CLUSTER_ELECT(0);
+	PREPARE("CREATE TABLE test (n INT)");
+	EXEC_SUBMIT(stmt_id);
+	CLUSTER_DEPOSE;
+	ASSERT_CALLBACK(0, FAILURE);
+
+	/* Submit a prepare request, forcing a barrier, which fails */
+	CLUSTER_ELECT(0);
+	f->request.db_id = 0;
+	f->request.sql = "SELECT n FROM test";
+	ENCODE(&f->request, prepare);
+	/* We rely on leader__barrier (called by handle_prepare) attempting
+	 * an allocation using raft_malloc. */
+	test_raft_heap_fault_config(0, 1);
+	test_raft_heap_fault_enable();
+	HANDLE_STATUS(DQLITE_REQUEST_PREPARE, RAFT_NOMEM);
 	return MUNIT_OK;
 }
 
@@ -1511,6 +1544,32 @@ TEST_CASE(exec_sql, closing, NULL)
 	return MUNIT_OK;
 }
 
+/* Submit an EXEC_SQL request that triggers a failed barrier operation. */
+TEST_CASE(exec_sql, barrier_error, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+
+	/* Set up an uncommitted exec operation */
+	PREPARE("CREATE TABLE test (n INT)");
+	EXEC_SUBMIT(stmt_id);
+	CLUSTER_DEPOSE;
+	ASSERT_CALLBACK(0, FAILURE);
+
+	/* Submit an EXEC_SQL request, forcing a barrier, which fails */
+	CLUSTER_ELECT(0);
+	f->request.db_id = 0;
+	f->request.sql = "INSERT INTO test VALUES(123)";
+	ENCODE(&f->request, exec_sql);
+	/* We rely on leader__barrier (called by handle_exec_sql) attempting
+	 * an allocation using raft_malloc. */
+	test_raft_heap_fault_config(0, 1);
+	test_raft_heap_fault_enable();
+	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, RAFT_NOMEM);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * query_sql
@@ -1749,5 +1808,31 @@ TEST_CASE(query_sql, closing, NULL)
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
+	return MUNIT_OK;
+}
+
+/* Submit a QUERY_SQL request that triggers a failed barrier operation. */
+TEST_CASE(query_sql, barrier_error, NULL)
+{
+	struct query_sql_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+
+	/* Set up an uncommitted exec operation */
+	PREPARE("INSERT INTO test VALUES(123)");
+	EXEC_SUBMIT(stmt_id);
+	CLUSTER_DEPOSE;
+	ASSERT_CALLBACK(0, FAILURE);
+
+	/* Submit a QUERY_SQL request, forcing a barrier, which fails */
+	CLUSTER_ELECT(0);
+	f->request.db_id = 0;
+	f->request.sql = "SELECT n FROM test";
+	ENCODE(&f->request, query_sql);
+	/* We rely on leader__barrier (called by handle_query_sql) attempting
+	 * an allocation using raft_malloc. */
+	test_raft_heap_fault_config(0, 1);
+	test_raft_heap_fault_enable();
+	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_NOMEM);
 	return MUNIT_OK;
 }
