@@ -571,6 +571,24 @@ TEST_CASE(prepare, barrier_error, NULL)
 	return MUNIT_OK;
 }
 
+/* Submit a prepare request to a non-leader node. */
+TEST_CASE(prepare, non_leader, NULL)
+{
+	struct prepare_fixture *f = data;
+	(void)params;
+
+	CLUSTER_ELECT(0);
+	SELECT(1);
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT)";
+	ENCODE(&f->request, prepare);
+	HANDLE(PREPARE);
+	WAIT;
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * exec
