@@ -756,10 +756,20 @@ static int handle_interrupt(struct handle *req)
 	return 0;
 }
 
+enum {
+	DQLITE_CHANGE_ADD,
+	DQLITE_CHANGE_ASSIGN,
+	DQLITE_CHANGE_REMOVE
+};
+
 struct change
 {
 	struct gateway *gateway;
 	struct raft_change req;
+	int tag;
+	raft_id id;
+	const char *address;
+	int dqlite_role;
 };
 
 static void raftChangeCb(struct raft_change *change, int status)
@@ -776,6 +786,46 @@ static void raftChangeCb(struct raft_change *change, int status)
 			raft_strerror(status));
 	} else {
 		SUCCESS(empty, EMPTY);
+	}
+}
+
+static void changeBarrierCb(struct barrier *barrier, int status)
+{
+	tracef("change barrier cb status:%d", status);
+	struct gateway *g = barrier->data;
+	struct handle *req = g->req;
+	struct change *r;
+	int rv;
+
+	assert(req != NULL);
+	g->req = NULL;
+	r = req->change;
+	if (status != 0) {
+		sqlite3_free(r);
+		failure(req, status, "barrier error");
+		return;
+	}
+
+	switch (r->tag) {
+		case DQLITE_CHANGE_ADD:
+			rv = raft_add(g->raft, &r->req, r->id, r->address,
+				      raftChangeCb);
+			break;
+		case DQLITE_CHANGE_ASSIGN:
+			rv = raft_assign(g->raft, &r->req, r->id,
+					 translateDqliteRole(r->dqlite_role), raftChangeCb);
+			break;
+		case DQLITE_CHANGE_REMOVE:
+			rv = raft_remove(g->raft, &r->req, r->id, raftChangeCb);
+			break;
+		default:
+			assert(0);
+	}
+	if (rv != 0) {
+		tracef("raft change failed %d", rv);
+		g->req = NULL;
+		sqlite3_free(r);
+		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 	}
 }
 
@@ -797,16 +847,17 @@ static int handle_add(struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
+	r->tag = DQLITE_CHANGE_ADD;
+	r->id = request.id;
+	r->address = request.address;
+	req->change = r;
 	g->req = req;
-
-	rv = raft_add(g->raft, &r->req, request.id, request.address,
-		      raftChangeCb);
+	rv = leader__barrier(g->leader, &g->barrier, changeBarrierCb, DQLITE_LEADER_BARRIER_CONFIG);
 	if (rv != 0) {
-                tracef("raft add failed %d", rv);
+		tracef("barrier failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
-		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
-		return 0;
+		return rv;
 	}
 
 	return 0;
@@ -842,16 +893,18 @@ static int handle_assign(struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
+	r->tag = DQLITE_CHANGE_ASSIGN;
+	r->id = request.id;
+	r->dqlite_role = (int)role;
+	req->change = r;
 	g->req = req;
 
-	rv = raft_assign(g->raft, &r->req, request.id,
-			 translateDqliteRole((int)role), raftChangeCb);
+	rv = leader__barrier(g->leader, &g->barrier, changeBarrierCb, DQLITE_LEADER_BARRIER_CONFIG);
 	if (rv != 0) {
-                tracef("raft_assign failed %d", rv);
+		tracef("barrier failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
-		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
-		return 0;
+		return rv;
 	}
 
 	return 0;
@@ -876,15 +929,17 @@ static int handle_remove(struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
+	r->tag = DQLITE_CHANGE_REMOVE;
+	r->id = request.id;
+	req->change = r;
 	g->req = req;
 
-	rv = raft_remove(g->raft, &r->req, request.id, raftChangeCb);
+	rv = leader__barrier(g->leader, &g->barrier, changeBarrierCb, DQLITE_LEADER_BARRIER_CONFIG);
 	if (rv != 0) {
-                tracef("raft_remote failed %d", rv);
+		tracef("barrier failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
-		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
-		return 0;
+		return rv;
 	}
 
 	return 0;
