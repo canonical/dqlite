@@ -1027,6 +1027,32 @@ TEST_CASE(exec, restore, NULL)
 	return MUNIT_OK;
 }
 
+/* Close the gateway early while an exec barrier is in flight. */
+TEST_CASE(exec, barrier_closing, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id, prev_stmt_id;
+	(void)params;
+
+	CLUSTER_ELECT(0);
+	EXEC("CREATE TABLE test (n INT)");
+
+	/* Save this stmt to exec later */
+	PREPARE("INSERT INTO test(n) VALUES(2)");
+	prev_stmt_id = stmt_id;
+
+	/* Submit exec request, then depose the leader before it commits */
+	PREPARE("INSERT INTO test(n) VALUES(1)");
+	EXEC_SUBMIT(stmt_id);
+	CLUSTER_DEPOSE;
+	ASSERT_CALLBACK(0, FAILURE);
+
+	/* Now try to exec the other stmt (triggering a barrier) and close early */
+	CLUSTER_ELECT(0);
+	EXEC_SUBMIT(prev_stmt_id);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * query
