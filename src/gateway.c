@@ -1203,6 +1203,7 @@ handle:
 	req->buffer = buffer;
 	req->db_id = 0;
 	req->stmt_id = 0;
+	req->change = NULL;
 
 	switch (type) {
 #define DISPATCH(LOWER, UPPER, _)                 \
