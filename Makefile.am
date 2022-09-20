@@ -53,6 +53,7 @@ libtest_la_SOURCES = \
   test/lib/heap.c \
   test/lib/logger.c \
   test/lib/munit.c \
+  test/lib/raft_heap.c \
   test/lib/server.c \
   test/lib/sqlite.c \
   test/lib/uv.c

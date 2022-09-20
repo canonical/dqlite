@@ -33,6 +33,7 @@ struct gateway
 	sqlite3_stmt *stmt;          /* Statement being processed */
 	bool stmt_finalize;          /* Whether to finalize the statement */
 	struct exec exec;            /* Low-level exec async request */
+	/* FIXME store this in the req */
 	const char *sql;             /* SQL query for exec_sql requests */
 	struct stmt__registry stmts; /* Registry of prepared statements */
 	struct barrier barrier;      /* Barrier for query requests */
@@ -54,14 +55,20 @@ void gateway__leader_close(struct gateway *g, int reason);
 
 /**
  * Asynchronous request to handle a client command.
+ *
+ * We also use the handle as a place to save request-scoped data that we need
+ * to access from a callback.
  */
 typedef void (*handle_cb)(struct handle *req, int status, int type);
 struct handle
 {
-	void *data; /* User data */
-	int type;   /* Request type */
+	void *data;              /* User data */
+	int type;                /* Request type */
 	struct gateway *gateway;
 	struct buffer *buffer;
+	struct cursor cursor;
+	size_t db_id;            /* For use by prepare callback */
+	size_t stmt_id;          /* For use by prepare callback */
 	handle_cb cb;
 };
 
@@ -72,14 +79,12 @@ struct handle
  * return an error if user code calls it and there's already a request in
  * progress.
  *
- * The @type parameter holds the request type code (e.g. #REQUEST_LEADER), the
- * @cursor parameter holds a cursor for reading the request payload, and the
- * @buffer parameter is a buffer for writing the response.
+ * The @type parameter holds the request type code (e.g. #REQUEST_LEADER), and
+ * the @buffer parameter is a buffer for writing the response.
  */
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
-		    struct cursor *cursor,
 		    struct buffer *buffer,
 		    handle_cb cb);
 

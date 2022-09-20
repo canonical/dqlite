@@ -105,7 +105,7 @@ int clientSendHandshake(struct client *c)
 		assert(_p != NULL);                                 \
 		_rv = read(c->fd, _p, _n);                          \
 		if (_rv != (int)_n) {                               \
-			tracef("read failed rv %zd)", _rv);         \
+			tracef("read head failed rv %zd", _rv);     \
 			return DQLITE_ERROR;                        \
 		}                                                   \
 		_cursor.p = _p;                                     \
@@ -120,12 +120,12 @@ int clientSendHandshake(struct client *c)
 		_n = _message.words * 8;                            \
 		_p = buffer__advance(&c->read, _n);                 \
 		if (_p == NULL) {                                   \
-			tracef("read buf adv failed rv %zd)", _rv); \
+			tracef("read buf adv failed rv %zd", _rv);  \
 			return DQLITE_ERROR;                        \
 		}                                                   \
 		_rv = read(c->fd, _p, _n);                          \
 		if (_rv != (int)_n) {                               \
-			tracef("read failed rv %zd)", _rv);         \
+			tracef("read body failed rv %zd", _rv);     \
 			return DQLITE_ERROR;                        \
 		}                                                   \
 	}

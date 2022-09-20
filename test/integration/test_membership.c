@@ -112,14 +112,14 @@ TEST(membership, join, setUp, tearDown, 0, NULL)
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
 	/* The table is visible from the new node */
+	TRANSFER(id, f->client);
 	SELECT(2);
 	HANDSHAKE;
 	OPEN;
 	PREPARE("SELECT * FROM test", &stmt_id);
 
 	/* TODO: fix the standalone test for remove */
-	SELECT(1);
-	REMOVE(id);
+	REMOVE(1);
 	return MUNIT_OK;
 }
 
