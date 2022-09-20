@@ -328,7 +328,9 @@ static int handle_prepare(struct handle *req)
 		return rc;
 	}
 	assert(stmt != NULL);
-	req->db_id = request.db_id;
+	/* This cast is safe as long as the TODO in LOOKUP_DB is not
+	 * implemented. */
+	req->db_id = (size_t)request.db_id;
 	req->stmt_id = stmt->id;
 	g->req = req;
 	g->sql = request.sql;
