@@ -1880,3 +1880,84 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_NOMEM);
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * cluster
+ *
+ ******************************************************************************/
+
+struct request_cluster_fixture
+{
+	FIXTURE;
+	struct request_cluster request;
+	struct response_servers response;
+};
+
+TEST_SUITE(request_cluster);
+TEST_SETUP(request_cluster)
+{
+	struct request_cluster_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	CLUSTER_ELECT(0);
+	return f;
+}
+TEST_TEAR_DOWN(request_cluster)
+{
+	struct request_cluster_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Submit a cluster request with an invalid format version. */
+TEST_CASE(request_cluster, unrecognizedFormat, NULL)
+{
+	struct request_cluster_fixture *f = data;
+	(void)params;
+	f->request.format = 2;
+	ENCODE(&f->request, cluster);
+	HANDLE(CLUSTER);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized cluster format");
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * invalid
+ *
+ ******************************************************************************/
+
+struct invalid_fixture
+{
+	FIXTURE;
+	struct request_leader request;
+	struct response_server response;
+};
+
+TEST_SUITE(invalid);
+TEST_SETUP(invalid)
+{
+	struct invalid_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	CLUSTER_ELECT(0);
+	return f;
+}
+TEST_TEAR_DOWN(invalid)
+{
+	struct invalid_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Submit a request with an unrecognized type. */
+TEST_CASE(invalid, requestType, NULL)
+{
+	struct invalid_fixture *f = data;
+	(void)params;
+	ENCODE(&f->request, leader);
+	HANDLE_STATUS(123, 0);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized request type");
+	return MUNIT_OK;
+}
