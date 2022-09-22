@@ -1921,3 +1921,43 @@ TEST_CASE(request_cluster, unrecognizedFormat, NULL)
 	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized cluster format");
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * invalid
+ *
+ ******************************************************************************/
+
+struct invalid_fixture
+{
+	FIXTURE;
+	struct request_leader request;
+	struct response_server response;
+};
+
+TEST_SUITE(invalid);
+TEST_SETUP(invalid)
+{
+	struct invalid_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	CLUSTER_ELECT(0);
+	return f;
+}
+TEST_TEAR_DOWN(invalid)
+{
+	struct invalid_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Submit a request with an unrecognized type. */
+TEST_CASE(invalid, requestType, NULL)
+{
+	struct invalid_fixture *f = data;
+	(void)params;
+	ENCODE(&f->request, leader);
+	HANDLE_STATUS(123, 0);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized request type");
+	return MUNIT_OK;
+}

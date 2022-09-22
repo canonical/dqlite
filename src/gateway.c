@@ -1210,6 +1210,10 @@ handle:
 		rc = handle_##LOWER(req); \
 		break;
 		REQUEST__TYPES(DISPATCH);
+	default:
+		tracef("unrecognized request type %d", type);
+		failure(req, DQLITE_PARSE, "unrecognized request type");
+		rc = 0;
 	}
 
 	return rc;
