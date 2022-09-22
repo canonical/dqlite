@@ -1028,6 +1028,9 @@ static int encodeServer(struct gateway *g,
 	uint64_t role;
 	text_t address;
 
+	assert(format == DQLITE_REQUEST_CLUSTER_FORMAT_V0 ||
+	       format == DQLITE_REQUEST_CLUSTER_FORMAT_V1);
+
 	id = g->raft->configuration.servers[i].id;
 	address = g->raft->configuration.servers[i].address;
 	role =
@@ -1067,6 +1070,13 @@ static int handle_cluster(struct handle *req)
 	void *cur;
 	int rv;
 	START(cluster, servers);
+
+	if (request.format != DQLITE_REQUEST_CLUSTER_FORMAT_V0 &&
+	    request.format != DQLITE_REQUEST_CLUSTER_FORMAT_V1) {
+		tracef("bad cluster format");
+		failure(req, DQLITE_PARSE, "unrecognized cluster format");
+		return 0;
+	}
 
 	response.n = g->raft->configuration.n;
 	cur = buffer__advance(req->buffer, response_servers__sizeof(&response));

@@ -1880,3 +1880,44 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_NOMEM);
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * cluster
+ *
+ ******************************************************************************/
+
+struct request_cluster_fixture
+{
+	FIXTURE;
+	struct request_cluster request;
+	struct response_servers response;
+};
+
+TEST_SUITE(request_cluster);
+TEST_SETUP(request_cluster)
+{
+	struct request_cluster_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	CLUSTER_ELECT(0);
+	return f;
+}
+TEST_TEAR_DOWN(request_cluster)
+{
+	struct request_cluster_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+/* Submit a cluster request with an invalid format version. */
+TEST_CASE(request_cluster, unrecognizedFormat, NULL)
+{
+	struct request_cluster_fixture *f = data;
+	(void)params;
+	f->request.format = 2;
+	ENCODE(&f->request, cluster);
+	HANDLE(CLUSTER);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized cluster format");
+	return MUNIT_OK;
+}
