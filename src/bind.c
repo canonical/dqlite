@@ -48,11 +48,13 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 	return rc;
 }
 
-int bind__params(sqlite3_stmt *stmt, struct cursor *cursor)
+int bind__params(sqlite3_stmt *stmt, struct cursor *cursor, int format)
 {
 	struct tuple_decoder decoder;
-	unsigned i;
+	unsigned long i;
 	int rc;
+
+	assert(format == TUPLE__PARAMS || format == TUPLE__PARAMS32);
 
 	sqlite3_reset(stmt);
 
@@ -62,7 +64,7 @@ int bind__params(sqlite3_stmt *stmt, struct cursor *cursor)
 		return 0;
 	}
 
-	rc = tuple_decoder__init(&decoder, 0, cursor);
+	rc = tuple_decoder__init(&decoder, 0, format, cursor);
 	if (rc != 0) {
 		return rc;
 	}

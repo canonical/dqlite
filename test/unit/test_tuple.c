@@ -12,11 +12,13 @@ TEST_MODULE(tuple);
  *
  ******************************************************************************/
 
-#define DECODER_INIT(N)                                          \
-	{                                                        \
-		int rc2;                                         \
-		rc2 = tuple_decoder__init(&decoder, N, &cursor); \
-		munit_assert_int(rc2, ==, 0);                    \
+#define DECODER_INIT(N)                                                   \
+	{                                                                 \
+		int rc2;                                                  \
+		int format_;                                              \
+		format_ = (N > 0) ? TUPLE__ROW : TUPLE__PARAMS;           \
+		rc2 = tuple_decoder__init(&decoder, N, format_, &cursor); \
+		munit_assert_int(rc2, ==, 0);                             \
 	}
 
 #define DECODER_NEXT                                         \

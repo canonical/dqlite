@@ -7,6 +7,7 @@
 #include "response.h"
 #include "tracing.h"
 #include "translate.h"
+#include "tuple.h"
 #include "vfs.h"
 
 void gateway__init(struct gateway *g,
@@ -401,7 +402,7 @@ static int handle_exec(struct handle *req)
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
-	rv = bind__params(stmt->stmt, cursor);
+	rv = bind__params(stmt->stmt, cursor, TUPLE__PARAMS);
 	if (rv != 0) {
                 tracef("handle exec bind failed %d", rv);
 		failure(req, rv, "bind parameters");
@@ -494,7 +495,7 @@ static int handle_query(struct handle *req)
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
 	(void)response;
-	rv = bind__params(stmt->stmt, cursor);
+	rv = bind__params(stmt->stmt, cursor, TUPLE__PARAMS);
 	if (rv != 0) {
                 tracef("handle query bind failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
@@ -585,7 +586,7 @@ static void handle_exec_sql_next(struct handle *req, bool done)
 
 	/* TODO: what about bindings for multi-statement SQL text? */
 	if (!done) {
-		rv = bind__params(g->stmt, cursor);
+		rv = bind__params(g->stmt, cursor, TUPLE__PARAMS);
 		if (rv != SQLITE_OK) {
 			failure(req, rv, sqlite3_errmsg(g->leader->conn));
 			goto done_after_prepare;
@@ -701,7 +702,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	rv = bind__params(stmt, cursor);
+	rv = bind__params(stmt, cursor, TUPLE__PARAMS);
 	if (rv != 0) {
                 tracef("handle query sql bind failed %d", rv);
 		sqlite3_finalize(stmt);

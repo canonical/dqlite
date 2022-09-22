@@ -49,7 +49,18 @@
 
 #include "protocol.h"
 
-enum { TUPLE__ROW = 1, TUPLE__PARAMS };
+/* Formats for tuple encoding and decoding. */
+enum {
+	/* Used for coding a row from the database: length field is implicit,
+	 * type codes are 4 bits each. */
+	TUPLE__ROW = 1,
+	/* Used for coding a short tuple of statement parameters: length field
+	 * is 1 byte, type codes are 1 byte each. */
+	TUPLE__PARAMS,
+	/* Used for coding a longer tuple of statement parameters: length field
+	 * is 4 bytes, type codes are 1 byte each. */
+	TUPLE__PARAMS32
+};
 
 /**
  * Hold a single database value.
@@ -74,10 +85,10 @@ struct value
  */
 struct tuple_decoder
 {
-	unsigned n;	    /* Number of values in the tuple */
+	unsigned long n;       /* Number of values in the tuple */
 	struct cursor *cursor; /* Reading cursor */
-	int format;	    /* Tuple format (row or params) */
-	unsigned i;	    /* Index of next value to decode */
+	int format;            /* Tuple format */
+	unsigned long i;       /* Index of next value to decode */
 	const uint8_t *header; /* Pointer to tuple header */
 };
 
@@ -91,6 +102,7 @@ struct tuple_decoder
  */
 int tuple_decoder__init(struct tuple_decoder *d,
 			unsigned n,
+			int format,
 			struct cursor *cursor);
 
 /**
@@ -100,7 +112,7 @@ int tuple_decoder__init(struct tuple_decoder *d,
  * parameters format this is the value contained in the first byte of the tuple
  * header.
  */
-unsigned tuple_decoder__n(struct tuple_decoder *d);
+unsigned long tuple_decoder__n(struct tuple_decoder *d);
 
 /**
  * Decode the next value of the tuple.
@@ -112,11 +124,11 @@ int tuple_decoder__next(struct tuple_decoder *d, struct value *value);
  */
 struct tuple_encoder
 {
-	unsigned n;	    /* Number of values in the tuple */
-	int format;	    /* Tuple format (row or params) */
+	unsigned long n;       /* Number of values in the tuple */
+	int format;            /* Tuple format */
 	struct buffer *buffer; /* Write buffer */
-	unsigned i;	    /* Index of next value to encode */
-	size_t header;	 /* Buffer offset of tuple header */
+	unsigned long i;       /* Index of next value to encode */
+	size_t header;         /* Buffer offset of tuple header */
 };
 
 /**
@@ -124,7 +136,7 @@ struct tuple_encoder
  * tuple. The @n parameter must always be greater than zero.
  */
 int tuple_encoder__init(struct tuple_encoder *e,
-			unsigned n,
+			unsigned long n,
 			int format,
 			struct buffer *buffer);
 
