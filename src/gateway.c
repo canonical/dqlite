@@ -401,14 +401,34 @@ static int handle_exec(struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
+	struct request_exec request = {0};
+	int tuple_format;
 	int rv;
-	START_V0(exec, result);
+
+	switch (req->schema) {
+		case 0:
+			tuple_format = TUPLE__PARAMS;
+			break;
+		case 1:
+			tuple_format = TUPLE__PARAMS32;
+			break;
+		default:
+			tracef("bad schema version %d", req->schema);
+			failure(req, DQLITE_PARSE, "unrecognized schema version");
+			return 0;
+	}
+	/* The v0 and v1 schemas only differ in the layout of the tuple,
+	 * so we can use the same decode function for both. */
+	rv = request_exec__decode(cursor, &request);
+	if (rv != 0) {
+		return rv;
+	}
+
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
-	(void)response;
-	rv = bind__params(stmt->stmt, cursor, TUPLE__PARAMS);
+	rv = bind__params(stmt->stmt, cursor, tuple_format);
 	if (rv != 0) {
                 tracef("handle exec bind failed %d", rv);
 		failure(req, rv, "bind parameters");

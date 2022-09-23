@@ -111,14 +111,14 @@ static void handleCb(struct handle *req, int status, int type)
 		request_##LOWER##__encode(REQUEST, &cursor);    \
 	}
 
-/* Encode N parameters with the given values */
-#define ENCODE_PARAMS(N, VALUES)                                              \
+/* Encode N parameters with the given values in the given format */
+#define ENCODE_PARAMS(N, VALUES, FORMAT)                                      \
 	{                                                                     \
 		struct tuple_encoder encoder;                                 \
-		int i2;                                                       \
+		unsigned long i2;                                             \
 		int rc2;                                                      \
 		rc2 =                                                         \
-		    tuple_encoder__init(&encoder, N, TUPLE__PARAMS, f->buf1); \
+		    tuple_encoder__init(&encoder, N, FORMAT, f->buf1); \
 		munit_assert_int(rc2, ==, 0);                                 \
 		for (i2 = 0; i2 < N; i2++) {                                  \
 			rc2 = tuple_encoder__next(&encoder, &((VALUES)[i2])); \
@@ -149,8 +149,7 @@ static void handleCb(struct handle *req, int status, int type)
 		}                                                              \
 	}
 
-/* Handle a request of the given type and check for the given return code. */
-#define HANDLE_STATUS(TYPE, RC)                                   \
+#define HANDLE_SCHEMA_STATUS(TYPE, SCHEMA, RC)                    \
 	{                                                         \
 		int rc2;                                          \
 		f->handle->cursor.p = buffer__cursor(f->buf1, 0); \
@@ -160,10 +159,13 @@ static void handleCb(struct handle *req, int status, int type)
 		f->context->status = -1;                          \
 		f->context->type = -1;                            \
 		rc2 = gateway__handle(f->gateway, f->handle,      \
-				      TYPE, 0,                    \
+				      TYPE, SCHEMA,               \
 				      f->buf2, handleCb);         \
 		munit_assert_int(rc2, ==, RC);                    \
 	}
+
+/* Handle a request of the given type and check for the given return code. */
+#define HANDLE_STATUS(TYPE, RC) HANDLE_SCHEMA_STATUS(TYPE, 0, RC)
 
 /* Handle a request of the given type and check that no error occurs. */
 #define HANDLE(TYPE) HANDLE_STATUS(DQLITE_REQUEST_##TYPE, 0)
@@ -655,7 +657,7 @@ TEST_CASE(exec, one_param, NULL)
 	ENCODE(&f->request, exec);
 	value.type = SQLITE_INTEGER;
 	value.integer = 7;
-	ENCODE_PARAMS(1, &value);
+	ENCODE_PARAMS(1, &value, TUPLE__PARAMS);
 	HANDLE(EXEC);
 	CLUSTER_APPLIED(3);
 	ASSERT_CALLBACK(0, RESULT);
@@ -689,7 +691,7 @@ TEST_CASE(exec, blob, NULL)
 	value.type = SQLITE_BLOB;
 	value.blob.base = buf;
 	value.blob.len = sizeof buf;
-	ENCODE_PARAMS(1, &value);
+	ENCODE_PARAMS(1, &value, TUPLE__PARAMS);
 	HANDLE(EXEC);
 	CLUSTER_APPLIED(3);
 	ASSERT_CALLBACK(0, RESULT);
@@ -1053,6 +1055,47 @@ TEST_CASE(exec, barrier_closing, NULL)
 	return MUNIT_OK;
 }
 
+/* Send an exec request in the new (schema version 1) format, which
+ * supports larger numbers of parameters. */
+TEST_CASE(exec, manyParams, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	size_t len = 20000;
+	char *sql = munit_malloc(len);
+	size_t pos;
+	size_t i;
+	size_t num_exec_params = 999;
+	struct value *values = munit_calloc(num_exec_params, sizeof(*values));
+	(void)params;
+
+	pos = snprintf(sql, len, "DELETE FROM test WHERE n = ?");
+	for (i = 1; i < num_exec_params; i++) {
+		pos += snprintf(sql + pos, len - pos, " OR n = ?");
+	}
+
+	for (i = 0; i < num_exec_params; i++) {
+		values[i].type = SQLITE_INTEGER;
+		values[i].integer = i;
+	}
+
+	CLUSTER_ELECT(0);
+	EXEC("CREATE TABLE test (n INT)");
+	PREPARE(sql);
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	ENCODE_PARAMS(num_exec_params, values, TUPLE__PARAMS32);
+	HANDLE_SCHEMA_STATUS(DQLITE_REQUEST_EXEC, 1, 0);
+	WAIT;
+	ASSERT_CALLBACK(0, RESULT);
+
+	FINALIZE(stmt_id);
+	free(values);
+	free(sql);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * query
@@ -1242,7 +1285,7 @@ TEST_CASE(query, params, NULL)
 	values[0].integer = 1;
 	values[1].type = SQLITE_INTEGER;
 	values[1].integer = 4;
-	ENCODE_PARAMS(2, values);
+	ENCODE_PARAMS(2, values, TUPLE__PARAMS);
 
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
@@ -1835,7 +1878,7 @@ TEST_CASE(query_sql, params, NULL)
 	values[0].integer = 1;
 	values[1].type = SQLITE_INTEGER;
 	values[1].integer = 4;
-	ENCODE_PARAMS(2, values);
+	ENCODE_PARAMS(2, values, TUPLE__PARAMS);
 
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, ROWS);
