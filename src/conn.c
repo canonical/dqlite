@@ -74,7 +74,7 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 
 	c->response.type = (uint8_t)type;
 	c->response.words = (uint32_t)(n / 8);
-	c->response.flags = 0;
+	c->response.schema = 0;
 	c->response.extra = 0;
 
 	cursor = buffer__cursor(&c->write, 0);

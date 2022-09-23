@@ -9,7 +9,7 @@
 #define MESSAGE(X, ...)          \
 	X(uint32, words, ##__VA_ARGS__) \
 	X(uint8, type, ##__VA_ARGS__)   \
-	X(uint8, flags, ##__VA_ARGS__)  \
+	X(uint8, schema, ##__VA_ARGS__)  \
 	X(uint16, extra, ##__VA_ARGS__)
 
 SERIALIZE__DEFINE(message, MESSAGE);
