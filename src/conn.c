@@ -148,7 +148,8 @@ static void read_request_cb(struct transport *transport, int status)
 			return;
 	}
 
-	rv = gateway__handle(&c->gateway, &c->handle, c->request.type,
+	rv = gateway__handle(&c->gateway, &c->handle,
+			     c->request.type, c->request.schema,
 			     &c->write, gateway_handle_cb);
 	if (rv != 0) {
                 tracef("read gateway handle error %d", rv);

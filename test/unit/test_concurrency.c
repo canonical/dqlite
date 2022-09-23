@@ -120,7 +120,7 @@ static void fixture_handle_cb(struct handle *req, int status, int type)
 		C->handle.cursor.cap = buffer__offset(&C->request);     \
 		buffer__reset(&C->response);                            \
 		rc2 = gateway__handle(&C->gateway, &C->handle,          \
-				      DQLITE_REQUEST_##TYPE,            \
+				      DQLITE_REQUEST_##TYPE, 0,         \
 				      &C->response, fixture_handle_cb); \
 		munit_assert_int(rc2, ==, 0);                           \
 	}

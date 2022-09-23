@@ -160,7 +160,7 @@ static void handleCb(struct handle *req, int status, int type)
 		f->context->status = -1;                          \
 		f->context->type = -1;                            \
 		rc2 = gateway__handle(f->gateway, f->handle,      \
-				      TYPE,                       \
+				      TYPE, 0,                    \
 				      f->buf2, handleCb);         \
 		munit_assert_int(rc2, ==, RC);                    \
 	}
