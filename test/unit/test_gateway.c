@@ -1657,6 +1657,43 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	return MUNIT_OK;
 }
 
+/* Send an EXEC_SQL request in the new (schema version 1) format, which
+ * supports larger numbers of parameters. */
+TEST_CASE(exec_sql, manyParams, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	size_t len = 20000;
+	char *sql = munit_malloc(len);
+	size_t pos;
+	size_t i;
+	size_t num_exec_params = 999;
+	struct value *values = munit_calloc(num_exec_params, sizeof(*values));
+	(void)params;
+
+	pos = snprintf(sql, len, "DELETE FROM test WHERE n = ?");
+	for (i = 1; i < num_exec_params; i++) {
+		pos += snprintf(sql + pos, len - pos, " OR n = ?");
+	}
+
+	for (i = 0; i < num_exec_params; i++) {
+		values[i].type = SQLITE_INTEGER;
+		values[i].integer = i;
+	}
+
+	EXEC("CREATE TABLE test (n INT)");
+	f->request.db_id = 0;
+	f->request.sql = sql;
+	ENCODE(&f->request, exec_sql);
+	ENCODE_PARAMS(num_exec_params, values, TUPLE__PARAMS32);
+	HANDLE_SCHEMA_STATUS(DQLITE_REQUEST_EXEC_SQL, 1, 0);
+	WAIT;
+	ASSERT_CALLBACK(0, RESULT);
+
+	free(values);
+	free(sql);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * query_sql

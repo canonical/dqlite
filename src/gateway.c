@@ -586,6 +586,7 @@ static void handle_exec_sql_next(struct handle *req, bool done)
 	struct gateway *g = req->gateway;
 	struct response_result response = {0};
 	const char *tail;
+	int tuple_format;
 	int rv;
 
 	if (g->sql == NULL || strcmp(g->sql, "") == 0) {
@@ -612,7 +613,18 @@ static void handle_exec_sql_next(struct handle *req, bool done)
 
 	/* TODO: what about bindings for multi-statement SQL text? */
 	if (!done) {
-		rv = bind__params(g->stmt, cursor, TUPLE__PARAMS);
+		switch (req->schema) {
+			case 0:
+				tuple_format = TUPLE__PARAMS;
+				break;
+			case 1:
+				tuple_format = TUPLE__PARAMS32;
+				break;
+			default:
+				/* Should have been caught by handle_exec_sql */
+				assert(0);
+		}
+		rv = bind__params(g->stmt, cursor, tuple_format);
 		if (rv != SQLITE_OK) {
 			failure(req, rv, sqlite3_errmsg(g->leader->conn));
 			goto done_after_prepare;
@@ -674,12 +686,26 @@ static int handle_exec_sql(struct handle *req)
 	tracef("handle exec sql");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
+	struct request_exec_sql request = {0};
 	int rc;
-	START_V0(exec_sql, result);
+
+	/* Fail early if the schema version isn't recognized, even though we won't
+	 * use it until later. */
+	if (req->schema != 0 && req->schema != 1) {
+		tracef("bad schema version %d", req->schema);
+		failure(req, DQLITE_PARSE, "unrecognized schema version");
+		return 0;
+	}
+	/* The only difference in layout between the v0 and v1 requests is in the tuple,
+	 * which isn't parsed until bind__params later on. */
+	rc = request_exec_sql__decode(cursor, &request);
+	if (rc != 0) {
+		return rc;
+	}
+
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	FAIL_IF_CHECKPOINTING;
-	(void)response;
 	g->req = req;
 	g->sql = request.sql;
 	rc = leader__barrier(g->leader, &g->barrier, execSqlBarrierCb);
