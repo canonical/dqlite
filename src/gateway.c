@@ -748,6 +748,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	const char *sql = g->sql;
 	sqlite3_stmt *stmt;
 	const char *tail;
+	int tuple_format;
 	int rv;
 
 	assert(g->req != NULL);
@@ -774,7 +775,18 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	rv = bind__params(stmt, cursor, TUPLE__PARAMS);
+	switch (req->schema) {
+		case 0:
+			tuple_format = TUPLE__PARAMS;
+			break;
+		case 1:
+			tuple_format = TUPLE__PARAMS32;
+			break;
+		default:
+			/* Should have been caught by handle_query_sql */
+			assert(0);
+	}
+	rv = bind__params(stmt, cursor, tuple_format);
 	if (rv != 0) {
                 tracef("handle query sql bind failed %d", rv);
 		sqlite3_finalize(stmt);
@@ -791,12 +803,24 @@ static int handle_query_sql(struct handle *req)
         tracef("handle query sql");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
+	struct request_query_sql request = {0};
 	int rv;
-	START_V0(query_sql, rows);
+
+	/* Fail early if the schema version isn't recognized. */
+	if (req->schema != 0 && req->schema != 1) {
+		tracef("bad schema version %d", req->schema);
+		failure(req, DQLITE_PARSE, "unrecognized schema version");
+		return 0;
+	}
+	/* Schema version only affect the tuple format, which is parsed later */
+	rv = request_query_sql__decode(cursor, &request);
+	if (rv != 0) {
+		return rv;
+	}
+
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	FAIL_IF_CHECKPOINTING;
-	(void)response;
 	g->req = req;
 	g->sql = request.sql;
 	rv = leader__barrier(g->leader, &g->barrier, querySqlBarrierCb);

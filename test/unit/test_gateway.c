@@ -2000,6 +2000,42 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	return MUNIT_OK;
 }
 
+/* Send a QUERY_SQL request in the new (schema version 1) format, which
+ * supports larger numbers of parameters. */
+TEST_CASE(query_sql, manyParams, NULL)
+{
+	struct query_sql_fixture *f = data;
+	size_t len = 20000;
+	char *sql = munit_malloc(len);
+	size_t pos;
+	size_t i;
+	size_t num_query_params = 999;
+	struct value *values = munit_calloc(num_query_params, sizeof(*values));
+	(void)params;
+
+	pos = snprintf(sql, len, "SELECT (n) FROM test WHERE n = ?");
+	for (i = 1; i < num_query_params; i++) {
+		pos += snprintf(sql + pos, len - pos, " OR n = ?");
+	}
+
+	for (i = 0; i < num_query_params; i++) {
+		values[i].type = SQLITE_INTEGER;
+		values[i].integer = i;
+	}
+
+	f->request.db_id = 0;
+	f->request.sql = sql;
+	ENCODE(&f->request, query_sql);
+	ENCODE_PARAMS(num_query_params, values, TUPLE__PARAMS32);
+	HANDLE_SCHEMA_STATUS(DQLITE_REQUEST_QUERY_SQL, 1, 0);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	free(values);
+	free(sql);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * cluster
