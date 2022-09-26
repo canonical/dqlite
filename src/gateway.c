@@ -298,7 +298,7 @@ static void prepareBarrierCb(struct barrier *barrier, int status)
 	rc = sqlite3_prepare_v2(g->leader->conn, sql, -1, &stmt->stmt,
 				&tail);
 	if (rc != SQLITE_OK) {
-		tracef("prepare barrier cb sqlite prepare failed %d", rc);
+		tracef("prepare barrier cb sqlite prepare failed %d %s", rc, sqlite3_errmsg(g->leader->conn));
 		stmt__registry_del(&g->stmts, stmt);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		return;
@@ -514,14 +514,34 @@ static int handle_query(struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
+	struct request_query request = {0};
+	int tuple_format;
 	int rv;
-	START_V0(query, rows);
+
+	switch (req->schema) {
+		case 0:
+			tuple_format = TUPLE__PARAMS;
+			break;
+		case 1:
+			tuple_format = TUPLE__PARAMS32;
+			break;
+		default:
+			tracef("bad schema version %d", req->schema);
+			failure(req, DQLITE_PARSE, "unrecognized schema version");
+			return 0;
+	}
+	/* The only difference in layout between the v0 and v1 requests is in the tuple,
+	 * which isn't parsed until bind__params later on. */
+	rv = request_query__decode(cursor, &request);
+	if (rv != 0) {
+		return rv;
+	}
+
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
-	(void)response;
-	rv = bind__params(stmt->stmt, cursor, TUPLE__PARAMS);
+	rv = bind__params(stmt->stmt, cursor, tuple_format);
 	if (rv != 0) {
                 tracef("handle query bind failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));

@@ -1477,6 +1477,45 @@ TEST_CASE(query, barrierInFlightExec, NULL)
 	return MUNIT_OK;
 }
 
+/* Send a QUERY request in the new (schema version 1) format, which
+ * supports larger numbers of parameters. */
+TEST_CASE(query, manyParams, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	size_t len = 20000;
+	char *sql = munit_malloc(len);
+	size_t pos;
+	size_t i;
+	size_t num_query_params = 999;
+	struct value *values = munit_calloc(num_query_params, sizeof(*values));
+	(void)params;
+
+	pos = snprintf(sql, len, "SELECT (n) FROM test WHERE n = ?");
+	for (i = 1; i < num_query_params; i++) {
+		pos += snprintf(sql + pos, len - pos, " OR n = ?");
+	}
+
+	for (i = 0; i < num_query_params; i++) {
+		values[i].type = SQLITE_INTEGER;
+		values[i].integer = i;
+	}
+
+	PREPARE(sql);
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	ENCODE_PARAMS(num_query_params, values, TUPLE__PARAMS32);
+	HANDLE_SCHEMA_STATUS(DQLITE_REQUEST_QUERY, 1, 0);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	FINALIZE(stmt_id);
+	free(values);
+	free(sql);
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * finalize
