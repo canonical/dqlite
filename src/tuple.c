@@ -184,8 +184,8 @@ int tuple_encoder__init(struct tuple_encoder *e,
 		}
 		header[0] = (uint8_t)n;
 	} else if (e->format == TUPLE__PARAMS32) {
-		assert((unsigned long long)n <= UINT32_MAX);
 		uint32_t val = (uint32_t)n;
+		assert((unsigned long long)val == (unsigned long long)n);
 		void *header = buffer__advance(buffer, 4);
 		if (header == NULL) {
 			return DQLITE_NOMEM;
