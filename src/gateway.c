@@ -7,6 +7,7 @@
 #include "response.h"
 #include "tracing.h"
 #include "translate.h"
+#include "tuple.h"
 #include "vfs.h"
 
 void gateway__init(struct gateway *g,
@@ -85,16 +86,22 @@ void gateway__close(struct gateway *g)
 }
 
 /* Declare a request struct and a response struct of the appropriate types and
- * decode the request. */
-#define START(REQ, RES)                                          \
-	struct request_##REQ request = {0};                      \
-	struct response_##RES response = {0};                    \
-	{                                                        \
-		int rv_;                                         \
-		rv_ = request_##REQ##__decode(cursor, &request); \
-		if (rv_ != 0) {                                  \
-			return rv_;                              \
-		}                                                \
+ * decode the request. This is used in the common case where only one schema
+ * version is extant. */
+#define START_V0(REQ, RES, ...)                                                    \
+	struct request_##REQ request = {0};                                        \
+	struct response_##RES response = {0};                                      \
+	{                                                                          \
+		int rv_;                                                           \
+		if (req->schema != 0) {                                            \
+			tracef("bad schema version %d", req->schema);              \
+			failure(req, DQLITE_PARSE, "unrecognized schema version"); \
+			return 0;                                                  \
+		}                                                                  \
+		rv_ = request_##REQ##__decode(cursor, &request);                   \
+		if (rv_ != 0) {                                                    \
+			return rv_;                                                \
+		}                                                                  \
 	}
 
 #define CHECK_LEADER(REQ)                                            \
@@ -178,7 +185,7 @@ static int handle_leader_legacy(struct handle *req)
 {
         tracef("handle leader legacy");
 	struct cursor *cursor = &req->cursor;
-	START(leader, server_legacy);
+	START_V0(leader, server_legacy);
 	raft_id id;
 	raft_leader(req->gateway->raft, &id, &response.address);
 	if (response.address == NULL) {
@@ -199,7 +206,7 @@ static int handle_leader(struct handle *req)
 	if (g->protocol == DQLITE_PROTOCOL_VERSION_LEGACY) {
 		return handle_leader_legacy(req);
 	}
-	START(leader, server);
+	START_V0(leader, server);
 
 	/* Only voters might now who the leader is. */
 	for (i = 0; i < g->raft->configuration.n; i++) {
@@ -224,7 +231,7 @@ static int handle_client(struct handle *req)
 {
         tracef("handle client");
 	struct cursor *cursor = &req->cursor;
-	START(client, welcome);
+	START_V0(client, welcome);
 	response.heartbeat_timeout = req->gateway->config->heartbeat_timeout;
 	SUCCESS(welcome, WELCOME);
 	return 0;
@@ -237,7 +244,7 @@ static int handle_open(struct handle *req)
 	struct gateway *g = req->gateway;
 	struct db *db;
 	int rc;
-	START(open, db);
+	START_V0(open, db);
 	if (g->leader != NULL) {
                 tracef("already open");
 		failure(req, SQLITE_BUSY,
@@ -291,7 +298,7 @@ static void prepareBarrierCb(struct barrier *barrier, int status)
 	rc = sqlite3_prepare_v2(g->leader->conn, sql, -1, &stmt->stmt,
 				&tail);
 	if (rc != SQLITE_OK) {
-		tracef("prepare barrier cb sqlite prepare failed %d", rc);
+		tracef("prepare barrier cb sqlite prepare failed %d %s", rc, sqlite3_errmsg(g->leader->conn));
 		stmt__registry_del(&g->stmts, stmt);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		return;
@@ -318,7 +325,7 @@ static int handle_prepare(struct handle *req)
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
 	int rc;
-	START(prepare, stmt);
+	START_V0(prepare, stmt);
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	(void)response;
@@ -394,14 +401,34 @@ static int handle_exec(struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
+	struct request_exec request = {0};
+	int tuple_format;
 	int rv;
-	START(exec, result);
+
+	switch (req->schema) {
+		case 0:
+			tuple_format = TUPLE__PARAMS;
+			break;
+		case 1:
+			tuple_format = TUPLE__PARAMS32;
+			break;
+		default:
+			tracef("bad schema version %d", req->schema);
+			failure(req, DQLITE_PARSE, "unrecognized schema version");
+			return 0;
+	}
+	/* The v0 and v1 schemas only differ in the layout of the tuple,
+	 * so we can use the same decode function for both. */
+	rv = request_exec__decode(cursor, &request);
+	if (rv != 0) {
+		return rv;
+	}
+
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
-	(void)response;
-	rv = bind__params(stmt->stmt, cursor);
+	rv = bind__params(stmt->stmt, cursor, tuple_format);
 	if (rv != 0) {
                 tracef("handle exec bind failed %d", rv);
 		failure(req, rv, "bind parameters");
@@ -487,14 +514,34 @@ static int handle_query(struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
+	struct request_query request = {0};
+	int tuple_format;
 	int rv;
-	START(query, rows);
+
+	switch (req->schema) {
+		case 0:
+			tuple_format = TUPLE__PARAMS;
+			break;
+		case 1:
+			tuple_format = TUPLE__PARAMS32;
+			break;
+		default:
+			tracef("bad schema version %d", req->schema);
+			failure(req, DQLITE_PARSE, "unrecognized schema version");
+			return 0;
+	}
+	/* The only difference in layout between the v0 and v1 requests is in the tuple,
+	 * which isn't parsed until bind__params later on. */
+	rv = request_query__decode(cursor, &request);
+	if (rv != 0) {
+		return rv;
+	}
+
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
-	(void)response;
-	rv = bind__params(stmt->stmt, cursor);
+	rv = bind__params(stmt->stmt, cursor, tuple_format);
 	if (rv != 0) {
                 tracef("handle query bind failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
@@ -518,7 +565,7 @@ static int handle_finalize(struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct stmt *stmt;
 	int rv;
-	START(finalize, empty);
+	START_V0(finalize, empty);
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	rv = stmt__registry_del(&req->gateway->stmts, stmt);
@@ -559,6 +606,7 @@ static void handle_exec_sql_next(struct handle *req, bool done)
 	struct gateway *g = req->gateway;
 	struct response_result response = {0};
 	const char *tail;
+	int tuple_format;
 	int rv;
 
 	if (g->sql == NULL || strcmp(g->sql, "") == 0) {
@@ -585,7 +633,18 @@ static void handle_exec_sql_next(struct handle *req, bool done)
 
 	/* TODO: what about bindings for multi-statement SQL text? */
 	if (!done) {
-		rv = bind__params(g->stmt, cursor);
+		switch (req->schema) {
+			case 0:
+				tuple_format = TUPLE__PARAMS;
+				break;
+			case 1:
+				tuple_format = TUPLE__PARAMS32;
+				break;
+			default:
+				/* Should have been caught by handle_exec_sql */
+				assert(0);
+		}
+		rv = bind__params(g->stmt, cursor, tuple_format);
 		if (rv != SQLITE_OK) {
 			failure(req, rv, sqlite3_errmsg(g->leader->conn));
 			goto done_after_prepare;
@@ -647,12 +706,26 @@ static int handle_exec_sql(struct handle *req)
 	tracef("handle exec sql");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
+	struct request_exec_sql request = {0};
 	int rc;
-	START(exec_sql, result);
+
+	/* Fail early if the schema version isn't recognized, even though we won't
+	 * use it until later. */
+	if (req->schema != 0 && req->schema != 1) {
+		tracef("bad schema version %d", req->schema);
+		failure(req, DQLITE_PARSE, "unrecognized schema version");
+		return 0;
+	}
+	/* The only difference in layout between the v0 and v1 requests is in the tuple,
+	 * which isn't parsed until bind__params later on. */
+	rc = request_exec_sql__decode(cursor, &request);
+	if (rc != 0) {
+		return rc;
+	}
+
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	FAIL_IF_CHECKPOINTING;
-	(void)response;
 	g->req = req;
 	g->sql = request.sql;
 	rc = leader__barrier(g->leader, &g->barrier, execSqlBarrierCb);
@@ -675,6 +748,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	const char *sql = g->sql;
 	sqlite3_stmt *stmt;
 	const char *tail;
+	int tuple_format;
 	int rv;
 
 	assert(g->req != NULL);
@@ -701,7 +775,18 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	rv = bind__params(stmt, cursor);
+	switch (req->schema) {
+		case 0:
+			tuple_format = TUPLE__PARAMS;
+			break;
+		case 1:
+			tuple_format = TUPLE__PARAMS32;
+			break;
+		default:
+			/* Should have been caught by handle_query_sql */
+			assert(0);
+	}
+	rv = bind__params(stmt, cursor, tuple_format);
 	if (rv != 0) {
                 tracef("handle query sql bind failed %d", rv);
 		sqlite3_finalize(stmt);
@@ -718,12 +803,24 @@ static int handle_query_sql(struct handle *req)
         tracef("handle query sql");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
+	struct request_query_sql request = {0};
 	int rv;
-	START(query_sql, rows);
+
+	/* Fail early if the schema version isn't recognized. */
+	if (req->schema != 0 && req->schema != 1) {
+		tracef("bad schema version %d", req->schema);
+		failure(req, DQLITE_PARSE, "unrecognized schema version");
+		return 0;
+	}
+	/* Schema version only affect the tuple format, which is parsed later */
+	rv = request_query_sql__decode(cursor, &request);
+	if (rv != 0) {
+		return rv;
+	}
+
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	FAIL_IF_CHECKPOINTING;
-	(void)response;
 	g->req = req;
 	g->sql = request.sql;
 	rv = leader__barrier(g->leader, &g->barrier, querySqlBarrierCb);
@@ -741,7 +838,7 @@ static int handle_interrupt(struct handle *req)
         tracef("handle interrupt");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
-	START(interrupt, empty);
+	START_V0(interrupt, empty);
 
 	/* Take appropriate action depending on the cleanup code. */
 	if (g->stmt_finalize) {
@@ -786,7 +883,7 @@ static int handle_add(struct handle *req)
 	struct gateway *g = req->gateway;
 	struct change *r;
 	int rv;
-	START(add, empty);
+	START_V0(add, empty);
 	(void)response;
 
 	CHECK_LEADER(req);
@@ -820,7 +917,7 @@ static int handle_assign(struct handle *req)
 	struct change *r;
 	uint64_t role = DQLITE_VOTER;
 	int rv;
-	START(assign, empty);
+	START_V0(assign, empty);
 	(void)response;
 
 	CHECK_LEADER(req);
@@ -864,7 +961,7 @@ static int handle_remove(struct handle *req)
 	struct gateway *g = req->gateway;
 	struct change *r;
 	int rv;
-	START(remove, empty);
+	START_V0(remove, empty);
 	(void)response;
 
 	CHECK_LEADER(req);
@@ -946,7 +1043,7 @@ static int handle_dump(struct handle *req)
 	size_t n_database;
 	size_t n_wal;
 	int rv;
-	START(dump, files);
+	START_V0(dump, files);
 
 	response.n = 2;
 	cur = buffer__advance(req->buffer, response_files__sizeof(&response));
@@ -1069,7 +1166,7 @@ static int handle_cluster(struct handle *req)
 	unsigned i;
 	void *cur;
 	int rv;
-	START(cluster, servers);
+	START_V0(cluster, servers);
 
 	if (request.format != DQLITE_REQUEST_CLUSTER_FORMAT_V0 &&
 	    request.format != DQLITE_REQUEST_CLUSTER_FORMAT_V1) {
@@ -1119,7 +1216,7 @@ static int handle_transfer(struct handle *req)
 	struct gateway *g = req->gateway;
 	struct raft_transfer *r;
 	int rv;
-	START(transfer, empty);
+	START_V0(transfer, empty);
 	(void)response;
 
 	CHECK_LEADER(req);
@@ -1149,7 +1246,7 @@ static int handle_describe(struct handle *req)
         tracef("handle describe");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
-	START(describe, metadata);
+	START_V0(describe, metadata);
 	if (request.format != DQLITE_REQUEST_DESCRIBE_FORMAT_V0) {
                 tracef("bad format");
 		failure(req, SQLITE_PROTOCOL, "bad format version");
@@ -1165,7 +1262,7 @@ static int handle_weight(struct handle *req)
         tracef("handle weight");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
-	START(weight, empty);
+	START_V0(weight, empty);
 	g->config->weight = request.weight;
 	SUCCESS(empty, EMPTY);
 	return 0;
@@ -1174,6 +1271,7 @@ static int handle_weight(struct handle *req)
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
+		    int schema,
 		    struct buffer *buffer,
 		    handle_cb cb)
 {
@@ -1198,6 +1296,7 @@ int gateway__handle(struct gateway *g,
 
 handle:
 	req->type = type;
+	req->schema = schema;
 	req->gateway = g;
 	req->cb = cb;
 	req->buffer = buffer;

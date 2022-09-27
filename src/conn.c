@@ -74,7 +74,7 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 
 	c->response.type = (uint8_t)type;
 	c->response.words = (uint32_t)(n / 8);
-	c->response.flags = 0;
+	c->response.schema = 0;
 	c->response.extra = 0;
 
 	cursor = buffer__cursor(&c->write, 0);
@@ -148,7 +148,8 @@ static void read_request_cb(struct transport *transport, int status)
 			return;
 	}
 
-	rv = gateway__handle(&c->gateway, &c->handle, c->request.type,
+	rv = gateway__handle(&c->gateway, &c->handle,
+			     c->request.type, c->request.schema,
 			     &c->write, gateway_handle_cb);
 	if (rv != 0) {
                 tracef("read gateway handle error %d", rv);

@@ -3,33 +3,37 @@
 #include "tuple.h"
 #include "assert.h"
 
-/* True if a tuple decoder or decoder is using parameter format. */
-#define HAS_PARAMS_FORMAT(P) (P->format == TUPLE__PARAMS)
-
-/* True if a tuple decoder or decoder is using row format. */
-#define HAS_ROW_FORMAT(P) (P->format == TUPLE__ROW)
-
 /* Return the tuple header size in bytes, for a tuple of @n values.
  *
  * If the tuple is a row, then each slot is 4 bits, otherwise if the tuple is a
  * sequence of parameters each slot is 8 bits. */
-static size_t calc_header_size(unsigned n, int format)
+static size_t calc_header_size(unsigned long n, int format)
 {
 	size_t size;
 
-	if (format == TUPLE__ROW) {
-		size = (n / 2) * sizeof(uint8_t);
-		if (n % 2 != 0) {
-			size += sizeof(uint8_t);
-		}
-		size = BytePad64(size);
-	} else {
-		assert(format == TUPLE__PARAMS);
-		 /* Include params count for the purpose of calculating possible
-		  * padding, but then exclude it as we have already read it. */
-		size = sizeof(uint8_t) + n * sizeof(uint8_t);
-		size = BytePad64(size);
-		size -= sizeof(uint8_t);
+	switch (format) {
+		case TUPLE__ROW:
+			/* Half a byte for each slot, rounded up... */
+			size = (n + 1) / 2;
+			/* ...and padded to a multiple of 8 bytes. */
+			size = BytePad64(size);
+			break;
+		case TUPLE__PARAMS:
+			/* 1-byte params count at the beginning of the first word */
+			size = n + 1;
+			size = BytePad64(size);
+			/* Params count is not included in the header */
+			size -= 1;
+			break;
+		case TUPLE__PARAMS32:
+			/* 4-byte params count at the beginning of the first word */
+			size = n + 4;
+			size = BytePad64(size);
+			/* Params count is not included in the header */
+			size -= 4;
+			break;
+		default:
+			assert(0);
 	}
 
 	return size;
@@ -37,26 +41,37 @@ static size_t calc_header_size(unsigned n, int format)
 
 int tuple_decoder__init(struct tuple_decoder *d,
 			unsigned n,
+			int format,
 			struct cursor *cursor)
 {
 	size_t header_size;
-	int rc;
+	uint8_t byte = 0;
+	uint32_t val = 0;
+	int rc = 0;
 
-	d->format = n == 0 ? TUPLE__PARAMS : TUPLE__ROW;
-
-	/* When using row format the number of values is the given one,
-	 * otherwise we have to read it from the header. */
-	if (HAS_ROW_FORMAT(d)) {
-		d->n = n;
-	} else {
-		uint8_t byte;
-		rc = uint8__decode(cursor, &byte);
-		if (rc != 0) {
-			return rc;
-		}
-		d->n = byte;
+	switch (format) {
+		case TUPLE__ROW:
+			assert(n > 0);
+			d->n = n;
+			break;
+		case TUPLE__PARAMS:
+			assert(n == 0);
+			rc = uint8__decode(cursor, &byte);
+			d->n = byte;
+			break;
+		case TUPLE__PARAMS32:
+			assert(n == 0);
+			rc = uint32__decode(cursor, &val);
+			d->n = val;
+			break;
+		default:
+			assert(0);
+	}
+	if (rc != 0) {
+		return rc;
 	}
 
+	d->format = format;
 	d->i = 0;
 	d->header = cursor->p;
 
@@ -75,19 +90,19 @@ int tuple_decoder__init(struct tuple_decoder *d,
 }
 
 /* Return the number of values in the decoder's tuple. */
-unsigned tuple_decoder__n(struct tuple_decoder *d)
+unsigned long tuple_decoder__n(struct tuple_decoder *d)
 {
 	return d->n;
 }
 
 /* Return the type of the i'th value of the tuple. */
-static int get_type(struct tuple_decoder *d, unsigned i)
+static int get_type(struct tuple_decoder *d, unsigned long i)
 {
 	int type;
 
 	/* In row format the type slot size is 4 bits, while in params format
 	 * the slot is 8 bits. */
-	if (HAS_ROW_FORMAT(d)) {
+	if (d->format == TUPLE__ROW) {
 		type = d->header[i / 2];
 		if (i % 2 == 0) {
 			type &= 0x0f;
@@ -147,7 +162,7 @@ static uint8_t *encoder__header(struct tuple_encoder *e)
 }
 
 int tuple_encoder__init(struct tuple_encoder *e,
-			unsigned n,
+			unsigned long n,
 			int format,
 			struct buffer *buffer)
 {
@@ -159,14 +174,23 @@ int tuple_encoder__init(struct tuple_encoder *e,
 	e->buffer = buffer;
 	e->i = 0;
 
-	/* With params format we need to fill the first byte of the header with
-	 * the params count. */
-	if (HAS_PARAMS_FORMAT(e)) {
+	/* When encoding a tuple of parameters, we need to write the
+	 * number of values at the beginning of the header. */
+	if (e->format == TUPLE__PARAMS) {
+		assert(n <= UINT8_MAX);
 		uint8_t *header = buffer__advance(buffer, 1);
 		if (header == NULL) {
 			return DQLITE_NOMEM;
 		}
 		header[0] = (uint8_t)n;
+	} else if (e->format == TUPLE__PARAMS32) {
+		assert((unsigned long long)n <= UINT32_MAX);
+		uint32_t val = (uint32_t)n;
+		void *header = buffer__advance(buffer, 4);
+		if (header == NULL) {
+			return DQLITE_NOMEM;
+		}
+		uint32__encode(&val, &header);
 	}
 
 	e->header = buffer__offset(buffer);
@@ -185,13 +209,13 @@ int tuple_encoder__init(struct tuple_encoder *e,
 }
 
 /* Set the type of the i'th value of the tuple. */
-static void set_type(struct tuple_encoder *e, unsigned i, int type)
+static void set_type(struct tuple_encoder *e, unsigned long i, int type)
 {
 	uint8_t *header = encoder__header(e);
 
 	/* In row format the type slot size is 4 bits, while in params format
 	 * the slot is 8 bits. */
-	if (HAS_ROW_FORMAT(e)) {
+	if (e->format == TUPLE__ROW) {
 		uint8_t *slot;
 		slot = &header[i / 2];
 		if (i % 2 == 0) {

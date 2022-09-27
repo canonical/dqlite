@@ -296,7 +296,7 @@ int clientRecvRows(struct client *c, struct rows *rows)
 		}
 		row->next = NULL;
 		rv = tuple_decoder__init(&decoder, (unsigned)column_count,
-					 &cursor);
+					 TUPLE__ROW, &cursor);
 		if (rv != 0) {
 			tracef("decode init error %d", rv);
 			sqlite3_free(row->values);

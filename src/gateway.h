@@ -64,6 +64,7 @@ struct handle
 {
 	void *data;              /* User data */
 	int type;                /* Request type */
+	int schema;              /* Request schema version */
 	struct gateway *gateway;
 	struct buffer *buffer;
 	struct cursor cursor;
@@ -85,6 +86,7 @@ struct handle
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
+		    int schema,
 		    struct buffer *buffer,
 		    handle_cb cb);
 
