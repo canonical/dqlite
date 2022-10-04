@@ -1,0 +1,33 @@
+#!/bin/sh
+
+set -o errexit
+
+libraft_path="${LIBRAFT_SO_PATH:-/usr/local/lib/libraft.so.2}"
+exec bpftrace -I resources -I include $@ - <<EOF
+#include <raft.h>
+
+struct request
+{
+    void *data;
+    int type;
+    raft_index index;
+    void *queue[2];
+};
+
+uprobe:$libraft_path:lifecycleRequestStart
+{
+	\$req = (struct request *)arg1;
+	@start_request[\$req->data, \$req->type, \$req->index] = nsecs;
+}
+
+uprobe:$libraft_path:lifecycleRequestEnd
+{
+	\$req = (struct request *)arg1;
+	\$start = @start_request[\$req->data, \$req->type, \$req->index];
+	\$end = nsecs;
+	@full[\$req->data, \$req->type, \$req->index] = (\$start, \$end);
+	\$elapsed_msecs = (\$end - \$start) / 1000;
+	@hist = lhist(\$elapsed_msecs, 100, 1000, 10);
+	delete(@start_request[\$req->data, \$req->type, \$req->index]);
+}
+EOF
