@@ -23,6 +23,7 @@
 #include "../../src/registry.h"
 #include "../../src/vfs.h"
 
+#include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/logger.h"
 #include "../lib/sqlite.h"
@@ -38,6 +39,7 @@ struct server
 	struct config config;
 	sqlite3_vfs vfs;
 	struct registry registry;
+	char *dir;
 };
 
 #define FIXTURE_CLUSTER                   \
@@ -79,7 +81,10 @@ struct server
                                                                        \
 		sprintf(address, "%d", I + 1);                         \
                                                                        \
-		_rc = config__init(&_s->config, I + 1, address);       \
+		char *dir = test_dir_setup();                          \
+		_s->dir = dir;                                         \
+                                                                       \
+		_rc = config__init(&_s->config, I + 1, address, dir);  \
 		munit_assert_int(_rc, ==, 0);                          \
                                                                        \
 		registry__init(&_s->registry, &_s->config);            \
@@ -113,6 +118,7 @@ struct server
 		sqlite3_vfs_unregister(&s->vfs);     \
 		VfsClose(&s->vfs);                   \
 		config__close(&s->config);           \
+		test_dir_tear_down(s->dir);          \
 		test_logger_tear_down(&s->logger);   \
 	}
 

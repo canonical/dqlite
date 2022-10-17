@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <raft.h>
 
+#include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
@@ -15,6 +16,7 @@ struct fixture
 {
 	struct sqlite3_vfs vfs[N_VFS]; /* A "cluster" of VFS objects. */
 	char names[8][N_VFS];          /* Registration names */
+	char *dirs[N_VFS];             /* For the disk vfs. */
 };
 
 static void *setUp(const MunitParameter params[], void *user_data)
@@ -27,6 +29,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	SETUP_SQLITE;
 
 	for (i = 0; i < N_VFS; i++) {
+		f->dirs[i] = NULL;
 		sprintf(f->names[i], "%u", i + 1);
 		rv = dqlite_vfs_init(&f->vfs[i], f->names[i]);
 		munit_assert_int(rv, ==, 0);
@@ -47,6 +50,9 @@ static void tearDown(void *data)
 		rv = sqlite3_vfs_unregister(&f->vfs[i]);
 		munit_assert_int(rv, ==, 0);
 		dqlite_vfs_close(&f->vfs[i]);
+		if (f->dirs[i] != NULL) {
+			test_dir_tear_down(f->dirs[i]);
+		}
 	}
 
 	TEAR_DOWN_SQLITE;
