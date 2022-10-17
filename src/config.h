@@ -17,7 +17,7 @@ struct config
 	char name[256];                /* VFS/replication registriatio name */
 	unsigned long long failure_domain; /* User-provided failure domain */
 	unsigned long long int weight;     /* User-provided node weight */
-	char dir[1024];                /* Data dir */
+	char dir[1024];                /* Data dir for on-disk database */
 	bool disk;                     /* Disk-mode or not */
 };
 

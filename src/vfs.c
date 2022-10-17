@@ -1,8 +1,13 @@
 #include <errno.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #include <raft.h>
 
@@ -94,6 +99,7 @@ struct vfsDatabase
 {
 	char *name;        /* Database name. */
 	void **pages;      /* All database. */
+	unsigned page_size;/* Only used for on-disk db */
 	unsigned n_pages;  /* Number of pages. */
 	struct vfsShm shm; /* Shared memory. */
 	struct vfsWal wal; /* Associated WAL. */
@@ -236,6 +242,7 @@ static void vfsDatabaseInit(struct vfsDatabase *d)
 {
 	d->pages = NULL;
 	d->n_pages = 0;
+	d->page_size = 0;
 	vfsShmInit(&d->shm);
 	vfsWalInit(&d->wal);
 }
@@ -262,7 +269,7 @@ static void vfsWalClose(struct vfsWal *w)
 static void vfsDatabaseClose(struct vfsDatabase *d)
 {
 	unsigned i;
-	for (i = 0; i < d->n_pages; i++) {
+	for (i = 0; d->pages != NULL && i < d->n_pages; i++) {
 		sqlite3_free(d->pages[i]);
 	}
 	if (d->pages != NULL) {
@@ -507,8 +514,12 @@ static uint32_t vfsDatabaseGetPageSize(struct vfsDatabase *d)
 {
 	uint8_t *page;
 
-	assert(d->n_pages > 0);
+	/* Only set in disk-mode */
+	if (d->page_size != 0) {
+		return d->page_size;
+	}
 
+	assert(d->n_pages > 0);
 	page = d->pages[0];
 
 	/* The page size is stored in the 16th and 17th bytes of the first
@@ -619,6 +630,7 @@ struct vfsFile
 	struct vfsDatabase *database; /* Underlying database content. */
 	int flags;                    /* Flags passed to xOpen */
 	sqlite3_file *temp;           /* For temp-files, actual VFS. */
+	sqlite3_file *db;             /* For on-disk DB files, actual VFS. */
 };
 
 /* Custom dqlite VFS. Contains pointers to all databases that were created. */
@@ -627,6 +639,8 @@ struct vfs
 	struct vfsDatabase **databases; /* Database objects */
 	unsigned n_databases;           /* Number of databases */
 	int error;                      /* Last error occurred. */
+	bool disk;                      /* True if the database is kept on disk. */
+	struct sqlite3_vfs *base_vfs;   /* Base VFS. */
 };
 
 /* Create a new vfs object. */
@@ -641,6 +655,10 @@ static struct vfs *vfsCreate(void)
 
 	v->databases = NULL;
 	v->n_databases = 0;
+	v->error = 0;
+	v->disk = false;
+	v->base_vfs = sqlite3_vfs_find("unix");
+	assert(v->base_vfs != NULL);
 
 	return v;
 }
@@ -1198,7 +1216,10 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	assert(left != NULL);
 
 	if (strcmp(left, "page_size") == 0 && right) {
-		/* The page size must be between 512 and 65536, and be a
+		/* When the user executes 'PRAGMA page_size=N' we save the
+		 * size internally.
+		 *
+		 * The page size must be between 512 and 65536, and be a
 		 * power of two. The check below was copied from
 		 * sqlite3BtreeSetPageSize in btree.c.
 		 *
@@ -1234,7 +1255,6 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 	 * the PRAGMA would stop here. */
 	return SQLITE_NOTFOUND;
 }
-
 /* Return the page number field stored in the header of the given frame. */
 static uint32_t vfsFrameGetPageNumber(struct vfsFrame *f)
 {
@@ -1628,6 +1648,7 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 	return rv;
 }
 
+
 static void vfsFileShmBarrier(sqlite3_file *file)
 {
 	(void)file;
@@ -1849,7 +1870,6 @@ err:
 	assert(rc != SQLITE_OK);
 	return rc;
 }
-
 static int vfsDelete(sqlite3_vfs *vfs, const char *filename, int dir_sync)
 {
 	struct vfs *v;
@@ -1997,8 +2017,10 @@ static int vfsGetLastError(sqlite3_vfs *vfs, int x, char *y)
 	return rc;
 }
 
-static int vfsInit(struct sqlite3_vfs *vfs, const char *name)
+int VfsInit(struct sqlite3_vfs *vfs, const char *name)
 {
+	tracef("vfs init");
+
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfsFile);
 	vfs->mxPathname = VFS__MAX_PATHNAME;
@@ -2025,12 +2047,6 @@ static int vfsInit(struct sqlite3_vfs *vfs, const char *name)
 	vfs->zName = name;
 
 	return 0;
-}
-
-int VfsInit(struct sqlite3_vfs *vfs, const char *name)
-{
-	tracef("vfs init");
-	return vfsInit(vfs, name);
 }
 
 void VfsClose(struct sqlite3_vfs *vfs)
@@ -2362,6 +2378,10 @@ int VfsAbort(sqlite3_vfs *vfs, const char *filename)
 
 	v = (struct vfs *)(vfs->pAppData);
 	database = vfsDatabaseLookup(v, filename);
+	if (database == NULL) {
+		tracef("database: %s does not exist", filename);
+		return DQLITE_ERROR;
+	}
 
 	rv = vfsShmUnlock(&database->shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
 	if (rv != 0) {
@@ -2699,3 +2719,803 @@ int VfsRestore(sqlite3_vfs *vfs,
 
 	return 0;
 }
+
+/******************************************************************************
+ Disk-based VFS
+ *****************************************************************************/
+
+static int vfsDiskFileClose(sqlite3_file *file)
+{
+	int rc = SQLITE_OK;
+	struct vfsFile *f = (struct vfsFile *)file;
+	struct vfs *v = (struct vfs *)(f->vfs);
+
+	if (f->temp != NULL) {
+		/* Close the actual temporary file. */
+		rc = f->temp->pMethods->xClose(f->temp);
+		sqlite3_free(f->temp);
+		return rc;
+	}
+
+	if (f->db != NULL) {
+		rc = f->db->pMethods->xClose(f->db);
+		sqlite3_free(f->db);
+		f->db = NULL;
+		if (rc != SQLITE_OK) {
+			return rc;
+		}
+	}
+
+	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
+		rc = vfsDeleteDatabase(v, f->database->name);
+	}
+
+	return rc;
+}
+
+static int vfsDiskFileRead(sqlite3_file *file,
+		       	   void *buf,
+		           int amount,
+		           sqlite_int64 offset)
+{
+	struct vfsFile *f = (struct vfsFile *)file;
+	struct vfs *v;
+	int rv;
+
+	assert(buf != NULL);
+	assert(amount > 0);
+	assert(f != NULL);
+
+	if (f->temp != NULL) {
+		/* Read from the actual temporary file. */
+		return f->temp->pMethods->xRead(f->temp, buf, amount, offset);
+	}
+
+	if (f->db != NULL) {
+		/* Read from the actual database file. */
+		return f->db->pMethods->xRead(f->db, buf, amount, offset);
+	}
+
+	switch (f->type) {
+		case VFS__WAL:
+			rv = vfsWalRead(&f->database->wal, buf, amount, offset);
+			break;
+		case VFS__JOURNAL:
+			rv = SQLITE_IOERR_READ;
+			v = f->vfs;
+			if (v->disk) {
+				rv = SQLITE_OK;
+			}
+			break;
+		default:
+			rv = SQLITE_IOERR_READ;
+			break;
+	}
+
+	/* From SQLite docs:
+	 *
+	 *   If xRead() returns SQLITE_IOERR_SHORT_READ it must also fill
+	 *   in the unread portions of the buffer with zeros.  A VFS that
+	 *   fails to zero-fill short reads might seem to work.  However,
+	 *   failure to zero-fill short reads will eventually lead to
+	 *   database corruption.
+	 */
+	if (rv == SQLITE_IOERR_SHORT_READ) {
+		memset(buf, 0, (size_t)amount);
+	}
+
+	return rv;
+}
+
+/* Need to keep track of the number of database pages to allow creating correct
+ * WAL headers when in on-disk mode. */
+static int vfsDiskDatabaseTrackNumPages(struct vfsDatabase *d,
+		       		        sqlite_int64 offset)
+{
+	unsigned pgno;
+
+	if (offset == 0) {
+		pgno = 1;
+	} else {
+		assert(d->page_size != 0);
+		if (d->page_size == 0) {
+			return SQLITE_ERROR;
+		}
+		pgno = ((unsigned)offset / d->page_size) + 1;
+	}
+
+	if (pgno > d->n_pages) {
+		d->n_pages = pgno;
+	}
+
+	return SQLITE_OK;
+}
+
+static int vfsDiskFileWrite(sqlite3_file *file,
+			const void *buf,
+			int amount,
+			sqlite_int64 offset)
+{
+	struct vfsFile *f = (struct vfsFile *)file;
+	int rv;
+
+
+	assert(buf != NULL);
+	assert(amount > 0);
+	assert(f != NULL);
+
+	if (f->temp != NULL) {
+		/* Write to the actual temporary file. */
+		return f->temp->pMethods->xWrite(f->temp, buf, amount, offset);
+	}
+
+	if (f->db != NULL) {
+		/* Write to the actual database file. */
+		vfsDiskDatabaseTrackNumPages(f->database, offset);
+		rv = f->db->pMethods->xWrite(f->db, buf, amount, offset);
+		tracef("vfsDiskFileWrite %s amount:%d rv:%d", "db", amount, rv);
+		return rv;
+	}
+
+	switch (f->type) {
+		case VFS__WAL:
+			rv =
+			    vfsWalWrite(&f->database->wal, buf, amount, offset);
+			break;
+		case VFS__JOURNAL:
+			/* Silently swallow writes to the journal */
+			rv = SQLITE_OK;
+			break;
+		default:
+			rv = SQLITE_IOERR_WRITE;
+			break;
+	}
+
+	return rv;
+}
+
+static int vfsDiskFileTruncate(sqlite3_file *file, sqlite_int64 size)
+{
+	struct vfsFile *f = (struct vfsFile *)file;
+	int rv;
+
+	assert(f != NULL);
+
+	if (f->db != NULL) {
+		return f->db->pMethods->xTruncate(f->db, size);
+	}
+
+	switch (f->type) {
+		case VFS__WAL:
+			rv = vfsWalTruncate(&f->database->wal, size);
+			break;
+		default:
+			rv = SQLITE_IOERR_TRUNCATE;
+			break;
+	}
+
+	return rv;
+}
+
+static int vfsDiskFileSync(sqlite3_file *file, int flags)
+{
+	int rv;
+	struct vfsFile *f = (struct vfsFile *)file;
+
+	if (f->db != NULL) {
+		rv = f->db->pMethods->xSync(f->db, flags);
+		return rv;
+	}
+
+	return SQLITE_IOERR_FSYNC;
+}
+
+static int vfsDiskFileSize(sqlite3_file *file, sqlite_int64 *size)
+{
+	struct vfsFile *f = (struct vfsFile *)file;
+	size_t n;
+
+	if (f->db != NULL) {
+		return f->db->pMethods->xFileSize(f->db, size);
+	}
+
+	switch (f->type) {
+		case VFS__WAL:
+			/* TODO? here we assume that FileSize() is never invoked
+			 * between a header write and a page write. */
+			n = vfsWalFileSize(&f->database->wal);
+			break;
+		default:
+			n = 0;
+			break;
+	}
+
+	*size = (sqlite3_int64)n;
+
+	return SQLITE_OK;
+}
+
+/* Locking a file is a no-op, since no other process has visibility on it,
+ * unless the database resides on disk. */
+static int vfsDiskFileLock(sqlite3_file *file, int lock)
+{
+	struct vfsFile *f = (struct vfsFile *)file;
+	if (f->db != NULL) {
+		return f->db->pMethods->xLock(f->db, lock);
+	}
+	return SQLITE_OK;
+}
+
+/* Unlocking a file is a no-op, since no other process has visibility on it,
+ * unless the database resides on disk. */
+static int vfsDiskFileUnlock(sqlite3_file *file, int lock)
+{
+	struct vfsFile *f = (struct vfsFile *)file;
+	if (f->db != NULL) {
+		return f->db->pMethods->xUnlock(f->db, lock);
+	}
+	return SQLITE_OK;
+}
+
+/* We always report that a lock is held. This routine should be used only in
+ * journal mode, so it doesn't matter.
+ * TODO does this need to be treated differently in disk-mode?
+ * */
+static int vfsDiskFileCheckReservedLock(sqlite3_file *file, int *result)
+{
+	(void) file;
+	*result = 1;
+	return SQLITE_OK;
+}
+
+/* Handle pragma a pragma file control. See the xFileControl
+ * docstring in sqlite.h.in for more details. */
+static int vfsDiskFileControlPragma(struct vfsFile *f, char **fnctl)
+{
+	int rv;
+	const char *left;
+	const char *right;
+
+	assert(f != NULL);
+	assert(fnctl != NULL);
+
+	left = fnctl[1];
+	right = fnctl[2];
+
+	assert(left != NULL);
+
+	if (strcmp(left, "page_size") == 0 && right) {
+		int page_size = atoi(right);
+		/* The first page_size pragma sets page_size member of the db
+		 * and is called by dqlite based on the page_size configuration.
+		 * Only used for on-disk databases.
+		 * */
+		if (f->db == NULL) {
+			fnctl[0] = sqlite3_mprintf("no DB file found");
+			return SQLITE_IOERR;
+		}
+		if (page_size > UINT16_MAX) {
+			fnctl[0] = sqlite3_mprintf("max page_size exceeded");
+			return SQLITE_IOERR;
+		}
+		if (f->database->page_size == 0) {
+			rv = f->db->pMethods->xFileControl(f->db, SQLITE_FCNTL_PRAGMA, fnctl);
+			if (rv == SQLITE_NOTFOUND || rv == SQLITE_OK) {
+				f->database->page_size = (uint16_t)page_size;
+			}
+			return rv;
+		} else if ((uint16_t)page_size != f->database->page_size) {
+			fnctl[0] = sqlite3_mprintf("changing page size is not supported");
+			return SQLITE_IOERR;
+		}
+	} else if (strcmp(left, "journal_mode") == 0 && right) {
+		/* When the user executes 'PRAGMA journal_mode=x' we ensure
+		 * that the desired mode is 'wal'. */
+		if (strcasecmp(right, "wal") != 0) {
+			fnctl[0] = sqlite3_mprintf("only WAL mode is supported");
+			return SQLITE_IOERR;
+		}
+	}
+
+	/* We're returning NOTFOUND here to tell SQLite that we wish it to go on
+	 * with its own handling as well. If we returned SQLITE_OK the page size
+	 * of the journal mode wouldn't be effectively set, as the processing of
+	 * the PRAGMA would stop here. */
+	return SQLITE_NOTFOUND;
+}
+
+static int vfsDiskFileControl(sqlite3_file *file, int op, void *arg)
+{
+	struct vfsFile *f = (struct vfsFile *)file;
+	int rv;
+
+	assert(f->type == VFS__DATABASE);
+
+	switch (op) {
+		case SQLITE_FCNTL_PRAGMA:
+			rv = vfsDiskFileControlPragma(f, arg);
+			break;
+		case SQLITE_FCNTL_COMMIT_PHASETWO:
+			rv = vfsFileControlCommitPhaseTwo(f);
+			break;
+		case SQLITE_FCNTL_PERSIST_WAL:
+			/* This prevents SQLite from deleting the WAL after the
+			 * last connection is closed. */
+			*(int *)(arg) = 1;
+			rv = SQLITE_OK;
+			break;
+		default:
+			rv = SQLITE_OK;
+			break;
+	}
+
+	return rv;
+}
+
+static int vfsDiskFileSectorSize(sqlite3_file *file)
+{
+	struct vfsFile *f = (struct vfsFile *)file;
+	if (f->db != NULL) {
+		return f->db->pMethods->xSectorSize(f->db);
+	}
+
+	return 0;
+}
+
+static int vfsDiskFileDeviceCharacteristics(sqlite3_file *file)
+{
+	struct vfsFile *f = (struct vfsFile *)file;
+	if (f->db != NULL) {
+		return f->db->pMethods->xDeviceCharacteristics(f->db);
+	}
+
+	return 0;
+}
+
+static const sqlite3_io_methods vfsDiskFileMethods = {
+    2,                                 // iVersion
+    vfsDiskFileClose,                  // xClose
+    vfsDiskFileRead,                   // xRead
+    vfsDiskFileWrite,                  // xWrite
+    vfsDiskFileTruncate,               // xTruncate
+    vfsDiskFileSync,                   // xSync
+    vfsDiskFileSize,                   // xFileSize
+    vfsDiskFileLock,                   // xLock
+    vfsDiskFileUnlock,                 // xUnlock
+    vfsDiskFileCheckReservedLock,      // xCheckReservedLock
+    vfsDiskFileControl,                // xFileControl
+    vfsDiskFileSectorSize,             // xSectorSize
+    vfsDiskFileDeviceCharacteristics,  // xDeviceCharacteristics
+    vfsFileShmMap,                     // xShmMap
+    vfsFileShmLock,                    // xShmLock
+    vfsFileShmBarrier,                 // xShmBarrier
+    vfsFileShmUnmap,                   // xShmUnmap
+    0,
+    0,
+};
+
+static int vfsDiskOpen(sqlite3_vfs *vfs,
+		   const char *filename,
+		   sqlite3_file *file,
+		   int flags,
+		   int *out_flags)
+{
+	struct vfs *v;
+	struct vfsFile *f;
+	struct vfsDatabase *database;
+	enum vfsFileType type;
+	bool exists;
+	int exclusive = flags & SQLITE_OPEN_EXCLUSIVE;
+	int create = flags & SQLITE_OPEN_CREATE;
+	int rc;
+	tracef("filename:%s", filename);
+
+	(void)out_flags;
+
+	assert(vfs != NULL);
+	assert(vfs->pAppData != NULL);
+	assert(file != NULL);
+
+	/* From sqlite3.h.in:
+	 *
+	 *   The SQLITE_OPEN_EXCLUSIVE flag is always used in conjunction with
+	 *   the SQLITE_OPEN_CREATE flag, which are both directly analogous to
+	 *   the O_EXCL and O_CREAT flags of the POSIX open() API.  The
+	 *   SQLITE_OPEN_EXCLUSIVE flag, when paired with the
+	 *   SQLITE_OPEN_CREATE, is used to indicate that file should always be
+	 *   created, and that it is an error if it already exists.  It is not
+	 *   used to indicate the file should be opened for exclusive access.
+	 */
+	assert(!exclusive || create);
+
+	v = (struct vfs *)(vfs->pAppData);
+	f = (struct vfsFile *)file;
+
+	/* This tells SQLite to not call Close() in case we return an error. */
+	f->base.pMethods = 0;
+	f->temp = NULL;
+	f->db = NULL;
+
+	/* Save the flags */
+	f->flags = flags;
+
+	/* From SQLite documentation:
+	 *
+	 * If the zFilename parameter to xOpen is a NULL pointer then xOpen
+	 * must invent its own temporary name for the file. Whenever the
+	 * xFilename parameter is NULL it will also be the case that the
+	 * flags parameter will include SQLITE_OPEN_DELETEONCLOSE.
+	 */
+	if (filename == NULL) {
+		assert(flags & SQLITE_OPEN_DELETEONCLOSE);
+
+		/* Open an actual temporary file. */
+		vfs = v->base_vfs;
+
+		f->temp = sqlite3_malloc(vfs->szOsFile);
+		if (f->temp == NULL) {
+			v->error = ENOENT;
+			return SQLITE_CANTOPEN;
+		}
+		rc = vfs->xOpen(vfs, NULL, f->temp, flags, out_flags);
+		if (rc != SQLITE_OK) {
+			sqlite3_free(f->temp);
+			return rc;
+		}
+
+		f->base.pMethods = &vfsDiskFileMethods;
+		f->vfs = NULL;
+		f->database = NULL;
+
+		return SQLITE_OK;
+	}
+
+	/* Search if the database object exists already. */
+	database = vfsDatabaseLookup(v, filename);
+	exists = database != NULL;
+
+	if (flags & SQLITE_OPEN_MAIN_DB) {
+		type = VFS__DATABASE;
+	} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
+		type = VFS__JOURNAL;
+	} else if (flags & SQLITE_OPEN_WAL) {
+		type = VFS__WAL;
+	} else {
+		v->error = ENOENT;
+		return SQLITE_CANTOPEN;
+	}
+
+	/* If file exists, and the exclusive flag is on, return an error. */
+	if (exists && exclusive && create && type == VFS__DATABASE) {
+		v->error = EEXIST;
+		rc = SQLITE_CANTOPEN;
+		goto err;
+	}
+
+	if (!exists) {
+		/* When opening a WAL or journal file we expect the main
+		 * database file to have already been created. */
+		if (type == VFS__WAL || type == VFS__JOURNAL) {
+			v->error = ENOENT;
+			rc = SQLITE_CANTOPEN;
+			goto err;
+		}
+
+		assert(type == VFS__DATABASE);
+
+		/* Check the create flag. */
+		if (!create) {
+			v->error = ENOENT;
+			rc = SQLITE_CANTOPEN;
+			goto err;
+		}
+
+		database = vfsCreateDatabase(v, filename);
+		if (database == NULL) {
+			v->error = ENOMEM;
+			rc = SQLITE_CANTOPEN;
+			goto err;
+		}
+	}
+
+	if (type == VFS__DATABASE && v->disk) {
+		/* Open an actual database file. */
+		vfs = v->base_vfs;
+
+		f->db = sqlite3_malloc(vfs->szOsFile);
+		if (f->db == NULL) {
+			return SQLITE_NOMEM;
+		}
+
+		rc = vfs->xOpen(vfs, filename, f->db, flags, out_flags);
+		if (rc != SQLITE_OK) {
+			sqlite3_free(f->db);
+			f->db = NULL;
+			return rc;
+		}
+	}
+
+	/* Populate the new file handle. */
+	f->base.pMethods = &vfsDiskFileMethods;
+	f->vfs = v;
+	f->type = type;
+	f->database = database;
+
+	return SQLITE_OK;
+
+err:
+	assert(rc != SQLITE_OK);
+	return rc;
+}
+
+static int vfsDiskDelete(sqlite3_vfs *vfs, const char *filename, int dir_sync)
+{
+	int rv;
+	struct vfs *v;
+
+	(void)dir_sync;
+
+	assert(vfs != NULL);
+	assert(vfs->pAppData != NULL);
+
+	if (vfsFilenameEndsWith(filename, "-journal")) {
+		return SQLITE_OK;
+	}
+	if (vfsFilenameEndsWith(filename, "-wal")) {
+		return SQLITE_OK;
+	}
+
+	v = (struct vfs *)(vfs->pAppData);
+	rv = vfsDeleteDatabase(v, filename);
+	if (rv != 0 ) {
+		return rv;
+	}
+
+	if (!v->disk) {
+		return rv;
+	}
+
+	return v->base_vfs->xDelete(v->base_vfs, filename, dir_sync);
+}
+
+static int vfsDiskAccess(sqlite3_vfs *vfs,
+		     const char *filename,
+		     int flags,
+		     int *result)
+{
+	struct vfs *v;
+	struct vfsDatabase *database;
+
+	(void)flags;
+
+	assert(vfs != NULL);
+	assert(vfs->pAppData != NULL);
+
+	v = (struct vfs *)(vfs->pAppData);
+
+	/* If the database object exists, we consider all associated files as
+	 * existing and accessible. */
+	database = vfsDatabaseLookup(v, filename);
+	if (database == NULL) {
+		*result = 0;
+	} else if (vfsFilenameEndsWith(filename, "-journal")) {
+		*result = 1;
+	} else if (vfsFilenameEndsWith(filename, "-wal")) {
+		*result = 1;
+	} else {
+		/* dqlite database object exists, now check if the regular SQLite file
+		 * exists. */
+		return v->base_vfs->xAccess(vfs, filename, flags, result);
+	}
+
+	return SQLITE_OK;
+}
+
+int VfsEnableDisk(struct sqlite3_vfs *vfs)
+{
+	if (vfs->pAppData == NULL) {
+		return -1;
+	}
+
+	struct vfs *v = vfs->pAppData;
+	v->disk = true;
+
+	vfs->xOpen = vfsDiskOpen;
+	vfs->xDelete = vfsDiskDelete;
+	vfs->xAccess = vfsDiskAccess;
+	/* TODO check if below functions need alteration for on-disk case. */
+	vfs->xFullPathname = vfsFullPathname;
+	vfs->xDlOpen = vfsDlOpen;
+	vfs->xDlError = vfsDlError;
+	vfs->xDlSym = vfsDlSym;
+	vfs->xDlClose = vfsDlClose;
+	vfs->xRandomness = vfsRandomness;
+	vfs->xSleep = vfsSleep;
+	vfs->xCurrentTime = vfsCurrentTime;
+	vfs->xGetLastError = vfsGetLastError;
+	vfs->xCurrentTimeInt64 = vfsCurrentTimeInt64;
+	return 0;
+}
+
+int VfsDiskSnapshotWal(sqlite3_vfs *vfs, const char *path, struct dqlite_buffer *buf)
+{
+	struct vfs *v;
+	struct vfsDatabase *database;
+	struct vfsWal *wal;
+	uint8_t *cursor;
+	int rv;
+
+	v = (struct vfs *)(vfs->pAppData);
+	database = vfsDatabaseLookup(v, path);
+
+	if (database == NULL) {
+		tracef("not found");
+		rv = SQLITE_NOTFOUND;
+		goto err;
+	}
+
+	/* Copy WAL to last buffer. */
+	wal = &database->wal;
+	buf->len = vfsWalFileSize(wal);
+	buf->base = sqlite3_malloc64(buf->len);
+	/* WAL can have 0 length! */
+	if (buf->base == NULL && buf->len != 0) {
+		rv = SQLITE_NOMEM;
+		goto err;
+	}
+	cursor = buf->base;
+	vfsWalSnapshot(wal, &cursor);
+
+	return 0;
+
+err:
+	return rv;
+}
+
+int VfsDiskSnapshotDb(sqlite3_vfs *vfs, const char *path, struct dqlite_buffer *buf)
+{
+	struct vfs *v;
+	struct vfsDatabase *database;
+	int fd;
+	int rv;
+	char *addr;
+	struct stat sb;
+
+	v = (struct vfs *)(vfs->pAppData);
+	database = vfsDatabaseLookup(v, path);
+
+	if (database == NULL) {
+		tracef("not found");
+		rv = SQLITE_NOTFOUND;
+		goto err;
+	}
+
+	/* mmap the database file */
+	fd = open(path, O_RDONLY);
+        if (fd == -1) {
+	    tracef("failed to open %s", path);
+	    rv = SQLITE_IOERR;
+	    goto err;
+        }
+
+	rv = fstat(fd, &sb);
+	if (rv == -1) {
+	    tracef("fstat failed path:%s fd:%d", path, fd);
+	    rv = SQLITE_IOERR;
+	    goto err_after_open;
+	}
+
+	/* TODO database size limited to whatever fits in a size_t. Multiple
+	 * mmap's needed. This limitation also exists in various other places
+	 * throughout the codebase. */
+	addr = mmap(NULL, (size_t)sb.st_size, PROT_READ, MAP_SHARED, fd, 0);
+	close(fd);
+        if (addr == MAP_FAILED) {
+	    rv = SQLITE_IOERR;
+	    goto err_after_open;
+	}
+
+	buf->base = addr;
+	buf->len = (size_t)sb.st_size;
+
+	return 0;
+
+err_after_open:
+	close(fd);
+err:
+	return rv;
+}
+
+static int vfsDiskDatabaseRestore(struct vfsDatabase *d,
+				  const char *filename,
+			          const uint8_t *data,
+			          size_t n)
+{
+	int rv = 0;
+	int fd;
+	ssize_t sz; /* rv of write */
+	uint32_t page_size;
+	unsigned n_pages;
+	const uint8_t *cursor;
+	size_t n_left; /* amount of data left to write */
+
+	fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY, 0600);
+	if (fd == 0) {
+		tracef("fopen failed filename:%s", filename);
+		return -1;
+	}
+
+	n_left = n;
+	cursor = data;
+	while (n_left > 0) {
+		sz = write(fd, cursor, n_left);
+		/* sz == 0 should not be possible when writing a positive amount
+		 * of bytes. */
+		if (sz <= 0) {
+			tracef("fwrite failed n:%zd sz:%zd errno:%d", n_left, sz, errno);
+			rv = DQLITE_ERROR;
+			goto out;
+		}
+		n_left -= (size_t)sz;
+		cursor += sz;
+	}
+
+	page_size = vfsParsePageSize(ByteGetBe16(&data[16]));
+	assert(page_size > 0);
+	/* Check that the page size of the snapshot is consistent with what we
+	 * have here. */
+	assert(vfsDatabaseGetPageSize(d) == page_size);
+
+	n_pages = (unsigned)ByteGetBe32(&data[28]);
+	d->n_pages = n_pages;
+	d->page_size = page_size;
+
+out:
+	close(fd);
+	return rv;
+}
+
+int VfsDiskRestore(sqlite3_vfs *vfs,
+	       const char *path,
+	       const void *data,
+	       size_t main_size,
+	       size_t wal_size)
+{
+	tracef("vfs restore path %s main_size %zd wal_size %zd", path, main_size, wal_size);
+	struct vfs *v;
+	struct vfsDatabase *database;
+	struct vfsWal *wal;
+	uint32_t page_size;
+	int rv;
+
+	v = (struct vfs *)(vfs->pAppData);
+	database = vfsDatabaseLookup(v, path);
+	assert(database != NULL);
+
+	wal = &database->wal;
+
+	/* Truncate any existing content. */
+	rv = vfsWalTruncate(wal, 0);
+	if (rv != 0) {
+        	tracef("wal truncate failed %d", rv);
+		return rv;
+	}
+
+	/* Restore the content of the main database and of the WAL. */
+	rv = vfsDiskDatabaseRestore(database, path, data, main_size);
+	if (rv != 0) {
+        	tracef("database restore failed %d", rv);
+		return rv;
+	}
+
+	page_size = vfsDatabaseGetPageSize(database);
+
+	rv = vfsWalRestore(wal, data + main_size, wal_size, page_size);
+	if (rv != 0) {
+        	tracef("wal restore failed %d", rv);
+		return rv;
+	}
+
+	return 0;
+}
+

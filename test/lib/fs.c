@@ -36,6 +36,10 @@ static int test__dir_tear_down_nftw_fn(const char *       path,
 void test_dir_tear_down(char *dir) {
 	int rc;
 
+	if (dir == NULL) {
+		return;
+	}
+
 	rc = nftw(dir,
 	          test__dir_tear_down_nftw_fn,
 	          10,

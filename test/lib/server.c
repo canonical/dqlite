@@ -66,11 +66,21 @@ void test_server_start(struct test_server *s, const MunitParameter params[])
 	rv = dqlite_node_set_network_latency_ms(s->dqlite, 10);
 	munit_assert_int(rv, ==, 0);
 
-	if (munit_parameters_get(params, SNAPSHOT_THRESHOLD_PARAM) != NULL) {
-		unsigned threshold = (unsigned)atoi(munit_parameters_get(
-			    params, SNAPSHOT_THRESHOLD_PARAM));
+	const char *snapshot_threshold_param = munit_parameters_get(params,
+							    SNAPSHOT_THRESHOLD_PARAM);
+	if (snapshot_threshold_param != NULL) {
+		unsigned threshold = (unsigned)atoi(snapshot_threshold_param);
 		rv = dqlite_node_set_snapshot_params(s->dqlite, threshold, threshold);
 		munit_assert_int(rv, ==, 0);
+	}
+
+	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
+	if (disk_mode_param != NULL) {
+		bool disk_mode = (bool)atoi(disk_mode_param);
+		if (disk_mode) {
+			rv = dqlite_node_enable_disk_mode(s->dqlite);
+			munit_assert_int(rv, ==, 0);
+		}
 	}
 
 	rv = dqlite_node_start(s->dqlite);

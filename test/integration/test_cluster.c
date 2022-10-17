@@ -72,6 +72,10 @@ static void tearDown(void *data)
 	free(f);
 }
 
+static char* bools[] = {
+    "0", "1", NULL
+};
+
 static char* num_records[] = {
     "0", "1", "256",
     /* WAL will just have been checkpointed after 993 writes. */
@@ -80,13 +84,14 @@ static char* num_records[] = {
     "2200", NULL
 };
 
-static MunitParameterEnum num_records_params[] = {
+static MunitParameterEnum cluster_params[] = {
     { "num_records", num_records },
+    { "disk_mode", bools },
     { NULL, NULL },
 };
 
 /* Restart a node and check if all data is there */
-TEST(cluster, restart, setUp, tearDown, 0, num_records_params)
+TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 {
 	struct fixture *f = data;
 	unsigned stmt_id;
@@ -122,7 +127,7 @@ TEST(cluster, restart, setUp, tearDown, 0, num_records_params)
 }
 
 /* Add data to a node, add a new node and make sure data is there. */
-TEST(cluster, dataOnNewNode, setUp, tearDown, 0, num_records_params)
+TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 {
 	struct fixture *f = data;
 	unsigned stmt_id;
