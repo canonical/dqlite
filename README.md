@@ -1,6 +1,8 @@
 dqlite [![CI Tests](https://github.com/canonical/dqlite/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/canonical/dqlite/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/canonical/dqlite/branch/master/graph/badge.svg)](https://codecov.io/gh/canonical/dqlite)
 ======
 
+[English](./README.md)|[简体中文](./README_CH.md)
+
 [dqlite](https://dqlite.io) is a C library that implements an embeddable and replicated SQL database
 engine with high-availability and automatic failover.
 
