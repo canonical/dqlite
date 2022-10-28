@@ -7,15 +7,15 @@
 
 [dqlite](https://dqlite.io)是一个用C语言开发的可嵌入的，支持流复制的数据库引擎，具备高可用性和自动故障转移功能。
 
-“dqlite”是“distributed SQLite”的简写，即分布式sqlite。
+“dqlite”是“distributed SQLite”的简写，即分布式SQLite。意味着dqlite通过网络协议扩展SQLite，将应用程序的各个实例连接在一起，让它们作为一个高可用的集群，而不依赖外部数据库。
 
 ## 设计亮点
 
 - 使用[libuv](https://libuv.org/)实现异步单线程的事件循环机制
 
-- 针对 SQLite 原语和数据类型优化过后的自定义网络协议
+- 针对SQLite 原始数据类型优化的自定义网络协议
 
-- 基于[Raft](https://raft.github.io/)协议的数据流复制和高效的[C-raft](https://github.com/canonical/raft)实现
+- 基于[Raft](https://raft.github.io/)算法的数据复制及其高效[C-raft](https://github.com/canonical/raft)实现 
 
 ## license
 
@@ -23,8 +23,8 @@ dqlite库是在略微修改的 LGPLv3 版本下发布的，其中包括一个版
 
 ## 兼容性
 
-dqlite 在 Linux 上运行，需要一个支持 [native async
-I/O](https://man7.org/linux/man-pages/man2/io_setup.2.html) 的内核（注意与[POSIX AIO](https://man7.org/linux/man-pages/man7/aio.7.html) 不是同一个），因为 C-raft 的 libuv 后端会使用。
+dqlite 在 Linux 上运行，由于C-raft 的 libuv 后端的实现，需要一个支持 [native async
+I/O](https://man7.org/linux/man-pages/man2/io_setup.2.html) 的内核(注意不要和[POSIX AIO](https://man7.org/linux/man-pages/man7/aio.7.html)混淆)。
 
 ## 尝试使用
 
@@ -33,7 +33,7 @@ documentation](https://github.com/canonical/go-dqlite#demo)。
 
 ## 视频
 
-在 FOSDEM 2020 上发表了关于 dqlite 的演讲视频，您可以在[此处](https://fosdem.org/2020/schedule/event/dqlite/)观看。
+在 FOSDEM 2020 上有一个关于dqlite的演讲视频，您可以在[此处](https://fosdem.org/2020/schedule/event/dqlite/)观看。
 
 ## 网络协议
 
@@ -59,7 +59,7 @@ sudo apt-get install libdqlite-dev
 
 - 构建好的[C-raft](https://github.com/canonical/raft)库
 
-您的linux发行版应该已经为您提供了预构建的 libuv 库和 libsqlite3-dev,就不需要在下载了，否则还需要下载这两个依赖。
+您的linux发行版应该已经为您提供了预构建的 libuv 共享库和 libsqlite3-dev,就不需要在下载了，否则还需要下载这两个依赖。
 
 编译raft库运行如下命令：
 
