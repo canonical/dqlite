@@ -730,7 +730,6 @@ static int handle_exec_sql(struct handle *req)
 	g->sql = request.sql;
 	rc = leader__barrier(g->leader, &g->barrier, execSqlBarrierCb);
 	if (rc != 0) {
-		g->req = NULL;
 		tracef("handle exec sql barrier failed %d", rc);
 		g->req = NULL;
 		g->sql = NULL;
