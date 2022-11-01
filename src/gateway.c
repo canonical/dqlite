@@ -66,6 +66,7 @@ void gateway__leader_close(struct gateway *g, int reason)
 			tracef("finalize exec_sql or query_sql type:%d", g->req->type);
 			sqlite3_finalize(g->stmt);
 			g->stmt = NULL;
+			g->req = NULL;
 		}
 	}
 	stmt__registry_close(&g->stmts);

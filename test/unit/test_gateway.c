@@ -1974,6 +1974,27 @@ TEST_CASE(query_sql, closing, NULL)
 	return MUNIT_OK;
 }
 
+/* Perform a query yielding a lot of rows and close the gateway early. */
+TEST_CASE(query_sql, manyClosing, NULL)
+{
+	(void)params;
+	struct query_sql_fixture *f = data;
+	bool finished;
+	int rv;
+
+	for (int i = 0; i < 2000; i++) {
+		EXEC("INSERT INTO test VALUES(123)");
+	}
+	f->request.db_id = 0;
+	f->request.sql = "SELECT n FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	gateway__close(f->gateway);
+	rv = gateway__resume(f->gateway, &finished);
+	munit_assert_int(rv, ==, 0);
+	return MUNIT_OK;
+}
+
 /* Submit a QUERY_SQL request that triggers a failed barrier operation. */
 TEST_CASE(query_sql, barrier_error, NULL)
 {
