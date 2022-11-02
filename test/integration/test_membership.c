@@ -7,6 +7,7 @@
 #include "../lib/runner.h"
 #include "../lib/server.h"
 #include "../lib/sqlite.h"
+#include "../lib/util.h"
 
 /******************************************************************************
  *
@@ -51,20 +52,6 @@
 
 /* Use the client connected to the server with the given ID. */
 #define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
-
-/* Wait a bounded time until server ID has applied at least the entry at INDEX */
-#define AWAIT_REPLICATION(ID, INDEX)							  \
-	do {										  \
-		struct timespec _start = {0};						  \
-		struct timespec _end = {0};						  \
-		clock_gettime(CLOCK_MONOTONIC, &_start);				  \
-		clock_gettime(CLOCK_MONOTONIC, &_end);					  \
-		while((f->servers[ID].dqlite->raft.last_applied < INDEX)		  \
-		      && ((_end.tv_sec - _start.tv_sec) < 2)  ) {			  \
-			clock_gettime(CLOCK_MONOTONIC, &_end);				  \
-		}									  \
-		munit_assert_ullong(f->servers[ID].dqlite->raft.last_applied, >=, INDEX); \
-	} while(0)
 
 /******************************************************************************
  *
@@ -123,6 +110,18 @@ TEST(membership, join, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
+struct id_last_applied {
+	struct fixture *f;
+	int id;
+	raft_index last_applied;
+
+};
+
+static bool last_applied_cond(struct id_last_applied arg)
+{
+	return arg.f->servers[arg.id].dqlite->raft.last_applied >= arg.last_applied;
+}
+
 TEST(membership, transfer, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
@@ -133,6 +132,7 @@ TEST(membership, transfer, setUp, tearDown, 0, NULL)
 	unsigned rows_affected;
 	raft_index last_applied;
 	struct client c_transfer; /* Client used for transfer requests */
+	struct id_last_applied await_arg;
 
 	HANDSHAKE;
 	ADD(id, address);
@@ -157,7 +157,10 @@ TEST(membership, transfer, setUp, tearDown, 0, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	AWAIT_REPLICATION(0, last_applied + 1);
+	await_arg.f = f;
+	await_arg.id = 0;
+	await_arg.last_applied = last_applied + 1;
+	AWAIT_TRUE(last_applied_cond, await_arg, 2);
 
 	return MUNIT_OK;
 }
@@ -173,6 +176,7 @@ TEST(membership, transferPendingTransaction, setUp, tearDown, 0, NULL)
 	unsigned rows_affected;
 	raft_index last_applied;
 	struct client c_transfer; /* Client used for transfer requests */
+	struct id_last_applied await_arg;
 
 	HANDSHAKE;
 	ADD(id, address);
@@ -204,8 +208,67 @@ TEST(membership, transferPendingTransaction, setUp, tearDown, 0, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(2)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	AWAIT_REPLICATION(0, last_applied + 1);
+	await_arg.f = f;
+	await_arg.id = 0;
+	await_arg.last_applied = last_applied + 1;
+	AWAIT_TRUE(last_applied_cond, await_arg, 2);
 
+	return MUNIT_OK;
+}
+
+struct fixture_id {
+	struct fixture *f;
+	int id;
+};
+
+static bool transfer_started_cond(struct fixture_id arg)
+{
+	return arg.f->servers[arg.id].dqlite->raft.transfer != NULL;
+}
+
+/* Transfer leadership away from a member and immediately try to EXEC a
+ * prepared SQL statement that needs a barrier */
+TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
+{
+	int rv;
+	struct fixture *f = data;
+	unsigned id = 2;
+	const char *address = "@2";
+	unsigned stmt_id;
+	unsigned last_insert_id;
+	unsigned rows_affected;
+	struct client c_transfer; /* Client used for transfer requests */
+	struct fixture_id arg;
+
+	HANDSHAKE;
+	ADD(id, address);
+	ASSIGN(id, 1 /* voter */);
+	OPEN;
+	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+
+	/* Iniate transfer of leadership. This will cause a raft_barrier
+	 * failure while the node is technically still the leader, so the gateway
+	 * functionality that checks for leadership still succeeds. */
+	test_server_client_connect(&f->servers[0], &c_transfer);
+	HANDSHAKE_C(&c_transfer);
+	rv = clientSendTransfer(&c_transfer, 2);
+	munit_assert_int(rv, ==, 0);
+
+	/* Wait until transfer is started by raft so the barrier can fail. */
+	arg.f = f;
+	arg.id = 0;
+	AWAIT_TRUE(transfer_started_cond, arg, 2);
+
+	/* Force a barrier.
+	 * TODO this is hacky, but I can't seem to hit the codepath otherwise */
+	f->servers[0].dqlite->raft.last_applied = 0;
+
+	rv = clientSendExec(f->client, stmt_id);
+	munit_assert_int(rv, ==, 0);
+	rv = clientRecvResult(f->client, &last_insert_id, &rows_affected);
+	munit_assert_int(rv, ==, 1);
+
+	test_server_client_close(&f->servers[1], &c_transfer);
 	return MUNIT_OK;
 }
 
@@ -220,6 +283,7 @@ TEST(membership, transferTwicePendingTransaction, setUp, tearDown, 0, NULL)
 	unsigned rows_affected;
 	raft_index last_applied;
 	struct client c_transfer; /* Client used for transfer requests */
+	struct id_last_applied await_arg;
 
 	HANDSHAKE;
 	ADD(id, address);
@@ -251,7 +315,10 @@ TEST(membership, transferTwicePendingTransaction, setUp, tearDown, 0, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(2)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	AWAIT_REPLICATION(0, last_applied + 1);
+	await_arg.f = f;
+	await_arg.id = 0;
+	await_arg.last_applied = last_applied + 1;
+	AWAIT_TRUE(last_applied_cond, await_arg, 2);
 
 	/* Transfer leadership back to original node, reconnect the client and
 	 * ensure queries can be executed. */
@@ -268,7 +335,8 @@ TEST(membership, transferTwicePendingTransaction, setUp, tearDown, 0, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(3)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	AWAIT_REPLICATION(1, last_applied + 1);
+	await_arg.id = 1;
+	AWAIT_TRUE(last_applied_cond, await_arg, 2);
 
 	return MUNIT_OK;
 }

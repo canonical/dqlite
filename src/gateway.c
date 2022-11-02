@@ -438,7 +438,9 @@ static int handle_exec(struct handle *req)
 	g->stmt = stmt->stmt;
 	rv = leader__exec(g->leader, &g->exec, stmt->stmt, leader_exec_cb);
 	if (rv != 0) {
-                tracef("handle exec leader exec failed %d", rv);
+		tracef("handle exec leader exec failed %d", rv);
+		g->stmt = NULL;
+		g->req = NULL;
 		return rv;
 	}
 	return 0;
@@ -730,7 +732,6 @@ static int handle_exec_sql(struct handle *req)
 	g->sql = request.sql;
 	rc = leader__barrier(g->leader, &g->barrier, execSqlBarrierCb);
 	if (rc != 0) {
-		g->req = NULL;
 		tracef("handle exec sql barrier failed %d", rc);
 		g->req = NULL;
 		g->sql = NULL;
