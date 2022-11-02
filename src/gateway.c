@@ -438,7 +438,9 @@ static int handle_exec(struct handle *req)
 	g->stmt = stmt->stmt;
 	rv = leader__exec(g->leader, &g->exec, stmt->stmt, leader_exec_cb);
 	if (rv != 0) {
-                tracef("handle exec leader exec failed %d", rv);
+		tracef("handle exec leader exec failed %d", rv);
+		g->stmt = NULL;
+		g->req = NULL;
 		return rv;
 	}
 	return 0;

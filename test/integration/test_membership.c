@@ -216,6 +216,62 @@ TEST(membership, transferPendingTransaction, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
+struct fixture_id {
+	struct fixture *f;
+	int id;
+};
+
+static bool transfer_started_cond(struct fixture_id arg)
+{
+	return arg.f->servers[arg.id].dqlite->raft.transfer != NULL;
+}
+
+/* Transfer leadership away from a member and immediately try to EXEC a
+ * prepared SQL statement that needs a barrier */
+TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
+{
+	int rv;
+	struct fixture *f = data;
+	unsigned id = 2;
+	const char *address = "@2";
+	unsigned stmt_id;
+	unsigned last_insert_id;
+	unsigned rows_affected;
+	struct client c_transfer; /* Client used for transfer requests */
+	struct fixture_id arg;
+
+	HANDSHAKE;
+	ADD(id, address);
+	ASSIGN(id, 1 /* voter */);
+	OPEN;
+	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+
+	/* Iniate transfer of leadership. This will cause a raft_barrier
+	 * failure while the node is technically still the leader, so the gateway
+	 * functionality that checks for leadership still succeeds. */
+	test_server_client_connect(&f->servers[0], &c_transfer);
+	HANDSHAKE_C(&c_transfer);
+	rv = clientSendTransfer(&c_transfer, 2);
+	munit_assert_int(rv, ==, 0);
+
+	/* Wait until transfer is started by raft so the barrier can fail. */
+	arg.f = f;
+	arg.id = 0;
+	AWAIT_TRUE(transfer_started_cond, arg, 2);
+
+	/* Force a barrier.
+	 * TODO this is hacky, but I can't seem to hit the codepath otherwise */
+	f->servers[0].dqlite->raft.last_applied = 0;
+
+	rv = clientSendExec(f->client, stmt_id);
+	munit_assert_int(rv, ==, 0);
+	rv = clientRecvResult(f->client, &last_insert_id, &rows_affected);
+	munit_assert_int(rv, ==, 1);
+
+	test_server_client_close(&f->servers[1], &c_transfer);
+	return MUNIT_OK;
+}
+
 /* Transfer leadership back and forth from a member that has a pending transaction */
 TEST(membership, transferTwicePendingTransaction, setUp, tearDown, 0, NULL)
 {
