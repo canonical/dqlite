@@ -1990,6 +1990,9 @@ TEST_CASE(query_sql, manyClosing, NULL)
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
 	gateway__close(f->gateway);
+	munit_assert_true(f->context->invoked);
+	munit_assert_int(f->context->status, ==, 0);
+	munit_assert_int(f->context->type, ==, DQLITE_RESPONSE_FAILURE);
 	rv = gateway__resume(f->gateway, &finished);
 	munit_assert_int(rv, ==, 0);
 	return MUNIT_OK;
