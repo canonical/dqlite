@@ -402,8 +402,7 @@ int leader__exec(struct leader *l,
 
 	rv = leader__barrier(l, &req->barrier, execBarrierCb);
 	if (rv != 0) {
-		l->exec->status = rv;
-		leaderExecDone(l->exec);
+		l->exec = NULL;
 		return rv;
 	}
 	return 0;
