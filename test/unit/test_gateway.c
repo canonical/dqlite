@@ -1982,7 +1982,10 @@ TEST_CASE(query_sql, manyClosing, NULL)
 	bool finished;
 	int rv;
 
-	for (int i = 0; i < 2000; i++) {
+	/* Insert more than maximum amount of rows that can fit in a single response.
+	 * 16 = 8B header + 8B value (int) */
+	unsigned n_rows_buffer = max_rows_buffer(16);
+	for (unsigned i = 0; i < n_rows_buffer + 32; i++) {
 		EXEC("INSERT INTO test VALUES(123)");
 	}
 	f->request.db_id = 0;
