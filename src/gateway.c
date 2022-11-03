@@ -32,24 +32,6 @@ void gateway__init(struct gateway *g,
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 }
 
-/* Encode fa failure response and invoke the request callback */
-static void failure(struct handle *req, int code, const char *message)
-{
-	struct response_failure failure;
-	size_t n;
-	void *cursor;
-	failure.code = (uint64_t)code;
-	failure.message = message;
-	n = response_failure__sizeof(&failure);
-	assert(n % 8 == 0);
-	cursor = buffer__advance(req->buffer, n);
-	/* The buffer has at least 4096 bytes, and error messages are shorter
-	 * than that. So this can't fail. */
-	assert(cursor != NULL);
-	response_failure__encode(&failure, &cursor);
-	req->cb(req, 0, DQLITE_RESPONSE_FAILURE);
-}
-
 void gateway__leader_close(struct gateway *g, int reason)
 {
 	if (g == NULL || g->leader == NULL) {
@@ -84,7 +66,6 @@ void gateway__leader_close(struct gateway *g, int reason)
 			tracef("finalize exec_sql or query_sql type:%d", g->req->type);
 			sqlite3_finalize(g->stmt);
 			g->stmt = NULL;
-			failure(g->req, reason, "leader closed");
 			g->req = NULL;
 		}
 	}
@@ -182,6 +163,24 @@ void gateway__close(struct gateway *g)
 		    _file, 1 /* checkpoint lock */, 1,                         \
 		    SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);                 \
 	}
+
+/* Encode fa failure response and invoke the request callback */
+static void failure(struct handle *req, int code, const char *message)
+{
+	struct response_failure failure;
+	size_t n;
+	void *cursor;
+	failure.code = (uint64_t)code;
+	failure.message = message;
+	n = response_failure__sizeof(&failure);
+	assert(n % 8 == 0);
+	cursor = buffer__advance(req->buffer, n);
+	/* The buffer has at least 4096 bytes, and error messages are shorter
+	 * than that. So this can't fail. */
+	assert(cursor != NULL);
+	response_failure__encode(&failure, &cursor);
+	req->cb(req, 0, DQLITE_RESPONSE_FAILURE);
+}
 
 static int handle_leader_legacy(struct handle *req)
 {
