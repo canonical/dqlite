@@ -810,7 +810,7 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 
 	if (pgno == 1) {
 		/* Read the desired part of page 1. */
-		memcpy(buf, page + offset, (size_t)amount);
+		memcpy(buf, (char*)page + offset, (size_t)amount);
 	} else {
 		/* Read the full page. */
 		memcpy(buf, page, (size_t)amount);
