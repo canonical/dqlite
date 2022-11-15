@@ -1,6 +1,7 @@
 #include "gateway.h"
 
 #include "bind.h"
+#include "command.h"
 #include "protocol.h"
 #include "query.h"
 #include "request.h"
@@ -255,6 +256,12 @@ static int handle_open(struct handle *req)
 	if (rc != 0) {
                 tracef("registry db get failed %d", rc);
 		return rc;
+	}
+	if (db->dropping) {
+		tracef("db is being dropped");
+		failure(req, DQLITE_ERROR,
+			"another client has requested to drop this database");
+		return 0;
 	}
 	g->leader = sqlite3_malloc(sizeof *g->leader);
 	if (g->leader == NULL) {
@@ -1265,6 +1272,111 @@ static int handle_weight(struct handle *req)
 	START_V0(weight, empty);
 	g->config->weight = request.weight;
 	SUCCESS(empty, EMPTY);
+	return 0;
+}
+
+struct drop
+{
+	struct raft_apply apply;
+	struct gateway *gateway;
+};
+
+static void dropApplyCb(struct raft_apply *apply, int status, void *result)
+{
+	(void)result;
+	tracef("drop apply cb status %d", status);
+	/* Downcast (struct drop embeds struct raft_apply). */
+	struct drop *drop = (struct drop *)apply;
+	struct gateway *g;
+	struct leader *l;
+	struct db *db;
+	struct response_empty response = {0};
+	struct handle *req;
+
+	g = drop->gateway;
+	assert(g != NULL);
+	req = g->req;
+	assert(req != NULL);
+	if (status != 0) {
+		tracef("raft_apply error %d", status);
+		failure(req, status, "raft_apply error");
+		return;
+	}
+	g->req = NULL;
+
+	l = g->leader;
+	assert(l != NULL);
+	db = l->db;
+	assert(db != NULL);
+	/* Sanity checks. */
+	assert(QUEUE__DATA(QUEUE__HEAD(&db->leaders), struct leader, queue) == l);
+	assert(QUEUE__NEXT(QUEUE__HEAD(&db->leaders)) == NULL);
+	assert(db->dropping);
+
+	/* Close everything up. */
+	g->leader = NULL;
+	leader__close(l);
+	sqlite3_free(l);
+	db__close(db);
+	sqlite3_free(db);
+	raft_free(drop);
+
+	/* We did it! */
+	SUCCESS(empty, EMPTY);
+}
+
+static int handle_drop(struct handle *req)
+{
+	tracef("handle drop");
+	struct cursor *cursor = &req->cursor;
+	struct gateway *g = req->gateway;
+	struct db *db = g->leader->db;
+	struct raft_buffer buf;
+	struct command_drop c;
+	struct drop *drop;
+	int rc;
+
+	START_V0(drop, empty);
+	(void)response;
+	CHECK_LEADER(req);
+	LOOKUP_DB(request.db_id);
+	FAIL_IF_CHECKPOINTING;
+
+	/* Check that we're the sole connection. */
+	if (QUEUE__DATA(QUEUE__HEAD(&db->leaders), struct leader, queue) != g->leader ||
+	    QUEUE__NEXT(QUEUE__HEAD(&db->leaders)) != NULL) {
+		tracef("drop db multiple leader connections");
+		failure(req, DQLITE_ERROR, "can't drop database with multiple leader connections");
+		return 0;
+	}
+
+	/* Prevent db from being opened while drop is pending. */
+	db->dropping = true;
+
+	/* Put together an apply request. */
+	c.filename = db->filename;
+	rc = command__encode(COMMAND_DROP, &c, &buf);
+	if (rc != 0) {
+		tracef("command encode failed %d", rc);
+		return DQLITE_ERROR;
+	}
+	drop = raft_malloc(sizeof(*drop));
+	if (drop == NULL) {
+		tracef("raft_malloc failed");
+		return DQLITE_NOMEM;
+	}
+	drop->apply.data = drop;
+	drop->apply.type = COMMAND_DROP;
+	drop->gateway = g;
+	rc = raft_apply(g->leader->raft, &drop->apply, &buf, 1, dropApplyCb);
+	if (rc != 0) {
+		tracef("raft apply failed %d", rc);
+		raft_free(drop);
+		failure(req, DQLITE_ERROR, "failed to submit raft log entry");
+		return 0;
+	}
+
+	g->req = req;
 	return 0;
 }
 

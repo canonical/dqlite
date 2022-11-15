@@ -304,6 +304,20 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 	return 0;
 }
 
+/* Drop or delete a database. */
+static int apply_drop(struct fsm *f, const struct command_drop *c)
+{
+	tracef("apply drop %s", c->filename);
+	int rc;
+	sqlite3_vfs *vfs;
+
+	/* Delete the database "file". This will also delete the associated WAL. */
+	vfs = sqlite3_vfs_find(f->registry->config->name);
+	assert(vfs != NULL);
+	rc = vfs->xDelete(vfs, c->filename, 0);
+	return rc;
+}
+
 static int fsm__apply(struct raft_fsm *fsm,
 		      const struct raft_buffer *buf,
 		      void **result)
@@ -331,6 +345,9 @@ static int fsm__apply(struct raft_fsm *fsm,
 			break;
 		case COMMAND_CHECKPOINT:
 			rc = apply_checkpoint(f, command);
+			break;
+		case COMMAND_DROP:
+			rc = apply_drop(f, command);
 			break;
 		default:
 			rc = RAFT_MALFORMED;

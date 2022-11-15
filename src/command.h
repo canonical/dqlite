@@ -10,7 +10,7 @@
 #include "lib/serialize.h"
 
 /* Command type codes */
-enum { COMMAND_OPEN = 1, COMMAND_FRAMES, COMMAND_UNDO, COMMAND_CHECKPOINT };
+enum { COMMAND_OPEN = 1, COMMAND_FRAMES, COMMAND_UNDO, COMMAND_CHECKPOINT, COMMAND_DROP };
 
 /* Hold information about an array of WAL frames. */
 struct frames
@@ -44,12 +44,14 @@ typedef struct frames frames_t;
 	X(frames, frames, ##__VA_ARGS__)
 #define COMMAND__UNDO(X, ...) X(uint64, tx_id, ##__VA_ARGS__)
 #define COMMAND__CHECKPOINT(X, ...) X(text, filename, ##__VA_ARGS__)
+#define COMMAND__DROP(X, ...) X(text, filename, ##__VA_ARGS__)
 
-#define COMMAND__TYPES(X, ...)         \
-	X(open, OPEN, __VA_ARGS__)     \
-	X(frames, FRAMES, __VA_ARGS__) \
-	X(undo, UNDO, __VA_ARGS__)     \
-	X(checkpoint, CHECKPOINT, __VA_ARGS__)
+#define COMMAND__TYPES(X, ...)                 \
+	X(open, OPEN, __VA_ARGS__)             \
+	X(frames, FRAMES, __VA_ARGS__)         \
+	X(undo, UNDO, __VA_ARGS__)             \
+	X(checkpoint, CHECKPOINT, __VA_ARGS__) \
+	X(drop, DROP, __VA_ARGS__)
 
 COMMAND__TYPES(COMMAND__DEFINE);
 
