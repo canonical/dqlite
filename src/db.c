@@ -67,39 +67,44 @@ static int open_follower_conn(const char *filename,
 	/* Enable extended result codes */
 	rc = sqlite3_extended_result_codes(*conn, 1);
 	if (rc != SQLITE_OK) {
-		goto err_after_open;
+		goto err;
 	}
 
 	/* Set the page size. */
 	sprintf(pragma, "PRAGMA page_size=%d", page_size);
 	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
-		goto err_after_open;
+		tracef("page_size=%d failed", page_size);
+		goto err;
 	}
 
 	/* Disable syncs. */
 	rc = sqlite3_exec(*conn, "PRAGMA synchronous=OFF", NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
-		goto err_after_open;
+		tracef("synchronous=OFF failed");
+		goto err;
 	}
 
 	/* Set WAL journaling. */
 	rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
-		goto err_after_open;
+		tracef("journal_mode=WAL failed");
+		goto err;
 	}
 
 	rc =
 	    sqlite3_db_config(*conn, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, NULL);
 	if (rc != SQLITE_OK) {
-		goto err_after_open;
+		goto err;
 	}
 
 	return 0;
 
-err_after_open:
-	sqlite3_close(*conn);
 err:
+	if (*conn != NULL) {
+		sqlite3_close(*conn);
+		*conn = NULL;
+	}
 	if (msg != NULL) {
 		sqlite3_free(msg);
 	}

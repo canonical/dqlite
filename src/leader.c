@@ -41,7 +41,7 @@ static int openConnection(const char *filename,
 	rc = sqlite3_extended_result_codes(*conn, 1);
 	if (rc != SQLITE_OK) {
                 tracef("extended codes failed %d", rc);
-		goto err_after_open;
+		goto err;
 	}
 
 	/* Set the page size. */
@@ -49,49 +49,51 @@ static int openConnection(const char *filename,
 	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
                 tracef("page size set failed %d page size %u", rc, page_size);
-		goto err_after_open;
+		goto err;
 	}
 
 	/* Disable syncs. */
 	rc = sqlite3_exec(*conn, "PRAGMA synchronous=OFF", NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
                 tracef("sync off failed %d", rc);
-		goto err_after_open;
+		goto err;
 	}
 
 	/* Set WAL journaling. */
 	rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
                 tracef("wal on failed %d", rc);
-		goto err_after_open;
+		goto err;
 	}
 
 	rc = sqlite3_exec(*conn, "PRAGMA wal_autocheckpoint=0", NULL, NULL,
 			  &msg);
 	if (rc != SQLITE_OK) {
                 tracef("wal autocheckpoint off failed %d", rc);
-		goto err_after_open;
+		goto err;
 	}
 
 	rc =
 	    sqlite3_db_config(*conn, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, NULL);
 	if (rc != SQLITE_OK) {
                 tracef("db config failed %d", rc);
-		goto err_after_open;
+		goto err;
 	}
 
 	/* TODO: make setting foreign keys optional. */
 	rc = sqlite3_exec(*conn, "PRAGMA foreign_keys=1", NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
                 tracef("enable foreign keys failed %d", rc);
-		goto err_after_open;
+		goto err;
 	}
 
 	return 0;
 
-err_after_open:
-	sqlite3_close(*conn);
 err:
+	if (*conn != NULL) {
+		sqlite3_close(*conn);
+		*conn = NULL;
+	}
 	if (msg != NULL) {
 		sqlite3_free(msg);
 	}
