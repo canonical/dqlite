@@ -1,4 +1,5 @@
 #include "../../src/client.h"
+#include "../../src/command.h"
 #include "../../src/server.h"
 #include "../lib/client.h"
 #include "../lib/heap.h"
@@ -525,5 +526,70 @@ TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, snapshot_params)
 	QUERY(stmt_id, &rows);
 	clientCloseRows(&rows);
 
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * apply
+ *
+ ******************************************************************************/
+
+TEST(fsm, applyFail, setUp, tearDown, 0, NULL)
+{
+	int rv;
+	struct command_frames c;
+	struct raft_buffer buf;
+	struct fixture *f = data;
+	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
+	void* result = (void*)(uintptr_t)0xDEADBEEF;
+
+	/* Create a frames command without data. */
+	c.filename = "test";
+	c.tx_id = 0;
+	c.truncate = 0;
+	c.is_commit = 0;
+	c.frames.n_pages = 0;
+	c.frames.page_size = 4096;
+	c.frames.data = NULL;
+	rv = command__encode(COMMAND_FRAMES, &c, &buf);
+
+	/* Apply the command and expect it to fail. */
+	rv = fsm->apply(fsm, &buf, &result);
+	munit_assert_int(rv, !=, 0);
+	munit_assert_ptr_null(result);
+
+	raft_free(buf.base);
+	return MUNIT_OK;
+}
+
+TEST(fsm, applyUnknownTypeFail, setUp, tearDown, 0, NULL)
+{
+	int rv;
+	struct command_frames c;
+	struct raft_buffer buf;
+	struct fixture *f = data;
+	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
+	void* result = (void*)(uintptr_t)0xDEADBEEF;
+
+	/* Create a frames command without data. */
+	c.filename = "test";
+	c.tx_id = 0;
+	c.truncate = 0;
+	c.is_commit = 0;
+	c.frames.n_pages = 0;
+	c.frames.page_size = 4096;
+	c.frames.data = NULL;
+	rv = command__encode(COMMAND_FRAMES, &c, &buf);
+
+	/* Command type does not exist. */
+	((uint8_t*)(buf.base))[1] = COMMAND_CHECKPOINT + 8;
+
+	/* Apply the command and expect it to fail. */
+	rv = fsm->apply(fsm, &buf, &result);
+	munit_assert_int(rv, ==, DQLITE_PROTO);
+	munit_assert_ptr_null(result);
+
+	raft_free(buf.base);
 	return MUNIT_OK;
 }

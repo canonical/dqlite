@@ -315,7 +315,7 @@ static int fsm__apply(struct raft_fsm *fsm,
 	int rc;
 	rc = command__decode(buf, &type, &command);
 	if (rc != 0) {
-		// errorf(f->logger, "fsm: decode command: %d", rc);
+		tracef("fsm: decode command: %d", rc);
 		goto err;
 	}
 
@@ -334,17 +334,12 @@ static int fsm__apply(struct raft_fsm *fsm,
 			break;
 		default:
 			rc = RAFT_MALFORMED;
-			goto err_after_command_decode;
+			break;
 	}
-	raft_free(command);
 
-	*result = NULL;
-
-	return 0;
-
-err_after_command_decode:
 	raft_free(command);
 err:
+	*result = NULL;
 	return rc;
 }
 
