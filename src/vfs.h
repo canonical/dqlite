@@ -54,4 +54,15 @@ int VfsDatabaseNumPages(sqlite3_vfs *vfs,
 			const char* filename,
 			uint32_t *n);
 
+struct vfs_database_memory_usage
+{
+	unsigned database_n_pages;
+	unsigned wal_n_frames;
+	unsigned wal_n_tx;
+	unsigned shm_n_regions;
+};
+
+struct vfs_database_memory_usage VfsDatabaseMemoryUsage(sqlite3_vfs *vfs,
+							const char *filename);
+
 #endif /* VFS_H_ */

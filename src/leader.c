@@ -450,3 +450,105 @@ int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
 	}
 	return 0;
 }
+
+static void resetBarrierCb(struct barrier *barrier, int status)
+{
+	tracef("reset barrier cb status:%d", status);
+	struct exec *exec = barrier->data;
+	struct leader *l = exec->leader;
+	sqlite3_vfs *vfs;
+	dqlite_vfs_frame *frames;
+	struct vfs_database_memory_usage usage;
+	unsigned n, i;
+	int rv;
+
+	if (status != 0) {
+		rv = status;
+		goto finish;
+	}
+
+#if SQLITE_VERSION_NUMBER >= 302400
+	vfs = sqlite3_vfs_find(l->db->config->name);
+	assert(vfs != NULL);
+	usage = VfsDatabaseMemoryUsage(vfs, l->db->filename);
+	tracef("reset barrier usage before database_n_pages=%u wal_n_frames=%u wal_n_tx=%u shm_n_regions=%u",
+	       usage.database_n_pages,
+	       usage.wal_n_frames,
+	       usage.wal_n_tx,
+	       usage.shm_n_regions);
+
+	rv = sqlite3_db_config(l->conn, SQLITE_DBCONFIG_RESET_DATABASE, 1, 0);
+	assert(rv == 0);
+	exec->status = sqlite3_exec(l->conn, "VACUUM", NULL, NULL, NULL);
+	rv = sqlite3_db_config(l->conn, SQLITE_DBCONFIG_RESET_DATABASE, 0, 0);
+	assert(rv == 0);
+
+	rv = VfsPoll(vfs, l->db->filename, &frames, &n);
+	if (rv != 0 || n == 0) {
+		goto finish;
+	}
+
+	rv = leaderApplyFrames(exec, frames, n);
+	for (i = 0; i < n; i++) {
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
+	if (rv != 0) {
+		VfsAbort(vfs, l->db->filename);
+		goto finish;
+	}
+
+	usage = VfsDatabaseMemoryUsage(vfs, l->db->filename);
+	tracef("reset barrier usage after database_n_pages=%u wal_n_frames=%u wal_n_tx=%u shm_n_regions=%u",
+	       usage.database_n_pages,
+	       usage.wal_n_frames,
+	       usage.wal_n_tx,
+	       usage.shm_n_regions);
+	return;
+#else
+	tracef("reset barrier cb not supported");
+	(void)vfs;
+	(void)frames;
+	(void)n;
+	(void)i;
+	rv = DQLITE_ERROR;
+#endif
+
+finish:
+	if (rv != 0) {
+		l->exec->status = rv;
+	}
+	leaderExecDone(l->exec);
+}
+
+int leader__reset(struct leader *l, struct exec *exec, exec_cb cb)
+{
+	tracef("leader reset");
+	int version = sqlite3_libversion_number();
+	int rv;
+
+	if (version < 302400) {
+		tracef("leader reset not supported");
+		return DQLITE_ERROR;
+	}
+
+	exec->leader = l;
+	exec->barrier.data = exec;
+	exec->barrier.cb = NULL;
+	exec->stmt = NULL;
+	exec->cb = cb;
+
+	if (l->exec != NULL) {
+		tracef("leader reset busy");
+		return SQLITE_BUSY;
+	}
+	l->exec = exec;
+
+	rv = leader__barrier(l, &exec->barrier, resetBarrierCb);
+	if (rv != 0) {
+                tracef("raft barrier failed %d", rv);
+		l->exec = NULL;
+		return rv;
+	}
+	return 0;
+}

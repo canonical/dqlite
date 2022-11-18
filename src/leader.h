@@ -108,4 +108,6 @@ int leader__exec(struct leader *l,
  */
 int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb);
 
+int leader__reset(struct leader *l, struct exec *exec, exec_cb cb);
+
 #endif /* LEADER_H_*/

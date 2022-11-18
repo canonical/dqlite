@@ -1268,6 +1268,45 @@ static int handle_weight(struct handle *req)
 	return 0;
 }
 
+static void resetCb(struct exec *exec, int status)
+{
+	tracef("reset cb status:%d", status);
+	struct gateway *g = exec->data;
+	struct handle *req = g->req;
+	struct response_empty response = {0};
+	g->req = NULL;
+	if (status != 0) {
+		failure(req, status, "database reset failed");
+		return;
+	}
+	/* status and exec->status should always match. */
+	assert(exec->status == 0);
+	SUCCESS(empty, EMPTY);
+}
+
+static int handle_reset(struct handle *req)
+{
+	tracef("handle reset");
+	struct cursor *cursor = &req->cursor;
+	struct gateway *g = req->gateway;
+	int rc;
+
+	START_V0(reset, empty);
+	(void)response;
+	CHECK_LEADER(req);
+	LOOKUP_DB(request.db_id);
+	FAIL_IF_CHECKPOINTING;
+
+	g->req = req;
+	rc = leader__reset(g->leader, &g->exec, resetCb);
+	if (rc != 0) {
+		tracef("leader reset failed %d", rc);
+		g->req = NULL;
+		return rc;
+	}
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,

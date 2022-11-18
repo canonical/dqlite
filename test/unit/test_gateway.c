@@ -2077,6 +2077,64 @@ TEST_CASE(request_cluster, unrecognizedFormat, NULL)
 	return MUNIT_OK;
 }
 
+#if SQLITE_VERSION_NUMBER >= 302400
+
+/******************************************************************************
+ *
+ * reset
+ *
+ ******************************************************************************/
+
+struct reset_fixture
+{
+	FIXTURE;
+	struct request_reset request;
+	struct response_empty response;
+};
+
+TEST_SUITE(reset);
+TEST_SETUP(reset)
+{
+	struct reset_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	CLUSTER_ELECT(0);
+	OPEN;
+	return f;
+}
+TEST_TEAR_DOWN(reset)
+{
+	struct reset_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(reset, simple, NULL)
+{
+	struct reset_fixture *f = data;
+	char buf[100];
+	int i;
+	(void)params;
+	EXEC("CREATE TABLE test (n INT)");
+	for (i = 0; i < 100; i += 1) {
+		snprintf(buf, 100, "INSERT INTO test VALUES (%d)", i);
+		EXEC(buf);
+	}
+	f->request.db_id = 0;
+	ENCODE(&f->request, reset);
+	HANDLE(RESET);
+	WAIT;
+	ASSERT_CALLBACK(0, EMPTY);
+
+	CLUSTER_DEPOSE;
+	SELECT(1);
+	CLUSTER_ELECT(1);
+	OPEN;
+	EXEC("CREATE TABLE test (n INT)");
+	return MUNIT_OK;
+}
+
+#endif /* SQLITE_VERSION_NUMBER >= 302400 */
+
 /******************************************************************************
  *
  * invalid

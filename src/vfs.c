@@ -2702,3 +2702,19 @@ int VfsRestore(sqlite3_vfs *vfs,
 
 	return 0;
 }
+
+struct vfs_database_memory_usage VfsDatabaseMemoryUsage(sqlite3_vfs *vfs, const char *filename)
+{
+	struct vfs *v;
+	struct vfsDatabase *d;
+	struct vfs_database_memory_usage usage = {0};
+
+	v = (struct vfs *)(vfs->pAppData);
+	d = vfsDatabaseLookup(v, filename);
+	assert(d != NULL);
+	usage.database_n_pages = d->n_pages;
+	usage.wal_n_frames = d->wal.n_frames;
+	usage.wal_n_tx = d->wal.n_tx;
+	usage.shm_n_regions = d->shm.n_regions;
+	return usage;
+}
