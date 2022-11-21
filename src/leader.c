@@ -467,7 +467,7 @@ static void resetBarrierCb(struct barrier *barrier, int status)
 		goto finish;
 	}
 
-#if SQLITE_VERSION_NUMBER >= 302400
+#if SQLITE_VERSION_NUMBER >= 3024000
 	vfs = sqlite3_vfs_find(l->db->config->name);
 	assert(vfs != NULL);
 	usage = VfsDatabaseMemoryUsage(vfs, l->db->filename);
@@ -480,6 +480,7 @@ static void resetBarrierCb(struct barrier *barrier, int status)
 	rv = sqlite3_db_config(l->conn, SQLITE_DBCONFIG_RESET_DATABASE, 1, 0);
 	assert(rv == 0);
 	exec->status = sqlite3_exec(l->conn, "VACUUM", NULL, NULL, NULL);
+	tracef("reset barrier cb exec status:%d", exec->status);
 	rv = sqlite3_db_config(l->conn, SQLITE_DBCONFIG_RESET_DATABASE, 0, 0);
 	assert(rv == 0);
 
@@ -509,6 +510,7 @@ static void resetBarrierCb(struct barrier *barrier, int status)
 	tracef("reset barrier cb not supported");
 	(void)vfs;
 	(void)frames;
+	(void)usage;
 	(void)n;
 	(void)i;
 	rv = DQLITE_ERROR;

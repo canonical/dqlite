@@ -2077,7 +2077,7 @@ TEST_CASE(request_cluster, unrecognizedFormat, NULL)
 	return MUNIT_OK;
 }
 
-#if SQLITE_VERSION_NUMBER >= 302400
+#if SQLITE_VERSION_NUMBER >= 3024000
 
 /******************************************************************************
  *
@@ -2133,7 +2133,7 @@ TEST_CASE(reset, simple, NULL)
 	return MUNIT_OK;
 }
 
-#endif /* SQLITE_VERSION_NUMBER >= 302400 */
+#endif /* SQLITE_VERSION_NUMBER >= 3024000 */
 
 /******************************************************************************
  *
