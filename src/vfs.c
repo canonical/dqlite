@@ -3439,7 +3439,7 @@ static int vfsDiskDatabaseRestore(struct vfsDatabase *d,
 	size_t n_left; /* amount of data left to write */
 
 	fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY, 0600);
-	if (fd == 0) {
+	if (fd == -1) {
 		tracef("fopen failed filename:%s", filename);
 		return -1;
 	}
