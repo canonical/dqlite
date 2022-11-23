@@ -5,7 +5,7 @@
 void test_sqlite_setup(const MunitParameter params[]) {
 	int rc;
 	(void)params;
-	rc = sqlite3_shutdown();
+	rc = sqlite3_initialize();
 	if (rc != SQLITE_OK) {
 		munit_errorf("sqlite_init(): %s", sqlite3_errstr(rc));
 	}

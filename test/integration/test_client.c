@@ -12,6 +12,15 @@
 
 SUITE(client);
 
+static char* bools[] = {
+    "0", "1", NULL
+};
+
+static MunitParameterEnum client_params[] = {
+    { "disk_mode", bools },
+    { NULL, NULL },
+};
+
 struct fixture
 {
 	struct test_server server;
@@ -42,7 +51,7 @@ static void tearDown(void *data)
 	free(f);
 }
 
-TEST(client, exec, setUp, tearDown, 0, NULL)
+TEST(client, exec, setUp, tearDown, 0, client_params)
 {
 	struct fixture *f = data;
 	unsigned stmt_id;
@@ -54,7 +63,7 @@ TEST(client, exec, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-TEST(client, query, setUp, tearDown, 0, NULL)
+TEST(client, query, setUp, tearDown, 0, client_params)
 {
 	struct fixture *f = data;
 	unsigned stmt_id;

@@ -13,6 +13,7 @@ struct db
 {
 	struct config *config; /* Dqlite configuration */
 	char *filename;        /* Database filename */
+	char *path;            /* Used for on-disk db */
 	sqlite3 *follower;     /* Follower connection */
 	queue leaders;         /* Open leader connections */
 	unsigned tx_id;        /* Current ongoing transaction ID, if any */
@@ -24,8 +25,9 @@ struct db
  * Initialize a database object.
  *
  * The given @filename will be copied.
+ * Return 0 on success.
  */
-void db__init(struct db *db, struct config *config, const char *filename);
+int db__init(struct db *db, struct config *config, const char *filename);
 
 /**
  * Release all memory associated with a database object.

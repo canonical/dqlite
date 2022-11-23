@@ -59,6 +59,15 @@
  *
  ******************************************************************************/
 
+static char* bools[] = {
+    "0", "1", NULL
+};
+
+static MunitParameterEnum membership_params[] = {
+    { "disk_mode", bools },
+    { NULL, NULL },
+};
+
 SUITE(membership)
 
 struct fixture
@@ -80,7 +89,7 @@ static void tearDown(void *data)
 	free(f);
 }
 
-TEST(membership, join, setUp, tearDown, 0, NULL)
+TEST(membership, join, setUp, tearDown, 0, membership_params)
 {
 	struct fixture *f = data;
 	unsigned id = 2;
@@ -122,7 +131,7 @@ static bool last_applied_cond(struct id_last_applied arg)
 	return arg.f->servers[arg.id].dqlite->raft.last_applied >= arg.last_applied;
 }
 
-TEST(membership, transfer, setUp, tearDown, 0, NULL)
+TEST(membership, transfer, setUp, tearDown, 0, membership_params)
 {
 	struct fixture *f = data;
 	unsigned id = 2;
@@ -166,7 +175,7 @@ TEST(membership, transfer, setUp, tearDown, 0, NULL)
 }
 
 /* Transfer leadership away from a member that has a pending transaction */
-TEST(membership, transferPendingTransaction, setUp, tearDown, 0, NULL)
+TEST(membership, transferPendingTransaction, setUp, tearDown, 0, membership_params)
 {
 	struct fixture *f = data;
 	unsigned id = 2;
@@ -273,7 +282,7 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 }
 
 /* Transfer leadership back and forth from a member that has a pending transaction */
-TEST(membership, transferTwicePendingTransaction, setUp, tearDown, 0, NULL)
+TEST(membership, transferTwicePendingTransaction, setUp, tearDown, 0, membership_params)
 {
 	struct fixture *f = data;
 	unsigned id = 2;

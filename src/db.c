@@ -7,23 +7,53 @@
 #include "db.h"
 #include "tracing.h"
 
+/* Limit taken from sqlite unix vfs. */
+#define MAX_PATHNAME 512
+
 /* Open a SQLite connection and set it to follower mode. */
 static int open_follower_conn(const char *filename,
 			      const char *vfs,
 			      unsigned page_size,
 			      sqlite3 **conn);
 
-void db__init(struct db *db, struct config *config, const char *filename)
+int db__init(struct db *db, struct config *config, const char *filename)
 {
-        tracef("db init %s", filename);
+	tracef("db init %s", filename);
+	int rv;
+
 	db->config = config;
 	db->filename = sqlite3_malloc((int)(strlen(filename) + 1));
-	assert(db->filename != NULL); /* TODO: return an error instead */
+	if (db->filename == NULL) {
+		rv = DQLITE_NOMEM;
+		goto err;
+	}
 	strcpy(db->filename, filename);
+	db->path = sqlite3_malloc(MAX_PATHNAME + 1);
+	if (db->path == NULL) {
+		rv = DQLITE_NOMEM;
+		goto err_after_filename_alloc;
+	}
+	if (db->config->disk) {
+		rv = snprintf(db->path, MAX_PATHNAME + 1, "%s/%s", db->config->dir, db->filename);
+	} else {
+		rv = snprintf(db->path, MAX_PATHNAME + 1, "%s", db->filename);
+	}
+	if (rv < 0 || rv >= MAX_PATHNAME + 1) {
+		goto err_after_path_alloc;
+	}
+
 	db->follower = NULL;
 	db->tx_id = 0;
 	db->read_lock = 0;
 	QUEUE__INIT(&db->leaders);
+	return 0;
+
+err_after_path_alloc:
+	sqlite3_free(db->path);
+err_after_filename_alloc:
+	sqlite3_free(db->filename);
+err:
+	return rv;
 }
 
 void db__close(struct db *db)
@@ -34,6 +64,7 @@ void db__close(struct db *db)
 		rc = sqlite3_close(db->follower);
 		assert(rc == SQLITE_OK);
 	}
+	sqlite3_free(db->path);
 	sqlite3_free(db->filename);
 }
 
@@ -41,12 +72,9 @@ int db__open_follower(struct db *db)
 {
 	int rc;
 	assert(db->follower == NULL);
-	rc = open_follower_conn(db->filename, db->config->name,
+	rc = open_follower_conn(db->path, db->config->name,
 				db->config->page_size, &db->follower);
-	if (rc != 0) {
-		return rc;
-	}
-	return 0;
+	return rc;
 }
 
 static int open_follower_conn(const char *filename,
@@ -59,8 +87,10 @@ static int open_follower_conn(const char *filename,
 	char *msg = NULL;
 	int rc;
 
+	tracef("open follower conn: %s page_size:%u", filename, page_size);
 	rc = sqlite3_open_v2(filename, conn, flags, vfs);
 	if (rc != SQLITE_OK) {
+		tracef("open_v2 failed %d", rc);
 		goto err;
 	}
 

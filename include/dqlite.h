@@ -198,6 +198,16 @@ int dqlite_node_set_snapshot_params(dqlite_node *n, unsigned snapshot_threshold,
                                     unsigned snapshot_trailing);
 
 /**
+ * WARNING: This is an experimental API.
+ *
+ * By default dqlite holds the SQLite database file and WAL in memory. By enabling
+ * disk-mode, dqlite will hold the SQLite database file on-disk while keeping the WAL
+ * in memory. Has to be called after `dqlite_node_create` and before
+ * `dqlite_node_start`.
+ */
+int dqlite_node_enable_disk_mode(dqlite_node *n);
+
+/**
  * Start a dqlite node.
  *
  * A background thread will be spawned which will run the node's main loop. If
@@ -305,6 +315,8 @@ dqlite_node_id dqlite_generate_node_id(const char *address);
  */
 int dqlite_vfs_init(sqlite3_vfs *vfs, const char *name);
 
+int dqlite_vfs_enable_disk(sqlite3_vfs *vfs);
+
 /**
  * Release all memory used internally by a SQLite VFS object that was
  * initialized using @qlite_vfs_init.
@@ -386,6 +398,11 @@ int dqlite_vfs_shallow_snapshot(sqlite3_vfs *vfs,
 				struct dqlite_buffer bufs[],
 				unsigned n);
 
+int dqlite_vfs_snapshot_disk(sqlite3_vfs *vfs,
+				const char *filename,
+				struct dqlite_buffer bufs[],
+				unsigned n);
+
 /**
  * Return the number of database pages (excluding WAL).
  */
@@ -401,4 +418,12 @@ int dqlite_vfs_restore(sqlite3_vfs *vfs,
 		       const void *data,
 		       size_t n);
 
+/**
+ * Restore a snapshot of the main database file and of the WAL file.
+ */
+int dqlite_vfs_restore_disk(sqlite3_vfs *vfs,
+		       const char *filename,
+		       const void *data,
+		       size_t main_size,
+		       size_t wal_size);
 #endif /* DQLITE_H */

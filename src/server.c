@@ -10,6 +10,7 @@
 #include "fsm.h"
 #include "lib/addr.h"
 #include "lib/assert.h"
+#include "lib/fs.h"
 #include "logger.h"
 #include "protocol.h"
 #include "tracing.h"
@@ -21,16 +22,28 @@
 /* Special ID for the bootstrap node. Equals to raft_digest("1", 0). */
 #define BOOTSTRAP_ID 0x2dc171858c3155be
 
+#define DATABASE_DIR_FMT "%s/database"
+
 int dqlite__init(struct dqlite_node *d,
 		 dqlite_node_id id,
 		 const char *address,
 		 const char *dir)
 {
 	int rv;
+	char db_dir_path[1024];
+
 	d->initialized = false;
 	memset(d->errmsg, 0, sizeof d->errmsg);
-	rv = config__init(&d->config, id, address);
+
+	rv = snprintf(db_dir_path, sizeof db_dir_path, DATABASE_DIR_FMT, dir);
+	if (rv == -1 || rv >= (int)(sizeof db_dir_path)) {
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "failed to init: snprintf(rv:%d)", rv);
+		goto err;
+	}
+
+	rv = config__init(&d->config, id, address, db_dir_path);
 	if (rv != 0) {
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "config__init(rv:%d)", rv);
 		goto err;
 	}
 	rv = VfsInit(&d->vfs, d->config.name);
@@ -162,15 +175,12 @@ int dqlite_node_create(dqlite_node_id id,
 		       const char *data_dir,
 		       dqlite_node **t)
 {
-	int rv;
-
 	*t = sqlite3_malloc(sizeof **t);
 	if (*t == NULL) {
 		return DQLITE_NOMEM;
 	}
 
-	rv = dqlite__init(*t, id, address, data_dir);
-	return rv;
+	return dqlite__init(*t, id, address, data_dir);
 }
 
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
@@ -317,24 +327,49 @@ int dqlite_node_set_failure_domain(dqlite_node *n, unsigned long long code)
 int dqlite_node_set_snapshot_params(dqlite_node *n, unsigned snapshot_threshold,
                                     unsigned snapshot_trailing)
 {
-    if (n->running) {
-        return DQLITE_MISUSE;
-    }
+	if (n->running) {
+		return DQLITE_MISUSE;
+	}
 
-    if (snapshot_trailing < 4) {
-        return DQLITE_MISUSE;
-    }
+	if (snapshot_trailing < 4) {
+		return DQLITE_MISUSE;
+	}
 
-    /* This is a safety precaution and allows to recover data from the second
-     * last raft snapshot and segment files in case the last raft snapshot is
-     * unusable. */
-    if (snapshot_trailing < snapshot_threshold) {
-        return DQLITE_MISUSE;
-    }
+	/* This is a safety precaution and allows to recover data from the second
+	 * last raft snapshot and segment files in case the last raft snapshot is
+	 * unusable. */
+	if (snapshot_trailing < snapshot_threshold) {
+		return DQLITE_MISUSE;
+	}
 
-    raft_set_snapshot_threshold(&n->raft, snapshot_threshold);
-    raft_set_snapshot_trailing(&n->raft, snapshot_trailing);
-    return 0;
+	raft_set_snapshot_threshold(&n->raft, snapshot_threshold);
+	raft_set_snapshot_trailing(&n->raft, snapshot_trailing);
+	return 0;
+}
+
+int dqlite_node_enable_disk_mode(dqlite_node *n)
+{
+	int rv;
+
+	if (n->running) {
+		return DQLITE_MISUSE;
+	}
+
+	rv = dqlite_vfs_enable_disk(&n->vfs);
+	if (rv != 0) {
+		return rv;
+	}
+
+	n->registry.config->disk = true;
+
+	/* Close the default fsm and initialize the disk one. */
+	fsm__close(&n->raft_fsm);
+	rv = fsm__init_disk(&n->raft_fsm, &n->config, &n->registry);
+	if (rv != 0) {
+		return rv;
+	}
+
+	return 0;
 }
 
 static int maybeBootstrap(dqlite_node *d,
@@ -652,12 +687,42 @@ static bool taskReady(struct dqlite_node *d)
 	return d->running;
 }
 
+static int dqliteDatabaseDirSetup(dqlite_node *t)
+{
+	int rv;
+	if (!t->config.disk) {
+		// nothing to do
+		return 0;
+	}
+
+	rv = FsEnsureDir(t->config.dir);
+	if (rv != 0) {
+		snprintf(t->errmsg, DQLITE_ERRMSG_BUF_SIZE, "Error creating database dir: %d", rv);
+		return rv;
+	}
+
+	rv = FsRemoveDirFiles(t->config.dir);
+	if (rv != 0) {
+		snprintf(t->errmsg, DQLITE_ERRMSG_BUF_SIZE, "Error removing files in database dir: %d", rv);
+		return rv;
+	}
+
+	return rv;
+}
+
 int dqlite_node_start(dqlite_node *t)
 {
 	int rv;
+	tracef("dqlite node start");
 
 	dqliteTracingMaybeEnable(true);
-	tracef("dqlite node start");
+
+	rv = dqliteDatabaseDirSetup(t);
+	if (rv != 0) {
+		tracef("database dir setup failed %s", t->errmsg);
+		goto err;
+	}
+
 	rv = maybeBootstrap(t, t->config.id, t->config.address);
 	if (rv != 0) {
 		tracef("bootstrap failed %d", rv);

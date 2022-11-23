@@ -115,7 +115,7 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 	int rc;
 	l->db = db;
 	l->raft = raft;
-	rc = openConnection(db->filename, db->config->name,
+	rc = openConnection(db->path, db->config->name,
 			    db->config->page_size, &l->conn);
 	if (rc != 0) {
                 tracef("open failed %d", rc);
@@ -261,7 +261,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 				l->exec->status = SQLITE_IOERR;
 				break;
 		}
-		VfsAbort(vfs, l->db->filename);
+		VfsAbort(vfs, l->db->path);
 	}
 
 	raft_free(apply);
@@ -344,7 +344,7 @@ static void leaderExecV2(struct exec *req)
 
 	req->status = sqlite3_step(req->stmt);
 
-	rv = VfsPoll(vfs, l->db->filename, &frames, &n);
+	rv = VfsPoll(vfs, db->path, &frames, &n);
 	if (rv != 0 || n == 0) {
                 tracef("vfs poll");
 		goto finish;
@@ -356,7 +356,7 @@ static void leaderExecV2(struct exec *req)
 	}
 	sqlite3_free(frames);
 	if (rv != 0) {
-		VfsAbort(vfs, l->db->filename);
+		VfsAbort(vfs, l->db->path);
 		goto finish;
 	}
 
