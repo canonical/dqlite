@@ -3392,17 +3392,18 @@ int VfsDiskSnapshotDb(sqlite3_vfs *vfs, const char *path, struct dqlite_buffer *
 
 	/* mmap the database file */
 	fd = open(path, O_RDONLY);
-        if (fd == -1) {
-	    tracef("failed to open %s", path);
-	    rv = SQLITE_IOERR;
-	    goto err;
-        }
+	if (fd == -1) {
+		tracef("failed to open %s", path);
+		rv = SQLITE_IOERR;
+		goto err;
+	}
 
 	rv = fstat(fd, &sb);
 	if (rv == -1) {
-	    tracef("fstat failed path:%s fd:%d", path, fd);
-	    rv = SQLITE_IOERR;
-	    goto err_after_open;
+		tracef("fstat failed path:%s fd:%d", path, fd);
+		close(fd);
+		rv = SQLITE_IOERR;
+		goto err;
 	}
 
 	/* TODO database size limited to whatever fits in a size_t. Multiple
@@ -3410,9 +3411,9 @@ int VfsDiskSnapshotDb(sqlite3_vfs *vfs, const char *path, struct dqlite_buffer *
 	 * throughout the codebase. */
 	addr = mmap(NULL, (size_t)sb.st_size, PROT_READ, MAP_SHARED, fd, 0);
 	close(fd);
-        if (addr == MAP_FAILED) {
-	    rv = SQLITE_IOERR;
-	    goto err_after_open;
+	if (addr == MAP_FAILED) {
+		rv = SQLITE_IOERR;
+		goto err;
 	}
 
 	buf->base = addr;
@@ -3420,8 +3421,6 @@ int VfsDiskSnapshotDb(sqlite3_vfs *vfs, const char *path, struct dqlite_buffer *
 
 	return 0;
 
-err_after_open:
-	close(fd);
 err:
 	return rv;
 }
