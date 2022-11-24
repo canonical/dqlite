@@ -1071,12 +1071,19 @@ static int decodeDiskDatabase(struct fsm *f, struct cursor *cursor)
 		db->follower = NULL;
 	}
 
-	if (header.main_size + header.wal_size > SIZE_MAX) {
-		tracef("main_size + wal_size would overflow max DB size");
+	/* The last check can overflow, but we would already be lost anyway, as
+	 * the raft snapshot restore API only supplies one buffer and the data
+	 * has to fit in size_t bytes anyway. */
+	if (header.main_size > SIZE_MAX
+	    || header.wal_size > SIZE_MAX
+	    || header.main_size + header.wal_size > SIZE_MAX) {
+		tracef("main_size:%"PRIu64 "B wal_size:%"PRIu64 "B would overflow max DB size (%zuB)",
+		       header.main_size, header.wal_size, SIZE_MAX);
 		return -1;
 	}
 
-	rv = VfsDiskRestore(vfs, db->path, cursor->p, header.main_size, header.wal_size);
+	/* Due to the check above, these casts are safe. */
+	rv = VfsDiskRestore(vfs, db->path, cursor->p, (size_t)header.main_size, (size_t)header.wal_size);
 	if (rv != 0) {
 		tracef("VfsDiskRestore %d", rv);
 		return rv;
