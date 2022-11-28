@@ -790,7 +790,7 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 	page_size = vfsDatabaseGetPageSize(d);
 	assert(page_size > 0);
 
-	if (offset < page_size) {
+	if (offset < (int)page_size) {
 		/* Reading from page 1. We expect the read to be
 		 * at most page_size bytes. */
 		assert(amount <= (int)page_size);
@@ -800,8 +800,8 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 		 * page read, with an offset that starts exectly
 		 * at the page boundary. */
 		assert(amount == (int)page_size);
-		assert(((unsigned)offset % page_size) == 0);
-		pgno = ((unsigned)offset / page_size) + 1;
+		assert((offset % (int)page_size) == 0);
+		pgno = (unsigned)(offset / (int)page_size) + 1;
 	}
 
 	assert(pgno > 0);
@@ -810,7 +810,7 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 
 	if (pgno == 1) {
 		/* Read the desired part of page 1. */
-		memcpy(buf, page + offset, (size_t)amount);
+		memcpy(buf, (char*)page + offset, (size_t)amount);
 	} else {
 		/* Read the full page. */
 		memcpy(buf, page, (size_t)amount);
@@ -855,8 +855,8 @@ static int vfsWalRead(struct vfsWal *w,
 	 * a checksum read, a page read or a full frame read. */
 	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
 		assert(((offset - VFS__WAL_HEADER_SIZE) %
-			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
+			((int)page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+		index = (unsigned)formatWalCalcFrameIndex((int)page_size, offset);
 	} else if (amount == sizeof(uint32_t) * 2) {
 		if (offset == FORMAT__WAL_FRAME_HDR_SIZE) {
 			/* Read the checksum from the WAL
@@ -865,18 +865,18 @@ static int vfsWalRead(struct vfsWal *w,
 			return SQLITE_OK;
 		}
 		assert(((offset - 16 - VFS__WAL_HEADER_SIZE) %
-			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		index = ((unsigned)offset - 16 - VFS__WAL_HEADER_SIZE) /
-			    (page_size + FORMAT__WAL_FRAME_HDR_SIZE) +
+			((int)page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+		index = (unsigned)((offset - 16 - VFS__WAL_HEADER_SIZE) /
+			    ((int)page_size + FORMAT__WAL_FRAME_HDR_SIZE)) +
 			1;
 	} else if (amount == (int)page_size) {
 		assert(((offset - VFS__WAL_HEADER_SIZE -
 			 FORMAT__WAL_FRAME_HDR_SIZE) %
-			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
+			((int)page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+		index = (unsigned)formatWalCalcFrameIndex((int)page_size, offset);
 	} else {
 		assert(amount == (FORMAT__WAL_FRAME_HDR_SIZE + (int)page_size));
-		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
+		index = (unsigned)formatWalCalcFrameIndex((int)page_size, offset);
 	}
 
 	if (index == 0) {
@@ -913,6 +913,7 @@ static int vfsFileRead(sqlite3_file *file,
 
 	assert(buf != NULL);
 	assert(amount > 0);
+	assert(offset >= 0);
 	assert(f != NULL);
 
 	if (f->temp != NULL) {
@@ -979,12 +980,12 @@ static int vfsDatabaseWrite(struct vfsDatabase *d,
 
 		/* For pages beyond the first we expect offset to be a multiple
 		 * of the page size. */
-		assert((offset % page_size) == 0);
+		assert((offset % (int)page_size) == 0);
 
 		/* We expect that SQLite writes a page at time. */
 		assert(amount == (int)page_size);
 
-		pgno = ((unsigned)offset / page_size) + 1;
+		pgno = ((unsigned)(offset / (int)page_size)) + 1;
 	}
 
 	rc = vfsDatabaseGetPage(d, page_size, pgno, &page);
@@ -1026,9 +1027,9 @@ static int vfsWalWrite(struct vfsWal *w,
 	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
 		/* Frame header write. */
 		assert(((offset - VFS__WAL_HEADER_SIZE) %
-			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+			((int)page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 
-		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
+		index = (unsigned)formatWalCalcFrameIndex((int)page_size, offset);
 
 		vfsWalFrameGet(w, index, page_size, &frame);
 		if (frame == NULL) {
@@ -1040,9 +1041,9 @@ static int vfsWalWrite(struct vfsWal *w,
 		assert(amount == (int)page_size);
 		assert(((offset - VFS__WAL_HEADER_SIZE -
 			 FORMAT__WAL_FRAME_HDR_SIZE) %
-			(page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
+			((int)page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
 
-		index = formatWalCalcFrameIndex(page_size, (unsigned)offset);
+		index = (unsigned)formatWalCalcFrameIndex((int)page_size, offset);
 
 		/* The header for the this frame must already
 		 * have been written, so the page is there. */
@@ -1143,7 +1144,7 @@ static size_t vfsWalFileSize(struct vfsWal *w)
 		uint32_t page_size;
 		page_size = vfsWalGetPageSize(w);
 		size += VFS__WAL_HEADER_SIZE;
-		size += w->n_frames * (FORMAT__WAL_FRAME_HDR_SIZE + page_size);
+		size += w->n_frames * ((unsigned)FORMAT__WAL_FRAME_HDR_SIZE + page_size);
 	}
 	return size;
 }

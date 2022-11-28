@@ -123,7 +123,7 @@ static void maybeCheckpoint(struct db *db)
 	assert(rv == SQLITE_OK); /* Should never fail */
 
 	/* Calculate the number of frames. */
-	pages = ((unsigned)size - 32) / (24 + page_size);
+	pages = (unsigned)((size - 32) / (24 + page_size));
 
 	/* Check if the size of the WAL is beyond the threshold. */
 	if (pages < db->config->checkpoint_threshold) {
