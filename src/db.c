@@ -100,6 +100,16 @@ static int open_follower_conn(const char *filename,
 		goto err;
 	}
 
+	/* The vfs, db, gateway, and leader code currently assumes that
+	 * each connection will operate on only one DB file/WAL file
+	 * pair. Make sure that the client can't use ATTACH DATABASE to
+	 * break this assumption. We apply the same limit in openConnection
+	 * in leader.c.
+	 *
+	 * Note, 0 instead of 1 -- apparently the "initial database" is not
+	 * counted when evaluating this limit. */
+	sqlite3_limit(*conn, SQLITE_LIMIT_ATTACHED, 0);
+
 	/* Set the page size. */
 	sprintf(pragma, "PRAGMA page_size=%d", page_size);
 	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);

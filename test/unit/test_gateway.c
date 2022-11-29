@@ -1658,6 +1658,20 @@ TEST_CASE(exec_sql, multi, NULL)
 	return MUNIT_OK;
 }
 
+/* Exec an ATTACH DATABASE statement -- this should fail. */
+TEST_CASE(exec_sql, attach, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "ATTACH DATABASE foo AS foo";
+	ENCODE(&f->request, exec_sql);
+	HANDLE(EXEC_SQL);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR, "too many attached databases - max 0");
+	return MUNIT_OK;
+}
+
 /* Exec an SQL text and close the gateway early. */
 TEST_CASE(exec_sql, closing, NULL)
 {
