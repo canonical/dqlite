@@ -104,6 +104,10 @@ endif
 if SANITIZE_ENABLED
   AM_CFLAGS += -fsanitize=address
 endif
+if BACKTRACE_ENABLED
+  AM_CFLAGS += -DDQLITE_ASSERT_WITH_BACKTRACE
+  AM_LDFLAGS += -lbacktrace
+endif
 
 if CODE_COVERAGE_ENABLED
 
