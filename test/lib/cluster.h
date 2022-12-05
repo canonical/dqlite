@@ -54,7 +54,7 @@ struct server
 		int _rv;                                                    \
 		SETUP_HEAP;                                                 \
 		SETUP_SQLITE;                                               \
-		_rv = raft_fixture_initialize(&f->cluster);                 \
+		_rv = raft_fixture_init(&f->cluster);                       \
 		munit_assert_int(_rv, ==, 0);                               \
 		for (_i = 0; _i < N_SERVERS; _i++) {                        \
 			SETUP_SERVER(_i, VERSION);                          \
