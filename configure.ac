@@ -28,6 +28,9 @@ AM_COND_IF(SANITIZE_ENABLED,
    [true],
    [AC_MSG_ERROR([address sanitizer not supported])]))
 
+AC_ARG_ENABLE(backtrace, AS_HELP_STRING([--enable-backtrace[=ARG]], [print backtrace on assertion failure [default=no]]))
+AM_CONDITIONAL(BACKTRACE_ENABLED, test "x$enable_backtrace" = "xyes")
+
 # Whether to enable code coverage.
 AX_CODE_COVERAGE
 
