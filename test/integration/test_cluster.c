@@ -170,3 +170,33 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	clientCloseRows(&rows);
 	return MUNIT_OK;
 }
+
+/* Insert a huge row, causing SQLite to allocate overflow pages. Then
+ * insert the same row again. (Reproducer for https://github.com/canonical/raft/issues/432.) */
+TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	unsigned stmt_id;
+	unsigned last_insert_id;
+	unsigned rows_affected;
+	char *sql;
+	ssize_t n;
+	size_t huge = 20000000;
+	(void)params;
+
+	HANDSHAKE;
+	OPEN;
+	PREPARE("CREATE TABLE IF NOT EXISTS model(key TEXT, value TEXT, UNIQUE(key))", &stmt_id);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	sql = munit_malloc(huge);
+	n = snprintf(sql, huge, "INSERT OR REPLACE INTO model (key, value) VALUES('my-key-1', '");
+	memset(sql + n, 'A', huge - n);
+	memcpy(sql + huge - 3, "')", 3);
+	PREPARE(sql, &stmt_id);
+	free(sql);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	/* Again */
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	return MUNIT_OK;
+
+}
