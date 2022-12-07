@@ -837,10 +837,6 @@ static int vfsWalRead(struct vfsWal *w,
 	unsigned index;
 	struct vfsFrame *frame;
 
-	if (w->n_frames == 0) {
-		return SQLITE_IOERR_SHORT_READ;
-	}
-
 	if (offset == 0) {
 		/* Read the header. */
 		assert(amount == VFS__WAL_HEADER_SIZE);
@@ -887,6 +883,11 @@ static int vfsWalRead(struct vfsWal *w,
 	}
 
 	frame = vfsWalFrameLookup(w, index);
+	if (frame == NULL) {
+		// Again, the requested page doesn't exist.
+		memset(buf, 0, (size_t)amount);
+		return SQLITE_IOERR_SHORT_READ;
+	}
 
 	if (amount == FORMAT__WAL_FRAME_HDR_SIZE) {
 		memcpy(buf, frame->header, (size_t)amount);
