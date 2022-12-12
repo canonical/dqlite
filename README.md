@@ -4,7 +4,7 @@ dqlite [![CI Tests](https://github.com/canonical/dqlite/actions/workflows/build-
 [English](./README.md)|[简体中文](./README_CH.md)
 
 [dqlite](https://dqlite.io) is a C library that implements an embeddable and replicated SQL database
-engine with high-availability and automatic failover.
+engine with high availability and automatic failover.
 
 The acronym "dqlite" stands for "distributed SQLite", meaning that dqlite extends
 [SQLite](https://sqlite.org/) with a network protocol that can connect together
