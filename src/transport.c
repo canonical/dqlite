@@ -248,6 +248,7 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 	i->connect.f = default_connect;
 	i->connect.arg = NULL;
 	i->accept_cb = NULL;
+	transport->version = 1;
 	transport->impl = i;
 	transport->init = impl_init;
 	transport->listen = impl_listen;
