@@ -5,6 +5,7 @@
 #include "./lib/assert.h"
 
 #include "command.h"
+#include "id.h"
 #include "leader.h"
 #include "tracing.h"
 #include "vfs.h"
@@ -13,6 +14,7 @@
  * be invoked. */
 static void leaderExecDone(struct exec *req)
 {
+	tracef("leader exec done id:%" PRIu64, req->id);
 	req->leader->exec = NULL;
 	if (req->cb != NULL) {
 		req->cb(req, req->status);
@@ -233,7 +235,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 				int status,
 				void *result)
 {
-        tracef("apply frames cb");
+	tracef("apply frames cb id:%" PRIu64, idExtract(req->req_id));
 	struct apply *apply = req->data;
 	struct leader *l = apply->leader;
 	if (l == NULL) {
@@ -290,6 +292,7 @@ static int leaderApplyFrames(struct exec *req,
 			     dqlite_vfs_frame *frames,
 			     unsigned n)
 {
+	tracef("leader apply frames id:%" PRIu64, req->id);
 	struct leader *l = req->leader;
 	struct db *db = l->db;
 	struct command_frames c;
@@ -321,6 +324,7 @@ static int leaderApplyFrames(struct exec *req,
 	apply->leader = req->leader;
 	apply->req.data = apply;
 	apply->type = COMMAND_FRAMES;
+	idSet(apply->req.req_id, req->id);
 
 	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
 	if (rv != 0) {
@@ -344,6 +348,7 @@ err:
 
 static void leaderExecV2(struct exec *req)
 {
+	tracef("leader exec v2 id:%" PRIu64, req->id);
 	struct leader *l = req->leader;
 	struct db *db = l->db;
 	sqlite3_vfs *vfs = sqlite3_vfs_find(db->config->name);
@@ -396,9 +401,10 @@ static void execBarrierCb(struct barrier *barrier, int status)
 int leader__exec(struct leader *l,
 		 struct exec *req,
 		 sqlite3_stmt *stmt,
+		 uint64_t id,
 		 exec_cb cb)
 {
-        tracef("leader exec");
+	tracef("leader exec id:%" PRIu64, id);
 	int rv;
 	if (l->exec != NULL) {
                 tracef("busy");
@@ -408,6 +414,7 @@ int leader__exec(struct leader *l,
 
 	req->leader = l;
 	req->stmt = stmt;
+	req->id = id;
 	req->cb = cb;
 	req->barrier.data = req;
 	req->barrier.cb = NULL;

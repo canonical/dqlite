@@ -9,6 +9,7 @@
 #endif
 
 #include "config.h"
+#include "id.h"
 #include "lib/assert.h"
 #include "logger.h"
 #include "registry.h"
@@ -31,11 +32,11 @@ struct dqlite_node
 	struct raft_io raft_io;                  /* libuv I/O */
 	struct raft_fsm raft_fsm;                /* dqlite FSM */
 #ifdef __APPLE__
-	dispatch_semaphore_t ready;                 /* Server is ready */
-	dispatch_semaphore_t stopped;               /* Notifiy loop stopped */
+	dispatch_semaphore_t ready;              /* Server is ready */
+	dispatch_semaphore_t stopped;            /* Notifiy loop stopped */
 #else
-	sem_t ready;                                /* Server is ready */
-	sem_t stopped;                              /* Notifiy loop stopped */
+	sem_t ready;                             /* Server is ready */
+	sem_t stopped;                           /* Notifiy loop stopped */
 #endif
 	queue queue;                             /* Incoming connections */
 	queue conns;                             /* Active connections */
@@ -48,6 +49,7 @@ struct dqlite_node
 	int raft_state;                          /* Previous raft state */
 	char *bind_address;                      /* Listen address */
 	char errmsg[DQLITE_ERRMSG_BUF_SIZE];     /* Last error occurred */
+	struct id_state random_state;            /* For seeding ID generation */
 };
 
 int dqlite__init(struct dqlite_node *d,

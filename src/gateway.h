@@ -13,6 +13,7 @@
 #include "lib/serialize.h"
 
 #include "config.h"
+#include "id.h"
 #include "leader.h"
 #include "registry.h"
 #include "stmt.h"
@@ -25,25 +26,27 @@ struct handle;
  */
 struct gateway
 {
-	struct config *config;       /* Configuration */
-	struct registry *registry;   /* Register of existing databases */
-	struct raft *raft;           /* Raft instance */
-	struct leader *leader;       /* Leader connection to the database */
-	struct handle *req;          /* Asynchronous request being handled */
-	sqlite3_stmt *stmt;          /* Statement being processed */
-	bool stmt_finalize;          /* Whether to finalize the statement */
-	struct exec exec;            /* Low-level exec async request */
+	struct config *config;        /* Configuration */
+	struct registry *registry;    /* Register of existing databases */
+	struct raft *raft;            /* Raft instance */
+	struct leader *leader;        /* Leader connection to the database */
+	struct handle *req;           /* Asynchronous request being handled */
+	sqlite3_stmt *stmt;           /* Statement being processed */
+	bool stmt_finalize;           /* Whether to finalize the statement */
+	struct exec exec;             /* Low-level exec async request */
 	/* FIXME store this in the req */
-	const char *sql;             /* SQL query for exec_sql requests */
-	struct stmt__registry stmts; /* Registry of prepared statements */
-	struct barrier barrier;      /* Barrier for query requests */
-	uint64_t protocol;           /* Protocol format version */
+	const char *sql;              /* SQL query for exec_sql requests */
+	struct stmt__registry stmts;  /* Registry of prepared statements */
+	struct barrier barrier;       /* Barrier for query requests */
+	uint64_t protocol;            /* Protocol format version */
+	struct id_state random_state; /* For generating IDs */
 };
 
 void gateway__init(struct gateway *g,
 		   struct config *config,
 		   struct registry *registry,
-		   struct raft *raft);
+		   struct raft *raft,
+		   struct id_state seed);
 
 void gateway__close(struct gateway *g);
 

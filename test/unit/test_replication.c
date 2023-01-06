@@ -90,6 +90,7 @@ TEST_MODULE(replication_v1);
 	{                                                       \
 		int rc2;                                        \
 		rc2 = leader__exec(LEADER(I), &f->req, f->stmt, \
+				   0,                           \
 				   fixture_exec_cb);            \
 		munit_assert_int(rc2, ==, 0);                   \
 	}
@@ -356,7 +357,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	CLUSTER_ELECT(0);
 
 	PREPARE(0, "BEGIN");
-	rv = leader__exec(LEADER(0), &f->req, f->stmt, execCb);
+	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);
 	CLUSTER_APPLIED(3);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_true(f->invoked);
@@ -365,7 +366,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	FINALIZE;
 
 	PREPARE(0, "CREATE TABLE test (a  INT)");
-	rv = leader__exec(LEADER(0), &f->req, f->stmt, execCb);
+	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
@@ -373,7 +374,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	FINALIZE;
 
 	PREPARE(0, "COMMIT");
-	rv = leader__exec(LEADER(0), &f->req, f->stmt, execCb);
+	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_false(f->invoked);
 	FINALIZE;
@@ -406,14 +407,14 @@ TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
 	CLUSTER_ELECT(0);
 
 	PREPARE(0, "CREATE TABLE test (n  INT)");
-	rv = leader__exec(LEADER(0), &f->req, f->stmt, execCb);
+	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);
 	munit_assert_int(rv, ==, 0);
 	CLUSTER_APPLIED(4);
 	FINALIZE;
 
 
 	PREPARE(0, "INSERT INTO test(n) VALUES(1)");
-	rv = leader__exec(LEADER(0), &f->req, f->stmt, execCb);
+	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);
 	munit_assert_int(rv, ==, 0);
 	CLUSTER_APPLIED(6);
 	FINALIZE;
