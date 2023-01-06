@@ -1,6 +1,7 @@
 #include "gateway.h"
 
 #include "bind.h"
+#include "id.h"
 #include "protocol.h"
 #include "query.h"
 #include "request.h"
@@ -13,9 +14,10 @@
 void gateway__init(struct gateway *g,
 		   struct config *config,
 		   struct registry *registry,
-		   struct raft *raft)
+		   struct raft *raft,
+		   struct id_state seed)
 {
-        tracef("gateway init");
+	tracef("gateway init");
 	g->config = config;
 	g->registry = registry;
 	g->raft = raft;
@@ -30,6 +32,7 @@ void gateway__init(struct gateway *g,
 	g->barrier.cb = NULL;
 	g->barrier.leader = NULL;
 	g->protocol = DQLITE_PROTOCOL_VERSION;
+	g->random_state = seed;
 }
 
 void gateway__leader_close(struct gateway *g, int reason)
@@ -404,6 +407,7 @@ static int handle_exec(struct handle *req)
 	struct stmt *stmt;
 	struct request_exec request = {0};
 	int tuple_format;
+	uint64_t req_id;
 	int rv;
 
 	switch (req->schema) {
@@ -437,7 +441,8 @@ static int handle_exec(struct handle *req)
 	}
 	g->req = req;
 	g->stmt = stmt->stmt;
-	rv = leader__exec(g->leader, &g->exec, stmt->stmt, leader_exec_cb);
+	req_id = idNext(&g->random_state);
+	rv = leader__exec(g->leader, &g->exec, stmt->stmt, req_id, leader_exec_cb);
 	if (rv != 0) {
 		tracef("handle exec leader exec failed %d", rv);
 		g->stmt = NULL;
@@ -610,6 +615,7 @@ static void handle_exec_sql_next(struct handle *req, bool done)
 	struct response_result response = {0};
 	const char *tail;
 	int tuple_format;
+	uint64_t req_id;
 	int rv;
 
 	if (g->sql == NULL || strcmp(g->sql, "") == 0) {
@@ -657,7 +663,8 @@ static void handle_exec_sql_next(struct handle *req, bool done)
 	g->sql = tail;
 	g->req = req;
 
-	rv = leader__exec(g->leader, &g->exec, g->stmt, handle_exec_sql_cb);
+	req_id = idNext(&g->random_state);
+	rv = leader__exec(g->leader, &g->exec, g->stmt, req_id, handle_exec_sql_cb);
 	if (rv != SQLITE_OK) {
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto done_after_prepare;
@@ -863,7 +870,7 @@ struct change
 
 static void raftChangeCb(struct raft_change *change, int status)
 {
-        tracef("raft change cb status %d", status);
+	tracef("raft change cb id:%" PRIu64 " status:%d", idExtract(change->req_id), status);
 	struct change *r = change->data;
 	struct gateway *g = r->gateway;
 	struct handle *req = g->req;
@@ -880,10 +887,11 @@ static void raftChangeCb(struct raft_change *change, int status)
 
 static int handle_add(struct handle *req)
 {
-        tracef("handle add");
+	tracef("handle add");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct change *r;
+	uint64_t req_id;
 	int rv;
 	START_V0(add, empty);
 	(void)response;
@@ -896,6 +904,8 @@ static int handle_add(struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
+	req_id = idNext(&g->random_state);
+	idSet(r->req.req_id, req_id);
 	g->req = req;
 
 	rv = raft_add(g->raft, &r->req, request.id, request.address,
@@ -913,11 +923,12 @@ static int handle_add(struct handle *req)
 
 static int handle_assign(struct handle *req)
 {
-        tracef("handle assign");
+	tracef("handle assign");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct change *r;
 	uint64_t role = DQLITE_VOTER;
+	uint64_t req_id;
 	int rv;
 	START_V0(assign, empty);
 	(void)response;
@@ -941,6 +952,8 @@ static int handle_assign(struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
+	req_id = idNext(&g->random_state);
+	idSet(r->req.req_id, req_id);
 	g->req = req;
 
 	rv = raft_assign(g->raft, &r->req, request.id,
@@ -958,10 +971,11 @@ static int handle_assign(struct handle *req)
 
 static int handle_remove(struct handle *req)
 {
-        tracef("handle remove");
+	tracef("handle remove");
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct change *r;
+	uint64_t req_id;
 	int rv;
 	START_V0(remove, empty);
 	(void)response;
@@ -975,11 +989,13 @@ static int handle_remove(struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
+	req_id = idNext(&g->random_state);
+	idSet(r->req.req_id, req_id);
 	g->req = req;
 
 	rv = raft_remove(g->raft, &r->req, request.id, raftChangeCb);
 	if (rv != 0) {
-                tracef("raft_remote failed %d", rv);
+		tracef("raft_remote failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));

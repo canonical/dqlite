@@ -18,6 +18,7 @@ libdqlite_la_SOURCES = \
   src/format.c \
   src/fsm.c \
   src/gateway.c \
+  src/id.c \
   src/leader.c \
   src/lib/addr.c \
   src/lib/buffer.c \

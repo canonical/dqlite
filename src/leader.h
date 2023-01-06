@@ -64,6 +64,7 @@ struct exec
 	struct leader *leader;
 	struct barrier barrier;
 	sqlite3_stmt *stmt;
+	uint64_t id;
 	int status;
 	queue queue;
 	exec_cb cb;
@@ -98,6 +99,7 @@ void leader__close(struct leader *l);
 int leader__exec(struct leader *l,
 		 struct exec *req,
 		 sqlite3_stmt *stmt,
+		 uint64_t id,
 		 exec_cb cb);
 
 /**
