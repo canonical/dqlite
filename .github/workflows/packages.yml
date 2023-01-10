@@ -7,10 +7,9 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          - bionic
           - focal
-          - impish
           - jammy
+          - kinetic
     runs-on: ubuntu-20.04
     steps:
     - name: Clone the repositories
