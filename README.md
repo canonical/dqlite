@@ -49,6 +49,8 @@ Media
 A talk about dqlite was given at FOSDEM 2020, you can watch it
 [here](https://fosdem.org/2020/schedule/event/dqlite/).
 
+[Here](https://gcore.com/blog/comparing-litestream-rqlite-dqlite/) is a blog post from 2022 comparing dqlite with rqlite and Litestream, other replication software for SQLite.
+
 Wire protocol
 -------------
 
