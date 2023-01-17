@@ -17,7 +17,7 @@
 #define N_SERVERS 3
 #define FIXTURE                                \
 	struct test_server servers[N_SERVERS]; \
-	struct client *client
+	struct client_proto *client
 
 #define SETUP                                                 \
 	unsigned i_;                                          \

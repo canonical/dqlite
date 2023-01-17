@@ -6,7 +6,7 @@
 #define TEST_CLIENT_H
 
 #define FIXTURE_CLIENT                 \
-	struct client client;          \
+	struct client_proto client;    \
 	struct test_endpoint endpoint; \
 	int server
 
