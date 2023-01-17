@@ -6,9 +6,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "client.h"
 #include "lib/addr.h"
 #include "message.h"
+#include "protocol.h"
 #include "request.h"
 #include "tracing.h"
 #include "transport.h"
