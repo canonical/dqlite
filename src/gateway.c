@@ -911,7 +911,7 @@ static int handle_add(struct handle *req)
 	return 0;
 }
 
-static int handle_assign(struct handle *req)
+static int handle_promote_or_assign(struct handle *req)
 {
         tracef("handle assign");
 	struct cursor *cursor = &req->cursor;
@@ -919,7 +919,7 @@ static int handle_assign(struct handle *req)
 	struct change *r;
 	uint64_t role = DQLITE_VOTER;
 	int rv;
-	START_V0(assign, empty);
+	START_V0(promote_or_assign, empty);
 	(void)response;
 
 	CHECK_LEADER(req);
