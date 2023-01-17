@@ -1,7 +1,7 @@
 /* Core dqlite client logic for encoding requests and decoding responses. */
 
-#ifndef CLIENT_H_
-#define CLIENT_H_
+#ifndef DQLITE_CLIENT_PROTOCOL_H_
+#define DQLITE_CLIENT_PROTOCOL_H_
 
 #include "../lib/buffer.h"
 
@@ -88,4 +88,4 @@ int clientRecvEmpty(struct client_proto *c);
 /* Receive a failure response. */
 int clientRecvFailure(struct client_proto *c, uint64_t *code, const char **msg);
 
-#endif /* CLIENT_H_*/
+#endif /* DQLITE_CLIENT_PROTOCOL_H_*/
