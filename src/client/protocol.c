@@ -2,15 +2,15 @@
 #include <unistd.h>
 #include <stdint.h>
 
-#include "lib/assert.h"
+#include "../lib/assert.h"
 
-#include "client.h"
-#include "message.h"
 #include "protocol.h"
-#include "request.h"
-#include "response.h"
-#include "tracing.h"
-#include "tuple.h"
+#include "../message.h"
+#include "../protocol.h"
+#include "../request.h"
+#include "../response.h"
+#include "../tracing.h"
+#include "../tuple.h"
 
 int clientInit(struct client *c, int fd)
 {

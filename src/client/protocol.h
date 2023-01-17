@@ -3,9 +3,9 @@
 #ifndef CLIENT_H_
 #define CLIENT_H_
 
-#include "lib/buffer.h"
+#include "../lib/buffer.h"
 
-#include "tuple.h"
+#include "../tuple.h"
 
 struct client
 {
