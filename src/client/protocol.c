@@ -14,7 +14,7 @@
 
 int clientInit(struct client *c, int fd)
 {
-	tracef("init client fd %d", fd);
+	tracef("init client");
 	int rv;
 	c->fd = fd;
 
@@ -39,7 +39,7 @@ err:
 
 void clientClose(struct client *c)
 {
-	tracef("client close fd %d", c->fd);
+	tracef("client close");
 	buffer__close(&c->write);
 	buffer__close(&c->read);
 }
@@ -49,7 +49,7 @@ int clientSendHandshake(struct client *c)
 	uint64_t protocol;
 	ssize_t rv;
 
-	tracef("client send handshake fd %d", c->fd);
+	tracef("client send handshake");
 	/* TODO: update to version 1 */
 	protocol = ByteFlipLe64(DQLITE_PROTOCOL_VERSION_LEGACY);
 
@@ -151,7 +151,7 @@ int clientSendHandshake(struct client *c)
 
 int clientSendOpen(struct client *c, const char *name)
 {
-	tracef("client send open fd %d name %s", c->fd, name);
+	tracef("client send open name %s", name);
 	struct request_open request;
 	request.filename = name;
 	request.flags = 0;    /* TODO: this is unused, should we drop it? */
@@ -162,7 +162,7 @@ int clientSendOpen(struct client *c, const char *name)
 
 int clientRecvDb(struct client *c)
 {
-	tracef("client recvdb fd %d", c->fd);
+	tracef("client recvdb");
 	struct response_db response;
 	RESPONSE(db, DB);
 	c->db_id = response.id;
@@ -171,7 +171,7 @@ int clientRecvDb(struct client *c)
 
 int clientSendPrepare(struct client *c, const char *sql)
 {
-	tracef("client send prepare fd %d", c->fd);
+	tracef("client send prepare");
 	struct request_prepare request;
 	request.db_id = c->db_id;
 	request.sql = sql;
@@ -184,13 +184,13 @@ int clientRecvStmt(struct client *c, unsigned *stmt_id)
 	struct response_stmt response;
 	RESPONSE(stmt, STMT);
 	*stmt_id = response.id;
-	tracef("client recv stmt fd %d stmt_id %u", c->fd, *stmt_id);
+	tracef("client recv stmt stmt_id %u", *stmt_id);
 	return 0;
 }
 
 int clientSendExec(struct client *c, unsigned stmt_id)
 {
-	tracef("client send exec fd %d id %u", c->fd, stmt_id);
+	tracef("client send exec id %u", stmt_id);
 	struct request_exec request;
 	request.db_id = c->db_id;
 	request.stmt_id = stmt_id;
@@ -200,7 +200,7 @@ int clientSendExec(struct client *c, unsigned stmt_id)
 
 int clientSendExecSQL(struct client *c, const char *sql)
 {
-	tracef("client send exec sql fd %d", c->fd);
+	tracef("client send exec sql");
 	struct request_exec_sql request;
 	request.db_id = c->db_id;
 	request.sql = sql;
@@ -216,13 +216,13 @@ int clientRecvResult(struct client *c,
 	RESPONSE(result, RESULT);
 	*last_insert_id = (unsigned)response.last_insert_id;
 	*rows_affected = (unsigned)response.rows_affected;
-	tracef("client recv result fd %d last_insert_id %u rows_affected %u", c->fd, *last_insert_id, *rows_affected);
+	tracef("client recv result last_insert_id %u rows_affected %u", *last_insert_id, *rows_affected);
 	return 0;
 }
 
 int clientSendQuery(struct client *c, unsigned stmt_id)
 {
-	tracef("client send query fd %d stmt_id %u", c->fd, stmt_id);
+	tracef("client send query stmt_id %u", stmt_id);
 	struct request_query request;
 	request.db_id = c->db_id;
 	request.stmt_id = stmt_id;
@@ -232,7 +232,7 @@ int clientSendQuery(struct client *c, unsigned stmt_id)
 
 int clientSendQuerySql(struct client *c, const char *sql)
 {
-	tracef("client send query sql fd %d sql %s", c->fd, sql);
+	tracef("client send query sql sql %s", sql);
 	struct request_query_sql request;
 	request.db_id = c->db_id;
 	request.sql = sql;
@@ -242,7 +242,7 @@ int clientSendQuerySql(struct client *c, const char *sql)
 
 int clientRecvRows(struct client *c, struct rows *rows)
 {
-	tracef("client recv rows fd %d", c->fd);
+	tracef("client recv rows");
 	struct cursor cursor;
 	struct tuple_decoder decoder;
 	uint64_t column_count;
@@ -254,7 +254,7 @@ int clientRecvRows(struct client *c, struct rows *rows)
 	cursor.cap = buffer__offset(&c->read);
 	rv = uint64__decode(&cursor, &column_count);
 	if (rv != 0) {
-		tracef("client recv rows fd %d decode failed %d", c->fd, rv);
+		tracef("client recv rows decode failed %d", rv);
 		return DQLITE_ERROR;
 	}
 	rows->column_count = (unsigned)column_count;
@@ -337,7 +337,7 @@ void clientCloseRows(struct rows *rows)
 
 int clientSendAdd(struct client *c, unsigned id, const char *address)
 {
-	tracef("client send add fd %d id %u address %s", c->fd, id, address);
+	tracef("client send add id %u address %s", id, address);
 	struct request_add request;
 	request.id = id;
 	request.address = address;
@@ -347,7 +347,7 @@ int clientSendAdd(struct client *c, unsigned id, const char *address)
 
 int clientSendAssign(struct client *c, unsigned id, int role)
 {
-	tracef("client send assign fd %d id %u role %d", c->fd, id, role);
+	tracef("client send assign id %u role %d", id, role);
 	struct request_assign request;
 	(void)role;
 	/* TODO: actually send an assign request, not a legacy promote one. */
@@ -358,7 +358,7 @@ int clientSendAssign(struct client *c, unsigned id, int role)
 
 int clientSendRemove(struct client *c, unsigned id)
 {
-	tracef("client send remove fd %d id %u", c->fd, id);
+	tracef("client send remove id %u", id);
 	struct request_remove request;
 	request.id = id;
 	REQUEST(remove, REMOVE);
@@ -367,7 +367,7 @@ int clientSendRemove(struct client *c, unsigned id)
 
 int clientSendTransfer(struct client *c, unsigned id)
 {
-	tracef("client send transfer fd %d id %u", c->fd, id);
+	tracef("client send transfer id %u", id);
 	struct request_transfer request;
 	request.id = id;
 	REQUEST(transfer, TRANSFER);
@@ -376,7 +376,7 @@ int clientSendTransfer(struct client *c, unsigned id)
 
 int clientRecvEmpty(struct client *c)
 {
-	tracef("client recv empty fd %d", c->fd);
+	tracef("client recv empty");
 	struct response_empty response;
 	RESPONSE(empty, EMPTY);
 	return 0;
@@ -384,7 +384,7 @@ int clientRecvEmpty(struct client *c)
 
 int clientRecvFailure(struct client *c, uint64_t *code, const char **msg)
 {
-	tracef("client recv failure fd %d", c->fd);
+	tracef("client recv failure");
 	struct response_failure response;
 	RESPONSE(failure, FAILURE);
 	*code = response.code;
