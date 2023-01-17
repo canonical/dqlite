@@ -18,7 +18,7 @@
 #define N_SERVERS 3
 #define FIXTURE                                \
 	struct test_server servers[N_SERVERS]; \
-	struct client *client;                 \
+	struct client_proto *client;           \
 	struct rows rows;
 
 #define SETUP                                                 \
@@ -140,7 +140,7 @@ TEST(membership, transfer, setUp, tearDown, 0, membership_params)
 	unsigned last_insert_id;
 	unsigned rows_affected;
 	raft_index last_applied;
-	struct client c_transfer; /* Client used for transfer requests */
+	struct client_proto c_transfer; /* Client used for transfer requests */
 	struct id_last_applied await_arg;
 
 	HANDSHAKE;
@@ -184,7 +184,7 @@ TEST(membership, transferPendingTransaction, setUp, tearDown, 0, membership_para
 	unsigned last_insert_id;
 	unsigned rows_affected;
 	raft_index last_applied;
-	struct client c_transfer; /* Client used for transfer requests */
+	struct client_proto c_transfer; /* Client used for transfer requests */
 	struct id_last_applied await_arg;
 
 	HANDSHAKE;
@@ -246,7 +246,7 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 	unsigned stmt_id;
 	unsigned last_insert_id;
 	unsigned rows_affected;
-	struct client c_transfer; /* Client used for transfer requests */
+	struct client_proto c_transfer; /* Client used for transfer requests */
 	struct fixture_id arg;
 
 	HANDSHAKE;
@@ -291,7 +291,7 @@ TEST(membership, transferTwicePendingTransaction, setUp, tearDown, 0, membership
 	unsigned last_insert_id;
 	unsigned rows_affected;
 	raft_index last_applied;
-	struct client c_transfer; /* Client used for transfer requests */
+	struct client_proto c_transfer; /* Client used for transfer requests */
 	struct id_last_applied await_arg;
 
 	HANDSHAKE;

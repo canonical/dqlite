@@ -24,7 +24,7 @@ static MunitParameterEnum client_params[] = {
 struct fixture
 {
 	struct test_server server;
-	struct client *client;
+	struct client_proto *client;
 };
 
 static void *setUp(const MunitParameter params[], void *user_data)

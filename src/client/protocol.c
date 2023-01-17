@@ -12,7 +12,7 @@
 #include "../tracing.h"
 #include "../tuple.h"
 
-int clientInit(struct client *c, int fd)
+int clientInit(struct client_proto *c, int fd)
 {
 	tracef("init client");
 	int rv;
@@ -37,14 +37,14 @@ err:
 	return rv;
 }
 
-void clientClose(struct client *c)
+void clientClose(struct client_proto *c)
 {
 	tracef("client close");
 	buffer__close(&c->write);
 	buffer__close(&c->read);
 }
 
-int clientSendHandshake(struct client *c)
+int clientSendHandshake(struct client_proto *c)
 {
 	uint64_t protocol;
 	ssize_t rv;
@@ -149,7 +149,7 @@ int clientSendHandshake(struct client *c)
 	READ(LOWER, UPPER);    \
 	DECODE(LOWER)
 
-int clientSendOpen(struct client *c, const char *name)
+int clientSendOpen(struct client_proto *c, const char *name)
 {
 	tracef("client send open name %s", name);
 	struct request_open request;
@@ -160,7 +160,7 @@ int clientSendOpen(struct client *c, const char *name)
 	return 0;
 }
 
-int clientRecvDb(struct client *c)
+int clientRecvDb(struct client_proto *c)
 {
 	tracef("client recvdb");
 	struct response_db response;
@@ -169,7 +169,7 @@ int clientRecvDb(struct client *c)
 	return 0;
 }
 
-int clientSendPrepare(struct client *c, const char *sql)
+int clientSendPrepare(struct client_proto *c, const char *sql)
 {
 	tracef("client send prepare");
 	struct request_prepare request;
@@ -179,7 +179,7 @@ int clientSendPrepare(struct client *c, const char *sql)
 	return 0;
 }
 
-int clientRecvStmt(struct client *c, unsigned *stmt_id)
+int clientRecvStmt(struct client_proto *c, unsigned *stmt_id)
 {
 	struct response_stmt response;
 	RESPONSE(stmt, STMT);
@@ -188,7 +188,7 @@ int clientRecvStmt(struct client *c, unsigned *stmt_id)
 	return 0;
 }
 
-int clientSendExec(struct client *c, unsigned stmt_id)
+int clientSendExec(struct client_proto *c, unsigned stmt_id)
 {
 	tracef("client send exec id %u", stmt_id);
 	struct request_exec request;
@@ -198,7 +198,7 @@ int clientSendExec(struct client *c, unsigned stmt_id)
 	return 0;
 }
 
-int clientSendExecSQL(struct client *c, const char *sql)
+int clientSendExecSQL(struct client_proto *c, const char *sql)
 {
 	tracef("client send exec sql");
 	struct request_exec_sql request;
@@ -208,7 +208,7 @@ int clientSendExecSQL(struct client *c, const char *sql)
 	return 0;
 }
 
-int clientRecvResult(struct client *c,
+int clientRecvResult(struct client_proto *c,
 		     unsigned *last_insert_id,
 		     unsigned *rows_affected)
 {
@@ -220,7 +220,7 @@ int clientRecvResult(struct client *c,
 	return 0;
 }
 
-int clientSendQuery(struct client *c, unsigned stmt_id)
+int clientSendQuery(struct client_proto *c, unsigned stmt_id)
 {
 	tracef("client send query stmt_id %u", stmt_id);
 	struct request_query request;
@@ -230,7 +230,7 @@ int clientSendQuery(struct client *c, unsigned stmt_id)
 	return 0;
 }
 
-int clientSendQuerySql(struct client *c, const char *sql)
+int clientSendQuerySql(struct client_proto *c, const char *sql)
 {
 	tracef("client send query sql sql %s", sql);
 	struct request_query_sql request;
@@ -240,7 +240,7 @@ int clientSendQuerySql(struct client *c, const char *sql)
 	return 0;
 }
 
-int clientRecvRows(struct client *c, struct rows *rows)
+int clientRecvRows(struct client_proto *c, struct rows *rows)
 {
 	tracef("client recv rows");
 	struct cursor cursor;
@@ -335,7 +335,7 @@ void clientCloseRows(struct rows *rows)
 	sqlite3_free(rows->column_names);
 }
 
-int clientSendAdd(struct client *c, unsigned id, const char *address)
+int clientSendAdd(struct client_proto *c, unsigned id, const char *address)
 {
 	tracef("client send add id %u address %s", id, address);
 	struct request_add request;
@@ -345,7 +345,7 @@ int clientSendAdd(struct client *c, unsigned id, const char *address)
 	return 0;
 }
 
-int clientSendAssign(struct client *c, unsigned id, int role)
+int clientSendAssign(struct client_proto *c, unsigned id, int role)
 {
 	tracef("client send assign id %u role %d", id, role);
 	struct request_assign request;
@@ -356,7 +356,7 @@ int clientSendAssign(struct client *c, unsigned id, int role)
 	return 0;
 }
 
-int clientSendRemove(struct client *c, unsigned id)
+int clientSendRemove(struct client_proto *c, unsigned id)
 {
 	tracef("client send remove id %u", id);
 	struct request_remove request;
@@ -365,7 +365,7 @@ int clientSendRemove(struct client *c, unsigned id)
 	return 0;
 }
 
-int clientSendTransfer(struct client *c, unsigned id)
+int clientSendTransfer(struct client_proto *c, unsigned id)
 {
 	tracef("client send transfer id %u", id);
 	struct request_transfer request;
@@ -374,7 +374,7 @@ int clientSendTransfer(struct client *c, unsigned id)
 	return 0;
 }
 
-int clientRecvEmpty(struct client *c)
+int clientRecvEmpty(struct client_proto *c)
 {
 	tracef("client recv empty");
 	struct response_empty response;
@@ -382,7 +382,7 @@ int clientRecvEmpty(struct client *c)
 	return 0;
 }
 
-int clientRecvFailure(struct client *c, uint64_t *code, const char **msg)
+int clientRecvFailure(struct client_proto *c, uint64_t *code, const char **msg)
 {
 	tracef("client recv failure");
 	struct response_failure response;
