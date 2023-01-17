@@ -74,4 +74,10 @@ REQUEST__TYPES(REQUEST__DEFINE);
 
 SERIALIZE__DEFINE(request_connect, REQUEST_CONNECT);
 
+#define REQUEST_ASSIGN(X, ...)       \
+	X(uint64, id, ##__VA_ARGS__) \
+	X(uint64, role, ##__VA_ARGS__)
+
+SERIALIZE__DEFINE(request_assign, REQUEST_ASSIGN);
+
 #endif /* REQUEST_H_ */

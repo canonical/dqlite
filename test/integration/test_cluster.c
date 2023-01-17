@@ -153,7 +153,7 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	/* Add a second voting server, this one will receive all data from the
 	 * original leader. */
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, 0 /* voter */);
 
 	/* Remove original server so second server becomes leader after election
 	 * timeout */

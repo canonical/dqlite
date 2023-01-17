@@ -100,7 +100,7 @@ TEST(membership, join, setUp, tearDown, 0, membership_params)
 
 	HANDSHAKE;
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, 0 /* voter */);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
@@ -145,7 +145,7 @@ TEST(membership, transfer, setUp, tearDown, 0, membership_params)
 
 	HANDSHAKE;
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, 0 /* voter */);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
@@ -189,7 +189,7 @@ TEST(membership, transferPendingTransaction, setUp, tearDown, 0, membership_para
 
 	HANDSHAKE;
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, 0 /* voter */);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
@@ -251,7 +251,7 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 
 	HANDSHAKE;
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, 0 /* voter */);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 
@@ -296,7 +296,7 @@ TEST(membership, transferTwicePendingTransaction, setUp, tearDown, 0, membership
 
 	HANDSHAKE;
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, 0 /* voter */);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);

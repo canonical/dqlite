@@ -347,11 +347,11 @@ int clientSendAdd(struct client_proto *c, unsigned id, const char *address)
 int clientSendAssign(struct client_proto *c, unsigned id, int role)
 {
 	tracef("client send assign id %u role %d", id, role);
-	struct request_promote_or_assign request;
-	(void)role;
-	/* TODO: actually send an assign request, not a legacy promote one. */
+	assert(role == DQLITE_VOTER || role == DQLITE_STANDBY || role == DQLITE_SPARE);
+	struct request_assign request;
 	request.id = id;
-	REQUEST(promote_or_assign, PROMOTE_OR_ASSIGN);
+	request.role = (uint64_t)role;
+	REQUEST(assign, ASSIGN);
 	return 0;
 }
 
