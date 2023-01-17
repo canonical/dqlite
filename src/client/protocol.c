@@ -50,8 +50,7 @@ int clientSendHandshake(struct client_proto *c)
 	ssize_t rv;
 
 	tracef("client send handshake");
-	/* TODO: update to version 1 */
-	protocol = ByteFlipLe64(DQLITE_PROTOCOL_VERSION_LEGACY);
+	protocol = ByteFlipLe64(DQLITE_PROTOCOL_VERSION);
 
 	rv = write(c->fd, &protocol, sizeof protocol);
 	if (rv < 0) {
