@@ -116,22 +116,22 @@ static void connCloseCb(struct conn *conn)
 	}
 
 /* Execute a statement. */
-#define EXEC_CONN(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)    \
-	{                                                          \
-		int rv2;                                           \
-		rv2 = clientSendExec(&f->client, STMT_ID);         \
-		munit_assert_int(rv2, ==, 0);                      \
-		test_uv_run(&f->loop, LOOP);                       \
-		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
-				       ROWS_AFFECTED);             \
-		munit_assert_int(rv2, ==, 0);                      \
+#define EXEC_CONN(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)     \
+	{                                                           \
+		int rv2;                                            \
+		rv2 = clientSendExec(&f->client, STMT_ID, NULL, 0); \
+		munit_assert_int(rv2, ==, 0);                       \
+		test_uv_run(&f->loop, LOOP);                        \
+		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID,  \
+				       ROWS_AFFECTED);              \
+		munit_assert_int(rv2, ==, 0);                       \
 	}
 
 /* Execute a non-prepared statement. */
 #define EXEC_SQL_CONN(SQL, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)    \
 	{                                                          \
 		int rv2;                                           \
-		rv2 = clientSendExecSQL(&f->client, SQL);          \
+		rv2 = clientSendExecSQL(&f->client, SQL, NULL, 0); \
 		munit_assert_int(rv2, ==, 0);                      \
 		test_uv_run(&f->loop, LOOP);                       \
 		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
@@ -140,25 +140,25 @@ static void connCloseCb(struct conn *conn)
 	}
 
 /* Perform a query. */
-#define QUERY_CONN(STMT_ID, ROWS)                           \
-	{                                                   \
-		int rv2;                                    \
-		rv2 = clientSendQuery(&f->client, STMT_ID); \
-		munit_assert_int(rv2, ==, 0);               \
-		test_uv_run(&f->loop, 2);                   \
-		rv2 = clientRecvRows(&f->client, ROWS);     \
-		munit_assert_int(rv2, ==, 0);               \
+#define QUERY_CONN(STMT_ID, ROWS)                                    \
+	{                                                            \
+		int rv2;                                             \
+		rv2 = clientSendQuery(&f->client, STMT_ID, NULL, 0); \
+		munit_assert_int(rv2, ==, 0);                        \
+		test_uv_run(&f->loop, 2);                            \
+		rv2 = clientRecvRows(&f->client, ROWS);              \
+		munit_assert_int(rv2, ==, 0);                        \
 	}
 
 /* Perform a non-prepared query. */
-#define QUERY_SQL_CONN(SQL, ROWS)                              \
-	{                                                      \
-		int rv2;                                       \
-		rv2 = clientSendQuerySql(&f->client, SQL);     \
-		munit_assert_int(rv2, ==, 0);                  \
-		test_uv_run(&f->loop, 2);                      \
-		rv2 = clientRecvRows(&f->client, ROWS);        \
-		munit_assert_int(rv2, ==, 0);                  \
+#define QUERY_SQL_CONN(SQL, ROWS)                                   \
+	{                                                           \
+		int rv2;                                            \
+		rv2 = clientSendQuerySql(&f->client, SQL, NULL, 0); \
+		munit_assert_int(rv2, ==, 0);                       \
+		test_uv_run(&f->loop, 2);                           \
+		rv2 = clientRecvRows(&f->client, ROWS);             \
+		munit_assert_int(rv2, ==, 0);                       \
 	}
 
 /******************************************************************************
@@ -342,7 +342,7 @@ TEST_CASE(exec, close_while_in_flight, NULL)
 	(void)params;
 
 	EXEC_SQL_CONN("CREATE TABLE test (n)", &last_insert_id, &rows_affected, 9);
-	rv = clientSendExecSQL(&f->client, "INSERT INTO test(n) VALUES(1)");
+	rv = clientSendExecSQL(&f->client, "INSERT INTO test(n) VALUES(1)", NULL, 0);
 	munit_assert_int(rv, ==, 0);
 
 	test_uv_run(&f->loop, 1);
