@@ -127,23 +127,23 @@
 	}
 
 /* Execute a statement. */
-#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)              \
-	{                                                         \
-		int rv_;                                          \
-		rv_ = clientSendExec(f->client, STMT_ID);         \
-		munit_assert_int(rv_, ==, 0);                     \
-		rv_ = clientRecvResult(f->client, LAST_INSERT_ID, \
-				       ROWS_AFFECTED);            \
-		munit_assert_int(rv_, ==, 0);                     \
+#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)               \
+	{                                                          \
+		int rv_;                                           \
+		rv_ = clientSendExec(f->client, STMT_ID, NULL, 0); \
+		munit_assert_int(rv_, ==, 0);                      \
+		rv_ = clientRecvResult(f->client, LAST_INSERT_ID,  \
+				       ROWS_AFFECTED);             \
+		munit_assert_int(rv_, ==, 0);                      \
 	}
 
 /* Perform a query. */
-#define QUERY(STMT_ID, ROWS)                               \
-	{                                                  \
-		int rv_;                                   \
-		rv_ = clientSendQuery(f->client, STMT_ID); \
-		munit_assert_int(rv_, ==, 0);              \
-		rv_ = clientRecvRows(f->client, ROWS);     \
-		munit_assert_int(rv_, ==, 0);              \
+#define QUERY(STMT_ID, ROWS)                                        \
+	{                                                           \
+		int rv_;                                            \
+		rv_ = clientSendQuery(f->client, STMT_ID, NULL, 0); \
+		munit_assert_int(rv_, ==, 0);                       \
+		rv_ = clientRecvRows(f->client, ROWS);              \
+		munit_assert_int(rv_, ==, 0);                       \
 	}
 #endif /* TEST_CLIENT_H */

@@ -1,6 +1,7 @@
+#include <inttypes.h>
 #include <sqlite3.h>
-#include <unistd.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include "../lib/assert.h"
 
@@ -61,92 +62,124 @@ int clientSendHandshake(struct client_proto *c)
 	return 0;
 }
 
+static int writeMessage(struct client_proto *c, uint8_t type, uint8_t schema)
+{
+	struct message message = {0};
+	size_t n;
+	size_t words;
+	void *cursor;
+	ssize_t rv;
+	n = buffer__offset(&c->write);
+	words = (n - message__sizeof(&message)) / 8;
+	message.words = (uint32_t)words;
+	message.type = type;
+	message.schema = schema;
+	cursor = buffer__cursor(&c->write, 0);
+	message__encode(&message, &cursor);
+	rv = write(c->fd, buffer__cursor(&c->write, 0), n);
+	if (rv != (ssize_t)n) {
+		tracef("request write failed rv:%zd", rv);
+		return DQLITE_ERROR;
+	}
+	return 0;
+}
+
+#define BUFFER_REQUEST(LOWER, UPPER)                             \
+	{                                                        \
+		struct message _message = {0};                   \
+		size_t _n1;                                      \
+		size_t _n2;                                      \
+		void *_cursor;                                   \
+		_n1 = message__sizeof(&_message);                \
+		_n2 = request_##LOWER##__sizeof(&request);       \
+		buffer__reset(&c->write);                        \
+		_cursor = buffer__advance(&c->write, _n1 + _n2); \
+		if (_cursor == NULL) {                           \
+			return DQLITE_NOMEM;                     \
+		}                                                \
+		assert(_n2 % 8 == 0);                            \
+		message__encode(&_message, &_cursor);            \
+		request_##LOWER##__encode(&request, &_cursor);   \
+	}
+
 /* Write out a request. */
-#define REQUEST(LOWER, UPPER)                                       \
-	{                                                           \
-		struct message message = {0};                       \
-		size_t n;                                           \
-		size_t n1;                                          \
-		size_t n2;                                          \
-		void *cursor;                                       \
-		ssize_t rv;                                         \
-		n1 = message__sizeof(&message);                     \
-		n2 = request_##LOWER##__sizeof(&request);           \
-		n = n1 + n2;                                        \
-		buffer__reset(&c->write);                           \
-		cursor = buffer__advance(&c->write, n);             \
-		if (cursor == NULL) {                               \
-			return DQLITE_NOMEM;                        \
-		}                                                   \
-		assert(n2 % 8 == 0);                                \
-		message.type = DQLITE_REQUEST_##UPPER;              \
-		message.words = (uint32_t)(n2 / 8);                 \
-		message__encode(&message, &cursor);                 \
-		request_##LOWER##__encode(&request, &cursor);       \
-		rv = write(c->fd, buffer__cursor(&c->write, 0), n); \
-		if (rv != (int)n) {                                 \
-			tracef("request write failed rv %zd", rv);  \
-			return DQLITE_ERROR;                        \
-		}                                                   \
+#define REQUEST(LOWER, UPPER, SCHEMA)                                  \
+	{                                                              \
+		int _rv;                                               \
+		BUFFER_REQUEST(LOWER, UPPER);                          \
+		_rv = writeMessage(c, DQLITE_REQUEST_##UPPER, SCHEMA); \
+		if (_rv != 0) {                                        \
+			return _rv;                                    \
+		}                                                      \
 	}
 
-/* Read a response without decoding it. */
-#define READ(LOWER, UPPER)                                          \
-	{                                                           \
-		struct message _message = {0};                      \
-		struct cursor _cursor;                              \
-		size_t _n;                                          \
-		void *_p;                                           \
-		ssize_t _rv;                                        \
-		_n = message__sizeof(&_message);                    \
-		buffer__reset(&c->read);                            \
-		_p = buffer__advance(&c->read, _n);                 \
-		assert(_p != NULL);                                 \
-		_rv = read(c->fd, _p, _n);                          \
-		if (_rv != (int)_n) {                               \
-			tracef("read head failed rv %zd", _rv);     \
-			return DQLITE_ERROR;                        \
-		}                                                   \
-		_cursor.p = _p;                                     \
-		_cursor.cap = _n;                                   \
-		_rv = message__decode(&_cursor, &_message);         \
-		assert(_rv == 0);                                   \
-		if (_message.type != DQLITE_RESPONSE_##UPPER) {     \
-			tracef("read decode failed rv %zd)", _rv);  \
-			return DQLITE_ERROR;                        \
-		}                                                   \
-		buffer__reset(&c->read);                            \
-		_n = _message.words * 8;                            \
-		_p = buffer__advance(&c->read, _n);                 \
-		if (_p == NULL) {                                   \
-			tracef("read buf adv failed rv %zd", _rv);  \
-			return DQLITE_ERROR;                        \
-		}                                                   \
-		_rv = read(c->fd, _p, _n);                          \
-		if (_rv != (int)_n) {                               \
-			tracef("read body failed rv %zd", _rv);     \
-			return DQLITE_ERROR;                        \
-		}                                                   \
+static int readMessage(struct client_proto *c, uint8_t *type)
+{
+	struct message message = {0};
+	struct cursor cursor;
+	void *p;
+	size_t n;
+	ssize_t rv;
+
+	buffer__reset(&c->read);
+	n = message__sizeof(&message);
+	p = buffer__advance(&c->read, n);
+	if (p == NULL) {
+		tracef("buffer advance failed");
+		return DQLITE_ERROR;
+	}
+	rv = read(c->fd, p, n);
+	if (rv != (ssize_t)n) {
+		tracef("read head failed rv:%zd", rv);
+		return DQLITE_ERROR;
 	}
 
-/* Decode a response. */
-#define DECODE(LOWER)                                                \
-	{                                                            \
-		int rv;                                              \
-		struct cursor cursor;                                \
-		cursor.p = buffer__cursor(&c->read, 0);              \
-		cursor.cap = buffer__offset(&c->read);               \
-		rv = response_##LOWER##__decode(&cursor, &response); \
-		if (rv != 0) {                                       \
-			tracef("decode failed rv %d)", rv);          \
-			return DQLITE_ERROR;                         \
-		}                                                    \
+	cursor.p = p;
+	cursor.cap = n;
+	rv = message__decode(&cursor, &message);
+	if (rv != 0) {
+		tracef("message decode failed rv:%zd", rv);
+		return DQLITE_ERROR;
 	}
+
+	buffer__reset(&c->read);
+	n = message.words * 8;
+	p = buffer__advance(&c->read, n);
+	if (p == NULL) {
+		tracef("buffer advance failed");
+		return DQLITE_ERROR;
+	}
+	rv = read(c->fd, p, n);
+	if (rv != (ssize_t)n) {
+		tracef("read body failed rv:%zd", rv);
+	}
+
+	*type = message.type;
+	return 0;
+}
 
 /* Read and decode a response. */
-#define RESPONSE(LOWER, UPPER) \
-	READ(LOWER, UPPER);    \
-	DECODE(LOWER)
+#define RESPONSE(LOWER, UPPER)                                         \
+	{                                                              \
+		struct cursor _cursor;                                 \
+		uint8_t _type;                                         \
+		int _rv;                                               \
+		_rv = readMessage(c, &_type);                          \
+		if (_rv != 0) {                                        \
+			return DQLITE_ERROR;                           \
+		}                                                      \
+		if (_type != DQLITE_RESPONSE_##UPPER) {                \
+			tracef("bad message type:%" PRIu8, _type);     \
+			return DQLITE_ERROR;                           \
+		}                                                      \
+		_cursor.p = buffer__cursor(&c->read, 0);               \
+		_cursor.cap = buffer__offset(&c->read);                \
+		_rv = response_##LOWER##__decode(&_cursor, &response); \
+		if (_rv != 0) {                                        \
+			tracef("decode failed rv:%d", _rv);            \
+			return DQLITE_ERROR;                           \
+		}                                                      \
+	}
 
 int clientSendOpen(struct client_proto *c, const char *name)
 {
@@ -155,7 +188,7 @@ int clientSendOpen(struct client_proto *c, const char *name)
 	request.filename = name;
 	request.flags = 0;    /* TODO: this is unused, should we drop it? */
 	request.vfs = "test"; /* TODO: this is unused, should we drop it? */
-	REQUEST(open, OPEN);
+	REQUEST(open, OPEN, 0);
 	return 0;
 }
 
@@ -174,7 +207,7 @@ int clientSendPrepare(struct client_proto *c, const char *sql)
 	struct request_prepare request;
 	request.db_id = c->db_id;
 	request.sql = sql;
-	REQUEST(prepare, PREPARE);
+	REQUEST(prepare, PREPARE, 0);
 	return 0;
 }
 
@@ -187,24 +220,70 @@ int clientRecvStmt(struct client_proto *c, unsigned *stmt_id)
 	return 0;
 }
 
-int clientSendExec(struct client_proto *c, unsigned stmt_id)
+static int bufferParams(struct client_proto *c,
+			struct value *params,
+			size_t n_params)
 {
-	tracef("client send exec id %u", stmt_id);
-	struct request_exec request;
-	request.db_id = c->db_id;
-	request.stmt_id = stmt_id;
-	REQUEST(exec, EXEC);
+	struct tuple_encoder tup;
+	size_t i;
+	int rv;
+
+	if (n_params == 0) {
+		return 0;
+	}
+	rv = tuple_encoder__init(&tup, n_params, TUPLE__PARAMS32, &c->write);
+	if (rv != 0) {
+		return rv;
+	}
+	for (i = 0; i < n_params; ++i) {
+		rv = tuple_encoder__next(&tup, &params[i]);
+		if (rv != 0) {
+			return rv;
+		}
+	}
 	return 0;
 }
 
-int clientSendExecSQL(struct client_proto *c, const char *sql)
+int clientSendExec(struct client_proto *c,
+		   unsigned stmt_id,
+		   struct value *params,
+		   size_t n_params)
+{
+	tracef("client send exec id %u", stmt_id);
+	struct request_exec request;
+	int rv;
+
+	request.db_id = c->db_id;
+	request.stmt_id = stmt_id;
+	BUFFER_REQUEST(exec, EXEC);
+
+	rv = bufferParams(c, params, n_params);
+	if (rv != 0) {
+		return rv;
+	}
+	rv = writeMessage(c, DQLITE_REQUEST_EXEC, 1);
+	return rv;
+}
+
+int clientSendExecSQL(struct client_proto *c,
+		      const char *sql,
+		      struct value *params,
+		      size_t n_params)
 {
 	tracef("client send exec sql");
 	struct request_exec_sql request;
+	int rv;
+
 	request.db_id = c->db_id;
 	request.sql = sql;
-	REQUEST(exec_sql, EXEC_SQL);
-	return 0;
+	BUFFER_REQUEST(exec_sql, EXEC_SQL);
+
+	rv = bufferParams(c, params, n_params);
+	if (rv != 0) {
+		return rv;
+	}
+	rv = writeMessage(c, DQLITE_REQUEST_EXEC_SQL, 1);
+	return rv;
 }
 
 int clientRecvResult(struct client_proto *c,
@@ -219,24 +298,46 @@ int clientRecvResult(struct client_proto *c,
 	return 0;
 }
 
-int clientSendQuery(struct client_proto *c, unsigned stmt_id)
+int clientSendQuery(struct client_proto *c,
+		    unsigned stmt_id,
+		    struct value *params,
+		    size_t n_params)
 {
 	tracef("client send query stmt_id %u", stmt_id);
 	struct request_query request;
+	int rv;
+
 	request.db_id = c->db_id;
 	request.stmt_id = stmt_id;
-	REQUEST(query, QUERY);
-	return 0;
+	BUFFER_REQUEST(query, QUERY);
+
+	rv = bufferParams(c, params, n_params);
+	if (rv != 0) {
+		return rv;
+	}
+	rv = writeMessage(c, DQLITE_REQUEST_QUERY, 1);
+	return rv;
 }
 
-int clientSendQuerySql(struct client_proto *c, const char *sql)
+int clientSendQuerySQL(struct client_proto *c,
+		       const char *sql,
+		       struct value *params,
+		       size_t n_params)
 {
 	tracef("client send query sql sql %s", sql);
 	struct request_query_sql request;
+	int rv;
+
 	request.db_id = c->db_id;
 	request.sql = sql;
-	REQUEST(query_sql, QUERY_SQL);
-	return 0;
+	BUFFER_REQUEST(query_sql, QUERY_SQL);
+
+	rv = bufferParams(c, params, n_params);
+	if (rv != 0) {
+		return rv;
+	}
+	rv = writeMessage(c, DQLITE_REQUEST_QUERY_SQL, 1);
+	return rv;
 }
 
 int clientRecvRows(struct client_proto *c, struct rows *rows)
@@ -247,8 +348,18 @@ int clientRecvRows(struct client_proto *c, struct rows *rows)
 	uint64_t column_count;
 	struct row *last;
 	unsigned i;
+	uint8_t type = 0;
 	int rv;
-	READ(rows, ROWS);
+
+	rv = readMessage(c, &type);
+	if (rv != 0) {
+		return rv;
+	}
+	if (type != DQLITE_RESPONSE_ROWS) {
+		tracef("bad message type:%" PRIu8, type);
+		return DQLITE_ERROR;
+	}
+
 	cursor.p = buffer__cursor(&c->read, 0);
 	cursor.cap = buffer__offset(&c->read);
 	rv = uint64__decode(&cursor, &column_count);
@@ -340,7 +451,7 @@ int clientSendAdd(struct client_proto *c, unsigned id, const char *address)
 	struct request_add request;
 	request.id = id;
 	request.address = address;
-	REQUEST(add, ADD);
+	REQUEST(add, ADD, 0);
 	return 0;
 }
 
@@ -351,7 +462,7 @@ int clientSendAssign(struct client_proto *c, unsigned id, int role)
 	struct request_assign request;
 	request.id = id;
 	request.role = (uint64_t)role;
-	REQUEST(assign, ASSIGN);
+	REQUEST(assign, ASSIGN, 0);
 	return 0;
 }
 
@@ -360,7 +471,7 @@ int clientSendRemove(struct client_proto *c, unsigned id)
 	tracef("client send remove id %u", id);
 	struct request_remove request;
 	request.id = id;
-	REQUEST(remove, REMOVE);
+	REQUEST(remove, REMOVE, 0);
 	return 0;
 }
 
@@ -369,7 +480,7 @@ int clientSendTransfer(struct client_proto *c, unsigned id)
 	tracef("client send transfer id %u", id);
 	struct request_transfer request;
 	request.id = id;
-	REQUEST(transfer, TRANSFER);
+	REQUEST(transfer, TRANSFER, 0);
 	return 0;
 }
 

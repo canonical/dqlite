@@ -272,7 +272,7 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 	 * TODO this is hacky, but I can't seem to hit the codepath otherwise */
 	f->servers[0].dqlite->raft.last_applied = 0;
 
-	rv = clientSendExec(f->client, stmt_id);
+	rv = clientSendExec(f->client, stmt_id, NULL, 0);
 	munit_assert_int(rv, ==, 0);
 	rv = clientRecvResult(f->client, &last_insert_id, &rows_affected);
 	munit_assert_int(rv, ==, 1);

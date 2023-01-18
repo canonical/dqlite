@@ -401,7 +401,7 @@ static void leader_exec_cb(struct exec *exec, int status)
 
 static int handle_exec(struct handle *req)
 {
-        tracef("handle exec");
+	tracef("handle exec schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
@@ -518,7 +518,7 @@ static void query_barrier_cb(struct barrier *barrier, int status)
 
 static int handle_query(struct handle *req)
 {
-        tracef("handle query");
+	tracef("handle query schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
@@ -713,7 +713,7 @@ static void execSqlBarrierCb(struct barrier *barrier, int status)
 
 static int handle_exec_sql(struct handle *req)
 {
-	tracef("handle exec sql");
+	tracef("handle exec sql schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct request_exec_sql request = {0};
@@ -809,7 +809,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 
 static int handle_query_sql(struct handle *req)
 {
-        tracef("handle query sql");
+	tracef("handle query sql schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct gateway *g = req->gateway;
 	struct request_query_sql request = {0};

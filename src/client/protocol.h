@@ -51,10 +51,12 @@ int clientSendPrepare(struct client_proto *c, const char *sql);
 int clientRecvStmt(struct client_proto *c, unsigned *stmt_id);
 
 /* Send a request to execute a statement. */
-int clientSendExec(struct client_proto *c, unsigned stmt_id);
+int clientSendExec(struct client_proto *c, unsigned stmt_id,
+			struct value *params, size_t n_params);
 
 /* Send a request to execute a non-prepared statement. */
-int clientSendExecSQL(struct client_proto *c, const char *sql);
+int clientSendExecSQL(struct client_proto *c, const char *sql,
+			struct value *params, size_t n_params);
 
 /* Receive the response to an exec request. */
 int clientRecvResult(struct client_proto *c,
@@ -62,7 +64,12 @@ int clientRecvResult(struct client_proto *c,
 			unsigned *rows_affected);
 
 /* Send a request to perform a query. */
-int clientSendQuery(struct client_proto *c, unsigned stmt_id);
+int clientSendQuery(struct client_proto *c, unsigned stmt_id,
+			struct value *params, size_t n_params);
+
+/* Send a request to perform a non-prepared query. */
+int clientSendQuerySQL(struct client_proto *c, const char *sql,
+			struct value *params, size_t n_params);
 
 /* Receive the response of a query request. */
 int clientRecvRows(struct client_proto *c, struct rows *rows);
@@ -88,4 +95,4 @@ int clientRecvEmpty(struct client_proto *c);
 /* Receive a failure response. */
 int clientRecvFailure(struct client_proto *c, uint64_t *code, const char **msg);
 
-#endif /* DQLITE_CLIENT_PROTOCOL_H_*/
+#endif /* DQLITE_CLIENT_PROTOCOL_H_ */
