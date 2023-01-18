@@ -283,6 +283,7 @@ int conn__start(struct conn *c,
 		struct raft *raft,
 		struct uv_stream_s *stream,
 		struct raft_uv_transport *uv_transport,
+		struct id_state seed,
 		conn_close_cb close_cb)
 {
 	int rv;
@@ -297,7 +298,7 @@ int conn__start(struct conn *c,
 	c->transport.data = c;
 	c->uv_transport = uv_transport;
 	c->close_cb = close_cb;
-	gateway__init(&c->gateway, config, registry, raft);
+	gateway__init(&c->gateway, config, registry, raft, seed);
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
 		goto err_after_transport_init;
