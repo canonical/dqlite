@@ -1,6 +1,6 @@
 #include <inttypes.h>
-#include <sqlite3.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "../lib/assert.h"
@@ -369,8 +369,7 @@ int clientRecvRows(struct client_proto *c, struct rows *rows)
 	}
 	rows->column_count = (unsigned)column_count;
 	for (i = 0; i < rows->column_count; i++) {
-		rows->column_names = sqlite3_malloc(
-		    (int)(column_count * sizeof *rows->column_names));
+		rows->column_names = malloc(column_count * sizeof *rows->column_names);
 		if (rows->column_names == NULL) {
 			return DQLITE_ERROR;
 		}
@@ -392,16 +391,15 @@ int clientRecvRows(struct client_proto *c, struct rows *rows)
 		    eof == DQLITE_RESPONSE_ROWS_PART) {
 			break;
 		}
-		row = sqlite3_malloc(sizeof *row);
+		row = malloc(sizeof *row);
 		if (row == NULL) {
 			tracef("malloc");
 			return DQLITE_NOMEM;
 		}
-		row->values =
-		    sqlite3_malloc((int)(column_count * sizeof *row->values));
+		row->values = malloc(column_count * sizeof *row->values);
 		if (row->values == NULL) {
 			tracef("malloc");
-			sqlite3_free(row);
+			free(row);
 			return DQLITE_NOMEM;
 		}
 		row->next = NULL;
@@ -409,16 +407,16 @@ int clientRecvRows(struct client_proto *c, struct rows *rows)
 					 TUPLE__ROW, &cursor);
 		if (rv != 0) {
 			tracef("decode init error %d", rv);
-			sqlite3_free(row->values);
-			sqlite3_free(row);
+			free(row->values);
+			free(row);
 			return DQLITE_ERROR;
 		}
 		for (i = 0; i < rows->column_count; i++) {
 			rv = tuple_decoder__next(&decoder, &row->values[i]);
 			if (rv != 0) {
 				tracef("decode error %d", rv);
-				sqlite3_free(row->values);
-				sqlite3_free(row);
+				free(row->values);
+				free(row);
 				return DQLITE_ERROR;
 			}
 		}
@@ -438,11 +436,11 @@ void clientCloseRows(struct rows *rows)
 	while (row != NULL) {
 		struct row *next;
 		next = row->next;
-		sqlite3_free(row->values);
-		sqlite3_free(row);
+		free(row->values);
+		free(row);
 		row = next;
 	}
-	sqlite3_free(rows->column_names);
+	free(rows->column_names);
 }
 
 int clientSendAdd(struct client_proto *c, unsigned id, const char *address)
