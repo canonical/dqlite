@@ -13,6 +13,8 @@ struct client_proto
 	unsigned db_id;      /* Database ID provided by the server */
 	struct buffer read;  /* Read buffer */
 	struct buffer write; /* Write buffer */
+	uint64_t errcode;
+	char *errmsg;
 };
 
 struct row

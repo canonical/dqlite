@@ -21,7 +21,8 @@ int dqlite_version_number (void);
 enum {
     DQLITE_ERROR = 1, /* Generic error */
     DQLITE_MISUSE,    /* Library used incorrectly */
-    DQLITE_NOMEM      /* A malloc() failed */
+    DQLITE_NOMEM,     /* A malloc() failed */
+    DQLITE_ERROR_RESPONSE
 };
 
 /**
