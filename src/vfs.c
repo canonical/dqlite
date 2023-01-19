@@ -1130,24 +1130,28 @@ static int vfsFileSync(sqlite3_file *file, int flags)
 /* Return the size of the database file in bytes. */
 static size_t vfsDatabaseFileSize(struct vfsDatabase *d)
 {
-	size_t size = 0;
+	uint64_t size = 0;
 	if (d->n_pages > 0) {
-		size = d->n_pages * vfsDatabaseGetPageSize(d);
+		size = (uint64_t)d->n_pages * (uint64_t)vfsDatabaseGetPageSize(d);
 	}
-	return size;
+	/* TODO dqlite is limited to a max database size of SIZE_MAX */
+	assert(size <= SIZE_MAX);
+	return (size_t)size;
 }
 
 /* Return the size of the WAL file in bytes. */
 static size_t vfsWalFileSize(struct vfsWal *w)
 {
-	size_t size = 0;
+	uint64_t size = 0;
 	if (w->n_frames > 0) {
 		uint32_t page_size;
 		page_size = vfsWalGetPageSize(w);
 		size += VFS__WAL_HEADER_SIZE;
-		size += w->n_frames * ((unsigned)FORMAT__WAL_FRAME_HDR_SIZE + page_size);
+		size += (uint64_t)w->n_frames * (uint64_t)(FORMAT__WAL_FRAME_HDR_SIZE + page_size);
 	}
-	return size;
+	/* TODO dqlite is limited to a max database size of SIZE_MAX */
+	assert(size <= SIZE_MAX);
+	return (size_t)size;
 }
 
 static int vfsFileSize(sqlite3_file *file, sqlite_int64 *size)
