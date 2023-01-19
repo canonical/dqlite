@@ -137,6 +137,16 @@
 		munit_assert_int(rv_, ==, 0);                      \
 	}
 
+#define EXEC_SQL(SQL, LAST_INSERT_ID, ROWS_AFFECTED)               \
+	{                                                          \
+		int rv_;                                           \
+		rv_ = clientSendExecSQL(f->client, SQL, NULL, 0);  \
+		munit_assert_int(rv_, ==, 0);                      \
+		rv_ = clientRecvResult(f->client, LAST_INSERT_ID,  \
+				       ROWS_AFFECTED);             \
+		munit_assert_int(rv_, ==, 0);                      \
+	}
+
 /* Perform a query. */
 #define QUERY(STMT_ID, ROWS)                                        \
 	{                                                           \
@@ -146,4 +156,14 @@
 		rv_ = clientRecvRows(f->client, ROWS);              \
 		munit_assert_int(rv_, ==, 0);                       \
 	}
+
+#define QUERY_SQL(SQL, ROWS)                                        \
+	{                                                           \
+		int rv_;                                            \
+		rv_ = clientSendQuerySQL(f->client, SQL, NULL, 0);  \
+		munit_assert_int(rv_, ==, 0);                       \
+		rv_ = clientRecvRows(f->client, ROWS);              \
+		munit_assert_int(rv_, ==, 0);                       \
+	}
+
 #endif /* TEST_CLIENT_H */
