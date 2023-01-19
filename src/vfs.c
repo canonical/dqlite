@@ -2573,6 +2573,7 @@ static int vfsDatabaseRestore(struct vfsDatabase *d,
 	unsigned n_pages;
 	void **pages;
 	unsigned i;
+	size_t offset;
 	int rv;
 
 	assert(page_size > 0);
@@ -2583,7 +2584,7 @@ static int vfsDatabaseRestore(struct vfsDatabase *d,
 
 	n_pages = (unsigned)ByteGetBe32(&data[28]);
 
-	if (n < n_pages * page_size) {
+	if (n < (uint64_t)n_pages * (uint64_t)page_size) {
 		return DQLITE_ERROR;
 	}
 
@@ -2602,7 +2603,8 @@ static int vfsDatabaseRestore(struct vfsDatabase *d,
 			goto oom_after_pages_alloc;
 		}
 		pages[i] = page;
-		memcpy(page, &data[i * page_size], page_size);
+		offset = (size_t)i * (size_t)page_size;
+		memcpy(page, &data[offset], page_size);
 	}
 
 	/* Truncate any existing content. */
@@ -2628,6 +2630,7 @@ static int vfsWalRestore(struct vfsWal *w,
 	struct vfsFrame **frames;
 	unsigned n_frames;
 	unsigned i;
+	size_t offset;
 	int rv;
 
 	if (n == 0) {
@@ -2637,10 +2640,10 @@ static int vfsWalRestore(struct vfsWal *w,
 	assert(w->n_tx == 0);
 
 	assert(n > VFS__WAL_HEADER_SIZE);
-	assert(((n - VFS__WAL_HEADER_SIZE) % vfsFrameSize(page_size)) == 0);
+	assert(((n - (size_t)VFS__WAL_HEADER_SIZE) % ((size_t)vfsFrameSize(page_size))) == 0);
 
 	n_frames =
-	    (unsigned)((n - VFS__WAL_HEADER_SIZE) / vfsFrameSize(page_size));
+	    (unsigned)((n - (size_t)VFS__WAL_HEADER_SIZE) / ((size_t)vfsFrameSize(page_size)));
 
 	frames = sqlite3_malloc64(sizeof *frames * n_frames);
 	if (frames == NULL) {
@@ -2660,7 +2663,8 @@ static int vfsWalRestore(struct vfsWal *w,
 		}
 		frames[i] = frame;
 
-		p = &data[VFS__WAL_HEADER_SIZE + i * vfsFrameSize(page_size)];
+		offset = (size_t)VFS__WAL_HEADER_SIZE + ((size_t)i * (size_t)vfsFrameSize(page_size));
+		p = &data[offset];
 		memcpy(frame->header, p, VFS__FRAME_HEADER_SIZE);
 		memcpy(frame->page, p + VFS__FRAME_HEADER_SIZE, page_size);
 	}
@@ -2715,7 +2719,7 @@ int VfsRestore(sqlite3_vfs *vfs,
 	}
 
 	page_size = vfsDatabaseGetPageSize(database);
-	offset = database->n_pages * page_size;
+	offset = (size_t)database->n_pages * (size_t)page_size;
 
 	rv = vfsWalRestore(wal, data + offset, n - offset, page_size);
 	if (rv != 0) {

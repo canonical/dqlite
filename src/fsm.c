@@ -403,7 +403,7 @@ static int encodeDatabase(struct db *db, struct raft_buffer r_bufs[], uint32_t n
 	database_size += (uint32_t)(page[30] << 8);
 	database_size += (uint32_t)(page[31]);
 
-	header.main_size = database_size * db->config->page_size;
+	header.main_size = (uint64_t)database_size * (uint64_t)db->config->page_size;
 	header.wal_size = bufs[n-1].len;
 
 	/* Database header. */
@@ -461,6 +461,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 		db->follower = NULL;
 	}
 
+	tracef("main_size:%"PRIu64 " wal_size:%"PRIu64, header.main_size, header.wal_size);
 	if (header.main_size + header.wal_size > SIZE_MAX) {
 		tracef("main_size + wal_size would overflow max DB size");
 		return -1;
