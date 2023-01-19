@@ -227,6 +227,23 @@ static int readMessage(struct client_proto *c, uint8_t *type)
 		}                                                              \
 	}
 
+int clientSendLeader(struct client_proto *c)
+{
+	tracef("client send leader");
+	struct request_leader request = {0};
+	REQUEST(leader, LEADER, 0);
+	return 0;
+}
+
+int clientSendClient(struct client_proto *c, uint64_t id)
+{
+	tracef("client send client");
+	struct request_client request;
+	request.id = id;
+	REQUEST(client, CLIENT, 0);
+	return 0;
+}
+
 int clientSendOpen(struct client_proto *c, const char *name)
 {
 	tracef("client send open name %s", name);
@@ -512,6 +529,25 @@ void clientCloseRows(struct rows *rows)
 	free(rows->column_names);
 }
 
+int clientSendInterrupt(struct client_proto *c)
+{
+	tracef("client send interrupt");
+	struct request_interrupt request;
+	request.db_id = c->db_id;
+	REQUEST(interrupt, INTERRUPT, 0);
+	return 0;
+}
+
+int clientSendFinalize(struct client_proto *c, unsigned stmt_id)
+{
+	tracef("client send finalize %u", stmt_id);
+	struct request_finalize request;
+	request.db_id = c->db_id;
+	request.stmt_id = stmt_id;
+	REQUEST(finalize, FINALIZE, 0);
+	return 0;
+}
+
 int clientSendAdd(struct client_proto *c, unsigned id, const char *address)
 {
 	tracef("client send add id %u address %s", id, address);
@@ -542,12 +578,50 @@ int clientSendRemove(struct client_proto *c, unsigned id)
 	return 0;
 }
 
+int clientSendDump(struct client_proto *c)
+{
+	tracef("client send dump");
+	struct request_dump request;
+	assert(c->db_is_init);
+	assert(c->db_name != NULL);
+	request.filename = c->db_name;
+	REQUEST(dump, DUMP, 0);
+	return 0;
+}
+
+int clientSendCluster(struct client_proto *c)
+{
+	tracef("client send cluster");
+	struct request_cluster request;
+	request.format = DQLITE_REQUEST_CLUSTER_FORMAT_V1;
+	REQUEST(cluster, CLUSTER, 0);
+	return 0;
+}
+
 int clientSendTransfer(struct client_proto *c, unsigned id)
 {
 	tracef("client send transfer id %u", id);
 	struct request_transfer request;
 	request.id = id;
 	REQUEST(transfer, TRANSFER, 0);
+	return 0;
+}
+
+int clientSendDescribe(struct client_proto *c)
+{
+	tracef("client send describe");
+	struct request_describe request;
+	request.format = DQLITE_REQUEST_DESCRIBE_FORMAT_V0;
+	REQUEST(describe, DESCRIBE, 0);
+	return 0;
+}
+
+int clientSendWeight(struct client_proto *c, unsigned weight)
+{
+	tracef("client send weight %u", weight);
+	struct request_weight request;
+	request.weight = (unsigned)weight;
+	REQUEST(weight, WEIGHT, 0);
 	return 0;
 }
 
