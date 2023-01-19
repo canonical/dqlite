@@ -30,6 +30,9 @@ int clientInit(struct client_proto *c, int fd)
 		goto err_after_read_buffer_init;
 	}
 
+	c->errcode = 0;
+	c->errmsg = NULL;
+
 	return 0;
 
 err_after_read_buffer_init:
@@ -43,6 +46,9 @@ void clientClose(struct client_proto *c)
 	tracef("client close");
 	buffer__close(&c->write);
 	buffer__close(&c->read);
+	if (c->errmsg != NULL) {
+		free(c->errmsg);
+	}
 }
 
 int clientSendHandshake(struct client_proto *c)
@@ -159,25 +165,41 @@ static int readMessage(struct client_proto *c, uint8_t *type)
 }
 
 /* Read and decode a response. */
-#define RESPONSE(LOWER, UPPER)                                        \
-	{                                                             \
-		uint8_t _type;                                        \
-		int _rv;                                              \
-		_rv = readMessage(c, &_type);                         \
-		if (_rv != 0) {                                       \
-			return DQLITE_ERROR;                          \
-		}                                                     \
-		if (_type != DQLITE_RESPONSE_##UPPER) {               \
-			tracef("bad message type:%" PRIu8, _type);    \
-			return DQLITE_ERROR;                          \
-		}                                                     \
-		cursor.p = buffer__cursor(&c->read, 0);               \
-		cursor.cap = buffer__offset(&c->read);                \
-		_rv = response_##LOWER##__decode(&cursor, &response); \
-		if (_rv != 0) {                                       \
-			tracef("decode failed rv:%d", _rv);           \
-			return DQLITE_ERROR;                          \
-		}                                                     \
+#define RESPONSE(LOWER, UPPER)                                                 \
+	{                                                                      \
+		struct response_failure _failure;                              \
+		uint8_t _type;                                                 \
+		int _rv;                                                       \
+		_rv = readMessage(c, &_type);                                  \
+		if (_rv != 0) {                                                \
+			return _rv;                                            \
+		}                                                              \
+		cursor.p = buffer__cursor(&c->read, 0);                        \
+		cursor.cap = buffer__offset(&c->read);                         \
+		if (_type != DQLITE_RESPONSE_##UPPER &&                        \
+		    _type == DQLITE_RESPONSE_FAILURE) {                        \
+			_rv = response_failure__decode(&cursor, &_failure);    \
+			if (_rv != 0) {                                        \
+				tracef("decode as failure failed rv:%d", _rv); \
+				return DQLITE_ERROR;                           \
+			}                                                      \
+			c->errcode = _failure.code;                            \
+			if (c->errmsg != NULL) {                               \
+				free(c->errmsg);                               \
+			}                                                      \
+			c->errmsg = strdup(_failure.message);                  \
+			if (c->errmsg == NULL) {                               \
+				return DQLITE_NOMEM;                           \
+			}                                                      \
+			return DQLITE_ERROR_RESPONSE;                          \
+		} else if (_type != DQLITE_RESPONSE_##UPPER) {                 \
+			return DQLITE_ERROR;                                   \
+		}			                                       \
+		_rv = response_##LOWER##__decode(&cursor, &response);          \
+		if (_rv != 0) {                                                \
+			tracef("decode failed rv:%d", _rv);                    \
+			return  DQLITE_ERROR;                                  \
+		}                                                              \
 	}
 
 int clientSendOpen(struct client_proto *c, const char *name)
@@ -346,6 +368,7 @@ int clientRecvRows(struct client_proto *c, struct rows *rows)
 {
 	tracef("client recv rows");
 	struct cursor cursor;
+	struct response_failure failure;
 	struct tuple_decoder decoder;
 	uint64_t column_count;
 	struct row *last;
@@ -357,7 +380,21 @@ int clientRecvRows(struct client_proto *c, struct rows *rows)
 	if (rv != 0) {
 		return rv;
 	}
-	if (type != DQLITE_RESPONSE_ROWS) {
+	if (type == DQLITE_RESPONSE_FAILURE) {
+		cursor.p = buffer__cursor(&c->read, 0);
+		cursor.cap = buffer__offset(&c->read);
+		rv = response_failure__decode(&cursor, &failure);
+		if (rv != 0) {
+			tracef("decode as failure failed rv:%d", rv);
+			return DQLITE_ERROR;
+		}
+		c->errcode = failure.code;
+		if (c->errmsg != NULL) {
+			free(c->errmsg);
+		}
+		c->errmsg = strdup(failure.message);
+		return DQLITE_ERROR_RESPONSE;
+	} else if (type != DQLITE_RESPONSE_ROWS) {
 		tracef("bad message type:%" PRIu8, type);
 		return DQLITE_ERROR;
 	}
