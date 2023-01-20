@@ -625,6 +625,31 @@ int clientSendWeight(struct client_proto *c, unsigned weight)
 	return 0;
 }
 
+int clientRecvServer(struct client_proto *c, uint64_t *id, char **address)
+{
+	tracef("client recv server");
+	struct cursor cursor;
+	struct response_server response;
+	*id = 0;
+	*address = NULL;
+	RESPONSE(server, SERVER);
+	*address = strdup(response.address);
+	if (*address == NULL) {
+		return DQLITE_NOMEM;
+	}
+	*id = response.id;
+	return 0;
+}
+
+int clientRecvWelcome(struct client_proto *c)
+{
+	tracef("client recv welcome");
+	struct cursor cursor;
+	struct response_welcome response;
+	RESPONSE(welcome, WELCOME);
+	return 0;
+}
+
 int clientRecvEmpty(struct client_proto *c)
 {
 	tracef("client recv empty");
@@ -642,5 +667,132 @@ int clientRecvFailure(struct client_proto *c, uint64_t *code, const char **msg)
 	RESPONSE(failure, FAILURE);
 	*code = response.code;
 	*msg = response.message;
+	return 0;
+}
+
+int clientRecvServers(struct client_proto *c, struct client_node_info **servers, size_t *n_servers)
+{
+	tracef("client recv servers");
+	struct cursor cursor;
+	uint64_t i = 0;
+	uint64_t j;
+	uint64_t raw_role;
+	const char *raw_addr;
+	struct response_servers response;
+	int rv;
+
+	*servers = NULL;
+	*n_servers = 0;
+
+	RESPONSE(servers, SERVERS);
+
+	struct client_node_info *srvs = calloc(response.n, sizeof(*srvs));
+	if (!srvs) {
+		rv = DQLITE_NOMEM;
+		goto err_after_alloc_srvs;
+	}
+	for (; i < response.n; ++i) {
+		rv = uint64__decode(&cursor, &srvs[i].id);
+		if (rv != 0) {
+			goto err_after_alloc_srvs;
+		}
+		rv = text__decode(&cursor, &raw_addr);
+		if (rv != 0) {
+			goto err_after_alloc_srvs;
+		}
+		srvs[i].addr = strdup(raw_addr);
+		if (srvs[i].addr == NULL) {
+			rv = DQLITE_NOMEM;
+			goto err_after_alloc_srvs;
+		}
+		rv = uint64__decode(&cursor, &raw_role);
+		if (rv != 0) {
+			free(srvs[i].addr);
+			goto err_after_alloc_srvs;
+		}
+		srvs[i].role = (int)raw_role;
+	}
+
+	*n_servers = response.n;
+	*servers = srvs;
+	return 0;
+
+err_after_alloc_srvs:
+	for (j = 0; j < i; ++j) {
+		free(srvs[i].addr);
+	}
+	free(srvs);
+	return rv;
+}
+
+int clientRecvFiles(struct client_proto *c, struct client_file **files, size_t *n_files)
+{
+	tracef("client recv files");
+	struct cursor cursor;
+	struct response_files response;
+	size_t i = 0;
+	size_t j;
+	const char *raw_name;
+	int rv;
+	*files = NULL;
+	*n_files = 0;
+	RESPONSE(files, FILES);
+
+	struct client_file *fs = calloc(response.n, sizeof(*fs));
+	if (fs == NULL) {
+		return DQLITE_NOMEM;
+	}
+	for (; i < response.n; ++i) {
+		rv = text__decode(&cursor, &raw_name);
+		if (rv != 0) {
+			goto err_after_alloc_fs;
+		}
+		fs[i].name = strdup(raw_name);
+		if (fs[i].name == NULL) {
+			rv = DQLITE_NOMEM;
+			goto err_after_alloc_fs;
+		}
+		rv = uint64__decode(&cursor, &fs[i].size);
+		if (rv != 0) {
+			free(fs[i].name);
+			goto err_after_alloc_fs;
+		}
+		if (cursor.cap != fs[i].size) {
+			free(fs[i].name);
+			rv = DQLITE_PARSE;
+			goto err_after_alloc_fs;
+		}
+		fs[i].blob = malloc(fs[i].size);
+		if (fs[i].blob == NULL) {
+			free(fs[i].name);
+			rv = DQLITE_NOMEM;
+			goto err_after_alloc_fs;
+		}
+		memcpy(fs[i].blob, cursor.p, fs[i].size);
+	}
+
+	*files = fs;
+	*n_files = response.n;
+	return 0;
+
+err_after_alloc_fs:
+	for (j = 0; j < i; ++j) {
+		free(fs[i].name);
+		free(fs[i].blob);
+	}
+	free(fs);
+	return rv;
+}
+
+int clientRecvMetadata(struct client_proto *c, unsigned *failure_domain, unsigned *weight)
+{
+	tracef("client recv metadata");
+	struct cursor cursor;
+	struct response_metadata response;
+	*failure_domain = 0;
+	*weight = 0;
+	RESPONSE(metadata, METADATA);
+	*failure_domain = (unsigned)response.failure_domain;
+	*weight = (unsigned)response.weight;
 	return 0;
 }
