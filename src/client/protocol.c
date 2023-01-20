@@ -38,6 +38,8 @@ int clientInit(struct client_proto *c, int fd)
 	tracef("init client");
 	int rv;
 	c->fd = fd;
+	c->db_name = NULL;
+	c->db_is_init = false;
 
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
@@ -66,6 +68,9 @@ void clientClose(struct client_proto *c)
 	tracef("client close");
 	buffer__close(&c->write);
 	buffer__close(&c->read);
+	if (c->db_name != NULL) {
+		free(c->db_name);
+	}
 	if (c->errmsg != NULL) {
 		free(c->errmsg);
 	}
@@ -226,6 +231,10 @@ int clientSendOpen(struct client_proto *c, const char *name)
 {
 	tracef("client send open name %s", name);
 	struct request_open request;
+	c->db_name = strdup(name);
+	if (c->db_name == NULL) {
+		return DQLITE_NOMEM;
+	}
 	request.filename = name;
 	request.flags = 0;    /* TODO: this is unused, should we drop it? */
 	request.vfs = "test"; /* TODO: this is unused, should we drop it? */
@@ -240,6 +249,7 @@ int clientRecvDb(struct client_proto *c)
 	struct response_db response;
 	RESPONSE(db, DB);
 	c->db_id = response.id;
+	c->db_is_init = true;
 	return 0;
 }
 
