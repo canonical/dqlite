@@ -13,6 +13,26 @@
 #include "../tracing.h"
 #include "../tuple.h"
 
+static ssize_t readExact(int fd, void *buf, size_t n)
+{
+	size_t got = 0;
+	ssize_t rv;
+	while (got < n) {
+		rv = read(fd, (char *)buf + got, n - got);
+		if (rv < 0) {
+			if (errno == EINTR) {
+				continue;
+			} else {
+				return rv;
+			}
+		} else if (rv == 0) {
+			break;
+		}
+		got += (size_t)rv;
+	}
+	return (ssize_t)got;
+}
+
 int clientInit(struct client_proto *c, int fd)
 {
 	tracef("init client");
@@ -134,7 +154,7 @@ static int readMessage(struct client_proto *c, uint8_t *type)
 		tracef("buffer advance failed");
 		return DQLITE_ERROR;
 	}
-	rv = read(c->fd, p, n);
+	rv = readExact(c->fd, p, n);
 	if (rv != (ssize_t)n) {
 		tracef("read head failed rv:%zd", rv);
 		return DQLITE_ERROR;
@@ -155,7 +175,7 @@ static int readMessage(struct client_proto *c, uint8_t *type)
 		tracef("buffer advance failed");
 		return DQLITE_ERROR;
 	}
-	rv = read(c->fd, p, n);
+	rv = readExact(c->fd, p, n);
 	if (rv != (ssize_t)n) {
 		tracef("read body failed rv:%zd", rv);
 	}
