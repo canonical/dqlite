@@ -11,6 +11,8 @@ struct client_proto
 {
 	int fd;		     /* Connected socket */
 	unsigned db_id;      /* Database ID provided by the server */
+	char *db_name;
+	bool db_is_init;
 	struct buffer read;  /* Read buffer */
 	struct buffer write; /* Write buffer */
 	uint64_t errcode;
