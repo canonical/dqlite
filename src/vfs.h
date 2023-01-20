@@ -69,4 +69,11 @@ int VfsDatabaseNumPages(sqlite3_vfs *vfs,
 			const char* filename,
 			uint32_t *n);
 
+/* Returns the resulting size of the main file, wal file and n additional WAL
+ * frames with the specified page_size. */
+uint64_t VfsDatabaseSize(sqlite3_vfs *vfs, const char *path, unsigned n, unsigned page_size);
+
+/* Returns the the maximum size of the main file and wal file. */
+uint64_t VfsDatabaseSizeLimit(sqlite3_vfs *vfs);
+
 #endif /* VFS_H_ */

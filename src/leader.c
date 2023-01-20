@@ -353,6 +353,7 @@ static void leaderExecV2(struct exec *req)
 	struct db *db = l->db;
 	sqlite3_vfs *vfs = sqlite3_vfs_find(db->config->name);
 	dqlite_vfs_frame *frames;
+	uint64_t size;
 	unsigned n;
 	unsigned i;
 	int rv;
@@ -365,18 +366,30 @@ static void leaderExecV2(struct exec *req)
 		goto finish;
 	}
 
+	/* Check if the new frames would create an overfull database */
+	size = VfsDatabaseSize(vfs, db->path, n, db->config->page_size);
+	if (size > VfsDatabaseSizeLimit(vfs)) {
+		rv = SQLITE_FULL;
+		goto abort;
+	}
+
 	rv = leaderApplyFrames(req, frames, n);
+	if (rv != 0) {
+		goto abort;
+	}
+
 	for (i = 0; i < n; i++) {
 		sqlite3_free(frames[i].data);
 	}
 	sqlite3_free(frames);
-	if (rv != 0) {
-		VfsAbort(vfs, l->db->path);
-		goto finish;
-	}
-
 	return;
 
+abort:
+	for (i = 0; i < n; i++) {
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
+	VfsAbort(vfs, l->db->path);
 finish:
 	if (rv != 0) {
                 tracef("exec v2 failed %d", rv);
