@@ -32,6 +32,20 @@ struct rows
 	struct row *next;
 };
 
+struct client_node_info
+{
+	uint64_t id;
+	char *addr;
+	int role;
+};
+
+struct client_file
+{
+	char *name;
+	uint64_t size;
+	void *blob;
+};
+
 /* Initialize a new client, writing requests to fd. */
 int clientInit(struct client_proto *c, int fd);
 
@@ -117,10 +131,25 @@ int clientSendDescribe(struct client_proto *c);
 /* Send a request to set the weight metadata for the attached server. */
 int clientSendWeight(struct client_proto *c, unsigned weight);
 
+/* Receive a response with the ID and address of a single node. */
+int clientRecvServer(struct client_proto *c, uint64_t *id, char **address);
+
+/* Receive a "welcome" handshake response. */
+int clientRecvWelcome(struct client_proto *c);
+
 /* Receive an empty response. */
 int clientRecvEmpty(struct client_proto *c);
 
 /* Receive a failure response. */
 int clientRecvFailure(struct client_proto *c, uint64_t *code, const char **msg);
+
+/* Receive a list of nodes in the cluster. */
+int clientRecvServers(struct client_proto *c, struct client_node_info **servers, size_t *n_servers);
+
+/* Receive a list of files that make up a database. */
+int clientRecvFiles(struct client_proto *c, struct client_file **files, size_t *n_files);
+
+/* Receive metadata for a single server. */
+int clientRecvMetadata(struct client_proto *c, unsigned *failure_domain, unsigned *weight);
 
 #endif /* DQLITE_CLIENT_PROTOCOL_H_ */
