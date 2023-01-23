@@ -108,7 +108,7 @@ void test_server_client_connect(struct test_server *s, struct client_proto *c)
 	rv = endpointConnect(NULL, s->address, &fd);
 	munit_assert_int(rv, ==, 0);
 
-	rv = clientInit(c, fd);
+	rv = clientInit(c, fd, -1, -1);
 	munit_assert_int(rv, ==, 0);
 }
 

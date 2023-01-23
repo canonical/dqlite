@@ -9,14 +9,16 @@
 
 struct client_proto
 {
-	int fd;		     /* Connected socket */
-	unsigned db_id;      /* Database ID provided by the server */
-	char *db_name;
-	bool db_is_init;
-	struct buffer read;  /* Read buffer */
-	struct buffer write; /* Write buffer */
-	uint64_t errcode;
-	char *errmsg;
+	int fd;		           /* Connected socket */
+	int timeout_first_millis;  /* The timeout when waiting to read a message header */
+	int timeout_follow_millis; /* The timeout when waiting to read (part of) a message body */
+	unsigned db_id;            /* Database ID provided by the server */
+	char *db_name;             /* Database filename */
+	bool db_is_init;           /* Whether the database ID has been initialized */
+	struct buffer read;        /* Read buffer */
+	struct buffer write;       /* Write buffer */
+	uint64_t errcode;          /* Last error code returned by the server */
+	char *errmsg;              /* Last error string returned by the server */
 };
 
 struct row
@@ -47,7 +49,7 @@ struct client_file
 };
 
 /* Initialize a new client, writing requests to fd. */
-int clientInit(struct client_proto *c, int fd);
+int clientInit(struct client_proto *c, int fd, int timeout_first_millis, int timeout_follow_millis);
 
 /* Release all memory used by the client, and close the client socket. */
 void clientClose(struct client_proto *c);
