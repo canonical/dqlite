@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <poll.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -13,18 +14,45 @@
 #include "../tracing.h"
 #include "../tuple.h"
 
-static ssize_t readExact(int fd, void *buf, size_t n)
+/* Read data from fd into buf until one of the following occurs:
+ *
+ * - The full count n of bytes is read.
+ * - A read returns 0 (EOF).
+ * - Polling the fd in preparation for a read times out.
+ *
+ * On error, -1 is returned. Otherwise the return value is the count
+ * of bytes read. This may be less than n if either EOF happened or
+ * polling timed out. */
+static ssize_t doRead(int fd, void *buf, size_t n, int timeout_millis)
 {
 	size_t got = 0;
+	struct pollfd pfd;
 	ssize_t rv;
+
+	pfd.fd = fd;
+	pfd.events = POLLIN;
+	pfd.revents = 0;
+
 	while (got < n) {
-		rv = read(fd, (char *)buf + got, n - got);
+		rv = poll(&pfd, 1, timeout_millis);
 		if (rv < 0) {
 			if (errno == EINTR) {
 				continue;
 			} else {
 				return rv;
 			}
+		} else if (rv == 0) {
+			// timeout
+			// XXX signal this to the caller somehow?
+			break;
+		}
+		assert(rv == 1);
+		if (pfd.revents != POLLIN) {
+			return -1;
+		}
+		rv = read(fd, (char *)buf + got, n - got);
+		if (rv < 0) {
+			return rv;
 		} else if (rv == 0) {
 			break;
 		}
@@ -33,13 +61,19 @@ static ssize_t readExact(int fd, void *buf, size_t n)
 	return (ssize_t)got;
 }
 
-int clientInit(struct client_proto *c, int fd)
+int clientInit(struct client_proto *c,
+	       int fd,
+	       int timeout_first_millis,
+	       int timeout_follow_millis)
 {
 	tracef("init client");
 	int rv;
 	c->fd = fd;
 	c->db_name = NULL;
 	c->db_is_init = false;
+
+	c->timeout_first_millis = timeout_first_millis;
+	c->timeout_follow_millis = timeout_follow_millis;
 
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
@@ -159,7 +193,7 @@ static int readMessage(struct client_proto *c, uint8_t *type)
 		tracef("buffer advance failed");
 		return DQLITE_ERROR;
 	}
-	rv = readExact(c->fd, p, n);
+	rv = doRead(c->fd, p, n, c->timeout_first_millis);
 	if (rv != (ssize_t)n) {
 		tracef("read head failed rv:%zd", rv);
 		return DQLITE_ERROR;
@@ -180,7 +214,7 @@ static int readMessage(struct client_proto *c, uint8_t *type)
 		tracef("buffer advance failed");
 		return DQLITE_ERROR;
 	}
-	rv = readExact(c->fd, p, n);
+	rv = doRead(c->fd, p, n, c->timeout_follow_millis);
 	if (rv != (ssize_t)n) {
 		tracef("read body failed rv:%zd", rv);
 	}

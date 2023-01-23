@@ -18,7 +18,7 @@
 		_rv = listen(f->endpoint.fd, 16);                       \
 		munit_assert_int(_rv, ==, 0);                           \
 		test_endpoint_pair(&f->endpoint, &f->server, &_client); \
-		clientInit(&f->client, _client);                        \
+		clientInit(&f->client, _client, -1, -1);                \
 	}
 
 #define TEAR_DOWN_CLIENT         \
