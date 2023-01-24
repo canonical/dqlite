@@ -3528,3 +3528,31 @@ int VfsDiskRestore(sqlite3_vfs *vfs,
 	return 0;
 }
 
+uint64_t VfsDatabaseSize(sqlite3_vfs *vfs, const char *path,
+			 unsigned n, unsigned page_size)
+{
+	struct vfs *v;
+	struct vfsDatabase *database;
+	struct vfsWal *wal;
+	uint64_t new_wal_size;
+
+	v = (struct vfs *)(vfs->pAppData);
+	database = vfsDatabaseLookup(v, path);
+	assert(database != NULL);
+
+	wal = &database->wal;
+	new_wal_size = (uint64_t)vfsWalFileSize(wal);
+	if (new_wal_size == 0) {
+		new_wal_size += (uint64_t)VFS__WAL_HEADER_SIZE;
+	}
+	new_wal_size += (uint64_t)n * (uint64_t)vfsFrameSize(page_size);
+	return (uint64_t)vfsDatabaseFileSize(database) + new_wal_size;
+}
+
+
+uint64_t VfsDatabaseSizeLimit(sqlite3_vfs *vfs)
+{
+	(void) vfs;
+	return (uint64_t)SIZE_MAX;
+}
+
