@@ -358,8 +358,8 @@ static int handle_prepare(struct handle *req)
 static void fill_result(struct gateway *g, struct response_result *response)
 {
 	assert(g->leader != NULL);
-	response->last_insert_id =
-	    (uint64_t)sqlite3_last_insert_rowid(g->leader->conn);
+	response->last_insert_id = (uint64_t)sqlite3_last_insert_rowid(g->leader->conn);
+	/* FIXME eventually we should consider using sqlite3_changes64 here */
 	response->rows_affected = (uint64_t)sqlite3_changes(g->leader->conn);
 }
 
