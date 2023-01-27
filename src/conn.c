@@ -162,10 +162,16 @@ static int read_request(struct conn *c)
 {
 	uv_buf_t buf;
 	int rv;
+	if (UINT64_C(8) * (uint64_t)c->request.words > (uint64_t)UINT32_MAX) {
+		return DQLITE_ERROR;
+	}
 	rv = init_read(c, &buf, c->request.words * 8);
 	if (rv != 0) {
                 tracef("init read failed %d", rv);
 		return rv;
+	}
+	if (c->request.words == 0) {
+		return 0;
 	}
 	rv = transport__read(&c->transport, &buf, read_request_cb);
 	if (rv != 0) {
