@@ -704,7 +704,7 @@ int clientRecvRows(struct client_proto *c, struct rows *rows, struct client_cont
 		}
 
 		row = mallocChecked(sizeof *row);
-		row->values = callocChecked(column_count, sizeof *row->values);
+		row->values = callocChecked(rows->column_count, sizeof *row->values);
 		row->next = NULL;
 
 		/* Make sure that `goto err_after_alloc_row_values` will do the
@@ -928,6 +928,7 @@ int clientRecvServers(struct client_proto *c,
 {
 	tracef("client recv servers");
 	struct cursor cursor;
+	size_t n;
 	uint64_t i = 0;
 	uint64_t j;
 	uint64_t raw_role;
@@ -940,7 +941,9 @@ int clientRecvServers(struct client_proto *c,
 
 	RESPONSE(servers, SERVERS);
 
-	struct client_node_info *srvs = callocChecked(response.n, sizeof(*srvs));
+	n = (size_t)response.n;
+	assert((uint64_t)n == response.n);
+	struct client_node_info *srvs = callocChecked(n, sizeof *srvs);
 	for (; i < response.n; ++i) {
 		rv = uint64__decode(&cursor, &srvs[i].id);
 		if (rv != 0) {
@@ -962,7 +965,7 @@ int clientRecvServers(struct client_proto *c,
 		srvs[i].role = (int)raw_role;
 	}
 
-	*n_servers = response.n;
+	*n_servers = n;
 	*servers = srvs;
 	return 0;
 
@@ -982,6 +985,9 @@ int clientRecvFiles(struct client_proto *c,
 	tracef("client recv files");
 	struct cursor cursor;
 	struct response_files response;
+	struct client_file *fs;
+	size_t n;
+	size_t z;
 	size_t i = 0;
 	size_t j;
 	const char *raw_name;
@@ -990,7 +996,9 @@ int clientRecvFiles(struct client_proto *c,
 	*n_files = 0;
 	RESPONSE(files, FILES);
 
-	struct client_file *fs = callocChecked(response.n, sizeof *fs);
+	n = (size_t)response.n;
+	assert((uint64_t)n == response.n);
+	fs = callocChecked(n, sizeof *fs);
 	for (; i < response.n; ++i) {
 		rv = text__decode(&cursor, &raw_name);
 		if (rv != 0) {
@@ -1010,12 +1018,14 @@ int clientRecvFiles(struct client_proto *c,
 			rv = DQLITE_PARSE;
 			goto err_after_alloc_fs;
 		}
-		fs[i].blob = mallocChecked(fs[i].size);
-		memcpy(fs[i].blob, cursor.p, fs[i].size);
+		z = (size_t)fs[i].size;
+		assert((uint64_t)z == fs[i].size);
+		fs[i].blob = mallocChecked(z);
+		memcpy(fs[i].blob, cursor.p, z);
 	}
 
 	*files = fs;
-	*n_files = response.n;
+	*n_files = n;
 	return 0;
 
 err_after_alloc_fs:
