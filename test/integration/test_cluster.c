@@ -1,4 +1,4 @@
-#include "../../src/client.h"
+#include "../../src/client/protocol.h"
 #include "../../src/server.h"
 #include "../lib/client.h"
 #include "../lib/endpoint.h"
@@ -17,7 +17,7 @@
 #define N_SERVERS 3
 #define FIXTURE                                \
 	struct test_server servers[N_SERVERS]; \
-	struct client *client
+	struct client_proto *client
 
 #define SETUP                                                 \
 	unsigned i_;                                          \
@@ -94,9 +94,9 @@ static MunitParameterEnum cluster_params[] = {
 TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 {
 	struct fixture *f = data;
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	struct rows rows;
 	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	char sql[128];
@@ -130,9 +130,9 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 {
 	struct fixture *f = data;
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	struct rows rows;
 	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	char sql[128];
@@ -153,7 +153,7 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	/* Add a second voting server, this one will receive all data from the
 	 * original leader. */
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, DQLITE_VOTER);
 
 	/* Remove original server so second server becomes leader after election
 	 * timeout */
@@ -176,9 +176,9 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	char *sql;
 	ssize_t n;
 	size_t huge = 20000000;

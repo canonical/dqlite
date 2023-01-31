@@ -24,7 +24,7 @@ static MunitParameterEnum client_params[] = {
 struct fixture
 {
 	struct test_server server;
-	struct client *client;
+	struct client_proto *client;
 };
 
 static void *setUp(const MunitParameter params[], void *user_data)
@@ -54,21 +54,52 @@ static void tearDown(void *data)
 TEST(client, exec, setUp, tearDown, 0, client_params)
 {
 	struct fixture *f = data;
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 	return MUNIT_OK;
 }
 
+TEST(client, execWithOneParam, setUp, tearDown, 0, client_params)
+{
+	struct fixture *f = data;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	struct value param = {0};
+	int rv;
+	(void)params;
+	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	PREPARE("INSERT INTO test (n) VALUES(?)", &stmt_id);
+	param.type = SQLITE_INTEGER;
+	param.integer = 17;
+	rv = clientSendExec(f->client, stmt_id, &param, 1, NULL);
+	munit_assert_int(rv, ==, 0);
+	rv = clientRecvResult(f->client, &last_insert_id, &rows_affected, NULL);
+	munit_assert_int(rv, ==, 0);
+	return MUNIT_OK;
+}
+
+TEST(client, execSql, setUp, tearDown, 0, client_params)
+{
+	struct fixture *f = data;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	(void)params;
+	EXEC_SQL("CREATE TABLE test (n INT)", &last_insert_id, &rows_affected);
+	return MUNIT_OK;
+}
+
 TEST(client, query, setUp, tearDown, 0, client_params)
 {
 	struct fixture *f = data;
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	unsigned i;
 	struct rows rows;
 	(void)params;
@@ -88,6 +119,33 @@ TEST(client, query, setUp, tearDown, 0, client_params)
 
 	PREPARE("SELECT n FROM test", &stmt_id);
 	QUERY(stmt_id, &rows);
+
+	clientCloseRows(&rows);
+
+	return MUNIT_OK;
+}
+
+TEST(client, querySql, setUp, tearDown, 0, client_params)
+{
+	struct fixture *f = data;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	unsigned i;
+	struct rows rows;
+	(void)params;
+	EXEC_SQL("CREATE TABLE test (n INT)", &last_insert_id, &rows_affected);
+
+	EXEC_SQL("BEGIN", &last_insert_id, &rows_affected);
+
+	PREPARE("INSERT INTO test (n) VALUES(123)", &stmt_id);
+	for (i = 0; i < 256; i++) {
+		EXEC(stmt_id, &last_insert_id, &rows_affected);
+	}
+
+	EXEC_SQL("COMMIT", &last_insert_id, &rows_affected);
+
+	QUERY_SQL("SELECT n FROM test", &rows);
 
 	clientCloseRows(&rows);
 

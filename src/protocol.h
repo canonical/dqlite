@@ -42,7 +42,10 @@ enum {
     DQLITE_REQUEST_INTERRUPT,
     DQLITE_REQUEST_CONNECT,
     DQLITE_REQUEST_ADD,
-    DQLITE_REQUEST_ASSIGN,
+    /* The PROMOTE and ASSIGN requests share a type tag. We expose it under
+     * two names here to facilitate the macro shenanigans in request.h. */
+    DQLITE_REQUEST_PROMOTE_OR_ASSIGN,
+    DQLITE_REQUEST_ASSIGN = DQLITE_REQUEST_PROMOTE_OR_ASSIGN,
     DQLITE_REQUEST_REMOVE,
     DQLITE_REQUEST_DUMP,
     DQLITE_REQUEST_CLUSTER,

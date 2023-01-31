@@ -13,7 +13,7 @@
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
 
-#include "../../src/client.h"
+#include "../../src/client/protocol.h"
 #include "../../src/conn.h"
 #include "../../src/gateway.h"
 #include "../../src/lib/transport.h"
@@ -87,80 +87,80 @@ static void connCloseCb(struct conn *conn)
  ******************************************************************************/
 
 /* Send the initial client handshake. */
-#define HANDSHAKE_CONN                                 \
-	{                                              \
-		int rv2;                               \
-		rv2 = clientSendHandshake(&f->client); \
-		munit_assert_int(rv2, ==, 0);          \
-		test_uv_run(&f->loop, 1);              \
+#define HANDSHAKE_CONN                                       \
+	{                                                    \
+		int rv2;                                     \
+		rv2 = clientSendHandshake(&f->client, NULL); \
+		munit_assert_int(rv2, ==, 0);                \
+		test_uv_run(&f->loop, 1);                    \
 	}
 
 /* Open a test database. */
-#define OPEN_CONN                                         \
-	{                                                 \
-		int rv2;                                  \
-		rv2 = clientSendOpen(&f->client, "test"); \
-		munit_assert_int(rv2, ==, 0);             \
-		test_uv_run(&f->loop, 2);                 \
-		rv2 = clientRecvDb(&f->client);           \
-		munit_assert_int(rv2, ==, 0);             \
+#define OPEN_CONN                                               \
+	{                                                       \
+		int rv2;                                        \
+		rv2 = clientSendOpen(&f->client, "test", NULL); \
+		munit_assert_int(rv2, ==, 0);                   \
+		test_uv_run(&f->loop, 2);                       \
+		rv2 = clientRecvDb(&f->client, NULL);           \
+		munit_assert_int(rv2, ==, 0);                   \
 	}
 
 /* Prepare a statement. */
-#define PREPARE_CONN(SQL, STMT_ID)                         \
-	{                                                  \
-		int rv2;                                   \
-		rv2 = clientSendPrepare(&f->client, SQL);  \
-		munit_assert_int(rv2, ==, 0);              \
-		test_uv_run(&f->loop, 1);                  \
-		rv2 = clientRecvStmt(&f->client, STMT_ID); \
-		munit_assert_int(rv2, ==, 0);              \
+#define PREPARE_CONN(SQL, STMT_ID)                               \
+	{                                                        \
+		int rv2;                                         \
+		rv2 = clientSendPrepare(&f->client, SQL, NULL);  \
+		munit_assert_int(rv2, ==, 0);                    \
+		test_uv_run(&f->loop, 1);                        \
+		rv2 = clientRecvStmt(&f->client, STMT_ID, NULL); \
+		munit_assert_int(rv2, ==, 0);                    \
 	}
 
 /* Execute a statement. */
-#define EXEC_CONN(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)    \
-	{                                                          \
-		int rv2;                                           \
-		rv2 = clientSendExec(&f->client, STMT_ID);         \
-		munit_assert_int(rv2, ==, 0);                      \
-		test_uv_run(&f->loop, LOOP);                       \
-		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
-				       ROWS_AFFECTED);             \
-		munit_assert_int(rv2, ==, 0);                      \
+#define EXEC_CONN(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)           \
+	{                                                                 \
+		int rv2;                                                  \
+		rv2 = clientSendExec(&f->client, STMT_ID, NULL, 0, NULL); \
+		munit_assert_int(rv2, ==, 0);                             \
+		test_uv_run(&f->loop, LOOP);                              \
+		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID,        \
+				       ROWS_AFFECTED, NULL);              \
+		munit_assert_int(rv2, ==, 0);                             \
 	}
 
 /* Execute a non-prepared statement. */
-#define EXEC_SQL_CONN(SQL, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)    \
-	{                                                          \
-		int rv2;                                           \
-		rv2 = clientSendExecSQL(&f->client, SQL);          \
-		munit_assert_int(rv2, ==, 0);                      \
-		test_uv_run(&f->loop, LOOP);                       \
-		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID, \
-				       ROWS_AFFECTED);             \
-		munit_assert_int(rv2, ==, 0);                      \
+#define EXEC_SQL_CONN(SQL, LAST_INSERT_ID, ROWS_AFFECTED, LOOP)          \
+	{                                                                \
+		int rv2;                                                 \
+		rv2 = clientSendExecSQL(&f->client, SQL, NULL, 0, NULL); \
+		munit_assert_int(rv2, ==, 0);                            \
+		test_uv_run(&f->loop, LOOP);                             \
+		rv2 = clientRecvResult(&f->client, LAST_INSERT_ID,       \
+				       ROWS_AFFECTED, NULL);             \
+		munit_assert_int(rv2, ==, 0);                            \
 	}
 
 /* Perform a query. */
-#define QUERY_CONN(STMT_ID, ROWS)                           \
-	{                                                   \
-		int rv2;                                    \
-		rv2 = clientSendQuery(&f->client, STMT_ID); \
-		munit_assert_int(rv2, ==, 0);               \
-		test_uv_run(&f->loop, 2);                   \
-		rv2 = clientRecvRows(&f->client, ROWS);     \
-		munit_assert_int(rv2, ==, 0);               \
+#define QUERY_CONN(STMT_ID, ROWS)                                          \
+	{                                                                  \
+		int rv2;                                                   \
+		rv2 = clientSendQuery(&f->client, STMT_ID, NULL, 0, NULL); \
+		munit_assert_int(rv2, ==, 0);                              \
+		test_uv_run(&f->loop, 2);                                  \
+		rv2 = clientRecvRows(&f->client, ROWS, NULL);              \
+		munit_assert_int(rv2, ==, 0);                              \
 	}
 
 /* Perform a non-prepared query. */
-#define QUERY_SQL_CONN(SQL, ROWS)                              \
-	{                                                      \
-		int rv2;                                       \
-		rv2 = clientSendQuerySql(&f->client, SQL);     \
-		munit_assert_int(rv2, ==, 0);                  \
-		test_uv_run(&f->loop, 2);                      \
-		rv2 = clientRecvRows(&f->client, ROWS);        \
-		munit_assert_int(rv2, ==, 0);                  \
+#define QUERY_SQL_CONN(SQL, ROWS)                                         \
+	{                                                                 \
+		int rv2;                                                  \
+		rv2 = clientSendQuerySql(&f->client, SQL, NULL, 0, NULL); \
+		munit_assert_int(rv2, ==, 0);                             \
+		test_uv_run(&f->loop, 2);                                 \
+		rv2 = clientRecvRows(&f->client, ROWS, NULL);             \
+		munit_assert_int(rv2, ==, 0);                             \
 	}
 
 /******************************************************************************
@@ -306,8 +306,8 @@ TEST_TEAR_DOWN(exec)
 TEST_CASE(exec, success, NULL)
 {
 	struct exec_fixture *f = data;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	(void)params;
 	PREPARE_CONN("CREATE TABLE test (n INT)", &f->stmt_id);
 	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 8);
@@ -319,8 +319,8 @@ TEST_CASE(exec, success, NULL)
 TEST_CASE(exec, result, NULL)
 {
 	struct exec_fixture *f = data;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	(void)params;
 	PREPARE_CONN("BEGIN", &f->stmt_id);
 	EXEC_CONN(f->stmt_id, &last_insert_id, &rows_affected, 5);
@@ -338,13 +338,13 @@ TEST_CASE(exec, result, NULL)
 TEST_CASE(exec, close_while_in_flight, NULL)
 {
 	struct exec_fixture *f = data;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	int rv;
 	(void)params;
 
 	EXEC_SQL_CONN("CREATE TABLE test (n)", &last_insert_id, &rows_affected, 9);
-	rv = clientSendExecSQL(&f->client, "INSERT INTO test(n) VALUES(1)");
+	rv = clientSendExecSQL(&f->client, "INSERT INTO test(n) VALUES(1)", NULL, 0, NULL);
 	munit_assert_int(rv, ==, 0);
 
 	test_uv_run(&f->loop, 1);
@@ -363,17 +363,17 @@ TEST_SUITE(query);
 struct query_fixture
 {
 	FIXTURE;
-	unsigned stmt_id;
-	unsigned insert_stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint32_t insert_stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	struct rows rows;
 };
 
 TEST_SETUP(query)
 {
 	struct query_fixture *f = munit_malloc(sizeof *f);
-	unsigned stmt_id;
+	uint32_t stmt_id;
 	SETUP;
 	HANDSHAKE_CONN;
 	OPEN_CONN;

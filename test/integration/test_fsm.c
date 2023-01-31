@@ -1,4 +1,4 @@
-#include "../../src/client.h"
+#include "../../src/client/protocol.h"
 #include "../../src/command.h"
 #include "../../src/server.h"
 #include "../lib/client.h"
@@ -16,7 +16,7 @@
 #define N_SERVERS 1
 #define FIXTURE                                \
 	struct test_server servers[N_SERVERS]; \
-	struct client *client
+	struct client_proto *client
 
 #define SETUP                                                 \
 	unsigned i_;                                          \
@@ -128,9 +128,9 @@ TEST(fsm, snapshotWrittenDb, setUp, tearDown, 0, snapshot_params)
 	unsigned n_bufs = 0;
 	int rv;
 
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 
 	bool disk_mode = false;
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
@@ -170,9 +170,9 @@ TEST(fsm, snapshotHeapFaultSingleDB, setUp, tearDown, 0, snapshot_params)
 	unsigned n_bufs = 0;
 	int rv;
 
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 
 	bool disk_mode = false;
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
@@ -221,9 +221,9 @@ TEST(fsm, snapshotHeapFaultSingleDBAsyncDisk, setUp, tearDown, 0, snapshot_param
 	unsigned n_bufs = 0;
 	int rv;
 
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 
 	bool disk_mode = false;
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
@@ -268,9 +268,9 @@ TEST(fsm, snapshotHeapFaultTwoDB, setUp, tearDown, 0, snapshot_params)
 	unsigned n_bufs = 0;
 	int rv;
 
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 
 	bool disk_mode = false;
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
@@ -336,9 +336,9 @@ TEST(fsm, snapshotHeapFaultTwoDBAsync, setUp, tearDown, 0, snapshot_params)
 	unsigned n_bufs = 0;
 	int rv;
 
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 
 	bool disk_mode = false;
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
@@ -406,9 +406,9 @@ TEST(fsm, snapshotNewDbAddedBeforeFinalize, setUp, tearDown, 0, snapshot_params)
 	unsigned n_bufs = 0;
 	int rv;
 
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 
 	bool disk_mode = false;
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
@@ -458,9 +458,9 @@ TEST(fsm, snapshotWritesBeforeFinalize, setUp, tearDown, 0, snapshot_params)
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
 	struct raft_buffer *bufs;
 	unsigned n_bufs = 0;
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	char sql[128];
 	int rv;
 
@@ -514,9 +514,9 @@ TEST(fsm, concurrentSnapshots, setUp, tearDown, 0, snapshot_params)
 	struct raft_buffer *bufs2;
 	unsigned n_bufs = 0;
 	unsigned n_bufs2 = 0;
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	int rv;
 
 	bool disk_mode = false;
@@ -607,9 +607,9 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, restore_params)
 	struct raft_buffer snapshot;
 	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	unsigned n_bufs = 0;
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	struct rows rows;
 	int rv;
 	char sql[128];
@@ -676,9 +676,9 @@ TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, snapshot_params)
 	struct raft_buffer *bufs;
 	struct raft_buffer snapshot;
 	unsigned n_bufs = 0;
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	struct rows rows;
 	uint64_t code;
 	const char *msg;

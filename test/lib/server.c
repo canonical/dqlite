@@ -89,18 +89,18 @@ void test_server_start(struct test_server *s, const MunitParameter params[])
 	test_server_client_connect(s, &s->client);
 }
 
-struct client *test_server_client(struct test_server *s)
+struct client_proto *test_server_client(struct test_server *s)
 {
 	return &s->client;
 }
 
-void test_server_client_reconnect(struct test_server *s, struct client *c)
+void test_server_client_reconnect(struct test_server *s, struct client_proto *c)
 {
 	test_server_client_close(s, c);
 	test_server_client_connect(s, c);
 }
 
-void test_server_client_connect(struct test_server *s, struct client *c)
+void test_server_client_connect(struct test_server *s, struct client_proto *c)
 {
 	int rv;
 	int fd;
@@ -112,11 +112,10 @@ void test_server_client_connect(struct test_server *s, struct client *c)
 	munit_assert_int(rv, ==, 0);
 }
 
-void test_server_client_close(struct test_server *s, struct client *c)
+void test_server_client_close(struct test_server *s, struct client_proto *c)
 {
 	(void) s;
 	clientClose(c);
-	close(c->fd);
 }
 
 static void setOther(struct test_server *s, struct test_server *other)

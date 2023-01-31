@@ -1,4 +1,4 @@
-#include "../../src/client.h"
+#include "../../src/client/protocol.h"
 #include "../../src/server.h"
 #include "../lib/client.h"
 #include "../lib/endpoint.h"
@@ -18,7 +18,7 @@
 #define N_SERVERS 3
 #define FIXTURE                                \
 	struct test_server servers[N_SERVERS]; \
-	struct client *client;                 \
+	struct client_proto *client;           \
 	struct rows rows;
 
 #define SETUP                                                 \
@@ -94,13 +94,13 @@ TEST(membership, join, setUp, tearDown, 0, membership_params)
 	struct fixture *f = data;
 	unsigned id = 2;
 	const char *address = "@2";
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 
 	HANDSHAKE;
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, DQLITE_VOTER);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
@@ -136,16 +136,16 @@ TEST(membership, transfer, setUp, tearDown, 0, membership_params)
 	struct fixture *f = data;
 	unsigned id = 2;
 	const char *address = "@2";
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	raft_index last_applied;
-	struct client c_transfer; /* Client used for transfer requests */
+	struct client_proto c_transfer; /* Client used for transfer requests */
 	struct id_last_applied await_arg;
 
 	HANDSHAKE;
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, DQLITE_VOTER);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
@@ -180,16 +180,16 @@ TEST(membership, transferPendingTransaction, setUp, tearDown, 0, membership_para
 	struct fixture *f = data;
 	unsigned id = 2;
 	const char *address = "@2";
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	raft_index last_applied;
-	struct client c_transfer; /* Client used for transfer requests */
+	struct client_proto c_transfer; /* Client used for transfer requests */
 	struct id_last_applied await_arg;
 
 	HANDSHAKE;
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, DQLITE_VOTER);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
@@ -243,15 +243,15 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	unsigned id = 2;
 	const char *address = "@2";
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
-	struct client c_transfer; /* Client used for transfer requests */
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	struct client_proto c_transfer; /* Client used for transfer requests */
 	struct fixture_id arg;
 
 	HANDSHAKE;
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, DQLITE_VOTER);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 
@@ -260,7 +260,7 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 	 * functionality that checks for leadership still succeeds. */
 	test_server_client_connect(&f->servers[0], &c_transfer);
 	HANDSHAKE_C(&c_transfer);
-	rv = clientSendTransfer(&c_transfer, 2);
+	rv = clientSendTransfer(&c_transfer, 2, NULL);
 	munit_assert_int(rv, ==, 0);
 
 	/* Wait until transfer is started by raft so the barrier can fail. */
@@ -272,10 +272,10 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 	 * TODO this is hacky, but I can't seem to hit the codepath otherwise */
 	f->servers[0].dqlite->raft.last_applied = 0;
 
-	rv = clientSendExec(f->client, stmt_id);
+	rv = clientSendExec(f->client, stmt_id, NULL, 0, NULL);
 	munit_assert_int(rv, ==, 0);
-	rv = clientRecvResult(f->client, &last_insert_id, &rows_affected);
-	munit_assert_int(rv, ==, 1);
+	rv = clientRecvResult(f->client, &last_insert_id, &rows_affected, NULL);
+	munit_assert_int(rv, ==, DQLITE_CLIENT_PROTO_ERROR);
 
 	test_server_client_close(&f->servers[1], &c_transfer);
 	return MUNIT_OK;
@@ -287,16 +287,16 @@ TEST(membership, transferTwicePendingTransaction, setUp, tearDown, 0, membership
 	struct fixture *f = data;
 	unsigned id = 2;
 	const char *address = "@2";
-	unsigned stmt_id;
-	unsigned last_insert_id;
-	unsigned rows_affected;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
 	raft_index last_applied;
-	struct client c_transfer; /* Client used for transfer requests */
+	struct client_proto c_transfer; /* Client used for transfer requests */
 	struct id_last_applied await_arg;
 
 	HANDSHAKE;
 	ADD(id, address);
-	ASSIGN(id, 1 /* voter */);
+	ASSIGN(id, DQLITE_VOTER);
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
