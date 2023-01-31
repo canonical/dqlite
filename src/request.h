@@ -74,6 +74,15 @@ REQUEST__TYPES(REQUEST__DEFINE);
 
 SERIALIZE__DEFINE(request_connect, REQUEST_CONNECT);
 
+/* Definition of the ASSIGN request that's used only for serialization.
+ *
+ * The one-field PROMOTE request and the two-field ASSIGN request have the
+ * same type tag, so we can't dispatch deserialization based on that field.
+ * Instead, we deserialize as the least-common-denominator PROMOTE_OR_ASSIGN
+ * and then manually read the second field if appropriate.
+ *
+ * But when serializing, we can just decide to send an ASSIGN request, so
+ * we provide the message definition here for that purpose. */
 #define REQUEST_ASSIGN(X, ...)       \
 	X(uint64, id, ##__VA_ARGS__) \
 	X(uint64, role, ##__VA_ARGS__)
