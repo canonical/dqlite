@@ -171,6 +171,7 @@ void gateway__close(struct gateway *g)
 /* Encode fa failure response and invoke the request callback */
 static void failure(struct handle *req, int code, const char *message)
 {
+	tracef("failure code:%d message:%s", code, message);
 	struct response_failure failure;
 	size_t n;
 	void *cursor;

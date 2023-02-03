@@ -90,8 +90,16 @@ struct client_file
 	void *blob;
 };
 
+void *mallocChecked(size_t);
+void *callocChecked(size_t, size_t);
+char *strdupChecked(const char *);
+char *strndupChecked(const char *, size_t);
+
+void makeValueOwned(struct value *);
+void freeOwnedValue(struct value);
+
 /* Initialize a new client, writing requests to fd. */
-int clientInit(struct client_proto *c, int fd);
+void clientInit(struct client_proto *c, int fd);
 
 /* Release all memory used by the client, and close the client socket. */
 void clientClose(struct client_proto *c);
@@ -118,6 +126,7 @@ int clientSendPrepare(struct client_proto *c, const char *sql, struct client_con
 /* Receive the response to a prepare request. */
 int clientRecvStmt(struct client_proto *c,
 			uint32_t *stmt_id,
+			uint64_t *n_params,
 			uint64_t *offset,
 			struct client_context *context);
 
@@ -148,7 +157,10 @@ int clientSendQuerySQL(struct client_proto *c, const char *sql,
 			struct client_context *context);
 
 /* Receive the response of a query request. */
-int clientRecvRows(struct client_proto *c, struct rows *rows, struct client_context *context);
+int clientRecvRows(struct client_proto *c,
+			struct rows *rows,
+			bool *done,
+			struct client_context *context);
 
 /* Release all memory used in the given rows object. */
 void clientCloseRows(struct rows *rows);
