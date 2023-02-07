@@ -592,6 +592,22 @@ TEST_CASE(prepare, non_leader, NULL)
 	return MUNIT_OK;
 }
 
+/* Try to prepare a string containing more than one statement. */
+TEST_CASE(prepare, nonempty_tail, NULL)
+{
+	struct prepare_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT); SELECT * FROM test";
+	CLUSTER_ELECT(0);
+	ENCODE(&f->request, prepare);
+	HANDLE(PREPARE);
+	WAIT;
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR, "nonempty statement tail");
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * exec
@@ -2076,6 +2092,20 @@ TEST_CASE(query_sql, manyParams, NULL)
 
 	free(values);
 	free(sql);
+	return MUNIT_OK;
+}
+
+/* Send a QUERY_SQL request containing more than one statement. */
+TEST_CASE(query_sql, nonemptyTail, NULL)
+{
+	struct query_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "SELECT * FROM test; SELECT (n) FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR, "nonempty statement tail");
 	return MUNIT_OK;
 }
 

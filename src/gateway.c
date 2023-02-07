@@ -299,8 +299,7 @@ static void prepareBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	rc = sqlite3_prepare_v2(g->leader->conn, sql, -1, &stmt->stmt,
-				&tail);
+	rc = sqlite3_prepare_v2(g->leader->conn, sql, -1, &stmt->stmt, &tail);
 	if (rc != SQLITE_OK) {
 		tracef("prepare barrier cb sqlite prepare failed %d %s", rc, sqlite3_errmsg(g->leader->conn));
 		stmt__registry_del(&g->stmts, stmt);
@@ -313,6 +312,12 @@ static void prepareBarrierCb(struct barrier *barrier, int status)
 		stmt__registry_del(&g->stmts, stmt);
 		/* FIXME Should we use a code other than 0 here? */
 		failure(req, 0, "empty statement");
+		return;
+	}
+
+	if (*tail != '\0') {
+		stmt__registry_del(&g->stmts, stmt);
+		failure(req, SQLITE_ERROR, "nonempty statement tail");
 		return;
 	}
 
@@ -770,8 +775,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	rv = sqlite3_prepare_v2(g->leader->conn, sql, -1, &stmt,
-				&tail);
+	rv = sqlite3_prepare_v2(g->leader->conn, sql, -1, &stmt, &tail);
 	if (rv != SQLITE_OK) {
 		tracef("handle query sql prepare failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
@@ -781,6 +785,12 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	if (stmt == NULL) {
 		tracef("handle query sql empty statement");
 		failure(req, rv, "empty statement");
+		return;
+	}
+
+	if (*tail != '\0') {
+		sqlite3_finalize(stmt);
+		failure(req, SQLITE_ERROR, "nonempty statement tail");
 		return;
 	}
 
