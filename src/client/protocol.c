@@ -870,6 +870,27 @@ int clientSendWeight(struct client_proto *c, uint64_t weight, struct client_cont
 	return 0;
 }
 
+int clientSendGenexec(struct client_proto *c,
+			uint32_t stmt_id,
+			struct value *params,
+			size_t n_params,
+			struct client_context *context)
+{
+	struct request_genexec request;
+	int rv;
+
+	request.db_id = c->db_id;
+	request.stmt_id = stmt_id;
+	BUFFER_REQUEST(genexec, GENEXEC);
+
+	rv = bufferParams(c, params, n_params);
+	if (rv != 0) {
+		return rv;
+	}
+	rv = writeMessage(c, DQLITE_REQUEST_GENEXEC, 0, context);
+	return rv;
+}
+
 int clientRecvServer(struct client_proto *c,
 			uint64_t *id,
 			char **address,

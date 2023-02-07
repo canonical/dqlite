@@ -186,6 +186,11 @@ int clientSendDescribe(struct client_proto *c, struct client_context *context);
 /* Send a request to set the weight metadata for the attached server. */
 int clientSendWeight(struct client_proto *c, uint64_t weight, struct client_context *context);
 
+/* Send a request to execute a prepared statement and return rows. */
+int clientSendGenexec(struct client_proto *c, uint32_t stmt_id,
+			struct value *params, size_t n_params,
+			struct client_context *context);
+
 /* Receive a response with the ID and address of a single node. */
 int clientRecvServer(struct client_proto *c,
 			uint64_t *id,

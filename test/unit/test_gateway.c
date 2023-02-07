@@ -254,7 +254,7 @@ static void handleCb(struct handle *req, int status, int type)
 /* Prepare and exec a statement. */
 #define EXEC(SQL)                               \
 	{                                       \
-		uint64_t _stmt_id;              \
+		uint32_t _stmt_id;              \
 		struct request_prepare prepare; \
 		struct response_stmt stmt;      \
 		prepare.db_id = 0;              \
@@ -269,6 +269,15 @@ static void handleCb(struct handle *req, int status, int type)
 		WAIT;                           \
 		ASSERT_CALLBACK(0, RESULT);     \
 		FINALIZE(_stmt_id);             \
+	}
+
+#define GENEXEC_SUBMIT(STMT_ID)                 \
+	{                                       \
+		struct request_genexec genexec; \
+		genexec.db_id = 0;              \
+		genexec.stmt_id = STMT_ID;      \
+		ENCODE(&genexec, genexec);      \
+		HANDLE(GENEXEC);                \
 	}
 
 /* Execute a pragma statement to lowers SQLite's page cache size, in order to
@@ -2117,6 +2126,136 @@ TEST_CASE(request_cluster, unrecognizedFormat, NULL)
 	HANDLE(CLUSTER);
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized cluster format");
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * genexec
+ *
+ ******************************************************************************/
+
+struct genexec_fixture
+{
+	FIXTURE;
+	struct request_genexec request;
+	struct response_rows response;
+};
+
+TEST_SUITE(genexec);
+TEST_SETUP(genexec)
+{
+	struct genexec_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	OPEN;
+	CLUSTER_ELECT(0);
+	EXEC("CREATE TABLE test (n INT, data BLOB)");
+	return f;
+}
+TEST_TEAR_DOWN(genexec)
+{
+	struct genexec_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(genexec, simple, NULL)
+{
+	struct genexec_fixture *f = data;
+	uint32_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct tuple_decoder tup;
+	struct value val;
+
+	/* SQLite didn't support RETURNING until 3.35.0. */
+	if (sqlite3_libversion_number() < 3*1000*1000 + 35*1000) {
+		return MUNIT_SKIP;
+	}
+
+	(void)params;
+	EXEC("INSERT INTO test (n, data) VALUES (17, X'123456abcdef')");
+	PREPARE("DELETE FROM test RETURNING *");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, genexec);
+	HANDLE(GENEXEC);
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 2);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "data");
+	tuple_decoder__init(&tup, 2, TUPLE__ROW, f->cursor);
+	tuple_decoder__next(&tup, &val);
+	munit_assert_int(val.type, ==, SQLITE_INTEGER);
+	tuple_decoder__next(&tup, &val);
+	munit_assert_int(val.type, ==, SQLITE_BLOB);
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+	return MUNIT_OK;
+}
+
+TEST_CASE(genexec, readonly, NULL)
+{
+	struct genexec_fixture *f = data;
+	uint32_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct tuple_decoder tup;
+	struct value val;
+	(void)params;
+	EXEC("INSERT INTO test (n, data) VALUES (17, X'123456abcdef')");
+	PREPARE("SELECT * FROM test");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, genexec);
+	HANDLE(GENEXEC);
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 2);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "data");
+	tuple_decoder__init(&tup, 2, TUPLE__ROW, f->cursor);
+	tuple_decoder__next(&tup, &val);
+	munit_assert_int(val.type, ==, SQLITE_INTEGER);
+	tuple_decoder__next(&tup, &val);
+	munit_assert_int(val.type, ==, SQLITE_BLOB);
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+	return MUNIT_OK;
+}
+
+TEST_CASE(genexec, no_rows, NULL)
+{
+	struct genexec_fixture *f = data;
+	uint32_t stmt_id;
+	uint64_t n;
+	const char *column;
+
+	/* SQLite didn't support RETURNING until 3.35.0. */
+	if (sqlite3_libversion_number() < 3*1000*1000 + 35*1000) {
+		return MUNIT_SKIP;
+	}
+
+	(void)params;
+	PREPARE("DELETE FROM test RETURNING *");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, genexec);
+	HANDLE(GENEXEC);
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 2);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "data");
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
 	return MUNIT_OK;
 }
 

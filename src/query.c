@@ -97,7 +97,7 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 	return SQLITE_OK;
 }
 
-int query__batch(sqlite3_stmt *stmt, struct buffer *buffer) {
+int query__batch(sqlite3_stmt *stmt, struct buffer *buffer, int prev_status) {
 	int n; /* Column count */
 	int i;
 	uint64_t n64;
@@ -126,6 +126,20 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer) {
 	}
 
 	/* Insert the rows. */
+	switch (prev_status) {
+		case SQLITE_DONE:
+			return SQLITE_DONE;
+		case SQLITE_ROW:
+			rc = encode_row(stmt, buffer, n);
+			if (rc != SQLITE_OK) {
+				return rc;
+			}
+			break;
+		case 0:
+			break;
+		default:
+			assert(0);
+	}
 	do {
 		if (buffer__offset(buffer) >= buffer->page_size) {
 			/* If we are already filled a memory page, let's break

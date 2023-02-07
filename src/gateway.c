@@ -456,13 +456,13 @@ static int handle_exec(struct handle *req)
  * given request with a single batch of rows.
  *
  * A single batch of rows is typically about the size of a memory page. */
-static void query_batch(sqlite3_stmt *stmt, struct handle *req)
+static void query_batch(sqlite3_stmt *stmt, struct handle *req, int prev_status)
 {
 	struct gateway *g = req->gateway;
 	struct response_rows response;
 	int rc;
 
-	rc = query__batch(stmt, req->buffer);
+	rc = query__batch(stmt, req->buffer, prev_status);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		sqlite3_reset(stmt);
 		assert(g->leader != NULL);
@@ -513,7 +513,7 @@ static void query_barrier_cb(struct barrier *barrier, int status)
 		return;
 	}
 
-	query_batch(stmt, handle);
+	query_batch(stmt, handle, 0);
 }
 
 static int handle_query(struct handle *req)
@@ -804,7 +804,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	}
 
 	g->stmt_finalize = true;
-	query_batch(stmt, req);
+	query_batch(stmt, req, 0);
 }
 
 static int handle_query_sql(struct handle *req)
@@ -1286,6 +1286,62 @@ static int handle_weight(struct handle *req)
 	return 0;
 }
 
+static void leaderGenexecCb(struct exec *exec, int status)
+{
+	struct gateway *g = exec->data;
+	struct handle *req = g->req;
+	sqlite3_stmt *stmt = g->stmt;
+
+	g->req = NULL;
+	g->stmt = NULL;
+
+	if (status != SQLITE_DONE && status != SQLITE_ROW) {
+		assert(g->leader != NULL);
+		failure(req, status, error_message(g->leader->conn, status));
+		sqlite3_reset(stmt);
+		return;
+	}
+	query_batch(stmt, req, status);
+}
+
+static int handle_genexec(struct handle *req)
+{
+	struct cursor *cursor = &req->cursor;
+	struct gateway *g = req->gateway;
+	struct stmt *stmt;
+	uint64_t req_id;
+	bool is_readonly;
+	int rv;
+
+	START_V0(genexec, rows);
+	(void)response;
+	CHECK_LEADER(req);
+	LOOKUP_DB(request.db_id);
+	LOOKUP_STMT(request.stmt_id);
+	FAIL_IF_CHECKPOINTING;
+	rv = bind__params(stmt->stmt, cursor, TUPLE__PARAMS32);
+	if (rv != 0) {
+		failure(req, rv, "bind parameters");
+		return 0;
+	}
+	g->req = req;
+	g->stmt = stmt->stmt;
+	req_id = idNext(&g->random_state);
+
+	is_readonly = (bool)sqlite3_stmt_readonly(stmt->stmt);
+	if (is_readonly) {
+		rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
+	} else {
+		rv = leader__exec(g->leader, &g->exec, stmt->stmt, req_id, leaderGenexecCb);
+		if (rv != 0) {
+			g->stmt = NULL;
+			g->req = NULL;
+			return rv;
+		}
+	}
+	return 0;
+}
+
 int gateway__handle(struct gateway *g,
 		    struct handle *req,
 		    int type,
@@ -1347,6 +1403,6 @@ int gateway__resume(struct gateway *g, bool *finished)
 	assert(g->stmt != NULL);
         tracef("gateway resume - not finished");
 	*finished = false;
-	query_batch(g->stmt, g->req);
+	query_batch(g->stmt, g->req, 0);
 	return 0;
 }
