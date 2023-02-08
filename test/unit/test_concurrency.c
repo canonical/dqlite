@@ -21,7 +21,8 @@ struct context
 {
 	bool invoked;
 	int status;
-	int type;
+	uint8_t type;
+	uint8_t schema;
 };
 
 /* Standalone leader database connection */
@@ -75,12 +76,13 @@ struct connection
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 
-static void fixture_handle_cb(struct handle *req, int status, int type)
+static void fixture_handle_cb(struct handle *req, int status, uint8_t type, uint8_t schema)
 {
 	struct context *c = req->data;
 	c->invoked = true;
 	c->status = status;
 	c->type = type;
+	c->schema = schema;
 }
 
 /******************************************************************************

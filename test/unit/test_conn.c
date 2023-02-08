@@ -107,14 +107,14 @@ static void connCloseCb(struct conn *conn)
 	}
 
 /* Prepare a statement. */
-#define PREPARE_CONN(SQL, STMT_ID)                               \
-	{                                                        \
-		int rv2;                                         \
-		rv2 = clientSendPrepare(&f->client, SQL, NULL);  \
-		munit_assert_int(rv2, ==, 0);                    \
-		test_uv_run(&f->loop, 1);                        \
-		rv2 = clientRecvStmt(&f->client, STMT_ID, NULL); \
-		munit_assert_int(rv2, ==, 0);                    \
+#define PREPARE_CONN(SQL, STMT_ID)                                     \
+	{                                                              \
+		int rv2;                                               \
+		rv2 = clientSendPrepare(&f->client, SQL, NULL);        \
+		munit_assert_int(rv2, ==, 0);                          \
+		test_uv_run(&f->loop, 1);                              \
+		rv2 = clientRecvStmt(&f->client, STMT_ID, NULL, NULL); \
+		munit_assert_int(rv2, ==, 0);                          \
 	}
 
 /* Execute a statement. */

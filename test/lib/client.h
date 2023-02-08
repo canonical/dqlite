@@ -108,13 +108,13 @@
 	}
 
 /* Prepare a statement. */
-#define PREPARE(SQL, STMT_ID)                                   \
-	{                                                       \
-		int rv_;                                        \
-		rv_ = clientSendPrepare(f->client, SQL, NULL);  \
-		munit_assert_int(rv_, ==, 0);                   \
-		rv_ = clientRecvStmt(f->client, STMT_ID, NULL); \
-		munit_assert_int(rv_, ==, 0);                   \
+#define PREPARE(SQL, STMT_ID)                                         \
+	{                                                             \
+		int rv_;                                              \
+		rv_ = clientSendPrepare(f->client, SQL, NULL);        \
+		munit_assert_int(rv_, ==, 0);                         \
+		rv_ = clientRecvStmt(f->client, STMT_ID, NULL, NULL); \
+		munit_assert_int(rv_, ==, 0);                         \
 	}
 
 #define PREPARE_FAIL(SQL, STMT_ID, RV, MSG)                        \

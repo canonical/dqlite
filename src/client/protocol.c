@@ -502,17 +502,25 @@ int clientSendPrepare(struct client_proto *c, const char *sql, struct client_con
 	struct request_prepare request;
 	request.db_id = c->db_id;
 	request.sql = sql;
-	REQUEST(prepare, PREPARE, 0);
+	REQUEST(prepare, PREPARE, DQLITE_PREPARE_STMT_SCHEMA_V1);
 	return 0;
 }
 
-int clientRecvStmt(struct client_proto *c, uint32_t *stmt_id, struct client_context *context)
+int clientRecvStmt(struct client_proto *c,
+			uint32_t *stmt_id,
+			uint64_t *offset,
+			struct client_context *context)
 {
 	struct cursor cursor;
-	struct response_stmt response;
-	RESPONSE(stmt, STMT);
-	*stmt_id = response.id;
-	tracef("client recv stmt stmt_id %" PRIu32, *stmt_id);
+	struct response_stmt_with_offset response;
+	RESPONSE(stmt_with_offset, STMT_WITH_OFFSET);
+	tracef("client recv stmt stmt_id:%" PRIu32 " offset:%" PRIu64, response.id, response.offset);
+	if (stmt_id != NULL) {
+		*stmt_id = response.id;
+	}
+	if (offset != NULL) {
+		*offset = response.offset;
+	}
 	return 0;
 }
 

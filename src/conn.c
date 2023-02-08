@@ -49,13 +49,15 @@ abort:
 	conn__stop(c);
 }
 
-static void gateway_handle_cb(struct handle *req, int status, int type)
+static void gateway_handle_cb(struct handle *req, int status, uint8_t type, uint8_t schema)
 {
 	struct conn *c = req->data;
 	size_t n;
 	void *cursor;
 	uv_buf_t buf;
 	int rv;
+
+	assert(schema <= req->schema);
 
 	/* Ignore results firing after we started closing. TODO: instead, we
 	 * should make gateway__close() asynchronous. */
@@ -72,9 +74,9 @@ static void gateway_handle_cb(struct handle *req, int status, int type)
 	n = buffer__offset(&c->write) - message__sizeof(&c->response);
 	assert(n % 8 == 0);
 
-	c->response.type = (uint8_t)type;
+	c->response.type = type;
 	c->response.words = (uint32_t)(n / 8);
-	c->response.schema = 0;
+	c->response.schema = schema;
 	c->response.extra = 0;
 
 	cursor = buffer__cursor(&c->write, 0);
