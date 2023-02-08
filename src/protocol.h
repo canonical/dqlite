@@ -59,6 +59,14 @@ enum {
 
 #define DQLITE_REQUEST_DESCRIBE_FORMAT_V0 0 /* Failure domain and weight */
 
+/* These apply to REQUEST_EXEC, REQUEST_EXEC_SQL, REQUEST_QUERY, and REQUEST_QUERY_SQL. */
+#define DQLITE_REQUEST_PARAMS_SCHEMA_V0 0 /* One-byte params count */
+#define DQLITE_REQUEST_PARAMS_SCHEMA_V1 1 /* Four-byte params count */
+
+/* These apply to REQUEST_PREPARE and RESPONSE_STMT. */
+#define DQLITE_PREPARE_STMT_SCHEMA_V0 0 /* At most one statement in request, no tail offset in response */
+#define DQLITE_PREPARE_STMT_SCHEMA_V1 1 /* Any number of statements in request, tail offset in response */
+
 /* Response types */
 enum {
     DQLITE_RESPONSE_FAILURE,
@@ -68,6 +76,7 @@ enum {
     DQLITE_RESPONSE_SERVERS,
     DQLITE_RESPONSE_DB,
     DQLITE_RESPONSE_STMT,
+    DQLITE_RESPONSE_STMT_WITH_OFFSET = DQLITE_RESPONSE_STMT,
     DQLITE_RESPONSE_RESULT,
     DQLITE_RESPONSE_ROWS,
     DQLITE_RESPONSE_EMPTY,

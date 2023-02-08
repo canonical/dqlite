@@ -62,7 +62,7 @@ void gateway__leader_close(struct gateway *g, int reason);
  * We also use the handle as a place to save request-scoped data that we need
  * to access from a callback.
  */
-typedef void (*handle_cb)(struct handle *req, int status, int type);
+typedef void (*handle_cb)(struct handle *req, int status, uint8_t type, uint8_t schema);
 struct handle
 {
 	void *data;              /* User data */
