@@ -610,6 +610,21 @@ TEST_CASE(prepare, nonempty_tail, NULL)
 	return MUNIT_OK;
 }
 
+/* Try to prepare a string containing a comment after the statement. */
+TEST_CASE(prepare, comment_in_tail, NULL)
+{
+	struct prepare_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT); /* comment */";
+	CLUSTER_ELECT(0);
+	ENCODE(&f->request, prepare);
+	HANDLE(PREPARE);
+	WAIT;
+	ASSERT_CALLBACK(0, STMT);
+	return MUNIT_OK;
+}
+
 /* Try to prepare a string containing more than one statement, successfully. */
 TEST_CASE(prepare, nonempty_tail_v1, NULL)
 {
