@@ -290,6 +290,7 @@ static void prepareBarrierCb(struct barrier *barrier, int status)
 	const char *sql = g->sql;
 	struct stmt *stmt;
 	const char *tail;
+	sqlite3_stmt *tail_stmt;
 	int rc;
 
 	assert(req != NULL);
@@ -319,10 +320,14 @@ static void prepareBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	if (req->schema == DQLITE_PREPARE_STMT_SCHEMA_V0 && *tail != '\0') {
-		stmt__registry_del(&g->stmts, stmt);
-		failure(req, SQLITE_ERROR, "nonempty statement tail");
-		return;
+	if (req->schema == DQLITE_PREPARE_STMT_SCHEMA_V0) {
+		rc = sqlite3_prepare_v2(g->leader->conn, tail, -1, &tail_stmt, NULL);
+		if (rc != 0 || tail_stmt != NULL) {
+			stmt__registry_del(&g->stmts, stmt);
+			sqlite3_finalize(tail_stmt);
+			failure(req, SQLITE_ERROR, "nonempty statement tail");
+			return;
+		}
 	}
 
 	switch (req->schema) {
@@ -789,6 +794,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	const char *sql = g->sql;
 	sqlite3_stmt *stmt;
 	const char *tail;
+	sqlite3_stmt *tail_stmt;
 	int tuple_format;
 	int rv;
 
@@ -815,8 +821,10 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	if (*tail != '\0') {
+	rv = sqlite3_prepare_v2(g->leader->conn, tail, -1, &tail_stmt, NULL);
+	if (rv != 0 || tail_stmt != NULL) {
 		sqlite3_finalize(stmt);
+		sqlite3_finalize(tail_stmt);
 		failure(req, SQLITE_ERROR, "nonempty statement tail");
 		return;
 	}
