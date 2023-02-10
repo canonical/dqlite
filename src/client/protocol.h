@@ -116,7 +116,10 @@ int clientRecvDb(struct client_proto *c, struct client_context *context);
 int clientSendPrepare(struct client_proto *c, const char *sql, struct client_context *context);
 
 /* Receive the response to a prepare request. */
-int clientRecvStmt(struct client_proto *c, uint32_t *stmt_id, struct client_context *context);
+int clientRecvStmt(struct client_proto *c,
+			uint32_t *stmt_id,
+			uint64_t *offset,
+			struct client_context *context);
 
 /* Send a request to execute a statement. */
 int clientSendExec(struct client_proto *c, uint32_t stmt_id,

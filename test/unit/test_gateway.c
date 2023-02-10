@@ -20,7 +20,8 @@ struct context
 {
 	bool invoked;
 	int status;
-	int type;
+	uint8_t type;
+	uint8_t schema;
 };
 
 /* Drive a single gateway. Each gateway is associated with a different raft
@@ -77,12 +78,13 @@ struct connection
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 
-static void handleCb(struct handle *req, int status, int type)
+static void handleCb(struct handle *req, int status, uint8_t type, uint8_t schema)
 {
 	struct context *c = req->data;
 	c->invoked = true;
 	c->status = status;
 	c->type = type;
+	c->schema = schema;
 }
 
 /******************************************************************************
@@ -589,6 +591,71 @@ TEST_CASE(prepare, non_leader, NULL)
 	WAIT;
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
+	return MUNIT_OK;
+}
+
+/* Try to prepare a string containing more than one statement. */
+TEST_CASE(prepare, nonempty_tail, NULL)
+{
+	struct prepare_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT); SELECT * FROM test";
+	CLUSTER_ELECT(0);
+	ENCODE(&f->request, prepare);
+	HANDLE(PREPARE);
+	WAIT;
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR, "nonempty statement tail");
+	return MUNIT_OK;
+}
+
+/* Try to prepare a string containing more than one statement, successfully. */
+TEST_CASE(prepare, nonempty_tail_v1, NULL)
+{
+	struct prepare_fixture *f = data;
+	struct response_stmt_with_offset response = {0};
+	struct request_exec exec = {0};
+	uint64_t offset;
+	int rc;
+
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT); SELECT * FROM test";
+	CLUSTER_ELECT(0);
+	ENCODE(&f->request, prepare);
+	HANDLE_SCHEMA_STATUS(DQLITE_REQUEST_PREPARE, 1, 0);
+	WAIT;
+	ASSERT_CALLBACK(0, STMT_WITH_OFFSET);
+	DECODE(&response, stmt_with_offset);
+	munit_assert_int(response.id, ==, 0);
+	munit_assert_uint64(response.offset, ==, 26);
+	offset = response.offset;
+
+	ENCODE(&exec, exec);
+	f->handle->cursor.p = buffer__cursor(f->buf1, 0);
+	f->handle->cursor.cap = buffer__offset(f->buf1);
+	buffer__reset(f->buf2);
+	f->context->invoked = false;
+	f->context->status = -1;
+	f->context->type = -1;
+	rc = gateway__handle(f->gateway, f->handle,
+				DQLITE_REQUEST_EXEC,
+				DQLITE_REQUEST_PARAMS_SCHEMA_V0,
+				f->buf2, handleCb);
+	munit_assert_int(rc, ==, 0);
+	WAIT;
+	ASSERT_CALLBACK(0, RESULT);
+
+	f->request.sql += offset;
+	ENCODE(&f->request, prepare);
+	HANDLE_SCHEMA_STATUS(DQLITE_REQUEST_PREPARE, 1, 0);
+	WAIT;
+	ASSERT_CALLBACK(0, STMT_WITH_OFFSET);
+	DECODE(&response, stmt_with_offset);
+	munit_assert_int(response.id, ==, 1);
+	munit_assert_uint64(response.offset, ==, 19);
+
 	return MUNIT_OK;
 }
 
@@ -2076,6 +2143,20 @@ TEST_CASE(query_sql, manyParams, NULL)
 
 	free(values);
 	free(sql);
+	return MUNIT_OK;
+}
+
+/* Send a QUERY_SQL request containing more than one statement. */
+TEST_CASE(query_sql, nonemptyTail, NULL)
+{
+	struct query_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql = "SELECT * FROM test; SELECT (n) FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR, "nonempty statement tail");
 	return MUNIT_OK;
 }
 
