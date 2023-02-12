@@ -638,7 +638,6 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 		sqlite3_finalize(g->stmt);
 		g->req = NULL;
 		g->stmt = NULL;
-		g->sql = NULL;
 	}
 }
 
@@ -653,7 +652,7 @@ static void handle_exec_sql_next(struct handle *req, bool done)
 	uint64_t req_id;
 	int rv;
 
-	if (g->sql == NULL || strcmp(g->sql, "") == 0) {
+	if (req->sql == NULL || strcmp(req->sql, "") == 0) {
 		goto success;
 	}
 
@@ -664,7 +663,7 @@ static void handle_exec_sql_next(struct handle *req, bool done)
 
 	/* g->stmt will be set to NULL by sqlite when an error occurs. */
 	assert(g->leader != NULL);
-	rv = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &g->stmt, &tail);
+	rv = sqlite3_prepare_v2(g->leader->conn, req->sql, -1, &g->stmt, &tail);
 	if (rv != SQLITE_OK) {
 		tracef("exec sql prepare failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
@@ -695,7 +694,7 @@ static void handle_exec_sql_next(struct handle *req, bool done)
 		}
 	}
 
-	g->sql = tail;
+	req->sql = tail;
 	g->req = req;
 
 	req_id = idNext(&g->random_state);
@@ -721,7 +720,6 @@ done_after_prepare:
 done:
 	g->req = NULL;
 	g->stmt = NULL;
-	g->sql = NULL;
 }
 
 static void execSqlBarrierCb(struct barrier *barrier, int status)
@@ -729,20 +727,15 @@ static void execSqlBarrierCb(struct barrier *barrier, int status)
 	tracef("exec sql barrier cb status:%d", status);
 	struct gateway *g = barrier->data;
 	struct handle *req = g->req;
-	const char *sql = g->sql;
-
 	assert(req != NULL);
 	g->req = NULL;
-	g->sql = NULL;
+	assert(g->stmt == NULL);
+
 	if (status != 0) {
 		failure(req, status, "barrier error");
 		return;
 	}
 
-	assert(g->req == NULL);
-	assert(g->sql == NULL);
-	assert(g->stmt == NULL);
-	req->gateway->sql = sql;
 	handle_exec_sql_next(req, false);
 }
 
@@ -771,13 +764,12 @@ static int handle_exec_sql(struct handle *req)
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	FAIL_IF_CHECKPOINTING;
+	req->sql = request.sql;
 	g->req = req;
-	g->sql = request.sql;
 	rc = leader__barrier(g->leader, &g->barrier, execSqlBarrierCb);
 	if (rc != 0) {
 		tracef("handle exec sql barrier failed %d", rc);
 		g->req = NULL;
-		g->sql = NULL;
 		return rc;
 	}
 	return 0;
