@@ -66,7 +66,6 @@ struct handle
 	void *data;              /* User data */
 	int type;                /* Request type */
 	int schema;              /* Request schema version */
-	struct gateway *gateway;
 	struct buffer *buffer;
 	struct cursor cursor;
 	size_t db_id;            /* For use by prepare callback */
