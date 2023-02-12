@@ -781,7 +781,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	struct cursor *cursor;
 	struct gateway *g = barrier->data;
 	struct handle *req = g->req;
-	const char *sql = g->sql;
+	const char *sql = req->sql;
 	sqlite3_stmt *stmt;
 	const char *tail;
 	sqlite3_stmt *tail_stmt;
@@ -792,7 +792,6 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	cursor = &req->cursor;
 	g->req = NULL;
 	assert(g->stmt == NULL);
-	g->sql = NULL;
 	if (status != 0) {
 		failure(req, status, "barrier error");
 		return;
@@ -865,13 +864,12 @@ static int handle_query_sql(struct handle *req)
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	FAIL_IF_CHECKPOINTING;
+	req->sql = request.sql;
 	g->req = req;
-	g->sql = request.sql;
 	rv = leader__barrier(g->leader, &g->barrier, querySqlBarrierCb);
 	if (rv != 0) {
 		tracef("handle query sql barrier failed %d", rv);
 		g->req = NULL;
-		g->sql = NULL;
 		return rv;
 	}
 	return 0;
