@@ -26,7 +26,6 @@ void gateway__init(struct gateway *g,
 	g->stmt = NULL;
 	g->stmt_finalize = false;
 	g->exec.data = g;
-	g->sql = NULL;
 	stmt__registry_init(&g->stmts);
 	g->barrier.data = g;
 	g->barrier.cb = NULL;
@@ -1354,6 +1353,7 @@ handle:
 	req->buffer = buffer;
 	req->db_id = 0;
 	req->stmt_id = 0;
+	req->sql = NULL;
 
 	switch (type) {
 #define DISPATCH(LOWER, UPPER, _)                 \
