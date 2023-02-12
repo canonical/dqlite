@@ -414,11 +414,10 @@ static void leader_exec_cb(struct exec *exec, int status)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
-	sqlite3_stmt *stmt = g->stmt;
+	struct stmt *stmt = stmt__registry_get(&g->stmts, req->stmt_id);
 	struct response_result response;
 
 	g->req = NULL;
-	g->stmt = NULL;
 
 	if (status == SQLITE_DONE) {
 		fill_result(g, &response);
@@ -426,7 +425,7 @@ static void leader_exec_cb(struct exec *exec, int status)
 	} else {
 		assert(g->leader != NULL);
 		failure(req, status, error_message(g->leader->conn, status));
-		sqlite3_reset(stmt);
+		sqlite3_reset(stmt->stmt);
 	}
 }
 
@@ -469,13 +468,12 @@ static int handle_exec(struct gateway *g, struct handle *req)
 		failure(req, rv, "bind parameters");
 		return 0;
 	}
+	req->stmt_id = stmt->id;
 	g->req = req;
-	g->stmt = stmt->stmt;
 	req_id = idNext(&g->random_state);
 	rv = leader__exec(g->leader, &g->exec, stmt->stmt, req_id, leader_exec_cb);
 	if (rv != 0) {
 		tracef("handle exec leader exec failed %d", rv);
-		g->stmt = NULL;
 		g->req = NULL;
 		return rv;
 	}
