@@ -287,7 +287,7 @@ static void prepareBarrierCb(struct barrier *barrier, int status)
 	struct handle *req = g->req;
 	struct response_stmt response_v0 = {0};
 	struct response_stmt_with_offset response_v1 = {0};
-	const char *sql = g->sql;
+	const char *sql = req->sql;
 	struct stmt *stmt;
 	const char *tail;
 	sqlite3_stmt *tail_stmt;
@@ -297,7 +297,6 @@ static void prepareBarrierCb(struct barrier *barrier, int status)
 	stmt = stmt__registry_get(&g->stmts, req->stmt_id);
 	assert(stmt != NULL);
 	g->req = NULL;
-	g->sql = NULL;
 	if (status != 0) {
 		stmt__registry_del(&g->stmts, stmt);
 		failure(req, status, "barrier error");
@@ -380,14 +379,13 @@ static int handle_prepare(struct handle *req)
 	 * implemented. */
 	req->db_id = (size_t)request.db_id;
 	req->stmt_id = stmt->id;
+	req->sql = request.sql;
 	g->req = req;
-	g->sql = request.sql;
 	rc = leader__barrier(g->leader, &g->barrier, prepareBarrierCb);
 	if (rc != 0) {
 		tracef("handle prepare barrier failed %d", rc);
 		stmt__registry_del(&g->stmts, stmt);
 		g->req = NULL;
-		g->sql = NULL;
 		return rc;
 	}
 	return 0;
