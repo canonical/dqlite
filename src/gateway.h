@@ -73,6 +73,7 @@ struct handle
 	struct cursor cursor;
 	size_t db_id;            /* For use by prepare callback */
 	size_t stmt_id;          /* For use by prepare callback */
+	const char *sql;
 	handle_cb cb;
 };
 
