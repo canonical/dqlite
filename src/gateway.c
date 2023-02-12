@@ -522,25 +522,19 @@ static void query_barrier_cb(struct barrier *barrier, int status)
 {
 	tracef("query barrier cb status:%d", status);
 	struct gateway *g = barrier->data;
-	struct handle *handle = g->req;
-	sqlite3_stmt *stmt = g->stmt;
-
-	assert(handle != NULL);
+	struct handle *req = g->req;
+	assert(req != NULL);
+	struct stmt *stmt = stmt__registry_get(&g->stmts, req->stmt_id);
 	assert(stmt != NULL);
 
-	g->stmt = NULL;
 	g->req = NULL;
 
 	if (status != 0) {
-		if (g->stmt_finalize) {
-			sqlite3_finalize(stmt);
-			g->stmt_finalize = false;
-		}
-		failure(handle, status, "barrier error");
+		failure(req, status, "barrier error");
 		return;
 	}
 
-	query_batch(g, stmt, handle);
+	query_batch(g, stmt->stmt, req);
 }
 
 static int handle_query(struct gateway *g, struct handle *req)
@@ -581,13 +575,12 @@ static int handle_query(struct gateway *g, struct handle *req)
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
+	req->stmt_id = stmt->id;
 	g->req = req;
-	g->stmt = stmt->stmt;
 	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
 	if (rv != 0) {
                 tracef("handle query leader barrier failed %d", rv);
 		g->req = NULL;
-		g->stmt = NULL;
 		return rv;
 	}
 	return 0;
