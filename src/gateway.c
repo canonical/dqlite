@@ -302,9 +302,8 @@ static void prepareBarrierCb(struct barrier *barrier, int status)
 
 	rc = sqlite3_prepare_v2(g->leader->conn, sql, -1, &stmt->stmt, &tail);
 	if (rc != SQLITE_OK) {
-		tracef("prepare barrier cb sqlite prepare failed %d %s", rc, sqlite3_errmsg(g->leader->conn));
-		stmt__registry_del(&g->stmts, stmt);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
+		stmt__registry_del(&g->stmts, stmt);
 		return;
 	}
 
@@ -464,7 +463,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	FAIL_IF_CHECKPOINTING;
 	rv = bind__params(stmt->stmt, cursor, tuple_format);
 	if (rv != 0) {
-                tracef("handle exec bind failed %d", rv);
+		tracef("handle exec bind failed %d", rv);
 		failure(req, rv, "bind parameters");
 		return 0;
 	}
@@ -491,9 +490,9 @@ static void query_batch(struct gateway *g, sqlite3_stmt *stmt, struct handle *re
 
 	rc = query__batch(stmt, req->buffer);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
-		sqlite3_reset(stmt);
 		assert(g->leader != NULL);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
+		sqlite3_reset(stmt);
 		goto done;
 	}
 
@@ -571,8 +570,8 @@ static int handle_query(struct gateway *g, struct handle *req)
 	FAIL_IF_CHECKPOINTING;
 	rv = bind__params(stmt->stmt, cursor, tuple_format);
 	if (rv != 0) {
-                tracef("handle query bind failed %d", rv);
-		failure(req, rv, sqlite3_errmsg(g->leader->conn));
+		tracef("handle query bind failed %d", rv);
+		failure(req, rv, "bind parameters");
 		return 0;
 	}
 	req->stmt_id = stmt->id;
@@ -613,15 +612,15 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
 
+	req->exec_count += 1;
+	sqlite3_finalize(exec->stmt);
+
 	if (status == SQLITE_DONE) {
 		handle_exec_sql_next(g, req, true);
 	} else {
 		assert(g->leader != NULL);
 		failure(req, status, error_message(g->leader->conn, status));
-		sqlite3_reset(g->stmt);
-		sqlite3_finalize(g->stmt);
 		g->req = NULL;
-		g->stmt = NULL;
 	}
 }
 
@@ -630,6 +629,7 @@ static void handle_exec_sql_next(struct gateway *g, struct handle *req, bool don
         tracef("handle exec sql next");
 	struct cursor *cursor = &req->cursor;
 	struct response_result response = {0};
+	sqlite3_stmt *stmt = NULL;
 	const char *tail;
 	int tuple_format;
 	uint64_t req_id;
@@ -639,25 +639,19 @@ static void handle_exec_sql_next(struct gateway *g, struct handle *req, bool don
 		goto success;
 	}
 
-	if (g->stmt != NULL) {
-		sqlite3_finalize(g->stmt);
-		g->stmt = NULL;
-	}
-
-	/* g->stmt will be set to NULL by sqlite when an error occurs. */
+	/* stmt will be set to NULL by sqlite when an error occurs. */
 	assert(g->leader != NULL);
-	rv = sqlite3_prepare_v2(g->leader->conn, req->sql, -1, &g->stmt, &tail);
+	rv = sqlite3_prepare_v2(g->leader->conn, req->sql, -1, &stmt, &tail);
 	if (rv != SQLITE_OK) {
 		tracef("exec sql prepare failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto done;
 	}
 
-	if (g->stmt == NULL) {
+	if (stmt == NULL) {
 		goto success;
 	}
 
-	/* TODO: what about bindings for multi-statement SQL text? */
 	if (!done) {
 		switch (req->schema) {
 			case DQLITE_REQUEST_PARAMS_SCHEMA_V0:
@@ -670,9 +664,9 @@ static void handle_exec_sql_next(struct gateway *g, struct handle *req, bool don
 				/* Should have been caught by handle_exec_sql */
 				assert(0);
 		}
-		rv = bind__params(g->stmt, cursor, tuple_format);
+		rv = bind__params(stmt, cursor, tuple_format);
 		if (rv != SQLITE_OK) {
-			failure(req, rv, sqlite3_errmsg(g->leader->conn));
+			failure(req, rv, "bind parameters");
 			goto done_after_prepare;
 		}
 	}
@@ -681,7 +675,8 @@ static void handle_exec_sql_next(struct gateway *g, struct handle *req, bool don
 	g->req = req;
 
 	req_id = idNext(&g->random_state);
-	rv = leader__exec(g->leader, &g->exec, g->stmt, req_id, handle_exec_sql_cb);
+	/* At this point, leader__exec takes ownership of stmt */
+	rv = leader__exec(g->leader, &g->exec, stmt, req_id, handle_exec_sql_cb);
 	if (rv != SQLITE_OK) {
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto done_after_prepare;
@@ -691,18 +686,14 @@ static void handle_exec_sql_next(struct gateway *g, struct handle *req, bool don
 
 success:
         tracef("handle exec sql next success");
-	if (g->stmt != NULL) {
+	if (req->exec_count > 0) {
 		fill_result(g, &response);
 	}
 	SUCCESS_V0(result, RESULT);
-
 done_after_prepare:
-	if (g->stmt != NULL) {
-		sqlite3_finalize(g->stmt);
-	}
+	sqlite3_finalize(stmt);
 done:
 	g->req = NULL;
-	g->stmt = NULL;
 }
 
 static void execSqlBarrierCb(struct barrier *barrier, int status)
@@ -747,6 +738,7 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	LOOKUP_DB(request.db_id);
 	FAIL_IF_CHECKPOINTING;
 	req->sql = request.sql;
+	req->exec_count = 0;
 	g->req = req;
 	rc = leader__barrier(g->leader, &g->barrier, execSqlBarrierCb);
 	if (rc != 0) {
@@ -813,9 +805,9 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	}
 	rv = bind__params(stmt, cursor, tuple_format);
 	if (rv != 0) {
-                tracef("handle query sql bind failed %d", rv);
+		tracef("handle query sql bind failed %d", rv);
 		sqlite3_finalize(stmt);
-		failure(req, rv, sqlite3_errmsg(g->leader->conn));
+		failure(req, rv, "bind parameters");
 		return;
 	}
 
