@@ -23,8 +23,6 @@ void gateway__init(struct gateway *g,
 	g->raft = raft;
 	g->leader = NULL;
 	g->req = NULL;
-	g->stmt = NULL;
-	g->stmt_finalize = false;
 	g->exec.data = g;
 	stmt__registry_init(&g->stmts);
 	g->barrier.data = g;
@@ -47,12 +45,10 @@ void gateway__leader_close(struct gateway *g, int reason)
 			struct raft_apply *req = &g->leader->inflight->req;
 			req->cb(req, reason, NULL);
 			assert(g->req == NULL);
-			assert(g->stmt == NULL);
 		} else if (g->barrier.cb != NULL) {
 			tracef("finish inflight barrier");
-			/* This is not a typo, g->barrier.req.cb is a wrapper
-			 * around g->barrier.cb and when called, will set g->barrier.cb to NULL.
-			 * */
+			/* This is not a typo, g->barrier.req.cb is a wrapper around g->barrier.cb
+			 * and will set g->barrier.cb to NULL when called. */
 			struct raft_barrier *b = &g->barrier.req;
 			b->cb(b, reason);
 			assert(g->barrier.cb == NULL);
@@ -61,13 +57,16 @@ void gateway__leader_close(struct gateway *g, int reason)
 			struct raft_barrier *b = &g->leader->exec->barrier.req;
 			b->cb(b, reason);
 			assert(g->leader->exec == NULL);
-		} else if (g->stmt != NULL && g->req->type != DQLITE_REQUEST_QUERY
-					   && g->req->type != DQLITE_REQUEST_EXEC) {
-			/* Regular exec and query stmt's will be closed when the
-			 * registry is closed below. */
-			tracef("finalize exec_sql or query_sql type:%d", g->req->type);
-			sqlite3_finalize(g->stmt);
-			g->stmt = NULL;
+		} else if (g->req->type == DQLITE_REQUEST_QUERY_SQL) {
+			/* Finalize the statement that was in the process of yielding rows.
+			 * We only need to handle QUERY_SQL because for QUERY and EXEC the
+			 * statement is finalized by the call to stmt__registry_close, below
+			 * (and for EXEC_SQL the lifetimes of the statements are managed by
+			 * leader__exec and the associated callback).
+			 *
+			 * It's okay if g->req->stmt is NULL since sqlite3_finalize(NULL) is
+			 * documented to be a no-op. */
+			sqlite3_finalize(g->req->stmt);
 			g->req = NULL;
 		}
 	}
@@ -483,8 +482,13 @@ static int handle_exec(struct gateway *g, struct handle *req)
  * given request with a single batch of rows.
  *
  * A single batch of rows is typically about the size of a memory page. */
-static void query_batch(struct gateway *g, sqlite3_stmt *stmt, struct handle *req)
+static void query_batch(struct gateway *g)
 {
+	struct handle *req = g->req;
+	assert(req != NULL);
+	g->req = NULL;
+	sqlite3_stmt *stmt = req->stmt;
+	assert(stmt != NULL);
 	struct response_rows response;
 	int rc;
 
@@ -499,7 +503,6 @@ static void query_batch(struct gateway *g, sqlite3_stmt *stmt, struct handle *re
 	if (rc == SQLITE_ROW) {
 		response.eof = DQLITE_RESPONSE_ROWS_PART;
 		g->req = req;
-		g->stmt = stmt;
 		SUCCESS_V0(rows, ROWS);
 		return;
 	} else {
@@ -508,13 +511,9 @@ static void query_batch(struct gateway *g, sqlite3_stmt *stmt, struct handle *re
 	}
 
 done:
-	if (g->stmt_finalize) {
-		/* TODO: do we care about errors? */
+	if (req->type == DQLITE_REQUEST_QUERY_SQL) {
 		sqlite3_finalize(stmt);
-		g->stmt_finalize = false;
 	}
-	g->stmt = NULL;
-	g->req = NULL;
 }
 
 static void query_barrier_cb(struct barrier *barrier, int status)
@@ -523,17 +522,18 @@ static void query_barrier_cb(struct barrier *barrier, int status)
 	struct gateway *g = barrier->data;
 	struct handle *req = g->req;
 	assert(req != NULL);
+	g->req = NULL;
 	struct stmt *stmt = stmt__registry_get(&g->stmts, req->stmt_id);
 	assert(stmt != NULL);
-
-	g->req = NULL;
 
 	if (status != 0) {
 		failure(req, status, "barrier error");
 		return;
 	}
 
-	query_batch(g, stmt->stmt, req);
+	req->stmt = stmt->stmt;
+	g->req = req;
+	query_batch(g);
 }
 
 static int handle_query(struct gateway *g, struct handle *req)
@@ -703,7 +703,6 @@ static void execSqlBarrierCb(struct barrier *barrier, int status)
 	struct handle *req = g->req;
 	assert(req != NULL);
 	g->req = NULL;
-	assert(g->stmt == NULL);
 
 	if (status != 0) {
 		failure(req, status, "barrier error");
@@ -752,9 +751,11 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 static void querySqlBarrierCb(struct barrier *barrier, int status)
 {
 	tracef("query sql barrier cb status:%d", status);
-	struct cursor *cursor;
 	struct gateway *g = barrier->data;
 	struct handle *req = g->req;
+	assert(req != NULL);
+	g->req = NULL;
+	struct cursor *cursor = &req->cursor;
 	const char *sql = req->sql;
 	sqlite3_stmt *stmt;
 	const char *tail;
@@ -762,10 +763,6 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	int tuple_format;
 	int rv;
 
-	assert(g->req != NULL);
-	cursor = &req->cursor;
-	g->req = NULL;
-	assert(g->stmt == NULL);
 	if (status != 0) {
 		failure(req, status, "barrier error");
 		return;
@@ -811,8 +808,9 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	g->stmt_finalize = true;
-	query_batch(g, stmt, req);
+	req->stmt = stmt;
+	g->req = req;
+	query_batch(g);
 }
 
 static int handle_query_sql(struct gateway *g, struct handle *req)
@@ -851,17 +849,15 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 static int handle_interrupt(struct gateway *g, struct handle *req)
 {
         tracef("handle interrupt");
+	struct handle *interrupted_req = g->req;
+	assert(interrupted_req != NULL);
+	g->req = NULL;
 	struct cursor *cursor = &req->cursor;
 	START_V0(interrupt, empty);
 
-	/* Take appropriate action depending on the cleanup code. */
-	if (g->stmt_finalize) {
-		sqlite3_finalize(g->stmt);
-		g->stmt_finalize = false;
+	if (interrupted_req->type == DQLITE_REQUEST_QUERY_SQL) {
+		sqlite3_finalize(interrupted_req->stmt);
 	}
-	g->stmt = NULL;
-	g->req = NULL;
-
 	SUCCESS_V0(empty, EMPTY);
 
 	return 0;
@@ -1318,6 +1314,8 @@ handle:
 	req->db_id = 0;
 	req->stmt_id = 0;
 	req->sql = NULL;
+	req->stmt = NULL;
+	req->exec_count = 0;
 
 	switch (type) {
 #define DISPATCH(LOWER, UPPER, _)            \
@@ -1342,9 +1340,8 @@ int gateway__resume(struct gateway *g, bool *finished)
 		*finished = true;
 		return 0;
 	}
-	assert(g->stmt != NULL);
         tracef("gateway resume - not finished");
 	*finished = false;
-	query_batch(g, g->stmt, g->req);
+	query_batch(g);
 	return 0;
 }

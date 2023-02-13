@@ -31,8 +31,6 @@ struct gateway
 	struct raft *raft;            /* Raft instance */
 	struct leader *leader;        /* Leader connection to the database */
 	struct handle *req;           /* Asynchronous request being handled */
-	sqlite3_stmt *stmt;           /* Statement being processed */
-	bool stmt_finalize;           /* Whether to finalize the statement */
 	struct exec exec;             /* Low-level exec async request */
 	struct stmt__registry stmts;  /* Registry of prepared statements */
 	struct barrier barrier;       /* Barrier for query requests */
@@ -71,6 +69,7 @@ struct handle
 	size_t db_id;            /* For use by prepare callback */
 	size_t stmt_id;          /* For use by prepare callback */
 	const char *sql;
+	sqlite3_stmt *stmt;
 	unsigned exec_count;
 	handle_cb cb;
 };
