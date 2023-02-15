@@ -186,6 +186,18 @@ static void failure(struct handle *req, int code, const char *message)
 	req->cb(req, 0, DQLITE_RESPONSE_FAILURE, 0);
 }
 
+static void emptyRows(struct handle *req)
+{
+	void *cursor = buffer__advance(req->buffer, 8 + 8);
+	uint64_t val;
+	assert(cursor != NULL);
+	val = 0;
+	uint64__encode(&val, &cursor);
+	val = DQLITE_RESPONSE_ROWS_DONE;
+	uint64__encode(&val, &cursor);
+	req->cb(req, 0, DQLITE_RESPONSE_ROWS, 0);
+}
+
 static int handle_leader_legacy(struct gateway *g, struct handle *req)
 {
         tracef("handle leader legacy");
@@ -536,6 +548,24 @@ static void query_barrier_cb(struct barrier *barrier, int status)
 	query_batch(g);
 }
 
+static void leaderModifyingQueryCb(struct exec *exec, int status)
+{
+	struct gateway *g = exec->data;
+	struct handle *req = g->req;
+	assert(req != NULL);
+	g->req = NULL;
+	struct stmt *stmt = stmt__registry_get(&g->stmts, req->stmt_id);
+	assert(stmt != NULL);
+
+	if (status == SQLITE_DONE) {
+		emptyRows(req);
+	} else {
+		assert(g->leader != NULL);
+		failure(req, status, error_message(g->leader->conn, status));
+		sqlite3_reset(stmt->stmt);
+	}
+}
+
 static int handle_query(struct gateway *g, struct handle *req)
 {
 	tracef("handle query schema:%" PRIu8, req->schema);
@@ -543,6 +573,8 @@ static int handle_query(struct gateway *g, struct handle *req)
 	struct stmt *stmt;
 	struct request_query request = {0};
 	int tuple_format;
+	bool is_readonly;
+	uint64_t req_id;
 	int rv;
 
 	switch (req->schema) {
@@ -576,9 +608,15 @@ static int handle_query(struct gateway *g, struct handle *req)
 	}
 	req->stmt_id = stmt->id;
 	g->req = req;
-	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
+
+	is_readonly = (bool)sqlite3_stmt_readonly(stmt->stmt);
+	if (is_readonly) {
+		rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
+	} else {
+		req_id = idNext(&g->random_state);
+		rv = leader__exec(g->leader, &g->exec, stmt->stmt, req_id, leaderModifyingQueryCb);
+	}
 	if (rv != 0) {
-                tracef("handle query leader barrier failed %d", rv);
 		g->req = NULL;
 		return rv;
 	}
@@ -748,6 +786,25 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	return 0;
 }
 
+static void leaderModifyingQuerySqlCb(struct exec *exec, int status)
+{
+	struct gateway *g = exec->data;
+	struct handle *req = g->req;
+	assert(req != NULL);
+	g->req = NULL;
+	sqlite3_stmt *stmt = exec->stmt;
+	assert(stmt != NULL);
+
+	sqlite3_finalize(stmt);
+
+	if (status == SQLITE_DONE) {
+		emptyRows(req);
+	} else {
+		assert(g->leader != NULL);
+		failure(req, status, error_message(g->leader->conn, status));
+	}
+}
+
 static void querySqlBarrierCb(struct barrier *barrier, int status)
 {
 	tracef("query sql barrier cb status:%d", status);
@@ -761,6 +818,8 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	const char *tail;
 	sqlite3_stmt *tail_stmt;
 	int tuple_format;
+	bool is_readonly;
+	uint64_t req_id;
 	int rv;
 
 	if (status != 0) {
@@ -810,7 +869,19 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 
 	req->stmt = stmt;
 	g->req = req;
-	query_batch(g);
+
+	is_readonly = (bool)sqlite3_stmt_readonly(stmt);
+	if (is_readonly) {
+		query_batch(g);
+	} else {
+		req_id = idNext(&g->random_state);
+		rv = leader__exec(g->leader, &g->exec, stmt, req_id, leaderModifyingQuerySqlCb);
+		if (rv != 0) {
+			sqlite3_finalize(stmt);
+			g->req = NULL;
+			failure(req, rv, "leader exec");
+		}
+	}
 }
 
 static int handle_query_sql(struct gateway *g, struct handle *req)
