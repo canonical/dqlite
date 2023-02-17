@@ -61,16 +61,46 @@ void gateway__leader_close(struct gateway *g, int reason);
 typedef void (*handle_cb)(struct handle *req, int status, uint8_t type, uint8_t schema);
 struct handle
 {
-	void *data;              /* User data */
-	int type;                /* Request type */
-	int schema;              /* Request schema version */
+	/* User data. */
+	void *data;
+	/* Type code for this request. */
+	int type;
+	/* Schema version for this request. */
+	int schema;
+	/* Buffer where the response to this request will be written. */
 	struct buffer *buffer;
+	/* Cursor for reading the request. */
 	struct cursor cursor;
-	size_t db_id;            /* For use by prepare callback */
-	size_t stmt_id;          /* For use by prepare callback */
+	/* Database ID parsed from this request.
+	 *
+	 * This is used by handle_prepare. */
+	size_t db_id;
+	/* ID of the statement associated with this request.
+	 *
+	 * This is used by handle_prepare. */
+	size_t stmt_id;
+	/* SQL string associated with this request.
+	 *
+	 * This is used by handle_prepare, handle_query_sql, and handle_exec_sql
+	 * to save the provided SQL string across calls to leader__barrier and
+	 * leader__exec, since there's no prepared statement that can be saved
+	 * instead. In the case of handle_exec_sql, after preparing each statement
+	 * we update this field to point to the "tail" that has not been prepared
+	 * yet. */
 	const char *sql;
+	/* Prepared statement that will be queried to process this request.
+	 *
+	 * This is used by handle_query and handle_query_sql. */
 	sqlite3_stmt *stmt;
+	/* Number of times a statement parsed from this request has been executed.
+	 *
+	 * This is used by handle_exec_sql, which parses zero or more statements
+	 * from the provided SQL string and executes them successively. Only if
+	 * at least one statement was executed should we fill the RESULT response
+	 * using sqlite3_last_insert_rowid and sqlite3_changes. */
 	unsigned exec_count;
+	/* Callback that will be invoked at the end of request processing to write
+	 * the response. */
 	handle_cb cb;
 };
 
