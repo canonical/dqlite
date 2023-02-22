@@ -200,3 +200,86 @@ TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 
 }
+
+TEST(cluster, modifyingQuery, setUp, tearDown, 0, cluster_params)
+{
+	struct fixture *f = data;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	struct rows rows;
+	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
+	char sql[128];
+	unsigned id = 2;
+	const char *address = "@2";
+
+	HANDSHAKE;
+	OPEN;
+	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+
+	for (int i = 0; i < n_records; ++i) {
+		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
+		PREPARE(sql, &stmt_id);
+		QUERY(stmt_id, &rows);
+		munit_assert_uint64(rows.column_count, ==, 0);
+		munit_assert_ptr(rows.next, ==, NULL);
+		clientCloseRows(&rows);
+	}
+
+	ADD(id, address);
+	ASSIGN(id, DQLITE_VOTER);
+
+	REMOVE(1);
+	sleep(1);
+
+	SELECT(2);
+	HANDSHAKE;
+	OPEN;
+	PREPARE("SELECT COUNT(*) from test", &stmt_id);
+	QUERY(stmt_id, &rows);
+	munit_assert_long(rows.next->values->integer, ==, n_records);
+	clientCloseRows(&rows);
+	return MUNIT_OK;
+}
+
+TEST(cluster, modifyingQuerySql, setUp, tearDown, 0, cluster_params)
+{
+	struct fixture *f = data;
+	uint32_t stmt_id;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	struct rows rows;
+	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
+	char sql[128];
+	unsigned id = 2;
+	const char *address = "@2";
+
+	HANDSHAKE;
+	OPEN;
+	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+	EXEC(stmt_id, &last_insert_id, &rows_affected);
+
+	for (int i = 0; i < n_records; ++i) {
+		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
+		QUERY_SQL(sql, &rows);
+		munit_assert_uint64(rows.column_count, ==, 0);
+		munit_assert_ptr(rows.next, ==, NULL);
+		clientCloseRows(&rows);
+	}
+
+	ADD(id, address);
+	ASSIGN(id, DQLITE_VOTER);
+
+	REMOVE(1);
+	sleep(1);
+
+	SELECT(2);
+	HANDSHAKE;
+	OPEN;
+	PREPARE("SELECT COUNT(*) from test", &stmt_id);
+	QUERY(stmt_id, &rows);
+	munit_assert_long(rows.next->values->integer, ==, n_records);
+	clientCloseRows(&rows);
+	return MUNIT_OK;
+}
