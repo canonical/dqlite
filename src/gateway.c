@@ -413,6 +413,7 @@ static void leader_exec_cb(struct exec *exec, int status)
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
 	struct stmt *stmt = stmt__registry_get(&g->stmts, req->stmt_id);
+	assert(stmt != NULL);
 	struct response_result response;
 
 	g->req = NULL;
