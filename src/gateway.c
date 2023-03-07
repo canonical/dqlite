@@ -918,20 +918,18 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	return 0;
 }
 
+/*
+ * An interrupt can only be handled when a query is already yielding rows.
+ */
 static int handle_interrupt(struct gateway *g, struct handle *req)
 {
         tracef("handle interrupt");
-	struct handle *interrupted_req = g->req;
-	assert(interrupted_req != NULL);
 	g->req = NULL;
 	struct cursor *cursor = &req->cursor;
 	START_V0(interrupt, empty);
-
-	if (interrupted_req->type == DQLITE_REQUEST_QUERY_SQL) {
-		sqlite3_finalize(interrupted_req->stmt);
-	}
+	sqlite3_finalize(req->stmt);
+	req->stmt = NULL;
 	SUCCESS_V0(empty, EMPTY);
-
 	return 0;
 }
 
@@ -1361,13 +1359,18 @@ int gateway__handle(struct gateway *g,
 {
         tracef("gateway handle");
 	int rc = 0;
+	sqlite3_stmt *stmt = NULL;
 
 	/* Check if there is a request in progress. */
 	if (g->req != NULL && type != DQLITE_REQUEST_HEARTBEAT) {
-		if (g->req->type == DQLITE_REQUEST_QUERY ||
-		    g->req->type == DQLITE_REQUEST_QUERY_SQL) {
-			/* TODO: handle interrupt requests */
+		if (g->req->type == DQLITE_REQUEST_QUERY) {
 			assert(type == DQLITE_REQUEST_INTERRUPT);
+			goto handle;
+		}
+		/* Pass the stmt to handle_interrupt */
+		if (g->req->type == DQLITE_REQUEST_QUERY_SQL) {
+			assert(type == DQLITE_REQUEST_INTERRUPT);
+			stmt = g->req->stmt;
 			goto handle;
 		}
 		if (g->req->type == DQLITE_REQUEST_EXEC ||
@@ -1386,7 +1389,7 @@ handle:
 	req->db_id = 0;
 	req->stmt_id = 0;
 	req->sql = NULL;
-	req->stmt = NULL;
+	req->stmt = stmt;
 	req->exec_count = 0;
 
 	switch (type) {
