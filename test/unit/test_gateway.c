@@ -1425,6 +1425,20 @@ TEST_CASE(query, interrupt, NULL)
 	return MUNIT_OK;
 }
 
+/* Interrupt without an active query. */
+TEST_CASE(query, interruptInactive, NULL)
+{
+	struct query_fixture *f = data;
+	struct request_interrupt interrupt;
+	(void)params;
+
+	ENCODE(&interrupt, interrupt);
+	HANDLE(INTERRUPT);
+	ASSERT_CALLBACK(0, EMPTY);
+
+	return MUNIT_OK;
+}
+
 /* Close the gateway during a large query. */
 TEST_CASE(query, largeClose, NULL)
 {
@@ -2031,6 +2045,53 @@ TEST_CASE(query_sql, largeClose, NULL)
 
 	DECODE(&f->response, rows);
 	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	return MUNIT_OK;
+}
+
+/* Interrupt a large query sql. */
+TEST_CASE(query_sql, interrupt, NULL)
+{
+	struct query_sql_fixture *f = data;
+	struct request_interrupt interrupt;
+	unsigned i;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	(void)params;
+	EXEC("BEGIN");
+
+	/* 16 = 8B header + 8B value (int) */
+	unsigned n_rows_buffer = max_rows_buffer(16);
+	/* Insert 2 response buffers worth of rows */
+	for (i = 0; i < 2 * n_rows_buffer; i++) {
+		EXEC("INSERT INTO test(n) VALUES(123)");
+	}
+	EXEC("COMMIT");
+
+	f->request.db_id = 0;
+	f->request.sql = "SELECT n FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	for (i = 0; i < n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, 123);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	ENCODE(&interrupt, interrupt);
+	HANDLE(INTERRUPT);
+	ASSERT_CALLBACK(0, EMPTY);
 
 	return MUNIT_OK;
 }
