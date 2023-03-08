@@ -1,8 +1,9 @@
-#include <sqlite3.h>
+#include "sqlite3.h"
 
 #include "../include/dqlite.h"
 
 #include "lib/serialize.h"
+#include "vfs.h"
 
 #include "command.h"
 #include "protocol.h"

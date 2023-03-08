@@ -14,7 +14,6 @@ void gateway__init(struct gateway *g,
 		   struct registry *registry,
 		   struct raft *raft)
 {
-        tracef("gateway init");
 	g->config = config;
 	g->registry = registry;
 	g->raft = raft;
@@ -34,19 +33,16 @@ void gateway__init(struct gateway *g,
 void gateway__leader_close(struct gateway *g, int reason)
 {
 	if (g == NULL || g->leader == NULL) {
-		tracef("gateway:%p or gateway->leader are NULL", g);
 		return;
 	}
 
 	if (g->stmt != NULL) {
 		if (g->leader->inflight != NULL) {
-			tracef("finish inflight apply request");
 			struct raft_apply *req = &g->leader->inflight->req;
 			req->cb(req, reason, NULL);
 			assert(g->req == NULL);
 			assert(g->stmt == NULL);
 		} else if (g->barrier.cb != NULL) {
-			tracef("finish inflight query barrier");
 			/* This is not a typo, g->barrier.req.cb is a wrapper
 			 * around g->barrier.cb and when called, will set g->barrier.cb to NULL.
 			 * */
@@ -54,7 +50,6 @@ void gateway__leader_close(struct gateway *g, int reason)
 			b->cb(b, reason);
 			assert(g->barrier.cb == NULL);
 		} else if (g->leader->exec != NULL && g->leader->exec->barrier.cb != NULL) {
-			tracef("finish inflight exec barrier");
 			struct raft_barrier *b = &g->leader->exec->barrier.req;
 			b->cb(b, reason);
 			assert(g->leader->exec == NULL);
@@ -62,7 +57,6 @@ void gateway__leader_close(struct gateway *g, int reason)
 					  && g->req->type != DQLITE_REQUEST_EXEC) {
 			/* Regular exec and query stmt's will be closed when the
 			 * registry is closed below. */
-			tracef("finalize exec_sql or query_sql type:%d", g->req->type);
 			sqlite3_finalize(g->stmt);
 			g->stmt = NULL;
 		}
@@ -75,7 +69,6 @@ void gateway__leader_close(struct gateway *g, int reason)
 
 void gateway__close(struct gateway *g)
 {
-	tracef("gateway close");
 	if (g->leader == NULL) {
 		stmt__registry_close(&g->stmts);
 		return;
@@ -176,7 +169,6 @@ static void failure(struct handle *req, int code, const char *message)
 
 static int handle_leader_legacy(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle leader legacy");
 	START(leader, server_legacy);
 	raft_id id;
 	raft_leader(req->gateway->raft, &id, &response.address);
@@ -189,7 +181,6 @@ static int handle_leader_legacy(struct handle *req, struct cursor *cursor)
 
 static int handle_leader(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle leader");
 	struct gateway *g = req->gateway;
 	raft_id id = 0;
 	const char *address = NULL;
@@ -203,7 +194,6 @@ static int handle_leader(struct handle *req, struct cursor *cursor)
 	for (i = 0; i < g->raft->configuration.n; i++) {
 		struct raft_server *server = &g->raft->configuration.servers[i];
 		if (server->id == g->raft->id && server->role == RAFT_VOTER) {
-                        tracef("handle leader - dispatch to %llu", server->id);
 			raft_leader(req->gateway->raft, &id, &address);
 			break;
 		}
@@ -220,7 +210,6 @@ static int handle_leader(struct handle *req, struct cursor *cursor)
 
 static int handle_client(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle client");
 	START(client, welcome);
 	response.heartbeat_timeout = req->gateway->config->heartbeat_timeout;
 	SUCCESS(welcome, WELCOME);
@@ -229,30 +218,25 @@ static int handle_client(struct handle *req, struct cursor *cursor)
 
 static int handle_open(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle open");
 	struct gateway *g = req->gateway;
 	struct db *db;
 	int rc;
 	START(open, db);
 	if (g->leader != NULL) {
-                tracef("already open");
 		failure(req, SQLITE_BUSY,
 			"a database for this connection is already open");
 		return 0;
 	}
 	rc = registry__db_get(g->registry, request.filename, &db);
 	if (rc != 0) {
-                tracef("registry db get failed %d", rc);
 		return rc;
 	}
 	g->leader = sqlite3_malloc(sizeof *g->leader);
 	if (g->leader == NULL) {
-                tracef("malloc failed");
 		return DQLITE_NOMEM;
 	}
 	rc = leader__init(g->leader, db, g->raft);
 	if (rc != 0) {
-                tracef("leader init failed %d", rc);
 		sqlite3_free(g->leader);
 		g->leader = NULL;
 		return rc;
@@ -264,7 +248,6 @@ static int handle_open(struct handle *req, struct cursor *cursor)
 
 static int handle_prepare(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle prepare");
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
 	const char *tail;
@@ -273,21 +256,18 @@ static int handle_prepare(struct handle *req, struct cursor *cursor)
 	LOOKUP_DB(request.db_id);
 	rc = stmt__registry_add(&g->stmts, &stmt);
 	if (rc != 0) {
-                tracef("handle prepare registry add failed %d", rc);
 		return rc;
 	}
 	assert(stmt != NULL);
 	rc = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &stmt->stmt,
 				&tail);
 	if (rc != SQLITE_OK) {
-		tracef("handle prepare sqlite prepare failed %d", rc);
 		stmt__registry_del(&g->stmts, stmt);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
 
 	if (stmt->stmt == NULL) {
-		tracef("handle prepare empty statement");
 		stmt__registry_del(&g->stmts, stmt);
 		failure(req, rc, "empty statement");
 		return 0;
@@ -345,7 +325,6 @@ static void leader_exec_cb(struct exec *exec, int status)
 
 static int handle_exec(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle exec");
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
 	int rv;
@@ -357,15 +336,14 @@ static int handle_exec(struct handle *req, struct cursor *cursor)
 	(void)response;
 	rv = bind__params(stmt->stmt, cursor);
 	if (rv != 0) {
-                tracef("handle exec bind failed %d", rv);
 		failure(req, rv, "bind parameters");
 		return 0;
 	}
+	tracef("exec(\"%s\")", sqlite3_sql(stmt->stmt));
 	g->req = req;
 	g->stmt = stmt->stmt;
 	rv = leader__exec(g->leader, &g->exec, stmt->stmt, leader_exec_cb);
 	if (rv != 0) {
-                tracef("handle exec leader exec failed %d", rv);
 		return rv;
 	}
 	return 0;
@@ -412,7 +390,6 @@ done:
 
 static void query_barrier_cb(struct barrier *barrier, int status)
 {
-	tracef("query barrier cb status:%d", status);
 	struct gateway *g = barrier->data;
 	struct handle *handle = g->req;
 	sqlite3_stmt *stmt = g->stmt;
@@ -437,7 +414,6 @@ static void query_barrier_cb(struct barrier *barrier, int status)
 
 static int handle_query(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle query");
 	struct gateway *g = req->gateway;
 	struct stmt *stmt;
 	int rv;
@@ -449,15 +425,14 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 	(void)response;
 	rv = bind__params(stmt->stmt, cursor);
 	if (rv != 0) {
-                tracef("handle query bind failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
+	tracef("query(\"%s\")", sqlite3_sql(stmt->stmt));
 	g->req = req;
 	g->stmt = stmt->stmt;
 	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
 	if (rv != 0) {
-                tracef("handle query leader barrier failed %d", rv);
 		g->req = NULL;
 		g->stmt = NULL;
 		return rv;
@@ -467,7 +442,6 @@ static int handle_query(struct handle *req, struct cursor *cursor)
 
 static int handle_finalize(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle finalize");
 	struct stmt *stmt;
 	int rv;
 	START(finalize, empty);
@@ -475,7 +449,6 @@ static int handle_finalize(struct handle *req, struct cursor *cursor)
 	LOOKUP_STMT(request.stmt_id);
 	rv = stmt__registry_del(&req->gateway->stmts, stmt);
 	if (rv != 0) {
-                tracef("handle finalize registry del failed %d", rv);
 		failure(req, rv, "finalize statement");
 		return 0;
 	}
@@ -487,7 +460,6 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor);
 
 static void handle_exec_sql_cb(struct exec *exec, int status)
 {
-        tracef("handle exec sql cb status %d", status);
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
 
@@ -506,7 +478,6 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 
 static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle exec sql next");
 	struct gateway *g = req->gateway;
 	struct response_result response = {0};
 	const char *tail;
@@ -525,7 +496,6 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 	assert(g->leader != NULL);
 	rv = sqlite3_prepare_v2(g->leader->conn, g->sql, -1, &g->stmt, &tail);
 	if (rv != SQLITE_OK) {
-		tracef("exec sql prepare failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto done;
 	}
@@ -555,7 +525,6 @@ static void handle_exec_sql_next(struct handle *req, struct cursor *cursor)
 	return;
 
 success:
-        tracef("handle exec sql next success");
 	if (g->stmt != NULL) {
 		fill_result(g, &response);
 	}
@@ -573,7 +542,6 @@ done:
 
 static int handle_exec_sql(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle exec sql");
 	struct gateway *g = req->gateway;
 	START(exec_sql, result);
 	CHECK_LEADER(req);
@@ -584,13 +552,13 @@ static int handle_exec_sql(struct handle *req, struct cursor *cursor)
 	assert(g->sql == NULL);
 	assert(g->stmt == NULL);
 	req->gateway->sql = request.sql;
+	tracef("exec_sql(\"%s\")", request.sql);
 	handle_exec_sql_next(req, cursor);
 	return 0;
 }
 
 static int handle_query_sql(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle query sql");
 	struct gateway *g = req->gateway;
 	const char *tail;
 	int rv;
@@ -602,30 +570,27 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 	rv = sqlite3_prepare_v2(g->leader->conn, request.sql, -1, &g->stmt,
 				&tail);
 	if (rv != SQLITE_OK) {
-		tracef("handle query sql prepare failed %d", rv);
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
 
 	if (g->stmt == NULL) {
-		tracef("handle query sql empty statement");
 		failure(req, rv, "empty statement");
 		return 0;
 	}
 
 	rv = bind__params(g->stmt, cursor);
 	if (rv != 0) {
-                tracef("handle query sql bind failed %d", rv);
 		sqlite3_finalize(g->stmt);
 		g->stmt = NULL;
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		return 0;
 	}
+	tracef("query_sql(\"%s\")", request.sql);
 	g->stmt_finalize = true;
 	g->req = req;
 	rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
 	if (rv != 0) {
-                tracef("barrier failed %d", rv);
 		g->req = NULL;
 		sqlite3_finalize(g->stmt);
 		g->stmt = NULL;
@@ -637,7 +602,6 @@ static int handle_query_sql(struct handle *req, struct cursor *cursor)
 
 static int handle_interrupt(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle interrupt");
 	struct gateway *g = req->gateway;
 	START(interrupt, empty);
 
@@ -662,7 +626,6 @@ struct change
 
 static void raftChangeCb(struct raft_change *change, int status)
 {
-        tracef("raft change cb status %d", status);
 	struct change *r = change->data;
 	struct gateway *g = r->gateway;
 	struct handle *req = g->req;
@@ -679,7 +642,6 @@ static void raftChangeCb(struct raft_change *change, int status)
 
 static int handle_add(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle add");
 	struct gateway *g = req->gateway;
 	struct change *r;
 	int rv;
@@ -699,7 +661,6 @@ static int handle_add(struct handle *req, struct cursor *cursor)
 	rv = raft_add(g->raft, &r->req, request.id, request.address,
 		      raftChangeCb);
 	if (rv != 0) {
-                tracef("raft add failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
@@ -711,7 +672,6 @@ static int handle_add(struct handle *req, struct cursor *cursor)
 
 static int handle_assign(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle assign");
 	struct gateway *g = req->gateway;
 	struct change *r;
 	uint64_t role = DQLITE_VOTER;
@@ -726,14 +686,12 @@ static int handle_assign(struct handle *req, struct cursor *cursor)
 	if (cursor->cap > 0) {
 		rv = uint64__decode(cursor, &role);
 		if (rv != 0) {
-                        tracef("handle assign promote rv %d", rv);
 			return rv;
 		}
 	}
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
-                tracef("malloc failed");
 		return DQLITE_NOMEM;
 	}
 	r->gateway = g;
@@ -743,7 +701,6 @@ static int handle_assign(struct handle *req, struct cursor *cursor)
 	rv = raft_assign(g->raft, &r->req, request.id,
 			 translateDqliteRole((int)role), raftChangeCb);
 	if (rv != 0) {
-                tracef("raft_assign failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
@@ -755,7 +712,6 @@ static int handle_assign(struct handle *req, struct cursor *cursor)
 
 static int handle_remove(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle remove");
 	struct gateway *g = req->gateway;
 	struct change *r;
 	int rv;
@@ -766,7 +722,6 @@ static int handle_remove(struct handle *req, struct cursor *cursor)
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
-                tracef("malloc failed");
 		return DQLITE_NOMEM;
 	}
 	r->gateway = g;
@@ -775,7 +730,6 @@ static int handle_remove(struct handle *req, struct cursor *cursor)
 
 	rv = raft_remove(g->raft, &r->req, request.id, raftChangeCb);
 	if (rv != 0) {
-                tracef("raft_remote failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
@@ -825,7 +779,6 @@ oom:
 
 static int handle_dump(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle dump");
 	bool err = true;
 	struct gateway *g = req->gateway;
 	sqlite3_vfs *vfs;
@@ -850,7 +803,6 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	vfs = sqlite3_vfs_find(g->config->name);
 	rv = VfsSnapshot(vfs, request.filename, &data, &n);
 	if (rv != 0) {
-                tracef("dump failed");
 		failure(req, rv, "failed to dump database");
 		return 0;
 	}
@@ -880,7 +832,6 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 
 	rv = dumpFile(request.filename, database, n_database, req->buffer);
 	if (rv != 0) {
-                tracef("dump failed");
 		failure(req, rv, "failed to dump database");
 		goto out_free_data;
 	}
@@ -894,7 +845,6 @@ static int handle_dump(struct handle *req, struct cursor *cursor)
 	strcat(filename, wal_suffix);
 	rv = dumpFile(filename, wal, n_wal, req->buffer);
 	if (rv != 0) {
-                tracef("wal dump failed");
 		failure(req, rv, "failed to dump wal file");
 		goto out_free_data;
 	}
@@ -954,7 +904,6 @@ static int encodeServer(struct gateway *g,
 
 static int handle_cluster(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle cluster");
 	struct gateway *g = req->gateway;
 	unsigned i;
 	void *cur;
@@ -969,7 +918,6 @@ static int handle_cluster(struct handle *req, struct cursor *cursor)
 	for (i = 0; i < response.n; i++) {
 		rv = encodeServer(g, i, req->buffer, (int)request.format);
 		if (rv != 0) {
-                        tracef("encode failed");
 			failure(req, rv, "failed to encode server");
 			return 0;
 		}
@@ -988,7 +936,6 @@ void raftTransferCb(struct raft_transfer *r)
 	g->req = NULL;
 	sqlite3_free(r);
 	if (g->raft->state == RAFT_LEADER) {
-                tracef("transfer failed");
 		failure(req, DQLITE_ERROR, "leadership transfer failed");
 	} else {
 		SUCCESS(empty, EMPTY);
@@ -997,7 +944,6 @@ void raftTransferCb(struct raft_transfer *r)
 
 static int handle_transfer(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle transfer");
 	struct gateway *g = req->gateway;
 	struct raft_transfer *r;
 	int rv;
@@ -1008,7 +954,6 @@ static int handle_transfer(struct handle *req, struct cursor *cursor)
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
-                tracef("malloc failed");
 		return DQLITE_NOMEM;
 	}
 	r->data = g;
@@ -1016,7 +961,6 @@ static int handle_transfer(struct handle *req, struct cursor *cursor)
 
 	rv = raft_transfer(g->raft, r, request.id, raftTransferCb);
 	if (rv != 0) {
-                tracef("raft_transfer failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
@@ -1028,11 +972,9 @@ static int handle_transfer(struct handle *req, struct cursor *cursor)
 
 static int handle_describe(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle describe");
 	struct gateway *g = req->gateway;
 	START(describe, metadata);
 	if (request.format != DQLITE_REQUEST_DESCRIBE_FORMAT_V0) {
-                tracef("bad format");
 		failure(req, SQLITE_PROTOCOL, "bad format version");
 	}
 	response.failure_domain = g->config->failure_domain;
@@ -1043,7 +985,6 @@ static int handle_describe(struct handle *req, struct cursor *cursor)
 
 static int handle_weight(struct handle *req, struct cursor *cursor)
 {
-        tracef("handle weight");
 	struct gateway *g = req->gateway;
 	START(weight, empty);
 	g->config->weight = request.weight;
@@ -1058,7 +999,6 @@ int gateway__handle(struct gateway *g,
 		    struct buffer *buffer,
 		    handle_cb cb)
 {
-        tracef("gateway handle");
 	int rc = 0;
 
 	/* Check if there is a request in progress. */
@@ -1071,7 +1011,6 @@ int gateway__handle(struct gateway *g,
 		}
 		if (g->req->type == DQLITE_REQUEST_EXEC ||
 		    g->req->type == DQLITE_REQUEST_EXEC_SQL) {
-                        tracef("gateway handle - BUSY");
 			return SQLITE_BUSY;
 		}
 		assert(0);
@@ -1098,12 +1037,10 @@ int gateway__resume(struct gateway *g, bool *finished)
 {
 	if (g->req == NULL || (g->req->type != DQLITE_REQUEST_QUERY &&
 			       g->req->type != DQLITE_REQUEST_QUERY_SQL)) {
-                tracef("gateway resume - finished");
 		*finished = true;
 		return 0;
 	}
 	assert(g->stmt != NULL);
-        tracef("gateway resume - not finished");
 	*finished = false;
 	query_batch(g->stmt, g->req);
 	return 0;

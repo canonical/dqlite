@@ -6,7 +6,7 @@
 #define LEADER_H_
 
 #include <raft.h>
-#include <sqlite3.h>
+#include "sqlite3.h"
 #include <stdbool.h>
 
 #include "./lib/queue.h"

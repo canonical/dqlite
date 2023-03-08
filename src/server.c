@@ -444,7 +444,6 @@ static void stop_cb(uv_async_t *stop)
 
 	/* Nothing to do. */
 	if (!d->running) {
-	    tracef("not running or already stopped");
 	    return;
 	}
 	d->running = false;
@@ -482,7 +481,6 @@ static void listenCb(uv_stream_t *listener, int status)
 	int rv;
 
 	if (!t->running) {
-	    tracef("not running");
 	    return;
 	}
 
@@ -580,7 +578,6 @@ static void monitor_cb(uv_prepare_t *monitor)
 	}
 
 	if (d->raft_state == RAFT_LEADER && state != RAFT_LEADER) {
-		tracef("node %llu@%s: leadership lost", d->raft.id, d->raft.address);
 		QUEUE__FOREACH(head, &d->conns)
 		{
 			conn = QUEUE__DATA(head, struct conn, queue);
@@ -702,21 +699,17 @@ int dqlite_node_start(dqlite_node *t)
 	int rv;
 
 	dqliteTracingMaybeEnable(true);
-	tracef("dqlite node start");
 	rv = maybeBootstrap(t, t->config.id, t->config.address);
 	if (rv != 0) {
-		tracef("bootstrap failed %d", rv);
 		goto err;
 	}
 
 	rv = pthread_create(&t->thread, 0, &taskStart, t);
 	if (rv != 0) {
-		tracef("pthread create failed %d", rv);
 		goto err;
 	}
 
 	if (!taskReady(t)) {
-		tracef("!taskReady");
 		rv = DQLITE_ERROR;
 		goto err;
 	}
@@ -729,7 +722,6 @@ err:
 
 int dqlite_node_stop(dqlite_node *d)
 {
-	tracef("dqlite node stop");
 	void *result;
 	int rv;
 
@@ -746,7 +738,6 @@ int dqlite_node_recover(dqlite_node *n,
 			struct dqlite_node_info infos[],
 			int n_info)
 {
-    tracef("dqlite node recover");
     int i;
     int ret;
 
@@ -800,7 +791,6 @@ int dqlite_node_recover_ext(dqlite_node *n,
 			struct dqlite_node_info_ext infos[],
 			int n_info)
 {
-    	tracef("dqlite node recover ext");
 	struct raft_configuration configuration;
 	int i;
 	int rv;
@@ -836,7 +826,6 @@ out:
 
 dqlite_node_id dqlite_generate_node_id(const char *address)
 {
-	tracef("generate node id");
 	struct timespec ts;
 	int rv;
 	unsigned long long n;

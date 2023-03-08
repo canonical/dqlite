@@ -1,7 +1,9 @@
 #ifndef DQLITE_H
 #define DQLITE_H
 
+#ifdef EXPOSE_VFS_STUFF
 #include <sqlite3.h>
+#endif
 #include <stddef.h>
 #include <stdint.h>
 
@@ -281,6 +283,8 @@ const char *dqlite_node_errmsg(dqlite_node *n);
  */
 dqlite_node_id dqlite_generate_node_id(const char *address);
 
+#ifdef EXPOSE_VFS_STUFF
+
 /**
  * Initialize the given SQLite VFS interface object with dqlite's custom
  * implementation, which can be used for replication.
@@ -382,5 +386,7 @@ int dqlite_vfs_restore(sqlite3_vfs *vfs,
 		       const char *filename,
 		       const void *data,
 		       size_t n);
+
+#endif /* EXPOSE_VFS_STUFF */
 
 #endif /* DQLITE_H */

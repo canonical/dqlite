@@ -1,4 +1,5 @@
-#include <sqlite3.h>
+#include <raft.h>
+#include "sqlite3.h"
 
 #include "./lib/assert.h"
 #include "./tuple.h"
@@ -16,11 +17,7 @@ void stmt__init(struct stmt *s)
 
 void stmt__close(struct stmt *s)
 {
-	if (s->stmt != NULL) {
-		/* Ignore the return code, since it will be non-zero in case the
-		 * most rececent evaluation of the statement failed. */
-		sqlite3_finalize(s->stmt);
-	}
+	sqlite3_finalize(s->stmt);
 }
 
 const char *stmt__hash(struct stmt *stmt)

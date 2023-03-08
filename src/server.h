@@ -1,6 +1,6 @@
 #include <raft.h>
 #include <raft/uv.h>
-#include <sqlite3.h>
+#include "sqlite3.h"
 
 #ifdef __APPLE__
 #include <dispatch/dispatch.h>

@@ -1,9 +1,32 @@
 #ifndef VFS_H_
 #define VFS_H_
 
-#include <sqlite3.h>
+#include "sqlite3.h"
 
 #include "config.h"
+
+#ifndef EXPOSE_VFS_STUFF
+
+/**
+ * A single WAL frame to be replicated.
+ */
+struct dqlite_vfs_frame
+{
+	unsigned long page_number; /* Database page number. */
+	void *data;                /* Content of the database page. */
+};
+typedef struct dqlite_vfs_frame dqlite_vfs_frame;
+
+/**
+ * A data buffer.
+ */
+struct dqlite_buffer
+{
+	void *base; /* Pointer to the buffer data. */
+	size_t len; /* Length of the buffer. */
+};
+
+#endif
 
 /* Initialize the given SQLite VFS interface with dqlite's custom
  * implementation. */

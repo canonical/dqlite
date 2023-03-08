@@ -1,7 +1,11 @@
 ACLOCAL_AMFLAGS = -I m4
 AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(RAFT_CFLAGS) $(PTHREAD_CFLAGS)
-AM_LDFLAGS = $(SQLITE_LIBS) $(UV_LIBS) $(RAFT_LIBS) $(PTHREAD_LIBS)
+AM_LDFLAGS = $(UV_LIBS) $(RAFT_LIBS) $(PTHREAD_LIBS)
+
+if !BUILD_SQLITE_ENABLED
+AM_LDFLAGS += $(SQLITE_LIBS)
+endif
 
 include_HEADERS = include/dqlite.h
 
@@ -36,6 +40,10 @@ libdqlite_la_SOURCES = \
   src/translate.c \
   src/tuple.c \
   src/vfs.c
+
+if BUILD_SQLITE_ENABLED
+libdqlite_la_SOURCES += sqlite3.c
+endif
 
 check_PROGRAMS = \
   unit-test \

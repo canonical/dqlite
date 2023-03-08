@@ -28,6 +28,9 @@ AM_COND_IF(SANITIZE_ENABLED,
    [true],
    [AC_MSG_ERROR([address sanitizer not supported])]))
 
+AC_ARG_ENABLE(build-sqlite, AS_HELP_STRING([--enable-build-sqlite[=ARG]], [build libsqlite3 from sqlite3.c in the build root [default=no]]))
+AM_CONDITIONAL(BUILD_SQLITE_ENABLED, test "x$enable_build_sqlite" = "xyes")
+
 # Whether to enable code coverage.
 AX_CODE_COVERAGE
 
@@ -47,7 +50,6 @@ AC_TYPE_UINT8_T
 AC_SYS_LARGEFILE
 
 # Checks for libraries
-PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.22.0], [], [])
 PKG_CHECK_MODULES(UV, [libuv >= 1.8.0], [], [])
 PKG_CHECK_MODULES(RAFT, [raft >= 0.14.0], [], [])
 
@@ -59,6 +61,7 @@ CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   --param=ssp-buffer-size=4 \
   -pipe \
   -fno-strict-aliasing \
+  -fno-omit-frame-pointer \
   -fdiagnostics-color \
   -fexceptions \
   -fstack-clash-protection \
@@ -82,6 +85,8 @@ CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -Wdate-time \
   -Wnested-externs \
   -Wconversion \
+  -Wno-unknown-warning \
+  -Wno-unknown-warning-option \
 ])
 # To enable:
 #

@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <string.h>
 
 #include "../include/dqlite.h"
@@ -15,7 +16,6 @@ static int open_follower_conn(const char *filename,
 
 void db__init(struct db *db, struct config *config, const char *filename)
 {
-        tracef("db init %s", filename);
 	db->config = config;
 	db->filename = sqlite3_malloc((int)(strlen(filename) + 1));
 	assert(db->filename != NULL); /* TODO: return an error instead */
@@ -46,6 +46,20 @@ int db__open_follower(struct db *db)
 	if (rc != 0) {
 		return rc;
 	}
+	return 0;
+}
+
+static int profileCb(unsigned mask, void *context, void *p, void *x)
+{
+	sqlite3_stmt *stmt = p;
+	sqlite3_int64 *nsecs = x;
+	char *sql;
+	assert(mask == SQLITE_TRACE_PROFILE);
+	(void)context;
+	sql = sqlite3_expanded_sql(stmt);
+	assert(sql != NULL);
+	tracef("profile(\"%s\") -> %lld", sql, (long long)*nsecs);
+	sqlite3_free(sql);
 	return 0;
 }
 
@@ -94,6 +108,8 @@ static int open_follower_conn(const char *filename,
 	if (rc != SQLITE_OK) {
 		goto err_after_open;
 	}
+
+	rc = sqlite3_trace_v2(*conn, SQLITE_TRACE_PROFILE, profileCb, NULL);
 
 	return 0;
 

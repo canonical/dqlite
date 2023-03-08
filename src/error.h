@@ -3,7 +3,7 @@
 
 #include <string.h>
 
-#include <sqlite3.h>
+#include "sqlite3.h"
 
 /* A message describing the last error occurred on an object */
 typedef char *dqlite__error;

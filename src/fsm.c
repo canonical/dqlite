@@ -22,7 +22,6 @@ struct fsm
 
 static int apply_open(struct fsm *f, const struct command_open *c)
 {
-        tracef("fsm apply open");
 	(void)f;
 	(void)c;
 	return 0;
@@ -83,7 +82,6 @@ static int databaseReadUnlock(struct db *db)
 
 static void maybeCheckpoint(struct db *db)
 {
-	tracef("maybe checkpoint");
 	struct sqlite3_file *main_f;
 	struct sqlite3_file *wal;
 	volatile void *region;
@@ -100,14 +98,12 @@ static void maybeCheckpoint(struct db *db)
 	 * to access database page pointers contained in the snapshot. */
 	rv = databaseReadLock(db);
 	if (rv != 0) {
-		tracef("busy snapshot %d", rv);
 		return;
 	}
 
 	assert(db->follower == NULL);
 	rv = db__open_follower(db);
 	if (rv != 0) {
-		tracef("open follower failed %d", rv);
 		goto err_after_db_lock;
 	}
 
@@ -125,7 +121,6 @@ static void maybeCheckpoint(struct db *db)
 
 	/* Check if the size of the WAL is beyond the threshold. */
 	if (pages < db->config->checkpoint_threshold) {
-		tracef("wal size (%u) < threshold (%u)", pages, db->config->checkpoint_threshold);
 		goto err_after_db_open;
 	}
 
@@ -147,7 +142,6 @@ static void maybeCheckpoint(struct db *db)
 
 		rv = main_f->pMethods->xShmLock(main_f, i, 1, flags);
 		if (rv == SQLITE_BUSY) {
-			tracef("busy reader or writer - retry next time");
 			goto err_after_db_open;
 		}
 
@@ -161,10 +155,8 @@ static void maybeCheckpoint(struct db *db)
 	     db->follower, "main", SQLITE_CHECKPOINT_TRUNCATE, &wal_size, &ckpt);
 	/* TODO assert(rv == 0) here? Which failure modes do we expect? */
 	if (rv != 0) {
-		tracef("sqlite3_wal_checkpoint_v2 failed %d", rv);
 		goto err_after_db_open;
 	}
-	tracef("sqlite3_wal_checkpoint_v2 success");
 
 	/* Since no reader transaction is in progress, we must be able to
 	 * checkpoint the entire WAL */
@@ -181,7 +173,6 @@ err_after_db_lock:
 
 static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
-        tracef("fsm apply frames");
 	struct db *db;
 	sqlite3_vfs *vfs;
 	unsigned long *page_numbers = NULL;
@@ -191,7 +182,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 	rv = registry__db_get(f->registry, c->filename, &db);
 	if (rv != 0) {
-                tracef("db get failed %d", rv);
 		return rv;
 	}
 
@@ -205,7 +195,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	if (!exists) {
 		rv = db__open_follower(db);
 		if (rv != 0) {
-                        tracef("open follower failed %d", rv);
 			return rv;
 		}
 		sqlite3_close(db->follower);
@@ -217,7 +206,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		if (page_numbers != NULL) {
 			sqlite3_free(page_numbers);
 		}
-		tracef("page numbers failed %d", rv);
 		return rv;
 	}
 
@@ -233,7 +221,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 					       c->frames.n_pages,
 					       db->config->page_size);
 			if (rv != 0) {
-				tracef("malloc");
 				sqlite3_free(page_numbers);
 				return DQLITE_NOMEM;
 			}
@@ -241,7 +228,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 			    VfsApply(vfs, db->filename, f->pending.n_pages,
 				     f->pending.page_numbers, f->pending.pages);
 			if (rv != 0) {
-				tracef("VfsApply failed %d", rv);
 				sqlite3_free(page_numbers);
 				return rv;
 			}
@@ -254,7 +240,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 			rv = VfsApply(vfs, db->filename, c->frames.n_pages,
 				      page_numbers, pages);
 			if (rv != 0) {
-				tracef("VfsApply failed %d", rv);
 				sqlite3_free(page_numbers);
 				return rv;
 			}
@@ -264,7 +249,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		    add_pending_pages(f, page_numbers, pages, c->frames.n_pages,
 				      db->config->page_size);
 		if (rv != 0) {
-			tracef("add pending pages failed %d", rv);
 			sqlite3_free(page_numbers);
 			return DQLITE_NOMEM;
 		}
@@ -277,7 +261,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 static int apply_undo(struct fsm *f, const struct command_undo *c)
 {
-	tracef("apply undo %" PRIu64, c->tx_id);
 	(void)c;
 
 	if (f->pending.n_pages == 0) {
@@ -300,7 +283,6 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 {
 	(void) f;
 	(void) c;
-	tracef("apply no-op checkpoint");
 	return 0;
 }
 
@@ -308,7 +290,6 @@ static int fsm__apply(struct raft_fsm *fsm,
 		      const struct raft_buffer *buf,
 		      void **result)
 {
-        tracef("fsm apply");
 	struct fsm *f = fsm->data;
 	int type;
 	void *command;
@@ -465,7 +446,6 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	}
 
 	if (header.main_size + header.wal_size > SIZE_MAX) {
-		tracef("main_size + wal_size would overflow max DB size");
 		return -1;
 	}
 
@@ -643,11 +623,9 @@ static int fsm__snapshot_finalize(struct raft_fsm *fsm,
 	struct cursor cursor = {(*bufs)[0].base, (*bufs)[0].len};
 	rv = snapshotHeader__decode(&cursor, &header);
 	if (rv != 0) {
-		tracef("decode failed %d", rv);
 		return -1;
 	}
 	if (header.format != SNAPSHOT_FORMAT) {
-		tracef("bad format");
 		return -1;
 	}
 
@@ -675,7 +653,6 @@ static int fsm__snapshot_finalize(struct raft_fsm *fsm,
 
 static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 {
-        tracef("fsm restore");
 	struct fsm *f = fsm->data;
 	struct cursor cursor = {buf->base, buf->len};
 	struct snapshotHeader header;
@@ -684,18 +661,15 @@ static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 
 	rv = snapshotHeader__decode(&cursor, &header);
 	if (rv != 0) {
-                tracef("decode failed %d", rv);
 		return rv;
 	}
 	if (header.format != SNAPSHOT_FORMAT) {
-                tracef("bad format");
 		return RAFT_MALFORMED;
 	}
 
 	for (i = 0; i < header.n; i++) {
 		rv = decodeDatabase(f, &cursor);
 		if (rv != 0) {
-                        tracef("decode failed");
 			return rv;
 		}
 	}
@@ -710,7 +684,6 @@ int fsm__init(struct raft_fsm *fsm,
 	      struct config *config,
 	      struct registry *registry)
 {
-        tracef("fsm init");
 	struct fsm *f = raft_malloc(sizeof *f);
 
 	if (f == NULL) {
@@ -735,7 +708,6 @@ int fsm__init(struct raft_fsm *fsm,
 
 void fsm__close(struct raft_fsm *fsm)
 {
-        tracef("fsm close");
 	struct fsm *f = fsm->data;
 	raft_free(f);
 }
