@@ -62,12 +62,12 @@ static void gateway_handle_cb(struct handle *req, int status, uint8_t type, uint
 	/* Ignore results firing after we started closing. TODO: instead, we
 	 * should make gateway__close() asynchronous. */
 	if (c->closed) {
-                tracef("gateway handle cb closed");
+		tracef("gateway handle cb closed");
 		return;
 	}
 
 	if (status != 0) {
-                tracef("gateway handle cb closed status %d", status);
+		tracef("gateway handle cb status %d", status);
 		goto abort;
 	}
 
