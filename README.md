@@ -72,7 +72,7 @@ sudo apt-get install libdqlite-dev
 Build
 -----
 
-To build ``libdqlite`` from source you'll need:
+To build libdqlite from source you'll need:
 
 * A reasonably recent version of [libuv](http://libuv.org/) (v1.8.0 or beyond).
 * A reasonably recent version of sqlite3-dev
