@@ -1359,27 +1359,32 @@ int gateway__handle(struct gateway *g,
 {
         tracef("gateway handle");
 	int rc = 0;
-	sqlite3_stmt *stmt = NULL;
+	sqlite3_stmt *stmt = NULL; // used for DQLITE_REQUEST_INTERRUPT
 
-	/* Check if there is a request in progress. */
-	if (g->req != NULL && type != DQLITE_REQUEST_HEARTBEAT) {
-		if (g->req->type == DQLITE_REQUEST_QUERY) {
-			assert(type == DQLITE_REQUEST_INTERRUPT);
-			goto handle;
-		}
-		/* Pass the stmt to handle_interrupt */
-		if (g->req->type == DQLITE_REQUEST_QUERY_SQL) {
-			assert(type == DQLITE_REQUEST_INTERRUPT);
-			stmt = g->req->stmt;
-			goto handle;
-		}
-		if (g->req->type == DQLITE_REQUEST_EXEC ||
-		    g->req->type == DQLITE_REQUEST_EXEC_SQL) {
-                        tracef("gateway handle - BUSY");
-			return SQLITE_BUSY;
-		}
-		assert(0);
+	if (g->req == NULL) {
+		goto handle;
 	}
+
+	/* Request in progress. TODO The current implementation doesn't allow
+	 * reading a new request while a query is yielding rows, in that case
+	 * gateway__resume in write_cb will indicate it has not finished
+	 * returning results and a new request (in this case, the interrupt)
+	 * will not be read. */
+	if (g->req->type == DQLITE_REQUEST_QUERY
+	    && type == DQLITE_REQUEST_INTERRUPT) {
+		goto handle;
+	}
+	if (g->req->type == DQLITE_REQUEST_QUERY_SQL
+	    && type == DQLITE_REQUEST_INTERRUPT) {
+		stmt = g->req->stmt;
+		goto handle;
+	}
+
+	/* Receiving a request when one is ongoing on the same connection
+	 * is a hard error. The connection will be stopped due to the non-0
+	 * return code in case asserts are off. */
+	assert(false);
+	return SQLITE_BUSY;
 
 handle:
 	req->type = type;
