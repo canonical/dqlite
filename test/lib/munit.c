@@ -1349,17 +1349,23 @@ munit_test_runner_run_test_with_params(MunitTestRunner* runner, const MunitTest*
 
     fork_pid = fork();
     if (fork_pid == 0) {
+#if !defined(MUNIT_NO_BUFFER)
       int orig_stderr;
+#endif
 
       close(pipefd[0]);
 
+#if !defined(MUNIT_NO_BUFFER)
       orig_stderr = munit_replace_stderr(stderr_buf);
+#endif
       munit_test_runner_exec(runner, test, params, &report);
 
+#if !defined(MUNIT_NO_BUFFER)
       /* Note that we don't restore stderr.  This is so we can buffer
        * things written to stderr later on (such as by
        * asan/tsan/ubsan, valgrind, etc.) */
       close(orig_stderr);
+#endif
 
       do {
         write_res = write(pipefd[1], ((munit_uint8_t*) (&report)) + bytes_written, sizeof(report) - bytes_written);
