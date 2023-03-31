@@ -24,7 +24,7 @@ enum {
 	 * It is not generally safe to continue using the client_proto object
 	 * after receiving this error code. */
 	DQLITE_CLIENT_PROTO_SHORT,
-	/* Another kind of error occurred, like a syscall or malloc failure.
+	/* Another kind of error occurred, like a syscall failure.
 	 *
 	 * It is not generally safe to continue using the client_proto object
 	 * after receiving this error code. */
@@ -50,19 +50,15 @@ struct client_proto
  * Passing NULL for the context argument is permitted and disables all timeouts. */
 struct client_context
 {
-	/* If budget_millis is negative when a Send or Recv function is called, reading
-	 * or writing may block indefinitely and the value is not modified. Otherwise,
-	 * the initial value caps the number of milliseconds that will be spent attempting
-	 * the send or receive operation (potentially split between multiple read/write syscalls).
-	 * If it's not negative initially, budget_millis is modified by subtracting the
-	 * number of milliseconds actually spent. If the time budget runs out without
-	 * completing the operation, DQLITE_CLIENT_PROTO_SHORT is returned and the values
-	 * of any output parameters are undefined. Because this implies that we failed to
-	 * read/write a complete message from/to the fd, it's important to call clientClose
-	 * immediately and not keep using the client_proto object. */
-	int budget_millis;
+	/* An absolute CLOCK_REALTIME timestamp that limits how long will be spent
+	 * trying to complete the requested send or receive operation. Whenever we
+	 * are about to make a blocking syscall (read or write), we first poll(2)
+	 * using a timeout computed based on how much time remains before the deadline.
+	 * If the poll times out, we return early instead of completing the operation. */
+	struct timespec deadline;
 };
 
+/* TODO Consider using a dynamic array instead of a linked list here? */
 struct row
 {
 	struct value *values;
@@ -89,6 +85,10 @@ struct client_file
 	uint64_t size;
 	void *blob;
 };
+
+/* Initialize a context whose deadline will fall after the given duration
+ * in milliseconds. */
+void clientContextMillis(struct client_context *context, long millis);
 
 /* Initialize a new client, writing requests to fd. */
 int clientInit(struct client_proto *c, int fd);
