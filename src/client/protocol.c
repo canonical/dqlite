@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <limits.h>
 #include <poll.h>
 #include <stdint.h>
 #include <stdlib.h>
