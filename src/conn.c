@@ -18,7 +18,7 @@ static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
 }
 
 static int read_message(struct conn *c);
-static void write_cb(struct transport *transport, int status)
+static void conn_write_cb(struct transport *transport, int status)
 {
 	struct conn *c = transport->data;
 	bool finished;
@@ -85,7 +85,7 @@ static void gateway_handle_cb(struct handle *req, int status, uint8_t type, uint
 	buf.base = buffer__cursor(&c->write, 0);
 	buf.len = buffer__offset(&c->write);
 
-	rv = transport__write(&c->transport, &buf, write_cb);
+	rv = transport__write(&c->transport, &buf, conn_write_cb);
 	if (rv != 0) {
                 tracef("transport write failed %d", rv);
 		goto abort;
