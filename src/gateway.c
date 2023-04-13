@@ -29,6 +29,7 @@ void gateway__init(struct gateway *g,
 	g->barrier.cb = NULL;
 	g->barrier.leader = NULL;
 	g->protocol = DQLITE_PROTOCOL_VERSION;
+	g->client_id = 0;
 	g->random_state = seed;
 }
 
@@ -248,6 +249,7 @@ static int handle_client(struct gateway *g, struct handle *req)
         tracef("handle client");
 	struct cursor *cursor = &req->cursor;
 	START_V0(client, welcome);
+	g->client_id = request.id;
 	response.heartbeat_timeout = g->config->heartbeat_timeout;
 	SUCCESS_V0(welcome, WELCOME);
 	return 0;
