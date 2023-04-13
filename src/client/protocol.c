@@ -37,6 +37,15 @@ static void *callocChecked(size_t count, size_t n)
 	return p;
 }
 
+static char *strdupChecked(const char *s)
+{
+	char *p = strdup(s);
+	if (p == NULL) {
+		oom();
+	}
+	return p;
+}
+
 /* Convert a value that potentially borrows data from the client_proto read buffer
  * into one that owns its data. The owned data must be free with freeOwnedValue. */
 static void makeValueOwned(struct value *val)
@@ -44,18 +53,10 @@ static void makeValueOwned(struct value *val)
 	char *p;
 	switch (val->type) {
 		case SQLITE_TEXT:
-			p = strdup(val->text);
-			if (p == NULL) {
-				oom();
-			}
-			val->text = p;
+			val->text = strdupChecked(val->text);
 			break;
 		case DQLITE_ISO8601:
-			p = strdup(val->iso8601);
-			if (p == NULL) {
-				oom();
-			}
-			val->iso8601 = p;
+			val->iso8601 = strdupChecked(val->iso8601);
 			break;
 		case SQLITE_BLOB:
 			p = mallocChecked(val->blob.len);
@@ -259,10 +260,7 @@ static int handleFailure(struct client_proto *c)
 	if (c->errmsg != NULL) {
 		free(c->errmsg);
 	}
-	c->errmsg = strdup(failure.message);
-	if (c->errmsg == NULL) {
-		oom();
-	}
+	c->errmsg = strdupChecked(failure.message);
 	return DQLITE_CLIENT_PROTO_RECEIVED_FAILURE;
 }
 
@@ -278,13 +276,16 @@ void clientContextMillis(struct client_context *context, long millis)
 	}
 }
 
-int clientInit(struct client_proto *c, int fd)
+/* TODO accept a context here? */
+int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id)
 {
-	tracef("init client");
 	int rv;
-	c->fd = fd;
-	c->db_name = NULL;
-	c->db_is_init = false;
+
+	c->server_id = server_id;
+	rv = c->connect(c->connect_arg, addr, &c->fd);
+	if (rv != 0) {
+		abort(); /* TODO */
+	}
 
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
@@ -373,14 +374,14 @@ static int writeMessage(struct client_proto *c, uint8_t type, uint8_t schema, st
 	}
 
 /* Write out a request. */
-#define REQUEST(LOWER, UPPER, SCHEMA)                                                 \
-	{                                                                             \
-		int _rv;                                                              \
-		BUFFER_REQUEST(LOWER, UPPER);                                         \
+#define REQUEST(LOWER, UPPER, SCHEMA)                                           \
+	{                                                                       \
+		int _rv;                                                        \
+		BUFFER_REQUEST(LOWER, UPPER);                                   \
 		_rv = writeMessage(c, DQLITE_REQUEST_##UPPER, SCHEMA, context); \
-		if (_rv != 0) {                                                       \
-			return _rv;                                                   \
-		}                                                                     \
+		if (_rv != 0) {                                                 \
+			return _rv;                                             \
+		}                                                               \
 	}
 
 static int readMessage(struct client_proto *c, uint8_t *type, struct client_context *context)
@@ -438,8 +439,10 @@ static int readMessage(struct client_proto *c, uint8_t *type, struct client_cont
 		if (_rv != 0) {                                       \
 			return _rv;                                   \
 		}                                                     \
-		if (_type == DQLITE_RESPONSE_FAILURE) {               \
-			handleFailure(c);                             \
+		if (_type == DQLITE_RESPONSE_FAILURE &&               \
+				_type != DQLITE_RESPONSE_##UPPER) {   \
+			_rv = handleFailure(c);                       \
+			return _rv;                                   \
 		} else if (_type != DQLITE_RESPONSE_##UPPER) {        \
 			return DQLITE_CLIENT_PROTO_ERROR;             \
 		}                                                     \
@@ -472,10 +475,7 @@ int clientSendOpen(struct client_proto *c, const char *name, struct client_conte
 {
 	tracef("client send open name %s", name);
 	struct request_open request;
-	c->db_name = strdup(name);
-	if (c->db_name == NULL) {
-		oom();
-	}
+	c->db_name = strdupChecked(name);
 	request.filename = name;
 	request.flags = 0; /* unused */
 	request.vfs = "test"; /* unused */
@@ -506,15 +506,18 @@ int clientSendPrepare(struct client_proto *c, const char *sql, struct client_con
 
 int clientRecvStmt(struct client_proto *c,
 			uint32_t *stmt_id,
+			uint64_t *n_params,
 			uint64_t *offset,
 			struct client_context *context)
 {
 	struct cursor cursor;
 	struct response_stmt_with_offset response;
 	RESPONSE(stmt_with_offset, STMT_WITH_OFFSET);
-	tracef("client recv stmt stmt_id:%" PRIu32 " offset:%" PRIu64, response.id, response.offset);
 	if (stmt_id != NULL) {
 		*stmt_id = response.id;
+	}
+	if (n_params != NULL) {
+		*n_params = response.params;
 	}
 	if (offset != NULL) {
 		*offset = response.offset;
@@ -524,7 +527,7 @@ int clientRecvStmt(struct client_proto *c,
 
 static int bufferParams(struct client_proto *c,
 			struct value *params,
-			size_t n_params)
+			unsigned n_params)
 {
 	struct tuple_encoder tup;
 	size_t i;
@@ -549,7 +552,7 @@ static int bufferParams(struct client_proto *c,
 int clientSendExec(struct client_proto *c,
 			uint32_t stmt_id,
 			struct value *params,
-			size_t n_params,
+			unsigned n_params,
 			struct client_context *context)
 {
 	tracef("client send exec id %" PRIu32, stmt_id);
@@ -571,7 +574,7 @@ int clientSendExec(struct client_proto *c,
 int clientSendExecSQL(struct client_proto *c,
 			const char *sql,
 			struct value *params,
-			size_t n_params,
+			unsigned n_params,
 			struct client_context *context)
 {
 	tracef("client send exec sql");
@@ -598,17 +601,19 @@ int clientRecvResult(struct client_proto *c,
 	struct cursor cursor;
 	struct response_result response;
 	RESPONSE(result, RESULT);
-	*last_insert_id = response.last_insert_id;
-	*rows_affected = response.rows_affected;
-	tracef("client recv result last_insert_id %" PRIu64 "rows_affected %" PRIu64,
-			*last_insert_id, *rows_affected);
+	if (last_insert_id != NULL) {
+		*last_insert_id = response.last_insert_id;
+	}
+	if (rows_affected != NULL) {
+		*rows_affected = response.rows_affected;
+	}
 	return 0;
 }
 
 int clientSendQuery(struct client_proto *c,
 			uint32_t stmt_id,
 			struct value *params,
-			size_t n_params,
+			unsigned n_params,
 			struct client_context *context)
 {
 	tracef("client send query stmt_id %" PRIu32, stmt_id);
@@ -630,7 +635,7 @@ int clientSendQuery(struct client_proto *c,
 int clientSendQuerySQL(struct client_proto *c,
 			const char *sql,
 			struct value *params,
-			size_t n_params,
+			unsigned n_params,
 			struct client_context *context)
 {
 	tracef("client send query sql sql %s", sql);
@@ -649,7 +654,10 @@ int clientSendQuerySQL(struct client_proto *c,
 	return rv;
 }
 
-int clientRecvRows(struct client_proto *c, struct rows *rows, struct client_context *context)
+int clientRecvRows(struct client_proto *c,
+			struct rows *rows,
+			bool *done,
+			struct client_context *context)
 {
 	tracef("client recv rows");
 	struct cursor cursor;
@@ -691,10 +699,7 @@ int clientRecvRows(struct client_proto *c, struct rows *rows, struct client_cont
 			rv = DQLITE_CLIENT_PROTO_ERROR;
 			goto err_after_alloc_column_names;
 		}
-		rows->column_names[i] = strdup(raw);
-		if (rows->column_names[i] == NULL) {
-			oom();
-		}
+		rows->column_names[i] = strdupChecked(raw);
 	}
 
 	rows->next = NULL;
@@ -738,6 +743,10 @@ int clientRecvRows(struct client_proto *c, struct rows *rows, struct client_cont
 		last = row;
 	}
 
+	assert(eof == DQLITE_RESPONSE_ROWS_DONE || eof == DQLITE_RESPONSE_ROWS_PART);
+	if (done != NULL) {
+		*done = eof == DQLITE_RESPONSE_ROWS_DONE;
+	}
 	return 0;
 
 err_after_alloc_row_values:
@@ -887,10 +896,7 @@ int clientRecvServer(struct client_proto *c,
 	*id = 0;
 	*address = NULL;
 	RESPONSE(server, SERVER);
-	*address = strdup(response.address);
-	if (*address == NULL) {
-		oom();
-	}
+	*address = strdupChecked(response.address);
 	*id = response.id;
 	return 0;
 }
@@ -929,7 +935,7 @@ int clientRecvFailure(struct client_proto *c,
 
 int clientRecvServers(struct client_proto *c,
 			struct client_node_info **servers,
-			size_t *n_servers,
+			uint64_t *n_servers,
 			struct client_context *context)
 {
 	tracef("client recv servers");
@@ -959,10 +965,7 @@ int clientRecvServers(struct client_proto *c,
 		if (rv != 0) {
 			goto err_after_alloc_srvs;
 		}
-		srvs[i].addr = strdup(raw_addr);
-		if (srvs[i].addr == NULL) {
-			oom();
-		}
+		srvs[i].addr = strdupChecked(raw_addr);
 		rv = uint64__decode(&cursor, &raw_role);
 		if (rv != 0) {
 			free(srvs[i].addr);
@@ -1010,10 +1013,7 @@ int clientRecvFiles(struct client_proto *c,
 		if (rv != 0) {
 			goto err_after_alloc_fs;
 		}
-		fs[i].name = strdup(raw_name);
-		if (fs[i].name == NULL) {
-			oom();
-		}
+		fs[i].name = strdupChecked(raw_name);
 		rv = uint64__decode(&cursor, &fs[i].size);
 		if (rv != 0) {
 			free(fs[i].name);

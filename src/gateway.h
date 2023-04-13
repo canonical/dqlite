@@ -35,6 +35,7 @@ struct gateway
 	struct stmt__registry stmts;  /* Registry of prepared statements */
 	struct barrier barrier;       /* Barrier for query requests */
 	uint64_t protocol;            /* Protocol format version */
+	uint64_t client_id;
 	struct id_state random_state; /* For generating IDs */
 };
 

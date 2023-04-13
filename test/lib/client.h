@@ -18,7 +18,10 @@
 		_rv = listen(f->endpoint.fd, 16);                       \
 		munit_assert_int(_rv, ==, 0);                           \
 		test_endpoint_pair(&f->endpoint, &f->server, &_client); \
-		clientInit(&f->client, _client);                        \
+		memset(&f->client, 0, sizeof f->client);                \
+		buffer__init(&f->client.read);                          \
+		buffer__init(&f->client.write);                         \
+		f->client.fd = _client;                                 \
 	}
 
 #define TEAR_DOWN_CLIENT         \
@@ -108,13 +111,13 @@
 	}
 
 /* Prepare a statement. */
-#define PREPARE(SQL, STMT_ID)                                         \
-	{                                                             \
-		int rv_;                                              \
-		rv_ = clientSendPrepare(f->client, SQL, NULL);        \
-		munit_assert_int(rv_, ==, 0);                         \
-		rv_ = clientRecvStmt(f->client, STMT_ID, NULL, NULL); \
-		munit_assert_int(rv_, ==, 0);                         \
+#define PREPARE(SQL, STMT_ID)                                               \
+	{                                                                   \
+		int rv_;                                                    \
+		rv_ = clientSendPrepare(f->client, SQL, NULL);              \
+		munit_assert_int(rv_, ==, 0);                               \
+		rv_ = clientRecvStmt(f->client, STMT_ID, NULL, NULL, NULL); \
+		munit_assert_int(rv_, ==, 0);                               \
 	}
 
 #define PREPARE_FAIL(SQL, STMT_ID, RV, MSG)                        \
@@ -153,7 +156,7 @@
 		int rv_;                                                  \
 		rv_ = clientSendQuery(f->client, STMT_ID, NULL, 0, NULL); \
 		munit_assert_int(rv_, ==, 0);                             \
-		rv_ = clientRecvRows(f->client, ROWS, NULL);              \
+		rv_ = clientRecvRows(f->client, ROWS, NULL, NULL);        \
 		munit_assert_int(rv_, ==, 0);                             \
 	}
 
@@ -162,7 +165,7 @@
 		int rv_;                                                 \
 		rv_ = clientSendQuerySQL(f->client, SQL, NULL, 0, NULL); \
 		munit_assert_int(rv_, ==, 0);                            \
-		rv_ = clientRecvRows(f->client, ROWS, NULL);             \
+		rv_ = clientRecvRows(f->client, ROWS, NULL, NULL);       \
 		munit_assert_int(rv_, ==, 0);                            \
 	}
 

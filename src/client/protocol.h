@@ -33,10 +33,13 @@ enum {
 
 struct client_proto
 {
+	int (*connect)(void *, const char *, int *);
+	void *connect_arg;
 	int fd;		     /* Connected socket */
 	uint32_t db_id;      /* Database ID provided by the server */
 	char *db_name;       /* Database filename (owned) */
 	bool db_is_init;     /* Whether the database ID has been initialized */
+	uint64_t server_id;
 	struct buffer read;  /* Read buffer */
 	struct buffer write; /* Write buffer */
 	uint64_t errcode;    /* Last error code returned by the server (owned) */
@@ -91,7 +94,7 @@ struct client_file
 void clientContextMillis(struct client_context *context, long millis);
 
 /* Initialize a new client, writing requests to fd. */
-int clientInit(struct client_proto *c, int fd);
+int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id);
 
 /* Release all memory used by the client, and close the client socket. */
 void clientClose(struct client_proto *c);
@@ -118,17 +121,18 @@ int clientSendPrepare(struct client_proto *c, const char *sql, struct client_con
 /* Receive the response to a prepare request. */
 int clientRecvStmt(struct client_proto *c,
 			uint32_t *stmt_id,
+			uint64_t *n_params,
 			uint64_t *offset,
 			struct client_context *context);
 
 /* Send a request to execute a statement. */
 int clientSendExec(struct client_proto *c, uint32_t stmt_id,
-			struct value *params, size_t n_params,
+			struct value *params, unsigned n_params,
 			struct client_context *context);
 
 /* Send a request to execute a non-prepared statement. */
 int clientSendExecSQL(struct client_proto *c, const char *sql,
-			struct value *params, size_t n_params,
+			struct value *params, unsigned n_params,
 			struct client_context *context);
 
 /* Receive the response to an exec request. */
@@ -139,16 +143,19 @@ int clientRecvResult(struct client_proto *c,
 
 /* Send a request to perform a query. */
 int clientSendQuery(struct client_proto *c, uint32_t stmt_id,
-			struct value *params, size_t n_params,
+			struct value *params, unsigned n_params,
 			struct client_context *context);
 
 /* Send a request to perform a non-prepared query. */
 int clientSendQuerySQL(struct client_proto *c, const char *sql,
-			struct value *params, size_t n_params,
+			struct value *params, unsigned n_params,
 			struct client_context *context);
 
 /* Receive the response of a query request. */
-int clientRecvRows(struct client_proto *c, struct rows *rows, struct client_context *context);
+int clientRecvRows(struct client_proto *c,
+			struct rows *rows,
+			bool *done,
+			struct client_context *context);
 
 /* Release all memory used in the given rows object. */
 void clientCloseRows(struct rows *rows);
@@ -210,7 +217,7 @@ int clientRecvFailure(struct client_proto *c,
 /* Receive a list of nodes in the cluster. */
 int clientRecvServers(struct client_proto *c,
 			struct client_node_info **servers,
-			size_t *n_servers,
+			uint64_t *n_servers,
 			struct client_context *context);
 
 /* Receive a list of files that make up a database. */
