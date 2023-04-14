@@ -391,7 +391,7 @@ static int maybeBootstrap(dqlite_node *d,
 		return 0;
 	}
 	raft_configuration_init(&configuration);
-	rv = raft_configuration_add(&configuration, id, address, true);
+	rv = raft_configuration_add(&configuration, id, address, RAFT_VOTER);
 	if (rv != 0) {
 		assert(rv == RAFT_NOMEM);
 		rv = DQLITE_NOMEM;
