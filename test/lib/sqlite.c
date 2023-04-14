@@ -2,7 +2,8 @@
 
 #include "sqlite.h"
 
-void test_sqlite_setup(const MunitParameter params[]) {
+void test_sqlite_setup(const MunitParameter params[])
+{
 	int rc;
 	(void)params;
 	rc = sqlite3_initialize();
@@ -11,7 +12,8 @@ void test_sqlite_setup(const MunitParameter params[]) {
 	}
 }
 
-void test_sqlite_tear_down() {
+void test_sqlite_tear_down()
+{
 	int rc;
 	rc = sqlite3_shutdown();
 	if (rc != SQLITE_OK) {

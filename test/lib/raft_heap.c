@@ -33,7 +33,8 @@ static void *faultyCalloc(void *data, size_t nmemb, size_t size)
 	if (test_fault_tick(&faulty.fault)) {
 		return NULL;
 	} else {
-		return faulty.orig_heap->calloc(faulty.orig_heap->data, nmemb, size);
+		return faulty.orig_heap->calloc(faulty.orig_heap->data, nmemb,
+						size);
 	}
 }
 
@@ -43,7 +44,8 @@ static void *faultyRealloc(void *data, void *ptr, size_t size)
 	if (test_fault_tick(&faulty.fault)) {
 		return NULL;
 	} else {
-		return faulty.orig_heap->realloc(faulty.orig_heap->data, ptr, size);
+		return faulty.orig_heap->realloc(faulty.orig_heap->data, ptr,
+						 size);
 	}
 }
 
@@ -53,7 +55,8 @@ static void *faultyAlignedAlloc(void *data, size_t alignment, size_t size)
 	if (test_fault_tick(&faulty.fault)) {
 		return NULL;
 	} else {
-		return faulty.orig_heap->aligned_alloc(faulty.orig_heap->data, alignment, size);
+		return faulty.orig_heap->aligned_alloc(faulty.orig_heap->data,
+						       alignment, size);
 	}
 }
 

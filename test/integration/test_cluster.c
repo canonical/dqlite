@@ -72,22 +72,19 @@ static void tearDown(void *data)
 	free(f);
 }
 
-static char* bools[] = {
-    "0", "1", NULL
-};
+static char *bools[] = {"0", "1", NULL};
 
-static char* num_records[] = {
+static char *num_records[] = {
     "0", "1", "256",
     /* WAL will just have been checkpointed after 993 writes. */
     "993",
     /* Non-empty WAL, checkpointed twice, 2 snapshots taken */
-    "2200", NULL
-};
+    "2200", NULL};
 
 static MunitParameterEnum cluster_params[] = {
-    { "num_records", num_records },
-    { "disk_mode", bools },
-    { NULL, NULL },
+    {"num_records", num_records},
+    {"disk_mode", bools},
+    {NULL, NULL},
 };
 
 /* Restart a node and check if all data is there */
@@ -98,7 +95,8 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 	struct rows rows;
-	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
+	long n_records =
+	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	char sql[128];
 
 	HANDSHAKE;
@@ -134,7 +132,8 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 	struct rows rows;
-	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
+	long n_records =
+	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	char sql[128];
 	unsigned id = 2;
 	const char *address = "@2";
@@ -172,7 +171,8 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 }
 
 /* Insert a huge row, causing SQLite to allocate overflow pages. Then
- * insert the same row again. (Reproducer for https://github.com/canonical/raft/issues/432.) */
+ * insert the same row again. (Reproducer for
+ * https://github.com/canonical/raft/issues/432.) */
 TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
@@ -186,10 +186,15 @@ TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
 
 	HANDSHAKE;
 	OPEN;
-	PREPARE("CREATE TABLE IF NOT EXISTS model(key TEXT, value TEXT, UNIQUE(key))", &stmt_id);
+	PREPARE(
+	    "CREATE TABLE IF NOT EXISTS model(key TEXT, value TEXT, "
+	    "UNIQUE(key))",
+	    &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 	sql = munit_malloc(huge);
-	n = snprintf(sql, huge, "INSERT OR REPLACE INTO model (key, value) VALUES('my-key-1', '");
+	n = snprintf(
+	    sql, huge,
+	    "INSERT OR REPLACE INTO model (key, value) VALUES('my-key-1', '");
 	memset(sql + n, 'A', huge - n);
 	memcpy(sql + huge - 3, "')", 3);
 	PREPARE(sql, &stmt_id);
@@ -198,7 +203,6 @@ TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
 	/* Again */
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 	return MUNIT_OK;
-
 }
 
 TEST(cluster, modifyingQuery, setUp, tearDown, 0, cluster_params)
@@ -208,7 +212,8 @@ TEST(cluster, modifyingQuery, setUp, tearDown, 0, cluster_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 	struct rows rows;
-	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
+	long n_records =
+	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	char sql[128];
 	unsigned id = 2;
 	const char *address = "@2";
@@ -250,7 +255,8 @@ TEST(cluster, modifyingQuerySql, setUp, tearDown, 0, cluster_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 	struct rows rows;
-	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
+	long n_records =
+	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	char sql[128];
 	unsigned id = 2;
 	const char *address = "@2";

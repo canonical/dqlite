@@ -43,13 +43,20 @@ int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n);
  * will contain a copy of the WAL. `bufs` MUST point to an array of n
  * `dqlite_buffer` structs and n MUST equal 1 + the number of pages in
  * the database. */
-int VfsShallowSnapshot(sqlite3_vfs *vfs, const char *filename, struct dqlite_buffer bufs[], uint32_t n);
+int VfsShallowSnapshot(sqlite3_vfs *vfs,
+		       const char *filename,
+		       struct dqlite_buffer bufs[],
+		       uint32_t n);
 
 /* Copies the WAL into buf */
-int VfsDiskSnapshotWal(sqlite3_vfs *vfs, const char *path, struct dqlite_buffer *buf);
+int VfsDiskSnapshotWal(sqlite3_vfs *vfs,
+		       const char *path,
+		       struct dqlite_buffer *buf);
 
 /* `mmap` the database into buf. */
-int VfsDiskSnapshotDb(sqlite3_vfs *vfs, const char *path, struct dqlite_buffer *buf);
+int VfsDiskSnapshotDb(sqlite3_vfs *vfs,
+		      const char *path,
+		      struct dqlite_buffer *buf);
 
 /* Restore a database snapshot. */
 int VfsRestore(sqlite3_vfs *vfs,
@@ -59,19 +66,20 @@ int VfsRestore(sqlite3_vfs *vfs,
 
 /* Restore a disk database snapshot. */
 int VfsDiskRestore(sqlite3_vfs *vfs,
-	       const char *path,
-	       const void *data,
-	       size_t main_size,
-	       size_t wal_size);
+		   const char *path,
+		   const void *data,
+		   size_t main_size,
+		   size_t wal_size);
 
 /* Number of pages in the database. */
-int VfsDatabaseNumPages(sqlite3_vfs *vfs,
-			const char* filename,
-			uint32_t *n);
+int VfsDatabaseNumPages(sqlite3_vfs *vfs, const char *filename, uint32_t *n);
 
 /* Returns the resulting size of the main file, wal file and n additional WAL
  * frames with the specified page_size. */
-uint64_t VfsDatabaseSize(sqlite3_vfs *vfs, const char *path, unsigned n, unsigned page_size);
+uint64_t VfsDatabaseSize(sqlite3_vfs *vfs,
+			 const char *path,
+			 unsigned n,
+			 unsigned page_size);
 
 /* Returns the the maximum size of the main file and wal file. */
 uint64_t VfsDatabaseSizeLimit(sqlite3_vfs *vfs);

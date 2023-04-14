@@ -59,13 +59,11 @@
  *
  ******************************************************************************/
 
-static char* bools[] = {
-    "0", "1", NULL
-};
+static char *bools[] = {"0", "1", NULL};
 
 static MunitParameterEnum membership_params[] = {
-    { "disk_mode", bools },
-    { NULL, NULL },
+    {"disk_mode", bools},
+    {NULL, NULL},
 };
 
 SUITE(membership)
@@ -119,16 +117,17 @@ TEST(membership, join, setUp, tearDown, 0, membership_params)
 	return MUNIT_OK;
 }
 
-struct id_last_applied {
+struct id_last_applied
+{
 	struct fixture *f;
 	int id;
 	raft_index last_applied;
-
 };
 
 static bool last_applied_cond(struct id_last_applied arg)
 {
-	return arg.f->servers[arg.id].dqlite->raft.last_applied >= arg.last_applied;
+	return arg.f->servers[arg.id].dqlite->raft.last_applied >=
+	       arg.last_applied;
 }
 
 TEST(membership, transfer, setUp, tearDown, 0, membership_params)
@@ -175,7 +174,12 @@ TEST(membership, transfer, setUp, tearDown, 0, membership_params)
 }
 
 /* Transfer leadership away from a member that has a pending transaction */
-TEST(membership, transferPendingTransaction, setUp, tearDown, 0, membership_params)
+TEST(membership,
+     transferPendingTransaction,
+     setUp,
+     tearDown,
+     0,
+     membership_params)
 {
 	struct fixture *f = data;
 	unsigned id = 2;
@@ -225,7 +229,8 @@ TEST(membership, transferPendingTransaction, setUp, tearDown, 0, membership_para
 	return MUNIT_OK;
 }
 
-struct fixture_id {
+struct fixture_id
+{
 	struct fixture *f;
 	int id;
 };
@@ -256,8 +261,8 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 
 	/* Iniate transfer of leadership. This will cause a raft_barrier
-	 * failure while the node is technically still the leader, so the gateway
-	 * functionality that checks for leadership still succeeds. */
+	 * failure while the node is technically still the leader, so the
+	 * gateway functionality that checks for leadership still succeeds. */
 	test_server_client_connect(&f->servers[0], &c_transfer);
 	HANDSHAKE_C(&c_transfer);
 	rv = clientSendTransfer(&c_transfer, 2, NULL);
@@ -281,8 +286,14 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Transfer leadership back and forth from a member that has a pending transaction */
-TEST(membership, transferTwicePendingTransaction, setUp, tearDown, 0, membership_params)
+/* Transfer leadership back and forth from a member that has a pending
+ * transaction */
+TEST(membership,
+     transferTwicePendingTransaction,
+     setUp,
+     tearDown,
+     0,
+     membership_params)
 {
 	struct fixture *f = data;
 	unsigned id = 2;

@@ -84,27 +84,29 @@ extern int _main_suites_n;
 /* Set the tests and suites attributes of the next available slot of the
  * MunitSuite[] array of S1 to the MunitTest[] and MunitSuite[] arrays of S2,
  * using the given PREXIX. */
-#define SUITE__ADD_CHILD(S1, PREFIX, S2)                                        \
-	__attribute__((constructor(102))) static void _##S1##_##S2##_init(void) \
-	{                                                                       \
-		int n = _##S1##_suites_n;                                       \
-		_##S1##_suites[n].prefix = PREFIX;                              \
-		_##S1##_suites[n].tests = _##S2##_tests;                        \
-		_##S1##_suites[n].suites = _##S2##_suites;                      \
-		_##S1##_suites[n].iterations = 0;                               \
-		_##S1##_suites[n].options = 0;                                  \
-		_##S1##_suites_n = n + 1;                                       \
+#define SUITE__ADD_CHILD(S1, PREFIX, S2)                                   \
+	__attribute__((constructor(102))) static void _##S1##_##S2##_init( \
+	    void)                                                          \
+	{                                                                  \
+		int n = _##S1##_suites_n;                                  \
+		_##S1##_suites[n].prefix = PREFIX;                         \
+		_##S1##_suites[n].tests = _##S2##_tests;                   \
+		_##S1##_suites[n].suites = _##S2##_suites;                 \
+		_##S1##_suites[n].iterations = 0;                          \
+		_##S1##_suites[n].options = 0;                             \
+		_##S1##_suites_n = n + 1;                                  \
 	}
 
 /* Add a test case to the MunitTest[] array of suite S. */
-#define TEST__ADD_TO_SUITE(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)                 \
-	__attribute__((constructor(103))) static void _##S##_tests_##C##_init(void) \
-	{                                                                           \
-		MunitTest *tests = _##S##_tests;                                    \
-		int n = _##S##_tests_n;                                             \
-		TEST__SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C, SETUP,         \
-				   TEAR_DOWN, OPTIONS, PARAMS);                     \
-		_##S##_tests_n = n + 1;                                             \
+#define TEST__ADD_TO_SUITE(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)            \
+	__attribute__((constructor(103))) static void _##S##_tests_##C##_init( \
+	    void)                                                              \
+	{                                                                      \
+		MunitTest *tests = _##S##_tests;                               \
+		int n = _##S##_tests_n;                                        \
+		TEST__SET_IN_ARRAY(tests, n, "/" #C, test_##S##_##C, SETUP,    \
+				   TEAR_DOWN, OPTIONS, PARAMS);                \
+		_##S##_tests_n = n + 1;                                        \
 	}
 
 /* Set the values of the I'th test case slot in the given test array */
@@ -345,8 +347,8 @@ extern int _main_suites_n;
 
 /* Add a test case to MunitTest[] array of group G in suite S. */
 #define TEST_CASE__ADD_TO_GROUP(S, G, C, PARAMS)                            \
-	__attribute__(                                                      \
-	    (constructor)) static void _##S##_##G##_tests_##C##_init(void)  \
+	__attribute__((                                                     \
+	    constructor)) static void _##S##_##G##_tests_##C##_init(void)   \
 	{                                                                   \
 		MunitTest *tests = _##S##_##G##_tests;                      \
 		int n = _##S##_##G##_tests_n;                               \

@@ -42,7 +42,7 @@ static int impl_init(struct raft_uv_transport *transport,
 		     raft_id id,
 		     const char *address)
 {
-        tracef("impl init");
+	tracef("impl init");
 	struct impl *i = transport->impl;
 	i->id = id;
 	i->address = address;
@@ -52,7 +52,7 @@ static int impl_init(struct raft_uv_transport *transport,
 static int impl_listen(struct raft_uv_transport *transport,
 		       raft_uv_accept_cb cb)
 {
-        tracef("impl listen");
+	tracef("impl listen");
 	struct impl *i = transport->impl;
 	i->accept_cb = cb;
 	return 0;
@@ -60,7 +60,7 @@ static int impl_listen(struct raft_uv_transport *transport,
 
 static void connect_work_cb(uv_work_t *work)
 {
-        tracef("connect work cb");
+	tracef("connect work cb");
 	struct connect *r = work->data;
 	struct impl *i = r->impl;
 	struct message message = {0};
@@ -77,7 +77,7 @@ static void connect_work_cb(uv_work_t *work)
 	 * function. */
 	rv = i->connect.f(i->connect.arg, r->address, &r->fd);
 	if (rv != 0) {
-                tracef("connect failed to %llu@%s", r->id, r->address);
+		tracef("connect failed to %llu@%s", r->id, r->address);
 		rv = RAFT_NOCONNECTION;
 		goto err;
 	}
@@ -86,7 +86,7 @@ static void connect_work_cb(uv_work_t *work)
 	protocol = ByteFlipLe64(DQLITE_PROTOCOL_VERSION);
 	rv = (int)write(r->fd, &protocol, sizeof protocol);
 	if (rv != sizeof protocol) {
-                tracef("write failed");
+		tracef("write failed");
 		rv = RAFT_NOCONNECTION;
 		goto err_after_connect;
 	}
@@ -106,7 +106,7 @@ static void connect_work_cb(uv_work_t *work)
 
 	buf = sqlite3_malloc64(n);
 	if (buf == NULL) {
-                tracef("malloc failed");
+		tracef("malloc failed");
 		rv = RAFT_NOCONNECTION;
 		goto err_after_connect;
 	}
@@ -119,7 +119,7 @@ static void connect_work_cb(uv_work_t *work)
 	sqlite3_free(buf);
 
 	if (rv != (int)n) {
-                tracef("write failed");
+		tracef("write failed");
 		rv = RAFT_NOCONNECTION;
 		goto err_after_connect;
 	}
@@ -136,7 +136,7 @@ err:
 
 static void connect_after_work_cb(uv_work_t *work, int status)
 {
-        tracef("connect after work cb status %d", status);
+	tracef("connect after work cb status %d", status);
 	struct connect *r = work->data;
 	struct impl *i = r->impl;
 	struct uv_stream_s *stream = NULL;
@@ -150,7 +150,7 @@ static void connect_after_work_cb(uv_work_t *work, int status)
 
 	rv = transport__stream(i->loop, r->fd, &stream);
 	if (rv != 0) {
-                tracef("transport stream failed %d", rv);
+		tracef("transport stream failed %d", rv);
 		r->status = RAFT_NOCONNECTION;
 		close(r->fd);
 		goto out;
@@ -166,14 +166,14 @@ static int impl_connect(struct raft_uv_transport *transport,
 			const char *address,
 			raft_uv_connect_cb cb)
 {
-        tracef("impl connect id:%llu address:%s", id, address);
+	tracef("impl connect id:%llu address:%s", id, address);
 	struct impl *i = transport->impl;
 	struct connect *r;
 	int rv;
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
-                tracef("malloc failed");
+		tracef("malloc failed");
 		rv = DQLITE_NOMEM;
 		goto err;
 	}
@@ -189,7 +189,7 @@ static int impl_connect(struct raft_uv_transport *transport,
 	rv = uv_queue_work(i->loop, &r->work, connect_work_cb,
 			   connect_after_work_cb);
 	if (rv != 0) {
-                tracef("queue work failed");
+		tracef("queue work failed");
 		rv = RAFT_NOCONNECTION;
 		goto err_after_connect_alloc;
 	}
@@ -205,7 +205,7 @@ err:
 static void impl_close(struct raft_uv_transport *transport,
 		       raft_uv_transport_close_cb cb)
 {
-        tracef("impl close");
+	tracef("impl close");
 	cb(transport);
 }
 
@@ -239,7 +239,7 @@ static int default_connect(void *arg, const char *address, int *fd)
 
 int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 {
-        tracef("raft proxy init");
+	tracef("raft proxy init");
 	struct impl *i = sqlite3_malloc(sizeof *i);
 	if (i == NULL) {
 		return DQLITE_NOMEM;
@@ -259,7 +259,7 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 
 void raftProxyClose(struct raft_uv_transport *transport)
 {
-        tracef("raft proxy close");
+	tracef("raft proxy close");
 	struct impl *i = transport->impl;
 	sqlite3_free(i);
 }
@@ -269,11 +269,11 @@ void raftProxyAccept(struct raft_uv_transport *transport,
 		     const char *address,
 		     struct uv_stream_s *stream)
 {
-        tracef("raft proxy accept");
+	tracef("raft proxy accept");
 	struct impl *i = transport->impl;
 	/* If the accept callback is NULL it means we were stopped. */
 	if (i->accept_cb == NULL) {
-                tracef("raft proxy accept closed");
+		tracef("raft proxy accept closed");
 		uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
 	} else {
 		i->accept_cb(transport, id, address, stream);

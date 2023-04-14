@@ -1,7 +1,6 @@
 #ifndef DQLITE_LIB_FS_H
 #define DQLITE_LIB_FS_H
 
-
 /* Create a directory if it does not already exist. */
 int FsEnsureDir(const char *path);
 

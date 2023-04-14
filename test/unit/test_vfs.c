@@ -15,13 +15,11 @@
 #include "../../src/format.h"
 #include "../../src/vfs.h"
 
-static char* bools[] = {
-    "0", "1", NULL
-};
+static char *bools[] = {"0", "1", NULL};
 
 static MunitParameterEnum vfs_params[] = {
-	{ "disk_mode", bools },
-	{NULL, NULL},
+    {"disk_mode", bools},
+    {NULL, NULL},
 };
 
 /******************************************************************************
@@ -40,19 +38,22 @@ struct fixture
 
 static void vfsFillPath(struct fixture *f, char *filename)
 {
-	    int rv;
-	    const char *dir = f->dir;
-	    if (dir != NULL) {
-		    rv = snprintf(f->path, VFS_PATH_SZ, "%s/%s", dir, filename);
-	    } else {
-		    rv = snprintf(f->path, VFS_PATH_SZ, "%s", filename);
-	    }
-	    munit_assert_int(rv, >, 0);
-	    munit_assert_int(rv, <, VFS_PATH_SZ);
+	int rv;
+	const char *dir = f->dir;
+	if (dir != NULL) {
+		rv = snprintf(f->path, VFS_PATH_SZ, "%s/%s", dir, filename);
+	} else {
+		rv = snprintf(f->path, VFS_PATH_SZ, "%s", filename);
+	}
+	munit_assert_int(rv, >, 0);
+	munit_assert_int(rv, <, VFS_PATH_SZ);
 }
 
 /* Sets the page_size in disk_mode. */
-static void setPageSizeDisk(const MunitParameter params[], sqlite3_file* f, unsigned page_size, int rv)
+static void setPageSizeDisk(const MunitParameter params[],
+			    sqlite3_file *f,
+			    unsigned page_size,
+			    int rv)
 {
 	int rc;
 	bool disk_mode = false;
@@ -130,7 +131,8 @@ static sqlite3_file *__file_create(sqlite3_vfs *vfs,
 	int flags;
 	int rc;
 
-	flags = SQLITE_OPEN_EXCLUSIVE | SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | type_flag;
+	flags = SQLITE_OPEN_EXCLUSIVE | SQLITE_OPEN_CREATE |
+		SQLITE_OPEN_READWRITE | type_flag;
 
 	rc = vfs->xOpen(vfs, name, file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
@@ -604,7 +606,8 @@ TEST(VfsAccess, success, setUp, tearDown, 0, vfs_params)
 	struct fixture *f = data;
 	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
 
-	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB | SQLITE_OPEN_READWRITE;
+	int flags =
+	    SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB | SQLITE_OPEN_READWRITE;
 	int rc;
 	int exists;
 

@@ -8,20 +8,22 @@
 /**
  * Version.
  */
-#define DQLITE_VERSION_MAJOR    1
-#define DQLITE_VERSION_MINOR    14
-#define DQLITE_VERSION_RELEASE  0
-#define DQLITE_VERSION_NUMBER (DQLITE_VERSION_MAJOR *100*100 + DQLITE_VERSION_MINOR *100 + DQLITE_VERSION_RELEASE)
+#define DQLITE_VERSION_MAJOR 1
+#define DQLITE_VERSION_MINOR 14
+#define DQLITE_VERSION_RELEASE 0
+#define DQLITE_VERSION_NUMBER                                            \
+	(DQLITE_VERSION_MAJOR * 100 * 100 + DQLITE_VERSION_MINOR * 100 + \
+	 DQLITE_VERSION_RELEASE)
 
-int dqlite_version_number (void);
+int dqlite_version_number(void);
 
 /**
  * Error codes.
  */
 enum {
-    DQLITE_ERROR = 1, /* Generic error */
-    DQLITE_MISUSE,    /* Library used incorrectly */
-    DQLITE_NOMEM      /* A malloc() failed */
+	DQLITE_ERROR = 1, /* Generic error */
+	DQLITE_MISUSE,    /* Library used incorrectly */
+	DQLITE_NOMEM      /* A malloc() failed */
 };
 
 /**
@@ -93,7 +95,7 @@ void dqlite_node_destroy(dqlite_node *n);
  * The given address might match the one passed to @dqlite_node_create or be a
  * different one (for example if the application wants to proxy it).
  *
- * The format of the @address argument must be one of 
+ * The format of the @address argument must be one of
  *
  * 1. "<HOST>"
  * 2. "<HOST>:<PORT>"
@@ -154,7 +156,6 @@ int dqlite_node_set_connect_func(dqlite_node *n,
 int dqlite_node_set_network_latency(dqlite_node *n,
 				    unsigned long long nanoseconds);
 
-
 /**
  * Set the average one-way network latency, expressed in milliseconds.
  *
@@ -194,16 +195,17 @@ int dqlite_node_set_failure_domain(dqlite_node *n, unsigned long long code);
  *
  * This function must be called before calling dqlite_node_start().
  */
-int dqlite_node_set_snapshot_params(dqlite_node *n, unsigned snapshot_threshold,
-                                    unsigned snapshot_trailing);
+int dqlite_node_set_snapshot_params(dqlite_node *n,
+				    unsigned snapshot_threshold,
+				    unsigned snapshot_trailing);
 
 /**
  * WARNING: This is an experimental API.
  *
- * By default dqlite holds the SQLite database file and WAL in memory. By enabling
- * disk-mode, dqlite will hold the SQLite database file on-disk while keeping the WAL
- * in memory. Has to be called after `dqlite_node_create` and before
- * `dqlite_node_start`.
+ * By default dqlite holds the SQLite database file and WAL in memory. By
+ * enabling disk-mode, dqlite will hold the SQLite database file on-disk while
+ * keeping the WAL in memory. Has to be called after `dqlite_node_create` and
+ * before `dqlite_node_start`.
  */
 int dqlite_node_enable_disk_mode(dqlite_node *n);
 
@@ -236,10 +238,10 @@ typedef struct dqlite_node_info dqlite_node_info;
  * 64-bits wide and 0 should not be used as a valid value. */
 struct dqlite_node_info_ext
 {
-        uint64_t size; /* The size of this struct */
-        uint64_t id; /* dqlite_node_id */
-        uint64_t address;
-        uint64_t dqlite_role;
+	uint64_t size; /* The size of this struct */
+	uint64_t id;   /* dqlite_node_id */
+	uint64_t address;
+	uint64_t dqlite_role;
 };
 typedef struct dqlite_node_info_ext dqlite_node_info_ext;
 #define DQLITE_NODE_INFO_EXT_SZ_ORIG 32U /* (4 * 64) / 8 */
@@ -289,15 +291,18 @@ int dqlite_node_recover(dqlite_node *n, dqlite_node_info infos[], int n_info);
  *
  * 4. Invoke @dqlite_node_recover_ext exactly one time, on the node you found in
  *    step 3, and pass it an array of #dqlite_node_info filled with the IDs,
- *    addresses and roles of the survived nodes, including the one being recovered.
+ *    addresses and roles of the survived nodes, including the one being
+ *    recovered.
  *
- * 5. Copy the data directory of the node you ran @dqlite_node_recover_ext on to all
- *    other non-dead nodes in the cluster, replacing their current data
+ * 5. Copy the data directory of the node you ran @dqlite_node_recover_ext on to
+ *    all other non-dead nodes in the cluster, replacing their current data
  *    directory.
  *
  * 6. Restart all nodes.
  */
-int dqlite_node_recover_ext(dqlite_node *n, dqlite_node_info_ext infos[], int n_info);
+int dqlite_node_recover_ext(dqlite_node *n,
+			    dqlite_node_info_ext infos[],
+			    int n_info);
 
 /**
  * Return a human-readable description of the last error occurred.
@@ -399,16 +404,14 @@ int dqlite_vfs_shallow_snapshot(sqlite3_vfs *vfs,
 				unsigned n);
 
 int dqlite_vfs_snapshot_disk(sqlite3_vfs *vfs,
-				const char *filename,
-				struct dqlite_buffer bufs[],
-				unsigned n);
+			     const char *filename,
+			     struct dqlite_buffer bufs[],
+			     unsigned n);
 
 /**
  * Return the number of database pages (excluding WAL).
  */
-int dqlite_vfs_num_pages(sqlite3_vfs *vfs,
-			 const char *filename,
-			 unsigned *n);
+int dqlite_vfs_num_pages(sqlite3_vfs *vfs, const char *filename, unsigned *n);
 
 /**
  * Restore a snapshot of the main database file and of the WAL file.
@@ -422,8 +425,8 @@ int dqlite_vfs_restore(sqlite3_vfs *vfs,
  * Restore a snapshot of the main database file and of the WAL file.
  */
 int dqlite_vfs_restore_disk(sqlite3_vfs *vfs,
-		       const char *filename,
-		       const void *data,
-		       size_t main_size,
-		       size_t wal_size);
+			    const char *filename,
+			    const void *data,
+			    size_t main_size,
+			    size_t wal_size);
 #endif /* DQLITE_H */

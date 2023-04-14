@@ -23,10 +23,10 @@ typedef void (*transport_close_cb)(struct transport *t);
  */
 struct transport
 {
-	void *data;		     /* User defined */
+	void *data;                  /* User defined */
 	struct uv_stream_s *stream;  /* Data stream */
-	uv_buf_t read;		     /* Read buffer */
-	uv_write_t write;	    /* Write request */
+	uv_buf_t read;               /* Read buffer */
+	uv_write_t write;            /* Write request */
 	transport_read_cb read_cb;   /* Read callback */
 	transport_write_cb write_cb; /* Write callback */
 	transport_close_cb close_cb; /* Close callback */
@@ -54,6 +54,8 @@ int transport__read(struct transport *t, uv_buf_t *buf, transport_read_cb cb);
 int transport__write(struct transport *t, uv_buf_t *buf, transport_write_cb cb);
 
 /* Create an UV stream object from the given fd. */
-int transport__stream(struct uv_loop_s *loop, int fd, struct uv_stream_s **stream);
+int transport__stream(struct uv_loop_s *loop,
+		      int fd,
+		      struct uv_stream_s **stream);
 
 #endif /* LIB_TRANSPORT_H_ */

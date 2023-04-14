@@ -86,13 +86,12 @@ TEST_MODULE(replication_v1);
 	}
 
 /* Submit an exec request using the I'th leader. */
-#define EXEC(I)                                                 \
-	{                                                       \
-		int rc2;                                        \
-		rc2 = leader__exec(LEADER(I), &f->req, f->stmt, \
-				   0,                           \
-				   fixture_exec_cb);            \
-		munit_assert_int(rc2, ==, 0);                   \
+#define EXEC(I)                                                    \
+	{                                                          \
+		int rc2;                                           \
+		rc2 = leader__exec(LEADER(I), &f->req, f->stmt, 0, \
+				   fixture_exec_cb);               \
+		munit_assert_int(rc2, ==, 0);                      \
 	}
 
 /* Convenience to prepare, execute and finalize a statement. */
@@ -411,7 +410,6 @@ TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
 	munit_assert_int(rv, ==, 0);
 	CLUSTER_APPLIED(4);
 	FINALIZE;
-
 
 	PREPARE(0, "INSERT INTO test(n) VALUES(1)");
 	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);

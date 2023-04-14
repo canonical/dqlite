@@ -35,29 +35,31 @@ struct client_proto
 {
 	int (*connect)(void *, const char *, int *);
 	void *connect_arg;
-	int fd;		     /* Connected socket */
-	uint32_t db_id;      /* Database ID provided by the server */
-	char *db_name;       /* Database filename (owned) */
-	bool db_is_init;     /* Whether the database ID has been initialized */
+	int fd;          /* Connected socket */
+	uint32_t db_id;  /* Database ID provided by the server */
+	char *db_name;   /* Database filename (owned) */
+	bool db_is_init; /* Whether the database ID has been initialized */
 	uint64_t server_id;
 	struct buffer read;  /* Read buffer */
 	struct buffer write; /* Write buffer */
-	uint64_t errcode;    /* Last error code returned by the server (owned) */
-	char *errmsg;        /* Last error string returned by the server */
+	uint64_t errcode; /* Last error code returned by the server (owned) */
+	char *errmsg;     /* Last error string returned by the server */
 };
 
 /* All of the Send and Recv functions take an `struct client_context *context`
  * argument, which controls timeouts for read and write operations (and possibly
  * other knobs in the future).
  *
- * Passing NULL for the context argument is permitted and disables all timeouts. */
+ * Passing NULL for the context argument is permitted and disables all timeouts.
+ */
 struct client_context
 {
-	/* An absolute CLOCK_REALTIME timestamp that limits how long will be spent
-	 * trying to complete the requested send or receive operation. Whenever we
-	 * are about to make a blocking syscall (read or write), we first poll(2)
-	 * using a timeout computed based on how much time remains before the deadline.
-	 * If the poll times out, we return early instead of completing the operation. */
+	/* An absolute CLOCK_REALTIME timestamp that limits how long will be
+	 * spent trying to complete the requested send or receive operation.
+	 * Whenever we are about to make a blocking syscall (read or write), we
+	 * first poll(2) using a timeout computed based on how much time remains
+	 * before the deadline. If the poll times out, we return early instead
+	 * of completing the operation. */
 	struct timespec deadline;
 };
 
@@ -107,55 +109,69 @@ int clientSendHandshake(struct client_proto *c, struct client_context *context);
 int clientSendLeader(struct client_proto *c, struct client_context *context);
 
 /* Send a request identifying this client to the attached server. */
-int clientSendClient(struct client_proto *c, uint64_t id, struct client_context *context);
+int clientSendClient(struct client_proto *c,
+		     uint64_t id,
+		     struct client_context *context);
 
 /* Send a request to open a database */
-int clientSendOpen(struct client_proto *c, const char *name, struct client_context *context);
+int clientSendOpen(struct client_proto *c,
+		   const char *name,
+		   struct client_context *context);
 
 /* Receive the response to an open request. */
 int clientRecvDb(struct client_proto *c, struct client_context *context);
 
 /* Send a request to prepare a statement. */
-int clientSendPrepare(struct client_proto *c, const char *sql, struct client_context *context);
+int clientSendPrepare(struct client_proto *c,
+		      const char *sql,
+		      struct client_context *context);
 
 /* Receive the response to a prepare request. */
 int clientRecvStmt(struct client_proto *c,
-			uint32_t *stmt_id,
-			uint64_t *n_params,
-			uint64_t *offset,
-			struct client_context *context);
+		   uint32_t *stmt_id,
+		   uint64_t *n_params,
+		   uint64_t *offset,
+		   struct client_context *context);
 
 /* Send a request to execute a statement. */
-int clientSendExec(struct client_proto *c, uint32_t stmt_id,
-			struct value *params, unsigned n_params,
-			struct client_context *context);
+int clientSendExec(struct client_proto *c,
+		   uint32_t stmt_id,
+		   struct value *params,
+		   unsigned n_params,
+		   struct client_context *context);
 
 /* Send a request to execute a non-prepared statement. */
-int clientSendExecSQL(struct client_proto *c, const char *sql,
-			struct value *params, unsigned n_params,
-			struct client_context *context);
+int clientSendExecSQL(struct client_proto *c,
+		      const char *sql,
+		      struct value *params,
+		      unsigned n_params,
+		      struct client_context *context);
 
 /* Receive the response to an exec request. */
 int clientRecvResult(struct client_proto *c,
-			uint64_t *last_insert_id,
-			uint64_t *rows_affected,
-			struct client_context *context);
+		     uint64_t *last_insert_id,
+		     uint64_t *rows_affected,
+		     struct client_context *context);
 
 /* Send a request to perform a query. */
-int clientSendQuery(struct client_proto *c, uint32_t stmt_id,
-			struct value *params, unsigned n_params,
-			struct client_context *context);
+int clientSendQuery(struct client_proto *c,
+		    uint32_t stmt_id,
+		    struct value *params,
+		    unsigned n_params,
+		    struct client_context *context);
 
 /* Send a request to perform a non-prepared query. */
-int clientSendQuerySQL(struct client_proto *c, const char *sql,
-			struct value *params, unsigned n_params,
-			struct client_context *context);
+int clientSendQuerySQL(struct client_proto *c,
+		       const char *sql,
+		       struct value *params,
+		       unsigned n_params,
+		       struct client_context *context);
 
 /* Receive the response of a query request. */
 int clientRecvRows(struct client_proto *c,
-			struct rows *rows,
-			bool *done,
-			struct client_context *context);
+		   struct rows *rows,
+		   bool *done,
+		   struct client_context *context);
 
 /* Release all memory used in the given rows object. */
 void clientCloseRows(struct rows *rows);
@@ -164,43 +180,52 @@ void clientCloseRows(struct rows *rows);
 int clientSendInterrupt(struct client_proto *c, struct client_context *context);
 
 /* Send a request to finalize a prepared statement. */
-int clientSendFinalize(struct client_proto *c, uint32_t stmt_id, struct client_context *context);
+int clientSendFinalize(struct client_proto *c,
+		       uint32_t stmt_id,
+		       struct client_context *context);
 
 /* Send a request to add a dqlite node. */
 int clientSendAdd(struct client_proto *c,
-			uint64_t id,
-			const char *address,
-			struct client_context *context);
+		  uint64_t id,
+		  const char *address,
+		  struct client_context *context);
 
 /* Send a request to assign a role to a node. */
 int clientSendAssign(struct client_proto *c,
-			uint64_t id,
-			int role,
-			struct client_context *context);
+		     uint64_t id,
+		     int role,
+		     struct client_context *context);
 
 /* Send a request to remove a server from the cluster. */
-int clientSendRemove(struct client_proto *c, uint64_t id, struct client_context *context);
+int clientSendRemove(struct client_proto *c,
+		     uint64_t id,
+		     struct client_context *context);
 
 /* Send a request to dump the contents of the attached database. */
 int clientSendDump(struct client_proto *c, struct client_context *context);
 
-/* Send a request to list the nodes of the cluster with their addresses and roles. */
+/* Send a request to list the nodes of the cluster with their addresses and
+ * roles. */
 int clientSendCluster(struct client_proto *c, struct client_context *context);
 
 /* Send a request to transfer leadership to node with id `id`. */
-int clientSendTransfer(struct client_proto *c, uint64_t id, struct client_context *context);
+int clientSendTransfer(struct client_proto *c,
+		       uint64_t id,
+		       struct client_context *context);
 
 /* Send a request to retrieve metadata about the attached server. */
 int clientSendDescribe(struct client_proto *c, struct client_context *context);
 
 /* Send a request to set the weight metadata for the attached server. */
-int clientSendWeight(struct client_proto *c, uint64_t weight, struct client_context *context);
+int clientSendWeight(struct client_proto *c,
+		     uint64_t weight,
+		     struct client_context *context);
 
 /* Receive a response with the ID and address of a single node. */
 int clientRecvServer(struct client_proto *c,
-			uint64_t *id,
-			char **address,
-			struct client_context *context);
+		     uint64_t *id,
+		     char **address,
+		     struct client_context *context);
 
 /* Receive a "welcome" handshake response. */
 int clientRecvWelcome(struct client_proto *c, struct client_context *context);
@@ -210,26 +235,26 @@ int clientRecvEmpty(struct client_proto *c, struct client_context *context);
 
 /* Receive a failure response. */
 int clientRecvFailure(struct client_proto *c,
-			uint64_t *code,
-			const char **msg,
-			struct client_context *context);
+		      uint64_t *code,
+		      const char **msg,
+		      struct client_context *context);
 
 /* Receive a list of nodes in the cluster. */
 int clientRecvServers(struct client_proto *c,
-			struct client_node_info **servers,
-			uint64_t *n_servers,
-			struct client_context *context);
+		      struct client_node_info **servers,
+		      uint64_t *n_servers,
+		      struct client_context *context);
 
 /* Receive a list of files that make up a database. */
 int clientRecvFiles(struct client_proto *c,
-			struct client_file **files,
-			size_t *n_files,
-			struct client_context *context);
+		    struct client_file **files,
+		    size_t *n_files,
+		    struct client_context *context);
 
 /* Receive metadata for a single server. */
 int clientRecvMetadata(struct client_proto *c,
-			uint64_t *failure_domain,
-			uint64_t *weight,
-			struct client_context *context);
+		       uint64_t *failure_domain,
+		       uint64_t *weight,
+		       struct client_context *context);
 
 #endif /* DQLITE_CLIENT_PROTOCOL_H_ */

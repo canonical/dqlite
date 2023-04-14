@@ -7,7 +7,8 @@
 #include "fs.h"
 #include "munit.h"
 
-char *test_dir_setup() {
+char *test_dir_setup()
+{
 	char *dir = munit_malloc(strlen(TEST__DIR_TEMPLATE) + 1);
 
 	strcpy(dir, TEST__DIR_TEMPLATE);
@@ -17,10 +18,11 @@ char *test_dir_setup() {
 	return dir;
 }
 
-static int test__dir_tear_down_nftw_fn(const char *       path,
-                                       const struct stat *sb,
-                                       int                type,
-                                       struct FTW *       ftwb) {
+static int test__dir_tear_down_nftw_fn(const char *path,
+				       const struct stat *sb,
+				       int type,
+				       struct FTW *ftwb)
+{
 	int rc;
 
 	(void)sb;
@@ -33,17 +35,16 @@ static int test__dir_tear_down_nftw_fn(const char *       path,
 	return 0;
 }
 
-void test_dir_tear_down(char *dir) {
+void test_dir_tear_down(char *dir)
+{
 	int rc;
 
 	if (dir == NULL) {
 		return;
 	}
 
-	rc = nftw(dir,
-	          test__dir_tear_down_nftw_fn,
-	          10,
-	          FTW_DEPTH | FTW_MOUNT | FTW_PHYS);
+	rc = nftw(dir, test__dir_tear_down_nftw_fn, 10,
+		  FTW_DEPTH | FTW_MOUNT | FTW_PHYS);
 	munit_assert_int(rc, ==, 0);
 	free(dir);
 }
