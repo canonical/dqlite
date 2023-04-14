@@ -2,8 +2,8 @@
 
 #include "../../../src/lib/transport.h"
 
-#include "../../lib/runner.h"
 #include "../../lib/endpoint.h"
+#include "../../lib/runner.h"
 #include "../../lib/uv.h"
 
 TEST_MODULE(lib_transport);

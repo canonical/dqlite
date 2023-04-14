@@ -39,31 +39,30 @@ struct connection
 	FIXTURE_CLUSTER; \
 	struct connection connections[N_GATEWAYS]
 
-#define SETUP                                                        \
-	unsigned i;                                                  \
-	int rc;                                                      \
-	SETUP_CLUSTER(V2);					     \
-	CLUSTER_ELECT(0);                                            \
-	for (i = 0; i < N_GATEWAYS; i++) {                           \
-		struct connection *c = &f->connections[i];           \
-		struct request_open open;                            \
-		struct response_db db;                               \
-		struct id_state seed = {{1}};                        \
-		gateway__init(&c->gateway, CLUSTER_CONFIG(0),        \
-			      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0),  \
-		              seed);                                 \
-		c->handle.data = &c->context;                        \
-		rc = buffer__init(&c->request);                      \
-		munit_assert_int(rc, ==, 0);                         \
-		rc = buffer__init(&c->response);                     \
-		munit_assert_int(rc, ==, 0);                         \
-		open.filename = "test";                              \
-		open.vfs = "";                                       \
-		ENCODE(c, &open, open);                              \
-		HANDLE(c, OPEN);                                     \
-		ASSERT_CALLBACK(c, 0, DB);                           \
-		DECODE(c, &db, db);                                  \
-		munit_assert_int(db.id, ==, 0);                      \
+#define SETUP                                                              \
+	unsigned i;                                                        \
+	int rc;                                                            \
+	SETUP_CLUSTER(V2);                                                 \
+	CLUSTER_ELECT(0);                                                  \
+	for (i = 0; i < N_GATEWAYS; i++) {                                 \
+		struct connection *c = &f->connections[i];                 \
+		struct request_open open;                                  \
+		struct response_db db;                                     \
+		struct id_state seed = {{1}};                              \
+		gateway__init(&c->gateway, CLUSTER_CONFIG(0),              \
+			      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0), seed); \
+		c->handle.data = &c->context;                              \
+		rc = buffer__init(&c->request);                            \
+		munit_assert_int(rc, ==, 0);                               \
+		rc = buffer__init(&c->response);                           \
+		munit_assert_int(rc, ==, 0);                               \
+		open.filename = "test";                                    \
+		open.vfs = "";                                             \
+		ENCODE(c, &open, open);                                    \
+		HANDLE(c, OPEN);                                           \
+		ASSERT_CALLBACK(c, 0, DB);                                 \
+		DECODE(c, &db, db);                                        \
+		munit_assert_int(db.id, ==, 0);                            \
 	}
 
 #define TEAR_DOWN                                          \
@@ -76,7 +75,10 @@ struct connection
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 
-static void fixture_handle_cb(struct handle *req, int status, uint8_t type, uint8_t schema)
+static void fixture_handle_cb(struct handle *req,
+			      int status,
+			      uint8_t type,
+			      uint8_t schema)
 {
 	struct context *c = req->data;
 	c->invoked = true;
@@ -117,16 +119,16 @@ static void fixture_handle_cb(struct handle *req, int status, uint8_t type, uint
 
 /* Submit a request of the given type to the given connection and check that no
  * error occurs. */
-#define HANDLE(C, TYPE)                                                 \
-	{                                                               \
-		int rc2;                                                \
-		C->handle.cursor.p = buffer__cursor(&C->request, 0);    \
-		C->handle.cursor.cap = buffer__offset(&C->request);     \
-		buffer__reset(&C->response);                            \
-		rc2 = gateway__handle(&C->gateway, &C->handle,          \
-				      DQLITE_REQUEST_##TYPE, 0,         \
-				      &C->response, fixture_handle_cb); \
-		munit_assert_int(rc2, ==, 0);                           \
+#define HANDLE(C, TYPE)                                                       \
+	{                                                                     \
+		int rc2;                                                      \
+		C->handle.cursor.p = buffer__cursor(&C->request, 0);          \
+		C->handle.cursor.cap = buffer__offset(&C->request);           \
+		buffer__reset(&C->response);                                  \
+		rc2 = gateway__handle(&C->gateway, &C->handle,                \
+				      DQLITE_REQUEST_##TYPE, 0, &C->response, \
+				      fixture_handle_cb);                     \
+		munit_assert_int(rc2, ==, 0);                                 \
 	}
 
 /* Prepare a statement on the given connection. The ID will be saved in

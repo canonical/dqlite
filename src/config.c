@@ -28,8 +28,10 @@
  * TODO: make this thread safe. */
 static unsigned serial = 1;
 
-int config__init(struct config *c, dqlite_node_id id,
-		 const char *address, const char *dir)
+int config__init(struct config *c,
+		 dqlite_node_id id,
+		 const char *address,
+		 const char *dir)
 {
 	int rv;
 	c->id = id;
@@ -47,8 +49,8 @@ int config__init(struct config *c, dqlite_node_id id,
 	c->logger.emit = loggerDefaultEmit;
 	c->failure_domain = 0;
 	c->weight = 0;
-	strncpy(c->dir, dir, sizeof(c->dir)-1);
-	c->dir[sizeof(c->dir)-1] = '\0';
+	strncpy(c->dir, dir, sizeof(c->dir) - 1);
+	c->dir[sizeof(c->dir) - 1] = '\0';
 	c->disk = false;
 	serial++;
 	return 0;

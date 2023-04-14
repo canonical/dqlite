@@ -8,7 +8,7 @@ bool _dqliteTracingEnabled = false;
 
 void dqliteTracingMaybeEnable(bool enable)
 {
-        if (getenv(LIBDQLITE_TRACE) != NULL) {
-                _dqliteTracingEnabled = enable;
-        }
+	if (getenv(LIBDQLITE_TRACE) != NULL) {
+		_dqliteTracingEnabled = enable;
+	}
 }

@@ -4,8 +4,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "fs.h"
 #include "../tracing.h"
+#include "fs.h"
 
 int FsEnsureDir(const char *path)
 {
@@ -28,11 +28,10 @@ int FsEnsureDir(const char *path)
 	return 0;
 }
 
-
-static int fsRemoveDirFilesNftwFn(const char *       path,
-                                  const struct stat *sb,
-                                  int                type,
-                                  struct FTW *       ftwb)
+static int fsRemoveDirFilesNftwFn(const char *path,
+				  const struct stat *sb,
+				  int type,
+				  struct FTW *ftwb)
 {
 	int rv;
 
@@ -54,8 +53,7 @@ int FsRemoveDirFiles(const char *path)
 {
 	int rv;
 
-	rv = nftw(path, fsRemoveDirFilesNftwFn,
-	          10, FTW_DEPTH | FTW_MOUNT | FTW_PHYS);
+	rv = nftw(path, fsRemoveDirFilesNftwFn, 10,
+		  FTW_DEPTH | FTW_MOUNT | FTW_PHYS);
 	return rv;
-
 }
