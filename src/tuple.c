@@ -1,7 +1,7 @@
 #include <sqlite3.h>
 
-#include "tuple.h"
 #include "assert.h"
+#include "tuple.h"
 
 /* Return the tuple header size in bytes, for a tuple of @n values.
  *
@@ -19,14 +19,16 @@ static size_t calc_header_size(unsigned long n, int format)
 			size = BytePad64(size);
 			break;
 		case TUPLE__PARAMS:
-			/* 1-byte params count at the beginning of the first word */
+			/* 1-byte params count at the beginning of the first
+			 * word */
 			size = n + 1;
 			size = BytePad64(size);
 			/* Params count is not included in the header */
 			size -= 1;
 			break;
 		case TUPLE__PARAMS32:
-			/* 4-byte params count at the beginning of the first word */
+			/* 4-byte params count at the beginning of the first
+			 * word */
 			size = n + 4;
 			size = BytePad64(size);
 			/* Params count is not included in the header */

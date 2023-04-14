@@ -18,10 +18,10 @@ void dqlite__error_close(dqlite__error *e);
 void dqlite__error_printf(dqlite__error *e, const char *fmt, ...);
 
 /* Wrap an error with an additional message */
-void dqlite__error_wrapf(dqlite__error *      e,
-                         const dqlite__error *cause,
-                         const char *         fmt,
-                         ...);
+void dqlite__error_wrapf(dqlite__error *e,
+			 const dqlite__error *cause,
+			 const char *fmt,
+			 ...);
 
 /* Out of memory error */
 void dqlite__error_oom(dqlite__error *e, const char *msg, ...);

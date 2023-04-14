@@ -12,9 +12,9 @@
  */
 struct test_fault
 {
-    int countdown; /* Trigger the fault when this counter gets to zero. */
-    int n;         /* Repeat the fault this many times. Default is -1. */
-    bool enabled;   /* Enable fault triggering. */
+	int countdown; /* Trigger the fault when this counter gets to zero. */
+	int n;         /* Repeat the fault this many times. Default is -1. */
+	bool enabled;  /* Enable fault triggering. */
 };
 
 /**

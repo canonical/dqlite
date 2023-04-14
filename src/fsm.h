@@ -7,8 +7,8 @@
 
 #include <raft.h>
 
-#include "registry.h"
 #include "config.h"
+#include "registry.h"
 
 /**
  * Initialize the given SQLite replication interface with dqlite's raft based
@@ -24,7 +24,7 @@ int fsm__init(struct raft_fsm *fsm,
  */
 int fsm__init_disk(struct raft_fsm *fsm,
 		   struct config *config,
-	           struct registry *registry);
+		   struct registry *registry);
 
 void fsm__close(struct raft_fsm *fsm);
 

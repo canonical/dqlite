@@ -50,17 +50,15 @@
 /* Use the client connected to the server with the given ID. */
 #define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
 
-static char* bools[] = {
-    "0", "1", NULL
-};
+static char *bools[] = {"0", "1", NULL};
 
 /* Make sure the snapshots scheduled by raft don't interfere with the snapshots
  * scheduled by the tests. */
 static char *snapshot_threshold[] = {"8192", NULL};
 static MunitParameterEnum snapshot_params[] = {
-	{SNAPSHOT_THRESHOLD_PARAM, snapshot_threshold},
-	{ "disk_mode", bools },
-	{NULL, NULL},
+    {SNAPSHOT_THRESHOLD_PARAM, snapshot_threshold},
+    {"disk_mode", bools},
+    {NULL, NULL},
 };
 
 /******************************************************************************
@@ -213,7 +211,12 @@ TEST(fsm, snapshotHeapFaultSingleDB, setUp, tearDown, 0, snapshot_params)
 }
 
 /* Inject faults into the async stage of the snapshot process */
-TEST(fsm, snapshotHeapFaultSingleDBAsyncDisk, setUp, tearDown, 0, snapshot_params)
+TEST(fsm,
+     snapshotHeapFaultSingleDBAsyncDisk,
+     setUp,
+     tearDown,
+     0,
+     snapshot_params)
 {
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
@@ -559,7 +562,6 @@ TEST(fsm, concurrentSnapshots, setUp, tearDown, 0, snapshot_params)
 	return MUNIT_OK;
 }
 
-
 /* Copies n raft buffers to a single raft buffer */
 static struct raft_buffer n_bufs_to_buf(struct raft_buffer bufs[], unsigned n)
 {
@@ -579,24 +581,24 @@ static struct raft_buffer n_bufs_to_buf(struct raft_buffer bufs[], unsigned n)
 		memcpy(cursor, bufs[i].base, bufs[i].len);
 		cursor += bufs[i].len;
 	}
-	munit_assert_ullong((uintptr_t)(cursor - (uint8_t*)buf.base), ==, buf.len);
+	munit_assert_ullong((uintptr_t)(cursor - (uint8_t *)buf.base), ==,
+			    buf.len);
 
 	return buf;
 }
 
-static char* num_records[] = {
+static char *num_records[] = {
     "0", "1", "256",
     /* WAL will just have been checkpointed after 993 writes. */
     "993",
     /* Non-empty WAL, checkpointed twice */
-    "2200", NULL
-};
+    "2200", NULL};
 
 static MunitParameterEnum restore_params[] = {
-    { "num_records", num_records },
-    { SNAPSHOT_THRESHOLD_PARAM, snapshot_threshold},
-    { "disk_mode", bools },
-    { NULL, NULL },
+    {"num_records", num_records},
+    {SNAPSHOT_THRESHOLD_PARAM, snapshot_threshold},
+    {"disk_mode", bools},
+    {NULL, NULL},
 };
 
 TEST(fsm, snapshotRestore, setUp, tearDown, 0, restore_params)
@@ -605,7 +607,8 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, restore_params)
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
 	struct raft_buffer *bufs;
 	struct raft_buffer snapshot;
-	long n_records = strtol(munit_parameters_get(params, "num_records"), NULL, 0);
+	long n_records =
+	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	unsigned n_bufs = 0;
 	uint32_t stmt_id;
 	uint64_t last_insert_id;
@@ -620,16 +623,15 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, restore_params)
 		disk_mode = (bool)atoi(disk_mode_param);
 	}
 
-
 	/* Add some data to database */
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 	for (int i = 0; i < n_records; ++i) {
-	    sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
-	    PREPARE(sql, &stmt_id);
-	    EXEC(stmt_id, &last_insert_id, &rows_affected);
+		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
+		PREPARE(sql, &stmt_id);
+		EXEC(stmt_id, &last_insert_id, &rows_affected);
 	}
 
 	rv = fsm->snapshot(fsm, &bufs, &n_bufs);
@@ -661,9 +663,10 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, restore_params)
 
 	/* Still possible to insert entries */
 	for (int i = 0; i < n_records; ++i) {
-	    sprintf(sql, "INSERT INTO test(n) VALUES(%ld)", n_records + i + 1);
-	    PREPARE(sql, &stmt_id);
-	    EXEC(stmt_id, &last_insert_id, &rows_affected);
+		sprintf(sql, "INSERT INTO test(n) VALUES(%ld)",
+			n_records + i + 1);
+		PREPARE(sql, &stmt_id);
+		EXEC(stmt_id, &last_insert_id, &rows_affected);
 	}
 
 	return MUNIT_OK;
@@ -770,7 +773,7 @@ TEST(fsm, applyFail, setUp, tearDown, 0, NULL)
 	struct raft_buffer buf;
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
-	void* result = (void*)(uintptr_t)0xDEADBEEF;
+	void *result = (void *)(uintptr_t)0xDEADBEEF;
 
 	/* Create a frames command without data. */
 	c.filename = "test";
@@ -798,7 +801,7 @@ TEST(fsm, applyUnknownTypeFail, setUp, tearDown, 0, NULL)
 	struct raft_buffer buf;
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
-	void* result = (void*)(uintptr_t)0xDEADBEEF;
+	void *result = (void *)(uintptr_t)0xDEADBEEF;
 
 	/* Create a frames command without data. */
 	c.filename = "test";
@@ -811,7 +814,7 @@ TEST(fsm, applyUnknownTypeFail, setUp, tearDown, 0, NULL)
 	rv = command__encode(COMMAND_FRAMES, &c, &buf);
 
 	/* Command type does not exist. */
-	((uint8_t*)(buf.base))[1] = COMMAND_CHECKPOINT + 8;
+	((uint8_t *)(buf.base))[1] = COMMAND_CHECKPOINT + 8;
 
 	/* Apply the command and expect it to fail. */
 	rv = fsm->apply(fsm, &buf, &result);

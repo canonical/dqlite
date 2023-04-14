@@ -2,9 +2,9 @@
 
 #include "vfs.h"
 
-int dqlite_version_number (void)
+int dqlite_version_number(void)
 {
-        return DQLITE_VERSION_NUMBER;
+	return DQLITE_VERSION_NUMBER;
 }
 
 int dqlite_vfs_init(sqlite3_vfs *vfs, const char *name)
@@ -53,9 +53,9 @@ int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
 }
 
 int dqlite_vfs_snapshot_disk(sqlite3_vfs *vfs,
-			const char *filename,
-			struct dqlite_buffer bufs[],
-			unsigned n)
+			     const char *filename,
+			     struct dqlite_buffer bufs[],
+			     unsigned n)
 {
 	int rv;
 	if (n != 2) {
@@ -71,9 +71,7 @@ int dqlite_vfs_snapshot_disk(sqlite3_vfs *vfs,
 	return rv;
 }
 
-int dqlite_vfs_num_pages(sqlite3_vfs *vfs,
-			 const char *filename,
-			 unsigned *n)
+int dqlite_vfs_num_pages(sqlite3_vfs *vfs, const char *filename, unsigned *n)
 {
 	return VfsDatabaseNumPages(vfs, filename, n);
 }
@@ -95,10 +93,10 @@ int dqlite_vfs_restore(sqlite3_vfs *vfs,
 }
 
 int dqlite_vfs_restore_disk(sqlite3_vfs *vfs,
-		       const char *filename,
-		       const void *data,
-		       size_t main_size,
-		       size_t wal_size)
+			    const char *filename,
+			    const void *data,
+			    size_t main_size,
+			    size_t wal_size)
 {
 	return VfsDiskRestore(vfs, filename, data, main_size, wal_size);
 }

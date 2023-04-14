@@ -49,7 +49,7 @@ struct connection
 #define SETUP                                                           \
 	unsigned i;                                                     \
 	int rc;                                                         \
-	SETUP_CLUSTER(V2);						\
+	SETUP_CLUSTER(V2);                                              \
 	for (i = 0; i < N_SERVERS; i++) {                               \
 		struct connection *c = &f->connections[i];              \
 		struct config *config;                                  \
@@ -78,7 +78,10 @@ struct connection
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 
-static void handleCb(struct handle *req, int status, uint8_t type, uint8_t schema)
+static void handleCb(struct handle *req,
+		     int status,
+		     uint8_t type,
+		     uint8_t schema)
 {
 	struct context *c = req->data;
 	c->invoked = true;
@@ -120,8 +123,7 @@ static void handleCb(struct handle *req, int status, uint8_t type, uint8_t schem
 		struct tuple_encoder encoder;                                 \
 		unsigned long i2;                                             \
 		int rc2;                                                      \
-		rc2 =                                                         \
-		    tuple_encoder__init(&encoder, N, FORMAT, f->buf1); \
+		rc2 = tuple_encoder__init(&encoder, N, FORMAT, f->buf1);      \
 		munit_assert_int(rc2, ==, 0);                                 \
 		for (i2 = 0; i2 < N; i2++) {                                  \
 			rc2 = tuple_encoder__next(&encoder, &((VALUES)[i2])); \
@@ -152,19 +154,18 @@ static void handleCb(struct handle *req, int status, uint8_t type, uint8_t schem
 		}                                                              \
 	}
 
-#define HANDLE_SCHEMA_STATUS(TYPE, SCHEMA, RC)                    \
-	{                                                         \
-		int rc2;                                          \
-		f->handle->cursor.p = buffer__cursor(f->buf1, 0); \
-		f->handle->cursor.cap = buffer__offset(f->buf1);  \
-		buffer__reset(f->buf2);                           \
-		f->context->invoked = false;                      \
-		f->context->status = -1;                          \
-		f->context->type = -1;                            \
-		rc2 = gateway__handle(f->gateway, f->handle,      \
-				      TYPE, SCHEMA,               \
-				      f->buf2, handleCb);         \
-		munit_assert_int(rc2, ==, RC);                    \
+#define HANDLE_SCHEMA_STATUS(TYPE, SCHEMA, RC)                             \
+	{                                                                  \
+		int rc2;                                                   \
+		f->handle->cursor.p = buffer__cursor(f->buf1, 0);          \
+		f->handle->cursor.cap = buffer__offset(f->buf1);           \
+		buffer__reset(f->buf2);                                    \
+		f->context->invoked = false;                               \
+		f->context->status = -1;                                   \
+		f->context->type = -1;                                     \
+		rc2 = gateway__handle(f->gateway, f->handle, TYPE, SCHEMA, \
+				      f->buf2, handleCb);                  \
+		munit_assert_int(rc2, ==, RC);                             \
 	}
 
 /* Handle a request of the given type and check for the given return code. */
@@ -654,10 +655,9 @@ TEST_CASE(prepare, nonempty_tail_v1, NULL)
 	f->context->invoked = false;
 	f->context->status = -1;
 	f->context->type = -1;
-	rc = gateway__handle(f->gateway, f->handle,
-				DQLITE_REQUEST_EXEC,
-				DQLITE_REQUEST_PARAMS_SCHEMA_V0,
-				f->buf2, handleCb);
+	rc =
+	    gateway__handle(f->gateway, f->handle, DQLITE_REQUEST_EXEC,
+			    DQLITE_REQUEST_PARAMS_SCHEMA_V0, f->buf2, handleCb);
 	munit_assert_int(rc, ==, 0);
 	WAIT;
 	ASSERT_CALLBACK(0, RESULT);
@@ -1132,7 +1132,8 @@ TEST_CASE(exec, barrier_closing, NULL)
 	CLUSTER_DEPOSE;
 	ASSERT_CALLBACK(0, FAILURE);
 
-	/* Now try to exec the other stmt (triggering a barrier) and close early */
+	/* Now try to exec the other stmt (triggering a barrier) and close early
+	 */
 	CLUSTER_ELECT(0);
 	EXEC_SUBMIT(prev_stmt_id);
 	return MUNIT_OK;
@@ -1269,7 +1270,8 @@ TEST_CASE(query, one_row, NULL)
  * A response buffer has _SC_PAGESIZE size.
  * A response consists of n tuples each row_sz in size
  * and an 8B EOF marker. */
-static unsigned max_rows_buffer(unsigned tuple_row_sz) {
+static unsigned max_rows_buffer(unsigned tuple_row_sz)
+{
 	unsigned buf_sz = sysconf(_SC_PAGESIZE);
 	unsigned eof_sz = 8;
 	return (buf_sz - eof_sz) / tuple_row_sz;
@@ -1291,8 +1293,8 @@ TEST_CASE(query, large, NULL)
 
 	/* 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 1 less than 2 response buffers worth of rows, otherwise we need
-	 * 3 responses, of which the last one contains no rows. */
+	/* Insert 1 less than 2 response buffers worth of rows, otherwise we
+	 * need 3 responses, of which the last one contains no rows. */
 	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
 		EXEC("INSERT INTO test(n) VALUES(123)");
 	}
@@ -1533,8 +1535,8 @@ TEST_CASE(query, barrierInFlightQuery, NULL)
 	return MUNIT_OK;
 }
 
-/* Submit a query sql request right after the server has been re-elected and needs
- * to catch up with logs, but close early */
+/* Submit a query sql request right after the server has been re-elected and
+ * needs to catch up with logs, but close early */
 TEST_CASE(query, barrierInFlightQuerySql, NULL)
 {
 	struct query_fixture *f = data;
@@ -1951,8 +1953,8 @@ TEST_CASE(query_sql, large, NULL)
 
 	/* 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 1 less than 2 response buffers worth of rows, otherwise we need
-	 * 3 responses, of which the last one contains no rows. */
+	/* Insert 1 less than 2 response buffers worth of rows, otherwise we
+	 * need 3 responses, of which the last one contains no rows. */
 	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
 		EXEC("INSERT INTO test(n) VALUES(123)");
 	}
@@ -2018,8 +2020,8 @@ TEST_CASE(query_sql, largeClose, NULL)
 
 	/* 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 1 less than 2 response buffers worth of rows, otherwise we need
-	 * 3 responses, of which the last one contains no rows. */
+	/* Insert 1 less than 2 response buffers worth of rows, otherwise we
+	 * need 3 responses, of which the last one contains no rows. */
 	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
 		EXEC("INSERT INTO test(n) VALUES(123)");
 	}
@@ -2144,8 +2146,8 @@ TEST_CASE(query_sql, manyClosing, NULL)
 	bool finished;
 	int rv;
 
-	/* Insert more than maximum amount of rows that can fit in a single response.
-	 * 16 = 8B header + 8B value (int) */
+	/* Insert more than maximum amount of rows that can fit in a single
+	 * response. 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
 	for (unsigned i = 0; i < n_rows_buffer + 32; i++) {
 		EXEC("INSERT INTO test VALUES(123)");

@@ -7,8 +7,8 @@
 
 #include <sqlite3.h>
 
-#include "lib/serialize.h"
 #include "lib/buffer.h"
+#include "lib/serialize.h"
 
 /**
  * Step through the given query statement progressively encoding the yielded row

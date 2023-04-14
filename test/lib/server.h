@@ -46,7 +46,8 @@ void test_server_network(struct test_server *servers, unsigned n_servers);
 struct client_proto *test_server_client(struct test_server *s);
 
 /* Closes and reopens a client connection to the server. */
-void test_server_client_reconnect(struct test_server *s, struct client_proto *c);
+void test_server_client_reconnect(struct test_server *s,
+				  struct client_proto *c);
 
 /* Opens a client connection to the server. */
 void test_server_client_connect(struct test_server *s, struct client_proto *c);

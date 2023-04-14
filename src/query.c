@@ -1,7 +1,6 @@
 #include "query.h"
 #include "tuple.h"
 
-
 /* Return the type code of the i'th column value.
  *
  * TODO: find a better way to handle time types. */
@@ -10,8 +9,8 @@ static int value_type(sqlite3_stmt *stmt, int i)
 	int type = sqlite3_column_type(stmt, i);
 	const char *column_type_name = sqlite3_column_decltype(stmt, i);
 	if (column_type_name != NULL) {
-		if ((strcasecmp(column_type_name, "DATETIME") == 0)  ||
-		    (strcasecmp(column_type_name, "DATE") == 0)      ||
+		if ((strcasecmp(column_type_name, "DATETIME") == 0) ||
+		    (strcasecmp(column_type_name, "DATE") == 0) ||
 		    (strcasecmp(column_type_name, "TIMESTAMP") == 0)) {
 			if (type == SQLITE_INTEGER) {
 				type = DQLITE_UNIXTIME;
@@ -49,16 +48,16 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 		value.type = value_type(stmt, i);
 		switch (value.type) {
 			case SQLITE_INTEGER:
-				value.integer =
-				    sqlite3_column_int64(stmt, i);
+				value.integer = sqlite3_column_int64(stmt, i);
 				break;
 			case SQLITE_FLOAT:
-				value.float_ =
-				    sqlite3_column_double(stmt, i);
+				value.float_ = sqlite3_column_double(stmt, i);
 				break;
 			case SQLITE_BLOB:
-				value.blob.base = (char*)sqlite3_column_blob(stmt, i);
-				value.blob.len = (size_t)sqlite3_column_bytes(stmt, i);
+				value.blob.base =
+				    (char *)sqlite3_column_blob(stmt, i);
+				value.blob.len =
+				    (size_t)sqlite3_column_bytes(stmt, i);
 				break;
 			case SQLITE_NULL:
 				/* TODO: allow null to be encoded with 0 bytes
@@ -70,8 +69,7 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 				    (text_t)sqlite3_column_text(stmt, i);
 				break;
 			case DQLITE_UNIXTIME:
-				value.integer =
-				    sqlite3_column_int64(stmt, i);
+				value.integer = sqlite3_column_int64(stmt, i);
 				break;
 			case DQLITE_ISO8601:
 				value.text =
@@ -81,8 +79,7 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 				}
 				break;
 			case DQLITE_BOOLEAN:
-				value.integer =
-				    sqlite3_column_int64(stmt, i);
+				value.integer = sqlite3_column_int64(stmt, i);
 				break;
 			default:
 				return SQLITE_ERROR;
@@ -97,7 +94,8 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 	return SQLITE_OK;
 }
 
-int query__batch(sqlite3_stmt *stmt, struct buffer *buffer) {
+int query__batch(sqlite3_stmt *stmt, struct buffer *buffer)
+{
 	int n; /* Column count */
 	int i;
 	uint64_t n64;

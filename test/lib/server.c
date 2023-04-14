@@ -3,9 +3,7 @@
 #include "fs.h"
 #include "server.h"
 
-static int endpointConnect(void *data,
-			   const char *address,
-			   int *fd)
+static int endpointConnect(void *data, const char *address, int *fd)
 {
 	struct sockaddr_un addr;
 	int rv;
@@ -16,7 +14,8 @@ static int endpointConnect(void *data,
 	strcpy(addr.sun_path + 1, address + 1);
 	*fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	munit_assert_int(*fd, !=, -1);
-	rv = connect(*fd, (struct sockaddr *)&addr, sizeof(sa_family_t) + strlen(address + 1) + 1);
+	rv = connect(*fd, (struct sockaddr *)&addr,
+		     sizeof(sa_family_t) + strlen(address + 1) + 1);
 	return rv;
 }
 
@@ -66,11 +65,12 @@ void test_server_start(struct test_server *s, const MunitParameter params[])
 	rv = dqlite_node_set_network_latency_ms(s->dqlite, 10);
 	munit_assert_int(rv, ==, 0);
 
-	const char *snapshot_threshold_param = munit_parameters_get(params,
-							    SNAPSHOT_THRESHOLD_PARAM);
+	const char *snapshot_threshold_param =
+	    munit_parameters_get(params, SNAPSHOT_THRESHOLD_PARAM);
 	if (snapshot_threshold_param != NULL) {
 		unsigned threshold = (unsigned)atoi(snapshot_threshold_param);
-		rv = dqlite_node_set_snapshot_params(s->dqlite, threshold, threshold);
+		rv = dqlite_node_set_snapshot_params(s->dqlite, threshold,
+						     threshold);
 		munit_assert_int(rv, ==, 0);
 	}
 
@@ -116,7 +116,7 @@ void test_server_client_connect(struct test_server *s, struct client_proto *c)
 
 void test_server_client_close(struct test_server *s, struct client_proto *c)
 {
-	(void) s;
+	(void)s;
 	clientClose(c);
 }
 

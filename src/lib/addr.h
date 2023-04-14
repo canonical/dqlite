@@ -4,7 +4,8 @@
 #include <sys/socket.h>
 
 enum {
-	DQLITE_ADDR_PARSE_UNIX = 1 << 0 /* Parse Unix socket addresses in @ notation */
+	/* Parse Unix socket addresses in @ notation */
+	DQLITE_ADDR_PARSE_UNIX = 1 << 0
 };
 
 /** Parse a socket address from the string @input.

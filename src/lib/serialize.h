@@ -156,8 +156,8 @@ DQLITE_INLINE size_t text__sizeof(const text_t *value)
 
 DQLITE_INLINE size_t blob__sizeof(const blob_t *value)
 {
-	return sizeof(uint64_t) /* length */ +
-	       BytePad64(value->len) /* data */;
+	/* length + data */
+	return sizeof(uint64_t) + BytePad64(value->len);
 }
 
 DQLITE_INLINE void uint8__encode(const uint8_t *value, void **cursor)
@@ -267,7 +267,7 @@ DQLITE_INLINE int int64__decode(struct cursor *cursor, int64_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = (int64_t)ByteFlipLe64((uint64_t)*(int64_t *)cursor->p);
+	*value = (int64_t)ByteFlipLe64((uint64_t) * (int64_t *)cursor->p);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;

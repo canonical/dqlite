@@ -12,13 +12,11 @@
 
 SUITE(client);
 
-static char* bools[] = {
-    "0", "1", NULL
-};
+static char *bools[] = {"0", "1", NULL};
 
 static MunitParameterEnum client_params[] = {
-    { "disk_mode", bools },
-    { NULL, NULL },
+    {"disk_mode", bools},
+    {NULL, NULL},
 };
 
 struct fixture

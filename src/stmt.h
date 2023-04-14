@@ -52,8 +52,8 @@
 /* Hold state for a single open SQLite database */
 struct stmt
 {
-	size_t id;	   /* Statement ID */
-	sqlite3_stmt *stmt;  /* Underlying SQLite statement handle */
+	size_t id;          /* Statement ID */
+	sqlite3_stmt *stmt; /* Underlying SQLite statement handle */
 };
 
 /* Initialize a statement state object */

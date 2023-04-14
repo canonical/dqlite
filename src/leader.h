@@ -12,8 +12,8 @@
 #include "./lib/queue.h"
 #include "db.h"
 
-#define SQLITE_IOERR_NOT_LEADER        (SQLITE_IOERR | (40<<8))
-#define SQLITE_IOERR_LEADERSHIP_LOST   (SQLITE_IOERR | (41<<8))
+#define SQLITE_IOERR_NOT_LEADER (SQLITE_IOERR | (40 << 8))
+#define SQLITE_IOERR_LEADERSHIP_LOST (SQLITE_IOERR | (41 << 8))
 
 struct exec;
 struct barrier;
@@ -39,12 +39,12 @@ struct apply
 
 struct leader
 {
-	struct db *db;           /* Database the connection. */
-	sqlite3 *conn;           /* Underlying SQLite connection. */
-	struct raft *raft;       /* Raft instance. */
-	struct exec *exec;       /* Exec request in progress, if any. */
-	queue queue;             /* Prev/next leader, used by struct db. */
-	struct apply *inflight;  /* TODO: make leader__close async */
+	struct db *db;          /* Database the connection. */
+	sqlite3 *conn;          /* Underlying SQLite connection. */
+	struct raft *raft;      /* Raft instance. */
+	struct exec *exec;      /* Exec request in progress, if any. */
+	queue queue;            /* Prev/next leader, used by struct db. */
+	struct apply *inflight; /* TODO: make leader__close async */
 };
 
 struct barrier

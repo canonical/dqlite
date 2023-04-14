@@ -10,8 +10,8 @@ static uint16_t vfsFlip16(uint16_t v)
 #if defined(DQLITE_BIG_ENDIAN)
 	return v;
 #elif defined(DQLITE_LITTLE_ENDIAN) && defined(DQLITE_HAVE_BSWAP)
-    defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 8
-	return __builtin_bswap16(v);
+	defined(__GNUC__) && __GNUC__ >= 4 &&
+	    __GNUC_MINOR__ >= 8 return __builtin_bswap16(v);
 #else
 	union {
 		uint16_t u;
@@ -90,7 +90,8 @@ TEST_CASE(endian, get16, NULL)
 		for (y = 0; y < 1 << 8; y++) {
 			buf[0] = (uint8_t)x;
 			buf[1] = (uint8_t)y;
-			munit_assert_uint16(ByteGetBe16(buf), ==, vfsGet16(buf));
+			munit_assert_uint16(ByteGetBe16(buf), ==,
+					    vfsGet16(buf));
 		}
 	}
 	return MUNIT_OK;
