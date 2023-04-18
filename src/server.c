@@ -122,6 +122,8 @@ int dqlite__init(struct dqlite_node *d,
 	d->running = false;
 	d->listener = NULL;
 	d->bind_address = NULL;
+	d->connect_func = transportDefaultConnect;
+	d->connect_func_arg = NULL;
 
 	urandom = open("/dev/urandom", O_RDONLY);
 	assert(urandom != -1);
@@ -292,6 +294,9 @@ int dqlite_node_set_connect_func(dqlite_node *t,
 		return DQLITE_MISUSE;
 	}
 	raftProxySetConnectFunc(&t->raft_transport, f, arg);
+	/* Also save this info for use in automatic role management. */
+	t->connect_func = f;
+	t->connect_func_arg = arg;
 	return 0;
 }
 

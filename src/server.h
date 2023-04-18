@@ -38,16 +38,21 @@ struct dqlite_node
 	sem_t ready;   /* Server is ready */
 	sem_t stopped; /* Notify loop stopped */
 #endif
-	queue queue;                         /* Incoming connections */
-	queue conns;                         /* Active connections */
-	bool running;                        /* Loop is running */
-	struct raft raft;                    /* Raft instance */
-	struct uv_stream_s *listener;        /* Listening socket */
-	struct uv_async_s stop;              /* Trigger UV loop stop */
-	struct uv_timer_s startup;           /* Unblock ready sem */
-	struct uv_prepare_s monitor;         /* Raft state change monitor */
-	int raft_state;                      /* Previous raft state */
-	char *bind_address;                  /* Listen address */
+	queue queue;  /* Incoming connections */
+	queue conns;  /* Active connections */
+	bool running; /* Loop is running */
+	struct raft raft;             /* Raft instance */
+	struct uv_stream_s *listener; /* Listening socket */
+	struct uv_async_s stop;      /* Trigger UV loop stop */
+	struct uv_timer_s startup;   /* Unblock ready sem */
+	struct uv_prepare_s monitor; /* Raft state change monitor */
+	int raft_state;     /* Previous raft state */
+	char *bind_address; /* Listen address */
+	int (*connect_func)(
+	    void *,
+	    const char *,
+	    int *);             /* Connection function for role management */
+	void *connect_func_arg; /* User data for connection function */
 	char errmsg[DQLITE_ERRMSG_BUF_SIZE]; /* Last error occurred */
 	struct id_state random_state;        /* For seeding ID generation */
 };
