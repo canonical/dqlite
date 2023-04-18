@@ -299,7 +299,7 @@ int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id)
 	c->server_id = server_id;
 	rv = c->connect(c->connect_arg, addr, &c->fd);
 	if (rv != 0) {
-		abort(); /* TODO */
+		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 
 	rv = buffer__init(&c->read);

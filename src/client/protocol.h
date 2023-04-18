@@ -33,6 +33,7 @@ enum {
 
 struct client_proto
 {
+	/* TODO find a better approach to initializing these fields? */
 	int (*connect)(void *, const char *, int *);
 	void *connect_arg;
 	int fd;          /* Connected socket */
@@ -95,7 +96,7 @@ struct client_file
  * in milliseconds. */
 void clientContextMillis(struct client_context *context, long millis);
 
-/* Initialize a new client, writing requests to fd. */
+/* Initialize a new client. */
 int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id);
 
 /* Release all memory used by the client, and close the client socket. */
