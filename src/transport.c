@@ -209,7 +209,7 @@ static void impl_close(struct raft_uv_transport *transport,
 	cb(transport);
 }
 
-static int default_connect(void *arg, const char *address, int *fd)
+int transportDefaultConnect(void *arg, const char *address, int *fd)
 {
 	struct sockaddr_in addr_in;
 	struct sockaddr *addr = (struct sockaddr *)&addr_in;
@@ -245,7 +245,7 @@ int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop)
 		return DQLITE_NOMEM;
 	}
 	i->loop = loop;
-	i->connect.f = default_connect;
+	i->connect.f = transportDefaultConnect;
 	i->connect.arg = NULL;
 	i->accept_cb = NULL;
 	transport->version = 1;
