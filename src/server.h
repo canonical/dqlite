@@ -1,3 +1,6 @@
+#ifndef DQLITE_SERVER_H
+#define DQLITE_SERVER_H
+
 #include <raft.h>
 #include <raft/uv.h>
 #include <sqlite3.h>
@@ -65,3 +68,5 @@ int dqlite__init(struct dqlite_node *d,
 void dqlite__close(struct dqlite_node *d);
 
 int dqlite__run(struct dqlite_node *d);
+
+#endif
