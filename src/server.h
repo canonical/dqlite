@@ -5,11 +5,7 @@
 #include <raft/uv.h>
 #include <sqlite3.h>
 
-#ifdef __APPLE__
-#include <dispatch/dispatch.h>
-#else
 #include <semaphore.h>
-#endif
 
 #include "config.h"
 #include "id.h"
@@ -34,13 +30,8 @@ struct dqlite_node
 	struct raft_uv_transport raft_transport; /* Raft libuv transport */
 	struct raft_io raft_io;                  /* libuv I/O */
 	struct raft_fsm raft_fsm;                /* dqlite FSM */
-#ifdef __APPLE__
-	dispatch_semaphore_t ready;   /* Server is ready */
-	dispatch_semaphore_t stopped; /* Notify loop stopped */
-#else
 	sem_t ready;   /* Server is ready */
 	sem_t stopped; /* Notify loop stopped */
-#endif
 	queue queue;  /* Incoming connections */
 	queue conns;  /* Active connections */
 	bool running; /* Loop is running */
