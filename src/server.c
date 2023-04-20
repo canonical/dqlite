@@ -14,6 +14,7 @@
 #include "lib/fs.h"
 #include "logger.h"
 #include "protocol.h"
+#include "roles.h"
 #include "tracing.h"
 #include "translate.h"
 #include "transport.h"
@@ -113,10 +114,12 @@ int dqlite__init(struct dqlite_node *d,
 
 	QUEUE__INIT(&d->queue);
 	QUEUE__INIT(&d->conns);
+	QUEUE__INIT(&d->roles_changes);
 	d->raft_state = RAFT_UNAVAILABLE;
 	d->running = false;
 	d->listener = NULL;
 	d->bind_address = NULL;
+	d->role_management = false;
 	d->connect_func = transportDefaultConnect;
 	d->connect_func_arg = NULL;
 
@@ -421,6 +424,7 @@ static void raftCloseCb(struct raft *raft)
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
 	uv_close((struct uv_handle_s *)&s->monitor, NULL);
 	uv_close((struct uv_handle_s *)s->listener, NULL);
+	uv_close((struct uv_handle_s *)&s->timer, NULL);
 }
 
 static void destroy_conn(struct conn *conn)
@@ -434,11 +438,17 @@ static void stop_cb(uv_async_t *stop)
 	struct dqlite_node *d = stop->data;
 	queue *head;
 	struct conn *conn;
+	int rv;
 
 	/* Nothing to do. */
 	if (!d->running) {
 		tracef("not running or already stopped");
 		return;
+	}
+	if (d->role_management) {
+		rv = uv_timer_stop(&d->timer);
+		assert(rv == 0);
+		RolesCancelPendingChanges(d);
 	}
 	d->running = false;
 
@@ -586,6 +596,13 @@ static void monitor_cb(uv_prepare_t *monitor)
 	d->raft_state = state;
 }
 
+/* Runs every tick on the main thread to kick off roles adjustment. */
+static void roleManagementTimerCb(uv_timer_t *handle)
+{
+	struct dqlite_node *d = handle->data;
+	RolesAdjust(d);
+}
+
 static int taskRun(struct dqlite_node *d)
 {
 	int rv;
@@ -620,6 +637,17 @@ static int taskRun(struct dqlite_node *d)
 	rv = uv_prepare_start(&d->monitor, monitor_cb);
 	assert(rv == 0);
 
+	/* Schedule the role management callback. */
+	d->timer.data = d;
+	rv = uv_timer_init(&d->loop, &d->timer);
+	assert(rv == 0);
+	if (d->role_management) {
+		/* TODO make the interval configurable */
+		rv = uv_timer_start(&d->timer, roleManagementTimerCb, 1000,
+				    1000);
+		assert(rv == 0);
+	}
+
 	d->raft.data = d;
 	rv = raft_start(&d->raft);
 	if (rv != 0) {
@@ -637,6 +665,24 @@ static int taskRun(struct dqlite_node *d)
 	rv = sem_post(&d->ready);
 	assert(rv == 0); /* no reason for which posting should fail */
 
+	return 0;
+}
+
+int dqlite_node_set_target_voters(dqlite_node *n, int voters)
+{
+	n->config.voters = voters;
+	return 0;
+}
+
+int dqlite_node_set_target_standbys(dqlite_node *n, int standbys)
+{
+	n->config.standbys = standbys;
+	return 0;
+}
+
+int dqlite_node_enable_role_management(dqlite_node *n)
+{
+	n->role_management = true;
 	return 0;
 }
 

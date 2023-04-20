@@ -29,6 +29,7 @@ void test_server_setup(struct test_server *s,
 	sprintf(s->address, "@%u", id);
 
 	s->dir = test_dir_setup();
+	s->role_management = false;
 
 	memset(s->others, 0, sizeof s->others);
 }

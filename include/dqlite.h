@@ -210,6 +210,40 @@ int dqlite_node_set_snapshot_params(dqlite_node *n,
 int dqlite_node_enable_disk_mode(dqlite_node *n);
 
 /**
+ * Set the target number of voting nodes for the cluster.
+ *
+ * If automatic role management is enabled, the cluster leader will attempt to
+ * promote nodes to reach the target. If automatic role management is disabled,
+ * this has no effect.
+ *
+ * The default target is 3 voters.
+ */
+int dqlite_node_set_target_voters(dqlite_node *n, int voters);
+
+/**
+ * Set the target number of standby nodes for the cluster.
+ *
+ * If automatic role management is enabled, the cluster leader will attempt to
+ * promote nodes to reach the target. If automatic role management is disabled,
+ * this has no effect.
+ *
+ * The default target is 0 standbys.
+ */
+int dqlite_node_set_target_standbys(dqlite_node *n, int standbys);
+
+/**
+ * Enable automatic role management on the server side for this node.
+ *
+ * When automatic role management is enabled, servers in a dqlite cluster will
+ * autonomously (without client intervention) promote and demote each other
+ * to maintain a specified number of voters and standbys, taking into account
+ * the health, failure domain, and weight of each server.
+ *
+ * By default, no automatic role management is performed.
+ */
+int dqlite_node_enable_role_management(dqlite_node *n);
+
+/**
  * Start a dqlite node.
  *
  * A background thread will be spawned which will run the node's main loop. If

@@ -30,18 +30,21 @@ struct dqlite_node
 	struct raft_uv_transport raft_transport; /* Raft libuv transport */
 	struct raft_io raft_io;                  /* libuv I/O */
 	struct raft_fsm raft_fsm;                /* dqlite FSM */
-	sem_t ready;   /* Server is ready */
-	sem_t stopped; /* Notify loop stopped */
-	queue queue;  /* Incoming connections */
-	queue conns;  /* Active connections */
-	bool running; /* Loop is running */
+	sem_t ready;                             /* Server is ready */
+	sem_t stopped;                           /* Notify loop stopped */
+	queue queue; /* Incoming connections */
+	queue conns; /* Active connections */
+	queue roles_changes;
+	bool running;                 /* Loop is running */
 	struct raft raft;             /* Raft instance */
 	struct uv_stream_s *listener; /* Listening socket */
 	struct uv_async_s stop;      /* Trigger UV loop stop */
 	struct uv_timer_s startup;   /* Unblock ready sem */
 	struct uv_prepare_s monitor; /* Raft state change monitor */
+	struct uv_timer_s timer;
 	int raft_state;     /* Previous raft state */
 	char *bind_address; /* Listen address */
+	bool role_management;
 	int (*connect_func)(
 	    void *,
 	    const char *,

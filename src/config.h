@@ -19,6 +19,8 @@ struct config
 	unsigned long long int weight;     /* User-provided node weight */
 	char dir[1024];                    /* Data dir for on-disk database */
 	bool disk;                         /* Disk-mode or not */
+	int voters;                        /* Target number of voters */
+	int standbys;                      /* Target number of standbys */
 };
 
 /**
