@@ -17,10 +17,11 @@
 
 struct test_server
 {
-	unsigned id;                   /* Server ID. */
-	char address[8];               /* Server address. */
-	char *dir;                     /* Data directory. */
-	dqlite_node *dqlite;           /* Dqlite instance. */
+	unsigned id;         /* Server ID. */
+	char address[8];     /* Server address. */
+	char *dir;           /* Data directory. */
+	dqlite_node *dqlite; /* Dqlite instance. */
+	bool role_management;
 	struct client_proto client;    /* Connected client. */
 	struct test_server *others[5]; /* Other servers, by ID-1. */
 };

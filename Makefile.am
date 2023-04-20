@@ -87,6 +87,7 @@ unit_test_SOURCES += \
   test/unit/test_registry.c \
   test/unit/test_replication.c \
   test/unit/test_request.c \
+  test/unit/test_role_management.c \
   test/unit/test_tuple.c \
   test/unit/test_vfs.c \
   test/unit/main.c
@@ -100,6 +101,7 @@ integration_test_SOURCES = \
   test/integration/test_fsm.c \
   test/integration/test_membership.c \
   test/integration/test_node.c \
+  test/integration/test_role_management.c \
   test/integration/test_vfs.c \
   test/integration/main.c
 integration_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
