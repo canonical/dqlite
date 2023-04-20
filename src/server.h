@@ -32,12 +32,16 @@ struct dqlite_node
 	struct raft_fsm raft_fsm;                /* dqlite FSM */
 	sem_t ready;                             /* Server is ready */
 	sem_t stopped;                           /* Notify loop stopped */
+	sem_t handover_done;
 	queue queue; /* Incoming connections */
 	queue conns; /* Active connections */
 	queue roles_changes;
 	bool running;                 /* Loop is running */
 	struct raft raft;             /* Raft instance */
 	struct uv_stream_s *listener; /* Listening socket */
+	struct uv_async_s handover;
+	int handover_status;
+	void (*handover_done_cb)(struct dqlite_node *, int);
 	struct uv_async_s stop;      /* Trigger UV loop stop */
 	struct uv_timer_s startup;   /* Unblock ready sem */
 	struct uv_prepare_s monitor; /* Raft state change monitor */
