@@ -92,6 +92,14 @@ struct polling
 	unsigned i;
 };
 
+struct handover_voter_data
+{
+	struct dqlite_node *node;
+	dqlite_node_id target_id;
+	char *leader_addr;
+	dqlite_node_id leader_id;
+};
+
 static int domainCount(uint64_t needle, const struct compare_data *data)
 {
 	unsigned i;
@@ -496,6 +504,161 @@ err:
 	cb(NULL);
 }
 
+/* Runs on the thread pool to open a connection to the leader, promote another
+ * node to voter, and demote the calling node to spare. */
+static void handoverVoterWorkCb(uv_work_t *work)
+{
+	struct handover_voter_data *data = work->data;
+	struct client_proto proto = {0};
+	struct client_context context;
+	int rv;
+
+	proto.connect = data->node->connect_func;
+	proto.connect_arg = data->node->connect_func_arg;
+	rv = clientOpen(&proto, data->leader_addr, data->leader_id);
+	if (rv != 0) {
+		return;
+	}
+	clientContextMillis(&context, 5000);
+	rv = clientSendHandshake(&proto, &context);
+	if (rv != 0) {
+		goto close;
+	}
+	rv = clientSendAssign(&proto, data->target_id, DQLITE_VOTER, &context);
+	if (rv != 0) {
+		goto close;
+	}
+	rv = clientRecvEmpty(&proto, &context);
+	if (rv != 0) {
+		goto close;
+	}
+	rv = clientSendAssign(&proto, data->node->config.id, DQLITE_SPARE,
+			      &context);
+	if (rv != 0) {
+		goto close;
+	}
+	rv = clientRecvEmpty(&proto, &context);
+
+close:
+	clientClose(&proto);
+}
+
+static void handoverVoterAfterWorkCb(uv_work_t *work, int status)
+{
+	struct handover_voter_data *data = work->data;
+	struct dqlite_node *node = data->node;
+	int handover_status = 0;
+	void (*cb)(struct dqlite_node *, int);
+
+	if (status != 0) {
+		handover_status = DQLITE_ERROR;
+	}
+	raft_free(data->leader_addr);
+	raft_free(data);
+	raft_free(work);
+	cb = node->handover_done_cb;
+	cb(node, handover_status);
+	node->handover_done_cb = NULL;
+}
+
+/* Having gathered information about the cluster, pick a non-voter node
+ * to promote in our place. */
+static void handoverVoterCb(struct polling *polling)
+{
+	struct dqlite_node *node;
+	raft_id leader_id;
+	const char *borrowed_addr;
+	char *leader_addr;
+	struct compare_data voter_compare = {0};
+	unsigned i;
+	struct all_node_info *cluster;
+	unsigned n_cluster;
+	dqlite_node_id target_id;
+	struct handover_voter_data *data;
+	uv_work_t *work;
+	void (*cb)(struct dqlite_node *, int);
+	int rv;
+
+	if (polling == NULL) {
+		return;
+	}
+	node = polling->node;
+	cluster = polling->cluster;
+	n_cluster = polling->n_cluster;
+	cb = node->handover_done_cb;
+
+	raft_leader(&node->raft, &leader_id, &borrowed_addr);
+	if (leader_id == node->raft.id || leader_id == 0) {
+		goto finish;
+	}
+	leader_addr = raft_malloc(strlen(borrowed_addr) + 1);
+	if (leader_addr == NULL) {
+		goto finish;
+	}
+	memcpy(leader_addr, borrowed_addr, strlen(borrowed_addr) + 1);
+
+	/* Select a non-voter to transfer to -- the logic is similar to
+	 * adjustClusterCb. */
+	for (i = 0; i < n_cluster; i += 1) {
+		if (cluster[i].online && cluster[i].role == DQLITE_VOTER &&
+		    cluster[i].id != node->raft.id) {
+			addDomain(cluster[i].failure_domain, &voter_compare);
+		}
+	}
+	qsort_r(cluster, n_cluster, sizeof *cluster, compareNodesForPromotion,
+		&voter_compare);
+	target_id = 0;
+	for (i = 0; i < n_cluster; i += 1) {
+		if (cluster[i].online && cluster[i].role != DQLITE_VOTER &&
+		    cluster[i].id != node->raft.id) {
+			target_id = cluster[i].id;
+			break;
+		}
+	}
+	/* If no transfer candidates found, give up. */
+	if (target_id == 0) {
+		goto err_after_alloc_leader_addr;
+	}
+
+	/* Submit the handover work. */
+	data = raft_malloc(sizeof *data);
+	if (data == NULL) {
+		goto err_after_alloc_leader_addr;
+	}
+	data->node = node;
+	data->target_id = target_id;
+	data->leader_addr = leader_addr;
+	data->leader_id = leader_id;
+	work = raft_malloc(sizeof *work);
+	if (work == NULL) {
+		goto err_after_alloc_data;
+	}
+	work->data = data;
+	rv = uv_queue_work(&node->loop, work, handoverVoterWorkCb,
+			   handoverVoterAfterWorkCb);
+	if (rv != 0) {
+		goto err_after_alloc_work;
+	}
+	return;
+
+err_after_alloc_work:
+	raft_free(work);
+err_after_alloc_data:
+	raft_free(data);
+err_after_alloc_leader_addr:
+	raft_free(leader_addr);
+finish:
+	node->handover_done_cb = NULL;
+	cb(node, DQLITE_ERROR);
+}
+
+static void handoverTransferCb(struct raft_transfer *req)
+{
+	struct dqlite_node *d = req->data;
+	raft_free(req);
+	pollCluster(d, handoverVoterCb);
+}
+
 void RolesAdjust(struct dqlite_node *d)
 {
 	/* Only the leader can assign roles. */
@@ -509,6 +672,35 @@ void RolesAdjust(struct dqlite_node *d)
 	}
 	assert(d->running);
 	pollCluster(d, adjustClusterCb);
+}
+
+void RolesHandover(struct dqlite_node *d, void (*cb)(struct dqlite_node *, int))
+{
+	struct raft_transfer *req;
+	int rv;
+
+	req = raft_malloc(sizeof *req);
+	if (req == NULL) {
+		goto err;
+	}
+	d->handover_done_cb = cb;
+	req->data = d;
+	/* We try the leadership transfer unconditionally -- Raft will tell us
+	 * if we're not the leader. */
+	rv = raft_transfer(&d->raft, req, 0, handoverTransferCb);
+	if (rv == RAFT_NOTLEADER) {
+		raft_free(req);
+		pollCluster(d, handoverVoterCb);
+		return;
+	} else if (rv != 0) {
+		raft_free(req);
+		goto err;
+	}
+	return;
+
+err:
+	d->handover_done_cb = NULL;
+	cb(d, DQLITE_ERROR);
 }
 
 void RolesCancelPendingChanges(struct dqlite_node *d)

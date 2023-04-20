@@ -35,6 +35,13 @@ void RolesComputeChanges(int voters,
  * server, but does nothing if called on a server that is not the leader. */
 void RolesAdjust(struct dqlite_node *d);
 
+/* Begin a graceful shutdown of this node. Leadership and the voter role will
+ * be transferred to other nodes if necessary, and then the callback will be
+ * invoked on the loop thread. The callback's second argument will be 0 if the
+ * handover succeeded and nonzero otherwise. */
+void RolesHandover(struct dqlite_node *d,
+		   void (*cb)(struct dqlite_node *, int));
+
 /* Drain the queue of changes computed by RoleManagementAdjust. This should be
  * done when the node is shutting down, to avoid a memory leak. */
 void RolesCancelPendingChanges(struct dqlite_node *d);

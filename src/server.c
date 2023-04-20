@@ -111,6 +111,13 @@ int dqlite__init(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto err_after_ready_init;
 	}
+	rv = sem_init(&d->handover_done, 0, 0);
+	if (rv != 0) {
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
+			 strerror(errno));
+		rv = DQLITE_ERROR;
+		goto err_after_stopped_init;
+	}
 
 	QUEUE__INIT(&d->queue);
 	QUEUE__INIT(&d->conns);
@@ -131,6 +138,8 @@ int dqlite__init(struct dqlite_node *d,
 	d->initialized = true;
 	return 0;
 
+err_after_stopped_init:
+	sem_destroy(&d->stopped);
 err_after_ready_init:
 	sem_destroy(&d->ready);
 err_after_raft_fsm_init:
@@ -160,8 +169,11 @@ void dqlite__close(struct dqlite_node *d)
 	assert(rv == 0); /* Fails only if sem object is not valid */
 	rv = sem_destroy(&d->ready);
 	assert(rv == 0); /* Fails only if sem object is not valid */
+	rv = sem_destroy(&d->handover_done);
+	assert(rv == 0);
 	fsm__close(&d->raft_fsm);
-	uv_loop_close(&d->loop);
+	rv = uv_loop_close(&d->loop);
+	assert(rv == 0);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
 	sqlite3_vfs_unregister(&d->vfs);
@@ -413,14 +425,14 @@ out:
 /* Callback invoked when the stop async handle gets fired.
  *
  * This callback will walk through all active handles and close them. After the
- * last handle (which must be the 'stop' async handle) is closed, the loop gets
- * stopped.
+ * last handle is closed, the loop gets stopped.
  */
 static void raftCloseCb(struct raft *raft)
 {
 	struct dqlite_node *s = raft->data;
 	raft_uv_close(&s->raft_io);
 	uv_close((struct uv_handle_s *)&s->stop, NULL);
+	uv_close((struct uv_handle_s *)&s->handover, NULL);
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
 	uv_close((struct uv_handle_s *)&s->monitor, NULL);
 	uv_close((struct uv_handle_s *)s->listener, NULL);
@@ -433,7 +445,32 @@ static void destroy_conn(struct conn *conn)
 	sqlite3_free(conn);
 }
 
-static void stop_cb(uv_async_t *stop)
+static void handoverDoneCb(struct dqlite_node *d, int status)
+{
+	d->handover_status = status;
+	sem_post(&d->handover_done);
+}
+
+static void handoverCb(uv_async_t *handover)
+{
+	struct dqlite_node *d = handover->data;
+	int rv;
+
+	/* Nothing to do. */
+	if (!d->running) {
+		return;
+	}
+
+	if (d->role_management) {
+		rv = uv_timer_stop(&d->timer);
+		assert(rv == 0);
+		RolesCancelPendingChanges(d);
+	}
+
+	RolesHandover(d, handoverDoneCb);
+}
+
+static void stopCb(uv_async_t *stop)
 {
 	struct dqlite_node *d = stop->data;
 	queue *head;
@@ -617,9 +654,12 @@ static int taskRun(struct dqlite_node *d)
 	}
 	d->listener->data = d;
 
+	d->handover.data = d;
+	rv = uv_async_init(&d->loop, &d->handover, handoverCb);
+	assert(rv == 0);
 	/* Initialize notification handles. */
 	d->stop.data = d;
-	rv = uv_async_init(&d->loop, &d->stop, stop_cb);
+	rv = uv_async_init(&d->loop, &d->stop, stopCb);
 	assert(rv == 0);
 
 	/* Schedule startup_cb to be fired as soon as the loop starts. It will
@@ -787,6 +827,18 @@ int dqlite_node_start(dqlite_node *t)
 
 err:
 	return rv;
+}
+
+int dqlite_node_handover(dqlite_node *d)
+{
+	int rv;
+
+	rv = uv_async_send(&d->handover);
+	assert(rv == 0);
+
+	sem_wait(&d->handover_done);
+
+	return d->handover_status;
 }
 
 int dqlite_node_stop(dqlite_node *d)

@@ -253,6 +253,22 @@ int dqlite_node_enable_role_management(dqlite_node *n);
 int dqlite_node_start(dqlite_node *n);
 
 /**
+ * Attempt to hand over this node's privileges to other nodes in preparation
+ * for a graceful shutdown.
+ *
+ * Specifically, if this node is the cluster leader, this will cause another
+ * voting node (if one exists) to be elected leader; then, if this node is a
+ * voter, another non-voting node (if one exists) will be promoted to voter, and
+ * then this node will be demoted to spare.
+ *
+ * This function returns 0 if all privileges were handed over successfully,
+ * and nonzero otherwise. Callers can continue to dqlite_node_stop immediately
+ * after this function returns (whether or not it succeeded), or include their
+ * own graceful shutdown logic before dqlite_node_stop.
+ */
+int dqlite_node_handover(dqlite_node *n);
+
+/**
  * Stop a dqlite node.
  *
  * The background thread running the main loop will be notified and the node
