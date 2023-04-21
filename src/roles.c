@@ -494,7 +494,7 @@ static void pollCluster(struct dqlite_node *d, void (*cb)(struct polling *))
 err_after_alloc_polling:
 	raft_free(polling_objs);
 err_after_alloc_addrs:
-	for (ii = 0; ii < i; i += 1) {
+	for (ii = 0; ii < i; ii += 1) {
 		raft_free(cluster[ii].address);
 	}
 	raft_free(count);
