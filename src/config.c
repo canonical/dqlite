@@ -52,6 +52,8 @@ int config__init(struct config *c,
 	strncpy(c->dir, dir, sizeof(c->dir) - 1);
 	c->dir[sizeof(c->dir) - 1] = '\0';
 	c->disk = false;
+	c->voters = 3;
+	c->standbys = 0;
 	serial++;
 	return 0;
 }

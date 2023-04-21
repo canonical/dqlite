@@ -13,6 +13,8 @@
 
 #include "../include/dqlite.h"
 
+int transportDefaultConnect(void *arg, const char *address, int *fd);
+
 int raftProxyInit(struct raft_uv_transport *transport, struct uv_loop_s *loop);
 
 void raftProxyClose(struct raft_uv_transport *transport);

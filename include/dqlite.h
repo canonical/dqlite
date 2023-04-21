@@ -210,6 +210,40 @@ int dqlite_node_set_snapshot_params(dqlite_node *n,
 int dqlite_node_enable_disk_mode(dqlite_node *n);
 
 /**
+ * Set the target number of voting nodes for the cluster.
+ *
+ * If automatic role management is enabled, the cluster leader will attempt to
+ * promote nodes to reach the target. If automatic role management is disabled,
+ * this has no effect.
+ *
+ * The default target is 3 voters.
+ */
+int dqlite_node_set_target_voters(dqlite_node *n, int voters);
+
+/**
+ * Set the target number of standby nodes for the cluster.
+ *
+ * If automatic role management is enabled, the cluster leader will attempt to
+ * promote nodes to reach the target. If automatic role management is disabled,
+ * this has no effect.
+ *
+ * The default target is 0 standbys.
+ */
+int dqlite_node_set_target_standbys(dqlite_node *n, int standbys);
+
+/**
+ * Enable automatic role management on the server side for this node.
+ *
+ * When automatic role management is enabled, servers in a dqlite cluster will
+ * autonomously (without client intervention) promote and demote each other
+ * to maintain a specified number of voters and standbys, taking into account
+ * the health, failure domain, and weight of each server.
+ *
+ * By default, no automatic role management is performed.
+ */
+int dqlite_node_enable_role_management(dqlite_node *n);
+
+/**
  * Start a dqlite node.
  *
  * A background thread will be spawned which will run the node's main loop. If
@@ -217,6 +251,22 @@ int dqlite_node_enable_disk_mode(dqlite_node *n);
  * connections.
  */
 int dqlite_node_start(dqlite_node *n);
+
+/**
+ * Attempt to hand over this node's privileges to other nodes in preparation
+ * for a graceful shutdown.
+ *
+ * Specifically, if this node is the cluster leader, this will cause another
+ * voting node (if one exists) to be elected leader; then, if this node is a
+ * voter, another non-voting node (if one exists) will be promoted to voter, and
+ * then this node will be demoted to spare.
+ *
+ * This function returns 0 if all privileges were handed over successfully,
+ * and nonzero otherwise. Callers can continue to dqlite_node_stop immediately
+ * after this function returns (whether or not it succeeded), or include their
+ * own graceful shutdown logic before dqlite_node_stop.
+ */
+int dqlite_node_handover(dqlite_node *n);
 
 /**
  * Stop a dqlite node.

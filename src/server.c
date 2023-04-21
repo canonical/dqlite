@@ -14,6 +14,7 @@
 #include "lib/fs.h"
 #include "logger.h"
 #include "protocol.h"
+#include "roles.h"
 #include "tracing.h"
 #include "translate.h"
 #include "transport.h"
@@ -96,10 +97,6 @@ int dqlite__init(struct dqlite_node *d,
 	raft_set_pre_vote(&d->raft, true);
 	raft_set_max_catch_up_rounds(&d->raft, 100);
 	raft_set_max_catch_up_round_duration(&d->raft, 50 * 1000); /* 50 secs */
-#ifdef __APPLE__
-	d->ready = dispatch_semaphore_create(0);
-	d->stopped = dispatch_semaphore_create(0);
-#else
 	rv = sem_init(&d->ready, 0, 0);
 	if (rv != 0) {
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
@@ -114,14 +111,24 @@ int dqlite__init(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto err_after_ready_init;
 	}
-#endif
+	rv = sem_init(&d->handover_done, 0, 0);
+	if (rv != 0) {
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
+			 strerror(errno));
+		rv = DQLITE_ERROR;
+		goto err_after_stopped_init;
+	}
 
 	QUEUE__INIT(&d->queue);
 	QUEUE__INIT(&d->conns);
+	QUEUE__INIT(&d->roles_changes);
 	d->raft_state = RAFT_UNAVAILABLE;
 	d->running = false;
 	d->listener = NULL;
 	d->bind_address = NULL;
+	d->role_management = false;
+	d->connect_func = transportDefaultConnect;
+	d->connect_func_arg = NULL;
 
 	urandom = open("/dev/urandom", O_RDONLY);
 	assert(urandom != -1);
@@ -131,12 +138,10 @@ int dqlite__init(struct dqlite_node *d,
 	d->initialized = true;
 	return 0;
 
+err_after_stopped_init:
+	sem_destroy(&d->stopped);
 err_after_ready_init:
-#ifdef __APPLE__
-	dispatch_release(d->ready);
-#else
 	sem_destroy(&d->ready);
-#endif
 err_after_raft_fsm_init:
 	fsm__close(&d->raft_fsm);
 err_after_raft_io_init:
@@ -160,17 +165,15 @@ void dqlite__close(struct dqlite_node *d)
 		return;
 	}
 	raft_free(d->listener);
-#ifdef __APPLE__
-	dispatch_release(d->stopped);
-	dispatch_release(d->ready);
-#else
 	rv = sem_destroy(&d->stopped);
 	assert(rv == 0); /* Fails only if sem object is not valid */
 	rv = sem_destroy(&d->ready);
 	assert(rv == 0); /* Fails only if sem object is not valid */
-#endif
+	rv = sem_destroy(&d->handover_done);
+	assert(rv == 0);
 	fsm__close(&d->raft_fsm);
-	uv_loop_close(&d->loop);
+	rv = uv_loop_close(&d->loop);
+	assert(rv == 0);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
 	sqlite3_vfs_unregister(&d->vfs);
@@ -292,6 +295,9 @@ int dqlite_node_set_connect_func(dqlite_node *t,
 		return DQLITE_MISUSE;
 	}
 	raftProxySetConnectFunc(&t->raft_transport, f, arg);
+	/* Also save this info for use in automatic role management. */
+	t->connect_func = f;
+	t->connect_func_arg = arg;
 	return 0;
 }
 
@@ -419,17 +425,18 @@ out:
 /* Callback invoked when the stop async handle gets fired.
  *
  * This callback will walk through all active handles and close them. After the
- * last handle (which must be the 'stop' async handle) is closed, the loop gets
- * stopped.
+ * last handle is closed, the loop gets stopped.
  */
 static void raftCloseCb(struct raft *raft)
 {
 	struct dqlite_node *s = raft->data;
 	raft_uv_close(&s->raft_io);
 	uv_close((struct uv_handle_s *)&s->stop, NULL);
+	uv_close((struct uv_handle_s *)&s->handover, NULL);
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
 	uv_close((struct uv_handle_s *)&s->monitor, NULL);
 	uv_close((struct uv_handle_s *)s->listener, NULL);
+	uv_close((struct uv_handle_s *)&s->timer, NULL);
 }
 
 static void destroy_conn(struct conn *conn)
@@ -438,16 +445,47 @@ static void destroy_conn(struct conn *conn)
 	sqlite3_free(conn);
 }
 
-static void stop_cb(uv_async_t *stop)
+static void handoverDoneCb(struct dqlite_node *d, int status)
+{
+	d->handover_status = status;
+	sem_post(&d->handover_done);
+}
+
+static void handoverCb(uv_async_t *handover)
+{
+	struct dqlite_node *d = handover->data;
+	int rv;
+
+	/* Nothing to do. */
+	if (!d->running) {
+		return;
+	}
+
+	if (d->role_management) {
+		rv = uv_timer_stop(&d->timer);
+		assert(rv == 0);
+		RolesCancelPendingChanges(d);
+	}
+
+	RolesHandover(d, handoverDoneCb);
+}
+
+static void stopCb(uv_async_t *stop)
 {
 	struct dqlite_node *d = stop->data;
 	queue *head;
 	struct conn *conn;
+	int rv;
 
 	/* Nothing to do. */
 	if (!d->running) {
 		tracef("not running or already stopped");
 		return;
+	}
+	if (d->role_management) {
+		rv = uv_timer_stop(&d->timer);
+		assert(rv == 0);
+		RolesCancelPendingChanges(d);
 	}
 	d->running = false;
 
@@ -468,12 +506,8 @@ static void startup_cb(uv_timer_t *startup)
 	struct dqlite_node *d = startup->data;
 	int rv;
 	d->running = true;
-#ifdef __APPLE__
-	dispatch_semaphore_signal(d->ready);
-#else
 	rv = sem_post(&d->ready);
 	assert(rv == 0); /* No reason for which posting should fail */
-#endif
 }
 
 static void listenCb(uv_stream_t *listener, int status)
@@ -599,6 +633,13 @@ static void monitor_cb(uv_prepare_t *monitor)
 	d->raft_state = state;
 }
 
+/* Runs every tick on the main thread to kick off roles adjustment. */
+static void roleManagementTimerCb(uv_timer_t *handle)
+{
+	struct dqlite_node *d = handle->data;
+	RolesAdjust(d);
+}
+
 static int taskRun(struct dqlite_node *d)
 {
 	int rv;
@@ -613,9 +654,12 @@ static int taskRun(struct dqlite_node *d)
 	}
 	d->listener->data = d;
 
+	d->handover.data = d;
+	rv = uv_async_init(&d->loop, &d->handover, handoverCb);
+	assert(rv == 0);
 	/* Initialize notification handles. */
 	d->stop.data = d;
-	rv = uv_async_init(&d->loop, &d->stop, stop_cb);
+	rv = uv_async_init(&d->loop, &d->stop, stopCb);
 	assert(rv == 0);
 
 	/* Schedule startup_cb to be fired as soon as the loop starts. It will
@@ -633,17 +677,24 @@ static int taskRun(struct dqlite_node *d)
 	rv = uv_prepare_start(&d->monitor, monitor_cb);
 	assert(rv == 0);
 
+	/* Schedule the role management callback. */
+	d->timer.data = d;
+	rv = uv_timer_init(&d->loop, &d->timer);
+	assert(rv == 0);
+	if (d->role_management) {
+		/* TODO make the interval configurable */
+		rv = uv_timer_start(&d->timer, roleManagementTimerCb, 1000,
+				    1000);
+		assert(rv == 0);
+	}
+
 	d->raft.data = d;
 	rv = raft_start(&d->raft);
 	if (rv != 0) {
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_start(): %s",
 			 raft_errmsg(&d->raft));
 		/* Unblock any client of taskReady */
-#ifdef __APPLE__
-		dispatch_semaphore_signal(d->ready);
-#else
 		sem_post(&d->ready);
-#endif
 		return rv;
 	}
 
@@ -651,13 +702,27 @@ static int taskRun(struct dqlite_node *d)
 	assert(rv == 0);
 
 	/* Unblock any client of taskReady */
-#ifdef __APPLE__
-	dispatch_semaphore_signal(d->ready);
-#else
 	rv = sem_post(&d->ready);
 	assert(rv == 0); /* no reason for which posting should fail */
-#endif
 
+	return 0;
+}
+
+int dqlite_node_set_target_voters(dqlite_node *n, int voters)
+{
+	n->config.voters = voters;
+	return 0;
+}
+
+int dqlite_node_set_target_standbys(dqlite_node *n, int standbys)
+{
+	n->config.standbys = standbys;
+	return 0;
+}
+
+int dqlite_node_enable_role_management(dqlite_node *n)
+{
+	n->role_management = true;
 	return 0;
 }
 
@@ -697,11 +762,7 @@ void dqlite_node_destroy(dqlite_node *d)
 static bool taskReady(struct dqlite_node *d)
 {
 	/* Wait for the ready semaphore */
-#ifdef __APPLE__
-	dispatch_semaphore_wait(d->ready, DISPATCH_TIME_FOREVER);
-#else
 	sem_wait(&d->ready);
-#endif
 	return d->running;
 }
 
@@ -766,6 +827,18 @@ int dqlite_node_start(dqlite_node *t)
 
 err:
 	return rv;
+}
+
+int dqlite_node_handover(dqlite_node *d)
+{
+	int rv;
+
+	rv = uv_async_send(&d->handover);
+	assert(rv == 0);
+
+	sem_wait(&d->handover_done);
+
+	return d->handover_status;
 }
 
 int dqlite_node_stop(dqlite_node *d)

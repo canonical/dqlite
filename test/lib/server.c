@@ -1,4 +1,4 @@
-#include "unistd.h"
+#include <unistd.h>
 
 #include "fs.h"
 #include "server.h"
@@ -29,6 +29,7 @@ void test_server_setup(struct test_server *s,
 	sprintf(s->address, "@%u", id);
 
 	s->dir = test_dir_setup();
+	s->role_management = false;
 
 	memset(s->others, 0, sizeof s->others);
 }
@@ -38,8 +39,15 @@ void test_server_stop(struct test_server *s)
 	int rv;
 
 	test_server_client_close(s, &s->client);
-	rv = dqlite_node_stop(s->dqlite);
+
+	if (s->role_management) {
+		dqlite_node_handover(s->dqlite);
+		rv = dqlite_node_stop(s->dqlite);
+	} else {
+		rv = dqlite_node_stop(s->dqlite);
+	}
 	munit_assert_int(rv, ==, 0);
+
 	dqlite_node_destroy(s->dqlite);
 }
 
@@ -79,6 +87,33 @@ void test_server_start(struct test_server *s, const MunitParameter params[])
 		bool disk_mode = (bool)atoi(disk_mode_param);
 		if (disk_mode) {
 			rv = dqlite_node_enable_disk_mode(s->dqlite);
+			munit_assert_int(rv, ==, 0);
+		}
+	}
+
+	const char *target_voters_param =
+	    munit_parameters_get(params, "target_voters");
+	if (target_voters_param != NULL) {
+		int n = atoi(target_voters_param);
+		rv = dqlite_node_set_target_voters(s->dqlite, n);
+		munit_assert_int(rv, ==, 0);
+	}
+
+	const char *target_standbys_param =
+	    munit_parameters_get(params, "target_standbys");
+	if (target_standbys_param != NULL) {
+		int n = atoi(target_standbys_param);
+		rv = dqlite_node_set_target_standbys(s->dqlite, n);
+		munit_assert_int(rv, ==, 0);
+	}
+
+	const char *role_management_param =
+	    munit_parameters_get(params, "role_management");
+	if (role_management_param != NULL) {
+		bool role_management = (bool)atoi(role_management_param);
+		s->role_management = role_management;
+		if (role_management) {
+			rv = dqlite_node_enable_role_management(s->dqlite);
 			munit_assert_int(rv, ==, 0);
 		}
 	}
