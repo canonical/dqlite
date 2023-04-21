@@ -78,7 +78,7 @@ static void tearDown(void *data)
 static bool hasRole(struct fixture *f, dqlite_node_id id, int role)
 {
 	struct client_node_info *servers;
-	size_t n_servers;
+	uint64_t n_servers;
 	struct client_context context;
 	unsigned i;
 	bool ret = false;
