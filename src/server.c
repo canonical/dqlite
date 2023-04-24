@@ -172,8 +172,10 @@ void dqlite__close(struct dqlite_node *d)
 	rv = sem_destroy(&d->handover_done);
 	assert(rv == 0);
 	fsm__close(&d->raft_fsm);
-	rv = uv_loop_close(&d->loop);
-	assert(rv == 0);
+	// TODO assert rv of uv_loop_close after fixing cleanup logic related to
+	// the TODO above referencing the cleanup logic without running the
+	// node. See https://github.com/canonical/dqlite/issues/504.
+	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
 	sqlite3_vfs_unregister(&d->vfs);
