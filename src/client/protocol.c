@@ -20,7 +20,7 @@ static void oom(void)
 	abort();
 }
 
-static void *mallocChecked(size_t n)
+void *mallocChecked(size_t n)
 {
 	void *p = malloc(n);
 	if (p == NULL) {
@@ -29,7 +29,7 @@ static void *mallocChecked(size_t n)
 	return p;
 }
 
-static void *callocChecked(size_t count, size_t n)
+void *callocChecked(size_t count, size_t n)
 {
 	void *p = calloc(count, n);
 	if (p == NULL) {
@@ -38,9 +38,18 @@ static void *callocChecked(size_t count, size_t n)
 	return p;
 }
 
-static char *strdupChecked(const char *s)
+char *strdupChecked(const char *s)
 {
 	char *p = strdup(s);
+	if (p == NULL) {
+		oom();
+	}
+	return p;
+}
+
+char *strndupChecked(const char *s, size_t n)
+{
+	char *p = strndup(s, n);
 	if (p == NULL) {
 		oom();
 	}
