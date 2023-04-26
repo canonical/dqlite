@@ -13,6 +13,7 @@ lib_LTLIBRARIES = libdqlite.la
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = \
   src/bind.c \
+  src/client/easy.c \
   src/client/protocol.c \
   src/command.c \
   src/conn.c \
