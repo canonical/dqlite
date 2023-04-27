@@ -716,6 +716,71 @@ err:
 	return 1;
 }
 
+struct dqlite
+{
+	struct dqlite_server *server;
+	struct client_proto proto;
+	uint32_t db_id;
+};
+
+int dqlite_open(dqlite_server *server, const char *name, dqlite **db)
+{
+	struct client_context context;
+	struct client_proto new_proto = {0};
+	struct client_proto old_proto;
+	const struct client_node_info *info;
+	struct dqlite *result;
+	int rv;
+
+	rv = pthread_mutex_lock(&server->mutex);
+	assert(rv == 0);
+	info = findNodeInCache(&server->cache, server->proto.server_id);
+	if (info == NULL) {
+		/* TODO */
+		abort();
+	}
+	rv = clientOpen(&new_proto, info->addr, info->id);
+	if (rv != 0) {
+		return 1;
+	}
+	old_proto = server->proto;
+	server->proto = new_proto;
+	rv = pthread_mutex_unlock(&server->mutex);
+	assert(rv == 0);
+
+	clientContextMillis(&context, 5000);
+	rv = clientSendOpen(&old_proto, name, &context);
+	if (rv != 0) {
+		goto err_after_steal_client;
+	}
+	rv = clientRecvDb(&old_proto, &context);
+	if (rv == DQLITE_CLIENT_PROTO_RECEIVED_FAILURE &&
+	    old_proto.errcode == SQLITE_IOERR_NOT_LEADER) {
+		rv = reconnectToLeader(&old_proto, &context);
+		if (rv != 0) {
+			goto err_after_steal_client;
+		}
+		rv = clientSendOpen(&old_proto, name, &context);
+		if (rv != 0) {
+			goto err_after_steal_client;
+		}
+		rv = clientRecvDb(&old_proto, &context);
+	}
+	if (rv != 0) {
+		goto err_after_steal_client;
+	}
+
+	result = callocChecked(1, sizeof *result);
+	result->server = server;
+	result->proto = old_proto;
+	*db = result;
+	return 0;
+
+err_after_steal_client:
+	clientClose(&old_proto);
+	return 1;
+}
+
 int dqlite_server_handover(dqlite_server *server)
 {
 	int rv = dqlite_node_handover(server->local);
