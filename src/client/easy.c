@@ -715,3 +715,44 @@ err_after_create_node:
 err:
 	return 1;
 }
+
+int dqlite_server_handover(dqlite_server *server)
+{
+	int rv = dqlite_node_handover(server->local);
+	if (rv != 0) {
+		return 1;
+	}
+	return 0;
+}
+
+int dqlite_server_stop(dqlite_server *server)
+{
+	int rv;
+
+	rv = pthread_mutex_lock(&server->mutex);
+	assert(rv == 0);
+	server->shutdown = true;
+	rv = pthread_mutex_unlock(&server->mutex);
+	assert(rv == 0);
+	rv = pthread_cond_signal(&server->cond);
+	assert(rv == 0);
+	rv = pthread_join(server->refresh_thread, NULL);
+	assert(rv == 0);
+	rv = dqlite_node_stop(server->local);
+	if (rv != 0) {
+		return 1;
+	}
+	return 0;
+}
+
+void dqlite_server_destroy(dqlite_server *server)
+{
+	free(server->bind_addr);
+	free(server->local_addr);
+	dqlite_node_destroy(server->local);
+	free(server->dir_path);
+	clientClose(&server->proto);
+	emptyCache(&server->cache);
+	pthread_cond_destroy(&server->cond);
+	pthread_mutex_destroy(&server->mutex);
+}
