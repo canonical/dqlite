@@ -22,6 +22,12 @@
 #include "tracing.h"
 #include "vfs.h"
 
+/* tinycc doesn't have this builtin, nor the warning that it's meant to silence.
+ */
+#ifdef __TINYC__
+#define __builtin_assume_aligned(x, y) x
+#endif
+
 /* Byte order */
 #if defined(DQLITE_LITTLE_ENDIAN)
 #define VFS__BIGENDIAN 0
