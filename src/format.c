@@ -8,6 +8,12 @@
 
 #include "format.h"
 
+/* tinycc doesn't have this builtin, nor the warning that it's meant to silence.
+ */
+#ifdef __TINYC__
+#define __builtin_assume_aligned(x, y) x
+#endif
+
 /* WAL magic value. Either this value, or the same value with the least
  * significant bit also set (FORMAT__WAL_MAGIC | 0x00000001) is stored in 32-bit
  * big-endian format in the first 4 bytes of a WAL file.

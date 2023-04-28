@@ -4,6 +4,12 @@
 
 #include "../lib/runner.h"
 
+/* tinycc doesn't have this builtin, nor the warning that it's meant to silence.
+ */
+#ifdef __TINYC__
+#define __builtin_assume_aligned(x, y) x
+#endif
+
 TEST_MODULE(tuple);
 
 /******************************************************************************
