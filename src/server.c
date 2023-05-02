@@ -367,6 +367,32 @@ int dqlite_node_set_snapshot_params(dqlite_node *n,
 	return 0;
 }
 
+#define KB(N) (1024 * N)
+int dqlite_node_set_block_size(dqlite_node *n, size_t size)
+{
+	if (n->running) {
+		return DQLITE_MISUSE;
+	}
+
+	switch (size) {
+		case 512:      // fallthrough
+		case KB(1):    // fallthrough
+		case KB(2):    // fallthrough
+		case KB(4):    // fallthrough
+		case KB(8):    // fallthrough
+		case KB(16):   // fallthrough
+		case KB(32):   // fallthrough
+		case KB(64):   // fallthrough
+		case KB(128):  // fallthrough
+		case KB(256):
+			break;
+		default:
+			return DQLITE_ERROR;
+	}
+
+	raft_uv_set_block_size(&n->raft_io, size);
+	return 0;
+}
 int dqlite_node_enable_disk_mode(dqlite_node *n)
 {
 	int rv;

@@ -316,6 +316,43 @@ TEST(node, networkLatencyMsTooLarge, setUp, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
+TEST(node, blockSize, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	int rv;
+
+	rv = dqlite_node_set_block_size(f->node, 0);
+	munit_assert_int(rv, ==, DQLITE_ERROR);
+	rv = dqlite_node_set_block_size(f->node, 1);
+	munit_assert_int(rv, ==, DQLITE_ERROR);
+	rv = dqlite_node_set_block_size(f->node, 511);
+	munit_assert_int(rv, ==, DQLITE_ERROR);
+	rv = dqlite_node_set_block_size(f->node, 1024 * 512);
+	munit_assert_int(rv, ==, DQLITE_ERROR);
+	rv = dqlite_node_set_block_size(f->node, 64 * 1024);
+	munit_assert_int(rv, ==, 0);
+
+	startStopNode(f);
+	return MUNIT_OK;
+}
+
+TEST(node, blockSizeRunning, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	int rv;
+
+	rv = dqlite_node_start(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_set_block_size(f->node, 64 * 1024);
+	munit_assert_int(rv, ==, DQLITE_MISUSE);
+
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * dqlite_node_recover

@@ -200,6 +200,14 @@ int dqlite_node_set_snapshot_params(dqlite_node *n,
 				    unsigned snapshot_trailing);
 
 /**
+ * Set the block size used for performing disk IO when writing raft log segments
+ * to disk. @size is limited to a list of preset values.
+ *
+ * This function must be called before calling dqlite_node_start().
+ */
+int dqlite_node_set_block_size(dqlite_node *n, size_t size);
+
+/**
  * WARNING: This is an experimental API.
  *
  * By default dqlite holds the SQLite database file and WAL in memory. By
