@@ -967,7 +967,7 @@ int clientRecvEmpty(struct client_proto *c, struct client_context *context)
 
 int clientRecvFailure(struct client_proto *c,
 		      uint64_t *code,
-		      const char **msg,
+		      char **msg,
 		      struct client_context *context)
 {
 	tracef("client recv failure");
@@ -975,7 +975,7 @@ int clientRecvFailure(struct client_proto *c,
 	struct response_failure response;
 	RESPONSE(failure, FAILURE);
 	*code = response.code;
-	*msg = response.message;
+	*msg = strdupChecked(response.message);
 	return 0;
 }
 

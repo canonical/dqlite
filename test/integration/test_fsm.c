@@ -684,7 +684,7 @@ TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, snapshot_params)
 	uint64_t rows_affected;
 	struct rows rows;
 	uint64_t code;
-	const char *msg;
+	char *msg;
 	int rv;
 
 	bool disk_mode = false;
@@ -748,6 +748,7 @@ TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, snapshot_params)
 	PREPARE_FAIL("SELECT * from test2b", &stmt_id, &code, &msg);
 	munit_assert_uint64(code, ==, DQLITE_ERROR);
 	munit_assert_string_equal(msg, "no such table: test2b");
+	free(msg);
 
 	/* Table is there on first DB */
 	test_server_client_reconnect(&f->servers[0], &f->servers[0].client);
