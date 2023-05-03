@@ -722,7 +722,8 @@ static struct vfsDatabase *vfsDatabaseLookup(struct vfs *v,
 
 	for (i = 0; i < v->n_databases; i++) {
 		struct vfsDatabase *database = v->databases[i];
-		if (strncmp(database->name, filename, n) == 0) {
+		if (strlen(database->name) == n &&
+		    strncmp(database->name, filename, n) == 0) {
 			// Found matching file.
 			return database;
 		}
