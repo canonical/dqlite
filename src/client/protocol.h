@@ -237,7 +237,7 @@ int clientRecvEmpty(struct client_proto *c, struct client_context *context);
 /* Receive a failure response. */
 int clientRecvFailure(struct client_proto *c,
 		      uint64_t *code,
-		      const char **msg,
+		      char **msg,
 		      struct client_context *context);
 
 /* Receive a list of nodes in the cluster. */
