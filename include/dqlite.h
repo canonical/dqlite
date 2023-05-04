@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef DQLITE_API
+#define DQLITE_API __attribute__((visibility("default")))
+#endif
+
 /**
  * Version.
  */
@@ -15,7 +19,7 @@
 	(DQLITE_VERSION_MAJOR * 100 * 100 + DQLITE_VERSION_MINOR * 100 + \
 	 DQLITE_VERSION_RELEASE)
 
-int dqlite_version_number(void);
+DQLITE_API int dqlite_version_number(void);
 
 /**
  * Hold the value of a dqlite node ID. Guaranteed to be at least 64-bit long.
@@ -52,7 +56,7 @@ typedef int (*dqlite_connect_func)(void *arg, const char *addr, int *fd);
  *
  * No reference to @path is kept after this function returns.
  */
-int dqlite_server_create(const char *path, dqlite_server **server);
+DQLITE_API int dqlite_server_create(const char *path, dqlite_server **server);
 
 /**
  * Set the abstract address of this server.
@@ -66,7 +70,8 @@ int dqlite_server_create(const char *path, dqlite_server **server);
  * the default connect function (and for binding/listening), see
  * dqlite_server_set_bind_address.
  */
-int dqlite_server_set_address(dqlite_server *server, const char *address);
+DQLITE_API int dqlite_server_set_address(dqlite_server *server,
+					 const char *address);
 
 /**
  * Indicate that this server will be the "bootstrap" server for its cluster.
@@ -77,7 +82,7 @@ int dqlite_server_set_address(dqlite_server *server, const char *address);
  * server in each cluster. After the first startup, the bootstrap server is no
  * longer special and this function is a no-op.
  */
-int dqlite_server_set_bootstrap(dqlite_server *server);
+DQLITE_API int dqlite_server_set_bootstrap(dqlite_server *server);
 
 /**
  * Declare the address of an existing server in the cluster, which should
@@ -89,7 +94,8 @@ int dqlite_server_set_bootstrap(dqlite_server *server);
  * servers stored on disk will be used instead. (It is harmless to call this
  * function unconditionally.)
  */
-int dqlite_server_set_peer_address(dqlite_server *server, const char *addr);
+DQLITE_API int dqlite_server_set_peer_address(dqlite_server *server,
+					      const char *addr);
 
 /**
  * Configure @server to listen on the address @addr for incoming connections
@@ -116,7 +122,8 @@ int dqlite_server_set_peer_address(dqlite_server *server, const char *addr);
  * If an abstract Unix socket is used, the server will accept only
  * connections originating from the same process.
  */
-int dqlite_server_set_bind_address(dqlite_server *server, const char *addr);
+DQLITE_API int dqlite_server_set_bind_address(dqlite_server *server,
+					      const char *addr);
 
 /**
  * Configure the function that this server will use to connect to other servers.
@@ -125,9 +132,9 @@ int dqlite_server_set_bind_address(dqlite_server *server, const char *addr);
  * connections to all servers in the cluster. @arg is a user data parameter that
  * will be passed to all invocations of the connect function.
  */
-int dqlite_server_set_connect_func(dqlite_server *server,
-				   dqlite_connect_func f,
-				   void *arg);
+DQLITE_API int dqlite_server_set_connect_func(dqlite_server *server,
+					      dqlite_connect_func f,
+					      void *arg);
 
 /**
  * Start running the server.
@@ -135,7 +142,7 @@ int dqlite_server_set_connect_func(dqlite_server *server,
  * Once this function returns successfully, the server will be ready to accept
  * client requests using the functions below.
  */
-int dqlite_server_start(dqlite_server *server);
+DQLITE_API int dqlite_server_start(dqlite_server *server);
 
 /**
  * Hand over the server's privileges to other servers.
@@ -145,7 +152,7 @@ int dqlite_server_start(dqlite_server *server);
  * applicable. This avoids some disruptions that can result when a privileged
  * server stops suddenly.
  */
-int dqlite_server_handover(dqlite_server *server);
+DQLITE_API int dqlite_server_handover(dqlite_server *server);
 
 /**
  * Stop the server.
@@ -156,14 +163,14 @@ int dqlite_server_handover(dqlite_server *server);
  * (successfully or not), you should call dqlite_server_destroy to free
  * resources owned by the server.
  */
-int dqlite_server_stop(dqlite_server *server);
+DQLITE_API int dqlite_server_stop(dqlite_server *server);
 
 /**
  * Free resources owned by the server.
  *
  * This should be called after dqlite_server_stop.
  */
-void dqlite_server_destroy(dqlite_server *server);
+DQLITE_API void dqlite_server_destroy(dqlite_server *server);
 
 /* The following functions (up to but not including dqlite_node_create) mimic
  * the core of the sqlite3.h API and use SQLite result codes. dqlite tries to
@@ -188,25 +195,27 @@ void dqlite_server_destroy(dqlite_server *server);
  * to open, which will be created if it does not exist. All servers in the
  * cluster share a "namespace" for databases.
  */
-int dqlite_open(dqlite_server *server, const char *name, dqlite **db);
+DQLITE_API int dqlite_open(dqlite_server *server,
+			   const char *name,
+			   dqlite **db);
 
 /**
  * Create a prepared statement to be executed on the cluster.
  *
  * This is the analogue of sqlite3_prepare_v2.
  */
-int dqlite_prepare(dqlite *db,
-		   const char *sql,
-		   int sql_len,
-		   dqlite_stmt **stmt,
-		   const char **tail);
+DQLITE_API int dqlite_prepare(dqlite *db,
+			      const char *sql,
+			      int sql_len,
+			      dqlite_stmt **stmt,
+			      const char **tail);
 
 /**
  * Execute a prepared statement for one "step".
  *
  * This is the analogue of sqlite3_step.
  */
-int dqlite_step(dqlite_stmt *stmt);
+DQLITE_API int dqlite_step(dqlite_stmt *stmt);
 
 /**
  * Restore a prepared statement to the state preceding any calls to dqlite_step.
@@ -214,7 +223,7 @@ int dqlite_step(dqlite_stmt *stmt);
  * This is the analogue of sqlite3_reset. It can be called on a prepared
  * statement at any point in its lifecycle.
  */
-int dqlite_reset(dqlite_stmt *stmt);
+DQLITE_API int dqlite_reset(dqlite_stmt *stmt);
 
 /**
  * Unbind all parameters from a prepared statement.
@@ -222,7 +231,7 @@ int dqlite_reset(dqlite_stmt *stmt);
  * This is a purely local operation that does not involve communication with any
  * server. It it the analogue of sqlite3_clear_bindings.
  */
-int dqlite_clear_bindings(dqlite_stmt *stmt);
+DQLITE_API int dqlite_clear_bindings(dqlite_stmt *stmt);
 
 /**
  * Release all resources associated with a prepared statement.
@@ -230,18 +239,18 @@ int dqlite_clear_bindings(dqlite_stmt *stmt);
  * This ends the statement's lifecycle, rendering it invalid for further use. It
  * is the analogue of sqlite3_finalize.
  */
-int dqlite_finalize(dqlite_stmt *stmt);
+DQLITE_API int dqlite_finalize(dqlite_stmt *stmt);
 
 /**
  * Prepare a SQL string, run it to completion, and finalize it.
  *
  * This is the analogue of sqlite3_exec.
  */
-int dqlite_exec(dqlite *db,
-		const char *sql,
-		int (*cb)(void *, int, char **, char **),
-		void *cb_data,
-		char **errmsg);
+DQLITE_API int dqlite_exec(dqlite *db,
+			   const char *sql,
+			   int (*cb)(void *, int, char **, char **),
+			   void *cb_data,
+			   char **errmsg);
 
 /**
  * Close a database after all associated prepared statements have been
@@ -251,7 +260,7 @@ int dqlite_exec(dqlite *db,
  * particular, it will fail with SQLITE_BUSY if some dqlite_stmt objects
  * associated with this database have not yet been finalized.
  */
-int dqlite_close(dqlite *db);
+DQLITE_API int dqlite_close(dqlite *db);
 
 /**
  * Bind parameters to a prepared statement.
@@ -261,20 +270,20 @@ int dqlite_close(dqlite *db);
  *
  * These functions are analogous to the sqlite3_bind family of functions.
  */
-int dqlite_bind_blob64(dqlite_stmt *stmt,
-		       int index,
-		       const void *blob,
-		       uint64_t blob_len,
-		       void (*dealloc)(void *));
-int dqlite_bind_double(dqlite_stmt *stmt, int index, double val);
-int dqlite_bind_int64(dqlite_stmt *stmt, int index, int64_t val);
-int dqlite_bind_null(dqlite_stmt *stmt, int index);
-int dqlite_bind_text64(dqlite_stmt *stmt,
-		       int index,
-		       const char *text,
-		       uint64_t text_len,
-		       void (*dealloc)(void *),
-		       unsigned char encoding);
+DQLITE_API int dqlite_bind_blob64(dqlite_stmt *stmt,
+				  int index,
+				  const void *blob,
+				  uint64_t blob_len,
+				  void (*dealloc)(void *));
+DQLITE_API int dqlite_bind_double(dqlite_stmt *stmt, int index, double val);
+DQLITE_API int dqlite_bind_int64(dqlite_stmt *stmt, int index, int64_t val);
+DQLITE_API int dqlite_bind_null(dqlite_stmt *stmt, int index);
+DQLITE_API int dqlite_bind_text64(dqlite_stmt *stmt,
+				  int index,
+				  const char *text,
+				  uint64_t text_len,
+				  void (*dealloc)(void *),
+				  unsigned char encoding);
 
 /**
  * Retrieve values from a table row associated with a prepared statement.
@@ -284,12 +293,13 @@ int dqlite_bind_text64(dqlite_stmt *stmt,
  *
  * These functions are analogous to the sqlite3_column family of functions.
  */
-const void *dqlite_column_blob(dqlite_stmt *stmt, int index);
-double dqlite_column_double(dqlite_stmt *stmt, int index);
-int64_t dqlite_column_int64(dqlite_stmt *stmt, int index);
-const unsigned char *dqlite_column_text(dqlite_stmt *stmt, int index);
-int dqlite_column_bytes(dqlite_stmt *stmt, int index);
-int dqlite_column_type(dqlite_stmt *stmt, int index);
+DQLITE_API const void *dqlite_column_blob(dqlite_stmt *stmt, int index);
+DQLITE_API double dqlite_column_double(dqlite_stmt *stmt, int index);
+DQLITE_API int64_t dqlite_column_int64(dqlite_stmt *stmt, int index);
+DQLITE_API const unsigned char *dqlite_column_text(dqlite_stmt *stmt,
+						   int index);
+DQLITE_API int dqlite_column_bytes(dqlite_stmt *stmt, int index);
+DQLITE_API int dqlite_column_type(dqlite_stmt *stmt, int index);
 
 /* TODO: currently we have #include <sqlite.h> at the top of this file,
  * to support the dqlite_vfs functions below. Once those functions are
@@ -350,10 +360,10 @@ typedef struct dqlite_node dqlite_node;
  * set to NULL, but dqlite_node_destroy() and dqlite_node_errmsg() will handle
  * this gracefully.)
  */
-int dqlite_node_create(dqlite_node_id id,
-		       const char *address,
-		       const char *data_dir,
-		       dqlite_node **n);
+DQLITE_API int dqlite_node_create(dqlite_node_id id,
+				  const char *address,
+				  const char *data_dir,
+				  dqlite_node **n);
 
 /**
  * Destroy a dqlite node object.
@@ -362,7 +372,7 @@ int dqlite_node_create(dqlite_node_id id,
  * dqlite_node_start() was successfully invoked, then dqlite_node_stop() must be
  * invoked before destroying the node.
  */
-void dqlite_node_destroy(dqlite_node *n);
+DQLITE_API void dqlite_node_destroy(dqlite_node *n);
 
 /**
  * Instruct the dqlite node to bind a network address when starting, and
@@ -392,13 +402,14 @@ void dqlite_node_destroy(dqlite_node *n);
  *
  * This function must be called before calling dqlite_node_start().
  */
-int dqlite_node_set_bind_address(dqlite_node *n, const char *address);
+DQLITE_API int dqlite_node_set_bind_address(dqlite_node *n,
+					    const char *address);
 
 /**
  * Get the network address that the dqlite node is using to accept incoming
  * connections.
  */
-const char *dqlite_node_get_bind_address(dqlite_node *n);
+DQLITE_API const char *dqlite_node_get_bind_address(dqlite_node *n);
 
 /**
  * Set a custom connect function.
@@ -412,11 +423,11 @@ const char *dqlite_node_get_bind_address(dqlite_node *n);
  *
  * This function must be called before calling dqlite_node_start().
  */
-int dqlite_node_set_connect_func(dqlite_node *n,
-				 int (*f)(void *arg,
-					  const char *address,
-					  int *fd),
-				 void *arg);
+DQLITE_API int dqlite_node_set_connect_func(dqlite_node *n,
+					    int (*f)(void *arg,
+						     const char *address,
+						     int *fd),
+					    void *arg);
 
 /**
  * DEPRECATED - USE `dqlite_node_set_network_latency_ms`
@@ -429,8 +440,8 @@ int dqlite_node_set_connect_func(dqlite_node *n,
  *
  * This function must be called before calling dqlite_node_start().
  */
-int dqlite_node_set_network_latency(dqlite_node *n,
-				    unsigned long long nanoseconds);
+DQLITE_API int dqlite_node_set_network_latency(dqlite_node *n,
+					       unsigned long long nanoseconds);
 
 /**
  * Set the average one-way network latency, expressed in milliseconds.
@@ -444,7 +455,8 @@ int dqlite_node_set_network_latency(dqlite_node *n,
  *
  * Latency should not be 0 or larger than 3600000 milliseconds.
  */
-int dqlite_node_set_network_latency_ms(dqlite_node *t, unsigned milliseconds);
+DQLITE_API int dqlite_node_set_network_latency_ms(dqlite_node *t,
+						  unsigned milliseconds);
 
 /**
  * Set the failure domain associated with this node.
@@ -452,7 +464,8 @@ int dqlite_node_set_network_latency_ms(dqlite_node *t, unsigned milliseconds);
  * This is effectively a tag applied to the node and that can be inspected later
  * with the "Describe node" client request.
  */
-int dqlite_node_set_failure_domain(dqlite_node *n, unsigned long long code);
+DQLITE_API int dqlite_node_set_failure_domain(dqlite_node *n,
+					      unsigned long long code);
 
 /**
  * Set the snapshot parameters for this node.
@@ -471,9 +484,9 @@ int dqlite_node_set_failure_domain(dqlite_node *n, unsigned long long code);
  *
  * This function must be called before calling dqlite_node_start().
  */
-int dqlite_node_set_snapshot_params(dqlite_node *n,
-				    unsigned snapshot_threshold,
-				    unsigned snapshot_trailing);
+DQLITE_API int dqlite_node_set_snapshot_params(dqlite_node *n,
+					       unsigned snapshot_threshold,
+					       unsigned snapshot_trailing);
 
 /**
  * Set the block size used for performing disk IO when writing raft log segments
@@ -481,7 +494,7 @@ int dqlite_node_set_snapshot_params(dqlite_node *n,
  *
  * This function must be called before calling dqlite_node_start().
  */
-int dqlite_node_set_block_size(dqlite_node *n, size_t size);
+DQLITE_API int dqlite_node_set_block_size(dqlite_node *n, size_t size);
 
 /**
  * WARNING: This is an experimental API.
@@ -491,7 +504,7 @@ int dqlite_node_set_block_size(dqlite_node *n, size_t size);
  * keeping the WAL in memory. Has to be called after `dqlite_node_create` and
  * before `dqlite_node_start`.
  */
-int dqlite_node_enable_disk_mode(dqlite_node *n);
+DQLITE_API int dqlite_node_enable_disk_mode(dqlite_node *n);
 
 /**
  * Set the target number of voting nodes for the cluster.
@@ -502,7 +515,7 @@ int dqlite_node_enable_disk_mode(dqlite_node *n);
  *
  * The default target is 3 voters.
  */
-int dqlite_node_set_target_voters(dqlite_node *n, int voters);
+DQLITE_API int dqlite_node_set_target_voters(dqlite_node *n, int voters);
 
 /**
  * Set the target number of standby nodes for the cluster.
@@ -513,7 +526,7 @@ int dqlite_node_set_target_voters(dqlite_node *n, int voters);
  *
  * The default target is 0 standbys.
  */
-int dqlite_node_set_target_standbys(dqlite_node *n, int standbys);
+DQLITE_API int dqlite_node_set_target_standbys(dqlite_node *n, int standbys);
 
 /**
  * Enable automatic role management on the server side for this node.
@@ -525,7 +538,7 @@ int dqlite_node_set_target_standbys(dqlite_node *n, int standbys);
  *
  * By default, no automatic role management is performed.
  */
-int dqlite_node_enable_role_management(dqlite_node *n);
+DQLITE_API int dqlite_node_enable_role_management(dqlite_node *n);
 
 /**
  * Start a dqlite node.
@@ -534,7 +547,7 @@ int dqlite_node_enable_role_management(dqlite_node *n);
  * this function returns successfully, the dqlite node is ready to accept new
  * connections.
  */
-int dqlite_node_start(dqlite_node *n);
+DQLITE_API int dqlite_node_start(dqlite_node *n);
 
 /**
  * Attempt to hand over this node's privileges to other nodes in preparation
@@ -550,7 +563,7 @@ int dqlite_node_start(dqlite_node *n);
  * after this function returns (whether or not it succeeded), or include their
  * own graceful shutdown logic before dqlite_node_stop.
  */
-int dqlite_node_handover(dqlite_node *n);
+DQLITE_API int dqlite_node_handover(dqlite_node *n);
 
 /**
  * Stop a dqlite node.
@@ -559,7 +572,7 @@ int dqlite_node_handover(dqlite_node *n);
  * will not accept any new client connections. Once inflight requests are
  * completed, open client connections get closed and then the thread exits.
  */
-int dqlite_node_stop(dqlite_node *n);
+DQLITE_API int dqlite_node_stop(dqlite_node *n);
 
 struct dqlite_node_info
 {
@@ -607,7 +620,9 @@ typedef struct dqlite_node_info_ext dqlite_node_info_ext;
  *
  * 6. Restart all nodes.
  */
-int dqlite_node_recover(dqlite_node *n, dqlite_node_info infos[], int n_info);
+DQLITE_API int dqlite_node_recover(dqlite_node *n,
+				   dqlite_node_info infos[],
+				   int n_info);
 
 /**
  * Force recovering a dqlite node which is part of a cluster whose majority of
@@ -634,19 +649,19 @@ int dqlite_node_recover(dqlite_node *n, dqlite_node_info infos[], int n_info);
  *
  * 6. Restart all nodes.
  */
-int dqlite_node_recover_ext(dqlite_node *n,
-			    dqlite_node_info_ext infos[],
-			    int n_info);
+DQLITE_API int dqlite_node_recover_ext(dqlite_node *n,
+				       dqlite_node_info_ext infos[],
+				       int n_info);
 
 /**
  * Return a human-readable description of the last error occurred.
  */
-const char *dqlite_node_errmsg(dqlite_node *n);
+DQLITE_API const char *dqlite_node_errmsg(dqlite_node *n);
 
 /**
  * Generate a unique ID for the given address.
  */
-dqlite_node_id dqlite_generate_node_id(const char *address);
+DQLITE_API dqlite_node_id dqlite_generate_node_id(const char *address);
 
 /**
  * This function is DEPRECATED and will be removed in a future major release.
@@ -654,9 +669,9 @@ dqlite_node_id dqlite_generate_node_id(const char *address);
  * Initialize the given SQLite VFS interface object with dqlite's custom
  * implementation, which can be used for replication.
  */
-int dqlite_vfs_init(sqlite3_vfs *vfs, const char *name);
+DQLITE_API int dqlite_vfs_init(sqlite3_vfs *vfs, const char *name);
 
-int dqlite_vfs_enable_disk(sqlite3_vfs *vfs);
+DQLITE_API int dqlite_vfs_enable_disk(sqlite3_vfs *vfs);
 
 /**
  * This function is DEPRECATED and will be removed in a future major release.
@@ -664,7 +679,7 @@ int dqlite_vfs_enable_disk(sqlite3_vfs *vfs);
  * Release all memory used internally by a SQLite VFS object that was
  * initialized using @qlite_vfs_init.
  */
-void dqlite_vfs_close(sqlite3_vfs *vfs);
+DQLITE_API void dqlite_vfs_close(sqlite3_vfs *vfs);
 
 /**
  * This type is DEPRECATED and will be removed in a future major release.
@@ -689,10 +704,10 @@ typedef struct dqlite_vfs_frame dqlite_vfs_frame;
  * quorum is reached. If a quorum is not reached within a given time, then
  * dqlite_vfs_abort() can be used to abort and release the WAL write lock.
  */
-int dqlite_vfs_poll(sqlite3_vfs *vfs,
-		    const char *filename,
-		    dqlite_vfs_frame **frames,
-		    unsigned *n);
+DQLITE_API int dqlite_vfs_poll(sqlite3_vfs *vfs,
+			       const char *filename,
+			       dqlite_vfs_frame **frames,
+			       unsigned *n);
 
 /**
  * This function is DEPRECATED and will be removed in a future major release.
@@ -705,11 +720,11 @@ int dqlite_vfs_poll(sqlite3_vfs *vfs,
  * passing the data to this routine directly without any copy or futher
  * allocation, possibly except for integer encoding/decoding.
  */
-int dqlite_vfs_apply(sqlite3_vfs *vfs,
-		     const char *filename,
-		     unsigned n,
-		     unsigned long *page_numbers,
-		     void *frames);
+DQLITE_API int dqlite_vfs_apply(sqlite3_vfs *vfs,
+				const char *filename,
+				unsigned n,
+				unsigned long *page_numbers,
+				void *frames);
 
 /**
  * This function is DEPRECATED and will be removed in a future major release.
@@ -720,17 +735,17 @@ int dqlite_vfs_apply(sqlite3_vfs *vfs,
  * This should be called if the transaction could not be safely replicated. In
  * particular it will release the write lock acquired by dqlite_vfs_poll().
  */
-int dqlite_vfs_abort(sqlite3_vfs *vfs, const char *filename);
+DQLITE_API int dqlite_vfs_abort(sqlite3_vfs *vfs, const char *filename);
 
 /**
  * This function is DEPRECATED and will be removed in a future major release.
  *
  * Return a snapshot of the main database file and of the WAL file.
  */
-int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
-			const char *filename,
-			void **data,
-			size_t *n);
+DQLITE_API int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
+				   const char *filename,
+				   void **data,
+				   size_t *n);
 
 /**
  * This type is DEPRECATED and will be removed in a future major release.
@@ -750,45 +765,46 @@ struct dqlite_buffer
  * Expects a bufs array of size x + 1, where x is obtained from
  * `dqlite_vfs_num_pages`.
  */
-int dqlite_vfs_shallow_snapshot(sqlite3_vfs *vfs,
-				const char *filename,
-				struct dqlite_buffer bufs[],
-				unsigned n);
+DQLITE_API int dqlite_vfs_shallow_snapshot(sqlite3_vfs *vfs,
+					   const char *filename,
+					   struct dqlite_buffer bufs[],
+					   unsigned n);
 
 /**
  * This function is DEPRECATED and will be removed in a future major release.
  */
-int dqlite_vfs_snapshot_disk(sqlite3_vfs *vfs,
-			     const char *filename,
-			     struct dqlite_buffer bufs[],
-			     unsigned n);
+DQLITE_API int dqlite_vfs_snapshot_disk(sqlite3_vfs *vfs,
+					const char *filename,
+					struct dqlite_buffer bufs[],
+					unsigned n);
 
 /**
  * This function is DEPRECATED and will be removed in a future major release.
  *
  * Return the number of database pages (excluding WAL).
  */
-int dqlite_vfs_num_pages(sqlite3_vfs *vfs, const char *filename, unsigned *n);
+DQLITE_API int dqlite_vfs_num_pages(sqlite3_vfs *vfs,
+				    const char *filename,
+				    unsigned *n);
 
 /**
  * This function is DEPRECATED and will be removed in a future major release.
  *
  * Restore a snapshot of the main database file and of the WAL file.
  */
-int dqlite_vfs_restore(sqlite3_vfs *vfs,
-		       const char *filename,
-		       const void *data,
-		       size_t n);
+DQLITE_API int dqlite_vfs_restore(sqlite3_vfs *vfs,
+				  const char *filename,
+				  const void *data,
+				  size_t n);
 
 /**
  * This function is DEPRECATED and will be removed in a future major release.
  *
  * Restore a snapshot of the main database file and of the WAL file.
  */
-int dqlite_vfs_restore_disk(sqlite3_vfs *vfs,
-			    const char *filename,
-			    const void *data,
-			    size_t main_size,
-			    size_t wal_size);
-
+DQLITE_API int dqlite_vfs_restore_disk(sqlite3_vfs *vfs,
+				       const char *filename,
+				       const void *data,
+				       size_t main_size,
+				       size_t wal_size);
 #endif /* DQLITE_H */
