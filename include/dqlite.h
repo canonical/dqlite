@@ -18,7 +18,288 @@
 int dqlite_version_number(void);
 
 /**
+ * Hold the value of a dqlite node ID. Guaranteed to be at least 64-bit long.
+ */
+typedef unsigned long long dqlite_node_id;
+
+typedef struct dqlite_server dqlite_server;
+typedef struct dqlite dqlite;
+typedef struct dqlite_stmt dqlite_stmt;
+
+/**
+ * Signature of a custom callback used to establish network connections
+ * to dqlite servers.
+ *
+ * @arg is a user data parameter, copied from the third argument of
+ * dqlite_server_set_connect_func. @addr is a (borrowed) abstract address
+ * string, as passed to dqlite_server_create or dqlite_server_set_peer. @fd is
+ * an address where a socket representing the connection should be stored. The
+ * callback should return zero if a connection was established successfully or
+ * nonzero if the attempt failed.
+ */
+typedef int (*dqlite_connect_func)(void *arg, const char *addr, int *fd);
+
+/* The following dqlite_server functions return zero on success or nonzero on
+ * error. More specific error codes may be specified in the future. */
+
+/**
+ * Start configuring a dqlite server.
+ *
+ * The server will not start running until dqlite_server_start is called. @path
+ * is the path to a directory where the server (and attached client) will store
+ * its persistent state; the directory must exist. A pointer to the new server
+ * object is stored in @server on success.
+ *
+ * No reference to @path is kept after this function returns.
+ */
+int dqlite_server_create(const char *path, dqlite_server **server);
+
+/**
+ * Set the abstract address of this server.
+ *
+ * This function must be called when the server starts for the first time, and
+ * is a no-op when the server is restarting. The abstract address is recorded in
+ * the Raft log and passed to the connect function on each server (see
+ * dqlite_server_set_connect_func). The server will also bind to this address to
+ * listen for incoming connections from clients and other servers, unless
+ * dqlite_server_set_bind_address is used. For the address syntax accepted by
+ * the default connect function (and for binding/listening), see
+ * dqlite_server_set_bind_address.
+ */
+int dqlite_server_set_address(dqlite_server *server, const char *address);
+
+/**
+ * Indicate that this server will be the "bootstrap" server for its cluster.
+ *
+ * The bootstrap server should be the first to start up. It automatically
+ * becomes the leader in the first term, and is responsible for adding all other
+ * servers to the cluster configuration. There must be exactly one bootstrap
+ * server in each cluster. After the first startup, the bootstrap server is no
+ * longer special and this function is a no-op.
+ */
+int dqlite_server_set_bootstrap(dqlite_server *server);
+
+/**
+ * Declare the address of an existing server in the cluster, which should
+ * already be running.
+ *
+ * This function can be called multiple times with different addresses. The
+ * server addresses declared with this function will not be used unless @server
+ * is starting up for the first time; after the first startup, the list of
+ * servers stored on disk will be used instead. (It is harmless to call this
+ * function unconditionally.)
+ */
+int dqlite_server_set_peer_address(dqlite_server *server, const char *addr);
+
+/**
+ * Configure @server to listen on the address @addr for incoming connections
+ * (from clients and other servers).
+ *
+ * If no bind address is configured with this function, the abstract address
+ * passed to dqlite_server_create will be used. The point of this function is to
+ * support decoupling the abstract address from the networking implementation
+ * (for example, if a proxy is going to be used).
+ *
+ * @addr must use one of the following formats:
+ *
+ * 1. "<HOST>"
+ * 2. "<HOST>:<PORT>"
+ * 3. "@<PATH>"
+ *
+ * Where <HOST> is a numeric IPv4/IPv6 address, <PORT> is a port number, and
+ * <PATH> is an abstract Unix socket path. The port number defaults to 8080 if
+ * not specified. In the second form, if <HOST> is an IPv6 address, it must be
+ * enclosed in square brackets "[]". In the third form, if <PATH> is empty, the
+ * implementation will automatically select an available abstract Unix socket
+ * path.
+ *
+ * If an abstract Unix socket is used, the server will accept only
+ * connections originating from the same process.
+ */
+int dqlite_server_set_bind_address(dqlite_server *server, const char *addr);
+
+/**
+ * Configure the function that this server will use to connect to other servers.
+ *
+ * The same function will be used by the server's attached client to establish
+ * connections to all servers in the cluster. @arg is a user data parameter that
+ * will be passed to all invocations of the connect function.
+ */
+int dqlite_server_set_connect_func(dqlite_server *server,
+				   dqlite_connect_func f,
+				   void *arg);
+
+/**
+ * Start running the server.
+ *
+ * Once this function returns successfully, the server will be ready to accept
+ * client requests using the functions below.
+ */
+int dqlite_server_start(dqlite_server *server);
+
+/**
+ * Hand over the server's privileges to other servers.
+ *
+ * This is intended to be called before dqlite_server_stop. The server will try
+ * to surrender leadership and voting rights to other nodes in the cluster, if
+ * applicable. This avoids some disruptions that can result when a privileged
+ * server stops suddenly.
+ */
+int dqlite_server_handover(dqlite_server *server);
+
+/**
+ * Stop the server.
+ *
+ * The server will stop processing requests from client or other servers. To
+ * smooth over some possible disruptions to the cluster, call
+ * dqlite_server_handover before this function. After this function returns
+ * (successfully or not), you should call dqlite_server_destroy to free
+ * resources owned by the server.
+ */
+int dqlite_server_stop(dqlite_server *server);
+
+/**
+ * Free resources owned by the server.
+ *
+ * This should be called after dqlite_server_stop.
+ */
+void dqlite_server_destroy(dqlite_server *server);
+
+/* The following functions (up to but not including dqlite_node_create) mimic
+ * the core of the sqlite3.h API and use SQLite result codes. dqlite tries to
+ * return result codes that match what SQLite would return in the same
+ * situation, but in some cases will return the less specific SQLITE_ERROR
+ * instead. Certain dqlite-specific error conditions have their own codes that
+ * are compatible with the SQLite set: */
+
+#define SQLITE_IOERR_NOT_LEADER (SQLITE_IOERR | (40 << 8))
+#define SQLITE_IOERR_LEADERSHIP_LOST (SQLITE_IOERR | (41 << 8))
+
+/* When some version of dqlite returns SQLITE_ERROR under certain
+ * circumstances, the developers reserve the right to switch to a more specific
+ * error code in future releases without announcing a breaking change. */
+
+/**
+ * Open a database connection on the dqlite cluster.
+ *
+ * This request will be transparently forwarded to the cluster leader as needed.
+ *
+ * This is the analogue of sqlite3_open. @name is the name of the database
+ * to open, which will be created if it does not exist. All servers in the
+ * cluster share a "namespace" for databases.
+ */
+int dqlite_open(dqlite_server *server, const char *name, dqlite **db);
+
+/**
+ * Create a prepared statement to be executed on the cluster.
+ *
+ * This is the analogue of sqlite3_prepare_v2.
+ */
+int dqlite_prepare(dqlite *db,
+		   const char *sql,
+		   int sql_len,
+		   dqlite_stmt **stmt,
+		   const char **tail);
+
+/**
+ * Execute a prepared statement for one "step".
+ *
+ * This is the analogue of sqlite3_step.
+ */
+int dqlite_step(dqlite_stmt *stmt);
+
+/**
+ * Restore a prepared statement to the state preceding any calls to dqlite_step.
+ *
+ * This is the analogue of sqlite3_reset. It can be called on a prepared
+ * statement at any point in its lifecycle.
+ */
+int dqlite_reset(dqlite_stmt *stmt);
+
+/**
+ * Unbind all parameters from a prepared statement.
+ *
+ * This is a purely local operation that does not involve communication with any
+ * server. It it the analogue of sqlite3_clear_bindings.
+ */
+int dqlite_clear_bindings(dqlite_stmt *stmt);
+
+/**
+ * Release all resources associated with a prepared statement.
+ *
+ * This ends the statement's lifecycle, rendering it invalid for further use. It
+ * is the analogue of sqlite3_finalize.
+ */
+int dqlite_finalize(dqlite_stmt *stmt);
+
+/**
+ * Prepare a SQL string, run it to completion, and finalize it.
+ *
+ * This is the analogue of sqlite3_exec.
+ */
+int dqlite_exec(dqlite *db,
+		const char *sql,
+		int (*cb)(void *, int, char **, char **),
+		void *cb_data,
+		char **errmsg);
+
+/**
+ * Close a database after all associated prepared statements have been
+ * finalized.
+ *
+ * This is analogous to sqlite3_close (note, not sqlite3_close_v2). In
+ * particular, it will fail with SQLITE_BUSY if some dqlite_stmt objects
+ * associated with this database have not yet been finalized.
+ */
+int dqlite_close(dqlite *db);
+
+/**
+ * Bind parameters to a prepared statement.
+ *
+ * Parameter binding is a purely local operation, involving no communication
+ * with any server.
+ *
+ * These functions are analogous to the sqlite3_bind family of functions.
+ */
+int dqlite_bind_blob64(dqlite_stmt *stmt,
+		       int index,
+		       const void *blob,
+		       uint64_t blob_len,
+		       void (*dealloc)(void *));
+int dqlite_bind_double(dqlite_stmt *stmt, int index, double val);
+int dqlite_bind_int64(dqlite_stmt *stmt, int index, int64_t val);
+int dqlite_bind_null(dqlite_stmt *stmt, int index);
+int dqlite_bind_text64(dqlite_stmt *stmt,
+		       int index,
+		       const char *text,
+		       uint64_t text_len,
+		       void (*dealloc)(void *),
+		       unsigned char encoding);
+
+/**
+ * Retrieve values from a table row associated with a prepared statement.
+ *
+ * Column retrieval is a purely local operation, involving no communication with
+ * any server.
+ *
+ * These functions are analogous to the sqlite3_column family of functions.
+ */
+const void *dqlite_column_blob(dqlite_stmt *stmt, int index);
+double dqlite_column_double(dqlite_stmt *stmt, int index);
+int64_t dqlite_column_int64(dqlite_stmt *stmt, int index);
+const unsigned char *dqlite_column_text(dqlite_stmt *stmt, int index);
+int dqlite_column_bytes(dqlite_stmt *stmt, int index);
+int dqlite_column_type(dqlite_stmt *stmt, int index);
+
+/* TODO: currently we have #include <sqlite.h> at the top of this file,
+ * to support the dqlite_vfs functions below. Once those functions are
+ * removed, we should also remove the #include and just copy the definitions
+ * of the SQLite result codes here. */
+
+/**
  * Error codes.
+ *
+ * These are used only with the dqlite_node family of functions.
  */
 enum {
 	DQLITE_ERROR = 1, /* Generic error */
@@ -34,11 +315,6 @@ enum {
  * nodes.
  */
 typedef struct dqlite_node dqlite_node;
-
-/**
- * Hold the value of a dqlite node ID. Guaranteed to be at least 64-bit long.
- */
-typedef unsigned long long dqlite_node_id;
 
 /**
  * Create a new dqlite node object.
@@ -373,6 +649,8 @@ const char *dqlite_node_errmsg(dqlite_node *n);
 dqlite_node_id dqlite_generate_node_id(const char *address);
 
 /**
+ * This function is DEPRECATED and will be removed in a future major release.
+ *
  * Initialize the given SQLite VFS interface object with dqlite's custom
  * implementation, which can be used for replication.
  */
@@ -381,12 +659,16 @@ int dqlite_vfs_init(sqlite3_vfs *vfs, const char *name);
 int dqlite_vfs_enable_disk(sqlite3_vfs *vfs);
 
 /**
+ * This function is DEPRECATED and will be removed in a future major release.
+ *
  * Release all memory used internally by a SQLite VFS object that was
  * initialized using @qlite_vfs_init.
  */
 void dqlite_vfs_close(sqlite3_vfs *vfs);
 
 /**
+ * This type is DEPRECATED and will be removed in a future major release.
+ *
  * A single WAL frame to be replicated.
  */
 struct dqlite_vfs_frame
@@ -397,6 +679,8 @@ struct dqlite_vfs_frame
 typedef struct dqlite_vfs_frame dqlite_vfs_frame;
 
 /**
+ * This function is DEPRECATED and will be removed in a future major release.
+ *
  * Check if the last call to sqlite3_step() has triggered a write transaction on
  * the database with the given filename. In that case acquire a WAL write lock
  * to prevent further write transactions, and return all new WAL frames
@@ -411,6 +695,8 @@ int dqlite_vfs_poll(sqlite3_vfs *vfs,
 		    unsigned *n);
 
 /**
+ * This function is DEPRECATED and will be removed in a future major release.
+ *
  * Add to the WAL all frames that were generated by a write transaction
  * triggered by sqlite3_step() and that were obtained via dqlite_vfs_poll().
  *
@@ -426,6 +712,8 @@ int dqlite_vfs_apply(sqlite3_vfs *vfs,
 		     void *frames);
 
 /**
+ * This function is DEPRECATED and will be removed in a future major release.
+ *
  * Abort a pending write transaction that was triggered by sqlite3_step() and
  * whose frames were obtained via dqlite_vfs_poll().
  *
@@ -435,6 +723,8 @@ int dqlite_vfs_apply(sqlite3_vfs *vfs,
 int dqlite_vfs_abort(sqlite3_vfs *vfs, const char *filename);
 
 /**
+ * This function is DEPRECATED and will be removed in a future major release.
+ *
  * Return a snapshot of the main database file and of the WAL file.
  */
 int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
@@ -443,6 +733,8 @@ int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
 			size_t *n);
 
 /**
+ * This type is DEPRECATED and will be removed in a future major release.
+ *
  * A data buffer.
  */
 struct dqlite_buffer
@@ -452,6 +744,8 @@ struct dqlite_buffer
 };
 
 /**
+ * This function is DEPRECATED and will be removed in a future major release.
+ *
  * Return a shallow snapshot of the main database file and of the WAL file.
  * Expects a bufs array of size x + 1, where x is obtained from
  * `dqlite_vfs_num_pages`.
@@ -461,17 +755,24 @@ int dqlite_vfs_shallow_snapshot(sqlite3_vfs *vfs,
 				struct dqlite_buffer bufs[],
 				unsigned n);
 
+/**
+ * This function is DEPRECATED and will be removed in a future major release.
+ */
 int dqlite_vfs_snapshot_disk(sqlite3_vfs *vfs,
 			     const char *filename,
 			     struct dqlite_buffer bufs[],
 			     unsigned n);
 
 /**
+ * This function is DEPRECATED and will be removed in a future major release.
+ *
  * Return the number of database pages (excluding WAL).
  */
 int dqlite_vfs_num_pages(sqlite3_vfs *vfs, const char *filename, unsigned *n);
 
 /**
+ * This function is DEPRECATED and will be removed in a future major release.
+ *
  * Restore a snapshot of the main database file and of the WAL file.
  */
 int dqlite_vfs_restore(sqlite3_vfs *vfs,
@@ -480,6 +781,8 @@ int dqlite_vfs_restore(sqlite3_vfs *vfs,
 		       size_t n);
 
 /**
+ * This function is DEPRECATED and will be removed in a future major release.
+ *
  * Restore a snapshot of the main database file and of the WAL file.
  */
 int dqlite_vfs_restore_disk(sqlite3_vfs *vfs,
@@ -487,4 +790,5 @@ int dqlite_vfs_restore_disk(sqlite3_vfs *vfs,
 			    const void *data,
 			    size_t main_size,
 			    size_t wal_size);
+
 #endif /* DQLITE_H */
