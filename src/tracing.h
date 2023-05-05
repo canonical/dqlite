@@ -8,11 +8,13 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "../include/dqlite.h"
+
 #include "utils.h"
 
 /* This global variable is only written once at startup and is only read
  * from there on. Users should not manipulate the value of this variable. */
-extern bool _dqliteTracingEnabled;
+DQLITE_VISIBLE_TO_TESTS extern bool _dqliteTracingEnabled;
 
 #define tracef(...)                                                         \
 	do {                                                                \
@@ -29,6 +31,6 @@ extern bool _dqliteTracingEnabled;
 	} while (0)
 
 /* Enable tracing if the appropriate env variable is set, or disable tracing. */
-void dqliteTracingMaybeEnable(bool enabled);
+DQLITE_VISIBLE_TO_TESTS void dqliteTracingMaybeEnable(bool enabled);
 
 #endif /* DQLITE_TRACING_H_ */

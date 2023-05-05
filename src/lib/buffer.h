@@ -14,6 +14,8 @@
 
 #include <unistd.h>
 
+#include "../../include/dqlite.h"
+
 struct buffer
 {
 	void *data;         /* Allocated buffer */
@@ -25,12 +27,12 @@ struct buffer
 /**
  * Initialize the buffer. It will initially have 1 memory  page.
  */
-int buffer__init(struct buffer *b);
+DQLITE_VISIBLE_TO_TESTS int buffer__init(struct buffer *b);
 
 /**
  * Release the memory of the buffer.
  */
-void buffer__close(struct buffer *b);
+DQLITE_VISIBLE_TO_TESTS void buffer__close(struct buffer *b);
 
 /**
  * Return a write cursor pointing to the next byte to write, ensuring that the
@@ -38,21 +40,21 @@ void buffer__close(struct buffer *b);
  *
  * Return #NULL in case of out-of-memory errors.
  */
-void *buffer__advance(struct buffer *b, size_t size);
+DQLITE_VISIBLE_TO_TESTS void *buffer__advance(struct buffer *b, size_t size);
 
 /**
  * Return the offset of next byte to write.
  */
-size_t buffer__offset(struct buffer *b);
+DQLITE_VISIBLE_TO_TESTS size_t buffer__offset(struct buffer *b);
 
 /**
  * Return a write cursor pointing to the @offset'th byte of the buffer.
  */
-void *buffer__cursor(struct buffer *b, size_t offset);
+DQLITE_VISIBLE_TO_TESTS void *buffer__cursor(struct buffer *b, size_t offset);
 
 /**
  * Reset the write offset of the buffer.
  */
-void buffer__reset(struct buffer *b);
+DQLITE_VISIBLE_TO_TESTS void buffer__reset(struct buffer *b);
 
 #endif /* LIB_BUFFER_H_ */
