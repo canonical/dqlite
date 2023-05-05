@@ -322,7 +322,7 @@ static void vfsDatabaseDestroy(struct vfsDatabase *d)
  * and incorrect behavior.
  * ==END COPY==
  */
-unsigned dq_sqlite_pending_byte = 0x40000000;
+DQLITE_VISIBLE_TO_TESTS unsigned dq_sqlite_pending_byte = 0x40000000;
 
 /* Get a page from the given database, possibly creating a new one. */
 static int vfsDatabaseGetPage(struct vfsDatabase *d,

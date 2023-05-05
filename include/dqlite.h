@@ -9,6 +9,9 @@
 #define DQLITE_API __attribute__((visibility("default")))
 #endif
 
+/* XXX */
+#define DQLITE_VISIBLE_TO_TESTS DQLITE_API
+
 /**
  * Version.
  */
