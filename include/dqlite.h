@@ -57,6 +57,9 @@ typedef int (*dqlite_connect_func)(void *arg, const char *addr, int *fd);
  * its persistent state; the directory must exist. A pointer to the new server
  * object is stored in @server on success.
  *
+ * Whether or not this function succeeds, you should call dqlite_server_destroy
+ * to release resources owned by the server object.
+ *
  * No reference to @path is kept after this function returns.
  */
 DQLITE_API int dqlite_server_create(const char *path, dqlite_server **server);
@@ -171,7 +174,10 @@ DQLITE_API int dqlite_server_stop(dqlite_server *server);
 /**
  * Free resources owned by the server.
  *
- * This should be called after dqlite_server_stop.
+ * You should always call this function to finalize a server created with
+ * dqlite_server_create, whether or not that function returned successfully.
+ * If the server has been successfully started with dqlite_server_start,
+ * then you must stop it with dqlite_server_stop before calling this function.
  */
 DQLITE_API void dqlite_server_destroy(dqlite_server *server);
 
