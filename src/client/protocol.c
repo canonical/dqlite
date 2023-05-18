@@ -329,11 +329,18 @@ int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id)
 void clientClose(struct client_proto *c)
 {
 	tracef("client close");
+	if (c->fd == -1) {
+		return;
+	}
 	close(c->fd);
+	c->fd = -1;
 	buffer__close(&c->write);
 	buffer__close(&c->read);
 	free(c->db_name);
+	c->db_name = NULL;
 	free(c->errmsg);
+	c->errmsg = NULL;
+	c->server_id = 0;
 }
 
 int clientSendHandshake(struct client_proto *c, struct client_context *context)
