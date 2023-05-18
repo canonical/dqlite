@@ -305,11 +305,12 @@ int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id)
 {
 	int rv;
 
-	c->server_id = server_id;
 	rv = c->connect(c->connect_arg, addr, &c->fd);
 	if (rv != 0) {
+		c->fd = -1;
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
+	c->server_id = server_id;
 
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
