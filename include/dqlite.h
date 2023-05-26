@@ -151,6 +151,13 @@ DQLITE_API int dqlite_server_set_connect_func(dqlite_server *server,
 DQLITE_API int dqlite_server_start(dqlite_server *server);
 
 /**
+ * Get the ID of the server.
+ *
+ * This will return 0 (an invalid ID) if the server has not been started.
+ */
+DQLITE_API dqlite_node_id dqlite_server_get_id(dqlite_server *server);
+
+/**
  * Hand over the server's privileges to other servers.
  *
  * This is intended to be called before dqlite_server_stop. The server will try
