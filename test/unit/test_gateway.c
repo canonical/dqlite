@@ -1180,6 +1180,26 @@ TEST_CASE(exec, manyParams, NULL)
 	return MUNIT_OK;
 }
 
+TEST_CASE(exec, unexpectedRow, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+	EXEC("CREATE TABLE test (n INT)");
+	EXEC("INSERT INTO test (n) VALUES (1)");
+	PREPARE("SELECT n FROM test");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_ROW,
+		       "rows yielded when none expected for EXEC request");
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * query

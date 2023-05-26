@@ -429,6 +429,9 @@ static const char *error_message(sqlite3 *db, int rc)
 			return "disk I/O error";
 		case SQLITE_ABORT:
 			return "abort";
+		case SQLITE_ROW:
+			return "rows yielded when none expected for EXEC "
+			       "request";
 	}
 
 	return sqlite3_errmsg(db);
