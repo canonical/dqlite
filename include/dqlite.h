@@ -39,10 +39,10 @@ typedef struct dqlite_stmt dqlite_stmt;
  *
  * @arg is a user data parameter, copied from the third argument of
  * dqlite_server_set_connect_func. @addr is a (borrowed) abstract address
- * string, as passed to dqlite_server_create or dqlite_server_set_peer. @fd is
- * an address where a socket representing the connection should be stored. The
- * callback should return zero if a connection was established successfully or
- * nonzero if the attempt failed.
+ * string, as passed to dqlite_server_create or dqlite_server_set_auto_join. @fd
+ * is an address where a socket representing the connection should be stored.
+ * The callback should return zero if a connection was established successfully
+ * or nonzero if the attempt failed.
  */
 typedef int (*dqlite_connect_func)(void *arg, const char *addr, int *fd);
 
@@ -88,20 +88,20 @@ DQLITE_API int dqlite_server_set_address(dqlite_server *server,
  * server in each cluster. After the first startup, the bootstrap server is no
  * longer special and this function is a no-op.
  */
-DQLITE_API int dqlite_server_set_bootstrap(dqlite_server *server);
+DQLITE_API int dqlite_server_set_auto_bootstrap(dqlite_server *server);
 
 /**
- * Declare the address of an existing server in the cluster, which should
+ * Declare the addresses of existing servers in the cluster, which should
  * already be running.
  *
- * This function can be called multiple times with different addresses. The
- * server addresses declared with this function will not be used unless @server
- * is starting up for the first time; after the first startup, the list of
- * servers stored on disk will be used instead. (It is harmless to call this
+ * The server addresses declared with this function will not be used unless
+ * @server is starting up for the first time; after the first startup, the list
+ * of servers stored on disk will be used instead. (It is harmless to call this
  * function unconditionally.)
  */
-DQLITE_API int dqlite_server_set_peer_address(dqlite_server *server,
-					      const char *addr);
+DQLITE_API int dqlite_server_set_auto_join(dqlite_server *server,
+					   const char *const *addrs,
+					   unsigned n);
 
 /**
  * Configure @server to listen on the address @addr for incoming connections
