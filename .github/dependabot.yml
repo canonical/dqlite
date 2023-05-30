@@ -1,0 +1,9 @@
+# Set update schedule for GitHub Actions
+# for more info see: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/keeping-your-actions-up-to-date-with-dependabot
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/" # checks for workflow files in .github/workflows
+    schedule:
+      interval: "weekly"
