@@ -39,7 +39,7 @@ jobs:
           debuild -S -sa -us -uc -d
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: debian-${{ matrix.target }}
         if-no-files-found: error
