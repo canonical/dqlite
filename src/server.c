@@ -1579,6 +1579,7 @@ int dqlite_server_start(dqlite_server *server)
 {
 	int info_fd;
 	int store_fd;
+	off_t full_size;
 	ssize_t size;
 	char *buf;
 	ssize_t n_read;
@@ -1607,14 +1608,18 @@ int dqlite_server_start(dqlite_server *server)
 		goto err_after_open_info;
 	}
 
-	size = lseek(info_fd, 0, SEEK_END);
-	assert(size >= 0);
+	full_size = lseek(info_fd, 0, SEEK_END);
+	assert(full_size >= 0);
+	if (full_size > (off_t)SSIZE_MAX) {
+		goto err_after_open_store;
+	}
+	size = (ssize_t)full_size;
 	if (size > 0) {
 		server->is_new = false;
 		/* TODO mmap it? */
 		buf = mallocChecked((size_t)size);
 		n_read = pread(info_fd, buf, (size_t)size, 0);
-		if (n_read < (ssize_t)size) {
+		if (n_read < size) {
 			free(buf);
 			goto err_after_open_store;
 		}
@@ -1628,8 +1633,12 @@ int dqlite_server_start(dqlite_server *server)
 		}
 	}
 
-	size = lseek(store_fd, 0, SEEK_END);
-	assert(size >= 0);
+	full_size = lseek(store_fd, 0, SEEK_END);
+	assert(full_size >= 0);
+	if (full_size > (off_t)SSIZE_MAX) {
+		goto err_after_open_store;
+	}
+	size = (ssize_t)full_size;
 	if (size > 0) {
 		if (server->is_new) {
 			goto err_after_open_store;
@@ -1638,7 +1647,7 @@ int dqlite_server_start(dqlite_server *server)
 		/* TODO mmap it? */
 		buf = mallocChecked((size_t)size);
 		n_read = pread(store_fd, buf, (size_t)size, 0);
-		if (n_read < (ssize_t)size) {
+		if (n_read < size) {
 			free(buf);
 			goto err_after_open_store;
 		}
