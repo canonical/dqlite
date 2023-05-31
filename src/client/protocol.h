@@ -94,6 +94,13 @@ struct client_file
 	void *blob;
 };
 
+/* Checked allocation functions that abort the process on allocation failure. */
+
+void *mallocChecked(size_t n);
+void *callocChecked(size_t nmemb, size_t size);
+char *strdupChecked(const char *s);
+char *strndupCheck(const char *s, size_t n);
+
 /* Initialize a context whose deadline will fall after the given duration
  * in milliseconds. */
 DQLITE_VISIBLE_TO_TESTS void clientContextMillis(struct client_context *context,

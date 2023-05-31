@@ -6,6 +6,7 @@
 #include <time.h>
 
 #include "../include/dqlite.h"
+#include "client/protocol.h"
 #include "conn.h"
 #include "fsm.h"
 #include "id.h"
@@ -25,6 +26,8 @@
 #define BOOTSTRAP_ID 0x2dc171858c3155be
 
 #define DATABASE_DIR_FMT "%s/database"
+
+#define NODE_STORE_INFO_FORMAT_V1 "v1"
 
 int dqlite__init(struct dqlite_node *d,
 		 dqlite_node_id id,
@@ -993,4 +996,784 @@ dqlite_node_id dqlite_generate_node_id(const char *address)
 	n = (unsigned long long)(ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec);
 
 	return raft_digest(address, n);
+}
+
+static void pushNodeInfo(struct node_store_cache *cache,
+			 struct client_node_info info)
+{
+	unsigned cap = cache->cap;
+	struct client_node_info *new;
+
+	if (cache->len == cap) {
+		if (cap == 0) {
+			cap = 5;
+		}
+		cap *= 2;
+		new = callocChecked(cap, sizeof *new);
+		memcpy(new, cache->nodes, cache->len * sizeof *new);
+		free(cache->nodes);
+		cache->nodes = new;
+		cache->cap = cap;
+	}
+	cache->nodes[cache->len] = info;
+	cache->len += 1;
+}
+
+static void emptyCache(struct node_store_cache *cache)
+{
+	unsigned i;
+
+	for (i = 0; i < cache->len; i += 1) {
+		free(cache->nodes[i].addr);
+	}
+	free(cache->nodes);
+	cache->nodes = NULL;
+	cache->len = 0;
+	cache->cap = 0;
+}
+
+static const struct client_node_info *findNodeInCache(
+    const struct node_store_cache *cache,
+    uint64_t id)
+{
+	unsigned i;
+
+	for (i = 0; i < cache->len; i += 1) {
+		if (cache->nodes[i].id == id) {
+			return &cache->nodes[i];
+		}
+	}
+	return NULL;
+}
+
+/* Called at startup to parse the node store read from disk into an in-memory
+ * representation. */
+static int parseNodeStore(char *buf, size_t len, struct node_store_cache *cache)
+{
+	const char *p = buf;
+	const char *end = buf + len;
+	char *nl;
+	const char *version_str;
+	const char *addr;
+	const char *id_str;
+	const char *dig;
+	unsigned long long id;
+	const char *role_str;
+	int role;
+	struct client_node_info info;
+
+	version_str = p;
+	nl = memchr(p, '\n', (size_t)(end - version_str));
+	if (nl == NULL) {
+		return 1;
+	}
+	*nl = '\0';
+	p = nl + 1;
+	if (strcmp(version_str, NODE_STORE_INFO_FORMAT_V1) != 0) {
+		return 1;
+	}
+
+	while (p != end) {
+		addr = p;
+		nl = memchr(p, '\n', (size_t)(end - addr));
+		if (nl == NULL) {
+			return 1;
+		}
+		*nl = '\0';
+		p = nl + 1;
+
+		id_str = p;
+		nl = memchr(p, '\n', (size_t)(end - id_str));
+		if (nl == NULL) {
+			return 1;
+		}
+		*nl = '\0';
+		p = nl + 1;
+		/* Be stricter than strtoull: digits only! */
+		for (dig = id_str; dig != nl; dig += 1) {
+			if (*dig < '0' || *dig > '9') {
+				return 1;
+			}
+		}
+		errno = 0;
+		id = strtoull(id_str, NULL, 10);
+		if (errno != 0) {
+			return 1;
+		}
+
+		role_str = p;
+		nl = memchr(p, '\n', (size_t)(end - role_str));
+		if (nl == NULL) {
+			return 1;
+		}
+		*nl = '\0';
+		p = nl + 1;
+		if (strcmp(role_str, "spare") == 0) {
+			role = DQLITE_SPARE;
+		} else if (strcmp(role_str, "standby") == 0) {
+			role = DQLITE_STANDBY;
+		} else if (strcmp(role_str, "voter") == 0) {
+			role = DQLITE_VOTER;
+		} else {
+			return 1;
+		}
+
+		info.addr = strdupChecked(addr);
+		info.id = (uint64_t)id;
+		info.role = role;
+		pushNodeInfo(cache, info);
+	}
+	return 0;
+}
+
+/* Write the in-memory node store to disk. This discards errors, because:
+ *
+ * - we can't do much to handle any of these error cases
+ * - we don't want to stop everything when this encounters an error, since the
+ *   persisted node store is an optimization, so it's not disastrous for it to
+ *   be missing or out of date
+ * - there is already a "retry" mechanism in the form of the refreshTask thread,
+ *   which periodically tries to write the node store file
+ */
+static void writeNodeStore(struct dqlite_server *server)
+{
+	int store_fd;
+	FILE *f;
+	unsigned i;
+	ssize_t k;
+	const char *role_name;
+	int rv;
+
+	store_fd = openat(server->dir_fd, "node-store-tmp",
+			  O_RDWR | O_CREAT | O_TRUNC, 0644);
+	if (store_fd < 0) {
+		return;
+	}
+	f = fdopen(store_fd, "w+");
+	if (f == NULL) {
+		close(store_fd);
+		return;
+	}
+
+	k = fprintf(f, "%s\n", NODE_STORE_INFO_FORMAT_V1);
+	if (k < 0) {
+		fclose(f);
+		return;
+	}
+	for (i = 0; i < server->cache.len; i += 1) {
+		role_name =
+		    (server->cache.nodes[i].role == DQLITE_SPARE)
+			? "spare"
+			: ((server->cache.nodes[i].role == DQLITE_STANDBY)
+			       ? "standby"
+			       : "voter");
+		k = fprintf(f, "%s\n%" PRIu64 "\n%s\n",
+			    server->cache.nodes[i].addr,
+			    server->cache.nodes[i].id, role_name);
+		if (k < 0) {
+			fclose(f);
+			return;
+		}
+	}
+
+	fclose(f);
+	rv = renameat(server->dir_fd, "node-store-tmp", server->dir_fd,
+		      "node-store");
+	(void)rv;
+}
+
+/* Called at startup to parse the node store read from disk into an in-memory
+ * representation. */
+static int parseLocalInfo(char *buf,
+			  size_t len,
+			  char **local_addr,
+			  uint64_t *local_id)
+{
+	const char *p = buf;
+	const char *end = buf + len;
+	char *nl;
+	const char *version_str;
+	const char *addr;
+	const char *id_str;
+	const char *dig;
+	unsigned long long id;
+
+	version_str = p;
+	nl = memchr(version_str, '\n', (size_t)(end - version_str));
+	if (nl == NULL) {
+		return 1;
+	}
+	*nl = '\0';
+	p = nl + 1;
+	if (strcmp(version_str, NODE_STORE_INFO_FORMAT_V1) != 0) {
+		return 1;
+	}
+
+	addr = p;
+	nl = memchr(addr, '\n', (size_t)(end - addr));
+	if (nl == NULL) {
+		return 1;
+	}
+	*nl = '\0';
+	p = nl + 1;
+
+	id_str = p;
+	nl = memchr(id_str, '\n', (size_t)(end - id_str));
+	if (nl == NULL) {
+		return 1;
+	}
+	*nl = '\0';
+	p = nl + 1;
+	for (dig = id_str; dig != nl; dig += 1) {
+		if (*dig < '0' || *dig > '9') {
+			return 1;
+		}
+	}
+	errno = 0;
+	id = strtoull(id_str, NULL, 10);
+	if (errno != 0) {
+		return 1;
+	}
+
+	if (p != end) {
+		return 1;
+	}
+
+	*local_addr = strdupChecked(addr);
+	*local_id = (uint64_t)id;
+	return 0;
+}
+
+/* Write the local node's info to disk. */
+static int writeLocalInfo(struct dqlite_server *server)
+{
+	int info_fd;
+	FILE *f;
+	ssize_t k;
+	int rv;
+
+	info_fd = openat(server->dir_fd, "server-info-tmp",
+			 O_RDWR | O_CREAT | O_TRUNC, 0664);
+	if (info_fd < 0) {
+		return 1;
+	}
+	f = fdopen(info_fd, "w+");
+	if (f == NULL) {
+		close(info_fd);
+		return 1;
+	}
+	k = fprintf(f, "%s\n%s\n%" PRIu64 "\n", NODE_STORE_INFO_FORMAT_V1,
+		    server->local_addr, server->local_id);
+	if (k < 0) {
+		fclose(f);
+		return 1;
+	}
+	rv = renameat(server->dir_fd, "server-info-tmp", server->dir_fd,
+		      "server-info");
+	if (rv != 0) {
+		fclose(f);
+		return 1;
+	}
+	fclose(f);
+	return 0;
+}
+
+int dqlite_server_create(const char *path, dqlite_server **server)
+{
+	int rv;
+
+	*server = callocChecked(1, sizeof **server);
+	rv = pthread_cond_init(&(*server)->cond, NULL);
+	assert(rv == 0);
+	rv = pthread_mutex_init(&(*server)->mutex, NULL);
+	assert(rv == 0);
+	(*server)->dir_path = strdupChecked(path);
+	(*server)->connect = transportDefaultConnect;
+	(*server)->proto.connect = transportDefaultConnect;
+	(*server)->dir_fd = -1;
+	(*server)->refresh_period = 30 * 1000;
+	return 0;
+}
+
+int dqlite_server_set_address(dqlite_server *server, const char *address)
+{
+	free(server->local_addr);
+	server->local_addr = strdupChecked(address);
+	return 0;
+}
+
+int dqlite_server_set_auto_bootstrap(dqlite_server *server)
+{
+	server->bootstrap = true;
+	return 0;
+}
+
+int dqlite_server_set_auto_join(dqlite_server *server,
+				const char *const *addrs,
+				unsigned n)
+{
+	/* We don't know the ID or role of this server, so leave those fields
+	 * zeroed. In dqlite_server_start, we must take care not to use this
+	 * initial node store cache to do anything except find a server to
+	 * connect to. Once we've done that, we immediately fetch a fresh list
+	 * of cluster members that includes ID and role information, and clear
+	 * away the temporary node store cache. */
+	struct client_node_info info = {0};
+	unsigned i;
+
+	for (i = 0; i < n; i += 1) {
+		info.addr = strdupChecked(addrs[i]);
+		pushNodeInfo(&server->cache, info);
+	}
+	return 0;
+}
+
+int dqlite_server_set_bind_address(dqlite_server *server, const char *addr)
+{
+	free(server->bind_addr);
+	server->bind_addr = strdupChecked(addr);
+	return 0;
+}
+
+int dqlite_server_set_connect_func(dqlite_server *server,
+				   dqlite_connect_func f,
+				   void *arg)
+{
+	server->connect = f;
+	server->connect_arg = arg;
+	server->proto.connect = f;
+	server->proto.connect_arg = arg;
+	return 0;
+}
+
+static int openAndHandshake(struct client_proto *proto,
+			    const char *addr,
+			    uint64_t id,
+			    struct client_context *context)
+{
+	int rv;
+
+	rv = clientOpen(proto, addr, id);
+	if (rv != 0) {
+		return 1;
+	}
+	rv = clientSendHandshake(proto, context);
+	if (rv != 0) {
+		clientClose(proto);
+		return 1;
+	}
+	/* TODO client identification? */
+	return 0;
+}
+
+/* TODO prioritize voters > standbys > spares */
+static int connectToSomeServer(struct dqlite_server *server,
+			       struct client_context *context)
+{
+	unsigned i;
+	int rv;
+
+	for (i = 0; i < server->cache.len; i += 1) {
+		rv = openAndHandshake(&server->proto,
+				      server->cache.nodes[i].addr,
+				      server->cache.nodes[i].id, context);
+		if (rv == 0) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+/* Given an open connection, make an honest effort to reopen it as a connection
+ * to the current cluster leader. This bails out rather than retrying on
+ * client/server/network errors, leaving the retry policy up to the caller. On
+ * failure (rv != 0) the given client object may be closed or not: the caller
+ * must check this by comparing proto->fd to -1. */
+static int tryReconnectToLeader(struct client_proto *proto,
+				struct client_context *context)
+{
+	char *addr;
+	uint64_t id;
+	int rv;
+
+	rv = clientSendLeader(proto, context);
+	if (rv != 0) {
+		clientClose(proto);
+		return 1;
+	}
+
+	rv = clientRecvServer(proto, &id, &addr, context);
+	if (rv == DQLITE_CLIENT_PROTO_RECEIVED_FAILURE) {
+		return 1;
+	} else if (rv != 0) {
+		clientClose(proto);
+		return 1;
+	}
+	if (id == 0) {
+		free(addr);
+		return 1;
+	} else if (id == proto->server_id) {
+		free(addr);
+		return 0;
+	}
+
+	clientClose(proto);
+	rv = openAndHandshake(proto, addr, id, context);
+	free(addr);
+	if (rv != 0) {
+		return 1;
+	}
+	return 0;
+}
+
+static int refreshNodeStoreCache(struct dqlite_server *server,
+				 struct client_context *context)
+{
+	struct client_node_info *servers;
+	uint64_t n_servers;
+	int rv;
+
+	rv = clientSendCluster(&server->proto, context);
+	if (rv != 0) {
+		clientClose(&server->proto);
+		return 1;
+	}
+	rv = clientRecvServers(&server->proto, &servers, &n_servers, context);
+	if (rv != 0) {
+		clientClose(&server->proto);
+		return 1;
+	}
+	emptyCache(&server->cache);
+	server->cache.nodes = servers;
+	server->cache.len = (unsigned)n_servers;
+	assert((uint64_t)server->cache.len == n_servers);
+	server->cache.cap = (unsigned)n_servers;
+	return 0;
+}
+
+static int maybeJoinCluster(struct dqlite_server *server,
+			    struct client_context *context)
+{
+	int rv;
+
+	if (findNodeInCache(&server->cache, server->local_id) != NULL) {
+		return 0;
+	}
+
+	rv = clientSendAdd(&server->proto, server->local_id, server->local_addr,
+			   context);
+	if (rv != 0) {
+		clientClose(&server->proto);
+		return 1;
+	}
+	rv = clientRecvEmpty(&server->proto, context);
+	if (rv != 0) {
+		clientClose(&server->proto);
+		return 1;
+	}
+	rv = refreshNodeStoreCache(server, context);
+	if (rv != 0) {
+		return 1;
+	}
+	return 0;
+}
+
+static int bootstrapOrJoinCluster(struct dqlite_server *server,
+				  struct client_context *context)
+{
+	struct client_node_info info;
+	int rv;
+
+	if (server->is_new && server->bootstrap) {
+		rv = openAndHandshake(&server->proto, server->local_addr,
+				      server->local_id, context);
+		if (rv != 0) {
+			return 1;
+		}
+
+		info.addr = strdupChecked(server->local_addr);
+		info.id = server->local_id;
+		info.role = DQLITE_VOTER;
+		pushNodeInfo(&server->cache, info);
+	} else {
+		rv = connectToSomeServer(server, context);
+		if (rv != 0) {
+			return 1;
+		}
+
+		rv = tryReconnectToLeader(&server->proto, context);
+		if (rv != 0) {
+			return 1;
+		}
+
+		rv = refreshNodeStoreCache(server, context);
+		if (rv != 0) {
+			return 1;
+		}
+
+		rv = maybeJoinCluster(server, context);
+		if (rv != 0) {
+			return 1;
+		}
+	}
+
+	writeNodeStore(server);
+	return 0;
+}
+
+static void *refreshTask(void *arg)
+{
+	struct dqlite_server *server = arg;
+	struct client_context context;
+	struct timespec ts;
+	unsigned long long nsec;
+	int rv;
+
+	rv = pthread_mutex_lock(&server->mutex);
+	assert(rv == 0);
+	for (;;) {
+		rv = clock_gettime(CLOCK_REALTIME, &ts);
+		assert(rv == 0);
+		nsec = (unsigned long long)ts.tv_nsec;
+		nsec += server->refresh_period * 1000 * 1000;
+		while (nsec > 1000 * 1000 * 1000) {
+			nsec -= 1000 * 1000 * 1000;
+			ts.tv_sec += 1;
+		}
+		/* The type of tv_nsec is "an implementation-defined signed type
+		 * capable of holding [the range 0..=999,999,999]". int is the
+		 * narrowest such type (on all the targets we care about), so
+		 * cast to that before doing the assignment to avoid warnings.
+		 */
+		ts.tv_nsec = (int)nsec;
+
+		rv = pthread_cond_timedwait(&server->cond, &server->mutex, &ts);
+		if (server->shutdown) {
+			rv = pthread_mutex_unlock(&server->mutex);
+			assert(rv == 0);
+			break;
+		}
+		assert(rv == 0 || rv == ETIMEDOUT);
+
+		clientContextMillis(&context, 5000);
+		if (server->proto.fd == -1) {
+			rv = connectToSomeServer(server, &context);
+			if (rv != 0) {
+				continue;
+			}
+			(void)tryReconnectToLeader(&server->proto, &context);
+			if (server->proto.fd == -1) {
+				continue;
+			}
+		}
+		rv = refreshNodeStoreCache(server, &context);
+		if (rv != 0) {
+			continue;
+		}
+		writeNodeStore(server);
+	}
+	return NULL;
+}
+
+int dqlite_server_start(dqlite_server *server)
+{
+	int info_fd;
+	int store_fd;
+	ssize_t size;
+	char *buf;
+	ssize_t n_read;
+	struct client_context context;
+	int rv;
+
+	if (server->started) {
+		goto err;
+	}
+
+	if (server->bootstrap && server->cache.len > 0) {
+		goto err;
+	}
+
+	server->is_new = true;
+	server->dir_fd = open(server->dir_path, O_RDONLY | O_DIRECTORY);
+	if (server->dir_fd < 0) {
+		goto err;
+	}
+	info_fd = openat(server->dir_fd, "server-info", O_RDWR | O_CREAT, 0664);
+	if (info_fd < 0) {
+		goto err_after_open_dir;
+	}
+	store_fd = openat(server->dir_fd, "node-store", O_RDWR | O_CREAT, 0664);
+	if (store_fd < 0) {
+		goto err_after_open_info;
+	}
+
+	size = lseek(info_fd, 0, SEEK_END);
+	assert(size >= 0);
+	if (size > 0) {
+		server->is_new = false;
+		/* TODO mmap it? */
+		buf = mallocChecked((size_t)size);
+		n_read = pread(info_fd, buf, (size_t)size, 0);
+		if (n_read < (ssize_t)size) {
+			free(buf);
+			goto err_after_open_store;
+		}
+		free(server->local_addr);
+		server->local_addr = NULL;
+		rv = parseLocalInfo(buf, (size_t)size, &server->local_addr,
+				    &server->local_id);
+		free(buf);
+		if (rv != 0) {
+			goto err_after_open_store;
+		}
+	}
+
+	size = lseek(store_fd, 0, SEEK_END);
+	assert(size >= 0);
+	if (size > 0) {
+		if (server->is_new) {
+			goto err_after_open_store;
+		}
+
+		/* TODO mmap it? */
+		buf = mallocChecked((size_t)size);
+		n_read = pread(store_fd, buf, (size_t)size, 0);
+		if (n_read < (ssize_t)size) {
+			free(buf);
+			goto err_after_open_store;
+		}
+		emptyCache(&server->cache);
+		rv = parseNodeStore(buf, (size_t)size, &server->cache);
+		free(buf);
+		if (rv != 0) {
+			goto err_after_open_store;
+		}
+	}
+
+	if (server->is_new) {
+		server->local_id =
+		    server->bootstrap
+			? BOOTSTRAP_ID
+			: dqlite_generate_node_id(server->local_addr);
+	}
+
+	rv = dqlite_node_create(server->local_id, server->local_addr,
+				server->dir_path, &server->local);
+	if (rv != 0) {
+		goto err_after_create_node;
+	}
+	rv = dqlite_node_set_bind_address(
+	    server->local, (server->bind_addr != NULL) ? server->bind_addr
+						       : server->local_addr);
+	if (rv != 0) {
+		goto err_after_create_node;
+	}
+	rv = dqlite_node_set_connect_func(server->local, server->connect,
+					  server->connect_arg);
+	if (rv != 0) {
+		goto err_after_create_node;
+	}
+
+	rv = dqlite_node_start(server->local);
+	if (rv != 0) {
+		goto err_after_create_node;
+	}
+	/* TODO set weight and failure domain here */
+
+	rv = writeLocalInfo(server);
+	if (rv != 0) {
+		goto err_after_start_node;
+	}
+
+	clientContextMillis(&context, 5000);
+
+	rv = bootstrapOrJoinCluster(server, &context);
+	if (rv != 0) {
+		goto err_after_start_node;
+	}
+
+	rv = pthread_create(&server->refresh_thread, NULL, refreshTask, server);
+	assert(rv == 0);
+
+	close(store_fd);
+	close(info_fd);
+	server->started = true;
+	return 0;
+
+err_after_start_node:
+	dqlite_node_stop(server->local);
+err_after_create_node:
+	dqlite_node_destroy(server->local);
+	server->local = NULL;
+err_after_open_store:
+	close(store_fd);
+err_after_open_info:
+	close(info_fd);
+err_after_open_dir:
+	close(server->dir_fd);
+	server->dir_fd = -1;
+err:
+	return 1;
+}
+
+dqlite_node_id dqlite_server_get_id(dqlite_server *server)
+{
+	return server->local_id;
+}
+
+int dqlite_server_handover(dqlite_server *server)
+{
+	int rv = dqlite_node_handover(server->local);
+	if (rv != 0) {
+		return 1;
+	}
+	return 0;
+}
+
+int dqlite_server_stop(dqlite_server *server)
+{
+	void *ret;
+	int rv;
+
+	if (!server->started) {
+		return 1;
+	}
+
+	rv = pthread_mutex_lock(&server->mutex);
+	assert(rv == 0);
+	server->shutdown = true;
+	rv = pthread_mutex_unlock(&server->mutex);
+	assert(rv == 0);
+	rv = pthread_cond_signal(&server->cond);
+	assert(rv == 0);
+	rv = pthread_join(server->refresh_thread, &ret);
+	assert(rv == 0);
+
+	emptyCache(&server->cache);
+
+	clientClose(&server->proto);
+
+	server->started = false;
+	rv = dqlite_node_stop(server->local);
+	if (rv != 0) {
+		return 1;
+	}
+	return 0;
+}
+
+void dqlite_server_destroy(dqlite_server *server)
+{
+	pthread_cond_destroy(&server->cond);
+	pthread_mutex_destroy(&server->mutex);
+
+	emptyCache(&server->cache);
+
+	free(server->dir_path);
+	if (server->local != NULL) {
+		dqlite_node_destroy(server->local);
+	}
+	free(server->local_addr);
+	free(server->bind_addr);
+	close(server->dir_fd);
+	free(server);
 }

@@ -20,7 +20,7 @@ static void oom(void)
 	abort();
 }
 
-static void *mallocChecked(size_t n)
+void *mallocChecked(size_t n)
 {
 	void *p = malloc(n);
 	if (p == NULL) {
@@ -29,7 +29,7 @@ static void *mallocChecked(size_t n)
 	return p;
 }
 
-static void *callocChecked(size_t count, size_t n)
+void *callocChecked(size_t count, size_t n)
 {
 	void *p = calloc(count, n);
 	if (p == NULL) {
@@ -38,9 +38,18 @@ static void *callocChecked(size_t count, size_t n)
 	return p;
 }
 
-static char *strdupChecked(const char *s)
+char *strdupChecked(const char *s)
 {
 	char *p = strdup(s);
+	if (p == NULL) {
+		oom();
+	}
+	return p;
+}
+
+char *strndupChecked(const char *s, size_t n)
+{
+	char *p = strndup(s, n);
 	if (p == NULL) {
 		oom();
 	}
@@ -296,11 +305,12 @@ int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id)
 {
 	int rv;
 
-	c->server_id = server_id;
 	rv = c->connect(c->connect_arg, addr, &c->fd);
 	if (rv != 0) {
+		c->fd = -1;
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
+	c->server_id = server_id;
 
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
@@ -320,11 +330,18 @@ int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id)
 void clientClose(struct client_proto *c)
 {
 	tracef("client close");
+	if (c->fd == -1) {
+		return;
+	}
 	close(c->fd);
+	c->fd = -1;
 	buffer__close(&c->write);
 	buffer__close(&c->read);
 	free(c->db_name);
+	c->db_name = NULL;
 	free(c->errmsg);
+	c->errmsg = NULL;
+	c->server_id = 0;
 }
 
 int clientSendHandshake(struct client_proto *c, struct client_context *context)

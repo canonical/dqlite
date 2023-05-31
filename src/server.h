@@ -7,6 +7,7 @@
 
 #include <semaphore.h>
 
+#include "client/protocol.h"
 #include "config.h"
 #include "id.h"
 #include "lib/assert.h"
@@ -56,6 +57,44 @@ struct dqlite_node
 	void *connect_func_arg; /* User data for connection function */
 	char errmsg[DQLITE_ERRMSG_BUF_SIZE]; /* Last error occurred */
 	struct id_state random_state;        /* For seeding ID generation */
+};
+
+/* Dynamic array of node info objects. This is the in-memory representation of
+ * the node store. */
+struct node_store_cache
+{
+	struct client_node_info *nodes; /* owned */
+	unsigned len;
+	unsigned cap;
+};
+
+struct dqlite_server
+{
+	/* Threading stuff: */
+	pthread_cond_t cond;
+	pthread_mutex_t mutex;
+	pthread_t refresh_thread;
+
+	/* These fields are protected by the mutex: */
+	bool shutdown;
+	struct node_store_cache cache;
+	/* We try to keep this pointing at the leader, but it might be out of
+	 * date or not open. */
+	struct client_proto proto;
+
+	/* These fields are only accessed on the main thread: */
+	bool started;
+	bool is_new;
+	bool bootstrap;
+	char *dir_path; /* owned */
+	dqlite_node *local;
+	uint64_t local_id;
+	char *local_addr; /* owned */
+	char *bind_addr;  /* owned */
+	dqlite_connect_func connect;
+	void *connect_arg;
+	unsigned long long refresh_period; /* in milliseconds */
+	int dir_fd;
 };
 
 int dqlite__init(struct dqlite_node *d,

@@ -39,10 +39,10 @@ typedef struct dqlite_stmt dqlite_stmt;
  *
  * @arg is a user data parameter, copied from the third argument of
  * dqlite_server_set_connect_func. @addr is a (borrowed) abstract address
- * string, as passed to dqlite_server_create or dqlite_server_set_peer. @fd is
- * an address where a socket representing the connection should be stored. The
- * callback should return zero if a connection was established successfully or
- * nonzero if the attempt failed.
+ * string, as passed to dqlite_server_create or dqlite_server_set_auto_join. @fd
+ * is an address where a socket representing the connection should be stored.
+ * The callback should return zero if a connection was established successfully
+ * or nonzero if the attempt failed.
  */
 typedef int (*dqlite_connect_func)(void *arg, const char *addr, int *fd);
 
@@ -56,6 +56,9 @@ typedef int (*dqlite_connect_func)(void *arg, const char *addr, int *fd);
  * is the path to a directory where the server (and attached client) will store
  * its persistent state; the directory must exist. A pointer to the new server
  * object is stored in @server on success.
+ *
+ * Whether or not this function succeeds, you should call dqlite_server_destroy
+ * to release resources owned by the server object.
  *
  * No reference to @path is kept after this function returns.
  */
@@ -85,20 +88,20 @@ DQLITE_API int dqlite_server_set_address(dqlite_server *server,
  * server in each cluster. After the first startup, the bootstrap server is no
  * longer special and this function is a no-op.
  */
-DQLITE_API int dqlite_server_set_bootstrap(dqlite_server *server);
+DQLITE_API int dqlite_server_set_auto_bootstrap(dqlite_server *server);
 
 /**
- * Declare the address of an existing server in the cluster, which should
+ * Declare the addresses of existing servers in the cluster, which should
  * already be running.
  *
- * This function can be called multiple times with different addresses. The
- * server addresses declared with this function will not be used unless @server
- * is starting up for the first time; after the first startup, the list of
- * servers stored on disk will be used instead. (It is harmless to call this
+ * The server addresses declared with this function will not be used unless
+ * @server is starting up for the first time; after the first startup, the list
+ * of servers stored on disk will be used instead. (It is harmless to call this
  * function unconditionally.)
  */
-DQLITE_API int dqlite_server_set_peer_address(dqlite_server *server,
-					      const char *addr);
+DQLITE_API int dqlite_server_set_auto_join(dqlite_server *server,
+					   const char *const *addrs,
+					   unsigned n);
 
 /**
  * Configure @server to listen on the address @addr for incoming connections
@@ -148,6 +151,13 @@ DQLITE_API int dqlite_server_set_connect_func(dqlite_server *server,
 DQLITE_API int dqlite_server_start(dqlite_server *server);
 
 /**
+ * Get the ID of the server.
+ *
+ * This will return 0 (an invalid ID) if the server has not been started.
+ */
+DQLITE_API dqlite_node_id dqlite_server_get_id(dqlite_server *server);
+
+/**
  * Hand over the server's privileges to other servers.
  *
  * This is intended to be called before dqlite_server_stop. The server will try
@@ -171,7 +181,10 @@ DQLITE_API int dqlite_server_stop(dqlite_server *server);
 /**
  * Free resources owned by the server.
  *
- * This should be called after dqlite_server_stop.
+ * You should always call this function to finalize a server created with
+ * dqlite_server_create, whether or not that function returned successfully.
+ * If the server has been successfully started with dqlite_server_start,
+ * then you must stop it with dqlite_server_stop before calling this function.
  */
 DQLITE_API void dqlite_server_destroy(dqlite_server *server);
 
