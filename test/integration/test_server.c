@@ -66,7 +66,7 @@ void start_each_server(struct fixture *f)
 
 	rv = dqlite_server_set_address(f->servers[0], "127.0.0.1:8880");
 	munit_assert_int(rv, ==, 0);
-	rv = dqlite_server_set_auto_bootstrap(f->servers[0]);
+	rv = dqlite_server_set_auto_bootstrap(f->servers[0], true);
 	munit_assert_int(rv, ==, 0);
 	f->servers[0]->refresh_period = 100;
 	rv = dqlite_server_start(f->servers[0]);
@@ -170,7 +170,7 @@ TEST(server, bad_info_file, setup, teardown, 0, NULL)
 
 	rv = dqlite_server_set_address(f->servers[0], "127.0.0.1:8880");
 	munit_assert_int(rv, ==, 0);
-	rv = dqlite_server_set_auto_bootstrap(f->servers[0]);
+	rv = dqlite_server_set_auto_bootstrap(f->servers[0], true);
 	munit_assert_int(rv, ==, 0);
 	rv = dqlite_server_start(f->servers[0]);
 	munit_assert_int(rv, !=, 0);
@@ -189,7 +189,7 @@ TEST(server, bad_node_store, setup, teardown, 0, NULL)
 
 	rv = dqlite_server_set_address(f->servers[0], "127.0.0.1:8880");
 	munit_assert_int(rv, ==, 0);
-	rv = dqlite_server_set_auto_bootstrap(f->servers[0]);
+	rv = dqlite_server_set_auto_bootstrap(f->servers[0], true);
 	munit_assert_int(rv, ==, 0);
 	rv = dqlite_server_start(f->servers[0]);
 	munit_assert_int(rv, !=, 0);
@@ -207,7 +207,7 @@ TEST(server, node_store_but_no_info, setup, teardown, 0, NULL)
 
 	rv = dqlite_server_set_address(f->servers[0], "127.0.0.1:8880");
 	munit_assert_int(rv, ==, 0);
-	rv = dqlite_server_set_auto_bootstrap(f->servers[0]);
+	rv = dqlite_server_set_auto_bootstrap(f->servers[0], true);
 	munit_assert_int(rv, ==, 0);
 	rv = dqlite_server_start(f->servers[0]);
 	munit_assert_int(rv, !=, 0);
@@ -238,7 +238,7 @@ TEST(server, start_twice, setup, teardown, 0, NULL)
 
 	rv = dqlite_server_set_address(f->servers[0], "127.0.0.1:8880");
 	munit_assert_int(rv, ==, 0);
-	rv = dqlite_server_set_auto_bootstrap(f->servers[0]);
+	rv = dqlite_server_set_auto_bootstrap(f->servers[0], true);
 	munit_assert_int(rv, ==, 0);
 	rv = dqlite_server_start(f->servers[0]);
 	munit_assert_int(rv, ==, 0);
@@ -257,7 +257,7 @@ TEST(server, stop_twice, setup, teardown, 0, NULL)
 
 	rv = dqlite_server_set_address(f->servers[0], "127.0.0.1:8880");
 	munit_assert_int(rv, ==, 0);
-	rv = dqlite_server_set_auto_bootstrap(f->servers[0]);
+	rv = dqlite_server_set_auto_bootstrap(f->servers[0], true);
 	munit_assert_int(rv, ==, 0);
 	rv = dqlite_server_start(f->servers[0]);
 	munit_assert_int(rv, ==, 0);
