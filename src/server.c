@@ -1302,9 +1302,9 @@ int dqlite_server_set_address(dqlite_server *server, const char *address)
 	return 0;
 }
 
-int dqlite_server_set_auto_bootstrap(dqlite_server *server)
+int dqlite_server_set_auto_bootstrap(dqlite_server *server, bool on)
 {
-	server->bootstrap = true;
+	server->bootstrap = on;
 	return 0;
 }
 

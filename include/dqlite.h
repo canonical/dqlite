@@ -2,6 +2,7 @@
 #define DQLITE_H
 
 #include <sqlite3.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -80,7 +81,7 @@ DQLITE_API int dqlite_server_set_address(dqlite_server *server,
 					 const char *address);
 
 /**
- * Indicate that this server will be the "bootstrap" server for its cluster.
+ * Turn on or off automatic bootstrap for this server.
  *
  * The bootstrap server should be the first to start up. It automatically
  * becomes the leader in the first term, and is responsible for adding all other
@@ -88,7 +89,7 @@ DQLITE_API int dqlite_server_set_address(dqlite_server *server,
  * server in each cluster. After the first startup, the bootstrap server is no
  * longer special and this function is a no-op.
  */
-DQLITE_API int dqlite_server_set_auto_bootstrap(dqlite_server *server);
+DQLITE_API int dqlite_server_set_auto_bootstrap(dqlite_server *server, bool on);
 
 /**
  * Declare the addresses of existing servers in the cluster, which should
