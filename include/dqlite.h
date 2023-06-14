@@ -10,6 +10,15 @@
 #define DQLITE_API __attribute__((visibility("default")))
 #endif
 
+/**
+ * This "pseudo-attribute" marks declarations that are only a provisional part
+ * of the dqlite public API. These declarations may change or be removed
+ * entirely in minor or point releases of dqlite, without bumping the soversion
+ * of libdqlite.so. Consumers of dqlite who use these declarations are
+ * responsible for updating their code in response to such breaking changes.
+ */
+#define DQLITE_EXPERIMENTAL
+
 /* XXX */
 #define DQLITE_VISIBLE_TO_TESTS DQLITE_API
 
@@ -30,9 +39,7 @@ DQLITE_API int dqlite_version_number(void);
  */
 typedef unsigned long long dqlite_node_id;
 
-typedef struct dqlite_server dqlite_server;
-typedef struct dqlite dqlite;
-typedef struct dqlite_stmt dqlite_stmt;
+DQLITE_EXPERIMENTAL typedef struct dqlite_server dqlite_server;
 
 /**
  * Signature of a custom callback used to establish network connections
@@ -45,7 +52,9 @@ typedef struct dqlite_stmt dqlite_stmt;
  * The callback should return zero if a connection was established successfully
  * or nonzero if the attempt failed.
  */
-typedef int (*dqlite_connect_func)(void *arg, const char *addr, int *fd);
+DQLITE_EXPERIMENTAL typedef int (*dqlite_connect_func)(void *arg,
+						       const char *addr,
+						       int *fd);
 
 /* The following dqlite_server functions return zero on success or nonzero on
  * error. More specific error codes may be specified in the future. */
@@ -63,7 +72,8 @@ typedef int (*dqlite_connect_func)(void *arg, const char *addr, int *fd);
  *
  * No reference to @path is kept after this function returns.
  */
-DQLITE_API int dqlite_server_create(const char *path, dqlite_server **server);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_create(const char *path,
+							dqlite_server **server);
 
 /**
  * Set the abstract address of this server.
@@ -77,8 +87,9 @@ DQLITE_API int dqlite_server_create(const char *path, dqlite_server **server);
  * the default connect function (and for binding/listening), see
  * dqlite_server_set_bind_address.
  */
-DQLITE_API int dqlite_server_set_address(dqlite_server *server,
-					 const char *address);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_set_address(
+    dqlite_server *server,
+    const char *address);
 
 /**
  * Turn on or off automatic bootstrap for this server.
@@ -89,7 +100,9 @@ DQLITE_API int dqlite_server_set_address(dqlite_server *server,
  * server in each cluster. After the first startup, the bootstrap server is no
  * longer special and this function is a no-op.
  */
-DQLITE_API int dqlite_server_set_auto_bootstrap(dqlite_server *server, bool on);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_set_auto_bootstrap(
+    dqlite_server *server,
+    bool on);
 
 /**
  * Declare the addresses of existing servers in the cluster, which should
@@ -100,9 +113,10 @@ DQLITE_API int dqlite_server_set_auto_bootstrap(dqlite_server *server, bool on);
  * of servers stored on disk will be used instead. (It is harmless to call this
  * function unconditionally.)
  */
-DQLITE_API int dqlite_server_set_auto_join(dqlite_server *server,
-					   const char *const *addrs,
-					   unsigned n);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_set_auto_join(
+    dqlite_server *server,
+    const char *const *addrs,
+    unsigned n);
 
 /**
  * Configure @server to listen on the address @addr for incoming connections
@@ -129,8 +143,9 @@ DQLITE_API int dqlite_server_set_auto_join(dqlite_server *server,
  * If an abstract Unix socket is used, the server will accept only
  * connections originating from the same process.
  */
-DQLITE_API int dqlite_server_set_bind_address(dqlite_server *server,
-					      const char *addr);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_set_bind_address(
+    dqlite_server *server,
+    const char *addr);
 
 /**
  * Configure the function that this server will use to connect to other servers.
@@ -139,9 +154,10 @@ DQLITE_API int dqlite_server_set_bind_address(dqlite_server *server,
  * connections to all servers in the cluster. @arg is a user data parameter that
  * will be passed to all invocations of the connect function.
  */
-DQLITE_API int dqlite_server_set_connect_func(dqlite_server *server,
-					      dqlite_connect_func f,
-					      void *arg);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_set_connect_func(
+    dqlite_server *server,
+    dqlite_connect_func f,
+    void *arg);
 
 /**
  * Start running the server.
@@ -149,14 +165,15 @@ DQLITE_API int dqlite_server_set_connect_func(dqlite_server *server,
  * Once this function returns successfully, the server will be ready to accept
  * client requests using the functions below.
  */
-DQLITE_API int dqlite_server_start(dqlite_server *server);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_start(dqlite_server *server);
 
 /**
  * Get the ID of the server.
  *
  * This will return 0 (an invalid ID) if the server has not been started.
  */
-DQLITE_API dqlite_node_id dqlite_server_get_id(dqlite_server *server);
+DQLITE_API DQLITE_EXPERIMENTAL dqlite_node_id
+dqlite_server_get_id(dqlite_server *server);
 
 /**
  * Hand over the server's privileges to other servers.
@@ -166,7 +183,8 @@ DQLITE_API dqlite_node_id dqlite_server_get_id(dqlite_server *server);
  * applicable. This avoids some disruptions that can result when a privileged
  * server stops suddenly.
  */
-DQLITE_API int dqlite_server_handover(dqlite_server *server);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_handover(
+    dqlite_server *server);
 
 /**
  * Stop the server.
@@ -177,7 +195,7 @@ DQLITE_API int dqlite_server_handover(dqlite_server *server);
  * (successfully or not), you should call dqlite_server_destroy to free
  * resources owned by the server.
  */
-DQLITE_API int dqlite_server_stop(dqlite_server *server);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_stop(dqlite_server *server);
 
 /**
  * Free resources owned by the server.
@@ -187,141 +205,8 @@ DQLITE_API int dqlite_server_stop(dqlite_server *server);
  * If the server has been successfully started with dqlite_server_start,
  * then you must stop it with dqlite_server_stop before calling this function.
  */
-DQLITE_API void dqlite_server_destroy(dqlite_server *server);
-
-/* The following functions (up to but not including dqlite_node_create) mimic
- * the core of the sqlite3.h API and use SQLite result codes. dqlite tries to
- * return result codes that match what SQLite would return in the same
- * situation, but in some cases will return the less specific SQLITE_ERROR
- * instead. Certain dqlite-specific error conditions have their own codes that
- * are compatible with the SQLite set: */
-
-#define SQLITE_IOERR_NOT_LEADER (SQLITE_IOERR | (40 << 8))
-#define SQLITE_IOERR_LEADERSHIP_LOST (SQLITE_IOERR | (41 << 8))
-
-/* When some version of dqlite returns SQLITE_ERROR under certain
- * circumstances, the developers reserve the right to switch to a more specific
- * error code in future releases without announcing a breaking change. */
-
-/**
- * Open a database connection on the dqlite cluster.
- *
- * This request will be transparently forwarded to the cluster leader as needed.
- *
- * This is the analogue of sqlite3_open. @name is the name of the database
- * to open, which will be created if it does not exist. All servers in the
- * cluster share a "namespace" for databases.
- */
-DQLITE_API int dqlite_open(dqlite_server *server,
-			   const char *name,
-			   dqlite **db);
-
-/**
- * Create a prepared statement to be executed on the cluster.
- *
- * This is the analogue of sqlite3_prepare_v2.
- */
-DQLITE_API int dqlite_prepare(dqlite *db,
-			      const char *sql,
-			      int sql_len,
-			      dqlite_stmt **stmt,
-			      const char **tail);
-
-/**
- * Execute a prepared statement for one "step".
- *
- * This is the analogue of sqlite3_step.
- */
-DQLITE_API int dqlite_step(dqlite_stmt *stmt);
-
-/**
- * Restore a prepared statement to the state preceding any calls to dqlite_step.
- *
- * This is the analogue of sqlite3_reset. It can be called on a prepared
- * statement at any point in its lifecycle.
- */
-DQLITE_API int dqlite_reset(dqlite_stmt *stmt);
-
-/**
- * Unbind all parameters from a prepared statement.
- *
- * This is a purely local operation that does not involve communication with any
- * server. It it the analogue of sqlite3_clear_bindings.
- */
-DQLITE_API int dqlite_clear_bindings(dqlite_stmt *stmt);
-
-/**
- * Release all resources associated with a prepared statement.
- *
- * This ends the statement's lifecycle, rendering it invalid for further use. It
- * is the analogue of sqlite3_finalize.
- */
-DQLITE_API int dqlite_finalize(dqlite_stmt *stmt);
-
-/**
- * Prepare a SQL string, run it to completion, and finalize it.
- *
- * This is the analogue of sqlite3_exec.
- */
-DQLITE_API int dqlite_exec(dqlite *db,
-			   const char *sql,
-			   int (*cb)(void *, int, char **, char **),
-			   void *cb_data,
-			   char **errmsg);
-
-/**
- * Close a database after all associated prepared statements have been
- * finalized.
- *
- * This is analogous to sqlite3_close (note, not sqlite3_close_v2). In
- * particular, it will fail with SQLITE_BUSY if some dqlite_stmt objects
- * associated with this database have not yet been finalized.
- */
-DQLITE_API int dqlite_close(dqlite *db);
-
-/**
- * Bind parameters to a prepared statement.
- *
- * Parameter binding is a purely local operation, involving no communication
- * with any server.
- *
- * These functions are analogous to the sqlite3_bind family of functions.
- */
-DQLITE_API int dqlite_bind_blob64(dqlite_stmt *stmt,
-				  int index,
-				  const void *blob,
-				  uint64_t blob_len,
-				  void (*dealloc)(void *));
-DQLITE_API int dqlite_bind_double(dqlite_stmt *stmt, int index, double val);
-DQLITE_API int dqlite_bind_int64(dqlite_stmt *stmt, int index, int64_t val);
-DQLITE_API int dqlite_bind_null(dqlite_stmt *stmt, int index);
-DQLITE_API int dqlite_bind_text64(dqlite_stmt *stmt,
-				  int index,
-				  const char *text,
-				  uint64_t text_len,
-				  void (*dealloc)(void *),
-				  unsigned char encoding);
-
-/**
- * Retrieve values from a table row associated with a prepared statement.
- *
- * Column retrieval is a purely local operation, involving no communication with
- * any server.
- *
- * These functions are analogous to the sqlite3_column family of functions.
- */
-DQLITE_API const void *dqlite_column_blob(dqlite_stmt *stmt, int index);
-DQLITE_API double dqlite_column_double(dqlite_stmt *stmt, int index);
-DQLITE_API int64_t dqlite_column_int64(dqlite_stmt *stmt, int index);
-DQLITE_API const unsigned char *dqlite_column_text(dqlite_stmt *stmt,
-						   int index);
-DQLITE_API int dqlite_column_bytes(dqlite_stmt *stmt, int index);
-DQLITE_API int dqlite_column_type(dqlite_stmt *stmt, int index);
-
-/* TODO: currently we have #include <sqlite.h> at the top of this file,
- * to support the dqlite_vfs functions below. Once those functions are
- * removed, we should also remove the #include and just copy the definitions
- * of the SQLite result codes here. */
+DQLITE_API DQLITE_EXPERIMENTAL void dqlite_server_destroy(
+    dqlite_server *server);
 
 /**
  * Error codes.
