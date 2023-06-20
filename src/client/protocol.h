@@ -45,8 +45,8 @@ struct client_proto
 	uint64_t server_id;
 	struct buffer read;  /* Read buffer */
 	struct buffer write; /* Write buffer */
-	uint64_t errcode; /* Last error code returned by the server (owned) */
-	char *errmsg;     /* Last error string returned by the server */
+	uint64_t errcode; /* Last error code returned by the server */
+	char *errmsg;     /* Last error string returned by the server (owned) */
 };
 
 /* All of the Send and Recv functions take an `struct client_context *context`
