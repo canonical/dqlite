@@ -152,17 +152,6 @@ static void connCloseCb(struct conn *conn)
 		munit_assert_int(rv2, ==, 0);                              \
 	}
 
-/* Perform a non-prepared query. */
-#define QUERY_SQL_CONN(SQL, ROWS)                                         \
-	{                                                                 \
-		int rv2;                                                  \
-		rv2 = clientSendQuerySql(&f->client, SQL, NULL, 0, NULL); \
-		munit_assert_int(rv2, ==, 0);                             \
-		test_uv_run(&f->loop, 2);                                 \
-		rv2 = clientRecvRows(&f->client, ROWS, NULL);             \
-		munit_assert_int(rv2, ==, 0);                             \
-	}
-
 /******************************************************************************
  *
  * Handle the handshake
