@@ -16,48 +16,6 @@
 #include "../tuple.h"
 #include "protocol.h"
 
-/* Convert a value that potentially borrows data from the client_proto read
- * buffer into one that owns its data. The owned data must be free with
- * freeOwnedValue. */
-static void makeValueOwned(struct value *val)
-{
-	char *p;
-	switch (val->type) {
-		case SQLITE_TEXT:
-			val->text = strdupChecked(val->text);
-			break;
-		case DQLITE_ISO8601:
-			val->iso8601 = strdupChecked(val->iso8601);
-			break;
-		case SQLITE_BLOB:
-			p = mallocChecked(val->blob.len);
-			memcpy(p, val->blob.base, val->blob.len);
-			val->blob.base = p;
-			break;
-		default:;
-	}
-}
-
-/* Free the owned data of a value, which must have had makeValueOwned called
- * on it previously. This takes its argument by value because it does *not*
- * free the memory that stores the `struct value` itself, only the pointers
- * held by `struct value`. */
-static void freeOwnedValue(struct value val)
-{
-	switch (val.type) {
-		case SQLITE_TEXT:
-			free((char *)val.text);
-			break;
-		case DQLITE_ISO8601:
-			free((char *)val.iso8601);
-			break;
-		case SQLITE_BLOB:
-			free(val.blob.base);
-			break;
-		default:;
-	}
-}
-
 static int peekUint64(struct cursor cursor, uint64_t *val)
 {
 	if (cursor.cap < 8) {
@@ -668,7 +626,6 @@ int clientRecvRows(struct client_proto *c,
 	uint8_t type;
 	uint64_t column_count;
 	unsigned i;
-	unsigned j;
 	const char *raw;
 	struct row *row;
 	struct row *last;
@@ -739,7 +696,6 @@ int clientRecvRows(struct client_proto *c,
 				rv = DQLITE_CLIENT_PROTO_ERROR;
 				goto err_after_alloc_row_values;
 			}
-			makeValueOwned(&row->values[i]);
 		}
 
 		if (last == NULL) {
@@ -758,9 +714,6 @@ int clientRecvRows(struct client_proto *c,
 	return 0;
 
 err_after_alloc_row_values:
-	for (j = 0; j < i; ++j) {
-		freeOwnedValue(row->values[j]);
-	}
 	free(row->values);
 	free(row);
 
@@ -780,9 +733,6 @@ void clientCloseRows(struct rows *rows)
 	for (row = rows->next; row != NULL; row = next) {
 		next = row->next;
 		row->next = NULL;
-		for (i = 0; i < rows->column_count; ++i) {
-			freeOwnedValue(row->values[i]);
-		}
 		free(row->values);
 		row->values = NULL;
 		free(row);
