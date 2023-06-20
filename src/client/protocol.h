@@ -41,7 +41,6 @@ struct client_proto
 	int fd;          /* Connected socket */
 	uint32_t db_id;  /* Database ID provided by the server */
 	char *db_name;   /* Database filename (owned) */
-	bool db_is_init; /* Whether the database ID has been initialized */
 	uint64_t server_id;
 	struct buffer read;  /* Read buffer */
 	struct buffer write; /* Write buffer */

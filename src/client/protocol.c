@@ -229,6 +229,7 @@ int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id)
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 	c->server_id = server_id;
+	c->db_id = (uint32_t)-1;
 
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
@@ -450,7 +451,6 @@ int clientRecvDb(struct client_proto *c, struct client_context *context)
 	struct response_db response;
 	RESPONSE(db, DB);
 	c->db_id = response.id;
-	c->db_is_init = true;
 	return 0;
 }
 
@@ -811,7 +811,6 @@ int clientSendDump(struct client_proto *c, struct client_context *context)
 {
 	tracef("client send dump");
 	struct request_dump request;
-	assert(c->db_is_init);
 	assert(c->db_name != NULL);
 	request.filename = c->db_name;
 	REQUEST(dump, DUMP, 0);
