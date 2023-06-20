@@ -11,6 +11,7 @@
 #include "fsm.h"
 #include "id.h"
 #include "lib/addr.h"
+#include "lib/alloc.h"
 #include "lib/assert.h"
 #include "lib/fs.h"
 #include "logger.h"

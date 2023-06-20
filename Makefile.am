@@ -26,6 +26,7 @@ libdqlite_la_SOURCES = \
   src/id.c \
   src/leader.c \
   src/lib/addr.c \
+  src/lib/alloc.c \
   src/lib/buffer.c \
   src/lib/fs.c \
   src/lib/transport.c \

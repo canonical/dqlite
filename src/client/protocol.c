@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "../lib/alloc.h"
 #include "../lib/assert.h"
 
 #include "../message.h"
@@ -14,47 +15,6 @@
 #include "../tracing.h"
 #include "../tuple.h"
 #include "protocol.h"
-
-static void oom(void)
-{
-	abort();
-}
-
-void *mallocChecked(size_t n)
-{
-	void *p = malloc(n);
-	if (p == NULL) {
-		oom();
-	}
-	return p;
-}
-
-void *callocChecked(size_t count, size_t n)
-{
-	void *p = calloc(count, n);
-	if (p == NULL) {
-		oom();
-	}
-	return p;
-}
-
-char *strdupChecked(const char *s)
-{
-	char *p = strdup(s);
-	if (p == NULL) {
-		oom();
-	}
-	return p;
-}
-
-char *strndupChecked(const char *s, size_t n)
-{
-	char *p = strndup(s, n);
-	if (p == NULL) {
-		oom();
-	}
-	return p;
-}
 
 /* Convert a value that potentially borrows data from the client_proto read
  * buffer into one that owns its data. The owned data must be free with
@@ -314,11 +274,11 @@ int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id)
 
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
-		oom();
+		oomAbort();
 	}
 	rv = buffer__init(&c->write);
 	if (rv != 0) {
-		oom();
+		oomAbort();
 	}
 
 	c->errcode = 0;
@@ -401,7 +361,7 @@ static int writeMessage(struct client_proto *c,
 		buffer__reset(&c->write);                        \
 		_cursor = buffer__advance(&c->write, _n1 + _n2); \
 		if (_cursor == NULL) {                           \
-			oom();                                   \
+			oomAbort();                              \
 		}                                                \
 		assert(_n2 % 8 == 0);                            \
 		message__encode(&_message, &_cursor);            \
@@ -434,7 +394,7 @@ static int readMessage(struct client_proto *c,
 	n = message__sizeof(&message);
 	p = buffer__advance(&c->read, n);
 	if (p == NULL) {
-		oom();
+		oomAbort();
 	}
 	rv = doRead(c->fd, p, n, context);
 	if (rv < 0) {
@@ -455,7 +415,7 @@ static int readMessage(struct client_proto *c,
 	n = message.words * 8;
 	p = buffer__advance(&c->read, n);
 	if (p == NULL) {
-		oom();
+		oomAbort();
 	}
 	rv = doRead(c->fd, p, n, context);
 	if (rv < 0) {
