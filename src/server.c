@@ -1368,16 +1368,16 @@ static int openAndHandshake(struct client_proto *proto,
 }
 
 /* TODO prioritize voters > standbys > spares */
-static int connectToSomeServer(struct dqlite_server *server,
+static int connectToSomeServer(struct client_proto *proto,
+			       const struct node_store_cache *cache,
 			       struct client_context *context)
 {
 	unsigned i;
 	int rv;
 
-	for (i = 0; i < server->cache.len; i += 1) {
-		rv = openAndHandshake(&server->proto,
-				      server->cache.nodes[i].addr,
-				      server->cache.nodes[i].id, context);
+	for (i = 0; i < cache->len; i += 1) {
+		rv = openAndHandshake(proto, cache->nodes[i].addr,
+				      cache->nodes[i].id, context);
 		if (rv == 0) {
 			return 0;
 		}
@@ -1497,7 +1497,8 @@ static int bootstrapOrJoinCluster(struct dqlite_server *server,
 		info.role = DQLITE_VOTER;
 		pushNodeInfo(&server->cache, info);
 	} else {
-		rv = connectToSomeServer(server, context);
+		rv = connectToSomeServer(&server->proto, &server->cache,
+					 context);
 		if (rv != 0) {
 			return 1;
 		}
@@ -1558,7 +1559,8 @@ static void *refreshTask(void *arg)
 
 		clientContextMillis(&context, 5000);
 		if (server->proto.fd == -1) {
-			rv = connectToSomeServer(server, &context);
+			rv = connectToSomeServer(&server->proto, &server->cache,
+						 &context);
 			if (rv != 0) {
 				continue;
 			}
