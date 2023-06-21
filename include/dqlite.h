@@ -40,6 +40,8 @@ DQLITE_API int dqlite_version_number(void);
 typedef unsigned long long dqlite_node_id;
 
 DQLITE_EXPERIMENTAL typedef struct dqlite_server dqlite_server;
+DQLITE_EXPERIMENTAL typedef struct dqlite dqlite;
+DQLITE_EXPERIMENTAL typedef struct dqlite_stmt dqlite_stmt;
 
 /**
  * Signature of a custom callback used to establish network connections
@@ -207,6 +209,139 @@ DQLITE_API DQLITE_EXPERIMENTAL int dqlite_server_stop(dqlite_server *server);
  */
 DQLITE_API DQLITE_EXPERIMENTAL void dqlite_server_destroy(
     dqlite_server *server);
+
+/* The following functions (up to but not including dqlite_node_create) mimic
+ * the core of the sqlite3.h API and use SQLite result codes. dqlite tries to
+ * return result codes that match what SQLite would return in the same
+ * situation, but in some cases will return the less specific SQLITE_ERROR
+ * instead. Certain dqlite-specific error conditions have their own codes that
+ * are compatible with the SQLite set: */
+
+#define SQLITE_IOERR_NOT_LEADER (SQLITE_IOERR | (40 << 8))
+#define SQLITE_IOERR_LEADERSHIP_LOST (SQLITE_IOERR | (41 << 8))
+
+/* When some version of dqlite returns SQLITE_ERROR under certain
+ * circumstances, the developers reserve the right to switch to a more specific
+ * error code in future releases without announcing a breaking change. */
+
+/**
+ * Open a database connection on the dqlite cluster.
+ *
+ * This request will be transparently forwarded to the cluster leader as needed.
+ *
+ * This is the analogue of sqlite3_open. @name is the name of the database
+ * to open, which will be created if it does not exist. All servers in the
+ * cluster share a "namespace" for databases.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_open(dqlite_server *server,
+					       const char *name,
+					       dqlite **db);
+
+/**
+ * Create a prepared statement to be executed on the cluster.
+ *
+ * This is the analogue of sqlite3_prepare_v2.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_prepare(dqlite *db,
+						  const char *sql,
+						  int sql_len,
+						  dqlite_stmt **stmt,
+						  const char **tail);
+
+/**
+ * Execute a prepared statement for one "step".
+ *
+ * This is the analogue of sqlite3_step.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_step(dqlite_stmt *stmt);
+
+/**
+ * Restore a prepared statement to the state preceding any calls to dqlite_step.
+ *
+ * This is the analogue of sqlite3_reset. It can be called on a prepared
+ * statement at any point in its lifecycle.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_reset(dqlite_stmt *stmt);
+
+/**
+ * Unbind all parameters from a prepared statement.
+ *
+ * This is a purely local operation that does not involve communication with any
+ * server. It it the analogue of sqlite3_clear_bindings.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_clear_bindings(dqlite_stmt *stmt);
+
+/**
+ * Release all resources associated with a prepared statement.
+ *
+ * This ends the statement's lifecycle, rendering it invalid for further use. It
+ * is the analogue of sqlite3_finalize.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_finalize(dqlite_stmt *stmt);
+
+/**
+ * Close a database after all associated prepared statements have been
+ * finalized.
+ *
+ * This is analogous to sqlite3_close (note, not sqlite3_close_v2). In
+ * particular, it will fail with SQLITE_BUSY if some dqlite_stmt objects
+ * associated with this database have not yet been finalized.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_close(dqlite *db);
+
+/**
+ * Bind parameters to a prepared statement.
+ *
+ * Parameter binding is a purely local operation, involving no communication
+ * with any server.
+ *
+ * These functions are analogous to the sqlite3_bind family of functions.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_bind_blob(dqlite_stmt *stmt,
+						    int index,
+						    const void *blob,
+						    int blob_len,
+						    void (*dealloc)(void *));
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_bind_double(dqlite_stmt *stmt,
+						      int index,
+						      double val);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_bind_int64(dqlite_stmt *stmt,
+						     int index,
+						     int64_t val);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_bind_null(dqlite_stmt *stmt,
+						    int index);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_bind_text(dqlite_stmt *stmt,
+						    int index,
+						    const char *text,
+						    int text_len,
+						    void (*dealloc)(void *));
+
+/**
+ * Retrieve values from a table row associated with a prepared statement.
+ *
+ * Column retrieval is a purely local operation, involving no communication with
+ * any server.
+ *
+ * These functions are analogous to the sqlite3_column family of functions.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL const void *dqlite_column_blob(dqlite_stmt *stmt,
+							      int index);
+DQLITE_API DQLITE_EXPERIMENTAL double dqlite_column_double(dqlite_stmt *stmt,
+							   int index);
+DQLITE_API DQLITE_EXPERIMENTAL int64_t dqlite_column_int64(dqlite_stmt *stmt,
+							   int index);
+DQLITE_API DQLITE_EXPERIMENTAL const unsigned char *dqlite_column_text(
+    dqlite_stmt *stmt,
+    int index);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_column_bytes(dqlite_stmt *stmt,
+						       int index);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_column_type(dqlite_stmt *stmt,
+						      int index);
+
+/* TODO: currently we have #include <sqlite.h> at the top of this file,
+ * to support the dqlite_vfs functions below. Once those functions are
+ * removed, we should also remove the #include and just copy the definitions
+ * of the SQLite result codes here. */
 
 /**
  * Error codes.
