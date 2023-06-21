@@ -488,11 +488,13 @@ int clientRecvStmt(struct client_proto *c,
 }
 
 static int bufferParams(struct client_proto *c,
-			struct value *params,
-			unsigned n_params)
+			void *params,
+			unsigned n_params,
+			size_t param_size)
 {
 	struct tuple_encoder tup;
 	size_t i;
+	char *param;
 	int rv;
 
 	if (n_params == 0) {
@@ -502,8 +504,8 @@ static int bufferParams(struct client_proto *c,
 	if (rv != 0) {
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
-	for (i = 0; i < n_params; ++i) {
-		rv = tuple_encoder__next(&tup, &params[i]);
+	for (i = 0, param = params; i < n_params; ++i, param += param_size) {
+		rv = tuple_encoder__next(&tup, (struct value *)(void *)param);
 		if (rv != 0) {
 			return DQLITE_CLIENT_PROTO_ERROR;
 		}
@@ -525,7 +527,7 @@ int clientSendExec(struct client_proto *c,
 	request.stmt_id = stmt_id;
 	BUFFER_REQUEST(exec, EXEC);
 
-	rv = bufferParams(c, params, n_params);
+	rv = bufferParams(c, params, n_params, sizeof *params);
 	if (rv != 0) {
 		return rv;
 	}
@@ -547,7 +549,7 @@ int clientSendExecSQL(struct client_proto *c,
 	request.sql = sql;
 	BUFFER_REQUEST(exec_sql, EXEC_SQL);
 
-	rv = bufferParams(c, params, n_params);
+	rv = bufferParams(c, params, n_params, sizeof *params);
 	if (rv != 0) {
 		return rv;
 	}
@@ -572,6 +574,29 @@ int clientRecvResult(struct client_proto *c,
 	return 0;
 }
 
+int clientSendQueryGeneric(struct client_proto *c,
+			   uint32_t stmt_id,
+			   void *params,
+			   unsigned n_params,
+			   size_t param_size,
+			   struct client_context *context)
+{
+	tracef("client send query stmt_id %" PRIu32, stmt_id);
+	struct request_query request;
+	int rv;
+
+	request.db_id = c->db_id;
+	request.stmt_id = stmt_id;
+	BUFFER_REQUEST(query, QUERY);
+
+	rv = bufferParams(c, params, n_params, param_size);
+	if (rv != 0) {
+		return rv;
+	}
+	rv = writeMessage(c, DQLITE_REQUEST_QUERY, 1, context);
+	return rv;
+}
+
 int clientSendQuery(struct client_proto *c,
 		    uint32_t stmt_id,
 		    struct value *params,
@@ -586,7 +611,7 @@ int clientSendQuery(struct client_proto *c,
 	request.stmt_id = stmt_id;
 	BUFFER_REQUEST(query, QUERY);
 
-	rv = bufferParams(c, params, n_params);
+	rv = bufferParams(c, params, n_params, sizeof *params);
 	if (rv != 0) {
 		return rv;
 	}
@@ -608,7 +633,7 @@ int clientSendQuerySQL(struct client_proto *c,
 	request.sql = sql;
 	BUFFER_REQUEST(query_sql, QUERY_SQL);
 
-	rv = bufferParams(c, params, n_params);
+	rv = bufferParams(c, params, n_params, sizeof *params);
 	if (rv != 0) {
 		return rv;
 	}

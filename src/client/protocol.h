@@ -38,14 +38,14 @@ struct client_proto
 	/* TODO find a better approach to initializing these fields? */
 	int (*connect)(void *, const char *, int *);
 	void *connect_arg;
-	int fd;          /* Connected socket */
-	uint32_t db_id;  /* Database ID provided by the server */
-	char *db_name;   /* Database filename (owned) */
+	int fd;         /* Connected socket */
+	uint32_t db_id; /* Database ID provided by the server */
+	char *db_name;  /* Database filename (owned) */
 	uint64_t server_id;
 	struct buffer read;  /* Read buffer */
 	struct buffer write; /* Write buffer */
-	uint64_t errcode; /* Last error code returned by the server */
-	char *errmsg;     /* Last error string returned by the server (owned) */
+	uint64_t errcode;    /* Last error code returned by the server */
+	char *errmsg; /* Last error string returned by the server (owned) */
 };
 
 /* All of the Send and Recv functions take an `struct client_context *context`
@@ -167,6 +167,13 @@ DQLITE_VISIBLE_TO_TESTS int clientSendQuery(struct client_proto *c,
 					    struct value *params,
 					    unsigned n_params,
 					    struct client_context *context);
+
+int clientSendQueryGeneric(struct client_proto *c,
+			   uint32_t stmt_id,
+			   void *params,
+			   unsigned n_params,
+			   size_t param_size,
+			   struct client_context *context);
 
 /* Send a request to perform a non-prepared query. */
 DQLITE_VISIBLE_TO_TESTS int clientSendQuerySQL(struct client_proto *c,
