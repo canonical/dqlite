@@ -745,6 +745,7 @@ void clientCloseRows(struct rows *rows)
 		}
 	}
 	free(rows->column_names);
+	rows->column_names = NULL;
 }
 
 int clientSendInterrupt(struct client_proto *c, struct client_context *context)
