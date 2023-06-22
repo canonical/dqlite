@@ -23,6 +23,7 @@ int dqlite_prepare(dqlite *db,
 {
 	struct client_proto proto;
 	struct client_context context;
+	size_t sql_strlen;
 	char *owned_sql;
 	uint32_t stmt_id;
 	uint64_t n_params;
@@ -56,8 +57,14 @@ int dqlite_prepare(dqlite *db,
 		goto err_after_open_client;
 	}
 
-	owned_sql =
-	    strndupChecked(sql, (sql_len < 0) ? SIZE_MAX : (size_t)sql_len);
+	if (sql_len < 0) {
+		sql_strlen = SIZE_MAX;
+	} else if (sql_len > 0) {
+		sql_strlen = (size_t)sql_len - 1;
+	} else {
+		sql_strlen = 0;
+	}
+	owned_sql = strndupChecked(sql, sql_strlen);
 	rv = clientSendPrepare(&proto, owned_sql, &context);
 	free(owned_sql);
 	if (rv != 0) {
