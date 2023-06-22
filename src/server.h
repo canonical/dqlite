@@ -7,7 +7,7 @@
 
 #include <semaphore.h>
 
-#include "client/protocol.h"
+#include "client_protocol.h"
 #include "config.h"
 #include "id.h"
 #include "lib/assert.h"
@@ -95,30 +95,6 @@ struct dqlite_server
 	void *connect_arg;
 	unsigned long long refresh_period; /* in milliseconds */
 	int dir_fd;
-};
-
-struct dqlite
-{
-	struct dqlite_server *server;
-	char *name; /* owned */
-};
-
-struct owned_value
-{
-	struct value inner;
-	void (*dealloc)(void *);
-};
-
-struct dqlite_stmt
-{
-	struct dqlite *db;
-	struct client_proto proto;
-	uint32_t id;
-	unsigned n_params;
-	struct owned_value *params;
-	int state;
-	struct rows rows;
-	struct row *next_row;
 };
 
 int dqlite__init(struct dqlite_node *d,

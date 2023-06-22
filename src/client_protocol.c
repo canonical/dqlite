@@ -5,16 +5,16 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "../lib/alloc.h"
-#include "../lib/assert.h"
+#include "lib/alloc.h"
+#include "lib/assert.h"
 
-#include "../message.h"
-#include "../protocol.h"
-#include "../request.h"
-#include "../response.h"
-#include "../tracing.h"
-#include "../tuple.h"
+#include "client_protocol.h"
+#include "message.h"
 #include "protocol.h"
+#include "request.h"
+#include "response.h"
+#include "tracing.h"
+#include "tuple.h"
 
 static int peekUint64(struct cursor cursor, uint64_t *val)
 {
@@ -1052,5 +1052,81 @@ int clientRecvMetadata(struct client_proto *c,
 	RESPONSE(metadata, METADATA);
 	*failure_domain = response.failure_domain;
 	*weight = response.weight;
+	return 0;
+}
+
+int clientOpenAndHandshake(struct client_proto *proto,
+			   const char *addr,
+			   uint64_t id,
+			   struct client_context *context)
+{
+	int rv;
+
+	rv = clientOpen(proto, addr, id);
+	if (rv != 0) {
+		return 1;
+	}
+	rv = clientSendHandshake(proto, context);
+	if (rv != 0) {
+		clientClose(proto);
+		return 1;
+	}
+	/* TODO client identification? */
+	return 0;
+}
+
+/* TODO prioritize voters > standbys > spares */
+int clientConnectToSomeServer(struct client_proto *proto,
+			      const struct client_node_info *cache,
+			      unsigned cache_len,
+			      struct client_context *context)
+{
+	unsigned i;
+	int rv;
+
+	for (i = 0; i < cache_len; i += 1) {
+		rv = clientOpenAndHandshake(proto, cache[i].addr, cache[i].id,
+					    context);
+		if (rv == 0) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+int clientTryReconnectToLeader(struct client_proto *proto,
+			       struct client_context *context)
+{
+	char *addr;
+	uint64_t id;
+	int rv;
+
+	rv = clientSendLeader(proto, context);
+	if (rv != 0) {
+		clientClose(proto);
+		return 1;
+	}
+
+	rv = clientRecvServer(proto, &id, &addr, context);
+	if (rv == DQLITE_CLIENT_PROTO_RECEIVED_FAILURE) {
+		return 1;
+	} else if (rv != 0) {
+		clientClose(proto);
+		return 1;
+	}
+	if (id == 0) {
+		free(addr);
+		return 1;
+	} else if (id == proto->server_id) {
+		free(addr);
+		return 0;
+	}
+
+	clientClose(proto);
+	rv = clientOpenAndHandshake(proto, addr, id, context);
+	free(addr);
+	if (rv != 0) {
+		return 1;
+	}
 	return 0;
 }

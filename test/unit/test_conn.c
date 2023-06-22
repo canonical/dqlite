@@ -13,7 +13,7 @@
 #include "../lib/sqlite.h"
 #include "../lib/vfs.h"
 
-#include "../../src/client/protocol.h"
+#include "../../src/client_protocol.h"
 #include "../../src/conn.h"
 #include "../../src/gateway.h"
 #include "../../src/lib/transport.h"

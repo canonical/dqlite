@@ -6,7 +6,7 @@
 #include <pthread.h>
 #include <sys/un.h>
 
-#include "../../src/client/protocol.h"
+#include "../../src/client_protocol.h"
 
 #include "../../include/dqlite.h"
 

@@ -3,11 +3,11 @@
 #ifndef DQLITE_CLIENT_PROTOCOL_H_
 #define DQLITE_CLIENT_PROTOCOL_H_
 
-#include "../../include/dqlite.h"
+#include "../include/dqlite.h"
 
-#include "../lib/buffer.h"
+#include "lib/buffer.h"
 
-#include "../tuple.h"
+#include "tuple.h"
 
 /* All functions declared in this header file return 0 for success or one
  * of the follow error codes on failure. */
@@ -277,5 +277,23 @@ DQLITE_VISIBLE_TO_TESTS int clientRecvMetadata(struct client_proto *c,
 					       uint64_t *failure_domain,
 					       uint64_t *weight,
 					       struct client_context *context);
+
+int clientOpenAndHandshake(struct client_proto *proto,
+			   const char *addr,
+			   uint64_t id,
+			   struct client_context *context);
+
+int clientConnectToSomeServer(struct client_proto *proto,
+			      const struct client_node_info *cache,
+			      unsigned cache_len,
+			      struct client_context *context);
+
+/* Given an open connection, make an honest effort to reopen it as a connection
+ * to the current cluster leader. This bails out rather than retrying on
+ * client/server/network errors, leaving the retry policy up to the caller. On
+ * failure (rv != 0) the given client object may be closed or not: the caller
+ * must check this by comparing proto->fd to -1. */
+int clientTryReconnectToLeader(struct client_proto *proto,
+			       struct client_context *context);
 
 #endif /* DQLITE_CLIENT_PROTOCOL_H_ */

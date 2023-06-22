@@ -2,7 +2,7 @@
 
 #include <raft.h>
 
-#include "client/protocol.h"
+#include "client_protocol.h"
 #include "lib/queue.h"
 #include "roles.h"
 #include "server.h"

@@ -1,4 +1,4 @@
-#include "../../src/client/protocol.h"
+#include "../../src/client_protocol.h"
 #include "../../src/server.h"
 #include "../lib/client.h"
 #include "../lib/endpoint.h"
