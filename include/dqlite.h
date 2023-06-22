@@ -232,10 +232,13 @@ DQLITE_API DQLITE_EXPERIMENTAL void dqlite_server_destroy(
  * This is the analogue of sqlite3_open. @name is the name of the database
  * to open, which will be created if it does not exist. All servers in the
  * cluster share a "namespace" for databases.
+ *
+ * The @flags argument is currently ignored.
  */
 DQLITE_API DQLITE_EXPERIMENTAL int dqlite_open(dqlite_server *server,
 					       const char *name,
-					       dqlite **db);
+					       dqlite **db,
+					       int flags);
 
 /**
  * Create a prepared statement to be executed on the cluster.

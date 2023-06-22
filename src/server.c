@@ -1790,8 +1790,9 @@ void dqlite_server_destroy(dqlite_server *server)
 	free(server);
 }
 
-int dqlite_open(dqlite_server *server, const char *name, dqlite **db)
+int dqlite_open(dqlite_server *server, const char *name, dqlite **db, int flags)
 {
+	(void)flags;
 	*db = callocChecked(1, sizeof **db);
 	(*db)->server = server;
 	(*db)->name = strdupChecked(name);

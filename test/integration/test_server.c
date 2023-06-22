@@ -304,7 +304,7 @@ dqlite *simple_open(dqlite_server *server)
 	dqlite *db;
 	int rv;
 
-	rv = dqlite_open(server, "test", &db);
+	rv = dqlite_open(server, "test", &db, 0);
 	munit_assert_int(rv, ==, SQLITE_OK);
 	return db;
 }
