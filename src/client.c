@@ -303,6 +303,7 @@ int dqlite_clear_bindings(dqlite_stmt *stmt)
 
 static int drainRows(struct client_proto *proto, struct client_context *context)
 {
+	/* TODO use the interrupt request */
 	struct rows rows;
 	bool done = false;
 	int rv;
