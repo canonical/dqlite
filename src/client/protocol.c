@@ -229,7 +229,7 @@ int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id)
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 	c->server_id = server_id;
-	c->db_id = (uint32_t)-1;
+	c->db_id = UINT32_MAX;
 
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
