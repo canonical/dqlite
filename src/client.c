@@ -152,10 +152,10 @@ int dqlite_step(dqlite_stmt *stmt)
 	}
 
 	if (stmt->next_row == NULL) {
-		clientCloseRows(&stmt->rows);
 		if (stmt->state == DQLITE_STEP_GOT_EOF) {
 			return SQLITE_DONE;
 		}
+		clientCloseRows(&stmt->rows);
 		rv = getMoreRows(stmt, &context);
 		if (rv != SQLITE_OK) {
 			return rv;
@@ -350,7 +350,10 @@ int dqlite_reset(dqlite_stmt *stmt)
 			if (rv != 0) {
 				return rv;
 			}
-			__attribute__((fallthrough));
+			clientCloseRows(&stmt->rows);
+			stmt->next_row = NULL;
+			stmt->state = DQLITE_STEP_START;
+			break;
 		case DQLITE_STEP_GOT_EOF:
 			clientCloseRows(&stmt->rows);
 			stmt->next_row = NULL;
