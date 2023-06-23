@@ -25,6 +25,7 @@ struct dqlite_stmt
 	int state;
 	struct rows rows;
 	struct row *next_row;
+	void **converted;
 };
 
 #endif /* DQLITE_CLIENT_H_ */

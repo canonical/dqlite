@@ -111,6 +111,20 @@ static int getMoreRows(struct dqlite_stmt *stmt, struct client_context *context)
 	return SQLITE_OK;
 }
 
+static void clearConvertedVals(struct dqlite_stmt *stmt)
+{
+	unsigned i;
+
+	if (stmt->converted == NULL) {
+		return;
+	}
+
+	for (i = 0; i < stmt->rows.column_count; i += 1) {
+		sqlite3_free(stmt->converted[i]);
+		stmt->converted[i] = NULL;
+	}
+}
+
 int dqlite_step(dqlite_stmt *stmt)
 {
 	struct client_context context;
@@ -133,6 +147,7 @@ int dqlite_step(dqlite_stmt *stmt)
 		assert(stmt->state == DQLITE_STEP_GOT_EOF);
 		return SQLITE_DONE;
 	} else {
+		clearConvertedVals(stmt);
 		stmt->next_row = stmt->next_row->next;
 	}
 
@@ -324,6 +339,9 @@ int dqlite_reset(dqlite_stmt *stmt)
 	int rv;
 
 	clientContextMillis(&context, 5000);
+	clearConvertedVals(stmt);
+	free(stmt->converted);
+	stmt->converted = NULL;
 	switch (stmt->state) {
 		case DQLITE_STEP_START:
 			break;
@@ -342,6 +360,56 @@ int dqlite_reset(dqlite_stmt *stmt)
 			assert(0);
 	}
 	return SQLITE_OK;
+}
+
+static const void *convertIntegerToText(struct dqlite_stmt *stmt, int index)
+{
+	struct value *val = &stmt->next_row->values[index];
+
+	assert(val->type == SQLITE_INTEGER);
+	if (stmt->converted == NULL) {
+		stmt->converted = callocChecked(stmt->rows.column_count,
+						sizeof *stmt->converted);
+	}
+	if (stmt->converted[index] == NULL) {
+		stmt->converted[index] =
+		    sqlite3_mprintf("%lld", (long long)val->integer);
+	}
+	return stmt->converted[index];
+}
+
+static const void *convertFloatToText(struct dqlite_stmt *stmt, int index)
+{
+	struct value *val = &stmt->next_row->values[index];
+
+	assert(val->type == SQLITE_FLOAT);
+	if (stmt->converted == NULL) {
+		stmt->converted = callocChecked(stmt->rows.column_count,
+						sizeof *stmt->converted);
+	}
+	if (stmt->converted[index] == NULL) {
+		stmt->converted[index] = sqlite3_mprintf("%!.15g", val->float_);
+	}
+	return stmt->converted[index];
+}
+
+static const void *convertBlobToText(struct dqlite_stmt *stmt, int index)
+{
+	struct value *val = &stmt->next_row->values[index];
+	char *text;
+
+	assert(val->type == SQLITE_BLOB);
+	if (stmt->converted == NULL) {
+		stmt->converted = callocChecked(stmt->rows.column_count,
+						sizeof *stmt->converted);
+	}
+	if (stmt->converted[index] == NULL) {
+		stmt->converted[index] = sqlite3_malloc((int)val->blob.len + 1);
+		text = stmt->converted[index];
+		memcpy(text, val->blob.base, val->blob.len);
+		text[val->blob.len] = '\0';
+	}
+	return stmt->converted[index];
 }
 
 const void *dqlite_column_blob(dqlite_stmt *stmt, int index)
@@ -364,11 +432,12 @@ const void *dqlite_column_blob(dqlite_stmt *stmt, int index)
 			return val->iso8601;
 		case SQLITE_NULL:
 			return NULL;
-		case SQLITE_INTEGER:
-		case SQLITE_FLOAT:
 		case DQLITE_BOOLEAN:
-			/* TODO */
-			return NULL;
+			return val->boolean ? "1" : "0";
+		case SQLITE_INTEGER:
+			return convertIntegerToText(stmt, index);
+		case SQLITE_FLOAT:
+			return convertFloatToText(stmt, index);
 		default:
 			assert(0);
 	}
@@ -388,13 +457,15 @@ double dqlite_column_double(dqlite_stmt *stmt, int index)
 	switch (val->type) {
 		case SQLITE_FLOAT:
 			return val->float_;
+		case SQLITE_INTEGER:
+			return (double)val->integer;
+		case DQLITE_BOOLEAN:
+			return val->boolean ? 1.0 : 0.0;
 		case SQLITE_NULL:
 			return 0.0;
-		case SQLITE_INTEGER:
 		case SQLITE_BLOB:
 		case SQLITE_TEXT:
 		case DQLITE_ISO8601:
-		case DQLITE_BOOLEAN:
 			/* TODO */
 			return 0.0;
 		default:
@@ -405,6 +476,7 @@ double dqlite_column_double(dqlite_stmt *stmt, int index)
 int64_t dqlite_column_int64(dqlite_stmt *stmt, int index)
 {
 	struct value *val;
+	double d;
 
 	if (stmt->next_row == NULL) {
 		return 0;
@@ -416,13 +488,22 @@ int64_t dqlite_column_int64(dqlite_stmt *stmt, int index)
 	switch (val->type) {
 		case SQLITE_INTEGER:
 			return val->integer;
+		case DQLITE_BOOLEAN:
+			return (int64_t)val->boolean;
 		case SQLITE_NULL:
 			return 0;
 		case SQLITE_FLOAT:
+			d = val->float_;
+			if (d > (double)INT64_MAX) {
+				return INT64_MAX;
+			} else if (d < (double)INT64_MIN) {
+				return INT64_MIN;
+			} else {
+				return (int64_t)d;
+			}
 		case SQLITE_BLOB:
 		case SQLITE_TEXT:
 		case DQLITE_ISO8601:
-		case DQLITE_BOOLEAN:
 			/* TODO */
 			return 0;
 		default:
@@ -433,6 +514,7 @@ int64_t dqlite_column_int64(dqlite_stmt *stmt, int index)
 const unsigned char *dqlite_column_text(dqlite_stmt *stmt, int index)
 {
 	struct value *val;
+	const char *text;
 
 	if (stmt->next_row == NULL) {
 		return NULL;
@@ -446,14 +528,18 @@ const unsigned char *dqlite_column_text(dqlite_stmt *stmt, int index)
 			return (const unsigned char *)val->text;
 		case DQLITE_ISO8601:
 			return (const unsigned char *)val->iso8601;
+		case DQLITE_BOOLEAN:
+			return (const unsigned char *)(val->boolean ? "1"
+								    : "0");
+		case SQLITE_BLOB:
+			text = convertBlobToText(stmt, index);
+			return (const unsigned char *)text;
 		case SQLITE_NULL:
 			return NULL;
 		case SQLITE_INTEGER:
+			return convertIntegerToText(stmt, index);
 		case SQLITE_FLOAT:
-		case SQLITE_BLOB:
-		case DQLITE_BOOLEAN:
-			/* TODO */
-			return NULL;
+			return convertFloatToText(stmt, index);
 		default:
 			assert(0);
 	}
@@ -462,6 +548,7 @@ const unsigned char *dqlite_column_text(dqlite_stmt *stmt, int index)
 int dqlite_column_bytes(dqlite_stmt *stmt, int index)
 {
 	struct value *val;
+	const char *text;
 
 	if (stmt->next_row == NULL) {
 		return 0;
@@ -480,10 +567,13 @@ int dqlite_column_bytes(dqlite_stmt *stmt, int index)
 		case SQLITE_NULL:
 			return 0;
 		case SQLITE_INTEGER:
+			text = convertIntegerToText(stmt, index);
+			return (int)strlen(text) + 1;
 		case SQLITE_FLOAT:
+			text = convertFloatToText(stmt, index);
+			return (int)strlen(text) + 1;
 		case DQLITE_BOOLEAN:
-			/* TODO */
-			return 0;
+			return 2;
 		default:
 			assert(0);
 	}
@@ -512,6 +602,8 @@ int dqlite_finalize(dqlite_stmt *stmt)
 	if (stmt->state != DQLITE_STEP_START) {
 		clientCloseRows(&stmt->rows);
 	}
+	clearConvertedVals(stmt);
+	free(stmt->converted);
 	free(stmt);
 	return SQLITE_OK;
 }
