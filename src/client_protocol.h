@@ -65,7 +65,6 @@ struct client_context
 	struct timespec deadline;
 };
 
-/* TODO Consider using a dynamic array instead of a linked list here? */
 struct row
 {
 	struct value *values;
