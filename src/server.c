@@ -757,6 +757,12 @@ int dqlite_node_enable_role_management(dqlite_node *n)
 	return 0;
 }
 
+int dqlite_node_set_auto_recovery(dqlite_node *n, bool enabled)
+{
+	raft_uv_set_auto_recovery(&n->raft_io, enabled);
+	return 0;
+}
+
 const char *dqlite_node_errmsg(dqlite_node *n)
 {
 	if (n != NULL) {
