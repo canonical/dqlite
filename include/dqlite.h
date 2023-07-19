@@ -431,6 +431,20 @@ DQLITE_API int dqlite_node_set_target_voters(dqlite_node *n, int voters);
 DQLITE_API int dqlite_node_set_target_standbys(dqlite_node *n, int standbys);
 
 /**
+ * Enable or disable auto-recovery for corrupted disk files.
+ *
+ * When auto-recovery is enabled, files in the data directory that are
+ * determined to be corrupt may be removed by dqlite at startup. This allows
+ * the node to start up successfully in more situations, but comes at the cost
+ * of possible data loss, and may mask bugs.
+ *
+ * This must be called before dqlite_node_start.
+ *
+ * Auto-recovery is enabled by default.
+ */
+DQLITE_API int dqlite_node_set_auto_recovery(dqlite_node *n, bool enabled);
+
+/**
  * Enable automatic role management on the server side for this node.
  *
  * When automatic role management is enabled, servers in a dqlite cluster will
