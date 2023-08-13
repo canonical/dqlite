@@ -61,6 +61,10 @@ sudo apt-get install libdqlite-dev
 
 您的linux发行版应该已经为您提供了预构建的 libuv 共享库和 libsqlite3-dev,就不需要在下载了，否则还需要下载这两个依赖。
 
+```
+sudo apt install autoconf libuv1-dev liblz4-dev libtool pkg-config build-essential libsqlite3-dev
+```
+
 编译raft库运行如下命令：
 
 ```bash
