@@ -81,6 +81,8 @@ To build libdqlite from source you'll need:
 Your distribution should already provide you with a pre-built libuv shared
 library and libsqlite3-dev.
 
+For the Debian-based Linux distros you can install the build dependencies with:
+
 ```
 sudo apt install autoconf libuv1-dev liblz4-dev libtool pkg-config build-essential libsqlite3-dev
 ```
