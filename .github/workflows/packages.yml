@@ -3,6 +3,7 @@ on:
   - push
 jobs:
   build:
+    if: github.repository == 'canonical/dqlite'
     strategy:
       fail-fast: false
       matrix:
@@ -11,6 +12,8 @@ jobs:
           - jammy
           - kinetic
     runs-on: ubuntu-20.04
+    environment:
+      name: ppa
     steps:
     - name: Clone the repositories
       run: |
@@ -20,12 +23,24 @@ jobs:
     - name: Setup dependencies
       run: |
           sudo apt-get update -qq
-          sudo apt-get install -qq debhelper devscripts
+          sudo apt-get install -qq debhelper devscripts gnupg
+
+    - name: Setup GPG signing key
+      env:
+          PPA_SECRET_KEY: ${{ secrets.PPA_SECRET_KEY }}
+      run: |
+          echo "$PPA_SECRET_KEY" > private-key.asc
+          gpg --import --batch private-key.asc
+
+    - name: Delete GPG signing key file
+      if: always()
+      run: |
+          rm -f private-key.asc
 
     - name: Build source package
       env:
         DEBFULLNAME: "Github Actions"
-        DEBEMAIL: "noreply@linuxcontainers.org"
+        DEBEMAIL: "dqlitebot@lists.canonical.com"
         TARGET: ${{ matrix.target }}
       run: |
           cp -R dqlite-ppa/debian dqlite/
@@ -36,15 +51,8 @@ jobs:
             --package dqlite \
             --newversion ${VERSION}~${TARGET}1 \
             "Automatic build from Github"
-          debuild -S -sa -us -uc -d
+          debuild -S -sa -d -k${{ vars.PPA_PUBLIC_KEY }}
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: debian-${{ matrix.target }}
-        if-no-files-found: error
-        path: |
-          *.buildinfo
-          *.changes
-          *.dsc
-          *.tar.*
+    - name: Upload to Launchpad
+      run: |
+          dput -U -u ppa:dqlite/dev *.changes
