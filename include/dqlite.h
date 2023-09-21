@@ -26,7 +26,7 @@
  * Version.
  */
 #define DQLITE_VERSION_MAJOR 1
-#define DQLITE_VERSION_MINOR 14
+#define DQLITE_VERSION_MINOR 16
 #define DQLITE_VERSION_RELEASE 0
 #define DQLITE_VERSION_NUMBER                                            \
 	(DQLITE_VERSION_MAJOR * 100 * 100 + DQLITE_VERSION_MINOR * 100 + \
