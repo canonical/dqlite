@@ -87,7 +87,8 @@ int parseParams(struct cursor *cursor, int format, struct value **out)
 		prev = prev->next;
 	}
 
-	*out = head;
+	*out = head->next;
+	sqlite3_free(head);
 	return 0;
 
 err_after_alloc_head:

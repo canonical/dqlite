@@ -5,6 +5,7 @@
 #include "../../src/protocol.h"
 #include "../../src/request.h"
 #include "../../src/response.h"
+#include "../../src/revamp.h"
 
 TEST_MODULE(concurrency);
 
@@ -33,36 +34,39 @@ struct connection
 	struct buffer response; /* Response payload */
 	struct handle handle;   /* Async handle request */
 	struct context context;
+	struct db_context *db_ctx;
 };
 
 #define FIXTURE          \
 	FIXTURE_CLUSTER; \
 	struct connection connections[N_GATEWAYS]
 
-#define SETUP                                                              \
-	unsigned i;                                                        \
-	int rc;                                                            \
-	SETUP_CLUSTER(V2);                                                 \
-	CLUSTER_ELECT(0);                                                  \
-	for (i = 0; i < N_GATEWAYS; i++) {                                 \
-		struct connection *c = &f->connections[i];                 \
-		struct request_open open;                                  \
-		struct response_db db;                                     \
-		struct id_state seed = {{1}};                              \
-		gateway__init(&c->gateway, CLUSTER_CONFIG(0),              \
-			      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0), seed); \
-		c->handle.data = &c->context;                              \
-		rc = buffer__init(&c->request);                            \
-		munit_assert_int(rc, ==, 0);                               \
-		rc = buffer__init(&c->response);                           \
-		munit_assert_int(rc, ==, 0);                               \
-		open.filename = "test";                                    \
-		open.vfs = "";                                             \
-		ENCODE(c, &open, open);                                    \
-		HANDLE(c, OPEN);                                           \
-		ASSERT_CALLBACK(c, 0, DB);                                 \
-		DECODE(c, &db, db);                                        \
-		munit_assert_int(db.id, ==, 0);                            \
+#define SETUP                                                             \
+	unsigned i;                                                       \
+	int rc;                                                           \
+	SETUP_CLUSTER(V2);                                                \
+	CLUSTER_ELECT(0);                                                 \
+	for (i = 0; i < N_GATEWAYS; i++) {                                \
+		struct connection *c = &f->connections[i];                \
+		struct request_open open;                                 \
+		struct response_db db;                                    \
+		struct id_state seed = {{1}};                             \
+		c->db_ctx = munit_malloc(sizeof *c->db_ctx);              \
+		gateway__init(&c->gateway, CLUSTER_CONFIG(0),             \
+			      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0), seed, \
+			      c->db_ctx);                                 \
+		c->handle.data = &c->context;                             \
+		rc = buffer__init(&c->request);                           \
+		munit_assert_int(rc, ==, 0);                              \
+		rc = buffer__init(&c->response);                          \
+		munit_assert_int(rc, ==, 0);                              \
+		open.filename = "test";                                   \
+		open.vfs = "";                                            \
+		ENCODE(c, &open, open);                                   \
+		HANDLE(c, OPEN);                                          \
+		ASSERT_CALLBACK(c, 0, DB);                                \
+		DECODE(c, &db, db);                                       \
+		munit_assert_int(db.id, ==, 0);                           \
 	}
 
 #define TEAR_DOWN                                          \
@@ -72,6 +76,7 @@ struct connection
 		buffer__close(&c->request);                \
 		buffer__close(&c->response);               \
 		gateway__close(&c->gateway);               \
+		free(c->db_ctx);                           \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 

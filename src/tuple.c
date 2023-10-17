@@ -150,6 +150,7 @@ int tuple_decoder__next(struct tuple_decoder *d, struct value *value)
 			rc = DQLITE_PARSE;
 			break;
 	};
+	value->next = NULL;
 	if (rc != 0) {
 		return rc;
 	}
