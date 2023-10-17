@@ -13,13 +13,9 @@
 #include "lib/assert.h"
 #include "logger.h"
 #include "registry.h"
+#include "revamp.h"
 
 #define DQLITE_ERRMSG_BUF_SIZE 300
-
-struct db_context
-{
-	sem_t sem;
-};
 
 /**
  * A single dqlite server instance.

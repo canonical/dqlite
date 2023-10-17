@@ -37,6 +37,7 @@ libdqlite_la_SOURCES = \
   src/registry.c \
   src/request.c \
   src/response.c \
+  src/revamp.c \
   src/roles.c \
   src/server.c \
   src/stmt.c \

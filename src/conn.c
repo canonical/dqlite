@@ -2,6 +2,7 @@
 #include "message.h"
 #include "protocol.h"
 #include "request.h"
+#include "revamp.h"
 #include "tracing.h"
 #include "transport.h"
 

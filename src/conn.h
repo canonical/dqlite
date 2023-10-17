@@ -14,6 +14,7 @@
 #include "gateway.h"
 #include "id.h"
 #include "message.h"
+#include "revamp.h"
 
 /**
  * Callbacks.
