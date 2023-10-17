@@ -2,6 +2,7 @@
 #include "../../src/gateway.h"
 #include "../../src/request.h"
 #include "../../src/response.h"
+#include "../../src/revamp.h"
 #include "../../src/tuple.h"
 #include "../lib/cluster.h"
 #include "../lib/raft_heap.h"
@@ -34,6 +35,7 @@ struct connection
 	struct cursor cursor; /* Response read cursor */
 	struct handle handle; /* Async handle request */
 	struct context context;
+	struct db_context *db_ctx;
 };
 
 #define FIXTURE                                   \
@@ -56,8 +58,9 @@ struct connection
 		struct id_state seed = {{1}};                           \
 		config = CLUSTER_CONFIG(i);                             \
 		config->page_size = 512;                                \
+		c->db_ctx = munit_malloc(sizeof *c->db_ctx);            \
 		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
-			      CLUSTER_RAFT(i), seed);                   \
+			      CLUSTER_RAFT(i), seed, c->db_ctx);        \
 		c->handle.data = &c->context;                           \
 		rc = buffer__init(&c->buf1);                            \
 		munit_assert_int(rc, ==, 0);                            \
@@ -75,6 +78,7 @@ struct connection
 		gateway__close(&c->gateway);               \
 		buffer__close(&c->buf1);                   \
 		buffer__close(&c->buf2);                   \
+		free(c->db_ctx);                           \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 

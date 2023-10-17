@@ -17,6 +17,7 @@
 #include "../../src/conn.h"
 #include "../../src/gateway.h"
 #include "../../src/lib/transport.h"
+#include "../../src/revamp.h"
 #include "../../src/transport.h"
 
 TEST_MODULE(conn);
@@ -41,7 +42,8 @@ static void connCloseCb(struct conn *conn)
 	FIXTURE_RAFT;     \
 	FIXTURE_CLIENT;   \
 	struct conn conn; \
-	bool closed;
+	bool closed;      \
+	struct db_context *db_ctx;
 
 #define SETUP                                                          \
 	struct uv_stream_s *stream;                                    \
@@ -60,13 +62,15 @@ static void connCloseCb(struct conn *conn)
 	rv = transport__stream(&f->loop, f->server, &stream);          \
 	munit_assert_int(rv, ==, 0);                                   \
 	f->closed = false;                                             \
+	f->db_ctx = munit_malloc(sizeof *f->db_ctx);                   \
 	f->conn.queue[0] = &f->closed;                                 \
 	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry, \
 			 &f->raft, stream, &f->raft_transport, seed,   \
-			 connCloseCb);                                 \
+			 connCloseCb, f->db_ctx);                      \
 	munit_assert_int(rv, ==, 0)
 
 #define TEAR_DOWN                         \
+	free(f->db_ctx);                  \
 	conn__stop(&f->conn);             \
 	while (!f->closed) {              \
 		test_uv_run(&f->loop, 1); \

@@ -467,7 +467,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	struct request_exec request = {0};
 	int tuple_format;
 	uint64_t req_id;
-	struct value *params;
+	struct value *params = NULL;
 	int rv;
 
 	switch (req->schema) {
@@ -501,13 +501,12 @@ static int handle_exec(struct gateway *g, struct handle *req)
 		return 0;
 	}
 	rv = bindParams(stmt->stmt, params);
+	freeParams(params);
 	if (rv != 0) {
 		tracef("handle exec bind failed %d", rv);
-		freeParams(params);
 		failure(req, rv, "bind parameters");
 		return 0;
 	}
-	freeParams(params);
 	req->stmt_id = stmt->id;
 	g->req = req;
 	req_id = idNext(&g->random_state);
@@ -606,7 +605,7 @@ static int handle_query(struct gateway *g, struct handle *req)
 	int tuple_format;
 	bool is_readonly;
 	uint64_t req_id;
-	struct value *params;
+	struct value *params = NULL;
 	int rv;
 
 	switch (req->schema) {
@@ -640,13 +639,12 @@ static int handle_query(struct gateway *g, struct handle *req)
 		return 0;
 	}
 	rv = bindParams(stmt->stmt, params);
+	freeParams(params);
 	if (rv != 0) {
 		tracef("handle query bind failed %d", rv);
-		freeParams(params);
 		failure(req, rv, "bind parameters");
 		return 0;
 	}
-	freeParams(params);
 	req->stmt_id = stmt->id;
 	g->req = req;
 
@@ -717,7 +715,7 @@ static void handle_exec_sql_next(struct gateway *g,
 	const char *tail;
 	int tuple_format;
 	uint64_t req_id;
-	struct value *params;
+	struct value *params = NULL;
 	int rv;
 
 	if (req->sql == NULL || strcmp(req->sql, "") == 0) {
@@ -755,8 +753,8 @@ static void handle_exec_sql_next(struct gateway *g,
 			goto done_after_prepare;
 		}
 		rv = bindParams(stmt, params);
+		freeParams(params);
 		if (rv != 0) {
-			freeParams(params);
 			failure(req, rv, "bind parameters");
 			goto done_after_prepare;
 		}
@@ -874,7 +872,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	int tuple_format;
 	bool is_readonly;
 	uint64_t req_id;
-	struct value *params;
+	struct value *params = NULL;
 	int rv;
 
 	if (status != 0) {
@@ -922,9 +920,9 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 	rv = bindParams(stmt, params);
+	freeParams(params);
 	if (rv != 0) {
 		tracef("handle query sql bind failed %d", rv);
-		freeParams(params);
 		sqlite3_finalize(stmt);
 		failure(req, rv, "bind parameters");
 		return;
