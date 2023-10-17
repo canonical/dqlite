@@ -13,6 +13,7 @@
 #include "lib/assert.h"
 #include "logger.h"
 #include "registry.h"
+#include "revamp.h"
 
 #define DQLITE_ERRMSG_BUF_SIZE 300
 
@@ -57,6 +58,8 @@ struct dqlite_node
 	void *connect_func_arg; /* User data for connection function */
 	char errmsg[DQLITE_ERRMSG_BUF_SIZE]; /* Last error occurred */
 	struct id_state random_state;        /* For seeding ID generation */
+	pthread_t db_thread;
+	struct db_context *db_ctx;
 };
 
 /* Dynamic array of node info objects. This is the in-memory representation of

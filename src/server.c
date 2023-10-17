@@ -167,6 +167,8 @@ void dqlite__close(struct dqlite_node *d)
 	if (!d->initialized) {
 		return;
 	}
+	sem_destroy(&d->db_ctx->sem);
+	free(d->db_ctx);
 	raft_free(d->listener);
 	rv = sem_destroy(&d->stopped);
 	assert(rv == 0); /* Fails only if sem object is not valid */
@@ -526,6 +528,9 @@ static void stopCb(uv_async_t *stop)
 		conn__stop(conn);
 	}
 	raft_close(&d->raft, raftCloseCb);
+
+	sem_post(&d->db_ctx->sem);
+	pthread_join(d->db_thread, NULL);
 }
 
 /* Callback invoked as soon as the loop as started.
@@ -624,7 +629,7 @@ static void listenCb(uv_stream_t *listener, int status)
 		goto err;
 	}
 	rv = conn__start(conn, &t->config, &t->loop, &t->registry, &t->raft,
-			 stream, &t->raft_transport, seed, destroy_conn);
+			 stream, &t->raft_transport, seed, destroy_conn, t->db_ctx);
 	if (rv != 0) {
 		goto err_after_conn_alloc;
 	}
@@ -671,9 +676,26 @@ static void roleManagementTimerCb(uv_timer_t *handle)
 	RolesAdjust(d);
 }
 
+static void *dbTask(void *arg)
+{
+	struct db_context *ctx = arg;
+	sem_wait(&ctx->sem);
+	return NULL;
+}
+
 static int taskRun(struct dqlite_node *d)
 {
 	int rv;
+
+	d->db_ctx = malloc(sizeof *d->db_ctx);
+	if (d->db_ctx == NULL) {
+		return DQLITE_NOMEM;
+	}
+	rv = sem_init(&d->db_ctx->sem, 0, 0);
+	assert(rv == 0);
+
+	rv = pthread_create(&d->db_thread, NULL, dbTask, d->db_ctx);
+	assert(rv == 0);
 
 	/* TODO: implement proper cleanup upon error by spinning the loop a few
 	 * times. */
