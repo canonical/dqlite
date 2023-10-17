@@ -629,7 +629,7 @@ static void listenCb(uv_stream_t *listener, int status)
 		goto err;
 	}
 	rv = conn__start(conn, &t->config, &t->loop, &t->registry, &t->raft,
-			 stream, &t->raft_transport, seed, destroy_conn);
+			 stream, &t->raft_transport, seed, destroy_conn, t->db_ctx);
 	if (rv != 0) {
 		goto err_after_conn_alloc;
 	}

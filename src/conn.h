@@ -53,7 +53,8 @@ int conn__start(struct conn *c,
 		struct uv_stream_s *stream,
 		struct raft_uv_transport *uv_transport,
 		struct id_state seed,
-		conn_close_cb close_cb);
+		conn_close_cb close_cb,
+		struct db_context *db_ctx);
 
 /**
  * Force closing the connection. The close callback will be invoked when it's

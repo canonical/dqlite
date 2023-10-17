@@ -15,7 +15,8 @@ void gateway__init(struct gateway *g,
 		   struct config *config,
 		   struct registry *registry,
 		   struct raft *raft,
-		   struct id_state seed)
+		   struct id_state seed,
+		   struct db_context *db_ctx)
 {
 	tracef("gateway init");
 	g->config = config;
@@ -31,6 +32,7 @@ void gateway__init(struct gateway *g,
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 	g->client_id = 0;
 	g->random_state = seed;
+	g->db_ctx = db_ctx;
 }
 
 void gateway__leader_close(struct gateway *g, int reason)

@@ -37,13 +37,15 @@ struct gateway
 	uint64_t protocol;           /* Protocol format version */
 	uint64_t client_id;
 	struct id_state random_state; /* For generating IDs */
+	struct db_context *db_ctx;
 };
 
 void gateway__init(struct gateway *g,
 		   struct config *config,
 		   struct registry *registry,
 		   struct raft *raft,
-		   struct id_state seed);
+		   struct id_state seed,
+		   struct db_context *db_ctx);
 
 void gateway__close(struct gateway *g);
 
