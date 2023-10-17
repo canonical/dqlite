@@ -78,6 +78,7 @@ struct value
 		int64_t unixtime;    /* Unix time in seconds since epoch */
 		uint64_t boolean;
 	};
+	struct value *next;
 };
 
 /**

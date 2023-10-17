@@ -465,6 +465,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	struct request_exec request = {0};
 	int tuple_format;
 	uint64_t req_id;
+	struct value *params;
 	int rv;
 
 	switch (req->schema) {
@@ -491,12 +492,20 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
-	rv = bind__params(stmt->stmt, cursor, tuple_format);
+	rv = parseParams(cursor, tuple_format, &params);
+	if (rv != 0) {
+		tracef("handle exec parse params failed %d", rv);
+		failure(req, rv, "parse parameters");
+		return 0;
+	}
+	rv = bindParams(stmt->stmt, params);
 	if (rv != 0) {
 		tracef("handle exec bind failed %d", rv);
+		freeParams(params);
 		failure(req, rv, "bind parameters");
 		return 0;
 	}
+	freeParams(params);
 	req->stmt_id = stmt->id;
 	g->req = req;
 	req_id = idNext(&g->random_state);
@@ -595,6 +604,7 @@ static int handle_query(struct gateway *g, struct handle *req)
 	int tuple_format;
 	bool is_readonly;
 	uint64_t req_id;
+	struct value *params;
 	int rv;
 
 	switch (req->schema) {
@@ -621,12 +631,20 @@ static int handle_query(struct gateway *g, struct handle *req)
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
-	rv = bind__params(stmt->stmt, cursor, tuple_format);
+	rv = parseParams(cursor, tuple_format, &params);
 	if (rv != 0) {
-		tracef("handle query bind failed %d", rv);
+		tracef("handle query parse params failed %d", rv);
 		failure(req, rv, "bind parameters");
 		return 0;
 	}
+	rv = bindParams(stmt->stmt, params);
+	if (rv != 0) {
+		tracef("handle query bind failed %d", rv);
+		freeParams(params);
+		failure(req, rv, "bind parameters");
+		return 0;
+	}
+	freeParams(params);
 	req->stmt_id = stmt->id;
 	g->req = req;
 
@@ -697,6 +715,7 @@ static void handle_exec_sql_next(struct gateway *g,
 	const char *tail;
 	int tuple_format;
 	uint64_t req_id;
+	struct value *params;
 	int rv;
 
 	if (req->sql == NULL || strcmp(req->sql, "") == 0) {
@@ -728,8 +747,14 @@ static void handle_exec_sql_next(struct gateway *g,
 				/* Should have been caught by handle_exec_sql */
 				assert(0);
 		}
-		rv = bind__params(stmt, cursor, tuple_format);
-		if (rv != SQLITE_OK) {
+		rv = parseParams(cursor, tuple_format, &params);
+		if (rv != 0) {
+			failure(req, rv, "parse parameters");
+			goto done_after_prepare;
+		}
+		rv = bindParams(stmt, params);
+		if (rv != 0) {
+			freeParams(params);
 			failure(req, rv, "bind parameters");
 			goto done_after_prepare;
 		}
@@ -847,6 +872,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	int tuple_format;
 	bool is_readonly;
 	uint64_t req_id;
+	struct value *params;
 	int rv;
 
 	if (status != 0) {
@@ -886,9 +912,17 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 			/* Should have been caught by handle_query_sql */
 			assert(0);
 	}
-	rv = bind__params(stmt, cursor, tuple_format);
+	rv = parseParams(cursor, tuple_format, &params);
+	if (rv != 0) {
+		tracef("handle query sql parse params failed %d", rv);
+		sqlite3_finalize(stmt);
+		failure(req, rv, "parse parameters");
+		return;
+	}
+	rv = bindParams(stmt, params);
 	if (rv != 0) {
 		tracef("handle query sql bind failed %d", rv);
+		freeParams(params);
 		sqlite3_finalize(stmt);
 		failure(req, rv, "bind parameters");
 		return;

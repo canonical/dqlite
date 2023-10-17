@@ -2,7 +2,7 @@
 #include "tuple.h"
 
 /* Bind a single parameter. */
-static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
+static int bind_one(sqlite3_stmt *stmt, int n, const struct value *value)
 {
 	int rc;
 
@@ -48,15 +48,15 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 	return rc;
 }
 
-int bind__params(sqlite3_stmt *stmt, struct cursor *cursor, int format)
+int parseParams(struct cursor *cursor, int format, struct value **out)
 {
 	struct tuple_decoder decoder;
+	struct value *head;
+	struct value *prev;
 	unsigned long i;
-	int rc;
+	int rv;
 
 	assert(format == TUPLE__PARAMS || format == TUPLE__PARAMS32);
-
-	sqlite3_reset(stmt);
 
 	/* If the payload has been fully consumed, it means there are no
 	 * parameters to bind. */
@@ -64,21 +64,63 @@ int bind__params(sqlite3_stmt *stmt, struct cursor *cursor, int format)
 		return 0;
 	}
 
-	rc = tuple_decoder__init(&decoder, 0, format, cursor);
-	if (rc != 0) {
-		return rc;
-	}
-	for (i = 0; i < tuple_decoder__n(&decoder); i++) {
-		struct value value;
-		rc = tuple_decoder__next(&decoder, &value);
-		if (rc != 0) {
-			return rc;
-		}
-		rc = bind_one(stmt, (int)(i + 1), &value);
-		if (rc != 0) {
-			return rc;
-		}
+	rv = tuple_decoder__init(&decoder, 0, format, cursor);
+	if (rv != 0) {
+		goto err;
 	}
 
+	head = sqlite3_malloc(sizeof(*head));
+	if (head == NULL) {
+		rv = DQLITE_NOMEM;
+		goto err;
+	}
+	prev = head;
+	for (i = 0; i < tuple_decoder__n(&decoder); i++) {
+		prev->next = sqlite3_malloc(sizeof(*prev->next));
+		if (prev->next == NULL) {
+			goto err_after_alloc_head;
+		}
+		rv = tuple_decoder__next(&decoder, prev->next);
+		if (rv != 0) {
+			goto err_after_alloc_head;
+		}
+		prev = prev->next;
+	}
+
+	*out = head;
 	return 0;
+
+err_after_alloc_head:
+	freeParams(head);
+err:
+	return rv;
+}
+
+int bindParams(sqlite3_stmt *stmt, const struct value *params)
+{
+	int i;
+	int rv;
+
+	i = 1;
+	for (const struct value *cur = params; cur != NULL; cur = cur->next) {
+		rv = bind_one(stmt, i, cur);
+		if (rv != 0) {
+			return rv;
+		}
+		i += 1;
+	}
+	return 0;
+}
+
+void freeParams(struct value *params)
+{
+	struct value *cur;
+	struct value *old;
+
+	cur = params;
+	while (cur != NULL) {
+		old = cur;
+		cur = old->next;
+		sqlite3_free(old);
+	}
 }

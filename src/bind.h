@@ -9,9 +9,12 @@
 
 #include "lib/serialize.h"
 
-/**
- * Bind the parameters of the given statement by decoding the given payload.
- */
-int bind__params(sqlite3_stmt *stmt, struct cursor *cursor, int format);
+struct value;
+
+int parseParams(struct cursor *cursor, int format, struct value **out);
+
+int bindParams(sqlite3_stmt *stmt, const struct value *params);
+
+void freeParams(struct value *params);
 
 #endif /* BIND_H_*/
