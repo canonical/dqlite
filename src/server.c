@@ -167,8 +167,8 @@ void dqlite__close(struct dqlite_node *d)
 	if (!d->initialized) {
 		return;
 	}
-	sem_destroy(&d->db_ctx->sem);
-	free(d->db_ctx);
+	dbContextClose(d->db_ctx);
+	sqlite3_free(d->db_ctx);
 	raft_free(d->listener);
 	rv = sem_destroy(&d->stopped);
 	assert(rv == 0); /* Fails only if sem object is not valid */
@@ -687,12 +687,15 @@ static int taskRun(struct dqlite_node *d)
 {
 	int rv;
 
-	d->db_ctx = malloc(sizeof *d->db_ctx);
+	d->db_ctx = sqlite3_malloc(sizeof *d->db_ctx);
 	if (d->db_ctx == NULL) {
 		return DQLITE_NOMEM;
 	}
-	rv = sem_init(&d->db_ctx->sem, 0, 0);
-	assert(rv == 0);
+	rv = dbContextInit(d->db_ctx, &d->config);
+	if (rv != 0) {
+		sqlite3_free(d->db_ctx);
+		return rv;
+	}
 
 	rv = pthread_create(&d->db_thread, NULL, dbTask, d->db_ctx);
 	assert(rv == 0);
