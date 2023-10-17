@@ -1,6 +1,8 @@
 name: Build PPA source packages
 on:
-  - push
+  push:
+    branches:
+      - master
 jobs:
   build:
     if: github.repository == 'canonical/dqlite'
