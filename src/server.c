@@ -15,6 +15,7 @@
 #include "lib/fs.h"
 #include "logger.h"
 #include "protocol.h"
+#include "revamp.h"
 #include "roles.h"
 #include "tracing.h"
 #include "translate.h"
@@ -167,8 +168,8 @@ void dqlite__close(struct dqlite_node *d)
 	if (!d->initialized) {
 		return;
 	}
-	sem_destroy(&d->db_ctx->sem);
-	free(d->db_ctx);
+	dbContextClose(d->db_ctx);
+	sqlite3_free(d->db_ctx);
 	raft_free(d->listener);
 	rv = sem_destroy(&d->stopped);
 	assert(rv == 0); /* Fails only if sem object is not valid */
@@ -529,7 +530,10 @@ static void stopCb(uv_async_t *stop)
 	}
 	raft_close(&d->raft, raftCloseCb);
 
-	sem_post(&d->db_ctx->sem);
+	pthread_mutex_lock(&d->db_ctx->mutex);
+	d->db_ctx->shutdown = true;
+	pthread_cond_signal(&d->db_ctx->cond);
+	pthread_mutex_unlock(&d->db_ctx->mutex);
 	pthread_join(d->db_thread, NULL);
 }
 
@@ -676,24 +680,22 @@ static void roleManagementTimerCb(uv_timer_t *handle)
 	RolesAdjust(d);
 }
 
-static void *dbTask(void *arg)
-{
-	struct db_context *ctx = arg;
-	sem_wait(&ctx->sem);
-	return NULL;
-}
-
 static int taskRun(struct dqlite_node *d)
 {
 	int rv;
 
-	d->db_ctx = malloc(sizeof *d->db_ctx);
+	d->db_ctx = sqlite3_malloc(sizeof *d->db_ctx);
 	if (d->db_ctx == NULL) {
 		return DQLITE_NOMEM;
 	}
-	rv = sem_init(&d->db_ctx->sem, 0, 0);
-	assert(rv == 0);
+	rv = dbContextInit(d->db_ctx, &d->config);
+	if (rv != 0) {
+		sqlite3_free(d->db_ctx);
+		return rv;
+	}
 
+	rv = pthread_mutex_lock(&d->db_ctx->mutex);
+	assert(rv == 0);
 	rv = pthread_create(&d->db_thread, NULL, dbTask, d->db_ctx);
 	assert(rv == 0);
 
@@ -750,6 +752,9 @@ static int taskRun(struct dqlite_node *d)
 		sem_post(&d->ready);
 		return rv;
 	}
+
+	rv = pthread_mutex_unlock(&d->db_ctx->mutex);
+	assert(rv == 0);
 
 	rv = uv_run(&d->loop, UV_RUN_DEFAULT);
 	assert(rv == 0);
