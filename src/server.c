@@ -688,7 +688,7 @@ static int taskRun(struct dqlite_node *d)
 	if (d->db_ctx == NULL) {
 		return DQLITE_NOMEM;
 	}
-	rv = dbContextInit(d->db_ctx, &d->config);
+	rv = dbContextInit(d->db_ctx);
 	if (rv != 0) {
 		sqlite3_free(d->db_ctx);
 		return rv;

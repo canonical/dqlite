@@ -2,7 +2,6 @@
 #define DQLITE_REVAMP_H_
 
 #include "lib/queue.h"
-#include "registry.h"
 #include "tuple.h"
 
 #include <pthread.h>
@@ -12,25 +11,25 @@ struct db_context
 {
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
-	struct registry registry;
 	queue exec_sql_reqs;
+	queue dbs;
 	bool shutdown;
 };
 
 struct exec_sql_req
 {
+	struct uv_async_s base;
 	char *db_name;
 	char *sql;
 	struct value *params;
 	queue queue;
+	int status;
 };
 
-int dbContextInit(struct db_context *ctx, struct config *config);
+int dbContextInit(struct db_context *ctx);
 
 int postExecSqlReq(struct db_context *ctx,
-		struct exec_sql_req req,
-		void *data,
-		void (*cb)(struct exec_sql_req, int, void *));
+		struct exec_sql_req *req);
 
 void dbContextClose(struct db_context *ctx);
 
