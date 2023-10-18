@@ -39,11 +39,14 @@ void *dbTask(void *arg)
 	rv = pthread_mutex_lock(&ctx->mutex);
 	assert(rv == 0);
 	for (;;) {
-		rv = pthread_cond_wait(&ctx->cond, &ctx->mutex);
-		assert(rv == 0);
+		while (!ctx->shutdown && rv == 0) {
+			rv = pthread_cond_wait(&ctx->cond, &ctx->mutex);
+		}
 		if (ctx->shutdown) {
 			break;
 		}
 	}
+	rv = pthread_mutex_unlock(&ctx->mutex);
+	assert(rv == 0);
 	return NULL;
 }
