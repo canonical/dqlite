@@ -136,6 +136,8 @@ DQLITE_INLINE size_t BytePad64(size_t size)
 	return size;
 }
 
+#define ARRAY_SIZE(a) ((sizeof(a)) / (sizeof(a)[0]))
+
 #if defined(__GNUC__) && __GNUC__ < 10
 #pragma GCC diagnostic pop
 #endif
