@@ -223,7 +223,8 @@ TEST(membership,
 
 	await_arg.f = f;
 	await_arg.id = 0;
-	await_arg.last_applied = last_applied + 1;
+	/* 2 barriers and 1 write tx. */
+	await_arg.last_applied = last_applied + 3;
 	AWAIT_TRUE(last_applied_cond, await_arg, 2);
 
 	return MUNIT_OK;
@@ -337,7 +338,8 @@ TEST(membership,
 
 	await_arg.f = f;
 	await_arg.id = 0;
-	await_arg.last_applied = last_applied + 1;
+	/* 2 barriers and 1 write tx. */
+	await_arg.last_applied = last_applied + 3;
 	AWAIT_TRUE(last_applied_cond, await_arg, 2);
 
 	/* Transfer leadership back to original node, reconnect the client and
