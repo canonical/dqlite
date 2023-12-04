@@ -211,10 +211,17 @@ TEST(membership,
 	 * entry replicated from the new leader.  */
 	test_server_client_connect(&f->servers[0], &c_transfer);
 	HANDSHAKE_C(&c_transfer);
+	last_applied = f->servers[0].dqlite->raft.last_applied;
 	TRANSFER(2, &c_transfer);
 	test_server_client_close(&f->servers[0], &c_transfer);
-	last_applied = f->servers[0].dqlite->raft.last_applied;
 
+	/* Wait for new leader barrier to be applied. */
+	await_arg.f = f;
+	await_arg.id = 0;
+	await_arg.last_applied = last_applied + 1;
+	AWAIT_TRUE(last_applied_cond, await_arg, 2);
+
+	/* New write tx */
 	SELECT(2);
 	HANDSHAKE;
 	OPEN;
@@ -223,7 +230,8 @@ TEST(membership,
 
 	await_arg.f = f;
 	await_arg.id = 0;
-	await_arg.last_applied = last_applied + 1;
+	/* Wait for the write tx to be applied. */
+	await_arg.last_applied = last_applied + 2;
 	AWAIT_TRUE(last_applied_cond, await_arg, 2);
 
 	return MUNIT_OK;
@@ -325,10 +333,17 @@ TEST(membership,
 	 * entry replicated from the new leader.  */
 	test_server_client_connect(&f->servers[0], &c_transfer);
 	HANDSHAKE_C(&c_transfer);
+	last_applied = f->servers[0].dqlite->raft.last_applied;
 	TRANSFER(2, &c_transfer);
 	test_server_client_close(&f->servers[0], &c_transfer);
-	last_applied = f->servers[0].dqlite->raft.last_applied;
 
+	/* Wait for new leader barrier to be applied. */
+	await_arg.f = f;
+	await_arg.id = 0;
+	await_arg.last_applied = last_applied + 1;
+	AWAIT_TRUE(last_applied_cond, await_arg, 2);
+
+	/* New write tx. */
 	SELECT(2);
 	HANDSHAKE;
 	OPEN;
@@ -337,7 +352,8 @@ TEST(membership,
 
 	await_arg.f = f;
 	await_arg.id = 0;
-	await_arg.last_applied = last_applied + 1;
+	/* Wait for new write tx to be applied. */
+	await_arg.last_applied = last_applied + 2;
 	AWAIT_TRUE(last_applied_cond, await_arg, 2);
 
 	/* Transfer leadership back to original node, reconnect the client and
