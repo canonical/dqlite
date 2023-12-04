@@ -29,6 +29,26 @@
 
 #define NODE_STORE_INFO_FORMAT_V1 "v1"
 
+/* Called by raft every time the raft state changes. */
+static void state_cb(struct raft *r,
+		     unsigned short old_state,
+		     unsigned short new_state)
+{
+	struct dqlite_node *d = r->data;
+	queue *head;
+	struct conn *conn;
+
+	if (old_state == RAFT_LEADER && new_state != RAFT_LEADER) {
+		tracef("node %llu@%s: leadership lost", r->id, r->address);
+		QUEUE__FOREACH(head, &d->conns)
+		{
+			conn = QUEUE__DATA(head, struct conn, queue);
+			gateway__leader_close(&conn->gateway,
+					      RAFT_LEADERSHIPLOST);
+		}
+	}
+}
+
 int dqlite__init(struct dqlite_node *d,
 		 dqlite_node_id id,
 		 const char *address,
@@ -100,6 +120,7 @@ int dqlite__init(struct dqlite_node *d,
 	raft_set_pre_vote(&d->raft, true);
 	raft_set_max_catch_up_rounds(&d->raft, 100);
 	raft_set_max_catch_up_round_duration(&d->raft, 50 * 1000); /* 50 secs */
+	raft_register_state_cb(&d->raft, state_cb);
 	rv = sem_init(&d->ready, 0, 0);
 	if (rv != 0) {
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
@@ -465,7 +486,6 @@ static void raftCloseCb(struct raft *raft)
 	uv_close((struct uv_handle_s *)&s->stop, NULL);
 	uv_close((struct uv_handle_s *)&s->handover, NULL);
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
-	uv_close((struct uv_handle_s *)&s->monitor, NULL);
 	uv_close((struct uv_handle_s *)s->listener, NULL);
 	uv_close((struct uv_handle_s *)&s->timer, NULL);
 }
@@ -639,31 +659,6 @@ err:
 	uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
 }
 
-static void monitor_cb(uv_prepare_t *monitor)
-{
-	struct dqlite_node *d = monitor->data;
-	int state = raft_state(&d->raft);
-	queue *head;
-	struct conn *conn;
-
-	if (state == RAFT_UNAVAILABLE) {
-		return;
-	}
-
-	if (d->raft_state == RAFT_LEADER && state != RAFT_LEADER) {
-		tracef("node %llu@%s: leadership lost", d->raft.id,
-		       d->raft.address);
-		QUEUE__FOREACH(head, &d->conns)
-		{
-			conn = QUEUE__DATA(head, struct conn, queue);
-			gateway__leader_close(&conn->gateway,
-					      RAFT_LEADERSHIPLOST);
-		}
-	}
-
-	d->raft_state = state;
-}
-
 /* Runs every tick on the main thread to kick off roles adjustment. */
 static void roleManagementTimerCb(uv_timer_t *handle)
 {
@@ -699,13 +694,6 @@ static int taskRun(struct dqlite_node *d)
 	rv = uv_timer_init(&d->loop, &d->startup);
 	assert(rv == 0);
 	rv = uv_timer_start(&d->startup, startup_cb, 0, 0);
-	assert(rv == 0);
-
-	/* Schedule raft state change monitor. */
-	d->monitor.data = d;
-	rv = uv_prepare_init(&d->loop, &d->monitor);
-	assert(rv == 0);
-	rv = uv_prepare_start(&d->monitor, monitor_cb);
 	assert(rv == 0);
 
 	/* Schedule the role management callback. */
