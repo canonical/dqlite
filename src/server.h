@@ -43,9 +43,8 @@ struct dqlite_node
 	struct uv_async_s handover;
 	int handover_status;
 	void (*handover_done_cb)(struct dqlite_node *, int);
-	struct uv_async_s stop;      /* Trigger UV loop stop */
-	struct uv_timer_s startup;   /* Unblock ready sem */
-	struct uv_prepare_s monitor; /* Raft state change monitor */
+	struct uv_async_s stop;    /* Trigger UV loop stop */
+	struct uv_timer_s startup; /* Unblock ready sem */
 	struct uv_timer_s timer;
 	int raft_state;     /* Previous raft state */
 	char *bind_address; /* Listen address */
