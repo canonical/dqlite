@@ -31,7 +31,7 @@ RUN go get -d -v ./... && \
     go install -tags libsqlite3 ./cmd/dqlite-demo && \
     go install -tags libsqlite3 ./cmd/dqlite
 
-# FROM debian:buster-slim 
+# FROM debian:buster-slim
 FROM ubuntu
 ARG DEBIAN_FRONTEND="noninteractive"
 ENV TZ=Europe/London
