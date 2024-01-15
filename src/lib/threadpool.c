@@ -64,18 +64,12 @@ static uv_once_t once = UV_ONCE_INIT;
 static uv_cond_t cond;
 static uv_mutex_t mutex;
 static unsigned int idle_threads;
-static unsigned int slow_io_work_running;
 static unsigned int nthreads;
 static uv_thread_t* threads;
 static uv_thread_t default_threads[4];
 static struct xx__queue exit_message;
 static struct xx__queue wq;
-static struct xx__queue run_slow_work_message;
-static struct xx__queue slow_io_pending_wq;
 
-static unsigned int slow_work_thread_threshold(void) {
-  return (nthreads + 1) / 2;
-}
 
 static void xx__cancelled(struct xx__work* w __attribute__((unused))) {
   abort();
@@ -88,7 +82,6 @@ static void xx__cancelled(struct xx__work* w __attribute__((unused))) {
 static void worker(void* arg) {
   struct xx__work* w;
   struct xx__queue* q;
-  int is_slow_work;
 
   uv_sem_post((uv_sem_t*) arg);
   arg = NULL;
@@ -99,10 +92,7 @@ static void worker(void* arg) {
 
     /* Keep waiting while either no work is present or only slow I/O
        and we're at the threshold for that. */
-    while (xx__queue_empty(&wq) ||
-           (xx__queue_head(&wq) == &run_slow_work_message &&
-            xx__queue_next(&run_slow_work_message) == &wq &&
-            slow_io_work_running >= slow_work_thread_threshold())) {
+    while (xx__queue_empty(&wq)) {
       idle_threads += 1;
       uv_cond_wait(&cond, &mutex);
       idle_threads -= 1;
@@ -117,35 +107,6 @@ static void worker(void* arg) {
 
     xx__queue_remove(q);
     xx__queue_init(q);  /* Signal uv_cancel() that the work req is executing. */
-
-    is_slow_work = 0;
-    if (q == &run_slow_work_message) {
-      /* If we're at the slow I/O threshold, re-schedule until after all
-         other work in the queue is done. */
-      if (slow_io_work_running >= slow_work_thread_threshold()) {
-        xx__queue_insert_tail(&wq, q);
-        continue;
-      }
-
-      /* If we encountered a request to run slow I/O work but there is none
-         to run, that means it's cancelled => Start over. */
-      if (xx__queue_empty(&slow_io_pending_wq))
-        continue;
-
-      is_slow_work = 1;
-      slow_io_work_running++;
-
-      q = xx__queue_head(&slow_io_pending_wq);
-      xx__queue_remove(q);
-      xx__queue_init(q);
-
-      /* If there is more slow I/O work, schedule it to be run as well. */
-      if (!xx__queue_empty(&slow_io_pending_wq)) {
-        xx__queue_insert_tail(&wq, &run_slow_work_message);
-        if (idle_threads > 0)
-          uv_cond_signal(&cond);
-      }
-    }
 
     uv_mutex_unlock(&mutex);
 
@@ -162,10 +123,6 @@ static void worker(void* arg) {
     /* Lock `mutex` since that is expected at the start of the next
      * iteration. */
     uv_mutex_lock(&mutex);
-    if (is_slow_work) {
-      /* `slow_io_work_running` is protected by `mutex`. */
-      slow_io_work_running--;
-    }
   }
 }
 
@@ -233,8 +190,6 @@ static void init_threads(void) {
     abort();
 
   xx__queue_init(&wq);
-  xx__queue_init(&slow_io_pending_wq);
-  xx__queue_init(&run_slow_work_message);
 
   if (uv_sem_init(&sem, 0))
     abort();
