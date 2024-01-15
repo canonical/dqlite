@@ -2,8 +2,84 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include "xx__queue.h"
 
+// ---------------------------------------------------------------------------
+
+struct xx__queue {
+  struct xx__queue* next;
+  struct xx__queue* prev;
+};
+
+#define xx__queue_data(pointer, type, field)		\
+  ((type*) ((char*) (pointer) - offsetof(type, field)))
+
+#define xx__queue_foreach(q, h)				\
+  for ((q) = (h)->next; (q) != (h); (q) = (q)->next)
+
+static inline void xx__queue_init(struct xx__queue* q) {
+  q->next = q;
+  q->prev = q;
+}
+
+static inline int xx__queue_empty(const struct xx__queue* q) {
+  return q == q->next;
+}
+
+static inline struct xx__queue* xx__queue_head(const struct xx__queue* q) {
+  return q->next;
+}
+
+static inline struct xx__queue* xx__queue_next(const struct xx__queue* q) {
+  return q->next;
+}
+
+static inline void xx__queue_add(struct xx__queue* h, struct xx__queue* n) {
+  h->prev->next = n->next;
+  n->next->prev = h->prev;
+  h->prev = n->prev;
+  h->prev->next = h;
+}
+
+static inline void xx__queue_split(struct xx__queue* h,
+                                   struct xx__queue* q,
+                                   struct xx__queue* n) {
+  n->prev = h->prev;
+  n->prev->next = n;
+  n->next = q;
+  h->prev = q->prev;
+  h->prev->next = h;
+  q->prev = n;
+}
+
+static inline void xx__queue_move(struct xx__queue* h, struct xx__queue* n) {
+  if (xx__queue_empty(h))
+    xx__queue_init(n);
+  else
+    xx__queue_split(h, h->next, n);
+}
+
+static inline void xx__queue_insert_head(struct xx__queue* h,
+                                         struct xx__queue* q) {
+  q->next = h->next;
+  q->prev = h;
+  q->next->prev = q;
+  h->next = q;
+}
+
+static inline void xx__queue_insert_tail(struct xx__queue* h,
+                                         struct xx__queue* q) {
+  q->next = h;
+  q->prev = h->prev;
+  q->prev->next = q;
+  h->prev = q;
+}
+
+static inline void xx__queue_remove(struct xx__queue* q) {
+  q->prev->next = q->next;
+  q->next->prev = q->prev;
+}
+
+// ---------------------------------------------------------------------------
 
 struct xx__work {
   void (*work)(struct xx__work *w);
@@ -33,7 +109,7 @@ struct xx_loop_s {
     uint64_t   active_reqs;
 };
 
-static struct xx_loop_s *xx_loop(struct uv_loop_s *loop __attribute__((unused))) {
+static struct xx_loop_s *xx_loop(struct uv_loop_s *loop) {
     return (struct xx_loop_s *) loop;
 }
 
@@ -326,4 +402,33 @@ int xx_queue_work(uv_loop_t* loop,
 
 int xx_cancel(xx_work_t* req) {
   return xx__work_cancel(req->loop, &req->work_req);
+}
+
+int xx_loop_init(struct xx_loop_s *loop) {
+    int err;
+
+    xx__queue_init(&loop->wq);
+    err = uv_mutex_init(&loop->wq_mutex);
+    assert(err == 0);
+
+    err = uv_async_init(&loop->loop, &loop->wq_async, xx__work_done);
+    assert(err == 0);
+
+    uv_unref((uv_handle_t *) &loop->wq_async);
+
+    return 0;
+}
+
+void xx_loop_close(struct xx_loop_s *loop) {
+    //loop->wq_async.async_sent = 0;
+    //loop->wq_async.close_cb = NULL;
+    //uv__handle_closing(&loop->wq_async);
+    //uv__handle_close(&loop->wq_async);
+    uv_close((uv_handle_t *) &loop->wq_async, NULL);
+
+    uv_mutex_lock(&loop->wq_mutex);
+    assert(xx__queue_empty(&loop->wq) && "thread pool work queue not empty!");
+    assert(!xx__has_active_reqs(loop));
+    uv_mutex_unlock(&loop->wq_mutex);
+    uv_mutex_destroy(&loop->wq_mutex);
 }
