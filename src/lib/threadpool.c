@@ -179,20 +179,13 @@ static void post(struct xx__queue* q) {
 }
 
 
-#ifdef __MVS__
-/* TODO(itodorov) - zos: revisit when Woz compiler is available. */
-__attribute__((destructor))
-#endif
 void uv__threadpool_cleanup(void) {
   unsigned int i;
 
   if (nthreads == 0)
     return;
 
-#ifndef __MVS__
-  /* TODO(gabylb) - zos: revisit when Woz compiler is available. */
   post(&exit_message);
-#endif
 
   for (i = 0; i < nthreads; i++)
     if (uv_thread_join(threads + i))
@@ -260,23 +253,15 @@ static void init_threads(void) {
 }
 
 
-#ifndef _WIN32
 static void reset_once(void) {
   uv_once_t child_once = UV_ONCE_INIT;
   memcpy(&once, &child_once, sizeof(child_once));
 }
-#endif
 
 
 static void init_once(void) {
-#ifndef _WIN32
-  /* Re-initialize the threadpool after fork.
-   * Note that this discards the global mutex and condition as well
-   * as the work queue.
-   */
   if (pthread_atfork(NULL, NULL, &reset_once))
     abort();
-#endif
   init_threads();
 }
 
@@ -293,9 +278,6 @@ void xx__work_submit(uv_loop_t* loop,
 }
 
 
-/* TODO(bnoordhuis) teach libuv how to cancel file operations
- * that go through io_uring instead of the thread pool.
- */
 static int xx__work_cancel(uv_loop_t* loop, struct xx__work* w) {
   int cancelled;
 
@@ -331,7 +313,6 @@ void xx__work_done(uv_async_t* handle) {
   struct xx__queue wq_;
   int err;
 
-  //XXX: loop = container_of(handle, uv_loop_t, wq_async);
   xxloop = container_of(handle, struct xx_loop_s, wq_async);
   loop = &xxloop->loop;
   uv_mutex_lock(&xx_loop(loop)->wq_mutex);
