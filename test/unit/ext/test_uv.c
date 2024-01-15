@@ -1,4 +1,5 @@
 #include <raft.h>
+#include <string.h>
 #include <uv.h>
 
 #include <unistd.h>
@@ -261,21 +262,57 @@ static void *threadpool_setup(const MunitParameter params[], void *user_data)
     return f;
 }
 
+static void bottom_work_cb(xx_work_t* req) {
+    (void) req;
+    printf("bottom_work_cb: tid=%d\n", gettid());
+}
+
+
+static void bottom_after_work_cb(xx_work_t* req, int status) {
+  static int count = 0;
+  (void) status;
+  printf("bottom_after_work_cb: tid=%d req=%p count=%d\n", gettid(), req, count);
+
+  /*
+   * XXX: This is a very strange way to close the uv_loop.  The alternative is
+   *      proctological and can be seen in libuv v1.46 around special handling
+   *      for initialization:
+   *      uv__handle_unref(&loop->wq_async);
+   *      loop->wq_async.flags |= UV_HANDLE_INTERNAL;
+   *      and for finalization:
+   *      uv_walk() ... if (h->flags & UV_HANDLE_INTERNAL) continue;
+   */
+  if (count == 49)
+      xx_loop_async_close(req->loop);
+
+  count++;
+  free(req);
+}
+
 static void after_work_cb(xx_work_t *req, int status) {
     (void) req;
     (void) status;
+
+    int i;
+
+    for (i = 0; i < 50; ++i) {
+	int rv;
+	xx_work_t* work = malloc(sizeof(*work));
+	printf("after_work_cb: tid=%d\n", gettid());
+	rv = xx_queue_work(&xx_default_loop()->loop,
+			   work,
+			   bottom_work_cb,
+			   bottom_after_work_cb);
+	munit_assert_int(rv, ==, 0);
+    }
 }
+
 static void work_cb(xx_work_t *req) {
     (void) req;
+    printf("work_cb:tid=%d\n", gettid());
 }
 
 static xx_work_t work_req;
-
-static void close_walk_cb(uv_handle_t* handle, void* arg) {
-  (void) arg;
-  if (!uv_is_closing(handle))
-    uv_close(handle, NULL);
-}
 
 static void threadpool_tear_down(void *data)
 {
@@ -289,14 +326,6 @@ static void threadpool_tear_down(void *data)
     munit_assert_int(rv, ==, 0);
 
     uv_run(&xx_default_loop()->loop, UV_RUN_DEFAULT);
-
-    //sleep(2);
-
-    uv_walk(&xx_default_loop()->loop, close_walk_cb, NULL);
-    uv_run(&xx_default_loop()->loop, UV_RUN_DEFAULT);
-
-
-    //sleep(2);
 
     xx__threadpool_cleanup();
     xx_loop_close(xx_default_loop());

@@ -45,5 +45,6 @@ int xx_queue_work(uv_loop_t *loop,
 		  xx_after_work_cb after_work_cb);
 int xx_cancel(xx_work_t* req);
 void xx__threadpool_cleanup(void);
+void xx_loop_async_close(uv_loop_t *loop);
 
 #endif // __XX_THREAD_POOL__

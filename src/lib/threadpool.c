@@ -109,6 +109,8 @@ static inline void xx__queue_remove(struct xx__queue* q) {
 //     uint64_t   active_reqs;
 // };
 
+void xx__work_done(uv_async_t *handle);
+
 static struct xx_loop_s *xx_loop(struct uv_loop_s *loop) {
     return (struct xx_loop_s *) loop;
 }
@@ -193,6 +195,7 @@ static void worker(void* arg) {
     w->work = NULL;  /* Signal uv_cancel() that the work req is done
                         executing. */
     xx__queue_insert_tail(&xx_loop(w->loop)->wq, &w->wq);
+
     uv_async_send(&xx_loop(w->loop)->wq_async);
     uv_mutex_unlock(&xx_loop(w->loop)->wq_mutex);
 
@@ -378,7 +381,6 @@ static void xx__queue_done(struct xx__work* w, int err) {
     return;
 
   req->after_work_cb(req, err);
-  uv_close((uv_handle_t *) &xx_loop(req->loop)->wq_async, NULL);
 }
 
 
@@ -412,6 +414,7 @@ int xx_loop_init(struct xx_loop_s *loop) {
     err = uv_mutex_init(&loop->wq_mutex);
     assert(err == 0);
 
+    //YYY
     err = uv_async_init(&loop->loop, &loop->wq_async, xx__work_done);
     assert(err == 0);
 
@@ -428,4 +431,8 @@ void xx_loop_close(struct xx_loop_s *loop) {
     assert(!xx__has_active_reqs(loop));
     uv_mutex_unlock(&loop->wq_mutex);
     uv_mutex_destroy(&loop->wq_mutex);
+}
+
+void xx_loop_async_close(uv_loop_t *loop) {
+    uv_close((uv_handle_t *) &xx_loop(loop)->wq_async, NULL);
 }
