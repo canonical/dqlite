@@ -296,7 +296,7 @@ void xx__work_submit(uv_loop_t* loop,
 /* TODO(bnoordhuis) teach libuv how to cancel file operations
  * that go through io_uring instead of the thread pool.
  */
-static int xx__work_cancel(uv_loop_t* loop, uv_req_t* req, struct xx__work* w) {
+static int xx__work_cancel(uv_loop_t* loop, struct xx__work* w) {
   int cancelled;
 
   uv_once(&once, init_once);  /* Ensure |mutex| is initialized. */
@@ -326,21 +326,23 @@ static int xx__work_cancel(uv_loop_t* loop, uv_req_t* req, struct xx__work* w) {
 void xx__work_done(uv_async_t* handle) {
   struct xx__work* w;
   uv_loop_t* loop;
+  struct xx_loop_s *xxloop;
   struct xx__queue* q;
-  struct xx__queue wq;
+  struct xx__queue wq_;
   int err;
   int nevents;
 
   //XXX: loop = container_of(handle, uv_loop_t, wq_async);
-  loop = container_of(handle, struct xx_loop_s, wq_async);
+  xxloop = container_of(handle, struct xx_loop_s, wq_async);
+  loop = &xxloop->loop;
   uv_mutex_lock(&xx_loop(loop)->wq_mutex);
-  xx__queue_move(&xx_loop(loop)->wq, &wq);
+  xx__queue_move(&xx_loop(loop)->wq, &wq_);
   uv_mutex_unlock(&xx_loop(loop)->wq_mutex);
 
   nevents = 0;
 
-  while (!xx__queue_empty(&wq)) {
-    q = xx__queue_head(&wq);
+  while (!xx__queue_empty(&wq_)) {
+    q = xx__queue_head(&wq_);
     xx__queue_remove(q);
 
     w = container_of(q, struct xx__work, wq);
@@ -403,34 +405,6 @@ int xx_queue_work(uv_loop_t* loop,
 }
 
 
-int xx_cancel(uv_req_t* req) {
-  struct xx__work* wreq;
-  uv_loop_t* loop;
-#if 0
-  switch (req->type) {
-  case UV_FS:
-    loop =  ((uv_fs_t*) req)->loop;
-    wreq = &((uv_fs_t*) req)->work_req;
-    break;
-  case UV_GETADDRINFO:
-    loop =  ((uv_getaddrinfo_t*) req)->loop;
-    wreq = &((uv_getaddrinfo_t*) req)->work_req;
-    break;
-  case UV_GETNAMEINFO:
-    loop = ((uv_getnameinfo_t*) req)->loop;
-    wreq = &((uv_getnameinfo_t*) req)->work_req;
-    break;
-  case UV_RANDOM:
-    loop = ((uv_random_t*) req)->loop;
-    wreq = &((uv_random_t*) req)->work_req;
-    break;
-  case UV_WORK:
-    loop =  ((xx_work_t*) req)->loop;
-    wreq = &((xx_work_t*) req)->work_req;
-    break;
-  default:
-    return UV_EINVAL;
-  }
-#endif
-  return xx__work_cancel(loop, req, wreq);
+int xx_cancel(xx_work_t* req) {
+  return xx__work_cancel(req->loop, &req->work_req);
 }
