@@ -330,7 +330,6 @@ void xx__work_done(uv_async_t* handle) {
   struct xx__queue* q;
   struct xx__queue wq_;
   int err;
-  int nevents;
 
   //XXX: loop = container_of(handle, uv_loop_t, wq_async);
   xxloop = container_of(handle, struct xx_loop_s, wq_async);
@@ -339,8 +338,6 @@ void xx__work_done(uv_async_t* handle) {
   xx__queue_move(&xx_loop(loop)->wq, &wq_);
   uv_mutex_unlock(&xx_loop(loop)->wq_mutex);
 
-  nevents = 0;
-
   while (!xx__queue_empty(&wq_)) {
     q = xx__queue_head(&wq_);
     xx__queue_remove(q);
@@ -348,20 +345,6 @@ void xx__work_done(uv_async_t* handle) {
     w = container_of(q, struct xx__work, wq);
     err = (w->work == xx__cancelled) ? UV_ECANCELED : 0;
     w->done(w, err);
-    nevents++;
-  }
-
-  /* This check accomplishes 2 things:
-   * 1. Even if the queue was empty, the call to xx__work_done() should count
-   *    as an event. Which will have been added by the event loop when
-   *    calling this callback.
-   * 2. Prevents accidental wrap around in case nevents == 0 events == 0.
-   */
-  if (nevents > 1) {
-    /* Subtract 1 to counter the call to xx__work_done(). */
-    uv__metrics_inc_events(loop, nevents - 1);
-    if (uv__get_internal_fields(loop)->current_timeout == 0)
-      uv__metrics_inc_events_waiting(loop, nevents - 1);
   }
 }
 
