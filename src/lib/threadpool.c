@@ -12,39 +12,48 @@ struct xx__work {
   struct xx__queue wq;
 };
 
-//
-// typedef struct xx_work_s xx_work_t;
-// typedef void (*xx_work_cb)(xx_work_t* req);
-// typedef void (*xx_after_work_cb)(xx_work_t* req, int status);
-//
-// struct xx_work_s {
-//   uv_loop_t* loop;
-//   xx_work_cb work_cb;
-//   xx_after_work_cb after_work_cb;
-//   struct xx__work work_req;
-// };
-//
-// struct xx_loop_s {
-//     struct uv_loop_s loop;
-//
-//     struct xx__queue wq;
-//     uv_mutex_t wq_mutex;
-//     uv_async_t wq_async;
-// };
 
-static struct xx__queue *_wq(struct uv_loop_s *loop __attribute__((unused))) {
-    return NULL; // XXX
+typedef struct xx_work_s xx_work_t;
+typedef void (*xx_work_cb)(xx_work_t* req);
+typedef void (*xx_after_work_cb)(xx_work_t* req, int status);
+
+struct xx_work_s {
+  uv_loop_t* loop;
+  xx_work_cb work_cb;
+  xx_after_work_cb after_work_cb;
+  struct xx__work work_req;
+};
+
+struct xx_loop_s {
+    struct uv_loop_s loop;
+
+    struct xx__queue wq;
+    uv_mutex_t wq_mutex;
+    uv_async_t wq_async;
+    uint64_t   active_reqs;
+};
+
+static struct xx_loop_s *xx_loop(struct uv_loop_s *loop __attribute__((unused))) {
+    return (struct xx_loop_s *) loop;
 }
 
-static uv_mutex_t *_wq_mutex(struct uv_loop_s *loop __attribute__((unused))) {
-    return NULL; // XXX
-}
+#define xx__has_active_reqs(loop)		\
+    ((loop)->active_reqs > 0)
 
-static uv_async_t *_wq_async(struct uv_loop_s *loop __attribute__((unused))) {
-    return NULL; // XXX
-}
+#define xx__req_register(loop, req)		\
+    do {					\
+	(loop)->active_reqs++;			\
+    }						\
+    while (0)
 
-#define container_of(ptr, type, member) \
+#define xx__req_unregister(loop, req)		\
+    do {					\
+	assert(xx__has_active_reqs(loop));	\
+	(loop)->active_reqs--;			\
+    }						\
+    while (0)
+
+#define container_of(ptr, type, member)		\
 	((type *)((char *)(ptr)-offsetof(type, member)))
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
@@ -355,17 +364,17 @@ void xx__work_done(uv_async_t* handle) {
 
 
 static void xx__queue_work(struct xx__work* w) {
-  uv_work_t* req = container_of(w, uv_work_t, work_req);
+  xx_work_t* req = container_of(w, xx_work_t, work_req);
 
   req->work_cb(req);
 }
 
 
 static void xx__queue_done(struct xx__work* w, int err) {
-  uv_work_t* req;
+  xx_work_t* req;
 
-  req = container_of(w, uv_work_t, work_req);
-  uv__req_unregister(req->loop, req);
+  req = container_of(w, xx_work_t, work_req);
+  xx__req_unregister(xx_loop(req->loop), req);
 
   if (req->after_work_cb == NULL)
     return;
@@ -374,14 +383,14 @@ static void xx__queue_done(struct xx__work* w, int err) {
 }
 
 
-int uv_queue_work(uv_loop_t* loop,
-                  uv_work_t* req,
-                  uv_work_cb work_cb,
-                  uv_after_work_cb after_work_cb) {
+int xx_queue_work(uv_loop_t* loop,
+                  xx_work_t* req,
+                  xx_work_cb work_cb,
+                  xx_after_work_cb after_work_cb) {
   if (work_cb == NULL)
     return UV_EINVAL;
 
-  uv__req_init(loop, req, UV_WORK);
+  xx__req_register(xx_loop(loop), req);
   req->loop = loop;
   req->work_cb = work_cb;
   req->after_work_cb = after_work_cb;
@@ -393,10 +402,10 @@ int uv_queue_work(uv_loop_t* loop,
 }
 
 
-int uv_cancel(uv_req_t* req) {
+int xx_cancel(uv_req_t* req) {
   struct xx__work* wreq;
   uv_loop_t* loop;
-
+#if 0
   switch (req->type) {
   case UV_FS:
     loop =  ((uv_fs_t*) req)->loop;
@@ -415,12 +424,12 @@ int uv_cancel(uv_req_t* req) {
     wreq = &((uv_random_t*) req)->work_req;
     break;
   case UV_WORK:
-    loop =  ((uv_work_t*) req)->loop;
-    wreq = &((uv_work_t*) req)->work_req;
+    loop =  ((xx_work_t*) req)->loop;
+    wreq = &((xx_work_t*) req)->work_req;
     break;
   default:
     return UV_EINVAL;
   }
-
+#endif
   return xx__work_cancel(loop, req, wreq);
 }
