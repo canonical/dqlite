@@ -68,7 +68,7 @@ static unsigned int slow_work_thread_threshold(void) {
   return (nthreads + 1) / 2;
 }
 
-static void uv__cancelled(struct xx__work* w) {
+static void uv__cancelled(struct xx__work* w __attribute__((unused))) {
   abort();
 }
 
@@ -161,20 +161,8 @@ static void worker(void* arg) {
 }
 
 
-static void post(struct xx__queue* q, enum uv__work_kind kind) {
+static void post(struct xx__queue* q) {
   uv_mutex_lock(&mutex);
-  if (kind == UV__WORK_SLOW_IO) {
-    /* Insert into a separate queue. */
-    xx__queue_insert_tail(&slow_io_pending_wq, q);
-    if (!xx__queue_empty(&run_slow_work_message)) {
-      /* Running slow I/O tasks is already scheduled => Nothing to do here.
-         The worker that runs said other task will schedule this one as well. */
-      uv_mutex_unlock(&mutex);
-      return;
-    }
-    q = &run_slow_work_message;
-  }
-
   xx__queue_insert_tail(&wq, q);
   if (idle_threads > 0)
     uv_cond_signal(&cond);
@@ -194,7 +182,7 @@ void uv__threadpool_cleanup(void) {
 
 #ifndef __MVS__
   /* TODO(gabylb) - zos: revisit when Woz compiler is available. */
-  post(&exit_message, UV__WORK_CPU);
+  post(&exit_message);
 #endif
 
   for (i = 0; i < nthreads; i++)
@@ -286,14 +274,13 @@ static void init_once(void) {
 
 void xx__work_submit(uv_loop_t* loop,
                      struct xx__work* w,
-                     enum uv__work_kind kind,
                      void (*work)(struct xx__work* w),
                      void (*done)(struct xx__work* w, int status)) {
   uv_once(&once, init_once);
   w->loop = loop;
   w->work = work;
   w->done = done;
-  post(&w->wq, kind);
+  post(&w->wq);
 }
 
 
@@ -400,7 +387,6 @@ int uv_queue_work(uv_loop_t* loop,
   req->after_work_cb = after_work_cb;
   xx__work_submit(loop,
                   &req->work_req,
-                  UV__WORK_CPU,
                   xx__queue_work,
                   xx__queue_done);
   return 0;
