@@ -5,12 +5,13 @@
 #include "xx__queue.h"
 
 
-// struct xx__work {
-//   void (*work)(struct xx__work *w);
-//   void (*done)(struct xx__work *w, int status);
-//   struct uv_loop_s* loop;
-//   struct xx__queue wq;
-// };
+struct xx__work {
+  void (*work)(struct xx__work *w);
+  void (*done)(struct xx__work *w, int status);
+  struct uv_loop_s* loop;
+  struct xx__queue wq;
+};
+
 //
 // typedef struct xx_work_s xx_work_t;
 // typedef void (*xx_work_cb)(xx_work_t* req);
@@ -43,6 +44,9 @@ static uv_async_t *_wq_async(struct uv_loop_s *loop __attribute__((unused))) {
     return NULL; // XXX
 }
 
+#define container_of(ptr, type, member) \
+	((type *)((char *)(ptr)-offsetof(type, member)))
+
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
 #define MAX_THREADPOOL_SIZE 1024
@@ -64,7 +68,7 @@ static unsigned int slow_work_thread_threshold(void) {
   return (nthreads + 1) / 2;
 }
 
-static void uv__cancelled(struct uv__work* w) {
+static void uv__cancelled(struct xx__work* w) {
   abort();
 }
 
@@ -73,7 +77,7 @@ static void uv__cancelled(struct uv__work* w) {
  * never holds the global mutex and the loop-local mutex at the same time.
  */
 static void worker(void* arg) {
-  struct uv__work* w;
+  struct xx__work* w;
   struct xx__queue* q;
   int is_slow_work;
 
@@ -136,7 +140,7 @@ static void worker(void* arg) {
 
     uv_mutex_unlock(&mutex);
 
-    w = xx__queue_data(q, struct uv__work, wq);
+    w = xx__queue_data(q, struct xx__work, wq);
     w->work(w);
 
     uv_mutex_lock(&w->loop->wq_mutex);
@@ -280,11 +284,11 @@ static void init_once(void) {
 }
 
 
-void uv__work_submit(uv_loop_t* loop,
-                     struct uv__work* w,
+void xx__work_submit(uv_loop_t* loop,
+                     struct xx__work* w,
                      enum uv__work_kind kind,
-                     void (*work)(struct uv__work* w),
-                     void (*done)(struct uv__work* w, int status)) {
+                     void (*work)(struct xx__work* w),
+                     void (*done)(struct xx__work* w, int status)) {
   uv_once(&once, init_once);
   w->loop = loop;
   w->work = work;
@@ -296,7 +300,7 @@ void uv__work_submit(uv_loop_t* loop,
 /* TODO(bnoordhuis) teach libuv how to cancel file operations
  * that go through io_uring instead of the thread pool.
  */
-static int uv__work_cancel(uv_loop_t* loop, uv_req_t* req, struct uv__work* w) {
+static int xx__work_cancel(uv_loop_t* loop, uv_req_t* req, struct xx__work* w) {
   int cancelled;
 
   uv_once(&once, init_once);  /* Ensure |mutex| is initialized. */
@@ -323,8 +327,8 @@ static int uv__work_cancel(uv_loop_t* loop, uv_req_t* req, struct uv__work* w) {
 }
 
 
-void uv__work_done(uv_async_t* handle) {
-  struct uv__work* w;
+void xx__work_done(uv_async_t* handle) {
+  struct xx__work* w;
   uv_loop_t* loop;
   struct xx__queue* q;
   struct xx__queue wq;
@@ -342,20 +346,20 @@ void uv__work_done(uv_async_t* handle) {
     q = xx__queue_head(&wq);
     xx__queue_remove(q);
 
-    w = container_of(q, struct uv__work, wq);
+    w = container_of(q, struct xx__work, wq);
     err = (w->work == uv__cancelled) ? UV_ECANCELED : 0;
     w->done(w, err);
     nevents++;
   }
 
   /* This check accomplishes 2 things:
-   * 1. Even if the queue was empty, the call to uv__work_done() should count
+   * 1. Even if the queue was empty, the call to xx__work_done() should count
    *    as an event. Which will have been added by the event loop when
    *    calling this callback.
    * 2. Prevents accidental wrap around in case nevents == 0 events == 0.
    */
   if (nevents > 1) {
-    /* Subtract 1 to counter the call to uv__work_done(). */
+    /* Subtract 1 to counter the call to xx__work_done(). */
     uv__metrics_inc_events(loop, nevents - 1);
     if (uv__get_internal_fields(loop)->current_timeout == 0)
       uv__metrics_inc_events_waiting(loop, nevents - 1);
@@ -363,14 +367,14 @@ void uv__work_done(uv_async_t* handle) {
 }
 
 
-static void xx__queue_work(struct uv__work* w) {
+static void xx__queue_work(struct xx__work* w) {
   uv_work_t* req = container_of(w, uv_work_t, work_req);
 
   req->work_cb(req);
 }
 
 
-static void xx__queue_done(struct uv__work* w, int err) {
+static void xx__queue_done(struct xx__work* w, int err) {
   uv_work_t* req;
 
   req = container_of(w, uv_work_t, work_req);
@@ -394,7 +398,7 @@ int uv_queue_work(uv_loop_t* loop,
   req->loop = loop;
   req->work_cb = work_cb;
   req->after_work_cb = after_work_cb;
-  uv__work_submit(loop,
+  xx__work_submit(loop,
                   &req->work_req,
                   UV__WORK_CPU,
                   xx__queue_work,
@@ -404,7 +408,7 @@ int uv_queue_work(uv_loop_t* loop,
 
 
 int uv_cancel(uv_req_t* req) {
-  struct uv__work* wreq;
+  struct xx__work* wreq;
   uv_loop_t* loop;
 
   switch (req->type) {
@@ -432,5 +436,5 @@ int uv_cancel(uv_req_t* req) {
     return UV_EINVAL;
   }
 
-  return uv__work_cancel(loop, req, wreq);
+  return xx__work_cancel(loop, req, wreq);
 }
