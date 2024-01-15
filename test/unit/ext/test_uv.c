@@ -229,3 +229,92 @@ TEST_CASE(read, sync, endpointParams)
 
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * threadpool
+ *
+ ******************************************************************************/
+
+#include "../../../src/lib/threadpool.h"
+
+static xx_loop_t default_loop_struct;
+static xx_loop_t* default_loop_ptr;
+
+xx_loop_t* xx_default_loop(void) {
+
+  if (default_loop_ptr != NULL)
+    return default_loop_ptr;
+
+  uv_loop_init(&default_loop_struct.loop);
+  xx_loop_init(&default_loop_struct);
+
+  default_loop_ptr = &default_loop_struct;
+  return default_loop_ptr;
+}
+
+static void *threadpool_setup(const MunitParameter params[], void *user_data)
+{
+    struct fixture *f = munit_malloc(sizeof *f);
+    (void)user_data;
+    (void)params;
+    return f;
+}
+
+static void after_work_cb(xx_work_t *req, int status) {
+    (void) req;
+    (void) status;
+}
+static void work_cb(xx_work_t *req) {
+    (void) req;
+}
+
+static xx_work_t work_req;
+
+static void close_walk_cb(uv_handle_t* handle, void* arg) {
+  (void) arg;
+  if (!uv_is_closing(handle))
+    uv_close(handle, NULL);
+}
+
+static void threadpool_tear_down(void *data)
+{
+    struct fixture *f = data;
+    int rv;
+    free(f);
+
+    xx_default_loop();
+
+    rv = xx_queue_work(&xx_default_loop()->loop, &work_req, work_cb, after_work_cb);
+    munit_assert_int(rv, ==, 0);
+
+    uv_run(&xx_default_loop()->loop, UV_RUN_DEFAULT);
+
+    //sleep(2);
+
+    uv_walk(&xx_default_loop()->loop, close_walk_cb, NULL);
+    uv_run(&xx_default_loop()->loop, UV_RUN_DEFAULT);
+
+
+    //sleep(2);
+
+    xx__threadpool_cleanup();
+    xx_loop_close(xx_default_loop());
+    rv = uv_loop_close(&xx_default_loop()->loop);
+    munit_assert_int(rv, ==, 0);
+}
+
+TEST_SUITE(threadpool);
+TEST_SETUP(threadpool, threadpool_setup);
+TEST_TEAR_DOWN(threadpool, threadpool_tear_down);
+
+TEST_CASE(threadpool, sync, endpointParams)
+{
+
+    (void)params;
+    (void)data;
+
+
+
+    return MUNIT_OK;
+}

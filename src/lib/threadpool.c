@@ -2,13 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
+#include "threadpool.h"
 // ---------------------------------------------------------------------------
 
-struct xx__queue {
-  struct xx__queue* next;
-  struct xx__queue* prev;
-};
+// struct xx__queue {
+//   struct xx__queue* next;
+//   struct xx__queue* prev;
+// };
 
 #define xx__queue_data(pointer, type, field)		\
   ((type*) ((char*) (pointer) - offsetof(type, field)))
@@ -81,33 +81,33 @@ static inline void xx__queue_remove(struct xx__queue* q) {
 
 // ---------------------------------------------------------------------------
 
-struct xx__work {
-  void (*work)(struct xx__work *w);
-  void (*done)(struct xx__work *w, int status);
-  struct uv_loop_s* loop;
-  struct xx__queue wq;
-};
-
-
-typedef struct xx_work_s xx_work_t;
-typedef void (*xx_work_cb)(xx_work_t* req);
-typedef void (*xx_after_work_cb)(xx_work_t* req, int status);
-
-struct xx_work_s {
-  uv_loop_t* loop;
-  xx_work_cb work_cb;
-  xx_after_work_cb after_work_cb;
-  struct xx__work work_req;
-};
-
-struct xx_loop_s {
-    struct uv_loop_s loop;
-
-    struct xx__queue wq;
-    uv_mutex_t wq_mutex;
-    uv_async_t wq_async;
-    uint64_t   active_reqs;
-};
+// struct xx__work {
+//   void (*work)(struct xx__work *w);
+//   void (*done)(struct xx__work *w, int status);
+//   struct uv_loop_s* loop;
+//   struct xx__queue wq;
+// };
+//
+//
+// typedef struct xx_work_s xx_work_t;
+// typedef void (*xx_work_cb)(xx_work_t* req);
+// typedef void (*xx_after_work_cb)(xx_work_t* req, int status);
+//
+// struct xx_work_s {
+//   uv_loop_t* loop;
+//   xx_work_cb work_cb;
+//   xx_after_work_cb after_work_cb;
+//   struct xx__work work_req;
+// };
+//
+// struct xx_loop_s {
+//     struct uv_loop_s loop;
+//
+//     struct xx__queue wq;
+//     uv_mutex_t wq_mutex;
+//     uv_async_t wq_async;
+//     uint64_t   active_reqs;
+// };
 
 static struct xx_loop_s *xx_loop(struct uv_loop_s *loop) {
     return (struct xx_loop_s *) loop;
@@ -212,7 +212,7 @@ static void post(struct xx__queue* q) {
 }
 
 
-void uv__threadpool_cleanup(void) {
+void xx__threadpool_cleanup(void) {
   unsigned int i;
 
   if (nthreads == 0)
@@ -341,7 +341,7 @@ void xx__work_done(uv_async_t* handle) {
   uv_loop_t* loop;
   struct xx_loop_s *xxloop;
   struct xx__queue* q;
-  struct xx__queue wq_;
+  struct xx__queue wq_ = {};
   int err;
 
   xxloop = container_of(handle, struct xx_loop_s, wq_async);
@@ -378,6 +378,7 @@ static void xx__queue_done(struct xx__work* w, int err) {
     return;
 
   req->after_work_cb(req, err);
+  uv_close((uv_handle_t *) &xx_loop(req->loop)->wq_async, NULL);
 }
 
 
@@ -414,17 +415,13 @@ int xx_loop_init(struct xx_loop_s *loop) {
     err = uv_async_init(&loop->loop, &loop->wq_async, xx__work_done);
     assert(err == 0);
 
-    uv_unref((uv_handle_t *) &loop->wq_async);
+    //uv_unref((uv_handle_t *) &loop->wq_async);
 
     return 0;
 }
 
 void xx_loop_close(struct xx_loop_s *loop) {
-    //loop->wq_async.async_sent = 0;
-    //loop->wq_async.close_cb = NULL;
-    //uv__handle_closing(&loop->wq_async);
-    //uv__handle_close(&loop->wq_async);
-    uv_close((uv_handle_t *) &loop->wq_async, NULL);
+    //uv_close((uv_handle_t *) &loop->wq_async, NULL);
 
     uv_mutex_lock(&loop->wq_mutex);
     assert(xx__queue_empty(&loop->wq) && "thread pool work queue not empty!");
