@@ -77,7 +77,7 @@ static unsigned int slow_work_thread_threshold(void) {
   return (nthreads + 1) / 2;
 }
 
-static void uv__cancelled(struct xx__work* w __attribute__((unused))) {
+static void xx__cancelled(struct xx__work* w __attribute__((unused))) {
   abort();
 }
 
@@ -152,12 +152,12 @@ static void worker(void* arg) {
     w = xx__queue_data(q, struct xx__work, wq);
     w->work(w);
 
-    uv_mutex_lock(&w->loop->wq_mutex);
+    uv_mutex_lock(&xx_loop(w->loop)->wq_mutex);
     w->work = NULL;  /* Signal uv_cancel() that the work req is done
                         executing. */
-    xx__queue_insert_tail(&w->loop->wq, &w->wq);
-    uv_async_send(&w->loop->wq_async);
-    uv_mutex_unlock(&w->loop->wq_mutex);
+    xx__queue_insert_tail(&xx_loop(w->loop)->wq, &w->wq);
+    uv_async_send(&xx_loop(w->loop)->wq_async);
+    uv_mutex_unlock(&xx_loop(w->loop)->wq_mutex);
 
     /* Lock `mutex` since that is expected at the start of the next
      * iteration. */
@@ -218,7 +218,7 @@ static void init_threads(void) {
   nthreads = ARRAY_SIZE(default_threads);
   val = getenv("UV_THREADPOOL_SIZE");
   if (val != NULL)
-    nthreads = atoi(val);
+    nthreads = (unsigned int) atoi(val);
   if (nthreads == 0)
     nthreads = 1;
   if (nthreads > MAX_THREADPOOL_SIZE)
@@ -301,23 +301,23 @@ static int xx__work_cancel(uv_loop_t* loop, uv_req_t* req, struct xx__work* w) {
 
   uv_once(&once, init_once);  /* Ensure |mutex| is initialized. */
   uv_mutex_lock(&mutex);
-  uv_mutex_lock(&w->loop->wq_mutex);
+  uv_mutex_lock(&xx_loop(w->loop)->wq_mutex);
 
   cancelled = !xx__queue_empty(&w->wq) && w->work != NULL;
   if (cancelled)
     xx__queue_remove(&w->wq);
 
-  uv_mutex_unlock(&w->loop->wq_mutex);
+  uv_mutex_unlock(&xx_loop(w->loop)->wq_mutex);
   uv_mutex_unlock(&mutex);
 
   if (!cancelled)
     return UV_EBUSY;
 
-  w->work = uv__cancelled;
-  uv_mutex_lock(&loop->wq_mutex);
-  xx__queue_insert_tail(&loop->wq, &w->wq);
-  uv_async_send(&loop->wq_async);
-  uv_mutex_unlock(&loop->wq_mutex);
+  w->work = xx__cancelled;
+  uv_mutex_lock(&xx_loop(loop)->wq_mutex);
+  xx__queue_insert_tail(&xx_loop(loop)->wq, &w->wq);
+  uv_async_send(&xx_loop(loop)->wq_async);
+  uv_mutex_unlock(&xx_loop(loop)->wq_mutex);
 
   return 0;
 }
@@ -331,10 +331,11 @@ void xx__work_done(uv_async_t* handle) {
   int err;
   int nevents;
 
-  loop = container_of(handle, uv_loop_t, wq_async);
-  uv_mutex_lock(&loop->wq_mutex);
-  xx__queue_move(&loop->wq, &wq);
-  uv_mutex_unlock(&loop->wq_mutex);
+  //XXX: loop = container_of(handle, uv_loop_t, wq_async);
+  loop = container_of(handle, struct xx_loop_s, wq_async);
+  uv_mutex_lock(&xx_loop(loop)->wq_mutex);
+  xx__queue_move(&xx_loop(loop)->wq, &wq);
+  uv_mutex_unlock(&xx_loop(loop)->wq_mutex);
 
   nevents = 0;
 
@@ -343,7 +344,7 @@ void xx__work_done(uv_async_t* handle) {
     xx__queue_remove(q);
 
     w = container_of(q, struct xx__work, wq);
-    err = (w->work == uv__cancelled) ? UV_ECANCELED : 0;
+    err = (w->work == xx__cancelled) ? UV_ECANCELED : 0;
     w->done(w, err);
     nevents++;
   }
