@@ -13,4 +13,6 @@
 
 #define DBG() fprintf(stderr, "%s:%d\n", __func__, __LINE__)
 
+#define UNUSED __attribute__((unused))
+
 #endif /* DQLITE_UTILS_H_ */
