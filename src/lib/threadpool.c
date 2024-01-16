@@ -35,7 +35,6 @@ struct thread_args {
 };
 
 
-static uv_once_t once = UV_ONCE_INIT;
 static uv_cond_t cond;
 static uv_mutex_t mutex;
 static unsigned int idle_threads;
@@ -212,25 +211,13 @@ static void init_threads(void)
 	uv_sem_destroy(&sem);
 }
 
-static void reset_once(void)
-{
-	uv_once_t child_once = UV_ONCE_INIT;
-	memcpy(&once, &child_once, sizeof(child_once));
-}
-
-static void init_once(void)
-{
-	if (pthread_atfork(NULL, NULL, &reset_once))
-		abort();
-	init_threads();
-}
-
 void xx__work_submit(uv_loop_t *loop,
 		     struct xx__work *w,
 		     void (*work)(struct xx__work *w),
 		     void (*done)(struct xx__work *w, int status))
 {
-	uv_once(&once, init_once);
+	// XXX: PRE(threads_are_inited());
+	//      use calloc() for allocation, check thread_mem_is_0
 	w->loop = loop;
 	w->work = work;
 	w->done = done;
@@ -241,7 +228,8 @@ static int xx__work_cancel(uv_loop_t *loop, struct xx__work *w)
 {
 	int cancelled;
 
-	uv_once(&once, init_once); /* Ensure |mutex| is initialized. */
+	// XXX: PRE(threads_are_inited());
+	//      use calloc() for allocation, check thread_mem_is_0
 	uv_mutex_lock(&mutex);
 	uv_mutex_lock(&xx_loop(w->loop)->wq_mutex);
 
@@ -344,10 +332,13 @@ int xx_loop_init(struct xx_loop_s *loop)
 	    return err;
 
 	err = uv_async_init(&loop->loop, &loop->wq_async, xx__work_done);
-	if (err != 0)
+	if (err != 0) {
 	    uv_mutex_destroy(&loop->wq_mutex);
+	    return err;
+	}
 
-	return err;
+	init_threads();
+	return 0;
 }
 
 void xx_loop_close(struct xx_loop_s *loop)
