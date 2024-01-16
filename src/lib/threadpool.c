@@ -1,90 +1,10 @@
-#include "threadpool.h"
+#include "src/lib/threadpool.h"
+#include "src/utils.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <uv.h>
 
-
-#define xx__queue_data(pointer, type, field) \
-	((type *)((char *)(pointer)-offsetof(type, field)))
-
-#define xx__queue_foreach(q, h) \
-	for ((q) = (h)->next; (q) != (h); (q) = (q)->next)
-
-static inline void xx__queue_init(struct xx__queue *q)
-{
-	q->next = q;
-	q->prev = q;
-}
-
-static inline int xx__queue_empty(const struct xx__queue *q)
-{
-	return q == q->next;
-}
-
-static inline struct xx__queue *xx__queue_head(const struct xx__queue *q)
-{
-	return q->next;
-}
-
-static inline struct xx__queue *xx__queue_next(const struct xx__queue *q)
-{
-	return q->next;
-}
-
-static inline void xx__queue_add(struct xx__queue *h, struct xx__queue *n)
-{
-	h->prev->next = n->next;
-	n->next->prev = h->prev;
-	h->prev = n->prev;
-	h->prev->next = h;
-}
-
-static inline void xx__queue_split(struct xx__queue *h,
-				   struct xx__queue *q,
-				   struct xx__queue *n)
-{
-	n->prev = h->prev;
-	n->prev->next = n;
-	n->next = q;
-	h->prev = q->prev;
-	h->prev->next = h;
-	q->prev = n;
-}
-
-static inline void xx__queue_move(struct xx__queue *h, struct xx__queue *n)
-{
-	if (xx__queue_empty(h))
-		xx__queue_init(n);
-	else
-		xx__queue_split(h, h->next, n);
-}
-
-static inline void xx__queue_insert_head(struct xx__queue *h,
-					 struct xx__queue *q)
-{
-	q->next = h->next;
-	q->prev = h;
-	q->next->prev = q;
-	h->next = q;
-}
-
-static inline void xx__queue_insert_tail(struct xx__queue *h,
-					 struct xx__queue *q)
-{
-	q->next = h;
-	q->prev = h->prev;
-	q->prev->next = q;
-	h->prev = q;
-}
-
-static inline void xx__queue_remove(struct xx__queue *q)
-{
-	q->prev->next = q->next;
-	q->next->prev = q->prev;
-}
-
-void xx__work_done(uv_async_t *handle);
 
 static struct xx_loop_s *xx_loop(struct uv_loop_s *loop)
 {
@@ -103,11 +23,6 @@ static struct xx_loop_s *xx_loop(struct uv_loop_s *loop)
 		assert(xx__has_active_reqs(loop)); \
 		(loop)->active_reqs--;             \
 	} while (0)
-
-#define container_of(ptr, type, member) \
-	((type *)((char *)(ptr)-offsetof(type, member)))
-
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
 enum {
 	MAX_THREADPOOL_SIZE = 1024,
@@ -128,11 +43,11 @@ static unsigned int nthreads;
 static uv_thread_t *threads;
 static struct thread_args *thread_args;
 static uv_key_t thread_key;
-static struct xx__queue *thread_queues;
-static struct xx__queue exit_message;
-static struct xx__queue wq;
+static queue *thread_queues;
+static queue exit_message;
+static queue wq;
 
-static void xx__cancelled(struct xx__work *w __attribute__((unused)))
+static void xx__cancelled(struct xx__work *w UNUSED)
 {
 	abort();
 }
@@ -148,7 +63,7 @@ unsigned int xx__thread_id(void)
 static void worker(void *arg)
 {
 	struct xx__work *w;
-	struct xx__queue *q;
+	queue *q;
 	struct thread_args *ta = arg;
 
 
@@ -158,8 +73,8 @@ static void worker(void *arg)
 	for (;;) {
 		/* `mutex` should always be locked at this point. */
 		/* Keep waiting while either no work is present */
-		while (xx__queue_empty(&wq) &&
-		       xx__queue_empty(&thread_queues[ta->idx])) {
+		while (QUEUE__IS_EMPTY(&wq) &&
+		       QUEUE__IS_EMPTY(&thread_queues[ta->idx])) {
 			//XXX printf("worker_e: idx=%u\n", ta->idx);
 			idle_threads += 1;
 			uv_cond_wait(&cond, &mutex);
@@ -168,33 +83,33 @@ static void worker(void *arg)
 
 		//XXX printf("worker: idx=%u\n", ta->idx);
 		/* Process work item affinity */
-		if (!xx__queue_empty(&thread_queues[ta->idx])) {
-		    q = xx__queue_head(&thread_queues[ta->idx]);
+		if (!QUEUE__IS_EMPTY(&thread_queues[ta->idx])) {
+		    q = QUEUE__HEAD(&thread_queues[ta->idx]);
 		    //XXX printf("worker: q=%p idx=%u\n", q, ta->idx);
-		    xx__queue_remove(q);
-		    xx__queue_init(q);
-		    xx__queue_insert_head(&wq, q);
+		    QUEUE__REMOVE(q);
+		    QUEUE__INIT(q);
+		    QUEUE__INSERT_HEAD(&wq, q);
 		}
 
-		q = xx__queue_head(&wq);
+		q = QUEUE__HEAD(&wq);
 		if (q == &exit_message) {
 			uv_cond_signal(&cond);
 			uv_mutex_unlock(&mutex);
 			break;
 		}
 
-		xx__queue_remove(q);
-		xx__queue_init(q);
+		QUEUE__REMOVE(q);
+		QUEUE__INIT(q);
 
 		uv_mutex_unlock(&mutex);
 
-		w = xx__queue_data(q, struct xx__work, wq);
+		w = QUEUE__DATA(q, struct xx__work, wq);
 		w->work(w);
 
 		uv_mutex_lock(&xx_loop(w->loop)->wq_mutex);
 		w->work = NULL; /* Signal uv_cancel() that the work req is done
 				   executing. */
-		xx__queue_insert_tail(&xx_loop(w->loop)->wq, &w->wq);
+		QUEUE__INSERT_TAIL(&xx_loop(w->loop)->wq, &w->wq);
 
 		uv_async_send(&xx_loop(w->loop)->wq_async);
 		uv_mutex_unlock(&xx_loop(w->loop)->wq_mutex);
@@ -205,13 +120,13 @@ static void worker(void *arg)
 	}
 }
 
-static void post(struct xx__queue *q, unsigned int idx)
+static void post(queue *q, unsigned int idx)
 {
 	uv_mutex_lock(&mutex);
 
 	//XXX printf("post: q=%p idx=%u\n", q, idx);
 	/* Assing work item affinity */
-	xx__queue_insert_tail(idx == ~0u ? &wq : &thread_queues[idx], q);
+	QUEUE__INSERT_TAIL(idx == ~0u ? &wq : &thread_queues[idx], q);
 
 	if (idle_threads > 0) {
 	    //XXX uv_cond_signal(&cond);
@@ -273,7 +188,7 @@ static void init_threads(void)
 	if (uv_mutex_init(&mutex))
 		abort();
 
-	xx__queue_init(&wq);
+	QUEUE__INIT(&wq);
 
 	if (uv_sem_init(&sem, 0))
 		abort();
@@ -282,7 +197,7 @@ static void init_threads(void)
 	config.stack_size = 8u << 20; /* 8 MB */
 
 	for (i = 0; i < nthreads; i++) {
-	    xx__queue_init(&thread_queues[i]);
+	    QUEUE__INIT(&thread_queues[i]);
 	    thread_args[i] = (struct thread_args) {
 		.sem = &sem,
 		.idx = i,
@@ -330,9 +245,9 @@ static int xx__work_cancel(uv_loop_t *loop, struct xx__work *w)
 	uv_mutex_lock(&mutex);
 	uv_mutex_lock(&xx_loop(w->loop)->wq_mutex);
 
-	cancelled = !xx__queue_empty(&w->wq) && w->work != NULL;
+	cancelled = !QUEUE__IS_EMPTY(&w->wq) && w->work != NULL;
 	if (cancelled)
-		xx__queue_remove(&w->wq);
+		QUEUE__REMOVE(&w->wq);
 
 	uv_mutex_unlock(&xx_loop(w->loop)->wq_mutex);
 	uv_mutex_unlock(&mutex);
@@ -342,7 +257,7 @@ static int xx__work_cancel(uv_loop_t *loop, struct xx__work *w)
 
 	w->work = xx__cancelled;
 	uv_mutex_lock(&xx_loop(loop)->wq_mutex);
-	xx__queue_insert_tail(&xx_loop(loop)->wq, &w->wq);
+	QUEUE__INSERT_TAIL(&xx_loop(loop)->wq, &w->wq);
 	uv_async_send(&xx_loop(loop)->wq_async);
 	uv_mutex_unlock(&xx_loop(loop)->wq_mutex);
 
@@ -354,20 +269,20 @@ void xx__work_done(uv_async_t *handle)
 	struct xx__work *w;
 	uv_loop_t *loop;
 	struct xx_loop_s *xxloop;
-	struct xx__queue *q;
-	struct xx__queue wq_ = {};
+	queue *q;
+	queue wq_ = {};
 	int err;
 
 	xxloop = container_of(handle, struct xx_loop_s, wq_async);
 	loop = &xxloop->loop;
 
 	uv_mutex_lock(&xx_loop(loop)->wq_mutex);
-	xx__queue_move(&xx_loop(loop)->wq, &wq_);
+	QUEUE__MOVE(&xx_loop(loop)->wq, &wq_);
 	uv_mutex_unlock(&xx_loop(loop)->wq_mutex);
 
-	while (!xx__queue_empty(&wq_)) {
-		q = xx__queue_head(&wq_);
-		xx__queue_remove(q);
+	while (!QUEUE__IS_EMPTY(&wq_)) {
+		q = QUEUE__HEAD(&wq_);
+		QUEUE__REMOVE(q);
 
 		w = container_of(q, struct xx__work, wq);
 		err = (w->work == xx__cancelled) ? UV_ECANCELED : 0;
@@ -422,7 +337,7 @@ int xx_loop_init(struct xx_loop_s *loop)
 {
 	int err;
 
-	xx__queue_init(&loop->wq);
+	QUEUE__INIT(&loop->wq);
 
 	err = uv_mutex_init(&loop->wq_mutex);
 	if (err != 0)
@@ -440,7 +355,7 @@ void xx_loop_close(struct xx_loop_s *loop)
 	xx__threadpool_cleanup();
 
 	uv_mutex_lock(&loop->wq_mutex);
-	assert(xx__queue_empty(&loop->wq) &&
+	assert(QUEUE__IS_EMPTY(&loop->wq) &&
 	       "thread pool work queue not empty!");
 	assert(!xx__has_active_reqs(loop));
 	uv_mutex_unlock(&loop->wq_mutex);

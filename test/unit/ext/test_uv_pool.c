@@ -32,21 +32,12 @@ static void loop_setup(struct fixture *f)
 
 static void bottom_work_cb(xx_work_t *req)
 {
-	munit_logf(MUNIT_LOG_INFO, "bottom_work_cb() req=%p id=%u widx=%u tid=%d",
-		   req,
-		   xx__thread_id(),
-		   req->work_req.thread_idx,
-		   gettid());
-
 	munit_assert_int(req->work_req.thread_idx, ==, xx__thread_id());
 }
 
 static void bottom_after_work_cb(xx_work_t *req, int status UNUSED)
 {
 	static int count = 0;
-	munit_logf(MUNIT_LOG_INFO,
-		   "bottom_after_work_cb() tid=%d req=%p count=%d", gettid(),
-		   req, count);
 
 	/*
 	 * Note: Close the uv_loop. The alternative can be seen in libuv v1.46
@@ -74,7 +65,6 @@ static void after_work_cb(xx_work_t *req, int status UNUSED)
 
 	for (i = 0; i <= WORK_ITEMS_NR; i++) {
 		work = malloc(sizeof(*work));
-		munit_logf(MUNIT_LOG_INFO, "after_work_cb() tid=%d", gettid());
 		//XXX: parameterize i%4
 		rc = xx_queue_work(req->loop, work, i % 4, bottom_work_cb,
 				   bottom_after_work_cb);
@@ -84,11 +74,6 @@ static void after_work_cb(xx_work_t *req, int status UNUSED)
 
 static void work_cb(xx_work_t *req)
 {
-    munit_logf(MUNIT_LOG_INFO, "work_cb() req=%p id=%u widx=%u tid=%d",
-	       req,
-	       xx__thread_id(),
-	       req->work_req.thread_idx,
-	       gettid());
     munit_assert_int(req->work_req.thread_idx, ==, xx__thread_id());
 }
 

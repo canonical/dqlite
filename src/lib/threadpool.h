@@ -2,19 +2,14 @@
 #define __XX_THREAD_POOL__
 
 #include <uv.h>
-
-struct xx__queue
-{
-	struct xx__queue *next;
-	struct xx__queue *prev;
-};
+#include "queue.h"
 
 struct xx__work
 {
 	void (*work)(struct xx__work *w);
 	void (*done)(struct xx__work *w, int status);
 	struct uv_loop_s *loop;
-	struct xx__queue wq;
+	queue wq;
 	unsigned int thread_idx;
 };
 
@@ -35,7 +30,7 @@ struct xx_loop_s
 {
 	struct uv_loop_s loop;
 
-	struct xx__queue wq;
+	queue wq;
 	uv_mutex_t wq_mutex;
 	uv_async_t wq_async;
 	uint64_t active_reqs;

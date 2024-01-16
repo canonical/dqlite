@@ -15,4 +15,7 @@
 
 #define UNUSED __attribute__((unused))
 
+#define container_of(ptr, type, member) \
+	((type *)((char *)(ptr)-offsetof(type, member)))
+
 #endif /* DQLITE_UTILS_H_ */
