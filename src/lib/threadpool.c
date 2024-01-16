@@ -3,12 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <uv.h>
-// ---------------------------------------------------------------------------
 
-// struct xx__queue {
-//   struct xx__queue* next;
-//   struct xx__queue* prev;
-// };
 
 #define xx__queue_data(pointer, type, field) \
 	((type *)((char *)(pointer)-offsetof(type, field)))
@@ -89,36 +84,6 @@ static inline void xx__queue_remove(struct xx__queue *q)
 	q->next->prev = q->prev;
 }
 
-// ---------------------------------------------------------------------------
-
-// struct xx__work {
-//   void (*work)(struct xx__work *w);
-//   void (*done)(struct xx__work *w, int status);
-//   struct uv_loop_s* loop;
-//   struct xx__queue wq;
-// };
-//
-//
-// typedef struct xx_work_s xx_work_t;
-// typedef void (*xx_work_cb)(xx_work_t* req);
-// typedef void (*xx_after_work_cb)(xx_work_t* req, int status);
-//
-// struct xx_work_s {
-//   uv_loop_t* loop;
-//   xx_work_cb work_cb;
-//   xx_after_work_cb after_work_cb;
-//   struct xx__work work_req;
-// };
-//
-// struct xx_loop_s {
-//     struct uv_loop_s loop;
-//
-//     struct xx__queue wq;
-//     uv_mutex_t wq_mutex;
-//     uv_async_t wq_async;
-//     uint64_t   active_reqs;
-// };
-
 void xx__work_done(uv_async_t *handle);
 
 static struct xx_loop_s *xx_loop(struct uv_loop_s *loop)
@@ -144,7 +109,10 @@ static struct xx_loop_s *xx_loop(struct uv_loop_s *loop)
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
-#define MAX_THREADPOOL_SIZE 1024
+enum {
+    MAX_THREADPOOL_SIZE = 1024,
+    XX_THREADPOOL_SIZE = 4,
+};
 
 static uv_once_t once = UV_ONCE_INIT;
 static uv_cond_t cond;
@@ -192,8 +160,7 @@ static void worker(void *arg)
 		}
 
 		xx__queue_remove(q);
-		xx__queue_init(
-		    q); /* Signal uv_cancel() that the work req is executing. */
+		xx__queue_init(q);
 
 		uv_mutex_unlock(&mutex);
 
@@ -254,7 +221,7 @@ static void init_threads(void)
 	uv_sem_t sem;
 
 	nthreads = ARRAY_SIZE(default_threads);
-	val = getenv("UV_THREADPOOL_SIZE");
+	val = getenv("XX_THREADPOOL_SIZE");
 	if (val != NULL)
 		nthreads = (unsigned int)atoi(val);
 	if (nthreads == 0)
@@ -358,6 +325,7 @@ void xx__work_done(uv_async_t *handle)
 
 	xxloop = container_of(handle, struct xx_loop_s, wq_async);
 	loop = &xxloop->loop;
+
 	uv_mutex_lock(&xx_loop(loop)->wq_mutex);
 	xx__queue_move(&xx_loop(loop)->wq, &wq_);
 	uv_mutex_unlock(&xx_loop(loop)->wq_mutex);
@@ -381,11 +349,9 @@ static void xx__queue_work(struct xx__work *w)
 
 static void xx__queue_done(struct xx__work *w, int err)
 {
-	xx_work_t *req;
+	xx_work_t *req = container_of(w, xx_work_t, work_req);
 
-	req = container_of(w, xx_work_t, work_req);
 	xx__req_unregister(xx_loop(req->loop), req);
-
 	if (req->after_work_cb == NULL)
 		return;
 
@@ -418,16 +384,16 @@ int xx_loop_init(struct xx_loop_s *loop)
 	int err;
 
 	xx__queue_init(&loop->wq);
+
 	err = uv_mutex_init(&loop->wq_mutex);
-	assert(err == 0);
+	if (err != 0)
+	    return err;
 
-	// YYY
 	err = uv_async_init(&loop->loop, &loop->wq_async, xx__work_done);
-	assert(err == 0);
+	if (err != 0)
+	    uv_mutex_destroy(&loop->wq_mutex);
 
-	// uv_unref((uv_handle_t *) &loop->wq_async);
-
-	return 0;
+	return err;
 }
 
 void xx_loop_close(struct xx_loop_s *loop)

@@ -19,7 +19,7 @@ struct fixture
 	xx_work_t work_req;
 };
 
-static void xx_default_loop(struct fixture *f)
+static void loop_setup(struct fixture *f)
 {
 	int rc;
 
@@ -97,7 +97,7 @@ static void *threadpool_setup(const MunitParameter params[] UNUSED,
 	struct fixture *f = munit_malloc(sizeof *f);
 	memset(f, 0x00, sizeof(*f));
 
-	xx_default_loop(f);
+	loop_setup(f);
 	return f;
 }
 
