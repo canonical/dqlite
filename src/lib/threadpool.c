@@ -127,6 +127,7 @@ static unsigned int idle_threads;
 static unsigned int nthreads;
 static uv_thread_t *threads;
 static struct thread_args *thread_args;
+static uv_key_t thread_key;
 static struct xx__queue *thread_queues;
 static struct xx__queue exit_message;
 static struct xx__queue wq;
@@ -134,6 +135,11 @@ static struct xx__queue wq;
 static void xx__cancelled(struct xx__work *w __attribute__((unused)))
 {
 	abort();
+}
+
+unsigned int xx__thread_id(void)
+{
+    return *(unsigned int *) uv_key_get(&thread_key);
 }
 
 /* To avoid deadlock with uv_cancel() it's crucial that the worker
@@ -145,6 +151,8 @@ static void worker(void *arg)
 	struct xx__queue *q;
 	struct thread_args *ta = arg;
 
+
+	uv_key_set(&thread_key, &ta->idx);
 	uv_sem_post(ta->sem);
 	uv_mutex_lock(&mutex);
 	for (;;) {
@@ -159,7 +167,7 @@ static void worker(void *arg)
 		}
 
 		//XXX printf("worker: idx=%u\n", ta->idx);
-		/* XXX === Assinging work item affinity */
+		/* Process work item affinity */
 		if (!xx__queue_empty(&thread_queues[ta->idx])) {
 		    q = xx__queue_head(&thread_queues[ta->idx]);
 		    //XXX printf("worker: q=%p idx=%u\n", q, ta->idx);
@@ -202,10 +210,12 @@ static void post(struct xx__queue *q, unsigned int idx)
 	uv_mutex_lock(&mutex);
 
 	//XXX printf("post: q=%p idx=%u\n", q, idx);
+	/* Assing work item affinity */
 	xx__queue_insert_tail(idx == ~0u ? &wq : &thread_queues[idx], q);
 
 	if (idle_threads > 0) {
-	    //uv_cond_signal(&cond);
+	    //XXX uv_cond_signal(&cond);
+	    //XXX Worth thinking how not to broadcast
 	    uv_cond_broadcast(&cond);
 	}
 	uv_mutex_unlock(&mutex);
@@ -247,6 +257,9 @@ static void init_threads(void)
 		nthreads = 1;
 	if (nthreads > MAX_THREADPOOL_SIZE)
 		nthreads = MAX_THREADPOOL_SIZE;
+
+	if (uv_key_create(&thread_key))
+	    abort();
 
 	threads = malloc(nthreads * sizeof(threads[0]));
 	thread_args = malloc(nthreads * sizeof(thread_args[0]));
@@ -393,7 +406,7 @@ int xx_queue_work(uv_loop_t *loop,
 	req->loop = loop;
 	req->work_cb = work_cb;
 	req->after_work_cb = after_work_cb;
-	/* XXX: This is the right place to do this calculation */
+	//XXX: This is NOT the right place to do this calculation
 	req->work_req.thread_idx = cookie;
 	//XXX printf("xx_queue_work: req=%p idx=%u\n", req, req->work_req.thread_idx);
 	xx__work_submit(loop, &req->work_req, xx__queue_work, xx__queue_done);

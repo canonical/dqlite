@@ -51,4 +51,6 @@ int xx_queue_work(uv_loop_t *loop,
 int xx_cancel(xx_work_t *req);
 void xx_loop_async_close(uv_loop_t *loop);
 
+/* For tests */
+unsigned int xx__thread_id(void);
 #endif  // __XX_THREAD_POOL__

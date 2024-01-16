@@ -32,8 +32,13 @@ static void loop_setup(struct fixture *f)
 
 static void bottom_work_cb(xx_work_t *req)
 {
-	munit_logf(MUNIT_LOG_INFO, "bottom_work_cb() req=%p tid=%d", req,
+	munit_logf(MUNIT_LOG_INFO, "bottom_work_cb() req=%p id=%u widx=%u tid=%d",
+		   req,
+		   xx__thread_id(),
+		   req->work_req.thread_idx,
 		   gettid());
+
+	munit_assert_int(req->work_req.thread_idx, ==, xx__thread_id());
 }
 
 static void bottom_after_work_cb(xx_work_t *req, int status UNUSED)
@@ -63,14 +68,15 @@ static void bottom_after_work_cb(xx_work_t *req, int status UNUSED)
 
 static void after_work_cb(xx_work_t *req, int status UNUSED)
 {
-	int i;
+	unsigned int i;
 	int rc;
 	xx_work_t *work;
 
 	for (i = 0; i <= WORK_ITEMS_NR; i++) {
 		work = malloc(sizeof(*work));
 		munit_logf(MUNIT_LOG_INFO, "after_work_cb() tid=%d", gettid());
-		rc = xx_queue_work(req->loop, work, 0, bottom_work_cb,
+		//XXX: parameterize i%4
+		rc = xx_queue_work(req->loop, work, i % 4, bottom_work_cb,
 				   bottom_after_work_cb);
 		munit_assert_int(rc, ==, 0);
 	}
@@ -78,7 +84,12 @@ static void after_work_cb(xx_work_t *req, int status UNUSED)
 
 static void work_cb(xx_work_t *req)
 {
-	munit_logf(MUNIT_LOG_INFO, "work_cb() req=%p tid=%d", req, gettid());
+    munit_logf(MUNIT_LOG_INFO, "work_cb() req=%p id=%u widx=%u tid=%d",
+	       req,
+	       xx__thread_id(),
+	       req->work_req.thread_idx,
+	       gettid());
+    munit_assert_int(req->work_req.thread_idx, ==, xx__thread_id());
 }
 
 static void threadpool_tear_down(void *data)
