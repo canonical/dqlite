@@ -110,9 +110,16 @@ static struct xx_loop_s *xx_loop(struct uv_loop_s *loop)
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
 enum {
-    MAX_THREADPOOL_SIZE = 1024,
-    XX_THREADPOOL_SIZE = 4,
+	MAX_THREADPOOL_SIZE = 1024,
+	XX_THREADPOOL_SIZE = 4,
 };
+
+struct thread_args {
+    uv_sem_t *sem;
+    unsigned int idx;
+    struct xx__queue *tq;
+};
+
 
 static uv_once_t once = UV_ONCE_INIT;
 static uv_cond_t cond;
@@ -120,7 +127,8 @@ static uv_mutex_t mutex;
 static unsigned int idle_threads;
 static unsigned int nthreads;
 static uv_thread_t *threads;
-static uv_thread_t default_threads[4];
+static struct thread_args *thread_args;
+static struct xx__queue *thread_queues;
 static struct xx__queue exit_message;
 static struct xx__queue wq;
 
@@ -136,10 +144,9 @@ static void worker(void *arg)
 {
 	struct xx__work *w;
 	struct xx__queue *q;
+	struct thread_args *ta = arg;
 
-	uv_sem_post((uv_sem_t *)arg);
-	arg = NULL;
-
+	uv_sem_post(ta->sem);
 	uv_mutex_lock(&mutex);
 	for (;;) {
 		/* `mutex` should always be locked at this point. */
@@ -203,9 +210,7 @@ static void xx__threadpool_cleanup(void)
 		if (uv_thread_join(threads + i))
 			abort();
 
-	if (threads != default_threads)
-		free(threads);
-
+	free(threads);
 	uv_mutex_destroy(&mutex);
 	uv_cond_destroy(&cond);
 
@@ -220,7 +225,7 @@ static void init_threads(void)
 	const char *val;
 	uv_sem_t sem;
 
-	nthreads = ARRAY_SIZE(default_threads);
+	nthreads = XX_THREADPOOL_SIZE;
 	val = getenv("XX_THREADPOOL_SIZE");
 	if (val != NULL)
 		nthreads = (unsigned int)atoi(val);
@@ -229,14 +234,11 @@ static void init_threads(void)
 	if (nthreads > MAX_THREADPOOL_SIZE)
 		nthreads = MAX_THREADPOOL_SIZE;
 
-	threads = default_threads;
-	if (nthreads > ARRAY_SIZE(default_threads)) {
-		threads = malloc(nthreads * sizeof(threads[0]));
-		if (threads == NULL) {
-			nthreads = ARRAY_SIZE(default_threads);
-			threads = default_threads;
-		}
-	}
+	threads = malloc(nthreads * sizeof(threads[0]));
+	thread_args = malloc(nthreads * sizeof(thread_args[0]));
+	thread_queues = malloc(nthreads * sizeof(thread_queues[0]));
+	if (threads == NULL || thread_args == NULL || thread_queues == NULL)
+		abort();
 
 	if (uv_cond_init(&cond))
 		abort();
@@ -252,9 +254,16 @@ static void init_threads(void)
 	config.flags = UV_THREAD_HAS_STACK_SIZE;
 	config.stack_size = 8u << 20; /* 8 MB */
 
-	for (i = 0; i < nthreads; i++)
-		if (uv_thread_create_ex(threads + i, &config, worker, &sem))
-			abort();
+	for (i = 0; i < nthreads; i++) {
+	    xx__queue_init(&thread_queues[i]);
+	    thread_args[i] = (struct thread_args) {
+		.sem = &sem,
+		.idx = i,
+		.tq = &thread_queues[i]
+	    };
+	    if (uv_thread_create_ex(threads + i, &config, worker, &thread_args[i]))
+		abort();
+	}
 
 	for (i = 0; i < nthreads; i++)
 		uv_sem_wait(&sem);
@@ -360,6 +369,7 @@ static void xx__queue_done(struct xx__work *w, int err)
 
 int xx_queue_work(uv_loop_t *loop,
 		  xx_work_t *req,
+		  unsigned int cookie,
 		  xx_work_cb work_cb,
 		  xx_after_work_cb after_work_cb)
 {
@@ -371,6 +381,9 @@ int xx_queue_work(uv_loop_t *loop,
 	req->work_cb = work_cb;
 	req->after_work_cb = after_work_cb;
 	xx__work_submit(loop, &req->work_req, xx__queue_work, xx__queue_done);
+
+	/* XXX: This is the right place to do this calculation */
+	req->thread_idx = cookie % nthreads;
 	return 0;
 }
 

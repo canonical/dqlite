@@ -70,7 +70,7 @@ static void after_work_cb(xx_work_t *req, int status UNUSED)
 	for (i = 0; i <= WORK_ITEMS_NR; i++) {
 		work = malloc(sizeof(*work));
 		munit_logf(MUNIT_LOG_INFO, "after_work_cb() tid=%d", gettid());
-		rc = xx_queue_work(req->loop, work, bottom_work_cb,
+		rc = xx_queue_work(req->loop, work, 0, bottom_work_cb,
 				   bottom_after_work_cb);
 		munit_assert_int(rc, ==, 0);
 	}
@@ -110,8 +110,8 @@ TEST_CASE(threadpool, sync, NULL)
 	struct fixture *f = data;
 	int rc;
 
-	rc = xx_queue_work(&f->xx_loop.loop, &f->work_req, work_cb,
-			   after_work_cb);
+	rc = xx_queue_work(&f->xx_loop.loop, &f->work_req, 0,
+			   work_cb, after_work_cb);
 	munit_assert_int(rc, ==, 0);
 
 	rc = uv_run(&f->xx_loop.loop, UV_RUN_DEFAULT);
