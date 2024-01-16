@@ -117,7 +117,6 @@ enum {
 struct thread_args {
     uv_sem_t *sem;
     unsigned int idx;
-    struct xx__queue *tq;
 };
 
 
@@ -150,13 +149,23 @@ static void worker(void *arg)
 	uv_mutex_lock(&mutex);
 	for (;;) {
 		/* `mutex` should always be locked at this point. */
-
-		/* Keep waiting while either no work is present or only slow I/O
-		   and we're at the threshold for that. */
-		while (xx__queue_empty(&wq)) {
+		/* Keep waiting while either no work is present */
+		while (xx__queue_empty(&wq) &&
+		       xx__queue_empty(&thread_queues[ta->idx])) {
+			//XXX printf("worker_e: idx=%u\n", ta->idx);
 			idle_threads += 1;
 			uv_cond_wait(&cond, &mutex);
 			idle_threads -= 1;
+		}
+
+		//XXX printf("worker: idx=%u\n", ta->idx);
+		/* XXX === Assinging work item affinity */
+		if (!xx__queue_empty(&thread_queues[ta->idx])) {
+		    q = xx__queue_head(&thread_queues[ta->idx]);
+		    //XXX printf("worker: q=%p idx=%u\n", q, ta->idx);
+		    xx__queue_remove(q);
+		    xx__queue_init(q);
+		    xx__queue_insert_head(&wq, q);
 		}
 
 		q = xx__queue_head(&wq);
@@ -188,12 +197,17 @@ static void worker(void *arg)
 	}
 }
 
-static void post(struct xx__queue *q)
+static void post(struct xx__queue *q, unsigned int idx)
 {
 	uv_mutex_lock(&mutex);
-	xx__queue_insert_tail(&wq, q);
-	if (idle_threads > 0)
-		uv_cond_signal(&cond);
+
+	//XXX printf("post: q=%p idx=%u\n", q, idx);
+	xx__queue_insert_tail(idx == ~0u ? &wq : &thread_queues[idx], q);
+
+	if (idle_threads > 0) {
+	    //uv_cond_signal(&cond);
+	    uv_cond_broadcast(&cond);
+	}
 	uv_mutex_unlock(&mutex);
 }
 
@@ -204,7 +218,7 @@ static void xx__threadpool_cleanup(void)
 	if (nthreads == 0)
 		return;
 
-	post(&exit_message);
+	post(&exit_message, ~0u);
 
 	for (i = 0; i < nthreads; i++)
 		if (uv_thread_join(threads + i))
@@ -259,7 +273,6 @@ static void init_threads(void)
 	    thread_args[i] = (struct thread_args) {
 		.sem = &sem,
 		.idx = i,
-		.tq = &thread_queues[i]
 	    };
 	    if (uv_thread_create_ex(threads + i, &config, worker, &thread_args[i]))
 		abort();
@@ -293,7 +306,7 @@ void xx__work_submit(uv_loop_t *loop,
 	w->loop = loop;
 	w->work = work;
 	w->done = done;
-	post(&w->wq);
+	post(&w->wq, w->thread_idx);
 }
 
 static int xx__work_cancel(uv_loop_t *loop, struct xx__work *w)
@@ -380,10 +393,10 @@ int xx_queue_work(uv_loop_t *loop,
 	req->loop = loop;
 	req->work_cb = work_cb;
 	req->after_work_cb = after_work_cb;
-	xx__work_submit(loop, &req->work_req, xx__queue_work, xx__queue_done);
-
 	/* XXX: This is the right place to do this calculation */
-	req->thread_idx = cookie % nthreads;
+	req->work_req.thread_idx = cookie;
+	//XXX printf("xx_queue_work: req=%p idx=%u\n", req, req->work_req.thread_idx);
+	xx__work_submit(loop, &req->work_req, xx__queue_work, xx__queue_done);
 	return 0;
 }
 

@@ -15,6 +15,7 @@ struct xx__work
 	void (*done)(struct xx__work *w, int status);
 	struct uv_loop_s *loop;
 	struct xx__queue wq;
+	unsigned int thread_idx;
 };
 
 typedef struct xx_work_s xx_work_t;
@@ -27,7 +28,6 @@ struct xx_work_s
 	xx_work_cb work_cb;
 	xx_after_work_cb after_work_cb;
 	struct xx__work work_req;
-	unsigned int    thread_idx;
 };
 
 typedef struct xx_loop_s xx_loop_t;
