@@ -215,7 +215,7 @@ static void post(struct xx__queue* q) {
 }
 
 
-void xx__threadpool_cleanup(void) {
+static void xx__threadpool_cleanup(void) {
   unsigned int i;
 
   if (nthreads == 0)
@@ -424,12 +424,13 @@ int xx_loop_init(struct xx_loop_s *loop) {
 }
 
 void xx_loop_close(struct xx_loop_s *loop) {
-    //uv_close((uv_handle_t *) &loop->wq_async, NULL);
+    xx__threadpool_cleanup();
 
     uv_mutex_lock(&loop->wq_mutex);
     assert(xx__queue_empty(&loop->wq) && "thread pool work queue not empty!");
     assert(!xx__has_active_reqs(loop));
     uv_mutex_unlock(&loop->wq_mutex);
+
     uv_mutex_destroy(&loop->wq_mutex);
 }
 
