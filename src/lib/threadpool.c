@@ -140,11 +140,16 @@ static void xx__threadpool_cleanup(void)
 
 	post(&exit_message, NOT_AFFINED);
 
-	for (i = 0; i < nthreads; i++)
+	for (i = 0; i < nthreads; i++) {
 		if (uv_thread_join(threads + i))
 			abort();
+		POST(QUEUE__IS_EMPTY(&thread_queues[i]));
+	}
 
 	free(threads);
+	free(thread_args);
+	free(thread_queues);
+
 	uv_mutex_destroy(&mutex);
 	uv_cond_destroy(&cond);
 
