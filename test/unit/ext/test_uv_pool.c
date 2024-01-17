@@ -65,8 +65,7 @@ static void after_work_cb(xx_work_t *req, int status UNUSED)
 
 	for (i = 0; i <= WORK_ITEMS_NR; i++) {
 		work = malloc(sizeof(*work));
-		//XXX: parameterize i%4
-		rc = xx_queue_work(req->loop, work, i % 4, bottom_work_cb,
+		rc = xx_queue_work(req->loop, work, i, bottom_work_cb,
 				   bottom_after_work_cb);
 		munit_assert_int(rc, ==, 0);
 	}
@@ -74,7 +73,7 @@ static void after_work_cb(xx_work_t *req, int status UNUSED)
 
 static void work_cb(xx_work_t *req)
 {
-    munit_assert_int(req->work_req.thread_idx, ==, xx__thread_id());
+	munit_assert_int(req->work_req.thread_idx, ==, xx__thread_id());
 }
 
 static void threadpool_tear_down(void *data)
@@ -90,9 +89,7 @@ static void threadpool_tear_down(void *data)
 static void *threadpool_setup(const MunitParameter params[] UNUSED,
 			      void *user_data UNUSED)
 {
-	struct fixture *f = munit_malloc(sizeof *f);
-	memset(f, 0x00, sizeof(*f));
-
+	struct fixture *f = calloc(1, sizeof *f);
 	loop_setup(f);
 	return f;
 }
@@ -106,8 +103,8 @@ TEST_CASE(threadpool, sync, NULL)
 	struct fixture *f = data;
 	int rc;
 
-	rc = xx_queue_work(&f->xx_loop.loop, &f->work_req, 0,
-			   work_cb, after_work_cb);
+	rc = xx_queue_work(&f->xx_loop.loop, &f->work_req, 0, work_cb,
+			   after_work_cb);
 	munit_assert_int(rc, ==, 0);
 
 	rc = uv_run(&f->xx_loop.loop, UV_RUN_DEFAULT);
