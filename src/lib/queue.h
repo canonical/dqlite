@@ -42,13 +42,13 @@ typedef void *queue[2];
 /**
  * Insert an element at the front of a queue.
  */
-#define QUEUE__INSERT_HEAD(h, q)		\
-    {						\
-	QUEUE__NEXT(q) = QUEUE__NEXT(h);	\
-	QUEUE__PREV(q) = (h);			\
-	QUEUE__NEXT_PREV(q) = (q);		\
-	QUEUE__NEXT(h) = (q);			\
-    }
+#define QUEUE__INSERT_HEAD(h, q)                 \
+	{                                        \
+		QUEUE__NEXT(q) = QUEUE__NEXT(h); \
+		QUEUE__PREV(q) = (h);            \
+		QUEUE__NEXT_PREV(q) = (q);       \
+		QUEUE__NEXT(h) = (q);            \
+	}
 
 /**
  * Remove the given element from the queue. Any element can be removed at any
@@ -60,29 +60,28 @@ typedef void *queue[2];
 		QUEUE__NEXT_PREV(e) = QUEUE__PREV(e); \
 	}
 
-#define QUEUE__SPLIT(h, q, n)			 \
-	{					 \
+#define QUEUE__SPLIT(h, q, n)                    \
+	{                                        \
 		QUEUE__PREV(n) = QUEUE__PREV(h); \
-		QUEUE__PREV_NEXT(n) = (n);	 \
-		QUEUE__NEXT(n) = (q);		 \
+		QUEUE__PREV_NEXT(n) = (n);       \
+		QUEUE__NEXT(n) = (q);            \
 		QUEUE__PREV(h) = QUEUE__PREV(q); \
-		QUEUE__PREV_NEXT(h) = (h);	 \
-		QUEUE__PREV(q) = (n);		 \
+		QUEUE__PREV_NEXT(h) = (h);       \
+		QUEUE__PREV(q) = (n);            \
 	}
 
 /**
  * Moves elements from queue @h to queue @n
  */
-#define QUEUE__MOVE(h, n)			\
-	{					\
-		if (QUEUE__IS_EMPTY(h)) {	\
-		    QUEUE__INIT(n);		\
-		} else {			\
-		    queue* _q = QUEUE__HEAD(h);	\
-		    QUEUE__SPLIT(h, _q, n);	\
-		}				\
+#define QUEUE__MOVE(h, n)                           \
+	{                                           \
+		if (QUEUE__IS_EMPTY(h)) {           \
+			QUEUE__INIT(n);             \
+		} else {                            \
+			queue *_q = QUEUE__HEAD(h); \
+			QUEUE__SPLIT(h, _q, n);     \
+		}                                   \
 	}
-
 
 /**
  * Return the element at the front of the queue.
