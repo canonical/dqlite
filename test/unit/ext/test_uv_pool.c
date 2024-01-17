@@ -32,7 +32,7 @@ static void loop_setup(struct fixture *f)
 
 static void bottom_work_cb(xx_work_t *req)
 {
-	munit_assert_int(req->work_req.thread_idx, ==, xx__thread_id());
+	munit_assert_uint(req->work_req.thread_idx, ==, xx__thread_id());
 }
 
 static void bottom_after_work_cb(xx_work_t *req, int status UNUSED)
@@ -73,7 +73,7 @@ static void after_work_cb(xx_work_t *req, int status UNUSED)
 
 static void work_cb(xx_work_t *req)
 {
-	munit_assert_int(req->work_req.thread_idx, ==, xx__thread_id());
+	munit_assert_uint(req->work_req.thread_idx, ==, xx__thread_id());
 }
 
 static void threadpool_tear_down(void *data)
@@ -84,6 +84,7 @@ static void threadpool_tear_down(void *data)
 	xx_loop_close(&f->xx_loop);
 	rc = uv_loop_close(&f->xx_loop.loop);
 	munit_assert_int(rc, ==, 0);
+	free(f);
 }
 
 static void *threadpool_setup(const MunitParameter params[] UNUSED,

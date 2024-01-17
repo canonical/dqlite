@@ -16,12 +16,12 @@
 
 #define UNUSED __attribute__((unused))
 
-#define container_of(ptr, type, member) \
-	((type *)((char *)(ptr)-offsetof(type, member)))
+#define container_of(e, type, field) \
+	((type *)(uintptr_t)((char *)(e)-offsetof(type, field)))
 
-static inline bool _is0(const char *p, size_t s)
+static inline bool _is0(const char *p, unsigned int s)
 {
-	size_t i;
+	unsigned int i;
 
 	for (i = 0; i < s; ++i) {
 		if (p[i] != 0) {

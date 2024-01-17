@@ -152,8 +152,11 @@ static void xx__threadpool_cleanup(void)
 
 	uv_mutex_destroy(&mutex);
 	uv_cond_destroy(&cond);
+	uv_key_delete(&thread_key);
 
 	threads = NULL;
+	thread_args = NULL;
+	thread_queues = NULL;
 	nthreads = 0;
 }
 
