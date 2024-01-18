@@ -82,22 +82,10 @@ static int vfs2_get_last_error(sqlite3_vfs *vfs, int n, char *out) {
 
 static int vfs2_current_time_int64(sqlite3_vfs *vfs, sqlite3_int64 *out) {
 	struct vfs2_data *data = vfs->pAppData;
+	if (data->orig->iVersion < 2) {
+		return SQLITE_ERROR;
+	}
 	return data->orig->xCurrentTimeInt64(data->orig, out);
-}
-
-static int vfs2_set_system_call(sqlite3_vfs *vfs, const char *name, sqlite3_syscall_ptr sc) {
-	struct vfs2_data *data = vfs->pAppData;
-	return data->orig->xSetSystemCall(data->orig, name, sc);
-}
-
-static sqlite3_syscall_ptr vfs2_get_system_call(sqlite3_vfs *vfs, const char *name) {
-	struct vfs2_data *data = vfs->pAppData;
-	return data->orig->xGetSystemCall(data->orig, name);
-}
-
-static const char *vfs2_next_system_call(sqlite3_vfs *vfs, const char *name) {
-	struct vfs2_data *data = vfs->pAppData;
-	return data->orig->xNextSystemCall(data->orig, name);
 }
 
 sqlite3_vfs *vfs2_make(sqlite3_vfs *orig) {
@@ -110,7 +98,7 @@ sqlite3_vfs *vfs2_make(sqlite3_vfs *orig) {
 	if (vfs == NULL) {
 		goto err_after_alloc_data;
 	}
-	vfs->iVersion = 3;
+	vfs->iVersion = 2;
 	vfs->szOsFile = orig->szOsFile;
 	vfs->mxPathname = orig->mxPathname;
 	vfs->zName = "dqlite-vfs2";
@@ -128,9 +116,6 @@ sqlite3_vfs *vfs2_make(sqlite3_vfs *orig) {
 	vfs->xCurrentTime = vfs2_current_time;
 	vfs->xGetLastError = vfs2_get_last_error;
 	vfs->xCurrentTimeInt64 = vfs2_current_time_int64;
-	vfs->xSetSystemCall = vfs2_set_system_call;
-	vfs->xGetSystemCall = vfs2_get_system_call;
-	vfs->xNextSystemCall = vfs2_next_system_call;
 	return vfs;
 
 err_after_alloc_data:
