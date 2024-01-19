@@ -99,7 +99,7 @@ sqlite3_vfs *vfs2_make(sqlite3_vfs *orig) {
 		goto err_after_alloc_data;
 	}
 	vfs->iVersion = 2;
-	vfs->szOsFile = orig->szOsFile;
+	vfs->szOsFile = sizeof(struct vfs2_file);
 	vfs->mxPathname = orig->mxPathname;
 	vfs->zName = "dqlite-vfs2";
 	vfs->pAppData = data;
