@@ -122,6 +122,16 @@ static int vfs2_device_characteristics(sqlite3_file *file) {
 	return xfile->orig->pMethods->xDeviceCharacteristics(xfile->orig);
 }
 
+static int vfs2_fetch(sqlite3_file *file, sqlite3_int64 ofst, int amt, void **out) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xFetch(xfile->orig, ofst, amt, out);
+}
+
+static int vfs2_unfetch(sqlite3_file *file, sqlite3_int64 ofst, void *buf) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xUnfetch(xfile->orig, ofst, buf);
+}
+
 static struct sqlite3_io_methods methods = {
 	3,
 	vfs2_close,
