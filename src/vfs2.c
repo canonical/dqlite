@@ -22,7 +22,7 @@
 
 struct vfs2_data {
 	sqlite3_vfs *orig;
-	pthread_mutex_t mutex;
+	pthread_rwlock_t rwlock;
 	queue queue;
 };
 
@@ -373,7 +373,7 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 		}
 
 		{
-			pthread_mutex_lock(&data->mutex);
+			pthread_rwlock_wrlock(&data->rwlock);
 			queue *q;
 			struct vfs2_db_entry *entry;
 			bool found = false;
@@ -393,7 +393,7 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 				QUEUE__PUSH(&data->queue, &entry->queue);
 			}
 			entry->wal = xout;
-			pthread_mutex_unlock(&data->mutex);
+			pthread_rwlock_unlock(&data->rwlock);
 		}
 	} else {
 		xout->orig = sqlite3_malloc(data->orig->szOsFile);
@@ -406,7 +406,7 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 		}
 
 		{
-			pthread_mutex_lock(&data->mutex);
+			pthread_rwlock_wrlock(&data->rwlock);
 			queue *q;
 			struct vfs2_db_entry *entry;
 			bool found = false;
@@ -426,7 +426,7 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 				QUEUE__PUSH(&data->queue, &entry->queue);
 			}
 			entry->db = xout;
-			pthread_mutex_unlock(&data->mutex);
+			pthread_rwlock_unlock(&data->rwlock);
 		}
 	}
 
