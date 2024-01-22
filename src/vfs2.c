@@ -2,6 +2,7 @@
 
 #include <sqlite3.h>
 
+#include <assert.h>
 #include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -11,6 +12,8 @@
 
 #define VFS2_WAL_FIXED_SUFFIX1 "-xwal1"
 #define VFS2_WAL_FIXED_SUFFIX2 "-xwal2"
+
+#define VFS2_WAL_INDEX_REGION_SIZE 32768
 
 struct vfs2_data {
 	sqlite3_vfs *orig;
@@ -28,6 +31,11 @@ struct vfs2_file {
 			char *wal_prev_fixed_name;
 		} wal;
 		struct {
+			void **regions;
+			unsigned n_regions;
+			unsigned refcount;
+			unsigned shared[SQLITE_SHM_NLOCK];
+			unsigned exclusive[SQLITE_SHM_NLOCK];
 		} db_shm;
 	};
 };
@@ -132,7 +140,111 @@ static int vfs2_unfetch(sqlite3_file *file, sqlite3_int64 ofst, void *buf) {
 	return xfile->orig->pMethods->xUnfetch(xfile->orig, ofst, buf);
 }
 
-static struct sqlite3_io_methods methods = {
+static int vfs2_shm_map(sqlite3_file *file, int pgno, int pgsz, int extend, void volatile **out) {
+	int rv;
+	void *region;
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+
+	if (xfile->db_shm.regions != NULL) {
+		region = xfile->db_shm.regions[pgno];
+		assert(region != NULL);
+	} else {
+		if (extend) {
+			void **regions;
+
+			assert(pgsz == VFS2_WAL_INDEX_REGION_SIZE);
+			assert(pgno == xfile->db_shm.n_regions);
+			region = sqlite3_malloc(pgsz);
+			if (region == NULL) {
+				rv = SQLITE_NOMEM;
+				goto err;
+			}
+
+			memset(region, 0, pgsz);
+
+			regions = sqlite3_realloc(xfile->db_shm.regions, sizeof(*xfile->db_shm.regions) * (xfile->db_shm.n_regions + 1));
+			if (regions == NULL) {
+				rv = SQLITE_NOMEM;
+				goto err_after_region_malloc;
+			}
+
+			xfile->db_shm.regions = regions;
+			xfile->db_shm.regions[pgno] = region;
+			xfile->db_shm.n_regions++;
+		} else {
+			region = NULL;
+		}
+	}
+
+	if (pgno == 0 && region != NULL) {
+		xfile->db_shm.refcount++;
+	}
+
+err_after_region_malloc:
+	sqlite3_free(region);
+err:
+	assert(rv != SQLITE_OK);
+	*out = NULL;
+	return rv;
+}
+
+static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	int i;
+
+	if (flags & SQLITE_SHM_EXCLUSIVE) {
+		for (i = ofst; i < ofst + n; i++) {
+			if (xfile->db_shm.shared[i] > 0 || xfile->db_shm.exclusive[i] > 0) {
+				return SQLITE_BUSY;
+			}
+		}
+
+		for (i = ofst; i < ofst + n; i++) {
+			assert(xfile->db_shm.exclusive[i] == 0);
+			xfile->db_shm.exclusive[i] = 1;
+		}
+	} else {
+		for (i = ofst; i < ofst + n; i++) {
+			if (xfile->db_shm.exclusive[i] > 0) {
+				return SQLITE_BUSY;
+			}
+		}
+
+		for (i = ofst; i < ofst + n; i++) {
+			xfile->db_shm.shared[i]++;
+		}
+	}
+
+	return SQLITE_OK;
+}
+
+static void vfs2_shm_barrier(sqlite3_file *file) {
+	(void)file;
+}
+
+static int vfs2_shm_unmap(sqlite3_file *file, int delete) {
+	(void)delete;
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	xfile->db_shm.refcount--;
+	if (xfile->db_shm.refcount == 0) {
+		for (int i = 0; i < xfile->db_shm.n_regions; i++) {
+			void *region = xfile->db_shm.regions[i];
+			assert(region != NULL);
+			sqlite3_free(region);
+		}
+		sqlite3_free(xfile->db_shm.regions);
+
+		xfile->db_shm.regions = NULL;
+		xfile->db_shm.n_regions = 0;
+		for (int i = 0; i < SQLITE_SHM_NLOCK; i++) {
+			xfile->db_shm.shared[i] = 0;
+			xfile->db_shm.exclusive[i] = 0;
+		}
+	}
+	return SQLITE_OK;
+}
+
+static struct sqlite3_io_methods vfs2_io_methods = {
 	3,
 	vfs2_close,
 	vfs2_read,
@@ -150,7 +262,6 @@ static struct sqlite3_io_methods methods = {
 	vfs2_shm_lock,
 	vfs2_shm_barrier,
 	vfs2_shm_unmap,
-	vfs2_shm_unmap,
 	vfs2_fetch,
 	vfs2_unfetch
 };
@@ -161,7 +272,7 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 	*out_flags = 0;
 	struct vfs2_file *xout = (struct vfs2_file *)out;
 	struct vfs2_data *data = vfs->pAppData;
-	xout->base.pMethods = &methods;
+	xout->base.pMethods = &vfs2_io_methods;
 	xout->flags = flags;
 
 	if (flags & SQLITE_OPEN_WAL) {
