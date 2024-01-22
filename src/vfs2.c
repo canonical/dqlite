@@ -1,10 +1,15 @@
 #include "vfs2.h"
 
+#include "lib/queue.h"
+
+#include <pthread.h>
 #include <sqlite3.h>
 
 #include <assert.h>
 #include <errno.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -13,10 +18,25 @@
 #define VFS2_WAL_FIXED_SUFFIX1 "-xwal1"
 #define VFS2_WAL_FIXED_SUFFIX2 "-xwal2"
 
-#define VFS2_WAL_INDEX_REGION_SIZE 32768
+#define VFS2_WAL_INDEX_REGION_SIZE (1 << 15)
 
 struct vfs2_data {
 	sqlite3_vfs *orig;
+	pthread_mutex_t mutex;
+	queue queue;
+};
+
+struct vfs2_db_entry {
+	struct vfs2_file *db;
+	struct vfs2_file *wal;
+	queue queue;
+};
+
+struct vfs2_wal_frame_hdr {
+	uint32_t page_number;
+	uint32_t db_size;
+	uint32_t salt[2];
+	uint32_t checksum[2];
 };
 
 struct vfs2_file {
@@ -29,8 +49,14 @@ struct vfs2_file {
 			char *wal_cur_fixed_name;
 			sqlite3_file *wal_prev;
 			char *wal_prev_fixed_name;
+
+			uint32_t txn_start;
+			uint32_t txn_len;
+			struct vfs2_wal_frame_hdr txn_last_frame_hdr;
 		} wal;
 		struct {
+			sqlite3_filename name;
+
 			void **regions;
 			unsigned n_regions;
 			unsigned refcount;
@@ -65,22 +91,30 @@ static int vfs2_write(sqlite3_file *file, const void *buf, int amt, sqlite3_int6
 	int rv;
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 
-	if ((xfile->flags & SQLITE_OPEN_WAL) && ofst == 0) {
-		sqlite3_file *tmp = xfile->orig;
-		char *tmp_name = xfile->wal.wal_cur_fixed_name;
-		xfile->orig = xfile->wal.wal_prev;
-		xfile->wal.wal_cur_fixed_name = xfile->wal.wal_prev_fixed_name;
-		xfile->wal.wal_prev = tmp;
-		xfile->wal.wal_prev_fixed_name = tmp_name;
-		rv = unlink(xfile->wal.moving_name);
-		if (rv != 0) {
-			// TODO
+	if (xfile->flags & SQLITE_OPEN_WAL) {
+		if (ofst == 0) {
+			sqlite3_file *tmp = xfile->orig;
+			char *tmp_name = xfile->wal.wal_cur_fixed_name;
+			xfile->orig = xfile->wal.wal_prev;
+			xfile->wal.wal_cur_fixed_name = xfile->wal.wal_prev_fixed_name;
+			xfile->wal.wal_prev = tmp;
+			xfile->wal.wal_prev_fixed_name = tmp_name;
+			rv = unlink(xfile->wal.moving_name);
+			if (rv != 0) {
+				// TODO
+			}
+			rv = link(xfile->wal.wal_cur_fixed_name, xfile->wal.moving_name);
+			if (rv != 0) {
+				// TODO
+			}
+
+			xfile->wal.txn_start = 0;
+			xfile->wal.txn_len = 0;
+			// TODO save the new salts
+		} else if (amt == sizeof(struct vfs2_wal_frame_hdr)) {
+			xfile->wal.txn_len++;
+			memcpy(&xfile->wal.txn_last_frame_hdr, buf, sizeof(xfile->wal.txn_last_frame_hdr));
 		}
-		rv = link(xfile->wal.wal_cur_fixed_name, xfile->wal.moving_name);
-		if (rv != 0) {
-			// TODO
-		}
-		// TODO save the new salts
 	}
 	return xfile->orig->pMethods->xWrite(xfile->orig, buf, amt, ofst);
 }
@@ -117,6 +151,10 @@ static int vfs2_check_reserved_lock(sqlite3_file *file, int *out) {
 
 static int vfs2_file_control(sqlite3_file *file, int op, void *arg) {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
+
+	if (op == SQLITE_FCNTL_COMMIT_PHASETWO) {
+	}
+
 	return xfile->orig->pMethods->xFileControl(xfile->orig, op, arg);
 }
 
@@ -276,6 +314,7 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 	xout->flags = flags;
 
 	if (flags & SQLITE_OPEN_WAL) {
+
 		const char *dbname = sqlite3_filename_database(name);
 		if (strlen(dbname) + strlen(VFS2_WAL_FIXED_SUFFIX1) > data->orig->mxPathname) {
 			return SQLITE_ERROR;
@@ -332,6 +371,30 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 		} else {
 			// TODO
 		}
+
+		{
+			pthread_mutex_lock(&data->mutex);
+			queue *q;
+			struct vfs2_db_entry *entry;
+			bool found = false;
+			QUEUE__FOREACH(q, &data->queue) {
+				entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
+				if (entry->db != NULL && strcmp(entry->db->db_shm.name, sqlite3_filename_database(name)) == 0) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				entry = sqlite3_malloc(sizeof(*entry));
+				if (entry == NULL) {
+					// TODO
+				}
+				entry->db = NULL;
+				QUEUE__PUSH(&data->queue, &entry->queue);
+			}
+			entry->wal = xout;
+			pthread_mutex_unlock(&data->mutex);
+		}
 	} else {
 		xout->orig = sqlite3_malloc(data->orig->szOsFile);
 		if (xout->orig == NULL) {
@@ -340,6 +403,30 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 		rv = data->orig->xOpen(data->orig, name, xout->orig, flags, out_flags);
 		if (rv != SQLITE_OK) {
 			return rv;
+		}
+
+		{
+			pthread_mutex_lock(&data->mutex);
+			queue *q;
+			struct vfs2_db_entry *entry;
+			bool found = false;
+			QUEUE__FOREACH(q, &data->queue) {
+				entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
+				if (entry->wal != NULL && strcmp(entry->wal->wal.moving_name, sqlite3_filename_wal(name)) == 0) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				entry = sqlite3_malloc(sizeof(*entry));
+				if (entry == NULL) {
+					// TODO
+				}
+				entry->wal = NULL;
+				QUEUE__PUSH(&data->queue, &entry->queue);
+			}
+			entry->db = xout;
+			pthread_mutex_unlock(&data->mutex);
 		}
 	}
 
