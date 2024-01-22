@@ -77,6 +77,51 @@ static int vfs2_write(sqlite3_file *file, const void *buf, int amt, sqlite3_int6
 	return xfile->orig->pMethods->xWrite(xfile->orig, buf, amt, ofst);
 }
 
+static int vfs2_truncate(sqlite3_file *file, sqlite3_int64 size) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xTruncate(xfile->orig, size);
+}
+
+static int vfs2_sync(sqlite3_file *file, int flags) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xSync(xfile->orig, flags);
+}
+
+static int vfs2_file_size(sqlite3_file *file, sqlite3_int64 *size) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xFileSize(xfile->orig, size);
+}
+
+static int vfs2_lock(sqlite3_file *file, int mode) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xLock(xfile->orig, mode);
+}
+
+static int vfs2_unlock(sqlite3_file *file, int mode) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xUnlock(xfile->orig, mode);
+}
+
+static int vfs2_check_reserved_lock(sqlite3_file *file, int *out) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xCheckReservedLock(xfile->orig, out);
+}
+
+static int vfs2_file_control(sqlite3_file *file, int op, void *arg) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xFileControl(xfile->orig, op, arg);
+}
+
+static int vfs2_sector_size(sqlite3_file *file) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xSectorSize(xfile->orig);
+}
+
+static int vfs2_device_characteristics(sqlite3_file *file) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	return xfile->orig->pMethods->xDeviceCharacteristics(xfile->orig);
+}
+
 static struct sqlite3_io_methods methods = {
 	3,
 	vfs2_close,
