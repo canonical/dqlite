@@ -429,7 +429,7 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 			entry->wal = xout;
 			pthread_rwlock_unlock(&data->rwlock);
 		}
-	} else {
+	} else if (flags & SQLITE_OPEN_MAIN_DB) {
 		xout->orig = sqlite3_malloc(data->orig->szOsFile);
 		if (xout->orig == NULL) {
 			return SQLITE_NOMEM;
@@ -438,6 +438,14 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 		if (rv != SQLITE_OK) {
 			return rv;
 		}
+
+		xout->db_shm.name = name;
+		xout->db_shm.region0 = NULL;
+		xout->db_shm.all_regions = NULL;
+		xout->db_shm.all_regions_len = 0;
+		xout->db_shm.refcount = 0;
+		memset(xout->db_shm.shared, 0, sizeof(xout->db_shm.shared));
+		memset(xout->db_shm.exclusive, 0, sizeof(xout->db_shm.exclusive));
 
 		{
 			pthread_rwlock_wrlock(&data->rwlock);
