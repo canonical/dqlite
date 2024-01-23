@@ -193,8 +193,8 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg) {
 
 		assert(entry->db->db_shm.all_regions_len > 0);
 		union vfs2_shm_region0 *region0 = entry->db->db_shm.all_regions[0];
-		memcpy(&entry->db->db_shm.pending_txn_hdr, &region0->hdr[0], sizeof(entry->db->db_shm.pending_txn_hdr));
-		memcpy(&region0->hdr[0], &entry->db->db_shm.prev_txn_hdr, sizeof(entry->db->db_shm.prev_txn_hdr));
+		entry->db->db_shm.pending_txn_hdr = region0->hdr[0];
+		region0->hdr[0] = entry->db->db_shm.prev_txn_hdr;
 		region0->hdr[1] = region0->hdr[0];
 	}
 
@@ -581,4 +581,18 @@ err_after_alloc_data:
 	sqlite3_free(data);
 err:
 	return NULL;
+}
+
+int vfs2_apply(sqlite3_file *file) {
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	if (!(xfile->flags & SQLITE_OPEN_MAIN_DB)) {
+		return 1;
+	}
+	if (xfile->db_shm.all_regions_len == 0) {
+		return 1;
+	}
+	union vfs2_shm_region0 *region0 = xfile->db_shm.all_regions[0];
+	region0->hdr[0] = xfile->db_shm.pending_txn_hdr;
+	xfile->db_shm.prev_txn_hdr = xfile->db_shm.pending_txn_hdr;
+	return 0;
 }
