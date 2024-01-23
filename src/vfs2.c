@@ -39,20 +39,22 @@ struct vfs2_wal_frame_hdr {
 	uint32_t checksum[2];
 };
 
+struct vfs2_wal_index_basic_hdr {
+	uint32_t iVersion;
+	uint8_t unused[4];
+	uint32_t iChange;
+	uint8_t isInit;
+	uint8_t bigEndCksum;
+	uint16_t szPage;
+	uint32_t mxFrame;
+	uint32_t nPage;
+	uint32_t aFrameCksum[2];
+	uint32_t aSalt[2];
+	uint32_t aCksum[2];
+};
+
 union vfs2_shm_region0 {
-	struct {
-		uint32_t iVersion;
-		uint8_t unused[4];
-		uint32_t iChange;
-		uint8_t isInit;
-		uint8_t bigEndCksum;
-		uint16_t szPage;
-		uint32_t mxFrame;
-		uint32_t nPage;
-		uint32_t aFrameCksum[2];
-		uint32_t aSalt[2];
-		uint32_t aCksum[2];
-	} hdr;
+	struct vfs2_wal_index_basic_hdr hdr[2];
 	char bytes[VFS2_WAL_INDEX_REGION_SIZE];
 };
 
@@ -68,12 +70,14 @@ struct vfs2_file {
 			sqlite3_file *wal_prev;
 			char *wal_prev_fixed_name;
 
-			uint32_t txn_start;
-			uint32_t txn_len;
-			struct vfs2_wal_frame_hdr txn_last_frame_hdr;
+			uint32_t pending_txn_start;
+			uint32_t pending_txn_len;
 		} wal;
 		struct {
 			sqlite3_filename name;
+
+			struct vfs2_wal_index_basic_hdr prev_txn_hdr;
+			struct vfs2_wal_index_basic_hdr pending_txn_hdr;
 
 			void **all_regions;
 			unsigned all_regions_len;
@@ -126,12 +130,10 @@ static int vfs2_write(sqlite3_file *file, const void *buf, int amt, sqlite3_int6
 				// TODO
 			}
 
-			xfile->wal.txn_start = 0;
-			xfile->wal.txn_len = 0;
-			// TODO save the new salts
+			xfile->wal.pending_txn_start = 0;
+			xfile->wal.pending_txn_len = 0;
 		} else if (amt == sizeof(struct vfs2_wal_frame_hdr)) {
-			xfile->wal.txn_len++;
-			memcpy(&xfile->wal.txn_last_frame_hdr, buf, sizeof(xfile->wal.txn_last_frame_hdr));
+			xfile->wal.pending_txn_len++;
 		}
 	}
 	return xfile->orig->pMethods->xWrite(xfile->orig, buf, amt, ofst);
@@ -171,10 +173,10 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg) {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 
 	if (op == SQLITE_FCNTL_COMMIT_PHASETWO) {
+		struct vfs2_db_entry *entry;
 		{
 			pthread_rwlock_rdlock(&xfile->vfs_data->rwlock);
 			bool found = false;
-			struct vfs2_db_entry *entry;
 			queue *q;
 			QUEUE__FOREACH(q, &xfile->vfs_data->queue) {
 				entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
@@ -188,6 +190,12 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg) {
 			}
 			pthread_rwlock_unlock(&xfile->vfs_data->rwlock);
 		}
+
+		assert(entry->db->db_shm.all_regions_len > 0);
+		union vfs2_shm_region0 *region0 = entry->db->db_shm.all_regions[0];
+		memcpy(&entry->db->db_shm.pending_txn_hdr, &region0->hdr[0], sizeof(entry->db->db_shm.pending_txn_hdr));
+		memcpy(&region0->hdr[0], &entry->db->db_shm.prev_txn_hdr, sizeof(entry->db->db_shm.prev_txn_hdr));
+		region0->hdr[1] = region0->hdr[0];
 	}
 
 	return xfile->orig->pMethods->xFileControl(xfile->orig, op, arg);
