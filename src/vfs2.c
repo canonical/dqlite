@@ -75,8 +75,8 @@ struct vfs2_file {
 				char bytes[VFS2_WAL_INDEX_REGION_SIZE];
 			} *region0;
 
-			void **further_regions;
-			unsigned further_regions_len;
+			void **all_regions;
+			unsigned all_regions_len;
 			unsigned refcount;
 			unsigned shared[SQLITE_SHM_NLOCK];
 			unsigned exclusive[SQLITE_SHM_NLOCK];
@@ -218,39 +218,36 @@ static int vfs2_shm_map(sqlite3_file *file, int pgno, int pgsz, int extend, void
 	void *region;
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 
-	if (xfile->db_shm.regions != NULL) {
-		region = xfile->db_shm.regions[pgno];
-		assert(region != NULL);
-	} else {
-		if (extend) {
-			void **regions;
-
-			assert(pgsz == VFS2_WAL_INDEX_REGION_SIZE);
-			assert(pgno == xfile->db_shm.n_regions);
-			region = sqlite3_malloc(pgsz);
-			if (region == NULL) {
-				rv = SQLITE_NOMEM;
-				goto err;
-			}
-
-			memset(region, 0, pgsz);
-
-			regions = sqlite3_realloc(xfile->db_shm.regions, sizeof(*xfile->db_shm.regions) * (xfile->db_shm.n_regions + 1));
-			if (regions == NULL) {
-				rv = SQLITE_NOMEM;
-				goto err_after_region_malloc;
-			}
-
-			xfile->db_shm.regions = regions;
-			xfile->db_shm.regions[pgno] = region;
-			xfile->db_shm.n_regions++;
-		} else {
-			region = NULL;
-		}
-	}
-
-	if (pgno == 0 && region != NULL) {
+	if (pgno == 0) {
+		region = xfile->db_shm.region0;
 		xfile->db_shm.refcount++;
+	} else if (pgno < xfile->db_shm.all_regions_len) {
+		region = xfile->db_shm.all_regions[pgno];
+		assert(region != NULL);
+	} else if (extend) {
+		void **regions;
+
+		assert(pgsz == VFS2_WAL_INDEX_REGION_SIZE);
+		assert(pgno == xfile->db_shm.all_regions_len);
+		region = sqlite3_malloc(pgsz);
+		if (region == NULL) {
+			rv = SQLITE_NOMEM;
+			goto err;
+		}
+
+		memset(region, 0, pgsz);
+
+		regions = sqlite3_realloc(xfile->db_shm.all_regions, sizeof(*xfile->db_shm.all_regions) * (xfile->db_shm.all_regions_len + 1));
+		if (regions == NULL) {
+			rv = SQLITE_NOMEM;
+			goto err_after_region_malloc;
+		}
+
+		xfile->db_shm.all_regions = regions;
+		xfile->db_shm.all_regions[pgno] = region;
+		xfile->db_shm.all_regions_len++;
+	} else {
+		region = NULL;
 	}
 
 err_after_region_malloc:
@@ -300,15 +297,17 @@ static int vfs2_shm_unmap(sqlite3_file *file, int delete) {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 	xfile->db_shm.refcount--;
 	if (xfile->db_shm.refcount == 0) {
-		for (int i = 0; i < xfile->db_shm.n_regions; i++) {
-			void *region = xfile->db_shm.regions[i];
+		sqlite3_free(xfile->db_shm.region0);
+		for (int i = 1; i < xfile->db_shm.all_regions_len; i++) {
+			void *region = xfile->db_shm.all_regions[i];
 			assert(region != NULL);
 			sqlite3_free(region);
 		}
-		sqlite3_free(xfile->db_shm.regions);
+		sqlite3_free(xfile->db_shm.all_regions);
 
-		xfile->db_shm.regions = NULL;
-		xfile->db_shm.n_regions = 0;
+		xfile->db_shm.region0 = NULL;
+		xfile->db_shm.all_regions = NULL;
+		xfile->db_shm.all_regions_len = 0;
 		for (int i = 0; i < SQLITE_SHM_NLOCK; i++) {
 			xfile->db_shm.shared[i] = 0;
 			xfile->db_shm.exclusive[i] = 0;
