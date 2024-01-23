@@ -39,6 +39,23 @@ struct vfs2_wal_frame_hdr {
 	uint32_t checksum[2];
 };
 
+union vfs2_shm_region0 {
+	struct {
+		uint32_t iVersion;
+		uint8_t unused[4];
+		uint32_t iChange;
+		uint8_t isInit;
+		uint8_t bigEndCksum;
+		uint16_t szPage;
+		uint32_t mxFrame;
+		uint32_t nPage;
+		uint32_t aFrameCksum[2];
+		uint32_t aSalt[2];
+		uint32_t aCksum[2];
+	} hdr;
+	char bytes[VFS2_WAL_INDEX_REGION_SIZE];
+};
+
 struct vfs2_file {
 	struct sqlite3_file base;
 	sqlite3_file *orig;
@@ -57,23 +74,6 @@ struct vfs2_file {
 		} wal;
 		struct {
 			sqlite3_filename name;
-
-			union {
-				struct {
-					uint32_t iVersion;
-					uint8_t unused[4];
-					uint32_t iChange;
-					uint8_t isInit;
-					uint8_t bigEndCksum;
-					uint16_t szPage;
-					uint32_t mxFrame;
-					uint32_t nPage;
-					uint32_t aFrameCksum[2];
-					uint32_t aSalt[2];
-					uint32_t aCksum[2];
-				} hdr;
-				char bytes[VFS2_WAL_INDEX_REGION_SIZE];
-			} *region0;
 
 			void **all_regions;
 			unsigned all_regions_len;
@@ -218,10 +218,7 @@ static int vfs2_shm_map(sqlite3_file *file, int pgno, int pgsz, int extend, void
 	void *region;
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 
-	if (pgno == 0) {
-		region = xfile->db_shm.region0;
-		xfile->db_shm.refcount++;
-	} else if (pgno < xfile->db_shm.all_regions_len) {
+	if (xfile->db_shm.all_regions != NULL && pgno < xfile->db_shm.all_regions_len) {
 		region = xfile->db_shm.all_regions[pgno];
 		assert(region != NULL);
 	} else if (extend) {
@@ -248,6 +245,12 @@ static int vfs2_shm_map(sqlite3_file *file, int pgno, int pgsz, int extend, void
 		xfile->db_shm.all_regions_len++;
 	} else {
 		region = NULL;
+	}
+
+	*out = region;
+
+	if (pgno == 0 && region != NULL) {
+		xfile->db_shm.refcount++;
 	}
 
 err_after_region_malloc:
@@ -297,15 +300,13 @@ static int vfs2_shm_unmap(sqlite3_file *file, int delete) {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 	xfile->db_shm.refcount--;
 	if (xfile->db_shm.refcount == 0) {
-		sqlite3_free(xfile->db_shm.region0);
-		for (int i = 1; i < xfile->db_shm.all_regions_len; i++) {
+		for (int i = 0; i < xfile->db_shm.all_regions_len; i++) {
 			void *region = xfile->db_shm.all_regions[i];
 			assert(region != NULL);
 			sqlite3_free(region);
 		}
 		sqlite3_free(xfile->db_shm.all_regions);
 
-		xfile->db_shm.region0 = NULL;
 		xfile->db_shm.all_regions = NULL;
 		xfile->db_shm.all_regions_len = 0;
 		for (int i = 0; i < SQLITE_SHM_NLOCK; i++) {
@@ -440,7 +441,6 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 		}
 
 		xout->db_shm.name = name;
-		xout->db_shm.region0 = NULL;
 		xout->db_shm.all_regions = NULL;
 		xout->db_shm.all_regions_len = 0;
 		xout->db_shm.refcount = 0;
