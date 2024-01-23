@@ -42,6 +42,7 @@ struct vfs2_wal_frame_hdr {
 struct vfs2_file {
 	struct sqlite3_file base;
 	sqlite3_file *orig;
+	struct vfs2_data *vfs_data;
 	int flags;
 	union {
 		struct {
@@ -57,8 +58,25 @@ struct vfs2_file {
 		struct {
 			sqlite3_filename name;
 
-			void **regions;
-			unsigned n_regions;
+			union {
+				struct {
+					uint32_t iVersion;
+					uint8_t unused[4];
+					uint32_t iChange;
+					uint8_t isInit;
+					uint8_t bigEndCksum;
+					uint16_t szPage;
+					uint32_t mxFrame;
+					uint32_t nPage;
+					uint32_t aFrameCksum[2];
+					uint32_t aSalt[2];
+					uint32_t aCksum[2];
+				} hdr;
+				char bytes[VFS2_WAL_INDEX_REGION_SIZE];
+			} *region0;
+
+			void **further_regions;
+			unsigned further_regions_len;
 			unsigned refcount;
 			unsigned shared[SQLITE_SHM_NLOCK];
 			unsigned exclusive[SQLITE_SHM_NLOCK];
@@ -153,6 +171,23 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg) {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 
 	if (op == SQLITE_FCNTL_COMMIT_PHASETWO) {
+		{
+			pthread_rwlock_rdlock(&xfile->vfs_data->rwlock);
+			bool found = false;
+			struct vfs2_db_entry *entry;
+			queue *q;
+			QUEUE__FOREACH(q, &xfile->vfs_data->queue) {
+				entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
+				if (entry->db == xfile) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				// TODO
+			}
+			pthread_rwlock_unlock(&xfile->vfs_data->rwlock);
+		}
 	}
 
 	return xfile->orig->pMethods->xFileControl(xfile->orig, op, arg);
@@ -312,9 +347,9 @@ static int vfs2_open(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *out,
 	struct vfs2_data *data = vfs->pAppData;
 	xout->base.pMethods = &vfs2_io_methods;
 	xout->flags = flags;
+	xout->vfs_data = data;
 
 	if (flags & SQLITE_OPEN_WAL) {
-
 		const char *dbname = sqlite3_filename_database(name);
 		if (strlen(dbname) + strlen(VFS2_WAL_FIXED_SUFFIX1) > data->orig->mxPathname) {
 			return SQLITE_ERROR;
