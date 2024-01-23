@@ -18,11 +18,13 @@
 #define VFS2_WAL_FIXED_SUFFIX1 "-xwal1"
 #define VFS2_WAL_FIXED_SUFFIX2 "-xwal2"
 
+#define VFS2_WAL_HDR_SIZE 32
 #define VFS2_WAL_INDEX_REGION_SIZE (1 << 15)
 
 struct vfs2_data {
 	sqlite3_vfs *orig;
 	pthread_rwlock_t rwlock;
+	uint32_t page_size;
 	queue queue;
 };
 
@@ -88,6 +90,25 @@ struct vfs2_file {
 	};
 };
 
+static struct vfs2_file *get_partner_file(struct vfs2_file *f) {
+	pthread_rwlock_rdlock(&f->vfs_data->rwlock);
+	queue *q;
+	struct vfs2_file *res = NULL;
+	QUEUE__FOREACH(q, &f->vfs_data->queue) {
+		struct vfs2_db_entry *entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
+		if (entry->db == f) {
+			res = entry->wal;
+			break;
+		} else if (entry->wal == f) {
+			res = entry->db;
+			break;
+		}
+
+	}
+	pthread_rwlock_unlock(&f->vfs_data->rwlock);
+	return res;
+}
+
 static int vfs2_close(sqlite3_file *file) {
 	int rv, rvprev;
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
@@ -115,6 +136,7 @@ static int vfs2_write(sqlite3_file *file, const void *buf, int amt, sqlite3_int6
 
 	if (xfile->flags & SQLITE_OPEN_WAL) {
 		if (ofst == 0) {
+			assert(amt == VFS2_WAL_HDR_SIZE);
 			sqlite3_file *tmp = xfile->orig;
 			char *tmp_name = xfile->wal.wal_cur_fixed_name;
 			xfile->orig = xfile->wal.wal_prev;
@@ -132,6 +154,11 @@ static int vfs2_write(sqlite3_file *file, const void *buf, int amt, sqlite3_int6
 
 			xfile->wal.pending_txn_start = 0;
 			xfile->wal.pending_txn_len = 0;
+
+			struct vfs2_file *db = get_partner_file(xfile);
+			assert(db->db_shm.all_regions_len > 0);
+			union vfs2_shm_region0 *region0 = db->db_shm.all_regions[0];
+			db->db_shm.prev_txn_hdr = region0->hdr[0];
 		} else if (amt == sizeof(struct vfs2_wal_frame_hdr)) {
 			xfile->wal.pending_txn_len++;
 		}
@@ -173,28 +200,11 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg) {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 
 	if (op == SQLITE_FCNTL_COMMIT_PHASETWO) {
-		struct vfs2_db_entry *entry;
-		{
-			pthread_rwlock_rdlock(&xfile->vfs_data->rwlock);
-			bool found = false;
-			queue *q;
-			QUEUE__FOREACH(q, &xfile->vfs_data->queue) {
-				entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
-				if (entry->db == xfile) {
-					found = true;
-					break;
-				}
-			}
-			if (!found) {
-				// TODO
-			}
-			pthread_rwlock_unlock(&xfile->vfs_data->rwlock);
-		}
-
-		assert(entry->db->db_shm.all_regions_len > 0);
-		union vfs2_shm_region0 *region0 = entry->db->db_shm.all_regions[0];
-		entry->db->db_shm.pending_txn_hdr = region0->hdr[0];
-		region0->hdr[0] = entry->db->db_shm.prev_txn_hdr;
+		assert(xfile->flags & SQLITE_OPEN_MAIN_DB);
+		assert(xfile->db_shm.all_regions_len > 0);
+		union vfs2_shm_region0 *region0 = xfile->db_shm.all_regions[0];
+		xfile->db_shm.pending_txn_hdr = region0->hdr[0];
+		region0->hdr[0] = xfile->db_shm.prev_txn_hdr;
 		region0->hdr[1] = region0->hdr[0];
 	}
 
