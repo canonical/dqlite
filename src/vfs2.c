@@ -62,7 +62,14 @@ struct vfs2_wal_index_basic_hdr {
  * View of the zeroth shm region, which contains the WAL index header.
  */
 union vfs2_shm_region0 {
-	struct vfs2_wal_index_basic_hdr hdr[2];
+	struct {
+		struct vfs2_wal_index_basic_hdr basic[2];
+		uint32_t nBackfill;
+		uint32_t marks[5];
+		uint8_t locks[SQLITE_SHM_NLOCK];
+		uint32_t nBackfillAttempted;
+		uint8_t unused[4];
+	} hdr;
 	char bytes[VFS2_WAL_INDEX_REGION_SIZE];
 };
 
@@ -106,6 +113,9 @@ struct vfs2_file {
 	};
 };
 
+/**
+ * Get the matching main file for a WAL, or vice versa.
+ */
 static struct vfs2_file *lookup_partner_file(struct vfs2_file *f) {
 	pthread_rwlock_rdlock(&f->vfs_data->rwlock);
 	queue *q;
@@ -125,6 +135,13 @@ static struct vfs2_file *lookup_partner_file(struct vfs2_file *f) {
 	return res;
 }
 
+/**
+ * Add a file to the list of entries for this VFS.
+ *
+ * Takes the rwlock internally. The second argument should point
+ * to a heap-allocated vfs2_db_entry. It will be set to NULL if this
+ * entry was used and linked into the list, or left untouched otherwise.
+ */
 static void register_file(struct vfs2_file *f, struct vfs2_db_entry **entry) {
 	pthread_rwlock_wrlock(&f->vfs_data->rwlock);
 	queue *q;
@@ -217,7 +234,7 @@ static int vfs2_write(sqlite3_file *file, const void *buf, int amt, sqlite3_int6
 			 * an assumption that can be verified by looking at the source code. */
 			assert(db->db_shm.all_regions_len > 0);
 			union vfs2_shm_region0 *region0 = db->db_shm.all_regions[0];
-			db->db_shm.prev_txn_hdr = region0->hdr[0];
+			db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
 		} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
 			/* Extend the current transaction. */
 			xfile->wal.pending_txn_len++;
@@ -265,9 +282,9 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg) {
 		assert(xfile->flags & SQLITE_OPEN_MAIN_DB);
 		assert(xfile->db_shm.all_regions_len > 0);
 		union vfs2_shm_region0 *region0 = xfile->db_shm.all_regions[0];
-		xfile->db_shm.pending_txn_hdr = region0->hdr[0];
-		region0->hdr[0] = xfile->db_shm.prev_txn_hdr;
-		region0->hdr[1] = region0->hdr[0];
+		xfile->db_shm.pending_txn_hdr = region0->hdr.basic[0];
+		region0->hdr.basic[0] = xfile->db_shm.prev_txn_hdr;
+		region0->hdr.basic[1] = region0->hdr.basic[0];
 	}
 
 	return xfile->orig->pMethods->xFileControl(xfile->orig, op, arg);
@@ -694,7 +711,7 @@ int vfs2_apply(sqlite3_file *file) {
 		return 1;
 	}
 	union vfs2_shm_region0 *region0 = xfile->db_shm.all_regions[0];
-	region0->hdr[0] = xfile->db_shm.pending_txn_hdr;
+	region0->hdr.basic[0] = xfile->db_shm.pending_txn_hdr;
 	xfile->db_shm.prev_txn_hdr = xfile->db_shm.pending_txn_hdr;
 	return 0;
 }
