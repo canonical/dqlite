@@ -106,8 +106,7 @@ struct vfs2_file {
 	};
 };
 
-/* Look up the matching main file for a WAL, or vice versa. */
-static struct vfs2_file *get_partner_file(struct vfs2_file *f) {
+static struct vfs2_file *lookup_partner_file(struct vfs2_file *f) {
 	pthread_rwlock_rdlock(&f->vfs_data->rwlock);
 	queue *q;
 	struct vfs2_file *res = NULL;
@@ -124,6 +123,35 @@ static struct vfs2_file *get_partner_file(struct vfs2_file *f) {
 	}
 	pthread_rwlock_unlock(&f->vfs_data->rwlock);
 	return res;
+}
+
+static void register_file(struct vfs2_file *f, struct vfs2_db_entry **entry) {
+	pthread_rwlock_wrlock(&f->vfs_data->rwlock);
+	queue *q;
+	bool found = false;
+	QUEUE__FOREACH(q, &f->vfs_data->queue) {
+		struct vfs2_db_entry *cur = QUEUE__DATA(q, struct vfs2_db_entry, queue);
+		if ((f->flags & SQLITE_OPEN_MAIN_DB) && cur->wal != NULL && strcmp(sqlite3_filename_database(cur->wal->wal.moving_name), f->db_shm.name) == 0) {
+			found = true;
+			cur->db = f;
+			break;
+		} else if ((f->flags & SQLITE_OPEN_WAL) && cur->db != NULL && strcmp(sqlite3_filename_database(f->wal.moving_name), cur->db->db_shm.name) == 0) {
+			found = true;
+			cur->wal = f;
+			break;
+		}
+	}
+	if (!found) {
+		struct vfs2_db_entry *e = *entry;
+		*entry = NULL;
+		if (f->flags & SQLITE_OPEN_MAIN_DB) {
+			e->db = f;
+		} else if (f->flags & SQLITE_OPEN_WAL) {
+			e->wal = f;
+		}
+		QUEUE__PUSH(&f->vfs_data->queue, &e->queue);
+	}
+	pthread_rwlock_unlock(&f->vfs_data->rwlock);
 }
 
 /* sqlite3_io_methods implementations begin here */
@@ -157,6 +185,9 @@ static int vfs2_write(sqlite3_file *file, const void *buf, int amt, sqlite3_int6
 		if (ofst == 0) {
 			/* Trying to overwrite the WAL header: this is a WAL reset. */
 			assert(amt == VFS2_WAL_HDR_SIZE);
+			/* We expect that the corresponding database file has been opened already. */
+			struct vfs2_file *db = lookup_partner_file(xfile);
+			assert(db != NULL);
 			/* WAL swap (in-memory part) */
 			sqlite3_file *tmp = xfile->orig;
 			char *tmp_name = xfile->wal.wal_cur_fixed_name;
@@ -171,7 +202,7 @@ static int vfs2_write(sqlite3_file *file, const void *buf, int amt, sqlite3_int6
 			}
 			/* If we crash between unlink and link, we'll see the conventionally-named
 			 * WAL is missing at startup, and we can't determine which of -xwal1 and -xwal2
-			 * is more recent. Fortunately, this is not a correctness issue. See vfs2_open
+			 * is more recent. Fortunately, this is not a correctness issue. See vfs2_open_wal
 			 * for how this situation is handled. */
 			rv = link(xfile->wal.wal_cur_fixed_name, xfile->wal.moving_name);
 			if (rv != 0) {
@@ -184,11 +215,11 @@ static int vfs2_write(sqlite3_file *file, const void *buf, int amt, sqlite3_int6
 			/* Copy the WAL index header that SQLite has written so that we can restore it later.
 			 * This relies on SQLite writing the WAL index header before restarting the WAL,
 			 * an assumption that can be verified by looking at the source code. */
-			struct vfs2_file *db = get_partner_file(xfile);
 			assert(db->db_shm.all_regions_len > 0);
 			union vfs2_shm_region0 *region0 = db->db_shm.all_regions[0];
 			db->db_shm.prev_txn_hdr = region0->hdr[0];
 		} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
+			/* Extend the current transaction. */
 			xfile->wal.pending_txn_len++;
 		}
 	}
@@ -469,25 +500,8 @@ static int vfs2_open_wal(sqlite3_vfs *vfs, sqlite3_filename name, struct vfs2_fi
 		goto err_after_open_phys2;
 	}
 
-	{
-		pthread_rwlock_wrlock(&data->rwlock);
-		queue *q;
-		bool found = false;
-		QUEUE__FOREACH(q, &data->queue) {
-			entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
-			if (entry->db != NULL && strcmp(entry->db->db_shm.name, sqlite3_filename_database(name)) == 0) {
-				found = true;
-				break;
-			}
-		}
-		if (!found) {
-			entry->db = NULL;
-			QUEUE__PUSH(&data->queue, &entry->queue);
-		}
-		entry->wal = xout;
-		pthread_rwlock_unlock(&data->rwlock);
-	}
-
+	register_file(xout, &entry);
+	sqlite3_free(entry);
 	return SQLITE_OK;
 
 err_after_open_phys2:
@@ -530,26 +544,8 @@ static int vfs2_open_db(sqlite3_vfs *vfs, sqlite3_filename name, struct vfs2_fil
 	memset(xout->db_shm.shared, 0, sizeof(xout->db_shm.shared));
 	memset(xout->db_shm.exclusive, 0, sizeof(xout->db_shm.exclusive));
 
-	/* Update the entries queue. */
-	{
-		pthread_rwlock_wrlock(&data->rwlock);
-		queue *q;
-		bool found = false;
-		QUEUE__FOREACH(q, &data->queue) {
-			entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
-			if (entry->wal != NULL && strcmp(entry->wal->wal.moving_name, sqlite3_filename_wal(name)) == 0) {
-				found = true;
-				break;
-			}
-		}
-		if (!found) {
-			entry->wal = NULL;
-			QUEUE__PUSH(&data->queue, &entry->queue);
-		}
-		entry->db = xout;
-		pthread_rwlock_unlock(&data->rwlock);
-	}
-
+	register_file(xout, &entry);
+	sqlite3_free(entry);
 	return SQLITE_OK;
 
 err_after_open_orig:
@@ -688,6 +684,7 @@ err:
 	return NULL;
 }
 
+/* FIXME what return codes should this use? */
 int vfs2_apply(sqlite3_file *file) {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 	if (!(xfile->flags & SQLITE_OPEN_MAIN_DB)) {
