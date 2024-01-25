@@ -1,5 +1,6 @@
 #include "vfs2.h"
 
+#include "lib/byte.h"
 #include "lib/queue.h"
 
 #include <pthread.h>
@@ -101,6 +102,7 @@ struct vfs2_file
 
 			uint32_t pending_txn_start; /* in frames, zero-based */
 			uint32_t pending_txn_len;
+			dqlite_vfs_frame *pending_txn_frames;
 		} wal;
 		/* if this file object is a main file */
 		struct
@@ -227,7 +229,11 @@ static int vfs2_write(sqlite3_file *file,
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 
 	if (xfile->flags & SQLITE_OPEN_WAL) {
-		sqlite3_int64 next_frame_ofst = VFS2_WAL_HDR_SIZE + (VFS2_WAL_FRAME_HDR_SIZE + xfile->vfs_data->page_size) * (xfile->wal.pending_txn_start + xfile->wal.pending_txn_len);
+		sqlite3_int64 next_frame_ofst =
+		    VFS2_WAL_HDR_SIZE +
+		    (VFS2_WAL_FRAME_HDR_SIZE + xfile->vfs_data->page_size) *
+			(xfile->wal.pending_txn_start +
+			 xfile->wal.pending_txn_len);
 		if (ofst == 0) {
 			/* Trying to overwrite the WAL header: this is a WAL
 			 * reset. */
@@ -273,9 +279,44 @@ static int vfs2_write(sqlite3_file *file,
 			union vfs2_shm_region0 *region0 =
 			    db->db_shm.all_regions[0];
 			db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
-		} else if (amt == VFS2_WAL_FRAME_HDR_SIZE && ofst == next_frame_ofst) {
+		} else if (amt == VFS2_WAL_FRAME_HDR_SIZE &&
+			   ofst == next_frame_ofst) {
 			/* Extend the current transaction. */
+			xfile->wal.pending_txn_frames =
+			    sqlite3_realloc(xfile->wal.pending_txn_frames,
+					    xfile->wal.pending_txn_len + 1);
+			if (xfile->wal.pending_txn_frames == NULL) {
+				return SQLITE_NOMEM;
+			}
+			dqlite_vfs_frame *frame =
+			    &xfile->wal.pending_txn_frames
+				 [xfile->wal.pending_txn_len];
+			frame->page_number = ByteGetBe32(buf);
+			frame->data = NULL;
 			xfile->wal.pending_txn_len++;
+		} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
+			sqlite3_int64 x = (ofst - VFS2_WAL_HDR_SIZE) /
+					      (VFS2_WAL_FRAME_HDR_SIZE +
+					       xfile->vfs_data->page_size) -
+					  xfile->wal.pending_txn_start;
+			dqlite_vfs_frame *frame =
+			    &xfile->wal.pending_txn_frames[x];
+			frame->page_number = ByteGetBe32(buf);
+		} else if (amt == xfile->vfs_data->page_size) {
+			sqlite3_int64 x = (ofst - VFS2_WAL_FRAME_HDR_SIZE -
+					   VFS2_WAL_HDR_SIZE) /
+					      (VFS2_WAL_FRAME_HDR_SIZE +
+					       xfile->vfs_data->page_size) -
+					  xfile->wal.pending_txn_start;
+			assert(x < xfile->wal.pending_txn_len);
+			dqlite_vfs_frame *frame =
+			    &xfile->wal.pending_txn_frames[x];
+			sqlite3_free(frame->data);
+			frame->data = sqlite3_malloc(amt);
+			if (frame->data == NULL) {
+				return SQLITE_NOMEM;
+			}
+			memcpy(frame->data, buf, amt);
 		}
 	}
 	return xfile->orig->pMethods->xWrite(xfile->orig, buf, amt, ofst);
@@ -834,7 +875,23 @@ int vfs2_shallow_poll(sqlite3_file *file, struct vfs2_wal_slice *out)
 	out->salt[0] = xfile->db_shm.pending_txn_hdr.aSalt[0];
 	out->salt[1] = xfile->db_shm.pending_txn_hdr.aSalt[1];
 	out->start = xfile->db_shm.prev_txn_hdr.mxFrame;
-	out->len = xfile->db_shm.pending_txn_hdr.mxFrame - xfile->db_shm.prev_txn_hdr.mxFrame;
+	out->len = xfile->db_shm.pending_txn_hdr.mxFrame -
+		   xfile->db_shm.prev_txn_hdr.mxFrame;
+
+	if (out->len > 0) {
+		int rv = vfs2_shm_lock(file, 0, 1, SQLITE_SHM_EXCLUSIVE);
+		if (rv != SQLITE_OK) {
+			return rv;
+		}
+	}
 
 	return 0;
+}
+
+int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n)
+{
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	if (!(xfile->flags & SQLITE_OPEN_MAIN_DB)) {
+		return 1;
+	}
 }
