@@ -306,27 +306,42 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 	} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
 		sqlite3_int64 next_frame_ofst;
 		if (ofst == next_frame_ofst) {
+			/* Appending to the end of the WAL. */
 			if (wal->wal.pending_txn_last_frame_commit > 0) {
 				/* Start of a new transaction. */
-			} else {
-				/* Extend the current transaction. FIXME
-				 * reallocating every time seems bad */
-				wal->wal.pending_txn_frames = sqlite3_realloc(
-				    wal->wal.pending_txn_frames,
-				    sizeof(struct dqlite_vfs_frame) *
-					(wal->wal.pending_txn_len + 1));
-				if (wal->wal.pending_txn_frames == NULL) {
-					return SQLITE_NOMEM;
+				if (wal->wal.pending_txn_frames != NULL) {
+					for (uint32_t i = 0;
+					     i < wal->wal.pending_txn_len;
+					     i++) {
+						sqlite3_free(
+						    wal->wal
+							.pending_txn_frames[i]
+							.data);
+					}
+					sqlite3_free(
+					    wal->wal.pending_txn_frames);
 				}
-				dqlite_vfs_frame *frame =
-				    &wal->wal.pending_txn_frames
-					 [wal->wal.pending_txn_len];
-				frame->page_number = ByteGetBe32(buf);
-				frame->data = NULL;
-				wal->wal.pending_txn_len++;
+				wal->wal.pending_txn_frames = NULL;
+				wal->wal.pending_txn_start +=
+				    wal->wal.pending_txn_len;
+				wal->wal.pending_txn_len = 0;
 			}
+			/* FIXME reallocating every time seems bad */
+			wal->wal.pending_txn_frames = sqlite3_realloc(
+			    wal->wal.pending_txn_frames,
+			    sizeof(*wal->wal.pending_txn_frames) *
+				(wal->wal.pending_txn_len + 1));
+			if (wal->wal.pending_txn_frames == NULL) {
+				return SQLITE_NOMEM;
+			}
+			dqlite_vfs_frame *frame =
+			    &wal->wal
+				 .pending_txn_frames[wal->wal.pending_txn_len];
+			frame->page_number = ByteGetBe32(buf);
+			frame->data = NULL;
 			wal->wal.pending_txn_last_frame_commit =
 			    ByteGetBe32((const uint8_t *)buf + 4);
+			wal->wal.pending_txn_len++;
 		} else {
 			/* Overwriting a previously-written frame in the current
 			 * transaction. */
@@ -934,7 +949,7 @@ int vfs2_shallow_poll(sqlite3_file *file, struct vfs2_wal_slice *out)
 	if (out->len > 0) {
 		int rv = vfs2_shm_lock(file, 0, 1, SQLITE_SHM_EXCLUSIVE);
 		if (rv != SQLITE_OK) {
-			return rv;
+			return 1;
 		}
 	}
 
@@ -954,4 +969,13 @@ int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n)
 
 	*n = wal->wal.pending_txn_len;
 	*frames = wal->wal.pending_txn_frames;
+
+	if (*n > 0) {
+		int rv = vfs2_shm_lock(file, 0, 1, SQLITE_SHM_EXCLUSIVE);
+		if (rv != SQLITE_OK) {
+			return 1;
+		}
+	}
+
+	return 0;
 }
