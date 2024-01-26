@@ -280,6 +280,49 @@ static void vfs2_wal_pre_write(struct vfs2_file *wal,
 	db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
 }
 
+static int vfs2_wal_update_frame_hdr(struct vfs2_file *wal,
+				     const void *buf,
+				     sqlite3_int64 x)
+{
+	x -= wal->wal.pending_txn_start;
+	assert(0 <= x && x <= wal->wal.pending_txn_len);
+	uint32_t n = wal->wal.pending_txn_len;
+	dqlite_vfs_frame *frames = wal->wal.pending_txn_frames;
+	if (x == n) {
+		/* Appending to the end of the WAL. */
+		if (wal->wal.pending_txn_last_frame_commit > 0) {
+			/* Start of a new transaction. */
+			if (frames != NULL) {
+				for (uint32_t i = 0; i < n; i++) {
+					sqlite3_free(frames[i].data);
+				}
+				sqlite3_free(frames);
+			}
+			wal->wal.pending_txn_frames = NULL;
+			wal->wal.pending_txn_start += n;
+			wal->wal.pending_txn_len = 0;
+		}
+		/* FIXME reallocating every time seems bad */
+		wal->wal.pending_txn_frames =
+		    sqlite3_realloc(frames, sizeof(*frames) * (n + 1));
+		if (wal->wal.pending_txn_frames == NULL) {
+			return SQLITE_NOMEM;
+		}
+		dqlite_vfs_frame *frame = &frames[n];
+		frame->page_number = ByteGetBe32(buf);
+		frame->data = NULL;
+		wal->wal.pending_txn_last_frame_commit =
+		    ByteGetBe32((const uint8_t *)buf + 4);
+		wal->wal.pending_txn_len++;
+	} else {
+		/* Overwriting a previously-written frame in the current
+		 * transaction. */
+		dqlite_vfs_frame *frame = &wal->wal.pending_txn_frames[x];
+		frame->page_number = ByteGetBe32(buf);
+	}
+	return SQLITE_OK;
+}
+
 static int vfs2_wal_post_write(struct vfs2_file *wal,
 			       const void *buf,
 			       int amt,
@@ -304,54 +347,13 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 			return SQLITE_IOERR;
 		}
 	} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
-		sqlite3_int64 next_frame_ofst;
-		if (ofst == next_frame_ofst) {
-			/* Appending to the end of the WAL. */
-			if (wal->wal.pending_txn_last_frame_commit > 0) {
-				/* Start of a new transaction. */
-				if (wal->wal.pending_txn_frames != NULL) {
-					for (uint32_t i = 0;
-					     i < wal->wal.pending_txn_len;
-					     i++) {
-						sqlite3_free(
-						    wal->wal
-							.pending_txn_frames[i]
-							.data);
-					}
-					sqlite3_free(
-					    wal->wal.pending_txn_frames);
-				}
-				wal->wal.pending_txn_frames = NULL;
-				wal->wal.pending_txn_start +=
-				    wal->wal.pending_txn_len;
-				wal->wal.pending_txn_len = 0;
-			}
-			/* FIXME reallocating every time seems bad */
-			wal->wal.pending_txn_frames = sqlite3_realloc(
-			    wal->wal.pending_txn_frames,
-			    sizeof(*wal->wal.pending_txn_frames) *
-				(wal->wal.pending_txn_len + 1));
-			if (wal->wal.pending_txn_frames == NULL) {
-				return SQLITE_NOMEM;
-			}
-			dqlite_vfs_frame *frame =
-			    &wal->wal
-				 .pending_txn_frames[wal->wal.pending_txn_len];
-			frame->page_number = ByteGetBe32(buf);
-			frame->data = NULL;
-			wal->wal.pending_txn_last_frame_commit =
-			    ByteGetBe32((const uint8_t *)buf + 4);
-			wal->wal.pending_txn_len++;
-		} else {
-			/* Overwriting a previously-written frame in the current
-			 * transaction. */
-			sqlite3_int64 x = (ofst - VFS2_WAL_HDR_SIZE) /
-					      (VFS2_WAL_FRAME_HDR_SIZE +
-					       wal->vfs_data->page_size) -
-					  wal->wal.pending_txn_start;
-			dqlite_vfs_frame *frame =
-			    &wal->wal.pending_txn_frames[x];
-			frame->page_number = ByteGetBe32(buf);
+		sqlite3_int64 x =
+		    (ofst - VFS2_WAL_HDR_SIZE) /
+			(VFS2_WAL_FRAME_HDR_SIZE + wal->vfs_data->page_size) -
+		    wal->wal.pending_txn_start;
+		rv = vfs2_wal_update_frame_hdr(wal, buf, x);
+		if (rv != SQLITE_OK) {
+			return rv;
 		}
 	} else if (amt == wal->vfs_data->page_size) {
 		sqlite3_int64 x =
