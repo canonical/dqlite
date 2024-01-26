@@ -23,6 +23,8 @@
 #define VFS2_WAL_INDEX_REGION_SIZE (1 << 15)
 #define VFS2_WAL_FRAME_HDR_SIZE 24
 
+static const char invalid_magic[4] = {0xf0, 0xa6, 0xd5, 0x18};
+
 /**
  * Userdata owned by the VFS.
  */
@@ -244,28 +246,43 @@ static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 	return xfile->orig->pMethods->xRead(xfile->orig, buf, amt, ofst);
 }
 
-static void vfs2_wal_pre_write(struct vfs2_file *wal,
-			       const void *buf,
-			       int amt,
-			       sqlite3_int64 ofst)
-{
-	if (ofst > 0) {
-		return;
+static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr) {
+	int rv;
+
+	sqlite3_file *phys_outgoing = wal->orig;
+	char *name_outgoing = wal->wal.wal_cur_fixed_name;
+	sqlite3_file *phys_incoming = wal->wal.wal_prev;
+	char *name_incoming = wal->wal.wal_prev_fixed_name;
+
+	/* Move the moving name. */
+	rv = unlink(wal->wal.moving_name);
+	if (rv != 0) {
+		return SQLITE_IOERR;
 	}
-	/* Trying to overwrite the WAL header: this is a WAL
-	 * reset. */
-	assert(amt == VFS2_WAL_HDR_SIZE);
+	rv = link(name_incoming, wal->wal.moving_name);
+	if (rv != 0) {
+		return SQLITE_IOERR;
+	}
+
+	/* Write the new header of the incoming physical WAL, and invalidate
+	 * the header of the outgoing physical WAL. */
+	rv = phys_incoming->pMethods->xWrite(phys_incoming, hdr, VFS2_WAL_HDR_SIZE, 0);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
+	rv = phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic, sizeof(invalid_magic), 0);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
+
 	/* We expect that the corresponding database file has
 	 * been opened already. */
 	struct vfs2_file *db = lookup_partner_file(wal);
 	assert(db != NULL);
-	/* WAL swap (in-memory part) */
-	sqlite3_file *tmp = wal->orig;
-	char *tmp_name = wal->wal.wal_cur_fixed_name;
-	wal->orig = wal->wal.wal_prev;
-	wal->wal.wal_cur_fixed_name = wal->wal.wal_prev_fixed_name;
-	wal->wal.wal_prev = tmp;
-	wal->wal.wal_prev_fixed_name = tmp_name;
+	wal->orig = phys_incoming;
+	wal->wal.wal_cur_fixed_name = name_incoming;
+	wal->wal.wal_prev = phys_outgoing;
+	wal->wal.wal_prev_fixed_name = name_outgoing;
 
 	wal->wal.pending_txn_start = 0;
 	wal->wal.pending_txn_len = 0;
@@ -278,9 +295,11 @@ static void vfs2_wal_pre_write(struct vfs2_file *wal,
 	assert(db->db_shm.all_regions_len > 0);
 	union vfs2_shm_region0 *region0 = db->db_shm.all_regions[0];
 	db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
+
+	return SQLITE_OK;
 }
 
-static int vfs2_wal_update_frame_hdr(struct vfs2_file *wal,
+static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
 				     const void *buf,
 				     sqlite3_int64 x)
 {
@@ -319,6 +338,8 @@ static int vfs2_wal_update_frame_hdr(struct vfs2_file *wal,
 		 * transaction. */
 		dqlite_vfs_frame *frame = &wal->wal.pending_txn_frames[x];
 		frame->page_number = ByteGetBe32(buf);
+		sqlite3_free(frame->data);
+		frame->data = NULL;
 	}
 	return SQLITE_OK;
 }
@@ -329,40 +350,21 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 			       sqlite3_int64 ofst)
 {
 	int rv;
+	uint32_t frame_size = VFS2_WAL_FRAME_HDR_SIZE + wal->vfs_data->page_size;
 
-	if (ofst == 0) {
-		/* WAL swap (on-disk part) */
-		rv = unlink(wal->wal.moving_name);
-		if (rv != 0) {
-			return SQLITE_IOERR;
-		}
-		/* If we crash between unlink and link, we'll see the
-		 * conventionally-named WAL is missing at startup, and
-		 * we can't determine which of -xwal1 and -xwal2 is more
-		 * recent. Fortunately, this is not a correctness issue.
-		 * See vfs2_open_wal for how this situation is handled.
-		 */
-		rv = link(wal->wal.wal_cur_fixed_name, wal->wal.moving_name);
-		if (rv != 0) {
-			return SQLITE_IOERR;
-		}
-	} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
-		sqlite3_int64 x =
-		    (ofst - VFS2_WAL_HDR_SIZE) /
-			(VFS2_WAL_FRAME_HDR_SIZE + wal->vfs_data->page_size) -
-		    wal->wal.pending_txn_start;
-		rv = vfs2_wal_update_frame_hdr(wal, buf, x);
-		if (rv != SQLITE_OK) {
-			return rv;
-		}
+	if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
+		sqlite3_int64 x = ofst - VFS2_WAL_HDR_SIZE;
+		assert(x % frame_size == 0);
+		x /= frame_size;
+		return vfs2_wal_write_frame_hdr(wal, buf, x);
 	} else if (amt == wal->vfs_data->page_size) {
-		sqlite3_int64 x =
-		    (ofst - VFS2_WAL_FRAME_HDR_SIZE - VFS2_WAL_HDR_SIZE) /
-			(VFS2_WAL_FRAME_HDR_SIZE + wal->vfs_data->page_size) -
-		    wal->wal.pending_txn_start;
-		assert(x < wal->wal.pending_txn_len);
+		sqlite3_int64 x = ofst - VFS2_WAL_FRAME_HDR_SIZE - VFS2_WAL_HDR_SIZE;
+		assert(x % frame_size == 0);
+		x /= frame_size;
+		x -= wal->wal.pending_txn_start;
+		assert(0 <= x && x < wal->wal.pending_txn_len);
 		dqlite_vfs_frame *frame = &wal->wal.pending_txn_frames[x];
-		sqlite3_free(frame->data);
+		assert(frame->data == NULL);
 		frame->data = sqlite3_malloc(amt);
 		if (frame->data == NULL) {
 			return SQLITE_NOMEM;
@@ -379,16 +381,21 @@ static int vfs2_write(sqlite3_file *file,
 {
 	int rv;
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
-	if (xfile->flags & SQLITE_OPEN_WAL) {
-		vfs2_wal_pre_write(xfile, buf, amt, ofst);
+
+	if ((xfile->flags & SQLITE_OPEN_WAL) && ofst == 0) {
+		assert(amt == VFS2_WAL_HDR_SIZE);
+		return vfs2_wal_swap(xfile, buf);
 	}
+
 	rv = xfile->orig->pMethods->xWrite(xfile->orig, buf, amt, ofst);
 	if (rv != SQLITE_OK) {
 		return rv;
 	}
+
 	if (xfile->flags & SQLITE_OPEN_WAL) {
 		return vfs2_wal_post_write(xfile, buf, amt, ofst);
 	}
+
 	return SQLITE_OK;
 }
 
