@@ -23,7 +23,7 @@
 #define VFS2_WAL_INDEX_REGION_SIZE (1 << 15)
 #define VFS2_WAL_FRAME_HDR_SIZE 24
 
-static const char invalid_magic[4] = {0xf0, 0xa6, 0xd5, 0x18};
+static const uint32_t invalid_magic = 0x17171717;
 
 /**
  * Userdata owned by the VFS.
@@ -153,6 +153,11 @@ struct vfs2_file
 	};
 };
 
+static bool is_valid_magic(const uint32_t *x) {
+	uint32_t n = ByteGetBe32((const uint8_t *)x);
+	return (n == 0x377f0682) || (n == 0x377f0683);
+}
+
 /**
  * Get the matching main file for a WAL, or vice versa.
  */
@@ -246,6 +251,35 @@ static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 	return xfile->orig->pMethods->xRead(xfile->orig, buf, amt, ofst);
 }
 
+/**
+ * Switch to the other physical WAL when the WAL header is about to be overwritten.
+ *
+ * The order of steps is as follows:
+ *
+ * 1. Unlink the moving name.
+ * 2. Hard-link the moving name to the incoming physical WAL.
+ * 3. Write the new header of the incoming physical WAL.
+ * 4. Invalidate the header of the outgoing physical WAL.
+ * 5. Update our in-memory state to reflect the new situation.
+ *
+ * All these steps but the last are fallible, and of course we could crash at any time.
+ * The following intermediate configurations are possible for the persistent state:
+ *
+ * A. The moving name is missing; the outgoing WAL has a valid header; the incoming WAL has an invalid header.
+ * B. The moving name points to the incoming WAL; the outgoing WAL has a valid header; the incoming WAL has invalid header.
+ * C. The moving name points to the incoming WAL; the outgoing WAL has a valid header; the incoming WAL has a valid header.
+ *
+ * To cope with crashes, vfs2_open has to be able to detect and sort out each of these configurations. This is done as follows:
+ *
+ * - If the moving name is missing, the WAL with the valid header is the more recently written one.
+ * - Otherwise, if both WALs have valid headers, the WAL that the moving name points to is more recently written.
+ * - Otherwise, something has gone terribly wrong (or we're starting up for the first time, or we crashed during vfs2_open).
+ *
+ * There is also the issue of what happens when this function returns unsuccessfully. This will cause our xWrite to return unsuccessfully
+ * to SQLite, but we want to put the VFS and persistent state in some kind of order before this point, so SQLite won't cause something weird to happen when it tries to handle the error.
+ *
+ * If we return unsuccessfully from vfs2_write, we want to present to SQLite a picture that's consistent with a "normal" failed write.
+ */
 static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr) {
 	int rv;
 
@@ -264,19 +298,6 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr) {
 		return SQLITE_IOERR;
 	}
 
-	/* Write the new header of the incoming physical WAL, and invalidate
-	 * the header of the outgoing physical WAL. */
-	rv = phys_incoming->pMethods->xWrite(phys_incoming, hdr, VFS2_WAL_HDR_SIZE, 0);
-	if (rv != SQLITE_OK) {
-		return rv;
-	}
-	rv = phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic, sizeof(invalid_magic), 0);
-	if (rv != SQLITE_OK) {
-		return rv;
-	}
-
-	/* We expect that the corresponding database file has
-	 * been opened already. */
 	struct vfs2_file *db = lookup_partner_file(wal);
 	assert(db != NULL);
 	wal->orig = phys_incoming;
@@ -295,6 +316,17 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr) {
 	assert(db->db_shm.all_regions_len > 0);
 	union vfs2_shm_region0 *region0 = db->db_shm.all_regions[0];
 	db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
+
+	/* Write the new header of the incoming physical WAL, and invalidate
+	 * the header of the outgoing physical WAL. */
+	rv = phys_incoming->pMethods->xWrite(phys_incoming, hdr, VFS2_WAL_HDR_SIZE, 0);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
+	rv = phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic, sizeof(invalid_magic), 0);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
 
 	return SQLITE_OK;
 }
@@ -630,13 +662,15 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 {
 	int rv;
 	struct vfs2_data *data = vfs->pAppData;
-	/* Set up the two physical WALs */
+
 	const char *dbname = sqlite3_filename_database(name);
 	if (strlen(dbname) + strlen(VFS2_WAL_FIXED_SUFFIX1) >
 	    data->orig->mxPathname) {
 		rv = SQLITE_ERROR;
 		goto err;
 	}
+
+	/* Collect memory allocations in one place to simplify the control flow */
 	char *fixed1 = sqlite3_malloc(data->orig->mxPathname + 1);
 	char *fixed2 = sqlite3_malloc(data->orig->mxPathname + 1);
 	sqlite3_file *phys1 = sqlite3_malloc(data->orig->szOsFile);
@@ -662,6 +696,29 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	if (rv != SQLITE_OK) {
 		goto err_after_open_phys2;
 	}
+
+	/* Figure out what's going on with the physical WALs. */
+	uint32_t phys1_magic;
+	rv = phys1->pMethods->xRead(phys1, &phys1_magic, sizeof(phys1_magic), 0);
+	if (rv == SQLITE_IOERR_SHORT_READ) {
+		phys1_magic = invalid_magic;
+	} else if (rv != SQLITE_OK) {
+		goto err_after_open_phys2;
+	}
+	uint32_t phys2_magic;
+	rv = phys2->pMethods->xRead(phys2, &phys2_magic, sizeof(phys2_magic), 0);
+	if (rv == SQLITE_IOERR_SHORT_READ) {
+		phys2_magic = invalid_magic;
+	} else if (rv != SQLITE_OK) {
+		goto err_after_open_phys2;
+	}
+	bool phys1_is_valid = is_valid_magic(&phys1_magic);
+	bool phys2_is_valid = is_valid_magic(&phys2_magic);
+	if (!phys1_is_valid && !phys2_is_valid) {
+		rv = SQLITE_ERROR;
+		goto err_after_open_phys2;
+	}
+
 	/* Figure out which physical WAL the moving name points to. */
 	struct stat s1, s2;
 	int rv1 = stat(fixed1, &s1);
@@ -672,41 +729,44 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		rv = SQLITE_IOERR;
 		goto err_after_open_phys2;
 	}
+	bool phys1_is_current;
 	struct stat s;
 	rv = stat(name, &s);
 	if (rv != 0 && errno == ENOENT) {
-		/* The moving name doesn't exist. This is unusual but not a big
-		 * deal: we arbitrarily pick -xwal1 to be the current WAL and
-		 * -xwal2 to be the previous WAL. Since Raft passes us the salts
-		 * from the shallow log when retrieving frames, this won't cause
-		 * us to give it the wrong frames. */
-		xout->orig = phys1;
-		xout->wal.moving_name = name;
-		xout->wal.wal_cur_fixed_name = fixed1;
-		xout->wal.wal_prev = phys2;
-		xout->wal.wal_prev_fixed_name = fixed2;
+		phys1_is_current = phys1_is_valid;
 	} else if (rv != 0) {
 		/* Something weird is going on with the moving name. Best to
 		 * return an error. */
 		rv = SQLITE_IOERR;
 		goto err_after_open_phys2;
-	} else if (s.st_ino == s1.st_ino) {
+	} else if ((s.st_ino != s1.st_ino) && (s.st_ino != s2.st_ino)) {
+		rv = SQLITE_ERROR;
+		goto err_after_open_phys2;
+	} else {
+		phys1_is_current = (s.st_ino == s1.st_ino);
+	}
+
+
+	if (phys1_is_current) {
+		if (phys1_is_valid) {
+			phys2->pMethods->xWrite(phys2, &invalid_magic, sizeof(invalid_magic), 0);
+		}
+
 		xout->orig = phys1;
 		xout->wal.moving_name = name;
 		xout->wal.wal_cur_fixed_name = fixed1;
 		xout->wal.wal_prev = phys2;
 		xout->wal.wal_prev_fixed_name = fixed2;
-	} else if (s.st_ino == s2.st_ino) {
+	} else {
+		if (phys1_is_valid) {
+			phys1->pMethods->xWrite(phys1, &invalid_magic, sizeof(invalid_magic), 0);
+		}
+
 		xout->orig = phys2;
 		xout->wal.moving_name = name;
 		xout->wal.wal_cur_fixed_name = fixed2;
 		xout->wal.wal_prev = phys1;
 		xout->wal.wal_prev_fixed_name = fixed1;
-	} else {
-		/* The moving name points somewhere unexpected. Best to return
-		 * an error. */
-		rv = SQLITE_ERROR;
-		goto err_after_open_phys2;
 	}
 
 	register_file(xout, &entry);
