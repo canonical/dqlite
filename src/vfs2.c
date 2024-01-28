@@ -730,9 +730,11 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		goto err_after_open_phys2;
 	}
 	bool phys1_is_current;
+	bool need_link = false;
 	struct stat s;
 	rv = stat(name, &s);
 	if (rv != 0 && errno == ENOENT) {
+		need_link = true;
 		phys1_is_current = phys1_is_valid;
 	} else if (rv != 0) {
 		/* Something weird is going on with the moving name. Best to
@@ -748,7 +750,11 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 
 	if (phys1_is_current) {
-		if (phys1_is_valid) {
+		if (need_link) {
+			link(fixed1, name);
+		}
+
+		if (phys2_is_valid) {
 			phys2->pMethods->xWrite(phys2, &invalid_magic, sizeof(invalid_magic), 0);
 		}
 
@@ -758,6 +764,10 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		xout->wal.wal_prev = phys2;
 		xout->wal.wal_prev_fixed_name = fixed2;
 	} else {
+		if (need_link) {
+			link(fixed2, name);
+		}
+
 		if (phys1_is_valid) {
 			phys1->pMethods->xWrite(phys1, &invalid_magic, sizeof(invalid_magic), 0);
 		}
