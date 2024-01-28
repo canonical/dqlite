@@ -153,7 +153,8 @@ struct vfs2_file
 	};
 };
 
-static bool is_valid_magic(const uint32_t *x) {
+static bool is_valid_magic(const uint32_t *x)
+{
 	uint32_t n = ByteGetBe32((const uint8_t *)x);
 	return (n == 0x377f0682) || (n == 0x377f0683);
 }
@@ -252,7 +253,8 @@ static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 }
 
 /**
- * Switch to the other physical WAL when the WAL header is about to be overwritten.
+ * Switch to the other physical WAL when the WAL header is about to be
+ * overwritten.
  *
  * The order of steps is as follows:
  *
@@ -262,25 +264,37 @@ static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
  * 4. Invalidate the header of the outgoing physical WAL.
  * 5. Update our in-memory state to reflect the new situation.
  *
- * All these steps but the last are fallible, and of course we could crash at any time.
- * The following intermediate configurations are possible for the persistent state:
+ * All these steps but the last are fallible, and of course we could crash at
+ * any time. The following intermediate configurations are possible for the
+ * persistent state:
  *
- * A. The moving name is missing; the outgoing WAL has a valid header; the incoming WAL has an invalid header.
- * B. The moving name points to the incoming WAL; the outgoing WAL has a valid header; the incoming WAL has invalid header.
- * C. The moving name points to the incoming WAL; the outgoing WAL has a valid header; the incoming WAL has a valid header.
+ * A. The moving name is missing; the outgoing WAL has a valid header; the
+ * incoming WAL has an invalid header. B. The moving name points to the incoming
+ * WAL; the outgoing WAL has a valid header; the incoming WAL has invalid
+ * header. C. The moving name points to the incoming WAL; the outgoing WAL has a
+ * valid header; the incoming WAL has a valid header.
  *
- * To cope with crashes, vfs2_open has to be able to detect and sort out each of these configurations. This is done as follows:
+ * To cope with crashes, vfs2_open has to be able to detect and sort out each of
+ * these configurations. This is done as follows:
  *
- * - If the moving name is missing, the WAL with the valid header is the more recently written one.
- * - Otherwise, if both WALs have valid headers, the WAL that the moving name points to is more recently written.
- * - Otherwise, something has gone terribly wrong (or we're starting up for the first time, or we crashed during vfs2_open).
+ * - If the moving name is missing, the WAL with the valid header is the more
+ * recently written one.
+ * - Otherwise, if both WALs have valid headers, the WAL that the moving name
+ * points to is more recently written.
+ * - Otherwise, something has gone terribly wrong (or we're starting up for the
+ * first time, or we crashed during vfs2_open).
  *
- * There is also the issue of what happens when this function returns unsuccessfully. This will cause our xWrite to return unsuccessfully
- * to SQLite, but we want to put the VFS and persistent state in some kind of order before this point, so SQLite won't cause something weird to happen when it tries to handle the error.
+ * There is also the issue of what happens when this function returns
+ * unsuccessfully. This will cause our xWrite to return unsuccessfully to
+ * SQLite, but we want to put the VFS and persistent state in some kind of order
+ * before this point, so SQLite won't cause something weird to happen when it
+ * tries to handle the error.
  *
- * If we return unsuccessfully from vfs2_write, we want to present to SQLite a picture that's consistent with a "normal" failed write.
+ * If we return unsuccessfully from vfs2_write, we want to present to SQLite a
+ * picture that's consistent with a "normal" failed write.
  */
-static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr) {
+static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr)
+{
 	int rv;
 
 	sqlite3_file *phys_outgoing = wal->orig;
@@ -319,11 +333,13 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr) {
 
 	/* Write the new header of the incoming physical WAL, and invalidate
 	 * the header of the outgoing physical WAL. */
-	rv = phys_incoming->pMethods->xWrite(phys_incoming, hdr, VFS2_WAL_HDR_SIZE, 0);
+	rv = phys_incoming->pMethods->xWrite(phys_incoming, hdr,
+					     VFS2_WAL_HDR_SIZE, 0);
 	if (rv != SQLITE_OK) {
 		return rv;
 	}
-	rv = phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic, sizeof(invalid_magic), 0);
+	rv = phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic,
+					     sizeof(invalid_magic), 0);
 	if (rv != SQLITE_OK) {
 		return rv;
 	}
@@ -332,8 +348,8 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr) {
 }
 
 static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
-				     const void *buf,
-				     sqlite3_int64 x)
+				    const void *buf,
+				    sqlite3_int64 x)
 {
 	x -= wal->wal.pending_txn_start;
 	assert(0 <= x && x <= wal->wal.pending_txn_len);
@@ -382,7 +398,8 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 			       sqlite3_int64 ofst)
 {
 	int rv;
-	uint32_t frame_size = VFS2_WAL_FRAME_HDR_SIZE + wal->vfs_data->page_size;
+	uint32_t frame_size =
+	    VFS2_WAL_FRAME_HDR_SIZE + wal->vfs_data->page_size;
 
 	if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
 		sqlite3_int64 x = ofst - VFS2_WAL_HDR_SIZE;
@@ -390,7 +407,8 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 		x /= frame_size;
 		return vfs2_wal_write_frame_hdr(wal, buf, x);
 	} else if (amt == wal->vfs_data->page_size) {
-		sqlite3_int64 x = ofst - VFS2_WAL_FRAME_HDR_SIZE - VFS2_WAL_HDR_SIZE;
+		sqlite3_int64 x =
+		    ofst - VFS2_WAL_FRAME_HDR_SIZE - VFS2_WAL_HDR_SIZE;
 		assert(x % frame_size == 0);
 		x /= frame_size;
 		x -= wal->wal.pending_txn_start;
@@ -670,7 +688,8 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		goto err;
 	}
 
-	/* Collect memory allocations in one place to simplify the control flow */
+	/* Collect memory allocations in one place to simplify the control flow
+	 */
 	char *fixed1 = sqlite3_malloc(data->orig->mxPathname + 1);
 	char *fixed2 = sqlite3_malloc(data->orig->mxPathname + 1);
 	sqlite3_file *phys1 = sqlite3_malloc(data->orig->szOsFile);
@@ -699,14 +718,16 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 	/* Figure out what's going on with the physical WALs. */
 	uint32_t phys1_magic;
-	rv = phys1->pMethods->xRead(phys1, &phys1_magic, sizeof(phys1_magic), 0);
+	rv =
+	    phys1->pMethods->xRead(phys1, &phys1_magic, sizeof(phys1_magic), 0);
 	if (rv == SQLITE_IOERR_SHORT_READ) {
 		phys1_magic = invalid_magic;
 	} else if (rv != SQLITE_OK) {
 		goto err_after_open_phys2;
 	}
 	uint32_t phys2_magic;
-	rv = phys2->pMethods->xRead(phys2, &phys2_magic, sizeof(phys2_magic), 0);
+	rv =
+	    phys2->pMethods->xRead(phys2, &phys2_magic, sizeof(phys2_magic), 0);
 	if (rv == SQLITE_IOERR_SHORT_READ) {
 		phys2_magic = invalid_magic;
 	} else if (rv != SQLITE_OK) {
@@ -748,14 +769,14 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		phys1_is_current = (s.st_ino == s1.st_ino);
 	}
 
-
 	if (phys1_is_current) {
 		if (need_link) {
 			link(fixed1, name);
 		}
 
 		if (phys2_is_valid) {
-			phys2->pMethods->xWrite(phys2, &invalid_magic, sizeof(invalid_magic), 0);
+			phys2->pMethods->xWrite(phys2, &invalid_magic,
+						sizeof(invalid_magic), 0);
 		}
 
 		xout->orig = phys1;
@@ -769,7 +790,8 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		}
 
 		if (phys1_is_valid) {
-			phys1->pMethods->xWrite(phys1, &invalid_magic, sizeof(invalid_magic), 0);
+			phys1->pMethods->xWrite(phys1, &invalid_magic,
+						sizeof(invalid_magic), 0);
 		}
 
 		xout->orig = phys2;
