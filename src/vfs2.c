@@ -80,6 +80,54 @@ union vfs2_shm_region0 {
 	char bytes[VFS2_WAL_INDEX_REGION_SIZE];
 };
 
+struct vfs2_wal
+{
+	const char *moving_name;   /* e.g. /path/to/my.db-wal */
+	char *wal_cur_fixed_name;  /* e.g. /path/to/my.db-xwal1 */
+	sqlite3_file *wal_prev;    /* underlying file object for WAL-prev */
+	char *wal_prev_fixed_name; /* e.g. /path/to/my.db-xwal2 */
+
+	/* All pending_txn fields pertain to a transaction that has at least one
+	 * frame in the WAL and is the last transaction represented in the WAL.
+	 * Writing a frame either updates the pending transaction or starts a
+	 * new transaction. A frame starts a new transaction if it is written at
+	 * the end of the WAL and the physically preceding frame has a nonzero
+	 * commit marker. */
+	uint32_t pending_txn_start; /* in frames, zero-based */
+	uint32_t pending_txn_len;
+	dqlite_vfs_frame *pending_txn_frames;   /* for vfs2_poll */
+	uint32_t pending_txn_last_frame_commit; /* commit marker for the
+						   physical last frame */
+};
+
+struct vfs2_db
+{
+	const char *name; /* e.g. /path/to/my.db */
+
+	/* Copy of the WAL index header that reflects the last really-committed
+	 * (i.e. in Raft too) transaction. */
+	struct vfs2_wal_index_basic_hdr prev_txn_hdr;
+	/* Copy of the WAL index header that reflects a sorta-committed
+	 * transaction that has not yet been through Raft. */
+	struct vfs2_wal_index_basic_hdr pending_txn_hdr;
+	/* When the WAL is restarted (or started for the first time), we capture
+	 * the initial WAL index header in prev_txn_hdr.
+	 *
+	 * When we get SQLITE_FCNTL_COMMIT_PHASETWO, we copy the WAL index
+	 * header from shm into pending_txn_hdr, then overwrite the shm with
+	 * prev_txn_hdr to hide the transaction.
+	 *
+	 * When we get vfs2_apply, we overwrite both prev_txn_hdr and the shm
+	 * with pending_txn_hdr. */
+
+	/* shm implementation, incl. locks */
+	void **all_regions;
+	int all_regions_len;
+	unsigned refcount;
+	unsigned shared[SQLITE_SHM_NLOCK];
+	unsigned exclusive[SQLITE_SHM_NLOCK];
+};
+
 /**
  * VFS-specific file object, upcastable to sqlite3_file.
  */
@@ -91,64 +139,9 @@ struct vfs2_file
 	int flags; /* from xOpen */
 	union {
 		/* if this file object is a WAL */
-		struct
-		{
-			const char *moving_name; /* e.g. /path/to/my.db-wal */
-			char
-			    *wal_cur_fixed_name; /* e.g. /path/to/my.db-xwal1 */
-			sqlite3_file
-			    *wal_prev; /* underlying file object for WAL-prev */
-			char *
-			    wal_prev_fixed_name; /* e.g. /path/to/my.db-xwal2 */
-
-			/* All pending_txn fields pertain to a transaction that
-			 * has at least one frame in the WAL and is the last
-			 * transaction represented in the WAL. Writing a frame
-			 * either updates the pending transaction or starts a
-			 * new transaction. A frame starts a new transaction if
-			 * it is written at the end of the WAL and the
-			 * physically preceding frame has a nonzero commit
-			 * marker. */
-			uint32_t pending_txn_start; /* in frames, zero-based */
-			uint32_t pending_txn_len;
-			dqlite_vfs_frame
-			    *pending_txn_frames; /* for vfs2_poll */
-			uint32_t
-			    pending_txn_last_frame_commit; /* commit marker for
-							      the physical last
-							      frame */
-		} wal;
+		struct vfs2_wal wal;
 		/* if this file object is a main file */
-		struct
-		{
-			const char *name; /* e.g. /path/to/my.db */
-
-			/* Copy of the WAL index header that reflects the last
-			 * really-committed (i.e. in Raft too) transaction. */
-			struct vfs2_wal_index_basic_hdr prev_txn_hdr;
-			/* Copy of the WAL index header that reflects a
-			 * sorta-committed transaction that has not yet been
-			 * through Raft. */
-			struct vfs2_wal_index_basic_hdr pending_txn_hdr;
-			/* When the WAL is restarted (or started for the first
-			 * time), we capture the initial WAL index header in
-			 * prev_txn_hdr.
-			 *
-			 * When we get SQLITE_FCNTL_COMMIT_PHASETWO, we copy the
-			 * WAL index header from shm into pending_txn_hdr, then
-			 * overwrite the shm with prev_txn_hdr to hide the
-			 * transaction.
-			 *
-			 * When we get vfs2_apply, we overwrite both
-			 * prev_txn_hdr and the shm with pending_txn_hdr. */
-
-			/* shm implementation, incl. locks */
-			void **all_regions;
-			int all_regions_len;
-			unsigned refcount;
-			unsigned shared[SQLITE_SHM_NLOCK];
-			unsigned exclusive[SQLITE_SHM_NLOCK];
-		} db_shm;
+		struct vfs2_db db_shm;
 	};
 };
 
