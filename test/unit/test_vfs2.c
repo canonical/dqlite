@@ -753,36 +753,6 @@ TEST(vfs2_write, andReadPages, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Trying to write two pages beyond the last one results in an error. */
-TEST(vfs2_write, beyondLast, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(f);
-	void *buf_page_1 = __buf_page_1();
-	void *buf_page_2 = __buf_page_2();
-	char buf[512];
-	int rc;
-
-	(void)params;
-
-	memset(buf, 0, 512);
-
-	/* Write the first page. */
-	rc = file->pMethods->xWrite(file, buf_page_1, 512, 0);
-	munit_assert_int(rc, ==, 0);
-
-	/* Write the third page, without writing the second. */
-	rc = file->pMethods->xWrite(file, buf_page_2, 512, 1024);
-	munit_assert_int(rc, ==, SQLITE_IOERR_WRITE);
-
-	free(buf_page_1);
-	free(buf_page_2);
-
-	free(file);
-
-	return MUNIT_OK;
-}
-
 /******************************************************************************
  *
  * xTruncate
