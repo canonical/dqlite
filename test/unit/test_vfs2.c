@@ -181,7 +181,7 @@ static sqlite3 *__db_open(void)
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	int rc;
 
-	rc = sqlite3_open_v2("test.db", &db, flags, "dqlite");
+	rc = sqlite3_open_v2("test.db", &db, flags, "dqlite-vfs2");
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	__db_exec(db, "PRAGMA page_size=512");
