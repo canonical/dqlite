@@ -931,7 +931,7 @@ static int vfs2_open(sqlite3_vfs *vfs,
 		if (xout->orig == NULL) {
 			return SQLITE_NOMEM;
 		}
-		return vfs->xOpen(vfs, name, xout->orig, flags, out_flags);
+		return data->orig->xOpen(data->orig, name, xout->orig, flags, out_flags);
 	}
 }
 
