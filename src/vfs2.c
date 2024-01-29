@@ -145,7 +145,7 @@ struct vfs2_file
 
 			/* shm implementation, incl. locks */
 			void **all_regions;
-			unsigned all_regions_len;
+			int all_regions_len;
 			unsigned refcount;
 			unsigned shared[SQLITE_SHM_NLOCK];
 			unsigned exclusive[SQLITE_SHM_NLOCK];
@@ -371,7 +371,8 @@ static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
 		}
 		/* FIXME reallocating every time seems bad */
 		wal->wal.pending_txn_frames =
-		    sqlite3_realloc(frames, sizeof(*frames) * (n + 1));
+		    sqlite3_realloc64(frames, (sqlite_uint64)sizeof(*frames) *
+						  (sqlite3_uint64)(n + 1));
 		if (wal->wal.pending_txn_frames == NULL) {
 			return SQLITE_NOMEM;
 		}
@@ -397,7 +398,6 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 			       int amt,
 			       sqlite3_int64 ofst)
 {
-	int rv;
 	uint32_t frame_size =
 	    VFS2_WAL_FRAME_HDR_SIZE + wal->vfs_data->page_size;
 
@@ -406,7 +406,7 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 		assert(x % frame_size == 0);
 		x /= frame_size;
 		return vfs2_wal_write_frame_hdr(wal, buf, x);
-	} else if (amt == wal->vfs_data->page_size) {
+	} else if (amt == (int)wal->vfs_data->page_size) {
 		sqlite3_int64 x =
 		    ofst - VFS2_WAL_FRAME_HDR_SIZE - VFS2_WAL_HDR_SIZE;
 		assert(x % frame_size == 0);
@@ -419,7 +419,7 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 		if (frame->data == NULL) {
 			return SQLITE_NOMEM;
 		}
-		memcpy(frame->data, buf, amt);
+		memcpy(frame->data, buf, (size_t)amt);
 	}
 	return SQLITE_OK;
 }
@@ -555,13 +555,13 @@ static int vfs2_shm_map(sqlite3_file *file,
 			goto err;
 		}
 
-		memset(region, 0, pgsz);
+		memset(region, 0, (size_t)pgsz);
 
 		/* FIXME reallocating every time seems bad */
-		regions =
-		    sqlite3_realloc(xfile->db_shm.all_regions,
-				    sizeof(*xfile->db_shm.all_regions) *
-					(xfile->db_shm.all_regions_len + 1));
+		regions = sqlite3_realloc64(
+		    xfile->db_shm.all_regions,
+		    (sqlite3_uint64)sizeof(*xfile->db_shm.all_regions) *
+			(sqlite3_uint64)(xfile->db_shm.all_regions_len + 1));
 		if (regions == NULL) {
 			rv = SQLITE_NOMEM;
 			goto err_after_region_malloc;
@@ -683,7 +683,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 	const char *dbname = sqlite3_filename_database(name);
 	if (strlen(dbname) + strlen(VFS2_WAL_FIXED_SUFFIX1) >
-	    data->orig->mxPathname) {
+	    (size_t)data->orig->mxPathname) {
 		rv = SQLITE_ERROR;
 		goto err;
 	}
@@ -700,6 +700,8 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		rv = SQLITE_NOMEM;
 		goto err;
 	}
+
+	/* Open the two physical WALs */
 	strcpy(fixed1, dbname);
 	strcat(fixed1, VFS2_WAL_FIXED_SUFFIX1);
 	strcpy(fixed2, dbname);
@@ -769,14 +771,17 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		phys1_is_current = (s.st_ino == s1.st_ino);
 	}
 
+	/* XXX can we justify ignoring errors below? */
+
 	if (phys1_is_current) {
 		if (need_link) {
-			link(fixed1, name);
+			rv = link(fixed1, name);
+			(void)rv;
 		}
 
 		if (phys2_is_valid) {
-			phys2->pMethods->xWrite(phys2, &invalid_magic,
-						sizeof(invalid_magic), 0);
+			(void)phys2->pMethods->xWrite(phys2, &invalid_magic,
+						      sizeof(invalid_magic), 0);
 		}
 
 		xout->orig = phys1;
@@ -784,14 +789,17 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		xout->wal.wal_cur_fixed_name = fixed1;
 		xout->wal.wal_prev = phys2;
 		xout->wal.wal_prev_fixed_name = fixed2;
+
+		*out_flags = out_flags1;
 	} else {
 		if (need_link) {
-			link(fixed2, name);
+			rv = link(fixed2, name);
+			(void)rv;
 		}
 
 		if (phys1_is_valid) {
-			phys1->pMethods->xWrite(phys1, &invalid_magic,
-						sizeof(invalid_magic), 0);
+			(void)phys1->pMethods->xWrite(phys1, &invalid_magic,
+						      sizeof(invalid_magic), 0);
 		}
 
 		xout->orig = phys2;
@@ -799,6 +807,8 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		xout->wal.wal_cur_fixed_name = fixed2;
 		xout->wal.wal_prev = phys1;
 		xout->wal.wal_prev_fixed_name = fixed1;
+
+		*out_flags = out_flags2;
 	}
 
 	register_file(xout, &entry);
@@ -870,7 +880,6 @@ static int vfs2_open(sqlite3_vfs *vfs,
 		     int flags,
 		     int *out_flags)
 {
-	int rv;
 	out->pMethods = NULL;
 	*out_flags = 0;
 	struct vfs2_file *xout = (struct vfs2_file *)out;

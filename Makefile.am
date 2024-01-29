@@ -61,7 +61,8 @@ basic_dqlite_sources = \
   src/transport.c \
   src/translate.c \
   src/tuple.c \
-  src/vfs.c
+  src/vfs.c \
+  src/vfs2.c
 
 if BUILD_SQLITE_ENABLED
 basic_dqlite_sources += sqlite3.c
