@@ -8,10 +8,12 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -32,7 +34,7 @@ struct vfs2_data
 {
 	sqlite3_vfs *orig;       /* underlying VFS */
 	pthread_rwlock_t rwlock; /* protects the queue */
-	uint32_t page_size;
+	atomic_uint page_size;
 	queue queue; /* queue of vfs2_db_entry */
 };
 
@@ -105,7 +107,8 @@ struct vfs2_db
 	const char *name; /* e.g. /path/to/my.db */
 
 	/* Copy of the WAL index header that reflects the last really-committed
-	 * (i.e. in Raft too) transaction. */
+	 * (i.e. in Raft too) transaction, or the initial state of the WAL if
+	 * no transactions have been committed yet. */
 	struct vfs2_wal_index_basic_hdr prev_txn_hdr;
 	/* Copy of the WAL index header that reflects a sorta-committed
 	 * transaction that has not yet been through Raft. */
@@ -149,6 +152,11 @@ static bool is_valid_magic(const uint32_t *x)
 {
 	uint32_t n = ByteGetBe32((const uint8_t *)x);
 	return (n == 0x377f0682) || (n == 0x377f0683);
+}
+
+static bool is_valid_page_size(unsigned long n)
+{
+	return n >= 1<<9 && n <= 1<<16 && (n & (n - 1)) == 0;
 }
 
 /**
@@ -480,18 +488,46 @@ static int vfs2_check_reserved_lock(sqlite3_file *file, int *out)
 static int vfs2_file_control(sqlite3_file *file, int op, void *arg)
 {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	assert(xfile->flags & SQLITE_OPEN_MAIN_DB);
 
 	if (op == SQLITE_FCNTL_COMMIT_PHASETWO) {
 		/* Hide the transaction that was just written by resetting
 		 * the WAL index header. */
-		assert(xfile->flags & SQLITE_OPEN_MAIN_DB);
 		assert(xfile->db_shm.all_regions_len > 0);
 		union vfs2_shm_region0 *region0 = xfile->db_shm.all_regions[0];
 		xfile->db_shm.pending_txn_hdr = region0->hdr.basic[0];
 		region0->hdr.basic[0] = xfile->db_shm.prev_txn_hdr;
 		region0->hdr.basic[1] = region0->hdr.basic[0];
+	} else if (op == SQLITE_FCNTL_PRAGMA) {
+		char **args = arg;
+		char **e = &args[0];
+		char *left = args[1];
+		char *right = args[2];
+		char *end;
+		if (strcmp(left, "page_size") == 0 && right != NULL) {
+			unsigned long pgsz = strtoul(right, &end, 10);
+			if (*end != '\0' || !is_valid_page_size(pgsz)) {
+				/* Let SQLite return whatever error code is appropriate for this case */
+				goto forward;
+			}
+			unsigned expected = 0;
+			if (!atomic_compare_exchange_strong(&xfile->vfs_data->page_size, &expected, (unsigned)pgsz) && expected != pgsz) {
+				*e = sqlite3_mprintf("can't modify page size once set");
+				return SQLITE_ERROR;
+			}
+		} else if (strcmp(left, "journal_mode") == 0 && right != NULL) {
+			if (strcasecmp(right, "wal") != 0) {
+				*e = sqlite3_mprintf("dqlite requires WAL mode");
+				return SQLITE_ERROR;
+			}
+		}
+	} else if (op == SQLITE_FCNTL_PERSIST_WAL) {
+		int *out = arg;
+		*out = 1;
+		return SQLITE_OK;
 	}
 
+forward:
 	return xfile->orig->pMethods->xFileControl(xfile->orig, op, arg);
 }
 
@@ -978,17 +1014,20 @@ static int vfs2_current_time_int64(sqlite3_vfs *vfs, sqlite3_int64 *out)
 
 /* sqlite3_vfs implementations end here */
 
-sqlite3_vfs *vfs2_make(sqlite3_vfs *orig)
+sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, unsigned page_size)
 {
+	if (page_size != 0 && !is_valid_page_size(page_size)) {
+		return NULL;
+	}
 	struct vfs2_data *data = sqlite3_malloc(sizeof(*data));
-	if (data == NULL) {
-		goto err;
+	struct sqlite3_vfs *vfs = sqlite3_malloc(sizeof(*vfs));
+	if (data == NULL || vfs == NULL) {
+		return NULL;
 	}
 	data->orig = orig;
-	struct sqlite3_vfs *vfs = sqlite3_malloc(sizeof(*vfs));
-	if (vfs == NULL) {
-		goto err_after_alloc_data;
-	}
+	pthread_rwlock_init(&data->rwlock, NULL);
+	atomic_init(&data->page_size, page_size);
+	QUEUE__INIT(&data->queue);
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfs2_file);
 	vfs->mxPathname = orig->mxPathname;
@@ -1008,11 +1047,6 @@ sqlite3_vfs *vfs2_make(sqlite3_vfs *orig)
 	vfs->xGetLastError = vfs2_get_last_error;
 	vfs->xCurrentTimeInt64 = vfs2_current_time_int64;
 	return vfs;
-
-err_after_alloc_data:
-	sqlite3_free(data);
-err:
-	return NULL;
 }
 
 /* FIXME what return codes should this use? */

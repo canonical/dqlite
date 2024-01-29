@@ -17,7 +17,7 @@
  * functions below that operate on sqlite3_file objects created by this VFS
  * should also only be used on that thread.
  */
-sqlite3_vfs *vfs2_make(sqlite3_vfs *orig);
+sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, unsigned page_size);
 
 /**
  * Retrieve frames that were appended to the WAL by the last write transaction.
