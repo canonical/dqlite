@@ -384,12 +384,12 @@ TEST(vfs2_open, walBeforeDb, setUp, tearDown, 0, NULL)
 	int rc;
 
 	(void)params;
-	vfsFillPath(f, "test.db");
+	vfsFillPath(f, "test.db-wal");
 
 	flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL;
 	rc = f->vfs->xOpen(f->vfs, f->path, file, flags, &flags);
 
-	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
+	munit_assert_int(rc, ==, SQLITE_IOERR_FSTAT);
 
 	free(file);
 
