@@ -832,7 +832,9 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		xout->wal.wal_prev = phys2;
 		xout->wal.wal_prev_fixed_name = fixed2;
 
-		*out_flags = out_flags1;
+		if (out_flags != NULL) {
+			*out_flags = out_flags1;
+		}
 	} else {
 		if (need_link) {
 			rv = link(fixed2, name);
@@ -850,7 +852,9 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		xout->wal.wal_prev = phys1;
 		xout->wal.wal_prev_fixed_name = fixed1;
 
-		*out_flags = out_flags2;
+		if (out_flags != NULL) {
+			*out_flags = out_flags2;
+		}
 	}
 
 	register_file(xout, &entry);
@@ -923,7 +927,6 @@ static int vfs2_open(sqlite3_vfs *vfs,
 		     int *out_flags)
 {
 	out->pMethods = NULL;
-	*out_flags = 0;
 	struct vfs2_file *xout = (struct vfs2_file *)out;
 	struct vfs2_data *data = vfs->pAppData;
 	/* We unconditionally set pMethods in the output, so SQLite will always
