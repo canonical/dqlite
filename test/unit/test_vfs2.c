@@ -69,7 +69,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 
 	SETUP_HEAP;
 	SETUP_SQLITE;
-	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), 0);
+	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), "dqlite-vfs2", 0);
 	munit_assert_ptr(f->vfs, !=, NULL);
 	f->dir = test_dir_setup();
 	rv = sqlite3_vfs_register(f->vfs, 0);

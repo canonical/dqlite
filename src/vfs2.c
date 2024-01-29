@@ -1039,7 +1039,7 @@ static int vfs2_current_time_int64(sqlite3_vfs *vfs, sqlite3_int64 *out)
 
 /* sqlite3_vfs implementations end here */
 
-sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, unsigned page_size)
+sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name, unsigned page_size)
 {
 	if (page_size != 0 && !is_valid_page_size(page_size)) {
 		return NULL;
@@ -1056,7 +1056,7 @@ sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, unsigned page_size)
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfs2_file);
 	vfs->mxPathname = orig->mxPathname;
-	vfs->zName = "dqlite-vfs2";
+	vfs->zName = name;
 	vfs->pAppData = data;
 	vfs->xOpen = vfs2_open;
 	vfs->xDelete = vfs2_delete;
