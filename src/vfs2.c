@@ -199,15 +199,23 @@ static void register_file(struct vfs2_file *f, struct vfs2_db_entry **entry)
 	{
 		struct vfs2_db_entry *cur =
 		    QUEUE__DATA(q, struct vfs2_db_entry, queue);
-		if ((f->flags & SQLITE_OPEN_MAIN_DB) && cur->wal != NULL &&
-		    strcmp(sqlite3_filename_database(cur->wal->wal.moving_name),
-			   f->db_shm.name) == 0) {
+		if ((f->flags & SQLITE_OPEN_MAIN_DB) && cur->wal != NULL) {
+			const char *walname = cur->wal->wal.moving_name;
+			const char *dash = strrchr(walname, '-');
+			assert(dash != NULL);
+			if (strncmp(walname, f->db_shm.name, (size_t)(dash - walname)) != 0) {
+				continue;
+			}
 			found = true;
 			cur->db = f;
 			break;
-		} else if ((f->flags & SQLITE_OPEN_WAL) && cur->db != NULL &&
-			   strcmp(sqlite3_filename_database(f->wal.moving_name),
-				  cur->db->db_shm.name) == 0) {
+		} else if ((f->flags & SQLITE_OPEN_WAL) && cur->db != NULL) {
+			const char *walname = f->wal.moving_name;
+			const char *dash = strrchr(walname, '-');
+			assert(dash != NULL);
+			if (strncmp(walname, cur->db->db_shm.name, (size_t)(dash - walname)) != 0) {
+				continue;
+			}
 			found = true;
 			cur->wal = f;
 			break;
@@ -713,9 +721,9 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	int rv;
 	struct vfs2_data *data = vfs->pAppData;
 
-	const char *dbname = sqlite3_filename_database(name);
-	if (strlen(dbname) + strlen(VFS2_WAL_FIXED_SUFFIX1) >
-	    (size_t)data->orig->mxPathname) {
+	const char *dash = strrchr(name, '-');
+	assert(dash != NULL);
+	if ((size_t)(dash - name) + strlen(VFS2_WAL_FIXED_SUFFIX1) > (size_t)data->orig->mxPathname) {
 		rv = SQLITE_ERROR;
 		goto err;
 	}
@@ -734,9 +742,9 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	}
 
 	/* Open the two physical WALs */
-	strcpy(fixed1, dbname);
+	strncpy(fixed1, name, dash - name);
 	strcat(fixed1, VFS2_WAL_FIXED_SUFFIX1);
-	strcpy(fixed2, dbname);
+	strncpy(fixed2, name, dash - name);
 	strcat(fixed2, VFS2_WAL_FIXED_SUFFIX2);
 	int out_flags1, out_flags2;
 	memset(phys1, 0, sizeof(*phys1));
