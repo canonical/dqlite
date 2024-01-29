@@ -411,7 +411,7 @@ TEST(vfs2_open, oom, setUp, tearDown, 0, NULL)
 	test_heap_fault_enable();
 
 	rc = f->vfs->xOpen(f->vfs, f->path, file, flags, &flags);
-	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
+	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
 	free(file);
 
@@ -433,7 +433,7 @@ TEST(vfs2_open, oomFilename, setUp, tearDown, 0, NULL)
 	test_heap_fault_enable();
 
 	rc = f->vfs->xOpen(f->vfs, f->path, file, flags, &flags);
-	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
+	munit_assert_int(rc, ==, SQLITE_NOMEM);
 
 	free(file);
 
