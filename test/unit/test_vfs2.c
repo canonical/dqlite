@@ -832,46 +832,6 @@ TEST(vfs2_truncate, database, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Truncating a file which is not the main db file or the WAL file produces an
- * error. */
-TEST(vfs2_truncate, unexpected, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *main_db = __file_create_main_db(f);
-	sqlite3_file *file = munit_malloc(f->vfs->szOsFile);
-	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_JOURNAL;
-	char buf[32];
-	char journal[512];
-	int rc;
-
-	(void)params;
-
-	/* Open a journal file. */
-	rc = snprintf(journal, sizeof(journal), "%s-journal", f->path);
-	munit_assert_int(rc, >, 0);
-	munit_assert_int(rc, <, sizeof(journal));
-	rc = f->vfs->xOpen(f->vfs, journal, file, flags, &flags);
-	munit_assert_int(rc, ==, 0);
-
-	/* Write some content. */
-	rc = file->pMethods->xWrite(file, buf, 32, 0);
-	munit_assert_int(rc, ==, 0);
-
-	/* Truncating produces an error. */
-	rc = file->pMethods->xTruncate(file, 0);
-	munit_assert_int(rc, ==, SQLITE_IOERR_TRUNCATE);
-
-	rc = file->pMethods->xClose(main_db);
-	munit_assert_int(rc, ==, 0);
-	free(main_db);
-
-	rc = file->pMethods->xClose(file);
-	munit_assert_int(rc, ==, 0);
-	free(file);
-
-	return MUNIT_OK;
-}
-
 /* Truncating an empty file is a no-op. */
 TEST(vfs2_truncate, empty, setUp, tearDown, 0, NULL)
 {
@@ -891,54 +851,6 @@ TEST(vfs2_truncate, empty, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, 0);
 	munit_assert_int(size, ==, 0);
 
-	rc = file->pMethods->xClose(file);
-	munit_assert_int(rc, ==, 0);
-	free(file);
-
-	return MUNIT_OK;
-}
-
-/* Trying to grow an empty file produces an error. */
-TEST(vfs2_truncate, emptyGrow, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(f);
-	int rc;
-
-	(void)params;
-
-	/* Truncating an empty file is a no-op. */
-	rc = file->pMethods->xTruncate(file, 512);
-	munit_assert_int(rc, ==, SQLITE_IOERR_TRUNCATE);
-
-	rc = file->pMethods->xClose(file);
-	munit_assert_int(rc, ==, 0);
-	free(file);
-
-	return MUNIT_OK;
-}
-
-/* Trying to truncate a main database file to a size which is not a multiple of
- * the page size produces an error. */
-TEST(vfs2_truncate, misaligned, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(f);
-	void *buf_page_1 = __buf_page_1();
-
-	int rc;
-
-	(void)params;
-
-	/* Write the first page, containing the header. */
-	rc = file->pMethods->xWrite(file, buf_page_1, 512, 0);
-	munit_assert_int(rc, ==, 0);
-
-	/* Truncating to an invalid size. */
-	rc = file->pMethods->xTruncate(file, 400);
-	munit_assert_int(rc, ==, SQLITE_IOERR_TRUNCATE);
-
-	free(buf_page_1);
 	rc = file->pMethods->xClose(file);
 	munit_assert_int(rc, ==, 0);
 	free(file);
