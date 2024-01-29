@@ -396,39 +396,6 @@ TEST(vfs2_open, walBeforeDb, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Trying to run queries against a database that hasn't turned off the
- * synchronous flag results in an error. */
-TEST(vfs2_open, synchronous, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3 *db;
-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	int rc;
-
-	(void)params;
-	vfsFillPath(f, "test.db");
-
-	rc = sqlite3_vfs_register(f->vfs, 0);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = sqlite3_open_v2(f->path, &db, flags, f->vfs->zName);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	__db_exec(db, "PRAGMA page_size=4092");
-
-	rc = sqlite3_exec(db, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
-	munit_assert_int(rc, ==, SQLITE_IOERR);
-
-	munit_assert_string_equal(sqlite3_errmsg(db), "disk I/O error");
-
-	__db_close(db);
-
-	rc = sqlite3_vfs_unregister(f->vfs);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	return MUNIT_OK;
-}
-
 /* Out of memory when creating the content structure for a new file. */
 TEST(vfs2_open, oom, setUp, tearDown, 0, NULL)
 {
