@@ -1099,10 +1099,8 @@ TEST(vfs2_file_control, journal, setUp, tearDown, 0, NULL)
 	(void)params;
 	(void)data;
 
-	/* Setting the page size a first time returns NOTFOUND, which is what
-	 * SQLite effectively expects. */
 	rc = file->pMethods->xFileControl(file, SQLITE_FCNTL_PRAGMA, fnctl);
-	munit_assert_int(rc, ==, SQLITE_IOERR);
+	munit_assert_int(rc, ==, SQLITE_ERROR);
 
 	rc = file->pMethods->xClose(file);
 	munit_assert_int(rc, ==, 0);
