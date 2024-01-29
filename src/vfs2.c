@@ -218,7 +218,9 @@ static void register_file(struct vfs2_file *f, struct vfs2_db_entry **entry)
 		*entry = NULL;
 		if (f->flags & SQLITE_OPEN_MAIN_DB) {
 			e->db = f;
+			e->wal = NULL;
 		} else if (f->flags & SQLITE_OPEN_WAL) {
+			e->db = NULL;
 			e->wal = f;
 		}
 		QUEUE__PUSH(&f->vfs_data->queue, &e->queue);
