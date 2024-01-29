@@ -751,10 +751,10 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	}
 
 	/* Open the two physical WALs */
-	strncpy(fixed1, name, dash - name);
+	strncpy(fixed1, name, (size_t)(dash - name));
 	fixed1[dash - name] = '\0';
 	strcat(fixed1, VFS2_WAL_FIXED_SUFFIX1);
-	strncpy(fixed2, name, dash - name);
+	strncpy(fixed2, name, (size_t)(dash - name));
 	fixed2[dash - name] = '\0';
 	strcat(fixed2, VFS2_WAL_FIXED_SUFFIX2);
 	int out_flags1, out_flags2;
