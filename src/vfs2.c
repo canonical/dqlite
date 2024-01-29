@@ -156,7 +156,7 @@ static bool is_valid_magic(const uint32_t *x)
 
 static bool is_valid_page_size(unsigned long n)
 {
-	return n >= 1<<9 && n <= 1<<16 && (n & (n - 1)) == 0;
+	return n >= 1 << 9 && n <= 1 << 16 && (n & (n - 1)) == 0;
 }
 
 /**
@@ -203,7 +203,8 @@ static void register_file(struct vfs2_file *f, struct vfs2_db_entry **entry)
 			const char *walname = cur->wal->wal.moving_name;
 			const char *dash = strrchr(walname, '-');
 			assert(dash != NULL);
-			if (strncmp(walname, f->db_shm.name, (size_t)(dash - walname)) != 0) {
+			if (strncmp(walname, f->db_shm.name,
+				    (size_t)(dash - walname)) != 0) {
 				continue;
 			}
 			found = true;
@@ -213,7 +214,8 @@ static void register_file(struct vfs2_file *f, struct vfs2_db_entry **entry)
 			const char *walname = f->wal.moving_name;
 			const char *dash = strrchr(walname, '-');
 			assert(dash != NULL);
-			if (strncmp(walname, cur->db->db_shm.name, (size_t)(dash - walname)) != 0) {
+			if (strncmp(walname, cur->db->db_shm.name,
+				    (size_t)(dash - walname)) != 0) {
 				continue;
 			}
 			found = true;
@@ -517,17 +519,23 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg)
 		if (strcmp(left, "page_size") == 0 && right != NULL) {
 			unsigned long pgsz = strtoul(right, &end, 10);
 			if (*end != '\0' || !is_valid_page_size(pgsz)) {
-				/* Let SQLite return whatever error code is appropriate for this case */
+				/* Let SQLite return whatever error code is
+				 * appropriate for this case */
 				goto forward;
 			}
 			unsigned expected = 0;
-			if (!atomic_compare_exchange_strong(&xfile->vfs_data->page_size, &expected, (unsigned)pgsz) && expected != pgsz) {
-				*e = sqlite3_mprintf("can't modify page size once set");
+			if (!atomic_compare_exchange_strong(
+				&xfile->vfs_data->page_size, &expected,
+				(unsigned)pgsz) &&
+			    expected != pgsz) {
+				*e = sqlite3_mprintf(
+				    "can't modify page size once set");
 				return SQLITE_ERROR;
 			}
 		} else if (strcmp(left, "journal_mode") == 0 && right != NULL) {
 			if (strcasecmp(right, "wal") != 0) {
-				*e = sqlite3_mprintf("dqlite requires WAL mode");
+				*e =
+				    sqlite3_mprintf("dqlite requires WAL mode");
 				return SQLITE_ERROR;
 			}
 		}
@@ -723,7 +731,8 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 	const char *dash = strrchr(name, '-');
 	assert(dash != NULL);
-	if ((size_t)(dash - name) + strlen(VFS2_WAL_FIXED_SUFFIX1) > (size_t)data->orig->mxPathname) {
+	if ((size_t)(dash - name) + strlen(VFS2_WAL_FIXED_SUFFIX1) >
+	    (size_t)data->orig->mxPathname) {
 		rv = SQLITE_ERROR;
 		goto err;
 	}
@@ -944,7 +953,8 @@ static int vfs2_open(sqlite3_vfs *vfs,
 		if (xout->orig == NULL) {
 			return SQLITE_NOMEM;
 		}
-		return data->orig->xOpen(data->orig, name, xout->orig, flags, out_flags);
+		return data->orig->xOpen(data->orig, name, xout->orig, flags,
+					 out_flags);
 	}
 }
 

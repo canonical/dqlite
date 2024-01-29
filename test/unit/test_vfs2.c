@@ -43,9 +43,7 @@ static void vfsFillPath(struct fixture *f, char *filename)
 	munit_assert_int(rv, <, VFS_PATH_SZ);
 }
 
-static void setPageSize(sqlite3_file *f,
-			unsigned page_size,
-			int rv)
+static void setPageSize(sqlite3_file *f, unsigned page_size, int rv)
 {
 	int rc;
 	char page_sz[32];
