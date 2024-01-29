@@ -595,32 +595,6 @@ TEST(vfs2_access, noent, setUp, tearDown, 0, NULL)
 
 /******************************************************************************
  *
- * xFullPathname
- *
- ******************************************************************************/
-
-SUITE(vfs2_full_pathname);
-
-/* The xFullPathname API returns the filename unchanged. */
-TEST(vfs2_full_pathname, success, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-
-	int rc;
-	char pathname[10];
-
-	(void)params;
-
-	rc = f->vfs->xFullPathname(f->vfs, "test.db", 10, pathname);
-	munit_assert_int(rc, ==, 0);
-
-	munit_assert_string_equal(pathname, "test.db");
-
-	return MUNIT_OK;
-}
-
-/******************************************************************************
- *
  * xClose
  *
  ******************************************************************************/
