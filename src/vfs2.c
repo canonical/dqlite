@@ -579,6 +579,8 @@ static int vfs2_shm_map(sqlite3_file *file,
 		xfile->db_shm.refcount++;
 	}
 
+	return SQLITE_OK;
+
 err_after_region_malloc:
 	sqlite3_free(region);
 err:
