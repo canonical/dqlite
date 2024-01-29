@@ -93,8 +93,7 @@ struct vfs2_file
 		/* if this file object is a WAL */
 		struct
 		{
-			sqlite3_filename
-			    moving_name; /* e.g. /path/to/my.db-wal */
+			const char *moving_name; /* e.g. /path/to/my.db-wal */
 			char
 			    *wal_cur_fixed_name; /* e.g. /path/to/my.db-xwal1 */
 			sqlite3_file
@@ -122,7 +121,7 @@ struct vfs2_file
 		/* if this file object is a main file */
 		struct
 		{
-			sqlite3_filename name; /* e.g. /path/to/my.db */
+			const char *name; /* e.g. /path/to/my.db */
 
 			/* Copy of the WAL index header that reflects the last
 			 * really-committed (i.e. in Raft too) transaction. */
@@ -673,7 +672,7 @@ static struct sqlite3_io_methods vfs2_io_methods = {3,
 /* sqlite3_vfs implementations begin here */
 
 static int vfs2_open_wal(sqlite3_vfs *vfs,
-			 sqlite3_filename name,
+			 const char *name,
 			 struct vfs2_file *xout,
 			 int flags,
 			 int *out_flags)
@@ -833,7 +832,7 @@ err:
 }
 
 static int vfs2_open_db(sqlite3_vfs *vfs,
-			sqlite3_filename name,
+			const char *name,
 			struct vfs2_file *xout,
 			int flags,
 			int *out_flags)
@@ -875,7 +874,7 @@ err:
 }
 
 static int vfs2_open(sqlite3_vfs *vfs,
-		     sqlite3_filename name,
+		     const char *name,
 		     sqlite3_file *out,
 		     int flags,
 		     int *out_flags)
