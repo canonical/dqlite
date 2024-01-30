@@ -238,12 +238,38 @@ static void register_file(struct vfs2_file *f, struct vfs2_db_entry **entry)
 	pthread_rwlock_unlock(&f->vfs_data->rwlock);
 }
 
+static void unregister_file(struct vfs2_file *file)
+{
+	pthread_rwlock_wrlock(&file->vfs_data->rwlock);
+	/* Not using QUEUE__FOREACH here, we want to be careful and explicit since we're modifying
+	 * the queue while iterating over it. */
+	queue *q = QUEUE__NEXT(&file->vfs_data->queue);
+	while (q != &file->vfs_data->queue) {
+		struct vfs2_db_entry *entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
+		if (entry->db == file) {
+			entry->db = NULL;
+		} else if (entry->wal == file) {
+			entry->wal = NULL;
+		}
+		if (entry->db == NULL && entry->wal == NULL) {
+			QUEUE__PREV_NEXT(q) = QUEUE__NEXT(q);
+			QUEUE__NEXT_PREV(q) = QUEUE__PREV(q);
+		}
+		q = QUEUE__NEXT(q);
+		sqlite3_free(entry);
+	}
+	pthread_rwlock_unlock(&file->vfs_data->rwlock);
+}
+
 /* sqlite3_io_methods implementations begin here */
 
 static int vfs2_close(sqlite3_file *file)
 {
 	int rv, rvprev;
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
+
+	unregister_file(xfile);
+
 	rvprev = 0;
 	if (xfile->flags & SQLITE_OPEN_WAL) {
 		sqlite3_free(xfile->wal.wal_cur_fixed_name);
@@ -1138,4 +1164,11 @@ int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n)
 	}
 
 	return 0;
+}
+
+void vfs2_destroy(sqlite3_vfs *vfs)
+{
+	struct vfs2_data *data = vfs->pAppData;
+	pthread_rwlock_destroy(&data->rwlock);
+	sqlite3_free(vfs);
 }

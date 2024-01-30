@@ -55,6 +55,8 @@ int vfs2_shallow_poll(sqlite3_file *file, struct vfs2_wal_slice *out);
  */
 int vfs2_apply(sqlite3_file *file);
 
+void vfs2_destroy(sqlite3_vfs *vfs);
+
 // TODO access read marks and locks
 
 // TODO access information about checkpoints
