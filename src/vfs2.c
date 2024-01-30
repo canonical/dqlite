@@ -1177,5 +1177,6 @@ void vfs2_destroy(sqlite3_vfs *vfs)
 {
 	struct vfs2_data *data = vfs->pAppData;
 	pthread_rwlock_destroy(&data->rwlock);
+	sqlite3_free(data);
 	sqlite3_free(vfs);
 }

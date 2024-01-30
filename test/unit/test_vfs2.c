@@ -81,7 +81,7 @@ static void tearDown(void *data)
 {
 	struct fixture *f = data;
 	test_dir_tear_down(f->dir);
-	// TODO tear down the VFS here
+	vfs2_destroy(f->vfs);
 	TEAR_DOWN_SQLITE;
 	TEAR_DOWN_HEAP;
 	free(f);
@@ -160,116 +160,6 @@ static void *__buf_page_2(void)
 	buf[511] = 6;
 
 	return buf;
-}
-
-/* Helper to execute a SQL statement. */
-static void __db_exec(sqlite3 *db, const char *sql)
-{
-	int rc;
-
-	rc = sqlite3_exec(db, sql, NULL, NULL, NULL);
-	munit_assert_int(rc, ==, SQLITE_OK);
-}
-
-/* Helper to open and initialize a database, setting the page size and
- * WAL mode. */
-static sqlite3 *__db_open(void)
-{
-	sqlite3 *db;
-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	int rc;
-
-	rc = sqlite3_open_v2("test.db", &db, flags, "dqlite-vfs2");
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	__db_exec(db, "PRAGMA page_size=512");
-	__db_exec(db, "PRAGMA journal_mode=WAL");
-
-	return db;
-}
-
-/* Helper to close a database. */
-static void __db_close(sqlite3 *db)
-{
-	int rv;
-	rv = sqlite3_close(db);
-	munit_assert_int(rv, ==, SQLITE_OK);
-}
-
-/* Helper get the mxFrame value of the WAL index object associated with the
- * given database. */
-static uint32_t __wal_idx_mx_frame(sqlite3 *db)
-{
-	sqlite3_file *file;
-	volatile void *region;
-	uint32_t mx_frame;
-	int rc;
-
-	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	/* The mxFrame number is 16th byte of the WAL index header. See also
-	 * https://sqlite.org/walformat.html. */
-	mx_frame = ((uint32_t *)region)[4];
-
-	return mx_frame;
-}
-
-/* Helper get the read mark array of the WAL index object associated with the
- * given database. */
-static uint32_t *__wal_idx_read_marks(sqlite3 *db)
-{
-	sqlite3_file *file;
-	volatile void *region;
-	uint32_t *idx;
-	uint32_t *marks;
-	int rc;
-
-	marks = munit_malloc(FORMAT__WAL_NREADER * sizeof *marks);
-
-	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	/* The read-mark array starts at the 100th byte of the WAL index
-	 * header. See also https://sqlite.org/walformat.html. */
-	idx = (uint32_t *)region;
-	memcpy(marks, &idx[25], (sizeof *idx) * FORMAT__WAL_NREADER);
-
-	return marks;
-}
-
-/* Helper that returns true if the i'th lock of the shared memmory reagion
- * associated with the given database is currently held. */
-static int __shm_shared_lock_held(sqlite3 *db, int i)
-{
-	sqlite3_file *file;
-	int flags;
-	int locked;
-	int rc;
-
-	rc = sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &file);
-	munit_assert_int(rc, ==, SQLITE_OK);
-
-	/* Try to acquire an exclusive lock, which will fail if the shared lock
-	 * is held. */
-	flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
-	rc = file->pMethods->xShmLock(file, i, 1, flags);
-
-	locked = rc == SQLITE_BUSY;
-
-	if (rc == SQLITE_OK) {
-		flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
-		rc = file->pMethods->xShmLock(file, i, 1, flags);
-		munit_assert_int(rc, ==, SQLITE_OK);
-	}
-
-	return locked;
 }
 
 /******************************************************************************
