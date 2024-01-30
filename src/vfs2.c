@@ -151,7 +151,7 @@ struct vfs2_file
 static bool is_valid_magic(const uint32_t *x)
 {
 	uint32_t n = ByteGetBe32((const uint8_t *)x);
-	return (n == 0x377f0682) || (n == 0x377f0683);
+	return n == 0x377f0682 || n == 0x377f0683;
 }
 
 static bool is_valid_page_size(unsigned long n)
@@ -344,19 +344,15 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr)
 	db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
 
 	/* Write the new header of the incoming physical WAL, and invalidate
-	 * the header of the outgoing physical WAL. */
+	 * the header of the outgoing physical WAL. XXX do this in the other
+	 * order? */
 	rv = phys_incoming->pMethods->xWrite(phys_incoming, hdr,
 					     VFS2_WAL_HDR_SIZE, 0);
 	if (rv != SQLITE_OK) {
 		return rv;
 	}
-	rv = phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic,
-					     sizeof(invalid_magic), 0);
-	if (rv != SQLITE_OK) {
-		return rv;
-	}
-
-	return SQLITE_OK;
+	return phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic,
+					       sizeof(invalid_magic), 0);
 }
 
 static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
@@ -698,25 +694,26 @@ static int vfs2_shm_unmap(sqlite3_file *file, int delete)
 
 /* sqlite3_io_methods implementations end here */
 
-static struct sqlite3_io_methods vfs2_io_methods = {3,
-						    vfs2_close,
-						    vfs2_read,
-						    vfs2_write,
-						    vfs2_truncate,
-						    vfs2_sync,
-						    vfs2_file_size,
-						    vfs2_lock,
-						    vfs2_unlock,
-						    vfs2_check_reserved_lock,
-						    vfs2_file_control,
-						    vfs2_sector_size,
-						    vfs2_device_characteristics,
-						    vfs2_shm_map,
-						    vfs2_shm_lock,
-						    vfs2_shm_barrier,
-						    vfs2_shm_unmap,
-						    vfs2_fetch,
-						    vfs2_unfetch};
+static struct sqlite3_io_methods vfs2_io_methods = {
+    .iVersion = 3,
+    .xClose = vfs2_close,
+    .xRead = vfs2_read,
+    .xWrite = vfs2_write,
+    .xTruncate = vfs2_truncate,
+    .xSync = vfs2_sync,
+    .xFileSize = vfs2_file_size,
+    .xLock = vfs2_lock,
+    .xUnlock = vfs2_unlock,
+    .xCheckReservedLock = vfs2_check_reserved_lock,
+    .xFileControl = vfs2_file_control,
+    .xSectorSize = vfs2_sector_size,
+    .xDeviceCharacteristics = vfs2_device_characteristics,
+    .xShmMap = vfs2_shm_map,
+    .xShmLock = vfs2_shm_lock,
+    .xShmBarrier = vfs2_shm_barrier,
+    .xShmUnmap = vfs2_shm_unmap,
+    .xFetch = vfs2_fetch,
+    .xUnfetch = vfs2_unfetch};
 
 /* sqlite3_vfs implementations begin here */
 
