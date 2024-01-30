@@ -241,12 +241,13 @@ static void register_file(struct vfs2_file *f, struct vfs2_db_entry **entry)
 static void unregister_file(struct vfs2_file *file)
 {
 	pthread_rwlock_wrlock(&file->vfs_data->rwlock);
-	/* Not using QUEUE__FOREACH here, we want to be careful and explicit since we're modifying
-	 * the queue while iterating over it. */
+	/* Not using QUEUE__FOREACH here, we want to be careful and explicit
+	 * since we're modifying the queue while iterating over it. */
 	queue *q = QUEUE__NEXT(&file->vfs_data->queue);
 	while (q != &file->vfs_data->queue) {
 		queue *next = QUEUE__NEXT(q);
-		struct vfs2_db_entry *entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
+		struct vfs2_db_entry *entry =
+		    QUEUE__DATA(q, struct vfs2_db_entry, queue);
 		if (entry->db == file) {
 			entry->db = NULL;
 		} else if (entry->wal == file) {
@@ -276,7 +277,8 @@ static int vfs2_close(sqlite3_file *file)
 		sqlite3_free(xfile->wal.wal_cur_fixed_name);
 		sqlite3_free(xfile->wal.wal_prev_fixed_name);
 		if (xfile->wal.wal_prev->pMethods != NULL) {
-			rvprev = xfile->wal.wal_prev->pMethods->xClose(xfile->wal.wal_prev);
+			rvprev = xfile->wal.wal_prev->pMethods->xClose(
+			    xfile->wal.wal_prev);
 		}
 		sqlite3_free(xfile->wal.wal_prev);
 	} else if (xfile->flags & SQLITE_OPEN_MAIN_DB) {
@@ -793,12 +795,12 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	fixed2[dash - name] = '\0';
 	strcat(fixed2, VFS2_WAL_FIXED_SUFFIX2);
 	int out_flags1, out_flags2;
-	memset(phys1, 0, data->orig->szOsFile);
+	memset(phys1, 0, (size_t)data->orig->szOsFile);
 	rv = data->orig->xOpen(data->orig, fixed1, phys1, flags, &out_flags1);
 	if (rv != SQLITE_OK) {
 		goto err_after_open_phys1;
 	}
-	memset(phys2, 0, data->orig->szOsFile);
+	memset(phys2, 0, (size_t)data->orig->szOsFile);
 	rv = data->orig->xOpen(data->orig, fixed2, phys2, flags, &out_flags2);
 	if (rv != SQLITE_OK) {
 		goto err_after_open_phys2;
@@ -935,7 +937,7 @@ static int vfs2_open_db(sqlite3_vfs *vfs,
 	if (xout->orig == NULL) {
 		return SQLITE_NOMEM;
 	}
-	memset(xout->orig, 0, data->orig->szOsFile);
+	memset(xout->orig, 0, (size_t)data->orig->szOsFile);
 	rv = data->orig->xOpen(data->orig, name, xout->orig, flags, out_flags);
 	if (rv != SQLITE_OK) {
 		return rv;
