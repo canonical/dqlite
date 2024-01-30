@@ -245,6 +245,7 @@ static void unregister_file(struct vfs2_file *file)
 	 * the queue while iterating over it. */
 	queue *q = QUEUE__NEXT(&file->vfs_data->queue);
 	while (q != &file->vfs_data->queue) {
+		queue *next = QUEUE__NEXT(q);
 		struct vfs2_db_entry *entry = QUEUE__DATA(q, struct vfs2_db_entry, queue);
 		if (entry->db == file) {
 			entry->db = NULL;
@@ -254,9 +255,9 @@ static void unregister_file(struct vfs2_file *file)
 		if (entry->db == NULL && entry->wal == NULL) {
 			QUEUE__PREV_NEXT(q) = QUEUE__NEXT(q);
 			QUEUE__NEXT_PREV(q) = QUEUE__PREV(q);
+			sqlite3_free(entry);
 		}
-		q = QUEUE__NEXT(q);
-		sqlite3_free(entry);
+		q = next;
 	}
 	pthread_rwlock_unlock(&file->vfs_data->rwlock);
 }
@@ -270,15 +271,26 @@ static int vfs2_close(sqlite3_file *file)
 
 	unregister_file(xfile);
 
-	rvprev = 0;
+	rvprev = SQLITE_OK;
 	if (xfile->flags & SQLITE_OPEN_WAL) {
 		sqlite3_free(xfile->wal.wal_cur_fixed_name);
 		sqlite3_free(xfile->wal.wal_prev_fixed_name);
-		rvprev =
-		    xfile->wal.wal_prev->pMethods->xClose(xfile->wal.wal_prev);
+		if (xfile->wal.wal_prev->pMethods != NULL) {
+			rvprev = xfile->wal.wal_prev->pMethods->xClose(xfile->wal.wal_prev);
+		}
+		sqlite3_free(xfile->wal.wal_prev);
+	} else if (xfile->flags & SQLITE_OPEN_MAIN_DB) {
+		for (int i = 0; i < xfile->db_shm.all_regions_len; i++) {
+			sqlite3_free(xfile->db_shm.all_regions[i]);
+		}
+		sqlite3_free(xfile->db_shm.all_regions);
 	}
-	rv = xfile->orig->pMethods->xClose(xfile->orig);
-	if (rv != 0) {
+	rv = SQLITE_OK;
+	if (xfile->orig->pMethods != NULL) {
+		rv = xfile->orig->pMethods->xClose(xfile->orig);
+	}
+	sqlite3_free(xfile->orig);
+	if (rv != SQLITE_OK) {
 		return rv;
 	}
 	return rvprev;
@@ -781,12 +793,12 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	fixed2[dash - name] = '\0';
 	strcat(fixed2, VFS2_WAL_FIXED_SUFFIX2);
 	int out_flags1, out_flags2;
-	memset(phys1, 0, sizeof(*phys1));
+	memset(phys1, 0, data->orig->szOsFile);
 	rv = data->orig->xOpen(data->orig, fixed1, phys1, flags, &out_flags1);
 	if (rv != SQLITE_OK) {
 		goto err_after_open_phys1;
 	}
-	memset(phys2, 0, sizeof(*phys2));
+	memset(phys2, 0, data->orig->szOsFile);
 	rv = data->orig->xOpen(data->orig, fixed2, phys2, flags, &out_flags2);
 	if (rv != SQLITE_OK) {
 		goto err_after_open_phys2;
@@ -920,15 +932,13 @@ static int vfs2_open_db(sqlite3_vfs *vfs,
 	struct vfs2_data *data = vfs->pAppData;
 
 	xout->orig = sqlite3_malloc(data->orig->szOsFile);
-	struct vfs2_db_entry *entry = sqlite3_malloc(sizeof(*entry));
-	if (xout->orig == NULL || entry == NULL) {
-		rv = SQLITE_NOMEM;
-		goto err;
+	if (xout->orig == NULL) {
+		return SQLITE_NOMEM;
 	}
-	memset(xout->orig, 0, sizeof(*xout->orig));
+	memset(xout->orig, 0, data->orig->szOsFile);
 	rv = data->orig->xOpen(data->orig, name, xout->orig, flags, out_flags);
 	if (rv != SQLITE_OK) {
-		goto err_after_open_orig;
+		return rv;
 	}
 
 	xout->db_shm.name = name;
@@ -938,18 +948,13 @@ static int vfs2_open_db(sqlite3_vfs *vfs,
 	memset(xout->db_shm.shared, 0, sizeof(xout->db_shm.shared));
 	memset(xout->db_shm.exclusive, 0, sizeof(xout->db_shm.exclusive));
 
+	struct vfs2_db_entry *entry = sqlite3_malloc(sizeof(*entry));
+	if (entry == NULL) {
+		return SQLITE_NOMEM;
+	}
 	register_file(xout, &entry);
 	sqlite3_free(entry);
 	return SQLITE_OK;
-
-err_after_open_orig:
-	if (xout->orig->pMethods != NULL) {
-		xout->orig->pMethods->xClose(xout->orig);
-	}
-	sqlite3_free(xout->orig);
-	sqlite3_free(entry);
-err:
-	return rv;
 }
 
 static int vfs2_open(sqlite3_vfs *vfs,
@@ -958,7 +963,6 @@ static int vfs2_open(sqlite3_vfs *vfs,
 		     int flags,
 		     int *out_flags)
 {
-	out->pMethods = NULL;
 	struct vfs2_file *xout = (struct vfs2_file *)out;
 	struct vfs2_data *data = vfs->pAppData;
 	/* We unconditionally set pMethods in the output, so SQLite will always
@@ -1045,6 +1049,7 @@ static int vfs2_current_time(sqlite3_vfs *vfs, double *out)
 	return data->orig->xCurrentTime(data->orig, out);
 }
 
+/* TODO update this */
 static int vfs2_get_last_error(sqlite3_vfs *vfs, int n, char *out)
 {
 	struct vfs2_data *data = vfs->pAppData;

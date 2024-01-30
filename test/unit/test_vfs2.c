@@ -305,6 +305,9 @@ TEST(vfs2_open, exclusive, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 	munit_assert_int(EEXIST, ==, f->vfs->xGetLastError(f->vfs, 0, 0));
 
+	rc = file2->pMethods->xClose(file2);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
 	rc = file1->pMethods->xClose(file1);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
@@ -365,6 +368,9 @@ TEST(vfs2_open, noent, setUp, tearDown, 0, NULL)
 
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 	munit_assert_int(ENOENT, ==, f->vfs->xGetLastError(f->vfs, 0, 0));
+
+	rc = file->pMethods->xClose(file);
+	munit_assert_int(rc, ==, SQLITE_OK);
 
 	free(file);
 
@@ -432,6 +438,9 @@ TEST(vfs2_open, oomFilename, setUp, tearDown, 0, NULL)
 
 	rc = f->vfs->xOpen(f->vfs, f->path, file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
+
+	rc = file->pMethods->xClose(file);
+	munit_assert_int(rc, ==, SQLITE_OK);
 
 	free(file);
 
@@ -507,6 +516,9 @@ TEST(vfs2_delete, success, setUp, tearDown, 0, NULL)
 	 * results in an error. */
 	rc = f->vfs->xOpen(f->vfs, f->path, file, 0, &flags);
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
+
+	rc = file->pMethods->xClose(file);
+	munit_assert_int(rc, ==, SQLITE_OK);
 
 	free(file);
 
@@ -888,6 +900,9 @@ TEST(vfs2_shm_map, oom, setUp, tearDown, 0, test_shm_map_oom_params)
 
 	rc = file->pMethods->xShmMap(file, 0, 32768, 1, &region);
 	munit_assert_int(rc, ==, SQLITE_NOMEM);
+
+	rc = file->pMethods->xClose(file);
+	munit_assert_int(rc, ==, SQLITE_OK);
 
 	free(file);
 
