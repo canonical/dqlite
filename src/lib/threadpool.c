@@ -48,6 +48,7 @@ static uv_key_t thread_key;
 static queue *thread_queues;
 static queue exit_message;
 static queue wq;
+static unsigned int ordered_in_flight = 0;
 
 static void xx__cancelled(struct xx__work *w UNUSED)
 {
@@ -67,6 +68,7 @@ static void worker(void *arg)
 	struct xx__work *w;
 	queue *q;
 	struct thread_args *ta = arg;
+	unsigned int wtype;
 
 	uv_key_set(&thread_key, &ta->idx);
 	uv_sem_post(ta->sem);
@@ -86,6 +88,7 @@ static void worker(void *arg)
 		    w = QUEUE__DATA(q, struct xx__work, wq);
 		    QUEUE__INSERT_TAIL(&thread_queues[w->thread_idx], q);
 		    uv_cond_signal(&cond[w->thread_idx]);
+		    ordered_in_flight++;
 		}
 
 		if (!QUEUE__IS_EMPTY(&wq)) {
@@ -93,6 +96,7 @@ static void worker(void *arg)
 		    /* Make sure exit message is the last one */
 		    assert(QUEUE__NEXT(QUEUE__HEAD(&wq)) == &wq);
 		    assert(QUEUE__HEAD(&wq) == &exit_message);
+		    assert(QUEUE__IS_EMPTY(&thread_queues[ta->idx]));
 		    uv_mutex_unlock(&mutex);
 		    break;
 		}
@@ -108,6 +112,7 @@ static void worker(void *arg)
 		uv_mutex_unlock(&mutex);
 
 		w = QUEUE__DATA(q, struct xx__work, wq);
+		wtype = w->type;
 		w->work(w);
 
 		uv_mutex_lock(&xx_loop(w->loop)->wq_mutex);
@@ -121,6 +126,10 @@ static void worker(void *arg)
 		/* Lock `mutex` since that is expected at the start of the next
 		 * iteration. */
 		uv_mutex_lock(&mutex);
+		if (wtype != WT_UNORD) {
+		    assert(ordered_in_flight > 0);
+		    ordered_in_flight--;
+		}
 	}
 }
 
@@ -189,7 +198,7 @@ static void init_threads(void)
 	threads = calloc(nthreads, sizeof(threads[0]));
 	thread_args = calloc(nthreads, sizeof(thread_args[0]));
 	thread_queues = calloc(nthreads, sizeof(thread_queues[0]));
-	if (cond == NULL ||threads == NULL || thread_args == NULL ||
+	if (cond == NULL || threads == NULL || thread_args == NULL ||
 	    thread_queues == NULL)
 		abort();
 
