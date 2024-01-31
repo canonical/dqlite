@@ -11,6 +11,7 @@ struct xx__work
 	struct uv_loop_s *loop;
 	queue wq;
 	unsigned int thread_idx;
+	unsigned int type;
 };
 
 typedef struct xx_work_s xx_work_t;

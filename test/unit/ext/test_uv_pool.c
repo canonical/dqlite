@@ -65,6 +65,7 @@ static void after_work_cb(xx_work_t *req, int status UNUSED)
 
 	for (i = 0; i <= WORK_ITEMS_NR; i++) {
 		work = malloc(sizeof(*work));
+		work->work_req.type = i % 2 == 0 ? 1 : 0;
 		rc = xx_queue_work(req->loop, work, i, bottom_work_cb,
 				   bottom_after_work_cb);
 		munit_assert_int(rc, ==, 0);
@@ -104,6 +105,7 @@ TEST_CASE(threadpool, sync, NULL)
 	struct fixture *f = data;
 	int rc;
 
+	f->work_req.work_req.type = 0;
 	rc = xx_queue_work(&f->xx_loop.loop, &f->work_req, 0, work_cb,
 			   after_work_cb);
 	munit_assert_int(rc, ==, 0);

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <uv.h>
+#include "src/lib/queue.h"
 #include "src/utils.h"
 
 static struct xx_loop_s *xx_loop(struct uv_loop_s *loop)
@@ -30,7 +31,6 @@ static inline void xx__req_unregister(xx_loop_t *loop, xx_work_t *req UNUSED)
 enum {
 	MAX_THREADPOOL_SIZE = 1024,
 	XX_THREADPOOL_SIZE = 4,
-	NOT_AFFINED = ~0u,
 };
 
 struct thread_args
@@ -76,7 +76,22 @@ static void worker(void *arg)
 		    uv_cond_wait(&cond[ta->idx], &mutex);
 		}
 
+		while (!QUEUE__IS_EMPTY(&wq)) {
+		    q = QUEUE__HEAD(&wq);
+		    if (q == &exit_message)
+			goto exit;
+
+		    QUEUE__REMOVE(q);
+		    QUEUE__INIT(q);
+		    w = QUEUE__DATA(q, struct xx__work, wq);
+		    QUEUE__INSERT_TAIL(&thread_queues[w->thread_idx], q);
+		    uv_cond_signal(&cond[w->thread_idx]);
+		}
+
 		if (!QUEUE__IS_EMPTY(&wq)) {
+		  exit:
+		    /* Make sure exit message is the last one */
+		    assert(QUEUE__NEXT(QUEUE__HEAD(&wq)) == &wq);
 		    assert(QUEUE__HEAD(&wq) == &exit_message);
 		    uv_mutex_unlock(&mutex);
 		    break;
@@ -113,8 +128,7 @@ static void post(queue *q, unsigned int idx)
 {
 	uv_mutex_lock(&mutex);
 
-	/* Assign work item thread affinity */
-	QUEUE__INSERT_TAIL(idx == NOT_AFFINED ? &wq : &thread_queues[idx], q);
+	QUEUE__INSERT_TAIL(idx == ~0u ? &wq : &thread_queues[idx], q);
 
 	for (idx = 0; idx < nthreads; ++idx)
 	    uv_cond_signal(&cond[idx]);
@@ -129,7 +143,7 @@ static void xx__threadpool_cleanup(void)
 	if (nthreads == 0)
 		return;
 
-	post(&exit_message, NOT_AFFINED);
+	post(&exit_message, ~0u);
 
 	for (i = 0; i < nthreads; i++) {
 		if (uv_thread_join(threads + i))
@@ -225,7 +239,7 @@ void xx__work_submit(uv_loop_t *loop,
 	w->loop = loop;
 	w->work = work;
 	w->done = done;
-	post(&w->wq, w->thread_idx);
+	post(&w->wq, w->type == 0 ? w->thread_idx: ~0u);
 }
 
 static int xx__work_cancel(uv_loop_t *loop, struct xx__work *w)
