@@ -49,6 +49,7 @@ static queue *thread_queues;
 static queue exit_message;
 static queue wq;
 static unsigned int ordered_in_flight = 0;
+static unsigned int ordered_current_wt = WT_BAR;
 
 static void xx__cancelled(struct xx__work *w UNUSED)
 {
@@ -86,6 +87,13 @@ static void worker(void *arg)
 		    QUEUE__REMOVE(q);
 		    QUEUE__INIT(q);
 		    w = QUEUE__DATA(q, struct xx__work, wq);
+
+		    if (w->type == WT_BAR) {
+			free(container_of(w, xx_work_t, work_req));
+			ordered_current_wt = WT_BAR;
+			continue;
+		    }
+
 		    QUEUE__INSERT_TAIL(&thread_queues[w->thread_idx], q);
 		    uv_cond_signal(&cond[w->thread_idx]);
 		    ordered_in_flight++;
@@ -331,7 +339,8 @@ int xx_queue_work(uv_loop_t *loop,
 	if (work_cb == NULL)
 		return UV_EINVAL;
 
-	xx__req_register(xx_loop(loop), req);
+	if (req->work_req.type != WT_BAR)
+	    xx__req_register(xx_loop(loop), req);
 	req->loop = loop;
 	req->work_cb = work_cb;
 	req->after_work_cb = after_work_cb;

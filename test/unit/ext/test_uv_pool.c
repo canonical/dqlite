@@ -64,7 +64,7 @@ static void after_work_cb(xx_work_t *req, int status UNUSED)
 	xx_work_t *work;
 	unsigned int wt;
 
-	for (i = 0; i <= WORK_ITEMS_NR; i++) {
+	for (i = 0; i <= WORK_ITEMS_NR + 1 /*for BAR*/; i++) {
 		work = malloc(sizeof(*work));
 
 		if (i < WORK_ITEMS_NR / 2)
