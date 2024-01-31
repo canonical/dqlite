@@ -4,6 +4,8 @@
 #include <uv.h>
 #include "queue.h"
 
+enum { WT_UNORD, WT_BAR, WT_ORD1, WT_ORD2 };
+
 struct xx__work
 {
 	void (*work)(struct xx__work *w);

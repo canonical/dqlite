@@ -239,7 +239,7 @@ void xx__work_submit(uv_loop_t *loop,
 	w->loop = loop;
 	w->work = work;
 	w->done = done;
-	post(&w->wq, w->type == 0 ? w->thread_idx: ~0u);
+	post(&w->wq, w->type == WT_UNORD ? w->thread_idx: ~0u);
 }
 
 static int xx__work_cancel(uv_loop_t *loop, struct xx__work *w)
