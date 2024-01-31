@@ -62,10 +62,19 @@ static void after_work_cb(xx_work_t *req, int status UNUSED)
 	unsigned int i;
 	int rc;
 	xx_work_t *work;
+	unsigned int wt;
 
 	for (i = 0; i <= WORK_ITEMS_NR; i++) {
 		work = malloc(sizeof(*work));
-		work->work_req.type = i % 2 == 0 ? WT_ORD1 : WT_UNORD;
+
+		if (i < WORK_ITEMS_NR / 2)
+		    wt = WT_ORD1;
+		else if (i == WORK_ITEMS_NR / 2)
+		    wt = WT_BAR;
+		else
+		    wt = WT_ORD2;
+
+		work->work_req.type = i % 2 == 0 ? wt : WT_UNORD;
 		rc = xx_queue_work(req->loop, work, i, bottom_work_cb,
 				   bottom_after_work_cb);
 		munit_assert_int(rc, ==, 0);
