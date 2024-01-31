@@ -148,9 +148,9 @@ struct vfs2_file
 	};
 };
 
-static bool is_valid_magic(const uint32_t *x)
+static bool is_valid_magic(const uint32_t x)
 {
-	uint32_t n = ByteGetBe32((const uint8_t *)x);
+	uint32_t n = ByteGetBe32((const uint8_t *)&x);
 	return n == 0x377f0682 || n == 0x377f0683;
 }
 
@@ -807,31 +807,23 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	}
 
 	/* Figure out what's going on with the physical WALs. */
-	uint32_t phys1_magic;
-	rv =
-	    phys1->pMethods->xRead(phys1, &phys1_magic, sizeof(phys1_magic), 0);
+	uint32_t magic1;
+	rv = phys1->pMethods->xRead(phys1, &magic1, sizeof(magic1), 0);
 	if (rv == SQLITE_IOERR_SHORT_READ) {
-		phys1_magic = invalid_magic;
+		magic1 = 0;
 	} else if (rv != SQLITE_OK) {
 		goto err_after_open_phys2;
 	}
-	uint32_t phys2_magic;
-	rv =
-	    phys2->pMethods->xRead(phys2, &phys2_magic, sizeof(phys2_magic), 0);
+	uint32_t magic2;
+	rv = phys2->pMethods->xRead(phys2, &magic2, sizeof(magic2), 0);
 	if (rv == SQLITE_IOERR_SHORT_READ) {
-		phys2_magic = invalid_magic;
+		magic2 = 0;
 	} else if (rv != SQLITE_OK) {
-		goto err_after_open_phys2;
-	}
-	bool phys1_is_valid = is_valid_magic(&phys1_magic);
-	bool phys2_is_valid = is_valid_magic(&phys2_magic);
-	if (!phys1_is_valid && !phys2_is_valid) {
-		rv = SQLITE_ERROR;
 		goto err_after_open_phys2;
 	}
 
-	/* Figure out which physical WAL the moving name points to. */
-	struct stat s1, s2;
+	struct stat s1;
+	struct stat s2;
 	int rv1 = stat(fixed1, &s1);
 	int rv2 = stat(fixed2, &s2);
 	if (rv1 != 0 || rv2 != 0) {
@@ -840,36 +832,25 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		rv = SQLITE_IOERR;
 		goto err_after_open_phys2;
 	}
-	bool phys1_is_current;
-	bool need_link = false;
 	struct stat s;
 	rv = stat(name, &s);
-	if (rv != 0 && errno == ENOENT) {
-		need_link = true;
-		phys1_is_current = phys1_is_valid;
-	} else if (rv != 0) {
-		/* Something weird is going on with the moving name. Best to
-		 * return an error. */
-		rv = SQLITE_IOERR;
-		goto err_after_open_phys2;
-	} else if ((s.st_ino != s1.st_ino) && (s.st_ino != s2.st_ino)) {
-		rv = SQLITE_ERROR;
-		goto err_after_open_phys2;
-	} else {
-		phys1_is_current = (s.st_ino == s1.st_ino);
-	}
+	bool pick_phys1 =
+	    (rv == 0 && s.st_ino == s1.st_ino) ||
+	    (rv != 0 && errno == ENOENT && is_valid_magic(magic1) &&
+	     !is_valid_magic(magic2)) ||
+	    (rv != 0 && errno == ENOENT && magic1 == 0 && magic2 == 0);
+	bool pick_phys2 = (rv == 0 && s.st_ino == s2.st_ino) ||
+			  (rv != 0 && errno == ENOENT &&
+			   !is_valid_magic(magic1) && is_valid_magic(magic2));
+	assert(!(pick_phys1 && pick_phys2));
+	if (pick_phys1) {
+		rv = link(name, fixed1);
+		(void)rv;
+		(void)phys2->pMethods->xWrite(phys2, &invalid_magic,
+					      sizeof(invalid_magic), 0);
 
-	/* XXX can we justify ignoring errors below? */
-
-	if (phys1_is_current) {
-		if (need_link) {
-			rv = link(fixed1, name);
-			(void)rv;
-		}
-
-		if (phys2_is_valid) {
-			(void)phys2->pMethods->xWrite(phys2, &invalid_magic,
-						      sizeof(invalid_magic), 0);
+		if (!is_valid_magic(magic1)) {
+			(void)phys1->pMethods->xTruncate(phys1, 0);
 		}
 
 		xout->orig = phys1;
@@ -881,15 +862,14 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		if (out_flags != NULL) {
 			*out_flags = out_flags1;
 		}
-	} else {
-		if (need_link) {
-			rv = link(fixed2, name);
-			(void)rv;
-		}
+	} else if (pick_phys2) {
+		rv = link(name, fixed2);
+		(void)rv;
+		(void)phys2->pMethods->xWrite(phys1, &invalid_magic,
+					      sizeof(invalid_magic), 0);
 
-		if (phys1_is_valid) {
-			(void)phys1->pMethods->xWrite(phys1, &invalid_magic,
-						      sizeof(invalid_magic), 0);
+		if (!is_valid_magic(magic2)) {
+			(void)phys2->pMethods->xTruncate(phys2, 0);
 		}
 
 		xout->orig = phys2;
@@ -901,6 +881,9 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		if (out_flags != NULL) {
 			*out_flags = out_flags2;
 		}
+	} else {
+		rv = SQLITE_ERROR;
+		goto err_after_open_phys2;
 	}
 
 	register_file(xout, &entry);
@@ -987,12 +970,14 @@ static int vfs2_open(sqlite3_vfs *vfs,
 	}
 }
 
+/* TODO does this need to be customized? */
 static int vfs2_delete(sqlite3_vfs *vfs, const char *name, int sync_dir)
 {
 	struct vfs2_data *data = vfs->pAppData;
 	return data->orig->xDelete(data->orig, name, sync_dir);
 }
 
+/* TODO does this need to be customized? */
 static int vfs2_access(sqlite3_vfs *vfs, const char *name, int flags, int *out)
 {
 	struct vfs2_data *data = vfs->pAppData;
