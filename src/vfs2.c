@@ -148,12 +148,6 @@ struct vfs2_file
 	};
 };
 
-static bool is_valid_magic(const uint32_t x)
-{
-	uint32_t n = ByteGetBe32((const uint8_t *)&x);
-	return n == 0x377f0682 || n == 0x377f0683;
-}
-
 static bool is_valid_page_size(unsigned long n)
 {
 	return n >= 1 << 9 && n <= 1 << 16 && (n & (n - 1)) == 0;
@@ -304,47 +298,6 @@ static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 	return xfile->orig->pMethods->xRead(xfile->orig, buf, amt, ofst);
 }
 
-/**
- * Switch to the other physical WAL when the WAL header is about to be
- * overwritten.
- *
- * The order of steps is as follows:
- *
- * 1. Unlink the moving name.
- * 2. Hard-link the moving name to the incoming physical WAL.
- * 3. Write the new header of the incoming physical WAL.
- * 4. Invalidate the header of the outgoing physical WAL.
- * 5. Update our in-memory state to reflect the new situation.
- *
- * All these steps but the last are fallible, and of course we could crash at
- * any time. The following intermediate configurations are possible for the
- * persistent state:
- *
- * A. The moving name is missing; the outgoing WAL has a valid header; the
- * incoming WAL has an invalid header. B. The moving name points to the incoming
- * WAL; the outgoing WAL has a valid header; the incoming WAL has invalid
- * header. C. The moving name points to the incoming WAL; the outgoing WAL has a
- * valid header; the incoming WAL has a valid header.
- *
- * To cope with crashes, vfs2_open has to be able to detect and sort out each of
- * these configurations. This is done as follows:
- *
- * - If the moving name is missing, the WAL with the valid header is the more
- * recently written one.
- * - Otherwise, if both WALs have valid headers, the WAL that the moving name
- * points to is more recently written.
- * - Otherwise, something has gone terribly wrong (or we're starting up for the
- * first time, or we crashed during vfs2_open).
- *
- * There is also the issue of what happens when this function returns
- * unsuccessfully. This will cause our xWrite to return unsuccessfully to
- * SQLite, but we want to put the VFS and persistent state in some kind of order
- * before this point, so SQLite won't cause something weird to happen when it
- * tries to handle the error.
- *
- * If we return unsuccessfully from vfs2_write, we want to present to SQLite a
- * picture that's consistent with a "normal" failed write.
- */
 static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr)
 {
 	int rv;
@@ -353,6 +306,11 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr)
 	char *name_outgoing = wal->wal.wal_cur_fixed_name;
 	sqlite3_file *phys_incoming = wal->wal.wal_prev;
 	char *name_incoming = wal->wal.wal_prev_fixed_name;
+
+	rv = phys_incoming->pMethods->xTruncate(phys_incoming, 0);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
 
 	/* Move the moving name. */
 	rv = unlink(wal->wal.moving_name);
@@ -384,15 +342,15 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr)
 	db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
 
 	/* Write the new header of the incoming physical WAL, and invalidate
-	 * the header of the outgoing physical WAL. XXX do this in the other
-	 * order? */
+	 * the header of the outgoing physical WAL. */
 	rv = phys_incoming->pMethods->xWrite(phys_incoming, hdr,
 					     VFS2_WAL_HDR_SIZE, 0);
 	if (rv != SQLITE_OK) {
 		return rv;
 	}
-	return phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic,
+	(void)phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic,
 					       sizeof(invalid_magic), 0);
+	return SQLITE_OK;
 }
 
 static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
@@ -806,22 +764,6 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		goto err_after_open_phys2;
 	}
 
-	/* Figure out what's going on with the physical WALs. */
-	uint32_t magic1;
-	rv = phys1->pMethods->xRead(phys1, &magic1, sizeof(magic1), 0);
-	if (rv == SQLITE_IOERR_SHORT_READ) {
-		magic1 = 0;
-	} else if (rv != SQLITE_OK) {
-		goto err_after_open_phys2;
-	}
-	uint32_t magic2;
-	rv = phys2->pMethods->xRead(phys2, &magic2, sizeof(magic2), 0);
-	if (rv == SQLITE_IOERR_SHORT_READ) {
-		magic2 = 0;
-	} else if (rv != SQLITE_OK) {
-		goto err_after_open_phys2;
-	}
-
 	struct stat s1;
 	struct stat s2;
 	int rv1 = stat(fixed1, &s1);
@@ -832,25 +774,20 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		rv = SQLITE_IOERR;
 		goto err_after_open_phys2;
 	}
+
 	struct stat s;
 	rv = stat(name, &s);
-	bool pick_phys1 =
-	    (rv == 0 && s.st_ino == s1.st_ino) ||
-	    (rv != 0 && errno == ENOENT && is_valid_magic(magic1) &&
-	     !is_valid_magic(magic2)) ||
-	    (rv != 0 && errno == ENOENT && magic1 == 0 && magic2 == 0);
-	bool pick_phys2 = (rv == 0 && s.st_ino == s2.st_ino) ||
-			  (rv != 0 && errno == ENOENT &&
-			   !is_valid_magic(magic1) && is_valid_magic(magic2));
+	bool pick_phys1 = s1.st_size == 0 || (rv == 0 && s.st_ino == s1.st_ino);
+	bool pick_phys2 = (s1.st_size > 0 && s2.st_size == 0) || (rv == 0 && s.st_ino == s2.st_ino);
 	assert(!(pick_phys1 && pick_phys2));
+	/* TODO does it make sense to ignore errors below? is the code crash-safe? */
 	if (pick_phys1) {
-		rv = link(name, fixed1);
+		rv = unlink(name);
 		(void)rv;
-		(void)phys2->pMethods->xWrite(phys2, &invalid_magic,
-					      sizeof(invalid_magic), 0);
-
-		if (!is_valid_magic(magic1)) {
-			(void)phys1->pMethods->xTruncate(phys1, 0);
+		rv = link(fixed1, name);
+		(void)rv;
+		if (s2.st_size > 0) {
+			(void)phys2->pMethods->xWrite(phys2, &invalid_magic, sizeof(invalid_magic), 0);
 		}
 
 		xout->orig = phys1;
@@ -863,13 +800,12 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 			*out_flags = out_flags1;
 		}
 	} else if (pick_phys2) {
-		rv = link(name, fixed2);
+		rv = unlink(name);
 		(void)rv;
-		(void)phys2->pMethods->xWrite(phys1, &invalid_magic,
-					      sizeof(invalid_magic), 0);
-
-		if (!is_valid_magic(magic2)) {
-			(void)phys2->pMethods->xTruncate(phys2, 0);
+		rv = link(fixed2, name);
+		(void)rv;
+		if (s1.st_size > 0) {
+			(void)phys2->pMethods->xWrite(phys1, &invalid_magic, sizeof(invalid_magic), 0);
 		}
 
 		xout->orig = phys2;
