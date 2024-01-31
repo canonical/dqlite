@@ -58,7 +58,7 @@ PKG_CHECK_MODULES(RAFT, [raft >= 0.17.1], [], [])
 
 CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -std=c11 \
-  -g \
+  -g3 \
   --mcet \
   -fcf-protection \
   --param=ssp-buffer-size=4 \

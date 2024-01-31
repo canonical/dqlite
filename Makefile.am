@@ -111,7 +111,7 @@ integration_test_LDFLAGS = $(AM_LDFLAGS) -no-install
 integration_test_LDADD = libtest.la libdqlite.la
 
 if DEBUG_ENABLED
-  AM_CFLAGS += -g
+  AM_CFLAGS += -g3
 else
   AM_CFLAGS += -O2
 endif
