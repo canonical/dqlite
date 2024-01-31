@@ -28,8 +28,8 @@ libdqlite_la_SOURCES = \
   src/lib/addr.c \
   src/lib/buffer.c \
   src/lib/fs.c \
-  src/lib/transport.c \
   src/lib/threadpool.c \
+  src/lib/transport.c \
   src/logger.c \
   src/message.c \
   src/metrics.c \

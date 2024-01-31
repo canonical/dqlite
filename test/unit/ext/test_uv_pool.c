@@ -11,7 +11,7 @@ TEST_MODULE(ext_uv_pool);
  *
  ******************************************************************************/
 
-enum { WORK_ITEMS_NR = 50 };
+enum { WORK_ITEMS_NR = 5000 };
 
 struct fixture
 {

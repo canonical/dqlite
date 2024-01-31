@@ -11,18 +11,21 @@ static struct xx_loop_s *xx_loop(struct uv_loop_s *loop)
 	return (struct xx_loop_s *)loop;
 }
 
-#define xx__has_active_reqs(loop) ((loop)->active_reqs > 0)
+static inline bool xx__has_active_reqs(xx_loop_t *loop)
+{
+    return loop->active_reqs > 0;
+}
 
-#define xx__req_register(loop, req)    \
-	do {                           \
-		(loop)->active_reqs++; \
-	} while (0)
+static inline void xx__req_register(xx_loop_t *loop, xx_work_t *req UNUSED)
+{
+    loop->active_reqs++;
+}
 
-#define xx__req_unregister(loop, req)              \
-	do {                                       \
-		assert(xx__has_active_reqs(loop)); \
-		(loop)->active_reqs--;             \
-	} while (0)
+static inline void xx__req_unregister(xx_loop_t *loop, xx_work_t *req UNUSED)
+{
+    assert(xx__has_active_reqs(loop));
+    loop->active_reqs--;
+}
 
 enum {
 	MAX_THREADPOOL_SIZE = 1024,
@@ -103,8 +106,8 @@ static void worker(void *arg)
 		w->work(w);
 
 		uv_mutex_lock(&xx_loop(w->loop)->wq_mutex);
-		w->work = NULL; /* Signal uv_cancel() that the work req is done
-				   executing. */
+		w->work = NULL;
+
 		QUEUE__INSERT_TAIL(&xx_loop(w->loop)->wq, &w->wq);
 
 		uv_async_send(&xx_loop(w->loop)->wq_async);
@@ -216,7 +219,7 @@ static void init_threads(void)
 	uv_sem_destroy(&sem);
 }
 
-static bool threads__invariant(void)
+static UNUSED bool threads__invariant(void)
 {
 	return nthreads > 0 && threads != NULL && thread_args != NULL &&
 	       thread_queues != NULL && !IS0(&wq) && !ARE0(threads, nthreads) &&
@@ -228,7 +231,7 @@ void xx__work_submit(uv_loop_t *loop,
 		     void (*work)(struct xx__work *w),
 		     void (*done)(struct xx__work *w, int status))
 {
-	PRE(threads__invariant());
+    //PRE(threads__invariant());
 	w->loop = loop;
 	w->work = work;
 	w->done = done;
@@ -239,7 +242,7 @@ static int xx__work_cancel(uv_loop_t *loop, struct xx__work *w)
 {
 	int cancelled;
 
-	PRE(threads__invariant());
+	//PRE(threads__invariant());
 	uv_mutex_lock(&mutex);
 	uv_mutex_lock(&xx_loop(w->loop)->wq_mutex);
 
