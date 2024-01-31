@@ -39,9 +39,8 @@ struct thread_args
 	unsigned int idx;
 };
 
-static uv_cond_t cond;
+static uv_cond_t *cond;
 static uv_mutex_t mutex;
-static unsigned int idle_threads;
 static unsigned int nthreads;
 static uv_thread_t *threads;
 static struct thread_args *thread_args;
@@ -73,30 +72,21 @@ static void worker(void *arg)
 	uv_sem_post(ta->sem);
 	uv_mutex_lock(&mutex);
 	for (;;) {
-		/* `mutex` should always be locked at this point. */
-		/* Keep waiting while either no work is present */
-		while (QUEUE__IS_EMPTY(&wq) &&
-		       QUEUE__IS_EMPTY(&thread_queues[ta->idx])) {
-			idle_threads += 1;
-			uv_cond_wait(&cond, &mutex);
-			idle_threads -= 1;
+		if (QUEUE__IS_EMPTY(&thread_queues[ta->idx])) {
+		    uv_cond_wait(&cond[ta->idx], &mutex);
 		}
 
-		/* Process work item thread affinity */
-		if (!QUEUE__IS_EMPTY(&thread_queues[ta->idx])) {
-			q = QUEUE__HEAD(&thread_queues[ta->idx]);
-			QUEUE__REMOVE(q);
-			QUEUE__INIT(q);
-			QUEUE__INSERT_HEAD(&wq, q);
+		if (!QUEUE__IS_EMPTY(&wq)) {
+		    assert(QUEUE__HEAD(&wq) == &exit_message);
+		    uv_mutex_unlock(&mutex);
+		    break;
 		}
 
-		q = QUEUE__HEAD(&wq);
-		if (q == &exit_message) {
-			uv_cond_signal(&cond);
-			uv_mutex_unlock(&mutex);
-			break;
+		if (QUEUE__IS_EMPTY(&thread_queues[ta->idx])) {
+		    continue;
 		}
 
+		q = QUEUE__HEAD(&thread_queues[ta->idx]);
 		QUEUE__REMOVE(q);
 		QUEUE__INIT(q);
 
@@ -126,11 +116,9 @@ static void post(queue *q, unsigned int idx)
 	/* Assign work item thread affinity */
 	QUEUE__INSERT_TAIL(idx == NOT_AFFINED ? &wq : &thread_queues[idx], q);
 
-	/* TODO: Worth thinking how not to broadcast and use
-		 uv_cond_signal(&cond) instead. */
-	if (idle_threads > 0) {
-		uv_cond_broadcast(&cond);
-	}
+	for (idx = 0; idx < nthreads; ++idx)
+	    uv_cond_signal(&cond[idx]);
+
 	uv_mutex_unlock(&mutex);
 }
 
@@ -147,14 +135,15 @@ static void xx__threadpool_cleanup(void)
 		if (uv_thread_join(threads + i))
 			abort();
 		POST(QUEUE__IS_EMPTY(&thread_queues[i]));
+		uv_cond_destroy(&cond[i]);
 	}
 
+	free(cond);
 	free(threads);
 	free(thread_args);
 	free(thread_queues);
 
 	uv_mutex_destroy(&mutex);
-	uv_cond_destroy(&cond);
 	uv_key_delete(&thread_key);
 
 	threads = NULL;
@@ -182,13 +171,12 @@ static void init_threads(void)
 	if (uv_key_create(&thread_key))
 		abort();
 
+	cond = calloc(nthreads, sizeof(cond[0]));
 	threads = calloc(nthreads, sizeof(threads[0]));
 	thread_args = calloc(nthreads, sizeof(thread_args[0]));
 	thread_queues = calloc(nthreads, sizeof(thread_queues[0]));
-	if (threads == NULL || thread_args == NULL || thread_queues == NULL)
-		abort();
-
-	if (uv_cond_init(&cond))
+	if (cond == NULL ||threads == NULL || thread_args == NULL ||
+	    thread_queues == NULL)
 		abort();
 
 	if (uv_mutex_init(&mutex))
@@ -203,6 +191,8 @@ static void init_threads(void)
 	config.stack_size = 8u << 20; /* 8 MB */
 
 	for (i = 0; i < nthreads; i++) {
+	    	if (uv_cond_init(&cond[i]))
+		    abort();
 		QUEUE__INIT(&thread_queues[i]);
 		thread_args[i] = (struct thread_args){
 		    .sem = &sem,
