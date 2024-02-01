@@ -80,6 +80,9 @@ static void worker(void *arg)
 		}
 
 		while (!QUEUE__IS_EMPTY(&wq)) {
+		    if (ordered_current_wt == WT_BAR && ordered_in_flight > 0)
+			break;
+
 		    q = QUEUE__HEAD(&wq);
 		    if (q == &exit_message)
 			goto exit;
@@ -94,14 +97,20 @@ static void worker(void *arg)
 			continue;
 		    }
 
+		    assert(w->type >= WT_ORD1);
+		    assert(ordered_current_wt == WT_BAR ||
+			   ordered_current_wt == w->type);
+
 		    QUEUE__INSERT_TAIL(&thread_queues[w->thread_idx], q);
-		    uv_cond_signal(&cond[w->thread_idx]);
 		    ordered_in_flight++;
+		    ordered_current_wt = w->type;
+		    uv_cond_signal(&cond[w->thread_idx]);
 		}
 
-		if (!QUEUE__IS_EMPTY(&wq)) {
+		if (!QUEUE__IS_EMPTY(&wq) && ordered_in_flight == 0) {
 		  exit:
 		    /* Make sure exit message is the last one */
+		    printf("\n@@@ exit!\n");
 		    assert(QUEUE__NEXT(QUEUE__HEAD(&wq)) == &wq);
 		    assert(QUEUE__HEAD(&wq) == &exit_message);
 		    assert(QUEUE__IS_EMPTY(&thread_queues[ta->idx]));
@@ -137,6 +146,9 @@ static void worker(void *arg)
 		if (wtype != WT_UNORD) {
 		    assert(ordered_in_flight > 0);
 		    ordered_in_flight--;
+		    //if (ordered_in_flight == 0)
+		    //printf("@@@ 0 bar\n");
+
 		}
 	}
 }
