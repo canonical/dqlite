@@ -21,7 +21,6 @@
 #define VFS2_WAL_FIXED_SUFFIX1 "-xwal1"
 #define VFS2_WAL_FIXED_SUFFIX2 "-xwal2"
 
-#define VFS2_WAL_HDR_SIZE 32
 #define VFS2_WAL_INDEX_REGION_SIZE (1 << 15)
 #define VFS2_WAL_FRAME_HDR_SIZE 24
 
@@ -64,6 +63,16 @@ struct vfs2_wal_index_basic_hdr
 	uint32_t aFrameCksum[2];
 	uint32_t aSalt[2];
 	uint32_t aCksum[2];
+};
+
+struct vfs2_wal_hdr
+{
+	uint32_t magic;
+	uint32_t version;
+	uint32_t page_size;
+	uint32_t ckpoint_seqno;
+	uint32_t salt[2];
+	uint32_t cksum[2];
 };
 
 /**
@@ -298,7 +307,7 @@ static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 	return xfile->orig->pMethods->xRead(xfile->orig, buf, amt, ofst);
 }
 
-static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr)
+static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
 {
 	int rv;
 
@@ -307,19 +316,10 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr)
 	sqlite3_file *phys_incoming = wal->wal.wal_prev;
 	char *name_incoming = wal->wal.wal_prev_fixed_name;
 
-	rv = phys_incoming->pMethods->xTruncate(phys_incoming, 0);
+	rv = phys_incoming->pMethods->xWrite(phys_incoming, hdr,
+					     sizeof(struct vfs2_wal_hdr), 0);
 	if (rv != SQLITE_OK) {
 		return rv;
-	}
-
-	/* Move the moving name. */
-	rv = unlink(wal->wal.moving_name);
-	if (rv != 0) {
-		return SQLITE_IOERR;
-	}
-	rv = link(name_incoming, wal->wal.moving_name);
-	if (rv != 0) {
-		return SQLITE_IOERR;
 	}
 
 	struct vfs2_file *db = lookup_partner_file(wal);
@@ -335,19 +335,23 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const void *hdr)
 	/* Copy the WAL index header that SQLite has written so
 	 * that we can restore it later. This relies on SQLite
 	 * writing the WAL index header before restarting the
-	 * WAL, an assumption that can be verified by looking at
-	 * the source code. */
+	 * WAL -- assert that this is the case by comparing salts. */
 	assert(db->db_shm.all_regions_len > 0);
 	union vfs2_shm_region0 *region0 = db->db_shm.all_regions[0];
+	assert(hdr->salt[0] == region0->hdr.basic[0].aCksum[0]);
+	assert(hdr->salt[1] == region0->hdr.basic[0].aCksum[1]);
 	db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
 
-	/* Write the new header of the incoming physical WAL, and invalidate
-	 * the header of the outgoing physical WAL. */
-	rv = phys_incoming->pMethods->xWrite(phys_incoming, hdr,
-					     VFS2_WAL_HDR_SIZE, 0);
-	if (rv != SQLITE_OK) {
-		return rv;
+	/* Move the moving name. */
+	rv = unlink(wal->wal.moving_name);
+	if (rv != 0) {
+		return SQLITE_IOERR;
 	}
+	rv = link(name_incoming, wal->wal.moving_name);
+	if (rv != 0) {
+		return SQLITE_IOERR;
+	}
+
 	(void)phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic,
 					       sizeof(invalid_magic), 0);
 	return SQLITE_OK;
@@ -408,13 +412,13 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 	    VFS2_WAL_FRAME_HDR_SIZE + wal->vfs_data->page_size;
 
 	if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
-		sqlite3_int64 x = ofst - VFS2_WAL_HDR_SIZE;
+		sqlite3_int64 x = ofst - sizeof(struct vfs2_wal_hdr);
 		assert(x % frame_size == 0);
 		x /= frame_size;
 		return vfs2_wal_write_frame_hdr(wal, buf, x);
 	} else if (amt == (int)wal->vfs_data->page_size) {
 		sqlite3_int64 x =
-		    ofst - VFS2_WAL_FRAME_HDR_SIZE - VFS2_WAL_HDR_SIZE;
+		    ofst - VFS2_WAL_FRAME_HDR_SIZE - sizeof(struct vfs2_wal_hdr);
 		assert(x % frame_size == 0);
 		x /= frame_size;
 		x -= wal->wal.pending_txn_start;
@@ -439,7 +443,7 @@ static int vfs2_write(sqlite3_file *file,
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 
 	if ((xfile->flags & SQLITE_OPEN_WAL) && ofst == 0) {
-		assert(amt == VFS2_WAL_HDR_SIZE);
+		assert(amt == sizeof(struct vfs2_wal_hdr));
 		return vfs2_wal_swap(xfile, buf);
 	}
 
@@ -715,6 +719,49 @@ static struct sqlite3_io_methods vfs2_io_methods = {
 
 /* sqlite3_vfs implementations begin here */
 
+static int compare_wals(sqlite3_file *xwal1, sqlite3_file *xwal2, bool *invert) {
+	int rv;
+	sqlite3_int64 size1;
+	rv = xwal1->pMethods->xFileSize(xwal1, &size1);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
+	sqlite3_int64 size2;
+	rv = xwal2->pMethods->xFileSize(xwal2, &size2);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
+
+	if (size2 == 0) {
+		*invert = false;
+	} else if (size1 == 0) {
+		*invert = true;
+	} else {
+		struct vfs2_wal_hdr hdr1;
+		rv = xwal1->pMethods->xRead(xwal1, &hdr1, sizeof(hdr1), 0);
+		if (rv != SQLITE_OK) {
+			return rv;
+		}
+		struct vfs2_wal_hdr hdr2;
+		rv = xwal2->pMethods->xRead(xwal2, &hdr2, sizeof(hdr2), 0);
+		if (rv != SQLITE_OK) {
+			return rv;
+		}
+		uint32_t counter1 = ByteGetBe32((const void *)&hdr1.cksum[0]);
+		uint32_t counter2 = ByteGetBe32((const void *)&hdr2.cksum[0]);
+		if (counter1 == counter2 + 1) {
+			*invert = false;
+		} else if (counter2 == counter1 + 1) {
+			*invert = true;
+		} else {
+			return SQLITE_ERROR;
+		}
+	}
+
+
+	return SQLITE_OK;
+}
+
 static int vfs2_open_wal(sqlite3_vfs *vfs,
 			 const char *name,
 			 struct vfs2_file *xout,
@@ -764,49 +811,13 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		goto err_after_open_phys2;
 	}
 
-	struct stat s1;
-	struct stat s2;
-	int rv1 = stat(fixed1, &s1);
-	int rv2 = stat(fixed2, &s2);
-	if (rv1 != 0 || rv2 != 0) {
-		/* shouldn't happen, since we successfully opened these files
-		 * above */
-		rv = SQLITE_IOERR;
-		goto err_after_open_phys2;
-	}
-
-	struct stat s;
-	rv = stat(name, &s);
-	bool pick_phys1 = s1.st_size == 0 || (rv == 0 && s.st_ino == s1.st_ino);
-	bool pick_phys2 = (s1.st_size > 0 && s2.st_size == 0) || (rv == 0 && s.st_ino == s2.st_ino);
-	assert(!(pick_phys1 && pick_phys2));
-	/* TODO does it make sense to ignore errors below? is the code crash-safe? */
-	if (pick_phys1) {
-		rv = unlink(name);
-		(void)rv;
-		rv = link(fixed1, name);
-		(void)rv;
-		if (s2.st_size > 0) {
-			(void)phys2->pMethods->xWrite(phys2, &invalid_magic, sizeof(invalid_magic), 0);
-		}
-
-		xout->orig = phys1;
-		xout->wal.moving_name = name;
-		xout->wal.wal_cur_fixed_name = fixed1;
-		xout->wal.wal_prev = phys2;
-		xout->wal.wal_prev_fixed_name = fixed2;
-
-		if (out_flags != NULL) {
-			*out_flags = out_flags1;
-		}
-	} else if (pick_phys2) {
+	bool invert;
+	rv = compare_wals(phys1, phys2, &invert);
+	if (invert) {
 		rv = unlink(name);
 		(void)rv;
 		rv = link(fixed2, name);
 		(void)rv;
-		if (s1.st_size > 0) {
-			(void)phys2->pMethods->xWrite(phys1, &invalid_magic, sizeof(invalid_magic), 0);
-		}
 
 		xout->orig = phys2;
 		xout->wal.moving_name = name;
@@ -818,8 +829,20 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 			*out_flags = out_flags2;
 		}
 	} else {
-		rv = SQLITE_ERROR;
-		goto err_after_open_phys2;
+		rv = unlink(name);
+		(void)rv;
+		rv = link(fixed1, name);
+		(void)rv;
+
+		xout->orig = phys1;
+		xout->wal.moving_name = name;
+		xout->wal.wal_cur_fixed_name = fixed1;
+		xout->wal.wal_prev = phys2;
+		xout->wal.wal_prev_fixed_name = fixed2;
+
+		if (out_flags != NULL) {
+			*out_flags = out_flags1;
+		}
 	}
 
 	register_file(xout, &entry);

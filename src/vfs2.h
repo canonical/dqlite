@@ -61,6 +61,4 @@ void vfs2_destroy(sqlite3_vfs *vfs);
 
 // TODO access information about checkpoints
 
-// TODO close?
-
 #endif
