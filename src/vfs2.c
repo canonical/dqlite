@@ -109,6 +109,8 @@ struct vfs2_wal
 	dqlite_vfs_frame *pending_txn_frames;   /* for vfs2_poll */
 	uint32_t pending_txn_last_frame_commit; /* commit marker for the
 						   physical last frame */
+
+	bool is_empty;
 };
 
 struct vfs2_db
@@ -342,6 +344,15 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
 	assert(hdr->salt[1] == region0->hdr.basic[0].aCksum[1]);
 	db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
 
+	dqlite_vfs_frame *frames = wal->wal.pending_txn_frames;
+	uint32_t n = wal->wal.pending_txn_len;
+	for (uint32_t i = 0; i < n; i++) {
+		sqlite3_free(frames[i].data);
+	}
+	sqlite3_free(frames);
+	wal->wal.pending_txn_frames = NULL;
+	wal->wal.pending_txn_len = 0;
+
 	/* Move the moving name. */
 	rv = unlink(wal->wal.moving_name);
 	if (rv != 0) {
@@ -353,7 +364,7 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
 	}
 
 	(void)phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic,
-					       sizeof(invalid_magic), 0);
+					      sizeof(invalid_magic), 0);
 	return SQLITE_OK;
 }
 
@@ -369,12 +380,10 @@ static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
 		/* Appending to the end of the WAL. */
 		if (wal->wal.pending_txn_last_frame_commit > 0) {
 			/* Start of a new transaction. */
-			if (frames != NULL) {
-				for (uint32_t i = 0; i < n; i++) {
-					sqlite3_free(frames[i].data);
-				}
-				sqlite3_free(frames);
+			for (uint32_t i = 0; i < n; i++) {
+				sqlite3_free(frames[i].data);
 			}
+			sqlite3_free(frames);
 			wal->wal.pending_txn_frames = NULL;
 			wal->wal.pending_txn_start += n;
 			wal->wal.pending_txn_len = 0;
@@ -386,7 +395,7 @@ static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
 		if (wal->wal.pending_txn_frames == NULL) {
 			return SQLITE_NOMEM;
 		}
-		dqlite_vfs_frame *frame = &frames[n];
+		dqlite_vfs_frame *frame = &wal->wal.pending_txn_frames[n];
 		frame->page_number = ByteGetBe32(buf);
 		frame->data = NULL;
 		wal->wal.pending_txn_last_frame_commit =
@@ -412,13 +421,14 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 	    VFS2_WAL_FRAME_HDR_SIZE + wal->vfs_data->page_size;
 
 	if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
-		sqlite3_int64 x = ofst - sizeof(struct vfs2_wal_hdr);
+		sqlite3_int64 x =
+		    ofst - (sqlite3_int64)sizeof(struct vfs2_wal_hdr);
 		assert(x % frame_size == 0);
 		x /= frame_size;
 		return vfs2_wal_write_frame_hdr(wal, buf, x);
 	} else if (amt == (int)wal->vfs_data->page_size) {
-		sqlite3_int64 x =
-		    ofst - VFS2_WAL_FRAME_HDR_SIZE - sizeof(struct vfs2_wal_hdr);
+		sqlite3_int64 x = ofst - VFS2_WAL_FRAME_HDR_SIZE -
+				  (sqlite3_int64)sizeof(struct vfs2_wal_hdr);
 		assert(x % frame_size == 0);
 		x /= frame_size;
 		x -= wal->wal.pending_txn_start;
@@ -444,7 +454,11 @@ static int vfs2_write(sqlite3_file *file,
 
 	if ((xfile->flags & SQLITE_OPEN_WAL) && ofst == 0) {
 		assert(amt == sizeof(struct vfs2_wal_hdr));
-		return vfs2_wal_swap(xfile, buf);
+		bool is_empty = xfile->wal.is_empty;
+		xfile->wal.is_empty = false;
+		if (!is_empty) {
+			return vfs2_wal_swap(xfile, buf);
+		}
 	}
 
 	rv = xfile->orig->pMethods->xWrite(xfile->orig, buf, amt, ofst);
@@ -719,7 +733,11 @@ static struct sqlite3_io_methods vfs2_io_methods = {
 
 /* sqlite3_vfs implementations begin here */
 
-static int compare_wals(sqlite3_file *xwal1, sqlite3_file *xwal2, bool *invert) {
+static int compare_wals(sqlite3_file *xwal1,
+			sqlite3_file *xwal2,
+			bool *invert,
+			bool *empty)
+{
 	int rv;
 	sqlite3_int64 size1;
 	rv = xwal1->pMethods->xFileSize(xwal1, &size1);
@@ -730,6 +748,10 @@ static int compare_wals(sqlite3_file *xwal1, sqlite3_file *xwal2, bool *invert) 
 	rv = xwal2->pMethods->xFileSize(xwal2, &size2);
 	if (rv != SQLITE_OK) {
 		return rv;
+	}
+
+	if (size1 == 0 && size2 == 0) {
+		*empty = true;
 	}
 
 	if (size2 == 0) {
@@ -757,7 +779,6 @@ static int compare_wals(sqlite3_file *xwal1, sqlite3_file *xwal2, bool *invert) 
 			return SQLITE_ERROR;
 		}
 	}
-
 
 	return SQLITE_OK;
 }
@@ -812,7 +833,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	}
 
 	bool invert;
-	rv = compare_wals(phys1, phys2, &invert);
+	rv = compare_wals(phys1, phys2, &invert, &xout->wal.is_empty);
 	if (invert) {
 		rv = unlink(name);
 		(void)rv;
@@ -844,6 +865,8 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 			*out_flags = out_flags1;
 		}
 	}
+
+	xout->wal.is_empty = true;
 
 	register_file(xout, &entry);
 	sqlite3_free(entry);

@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <raft.h>
@@ -369,6 +370,95 @@ TEST(vfs2_open, tmp, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	free(file);
+
+	return MUNIT_OK;
+}
+
+/* Various edge cases of opening a WAL */
+TEST(vfs2_open, wal_weirdness, setUp, tearDown, 0, NULL)
+{
+	(void)params;
+	int rc;
+	struct fixture *f = data;
+	sqlite3_file *db = munit_malloc(f->vfs->szOsFile);
+	sqlite3_file *wal = munit_malloc(f->vfs->szOsFile);
+	int flags;
+
+	vfsFillPath(f, "foo.db");
+	rc = f->vfs->xOpen(
+	    f->vfs, f->path, db,
+	    SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_MAIN_DB,
+	    &flags);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	vfsFillPath(f, "foo.db-wal");
+	rc = f->vfs->xOpen(
+	    f->vfs, f->path, wal,
+	    SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_WAL,
+	    &flags);
+	munit_assert_int(rc, ==, SQLITE_OK);
+
+	/* Now the two physical WALs and the moving name exist. The moving name
+	 * points to -xwal1. */
+	struct stat st;
+	rc = stat(f->path, &st);
+	munit_assert_int(rc, ==, 0);
+	unsigned long long ino = st.st_ino;
+	char fixed1[VFS_PATH_SZ];
+	snprintf(fixed1, VFS_PATH_SZ, "%s/%s", f->dir, "foo.db-xwal1");
+	rc = stat(fixed1, &st);
+	munit_assert_int(rc, ==, 0);
+	unsigned long long ino1 = st.st_ino;
+	munit_assert_ullong(ino, ==, ino1);
+	munit_assert_ullong(st.st_size, ==, 0);
+	char fixed2[VFS_PATH_SZ];
+	snprintf(fixed2, VFS_PATH_SZ, "%s/%s", f->dir, "foo.db-xwal2");
+	rc = stat(fixed2, &st);
+	munit_assert_int(rc, ==, 0);
+	munit_assert_ullong(st.st_size, ==, 0);
+	unsigned long ino2 = st.st_ino;
+
+	/* Write the header for the first time. This goes to xwal1. The moving
+	 * name doesn't move. */
+	char hdr[32] = {0};
+	rc = wal->pMethods->xWrite(wal, hdr, sizeof(hdr), 0);
+	munit_assert_int(rc, ==, SQLITE_OK);
+	rc = stat(fixed1, &st);
+	munit_assert_ullong(st.st_size, ==, sizeof(hdr));
+	rc = stat(f->path, &st);
+	munit_assert_int(rc, ==, 0);
+	munit_assert_ullong(st.st_ino, ==, ino1);
+
+	char buf[24 + 512];
+	/* Write a frame to the WAL. */
+	rc = wal->pMethods->xWrite(wal, buf, 24, 32);
+	munit_assert_int(rc, ==, 0);
+	rc = wal->pMethods->xWrite(wal, buf + 24, 512, 32 + 24);
+	munit_assert_int(rc, ==, 0);
+
+	/* Force allocation of the WAL index. */
+	volatile void *p;
+	rc = db->pMethods->xShmMap(db, 0, 1 << 15, 1, &p);
+	munit_assert_int(rc, ==, 0);
+
+	/* Write the header again. This triggers a real WAL swap. */
+	rc = wal->pMethods->xWrite(wal, hdr, sizeof(hdr), 0);
+	munit_assert_int(rc, ==, SQLITE_OK);
+	rc = stat(fixed1, &st);
+	munit_assert_int(rc, ==, 0);
+	munit_assert_ullong(st.st_size, ==, sizeof(hdr) + sizeof(buf));
+	rc = stat(fixed2, &st);
+	munit_assert_int(rc, ==, 0);
+	munit_assert_ullong(st.st_size, ==, sizeof(hdr));
+	rc = stat(f->path, &st);
+	munit_assert_int(rc, ==, 0);
+	munit_assert_ullong(st.st_ino, ==, ino2);
+
+	wal->pMethods->xClose(wal);
+	db->pMethods->xClose(db);
+
+	free(wal);
+	free(db);
 
 	return MUNIT_OK;
 }
