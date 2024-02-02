@@ -1,0 +1,95 @@
+name: Downstream checks
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+jobs:
+  dqlite:
+    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, 'please test downstream') }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install apt deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq automake libtool gcc make liblz4-dev libuv1-dev libsqlite3-dev
+
+      - name: Check out libbacktrace
+        uses: actions/checkout@v3
+        with:
+          repository: ianlancetaylor/libbacktrace
+          path: libbacktrace
+
+      - name: Install libbacktrace
+        run: |
+          cd libbacktrace
+          autoreconf -i
+          ./configure
+          sudo make -j$(nproc) install
+          sudo ldconfig
+
+      - name: Check out raft
+        uses: actions/checkout@v3
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+          path: raft
+
+      - name: Install raft
+        run: |
+          cd raft
+          autoreconf -i
+          ./configure --enable-debug --enable-uv --enable-sanitize --enable-backtrace
+          sudo make -j$(nproc) install
+          sudo ldconfig
+
+      - name: Check out dqlite
+        uses: actions/checkout@v3
+        with:
+          repository: canonical/dqlite
+          path: dqlite
+
+      - name: Install dqlite
+        run: |
+          cd dqlite
+          autoreconf -i
+          ./configure --enable-debug --enable-sanitize --enable-backtrace
+          sudo make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+
+      - name: Install Go
+        uses: actions/setup-go@v4
+
+      - name: Check out go-dqlite
+        uses: actions/checkout@v3
+        with:
+          repository: canonical/go-dqlite
+          path: go-dqlite
+
+      - name: Test go-dqlite
+        env:
+          GO_DQLITE_MULTITHREAD: '1'
+        run: |
+          cd go-dqlite
+          go get -tags libsqlite3 -t ./...
+          go test -asan -v ./...
+          VERBOSE=1 ASAN=-asan ./test/dqlite-demo.sh
+          VERBOSE=1 ASAN=-asan DISK=1 ./test/dqlite-demo.sh
+          VERBOSE=1 ASAN=-asan ./test/roles.sh
+          VERBOSE=1 ASAN=-asan DISK=1 ./test/roles.sh
+          VERBOSE=1 ASAN=-asan ./test/recover.sh
+          VERBOSE=1 ASAN=-asan DISK=1 ./test/recover.sh
+
+  jepsen:
+    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, 'please test downstream') }}
+    uses: canonical/jepsen.dqlite/.github/workflows/test-build-run.yml@master
+    with:
+      raft-ref: refs/pull/${{ github.event.issue.number }}/head
+      workloads: >
+        ['append', 'bank', 'set']
+      nemeses: >
+        ['none', 'partition', 'kill', 'stop', 'disk', 'member',
+         'partition,stop', 'partition,kill', 'partition,member',
+         'packet,stop', 'pause']
+      disk: >
+        ['0']
