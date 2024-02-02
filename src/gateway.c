@@ -1394,11 +1394,8 @@ int gateway__handle(struct gateway *g,
 		goto handle;
 	}
 
-	/* Request in progress. TODO The current implementation doesn't allow
-	 * reading a new request while a query is yielding rows, in that case
-	 * gateway__resume in write_cb will indicate it has not finished
-	 * returning results and a new request (in this case, the interrupt)
-	 * will not be read. */
+	/* Request in progress, the only time we allow interleaving requests is
+	 * when the second request tries to interrupt a query yielding rows. */
 	if (g->req->type == DQLITE_REQUEST_QUERY &&
 	    type == DQLITE_REQUEST_INTERRUPT) {
 		goto handle;
@@ -1445,11 +1442,9 @@ int gateway__resume(struct gateway *g, bool *finished)
 {
 	if (g->req == NULL || (g->req->type != DQLITE_REQUEST_QUERY &&
 			       g->req->type != DQLITE_REQUEST_QUERY_SQL)) {
-		tracef("gateway resume - finished");
 		*finished = true;
 		return 0;
 	}
-	tracef("gateway resume - not finished");
 	*finished = false;
 	query_batch(g);
 	return 0;

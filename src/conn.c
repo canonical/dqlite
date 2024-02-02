@@ -32,14 +32,15 @@ static void conn_write_cb(struct transport *transport, int status)
 	buffer__advance(&c->write, message__sizeof(&c->response)); /* Header */
 
 	rv = gateway__resume(&c->gateway, &finished);
+	tracef("request finished: %d", finished);
 	if (rv != 0) {
 		goto abort;
 	}
-	if (!finished) {
+
+	/* Start reading the next message if we're not doing that already. */
+	if (c->reading_message) {
 		return;
 	}
-
-	/* Start reading the next request */
 	rv = read_message(c);
 	if (rv != 0) {
 		goto abort;
@@ -191,6 +192,7 @@ static void read_message_cb(struct transport *transport, int status)
 	struct cursor cursor;
 	int rv;
 
+	c->reading_message = false;
 	if (status != 0) {
 		// errorf(c->logger, "read error");
 		tracef("read error %d", status);
@@ -222,6 +224,7 @@ static int read_message(struct conn *c)
 		tracef("init read failed %d", rv);
 		return rv;
 	}
+	c->reading_message = true;
 	rv = transport__read(&c->transport, &buf, read_message_cb);
 	if (rv != 0) {
 		tracef("transport read failed %d", rv);
@@ -320,6 +323,7 @@ int conn__start(struct conn *c,
 	}
 	c->handle.data = c;
 	c->closed = false;
+	c->reading_message = false;
 	/* First, we expect the client to send us the protocol version. */
 	rv = read_protocol(c);
 	if (rv != 0) {
