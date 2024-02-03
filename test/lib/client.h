@@ -150,23 +150,29 @@
 		munit_assert_int(rv_, ==, 0);                           \
 	}
 
-/* Perform a query. */
-#define QUERY(STMT_ID, ROWS)                                              \
+/* Perform a query, DONE is a pointer to a bool that will be true when the query
+ * is done. */
+#define QUERY_DONE(STMT_ID, ROWS, DONE)                                   \
 	{                                                                 \
 		int rv_;                                                  \
 		rv_ = clientSendQuery(f->client, STMT_ID, NULL, 0, NULL); \
 		munit_assert_int(rv_, ==, 0);                             \
-		rv_ = clientRecvRows(f->client, ROWS, NULL, NULL);        \
+		rv_ = clientRecvRows(f->client, ROWS, DONE, NULL);        \
 		munit_assert_int(rv_, ==, 0);                             \
 	}
 
-#define QUERY_SQL(SQL, ROWS)                                             \
+/* Perform a query. */
+#define QUERY(STMT_ID, ROWS) QUERY_DONE(STMT_ID, ROWS, NULL)
+
+#define QUERY_SQL_DONE(SQL, ROWS, DONE)                                  \
 	{                                                                \
 		int rv_;                                                 \
 		rv_ = clientSendQuerySQL(f->client, SQL, NULL, 0, NULL); \
 		munit_assert_int(rv_, ==, 0);                            \
-		rv_ = clientRecvRows(f->client, ROWS, NULL, NULL);       \
+		rv_ = clientRecvRows(f->client, ROWS, DONE, NULL);       \
 		munit_assert_int(rv_, ==, 0);                            \
 	}
+
+#define QUERY_SQL(SQL, ROWS) QUERY_SQL_DONE(SQL, ROWS, NULL)
 
 #endif /* TEST_CLIENT_H */
