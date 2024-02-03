@@ -31,7 +31,7 @@ jobs:
       - name: Check out raft
         uses: actions/checkout@v3
         with:
-          ref: refs/pull/${{ github.event.issue.number }}/head
+          repository: canonical/raft
           path: raft
 
       - name: Install raft
@@ -45,7 +45,7 @@ jobs:
       - name: Check out dqlite
         uses: actions/checkout@v3
         with:
-          repository: canonical/dqlite
+          ref: refs/pull/${{ github.event.issue.number }}/head
           path: dqlite
 
       - name: Install dqlite
