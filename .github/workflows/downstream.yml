@@ -84,7 +84,7 @@ jobs:
     if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, 'please test downstream') }}
     uses: canonical/jepsen.dqlite/.github/workflows/test-build-run.yml@master
     with:
-      raft-ref: refs/pull/${{ github.event.issue.number }}/head
+      dqlite-ref: refs/pull/${{ github.event.issue.number }}/head
       workloads: >
         ['append', 'bank', 'set']
       nemeses: >
