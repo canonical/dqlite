@@ -15,7 +15,7 @@ jobs:
           sudo apt-get install -qq automake libtool gcc make liblz4-dev libuv1-dev libsqlite3-dev
 
       - name: Check out libbacktrace
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ianlancetaylor/libbacktrace
           path: libbacktrace
@@ -29,7 +29,7 @@ jobs:
           sudo ldconfig
 
       - name: Check out raft
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: canonical/raft
           path: raft
@@ -43,7 +43,7 @@ jobs:
           sudo ldconfig
 
       - name: Check out dqlite
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: refs/pull/${{ github.event.issue.number }}/head
           path: dqlite
@@ -61,7 +61,7 @@ jobs:
         uses: actions/setup-go@v5
 
       - name: Check out go-dqlite
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: canonical/go-dqlite
           path: go-dqlite
