@@ -5,6 +5,8 @@
 #include "tracing.h"
 #include "transport.h"
 
+#include <stdlib.h>
+
 /* Initialize the given buffer for reading, ensure it has the given size. */
 static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
 {
@@ -18,9 +20,12 @@ static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
 }
 
 static int read_message(struct conn *c);
-static void conn_write_cb(struct transport *transport, int status)
+static void conn_write_cb(uv_write_t *req, int status)
 {
-	struct conn *c = transport->data;
+	struct transport *t = req->data;
+	assert(t != NULL);
+	struct conn *c = t->data;
+	assert(c != NULL);
 	bool finished;
 	int rv;
 	if (status != 0) {
@@ -39,14 +44,18 @@ static void conn_write_cb(struct transport *transport, int status)
 
 	/* Start reading the next message if we're not doing that already. */
 	if (c->reading_message) {
+		free(req);
 		return;
 	}
 	rv = read_message(c);
 	if (rv != 0) {
 		goto abort;
 	}
+
+	free(req);
 	return;
 abort:
+	free(req);
 	conn__stop(c);
 }
 

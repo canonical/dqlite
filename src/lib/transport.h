@@ -14,7 +14,6 @@
  */
 struct transport;
 typedef void (*transport_read_cb)(struct transport *t, int status);
-typedef void (*transport_write_cb)(struct transport *t, int status);
 typedef void (*transport_close_cb)(struct transport *t);
 
 /**
@@ -28,7 +27,6 @@ struct transport
 	uv_buf_t read;               /* Read buffer */
 	uv_write_t write;            /* Write request */
 	transport_read_cb read_cb;   /* Read callback */
-	transport_write_cb write_cb; /* Write callback */
 	transport_close_cb close_cb; /* Close callback */
 };
 
@@ -49,9 +47,10 @@ void transport__close(struct transport *t, transport_close_cb cb);
 int transport__read(struct transport *t, uv_buf_t *buf, transport_read_cb cb);
 
 /**
- * Write the given buffer to the transport.
+ * Write the given buffer to the transport. The @cb gains ownership of
+ * uv_write_t and must `free` it at its own convenience.
  */
-int transport__write(struct transport *t, uv_buf_t *buf, transport_write_cb cb);
+int transport__write(struct transport *t, uv_buf_t *buf, uv_write_cb cb);
 
 /* Create an UV stream object from the given fd. */
 int transport__stream(struct uv_loop_s *loop,
