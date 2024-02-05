@@ -27,6 +27,8 @@
 
 #define VFS2_EXCLUSIVE UINT_MAX
 
+#define VFS2_WAL_WRITE_LOCK 0
+
 static const uint32_t invalid_magic = 0x17171717;
 
 /**
@@ -695,6 +697,12 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 		for (int i = ofst; i < ofst + n; i++) {
 			locks[i] = VFS2_EXCLUSIVE;
 		}
+
+		if (ofst == VFS2_WAL_WRITE_LOCK) {
+			assert(n == 1);
+			struct vfs2_file *wal = lookup_partner_file(xfile);
+			assert(wal->wal.pending_txn_len == 0);
+		}
 	} else if (flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED)) {
 		for (int i = ofst; i < ofst + n; i++) {
 			assert(locks[i] > 0);
@@ -704,6 +712,17 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 		for (int i = ofst; i < ofst + n; i++) {
 			assert(locks[i] == VFS2_EXCLUSIVE);
 			locks[i] = 0;
+		}
+
+		if (ofst == VFS2_WAL_WRITE_LOCK) {
+			assert(n == 1);
+			struct vfs2_file *wal = lookup_partner_file(xfile);
+			for (uint32_t i = 0; i < wal->wal.pending_txn_len; i++) {
+				sqlite3_free(wal->wal.pending_txn_frames[i].data);
+			}
+			sqlite3_free(wal->wal.pending_txn_frames);
+			wal->wal.pending_txn_frames = NULL;
+			wal->wal.pending_txn_len = 0;
 		}
 	} else {
 		assert(0);
