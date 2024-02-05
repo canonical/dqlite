@@ -806,10 +806,13 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 		assert(amount <= (int)page_size);
 		pgno = 1;
 	} else {
-		/* For pages greater than 1, we expect a full
-		 * page read, with an offset that starts exectly
-		 * at the page boundary. */
-		assert(amount == (int)page_size);
+		/* For pages greater than 1, we expect an offset
+		 * that starts exactly at a page boundary. The read
+		 * size can be less than a full page when SQLite
+		 * is compiled with SQLITE_DIRECT_OVERFLOW_READ
+		 * (enabled by default since 3.45.1). */
+		assert(amount <= (int)page_size);
+
 		assert((offset % (int)page_size) == 0);
 		pgno = (unsigned)(offset / (int)page_size) + 1;
 	}
@@ -822,7 +825,7 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 		/* Read the desired part of page 1. */
 		memcpy(buf, (char *)page + offset, (size_t)amount);
 	} else {
-		/* Read the full page. */
+		/* Read the page. */
 		memcpy(buf, page, (size_t)amount);
 	}
 
