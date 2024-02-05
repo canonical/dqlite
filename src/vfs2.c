@@ -8,6 +8,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -23,6 +24,8 @@
 
 #define VFS2_WAL_INDEX_REGION_SIZE (1 << 15)
 #define VFS2_WAL_FRAME_HDR_SIZE 24
+
+#define VFS2_EXCLUSIVE UINT_MAX
 
 static const uint32_t invalid_magic = 0x17171717;
 
@@ -134,12 +137,11 @@ struct vfs2_db
 	 * When we get vfs2_apply, we overwrite both prev_txn_hdr and the shm
 	 * with pending_txn_hdr. */
 
-	/* shm implementation, incl. locks */
-	void **all_regions;
-	int all_regions_len;
+	void **regions;
+	int regions_len;
 	unsigned refcount;
-	unsigned shared[SQLITE_SHM_NLOCK];
-	unsigned exclusive[SQLITE_SHM_NLOCK];
+
+	unsigned locks[SQLITE_SHM_NLOCK];
 };
 
 /**
@@ -285,12 +287,16 @@ static int vfs2_close(sqlite3_file *file)
 			rvprev = xfile->wal.wal_prev->pMethods->xClose(
 			    xfile->wal.wal_prev);
 		}
+		for (uint32_t i = 0; i < xfile->wal.pending_txn_len; i++) {
+			sqlite3_free(xfile->wal.pending_txn_frames[i].data);
+		}
+		sqlite3_free(xfile->wal.pending_txn_frames);
 		sqlite3_free(xfile->wal.wal_prev);
 	} else if (xfile->flags & SQLITE_OPEN_MAIN_DB) {
-		for (int i = 0; i < xfile->db_shm.all_regions_len; i++) {
-			sqlite3_free(xfile->db_shm.all_regions[i]);
+		for (int i = 0; i < xfile->db_shm.regions_len; i++) {
+			sqlite3_free(xfile->db_shm.regions[i]);
 		}
-		sqlite3_free(xfile->db_shm.all_regions);
+		sqlite3_free(xfile->db_shm.regions);
 	}
 	rv = SQLITE_OK;
 	if (xfile->orig->pMethods != NULL) {
@@ -338,8 +344,8 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
 	 * that we can restore it later. This relies on SQLite
 	 * writing the WAL index header before restarting the
 	 * WAL -- assert that this is the case by comparing salts. */
-	assert(db->db_shm.all_regions_len > 0);
-	union vfs2_shm_region0 *region0 = db->db_shm.all_regions[0];
+	assert(db->db_shm.regions_len > 0);
+	union vfs2_shm_region0 *region0 = db->db_shm.regions[0];
 	assert(hdr->salt[0] == region0->hdr.basic[0].aCksum[0]);
 	assert(hdr->salt[1] == region0->hdr.basic[0].aCksum[1]);
 	db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
@@ -517,8 +523,10 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg)
 	if (op == SQLITE_FCNTL_COMMIT_PHASETWO) {
 		/* Hide the transaction that was just written by resetting
 		 * the WAL index header. */
-		assert(xfile->db_shm.all_regions_len > 0);
-		union vfs2_shm_region0 *region0 = xfile->db_shm.all_regions[0];
+		if (xfile->db_shm.regions_len == 0) {
+			goto forward;
+		}
+		union vfs2_shm_region0 *region0 = xfile->db_shm.regions[0];
 		xfile->db_shm.pending_txn_hdr = region0->hdr.basic[0];
 		region0->hdr.basic[0] = xfile->db_shm.prev_txn_hdr;
 		region0->hdr.basic[1] = region0->hdr.basic[0];
@@ -598,15 +606,14 @@ static int vfs2_shm_map(sqlite3_file *file,
 	void *region;
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 
-	if (xfile->db_shm.all_regions != NULL &&
-	    pgno < xfile->db_shm.all_regions_len) {
-		region = xfile->db_shm.all_regions[pgno];
+	if (xfile->db_shm.regions != NULL && pgno < xfile->db_shm.regions_len) {
+		region = xfile->db_shm.regions[pgno];
 		assert(region != NULL);
 	} else if (extend) {
 		void **regions;
 
 		assert(pgsz == VFS2_WAL_INDEX_REGION_SIZE);
-		assert(pgno == xfile->db_shm.all_regions_len);
+		assert(pgno == xfile->db_shm.regions_len);
 		region = sqlite3_malloc(pgsz);
 		if (region == NULL) {
 			rv = SQLITE_NOMEM;
@@ -617,17 +624,17 @@ static int vfs2_shm_map(sqlite3_file *file,
 
 		/* FIXME reallocating every time seems bad */
 		regions = sqlite3_realloc64(
-		    xfile->db_shm.all_regions,
-		    (sqlite3_uint64)sizeof(*xfile->db_shm.all_regions) *
-			(sqlite3_uint64)(xfile->db_shm.all_regions_len + 1));
+		    xfile->db_shm.regions,
+		    (sqlite3_uint64)sizeof(*xfile->db_shm.regions) *
+			(sqlite3_uint64)(xfile->db_shm.regions_len + 1));
 		if (regions == NULL) {
 			rv = SQLITE_NOMEM;
 			goto err_after_region_malloc;
 		}
 
-		xfile->db_shm.all_regions = regions;
-		xfile->db_shm.all_regions[pgno] = region;
-		xfile->db_shm.all_regions_len++;
+		xfile->db_shm.regions = regions;
+		xfile->db_shm.regions[pgno] = region;
+		xfile->db_shm.regions_len++;
 	} else {
 		region = NULL;
 	}
@@ -651,30 +658,55 @@ err:
 static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
-	int i;
 
-	if (flags & SQLITE_SHM_EXCLUSIVE) {
-		for (i = ofst; i < ofst + n; i++) {
-			if (xfile->db_shm.shared[i] > 0 ||
-			    xfile->db_shm.exclusive[i] > 0) {
+	assert(file != NULL);
+	assert(ofst >= 0);
+	assert(n >= 0);
+
+	assert(ofst >= 0 && ofst + n <= SQLITE_SHM_NLOCK);
+	assert(n >= 1);
+	assert(n == 1 || (flags & SQLITE_SHM_EXCLUSIVE) != 0);
+
+	assert(flags == (SQLITE_SHM_LOCK | SQLITE_SHM_SHARED) ||
+	       flags == (SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE) ||
+	       flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED) ||
+	       flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE));
+
+	assert(xfile->flags & SQLITE_OPEN_MAIN_DB);
+
+	unsigned *locks = xfile->db_shm.locks;
+	if (flags == (SQLITE_SHM_LOCK | SQLITE_SHM_SHARED)) {
+		for (int i = ofst; i < ofst + n; i++) {
+			if (locks[i] == VFS2_EXCLUSIVE) {
 				return SQLITE_BUSY;
 			}
 		}
 
-		for (i = ofst; i < ofst + n; i++) {
-			assert(xfile->db_shm.exclusive[i] == 0);
-			xfile->db_shm.exclusive[i] = 1;
+		for (int i = ofst; i < ofst + n; i++) {
+			locks[i]++;
+		}
+	} else if (flags == (SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE)) {
+		for (int i = ofst; i < ofst + n; i++) {
+			if (locks[i] > 0) {
+				return SQLITE_BUSY;
+			}
+		}
+
+		for (int i = ofst; i < ofst + n; i++) {
+			locks[i] = VFS2_EXCLUSIVE;
+		}
+	} else if (flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED)) {
+		for (int i = ofst; i < ofst + n; i++) {
+			assert(locks[i] > 0);
+			locks[i]--;
+		}
+	} else if (flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE)) {
+		for (int i = ofst; i < ofst + n; i++) {
+			assert(locks[i] == VFS2_EXCLUSIVE);
+			locks[i] = 0;
 		}
 	} else {
-		for (i = ofst; i < ofst + n; i++) {
-			if (xfile->db_shm.exclusive[i] > 0) {
-				return SQLITE_BUSY;
-			}
-		}
-
-		for (i = ofst; i < ofst + n; i++) {
-			xfile->db_shm.shared[i]++;
-		}
+		assert(0);
 	}
 
 	return SQLITE_OK;
@@ -691,19 +723,16 @@ static int vfs2_shm_unmap(sqlite3_file *file, int delete)
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 	xfile->db_shm.refcount--;
 	if (xfile->db_shm.refcount == 0) {
-		for (int i = 0; i < xfile->db_shm.all_regions_len; i++) {
-			void *region = xfile->db_shm.all_regions[i];
+		for (int i = 0; i < xfile->db_shm.regions_len; i++) {
+			void *region = xfile->db_shm.regions[i];
 			assert(region != NULL);
 			sqlite3_free(region);
 		}
-		sqlite3_free(xfile->db_shm.all_regions);
+		sqlite3_free(xfile->db_shm.regions);
 
-		xfile->db_shm.all_regions = NULL;
-		xfile->db_shm.all_regions_len = 0;
-		for (int i = 0; i < SQLITE_SHM_NLOCK; i++) {
-			xfile->db_shm.shared[i] = 0;
-			xfile->db_shm.exclusive[i] = 0;
-		}
+		xfile->db_shm.regions = NULL;
+		xfile->db_shm.regions_len = 0;
+		memset(xfile->db_shm.locks, 0, sizeof(xfile->db_shm.locks));
 	}
 	return SQLITE_OK;
 }
@@ -909,11 +938,10 @@ static int vfs2_open_db(sqlite3_vfs *vfs,
 	}
 
 	xout->db_shm.name = name;
-	xout->db_shm.all_regions = NULL;
-	xout->db_shm.all_regions_len = 0;
+	xout->db_shm.regions = NULL;
+	xout->db_shm.regions_len = 0;
 	xout->db_shm.refcount = 0;
-	memset(xout->db_shm.shared, 0, sizeof(xout->db_shm.shared));
-	memset(xout->db_shm.exclusive, 0, sizeof(xout->db_shm.exclusive));
+	memset(xout->db_shm.locks, 0, sizeof(xout->db_shm.locks));
 
 	struct vfs2_db_entry *entry = sqlite3_malloc(sizeof(*entry));
 	if (entry == NULL) {
@@ -1082,10 +1110,10 @@ int vfs2_apply(sqlite3_file *file)
 	if (wal == NULL) {
 		return 1;
 	}
-	if (xfile->db_shm.all_regions_len == 0) {
+	if (xfile->db_shm.regions_len == 0) {
 		return 1;
 	}
-	union vfs2_shm_region0 *region0 = xfile->db_shm.all_regions[0];
+	union vfs2_shm_region0 *region0 = xfile->db_shm.regions[0];
 	region0->hdr.basic[0] = xfile->db_shm.pending_txn_hdr;
 	xfile->db_shm.prev_txn_hdr = xfile->db_shm.pending_txn_hdr;
 	wal->wal.pending_txn_start += wal->wal.pending_txn_len;
