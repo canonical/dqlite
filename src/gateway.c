@@ -1407,9 +1407,8 @@ int gateway__handle(struct gateway *g,
 	}
 
 	/* Receiving a request when one is ongoing on the same connection
-	 * is a hard error. The connection will be stopped due to the non-0
-	 * return code in case asserts are off. */
-	assert(false);
+	 * is an error, unless it's an interrupt request. The connection will be
+	 * stopped due to the non-0 return value. */
 	return SQLITE_BUSY;
 
 handle:
