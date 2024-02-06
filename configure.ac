@@ -6,7 +6,7 @@ AC_CONFIG_AUX_DIR([ac])
 AM_INIT_AUTOMAKE([subdir-objects -Wall -Werror -Wno-portability foreign])
 AM_SILENT_RULES([yes])
 
-AC_PROG_CC_STDC
+AC_PROG_CC
 AC_USE_SYSTEM_EXTENSIONS
 
 AX_PTHREAD
