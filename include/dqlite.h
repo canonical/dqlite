@@ -445,6 +445,12 @@ DQLITE_API int dqlite_node_set_target_standbys(dqlite_node *n, int standbys);
 DQLITE_API int dqlite_node_set_auto_recovery(dqlite_node *n, bool enabled);
 
 /**
+ * Enable or disable raft snapshot compression.
+ */
+DQLITE_API int dqlite_node_set_snapshot_compression(dqlite_node *n,
+						    bool enabled);
+
+/**
  * Enable automatic role management on the server side for this node.
  *
  * When automatic role management is enabled, servers in a dqlite cluster will

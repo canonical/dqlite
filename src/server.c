@@ -745,6 +745,11 @@ int dqlite_node_enable_role_management(dqlite_node *n)
 	return 0;
 }
 
+int dqlite_node_set_snapshot_compression(dqlite_node *n, bool enabled)
+{
+	return raft_uv_set_snapshot_compression(&n->raft_io, enabled);
+}
+
 int dqlite_node_set_auto_recovery(dqlite_node *n, bool enabled)
 {
 	raft_uv_set_auto_recovery(&n->raft_io, enabled);
