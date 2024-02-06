@@ -5,7 +5,6 @@
 #ifndef DQLITE_GATEWAY_H_
 #define DQLITE_GATEWAY_H_
 
-#include <raft.h>
 
 #include "../include/dqlite.h"
 
@@ -15,6 +14,7 @@
 #include "config.h"
 #include "id.h"
 #include "leader.h"
+#include "raft.h"
 #include "registry.h"
 #include "stmt.h"
 

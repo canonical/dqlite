@@ -1,10 +1,10 @@
 #include "translate.h"
 
-#include <raft.h>
 
 #include "assert.h"
 #include "leader.h"
 #include "protocol.h"
+#include "raft.h"
 
 /* Translate a raft error to a dqlite one. */
 int translateRaftErrCode(int code)

@@ -1,7 +1,6 @@
 #include <errno.h>
 #include <unistd.h>
 
-#include <raft.h>
 #include <sqlite3.h>
 
 #include "../../include/dqlite.h"
@@ -13,6 +12,7 @@
 #include "../lib/sqlite.h"
 
 #include "../../src/format.h"
+#include "../../src/raft.h"
 #include "../../src/vfs.h"
 
 static char *bools[] = {"0", "1", NULL};

@@ -1,4 +1,3 @@
-#include <raft.h>
 #include <stdio.h>
 
 #include "../lib/fs.h"
@@ -7,6 +6,7 @@
 #include "../lib/sqlite.h"
 
 #include "../../include/dqlite.h"
+#include "../../src/raft.h"
 
 #include <sys/mman.h>
 

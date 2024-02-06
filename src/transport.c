@@ -1,6 +1,5 @@
 #include "lib/transport.h"
 
-#include <raft.h>
 #include <sqlite3.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +8,7 @@
 #include "lib/addr.h"
 #include "message.h"
 #include "protocol.h"
+#include "raft.h"
 #include "request.h"
 #include "tracing.h"
 #include "transport.h"

@@ -1,7 +1,7 @@
 #ifndef LOGGER_H_
 #define LOGGER_H_
 
-#include <raft.h>
+#include "raft.h"
 
 #include "../include/dqlite.h"
 

@@ -5,11 +5,10 @@
 #ifndef COMMAND_H_
 #define COMMAND_H_
 
-#include <raft.h>
-
 #include "../include/dqlite.h"
 
 #include "lib/serialize.h"
+#include "raft.h"
 
 /* Command type codes */
 enum { COMMAND_OPEN = 1, COMMAND_FRAMES, COMMAND_UNDO, COMMAND_CHECKPOINT };

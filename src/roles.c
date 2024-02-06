@@ -1,9 +1,8 @@
 #include <stdlib.h>
 
-#include <raft.h>
-
 #include "client/protocol.h"
 #include "lib/queue.h"
+#include "raft.h"
 #include "roles.h"
 #include "server.h"
 #include "translate.h"

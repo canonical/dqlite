@@ -9,8 +9,6 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#include <raft.h>
-
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
@@ -20,6 +18,7 @@
 
 #include "format.h"
 #include "tracing.h"
+#include "raft.h"
 #include "vfs.h"
 
 /* tinycc doesn't have this builtin, nor the warning that it's meant to silence.

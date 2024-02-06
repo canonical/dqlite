@@ -1,11 +1,10 @@
-#include <raft.h>
-
 #include "lib/assert.h"
 #include "lib/serialize.h"
 
 #include "command.h"
 #include "fsm.h"
 #include "tracing.h"
+#include "raft.h"
 #include "vfs.h"
 
 #include <sys/mman.h>

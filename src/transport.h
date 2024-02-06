@@ -9,7 +9,7 @@
 #ifndef TRANSPORT_H_
 #define TRANSPORT_H_
 
-#include <raft/uv.h>
+#include "raft.h"
 
 #include "../include/dqlite.h"
 

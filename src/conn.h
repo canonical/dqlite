@@ -5,8 +5,6 @@
 #ifndef DQLITE_CONN_H_
 #define DQLITE_CONN_H_
 
-#include <raft/uv.h>
-
 #include "lib/buffer.h"
 #include "lib/queue.h"
 #include "lib/transport.h"
@@ -14,6 +12,7 @@
 #include "gateway.h"
 #include "id.h"
 #include "message.h"
+#include "raft.h"
 
 /**
  * Callbacks.

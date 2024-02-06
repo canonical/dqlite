@@ -5,9 +5,8 @@
 #ifndef DQLITE_FSM_H_
 #define DQLITE_FSM_H_
 
-#include <raft.h>
-
 #include "config.h"
+#include "raft.h"
 #include "registry.h"
 
 /**

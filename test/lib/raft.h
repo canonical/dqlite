@@ -5,12 +5,11 @@
 #ifndef TEST_RAFT_H
 #define TEST_RAFT_H
 
-#include <raft.h>
-#include <raft/uv.h>
 #include <uv.h>
 
 #include "../../src/fsm.h"
 #include "../../src/transport.h"
+#include "../../src/raft.h"
 #include "fs.h"
 #include "logger.h"
 #include "munit.h"

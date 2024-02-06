@@ -1,10 +1,15 @@
 ACLOCAL_AMFLAGS = -I m4
 AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
-AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(RAFT_CFLAGS) $(PTHREAD_CFLAGS)
-AM_LDFLAGS = $(UV_LIBS) $(RAFT_LIBS) $(PTHREAD_LIBS)
+AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(PTHREAD_CFLAGS)
+AM_LDFLAGS = $(UV_LIBS) $(PTHREAD_LIBS)
 
 if !BUILD_SQLITE_ENABLED
 AM_LDFLAGS += $(SQLITE_LIBS)
+endif
+
+if !BUILD_RAFT_ENABLED
+AM_CFLAGS += $(RAFT_CFLAGS)
+AM_LDFLAGS += $(RAFT_LIBS)
 endif
 
 include_HEADERS = include/dqlite.h
@@ -48,6 +53,60 @@ libdqlite_la_SOURCES = \
 
 if BUILD_SQLITE_ENABLED
 libdqlite_la_SOURCES += sqlite3.c
+endif
+
+if BUILD_RAFT_ENABLED
+libdqlite_la_SOURCES += \
+  src/raft/byte.c \
+  src/raft/callbacks.c \
+  src/raft/client.c \
+  src/raft/compress.c \
+  src/raft/configuration.c \
+  src/raft/convert.c \
+  src/raft/election.c \
+  src/raft/entry.c \
+  src/raft/err.c \
+  src/raft/fixture.c \
+  src/raft/flags.c \
+  src/raft/heap.c \
+  src/raft/lifecycle.c \
+  src/raft/log.c \
+  src/raft/membership.c \
+  src/raft/progress.c \
+  src/raft/raft.c \
+  src/raft/recv.c \
+  src/raft/recv_append_entries.c \
+  src/raft/recv_append_entries_result.c \
+  src/raft/recv_request_vote.c \
+  src/raft/recv_request_vote_result.c \
+  src/raft/recv_install_snapshot.c \
+  src/raft/recv_timeout_now.c \
+  src/raft/replication.c \
+  src/raft/snapshot.c \
+  src/raft/start.c \
+  src/raft/state.c \
+  src/raft/syscall.c \
+  src/raft/tick.c \
+  src/raft/uv.c \
+  src/raft/uv_append.c \
+  src/raft/uv_encoding.c \
+  src/raft/uv_finalize.c \
+  src/raft/uv_fs.c \
+  src/raft/uv_ip.c \
+  src/raft/uv_list.c \
+  src/raft/uv_metadata.c \
+  src/raft/uv_os.c \
+  src/raft/uv_prepare.c \
+  src/raft/uv_recv.c \
+  src/raft/uv_segment.c \
+  src/raft/uv_send.c \
+  src/raft/uv_snapshot.c \
+  src/raft/uv_tcp.c \
+  src/raft/uv_tcp_listen.c \
+  src/raft/uv_tcp_connect.c \
+  src/raft/uv_truncate.c \
+  src/raft/uv_work.c \
+  src/raft/uv_writer.c
 endif
 
 check_PROGRAMS = \
