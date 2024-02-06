@@ -32,6 +32,10 @@ static void conn_write_cb(uv_write_t *req, int status)
 		tracef("write cb status %d", status);
 		goto abort;
 	}
+	if (c->closed) {
+		tracef("connection closing");
+		goto abort;
+	}
 
 	buffer__reset(&c->write);
 	buffer__advance(&c->write, message__sizeof(&c->response)); /* Header */
