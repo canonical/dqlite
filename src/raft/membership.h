@@ -14,7 +14,7 @@ int membershipCanChangeConfiguration(struct raft *r);
  * configuration, the one contained in the entry at
  * r->configuration_committed_index. */
 int membershipFetchLastCommittedConfiguration(struct raft *r,
-                                              struct raft_configuration *conf);
+					      struct raft_configuration *conf);
 
 /* Update the information about the progress that the non-voting server
  * currently being promoted is making in catching with logs.
@@ -33,8 +33,8 @@ bool membershipUpdateCatchUpRound(struct raft *r);
  *
  * It must be called only by followers. */
 int membershipUncommittedChange(struct raft *r,
-                                const raft_index index,
-                                const struct raft_entry *entry);
+				const raft_index index,
+				const struct raft_entry *entry);
 
 /* Rollback any promotion configuration change that was applied locally, but
  * failed to be committed. It must be called by followers after they receive an
@@ -44,9 +44,9 @@ int membershipRollback(struct raft *r);
 
 /* Initialize the state of a leadership transfer request. */
 void membershipLeadershipTransferInit(struct raft *r,
-                                      struct raft_transfer *req,
-                                      raft_id id,
-                                      raft_transfer_cb cb);
+				      struct raft_transfer *req,
+				      raft_id id,
+				      raft_transfer_cb cb);
 
 /* Start the leadership transfer by sending a TimeoutNow message to the target
  * server. */

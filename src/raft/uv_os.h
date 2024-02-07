@@ -29,7 +29,7 @@
 
 /* True if the given FILENAME string has at most UV__FILENAME_LEN chars. */
 #define UV__FILENAME_HAS_VALID_LEN(FILENAME) \
-    LEN_AT_MOST_(FILENAME, UV__FILENAME_LEN)
+	LEN_AT_MOST_(FILENAME, UV__FILENAME_LEN)
 
 /* Portable open() */
 int UvOsOpen(const char *path, int flags, int mode, uv_file *fd);
@@ -60,9 +60,9 @@ int UvOsStat(const char *path, uv_stat_t *sb);
 
 /* Portable write() */
 int UvOsWrite(uv_file fd,
-              const uv_buf_t bufs[],
-              unsigned int nbufs,
-              int64_t offset);
+	      const uv_buf_t bufs[],
+	      unsigned int nbufs,
+	      int64_t offset);
 
 /* Portable unlink() */
 int UvOsUnlink(const char *path);
@@ -78,18 +78,18 @@ int UvOsIoSetup(unsigned nr, aio_context_t *ctxp);
 int UvOsIoDestroy(aio_context_t ctx);
 int UvOsIoSubmit(aio_context_t ctx, long nr, struct iocb **iocbpp);
 int UvOsIoGetevents(aio_context_t ctx,
-                    long min_nr,
-                    long max_nr,
-                    struct io_event *events,
-                    struct timespec *timeout);
+		    long min_nr,
+		    long max_nr,
+		    struct io_event *events,
+		    struct timespec *timeout);
 int UvOsEventfd(unsigned int initval, int flags);
 int UvOsSetDirectIo(uv_file fd);
 
 /* Format an error message caused by a failed system call or stdlib function. */
-#define UvOsErrMsg(ERRMSG, SYSCALL, ERRNUM)              \
-    {                                                    \
-        ErrMsgPrintf(ERRMSG, "%s", uv_strerror(ERRNUM)); \
-        ErrMsgWrapf(ERRMSG, SYSCALL);                    \
-    }
+#define UvOsErrMsg(ERRMSG, SYSCALL, ERRNUM)                      \
+	{                                                        \
+		ErrMsgPrintf(ERRMSG, "%s", uv_strerror(ERRNUM)); \
+		ErrMsgWrapf(ERRMSG, SYSCALL);                    \
+	}
 
 #endif /* UV_OS_H_ */

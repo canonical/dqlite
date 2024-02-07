@@ -8,8 +8,8 @@
 #include <uv.h>
 
 #include "../../src/fsm.h"
-#include "../../src/transport.h"
 #include "../../src/raft.h"
+#include "../../src/transport.h"
 #include "fs.h"
 #include "logger.h"
 #include "munit.h"

@@ -5,7 +5,6 @@
 #ifndef DQLITE_GATEWAY_H_
 #define DQLITE_GATEWAY_H_
 
-
 #include "../include/dqlite.h"
 
 #include "lib/buffer.h"

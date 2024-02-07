@@ -3,8 +3,8 @@
 
 #include "command.h"
 #include "fsm.h"
-#include "tracing.h"
 #include "raft.h"
+#include "tracing.h"
 #include "vfs.h"
 
 #include <sys/mman.h>

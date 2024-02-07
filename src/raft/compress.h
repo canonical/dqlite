@@ -15,9 +15,9 @@
  * failure.
  */
 int Compress(struct raft_buffer bufs[],
-             unsigned n_bufs,
-             struct raft_buffer *compressed,
-             char *errmsg);
+	     unsigned n_bufs,
+	     struct raft_buffer *compressed,
+	     char *errmsg);
 
 /*
  * Decompresses the content of `buf` into a newly allocated buffer that is
@@ -25,8 +25,8 @@ int Compress(struct raft_buffer bufs[],
  * failure.
  */
 int Decompress(struct raft_buffer buf,
-               struct raft_buffer *decompressed,
-               char *errmsg);
+	       struct raft_buffer *decompressed,
+	       char *errmsg);
 
 /* Returns `true` if `data` is compressed, `false` otherwise. */
 bool IsCompressed(const void *data, size_t sz);

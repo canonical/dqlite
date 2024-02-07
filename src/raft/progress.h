@@ -7,9 +7,10 @@
 
 /* Possible values for the state field of struct raft_progress. */
 enum {
-    PROGRESS__PROBE = 0, /* At most one AppendEntries per heartbeat interval */
-    PROGRESS__PIPELINE,  /* Optimistically stream AppendEntries */
-    PROGRESS__SNAPSHOT   /* Sending a snapshot */
+	PROGRESS__PROBE =
+	    0, /* At most one AppendEntries per heartbeat interval */
+	PROGRESS__PIPELINE, /* Optimistically stream AppendEntries */
+	PROGRESS__SNAPSHOT  /* Sending a snapshot */
 };
 
 /**
@@ -17,14 +18,16 @@ enum {
  */
 struct raft_progress
 {
-    unsigned short state;         /* Probe, pipeline or snapshot. */
-    raft_index next_index;        /* Next entry to send. */
-    raft_index match_index;       /* Highest index reported as replicated. */
-    raft_index snapshot_index;    /* Last index of most recent snapshot sent. */
-    raft_time last_send;          /* Timestamp of last AppendEntries RPC. */
-    raft_time snapshot_last_send; /* Timestamp of last InstallSnaphot RPC. */
-    bool recent_recv;    /* A msg was received within election timeout. */
-    raft_flags features; /* What the server is capable of. */
+	unsigned short state;   /* Probe, pipeline or snapshot. */
+	raft_index next_index;  /* Next entry to send. */
+	raft_index match_index; /* Highest index reported as replicated. */
+	raft_index
+	    snapshot_index;  /* Last index of most recent snapshot sent. */
+	raft_time last_send; /* Timestamp of last AppendEntries RPC. */
+	raft_time
+	    snapshot_last_send; /* Timestamp of last InstallSnaphot RPC. */
+	bool recent_recv;    /* A msg was received within election timeout. */
+	raft_flags features; /* What the server is capable of. */
 };
 
 /* Create and initialize the array of progress objects used by the leader to *
@@ -40,7 +43,7 @@ int progressBuildArray(struct raft *r);
  * Progress information for servers existing only in the new configuration will
  * be initialized as in progressBuildArray().*/
 int progressRebuildArray(struct raft *r,
-                         const struct raft_configuration *configuration);
+			 const struct raft_configuration *configuration);
 
 /* Whether the i'th server in the configuration has been sent all the log
  * entries. */
@@ -107,8 +110,8 @@ int progressState(struct raft *r, unsigned i);
  *
  * Called in pipeline mode after sending new entries. */
 void progressOptimisticNextIndex(struct raft *r,
-                                 unsigned i,
-                                 raft_index next_index);
+				 unsigned i,
+				 raft_index next_index);
 
 /* Return false if the given @index comes from an outdated message. Otherwise
  * update the progress and returns true. To be called when receiving a
@@ -120,9 +123,9 @@ bool progressMaybeUpdate(struct raft *r, unsigned i, raft_index last_index);
  * last_index) and returns true. To be called when receiving an unsuccessful
  * AppendEntries RPC response. */
 bool progressMaybeDecrement(struct raft *r,
-                            unsigned i,
-                            raft_index rejected,
-                            raft_index last_index);
+			    unsigned i,
+			    raft_index rejected,
+			    raft_index last_index);
 
 /* Return true if match_index is equal or higher than the snapshot_index. */
 bool progressSnapshotDone(struct raft *r, unsigned i);

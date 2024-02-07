@@ -5,7 +5,7 @@
 
 struct raft_callbacks
 {
-    raft_state_cb state_cb;
+	raft_state_cb state_cb;
 };
 
 int raftInitCallbacks(struct raft *r);

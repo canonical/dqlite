@@ -50,8 +50,8 @@ int replicationProgress(struct raft *r, unsigned i);
  *
  * It must be called only by leaders. */
 int replicationUpdate(struct raft *r,
-                      const struct raft_server *server,
-                      const struct raft_append_entries_result *result);
+		      const struct raft_server *server,
+		      const struct raft_append_entries_result *result);
 
 /* Append the log entries in the given request if the Log Matching Property is
  * satisfied.
@@ -67,14 +67,14 @@ int replicationUpdate(struct raft *r,
  *
  * It must be called only by followers. */
 int replicationAppend(struct raft *r,
-                      const struct raft_append_entries *args,
-                      raft_index *rejected,
-                      bool *async);
+		      const struct raft_append_entries *args,
+		      raft_index *rejected,
+		      bool *async);
 
 int replicationInstallSnapshot(struct raft *r,
-                               const struct raft_install_snapshot *args,
-                               raft_index *rejected,
-                               bool *async);
+			       const struct raft_install_snapshot *args,
+			       raft_index *rejected,
+			       bool *async);
 
 /* Returns `true` if the raft instance is currently installing a snapshot */
 bool replicationInstallSnapshotBusy(struct raft *r);

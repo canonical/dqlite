@@ -17,8 +17,8 @@
 #include "lib/byte.h"
 
 #include "format.h"
-#include "tracing.h"
 #include "raft.h"
+#include "tracing.h"
 #include "vfs.h"
 
 /* tinycc doesn't have this builtin, nor the warning that it's meant to silence.

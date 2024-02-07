@@ -1,6 +1,5 @@
 #include "translate.h"
 
-
 #include "assert.h"
 #include "leader.h"
 #include "protocol.h"

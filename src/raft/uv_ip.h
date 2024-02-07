@@ -7,10 +7,10 @@
 
 /* Split @address into @host and @service. */
 int uvIpAddrSplit(const char *address,
-                  char *host,
-                  size_t host_size,
-                  char *service,
-                  size_t service_size);
+		  char *host,
+		  size_t host_size,
+		  char *service,
+		  size_t service_size);
 
 struct addrinfo;
 

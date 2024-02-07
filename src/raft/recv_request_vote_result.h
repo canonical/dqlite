@@ -7,8 +7,8 @@
 
 /* Process a RequestVote RPC result from the given server. */
 int recvRequestVoteResult(struct raft *r,
-                          raft_id id,
-                          const char *address,
-                          const struct raft_request_vote_result *result);
+			  raft_id id,
+			  const char *address,
+			  const struct raft_request_vote_result *result);
 
 #endif /* RAFT_RECV_REQUEST_VOTE_RESULT_H_ */

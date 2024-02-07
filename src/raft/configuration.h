@@ -32,9 +32,9 @@ void configurationClose(struct raft_configuration *c);
  *     be extended
  */
 int configurationAdd(struct raft_configuration *c,
-                     raft_id id,
-                     const char *address,
-                     int role);
+		     raft_id id,
+		     const char *address,
+		     int role);
 
 /* Return the number of servers with the RAFT_VOTER role. */
 unsigned configurationVoterCount(const struct raft_configuration *c);
@@ -49,11 +49,11 @@ unsigned configurationIndexOf(const struct raft_configuration *c, raft_id id);
  * with the given ID, or if it's not flagged as voting, return the number of
  * servers. */
 unsigned configurationIndexOfVoter(const struct raft_configuration *c,
-                                   raft_id id);
+				   raft_id id);
 
 /* Get the server with the given ID, or #NULL if no matching server is found. */
 const struct raft_server *configurationGet(const struct raft_configuration *c,
-                                           raft_id id);
+					   raft_id id);
 
 /* Remove a server from a raft configuration. The given ID must match the one of
  * an existing server in the configuration.
@@ -85,7 +85,7 @@ int configurationRemove(struct raft_configuration *c, raft_id id);
  *     Memory to copy all the servers could not be allocated.
  */
 int configurationCopy(const struct raft_configuration *src,
-                      struct raft_configuration *dst);
+		      struct raft_configuration *dst);
 
 /* Number of bytes needed to encode the given configuration object. */
 size_t configurationEncodedSize(const struct raft_configuration *c);
@@ -104,7 +104,7 @@ void configurationEncodeToBuf(const struct raft_configuration *c, void *buf);
  *     Memory for the encoded buffer could not be allocated.
  */
 int configurationEncode(const struct raft_configuration *c,
-                        struct raft_buffer *buf);
+			struct raft_buffer *buf);
 
 /* Populate a configuration object by decoding the given serialized payload.
  *
@@ -121,11 +121,11 @@ int configurationEncode(const struct raft_configuration *c,
  *     Memory to populate the given configuration could not be allocated.
  */
 int configurationDecode(const struct raft_buffer *buf,
-                        struct raft_configuration *c);
+			struct raft_configuration *c);
 
 /* Output the configuration to the raft tracer */
 void configurationTrace(const struct raft *r,
-                        struct raft_configuration *c,
-                        const char *msg);
+			struct raft_configuration *c,
+			const char *msg);
 
 #endif /* CONFIGURATION_H_ */

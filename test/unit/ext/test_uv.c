@@ -2,8 +2,8 @@
 
 #include <unistd.h>
 
-#include "../../../src/raft.h"
 #include "../../../src/lib/transport.h"
+#include "../../../src/raft.h"
 #include "../../lib/endpoint.h"
 #include "../../lib/runner.h"
 #include "../../lib/uv.h"

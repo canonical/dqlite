@@ -24,17 +24,18 @@
  */
 struct raft_entry_ref
 {
-    raft_term term;       /* Term of the entry being ref-counted. */
-    raft_index index;     /* Index of the entry being ref-counted. */
-    unsigned short count; /* Number of references. */
-    /* The next two fields are copied from the corresponding fields of the
-     * raft_entry pointed to by this reference. We store them here as well,
-     * so that logReinstate can retrieve them when it finds a raft_entry_ref
-     * with the same index and term as it was passed, and create a full
-     * raft_entry using them. */
-    struct raft_buffer buf;
-    void *batch;
-    struct raft_entry_ref *next; /* Next item in the bucket (for collisions). */
+	raft_term term;       /* Term of the entry being ref-counted. */
+	raft_index index;     /* Index of the entry being ref-counted. */
+	unsigned short count; /* Number of references. */
+	/* The next two fields are copied from the corresponding fields of the
+	 * raft_entry pointed to by this reference. We store them here as well,
+	 * so that logReinstate can retrieve them when it finds a raft_entry_ref
+	 * with the same index and term as it was passed, and create a full
+	 * raft_entry using them. */
+	struct raft_buffer buf;
+	void *batch;
+	struct raft_entry_ref
+	    *next; /* Next item in the bucket (for collisions). */
 };
 
 /**
@@ -46,17 +47,19 @@ struct raft_entry_ref
  */
 struct raft_log
 {
-    struct raft_entry *entries;  /* Circular buffer of log entries. */
-    size_t size;                 /* Number of available slots in the buffer. */
-    size_t front, back;          /* Indexes of used slots [front, back). */
-    raft_index offset;           /* Index of first entry is offset+1. */
-    struct raft_entry_ref *refs; /* Log entries reference counts hash table. */
-    size_t refs_size;            /* Size of the reference counts hash table. */
-    struct                       /* Information about last snapshot, or zero. */
-    {
-        raft_index last_index; /* Snapshot replaces all entries up to here. */
-        raft_term last_term;   /* Term of last index. */
-    } snapshot;
+	struct raft_entry *entries; /* Circular buffer of log entries. */
+	size_t size;        /* Number of available slots in the buffer. */
+	size_t front, back; /* Indexes of used slots [front, back). */
+	raft_index offset;  /* Index of first entry is offset+1. */
+	struct raft_entry_ref
+	    *refs;        /* Log entries reference counts hash table. */
+	size_t refs_size; /* Size of the reference counts hash table. */
+	struct            /* Information about last snapshot, or zero. */
+	{
+		raft_index
+		    last_index; /* Snapshot replaces all entries up to here. */
+		raft_term last_term; /* Term of last index. */
+	} snapshot;
 };
 
 /* Initialize an empty in-memory log of raft entries. */
@@ -69,9 +72,9 @@ void logClose(struct raft_log *l);
  * sets the starting state of the log. The start index must be lower or equal
  * than snapshot_index + 1. */
 void logStart(struct raft_log *l,
-              raft_index snapshot_index,
-              raft_term snapshot_term,
-              raft_index start_index);
+	      raft_index snapshot_index,
+	      raft_term snapshot_term,
+	      raft_index start_index);
 
 /* Get the number of entries the log currently contains. */
 size_t logNumEntries(struct raft_log *l);
@@ -102,41 +105,41 @@ const struct raft_entry *logGet(struct raft_log *l, const raft_index index);
  * the refcount of that entry and set @reinstated to true; otherwise, set
  * @reinstated to false. */
 int logReinstate(struct raft_log *l,
-                 raft_term term,
-                 unsigned short type,
-                 bool *reinstated);
+		 raft_term term,
+		 unsigned short type,
+		 bool *reinstated);
 
 /* Append a new entry to the log. */
 int logAppend(struct raft_log *l,
-              raft_term term,
-              unsigned short type,
-              const struct raft_buffer *buf,
-              void *batch);
+	      raft_term term,
+	      unsigned short type,
+	      const struct raft_buffer *buf,
+	      void *batch);
 
 /* Convenience to append a series of #RAFT_COMMAND entries. */
 int logAppendCommands(struct raft_log *l,
-                      const raft_term term,
-                      const struct raft_buffer bufs[],
-                      const unsigned n);
+		      const raft_term term,
+		      const struct raft_buffer bufs[],
+		      const unsigned n);
 
 /* Convenience to encode and append a single #RAFT_CHANGE entry. */
 int logAppendConfiguration(struct raft_log *l,
-                           const raft_term term,
-                           const struct raft_configuration *configuration);
+			   const raft_term term,
+			   const struct raft_configuration *configuration);
 
 /* Acquire an array of entries from the given index onwards. The payload
  * memory referenced by the @buf attribute of the returned entries is guaranteed
  * to be valid until logRelease() is called. */
 int logAcquire(struct raft_log *l,
-               raft_index index,
-               struct raft_entry *entries[],
-               unsigned *n);
+	       raft_index index,
+	       struct raft_entry *entries[],
+	       unsigned *n);
 
 /* Release a previously acquired array of entries. */
 void logRelease(struct raft_log *l,
-                raft_index index,
-                struct raft_entry entries[],
-                unsigned n);
+		raft_index index,
+		struct raft_entry entries[],
+		unsigned n);
 
 /* Delete all entries from the given index (included) onwards. If the log is
  * empty this is a no-op. If @index is lower than or equal to the index of the

@@ -11,22 +11,22 @@
 #define UV__DISK_FORMAT 1
 
 int uvEncodeMessage(const struct raft_message *message,
-                    uv_buf_t **bufs,
-                    unsigned *n_bufs);
+		    uv_buf_t **bufs,
+		    unsigned *n_bufs);
 
 int uvDecodeMessage(uint16_t type,
-                    const uv_buf_t *header,
-                    struct raft_message *message,
-                    size_t *payload_len);
+		    const uv_buf_t *header,
+		    struct raft_message *message,
+		    size_t *payload_len);
 
 int uvDecodeBatchHeader(const void *batch,
-                        struct raft_entry **entries,
-                        unsigned *n);
+			struct raft_entry **entries,
+			unsigned *n);
 
 void uvDecodeEntriesBatch(uint8_t *batch,
-                          size_t offset,
-                          struct raft_entry *entries,
-                          unsigned n);
+			  size_t offset,
+			  struct raft_entry *entries,
+			  unsigned n);
 
 /**
  * The layout of the memory pointed at by a @batch pointer is the following:
@@ -53,7 +53,7 @@ void uvDecodeEntriesBatch(uint8_t *batch,
 size_t uvSizeofBatchHeader(size_t n);
 
 void uvEncodeBatchHeader(const struct raft_entry *entries,
-                         unsigned n,
-                         void *buf);
+			 unsigned n,
+			 void *buf);
 
 #endif /* UV_ENCODING_H_ */
