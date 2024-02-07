@@ -10,10 +10,20 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - uses: DoozyX/clang-format-lint-action@v0.16
       with:
-        source: 'src test include'
-        exclude: 'test/lib/munit.*'
-        extensions: 'c,h'
-        clangFormatVersion: 14
-        style: file
+        fetch-depth: 2
+    - name: Install apt dependencies
+      run: |
+          sudo apt update
+          sudo apt install -y libsqlite3-dev liblz4-dev libuv1-dev bear
+    - uses: KyleMayes/install-llvm-action@master
+      with:
+        version: 17
+    - name: Run clang-format
+      run: |
+          find . \( -name '*.c' -or -name '*.h' \) -not -name 'munit.*' -path ./llvm -prune | xargs ./llvm/bin/clang-format --style=file --dry-run -Werror
+    - name: Run clang-tidy
+      run: |
+          shopt -s globstar
+          bear -- cc -D_GNU_SOURCE -DHAVE_LINUX_AIO_ABI_H -c {src,test}/**/*.c
+          git show -U0 --first-parent | ./clang-tidy-diff.py -p1 -config-file=.clang-tidy -clang-tidy-binary=./llvm/bin/clang-tidy -use-color
