@@ -62,7 +62,7 @@ static size_t pages__sizeof(const pages_t *pages)
 	       pages->size * pages->n /* bufs */;
 }
 
-static void pages__encode(const pages_t *pages, void **cursor)
+static void pages__encode(const pages_t *pages, char **cursor)
 {
 	unsigned i;
 	uint16__encode(&pages->n, cursor);
@@ -194,7 +194,7 @@ TEST_CASE(encode, padding, NULL)
 	struct fixture *f = data;
 	size_t size;
 	void *buf;
-	void *cursor;
+	char *cursor;
 	(void)params;
 	f->person.name = "John Doh";
 	f->person.age = 40;
@@ -214,7 +214,7 @@ TEST_CASE(encode, no_padding, NULL)
 	struct fixture *f = data;
 	size_t size;
 	void *buf;
-	void *cursor;
+	char *cursor;
 	(void)params;
 	f->person.name = "Joe Doh";
 	f->person.age = 40;
@@ -234,7 +234,7 @@ TEST_CASE(encode, custom, NULL)
 	struct fixture *f = data;
 	size_t size;
 	void *buf;
-	void *cursor;
+	char *cursor;
 	(void)params;
 	f->book.title = "Les miserables";
 	f->book.author.name = "Victor Hugo";

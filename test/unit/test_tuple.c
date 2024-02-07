@@ -122,11 +122,11 @@ TEST_GROUP(decoder, row);
 TEST_CASE(decoder, row, one_value, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] = {
+	char buf[][8] = {
 	    {SQLITE_INTEGER, 0, 0, 0, 0, 0, 0, 0},
 	    {7, 0, 0, 0, 0, 0, 0, 0},
 	};
-	struct cursor cursor = {buf, sizeof buf};
+	struct cursor cursor = {(const char *)buf, sizeof buf};
 	struct value value;
 
 	(void)data;
@@ -145,12 +145,12 @@ TEST_CASE(decoder, row, one_value, NULL)
 TEST_CASE(decoder, row, two_values, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] = {
+	char buf[][8] = {
 	    {SQLITE_INTEGER | SQLITE_TEXT << 4, 0, 0, 0, 0, 0, 0, 0},
 	    {7, 0, 0, 0, 0, 0, 0, 0},
 	    {'h', 'e', 'l', 'l', 'o', 0, 0, 0},
 	};
-	struct cursor cursor = {buf, sizeof buf};
+	struct cursor cursor = {(const char *)buf, sizeof buf};
 	struct value value;
 
 	(void)data;
@@ -176,11 +176,11 @@ TEST_GROUP(decoder, params);
 TEST_CASE(decoder, params, one_value, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] = {
+	char buf[][8] = {
 	    {1, SQLITE_INTEGER, 0, 0, 0, 0, 0, 0},
 	    {7, 0, 0, 0, 0, 0, 0, 0},
 	};
-	struct cursor cursor = {buf, sizeof buf};
+	struct cursor cursor = {(const char *)buf, sizeof buf};
 	struct value value;
 
 	(void)data;
@@ -199,12 +199,12 @@ TEST_CASE(decoder, params, one_value, NULL)
 TEST_CASE(decoder, params, two_values, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] = {
+	char buf[][8] = {
 	    {2, SQLITE_INTEGER, SQLITE_TEXT, 0, 0, 0, 0, 0},
 	    {7, 0, 0, 0, 0, 0, 0, 0},
 	    {'h', 'e', 'l', 'l', 'o', 0, 0, 0},
 	};
-	struct cursor cursor = {buf, sizeof buf};
+	struct cursor cursor = {(const char *)buf, sizeof buf};
 	struct value value;
 
 	(void)data;
@@ -230,11 +230,11 @@ TEST_GROUP(decoder, params32);
 TEST_CASE(decoder, params32, one_value, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] = {
+	char buf[][8] = {
 	    {1, 0, 0, 0, SQLITE_INTEGER, 0, 0, 0},
 	    {7, 0, 0, 0, 0, 0, 0, 0},
 	};
-	struct cursor cursor = {buf, sizeof buf};
+	struct cursor cursor = {(const char *)buf, sizeof buf};
 	struct value value;
 
 	(void)data;
@@ -253,12 +253,12 @@ TEST_CASE(decoder, params32, one_value, NULL)
 TEST_CASE(decoder, params32, two_values, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] = {
+	char buf[][8] = {
 	    {2, 0, 0, 0, SQLITE_INTEGER, SQLITE_TEXT, 0, 0},
 	    {7, 0, 0, 0, 0, 0, 0, 0},
 	    {'h', 'e', 'l', 'l', 'o', 0, 0, 0},
 	};
-	struct cursor cursor = {buf, sizeof buf};
+	struct cursor cursor = {(const char *)buf, sizeof buf};
 	struct value value;
 
 	(void)data;
@@ -288,7 +288,7 @@ TEST_CASE(decoder, type, float, NULL)
 	    {SQLITE_FLOAT, 0, 0, 0, 0, 0, 0, 0},
 	    {0, 0, 0, 0, 0, 0, 0, 0},
 	};
-	struct cursor cursor = {buf, sizeof buf};
+	struct cursor cursor = {(const char *)buf, sizeof buf};
 	struct value value;
 	double pi = 3.1415;
 
@@ -313,11 +313,11 @@ TEST_CASE(decoder, type, float, NULL)
 TEST_CASE(decoder, type, null, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] __attribute__((aligned(sizeof(uint64_t)))) = {
+	char buf[][8] __attribute__((aligned(sizeof(uint64_t)))) = {
 	    {SQLITE_NULL, 0, 0, 0, 0, 0, 0, 0},
 	    {0, 0, 0, 0, 0, 0, 0, 0},
 	};
-	struct cursor cursor = {buf, sizeof buf};
+	struct cursor cursor = {(const char *)buf, sizeof buf};
 	struct value value;
 
 	(void)data;
@@ -335,10 +335,10 @@ TEST_CASE(decoder, type, null, NULL)
 TEST_CASE(decoder, type, iso8601, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[5][8] __attribute__((aligned(sizeof(uint64_t)))) = {
+	char buf[5][8] __attribute__((aligned(sizeof(uint64_t)))) = {
 	    {DQLITE_ISO8601, 0, 0, 0, 0, 0, 0, 0},
 	};
-	struct cursor cursor = {buf, sizeof buf};
+	struct cursor cursor = {(const char *)buf, sizeof buf};
 	struct value value;
 
 	(void)data;
@@ -359,11 +359,11 @@ TEST_CASE(decoder, type, iso8601, NULL)
 TEST_CASE(decoder, type, boolean, NULL)
 {
 	struct tuple_decoder decoder;
-	uint8_t buf[][8] __attribute__((aligned(sizeof(uint64_t)))) = {
+	char buf[][8] __attribute__((aligned(sizeof(uint64_t)))) = {
 	    {DQLITE_BOOLEAN, 0, 0, 0, 0, 0, 0, 0},
 	    {1, 0, 0, 0, 0, 0, 0, 0},
 	};
-	struct cursor cursor = {buf, sizeof buf};
+	struct cursor cursor = {(const char *)buf, sizeof buf};
 	struct value value;
 
 	(void)data;

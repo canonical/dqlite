@@ -55,7 +55,7 @@ TEST_CASE(serialize, leader, NULL)
 {
 	struct fixture *f = data;
 	struct request_leader request;
-	void *cursor1;
+	char *cursor1;
 	struct cursor cursor2;
 	size_t n = request_leader__sizeof(&request);
 	(void)params;
