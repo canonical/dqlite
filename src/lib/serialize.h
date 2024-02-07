@@ -168,31 +168,36 @@ DQLITE_INLINE void uint8__encode(const uint8_t *value, char **cursor)
 
 DQLITE_INLINE void uint16__encode(const uint16_t *value, char **cursor)
 {
-	*(uint16_t *)(*cursor) = ByteFlipLe16(*value);
+	uint16_t x = ByteFlipLe16(*value);
+	memcpy(*cursor, &x, sizeof(uint16_t));
 	*cursor += sizeof(uint16_t);
 }
 
 DQLITE_INLINE void uint32__encode(const uint32_t *value, char **cursor)
 {
-	*(uint32_t *)(*cursor) = ByteFlipLe32(*value);
+	uint32_t x = ByteFlipLe32(*value);
+	memcpy(*cursor, &x, sizeof(uint32_t));
 	*cursor += sizeof(uint32_t);
 }
 
 DQLITE_INLINE void uint64__encode(const uint64_t *value, char **cursor)
 {
-	*(uint64_t *)(*cursor) = ByteFlipLe64(*value);
+	uint64_t x = ByteFlipLe64(*value);
+	memcpy(*cursor, &x, sizeof(uint64_t));
 	*cursor += sizeof(uint64_t);
 }
 
 DQLITE_INLINE void int64__encode(const int64_t *value, char **cursor)
 {
-	*(int64_t *)(*cursor) = (int64_t)ByteFlipLe64((uint64_t)*value);
+	int64_t x = (int64_t)ByteFlipLe64((uint64_t)*value);
+	memcpy(*cursor, &x, sizeof(int64_t));
 	*cursor += sizeof(int64_t);
 }
 
 DQLITE_INLINE void float__encode(const float_t *value, char **cursor)
 {
-	*(uint64_t *)(*cursor) = ByteFlipLe64(*(uint64_t *)value);
+	uint64_t x = ByteFlipLe64(*(uint64_t *)value);
+	memcpy(*cursor, &x, sizeof(uint64_t));
 	*cursor += sizeof(uint64_t);
 }
 
@@ -231,7 +236,8 @@ DQLITE_INLINE int uint16__decode(struct cursor *cursor, uint16_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = ByteFlipLe16(*(uint16_t *)cursor->p);
+	memcpy(value, cursor->p, sizeof(*value));
+	*value = ByteFlipLe16(*value);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -243,7 +249,8 @@ DQLITE_INLINE int uint32__decode(struct cursor *cursor, uint32_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = ByteFlipLe32(*(uint32_t *)cursor->p);
+	memcpy(value, cursor->p, sizeof(*value));
+	*value = ByteFlipLe32(*value);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -255,7 +262,8 @@ DQLITE_INLINE int uint64__decode(struct cursor *cursor, uint64_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = ByteFlipLe64(*(uint64_t *)cursor->p);
+	memcpy(value, cursor->p, sizeof(*value));
+	*value = ByteFlipLe64(*value);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -267,7 +275,8 @@ DQLITE_INLINE int int64__decode(struct cursor *cursor, int64_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*value = (int64_t)ByteFlipLe64((uint64_t) * (int64_t *)cursor->p);
+	memcpy(value, cursor->p, sizeof(*value));
+	*value = (int64_t)ByteFlipLe64((uint64_t)*value);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;
@@ -279,7 +288,9 @@ DQLITE_INLINE int float__decode(struct cursor *cursor, float_t *value)
 	if (n > cursor->cap) {
 		return DQLITE_PARSE;
 	}
-	*(uint64_t *)value = ByteFlipLe64(*(uint64_t *)cursor->p);
+	uint64_t x;
+	memcpy(&x, cursor->p, sizeof(x));
+	*(uint64_t *)value = ByteFlipLe64(x);
 	cursor->p += n;
 	cursor->cap -= n;
 	return 0;

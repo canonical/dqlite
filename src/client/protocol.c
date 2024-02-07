@@ -103,7 +103,8 @@ static int peekUint64(struct cursor cursor, uint64_t *val)
 	if (cursor.cap < 8) {
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
-	*val = ByteFlipLe64(*(uint64_t *)cursor.p);
+	memcpy(val, cursor.p, sizeof(*val));
+	*val = ByteFlipLe64(*val);
 	return 0;
 }
 

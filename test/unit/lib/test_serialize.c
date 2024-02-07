@@ -265,13 +265,19 @@ TEST_CASE(encode, custom, NULL)
 	munit_assert_string_equal(cursor, "Victor Hugo");
 	cursor += 16;
 
-	munit_assert_int(ByteFlipLe64(*(uint64_t *)cursor), ==, 40);
+	uint64_t x;
+	memcpy(&x, cursor, sizeof(x));
+	munit_assert_uint64(ByteFlipLe64(x), ==, 40);
 	cursor += 8;
 
-	munit_assert_int(ByteFlipLe16(*(uint16_t *)cursor), ==, 2);
+	uint16_t y;
+	memcpy(&y, cursor, sizeof(y));
+	munit_assert_uint16(ByteFlipLe16(y), ==, 2);
 	cursor += 2;
 
-	munit_assert_int(ByteFlipLe16(*(uint16_t *)cursor), ==, 8);
+	uint16_t z;
+	memcpy(&z, cursor, sizeof(z));
+	munit_assert_uint16(ByteFlipLe16(z), ==, 8);
 	cursor += 2;
 
 	cursor += 4; /* Unused */
