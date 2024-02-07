@@ -49,13 +49,6 @@ AC_CHECK_HEADERS([linux/io_uring.h linux/aio_abi.h])
 # Checks for library functions and definitions.
 AC_CHECK_DECLS(RWF_NOWAIT, [], [AC_MSG_ERROR(Linux kernel >= 4.14 required.)], [#include <linux/aio_abi.h>])
 
-# Checks for typedefs, structures, and compiler characteristics.
-AC_TYPE_SIZE_T
-AC_TYPE_SSIZE_T
-AC_TYPE_UINT16_T
-AC_TYPE_UINT32_T
-AC_TYPE_UINT8_T
-
 # Enable large file support. This is mandatory in order to interoperate with
 # libuv, which enables large file support by default, making the size of 'off_t'
 # on 32-bit architecture be 8 bytes instead of the normal 4.
