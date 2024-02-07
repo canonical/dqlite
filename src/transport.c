@@ -67,7 +67,7 @@ static void connect_work_cb(uv_work_t *work)
 	struct request_connect request = {0};
 	uint64_t protocol;
 	void *buf;
-	void *cursor;
+	char *cursor;
 	size_t n;
 	size_t n1;
 	size_t n2;

@@ -45,7 +45,7 @@ typedef uv_buf_t blob_t;
  */
 struct cursor
 {
-	const void *p; /* Next byte to read */
+	const char *p; /* Next byte to read */
 	size_t cap;    /* Number of bytes left in the buffer */
 };
 
@@ -71,7 +71,7 @@ struct cursor
 
 #define SERIALIZE__DEFINE_METHODS(NAME, FIELDS)                   \
 	size_t NAME##__sizeof(const struct NAME *p);              \
-	void NAME##__encode(const struct NAME *p, void **cursor); \
+	void NAME##__encode(const struct NAME *p, char **cursor); \
 	int NAME##__decode(struct cursor *cursor, struct NAME *p)
 
 /* Define a single field in serializable struct.
@@ -90,7 +90,7 @@ struct cursor
 		FIELDS(SERIALIZE__SIZEOF_FIELD, p);               \
 		return size;                                      \
 	}                                                         \
-	void NAME##__encode(const struct NAME *p, void **cursor)  \
+	void NAME##__encode(const struct NAME *p, char **cursor)  \
 	{                                                         \
 		FIELDS(SERIALIZE__ENCODE_FIELD, p, cursor);       \
 	}                                                         \
@@ -160,43 +160,43 @@ DQLITE_INLINE size_t blob__sizeof(const blob_t *value)
 	return sizeof(uint64_t) + BytePad64(value->len);
 }
 
-DQLITE_INLINE void uint8__encode(const uint8_t *value, void **cursor)
+DQLITE_INLINE void uint8__encode(const uint8_t *value, char **cursor)
 {
 	*(uint8_t *)(*cursor) = *value;
 	*cursor += sizeof(uint8_t);
 }
 
-DQLITE_INLINE void uint16__encode(const uint16_t *value, void **cursor)
+DQLITE_INLINE void uint16__encode(const uint16_t *value, char **cursor)
 {
 	*(uint16_t *)(*cursor) = ByteFlipLe16(*value);
 	*cursor += sizeof(uint16_t);
 }
 
-DQLITE_INLINE void uint32__encode(const uint32_t *value, void **cursor)
+DQLITE_INLINE void uint32__encode(const uint32_t *value, char **cursor)
 {
 	*(uint32_t *)(*cursor) = ByteFlipLe32(*value);
 	*cursor += sizeof(uint32_t);
 }
 
-DQLITE_INLINE void uint64__encode(const uint64_t *value, void **cursor)
+DQLITE_INLINE void uint64__encode(const uint64_t *value, char **cursor)
 {
 	*(uint64_t *)(*cursor) = ByteFlipLe64(*value);
 	*cursor += sizeof(uint64_t);
 }
 
-DQLITE_INLINE void int64__encode(const int64_t *value, void **cursor)
+DQLITE_INLINE void int64__encode(const int64_t *value, char **cursor)
 {
 	*(int64_t *)(*cursor) = (int64_t)ByteFlipLe64((uint64_t)*value);
 	*cursor += sizeof(int64_t);
 }
 
-DQLITE_INLINE void float__encode(const float_t *value, void **cursor)
+DQLITE_INLINE void float__encode(const float_t *value, char **cursor)
 {
 	*(uint64_t *)(*cursor) = ByteFlipLe64(*(uint64_t *)value);
 	*cursor += sizeof(uint64_t);
 }
 
-DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
+DQLITE_INLINE void text__encode(const text_t *value, char **cursor)
 {
 	size_t len = BytePad64(strlen(*value) + 1);
 	memset(*cursor, 0, len);
@@ -204,7 +204,7 @@ DQLITE_INLINE void text__encode(const text_t *value, void **cursor)
 	*cursor += len;
 }
 
-DQLITE_INLINE void blob__encode(const blob_t *value, void **cursor)
+DQLITE_INLINE void blob__encode(const blob_t *value, char **cursor)
 {
 	size_t len = BytePad64(value->len);
 	uint64_t value_len = value->len;

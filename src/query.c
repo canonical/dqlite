@@ -99,7 +99,7 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer)
 	int n; /* Column count */
 	int i;
 	uint64_t n64;
-	void *cursor;
+	char *cursor;
 	int rc;
 
 	n = sqlite3_column_count(stmt);

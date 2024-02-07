@@ -366,7 +366,7 @@ SERIALIZE__IMPLEMENT(snapshotDatabase, SNAPSHOT_DATABASE);
 static int encodeSnapshotHeader(unsigned n, struct raft_buffer *buf)
 {
 	struct snapshotHeader header;
-	void *cursor;
+	char *cursor;
 	header.format = SNAPSHOT_FORMAT;
 	header.n = n;
 	buf->len = snapshotHeader__sizeof(&header);
@@ -388,7 +388,7 @@ static int encodeDatabase(struct db *db,
 	sqlite3_vfs *vfs;
 	uint32_t database_size = 0;
 	uint8_t *page;
-	void *cursor;
+	char *cursor;
 	struct dqlite_buffer *bufs = (struct dqlite_buffer *)r_bufs;
 	int rv;
 
@@ -776,7 +776,7 @@ static int encodeDiskDatabaseAsync(struct db *db,
 {
 	struct snapshotDatabase header;
 	sqlite3_vfs *vfs;
-	void *cursor;
+	char *cursor;
 	struct dqlite_buffer *bufs = (struct dqlite_buffer *)r_bufs;
 	int rv;
 

@@ -56,7 +56,7 @@ static void gateway_handle_cb(struct handle *req,
 {
 	struct conn *c = req->data;
 	size_t n;
-	void *cursor;
+	char *cursor;
 	uv_buf_t buf;
 	int rv;
 
