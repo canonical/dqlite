@@ -1,5 +1,7 @@
 #include <raft.h>
 
+#include <stdlib.h>
+
 #include "../../include/dqlite.h"
 
 #include "assert.h"
@@ -122,9 +124,7 @@ int transport__init(struct transport *t, struct uv_stream_s *stream)
 	t->stream->data = t;
 	t->read.base = NULL;
 	t->read.len = 0;
-	t->write.data = t;
 	t->read_cb = NULL;
-	t->write_cb = NULL;
 	t->close_cb = NULL;
 
 	return 0;
@@ -161,23 +161,15 @@ int transport__read(struct transport *t, uv_buf_t *buf, transport_read_cb cb)
 	return 0;
 }
 
-static void write_cb(uv_write_t *req, int status)
-{
-	struct transport *t = req->data;
-	transport_write_cb cb = t->write_cb;
-
-	assert(cb != NULL);
-	t->write_cb = NULL;
-
-	cb(t, status);
-}
-
-int transport__write(struct transport *t, uv_buf_t *buf, transport_write_cb cb)
+int transport__write(struct transport *t, uv_buf_t *buf, uv_write_cb cb)
 {
 	int rv;
-	assert(t->write_cb == NULL);
-	t->write_cb = cb;
-	rv = uv_write(&t->write, t->stream, buf, 1, write_cb);
+	uv_write_t *req = malloc(sizeof(*req));
+	if (req == NULL) {
+		return DQLITE_NOMEM;
+	}
+	req->data = t;
+	rv = uv_write(req, t->stream, buf, 1, cb);
 	if (rv != 0) {
 		return rv;
 	}
