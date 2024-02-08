@@ -11,7 +11,7 @@ TEST_MODULE(ext_uv_pool);
  *
  ******************************************************************************/
 
-enum { WORK_ITEMS_NR = 5000 };
+enum { WORK_ITEMS_NR = 50000 };
 
 struct fixture
 {
@@ -54,6 +54,7 @@ static void bottom_after_work_cb(xx_work_t *req, int status UNUSED)
 		xx_loop_async_close(req->loop);
 
 	count++;
+	assert(req->work_req.type != WT_BAR);
 	free(req);
 }
 

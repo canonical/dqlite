@@ -47,7 +47,7 @@ static uv_thread_t *threads;
 static struct thread_args *thread_args;
 static uv_key_t thread_key;
 static queue *thread_queues;
-static queue exit_message;
+//static queue exit_message;
 static queue wq;
 
 static struct sm planner_sm;
@@ -158,6 +158,13 @@ static queue *qos_pop(queue *first, queue *second)
 	return pop(qos++ % 2 ? first : second);
 }
 
+static void wt_free(queue *q)
+{
+	struct xx__work *w = QUEUE__DATA(q, struct xx__work, wq);
+	assert(w->type == WT_BAR);
+	free(container_of(w, xx_work_t, work_req));
+}
+
 static unsigned int wt_type(queue *q)
 {
 	struct xx__work *w = QUEUE__DATA(q, struct xx__work, wq);
@@ -184,7 +191,7 @@ static bool planner_invariant(const struct sm *m, int prev_state)
 		ERGO(sm_state(m) == PS_BARRIER,
 		     ERGO(prev_state == PS_DRAINING,
 			  wt_type(head(o)) == WT_BAR) &&
-		     ERGO(prev_state == PS_DRAINING_UNORD, empty(o))) &&
+		     ERGO(prev_state == PS_DRAINING_UNORD, empty(u))) &&
 		ERGO(sm_state(m) == PS_DRAINING_UNORD, !empty(u));
 }
 
@@ -206,17 +213,20 @@ static void planner(void *arg)
 			sm_move(&planner_sm, PS_DRAINING);
 			break;
 		case PS_DRAINING:
-			if (!empty(o) && wt_type(head(o)) == WT_BAR) {
-				sm_move(&planner_sm, PS_BARRIER);
-				break;
-			}
 			while (!(empty(o) && empty(u))) {
+				if (!empty(o) && wt_type(head(o)) == WT_BAR) {
+					sm_move(&planner_sm, PS_BARRIER);
+					goto outbreak;
+				}
 				q = qos_pop(o, u);
 				push(&tq[wt_idx(q)], q);
 				uv_cond_signal(&cond[wt_idx(q)]);
+				if (wt_type(q) >= WT_ORD1)
+					in_flight++;
 				sm_move(&planner_sm, PS_DRAINING);
 			}
 			sm_move(&planner_sm, exiting ? PS_EXITED : PS_NOTHING);
+			outbreak:
 			break;
 		case PS_BARRIER:
 			if (!empty(u)) {
@@ -224,7 +234,8 @@ static void planner(void *arg)
 				break;
 			}
 			if (in_flight == 0) {
-				free(pop(o)); /* remove BAR */
+				q = pop(o);
+				wt_free(q); /* remove BAR */
 				sm_move(&planner_sm, PS_DRAINING);
 				break;
 			}
@@ -261,8 +272,13 @@ static void worker(void *arg)
 	uv_sem_post(ta->sem);
 	uv_mutex_lock(&mutex);
 	for (;;) {
-		while (QUEUE__IS_EMPTY(&thread_queues[ta->idx]))
+		while (QUEUE__IS_EMPTY(&thread_queues[ta->idx])) {
+		    	if (exiting) {
+		    		uv_mutex_unlock(&mutex);
+		    		return;
+		    	}
 			uv_cond_wait(&cond[ta->idx], &mutex);
+		}
 
 		q = QUEUE__HEAD(&thread_queues[ta->idx]);
 		QUEUE__REMOVE(q);
@@ -286,6 +302,8 @@ static void worker(void *arg)
 		if (wtype > WT_BAR) {
 		    assert(in_flight > 0);
 		    in_flight--;
+		    if (in_flight == 0)
+			    uv_cond_signal(&planner_cond);
 		}
 	}
 }
@@ -297,9 +315,6 @@ static void post(queue *q, unsigned int idx)
 	QUEUE__INSERT_TAIL(idx == ~0u ? &ordered : &unordered, q);
 	uv_cond_signal(&planner_cond);
 
-	if (wt_type(q) >= WT_ORD1)
-	    in_flight++;
-
 	uv_mutex_unlock(&mutex);
 }
 
@@ -310,19 +325,24 @@ static void xx__threadpool_cleanup(void)
 	if (nthreads == 0)
 		return;
 
-	assert(0);
-	post(&exit_message, ~0u);
+	exiting = true;
+	uv_cond_signal(&planner_cond);
+
+	if (uv_thread_join(&planner_thread))
+	    abort();
+	uv_cond_destroy(&planner_cond);
+	POST(empty(&ordered) && empty(&unordered));
+	//printf("@@@ planner_cond fini()\n");
 
 	for (i = 0; i < nthreads; i++) {
+	    	uv_cond_signal(&cond[i]);
 		if (uv_thread_join(threads + i))
 			abort();
 		POST(QUEUE__IS_EMPTY(&thread_queues[i]));
 		uv_cond_destroy(&cond[i]);
 	}
+	//printf("@@@ cond fini()\n");
 
-	if (uv_thread_join(&planner_thread))
-	    abort();
-	uv_cond_destroy(&planner_cond);
 
 	free(cond);
 	free(threads);
