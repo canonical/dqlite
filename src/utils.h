@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <assert.h>
 
 /* Various utility functions and macros */
 
@@ -37,5 +38,6 @@ static inline bool _is0(const char *p, unsigned int s)
 
 #define PRE(cond) assert((cond))
 #define POST(cond) assert((cond))
+#define ERGO(a, b) (!(a) || (b))
 
 #endif /* DQLITE_UTILS_H_ */

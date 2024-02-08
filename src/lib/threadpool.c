@@ -1,4 +1,5 @@
 #include "src/lib/threadpool.h"
+#include "src/lib/sm.h"
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -24,8 +25,8 @@ static inline void xx__req_register(xx_loop_t *loop, xx_work_t *req UNUSED)
 
 static inline void xx__req_unregister(xx_loop_t *loop, xx_work_t *req UNUSED)
 {
-    assert(xx__has_active_reqs(loop));
-    loop->active_reqs--;
+	assert(xx__has_active_reqs(loop));
+	loop->active_reqs--;
 }
 
 enum {
@@ -48,22 +49,207 @@ static uv_key_t thread_key;
 static queue *thread_queues;
 static queue exit_message;
 static queue wq;
-static unsigned int ordered_in_flight = 0;
-static unsigned int ordered_current_wt = WT_BAR;
 
-static void xx__cancelled(struct xx__work *w UNUSED)
-{
-	abort();
-}
+static struct sm planner_sm;
+static uv_cond_t planner_cond;
+static uv_thread_t planner_thread;
+static queue ordered;
+static queue unordered;
+static unsigned int in_flight = 0;
+static bool exiting = false;
 
-unsigned int xx__thread_id(void)
-{
-	return *(unsigned int *)uv_key_get(&thread_key);
-}
+enum planner_states {
+	PS_NOTHING,
+	PS_DRAINING,
+	PS_BARRIER,
+	PS_DRAINING_UNORD,
+	PS_EXITED,
+};
 
-/* To avoid deadlock with uv_cancel() it's crucial that the worker
- * never holds the global mutex and the loop-local mutex at the same time.
+/**
+ *  Planner thread state machine.
+ *
+ *                         NOTHING
+ *                           ^ |
+ *               empty(o) && | | signal()
+ *               empty(u)    | |
+ *                           | |        empty(o) &&
+ *                           | |        empty(u) &&
+ *                           | V        exiting
+ *    !empty(o) && +-----> DRAINING ---------------> EXITED
+ *    !empty(u) && +-------  ^ |
+ * type(head(o)) != BAR      | |
+ *                           | | type(head(o)) == BAR
+ *            in_flight == 0 | |
+ *                           | V
+ *                         BARRIER --------+ signal()
+ *                           ^ |   <-------+
+ *                           | |
+ *                  empty(u) | | !empty(u)
+ *                           | V
+ *                      DRAINING_UNORD
  */
+
+static struct sm_conf planner_sm_states[SM_STATES_MAX] = {
+       [PS_NOTHING] = {
+               .flags   = SM_INITIAL,
+               .name    = "nothing",
+               .allowed = BITS(PS_DRAINING),
+       },
+       [PS_DRAINING] = {
+               .name    = "draining",
+               .allowed = BITS(PS_DRAINING) |
+			  BITS(PS_NOTHING) |
+			  BITS(PS_BARRIER) |
+			  BITS(PS_EXITED),
+       },
+       [PS_BARRIER] = {
+               .name    = "barrier",
+               .allowed = BITS(PS_DRAINING_UNORD) |
+			  BITS(PS_DRAINING) |
+			  BITS(PS_BARRIER),
+       },
+       [PS_DRAINING_UNORD] = {
+               .name    = "unord-draining",
+               .allowed = BITS(PS_BARRIER)
+       },
+       [PS_EXITED] = {
+               .flags   = SM_FINAL,
+               .name    = "exited",
+               .allowed = 0,
+       },
+};
+
+static bool empty(queue *q)
+{
+	return QUEUE__IS_EMPTY(q);
+}
+
+static queue *head(queue *q)
+{
+	return QUEUE__HEAD(q);
+}
+
+static void push(queue *to, queue *what)
+{
+	QUEUE__INSERT_TAIL(to, what);
+}
+
+static queue *pop(queue *from)
+{
+	queue *q = QUEUE__HEAD(from);
+	POST(q != NULL);
+	QUEUE__REMOVE(q);
+	QUEUE__INIT(q);
+	return q;
+}
+
+static queue *qos_pop(queue *first, queue *second)
+{
+	static unsigned int qos = 0;
+
+	PRE(!empty(first) || !empty(second));
+
+	if (empty(first))
+		return pop(second);
+	else if (empty(second))
+		return pop(first);
+
+	return pop(qos++ % 2 ? first : second);
+}
+
+static unsigned int wt_type(queue *q)
+{
+	struct xx__work *w = QUEUE__DATA(q, struct xx__work, wq);
+	return w->type;
+}
+static unsigned int wt_idx(queue *q)
+{
+	struct xx__work *w = QUEUE__DATA(q, struct xx__work, wq);
+	return w->thread_idx;
+}
+
+static bool planner_invariant(const struct sm *m, int prev_state)
+{
+	queue *o = &ordered;
+	queue *u = &unordered;
+
+	return ERGO(sm_state(m) == PS_NOTHING,
+		    empty(o) && empty(u)) &&
+		ERGO(sm_state(m) == PS_DRAINING,
+		     ERGO(prev_state == PS_BARRIER, in_flight == 0) ||
+		     !empty(o) || !empty(u)) &&
+		ERGO(sm_state(m) == PS_EXITED,
+		     exiting && empty(o) && empty(u)) &&
+		ERGO(sm_state(m) == PS_BARRIER,
+		     ERGO(prev_state == PS_DRAINING,
+			  wt_type(head(o)) == WT_BAR) &&
+		     ERGO(prev_state == PS_DRAINING_UNORD, empty(o))) &&
+		ERGO(sm_state(m) == PS_DRAINING_UNORD, !empty(u));
+}
+
+static void planner(void *arg)
+{
+	uv_sem_t *sem = arg;
+	queue *o  = &ordered;
+	queue *u  = &unordered;
+	queue *tq = thread_queues;
+	queue *q;
+
+	sm_init(&planner_sm, planner_invariant, planner_sm_states, PS_NOTHING);
+	uv_sem_post(sem);
+	uv_mutex_lock(&mutex);
+	for (;;) {
+		switch(sm_state(&planner_sm)) {
+		case PS_NOTHING:
+			uv_cond_wait(&planner_cond, &mutex);
+			sm_move(&planner_sm, PS_DRAINING);
+			break;
+		case PS_DRAINING:
+			if (!empty(o) && wt_type(head(o)) == WT_BAR) {
+				sm_move(&planner_sm, PS_BARRIER);
+				break;
+			}
+			while (!(empty(o) && empty(u))) {
+				q = qos_pop(o, u);
+				push(&tq[wt_idx(q)], q);
+				uv_cond_signal(&cond[wt_idx(q)]);
+				sm_move(&planner_sm, PS_DRAINING);
+			}
+			sm_move(&planner_sm, exiting ? PS_EXITED : PS_NOTHING);
+			break;
+		case PS_BARRIER:
+			if (!empty(u)) {
+				sm_move(&planner_sm, PS_DRAINING_UNORD);
+				break;
+			}
+			if (in_flight == 0) {
+				free(pop(o)); /* remove BAR */
+				sm_move(&planner_sm, PS_DRAINING);
+				break;
+			}
+			uv_cond_wait(&planner_cond, &mutex);
+			sm_move(&planner_sm, PS_BARRIER);
+			break;
+		case PS_DRAINING_UNORD:
+			while (!empty(u)) {
+				q = pop(u);
+				push(&tq[wt_idx(q)], q);
+				uv_cond_signal(&cond[wt_idx(q)]);
+			}
+			sm_move(&planner_sm, PS_BARRIER);
+			break;
+		case PS_EXITED:
+			sm_fini(&planner_sm);
+			uv_mutex_unlock(&mutex);
+			return;
+		default:
+			POST(false && "Impossible!");
+		}
+	}
+}
+
+
 static void worker(void *arg)
 {
 	struct xx__work *w;
@@ -75,52 +261,8 @@ static void worker(void *arg)
 	uv_sem_post(ta->sem);
 	uv_mutex_lock(&mutex);
 	for (;;) {
-		if (QUEUE__IS_EMPTY(&thread_queues[ta->idx])) {
-		    uv_cond_wait(&cond[ta->idx], &mutex);
-		}
-
-		while (!QUEUE__IS_EMPTY(&wq)) {
-		    if (ordered_current_wt == WT_BAR && ordered_in_flight > 0)
-			break;
-
-		    q = QUEUE__HEAD(&wq);
-		    if (q == &exit_message)
-			goto exit;
-
-		    QUEUE__REMOVE(q);
-		    QUEUE__INIT(q);
-		    w = QUEUE__DATA(q, struct xx__work, wq);
-
-		    if (w->type == WT_BAR) {
-			free(container_of(w, xx_work_t, work_req));
-			ordered_current_wt = WT_BAR;
-			continue;
-		    }
-
-		    assert(w->type >= WT_ORD1);
-		    assert(ordered_current_wt == WT_BAR ||
-			   ordered_current_wt == w->type);
-
-		    QUEUE__INSERT_TAIL(&thread_queues[w->thread_idx], q);
-		    ordered_in_flight++;
-		    ordered_current_wt = w->type;
-		    uv_cond_signal(&cond[w->thread_idx]);
-		}
-
-		if (!QUEUE__IS_EMPTY(&wq) && ordered_in_flight == 0) {
-		  exit:
-		    /* Make sure exit message is the last one */
-		    printf("\n@@@ exit!\n");
-		    assert(QUEUE__NEXT(QUEUE__HEAD(&wq)) == &wq);
-		    assert(QUEUE__HEAD(&wq) == &exit_message);
-		    assert(QUEUE__IS_EMPTY(&thread_queues[ta->idx]));
-		    uv_mutex_unlock(&mutex);
-		    break;
-		}
-
-		if (QUEUE__IS_EMPTY(&thread_queues[ta->idx])) {
-		    continue;
-		}
+		while (QUEUE__IS_EMPTY(&thread_queues[ta->idx]))
+			uv_cond_wait(&cond[ta->idx], &mutex);
 
 		q = QUEUE__HEAD(&thread_queues[ta->idx]);
 		QUEUE__REMOVE(q);
@@ -140,15 +282,10 @@ static void worker(void *arg)
 		uv_async_send(&xx_loop(w->loop)->wq_async);
 		uv_mutex_unlock(&xx_loop(w->loop)->wq_mutex);
 
-		/* Lock `mutex` since that is expected at the start of the next
-		 * iteration. */
 		uv_mutex_lock(&mutex);
-		if (wtype != WT_UNORD) {
-		    assert(ordered_in_flight > 0);
-		    ordered_in_flight--;
-		    //if (ordered_in_flight == 0)
-		    //printf("@@@ 0 bar\n");
-
+		if (wtype > WT_BAR) {
+		    assert(in_flight > 0);
+		    in_flight--;
 		}
 	}
 }
@@ -157,10 +294,11 @@ static void post(queue *q, unsigned int idx)
 {
 	uv_mutex_lock(&mutex);
 
-	QUEUE__INSERT_TAIL(idx == ~0u ? &wq : &thread_queues[idx], q);
+	QUEUE__INSERT_TAIL(idx == ~0u ? &ordered : &unordered, q);
+	uv_cond_signal(&planner_cond);
 
-	for (idx = 0; idx < nthreads; ++idx)
-	    uv_cond_signal(&cond[idx]);
+	if (wt_type(q) >= WT_ORD1)
+	    in_flight++;
 
 	uv_mutex_unlock(&mutex);
 }
@@ -172,6 +310,7 @@ static void xx__threadpool_cleanup(void)
 	if (nthreads == 0)
 		return;
 
+	assert(0);
 	post(&exit_message, ~0u);
 
 	for (i = 0; i < nthreads; i++) {
@@ -180,6 +319,10 @@ static void xx__threadpool_cleanup(void)
 		POST(QUEUE__IS_EMPTY(&thread_queues[i]));
 		uv_cond_destroy(&cond[i]);
 	}
+
+	if (uv_thread_join(&planner_thread))
+	    abort();
+	uv_cond_destroy(&planner_cond);
 
 	free(cond);
 	free(threads);
@@ -226,6 +369,9 @@ static void init_threads(void)
 		abort();
 
 	QUEUE__INIT(&wq);
+	QUEUE__INIT(&ordered);
+	QUEUE__INIT(&unordered);
+
 
 	if (uv_sem_init(&sem, 0))
 		abort();
@@ -246,7 +392,13 @@ static void init_threads(void)
 			abort();
 	}
 
-	for (i = 0; i < nthreads; i++)
+	if (uv_cond_init(&planner_cond))
+	    abort();
+
+	if (uv_thread_create_ex(&planner_thread, &config, planner, &sem))
+	    abort();
+
+	for (i = 0; i < nthreads + 1; i++)
 		uv_sem_wait(&sem);
 
 	uv_sem_destroy(&sem);
@@ -271,33 +423,6 @@ void xx__work_submit(uv_loop_t *loop,
 	post(&w->wq, w->type == WT_UNORD ? w->thread_idx: ~0u);
 }
 
-static int xx__work_cancel(uv_loop_t *loop, struct xx__work *w)
-{
-	int cancelled;
-
-	//PRE(threads__invariant());
-	uv_mutex_lock(&mutex);
-	uv_mutex_lock(&xx_loop(w->loop)->wq_mutex);
-
-	cancelled = !QUEUE__IS_EMPTY(&w->wq) && w->work != NULL;
-	if (cancelled)
-		QUEUE__REMOVE(&w->wq);
-
-	uv_mutex_unlock(&xx_loop(w->loop)->wq_mutex);
-	uv_mutex_unlock(&mutex);
-
-	if (!cancelled)
-		return UV_EBUSY;
-
-	w->work = xx__cancelled;
-	uv_mutex_lock(&xx_loop(loop)->wq_mutex);
-	QUEUE__INSERT_TAIL(&xx_loop(loop)->wq, &w->wq);
-	uv_async_send(&xx_loop(loop)->wq_async);
-	uv_mutex_unlock(&xx_loop(loop)->wq_mutex);
-
-	return 0;
-}
-
 void xx__work_done(uv_async_t *handle)
 {
 	struct xx__work *w;
@@ -305,7 +430,6 @@ void xx__work_done(uv_async_t *handle)
 	struct xx_loop_s *xxloop;
 	queue *q;
 	queue wq_ = {};
-	int err;
 
 	xxloop = container_of(handle, struct xx_loop_s, wq_async);
 	loop = &xxloop->loop;
@@ -319,8 +443,7 @@ void xx__work_done(uv_async_t *handle)
 		QUEUE__REMOVE(q);
 
 		w = container_of(q, struct xx__work, wq);
-		err = (w->work == xx__cancelled) ? UV_ECANCELED : 0;
-		w->done(w, err);
+		w->done(w, 0);
 	}
 }
 
@@ -361,11 +484,6 @@ int xx_queue_work(uv_loop_t *loop,
 	return 0;
 }
 
-int xx_cancel(xx_work_t *req)
-{
-	return xx__work_cancel(req->loop, &req->work_req);
-}
-
 int xx_loop_init(struct xx_loop_s *loop)
 {
 	int err;
@@ -402,4 +520,9 @@ void xx_loop_close(struct xx_loop_s *loop)
 void xx_loop_async_close(uv_loop_t *loop)
 {
 	uv_close((uv_handle_t *)&xx_loop(loop)->wq_async, NULL);
+}
+
+unsigned int xx__thread_id(void)
+{
+	return *(unsigned int *)uv_key_get(&thread_key);
 }
