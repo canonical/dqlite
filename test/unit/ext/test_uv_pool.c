@@ -35,7 +35,7 @@ static void bottom_work_cb(pool_work_t *req)
 	munit_assert_uint(req->work_req.thread_idx, ==, pool_thread_id());
 }
 
-static void bottom_after_work_cb(pool_work_t *req, int status UNUSED)
+static void bottom_after_work_cb(pool_work_t *req)
 {
 	static int count = 0;
 
@@ -58,7 +58,7 @@ static void bottom_after_work_cb(pool_work_t *req, int status UNUSED)
 	free(req);
 }
 
-static void after_work_cb(pool_work_t *req, int status UNUSED)
+static void after_work_cb(pool_work_t *req)
 {
 	unsigned int i;
 	int rc;

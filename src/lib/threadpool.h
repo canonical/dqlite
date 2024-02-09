@@ -7,8 +7,6 @@
 
 typedef struct pool_loop_s pool_loop_t;
 typedef struct pool_work_s pool_work_t;
-typedef void (*pool_work_cb)(pool_work_t *req);
-typedef void (*pool_after_work_cb)(pool_work_t *req, int status);
 
 enum pool_work_type {
 	WT_UNORD,
@@ -18,19 +16,19 @@ enum pool_work_type {
 };
 
 struct pool_work {
-	queue qlink;
+	queue qlink; /* link into ordered, unordered and outq */
 	struct uv_loop_s *loop;
 	unsigned int thread_idx;
 	enum pool_work_type type;
 
 	void (*work)(struct pool_work *w);
-	void (*done)(struct pool_work *w, int status);
+	void (*done)(struct pool_work *w);
 };
 
 struct pool_work_s {
 	uv_loop_t *loop;
-	pool_work_cb work_cb;
-	pool_after_work_cb after_work_cb;
+	void (*work_cb)(pool_work_t *req);
+	void (*after_work_cb)(pool_work_t *req);
 	struct pool_work work_req;
 };
 
@@ -47,13 +45,12 @@ struct pool_loop_s {
 int  pool_loop_init(pool_loop_t *loop);
 void pool_loop_fini(pool_loop_t *loop);
 void pool_loop_close(uv_loop_t *loop);
-
 int  pool_queue_work(uv_loop_t *loop,
 		     pool_work_t *req,
 		     unsigned int cookie,
-		     pool_work_cb work_cb,
-		     pool_after_work_cb after_work_cb);
-pool_loop_t *pool_loop(struct uv_loop_s *loop);
+		     void (*work_cb)(pool_work_t *req),
+		     void (*after_work_cb)(pool_work_t *req));
+pool_loop_t *uv_to_pool_loop(uv_loop_t *loop);
 
 /* For tests */
 unsigned int pool_thread_id(void);

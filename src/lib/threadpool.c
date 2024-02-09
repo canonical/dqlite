@@ -13,6 +13,7 @@ enum {
 	MAX_THREADPOOL_SIZE = 1024,
 	POOL_THREADPOOL_SIZE = 4,
 	POOL_LOOP_MAGIC = 0x00ba5e1e55ba5500, /* baseless bass */
+
 };
 
 static inline bool has_active_reqs(pool_loop_t *loop)
@@ -162,7 +163,7 @@ static void wt_free(queue *q)
 	free(container_of(w, pool_work_t, work_req));
 }
 
-static unsigned int wt_type(queue *q)
+static enum pool_work_type wt_type(queue *q)
 {
 	struct pool_work *w = QUEUE__DATA(q, struct pool_work, qlink);
 	return w->type;
@@ -291,13 +292,13 @@ static void worker(void *arg)
 		wtype = w->type;
 		w->work(w);
 
-		uv_mutex_lock(&pool_loop(w->loop)->outq_mutex);
+		uv_mutex_lock(&uv_to_pool_loop(w->loop)->outq_mutex);
 		w->work = NULL;
 
-		QUEUE__INSERT_TAIL(&pool_loop(w->loop)->outq, &w->qlink);
+		QUEUE__INSERT_TAIL(&uv_to_pool_loop(w->loop)->outq, &w->qlink);
 
-		uv_async_send(&pool_loop(w->loop)->outq_async);
-		uv_mutex_unlock(&pool_loop(w->loop)->outq_mutex);
+		uv_async_send(&uv_to_pool_loop(w->loop)->outq_async);
+		uv_mutex_unlock(&uv_to_pool_loop(w->loop)->outq_mutex);
 
 		uv_mutex_lock(&mutex);
 		if (wtype > WT_BAR) {
@@ -307,16 +308,6 @@ static void worker(void *arg)
 			    uv_cond_signal(&planner_cond);
 		}
 	}
-}
-
-static void post(queue *q, unsigned int idx)
-{
-	uv_mutex_lock(&mutex);
-
-	QUEUE__INSERT_TAIL(idx == ~0u ? &ordered : &unordered, q);
-	uv_cond_signal(&planner_cond);
-
-	uv_mutex_unlock(&mutex);
 }
 
 static void threadpool_cleanup(void)
@@ -424,7 +415,7 @@ static void init_threads(void)
 static void pool_work_submit(uv_loop_t *loop,
 			     struct pool_work *w,
 			     void (*work)(struct pool_work *w),
-			     void (*done)(struct pool_work *w, int status))
+			     void (*done)(struct pool_work *w))
 {
 	/* Make sure that elements in ordered queue come in order. */
 	if (w->type > WT_UNORD) {
@@ -436,7 +427,12 @@ static void pool_work_submit(uv_loop_t *loop,
 	w->loop = loop;
 	w->work = work;
 	w->done = done;
-	post(&w->qlink, w->type == WT_UNORD ? w->thread_idx: ~0u);
+
+	uv_mutex_lock(&mutex);
+	QUEUE__INSERT_TAIL(w->type == WT_UNORD ? &unordered : &ordered,
+			   &w->qlink);
+	uv_cond_signal(&planner_cond);
+	uv_mutex_unlock(&mutex);
 }
 
 void work_done(uv_async_t *handle)
@@ -450,16 +446,16 @@ void work_done(uv_async_t *handle)
 	ploop = container_of(handle, pool_loop_t, outq_async);
 	loop = &ploop->loop;
 
-	uv_mutex_lock(&pool_loop(loop)->outq_mutex);
-	QUEUE__MOVE(&pool_loop(loop)->outq, &wq_);
-	uv_mutex_unlock(&pool_loop(loop)->outq_mutex);
+	uv_mutex_lock(&uv_to_pool_loop(loop)->outq_mutex);
+	QUEUE__MOVE(&uv_to_pool_loop(loop)->outq, &wq_);
+	uv_mutex_unlock(&uv_to_pool_loop(loop)->outq_mutex);
 
 	while (!QUEUE__IS_EMPTY(&wq_)) {
 		q = QUEUE__HEAD(&wq_);
 		QUEUE__REMOVE(q);
 
 		w = container_of(q, struct pool_work, qlink);
-		w->done(w, 0);
+		w->done(w);
 	}
 }
 
@@ -469,28 +465,28 @@ static void queue_work(struct pool_work *w)
 	req->work_cb(req);
 }
 
-static void queue_done(struct pool_work *w, int err)
+static void queue_done(struct pool_work *w)
 {
 	pool_work_t *req = container_of(w, pool_work_t, work_req);
 
-	req_unregister(pool_loop(req->loop), req);
+	req_unregister(uv_to_pool_loop(req->loop), req);
 	if (req->after_work_cb == NULL)
 		return;
 
-	req->after_work_cb(req, err);
+	req->after_work_cb(req);
 }
 
 int pool_queue_work(uv_loop_t *loop,
 		    pool_work_t *req,
 		    unsigned int cookie,
-		    pool_work_cb work_cb,
-		    pool_after_work_cb after_work_cb)
+		    void (*work_cb)(pool_work_t *req),
+		    void (*after_work_cb)(pool_work_t *req))
 {
 	if (work_cb == NULL)
 		return UV_EINVAL;
 
 	if (req->work_req.type != WT_BAR)
-		req_register(pool_loop(loop), req);
+		req_register(uv_to_pool_loop(loop), req);
 
 	req->loop = loop;
 	req->work_cb = work_cb;
@@ -526,9 +522,9 @@ void pool_loop_fini(pool_loop_t *loop)
 	threadpool_cleanup();
 
 	uv_mutex_lock(&loop->outq_mutex);
-	assert(QUEUE__IS_EMPTY(&loop->outq) &&
-	       "thread pool output queue not empty!");
-	assert(!has_active_reqs(loop));
+	POST(QUEUE__IS_EMPTY(&loop->outq) &&
+	     "thread pool output queue not empty!");
+	POST(!has_active_reqs(loop));
 	uv_mutex_unlock(&loop->outq_mutex);
 
 	uv_mutex_destroy(&loop->outq_mutex);
@@ -536,7 +532,7 @@ void pool_loop_fini(pool_loop_t *loop)
 
 void pool_loop_close(uv_loop_t *loop)
 {
-	uv_close((uv_handle_t *)&pool_loop(loop)->outq_async, NULL);
+	uv_close((uv_handle_t *)&uv_to_pool_loop(loop)->outq_async, NULL);
 }
 
 unsigned int pool_thread_id(void)
@@ -544,7 +540,7 @@ unsigned int pool_thread_id(void)
 	return *(unsigned int *)uv_key_get(&thread_key);
 }
 
-pool_loop_t *pool_loop(struct uv_loop_s *loop)
+pool_loop_t *uv_to_pool_loop(uv_loop_t *loop)
 {
 	pool_loop_t *pl = (pool_loop_t *)loop;
 	PRE(pl->magic == POOL_LOOP_MAGIC);
