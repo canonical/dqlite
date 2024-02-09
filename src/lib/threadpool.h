@@ -18,7 +18,7 @@ enum pool_work_type {
 struct pool_work {
 	queue qlink; /* link into ordered, unordered and outq */
 	struct uv_loop_s *loop;
-	unsigned int thread_idx;
+	uint32_t thread_idx;
 	enum pool_work_type type;
 
 	void (*work)(struct pool_work *w);
@@ -32,14 +32,11 @@ struct pool_work_s {
 	struct pool_work work_req;
 };
 
+struct pool_loop_impl;
 struct pool_loop_s {
-	struct uv_loop_s loop;
-	uint64_t	 magic;
-
-	queue      outq;
-	uv_mutex_t outq_mutex;
-	uv_async_t outq_async;
-	uint64_t   active_reqs;
+	uint64_t	       magic;
+	struct uv_loop_s       loop;
+	struct pool_loop_impl *impl;
 };
 
 int  pool_loop_init(pool_loop_t *loop);
@@ -47,11 +44,11 @@ void pool_loop_fini(pool_loop_t *loop);
 void pool_loop_close(uv_loop_t *loop);
 int  pool_queue_work(uv_loop_t *loop,
 		     pool_work_t *req,
-		     unsigned int cookie,
+		     uint32_t cookie,
 		     void (*work_cb)(pool_work_t *req),
 		     void (*after_work_cb)(pool_work_t *req));
 pool_loop_t *uv_to_pool_loop(uv_loop_t *loop);
 
 /* For tests */
-unsigned int pool_thread_id(void);
+uint32_t pool_loop_thread_id(const pool_loop_t *loop);
 #endif  // __THREAD_POOL__

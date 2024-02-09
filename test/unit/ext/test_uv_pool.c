@@ -32,7 +32,8 @@ static void loop_setup(struct fixture *f)
 
 static void bottom_work_cb(pool_work_t *req)
 {
-	munit_assert_uint(req->work_req.thread_idx, ==, pool_thread_id());
+	pool_loop_t *pl = uv_to_pool_loop(req->work_req.loop);
+	munit_assert_uint(req->work_req.thread_idx, ==, pool_loop_thread_id(pl));
 }
 
 static void bottom_after_work_cb(pool_work_t *req)
@@ -84,7 +85,8 @@ static void after_work_cb(pool_work_t *req)
 
 static void work_cb(pool_work_t *req)
 {
-	munit_assert_uint(req->work_req.thread_idx, ==, pool_thread_id());
+	pool_loop_t *pl = uv_to_pool_loop(req->work_req.loop);
+	munit_assert_uint(req->work_req.thread_idx, ==, pool_loop_thread_id(pl));
 }
 
 static void threadpool_tear_down(void *data)
