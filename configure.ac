@@ -63,6 +63,12 @@ AS_IF([test "x$with_lz4" != "xno"], [PKG_CHECK_MODULES(LZ4, [liblz4 >= 1.7.1], [
 AS_IF([test "x$with_lz4" != "xno" -a "x$have_lz4" = "xno"], [AC_MSG_ERROR([liblz4 required but not found])], [])
 AM_CONDITIONAL(LZ4_AVAILABLE, test "x$have_lz4" = "xyes")
 
+AC_ARG_ENABLE(lz4, AS_HELP_STRING([--disable-lz4], [when building with lz4, do not compress snapshots by default]))
+AS_IF([test "x$enable_lz4" != "x" -a "x$have_lz4" = "xno"],
+      [AC_MSG_ERROR([snapshot compression (either by default or not) requires liblz4])],
+      [])
+AM_CONDITIONAL(LZ4_ENABLED, test "x$enable_lz4" != "xno" -a "x$have_lz4" = "xyes")
+
 CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -std=c11 \
   -g3 \
