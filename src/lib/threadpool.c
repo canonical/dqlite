@@ -9,14 +9,6 @@
 #include "src/utils.h"
 
 
-enum planner_states {
-	PS_NOTHING,
-	PS_DRAINING,
-	PS_BARRIER,
-	PS_DRAINING_UNORD,
-	PS_EXITED,
-};
-
 /**
  *  Planner thread state machine.
  *
@@ -44,23 +36,32 @@ enum planner_states {
  *                      DRAINING_UNORD
  */
 
+enum planner_states {
+	PS_NOTHING,
+	PS_DRAINING,
+	PS_BARRIER,
+	PS_DRAINING_UNORD,
+	PS_EXITED,
+};
+
 static const struct sm_conf planner_sm_states[SM_STATES_MAX] = {
        [PS_NOTHING] = {
                .flags   = SM_INITIAL,
                .name    = "nothing",
-               .allowed = BITS(PS_DRAINING) | BITS(PS_EXITED),
+               .allowed = BITS(PS_DRAINING)
+			| BITS(PS_EXITED),
        },
        [PS_DRAINING] = {
                .name    = "draining",
-               .allowed = BITS(PS_DRAINING) |
-			  BITS(PS_NOTHING) |
-	                  BITS(PS_BARRIER),
+               .allowed = BITS(PS_DRAINING)
+			| BITS(PS_NOTHING)
+			| BITS(PS_BARRIER),
        },
        [PS_BARRIER] = {
                .name    = "barrier",
-               .allowed = BITS(PS_DRAINING_UNORD) |
-			  BITS(PS_DRAINING) |
-			  BITS(PS_BARRIER),
+               .allowed = BITS(PS_DRAINING_UNORD)
+			| BITS(PS_DRAINING)
+			| BITS(PS_BARRIER),
        },
        [PS_DRAINING_UNORD] = {
                .name    = "unord-draining",
@@ -74,10 +75,13 @@ static const struct sm_conf planner_sm_states[SM_STATES_MAX] = {
 };
 
 enum {
-	MAX_THREADPOOL_SIZE = 1024,
 	POOL_THREADPOOL_SIZE = 4,
-	POOL_LOOP_MAGIC = 0x00ba5e1e55ba5500, /* baseless bass */
+	MAX_THREADPOOL_SIZE  = 1024,
+	POOL_LOOP_MAGIC      = 0x00ba5e1e55ba5500, /* baseless bass */
 };
+
+typedef struct pool_thread pool_thread_t;
+typedef struct pool_loop_impl pool_loop_impl_t;
 
 struct targs {
 	struct pool_loop_impl *impl;
@@ -93,26 +97,26 @@ struct pool_thread {
 };
 
 struct pool_loop_impl {
-	uint32_t            nthreads;
-	uv_mutex_t          mutex;
-	struct pool_thread *threads;
+	uint32_t       nthreads;
+	uv_mutex_t     mutex;
+	pool_thread_t *threads;
 
-	queue       outq;
-	uv_mutex_t  outq_mutex;
-	uv_async_t  outq_async;
-	uint64_t    active_reqs;
+	queue          outq;
+	uv_mutex_t     outq_mutex;
+	uv_async_t     outq_async;
+	uint64_t       active_reqs;
 
-	queue 	    ordered;
-	queue 	    unordered;
-	struct sm   planner_sm;
-	uv_cond_t   planner_cond;
-	uv_thread_t planner_thread;
+	queue 	       ordered;
+	queue 	       unordered;
+	struct sm      planner_sm;
+	uv_cond_t      planner_cond;
+	uv_thread_t    planner_thread;
 
-	uv_key_t    thread_key;
-	uint32_t    in_flight;
-	bool        exiting;
-	uint32_t    o_prev;
-	uint32_t    qos;
+	uv_key_t       thread_key;
+	uint32_t       in_flight;
+	bool           exiting;
+	uint32_t       o_prev;
+	uint32_t       qos;
 };
 
 static inline bool has_active_reqs(pool_loop_t *loop)
@@ -188,8 +192,7 @@ static uint32_t wt_idx(queue *q)
 
 static bool planner_invariant(const struct sm *m, int prev_state)
 {
-	struct pool_loop_impl *impl =
-		container_of(m, struct pool_loop_impl, planner_sm);
+	pool_loop_impl_t *impl = container_of(m, pool_loop_impl_t, planner_sm);
 	queue *o = &impl->ordered;
 	queue *u = &impl->unordered;
 
@@ -210,15 +213,15 @@ static bool planner_invariant(const struct sm *m, int prev_state)
 
 static void planner(void *arg)
 {
-	struct targs          *ta = arg;
-	uv_sem_t              *sem = ta->sem;
-	struct pool_loop_impl *impl = ta->impl;
-	struct pool_thread    *ts = impl->threads;
-	uv_mutex_t            *mutex = &impl->mutex;
-	struct sm             *planner_sm = &impl->planner_sm;
-	queue 		      *o  = &impl->ordered;
-	queue 		      *u  = &impl->unordered;
-	queue 		      *q;
+	struct targs     *ta = arg;
+	uv_sem_t         *sem = ta->sem;
+	pool_loop_impl_t *impl = ta->impl;
+	pool_thread_t    *ts = impl->threads;
+	uv_mutex_t       *mutex = &impl->mutex;
+	struct sm        *planner_sm = &impl->planner_sm;
+	queue 		 *o  = &impl->ordered;
+	queue 		 *u  = &impl->unordered;
+	queue 		 *q;
 
 	sm_init(planner_sm, planner_invariant, NULL,
 		planner_sm_states, PS_NOTHING);
@@ -283,13 +286,13 @@ static void planner(void *arg)
 
 static void worker(void *arg)
 {
-	struct targs          *ta = arg;
-	struct pool_loop_impl *impl = ta->impl;
-	struct pool_thread    *ts = impl->threads;
-	uv_mutex_t            *mutex = &impl->mutex;
-	enum pool_work_type    wtype;
-	struct pool_work      *w;
-	queue                 *q;
+	struct targs        *ta = arg;
+	pool_loop_impl_t    *impl = ta->impl;
+	pool_thread_t       *ts = impl->threads;
+	uv_mutex_t          *mutex = &impl->mutex;
+	enum pool_work_type  wtype;
+	struct pool_work    *w;
+	queue               *q;
 
 	uv_key_set(&impl->thread_key, &ta->idx);
 	uv_sem_post(ta->sem);
@@ -333,8 +336,8 @@ static void worker(void *arg)
 
 static void threadpool_cleanup(pool_loop_t *loop)
 {
-	struct pool_loop_impl *impl = loop->impl;
-	struct pool_thread    *ts = impl->threads;
+	pool_loop_impl_t *impl = loop->impl;
+	pool_thread_t    *ts = impl->threads;
 	uint32_t i;
 
 	if (impl->nthreads == 0)
@@ -369,7 +372,7 @@ static void init_threads(pool_loop_t *loop)
 	const char *val;
 	uv_sem_t sem;
 	uint32_t i;
-	struct pool_loop_impl *impl = loop->impl;
+	pool_loop_impl_t *impl = loop->impl;
 	struct targs planner_args = (struct targs) {
 		.sem = &sem,
 		.impl = impl,
@@ -379,8 +382,8 @@ static void init_threads(pool_loop_t *loop)
 	impl->o_prev = WT_BAR;
 	impl->exiting = false;
 	impl->in_flight = 0;
-
 	impl->nthreads = POOL_THREADPOOL_SIZE;
+
 	val = getenv("POOL_THREADPOOL_SIZE");
 	if (val != NULL)
 		impl->nthreads = (uint32_t)atoi(val);
@@ -441,7 +444,7 @@ static void pool_work_submit(uv_loop_t *loop,
 			     void (*work)(struct pool_work *w),
 			     void (*done)(struct pool_work *w))
 {
-	struct pool_loop_impl *impl = uv_to_pool_loop(loop)->impl;
+	pool_loop_impl_t *impl = uv_to_pool_loop(loop)->impl;
 
 	/* Make sure that elements in ordered queue come in order. */
 	if (w->type > WT_UNORD) {
@@ -464,12 +467,12 @@ static void pool_work_submit(uv_loop_t *loop,
 
 void work_done(uv_async_t *handle)
 {
-	struct pool_loop_impl *impl;
+	pool_loop_impl_t *impl;
 	struct pool_work *w;
 	queue *q;
 	queue wq = {};
 
-	impl = container_of(handle, struct pool_loop_impl, outq_async);
+	impl = container_of(handle, pool_loop_impl_t, outq_async);
 	uv_mutex_lock(&impl->outq_mutex);
 	QUEUE__MOVE(&impl->outq, &wq);
 	uv_mutex_unlock(&impl->outq_mutex);
@@ -506,7 +509,7 @@ int pool_queue_work(uv_loop_t *loop,
 		    void (*work_cb)(pool_work_t *req),
 		    void (*after_work_cb)(pool_work_t *req))
 {
-	struct pool_loop_impl *impl = uv_to_pool_loop(loop)->impl;
+	pool_loop_impl_t *impl = uv_to_pool_loop(loop)->impl;
 
 	if (work_cb == NULL)
 		return UV_EINVAL;
