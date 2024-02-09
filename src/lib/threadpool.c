@@ -18,12 +18,12 @@ static inline bool xx__has_active_reqs(xx_loop_t *loop)
 	return loop->active_reqs > 0;
 }
 
-static inline void xx__req_register(xx_loop_t *loop, xx_work_t *req UNUSED)
+static inline void xx__req_register(xx_loop_t *loop, xx_work_t *)
 {
 	loop->active_reqs++;
 }
 
-static inline void xx__req_unregister(xx_loop_t *loop, xx_work_t *req UNUSED)
+static inline void xx__req_unregister(xx_loop_t *loop, xx_work_t *)
 {
 	assert(xx__has_active_reqs(loop));
 	loop->active_reqs--;
@@ -34,9 +34,8 @@ enum {
 	XX_THREADPOOL_SIZE = 4,
 };
 
-struct thread_args
-{
-	uv_sem_t *sem;
+struct thread_args {
+	uv_sem_t    *sem;
 	unsigned int idx;
 };
 
@@ -47,8 +46,6 @@ static uv_thread_t *threads;
 static struct thread_args *thread_args;
 static uv_key_t thread_key;
 static queue *thread_queues;
-//static queue exit_message;
-//static queue wq;
 
 static struct sm planner_sm;
 static uv_cond_t planner_cond;
@@ -208,7 +205,8 @@ static void planner(void *arg)
 	queue *tq = thread_queues;
 	queue *q;
 
-	sm_init(&planner_sm, planner_invariant, planner_sm_states, PS_NOTHING);
+	sm_init(&planner_sm, planner_invariant, NULL,
+		planner_sm_states, PS_NOTHING);
 	uv_sem_post(sem);
 	uv_mutex_lock(&mutex);
 	for (;;) {
@@ -392,10 +390,8 @@ static void init_threads(void)
 	if (uv_mutex_init(&mutex))
 		abort();
 
-	//QUEUE__INIT(&wq);
 	QUEUE__INIT(&ordered);
 	QUEUE__INIT(&unordered);
-
 
 	if (uv_sem_init(&sem, 0))
 		abort();
@@ -427,13 +423,6 @@ static void init_threads(void)
 
 	uv_sem_destroy(&sem);
 }
-
-//static UNUSED bool threads__invariant(void)
-//{
-//	return nthreads > 0 && threads != NULL && thread_args != NULL &&
-//	       thread_queues != NULL && !IS0(&wq) && !ARE0(threads, nthreads) &&
-//	       !ARE0(thread_args, nthreads) && !ARE0(thread_queues, nthreads);
-//}
 
 void xx__work_submit(uv_loop_t *loop,
 		     struct xx__work *w,

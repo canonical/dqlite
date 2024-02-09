@@ -25,12 +25,14 @@ struct sm_conf {
 struct sm {
 	int    rc;
 	int    state;
+	bool (*is_locked)(const struct sm *);
 	bool (*invariant)(const struct sm *, int);
 	const struct sm_conf *conf;
 };
 
 void sm_init(struct sm *m,
 	     bool (*invariant)(const struct sm *, int),
+	     bool (*is_locked)(const struct sm *),
 	     const struct sm_conf *conf,
 	     int state);
 void sm_fini(struct sm *m);

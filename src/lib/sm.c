@@ -3,9 +3,9 @@
 #include <stddef.h> /* NULL */
 
 
-static bool sm_is_locked(const struct sm *)
+static bool sm_is_locked(const struct sm *m)
 {
-	return true; /* dummy so far */
+	return ERGO(m->is_locked, m->is_locked(m));
 }
 
 int sm_state(const struct sm *m)
@@ -14,7 +14,9 @@ int sm_state(const struct sm *m)
 	return m->state;
 }
 
-void sm_init(struct sm *m, bool (*invariant)(const struct sm *, int),
+void sm_init(struct sm *m,
+	     bool (*invariant)(const struct sm *, int),
+	     bool (*is_locked)(const struct sm *),
 	     const struct sm_conf *conf, int state)
 {
 	PRE(conf[state].flags & SM_INITIAL);
@@ -22,6 +24,7 @@ void sm_init(struct sm *m, bool (*invariant)(const struct sm *, int),
 	m->conf = conf;
 	m->state = state;
 	m->invariant = invariant;
+	m->is_locked = is_locked;
 
 	POST(m->invariant != NULL && m->invariant(m, SM_PREV_NONE));
 }
