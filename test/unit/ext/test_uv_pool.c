@@ -51,7 +51,7 @@ static void bottom_after_work_cb(pool_work_t *req, int status UNUSED)
 	 *      uv_walk() ... if (h->flags & UV_HANDLE_INTERNAL) continue;
 	 */
 	if (count == WORK_ITEMS_NR)
-		pool_loop_async_close(req->loop);
+		pool_loop_close(req->loop);
 
 	count++;
 	assert(req->work_req.type != WT_BAR);
@@ -92,7 +92,7 @@ static void threadpool_tear_down(void *data)
 	int rc;
 	struct fixture *f = data;
 
-	pool_loop_close(&f->ploop);
+	pool_loop_fini(&f->ploop);
 	rc = uv_loop_close(&f->ploop.loop);
 	munit_assert_int(rc, ==, 0);
 	free(f);

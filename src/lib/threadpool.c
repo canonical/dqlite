@@ -157,20 +157,20 @@ static queue *qos_pop(queue *first, queue *second)
 
 static void wt_free(queue *q)
 {
-	struct pool__work *w = QUEUE__DATA(q, struct pool__work, qlink);
+	struct pool_work *w = QUEUE__DATA(q, struct pool_work, qlink);
 	assert(w->type == WT_BAR);
 	free(container_of(w, pool_work_t, work_req));
 }
 
 static unsigned int wt_type(queue *q)
 {
-	struct pool__work *w = QUEUE__DATA(q, struct pool__work, qlink);
+	struct pool_work *w = QUEUE__DATA(q, struct pool_work, qlink);
 	return w->type;
 }
 
 static unsigned int wt_idx(queue *q)
 {
-	struct pool__work *w = QUEUE__DATA(q, struct pool__work, qlink);
+	struct pool_work *w = QUEUE__DATA(q, struct pool_work, qlink);
 	return w->thread_idx;
 }
 
@@ -227,7 +227,7 @@ static void planner(void *arg)
 					in_flight++;
 			}
 			sm_move(&planner_sm, PS_NOTHING);
-			ps_barrier:
+		ps_barrier:
 			break;
 		case PS_BARRIER:
 			if (!empty(u)) {
@@ -264,7 +264,7 @@ static void planner(void *arg)
 
 static void worker(void *arg)
 {
-	struct pool__work *w;
+	struct pool_work *w;
 	queue *q;
 	struct thread_args *ta = arg;
 	unsigned int wtype;
@@ -287,7 +287,7 @@ static void worker(void *arg)
 
 		uv_mutex_unlock(&mutex);
 
-		w = QUEUE__DATA(q, struct pool__work, qlink);
+		w = QUEUE__DATA(q, struct pool_work, qlink);
 		wtype = w->type;
 		w->work(w);
 
@@ -422,9 +422,9 @@ static void init_threads(void)
 }
 
 static void pool_work_submit(uv_loop_t *loop,
-			     struct pool__work *w,
-			     void (*work)(struct pool__work *w),
-			     void (*done)(struct pool__work *w, int status))
+			     struct pool_work *w,
+			     void (*work)(struct pool_work *w),
+			     void (*done)(struct pool_work *w, int status))
 {
 	/* Make sure that elements in ordered queue come in order. */
 	if (w->type > WT_UNORD) {
@@ -441,7 +441,7 @@ static void pool_work_submit(uv_loop_t *loop,
 
 void work_done(uv_async_t *handle)
 {
-	struct pool__work *w;
+	struct pool_work *w;
 	uv_loop_t *loop;
 	pool_loop_t *ploop;
 	queue *q;
@@ -458,18 +458,18 @@ void work_done(uv_async_t *handle)
 		q = QUEUE__HEAD(&wq_);
 		QUEUE__REMOVE(q);
 
-		w = container_of(q, struct pool__work, qlink);
+		w = container_of(q, struct pool_work, qlink);
 		w->done(w, 0);
 	}
 }
 
-static void queue_work(struct pool__work *w)
+static void queue_work(struct pool_work *w)
 {
 	pool_work_t *req = container_of(w, pool_work_t, work_req);
 	req->work_cb(req);
 }
 
-static void queue_done(struct pool__work *w, int err)
+static void queue_done(struct pool_work *w, int err)
 {
 	pool_work_t *req = container_of(w, pool_work_t, work_req);
 
@@ -521,7 +521,7 @@ int pool_loop_init(pool_loop_t *loop)
 	return 0;
 }
 
-void pool_loop_close(pool_loop_t *loop)
+void pool_loop_fini(pool_loop_t *loop)
 {
 	threadpool_cleanup();
 
@@ -534,7 +534,7 @@ void pool_loop_close(pool_loop_t *loop)
 	uv_mutex_destroy(&loop->outq_mutex);
 }
 
-void pool_loop_async_close(uv_loop_t *loop)
+void pool_loop_close(uv_loop_t *loop)
 {
 	uv_close((uv_handle_t *)&pool_loop(loop)->outq_async, NULL);
 }
