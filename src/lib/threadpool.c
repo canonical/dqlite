@@ -15,12 +15,12 @@ static struct xx_loop_s *xx_loop(struct uv_loop_s *loop)
 
 static inline bool xx__has_active_reqs(xx_loop_t *loop)
 {
-    return loop->active_reqs > 0;
+	return loop->active_reqs > 0;
 }
 
 static inline void xx__req_register(xx_loop_t *loop, xx_work_t *req UNUSED)
 {
-    loop->active_reqs++;
+	loop->active_reqs++;
 }
 
 static inline void xx__req_unregister(xx_loop_t *loop, xx_work_t *req UNUSED)
@@ -48,7 +48,7 @@ static struct thread_args *thread_args;
 static uv_key_t thread_key;
 static queue *thread_queues;
 //static queue exit_message;
-static queue wq;
+//static queue wq;
 
 static struct sm planner_sm;
 static uv_cond_t planner_cond;
@@ -69,14 +69,17 @@ enum planner_states {
 /**
  *  Planner thread state machine.
  *
- *                         NOTHING
- *                           ^ |
+ * signal() &&
+ * empty(o) &&                     signal() && exiting
+ * empty(u) &&     +-----> NOTHING ----------------> EXITED
+ * !exiting        +-------  ^ |
+ *                           | |
  *               empty(o) && | | signal()
- *               empty(u)    | |
- *                           | |        empty(o) &&
- *                           | |        empty(u) &&
- *                           | V        exiting
- *    !empty(o) && +-----> DRAINING ---------------> EXITED
+ *               empty(u)    | | !empty(o) || !empty(u)
+ *                           | |
+ *                           | |
+ *                           | V
+ *    !empty(o) && +-----> DRAINING
  *    !empty(u) && +-------  ^ |
  * type(head(o)) != BAR      | |
  *                           | | type(head(o)) == BAR
@@ -90,18 +93,17 @@ enum planner_states {
  *                      DRAINING_UNORD
  */
 
-static struct sm_conf planner_sm_states[SM_STATES_MAX] = {
+static const struct sm_conf planner_sm_states[SM_STATES_MAX] = {
        [PS_NOTHING] = {
                .flags   = SM_INITIAL,
                .name    = "nothing",
-               .allowed = BITS(PS_DRAINING),
+               .allowed = BITS(PS_DRAINING) | BITS(PS_EXITED),
        },
        [PS_DRAINING] = {
                .name    = "draining",
                .allowed = BITS(PS_DRAINING) |
 			  BITS(PS_NOTHING) |
-			  BITS(PS_BARRIER) |
-			  BITS(PS_EXITED),
+	                  BITS(PS_BARRIER),
        },
        [PS_BARRIER] = {
                .name    = "barrier",
@@ -176,16 +178,19 @@ static unsigned int wt_idx(queue *q)
 	return w->thread_idx;
 }
 
+static unsigned int o_prev = WT_BAR;
+
 static bool planner_invariant(const struct sm *m, int prev_state)
 {
 	queue *o = &ordered;
 	queue *u = &unordered;
 
-	return ERGO(sm_state(m) == PS_NOTHING,
-		    empty(o) && empty(u)) &&
+	return ERGO(sm_state(m) == PS_NOTHING, empty(o) && empty(u)) &&
 		ERGO(sm_state(m) == PS_DRAINING,
-		     ERGO(prev_state == PS_BARRIER, in_flight == 0) ||
-		     !empty(o) || !empty(u)) &&
+		     ERGO(prev_state == PS_BARRIER,
+			  in_flight == 0 && empty(u)) &&
+		     ERGO(prev_state == PS_NOTHING,
+			  !empty(u) || !empty(o))) &&
 		ERGO(sm_state(m) == PS_EXITED,
 		     exiting && empty(o) && empty(u)) &&
 		ERGO(sm_state(m) == PS_BARRIER,
@@ -209,24 +214,25 @@ static void planner(void *arg)
 	for (;;) {
 		switch(sm_state(&planner_sm)) {
 		case PS_NOTHING:
-			uv_cond_wait(&planner_cond, &mutex);
-			sm_move(&planner_sm, PS_DRAINING);
+			while (empty(o) && empty(u) && !exiting)
+				uv_cond_wait(&planner_cond, &mutex);
+			sm_move(&planner_sm, exiting ? PS_EXITED : PS_DRAINING);
 			break;
 		case PS_DRAINING:
 			while (!(empty(o) && empty(u))) {
+				sm_move(&planner_sm, PS_DRAINING);
 				if (!empty(o) && wt_type(head(o)) == WT_BAR) {
 					sm_move(&planner_sm, PS_BARRIER);
-					goto outbreak;
+					goto ps_barrier;
 				}
 				q = qos_pop(o, u);
 				push(&tq[wt_idx(q)], q);
 				uv_cond_signal(&cond[wt_idx(q)]);
 				if (wt_type(q) >= WT_ORD1)
 					in_flight++;
-				sm_move(&planner_sm, PS_DRAINING);
 			}
-			sm_move(&planner_sm, exiting ? PS_EXITED : PS_NOTHING);
-			outbreak:
+			sm_move(&planner_sm, PS_NOTHING);
+			ps_barrier:
 			break;
 		case PS_BARRIER:
 			if (!empty(u)) {
@@ -332,7 +338,6 @@ static void xx__threadpool_cleanup(void)
 	    abort();
 	uv_cond_destroy(&planner_cond);
 	POST(empty(&ordered) && empty(&unordered));
-	//printf("@@@ planner_cond fini()\n");
 
 	for (i = 0; i < nthreads; i++) {
 	    	uv_cond_signal(&cond[i]);
@@ -341,7 +346,6 @@ static void xx__threadpool_cleanup(void)
 		POST(QUEUE__IS_EMPTY(&thread_queues[i]));
 		uv_cond_destroy(&cond[i]);
 	}
-	//printf("@@@ cond fini()\n");
 
 
 	free(cond);
@@ -388,7 +392,7 @@ static void init_threads(void)
 	if (uv_mutex_init(&mutex))
 		abort();
 
-	QUEUE__INIT(&wq);
+	//QUEUE__INIT(&wq);
 	QUEUE__INIT(&ordered);
 	QUEUE__INIT(&unordered);
 
@@ -424,19 +428,25 @@ static void init_threads(void)
 	uv_sem_destroy(&sem);
 }
 
-static UNUSED bool threads__invariant(void)
-{
-	return nthreads > 0 && threads != NULL && thread_args != NULL &&
-	       thread_queues != NULL && !IS0(&wq) && !ARE0(threads, nthreads) &&
-	       !ARE0(thread_args, nthreads) && !ARE0(thread_queues, nthreads);
-}
+//static UNUSED bool threads__invariant(void)
+//{
+//	return nthreads > 0 && threads != NULL && thread_args != NULL &&
+//	       thread_queues != NULL && !IS0(&wq) && !ARE0(threads, nthreads) &&
+//	       !ARE0(thread_args, nthreads) && !ARE0(thread_queues, nthreads);
+//}
 
 void xx__work_submit(uv_loop_t *loop,
 		     struct xx__work *w,
 		     void (*work)(struct xx__work *w),
 		     void (*done)(struct xx__work *w, int status))
 {
-    //PRE(threads__invariant());
+	/* Make sure that elements in ordered queue come in order. */
+	if (w->type > WT_UNORD) {
+		PRE(ERGO(o_prev != WT_BAR && w->type != WT_BAR,
+			 o_prev == w->type));
+		o_prev = w->type;
+	}
+
 	w->loop = loop;
 	w->work = work;
 	w->done = done;
