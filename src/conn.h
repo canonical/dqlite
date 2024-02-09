@@ -35,7 +35,6 @@ struct conn
 	struct message response;                /* Response message meta data */
 	struct handle handle;
 	bool closed;
-	bool reading_message; /* Conn is waiting for a message */
 	queue queue;
 };
 

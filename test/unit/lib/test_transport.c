@@ -39,14 +39,11 @@ static void read_cb(struct transport *transport, int status)
 	f->read.status = status;
 }
 
-static void write_cb(uv_write_t *req, int status)
+static void write_cb(struct transport *transport, int status)
 {
-	struct transport *t = req->data;
-	munit_assert_ptr_not_null(t);
-	struct fixture *f = t->data;
+	struct fixture *f = transport->data;
 	f->write.invoked = true;
 	f->write.status = status;
-	free(req);
 }
 
 static void *setup(const MunitParameter params[], void *user_data)

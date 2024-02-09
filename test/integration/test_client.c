@@ -123,46 +123,6 @@ TEST(client, query, setUp, tearDown, 0, client_params)
 	return MUNIT_OK;
 }
 
-TEST(client, queryReuseStmtIdAferInterrupt, setUp, tearDown, 0, client_params)
-{
-	struct fixture *f = data;
-	uint32_t stmt_id;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
-	unsigned i;
-	struct rows rows;
-	(void)params;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
-
-	PREPARE("BEGIN", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
-
-	PREPARE("INSERT INTO test (n) VALUES(123)", &stmt_id);
-	for (i = 0; i < 4098; i++) {
-		EXEC(stmt_id, &last_insert_id, &rows_affected);
-	}
-
-	PREPARE("COMMIT", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
-
-	/* More than 1 response buffer will be needed to return all the rows, so
-	 * we are able to interrupt the query. */
-	PREPARE("SELECT * FROM test", &stmt_id);
-	bool done = true;
-	QUERY_DONE(stmt_id, &rows, &done);
-	munit_assert_false(done);
-
-	clientSendInterrupt(f->client, NULL);
-	clientCloseRows(&rows);
-
-	/* Ensure stmt_id is still valid after interrupt. */
-	QUERY(stmt_id, &rows);
-
-	clientCloseRows(&rows);
-	return MUNIT_OK;
-}
-
 TEST(client, querySql, setUp, tearDown, 0, client_params)
 {
 	struct fixture *f = data;
@@ -185,38 +145,6 @@ TEST(client, querySql, setUp, tearDown, 0, client_params)
 
 	QUERY_SQL("SELECT n FROM test", &rows);
 
-	clientCloseRows(&rows);
-
-	return MUNIT_OK;
-}
-
-TEST(client, querySqlInterrupt, setUp, tearDown, 0, client_params)
-{
-	struct fixture *f = data;
-	uint32_t stmt_id;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
-	unsigned i;
-	struct rows rows;
-	bool done = true;
-	(void)params;
-	EXEC_SQL("CREATE TABLE test (n INT)", &last_insert_id, &rows_affected);
-
-	EXEC_SQL("BEGIN", &last_insert_id, &rows_affected);
-
-	PREPARE("INSERT INTO test (n) VALUES(123)", &stmt_id);
-	for (i = 0; i < 4098; i++) {
-		EXEC(stmt_id, &last_insert_id, &rows_affected);
-	}
-
-	EXEC_SQL("COMMIT", &last_insert_id, &rows_affected);
-
-	/* More than 1 response buffer will be needed to return all the rows, so
-	 * we are able to interrupt the query. */
-	QUERY_SQL_DONE("SELECT * FROM test", &rows, &done);
-	munit_assert_false(done);
-
-	clientSendInterrupt(f->client, NULL);
 	clientCloseRows(&rows);
 
 	return MUNIT_OK;
