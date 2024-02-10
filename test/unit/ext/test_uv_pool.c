@@ -15,58 +15,46 @@ enum { WORK_ITEMS_NR = 50000 };
 
 struct fixture
 {
-	pool_t ploop;
-	pool_work_t req;
+	pool_t pool;
+	pool_work_t w;
 };
 
 static void loop_setup(struct fixture *f)
 {
 	int rc;
 
-	rc = uv_loop_init(&f->ploop.loop);
+	rc = uv_loop_init(&f->pool.loop);
 	munit_assert_int(rc, ==, 0);
 
-	rc = pool_init(&f->ploop);
+	rc = pool_init(&f->pool);
 	munit_assert_int(rc, ==, 0);
 }
 
-static void bottom_work_cb(pool_work_t *req)
+static void bottom_work_cb(pool_work_t *w)
 {
-	pool_t *pl = uv_loop_to_pool(req->loop);
-	munit_assert_uint(req->thread_idx, ==, pool_thread_id(pl));
+	pool_t *pl = uv_loop_to_pool(w->loop);
+	munit_assert_uint(w->thread_id, ==, pool_thread_id(pl));
 }
 
-static void bottom_after_work_cb(pool_work_t *req)
+static void bottom_after_work_cb(pool_work_t *w)
 {
 	static int count = 0;
 
-	/*
-	 * Note: Close the uv_loop. The alternative can be seen in libuv v1.46
-	 *       around special handling
-	 *
-	 *      - for initialization:
-	 *      uv__handle_unref(&loop->wq_async);
-	 *      loop->wq_async.flags |= UV_HANDLE_INTERNAL;
-	 *
-	 *      - and for finalization:
-	 *      uv_walk() ... if (h->flags & UV_HANDLE_INTERNAL) continue;
-	 */
 	if (count == WORK_ITEMS_NR)
-		pool_close(uv_loop_to_pool(req->loop));
+		pool_close(uv_loop_to_pool(w->loop));
 
 	count++;
-	assert(req->type != WT_BAR);
-	free(req);
+	assert(w->type != WT_BAR);
+	free(w);
 }
 
-static void after_work_cb(pool_work_t *req)
+static void after_work_cb(pool_work_t *w)
 {
-	unsigned int i;
-	int rc;
 	pool_work_t *work;
 	unsigned int wt;
+	unsigned int i;
 
-	for (i = 0; i <= WORK_ITEMS_NR + 1 /*for BAR*/; i++) {
+	for (i = 0; i <= WORK_ITEMS_NR + 1 /* +WT_BAR */; i++) {
 		work = malloc(sizeof(*work));
 
 		if (i < WORK_ITEMS_NR / 2)
@@ -77,17 +65,16 @@ static void after_work_cb(pool_work_t *req)
 		    wt = WT_ORD2;
 
 		work->type = i % 2 == 0 ? wt : WT_UNORD;
-		rc = pool_queue_work(uv_loop_to_pool(req->loop),
-				     work, i, bottom_work_cb,
-				     bottom_after_work_cb);
-		munit_assert_int(rc, ==, 0);
+		pool_queue_work(uv_loop_to_pool(w->loop),
+				work, i, bottom_work_cb,
+				bottom_after_work_cb);
 	}
 }
 
-static void work_cb(pool_work_t *req)
+static void work_cb(pool_work_t *w)
 {
-	pool_t *pl = uv_loop_to_pool(req->loop);
-	munit_assert_uint(req->thread_idx, ==, pool_thread_id(pl));
+	pool_t *pl = uv_loop_to_pool(w->loop);
+	munit_assert_uint(w->thread_id, ==, pool_thread_id(pl));
 }
 
 static void threadpool_tear_down(void *data)
@@ -95,8 +82,8 @@ static void threadpool_tear_down(void *data)
 	int rc;
 	struct fixture *f = data;
 
-	pool_fini(&f->ploop);
-	rc = uv_loop_close(&f->ploop.loop);
+	pool_fini(&f->pool);
+	rc = uv_loop_close(&f->pool.loop);
 	munit_assert_int(rc, ==, 0);
 	free(f);
 }
@@ -118,12 +105,10 @@ TEST_CASE(threadpool, sync, NULL)
 	struct fixture *f = data;
 	int rc;
 
-	f->req.type = WT_UNORD;
-	rc = pool_queue_work(&f->ploop, &f->req, 0,
-			     work_cb, after_work_cb);
-	munit_assert_int(rc, ==, 0);
+	f->w.type = WT_UNORD;
+	pool_queue_work(&f->pool, &f->w, 0, work_cb, after_work_cb);
 
-	rc = uv_run(&f->ploop.loop, UV_RUN_DEFAULT);
+	rc = uv_run(&f->pool.loop, UV_RUN_DEFAULT);
 	munit_assert_int(rc, ==, 0);
 
 	return MUNIT_OK;
