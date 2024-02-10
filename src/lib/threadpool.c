@@ -81,12 +81,12 @@ enum {
 };
 
 typedef struct pool_thread pool_thread_t;
-typedef struct pool_loop_impl pool_loop_impl_t;
+typedef struct pool_impl pool_impl_t;
 
 struct targs {
-	struct pool_loop_impl *impl;
-	uv_sem_t	      *sem;
-	uint32_t	       idx;
+	pool_impl_t *impl;
+	uv_sem_t    *sem;
+	uint32_t     idx;
 };
 
 struct pool_thread {
@@ -96,7 +96,7 @@ struct pool_thread {
 	struct targs arg;
 };
 
-struct pool_loop_impl {
+struct pool_impl {
 	uint32_t       nthreads;
 	uv_mutex_t     mutex;
 	pool_thread_t *threads;
@@ -119,28 +119,28 @@ struct pool_loop_impl {
 	uint32_t       qos;
 };
 
-static inline bool has_active_reqs(pool_loop_t *loop)
+static inline bool has_active_reqs(pool_t *loop)
 {
 	return loop->impl->active_reqs > 0;
 }
 
-static inline void req_register(pool_loop_t *loop, pool_work_t *)
+static inline void req_register(pool_t *loop, pool_work_t *)
 {
 	loop->impl->active_reqs++;
 }
 
-static inline void req_unregister(pool_loop_t *loop, pool_work_t *)
+static inline void req_unregister(pool_t *loop, pool_work_t *)
 {
 	assert(has_active_reqs(loop));
 	loop->impl->active_reqs--;
 }
 
-static bool empty(queue *q)
+static bool empty(const queue *q)
 {
 	return QUEUE__IS_EMPTY(q);
 }
 
-static queue *head(queue *q)
+static queue *head(const queue *q)
 {
 	return QUEUE__HEAD(q);
 }
@@ -178,13 +178,13 @@ static void wt_free(queue *q)
 	free(container_of(w, pool_work_t, work_req));
 }
 
-static enum pool_work_type wt_type(queue *q)
+static enum pool_work_type wt_type(const queue *q)
 {
 	struct pool_work *w = QUEUE__DATA(q, struct pool_work, qlink);
 	return w->type;
 }
 
-static uint32_t wt_idx(queue *q)
+static uint32_t wt_idx(const queue *q)
 {
 	struct pool_work *w = QUEUE__DATA(q, struct pool_work, qlink);
 	return w->thread_idx;
@@ -192,7 +192,7 @@ static uint32_t wt_idx(queue *q)
 
 static bool planner_invariant(const struct sm *m, int prev_state)
 {
-	pool_loop_impl_t *impl = container_of(m, pool_loop_impl_t, planner_sm);
+	pool_impl_t *impl = container_of(m, pool_impl_t, planner_sm);
 	queue *o = &impl->ordered;
 	queue *u = &impl->unordered;
 
@@ -213,15 +213,15 @@ static bool planner_invariant(const struct sm *m, int prev_state)
 
 static void planner(void *arg)
 {
-	struct targs     *ta = arg;
-	uv_sem_t         *sem = ta->sem;
-	pool_loop_impl_t *impl = ta->impl;
-	pool_thread_t    *ts = impl->threads;
-	uv_mutex_t       *mutex = &impl->mutex;
-	struct sm        *planner_sm = &impl->planner_sm;
-	queue 		 *o  = &impl->ordered;
-	queue 		 *u  = &impl->unordered;
-	queue 		 *q;
+	struct targs  *ta = arg;
+	uv_sem_t      *sem = ta->sem;
+	pool_impl_t   *impl = ta->impl;
+	uv_mutex_t    *mutex = &impl->mutex;
+	pool_thread_t *ts = impl->threads;
+	struct sm     *planner_sm = &impl->planner_sm;
+	queue 	      *o = &impl->ordered;
+	queue 	      *u = &impl->unordered;
+	queue 	      *q;
 
 	sm_init(planner_sm, planner_invariant, NULL,
 		planner_sm_states, PS_NOTHING);
@@ -287,9 +287,9 @@ static void planner(void *arg)
 static void worker(void *arg)
 {
 	struct targs        *ta = arg;
-	pool_loop_impl_t    *impl = ta->impl;
-	pool_thread_t       *ts = impl->threads;
+	pool_impl_t         *impl = ta->impl;
 	uv_mutex_t          *mutex = &impl->mutex;
+	pool_thread_t       *ts = impl->threads;
 	enum pool_work_type  wtype;
 	struct pool_work    *w;
 	queue               *q;
@@ -334,10 +334,10 @@ static void worker(void *arg)
 	}
 }
 
-static void threadpool_cleanup(pool_loop_t *loop)
+static void threadpool_cleanup(pool_t *loop)
 {
-	pool_loop_impl_t *impl = loop->impl;
-	pool_thread_t    *ts = impl->threads;
+	pool_impl_t   *impl = loop->impl;
+	pool_thread_t *ts = impl->threads;
 	uint32_t i;
 
 	if (impl->nthreads == 0)
@@ -359,20 +359,19 @@ static void threadpool_cleanup(pool_loop_t *loop)
 		uv_cond_destroy(&ts[i].cond);
 	}
 
-
 	free(impl->threads);
 	uv_mutex_destroy(&impl->mutex);
 	uv_key_delete(&impl->thread_key);
 	impl->nthreads = 0;
 }
 
-static void init_threads(pool_loop_t *loop)
+static void init_threads(pool_t *loop)
 {
 	uv_thread_options_t config;
 	const char *val;
 	uv_sem_t sem;
 	uint32_t i;
-	pool_loop_impl_t *impl = loop->impl;
+	pool_impl_t *impl = loop->impl;
 	struct targs planner_args = (struct targs) {
 		.sem = &sem,
 		.impl = impl,
@@ -444,7 +443,7 @@ static void pool_work_submit(uv_loop_t *loop,
 			     void (*work)(struct pool_work *w),
 			     void (*done)(struct pool_work *w))
 {
-	pool_loop_impl_t *impl = uv_to_pool_loop(loop)->impl;
+	pool_impl_t *impl = uv_loop_to_pool(loop)->impl;
 
 	/* Make sure that elements in ordered queue come in order. */
 	if (w->type > WT_UNORD) {
@@ -467,12 +466,12 @@ static void pool_work_submit(uv_loop_t *loop,
 
 void work_done(uv_async_t *handle)
 {
-	pool_loop_impl_t *impl;
+	pool_impl_t *impl;
 	struct pool_work *w;
 	queue *q;
 	queue wq = {};
 
-	impl = container_of(handle, pool_loop_impl_t, outq_async);
+	impl = container_of(handle, pool_impl_t, outq_async);
 	uv_mutex_lock(&impl->outq_mutex);
 	QUEUE__MOVE(&impl->outq, &wq);
 	uv_mutex_unlock(&impl->outq_mutex);
@@ -496,7 +495,7 @@ static void queue_done(struct pool_work *w)
 {
 	pool_work_t *req = container_of(w, pool_work_t, work_req);
 
-	req_unregister(uv_to_pool_loop(req->loop), req);
+	req_unregister(uv_loop_to_pool(req->loop), req);
 	if (req->after_work_cb == NULL)
 		return;
 
@@ -509,13 +508,13 @@ int pool_queue_work(uv_loop_t *loop,
 		    void (*work_cb)(pool_work_t *req),
 		    void (*after_work_cb)(pool_work_t *req))
 {
-	pool_loop_impl_t *impl = uv_to_pool_loop(loop)->impl;
+	pool_impl_t *impl = uv_loop_to_pool(loop)->impl;
 
 	if (work_cb == NULL)
 		return UV_EINVAL;
 
 	if (req->work_req.type != WT_BAR)
-		req_register(uv_to_pool_loop(loop), req);
+		req_register(uv_loop_to_pool(loop), req);
 
 	req->loop = loop;
 	req->work_cb = work_cb;
@@ -525,7 +524,7 @@ int pool_queue_work(uv_loop_t *loop,
 	return 0;
 }
 
-int pool_loop_init(pool_loop_t *loop)
+int pool_init(pool_t *loop)
 {
 	int rc;
 
@@ -552,7 +551,7 @@ int pool_loop_init(pool_loop_t *loop)
 	return 0;
 }
 
-void pool_loop_fini(pool_loop_t *loop)
+void pool_fini(pool_t *loop)
 {
 	threadpool_cleanup(loop);
 
@@ -566,19 +565,19 @@ void pool_loop_fini(pool_loop_t *loop)
 	free(loop->impl);
 }
 
-void pool_loop_close(uv_loop_t *loop)
+void pool_close(pool_t *pool)
 {
-	uv_close((uv_handle_t *)&uv_to_pool_loop(loop)->impl->outq_async, NULL);
+	uv_close((uv_handle_t *)&pool->impl->outq_async, NULL);
 }
 
-uint32_t pool_loop_thread_id(const pool_loop_t *loop)
+uint32_t pool_thread_id(const pool_t *loop)
 {
 	return *(uint32_t *)uv_key_get(&loop->impl->thread_key);
 }
 
-pool_loop_t *uv_to_pool_loop(uv_loop_t *loop)
+pool_t *uv_loop_to_pool(const uv_loop_t *loop)
 {
-	pool_loop_t *pl = container_of(loop, pool_loop_t, loop);
+	pool_t *pl = container_of(loop, pool_t, loop);
 	PRE(pl->magic == POOL_LOOP_MAGIC);
 	return pl;
 }
