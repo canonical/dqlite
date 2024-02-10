@@ -502,25 +502,25 @@ static void queue_done(struct pool_work *w)
 	req->after_work_cb(req);
 }
 
-int pool_queue_work(uv_loop_t *loop,
+int pool_queue_work(pool_t *pool,
 		    pool_work_t *req,
 		    uint32_t cookie,
 		    void (*work_cb)(pool_work_t *req),
 		    void (*after_work_cb)(pool_work_t *req))
 {
-	pool_impl_t *impl = uv_loop_to_pool(loop)->impl;
+	pool_impl_t *impl = pool->impl;
 
 	if (work_cb == NULL)
 		return UV_EINVAL;
 
 	if (req->work_req.type != WT_BAR)
-		req_register(uv_loop_to_pool(loop), req);
+		req_register(pool, req);
 
-	req->loop = loop;
+	req->loop = &pool->loop;
 	req->work_cb = work_cb;
 	req->after_work_cb = after_work_cb;
 	req->work_req.thread_idx = cookie % impl->nthreads;
-	pool_work_submit(loop, &req->work_req, queue_work, queue_done);
+	pool_work_submit(&pool->loop, &req->work_req, queue_work, queue_done);
 	return 0;
 }
 

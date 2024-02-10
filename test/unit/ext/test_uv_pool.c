@@ -77,7 +77,8 @@ static void after_work_cb(pool_work_t *req)
 		    wt = WT_ORD2;
 
 		work->work_req.type = i % 2 == 0 ? wt : WT_UNORD;
-		rc = pool_queue_work(req->loop, work, i, bottom_work_cb,
+		rc = pool_queue_work(uv_loop_to_pool(req->loop),
+				     work, i, bottom_work_cb,
 				     bottom_after_work_cb);
 		munit_assert_int(rc, ==, 0);
 	}
@@ -118,7 +119,7 @@ TEST_CASE(threadpool, sync, NULL)
 	int rc;
 
 	f->work_req.work_req.type = WT_UNORD;
-	rc = pool_queue_work(&f->ploop.loop, &f->work_req, 0,
+	rc = pool_queue_work(&f->ploop, &f->work_req, 0,
 			     work_cb, after_work_cb);
 	munit_assert_int(rc, ==, 0);
 

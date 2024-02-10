@@ -43,7 +43,7 @@ struct pool_s {
 int  pool_init(pool_t *pool);
 void pool_fini(pool_t *pool);
 void pool_close(pool_t *pool);
-int  pool_queue_work(uv_loop_t *loop,
+int  pool_queue_work(pool_t *pool,
 		     pool_work_t *req,
 		     uint32_t cookie,
 		     void (*work_cb)(pool_work_t *req),
