@@ -119,20 +119,20 @@ struct pool_impl {
 	uint32_t       qos;
 };
 
-static inline bool has_active_reqs(pool_t *loop)
+static inline bool has_active_reqs(pool_t *pool)
 {
-	return loop->impl->active_reqs > 0;
+	return pool->impl->active_reqs > 0;
 }
 
-static inline void req_register(pool_t *loop, pool_work_t *)
+static inline void req_register(pool_t *pool, pool_work_t *)
 {
-	loop->impl->active_reqs++;
+	pool->impl->active_reqs++;
 }
 
-static inline void req_unregister(pool_t *loop, pool_work_t *)
+static inline void req_unregister(pool_t *pool, pool_work_t *)
 {
-	assert(has_active_reqs(loop));
-	loop->impl->active_reqs--;
+	assert(has_active_reqs(pool));
+	pool->impl->active_reqs--;
 }
 
 static bool empty(const queue *q)
@@ -153,7 +153,7 @@ static void push(queue *to, queue *what)
 static queue *pop(queue *from)
 {
 	queue *q = QUEUE__HEAD(from);
-	POST(q != NULL);
+	PRE(q != NULL);
 	QUEUE__REMOVE(q);
 	QUEUE__INIT(q);
 	return q;
@@ -171,22 +171,22 @@ static queue *qos_pop(uint32_t *qos, queue *first, queue *second)
 	return pop((*qos)++ % 2 ? first : second);
 }
 
-static void wt_free(queue *q)
+static void work_free(queue *q)
 {
-	struct pool_work *w = QUEUE__DATA(q, struct pool_work, qlink);
-	assert(w->type == WT_BAR);
-	free(container_of(w, pool_work_t, work_req));
+	pool_work_t *w = QUEUE__DATA(q, pool_work_t, qlink);
+	PRE(w->type == WT_BAR);
+	free(w);
 }
 
-static enum pool_work_type wt_type(const queue *q)
+static enum pool_work_type work_type(const queue *q)
 {
-	struct pool_work *w = QUEUE__DATA(q, struct pool_work, qlink);
+	pool_work_t *w = QUEUE__DATA(q, pool_work_t, qlink);
 	return w->type;
 }
 
-static uint32_t wt_idx(const queue *q)
+static uint32_t work_idx(const queue *q)
 {
-	struct pool_work *w = QUEUE__DATA(q, struct pool_work, qlink);
+	pool_work_t *w = QUEUE__DATA(q, pool_work_t, qlink);
 	return w->thread_idx;
 }
 
@@ -206,7 +206,7 @@ static bool planner_invariant(const struct sm *m, int prev_state)
 		     impl->exiting && empty(o) && empty(u)) &&
 		ERGO(sm_state(m) == PS_BARRIER,
 		     ERGO(prev_state == PS_DRAINING,
-			  wt_type(head(o)) == WT_BAR) &&
+			  work_type(head(o)) == WT_BAR) &&
 		     ERGO(prev_state == PS_DRAINING_UNORD, empty(u))) &&
 		ERGO(sm_state(m) == PS_DRAINING_UNORD, !empty(u));
 }
@@ -238,14 +238,14 @@ static void planner(void *arg)
 		case PS_DRAINING:
 			while (!(empty(o) && empty(u))) {
 				sm_move(planner_sm, PS_DRAINING);
-				if (!empty(o) && wt_type(head(o)) == WT_BAR) {
+				if (!empty(o) && work_type(head(o)) == WT_BAR) {
 					sm_move(planner_sm, PS_BARRIER);
 					goto ps_barrier;
 				}
 				q = qos_pop(&impl->qos, o, u);
-				push(&ts[wt_idx(q)].inq, q);
-				uv_cond_signal(&ts[wt_idx(q)].cond);
-				if (wt_type(q) >= WT_ORD1)
+				push(&ts[work_idx(q)].inq, q);
+				uv_cond_signal(&ts[work_idx(q)].cond);
+				if (work_type(q) >= WT_ORD1)
 					impl->in_flight++;
 			}
 			sm_move(planner_sm, PS_NOTHING);
@@ -258,7 +258,7 @@ static void planner(void *arg)
 			}
 			if (impl->in_flight == 0) {
 				q = pop(o);
-				wt_free(q); /* remove BAR */
+				work_free(q); /* remove BAR */
 				sm_move(planner_sm, PS_DRAINING);
 				break;
 			}
@@ -268,8 +268,8 @@ static void planner(void *arg)
 		case PS_DRAINING_UNORD:
 			while (!empty(u)) {
 				q = pop(u);
-				push(&ts[wt_idx(q)].inq, q);
-				uv_cond_signal(&ts[wt_idx(q)].cond);
+				push(&ts[work_idx(q)].inq, q);
+				uv_cond_signal(&ts[work_idx(q)].cond);
 			}
 			sm_move(planner_sm, PS_BARRIER);
 			break;
@@ -283,6 +283,19 @@ static void planner(void *arg)
 	}
 }
 
+static void queue_work(pool_work_t *req)
+{
+	req->work_cb(req);
+}
+
+static void queue_done(pool_work_t *req)
+{
+	req_unregister(uv_loop_to_pool(req->loop), req);
+	if (req->after_work_cb == NULL)
+		return;
+
+	req->after_work_cb(req);
+}
 
 static void worker(void *arg)
 {
@@ -291,7 +304,7 @@ static void worker(void *arg)
 	uv_mutex_t          *mutex = &impl->mutex;
 	pool_thread_t       *ts = impl->threads;
 	enum pool_work_type  wtype;
-	struct pool_work    *w;
+	pool_work_t         *w;
 	queue               *q;
 
 	uv_key_set(&impl->thread_key, &ta->idx);
@@ -312,12 +325,11 @@ static void worker(void *arg)
 
 		uv_mutex_unlock(mutex);
 
-		w = QUEUE__DATA(q, struct pool_work, qlink);
+		w = QUEUE__DATA(q, pool_work_t, qlink);
 		wtype = w->type;
-		w->work(w);
+		queue_work(w);
 
 		uv_mutex_lock(&impl->outq_mutex);
-		w->work = NULL;
 
 		QUEUE__INSERT_TAIL(&impl->outq, &w->qlink);
 
@@ -438,10 +450,7 @@ static void init_threads(pool_t *loop)
 	uv_sem_destroy(&sem);
 }
 
-static void pool_work_submit(uv_loop_t *loop,
-			     struct pool_work *w,
-			     void (*work)(struct pool_work *w),
-			     void (*done)(struct pool_work *w))
+static void pool_work_submit(uv_loop_t *loop, pool_work_t *w)
 {
 	pool_impl_t *impl = uv_loop_to_pool(loop)->impl;
 
@@ -453,8 +462,6 @@ static void pool_work_submit(uv_loop_t *loop,
 	}
 
 	w->loop = loop;
-	w->work = work;
-	w->done = done;
 
 	uv_mutex_lock(&impl->mutex);
 	QUEUE__INSERT_TAIL(w->type == WT_UNORD
@@ -467,7 +474,7 @@ static void pool_work_submit(uv_loop_t *loop,
 void work_done(uv_async_t *handle)
 {
 	pool_impl_t *impl;
-	struct pool_work *w;
+	pool_work_t *w;
 	queue *q;
 	queue wq = {};
 
@@ -480,26 +487,9 @@ void work_done(uv_async_t *handle)
 		q = QUEUE__HEAD(&wq);
 		QUEUE__REMOVE(q);
 
-		w = container_of(q, struct pool_work, qlink);
-		w->done(w);
+		w = container_of(q, pool_work_t, qlink);
+		queue_done(w);
 	}
-}
-
-static void queue_work(struct pool_work *w)
-{
-	pool_work_t *req = container_of(w, pool_work_t, work_req);
-	req->work_cb(req);
-}
-
-static void queue_done(struct pool_work *w)
-{
-	pool_work_t *req = container_of(w, pool_work_t, work_req);
-
-	req_unregister(uv_loop_to_pool(req->loop), req);
-	if (req->after_work_cb == NULL)
-		return;
-
-	req->after_work_cb(req);
 }
 
 int pool_queue_work(pool_t *pool,
@@ -513,14 +503,14 @@ int pool_queue_work(pool_t *pool,
 	if (work_cb == NULL)
 		return UV_EINVAL;
 
-	if (req->work_req.type != WT_BAR)
+	if (req->type != WT_BAR)
 		req_register(pool, req);
 
 	req->loop = &pool->loop;
 	req->work_cb = work_cb;
 	req->after_work_cb = after_work_cb;
-	req->work_req.thread_idx = cookie % impl->nthreads;
-	pool_work_submit(&pool->loop, &req->work_req, queue_work, queue_done);
+	req->thread_idx = cookie % impl->nthreads;
+	pool_work_submit(&pool->loop, req);
 	return 0;
 }
 

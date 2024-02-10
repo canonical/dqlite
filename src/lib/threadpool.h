@@ -5,6 +5,7 @@
 #include "queue.h"
 
 
+struct pool_impl;
 typedef struct pool_s pool_t;
 typedef struct pool_work_s pool_work_t;
 
@@ -15,30 +16,21 @@ enum pool_work_type {
 	WT_ORD2,
 };
 
-struct pool_work {
-	queue qlink; /* link into ordered, unordered and outq */
+struct pool_work_s {
+	queue      qlink; /* a link into ordered, unordered and outq */
+	uint32_t   thread_idx;
 	uv_loop_t *loop;
-	uint32_t thread_idx;
 	enum pool_work_type type;
 
-	void (*work)(struct pool_work *w);
-	void (*done)(struct pool_work *w);
-};
-
-struct pool_work_s {
-	uv_loop_t *loop;
 	void (*work_cb)(pool_work_t *req);
 	void (*after_work_cb)(pool_work_t *req);
-	struct pool_work work_req;
 };
 
-struct pool_impl;
 struct pool_s {
 	uint64_t	  magic;
 	uv_loop_t         loop;
 	struct pool_impl *impl;
 };
-
 
 int  pool_init(pool_t *pool);
 void pool_fini(pool_t *pool);
