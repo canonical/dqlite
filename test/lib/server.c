@@ -82,6 +82,16 @@ void test_server_start(struct test_server *s, const MunitParameter params[])
 		munit_assert_int(rv, ==, 0);
 	}
 
+	const char *snapshot_compression_param =
+	    munit_parameters_get(params, SNAPSHOT_COMPRESSION_PARAM);
+	if (snapshot_compression_param != NULL) {
+		bool snapshot_compression =
+		    (bool)atoi(snapshot_compression_param);
+		rv = dqlite_node_set_snapshot_compression(s->dqlite,
+							  snapshot_compression);
+		munit_assert_int(rv, ==, 0);
+	}
+
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
 	if (disk_mode_param != NULL) {
 		bool disk_mode = (bool)atoi(disk_mode_param);

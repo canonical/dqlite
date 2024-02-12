@@ -14,6 +14,7 @@
 #include "munit.h"
 
 #define SNAPSHOT_THRESHOLD_PARAM "snapshot-threshold"
+#define SNAPSHOT_COMPRESSION_PARAM "snapshot_compression"
 
 struct test_server
 {

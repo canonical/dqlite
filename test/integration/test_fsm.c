@@ -57,6 +57,7 @@ static char *bools[] = {"0", "1", NULL};
 static char *snapshot_threshold[] = {"8192", NULL};
 static MunitParameterEnum snapshot_params[] = {
     {SNAPSHOT_THRESHOLD_PARAM, snapshot_threshold},
+    {SNAPSHOT_COMPRESSION_PARAM, bools},
     {"disk_mode", bools},
     {NULL, NULL},
 };
@@ -597,6 +598,7 @@ static char *num_records[] = {
 static MunitParameterEnum restore_params[] = {
     {"num_records", num_records},
     {SNAPSHOT_THRESHOLD_PARAM, snapshot_threshold},
+    {SNAPSHOT_COMPRESSION_PARAM, bools},
     {"disk_mode", bools},
     {NULL, NULL},
 };

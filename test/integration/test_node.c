@@ -1,6 +1,7 @@
 #include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
+#include "../lib/server.h"
 #include "../lib/sqlite.h"
 
 #include "../../include/dqlite.h"
@@ -17,6 +18,7 @@ static char *bools[] = {"0", "1", NULL};
 
 static MunitParameterEnum node_params[] = {
     {"disk_mode", bools},
+    {SNAPSHOT_COMPRESSION_PARAM, bools},
     {NULL, NULL},
 };
 
