@@ -22,43 +22,33 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Setup dependencies
+
+    - name: Set up dependencies
       run: |
           sudo apt update
           sudo apt install -y lcov libsqlite3-dev liblz4-dev libuv1-dev
-
-    - name: Build raft
-      env:
-        CC: ${{ matrix.compiler }}
-      run: |
-          git clone https://github.com/canonical/raft.git --depth 1
-          cd raft
-          autoreconf -i
-          ./configure --enable-debug --enable-sanitize
-          make -j4
-          sudo make install
-          sudo ldconfig
-          cd ..
 
     - name: Build dqlite
       env:
         CC: ${{ matrix.compiler }}
       run: |
           autoreconf -i
-          ./configure --enable-debug --enable-code-coverage --enable-sanitize
-          make CFLAGS=-O0 -j2
+          ./configure --enable-debug --enable-code-coverage --enable-sanitize --enable-build-raft
+          make -j4
 
     - name: Test
       env:
         CC: ${{ matrix.compiler }}
       run: |
            export ${{ matrix.tracing }}
-           make CFLAGS=-O0 -j2 check || (cat ./test-suite.log && false)
+           make -j4 check || (cat ./test-suite.log && false)
 
     - name: Coverage
       env:
         CC: ${{ matrix.compiler }}
-      run: if [ "${CC}" = "gcc" ]; then make code-coverage-capture; fi
+      if: ${{ matrix.compiler == 'gcc' }}
+      run: |
+        make code-coverage-capture
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4

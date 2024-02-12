@@ -1,0 +1,38 @@
+name: CI Tests (external libraft)
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup dependencies
+      run: |
+          sudo apt update
+          sudo apt install -y libsqlite3-dev liblz4-dev libuv1-dev
+
+    - name: Build raft
+      run: |
+          git clone https://github.com/canonical/raft --depth 1
+          cd raft
+          autoreconf -i
+          ./configure --enable-debug --enable-sanitize
+          make -j4
+          sudo make install
+          sudo ldconfig
+
+    - name: Build dqlite
+      run: |
+          autoreconf -i
+          ./configure --enable-debug --enable-sanitize
+          make -j4
+
+    - name: Test
+      run: |
+           export LIBRAFT_TRACE=1 LIBDQLITE_TRACE=1
+           make -j4 check || (cat ./test-suite.log && false)

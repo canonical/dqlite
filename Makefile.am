@@ -287,7 +287,7 @@ raft_uv_unit_test_LDADD = libtest.la $(UV_LIBS)
 # directly against the libraft sources in order to test some
 # non-visible, non-API functions.
 raft_uv_integration_test_SOURCES = \
-  ${libraft_la_SOURCES} \
+  $(libraft_la_SOURCES) \
   src/tracing.c \
   test/raft/integration/main_uv.c \
   test/raft/integration/test_uv_init.c \
@@ -309,6 +309,8 @@ raft_uv_integration_test_LDFLAGS = -no-install
 raft_uv_integration_test_LDADD = libtest.la $(UV_LIBS)
 
 if LZ4_AVAILABLE
+libdqlite_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
+libdqlite_la_LDFLAGS += $(LZ4_LIBS)
 raft_core_unit_test_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
 raft_core_unit_test_LDFLAGS = $(LZ4_LIBS)
 libraft_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
@@ -317,6 +319,7 @@ raft_uv_integration_test_CFLAGS += -DLZ4_AVAILABLE
 raft_uv_integration_test_LDFLAGS += $(LZ4_LIBS)
 endif
 if LZ4_ENABLED
+libdqlite_la_CFLAGS += -DLZ4_ENABLED
 raft_uv_integration_test_CFLAGS += -DLZ4_ENABLED
 raft_core_unit_test_CFLAGS += -DLZ4_ENABLED
 libraft_la_CFLAGS += -DLZ4_ENABLED
