@@ -50,6 +50,7 @@ static void bottom_after_work_cb(pool_work_t *w)
 
 static void after_work_cb(pool_work_t *w)
 {
+	enum pool_work_type pwt;
 	pool_work_t *work;
 	unsigned int wt;
 	unsigned int i;
@@ -64,9 +65,9 @@ static void after_work_cb(pool_work_t *w)
 		else
 		    wt = WT_ORD2;
 
-		work->type = i % 2 == 0 ? wt : WT_UNORD;
+		pwt = i % 2 == 0 ? wt : WT_UNORD;
 		pool_queue_work(uv_loop_to_pool(w->loop),
-				work, i, bottom_work_cb,
+				work, i, pwt, bottom_work_cb,
 				bottom_after_work_cb);
 	}
 }
@@ -105,8 +106,7 @@ TEST_CASE(threadpool, sync, NULL)
 	struct fixture *f = data;
 	int rc;
 
-	f->w.type = WT_UNORD;
-	pool_queue_work(&f->pool, &f->w, 0, work_cb, after_work_cb);
+	pool_queue_work(&f->pool, &f->w, 0, WT_UNORD, work_cb, after_work_cb);
 
 	rc = uv_run(&f->pool.loop, UV_RUN_DEFAULT);
 	munit_assert_int(rc, ==, 0);

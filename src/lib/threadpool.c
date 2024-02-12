@@ -12,10 +12,10 @@
 /**
  *  Planner thread state machine.
  *
- * signal() &&
- * empty(o) &&                     signal() && exiting
- * empty(u) &&     +-----> NOTHING ----------------> EXITED
- * !exiting        +-------  ^ |
+ *     signal() &&
+ *     empty(o) &&                 signal() && exiting
+ *     empty(u) && +-----> NOTHING ----------------> EXITED
+ *     !exiting    +-------  ^ |
  *                           | |
  *               empty(o) && | | signal()
  *               empty(u)    | | !empty(o) || !empty(u)
@@ -64,7 +64,7 @@ static const struct sm_conf planner_states[SM_STATES_MAX] = {
 			| BITS(PS_BARRIER),
        },
        [PS_DRAINING_UNORD] = {
-               .name    = "unord-draining",
+               .name    = "draining-unord",
                .allowed = BITS(PS_BARRIER)
        },
        [PS_EXITED] = {
@@ -86,37 +86,42 @@ typedef struct pool_impl pool_impl_t;
 struct targs {
 	pool_impl_t *pi;
 	uv_sem_t    *sem;
-	uint32_t     idx;
+	uint32_t     idx;       /* Thread's index */
 };
 
+/* Worker thread of the pool */
 struct pool_thread {
-	queue        inq;
-	uv_cond_t    cond;
-	uv_thread_t  thread;
+	queue        inq;       /* Thread's input queue */
+	uv_cond_t    cond;      /* Signalled when work item appears in @inq */
+	uv_thread_t  thread;    /* Pool's worker thread */
 	struct targs arg;
 };
 
 struct pool_impl {
+	uv_mutex_t     mutex;           /* Input queue, planner_sm,
+                                           worker and planner threads lock */
 	uint32_t       nthreads;
-	uv_mutex_t     mutex;
 	pool_thread_t *threads;
 
-	queue          outq;
-	uv_mutex_t     outq_mutex;
-	uv_async_t     outq_async;
-	uint64_t       active_ws;
+	queue          outq;            /* Output queue used by libuv part */
+	uv_mutex_t     outq_mutex;      /* Output queue lock */
+	uv_async_t     outq_async;      /* Signalled when output queue is not
+                                           empty and libuv loop has to process
+                                           items from it */
+	uint64_t       active_ws;       /* Number of all work items in flight */
 
-	queue 	       ordered;
-	queue 	       unordered;
-	struct sm      planner_sm;
+	queue          ordered;         /* Queue of WT_ORD{N} items */
+	queue          unordered;       /* Queue of WT_UNORD items */
+	struct sm      planner_sm;      /* State machine of the scheduler */
 	uv_cond_t      planner_cond;
-	uv_thread_t    planner_thread;
+	uv_thread_t    planner_thread;  /* Scheduler's thread */
 
-	uv_key_t       thread_key;
-	uint32_t       in_flight;
-	bool           exiting;
-	uint32_t       o_prev;
-	uint32_t       qos;
+	uv_key_t       thread_key;      /* TLS: stores thread id */
+	uint32_t       in_flight;       /* Number of WT_ORD{N} in flight */
+	bool           exiting;         /* True when the pool is being stopped */
+	enum pool_work_type             /* Type of the previous work item, */
+                       o_prev;          /* used in ivariants */
+	uint32_t       qos;             /* QoS token */
 };
 
 static inline bool has_active_ws(pool_t *pool)
@@ -174,7 +179,7 @@ static queue *qos_pop(uint32_t *qos, queue *first, queue *second)
 
 static pool_work_t *q_to_w(const queue *q)
 {
-	return QUEUE__DATA(q, pool_work_t, qlink);
+	return QUEUE__DATA(q, pool_work_t, link);
 }
 
 static enum pool_work_type q_type(const queue *q)
@@ -216,9 +221,9 @@ static void planner(void *arg)
 	uv_mutex_t    *mutex = &pi->mutex;
 	pool_thread_t *ts = pi->threads;
 	struct sm     *planner_sm = &pi->planner_sm;
-	queue 	      *o = &pi->ordered;
-	queue 	      *u = &pi->unordered;
-	queue 	      *q;
+	queue         *o = &pi->ordered;
+	queue         *u = &pi->unordered;
+	queue         *q;
 
 	sm_init(planner_sm, planner_invariant, NULL, planner_states, PS_NOTHING);
 	uv_sem_post(sem);
@@ -307,10 +312,10 @@ static void worker(void *arg)
 	uv_mutex_lock(mutex);
 	for (;;) {
 		while (empty(&ts[ta->idx].inq)) {
-		    	if (pi->exiting) {
-		    		uv_mutex_unlock(mutex);
-		    		return;
-		    	}
+			if (pi->exiting) {
+				uv_mutex_unlock(mutex);
+				return;
+			}
 			uv_cond_wait(&ts[ta->idx].cond, mutex);
 		}
 
@@ -322,15 +327,15 @@ static void worker(void *arg)
 		queue_work(w);
 
 		uv_mutex_lock(&pi->outq_mutex);
-		push(&pi->outq, &w->qlink);
+		push(&pi->outq, &w->link);
 		uv_async_send(&pi->outq_async);
 		uv_mutex_unlock(&pi->outq_mutex);
 
 		uv_mutex_lock(mutex);
 		if (wtype > WT_BAR) {
-		    assert(pi->in_flight > 0);
-		    if (--pi->in_flight == 0)
-			    uv_cond_signal(&pi->planner_cond);
+			assert(pi->in_flight > 0);
+			if (--pi->in_flight == 0)
+				uv_cond_signal(&pi->planner_cond);
 		}
 	}
 }
@@ -353,7 +358,7 @@ static void pool_cleanup(pool_t *loop)
 	POST(empty(&pi->ordered) && empty(&pi->unordered));
 
 	for (i = 0; i < pi->nthreads; i++) {
-	    	uv_cond_signal(&ts[i].cond);
+		uv_cond_signal(&ts[i].cond);
 		if (uv_thread_join(&ts[i].thread))
 			abort();
 		POST(empty(&ts[i].inq));
@@ -416,7 +421,7 @@ static void pool_threads_init(pool_t *pool)
 		};
 
 		QUEUE__INIT(&ts[i].inq);
-	    	if (uv_cond_init(&ts[i].cond))
+		if (uv_cond_init(&ts[i].cond))
 			abort();
 		if (uv_thread_create_ex(&ts[i].thread, &config, worker,
 					&ts[i].arg))
@@ -448,7 +453,7 @@ static void pool_work_submit(pool_t *pool, pool_work_t *w)
 	}
 
 	uv_mutex_lock(&pi->mutex);
-	push(w->type == WT_UNORD ? u : o, &w->qlink);
+	push(w->type == WT_UNORD ? u : o, &w->link);
 	uv_cond_signal(&pi->planner_cond);
 	uv_mutex_unlock(&pi->mutex);
 }
@@ -469,16 +474,18 @@ void work_done(uv_async_t *handle)
 void pool_queue_work(pool_t *pool,
 		     pool_work_t *w,
 		     uint32_t cookie,
+		     enum pool_work_type type,
 		     void (*work_cb)(pool_work_t *w),
 		     void (*after_work_cb)(pool_work_t *w))
 {
-	PRE(work_cb != NULL);
+	PRE(work_cb != NULL && type < WT_NR);
 
-	w_register(pool, w);
 	w->loop = &pool->loop;
 	w->work_cb = work_cb;
 	w->after_work_cb = after_work_cb;
 	w->thread_id = cookie % pool->pi->nthreads;
+	w->type = type;
+	w_register(pool, w);
 	pool_work_submit(pool, w);
 }
 

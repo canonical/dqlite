@@ -20,22 +20,6 @@
 #define container_of(e, type, field) \
 	((type *)(uintptr_t)((char *)(e)-offsetof(type, field)))
 
-static inline bool _is0(const char *p, unsigned int s)
-{
-	unsigned int i;
-
-	for (i = 0; i < s; ++i) {
-		if (p[i] != 0) {
-			return false;
-		}
-	}
-
-	return true;
-}
-
-#define ARE0(s, n) _is0((const char *)(s), (n))
-#define IS0(s) _is0((const char *)(s), sizeof(*(s)))
-
 #define PRE(cond) assert((cond))
 #define POST(cond) assert((cond))
 #define ERGO(a, b) (!(a) || (b))
