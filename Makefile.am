@@ -62,7 +62,7 @@ basic_dqlite_sources = \
   src/vfs.c
 
 lib_LTLIBRARIES = libdqlite.la
-libdqlite_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden
+libdqlite_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden -DRAFT_API=''
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = $(basic_dqlite_sources)
 
