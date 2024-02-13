@@ -57,9 +57,9 @@ enum pool_work_type {
 };
 
 struct pool_work_s {
-	queue      link;       /* Link into ordered, unordered and outq */
-	uint32_t   thread_id;  /* Identifier of the thread the item is affined */
-	uv_loop_t *loop;       /* The uv loop, item is being associated with */
+	queue     link;       /* Link into ordered, unordered and outq */
+	uint32_t  thread_id;  /* Identifier of the thread the item is affined */
+	pool_t   *pool;       /* The pool, item is being associated with */
 	enum pool_work_type type;
 
 	void (*work_cb)(pool_work_t *w);
@@ -67,12 +67,10 @@ struct pool_work_s {
 };
 
 struct pool_s {
-	uint64_t	  magic;
-	uv_loop_t         loop;
 	struct pool_impl *pi;
 };
 
-int  pool_init(pool_t *pool);
+int  pool_init(pool_t *pool, uv_loop_t *loop, uint32_t threads_nr);
 void pool_fini(pool_t *pool);
 void pool_close(pool_t *pool);
 void pool_queue_work(pool_t *pool,
@@ -81,8 +79,5 @@ void pool_queue_work(pool_t *pool,
 		     enum pool_work_type type,
 		     void (*work_cb)(pool_work_t *w),
 		     void (*after_work_cb)(pool_work_t *w));
-pool_t *uv_loop_to_pool(const uv_loop_t *loop);
 
-/* For tests */
-uint32_t pool_thread_id(const pool_t *pool);
-#endif  // __THREAD_POOL__
+#endif  /* __THREAD_POOL__ */

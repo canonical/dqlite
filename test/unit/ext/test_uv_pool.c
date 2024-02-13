@@ -15,25 +15,24 @@ enum { WORK_ITEMS_NR = 50000 };
 
 struct fixture
 {
-	pool_t pool;
 	pool_work_t w;
+	uv_loop_t   loop;
+	pool_t      pool;
 };
 
 static void loop_setup(struct fixture *f)
 {
 	int rc;
 
-	rc = uv_loop_init(&f->pool.loop);
+	rc = uv_loop_init(&f->loop);
 	munit_assert_int(rc, ==, 0);
 
-	rc = pool_init(&f->pool);
+	rc = pool_init(&f->pool, &f->loop, 4);
 	munit_assert_int(rc, ==, 0);
 }
 
-static void bottom_work_cb(pool_work_t *w)
+static void bottom_work_cb(pool_work_t *)
 {
-	pool_t *pl = uv_loop_to_pool(w->loop);
-	munit_assert_uint(w->thread_id, ==, pool_thread_id(pl));
 }
 
 static void bottom_after_work_cb(pool_work_t *w)
@@ -41,7 +40,7 @@ static void bottom_after_work_cb(pool_work_t *w)
 	static int count = 0;
 
 	if (count == WORK_ITEMS_NR)
-		pool_close(uv_loop_to_pool(w->loop));
+		pool_close(w->pool);
 
 	count++;
 	assert(w->type != WT_BAR);
@@ -66,16 +65,14 @@ static void after_work_cb(pool_work_t *w)
 		    wt = WT_ORD2;
 
 		pwt = i % 2 == 0 ? wt : WT_UNORD;
-		pool_queue_work(uv_loop_to_pool(w->loop),
+		pool_queue_work(w->pool,
 				work, i, pwt, bottom_work_cb,
 				bottom_after_work_cb);
 	}
 }
 
-static void work_cb(pool_work_t *w)
+static void work_cb(pool_work_t *)
 {
-	pool_t *pl = uv_loop_to_pool(w->loop);
-	munit_assert_uint(w->thread_id, ==, pool_thread_id(pl));
 }
 
 static void threadpool_tear_down(void *data)
@@ -84,7 +81,7 @@ static void threadpool_tear_down(void *data)
 	struct fixture *f = data;
 
 	pool_fini(&f->pool);
-	rc = uv_loop_close(&f->pool.loop);
+	rc = uv_loop_close(&f->loop);
 	munit_assert_int(rc, ==, 0);
 	free(f);
 }
@@ -108,7 +105,7 @@ TEST_CASE(threadpool, sync, NULL)
 
 	pool_queue_work(&f->pool, &f->w, 0, WT_UNORD, work_cb, after_work_cb);
 
-	rc = uv_run(&f->pool.loop, UV_RUN_DEFAULT);
+	rc = uv_run(&f->loop, UV_RUN_DEFAULT);
 	munit_assert_int(rc, ==, 0);
 
 	return MUNIT_OK;
