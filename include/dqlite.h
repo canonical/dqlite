@@ -19,8 +19,9 @@
  */
 #define DQLITE_EXPERIMENTAL
 
-/* XXX */
+#ifndef DQLITE_VISIBLE_TO_TESTS
 #define DQLITE_VISIBLE_TO_TESTS DQLITE_API
+#endif
 
 /**
  * Version.

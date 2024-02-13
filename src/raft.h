@@ -13,6 +13,10 @@
 #define RAFT_API __attribute__((visibility("default")))
 #endif
 
+#ifndef DQLITE_VISIBLE_TO_TESTS
+#define DQLITE_VISIBLE_TO_TESTS __attribute__((visibility("default")))
+#endif
+
 /**
  * Version.
  */
@@ -1184,23 +1188,23 @@ struct raft_heap
 	void (*aligned_free)(void *data, size_t alignment, void *ptr);
 };
 
-RAFT_API void *raft_malloc(size_t size);
-RAFT_API void raft_free(void *ptr);
-RAFT_API void *raft_calloc(size_t nmemb, size_t size);
-RAFT_API void *raft_realloc(void *ptr, size_t size);
-RAFT_API void *raft_aligned_alloc(size_t alignment, size_t size);
-RAFT_API void raft_aligned_free(size_t alignment, void *ptr);
+DQLITE_VISIBLE_TO_TESTS void *raft_malloc(size_t size);
+DQLITE_VISIBLE_TO_TESTS void raft_free(void *ptr);
+DQLITE_VISIBLE_TO_TESTS void *raft_calloc(size_t nmemb, size_t size);
+DQLITE_VISIBLE_TO_TESTS void *raft_realloc(void *ptr, size_t size);
+DQLITE_VISIBLE_TO_TESTS void *raft_aligned_alloc(size_t alignment, size_t size);
+DQLITE_VISIBLE_TO_TESTS void raft_aligned_free(size_t alignment, void *ptr);
 
 /**
  * Use a custom dynamic memory allocator.
  */
-RAFT_API void raft_heap_set(struct raft_heap *heap);
+DQLITE_VISIBLE_TO_TESTS void raft_heap_set(struct raft_heap *heap);
 
 /**
  * Use the default dynamic memory allocator (from the stdlib). This clears any
  * custom allocator specified with @raft_heap_set.
  */
-RAFT_API void raft_heap_set_default(void);
+DQLITE_VISIBLE_TO_TESTS void raft_heap_set_default(void);
 
 /**
  * Return a reference to the current dynamic memory allocator.
@@ -1213,7 +1217,7 @@ RAFT_API void raft_heap_set_default(void);
  * pointer returned by this function, including attempting to deallocate
  * the backing memory, is undefined.
  */
-RAFT_API const struct raft_heap *raft_heap_get(void);
+DQLITE_VISIBLE_TO_TESTS const struct raft_heap *raft_heap_get(void);
 
 #undef RAFT__REQUEST
 
