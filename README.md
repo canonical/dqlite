@@ -3,13 +3,13 @@ dqlite [![CI Tests](https://github.com/canonical/dqlite/actions/workflows/build-
 
 [English](./README.md)|[简体中文](./README_CH.md)
 
-[dqlite](https://dqlite.io) is a C library that implements an embeddable and replicated SQL database
-engine with high availability and automatic failover.
+[dqlite](https://dqlite.io) is a C library that implements an embeddable and
+replicated SQL database engine with high availability and automatic failover.
 
-The acronym "dqlite" stands for "distributed SQLite", meaning that dqlite extends
-[SQLite](https://sqlite.org/) with a network protocol that can connect together
-various instances of your application and have them act as a highly-available
-cluster, with no dependency on external databases.
+The acronym "dqlite" stands for "distributed SQLite", meaning that dqlite
+extends [SQLite](https://sqlite.org/) with a network protocol that can connect
+together various instances of your application and have them act as a
+highly-available cluster, with no dependency on external databases.
 
 Design highlights
 ----------------
@@ -17,24 +17,23 @@ Design highlights
 * Asynchronous single-threaded implementation using [libuv](https://libuv.org/)
   as event loop.
 * Custom wire protocol optimized for SQLite primitives and data types.
-* Data replication based on the [Raft](https://raft.github.io/) algorithm and its
-  efficient [C-raft](https://github.com/canonical/raft) implementation.
+* Data replication based on the [Raft](https://raft.github.io/) algorithm.
 
 License
 -------
 
-The dqlite library is released under a slightly modified version of LGPLv3, that
-includes a copyright exception allowing users to statically link the library code
-in their project and release the final work under their own terms. See the full
-[license](https://github.com/canonical/dqlite/blob/master/LICENSE) text.
+The dqlite library is released under a slightly modified version of LGPLv3,
+that includes a copyright exception allowing users to statically link the
+library code in their project and release the final work under their own terms.
+See the full [license](https://github.com/canonical/dqlite/blob/master/LICENSE)
+text.
 
 Compatibility
 -------------
 
 dqlite runs on Linux and requires a kernel with support for [native async
 I/O](https://man7.org/linux/man-pages/man2/io_setup.2.html) (not to be confused
-with [POSIX AIO](https://man7.org/linux/man-pages/man7/aio.7.html)), which is
-used by the libuv backend of C-raft.
+with [POSIX AIO](https://man7.org/linux/man-pages/man7/aio.7.html)).
 
 Try it
 -------
@@ -49,24 +48,26 @@ Media
 A talk about dqlite was given at FOSDEM 2020, you can watch it
 [here](https://fosdem.org/2020/schedule/event/dqlite/).
 
-[Here](https://gcore.com/blog/comparing-litestream-rqlite-dqlite/) is a blog post from 2022 comparing dqlite with rqlite and Litestream, other replication software for SQLite.
+[Here](https://gcore.com/blog/comparing-litestream-rqlite-dqlite/) is a blog
+post from 2022 comparing dqlite with rqlite and Litestream, other replication
+software for SQLite.
 
 Wire protocol
 -------------
 
-If you wish to write a client, please refer to the [wire protocol](https://dqlite.io/docs/protocol)
-documentation.
+If you wish to write a client, please refer to the [wire
+protocol](https://dqlite.io/docs/protocol) documentation.
 
 Install
 -------
 
-If you are on a Debian-based system, you can get the latest development release from
-dqlite's [dev PPA](https://launchpad.net/~dqlite/+archive/ubuntu/dev):
+If you are on a Debian-based system, you can get the latest development release
+from dqlite's [dev PPA](https://launchpad.net/~dqlite/+archive/ubuntu/dev):
 
 ```
 sudo add-apt-repository ppa:dqlite/dev
-sudo apt-get update
-sudo apt-get install libdqlite-dev
+sudo apt update
+sudo apt install libdqlite-dev
 ```
 
 Build
@@ -74,45 +75,50 @@ Build
 
 To build libdqlite from source you'll need:
 
-* A reasonably recent version of [libuv](http://libuv.org/) (v1.8.0 or beyond).
-* A reasonably recent version of sqlite3-dev
-* A build of the [C-raft](https://github.com/canonical/raft) Raft library.
+* Build dependencies: pkg-config and GNU Autoconf, Automake, libtool, and make
+* A reasonably recent version of [libuv](https://libuv.org/) (v1.8.0 or later), with headers.
+* A reasonably recent version of [SQLite](https://sqlite.org/) (v3.22.0 or later), with headers.
+* Optionally, a reasonably recent version of [LZ4](https://lz4.org/) (v1.7.1 or later), with headers.
 
-Your distribution should already provide you with a pre-built libuv shared
-library and libsqlite3-dev.
-
-For the Debian-based Linux distros you can install the build dependencies with:
-
-```
-sudo apt install autoconf libuv1-dev liblz4-dev libtool pkg-config build-essential libsqlite3-dev
-```
-
-To build the raft library:
+Your distribution should already provide you with these dependencies. For
+example, on Debian-based distros:
 
 ```
-git clone https://github.com/canonical/raft.git
-cd raft
-autoreconf -i
-./configure
-make
-sudo make install
-cd ..
+sudo apt install pkg-config autoconf automake libtool make libuv1-dev libsqlite3-dev liblz4-dev
 ```
 
-Once all the required libraries are installed, in order to build the dqlite
-shared library itself, you can run:
+With these dependencies installed, you can build and install the dqlite shared
+library and headers as follows:
 
 ```
-autoreconf -i
-./configure
-make
-sudo make install
+$ autoreconf -i
+$ ./configure --enable-build-raft
+$ make
+$ sudo make install
 ```
+
+The default installation prefix is `/usr/local`; you may need to run
+
+```
+$ sudo ldconfig
+```
+
+to enable the linker to find `libdqlite.so`. To install to a different prefix,
+replace the configure step with something like
+
+```
+$ ./configure --enable-build-raft --prefix=/usr
+```
+
+The `--enable-build-raft` option causes dqlite to use its bundled Raft
+implementation instead of linking to an external libraft; the latter is a
+legacy configuration that should not be used for new development.
 
 Usage Notes
 -----------
 
-Detailed tracing will be enabled when the environment variable `LIBDQLITE_TRACE` is set before startup.
-The value of it can be in `[0..5]` range and reperesents a tracing level, where
-`0` means "no traces" emitted, `5` enables minimum (FATAL records only), and `1`
-enables maximum verbosity (all: DEBUG, INFO, WARN, ERROR, FATAL records).
+Detailed tracing will be enabled when the environment variable
+`LIBDQLITE_TRACE` is set before startup.  The value of it can be in `[0..5]`
+range and reperesents a tracing level, where `0` means "no traces" emitted, `5`
+enables minimum (FATAL records only), and `1` enables maximum verbosity (all:
+DEBUG, INFO, WARN, ERROR, FATAL records).
