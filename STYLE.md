@@ -37,3 +37,19 @@ single statement.
 ### Comments
 
 Use only `/* */` in committed code, not `//`.
+
+### Predicates
+
+Use explicit comparisons to 0 and `NULL`: `if (int_variable == 0)` and `if
+(ptr_variable != NULL)`, not `if (!int_variable)` and `if (ptr_variable)`.
+Leave out the explicit comparison only for `bool` variables.
+
+The predicate of an `if` or `while` should not mutate state or have side
+effects.
+
+### Macros
+
+Prefer functions to function-like macros in new code.
+
+Use defensive parentheses in the definitions of function-like macros, so that
+extra parentheses are never required around the arguments at call sites.
