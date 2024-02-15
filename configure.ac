@@ -1,5 +1,5 @@
 AC_PREREQ(2.60)
-AC_INIT([libdqlite], [1.16.1], [https://github.com/canonical/dqlite])
+AC_INIT([libdqlite], [1.16.2], [https://github.com/canonical/dqlite])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([ac])
 
@@ -54,7 +54,7 @@ AC_SYS_LARGEFILE
 # Checks for libraries
 PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.22.0], [], [])
 PKG_CHECK_MODULES(UV, [libuv >= 1.8.0], [], [])
-PKG_CHECK_MODULES(RAFT, [raft >= 0.17.1], [], [])
+PKG_CHECK_MODULES(RAFT, [raft >= 0.18.1], [], [])
 
 CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -std=c11 \
