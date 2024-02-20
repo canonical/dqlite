@@ -103,7 +103,8 @@ static int peekUint64(struct cursor cursor, uint64_t *val)
 	if (cursor.cap < 8) {
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
-	*val = ByteFlipLe64(*(uint64_t *)cursor.p);
+	memcpy(val, cursor.p, sizeof(*val));
+	*val = ByteFlipLe64(*val);
 	return 0;
 }
 
@@ -371,7 +372,7 @@ static int writeMessage(struct client_proto *c,
 	struct message message = {0};
 	size_t n;
 	size_t words;
-	void *cursor;
+	char *cursor;
 	ssize_t rv;
 	n = buffer__offset(&c->write);
 	words = (n - message__sizeof(&message)) / 8;
@@ -395,7 +396,7 @@ static int writeMessage(struct client_proto *c,
 		struct message _message = {0};                   \
 		size_t _n1;                                      \
 		size_t _n2;                                      \
-		void *_cursor;                                   \
+		char *_cursor;                                   \
 		_n1 = message__sizeof(&_message);                \
 		_n2 = request_##LOWER##__sizeof(&request);       \
 		buffer__reset(&c->write);                        \

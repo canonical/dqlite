@@ -29,7 +29,7 @@ static size_t frames__sizeof(const frames_t *frames)
 	return s;
 }
 
-static void frames__encode(const frames_t *frames, void **cursor)
+static void frames__encode(const frames_t *frames, char **cursor)
 {
 	const dqlite_vfs_frame *list;
 	unsigned i;
@@ -88,7 +88,7 @@ COMMAND__TYPES(COMMAND__IMPLEMENT, );
 int command__encode(int type, const void *command, struct raft_buffer *buf)
 {
 	struct header h = {0};
-	void *cursor;
+	char *cursor;
 	int rc = 0;
 	h.format = FORMAT;
 	switch (type) {

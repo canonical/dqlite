@@ -98,7 +98,7 @@ static void fixture_handle_cb(struct handle *req,
 #define ENCODE(C, REQUEST, LOWER)                               \
 	{                                                       \
 		size_t n2 = request_##LOWER##__sizeof(REQUEST); \
-		void *cursor;                                   \
+		char *cursor;                                   \
 		buffer__reset(&C->request);                     \
 		cursor = buffer__advance(&C->request, n2);      \
 		munit_assert_ptr_not_null(cursor);              \

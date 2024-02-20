@@ -110,7 +110,7 @@ static void handleCb(struct handle *req,
 #define ENCODE(REQUEST, LOWER)                                  \
 	{                                                       \
 		size_t n2 = request_##LOWER##__sizeof(REQUEST); \
-		void *cursor;                                   \
+		char *cursor;                                   \
 		buffer__reset(f->buf1);                         \
 		cursor = buffer__advance(f->buf1, n2);          \
 		munit_assert_ptr_not_null(cursor);              \

@@ -121,7 +121,7 @@ void gateway__close(struct gateway *g)
 #define SUCCESS(LOWER, UPPER, RESP, SCHEMA)                                    \
 	{                                                                      \
 		size_t _n = response_##LOWER##__sizeof(&RESP);                 \
-		void *_cursor;                                                 \
+		char *_cursor;                                                 \
 		assert(_n % 8 == 0);                                           \
 		_cursor = buffer__advance(req->buffer, _n);                    \
 		/* Since responses are small and the buffer it's at least 4096 \
@@ -179,7 +179,7 @@ static void failure(struct handle *req, int code, const char *message)
 {
 	struct response_failure failure;
 	size_t n;
-	void *cursor;
+	char *cursor;
 	failure.code = (uint64_t)code;
 	failure.message = message;
 	n = response_failure__sizeof(&failure);
@@ -194,7 +194,7 @@ static void failure(struct handle *req, int code, const char *message)
 
 static void emptyRows(struct handle *req)
 {
-	void *cursor = buffer__advance(req->buffer, 8 + 8);
+	char *cursor = buffer__advance(req->buffer, 8 + 8);
 	uint64_t val;
 	assert(cursor != NULL);
 	val = 0;
@@ -1106,7 +1106,7 @@ static int dumpFile(const char *filename,
 		    size_t n,
 		    struct buffer *buffer)
 {
-	void *cur;
+	char *cur;
 	uint64_t len = n;
 
 	cur = buffer__advance(buffer, text__sizeof(&filename));
@@ -1145,7 +1145,7 @@ static int handle_dump(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	bool err = true;
 	sqlite3_vfs *vfs;
-	void *cur;
+	char *cur;
 	char filename[1024] = {0};
 	void *data;
 	size_t n;
@@ -1235,7 +1235,7 @@ static int encodeServer(struct gateway *g,
 			struct buffer *buffer,
 			int format)
 {
-	void *cur;
+	char *cur;
 	uint64_t id;
 	uint64_t role;
 	text_t address;
@@ -1278,7 +1278,7 @@ static int handle_cluster(struct gateway *g, struct handle *req)
 	tracef("handle cluster");
 	struct cursor *cursor = &req->cursor;
 	unsigned i;
-	void *cur;
+	char *cur;
 	int rv;
 	START_V0(cluster, servers);
 

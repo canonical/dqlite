@@ -75,7 +75,7 @@ int tuple_decoder__init(struct tuple_decoder *d,
 
 	d->format = format;
 	d->i = 0;
-	d->header = cursor->p;
+	d->header = (const uint8_t *)cursor->p;
 
 	/* Check that there is enough room to hold n type code slots. */
 	header_size = calc_header_size(d->n, d->format);
@@ -168,7 +168,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 			int format,
 			struct buffer *buffer)
 {
-	void *cursor;
+	char *cursor;
 	size_t n_header;
 
 	e->n = n;
@@ -188,7 +188,7 @@ int tuple_encoder__init(struct tuple_encoder *e,
 	} else if (e->format == TUPLE__PARAMS32) {
 		uint32_t val = (uint32_t)n;
 		assert((unsigned long long)val == (unsigned long long)n);
-		void *header = buffer__advance(buffer, 4);
+		char *header = buffer__advance(buffer, 4);
 		if (header == NULL) {
 			return DQLITE_NOMEM;
 		}
@@ -232,7 +232,7 @@ static void set_type(struct tuple_encoder *e, unsigned long i, int type)
 
 int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 {
-	void *cursor;
+	char *cursor;
 	size_t size;
 
 	assert(e->i < e->n);
