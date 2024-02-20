@@ -5,12 +5,12 @@
 #ifndef LEADER_H_
 #define LEADER_H_
 
-#include <raft.h>
 #include <sqlite3.h>
 #include <stdbool.h>
 
 #include "./lib/queue.h"
 #include "db.h"
+#include "raft.h"
 
 #define SQLITE_IOERR_NOT_LEADER (SQLITE_IOERR | (40 << 8))
 #define SQLITE_IOERR_LEADERSHIP_LOST (SQLITE_IOERR | (41 << 8))

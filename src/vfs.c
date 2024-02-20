@@ -9,8 +9,6 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#include <raft.h>
-
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
@@ -19,6 +17,7 @@
 #include "lib/byte.h"
 
 #include "format.h"
+#include "raft.h"
 #include "tracing.h"
 #include "vfs.h"
 

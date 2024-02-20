@@ -1,4 +1,4 @@
-#include <raft.h>
+#include "../../src/raft.h"
 
 #include "fault.h"
 #include "raft_heap.h"

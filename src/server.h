@@ -1,8 +1,6 @@
 #ifndef DQLITE_SERVER_H
 #define DQLITE_SERVER_H
 
-#include <raft.h>
-#include <raft/uv.h>
 #include <sqlite3.h>
 
 #include <semaphore.h>
@@ -12,6 +10,7 @@
 #include "id.h"
 #include "lib/assert.h"
 #include "logger.h"
+#include "raft.h"
 #include "registry.h"
 
 #define DQLITE_ERRMSG_BUF_SIZE 300

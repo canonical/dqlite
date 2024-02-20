@@ -5,11 +5,10 @@
 #ifndef TEST_RAFT_H
 #define TEST_RAFT_H
 
-#include <raft.h>
-#include <raft/uv.h>
 #include <uv.h>
 
 #include "../../src/fsm.h"
+#include "../../src/raft.h"
 #include "../../src/transport.h"
 #include "fs.h"
 #include "logger.h"

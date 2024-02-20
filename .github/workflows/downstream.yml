@@ -28,31 +28,17 @@ jobs:
           sudo make -j$(nproc) install
           sudo ldconfig
 
-      - name: Check out raft
-        uses: actions/checkout@v4
-        with:
-          repository: canonical/raft
-          path: raft
-
-      - name: Install raft
-        run: |
-          cd raft
-          autoreconf -i
-          ./configure --enable-debug --enable-uv --enable-sanitize --enable-backtrace
-          sudo make -j$(nproc) install
-          sudo ldconfig
-
       - name: Check out dqlite
         uses: actions/checkout@v4
         with:
-          ref: refs/pull/${{ github.event.issue.number }}/head
+          ref: refs/pull/${{ github.event.issue.number }}/merge
           path: dqlite
 
       - name: Install dqlite
         run: |
           cd dqlite
           autoreconf -i
-          ./configure --enable-debug --enable-sanitize --enable-backtrace
+          ./configure --enable-debug --enable-sanitize --enable-backtrace --enable-build-raft
           sudo make -j$(nproc)
           sudo make install
           sudo ldconfig

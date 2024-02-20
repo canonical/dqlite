@@ -1,8 +1,3 @@
-#include <raft.h>
-#include <raft/uv.h>
-
-#include "../../include/dqlite.h"
-
 #include "../lib/client.h"
 #include "../lib/config.h"
 #include "../lib/heap.h"
@@ -17,6 +12,7 @@
 #include "../../src/conn.h"
 #include "../../src/gateway.h"
 #include "../../src/lib/transport.h"
+#include "../../src/raft.h"
 #include "../../src/transport.h"
 
 TEST_MODULE(conn);

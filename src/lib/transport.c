@@ -1,4 +1,4 @@
-#include <raft.h>
+#include "../raft.h"
 
 #include "../../include/dqlite.h"
 

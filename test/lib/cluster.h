@@ -15,11 +15,9 @@
 #ifndef TEST_CLUSTER_H
 #define TEST_CLUSTER_H
 
-#include <raft.h>
-#include <raft/fixture.h>
-
 #include "../../src/config.h"
 #include "../../src/fsm.h"
+#include "../../src/raft.h"
 #include "../../src/registry.h"
 #include "../../src/vfs.h"
 
