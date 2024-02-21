@@ -43,6 +43,7 @@ basic_dqlite_sources = \
   src/lib/addr.c \
   src/lib/buffer.c \
   src/lib/fs.c \
+  src/lib/sm.c \
   src/lib/transport.c \
   src/logger.c \
   src/message.c \
@@ -162,6 +163,7 @@ unit_test_SOURCES += \
   test/unit/test_replication.c \
   test/unit/test_request.c \
   test/unit/test_role_management.c \
+  test/unit/test_sm.c \
   test/unit/test_tuple.c \
   test/unit/test_vfs.c \
   test/unit/main.c

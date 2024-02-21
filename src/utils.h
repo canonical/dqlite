@@ -1,6 +1,7 @@
 #ifndef DQLITE_UTILS_H_
 #define DQLITE_UTILS_H_
 
+#include <assert.h>
 #include <stdint.h>
 
 /* Various utility functions and macros */
@@ -12,5 +13,12 @@
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 
 #define DBG() fprintf(stderr, "%s:%d\n", __func__, __LINE__)
+
+#define CONTAINER_OF(e, type, field) \
+	((type *)(uintptr_t)((char *)(e)-offsetof(type, field)))
+
+#define PRE(cond) assert((cond))
+#define POST(cond) assert((cond))
+#define ERGO(a, b) (!(a) || (b))
 
 #endif /* DQLITE_UTILS_H_ */
