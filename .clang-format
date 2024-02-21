@@ -2,7 +2,8 @@ BasedOnStyle: Chromium
 BreakBeforeBraces: Custom
 BraceWrapping:
  AfterFunction: true
- AfterStruct: true
+ AfterStruct: false
+Cpp11BracedListStyle: false
 IndentWidth: 8
 UseTab: ForContinuationAndIndentation
 PointerAlignment: Right

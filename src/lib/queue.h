@@ -64,19 +64,19 @@ typedef void *queue[2];
  * Moves elements from queue @h to queue @n
  * Note: Removed QUEUE__SPLIT() and merged it into QUEUE__MOVE().
  */
-#define QUEUE__MOVE(h, n)					\
-	{							\
-		if (QUEUE__IS_EMPTY(h)) {			\
-			QUEUE__INIT(n);				\
-		} else {					\
-			queue *__q = QUEUE__HEAD(h);		\
-			QUEUE__PREV(n) = QUEUE__PREV(h);	\
-			QUEUE__PREV_NEXT(n) = (n);		\
-			QUEUE__NEXT(n) = (__q);			\
-			QUEUE__PREV(h) = QUEUE__PREV(__q);	\
-			QUEUE__PREV_NEXT(h) = (h);		\
-			QUEUE__PREV(__q) = (n);			\
-		}						\
+#define QUEUE__MOVE(h, n)                                  \
+	{                                                  \
+		if (QUEUE__IS_EMPTY(h)) {                  \
+			QUEUE__INIT(n);                    \
+		} else {                                   \
+			queue *__q = QUEUE__HEAD(h);       \
+			QUEUE__PREV(n) = QUEUE__PREV(h);   \
+			QUEUE__PREV_NEXT(n) = (n);         \
+			QUEUE__NEXT(n) = (__q);            \
+			QUEUE__PREV(h) = QUEUE__PREV(__q); \
+			QUEUE__PREV_NEXT(h) = (h);         \
+			QUEUE__PREV(__q) = (n);            \
+		}                                          \
 	}
 
 /**

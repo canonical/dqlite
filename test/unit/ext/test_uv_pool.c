@@ -1,7 +1,7 @@
 #include "../../../src/lib/threadpool.h"
+#include "../../../src/utils.h"
 #include "../../lib/runner.h"
 #include "../../lib/uv.h"
-#include "src/utils.h"
 
 TEST_MODULE(ext_uv_pool);
 
@@ -13,11 +13,10 @@ TEST_MODULE(ext_uv_pool);
 
 enum { WORK_ITEMS_NR = 50000 };
 
-struct fixture
-{
+struct fixture {
 	pool_work_t w;
-	uv_loop_t   loop;
-	pool_t      pool;
+	uv_loop_t loop;
+	pool_t pool;
 };
 
 static void loop_setup(struct fixture *f)
@@ -27,12 +26,13 @@ static void loop_setup(struct fixture *f)
 	rc = uv_loop_init(&f->loop);
 	munit_assert_int(rc, ==, 0);
 
-	rc = pool_init(&f->pool, &f->loop, 4);
+	rc = pool_init(&f->pool, &f->loop, 4, POOL_QOS_PRIO_FAIR);
 	munit_assert_int(rc, ==, 0);
 }
 
-static void bottom_work_cb(pool_work_t *)
+static void bottom_work_cb(pool_work_t *w)
 {
+	(void)w;
 }
 
 static void bottom_after_work_cb(pool_work_t *w)
@@ -58,21 +58,21 @@ static void after_work_cb(pool_work_t *w)
 		work = malloc(sizeof(*work));
 
 		if (i < WORK_ITEMS_NR / 2)
-		    wt = WT_ORD1;
+			wt = WT_ORD1;
 		else if (i == WORK_ITEMS_NR / 2)
-		    wt = WT_BAR;
+			wt = WT_BAR;
 		else
-		    wt = WT_ORD2;
+			wt = WT_ORD2;
 
 		pwt = i % 2 == 0 ? wt : WT_UNORD;
-		pool_queue_work(w->pool,
-				work, i, pwt, bottom_work_cb,
+		pool_queue_work(w->pool, work, i, pwt, bottom_work_cb,
 				bottom_after_work_cb);
 	}
 }
 
-static void work_cb(pool_work_t *)
+static void work_cb(pool_work_t *w)
 {
+	(void)w;
 }
 
 static void threadpool_tear_down(void *data)
@@ -86,9 +86,10 @@ static void threadpool_tear_down(void *data)
 	free(f);
 }
 
-static void *threadpool_setup(const MunitParameter params[] UNUSED,
-			      void *user_data UNUSED)
+static void *threadpool_setup(const MunitParameter params[], void *user_data)
 {
+	(void)params;
+	(void)user_data;
 	struct fixture *f = calloc(1, sizeof *f);
 	loop_setup(f);
 	return f;

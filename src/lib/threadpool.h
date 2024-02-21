@@ -23,20 +23,20 @@
      - The pool supports servicing of the following types of work items:
 
        - WT_UNORD - items, which can be processed by the pool in any
-         order, concurrency assumptions of this type of work are
-         guaranteed by other layers of the application. Read and write
-         transactions executed by sqlite3_step() are good examples for
-         such work item type.
+	 order, concurrency assumptions of this type of work are
+	 guaranteed by other layers of the application. Read and write
+	 transactions executed by sqlite3_step() are good examples for
+	 such work item type.
 
        - WT_ORD_N - items, which can NOT be processed by the pool in
-         any order. The pool's logic shall guarantee that servicing
-         all WT_ORD_{N}s happens before WT_ORD_{N + 1}s. WT_ORD_{N}s
-         and WT_ORD_{N + 1}s operations can't be put into the pool
-         interleaved. Sqlite3 checkpoints is an example of WT_ORD_{N}
-         and InstallSnapshot(CP(), MV()) is an example of WT_ORD_{N + 1}.
+	 any order. The pool's logic shall guarantee that servicing
+	 all WT_ORD_{N}s happens before WT_ORD_{N + 1}s. WT_ORD_{N}s
+	 and WT_ORD_{N + 1}s operations can't be put into the pool
+	 interleaved. Sqlite3 checkpoints is an example of WT_ORD_{N}
+	 and InstallSnapshot(CP(), MV()) is an example of WT_ORD_{N + 1}.
 
        - WT_BAR - special purpose item, barrier. Delimits WT_ORD_{N}s
-         from WT_ORD_{N + 1}s.
+	 from WT_ORD_{N + 1}s.
 
      - The pool supports servicing of work items with a given quality
        of service (QoS) considerations. For example, the priority of
@@ -56,21 +56,30 @@ enum pool_work_type {
 	WT_NR,
 };
 
-struct pool_work_s {
-	queue     link;       /* Link into ordered, unordered and outq */
-	uint32_t  thread_id;  /* Identifier of the thread the item is affined */
-	pool_t   *pool;       /* The pool, item is being associated with */
+struct pool_work_s
+{
+	queue link;         /* Link into ordered, unordered and outq */
+	uint32_t thread_id; /* Identifier of the thread the item is affined */
+	pool_t *pool;       /* The pool, item is being associated with */
 	enum pool_work_type type;
 
 	void (*work_cb)(pool_work_t *w);
 	void (*after_work_cb)(pool_work_t *w);
 };
 
-struct pool_s {
+struct pool_s
+{
 	struct pool_impl *pi;
 };
 
-int  pool_init(pool_t *pool, uv_loop_t *loop, uint32_t threads_nr);
+enum {
+	POOL_QOS_PRIO_FAIR = 2,
+};
+
+int pool_init(pool_t *pool,
+	      uv_loop_t *loop,
+	      uint32_t threads_nr,
+	      uint32_t qos_prio);
 void pool_fini(pool_t *pool);
 void pool_close(pool_t *pool);
 void pool_queue_work(pool_t *pool,
@@ -80,4 +89,4 @@ void pool_queue_work(pool_t *pool,
 		     void (*work_cb)(pool_work_t *w),
 		     void (*after_work_cb)(pool_work_t *w));
 
-#endif  /* __THREAD_POOL__ */
+#endif /* __THREAD_POOL__ */
