@@ -49,7 +49,7 @@ struct vfs2_db_entry
 {
 	struct vfs2_file *db;
 	struct vfs2_file *wal;
-	queue queue;
+	queue link;
 };
 
 /**
@@ -256,7 +256,7 @@ static void unregister_file(struct vfs2_file *file)
 	while (q != &file->vfs_data->queue) {
 		queue *next = QUEUE__NEXT(q);
 		struct vfs2_db_entry *entry =
-		    QUEUE__DATA(q, struct vfs2_db_entry, queue);
+		    QUEUE__DATA(q, struct vfs2_db_entry, link);
 		if (entry->db == file) {
 			entry->db = NULL;
 		} else if (entry->wal == file) {
