@@ -23,7 +23,7 @@ are every eight spaces.
 
 ### Braces
 
-K&R brace style: opening braces on the same line for `if`, `for`, `while`, and
+Opening braces on the same line for `struct`, `enum`, `if`, `for`, `while`, and
 `do`, but on a separate line for function definitions.
 
 `if`, `for`, `while`, and `do` always use braces, even when the body is a
@@ -37,6 +37,8 @@ single statement.
 ### Comments
 
 Use only `/* */` in committed code, not `//`.
+
+Align end-of-line comments after struct field and enum variant declarations.
 
 ### Predicates
 
@@ -53,3 +55,7 @@ Prefer functions to function-like macros in new code.
 
 Use defensive parentheses in the definitions of function-like macros, so that
 extra parentheses are never required around the arguments at call sites.
+
+### Functions
+
+In function bodies, cast an argument to `void` if it is unused.
