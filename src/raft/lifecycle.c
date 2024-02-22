@@ -1,6 +1,6 @@
 #include "lifecycle.h"
 #include "../tracing.h"
-#include "queue.h"
+#include "../lib/queue.h"
 
 #include <inttypes.h>
 #include <stdlib.h>
@@ -23,7 +23,7 @@ void lifecycleRequestStart(struct raft *r, struct request *req)
 	if (reqIdIsSet(req)) {
 		tracef("request start id:%" PRIu64, extractReqId(req));
 	}
-	QUEUE_PUSH(&r->leader_state.requests, &req->queue);
+	queue_insert_tail(&r->leader_state.requests, &req->queue);
 }
 
 void lifecycleRequestEnd(struct raft *r, struct request *req)
@@ -32,5 +32,5 @@ void lifecycleRequestEnd(struct raft *r, struct request *req)
 	if (reqIdIsSet(req)) {
 		tracef("request end id:%" PRIu64, extractReqId(req));
 	}
-	QUEUE_REMOVE(&req->queue);
+	queue_remove(&req->queue);
 }

@@ -10,7 +10,7 @@
 #include "convert.h"
 #include "entry.h"
 #include "log.h"
-#include "queue.h"
+#include "../lib/queue.h"
 #include "snapshot.h"
 
 /* Defaults */
@@ -365,7 +365,7 @@ static void ioFlushSend(struct io *io, struct send *send)
 	src = &send->message;
 	dst = &transmit->message;
 
-	QUEUE_PUSH(&io->requests, &transmit->queue);
+	queue_insert_tail(&io->requests, &transmit->queue);
 
 	*dst = *src;
 	switch (dst->type) {
@@ -416,12 +416,12 @@ static void ioDestroyTransmit(struct transmit *transmit)
 /* Flush all requests in the queue. */
 static void ioFlushAll(struct io *io)
 {
-	while (!QUEUE_IS_EMPTY(&io->requests)) {
+	while (!queue_empty(&io->requests)) {
 		queue *head;
 		struct ioRequest *r;
 
-		head = QUEUE_HEAD(&io->requests);
-		QUEUE_REMOVE(head);
+		head = queue_head(&io->requests);
+		queue_remove(head);
 
 		r = QUEUE_DATA(head, struct ioRequest, queue);
 		switch (r->type) {
@@ -592,7 +592,7 @@ static int ioMethodAppend(struct raft_io *raft_io,
 
 	req->cb = cb;
 
-	QUEUE_PUSH(&io->requests, &r->queue);
+	queue_insert_tail(&io->requests, &r->queue);
 
 	return 0;
 }
@@ -660,7 +660,7 @@ static int ioMethodSnapshotPut(struct raft_io *raft_io,
 	r->completion_time = *io->time + io->disk_latency;
 	r->trailing = trailing;
 
-	QUEUE_PUSH(&io->requests, &r->queue);
+	queue_insert_tail(&io->requests, &r->queue);
 
 	return 0;
 }
@@ -680,7 +680,7 @@ static int ioMethodAsyncWork(struct raft_io *raft_io,
 	r->req->cb = cb;
 	r->completion_time = *io->time + io->work_duration;
 
-	QUEUE_PUSH(&io->requests, &r->queue);
+	queue_insert_tail(&io->requests, &r->queue);
 	return 0;
 }
 
@@ -699,7 +699,7 @@ static int ioMethodSnapshotGet(struct raft_io *raft_io,
 	r->req->cb = cb;
 	r->completion_time = *io->time + io->disk_latency;
 
-	QUEUE_PUSH(&io->requests, &r->queue);
+	queue_insert_tail(&io->requests, &r->queue);
 
 	return 0;
 }
@@ -749,7 +749,7 @@ static int ioMethodSend(struct raft_io *raft_io,
 	peer = ioGetPeer(io, message->server_id);
 	r->completion_time = *io->time + peer->send_latency;
 
-	QUEUE_PUSH(&io->requests, &r->queue);
+	queue_insert_tail(&io->requests, &r->queue);
 
 	return 0;
 }
@@ -881,7 +881,7 @@ static int ioInit(struct raft_io *raft_io, unsigned index, raft_time *time)
 	io->snapshot = NULL;
 	io->entries = NULL;
 	io->n = 0;
-	QUEUE_INIT(&io->requests);
+	queue_init(&io->requests);
 	io->n_peers = 0;
 	io->randomized_election_timeout = ELECTION_TIMEOUT + index * 100;
 	io->network_latency = NETWORK_LATENCY;
@@ -1400,7 +1400,7 @@ static void completeRequest(struct raft_fixture *f, unsigned i, raft_time t)
 		}
 	}
 	assert(found);
-	QUEUE_REMOVE(head);
+	queue_remove(head);
 	switch (r->type) {
 		case APPEND:
 			ioFlushAppend(io, (struct append *)r);

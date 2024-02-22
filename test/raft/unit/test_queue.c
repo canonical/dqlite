@@ -1,4 +1,4 @@
-#include "../../../src/raft/queue.h"
+#include "../../../src/lib/queue.h"
 #include "../lib/runner.h"
 
 /******************************************************************************
@@ -23,7 +23,7 @@ static void *setUp(MUNIT_UNUSED const MunitParameter params[],
                    MUNIT_UNUSED void *user_data)
 {
     struct fixture *f = munit_malloc(sizeof *f);
-    QUEUE_INIT(&f->queue);
+    queue_init(&f->queue);
     return f;
 }
 
@@ -47,12 +47,12 @@ static void tearDown(void *data)
         for (i_ = 0; i_ < N; i_++) {              \
             struct item *item_ = &f->items[i_];   \
             item_->value = i_ + 1;                \
-            QUEUE_PUSH(&f->queue, &item_->queue); \
+            queue_insert_tail(&f->queue, &item_->queue); \
         }                                         \
     }
 
 /* Remove the i'th fixture item from the fixture queue. */
-#define REMOVE(I) QUEUE_REMOVE(&f->items[I].queue)
+#define REMOVE(I) queue_remove(&f->items[I].queue)
 
 /******************************************************************************
  *
@@ -64,7 +64,7 @@ static void tearDown(void *data)
  * value. */
 #define ASSERT_HEAD(VALUE)                             \
     {                                                  \
-        queue *head_ = QUEUE_HEAD(&f->queue);          \
+        queue *head_ = queue_head(&f->queue);          \
         struct item *item_;                            \
         item_ = QUEUE_DATA(head_, struct item, queue); \
         munit_assert_int(item_->value, ==, VALUE);     \
@@ -73,34 +73,34 @@ static void tearDown(void *data)
 /* Assert that the item at the tail of the queue has the given value. */
 #define ASSERT_TAIL(VALUE)                             \
     {                                                  \
-        queue *tail_ = QUEUE_TAIL(&f->queue);          \
+        queue *tail_ = queue_tail(&f->queue);          \
         struct item *item_;                            \
         item_ = QUEUE_DATA(tail_, struct item, queue); \
         munit_assert_int(item_->value, ==, VALUE);     \
     }
 
 /* Assert that the fixture's queue is empty. */
-#define ASSERT_EMPTY munit_assert_true(QUEUE_IS_EMPTY(&f->queue))
+#define ASSERT_EMPTY munit_assert_true(queue_empty(&f->queue))
 
 /* Assert that the fixture's queue is not empty. */
-#define ASSERT_NOT_EMPTY munit_assert_false(QUEUE_IS_EMPTY(&f->queue))
+#define ASSERT_NOT_EMPTY munit_assert_false(queue_empty(&f->queue))
 
 /******************************************************************************
  *
- * QUEUE_IS_EMPTY
+ * queue_empty
  *
  *****************************************************************************/
 
-SUITE(QUEUE_IS_EMPTY)
+SUITE(queue_empty)
 
-TEST(QUEUE_IS_EMPTY, yes, setUp, tearDown, 0, NULL)
+TEST(queue_empty, yes, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     ASSERT_EMPTY;
     return MUNIT_OK;
 }
 
-TEST(QUEUE_IS_EMPTY, no, setUp, tearDown, 0, NULL)
+TEST(queue_empty, no, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     PUSH(1);
@@ -110,13 +110,13 @@ TEST(QUEUE_IS_EMPTY, no, setUp, tearDown, 0, NULL)
 
 /******************************************************************************
  *
- * QUEUE_PUSH
+ * queue_insert_tail
  *
  *****************************************************************************/
 
-SUITE(QUEUE_PUSH)
+SUITE(queue_insert_tail)
 
-TEST(QUEUE_PUSH, one, setUp, tearDown, 0, NULL)
+TEST(queue_insert_tail, one, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     PUSH(1);
@@ -124,7 +124,7 @@ TEST(QUEUE_PUSH, one, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-TEST(QUEUE_PUSH, two, setUp, tearDown, 0, NULL)
+TEST(queue_insert_tail, two, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     int i;
@@ -139,13 +139,13 @@ TEST(QUEUE_PUSH, two, setUp, tearDown, 0, NULL)
 
 /******************************************************************************
  *
- * QUEUE_REMOVE
+ * queue_remove
  *
  *****************************************************************************/
 
-SUITE(QUEUE_REMOVE)
+SUITE(queue_remove)
 
-TEST(QUEUE_REMOVE, first, setUp, tearDown, 0, NULL)
+TEST(queue_remove, first, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     PUSH(3);
@@ -154,7 +154,7 @@ TEST(QUEUE_REMOVE, first, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-TEST(QUEUE_REMOVE, second, setUp, tearDown, 0, NULL)
+TEST(queue_remove, second, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     PUSH(3);
@@ -163,7 +163,7 @@ TEST(QUEUE_REMOVE, second, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-TEST(QUEUE_REMOVE, success, setUp, tearDown, 0, NULL)
+TEST(queue_remove, success, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     PUSH(3);
@@ -174,13 +174,13 @@ TEST(QUEUE_REMOVE, success, setUp, tearDown, 0, NULL)
 
 /******************************************************************************
  *
- * QUEUE_TAIL
+ * queue_tail
  *
  *****************************************************************************/
 
-SUITE(QUEUE_TAIL)
+SUITE(queue_tail)
 
-TEST(QUEUE_TAIL, one, setUp, tearDown, 0, NULL)
+TEST(queue_tail, one, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     PUSH(1);
@@ -188,7 +188,7 @@ TEST(QUEUE_TAIL, one, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-TEST(QUEUE_TAIL, two, setUp, tearDown, 0, NULL)
+TEST(queue_tail, two, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     PUSH(2);
@@ -196,7 +196,7 @@ TEST(QUEUE_TAIL, two, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-TEST(QUEUE_TAIL, three, setUp, tearDown, 0, NULL)
+TEST(queue_tail, three, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     PUSH(3);

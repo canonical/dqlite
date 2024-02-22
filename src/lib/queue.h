@@ -11,8 +11,8 @@ struct queue
 
 typedef struct queue queue;
 
-#define QUEUE_DATA(pointer, type, field) \
-	((type *)((char *)(pointer)-offsetof(type, field)))
+#define QUEUE_DATA(e, type, field) \
+	((type *)((void *)((char *)(e)-offsetof(type, field))))
 
 #define QUEUE_FOREACH(q, h) for ((q) = (h)->next; (q) != (h); (q) = (q)->next)
 
@@ -35,6 +35,11 @@ static inline struct queue *queue_head(const struct queue *q)
 static inline struct queue *queue_next(const struct queue *q)
 {
 	return q->next;
+}
+
+static inline struct queue *queue_tail(const struct queue *q)
+{
+	return q->prev;
 }
 
 static inline void queue_add(struct queue *h, struct queue *n)

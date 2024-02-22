@@ -137,8 +137,8 @@ static void uvTruncateBarrierCb(struct UvBarrierReq *barrier)
 		return;
 	}
 
-	assert(QUEUE_IS_EMPTY(&uv->append_writing_reqs));
-	assert(QUEUE_IS_EMPTY(&uv->finalize_reqs));
+	assert(queue_empty(&uv->append_writing_reqs));
+	assert(queue_empty(&uv->finalize_reqs));
 	assert(uv->finalize_work.data == NULL);
 	assert(uv->truncate_work.data == NULL);
 

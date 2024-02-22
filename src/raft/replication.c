@@ -15,7 +15,7 @@
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
-#include "queue.h"
+#include "../lib/queue.h"
 #include "replication.h"
 #include "request.h"
 #include "snapshot.h"
