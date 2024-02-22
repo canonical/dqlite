@@ -502,10 +502,10 @@ static unsigned snapshotNumBufs(struct fsm *f)
 	queue *head;
 	unsigned n = 1; /* snapshot header */
 
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		n += 2; /* database header & wal */
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		n += dbNumPages(db); /* 1 buffer per page (zero copy) */
 	}
 
@@ -539,12 +539,12 @@ static void freeSnapshotBufs(struct fsm *f,
 
 	i = 1;
 	/* Free all database headers & WAL buffers */
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		if (i == n_bufs) {
 			break;
 		}
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		/* i is the index of the database header */
 		sqlite3_free(bufs[i].base);
 		/* i is now the index of the next database header (if any) */
@@ -567,9 +567,9 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 
 	/* First count how many databases we have and check that no transaction
 	 * nor checkpoint nor other snapshot is in progress. */
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		if (db->tx_id != 0 || db->read_lock) {
 			return RAFT_BUSY;
 		}
@@ -577,9 +577,9 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	}
 
 	/* Lock all databases, preventing the checkpoint from running */
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		rv = databaseReadLock(db);
 		assert(rv == 0);
 	}
@@ -598,9 +598,9 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 
 	/* Encode individual databases. */
 	i = 1;
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		/* database_header + num_pages + wal */
 		unsigned n = 1 + dbNumPages(db) + 1;
 		rv = encodeDatabase(db, &(*bufs)[i], n);
@@ -618,9 +618,9 @@ err_after_encode_header:
 err_after_bufs_alloc:
 	sqlite3_free(*bufs);
 err:
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		databaseReadUnlock(db);
 	}
 	assert(rv != 0);
@@ -663,12 +663,12 @@ static int fsm__snapshot_finalize(struct raft_fsm *fsm,
 	/* Unlock all databases that were locked for the snapshot, this is safe
 	 * because DB's are only ever added at the back of the queue. */
 	n_db = 0;
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		if (n_db == header.n) {
 			break;
 		}
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		rv = databaseReadUnlock(db);
 		assert(rv == 0);
 		n_db++;
@@ -815,7 +815,7 @@ static unsigned snapshotNumBufsDisk(struct fsm *f)
 	queue *head;
 	unsigned n = 1; /* snapshot header */
 
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		n += 3; /* database header, database file and wal */
 	}
@@ -849,7 +849,7 @@ static void freeSnapshotBufsDisk(struct fsm *f,
 
 	i = 1;
 	/* Free all database headers & WAL buffers. Unmap the DB file. */
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		if (i == n_bufs) {
 			break;
@@ -878,9 +878,9 @@ static int fsm__snapshot_disk(struct raft_fsm *fsm,
 
 	/* First count how many databases we have and check that no transaction
 	 * nor checkpoint nor other snapshot is in progress. */
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		if (db->tx_id != 0 || db->read_lock) {
 			return RAFT_BUSY;
 		}
@@ -890,9 +890,9 @@ static int fsm__snapshot_disk(struct raft_fsm *fsm,
 	/* Lock all databases, preventing the checkpoint from running. This
 	 * ensures the database is not written while it is mmap'ed and copied by
 	 * raft. */
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		rv = databaseReadLock(db);
 		assert(rv == 0);
 	}
@@ -917,9 +917,9 @@ static int fsm__snapshot_disk(struct raft_fsm *fsm,
 
 	/* Copy WAL of all databases. */
 	i = 1;
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		/* database_header + db + WAL */
 		unsigned n = 3;
 		/* pass pointer to buffer that will contain WAL. */
@@ -938,9 +938,9 @@ err_after_encode_sync:
 err_after_bufs_alloc:
 	sqlite3_free(*bufs);
 err:
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		databaseReadUnlock(db);
 	}
 	assert(rv != 0);
@@ -972,13 +972,13 @@ static int fsm__snapshot_async_disk(struct raft_fsm *fsm,
 
 	/* Encode individual databases. */
 	i = 1;
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		if (i == *n_bufs) {
 			/* In case a db was added in meanwhile */
 			break;
 		}
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		/* database_header + database file + wal */
 		unsigned n = 3;
 		rv = encodeDiskDatabaseAsync(db, &(*bufs)[i], n);
@@ -1031,12 +1031,12 @@ static int fsm__snapshot_finalize_disk(struct raft_fsm *fsm,
 	/* Unlock all databases that were locked for the snapshot, this is safe
 	 * because DB's are only ever added at the back of the queue. */
 	n_db = 0;
-	QUEUE__FOREACH(head, &f->registry->dbs)
+	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		if (n_db == header.n) {
 			break;
 		}
-		db = QUEUE__DATA(head, struct db, queue);
+		db = QUEUE_DATA(head, struct db, queue);
 		databaseReadUnlock(db);
 		n_db++;
 	}

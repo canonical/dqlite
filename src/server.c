@@ -40,9 +40,9 @@ static void state_cb(struct raft *r,
 
 	if (old_state == RAFT_LEADER && new_state != RAFT_LEADER) {
 		tracef("node %llu@%s: leadership lost", r->id, r->address);
-		QUEUE__FOREACH(head, &d->conns)
+		QUEUE_FOREACH(head, &d->conns)
 		{
-			conn = QUEUE__DATA(head, struct conn, queue);
+			conn = QUEUE_DATA(head, struct conn, queue);
 			gateway__leader_close(&conn->gateway,
 					      RAFT_LEADERSHIPLOST);
 		}
@@ -143,9 +143,9 @@ int dqlite__init(struct dqlite_node *d,
 		goto err_after_stopped_init;
 	}
 
-	QUEUE__INIT(&d->queue);
-	QUEUE__INIT(&d->conns);
-	QUEUE__INIT(&d->roles_changes);
+	queue_init(&d->queue);
+	queue_init(&d->conns);
+	queue_init(&d->roles_changes);
 	d->raft_state = RAFT_UNAVAILABLE;
 	d->running = false;
 	d->listener = NULL;
@@ -492,7 +492,7 @@ static void raftCloseCb(struct raft *raft)
 
 static void destroy_conn(struct conn *conn)
 {
-	QUEUE__REMOVE(&conn->queue);
+	queue_remove(&conn->queue);
 	sqlite3_free(conn);
 }
 
@@ -540,9 +540,9 @@ static void stopCb(uv_async_t *stop)
 	}
 	d->running = false;
 
-	QUEUE__FOREACH(head, &d->conns)
+	QUEUE_FOREACH(head, &d->conns)
 	{
-		conn = QUEUE__DATA(head, struct conn, queue);
+		conn = QUEUE_DATA(head, struct conn, queue);
 		conn__stop(conn);
 	}
 	raft_close(&d->raft, raftCloseCb);
@@ -649,7 +649,7 @@ static void listenCb(uv_stream_t *listener, int status)
 		goto err_after_conn_alloc;
 	}
 
-	QUEUE__PUSH(&t->conns, &conn->queue);
+	queue_insert_tail(&t->conns, &conn->queue);
 
 	return;
 
