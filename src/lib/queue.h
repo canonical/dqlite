@@ -37,6 +37,19 @@ typedef void *queue[2];
 		QUEUE__PREV(q) = (e);            \
 	}
 
+#define QUEUE__INSERT_TAIL(q, e) QUEUE__PUSH(q, e)
+
+/**
+ * Insert an element at the front of a queue.
+ */
+#define QUEUE__INSERT_HEAD(h, q)                 \
+	{                                        \
+		QUEUE__NEXT(q) = QUEUE__NEXT(h); \
+		QUEUE__PREV(q) = (h);            \
+		QUEUE__NEXT_PREV(q) = (q);       \
+		QUEUE__NEXT(h) = (q);            \
+	}
+
 /**
  * Remove the given element from the queue. Any element can be removed at any
  * time.
@@ -45,6 +58,25 @@ typedef void *queue[2];
 	{                                             \
 		QUEUE__PREV_NEXT(e) = QUEUE__NEXT(e); \
 		QUEUE__NEXT_PREV(e) = QUEUE__PREV(e); \
+	}
+
+/**
+ * Moves elements from queue @h to queue @n
+ * Note: Removed QUEUE__SPLIT() and merged it into QUEUE__MOVE().
+ */
+#define QUEUE__MOVE(h, n)                                  \
+	{                                                  \
+		if (QUEUE__IS_EMPTY(h)) {                  \
+			QUEUE__INIT(n);                    \
+		} else {                                   \
+			queue *__q = QUEUE__HEAD(h);       \
+			QUEUE__PREV(n) = QUEUE__PREV(h);   \
+			QUEUE__PREV_NEXT(n) = (n);         \
+			QUEUE__NEXT(n) = (__q);            \
+			QUEUE__PREV(h) = QUEUE__PREV(__q); \
+			QUEUE__PREV_NEXT(h) = (h);         \
+			QUEUE__PREV(__q) = (n);            \
+		}                                          \
 	}
 
 /**
