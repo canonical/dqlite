@@ -525,8 +525,8 @@ int pool_init(pool_t *pool,
 
 	rc = uv_async_init(loop, &pi->outq_async, work_done);
 	if (rc != 0) {
-		free(pi);
 		uv_mutex_destroy(&pi->outq_mutex);
+		free(pi);
 		return rc;
 	}
 
