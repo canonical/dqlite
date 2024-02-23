@@ -23,6 +23,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Raise aio-max-nr
+      run: |
+          sysctl fs.aio-max-nr
+          sudo sysctl -w fs.aio-max-nr=1000000
+
     - name: Set up dependencies
       run: |
           sudo apt update
