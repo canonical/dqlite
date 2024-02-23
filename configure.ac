@@ -1,5 +1,5 @@
 AC_PREREQ(2.60)
-AC_INIT([libdqlite], [1.16.3], [https://github.com/canonical/dqlite])
+AC_INIT([libdqlite], [1.16.4], [https://github.com/canonical/dqlite])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([ac])
 
