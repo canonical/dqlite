@@ -63,14 +63,14 @@ basic_dqlite_sources = \
   src/tuple.c \
   src/vfs.c
 
+if BUILD_SQLITE_ENABLED
+basic_dqlite_sources += sqlite3.c
+endif
+
 lib_LTLIBRARIES = libdqlite.la
 libdqlite_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden -DRAFT_API=''
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = $(basic_dqlite_sources)
-
-if BUILD_SQLITE_ENABLED
-libdqlite_la_SOURCES += sqlite3.c
-endif
 
 if BUILD_RAFT_ENABLED
 libraft_la_SOURCES = \
