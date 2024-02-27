@@ -6,6 +6,7 @@
 #include "../lib/cluster.h"
 #include "../lib/raft_heap.h"
 #include "../lib/runner.h"
+#include "src/lib/threadpool.h"
 
 TEST_MODULE(gateway);
 
@@ -65,6 +66,8 @@ struct connection
 		munit_assert_int(rc, ==, 0);                            \
 	}                                                               \
 	test_raft_heap_setup(params, user_data);                        \
+	pool_ut_fallback()->flags |= POOL_FOR_UT_NOT_ASYNC;		\
+	pool_ut_fallback()->flags |= POOL_FOR_UT;			\
 	SELECT(0)
 
 #define TEAR_DOWN                                          \

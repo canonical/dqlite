@@ -42,6 +42,8 @@ struct connection
 #define SETUP                                                              \
 	unsigned i;                                                        \
 	int rc;                                                            \
+	pool_ut_fallback()->flags |= POOL_FOR_UT_NOT_ASYNC;		   \
+	pool_ut_fallback()->flags |= POOL_FOR_UT;                          \
 	SETUP_CLUSTER(V2);                                                 \
 	CLUSTER_ELECT(0);                                                  \
 	for (i = 0; i < N_GATEWAYS; i++) {                                 \

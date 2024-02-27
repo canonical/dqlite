@@ -55,7 +55,7 @@ static void after_work_cb(pool_work_t *w)
 	unsigned int i;
 
 	for (i = 0; i <= WORK_ITEMS_NR + 1 /* +WT_BAR */; i++) {
-		work = malloc(sizeof(*work));
+		work = calloc(1, sizeof(*work));
 
 		if (i < WORK_ITEMS_NR / 2)
 			wt = WT_ORD1;

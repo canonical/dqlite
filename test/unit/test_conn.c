@@ -14,6 +14,7 @@
 #include "../../src/lib/transport.h"
 #include "../../src/raft.h"
 #include "../../src/transport.h"
+#include "src/lib/threadpool.h"
 
 TEST_MODULE(conn);
 
@@ -50,6 +51,10 @@ static void connCloseCb(struct conn *conn)
 	SETUP_CONFIG;                                                  \
 	SETUP_REGISTRY;                                                \
 	SETUP_RAFT;                                                    \
+	rv = pool_init(pool_ut_fallback(),			       \
+		       &f->loop, 4, POOL_QOS_PRIO_FAIR);	       \
+	pool_ut_fallback()->flags |= POOL_FOR_UT;		       \
+	munit_assert_int(rv, ==, 0);				       \
 	SETUP_CLIENT;                                                  \
 	RAFT_BOOTSTRAP;                                                \
 	RAFT_START;                                                    \
@@ -63,6 +68,8 @@ static void connCloseCb(struct conn *conn)
 	munit_assert_int(rv, ==, 0)
 
 #define TEAR_DOWN                         \
+	pool_close(pool_ut_fallback());	          \
+	pool_fini(pool_ut_fallback());	          \
 	conn__stop(&f->conn);             \
 	while (!f->closed) {              \
 		test_uv_run(&f->loop, 1); \
@@ -346,6 +353,8 @@ TEST_CASE(exec, close_while_in_flight, NULL)
 	munit_assert_int(rv, ==, 0);
 
 	test_uv_run(&f->loop, 1);
+
+	pool_ut_fallback()->flags |= POOL_FOR_UT_NON_CLEAN_FINI;
 
 	return MUNIT_OK;
 }

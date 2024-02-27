@@ -9,6 +9,7 @@
 #include <stdbool.h>
 
 #include "./lib/queue.h"
+#include "lib/threadpool.h"
 #include "db.h"
 #include "raft.h"
 
@@ -68,6 +69,8 @@ struct exec
 	int status;
 	queue queue;
 	exec_cb cb;
+	pool_work_t work;
+	int rc;
 };
 
 /**

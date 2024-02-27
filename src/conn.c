@@ -5,6 +5,8 @@
 #include "tracing.h"
 #include "transport.h"
 
+#include <uv.h>
+
 /* Initialize the given buffer for reading, ensure it has the given size. */
 static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
 {
@@ -298,7 +300,7 @@ int conn__start(struct conn *c,
 		conn_close_cb close_cb)
 {
 	int rv;
-	(void)loop;
+	(void) loop;
 	tracef("conn start");
 	rv = transport__init(&c->transport, stream);
 	if (rv != 0) {

@@ -16,6 +16,7 @@
 #include "logger.h"
 #include "protocol.h"
 #include "roles.h"
+#include "src/lib/threadpool.h"
 #include "tracing.h"
 #include "translate.h"
 #include "transport.h"
@@ -81,6 +82,7 @@ int dqlite__init(struct dqlite_node *d,
 		goto err_after_config_init;
 	}
 	registry__init(&d->registry, &d->config);
+
 	rv = uv_loop_init(&d->loop);
 	if (rv != 0) {
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE,
@@ -88,9 +90,16 @@ int dqlite__init(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto err_after_vfs_init;
 	}
+	rv = pool_init(&d->pool, &d->loop, 4, POOL_QOS_PRIO_FAIR);
+	if (rv != 0) {
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE,
+			 "pool_init(): %s", uv_strerror(rv));
+		rv = DQLITE_ERROR;
+		goto err_after_loop_init;
+	}
 	rv = raftProxyInit(&d->raft_transport, &d->loop);
 	if (rv != 0) {
-		goto err_after_loop_init;
+		goto err_after_pool_init;
 	}
 	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
 	if (rv != 0) {
@@ -172,6 +181,10 @@ err_after_raft_io_init:
 	raft_uv_close(&d->raft_io);
 err_after_raft_transport_init:
 	raftProxyClose(&d->raft_transport);
+err_after_pool_init:
+	/* TODO: check if this is a proper place to close the pool */
+	pool_close(&d->pool);
+	pool_fini(&d->pool);
 err_after_loop_init:
 	uv_loop_close(&d->loop);
 err_after_vfs_init:
@@ -199,6 +212,10 @@ void dqlite__close(struct dqlite_node *d)
 	// TODO assert rv of uv_loop_close after fixing cleanup logic related to
 	// the TODO above referencing the cleanup logic without running the
 	// node. See https://github.com/canonical/dqlite/issues/504.
+
+	/* TODO: check if this is a proper place to close the pool */
+	/* pool_close(&d->pool); */
+	pool_fini(&d->pool);
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
@@ -533,6 +550,7 @@ static void stopCb(uv_async_t *stop)
 		tracef("not running or already stopped");
 		return;
 	}
+	pool_close(&d->pool);
 	if (d->role_management) {
 		rv = uv_timer_stop(&d->timer);
 		assert(rv == 0);
@@ -643,7 +661,7 @@ static void listenCb(uv_stream_t *listener, int status)
 	if (conn == NULL) {
 		goto err;
 	}
-	rv = conn__start(conn, &t->config, &t->loop, &t->registry, &t->raft,
+	rv = conn__start(conn, &t->config, /* &t->loop TP_TODO! */ NULL, &t->registry, &t->raft,
 			 stream, &t->raft_transport, seed, destroy_conn);
 	if (rv != 0) {
 		goto err_after_conn_alloc;

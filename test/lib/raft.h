@@ -15,6 +15,8 @@
 #include "munit.h"
 #include "uv.h"
 
+#include "../../src/lib/threadpool.h"
+
 #define FIXTURE_RAFT                             \
 	char *dir;                               \
 	struct uv_loop_s loop;                   \

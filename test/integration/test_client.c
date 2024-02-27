@@ -23,12 +23,14 @@ struct fixture
 {
 	struct test_server server;
 	struct client_proto *client;
+	struct rows rows;
 };
 
 static void *setUp(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	(void)user_data;
+	f->rows = (struct rows){};
 	test_heap_setup(params, user_data);
 	test_sqlite_setup(params);
 	test_server_setup(&f->server, 1, params);
@@ -46,6 +48,7 @@ static void tearDown(void *data)
 	test_sqlite_tear_down();
 	test_heap_tear_down(data);
 
+	clientCloseRows(&f->rows);
 	free(f);
 }
 
@@ -99,8 +102,9 @@ TEST(client, query, setUp, tearDown, 0, client_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 	unsigned i;
-	struct rows rows;
+	//struct rows rows;
 	(void)params;
+
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
@@ -116,9 +120,9 @@ TEST(client, query, setUp, tearDown, 0, client_params)
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
 	PREPARE("SELECT n FROM test", &stmt_id);
-	QUERY(stmt_id, &rows);
+	QUERY(stmt_id, &f->rows);
 
-	clientCloseRows(&rows);
+	//clientCloseRows(&rows);
 
 	return MUNIT_OK;
 }
@@ -130,7 +134,7 @@ TEST(client, querySql, setUp, tearDown, 0, client_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 	unsigned i;
-	struct rows rows;
+	//struct rows rows;
 	(void)params;
 	EXEC_SQL("CREATE TABLE test (n INT)", &last_insert_id, &rows_affected);
 
@@ -143,9 +147,9 @@ TEST(client, querySql, setUp, tearDown, 0, client_params)
 
 	EXEC_SQL("COMMIT", &last_insert_id, &rows_affected);
 
-	QUERY_SQL("SELECT n FROM test", &rows);
+	QUERY_SQL("SELECT n FROM test", &f->rows);
 
-	clientCloseRows(&rows);
+	//clientCloseRows(&rows);
 
 	return MUNIT_OK;
 }

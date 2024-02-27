@@ -70,10 +70,23 @@ struct pool_work_s
 struct pool_s
 {
 	struct pool_impl *pi;
+    	int flags;
 };
 
 enum {
 	POOL_QOS_PRIO_FAIR = 2,
+
+	POOL_TOP_HALF = 0x109,
+	POOL_BOTTOM_HALF = 0xb01103,
+
+	/**
+	 * Setting POOL_FOR_UT_NON_CLEAN_FINI relaxes pool's invariant during
+	 * the finalization w.r.t. to pass a few tests checking failures with
+	 * non-clean unit-test termination.
+	 */
+	POOL_FOR_UT_NON_CLEAN_FINI = 1u << 0,
+	POOL_FOR_UT_NOT_ASYNC      = 1u << 1,
+	POOL_FOR_UT                = 1u << 2,
 };
 
 int pool_init(pool_t *pool,
@@ -88,5 +101,7 @@ void pool_queue_work(pool_t *pool,
 		     enum pool_work_type type,
 		     void (*work_cb)(pool_work_t *w),
 		     void (*after_work_cb)(pool_work_t *w));
+
+pool_t *pool_ut_fallback(void);
 
 #endif /* __THREAD_POOL__ */

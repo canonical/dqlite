@@ -12,6 +12,7 @@
 #include "logger.h"
 #include "raft.h"
 #include "registry.h"
+#include "lib/threadpool.h"
 
 #define DQLITE_ERRMSG_BUF_SIZE 300
 
@@ -27,6 +28,7 @@ struct dqlite_node
 	struct sqlite3_vfs vfs;                  /* In-memory VFS */
 	struct registry registry;                /* Databases */
 	struct uv_loop_s loop;                   /* UV loop */
+	struct pool_s pool;			 /* Thread pool */
 	struct raft_uv_transport raft_transport; /* Raft libuv transport */
 	struct raft_io raft_io;                  /* libuv I/O */
 	struct raft_fsm raft_fsm;                /* dqlite FSM */

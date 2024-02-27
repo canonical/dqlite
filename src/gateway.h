@@ -106,6 +106,10 @@ struct handle
 	/* Callback that will be invoked at the end of request processing to
 	 * write the response. */
 	handle_cb cb;
+	/* TP_TODO! */
+	pool_work_t work;
+	int rc;
+	struct gateway *gw;
 };
 
 /**

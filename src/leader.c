@@ -5,10 +5,15 @@
 #include "./lib/assert.h"
 
 #include "command.h"
+#include "conn.h"
+#include "gateway.h"
 #include "id.h"
 #include "leader.h"
+#include "lib/threadpool.h"
 #include "tracing.h"
+#include "utils.h"
 #include "vfs.h"
+#include "server.h"
 
 /* Called when a leader exec request terminates and the associated callback can
  * be invoked. */
@@ -346,7 +351,7 @@ err:
 	return rv;
 }
 
-static void leaderExecV2(struct exec *req)
+static void leaderExecV2(struct exec *req, int half)
 {
 	tracef("leader exec v2 id:%" PRIu64, req->id);
 	struct leader *l = req->leader;
@@ -358,7 +363,11 @@ static void leaderExecV2(struct exec *req)
 	unsigned i;
 	int rv;
 
-	req->status = sqlite3_step(req->stmt);
+	if (half == POOL_TOP_HALF) {
+		req->status = sqlite3_step(req->stmt);
+		return;
+	}
+	// else POOL_TOP_HALF =>
 
 	rv = VfsPoll(vfs, db->path, &frames, &n);
 	if (rv != 0 || n == 0) {
@@ -398,17 +407,35 @@ finish:
 	leaderExecDone(l->exec);
 }
 
+static void top(pool_work_t *w)
+{
+	struct exec *req = CONTAINER_OF(w, struct exec, work);
+	leaderExecV2(req, POOL_TOP_HALF);
+}
+
+static void bottom(pool_work_t *w)
+{
+	struct exec *req = CONTAINER_OF(w, struct exec, work);
+	leaderExecV2(req, POOL_BOTTOM_HALF);
+}
+
 static void execBarrierCb(struct barrier *barrier, int status)
 {
 	tracef("exec barrier cb status %d", status);
 	struct exec *req = barrier->data;
 	struct leader *l = req->leader;
+	struct dqlite_node *node = l->raft->data;
+
 	if (status != 0) {
 		l->exec->status = status;
 		leaderExecDone(l->exec);
 		return;
 	}
-	leaderExecV2(req);
+
+
+	pool_queue_work(!!(pool_ut_fallback()->flags & POOL_FOR_UT)
+			? pool_ut_fallback() : &node->pool,
+			&req->work, 0xbad00b01, WT_UNORD, top, bottom);
 }
 
 int leader__exec(struct leader *l,
@@ -431,6 +458,8 @@ int leader__exec(struct leader *l,
 	req->cb = cb;
 	req->barrier.data = req;
 	req->barrier.cb = NULL;
+	req->work = (pool_work_t){};
+	req->rc = -EAGAIN;
 
 	rv = leader__barrier(l, &req->barrier, execBarrierCb);
 	if (rv != 0) {

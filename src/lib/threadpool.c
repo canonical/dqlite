@@ -122,6 +122,11 @@ struct pool_impl {
 	uint32_t qos_prio;      /* QoS prio */
 };
 
+static inline bool pool_is_inited(const pool_t *pool)
+{
+	return pool->pi != NULL;
+}
+
 static inline bool has_active_ws(pool_t *pool)
 {
 	return pool->pi->active_ws > 0;
@@ -200,18 +205,17 @@ static bool planner_invariant(const struct sm *m, int prev_state)
 	queue *u = &pi->unordered;
 
 	return ERGO(sm_state(m) == PS_NOTHING, empty(o) && empty(u)) &&
-	       ERGO(sm_state(m) == PS_DRAINING,
-		    ERGO(prev_state == PS_BARRIER,
-			 pi->ord_in_flight == 0 && empty(u)) &&
-			ERGO(prev_state == PS_NOTHING,
-			     !empty(u) || !empty(o))) &&
-	       ERGO(sm_state(m) == PS_EXITED,
-		    pi->exiting && empty(o) && empty(u)) &&
-	       ERGO(
-		   sm_state(m) == PS_BARRIER,
-		   ERGO(prev_state == PS_DRAINING, q_type(head(o)) == WT_BAR) &&
-		       ERGO(prev_state == PS_DRAINING_UNORD, empty(u))) &&
-	       ERGO(sm_state(m) == PS_DRAINING_UNORD, !empty(u));
+	    ERGO(sm_state(m) == PS_DRAINING,
+		 ERGO(prev_state == PS_BARRIER,
+		      pi->ord_in_flight == 0 && empty(u)) &&
+		 ERGO(prev_state == PS_NOTHING,
+		      !empty(u) || !empty(o))) &&
+	    ERGO(sm_state(m) == PS_EXITED,
+		 pi->exiting && empty(o) && empty(u)) &&
+	    ERGO(sm_state(m) == PS_BARRIER,
+		 ERGO(prev_state == PS_DRAINING, q_type(head(o)) == WT_BAR) &&
+		 ERGO(prev_state == PS_DRAINING_UNORD, empty(u))) &&
+	    ERGO(sm_state(m) == PS_DRAINING_UNORD, !empty(u));
 }
 
 static void planner(void *arg)
@@ -237,7 +241,8 @@ static void planner(void *arg)
 					uv_cond_wait(&pi->planner_cond, mutex);
 				}
 				sm_move(planner_sm,
-					pi->exiting ? PS_EXITED : PS_DRAINING);
+					pi->exiting && empty(o) && empty(u)
+					? PS_EXITED : PS_DRAINING);
 				break;
 			case PS_DRAINING:
 				while (!(empty(o) && empty(u))) {
@@ -477,8 +482,16 @@ void pool_queue_work(pool_t *pool,
 		     void (*work_cb)(pool_work_t *w),
 		     void (*after_work_cb)(pool_work_t *w))
 {
+	PRE(memcmp(w, &(pool_work_t){}, sizeof *w) == 0);
 	PRE(work_cb != NULL && type < WT_NR);
 
+	if (!!(pool->flags & POOL_FOR_UT_NOT_ASYNC)) {
+		work_cb(w);
+		after_work_cb(w);
+		return;
+	}
+
+	PRE(pool_is_inited(pool));
 	*w = (pool_work_t){
 		.pool = pool,
 		.type = type,
@@ -486,6 +499,7 @@ void pool_queue_work(pool_t *pool,
 		.work_cb = work_cb,
 		.after_work_cb = after_work_cb,
 	};
+
 	w_register(pool, w);
 	pool_work_submit(pool, w);
 }
@@ -500,6 +514,7 @@ int pool_init(pool_t *pool,
 
 	PRE(threads_nr <= THREADPOOL_SIZE_MAX);
 
+	pool->flags = 0x0;
 	pi = pool->pi = calloc(1, sizeof(*pool->pi));
 	if (pi == NULL) {
 		return UV_ENOMEM;
@@ -541,7 +556,8 @@ void pool_fini(pool_t *pool)
 	pool_cleanup(pool);
 
 	uv_mutex_lock(&pi->outq_mutex);
-	POST(empty(&pi->outq) && !has_active_ws(pool));
+	POST(!!(pool->flags & POOL_FOR_UT_NON_CLEAN_FINI) ||
+	     (empty(&pi->outq) && !has_active_ws(pool)));
 	uv_mutex_unlock(&pi->outq_mutex);
 
 	uv_mutex_destroy(&pi->outq_mutex);
@@ -551,4 +567,10 @@ void pool_fini(pool_t *pool)
 void pool_close(pool_t *pool)
 {
 	uv_close((uv_handle_t *)&pool->pi->outq_async, NULL);
+}
+
+pool_t *pool_ut_fallback(void)
+{
+	static pool_t pool;
+	return &pool;
 }
