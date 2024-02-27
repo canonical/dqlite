@@ -54,6 +54,7 @@ int config__init(struct config *c,
 	c->disk = false;
 	c->voters = 3;
 	c->standbys = 0;
+	c->pool_thread_count = 4;
 	serial++;
 	return 0;
 }

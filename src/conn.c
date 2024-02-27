@@ -5,6 +5,8 @@
 #include "tracing.h"
 #include "transport.h"
 
+#include <uv.h>
+
 /* Initialize the given buffer for reading, ensure it has the given size. */
 static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
 {

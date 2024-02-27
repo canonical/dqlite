@@ -1,9 +1,11 @@
 #include "server.h"
 
 #include <errno.h>
+#include <sched.h>
 #include <stdlib.h>
 #include <sys/un.h>
 #include <time.h>
+#include <uv.h>
 
 #include "../include/dqlite.h"
 #include "client/protocol.h"
@@ -13,6 +15,7 @@
 #include "lib/addr.h"
 #include "lib/assert.h"
 #include "lib/fs.h"
+#include "lib/threadpool.h"
 #include "logger.h"
 #include "protocol.h"
 #include "roles.h"
@@ -81,6 +84,7 @@ int dqlite__init(struct dqlite_node *d,
 		goto err_after_config_init;
 	}
 	registry__init(&d->registry, &d->config);
+
 	rv = uv_loop_init(&d->loop);
 	if (rv != 0) {
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE,
@@ -88,9 +92,17 @@ int dqlite__init(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto err_after_vfs_init;
 	}
+	rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count,
+		       POOL_QOS_PRIO_FAIR);
+	if (rv != 0) {
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "pool_init(): %s",
+			 uv_strerror(rv));
+		rv = DQLITE_ERROR;
+		goto err_after_loop_init;
+	}
 	rv = raftProxyInit(&d->raft_transport, &d->loop);
 	if (rv != 0) {
-		goto err_after_loop_init;
+		goto err_after_pool_init;
 	}
 	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
 	if (rv != 0) {
@@ -110,7 +122,8 @@ int dqlite__init(struct dqlite_node *d,
 	if (rv != 0) {
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_init(): %s",
 			 raft_errmsg(&d->raft));
-		return DQLITE_ERROR;
+		rv = DQLITE_ERROR;
+		goto err;
 	}
 	/* TODO: expose these values through some API */
 	raft_set_election_timeout(&d->raft, 3000);
@@ -172,6 +185,9 @@ err_after_raft_io_init:
 	raft_uv_close(&d->raft_io);
 err_after_raft_transport_init:
 	raftProxyClose(&d->raft_transport);
+err_after_pool_init:
+	pool_close(&d->pool);
+	pool_fini(&d->pool);
 err_after_loop_init:
 	uv_loop_close(&d->loop);
 err_after_vfs_init:
@@ -199,6 +215,8 @@ void dqlite__close(struct dqlite_node *d)
 	// TODO assert rv of uv_loop_close after fixing cleanup logic related to
 	// the TODO above referencing the cleanup logic without running the
 	// node. See https://github.com/canonical/dqlite/issues/504.
+
+	pool_fini(&d->pool);
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
@@ -533,6 +551,7 @@ static void stopCb(uv_async_t *stop)
 		tracef("not running or already stopped");
 		return;
 	}
+	pool_close(&d->pool);
 	if (d->role_management) {
 		rv = uv_timer_stop(&d->timer);
 		assert(rv == 0);
@@ -753,6 +772,12 @@ int dqlite_node_set_snapshot_compression(dqlite_node *n, bool enabled)
 int dqlite_node_set_auto_recovery(dqlite_node *n, bool enabled)
 {
 	raft_uv_set_auto_recovery(&n->raft_io, enabled);
+	return 0;
+}
+
+int dqlite_node_set_pool_thread_count(dqlite_node *n, unsigned thread_count)
+{
+	n->config.pool_thread_count = thread_count;
 	return 0;
 }
 
@@ -1317,7 +1342,7 @@ int dqlite_server_set_auto_join(dqlite_server *server,
 	 * connect to. Once we've done that, we immediately fetch a fresh list
 	 * of cluster members that includes ID and role information, and clear
 	 * away the temporary node store cache. */
-	struct client_node_info info = {0};
+	struct client_node_info info = { 0 };
 	unsigned i;
 
 	for (i = 0; i < n; i += 1) {
