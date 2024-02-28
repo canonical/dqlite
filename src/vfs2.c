@@ -269,15 +269,12 @@ static bool region0_mapped(struct vfs2_db *db)
 
 static bool no_pending_txn(struct vfs2_wal *wal)
 {
-	return /* wal->pending_txn_start == 0
-		&& */ wal->pending_txn_len == 0
-		&& wal->pending_txn_frames == NULL;
+	return wal->pending_txn_len == 0 && wal->pending_txn_frames == NULL;
 }
 
 static bool have_pending_txn(struct vfs2_wal *wal)
 {
-	return wal->pending_txn_len > 0
-		&& wal->pending_txn_frames != NULL;
+	return wal->pending_txn_len > 0 && wal->pending_txn_frames != NULL;
 }
 
 static bool write_lock_held(struct vfs2_db *db)
@@ -287,7 +284,7 @@ static bool write_lock_held(struct vfs2_db *db)
 
 static bool wal_index_hdr_fresh(const struct vfs2_wal_index_full_hdr *hdr)
 {
-	/* TODO check other things here */
+	/* TODO check other things here? */
 	return hdr->basic[0].mxFrame == 0;
 }
 
@@ -343,9 +340,8 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(region0_mapped(db_shm));
 		CHECK(write_lock_held(db_shm));
 
-		// struct vfs2_wal_index_full_hdr *hdr = get_full_hdr(db_shm);
-		// XXX this doesn't quite work
-		// CHECK(wal_index_basic_hdr_advanced(hdr->basic[0], db_shm->prev_txn_hdr));
+		struct vfs2_wal_index_full_hdr *hdr = get_full_hdr(db_shm);
+		CHECK(wal_index_basic_hdr_equal(hdr->basic[0], db_shm->prev_txn_hdr) || wal_index_basic_hdr_advanced(hdr->basic[0], db_shm->prev_txn_hdr));
 		CHECK(wal_index_basic_hdr_equal(db_shm->pending_txn_hdr, zeroed_basic_hdr));
 
 		if (prev == WTX_INITIAL) {
@@ -691,16 +687,16 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg)
 	assert(xfile->flags & SQLITE_OPEN_MAIN_DB);
 
 	if (op == SQLITE_FCNTL_COMMIT_PHASETWO) {
-		/* Hide the transaction that was just written by resetting
-		 * the WAL index header. */
-		if (xfile->db_shm.regions_len == 0) {
+		/* If no frames have been written to the WAL, this is a no-op. */
+		if (xfile->entry->wal == NULL || xfile->entry->wal->wal.pending_txn_len == 0) {
 			goto forward;
 		}
-		union vfs2_shm_region0 *region0 = xfile->db_shm.regions[0];
-		xfile->db_shm.pending_txn_hdr = region0->hdr.basic[0];
-		region0->hdr.basic[0] = xfile->db_shm.prev_txn_hdr;
-		region0->hdr.basic[1] = region0->hdr.basic[0];
-
+		/* Else hide the transaction that was just written by resetting
+		 * the WAL index header. */
+		struct vfs2_wal_index_full_hdr *hdr = get_full_hdr(&xfile->db_shm);
+		xfile->db_shm.pending_txn_hdr = hdr->basic[0];
+		hdr->basic[0] = xfile->db_shm.prev_txn_hdr;
+		hdr->basic[1] = hdr->basic[0];
 		sm_move(&xfile->entry->wtx_sm, WTX_HIDDEN);
 	} else if (op == SQLITE_FCNTL_PRAGMA) {
 		char **args = arg;
