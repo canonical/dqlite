@@ -895,6 +895,9 @@ int dqlite_node_stop(dqlite_node *d)
 	void *result;
 	int rv;
 
+	/* NOTE: trying to find a proper place to wait on CI */
+	sleep(3);
+
 	rv = uv_async_send(&d->stop);
 	assert(rv == 0);
 
