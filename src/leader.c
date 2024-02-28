@@ -10,10 +10,10 @@
 #include "id.h"
 #include "leader.h"
 #include "lib/threadpool.h"
+#include "server.h"
 #include "tracing.h"
 #include "utils.h"
 #include "vfs.h"
-#include "server.h"
 
 /* Called when a leader exec request terminates and the associated callback can
  * be invoked. */
@@ -432,9 +432,9 @@ static void execBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-
 	pool_queue_work(!!(pool_ut_fallback()->flags & POOL_FOR_UT)
-			? pool_ut_fallback() : &node->pool,
+			    ? pool_ut_fallback()
+			    : &node->pool,
 			&req->work, 0xbad00b01, WT_UNORD, top, bottom);
 }
 

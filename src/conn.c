@@ -300,7 +300,7 @@ int conn__start(struct conn *c,
 		conn_close_cb close_cb)
 {
 	int rv;
-	(void) loop;
+	(void)loop;
 	tracef("conn start");
 	rv = transport__init(&c->transport, stream);
 	if (rv != 0) {

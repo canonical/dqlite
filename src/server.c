@@ -92,8 +92,8 @@ int dqlite__init(struct dqlite_node *d,
 	}
 	rv = pool_init(&d->pool, &d->loop, 4, POOL_QOS_PRIO_FAIR);
 	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE,
-			 "pool_init(): %s", uv_strerror(rv));
+		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "pool_init(): %s",
+			 uv_strerror(rv));
 		rv = DQLITE_ERROR;
 		goto err_after_loop_init;
 	}
@@ -661,7 +661,7 @@ static void listenCb(uv_stream_t *listener, int status)
 	if (conn == NULL) {
 		goto err;
 	}
-	rv = conn__start(conn, &t->config, /* &t->loop TP_TODO! */ NULL, &t->registry, &t->raft,
+	rv = conn__start(conn, &t->config, &t->loop, &t->registry, &t->raft,
 			 stream, &t->raft_transport, seed, destroy_conn);
 	if (rv != 0) {
 		goto err_after_conn_alloc;
@@ -1335,7 +1335,7 @@ int dqlite_server_set_auto_join(dqlite_server *server,
 	 * connect to. Once we've done that, we immediately fetch a fresh list
 	 * of cluster members that includes ID and role information, and clear
 	 * away the temporary node store cache. */
-	struct client_node_info info = {0};
+	struct client_node_info info = { 0 };
 	unsigned i;
 
 	for (i = 0; i < n; i += 1) {

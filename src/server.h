@@ -9,18 +9,17 @@
 #include "config.h"
 #include "id.h"
 #include "lib/assert.h"
+#include "lib/threadpool.h"
 #include "logger.h"
 #include "raft.h"
 #include "registry.h"
-#include "lib/threadpool.h"
 
 #define DQLITE_ERRMSG_BUF_SIZE 300
 
 /**
  * A single dqlite server instance.
  */
-struct dqlite_node
-{
+struct dqlite_node {
 	bool initialized; /* dqlite__init succeeded */
 
 	pthread_t thread;                        /* Main run loop thread. */
@@ -28,7 +27,7 @@ struct dqlite_node
 	struct sqlite3_vfs vfs;                  /* In-memory VFS */
 	struct registry registry;                /* Databases */
 	struct uv_loop_s loop;                   /* UV loop */
-	struct pool_s pool;			 /* Thread pool */
+	struct pool_s pool;                      /* Thread pool */
 	struct raft_uv_transport raft_transport; /* Raft libuv transport */
 	struct raft_io raft_io;                  /* libuv I/O */
 	struct raft_fsm raft_fsm;                /* dqlite FSM */
@@ -61,15 +60,13 @@ struct dqlite_node
 
 /* Dynamic array of node info objects. This is the in-memory representation of
  * the node store. */
-struct node_store_cache
-{
+struct node_store_cache {
 	struct client_node_info *nodes; /* owned */
 	unsigned len;
 	unsigned cap;
 };
 
-struct dqlite_server
-{
+struct dqlite_server {
 	/* Threading stuff: */
 	pthread_cond_t cond;
 	pthread_mutex_t mutex;

@@ -17,8 +17,7 @@ TEST_MODULE(concurrency);
 #define N_GATEWAYS 2
 
 /* Context for a gateway handle request */
-struct context
-{
+struct context {
 	bool invoked;
 	int status;
 	uint8_t type;
@@ -26,8 +25,7 @@ struct context
 };
 
 /* Standalone leader database connection */
-struct connection
-{
+struct connection {
 	struct gateway gateway;
 	struct buffer request;  /* Request payload */
 	struct buffer response; /* Response payload */
@@ -42,7 +40,7 @@ struct connection
 #define SETUP                                                              \
 	unsigned i;                                                        \
 	int rc;                                                            \
-	pool_ut_fallback()->flags |= POOL_FOR_UT_NOT_ASYNC;		   \
+	pool_ut_fallback()->flags |= POOL_FOR_UT_NOT_ASYNC;                \
 	pool_ut_fallback()->flags |= POOL_FOR_UT;                          \
 	SETUP_CLUSTER(V2);                                                 \
 	CLUSTER_ELECT(0);                                                  \
@@ -50,7 +48,7 @@ struct connection
 		struct connection *c = &f->connections[i];                 \
 		struct request_open open;                                  \
 		struct response_db db;                                     \
-		struct id_state seed = {{1}};                              \
+		struct id_state seed = { { 1 } };                          \
 		gateway__init(&c->gateway, CLUSTER_CONFIG(0),              \
 			      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0), seed); \
 		c->handle.data = &c->context;                              \
@@ -212,8 +210,7 @@ static void fixture_handle_cb(struct handle *req,
  *
  ******************************************************************************/
 
-struct exec_fixture
-{
+struct exec_fixture {
 	FIXTURE;
 	struct connection *c1;
 	struct connection *c2;
@@ -289,8 +286,7 @@ TEST_CASE(exec, tx, NULL)
  *
  ******************************************************************************/
 
-struct query_fixture
-{
+struct query_fixture {
 	FIXTURE;
 	struct connection *c1;
 	struct connection *c2;

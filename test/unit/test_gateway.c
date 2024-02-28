@@ -17,8 +17,7 @@ TEST_MODULE(gateway);
  ******************************************************************************/
 
 /* Context for a gateway handle request. */
-struct context
-{
+struct context {
 	bool invoked;
 	int status;
 	uint8_t type;
@@ -27,8 +26,7 @@ struct context
 
 /* Drive a single gateway. Each gateway is associated with a different raft
  * node. */
-struct connection
-{
+struct connection {
 	struct gateway gateway;
 	struct buffer buf1;   /* Request payload */
 	struct buffer buf2;   /* Response payload */
@@ -54,7 +52,7 @@ struct connection
 	for (i = 0; i < N_SERVERS; i++) {                               \
 		struct connection *c = &f->connections[i];              \
 		struct config *config;                                  \
-		struct id_state seed = {{1}};                           \
+		struct id_state seed = { { 1 } };                       \
 		config = CLUSTER_CONFIG(i);                             \
 		config->page_size = 512;                                \
 		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
@@ -66,8 +64,8 @@ struct connection
 		munit_assert_int(rc, ==, 0);                            \
 	}                                                               \
 	test_raft_heap_setup(params, user_data);                        \
-	pool_ut_fallback()->flags |= POOL_FOR_UT_NOT_ASYNC;		\
-	pool_ut_fallback()->flags |= POOL_FOR_UT;			\
+	pool_ut_fallback()->flags |= POOL_FOR_UT_NOT_ASYNC;             \
+	pool_ut_fallback()->flags |= POOL_FOR_UT;                       \
 	SELECT(0)
 
 #define TEAR_DOWN                                          \
@@ -318,8 +316,7 @@ static void handleCb(struct handle *req,
  *
  ******************************************************************************/
 
-struct leader_fixture
-{
+struct leader_fixture {
 	FIXTURE;
 	struct request_leader request;
 	struct response_server response;
@@ -387,8 +384,7 @@ TEST_CASE(leader, other_node, NULL)
  *
  ******************************************************************************/
 
-struct open_fixture
-{
+struct open_fixture {
 	FIXTURE;
 	struct request_open request;
 	struct response_db response;
@@ -449,8 +445,7 @@ TEST_CASE(open, error, twice, NULL)
  *
  ******************************************************************************/
 
-struct prepare_fixture
-{
+struct prepare_fixture {
 	FIXTURE;
 	struct request_prepare request;
 	struct response_stmt response;
@@ -633,8 +628,8 @@ TEST_CASE(prepare, comment_in_tail, NULL)
 TEST_CASE(prepare, nonempty_tail_v1, NULL)
 {
 	struct prepare_fixture *f = data;
-	struct response_stmt_with_offset response = {0};
-	struct request_exec exec = {0};
+	struct response_stmt_with_offset response = { 0 };
+	struct request_exec exec = { 0 };
 	uint64_t offset;
 	int rc;
 
@@ -683,8 +678,7 @@ TEST_CASE(prepare, nonempty_tail_v1, NULL)
  *
  ******************************************************************************/
 
-struct exec_fixture
-{
+struct exec_fixture {
 	FIXTURE;
 	struct request_exec request;
 	struct response_result response;
@@ -760,7 +754,7 @@ TEST_CASE(exec, blob, NULL)
 	struct exec_fixture *f = data;
 	struct request_query query;
 	struct value value;
-	char buf[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
+	char buf[8] = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h' };
 	uint64_t stmt_id;
 	uint64_t n;
 	const char *column;
@@ -1209,8 +1203,7 @@ TEST_CASE(exec, unexpectedRow, NULL)
  *
  ******************************************************************************/
 
-struct query_fixture
-{
+struct query_fixture {
 	FIXTURE;
 	struct request_query request;
 	struct response_rows response;
@@ -1644,8 +1637,7 @@ TEST_CASE(query, manyParams, NULL)
  *
  ******************************************************************************/
 
-struct finalize_fixture
-{
+struct finalize_fixture {
 	FIXTURE;
 	struct request_finalize request;
 	struct response_empty response;
@@ -1688,8 +1680,7 @@ TEST_CASE(finalize, success, NULL)
  *
  ******************************************************************************/
 
-struct exec_sql_fixture
-{
+struct exec_sql_fixture {
 	FIXTURE;
 	struct request_exec_sql request;
 	struct response_result response;
@@ -1879,8 +1870,7 @@ TEST_CASE(exec_sql, manyParams, NULL)
  *
  ******************************************************************************/
 
-struct query_sql_fixture
-{
+struct query_sql_fixture {
 	FIXTURE;
 	struct request_query_sql request;
 	struct response_rows response;
@@ -2267,8 +2257,7 @@ TEST_CASE(query_sql, nonemptyTail, NULL)
  *
  ******************************************************************************/
 
-struct request_cluster_fixture
-{
+struct request_cluster_fixture {
 	FIXTURE;
 	struct request_cluster request;
 	struct response_servers response;
@@ -2308,8 +2297,7 @@ TEST_CASE(request_cluster, unrecognizedFormat, NULL)
  *
  ******************************************************************************/
 
-struct invalid_fixture
-{
+struct invalid_fixture {
 	FIXTURE;
 	struct request_leader request;
 	struct response_server response;

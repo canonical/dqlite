@@ -12,15 +12,14 @@
 
 SUITE(client);
 
-static char *bools[] = {"0", "1", NULL};
+static char *bools[] = { "0", "1", NULL };
 
 static MunitParameterEnum client_params[] = {
-    {"disk_mode", bools},
-    {NULL, NULL},
+	{ "disk_mode", bools },
+	{ NULL, NULL },
 };
 
-struct fixture
-{
+struct fixture {
 	struct test_server server;
 	struct client_proto *client;
 	struct rows rows;
@@ -70,7 +69,7 @@ TEST(client, execWithOneParam, setUp, tearDown, 0, client_params)
 	uint32_t stmt_id;
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
-	struct value param = {0};
+	struct value param = { 0 };
 	int rv;
 	(void)params;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
@@ -102,7 +101,6 @@ TEST(client, query, setUp, tearDown, 0, client_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 	unsigned i;
-	//struct rows rows;
 	(void)params;
 
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
@@ -122,8 +120,6 @@ TEST(client, query, setUp, tearDown, 0, client_params)
 	PREPARE("SELECT n FROM test", &stmt_id);
 	QUERY(stmt_id, &f->rows);
 
-	//clientCloseRows(&rows);
-
 	return MUNIT_OK;
 }
 
@@ -134,7 +130,6 @@ TEST(client, querySql, setUp, tearDown, 0, client_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 	unsigned i;
-	//struct rows rows;
 	(void)params;
 	EXEC_SQL("CREATE TABLE test (n INT)", &last_insert_id, &rows_affected);
 
@@ -148,8 +143,6 @@ TEST(client, querySql, setUp, tearDown, 0, client_params)
 	EXEC_SQL("COMMIT", &last_insert_id, &rows_affected);
 
 	QUERY_SQL("SELECT n FROM test", &f->rows);
-
-	//clientCloseRows(&rows);
 
 	return MUNIT_OK;
 }

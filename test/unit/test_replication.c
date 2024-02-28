@@ -17,15 +17,13 @@ TEST_MODULE(replication_v1);
 	struct leader leaders[N_SERVERS]; \
 	sqlite3_stmt *stmt;
 
-#define SETUP                             \
-	unsigned i;                       \
-	pool_ut_fallback()->flags |=	  \
-	    POOL_FOR_UT_NOT_ASYNC;	  \
-	pool_ut_fallback()->flags |=	  \
-	    POOL_FOR_UT;		  \
-	SETUP_CLUSTER(V2)                 \
-	for (i = 0; i < N_SERVERS; i++) { \
-		SETUP_LEADER(i);          \
+#define SETUP                                               \
+	unsigned i;                                         \
+	pool_ut_fallback()->flags |= POOL_FOR_UT_NOT_ASYNC; \
+	pool_ut_fallback()->flags |= POOL_FOR_UT;           \
+	SETUP_CLUSTER(V2)                                   \
+	for (i = 0; i < N_SERVERS; i++) {                   \
+		SETUP_LEADER(i);                            \
 	}
 
 #define SETUP_LEADER(I)                                           \
@@ -136,8 +134,7 @@ TEST_MODULE(replication_v1);
  *
  ******************************************************************************/
 
-struct init_fixture
-{
+struct init_fixture {
 	FIXTURE;
 };
 
@@ -174,8 +171,7 @@ TEST_CASE(init, conn, NULL)
  *
  ******************************************************************************/
 
-struct exec_fixture
-{
+struct exec_fixture {
 	FIXTURE;
 	struct exec req;
 	bool invoked;
@@ -316,8 +312,7 @@ TEST_CASE(exec, checkpoint_read_lock, NULL)
  *
  ******************************************************************************/
 
-struct fixture
-{
+struct fixture {
 	FIXTURE_CLUSTER;
 	struct leader leaders[N_SERVERS];
 	sqlite3_stmt *stmt;

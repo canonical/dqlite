@@ -56,8 +56,7 @@ enum pool_work_type {
 	WT_NR,
 };
 
-struct pool_work_s
-{
+struct pool_work_s {
 	queue link;         /* Link into ordered, unordered and outq */
 	uint32_t thread_id; /* Identifier of the thread the item is affined */
 	pool_t *pool;       /* The pool, item is being associated with */
@@ -67,10 +66,9 @@ struct pool_work_s
 	void (*after_work_cb)(pool_work_t *w);
 };
 
-struct pool_s
-{
+struct pool_s {
 	struct pool_impl *pi;
-    	int flags;
+	int flags;
 };
 
 enum {
@@ -85,8 +83,8 @@ enum {
 	 * non-clean unit-test termination.
 	 */
 	POOL_FOR_UT_NON_CLEAN_FINI = 1u << 0,
-	POOL_FOR_UT_NOT_ASYNC      = 1u << 1,
-	POOL_FOR_UT                = 1u << 2,
+	POOL_FOR_UT_NOT_ASYNC = 1u << 1,
+	POOL_FOR_UT = 1u << 2,
 };
 
 int pool_init(pool_t *pool,

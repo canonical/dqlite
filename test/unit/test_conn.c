@@ -40,36 +40,35 @@ static void connCloseCb(struct conn *conn)
 	struct conn conn; \
 	bool closed;
 
-#define SETUP                                                          \
-	struct uv_stream_s *stream;                                    \
-	struct id_state seed = {{1}};                                  \
-	int rv;                                                        \
-	SETUP_HEAP;                                                    \
-	SETUP_SQLITE;                                                  \
-	SETUP_LOGGER;                                                  \
-	SETUP_VFS;                                                     \
-	SETUP_CONFIG;                                                  \
-	SETUP_REGISTRY;                                                \
-	SETUP_RAFT;                                                    \
-	rv = pool_init(pool_ut_fallback(),			       \
-		       &f->loop, 4, POOL_QOS_PRIO_FAIR);	       \
-	pool_ut_fallback()->flags |= POOL_FOR_UT;		       \
-	munit_assert_int(rv, ==, 0);				       \
-	SETUP_CLIENT;                                                  \
-	RAFT_BOOTSTRAP;                                                \
-	RAFT_START;                                                    \
-	rv = transport__stream(&f->loop, f->server, &stream);          \
-	munit_assert_int(rv, ==, 0);                                   \
-	f->closed = false;                                             \
-	f->conn.queue[0] = &f->closed;                                 \
-	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry, \
-			 &f->raft, stream, &f->raft_transport, seed,   \
-			 connCloseCb);                                 \
+#define SETUP                                                                \
+	struct uv_stream_s *stream;                                          \
+	struct id_state seed = { { 1 } };                                    \
+	int rv;                                                              \
+	SETUP_HEAP;                                                          \
+	SETUP_SQLITE;                                                        \
+	SETUP_LOGGER;                                                        \
+	SETUP_VFS;                                                           \
+	SETUP_CONFIG;                                                        \
+	SETUP_REGISTRY;                                                      \
+	SETUP_RAFT;                                                          \
+	rv = pool_init(pool_ut_fallback(), &f->loop, 4, POOL_QOS_PRIO_FAIR); \
+	pool_ut_fallback()->flags |= POOL_FOR_UT;                            \
+	munit_assert_int(rv, ==, 0);                                         \
+	SETUP_CLIENT;                                                        \
+	RAFT_BOOTSTRAP;                                                      \
+	RAFT_START;                                                          \
+	rv = transport__stream(&f->loop, f->server, &stream);                \
+	munit_assert_int(rv, ==, 0);                                         \
+	f->closed = false;                                                   \
+	f->conn.queue[0] = &f->closed;                                       \
+	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry,       \
+			 &f->raft, stream, &f->raft_transport, seed,         \
+			 connCloseCb);                                       \
 	munit_assert_int(rv, ==, 0)
 
 #define TEAR_DOWN                         \
-	pool_close(pool_ut_fallback());	          \
-	pool_fini(pool_ut_fallback());	          \
+	pool_close(pool_ut_fallback());   \
+	pool_fini(pool_ut_fallback());    \
 	conn__stop(&f->conn);             \
 	while (!f->closed) {              \
 		test_uv_run(&f->loop, 1); \
@@ -174,8 +173,7 @@ static void connCloseCb(struct conn *conn)
 
 TEST_SUITE(handshake);
 
-struct handshake_fixture
-{
+struct handshake_fixture {
 	FIXTURE;
 };
 
@@ -209,8 +207,7 @@ TEST_CASE(handshake, success, NULL)
 
 TEST_SUITE(open);
 
-struct open_fixture
-{
+struct open_fixture {
 	FIXTURE;
 };
 
@@ -245,8 +242,7 @@ TEST_CASE(open, success, NULL)
 
 TEST_SUITE(prepare);
 
-struct prepare_fixture
-{
+struct prepare_fixture {
 	FIXTURE;
 };
 
@@ -284,8 +280,7 @@ TEST_CASE(prepare, success, NULL)
 
 TEST_SUITE(exec);
 
-struct exec_fixture
-{
+struct exec_fixture {
 	FIXTURE;
 	unsigned stmt_id;
 };
@@ -367,8 +362,7 @@ TEST_CASE(exec, close_while_in_flight, NULL)
 
 TEST_SUITE(query);
 
-struct query_fixture
-{
+struct query_fixture {
 	FIXTURE;
 	uint32_t stmt_id;
 	uint32_t insert_stmt_id;

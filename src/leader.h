@@ -9,8 +9,8 @@
 #include <stdbool.h>
 
 #include "./lib/queue.h"
-#include "lib/threadpool.h"
 #include "db.h"
+#include "lib/threadpool.h"
 #include "raft.h"
 
 #define SQLITE_IOERR_NOT_LEADER (SQLITE_IOERR | (40 << 8))
@@ -24,22 +24,19 @@ typedef void (*exec_cb)(struct exec *req, int status);
 typedef void (*barrier_cb)(struct barrier *req, int status);
 
 /* Wrapper around raft_apply, saving context information. */
-struct apply
-{
+struct apply {
 	struct raft_apply req; /* Raft apply request */
 	int status;            /* Raft apply result */
 	struct leader *leader; /* Leader connection that triggered the hook */
 	int type;              /* Command type */
 	union {                /* Command-specific data */
-		struct
-		{
+		struct {
 			bool is_commit;
 		} frames;
 	};
 };
 
-struct leader
-{
+struct leader {
 	struct db *db;          /* Database the connection. */
 	sqlite3 *conn;          /* Underlying SQLite connection. */
 	struct raft *raft;      /* Raft instance. */
@@ -48,8 +45,7 @@ struct leader
 	struct apply *inflight; /* TODO: make leader__close async */
 };
 
-struct barrier
-{
+struct barrier {
 	void *data;
 	struct leader *leader;
 	struct raft_barrier req;
@@ -59,8 +55,7 @@ struct barrier
 /**
  * Asynchronous request to execute a statement.
  */
-struct exec
-{
+struct exec {
 	void *data;
 	struct leader *leader;
 	struct barrier barrier;
