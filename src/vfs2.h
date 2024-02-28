@@ -21,9 +21,6 @@ sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name, unsigned page_size);
 
 /**
  * Retrieve frames that were appended to the WAL by the last write transaction.
- *
- * Call this on the sqlite3_file object for the WAL
- * (SQLITE_FCNTL_JOURNAL_POINTER).
  */
 int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n);
 
@@ -40,20 +37,16 @@ struct vfs2_wal_slice
 /**
  * Retrieve information about frames that the last write transaction appended to
  * the WAL.
- *
- * Call this on the sqlite3_file object for the WAL
- * (SQLITE_FCNTL_JOURNAL_POINTER).
  */
 int vfs2_shallow_poll(sqlite3_file *file, struct vfs2_wal_slice *out);
 
 /**
  * Unhide a write transaction that's been committed in Raft, and release the
  * write lock.
- *
- * Call this on the sqlite3_file object for the main file
- * (SQLITE_FCNTL_FILE_POINTER).
  */
 int vfs2_apply(sqlite3_file *file);
+
+int vfs2_abort(sqlite3_file *file);
 
 void vfs2_destroy(sqlite3_vfs *vfs);
 
