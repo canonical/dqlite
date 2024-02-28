@@ -1460,15 +1460,17 @@ int vfs2_abort(sqlite3_file *file)
 	unsigned *locks = xfile->db_shm.locks;
 	locks[VFS2_SHM_WRITE_LOCK] = 0;
 
-	union vfs2_shm_region0 *region0 = xfile->db_shm.regions[0];
-	region0->hdr.basic[0] = xfile->db_shm.prev_txn_hdr;
-	region0->hdr.basic[1] = xfile->db_shm.prev_txn_hdr;
+	struct vfs2_wal_index_full_hdr *hdr = get_full_hdr(&xfile->db_shm);
+	hdr->basic[0] = xfile->db_shm.prev_txn_hdr;
+	hdr->basic[1] = xfile->db_shm.prev_txn_hdr;
 	xfile->db_shm.pending_txn_hdr = zeroed_basic_hdr;
 
 	dqlite_vfs_frame *frames = wal->wal.pending_txn_frames;
-	uint32_t n = wal->wal.pending_txn_len;
-	for (uint32_t i = 0; i < n; i++) {
-		sqlite3_free(frames[i].data);
+	if (frames != NULL) {
+		uint32_t n = wal->wal.pending_txn_len;
+		for (uint32_t i = 0; i < n; i++) {
+			sqlite3_free(frames[i].data);
+		}
 	}
 	sqlite3_free(frames);
 	wal->wal.pending_txn_frames = NULL;
