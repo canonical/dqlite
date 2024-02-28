@@ -295,8 +295,11 @@ static bool wal_index_basic_hdr_equal(struct vfs2_wal_index_basic_hdr a, struct 
 
 static bool wal_index_basic_hdr_advanced(struct vfs2_wal_index_basic_hdr new, struct vfs2_wal_index_basic_hdr old)
 {
-	/* XXX */
-	return new.mxFrame > old.mxFrame;
+	return new.iChange == old.iChange + 1
+		&& new.nPage >= old.nPage /* no vacuums here */
+		// XXX this is the zero salts thing again
+		/* && memcmp(new.aSalt, old.aSalt, sizeof(new.aSalt)) == 0 */
+		&& new.mxFrame > old.mxFrame;
 }
 
 static bool wtx_invariant(const struct sm *sm, int prev)
@@ -457,6 +460,8 @@ static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
 {
 	tracef("WAL SWAP TIME B)");
+	PRE(wal->wal.pending_txn_len == 0);
+	PRE(wal->wal.pending_txn_frames == NULL);
 	int rv;
 
 	sqlite3_file *phys_outgoing = wal->orig;
@@ -478,11 +483,7 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
 	wal->wal.wal_cur_fixed_name = name_incoming;
 	wal->wal.wal_prev = phys_outgoing;
 	wal->wal.wal_prev_fixed_name = name_outgoing;
-
-	/* XXX this whole thing */
-	// wal->wal.pending_txn_start = 0;
 	wal->wal.commit_end = 0;
-	wal->wal.pending_txn_len = 0;
 
 	/* Copy the WAL index header that SQLite has written so
 	 * that we can restore it later. This relies on SQLite
@@ -493,16 +494,6 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
 	assert(hdr->salt[0] == region0->hdr.basic[0].aSalt[0]);
 	assert(hdr->salt[1] == region0->hdr.basic[0].aSalt[1]);
 	db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
-
-	/* If there's an unpolled transaction, get rid of it. XXX */
-	dqlite_vfs_frame *frames = wal->wal.pending_txn_frames;
-	uint32_t n = wal->wal.pending_txn_len;
-	for (uint32_t i = 0; i < n; i++) {
-		sqlite3_free(frames[i].data);
-	}
-	sqlite3_free(frames);
-	wal->wal.pending_txn_frames = NULL;
-	wal->wal.pending_txn_len = 0;
 
 	sm_move(&wal->entry->wtx_sm, WTX_ESTABL);
 
@@ -516,6 +507,7 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
 		return SQLITE_IOERR;
 	}
 
+	/* Best-effort: invalidate the outgoing physical WAL so that nobody gets confused. */
 	(void)phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic,
 					      sizeof(invalid_magic), 0);
 	return SQLITE_OK;
@@ -530,18 +522,6 @@ static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
 	uint32_t n = wal->wal.pending_txn_len;
 	dqlite_vfs_frame *frames = wal->wal.pending_txn_frames;
 	if (x == n) {
-		// XXX
-		/* Appending to the end of the WAL. */
-		// if (wal->wal.pending_txn_last_frame_commit > 0) {
-		// 	/* Start of a new transaction. */
-		// 	for (uint32_t i = 0; i < n; i++) {
-		// 		sqlite3_free(frames[i].data);
-		// 	}
-		// 	sqlite3_free(frames);
-		// 	wal->wal.pending_txn_frames = NULL;
-		// 	wal->wal.pending_txn_start += n;
-		// 	wal->wal.pending_txn_len = 0;
-		// }
 		/* FIXME reallocating every time seems bad */
 		wal->wal.pending_txn_frames =
 		    sqlite3_realloc64(frames, (sqlite_uint64)sizeof(*frames) *
