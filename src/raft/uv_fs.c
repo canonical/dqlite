@@ -874,6 +874,7 @@ static void probeFallocate(const char *dir, bool *fallocate)
 	if (rv == 0) {
 		*fallocate = true;
 	}
+	close(fd);
 
 out:
 	UvFsRemoveFile(dir, UV__FS_PROBE_FALLOCATE_FILE, ignored);
