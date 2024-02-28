@@ -29,7 +29,8 @@ int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n);
  */
 struct vfs2_wal_slice
 {
-	uint32_t salt[2];
+	uint8_t salt1[4];
+	uint8_t salt2[4];
 	uint32_t start;
 	uint32_t len;
 };

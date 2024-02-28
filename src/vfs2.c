@@ -147,7 +147,8 @@ struct vfs2_wal_index_basic_hdr
 	uint32_t mxFrame;
 	uint32_t nPage;
 	uint32_t aFrameCksum[2];
-	uint32_t aSalt[2];
+	uint8_t salt1[4];
+	uint8_t salt2[4];
 	uint32_t aCksum[2];
 };
 
@@ -155,12 +156,14 @@ static const struct vfs2_wal_index_basic_hdr zeroed_basic_hdr = {0};
 
 struct vfs2_wal_hdr
 {
-	uint32_t magic;
-	uint32_t version;
-	uint32_t page_size;
-	uint32_t ckpoint_seqno;
-	uint32_t salt[2];
-	uint32_t cksum[2];
+	uint8_t magic[4];
+	uint8_t version[4];
+	uint8_t page_size[4];
+	uint8_t ckpoint_seqno[4];
+	uint8_t salt1[4];
+	uint8_t salt2[4];
+	uint8_t cksum1[4];
+	uint8_t cksum2[4];
 };
 
 struct vfs2_wal_index_full_hdr
@@ -253,6 +256,11 @@ struct vfs2_file
 	};
 };
 
+static bool salts_equal(const uint8_t *a, const uint8_t *b)
+{
+	return memcmp(a, b, sizeof(uint8_t[4])) == 0;
+}
+
 static struct vfs2_wal_index_full_hdr *get_full_hdr(struct vfs2_db *db)
 {
 	PRE(db->regions_len > 0);
@@ -295,10 +303,13 @@ static bool wal_index_basic_hdr_equal(struct vfs2_wal_index_basic_hdr a, struct 
 
 static bool wal_index_basic_hdr_advanced(struct vfs2_wal_index_basic_hdr new, struct vfs2_wal_index_basic_hdr old)
 {
+	uint32_t new_salt1 = ByteGetBe32(new.salt1);
+	uint32_t new_salt2 = ByteGetBe32(new.salt2);
+	uint32_t old_salt1 = ByteGetBe32(old.salt1);
+	uint32_t old_salt2 = ByteGetBe32(old.salt2);
 	return new.iChange == old.iChange + 1
 		&& new.nPage >= old.nPage /* no vacuums here */
-		// XXX this is the zero salts thing again
-		/* && memcmp(new.aSalt, old.aSalt, sizeof(new.aSalt)) == 0 */
+		&& ((new_salt1 == old_salt1 && new_salt2 == old_salt2) || (old_salt1 == 0 && old_salt2 == 0))
 		&& new.mxFrame > old.mxFrame;
 }
 
@@ -308,10 +319,10 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	struct vfs2_wal *wal = (entry->wal == NULL) ? NULL : &entry->wal->wal;
 	struct vfs2_db *db_shm = (entry->db == NULL) ? NULL : &entry->db->db_shm;
 
-	if (db_shm != NULL && db_shm->regions_len > 0) {
-		struct vfs2_wal_index_full_hdr *hdr = db_shm->regions[0];
-		tracef("region0 salts are %u %u", ByteGetBe32((void *)&hdr->basic[0].aSalt[0]), ByteGetBe32((void *)&hdr->basic[0].aSalt[1]));
-	}
+	// if (db_shm != NULL && db_shm->regions_len > 0) {
+	// 	struct vfs2_wal_index_full_hdr *hdr = db_shm->regions[0];
+	// 	tracef("region0 salts are %u %u", ByteGetBe32((void *)&hdr->basic[0].aSalt[0]), ByteGetBe32((void *)&hdr->basic[0].aSalt[1]));
+	// }
 
 	if (sm_state(sm) == WTX_INITIAL) {
 		CHECK(wal == NULL);
@@ -457,7 +468,7 @@ static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 	return xfile->orig->pMethods->xRead(xfile->orig, buf, amt, ofst);
 }
 
-static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
+static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *wal_hdr)
 {
 	tracef("WAL SWAP TIME B)");
 	PRE(wal->wal.pending_txn_len == 0);
@@ -470,7 +481,7 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
 	char *name_incoming = wal->wal.wal_prev_fixed_name;
 
 	/* Write the new header of the incoming WAL. */
-	rv = phys_incoming->pMethods->xWrite(phys_incoming, hdr,
+	rv = phys_incoming->pMethods->xWrite(phys_incoming, wal_hdr,
 					     sizeof(struct vfs2_wal_hdr), 0);
 	if (rv != SQLITE_OK) {
 		return rv;
@@ -489,11 +500,10 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *hdr)
 	 * that we can restore it later. This relies on SQLite
 	 * writing the WAL index header before restarting the
 	 * WAL -- assert that this is the case by comparing salts. */
-	assert(db->db_shm.regions_len > 0);
-	union vfs2_shm_region0 *region0 = db->db_shm.regions[0];
-	assert(hdr->salt[0] == region0->hdr.basic[0].aSalt[0]);
-	assert(hdr->salt[1] == region0->hdr.basic[0].aSalt[1]);
-	db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
+	struct vfs2_wal_index_full_hdr *wal_index_hdr = get_full_hdr(&db->db_shm);
+	assert(salts_equal(wal_hdr->salt1, wal_index_hdr->basic[0].salt1));
+	assert(salts_equal(wal_hdr->salt2, wal_index_hdr->basic[0].salt2));
+	db->db_shm.prev_txn_hdr = wal_index_hdr->basic[0];
 
 	sm_move(&wal->entry->wtx_sm, WTX_ESTABL);
 
@@ -560,11 +570,14 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 		assert(amt == sizeof(struct vfs2_wal_hdr));
 
 		struct vfs2_file *db = wal->entry->db;
-		assert(db->db_shm.regions_len > 0);
-		union vfs2_shm_region0 *region0 = db->db_shm.regions[0];
-		// XXX investigate why region0 has zero salts at this point (before the first WAL swap)
-		assert(region0->hdr.basic[0].isInit != 0);
-		db->db_shm.prev_txn_hdr = region0->hdr.basic[0];
+		struct vfs2_wal_index_full_hdr *hdr = get_full_hdr(&db->db_shm);
+		/* TODO investigate why region0 has zero salts at this point (instead of
+		 * matching the salts in the WAL header) */
+		uint8_t zeros[4] = {0};
+		assert(salts_equal(hdr->basic[0].salt1, zeros));
+		assert(salts_equal(hdr->basic[0].salt2, zeros));
+		assert(hdr->basic[0].isInit != 0);
+		db->db_shm.prev_txn_hdr = hdr->basic[0];
 
 		sm_move(&wal->entry->wtx_sm, WTX_ESTABL);
 	} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
@@ -588,6 +601,7 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 			return SQLITE_NOMEM;
 		}
 		memcpy(frame->data, buf, (size_t)amt);
+
 		sm_move(&wal->entry->wtx_sm, WTX_ACTIVE);
 	}
 
@@ -610,7 +624,6 @@ static int vfs2_write(sqlite3_file *file,
 		if (!wal_was_empty) {
 			return vfs2_wal_swap(xfile, buf);
 		}
-		// sm_move(&xfile->entry->wtx_sm, WTX_ESTABL);
 	}
 
 	rv = xfile->orig->pMethods->xWrite(xfile->orig, buf, amt, ofst);
@@ -934,6 +947,7 @@ static struct sqlite3_io_methods vfs2_io_methods = {
 
 /* sqlite3_vfs implementations begin here */
 
+/* Figure out which of two physical WALs should be WAL-cur and which should be WAL-prev on startup. */
 static int compare_wals(sqlite3_file *xwal1,
 			sqlite3_file *xwal2,
 			bool *invert,
@@ -970,8 +984,8 @@ static int compare_wals(sqlite3_file *xwal1,
 		if (rv != SQLITE_OK) {
 			return rv;
 		}
-		uint32_t counter1 = ByteGetBe32((const void *)&hdr1.cksum[0]);
-		uint32_t counter2 = ByteGetBe32((const void *)&hdr2.cksum[0]);
+		uint32_t counter1 = ByteGetBe32(hdr1.salt1);
+		uint32_t counter2 = ByteGetBe32(hdr2.salt2);
 		if (counter1 == counter2 + 1) {
 			*invert = false;
 		} else if (counter2 == counter1 + 1) {
@@ -1384,8 +1398,8 @@ int vfs2_shallow_poll(sqlite3_file *file, struct vfs2_wal_slice *out)
 		wal->pending_txn_frames = NULL;
 	}
 
-	out->salt[0] = xfile->db_shm.pending_txn_hdr.aSalt[0];
-	out->salt[1] = xfile->db_shm.pending_txn_hdr.aSalt[1];
+	memcpy(out->salt1, xfile->db_shm.pending_txn_hdr.salt1, sizeof(out->salt1));
+	memcpy(out->salt2, xfile->db_shm.pending_txn_hdr.salt2, sizeof(out->salt2));
 	out->start = xfile->db_shm.prev_txn_hdr.mxFrame;
 	out->len = len;
 
