@@ -1113,8 +1113,6 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 	/* TODO use the WAL limit info */
 
-	xout->wal.is_empty = true; // XXX
-
 	xout->entry->wal = xout;
 	return SQLITE_OK;
 
@@ -1529,4 +1527,5 @@ int vfs2_abort(sqlite3_file *file)
 int vfs2_read_wal(sqlite3_file *file, const struct vfs2_wal_txn *txns, size_t txns_len)
 {
 	/* TODO */
+	return 0;
 }
