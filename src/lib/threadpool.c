@@ -363,9 +363,6 @@ static void pool_cleanup(pool_t *pool)
 		return;
 	}
 
-	uv_mutex_lock(&pi->mutex);
-	pi->exiting = true;
-	uv_mutex_unlock(&pi->mutex);
 	uv_cond_signal(&pi->planner_cond);
 
 	if (uv_thread_join(&pi->planner_thread)) {
@@ -571,7 +568,12 @@ void pool_fini(pool_t *pool)
 
 void pool_close(pool_t *pool)
 {
-	uv_close((uv_handle_t *)&pool->pi->outq_async, NULL);
+	pool_impl_t *pi = pool->pi;
+
+	uv_close((uv_handle_t *)&pi->outq_async, NULL);
+	uv_mutex_lock(&pi->mutex);
+	pi->exiting = true;
+	uv_mutex_unlock(&pi->mutex);
 }
 
 pool_t *pool_ut_fallback(void)
