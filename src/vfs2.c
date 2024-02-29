@@ -34,45 +34,6 @@
 
 static const uint32_t invalid_magic = 0x17171717;
 
-/*
- * States:
- *
- * - INITIAL
- * - IN_WRITE_TXN
- * - WRITE_TXN_HIDDEN
- * - WRITE_TXN_POLLED
- *
- *
- *                                      +--                 >---------->--------->INITIAL <<< xWrite WAL header (swap)
- *                                      |                   |          |          |
- *                                      |                   |          |          |
- *                                      |                   |          |          | xWrite(size = WAL_FRAME_HDR_SIZE)
- *                                      |                   | rollback |          |
- *                                      |                   |          |          |
- *                                      |                   |          |          v
- *                                      |        vfs2_abort |          +----------IN_WRITE_TXN <<< xWrite further frames
- *                                      |           or      |                     |
- *                                      |        xWrite(wal)|                     |
- *             vfs2_apply or vfs2_abort |                   |                     | SQLITE_FCNTL_COMMIT_PHASETWO
- *                or xWrite(wal)        |                   |                     |
- *                                      |                   |                     |
- *                                      |                   |                     v
- *                                      |                   +---------------------WRITE_TXN_HIDDEN
- *                                      |                                         |
- *                                      |                                         |
- *                                      |                                         | vfs2_poll or vfs2_shallow_poll
- *                                      |                                         |
- *                                      |                                         |
- *                                      |                                         v
- *                                      +--                                    ---WRITE_TXN_POLLED
- *
- *
- *
- *
- *                                      UNRECOVERABLE_ERROR?
- *
- */
-
 enum {
 	WTX_NOT_OPEN, /* WAL not yet opened */
 	WTX_EMPTY, /* WAL opened but nothing in either of the backing files */
@@ -329,10 +290,8 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	struct vfs2_wal *wal = (entry->wal == NULL) ? NULL : &entry->wal->wal;
 	struct vfs2_db *db_shm = (entry->db == NULL) ? NULL : &entry->db->db_shm;
 
-	// if (db_shm != NULL && db_shm->regions_len > 0) {
-	// 	struct vfs2_wal_index_full_hdr *hdr = db_shm->regions[0];
-	// 	tracef("region0 salts are %u %u", ByteGetBe32((void *)&hdr->basic[0].aSalt[0]), ByteGetBe32((void *)&hdr->basic[0].aSalt[1]));
-	// }
+	/* TODO go over these checks again and strengthen them */
+	/* TODO rewrite in expression-oriented style */
 
 	if (sm_state(sm) == WTX_NOT_OPEN) {
 		CHECK(wal == NULL);
@@ -541,7 +500,12 @@ static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
 				    const void *buf,
 				    sqlite3_int64 x)
 {
+	/* initialize commit_end if necessary */
+	if (wal->wal.commit_end == 0 && wal->wal.pending_txn_len == 0 && x > 0) {
+		wal->wal.commit_end = x;
+	}
 	x -= wal->wal.commit_end;
+
 	assert(0 <= x && x <= wal->wal.pending_txn_len);
 	uint32_t n = wal->wal.pending_txn_len;
 	dqlite_vfs_frame *frames = wal->wal.pending_txn_frames;
@@ -1110,6 +1074,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 		/* check that WAL-cur is not shorter than suggested by the limit */
 		/* truncate WAL-cur */
+		/* set commit_end */
 	}
 
 	xout->entry->wal = xout;
@@ -1314,7 +1279,7 @@ static int vfs2_current_time(sqlite3_vfs *vfs, double *out)
 	return data->orig->xCurrentTime(data->orig, out);
 }
 
-/* TODO update this */
+/* TODO update this to reflect syscalls that we make ourselves (not through the base VFS) */
 static int vfs2_get_last_error(sqlite3_vfs *vfs, int n, char *out)
 {
 	struct vfs2_data *data = vfs->pAppData;
