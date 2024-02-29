@@ -902,9 +902,7 @@ int dqlite_node_stop(dqlite_node *d)
 	int rv;
 
 	/* NOTE: A try not to rewrite overall conn__stop() logic */
-	while (d->loop.active_reqs.count) {
-		sched_yield();
-	}
+	// sleep(3);
 
 	rv = uv_async_send(&d->stop);
 	assert(rv == 0);
