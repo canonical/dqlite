@@ -1525,3 +1525,8 @@ int vfs2_abort(sqlite3_file *file)
 	sm_move(&xfile->entry->wtx_sm, WTX_BASE);
 	return 0;
 }
+
+int vfs2_read_wal(sqlite3_file *file, const struct vfs2_wal_txn *txns, size_t txns_len)
+{
+	/* TODO */
+}

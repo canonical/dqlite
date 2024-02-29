@@ -66,6 +66,25 @@ int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n);
  */
 int vfs2_apply(sqlite3_file *file);
 
+struct vfs2_wal_txn
+{
+	struct vfs2_wal_slice meta;
+	dqlite_vfs_frame *frames;
+};
+
+/**
+ * Synchronously read some transaction data directly from the WAL.
+ *
+ * Call this on the WAL file object (SQLITE_FCNTL_JOURNAL_POINTER).
+ *
+ * Fill the `meta` field of each vfs2_wal_txn with a slice that was previously
+ * returned by vfs2_shallow_poll. On return, this function will set the `frames`
+ * field of each vfs2_wal_txn, using memory from the SQLite allocator that the caller
+ * must free, if the transaction was read successfully. Setting this field to NULL
+ * means that the transaction couldn't be read.
+ */
+int vfs2_read_wal(sqlite3_file *file, struct vfs2_wal_txn *txns, size_t txns_len);
+
 /**
  * Cancel a pending transaction and release the write lock.
  *
