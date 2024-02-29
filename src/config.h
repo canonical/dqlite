@@ -21,6 +21,7 @@ struct config
 	bool disk;                         /* Disk-mode or not */
 	int voters;                        /* Target number of voters */
 	int standbys;                      /* Target number of standbys */
+	unsigned pool_thread_count;    /* Number of threads in thread pool */
 };
 
 /**

@@ -90,7 +90,8 @@ int dqlite__init(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto err_after_vfs_init;
 	}
-	rv = pool_init(&d->pool, &d->loop, 4, POOL_QOS_PRIO_FAIR);
+	rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count,
+		       POOL_QOS_PRIO_FAIR);
 	if (rv != 0) {
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "pool_init(): %s",
 			 uv_strerror(rv));
@@ -212,7 +213,7 @@ void dqlite__close(struct dqlite_node *d)
 	// the TODO above referencing the cleanup logic without running the
 	// node. See https://github.com/canonical/dqlite/issues/504.
 
-	//ZZZ pool_fini(&d->pool);
+	pool_fini(&d->pool);
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
@@ -547,7 +548,7 @@ static void stopCb(uv_async_t *stop)
 		tracef("not running or already stopped");
 		return;
 	}
-	//ZZZ pool_close(&d->pool);
+	pool_close(&d->pool);
 	if (d->role_management) {
 		rv = uv_timer_stop(&d->timer);
 		assert(rv == 0);
@@ -771,6 +772,12 @@ int dqlite_node_set_auto_recovery(dqlite_node *n, bool enabled)
 	return 0;
 }
 
+int dqlite_node_set_pool_thread_count(dqlite_node *n, unsigned thread_count)
+{
+	n->config.pool_thread_count = thread_count;
+	return 0;
+}
+
 const char *dqlite_node_errmsg(dqlite_node *n)
 {
 	if (n != NULL) {
@@ -894,8 +901,6 @@ int dqlite_node_stop(dqlite_node *d)
 
 	/* NOTE: trying to find a proper place to wait on CI */
 	//ZZZ sleep(3);
-	pool_close(&d->pool);
-	pool_fini(&d->pool);
 
 	rv = uv_async_send(&d->stop);
 	assert(rv == 0);

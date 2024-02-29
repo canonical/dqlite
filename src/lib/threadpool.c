@@ -363,7 +363,9 @@ static void pool_cleanup(pool_t *pool)
 		return;
 	}
 
+	uv_mutex_lock(&pi->mutex);
 	pi->exiting = true;
+	uv_mutex_unlock(&pi->mutex);
 	uv_cond_signal(&pi->planner_cond);
 
 	if (uv_thread_join(&pi->planner_thread)) {
@@ -458,6 +460,7 @@ static void pool_work_submit(pool_t *pool, pool_work_t *w)
 	}
 
 	uv_mutex_lock(&pi->mutex);
+	POST(!pi->exiting);
 	push(w->type == WT_UNORD ? u : o, &w->link);
 	uv_cond_signal(&pi->planner_cond);
 	uv_mutex_unlock(&pi->mutex);
