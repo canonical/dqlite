@@ -212,7 +212,7 @@ void dqlite__close(struct dqlite_node *d)
 	// the TODO above referencing the cleanup logic without running the
 	// node. See https://github.com/canonical/dqlite/issues/504.
 
-	pool_fini(&d->pool);
+	//ZZZ pool_fini(&d->pool);
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
@@ -547,7 +547,7 @@ static void stopCb(uv_async_t *stop)
 		tracef("not running or already stopped");
 		return;
 	}
-	pool_close(&d->pool);
+	//ZZZ pool_close(&d->pool);
 	if (d->role_management) {
 		rv = uv_timer_stop(&d->timer);
 		assert(rv == 0);
@@ -893,7 +893,9 @@ int dqlite_node_stop(dqlite_node *d)
 	int rv;
 
 	/* NOTE: trying to find a proper place to wait on CI */
-	sleep(3);
+	//ZZZ sleep(3);
+	pool_close(&d->pool);
+	pool_fini(&d->pool);
 
 	rv = uv_async_send(&d->stop);
 	assert(rv == 0);
