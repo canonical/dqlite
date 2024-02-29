@@ -266,10 +266,10 @@ struct vfs2_file
 	};
 };
 
-static bool salts_equal(const uint8_t *a, const uint8_t *b)
-{
-	return memcmp(a, b, sizeof(uint8_t[4])) == 0;
-}
+// static bool salts_equal(const uint8_t *a, const uint8_t *b)
+// {
+// 	return memcmp(a, b, sizeof(uint8_t[4])) == 0;
+// }
 
 static struct vfs2_wal_index_full_hdr *get_full_hdr(struct vfs2_db *db)
 {
@@ -348,7 +348,6 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(no_pending_txn(wal));
 
 		struct vfs2_wal_index_full_hdr *hdr = get_full_hdr(db_shm);
-		CHECK(wal_index_basic_hdr_equal(db_shm->prev_txn_hdr, hdr->basic[0]));
 		CHECK(wal_index_basic_hdr_equal(db_shm->pending_txn_hdr, zeroed_basic_hdr));
 
 		if (prev == WTX_BASE) {
@@ -520,15 +519,6 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *wal_h
 	wal->wal.wal_prev_fixed_name = name_outgoing;
 	wal->wal.commit_end = 0;
 
-	/* Copy the WAL index header that SQLite has written so
-	 * that we can restore it later. This relies on SQLite
-	 * writing the WAL index header before restarting the
-	 * WAL -- assert that this is the case by comparing salts. */
-	struct vfs2_wal_index_full_hdr *wal_index_hdr = get_full_hdr(&db->db_shm);
-	assert(salts_equal(wal_hdr->salt1, wal_index_hdr->basic[0].salt1));
-	assert(salts_equal(wal_hdr->salt2, wal_index_hdr->basic[0].salt2));
-	db->db_shm.prev_txn_hdr = wal_index_hdr->basic[0];
-
 	sm_move(&wal->entry->wtx_sm, WTX_BASE);
 
 	/* Move the moving name. */
@@ -555,6 +545,14 @@ static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
 	assert(0 <= x && x <= wal->wal.pending_txn_len);
 	uint32_t n = wal->wal.pending_txn_len;
 	dqlite_vfs_frame *frames = wal->wal.pending_txn_frames;
+	if (wal->wal.pending_txn_len == 0 && x == 0) {
+		/* check that the WAL-index hdr makes sense and save it */
+		struct vfs2_db *db_shm = &wal->entry->db->db_shm;
+		struct vfs2_wal_index_basic_hdr hdr = get_full_hdr(db_shm)->basic[0];
+		assert(hdr.isInit != 0);
+		assert(hdr.mxFrame == wal->wal.commit_end);
+		db_shm->prev_txn_hdr = hdr;
+	}
 	if (x == n) {
 		/* FIXME reallocating every time seems bad */
 		wal->wal.pending_txn_frames =
@@ -591,18 +589,6 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 	uint32_t frame_size = VFS2_WAL_FRAME_HDR_SIZE + page_size;
 
 	if (ofst == 0) {
-		assert(amt == sizeof(struct vfs2_wal_hdr));
-
-		struct vfs2_file *db = wal->entry->db;
-		struct vfs2_wal_index_full_hdr *hdr = get_full_hdr(&db->db_shm);
-		/* TODO investigate why region0 has zero salts at this point (instead of
-		 * matching the salts in the WAL header) */
-		uint8_t zeros[4] = {0};
-		assert(salts_equal(hdr->basic[0].salt1, zeros));
-		assert(salts_equal(hdr->basic[0].salt2, zeros));
-		assert(hdr->basic[0].isInit != 0);
-		db->db_shm.prev_txn_hdr = hdr->basic[0];
-
 		sm_move(&wal->entry->wtx_sm, WTX_BASE);
 	} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
 		tracef("ofst=%lld pgsz=%u", ofst, wal->vfs_data->page_size);
