@@ -182,7 +182,6 @@ err_after_raft_io_init:
 err_after_raft_transport_init:
 	raftProxyClose(&d->raft_transport);
 err_after_pool_init:
-	/* TODO: check if this is a proper place to close the pool */
 	pool_close(&d->pool);
 	pool_fini(&d->pool);
 err_after_loop_init:
@@ -213,8 +212,6 @@ void dqlite__close(struct dqlite_node *d)
 	// the TODO above referencing the cleanup logic without running the
 	// node. See https://github.com/canonical/dqlite/issues/504.
 
-	/* TODO: check if this is a proper place to close the pool */
-	/* pool_close(&d->pool); */
 	pool_fini(&d->pool);
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
