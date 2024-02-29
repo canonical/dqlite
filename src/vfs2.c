@@ -74,7 +74,7 @@ static const uint32_t invalid_magic = 0x17171717;
  */
 
 enum {
-	WTX_INITIAL, /* WAL not yet opened */
+	WTX_NOT_OPEN, /* WAL not yet opened */
 	WTX_EMPTY, /* WAL opened but nothing in either of the backing files */
 	WTX_BASE, /* WAL opened and WAL-cur has at least the header written, with nothing pending */
 	WTX_ACTIVE,
@@ -83,33 +83,33 @@ enum {
 };
 
 static const struct sm_conf wtx_states[SM_STATES_MAX] = {
-        [WTX_INITIAL] = {
+        [WTX_NOT_OPEN] = {
                 .flags = SM_INITIAL|SM_FINAL,
                 .name = "initial",
-                .allowed = BITS(WTX_EMPTY)|BITS(WTX_BASE),
+                .allowed = BITS(WTX_NOT_OPEN)|BITS(WTX_EMPTY)|BITS(WTX_BASE),
         },
 	[WTX_EMPTY] = {
-		.flags = SM_FINAL,
+		.flags = 0,
 		.name = "empty",
-		.allowed = BITS(WTX_BASE),
+		.allowed = BITS(WTX_BASE)|BITS(WTX_NOT_OPEN),
 	},
 	[WTX_BASE] = {
-		.flags = SM_FINAL,
+		.flags = 0,
 		.name = "base",
-		.allowed = BITS(WTX_BASE)|BITS(WTX_ACTIVE),
+		.allowed = BITS(WTX_BASE)|BITS(WTX_ACTIVE)|BITS(WTX_NOT_OPEN),
 	},
         [WTX_ACTIVE] = {
-                .flags = SM_FINAL,
+                .flags = 0,
                 .name = "active",
                 .allowed = BITS(WTX_BASE)|BITS(WTX_ACTIVE)|BITS(WTX_HIDDEN),
         },
         [WTX_HIDDEN] = {
-                .flags = SM_FINAL,
+                .flags = 0,
                 .name = "hidden",
                 .allowed = BITS(WTX_BASE)|BITS(WTX_POLLED),
         },
         [WTX_POLLED] = {
-                .flags = SM_FINAL,
+                .flags = 0,
                 .name = "polled",
                 .allowed = BITS(WTX_BASE),
         },
@@ -225,6 +225,7 @@ struct vfs2_db
 	/* Copy of the WAL index header that reflects the last really-committed
 	 * (i.e. in Raft too) transaction, or the initial state of the WAL if
 	 * no transactions have been committed yet. */
+	/* TODO need to initialize this when opening a nonempty WAL */
 	struct vfs2_wal_index_basic_hdr prev_txn_hdr;
 	/* Copy of the WAL index header that reflects a sorta-committed
 	 * transaction that has not yet been through Raft, or all zeros
@@ -333,10 +334,12 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	// 	tracef("region0 salts are %u %u", ByteGetBe32((void *)&hdr->basic[0].aSalt[0]), ByteGetBe32((void *)&hdr->basic[0].aSalt[1]));
 	// }
 
-	if (sm_state(sm) == WTX_INITIAL) {
+	if (sm_state(sm) == WTX_NOT_OPEN) {
 		CHECK(wal == NULL);
-		CHECK(db_shm != NULL);
-		CHECK(!write_lock_held(db_shm));
+	}
+
+	if (sm_state(sm) == WTX_EMPTY) {
+		CHECK(wal != NULL);
 	}
 
 	if (sm_state(sm) == WTX_BASE) {
@@ -367,7 +370,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(wal_index_basic_hdr_equal(hdr->basic[0], db_shm->prev_txn_hdr) || wal_index_basic_hdr_advanced(hdr->basic[0], db_shm->prev_txn_hdr));
 		CHECK(wal_index_basic_hdr_equal(db_shm->pending_txn_hdr, zeroed_basic_hdr));
 
-		if (prev == WTX_INITIAL) {
+		if (prev == WTX_BASE) {
 			/* first frame in a txn */
 			CHECK(wal->pending_txn_len == 1);
 		}
@@ -408,6 +411,7 @@ static bool is_valid_page_size(unsigned long n)
 static bool check_wal_integrity(sqlite3_file *f)
 {
 	/* TODO */
+	(void)f;
 	return true;
 }
 
@@ -425,6 +429,9 @@ static void unregister_file(struct vfs2_file *file)
 			entry->db = NULL;
 		} else if (entry->wal == file) {
 			entry->wal = NULL;
+		}
+		if (entry->wal == NULL) {
+			sm_move(&entry->wtx_sm, WTX_NOT_OPEN);
 		}
 		if (entry->db == NULL && entry->wal == NULL) {
 			QUEUE__PREV_NEXT(q) = QUEUE__NEXT(q);
@@ -1111,7 +1118,13 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		}
 	}
 
-	/* TODO use the WAL limit info */
+	if (xout->entry->wal_limit.len > 0) {
+		/* TODO */
+		/* check that the salts match WAL-cur */
+
+		/* check that WAL-cur is not shorter than suggested by the limit */
+		/* truncate WAL-cur */
+	}
 
 	xout->entry->wal = xout;
 	return SQLITE_OK;
@@ -1198,7 +1211,9 @@ static struct vfs2_db_entry *get_or_create_entry(struct vfs2_data *data, const c
 	memcpy(res->db_name, name, len);
 	res->db_name[len] = '\0';
 
-	sm_init(&res->wtx_sm, wtx_invariant, NULL, wtx_states, WTX_INITIAL);
+	res->db = NULL;
+	res->wal = NULL;
+	sm_init(&res->wtx_sm, wtx_invariant, NULL, wtx_states, WTX_NOT_OPEN);
 
 	pthread_rwlock_wrlock(&data->rwlock);
 	QUEUE__PUSH(&data->queue, &res->link);
@@ -1524,8 +1539,11 @@ int vfs2_abort(sqlite3_file *file)
 	return 0;
 }
 
-int vfs2_read_wal(sqlite3_file *file, const struct vfs2_wal_txn *txns, size_t txns_len)
+int vfs2_read_wal(sqlite3_file *file, struct vfs2_wal_txn *txns, size_t txns_len)
 {
 	/* TODO */
+	(void)file;
+	(void)txns;
+	(void)txns_len;
 	return 0;
 }
