@@ -1,6 +1,7 @@
 #include "server.h"
 
 #include <errno.h>
+#include <sched.h>
 #include <stdlib.h>
 #include <sys/un.h>
 #include <time.h>
@@ -899,16 +900,10 @@ int dqlite_node_stop(dqlite_node *d)
 	tracef("dqlite node stop");
 	void *result;
 	int rv;
-	int sleep_counter = 2;
 
-	/* NOTE: trying to find a proper place to wait on CI */
-	//sleep(3);
-	//pool_sync(&d->pool);
-	printf("\n");
-	while(sleep_counter--) {
-	    printf("node=%p active=%d\n", d, uv_loop_alive(&d->loop));
-	    tracef("node=%p active=%d\n", d, uv_loop_alive(&d->loop));
-	    sleep(1);
+	/* NOTE: A try not to rewrite overall conn__stop() logic */
+	while (d->loop.active_reqs.count) {
+		sched_yield();
 	}
 
 	rv = uv_async_send(&d->stop);
