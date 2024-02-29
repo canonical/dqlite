@@ -21,17 +21,6 @@
 sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name, unsigned page_size);
 
 /**
- * Retrieve frames that were appended to the WAL by the last write transaction,
- * and reacquire the write lock.
- *
- * Call this on the database main file object (SQLITE_FCNTL_FILE_POINTER).
- *
- * Polling the same transaction more than once in any way is an error, and you
- * must choose only one of vfs2_poll or vfs2_shallow_poll.
- */
-int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n);
-
-/**
  * Identifying information about a write transaction.
  */
 struct vfs2_wal_slice
@@ -41,6 +30,8 @@ struct vfs2_wal_slice
 	uint32_t start;
 	uint32_t len;
 };
+
+int vfs2_set_wal_limit(sqlite3_vfs *vfs, const char *name, struct vfs2_wal_slice sl);
 
 /**
  * Retrieve information about frames that the last write transaction appended to
@@ -52,6 +43,17 @@ struct vfs2_wal_slice
  * must choose only one of vfs2_poll or vfs2_shallow_poll.
  */
 int vfs2_shallow_poll(sqlite3_file *file, struct vfs2_wal_slice *out);
+
+/**
+ * Retrieve frames that were appended to the WAL by the last write transaction,
+ * and reacquire the write lock.
+ *
+ * Call this on the database main file object (SQLITE_FCNTL_FILE_POINTER).
+ *
+ * Polling the same transaction more than once in any way is an error, and you
+ * must choose only one of vfs2_poll or vfs2_shallow_poll.
+ */
+int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n);
 
 /**
  * Unhide a write transaction that's been committed in Raft, and release the

@@ -74,8 +74,9 @@ static const uint32_t invalid_magic = 0x17171717;
  */
 
 enum {
-	WTX_INITIAL,
-	WTX_ESTABL,
+	WTX_INITIAL, /* WAL not yet opened */
+	WTX_EMPTY, /* WAL opened but nothing in either of the backing files */
+	WTX_BASE, /* WAL opened and WAL-cur has at least the header written, with nothing pending */
 	WTX_ACTIVE,
 	WTX_HIDDEN,
 	WTX_POLLED
@@ -85,27 +86,32 @@ static const struct sm_conf wtx_states[SM_STATES_MAX] = {
         [WTX_INITIAL] = {
                 .flags = SM_INITIAL|SM_FINAL,
                 .name = "initial",
-                .allowed = BITS(WTX_ESTABL),
+                .allowed = BITS(WTX_EMPTY)|BITS(WTX_BASE),
         },
-	[WTX_ESTABL] = {
+	[WTX_EMPTY] = {
 		.flags = SM_FINAL,
-		.name = "establ",
-		.allowed = BITS(WTX_ESTABL)|BITS(WTX_ACTIVE),
+		.name = "empty",
+		.allowed = BITS(WTX_BASE),
+	},
+	[WTX_BASE] = {
+		.flags = SM_FINAL,
+		.name = "base",
+		.allowed = BITS(WTX_BASE)|BITS(WTX_ACTIVE),
 	},
         [WTX_ACTIVE] = {
                 .flags = SM_FINAL,
                 .name = "active",
-                .allowed = BITS(WTX_ESTABL)|BITS(WTX_ACTIVE)|BITS(WTX_HIDDEN),
+                .allowed = BITS(WTX_BASE)|BITS(WTX_ACTIVE)|BITS(WTX_HIDDEN),
         },
         [WTX_HIDDEN] = {
                 .flags = SM_FINAL,
                 .name = "hidden",
-                .allowed = BITS(WTX_ESTABL)|BITS(WTX_HIDDEN)|BITS(WTX_POLLED),
+                .allowed = BITS(WTX_BASE)|BITS(WTX_POLLED),
         },
         [WTX_POLLED] = {
                 .flags = SM_FINAL,
                 .name = "polled",
-                .allowed = BITS(WTX_ESTABL)|BITS(WTX_POLLED),
+                .allowed = BITS(WTX_BASE),
         },
 };
 
@@ -129,6 +135,9 @@ struct vfs2_db_entry
 	struct vfs2_file *wal;
 
 	struct sm wtx_sm;
+
+	char *db_name;
+	struct vfs2_wal_slice wal_limit;
 
 	queue link;
 };
@@ -330,7 +339,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(!write_lock_held(db_shm));
 	}
 
-	if (sm_state(sm) == WTX_ESTABL) {
+	if (sm_state(sm) == WTX_BASE) {
 		CHECK(db_shm != NULL);
 		CHECK(wal != NULL);
 		CHECK(no_pending_txn(wal));
@@ -339,7 +348,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(wal_index_basic_hdr_equal(db_shm->prev_txn_hdr, hdr->basic[0]));
 		CHECK(wal_index_basic_hdr_equal(db_shm->pending_txn_hdr, zeroed_basic_hdr));
 
-		if (prev == WTX_ESTABL) {
+		if (prev == WTX_BASE) {
 			/* just after a WAL swap */
 			CHECK(write_lock_held(db_shm));
 			CHECK(region0_mapped(db_shm));
@@ -396,6 +405,12 @@ static bool is_valid_page_size(unsigned long n)
 	return n >= 1 << 9 && n <= 1 << 16 && (n & (n - 1)) == 0;
 }
 
+static bool check_wal_integrity(sqlite3_file *f)
+{
+	/* TODO */
+	return true;
+}
+
 static void unregister_file(struct vfs2_file *file)
 {
 	pthread_rwlock_wrlock(&file->vfs_data->rwlock);
@@ -414,6 +429,8 @@ static void unregister_file(struct vfs2_file *file)
 		if (entry->db == NULL && entry->wal == NULL) {
 			QUEUE__PREV_NEXT(q) = QUEUE__NEXT(q);
 			QUEUE__NEXT_PREV(q) = QUEUE__PREV(q);
+			sm_fini(&entry->wtx_sm);
+			sqlite3_free(entry->db_name);
 			sqlite3_free(entry);
 		}
 		q = next;
@@ -505,7 +522,7 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *wal_h
 	assert(salts_equal(wal_hdr->salt2, wal_index_hdr->basic[0].salt2));
 	db->db_shm.prev_txn_hdr = wal_index_hdr->basic[0];
 
-	sm_move(&wal->entry->wtx_sm, WTX_ESTABL);
+	sm_move(&wal->entry->wtx_sm, WTX_BASE);
 
 	/* Move the moving name. */
 	rv = unlink(wal->wal.moving_name);
@@ -579,7 +596,7 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 		assert(hdr->basic[0].isInit != 0);
 		db->db_shm.prev_txn_hdr = hdr->basic[0];
 
-		sm_move(&wal->entry->wtx_sm, WTX_ESTABL);
+		sm_move(&wal->entry->wtx_sm, WTX_BASE);
 	} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
 		tracef("ofst=%lld pgsz=%u", ofst, wal->vfs_data->page_size);
 		sqlite3_int64 x =
@@ -887,7 +904,7 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 				sqlite3_free(wal->wal.pending_txn_frames);
 				wal->wal.pending_txn_frames = NULL;
 				wal->wal.pending_txn_len = 0;
-				sm_move(&wal->entry->wtx_sm, WTX_ESTABL);
+				sm_move(&wal->entry->wtx_sm, WTX_BASE);
 			}
 		}
 	} else {
@@ -947,7 +964,10 @@ static struct sqlite3_io_methods vfs2_io_methods = {
 
 /* sqlite3_vfs implementations begin here */
 
-/* Figure out which of two physical WALs should be WAL-cur and which should be WAL-prev on startup. */
+/* Figure out which of two physical WALs should be WAL-cur and which should be WAL-prev on startup.
+ *
+ * TODO go over this again carefully and make sure that the newer WAL (the one that might have uncheckpointed
+ * txns in it) always ends up as WAL-cur */
 static int compare_wals(sqlite3_file *xwal1,
 			sqlite3_file *xwal2,
 			bool *invert,
@@ -1079,8 +1099,23 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		}
 	}
 
-	xout->wal.is_empty = true;
+	sqlite3_file *wal_prev = xout->wal.wal_prev;
+	bool wal_prev_is_valid = check_wal_integrity(wal_prev);
+	if (!wal_prev_is_valid) {
+		/* FIXME handle this instead by setting some in-memory state
+		 * that prevents reading from this WAL without truncating or
+		 * returning an error */
+		rv = wal_prev->pMethods->xTruncate(wal_prev, 0);
+		if (rv != 0) {
+			return rv;
+		}
+	}
 
+	/* TODO use the WAL limit info */
+
+	xout->wal.is_empty = true; // XXX
+
+	xout->entry->wal = xout;
 	return SQLITE_OK;
 
 err_after_open_phys2:
@@ -1123,38 +1158,27 @@ static int vfs2_open_db(sqlite3_vfs *vfs,
 	xout->db_shm.regions_len = 0;
 	xout->db_shm.refcount = 0;
 	memset(xout->db_shm.locks, 0, sizeof(xout->db_shm.locks));
+	xout->entry->db = xout;
 	return SQLITE_OK;
 }
 
-static struct vfs2_db_entry *get_or_create_entry(struct vfs2_data *data, int flags, const char *name, struct vfs2_file *f)
+static struct vfs2_db_entry *get_or_create_entry(struct vfs2_data *data, const char *name, int flags)
 {
-	queue *q;
-	struct vfs2_db_entry *res = NULL;
+	bool name_is_db = (flags & SQLITE_OPEN_MAIN_DB) != 0;
+	bool name_is_wal = (flags & SQLITE_OPEN_WAL) != 0;
+	assert(name_is_db ^ name_is_wal);
+	const char *dash = strrchr(name, '-');
+	assert(ERGO(name_is_wal, dash != NULL));
 
+	struct vfs2_db_entry *res = NULL;
 	pthread_rwlock_rdlock(&data->rwlock);
+	queue *q;
 	QUEUE__FOREACH(q, &data->queue)
 	{
 		struct vfs2_db_entry *cur = QUEUE__DATA(q, struct vfs2_db_entry, link);
-		if ((flags & SQLITE_OPEN_MAIN_DB) && cur->wal != NULL) {
-			const char *walname = cur->wal->wal.moving_name;
-			const char *dash = strrchr(walname, '-');
-			assert(dash != NULL);
-			if (strncmp(walname, name, (size_t)(dash - walname)) != 0) {
-				continue;
-			}
+		if ((name_is_db && strcmp(cur->db_name, name) == 0)
+		 || (name_is_wal && strncmp(cur->db_name, name, (size_t)(dash - name)) == 0))	{
 			res = cur;
-			cur->db = f;
-			break;
-		} else if ((f->flags & SQLITE_OPEN_WAL) && cur->db != NULL) {
-			const char *walname = name;
-			const char *dash = strrchr(walname, '-');
-			assert(dash != NULL);
-			if (strncmp(walname, cur->db->db_shm.name,
-				    (size_t)(dash - walname)) != 0) {
-				continue;
-			}
-			res = cur;
-			cur->wal = f;
 			break;
 		}
 	}
@@ -1167,15 +1191,17 @@ static struct vfs2_db_entry *get_or_create_entry(struct vfs2_data *data, int fla
 	if (res == NULL) {
 		return NULL;
 	}
-	if (f->flags & SQLITE_OPEN_MAIN_DB) {
-		res->db = f;
-		res->wal = NULL;
-	} else if (f->flags & SQLITE_OPEN_WAL) {
-		res->db = NULL;
-		res->wal = f;
+	int len = name_is_db ? strlen(name) : (size_t)(dash - name);
+	res->db_name = sqlite3_malloc(len + 1);
+	if (res->db_name == NULL) {
+		sqlite3_free(res);
+		return NULL;
 	}
-	tracef("sm_init %p", res);
+	memcpy(res->db_name, name, len);
+	res->db_name[len] = '\0';
+
 	sm_init(&res->wtx_sm, wtx_invariant, NULL, wtx_states, WTX_INITIAL);
+
 	pthread_rwlock_wrlock(&data->rwlock);
 	QUEUE__PUSH(&data->queue, &res->link);
 	pthread_rwlock_unlock(&data->rwlock);
@@ -1198,16 +1224,20 @@ static int vfs2_open(sqlite3_vfs *vfs,
 	xout->vfs_data = data;
 
 	if (flags & SQLITE_OPEN_WAL) {
-		xout->entry = get_or_create_entry(data, flags, name, xout);
-		if (xout->entry == NULL) {
+		struct vfs2_db_entry *entry = get_or_create_entry(data, name, flags);
+		if (entry == NULL) {
 			return SQLITE_NOMEM;
 		}
+		assert(entry->wal == NULL);
+		xout->entry = entry;
 		return vfs2_open_wal(vfs, name, xout, flags, out_flags);
 	} else if (flags & SQLITE_OPEN_MAIN_DB) {
-		xout->entry = get_or_create_entry(data, flags, name, xout);
-		if (xout->entry == NULL) {
+		struct vfs2_db_entry *entry = get_or_create_entry(data, name, flags);
+		if (entry == NULL) {
 			return SQLITE_NOMEM;
 		}
+		assert(entry->db == NULL);
+		xout->entry = entry;
 		return vfs2_open_db(vfs, name, xout, flags, out_flags);
 	} else {
 		xout->orig = sqlite3_malloc(data->orig->szOsFile);
@@ -1338,6 +1368,22 @@ sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name, unsigned page_size)
 	return vfs;
 }
 
+/* XXX return codes */
+int vfs2_set_wal_limit(sqlite3_vfs *vfs, const char *name, struct vfs2_wal_slice sl)
+{
+	struct vfs2_data *data = vfs->pAppData;
+	struct vfs2_db_entry *entry = get_or_create_entry(data, name, SQLITE_OPEN_MAIN_DB);
+	if (entry == NULL) {
+		return 1;
+	}
+	/* If the WAL is already open then all is lost */
+	if (entry->wal != NULL) {
+		return 1;
+	}
+	entry->wal_limit = sl;
+	return 0;
+}
+
 /* FIXME what return codes should this use? */
 int vfs2_apply(sqlite3_file *file)
 {
@@ -1366,7 +1412,7 @@ int vfs2_apply(sqlite3_file *file)
 	wal->wal.commit_end += wal->wal.pending_txn_len;
 	wal->wal.pending_txn_len = 0;
 
-	sm_move(&xfile->entry->wtx_sm, WTX_ESTABL);
+	sm_move(&xfile->entry->wtx_sm, WTX_BASE);
 
 	return 0;
 }
@@ -1476,6 +1522,6 @@ int vfs2_abort(sqlite3_file *file)
 	wal->wal.pending_txn_frames = NULL;
 	wal->wal.pending_txn_len = 0;
 
-	sm_move(&xfile->entry->wtx_sm, WTX_ESTABL);
+	sm_move(&xfile->entry->wtx_sm, WTX_BASE);
 	return 0;
 }
