@@ -579,3 +579,9 @@ pool_t *pool_ut_fallback(void)
 	static pool_t pool;
 	return &pool;
 }
+
+void pool_sync(pool_t *pool)
+{
+	while(has_active_ws(pool)) {
+	}
+}

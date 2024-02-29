@@ -101,5 +101,6 @@ void pool_queue_work(pool_t *pool,
 		     void (*after_work_cb)(pool_work_t *w));
 
 pool_t *pool_ut_fallback(void);
+void pool_sync(pool_t *pool);
 
 #endif /* __THREAD_POOL__ */

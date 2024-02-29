@@ -901,6 +901,7 @@ int dqlite_node_stop(dqlite_node *d)
 
 	/* NOTE: trying to find a proper place to wait on CI */
 	//ZZZ sleep(3);
+	pool_sync(&d->pool);
 
 	rv = uv_async_send(&d->stop);
 	assert(rv == 0);
