@@ -237,7 +237,7 @@ static uint32_t get_salt2(struct vfs2_salts s)
 
 static bool salts_equal(struct vfs2_salts a, struct vfs2_salts b)
 {
-	return memcmp(&a, &b, sizeof(struct vfs2_salts)) == 0;
+	return get_salt1(a) == get_salt1(b) && get_salt2(a) == get_salt2(b);
 }
 
 static struct vfs2_wal_index_full_hdr *get_full_hdr(struct vfs2_db *db)
@@ -991,6 +991,8 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	struct vfs2_wal_hdr hdr2 = {0};
 	struct vfs2_wal_hdr hdr_cur = {0};
 	struct vfs2_wal_hdr hdr_prev = {0};
+	sqlite3_int64 size_cur = 0;
+	sqlite3_int64 size_prev = 0;
 	bool have_both_hdrs = false;
 	sqlite3_int64 size1;
 	rv = phys1->pMethods->xFileSize(phys1, &size1);
@@ -998,7 +1000,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		goto err_after_open_phys2;
 	}
 	if (size1 < (sqlite3_int64)sizeof(struct vfs2_wal_hdr)) {
-		size1 = 0;
+		size1 = 0; // XXX
 	}
 	sqlite3_int64 size2;
 	rv = phys2->pMethods->xFileSize(phys2, &size2);
@@ -1006,7 +1008,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		goto err_after_open_phys2;
 	}
 	if (size2 < (sqlite3_int64)sizeof(struct vfs2_wal_hdr)) {
-		size2 = 0;
+		size2 = 0; // XXX
 	}
 	xout->wal.is_empty = size1 == 0 && size2 == 0;
 	bool ordered;
@@ -1042,7 +1044,9 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		xout->wal.wal_prev_fixed_name = fixed2;
 
 		hdr_prev = hdr2;
+		size_prev = size2;
 		hdr_cur = hdr1;
+		size_cur = size1;
 
 		if (out_flags != NULL) {
 			*out_flags = out_flags1;
@@ -1060,7 +1064,9 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		xout->wal.wal_prev_fixed_name = fixed1;
 
 		hdr_prev = hdr1;
+		size_prev = size1;
 		hdr_cur = hdr2;
+		size_cur = size2;
 
 		if (out_flags != NULL) {
 			*out_flags = out_flags2;
@@ -1081,20 +1087,35 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 	struct vfs2_wal_slice limit = xout->entry->wal_limit;
 	if (have_both_hdrs && limit.len > 0) {
+		uint32_t page_size = ByteGetBe32(hdr_cur.page_size);
+		assert(ByteGetBe32(hdr_prev.page_size) == page_size);
+		sqlite3_int64 implied_size = sizeof(struct vfs2_wal_hdr) + (VFS2_WAL_FRAME_HDR_SIZE + page_size) * (limit.start + limit.len);
 		if (salts_equal(limit.salts, hdr_prev.salts)) {
-			/* check that the limit points to the end of wal-prev */
-			/* truncate WAL-cur to just the header */
-			/* set commit_end to zero */
+			if (size_prev != implied_size) {
+				rv = SQLITE_ERROR;
+				goto err_after_open_phys2;
+			}
+			rv = xout->orig->pMethods->xTruncate(xout->orig, sizeof(struct vfs2_wal_hdr));
+			if (rv != 0) {
+				goto err_after_open_phys2;
+			}
+			xout->wal.commit_end = 0;
 		} else if (salts_equal(limit.salts, hdr_cur.salts)) {
-			/* check that the limit isn't past the end of WAL-cur */
-			/* truncate WAL-cur */
-			/* set commit_end to the limit */
+			if (size_cur < implied_size) {
+				rv = SQLITE_ERROR;
+				goto err_after_open_phys2;
+			}
+			rv = xout->orig->pMethods->xTruncate(xout->orig, implied_size);
+			xout->wal.commit_end = limit.start + limit.len;
 		} else {
+			rv = SQLITE_ERROR;
+			goto err_after_open_phys2;
 		}
 	}
 
-	/* TODO transition to WTX_BASE if appropriate */
-
+	if (!xout->wal.is_empty) {
+		sm_move(&xout->entry->wtx_sm, WTX_BASE);
+	}
 	xout->entry->wal = xout;
 	return SQLITE_OK;
 
