@@ -225,6 +225,16 @@ struct vfs2_file
 	};
 };
 
+static uint32_t get_salt1(struct vfs2_salts s)
+{
+	return ByteGetBe32(s.salt1);
+}
+
+static uint32_t get_salt2(struct vfs2_salts s)
+{
+	return ByteGetBe32(s.salt2);
+}
+
 static bool salts_equal(struct vfs2_salts a, struct vfs2_salts b)
 {
 	return memcmp(&a, &b, sizeof(struct vfs2_salts)) == 0;
@@ -272,13 +282,9 @@ static bool wal_index_basic_hdr_equal(struct vfs2_wal_index_basic_hdr a, struct 
 
 static bool wal_index_basic_hdr_advanced(struct vfs2_wal_index_basic_hdr new, struct vfs2_wal_index_basic_hdr old)
 {
-	uint32_t new_salt1 = ByteGetBe32(new.salts.salt1);
-	uint32_t new_salt2 = ByteGetBe32(new.salts.salt2);
-	uint32_t old_salt1 = ByteGetBe32(old.salts.salt1);
-	uint32_t old_salt2 = ByteGetBe32(old.salts.salt2);
 	return new.iChange == old.iChange + 1
 		&& new.nPage >= old.nPage /* no vacuums here */
-		&& ((new_salt1 == old_salt1 && new_salt2 == old_salt2) || (old_salt1 == 0 && old_salt2 == 0)) /* note the weirdness with zero salts */
+		&& ((get_salt1(new.salts) == get_salt1(old.salts) && get_salt2(new.salts) == get_salt2(old.salts)) || (get_salt1(old.salts) == 0 && get_salt2(old.salts) == 0)) /* note the weirdness with zero salts */
 		&& new.mxFrame > old.mxFrame;
 }
 
@@ -919,13 +925,11 @@ static struct sqlite3_io_methods vfs2_io_methods = {
 
 /* sqlite3_vfs implementations begin here */
 
-static int compare_wal_headers(struct vfs2_wal_hdr hdr1, struct vfs2_wal_hdr hdr2, bool *ordered)
+static int compare_wal_headers(struct vfs2_wal_hdr a, struct vfs2_wal_hdr b, bool *ordered)
 {
-	uint32_t counter1 = ByteGetBe32(hdr1.salts.salt1);
-	uint32_t counter2 = ByteGetBe32(hdr2.salts.salt2);
-	if (counter1 == counter2 + 1) {
+	if (get_salt1(a.salts) == get_salt1(b.salts) + 1) {
 		*ordered = true;
-	} else if (counter2 == counter1 + 1) {
+	} else if (get_salt1(b.salts) == get_salt1(a.salts) + 1) {
 		*ordered = false;
 	} else {
 		return SQLITE_ERROR;
