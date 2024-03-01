@@ -280,7 +280,7 @@ static bool wal_index_basic_hdr_advanced(struct vfs2_wal_index_basic_hdr new, st
 	uint32_t old_salt2 = ByteGetBe32(old.salt2);
 	return new.iChange == old.iChange + 1
 		&& new.nPage >= old.nPage /* no vacuums here */
-		&& ((new_salt1 == old_salt1 && new_salt2 == old_salt2) || (old_salt1 == 0 && old_salt2 == 0))
+		&& ((new_salt1 == old_salt1 && new_salt2 == old_salt2) || (old_salt1 == 0 && old_salt2 == 0)) /* note the weirdness with zero salts */
 		&& new.mxFrame > old.mxFrame;
 }
 
@@ -921,57 +921,17 @@ static struct sqlite3_io_methods vfs2_io_methods = {
 
 /* sqlite3_vfs implementations begin here */
 
-/* Figure out which of two physical WALs should be WAL-cur and which should be WAL-prev on startup.
- *
- * TODO go over this again carefully and make sure that the newer WAL (the one that might have uncheckpointed
- * txns in it) always ends up as WAL-cur */
-static int compare_wals(sqlite3_file *xwal1,
-			sqlite3_file *xwal2,
-			bool *invert,
-			bool *empty)
+static int compare_wal_headers(struct vfs2_wal_hdr hdr1, struct vfs2_wal_hdr hdr2, bool *ordered)
 {
-	int rv;
-	sqlite3_int64 size1;
-	rv = xwal1->pMethods->xFileSize(xwal1, &size1);
-	if (rv != SQLITE_OK) {
-		return rv;
-	}
-	sqlite3_int64 size2;
-	rv = xwal2->pMethods->xFileSize(xwal2, &size2);
-	if (rv != SQLITE_OK) {
-		return rv;
-	}
-
-	if (size1 == 0 && size2 == 0) {
-		*empty = true;
-	}
-
-	if (size2 == 0) {
-		*invert = false;
-	} else if (size1 == 0) {
-		*invert = true;
+	uint32_t counter1 = ByteGetBe32(hdr1.salt1);
+	uint32_t counter2 = ByteGetBe32(hdr2.salt2);
+	if (counter1 == counter2 + 1) {
+		*ordered = true;
+	} else if (counter2 == counter1 + 1) {
+		*ordered = false;
 	} else {
-		struct vfs2_wal_hdr hdr1;
-		rv = xwal1->pMethods->xRead(xwal1, &hdr1, sizeof(hdr1), 0);
-		if (rv != SQLITE_OK) {
-			return rv;
-		}
-		struct vfs2_wal_hdr hdr2;
-		rv = xwal2->pMethods->xRead(xwal2, &hdr2, sizeof(hdr2), 0);
-		if (rv != SQLITE_OK) {
-			return rv;
-		}
-		uint32_t counter1 = ByteGetBe32(hdr1.salt1);
-		uint32_t counter2 = ByteGetBe32(hdr2.salt2);
-		if (counter1 == counter2 + 1) {
-			*invert = false;
-		} else if (counter2 == counter1 + 1) {
-			*invert = true;
-		} else {
-			return SQLITE_ERROR;
-		}
+		return SQLITE_ERROR;
 	}
-
 	return SQLITE_OK;
 }
 
@@ -1022,24 +982,45 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		goto err_after_open_phys2;
 	}
 
-	bool invert;
-	rv = compare_wals(phys1, phys2, &invert, &xout->wal.is_empty);
-	if (invert) {
-		rv = unlink(name);
-		(void)rv;
-		rv = link(fixed2, name);
-		(void)rv;
-
-		xout->orig = phys2;
-		xout->wal.moving_name = name;
-		xout->wal.wal_cur_fixed_name = fixed2;
-		xout->wal.wal_prev = phys1;
-		xout->wal.wal_prev_fixed_name = fixed1;
-
-		if (out_flags != NULL) {
-			*out_flags = out_flags2;
-		}
+	sqlite3_int64 size1;
+	rv = phys1->pMethods->xFileSize(phys1, &size1);
+	if (rv != SQLITE_OK) {
+		goto err_after_open_phys2;
+	}
+	if (size1 < (sqlite3_int64)sizeof(struct vfs2_wal_hdr)) {
+		size1 = 0;
+	}
+	sqlite3_int64 size2;
+	rv = phys2->pMethods->xFileSize(phys2, &size2);
+	if (rv != SQLITE_OK) {
+		goto err_after_open_phys2;
+	}
+	if (size2 < (sqlite3_int64)sizeof(struct vfs2_wal_hdr)) {
+		size2 = 0;
+	}
+	xout->wal.is_empty = size1 == 0 && size2 == 0;
+	bool ordered;
+	if (size2 == 0) {
+		ordered = true;
+	} else if (size1 == 0) {
+		ordered = false;
 	} else {
+		struct vfs2_wal_hdr hdr1;
+		rv = phys1->pMethods->xRead(phys1, &hdr1, sizeof(hdr1), 0);
+		if (rv != SQLITE_OK) {
+			goto err_after_open_phys2;
+		}
+		struct vfs2_wal_hdr hdr2;
+		rv = phys2->pMethods->xRead(phys2, &hdr2, sizeof(hdr2), 0);
+		if (rv != SQLITE_OK) {
+			goto err_after_open_phys2;
+		}
+		rv = compare_wal_headers(hdr1, hdr2, &ordered);
+		if (rv != SQLITE_OK) {
+			goto err_after_open_phys2;
+		}
+	}
+	if (ordered) {
 		rv = unlink(name);
 		(void)rv;
 		rv = link(fixed1, name);
@@ -1053,6 +1034,21 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 		if (out_flags != NULL) {
 			*out_flags = out_flags1;
+		}
+	} else {
+		rv = unlink(name);
+		(void)rv;
+		rv = link(fixed2, name);
+		(void)rv;
+
+		xout->orig = phys2;
+		xout->wal.moving_name = name;
+		xout->wal.wal_cur_fixed_name = fixed2;
+		xout->wal.wal_prev = phys1;
+		xout->wal.wal_prev_fixed_name = fixed1;
+
+		if (out_flags != NULL) {
+			*out_flags = out_flags2;
 		}
 	}
 
@@ -1068,14 +1064,37 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		}
 	}
 
-	if (xout->entry->wal_limit.len > 0) {
-		/* TODO */
-		/* check that the salts match WAL-cur */
+	struct vfs2_wal_slice limit = xout->entry->wal_limit;
+	if (limit.len > 0) {
+		sqlite3_file *wal_cur = xout->orig;
+		uint8_t salt_prev[4][2];
+		uint8_t salt_cur[4][2];
+		rv = wal_prev->pMethods->xRead(wal_prev, (void *)salt_prev, sizeof(salt_prev), offsetof(struct vfs2_wal_hdr, salt1));
+		if (rv != SQLITE_OK) {
+			/* TODO */
+		}
+		rv = wal_cur->pMethods->xRead(wal_cur, (void *)salt_cur, sizeof(salt_cur), offsetof(struct vfs2_wal_hdr, salt1));
+		if (rv != SQLITE_OK) {
+			/* TODO */
+		}
+		uint8_t salt_limit[4][2];
+		memcpy(salt_limit[0], limit.salt1, sizeof(limit.salt1));
+		memcpy(salt_limit[1], limit.salt2, sizeof(limit.salt2));
 
-		/* check that WAL-cur is not shorter than suggested by the limit */
-		/* truncate WAL-cur */
-		/* set commit_end */
+		if (memcmp(salt_limit, salt_prev, sizeof(salt_prev)) == 0) {
+			/* check that the limit points to the end of wal-prev */
+			/* truncate WAL-cur to just the header */
+			/* set commit_end to zero */
+		} else if (memcmp(salt_limit, salt_cur, sizeof(salt_cur)) == 0) {
+			/* check that the limit isn't past the end of WAL-cur */
+			/* truncate WAL-cur */
+			/* set commit_end to the limit */
+		} else {
+			/* TODO error */
+		}
 	}
+
+	/* TODO transition to WTX_BASE if appropriate */
 
 	xout->entry->wal = xout;
 	return SQLITE_OK;
