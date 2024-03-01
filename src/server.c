@@ -902,14 +902,14 @@ int dqlite_node_stop(dqlite_node *d)
 	int rv;
 
 	/* NOTE: A try not to rewrite overall conn__stop() logic */
-	do {
-	    tracef("active_reqs=%u pool_active?=%d",
-		   d->loop.active_reqs.count,
-		   pool_has_active_ws(&d->pool));
-	    //sleep(1);
-	    sched_yield();
-	} while (d->loop.active_reqs.count > 0 ||
-		 pool_has_active_ws(&d->pool) > 0);
+	//do {
+	//    tracef("active_reqs=%u pool_active?=%d",
+	//	   d->loop.active_reqs.count,
+	//	   pool_has_active_ws(&d->pool));
+	sleep(2);
+	//    sched_yield();
+	//} while (d->loop.active_reqs.count > 0 ||
+	//	 pool_has_active_ws(&d->pool) > 0);
 
 	rv = uv_async_send(&d->stop);
 	assert(rv == 0);
