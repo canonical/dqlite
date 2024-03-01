@@ -458,6 +458,7 @@ static void pool_work_submit(pool_t *pool, pool_work_t *w)
 	}
 
 	uv_mutex_lock(&pi->mutex);
+	POST(!pi->exiting);
 	push(w->type == WT_UNORD ? u : o, &w->link);
 	uv_cond_signal(&pi->planner_cond);
 	uv_mutex_unlock(&pi->mutex);
@@ -501,14 +502,6 @@ void pool_queue_work(pool_t *pool,
 		.work_cb = work_cb,
 		.after_work_cb = after_work_cb,
 	};
-
-	uv_mutex_lock(&pool->pi->mutex);
-	if (pool->pi->exiting) {
-		tracef("Drop work_item=%p pool=%p", w, pool);
-		uv_mutex_unlock(&pool->pi->mutex);
-		return;
-	}
-	uv_mutex_unlock(&pool->pi->mutex);
 
 	w_register(pool, w);
 	pool_work_submit(pool, w);
@@ -590,8 +583,7 @@ pool_t *pool_ut_fallback(void)
 	return &pool;
 }
 
-void pool_sync(pool_t *pool)
+int pool_has_active_ws(pool_t *pool)
 {
-	while(has_active_ws(pool)) {
-	}
+    return has_active_ws(pool) ? 1 : 0;
 }
