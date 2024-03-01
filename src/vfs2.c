@@ -117,8 +117,7 @@ struct vfs2_wal_index_basic_hdr
 	uint32_t mxFrame;
 	uint32_t nPage;
 	uint32_t aFrameCksum[2];
-	uint8_t salt1[4];
-	uint8_t salt2[4];
+	struct vfs2_salts salts;
 	uint32_t aCksum[2];
 };
 
@@ -130,8 +129,7 @@ struct vfs2_wal_hdr
 	uint8_t version[4];
 	uint8_t page_size[4];
 	uint8_t ckpoint_seqno[4];
-	uint8_t salt1[4];
-	uint8_t salt2[4];
+	struct vfs2_salts salts;
 	uint8_t cksum1[4];
 	uint8_t cksum2[4];
 };
@@ -227,10 +225,10 @@ struct vfs2_file
 	};
 };
 
-// static bool salts_equal(const uint8_t *a, const uint8_t *b)
-// {
-// 	return memcmp(a, b, sizeof(uint8_t[4])) == 0;
-// }
+static bool salts_equal(struct vfs2_salts a, struct vfs2_salts b)
+{
+	return memcmp(&a, &b, sizeof(struct vfs2_salts)) == 0;
+}
 
 static struct vfs2_wal_index_full_hdr *get_full_hdr(struct vfs2_db *db)
 {
@@ -274,10 +272,10 @@ static bool wal_index_basic_hdr_equal(struct vfs2_wal_index_basic_hdr a, struct 
 
 static bool wal_index_basic_hdr_advanced(struct vfs2_wal_index_basic_hdr new, struct vfs2_wal_index_basic_hdr old)
 {
-	uint32_t new_salt1 = ByteGetBe32(new.salt1);
-	uint32_t new_salt2 = ByteGetBe32(new.salt2);
-	uint32_t old_salt1 = ByteGetBe32(old.salt1);
-	uint32_t old_salt2 = ByteGetBe32(old.salt2);
+	uint32_t new_salt1 = ByteGetBe32(new.salts.salt1);
+	uint32_t new_salt2 = ByteGetBe32(new.salts.salt2);
+	uint32_t old_salt1 = ByteGetBe32(old.salts.salt1);
+	uint32_t old_salt2 = ByteGetBe32(old.salts.salt2);
 	return new.iChange == old.iChange + 1
 		&& new.nPage >= old.nPage /* no vacuums here */
 		&& ((new_salt1 == old_salt1 && new_salt2 == old_salt2) || (old_salt1 == 0 && old_salt2 == 0)) /* note the weirdness with zero salts */
@@ -923,8 +921,8 @@ static struct sqlite3_io_methods vfs2_io_methods = {
 
 static int compare_wal_headers(struct vfs2_wal_hdr hdr1, struct vfs2_wal_hdr hdr2, bool *ordered)
 {
-	uint32_t counter1 = ByteGetBe32(hdr1.salt1);
-	uint32_t counter2 = ByteGetBe32(hdr2.salt2);
+	uint32_t counter1 = ByteGetBe32(hdr1.salts.salt1);
+	uint32_t counter2 = ByteGetBe32(hdr2.salts.salt2);
 	if (counter1 == counter2 + 1) {
 		*ordered = true;
 	} else if (counter2 == counter1 + 1) {
@@ -946,14 +944,16 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 	const char *dash = strrchr(name, '-');
 	assert(dash != NULL);
+	static_assert(sizeof(VFS2_WAL_FIXED_SUFFIX1) == sizeof(VFS2_WAL_FIXED_SUFFIX2));
 	if ((size_t)(dash - name) + strlen(VFS2_WAL_FIXED_SUFFIX1) >
 	    (size_t)data->orig->mxPathname) {
 		rv = SQLITE_ERROR;
 		goto err;
 	}
 
-	/* Collect memory allocations in one place to simplify the control flow
-	 */
+	/* Collect memory allocations in one place to simplify the control
+	 * flow. A small amount of memory will be leaked if one of the later
+	 * allocations fails. */
 	char *fixed1 = sqlite3_malloc(data->orig->mxPathname + 1);
 	char *fixed2 = sqlite3_malloc(data->orig->mxPathname + 1);
 	sqlite3_file *phys1 = sqlite3_malloc(data->orig->szOsFile);
@@ -963,7 +963,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		goto err;
 	}
 
-	/* Open the two physical WALs */
+	/* Open the two physical WALs. */
 	strncpy(fixed1, name, (size_t)(dash - name));
 	fixed1[dash - name] = '\0';
 	strcat(fixed1, VFS2_WAL_FIXED_SUFFIX1);
@@ -982,6 +982,12 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		goto err_after_open_phys2;
 	}
 
+	/* Determine the relationship between the two physical WALs. */
+	struct vfs2_wal_hdr hdr1 = {0};
+	struct vfs2_wal_hdr hdr2 = {0};
+	struct vfs2_wal_hdr hdr_cur = {0};
+	struct vfs2_wal_hdr hdr_prev = {0};
+	bool have_both_hdrs = false;
 	sqlite3_int64 size1;
 	rv = phys1->pMethods->xFileSize(phys1, &size1);
 	if (rv != SQLITE_OK) {
@@ -1005,16 +1011,15 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	} else if (size1 == 0) {
 		ordered = false;
 	} else {
-		struct vfs2_wal_hdr hdr1;
 		rv = phys1->pMethods->xRead(phys1, &hdr1, sizeof(hdr1), 0);
 		if (rv != SQLITE_OK) {
 			goto err_after_open_phys2;
 		}
-		struct vfs2_wal_hdr hdr2;
 		rv = phys2->pMethods->xRead(phys2, &hdr2, sizeof(hdr2), 0);
 		if (rv != SQLITE_OK) {
 			goto err_after_open_phys2;
 		}
+		have_both_hdrs = true;
 		rv = compare_wal_headers(hdr1, hdr2, &ordered);
 		if (rv != SQLITE_OK) {
 			goto err_after_open_phys2;
@@ -1032,6 +1037,9 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		xout->wal.wal_prev = phys2;
 		xout->wal.wal_prev_fixed_name = fixed2;
 
+		hdr_prev = hdr2;
+		hdr_cur = hdr1;
+
 		if (out_flags != NULL) {
 			*out_flags = out_flags1;
 		}
@@ -1046,6 +1054,9 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		xout->wal.wal_cur_fixed_name = fixed2;
 		xout->wal.wal_prev = phys1;
 		xout->wal.wal_prev_fixed_name = fixed1;
+
+		hdr_prev = hdr1;
+		hdr_cur = hdr2;
 
 		if (out_flags != NULL) {
 			*out_flags = out_flags2;
@@ -1065,32 +1076,16 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	}
 
 	struct vfs2_wal_slice limit = xout->entry->wal_limit;
-	if (limit.len > 0) {
-		sqlite3_file *wal_cur = xout->orig;
-		uint8_t salt_prev[4][2];
-		uint8_t salt_cur[4][2];
-		rv = wal_prev->pMethods->xRead(wal_prev, (void *)salt_prev, sizeof(salt_prev), offsetof(struct vfs2_wal_hdr, salt1));
-		if (rv != SQLITE_OK) {
-			/* TODO */
-		}
-		rv = wal_cur->pMethods->xRead(wal_cur, (void *)salt_cur, sizeof(salt_cur), offsetof(struct vfs2_wal_hdr, salt1));
-		if (rv != SQLITE_OK) {
-			/* TODO */
-		}
-		uint8_t salt_limit[4][2];
-		memcpy(salt_limit[0], limit.salt1, sizeof(limit.salt1));
-		memcpy(salt_limit[1], limit.salt2, sizeof(limit.salt2));
-
-		if (memcmp(salt_limit, salt_prev, sizeof(salt_prev)) == 0) {
+	if (have_both_hdrs && limit.len > 0) {
+		if (salts_equal(limit.salts, hdr_prev.salts)) {
 			/* check that the limit points to the end of wal-prev */
 			/* truncate WAL-cur to just the header */
 			/* set commit_end to zero */
-		} else if (memcmp(salt_limit, salt_cur, sizeof(salt_cur)) == 0) {
+		} else if (salts_equal(limit.salts, hdr_cur.salts)) {
 			/* check that the limit isn't past the end of WAL-cur */
 			/* truncate WAL-cur */
 			/* set commit_end to the limit */
 		} else {
-			/* TODO error */
 		}
 	}
 
@@ -1427,8 +1422,7 @@ int vfs2_shallow_poll(sqlite3_file *file, struct vfs2_wal_slice *out)
 		wal->pending_txn_frames = NULL;
 	}
 
-	memcpy(out->salt1, xfile->db_shm.pending_txn_hdr.salt1, sizeof(out->salt1));
-	memcpy(out->salt2, xfile->db_shm.pending_txn_hdr.salt2, sizeof(out->salt2));
+	out->salts = xfile->db_shm.pending_txn_hdr.salts;
 	out->start = xfile->db_shm.prev_txn_hdr.mxFrame;
 	out->len = len;
 

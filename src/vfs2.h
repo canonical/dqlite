@@ -20,13 +20,18 @@
  */
 sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name, unsigned page_size);
 
+struct vfs2_salts
+{
+	uint8_t salt1[4];
+	uint8_t salt2[4];
+};
+
 /**
  * Identifying information about a write transaction.
  */
 struct vfs2_wal_slice
 {
-	uint8_t salt1[4];
-	uint8_t salt2[4];
+	struct vfs2_salts salts;
 	uint32_t start;
 	uint32_t len;
 };
