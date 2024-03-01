@@ -28,7 +28,7 @@ static void uvAsyncAfterWorkCb(uv_work_t *work, int status)
 	struct uv *uv = w->uv;
 	assert(status == 0);
 
-	QUEUE_REMOVE(&w->queue);
+	queue_remove(&w->queue);
 	RaftHeapFree(w);
 	req->cb(req, req_status);
 	uvMaybeFireCloseCb(uv);
@@ -56,11 +56,11 @@ int UvAsyncWork(struct raft_io *io,
 	async_work->work.data = async_work;
 	req->cb = cb;
 
-	QUEUE_PUSH(&uv->async_work_reqs, &async_work->queue);
+	queue_insert_tail(&uv->async_work_reqs, &async_work->queue);
 	rv = uv_queue_work(uv->loop, &async_work->work, uvAsyncWorkCb,
 			   uvAsyncAfterWorkCb);
 	if (rv != 0) {
-		QUEUE_REMOVE(&async_work->queue);
+		queue_remove(&async_work->queue);
 		tracef("async work: %s", uv_strerror(rv));
 		rv = RAFT_IOERR;
 		goto err_after_req_alloc;

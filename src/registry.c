@@ -9,17 +9,17 @@
 void registry__init(struct registry *r, struct config *config)
 {
 	r->config = config;
-	QUEUE__INIT(&r->dbs);
+	queue_init(&r->dbs);
 }
 
 void registry__close(struct registry *r)
 {
-	while (!QUEUE__IS_EMPTY(&r->dbs)) {
+	while (!queue_empty(&r->dbs)) {
 		struct db *db;
 		queue *head;
-		head = QUEUE__HEAD(&r->dbs);
-		QUEUE__REMOVE(head);
-		db = QUEUE__DATA(head, struct db, queue);
+		head = queue_head(&r->dbs);
+		queue_remove(head);
+		db = QUEUE_DATA(head, struct db, queue);
 		db__close(db);
 		sqlite3_free(db);
 	}
@@ -28,9 +28,9 @@ void registry__close(struct registry *r)
 int registry__db_get(struct registry *r, const char *filename, struct db **db)
 {
 	queue *head;
-	QUEUE__FOREACH(head, &r->dbs)
+	QUEUE_FOREACH(head, &r->dbs)
 	{
-		*db = QUEUE__DATA(head, struct db, queue);
+		*db = QUEUE_DATA(head, struct db, queue);
 		if (strcmp((*db)->filename, filename) == 0) {
 			return 0;
 		}
@@ -40,6 +40,6 @@ int registry__db_get(struct registry *r, const char *filename, struct db **db)
 		return DQLITE_NOMEM;
 	}
 	db__init(*db, r->config, filename);
-	QUEUE__PUSH(&r->dbs, &(*db)->queue);
+	queue_insert_tail(&r->dbs, &(*db)->queue);
 	return 0;
 }

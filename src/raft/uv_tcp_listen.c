@@ -69,7 +69,7 @@ static void uvTcpIncomingCloseCb(struct uv_handle_s *handle)
 {
 	struct uvTcpIncoming *incoming = handle->data;
 	struct UvTcp *t = incoming->t;
-	QUEUE_REMOVE(&incoming->queue);
+	queue_remove(&incoming->queue);
 	if (incoming->handshake.address.base != NULL) {
 		RaftHeapFree(incoming->handshake.address.base);
 	}
@@ -84,8 +84,8 @@ static void uvTcpIncomingAbort(struct uvTcpIncoming *incoming)
 	struct UvTcp *t = incoming->t;
 	/* After uv_close() returns we are guaranteed that no more alloc_cb or
 	 * read_cb will be called. */
-	QUEUE_REMOVE(&incoming->queue);
-	QUEUE_PUSH(&t->aborting, &incoming->queue);
+	queue_remove(&incoming->queue);
+	queue_insert_tail(&t->aborting, &incoming->queue);
 	uv_close((struct uv_handle_s *)incoming->tcp, uvTcpIncomingCloseCb);
 }
 
@@ -143,7 +143,7 @@ static void uvTcpIncomingReadCbAddress(uv_stream_t *stream,
 	assert(rv == 0);
 	id = byteFlip64(incoming->handshake.preamble[1]);
 	address = incoming->handshake.address.base;
-	QUEUE_REMOVE(&incoming->queue);
+	queue_remove(&incoming->queue);
 	incoming->t->accept_cb(incoming->t->transport, id, address,
 			       (struct uv_stream_s *)incoming->tcp);
 	RaftHeapFree(incoming->handshake.address.base);
@@ -274,7 +274,7 @@ static void uvTcpListenCb(struct uv_stream_s *stream, int status)
 	incoming->listener = (struct uv_tcp_s *)stream;
 	incoming->tcp = NULL;
 
-	QUEUE_PUSH(&t->accepting, &incoming->queue);
+	queue_insert_tail(&t->accepting, &incoming->queue);
 
 	rv = uvTcpIncomingStart(incoming);
 	if (rv != 0) {
@@ -284,7 +284,7 @@ static void uvTcpListenCb(struct uv_stream_s *stream, int status)
 	return;
 
 err_after_accept_alloc:
-	QUEUE_REMOVE(&incoming->queue);
+	queue_remove(&incoming->queue);
 	RaftHeapFree(incoming);
 err:
 	assert(rv != 0);
@@ -411,9 +411,9 @@ void UvTcpListenClose(struct UvTcp *t)
 	queue *head;
 	assert(t->closing);
 
-	while (!QUEUE_IS_EMPTY(&t->accepting)) {
+	while (!queue_empty(&t->accepting)) {
 		struct uvTcpIncoming *incoming;
-		head = QUEUE_HEAD(&t->accepting);
+		head = queue_head(&t->accepting);
 		incoming = QUEUE_DATA(head, struct uvTcpIncoming, queue);
 		uvTcpIncomingAbort(incoming);
 	}

@@ -25,7 +25,7 @@ TEST_MODULE(conn);
 
 static void connCloseCb(struct conn *conn)
 {
-	bool *closed = conn->queue[0];
+	uint64_t *closed = (uint64_t *)conn->queue.next;
 	*closed = true;
 }
 
@@ -37,7 +37,7 @@ static void connCloseCb(struct conn *conn)
 	FIXTURE_RAFT;     \
 	FIXTURE_CLIENT;   \
 	struct conn conn; \
-	bool closed;
+	uint64_t closed;
 
 #define SETUP                                                          \
 	struct uv_stream_s *stream;                                    \
@@ -56,7 +56,7 @@ static void connCloseCb(struct conn *conn)
 	rv = transport__stream(&f->loop, f->server, &stream);          \
 	munit_assert_int(rv, ==, 0);                                   \
 	f->closed = false;                                             \
-	f->conn.queue[0] = &f->closed;                                 \
+	f->conn.queue.next = (queue *)&f->closed;                      \
 	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry, \
 			 &f->raft, stream, &f->raft_transport, seed,   \
 			 connCloseCb);                                 \

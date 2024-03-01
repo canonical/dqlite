@@ -33,7 +33,7 @@ static void uvWriterReqSetStatus(struct UvWriterReq *req, int result)
  * callback if set. */
 static void uvWriterReqFinish(struct UvWriterReq *req)
 {
-	QUEUE_REMOVE(&req->queue);
+	queue_remove(&req->queue);
 	if (req->status != 0) {
 		uvWriterReqTransferErrMsg(req);
 	}
@@ -219,10 +219,10 @@ static void uvWriterPollCb(uv_poll_t *poller, int status, int events)
 	return;
 
 fail_requests:
-	while (!QUEUE_IS_EMPTY(&w->poll_queue)) {
+	while (!queue_empty(&w->poll_queue)) {
 		queue *head;
 		struct UvWriterReq *req;
-		head = QUEUE_HEAD(&w->poll_queue);
+		head = queue_head(&w->poll_queue);
 		req = QUEUE_DATA(head, struct UvWriterReq, queue);
 		uvWriterReqSetStatus(req, status);
 		uvWriterReqFinish(req);
@@ -251,8 +251,8 @@ int UvWriterInit(struct UvWriter *w,
 	w->event_poller.data = NULL;
 	w->check.data = NULL;
 	w->close_cb = NULL;
-	QUEUE_INIT(&w->poll_queue);
-	QUEUE_INIT(&w->work_queue);
+	queue_init(&w->poll_queue);
+	queue_init(&w->work_queue);
 	w->closing = false;
 	w->errmsg = errmsg;
 
@@ -352,10 +352,10 @@ static void uvWriterPollerCloseCb(struct uv_handle_s *handle)
 	w->event_poller.data = NULL;
 
 	/* Cancel all pending requests. */
-	while (!QUEUE_IS_EMPTY(&w->poll_queue)) {
+	while (!queue_empty(&w->poll_queue)) {
 		queue *head;
 		struct UvWriterReq *req;
-		head = QUEUE_HEAD(&w->poll_queue);
+		head = queue_head(&w->poll_queue);
 		req = QUEUE_DATA(head, struct UvWriterReq, queue);
 		assert(req->work.data == NULL);
 		req->status = RAFT_CANCELED;
@@ -382,7 +382,7 @@ static void uvWriterCheckCloseCb(struct uv_handle_s *handle)
 static void uvWriterCheckCb(struct uv_check_s *check)
 {
 	struct UvWriter *w = check->data;
-	if (!QUEUE_IS_EMPTY(&w->work_queue)) {
+	if (!queue_empty(&w->work_queue)) {
 		return;
 	}
 	uv_close((struct uv_handle_s *)&w->check, uvWriterCheckCloseCb);
@@ -407,7 +407,7 @@ void UvWriterClose(struct UvWriter *w, UvWriterCloseCb cb)
 
 	/* If we have requests executing in the threadpool, we need to wait for
 	 * them. That's done in the check callback. */
-	if (!QUEUE_IS_EMPTY(&w->work_queue)) {
+	if (!queue_empty(&w->work_queue)) {
 		uv_check_start(&w->check, uvWriterCheckCb);
 	} else {
 		uv_close((struct uv_handle_s *)&w->check, uvWriterCheckCloseCb);
@@ -440,8 +440,8 @@ int UvWriterSubmit(struct UvWriter *w,
 	 *       writes, so ensure that we're getting write requests
 	 *       sequentially. */
 	if (w->n_events == 1) {
-		assert(QUEUE_IS_EMPTY(&w->poll_queue));
-		assert(QUEUE_IS_EMPTY(&w->work_queue));
+		assert(queue_empty(&w->poll_queue));
+		assert(queue_empty(&w->work_queue));
 	}
 
 	assert(w->fd >= 0);
@@ -490,7 +490,7 @@ int UvWriterSubmit(struct UvWriter *w,
 
 	/* Try to submit the write request asynchronously */
 	if (w->async) {
-		QUEUE_PUSH(&w->poll_queue, &req->queue);
+		queue_insert_tail(&w->poll_queue, &req->queue);
 		rv = UvOsIoSubmit(w->ctx, 1, &iocbs);
 
 		/* If no error occurred, we're done, the write request was
@@ -499,7 +499,7 @@ int UvWriterSubmit(struct UvWriter *w,
 			goto done;
 		}
 
-		QUEUE_REMOVE(&req->queue);
+		queue_remove(&req->queue);
 
 		/* Check the reason of the error. */
 		switch (rv) {
@@ -521,7 +521,7 @@ int UvWriterSubmit(struct UvWriter *w,
 
 	/* If we got here it means we need to run io_submit in the threadpool.
 	 */
-	QUEUE_PUSH(&w->work_queue, &req->queue);
+	queue_insert_tail(&w->work_queue, &req->queue);
 	req->work.data = req;
 	rv = uv_queue_work(w->loop, &req->work, uvWriterWorkCb,
 			   uvWriterAfterWorkCb);
@@ -529,7 +529,7 @@ int UvWriterSubmit(struct UvWriter *w,
 		/* UNTESTED: with the current libuv implementation this can't
 		 * fail. */
 		req->work.data = NULL;
-		QUEUE_REMOVE(&req->queue);
+		queue_remove(&req->queue);
 		UvOsErrMsg(w->errmsg, "uv_queue_work", rv);
 		rv = RAFT_IOERR;
 		goto err;

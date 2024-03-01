@@ -172,10 +172,10 @@ void uvMaybeFireCloseCb(struct uv *uv)
 	if (uv->timer.data != NULL) {
 		return;
 	}
-	if (!QUEUE_IS_EMPTY(&uv->append_segments)) {
+	if (!queue_empty(&uv->append_segments)) {
 		return;
 	}
-	if (!QUEUE_IS_EMPTY(&uv->finalize_reqs)) {
+	if (!queue_empty(&uv->finalize_reqs)) {
 		return;
 	}
 	if (uv->finalize_work.data != NULL) {
@@ -190,13 +190,13 @@ void uvMaybeFireCloseCb(struct uv *uv)
 	if (uv->snapshot_put_work.data != NULL) {
 		return;
 	}
-	if (!QUEUE_IS_EMPTY(&uv->snapshot_get_reqs)) {
+	if (!queue_empty(&uv->snapshot_get_reqs)) {
 		return;
 	}
-	if (!QUEUE_IS_EMPTY(&uv->async_work_reqs)) {
+	if (!queue_empty(&uv->async_work_reqs)) {
 		return;
 	}
-	if (!QUEUE_IS_EMPTY(&uv->aborting)) {
+	if (!queue_empty(&uv->aborting)) {
 		return;
 	}
 
@@ -698,28 +698,28 @@ int raft_uv_init(struct raft_io *io,
 #endif
 	uv->segment_size = UV__MAX_SEGMENT_SIZE;
 	uv->block_size = 0;
-	QUEUE_INIT(&uv->clients);
-	QUEUE_INIT(&uv->servers);
+	queue_init(&uv->clients);
+	queue_init(&uv->servers);
 	uv->connect_retry_delay = CONNECT_RETRY_DELAY;
 	uv->prepare_inflight = NULL;
-	QUEUE_INIT(&uv->prepare_reqs);
-	QUEUE_INIT(&uv->prepare_pool);
+	queue_init(&uv->prepare_reqs);
+	queue_init(&uv->prepare_pool);
 	uv->prepare_next_counter = 1;
 	uv->append_next_index = 1;
-	QUEUE_INIT(&uv->append_segments);
-	QUEUE_INIT(&uv->append_pending_reqs);
-	QUEUE_INIT(&uv->append_writing_reqs);
+	queue_init(&uv->append_segments);
+	queue_init(&uv->append_pending_reqs);
+	queue_init(&uv->append_writing_reqs);
 	uv->barrier = NULL;
-	QUEUE_INIT(&uv->finalize_reqs);
+	queue_init(&uv->finalize_reqs);
 	uv->finalize_work.data = NULL;
 	uv->truncate_work.data = NULL;
-	QUEUE_INIT(&uv->snapshot_get_reqs);
-	QUEUE_INIT(&uv->async_work_reqs);
+	queue_init(&uv->snapshot_get_reqs);
+	queue_init(&uv->async_work_reqs);
 	uv->snapshot_put_work.data = NULL;
 	uv->timer.data = NULL;
 	uv->tick_cb = NULL; /* Set by raft_io->start() */
 	uv->recv_cb = NULL; /* Set by raft_io->start() */
-	QUEUE_INIT(&uv->aborting);
+	queue_init(&uv->aborting);
 	uv->closing = false;
 	uv->close_cb = NULL;
 	uv->auto_recovery = true;

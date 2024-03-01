@@ -77,7 +77,7 @@ static void uvTcpConnectFinish(struct uvTcpConnect *connect)
 	struct uv_stream_s *stream = (struct uv_stream_s *)connect->tcp;
 	struct raft_uv_connect *req = connect->req;
 	int status = connect->status;
-	QUEUE_REMOVE(&connect->queue);
+	queue_remove(&connect->queue);
 	RaftHeapFree(connect->handshake.base);
 	uv_freeaddrinfo(connect->getaddrinfo.addrinfo);
 	raft_free(connect);
@@ -101,8 +101,8 @@ static void uvTcpConnectUvCloseCb(struct uv_handle_s *handle)
 /* Abort a connection request. */
 static void uvTcpConnectAbort(struct uvTcpConnect *connect)
 {
-	QUEUE_REMOVE(&connect->queue);
-	QUEUE_PUSH(&connect->t->aborting, &connect->queue);
+	queue_remove(&connect->queue);
+	queue_insert_tail(&connect->t->aborting, &connect->queue);
 	uv_cancel((struct uv_req_s *)&connect->getaddrinfo);
 	/* Call uv_close on the tcp handle, if there is no getaddrinfo request
 	 * in flight and the handle is not currently closed due to next IP
@@ -353,7 +353,7 @@ int UvTcpConnect(struct raft_uv_transport *transport,
 	req->cb = cb;
 
 	/* Keep track of the pending request */
-	QUEUE_PUSH(&t->connecting, &r->queue);
+	queue_insert_tail(&t->connecting, &r->queue);
 
 	/* Start connecting */
 	rv = uvTcpConnectStart(r, address);
@@ -364,7 +364,7 @@ int UvTcpConnect(struct raft_uv_transport *transport,
 	return 0;
 
 err_after_alloc:
-	QUEUE_REMOVE(&r->queue);
+	queue_remove(&r->queue);
 	RaftHeapFree(r);
 err:
 	return rv;
@@ -372,10 +372,10 @@ err:
 
 void UvTcpConnectClose(struct UvTcp *t)
 {
-	while (!QUEUE_IS_EMPTY(&t->connecting)) {
+	while (!queue_empty(&t->connecting)) {
 		struct uvTcpConnect *connect;
 		queue *head;
-		head = QUEUE_HEAD(&t->connecting);
+		head = queue_head(&t->connecting);
 		connect = QUEUE_DATA(head, struct uvTcpConnect, queue);
 		uvTcpConnectAbort(connect);
 	}

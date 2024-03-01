@@ -11,7 +11,7 @@ struct request
     void *data;
     int type;
     raft_index index;
-    void *queue[2];
+    queue queue;
 };
 
 uprobe:$libraft_path:lifecycleRequestStart

@@ -183,13 +183,13 @@ static void startChange(struct dqlite_node *d)
 	int role;
 	int rv;
 
-	if (QUEUE__IS_EMPTY(&d->roles_changes)) {
+	if (queue_empty(&d->roles_changes)) {
 		return;
 	}
 
-	head = QUEUE__HEAD(&d->roles_changes);
-	QUEUE__REMOVE(head);
-	rec = QUEUE__DATA(head, struct change_record, queue);
+	head = queue_head(&d->roles_changes);
+	queue_remove(head);
+	rec = QUEUE_DATA(head, struct change_record, queue);
 	id = rec->id;
 	role = rec->role;
 	raft_free(rec);
@@ -228,9 +228,9 @@ static void queueChange(uint64_t id, int role, void *arg)
 
 	/* If we already queued a role change for this node, just update
 	 * that record instead of queueing a new one. */
-	QUEUE__FOREACH(head, &d->roles_changes)
+	QUEUE_FOREACH(head, &d->roles_changes)
 	{
-		rec = QUEUE__DATA(head, struct change_record, queue);
+		rec = QUEUE_DATA(head, struct change_record, queue);
 		if (rec->id == id) {
 			rec->role = role;
 			return;
@@ -243,7 +243,7 @@ static void queueChange(uint64_t id, int role, void *arg)
 	}
 	rec->id = id;
 	rec->role = role;
-	QUEUE__PUSH(&d->roles_changes, &rec->queue);
+	queue_insert_tail(&d->roles_changes, &rec->queue);
 }
 
 void RolesComputeChanges(int voters,
@@ -666,7 +666,7 @@ void RolesAdjust(struct dqlite_node *d)
 	}
 	/* If a series of role adjustments is already in progress, don't kick
 	 * off another one. */
-	if (!QUEUE__IS_EMPTY(&d->roles_changes)) {
+	if (!queue_empty(&d->roles_changes)) {
 		return;
 	}
 	assert(d->running);
@@ -707,10 +707,10 @@ void RolesCancelPendingChanges(struct dqlite_node *d)
 	queue *head;
 	struct change_record *rec;
 
-	while (!QUEUE__IS_EMPTY(&d->roles_changes)) {
-		head = QUEUE__HEAD(&d->roles_changes);
-		rec = QUEUE__DATA(head, struct change_record, queue);
-		QUEUE__REMOVE(head);
+	while (!queue_empty(&d->roles_changes)) {
+		head = queue_head(&d->roles_changes);
+		rec = QUEUE_DATA(head, struct change_record, queue);
+		queue_remove(head);
 		raft_free(rec);
 	}
 }

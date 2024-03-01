@@ -751,7 +751,7 @@ static void uvSnapshotGetAfterWorkCb(uv_work_t *work, int status)
 	int req_status = get->status;
 	struct uv *uv = get->uv;
 	assert(status == 0);
-	QUEUE_REMOVE(&get->queue);
+	queue_remove(&get->queue);
 	RaftHeapFree(get);
 	req->cb(req, snapshot, req_status);
 	uvMaybeFireCloseCb(uv);
@@ -784,11 +784,11 @@ int UvSnapshotGet(struct raft_io *io,
 	}
 	get->work.data = get;
 
-	QUEUE_PUSH(&uv->snapshot_get_reqs, &get->queue);
+	queue_insert_tail(&uv->snapshot_get_reqs, &get->queue);
 	rv = uv_queue_work(uv->loop, &get->work, uvSnapshotGetWorkCb,
 			   uvSnapshotGetAfterWorkCb);
 	if (rv != 0) {
-		QUEUE_REMOVE(&get->queue);
+		queue_remove(&get->queue);
 		tracef("get last snapshot: %s", uv_strerror(rv));
 		rv = RAFT_IOERR;
 		goto err_after_snapshot_alloc;
