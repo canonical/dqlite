@@ -948,7 +948,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 	const char *dash = strrchr(name, '-');
 	assert(dash != NULL);
-	static_assert(sizeof(VFS2_WAL_FIXED_SUFFIX1) == sizeof(VFS2_WAL_FIXED_SUFFIX2));
+	static_assert(sizeof(VFS2_WAL_FIXED_SUFFIX1) == sizeof(VFS2_WAL_FIXED_SUFFIX2), "uneven WAL suffixes");
 	if ((size_t)(dash - name) + strlen(VFS2_WAL_FIXED_SUFFIX1) >
 	    (size_t)data->orig->mxPathname) {
 		rv = SQLITE_ERROR;
