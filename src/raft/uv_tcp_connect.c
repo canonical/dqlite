@@ -261,7 +261,7 @@ static void uvGetAddrInfoCb(uv_getaddrinfo_t *req,
 /* Create a new TCP handle and submit a connection request to the event loop. */
 static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
 {
-	static struct addrinfo hints = {.ai_flags = AI_V4MAPPED | AI_ADDRCONFIG,
+	static struct addrinfo hints = {.ai_flags = 0,
 					.ai_family = AF_INET,
 					.ai_socktype = SOCK_STREAM,
 					.ai_protocol = 0};
