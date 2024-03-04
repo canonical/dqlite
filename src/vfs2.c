@@ -502,7 +502,7 @@ static int vfs2_wal_swap(struct vfs2_file *wal, const struct vfs2_wal_hdr *wal_h
 
 static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
 				    const void *buf,
-				    sqlite3_int64 x)
+				    uint32_t x)
 {
 	/* initialize commit_end if necessary */
 	if (wal->wal.commit_end == 0 && wal->wal.pending_txn_len == 0 && x > 0) {
@@ -510,7 +510,7 @@ static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
 	}
 	x -= wal->wal.commit_end;
 
-	assert(0 <= x && x <= wal->wal.pending_txn_len);
+	assert(x <= wal->wal.pending_txn_len);
 	uint32_t n = wal->wal.pending_txn_len;
 	dqlite_vfs_frame *frames = wal->wal.pending_txn_frames;
 	if (wal->wal.pending_txn_len == 0 && x == 0) {
@@ -564,7 +564,7 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 		    ofst - (sqlite3_int64)sizeof(struct vfs2_wal_hdr);
 		assert(x % frame_size == 0);
 		x /= frame_size;
-		return vfs2_wal_write_frame_hdr(wal, buf, x);
+		return vfs2_wal_write_frame_hdr(wal, buf, (uint32_t)x);
 	} else if (amt == (int)wal->vfs_data->page_size) {
 		sqlite3_int64 x = ofst - VFS2_WAL_FRAME_HDR_SIZE -
 				  (sqlite3_int64)sizeof(struct vfs2_wal_hdr);
@@ -1089,7 +1089,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	if (have_both_hdrs && limit.len > 0) {
 		uint32_t page_size = ByteGetBe32(hdr_cur.page_size);
 		assert(ByteGetBe32(hdr_prev.page_size) == page_size);
-		sqlite3_int64 implied_size = sizeof(struct vfs2_wal_hdr) + (VFS2_WAL_FRAME_HDR_SIZE + page_size) * (limit.start + limit.len);
+		sqlite3_int64 implied_size = (sqlite3_int64)sizeof(struct vfs2_wal_hdr) + (sqlite3_int64)(VFS2_WAL_FRAME_HDR_SIZE + page_size) * (sqlite3_int64)(limit.start + limit.len);
 		if (salts_equal(limit.salts, hdr_prev.salts)) {
 			if (size_prev != implied_size) {
 				rv = SQLITE_ERROR;
@@ -1192,8 +1192,8 @@ static struct vfs2_db_entry *get_or_create_entry(struct vfs2_data *data, const c
 	if (res == NULL) {
 		return NULL;
 	}
-	int len = name_is_db ? strlen(name) : (size_t)(dash - name);
-	res->db_name = sqlite3_malloc(len + 1);
+	size_t len = name_is_db ? strlen(name) : (size_t)(dash - name);
+	res->db_name = sqlite3_malloc((int)len + 1);
 	if (res->db_name == NULL) {
 		sqlite3_free(res);
 		return NULL;
