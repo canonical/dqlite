@@ -1,9 +1,12 @@
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+
 #include "../../src/vfs2.h"
 #include "../lib/fs.h"
 #include "../lib/runner.h"
 
 #include <sqlite3.h>
 
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 
@@ -22,6 +25,7 @@ static void *set_up(const MunitParameter params[], void *user_data)
 	struct fixture *f = munit_malloc(sizeof(*f));
 	f->dir = test_dir_setup();
 	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), "dqlite-vfs2", 0);
+	munit_assert_ptr_not_null(f->vfs);
 	sqlite3_vfs_register(f->vfs, 1 /* make default */);
 	return f;
 }
@@ -33,6 +37,59 @@ static void tear_down(void *data)
 	vfs2_destroy(f->vfs);
 	test_dir_tear_down(f->dir);
 	free(f);
+}
+
+static void prepare_wals(const char *dbname, const unsigned char *wal1, size_t wal1_len, const unsigned char *wal2, size_t wal2_len)
+{
+	char buf[PATH_MAX];
+	ssize_t n;
+	if (wal1 != NULL) {
+		snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
+		int fd1 = open(buf, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH);
+		munit_assert_int(fd1, !=, -1);
+		n = write(fd1, wal1, wal1_len);
+		munit_assert_llong(n, ==, wal1_len);
+		close(fd1);
+	}
+	if (wal2 != NULL) {
+		snprintf(buf, sizeof(buf), "%s-xwal2", dbname);
+		int fd2 = open(buf, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH);
+		munit_assert_int(fd2, !=, -1);
+		n = write(fd2, wal2, wal2_len);
+		munit_assert_llong(n, ==, wal2_len);
+		close(fd2);
+	}
+}
+
+static void check_wals(const char *dbname, const unsigned char *wal1, size_t wal1_len, const unsigned char *wal2, size_t wal2_len)
+{
+	char buf[PATH_MAX];
+	snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
+	int fd1 = open(buf, O_RDONLY);
+	munit_assert_true((fd1 == -1) == (wal1 == NULL));
+	snprintf(buf, sizeof(buf), "%s-xwal2", dbname);
+	int fd2 = open(buf, O_RDONLY);
+	munit_assert_true((fd2 == -1) == (wal2 == NULL));
+
+	char *fbuf = NULL;
+	ssize_t n;
+	if (wal1 != NULL) {
+		fbuf = realloc(fbuf, wal1_len);
+		munit_assert_ptr_not_null(fbuf);
+		n = read(fd1, fbuf, wal1_len);
+		close(fd1);
+		munit_assert_llong(n, ==, wal1_len);
+		munit_assert_int(memcmp(fbuf, wal1, wal1_len), ==, 0);
+	}
+	if (wal2 != NULL) {
+		fbuf = realloc(fbuf, wal2_len);
+		munit_assert_ptr_not_null(fbuf);
+		n = read(fd2, fbuf, wal2_len);
+		close(fd2);
+		munit_assert_llong(n, ==, wal2_len);
+		munit_assert_int(memcmp(fbuf, wal2, wal2_len), ==, 0);
+	}
+	free(fbuf);
 }
 
 TEST(vfs2, basic, set_up, tear_down, 0, NULL)
@@ -144,5 +201,32 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	rv = sqlite3_finalize(stmt);
 	munit_assert_int(rv, ==, SQLITE_OK);
 	sqlite3_close(db);
+	return MUNIT_OK;
+}
+
+TEST(vfs2, startup, set_up, tear_down, 0, NULL)
+{
+	struct fixture *f = data;
+	int rv;
+	char buf[PATH_MAX];
+
+	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
+	sqlite3 *db;
+	rv = sqlite3_open(buf, &db);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	prepare_wals(buf, NULL, 0, NULL, 0);
+
+	rv = sqlite3_exec(db,
+		"PRAGMA journal_mode=WAL;"
+		"PRAGMA page_size=4096;"
+		"PRAGMA wal_autocheckpoint=0",
+		NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = sqlite3_close(db);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	check_wals(buf, NULL, 0, NULL, 0);
+
 	return MUNIT_OK;
 }
