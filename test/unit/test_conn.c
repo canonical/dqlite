@@ -25,7 +25,7 @@ TEST_MODULE(conn);
 
 static void connCloseCb(struct conn *conn)
 {
-	uint64_t *closed = (uint64_t *)conn->queue.next;
+	bool *closed = (bool *)conn->queue.next;
 	*closed = true;
 }
 
@@ -37,7 +37,7 @@ static void connCloseCb(struct conn *conn)
 	FIXTURE_RAFT;     \
 	FIXTURE_CLIENT;   \
 	struct conn conn; \
-	uint64_t closed;
+	bool closed;
 
 #define SETUP                                                          \
 	struct uv_stream_s *stream;                                    \
