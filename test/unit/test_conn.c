@@ -23,10 +23,16 @@ TEST_MODULE(conn);
  *
  ******************************************************************************/
 
+struct conn_test {
+	struct conn conn;
+	bool closed;
+};
+
 static void connCloseCb(struct conn *conn)
 {
-	uint64_t *closed = (uint64_t *)conn->queue.next;
-	*closed = true;
+	struct conn_test *conn_test =
+	    CONTAINER_OF(conn, struct conn_test, conn);
+	conn_test->closed = true;
 }
 
 #define FIXTURE           \
@@ -36,35 +42,33 @@ static void connCloseCb(struct conn *conn)
 	FIXTURE_REGISTRY; \
 	FIXTURE_RAFT;     \
 	FIXTURE_CLIENT;   \
-	struct conn conn; \
-	uint64_t closed;
+	struct conn_test conn_test;
 
-#define SETUP                                                          \
-	struct uv_stream_s *stream;                                    \
-	struct id_state seed = {{1}};                                  \
-	int rv;                                                        \
-	SETUP_HEAP;                                                    \
-	SETUP_SQLITE;                                                  \
-	SETUP_LOGGER;                                                  \
-	SETUP_VFS;                                                     \
-	SETUP_CONFIG;                                                  \
-	SETUP_REGISTRY;                                                \
-	SETUP_RAFT;                                                    \
-	SETUP_CLIENT;                                                  \
-	RAFT_BOOTSTRAP;                                                \
-	RAFT_START;                                                    \
-	rv = transport__stream(&f->loop, f->server, &stream);          \
-	munit_assert_int(rv, ==, 0);                                   \
-	f->closed = false;                                             \
-	f->conn.queue.next = (queue *)&f->closed;                      \
-	rv = conn__start(&f->conn, &f->config, &f->loop, &f->registry, \
-			 &f->raft, stream, &f->raft_transport, seed,   \
-			 connCloseCb);                                 \
+#define SETUP                                                                \
+	struct uv_stream_s *stream;                                          \
+	struct id_state seed = { { 1 } };                                    \
+	int rv;                                                              \
+	SETUP_HEAP;                                                          \
+	SETUP_SQLITE;                                                        \
+	SETUP_LOGGER;                                                        \
+	SETUP_VFS;                                                           \
+	SETUP_CONFIG;                                                        \
+	SETUP_REGISTRY;                                                      \
+	SETUP_RAFT;                                                          \
+	SETUP_CLIENT;                                                        \
+	RAFT_BOOTSTRAP;                                                      \
+	RAFT_START;                                                          \
+	rv = transport__stream(&f->loop, f->server, &stream);                \
+	munit_assert_int(rv, ==, 0);                                         \
+	f->conn_test.closed = false;                                         \
+	rv = conn__start(&f->conn_test.conn, &f->config, &f->loop,           \
+			 &f->registry, &f->raft, stream, &f->raft_transport, \
+			 seed, connCloseCb);                                 \
 	munit_assert_int(rv, ==, 0)
 
 #define TEAR_DOWN                         \
-	conn__stop(&f->conn);             \
-	while (!f->closed) {              \
+	conn__stop(&f->conn_test.conn);   \
+	while (!f->conn_test.closed) {    \
 		test_uv_run(&f->loop, 1); \
 	};                                \
 	TEAR_DOWN_RAFT;                   \
