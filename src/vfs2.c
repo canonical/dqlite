@@ -380,13 +380,13 @@ static bool check_wal_integrity(sqlite3_file *f)
 static void unregister_file(struct vfs2_file *file)
 {
 	pthread_rwlock_wrlock(&file->vfs_data->rwlock);
-	/* Not using QUEUE__FOREACH here, we want to be careful and explicit
+	/* Not using QUEUE_FOREACH here, we want to be careful and explicit
 	 * since we're modifying the queue while iterating over it. */
-	queue *q = QUEUE__NEXT(&file->vfs_data->queue);
+	queue *q = queue_head(&file->vfs_data->queue);
 	while (q != &file->vfs_data->queue) {
-		queue *next = QUEUE__NEXT(q);
+		queue *next = q->next;
 		struct vfs2_db_entry *entry =
-		    QUEUE__DATA(q, struct vfs2_db_entry, link);
+		    QUEUE_DATA(q, struct vfs2_db_entry, link);
 		if (entry->db == file) {
 			entry->db = NULL;
 		} else if (entry->wal == file) {
@@ -396,8 +396,8 @@ static void unregister_file(struct vfs2_file *file)
 			sm_move(&entry->wtx_sm, WTX_NOT_OPEN);
 		}
 		if (entry->db == NULL && entry->wal == NULL) {
-			QUEUE__PREV_NEXT(q) = QUEUE__NEXT(q);
-			QUEUE__NEXT_PREV(q) = QUEUE__PREV(q);
+			q->prev->next = q->next;
+			q->next->prev = q->prev;
 			sm_fini(&entry->wtx_sm);
 			sqlite3_free(entry->db_name);
 			sqlite3_free(entry);
@@ -1174,9 +1174,9 @@ static struct vfs2_db_entry *get_or_create_entry(struct vfs2_data *data, const c
 	struct vfs2_db_entry *res = NULL;
 	pthread_rwlock_rdlock(&data->rwlock);
 	queue *q;
-	QUEUE__FOREACH(q, &data->queue)
+	QUEUE_FOREACH(q, &data->queue)
 	{
-		struct vfs2_db_entry *cur = QUEUE__DATA(q, struct vfs2_db_entry, link);
+		struct vfs2_db_entry *cur = QUEUE_DATA(q, struct vfs2_db_entry, link);
 		if ((name_is_db && strcmp(cur->db_name, name) == 0)
 		 || (name_is_wal && strncmp(cur->db_name, name, (size_t)(dash - name)) == 0))	{
 			res = cur;
@@ -1206,7 +1206,7 @@ static struct vfs2_db_entry *get_or_create_entry(struct vfs2_data *data, const c
 	sm_init(&res->wtx_sm, wtx_invariant, NULL, wtx_states, WTX_NOT_OPEN);
 
 	pthread_rwlock_wrlock(&data->rwlock);
-	QUEUE__PUSH(&data->queue, &res->link);
+	queue_insert_tail(&data->queue, &res->link);
 	pthread_rwlock_unlock(&data->rwlock);
 	return res;
 }
@@ -1349,7 +1349,7 @@ sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name, unsigned page_size)
 	data->orig = orig;
 	pthread_rwlock_init(&data->rwlock, NULL);
 	atomic_init(&data->page_size, page_size);
-	QUEUE__INIT(&data->queue);
+	queue_init(&data->queue);
 	vfs->iVersion = 2;
 	vfs->szOsFile = sizeof(struct vfs2_file);
 	vfs->mxPathname = orig->mxPathname;
