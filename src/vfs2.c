@@ -379,11 +379,11 @@ static bool is_valid_page_size(unsigned long n)
 	return n >= 1 << 9 && n <= 1 << 16 && (n & (n - 1)) == 0;
 }
 
-static bool check_wal_integrity(sqlite3_file *f)
+static int check_wal_integrity(sqlite3_file *f)
 {
 	/* TODO */
 	(void)f;
-	return true;
+	return SQLITE_OK;
 }
 
 static void unregister_file(struct vfs2_file *file)
@@ -1103,16 +1103,9 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		}
 	}
 
-	sqlite3_file *wal_prev = xout->wal.wal_prev;
-	bool wal_prev_is_valid = check_wal_integrity(wal_prev);
-	if (!wal_prev_is_valid) {
-		/* FIXME handle this instead by setting some in-memory state
-		 * that prevents reading from this WAL without truncating or
-		 * returning an error */
-		rv = wal_prev->pMethods->xTruncate(wal_prev, 0);
-		if (rv != 0) {
-			return rv;
-		}
+	rv = check_wal_integrity(xout->wal.wal_prev);
+	if (rv != SQLITE_OK) {
+		goto err_after_open_phys2;
 	}
 
 	struct vfs2_wal_slice limit = xout->entry->wal_limit;
