@@ -13,8 +13,7 @@
 
 SUITE(vfs2);
 
-struct fixture
-{
+struct fixture {
 	sqlite3_vfs *vfs;
 	char *dir;
 };
@@ -40,13 +39,18 @@ static void tear_down(void *data)
 	free(f);
 }
 
-static void prepare_wals(const char *dbname, const unsigned char *wal1, size_t wal1_len, const unsigned char *wal2, size_t wal2_len)
+static void prepare_wals(const char *dbname,
+			 const unsigned char *wal1,
+			 size_t wal1_len,
+			 const unsigned char *wal2,
+			 size_t wal2_len)
 {
 	char buf[PATH_MAX];
 	ssize_t n;
 	if (wal1 != NULL) {
 		snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
-		int fd1 = open(buf, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH);
+		int fd1 = open(buf, O_RDWR | O_CREAT,
+			       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 		munit_assert_int(fd1, !=, -1);
 		n = write(fd1, wal1, wal1_len);
 		munit_assert_llong(n, ==, wal1_len);
@@ -54,7 +58,8 @@ static void prepare_wals(const char *dbname, const unsigned char *wal1, size_t w
 	}
 	if (wal2 != NULL) {
 		snprintf(buf, sizeof(buf), "%s-xwal2", dbname);
-		int fd2 = open(buf, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH);
+		int fd2 = open(buf, O_RDWR | O_CREAT,
+			       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 		munit_assert_int(fd2, !=, -1);
 		n = write(fd2, wal2, wal2_len);
 		munit_assert_llong(n, ==, wal2_len);
@@ -62,7 +67,11 @@ static void prepare_wals(const char *dbname, const unsigned char *wal1, size_t w
 	}
 }
 
-static void check_wals(const char *dbname, const unsigned char *wal1, size_t wal1_len, const unsigned char *wal2, size_t wal2_len)
+static void check_wals(const char *dbname,
+		       const unsigned char *wal1,
+		       size_t wal1_len,
+		       const unsigned char *wal2,
+		       size_t wal2_len)
 {
 	char buf[PATH_MAX];
 	snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
@@ -105,13 +114,14 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	rv = sqlite3_exec(db,
-		"PRAGMA journal_mode=WAL;"
-		"PRAGMA page_size=4096;"
-		"PRAGMA wal_autocheckpoint=0",
-		NULL, NULL, NULL);
+			  "PRAGMA journal_mode=WAL;"
+			  "PRAGMA page_size=4096;"
+			  "PRAGMA wal_autocheckpoint=0",
+			  NULL, NULL, NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
-	rv = sqlite3_exec(db, "CREATE TABLE foo (bar INTEGER)", NULL, NULL, NULL);
+	rv = sqlite3_exec(db, "CREATE TABLE foo (bar INTEGER)", NULL, NULL,
+			  NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	sqlite3_file *fp;
@@ -124,16 +134,14 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	munit_assert_uint32(sl.start, ==, 0);
 	munit_assert_uint32(sl.len, ==, 2);
 
-	rv = sqlite3_exec(db,
-		"INSERT INTO foo (bar) VALUES (17)",
-		NULL, NULL, NULL);
+	rv = sqlite3_exec(db, "INSERT INTO foo (bar) VALUES (17)", NULL, NULL,
+			  NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
 	rv = vfs2_abort(fp);
 	munit_assert_int(rv, ==, 0);
 
-	rv = sqlite3_exec(db,
-		"INSERT INTO foo (bar) values (22)",
-		NULL, NULL, NULL);
+	rv = sqlite3_exec(db, "INSERT INTO foo (bar) values (22)", NULL, NULL,
+			  NULL);
 	munit_assert_int(rv, ==, 0);
 	rv = vfs2_shallow_poll(fp, &sl);
 	munit_assert_int(rv, ==, 0);
@@ -154,14 +162,14 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 
 	int nlog;
 	int nckpt;
-	rv = sqlite3_wal_checkpoint_v2(db, "main", SQLITE_CHECKPOINT_PASSIVE, &nlog, &nckpt);
+	rv = sqlite3_wal_checkpoint_v2(db, "main", SQLITE_CHECKPOINT_PASSIVE,
+				       &nlog, &nckpt);
 	munit_assert_int(rv, ==, SQLITE_OK);
 	munit_assert_int(nlog, ==, 3);
 	munit_assert_int(nckpt, ==, 3);
 
-	rv = sqlite3_exec(db,
-		"INSERT INTO foo (bar) VALUES (101)",
-		NULL, NULL, NULL);
+	rv = sqlite3_exec(db, "INSERT INTO foo (bar) VALUES (101)", NULL, NULL,
+			  NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	rv = sqlite3_reset(stmt);
@@ -219,10 +227,10 @@ TEST(vfs2, startup, set_up, tear_down, 0, NULL)
 	prepare_wals(buf, NULL, 0, NULL, 0);
 
 	rv = sqlite3_exec(db,
-		"PRAGMA journal_mode=WAL;"
-		"PRAGMA page_size=4096;"
-		"PRAGMA wal_autocheckpoint=0",
-		NULL, NULL, NULL);
+			  "PRAGMA journal_mode=WAL;"
+			  "PRAGMA page_size=4096;"
+			  "PRAGMA wal_autocheckpoint=0",
+			  NULL, NULL, NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
 	rv = sqlite3_close(db);
 	munit_assert_int(rv, ==, SQLITE_OK);

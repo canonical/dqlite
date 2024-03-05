@@ -20,8 +20,7 @@
  */
 sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name, unsigned page_size);
 
-struct vfs2_salts
-{
+struct vfs2_salts {
 	uint8_t salt1[4];
 	uint8_t salt2[4];
 };
@@ -29,14 +28,15 @@ struct vfs2_salts
 /**
  * Identifying information about a write transaction.
  */
-struct vfs2_wal_slice
-{
+struct vfs2_wal_slice {
 	struct vfs2_salts salts;
 	uint32_t start;
 	uint32_t len;
 };
 
-int vfs2_set_wal_limit(sqlite3_vfs *vfs, const char *name, struct vfs2_wal_slice sl);
+int vfs2_set_wal_limit(sqlite3_vfs *vfs,
+		       const char *name,
+		       struct vfs2_wal_slice sl);
 
 /**
  * Retrieve information about frames that the last write transaction appended to
@@ -71,8 +71,7 @@ int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n);
  */
 int vfs2_apply(sqlite3_file *file);
 
-struct vfs2_wal_txn
-{
+struct vfs2_wal_txn {
 	struct vfs2_wal_slice meta;
 	dqlite_vfs_frame *frames;
 };
@@ -84,11 +83,13 @@ struct vfs2_wal_txn
  *
  * Fill the `meta` field of each vfs2_wal_txn with a slice that was previously
  * returned by vfs2_shallow_poll. On return, this function will set the `frames`
- * field of each vfs2_wal_txn, using memory from the SQLite allocator that the caller
- * must free, if the transaction was read successfully. Setting this field to NULL
- * means that the transaction couldn't be read.
+ * field of each vfs2_wal_txn, using memory from the SQLite allocator that the
+ * caller must free, if the transaction was read successfully. Setting this
+ * field to NULL means that the transaction couldn't be read.
  */
-int vfs2_read_wal(sqlite3_file *file, struct vfs2_wal_txn *txns, size_t txns_len);
+int vfs2_read_wal(sqlite3_file *file,
+		  struct vfs2_wal_txn *txns,
+		  size_t txns_len);
 
 /**
  * Cancel a pending transaction and release the write lock.
