@@ -178,7 +178,6 @@ struct vfs2_db {
 	/* Copy of the WAL index header that reflects the last really-committed
 	 * (i.e. in Raft too) transaction, or the initial state of the WAL if
 	 * no transactions have been committed yet. */
-	/* TODO need to initialize this when opening a nonempty WAL */
 	struct vfs2_wal_index_basic_hdr prev_txn_hdr;
 	/* Copy of the WAL index header that reflects a sorta-committed
 	 * transaction that has not yet been through Raft, or all zeros
@@ -567,20 +566,27 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 			       int amt,
 			       sqlite3_int64 ofst)
 {
-	uint32_t page_size = atomic_load(&wal->vfs_data->page_size);
-	assert(is_valid_page_size(page_size));
-	uint32_t frame_size = VFS2_WAL_FRAME_HDR_SIZE + page_size;
-
+	atomic_uint *p = &wal->vfs_data->page_size;
 	if (ofst == 0) {
+		unsigned expected = 0;
+		const struct vfs2_wal_hdr *hdr = buf;
+		uint32_t z = ByteGetBe32(hdr->page_size);
+		if (!atomic_compare_exchange_strong(p, &expected, z)) {
+			assert(expected == z);
+		}
 		sm_move(&wal->entry->wtx_sm, WTX_BASE);
-	} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
-		tracef("ofst=%lld pgsz=%u", ofst, wal->vfs_data->page_size);
+		return SQLITE_OK;
+	}
+
+	unsigned page_size = atomic_load(p);
+	uint32_t frame_size = VFS2_WAL_FRAME_HDR_SIZE + page_size;
+	if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
 		sqlite3_int64 x =
 		    ofst - (sqlite3_int64)sizeof(struct vfs2_wal_hdr);
 		assert(x % frame_size == 0);
 		x /= frame_size;
 		return vfs2_wal_write_frame_hdr(wal, buf, (uint32_t)x);
-	} else if (amt == (int)wal->vfs_data->page_size) {
+	} else if (amt == (int)page_size) {
 		sqlite3_int64 x = ofst - VFS2_WAL_FRAME_HDR_SIZE -
 				  (sqlite3_int64)sizeof(struct vfs2_wal_hdr);
 		assert(x % frame_size == 0);
@@ -596,9 +602,10 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 		memcpy(frame->data, buf, (size_t)amt);
 
 		sm_move(&wal->entry->wtx_sm, WTX_ACTIVE);
+		return SQLITE_OK;
+	} else {
+		assert(0);
 	}
-
-	return SQLITE_OK;
 }
 
 static int vfs2_write(sqlite3_file *file,
@@ -667,19 +674,42 @@ static int vfs2_check_reserved_lock(sqlite3_file *file, int *out)
 	return xfile->orig->pMethods->xCheckReservedLock(xfile->orig, out);
 }
 
+static int interpret_pragma(struct vfs2_file *f, char **args)
+{
+	char **e = &args[0];
+	char *left = args[1];
+	PRE(left != NULL);
+	char *right = args[2];
+
+	if (strcmp(left, "page_size") == 0 && right != NULL) {
+		char *end;
+		unsigned long z = strtoul(right, &end, 10);
+		if (*end == '\0' && is_valid_page_size(z)) {
+			tracef("setting page size to %lu", z);
+			unsigned expected = 0;
+			atomic_uint *page_size = &f->vfs_data->page_size;
+			if (!atomic_compare_exchange_strong(page_size, &expected, (unsigned)z) && expected != z) {
+				tracef("CAN'T SET PAGE_SIZE");
+				*e = sqlite3_mprintf("can't modify page size once set");
+				return SQLITE_ERROR;
+			}
+		}
+	} else if (strcmp(left, "journal_mode") == 0 && right != NULL && strcasecmp(right, "wal") != 0) {
+		*e = sqlite3_mprintf("dqlite requires WAL mode");
+		return SQLITE_ERROR;
+	}
+
+	return SQLITE_NOTFOUND;
+}
+
 static int vfs2_file_control(sqlite3_file *file, int op, void *arg)
 {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
-	assert(xfile->flags & SQLITE_OPEN_MAIN_DB);
+	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
+	int rv;
 
-	if (op == SQLITE_FCNTL_COMMIT_PHASETWO) {
-		/* If no frames have been written to the WAL, this is a no-op.
-		 */
-		if (xfile->entry->wal == NULL ||
-		    xfile->entry->wal->wal.pending_txn_len == 0) {
-			goto forward;
-		}
-		/* Else hide the transaction that was just written by resetting
+	if (op == SQLITE_FCNTL_COMMIT_PHASETWO && xfile->entry->wal != NULL && xfile->entry->wal->wal.pending_txn_len != 0) {
+		/* Hide the transaction that was just written by resetting
 		 * the WAL index header. */
 		struct vfs2_wal_index_full_hdr *hdr =
 		    get_full_hdr(&xfile->db_shm);
@@ -688,43 +718,21 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg)
 		hdr->basic[1] = hdr->basic[0];
 		sm_move(&xfile->entry->wtx_sm, WTX_HIDDEN);
 	} else if (op == SQLITE_FCNTL_PRAGMA) {
-		char **args = arg;
-		char **e = &args[0];
-		char *left = args[1];
-		char *right = args[2];
-		char *end;
-		if (strcmp(left, "page_size") == 0 && right != NULL) {
-			/* TODO detect and set default page size??? */
-			unsigned long pgsz = strtoul(right, &end, 10);
-			if (*end != '\0' || !is_valid_page_size(pgsz)) {
-				/* Let SQLite return whatever error code is
-				 * appropriate for this case */
-				goto forward;
-			}
-			unsigned expected = 0;
-			if (!atomic_compare_exchange_strong(
-				&xfile->vfs_data->page_size, &expected,
-				(unsigned)pgsz) &&
-			    expected != pgsz) {
-				*e = sqlite3_mprintf(
-				    "can't modify page size once set");
-				return SQLITE_ERROR;
-			}
-		} else if (strcmp(left, "journal_mode") == 0 && right != NULL) {
-			if (strcasecmp(right, "wal") != 0) {
-				*e =
-				    sqlite3_mprintf("dqlite requires WAL mode");
-				return SQLITE_ERROR;
-			}
+		rv = interpret_pragma(xfile, arg);
+		if (rv != SQLITE_NOTFOUND) {
+			return rv;
 		}
+		tracef("forward pragma %s to underlying", ((char **)arg)[1]);
 	} else if (op == SQLITE_FCNTL_PERSIST_WAL) {
+		// XXX handle setting as well as getting?
 		int *out = arg;
 		*out = 1;
 		return SQLITE_OK;
 	}
 
-forward:
-	return xfile->orig->pMethods->xFileControl(xfile->orig, op, arg);
+	rv = xfile->orig->pMethods->xFileControl(xfile->orig, op, arg);
+	assert(ERGO(op == SQLITE_FCNTL_PRAGMA, rv == SQLITE_NOTFOUND));
+	return rv;
 }
 
 static int vfs2_sector_size(sqlite3_file *file)
@@ -1142,6 +1150,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	}
 
 	if (!xout->wal.is_empty) {
+		atomic_store(&data->page_size, ByteGetBe32(hdr_cur.page_size));
 		sm_move(&xout->entry->wtx_sm, WTX_BASE);
 	}
 	xout->entry->wal = xout;
