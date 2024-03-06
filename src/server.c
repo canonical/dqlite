@@ -122,7 +122,8 @@ int dqlite__init(struct dqlite_node *d,
 	if (rv != 0) {
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_init(): %s",
 			 raft_errmsg(&d->raft));
-		return DQLITE_ERROR;
+		rv = DQLITE_ERROR;
+		goto err;
 	}
 	/* TODO: expose these values through some API */
 	raft_set_election_timeout(&d->raft, 3000);
@@ -195,6 +196,8 @@ err_after_config_init:
 	config__close(&d->config);
 err:
 	tracef("err=%s", d->errmsg);
+	printf("err=%s\n", d->errmsg);
+	fprintf(stderr, "err=%s\n", d->errmsg);
 	return rv;
 }
 
