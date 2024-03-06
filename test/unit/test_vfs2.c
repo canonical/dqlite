@@ -339,7 +339,15 @@ TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
 	rv = vfs2_shallow_poll(fp, &sl);
 	munit_assert_int(rv, ==, 0);
 	rv = vfs2_apply(fp);
-	rv = sqlite3_exec(db, "BEGIN; INSERT INTO foo (n) VALUES (22); ROLLBACK", NULL, NULL, NULL);
+	rv = sqlite3_exec(db, "BEGIN", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	char sql[100];
+	for (unsigned i = 0; i < 500; i++) {
+		snprintf(sql, sizeof(sql), "INSERT INTO foo (n) VALUES (%d)", i);
+		rv = sqlite3_exec(db, sql, NULL, NULL, NULL);
+		munit_assert_int(rv, ==, SQLITE_OK);
+	}
+	rv = sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
 	rv = sqlite3_close(db);
 	munit_assert_int(rv, ==, SQLITE_OK);

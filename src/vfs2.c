@@ -243,7 +243,7 @@ static bool region0_mapped(struct vfs2_db *db)
 
 static bool no_pending_txn(struct vfs2_wal *wal)
 {
-	return wal->pending_txn_len == 0 && wal->pending_txn_frames == NULL;
+	return wal->pending_txn_len == 0 && wal->pending_txn_frames == NULL && wal->pending_txn_last_frame_commit == 0;
 }
 
 static bool have_pending_txn(struct vfs2_wal *wal)
@@ -879,6 +879,7 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 				sqlite3_free(wal->wal.pending_txn_frames);
 				wal->wal.pending_txn_frames = NULL;
 				wal->wal.pending_txn_len = 0;
+				wal->wal.pending_txn_last_frame_commit = 0;
 				sm_move(&wal->entry->wtx_sm, WTX_BASE);
 			}
 		}
@@ -1432,6 +1433,7 @@ int vfs2_apply(sqlite3_file *file)
 	xfile->db_shm.pending_txn_hdr = zeroed_basic_hdr;
 	wal->wal.commit_end += wal->wal.pending_txn_len;
 	wal->wal.pending_txn_len = 0;
+	wal->wal.pending_txn_last_frame_commit = 0;
 
 	sm_move(&xfile->entry->wtx_sm, WTX_BASE);
 
@@ -1544,6 +1546,7 @@ int vfs2_abort(sqlite3_file *file)
 	sqlite3_free(frames);
 	wal->wal.pending_txn_frames = NULL;
 	wal->wal.pending_txn_len = 0;
+	wal->wal.pending_txn_last_frame_commit = 0;
 
 	sm_move(&xfile->entry->wtx_sm, WTX_BASE);
 	return 0;
