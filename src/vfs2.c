@@ -463,6 +463,13 @@ static int vfs2_wal_swap(struct vfs2_file *wal,
 	PRE(wal->wal.pending_txn_frames == NULL);
 	int rv;
 
+	atomic_uint *p = &wal->vfs_data->page_size;
+	unsigned expected = 0;
+	uint32_t z = ByteGetBe32(wal_hdr->page_size);
+	if (!atomic_compare_exchange_strong(p, &expected, z)) {
+		assert(expected == z);
+	}
+
 	sqlite3_file *phys_outgoing = wal->orig;
 	char *name_outgoing = wal->wal.wal_cur_fixed_name;
 	sqlite3_file *phys_incoming = wal->wal.wal_prev;
@@ -558,19 +565,8 @@ static int vfs2_wal_post_write(struct vfs2_file *wal,
 			       int amt,
 			       sqlite3_int64 ofst)
 {
-	atomic_uint *p = &wal->vfs_data->page_size;
-	if (ofst == 0) {
-		unsigned expected = 0;
-		const struct vfs2_wal_hdr *hdr = buf;
-		uint32_t z = ByteGetBe32(hdr->page_size);
-		if (!atomic_compare_exchange_strong(p, &expected, z)) {
-			assert(expected == z);
-		}
-		sm_move(&wal->entry->wtx_sm, WTX_BASE);
-		return SQLITE_OK;
-	}
 
-	unsigned page_size = atomic_load(p);
+	unsigned page_size = atomic_load(&wal->vfs_data->page_size);
 	uint32_t frame_size = VFS2_WAL_FRAME_HDR_SIZE + page_size;
 	if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
 		sqlite3_int64 x =
@@ -1142,6 +1138,8 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		assert(z > 0);
 		atomic_store(&data->page_size, z);
 		sm_move(&xout->entry->wtx_sm, WTX_BASE);
+	} else {
+		sm_move(&xout->entry->wtx_sm, WTX_EMPTY);
 	}
 	tracef("opened WAL cur=%s prev=%s", xout->wal.wal_cur_fixed_name, xout->wal.wal_prev_fixed_name);
 	return SQLITE_OK;
