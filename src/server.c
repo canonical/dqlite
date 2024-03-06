@@ -906,7 +906,7 @@ int dqlite_node_stop(dqlite_node *d)
 	//    tracef("active_reqs=%u pool_active?=%d",
 	//	   d->loop.active_reqs.count,
 	//	   pool_has_active_ws(&d->pool));
-	// sleep(2);
+	//sleep(2);
 	//    sched_yield();
 	//} while (d->loop.active_reqs.count > 0 ||
 	//	 pool_has_active_ws(&d->pool) > 0);

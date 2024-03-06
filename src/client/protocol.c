@@ -752,6 +752,7 @@ int clientRecvRows(struct client_proto *c,
 	last = NULL;
 	while (1) {
 		rv = peekUint64(cursor, &eof);
+		//tracef("eof=%lx", eof);
 		if (rv != 0) {
 			goto err_after_alloc_column_names;
 		}
