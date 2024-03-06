@@ -68,7 +68,7 @@ static const struct sm_conf wtx_states[SM_STATES_MAX] = {
         [WTX_HIDDEN] = {
                 .flags = 0,
                 .name = "hidden",
-                .allowed = BITS(WTX_BASE)|BITS(WTX_POLLED),
+                .allowed = BITS(WTX_BASE)|BITS(WTX_POLLED)|BITS(WTX_NOT_OPEN),
         },
         [WTX_POLLED] = {
                 .flags = 0,
@@ -166,10 +166,6 @@ struct vfs2_wal {
 	uint32_t pending_txn_len;
 	uint32_t pending_txn_last_frame_commit; /* commit marker for the
 						   physical last frame */
-
-	/* Used for bookkeeping related to the WAL swap. XXX can we get rid
-	 * of this somehow? */
-	bool is_empty;
 };
 
 struct vfs2_db {
@@ -279,9 +275,9 @@ static bool wal_index_basic_hdr_advanced(struct vfs2_wal_index_basic_hdr new,
 	       new.nPage >= old.nPage /* no vacuums here */
 	       && ((get_salt1(new.salts) == get_salt1(old.salts) &&
 		    get_salt2(new.salts) == get_salt2(old.salts)) ||
+		/* note the weirdness with zero salts */
 		   (get_salt1(old.salts) == 0 &&
-		    get_salt2(old.salts) ==
-			0)) /* note the weirdness with zero salts */
+		    get_salt2(old.salts) == 0))
 	       && new.mxFrame > old.mxFrame;
 }
 
@@ -294,7 +290,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	    (entry->db == NULL) ? NULL : &entry->db->db_shm;
 
 	/* TODO go over these checks again and strengthen them */
-	/* TODO rewrite in expression-oriented style */
+	/* TODO rewrite in expression-oriented style? */
 
 	if (sm_state(sm) == WTX_NOT_OPEN) {
 		CHECK(wal == NULL);
@@ -308,8 +304,6 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(db_shm != NULL);
 		CHECK(wal != NULL);
 		CHECK(no_pending_txn(wal));
-
-		struct vfs2_wal_index_full_hdr *hdr = get_full_hdr(db_shm);
 		CHECK(wal_index_basic_hdr_equal(db_shm->pending_txn_hdr,
 						zeroed_basic_hdr));
 
@@ -317,7 +311,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 			/* just after a WAL swap */
 			CHECK(write_lock_held(db_shm));
 			CHECK(region0_mapped(db_shm));
-			CHECK(wal_index_hdr_fresh(hdr));
+			CHECK(wal_index_hdr_fresh(get_full_hdr(db_shm)));
 		}
 	}
 
@@ -388,8 +382,6 @@ static int check_wal_integrity(sqlite3_file *f)
 static void unregister_file(struct vfs2_file *file)
 {
 	pthread_rwlock_wrlock(&file->vfs_data->rwlock);
-	/* Not using QUEUE_FOREACH here, we want to be careful and explicit
-	 * since we're modifying the queue while iterating over it. */
 	queue *q = queue_head(&file->vfs_data->queue);
 	while (q != &file->vfs_data->queue) {
 		queue *next = q->next;
@@ -461,13 +453,15 @@ static int vfs2_close(sqlite3_file *file)
 static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	if (xfile->flags & SQLITE_OPEN_WAL) {
+		tracef("read from WAL amt=%d ofst=%lld", amt, ofst);
+	}
 	return xfile->orig->pMethods->xRead(xfile->orig, buf, amt, ofst);
 }
 
 static int vfs2_wal_swap(struct vfs2_file *wal,
 			 const struct vfs2_wal_hdr *wal_hdr)
 {
-	tracef("WAL SWAP TIME B)");
 	PRE(wal->wal.pending_txn_len == 0);
 	PRE(wal->wal.pending_txn_frames == NULL);
 	int rv;
@@ -476,6 +470,8 @@ static int vfs2_wal_swap(struct vfs2_file *wal,
 	char *name_outgoing = wal->wal.wal_cur_fixed_name;
 	sqlite3_file *phys_incoming = wal->wal.wal_prev;
 	char *name_incoming = wal->wal.wal_prev_fixed_name;
+
+	tracef("wal swap outgoing=%s incoming=%s", name_outgoing, name_incoming);
 
 	/* Write the new header of the incoming WAL. */
 	rv = phys_incoming->pMethods->xWrite(phys_incoming, wal_hdr,
@@ -615,15 +611,10 @@ static int vfs2_write(sqlite3_file *file,
 {
 	int rv;
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
-	bool wal_was_empty;
 
 	if ((xfile->flags & SQLITE_OPEN_WAL) && ofst == 0) {
 		assert(amt == sizeof(struct vfs2_wal_hdr));
-		wal_was_empty = xfile->wal.is_empty;
-		xfile->wal.is_empty = false;
-		if (!wal_was_empty) {
-			return vfs2_wal_swap(xfile, buf);
-		}
+		return vfs2_wal_swap(xfile, buf);
 	}
 
 	rv = xfile->orig->pMethods->xWrite(xfile->orig, buf, amt, ofst);
@@ -632,6 +623,7 @@ static int vfs2_write(sqlite3_file *file,
 	}
 
 	if (xfile->flags & SQLITE_OPEN_WAL) {
+		tracef("wrote to WAL name=%s amt=%d ofst=%lld", xfile->wal.wal_cur_fixed_name, amt, ofst);
 		return vfs2_wal_post_write(xfile, buf, amt, ofst);
 	}
 
@@ -653,6 +645,9 @@ static int vfs2_sync(sqlite3_file *file, int flags)
 static int vfs2_file_size(sqlite3_file *file, sqlite3_int64 *size)
 {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	if (xfile->flags & SQLITE_OPEN_WAL) {
+		tracef("WAL file size");
+	}
 	return xfile->orig->pMethods->xFileSize(xfile->orig, size);
 }
 
@@ -685,11 +680,9 @@ static int interpret_pragma(struct vfs2_file *f, char **args)
 		char *end;
 		unsigned long z = strtoul(right, &end, 10);
 		if (*end == '\0' && is_valid_page_size(z)) {
-			tracef("setting page size to %lu", z);
 			unsigned expected = 0;
 			atomic_uint *page_size = &f->vfs_data->page_size;
 			if (!atomic_compare_exchange_strong(page_size, &expected, (unsigned)z) && expected != z) {
-				tracef("CAN'T SET PAGE_SIZE");
 				*e = sqlite3_mprintf("can't modify page size once set");
 				return SQLITE_ERROR;
 			}
@@ -722,7 +715,6 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg)
 		if (rv != SQLITE_NOTFOUND) {
 			return rv;
 		}
-		tracef("forward pragma %s to underlying", ((char **)arg)[1]);
 	} else if (op == SQLITE_FCNTL_PERSIST_WAL) {
 		// XXX handle setting as well as getting?
 		int *out = arg;
@@ -1031,14 +1023,13 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	struct vfs2_wal_hdr hdr_prev = { 0 };
 	sqlite3_int64 size_cur = 0;
 	sqlite3_int64 size_prev = 0;
-	bool have_both_hdrs = false;
 	sqlite3_int64 size1;
 	rv = phys1->pMethods->xFileSize(phys1, &size1);
 	if (rv != SQLITE_OK) {
 		goto err_after_open_phys2;
 	}
 	if (size1 < (sqlite3_int64)sizeof(struct vfs2_wal_hdr)) {
-		size1 = 0;  // XXX
+		size1 = 0;
 	}
 	sqlite3_int64 size2;
 	rv = phys2->pMethods->xFileSize(phys2, &size2);
@@ -1046,24 +1037,28 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		goto err_after_open_phys2;
 	}
 	if (size2 < (sqlite3_int64)sizeof(struct vfs2_wal_hdr)) {
-		size2 = 0;  // XXX
+		size2 = 0;
 	}
-	xout->wal.is_empty = size1 == 0 && size2 == 0;
+
+	if (size1 > 0) {
+		rv = phys1->pMethods->xRead(phys1, &hdr1, sizeof(hdr1), 0);
+		if (rv != SQLITE_OK) {
+			goto err_after_open_phys2;
+		}
+	}
+	if (size2 > 0) {
+		rv = phys2->pMethods->xRead(phys2, &hdr2, sizeof(hdr2), 0);
+		if (rv != SQLITE_OK) {
+			goto err_after_open_phys2;
+		}
+	}
+
 	bool ordered;
 	if (size2 == 0) {
 		ordered = true;
 	} else if (size1 == 0) {
 		ordered = false;
 	} else {
-		rv = phys1->pMethods->xRead(phys1, &hdr1, sizeof(hdr1), 0);
-		if (rv != SQLITE_OK) {
-			goto err_after_open_phys2;
-		}
-		rv = phys2->pMethods->xRead(phys2, &hdr2, sizeof(hdr2), 0);
-		if (rv != SQLITE_OK) {
-			goto err_after_open_phys2;
-		}
-		have_both_hdrs = true;
 		rv = compare_wal_headers(hdr1, hdr2, &ordered);
 		if (rv != SQLITE_OK) {
 			goto err_after_open_phys2;
@@ -1117,7 +1112,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	}
 
 	struct vfs2_wal_slice limit = xout->entry->wal_limit;
-	if (have_both_hdrs && limit.len > 0) {
+	if (size1 > 0 && size2 > 0 && limit.len > 0) {
 		uint32_t page_size = ByteGetBe32(hdr_cur.page_size);
 		assert(ByteGetBe32(hdr_prev.page_size) == page_size);
 		sqlite3_int64 implied_size =
@@ -1149,11 +1144,14 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		}
 	}
 
-	if (!xout->wal.is_empty) {
-		atomic_store(&data->page_size, ByteGetBe32(hdr_cur.page_size));
+	xout->entry->wal = xout;
+	if (size_cur > 0) {
+		uint32_t z = ByteGetBe32(hdr_cur.page_size);
+		assert(z > 0);
+		atomic_store(&data->page_size, z);
 		sm_move(&xout->entry->wtx_sm, WTX_BASE);
 	}
-	xout->entry->wal = xout;
+	tracef("opened WAL cur=%s prev=%s", xout->wal.wal_cur_fixed_name, xout->wal.wal_prev_fixed_name);
 	return SQLITE_OK;
 
 err_after_open_phys2:
