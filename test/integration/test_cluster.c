@@ -53,8 +53,7 @@
 
 SUITE(cluster)
 
-struct fixture
-{
+struct fixture {
 	FIXTURE;
 };
 
@@ -72,19 +71,20 @@ static void tearDown(void *data)
 	free(f);
 }
 
-static char *bools[] = {"0", "1", NULL};
+static char *bools[] = { "0", "1", NULL };
 
 static char *num_records[] = {
-    "0", "1", "256",
-    /* WAL will just have been checkpointed after 993 writes. */
-    "993",
-    /* Non-empty WAL, checkpointed twice, 2 snapshots taken */
-    "2200", NULL};
+	"0", "1", "256",
+	/* WAL will just have been checkpointed after 993 writes. */
+	"993",
+	/* Non-empty WAL, checkpointed twice, 2 snapshots taken */
+	"2200", NULL
+};
 
 static MunitParameterEnum cluster_params[] = {
-    {"num_records", num_records},
-    {"disk_mode", bools},
-    {NULL, NULL},
+	{ "num_records", num_records },
+	{ "disk_mode", bools },
+	{ NULL, NULL },
 };
 
 /* Restart a node and check if all data is there */
@@ -118,27 +118,9 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	HANDSHAKE;
 	OPEN;
 	PREPARE("SELECT COUNT(*) from test", &stmt_id);
-	//QUERY(stmt_id, &rows);
-	{
-		int rv_;
-		bool done;
-		int read = 0;
-		rv_ = clientSendQuery(f->client, stmt_id, NULL, 0, NULL);
-		munit_assert_int(rv_, ==, 0);
-		do {
-			rv_ = clientRecvRows(f->client, &rows, &done, NULL);
-			munit_assert_int(rv_, ==, 0);
-			read += rows.next->values->integer;
-			clientCloseRows(&rows);
-			rows = (struct rows){};
-		} while (!done);
 
-		munit_assert_long(read, ==, n_records);
-	}
-
-
-
-	//clientCloseRows(&rows);
+	int read = 0;
+	QUERY_DONE(stmt_id, &rows, { read += rows.next->values->integer; });
 	return MUNIT_OK;
 }
 

@@ -118,19 +118,7 @@ TEST(client, query, setUp, tearDown, 0, client_params)
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
 	PREPARE("SELECT n FROM test", &stmt_id);
-	//QUERY(stmt_id, &f->rows);
-	{
-		int rv_;
-		bool done;
-		rv_ = clientSendQuery(f->client, stmt_id, NULL, 0, NULL);
-		munit_assert_int(rv_, ==, 0);
-		do {
-			rv_ = clientRecvRows(f->client, &f->rows, &done, NULL);
-			munit_assert_int(rv_, ==, 0);
-			clientCloseRows(&f->rows);
-			f->rows = (struct rows){};
-		} while (!done);
-	}
+	QUERY_DONE(stmt_id, &f->rows, {});
 
 	return MUNIT_OK;
 }
@@ -153,23 +141,7 @@ TEST(client, querySql, setUp, tearDown, 0, client_params)
 	}
 
 	EXEC_SQL("COMMIT", &last_insert_id, &rows_affected);
-
-	//QUERY_SQL("SELECT n FROM test", &f->rows);
-
-	{
-		int rv_;
-		bool done;
-		const char *SQL = "SELECT n FROM test";
-		rv_ = clientSendQuerySQL(f->client, SQL, NULL, 0, NULL);
-		munit_assert_int(rv_, ==, 0);
-		do {
-			rv_ = clientRecvRows(f->client, &f->rows, &done, NULL);
-			munit_assert_int(rv_, ==, 0);
-			clientCloseRows(&f->rows);
-			f->rows = (struct rows){};
-		} while (!done);
-	}
-
+	QUERY_SQL_DONE("SELECT n FROM test", &f->rows, {});
 
 	return MUNIT_OK;
 }

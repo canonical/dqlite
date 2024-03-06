@@ -195,9 +195,6 @@ err_after_vfs_init:
 err_after_config_init:
 	config__close(&d->config);
 err:
-	tracef("err=%s", d->errmsg);
-	printf("err=%s\n", d->errmsg);
-	fprintf(stderr, "err=%s\n", d->errmsg);
 	return rv;
 }
 
