@@ -118,9 +118,27 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	HANDSHAKE;
 	OPEN;
 	PREPARE("SELECT COUNT(*) from test", &stmt_id);
-	QUERY(stmt_id, &rows);
-	munit_assert_long(rows.next->values->integer, ==, n_records);
-	clientCloseRows(&rows);
+	//QUERY(stmt_id, &rows);
+	{
+		int rv_;
+		bool done;
+		int read = 0;
+		rv_ = clientSendQuery(f->client, stmt_id, NULL, 0, NULL);
+		munit_assert_int(rv_, ==, 0);
+		do {
+			rv_ = clientRecvRows(f->client, &rows, &done, NULL);
+			munit_assert_int(rv_, ==, 0);
+			read += rows.next->values->integer;
+			clientCloseRows(&rows);
+			rows = (struct rows){};
+		} while (!done);
+
+		munit_assert_long(read, ==, n_records);
+	}
+
+
+
+	//clientCloseRows(&rows);
 	return MUNIT_OK;
 }
 
