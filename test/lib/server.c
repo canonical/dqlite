@@ -63,11 +63,6 @@ void test_server_start(struct test_server *s, const MunitParameter params[])
 	int rv;
 
 	rv = dqlite_node_create(s->id, s->address, s->dir, &s->dqlite);
-
-	if (rv != 0) {
-	    fprintf(stderr, "err=%s", dqlite_node_errmsg(s->dqlite));
-	}
-
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_set_bind_address(s->dqlite, s->address);
