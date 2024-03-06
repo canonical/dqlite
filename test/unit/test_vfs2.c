@@ -1,4 +1,4 @@
-#pragma GCC diagnostic ignored "-Wformat-truncation"
+#pragma GCC diagnostic ignored "-Wformat-truncation" // XXX
 
 #include "../../src/vfs2.h"
 #include "../../src/lib/byte.h"
@@ -53,11 +53,14 @@ static void prepare_wals(const char *dbname,
 {
 	char buf[PATH_MAX];
 	ssize_t n;
+	int rv;
 	if (wal1 != NULL) {
 		snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
 		int fd1 = open(buf, O_RDWR | O_CREAT,
 			       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 		munit_assert_int(fd1, !=, -1);
+		rv = ftruncate(fd1, 0);
+		munit_assert_int(rv, ==, 0);
 		n = write(fd1, wal1, wal1_len);
 		munit_assert_llong(n, ==, wal1_len);
 		close(fd1);
@@ -67,6 +70,8 @@ static void prepare_wals(const char *dbname,
 		int fd2 = open(buf, O_RDWR | O_CREAT,
 			       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 		munit_assert_int(fd2, !=, -1);
+		rv = ftruncate(fd2, 0);
+		munit_assert_int(rv, ==, 0);
 		n = write(fd2, wal2, wal2_len);
 		munit_assert_llong(n, ==, wal2_len);
 		close(fd2);
@@ -246,7 +251,7 @@ static void make_wal_hdr(uint8_t *buf, uint32_t ckpoint_seqno, uint32_t salt1, u
 	p += 4;
 }
 
-TEST(vfs2, startup, set_up, tear_down, 0, NULL)
+TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
 	char buf[PATH_MAX];
@@ -271,7 +276,41 @@ TEST(vfs2, startup, set_up, tear_down, 0, NULL)
 	munit_assert_int(rv, ==, SQLITE_OK);
 	rv = sqlite3_close(db);
 	munit_assert_int(rv, ==, SQLITE_OK);
+
 	check_wals(buf, WAL_SIZE_FROM_FRAMES(2), WAL_SIZE_FROM_FRAMES(0));
+
+	return MUNIT_OK;
+}
+
+TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
+{
+	struct fixture *f = data;
+	char buf[PATH_MAX];
+
+	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
+
+	check_wals(buf, 0, 0);
+
+	uint8_t wal1_hdronly[WAL_SIZE_FROM_FRAMES(0)] = {0};
+	make_wal_hdr(wal1_hdronly, 0, 18, 103);
+	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = {0};
+	make_wal_hdr(wal2_hdronly, 0, 17, 103);
+	prepare_wals(buf, wal1_hdronly, sizeof(wal1_hdronly), wal2_hdronly, sizeof(wal2_hdronly));
+	sqlite3 *db;
+	int rv = sqlite3_open(buf, &db);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = sqlite3_exec(db,
+			  "PRAGMA page_size=" PAGE_SIZE_STR ";"
+			  "PRAGMA journal_mode=WAL;"
+			  "PRAGMA wal_autocheckpoint=0",
+			  NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = sqlite3_close(db);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	check_wals(buf, WAL_SIZE_FROM_FRAMES(0), WAL_SIZE_FROM_FRAMES(2));
 
 	return MUNIT_OK;
 }

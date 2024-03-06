@@ -453,9 +453,6 @@ static int vfs2_close(sqlite3_file *file)
 static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
-	if (xfile->flags & SQLITE_OPEN_WAL) {
-		tracef("read from WAL amt=%d ofst=%lld", amt, ofst);
-	}
 	return xfile->orig->pMethods->xRead(xfile->orig, buf, amt, ofst);
 }
 
@@ -488,7 +485,6 @@ static int vfs2_wal_swap(struct vfs2_file *wal,
 	wal->wal.wal_prev = phys_outgoing;
 	wal->wal.wal_prev_fixed_name = name_outgoing;
 	wal->wal.commit_end = 0;
-
 	sm_move(&wal->entry->wtx_sm, WTX_BASE);
 
 	/* Move the moving name. */
@@ -645,9 +641,6 @@ static int vfs2_sync(sqlite3_file *file, int flags)
 static int vfs2_file_size(sqlite3_file *file, sqlite3_int64 *size)
 {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
-	if (xfile->flags & SQLITE_OPEN_WAL) {
-		tracef("WAL file size");
-	}
 	return xfile->orig->pMethods->xFileSize(xfile->orig, size);
 }
 
@@ -980,8 +973,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	    "uneven WAL suffixes");
 	if ((size_t)(dash - name) + strlen(VFS2_WAL_FIXED_SUFFIX1) >
 	    (size_t)data->orig->mxPathname) {
-		rv = SQLITE_ERROR;
-		goto err;
+		return SQLITE_ERROR;
 	}
 
 	/* Collect memory allocations in one place to simplify the control
@@ -993,40 +985,39 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	sqlite3_file *phys2 = sqlite3_malloc(data->orig->szOsFile);
 	if (fixed1 == NULL || fixed2 == NULL || phys1 == NULL ||
 	    phys2 == NULL) {
-		rv = SQLITE_NOMEM;
-		goto err;
+		return SQLITE_NOMEM;
 	}
+	xout->wal.wal_cur_fixed_name = fixed1;
+	xout->wal.wal_prev_fixed_name = fixed2;
+	memset(phys1, 0, (size_t)data->orig->szOsFile);
+	xout->orig = phys1;
+	memset(phys2, 0, (size_t)data->orig->szOsFile);
+	xout->wal.wal_prev = phys2;
+	xout->wal.moving_name = name;
 
 	/* Open the two physical WALs. */
 	strncpy(fixed1, name, (size_t)(dash - name));
 	fixed1[dash - name] = '\0';
 	strcat(fixed1, VFS2_WAL_FIXED_SUFFIX1);
+	int out_flags1;
+	rv = data->orig->xOpen(data->orig, fixed1, phys1, flags, &out_flags1);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
 	strncpy(fixed2, name, (size_t)(dash - name));
 	fixed2[dash - name] = '\0';
 	strcat(fixed2, VFS2_WAL_FIXED_SUFFIX2);
-	int out_flags1, out_flags2;
-	memset(phys1, 0, (size_t)data->orig->szOsFile);
-	rv = data->orig->xOpen(data->orig, fixed1, phys1, flags, &out_flags1);
-	if (rv != SQLITE_OK) {
-		goto err_after_open_phys1;
-	}
-	memset(phys2, 0, (size_t)data->orig->szOsFile);
+	int out_flags2;
 	rv = data->orig->xOpen(data->orig, fixed2, phys2, flags, &out_flags2);
 	if (rv != SQLITE_OK) {
-		goto err_after_open_phys2;
+		return rv;
 	}
 
 	/* Determine the relationship between the two physical WALs. */
-	struct vfs2_wal_hdr hdr1 = { 0 };
-	struct vfs2_wal_hdr hdr2 = { 0 };
-	struct vfs2_wal_hdr hdr_cur = { 0 };
-	struct vfs2_wal_hdr hdr_prev = { 0 };
-	sqlite3_int64 size_cur = 0;
-	sqlite3_int64 size_prev = 0;
 	sqlite3_int64 size1;
 	rv = phys1->pMethods->xFileSize(phys1, &size1);
 	if (rv != SQLITE_OK) {
-		goto err_after_open_phys2;
+		return rv;
 	}
 	if (size1 < (sqlite3_int64)sizeof(struct vfs2_wal_hdr)) {
 		size1 = 0;
@@ -1034,47 +1025,48 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	sqlite3_int64 size2;
 	rv = phys2->pMethods->xFileSize(phys2, &size2);
 	if (rv != SQLITE_OK) {
-		goto err_after_open_phys2;
+		return rv;
 	}
 	if (size2 < (sqlite3_int64)sizeof(struct vfs2_wal_hdr)) {
 		size2 = 0;
 	}
 
+	struct vfs2_wal_hdr hdr1 = { 0 };
 	if (size1 > 0) {
 		rv = phys1->pMethods->xRead(phys1, &hdr1, sizeof(hdr1), 0);
 		if (rv != SQLITE_OK) {
-			goto err_after_open_phys2;
+			return rv;
 		}
 	}
+	struct vfs2_wal_hdr hdr2 = { 0 };
 	if (size2 > 0) {
 		rv = phys2->pMethods->xRead(phys2, &hdr2, sizeof(hdr2), 0);
 		if (rv != SQLITE_OK) {
-			goto err_after_open_phys2;
+			return rv;
 		}
 	}
 
-	bool ordered;
+	struct vfs2_wal_hdr hdr_cur = { 0 };
+	struct vfs2_wal_hdr hdr_prev = { 0 };
+	sqlite3_int64 size_cur = 0;
+	sqlite3_int64 size_prev = 0;
+
+	bool wal1_is_fresh;
 	if (size2 == 0) {
-		ordered = true;
+		wal1_is_fresh = true;
 	} else if (size1 == 0) {
-		ordered = false;
+		wal1_is_fresh = false;
 	} else {
-		rv = compare_wal_headers(hdr1, hdr2, &ordered);
+		rv = compare_wal_headers(hdr1, hdr2, &wal1_is_fresh);
 		if (rv != SQLITE_OK) {
-			goto err_after_open_phys2;
+			return rv;
 		}
 	}
-	if (ordered) {
+	if (wal1_is_fresh) {
 		rv = unlink(name);
 		(void)rv;
 		rv = link(fixed1, name);
 		(void)rv;
-
-		xout->orig = phys1;
-		xout->wal.moving_name = name;
-		xout->wal.wal_cur_fixed_name = fixed1;
-		xout->wal.wal_prev = phys2;
-		xout->wal.wal_prev_fixed_name = fixed2;
 
 		hdr_prev = hdr2;
 		size_prev = size2;
@@ -1108,7 +1100,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 
 	rv = check_wal_integrity(xout->wal.wal_prev);
 	if (rv != SQLITE_OK) {
-		goto err_after_open_phys2;
+		return rv;
 	}
 
 	struct vfs2_wal_slice limit = xout->entry->wal_limit;
@@ -1121,26 +1113,26 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 			(sqlite3_int64)(limit.start + limit.len);
 		if (salts_equal(limit.salts, hdr_prev.salts)) {
 			if (size_prev != implied_size) {
-				rv = SQLITE_ERROR;
-				goto err_after_open_phys2;
+				return SQLITE_ERROR;
 			}
 			rv = xout->orig->pMethods->xTruncate(
 			    xout->orig, sizeof(struct vfs2_wal_hdr));
-			if (rv != 0) {
-				goto err_after_open_phys2;
+			if (rv != SQLITE_OK) {
+				return rv;
 			}
 			xout->wal.commit_end = 0;
 		} else if (salts_equal(limit.salts, hdr_cur.salts)) {
 			if (size_cur < implied_size) {
-				rv = SQLITE_ERROR;
-				goto err_after_open_phys2;
+				return SQLITE_ERROR;
 			}
 			rv = xout->orig->pMethods->xTruncate(xout->orig,
 							     implied_size);
+			if (rv != SQLITE_OK) {
+				return rv;
+			}
 			xout->wal.commit_end = limit.start + limit.len;
 		} else {
-			rv = SQLITE_ERROR;
-			goto err_after_open_phys2;
+			return SQLITE_ERROR;
 		}
 	}
 
@@ -1153,21 +1145,6 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 	}
 	tracef("opened WAL cur=%s prev=%s", xout->wal.wal_cur_fixed_name, xout->wal.wal_prev_fixed_name);
 	return SQLITE_OK;
-
-err_after_open_phys2:
-	if (phys2->pMethods != NULL) {
-		phys2->pMethods->xClose(phys2);
-	}
-err_after_open_phys1:
-	if (phys1->pMethods != NULL) {
-		phys1->pMethods->xClose(phys1);
-	}
-	sqlite3_free(phys2);
-	sqlite3_free(phys1);
-	sqlite3_free(fixed2);
-	sqlite3_free(fixed1);
-err:
-	return rv;
 }
 
 static int vfs2_open_db(sqlite3_vfs *vfs,
@@ -1216,8 +1193,7 @@ static struct vfs2_db_entry *get_or_create_entry(struct vfs2_data *data,
 		struct vfs2_db_entry *cur =
 		    QUEUE_DATA(q, struct vfs2_db_entry, link);
 		if ((name_is_db && strcmp(cur->db_name, name) == 0) ||
-		    (name_is_wal &&
-		     strncmp(cur->db_name, name, (size_t)(dash - name)) == 0)) {
+		    (name_is_wal && strncmp(cur->db_name, name, (size_t)(dash - name)) == 0)) {
 			res = cur;
 			break;
 		}
@@ -1231,6 +1207,7 @@ static struct vfs2_db_entry *get_or_create_entry(struct vfs2_data *data,
 	if (res == NULL) {
 		return NULL;
 	}
+	memset(res, 0, sizeof(*res));
 	size_t len = name_is_db ? strlen(name) : (size_t)(dash - name);
 	res->db_name = sqlite3_malloc((int)len + 1);
 	if (res->db_name == NULL) {
@@ -1240,8 +1217,6 @@ static struct vfs2_db_entry *get_or_create_entry(struct vfs2_data *data,
 	memcpy(res->db_name, name, len);
 	res->db_name[len] = '\0';
 
-	res->db = NULL;
-	res->wal = NULL;
 	sm_init(&res->wtx_sm, wtx_invariant, NULL, wtx_states, WTX_NOT_OPEN);
 
 	pthread_rwlock_wrlock(&data->rwlock);
@@ -1256,11 +1231,9 @@ static int vfs2_open(sqlite3_vfs *vfs,
 		     int flags,
 		     int *out_flags)
 {
-	tracef("open %s", name);
 	struct vfs2_file *xout = (struct vfs2_file *)out;
 	struct vfs2_data *data = vfs->pAppData;
-	/* We unconditionally set pMethods in the output, so SQLite will always
-	 * call xClose. */
+	memset(xout, 0, sizeof(*xout));
 	xout->base.pMethods = &vfs2_io_methods;
 	xout->flags = flags;
 	xout->vfs_data = data;
@@ -1273,7 +1246,8 @@ static int vfs2_open(sqlite3_vfs *vfs,
 		}
 		assert(entry->wal == NULL);
 		xout->entry = entry;
-		return vfs2_open_wal(vfs, name, xout, flags, out_flags);
+		int rv = vfs2_open_wal(vfs, name, xout, flags, out_flags);
+		return rv;
 	} else if (flags & SQLITE_OPEN_MAIN_DB) {
 		struct vfs2_db_entry *entry =
 		    get_or_create_entry(data, name, flags);
