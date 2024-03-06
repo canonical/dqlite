@@ -314,3 +314,35 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 
 	return MUNIT_OK;
 }
+
+TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
+{
+	struct fixture *f = data;
+	char buf[PATH_MAX];
+
+	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
+
+	sqlite3 *db;
+	int rv = sqlite3_open(buf, &db);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	rv = sqlite3_exec(db,
+			  "PRAGMA journal_mode=WAL;"
+			  "PRAGMA wal_autocheckpoint=0",
+			  NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	sqlite3_file *fp;
+	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	struct vfs2_wal_slice sl;
+	rv = vfs2_shallow_poll(fp, &sl);
+	munit_assert_int(rv, ==, 0);
+	rv = vfs2_apply(fp);
+	rv = sqlite3_exec(db, "BEGIN; INSERT INTO foo (n) VALUES (22); ROLLBACK", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = sqlite3_close(db);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	return MUNIT_OK;
+}

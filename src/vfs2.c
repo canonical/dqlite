@@ -845,6 +845,7 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 			locks[i] = VFS2_EXCLUSIVE;
 		}
 
+		/* XXX maybe this shouldn't be an assertion */
 		if (ofst == VFS2_SHM_WRITE_LOCK) {
 			assert(n == 1);
 			struct vfs2_file *wal = xfile->entry->wal;
