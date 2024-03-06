@@ -1,12 +1,12 @@
 #include "../../include/dqlite.h"
 #include "../../src/gateway.h"
+#include "../../src/lib/threadpool.h"
 #include "../../src/request.h"
 #include "../../src/response.h"
 #include "../../src/tuple.h"
 #include "../lib/cluster.h"
 #include "../lib/raft_heap.h"
 #include "../lib/runner.h"
-#include "src/lib/threadpool.h"
 
 TEST_MODULE(gateway);
 

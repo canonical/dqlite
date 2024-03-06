@@ -11,10 +11,10 @@
 #include "../../src/client/protocol.h"
 #include "../../src/conn.h"
 #include "../../src/gateway.h"
+#include "../../src/lib/threadpool.h"
 #include "../../src/lib/transport.h"
 #include "../../src/raft.h"
 #include "../../src/transport.h"
-#include "src/lib/threadpool.h"
 
 TEST_MODULE(conn);
 

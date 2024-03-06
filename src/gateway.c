@@ -9,7 +9,6 @@
 #include "request.h"
 #include "response.h"
 #include "server.h"
-#include "src/lib/threadpool.h"
 #include "tracing.h"
 #include "translate.h"
 #include "tuple.h"
@@ -532,7 +531,6 @@ static void query_batch_async(struct handle *req, int half)
 	}  // else POOL_BOTTOM_HALF =>
 
 	rc = req->rc;
-	//tracef("rc=%d", rc);
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		assert(g->leader != NULL);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
