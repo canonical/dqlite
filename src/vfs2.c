@@ -185,7 +185,7 @@ struct vfs2_wal {
 	sqlite3_file *wal_prev;    /* underlying file object for WAL-prev */
 	char *wal_prev_fixed_name; /* e.g. /path/to/my.db-xwal2 */
 
-	uint32_t commit_end; /* frame index, zero-based */
+	uint32_t commit_end; /* frame index, zero-based, should be in sync with mxFrame */
 
 	/* All pending_txn fields pertain to a transaction that has at least one
 	 * frame in the WAL and is the last transaction represented in the WAL.
@@ -548,11 +548,6 @@ static int vfs2_wal_write_frame_hdr(struct vfs2_file *wal,
 				    const void *buf,
 				    uint32_t x)
 {
-	/* initialize commit_end if necessary */
-	if (wal->wal.commit_end == 0 && wal->wal.pending_txn_len == 0 &&
-	    x > 0) {
-		wal->wal.commit_end = x;
-	}
 	x -= wal->wal.commit_end;
 
 	assert(x <= wal->wal.pending_txn_len);
@@ -1166,6 +1161,8 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		} else {
 			return SQLITE_ERROR;
 		}
+	} else {
+		xout->wal.commit_end = 0;
 	}
 
 	xout->entry->wal = xout;
