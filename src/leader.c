@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 
 #include "../include/dqlite.h"
@@ -406,13 +407,13 @@ finish:
 	leaderExecDone(l->exec);
 }
 
-static void top(pool_work_t *w)
+static void exec_top(pool_work_t *w)
 {
 	struct exec *req = CONTAINER_OF(w, struct exec, work);
 	leaderExecV2(req, POOL_TOP_HALF);
 }
 
-static void bottom(pool_work_t *w)
+static void exec_bottom(pool_work_t *w)
 {
 	struct exec *req = CONTAINER_OF(w, struct exec, work);
 	leaderExecV2(req, POOL_BOTTOM_HALF);
@@ -424,6 +425,10 @@ static void execBarrierCb(struct barrier *barrier, int status)
 	struct exec *req = barrier->data;
 	struct leader *l = req->leader;
 	struct dqlite_node *node = l->raft->data;
+	struct handle *handle = req->data;
+	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
+		? pool_ut_fallback() : &node->pool;
+
 
 	if (status != 0) {
 		l->exec->status = status;
@@ -431,10 +436,8 @@ static void execBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	pool_queue_work(!!(pool_ut_fallback()->flags & POOL_FOR_UT)
-			    ? pool_ut_fallback()
-			    : &node->pool,
-			&req->work, 0xbad00b01, WT_UNORD, top, bottom);
+	pool_queue_work(pool, &req->work, (uint32_t)handle->db_id,
+			WT_UNORD, exec_top, exec_bottom);
 }
 
 int leader__exec(struct leader *l,

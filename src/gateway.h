@@ -104,10 +104,13 @@ struct handle {
 	/* Callback that will be invoked at the end of request processing to
 	 * write the response. */
 	handle_cb cb;
-	/* TP_TODO! */
+	/* A link into thread pool's queues. */
 	pool_work_t work;
-	int rc;
+	/* Gateway the handle belongs to. */
 	struct gateway *gw;
+	/* Return code used to deliver pool work operation result to the
+	 * uv_loop's thread. */
+	int rc;
 };
 
 /**

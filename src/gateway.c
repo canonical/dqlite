@@ -570,14 +570,14 @@ static void query_batch(struct gateway *g)
 {
 	struct dqlite_node *node = g->raft->data;
 	struct handle *req = g->req;
+	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
+		? pool_ut_fallback() : &node->pool;
 	assert(req != NULL);
 	g->req = NULL;
 	req->gw = g;
 
-	pool_queue_work(!!(pool_ut_fallback()->flags & POOL_FOR_UT)
-			    ? pool_ut_fallback()
-			    : &node->pool,
-			&req->work, 0xbad00b01, WT_UNORD, qb_top, qb_bottom);
+	pool_queue_work(pool, &req->work, (uint32_t)req->db_id,
+			WT_UNORD, qb_top, qb_bottom);
 }
 
 static void query_barrier_cb(struct barrier *barrier, int status)
