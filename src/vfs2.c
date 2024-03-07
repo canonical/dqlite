@@ -34,6 +34,36 @@
 
 static const uint32_t invalid_magic = 0x17171717;
 
+/*
+
+                                                                +--------------------NOT_OPEN
+                                                                |                    |
+                                                                | xOpen("foo-wal")   | xOpen("foo-wal")
+                                                                |                    |
+                                                                |                    V
+                                                                |                    EMPTY
+                                                                |      xWrite(hdr)   |
+                                                                |  +-----------------+
+                                                                |  |
+                                           xWrite(frames)       V  V
+                                     +--------------------------BASE-----------------------------+
+                                     |                          ^  ^     vfs2_apply_uncommitted     |
+                                     |                          |  |                                |
+                                     V     vfs2_abort           |  |     vfs2_commit, vfs2_abort    V
+                                ACTIVE--------------------------+  +--------------------------------FOLLOWING
+                                     |                          |
+                     COMMIT_PHASETWO |                          |
+                                     V     vfs2_abort           |
+                                HIDDEN--------------------------+
+                                     |                          |
+            vf2_{poll, shallow_poll} |                          |
+                                     V     vfs2_{abort,commit}  |
+                                POLLED--------------------------+
+
+*/
+
+/* TODO should vfs2_abort truncate the WAL? */
+
 enum {
 	WTX_NOT_OPEN, /* WAL not yet opened */
 	WTX_EMPTY, /* WAL opened but nothing in either of the backing files */
@@ -41,7 +71,8 @@ enum {
 		      with nothing pending */
 	WTX_ACTIVE,
 	WTX_HIDDEN,
-	WTX_POLLED
+	WTX_POLLED,
+	WTX_FOLLOWING,
 };
 
 static const struct sm_conf wtx_states[SM_STATES_MAX] = {
@@ -503,6 +534,8 @@ static int vfs2_wal_swap(struct vfs2_file *wal,
 	if (rv != 0) {
 		return SQLITE_IOERR;
 	}
+
+	/* TODO do we need an fsync here? */
 
 	/* Best-effort: invalidate the outgoing physical WAL so that nobody gets
 	 * confused. */
@@ -1109,6 +1142,7 @@ static int vfs2_open_wal(sqlite3_vfs *vfs,
 		    (sqlite3_int64)sizeof(struct vfs2_wal_hdr) +
 		    (sqlite3_int64)(VFS2_WAL_FRAME_HDR_SIZE + page_size) *
 			(sqlite3_int64)(limit.start + limit.len);
+
 		if (salts_equal(limit.salts, hdr_prev.salts)) {
 			if (size_prev != implied_size) {
 				return SQLITE_ERROR;
@@ -1407,8 +1441,10 @@ int vfs2_set_wal_limit(sqlite3_vfs *vfs,
 }
 
 /* FIXME what return codes should this use? */
-int vfs2_apply(sqlite3_file *file)
+int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice sl)
 {
+	(void)sl; /* XXX */
+
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 	if (!(xfile->flags & SQLITE_OPEN_MAIN_DB)) {
 		return 1;
@@ -1440,45 +1476,7 @@ int vfs2_apply(sqlite3_file *file)
 	return 0;
 }
 
-int vfs2_shallow_poll(sqlite3_file *file, struct vfs2_wal_slice *out)
-{
-	struct vfs2_file *xfile = (struct vfs2_file *)file;
-	if (!(xfile->flags & SQLITE_OPEN_MAIN_DB)) {
-		return 1;
-	}
-
-	uint32_t len = xfile->db_shm.pending_txn_hdr.mxFrame -
-		       xfile->db_shm.prev_txn_hdr.mxFrame;
-	if (len > 0) {
-		/* Don't go through vfs2_shm_lock here since that has additional
-		 * checks that assume the context of being called from inside
-		 * SQLite. */
-		unsigned *locks = xfile->db_shm.locks;
-		if (locks[VFS2_SHM_WRITE_LOCK] > 0) {
-			return 1;
-		}
-		locks[VFS2_SHM_WRITE_LOCK] = VFS2_EXCLUSIVE;
-
-		struct vfs2_wal *wal = &xfile->entry->wal->wal;
-		dqlite_vfs_frame *frames = wal->pending_txn_frames;
-		uint32_t n = wal->pending_txn_len;
-		for (uint32_t i = 0; i < n; i++) {
-			sqlite3_free(frames[i].data);
-		}
-		sqlite3_free(frames);
-		wal->pending_txn_frames = NULL;
-	}
-
-	out->salts = xfile->db_shm.pending_txn_hdr.salts;
-	out->start = xfile->db_shm.prev_txn_hdr.mxFrame;
-	out->len = len;
-
-	sm_move(&xfile->entry->wtx_sm, WTX_POLLED);
-
-	return 0;
-}
-
-int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n)
+int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n, struct vfs2_wal_slice *sl)
 {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
 	if (!(xfile->flags & SQLITE_OPEN_MAIN_DB)) {
@@ -1489,11 +1487,8 @@ int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n)
 		return 1;
 	}
 
-	*n = wal->wal.pending_txn_len;
-	*frames = wal->wal.pending_txn_frames;
-	wal->wal.pending_txn_frames = NULL;
-
-	if (*n > 0) {
+	uint32_t len = wal->wal.pending_txn_len;
+	if (len > 0) {
 		/* Don't go through vfs2_shm_lock here since that has additional
 		 * checks that assume the context of being called from inside
 		 * SQLite. */
@@ -1502,6 +1497,24 @@ int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n)
 			return 1;
 		}
 		locks[VFS2_SHM_WRITE_LOCK] = VFS2_EXCLUSIVE;
+	}
+
+	if (n != NULL && frames != NULL) {
+		*n = len;
+		*frames = wal->wal.pending_txn_frames;
+	} else if (wal->wal.pending_txn_frames != NULL) {
+		for (uint32_t i = 0; i < len; i++) {
+			sqlite3_free(wal->wal.pending_txn_frames[i].data);
+		}
+		sqlite3_free(wal->wal.pending_txn_frames);
+	}
+	wal->wal.pending_txn_frames = NULL;
+
+	if (sl != NULL) {
+		sl->len = len;
+		sl->salts = xfile->db_shm.pending_txn_hdr.salts;
+		sl->start = xfile->db_shm.prev_txn_hdr.mxFrame;
+		sl->len = len;
 	}
 
 	sm_move(&xfile->entry->wtx_sm, WTX_POLLED);
@@ -1561,4 +1574,60 @@ int vfs2_read_wal(sqlite3_file *file,
 	(void)txns;
 	(void)txns_len;
 	return 0;
+}
+
+int vfs2_apply_uncommitted(sqlite3_file *file, const dqlite_vfs_frame *frames, unsigned len, struct vfs2_wal_slice *out)
+{
+	(void)file;
+	(void)frames;
+	(void)len;
+	(void)out;
+	/*
+	struct vfs2_file *xfile = (struct vfs2_file *)file;
+	if (!(xfile->flags & SQLITE_OPEN_MAIN_DB)) {
+		return 1;
+	}
+	int rv;
+
+	unsigned *locks = xfile->db_shm.locks;
+	if (locks[VFS2_SHM_WRITE_LOCK] > 0) {
+		return 1;
+	}
+	locks[VFS2_SHM_WRITE_LOCK] = VFS2_EXCLUSIVE;
+
+	struct vfs2_salts salts;
+	rv = maybe_setup_or_swap_wal(xfile, len, &salts);
+	if (rv != SQLITE_OK) {
+		return 1;
+	}
+	struct vfs2_file *wal = xfile->entry->wal;
+
+	// TODO assert that nothing is mapped => don't need to invalidate the WAL index
+
+	uint32_t page_size = atomic_load(&xfile->vfs_data->page_size);
+	assert(page_size > 0);
+	sqlite3_int64 ofst;
+	sqlite3_file *wal_cur = xfile->wal.wal_cur;
+	rv = wal_cur->xFileSize(wal_cur, &ofst);
+	if (rv != SQLITE_OK) {
+		return 1;
+	}
+	for (unsigned i = 0; i < len; i++) {
+		struct vfs2_wal_frame_hdr frame_hdr;
+		rv = wal_cur->xWrite(wal_cur, &frame_hdr, sizeof(frame_hdr), ofst);
+		if (rv != SQLITE_OK) {
+			return 1;
+		}
+		ofst += sizeof(frame_hdr);
+		rv = wal_cur->xWrite(wal_cur, frames[i].data, page_size, ofst);
+		if (rv != SQLITE_OK) {
+			return 1;
+		}
+		ofst += page_size;
+	}
+
+	sm_move(&entry->wtx_sm, WTX_FOLLOWING);
+	*/
+	return 0;
+
 }

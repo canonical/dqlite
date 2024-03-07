@@ -17,6 +17,10 @@
  * be used on the thread that opened it. The functions below that operate on
  * sqlite3_file objects created by this VFS should also only be used on that
  * thread.
+ *
+ * page_size can be zero to defer setting the page size to runtime (PRAGMA
+ * page_size=) or use SQLite's default.
+ *
  */
 sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name, unsigned page_size);
 
@@ -39,37 +43,18 @@ int vfs2_set_wal_limit(sqlite3_vfs *vfs,
 		       struct vfs2_wal_slice sl);
 
 /**
- * Retrieve information about frames that the last write transaction appended to
- * the WAL, and reacquire the write lock.
- *
- * Call this on the database main file object (SQLITE_FCNTL_FILE_POINTER).
- *
- * Polling the same transaction more than once in any way is an error, and you
- * must choose only one of vfs2_poll or vfs2_shallow_poll.
- */
-int vfs2_shallow_poll(sqlite3_file *file, struct vfs2_wal_slice *out);
-
-/**
  * Retrieve frames that were appended to the WAL by the last write transaction,
  * and reacquire the write lock.
  *
  * Call this on the database main file object (SQLITE_FCNTL_FILE_POINTER).
  *
- * Polling the same transaction more than once in any way is an error, and you
- * must choose only one of vfs2_poll or vfs2_shallow_poll.
+ * Polling the same transaction more than once is an error.
  */
-int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n);
+int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n, struct vfs2_wal_slice *sl);
 
-/**
- * Unhide a write transaction that's been committed in Raft, and release the
- * write lock.
- *
- * Call this on the database main file object (SQLITE_FCNTL_FILE_POINTER).
- *
- * Calling this function when there is no pending transaction is an error.
- * It's okay to call it without polling the transaction.
- */
-int vfs2_apply(sqlite3_file *file);
+int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice sl);
+
+int vfs2_apply_uncommitted(sqlite3_file *file, const dqlite_vfs_frame *frames, unsigned n, struct vfs2_wal_slice *out);
 
 struct vfs2_wal_txn {
 	struct vfs2_wal_slice meta;
