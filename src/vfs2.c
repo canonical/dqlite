@@ -62,8 +62,6 @@ static const uint32_t invalid_magic = 0x17171717;
 
 */
 
-/* TODO should vfs2_abort truncate the WAL? */
-
 enum {
 	WTX_NOT_OPEN, /* WAL not yet opened */
 	WTX_EMPTY, /* WAL opened but nothing in either of the backing files */
@@ -149,8 +147,6 @@ struct vfs2_wal_index_basic_hdr {
 	struct vfs2_salts salts;
 	uint32_t aCksum[2];
 };
-
-static const struct vfs2_wal_index_basic_hdr zeroed_basic_hdr = { 0 };
 
 struct vfs2_wal_hdr {
 	uint8_t magic[4];
@@ -335,8 +331,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(db_shm != NULL);
 		CHECK(wal != NULL);
 		CHECK(no_pending_txn(wal));
-		CHECK(wal_index_basic_hdr_equal(db_shm->pending_txn_hdr,
-						zeroed_basic_hdr));
+		CHECK(wal_index_basic_hdr_equal(db_shm->pending_txn_hdr, (struct vfs2_wal_index_basic_hdr){}));
 
 		if (prev == WTX_BASE) {
 			/* just after a WAL swap */
@@ -358,8 +353,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 						db_shm->prev_txn_hdr) ||
 		      wal_index_basic_hdr_advanced(hdr->basic[0],
 						   db_shm->prev_txn_hdr));
-		CHECK(wal_index_basic_hdr_equal(db_shm->pending_txn_hdr,
-						zeroed_basic_hdr));
+		CHECK(wal_index_basic_hdr_equal(db_shm->pending_txn_hdr, (struct vfs2_wal_index_basic_hdr){}));
 
 		if (prev == WTX_BASE) {
 			/* first frame in a txn */
@@ -1463,7 +1457,7 @@ int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice sl)
 	region0->hdr.basic[0] = xfile->db_shm.pending_txn_hdr;
 	region0->hdr.basic[1] = xfile->db_shm.pending_txn_hdr;
 	xfile->db_shm.prev_txn_hdr = xfile->db_shm.pending_txn_hdr;
-	xfile->db_shm.pending_txn_hdr = zeroed_basic_hdr;
+	xfile->db_shm.pending_txn_hdr = (struct vfs2_wal_index_basic_hdr){};
 	wal->wal.commit_end += wal->wal.pending_txn_len;
 	wal->wal.pending_txn_len = 0;
 	wal->wal.pending_txn_last_frame_commit = 0;
@@ -1527,6 +1521,7 @@ void vfs2_destroy(sqlite3_vfs *vfs)
 	sqlite3_free(vfs);
 }
 
+/* TODO maybe this should prophylactically truncate the WAL? */
 int vfs2_abort(sqlite3_file *file)
 {
 	struct vfs2_file *xfile = (struct vfs2_file *)file;
@@ -1544,7 +1539,7 @@ int vfs2_abort(sqlite3_file *file)
 	struct vfs2_wal_index_full_hdr *hdr = get_full_hdr(&xfile->db_shm);
 	hdr->basic[0] = xfile->db_shm.prev_txn_hdr;
 	hdr->basic[1] = xfile->db_shm.prev_txn_hdr;
-	xfile->db_shm.pending_txn_hdr = zeroed_basic_hdr;
+	xfile->db_shm.pending_txn_hdr = (struct vfs2_wal_index_basic_hdr){};
 
 	dqlite_vfs_frame *frames = wal->wal.pending_txn_frames;
 	if (frames != NULL) {
