@@ -16,8 +16,7 @@
 
 #include "../../include/dqlite.h"
 
-struct buffer
-{
+struct buffer {
 	void *data;         /* Allocated buffer */
 	unsigned page_size; /* Size of an OS page */
 	unsigned n_pages;   /* Number of pages allocated */

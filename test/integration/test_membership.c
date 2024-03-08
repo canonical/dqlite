@@ -68,8 +68,7 @@ static MunitParameterEnum membership_params[] = {
 
 SUITE(membership)
 
-struct fixture
-{
+struct fixture {
 	FIXTURE;
 };
 
@@ -117,8 +116,7 @@ TEST(membership, join, setUp, tearDown, 0, membership_params)
 	return MUNIT_OK;
 }
 
-struct id_last_applied
-{
+struct id_last_applied {
 	struct fixture *f;
 	int id;
 	raft_index last_applied;
@@ -237,8 +235,7 @@ TEST(membership,
 	return MUNIT_OK;
 }
 
-struct fixture_id
-{
+struct fixture_id {
 	struct fixture *f;
 	int id;
 };

@@ -16,8 +16,7 @@
 #define SNAPSHOT_THRESHOLD_PARAM "snapshot-threshold"
 #define SNAPSHOT_COMPRESSION_PARAM "snapshot_compression"
 
-struct test_server
-{
+struct test_server {
 	unsigned id;         /* Server ID. */
 	char address[8];     /* Server address. */
 	char *dir;           /* Data directory. */

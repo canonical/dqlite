@@ -960,8 +960,7 @@ static int handle_interrupt(struct gateway *g, struct handle *req)
 	return 0;
 }
 
-struct change
-{
+struct change {
 	struct gateway *gateway;
 	struct raft_change req;
 };

@@ -36,8 +36,7 @@ TEST_MODULE(registry);
  *
  ******************************************************************************/
 
-struct db_fixture
-{
+struct db_fixture {
 	FIXTURE;
 };
 

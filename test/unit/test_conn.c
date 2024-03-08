@@ -171,8 +171,7 @@ static void connCloseCb(struct conn *conn)
 
 TEST_SUITE(handshake);
 
-struct handshake_fixture
-{
+struct handshake_fixture {
 	FIXTURE;
 };
 
@@ -206,8 +205,7 @@ TEST_CASE(handshake, success, NULL)
 
 TEST_SUITE(open);
 
-struct open_fixture
-{
+struct open_fixture {
 	FIXTURE;
 };
 
@@ -242,8 +240,7 @@ TEST_CASE(open, success, NULL)
 
 TEST_SUITE(prepare);
 
-struct prepare_fixture
-{
+struct prepare_fixture {
 	FIXTURE;
 };
 
@@ -281,8 +278,7 @@ TEST_CASE(prepare, success, NULL)
 
 TEST_SUITE(exec);
 
-struct exec_fixture
-{
+struct exec_fixture {
 	FIXTURE;
 	unsigned stmt_id;
 };
@@ -362,8 +358,7 @@ TEST_CASE(exec, close_while_in_flight, NULL)
 
 TEST_SUITE(query);
 
-struct query_fixture
-{
+struct query_fixture {
 	FIXTURE;
 	uint32_t stmt_id;
 	uint32_t insert_stmt_id;

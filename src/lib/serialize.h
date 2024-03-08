@@ -43,8 +43,7 @@ typedef uv_buf_t blob_t;
 /**
  * Cursor to progressively read a buffer.
  */
-struct cursor
-{
+struct cursor {
 	const char *p; /* Next byte to read */
 	size_t cap;    /* Number of bytes left in the buffer */
 };
@@ -64,8 +63,7 @@ struct cursor
 	SERIALIZE__DEFINE_METHODS(NAME, FIELDS)
 
 #define SERIALIZE__DEFINE_STRUCT(NAME, FIELDS)  \
-	struct NAME                             \
-	{                                       \
+	struct NAME {                           \
 		FIELDS(SERIALIZE__DEFINE_FIELD) \
 	}
 

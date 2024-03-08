@@ -11,8 +11,7 @@ SUITE(server);
 
 #define N_SERVERS 3
 
-struct fixture
-{
+struct fixture {
 	char *dirs[N_SERVERS];
 	dqlite_server *servers[N_SERVERS];
 };

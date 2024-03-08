@@ -15,8 +15,7 @@
 /**
  * State used to generate a request ID.
  */
-struct id_state
-{
+struct id_state {
 	uint64_t data[4];
 };
 

@@ -17,8 +17,7 @@ TEST_MODULE(concurrency);
 #define N_GATEWAYS 2
 
 /* Context for a gateway handle request */
-struct context
-{
+struct context {
 	bool invoked;
 	int status;
 	uint8_t type;
@@ -26,8 +25,7 @@ struct context
 };
 
 /* Standalone leader database connection */
-struct connection
-{
+struct connection {
 	struct gateway gateway;
 	struct buffer request;  /* Request payload */
 	struct buffer response; /* Response payload */
@@ -210,8 +208,7 @@ static void fixture_handle_cb(struct handle *req,
  *
  ******************************************************************************/
 
-struct exec_fixture
-{
+struct exec_fixture {
 	FIXTURE;
 	struct connection *c1;
 	struct connection *c2;
@@ -287,8 +284,7 @@ TEST_CASE(exec, tx, NULL)
  *
  ******************************************************************************/
 
-struct query_fixture
-{
+struct query_fixture {
 	FIXTURE;
 	struct connection *c1;
 	struct connection *c2;

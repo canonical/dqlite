@@ -31,8 +31,7 @@
 #define V1 0
 #define V2 1
 
-struct server
-{
+struct server {
 	struct logger logger;
 	struct config config;
 	sqlite3_vfs vfs;

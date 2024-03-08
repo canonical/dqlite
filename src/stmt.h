@@ -50,8 +50,7 @@
 #include "lib/registry.h"
 
 /* Hold state for a single open SQLite database */
-struct stmt
-{
+struct stmt {
 	size_t id;          /* Statement ID */
 	sqlite3_stmt *stmt; /* Underlying SQLite statement handle */
 };

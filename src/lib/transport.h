@@ -21,8 +21,7 @@ typedef void (*transport_close_cb)(struct transport *t);
  * Light wrapper around a libuv stream handle, providing a more convenient way
  * to read a certain amount of bytes.
  */
-struct transport
-{
+struct transport {
 	void *data;                  /* User defined */
 	struct uv_stream_s *stream;  /* Data stream */
 	uv_buf_t read;               /* Read buffer */

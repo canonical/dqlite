@@ -71,8 +71,7 @@ const int vfsOne = 1;
 #define vfsFrameSize(PAGE_SIZE) (VFS__FRAME_HEADER_SIZE + PAGE_SIZE)
 
 /* Hold content for a shared memory mapping. */
-struct vfsShm
-{
+struct vfsShm {
 	void **regions;     /* Pointers to shared memory regions. */
 	unsigned n_regions; /* Number of shared memory regions. */
 	unsigned refcount;  /* Number of outstanding mappings. */
@@ -81,8 +80,7 @@ struct vfsShm
 };
 
 /* Hold the content of a single WAL frame. */
-struct vfsFrame
-{
+struct vfsFrame {
 	uint8_t header[VFS__FRAME_HEADER_SIZE];
 	uint8_t *page; /* Content of the page. */
 };
@@ -90,8 +88,7 @@ struct vfsFrame
 /* WAL-specific content.
  * Watch out when changing the members of this struct, see
  * comment in `formatWalChecksumBytes`. */
-struct vfsWal
-{
+struct vfsWal {
 	uint8_t hdr[VFS__WAL_HEADER_SIZE]; /* Header. */
 	struct vfsFrame **frames;          /* All frames committed. */
 	unsigned n_frames;                 /* Number of committed frames. */
@@ -100,8 +97,7 @@ struct vfsWal
 };
 
 /* Database-specific content */
-struct vfsDatabase
-{
+struct vfsDatabase {
 	char *name;         /* Database name. */
 	void **pages;       /* All database. */
 	unsigned page_size; /* Only used for on-disk db */
@@ -630,8 +626,7 @@ enum vfsFileType {
 };
 
 /* Implementation of the abstract sqlite3_file base class. */
-struct vfsFile
-{
+struct vfsFile {
 	sqlite3_file base;            /* Base class. Must be first. */
 	struct vfs *vfs;              /* Pointer to volatile VFS data. */
 	enum vfsFileType type;        /* Associated file (main db or WAL). */
@@ -642,8 +637,7 @@ struct vfsFile
 };
 
 /* Custom dqlite VFS. Contains pointers to all databases that were created. */
-struct vfs
-{
+struct vfs {
 	struct vfsDatabase **databases; /* Database objects */
 	unsigned n_databases;           /* Number of databases */
 	int error;                      /* Last error occurred. */

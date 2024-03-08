@@ -63,8 +63,7 @@ TEST_MODULE(role_management);
 
 TEST_SUITE(adjust);
 
-struct adjust_fixture
-{
+struct adjust_fixture {
 	int voters;
 	int standbys;
 	unsigned n;

@@ -132,8 +132,7 @@ TEST_MODULE(replication_v1);
  *
  ******************************************************************************/
 
-struct init_fixture
-{
+struct init_fixture {
 	FIXTURE;
 };
 
@@ -170,8 +169,7 @@ TEST_CASE(init, conn, NULL)
  *
  ******************************************************************************/
 
-struct exec_fixture
-{
+struct exec_fixture {
 	FIXTURE;
 	struct exec req;
 	bool invoked;
@@ -312,8 +310,7 @@ TEST_CASE(exec, checkpoint_read_lock, NULL)
  *
  ******************************************************************************/
 
-struct fixture
-{
+struct fixture {
 	FIXTURE_CLUSTER;
 	struct leader leaders[N_SERVERS];
 	sqlite3_stmt *stmt;

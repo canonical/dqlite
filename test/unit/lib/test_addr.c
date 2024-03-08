@@ -7,8 +7,7 @@
 
 TEST_MODULE(lib_addr);
 
-struct fixture
-{
+struct fixture {
 	struct sockaddr_un addr_un;
 };
 

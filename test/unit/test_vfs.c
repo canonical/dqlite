@@ -29,8 +29,7 @@ static MunitParameterEnum vfs_params[] = {
  ******************************************************************************/
 
 #define VFS_PATH_SZ 512
-struct fixture
-{
+struct fixture {
 	struct sqlite3_vfs vfs;
 	char *dir;
 	char path[VFS_PATH_SZ];

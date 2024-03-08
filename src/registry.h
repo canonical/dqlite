@@ -9,8 +9,7 @@
 
 #include "db.h"
 
-struct registry
-{
+struct registry {
 	struct config *config;
 	queue dbs;
 };

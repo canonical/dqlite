@@ -6,8 +6,7 @@
 
 TEST_MODULE(lib_registry);
 
-struct test_item
-{
+struct test_item {
 	size_t id;
 	int *ptr;
 };

@@ -13,11 +13,9 @@
 #include "tracing.h"
 #include "transport.h"
 
-struct impl
-{
+struct impl {
 	struct uv_loop_s *loop;
-	struct
-	{
+	struct {
 		int (*f)(void *arg, const char *address, int *fd);
 		void *arg;
 
@@ -27,8 +25,7 @@ struct impl
 	raft_uv_accept_cb accept_cb;
 };
 
-struct connect
-{
+struct connect {
 	struct impl *impl;
 	struct raft_uv_connect *req;
 	struct uv_work_s work;

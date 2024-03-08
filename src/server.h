@@ -18,8 +18,7 @@
 /**
  * A single dqlite server instance.
  */
-struct dqlite_node
-{
+struct dqlite_node {
 	bool initialized; /* dqlite__init succeeded */
 
 	pthread_t thread;                        /* Main run loop thread. */
@@ -59,15 +58,13 @@ struct dqlite_node
 
 /* Dynamic array of node info objects. This is the in-memory representation of
  * the node store. */
-struct node_store_cache
-{
+struct node_store_cache {
 	struct client_node_info *nodes; /* owned */
 	unsigned len;
 	unsigned cap;
 };
 
-struct dqlite_server
-{
+struct dqlite_server {
 	/* Threading stuff: */
 	pthread_cond_t cond;
 	pthread_mutex_t mutex;

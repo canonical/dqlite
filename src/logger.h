@@ -14,8 +14,7 @@ typedef void (*dqlite_emit)(void *data,
 			    const char *fmt,
 			    va_list args);
 
-struct logger
-{
+struct logger {
 	void *data;
 	dqlite_emit emit;
 };

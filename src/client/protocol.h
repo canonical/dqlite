@@ -33,8 +33,7 @@ enum {
 	DQLITE_CLIENT_PROTO_ERROR
 };
 
-struct client_proto
-{
+struct client_proto {
 	/* TODO find a better approach to initializing these fields? */
 	int (*connect)(void *, const char *, int *);
 	void *connect_arg;
@@ -55,8 +54,7 @@ struct client_proto
  *
  * Passing NULL for the context argument is permitted and disables all timeouts.
  */
-struct client_context
-{
+struct client_context {
 	/* An absolute CLOCK_REALTIME timestamp that limits how long will be
 	 * spent trying to complete the requested send or receive operation.
 	 * Whenever we are about to make a blocking syscall (read or write), we
@@ -67,28 +65,24 @@ struct client_context
 };
 
 /* TODO Consider using a dynamic array instead of a linked list here? */
-struct row
-{
+struct row {
 	struct value *values;
 	struct row *next;
 };
 
-struct rows
-{
+struct rows {
 	unsigned column_count;
 	char **column_names;
 	struct row *next;
 };
 
-struct client_node_info
-{
+struct client_node_info {
 	uint64_t id;
 	char *addr;
 	int role;
 };
 
-struct client_file
-{
+struct client_file {
 	char *name;
 	uint64_t size;
 	void *blob;

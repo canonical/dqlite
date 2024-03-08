@@ -70,8 +70,7 @@ static MunitParameterEnum snapshot_params[] = {
 
 SUITE(fsm)
 
-struct fixture
-{
+struct fixture {
 	FIXTURE;
 };
 

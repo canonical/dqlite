@@ -22,8 +22,7 @@ static MunitParameterEnum node_params[] = {
     {NULL, NULL},
 };
 
-struct fixture
-{
+struct fixture {
 	char *dir;         /* Data directory. */
 	dqlite_node *node; /* Node instance. */
 };
@@ -441,8 +440,7 @@ TEST(node, recoverExtTooSmall, setUpForRecovery, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-struct dqlite_node_info_ext_new
-{
+struct dqlite_node_info_ext_new {
 	struct dqlite_node_info_ext orig;
 	uint64_t new1;
 	uint64_t new2;

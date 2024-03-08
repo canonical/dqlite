@@ -9,8 +9,7 @@
 
 #include "config.h"
 
-struct db
-{
+struct db {
 	struct config *config; /* Dqlite configuration */
 	char *filename;        /* Database filename */
 	char *path;            /* Used for on-disk db */
