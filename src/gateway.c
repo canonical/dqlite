@@ -517,7 +517,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
  * given request with a single batch of rows.
  *
  * A single batch of rows is typically about the size of a memory page. */
-static void query_batch_async(struct handle *req, int half)
+static void query_batch_async(struct handle *req, enum pool_half half)
 {
 	struct gateway *g = req->gw;
 	sqlite3_stmt *stmt = req->stmt;
@@ -526,11 +526,11 @@ static void query_batch_async(struct handle *req, int half)
 	int rc;
 
 	if (half == POOL_TOP_HALF) {
-		req->rc = query__batch(stmt, req->buffer);
+		req->work.rc = query__batch(stmt, req->buffer);
 		return;
 	}  /* else POOL_BOTTOM_HALF => */
 
-	rc = req->rc;
+	rc = req->work.rc;
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		assert(g->leader != NULL);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
@@ -576,7 +576,7 @@ static void query_batch(struct gateway *g)
 	g->req = NULL;
 	req->gw = g;
 
-	pool_queue_work(pool, &req->work, (uint32_t)req->db_id,
+	pool_queue_work(pool, &req->work, g->leader->db->cookie,
 			WT_UNORD, qb_top, qb_bottom);
 }
 

@@ -1610,6 +1610,11 @@ int dqlite_server_start(dqlite_server *server)
 	struct client_context context;
 	int rv;
 
+	rv = sqlite3_threadsafe();
+	if (!(rv == 1 || rv == 2)) {
+		goto err;
+	}
+
 	if (server->started) {
 		goto err;
 	}

@@ -10,6 +10,10 @@ void test_sqlite_setup(const MunitParameter params[])
 	if (rc != SQLITE_OK) {
 		munit_errorf("sqlite_init(): %s", sqlite3_errstr(rc));
 	}
+	rc = sqlite3_threadsafe();
+	if (!(rc == 1 || rc == 2)) {
+		munit_errorf("sqlite3_threadsafe(): %d", rc);
+	}
 }
 
 void test_sqlite_tear_down()
