@@ -9,7 +9,7 @@
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
-#include "queue.h"
+#include "../lib/queue.h"
 #include "replication.h"
 #include "request.h"
 
@@ -93,11 +93,11 @@ static void convertClearLeader(struct raft *r)
 	}
 
 	/* Fail all outstanding requests */
-	while (!QUEUE_IS_EMPTY(&r->leader_state.requests)) {
+	while (!queue_empty(&r->leader_state.requests)) {
 		struct request *req;
 		queue *head;
-		head = QUEUE_HEAD(&r->leader_state.requests);
-		QUEUE_REMOVE(head);
+		head = queue_head(&r->leader_state.requests);
+		queue_remove(head);
 		req = QUEUE_DATA(head, struct request, queue);
 		assert(req->type == RAFT_COMMAND || req->type == RAFT_BARRIER);
 		switch (req->type) {
@@ -209,7 +209,7 @@ int convertToLeader(struct raft *r)
 	r->election_timer_start = r->io->time(r->io);
 
 	/* Reset apply requests queue */
-	QUEUE_INIT(&r->leader_state.requests);
+	queue_init(&r->leader_state.requests);
 
 	/* Allocate and initialize the progress array. */
 	rv = progressBuildArray(r);

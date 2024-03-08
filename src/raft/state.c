@@ -2,7 +2,7 @@
 #include "configuration.h"
 #include "election.h"
 #include "log.h"
-#include "queue.h"
+#include "../lib/queue.h"
 
 int raft_state(struct raft *r)
 {

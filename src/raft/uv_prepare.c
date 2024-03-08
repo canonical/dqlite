@@ -77,12 +77,12 @@ err:
  * status. */
 static void uvPrepareFinishAllRequests(struct uv *uv, int status)
 {
-	while (!QUEUE_IS_EMPTY(&uv->prepare_reqs)) {
+	while (!queue_empty(&uv->prepare_reqs)) {
 		queue *head;
 		struct uvPrepare *req;
-		head = QUEUE_HEAD(&uv->prepare_reqs);
+		head = queue_head(&uv->prepare_reqs);
 		req = QUEUE_DATA(head, struct uvPrepare, queue);
-		QUEUE_REMOVE(&req->queue);
+		queue_remove(&req->queue);
 		req->cb(req, status);
 	}
 }
@@ -94,10 +94,10 @@ static void uvPrepareConsume(struct uv *uv, uv_file *fd, uvCounter *counter)
 	queue *head;
 	struct uvIdleSegment *segment;
 	/* Pop a segment from the pool. */
-	head = QUEUE_HEAD(&uv->prepare_pool);
+	head = queue_head(&uv->prepare_pool);
 	segment = QUEUE_DATA(head, struct uvIdleSegment, queue);
 	assert(segment->fd >= 0);
-	QUEUE_REMOVE(&segment->queue);
+	queue_remove(&segment->queue);
 	*fd = segment->fd;
 	*counter = segment->counter;
 	RaftHeapFree(segment);
@@ -111,13 +111,13 @@ static void uvPrepareFinishOldestRequest(struct uv *uv)
 	struct uvPrepare *req;
 
 	assert(!uv->closing);
-	assert(!QUEUE_IS_EMPTY(&uv->prepare_reqs));
-	assert(!QUEUE_IS_EMPTY(&uv->prepare_pool));
+	assert(!queue_empty(&uv->prepare_reqs));
+	assert(!queue_empty(&uv->prepare_pool));
 
 	/* Pop the head of the prepare requests queue. */
-	head = QUEUE_HEAD(&uv->prepare_reqs);
+	head = queue_head(&uv->prepare_reqs);
 	req = QUEUE_DATA(head, struct uvPrepare, queue);
-	QUEUE_REMOVE(&req->queue);
+	queue_remove(&req->queue);
 
 	/* Finish the request */
 	uvPrepareConsume(uv, &req->fd, &req->counter);
@@ -199,8 +199,8 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
 	/* If we are closing, let's discard the segment. All pending requests
 	 * have already being fired with RAFT_CANCELED. */
 	if (uv->closing) {
-		assert(QUEUE_IS_EMPTY(&uv->prepare_pool));
-		assert(QUEUE_IS_EMPTY(&uv->prepare_reqs));
+		assert(queue_empty(&uv->prepare_pool));
+		assert(queue_empty(&uv->prepare_reqs));
 		if (segment->status == 0) {
 			char errmsg[RAFT_ERRMSG_BUF_SIZE];
 			UvOsClose(segment->fd);
@@ -218,7 +218,7 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
 	 * Note that if there's no pending request, we don't set the error
 	 * message, to avoid overwriting previous errors. */
 	if (segment->status != 0) {
-		if (!QUEUE_IS_EMPTY(&uv->prepare_reqs)) {
+		if (!queue_empty(&uv->prepare_reqs)) {
 			ErrMsgTransferf(segment->errmsg, uv->io->errmsg,
 					"create segment %s", segment->filename);
 			uvPrepareFinishAllRequests(uv, segment->status);
@@ -231,10 +231,10 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
 	assert(segment->fd >= 0);
 
 	tracef("completed creation of %s", segment->filename);
-	QUEUE_PUSH(&uv->prepare_pool, &segment->queue);
+	queue_insert_tail(&uv->prepare_pool, &segment->queue);
 
 	/* Let's process any pending request. */
-	if (!QUEUE_IS_EMPTY(&uv->prepare_reqs)) {
+	if (!queue_empty(&uv->prepare_reqs)) {
 		uvPrepareFinishOldestRequest(uv);
 	}
 
@@ -249,7 +249,7 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
 	 * above, thus reducing the pool size and making it smaller than the
 	 * target size. */
 	if (uvPrepareCount(uv) >= UV__TARGET_POOL_SIZE) {
-		assert(QUEUE_IS_EMPTY(&uv->prepare_reqs));
+		assert(queue_empty(&uv->prepare_reqs));
 		return;
 	}
 
@@ -284,7 +284,7 @@ int UvPrepare(struct uv *uv,
 
 	assert(!uv->closing);
 
-	if (!QUEUE_IS_EMPTY(&uv->prepare_pool)) {
+	if (!queue_empty(&uv->prepare_pool)) {
 		uvPrepareConsume(uv, fd, counter);
 		goto maybe_start;
 	}
@@ -292,7 +292,7 @@ int UvPrepare(struct uv *uv,
 	*fd = -1;
 	*counter = 0;
 	req->cb = cb;
-	QUEUE_PUSH(&uv->prepare_reqs, &req->queue);
+	queue_insert_tail(&uv->prepare_reqs, &req->queue);
 
 maybe_start:
 	/* If we are already creating a segment, let's just wait. */
@@ -311,7 +311,7 @@ err:
 	if (*fd != -1) {
 		uvPrepareDiscard(uv, *fd, *counter);
 	} else {
-		QUEUE_REMOVE(&req->queue);
+		queue_remove(&req->queue);
 	}
 	assert(rv != 0);
 	return rv;
@@ -325,12 +325,12 @@ void UvPrepareClose(struct uv *uv)
 	uvPrepareFinishAllRequests(uv, RAFT_CANCELED);
 
 	/* Remove any unused prepared segment. */
-	while (!QUEUE_IS_EMPTY(&uv->prepare_pool)) {
+	while (!queue_empty(&uv->prepare_pool)) {
 		queue *head;
 		struct uvIdleSegment *segment;
-		head = QUEUE_HEAD(&uv->prepare_pool);
+		head = queue_head(&uv->prepare_pool);
 		segment = QUEUE_DATA(head, struct uvIdleSegment, queue);
-		QUEUE_REMOVE(&segment->queue);
+		queue_remove(&segment->queue);
 		uvPrepareDiscard(uv, segment->fd, segment->counter);
 		RaftHeapFree(segment);
 	}

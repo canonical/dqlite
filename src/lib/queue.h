@@ -1,106 +1,95 @@
 #ifndef LIB_QUEUE_H_
 #define LIB_QUEUE_H_
 
-#include <stddef.h>
+#include <stddef.h> /* offsetof */
 
-typedef void *queue[2];
+struct queue
+{
+	struct queue *next;
+	struct queue *prev;
+};
 
-/* Private macros. */
-#define QUEUE__NEXT(q) (*(queue **)&((*(q))[0]))
-#define QUEUE__PREV(q) (*(queue **)&((*(q))[1]))
+typedef struct queue queue;
 
-#define QUEUE__PREV_NEXT(q) (QUEUE__NEXT(QUEUE__PREV(q)))
-#define QUEUE__NEXT_PREV(q) (QUEUE__PREV(QUEUE__NEXT(q)))
+#define QUEUE_DATA(e, type, field) \
+	((type *)((void *)((char *)(e)-offsetof(type, field))))
 
-/**
- * Initialize an empty queue.
- */
-#define QUEUE__INIT(q)                \
-	{                             \
-		QUEUE__NEXT(q) = (q); \
-		QUEUE__PREV(q) = (q); \
-	}
+#define QUEUE_FOREACH(q, h) for ((q) = (h)->next; (q) != (h); (q) = (q)->next)
 
-/**
- * Return true if the queue has no element.
- */
-#define QUEUE__IS_EMPTY(q) ((const queue *)(q) == (const queue *)QUEUE__NEXT(q))
+static inline void queue_init(struct queue *q)
+{
+	q->next = q;
+	q->prev = q;
+}
 
-/**
- * Insert an element at the back of a queue.
- */
-#define QUEUE__PUSH(q, e)                        \
-	{                                        \
-		QUEUE__NEXT(e) = (q);            \
-		QUEUE__PREV(e) = QUEUE__PREV(q); \
-		QUEUE__PREV_NEXT(e) = (e);       \
-		QUEUE__PREV(q) = (e);            \
-	}
+static inline int queue_empty(const struct queue *q)
+{
+	return q == q->next;
+}
 
-#define QUEUE__INSERT_TAIL(q, e) QUEUE__PUSH(q, e)
+static inline struct queue *queue_head(const struct queue *q)
+{
+	return q->next;
+}
 
-/**
- * Insert an element at the front of a queue.
- */
-#define QUEUE__INSERT_HEAD(h, q)                 \
-	{                                        \
-		QUEUE__NEXT(q) = QUEUE__NEXT(h); \
-		QUEUE__PREV(q) = (h);            \
-		QUEUE__NEXT_PREV(q) = (q);       \
-		QUEUE__NEXT(h) = (q);            \
-	}
+static inline struct queue *queue_next(const struct queue *q)
+{
+	return q->next;
+}
 
-/**
- * Remove the given element from the queue. Any element can be removed at any
- * time.
- */
-#define QUEUE__REMOVE(e)                              \
-	{                                             \
-		QUEUE__PREV_NEXT(e) = QUEUE__NEXT(e); \
-		QUEUE__NEXT_PREV(e) = QUEUE__PREV(e); \
-	}
+static inline struct queue *queue_tail(const struct queue *q)
+{
+	return q->prev;
+}
 
-/**
- * Moves elements from queue @h to queue @n
- * Note: Removed QUEUE__SPLIT() and merged it into QUEUE__MOVE().
- */
-#define QUEUE__MOVE(h, n)                                  \
-	{                                                  \
-		if (QUEUE__IS_EMPTY(h)) {                  \
-			QUEUE__INIT(n);                    \
-		} else {                                   \
-			queue *__q = QUEUE__HEAD(h);       \
-			QUEUE__PREV(n) = QUEUE__PREV(h);   \
-			QUEUE__PREV_NEXT(n) = (n);         \
-			QUEUE__NEXT(n) = (__q);            \
-			QUEUE__PREV(h) = QUEUE__PREV(__q); \
-			QUEUE__PREV_NEXT(h) = (h);         \
-			QUEUE__PREV(__q) = (n);            \
-		}                                          \
-	}
+static inline void queue_add(struct queue *h, struct queue *n)
+{
+	h->prev->next = n->next;
+	n->next->prev = h->prev;
+	h->prev = n->prev;
+	h->prev->next = h;
+}
 
-/**
- * Return the element at the front of the queue.
- */
-#define QUEUE__HEAD(q) (QUEUE__NEXT(q))
+static inline void queue_split(struct queue *h,
+			       struct queue *q,
+			       struct queue *n)
+{
+	n->prev = h->prev;
+	n->prev->next = n;
+	n->next = q;
+	h->prev = q->prev;
+	h->prev->next = h;
+	q->prev = n;
+}
 
-/**
- * Return the element at the back of the queue.
- */
-#define QUEUE__TAIL(q) (QUEUE__PREV(q))
+static inline void queue_move(struct queue *h, struct queue *n)
+{
+	if (queue_empty(h))
+		queue_init(n);
+	else
+		queue_split(h, h->next, n);
+}
 
-/**
- * Iternate over the element of a queue.
- *
- * Mutating the queue while iterating results in undefined behavior.
- */
-#define QUEUE__FOREACH(q, e) \
-	for ((q) = QUEUE__NEXT(e); (q) != (e); (q) = QUEUE__NEXT(q))
+static inline void queue_insert_head(struct queue *h, struct queue *q)
+{
+	q->next = h->next;
+	q->prev = h;
+	q->next->prev = q;
+	h->next = q;
+}
 
-/**
- * Return the structure holding the given element.
- */
-#define QUEUE__DATA(e, type, field) \
-	((type *)(uintptr_t)((char *)(e)-offsetof(type, field)))
+static inline void queue_insert_tail(struct queue *h, struct queue *q)
+{
+	q->next = h;
+	q->prev = h->prev;
+	q->prev->next = q;
+	h->prev = q;
+}
+
+static inline void queue_remove(struct queue *q)
+{
+	q->prev->next = q->next;
+	q->next->prev = q->prev;
+}
 
 #endif /* LIB_QUEUE_H_*/

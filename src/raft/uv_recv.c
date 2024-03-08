@@ -78,13 +78,13 @@ static int uvServerInit(struct uvServer *s,
 	s->message.type = 0;
 	s->payload.base = NULL;
 	s->payload.len = 0;
-	QUEUE_PUSH(&uv->servers, &s->queue);
+	queue_insert_tail(&uv->servers, &s->queue);
 	return 0;
 }
 
 static void uvServerDestroy(struct uvServer *s)
 {
-	QUEUE_REMOVE(&s->queue);
+	queue_remove(&s->queue);
 
 	if (s->header.base != NULL) {
 		/* This means we were interrupted while reading the header. */
@@ -179,8 +179,8 @@ static void uvServerStreamCloseCb(uv_handle_t *handle)
 static void uvServerAbort(struct uvServer *s)
 {
 	struct uv *uv = s->uv;
-	QUEUE_REMOVE(&s->queue);
-	QUEUE_PUSH(&uv->aborting, &s->queue);
+	queue_remove(&s->queue);
+	queue_insert_tail(&uv->aborting, &s->queue);
 	uv_close((struct uv_handle_s *)s->stream, uvServerStreamCloseCb);
 }
 
@@ -411,10 +411,10 @@ int UvRecvStart(struct uv *uv)
 
 void UvRecvClose(struct uv *uv)
 {
-	while (!QUEUE_IS_EMPTY(&uv->servers)) {
+	while (!queue_empty(&uv->servers)) {
 		queue *head;
 		struct uvServer *server;
-		head = QUEUE_HEAD(&uv->servers);
+		head = queue_head(&uv->servers);
 		server = QUEUE_DATA(head, struct uvServer, queue);
 		uvServerAbort(server);
 	}

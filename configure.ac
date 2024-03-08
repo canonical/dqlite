@@ -53,7 +53,7 @@ AC_SYS_LARGEFILE
 
 # Checks for libraries
 PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.22.0], [], [])
-PKG_CHECK_MODULES(UV, [libuv >= 1.8.0], [], [])
+PKG_CHECK_MODULES(UV, [libuv >= 1.34.0], [], [])
 AS_IF([test "x$enable_build_raft" != "xyes"], [PKG_CHECK_MODULES(RAFT, [raft >= 0.18.1], [], [])], [])
 
 

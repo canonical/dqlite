@@ -10,7 +10,7 @@ struct request
 	void *data;
 	int type;
 	raft_index index;
-	void *queue[2];
+	queue queue;
 	uint8_t req_id[16];
 	uint8_t client_id[16];
 	uint8_t unique_id[16];

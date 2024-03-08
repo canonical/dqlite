@@ -26,3 +26,8 @@ dqlite.pc
 libtool
 stamp-h*
 sqlite3.c
+raft-core-fuzzy-test
+raft-core-integration-test
+raft-core-unit-test
+raft-uv-integration-test
+raft-uv-unit-test
