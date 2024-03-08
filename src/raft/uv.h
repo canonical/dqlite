@@ -6,7 +6,7 @@
 #include "../raft.h"
 #include "../tracing.h"
 #include "err.h"
-#include "queue.h"
+#include "../lib/queue.h"
 #include "uv_fs.h"
 #include "uv_os.h"
 

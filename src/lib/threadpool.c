@@ -151,25 +151,25 @@ static inline void w_unregister(pool_t *pool, pool_work_t *w)
 
 static bool empty(const queue *q)
 {
-	return QUEUE__IS_EMPTY(q);
+	return queue_empty(q);
 }
 
 static queue *head(const queue *q)
 {
-	return QUEUE__HEAD(q);
+	return queue_head(q);
 }
 
 static void push(queue *to, queue *what)
 {
-	QUEUE__INSERT_TAIL(to, what);
+	queue_insert_tail(to, what);
 }
 
 static queue *pop(queue *from)
 {
-	queue *q = QUEUE__HEAD(from);
+	queue *q = queue_head(from);
 	PRE(q != NULL);
-	QUEUE__REMOVE(q);
-	QUEUE__INIT(q);
+	queue_remove(q);
+	queue_init(q);
 	return q;
 }
 
@@ -188,7 +188,7 @@ static queue *qos_pop(pool_impl_t *pi, queue *first, queue *second)
 
 static pool_work_t *q_to_w(const queue *q)
 {
-	return QUEUE__DATA(q, pool_work_t, link);
+	return QUEUE_DATA(q, pool_work_t, link);
 }
 
 static enum pool_work_type q_type(const queue *q)
@@ -424,7 +424,7 @@ static void pool_threads_init(pool_t *pool)
 			.idx = i,
 		};
 
-		QUEUE__INIT(&ts[i].inq);
+		queue_init(&ts[i].inq);
 		if (uv_cond_init(&ts[i].cond)) {
 			abort();
 		}
@@ -474,7 +474,7 @@ void work_done(uv_async_t *handle)
 	pool_impl_t *pi = CONTAINER_OF(handle, pool_impl_t, outq_async);
 
 	uv_mutex_lock(&pi->outq_mutex);
-	QUEUE__MOVE(&pi->outq, &q);
+	queue_move(&pi->outq, &q);
 	uv_mutex_unlock(&pi->outq_mutex);
 
 	while (!empty(&q)) {
@@ -535,9 +535,9 @@ int pool_init(pool_t *pool,
 		.threads_nr = threads_nr,
 		.ord_in_flight = 0,
 	};
-	QUEUE__INIT(&pi->outq);
-	QUEUE__INIT(&pi->ordered);
-	QUEUE__INIT(&pi->unordered);
+	queue_init(&pi->outq);
+	queue_init(&pi->ordered);
+	queue_init(&pi->unordered);
 
 	rc = uv_mutex_init(&pi->outq_mutex);
 	if (rc != 0) {

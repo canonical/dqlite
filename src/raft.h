@@ -9,6 +9,8 @@
 
 #include <uv.h>
 
+#include "lib/queue.h"
+
 #ifndef RAFT_API
 #define RAFT_API __attribute__((visibility("default")))
 #endif
@@ -802,7 +804,7 @@ struct raft
 			raft_index
 			    round_index; /* Target of the current round. */
 			raft_time round_start; /* Start of current round. */
-			void *requests[2]; /* Outstanding client requests. */
+			queue requests; /* Outstanding client requests. */
 			uint32_t
 			    voter_contacts; /* Current number of voting nodes we
 					       are in contact with */
@@ -1029,7 +1031,7 @@ RAFT_API int raft_voter_contacts(struct raft *r);
 	void *data;            \
 	int type;              \
 	raft_index index;      \
-	void *queue[2];        \
+	queue queue;           \
 	uint8_t req_id[16];    \
 	uint8_t client_id[16]; \
 	uint8_t unique_id[16]; \

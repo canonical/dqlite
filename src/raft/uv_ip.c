@@ -58,7 +58,7 @@ int uvIpAddrSplit(const char *address,
 int uvIpResolveBindAddresses(const char *address, struct addrinfo **ai_result)
 {
 	static struct addrinfo hints = {
-	    .ai_flags = AI_ADDRCONFIG | AI_PASSIVE | AI_NUMERICSERV,
+	    .ai_flags = AI_PASSIVE | AI_NUMERICSERV,
 	    .ai_family = AF_INET,
 	    .ai_socktype = SOCK_STREAM,
 	    .ai_protocol = 0};

@@ -95,9 +95,9 @@ static int uvClientInit(struct uvClient *c,
 	rv = uv_timer_init(c->uv->loop, &c->timer);
 	assert(rv == 0);
 	strcpy(c->address, address);
-	QUEUE_INIT(&c->pending);
+	queue_init(&c->pending);
 	c->closing = false;
-	QUEUE_PUSH(&uv->clients, &c->queue);
+	queue_insert_tail(&uv->clients, &c->queue);
 	return 0;
 }
 
@@ -119,13 +119,13 @@ static void uvClientMaybeDestroy(struct uvClient *c)
 		return;
 	}
 
-	while (!QUEUE_IS_EMPTY(&c->pending)) {
+	while (!queue_empty(&c->pending)) {
 		queue *head;
 		struct uvSend *send;
 		struct raft_io_send *req;
-		head = QUEUE_HEAD(&c->pending);
+		head = queue_head(&c->pending);
 		send = QUEUE_DATA(head, struct uvSend, queue);
-		QUEUE_REMOVE(head);
+		queue_remove(head);
 		req = send->req;
 		uvSendDestroy(send);
 		if (req->cb != NULL) {
@@ -133,7 +133,7 @@ static void uvClientMaybeDestroy(struct uvClient *c)
 		}
 	}
 
-	QUEUE_REMOVE(&c->queue);
+	queue_remove(&c->queue);
 
 	assert(c->address != NULL);
 	RaftHeapFree(c->address);
@@ -210,7 +210,7 @@ static int uvClientSend(struct uvClient *c, struct uvSend *send)
 	/* If there's no connection available, let's queue the request. */
 	if (c->stream == NULL) {
 		tracef("no connection available -> enqueue message");
-		QUEUE_PUSH(&c->pending, &send->queue);
+		queue_insert_tail(&c->pending, &send->queue);
 		return 0;
 	}
 
@@ -234,12 +234,12 @@ static void uvClientSendPending(struct uvClient *c)
 	int rv;
 	assert(c->stream != NULL);
 	tracef("send pending messages");
-	while (!QUEUE_IS_EMPTY(&c->pending)) {
+	while (!queue_empty(&c->pending)) {
 		queue *head;
 		struct uvSend *send;
-		head = QUEUE_HEAD(&c->pending);
+		head = queue_head(&c->pending);
 		send = QUEUE_DATA(head, struct uvSend, queue);
-		QUEUE_REMOVE(head);
+		queue_remove(head);
 		rv = uvClientSend(c, send);
 		if (rv != 0) {
 			if (send->req->cb != NULL) {
@@ -322,9 +322,9 @@ static void uvClientConnectCb(struct raft_uv_connect *req,
 			queue *head;
 			struct uvSend *old_send;
 			struct raft_io_send *old_req;
-			head = QUEUE_HEAD(&c->pending);
+			head = queue_head(&c->pending);
 			old_send = QUEUE_DATA(head, struct uvSend, queue);
-			QUEUE_REMOVE(head);
+			queue_remove(head);
 			old_req = old_send->req;
 			uvSendDestroy(old_send);
 			if (old_req->cb != NULL) {
@@ -384,8 +384,8 @@ static void uvClientAbort(struct uvClient *c)
 	       uv_is_active((struct uv_handle_s *)&c->timer) ||
 	       c->connect.data != NULL);
 
-	QUEUE_REMOVE(&c->queue);
-	QUEUE_PUSH(&uv->aborting, &c->queue);
+	queue_remove(&c->queue);
+	queue_insert_tail(&uv->aborting, &c->queue);
 
 	rv = uv_timer_stop(&c->timer);
 	assert(rv == 0);
@@ -507,10 +507,10 @@ err:
 void UvSendClose(struct uv *uv)
 {
 	assert(uv->closing);
-	while (!QUEUE_IS_EMPTY(&uv->clients)) {
+	while (!queue_empty(&uv->clients)) {
 		queue *head;
 		struct uvClient *client;
-		head = QUEUE_HEAD(&uv->clients);
+		head = queue_head(&uv->clients);
 		client = QUEUE_DATA(head, struct uvClient, queue);
 		uvClientAbort(client);
 	}

@@ -126,7 +126,7 @@ static ssize_t doRead(int fd,
 	ssize_t total;
 	struct pollfd pfd;
 	struct timespec now;
-	long millis;
+	long long millis;
 	ssize_t n;
 	int rv;
 
@@ -206,7 +206,7 @@ static ssize_t doWrite(int fd,
 	ssize_t total;
 	struct pollfd pfd;
 	struct timespec now;
-	long millis;
+	long long millis;
 	ssize_t n;
 	int rv;
 

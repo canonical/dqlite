@@ -1,6 +1,6 @@
 #include "assert.h"
 #include "heap.h"
-#include "queue.h"
+#include "../lib/queue.h"
 #include "uv.h"
 #include "uv_os.h"
 
@@ -88,7 +88,7 @@ static void uvFinalizeAfterWorkCb(uv_work_t *work, int status)
 
 	/* If we have no more dismissed segments to close, check if there's a
 	 * barrier to unblock or if we are done closing. */
-	if (QUEUE_IS_EMPTY(&uv->finalize_reqs)) {
+	if (queue_empty(&uv->finalize_reqs)) {
 		tracef("unblock barrier or close");
 		if (uv->barrier != NULL && UvBarrierReady(uv)) {
 			UvBarrierMaybeTrigger(uv->barrier);
@@ -98,9 +98,9 @@ static void uvFinalizeAfterWorkCb(uv_work_t *work, int status)
 	}
 
 	/* Grab a new dismissed segment to close. */
-	head = QUEUE_HEAD(&uv->finalize_reqs);
+	head = queue_head(&uv->finalize_reqs);
 	segment = QUEUE_DATA(head, struct uvDyingSegment, queue);
-	QUEUE_REMOVE(&segment->queue);
+	queue_remove(&segment->queue);
 
 	rv = uvFinalizeStart(segment);
 	if (rv != 0) {
@@ -160,7 +160,7 @@ int UvFinalize(struct uv *uv,
 	/* If we're already processing a segment, let's put the request in the
 	 * queue and wait. */
 	if (uv->finalize_work.data != NULL) {
-		QUEUE_PUSH(&uv->finalize_reqs, &segment->queue);
+		queue_insert_tail(&uv->finalize_reqs, &segment->queue);
 		return 0;
 	}
 

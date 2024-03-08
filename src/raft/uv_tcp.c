@@ -40,9 +40,9 @@ void UvTcpMaybeFireCloseCb(struct UvTcp *t)
 		return;
 	}
 
-	assert(QUEUE_IS_EMPTY(&t->accepting));
-	assert(QUEUE_IS_EMPTY(&t->connecting));
-	if (!QUEUE_IS_EMPTY(&t->aborting)) {
+	assert(queue_empty(&t->accepting));
+	assert(queue_empty(&t->connecting));
+	if (!queue_empty(&t->aborting)) {
 		return;
 	}
 
@@ -82,9 +82,9 @@ int raft_uv_tcp_init(struct raft_uv_transport *transport,
 	t->listeners = NULL;
 	t->n_listeners = 0;
 	t->accept_cb = NULL;
-	QUEUE_INIT(&t->accepting);
-	QUEUE_INIT(&t->connecting);
-	QUEUE_INIT(&t->aborting);
+	queue_init(&t->accepting);
+	queue_init(&t->connecting);
+	queue_init(&t->aborting);
 	t->closing = false;
 	t->close_cb = NULL;
 

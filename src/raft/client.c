@@ -7,7 +7,7 @@
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
-#include "queue.h"
+#include "../lib/queue.h"
 #include "replication.h"
 #include "request.h"
 
@@ -57,7 +57,7 @@ int raft_apply(struct raft *r,
 
 err_after_log_append:
 	logDiscard(r->log, index);
-	QUEUE_REMOVE(&req->queue);
+	queue_remove(&req->queue);
 err:
 	assert(rv != 0);
 	return rv;
@@ -106,7 +106,7 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 
 err_after_log_append:
 	logDiscard(r->log, index);
-	QUEUE_REMOVE(&req->queue);
+	queue_remove(&req->queue);
 err_after_buf_alloc:
 	raft_free(buf.base);
 err:

@@ -2,7 +2,7 @@
 #define UV_TCP_H_
 
 #include "../raft.h"
-#include "queue.h"
+#include "../lib/queue.h"
 
 /* Protocol version. */
 #define UV__TCP_HANDSHAKE_PROTOCOL 1

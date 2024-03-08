@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 #include "err.h"
-#include "queue.h"
+#include "../lib/queue.h"
 #include "uv_os.h"
 
 /* Perform asynchronous writes to a single file. */
