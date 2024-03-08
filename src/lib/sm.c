@@ -1,5 +1,7 @@
 #include "sm.h"
 #include <stddef.h> /* NULL */
+#include <stdio.h> /* fprintf */
+#include "../tracing.h"
 #include "../utils.h"
 
 
@@ -40,6 +42,8 @@ void sm_move(struct sm *m, int next_state)
 {
 	int prev = sm_state(m);
 
+	tracef("SM_MOVE %d => %d", prev, next_state);
+
 	PRE(sm_is_locked(m));
 	PRE(m->conf[sm_state(m)].allowed & BITS(next_state));
 	m->state = next_state;
@@ -57,4 +61,18 @@ void sm_fail(struct sm *m, int fail_state, int rc)
 	m->rc = rc;
 	m->state = fail_state;
 	POST(m->invariant != NULL && m->invariant(m, prev));
+}
+
+static __attribute__((noinline)) bool check_failed(const char *f, int n, const char *s)
+{
+	fprintf(stderr, "%s:%d check failed: %s\n", f, n, s);
+	return false;
+}
+
+bool sm_check(bool b, const char *f, int n, const char *s)
+{
+	if (!b) {
+		return check_failed(f, n, s);
+	}
+	return true;
 }

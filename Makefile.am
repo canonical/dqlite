@@ -61,7 +61,8 @@ basic_dqlite_sources = \
   src/transport.c \
   src/translate.c \
   src/tuple.c \
-  src/vfs.c
+  src/vfs.c \
+  src/vfs2.c
 
 if BUILD_SQLITE_ENABLED
 basic_dqlite_sources += sqlite3.c
@@ -168,6 +169,7 @@ unit_test_SOURCES += \
   test/unit/test_sm.c \
   test/unit/test_tuple.c \
   test/unit/test_vfs.c \
+  test/unit/test_vfs2.c \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS) -Wno-unknown-warning-option -Wno-uninitialized -Wno-maybe-uninitialized -Wno-float-equal -Wno-conversion
 unit_test_LDFLAGS = $(AM_LDFLAGS)

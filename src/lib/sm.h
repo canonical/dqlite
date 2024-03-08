@@ -6,6 +6,8 @@
 
 #define BITS(state) (1ULL << (state))
 
+#define CHECK(cond) if (!sm_check((cond), __FILE__, __LINE__, #cond)) return false
+
 enum {
 	SM_PREV_NONE = -1,
 	/* sizeof(sm_conf::allowed * 8) */
@@ -42,5 +44,6 @@ void sm_fini(struct sm *m);
 void sm_move(struct sm *m, int next_state);
 void sm_fail(struct sm *m, int fail_state, int rc);
 int sm_state(const struct sm *m);
+bool sm_check(bool b, const char *f, int n, const char *s);
 
 #endif /* __LIB_SM__ */

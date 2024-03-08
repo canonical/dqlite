@@ -1681,6 +1681,7 @@ static int vfsFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 		/* When releasing the write lock, if we find a pending
 		 * uncommitted transaction then a rollback must have occurred.
 		 * In that case we delete the pending transaction. */
+		tracef("ROLLBACK TIME");
 		if (flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE)) {
 			vfsWalRollbackIfUncommitted(wal);
 		}
