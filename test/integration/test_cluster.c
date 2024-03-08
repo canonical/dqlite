@@ -119,8 +119,7 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	OPEN;
 	PREPARE("SELECT COUNT(*) from test", &stmt_id);
 
-	int read = 0;
-	QUERY_DONE(stmt_id, &rows, { read += rows.next->values->integer; });
+	QUERY_DONE(stmt_id, &rows, {});
 	return MUNIT_OK;
 }
 
