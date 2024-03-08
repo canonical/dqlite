@@ -9,12 +9,10 @@
 
 #include <sys/mman.h>
 
-struct fsm
-{
+struct fsm {
 	struct logger *logger;
 	struct registry *registry;
-	struct
-	{
+	struct {
 		unsigned n_pages;
 		unsigned long *page_numbers;
 		uint8_t *pages;

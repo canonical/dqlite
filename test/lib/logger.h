@@ -12,8 +12,7 @@
 void test_logger_setup(const MunitParameter params[], struct logger *l);
 void test_logger_tear_down(struct logger *l);
 
-struct test_logger
-{
+struct test_logger {
 	unsigned id;
 	void *data;
 };

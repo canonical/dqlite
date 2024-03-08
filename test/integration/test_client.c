@@ -19,8 +19,7 @@ static MunitParameterEnum client_params[] = {
     {NULL, NULL},
 };
 
-struct fixture
-{
+struct fixture {
 	struct test_server server;
 	struct client_proto *client;
 };

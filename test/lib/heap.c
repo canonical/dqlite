@@ -5,8 +5,7 @@
 
 /* This structure is used to encapsulate the global state variables used by
  * malloc() fault simulation. */
-struct mem_fault
-{
+struct mem_fault {
 	struct test_fault fault; /* Fault trigger */
 	sqlite3_mem_methods m;   /* Actual malloc implementation */
 };

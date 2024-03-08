@@ -23,8 +23,7 @@
 extern char *test_endpoint_family_values[];
 
 /* Listening socket endpoint. */
-struct test_endpoint
-{
+struct test_endpoint {
 	char address[256];  /* Rendered address string. */
 	sa_family_t family; /* Address family (either AF_INET or AF_UNIX) */
 	int fd;             /* Listening socket. */

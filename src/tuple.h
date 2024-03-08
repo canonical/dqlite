@@ -65,8 +65,7 @@ enum {
 /**
  * Hold a single database value.
  */
-struct value
-{
+struct value {
 	int type;
 	union {
 		int64_t integer;
@@ -83,8 +82,7 @@ struct value
 /**
  * Maintain state while decoding a single tuple.
  */
-struct tuple_decoder
-{
+struct tuple_decoder {
 	unsigned long n;       /* Number of values in the tuple */
 	struct cursor *cursor; /* Reading cursor */
 	int format;            /* Tuple format */
@@ -122,8 +120,7 @@ int tuple_decoder__next(struct tuple_decoder *d, struct value *value);
 /**
  * Maintain state while encoding a single tuple.
  */
-struct tuple_encoder
-{
+struct tuple_encoder {
 	unsigned long n;       /* Number of values in the tuple */
 	int format;            /* Tuple format */
 	struct buffer *buffer; /* Write buffer */

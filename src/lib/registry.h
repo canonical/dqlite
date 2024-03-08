@@ -22,8 +22,7 @@
  */
 #define REGISTRY(NAME, TYPE)                                                   \
                                                                                \
-	struct NAME                                                            \
-	{                                                                      \
+	struct NAME {                                                          \
 		struct TYPE **buf; /* Array of registry item slots */          \
 		size_t len;        /* Index of the highest used slot */        \
 		size_t cap;        /* Total number of slots */                 \

@@ -3,8 +3,7 @@
 
 #include "server.h"
 
-struct all_node_info
-{
+struct all_node_info {
 	uint64_t id;
 	char *address;
 	int role;

@@ -11,8 +11,7 @@ TEST_MODULE(request);
  *
  ******************************************************************************/
 
-struct fixture
-{
+struct fixture {
 	void *buf;
 };
 

@@ -9,8 +9,7 @@
 
 #include <stdint.h>
 
-struct dqlite__metrics
-{
+struct dqlite__metrics {
 	uint64_t requests; /* Total number of requests served. */
 	uint64_t duration; /* Total time spent to server requests. */
 };

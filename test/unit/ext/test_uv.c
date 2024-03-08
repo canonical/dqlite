@@ -16,8 +16,7 @@ TEST_MODULE(ext_uv);
  *
  ******************************************************************************/
 
-struct fixture
-{
+struct fixture {
 	struct uv_loop_s loop;
 	struct uv_stream_s *listener;
 	struct test_endpoint endpoint;

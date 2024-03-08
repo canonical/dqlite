@@ -56,8 +56,7 @@ static MunitParameterEnum role_management_params[] = {
 
 SUITE(role_management)
 
-struct fixture
-{
+struct fixture {
 	FIXTURE;
 };
 

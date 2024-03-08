@@ -23,8 +23,7 @@ SERIALIZE__IMPLEMENT(person, PERSON);
  *
  ******************************************************************************/
 
-struct pages
-{
+struct pages {
 	uint16_t n;    /* Number of pages */
 	uint16_t size; /* Size of each page */
 	uint32_t __unused__;
@@ -103,8 +102,7 @@ SERIALIZE__IMPLEMENT(book, BOOK);
  *
  ******************************************************************************/
 
-struct fixture
-{
+struct fixture {
 	struct person person;
 	struct book book;
 };

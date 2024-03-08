@@ -23,8 +23,7 @@ static MunitParameterEnum vfs_params[] = {
     {NULL, NULL},
 };
 
-struct fixture
-{
+struct fixture {
 	struct sqlite3_vfs vfs[N_VFS]; /* A "cluster" of VFS objects. */
 	char names[8][N_VFS];          /* Registration names */
 	char *dirs[N_VFS];             /* For the disk vfs. */
@@ -192,8 +191,7 @@ static void vfsFillDbPath(struct fixture *f,
 	} while (0)
 
 /* Hold WAL replication information about a single transaction. */
-struct tx
-{
+struct tx {
 	unsigned n;
 	unsigned long *page_numbers;
 	void *frames;
@@ -297,8 +295,7 @@ struct tx
 		munit_assert_int(_rv, ==, RV);                               \
 	} while (0)
 
-struct snapshot
-{
+struct snapshot {
 	void *data;
 	size_t n;
 	size_t main_size;

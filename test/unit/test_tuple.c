@@ -384,8 +384,7 @@ TEST_CASE(decoder, type, boolean, NULL)
  *
  ******************************************************************************/
 
-struct encoder_fixture
-{
+struct encoder_fixture {
 	struct buffer buffer;
 	struct tuple_encoder encoder;
 };

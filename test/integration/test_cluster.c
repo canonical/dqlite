@@ -53,8 +53,7 @@
 
 SUITE(cluster)
 
-struct fixture
-{
+struct fixture {
 	FIXTURE;
 };
 

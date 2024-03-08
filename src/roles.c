@@ -62,27 +62,23 @@
 /* XXX */
 #define NUM_TRACKED_DOMAINS 5
 
-struct change_record
-{
+struct change_record {
 	raft_id id;
 	int role; /* dqlite role codes */
 	queue queue;
 };
 
-struct counted_failure_domain
-{
+struct counted_failure_domain {
 	unsigned long long domain;
 	int count;
 };
 
-struct compare_data
-{
+struct compare_data {
 	unsigned n;
 	struct counted_failure_domain domains[NUM_TRACKED_DOMAINS];
 };
 
-struct polling
-{
+struct polling {
 	void (*cb)(struct polling *);
 	struct dqlite_node *node;
 	struct all_node_info *cluster;
@@ -91,8 +87,7 @@ struct polling
 	unsigned i;
 };
 
-struct handover_voter_data
-{
+struct handover_voter_data {
 	struct dqlite_node *node;
 	dqlite_node_id target_id;
 	char *leader_addr;

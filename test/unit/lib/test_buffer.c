@@ -10,8 +10,7 @@ TEST_MODULE(lib_buffer);
  *
  ******************************************************************************/
 
-struct fixture
-{
+struct fixture {
 	struct buffer buffer;
 };
 

@@ -14,19 +14,16 @@ TEST_MODULE(lib_transport);
  *
  ******************************************************************************/
 
-struct fixture
-{
+struct fixture {
 	struct test_endpoint endpoint;
 	struct uv_loop_s loop;
 	struct transport transport;
 	int client;
-	struct
-	{
+	struct {
 		bool invoked;
 		int status;
 	} read;
-	struct
-	{
+	struct {
 		bool invoked;
 		int status;
 	} write;

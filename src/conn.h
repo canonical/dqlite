@@ -20,8 +20,7 @@
 struct conn;
 typedef void (*conn_close_cb)(struct conn *c);
 
-struct conn
-{
+struct conn {
 	struct config *config;
 	struct raft_uv_transport *uv_transport; /* Raft transport */
 	conn_close_cb close_cb;                 /* Close callback */

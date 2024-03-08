@@ -3,8 +3,7 @@
 #include "fault.h"
 #include "raft_heap.h"
 
-struct heapFault
-{
+struct heapFault {
 	struct test_fault fault;
 	const struct raft_heap *orig_heap;
 };
