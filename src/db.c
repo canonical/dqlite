@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <string.h>
 
 #include "../include/dqlite.h"
@@ -16,12 +17,25 @@ static int open_follower_conn(const char *filename,
 			      unsigned page_size,
 			      sqlite3 **conn);
 
+static uint32_t str_hash(const char* name)
+{
+	const unsigned char *p;
+	uint32_t h = 5381U;
+
+	for (p = (const unsigned char *) name; *p != '\0'; p++) {
+		h = (h << 5) + h + *p;
+	}
+
+	return h;
+}
+
 int db__init(struct db *db, struct config *config, const char *filename)
 {
-	tracef("db init %s", filename);
+	tracef("db init filename=`%s'", filename);
 	int rv;
 
 	db->config = config;
+	db->cookie = str_hash(filename);
 	db->filename = sqlite3_malloc((int)(strlen(filename) + 1));
 	if (db->filename == NULL) {
 		rv = DQLITE_NOMEM;

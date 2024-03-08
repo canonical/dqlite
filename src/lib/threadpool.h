@@ -61,7 +61,8 @@ struct pool_work_s {
 	uint32_t thread_id; /* Identifier of the thread the item is affined */
 	pool_t *pool;       /* The pool, item is being associated with */
 	enum pool_work_type type;
-
+	int rc; /* Return code used to deliver pool work operation result to the
+		 * uv_loop's thread. */
 	void (*work_cb)(pool_work_t *w);
 	void (*after_work_cb)(pool_work_t *w);
 };
@@ -73,17 +74,28 @@ struct pool_s {
 
 enum {
 	POOL_QOS_PRIO_FAIR = 2,
+};
 
+enum pool_half {
 	POOL_TOP_HALF = 0x109,
 	POOL_BOTTOM_HALF = 0xb01103,
+};
 
+enum {
 	/**
 	 * Setting POOL_FOR_UT_NON_CLEAN_FINI relaxes pool's invariant during
 	 * the finalization w.r.t. to pass a few tests checking failures with
 	 * non-clean unit-test termination.
 	 */
 	POOL_FOR_UT_NON_CLEAN_FINI = 1u << 0,
+	/**
+	 * Set this flag if there's no event loop in unit test. Top- and
+	 * bottom- halves will be called in the current thread.
+	 */
 	POOL_FOR_UT_NOT_ASYNC = 1u << 1,
+	/**
+	 * Set if the pool runs in the context of unit test.
+	 */
 	POOL_FOR_UT = 1u << 2,
 };
 

@@ -352,7 +352,7 @@ err:
 	return rv;
 }
 
-static void leaderExecV2(struct exec *req, int half)
+static void leaderExecV2(struct exec *req, enum pool_half half)
 {
 	tracef("leader exec v2 id:%" PRIu64, req->id);
 	struct leader *l = req->leader;
@@ -425,7 +425,6 @@ static void execBarrierCb(struct barrier *barrier, int status)
 	struct exec *req = barrier->data;
 	struct leader *l = req->leader;
 	struct dqlite_node *node = l->raft->data;
-	struct handle *handle = req->data;
 	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
 		? pool_ut_fallback() : &node->pool;
 
@@ -436,7 +435,7 @@ static void execBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-	pool_queue_work(pool, &req->work, (uint32_t)handle->db_id,
+	pool_queue_work(pool, &req->work, l->db->cookie,
 			WT_UNORD, exec_top, exec_bottom);
 }
 
@@ -461,7 +460,6 @@ int leader__exec(struct leader *l,
 	req->barrier.data = req;
 	req->barrier.cb = NULL;
 	req->work = (pool_work_t){};
-	req->rc = -EAGAIN;
 
 	rv = leader__barrier(l, &req->barrier, execBarrierCb);
 	if (rv != 0) {

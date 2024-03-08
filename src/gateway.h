@@ -108,9 +108,6 @@ struct handle {
 	pool_work_t work;
 	/* Gateway the handle belongs to. */
 	struct gateway *gw;
-	/* Return code used to deliver pool work operation result to the
-	 * uv_loop's thread. */
-	int rc;
 };
 
 /**
