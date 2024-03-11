@@ -7,10 +7,6 @@ if DQLITE_NEXT_ENABLED
 AM_CFLAGS += -DDQLITE_NEXT
 endif
 
-if !BUILD_SQLITE_ENABLED
-AM_LDFLAGS += $(SQLITE_LIBS)
-endif
-
 if !BUILD_RAFT_ENABLED
 AM_CFLAGS += $(RAFT_CFLAGS) -DUSE_SYSTEM_RAFT
 AM_LDFLAGS += $(RAFT_LIBS)
@@ -69,10 +65,6 @@ basic_dqlite_sources = \
   src/tuple.c \
   src/vfs.c \
   src/vfs2.c
-
-if BUILD_SQLITE_ENABLED
-basic_dqlite_sources += sqlite3.c
-endif
 
 lib_LTLIBRARIES = libdqlite.la
 libdqlite_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden -DRAFT_API=''
@@ -339,6 +331,17 @@ libraft_la_CFLAGS += -DLZ4_ENABLED
 endif
 
 endif # BUILD_RAFT_ENABLED
+
+if BUILD_SQLITE_ENABLED
+noinst_LTLIBRARIES = libsqlite3.la
+libsqlite3_la_SOURCES = sqlite3.c
+libsqlite3_la_CFLAGS = -g3
+
+unit_test_LDADD += libsqlite3.la
+libdqlite_la_LIBADD = libsqlite3.la
+else
+AM_LDFLAGS += $(SQLITE_LIBS)
+endif
 
 TESTS = $(check_PROGRAMS)
 
