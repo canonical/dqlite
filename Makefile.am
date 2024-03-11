@@ -3,10 +3,6 @@ AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(PTHREAD_CFLAGS)
 AM_LDFLAGS = $(UV_LIBS) $(PTHREAD_LIBS)
 
-if !BUILD_SQLITE_ENABLED
-AM_LDFLAGS += $(SQLITE_LIBS)
-endif
-
 if !BUILD_RAFT_ENABLED
 AM_CFLAGS += $(RAFT_CFLAGS)
 AM_LDFLAGS += $(RAFT_LIBS)
@@ -62,10 +58,6 @@ basic_dqlite_sources = \
   src/translate.c \
   src/tuple.c \
   src/vfs.c
-
-if BUILD_SQLITE_ENABLED
-basic_dqlite_sources += sqlite3.c
-endif
 
 lib_LTLIBRARIES = libdqlite.la
 libdqlite_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden -DRAFT_API=''
@@ -330,6 +322,17 @@ libraft_la_CFLAGS += -DLZ4_ENABLED
 endif
 
 endif # BUILD_RAFT_ENABLED
+
+if BUILD_SQLITE_ENABLED
+noinst_LTLIBRARIES = libsqlite3.la
+libsqlite3_la_SOURCES = sqlite3.c
+libsqlite3_la_CFLAGS = -g3
+
+unit_test_LDADD += libsqlite3.la
+libdqlite_la_LIBADD = libsqlite3.la
+else
+AM_LDFLAGS += $(SQLITE_LIBS)
+endif
 
 TESTS = $(check_PROGRAMS)
 
