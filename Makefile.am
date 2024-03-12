@@ -22,6 +22,8 @@ ACLOCAL_AMFLAGS = -I m4
 AM_CFLAGS += $(CODE_COVERAGE_CFLAGS) $(UV_CFLAGS) $(PTHREAD_CFLAGS) $(RAFT_CFLAGS) $(DEBUG_CFLAGS) $(SANITIZE_CFLAGS) $(BACKTRACE_CFLAGS)
 AM_LDFLAGS = $(UV_LIBS) $(PTHREAD_LIBS) $(RAFT_LIBS) $(BACKTRACE_LIBS)
 
+unit_test_LDADD =
+
 if BUILD_SQLITE_ENABLED
 noinst_LTLIBRARIES = libsqlite3.la
 libsqlite3_la_SOURCES = sqlite3.c
@@ -176,7 +178,7 @@ unit_test_SOURCES += \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS) -Wno-unknown-warning-option -Wno-uninitialized -Wno-maybe-uninitialized -Wno-float-equal -Wno-conversion
 unit_test_LDFLAGS = $(AM_LDFLAGS)
-unit_test_LDADD = libtest.la
+unit_test_LDADD += libtest.la
 
 if BUILD_RAFT_ENABLED
 unit_test_LDADD += libraft.la
