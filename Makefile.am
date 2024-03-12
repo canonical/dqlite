@@ -1,28 +1,39 @@
-ACLOCAL_AMFLAGS = -I m4
-AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
-AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(PTHREAD_CFLAGS)
-AM_LDFLAGS = $(UV_LIBS) $(PTHREAD_LIBS)
-
-if !BUILD_SQLITE_ENABLED
-AM_LDFLAGS += $(SQLITE_LIBS)
-endif
-
-if !BUILD_RAFT_ENABLED
-AM_CFLAGS += $(RAFT_CFLAGS)
-AM_LDFLAGS += $(RAFT_LIBS)
-endif
-
 if DEBUG_ENABLED
-  AM_CFLAGS += -g3
+DEBUG_CFLAGS = -g3
 else
-  AM_CFLAGS += -O2
+DEBUG_CFLAGS = -O2
 endif
+
 if SANITIZE_ENABLED
-  AM_CFLAGS += -fsanitize=address
+SANITIZE_CFLAGS = -fsanitize=address
+else
+SANITIZE_CFLAGS =
 endif
+
 if BACKTRACE_ENABLED
-  AM_CFLAGS += -DDQLITE_ASSERT_WITH_BACKTRACE -DRAFT_ASSERT_WITH_BACKTRACE
-  AM_LDFLAGS += -lbacktrace
+BACKTRACE_CFLAGS = -DDQLITE_ASSERT_WITH_BACKTRACE -DRAFT_ASSERT_WITH_BACKTRACE
+BACKTRACE_LIBS = -lbacktrace
+else
+BACKTRACE_CFLAGS =
+BACKTRACE_LIBS =
+endif
+
+ACLOCAL_AMFLAGS = -I m4
+AM_CFLAGS += $(CODE_COVERAGE_CFLAGS) $(UV_CFLAGS) $(PTHREAD_CFLAGS) $(RAFT_CFLAGS) $(DEBUG_CFLAGS) $(SANITIZE_CFLAGS) $(BACKTRACE_CFLAGS)
+AM_LDFLAGS = $(UV_LIBS) $(PTHREAD_LIBS) $(RAFT_LIBS) $(BACKTRACE_LIBS)
+
+unit_test_LDADD =
+
+if BUILD_SQLITE_ENABLED
+noinst_LTLIBRARIES = libsqlite3.la
+libsqlite3_la_SOURCES = sqlite3.c
+libsqlite3_la_CFLAGS = $(DEBUG_CFLAGS) $(SANITIZE_CFLAGS)
+
+unit_test_LDADD += libsqlite3.la
+libdqlite_la_LIBADD = libsqlite3.la
+else
+AM_CFLAGS += $(SQLITE_CFLAGS)
+AM_LDFLAGS += $(SQLITE_LIBS)
 endif
 
 include_HEADERS = include/dqlite.h
@@ -62,10 +73,6 @@ basic_dqlite_sources = \
   src/translate.c \
   src/tuple.c \
   src/vfs.c
-
-if BUILD_SQLITE_ENABLED
-basic_dqlite_sources += sqlite3.c
-endif
 
 lib_LTLIBRARIES = libdqlite.la
 libdqlite_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden -DRAFT_API=''
@@ -171,7 +178,7 @@ unit_test_SOURCES += \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS) -Wno-unknown-warning-option -Wno-uninitialized -Wno-maybe-uninitialized -Wno-float-equal -Wno-conversion
 unit_test_LDFLAGS = $(AM_LDFLAGS)
-unit_test_LDADD = libtest.la
+unit_test_LDADD += libtest.la
 
 if BUILD_RAFT_ENABLED
 unit_test_LDADD += libraft.la
