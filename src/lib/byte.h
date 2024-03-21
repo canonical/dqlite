@@ -115,6 +115,18 @@ DQLITE_INLINE uint32_t ByteGetBe32(const uint8_t *buf)
 	return w | x | y | z;
 }
 
+DQLITE_INLINE uint32_t ByteGetLe32(const uint8_t *buf)
+{
+	uint32_t w = buf[0];
+	uint32_t x = buf[1];
+	uint32_t y = buf[2];
+	uint32_t z = buf[3];
+	z <<= 24;
+	y <<= 16;
+	x <<= 8;
+	return w | x | y | z;
+}
+
 DQLITE_INLINE void BytePutBe32(uint32_t v, uint8_t *buf)
 {
 	buf[0] = (uint8_t)(v >> 24);
