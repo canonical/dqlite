@@ -82,6 +82,102 @@ static int databaseReadUnlock(struct db *db)
 	}
 }
 
+/**
+ * Checkpoints without copying, DLD.
+ *
+ * Usecases
+ * ========
+ *
+ * - tx_read: sqlite3_step() calls for read transactions.
+ * - tx_write: sqlite3_step() calls for write transactions.
+ * - cp_create: vfs2_set_read_mark() + sqlite3_wal_checkpoint() calls.
+ * - cp_read: Raw checkpoint reads.
+ * - cp_tigger: Checkpoint creation is tiggered by timeout or when the
+ *   number of frames in WAL is more then specified threshold value
+ *   (mxFrame - nBackfill > N).
+ *
+ * Ordering
+ * ========
+ *
+ * To make tx_write, cp_create scenarios to provide atomic updates to
+ * the database and WAL states and tx_read, cp_read scenarios to work
+ * with consistent database data they must be ordered.
+ *
+ * Logically ordering relies on the thread-pool's notion of barries
+ * which can be introduced to the pool along with a set of operations
+ * which have to be executed in order.
+ *
+ * tx_write operations can go in any order because of the following reasons:
+ *
+ * 1. subsequent updates to the database state along with all other
+ *    operations over the database happen in a dedicated thread so
+ *    there's no need to think about database locking.
+ * 2. tx_write operation itself touches WAL only. Access to WAL is
+ *    serialized according to (1).
+ *
+ * For (tx_read, cp_read) and cp_create scenarios a set of sqlite
+ * databases is a shared state therefore access to such state must be
+ * serialized. When checkpoint creation operation is being triggered
+ * it inserts (with pool_queue_work()) a barrier operation WT_BAR
+ * following by a list of WT_ORD_Ns following by another WT_BAR.
+ *
+ * This allows to separate read periods (taking into account that the
+ * databases (not WALs) is a shared state) from write periods
+ * therefore to maintain the consistency of the databases.
+ *
+ * @verbatim
+ * tx_write:   w--------w-------f---w---f-------f
+ *             |-- db read period --|  |-- db write period --|
+ *             RRRRRRRRRRRQRQRQRRQQQQ   CCCCCC
+ * tx_read(R): s-s-s-f-s-f-f-f
+ * cp_create(C):                        c-c-...
+ * cp_read(Q):            r-r-r-f-f-f  /
+ *                                    /
+ * barrier:                   bbbbbbbbb
+ *
+ * (f) - correspoding operation completed.
+ * @endverbatim
+ *
+ * Checkpoint creation
+ * ===================
+ *
+ * Assumption: Accoding to the ordering section cp_create scenario
+ * can't intersect with cp_read and tx_read. This means that there
+ * will not be readmarks in WAL touched by the "readers".
+ *
+ * Still cp_create operation can intersect with tx_write opeations.
+ * tx_write operations can copy new pages and move mxFrame "pointer"
+ * in WAL.  cp_create operation can set readmarks and move nBackfill
+ * "pointer" to mark the area of the WAL which will be copied to the
+ * database state during sqlite3_wal_checkpoint() call.
+ *
+ * Effects of cp_create and cp_write are serialized because of the
+ * strucure of thread pool and per database thread affinity.
+ *
+ * Definition: Checkpoint itself is a state of the sqlite3 databases on
+ * the disk synced to a certain raft index.
+ *
+ * To create a checkpoint it's required to finish all tx_read and
+ * cp_read operations, initiate a set cp_create operations and wait
+ * untill it's completion without accepting new tx_reads and cp_reads.
+ *
+ * For each database it's required to call vfs2_set_read_mark() with
+ * the last WAL frame index corresponding to raft_last_applied() raft
+ * log index; and call sqlite3_wal_checkpoint() with vfs2_unset_read_mark().
+ *
+ * @verbatim
+ *                nBackfill            mxFrame
+ *                    |CCCCCCCCCCCC       |
+ *                    V                   V
+ * WAL: |-------------|--|--|-----|-------|
+ *                                A
+ *                                |
+ *                                |
+ *                             readmark_cp
+ * @endverbatim
+ *
+ */
+
 static void maybeCheckpoint(struct db *db)
 {
 	tracef("maybe checkpoint");
