@@ -133,6 +133,11 @@ void update_cksums(uint32_t magic, const uint8_t *p, size_t len, struct cksums *
 	}
 }
 
+bool cksums_equal(struct cksums a, struct cksums b)
+{
+	return a.cksum1 == b.cksum1 && a.cksum2 == b.cksum2;
+}
+
 /**
  * Layout-compatible with the first part of the WAL index header.
  *
@@ -353,19 +358,33 @@ static bool is_valid_page_size(unsigned long n)
 	return n >= 1 << 9 && n <= 1 << 16 && (n & (n - 1)) == 0;
 }
 
-/* basic properties that should hold whenever the entry has been opened */
 static bool is_open(struct entry *e)
 {
-	/* TODO */
-	(void)e;
-	return true;
+	return e->main_db_name != NULL
+		&& e->wal_moving_name != NULL
+		&& e->wal_cur_fixed_name != NULL
+		&& e->wal_cur != NULL
+		&& e->wal_prev_fixed_name != NULL
+		&& e->wal_prev != NULL
+		&& (e->refcount_main_db > 0 || e->refcount_wal > 0)
+		&& e->shm_regions != NULL
+		&& e->shm_regions_len > 0
+		&& e->shm_regions[0] != NULL
+		&& e->common != NULL;
+}
+
+static bool basic_hdr_valid(struct wal_index_basic_hdr bhdr)
+{
+	struct cksums sums = {};
+	update_cksums(bhdr.bigEndCksum ? BE_MAGIC : LE_MAGIC, (uint8_t *)&bhdr, offsetof(struct wal_index_basic_hdr, cksums), &sums);
+	return bhdr.iVersion == 3007000
+		&& bhdr.isInit == 1
+		&& cksums_equal(sums, bhdr.cksums);
 }
 
 static bool full_hdr_valid(struct wal_index_full_hdr *ihdr)
 {
-	/* TODO verify checksums, simple range checks, maybe relationships between the fields */
-	(void)ihdr;
-	return true;
+	return basic_hdr_valid(ihdr->basic[0]) && wal_index_basic_hdr_equal(ihdr->basic[0], ihdr->basic[1]);
 }
 
 static bool wtx_invariant(const struct sm *sm, int prev)
@@ -384,8 +403,6 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	}
 
 	CHECK(is_open(e));
-	/* The WAL index header is always mapped; we don't wait around
-	 * for SQLite to do it. */
 	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
 	CHECK(full_hdr_valid(ihdr));
 	uint32_t mx = ihdr->basic[0].mxFrame;
