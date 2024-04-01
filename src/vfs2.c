@@ -28,20 +28,21 @@
 
 #define VFS2_EXCLUSIVE UINT_MAX
 
-#define VFS2_SHM_WRITE_LOCK 0
+#define WAL_WRITE_LOCK 0
+#define WAL_CKPT_LOCK 1
 
 #define LE_MAGIC 0x377f0682
 #define BE_MAGIC 0x377f0683
+
+#define READ_MARK_UNUSED 0xffffffff
 
 static const uint32_t invalid_magic = 0x17171717;
 
 enum {
 	WTX_CLOSED,
 	WTX_EMPTY,
-
 	WTX_FOLLOWING,
 	WTX_FLUSH,
-
 	WTX_BASE,
 	WTX_ACTIVE,
 	WTX_HIDDEN,
@@ -210,7 +211,9 @@ struct entry {
 	/* Number of `struct file` with SQLITE_OPEN_WAL that point to this entry */
 	unsigned refcount_wal;
 
-	/* Lazily initialized */
+	/* if WAL-cur is nonempty at startup, we read its header, verify the checkum,
+	 * and use it to initialize the page size. otherwise, we wait until the first
+	 * write to the WAL, which should be the header */
 	uint32_t page_size;
 
 	/* For ACTIVE, HIDDEN, POLLED: the header that hides the pending txn */
@@ -306,7 +309,7 @@ static bool have_pending_txn(struct entry *e)
 
 static bool write_lock_held(struct entry *e)
 {
-	return e->shm_locks[VFS2_SHM_WRITE_LOCK] == VFS2_EXCLUSIVE;
+	return e->shm_locks[WAL_WRITE_LOCK] == VFS2_EXCLUSIVE;
 }
 
 static bool wal_index_basic_hdr_equal(struct wal_index_basic_hdr a,
@@ -333,11 +336,24 @@ static bool wal_index_basic_hdr_advanced(struct wal_index_basic_hdr new,
 	       && new.mxFrame > old.mxFrame;
 }
 
+static bool wal_index_recovered(struct entry *e)
+{
+	PRE(e->shm_regions_len > 0);
+	char *p = e->shm_regions[0];
+	for (size_t i = sizeof(struct wal_index_full_hdr); i < VFS2_WAL_INDEX_REGION_SIZE; i++) {
+		if (p[i] != 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static bool is_valid_page_size(unsigned long n)
 {
 	return n >= 1 << 9 && n <= 1 << 16 && (n & (n - 1)) == 0;
 }
 
+/* basic properties that should hold whenever the entry has been opened */
 static bool is_open(struct entry *e)
 {
 	/* TODO */
@@ -345,58 +361,18 @@ static bool is_open(struct entry *e)
 	return true;
 }
 
-static bool shm_is_mapped(struct entry *e)
+static bool full_hdr_valid(struct wal_index_full_hdr *ihdr)
 {
-	/* TODO */
-	(void)e;
-	return true;
-}
-
-static bool shm_not_mapped(struct entry *e)
-{
-	/* TODO */
-	(void)e;
-	return true;
-}
-
-static bool no_locks_held(struct entry *e)
-{
-	/* TODO */
-	(void)e;
-	return true;
-}
-
-static bool wal_index_hdr_valid(struct wal_index_full_hdr *hdr)
-{
-	/* TODO */
-	(void)hdr;
-	return true;
-}
-
-static bool only_write_lock_held(struct entry *e)
-{
-	/* TODO */
-	(void)e;
-	return true;
-}
-
-static bool no_hidden_txn(struct entry *e)
-{
-	/* TODO */
-	(void)e;
-	return true;
-}
-
-static bool have_hidden_txn(struct entry *e)
-{
-	/* TODO */
-	(void)e;
+	/* TODO verify checksums, simple range checks, maybe relationships between the fields */
+	(void)ihdr;
 	return true;
 }
 
 static bool wtx_invariant(const struct sm *sm, int prev)
 {
-	(void)prev; // XXX
+	/* TODO make use of this */
+	(void)prev;
+
 	struct entry *e = CONTAINER_OF(sm, struct entry, wtx_sm);
 
 	if (sm_state(sm) == WTX_CLOSED) {
@@ -408,65 +384,61 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	}
 
 	CHECK(is_open(e));
+	/* The WAL index header is always mapped; we don't wait around
+	 * for SQLite to do it. */
+	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
+	CHECK(full_hdr_valid(ihdr));
+	uint32_t mx = ihdr->basic[0].mxFrame;
+	uint32_t backfill = ihdr->nBackfill;
+	uint32_t cursor = e->wal_cursor;
+	CHECK(backfill <= mx);
+	CHECK(mx <= cursor);
 
-	/* TODO checks around wal_cursor */
+	/* TODO any checks applicable to the read marks and read locks? */
 
 	if (sm_state(sm) == WTX_EMPTY) {
-		CHECK(e->page_size == 0);
-		CHECK(wal_index_basic_hdr_zeroed(e->prev_txn_hdr));
-		CHECK(wal_index_basic_hdr_zeroed(e->pending_txn_hdr));
-		CHECK(shm_not_mapped(e));
-		CHECK(no_locks_held(e));
+		CHECK(mx == backfill);
+		CHECK(mx == cursor);
 		CHECK(no_pending_txn(e));
-		// CHECK(e->wal_commit == 0);
+		CHECK(!write_lock_held(e));
 		return true;
 	}
 
 	CHECK(is_valid_page_size(e->page_size));
-	CHECK(shm_is_mapped(e));
-	CHECK(wal_index_hdr_valid(get_full_hdr(e)));
 
 	if (sm_state(sm) == WTX_FOLLOWING) {
-		CHECK(wal_index_basic_hdr_zeroed(e->prev_txn_hdr));
-		CHECK(wal_index_basic_hdr_zeroed(e->pending_txn_hdr));
-		CHECK(shm_is_mapped(e));
-		CHECK(only_write_lock_held(e));
 		CHECK(no_pending_txn(e));
-		// CHECK(e->wal_commit < get_full_hdr(e)->basic[0].mxFrame);
+		CHECK(write_lock_held(e));
+		CHECK(mx < cursor);
 		return true;
 	}
 
-	// CHECK(e->wal_commit == get_full_hdr(e)->basic[0].mxFrame);
-
 	if (sm_state(sm) == WTX_FLUSH) {
-		CHECK(wal_index_basic_hdr_zeroed(e->prev_txn_hdr));
-		CHECK(wal_index_basic_hdr_zeroed(e->pending_txn_hdr));
-		CHECK(no_locks_held(e));
 		CHECK(no_pending_txn(e));
-		CHECK(no_hidden_txn(e));
+		CHECK(!write_lock_held(e));
+		CHECK(backfill < mx);
+		CHECK(mx == cursor);
 		return true;
 	}
 
 	if (sm_state(sm) == WTX_BASE) {
-		CHECK(wal_index_basic_hdr_zeroed(e->prev_txn_hdr));
-		CHECK(wal_index_basic_hdr_zeroed(e->pending_txn_hdr));
-		CHECK(no_locks_held(e));
 		CHECK(no_pending_txn(e));
-		CHECK(no_hidden_txn(e));
+		CHECK(!write_lock_held(e));
+		CHECK(backfill < mx);
+		CHECK(mx == cursor);
+		CHECK(wal_index_recovered(e));
 		return true;
 	}
+
+	CHECK(mx < cursor);
 
 	if (sm_state(sm) == WTX_ACTIVE) {
 		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
 		CHECK(wal_index_basic_hdr_zeroed(e->pending_txn_hdr));
-		CHECK(no_locks_held(e));
 		CHECK(write_lock_held(e));
 		CHECK(have_pending_txn(e));
-		CHECK(no_hidden_txn(e));
 		return true;
 	}
-
-	CHECK(have_hidden_txn(e));
 
 	if (sm_state(sm) == WTX_HIDDEN) {
 		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
@@ -480,7 +452,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
 		CHECK(wal_index_basic_hdr_advanced(e->pending_txn_hdr, e->prev_txn_hdr));
 		CHECK(write_lock_held(e));
-		CHECK(!have_pending_txn(e));
+		CHECK(no_pending_txn(e));
 		return true;
 	}
 
@@ -564,6 +536,8 @@ static int wal_swap(struct entry *e,
 	PRE(e->pending_txn_frames == NULL);
 	int rv;
 
+	e->page_size = ByteGetBe32(wal_hdr->page_size);
+
 	sqlite3_file *phys_outgoing = e->wal_cur;
 	char *name_outgoing = e->wal_cur_fixed_name;
 	sqlite3_file *phys_incoming = e->wal_prev;
@@ -586,9 +560,6 @@ static int wal_swap(struct entry *e,
 	e->wal_cursor = 0;
 	e->wal_prev_hdr = e->wal_cur_hdr;
 	e->wal_cur_hdr = *wal_hdr;
-
-	/* XXX this should be FLUSH depending on context, or else the sm needs to be rethought */
-	sm_move(&e->wtx_sm, WTX_BASE);
 
 	/* Move the moving name. */
 	rv = unlink(e->wal_moving_name);
@@ -696,8 +667,12 @@ static int vfs2_write(sqlite3_file *file,
 		assert(amt == sizeof(struct wal_hdr));
 		const struct wal_hdr *hdr = buf;
 		struct entry *e = xfile->entry;
-		e->page_size = ByteGetBe32(hdr->page_size);
-		return wal_swap(e, hdr);
+		rv = wal_swap(e, hdr);
+		if (rv != SQLITE_OK) {
+			return rv;
+		}
+		sm_move(&e->wtx_sm, WTX_BASE);
+		return SQLITE_OK;
 	}
 
 	sqlite3_file *orig = get_orig(xfile);
@@ -798,11 +773,6 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg)
 		int *out = arg;
 		*out = 1;
 		return SQLITE_OK;
-	} else if (op == SQLITE_FCNTL_CKPT_DONE) {
-		struct wal_index_full_hdr *ihdr = get_full_hdr(e);
-		if (ihdr->nBackfill == ihdr->basic[0].mxFrame) {
-			sm_move(&e->wtx_sm, WTX_EMPTY);
-		}
 	}
 
 	sqlite3_file *orig = get_orig(xfile);
@@ -933,7 +903,7 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 		}
 
 		/* XXX maybe this shouldn't be an assertion */
-		if (ofst == VFS2_SHM_WRITE_LOCK) {
+		if (ofst == WAL_WRITE_LOCK) {
 			assert(n == 1);
 			assert(e->pending_txn_len == 0);
 		}
@@ -950,11 +920,19 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 
 		/* Unlocking the write lock: roll back any uncommitted
 		 * transaction. */
-		if (ofst == VFS2_SHM_WRITE_LOCK) {
+		if (ofst == WAL_WRITE_LOCK) {
 			assert(n == 1);
 			/* TODO make sure this is correct */
-			free_pending_txn(e);
-			sm_move(&e->wtx_sm, WTX_BASE);
+			if (e->pending_txn_last_frame_commit == 0) {
+				free_pending_txn(e);
+				sm_move(&e->wtx_sm, WTX_BASE);
+			}
+		} else if (ofst == WAL_CKPT_LOCK) {
+			assert(n == 1);
+			struct wal_index_full_hdr *ihdr = get_full_hdr(e);
+			if (ihdr->nBackfill == ihdr->basic[0].mxFrame) {
+				sm_move(&e->wtx_sm, WTX_EMPTY);
+			}
 		}
 	} else {
 		assert(0);
@@ -1055,6 +1033,11 @@ static struct wal_index_full_hdr initial_full_hdr(struct wal_hdr whdr)
 	update_cksums(native_magic(), (const void *)&ihdr.basic[0], 40, &sums);
 	ihdr.basic[0].cksums = sums;
 	ihdr.basic[1] = ihdr.basic[0];
+	ihdr.marks[0] = 0;
+	ihdr.marks[1] = 0;
+	ihdr.marks[2] = READ_MARK_UNUSED;
+	ihdr.marks[3] = READ_MARK_UNUSED;
+	ihdr.marks[4] = READ_MARK_UNUSED;
 	return ihdr;
 }
 
@@ -1085,6 +1068,12 @@ static void restart_full_hdr(struct wal_index_full_hdr *ihdr, struct wal_hdr new
 	ihdr->basic[1] = ihdr->basic[0];
 	ihdr->nBackfill = 0;
 	ihdr->nBackfillAttempted = 0;
+}
+
+static uint32_t wal_cursor_from_size(uint32_t page_size, sqlite3_int64 size)
+{
+	sqlite3_int64 x = (size - (sqlite3_int64)sizeof(struct wal_hdr)) / ((sqlite3_int64)sizeof(struct wal_frame_hdr) + (sqlite3_int64)page_size);
+	return (uint32_t)x;
 }
 
 static int open_entry(struct common *common, const char *name, struct entry *e)
@@ -1211,8 +1200,9 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 
 	*get_full_hdr(e) = initial_full_hdr(hdr_cur);
 	if (size_cur >= (sqlite3_int64)sizeof(struct wal_hdr)) {
+		/* TODO verify the header here */
 		e->page_size = ByteGetBe32(hdr_cur.page_size);
-		e->wal_cursor = (uint32_t)((size_cur - (sqlite3_int64)sizeof(struct wal_hdr)) / ((sqlite3_int64)sizeof(struct wal_frame_hdr) + (sqlite3_int64)e->page_size));
+		e->wal_cursor = wal_cursor_from_size(e->page_size, size_cur);
 		sm_move(&e->wtx_sm, WTX_FOLLOWING);
 	} else {
 		sm_move(&e->wtx_sm, WTX_EMPTY);
@@ -1442,12 +1432,12 @@ int vfs2_unapply(sqlite3_file *file, struct vfs2_wal_slice first_to_unapply)
 	PRE(first_to_unapply.start + first_to_unapply.len <= e->wal_cursor);
 	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
 	PRE(first_to_unapply.start >= ihdr->basic[0].mxFrame);
-	PRE(e->shm_locks[VFS2_SHM_WRITE_LOCK] == VFS2_EXCLUSIVE);
+	PRE(e->shm_locks[WAL_WRITE_LOCK] == VFS2_EXCLUSIVE);
 
 	e->wal_cursor = first_to_unapply.start;
 
 	if (e->wal_cursor == ihdr->basic[0].mxFrame) {
-		e->shm_locks[VFS2_SHM_WRITE_LOCK] = 0;
+		e->shm_locks[WAL_WRITE_LOCK] = 0;
 		sm_move(&e->wtx_sm, WTX_FLUSH);
 	} else {
 		sm_move(&e->wtx_sm, WTX_FOLLOWING);
@@ -1460,8 +1450,8 @@ int vfs2_unhide(sqlite3_file *file)
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
-	PRE(e->shm_locks[VFS2_SHM_WRITE_LOCK] == VFS2_EXCLUSIVE);
-	e->shm_locks[VFS2_SHM_WRITE_LOCK] = 0;
+	PRE(e->shm_locks[WAL_WRITE_LOCK] == VFS2_EXCLUSIVE);
+	e->shm_locks[WAL_WRITE_LOCK] = 0;
 
 	struct wal_index_full_hdr *hdr = get_full_hdr(e);
 	hdr->basic[0] = e->pending_txn_hdr;
@@ -1484,7 +1474,7 @@ int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice stop)
 	uint32_t commit = stop.start + stop.len;
 	PRE(e->wal_cursor >= commit);
 	PRE(salts_equal(stop.salts, e->wal_cur_hdr.salts));
-	PRE(e->shm_locks[VFS2_SHM_WRITE_LOCK] == VFS2_EXCLUSIVE);
+	PRE(e->shm_locks[WAL_WRITE_LOCK] == VFS2_EXCLUSIVE);
 	sqlite3_file *wal_cur = e->wal_cur;
 	struct wal_frame_hdr fhdr;
 	int rv = wal_cur->pMethods->xRead(wal_cur, &fhdr, sizeof(fhdr), wal_offset_from_cursor(e->page_size, stop.start + stop.len - 1));
@@ -1493,7 +1483,7 @@ int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice stop)
 	}
 	set_mx_frame(get_full_hdr(e), commit, fhdr);
 	if (commit == e->wal_cursor) {
-		e->shm_locks[VFS2_SHM_WRITE_LOCK] = 0;
+		e->shm_locks[WAL_WRITE_LOCK] = 0;
 		sm_move(&e->wtx_sm, WTX_FLUSH);
 	} else {
 		sm_move(&e->wtx_sm, WTX_FOLLOWING);
@@ -1517,7 +1507,7 @@ int vfs2_commit_barrier(sqlite3_file *file)
 	}
 	set_mx_frame(get_full_hdr(e), e->wal_cursor, fhdr);
 	/* It's okay if the write lock isn't held */
-	e->shm_locks[VFS2_SHM_WRITE_LOCK] = 0;
+	e->shm_locks[WAL_WRITE_LOCK] = 0;
 	get_full_hdr(e)->basic[0].isInit = 0;
 	return 0;
 }
@@ -1533,10 +1523,10 @@ int vfs2_poll(sqlite3_file *file, struct vfs2_wal_frame **frames, unsigned *n, s
 		/* Don't go through vfs2_shm_lock here since that has additional
 		 * checks that assume the context of being called from inside
 		 * SQLite. */
-		if (e->shm_locks[VFS2_SHM_WRITE_LOCK] > 0) {
+		if (e->shm_locks[WAL_WRITE_LOCK] > 0) {
 			return 1;
 		}
-		e->shm_locks[VFS2_SHM_WRITE_LOCK] = VFS2_EXCLUSIVE;
+		e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
 	}
 
 	if (n != NULL && frames != NULL) {
@@ -1575,7 +1565,7 @@ int vfs2_abort(sqlite3_file *file)
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
 
-	e->shm_locks[VFS2_SHM_WRITE_LOCK] = 0;
+	e->shm_locks[WAL_WRITE_LOCK] = 0;
 
 	struct wal_index_full_hdr *hdr = get_full_hdr(e);
 	hdr->basic[0] = e->prev_txn_hdr;
@@ -1599,6 +1589,8 @@ int vfs2_read_wal(sqlite3_file *file,
 
 	/* TODO check wal integrity before reading it */
 	(void)check_wal_integrity;
+
+	/* TODO mimic acquiring read locks internally? or make the caller wrap this in vfs2_pseudo_read_{begin,end}? */
 
 	for (size_t i = 0; i < txns_len; i++) {
 		sqlite3_file *wal;
@@ -1705,7 +1697,7 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct 
 	int rv;
 
 	/* It's okay if the write lock is held already */
-	e->shm_locks[VFS2_SHM_WRITE_LOCK] = VFS2_EXCLUSIVE;
+	e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
 	
 	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
 	uint32_t mx = ihdr->basic[0].mxFrame;
@@ -1716,6 +1708,7 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct 
 		if (rv != SQLITE_OK) {
 			return 1;
 		}
+		sm_move(&e->wtx_sm, WTX_FLUSH);
 	}
 
 	uint32_t start = e->wal_cursor;
@@ -1756,5 +1749,58 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct 
 	out->salts = e->wal_cur_hdr.salts;
 	out->start = start;
 	out->len = len;
+	return 0;
+}
+
+static unsigned read_lock(unsigned i)
+{
+	return 3 + i;
+}
+
+int vfs2_pseudo_read_start(sqlite3_file *file, struct vfs2_wal_slice first_not_to_read, unsigned *out)
+{
+	struct file *xfile = (struct file *)file;
+	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
+	struct entry *e = xfile->entry;
+	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
+
+	/* adapted from walTryBeginRead */
+	/* TODO clean up */
+	uint32_t mxReadMark = 0;
+	unsigned mxI = 0;
+	uint32_t mxFrame = first_not_to_read.start;
+	for (unsigned i = 1; i < 5; i++){
+		uint32_t thisMark = ihdr->marks[i];
+		if (mxReadMark <= thisMark && thisMark <= mxFrame) {
+			assert(thisMark != READ_MARK_UNUSED);
+			mxReadMark = thisMark;
+			mxI = i;
+		}
+	}
+	if (mxReadMark < mxFrame || mxI == 0) {
+		for (unsigned i = 1; i < 5; i++) {
+			if (e->shm_locks[read_lock(i)] > 0) {
+				continue;
+			}
+			ihdr->marks[i] = mxFrame;
+			mxReadMark = mxFrame;
+			mxI = i;
+			break;
+		}
+	}
+	if (mxI == 0) {
+		return 1;
+	}
+	*out = mxI;
+	return 0;
+}
+
+int vfs2_pseudo_read_end(sqlite3_file *file, unsigned i)
+{
+	struct file *xfile = (struct file *)file;
+	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
+	struct entry *e = xfile->entry;
+	PRE(e->shm_locks[i] > 0);
+	e->shm_locks[i] -= 1;
 	return 0;
 }

@@ -87,6 +87,10 @@ int vfs2_read_wal(sqlite3_file *file,
  */
 int vfs2_abort(sqlite3_file *file);
 
+int vfs2_pseudo_read_begin(sqlite3_file *file, struct vfs2_wal_slice first_not_to_read, unsigned *out);
+
+int vfs2_pseudo_read_end(sqlite3_file *file, unsigned i);
+
 /**
  * Destroy the VFS object.
  *
