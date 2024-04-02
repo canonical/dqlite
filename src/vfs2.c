@@ -61,7 +61,7 @@ static const struct sm_conf wtx_states[SM_STATES_MAX] = {
 	[WTX_EMPTY] = {
 		.flags = 0,
 		.name = "empty",
-		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_BASE)|BITS(WTX_CLOSED),
+		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_ACTIVE)|BITS(WTX_CLOSED),
 	},
 	[WTX_FOLLOWING] = {
 		.flags = 0,
@@ -690,7 +690,7 @@ static int vfs2_write(sqlite3_file *file,
 		if (rv != SQLITE_OK) {
 			return rv;
 		}
-		sm_move(&e->wtx_sm, WTX_BASE);
+		sm_move(&e->wtx_sm, WTX_ACTIVE);
 		return SQLITE_OK;
 	}
 
@@ -954,10 +954,9 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 			if (ihdr->nBackfill == ihdr->basic[0].mxFrame) {
 				sm_move(&e->wtx_sm, WTX_EMPTY);
 			}
-		} else if (ofst <= WAL_RECOVER_LOCK && WAL_RECOVER_LOCK < ofst + n) {
-			/* End of recovery: move to BASE. */
+		} /* else if (ofst <= WAL_RECOVER_LOCK && WAL_RECOVER_LOCK < ofst + n) {
 			sm_move(&e->wtx_sm, WTX_BASE);
-		}
+		} */
 	} else {
 		assert(0);
 	}
@@ -1740,7 +1739,7 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct 
 		if (rv != SQLITE_OK) {
 			return 1;
 		}
-		sm_move(&e->wtx_sm, WTX_FLUSH);
+		/* sm_move(&e->wtx_sm, WTX_FLUSH); */
 	}
 
 	uint32_t start = e->wal_cursor;
