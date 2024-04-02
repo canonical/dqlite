@@ -450,8 +450,6 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		return true;
 	}
 
-	CHECK(mx < cursor);
-
 	if (sm_state(sm) == WTX_ACTIVE) {
 		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
 		CHECK(wal_index_basic_hdr_zeroed(e->pending_txn_hdr));
@@ -459,6 +457,8 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(have_pending_txn(e));
 		return true;
 	}
+
+	CHECK(mx < cursor);
 
 	if (sm_state(sm) == WTX_HIDDEN) {
 		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
