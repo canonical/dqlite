@@ -30,7 +30,7 @@ static void *set_up(const MunitParameter params[], void *user_data)
 	(void)user_data;
 	struct fixture *f = munit_malloc(sizeof(*f));
 	f->dir = test_dir_setup();
-	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), "dqlite-vfs2", 0);
+	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), "dqlite-vfs2");
 	munit_assert_ptr_not_null(f->vfs);
 	sqlite3_vfs_register(f->vfs, 1 /* make default */);
 	return f;
@@ -178,14 +178,14 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	rv = sqlite3_step(stmt);
 	munit_assert_int(rv, ==, SQLITE_DONE);
 
-	dqlite_vfs_frame *frames;
+	struct vfs2_wal_frame *frames;
 	unsigned n;
 	rv = vfs2_poll(fp, &frames, &n, &sl);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint(n, ==, 1);
 	munit_assert_not_null(frames);
-	munit_assert_not_null(frames[0].data);
-	sqlite3_free(frames[0].data);
+	munit_assert_not_null(frames[0].page);
+	sqlite3_free(frames[0].page);
 	sqlite3_free(frames);
 
 	rv = vfs2_commit(fp, sl);
