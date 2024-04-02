@@ -1613,16 +1613,20 @@ int vfs2_read_wal(sqlite3_file *file,
 	/* TODO check wal integrity before reading it */
 	(void)check_wal_integrity;
 
-	/* TODO mimic acquiring read locks internally? or make the caller wrap this in vfs2_pseudo_read_{begin,end}? */
-
 	for (size_t i = 0; i < txns_len; i++) {
 		sqlite3_file *wal;
-		if (salts_equal(txns[i].meta.salts, e->wal_cur_hdr.salts)) {
+		unsigned read_lock;
+		bool from_wal_cur = salts_equal(txns[i].meta.salts, e->wal_cur_hdr.salts);
+		bool from_wal_prev = salts_equal(txns[i].meta.salts, e->wal_prev_hdr.salts);
+		assert(from_wal_cur ^ from_wal_prev);
+		if (from_wal_cur) {
+			rv = vfs2_pseudo_read_begin(file, e->wal_cursor, &read_lock);
+			if (rv != SQLITE_OK) {
+				return 1;
+			}
 			wal = e->wal_cur;
-		} else if (salts_equal(txns[i].meta.salts, e->wal_prev_hdr.salts)) {
-			wal = e->wal_prev;
 		} else {
-			return 1;
+			wal = e->wal_prev;
 		}
 		struct vfs2_wal_frame *f = sqlite3_malloc((int)txns[i].meta.len * (int)sizeof(*f));
 		if (f == NULL) {
@@ -1648,6 +1652,9 @@ int vfs2_read_wal(sqlite3_file *file,
 			txns[i].frames[j].page_number = ByteGetBe32(fhdr.page_number);
 			txns[i].frames[j].commit = ByteGetBe32(fhdr.commit);
 			txns[i].frames[j].page = p;
+		}
+		if (from_wal_cur) {
+			vfs2_pseudo_read_end(file, read_lock);
 		}
 	}
 	return 0;
@@ -1780,7 +1787,7 @@ static unsigned read_lock(unsigned i)
 	return 3 + i;
 }
 
-int vfs2_pseudo_read_start(sqlite3_file *file, struct vfs2_wal_slice first_not_to_read, unsigned *out)
+int vfs2_pseudo_read_begin(sqlite3_file *file, uint32_t target, unsigned *out)
 {
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
@@ -1788,10 +1795,8 @@ int vfs2_pseudo_read_start(sqlite3_file *file, struct vfs2_wal_slice first_not_t
 	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
 
 	/* adapted from walTryBeginRead */
-	/* TODO clean up */
 	uint32_t max_mark = 0;
 	unsigned max_index = 0;
-	uint32_t target = first_not_to_read.start;
 	for (unsigned i = 1; i < 5; i++){
 		uint32_t cur = ihdr->marks[i];
 		if (max_mark <= cur && cur <= target) {
