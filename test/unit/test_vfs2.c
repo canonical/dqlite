@@ -115,13 +115,14 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 
 	char *args[] = {NULL, "page_size", NULL};
 	rv = sqlite3_file_control(db, "main", SQLITE_FCNTL_PRAGMA, args);
-
+	sqlite3_file *fp;
+	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	rv = vfs2_commit_barrier(fp);
+	munit_assert_int(rv, ==, 0);
 	rv = sqlite3_exec(db, "CREATE TABLE foo (bar INTEGER)", NULL, NULL,
 			  NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
-	sqlite3_file *fp;
-	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
 	struct vfs2_wal_slice sl;
 	rv = vfs2_poll(fp, NULL, NULL, &sl);
 	munit_assert_int(rv, ==, 0);

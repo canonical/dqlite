@@ -61,7 +61,7 @@ static const struct sm_conf wtx_states[SM_STATES_MAX] = {
 	[WTX_EMPTY] = {
 		.flags = 0,
 		.name = "empty",
-		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_CLOSED),
+		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_BASE)|BITS(WTX_CLOSED),
 	},
 	[WTX_FOLLOWING] = {
 		.flags = 0,
@@ -1520,19 +1520,20 @@ int vfs2_commit_barrier(sqlite3_file *file)
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
-	if (e->wal_cursor == 0) {
-		return SQLITE_OK;
+	if (e->wal_cursor > 0) {
+		sqlite3_file *wal_cur = e->wal_cur;
+		struct wal_frame_hdr fhdr;
+		int rv = wal_cur->pMethods->xRead(wal_cur, &fhdr, sizeof(fhdr), wal_offset_from_cursor(e->page_size, e->wal_cursor - 1));
+		if (rv == SQLITE_OK) {
+			return rv;
+		}
+		set_mx_frame(get_full_hdr(e), e->wal_cursor, fhdr);
+		/* It's okay if the write lock isn't held */
+		e->shm_locks[WAL_WRITE_LOCK] = 0;
+		get_full_hdr(e)->basic[0].isInit = 0;
+		/* The next transaction will cause SQLite to run recovery which will complete the transition to BASE */
+		sm_move(&e->wtx_sm, WTX_FLUSH);
 	}
-	sqlite3_file *wal_cur = e->wal_cur;
-	struct wal_frame_hdr fhdr;
-	int rv = wal_cur->pMethods->xRead(wal_cur, &fhdr, sizeof(fhdr), wal_offset_from_cursor(e->page_size, e->wal_cursor - 1));
-	if (rv == SQLITE_OK) {
-		return rv;
-	}
-	set_mx_frame(get_full_hdr(e), e->wal_cursor, fhdr);
-	/* It's okay if the write lock isn't held */
-	e->shm_locks[WAL_WRITE_LOCK] = 0;
-	get_full_hdr(e)->basic[0].isInit = 0;
 	return 0;
 }
 
