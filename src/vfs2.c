@@ -35,6 +35,8 @@
 #define LE_MAGIC 0x377f0682
 #define BE_MAGIC 0x377f0683
 
+#define WAL_NREADER (SQLITE_SHM_NLOCK - 3)
+
 #define READ_MARK_UNUSED 0xffffffff
 
 static const uint32_t invalid_magic = 0x17171717;
@@ -180,7 +182,7 @@ struct wal_frame_hdr {
 struct wal_index_full_hdr {
 	struct wal_index_basic_hdr basic[2];
 	uint32_t nBackfill;
-	uint32_t marks[5];
+	uint32_t marks[WAL_NREADER];
 	uint8_t locks[SQLITE_SHM_NLOCK];
 	uint32_t nBackfillAttempted;
 	uint8_t unused[4];
@@ -1797,7 +1799,7 @@ int vfs2_pseudo_read_begin(sqlite3_file *file, uint32_t target, unsigned *out)
 	/* adapted from walTryBeginRead */
 	uint32_t max_mark = 0;
 	unsigned max_index = 0;
-	for (unsigned i = 1; i < 5; i++){
+	for (unsigned i = 1; i < WAL_NREADER; i++){
 		uint32_t cur = ihdr->marks[i];
 		if (max_mark <= cur && cur <= target) {
 			assert(cur != READ_MARK_UNUSED);
@@ -1806,7 +1808,7 @@ int vfs2_pseudo_read_begin(sqlite3_file *file, uint32_t target, unsigned *out)
 		}
 	}
 	if (max_mark < target || max_index == 0) {
-		for (unsigned i = 1; i < 5; i++) {
+		for (unsigned i = 1; i < WAL_NREADER; i++) {
 			if (e->shm_locks[read_lock(i)] > 0) {
 				continue;
 			}
