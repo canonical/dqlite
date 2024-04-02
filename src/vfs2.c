@@ -538,7 +538,6 @@ static int vfs2_close(sqlite3_file *file)
 		rv = xfile->orig->pMethods->xClose(xfile->orig);
 		sqlite3_free(xfile->orig);
 	}
-	sqlite3_free(file);
 	return rv;
 }
 
