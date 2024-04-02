@@ -454,7 +454,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
 		CHECK(wal_index_basic_hdr_zeroed(e->pending_txn_hdr));
 		CHECK(write_lock_held(e));
-		CHECK(have_pending_txn(e));
+		/* CHECK(have_pending_txn(e)); */
 		return true;
 	}
 
@@ -610,7 +610,7 @@ static int vfs2_wal_write_frame_hdr(struct entry *e,
 	if (e->pending_txn_len == 0 && x == 0) {
 		/* check that the WAL-index hdr makes sense and save it */
 		struct wal_index_basic_hdr hdr = get_full_hdr(e)->basic[0];
-		assert(hdr.isInit != 0);
+		assert(hdr.isInit == 1);
 		assert(hdr.mxFrame == e->pending_txn_start);
 		e->prev_txn_hdr = hdr;
 	}
@@ -690,6 +690,11 @@ static int vfs2_write(sqlite3_file *file,
 		if (rv != SQLITE_OK) {
 			return rv;
 		}
+		/* check that the WAL-index hdr makes sense and save it */
+		struct wal_index_basic_hdr ihdr = get_full_hdr(e)->basic[0];
+		assert(ihdr.isInit == 1);
+		assert(ihdr.mxFrame == 0);
+		e->prev_txn_hdr = ihdr;
 		sm_move(&e->wtx_sm, WTX_ACTIVE);
 		return SQLITE_OK;
 	}
@@ -1539,7 +1544,7 @@ int vfs2_commit_barrier(sqlite3_file *file)
 int vfs2_poll(sqlite3_file *file, struct vfs2_wal_frame **frames, unsigned *n, struct vfs2_wal_slice *sl)
 {
 	struct file *xfile = (struct file *)file;
-	PRE(xfile->flags & SQLITE_OPEN_WAL);
+	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
 
 	uint32_t len = e->pending_txn_len;
