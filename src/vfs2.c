@@ -30,6 +30,7 @@
 
 #define WAL_WRITE_LOCK 0
 #define WAL_CKPT_LOCK 1
+#define WAL_RECOVER_LOCK 2
 
 #define LE_MAGIC 0x377f0682
 #define BE_MAGIC 0x377f0683
@@ -935,21 +936,26 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 			e->shm_locks[i] = 0;
 		}
 
-		/* Unlocking the write lock: roll back any uncommitted
-		 * transaction. */
 		if (ofst == WAL_WRITE_LOCK) {
+			/* Unlocking the write lock: roll back any uncommitted
+			 * transaction. */
 			assert(n == 1);
 			/* TODO make sure this is correct */
 			if (e->pending_txn_last_frame_commit == 0) {
 				free_pending_txn(e);
 				sm_move(&e->wtx_sm, WTX_BASE);
 			}
-		} else if (ofst == WAL_CKPT_LOCK) {
+		} else if (ofst == WAL_CKPT_LOCK && n == 1) {
+			/* End of a checkpoint: if all frames have been backfilled,
+			 * move to EMPTY. */
 			assert(n == 1);
 			struct wal_index_full_hdr *ihdr = get_full_hdr(e);
 			if (ihdr->nBackfill == ihdr->basic[0].mxFrame) {
 				sm_move(&e->wtx_sm, WTX_EMPTY);
 			}
+		} else if (ofst <= WAL_RECOVER_LOCK && WAL_RECOVER_LOCK < ofst + n) {
+			/* End of recovery: move to BASE. */
+			sm_move(&e->wtx_sm, WTX_BASE);
 		}
 	} else {
 		assert(0);
@@ -1783,32 +1789,32 @@ int vfs2_pseudo_read_start(sqlite3_file *file, struct vfs2_wal_slice first_not_t
 
 	/* adapted from walTryBeginRead */
 	/* TODO clean up */
-	uint32_t mxReadMark = 0;
-	unsigned mxI = 0;
-	uint32_t mxFrame = first_not_to_read.start;
+	uint32_t max_mark = 0;
+	unsigned max_index = 0;
+	uint32_t target = first_not_to_read.start;
 	for (unsigned i = 1; i < 5; i++){
-		uint32_t thisMark = ihdr->marks[i];
-		if (mxReadMark <= thisMark && thisMark <= mxFrame) {
-			assert(thisMark != READ_MARK_UNUSED);
-			mxReadMark = thisMark;
-			mxI = i;
+		uint32_t cur = ihdr->marks[i];
+		if (max_mark <= cur && cur <= target) {
+			assert(cur != READ_MARK_UNUSED);
+			max_mark = cur;
+			max_index = i;
 		}
 	}
-	if (mxReadMark < mxFrame || mxI == 0) {
+	if (max_mark < target || max_index == 0) {
 		for (unsigned i = 1; i < 5; i++) {
 			if (e->shm_locks[read_lock(i)] > 0) {
 				continue;
 			}
-			ihdr->marks[i] = mxFrame;
-			mxReadMark = mxFrame;
-			mxI = i;
+			ihdr->marks[i] = target;
+			max_mark = target;
+			max_index = i;
 			break;
 		}
 	}
-	if (mxI == 0) {
+	if (max_index == 0) {
 		return 1;
 	}
-	*out = mxI;
+	*out = max_index;
 	return 0;
 }
 
