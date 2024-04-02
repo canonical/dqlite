@@ -1223,7 +1223,10 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 	memset(e->shm_regions[0], 0, VFS2_WAL_INDEX_REGION_SIZE);
 	e->shm_regions_len = 1;
 
+	e->refcount_main_db = 1;
+
 	*get_full_hdr(e) = initial_full_hdr(hdr_cur);
+
 	if (size_cur >= (sqlite3_int64)sizeof(struct wal_hdr)) {
 		/* TODO verify the header here */
 		e->page_size = ByteGetBe32(hdr_cur.page_size);
@@ -1259,6 +1262,8 @@ static int set_up_entry(struct common *common, const char *name, int flags, stru
 	if (res != NULL) {
 		sqlite3_free(*e);
 		*e = res;
+		unsigned *refcount = name_is_db ? &res->refcount_main_db : &res->refcount_wal;
+		*refcount += 1;
 		return SQLITE_OK;
 	}
 
@@ -1313,13 +1318,8 @@ static int vfs2_open(sqlite3_vfs *vfs,
 		}
 	}
 
-	if (flags & SQLITE_OPEN_MAIN_DB) {
-		xout->entry->refcount_main_db += 1;
-	} else if (flags & SQLITE_OPEN_WAL) {
-		xout->entry->refcount_wal += 1;
-		if (out_flags != NULL) {
-			*out_flags = flags;
-		}
+	if ((flags & SQLITE_OPEN_WAL) && out_flags != NULL) {
+		*out_flags = flags;
 	}
 
 	return SQLITE_OK;
