@@ -310,11 +310,6 @@ static bool no_pending_txn(struct entry *e)
 	return e->pending_txn_len == 0 && e->pending_txn_frames == NULL && e->pending_txn_last_frame_commit == 0;
 }
 
-static bool have_pending_txn(struct entry *e)
-{
-	return e->pending_txn_len > 0 && e->pending_txn_frames != NULL;
-}
-
 static bool write_lock_held(struct entry *e)
 {
 	return e->shm_locks[WAL_WRITE_LOCK] == VFS2_EXCLUSIVE;
@@ -460,12 +455,17 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	}
 
 	CHECK(mx < cursor);
+	CHECK(e->pending_txn_len > 0);
+	CHECK(e->pending_txn_start + e->pending_txn_len == e->wal_cursor);
 
 	if (sm_state(sm) == WTX_HIDDEN) {
 		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
 		CHECK(wal_index_basic_hdr_advanced(e->pending_txn_hdr, e->prev_txn_hdr));
 		CHECK(!write_lock_held(e));
-		CHECK(have_pending_txn(e));
+		CHECK(e->pending_txn_frames != NULL);
+		for (uint32_t i = 0; i < e->pending_txn_len; i++) {
+			CHECK(e->pending_txn_frames[i].page != NULL);
+		}
 		return true;
 	}
 
@@ -473,10 +473,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
 		CHECK(wal_index_basic_hdr_advanced(e->pending_txn_hdr, e->prev_txn_hdr));
 		CHECK(write_lock_held(e));
-		/* CHECK(no_pending_txn(e)); */
 		CHECK(e->pending_txn_frames == NULL);
-		CHECK(e->pending_txn_len > 0);
-		CHECK(e->pending_txn_start + e->pending_txn_len == e->wal_cursor);
 		return true;
 	}
 
