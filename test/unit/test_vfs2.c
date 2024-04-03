@@ -134,6 +134,7 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	rv = sqlite3_exec(db, "INSERT INTO foo (bar) VALUES (17)", NULL, NULL,
 			  NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
+	tracef("aborting...");
 	rv = vfs2_abort(fp);
 	munit_assert_int(rv, ==, 0);
 

@@ -445,6 +445,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(no_pending_txn(e));
 		CHECK(!write_lock_held(e));
 		CHECK(backfill < mx);
+		tracef("mx=%u cursor=%u", mx, cursor);
 		CHECK(mx == cursor);
 		CHECK(wal_index_recovered(e));
 		return true;
@@ -1611,6 +1612,7 @@ int vfs2_abort(sqlite3_file *file)
 	hdr->basic[1] = e->prev_txn_hdr;
 	e->pending_txn_hdr = (struct wal_index_basic_hdr){};
 
+	e->wal_cursor = e->pending_txn_start;
 	free_pending_txn(e);
 
 	sm_move(&xfile->entry->wtx_sm, WTX_BASE);
