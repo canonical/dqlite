@@ -473,7 +473,10 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
 		CHECK(wal_index_basic_hdr_advanced(e->pending_txn_hdr, e->prev_txn_hdr));
 		CHECK(write_lock_held(e));
-		CHECK(no_pending_txn(e));
+		/* CHECK(no_pending_txn(e)); */
+		CHECK(e->pending_txn_frames == NULL);
+		CHECK(e->pending_txn_len > 0);
+		CHECK(e->pending_txn_start + e->pending_txn_len == e->wal_cursor);
 		return true;
 	}
 
@@ -1569,14 +1572,17 @@ int vfs2_poll(sqlite3_file *file, struct vfs2_wal_frame **frames, unsigned *n, s
 		e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
 	}
 
+	/* Note, not resetting pending_txn_{start,len} because they are used by later states */
 	if (n != NULL && frames != NULL) {
 		*n = len;
 		*frames = e->pending_txn_frames;
-		/* TODO reset other pending_* fields here too? */
-		e->pending_txn_frames = NULL;
 	} else {
-		free_pending_txn(e);
+		for (uint32_t i = 0; i < e->pending_txn_len; i++) {
+			sqlite3_free(e->pending_txn_frames[i].page);
+		}
+		sqlite3_free(e->pending_txn_frames);
 	}
+	e->pending_txn_frames = NULL;
 
 	if (sl != NULL) {
 		sl->len = len;
