@@ -42,7 +42,7 @@ void sm_move(struct sm *m, int next_state)
 {
 	int prev = sm_state(m);
 
-	tracef("SM_MOVE %d => %d", prev, next_state);
+	tracef("SM_MOVE %s => %s", m->conf[prev].name, m->conf[next_state].name);
 
 	PRE(sm_is_locked(m));
 	PRE(m->conf[sm_state(m)].allowed & BITS(next_state));
