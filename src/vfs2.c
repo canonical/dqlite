@@ -604,7 +604,12 @@ static int vfs2_wal_write_frame_hdr(struct entry *e,
 				    uint32_t x)
 {
 	struct vfs2_wal_frame *frames = e->pending_txn_frames;
+	if (no_pending_txn(e)) {
+		assert(x == e->wal_cursor);
+		e->pending_txn_start = x;
+	}
 	uint32_t n = e->pending_txn_len;
+	tracef("orig=%u start=%u n=%u", x, e->pending_txn_start, n);
 	x -= e->pending_txn_start;
 	assert(x <= n);
 	if (e->pending_txn_len == 0 && x == 0) {
@@ -885,6 +890,11 @@ err:
 	return rv;
 }
 
+static __attribute__((noinline)) int busy(void)
+{
+	return SQLITE_BUSY;
+}
+
 static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 {
 	struct file *xfile = (struct file *)file;
@@ -908,7 +918,7 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 	if (flags == (SQLITE_SHM_LOCK | SQLITE_SHM_SHARED)) {
 		for (int i = ofst; i < ofst + n; i++) {
 			if (e->shm_locks[i] == VFS2_EXCLUSIVE) {
-				return SQLITE_BUSY;
+				return busy();
 			}
 		}
 
@@ -918,7 +928,7 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 	} else if (flags == (SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE)) {
 		for (int i = ofst; i < ofst + n; i++) {
 			if (e->shm_locks[i] > 0) {
-				return SQLITE_BUSY;
+				return busy();
 			}
 		}
 
