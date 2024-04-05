@@ -24,6 +24,12 @@ extern int _main_suites_n;
 #define SUITE__CAP 128
 #define TEST__CAP SUITE__CAP
 
+static inline void log_sqlite_error(void *arg, int e, const char *msg)
+{
+	(void)arg;
+	fprintf(stderr, "SQLITE %d %s\n", e, msg);
+}
+
 /* Define the top-level suites array and the main() function of the test. */
 #define RUNNER(NAME)                                                       \
 	MunitSuite _main_suites[SUITE__CAP];                               \
@@ -33,6 +39,7 @@ extern int _main_suites_n;
 	{                                                                  \
 		signal(SIGPIPE, SIG_IGN);                                  \
 		dqliteTracingMaybeEnable(true);                            \
+		sqlite3_config(SQLITE_CONFIG_LOG, log_sqlite_error, NULL); \
 		MunitSuite suite = {(char *)"", NULL, _main_suites, 1, 0}; \
 		return munit_suite_main(&suite, (void *)NAME, argc, argv); \
 	}

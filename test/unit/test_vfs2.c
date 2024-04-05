@@ -266,16 +266,25 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 	make_wal_hdr(wal2_hdronly, 0, 17, 103);
 	prepare_wals(buf, NULL, 0, wal2_hdronly, sizeof(wal2_hdronly));
 	sqlite3 *db;
+	tracef("opening...");
 	int rv = sqlite3_open(buf, &db);
 	munit_assert_int(rv, ==, SQLITE_OK);
+	tracef("setup...");
 	rv = sqlite3_exec(db,
 			  "PRAGMA page_size=" PAGE_SIZE_STR ";"
 			  "PRAGMA journal_mode=WAL;"
 			  "PRAGMA wal_autocheckpoint=0",
 			  NULL, NULL, NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
+	sqlite3_file *fp;
+	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	tracef("barrier...");
+	rv = vfs2_commit_barrier(fp);
+	munit_assert_int(rv, ==, 0);
+	tracef("create table...");
 	rv = sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
+	tracef("closing...");
 	rv = sqlite3_close(db);
 	munit_assert_int(rv, ==, SQLITE_OK);
 

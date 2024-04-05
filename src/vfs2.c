@@ -56,7 +56,7 @@ static const struct sm_conf wtx_states[SM_STATES_MAX] = {
 	[WTX_CLOSED] = {
 		.flags = SM_INITIAL|SM_FINAL,
 		.name = "closed",
-		.allowed = BITS(WTX_EMPTY)|BITS(WTX_FOLLOWING),
+		.allowed = BITS(WTX_EMPTY)|BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH),
 	},
 	[WTX_EMPTY] = {
 		.flags = 0,
@@ -71,7 +71,7 @@ static const struct sm_conf wtx_states[SM_STATES_MAX] = {
 	[WTX_FLUSH] = {
 		.flags = 0,
 		.name = "flush",
-		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_BASE)|BITS(WTX_CLOSED),
+		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_ACTIVE)|BITS(WTX_CLOSED),
 	},
 	[WTX_BASE] = {
 		.flags = 0,
@@ -339,6 +339,7 @@ static bool wal_index_basic_hdr_advanced(struct wal_index_basic_hdr new,
 	       && new.mxFrame > old.mxFrame;
 }
 
+/* TODO this is very weak, should check that the hash tables have been constructed */
 static bool wal_index_recovered(struct entry *e)
 {
 	PRE(e->shm_regions_len > 0);
@@ -424,6 +425,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	if (sm_state(sm) == WTX_FOLLOWING) {
 		CHECK(no_pending_txn(e));
 		CHECK(write_lock_held(e));
+		tracef("mx=%u cursor=%u", mx, cursor);
 		CHECK(mx < cursor);
 		return true;
 	}
@@ -431,7 +433,8 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	if (sm_state(sm) == WTX_FLUSH) {
 		CHECK(no_pending_txn(e));
 		CHECK(!write_lock_held(e));
-		CHECK(backfill < mx);
+		tracef("backfill=%u mx=%u", backfill, mx);
+		CHECK(ERGO(mx > 0, backfill < mx));
 		CHECK(mx == cursor);
 		return true;
 	}
@@ -439,10 +442,10 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	if (sm_state(sm) == WTX_BASE) {
 		CHECK(no_pending_txn(e));
 		CHECK(!write_lock_held(e));
-		CHECK(backfill < mx);
+		CHECK(ERGO(mx > 0, backfill < mx));
 		tracef("mx=%u cursor=%u", mx, cursor);
 		CHECK(mx == cursor);
-		CHECK(wal_index_recovered(e));
+		CHECK(ERGO(mx > 0, wal_index_recovered(e)));
 		return true;
 	}
 
@@ -583,11 +586,13 @@ static int wal_swap(struct entry *e,
 
 	/* Move the moving name. */
 	rv = unlink(e->wal_moving_name);
-	if (rv != 0) {
+	if (rv != 0 && errno != ENOENT) {
+		tracef("unlink = IOERR");
 		return SQLITE_IOERR;
 	}
 	rv = link(name_incoming, e->wal_moving_name);
 	if (rv != 0) {
+		tracef("link = IOERR");
 		return SQLITE_IOERR;
 	}
 
@@ -692,6 +697,7 @@ static int vfs2_write(sqlite3_file *file,
 		assert(amt == sizeof(struct wal_hdr));
 		const struct wal_hdr *hdr = buf;
 		struct entry *e = xfile->entry;
+		tracef("about to wal swap");
 		rv = wal_swap(e, hdr);
 		if (rv != SQLITE_OK) {
 			return rv;
@@ -953,10 +959,15 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 			e->shm_locks[i] = 0;
 		}
 
+		if (ofst <= WAL_RECOVER_LOCK && WAL_RECOVER_LOCK < ofst + n) {
+			tracef("unlocking the recovery lock!");
+		}
+
 		if (ofst == WAL_WRITE_LOCK) {
 			/* Unlocking the write lock: roll back any uncommitted
 			 * transaction. */
 			assert(n == 1);
+			tracef("unlocking write lock");
 			/* TODO make sure this is correct */
 			if (e->pending_txn_last_frame_commit == 0) {
 				free_pending_txn(e);
@@ -1111,8 +1122,17 @@ static void restart_full_hdr(struct wal_index_full_hdr *ihdr, struct wal_hdr new
 
 static uint32_t wal_cursor_from_size(uint32_t page_size, sqlite3_int64 size)
 {
-	sqlite3_int64 x = (size - (sqlite3_int64)sizeof(struct wal_hdr)) / ((sqlite3_int64)sizeof(struct wal_frame_hdr) + (sqlite3_int64)page_size);
+	sqlite3_int64 whdr_size = (sqlite3_int64)sizeof(struct wal_hdr);
+	if (size < whdr_size) {
+		return 0;
+	}
+	sqlite3_int64 x = (size - whdr_size) / ((sqlite3_int64)sizeof(struct wal_frame_hdr) + (sqlite3_int64)page_size);
 	return (uint32_t)x;
+}
+
+static sqlite3_int64 wal_offset_from_cursor(uint32_t page_size, uint32_t cursor)
+{
+	return (sqlite3_int64)sizeof(struct wal_hdr) + (sqlite3_int64)cursor * ((sqlite3_int64)sizeof(struct wal_frame_hdr) + (sqlite3_int64)page_size);
 }
 
 static int open_entry(struct common *common, const char *name, struct entry *e)
@@ -1241,14 +1261,19 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 
 	*get_full_hdr(e) = initial_full_hdr(hdr_cur);
 
-	if (size_cur >= (sqlite3_int64)sizeof(struct wal_hdr)) {
+	e->wal_cursor = wal_cursor_from_size(e->page_size, size_cur);
+
+	int next = WTX_EMPTY;
+	if (size_cur >= wal_offset_from_cursor(0 /* this doesn't matter */, 0)) {
 		/* TODO verify the header here */
 		e->page_size = ByteGetBe32(hdr_cur.page_size);
-		e->wal_cursor = wal_cursor_from_size(e->page_size, size_cur);
-		sm_move(&e->wtx_sm, WTX_FOLLOWING);
-	} else {
-		sm_move(&e->wtx_sm, WTX_EMPTY);
+		next = WTX_FLUSH;
 	}
+	if (size_cur >= wal_offset_from_cursor(e->page_size, 1)) {
+		e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
+		next = WTX_FOLLOWING;
+	}
+	sm_move(&e->wtx_sm, next);
 
 	return SQLITE_OK;
 }
@@ -1455,12 +1480,6 @@ sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name)
 	vfs->xCurrentTimeInt64 = vfs2_current_time_int64;
 	return vfs;
 }
-
-static sqlite3_int64 wal_offset_from_cursor(uint32_t page_size, uint32_t cursor)
-{
-	return (sqlite3_int64)sizeof(struct wal_hdr) + (sqlite3_int64)cursor * ((sqlite3_int64)sizeof(struct wal_frame_hdr) + (sqlite3_int64)page_size);
-}
-
 
 int vfs2_unapply(sqlite3_file *file, struct vfs2_wal_slice first_to_unapply)
 {
