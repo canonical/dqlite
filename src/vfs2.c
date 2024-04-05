@@ -520,6 +520,13 @@ static void maybe_close_entry(struct entry *e)
 	}
 	sqlite3_free(e->wal_prev);
 
+	free_pending_txn(e);
+
+	pthread_rwlock_wrlock(&e->common->rwlock);
+	queue_remove(&e->link);
+	pthread_rwlock_unlock(&e->common->rwlock);
+	sqlite3_free(e);
+
 }
 
 static int vfs2_close(sqlite3_file *file)
