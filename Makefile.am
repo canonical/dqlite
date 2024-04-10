@@ -29,6 +29,7 @@ include_HEADERS = include/dqlite.h
 
 basic_dqlite_sources = \
   src/bind.c \
+  src/client.c \
   src/client/protocol.c \
   src/command.c \
   src/conn.c \
@@ -179,6 +180,7 @@ endif
 
 integration_test_SOURCES = \
   test/integration/test_client.c \
+  test/integration/test_client_protocol.c \
   test/integration/test_cluster.c \
   test/integration/test_fsm.c \
   test/integration/test_membership.c \

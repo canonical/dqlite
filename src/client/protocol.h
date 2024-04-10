@@ -99,7 +99,7 @@ struct client_file
 void *mallocChecked(size_t n);
 void *callocChecked(size_t nmemb, size_t size);
 char *strdupChecked(const char *s);
-char *strndupCheck(const char *s, size_t n);
+char *strndupChecked(const char *s, size_t n);
 
 /* Initialize a context whose deadline will fall after the given duration
  * in milliseconds. */

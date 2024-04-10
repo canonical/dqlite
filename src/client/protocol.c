@@ -253,6 +253,7 @@ static ssize_t doWrite(int fd,
 
 		n = write(fd, (char *)buf + (size_t)total,
 			  buf_len - (size_t)total);
+        tracef("write n == %zd", n);
 		if (n < 0) {
 			if (errno == EINTR) {
 				continue;

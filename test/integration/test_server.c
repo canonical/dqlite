@@ -59,7 +59,7 @@ static void teardown(void *data)
 
 #define NODE0_ID "3297041220608546238"
 
-void start_each_server(struct fixture *f)
+static void start_each_server(struct fixture *f)
 {
 	const char *addrs[] = {"127.0.0.1:8880", "127.0.0.1:8881"};
 	int rv;
@@ -89,7 +89,7 @@ void start_each_server(struct fixture *f)
 	munit_assert_int(rv, ==, 0);
 }
 
-void stop_each_server(struct fixture *f)
+static void stop_each_server(struct fixture *f)
 {
 	int rv;
 

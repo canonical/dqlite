@@ -1,7 +1,7 @@
 #include "../../src/client/protocol.h"
 #include "../../src/command.h"
 #include "../../src/server.h"
-#include "../lib/client.h"
+#include "../lib/client_protocol.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
 #include "../lib/server.h"

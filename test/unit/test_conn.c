@@ -1,4 +1,4 @@
-#include "../lib/client.h"
+#include "../lib/client_protocol.h"
 #include "../lib/config.h"
 #include "../lib/heap.h"
 #include "../lib/logger.h"

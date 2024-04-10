@@ -1,151 +1,173 @@
-#include "../lib/client.h"
+#include "../lib/client_protocol.h"
+#include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
 #include "../lib/server.h"
 #include "../lib/sqlite.h"
 
+#include "include/dqlite.h"
+#include "src/server.h"
+#include "src/transport.h"
+
 /******************************************************************************
  *
- * Handle client requests
+ * C client
  *
  ******************************************************************************/
 
 SUITE(client);
 
-static char *bools[] = {"0", "1", NULL};
+#define N_SERVERS 3
 
-static MunitParameterEnum client_params[] = {
-    {"disk_mode", bools},
-    {NULL, NULL},
+struct fixture {
+	char *dirs[N_SERVERS];
+	dqlite_server *servers[N_SERVERS];
 };
 
-struct fixture
+static void start_each_server(struct fixture *f)
 {
-	struct test_server server;
-	struct client_proto *client;
-};
+	const char *addrs[] = { "127.0.0.1:8880", "127.0.0.1:8881" };
+	int rv;
 
-static void *setUp(const MunitParameter params[], void *user_data)
+	rv = dqlite_server_set_address(f->servers[0], "127.0.0.1:8880");
+	munit_assert_int(rv, ==, 0);
+	rv = dqlite_server_set_auto_bootstrap(f->servers[0], true);
+	munit_assert_int(rv, ==, 0);
+	f->servers[0]->refresh_period = 100;
+	rv = dqlite_server_start(f->servers[0]);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_server_set_address(f->servers[1], "127.0.0.1:8881");
+	munit_assert_int(rv, ==, 0);
+	rv = dqlite_server_set_auto_join(f->servers[1], addrs, 1);
+	munit_assert_int(rv, ==, 0);
+	f->servers[1]->refresh_period = 100;
+	rv = dqlite_server_start(f->servers[1]);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_server_set_address(f->servers[2], "127.0.0.1:8882");
+	munit_assert_int(rv, ==, 0);
+	rv = dqlite_server_set_auto_join(f->servers[2], addrs, 2);
+	munit_assert_int(rv, ==, 0);
+	f->servers[2]->refresh_period = 100;
+	rv = dqlite_server_start(f->servers[2]);
+	munit_assert_int(rv, ==, 0);
+}
+
+static void stop_each_server(struct fixture *f)
 {
-	struct fixture *f = munit_malloc(sizeof *f);
+	int rv;
+
+	rv = dqlite_server_stop(f->servers[2]);
+	munit_assert_int(rv, ==, 0);
+	rv = dqlite_server_stop(f->servers[1]);
+	munit_assert_int(rv, ==, 0);
+	rv = dqlite_server_stop(f->servers[0]);
+	munit_assert_int(rv, ==, 0);
+}
+
+static void *setup(const MunitParameter params[], void *user_data)
+{
+	(void)params;
 	(void)user_data;
-	test_heap_setup(params, user_data);
-	test_sqlite_setup(params);
-	test_server_setup(&f->server, 1, params);
-	test_server_start(&f->server, params);
-	f->client = test_server_client(&f->server);
-	HANDSHAKE;
-	OPEN;
+	struct fixture *f = munit_malloc(sizeof *f);
+	unsigned i;
+	int rv;
+
+	for (i = 0; i < N_SERVERS; i += 1) {
+		f->dirs[i] = test_dir_setup();
+		rv = dqlite_server_create(f->dirs[i], &f->servers[i]);
+		munit_assert_int(rv, ==, 0);
+	}
+
+	start_each_server(f);
 	return f;
 }
 
-static void tearDown(void *data)
+static void teardown(void *data)
 {
 	struct fixture *f = data;
-	test_server_tear_down(&f->server);
-	test_sqlite_tear_down();
-	test_heap_tear_down(data);
+	unsigned i;
 
+	stop_each_server(f);
+	for (i = 0; i < N_SERVERS; i += 1) {
+		dqlite_server_destroy(f->servers[i]);
+		test_dir_tear_down(f->dirs[i]);
+	}
 	free(f);
 }
 
-TEST(client, exec, setUp, tearDown, 0, client_params)
+TEST(client, openclose, setup, teardown, 0, NULL)
 {
-	struct fixture *f = data;
-	uint32_t stmt_id;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
-	(void)params;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
-	return MUNIT_OK;
-}
-
-TEST(client, execWithOneParam, setUp, tearDown, 0, client_params)
-{
-	struct fixture *f = data;
-	uint32_t stmt_id;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
-	struct value param = {0};
+	dqlite *db;
 	int rv;
-	(void)params;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
-	PREPARE("INSERT INTO test (n) VALUES(?)", &stmt_id);
-	param.type = SQLITE_INTEGER;
-	param.integer = 17;
-	rv = clientSendExec(f->client, stmt_id, &param, 1, NULL);
-	munit_assert_int(rv, ==, 0);
-	rv = clientRecvResult(f->client, &last_insert_id, &rows_affected, NULL);
-	munit_assert_int(rv, ==, 0);
-	return MUNIT_OK;
-}
-
-TEST(client, execSql, setUp, tearDown, 0, client_params)
-{
 	struct fixture *f = data;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
-	(void)params;
-	EXEC_SQL("CREATE TABLE test (n INT)", &last_insert_id, &rows_affected);
-	return MUNIT_OK;
-}
 
-TEST(client, query, setUp, tearDown, 0, client_params)
-{
-	struct fixture *f = data;
-	uint32_t stmt_id;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
-	unsigned i;
-	struct rows rows;
-	(void)params;
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
+	rv = dqlite_open(f->servers[0], "test", &db, 0);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = dqlite_close(db);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
-	PREPARE("BEGIN", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
-
-	PREPARE("INSERT INTO test (n) VALUES(123)", &stmt_id);
-	for (i = 0; i < 256; i++) {
-		EXEC(stmt_id, &last_insert_id, &rows_affected);
-	}
-
-	PREPARE("COMMIT", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
-
-	PREPARE("SELECT n FROM test", &stmt_id);
-	QUERY(stmt_id, &rows);
-
-	clientCloseRows(&rows);
+	rv = dqlite_open(f->servers[0], "test", &db, 0);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = dqlite_close(db);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
 	return MUNIT_OK;
 }
 
-TEST(client, querySql, setUp, tearDown, 0, client_params)
+TEST(client, prepare, setup, teardown, 0, NULL)
 {
+	dqlite *db;
+	dqlite_stmt *stmt;
+	int rv;
 	struct fixture *f = data;
-	uint32_t stmt_id;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
-	unsigned i;
-	struct rows rows;
-	(void)params;
-	EXEC_SQL("CREATE TABLE test (n INT)", &last_insert_id, &rows_affected);
 
-	EXEC_SQL("BEGIN", &last_insert_id, &rows_affected);
+	rv = dqlite_open(f->servers[0], "test", &db, 0);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
-	PREPARE("INSERT INTO test (n) VALUES(123)", &stmt_id);
-	for (i = 0; i < 256; i++) {
-		EXEC(stmt_id, &last_insert_id, &rows_affected);
-	}
+	// Regular statement.
+	rv = dqlite_prepare(
+	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
+	    &stmt, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = dqlite_finalize(stmt);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
-	EXEC_SQL("COMMIT", &last_insert_id, &rows_affected);
+	// TODO Edge case: sql_len = 0.
+	rv = dqlite_prepare(
+	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
+	    &stmt, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = dqlite_finalize(stmt);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
-	QUERY_SQL("SELECT n FROM test", &rows);
+	rv = dqlite_close(db);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
-	clientCloseRows(&rows);
+	return MUNIT_OK;
+}
+
+TEST(client, prepare_reconnect, setup, teardown, 0, NULL)
+{
+	dqlite *db;
+	dqlite_stmt *stmt;
+	int rv;
+	struct fixture *f = data;
+
+	rv = dqlite_open(f->servers[0], "test", &db, 0);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	// Regular statement.
+	rv = dqlite_prepare(
+	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
+	    &stmt, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = dqlite_finalize(stmt);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	rv = dqlite_close(db);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
 	return MUNIT_OK;
 }

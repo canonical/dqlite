@@ -41,6 +41,8 @@ DQLITE_API int dqlite_version_number(void);
 typedef unsigned long long dqlite_node_id;
 
 DQLITE_EXPERIMENTAL typedef struct dqlite_server dqlite_server;
+DQLITE_EXPERIMENTAL typedef struct dqlite dqlite;
+DQLITE_EXPERIMENTAL typedef struct dqlite_stmt dqlite_stmt;
 
 /**
  * Signature of a custom callback used to establish network connections
@@ -730,4 +732,69 @@ DQLITE_API int dqlite_vfs_restore_disk(sqlite3_vfs *vfs,
 				       const void *data,
 				       size_t main_size,
 				       size_t wal_size);
+
+
+/**
+ * Open a database connection on the dqlite cluster.
+ *
+ * This request will be transparently forwarded to the cluster leader as needed.
+ *
+ * This is the analogue of sqlite3_open. @name is the name of the database
+ * to open, which will be created if it does not exist. All servers in the
+ * cluster share a "namespace" for databases.
+ *
+ * The @flags argument is currently ignored.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_open(dqlite_server *server,
+					       const char *name,
+					       dqlite **db,
+					       int flags);
+
+/**
+ * Close a database after all associated prepared statements have been
+ * finalized.
+ *
+ * This is analogous to sqlite3_close (note, not sqlite3_close_v2). In
+ * particular, it will fail with SQLITE_BUSY if some dqlite_stmt objects
+ * associated with this database have not yet been finalized.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_close(dqlite *db);
+
+/**
+ * Create a prepared statement to be executed on the cluster.
+ *
+ * This is the analogue of sqlite3_prepare_v2.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_prepare(dqlite *db,
+						  const char *sql,
+						  int sql_len,
+						  dqlite_stmt **stmt,
+						  const char **tail);
+
+/**
+ * Create a prepared statement to be executed on the cluster.
+ *
+ * This is the analogue of sqlite3_prepare_v2.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_prepare(dqlite *db,
+						  const char *sql,
+						  int sql_len,
+						  dqlite_stmt **stmt,
+						  const char **tail);
+
+/**
+ * Execute a prepared statement for one "step".
+ *
+ * This is the analogue of sqlite3_step.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_step(dqlite_stmt *stmt);
+
+/**
+ * Release all resources associated with a prepared statement.
+ *
+ * This ends the statement's lifecycle, rendering it invalid for further use. It
+ * is the analogue of sqlite3_finalize.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_finalize(dqlite_stmt *stmt);
+
 #endif /* DQLITE_H */

@@ -1,6 +1,6 @@
 #include "../../src/client/protocol.h"
 #include "../../src/server.h"
-#include "../lib/client.h"
+#include "../lib/client_protocol.h"
 #include "../lib/endpoint.h"
 #include "../lib/fs.h"
 #include "../lib/heap.h"
