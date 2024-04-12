@@ -712,6 +712,10 @@ static int probeDirectIO(int fd, size_t *size, char *errmsg)
 				ErrMsgPrintf(errmsg,
 					     "unsupported file system: %ux",
 					     fs_info.f_type);
+#elif defined(__x86_64__) && defined(__ILP32__)
+				ErrMsgPrintf(errmsg,
+					     "unsupported file system: %llx",
+					     fs_info.f_type);
 #else
 				ErrMsgPrintf(errmsg,
 					     "unsupported file system: %zx",
