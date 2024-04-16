@@ -1695,6 +1695,9 @@ int vfs2_read_wal(sqlite3_file *file,
 				return 1;
 			}
 			rv = wal->pMethods->xRead(wal, p, page_size, off);
+			if (rv != SQLITE_OK) {
+				return 1;
+			}
 			txns[i].frames[j].page_number = ByteGetBe32(fhdr.page_number);
 			txns[i].frames[j].commit = ByteGetBe32(fhdr.commit);
 			txns[i].frames[j].page = p;
