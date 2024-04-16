@@ -1159,30 +1159,27 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 	e->common = common;
 	sm_init(&e->wtx_sm, wtx_invariant, NULL, wtx_states, WTX_CLOSED);
 
+	e->refcount_main_db = 1;
+
 	e->main_db_name = sqlite3_malloc(path_cap);
-	if (e->main_db_name == NULL) {
+	e->wal_moving_name = sqlite3_malloc(path_cap);
+	e->wal_cur_fixed_name = sqlite3_malloc(path_cap);
+	e->wal_prev_fixed_name = sqlite3_malloc(path_cap);
+	if (e->main_db_name == NULL ||
+			e->wal_moving_name == NULL ||
+			e->wal_cur_fixed_name == NULL ||
+			e->wal_prev_fixed_name == NULL) {
 		return SQLITE_NOMEM;
 	}
+
 	strcpy(e->main_db_name, name);
 
-	e->wal_moving_name = sqlite3_malloc(path_cap);
-	if (e->wal_moving_name == NULL) {
-		return SQLITE_NOMEM;
-	}
 	strcpy(e->wal_moving_name, name);
 	strcat(e->wal_moving_name, "-wal");
 
-	e->wal_cur_fixed_name = sqlite3_malloc(path_cap);
-	if (e->wal_cur_fixed_name == NULL) {
-		return SQLITE_NOMEM;
-	}
 	strcpy(e->wal_cur_fixed_name, name);
 	strcat(e->wal_cur_fixed_name, "-xwal1");
 
-	e->wal_prev_fixed_name = sqlite3_malloc(path_cap);
-	if (e->wal_prev_fixed_name == NULL) {
-		return SQLITE_NOMEM;
-	}
 	strcpy(e->wal_prev_fixed_name, name);
 	strcat(e->wal_prev_fixed_name, "-xwal2");
 
@@ -1270,8 +1267,6 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 	memset(e->shm_regions[0], 0, VFS2_WAL_INDEX_REGION_SIZE);
 	e->shm_regions_len = 1;
 
-	e->refcount_main_db = 1;
-
 	*get_full_hdr(e) = initial_full_hdr(hdr_cur);
 
 	e->wal_cursor = wal_cursor_from_size(e->page_size, size_cur);
@@ -1321,16 +1316,14 @@ static int set_up_entry(struct common *common, const char *name, int flags, stru
 
 	assert(name_is_db);
 	res = *e;
+	/* If open_entry fails we still want to link in the entry. Since we unconditionally
+	 * set pMethods in our file vtable, SQLite will xClose the file and vfs2_close
+	 * will run to clean up the partial work of open_entry. */
 	rv = open_entry(common, name, res);
-	if (rv != SQLITE_OK) {
-		sqlite3_free(res);
-		*e = NULL;
-		return rv;
-	}
 	pthread_rwlock_wrlock(&common->rwlock);
 	queue_insert_tail(&common->queue, &res->link);
 	pthread_rwlock_unlock(&common->rwlock);
-	return SQLITE_OK;
+	return rv;
 }
 
 static int vfs2_open(sqlite3_vfs *vfs,
