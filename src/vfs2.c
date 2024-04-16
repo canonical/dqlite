@@ -405,88 +405,90 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 	if (sm_state(sm) == WTX_CLOSED) {
 		char *region = (char *)e;
 		char zeroed[offsetof(struct entry, wtx_sm)] = {};
-		CHECK(memcmp(region, zeroed, sizeof(zeroed)) == 0);
-		CHECK(e->common != NULL);
-		return true;
+
+		return CHECK(memcmp(region, zeroed, sizeof(zeroed)) == 0) &&
+			CHECK(e->common != NULL);
 	}
 
-	CHECK(is_open(e));
+	if (!CHECK(is_open(e))) {
+		return false;
+	}
 	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
-	CHECK(full_hdr_valid(ihdr));
+	if (!CHECK(full_hdr_valid(ihdr))) {
+		return false;
+	}
 	uint32_t mx = ihdr->basic[0].mxFrame;
 	uint32_t backfill = ihdr->nBackfill;
 	uint32_t cursor = e->wal_cursor;
-	CHECK(backfill <= mx);
-	CHECK(mx <= cursor);
+	if (!CHECK(backfill <= mx) || !CHECK(mx <= cursor)) {
+		return false;
+	}
 
 	/* TODO any checks applicable to the read marks and read locks? */
 
 	if (sm_state(sm) == WTX_EMPTY) {
-		CHECK(mx == backfill);
-		CHECK(mx == cursor);
-		CHECK(no_pending_txn(e));
-		CHECK(!write_lock_held(e));
-		return true;
+		return CHECK(mx == backfill) &&
+			CHECK(mx == cursor) &&
+			CHECK(no_pending_txn(e)) &&
+			CHECK(!write_lock_held(e));
 	}
 
-	CHECK(is_valid_page_size(e->page_size));
+	if (!CHECK(is_valid_page_size(e->page_size))) {
+		return false;
+	}
 
 	if (sm_state(sm) == WTX_FOLLOWING) {
-		CHECK(no_pending_txn(e));
-		CHECK(write_lock_held(e));
-		tracef("mx=%u cursor=%u", mx, cursor);
-		CHECK(mx < cursor);
-		return true;
+		return CHECK(no_pending_txn(e)) &&
+			CHECK(write_lock_held(e)) &&
+			CHECK(mx < cursor);
 	}
 
 	if (sm_state(sm) == WTX_FLUSH) {
-		CHECK(no_pending_txn(e));
-		CHECK(!write_lock_held(e));
-		tracef("backfill=%u mx=%u", backfill, mx);
-		CHECK(ERGO(mx > 0, backfill < mx));
-		CHECK(mx == cursor);
-		return true;
+		return CHECK(no_pending_txn(e)) &&
+			CHECK(!write_lock_held(e)) &&
+			CHECK(ERGO(mx > 0, backfill < mx)) &&
+			CHECK(mx == cursor);
 	}
 
 	if (sm_state(sm) == WTX_BASE) {
-		CHECK(no_pending_txn(e));
-		CHECK(!write_lock_held(e));
-		CHECK(ERGO(mx > 0, backfill < mx));
-		tracef("mx=%u cursor=%u", mx, cursor);
-		CHECK(mx == cursor);
-		CHECK(ERGO(mx > 0, wal_index_recovered(e)));
-		return true;
+		return CHECK(no_pending_txn(e)) &&
+			CHECK(!write_lock_held(e)) &&
+			CHECK(ERGO(mx > 0, backfill < mx)) &&
+			CHECK(mx == cursor) &&
+			CHECK(ERGO(mx > 0, wal_index_recovered(e)));
 	}
 
 	if (sm_state(sm) == WTX_ACTIVE) {
-		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
-		CHECK(wal_index_basic_hdr_zeroed(e->pending_txn_hdr));
-		CHECK(write_lock_held(e));
-		/* CHECK(have_pending_txn(e)); */
-		return true;
+		return CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr)) &&
+			CHECK(wal_index_basic_hdr_zeroed(e->pending_txn_hdr)) &&
+			CHECK(write_lock_held(e));
 	}
 
-	CHECK(mx < cursor);
-	CHECK(e->pending_txn_len > 0);
-	CHECK(e->pending_txn_start + e->pending_txn_len == e->wal_cursor);
+	if (!CHECK(mx < cursor) ||
+			!CHECK(e->pending_txn_len > 0) ||
+			!CHECK(e->pending_txn_start + e->pending_txn_len == e->wal_cursor)) {
+		return false;
+	}
 
 	if (sm_state(sm) == WTX_HIDDEN) {
-		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
-		CHECK(wal_index_basic_hdr_advanced(e->pending_txn_hdr, e->prev_txn_hdr));
-		CHECK(!write_lock_held(e));
-		CHECK(e->pending_txn_frames != NULL);
-		for (uint32_t i = 0; i < e->pending_txn_len; i++) {
-			CHECK(e->pending_txn_frames[i].page != NULL);
+		bool res = CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr)) &&
+			CHECK(wal_index_basic_hdr_advanced(e->pending_txn_hdr, e->prev_txn_hdr)) &&
+			CHECK(!write_lock_held(e)) &&
+			CHECK(e->pending_txn_frames != NULL);
+		if (!res) {
+			return false;
 		}
-		return true;
+		for (uint32_t i = 0; i < e->pending_txn_len; i++) {
+			res &= CHECK(e->pending_txn_frames[i].page != NULL);
+		}
+		return res;
 	}
 
 	if (sm_state(sm) == WTX_POLLED) {
-		CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr));
-		CHECK(wal_index_basic_hdr_advanced(e->pending_txn_hdr, e->prev_txn_hdr));
-		CHECK(write_lock_held(e));
-		CHECK(e->pending_txn_frames == NULL);
-		return true;
+		return CHECK(wal_index_basic_hdr_equal(get_full_hdr(e)->basic[0], e->prev_txn_hdr)) &&
+			CHECK(wal_index_basic_hdr_advanced(e->pending_txn_hdr, e->prev_txn_hdr)) &&
+			CHECK(write_lock_held(e)) &&
+			CHECK(e->pending_txn_frames == NULL);
 	}
 
 	assert(0);

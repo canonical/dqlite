@@ -6,7 +6,7 @@
 
 #define BITS(state) (1ULL << (state))
 
-#define CHECK(cond) if (!sm_check((cond), __FILE__, __LINE__, #cond)) return false
+#define CHECK(cond) sm_check((cond), __FILE__, __LINE__, #cond)
 
 enum {
 	SM_PREV_NONE = -1,
