@@ -120,7 +120,7 @@ static uint32_t native_magic(void)
 	return is_bigendian() ? BE_MAGIC : LE_MAGIC;
 }
 
-void update_cksums(uint32_t magic, const uint8_t *p, size_t len, struct cksums *sums)
+static void update_cksums(uint32_t magic, const uint8_t *p, size_t len, struct cksums *sums)
 {
 	PRE(magic == BE_MAGIC || magic == LE_MAGIC);
 	PRE(len % 8 == 0);
@@ -136,7 +136,7 @@ void update_cksums(uint32_t magic, const uint8_t *p, size_t len, struct cksums *
 	}
 }
 
-bool cksums_equal(struct cksums a, struct cksums b)
+static bool cksums_equal(struct cksums a, struct cksums b)
 {
 	return a.cksum1 == b.cksum1 && a.cksum2 == b.cksum2;
 }
@@ -203,6 +203,12 @@ struct entry {
 	/* e.g. /path/to/some.db */
 	char *main_db_name;
 
+	/* The WALs are represented by two physical files (inodes)
+	 * and three filenames. For each of the two physical files
+	 * there is a "fixed name" that always points to that file.
+	 * The "moving name" always points to one of the two physical
+	 * files, but switches between them on every WAL swap. */
+
 	/* e.g. /path/to/some.db-wal */
 	char *wal_moving_name;
 	/* e.g. /path/to/some.db-xwal1 */
@@ -236,7 +242,8 @@ struct entry {
 	/* Zero for unlocked, positive for read-locked, UINT_MAX for write-locked */
 	unsigned shm_locks[SQLITE_SHM_NLOCK];
 
-	/* For ACTIVE, HIDDEN: the pending txn */
+	/* For ACTIVE, HIDDEN: the pending txn. start and len
+	 * are in units of frames. */
 	struct vfs2_wal_frame *pending_txn_frames;
 	uint32_t pending_txn_start;
 	uint32_t pending_txn_len;
@@ -305,12 +312,12 @@ static struct wal_index_full_hdr *get_full_hdr(struct entry *e)
 	return e->shm_regions[0];
 }
 
-static bool no_pending_txn(struct entry *e)
+static bool no_pending_txn(const struct entry *e)
 {
 	return e->pending_txn_len == 0 && e->pending_txn_frames == NULL && e->pending_txn_last_frame_commit == 0;
 }
 
-static bool write_lock_held(struct entry *e)
+static bool write_lock_held(const struct entry *e)
 {
 	return e->shm_locks[WAL_WRITE_LOCK] == VFS2_EXCLUSIVE;
 }
@@ -339,8 +346,10 @@ static bool wal_index_basic_hdr_advanced(struct wal_index_basic_hdr new,
 	       && new.mxFrame > old.mxFrame;
 }
 
-/* TODO this is very weak, should check that the hash tables have been constructed */
-static bool wal_index_recovered(struct entry *e)
+/* Check that the hash tables in the WAL index have been initialized
+ * by looking for nonzero bytes after the WAL index header. (TODO:
+ * actually parse the hash tables?) */
+static bool wal_index_recovered(const struct entry *e)
 {
 	PRE(e->shm_regions_len > 0);
 	char *p = e->shm_regions[0];
@@ -354,10 +363,10 @@ static bool wal_index_recovered(struct entry *e)
 
 static bool is_valid_page_size(unsigned long n)
 {
-	return n >= 1 << 9 && n <= 1 << 16 && (n & (n - 1)) == 0;
+	return n >= 1 << 9 && n <= 1 << 16 && is_po2(n);
 }
 
-static bool is_open(struct entry *e)
+static bool is_open(const struct entry *e)
 {
 	return e->main_db_name != NULL
 		&& e->wal_moving_name != NULL
@@ -381,7 +390,7 @@ static bool basic_hdr_valid(struct wal_index_basic_hdr bhdr)
 		&& cksums_equal(sums, bhdr.cksums);
 }
 
-static bool full_hdr_valid(struct wal_index_full_hdr *ihdr)
+static bool full_hdr_valid(const struct wal_index_full_hdr *ihdr)
 {
 	return basic_hdr_valid(ihdr->basic[0]) && wal_index_basic_hdr_equal(ihdr->basic[0], ihdr->basic[1]);
 }
@@ -494,11 +503,7 @@ static int check_wal_integrity(sqlite3_file *f)
 
 static sqlite3_file *get_orig(struct file *f)
 {
-	if (f->flags & SQLITE_OPEN_WAL) {
-		return f->entry->wal_cur;
-	} else {
-		return f->orig;
-	}
+	return (f->flags & SQLITE_OPEN_WAL) ? f->entry->wal_cur : f->orig;
 }
 
 static void maybe_close_entry(struct entry *e)
@@ -568,6 +573,9 @@ static int wal_swap(struct entry *e,
 
 	e->page_size = ByteGetBe32(wal_hdr->page_size);
 
+	/* Terminology: the outgoing WAL is the one that's moving
+	 * from cur to prev. The incoming WAL is the one that's moving
+	 * from prev to cur. */
 	sqlite3_file *phys_outgoing = e->wal_cur;
 	char *name_outgoing = e->wal_cur_fixed_name;
 	sqlite3_file *phys_incoming = e->wal_prev;
@@ -666,11 +674,10 @@ static int vfs2_wal_post_write(struct entry *e,
 {
 	uint32_t frame_size = VFS2_WAL_FRAME_HDR_SIZE + e->page_size;
 	if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
-		sqlite3_int64 x =
-		    ofst - (sqlite3_int64)sizeof(struct wal_hdr);
-		assert(x % frame_size == 0);
-		x /= frame_size;
-		return vfs2_wal_write_frame_hdr(e, buf, (uint32_t)x);
+		ofst -= (sqlite3_int64)sizeof(struct wal_hdr);
+		assert(ofst % frame_size == 0);
+		sqlite3_int64 frame_ofst = ofst / (sqlite3_int64)frame_size;
+		return vfs2_wal_write_frame_hdr(e, buf, (uint32_t)frame_ofst);
 	} else if (amt == (int)e->page_size) {
 		sqlite3_int64 x = ofst - VFS2_WAL_FRAME_HDR_SIZE -
 				  (sqlite3_int64)sizeof(struct wal_hdr);
@@ -912,11 +919,8 @@ static __attribute__((noinline)) int busy(void)
 static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 {
 	struct file *xfile = (struct file *)file;
+	PRE(xfile != NULL);
 	struct entry *e = xfile->entry;
-
-	assert(file != NULL);
-	assert(ofst >= 0);
-	assert(n >= 0);
 
 	assert(ofst >= 0 && ofst + n <= SQLITE_SHM_NLOCK);
 	assert(n >= 1);
@@ -1087,7 +1091,7 @@ static struct wal_index_full_hdr initial_full_hdr(struct wal_hdr whdr)
 	ihdr.basic[0].bigEndCksum = is_bigendian();
 	ihdr.basic[0].szPage = (uint16_t)ByteGetBe32(whdr.page_size);
 	struct cksums sums = {};
-	update_cksums(native_magic(), (const void *)&ihdr.basic[0], 40, &sums);
+	update_cksums(native_magic(), (const void *)&ihdr.basic[0], offsetof(struct wal_index_basic_hdr, cksums), &sums);
 	ihdr.basic[0].cksums = sums;
 	ihdr.basic[1] = ihdr.basic[0];
 	ihdr.marks[0] = 0;
@@ -1725,7 +1729,7 @@ static int write_one_frame(struct entry *e, struct wal_frame_hdr hdr, void *data
 	return SQLITE_OK;
 }
 
-static struct wal_hdr next_wal_hdr(struct entry *e)
+static struct wal_hdr next_wal_hdr(const struct entry *e)
 {
 	struct wal_hdr ret;
 	struct wal_hdr old = e->wal_cur_hdr;
@@ -1773,7 +1777,17 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct 
 	PRE(page_size == e->page_size);
 	int rv;
 
-	/* It's okay if the write lock is held already */
+	/* The write lock is always held if there is at least one
+	 * uncommitted frame in WAL-cur. In FOLLOWING state, we allow
+	 * adding more frames to WAL-cur even if there are already
+	 * some uncommitted frames. Hence we don't check the write
+	 * lock here before "acquiring" it, we just make sure that
+	 * it's held before returning.
+	 *
+	 * The write lock will be released when a call to vfs2_commit
+	 * or vfs2_unapply causes the number of committed frames in
+	 * WAL-cur (mxFrame) to equal the number of applies frames
+	 * (wal_cursor). */
 	e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
 	
 	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
@@ -1829,8 +1843,13 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct 
 	return 0;
 }
 
+/* Get the index of the `i`th read lock in the array of
+ * shm locks. There are five read locks, and three non-read
+ * locks that come before the read locks.
+ * See https://sqlite.org/walformat.html#wal_locks. */
 static unsigned read_lock(unsigned i)
 {
+	PRE(i < 5);
 	return 3 + i;
 }
 
