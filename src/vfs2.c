@@ -1659,6 +1659,8 @@ int vfs2_read_wal(sqlite3_file *file,
 	/* TODO check wal integrity before reading it */
 	(void)check_wal_integrity;
 
+	/* TODO don't leak memory on error */
+
 	for (size_t i = 0; i < txns_len; i++) {
 		sqlite3_file *wal;
 		unsigned read_lock;
