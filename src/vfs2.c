@@ -42,15 +42,65 @@
 static const uint32_t invalid_magic = 0x17171717;
 
 enum {
+	/* Entry is not yet open. */
 	WTX_CLOSED,
+	/* Next WAL write will be a header write, causing a WAL swap (WAL-cur is empty or fully checkpointed). */
 	WTX_EMPTY,
+	/* Non-leader, at least one transaction in WAL-cur is not committed. */
 	WTX_FOLLOWING,
+	/* Non-leader, all transactions in WAL-cur are committed (but at least one is not checkpointed). */
 	WTX_FLUSH,
+	/* Leader, all transactions in WAL-cur are committed (but at least one is not checkpointed). */
 	WTX_BASE,
+	/* Leader, transaction in progress. */
 	WTX_ACTIVE,
+	/* Leader, transaction committed by SQLite and hidden. */
 	WTX_HIDDEN,
+	/* Leader, transation committed by SQLite, hidden, and polled. */
 	WTX_POLLED
 };
+
+/*
+
+Diagram of the state machine (some transitions omitted when they would crowd the diagram even more):
+
++----------------------+  sqlite3_open             +------------------------------------------------------------------------------+
+|        CLOSED        | ------------------------> |                                  FOLLOWING                                   | <+
++----------------------+                           +------------------------------------------------------------------------------+  |
+  |                                                  ^                          ^                          |                         |
+  | sqlite3_open                                     | vfs2_apply_uncommitted   | vfs2_apply_uncommitted   | vfs2_{commit,unapply}   | vfs2_apply_uncommitted
+  v                                                  |                          |                          v                         |
++----------------------------------------------------------------------------+  |                        +------------------------+  |
+|                                                                            |  +----------------------- |                        |  |
+|                                   EMPTY                                    |                           |         FLUSH          |  |
+|                                                                            | <------------------------ |                        |  |
++----------------------------------------------------------------------------+   sqlite3_wal_checkpoint  +------------------------+  |
+  |                       ^                                                                                |                         |
+  | vfs2_commit_barrier   | sqlite3_wal_checkpoint                                                         |                         |
+  v                       |                                                                                |                         |
++----------------------------------------------------------------------------+  vfs2_commit_barrier        |                         |
+|                                    BASE                                    | <---------------------------+                         |
++----------------------------------------------------------------------------+                                                       |
+  |                       ^                          |                                                                               |
+  | sqlite3_step          | vfs2_unhide              +-------------------------------------------------------------------------------+
+  v                       |
++----------------------+  |
+|        ACTIVE        |  |
++----------------------+  |
+  |                       |
+  | COMMIT_PHASETWO       |
+  v                       |
++----------------------+  |
+|        HIDDEN        |  |
++----------------------+  |
+  |                       |
+  | vfs2_poll             |
+  v                       |
++----------------------+  |
+|        POLLED        | -+
++----------------------+
+
+*/
 
 static const struct sm_conf wtx_states[SM_STATES_MAX] = {
 	[WTX_CLOSED] = {
