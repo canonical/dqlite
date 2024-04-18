@@ -108,7 +108,7 @@ int dqlite_prepare(dqlite *db,
 	// TODO Why 5000? Eventually add function to configure it. Maybe add a
 	// dqlite_options argument.
 	// TODO CLOCK_MONOTONIC
-	clientContextMillis(&context, 5000);
+	clientContextMillis(&context, 500000);
 
 	bool connected = false;
 	while (!connected) {
@@ -170,7 +170,7 @@ int dqlite_finalize(dqlite_stmt *stmt)
 		return SQLITE_OK;
 	}
 	// TODO add options.
-	clientContextMillis(&context, 5000);
+	clientContextMillis(&context, 500000);
 	if (clientSendFinalize(&stmt->proto, stmt->stmt_id, &context) !=
 	    SQLITE_OK) {
 		return SQLITE_ERROR;

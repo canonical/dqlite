@@ -12,18 +12,16 @@
 #include "src/client.h"
 #include "src/client/protocol.h"
 #include "src/lib/serialize.h"
+#include "src/message.h"
+#include "src/protocol.h"
 #include "src/request.h"
 #include "src/response.h"
 #include "src/server.h"
+#include "src/tracing.h"
 #include "src/transport.h"
 
-/******************************************************************************
- *
- * C client
- *
- ******************************************************************************/
-
-SUITE(client);
+TEST_MODULE(client);
+TEST_SUITE(client);
 
 #define N_SERVERS 3
 
@@ -110,7 +108,7 @@ static void stop_each_server(struct fixture *f)
 	munit_assert_int(rv, ==, 0);
 }
 
-static void *setup(const MunitParameter params[], void *user_data)
+TEST_SETUP(client)
 {
 	(void)params;
 	(void)user_data;
@@ -131,7 +129,7 @@ static void *setup(const MunitParameter params[], void *user_data)
 	return f;
 }
 
-static void teardown(void *data)
+TEST_TEAR_DOWN(client)
 {
 	struct fixture *f = data;
 	unsigned i;
@@ -147,44 +145,69 @@ static void teardown(void *data)
 	free(f);
 }
 
-TEST(client, openclose, setup, teardown, 0, NULL)
+void *prepare_reconnect_thread(void *arg)
 {
-	dqlite *db;
 	int rv;
-	struct fixture *f = data;
+	int fd = *(int *)arg;
+	char buf[4096];
+	size_t buf_cap = 4096;
 
-	rv = dqlite_open(f->servers[0], "test", &db, 0);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = dqlite_close(db);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	tracef("attempting read");
+	rv = read(fd, buf, buf_cap);
+	tracef("read %d bytes", rv);
+	munit_assert_int(rv, >, 0);
 
-	rv = dqlite_open(f->servers[0], "test", &db, 0);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = dqlite_close(db);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	tracef("attempting decode");
+	struct request_leader request = { 0 };
+	struct cursor cursor = { buf, buf_cap };
+	rv = request_leader__decode(&cursor, &request);
+	munit_assert_int(rv, ==, 0);
 
-	return MUNIT_OK;
+	// Make this a new pointer because we dont want the response to be
+	// changing the offsets.
+	struct response_server response = { 0 };
+	char *response_cursor = buf;
+	response.id = 1;
+	response.address = "127.0.0.1:8880";
+	struct message message = { 0 };
+	message.words = response_server__sizeof(&response);
+	message.type = DQLITE_RESPONSE_SERVER;
+	message.schema = 1;
+	message__encode(&message, &response_cursor);
+	tracef("attempting write message");
+	rv = write(fd, &message, message__sizeof(&message));
+	tracef("wrote %d bytes", rv);
+	munit_assert_int(rv, >, 0);
+
+	response_server__encode(&response, &response_cursor);
+	tracef("attempting write response");
+	rv = write(fd, buf, response_cursor - buf);
+	tracef("wrote %d bytes", rv);
+	munit_assert_int(rv, >, 0);
+
+	return NULL;
 }
 
-TEST(client, prepare, setup, teardown, 0, NULL)
+TEST_CASE(client, prepare_reconnect, NULL)
 {
 	dqlite *db;
 	dqlite_stmt *stmt;
 	int rv;
 	struct fixture *f = data;
+	(void)params;
 
+	alarm(5);
 	rv = dqlite_open(f->servers[0], "test", &db, 0);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
-	// Regular statement.
-	rv = dqlite_prepare(
-	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
-	    &stmt, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = dqlite_finalize(stmt);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	// Set up the fake connections.
+	db->server->connect = connect_to_fake_server;
+	db->server->connect_arg = f;
 
-	// TODO Edge case: sql_len = 0.
+	pthread_t thread;
+	pthread_create(&thread, NULL, prepare_reconnect_thread,
+		       &f->socket_fd[0]);
+	// Regular statement.
 	rv = dqlite_prepare(
 	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
 	    &stmt, NULL);
