@@ -1659,7 +1659,21 @@ int vfs2_read_wal(sqlite3_file *file,
 	/* TODO check wal integrity before reading it */
 	(void)check_wal_integrity;
 
-	/* TODO don't leak memory on error */
+	int page_size = (int)e->page_size;
+	for (size_t i = 0; i < txns_len; i++) {
+		struct vfs2_wal_frame *f = sqlite3_malloc64(txns[i].meta.len * sizeof(*f));
+		if (f == NULL) {
+			goto oom;
+		}
+		txns[i].frames = f;
+		for (size_t j = 0; j < txns[i].meta.len; j++) {
+			void *p = sqlite3_malloc(page_size);
+			if (p == NULL) {
+				goto oom;
+			}
+			txns[i].frames[j].page = p;
+		}
+	}
 
 	for (size_t i = 0; i < txns_len; i++) {
 		sqlite3_file *wal;
@@ -1676,39 +1690,40 @@ int vfs2_read_wal(sqlite3_file *file,
 		} else {
 			wal = e->wal_prev;
 		}
-		struct vfs2_wal_frame *f = sqlite3_malloc((int)txns[i].meta.len * (int)sizeof(*f));
-		if (f == NULL) {
-			return 1;
-		}
-		txns[i].frames = f;
+
 		uint32_t start = txns[i].meta.start;
-		uint32_t end = start + txns[i].meta.len;
-		for (uint32_t j = start; j < end; i++) {
-			sqlite3_int64 off = wal_offset_from_cursor(e->page_size, j);
+		uint32_t len = txns[i].meta.len;
+		for (uint32_t j = 0; j < len; j++) {
+			sqlite3_int64 off = wal_offset_from_cursor(e->page_size, start + j);
 			struct wal_frame_hdr fhdr;
 			rv = wal->pMethods->xRead(wal, &fhdr, sizeof(fhdr), off);
 			if (rv != SQLITE_OK) {
 				return 1;
 			}
 			off += (sqlite3_int64)sizeof(fhdr);
-			int page_size = (int)e->page_size;
-			void *p = sqlite3_malloc(page_size);
-			if (p == NULL) {
-				return 1;
-			}
-			rv = wal->pMethods->xRead(wal, p, page_size, off);
+			rv = wal->pMethods->xRead(wal, txns[i].frames[j].page, page_size, off);
 			if (rv != SQLITE_OK) {
 				return 1;
 			}
 			txns[i].frames[j].page_number = ByteGetBe32(fhdr.page_number);
 			txns[i].frames[j].commit = ByteGetBe32(fhdr.commit);
-			txns[i].frames[j].page = p;
 		}
 		if (from_wal_cur) {
 			vfs2_pseudo_read_end(file, read_lock);
 		}
 	}
+
 	return 0;
+
+oom:
+	for (uint32_t i = 0; i < txns_len; i++) {
+		for (uint32_t j = 0; j < txns[i].meta.len; j++) {
+			sqlite3_free(txns[i].frames[j].page);
+		}
+		sqlite3_free(txns[i].frames);
+		txns[i].frames = NULL;
+	}
+	return 1;
 }
 
 static int write_one_frame(struct entry *e, struct wal_frame_hdr hdr, void *data)
