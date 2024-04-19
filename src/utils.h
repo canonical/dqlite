@@ -2,6 +2,7 @@
 #define DQLITE_UTILS_H_
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 /* Various utility functions and macros */
@@ -20,5 +21,9 @@
 #define PRE(cond) assert((cond))
 #define POST(cond) assert((cond))
 #define ERGO(a, b) (!(a) || (b))
+
+static inline bool is_po2(unsigned long n) {
+	return n > 0 && (n & (n - 1)) == 0;
+}
 
 #endif /* DQLITE_UTILS_H_ */

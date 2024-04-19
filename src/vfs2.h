@@ -1,10 +1,9 @@
 #ifndef DQLITE_VFS2_H
 #define DQLITE_VFS2_H
 
-#include "../include/dqlite.h"
-
 #include <sqlite3.h>
 
+#include <stddef.h>
 #include <stdint.h>
 
 /**
@@ -17,12 +16,8 @@
  * be used on the thread that opened it. The functions below that operate on
  * sqlite3_file objects created by this VFS should also only be used on that
  * thread.
- *
- * page_size can be zero to defer setting the page size to runtime (PRAGMA
- * page_size=) or use SQLite's default.
- *
  */
-sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name, unsigned page_size);
+sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name);
 
 struct vfs2_salts {
 	uint8_t salt1[4];
@@ -38,9 +33,11 @@ struct vfs2_wal_slice {
 	uint32_t len;
 };
 
-int vfs2_set_wal_limit(sqlite3_vfs *vfs,
-		       const char *name,
-		       struct vfs2_wal_slice sl);
+struct vfs2_wal_frame {
+	uint32_t page_number;
+	uint32_t commit;
+	void *page;
+};
 
 /**
  * Retrieve frames that were appended to the WAL by the last write transaction,
@@ -50,21 +47,25 @@ int vfs2_set_wal_limit(sqlite3_vfs *vfs,
  *
  * Polling the same transaction more than once is an error.
  */
-int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n, struct vfs2_wal_slice *sl);
+int vfs2_poll(sqlite3_file *file, struct vfs2_wal_frame **frames, unsigned *n, struct vfs2_wal_slice *sl);
 
-int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice sl);
+int vfs2_unhide(sqlite3_file *file);
 
-int vfs2_apply_uncommitted(sqlite3_file *file, const dqlite_vfs_frame *frames, unsigned n, struct vfs2_wal_slice *out);
+int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice stop);
+
+int vfs2_commit_barrier(sqlite3_file *file);
+
+int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct vfs2_wal_frame *frames, unsigned n, struct vfs2_wal_slice *out);
+
+int vfs2_unapply(sqlite3_file *file, struct vfs2_wal_slice stop);
 
 struct vfs2_wal_txn {
 	struct vfs2_wal_slice meta;
-	dqlite_vfs_frame *frames;
+	struct vfs2_wal_frame *frames;
 };
 
 /**
  * Synchronously read some transaction data directly from the WAL.
- *
- * Call this on the WAL file object (SQLITE_FCNTL_JOURNAL_POINTER).
  *
  * Fill the `meta` field of each vfs2_wal_txn with a slice that was previously
  * returned by vfs2_shallow_poll. On return, this function will set the `frames`
@@ -86,6 +87,10 @@ int vfs2_read_wal(sqlite3_file *file,
  */
 int vfs2_abort(sqlite3_file *file);
 
+int vfs2_pseudo_read_begin(sqlite3_file *file, uint32_t target, unsigned *out);
+
+int vfs2_pseudo_read_end(sqlite3_file *file, unsigned i);
+
 /**
  * Destroy the VFS object.
  *
@@ -94,7 +99,7 @@ int vfs2_abort(sqlite3_file *file);
  */
 void vfs2_destroy(sqlite3_vfs *vfs);
 
-// TODO access read marks and locks
+// TODO access read marks and shm_locks
 // TODO access information about checkpoints
 
 #endif

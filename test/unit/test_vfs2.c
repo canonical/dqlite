@@ -30,7 +30,7 @@ static void *set_up(const MunitParameter params[], void *user_data)
 	(void)user_data;
 	struct fixture *f = munit_malloc(sizeof(*f));
 	f->dir = test_dir_setup();
-	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), "dqlite-vfs2", 0);
+	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), "dqlite-vfs2");
 	munit_assert_ptr_not_null(f->vfs);
 	sqlite3_vfs_register(f->vfs, 1 /* make default */);
 	return f;
@@ -115,17 +115,18 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 
 	char *args[] = {NULL, "page_size", NULL};
 	rv = sqlite3_file_control(db, "main", SQLITE_FCNTL_PRAGMA, args);
-
+	sqlite3_file *fp;
+	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	rv = vfs2_commit_barrier(fp);
+	munit_assert_int(rv, ==, 0);
 	rv = sqlite3_exec(db, "CREATE TABLE foo (bar INTEGER)", NULL, NULL,
 			  NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
-	sqlite3_file *fp;
-	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
 	struct vfs2_wal_slice sl;
 	rv = vfs2_poll(fp, NULL, NULL, &sl);
 	munit_assert_int(rv, ==, 0);
-	rv = vfs2_commit(fp, sl);
+	rv = vfs2_unhide(fp);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint32(sl.start, ==, 0);
 	munit_assert_uint32(sl.len, ==, 2);
@@ -133,6 +134,7 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	rv = sqlite3_exec(db, "INSERT INTO foo (bar) VALUES (17)", NULL, NULL,
 			  NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
+	tracef("aborting...");
 	rv = vfs2_abort(fp);
 	munit_assert_int(rv, ==, 0);
 
@@ -143,7 +145,7 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint32(sl.start, ==, 2);
 	munit_assert_uint32(sl.len, ==, 1);
-	rv = vfs2_commit(fp, sl);
+	rv = vfs2_unhide(fp);
 	munit_assert_int(rv, ==, 0);
 
 	sqlite3_stmt *stmt;
@@ -178,17 +180,17 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	rv = sqlite3_step(stmt);
 	munit_assert_int(rv, ==, SQLITE_DONE);
 
-	dqlite_vfs_frame *frames;
+	struct vfs2_wal_frame *frames;
 	unsigned n;
 	rv = vfs2_poll(fp, &frames, &n, &sl);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint(n, ==, 1);
 	munit_assert_not_null(frames);
-	munit_assert_not_null(frames[0].data);
-	sqlite3_free(frames[0].data);
+	munit_assert_not_null(frames[0].page);
+	sqlite3_free(frames[0].page);
 	sqlite3_free(frames);
 
-	rv = vfs2_commit(fp, sl);
+	rv = vfs2_unhide(fp);
 	munit_assert_int(rv, ==, 0);
 
 	rv = sqlite3_reset(stmt);
@@ -264,16 +266,25 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 	make_wal_hdr(wal2_hdronly, 0, 17, 103);
 	prepare_wals(buf, NULL, 0, wal2_hdronly, sizeof(wal2_hdronly));
 	sqlite3 *db;
+	tracef("opening...");
 	int rv = sqlite3_open(buf, &db);
 	munit_assert_int(rv, ==, SQLITE_OK);
+	tracef("setup...");
 	rv = sqlite3_exec(db,
 			  "PRAGMA page_size=" PAGE_SIZE_STR ";"
 			  "PRAGMA journal_mode=WAL;"
 			  "PRAGMA wal_autocheckpoint=0",
 			  NULL, NULL, NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
+	sqlite3_file *fp;
+	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	tracef("barrier...");
+	rv = vfs2_commit_barrier(fp);
+	munit_assert_int(rv, ==, 0);
+	tracef("create table...");
 	rv = sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
+	tracef("closing...");
 	rv = sqlite3_close(db);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
@@ -338,7 +349,7 @@ TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
 	struct vfs2_wal_slice sl;
 	rv = vfs2_poll(fp, NULL, NULL, &sl);
 	munit_assert_int(rv, ==, 0);
-	rv = vfs2_commit(fp, sl);
+	rv = vfs2_unhide(fp);
 	rv = sqlite3_exec(db, "BEGIN", NULL, NULL, NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
 	char sql[100];
