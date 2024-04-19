@@ -70,6 +70,11 @@ sudo apt update
 sudo apt install libdqlite-dev
 ```
 
+Contributing
+------------
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 Build
 -----
 
