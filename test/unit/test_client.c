@@ -145,45 +145,91 @@ TEST_TEAR_DOWN(client)
 	free(f);
 }
 
+#define READ_DECODE(REQUEST, LOWER, UPPER)                         \
+	{                                                          \
+		tracef("attempting read");                         \
+		rv = read(fd, buf, buf_cap);                       \
+		tracef("read %d bytes", rv);                       \
+		munit_assert_int(rv, >, 0);                        \
+                                                                   \
+		tracef("attempting decode " #UPPER);               \
+		struct cursor cursor = { buf, buf_cap };           \
+		rv = request_##LOWER##__decode(&cursor, &REQUEST); \
+		munit_assert_int(rv, ==, 0);                       \
+	}
+
+#define ENCODE_WRITE(RESPONSE, LOWER, UPPER)                                 \
+	{                                                                    \
+		/* Make this a new pointer because we dont want the response \
+		   to be changing the offsets. */                            \
+		struct message message = { 0 };                              \
+		message.words = response_##LOWER##__sizeof(&response) / 8;   \
+		message.type = DQLITE_RESPONSE_##UPPER;                      \
+		message.schema = 1;                                          \
+		response_cursor = buf;                                       \
+		message__encode(&message, &response_cursor);                 \
+		tracef("attempting write message");                          \
+		rv = write(fd, &message, message__sizeof(&message));         \
+		tracef("wrote %d bytes", rv);                                \
+		munit_assert_int(rv, >, 0);                                  \
+                                                                             \
+		tracef("attempting encode " #UPPER);                         \
+		response_cursor = buf;                                       \
+		response_##LOWER##__encode(&response, &response_cursor);     \
+		tracef("attempting write response");                         \
+		rv = write(fd, buf, response_cursor - buf);                  \
+		tracef("wrote %d bytes", rv);                                \
+		munit_assert_int(rv, >, 0);                                  \
+	}
+
 void *prepare_reconnect_thread(void *arg)
 {
 	int rv;
-	int fd = *(int *)arg;
+	char *response_cursor;
 	char buf[4096];
+
 	size_t buf_cap = 4096;
+	int fd = *(int *)arg;
+	int db_id = 1;
 
-	tracef("attempting read");
-	rv = read(fd, buf, buf_cap);
-	tracef("read %d bytes", rv);
-	munit_assert_int(rv, >, 0);
-
-	tracef("attempting decode");
-	struct request_leader request = { 0 };
-	struct cursor cursor = { buf, buf_cap };
-	rv = request_leader__decode(&cursor, &request);
-	munit_assert_int(rv, ==, 0);
-
-	// Make this a new pointer because we dont want the response to be
-	// changing the offsets.
-	struct response_server response = { 0 };
-	char *response_cursor = buf;
-	response.id = 1;
-	response.address = "127.0.0.1:8880";
-	struct message message = { 0 };
-	message.words = response_server__sizeof(&response);
-	message.type = DQLITE_RESPONSE_SERVER;
-	message.schema = 1;
-	message__encode(&message, &response_cursor);
-	tracef("attempting write message");
-	rv = write(fd, &message, message__sizeof(&message));
-	tracef("wrote %d bytes", rv);
-	munit_assert_int(rv, >, 0);
-
-	response_server__encode(&response, &response_cursor);
-	tracef("attempting write response");
-	rv = write(fd, buf, response_cursor - buf);
-	tracef("wrote %d bytes", rv);
-	munit_assert_int(rv, >, 0);
+	{
+		struct request_leader request = { 0 };
+		READ_DECODE(request, leader, LEADER);
+	}
+	{
+		struct response_server response = { 0 };
+		response.id = 1;
+		response.address = "127.0.0.1:8880";
+		ENCODE_WRITE(response, server, SERVER);
+	}
+	{
+		struct request_open request = { 0 };
+		READ_DECODE(request, open, OPEN);
+	}
+	{
+		struct response_db response = { 0 };
+		response.id = db_id;
+		ENCODE_WRITE(response, db, DB);
+	}
+	{
+		struct request_prepare request = { 0 };
+		READ_DECODE(request, prepare, PREPARE);
+	}
+	{
+		struct response_stmt_with_offset response = { 0 };
+		response.db_id = db_id;
+		response.id = 2;
+		response.offset = 8;
+		ENCODE_WRITE(response, stmt_with_offset, STMT_WITH_OFFSET);
+	}
+	{
+		struct request_finalize request = { 0 };
+		READ_DECODE(request, finalize, FINALIZE);
+	}
+	{
+		struct response_empty response = { 0 };
+		ENCODE_WRITE(response, empty, EMPTY);
+	}
 
 	return NULL;
 }
