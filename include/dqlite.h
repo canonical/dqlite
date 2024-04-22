@@ -42,6 +42,7 @@ typedef unsigned long long dqlite_node_id;
 
 DQLITE_EXPERIMENTAL typedef struct dqlite_server dqlite_server;
 DQLITE_EXPERIMENTAL typedef struct dqlite dqlite;
+DQLITE_EXPERIMENTAL typedef struct dqlite_options dqlite_options;
 DQLITE_EXPERIMENTAL typedef struct dqlite_stmt dqlite_stmt;
 
 /**
@@ -499,8 +500,7 @@ DQLITE_API int dqlite_node_handover(dqlite_node *n);
  */
 DQLITE_API int dqlite_node_stop(dqlite_node *n);
 
-struct dqlite_node_info
-{
+struct dqlite_node_info {
 	dqlite_node_id id;
 	const char *address;
 };
@@ -508,8 +508,7 @@ typedef struct dqlite_node_info dqlite_node_info;
 
 /* Defined to be an extensible struct, future additions to this struct should be
  * 64-bits wide and 0 should not be used as a valid value. */
-struct dqlite_node_info_ext
-{
+struct dqlite_node_info_ext {
 	uint64_t size; /* The size of this struct */
 	uint64_t id;   /* dqlite_node_id */
 	uint64_t address;
@@ -611,8 +610,7 @@ DQLITE_API void dqlite_vfs_close(sqlite3_vfs *vfs);
  *
  * A single WAL frame to be replicated.
  */
-struct dqlite_vfs_frame
-{
+struct dqlite_vfs_frame {
 	unsigned long page_number; /* Database page number. */
 	void *data;                /* Content of the database page. */
 };
@@ -677,8 +675,7 @@ DQLITE_API int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
  *
  * A data buffer.
  */
-struct dqlite_buffer
-{
+struct dqlite_buffer {
 	void *base; /* Pointer to the buffer data. */
 	size_t len; /* Length of the buffer. */
 };
@@ -733,7 +730,6 @@ DQLITE_API int dqlite_vfs_restore_disk(sqlite3_vfs *vfs,
 				       size_t main_size,
 				       size_t wal_size);
 
-
 /**
  * Open a database connection on the dqlite cluster.
  *
@@ -748,7 +744,8 @@ DQLITE_API int dqlite_vfs_restore_disk(sqlite3_vfs *vfs,
 DQLITE_API DQLITE_EXPERIMENTAL int dqlite_open(dqlite_server *server,
 					       const char *name,
 					       dqlite **db,
-					       int flags);
+					       int flags,
+					       dqlite_options *options);
 
 /**
  * Close a database after all associated prepared statements have been
@@ -769,7 +766,8 @@ DQLITE_API DQLITE_EXPERIMENTAL int dqlite_prepare(dqlite *db,
 						  const char *sql,
 						  int sql_len,
 						  dqlite_stmt **stmt,
-						  const char **tail);
+						  const char **tail,
+						  dqlite_options *options);
 
 /**
  * Create a prepared statement to be executed on the cluster.
@@ -780,7 +778,8 @@ DQLITE_API DQLITE_EXPERIMENTAL int dqlite_prepare(dqlite *db,
 						  const char *sql,
 						  int sql_len,
 						  dqlite_stmt **stmt,
-						  const char **tail);
+						  const char **tail,
+						  dqlite_options *options);
 
 /**
  * Execute a prepared statement for one "step".
@@ -795,6 +794,7 @@ DQLITE_API DQLITE_EXPERIMENTAL int dqlite_step(dqlite_stmt *stmt);
  * This ends the statement's lifecycle, rendering it invalid for further use. It
  * is the analogue of sqlite3_finalize.
  */
-DQLITE_API DQLITE_EXPERIMENTAL int dqlite_finalize(dqlite_stmt *stmt);
+DQLITE_API DQLITE_EXPERIMENTAL int dqlite_finalize(dqlite_stmt *stmt,
+						   dqlite_options *options);
 
 #endif /* DQLITE_H */

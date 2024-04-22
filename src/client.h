@@ -9,6 +9,10 @@ struct dqlite {
 	char *name; /* owned */
 };
 
+struct dqlite_options {
+	struct client_context *context;
+};
+
 struct dqlite_stmt {
 	uint32_t stmt_id;
 	uint64_t n_params;

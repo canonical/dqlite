@@ -241,13 +241,17 @@ TEST_CASE(client, prepare_reconnect, NULL)
 	dqlite *db;
 	dqlite_stmt *stmt;
 	int rv;
+	struct client_context context;
 	struct fixture *f = data;
+
 	(void)params;
+	clientContextMillis(&context, 2000);
+	dqlite_options options = { .context = &context };
 
 	/* Alarm in case the test hangs waiting for a read or write. */
 	alarm(2);
 
-	rv = dqlite_open(f->servers[0], "test", &db, 0);
+	rv = dqlite_open(f->servers[0], "test", &db, 0, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	/* Set up the fake connections. We only want to fake the "client"
@@ -262,9 +266,9 @@ TEST_CASE(client, prepare_reconnect, NULL)
 
 	rv = dqlite_prepare(
 	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
-	    &stmt, NULL);
+	    &stmt, NULL, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = dqlite_finalize(stmt);
+	rv = dqlite_finalize(stmt, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	rv = dqlite_close(db);

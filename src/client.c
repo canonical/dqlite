@@ -5,6 +5,7 @@
 
 #include "client.h"
 #include "client/protocol.h"
+#include "include/dqlite.h"
 #include "src/tracing.h"
 
 static int client_connect_to_some_server(struct client_proto *proto,
@@ -72,12 +73,19 @@ static int client_get_leader_and_open(struct client_proto *proto,
 	return SQLITE_OK;
 }
 
+// TODO Move flags into dqlite_options?
+// TODO Should all functions receive dqlite_options for future compatibility?
+//
 // TODO it acceps the dqlite_server in order to tie the lifetime of the client
 // and server. Why though? If we are not freeing any of them when we finish.
-// TODO why have here flags if they are not used?
-int dqlite_open(dqlite_server *server, const char *name, dqlite **db, int flags)
+int dqlite_open(dqlite_server *server,
+		const char *name,
+		dqlite **db,
+		int flags,
+		dqlite_options *options)
 {
 	(void)flags;
+	(void)options;
 	*db = callocChecked(1, sizeof(**db));
 	(*db)->name = strdupChecked(name);
 	(*db)->server = server;
@@ -95,26 +103,24 @@ int dqlite_prepare(dqlite *db,
 		   const char *sql,
 		   int sql_len,
 		   dqlite_stmt **stmt,
-		   const char **tail)
+		   const char **tail,
+		   dqlite_options *options)
 {
 	int rv;
 	struct client_proto proto = { 0 };
 	// TODO update db->server->proto?
 	proto.connect = db->server->connect;
 	proto.connect_arg = db->server->connect_arg;
-	struct client_context context = { 0 };
-	// TODO Why 5000? Eventually add function to configure it. Maybe add a
-	// dqlite_options argument.
 	// TODO CLOCK_MONOTONIC
-	clientContextMillis(&context, 500000);
 
 	while (true) {
 		struct timespec now = { 0 };
 		rv = clock_gettime(CLOCK_REALTIME, &now);
 		assert(rv == 0);
 		long long millis =
-		    (context.deadline.tv_sec - now.tv_sec) * 1000 +
-		    (context.deadline.tv_nsec - now.tv_nsec) / 1000000;
+		    (options->context->deadline.tv_sec - now.tv_sec) * 1000 +
+		    (options->context->deadline.tv_nsec - now.tv_nsec) /
+			1000000;
 		if (millis <= 0) {
 			return SQLITE_ERROR;
 		}
@@ -122,11 +128,12 @@ int dqlite_prepare(dqlite *db,
 		assert(rv == 0);
 		/* Connect to any server. */
 		rv = client_connect_to_some_server(&proto, &db->server->cache,
-						   &context) == SQLITE_OK;
+						   options->context) ==
+		     SQLITE_OK;
 		rv = pthread_mutex_unlock(&db->server->mutex);
 		assert(rv == 0);
-		if (client_get_leader_and_open(&proto, db->name, &context) !=
-		    SQLITE_OK) {
+		if (client_get_leader_and_open(&proto, db->name,
+					       options->context) != SQLITE_OK) {
 			clientClose(&proto);
 			continue;
 		}
@@ -138,7 +145,7 @@ int dqlite_prepare(dqlite *db,
 		if (tail != NULL) {
 			*tail = sql + sql_owned_len;
 		}
-		rv = clientSendPrepare(&proto, sql_owned, &context);
+		rv = clientSendPrepare(&proto, sql_owned, options->context);
 		free((void *)sql_owned);
 		if (rv != SQLITE_OK) {
 			clientClose(&proto);
@@ -147,7 +154,7 @@ int dqlite_prepare(dqlite *db,
 		*stmt = callocChecked(1, sizeof(**stmt));
 		rv = clientRecvStmt(&proto, &(*stmt)->stmt_id,
 				    &(*stmt)->n_params, &(*stmt)->offset,
-				    &context);
+				    options->context);
 		if (rv != SQLITE_OK) {
 			free(*stmt);
 			clientClose(&proto);
@@ -159,20 +166,17 @@ int dqlite_prepare(dqlite *db,
 	}
 }
 
-int dqlite_finalize(dqlite_stmt *stmt)
+// TODO should the options be a ptr type? What is the convention?
+int dqlite_finalize(dqlite_stmt *stmt, dqlite_options *options)
 {
-	struct client_context context;
-
 	if (stmt == NULL) {
 		return SQLITE_OK;
 	}
-	// TODO add options.
-	clientContextMillis(&context, 500000);
-	if (clientSendFinalize(&stmt->proto, stmt->stmt_id, &context) !=
+	if (clientSendFinalize(&stmt->proto, stmt->stmt_id, options->context) !=
 	    SQLITE_OK) {
 		return SQLITE_ERROR;
 	}
-	if (clientRecvEmpty(&stmt->proto, &context) != SQLITE_OK) {
+	if (clientRecvEmpty(&stmt->proto, options->context) != SQLITE_OK) {
 		return SQLITE_ERROR;
 	}
 	clientClose(&stmt->proto);

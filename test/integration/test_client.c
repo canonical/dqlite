@@ -130,14 +130,18 @@ TEST(client, openclose, setup, teardown, 0, NULL)
 {
 	dqlite *db;
 	int rv;
+	struct client_context context;
 	struct fixture *f = data;
 
-	rv = dqlite_open(f->servers[0], "test", &db, 0);
+	clientContextMillis(&context, 2000);
+	dqlite_options options = { .context = &context };
+
+	rv = dqlite_open(f->servers[0], "test", &db, 0, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
 	rv = dqlite_close(db);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
-	rv = dqlite_open(f->servers[0], "test", &db, 0);
+	rv = dqlite_open(f->servers[0], "test", &db, 0, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
 	rv = dqlite_close(db);
 	munit_assert_int(rv, ==, SQLITE_OK);
@@ -150,25 +154,29 @@ TEST(client, prepare, setup, teardown, 0, NULL)
 	dqlite *db;
 	dqlite_stmt *stmt;
 	int rv;
+	struct client_context context;
 	struct fixture *f = data;
 
-	rv = dqlite_open(f->servers[0], "test", &db, 0);
+	clientContextMillis(&context, 2000);
+	dqlite_options options = { .context = &context };
+
+	rv = dqlite_open(f->servers[0], "test", &db, 0, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	/* Regular statement. */
 	rv = dqlite_prepare(
 	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
-	    &stmt, NULL);
+	    &stmt, NULL, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = dqlite_finalize(stmt);
+	rv = dqlite_finalize(stmt, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	// TODO Edge case: sql_len = 0.
 	rv = dqlite_prepare(
 	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
-	    &stmt, NULL);
+	    &stmt, NULL, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = dqlite_finalize(stmt);
+	rv = dqlite_finalize(stmt, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	rv = dqlite_close(db);
