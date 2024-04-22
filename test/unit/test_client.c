@@ -244,7 +244,9 @@ TEST_CASE(client, prepare_reconnect, NULL)
 	struct fixture *f = data;
 	(void)params;
 
-	alarm(5);
+	/* Alarm in case the test hangs waiting for a read or write. */
+	alarm(2);
+
 	rv = dqlite_open(f->servers[0], "test", &db, 0);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
