@@ -27,27 +27,6 @@ SUITE(client);
 
 #define N_SERVERS 3
 
-/* Allocate the payload buffer, encode a request of the given lower case name
- * and initialize the fixture cursor. */
-#define ENCODE(REQUEST, LOWER)                                  \
-	{                                                       \
-		size_t n2 = request_##LOWER##__sizeof(REQUEST); \
-		char *cursor;                                   \
-		buffer__reset(f->buf1);                         \
-		cursor = buffer__advance(f->buf1, n2);          \
-		munit_assert_ptr_not_null(cursor);              \
-		request_##LOWER##__encode(REQUEST, &cursor);    \
-	}
-
-/* Decode a response of the given lower/upper case name using the buffer that
- * was written by the gateway. */
-#define DECODE(RESPONSE, LOWER)                                        \
-	{                                                              \
-		int rc2;                                               \
-		rc2 = response_##LOWER##__decode(f->cursor, RESPONSE); \
-		munit_assert_int(rc2, ==, 0);                          \
-	}
-
 struct fixture {
 	char *dirs[N_SERVERS];
 	dqlite_server *servers[N_SERVERS];

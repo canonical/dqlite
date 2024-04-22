@@ -207,6 +207,27 @@ void *prepare_reconnect_thread(void *arg)
 		READ_DECODE(request, open, OPEN);
 	}
 	{
+		struct response_failure response = { 0 };
+		response.code = 1;
+		response.message = "Not leader anymore";
+		ENCODE_WRITE(response, failure, FAILURE);
+	}
+
+	{
+		struct request_leader request = { 0 };
+		READ_DECODE(request, leader, LEADER);
+	}
+	{
+		struct response_server response = { 0 };
+		response.id = 1;
+		response.address = "127.0.0.1:8880";
+		ENCODE_WRITE(response, server, SERVER);
+	}
+	{
+		struct request_open request = { 0 };
+		READ_DECODE(request, open, OPEN);
+	}
+	{
 		struct response_db response = { 0 };
 		response.id = db_id;
 		ENCODE_WRITE(response, db, DB);

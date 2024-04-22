@@ -72,7 +72,6 @@ static int client_get_leader_and_open(struct client_proto *proto,
 	return SQLITE_OK;
 }
 
-// TODO remove DQLITE_VISIBLE_TO_TESTS from the client* functions.
 // TODO it acceps the dqlite_server in order to tie the lifetime of the client
 // and server. Why though? If we are not freeing any of them when we finish.
 // TODO why have here flags if they are not used?
@@ -110,8 +109,7 @@ int dqlite_prepare(dqlite *db,
 	// TODO CLOCK_MONOTONIC
 	clientContextMillis(&context, 500000);
 
-	bool connected = false;
-	while (!connected) {
+	while (true) {
 		struct timespec now = { 0 };
 		rv = clock_gettime(CLOCK_REALTIME, &now);
 		assert(rv == 0);
@@ -119,21 +117,21 @@ int dqlite_prepare(dqlite *db,
 		    (context.deadline.tv_sec - now.tv_sec) * 1000 +
 		    (context.deadline.tv_nsec - now.tv_nsec) / 1000000;
 		if (millis <= 0) {
-			break;
+			return DQLITE_ERROR;
 		}
 		rv = pthread_mutex_lock(&db->server->mutex);
 		assert(rv == 0);
 		// Connect to any server.
-		connected =
-		    client_connect_to_some_server(&proto, &db->server->cache,
-						  &context) == SQLITE_OK;
+		rv = client_connect_to_some_server(&proto, &db->server->cache,
+						   &context) == SQLITE_OK;
 		rv = pthread_mutex_unlock(&db->server->mutex);
 		assert(rv == 0);
 		if (client_get_leader_and_open(&proto, db->name, &context) !=
 		    SQLITE_OK) {
 			clientClose(&proto);
-			return SQLITE_ERROR;
+			continue;
 		}
+		break;
 	}
 
 	// Run the statement in the leader node.
