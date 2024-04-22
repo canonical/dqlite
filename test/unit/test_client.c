@@ -25,34 +25,13 @@ TEST_SUITE(client);
 
 #define N_SERVERS 3
 
-/* Allocate the payload buffer, encode a request of the given lower case name
- * and initialize the fixture cursor. */
-#define ENCODE(REQUEST, LOWER)                                  \
-	{                                                       \
-		size_t n2 = request_##LOWER##__sizeof(REQUEST); \
-		char *cursor;                                   \
-		buffer__reset(f->buf1);                         \
-		cursor = buffer__advance(f->buf1, n2);          \
-		munit_assert_ptr_not_null(cursor);              \
-		request_##LOWER##__encode(REQUEST, &cursor);    \
-	}
-
-/* Decode a response of the given lower/upper case name using the buffer that
- * was written by the gateway. */
-#define DECODE(RESPONSE, LOWER)                                        \
-	{                                                              \
-		int rc2;                                               \
-		rc2 = response_##LOWER##__decode(f->cursor, RESPONSE); \
-		munit_assert_int(rc2, ==, 0);                          \
-	}
-
 struct fixture {
 	char *dirs[N_SERVERS];
 	dqlite_server *servers[N_SERVERS];
 	int socket_fd[2];
 };
 
-int connect_to_fake_server(void *arg, const char *addr, int *fd)
+int connect_to_mock_server(void *arg, const char *addr, int *fd)
 {
 	struct fixture *f = (struct fixture *)arg;
 	(void)addr;
@@ -61,7 +40,7 @@ int connect_to_fake_server(void *arg, const char *addr, int *fd)
 	if (*fd == -1) {
 		return 1;
 	}
-	tracef("CONNECT TO FAKE SERVER");
+	tracef("Grab connection to mock server");
 
 	return 0;
 }
@@ -145,6 +124,7 @@ TEST_TEAR_DOWN(client)
 	free(f);
 }
 
+/* Reads from `fd` and decodes the request into `REQUEST`. */
 #define READ_DECODE(REQUEST, LOWER, UPPER)                         \
 	{                                                          \
 		tracef("attempting read");                         \
@@ -158,6 +138,7 @@ TEST_TEAR_DOWN(client)
 		munit_assert_int(rv, ==, 0);                       \
 	}
 
+/* Encodes `RESPONSE` and then writes it to `fd`. */
 #define ENCODE_WRITE(RESPONSE, LOWER, UPPER)                                 \
 	{                                                                    \
 		/* Make this a new pointer because we dont want the response \
@@ -267,14 +248,16 @@ TEST_CASE(client, prepare_reconnect, NULL)
 	rv = dqlite_open(f->servers[0], "test", &db, 0);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
-	// Set up the fake connections.
-	db->server->connect = connect_to_fake_server;
+	/* Set up the fake connections. We only want to fake the "client"
+	 * connections, `db->server->proto->connect` will continue being the
+	 * default connect. That way we do not have to fake the Raft traffic
+	 * happening in the background. */
+	db->server->connect = connect_to_mock_server;
 	db->server->connect_arg = f;
-
 	pthread_t thread;
 	pthread_create(&thread, NULL, prepare_reconnect_thread,
 		       &f->socket_fd[0]);
-	// Regular statement.
+
 	rv = dqlite_prepare(
 	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
 	    &stmt, NULL);

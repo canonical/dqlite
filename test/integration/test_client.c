@@ -33,7 +33,7 @@ struct fixture {
 	int socket_fd[2];
 };
 
-int connect_to_fake_server(void *arg, const char *addr, int *fd)
+int connect_to_mock_server(void *arg, const char *addr, int *fd)
 {
 	struct fixture *f = (struct fixture *)arg;
 	(void)addr;
@@ -155,7 +155,7 @@ TEST(client, prepare, setup, teardown, 0, NULL)
 	rv = dqlite_open(f->servers[0], "test", &db, 0);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
-	// Regular statement.
+	/* Regular statement. */
 	rv = dqlite_prepare(
 	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
 	    &stmt, NULL);

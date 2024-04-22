@@ -13,7 +13,7 @@ static int client_connect_to_some_server(struct client_proto *proto,
 {
 	int rv;
 
-	for (unsigned int i = 0; i < cache->len; i++) {
+	for (unsigned i = 0; i < cache->len; i++) {
 		struct client_node_info node = cache->nodes[i];
 		if (clientOpen(proto, node.addr, node.id) != 0) {
 			continue;
@@ -35,7 +35,7 @@ static int client_get_leader_and_open(struct client_proto *proto,
 				      struct client_context *context)
 {
 	int rv;
-	// Get the leader from the server we connected to.
+	/* Get the leader from the server we connected to. */
 	rv = clientSendLeader(proto, context);
 	if (rv != SQLITE_OK) {
 		return rv;
@@ -48,7 +48,7 @@ static int client_get_leader_and_open(struct client_proto *proto,
 	}
 	clientClose(proto);
 
-	// Connect to the leader and open the db.
+	/* Connect to the leader and open the db. */
 	rv = clientOpen(proto, address, server_id);
 	if (rv != SQLITE_OK) {
 		free(address);
@@ -78,7 +78,7 @@ static int client_get_leader_and_open(struct client_proto *proto,
 int dqlite_open(dqlite_server *server, const char *name, dqlite **db, int flags)
 {
 	(void)flags;
-	*db = callocChecked(1, sizeof(dqlite));
+	*db = callocChecked(1, sizeof(**db));
 	(*db)->name = strdupChecked(name);
 	(*db)->server = server;
 	return SQLITE_OK;
@@ -91,7 +91,6 @@ int dqlite_close(dqlite *db)
 	return SQLITE_OK;
 }
 
-// TODO what happens if the leader changes, do we have a retry strategy?
 int dqlite_prepare(dqlite *db,
 		   const char *sql,
 		   int sql_len,
@@ -100,7 +99,7 @@ int dqlite_prepare(dqlite *db,
 {
 	int rv;
 	struct client_proto proto = { 0 };
-	// TODO update client_proto in db->server?
+	// TODO update db->server->proto?
 	proto.connect = db->server->connect;
 	proto.connect_arg = db->server->connect_arg;
 	struct client_context context = { 0 };
@@ -117,11 +116,11 @@ int dqlite_prepare(dqlite *db,
 		    (context.deadline.tv_sec - now.tv_sec) * 1000 +
 		    (context.deadline.tv_nsec - now.tv_nsec) / 1000000;
 		if (millis <= 0) {
-			return DQLITE_ERROR;
+			return SQLITE_ERROR;
 		}
 		rv = pthread_mutex_lock(&db->server->mutex);
 		assert(rv == 0);
-		// Connect to any server.
+		/* Connect to any server. */
 		rv = client_connect_to_some_server(&proto, &db->server->cache,
 						   &context) == SQLITE_OK;
 		rv = pthread_mutex_unlock(&db->server->mutex);
@@ -131,33 +130,33 @@ int dqlite_prepare(dqlite *db,
 			clientClose(&proto);
 			continue;
 		}
-		break;
-	}
 
-	// Run the statement in the leader node.
-	// TODO check zero length.
-	size_t sql_owned_len = sql_len >= 0 ? (size_t)sql_len : strlen(sql);
-	const char *sql_owned = strndupChecked(sql, sql_owned_len);
-	if (tail != NULL) {
-		*tail = sql + sql_owned_len;
-	}
-	rv = clientSendPrepare(&proto, sql_owned, &context);
-	free((void *)sql_owned);
-	if (rv != SQLITE_OK) {
-		clientClose(&proto);
-		return SQLITE_ERROR;
-	}
-	*stmt = callocChecked(1, sizeof(**stmt));
-	rv = clientRecvStmt(&proto, &(*stmt)->stmt_id, &(*stmt)->n_params,
-			    &(*stmt)->offset, &context);
-	if (rv != SQLITE_OK) {
-		free(*stmt);
-		clientClose(&proto);
-		return SQLITE_ERROR;
-	}
-	(*stmt)->proto = proto;
+		/* Run the statement in the leader node. */
+		size_t sql_owned_len =
+		    sql_len >= 0 ? (size_t)sql_len : strlen(sql);
+		const char *sql_owned = strndupChecked(sql, sql_owned_len);
+		if (tail != NULL) {
+			*tail = sql + sql_owned_len;
+		}
+		rv = clientSendPrepare(&proto, sql_owned, &context);
+		free((void *)sql_owned);
+		if (rv != SQLITE_OK) {
+			clientClose(&proto);
+			continue;
+		}
+		*stmt = callocChecked(1, sizeof(**stmt));
+		rv = clientRecvStmt(&proto, &(*stmt)->stmt_id,
+				    &(*stmt)->n_params, &(*stmt)->offset,
+				    &context);
+		if (rv != SQLITE_OK) {
+			free(*stmt);
+			clientClose(&proto);
+			continue;
+		}
+		(*stmt)->proto = proto;
 
-	return SQLITE_OK;
+		return SQLITE_OK;
+	}
 }
 
 int dqlite_finalize(dqlite_stmt *stmt)
