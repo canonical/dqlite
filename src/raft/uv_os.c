@@ -52,7 +52,7 @@ int UvOsFallocateEmulation(int fd, off_t offset, off_t len)
 	if (f.f_bsize == 0) {
 		increment = 512;
 	} else if (f.f_bsize < 4096) {
-		increment = f.f_bsize;
+		increment = (ssize_t)f.f_bsize;
 	} else {
 		increment = 4096;
 	}
