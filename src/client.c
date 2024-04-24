@@ -16,7 +16,8 @@ static int client_connect_to_some_server(struct client_proto *proto,
 
 	for (unsigned i = 0; i < cache->len; i++) {
 		struct client_node_info node = cache->nodes[i];
-		if (clientOpen(proto, node.addr, node.id) != 0) {
+		rv = clientOpen(proto, node.addr, node.id);
+		if (rv != 0) {
 			continue;
 		}
 		rv = clientSendHandshake(proto, context);
@@ -139,8 +140,9 @@ int dqlite_prepare(dqlite *db,
 			clientClose(&proto);
 			continue;
 		}
-		if (client_get_leader_and_open(&proto, db->name,
-					       options->context) != SQLITE_OK) {
+		rv = client_get_leader_and_open(&proto, db->name,
+						options->context);
+		if (rv != SQLITE_OK) {
 			clientClose(&proto);
 			continue;
 		}
@@ -176,14 +178,17 @@ int dqlite_prepare(dqlite *db,
 // TODO should the options be a ptr type? What is the convention?
 int dqlite_finalize(dqlite_stmt *stmt, dqlite_options *options)
 {
+	int rv;
+
 	if (stmt == NULL) {
 		return SQLITE_OK;
 	}
-	if (clientSendFinalize(&stmt->proto, stmt->stmt_id, options->context) !=
-	    SQLITE_OK) {
+	rv = clientSendFinalize(&stmt->proto, stmt->stmt_id, options->context);
+	if (rv != SQLITE_OK) {
 		return SQLITE_ERROR;
 	}
-	if (clientRecvEmpty(&stmt->proto, options->context) != SQLITE_OK) {
+	rv = clientRecvEmpty(&stmt->proto, options->context);
+	if (rv != SQLITE_OK) {
 		return SQLITE_ERROR;
 	}
 	clientClose(&stmt->proto);
