@@ -15,9 +15,6 @@ jobs:
         compiler:
           - gcc
           - clang
-        tracing:
-          - LIBDQLITE_TRACE=1
-          - NOLIBDQLITE_TRACE=1
         dqlite-next:
           - yes
           - no
@@ -53,8 +50,8 @@ jobs:
     - name: Test
       env:
         CC: ${{ matrix.compiler }}
+        LIBDQLITE_TRACE: 1
       run: |
-           export ${{ matrix.tracing }}
            make check || (cat ./test-suite.log && false)
 
     - name: Coverage
