@@ -113,7 +113,9 @@ int dqlite_prepare(dqlite *db,
 	proto.connect_arg = db->server->connect_arg;
 	// TODO CLOCK_MONOTONIC
 
+	/* Retry until success or context expires. */
 	while (true) {
+		/* Check if context has expired. */
 		struct timespec now = { 0 };
 		rv = clock_gettime(CLOCK_REALTIME, &now);
 		assert(rv == 0);
@@ -126,6 +128,7 @@ int dqlite_prepare(dqlite *db,
 		}
 		rv = pthread_mutex_lock(&db->server->mutex);
 		assert(rv == 0);
+
 		/* Connect to any server. */
 		bool connected = SQLITE_OK == client_connect_to_some_server(
 						  &proto, &db->server->cache,
