@@ -127,11 +127,15 @@ int dqlite_prepare(dqlite *db,
 		rv = pthread_mutex_lock(&db->server->mutex);
 		assert(rv == 0);
 		/* Connect to any server. */
-		rv = client_connect_to_some_server(&proto, &db->server->cache,
-						   options->context) ==
-		     SQLITE_OK;
+		bool connected = SQLITE_OK == client_connect_to_some_server(
+						  &proto, &db->server->cache,
+						  options->context);
 		rv = pthread_mutex_unlock(&db->server->mutex);
 		assert(rv == 0);
+		if (!connected) {
+			clientClose(&proto);
+			continue;
+		}
 		if (client_get_leader_and_open(&proto, db->name,
 					       options->context) != SQLITE_OK) {
 			clientClose(&proto);
