@@ -34,20 +34,6 @@ struct fixture {
 	int socket_fd[2];
 };
 
-int connect_to_mock_server(void *arg, const char *addr, int *fd)
-{
-	struct fixture *f = (struct fixture *)arg;
-	(void)addr;
-
-	*fd = dup(f->socket_fd[1]);
-	if (*fd == -1) {
-		return 1;
-	}
-	tracef("CONNECT TO FAKE SERVER");
-
-	return 0;
-}
-
 static void start_each_server(struct fixture *f)
 {
 	const char *addrs[] = { "127.0.0.1:8880", "127.0.0.1:8881" };
