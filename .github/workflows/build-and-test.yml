@@ -18,6 +18,9 @@ jobs:
         tracing:
           - LIBDQLITE_TRACE=1
           - NOLIBDQLITE_TRACE=1
+        dqlite-next:
+          - yes
+          - no
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -38,7 +41,8 @@ jobs:
         CC: ${{ matrix.compiler }}
       run: |
           autoreconf -i
-          ./configure --enable-debug --enable-code-coverage --enable-sanitize --enable-build-raft
+          ./configure --enable-debug --enable-code-coverage --enable-sanitize \
+                      --enable-build-raft --enable-dqlite-next=${{ matrix.dqlite-next }}
           make -j4 unit-test integration-test \
                    raft-core-fuzzy-test \
                    raft-core-integration-test \
