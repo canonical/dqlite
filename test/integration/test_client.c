@@ -1,4 +1,5 @@
 #include <pthread.h>
+#include <stdio.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include "../lib/client_protocol.h"
@@ -163,22 +164,30 @@ TEST(client, prepare, setup, teardown, 0, NULL)
 	rv = dqlite_open(f->servers[0], "test", &db, 0, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
+	const char *sql_first_query =
+	    "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)";
+	char sql[200];
+	rv = sprintf(sql, "%s; SELECT * FROM pairs", sql_first_query);
+	munit_assert_int(rv, >, 0);
+
+	const char *tail;
 	/* Regular statement. */
-	rv = dqlite_prepare(
-	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
-	    &stmt, NULL, &options);
+	rv = dqlite_prepare(db, sql, -1, &stmt, &tail, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
+	/* Tail should be the first byte of the new statement, past the
+	 * semicolon, hence the +1 */
+	munit_assert_ptr_equal(tail, sql + strlen(sql_first_query) + 1);
+	rv = dqlite_finalize(stmt, &options);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	strcpy(sql, sql_first_query);
+	rv = dqlite_prepare(db, sql, -1, &stmt, &tail, &options);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	munit_assert_ptr_equal(tail, sql + strlen(sql));
 	rv = dqlite_finalize(stmt, &options);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	// TODO Edge case: sql_len = 0.
-	rv = dqlite_prepare(
-	    db, "CREATE TABLE pairs (k TEXT, v INTEGER, f FLOAT, b BLOB)", -1,
-	    &stmt, NULL, &options);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = dqlite_finalize(stmt, &options);
-	munit_assert_int(rv, ==, SQLITE_OK);
-
 	rv = dqlite_close(db);
 	munit_assert_int(rv, ==, SQLITE_OK);
 

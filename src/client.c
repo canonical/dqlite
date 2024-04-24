@@ -142,9 +142,6 @@ int dqlite_prepare(dqlite *db,
 		size_t sql_owned_len =
 		    sql_len >= 0 ? (size_t)sql_len : strlen(sql);
 		const char *sql_owned = strndupChecked(sql, sql_owned_len);
-		if (tail != NULL) {
-			*tail = sql + sql_owned_len;
-		}
 		rv = clientSendPrepare(&proto, sql_owned, options->context);
 		free((void *)sql_owned);
 		if (rv != SQLITE_OK) {
@@ -159,6 +156,9 @@ int dqlite_prepare(dqlite *db,
 			free(*stmt);
 			clientClose(&proto);
 			continue;
+		}
+		if (tail != NULL) {
+			*tail = sql + (*stmt)->offset;
 		}
 		(*stmt)->proto = proto;
 
