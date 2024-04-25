@@ -529,8 +529,8 @@ static void query_batch_async(struct handle *req, enum pool_half half)
 		req->work.rc = query__batch(stmt, req->buffer);
 		return;
 	}  /* else POOL_BOTTOM_HALF => */
-
 	rc = req->work.rc;
+
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		assert(g->leader != NULL);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
@@ -554,6 +554,8 @@ done:
 	}
 }
 
+#ifdef DQLITE_NEXT
+
 static void qb_top(pool_work_t *w)
 {
 	struct handle *req = CONTAINER_OF(w, struct handle, work);
@@ -566,18 +568,25 @@ static void qb_bottom(pool_work_t *w)
 	query_batch_async(req, POOL_BOTTOM_HALF);
 }
 
+#endif
+
 static void query_batch(struct gateway *g)
 {
-	struct dqlite_node *node = g->raft->data;
 	struct handle *req = g->req;
-	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
-		? pool_ut_fallback() : &node->pool;
 	assert(req != NULL);
 	g->req = NULL;
 	req->gw = g;
 
+#ifdef DQLITE_NEXT
+	struct dqlite_node *node = g->raft->data;
+	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
+		? pool_ut_fallback() : &node->pool;
 	pool_queue_work(pool, &req->work, g->leader->db->cookie,
 			WT_UNORD, qb_top, qb_bottom);
+#else
+	query_batch_async(req, POOL_TOP_HALF);
+	query_batch_async(req, POOL_BOTTOM_HALF);
+#endif
 }
 
 static void query_barrier_cb(struct barrier *barrier, int status)
