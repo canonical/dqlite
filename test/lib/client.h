@@ -160,6 +160,21 @@
 		munit_assert_int(rv_, ==, 0);                             \
 	}
 
+#define QUERY_DONE(STMT_ID, ROWS, ROWS_HOOK)                                  \
+	{                                                                     \
+		int rv_;                                                      \
+		bool done;                                                    \
+		rv_ = clientSendQuery(f->client, STMT_ID, NULL, 0, NULL);     \
+		munit_assert_int(rv_, ==, 0);                                 \
+		do {                                                          \
+			rv_ = clientRecvRows(f->client, (ROWS), &done, NULL); \
+			munit_assert_int(rv_, ==, 0);                         \
+			ROWS_HOOK;                                            \
+			clientCloseRows((ROWS));                              \
+			*(ROWS) = (struct rows){};                            \
+		} while (!done);                                              \
+	}
+
 #define QUERY_SQL(SQL, ROWS)                                             \
 	{                                                                \
 		int rv_;                                                 \
@@ -167,6 +182,21 @@
 		munit_assert_int(rv_, ==, 0);                            \
 		rv_ = clientRecvRows(f->client, ROWS, NULL, NULL);       \
 		munit_assert_int(rv_, ==, 0);                            \
+	}
+
+#define QUERY_SQL_DONE(SQL, ROWS, ROWS_HOOK)                                  \
+	{                                                                     \
+		int rv_;                                                      \
+		bool done;                                                    \
+		rv_ = clientSendQuerySQL(f->client, SQL, NULL, 0, NULL);      \
+		munit_assert_int(rv_, ==, 0);                                 \
+		do {                                                          \
+			rv_ = clientRecvRows(f->client, (ROWS), &done, NULL); \
+			munit_assert_int(rv_, ==, 0);                         \
+			ROWS_HOOK;                                            \
+			clientCloseRows((ROWS));                              \
+			*(ROWS) = (struct rows){};                            \
+		} while (!done);                                              \
 	}
 
 #endif /* TEST_CLIENT_H */

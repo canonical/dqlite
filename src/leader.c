@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 
 #include "../include/dqlite.h"
@@ -5,9 +6,14 @@
 #include "./lib/assert.h"
 
 #include "command.h"
+#include "conn.h"
+#include "gateway.h"
 #include "id.h"
 #include "leader.h"
+#include "lib/threadpool.h"
+#include "server.h"
 #include "tracing.h"
+#include "utils.h"
 #include "vfs.h"
 
 /* Called when a leader exec request terminates and the associated callback can
@@ -346,7 +352,7 @@ err:
 	return rv;
 }
 
-static void leaderExecV2(struct exec *req)
+static void leaderExecV2(struct exec *req, enum pool_half half)
 {
 	tracef("leader exec v2 id:%" PRIu64, req->id);
 	struct leader *l = req->leader;
@@ -358,7 +364,10 @@ static void leaderExecV2(struct exec *req)
 	unsigned i;
 	int rv;
 
-	req->status = sqlite3_step(req->stmt);
+	if (half == POOL_TOP_HALF) {
+		req->status = sqlite3_step(req->stmt);
+		return;
+	} /* else POOL_BOTTOM_HALF => */
 
 	rv = VfsPoll(vfs, db->path, &frames, &n);
 	if (rv != 0 || n == 0) {
@@ -398,17 +407,44 @@ finish:
 	leaderExecDone(l->exec);
 }
 
+#ifdef DQLITE_NEXT
+
+static void exec_top(pool_work_t *w)
+{
+	struct exec *req = CONTAINER_OF(w, struct exec, work);
+	leaderExecV2(req, POOL_TOP_HALF);
+}
+
+static void exec_bottom(pool_work_t *w)
+{
+	struct exec *req = CONTAINER_OF(w, struct exec, work);
+	leaderExecV2(req, POOL_BOTTOM_HALF);
+}
+
+#endif
+
 static void execBarrierCb(struct barrier *barrier, int status)
 {
 	tracef("exec barrier cb status %d", status);
 	struct exec *req = barrier->data;
 	struct leader *l = req->leader;
+
 	if (status != 0) {
 		l->exec->status = status;
 		leaderExecDone(l->exec);
 		return;
 	}
-	leaderExecV2(req);
+
+#ifdef DQLITE_NEXT
+	struct dqlite_node *node = l->raft->data;
+	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
+		? pool_ut_fallback() : &node->pool;
+	pool_queue_work(pool, &req->work, l->db->cookie,
+			WT_UNORD, exec_top, exec_bottom);
+#else
+	leaderExecV2(req, POOL_TOP_HALF);
+	leaderExecV2(req, POOL_BOTTOM_HALF);
+#endif
 }
 
 int leader__exec(struct leader *l,
@@ -431,6 +467,7 @@ int leader__exec(struct leader *l,
 	req->cb = cb;
 	req->barrier.data = req;
 	req->barrier.cb = NULL;
+	req->work = (pool_work_t){};
 
 	rv = leader__barrier(l, &req->barrier, execBarrierCb);
 	if (rv != 0) {

@@ -1,11 +1,14 @@
 #include "gateway.h"
 
 #include "bind.h"
+#include "conn.h"
 #include "id.h"
+#include "lib/threadpool.h"
 #include "protocol.h"
 #include "query.h"
 #include "request.h"
 #include "response.h"
+#include "server.h"
 #include "tracing.h"
 #include "translate.h"
 #include "tuple.h"
@@ -96,8 +99,8 @@ void gateway__close(struct gateway *g)
  * decode the request. This is used in the common case where only one schema
  * version is extant. */
 #define START_V0(REQ, RES, ...)                                       \
-	struct request_##REQ request = {0};                           \
-	struct response_##RES response = {0};                         \
+	struct request_##REQ request = { 0 };                         \
+	struct response_##RES response = { 0 };                       \
 	{                                                             \
 		int rv_;                                              \
 		if (req->schema != 0) {                               \
@@ -300,8 +303,8 @@ static void prepareBarrierCb(struct barrier *barrier, int status)
 	tracef("prepare barrier cb status:%d", status);
 	struct gateway *g = barrier->data;
 	struct handle *req = g->req;
-	struct response_stmt response_v0 = {0};
-	struct response_stmt_with_offset response_v1 = {0};
+	struct response_stmt response_v0 = { 0 };
+	struct response_stmt_with_offset response_v1 = { 0 };
 	const char *sql = req->sql;
 	struct stmt *stmt;
 	const char *tail;
@@ -372,7 +375,7 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	tracef("handle prepare");
 	struct cursor *cursor = &req->cursor;
 	struct stmt *stmt;
-	struct request_prepare request = {0};
+	struct request_prepare request = { 0 };
 	int rc;
 
 	if (req->schema != DQLITE_PREPARE_STMT_SCHEMA_V0 &&
@@ -462,7 +465,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	tracef("handle exec schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct stmt *stmt;
-	struct request_exec request = {0};
+	struct request_exec request = { 0 };
 	int tuple_format;
 	uint64_t req_id;
 	int rv;
@@ -514,17 +517,20 @@ static int handle_exec(struct gateway *g, struct handle *req)
  * given request with a single batch of rows.
  *
  * A single batch of rows is typically about the size of a memory page. */
-static void query_batch(struct gateway *g)
+static void query_batch_async(struct handle *req, enum pool_half half)
 {
-	struct handle *req = g->req;
-	assert(req != NULL);
-	g->req = NULL;
+	struct gateway *g = req->gw;
 	sqlite3_stmt *stmt = req->stmt;
 	assert(stmt != NULL);
 	struct response_rows response;
 	int rc;
 
-	rc = query__batch(stmt, req->buffer);
+	if (half == POOL_TOP_HALF) {
+		req->work.rc = query__batch(stmt, req->buffer);
+		return;
+	}  /* else POOL_BOTTOM_HALF => */
+	rc = req->work.rc;
+
 	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
 		assert(g->leader != NULL);
 		failure(req, rc, sqlite3_errmsg(g->leader->conn));
@@ -546,6 +552,41 @@ done:
 	if (req->type == DQLITE_REQUEST_QUERY_SQL) {
 		sqlite3_finalize(stmt);
 	}
+}
+
+#ifdef DQLITE_NEXT
+
+static void qb_top(pool_work_t *w)
+{
+	struct handle *req = CONTAINER_OF(w, struct handle, work);
+	query_batch_async(req, POOL_TOP_HALF);
+}
+
+static void qb_bottom(pool_work_t *w)
+{
+	struct handle *req = CONTAINER_OF(w, struct handle, work);
+	query_batch_async(req, POOL_BOTTOM_HALF);
+}
+
+#endif
+
+static void query_batch(struct gateway *g)
+{
+	struct handle *req = g->req;
+	assert(req != NULL);
+	g->req = NULL;
+	req->gw = g;
+
+#ifdef DQLITE_NEXT
+	struct dqlite_node *node = g->raft->data;
+	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
+		? pool_ut_fallback() : &node->pool;
+	pool_queue_work(pool, &req->work, g->leader->db->cookie,
+			WT_UNORD, qb_top, qb_bottom);
+#else
+	query_batch_async(req, POOL_TOP_HALF);
+	query_batch_async(req, POOL_BOTTOM_HALF);
+#endif
 }
 
 static void query_barrier_cb(struct barrier *barrier, int status)
@@ -591,7 +632,7 @@ static int handle_query(struct gateway *g, struct handle *req)
 	tracef("handle query schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct stmt *stmt;
-	struct request_query request = {0};
+	struct request_query request = { 0 };
 	int tuple_format;
 	bool is_readonly;
 	uint64_t req_id;
@@ -692,7 +733,7 @@ static void handle_exec_sql_next(struct gateway *g,
 {
 	tracef("handle exec sql next");
 	struct cursor *cursor = &req->cursor;
-	struct response_result response = {0};
+	struct response_result response = { 0 };
 	sqlite3_stmt *stmt = NULL;
 	const char *tail;
 	int tuple_format;
@@ -781,7 +822,7 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 {
 	tracef("handle exec sql schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
-	struct request_exec_sql request = {0};
+	struct request_exec_sql request = { 0 };
 	int rc;
 
 	/* Fail early if the schema version isn't recognized, even though we
@@ -916,7 +957,7 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 {
 	tracef("handle query sql schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
-	struct request_query_sql request = {0};
+	struct request_query_sql request = { 0 };
 	int rv;
 
 	/* Fail early if the schema version isn't recognized. */
@@ -960,8 +1001,7 @@ static int handle_interrupt(struct gateway *g, struct handle *req)
 	return 0;
 }
 
-struct change
-{
+struct change {
 	struct gateway *gateway;
 	struct raft_change req;
 };
@@ -973,7 +1013,7 @@ static void raftChangeCb(struct raft_change *change, int status)
 	struct change *r = change->data;
 	struct gateway *g = r->gateway;
 	struct handle *req = g->req;
-	struct response_empty response = {0};
+	struct response_empty response = { 0 };
 	g->req = NULL;
 	sqlite3_free(r);
 	if (status != 0) {
@@ -1146,7 +1186,7 @@ static int handle_dump(struct gateway *g, struct handle *req)
 	bool err = true;
 	sqlite3_vfs *vfs;
 	char *cur;
-	char filename[1024] = {0};
+	char filename[1024] = { 0 };
 	void *data;
 	size_t n;
 	uint8_t *page;
@@ -1312,7 +1352,7 @@ void raftTransferCb(struct raft_transfer *r)
 {
 	struct gateway *g = r->data;
 	struct handle *req = g->req;
-	struct response_empty response = {0};
+	struct response_empty response = { 0 };
 	g->req = NULL;
 	sqlite3_free(r);
 	if (g->raft->state == RAFT_LEADER) {
@@ -1425,6 +1465,7 @@ handle:
 	req->sql = NULL;
 	req->stmt = stmt;
 	req->exec_count = 0;
+	req->work = (pool_work_t){};
 
 	switch (type) {
 #define DISPATCH(LOWER, UPPER, _)            \
@@ -1451,6 +1492,8 @@ int gateway__resume(struct gateway *g, bool *finished)
 	}
 	tracef("gateway resume - not finished");
 	*finished = false;
+
+	g->req->work = (pool_work_t){};
 	query_batch(g);
 	return 0;
 }

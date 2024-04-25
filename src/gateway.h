@@ -23,8 +23,7 @@ struct handle;
  * Handle requests from a single connected client and forward them to
  * SQLite.
  */
-struct gateway
-{
+struct gateway {
 	struct config *config;       /* Configuration */
 	struct registry *registry;   /* Register of existing databases */
 	struct raft *raft;           /* Raft instance */
@@ -62,8 +61,7 @@ typedef void (*handle_cb)(struct handle *req,
 			  int status,
 			  uint8_t type,
 			  uint8_t schema);
-struct handle
-{
+struct handle {
 	/* User data. */
 	void *data;
 	/* Type code for this request. */
@@ -106,6 +104,10 @@ struct handle
 	/* Callback that will be invoked at the end of request processing to
 	 * write the response. */
 	handle_cb cb;
+	/* A link into thread pool's queues. */
+	pool_work_t work;
+	/* Gateway the handle belongs to. */
+	struct gateway *gw;
 };
 
 /**

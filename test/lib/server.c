@@ -3,6 +3,7 @@
 #include "fs.h"
 #include "server.h"
 
+
 static int endpointConnect(void *data, const char *address, int *fd)
 {
 	struct sockaddr_un addr;

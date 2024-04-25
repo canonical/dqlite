@@ -431,6 +431,16 @@ DQLITE_API int dqlite_node_set_target_voters(dqlite_node *n, int voters);
  */
 DQLITE_API int dqlite_node_set_target_standbys(dqlite_node *n, int standbys);
 
+
+/**
+ * Set the target number of threads in the thread pool processing sqlite3 disk
+ * operations.
+ *
+ * The default pool thread count is 4.
+ */
+DQLITE_API int dqlite_node_set_pool_thread_count(dqlite_node *n,
+						 unsigned thread_count);
+
 /**
  * Enable or disable auto-recovery for corrupted disk files.
  *
