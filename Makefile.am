@@ -3,6 +3,10 @@ AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(PTHREAD_CFLAGS)
 AM_LDFLAGS = $(UV_LIBS) $(PTHREAD_LIBS)
 
+if DQLITE_NEXT_ENABLED
+AM_CFLAGS += -DDQLITE_NEXT
+endif
+
 if !BUILD_SQLITE_ENABLED
 AM_LDFLAGS += $(SQLITE_LIBS)
 endif
@@ -13,16 +17,18 @@ AM_LDFLAGS += $(RAFT_LIBS)
 endif
 
 if DEBUG_ENABLED
-  AM_CFLAGS += -g3
+AM_CFLAGS += -g3
 else
-  AM_CFLAGS += -O2
+AM_CFLAGS += -O2
 endif
+
 if SANITIZE_ENABLED
-  AM_CFLAGS += -fsanitize=address
+AM_CFLAGS += -fsanitize=address
 endif
+
 if BACKTRACE_ENABLED
-  AM_CFLAGS += -DDQLITE_ASSERT_WITH_BACKTRACE -DRAFT_ASSERT_WITH_BACKTRACE
-  AM_LDFLAGS += -lbacktrace
+AM_CFLAGS += -DDQLITE_ASSERT_WITH_BACKTRACE -DRAFT_ASSERT_WITH_BACKTRACE
+AM_LDFLAGS += -lbacktrace
 endif
 
 include_HEADERS = include/dqlite.h
@@ -324,6 +330,7 @@ libraft_la_LDFLAGS += $(LZ4_LIBS)
 raft_uv_integration_test_CFLAGS += -DLZ4_AVAILABLE
 raft_uv_integration_test_LDFLAGS += $(LZ4_LIBS)
 endif
+
 if LZ4_ENABLED
 libdqlite_la_CFLAGS += -DLZ4_ENABLED
 raft_uv_integration_test_CFLAGS += -DLZ4_ENABLED
