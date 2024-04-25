@@ -367,7 +367,7 @@ static void leaderExecV2(struct exec *req, enum pool_half half)
 	if (half == POOL_TOP_HALF) {
 		req->status = sqlite3_step(req->stmt);
 		return;
-	} /* else POOL_TOP_HALF => */
+	} /* else POOL_BOTTOM_HALF => */
 
 	rv = VfsPoll(vfs, db->path, &frames, &n);
 	if (rv != 0 || n == 0) {
@@ -407,6 +407,8 @@ finish:
 	leaderExecDone(l->exec);
 }
 
+#ifdef DQLITE_NEXT
+
 static void exec_top(pool_work_t *w)
 {
 	struct exec *req = CONTAINER_OF(w, struct exec, work);
@@ -419,15 +421,13 @@ static void exec_bottom(pool_work_t *w)
 	leaderExecV2(req, POOL_BOTTOM_HALF);
 }
 
+#endif
+
 static void execBarrierCb(struct barrier *barrier, int status)
 {
 	tracef("exec barrier cb status %d", status);
 	struct exec *req = barrier->data;
 	struct leader *l = req->leader;
-	struct dqlite_node *node = l->raft->data;
-	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
-		? pool_ut_fallback() : &node->pool;
-
 
 	if (status != 0) {
 		l->exec->status = status;
@@ -435,8 +435,16 @@ static void execBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
+#ifdef DQLITE_NEXT
+	struct dqlite_node *node = l->raft->data;
+	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
+		? pool_ut_fallback() : &node->pool;
 	pool_queue_work(pool, &req->work, l->db->cookie,
 			WT_UNORD, exec_top, exec_bottom);
+#else
+	leaderExecV2(req, POOL_TOP_HALF);
+	leaderExecV2(req, POOL_BOTTOM_HALF);
+#endif
 }
 
 int leader__exec(struct leader *l,
