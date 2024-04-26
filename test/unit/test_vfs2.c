@@ -86,12 +86,10 @@ static void check_wals(const char *dbname, off_t wal1_len, off_t wal2_len)
 
 	snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
 	rv = stat(buf, &st);
-	tracef("rv=%d st.st_size=%ld errno=%d wal1_len=%ld", rv, st.st_size, errno, wal1_len);
 	munit_assert_true((rv == 0 && st.st_size == wal1_len) || (rv < 0 && errno == ENOENT && wal1_len == 0));
 
 	snprintf(buf, sizeof(buf), "%s-xwal2", dbname);
 	rv = stat(buf, &st);
-	tracef("rv=%d st.st_size=%ld errno=%d wal1_len=%ld", rv, st.st_size, errno, wal2_len);
 	munit_assert_true((rv == 0 && st.st_size == wal2_len) || (rv < 0 && errno == ENOENT && wal2_len == 0));
 }
 
