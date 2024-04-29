@@ -16,12 +16,12 @@
  * from there on. Users should not manipulate the value of this variable. */
 DQLITE_VISIBLE_TO_TESTS extern bool _dqliteTracingEnabled;
 DQLITE_VISIBLE_TO_TESTS void stderrTracerEmit(const char *file,
-					      unsigned int line,
+					      int line,
 					      const char *func,
-					      unsigned int level,
+					      int level,
 					      const char *message);
 
-void tracef0(int level, const char *file, int line, const char *func, const char *fmt, ...);
+DQLITE_VISIBLE_TO_TESTS void tracef0(int level, const char *file, int line, const char *func, const char *fmt, ...);
 
 enum dqlite_trace_level {
 	/** Represents an invalid trace level */

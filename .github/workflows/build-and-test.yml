@@ -51,7 +51,13 @@ jobs:
       run: |
            ./test/raft/lib/fs.sh setup
            export $(test/raft/lib/fs.sh detect)
-           make check || (cat ./test-suite.log && false)
+           ./unit-test
+           ./integration-test
+           ./raft-core-fuzzy-test
+           ./raft-core-integration-test
+           ./raft-core-unit-test
+           ./raft-uv-integration-test
+           ./raft-uv-unit-test
            ./test/raft/lib/fs.sh teardown
 
     - name: Coverage
