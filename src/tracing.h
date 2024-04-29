@@ -21,15 +21,7 @@ DQLITE_VISIBLE_TO_TESTS void stderrTracerEmit(const char *file,
 					      unsigned int level,
 					      const char *message);
 
-#define tracef0(LEVEL, ...)                                            \
-	do {                                                           \
-		if (UNLIKELY(_dqliteTracingEnabled)) {                 \
-			char _msg[1024];                               \
-			snprintf(_msg, sizeof _msg, __VA_ARGS__);      \
-			stderrTracerEmit(__FILE__, __LINE__, __func__, \
-					 (LEVEL), _msg);               \
-		}                                                      \
-	} while (0)
+void tracef0(int level, const char *file, int line, const char *func, const char *fmt, ...);
 
 enum dqlite_trace_level {
 	/** Represents an invalid trace level */
@@ -50,7 +42,7 @@ enum dqlite_trace_level {
 	TRACE_NR,
 };
 
-#define tracef(...) tracef0(TRACE_DEBUG, __VA_ARGS__)
+#define tracef(fmt, ...) tracef0(TRACE_DEBUG, __FILE__, __LINE__, __func__, (fmt), ##__VA_ARGS__)
 
 /* Enable tracing if the appropriate env variable is set, or disable tracing. */
 DQLITE_VISIBLE_TO_TESTS void dqliteTracingMaybeEnable(bool enabled);
