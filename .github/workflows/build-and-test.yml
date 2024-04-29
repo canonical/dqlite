@@ -51,7 +51,7 @@ jobs:
       run: |
            ./test/raft/lib/fs.sh setup
            export $(test/raft/lib/fs.sh detect)
-           ./unit-test
+           ./unit-test --show-stderr
            ./integration-test
            ./raft-core-fuzzy-test
            ./raft-core-integration-test
