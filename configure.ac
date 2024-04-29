@@ -50,6 +50,14 @@ AC_CHECK_HEADERS([linux/io_uring.h linux/aio_abi.h])
 # Checks for library functions and definitions.
 AC_CHECK_DECLS(RWF_NOWAIT, [], [AC_MSG_ERROR(Linux kernel >= 4.14 required.)], [#include <linux/aio_abi.h>])
 
+# Check if zfs >= 0.8.0 is available (for direct I/O support).
+AC_CHECK_PROG(have_zfs, zfs, yes)
+AS_IF([test x"$have_zfs" = x"yes"],
+   [AX_COMPARE_VERSION($(cat /sys/module/zfs/version | cut -f 1 -d -), [ge], [0.8.0],
+       [AC_DEFINE(RAFT_HAVE_ZFS_WITH_DIRECT_IO)], [])
+   ],
+   [])
+
 # Enable large file support. This is mandatory in order to interoperate with
 # libuv, which enables large file support by default, making the size of 'off_t'
 # on 32-bit architecture be 8 bytes instead of the normal 4.
