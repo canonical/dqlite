@@ -220,17 +220,28 @@ static void failure_custom(struct handle *req, int code, const char *fmt, ...)
 	req->cb(req, 0, DQLITE_RESPONSE_FAILURE, 0);
 }
 
-static void failure_sqlite3(struct handle *req, int code, const char *func, const char *file, int lineno)
+static void failure_sqlite3(struct handle *req, int code,
+			    const char *func, const char *file, int lineno)
 {
-	const char *msg = error_msg(code);
+	const char *msg = error_message(code);
 	if (code == SQLITE_OK || msg == NULL) {
-		failure_custom(req, SQLITE_ERROR, "unclassified error (rv=%d) in %s, file %s:%d", code, func, file, lineno);
+		failure_custom(req, SQLITE_ERROR, "unclassified error (rv=%d) in %s, file %s:%d",
+			       code, func, file, lineno);
 	} else {
-		failure_custom(req, code, "sqlite3 error (rv=%d) in %s, file %s:%d: %s", code, func, file, lineno, msg);
+		failure_custom(req, code, "sqlite3 error (rv=%d) in %s, file %s:%d: %s",
+			       code, func, file, lineno, msg);
 	}
 }
 
 #define FAILURE_SQLITE3(req, code) failure_sqlite3((req), (code), __func__, __FILE__, __LINE__)
+
+static void failure_raft(struct handle *req, int code, const char *func, const char *file, int lineno)
+{
+	failure_custom(req, translateRaftErrCode(code), "raft error (rv=%d) in %s, file %s:%d: %s",
+		       code, func, file, lineno, raft_strerror(code));
+}
+
+#define FAILURE_RAFT(req, code) failure_raft((req), (code), __func__, __FILE__, __LINE__)
 
 static void emptyRows(struct handle *req)
 {
@@ -1036,8 +1047,7 @@ static void raftChangeCb(struct raft_change *change, int status)
 	g->req = NULL;
 	sqlite3_free(r);
 	if (status != 0) {
-		failure_custom(req, translateRaftErrCode(status),
-			       raft_strerror(status));
+		FAILURE_RAFT(req, status);
 	} else {
 		SUCCESS_V0(empty, EMPTY);
 	}
@@ -1071,7 +1081,7 @@ static int handle_add(struct gateway *g, struct handle *req)
 		tracef("raft add failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
-		failure_custom(req, translateRaftErrCode(rv), raft_strerror(rv));
+		FAILURE_RAFT(req, rv);
 		return 0;
 	}
 
@@ -1118,7 +1128,7 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 		tracef("raft_assign failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
-		failure_custom(req, translateRaftErrCode(rv), raft_strerror(rv));
+		FAILURE_RAFT(req, rv);
 		return 0;
 	}
 
@@ -1153,7 +1163,7 @@ static int handle_remove(struct gateway *g, struct handle *req)
 		tracef("raft_remote failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
-		failure_custom(req, translateRaftErrCode(rv), raft_strerror(rv));
+		FAILURE_RAFT(req, rv);
 		return 0;
 	}
 
@@ -1406,7 +1416,7 @@ static int handle_transfer(struct gateway *g, struct handle *req)
 		tracef("raft_transfer failed %d", rv);
 		g->req = NULL;
 		sqlite3_free(r);
-		failure_custom(req, translateRaftErrCode(rv), raft_strerror(rv));
+		FAILURE_RAFT(req, rv);
 		return 0;
 	}
 
