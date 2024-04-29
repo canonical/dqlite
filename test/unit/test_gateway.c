@@ -495,7 +495,7 @@ TEST_CASE(prepare, empty1, NULL)
 	HANDLE(PREPARE);
 	WAIT;
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(0, "empty statement");
+	ASSERT_FAILURE(SQLITE_ERROR, "empty statement");
 	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
 }
@@ -512,7 +512,7 @@ TEST_CASE(prepare, empty2, NULL)
 	HANDLE(PREPARE);
 	WAIT;
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(0, "empty statement");
+	ASSERT_FAILURE(SQLITE_ERROR, "empty statement");
 	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
 }
@@ -985,7 +985,7 @@ TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_LEADERSHIP_LOST, "disk I/O error");
+	ASSERT_FAILURE(SQLITE_IOERR_LEADERSHIP_LOST, "leadership lost (disk I/O error?)");
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
