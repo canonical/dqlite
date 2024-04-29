@@ -34,10 +34,7 @@ void test_logger_emit(void *data, int level, const char *format, va_list args)
 
 	sprintf(buf + strlen(buf), "%2d -> [%s] ", t->id, level_name);
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 	vsnprintf(buf + strlen(buf), 1024 - strlen(buf), format, args);
-#pragma GCC diagnostic pop
 	munit_log(MUNIT_LOG_INFO, buf);
 	return;
 
