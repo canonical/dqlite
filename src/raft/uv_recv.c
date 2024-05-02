@@ -420,4 +420,3 @@ void UvRecvClose(struct uv *uv)
 	}
 }
 
-#undef tracef

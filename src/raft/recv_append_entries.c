@@ -164,4 +164,3 @@ reply:
 	return 0;
 }
 
-#undef tracef

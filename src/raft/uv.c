@@ -812,4 +812,3 @@ void raft_uv_set_auto_recovery(struct raft_io *io, bool flag)
 	uv->auto_recovery = flag;
 }
 
-#undef tracef

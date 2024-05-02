@@ -113,4 +113,3 @@ int UvList(struct uv *uv,
 	return rv;
 }
 
-#undef tracef

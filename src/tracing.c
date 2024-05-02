@@ -10,7 +10,7 @@
 #define LIBDQLITE_TRACE "LIBDQLITE_TRACE"
 
 bool _dqliteTracingEnabled = false;
-static unsigned tracer__level;
+static int tracer__level;
 static pid_t tracerPidCached;
 
 void dqliteTracingMaybeEnable(bool enable)
@@ -21,7 +21,7 @@ void dqliteTracingMaybeEnable(bool enable)
 		tracerPidCached = getpid();
 		_dqliteTracingEnabled = enable;
 
-		tracer__level = (unsigned)atoi(trace_level);
+		tracer__level = atoi(trace_level);
 		tracer__level =
 		    tracer__level < TRACE_NR ? tracer__level : TRACE_NONE;
 	}
@@ -36,13 +36,13 @@ static inline const char *tracerShortFileName(const char *fname)
 	return p != NULL ? p + strlen(top_src_dir) : fname;
 }
 
-static inline const char *tracerTraceLevelName(unsigned int level)
+static inline const char *tracerTraceLevelName(int level)
 {
 	static const char *levels[] = {
 	    "NONE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL",
 	};
 
-	return level < ARRAY_SIZE(levels) ? levels[level] : levels[0];
+	return level < (int)ARRAY_SIZE(levels) ? levels[level] : levels[0];
 }
 
 static pid_t tracerPidCached;
@@ -56,9 +56,9 @@ static inline pid_t gettidImpl(void)
 }
 
 static inline void tracerEmit(const char *file,
-			      unsigned int line,
+			      int line,
 			      const char *func,
-			      unsigned int level,
+			      int level,
 			      const char *message)
 {
 	struct timespec ts = {0};
@@ -86,13 +86,25 @@ static inline void tracerEmit(const char *file,
 }
 
 void stderrTracerEmit(const char *file,
-		      unsigned int line,
+		      int line,
 		      const char *func,
-		      unsigned int level,
+		      int level,
 		      const char *message)
 {
 	assert(tracer__level < TRACE_NR);
 
 	if (level >= tracer__level)
 		tracerEmit(file, line, func, level, message);
+}
+
+void tracef0(int level, const char *file, int line, const char *func, const char *fmt, ...)
+{
+	if (UNLIKELY(_dqliteTracingEnabled)) {
+		va_list a;
+		va_start(a, fmt);
+		char msg[1024];
+		vsnprintf(msg, sizeof(msg), fmt, a);
+		stderrTracerEmit(file, line, func, level, msg);
+		va_end(a);
+	}
 }

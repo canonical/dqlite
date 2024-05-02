@@ -336,4 +336,3 @@ void UvPrepareClose(struct uv *uv)
 	}
 }
 
-#undef tracef

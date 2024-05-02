@@ -72,4 +72,3 @@ int recvAppendEntriesResult(struct raft *r,
 	return 0;
 }
 
-#undef tracef

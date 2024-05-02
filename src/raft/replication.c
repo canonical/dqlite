@@ -1834,4 +1834,3 @@ inline bool replicationInstallSnapshotBusy(struct raft *r)
 	return r->last_stored == 0 && r->snapshot.put.data != NULL;
 }
 
-#undef tracef

@@ -1155,4 +1155,3 @@ out:
 	return rv;
 }
 
-#undef tracef

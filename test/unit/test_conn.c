@@ -15,6 +15,7 @@
 #include "../../src/lib/transport.h"
 #include "../../src/raft.h"
 #include "../../src/transport.h"
+#include "../../src/tracing.h"
 
 TEST_MODULE(conn);
 
@@ -75,6 +76,7 @@ static void connCloseCb(struct conn *conn)
 	pool_fini(pool_ut_fallback());    \
 	conn__stop(&f->conn_test.conn);   \
 	while (!f->conn_test.closed) {    \
+		tracef("conn_test not yet closed..."); \
 		test_uv_run(&f->loop, 1); \
 	};                                \
 	TEAR_DOWN_RAFT;                   \

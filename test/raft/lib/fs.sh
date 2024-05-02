@@ -43,7 +43,7 @@ fi
 if [ "${cmd}" = "detect" ]; then
     vars=""
     for type in $types; do
-        vars="${vars}RAFT_TMP_$(echo ${type} | tr [a-z] [A-Z])=./tmp/${type} "
+        vars="${vars}RAFT_TMP_$(echo ${type} | tr a-z A-Z)=./tmp/${type} "
     done
     echo $vars
     exit 0
