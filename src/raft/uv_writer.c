@@ -207,7 +207,7 @@ static void uvWriterPollCb(uv_poll_t *poller, int status, int events)
 				req->status = RAFT_IOERR;
 				goto finish;
 			}
-			return;
+			continue;
 		}
 
 		uvWriterReqSetStatus(req, (int)event->res);
