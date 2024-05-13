@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <sched.h>
 #include <stdlib.h>
+#include <sys/file.h>
 #include <sys/un.h>
 #include <time.h>
 #include <uv.h>
@@ -63,6 +64,7 @@ int dqlite__init(struct dqlite_node *d,
 	ssize_t count;
 
 	d->initialized = false;
+	d->lock_fd = -1;
 	memset(d->errmsg, 0, sizeof d->errmsg);
 
 	rv = snprintf(db_dir_path, sizeof db_dir_path, DATABASE_DIR_FMT, dir);
@@ -829,6 +831,32 @@ static bool taskReady(struct dqlite_node *d)
 	return d->running;
 }
 
+#define LOCK_FILENAME "dqlite-lock"
+
+static int acquire_dir(const char *dir, int *fd_out)
+{
+	char path[PATH_MAX];
+	int fd;
+	int rv;
+
+	snprintf(path, sizeof(path), "%s/%s", dir, LOCK_FILENAME);
+	fd = open(path, O_RDWR|O_CREAT|O_CLOEXEC, S_IRUSR|S_IWUSR);
+	if (fd < 0) {
+		return DQLITE_ERROR;
+	}
+	rv = flock(fd, LOCK_EX|LOCK_NB);
+	if (rv != 0) {
+		return DQLITE_ERROR;
+	}
+	*fd_out = fd;
+	return 0;
+}
+
+static void release_dir(int fd)
+{
+	close(fd);
+}
+
 static int dqliteDatabaseDirSetup(dqlite_node *t)
 {
 	int rv;
@@ -867,27 +895,39 @@ int dqlite_node_start(dqlite_node *t)
 		goto err;
 	}
 
+	int lock_fd;
+	rv = acquire_dir(t->config.raft_dir, &lock_fd);
+	if (rv != 0) {
+		snprintf(t->errmsg, DQLITE_ERRMSG_BUF_SIZE,
+			 "couldn't lock the raft directory");
+		return rv;
+	}
+	t->lock_fd = lock_fd;
+
 	rv = maybeBootstrap(t, t->config.id, t->config.address);
 	if (rv != 0) {
 		tracef("bootstrap failed %d", rv);
-		goto err;
+		goto err_after_acquire_dir;
 	}
 
 	rv = pthread_create(&t->thread, 0, &taskStart, t);
 	if (rv != 0) {
 		tracef("pthread create failed %d", rv);
 		rv = DQLITE_ERROR;
-		goto err;
+		goto err_after_acquire_dir;
 	}
 
 	if (!taskReady(t)) {
 		tracef("!taskReady");
 		rv = DQLITE_ERROR;
-		goto err;
+		goto err_after_acquire_dir;
 	}
 
 	return 0;
 
+
+err_after_acquire_dir:
+	release_dir(t->lock_fd);
 err:
 	return rv;
 }
@@ -915,6 +955,8 @@ int dqlite_node_stop(dqlite_node *d)
 
 	rv = pthread_join(d->thread, &result);
 	assert(rv == 0);
+
+	release_dir(d->lock_fd);
 
 	return (int)((uintptr_t)result);
 }
@@ -1004,11 +1046,19 @@ int dqlite_node_recover_ext(dqlite_node *n,
 		};
 	}
 
+	int lock_fd;
+	rv = acquire_dir(n->config.raft_dir, &lock_fd);
+	if (rv != 0) {
+		goto out;
+	}
+
 	rv = raft_recover(&n->raft, &configuration);
 	if (rv != 0) {
 		rv = DQLITE_ERROR;
 		goto out;
 	}
+
+	release_dir(lock_fd);
 
 out:
 	raft_configuration_close(&configuration);
