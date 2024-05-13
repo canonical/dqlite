@@ -49,7 +49,7 @@ int db__init(struct db *db, struct config *config, const char *filename)
 	}
 	if (db->config->disk) {
 		rv = snprintf(db->path, MAX_PATHNAME + 1, "%s/%s",
-			      db->config->dir, db->filename);
+			      db->config->database_dir, db->filename);
 	} else {
 		rv = snprintf(db->path, MAX_PATHNAME + 1, "%s", db->filename);
 	}

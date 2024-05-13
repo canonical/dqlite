@@ -31,7 +31,8 @@ static unsigned serial = 1;
 int config__init(struct config *c,
 		 dqlite_node_id id,
 		 const char *address,
-		 const char *dir)
+		 const char *raft_dir,
+		 const char *database_dir)
 {
 	int rv;
 	c->id = id;
@@ -49,8 +50,10 @@ int config__init(struct config *c,
 	c->logger.emit = loggerDefaultEmit;
 	c->failure_domain = 0;
 	c->weight = 0;
-	strncpy(c->dir, dir, sizeof(c->dir) - 1);
-	c->dir[sizeof(c->dir) - 1] = '\0';
+
+	snprintf(c->raft_dir, sizeof(c->raft_dir), "%s", (raft_dir != NULL) ? raft_dir : "");
+	snprintf(c->database_dir, sizeof(c->database_dir), "%s", database_dir);
+
 	c->disk = false;
 	c->voters = 3;
 	c->standbys = 0;

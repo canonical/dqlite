@@ -72,7 +72,7 @@ int dqlite__init(struct dqlite_node *d,
 		goto err;
 	}
 
-	rv = config__init(&d->config, id, address, db_dir_path);
+	rv = config__init(&d->config, id, address, dir, db_dir_path);
 	if (rv != 0) {
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE,
 			 "config__init(rv:%d)", rv);
@@ -837,14 +837,14 @@ static int dqliteDatabaseDirSetup(dqlite_node *t)
 		return 0;
 	}
 
-	rv = FsEnsureDir(t->config.dir);
+	rv = FsEnsureDir(t->config.database_dir);
 	if (rv != 0) {
 		snprintf(t->errmsg, DQLITE_ERRMSG_BUF_SIZE,
 			 "Error creating database dir: %d", rv);
 		return rv;
 	}
 
-	rv = FsRemoveDirFiles(t->config.dir);
+	rv = FsRemoveDirFiles(t->config.database_dir);
 	if (rv != 0) {
 		snprintf(t->errmsg, DQLITE_ERRMSG_BUF_SIZE,
 			 "Error removing files in database dir: %d", rv);
