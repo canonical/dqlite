@@ -249,6 +249,12 @@ struct raft_entry_local_data {
  * message or in the persistent log. This field can be used by the FSM's `apply`
  * callback to handle a COMMAND entry differently depending on whether it
  * originated locally.
+ *
+ * Note: The @local_data and @is_local fields do not exist when we use an external
+ * libraft, because the last separate release of libraft predates their addition.
+ * The ifdef at the very top of this file ensures that we use the system raft headers
+ * when we build against an external libraft, so there will be no ABI mismatch as
+ * a result of incompatible struct layouts.
  */
 struct raft_entry
 {
