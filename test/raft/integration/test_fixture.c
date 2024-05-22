@@ -86,7 +86,7 @@ static void tearDown(void *data)
         struct raft_buffer buf;                      \
         int rc;                                      \
         FsmEncodeAddX(1, &buf);                      \
-        rc = raft_apply(GET(I), REQ, &buf, 1, NULL); \
+        rc = raft_apply(GET(I), REQ, &buf, NULL, 1, NULL); \
         munit_assert_int(rc, ==, 0);                 \
     }
 #define STEP_UNTIL_APPLIED(INDEX) \
