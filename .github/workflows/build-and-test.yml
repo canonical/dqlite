@@ -53,7 +53,7 @@ jobs:
     - name: Coverage
       env:
         CC: ${{ matrix.compiler }}
-      if: ${{ matrix.compiler == 'gcc' }}
+      if: ${{ matrix.os == 'ubuntu-22.04' && matrix.compiler == 'gcc' }}
       run: |
         make code-coverage-capture
 
