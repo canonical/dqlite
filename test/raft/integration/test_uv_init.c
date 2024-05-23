@@ -1,10 +1,14 @@
 #include "../../../src/raft.h"
 #include "../../../src/raft/byte.h"
+#include "../../../src/raft/uv_encoding.h"
 #include "../lib/runner.h"
 #include "../lib/uv.h"
 
 #include <linux/magic.h>
 #include <sys/vfs.h>
+
+#define BAD_FORMAT 3
+#define BAD_FORMAT_STR "3"
 
 /******************************************************************************
  *
@@ -224,12 +228,12 @@ TEST(init, metadataOneBadFormat, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        2, /* Format                               */
+                        BAD_FORMAT, /* Format                               */
                         1, /* Version                              */
                         1, /* Term                                 */
                         0 /* Voted for                            */);
     INIT_ERROR(f->dir, RAFT_MALFORMED,
-               "decode content of metadata1: bad format version 2");
+               "decode content of metadata1: bad format version " BAD_FORMAT_STR);
     return MUNIT_OK;
 }
 
@@ -238,7 +242,7 @@ TEST(init, metadataOneBadVersion, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        1, /* Format                               */
+                        UV__DISK_FORMAT, /* Format                               */
                         0, /* Version                              */
                         1, /* Term                                 */
                         0 /* Voted for                            */);
@@ -253,12 +257,12 @@ TEST(init, metadataOneAndTwoSameVersion, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        1, /* Format                               */
+                        UV__DISK_FORMAT, /* Format                               */
                         2, /* Version                              */
                         3, /* Term                                 */
                         0 /* Voted for                            */);
     WRITE_METADATA_FILE(2, /* Metadata file index                  */
-                        1, /* Format                               */
+                        UV__DISK_FORMAT, /* Format                               */
                         2, /* Version                              */
                         2, /* Term                                 */
                         0 /* Voted for                            */);

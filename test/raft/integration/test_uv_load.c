@@ -2,6 +2,7 @@
 
 #include "../../../src/raft/byte.h"
 #include "../../../src/raft/uv.h"
+#include "../../../src/raft/uv_encoding.h"
 #include "../lib/runner.h"
 #include "../lib/uv.h"
 
@@ -577,10 +578,11 @@ TEST(load, openSegmentWithIncompleteBatch, setUp, tearDown, 0, NULL)
 TEST(load, openSegmentWithIncompleteFirstBatch, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    uint8_t buf[4 * WORD_SIZE] = {
-        1, 0, 0, 0, 0, 0, 0, 0, /* Format version */
+    uint8_t buf[5 * WORD_SIZE] = {
+        UV__DISK_FORMAT, 0, 0, 0, 0, 0, 0, 0, /* Format version */
         0, 0, 0, 0, 0, 0, 0, 0, /* CRC32 checksums */
         0, 0, 0, 0, 0, 0, 0, 0, /* Number of entries */
+	0, 0, 0, 0, 0, 0, 0, 0, /* Local data size */
         0, 0, 0, 0, 0, 0, 0, 0  /* Batch data */
     };
     APPEND(1, 1);
@@ -1630,9 +1632,16 @@ TEST(load, openSegmentWithIncompleteBatchHeader, setUp, tearDown, 0, NULL)
     APPEND(1, 1);
     UNFINALIZE(1, 1, 1);
     DirTruncateFile(f->dir, "open-1", offset);
-    LOAD_ERROR(RAFT_IOERR,
-               "load open segment open-1: entries batch 1 starting at byte 8: "
-               "read header: short read: 8 bytes instead of 16");
+#ifdef DQLITE_NEXT
+    const char *msg =
+	    "load open segment open-1: entries batch 1 starting at byte 8: "
+	    "read header: short read: 8 bytes instead of 24";
+#else
+    const char *msg =
+	    "load open segment open-1: entries batch 1 starting at byte 8: "
+	    "read header: short read: 8 bytes instead of 16";
+#endif
+    LOAD_ERROR(RAFT_IOERR, msg);
     return MUNIT_OK;
 }
 
@@ -1647,12 +1656,24 @@ TEST(load, openSegmentWithIncompleteBatchData, setUp, tearDown, 0, NULL)
                     WORD_SIZE + /* Entry type and data size */
                     WORD_SIZE / 2 /* Partial entry data */;
 
+#ifdef DQLITE_NEXT
+    offset += WORD_SIZE; /* Local data size */
+#endif
+
     APPEND(1, 1);
     UNFINALIZE(1, 1, 1);
     DirTruncateFile(f->dir, "open-1", offset);
-    LOAD_ERROR(RAFT_IOERR,
-               "load open segment open-1: entries batch 1 starting at byte 8: "
-               "read data: short read: 4 bytes instead of 8");
+
+#ifdef DQLITE_NEXT
+    const char *msg =
+	    "load open segment open-1: entries batch 1 starting at byte 8: "
+	    "read data: short read: 4 bytes instead of 24";
+#else
+    const char *msg =
+	    "load open segment open-1: entries batch 1 starting at byte 8: "
+	    "read data: short read: 4 bytes instead of 8";
+#endif
+    LOAD_ERROR(RAFT_IOERR, msg);
     return MUNIT_OK;
 }
 
@@ -1716,11 +1737,11 @@ TEST(load, emptyClosedSegment, setUp, tearDown, 0, NULL)
 TEST(load, closedSegmentWithBadFormat, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    uint8_t buf[8] = {2, 0, 0, 0, 0, 0, 0, 0};
+    uint8_t buf[8] = {3, 0, 0, 0, 0, 0, 0, 0};
     DirWriteFile(f->dir, CLOSED_SEGMENT_FILENAME(1, 1), buf, sizeof buf);
     LOAD_ERROR(RAFT_CORRUPT,
                "load closed segment 0000000000000001-0000000000000001: "
-               "unexpected format version 2");
+               "unexpected format version 3");
     return MUNIT_OK;
 }
 
@@ -1762,11 +1783,11 @@ TEST(load, openSegmentWithZeroFormatAndThenData, setUp, tearDown, 0, NULL)
 TEST(load, openSegmentWithBadFormat, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    uint8_t version[8] = {2, 0, 0, 0, 0, 0, 0, 0};
+    uint8_t version[8] = {3, 0, 0, 0, 0, 0, 0, 0};
     APPEND(1, 1);
     UNFINALIZE(1, 1, 1);
     DirOverwriteFile(f->dir, "open-1", version, sizeof version, 0);
     LOAD_ERROR(RAFT_CORRUPT,
-               "load open segment open-1: unexpected format version 2");
+               "load open segment open-1: unexpected format version 3");
     return MUNIT_OK;
 }

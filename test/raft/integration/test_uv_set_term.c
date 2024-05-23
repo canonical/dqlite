@@ -1,5 +1,6 @@
 #include "../../../src/raft.h"
 #include "../../../src/raft/byte.h"
+#include "../../../src/raft/uv_encoding.h"
 #include "../lib/runner.h"
 #include "../lib/uv.h"
 
@@ -88,7 +89,7 @@ static void closeCb(struct raft_io *io)
         char filename[strlen("metadataN") + 1];              \
         sprintf(filename, "metadata%d", N);                  \
         DirReadFile(f->dir, filename, buf2, sizeof buf2);    \
-        munit_assert_int(byteGet64(&cursor), ==, 1);         \
+        munit_assert_int(byteGet64(&cursor), ==, UV__DISK_FORMAT);         \
         munit_assert_int(byteGet64(&cursor), ==, VERSION);   \
         munit_assert_int(byteGet64(&cursor), ==, TERM);      \
         munit_assert_int(byteGet64(&cursor), ==, VOTED_FOR); \
@@ -184,7 +185,7 @@ TEST(set_term, metadataOneExists, setUpDeps, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        1, /* Format                               */
+                        UV__DISK_FORMAT, /* Format                               */
                         1, /* Version                              */
                         1, /* Term                                 */
                         0 /* Voted for                            */);
@@ -200,12 +201,12 @@ TEST(set_term, metadataOneIsGreater, setUpDeps, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        1, /* Format                               */
+                        UV__DISK_FORMAT, /* Format                               */
                         3, /* Version                              */
                         3, /* Term                                 */
                         0 /* Voted for                            */);
     WRITE_METADATA_FILE(2, /* Metadata file index                  */
-                        1, /* Format                               */
+                        UV__DISK_FORMAT, /* Format                               */
                         2, /* Version                              */
                         2, /* Term                                 */
                         0 /* Voted for                            */);
@@ -223,12 +224,12 @@ TEST(set_term, metadataTwoIsGreater, setUpDeps, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        1, /* Format                               */
+                        UV__DISK_FORMAT, /* Format                               */
                         1, /* Version                              */
                         1, /* Term                                 */
                         0 /* Voted for                            */);
     WRITE_METADATA_FILE(2, /* Metadata file index                  */
-                        1, /* Format                               */
+                        UV__DISK_FORMAT, /* Format                               */
                         2, /* Version                              */
                         2, /* Term                                 */
                         0 /* Voted for                            */);

@@ -597,7 +597,7 @@ static size_t uvAppendSize(struct uvAppend *a)
 {
 	size_t size = sizeof(uint32_t) * 2; /* CRC checksums */
 	unsigned i;
-	size += uvSizeofBatchHeader(a->n); /* Batch header */
+	size += uvSizeofBatchHeader(a->n, true); /* Batch header */
 	for (i = 0; i < a->n; i++) {       /* Entries data */
 		size += bytePad64(a->entries[i].buf.len);
 	}

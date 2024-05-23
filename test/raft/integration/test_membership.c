@@ -90,7 +90,7 @@ struct result
     int _rv;                                                  \
     FsmEncodeSetX(123, &_buf);                                \
     _req.data = &_result;                                     \
-    _rv = raft_apply(CLUSTER_RAFT(I), &_req, &_buf, 1, NULL); \
+    _rv = raft_apply(CLUSTER_RAFT(I), &_req, &_buf, NULL, 1, NULL); \
     munit_assert_int(_rv, ==, 0);
 
 /******************************************************************************
