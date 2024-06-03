@@ -1216,13 +1216,14 @@ int fsm__init_disk(struct raft_fsm *fsm,
 	f->pending.page_numbers = NULL;
 	f->pending.pages = NULL;
 
-	fsm->version = 3;
+	fsm->version = 4;
 	fsm->data = f;
 	fsm->apply = fsm__apply;
 	fsm->snapshot = fsm__snapshot_disk;
 	fsm->snapshot_async = fsm__snapshot_async_disk;
 	fsm->snapshot_finalize = fsm__snapshot_finalize_disk;
 	fsm->restore = fsm__restore_disk;
+	fsm->post_receive = fsm_post_receive;
 
 	return 0;
 }
