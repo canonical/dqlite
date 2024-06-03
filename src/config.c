@@ -9,6 +9,7 @@
 
 #include "config.h"
 #include "logger.h"
+#include "utils.h"
 
 /* Default heartbeat timeout in milliseconds.
  *
@@ -43,12 +44,12 @@ int config__init(struct config *c,
 	c->heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT;
 	c->page_size = DEFAULT_PAGE_SIZE;
 	c->checkpoint_threshold = DEFAULT_CHECKPOINT_THRESHOLD;
-#ifdef DQLITE_NEXT
-	/* TODO put the constant in a header file somewhere */
-	rv = snprintf(c->name, sizeof c->name, "%s", "dqlite-vfs2");
-#else
-	rv = snprintf(c->name, sizeof c->name, "dqlite-%u", serial);
-#endif
+	if (NEXT) {
+		/* TODO put the constant in a header file somewhere */
+		rv = snprintf(c->name, sizeof c->name, "%s", "dqlite-vfs2");
+	} else {
+		rv = snprintf(c->name, sizeof c->name, "dqlite-%u", serial);
+	}
 	assert(rv < (int)(sizeof c->name));
 	c->logger.data = NULL;
 	c->logger.emit = loggerDefaultEmit;

@@ -97,21 +97,23 @@ int dqlite__init(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto err_after_vfs_init;
 	}
-#ifdef DQLITE_NEXT
-	d->config.disk = true;
 
-	vfs2 = vfs2_make(sqlite3_vfs_find("unix"), VFS2_NAME);
-	sqlite3_vfs_register(vfs2, 0 /* not default */);
+	if (NEXT) {
+		d->config.disk = true;
 
-	rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count,
-		       POOL_QOS_PRIO_FAIR);
-	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "pool_init(): %s",
-			 uv_strerror(rv));
-		rv = DQLITE_ERROR;
-		goto err_after_loop_init;
+		vfs2 = vfs2_make(sqlite3_vfs_find("unix"), VFS2_NAME);
+		sqlite3_vfs_register(vfs2, 0 /* not default */);
+
+		rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count,
+			       POOL_QOS_PRIO_FAIR);
+		if (rv != 0) {
+			snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "pool_init(): %s",
+				 uv_strerror(rv));
+			rv = DQLITE_ERROR;
+			goto err_after_loop_init;
+		}
 	}
-#endif
+
 	rv = raftProxyInit(&d->raft_transport, &d->loop);
 	if (rv != 0) {
 		goto err_after_pool_init;
@@ -198,13 +200,15 @@ err_after_raft_io_init:
 err_after_raft_transport_init:
 	raftProxyClose(&d->raft_transport);
 err_after_pool_init:
-#ifdef DQLITE_NEXT
-	pool_close(&d->pool);
-	pool_fini(&d->pool);
+	if (NEXT) {
+		pool_close(&d->pool);
+		pool_fini(&d->pool);
+	}
 err_after_loop_init:
-	sqlite3_vfs_unregister(vfs2);
-	vfs2_destroy(vfs2);
-#endif
+	if (NEXT) {
+		sqlite3_vfs_unregister(vfs2);
+		vfs2_destroy(vfs2);
+	}
 	uv_loop_close(&d->loop);
 err_after_vfs_init:
 	VfsClose(&d->vfs);
@@ -232,12 +236,12 @@ void dqlite__close(struct dqlite_node *d)
 	// the TODO above referencing the cleanup logic without running the
 	// node. See https://github.com/canonical/dqlite/issues/504.
 
-#ifdef DQLITE_NEXT
-	pool_fini(&d->pool);
-	sqlite3_vfs *vfs2 = sqlite3_vfs_find(VFS2_NAME);
-	sqlite3_vfs_unregister(vfs2);
-	vfs2_destroy(vfs2);
-#endif
+	if (NEXT) {
+		pool_fini(&d->pool);
+		sqlite3_vfs *vfs2 = sqlite3_vfs_find(VFS2_NAME);
+		sqlite3_vfs_unregister(vfs2);
+		vfs2_destroy(vfs2);
+	}
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
@@ -464,10 +468,9 @@ int dqlite_node_enable_disk_mode(dqlite_node *n)
 		return DQLITE_MISUSE;
 	}
 
-#ifdef DQLITE_NEXT
-	(void)rv;
-	return 0;
-#endif
+	if (NEXT) {
+		return 0;
+	}
 
 	rv = dqlite_vfs_enable_disk(&n->vfs);
 	if (rv != 0) {
@@ -577,9 +580,9 @@ static void stopCb(uv_async_t *stop)
 		tracef("not running or already stopped");
 		return;
 	}
-#ifdef DQLITE_NEXT
-	pool_close(&d->pool);
-#endif
+	if (NEXT) {
+		pool_close(&d->pool);
+	}
 	if (d->role_management) {
 		rv = uv_timer_stop(&d->timer);
 		assert(rv == 0);
