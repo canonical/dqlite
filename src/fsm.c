@@ -1,11 +1,13 @@
 #include "lib/assert.h"
 #include "lib/serialize.h"
+#include "lib/threadpool.h"
 
 #include "command.h"
 #include "fsm.h"
 #include "raft.h"
 #include "tracing.h"
 #include "vfs.h"
+#include "vfs2.h"
 
 #include <sys/mman.h>
 
@@ -1132,6 +1134,69 @@ static int fsm__restore_disk(struct raft_fsm *fsm, struct raft_buffer *buf)
 	raft_free(buf->base);
 
 	return 0;
+}
+
+void fsm_post_receive(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data *ld, int half)
+{
+	struct fsm *f = fsm->data;
+	void *cmd;
+	int rv;
+
+	if (half == POOL_BOTTOM_HALF) {
+		return;
+	}
+
+	int type;
+	rv = command__decode(&buf, &type, &cmd);
+	if (rv != 0) {
+		/* XXX */
+		assert(0);
+	}
+	if (type != COMMAND_FRAMES) {
+		return;
+	}
+	struct command_frames *cf = cmd;
+	assert(cf->is_commit);
+	unsigned long *page_numbers;
+	rv = command_frames__page_numbers(cf, &page_numbers);
+	if (rv != 0) {
+		/* XXX */
+		assert(0);
+	}
+	void *pages;
+	command_frames__pages(cf, &pages);
+	dqlite_vfs_frame *frames = sqlite3_malloc((int)sizeof(*frames) * (int)cf->frames.n_pages);
+	if (frames == NULL) {
+		/* XXX */
+		assert(0);
+	}
+	for (uint32_t i = 0; i < cf->frames.n_pages; i++) {
+		frames[i].page_number = page_numbers[i];
+		frames[i].data = pages + cf->frames.page_size * i;
+	}
+	struct db *db;
+	rv = registry__db_get(f->registry, cf->filename, &db);
+	if (rv != 0) {
+		/* XXX */
+		assert(0);
+	}
+	if (db->follower == NULL) {
+		rv = db__open_follower(db);
+		if (rv != SQLITE_OK) {
+			/* XXX */
+			assert(0);
+		}
+	}
+	sqlite3_file *fp;
+	sqlite3_file_control(db->follower, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	struct vfs2_wal_slice sl;
+	rv = vfs2_apply_uncommitted(fp, cf->frames.page_size, frames, cf->frames.n_pages, &sl);
+	if (rv != 0) {
+		/* XXX */
+		assert(0);
+	}
+	memcpy(ld, &sl, sizeof(sl));
+	sqlite3_free(page_numbers);
 }
 
 int fsm__init_disk(struct raft_fsm *fsm,
