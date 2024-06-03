@@ -98,6 +98,8 @@ int dqlite__init(struct dqlite_node *d,
 		goto err_after_vfs_init;
 	}
 #ifdef DQLITE_NEXT
+	d->config.disk = true;
+
 	vfs2 = vfs2_make(sqlite3_vfs_find("unix"), VFS2_NAME);
 	sqlite3_vfs_register(vfs2, 0, /* not default */);
 
