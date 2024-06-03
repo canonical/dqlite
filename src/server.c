@@ -462,6 +462,11 @@ int dqlite_node_enable_disk_mode(dqlite_node *n)
 		return DQLITE_MISUSE;
 	}
 
+#ifdef DQLITE_NEXT
+	(void)rv;
+	return 0;
+#endif
+
 	rv = dqlite_vfs_enable_disk(&n->vfs);
 	if (rv != 0) {
 		return rv;
