@@ -16,6 +16,7 @@
 #include "membership.h"
 #include "progress.h"
 #include "../lib/queue.h"
+#include "../lib/threadpool.h"
 #include "replication.h"
 #include "request.h"
 #include "snapshot.h"
@@ -1265,6 +1266,17 @@ int replicationAppend(struct raft *r,
 		goto err_after_acquire_entries;
 	}
 	r->follower_state.append_in_flight_count += 1;
+
+	if (r->fsm->version >= 4 && r->fsm->post_receive != NULL) {
+		for (unsigned k = 0; k < request->args.n_entries; k++) {
+			const struct raft_entry *e = &request->args.entries[k];
+			if (e->type != RAFT_COMMAND) {
+				continue;
+			}
+			r->fsm->post_receive(r->fsm, e->buf, POOL_TOP_HALF);
+			r->fsm->post_receive(r->fsm, e->buf, POOL_BOTTOM_HALF);
+		}
+	}
 
 	entryBatchesDestroy(args->entries, args->n_entries);
 	return 0;

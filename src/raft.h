@@ -632,7 +632,7 @@ struct raft_io
 
 struct raft_fsm
 {
-	int version; /* 1, 2 or 3 */
+	int version;
 	void *data;
 	int (*apply)(struct raft_fsm *fsm,
 		     const struct raft_buffer *buf,
@@ -649,6 +649,8 @@ struct raft_fsm
 	int (*snapshot_async)(struct raft_fsm *fsm,
 			      struct raft_buffer *bufs[],
 			      unsigned *n_bufs);
+	/* version 4 */
+	void (*post_receive)(struct raft_fsm *fsm, struct raft_buffer buf, int half);
 };
 
 struct raft; /* Forward declaration. */
