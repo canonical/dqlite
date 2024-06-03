@@ -307,6 +307,7 @@ finish:
 
 static int leaderApplyFrames(struct exec *req,
 			     dqlite_vfs_frame *frames,
+			     struct vfs2_wal_slice sl,
 			     unsigned n)
 {
 	tracef("leader apply frames id:%" PRIu64, req->id);
@@ -347,8 +348,10 @@ static int leaderApplyFrames(struct exec *req,
 	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
 #else
 	/* TODO actual WAL slice goes here */
-	struct raft_entry_local_data local_data = {};
-	rv = raft_apply(l->raft, &apply->req, &buf, &local_data, 1, leaderApplyFramesCb);
+	struct raft_entry_local_data ld;
+	static_assert(sizeof(sl) == sizeof(ld), "local data size mismatch");
+	memcpy(&ld, &sl, sizeof(sl));
+	rv = raft_apply(l->raft, &apply->req, &buf, &ld, 1, leaderApplyFramesCb);
 #endif
 	if (rv != 0) {
 		tracef("raft apply failed %d", rv);
@@ -377,7 +380,7 @@ static void leaderExecV2(struct exec *req, enum pool_half half)
 	sqlite3_vfs *vfs = sqlite3_vfs_find(db->config->name);
 	sqlite3_file *f;
 	dqlite_vfs_frame *frames;
-	struct vfs2_wal_slice sl;
+	struct vfs2_wal_slice sl = {};
 	uint64_t size;
 	unsigned n;
 	unsigned i;
@@ -409,7 +412,7 @@ static void leaderExecV2(struct exec *req, enum pool_half half)
 		}
 	}
 
-	rv = leaderApplyFrames(req, frames, n);
+	rv = leaderApplyFrames(req, frames, sl, n);
 	if (rv != 0) {
 		goto abort;
 	}
