@@ -101,7 +101,7 @@ int dqlite__init(struct dqlite_node *d,
 	d->config.disk = true;
 
 	vfs2 = vfs2_make(sqlite3_vfs_find("unix"), VFS2_NAME);
-	sqlite3_vfs_register(vfs2, 0, /* not default */);
+	sqlite3_vfs_register(vfs2, 0 /* not default */);
 
 	rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count,
 		       POOL_QOS_PRIO_FAIR);
