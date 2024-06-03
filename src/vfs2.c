@@ -294,7 +294,7 @@ struct entry {
 
 	/* For ACTIVE, HIDDEN: the pending txn. start and len
 	 * are in units of frames. */
-	struct vfs2_wal_frame *pending_txn_frames;
+	dqlite_vfs_frame *pending_txn_frames;
 	uint32_t pending_txn_start;
 	uint32_t pending_txn_len;
 	uint32_t pending_txn_last_frame_commit;
@@ -331,7 +331,7 @@ static void free_pending_txn(struct entry *e)
 {
 	if (e->pending_txn_frames != NULL) {
 		for (uint32_t i = 0; i < e->pending_txn_len; i++) {
-			sqlite3_free(e->pending_txn_frames[i].page);
+			sqlite3_free(e->pending_txn_frames[i].data);
 		}
 		sqlite3_free(e->pending_txn_frames);
 	}
@@ -531,7 +531,7 @@ static bool wtx_invariant(const struct sm *sm, int prev)
 			return false;
 		}
 		for (uint32_t i = 0; i < e->pending_txn_len; i++) {
-			res &= CHECK(e->pending_txn_frames[i].page != NULL);
+			res &= CHECK(e->pending_txn_frames[i].data != NULL);
 		}
 		return res;
 	}
@@ -678,7 +678,7 @@ static int vfs2_wal_write_frame_hdr(struct entry *e,
 				    const struct wal_frame_hdr *fhdr,
 				    uint32_t x)
 {
-	struct vfs2_wal_frame *frames = e->pending_txn_frames;
+	dqlite_vfs_frame *frames = e->pending_txn_frames;
 	if (no_pending_txn(e)) {
 		assert(x == e->wal_cursor);
 		e->pending_txn_start = x;
@@ -701,21 +701,19 @@ static int vfs2_wal_write_frame_hdr(struct entry *e,
 		if (e->pending_txn_frames == NULL) {
 			return SQLITE_NOMEM;
 		}
-		struct vfs2_wal_frame *frame = &e->pending_txn_frames[n];
+		dqlite_vfs_frame *frame = &e->pending_txn_frames[n];
 		uint32_t commit = ByteGetBe32(fhdr->commit);
 		frame->page_number = ByteGetBe32(fhdr->page_number);
-		frame->commit = commit;
-		frame->page = NULL;
+		frame->data = NULL;
 		e->pending_txn_last_frame_commit = commit;
 		e->pending_txn_len++;
 	} else {
 		/* Overwriting a previously-written frame in the current
 		 * transaction. */
-		struct vfs2_wal_frame *frame = &e->pending_txn_frames[x];
+		dqlite_vfs_frame *frame = &e->pending_txn_frames[x];
 		frame->page_number = ByteGetBe32(fhdr->page_number);
-		frame->commit = ByteGetBe32(fhdr->commit);
-		sqlite3_free(frame->page);
-		frame->page = NULL;
+		sqlite3_free(frame->data);
+		frame->data = NULL;
 	}
 	sm_move(&e->wtx_sm, WTX_ACTIVE);
 	return SQLITE_OK;
@@ -739,13 +737,13 @@ static int vfs2_wal_post_write(struct entry *e,
 		x /= frame_size;
 		x -= e->pending_txn_start;
 		assert(0 <= x && x < e->pending_txn_len);
-		struct vfs2_wal_frame *frame = &e->pending_txn_frames[x];
-		assert(frame->page == NULL);
-		frame->page = sqlite3_malloc(amt);
-		if (frame->page == NULL) {
+		dqlite_vfs_frame *frame = &e->pending_txn_frames[x];
+		assert(frame->data == NULL);
+		frame->data = sqlite3_malloc(amt);
+		if (frame->data == NULL) {
 			return SQLITE_NOMEM;
 		}
-		memcpy(frame->page, buf, (size_t)amt);
+		memcpy(frame->data, buf, (size_t)amt);
 		sm_move(&e->wtx_sm, WTX_ACTIVE);
 		return SQLITE_OK;
 	} else {
@@ -1629,7 +1627,7 @@ int vfs2_commit_barrier(sqlite3_file *file)
 	return 0;
 }
 
-int vfs2_poll(sqlite3_file *file, struct vfs2_wal_frame **frames, unsigned *n, struct vfs2_wal_slice *sl)
+int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n, struct vfs2_wal_slice *sl)
 {
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
@@ -1652,7 +1650,7 @@ int vfs2_poll(sqlite3_file *file, struct vfs2_wal_frame **frames, unsigned *n, s
 		*frames = e->pending_txn_frames;
 	} else {
 		for (uint32_t i = 0; i < e->pending_txn_len; i++) {
-			sqlite3_free(e->pending_txn_frames[i].page);
+			sqlite3_free(e->pending_txn_frames[i].data);
 		}
 		sqlite3_free(e->pending_txn_frames);
 	}
@@ -1713,7 +1711,7 @@ int vfs2_read_wal(sqlite3_file *file,
 
 	int page_size = (int)e->page_size;
 	for (size_t i = 0; i < txns_len; i++) {
-		struct vfs2_wal_frame *f = sqlite3_malloc64(txns[i].meta.len * sizeof(*f));
+		dqlite_vfs_frame *f = sqlite3_malloc64(txns[i].meta.len * sizeof(*f));
 		if (f == NULL) {
 			goto oom;
 		}
@@ -1723,7 +1721,7 @@ int vfs2_read_wal(sqlite3_file *file,
 			if (p == NULL) {
 				goto oom;
 			}
-			txns[i].frames[j].page = p;
+			txns[i].frames[j].data = p;
 		}
 	}
 
@@ -1753,12 +1751,11 @@ int vfs2_read_wal(sqlite3_file *file,
 				return 1;
 			}
 			off += (sqlite3_int64)sizeof(fhdr);
-			rv = wal->pMethods->xRead(wal, txns[i].frames[j].page, page_size, off);
+			rv = wal->pMethods->xRead(wal, txns[i].frames[j].data, page_size, off);
 			if (rv != SQLITE_OK) {
 				return 1;
 			}
 			txns[i].frames[j].page_number = ByteGetBe32(fhdr.page_number);
-			txns[i].frames[j].commit = ByteGetBe32(fhdr.commit);
 		}
 		if (from_wal_cur) {
 			vfs2_pseudo_read_end(file, read_lock);
@@ -1770,7 +1767,7 @@ int vfs2_read_wal(sqlite3_file *file,
 oom:
 	for (uint32_t i = 0; i < txns_len; i++) {
 		for (uint32_t j = 0; j < txns[i].meta.len; j++) {
-			sqlite3_free(txns[i].frames[j].page);
+			sqlite3_free(txns[i].frames[j].data);
 		}
 		sqlite3_free(txns[i].frames);
 		txns[i].frames = NULL;
@@ -1816,28 +1813,28 @@ static struct wal_hdr next_wal_hdr(const struct entry *e)
 	return ret;
 }
 
-static struct wal_frame_hdr txn_frame_hdr(struct entry *e, struct cksums sums, struct vfs2_wal_frame frame)
+static struct wal_frame_hdr txn_frame_hdr(struct entry *e, struct cksums sums, uint32_t commit, dqlite_vfs_frame frame)
 {
 	struct wal_frame_hdr fhdr;
 
-	BytePutBe32(frame.page_number, fhdr.page_number);
-	BytePutBe32(frame.commit, fhdr.commit);
+	PRE(frame.page_number < (unsigned long)UINT32_MAX);
+	BytePutBe32((uint32_t)frame.page_number, fhdr.page_number);
+	BytePutBe32(commit, fhdr.commit);
 	update_cksums(ByteGetBe32(e->wal_cur_hdr.magic), (const void *)(&fhdr), 8, &sums);
-	update_cksums(ByteGetBe32(e->wal_cur_hdr.magic), frame.page, e->page_size, &sums);
+	update_cksums(ByteGetBe32(e->wal_cur_hdr.magic), frame.data, e->page_size, &sums);
 	fhdr.salts = e->wal_cur_hdr.salts;
 	BytePutBe32(sums.cksum1, fhdr.cksum1);
 	BytePutBe32(sums.cksum2, fhdr.cksum2);
 	return fhdr;
 }
 
-int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct vfs2_wal_frame *frames, unsigned len, struct vfs2_wal_slice *out)
+int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const dqlite_vfs_frame *frames, unsigned len, struct vfs2_wal_slice *out)
 {
 	PRE(len > 0);
 	PRE(is_valid_page_size(page_size));
-	for (unsigned i = 0; i < len - 1; i++) {
-		PRE(frames[i].commit == 0);
+	for (unsigned i = 0; i < len; i++) {
+		PRE(frames[i].page_number < UINT32_MAX);
 	}
-	PRE(frames[len - 1].commit > 0);
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
@@ -1872,6 +1869,7 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct 
 	uint32_t start = e->wal_cursor;
 
 	struct cksums sums;
+	uint32_t db_size;
 	if (start > 0) {
 		/* TODO cache this in the entry? */
 		struct wal_frame_hdr prev_fhdr;
@@ -1880,15 +1878,28 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct 
 		if (rv != SQLITE_OK) {
 			return 1;
 		}
+
 		sums.cksum1 = ByteGetBe32(prev_fhdr.cksum1);
 		sums.cksum2 = ByteGetBe32(prev_fhdr.cksum2);
+		db_size = ByteGetBe32(prev_fhdr.commit);
+		assert(db_size > 0);
 	} else {
+
+		/* TODO cache this in the entry? */
+		uint8_t b[100];
+		rv = xfile->orig->pMethods->xRead(xfile->orig, &b, sizeof(b), 0);
+		if (rv != SQLITE_OK) {
+			return 1;
+		}
+
 		sums.cksum1 = ByteGetBe32(e->wal_cur_hdr.cksum1);
 		sums.cksum2 = ByteGetBe32(e->wal_cur_hdr.cksum2);
+		db_size = ByteGetBe32(b + 28);
+		/* TODO cross-check with xFileSize */
 	}
 
-	struct wal_frame_hdr fhdr = txn_frame_hdr(e, sums, frames[0]);
-	rv = write_one_frame(e, fhdr, frames[0].page);
+	struct wal_frame_hdr fhdr = txn_frame_hdr(e, sums, 0 == len - 1 ? db_size : 0, frames[0]);
+	rv = write_one_frame(e, fhdr, frames[0].data);
 	if (rv != SQLITE_OK) {
 		return 1;
 	}
@@ -1896,8 +1907,10 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct 
 	for (unsigned i = 1; i < len; i++) {
 		sums.cksum1 = ByteGetBe32(fhdr.cksum1);
 		sums.cksum2 = ByteGetBe32(fhdr.cksum2);
-		fhdr = txn_frame_hdr(e, sums, frames[i]);
-		rv = write_one_frame(e, fhdr, frames[i].page);
+		uint32_t pn = (uint32_t)frames[i].page_number;
+		db_size = pn > db_size ? pn : db_size;
+		fhdr = txn_frame_hdr(e, sums, i == len - 1 ? db_size : 0, frames[i]);
+		rv = write_one_frame(e, fhdr, frames[i].data);
 		if (rv != SQLITE_OK) {
 			return 1;
 		}

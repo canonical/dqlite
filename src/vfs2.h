@@ -1,6 +1,8 @@
 #ifndef DQLITE_VFS2_H
 #define DQLITE_VFS2_H
 
+#include "../include/dqlite.h"
+
 #include <sqlite3.h>
 
 #include <stddef.h>
@@ -33,12 +35,6 @@ struct vfs2_wal_slice {
 	uint32_t len;
 };
 
-struct vfs2_wal_frame {
-	uint32_t page_number;
-	uint32_t commit;
-	void *page;
-};
-
 /**
  * Retrieve frames that were appended to the WAL by the last write transaction,
  * and reacquire the write lock.
@@ -47,7 +43,7 @@ struct vfs2_wal_frame {
  *
  * Polling the same transaction more than once is an error.
  */
-int vfs2_poll(sqlite3_file *file, struct vfs2_wal_frame **frames, unsigned *n, struct vfs2_wal_slice *sl);
+int vfs2_poll(sqlite3_file *file, dqlite_vfs_frame **frames, unsigned *n, struct vfs2_wal_slice *sl);
 
 int vfs2_unhide(sqlite3_file *file);
 
@@ -55,13 +51,13 @@ int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice stop);
 
 int vfs2_commit_barrier(sqlite3_file *file);
 
-int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct vfs2_wal_frame *frames, unsigned n, struct vfs2_wal_slice *out);
+int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const dqlite_vfs_frame *frames, unsigned n, struct vfs2_wal_slice *out);
 
 int vfs2_unapply(sqlite3_file *file, struct vfs2_wal_slice stop);
 
 struct vfs2_wal_txn {
 	struct vfs2_wal_slice meta;
-	struct vfs2_wal_frame *frames;
+	dqlite_vfs_frame *frames;
 };
 
 /**
