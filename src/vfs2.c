@@ -375,6 +375,8 @@ static bool write_lock_held(const struct entry *e)
 static bool wal_index_basic_hdr_equal(struct wal_index_basic_hdr a,
 				      struct wal_index_basic_hdr b)
 {
+	/* memcmp is okay here since struct wal_index_basic_hdr has no
+	 * padding. */
 	return memcmp(&a, &b, sizeof(struct wal_index_basic_hdr)) == 0;
 }
 
