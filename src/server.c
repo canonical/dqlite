@@ -24,6 +24,7 @@
 #include "transport.h"
 #include "utils.h"
 #include "vfs.h"
+#include "vfs2.h"
 
 /* Special ID for the bootstrap node. Equals to raft_digest("1", 0). */
 #define BOOTSTRAP_ID 0x2dc171858c3155be
@@ -31,6 +32,8 @@
 #define DATABASE_DIR_FMT "%s/database"
 
 #define NODE_STORE_INFO_FORMAT_V1 "v1"
+
+#define VFS2_NAME "dqlite-vfs2"
 
 /* Called by raft every time the raft state changes. */
 static void state_cb(struct raft *r,
@@ -61,6 +64,8 @@ int dqlite__init(struct dqlite_node *d,
 	char db_dir_path[1024];
 	int urandom;
 	ssize_t count;
+	sqlite3_vfs *vfs2 = NULL;
+	(void)vfs2;
 
 	d->initialized = false;
 	memset(d->errmsg, 0, sizeof d->errmsg);
@@ -93,6 +98,9 @@ int dqlite__init(struct dqlite_node *d,
 		goto err_after_vfs_init;
 	}
 #ifdef DQLITE_NEXT
+	vfs2 = vfs2_make(sqlite3_vfs_find("unix"), VFS2_NAME);
+	sqlite3_vfs_register(vfs2, 0, /* not default */);
+
 	rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count,
 		       POOL_QOS_PRIO_FAIR);
 	if (rv != 0) {
@@ -192,6 +200,8 @@ err_after_pool_init:
 	pool_close(&d->pool);
 	pool_fini(&d->pool);
 err_after_loop_init:
+	sqlite3_vfs_unregister(vfs2);
+	vfs2_destroy(vfs2);
 #endif
 	uv_loop_close(&d->loop);
 err_after_vfs_init:
@@ -222,6 +232,9 @@ void dqlite__close(struct dqlite_node *d)
 
 #ifdef DQLITE_NEXT
 	pool_fini(&d->pool);
+	sqlite3_vfs *vfs2 = sqlite3_vfs_find(VFS2_NAME);
+	sqlite3_vfs_unregister(vfs2);
+	vfs2_destroy(vfs2);
 #endif
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
