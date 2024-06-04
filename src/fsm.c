@@ -134,10 +134,7 @@ static void maybeCheckpoint(struct db *db)
 		goto err_after_db_open;
 	}
 
-	/* Get the database file associated with this db->follower connection */
-	rv = sqlite3_file_control(db->follower, "main",
-				  SQLITE_FCNTL_FILE_POINTER, &main_f);
-	assert(rv == SQLITE_OK); /* Should never fail */
+	main_f = main_file(db->follower);
 
 	/* Get the first SHM region, which contains the WAL header. */
 	rv = main_f->pMethods->xShmMap(main_f, 0, 0, 0, &region);
@@ -1153,7 +1150,7 @@ void fsm_post_receive(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_
 		assert(0);
 	}
 	if (type != COMMAND_FRAMES) {
-		return;
+		goto done_after_command_decode;
 	}
 	struct command_frames *cf = cmd;
 	assert(cf->is_commit);
@@ -1193,8 +1190,7 @@ void fsm_post_receive(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_
 	}
 	assert(db->follower != NULL);
 
-	sqlite3_file *fp;
-	sqlite3_file_control(db->follower, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	sqlite3_file *fp = main_file(db->follower);
 	struct vfs2_wal_slice sl;
 	rv = vfs2_apply_uncommitted(fp, cf->frames.page_size, frames, cf->frames.n_pages, &sl);
 	if (rv != 0) {
@@ -1202,13 +1198,48 @@ void fsm_post_receive(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_
 		assert(0);
 	}
 
+	memcpy(ld, &sl, sizeof(sl));
+
 	sqlite3_free(frames);
 	sqlite3_free(page_numbers);
-
-	memcpy(ld, &sl, sizeof(sl));
+done_after_command_decode:
+	raft_free(cmd);
 }
 
-void fsm_post_receive_undo(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data ld, int half)
+static int fsm_apply_vfs2(struct raft_fsm *fsm, const struct raft_buffer *buf, void **result)
+{
+	struct fsm *f = fsm->data;
+	int rv;
+
+	int type;
+	void *cmd;
+	rv = command__decode(buf, &type, &cmd);
+	if (rv != 0) {
+		tracef("fsm: decode command: %d", rv);
+		goto err;
+	}
+
+	switch (type) {
+		case COMMAND_FRAMES:
+			rv = apply_frames(f, cmd);
+			break;
+		case COMMAND_CHECKPOINT:
+		case COMMAND_OPEN:
+		case COMMAND_UNDO:
+			rv = 0;
+			break;
+		default:
+			rv = RAFT_MALFORMED;
+			break;
+	}
+
+	raft_free(cmd);
+err:
+	*result = NULL;
+	return rv;
+}
+
+static void fsm_post_receive_undo(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data ld, int half)
 {
 	struct fsm *f = fsm->data;
 	void *cmd;
@@ -1245,8 +1276,7 @@ void fsm_post_receive_undo(struct raft_fsm *fsm, struct raft_buffer buf, struct 
 	}
 	assert(db->follower != NULL);
 
-	sqlite3_file *fp;
-	sqlite3_file_control(db->follower, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	sqlite3_file *fp = main_file(db->follower);;
 	struct vfs2_wal_slice sl;
 	memcpy(&sl, &ld, sizeof(ld));
 	rv = vfs2_unapply(fp, sl);
@@ -1275,7 +1305,11 @@ int fsm__init_disk(struct raft_fsm *fsm,
 
 	fsm->version = 4;
 	fsm->data = f;
-	fsm->apply = fsm__apply;
+	if (NEXT) {
+		fsm->apply = fsm_apply_vfs2;
+	} else {
+		fsm->apply = fsm__apply;
+	}
 	fsm->snapshot = fsm__snapshot_disk;
 	fsm->snapshot_async = fsm__snapshot_async_disk;
 	fsm->snapshot_finalize = fsm__snapshot_finalize_disk;

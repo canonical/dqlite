@@ -1678,7 +1678,6 @@ void vfs2_destroy(sqlite3_vfs *vfs)
 
 int vfs2_abort(sqlite3_file *file)
 {
-	/* TODO maybe can "followerize" this and get rid of vfs2_unapply_after? */
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;

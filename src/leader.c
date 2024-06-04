@@ -259,8 +259,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 	if (status != 0) {
 		tracef("apply frames cb failed status %d", status);
 		sqlite3_vfs *vfs = sqlite3_vfs_find(l->db->config->name);
-		sqlite3_file *f;
-		sqlite3_file_control(l->conn, "main", SQLITE_FCNTL_FILE_POINTER, &f);
+		sqlite3_file *f = main_file(l->conn);
 		switch (status) {
 			case RAFT_LEADERSHIPLOST:
 				l->exec->status = SQLITE_IOERR_LEADERSHIP_LOST;
@@ -386,7 +385,7 @@ static void leaderExecV2(struct exec *req, enum pool_half half)
 	unsigned i;
 	int rv;
 
-	sqlite3_file_control(l->conn, "main", SQLITE_FCNTL_FILE_POINTER, &f);
+	f = main_file(l->conn);
 
 	if (half == POOL_TOP_HALF) {
 		req->status = sqlite3_step(req->stmt);
