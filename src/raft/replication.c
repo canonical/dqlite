@@ -490,8 +490,7 @@ static void post_receive_undo(struct raft *r, const struct raft_entry *es, size_
 		if (e->type != RAFT_COMMAND) {
 			continue;
 		}
-		r->fsm->post_receive_undo(r->fsm, e->buf, e->local_data, POOL_TOP_HALF);
-		r->fsm->post_receive_undo(r->fsm, e->buf, e->local_data, POOL_BOTTOM_HALF);
+		r->fsm->post_receive_undo(r->fsm, &e->buf, e->local_data);
 	}
 }
 
@@ -1240,8 +1239,7 @@ int replicationAppend(struct raft *r,
 		struct raft_entry *entry = &args->entries[i + j];
 
 		if (r->fsm->version >= 4 && r->fsm->post_receive != NULL && entry->type == RAFT_COMMAND) {
-			r->fsm->post_receive(r->fsm, entry->buf, &entry->local_data, POOL_TOP_HALF);
-			r->fsm->post_receive(r->fsm, entry->buf, &entry->local_data, POOL_BOTTOM_HALF);
+			r->fsm->post_receive(r->fsm, &entry->buf, &entry->local_data);
 		}
 		k++;
 
@@ -1518,8 +1516,7 @@ static int applyCommand(struct raft *r,
 	int rv;
 
 	if (r->fsm->version >= 4 && r->fsm->apply2 != NULL) {
-		r->fsm->apply2(r->fsm, *buf, ld, &result, POOL_TOP_HALF);
-		r->fsm->apply2(r->fsm, *buf, ld, &result, POOL_BOTTOM_HALF);
+		r->fsm->apply2(r->fsm, buf, ld, &result);
 		/* XXX(cole) surface errors */
 		rv = 0;
 	} else {

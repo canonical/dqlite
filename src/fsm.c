@@ -1133,18 +1133,14 @@ static int fsm__restore_disk(struct raft_fsm *fsm, struct raft_buffer *buf)
 	return 0;
 }
 
-void fsm_post_receive(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data *ld, int half)
+void fsm_post_receive(struct raft_fsm *fsm, const struct raft_buffer *buf, struct raft_entry_local_data *ld)
 {
 	struct fsm *f = fsm->data;
 	void *cmd;
 	int rv;
 
-	if (half == POOL_BOTTOM_HALF) {
-		return;
-	}
-
 	int type;
-	rv = command__decode(&buf, &type, &cmd);
+	rv = command__decode(buf, &type, &cmd);
 	if (rv != 0) {
 		/* XXX */
 		assert(0);
@@ -1206,14 +1202,14 @@ done_after_command_decode:
 	raft_free(cmd);
 }
 
-static void fsm_apply2(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data ld, void **result, int half)
+static void fsm_apply2(struct raft_fsm *fsm, const struct raft_buffer *buf, struct raft_entry_local_data ld, void **result)
 {
 	struct fsm *f = fsm->data;
 	int rv;
 
 	int type;
 	void *cmd;
-	rv = command__decode(&buf, &type, &cmd);
+	rv = command__decode(buf, &type, &cmd);
 	if (rv != 0) {
 		goto done;
 	}
@@ -1230,6 +1226,10 @@ static void fsm_apply2(struct raft_fsm *fsm, struct raft_buffer buf, struct raft
 	}
 
 	struct command_frames *cf = cmd;
+	(void)cf;
+	(void)f;
+	(void)ld;
+	/* TODO */
 
 done_after_command_decode:
 	raft_free(cmd);
@@ -1237,18 +1237,14 @@ done:
 	*result = NULL;
 }
 
-static void fsm_post_receive_undo(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data ld, int half)
+static void fsm_post_receive_undo(struct raft_fsm *fsm, const struct raft_buffer *buf, struct raft_entry_local_data ld)
 {
 	struct fsm *f = fsm->data;
 	void *cmd;
 	int rv;
 
-	if (half == POOL_BOTTOM_HALF) {
-		return;
-	}
-
 	int type;
-	rv = command__decode(&buf, &type, &cmd);
+	rv = command__decode(buf, &type, &cmd);
 	if (rv != 0) {
 		/* XXX */
 		assert(0);
