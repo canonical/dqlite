@@ -650,6 +650,7 @@ struct raft_fsm
 			      struct raft_buffer *bufs[],
 			      unsigned *n_bufs);
 	/* version 4 */
+	void (*apply2)(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data ld, void **result, int half);
 	void (*post_receive)(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data *ld, int half);
 	void (*post_receive_undo)(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data ld, int half);
 };

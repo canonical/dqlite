@@ -1510,12 +1510,21 @@ err:
 /* Apply a RAFT_COMMAND entry that has been committed. */
 static int applyCommand(struct raft *r,
 			const raft_index index,
-			const struct raft_buffer *buf)
+			const struct raft_buffer *buf,
+			struct raft_entry_local_data ld)
 {
 	struct raft_apply *req;
 	void *result;
 	int rv;
-	rv = r->fsm->apply(r->fsm, buf, &result);
+
+	if (r->fsm->version >= 4 && r->fsm->apply2 != NULL) {
+		r->fsm->apply2(r->fsm, *buf, ld, &result, POOL_TOP_HALF);
+		r->fsm->apply2(r->fsm, *buf, ld, &result, POOL_BOTTOM_HALF);
+		/* XXX(cole) surface errors */
+		rv = 0;
+	} else {
+		rv = r->fsm->apply(r->fsm, buf, &result);
+	}
 	if (rv != 0) {
 		return rv;
 	}
@@ -1798,7 +1807,7 @@ int replicationApply(struct raft *r)
 
 		switch (entry->type) {
 			case RAFT_COMMAND:
-				rv = applyCommand(r, index, &entry->buf);
+				rv = applyCommand(r, index, &entry->buf, entry->local_data);
 				break;
 			case RAFT_BARRIER:
 				applyBarrier(r, index);

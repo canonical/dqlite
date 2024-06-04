@@ -41,6 +41,7 @@ static inline sqlite3_file *main_file(sqlite3 *conn)
 	sqlite3_file *fp;
 	int rv = sqlite3_file_control(conn, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
 	assert(rv == SQLITE_OK);
+	POST(fp != NULL);
 	return fp;
 }
 

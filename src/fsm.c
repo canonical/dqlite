@@ -1206,37 +1206,35 @@ done_after_command_decode:
 	raft_free(cmd);
 }
 
-static int fsm_apply_vfs2(struct raft_fsm *fsm, const struct raft_buffer *buf, void **result)
+static void fsm_apply2(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data ld, void **result, int half)
 {
 	struct fsm *f = fsm->data;
 	int rv;
 
 	int type;
 	void *cmd;
-	rv = command__decode(buf, &type, &cmd);
+	rv = command__decode(&buf, &type, &cmd);
 	if (rv != 0) {
-		tracef("fsm: decode command: %d", rv);
-		goto err;
+		goto done;
 	}
 
 	switch (type) {
 		case COMMAND_FRAMES:
-			rv = apply_frames(f, cmd);
 			break;
 		case COMMAND_CHECKPOINT:
 		case COMMAND_OPEN:
 		case COMMAND_UNDO:
-			rv = 0;
-			break;
+			goto done_after_command_decode;
 		default:
-			rv = RAFT_MALFORMED;
-			break;
+			goto done_after_command_decode;
 	}
 
+	struct command_frames *cf = cmd;
+
+done_after_command_decode:
 	raft_free(cmd);
-err:
+done:
 	*result = NULL;
-	return rv;
 }
 
 static void fsm_post_receive_undo(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data ld, int half)
@@ -1306,9 +1304,11 @@ int fsm__init_disk(struct raft_fsm *fsm,
 	fsm->version = 4;
 	fsm->data = f;
 	if (NEXT) {
-		fsm->apply = fsm_apply_vfs2;
+		fsm->apply = NULL;
+		fsm->apply2 = fsm_apply2;
 	} else {
 		fsm->apply = fsm__apply;
+		fsm->apply2 = NULL;
 	}
 	fsm->snapshot = fsm__snapshot_disk;
 	fsm->snapshot_async = fsm__snapshot_async_disk;
