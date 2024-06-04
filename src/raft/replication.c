@@ -1115,10 +1115,7 @@ static int deleteConflictingEntries(struct raft *r,
 			struct raft_entry *entries;
 			unsigned n;
 			rv = logAcquire(r->log, entry_index, &entries, &n);
-			if (rv != 0) {
-				/* XXX */
-				assert(0);
-			}
+			UNHANDLED(rv != 0);
 			post_receive_undo(r, entries, n);
 			logRelease(r->log, entry_index, entries, n);
 
@@ -1508,15 +1505,18 @@ err:
 /* Apply a RAFT_COMMAND entry that has been committed. */
 static int applyCommand(struct raft *r,
 			const raft_index index,
+			const raft_term term,
 			const struct raft_buffer *buf,
-			struct raft_entry_local_data ld)
+			struct raft_entry_local_data ld,
+			bool is_local)
 {
 	struct raft_apply *req;
 	void *result;
 	int rv;
 
 	if (r->fsm->version >= 4 && r->fsm->apply2 != NULL) {
-		rv = r->fsm->apply2(r->fsm, buf, ld, &result);
+		bool is_mine = is_local && term == r->current_term;
+		rv = r->fsm->apply2(r->fsm, buf, ld, is_mine, &result);
 	} else {
 		rv = r->fsm->apply(r->fsm, buf, &result);
 	}
@@ -1802,7 +1802,7 @@ int replicationApply(struct raft *r)
 
 		switch (entry->type) {
 			case RAFT_COMMAND:
-				rv = applyCommand(r, index, &entry->buf, entry->local_data);
+				rv = applyCommand(r, index, entry->term, &entry->buf, entry->local_data, entry->is_local);
 				break;
 			case RAFT_BARRIER:
 				applyBarrier(r, index);

@@ -1141,10 +1141,7 @@ void fsm_post_receive(struct raft_fsm *fsm, const struct raft_buffer *buf, struc
 
 	int type;
 	rv = command__decode(buf, &type, &cmd);
-	if (rv != 0) {
-		/* XXX */
-		assert(0);
-	}
+	UNHANDLED(rv != 0);
 	if (type != COMMAND_FRAMES) {
 		goto done_after_command_decode;
 	}
@@ -1153,19 +1150,13 @@ void fsm_post_receive(struct raft_fsm *fsm, const struct raft_buffer *buf, struc
 
 	unsigned long *page_numbers;
 	rv = command_frames__page_numbers(cf, &page_numbers);
-	if (rv != 0) {
-		/* XXX */
-		assert(0);
-	}
+	UNHANDLED(rv != 0);
 	void *pages;
 	command_frames__pages(cf, &pages);
 	/* TODO maybe vfs2 should just accept the pages and page numbers
 	 * in the layout that we receive them over the wire? */
 	dqlite_vfs_frame *frames = sqlite3_malloc((int)sizeof(*frames) * (int)cf->frames.n_pages);
-	if (frames == NULL) {
-		/* XXX */
-		assert(0);
-	}
+	UNHANDLED(frames == NULL);
 	for (uint32_t i = 0; i < cf->frames.n_pages; i++) {
 		frames[i].page_number = page_numbers[i];
 		frames[i].data = pages + cf->frames.page_size * i;
@@ -1173,28 +1164,21 @@ void fsm_post_receive(struct raft_fsm *fsm, const struct raft_buffer *buf, struc
 
 	struct db *db;
 	rv = registry__db_get(f->registry, cf->filename, &db);
-	if (rv != 0) {
-		/* XXX */
-		assert(0);
-	}
-	if (db->follower == NULL) {
-		rv = db__open_follower(db);
-		if (rv != SQLITE_OK) {
-			/* XXX */
-			assert(0);
-		}
-	}
-	assert(db->follower != NULL);
+	UNHANDLED(rv != 0);
+	PRE(db->follower == NULL);
+	rv = db__open_follower(db);
+	UNHANDLED(rv != SQLITE_OK);
+	POST(db->follower != NULL);
 
 	sqlite3_file *fp = main_file(db->follower);
 	struct vfs2_wal_slice sl;
 	rv = vfs2_apply_uncommitted(fp, cf->frames.page_size, frames, cf->frames.n_pages, &sl);
-	if (rv != 0) {
-		/* XXX */
-		assert(0);
-	}
+	UNHANDLED(rv != 0);
 
 	memcpy(ld, &sl, sizeof(sl));
+
+	sqlite3_close(db->follower);
+	db->follower = NULL;
 
 	sqlite3_free(frames);
 	sqlite3_free(page_numbers);
@@ -1202,7 +1186,9 @@ done_after_command_decode:
 	raft_free(cmd);
 }
 
-static int fsm_apply2(struct raft_fsm *fsm, const struct raft_buffer *buf, struct raft_entry_local_data ld, void **result)
+static int fsm_apply2(struct raft_fsm *fsm,
+		const struct raft_buffer *buf, struct raft_entry_local_data ld,
+		bool is_mine, void **result)
 {
 	struct fsm *f = fsm->data;
 	int rv;
@@ -1228,10 +1214,29 @@ static int fsm_apply2(struct raft_fsm *fsm, const struct raft_buffer *buf, struc
 	}
 
 	struct command_frames *cf = cmd;
-	(void)cf;
-	(void)f;
-	(void)ld;
-	/* TODO */
+
+	struct db *db;
+	rv = registry__db_get(f->registry, cf->filename, &db);
+	UNHANDLED(rv != 0);
+	PRE(db->follower == NULL);
+	rv = db__open_follower(db);
+	UNHANDLED(rv != SQLITE_OK);
+	POST(db->follower != NULL);
+
+	sqlite3_file *fp = main_file(db->follower);
+	if (is_mine) {
+		rv = vfs2_unhide(fp);
+	} else {
+		struct vfs2_wal_slice sl;
+		memcpy(&sl, &ld, sizeof(ld));
+		rv = vfs2_commit(fp, sl);
+	}
+	UNHANDLED(rv != 0);
+
+	rv = 0;
+
+	sqlite3_close(db->follower);
+	db->follower = NULL;
 
 done_after_command_decode:
 	raft_free(cmd);
@@ -1248,10 +1253,7 @@ static void fsm_post_receive_undo(struct raft_fsm *fsm, const struct raft_buffer
 
 	int type;
 	rv = command__decode(buf, &type, &cmd);
-	if (rv != 0) {
-		/* XXX */
-		assert(0);
-	}
+	UNHANDLED(rv != 0);
 	if (type != COMMAND_FRAMES) {
 		return;
 	}
@@ -1260,27 +1262,19 @@ static void fsm_post_receive_undo(struct raft_fsm *fsm, const struct raft_buffer
 
 	struct db *db;
 	rv = registry__db_get(f->registry, cf->filename, &db);
-	if (rv != 0) {
-		/* XXX */
-		assert(0);
-	}
-	if (db->follower == NULL) {
-		rv = db__open_follower(db);
-		if (rv != SQLITE_OK) {
-			/* XXX */
-			assert(0);
-		}
-	}
-	assert(db->follower != NULL);
+	UNHANDLED(rv != 0);
+	PRE(db->follower == NULL);
+	rv = db__open_follower(db);
+	UNHANDLED(rv != SQLITE_OK);
+	POST(db->follower != NULL);
 
 	sqlite3_file *fp = main_file(db->follower);
 	struct vfs2_wal_slice sl;
 	memcpy(&sl, &ld, sizeof(ld));
 	rv = vfs2_unapply(fp, sl);
-	if (rv != 0) {
-		/* XXX */
-		assert(0);
-	}
+	UNHANDLED(rv != 0);
+	sqlite3_close(db->follower);
+	db->follower = NULL;
 }
 
 int fsm__init_disk(struct raft_fsm *fsm,

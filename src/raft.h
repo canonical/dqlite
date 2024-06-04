@@ -653,6 +653,7 @@ struct raft_fsm
 	int (*apply2)(struct raft_fsm *fsm,
 			const struct raft_buffer *buf,
 			struct raft_entry_local_data ld,
+			bool is_mine,
 			void **result);
 	void (*post_receive)(struct raft_fsm *fsm,
 			const struct raft_buffer *buf,
