@@ -1002,6 +1002,9 @@ respond:
 	sendAppendEntriesResult(r, &result);
 
 out:
+	if (status != 0) {
+		post_receive_undo(r, request->args.entries, request->args.n_entries);
+	}
 	logRelease(r->log, request->index, request->args.entries,
 		   request->args.n_entries);
 
@@ -1303,7 +1306,6 @@ err_after_acquire_entries:
 
 err_after_request_alloc:
 	assert(k <= n);
-	post_receive_undo(r, args->entries + i, k);
 	/* Release all entries added to the in-memory log, making
 	 * sure the in-memory log and disk don't diverge, leading
 	 * to future log entries not being persisted to disk.
@@ -1311,6 +1313,7 @@ err_after_request_alloc:
 	if (j != 0) {
 		logTruncate(r->log, request->index);
 	}
+	post_receive_undo(r, args->entries + i, k);
 	raft_free(request);
 
 err:
