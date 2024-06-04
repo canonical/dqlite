@@ -477,6 +477,24 @@ static struct request *getRequest(struct raft *r,
 	return NULL;
 }
 
+static void post_receive_undo(struct raft *r, const struct raft_entry *es, size_t n)
+{
+	if (r->fsm->version < 4 || r->fsm->post_receive_undo == NULL) {
+		return;
+	}
+
+	size_t i = n;
+	while (i > 0) {
+		i--;
+		const struct raft_entry *e = &es[i];
+		if (e->type != RAFT_COMMAND) {
+			continue;
+		}
+		r->fsm->post_receive_undo(r->fsm, e->buf, e->local_data, POOL_TOP_HALF);
+		r->fsm->post_receive_undo(r->fsm, e->buf, e->local_data, POOL_BOTTOM_HALF);
+	}
+}
+
 /* Invoked once a disk write request for new entries has been completed. */
 static void appendLeaderCb(struct raft_io_append *append, int status)
 {
@@ -1126,7 +1144,6 @@ int replicationAppend(struct raft *r,
 		      raft_index *rejected,
 		      bool *async)
 {
-	bool postprocess = r->fsm->version >= 4 && r->fsm->post_receive != NULL && r->fsm->post_receive_undo != NULL;
 	struct appendFollower *request;
 	int match;
 	size_t n;
@@ -1209,7 +1226,7 @@ int replicationAppend(struct raft *r,
 	for (j = 0; j < n; j++) {
 		struct raft_entry *entry = &args->entries[i + j];
 
-		if (postprocess && entry->type == RAFT_COMMAND) {
+		if (r->fsm->version >= 4 && r->fsm->post_receive != NULL && entry->type == RAFT_COMMAND) {
 			r->fsm->post_receive(r->fsm, entry->buf, &entry->local_data, POOL_TOP_HALF);
 			r->fsm->post_receive(r->fsm, entry->buf, &entry->local_data, POOL_BOTTOM_HALF);
 		}
@@ -1285,18 +1302,8 @@ err_after_acquire_entries:
 		   request->args.n_entries);
 
 err_after_request_alloc:
-	if (postprocess) {
-		assert(k <= n);
-		while (k > 0) {
-			k--;
-			struct raft_entry *e = &args->entries[i + k];
-			if (e->type != RAFT_COMMAND) {
-				continue;
-			}
-			r->fsm->post_receive_undo(r->fsm, e->buf, e->local_data, POOL_TOP_HALF);
-			r->fsm->post_receive_undo(r->fsm, e->buf, e->local_data, POOL_BOTTOM_HALF);
-		}
-	}
+	assert(k <= n);
+	post_receive_undo(r, args->entries + i, k);
 	/* Release all entries added to the in-memory log, making
 	 * sure the in-memory log and disk don't diverge, leading
 	 * to future log entries not being persisted to disk.
