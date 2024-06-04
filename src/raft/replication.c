@@ -1113,6 +1113,16 @@ static int deleteConflictingEntries(struct raft *r,
 				}
 			}
 
+			struct raft_entry *entries;
+			unsigned n;
+			rv = logAcquire(r->log, entry_index, &entries, &n);
+			if (rv != 0) {
+				/* XXX */
+				assert(0);
+			}
+			post_receive_undo(r, entries, n);
+			logRelease(r->log, entry_index, entries, n);
+
 			/* Delete all entries from this index on because they
 			 * don't match. */
 			rv = r->io->truncate(r->io, entry_index);
