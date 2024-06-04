@@ -1202,7 +1202,7 @@ done_after_command_decode:
 	raft_free(cmd);
 }
 
-static void fsm_apply2(struct raft_fsm *fsm, const struct raft_buffer *buf, struct raft_entry_local_data ld, void **result)
+static int fsm_apply2(struct raft_fsm *fsm, const struct raft_buffer *buf, struct raft_entry_local_data ld, void **result)
 {
 	struct fsm *f = fsm->data;
 	int rv;
@@ -1220,8 +1220,10 @@ static void fsm_apply2(struct raft_fsm *fsm, const struct raft_buffer *buf, stru
 		case COMMAND_CHECKPOINT:
 		case COMMAND_OPEN:
 		case COMMAND_UNDO:
+			rv = 0;
 			goto done_after_command_decode;
 		default:
+			rv = RAFT_MALFORMED;
 			goto done_after_command_decode;
 	}
 
@@ -1235,6 +1237,7 @@ done_after_command_decode:
 	raft_free(cmd);
 done:
 	*result = NULL;
+	return rv;
 }
 
 static void fsm_post_receive_undo(struct raft_fsm *fsm, const struct raft_buffer *buf, struct raft_entry_local_data ld)
@@ -1270,7 +1273,7 @@ static void fsm_post_receive_undo(struct raft_fsm *fsm, const struct raft_buffer
 	}
 	assert(db->follower != NULL);
 
-	sqlite3_file *fp = main_file(db->follower);;
+	sqlite3_file *fp = main_file(db->follower);
 	struct vfs2_wal_slice sl;
 	memcpy(&sl, &ld, sizeof(ld));
 	rv = vfs2_unapply(fp, sl);

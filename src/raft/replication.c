@@ -1516,9 +1516,7 @@ static int applyCommand(struct raft *r,
 	int rv;
 
 	if (r->fsm->version >= 4 && r->fsm->apply2 != NULL) {
-		r->fsm->apply2(r->fsm, buf, ld, &result);
-		/* XXX(cole) surface errors */
-		rv = 0;
+		rv = r->fsm->apply2(r->fsm, buf, ld, &result);
 	} else {
 		rv = r->fsm->apply(r->fsm, buf, &result);
 	}
