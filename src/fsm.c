@@ -1157,6 +1157,7 @@ void fsm_post_receive(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_
 	}
 	struct command_frames *cf = cmd;
 	assert(cf->is_commit);
+
 	unsigned long *page_numbers;
 	rv = command_frames__page_numbers(cf, &page_numbers);
 	if (rv != 0) {
@@ -1165,6 +1166,8 @@ void fsm_post_receive(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_
 	}
 	void *pages;
 	command_frames__pages(cf, &pages);
+	/* TODO maybe vfs2 should just accept the pages and page numbers
+	 * in the layout that we receive them over the wire? */
 	dqlite_vfs_frame *frames = sqlite3_malloc((int)sizeof(*frames) * (int)cf->frames.n_pages);
 	if (frames == NULL) {
 		/* XXX */
@@ -1174,6 +1177,7 @@ void fsm_post_receive(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_
 		frames[i].page_number = page_numbers[i];
 		frames[i].data = pages + cf->frames.page_size * i;
 	}
+
 	struct db *db;
 	rv = registry__db_get(f->registry, cf->filename, &db);
 	if (rv != 0) {
@@ -1187,6 +1191,8 @@ void fsm_post_receive(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_
 			assert(0);
 		}
 	}
+	assert(db->follower != NULL);
+
 	sqlite3_file *fp;
 	sqlite3_file_control(db->follower, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
 	struct vfs2_wal_slice sl;
@@ -1195,8 +1201,59 @@ void fsm_post_receive(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_
 		/* XXX */
 		assert(0);
 	}
-	memcpy(ld, &sl, sizeof(sl));
+
+	sqlite3_free(frames);
 	sqlite3_free(page_numbers);
+
+	memcpy(ld, &sl, sizeof(sl));
+}
+
+void fsm_post_receive_undo(struct raft_fsm *fsm, struct raft_buffer buf, struct raft_entry_local_data ld, int half)
+{
+	struct fsm *f = fsm->data;
+	void *cmd;
+	int rv;
+
+	if (half == POOL_BOTTOM_HALF) {
+		return;
+	}
+
+	int type;
+	rv = command__decode(&buf, &type, &cmd);
+	if (rv != 0) {
+		/* XXX */
+		assert(0);
+	}
+	if (type != COMMAND_FRAMES) {
+		return;
+	}
+	struct command_frames *cf = cmd;
+	assert(cf->is_commit);
+
+	struct db *db;
+	rv = registry__db_get(f->registry, cf->filename, &db);
+	if (rv != 0) {
+		/* XXX */
+		assert(0);
+	}
+	if (db->follower == NULL) {
+		rv = db__open_follower(db);
+		if (rv != SQLITE_OK) {
+			/* XXX */
+			assert(0);
+		}
+	}
+	assert(db->follower != NULL);
+
+	sqlite3_file *fp;
+	sqlite3_file_control(db->follower, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	struct vfs2_wal_slice sl;
+	memcpy(&sl, &ld, sizeof(ld));
+	rv = vfs2_unapply(fp, sl);
+	if (rv != 0) {
+		/* XXX */
+		assert(0);
+	}
 }
 
 int fsm__init_disk(struct raft_fsm *fsm,
@@ -1224,6 +1281,7 @@ int fsm__init_disk(struct raft_fsm *fsm,
 	fsm->snapshot_finalize = fsm__snapshot_finalize_disk;
 	fsm->restore = fsm__restore_disk;
 	fsm->post_receive = fsm_post_receive;
+	fsm->post_receive_undo = fsm_post_receive_undo;
 
 	return 0;
 }

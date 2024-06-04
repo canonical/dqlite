@@ -33,6 +33,7 @@ int entryCopy(const struct raft_entry *src, struct raft_entry *dst)
 		return RAFT_NOMEM;
 	}
 	memcpy(dst->buf.base, src->buf.base, dst->buf.len);
+	dst->local_data = src->local_data;
 	dst->batch = NULL;
 	return 0;
 }

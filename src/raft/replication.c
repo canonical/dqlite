@@ -1122,15 +1122,17 @@ static int deleteConflictingEntries(struct raft *r,
 }
 
 int replicationAppend(struct raft *r,
-		      const struct raft_append_entries *args,
+		      struct raft_append_entries *args,
 		      raft_index *rejected,
 		      bool *async)
 {
+	bool postprocess = r->fsm->version >= 4 && r->fsm->post_receive != NULL && r->fsm->post_receive_undo != NULL;
 	struct appendFollower *request;
 	int match;
 	size_t n;
 	size_t i;
 	size_t j;
+	size_t k;
 	bool reinstated;
 	int rv;
 
@@ -1203,8 +1205,15 @@ int replicationAppend(struct raft *r,
 	/* Update our in-memory log to reflect that we received these entries.
 	 * We'll notify the leader of a successful append once the write entries
 	 * request that we issue below actually completes.  */
+	k = 0;
 	for (j = 0; j < n; j++) {
 		struct raft_entry *entry = &args->entries[i + j];
+
+		if (postprocess && entry->type == RAFT_COMMAND) {
+			r->fsm->post_receive(r->fsm, entry->buf, &entry->local_data, POOL_TOP_HALF);
+			r->fsm->post_receive(r->fsm, entry->buf, &entry->local_data, POOL_BOTTOM_HALF);
+		}
+		k++;
 
 		/* We are trying to append an entry at index X with term T to
 		 * our in-memory log. If we've gotten this far, we know that the
@@ -1236,13 +1245,7 @@ int replicationAppend(struct raft *r,
 			goto err_after_request_alloc;
 		}
 
-		struct raft_entry_local_data ld = {};
-		if (r->fsm->version >= 4 && r->fsm->post_receive != NULL) {
-			r->fsm->post_receive(r->fsm, copy.buf, &ld, POOL_TOP_HALF);
-			r->fsm->post_receive(r->fsm, copy.buf, &ld, POOL_BOTTOM_HALF);
-		}
-
-		rv = logAppend(r->log, copy.term, copy.type, copy.buf, ld, false, NULL);
+		rv = logAppend(r->log, copy.term, copy.type, copy.buf, copy.local_data, false, NULL);
 		if (rv != 0) {
 			goto err_after_request_alloc;
 		}
@@ -1282,6 +1285,18 @@ err_after_acquire_entries:
 		   request->args.n_entries);
 
 err_after_request_alloc:
+	if (postprocess) {
+		assert(k <= n);
+		while (k > 0) {
+			k--;
+			struct raft_entry *e = &args->entries[i + k];
+			if (e->type != RAFT_COMMAND) {
+				continue;
+			}
+			r->fsm->post_receive_undo(r->fsm, e->buf, e->local_data, POOL_TOP_HALF);
+			r->fsm->post_receive_undo(r->fsm, e->buf, e->local_data, POOL_BOTTOM_HALF);
+		}
+	}
 	/* Release all entries added to the in-memory log, making
 	 * sure the in-memory log and disk don't diverge, leading
 	 * to future log entries not being persisted to disk.
