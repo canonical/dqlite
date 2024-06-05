@@ -498,6 +498,7 @@ static void raftBarrierCb(struct raft_barrier *req, int status)
 			rv = SQLITE_ERROR;
 		}
 	}
+
 	barrier_cb cb = barrier->cb;
 	if (cb == NULL) {
 		tracef("barrier cb already fired");

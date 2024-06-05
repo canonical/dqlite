@@ -6,6 +6,7 @@
 struct raft_callbacks
 {
 	raft_state_cb state_cb;
+	raft_initial_barrier_cb ib_cb;
 };
 
 int raftInitCallbacks(struct raft *r);

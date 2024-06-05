@@ -55,6 +55,32 @@ static void state_cb(struct raft *r,
 	}
 }
 
+static void initial_barrier_cb(struct raft *r)
+{
+	struct dqlite_node *d = r->data;
+	int rv;
+
+	if (!d->registry.config->disk || !NEXT) {
+		return;
+	}
+
+	queue *head;
+	QUEUE_FOREACH(head, &d->registry.dbs) {
+		struct db *db = QUEUE_DATA(head, struct db, queue);
+		PRE(db->follower == NULL);
+		rv = db__open_follower(db);
+		UNHANDLED(rv != SQLITE_OK);
+		POST(db->follower != NULL);
+
+		sqlite3_file *fp = main_file(db->follower);
+		rv = vfs2_commit_barrier(fp);
+		UNHANDLED(rv != 0);
+
+		sqlite3_close(db->follower);
+		db->follower = NULL;
+	}
+}
+
 int dqlite__init(struct dqlite_node *d,
 		 dqlite_node_id id,
 		 const char *address,
@@ -153,6 +179,9 @@ int dqlite__init(struct dqlite_node *d,
 	raft_set_max_catch_up_rounds(&d->raft, 100);
 	raft_set_max_catch_up_round_duration(&d->raft, 50 * 1000); /* 50 secs */
 	raft_register_state_cb(&d->raft, state_cb);
+#ifndef USE_SYSTEM_RAFT
+	raft_register_initial_barrier_cb(&d->raft, initial_barrier_cb);
+#endif
 	rv = sem_init(&d->ready, 0, 0);
 	if (rv != 0) {
 		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",

@@ -43,6 +43,7 @@ struct leader {
 	struct exec *exec;      /* Exec request in progress, if any. */
 	queue queue;            /* Prev/next leader, used by struct db. */
 	struct apply *inflight; /* TODO: make leader__close async */
+	int have_run_barrier;
 };
 
 struct barrier {

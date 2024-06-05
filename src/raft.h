@@ -680,6 +680,10 @@ typedef void (*raft_state_cb)(struct raft *raft,
 struct raft_progress;
 
 /**
+ */
+typedef void (*raft_initial_barrier_cb)(struct raft *raft);
+
+/**
  * Close callback.
  *
  * It's safe to release the memory of a raft instance only after this callback
@@ -864,7 +868,7 @@ struct raft
 			uint32_t
 			    voter_contacts; /* Current number of voting nodes we
 					       are in contact with */
-			uint32_t reserved2; /* Future use */
+			uint32_t did_barrier;
 			uint64_t reserved[7]; /* Future use */
 		} leader_state;
 	};
@@ -936,6 +940,8 @@ RAFT_API void raft_close(struct raft *r, raft_close_cb cb);
  * @cb will be called every time the raft state changes.
  */
 RAFT_API void raft_register_state_cb(struct raft *r, raft_state_cb cb);
+
+RAFT_API void raft_register_initial_barrier_cb(struct raft *r, raft_initial_barrier_cb cb);
 
 /**
  * Bootstrap this raft instance using the given configuration. The instance must
