@@ -49,7 +49,7 @@ struct page_from_to {
 
 enum result {
 	OK = 0,
-	FAILED = 1,
+	UNEXPECTED = 1,
 	DONE = 2,
 };
 
@@ -192,11 +192,15 @@ struct raft_install_snapshot_cp_result {
  * Crashes of the Leader are handled by Raft when a new leader is elected
  * and the snapshot process is restarted.
  *
- * If the Follower crashes, it will restart its state machine into the NORMAL
- * state. If the Leader then sends a message which assumes the Follower is at
- * the state prior to the crash, the Follower will reply using the message's
- * result RPC using the failed=true flag. Upong receiving the message the
- * Leader will restart the snapshot installation procedure.
+ * If the Follower receives an message which is not expected in the Follower's
+ * current state, the Follower will reply using the message's result RPC
+ * setting the unexpected=true flag. This response suggests the Leader to
+ * restart the snapshot installation procedure.
+ *
+ * In particular, if the follower crashes it will restart its state machine to
+ * the NORMAL state and reply using the unexpected=true flag for any messages
+ * not expected in the NORMAL state, suggesting the Leader to restart the
+ * procedure.
  *
  * =State model
  *
@@ -212,7 +216,7 @@ struct raft_install_snapshot_cp_result {
  *
  * +---------------------------------+
  * |                                 |     AppendEntriesResult() received
- * |        *Result(failed=true)     |     raft_log.find(Rf) == "FOUND"
+ * |        *Result(unexpected=true) |     raft_log.find(Rf) == "FOUND"
  * |        received                 |      +------------+
  * |        +---------------> FOLLOWER_ONLINE <----------+
  * |        |                        |
@@ -240,12 +244,10 @@ struct raft_install_snapshot_cp_result {
  *
  * Follower's state machine:
  *
- *                         +---------+
- *                         |         | Signature/CP_Result/MV_Result received
- *                         |         | *Result(failed=true) sent
+ *                            +------+ (%)
  * +-------------------> NORMAL <----+
  * |       +----------->   |
- * |   (@) |               | InstallSnapshot() received
+ * |       |               | InstallSnapshot() received
  * |       |               V
  * |       +--- SIGNATURES_CALC_STARTED
  * |       |               |
@@ -262,11 +264,13 @@ struct raft_install_snapshot_cp_result {
  * |       |               | CP()/MV() received
  * |       |               V
  * |       +--- SNAPSHOT_CHUNCK_RECEIVED -------+ CP()/MV() received
- * |                       |             <------+
+ * |    (@ || %)           |             <------+
  * |                       | InstallSnapshot(done=true) received
  * +-----------------------+
  *
  * (@) -- AppendEntries() received && Tf < Tl
+ * (%) -- Signature()/CP()/MV() received and in the current state receving a
+ *        message of such type is unexpected. *Result(unexpected=true) sent.
  */
 
 enum follower_states {
