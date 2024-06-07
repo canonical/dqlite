@@ -169,14 +169,14 @@ static int uvAliveSegmentEncodeEntriesToWriteBuf(struct uvAliveSegment *segment,
 	/* If this is the very first write to the segment, we need to include
 	 * the format version */
 	if (segment->pending.n == 0 && segment->next_block == 0) {
-		rv = uvSegmentBufferFormat(&segment->pending);
+		rv = uvSegmentBufferFormat(&segment->pending, segment->uv->format_version);
 		if (rv != 0) {
 			return rv;
 		}
 	}
 
 	rv = uvSegmentBufferAppend(&segment->pending, append->entries,
-				   append->n);
+				   append->n, segment->uv->format_version);
 	if (rv != 0) {
 		return rv;
 	}
@@ -597,7 +597,7 @@ static size_t uvAppendSize(struct uvAppend *a)
 {
 	size_t size = sizeof(uint32_t) * 2; /* CRC checksums */
 	unsigned i;
-	size += uvSizeofBatchHeader(a->n, true); /* Batch header */
+	size += uvSizeofBatchHeader(a->n, a->segment->uv->format_version); /* Batch header */
 	for (i = 0; i < a->n; i++) {       /* Entries data */
 		size += bytePad64(a->entries[i].buf.len);
 	}

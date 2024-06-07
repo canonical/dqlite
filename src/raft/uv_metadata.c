@@ -14,7 +14,7 @@
 static void uvMetadataEncode(const struct uvMetadata *metadata, void *buf)
 {
 	void *cursor = buf;
-	bytePut64(&cursor, UV__DISK_FORMAT);
+	bytePut64(&cursor, (uint64_t)metadata->format_version);
 	bytePut64(&cursor, metadata->version);
 	bytePut64(&cursor, metadata->term);
 	bytePut64(&cursor, metadata->voted_for);
@@ -23,15 +23,17 @@ static void uvMetadataEncode(const struct uvMetadata *metadata, void *buf)
 /* Decode the content of a metadata file. */
 static int uvMetadataDecode(const void *buf,
 			    struct uvMetadata *metadata,
+			    int expected_version,
 			    char *errmsg)
 {
 	const void *cursor = buf;
 	uint64_t format;
 	format = byteGet64(&cursor);
-	if (format != UV__DISK_FORMAT) {
+	if (format != (uint64_t)expected_version) {
 		ErrMsgPrintf(errmsg, "bad format version %ju", format);
 		return RAFT_MALFORMED;
 	}
+	metadata->format_version = expected_version;
 	metadata->version = byteGet64(&cursor);
 	metadata->term = byteGet64(&cursor);
 	metadata->voted_for = byteGet64(&cursor);
@@ -56,6 +58,7 @@ static void uvMetadataFilename(const unsigned short n, char *filename)
 static int uvMetadataLoadN(const char *dir,
 			   const unsigned short n,
 			   struct uvMetadata *metadata,
+			   int expected_version,
 			   char *errmsg)
 {
 	char filename[METADATA_FILENAME_SIZE];  /* Filename of the metadata file
@@ -118,7 +121,7 @@ static int uvMetadataLoadN(const char *dir,
 	};
 
 	/* Decode the content of the metadata file. */
-	rv = uvMetadataDecode(content, metadata, errmsg);
+	rv = uvMetadataDecode(content, metadata, expected_version, errmsg);
 	if (rv != 0) {
 		ErrMsgWrapf(errmsg, "decode content of %s", filename);
 		return rv;
@@ -127,18 +130,18 @@ static int uvMetadataLoadN(const char *dir,
 	return 0;
 }
 
-int uvMetadataLoad(const char *dir, struct uvMetadata *metadata, char *errmsg)
+int uvMetadataLoad(const char *dir, struct uvMetadata *metadata, int expected_version, char *errmsg)
 {
 	struct uvMetadata metadata1;
 	struct uvMetadata metadata2;
 	int rv;
 
 	/* Read the two metadata files (if available). */
-	rv = uvMetadataLoadN(dir, 1, &metadata1, errmsg);
+	rv = uvMetadataLoadN(dir, 1, &metadata1, expected_version, errmsg);
 	if (rv != 0) {
 		return rv;
 	}
-	rv = uvMetadataLoadN(dir, 2, &metadata2, errmsg);
+	rv = uvMetadataLoadN(dir, 2, &metadata2, expected_version, errmsg);
 	if (rv != 0) {
 		return rv;
 	}

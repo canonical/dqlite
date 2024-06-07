@@ -108,7 +108,7 @@ static int uvInit(struct raft_io *io, raft_id id, const char *address)
 		return rv;
 	}
 
-	rv = uvMetadataLoad(uv->dir, &metadata, io->errmsg);
+	rv = uvMetadataLoad(uv->dir, &metadata, uv->format_version, io->errmsg);
 	if (rv != 0) {
 		return rv;
 	}
@@ -644,7 +644,8 @@ static void uvSeedRand(struct uv *uv)
 int raft_uv_init(struct raft_io *io,
 		 struct uv_loop_s *loop,
 		 const char *dir,
-		 struct raft_uv_transport *transport)
+		 struct raft_uv_transport *transport,
+		 int format_version)
 {
 	struct uv *uv;
 	void *data;
@@ -654,6 +655,7 @@ int raft_uv_init(struct raft_io *io,
 	assert(loop != NULL);
 	assert(dir != NULL);
 	assert(transport != NULL);
+	assert(format_version == 1 || format_version == 2);
 
 	data = io->data;
 	memset(io, 0, sizeof *io);
@@ -723,6 +725,7 @@ int raft_uv_init(struct raft_io *io,
 	uv->closing = false;
 	uv->close_cb = NULL;
 	uv->auto_recovery = true;
+	uv->format_version = format_version;
 
 	uvSeedRand(uv);
 

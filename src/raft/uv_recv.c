@@ -295,7 +295,7 @@ static void uvServerReadCb(uv_stream_t *stream,
 					    s->message.append_entries.entries,
 					    s->message.append_entries
 						.n_entries,
-					    false);
+					    0, 1 /* no local data ever */);
 					break;
 				case RAFT_IO_INSTALL_SNAPSHOT:
 					s->message.install_snapshot.data.base =

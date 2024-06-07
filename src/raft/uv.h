@@ -47,6 +47,7 @@ typedef unsigned long long uvCounter;
 /* Information persisted in a single metadata file. */
 struct uvMetadata
 {
+	int format_version;
 	unsigned long long version; /* Monotonically increasing version */
 	raft_term term;             /* Current term */
 	raft_id voted_for;          /* Server ID of last vote, or 0 */
@@ -95,6 +96,7 @@ struct uv
 	bool closing;              /* True if we are closing */
 	raft_io_close_cb close_cb; /* Invoked when finishing closing */
 	bool auto_recovery;        /* Try to recover from corrupt segments */
+	int format_version;        /* 1 (original recipe) or 2 (with local data) */
 };
 
 /* Implementation of raft_io->truncate. */
@@ -102,7 +104,7 @@ int UvTruncate(struct raft_io *io, raft_index index);
 
 /* Load Raft metadata from disk, choosing the most recent version (either the
  * metadata1 or metadata2 file). */
-int uvMetadataLoad(const char *dir, struct uvMetadata *metadata, char *errmsg);
+int uvMetadataLoad(const char *dir, struct uvMetadata *metadata, int expected_version, char *errmsg);
 
 /* Store the given metadata to disk, writing the appropriate metadata file
  * according to the metadata version (if the version is odd, write metadata1,
@@ -188,7 +190,7 @@ void uvSegmentBufferClose(struct uvSegmentBuffer *b);
 
 /* Encode the format version at the very beginning of the buffer. This function
  * must be called when the buffer is empty. */
-int uvSegmentBufferFormat(struct uvSegmentBuffer *b);
+int uvSegmentBufferFormat(struct uvSegmentBuffer *b, int format_version);
 
 /* Extend the segment's buffer by encoding the given entries.
  *
@@ -196,7 +198,8 @@ int uvSegmentBufferFormat(struct uvSegmentBuffer *b);
  * will be appended. */
 int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 			  const struct raft_entry entries[],
-			  unsigned n_entries);
+			  unsigned n_entries,
+			  int format_version);
 
 /* After all entries to write have been encoded, finalize the buffer by zeroing
  * the unused memory of the last block. The out parameter will point to the

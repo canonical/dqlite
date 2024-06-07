@@ -1363,7 +1363,8 @@ struct raft_uv_transport;
 RAFT_API int raft_uv_init(struct raft_io *io,
 			  struct uv_loop_s *loop,
 			  const char *dir,
-			  struct raft_uv_transport *transport);
+			  struct raft_uv_transport *transport,
+			  int format_version);
 
 /**
  * Release any memory allocated internally.

@@ -81,6 +81,19 @@ static void initial_barrier_cb(struct raft *r)
 	}
 }
 
+static int node_early_init(struct dqlite_node *d,
+		 dqlite_node_id id,
+		 const char *address,
+		 const char *dir)
+{
+
+}
+
+static int node_late_init(struct dqlite_node *d,
+		bool disk)
+{
+}
+
 int dqlite__init(struct dqlite_node *d,
 		 dqlite_node_id id,
 		 const char *address,

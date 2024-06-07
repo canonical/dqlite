@@ -26,13 +26,6 @@
 
 #define UNHANDLED(expr) if (expr) assert(0)
 
-/* XXX this is silly, take care of it in the build system */
-#ifdef DQLITE_NEXT
-#define NEXT 1
-#else
-#define NEXT 0
-#endif
-
 static inline bool is_po2(unsigned long n) {
 	return n > 0 && (n & (n - 1)) == 0;
 }
