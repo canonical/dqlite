@@ -219,14 +219,9 @@ libraft_la_CFLAGS = $(AM_CFLAGS)
 libraft_la_LDFLAGS = $(UV_LIBS)
 
 raft_core_unit_test_SOURCES = \
+  $(libraft_la_SOURCES) \
+  src/lib/sm.c \
   src/tracing.c \
-  src/raft/byte.c \
-  src/raft/compress.c \
-  src/raft/configuration.c \
-  src/raft/err.c \
-  src/raft/flags.c \
-  src/raft/heap.c \
-  src/raft/log.c \
   test/raft/unit/main_core.c \
   test/raft/unit/test_byte.c \
   test/raft/unit/test_compress.c \
@@ -234,12 +229,15 @@ raft_core_unit_test_SOURCES = \
   test/raft/unit/test_err.c \
   test/raft/unit/test_flags.c \
   test/raft/unit/test_log.c \
-  test/raft/unit/test_queue.c
+  test/raft/unit/test_queue.c \
+  test/raft/unit/test_snapshot.c
+
 raft_core_unit_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 raft_core_unit_test_LDADD = libtest.la
 
 raft_core_integration_test_SOURCES = \
   src/tracing.c \
+  src/lib/sm.c \
   test/raft/integration/main_core.c \
   test/raft/integration/test_apply.c \
   test/raft/integration/test_assign.c \
@@ -264,6 +262,7 @@ raft_core_integration_test_LDFLAGS = -no-install
 raft_core_integration_test_LDADD = libtest.la libraft.la
 
 raft_core_fuzzy_test_SOURCES = \
+  src/lib/sm.c \
   src/tracing.c \
   test/raft/fuzzy/main_core.c \
   test/raft/fuzzy/test_election.c \
@@ -294,6 +293,7 @@ raft_uv_unit_test_LDADD = libtest.la $(UV_LIBS)
 raft_uv_integration_test_SOURCES = \
   $(libraft_la_SOURCES) \
   src/tracing.c \
+  src/lib/sm.c \
   test/raft/integration/main_uv.c \
   test/raft/integration/test_uv_init.c \
   test/raft/integration/test_uv_append.c \

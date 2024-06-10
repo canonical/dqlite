@@ -12,6 +12,7 @@
 
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define IMPOSSIBLE(why) assert(false && why)
 
 #define DBG() fprintf(stderr, "%s:%d\n", __func__, __LINE__)
 

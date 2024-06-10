@@ -1,5 +1,6 @@
 #include "../raft.h"
 
+#include <limits.h>
 #include <string.h>
 
 #include "../tracing.h"
