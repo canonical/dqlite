@@ -285,7 +285,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 				l->exec->status = SQLITE_IOERR;
 				break;
 		}
-		if (NEXT) {
+		if (db->config->disk) {
 			vfs2_abort(f);
 		} else {
 			VfsAbort(vfs, l->db->path);
@@ -392,7 +392,7 @@ static void leaderExecV2(struct exec *req, enum pool_half half)
 		return;
 	} /* else POOL_BOTTOM_HALF => */
 
-	if (NEXT) {
+	if (db->config->disk) {
 		rv = vfs2_poll(f, &frames, &n, &sl);
 	} else {
 		rv = VfsPoll(vfs, db->path, &frames, &n);

@@ -33,8 +33,6 @@
 
 #define NODE_STORE_INFO_FORMAT_V1 "v1"
 
-#define VFS2_NAME "dqlite-vfs2"
-
 /* Called by raft every time the raft state changes. */
 static void state_cb(struct raft *r,
 		     unsigned short old_state,
@@ -60,7 +58,7 @@ static void initial_barrier_cb(struct raft *r)
 	struct dqlite_node *d = r->data;
 	int rv;
 
-	if (!d->registry.config->disk || !NEXT) {
+	if (!d->disk_mode) {
 		return;
 	}
 
@@ -81,108 +79,124 @@ static void initial_barrier_cb(struct raft *r)
 	}
 }
 
-static int node_early_init(struct dqlite_node *d,
-		 dqlite_node_id id,
-		 const char *address,
-		 const char *dir)
-{
-
-}
-
-static int node_late_init(struct dqlite_node *d,
-		bool disk)
-{
-}
-
-int dqlite__init(struct dqlite_node *d,
+static int node_outer_init(struct dqlite_node *d,
 		 dqlite_node_id id,
 		 const char *address,
 		 const char *dir)
 {
 	int rv;
-	char db_dir_path[1024];
-	int urandom;
-	ssize_t count;
-	sqlite3_vfs *vfs2 = NULL;
-	(void)vfs2;
 
-	d->initialized = false;
-	memset(d->errmsg, 0, sizeof d->errmsg);
+	memset(d->errmsg, 0, sizeof(d->errmsg));
+	queue_init(&d->queue);
+	queue_init(&d->conns);
+	queue_init(&d->roles_changes);
+	d->raft_state = RAFT_UNAVAILABLE;
+	d->running = false;
+	d->listener = NULL;
+	d->bind_address = NULL;
+	d->role_management = false;
+	d->connect_func = transportDefaultConnect;
+	d->connect_func_arg = NULL;
+	d->disk_mode = false;
 
-	rv = snprintf(db_dir_path, sizeof db_dir_path, DATABASE_DIR_FMT, dir);
-	if (rv == -1 || rv >= (int)(sizeof db_dir_path)) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE,
-			 "failed to init: snprintf(rv:%d)", rv);
-		goto err;
-	}
-
-	rv = config__init(&d->config, id, address, db_dir_path);
+	rv = config__init(&d->config, id, address, dir);
 	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE,
-			 "config__init(rv:%d)", rv);
+		snprintf(d->errmsg, sizeof(d->errmsg), "config__init");
 		goto err;
-	}
-	rv = VfsInit(&d->vfs, d->config.name);
-	sqlite3_vfs_register(&d->vfs, 0);
-	if (rv != 0) {
-		goto err_after_config_init;
 	}
 	registry__init(&d->registry, &d->config);
 
 	rv = uv_loop_init(&d->loop);
 	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE,
-			 "uv_loop_init(): %s", uv_strerror(rv));
-		rv = DQLITE_ERROR;
-		goto err_after_vfs_init;
-	}
-
-	if (NEXT) {
-		d->config.disk = true;
-
-		vfs2 = vfs2_make(sqlite3_vfs_find("unix"), VFS2_NAME);
-		sqlite3_vfs_register(vfs2, 0 /* not default */);
-
-		rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count,
-			       POOL_QOS_PRIO_FAIR);
-		if (rv != 0) {
-			snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "pool_init(): %s",
-				 uv_strerror(rv));
-			rv = DQLITE_ERROR;
-			goto err_after_loop_init;
-		}
+		snprintf(d->errmsg, sizeof(d->errmsg), "uv_loop_init: %s", uv_strerror(rv));
+		goto err_after_registry_init;
 	}
 
 	rv = raftProxyInit(&d->raft_transport, &d->loop);
 	if (rv != 0) {
-		goto err_after_pool_init;
-	}
-	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport);
-	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE,
-			 "raft_uv_init(): %s", d->raft_io.errmsg);
-		rv = DQLITE_ERROR;
-		goto err_after_raft_transport_init;
+		snprintf(d->errmsg, sizeof(d->errmsg), "raftProxyInit");
+		goto err_after_loop_init;
 	}
 
-	if (NEXT) {
-		rv = fsm__init_disk(&d->raft_fsm, &d->config, &d->registry);
+	rv = sem_init(&d->ready, 0, 0);
+	assert(rv == 0);
+	rv = sem_init(&d->stopped, 0, 0);
+	assert(rv == 0);
+	rv = sem_init(&d->handover_done, 0, 0);
+	assert(rv == 0);
+
+	return 0;
+
+err_after_raft_proxy_init:
+	raftProxyClose(&d->raft_transport);
+err_after_loop_init:
+	uv_loop_close(&d->loop);
+err_after_registry_init:
+	registry__close(&d->registry)
+err_after_config_init:
+	config__close(&d->config);
+err:
+	return DQLITE_ERROR;
+}
+
+static void node_outer_fini(struct dqlite_node *d)
+{
+	PRE(d != NULL);
+
+	sem_destroy(d->handover_done);
+	sem_destroy(d->stopped);
+	sem_destroy(d->ready);
+	raft_uv_close(&d->raft_io);
+	raftProxyClose(&d->raft_transport);
+	uv_loop_close(&d->loop);
+	registry__close(&d->registry);
+	config__close(&d->config);
+}
+
+static int node_inner_init(struct dqlite_node *d)
+{
+	sqlite3_vfs *vfs = NULL;
+	int rv;
+
+	rv = raft_uv_init(&d->raft_io, &d->loop, dir, &d->raft_transport, d->disk_mode ? 2 : 1);
+	if (rv != 0) {
+		snprintf(d->errmsg, sizeof(d->errmsg), "raft_uv_init: %s", d->raft_io.errmsg);
+		goto err_after_raft_proxy_init;
+	}
+
+	if (d->disk_mode) {
+		config_set_disk_mode(&d->config);
+		vfs = vfs2_make(sqlite3_vfs_find("unix"), d->config.name);
+		if (vfs == NULL) {
+			goto err;
+		}
+		rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count);
+		if (rv != 0) {
+			goto err_after_vfs_create;
+		}
+		rv = fsm_init_disk(&d->fsm, &d->registry);
+		if (rv != 0) {
+			goto err_after_pool_init;
+		}
 	} else {
-		rv = fsm__init(&d->raft_fsm, &d->config, &d->registry);
+		rv = VfsInit(&d->vfs, d->config.name);
+		if (rv != 0) {
+			goto err;
+		}
+		vfs = &d->vfs;
+		rv = fsm_init(&d->fsm, &d->config, &d->registry);
+		if (rv != 0) {
+			goto err_after_vfs_create;
+		}
 	}
+	sqlite3_vfs_register(vfs, 0 /* not default */);
+
+	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id, d->config.address);
 	if (rv != 0) {
-		goto err_after_raft_io_init;
+		snprintf(d->errmsg, sizeof(d->errmsg), "raft_init: %s", raft_errmsg(&d->raft));
+		goto err_after_vfs_register;
 	}
 
-	/* TODO: properly handle closing the dqlite server without running it */
-	rv = raft_init(&d->raft, &d->raft_io, &d->raft_fsm, d->config.id,
-		       d->config.address);
-	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_init(): %s",
-			 raft_errmsg(&d->raft));
-		rv = DQLITE_ERROR;
-		goto err;
-	}
 	/* TODO: expose these values through some API */
 	raft_set_election_timeout(&d->raft, 3000);
 	raft_set_heartbeat_timeout(&d->raft, 500);
@@ -195,108 +209,42 @@ int dqlite__init(struct dqlite_node *d,
 #ifndef USE_SYSTEM_RAFT
 	raft_register_initial_barrier_cb(&d->raft, initial_barrier_cb);
 #endif
-	rv = sem_init(&d->ready, 0, 0);
-	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
-			 strerror(errno));
-		rv = DQLITE_ERROR;
-		goto err_after_raft_fsm_init;
-	}
-	rv = sem_init(&d->stopped, 0, 0);
-	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
-			 strerror(errno));
-		rv = DQLITE_ERROR;
-		goto err_after_ready_init;
-	}
-	rv = sem_init(&d->handover_done, 0, 0);
-	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "sem_init(): %s",
-			 strerror(errno));
-		rv = DQLITE_ERROR;
-		goto err_after_stopped_init;
-	}
 
-	queue_init(&d->queue);
-	queue_init(&d->conns);
-	queue_init(&d->roles_changes);
-	d->raft_state = RAFT_UNAVAILABLE;
-	d->running = false;
-	d->listener = NULL;
-	d->bind_address = NULL;
-	d->role_management = false;
-	d->connect_func = transportDefaultConnect;
-	d->connect_func_arg = NULL;
-
-	urandom = open("/dev/urandom", O_RDONLY);
-	assert(urandom != -1);
-	count = read(urandom, d->random_state.data, sizeof(uint64_t[4]));
-	(void)count;
-	close(urandom);
-	d->initialized = true;
 	return 0;
 
-err_after_stopped_init:
-	sem_destroy(&d->stopped);
-err_after_ready_init:
-	sem_destroy(&d->ready);
-err_after_raft_fsm_init:
-	fsm__close(&d->raft_fsm);
-err_after_raft_io_init:
-	raft_uv_close(&d->raft_io);
-err_after_raft_transport_init:
-	raftProxyClose(&d->raft_transport);
+err_after_fsm_init:
+	fsm_close(&d->fsm);
+err_after_vfs_register:
+	sqlite3_vfs_unregister(vfs);
 err_after_pool_init:
-	if (NEXT) {
+	if (d->disk_mode) {
 		pool_close(&d->pool);
 		pool_fini(&d->pool);
 	}
-err_after_loop_init:
-	if (NEXT) {
-		sqlite3_vfs_unregister(vfs2);
-		vfs2_destroy(vfs2);
+err_after_vfs_create:
+	if (d->disk_mode) {
+		vfs2_destroy(vfs);
+	} else {
+		VfsClose(vfs);
 	}
-	uv_loop_close(&d->loop);
-err_after_vfs_init:
-	VfsClose(&d->vfs);
-err_after_config_init:
-	config__close(&d->config);
 err:
-	return rv;
+	return DQLITE_ERROR;
 }
 
-void dqlite__close(struct dqlite_node *d)
+static void node_inner_fini(struct dqlite_node *d)
 {
 	int rv;
-	if (!d->initialized) {
-		return;
-	}
-	raft_free(d->listener);
-	rv = sem_destroy(&d->stopped);
-	assert(rv == 0); /* Fails only if sem object is not valid */
-	rv = sem_destroy(&d->ready);
-	assert(rv == 0); /* Fails only if sem object is not valid */
-	rv = sem_destroy(&d->handover_done);
-	assert(rv == 0);
-	fsm__close(&d->raft_fsm);
-	// TODO assert rv of uv_loop_close after fixing cleanup logic related to
-	// the TODO above referencing the cleanup logic without running the
-	// node. See https://github.com/canonical/dqlite/issues/504.
 
-	if (NEXT) {
+	sqlite3_vfs *vfs = sqlite3_vfs_find(d->config.name);
+	sqlite3_vfs_unregister(vfs);
+
+	fsm_close(&d->fsm);
+	if (d->disk_mode) {
+		pool_close(&d->pool);
 		pool_fini(&d->pool);
-		sqlite3_vfs *vfs2 = sqlite3_vfs_find(VFS2_NAME);
-		sqlite3_vfs_unregister(vfs2);
-		vfs2_destroy(vfs2);
-	}
-	uv_loop_close(&d->loop);
-	raftProxyClose(&d->raft_transport);
-	registry__close(&d->registry);
-	sqlite3_vfs_unregister(&d->vfs);
-	VfsClose(&d->vfs);
-	config__close(&d->config);
-	if (d->bind_address != NULL) {
-		sqlite3_free(d->bind_address);
+		vfs2_destroy(vfs);
+	} else {
+		VfsClose(vfs);
 	}
 }
 
@@ -305,12 +253,13 @@ int dqlite_node_create(dqlite_node_id id,
 		       const char *data_dir,
 		       dqlite_node **t)
 {
+	PRE(t != NULL);
 	*t = sqlite3_malloc(sizeof **t);
 	if (*t == NULL) {
 		return DQLITE_NOMEM;
 	}
 
-	return dqlite__init(*t, id, address, data_dir);
+	return node_outer_init(*t, id, address, data_dir);
 }
 
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
@@ -507,32 +456,14 @@ int dqlite_node_set_block_size(dqlite_node *n, size_t size)
 	raft_uv_set_block_size(&n->raft_io, size);
 	return 0;
 }
+
 int dqlite_node_enable_disk_mode(dqlite_node *n)
 {
-	int rv;
-
 	if (n->running) {
 		return DQLITE_MISUSE;
 	}
 
-	if (NEXT) {
-		return 0;
-	}
-
-	rv = dqlite_vfs_enable_disk(&n->vfs);
-	if (rv != 0) {
-		return rv;
-	}
-
-	n->registry.config->disk = true;
-
-	/* Close the default fsm and initialize the disk one. */
-	fsm__close(&n->raft_fsm);
-	rv = fsm__init_disk(&n->raft_fsm, &n->config, &n->registry);
-	if (rv != 0) {
-		return rv;
-	}
-
+	n->disk_mode = true;
 	return 0;
 }
 
@@ -626,9 +557,6 @@ static void stopCb(uv_async_t *stop)
 	if (!d->running) {
 		tracef("not running or already stopped");
 		return;
-	}
-	if (NEXT) {
-		pool_close(&d->pool);
 	}
 	if (d->role_management) {
 		rv = uv_timer_stop(&d->timer);
@@ -755,7 +683,7 @@ err_after_conn_alloc:
 err:
 	uv_close((struct uv_handle_s *)stream, (uv_close_cb)raft_free);
 }
-
+k
 /* Runs every tick on the main thread to kick off roles adjustment. */
 static void roleManagementTimerCb(uv_timer_t *handle)
 {
@@ -881,7 +809,7 @@ static void *taskStart(void *arg)
 
 void dqlite_node_destroy(dqlite_node *d)
 {
-	dqlite__close(d);
+	node_outer_fini(d);
 	sqlite3_free(d);
 }
 
@@ -985,6 +913,8 @@ int dqlite_node_stop(dqlite_node *d)
 
 	rv = pthread_join(d->thread, &result);
 	assert(rv == 0);
+
+	node_inner_fini(d);
 
 	return (int)((uintptr_t)result);
 }

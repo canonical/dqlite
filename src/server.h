@@ -54,8 +54,8 @@ struct dqlite_node {
 	    const char *,
 	    int *);             /* Connection function for role management */
 	void *connect_func_arg; /* User data for connection function */
+	bool disk_mode;
 	char errmsg[DQLITE_ERRMSG_BUF_SIZE]; /* Last error occurred */
-	struct id_state random_state;        /* For seeding ID generation */
 };
 
 /* Dynamic array of node info objects. This is the in-memory representation of
