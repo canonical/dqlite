@@ -1,6 +1,5 @@
 #include "../../../src/raft.h"
 #include "../../../src/raft/byte.h"
-#include "../../../src/raft/uv_encoding.h"
 #include "../lib/runner.h"
 #include "../lib/uv.h"
 
@@ -15,6 +14,13 @@
  * Fixture with a non-initialized raft_io instance and uv dependencies.
  *
  *****************************************************************************/
+
+static char *format_versions[] = {"1", "2", NULL};
+
+static MunitParameterEnum format_params[] = {
+    {"format_version", format_versions},
+    {NULL, NULL},
+};
 
 struct fixture
 {
@@ -41,6 +47,7 @@ static void closeCb(struct raft_io *io)
         int _rv;                                                  \
         _rv = raft_uv_init(&f->io, &f->loop, DIR, &f->transport); \
         munit_assert_int(_rv, ==, 0);                             \
+        raft_uv_set_format_version(&f->io, f->format_version); \
         _rv = f->io.init(&f->io, 1, "1");                         \
         munit_assert_int(_rv, ==, 0);                             \
     } while (0)
@@ -60,6 +67,7 @@ static void closeCb(struct raft_io *io)
         int _rv;                                                  \
         _rv = raft_uv_init(&f->io, &f->loop, DIR, &f->transport); \
         munit_assert_int(_rv, ==, 0);                             \
+        raft_uv_set_format_version(&f->io, f->format_version); \
         _rv = f->io.init(&f->io, 1, "1");                         \
         munit_assert_int(_rv, ==, RV);                            \
         munit_assert_string_equal(f->io.errmsg, ERRMSG);          \
@@ -102,6 +110,8 @@ static void *setUp(const MunitParameter params[], void *user_data)
     SETUP_UV_DEPS;
     f->io.data = f;
     f->closed = false;
+    const char *format_version = munit_parameters_get(params, "format_version");
+    f->format_version = format_version != NULL ? atoi(format_version) : 1;
     return f;
 }
 
@@ -238,11 +248,11 @@ TEST(init, metadataOneBadFormat, setUp, tearDown, 0, NULL)
 }
 
 /* The metadata1 file has not a valid version. */
-TEST(init, metadataOneBadVersion, setUp, tearDown, 0, NULL)
+TEST(init, metadataOneBadVersion, setUp, tearDown, 0, format_params)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        UV__DISK_FORMAT, /* Format                               */
+                        f->format_version,
                         0, /* Version                              */
                         1, /* Term                                 */
                         0 /* Voted for                            */);
@@ -253,16 +263,16 @@ TEST(init, metadataOneBadVersion, setUp, tearDown, 0, NULL)
 
 /* The data directory has both metadata files, but they have the same
  * version. */
-TEST(init, metadataOneAndTwoSameVersion, setUp, tearDown, 0, NULL)
+TEST(init, metadataOneAndTwoSameVersion, setUp, tearDown, 0, format_params)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        UV__DISK_FORMAT, /* Format                               */
+                        f->format_version,
                         2, /* Version                              */
                         3, /* Term                                 */
                         0 /* Voted for                            */);
     WRITE_METADATA_FILE(2, /* Metadata file index                  */
-                        UV__DISK_FORMAT, /* Format                               */
+                        f->format_version,
                         2, /* Version                              */
                         2, /* Term                                 */
                         0 /* Voted for                            */);

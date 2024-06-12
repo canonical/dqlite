@@ -868,7 +868,7 @@ struct raft
 			uint32_t
 			    voter_contacts; /* Current number of voting nodes we
 					       are in contact with */
-			uint32_t did_barrier;
+			uint32_t reserved2; /* Future use */
 			uint64_t reserved[7]; /* Future use */
 		} leader_state;
 	};
@@ -1363,8 +1363,7 @@ struct raft_uv_transport;
 RAFT_API int raft_uv_init(struct raft_io *io,
 			  struct uv_loop_s *loop,
 			  const char *dir,
-			  struct raft_uv_transport *transport,
-			  int format_version);
+			  struct raft_uv_transport *transport);
 
 /**
  * Release any memory allocated internally.
@@ -1416,6 +1415,8 @@ RAFT_API void raft_uv_set_tracer(struct raft_io *io,
  * Enable or disable auto-recovery on startup. Default enabled.
  */
 RAFT_API void raft_uv_set_auto_recovery(struct raft_io *io, bool flag);
+
+RAFT_API void raft_uv_set_format_version(struct raft_io *io, int version);
 
 /**
  * Callback invoked by the transport implementation when a new incoming

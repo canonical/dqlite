@@ -60,6 +60,12 @@ int config__init(struct config *c,
 	return 0;
 }
 
+void config_set_disk_mode(struct config *c)
+{
+	/* TODO(cole) */
+	(void)c;
+}
+
 void config__close(struct config *c)
 {
 	sqlite3_free(c->address);

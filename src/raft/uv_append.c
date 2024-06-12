@@ -593,11 +593,11 @@ static void uvAliveSegmentReserveSegmentCapacity(struct uvAliveSegment *s,
 
 /* Return the number of bytes needed to store the batch of entries of this
  * append request on disk. */
-static size_t uvAppendSize(struct uvAppend *a)
+static size_t uvAppendSize(struct uvAppend *a, int format_version)
 {
 	size_t size = sizeof(uint32_t) * 2; /* CRC checksums */
 	unsigned i;
-	size += uvSizeofBatchHeader(a->n, a->segment->uv->format_version); /* Batch header */
+	size += uvSizeofBatchHeader(a->n, format_version); /* Batch header */
 	for (i = 0; i < a->n; i++) {       /* Entries data */
 		size += bytePad64(a->entries[i].buf.len);
 	}
@@ -618,7 +618,7 @@ static int uvAppendEnqueueRequest(struct uv *uv, struct uvAppend *append)
 	assert(uv->append_next_index > 0);
 	tracef("enqueue %u entries", append->n);
 
-	size = uvAppendSize(append);
+	size = uvAppendSize(append, uv->format_version);
 
 	/* If we have no segments yet, it means this is the very first append,
 	 * and we need to add a new segment. Otherwise we check if the last

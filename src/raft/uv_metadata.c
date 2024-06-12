@@ -185,7 +185,7 @@ int uvMetadataStore(struct uv *uv, const struct uvMetadata *metadata)
 	unsigned short n;
 	int rv;
 
-	assert(metadata->version > 0);
+	PRE(1 <= metadata->format_version && metadata->format_version < 3);
 
 	/* Encode the given metadata. */
 	uvMetadataEncode(metadata, content);

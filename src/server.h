@@ -7,7 +7,6 @@
 
 #include "client/protocol.h"
 #include "config.h"
-#include "id.h"
 #include "lib/assert.h"
 #include "lib/threadpool.h"
 #include "logger.h"
@@ -39,6 +38,7 @@ struct dqlite_node {
 	queue roles_changes;
 	bool running;                 /* Loop is running */
 	struct raft raft;             /* Raft instance */
+	int sock;
 	struct uv_stream_s *listener; /* Listening socket */
 	struct uv_async_s handover;
 	int handover_status;

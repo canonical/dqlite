@@ -48,9 +48,8 @@ struct connection {
 		struct connection *c = &f->connections[i];                 \
 		struct request_open open;                                  \
 		struct response_db db;                                     \
-		struct id_state seed = { { 1 } };                          \
 		gateway__init(&c->gateway, CLUSTER_CONFIG(0),              \
-			      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0), seed); \
+			      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0));       \
 		c->handle.data = &c->context;                              \
 		rc = buffer__init(&c->request);                            \
 		munit_assert_int(rc, ==, 0);                               \

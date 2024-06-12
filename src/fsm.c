@@ -1277,38 +1277,19 @@ static void fsm_post_receive_undo(struct raft_fsm *fsm, const struct raft_buffer
 	db->follower = NULL;
 }
 
-int fsm__init_disk(struct raft_fsm *fsm,
-		   struct config *config,
-		   struct registry *registry)
+int fsm_init_disk(struct raft_fsm *fsm, struct registry *registry)
 {
-	tracef("fsm init");
-	struct fsm *f = raft_malloc(sizeof *f);
+	/* TODO */
+	(void)fsm;
+	(void)registry;
 
-	if (f == NULL) {
-		return DQLITE_NOMEM;
-	}
-
-	f->logger = &config->logger;
-	f->registry = registry;
-	f->pending.n_pages = 0;
-	f->pending.page_numbers = NULL;
-	f->pending.pages = NULL;
-
-	fsm->version = 4;
-	fsm->data = f;
-	if (NEXT) {
-		fsm->apply = NULL;
-		fsm->apply2 = fsm_apply2;
-	} else {
-		fsm->apply = fsm__apply;
-		fsm->apply2 = NULL;
-	}
-	fsm->snapshot = fsm__snapshot_disk;
-	fsm->snapshot_async = fsm__snapshot_async_disk;
-	fsm->snapshot_finalize = fsm__snapshot_finalize_disk;
-	fsm->restore = fsm__restore_disk;
-	fsm->post_receive = fsm_post_receive;
-	fsm->post_receive_undo = fsm_post_receive_undo;
+	(void)fsm_post_receive_undo;
+	(void)fsm_apply2;
+	(void)fsm_post_receive;
+	(void)fsm__restore_disk;
+	(void)fsm__snapshot_async_disk;
+	(void)fsm__snapshot_finalize_disk;
+	(void)fsm__snapshot_disk;
 
 	return 0;
 }

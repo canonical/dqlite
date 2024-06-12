@@ -47,7 +47,6 @@ static void connCloseCb(struct conn *conn)
 
 #define SETUP                                                                \
 	struct uv_stream_s *stream;                                          \
-	struct id_state seed = { { 1 } };                                    \
 	int rv;                                                              \
 	SETUP_HEAP;                                                          \
 	SETUP_SQLITE;                                                        \
@@ -67,7 +66,7 @@ static void connCloseCb(struct conn *conn)
 	f->conn_test.closed = false;                                         \
 	rv = conn__start(&f->conn_test.conn, &f->config, &f->loop,           \
 			 &f->registry, &f->raft, stream, &f->raft_transport, \
-			 seed, connCloseCb);                                 \
+			 connCloseCb);                                       \
 	munit_assert_int(rv, ==, 0)
 
 #define TEAR_DOWN                         \

@@ -512,6 +512,7 @@ static int uvSetTerm(struct raft_io *io, const raft_term term)
 	struct uv *uv;
 	int rv;
 	uv = io->impl;
+	uv->metadata.format_version = uv->format_version;
 	uv->metadata.version++;
 	uv->metadata.term = term;
 	uv->metadata.voted_for = 0;
@@ -528,6 +529,7 @@ static int uvSetVote(struct raft_io *io, const raft_id server_id)
 	struct uv *uv;
 	int rv;
 	uv = io->impl;
+	uv->metadata.format_version = uv->format_version;
 	uv->metadata.version++;
 	uv->metadata.voted_for = server_id;
 	rv = uvMetadataStore(uv, &uv->metadata);
@@ -644,8 +646,7 @@ static void uvSeedRand(struct uv *uv)
 int raft_uv_init(struct raft_io *io,
 		 struct uv_loop_s *loop,
 		 const char *dir,
-		 struct raft_uv_transport *transport,
-		 int format_version)
+		 struct raft_uv_transport *transport)
 {
 	struct uv *uv;
 	void *data;
@@ -655,7 +656,6 @@ int raft_uv_init(struct raft_io *io,
 	assert(loop != NULL);
 	assert(dir != NULL);
 	assert(transport != NULL);
-	assert(format_version == 1 || format_version == 2);
 
 	data = io->data;
 	memset(io, 0, sizeof *io);
@@ -725,7 +725,7 @@ int raft_uv_init(struct raft_io *io,
 	uv->closing = false;
 	uv->close_cb = NULL;
 	uv->auto_recovery = true;
-	uv->format_version = format_version;
+	uv->format_version = 1;
 
 	uvSeedRand(uv);
 
@@ -813,6 +813,13 @@ void raft_uv_set_auto_recovery(struct raft_io *io, bool flag)
 	struct uv *uv;
 	uv = io->impl;
 	uv->auto_recovery = flag;
+}
+
+void raft_uv_set_format_version(struct raft_io *io, int version)
+{
+	PRE(1 <= version && version < 3);
+	struct uv *uv = io->impl;
+	uv->format_version = version;
 }
 
 #undef tracef

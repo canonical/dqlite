@@ -8,7 +8,6 @@
 #include "command.h"
 #include "conn.h"
 #include "gateway.h"
-#include "id.h"
 #include "leader.h"
 #include "lib/threadpool.h"
 #include "server.h"
@@ -246,7 +245,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 				int status,
 				void *result)
 {
-	tracef("apply frames cb id:%" PRIu64, idExtract(req->req_id));
+	tracef("apply frames cb");
 	struct apply *apply = req->data;
 	struct leader *l = apply->leader;
 	if (l == NULL) {
@@ -285,7 +284,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 				l->exec->status = SQLITE_IOERR;
 				break;
 		}
-		if (db->config->disk) {
+		if (l->db->config->disk) {
 			vfs2_abort(f);
 		} else {
 			VfsAbort(vfs, l->db->path);
@@ -341,7 +340,6 @@ static int leaderApplyFrames(struct exec *req,
 	apply->leader = req->leader;
 	apply->req.data = apply;
 	apply->type = COMMAND_FRAMES;
-	idSet(apply->req.req_id, req->id);
 
 #ifdef USE_SYSTEM_RAFT
 	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
@@ -403,7 +401,7 @@ static void leaderExecV2(struct exec *req, enum pool_half half)
 	}
 
 	/* Check if the new frames would create an overfull database */
-	if (!NEXT) {
+	if (!db->config->disk) {
 		size = VfsDatabaseSize(vfs, db->path, n, db->config->page_size);
 		if (size > VfsDatabaseSizeLimit(vfs)) {
 			rv = SQLITE_FULL;
@@ -427,7 +425,7 @@ abort:
 		sqlite3_free(frames[i].data);
 	}
 	sqlite3_free(frames);
-	if (NEXT) {
+	if (db->config->disk) {
 		vfs2_abort(f);
 	} else {
 		VfsAbort(vfs, l->db->path);
