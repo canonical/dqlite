@@ -230,7 +230,6 @@ static void node_inner_fini(struct dqlite_node *d)
 
 	fsm__close(&d->raft_fsm);
 	if (d->disk_mode) {
-		pool_close(&d->pool);
 		pool_fini(&d->pool);
 		vfs2_destroy(vfs);
 	} else {
@@ -502,6 +501,9 @@ static void raftCloseCb(struct raft *raft)
 	uv_close((struct uv_handle_s *)&s->startup, NULL);
 	uv_close((struct uv_handle_s *)s->listener, NULL);
 	uv_close((struct uv_handle_s *)&s->timer, NULL);
+	if (s->disk_mode) {
+		pool_close(&s->pool);
+	}
 }
 
 static void destroy_conn(struct conn *conn)

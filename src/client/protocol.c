@@ -486,7 +486,7 @@ static int readMessage(struct client_proto *c,
 			_rv = handleFailure(c);                       \
 			return _rv;                                   \
 		} else if (_type != DQLITE_RESPONSE_##UPPER) {        \
-			tracef("RESPONSE"); \
+			tracef("RESPONSE %d", _type); \
 			return DQLITE_CLIENT_PROTO_ERROR;             \
 		}                                                     \
 		cursor.p = buffer__cursor(&c->read, 0);               \
@@ -788,7 +788,7 @@ int clientRecvRows(struct client_proto *c,
 		for (; i < rows->column_count; ++i) {
 			rv = tuple_decoder__next(&tup, &row->values[i]);
 			if (rv != 0) {
-				tracef("DNEXT")
+				tracef("DNEXT");
 				rv = DQLITE_CLIENT_PROTO_ERROR;
 				goto err_after_alloc_row_values;
 			}
