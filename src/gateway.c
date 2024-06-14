@@ -154,7 +154,12 @@ void gateway__close(struct gateway *g)
 	}
 
 #define FAIL_IF_CHECKPOINTING                                                  \
-	{                                                                      \
+	do {                                                                   \
+		/* TODO(cole) extra consideration needed here? */              \
+		if (g->config->disk) {                                         \
+			break;                                                 \
+		}                                                              \
+                                                                               \
 		struct sqlite3_file *_file;                                    \
 		int _rv;                                                       \
 		_file = main_file(g->leader->conn);                            \
@@ -170,7 +175,7 @@ void gateway__close(struct gateway *g)
 		_file->pMethods->xShmLock(                                     \
 		    _file, 1 /* checkpoint lock */, 1,                         \
 		    SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);                 \
-	}
+	} while (0)                                                            \
 
 /* Encode fa failure response and invoke the request callback */
 static void failure(struct handle *req, int code, const char *message)

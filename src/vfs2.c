@@ -599,9 +599,12 @@ static int vfs2_close(sqlite3_file *file)
 			rv = xfile->orig->pMethods->xClose(xfile->orig);
 		}
 		sqlite3_free(xfile->orig);
-		xfile->entry->refcount_main_db -= 1;
-		maybe_close_entry(xfile->entry);
+		if (xfile->entry != NULL) {
+			xfile->entry->refcount_main_db -= 1;
+			maybe_close_entry(xfile->entry);
+		}
 	} else if (xfile->flags & SQLITE_OPEN_WAL) {
+		PRE(xfile->entry != NULL);
 		xfile->entry->refcount_wal -= 1;
 		maybe_close_entry(xfile->entry);
 	} else if (xfile->orig->pMethods != NULL) {
