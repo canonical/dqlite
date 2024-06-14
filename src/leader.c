@@ -371,7 +371,7 @@ err:
 
 static void leaderExecV2(struct exec *req, enum pool_half half)
 {
-	tracef("leader exec v2 id:%" PRIu64, req->id);
+	tracef("leader exec v2");
 	struct leader *l = req->leader;
 	struct db *db = l->db;
 	sqlite3_vfs *vfs = sqlite3_vfs_find(db->config->name);

@@ -542,6 +542,8 @@ static void stopCb(uv_async_t *stop)
 	struct conn *conn;
 	int rv;
 
+	tracef("stopCb");
+
 	/* Nothing to do. */
 	if (!d->running) {
 		tracef("not running or already stopped");
@@ -728,8 +730,12 @@ static int taskRun(struct dqlite_node *d)
 		goto err;
 	}
 
-	rv = uv_run(&d->loop, UV_RUN_DEFAULT);
-	assert(rv == 0);
+	/* FIXME(cole) */
+	// rv = uv_run(&d->loop, UV_RUN_DEFAULT);
+	// assert(rv == 0);
+	while (uv_run(&d->loop, UV_RUN_ONCE) > 0) {
+		uv_print_active_handles(&d->loop, stderr);
+	}
 
 	/* Unblock any client of taskReady */
 	rv = sem_post(&d->ready);

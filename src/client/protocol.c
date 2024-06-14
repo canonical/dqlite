@@ -101,6 +101,7 @@ static void freeOwnedValue(struct value val)
 static int peekUint64(struct cursor cursor, uint64_t *val)
 {
 	if (cursor.cap < 8) {
+		tracef("PEEK");
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 	memcpy(val, cursor.p, sizeof(*val));
@@ -309,6 +310,7 @@ int clientOpen(struct client_proto *c, const char *addr, uint64_t server_id)
 	rv = c->connect(c->connect_arg, addr, &c->fd);
 	if (rv != 0) {
 		c->fd = -1;
+		tracef("CONNECT");
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 	c->server_id = server_id;
@@ -439,6 +441,7 @@ static int readMessage(struct client_proto *c,
 	}
 	rv = doRead(c->fd, p, n, context);
 	if (rv < 0) {
+		tracef("doRead");
 		return DQLITE_CLIENT_PROTO_ERROR;
 	} else if (rv < (ssize_t)n) {
 		return DQLITE_CLIENT_PROTO_SHORT;
@@ -483,12 +486,14 @@ static int readMessage(struct client_proto *c,
 			_rv = handleFailure(c);                       \
 			return _rv;                                   \
 		} else if (_type != DQLITE_RESPONSE_##UPPER) {        \
+			tracef("RESPONSE"); \
 			return DQLITE_CLIENT_PROTO_ERROR;             \
 		}                                                     \
 		cursor.p = buffer__cursor(&c->read, 0);               \
 		cursor.cap = buffer__offset(&c->read);                \
 		_rv = response_##LOWER##__decode(&cursor, &response); \
 		if (_rv != 0) {                                       \
+			tracef("DECODE"); \
 			return DQLITE_CLIENT_PROTO_ERROR;             \
 		}                                                     \
 	}
@@ -583,11 +588,13 @@ static int bufferParams(struct client_proto *c,
 	}
 	rv = tuple_encoder__init(&tup, n_params, TUPLE__PARAMS32, &c->write);
 	if (rv != 0) {
+		tracef("ENCODER");
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 	for (i = 0; i < n_params; ++i) {
 		rv = tuple_encoder__next(&tup, &params[i]);
 		if (rv != 0) {
+			tracef("NEXT");
 			return DQLITE_CLIENT_PROTO_ERROR;
 		}
 	}
@@ -725,6 +732,7 @@ int clientRecvRows(struct client_proto *c,
 		rv = handleFailure(c);
 		return rv;
 	} else if (type != DQLITE_RESPONSE_ROWS) {
+		tracef("ROWS");
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 
@@ -732,6 +740,7 @@ int clientRecvRows(struct client_proto *c,
 	cursor.cap = buffer__offset(&c->read);
 	rv = uint64__decode(&cursor, &column_count);
 	if (rv != 0) {
+		tracef("DECODE");
 		return DQLITE_CLIENT_PROTO_ERROR;
 	}
 	rows->column_count = (unsigned)column_count;
@@ -742,6 +751,7 @@ int clientRecvRows(struct client_proto *c,
 	for (i = 0; i < rows->column_count; ++i) {
 		rv = text__decode(&cursor, &raw);
 		if (rv != 0) {
+			tracef("TEXT");
 			rv = DQLITE_CLIENT_PROTO_ERROR;
 			goto err_after_alloc_column_names;
 		}
@@ -771,12 +781,14 @@ int clientRecvRows(struct client_proto *c,
 		rv = tuple_decoder__init(&tup, rows->column_count, TUPLE__ROW,
 					 &cursor);
 		if (rv != 0) {
+			tracef("DECODER");
 			rv = DQLITE_CLIENT_PROTO_ERROR;
 			goto err_after_alloc_row_values;
 		}
 		for (; i < rows->column_count; ++i) {
 			rv = tuple_decoder__next(&tup, &row->values[i]);
 			if (rv != 0) {
+				tracef("DNEXT")
 				rv = DQLITE_CLIENT_PROTO_ERROR;
 				goto err_after_alloc_row_values;
 			}
