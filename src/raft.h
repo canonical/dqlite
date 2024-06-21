@@ -1500,6 +1500,28 @@ RAFT_API void raft_uv_set_tracer(struct raft_io *io,
 RAFT_API void raft_uv_set_auto_recovery(struct raft_io *io, bool flag);
 
 /**
+ * Values for the format version number that describes the segment and snapshot
+ * files.
+ */
+enum {
+	RAFT_UV_FORMAT_V1 = 1, /* Original */
+	RAFT_UV_FORMAT_V2,     /* Added local_data fields */
+	RAFT_UV_FORMAT_NR
+};
+
+/**
+ * Select which disk format version should be used.
+ *
+ * If this is called after the `init` callback from the raft_io vtable,
+ * and some metadata files were found on disk, the @version is compared
+ * to the format version found in the metadata files, and an error is
+ * returned if they don't match.
+ *
+ * RAFT_UV_FORMAT_V1 is used by default.
+ */
+RAFT_API void raft_uv_set_format_version(struct raft_io *io, uint64_t version);
+
+/**
  * Callback invoked by the transport implementation when a new incoming
  * connection has been established.
  *

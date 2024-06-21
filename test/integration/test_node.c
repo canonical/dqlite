@@ -3,6 +3,7 @@
 #include "../lib/runner.h"
 #include "../lib/server.h"
 #include "../lib/sqlite.h"
+#include "../lib/util.h"
 
 #include "../../include/dqlite.h"
 #include "../../src/protocol.h"
@@ -37,20 +38,14 @@ static void *setUp(const MunitParameter params[], void *user_data)
 
 	f->dir = test_dir_setup();
 
-	rv = dqlite_node_create(1, "1", f->dir, &f->node);
+	bool disk_mode = param_bool(params, "disk_mode");
+
+	rv = dqlite_node_create_v2(1, "1", f->dir, disk_mode, &f->node);
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_set_bind_address(f->node, "@123");
 	munit_assert_int(rv, ==, 0);
 
-	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
-	if (disk_mode_param != NULL) {
-		bool disk_mode = (bool)atoi(disk_mode_param);
-		if (disk_mode) {
-			rv = dqlite_node_enable_disk_mode(f->node);
-			munit_assert_int(rv, ==, 0);
-		}
-	}
 
 	return f;
 }
@@ -64,20 +59,13 @@ static void *setUpInet(const MunitParameter params[], void *user_data)
 
 	f->dir = test_dir_setup();
 
-	rv = dqlite_node_create(1, "1", f->dir, &f->node);
+	bool disk_mode = param_bool(params, "disk_mode");
+
+	rv = dqlite_node_create_v2(1, "1", f->dir, disk_mode, &f->node);
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_set_bind_address(f->node, "127.0.0.1:9001");
 	munit_assert_int(rv, ==, 0);
-
-	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
-	if (disk_mode_param != NULL) {
-		bool disk_mode = (bool)atoi(disk_mode_param);
-		if (disk_mode) {
-			rv = dqlite_node_enable_disk_mode(f->node);
-			munit_assert_int(rv, ==, 0);
-		}
-	}
 
 	return f;
 }
@@ -98,20 +86,13 @@ static void *setUpForRecovery(const MunitParameter params[], void *user_data)
 	startStopNode(f);
 	dqlite_node_destroy(f->node);
 
-	rv = dqlite_node_create(1, "1", f->dir, &f->node);
+	bool disk_mode = param_bool(params, "disk_mode");
+
+	rv = dqlite_node_create_v2(1, "1", f->dir, disk_mode, &f->node);
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_set_bind_address(f->node, "@123");
 	munit_assert_int(rv, ==, 0);
-
-	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
-	if (disk_mode_param != NULL) {
-		bool disk_mode = (bool)atoi(disk_mode_param);
-		if (disk_mode) {
-			rv = dqlite_node_enable_disk_mode(f->node);
-			munit_assert_int(rv, ==, 0);
-		}
-	}
 
 	return f;
 }

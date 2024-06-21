@@ -24,4 +24,10 @@
 		}                                                           \
 	} while (0)
 
+static inline bool param_bool(const MunitParameter *params, const char *name)
+{
+	const char *param = munit_parameters_get(params, name);
+	return param != NULL && (bool)atoi(param);
+}
+
 #endif /* TEST_UTIL_H */

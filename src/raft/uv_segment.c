@@ -266,11 +266,11 @@ static int uvLoadEntriesBatch(struct uv *uv,
 
 	/* Consume the batch header, excluding the first 8 bytes containing the
 	 * number of entries, which we have already read. */
-	header.len = uvSizeofBatchHeader(n, true);
+	header.len = uvSizeofBatchHeader(n, uv->format_version);
 	header.base = batch;
 
 	rv = uvConsumeContent(content, offset,
-			      uvSizeofBatchHeader(n, true) - sizeof(uint64_t), NULL,
+			      uvSizeofBatchHeader(n, uv->format_version) - sizeof(uint64_t), NULL,
 			      errmsg);
 	if (rv != 0) {
 		ErrMsgTransfer(errmsg, uv->io->errmsg, "read header");
@@ -289,7 +289,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 
 	/* Decode the batch header, allocating the entries array. */
 	uint64_t local_data_size = 0;
-	rv = uvDecodeBatchHeader(header.base, entries, n_entries, &local_data_size);
+	rv = uvDecodeBatchHeader(header.base, entries, n_entries, &local_data_size, uv->format_version);
 	if (rv != 0) {
 		goto err;
 	}
@@ -299,9 +299,9 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	data.len = 0;
 	for (i = 0; i < n; i++) {
 		data.len += (*entries)[i].buf.len;
-#ifdef DQLITE_NEXT
-		data.len += sizeof((*entries)[i].local_data);
-#endif
+		if (uv->format_version == RAFT_UV_FORMAT_V2) {
+			data.len += sizeof((*entries)[i].local_data);
+		}
 	}
 	data.base = (uint8_t *)content->base + *offset;
 
@@ -324,7 +324,7 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	}
 
 	rv = uvDecodeEntriesBatch(content->base, *offset - data.len, *entries,
-			     *n_entries, local_data_size);
+			     *n_entries, local_data_size, uv->format_version);
 	if (rv != 0) {
 		goto err_after_header_decode;
 	}
@@ -405,7 +405,7 @@ int uvSegmentLoadClosed(struct uv *uv,
 	if (rv != 0) {
 		goto err;
 	}
-	if (format != UV__DISK_FORMAT) {
+	if (format != uv->format_version) {
 		ErrMsgPrintf(uv->io->errmsg, "unexpected format version %ju",
 			     format);
 		rv = RAFT_CORRUPT;
@@ -527,7 +527,7 @@ static int uvSegmentLoadOpen(struct uv *uv,
 	/* Check that the format is the expected one, or perhaps 0, indicating
 	 * that the segment was allocated but never written. */
 	offset = sizeof format;
-	if (format != UV__DISK_FORMAT) {
+	if (format != uv->format_version) {
 		if (format == 0) {
 			all_zeros = uvContentHasOnlyTrailingZeros(&buf, offset);
 			if (all_zeros) {
@@ -701,8 +701,11 @@ static int uvEnsureSegmentBufferIsLargeEnough(struct uvSegmentBuffer *b,
 	return 0;
 }
 
-void uvSegmentBufferInit(struct uvSegmentBuffer *b, size_t block_size)
+void uvSegmentBufferInit(struct uvSegmentBuffer *b,
+                         uint64_t format_version,
+                         size_t block_size)
 {
+        b->format_version = format_version;
 	b->block_size = block_size;
 	b->arena.base = NULL;
 	b->arena.len = 0;
@@ -729,13 +732,14 @@ int uvSegmentBufferFormat(struct uvSegmentBuffer *b)
 	}
 	b->n = n;
 	cursor = b->arena.base;
-	bytePut64(&cursor, UV__DISK_FORMAT);
+	bytePut64(&cursor, b->format_version);
 	return 0;
 }
 
 int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 			  const struct raft_entry entries[],
-			  unsigned n_entries)
+			  unsigned n_entries,
+			  uint64_t format_version)
 {
 	size_t size;   /* Total size of the batch */
 	uint32_t crc1; /* Header checksum */
@@ -748,12 +752,12 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 	int rv;
 
 	size = sizeof(uint32_t) * 2;            /* CRC checksums */
-	size += uvSizeofBatchHeader(n_entries, true); /* Batch header */
+	size += uvSizeofBatchHeader(n_entries, format_version); /* Batch header */
 	for (i = 0; i < n_entries; i++) {       /* Entries data */
 		size += bytePad64(entries[i].buf.len);
-#ifdef DQLITE_NEXT
-		size += sizeof(struct raft_entry_local_data);
-#endif
+		if (format_version == RAFT_UV_FORMAT_V2) {
+			size += sizeof(struct raft_entry_local_data);
+		}
 	}
 
 	rv = uvEnsureSegmentBufferIsLargeEnough(b, b->n + size);
@@ -770,9 +774,9 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 
 	/* Batch header */
 	header = cursor;
-	uvEncodeBatchHeader(entries, n_entries, cursor, true /* encode local data */);
-	crc1 = byteCrc32(header, uvSizeofBatchHeader(n_entries, true), 0);
-	cursor = (uint8_t *)cursor + uvSizeofBatchHeader(n_entries, true);
+	uvEncodeBatchHeader(entries, n_entries, cursor, format_version);
+	crc1 = byteCrc32(header, uvSizeofBatchHeader(n_entries, format_version), 0);
+	cursor = (uint8_t *)cursor + uvSizeofBatchHeader(n_entries, format_version);
 
 	/* Batch data */
 	crc2 = 0;
@@ -784,12 +788,12 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 		cursor = (uint8_t *)cursor + entry->buf.len;
 		static_assert(sizeof(entry->local_data.buf) % sizeof(uint64_t) == 0,
 			      "bad size for entry local data");
-#ifdef DQLITE_NEXT
-		size_t local_data_size = sizeof(entry->local_data.buf);
-		memcpy(cursor, entry->local_data.buf, local_data_size);
-		crc2 = byteCrc32(cursor, local_data_size, crc2);
-		cursor = (uint8_t *)cursor + local_data_size;
-#endif
+		if (format_version == RAFT_UV_FORMAT_V2) {
+			size_t local_data_size = sizeof(entry->local_data.buf);
+			memcpy(cursor, entry->local_data.buf, local_data_size);
+			crc2 = byteCrc32(cursor, local_data_size, crc2);
+			cursor = (uint8_t *)cursor + local_data_size;
+		}
 	}
 
 	bytePut32(&crc1_p, crc1);
@@ -1030,12 +1034,12 @@ static int uvWriteClosedSegment(struct uv *uv,
 	 * block */
 	cap = uv->block_size -
 	      (sizeof(uint64_t) /* Format version */ +
-	       sizeof(uint64_t) /* Checksums */ + uvSizeofBatchHeader(1, true /* include local bufs */));
+	       sizeof(uint64_t) /* Checksums */ + uvSizeofBatchHeader(1, uv->format_version));
 	if (conf->len > cap) {
 		return RAFT_TOOBIG;
 	}
 
-	uvSegmentBufferInit(&buf, uv->block_size);
+	uvSegmentBufferInit(&buf, uv->format_version, uv->block_size);
 
 	rv = uvSegmentBufferFormat(&buf);
 	if (rv != 0) {
@@ -1046,7 +1050,7 @@ static int uvWriteClosedSegment(struct uv *uv,
 	entry.type = RAFT_CHANGE;
 	entry.buf = *conf;
 
-	rv = uvSegmentBufferAppend(&buf, &entry, 1);
+	rv = uvSegmentBufferAppend(&buf, &entry, 1, uv->format_version);
 	if (rv != 0) {
 		uvSegmentBufferClose(&buf);
 		return rv;
@@ -1139,14 +1143,14 @@ int uvSegmentTruncate(struct uv *uv,
 	assert(index - segment->first_index < n);
 	m = (unsigned)(index - segment->first_index);
 
-	uvSegmentBufferInit(&buf, uv->block_size);
+	uvSegmentBufferInit(&buf, uv->format_version, uv->block_size);
 
 	rv = uvSegmentBufferFormat(&buf);
 	if (rv != 0) {
 		goto out_after_buffer_init;
 	}
 
-	rv = uvSegmentBufferAppend(&buf, entries, m);
+	rv = uvSegmentBufferAppend(&buf, entries, m, uv->format_version);
 	if (rv != 0) {
 		goto out_after_buffer_init;
 	}

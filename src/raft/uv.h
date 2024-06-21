@@ -47,6 +47,7 @@ typedef unsigned long long uvCounter;
 /* Information persisted in a single metadata file. */
 struct uvMetadata
 {
+	uint64_t format_version;
 	unsigned long long version; /* Monotonically increasing version */
 	raft_term term;             /* Current term */
 	raft_id voted_for;          /* Server ID of last vote, or 0 */
@@ -95,6 +96,7 @@ struct uv
 	bool closing;              /* True if we are closing */
 	raft_io_close_cb close_cb; /* Invoked when finishing closing */
 	bool auto_recovery;        /* Try to recover from corrupt segments */
+	uint64_t format_version;
 };
 
 /* Implementation of raft_io->truncate. */
@@ -175,13 +177,16 @@ int uvSegmentLoadAll(struct uv *uv,
  * The memory is aligned at disk block boundary, to allow for direct I/O. */
 struct uvSegmentBuffer
 {
+        uint64_t format_version;
 	size_t block_size; /* Disk block size for direct I/O */
 	uv_buf_t arena;    /* Previously allocated memory that can be re-used */
 	size_t n;          /* Write offset */
 };
 
 /* Initialize an empty buffer. */
-void uvSegmentBufferInit(struct uvSegmentBuffer *b, size_t block_size);
+void uvSegmentBufferInit(struct uvSegmentBuffer *b,
+                         uint64_t format_version,
+                         size_t block_size);
 
 /* Release all memory used by the buffer. */
 void uvSegmentBufferClose(struct uvSegmentBuffer *b);
@@ -196,7 +201,8 @@ int uvSegmentBufferFormat(struct uvSegmentBuffer *b);
  * will be appended. */
 int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 			  const struct raft_entry entries[],
-			  unsigned n_entries);
+			  unsigned n_entries,
+			  uint64_t format_version);
 
 /* After all entries to write have been encoded, finalize the buffer by zeroing
  * the unused memory of the last block. The out parameter will point to the

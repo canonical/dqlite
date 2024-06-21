@@ -5,11 +5,11 @@
 
 #include "../../include/dqlite.h"
 
-#include "../lib/config.h"
 #include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
+#include "../lib/util.h"
 
 #include "../../src/format.h"
 #include "../../src/raft.h"
@@ -56,7 +56,7 @@ static void setPageSizeDisk(const MunitParameter params[],
 			    int rv)
 {
 	int rc;
-	bool disk_mode = false;
+	bool disk_mode;
 	char page_sz[32];
 	rc = snprintf(page_sz, sizeof(page_sz), "%u", page_size);
 	munit_assert_int(rc, >, 0);
@@ -69,10 +69,7 @@ static void setPageSizeDisk(const MunitParameter params[],
 	    "",
 	};
 
-	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
-	if (disk_mode_param != NULL) {
-		disk_mode = (bool)atoi(disk_mode_param);
-	}
+	disk_mode = param_bool(params, "disk_mode");
 	if (disk_mode) {
 		rc = f->pMethods->xFileControl(f, SQLITE_FCNTL_PRAGMA, fnctl);
 		munit_assert_int(rc, ==, rv);
@@ -83,17 +80,14 @@ static void *setUp(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	int rv;
-	bool disk_mode = false;
+	bool disk_mode;
 
 	SETUP_HEAP;
 	SETUP_SQLITE;
 	rv = VfsInit(&f->vfs, "dqlite");
 	munit_assert_int(rv, ==, 0);
 	f->dir = NULL;
-	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
-	if (disk_mode_param != NULL) {
-		disk_mode = (bool)atoi(disk_mode_param);
-	}
+	disk_mode = param_bool(params, "disk_mode");
 	if (disk_mode) {
 		rv = VfsEnableDisk(&f->vfs);
 		munit_assert_int(rv, ==, 0);

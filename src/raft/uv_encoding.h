@@ -7,13 +7,6 @@
 
 #include "../raft.h"
 
-/* Current disk format version. */
-#ifdef DQLITE_NEXT
-#define UV__DISK_FORMAT 2
-#else
-#define UV__DISK_FORMAT 1
-#endif
-
 int uvEncodeMessage(const struct raft_message *message,
 		    uv_buf_t **bufs,
 		    unsigned *n_bufs);
@@ -26,13 +19,15 @@ int uvDecodeMessage(uint16_t type,
 int uvDecodeBatchHeader(const void *batch,
 			struct raft_entry **entries,
 			unsigned *n,
-			uint64_t *local_data_size);
+			uint64_t *local_data_size,
+			uint64_t format_version);
 
 int uvDecodeEntriesBatch(uint8_t *batch,
 			 size_t offset,
 			 struct raft_entry *entries,
 			 unsigned n,
-			 uint64_t local_data_size);
+			 uint64_t local_data_size,
+			 uint64_t format_version);
 
 /**
  * The layout of the memory pointed at by a @batch pointer is the following:
@@ -57,11 +52,11 @@ int uvDecodeEntriesBatch(uint8_t *batch,
  * arbitrary lengths, possibly padded with extra bytes to reach 8-byte boundary
  * (which means that all entry data pointers are 8-byte aligned).
  */
-size_t uvSizeofBatchHeader(size_t n, bool with_local_data);
+size_t uvSizeofBatchHeader(size_t n, uint64_t format_version);
 
 void uvEncodeBatchHeader(const struct raft_entry *entries,
 			 unsigned n,
 			 void *buf,
-			 bool with_local_data);
+			 uint64_t format_version);
 
 #endif /* UV_ENCODING_H_ */

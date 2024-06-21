@@ -56,12 +56,14 @@ static void state_cb(struct raft *r,
 int dqlite__init(struct dqlite_node *d,
 		 dqlite_node_id id,
 		 const char *address,
-		 const char *dir)
+		 const char *dir,
+		 bool disk_mode)
 {
-	int rv;
 	char db_dir_path[1024];
 	int urandom;
 	ssize_t count;
+	int rv;
+	int rv2;
 
 	d->initialized = false;
 	d->lock_fd = -1;
@@ -80,8 +82,14 @@ int dqlite__init(struct dqlite_node *d,
 			 "config__init(rv:%d)", rv);
 		goto err;
 	}
+	d->config.disk = disk_mode;
 	rv = VfsInit(&d->vfs, d->config.name);
-	sqlite3_vfs_register(&d->vfs, 0);
+	if (disk_mode) {
+		rv2 = dqlite_vfs_enable_disk(&d->vfs);
+		assert(rv2 == 0);
+	}
+	rv2 = sqlite3_vfs_register(&d->vfs, 0 /* not default */);
+	assert(rv2 == SQLITE_OK);
 	if (rv != 0) {
 		goto err_after_config_init;
 	}
@@ -94,16 +102,17 @@ int dqlite__init(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto err_after_vfs_init;
 	}
-#ifdef DQLITE_NEXT
-	rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count,
-		       POOL_QOS_PRIO_FAIR);
-	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "pool_init(): %s",
-			 uv_strerror(rv));
-		rv = DQLITE_ERROR;
-		goto err_after_loop_init;
+	if (disk_mode) {
+		rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count,
+			       POOL_QOS_PRIO_FAIR);
+		if (rv != 0) {
+			snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "pool_init(): %s",
+				 uv_strerror(rv));
+			rv = DQLITE_ERROR;
+			goto err_after_loop_init;
+		}
 	}
-#endif
+
 	rv = raftProxyInit(&d->raft_transport, &d->loop);
 	if (rv != 0) {
 		goto err_after_pool_init;
@@ -115,7 +124,16 @@ int dqlite__init(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto err_after_raft_transport_init;
 	}
-	rv = fsm__init(&d->raft_fsm, &d->config, &d->registry);
+#ifndef USE_SYSTEM_RAFT
+	raft_uv_set_format_version(&d->raft_io,
+				   disk_mode ? RAFT_UV_FORMAT_V2 : RAFT_UV_FORMAT_V1);
+#endif
+
+	if (disk_mode) {
+		rv = fsm__init_disk(&d->raft_fsm, &d->config, &d->registry);
+	} else {
+		rv = fsm__init(&d->raft_fsm, &d->config, &d->registry);
+	}
 	if (rv != 0) {
 		goto err_after_raft_io_init;
 	}
@@ -190,11 +208,11 @@ err_after_raft_io_init:
 err_after_raft_transport_init:
 	raftProxyClose(&d->raft_transport);
 err_after_pool_init:
-#ifdef DQLITE_NEXT
-	pool_close(&d->pool);
-	pool_fini(&d->pool);
+	if (disk_mode) {
+		pool_close(&d->pool);
+		pool_fini(&d->pool);
+	}
 err_after_loop_init:
-#endif
 	uv_loop_close(&d->loop);
 err_after_vfs_init:
 	VfsClose(&d->vfs);
@@ -222,9 +240,9 @@ void dqlite__close(struct dqlite_node *d)
 	// the TODO above referencing the cleanup logic without running the
 	// node. See https://github.com/canonical/dqlite/issues/504.
 
-#ifdef DQLITE_NEXT
-	pool_fini(&d->pool);
-#endif
+	if (d->config.disk) {
+		pool_fini(&d->pool);
+	}
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
@@ -246,7 +264,21 @@ int dqlite_node_create(dqlite_node_id id,
 		return DQLITE_NOMEM;
 	}
 
-	return dqlite__init(*t, id, address, data_dir);
+	return dqlite__init(*t, id, address, data_dir, false);
+}
+
+int dqlite_node_create_v2(dqlite_node_id id,
+			  const char *address,
+			  const char *data_dir,
+			  bool disk_mode,
+			  dqlite_node **t)
+{
+	*t = sqlite3_malloc(sizeof **t);
+	if (*t == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	return dqlite__init(*t, id, address, data_dir, disk_mode);
 }
 
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)
@@ -443,30 +475,6 @@ int dqlite_node_set_block_size(dqlite_node *n, size_t size)
 	raft_uv_set_block_size(&n->raft_io, size);
 	return 0;
 }
-int dqlite_node_enable_disk_mode(dqlite_node *n)
-{
-	int rv;
-
-	if (n->running) {
-		return DQLITE_MISUSE;
-	}
-
-	rv = dqlite_vfs_enable_disk(&n->vfs);
-	if (rv != 0) {
-		return rv;
-	}
-
-	n->registry.config->disk = true;
-
-	/* Close the default fsm and initialize the disk one. */
-	fsm__close(&n->raft_fsm);
-	rv = fsm__init_disk(&n->raft_fsm, &n->config, &n->registry);
-	if (rv != 0) {
-		return rv;
-	}
-
-	return 0;
-}
 
 static int maybeBootstrap(dqlite_node *d,
 			  dqlite_node_id id,
@@ -559,9 +567,9 @@ static void stopCb(uv_async_t *stop)
 		tracef("not running or already stopped");
 		return;
 	}
-#ifdef DQLITE_NEXT
-	pool_close(&d->pool);
-#endif
+	if (d->config.disk) {
+		pool_close(&d->pool);
+	}
 	if (d->role_management) {
 		rv = uv_timer_stop(&d->timer);
 		assert(rv == 0);

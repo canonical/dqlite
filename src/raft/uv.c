@@ -112,6 +112,12 @@ static int uvInit(struct raft_io *io, raft_id id, const char *address)
 	if (rv != 0) {
 		return rv;
 	}
+	if (metadata.format_version != 0 &&
+	    metadata.format_version != uv->format_version) {
+		ErrMsgPrintf(io->errmsg, "decode metadata: bad format version %ju",
+			     metadata.format_version);
+		return RAFT_MALFORMED;
+	}
 	uv->metadata = metadata;
 
 	rv = uv->transport->init(uv->transport, id, address);
@@ -512,6 +518,7 @@ static int uvSetTerm(struct raft_io *io, const raft_term term)
 	struct uv *uv;
 	int rv;
 	uv = io->impl;
+	uv->metadata.format_version = uv->format_version;
 	uv->metadata.version++;
 	uv->metadata.term = term;
 	uv->metadata.voted_for = 0;
@@ -528,6 +535,7 @@ static int uvSetVote(struct raft_io *io, const raft_id server_id)
 	struct uv *uv;
 	int rv;
 	uv = io->impl;
+	uv->metadata.format_version = uv->format_version;
 	uv->metadata.version++;
 	uv->metadata.voted_for = server_id;
 	rv = uvMetadataStore(uv, &uv->metadata);
@@ -723,6 +731,7 @@ int raft_uv_init(struct raft_io *io,
 	uv->closing = false;
 	uv->close_cb = NULL;
 	uv->auto_recovery = true;
+	uv->format_version = RAFT_UV_FORMAT_V1;
 
 	uvSeedRand(uv);
 
@@ -810,6 +819,13 @@ void raft_uv_set_auto_recovery(struct raft_io *io, bool flag)
 	struct uv *uv;
 	uv = io->impl;
 	uv->auto_recovery = flag;
+}
+
+void raft_uv_set_format_version(struct raft_io *io, uint64_t version)
+{
+	PRE(RAFT_UV_FORMAT_V1 <= version && version < RAFT_UV_FORMAT_NR);
+	struct uv *uv = io->impl;
+	uv->format_version = version;
 }
 
 #undef tracef

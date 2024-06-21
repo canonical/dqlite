@@ -2,7 +2,7 @@
 
 #include "fs.h"
 #include "server.h"
-
+#include "util.h"
 
 static int endpointConnect(void *data, const char *address, int *fd)
 {
@@ -62,7 +62,9 @@ void test_server_start(struct test_server *s, const MunitParameter params[])
 {
 	int rv;
 
-	rv = dqlite_node_create(s->id, s->address, s->dir, &s->dqlite);
+	bool disk_mode = param_bool(params, "disk_mode");
+
+	rv = dqlite_node_create_v2(s->id, s->address, s->dir, disk_mode, &s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_set_bind_address(s->dqlite, s->address);
@@ -91,15 +93,6 @@ void test_server_start(struct test_server *s, const MunitParameter params[])
 		rv = dqlite_node_set_snapshot_compression(s->dqlite,
 							  snapshot_compression);
 		munit_assert_int(rv, ==, 0);
-	}
-
-	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
-	if (disk_mode_param != NULL) {
-		bool disk_mode = (bool)atoi(disk_mode_param);
-		if (disk_mode) {
-			rv = dqlite_node_enable_disk_mode(s->dqlite);
-			munit_assert_int(rv, ==, 0);
-		}
 	}
 
 	const char *target_voters_param =

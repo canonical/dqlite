@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../raft.h"
+#include "../utils.h"
 #include "assert.h"
 #include "byte.h"
 #include "configuration.h"
@@ -86,14 +87,12 @@ static size_t sizeofTimeoutNow(void)
 	       sizeof(uint64_t) /* Last log term. */;
 }
 
-size_t uvSizeofBatchHeader(size_t n, bool with_local_data)
+size_t uvSizeofBatchHeader(size_t n, uint64_t format_version)
 {
 	size_t res = 8 + /* Number of entries in the batch, little endian */
 		16 * n; /* One header per entry */;
-	if (with_local_data) {
-#ifdef DQLITE_NEXT
+	if (format_version == RAFT_UV_FORMAT_V2) {
 		res += 8; /* Local data length, applies to all entries */
-#endif
 	}
 	return res;
 }
@@ -143,7 +142,9 @@ static void encodeAppendEntries(const struct raft_append_entries *p, void *buf)
 	bytePut64(&cursor, p->prev_log_term);  /* Previous term. */
 	bytePut64(&cursor, p->leader_commit);  /* Commit index. */
 
-	uvEncodeBatchHeader(p->entries, p->n_entries, cursor, false /* no local data */);
+	/* Note: use RAFT_UV_FORMAT_V1 unconditionally because local data doesn't
+	 * appear in the AppendEntries message. */
+	uvEncodeBatchHeader(p->entries, p->n_entries, cursor, RAFT_UV_FORMAT_V1);
 }
 
 static void encodeAppendEntriesResult(
@@ -302,7 +303,7 @@ oom:
 void uvEncodeBatchHeader(const struct raft_entry *entries,
 			 unsigned n,
 			 void *buf,
-			 bool with_local_data)
+			 uint64_t format_version)
 {
 	unsigned i;
 	void *cursor = buf;
@@ -310,11 +311,9 @@ void uvEncodeBatchHeader(const struct raft_entry *entries,
 	/* Number of entries in the batch, little endian */
 	bytePut64(&cursor, n);
 
-	if (with_local_data) {
-#ifdef DQLITE_NEXT
+	if (format_version == RAFT_UV_FORMAT_V2) {
 		/* Local data size per entry, little endian */
 		bytePut64(&cursor, (uint64_t)sizeof(struct raft_entry_local_data));
-#endif
 	}
 
 	for (i = 0; i < n; i++) {
@@ -378,7 +377,8 @@ static void decodeRequestVoteResult(const uv_buf_t *buf,
 int uvDecodeBatchHeader(const void *batch,
 			struct raft_entry **entries,
 			unsigned *n,
-			uint64_t *local_data_size)
+			uint64_t *local_data_size,
+			uint64_t format_version)
 {
 	const void *cursor = batch;
 	size_t i;
@@ -391,15 +391,13 @@ int uvDecodeBatchHeader(const void *batch,
 		return 0;
 	}
 
-	if (local_data_size != NULL) {
-#ifdef DQLITE_NEXT
+	if (format_version == RAFT_UV_FORMAT_V2) {
 		uint64_t z = byteGet64(&cursor);
 		if (z == 0 || z > sizeof(struct raft_entry_local_data) || z % sizeof(uint64_t) != 0) {
 			rv = RAFT_MALFORMED;
 			goto err;
 		}
 		*local_data_size = z;
-#endif
 	}
 
 	*entries = raft_malloc(*n * sizeof **entries);
@@ -456,7 +454,10 @@ static int decodeAppendEntries(const uv_buf_t *buf,
 	args->prev_log_term = byteGet64(&cursor);
 	args->leader_commit = byteGet64(&cursor);
 
-	rv = uvDecodeBatchHeader(cursor, &args->entries, &args->n_entries, false);
+	/* Note: use RAFT_UV_FORMAT_V1 unconditionally because local data doesn't
+	 * appear in the AppendEntries message. */
+	rv = uvDecodeBatchHeader(cursor, &args->entries, &args->n_entries,
+				 NULL, RAFT_UV_FORMAT_V1);
 	if (rv != 0) {
 		return rv;
 	}
@@ -579,9 +580,12 @@ int uvDecodeEntriesBatch(uint8_t *batch,
 			 size_t offset,
 			 struct raft_entry *entries,
 			 unsigned n,
-			 uint64_t local_data_size)
+			 uint64_t local_data_size,
+			 uint64_t format_version)
 {
 	uint8_t *cursor;
+
+	PRE(ERGO(format_version == RAFT_UV_FORMAT_V1, local_data_size == 0));
 
 	assert(batch != NULL);
 
@@ -603,10 +607,10 @@ int uvDecodeEntriesBatch(uint8_t *batch,
 		entry->local_data = (struct raft_entry_local_data){};
 		assert(local_data_size <= sizeof(entry->local_data.buf));
 		assert(local_data_size % 8 == 0);
-#ifdef DQLITE_NEXT
-		memcpy(entry->local_data.buf, cursor, local_data_size);
-		cursor += local_data_size;
-#endif
+		if (format_version == RAFT_UV_FORMAT_V2) {
+			memcpy(entry->local_data.buf, cursor, local_data_size);
+			cursor += local_data_size;
+		}
 	}
 	return 0;
 }

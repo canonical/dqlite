@@ -249,7 +249,7 @@ static int uvSnapshotLoadMeta(struct uv *uv,
 	}
 
 	format = byteFlip64(header[0]);
-	if (format != UV__DISK_FORMAT) {
+	if (format != uv->format_version) {
 		tracef("load %s: unsupported format %ju", info->filename,
 		       format);
 		rv = RAFT_MALFORMED;
@@ -676,7 +676,7 @@ int UvSnapshotPut(struct raft_io *io,
 	}
 
 	cursor = put->meta.header;
-	bytePut64(&cursor, UV__DISK_FORMAT);
+	bytePut64(&cursor, uv->format_version);
 	bytePut64(&cursor, 0);
 	bytePut64(&cursor, snapshot->configuration_index);
 	bytePut64(&cursor, put->meta.bufs[1].len);

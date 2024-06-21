@@ -4,6 +4,7 @@
 #include "../lib/heap.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
+#include "../lib/util.h"
 
 #include "../../include/dqlite.h"
 #include "../../src/raft.h"
@@ -44,15 +45,11 @@ static void *setUp(const MunitParameter params[], void *user_data)
 		sprintf(f->names[i], "%u", i + 1);
 		rv = dqlite_vfs_init(&f->vfs[i], f->names[i]);
 		munit_assert_int(rv, ==, 0);
-		const char *disk_mode_param =
-		    munit_parameters_get(params, "disk_mode");
-		if (disk_mode_param != NULL) {
-			bool disk_mode = (bool)atoi(disk_mode_param);
-			if (disk_mode) {
-				f->dirs[i] = test_dir_setup();
-				rv = dqlite_vfs_enable_disk(&f->vfs[i]);
-				munit_assert_int(rv, ==, 0);
-			}
+		bool disk_mode = param_bool(params, "disk_mode");
+		if (disk_mode) {
+			f->dirs[i] = test_dir_setup();
+			rv = dqlite_vfs_enable_disk(&f->vfs[i]);
+			munit_assert_int(rv, ==, 0);
 		}
 		rv = sqlite3_vfs_register(&f->vfs[i], 0);
 		munit_assert_int(rv, ==, 0);

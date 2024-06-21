@@ -269,6 +269,20 @@ DQLITE_API int dqlite_node_create(dqlite_node_id id,
 				  dqlite_node **n);
 
 /**
+ * Create a new dqlite node object, optionally operating in disk mode.
+ *
+ * When @disk_mode is true, the dqlite node will store SQLite databases
+ * and write-ahead log files on disk, instead of in memory. This is an
+ * experimental feature. Other parameters are documented at dqlite_node_create(),
+ * and the usage notes there also apply to this function.
+ */
+DQLITE_API int dqlite_node_create_v2(dqlite_node_id id,
+				     const char *addr,
+				     const char *data_dir,
+				     bool disk_mode,
+				     dqlite_node **t);
+
+/**
  * Destroy a dqlite node object.
  *
  * This will release all memory that was allocated by the node. If
@@ -398,16 +412,6 @@ DQLITE_API int dqlite_node_set_snapshot_params(dqlite_node *n,
  * This function must be called before calling dqlite_node_start().
  */
 DQLITE_API int dqlite_node_set_block_size(dqlite_node *n, size_t size);
-
-/**
- * WARNING: This is an experimental API.
- *
- * By default dqlite holds the SQLite database file and WAL in memory. By
- * enabling disk-mode, dqlite will hold the SQLite database file on-disk while
- * keeping the WAL in memory. Has to be called after `dqlite_node_create` and
- * before `dqlite_node_start`.
- */
-DQLITE_API int dqlite_node_enable_disk_mode(dqlite_node *n);
 
 /**
  * Set the target number of voting nodes for the cluster.

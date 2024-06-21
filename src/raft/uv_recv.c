@@ -290,12 +290,15 @@ static void uvServerReadCb(uv_stream_t *stream,
 				case RAFT_IO_APPEND_ENTRIES:
 					payload.base = s->payload.base;
 					payload.len = s->payload.len;
+					/* Note: use RAFT_UV_FORMAT_V1 unconditionally
+					 * because local data doesn't appear in the
+					 * AppendEntries message. */
 					(void)uvDecodeEntriesBatch(
 					    payload.base, 0,
 					    s->message.append_entries.entries,
 					    s->message.append_entries
 						.n_entries,
-					    false);
+					    0, RAFT_UV_FORMAT_V1);
 					break;
 				case RAFT_IO_INSTALL_SNAPSHOT:
 					s->message.install_snapshot.data.base =
