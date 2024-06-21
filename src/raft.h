@@ -1398,6 +1398,8 @@ RAFT_API void raft_uv_set_tracer(struct raft_io *io,
  */
 RAFT_API void raft_uv_set_auto_recovery(struct raft_io *io, bool flag);
 
+RAFT_API void raft_uv_set_format_version(struct raft_io *io, int version);
+
 /**
  * Callback invoked by the transport implementation when a new incoming
  * connection has been established.
