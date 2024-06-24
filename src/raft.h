@@ -632,7 +632,7 @@ struct raft_io
 
 struct raft_fsm
 {
-	int version; /* 1, 2 or 3 */
+	int version;
 	void *data;
 	int (*apply)(struct raft_fsm *fsm,
 		     const struct raft_buffer *buf,
@@ -649,6 +649,18 @@ struct raft_fsm
 	int (*snapshot_async)(struct raft_fsm *fsm,
 			      struct raft_buffer *bufs[],
 			      unsigned *n_bufs);
+	/* Fields below added since version 4. */
+	int (*apply2)(struct raft_fsm *fsm,
+			const struct raft_buffer *buf,
+			struct raft_entry_local_data ld,
+			bool is_mine,
+			void **result);
+	void (*post_receive)(struct raft_fsm *fsm,
+			const struct raft_buffer *buf,
+			struct raft_entry_local_data *ld);
+	void (*post_receive_undo)(struct raft_fsm *fsm,
+			const struct raft_buffer *buf,
+			struct raft_entry_local_data ld);
 };
 
 struct raft; /* Forward declaration. */
@@ -666,6 +678,10 @@ typedef void (*raft_state_cb)(struct raft *raft,
 			      unsigned short new_state);
 
 struct raft_progress;
+
+/**
+ */
+typedef void (*raft_initial_barrier_cb)(struct raft *raft);
 
 /**
  * Close callback.
@@ -919,11 +935,15 @@ RAFT_API int raft_init(struct raft *r,
 
 RAFT_API void raft_close(struct raft *r, raft_close_cb cb);
 
+RAFT_API void raft_fini(struct raft *r);
+
 /**
  * This function MUST be called after raft_init and before raft_start.
  * @cb will be called every time the raft state changes.
  */
 RAFT_API void raft_register_state_cb(struct raft *r, raft_state_cb cb);
+
+RAFT_API void raft_register_initial_barrier_cb(struct raft *r, raft_initial_barrier_cb cb);
 
 /**
  * Bootstrap this raft instance using the given configuration. The instance must
