@@ -21,6 +21,7 @@
 
 #define SETUP                                                 \
 	unsigned i_;                                          \
+	f->disk_mode = atoi(munit_parameters_get(params, "disk_mode")); \
 	test_heap_setup(params, user_data);                   \
 	test_sqlite_setup(params);                            \
 	for (i_ = 0; i_ < N_SERVERS; i_++) {                  \
@@ -45,6 +46,8 @@
 /* Use the client connected to the server with the given ID. */
 #define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
 
+#define DISK_MODE_MISSING_SNAPSHOT(x) x
+
 /******************************************************************************
  *
  * cluster
@@ -54,6 +57,7 @@
 SUITE(cluster)
 
 struct fixture {
+	bool disk_mode;
 	FIXTURE;
 };
 
@@ -99,6 +103,10 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	char sql[128];
 
+	if (n_records >= 2200 && f->disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
@@ -137,6 +145,10 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	unsigned id = 2;
 	const char *address = "@2";
 
+	if (n_records >= 2200 && f->disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
@@ -173,7 +185,7 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 /* Insert a huge row, causing SQLite to allocate overflow pages. Then
  * insert the same row again. (Reproducer for
  * https://github.com/canonical/raft/issues/432.) */
-TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
+TEST(cluster, hugeRow, setUp, tearDown, 0, cluster_params)
 {
 	struct fixture *f = data;
 	uint32_t stmt_id;
@@ -218,6 +230,10 @@ TEST(cluster, modifyingQuery, setUp, tearDown, 0, cluster_params)
 	unsigned id = 2;
 	const char *address = "@2";
 
+	if (n_records >= 2200 && f->disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
@@ -261,6 +277,10 @@ TEST(cluster, modifyingQuerySql, setUp, tearDown, 0, cluster_params)
 	char sql[128];
 	unsigned id = 2;
 	const char *address = "@2";
+
+	if (n_records >= 2200 && f->disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
 
 	HANDSHAKE;
 	OPEN;
