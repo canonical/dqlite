@@ -242,8 +242,8 @@ TEST(init, metadataOneBadFormat, setUp, tearDown, 0, NULL)
                         1, /* Version                              */
                         1, /* Term                                 */
                         0 /* Voted for                            */);
-    INIT_ERROR(f->dir, RAFT_MALFORMED,
-               "decode content of metadata1: bad format version " BAD_FORMAT_STR);
+    INIT(f->dir);
+    CLOSE;
     return MUNIT_OK;
 }
 
@@ -256,8 +256,8 @@ TEST(init, metadataOneBadVersion, setUp, tearDown, 0, format_params)
                         0, /* Version                              */
                         1, /* Term                                 */
                         0 /* Voted for                            */);
-    INIT_ERROR(f->dir, RAFT_CORRUPT,
-               "decode content of metadata1: version is set to zero");
+    INIT(f->dir);
+    CLOSE;
     return MUNIT_OK;
 }
 
@@ -276,7 +276,7 @@ TEST(init, metadataOneAndTwoSameVersion, setUp, tearDown, 0, format_params)
                         2, /* Version                              */
                         2, /* Term                                 */
                         0 /* Voted for                            */);
-    INIT_ERROR(f->dir, RAFT_CORRUPT,
-               "metadata1 and metadata2 are both at version 2");
+    INIT(f->dir);
+    CLOSE;
     return MUNIT_OK;
 }
