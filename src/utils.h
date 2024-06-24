@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <sqlite3.h>
+
 /* Various utility functions and macros */
 
 #define PTR_TO_UINT64(p) ((uint64_t)((uintptr_t)(p)))
@@ -22,8 +24,20 @@
 #define POST(cond) assert((cond))
 #define ERGO(a, b) (!(a) || (b))
 
+#define UNHANDLED(expr) if (expr) assert(0)
+
 static inline bool is_po2(unsigned long n) {
 	return n > 0 && (n & (n - 1)) == 0;
+}
+
+static inline sqlite3_file *main_file(sqlite3 *conn)
+{
+	PRE(conn != NULL);
+	sqlite3_file *fp;
+	int rv = sqlite3_file_control(conn, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	assert(rv == SQLITE_OK);
+	POST(fp != NULL);
+	return fp;
 }
 
 #endif /* DQLITE_UTILS_H_ */
