@@ -1,11 +1,13 @@
 #include "lib/assert.h"
 #include "lib/serialize.h"
+#include "lib/threadpool.h"
 
 #include "command.h"
 #include "fsm.h"
 #include "raft.h"
 #include "tracing.h"
 #include "vfs.h"
+#include "vfs2.h"
 
 #include <sys/mman.h>
 
@@ -132,10 +134,7 @@ static void maybeCheckpoint(struct db *db)
 		goto err_after_db_open;
 	}
 
-	/* Get the database file associated with this db->follower connection */
-	rv = sqlite3_file_control(db->follower, "main",
-				  SQLITE_FCNTL_FILE_POINTER, &main_f);
-	assert(rv == SQLITE_OK); /* Should never fail */
+	main_f = main_file(db->follower);
 
 	/* Get the first SHM region, which contains the WAL header. */
 	rv = main_f->pMethods->xShmMap(main_f, 0, 0, 0, &region);
@@ -744,420 +743,189 @@ void fsm__close(struct raft_fsm *fsm)
 	raft_free(f);
 }
 
-/******************************************************************************
- Disk-based FSM
- *****************************************************************************/
-
-/* The synchronous part of the database encoding */
-static int encodeDiskDatabaseSync(struct db *db, struct raft_buffer *r_buf)
+void fsm_post_receive_disk(struct raft_fsm *fsm, const struct raft_buffer *buf, struct raft_entry_local_data *ld)
 {
-	sqlite3_vfs *vfs;
-	struct dqlite_buffer *buf = (struct dqlite_buffer *)r_buf;
+	struct fsm *f = fsm->data;
+	void *cmd;
 	int rv;
 
-	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDiskSnapshotWal(vfs, db->path, buf);
-	if (rv != 0) {
-		goto err;
+	int type;
+	rv = command__decode(buf, &type, &cmd);
+	UNHANDLED(rv != 0);
+	if (type != COMMAND_FRAMES) {
+		goto done_after_command_decode;
+	}
+	struct command_frames *cf = cmd;
+	assert(cf->is_commit);
+
+	unsigned long *page_numbers;
+	rv = command_frames__page_numbers(cf, &page_numbers);
+	UNHANDLED(rv != 0);
+	void *pages;
+	command_frames__pages(cf, &pages);
+	/* TODO maybe vfs2 should just accept the pages and page numbers
+	 * in the layout that we receive them over the wire? */
+	dqlite_vfs_frame *frames = sqlite3_malloc((int)sizeof(*frames) * (int)cf->frames.n_pages);
+	UNHANDLED(frames == NULL);
+	for (uint32_t i = 0; i < cf->frames.n_pages; i++) {
+		frames[i].page_number = page_numbers[i];
+		frames[i].data = pages + cf->frames.page_size * i;
 	}
 
-	return 0;
+	struct db *db;
+	rv = registry__db_get(f->registry, cf->filename, &db);
+	UNHANDLED(rv != 0);
+	PRE(db->follower == NULL);
+	rv = db__open_follower(db);
+	UNHANDLED(rv != SQLITE_OK);
+	POST(db->follower != NULL);
 
-err:
-	assert(rv != 0);
+	sqlite3_file *fp = main_file(db->follower);
+	struct vfs2_wal_slice sl;
+	rv = vfs2_apply_uncommitted(fp, cf->frames.page_size, frames, cf->frames.n_pages, &sl);
+	UNHANDLED(rv != 0);
+
+	memcpy(ld, &sl, sizeof(sl));
+
+	sqlite3_close(db->follower);
+	db->follower = NULL;
+
+	sqlite3_free(frames);
+	sqlite3_free(page_numbers);
+done_after_command_decode:
+	raft_free(cmd);
+}
+
+static int fsm_apply2_disk(struct raft_fsm *fsm,
+		const struct raft_buffer *buf, struct raft_entry_local_data ld,
+		bool is_mine, void **result)
+{
+	struct fsm *f = fsm->data;
+	int rv;
+
+	int type;
+	void *cmd;
+	rv = command__decode(buf, &type, &cmd);
+	if (rv != 0) {
+		goto done;
+	}
+
+	switch (type) {
+		case COMMAND_FRAMES:
+			break;
+		case COMMAND_CHECKPOINT:
+		case COMMAND_OPEN:
+		case COMMAND_UNDO:
+			rv = 0;
+			goto done_after_command_decode;
+		default:
+			rv = RAFT_MALFORMED;
+			goto done_after_command_decode;
+	}
+
+	struct command_frames *cf = cmd;
+
+	struct db *db;
+	rv = registry__db_get(f->registry, cf->filename, &db);
+	UNHANDLED(rv != 0);
+	PRE(db->follower == NULL);
+	rv = db__open_follower(db);
+	UNHANDLED(rv != SQLITE_OK);
+	POST(db->follower != NULL);
+
+	sqlite3_file *fp = main_file(db->follower);
+	if (is_mine) {
+		rv = vfs2_unhide(fp);
+	} else {
+		struct vfs2_wal_slice sl;
+		memcpy(&sl, &ld, sizeof(ld));
+		rv = vfs2_commit(fp, sl);
+	}
+	UNHANDLED(rv != 0);
+
+	rv = 0;
+
+	sqlite3_close(db->follower);
+	db->follower = NULL;
+
+done_after_command_decode:
+	raft_free(cmd);
+done:
+	*result = NULL;
 	return rv;
 }
 
-/* The asynchronous part of the database encoding */
-static int encodeDiskDatabaseAsync(struct db *db,
-				   struct raft_buffer r_bufs[],
-				   uint32_t n)
+static void fsm_post_receive_undo_disk(struct raft_fsm *fsm, const struct raft_buffer *buf, struct raft_entry_local_data ld)
 {
-	struct snapshotDatabase header;
-	sqlite3_vfs *vfs;
-	char *cursor;
-	struct dqlite_buffer *bufs = (struct dqlite_buffer *)r_bufs;
+	struct fsm *f = fsm->data;
+	void *cmd;
 	int rv;
 
-	assert(n == 3);
-
-	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDiskSnapshotDb(vfs, db->path, &bufs[1]);
-	if (rv != 0) {
-		goto err;
-	}
-
-	/* Database header. */
-	header.filename = db->filename;
-	header.main_size = bufs[1].len;
-	header.wal_size = bufs[2].len;
-	bufs[0].len = snapshotDatabase__sizeof(&header);
-	bufs[0].base = sqlite3_malloc64(bufs[0].len);
-	if (bufs[0].base == NULL) {
-		rv = RAFT_NOMEM;
-		goto err;
-	}
-
-	cursor = bufs[0].base;
-	snapshotDatabase__encode(&header, &cursor);
-	return 0;
-
-	/* Cleanup is performed by call to snapshot_finalize */
-err:
-	assert(rv != 0);
-	return rv;
-}
-
-/* Determine the total number of raft buffers needed
- * for a snapshot in disk-mode */
-static unsigned snapshotNumBufsDisk(struct fsm *f)
-{
-	queue *head;
-	unsigned n = 1; /* snapshot header */
-
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		n += 3; /* database header, database file and wal */
-	}
-
-	return n;
-}
-
-/* An example array of snapshot buffers looks like this:
- *
- * bufs:  SH DH1 DBMMAP1 WAL1 DH2 DMMAP2 WAL2
- * index:  0   1       2    3   4      5    6
- *
- * SH:     Snapshot Header
- * DHx:    Database Header
- * DBMMAP: Pointer to mmap'ed database file
- * WALx:   a WAL
- * */
-static void freeSnapshotBufsDisk(struct fsm *f,
-				 struct raft_buffer bufs[],
-				 unsigned n_bufs)
-{
-	queue *head;
-	unsigned i;
-
-	if (bufs == NULL || n_bufs == 0) {
+	int type;
+	rv = command__decode(buf, &type, &cmd);
+	UNHANDLED(rv != 0);
+	if (type != COMMAND_FRAMES) {
 		return;
 	}
+	struct command_frames *cf = cmd;
+	assert(cf->is_commit);
 
-	/* Free snapshot header */
-	sqlite3_free(bufs[0].base);
-
-	i = 1;
-	/* Free all database headers & WAL buffers. Unmap the DB file. */
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		if (i == n_bufs) {
-			break;
-		}
-		/* i is the index of the database header */
-		sqlite3_free(bufs[i].base);
-		if (bufs[i + 1].base != NULL) {
-			munmap(bufs[i + 1].base, bufs[i + 1].len);
-		}
-		sqlite3_free(bufs[i + 2].base);
-		/* i is now the index of the next database header (if any) */
-		i += 3;
-	}
-}
-
-static int fsm__snapshot_disk(struct raft_fsm *fsm,
-			      struct raft_buffer *bufs[],
-			      unsigned *n_bufs)
-{
-	struct fsm *f = fsm->data;
-	queue *head;
-	struct db *db = NULL;
-	unsigned n_db = 0;
-	unsigned i;
-	int rv;
-
-	/* First count how many databases we have and check that no transaction
-	 * nor checkpoint nor other snapshot is in progress. */
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		db = QUEUE_DATA(head, struct db, queue);
-		if (db->tx_id != 0 || db->read_lock) {
-			return RAFT_BUSY;
-		}
-		n_db++;
-	}
-
-	/* Lock all databases, preventing the checkpoint from running. This
-	 * ensures the database is not written while it is mmap'ed and copied by
-	 * raft. */
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		db = QUEUE_DATA(head, struct db, queue);
-		rv = databaseReadLock(db);
-		assert(rv == 0);
-	}
-
-	*n_bufs = snapshotNumBufsDisk(f);
-	*bufs = sqlite3_malloc64(*n_bufs * sizeof **bufs);
-	if (*bufs == NULL) {
-		rv = RAFT_NOMEM;
-		goto err;
-	}
-
-	/* zero-init buffers, helps with cleanup */
-	for (unsigned j = 0; j < *n_bufs; j++) {
-		(*bufs)[j].base = NULL;
-		(*bufs)[j].len = 0;
-	}
-
-	rv = encodeSnapshotHeader(n_db, &(*bufs)[0]);
-	if (rv != 0) {
-		goto err_after_bufs_alloc;
-	}
-
-	/* Copy WAL of all databases. */
-	i = 1;
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		db = QUEUE_DATA(head, struct db, queue);
-		/* database_header + db + WAL */
-		unsigned n = 3;
-		/* pass pointer to buffer that will contain WAL. */
-		rv = encodeDiskDatabaseSync(db, &(*bufs)[i + n - 1]);
-		if (rv != 0) {
-			goto err_after_encode_sync;
-		}
-		i += n;
-	}
-
-	assert(i == *n_bufs);
-	return 0;
-
-err_after_encode_sync:
-	freeSnapshotBufsDisk(f, *bufs, i);
-err_after_bufs_alloc:
-	sqlite3_free(*bufs);
-err:
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		db = QUEUE_DATA(head, struct db, queue);
-		databaseReadUnlock(db);
-	}
-	assert(rv != 0);
-	return rv;
-}
-
-static int fsm__snapshot_async_disk(struct raft_fsm *fsm,
-				    struct raft_buffer *bufs[],
-				    unsigned *n_bufs)
-{
-	struct fsm *f = fsm->data;
-	queue *head;
-	struct snapshotHeader header;
-	struct db *db = NULL;
-	unsigned i;
-	int rv;
-
-	/* Decode the header to determine the number of databases. */
-	struct cursor cursor = {(*bufs)[0].base, (*bufs)[0].len};
-	rv = snapshotHeader__decode(&cursor, &header);
-	if (rv != 0) {
-		tracef("decode failed %d", rv);
-		return -1;
-	}
-	if (header.format != SNAPSHOT_FORMAT) {
-		tracef("bad format");
-		return -1;
-	}
-
-	/* Encode individual databases. */
-	i = 1;
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		if (i == *n_bufs) {
-			/* In case a db was added in meanwhile */
-			break;
-		}
-		db = QUEUE_DATA(head, struct db, queue);
-		/* database_header + database file + wal */
-		unsigned n = 3;
-		rv = encodeDiskDatabaseAsync(db, &(*bufs)[i], n);
-		if (rv != 0) {
-			goto err;
-		}
-		i += n;
-	}
-
-	return 0;
-
-err:
-	assert(rv != 0);
-	return rv;
-}
-
-static int fsm__snapshot_finalize_disk(struct raft_fsm *fsm,
-				       struct raft_buffer *bufs[],
-				       unsigned *n_bufs)
-{
-	struct fsm *f = fsm->data;
-	queue *head;
 	struct db *db;
-	unsigned n_db;
-	struct snapshotHeader header;
-	int rv;
+	rv = registry__db_get(f->registry, cf->filename, &db);
+	UNHANDLED(rv != 0);
+	PRE(db->follower == NULL);
+	rv = db__open_follower(db);
+	UNHANDLED(rv != SQLITE_OK);
+	POST(db->follower != NULL);
 
-	if (bufs == NULL) {
-		return 0;
-	}
-
-	/* Decode the header to determine the number of databases. */
-	struct cursor cursor = {(*bufs)[0].base, (*bufs)[0].len};
-	rv = snapshotHeader__decode(&cursor, &header);
-	if (rv != 0) {
-		tracef("decode failed %d", rv);
-		return -1;
-	}
-	if (header.format != SNAPSHOT_FORMAT) {
-		tracef("bad format");
-		return -1;
-	}
-
-	/* Free allocated buffers */
-	freeSnapshotBufsDisk(f, *bufs, *n_bufs);
-	sqlite3_free(*bufs);
-	*bufs = NULL;
-	*n_bufs = 0;
-
-	/* Unlock all databases that were locked for the snapshot, this is safe
-	 * because DB's are only ever added at the back of the queue. */
-	n_db = 0;
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		if (n_db == header.n) {
-			break;
-		}
-		db = QUEUE_DATA(head, struct db, queue);
-		databaseReadUnlock(db);
-		n_db++;
-	}
-
-	return 0;
+	sqlite3_file *fp = main_file(db->follower);
+	struct vfs2_wal_slice sl;
+	memcpy(&sl, &ld, sizeof(ld));
+	rv = vfs2_unapply(fp, sl);
+	UNHANDLED(rv != 0);
+	sqlite3_close(db->follower);
+	db->follower = NULL;
 }
 
-/* Decode the disk database contained in a snapshot. */
-static int decodeDiskDatabase(struct fsm *f, struct cursor *cursor)
+static int fsm_snapshot_disk_stub(struct raft_fsm *fsm,
+		struct raft_buffer *bufs[],
+		unsigned *n_bufs)
 {
-	struct snapshotDatabase header;
-	struct db *db;
-	sqlite3_vfs *vfs;
-	int exists;
-	int rv;
-
-	rv = snapshotDatabase__decode(cursor, &header);
-	if (rv != 0) {
-		return rv;
-	}
-	rv = registry__db_get(f->registry, header.filename, &db);
-	if (rv != 0) {
-		return rv;
-	}
-
-	vfs = sqlite3_vfs_find(db->config->name);
-
-	/* Check if the database file exists, and create it by opening a
-	 * connection if it doesn't. */
-	rv = vfs->xAccess(vfs, db->path, 0, &exists);
-	assert(rv == 0);
-
-	if (!exists) {
-		rv = db__open_follower(db);
-		if (rv != 0) {
-			return rv;
-		}
-		sqlite3_close(db->follower);
-		db->follower = NULL;
-	}
-
-	/* The last check can overflow, but we would already be lost anyway, as
-	 * the raft snapshot restore API only supplies one buffer and the data
-	 * has to fit in size_t bytes anyway. */
-	if (header.main_size > SIZE_MAX || header.wal_size > SIZE_MAX ||
-	    header.main_size + header.wal_size > SIZE_MAX) {
-		tracef("main_size:%" PRIu64 "B wal_size:%" PRIu64
-		       "B would overflow max DB size (%zuB)",
-		       header.main_size, header.wal_size, SIZE_MAX);
-		return -1;
-	}
-
-	/* Due to the check above, these casts are safe. */
-	rv = VfsDiskRestore(vfs, db->path, cursor->p, (size_t)header.main_size,
-			    (size_t)header.wal_size);
-	if (rv != 0) {
-		tracef("VfsDiskRestore %d", rv);
-		return rv;
-	}
-
-	cursor->p += header.main_size + header.wal_size;
-	return 0;
+	(void)fsm;
+	(void)bufs;
+	(void)n_bufs;
+	assert(0);
 }
 
-static int fsm__restore_disk(struct raft_fsm *fsm, struct raft_buffer *buf)
+static int fsm_restore_disk_stub(struct raft_fsm *fsm,
+		struct raft_buffer *buf)
 {
-	tracef("fsm restore disk");
-	struct fsm *f = fsm->data;
-	struct cursor cursor = {buf->base, buf->len};
-	struct snapshotHeader header;
-	unsigned i;
-	int rv;
-
-	rv = snapshotHeader__decode(&cursor, &header);
-	if (rv != 0) {
-		tracef("decode failed %d", rv);
-		return rv;
-	}
-	if (header.format != SNAPSHOT_FORMAT) {
-		tracef("bad format");
-		return RAFT_MALFORMED;
-	}
-
-	for (i = 0; i < header.n; i++) {
-		rv = decodeDiskDatabase(f, &cursor);
-		if (rv != 0) {
-			tracef("decode failed");
-			return rv;
-		}
-	}
-
-	/* Don't use sqlite3_free as this buffer is allocated by raft. */
-	raft_free(buf->base);
-
-	return 0;
+	(void)fsm;
+	(void)buf;
+	assert(0);
 }
 
 int fsm__init_disk(struct raft_fsm *fsm,
 		   struct config *config,
 		   struct registry *registry)
 {
-	tracef("fsm init");
-	struct fsm *f = raft_malloc(sizeof *f);
-
+	(void)config;
+	struct fsm *f = raft_malloc(sizeof(*f));
 	if (f == NULL) {
 		return DQLITE_NOMEM;
 	}
-
-	f->logger = &config->logger;
 	f->registry = registry;
-	f->pending.n_pages = 0;
-	f->pending.page_numbers = NULL;
-	f->pending.pages = NULL;
 
-	fsm->version = 3;
+	fsm->version = 4;
 	fsm->data = f;
-	fsm->apply = fsm__apply;
-	fsm->snapshot = fsm__snapshot_disk;
-	fsm->snapshot_async = fsm__snapshot_async_disk;
-	fsm->snapshot_finalize = fsm__snapshot_finalize_disk;
-	fsm->restore = fsm__restore_disk;
+	fsm->apply = NULL;
+	fsm->snapshot = fsm_snapshot_disk_stub;
+	fsm->restore = fsm_restore_disk_stub;
+	fsm->snapshot_finalize = NULL;
+	fsm->snapshot_async = NULL;
+	fsm->apply2 = fsm_apply2_disk;
+	fsm->post_receive = fsm_post_receive_disk;
+	fsm->post_receive_undo = fsm_post_receive_undo_disk;
 
 	return 0;
 }
