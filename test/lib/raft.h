@@ -49,6 +49,7 @@
 		fsm__close(&f->fsm);                \
 		test_uv_tear_down(&f->loop);        \
 		raftProxyClose(&f->raft_transport); \
+		raft_fini(&f->raft); \
 		test_dir_tear_down(f->dir);         \
 	}
 

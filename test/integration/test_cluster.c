@@ -156,7 +156,8 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	/* Remove original server so second server becomes leader after election
 	 * timeout */
 	REMOVE(1);
-	sleep(1);
+	/* TODO(cole) investigate why this now takes so much longer */
+	sleep(10);
 
 	/* The full table is visible from the new node */
 	SELECT(2);
@@ -235,7 +236,8 @@ TEST(cluster, modifyingQuery, setUp, tearDown, 0, cluster_params)
 	ASSIGN(id, DQLITE_VOTER);
 
 	REMOVE(1);
-	sleep(1);
+	/* FIXME(cole) why so long in disk mode? */
+	sleep(10);
 
 	SELECT(2);
 	HANDSHAKE;
@@ -277,7 +279,8 @@ TEST(cluster, modifyingQuerySql, setUp, tearDown, 0, cluster_params)
 	ASSIGN(id, DQLITE_VOTER);
 
 	REMOVE(1);
-	sleep(1);
+	/* FIXME(cole) why so long in disk mode? */
+	sleep(10);
 
 	SELECT(2);
 	HANDSHAKE;

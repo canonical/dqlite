@@ -136,6 +136,11 @@ SUITE(node);
  *
  ******************************************************************************/
 
+TEST(node, nothing, setUp, tearDown, 0, node_params)
+{
+	return MUNIT_OK;
+}
+
 TEST(node, start, setUp, tearDown, 0, node_params)
 {
 	struct fixture *f = data;
