@@ -122,7 +122,7 @@ static const struct sm_conf wtx_states[SM_STATES_MAX] = {
 	[WTX_FLUSH] = {
 		.flags = 0,
 		.name = "flush",
-		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_INVALIDATED)|BITS(WTX_CLOSED),
+		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_INVALIDATED)|BITS(WTX_ACTIVE)|BITS(WTX_CLOSED),
 	},
 	[WTX_INVALIDATED] = {
 		.flags = 0,
