@@ -79,12 +79,11 @@ static int uvMaintenance(const char *dir, char *errmsg)
 	return rv;
 }
 
-/* Implementation of raft_io->config. */
+/* Implementation of raft_io->init. */
 static int uvInit(struct raft_io *io, raft_id id, const char *address)
 {
 	struct uv *uv;
 	size_t direct_io;
-	struct uvMetadata metadata;
 	int rv;
 	uv = io->impl;
 	uv->id = id;
@@ -108,22 +107,12 @@ static int uvInit(struct raft_io *io, raft_id id, const char *address)
 		return rv;
 	}
 
-	rv = uvMetadataLoad(uv->dir, &metadata, io->errmsg);
-	if (rv != 0) {
-		return rv;
-	}
-	uv->metadata = metadata;
-
 	rv = uv->transport->init(uv->transport, id, address);
 	if (rv != 0) {
 		ErrMsgTransfer(uv->transport->errmsg, io->errmsg, "transport");
 		return rv;
 	}
 	uv->transport->data = uv;
-
-	rv = uv_timer_init(uv->loop, &uv->timer);
-	assert(rv == 0); /* This should never fail */
-	uv->timer.data = uv;
 
 	return 0;
 }
@@ -147,6 +136,11 @@ static int uvStart(struct raft_io *io,
 	struct uv *uv;
 	int rv;
 	uv = io->impl;
+
+	rv = uv_timer_init(uv->loop, &uv->timer);
+	assert(rv == 0); /* This should never fail */
+	uv->timer.data = uv;
+
 	uv->state = UV__ACTIVE;
 	uv->tick_cb = tick_cb;
 	uv->recv_cb = recv_cb;
@@ -482,9 +476,15 @@ static int uvLoad(struct raft_io *io,
 		  struct raft_entry **entries,
 		  size_t *n_entries)
 {
-	struct uv *uv;
+	struct uv *uv = io->impl;
+	struct uvMetadata metadata;
 	int rv;
-	uv = io->impl;
+
+	rv = uvMetadataLoad(uv->dir, &metadata, uv->format_version, io->errmsg);
+	if (rv != 0) {
+		return rv;
+	}
+	uv->metadata = metadata;
 
 	*term = uv->metadata.term;
 	*voted_for = uv->metadata.voted_for;
@@ -543,9 +543,15 @@ static int uvSetVote(struct raft_io *io, const raft_id server_id)
 static int uvBootstrap(struct raft_io *io,
 		       const struct raft_configuration *configuration)
 {
-	struct uv *uv;
+	struct uv *uv = io->impl;
+	struct uvMetadata metadata;
 	int rv;
-	uv = io->impl;
+
+	rv = uvMetadataLoad(uv->dir, &metadata, uv->format_version, io->errmsg);
+	if (rv != 0) {
+		return rv;
+	}
+	uv->metadata = metadata;
 
 	/* We shouldn't have written anything else yet. */
 	if (uv->metadata.term != 0) {

@@ -192,7 +192,12 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 
 void convertInitialBarrierCb(struct raft_barrier *req, int status)
 {
-	(void)status;
+	struct raft *r = req->data;
+	raft_initial_barrier_cb ib_cb = raftGetCallbacks(r)->ib_cb;
+	if (ib_cb != NULL) {
+		UNHANDLED(status != 0);
+		ib_cb(r);
+	}
 	raft_free(req);
 }
 
@@ -233,6 +238,10 @@ int convertToLeader(struct raft *r)
 		       r->last_stored, r->commit_index);
 		r->commit_index = r->last_stored;
 		rv = replicationApply(r);
+		raft_initial_barrier_cb ib_cb = raftGetCallbacks(r)->ib_cb;
+		if (ib_cb != NULL) {
+			ib_cb(r);
+		}
 	} else if (n_voters > 1) {
 		/* Raft Dissertation, paragraph 6.4:
 		 * The Leader Completeness Property guarantees that a leader has
@@ -245,6 +254,7 @@ int convertToLeader(struct raft *r)
 		if (req == NULL) {
 			return RAFT_NOMEM;
 		}
+		req->data = r;
 		rv = raft_barrier(r, req, convertInitialBarrierCb);
 		if (rv != 0) {
 			tracef(

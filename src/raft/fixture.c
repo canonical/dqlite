@@ -984,6 +984,7 @@ static void serverClose(struct raft_fixture_server *s)
 {
 	raft_close(&s->raft, NULL);
 	ioClose(&s->io);
+	raft_fini(&s->raft);
 	raft_free(s);
 }
 
