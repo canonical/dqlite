@@ -15,6 +15,7 @@
 #include "tracing.h"
 #include "utils.h"
 #include "vfs.h"
+#include "vfs2.h"
 
 /* Called when a leader exec request terminates and the associated callback can
  * be invoked. */
@@ -258,6 +259,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 	if (status != 0) {
 		tracef("apply frames cb failed status %d", status);
 		sqlite3_vfs *vfs = sqlite3_vfs_find(l->db->config->name);
+		sqlite3_file *f = main_file(l->conn);
 		switch (status) {
 			case RAFT_LEADERSHIPLOST:
 				l->exec->status = SQLITE_IOERR_LEADERSHIP_LOST;
@@ -283,7 +285,11 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 				l->exec->status = SQLITE_IOERR;
 				break;
 		}
-		VfsAbort(vfs, l->db->path);
+		if (l->db->config->disk) {
+			vfs2_abort(f);
+		} else {
+			VfsAbort(vfs, l->db->path);
+		}
 	}
 
 	raft_free(apply);
@@ -300,6 +306,7 @@ finish:
 
 static int leaderApplyFrames(struct exec *req,
 			     dqlite_vfs_frame *frames,
+			     struct vfs2_wal_slice sl,
 			     unsigned n)
 {
 	tracef("leader apply frames id:%" PRIu64, req->id);
@@ -339,9 +346,10 @@ static int leaderApplyFrames(struct exec *req,
 #ifdef USE_SYSTEM_RAFT
 	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
 #else
-	/* TODO actual WAL slice goes here */
-	struct raft_entry_local_data local_data = {};
-	rv = raft_apply(l->raft, &apply->req, &buf, &local_data, 1, leaderApplyFramesCb);
+	struct raft_entry_local_data ld;
+	static_assert(sizeof(sl) == sizeof(ld), "local data size mismatch");
+	memcpy(&ld, &sl, sizeof(sl));
+	rv = raft_apply(l->raft, &apply->req, &buf, &ld, 1, leaderApplyFramesCb);
 #endif
 	if (rv != 0) {
 		tracef("raft apply failed %d", rv);
@@ -368,31 +376,41 @@ static void leaderExecV2(struct exec *req, enum pool_half half)
 	struct leader *l = req->leader;
 	struct db *db = l->db;
 	sqlite3_vfs *vfs = sqlite3_vfs_find(db->config->name);
+	sqlite3_file *f;
 	dqlite_vfs_frame *frames;
+	struct vfs2_wal_slice sl = {};
 	uint64_t size;
 	unsigned n;
 	unsigned i;
 	int rv;
+
+	f = main_file(l->conn);
 
 	if (half == POOL_TOP_HALF) {
 		req->status = sqlite3_step(req->stmt);
 		return;
 	} /* else POOL_BOTTOM_HALF => */
 
-	rv = VfsPoll(vfs, db->path, &frames, &n);
+	if (db->config->disk) {
+		rv = vfs2_poll(f, &frames, &n, &sl);
+	} else {
+		rv = VfsPoll(vfs, db->path, &frames, &n);
+	}
 	if (rv != 0 || n == 0) {
 		tracef("vfs poll");
 		goto finish;
 	}
 
 	/* Check if the new frames would create an overfull database */
-	size = VfsDatabaseSize(vfs, db->path, n, db->config->page_size);
-	if (size > VfsDatabaseSizeLimit(vfs)) {
-		rv = SQLITE_FULL;
-		goto abort;
+	if (!db->config->disk) {
+		size = VfsDatabaseSize(vfs, db->path, n, db->config->page_size);
+		if (size > VfsDatabaseSizeLimit(vfs)) {
+			rv = SQLITE_FULL;
+			goto abort;
+		}
 	}
 
-	rv = leaderApplyFrames(req, frames, n);
+	rv = leaderApplyFrames(req, frames, sl, n);
 	if (rv != 0) {
 		goto abort;
 	}
@@ -408,7 +426,11 @@ abort:
 		sqlite3_free(frames[i].data);
 	}
 	sqlite3_free(frames);
-	VfsAbort(vfs, l->db->path);
+	if (db->config->disk) {
+		vfs2_abort(f);
+	} else {
+		VfsAbort(vfs, l->db->path);
+	}
 finish:
 	if (rv != 0) {
 		tracef("exec v2 failed %d", rv);
