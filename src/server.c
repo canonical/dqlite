@@ -53,6 +53,8 @@ static void state_cb(struct raft *r,
 	}
 }
 
+#ifndef USE_SYSTEM_RAFT
+
 static void initial_barrier_cb(struct raft *r)
 {
 	struct dqlite_node *d = r->data;
@@ -75,6 +77,8 @@ static void initial_barrier_cb(struct raft *r)
 		sqlite3_close(conn);
 	}
 }
+
+#endif
 
 static int node_init(struct dqlite_node *d,
 		 dqlite_node_id id,
