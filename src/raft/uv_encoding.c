@@ -604,8 +604,6 @@ int uvDecodeEntriesBatch(uint8_t *batch,
 		assert(local_data_size <= sizeof(entry->local_data.buf));
 		assert(local_data_size % 8 == 0);
 		if (format_version > 1) {
-			uint64_t *p = (uint64_t *)entry->local_data.buf;
-			tracef("DECODE LOCAL DATA %lu %lu", p[0], p[1]);
 			memcpy(entry->local_data.buf, cursor, local_data_size);
 			cursor += local_data_size;
 		}
