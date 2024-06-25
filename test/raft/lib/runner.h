@@ -4,6 +4,7 @@
 #define TEST_RUNNER_H_
 
 #include "munit.h"
+#include "../../../src/tracing.h"
 
 /* Top-level suites array declaration.
  *

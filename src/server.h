@@ -24,7 +24,7 @@ struct dqlite_node {
 
 	pthread_t thread;                        /* Main run loop thread. */
 	struct config config;                    /* Config values */
-	struct sqlite3_vfs vfs;                  /* In-memory VFS */
+	sqlite3_vfs *vfs;
 	struct registry registry;                /* Databases */
 	struct uv_loop_s loop;                   /* UV loop */
 	struct pool_s pool;                      /* Thread pool */
@@ -39,6 +39,7 @@ struct dqlite_node {
 	queue roles_changes;
 	bool running;                 /* Loop is running */
 	struct raft raft;             /* Raft instance */
+	int sock;
 	struct uv_stream_s *listener; /* Listening socket */
 	struct uv_async_s handover;
 	int handover_status;

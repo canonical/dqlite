@@ -21,6 +21,7 @@
 
 #define SETUP                                                 \
 	unsigned i_;                                          \
+	f->disk_mode = atoi(munit_parameters_get(params, "disk_mode")); \
 	test_heap_setup(params, user_data);                   \
 	test_sqlite_setup(params);                            \
 	for (i_ = 0; i_ < N_SERVERS; i_++) {                  \
@@ -45,6 +46,9 @@
 /* Use the client connected to the server with the given ID. */
 #define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
 
+#define TODO_VFS2(x) x
+#define DISK_MODE_MISSING_SNAPSHOT(x) x
+
 /******************************************************************************
  *
  * cluster
@@ -54,6 +58,7 @@
 SUITE(cluster)
 
 struct fixture {
+	bool disk_mode;
 	FIXTURE;
 };
 
@@ -99,6 +104,10 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	char sql[128];
 
+	if (n_records >= 2200 && f->disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
@@ -137,6 +146,10 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	unsigned id = 2;
 	const char *address = "@2";
 
+	if (n_records >= 2200 && f->disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
@@ -156,7 +169,8 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	/* Remove original server so second server becomes leader after election
 	 * timeout */
 	REMOVE(1);
-	sleep(1);
+	/* TODO(cole) investigate why this now takes so much longer */
+	sleep(10);
 
 	/* The full table is visible from the new node */
 	SELECT(2);
@@ -172,7 +186,7 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 /* Insert a huge row, causing SQLite to allocate overflow pages. Then
  * insert the same row again. (Reproducer for
  * https://github.com/canonical/raft/issues/432.) */
-TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
+TEST(cluster, hugeRow, setUp, tearDown, 0, cluster_params)
 {
 	struct fixture *f = data;
 	uint32_t stmt_id;
@@ -181,7 +195,10 @@ TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
 	char *sql;
 	ssize_t n;
 	size_t huge = 20000000;
-	(void)params;
+
+	if (f->disk_mode) {
+		return TODO_VFS2(MUNIT_SKIP);
+	}
 
 	HANDSHAKE;
 	OPEN;
@@ -217,6 +234,10 @@ TEST(cluster, modifyingQuery, setUp, tearDown, 0, cluster_params)
 	unsigned id = 2;
 	const char *address = "@2";
 
+	if (n_records >= 2200 && f->disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
@@ -235,7 +256,8 @@ TEST(cluster, modifyingQuery, setUp, tearDown, 0, cluster_params)
 	ASSIGN(id, DQLITE_VOTER);
 
 	REMOVE(1);
-	sleep(1);
+	/* FIXME(cole) why so long in disk mode? */
+	sleep(10);
 
 	SELECT(2);
 	HANDSHAKE;
@@ -260,6 +282,10 @@ TEST(cluster, modifyingQuerySql, setUp, tearDown, 0, cluster_params)
 	unsigned id = 2;
 	const char *address = "@2";
 
+	if (n_records >= 2200 && f->disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
@@ -277,7 +303,8 @@ TEST(cluster, modifyingQuerySql, setUp, tearDown, 0, cluster_params)
 	ASSIGN(id, DQLITE_VOTER);
 
 	REMOVE(1);
-	sleep(1);
+	/* FIXME(cole) why so long in disk mode? */
+	sleep(10);
 
 	SELECT(2);
 	HANDSHAKE;

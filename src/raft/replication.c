@@ -16,6 +16,7 @@
 #include "membership.h"
 #include "progress.h"
 #include "../lib/queue.h"
+#include "../lib/threadpool.h"
 #include "replication.h"
 #include "request.h"
 #include "snapshot.h"
@@ -474,6 +475,23 @@ static struct request *getRequest(struct raft *r,
 		}
 	}
 	return NULL;
+}
+
+static void post_receive_undo(struct raft *r, const struct raft_entry *es, size_t n)
+{
+	if (r->fsm->version < 4 || r->fsm->post_receive_undo == NULL) {
+		return;
+	}
+
+	size_t i = n;
+	while (i > 0) {
+		i--;
+		const struct raft_entry *e = &es[i];
+		if (e->type != RAFT_COMMAND) {
+			continue;
+		}
+		r->fsm->post_receive_undo(r->fsm, &e->buf, e->local_data);
+	}
 }
 
 /* Invoked once a disk write request for new entries has been completed. */
@@ -983,6 +1001,9 @@ respond:
 	sendAppendEntriesResult(r, &result);
 
 out:
+	if (status != 0) {
+		post_receive_undo(r, request->args.entries, request->args.n_entries);
+	}
 	logRelease(r->log, request->index, request->args.entries,
 		   request->args.n_entries);
 
@@ -1091,6 +1112,13 @@ static int deleteConflictingEntries(struct raft *r,
 				}
 			}
 
+			struct raft_entry *entries;
+			unsigned n;
+			rv = logAcquire(r->log, entry_index, &entries, &n);
+			UNHANDLED(rv != 0);
+			post_receive_undo(r, entries, n);
+			logRelease(r->log, entry_index, entries, n);
+
 			/* Delete all entries from this index on because they
 			 * don't match. */
 			rv = r->io->truncate(r->io, entry_index);
@@ -1121,7 +1149,7 @@ static int deleteConflictingEntries(struct raft *r,
 }
 
 int replicationAppend(struct raft *r,
-		      const struct raft_append_entries *args,
+		      struct raft_append_entries *args,
 		      raft_index *rejected,
 		      bool *async)
 {
@@ -1130,6 +1158,7 @@ int replicationAppend(struct raft *r,
 	size_t n;
 	size_t i;
 	size_t j;
+	size_t k;
 	bool reinstated;
 	int rv;
 
@@ -1202,8 +1231,15 @@ int replicationAppend(struct raft *r,
 	/* Update our in-memory log to reflect that we received these entries.
 	 * We'll notify the leader of a successful append once the write entries
 	 * request that we issue below actually completes.  */
+	k = 0;
 	for (j = 0; j < n; j++) {
 		struct raft_entry *entry = &args->entries[i + j];
+
+		tracef("MAYBE POST RECEIVE");
+		if (r->fsm->version >= 4 && r->fsm->post_receive != NULL && entry->type == RAFT_COMMAND) {
+			r->fsm->post_receive(r->fsm, &entry->buf, &entry->local_data);
+		}
+		k++;
 
 		/* We are trying to append an entry at index X with term T to
 		 * our in-memory log. If we've gotten this far, we know that the
@@ -1235,7 +1271,7 @@ int replicationAppend(struct raft *r,
 			goto err_after_request_alloc;
 		}
 
-		rv = logAppend(r->log, copy.term, copy.type, copy.buf, (struct raft_entry_local_data){}, false, NULL);
+		rv = logAppend(r->log, copy.term, copy.type, copy.buf, copy.local_data, false, NULL);
 		if (rv != 0) {
 			goto err_after_request_alloc;
 		}
@@ -1275,6 +1311,7 @@ err_after_acquire_entries:
 		   request->args.n_entries);
 
 err_after_request_alloc:
+	assert(k <= n);
 	/* Release all entries added to the in-memory log, making
 	 * sure the in-memory log and disk don't diverge, leading
 	 * to future log entries not being persisted to disk.
@@ -1282,6 +1319,7 @@ err_after_request_alloc:
 	if (j != 0) {
 		logTruncate(r->log, request->index);
 	}
+	post_receive_undo(r, args->entries + i, k);
 	raft_free(request);
 
 err:
@@ -1468,12 +1506,21 @@ err:
 /* Apply a RAFT_COMMAND entry that has been committed. */
 static int applyCommand(struct raft *r,
 			const raft_index index,
-			const struct raft_buffer *buf)
+			const raft_term term,
+			const struct raft_buffer *buf,
+			struct raft_entry_local_data ld,
+			bool is_local)
 {
 	struct raft_apply *req;
 	void *result;
 	int rv;
-	rv = r->fsm->apply(r->fsm, buf, &result);
+
+	if (r->fsm->version >= 4 && r->fsm->apply2 != NULL) {
+		bool is_mine = is_local && term == r->current_term;
+		rv = r->fsm->apply2(r->fsm, buf, ld, is_mine, &result);
+	} else {
+		rv = r->fsm->apply(r->fsm, buf, &result);
+	}
 	if (rv != 0) {
 		return rv;
 	}
@@ -1756,7 +1803,7 @@ int replicationApply(struct raft *r)
 
 		switch (entry->type) {
 			case RAFT_COMMAND:
-				rv = applyCommand(r, index, &entry->buf);
+				rv = applyCommand(r, index, entry->term, &entry->buf, entry->local_data, entry->is_local);
 				break;
 			case RAFT_BARRIER:
 				applyBarrier(r, index);

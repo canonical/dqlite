@@ -117,11 +117,6 @@ static void ioCloseCb(struct raft_io *io)
 {
 	struct raft *r = io->data;
 	tracef("io close cb");
-	raftDestroyCallbacks(r);
-	raft_free(r->address);
-	logClose(r->log);
-	raft_configuration_close(&r->configuration);
-	raft_configuration_close(&r->configuration_last_snapshot);
 	if (r->close_cb != NULL) {
 		r->close_cb(r);
 	}
@@ -142,6 +137,13 @@ void raft_register_state_cb(struct raft *r, raft_state_cb cb)
 	struct raft_callbacks *cbs = raftGetCallbacks(r);
 	assert(cbs != NULL);
 	cbs->state_cb = cb;
+}
+
+void raft_register_initial_barrier_cb(struct raft *r, raft_initial_barrier_cb cb)
+{
+	struct raft_callbacks *cbs = raftGetCallbacks(r);
+	assert(cbs != NULL);
+	cbs->ib_cb = cb;
 }
 
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
@@ -301,4 +303,13 @@ static int ioFsmVersionCheck(struct raft *r,
 	}
 
 	return 0;
+}
+
+void raft_fini(struct raft *r)
+{
+	raftDestroyCallbacks(r);
+	raft_free(r->address);
+	logClose(r->log);
+	raft_configuration_close(&r->configuration);
+	raft_configuration_close(&r->configuration_last_snapshot);
 }

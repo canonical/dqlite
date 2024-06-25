@@ -9,6 +9,6 @@
 int recvAppendEntries(struct raft *r,
 		      raft_id id,
 		      const char *address,
-		      const struct raft_append_entries *args);
+		      struct raft_append_entries *args);
 
 #endif /* RECV_APPEND_ENTRIES_H_ */

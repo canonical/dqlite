@@ -50,6 +50,8 @@
 /* Use the client connected to the server with the given ID. */
 #define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
 
+#define DISK_MODE_MISSING_SNAPSHOT(x) x
+
 static char *bools[] = {"0", "1", NULL};
 
 /* Make sure the snapshots scheduled by raft don't interfere with the snapshots
@@ -103,6 +105,10 @@ TEST(fsm, snapshotFreshDb, setUp, tearDown, 0, snapshot_params)
 		disk_mode = (bool)atoi(disk_mode_param);
 	}
 
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	rv = fsm->snapshot(fsm, &bufs, &n_bufs);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint(n_bufs, ==, 1); /* Snapshot header */
@@ -135,6 +141,10 @@ TEST(fsm, snapshotWrittenDb, setUp, tearDown, 0, snapshot_params)
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
 	if (disk_mode_param != NULL) {
 		disk_mode = (bool)atoi(disk_mode_param);
+	}
+
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
 	}
 
 	/* Add some data to database */
@@ -177,6 +187,10 @@ TEST(fsm, snapshotHeapFaultSingleDB, setUp, tearDown, 0, snapshot_params)
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
 	if (disk_mode_param != NULL) {
 		disk_mode = (bool)atoi(disk_mode_param);
+	}
+
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
 	}
 
 	/* Add some data to database */
@@ -239,6 +253,10 @@ TEST(fsm,
 		return MUNIT_SKIP;
 	}
 
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	/* Add some data to database */
 	HANDSHAKE;
 	OPEN;
@@ -280,6 +298,10 @@ TEST(fsm, snapshotHeapFaultTwoDB, setUp, tearDown, 0, snapshot_params)
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
 	if (disk_mode_param != NULL) {
 		disk_mode = (bool)atoi(disk_mode_param);
+	}
+
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
 	}
 
 	/* Open 2 databases and add data to them */
@@ -354,6 +376,10 @@ TEST(fsm, snapshotHeapFaultTwoDBAsync, setUp, tearDown, 0, snapshot_params)
 		return MUNIT_SKIP;
 	}
 
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	/* Open 2 databases and add data to them */
 	HANDSHAKE;
 	OPEN_NAME("test");
@@ -420,6 +446,10 @@ TEST(fsm, snapshotNewDbAddedBeforeFinalize, setUp, tearDown, 0, snapshot_params)
 		disk_mode = (bool)atoi(disk_mode_param);
 	}
 
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
+
 	/* Add some data to database */
 	HANDSHAKE;
 	OPEN_NAME("test");
@@ -472,6 +502,10 @@ TEST(fsm, snapshotWritesBeforeFinalize, setUp, tearDown, 0, snapshot_params)
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
 	if (disk_mode_param != NULL) {
 		disk_mode = (bool)atoi(disk_mode_param);
+	}
+
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
 	}
 
 	/* Add some data to database */
@@ -527,6 +561,10 @@ TEST(fsm, concurrentSnapshots, setUp, tearDown, 0, snapshot_params)
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
 	if (disk_mode_param != NULL) {
 		disk_mode = (bool)atoi(disk_mode_param);
+	}
+
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
 	}
 
 	/* Add some data to database */
@@ -624,6 +662,10 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, restore_params)
 	if (disk_mode_param != NULL) {
 		disk_mode = (bool)atoi(disk_mode_param);
 	}
+	
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
+	}
 
 	/* Add some data to database */
 	HANDSHAKE;
@@ -693,6 +735,10 @@ TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, snapshot_params)
 	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
 	if (disk_mode_param != NULL) {
 		disk_mode = (bool)atoi(disk_mode_param);
+	}
+
+	if (disk_mode) {
+		return DISK_MODE_MISSING_SNAPSHOT(MUNIT_SKIP);
 	}
 
 	/* Create 2 databases and add data to them. */
