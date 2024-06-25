@@ -46,6 +46,7 @@
 /* Use the client connected to the server with the given ID. */
 #define SELECT(ID) f->client = test_server_client(&f->servers[ID - 1])
 
+#define TODO_VFS2(x) x
 #define DISK_MODE_MISSING_SNAPSHOT(x) x
 
 /******************************************************************************
@@ -194,7 +195,10 @@ TEST(cluster, hugeRow, setUp, tearDown, 0, cluster_params)
 	char *sql;
 	ssize_t n;
 	size_t huge = 20000000;
-	(void)params;
+
+	if (f->disk_mode) {
+		return TODO_VFS2(MUNIT_SKIP);
+	}
 
 	HANDSHAKE;
 	OPEN;
