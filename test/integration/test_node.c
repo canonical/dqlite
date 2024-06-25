@@ -355,6 +355,46 @@ TEST(node, blockSizeRunning, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
+/* Our file locking prevents starting a second dqlite instance that
+ * uses the same directory as a running instance. */
+TEST(node, locked, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	int rv;
+
+	dqlite_node *node2;
+	rv = dqlite_node_create(2, "2", f->dir, &node2);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_set_bind_address(node2, "@456");
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_start(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	char buf[PATH_MAX];
+	snprintf(buf, sizeof(buf), "%s/dqlite-lock", f->dir);
+	rv = access(buf, F_OK);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_start(node2);
+	munit_assert_int(rv, ==, DQLITE_ERROR);
+	munit_assert_string_equal(dqlite_node_errmsg(node2),
+		"couldn't lock the raft directory");
+
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_start(node2);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_stop(node2);
+	munit_assert_int(rv, ==, 0);
+	dqlite_node_destroy(node2);
+
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * dqlite_node_recover
