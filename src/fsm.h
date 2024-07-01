@@ -18,7 +18,9 @@ int fsm__init(struct raft_fsm *fsm,
 	      struct registry *registry);
 
 int fsm_init_disk(struct raft_fsm *fsm, struct registry *registry);
-
+unsigned fsm_db_nr(const struct raft_fsm *fsm,
+		   void *arg,
+		   void (*iter)(void *arg, unsigned i, struct db *db));
 void fsm__close(struct raft_fsm *fsm);
 
 #endif /* DQLITE_REPLICATION_METHODS_H_ */

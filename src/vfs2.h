@@ -95,4 +95,9 @@ int vfs2_pseudo_read_end(sqlite3_file *file, unsigned i);
  */
 void vfs2_destroy(sqlite3_vfs *vfs);
 
+/**
+ * Reads WAL offset from the wal_slice.
+ */
+uint32_t vfs2_wal_offset(const struct vfs2_wal_slice *sl);
+
 #endif

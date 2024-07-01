@@ -1855,7 +1855,7 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const dqlite_
 	 * WAL-cur (mxFrame) to equal the number of applies frames
 	 * (wal_cursor). */
 	e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
-	
+
 	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
 	uint32_t mx = ihdr->basic[0].mxFrame;
 	if (mx > 0 && ihdr->nBackfill == mx) {
@@ -1916,7 +1916,7 @@ int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const dqlite_
 		if (rv != SQLITE_OK) {
 			return 1;
 		}
-	}	
+	}
 
 	sm_move(&e->wtx_sm, WTX_FOLLOWING);
 	out->salts = e->wal_cur_hdr.salts;
@@ -1979,4 +1979,9 @@ int vfs2_pseudo_read_end(sqlite3_file *file, unsigned i)
 	PRE(e->shm_locks[i] > 0);
 	e->shm_locks[i] -= 1;
 	return 0;
+}
+
+uint32_t vfs2_wal_offset(const struct vfs2_wal_slice *sl)
+{
+	return sl->start + sl->len;
 }

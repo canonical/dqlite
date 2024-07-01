@@ -585,6 +585,20 @@ static void uvSnapshotPutAfterWorkCb(uv_work_t *work, int status)
 	UvUnblock(uv);
 }
 
+// #define ALLOC_ARR(arr, nr)  ((arr) = calloc((nr), sizeof ((arr)[0])))
+// #define ALLOC_PTR(ptr) M0_ALLOC_ARR(ptr, 1)
+//
+// struct recvInstallSnapshot;
+// extern struct raft *recvInstallSnapshot_raft(struct recvInstallSnapshot *req);
+// static void uvSnapshotPutInplace(struct uvSnapshotPut *put)
+// {
+// 	struct raft *r = recvInstallSnapshot_raft(put->req->data);
+// 	tracef("pending=%lld last_applied=%lld last_index=%lld",
+// 	       r->snapshot.pending.index,
+// 	       r->last_applied,
+// 	       r->log->snapshot.last_index);
+// }
+
 /* Start processing the given put request. */
 static void uvSnapshotPutStart(struct uvSnapshotPut *put)
 {

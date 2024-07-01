@@ -926,3 +926,24 @@ int fsm_init_disk(struct raft_fsm *fsm, struct registry *reg)
 
 	return 0;
 }
+
+/* TODO: this interface is terrible by its nature... */
+unsigned fsm_db_nr(const struct raft_fsm *fsm,
+		   void *arg,
+		   void (*iter)(void *arg, unsigned i, struct db *db))
+{
+	queue      *head;
+	struct db  *db;
+        unsigned    db_nr = 0;
+        struct fsm *f = fsm->data;
+
+        QUEUE_FOREACH(head, &f->registry->dbs) {
+		db = QUEUE_DATA(head, struct db, queue);
+		if (iter != NULL) {
+			assert(arg != NULL);
+			iter(arg, db_nr, db);
+		}
+                db_nr++;
+        }
+        return db_nr;
+}
