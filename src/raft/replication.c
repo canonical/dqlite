@@ -1,4 +1,6 @@
+#include <stdint.h>
 #include <string.h>
+#include <stdlib.h> /* calloc */
 
 #include "assert.h"
 #include "configuration.h"
@@ -13,9 +15,13 @@
 #include "heap.h"
 #include "lifecycle.h"
 #include "log.h"
+#include "src/fsm.h"
+#include "src/command.h"
+#include "src/vfs2.h"
 #include "membership.h"
 #include "progress.h"
 #include "../lib/queue.h"
+#include "../lib/threadpool.h"
 #include "replication.h"
 #include "request.h"
 #include "snapshot.h"
@@ -474,6 +480,23 @@ static struct request *getRequest(struct raft *r,
 		}
 	}
 	return NULL;
+}
+
+static void post_receive_undo(struct raft *r, const struct raft_entry *es, size_t n)
+{
+	if (r->fsm->version < 4 || r->fsm->post_receive_undo == NULL) {
+		return;
+	}
+
+	size_t i = n;
+	while (i > 0) {
+		i--;
+		const struct raft_entry *e = &es[i];
+		if (e->type != RAFT_COMMAND) {
+			continue;
+		}
+		r->fsm->post_receive_undo(r->fsm, &e->buf, e->local_data);
+	}
 }
 
 /* Invoked once a disk write request for new entries has been completed. */
@@ -983,6 +1006,9 @@ respond:
 	sendAppendEntriesResult(r, &result);
 
 out:
+	if (status != 0) {
+		post_receive_undo(r, request->args.entries, request->args.n_entries);
+	}
 	logRelease(r->log, request->index, request->args.entries,
 		   request->args.n_entries);
 
@@ -1091,6 +1117,13 @@ static int deleteConflictingEntries(struct raft *r,
 				}
 			}
 
+			struct raft_entry *entries;
+			unsigned n;
+			rv = logAcquire(r->log, entry_index, &entries, &n);
+			UNHANDLED(rv != 0);
+			post_receive_undo(r, entries, n);
+			logRelease(r->log, entry_index, entries, n);
+
 			/* Delete all entries from this index on because they
 			 * don't match. */
 			rv = r->io->truncate(r->io, entry_index);
@@ -1121,7 +1154,7 @@ static int deleteConflictingEntries(struct raft *r,
 }
 
 int replicationAppend(struct raft *r,
-		      const struct raft_append_entries *args,
+		      struct raft_append_entries *args,
 		      raft_index *rejected,
 		      bool *async)
 {
@@ -1130,6 +1163,7 @@ int replicationAppend(struct raft *r,
 	size_t n;
 	size_t i;
 	size_t j;
+	size_t k;
 	bool reinstated;
 	int rv;
 
@@ -1202,8 +1236,14 @@ int replicationAppend(struct raft *r,
 	/* Update our in-memory log to reflect that we received these entries.
 	 * We'll notify the leader of a successful append once the write entries
 	 * request that we issue below actually completes.  */
+	k = 0;
 	for (j = 0; j < n; j++) {
 		struct raft_entry *entry = &args->entries[i + j];
+
+		if (r->fsm->version >= 4 && r->fsm->post_receive != NULL && entry->type == RAFT_COMMAND) {
+			r->fsm->post_receive(r->fsm, &entry->buf, &entry->local_data);
+		}
+		k++;
 
 		/* We are trying to append an entry at index X with term T to
 		 * our in-memory log. If we've gotten this far, we know that the
@@ -1235,7 +1275,7 @@ int replicationAppend(struct raft *r,
 			goto err_after_request_alloc;
 		}
 
-		rv = logAppend(r->log, copy.term, copy.type, &copy.buf, NULL);
+		rv = logAppend(r->log, copy.term, copy.type, copy.buf, copy.local_data, false, NULL);
 		if (rv != 0) {
 			goto err_after_request_alloc;
 		}
@@ -1275,6 +1315,7 @@ err_after_acquire_entries:
 		   request->args.n_entries);
 
 err_after_request_alloc:
+	assert(k <= n);
 	/* Release all entries added to the in-memory log, making
 	 * sure the in-memory log and disk don't diverge, leading
 	 * to future log entries not being persisted to disk.
@@ -1282,6 +1323,7 @@ err_after_request_alloc:
 	if (j != 0) {
 		logTruncate(r->log, request->index);
 	}
+	post_receive_undo(r, args->entries + i, k);
 	raft_free(request);
 
 err:
@@ -1468,12 +1510,21 @@ err:
 /* Apply a RAFT_COMMAND entry that has been committed. */
 static int applyCommand(struct raft *r,
 			const raft_index index,
-			const struct raft_buffer *buf)
+			const raft_term term,
+			const struct raft_buffer *buf,
+			struct raft_entry_local_data ld,
+			bool is_local)
 {
 	struct raft_apply *req;
 	void *result;
 	int rv;
-	rv = r->fsm->apply(r->fsm, buf, &result);
+
+	if (r->fsm->version >= 4 && r->fsm->apply2 != NULL) {
+		bool is_mine = is_local && term == r->current_term;
+		rv = r->fsm->apply2(r->fsm, buf, ld, is_mine, &result);
+	} else {
+		rv = r->fsm->apply(r->fsm, buf, &result);
+	}
 	if (rv != 0) {
 		return rv;
 	}
@@ -1756,7 +1807,7 @@ int replicationApply(struct raft *r)
 
 		switch (entry->type) {
 			case RAFT_COMMAND:
-				rv = applyCommand(r, index, &entry->buf);
+				rv = applyCommand(r, index, entry->term, &entry->buf, entry->local_data, entry->is_local);
 				break;
 			case RAFT_BARRIER:
 				applyBarrier(r, index);
@@ -1832,6 +1883,199 @@ void replicationQuorum(struct raft *r, const raft_index index)
 inline bool replicationInstallSnapshotBusy(struct raft *r)
 {
 	return r->last_stored == 0 && r->snapshot.put.data != NULL;
+}
+
+#define ALLOC_ARR(arr, nr)  ((arr) = calloc((nr), sizeof ((arr)[0])))
+#define ALLOC_PTR(ptr) ALLOC_ARR(ptr, 1)
+#define RC(rc) ({				\
+	__typeof__(rc) __rc = (rc);             \
+	tracef("< rc=%d", __rc);		\
+	__rc;					\
+})
+
+struct cp_work_item {
+	pool_work_t work;
+	struct db  *db;
+	unsigned   *remaining;
+
+	struct cp_work_item *cwis;
+	/* offset in WAL which we shall sync the database to */
+	uint32_t    wal_off;
+};
+
+static void cws_fill(void *arg, unsigned i, struct db *db)
+{
+	struct cp_work_item *cwis = arg;
+	struct cp_work_item *cwi = &cwis[i];
+
+	/* TODO: I hope `db' pointer will never get freed or reallocated during
+	 * snapshot installation. Or we're doomed...
+	 */
+	cwi->db = db;
+}
+
+static uint32_t wal_offset(struct raft_log *log, const struct raft_entry *e)
+{
+	/* TODO: Seems OK? or &e->local_data.buf[0] is better? */
+	struct vfs2_wal_slice *sl = (struct vfs2_wal_slice *) &e->local_data;
+	/* TODO: assert! check salts of a slice match with salts of the current
+	 * WAL */
+	(void) log;
+	return vfs2_wal_offset(sl);
+}
+
+static struct cp_work_item *cwi_find(struct cp_work_item *cwis, unsigned nr,
+				     const char *db_name)
+{
+	for (unsigned i = 0; i < nr; ++i) {
+		if (strcmp(cwis[i].db->filename, db_name) == 0)
+			return &cwis[i];
+	}
+	return NULL;
+}
+
+static void db_checkpoint(struct db *db, uint32_t wal_off)
+{
+	tracef("db_checkpoint");
+
+	struct sqlite3_file *mf;
+	unsigned read_lock;
+	int wal_size;
+	int ckpt;
+	int rc;
+
+	PRE(db->follower == NULL);
+	rc = db__open_follower(db);
+	if (rc != 0) {
+		tracef("open follower failed %d", rc);
+		return;
+	}
+
+	mf = main_file(db->follower);
+	rc = -vfs2_pseudo_read_begin(mf, wal_off, &read_lock);
+	if (rc != SQLITE_OK) {
+		tracef("open follower failed %d", rc);
+		goto err;
+	}
+
+	rc = -sqlite3_wal_checkpoint_v2(db->follower, "main",
+					SQLITE_CHECKPOINT_TRUNCATE,
+					&wal_size, &ckpt);
+	if (rc != SQLITE_OK) {
+		tracef("sqlite3_wal_checkpoint_v2 failed %d", rc);
+	}
+
+	vfs2_pseudo_read_end(mf, read_lock);
+err:
+	sqlite3_close(db->follower);
+	db->follower = NULL;
+}
+
+static void db_checkpoint_cb(pool_work_t *w)
+{
+	struct cp_work_item *cwi = CONTAINER_OF(w, struct cp_work_item, work);
+	db_checkpoint(cwi->db, cwi->wal_off);
+}
+
+static void after_db_checkpoint_cb(pool_work_t *w)
+{
+	struct cp_work_item *cwi = CONTAINER_OF(w, struct cp_work_item, work);
+
+	if (--(*cwi->remaining) == 0) { /* last sqlite3_*_IO() done. */
+		free(cwi->remaining);
+		free(cwi->cwis);
+		/* TODO: run next callback */
+	}
+}
+
+__attribute__((unused)) static int takeSnapshotInplace(struct raft *r)
+{
+	int rc;
+	int type;
+	unsigned i;
+	unsigned *remaining;
+	raft_index idx;
+	struct cp_work_item *cwi;
+	struct cp_work_item *cwis;
+	const struct raft_entry *entry;
+	struct command_frames *command; void *cmd;
+	unsigned db_nr = fsm_db_nr(r->fsm, NULL, NULL);
+
+	tracef("pending=%lld last_applied=%lld last_index=%lld db_nr=%u",
+	       r->snapshot.pending.index,
+	       r->last_applied,
+	       r->log->snapshot.last_index,
+	       db_nr);
+
+	/* 1. Allocate and prepare pool work-items for each database to execute
+	 *    corresponding sqlite3_wal_checkpoint() operation. */
+
+	ALLOC_PTR(remaining);
+	ALLOC_ARR(cwis, db_nr);
+	if (cwis == NULL || remaining == NULL) {
+		free(cwis);
+		free(remaining);
+		return RC(-ENOMEM);
+	}
+	fsm_db_nr(r->fsm, cwis, cws_fill);
+
+	/* 2. Scan raft log. For the given raft-log-index started from
+	 * last_applied, find last-known WAL-offset for the each database. Use
+	 * this WAL-offset as a target offset to which the corresponding
+	 * database shall be synced to. */
+
+	/* TODO: is it '<=' ? */
+	for (idx = r->last_applied; idx <= r->log->snapshot.last_index; idx++) {
+		entry = logGet(r->log, idx);
+		if (entry->type == RAFT_COMMAND) {
+			rc = command__decode(&entry->buf, &type, &cmd);
+			command = cmd;
+			/* TODO: maybe it's a showstopper? */
+			if (rc != 0) {
+				tracef("decode command: %d", rc);
+				free(cwis);
+				free(remaining);
+				return RC(rc);
+			}
+
+			if (type == COMMAND_FRAMES) {
+				cwi = cwi_find(cwis, db_nr, command->filename);
+				/* TODO: maybe it's a showstopper? */
+				if (cwi == NULL) {
+					tracef("db='%s' not found",
+					       command->filename);
+					free(cwis);
+					free(remaining);
+					return RC(-ENOENT);
+				}
+				/* Has this db been already processed? */
+				if (cwi->wal_off > 0)
+					continue;
+
+				cwi->wal_off = wal_offset(r->log, entry);
+			}
+		}
+	}
+
+	/* 3. Schedule pool work items to execute checkpoint operations in
+	 * corresponding db-threads. */
+	/* TODO: maybe it shall be done under the lock, but it's scheduled in a
+	 * single threaded environment! */
+	/* TODO: PRE(is_main_thread()) */
+	*remaining = 0;
+	for (i = 0; i < db_nr; ++i) {
+		if (cwis[i].wal_off == 0) /* skip item if it wasn't filled */
+			continue;
+
+		cwis[i].remaining = remaining;
+		cwis[i].cwis = cwis;
+		(*remaining)++;
+
+		pool_queue_work(/*pool=*/NULL, &cwis[i].work, /*db_hash=*/0,
+				WT_ORD1, db_checkpoint_cb, after_db_checkpoint_cb);
+	}
+
+	return RC(0);
 }
 
 #undef tracef

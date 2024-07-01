@@ -249,7 +249,7 @@ static int uvSnapshotLoadMeta(struct uv *uv,
 	}
 
 	format = byteFlip64(header[0]);
-	if (format != UV__DISK_FORMAT) {
+	if (format != (uint64_t)uv->format_version) {
 		tracef("load %s: unsupported format %ju", info->filename,
 		       format);
 		rv = RAFT_MALFORMED;
@@ -585,6 +585,20 @@ static void uvSnapshotPutAfterWorkCb(uv_work_t *work, int status)
 	UvUnblock(uv);
 }
 
+// #define ALLOC_ARR(arr, nr)  ((arr) = calloc((nr), sizeof ((arr)[0])))
+// #define ALLOC_PTR(ptr) M0_ALLOC_ARR(ptr, 1)
+//
+// struct recvInstallSnapshot;
+// extern struct raft *recvInstallSnapshot_raft(struct recvInstallSnapshot *req);
+// static void uvSnapshotPutInplace(struct uvSnapshotPut *put)
+// {
+// 	struct raft *r = recvInstallSnapshot_raft(put->req->data);
+// 	tracef("pending=%lld last_applied=%lld last_index=%lld",
+// 	       r->snapshot.pending.index,
+// 	       r->last_applied,
+// 	       r->log->snapshot.last_index);
+// }
+
 /* Start processing the given put request. */
 static void uvSnapshotPutStart(struct uvSnapshotPut *put)
 {
@@ -676,7 +690,7 @@ int UvSnapshotPut(struct raft_io *io,
 	}
 
 	cursor = put->meta.header;
-	bytePut64(&cursor, UV__DISK_FORMAT);
+	bytePut64(&cursor, (uint64_t)uv->format_version);
 	bytePut64(&cursor, 0);
 	bytePut64(&cursor, snapshot->configuration_index);
 	bytePut64(&cursor, put->meta.bufs[1].len);

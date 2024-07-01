@@ -8,13 +8,13 @@
 #include "command.h"
 #include "conn.h"
 #include "gateway.h"
-#include "id.h"
 #include "leader.h"
 #include "lib/threadpool.h"
 #include "server.h"
 #include "tracing.h"
 #include "utils.h"
 #include "vfs.h"
+#include "vfs2.h"
 
 /* Called when a leader exec request terminates and the associated callback can
  * be invoked. */
@@ -224,7 +224,11 @@ static void leaderMaybeCheckpointLegacy(struct leader *l)
 		tracef("raft_malloc - no mem");
 		goto err_after_buf_alloc;
 	}
+#ifdef USE_SYSTEM_RAFT
 	rv = raft_apply(l->raft, apply, &buf, 1, leaderCheckpointApplyCb);
+#else
+	rv = raft_apply(l->raft, apply, &buf, NULL, 1, leaderCheckpointApplyCb);
+#endif
 	if (rv != 0) {
 		tracef("raft_apply failed %d", rv);
 		raft_free(apply);
@@ -241,7 +245,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 				int status,
 				void *result)
 {
-	tracef("apply frames cb id:%" PRIu64, idExtract(req->req_id));
+	tracef("apply frames cb");
 	struct apply *apply = req->data;
 	struct leader *l = apply->leader;
 	if (l == NULL) {
@@ -254,6 +258,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 	if (status != 0) {
 		tracef("apply frames cb failed status %d", status);
 		sqlite3_vfs *vfs = sqlite3_vfs_find(l->db->config->name);
+		sqlite3_file *f = main_file(l->conn);
 		switch (status) {
 			case RAFT_LEADERSHIPLOST:
 				l->exec->status = SQLITE_IOERR_LEADERSHIP_LOST;
@@ -279,7 +284,11 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 				l->exec->status = SQLITE_IOERR;
 				break;
 		}
-		VfsAbort(vfs, l->db->path);
+		if (l->db->config->disk) {
+			vfs2_abort(f);
+		} else {
+			VfsAbort(vfs, l->db->path);
+		}
 	}
 
 	raft_free(apply);
@@ -296,6 +305,7 @@ finish:
 
 static int leaderApplyFrames(struct exec *req,
 			     dqlite_vfs_frame *frames,
+			     struct vfs2_wal_slice sl,
 			     unsigned n)
 {
 	tracef("leader apply frames id:%" PRIu64, req->id);
@@ -330,9 +340,16 @@ static int leaderApplyFrames(struct exec *req,
 	apply->leader = req->leader;
 	apply->req.data = apply;
 	apply->type = COMMAND_FRAMES;
-	idSet(apply->req.req_id, req->id);
 
+#ifdef USE_SYSTEM_RAFT
 	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
+#else
+	/* TODO actual WAL slice goes here */
+	struct raft_entry_local_data ld;
+	static_assert(sizeof(sl) == sizeof(ld), "local data size mismatch");
+	memcpy(&ld, &sl, sizeof(sl));
+	rv = raft_apply(l->raft, &apply->req, &buf, &ld, 1, leaderApplyFramesCb);
+#endif
 	if (rv != 0) {
 		tracef("raft apply failed %d", rv);
 		goto err_after_command_encode;
@@ -354,35 +371,45 @@ err:
 
 static void leaderExecV2(struct exec *req, enum pool_half half)
 {
-	tracef("leader exec v2 id:%" PRIu64, req->id);
+	tracef("leader exec v2");
 	struct leader *l = req->leader;
 	struct db *db = l->db;
 	sqlite3_vfs *vfs = sqlite3_vfs_find(db->config->name);
+	sqlite3_file *f;
 	dqlite_vfs_frame *frames;
+	struct vfs2_wal_slice sl = {};
 	uint64_t size;
 	unsigned n;
 	unsigned i;
 	int rv;
+
+	f = main_file(l->conn);
 
 	if (half == POOL_TOP_HALF) {
 		req->status = sqlite3_step(req->stmt);
 		return;
 	} /* else POOL_BOTTOM_HALF => */
 
-	rv = VfsPoll(vfs, db->path, &frames, &n);
+	if (db->config->disk) {
+		rv = vfs2_poll(f, &frames, &n, &sl);
+	} else {
+		rv = VfsPoll(vfs, db->path, &frames, &n);
+	}
 	if (rv != 0 || n == 0) {
 		tracef("vfs poll");
 		goto finish;
 	}
 
 	/* Check if the new frames would create an overfull database */
-	size = VfsDatabaseSize(vfs, db->path, n, db->config->page_size);
-	if (size > VfsDatabaseSizeLimit(vfs)) {
-		rv = SQLITE_FULL;
-		goto abort;
+	if (!db->config->disk) {
+		size = VfsDatabaseSize(vfs, db->path, n, db->config->page_size);
+		if (size > VfsDatabaseSizeLimit(vfs)) {
+			rv = SQLITE_FULL;
+			goto abort;
+		}
 	}
 
-	rv = leaderApplyFrames(req, frames, n);
+	rv = leaderApplyFrames(req, frames, sl, n);
 	if (rv != 0) {
 		goto abort;
 	}
@@ -398,7 +425,11 @@ abort:
 		sqlite3_free(frames[i].data);
 	}
 	sqlite3_free(frames);
-	VfsAbort(vfs, l->db->path);
+	if (db->config->disk) {
+		vfs2_abort(f);
+	} else {
+		VfsAbort(vfs, l->db->path);
+	}
 finish:
 	if (rv != 0) {
 		tracef("exec v2 failed %d", rv);
@@ -406,22 +437,6 @@ finish:
 	}
 	leaderExecDone(l->exec);
 }
-
-#ifdef DQLITE_NEXT
-
-static void exec_top(pool_work_t *w)
-{
-	struct exec *req = CONTAINER_OF(w, struct exec, work);
-	leaderExecV2(req, POOL_TOP_HALF);
-}
-
-static void exec_bottom(pool_work_t *w)
-{
-	struct exec *req = CONTAINER_OF(w, struct exec, work);
-	leaderExecV2(req, POOL_BOTTOM_HALF);
-}
-
-#endif
 
 static void execBarrierCb(struct barrier *barrier, int status)
 {
@@ -435,16 +450,8 @@ static void execBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-#ifdef DQLITE_NEXT
-	struct dqlite_node *node = l->raft->data;
-	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
-		? pool_ut_fallback() : &node->pool;
-	pool_queue_work(pool, &req->work, l->db->cookie,
-			WT_UNORD, exec_top, exec_bottom);
-#else
 	leaderExecV2(req, POOL_TOP_HALF);
 	leaderExecV2(req, POOL_BOTTOM_HALF);
-#endif
 }
 
 int leader__exec(struct leader *l,
@@ -489,6 +496,7 @@ static void raftBarrierCb(struct raft_barrier *req, int status)
 			rv = SQLITE_ERROR;
 		}
 	}
+
 	barrier_cb cb = barrier->cb;
 	if (cb == NULL) {
 		tracef("barrier cb already fired");

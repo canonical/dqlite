@@ -144,6 +144,13 @@ void raft_register_state_cb(struct raft *r, raft_state_cb cb)
 	cbs->state_cb = cb;
 }
 
+void raft_register_initial_barrier_cb(struct raft *r, raft_initial_barrier_cb cb)
+{
+	struct raft_callbacks *cbs = raftGetCallbacks(r);
+	assert(cbs != NULL);
+	cbs->ib_cb = cb;
+}
+
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
 {
 	r->election_timeout = msecs;

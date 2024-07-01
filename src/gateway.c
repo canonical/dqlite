@@ -2,7 +2,6 @@
 
 #include "bind.h"
 #include "conn.h"
-#include "id.h"
 #include "lib/threadpool.h"
 #include "protocol.h"
 #include "query.h"
@@ -17,8 +16,7 @@
 void gateway__init(struct gateway *g,
 		   struct config *config,
 		   struct registry *registry,
-		   struct raft *raft,
-		   struct id_state seed)
+		   struct raft *raft)
 {
 	tracef("gateway init");
 	g->config = config;
@@ -33,7 +31,6 @@ void gateway__init(struct gateway *g,
 	g->barrier.leader = NULL;
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 	g->client_id = 0;
-	g->random_state = seed;
 }
 
 void gateway__leader_close(struct gateway *g, int reason)
@@ -157,12 +154,15 @@ void gateway__close(struct gateway *g)
 	}
 
 #define FAIL_IF_CHECKPOINTING                                                  \
-	{                                                                      \
+	do {                                                                   \
+		/* TODO(cole) extra consideration needed here? */              \
+		if (g->config->disk) {                                         \
+			break;                                                 \
+		}                                                              \
+                                                                               \
 		struct sqlite3_file *_file;                                    \
 		int _rv;                                                       \
-		_rv = sqlite3_file_control(g->leader->conn, "main",            \
-					   SQLITE_FCNTL_FILE_POINTER, &_file); \
-		assert(_rv == SQLITE_OK); /* Should never fail */              \
+		_file = main_file(g->leader->conn);                            \
                                                                                \
 		_rv = _file->pMethods->xShmLock(                               \
 		    _file, 1 /* checkpoint lock */, 1,                         \
@@ -175,11 +175,12 @@ void gateway__close(struct gateway *g)
 		_file->pMethods->xShmLock(                                     \
 		    _file, 1 /* checkpoint lock */, 1,                         \
 		    SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);                 \
-	}
+	} while (0)                                                            \
 
 /* Encode fa failure response and invoke the request callback */
 static void failure(struct handle *req, int code, const char *message)
 {
+	tracef("FAILURE(%d, %s)", code, message);
 	struct response_failure failure;
 	size_t n;
 	char *cursor;
@@ -467,7 +468,6 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	struct stmt *stmt;
 	struct request_exec request = { 0 };
 	int tuple_format;
-	uint64_t req_id;
 	int rv;
 
 	switch (req->schema) {
@@ -502,9 +502,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	}
 	req->stmt_id = stmt->id;
 	g->req = req;
-	req_id = idNext(&g->random_state);
-	rv = leader__exec(g->leader, &g->exec, stmt->stmt, req_id,
-			  leader_exec_cb);
+	rv = leader__exec(g->leader, &g->exec, stmt->stmt, 0, leader_exec_cb);
 	if (rv != 0) {
 		tracef("handle exec leader exec failed %d", rv);
 		g->req = NULL;
@@ -554,22 +552,6 @@ done:
 	}
 }
 
-#ifdef DQLITE_NEXT
-
-static void qb_top(pool_work_t *w)
-{
-	struct handle *req = CONTAINER_OF(w, struct handle, work);
-	query_batch_async(req, POOL_TOP_HALF);
-}
-
-static void qb_bottom(pool_work_t *w)
-{
-	struct handle *req = CONTAINER_OF(w, struct handle, work);
-	query_batch_async(req, POOL_BOTTOM_HALF);
-}
-
-#endif
-
 static void query_batch(struct gateway *g)
 {
 	struct handle *req = g->req;
@@ -577,16 +559,8 @@ static void query_batch(struct gateway *g)
 	g->req = NULL;
 	req->gw = g;
 
-#ifdef DQLITE_NEXT
-	struct dqlite_node *node = g->raft->data;
-	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
-		? pool_ut_fallback() : &node->pool;
-	pool_queue_work(pool, &req->work, g->leader->db->cookie,
-			WT_UNORD, qb_top, qb_bottom);
-#else
 	query_batch_async(req, POOL_TOP_HALF);
 	query_batch_async(req, POOL_BOTTOM_HALF);
-#endif
 }
 
 static void query_barrier_cb(struct barrier *barrier, int status)
@@ -635,7 +609,6 @@ static int handle_query(struct gateway *g, struct handle *req)
 	struct request_query request = { 0 };
 	int tuple_format;
 	bool is_readonly;
-	uint64_t req_id;
 	int rv;
 
 	switch (req->schema) {
@@ -675,9 +648,7 @@ static int handle_query(struct gateway *g, struct handle *req)
 	if (is_readonly) {
 		rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
 	} else {
-		req_id = idNext(&g->random_state);
-		rv = leader__exec(g->leader, &g->exec, stmt->stmt, req_id,
-				  leaderModifyingQueryCb);
+		rv = leader__exec(g->leader, &g->exec, stmt->stmt, 0, leaderModifyingQueryCb);
 	}
 	if (rv != 0) {
 		g->req = NULL;
@@ -737,7 +708,6 @@ static void handle_exec_sql_next(struct gateway *g,
 	sqlite3_stmt *stmt = NULL;
 	const char *tail;
 	int tuple_format;
-	uint64_t req_id;
 	int rv;
 
 	if (req->sql == NULL || strcmp(req->sql, "") == 0) {
@@ -779,10 +749,9 @@ static void handle_exec_sql_next(struct gateway *g,
 	req->sql = tail;
 	g->req = req;
 
-	req_id = idNext(&g->random_state);
 	/* At this point, leader__exec takes ownership of stmt */
 	rv =
-	    leader__exec(g->leader, &g->exec, stmt, req_id, handle_exec_sql_cb);
+	    leader__exec(g->leader, &g->exec, stmt, 0, handle_exec_sql_cb);
 	if (rv != SQLITE_OK) {
 		failure(req, rv, sqlite3_errmsg(g->leader->conn));
 		goto done_after_prepare;
@@ -887,7 +856,6 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	sqlite3_stmt *tail_stmt;
 	int tuple_format;
 	bool is_readonly;
-	uint64_t req_id;
 	int rv;
 
 	if (status != 0) {
@@ -942,9 +910,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	if (is_readonly) {
 		query_batch(g);
 	} else {
-		req_id = idNext(&g->random_state);
-		rv = leader__exec(g->leader, &g->exec, stmt, req_id,
-				  leaderModifyingQuerySqlCb);
+		rv = leader__exec(g->leader, &g->exec, stmt, 0, leaderModifyingQuerySqlCb);
 		if (rv != 0) {
 			sqlite3_finalize(stmt);
 			g->req = NULL;
@@ -1008,8 +974,7 @@ struct change {
 
 static void raftChangeCb(struct raft_change *change, int status)
 {
-	tracef("raft change cb id:%" PRIu64 " status:%d",
-	       idExtract(change->req_id), status);
+	tracef("raft change cb status:%d", status);
 	struct change *r = change->data;
 	struct gateway *g = r->gateway;
 	struct handle *req = g->req;
@@ -1029,7 +994,6 @@ static int handle_add(struct gateway *g, struct handle *req)
 	tracef("handle add");
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
-	uint64_t req_id;
 	int rv;
 	START_V0(add, empty);
 	(void)response;
@@ -1042,8 +1006,6 @@ static int handle_add(struct gateway *g, struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
-	req_id = idNext(&g->random_state);
-	idSet(r->req.req_id, req_id);
 	g->req = req;
 
 	rv = raft_add(g->raft, &r->req, request.id, request.address,
@@ -1065,7 +1027,6 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
 	uint64_t role = DQLITE_VOTER;
-	uint64_t req_id;
 	int rv;
 	START_V0(promote_or_assign, empty);
 	(void)response;
@@ -1089,8 +1050,6 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
-	req_id = idNext(&g->random_state);
-	idSet(r->req.req_id, req_id);
 	g->req = req;
 
 	rv = raft_assign(g->raft, &r->req, request.id,
@@ -1111,7 +1070,6 @@ static int handle_remove(struct gateway *g, struct handle *req)
 	tracef("handle remove");
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
-	uint64_t req_id;
 	int rv;
 	START_V0(remove, empty);
 	(void)response;
@@ -1125,8 +1083,6 @@ static int handle_remove(struct gateway *g, struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
-	req_id = idNext(&g->random_state);
-	idSet(r->req.req_id, req_id);
 	g->req = req;
 
 	rv = raft_remove(g->raft, &r->req, request.id, raftChangeCb);

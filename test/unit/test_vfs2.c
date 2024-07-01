@@ -86,12 +86,10 @@ static void check_wals(const char *dbname, off_t wal1_len, off_t wal2_len)
 
 	snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
 	rv = stat(buf, &st);
-	tracef("rv=%d st.st_size=%ld errno=%d wal1_len=%ld", rv, st.st_size, errno, wal1_len);
 	munit_assert_true((rv == 0 && st.st_size == wal1_len) || (rv < 0 && errno == ENOENT && wal1_len == 0));
 
 	snprintf(buf, sizeof(buf), "%s-xwal2", dbname);
 	rv = stat(buf, &st);
-	tracef("rv=%d st.st_size=%ld errno=%d wal1_len=%ld", rv, st.st_size, errno, wal2_len);
 	munit_assert_true((rv == 0 && st.st_size == wal2_len) || (rv < 0 && errno == ENOENT && wal2_len == 0));
 }
 
@@ -180,14 +178,14 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	rv = sqlite3_step(stmt);
 	munit_assert_int(rv, ==, SQLITE_DONE);
 
-	struct vfs2_wal_frame *frames;
+	dqlite_vfs_frame *frames;
 	unsigned n;
 	rv = vfs2_poll(fp, &frames, &n, &sl);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint(n, ==, 1);
+	munit_assert_not_null(frames[0].data);
 	munit_assert_not_null(frames);
-	munit_assert_not_null(frames[0].page);
-	sqlite3_free(frames[0].page);
+	sqlite3_free(frames[0].data);
 	sqlite3_free(frames);
 
 	rv = vfs2_unhide(fp);

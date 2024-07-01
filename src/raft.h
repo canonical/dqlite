@@ -1,4 +1,11 @@
-#ifndef RAFT_H
+#if defined(USE_SYSTEM_RAFT)
+
+#include <raft.h>
+#include <raft/uv.h>
+#include <raft/fixture.h>
+
+#elif !defined(RAFT_H)
+
 #define RAFT_H
 
 #include <stdarg.h>
@@ -191,6 +198,28 @@ enum {
 };
 
 /**
+ * A small fixed-size inline buffer that stores extra data for a raft_entry
+ * that is different for each node in the cluster.
+ *
+ * A leader initializes the local data for an entry before passing it into
+ * raft_apply. This local data is stored in the volatile raft log and also
+ * in the persistent raft log on the leader. AppendEntries messages sent by
+ * the leader never contain the local data for entries.
+ *
+ * When a follower accepts an AppendEntries request, it invokes a callback
+ * provided by the FSM to fill out the local data for each new entry before
+ * appending the entries to its log (volatile and persistent). This local
+ * data doesn't have to be the same as the local data that the leader computed.
+ *
+ * When starting up, a raft node reads the local data for each entry for its
+ * persistent log as part of populating the volatile log.
+ */
+struct raft_entry_local_data {
+	/* Must be the only member of this struct. */
+	uint8_t buf[16];
+};
+
+/**
  * A single entry in the raft log.
  *
  * An entry that originated from this raft instance while it was the leader
@@ -213,12 +242,27 @@ enum {
  *
  * This arrangement makes it possible to minimize the amount of memory-copying
  * when performing I/O.
+ *
+ * The @is_local field is set to `true` by a leader that appends an entry to its
+ * volatile log. It is set to `false` by a follower that copies an entry received
+ * via AppendEntries to its volatile log. It is not represented in the AppendEntries
+ * message or in the persistent log. This field can be used by the FSM's `apply`
+ * callback to handle a COMMAND entry differently depending on whether it
+ * originated locally.
+ *
+ * Note: The @local_data and @is_local fields do not exist when we use an external
+ * libraft, because the last separate release of libraft predates their addition.
+ * The ifdef at the very top of this file ensures that we use the system raft headers
+ * when we build against an external libraft, so there will be no ABI mismatch as
+ * a result of incompatible struct layouts.
  */
 struct raft_entry
 {
-	raft_term term;      /* Term in which the entry was created. */
-	unsigned short type; /* Type (FSM command, barrier, config change). */
+	raft_term term;         /* Term in which the entry was created. */
+	unsigned short type;    /* Type (FSM command, barrier, config change). */
+	bool is_local;          /* Placed here so it goes in the padding after @type. */
 	struct raft_buffer buf; /* Entry data. */
+	struct raft_entry_local_data local_data;
 	void *batch;            /* Batch that buf's memory points to, if any. */
 };
 
@@ -588,7 +632,7 @@ struct raft_io
 
 struct raft_fsm
 {
-	int version; /* 1, 2 or 3 */
+	int version;
 	void *data;
 	int (*apply)(struct raft_fsm *fsm,
 		     const struct raft_buffer *buf,
@@ -605,6 +649,18 @@ struct raft_fsm
 	int (*snapshot_async)(struct raft_fsm *fsm,
 			      struct raft_buffer *bufs[],
 			      unsigned *n_bufs);
+	/* Fields below added since version 4. */
+	int (*apply2)(struct raft_fsm *fsm,
+			const struct raft_buffer *buf,
+			struct raft_entry_local_data ld,
+			bool is_mine,
+			void **result);
+	void (*post_receive)(struct raft_fsm *fsm,
+			const struct raft_buffer *buf,
+			struct raft_entry_local_data *ld);
+	void (*post_receive_undo)(struct raft_fsm *fsm,
+			const struct raft_buffer *buf,
+			struct raft_entry_local_data ld);
 };
 
 struct raft; /* Forward declaration. */
@@ -622,6 +678,10 @@ typedef void (*raft_state_cb)(struct raft *raft,
 			      unsigned short new_state);
 
 struct raft_progress;
+
+/**
+ */
+typedef void (*raft_initial_barrier_cb)(struct raft *raft);
 
 /**
  * Close callback.
@@ -881,6 +941,8 @@ RAFT_API void raft_close(struct raft *r, raft_close_cb cb);
  */
 RAFT_API void raft_register_state_cb(struct raft *r, raft_state_cb cb);
 
+RAFT_API void raft_register_initial_barrier_cb(struct raft *r, raft_initial_barrier_cb cb);
+
 /**
  * Bootstrap this raft instance using the given configuration. The instance must
  * not have been started yet and must be completely pristine, otherwise
@@ -1075,6 +1137,7 @@ struct raft_apply
 RAFT_API int raft_apply(struct raft *r,
 			struct raft_apply *req,
 			const struct raft_buffer bufs[],
+			const struct raft_entry_local_data local_data[],
 			const unsigned n,
 			raft_apply_cb cb);
 
@@ -1352,6 +1415,8 @@ RAFT_API void raft_uv_set_tracer(struct raft_io *io,
  * Enable or disable auto-recovery on startup. Default enabled.
  */
 RAFT_API void raft_uv_set_auto_recovery(struct raft_io *io, bool flag);
+
+RAFT_API void raft_uv_set_format_version(struct raft_io *io, int version);
 
 /**
  * Callback invoked by the transport implementation when a new incoming

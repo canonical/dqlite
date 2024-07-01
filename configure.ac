@@ -6,6 +6,8 @@ AC_CONFIG_AUX_DIR([ac])
 AM_INIT_AUTOMAKE([subdir-objects -Wall -Werror -Wno-portability foreign])
 AM_SILENT_RULES([yes])
 
+# Without this line, AC_PROG_CC boneheadedly adds `-g -O2` to our CFLAGS.
+AC_SUBST(CFLAGS, "")
 AC_PROG_CC
 AC_USE_SYSTEM_EXTENSIONS
 

@@ -1,0 +1,73 @@
+name: CI Tests (latest deps)
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Raise aio-max-nr
+      run: |
+          sysctl fs.aio-max-nr
+          sudo sysctl -w fs.aio-max-nr=1000000
+
+    - name: Install latest libuv
+      run: |
+          version="$(curl -L 'https://dist.libuv.org/dist' | grep -o 'v[0-9]\.[0-9]\{1,2\}\.[0-9]\{1,2\}' | sort -V -r | head -n1)"
+          echo "Selected libuv $version"
+          curl -LO "https://dist.libuv.org/dist/$version/libuv-$version.tar.gz"
+          tar xzf "libuv-$version.tar.gz"
+          cd "libuv-$version"
+          sh autogen.sh
+          ./configure
+          make -j4
+          sudo make install
+
+    - name: Install latest liblz4
+      run: |
+          mkdir lz4
+          cd lz4
+          git init
+          git remote add github 'https://github.com/lz4/lz4'
+          git fetch github 'refs/tags/*:refs/tags/*'
+          version="$(git tag | sort -V -r | head -n1)"
+          echo "Selected lz4 $version"
+          git checkout "$version"
+          make -j4
+          sudo make install
+
+    - name: ldconfig
+      run: |
+          sudo ldconfig
+
+    - name: Get latest SQLite
+      run: |
+          relative="$(curl -L 'https://sqlite.org/download.html' | grep '^PRODUCT' | grep 'amalgamation' | cut -d',' -f3)"
+          curl -LO "https://sqlite.org/$relative"
+          name="$(basename "$relative" .zip)"
+          echo "Selected $name"
+          unzip "$name.zip"
+          cd "$name"
+          cp sqlite3.{c,h} "$GITHUB_WORKSPACE"
+
+    - name: Build dqlite
+      run: |
+          autoreconf -i
+          ./configure --enable-debug --enable-sanitize --enable-build-raft --enable-build-sqlite
+          make -j4 unit-test integration-test \
+                   raft-core-fuzzy-test \
+                   raft-core-integration-test \
+                   raft-core-unit-test \
+                   raft-uv-integration-test \
+                   raft-uv-unit-test
+          ldd .libs/libdqlite.so
+
+    - name: Test
+      run: |
+           export LIBDQLITE_TRACE=1
+           make check || (cat ./test-suite.log && false)

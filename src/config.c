@@ -9,6 +9,7 @@
 
 #include "config.h"
 #include "logger.h"
+#include "utils.h"
 
 /* Default heartbeat timeout in milliseconds.
  *
@@ -57,6 +58,11 @@ int config__init(struct config *c,
 	c->pool_thread_count = 4;
 	serial++;
 	return 0;
+}
+
+void config_set_disk_mode(struct config *c)
+{
+	c->disk = true;
 }
 
 void config__close(struct config *c)

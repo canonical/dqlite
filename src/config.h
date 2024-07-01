@@ -37,4 +37,6 @@ int config__init(struct config *c,
  */
 void config__close(struct config *c);
 
+void config_set_disk_mode(struct config *c);
+
 #endif /* DQLITE_OPTIONS_H */

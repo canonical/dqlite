@@ -79,7 +79,7 @@ static inline void tracerEmit(const char *file,
 		tracerPidCached,
 
 		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
-		tm.tm_min, tm.tm_sec, ts.tv_nsec,
+		tm.tm_min, tm.tm_sec, (unsigned long)ts.tv_nsec,
 
 		(unsigned)tid, tracerTraceLevelName(level), func,
 		tracerShortFileName(file), line, message);

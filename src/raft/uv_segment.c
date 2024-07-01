@@ -266,11 +266,11 @@ static int uvLoadEntriesBatch(struct uv *uv,
 
 	/* Consume the batch header, excluding the first 8 bytes containing the
 	 * number of entries, which we have already read. */
-	header.len = uvSizeofBatchHeader(n);
+	header.len = uvSizeofBatchHeader(n, uv->format_version);
 	header.base = batch;
 
 	rv = uvConsumeContent(content, offset,
-			      uvSizeofBatchHeader(n) - sizeof(uint64_t), NULL,
+			      uvSizeofBatchHeader(n, uv->format_version) - sizeof(uint64_t), NULL,
 			      errmsg);
 	if (rv != 0) {
 		ErrMsgTransfer(errmsg, uv->io->errmsg, "read header");
@@ -288,15 +288,20 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	}
 
 	/* Decode the batch header, allocating the entries array. */
-	rv = uvDecodeBatchHeader(header.base, entries, n_entries);
+	uint64_t local_data_size = 0;
+	rv = uvDecodeBatchHeader(header.base, entries, n_entries, &local_data_size, uv->format_version);
 	if (rv != 0) {
 		goto err;
 	}
 
-	/* Calculate the total size of the batch data */
+	/* Calculate the total size of the batch data. TODO this computation
+	 * should be rolled into the actual parsing part somehow. */
 	data.len = 0;
 	for (i = 0; i < n; i++) {
 		data.len += (*entries)[i].buf.len;
+		if (uv->format_version > 1) {
+			data.len += sizeof((*entries)[i].local_data);
+		}
 	}
 	data.base = (uint8_t *)content->base + *offset;
 
@@ -312,13 +317,17 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	crc1 = byteFlip32(((uint32_t *)checksums)[1]);
 	crc2 = byteCrc32(data.base, data.len, 0);
 	if (crc1 != crc2) {
+		tracef("batch is bad");
 		ErrMsgPrintf(uv->io->errmsg, "data checksum mismatch");
 		rv = RAFT_CORRUPT;
 		goto err_after_header_decode;
 	}
 
-	uvDecodeEntriesBatch(content->base, *offset - data.len, *entries,
-			     *n_entries);
+	rv = uvDecodeEntriesBatch(content->base, *offset - data.len, *entries,
+			     *n_entries, local_data_size, uv->format_version);
+	if (rv != 0) {
+		goto err_after_header_decode;
+	}
 
 	*last = *offset == content->len;
 
@@ -396,7 +405,7 @@ int uvSegmentLoadClosed(struct uv *uv,
 	if (rv != 0) {
 		goto err;
 	}
-	if (format != UV__DISK_FORMAT) {
+	if (format != (uint64_t)uv->format_version) {
 		ErrMsgPrintf(uv->io->errmsg, "unexpected format version %ju",
 			     format);
 		rv = RAFT_CORRUPT;
@@ -518,7 +527,7 @@ static int uvSegmentLoadOpen(struct uv *uv,
 	/* Check that the format is the expected one, or perhaps 0, indicating
 	 * that the segment was allocated but never written. */
 	offset = sizeof format;
-	if (format != UV__DISK_FORMAT) {
+	if (format != (uint64_t)uv->format_version) {
 		if (format == 0) {
 			all_zeros = uvContentHasOnlyTrailingZeros(&buf, offset);
 			if (all_zeros) {
@@ -707,7 +716,7 @@ void uvSegmentBufferClose(struct uvSegmentBuffer *b)
 	}
 }
 
-int uvSegmentBufferFormat(struct uvSegmentBuffer *b)
+int uvSegmentBufferFormat(struct uvSegmentBuffer *b, int format_version)
 {
 	int rv;
 	void *cursor;
@@ -720,13 +729,14 @@ int uvSegmentBufferFormat(struct uvSegmentBuffer *b)
 	}
 	b->n = n;
 	cursor = b->arena.base;
-	bytePut64(&cursor, UV__DISK_FORMAT);
+	bytePut64(&cursor, (uint64_t)format_version);
 	return 0;
 }
 
 int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 			  const struct raft_entry entries[],
-			  unsigned n_entries)
+			  unsigned n_entries,
+			  int format_version)
 {
 	size_t size;   /* Total size of the batch */
 	uint32_t crc1; /* Header checksum */
@@ -739,9 +749,12 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 	int rv;
 
 	size = sizeof(uint32_t) * 2;            /* CRC checksums */
-	size += uvSizeofBatchHeader(n_entries); /* Batch header */
+	size += uvSizeofBatchHeader(n_entries, format_version); /* Batch header */
 	for (i = 0; i < n_entries; i++) {       /* Entries data */
 		size += bytePad64(entries[i].buf.len);
+		if (format_version > 1) {
+			size += sizeof(struct raft_entry_local_data);
+		}
 	}
 
 	rv = uvEnsureSegmentBufferIsLargeEnough(b, b->n + size);
@@ -758,9 +771,9 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 
 	/* Batch header */
 	header = cursor;
-	uvEncodeBatchHeader(entries, n_entries, cursor);
-	crc1 = byteCrc32(header, uvSizeofBatchHeader(n_entries), 0);
-	cursor = (uint8_t *)cursor + uvSizeofBatchHeader(n_entries);
+	uvEncodeBatchHeader(entries, n_entries, cursor, format_version);
+	crc1 = byteCrc32(header, uvSizeofBatchHeader(n_entries, format_version), 0);
+	cursor = (uint8_t *)cursor + uvSizeofBatchHeader(n_entries, format_version);
 
 	/* Batch data */
 	crc2 = 0;
@@ -770,6 +783,14 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 		memcpy(cursor, entry->buf.base, entry->buf.len);
 		crc2 = byteCrc32(cursor, entry->buf.len, crc2);
 		cursor = (uint8_t *)cursor + entry->buf.len;
+		static_assert(sizeof(entry->local_data.buf) % sizeof(uint64_t) == 0,
+			      "bad size for entry local data");
+		if (format_version > 1) {
+			size_t local_data_size = sizeof(entry->local_data.buf);
+			memcpy(cursor, entry->local_data.buf, local_data_size);
+			crc2 = byteCrc32(cursor, local_data_size, crc2);
+			cursor = (uint8_t *)cursor + local_data_size;
+		}
 	}
 
 	bytePut32(&crc1_p, crc1);
@@ -1010,14 +1031,14 @@ static int uvWriteClosedSegment(struct uv *uv,
 	 * block */
 	cap = uv->block_size -
 	      (sizeof(uint64_t) /* Format version */ +
-	       sizeof(uint64_t) /* Checksums */ + uvSizeofBatchHeader(1));
+	       sizeof(uint64_t) /* Checksums */ + uvSizeofBatchHeader(1, uv->format_version));
 	if (conf->len > cap) {
 		return RAFT_TOOBIG;
 	}
 
 	uvSegmentBufferInit(&buf, uv->block_size);
 
-	rv = uvSegmentBufferFormat(&buf);
+	rv = uvSegmentBufferFormat(&buf, uv->format_version);
 	if (rv != 0) {
 		return rv;
 	}
@@ -1026,7 +1047,7 @@ static int uvWriteClosedSegment(struct uv *uv,
 	entry.type = RAFT_CHANGE;
 	entry.buf = *conf;
 
-	rv = uvSegmentBufferAppend(&buf, &entry, 1);
+	rv = uvSegmentBufferAppend(&buf, &entry, 1, uv->format_version);
 	if (rv != 0) {
 		uvSegmentBufferClose(&buf);
 		return rv;
@@ -1121,12 +1142,12 @@ int uvSegmentTruncate(struct uv *uv,
 
 	uvSegmentBufferInit(&buf, uv->block_size);
 
-	rv = uvSegmentBufferFormat(&buf);
+	rv = uvSegmentBufferFormat(&buf, uv->format_version);
 	if (rv != 0) {
 		goto out_after_buffer_init;
 	}
 
-	rv = uvSegmentBufferAppend(&buf, entries, m);
+	rv = uvSegmentBufferAppend(&buf, entries, m, uv->format_version);
 	if (rv != 0) {
 		goto out_after_buffer_init;
 	}

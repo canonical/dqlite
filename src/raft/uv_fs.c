@@ -704,15 +704,9 @@ static int probeDirectIO(int fd, size_t *size, char *errmsg)
 			default:
 				/* UNTESTED: this is an unsupported file system.
 				 */
-#if defined(__s390x__)
 				ErrMsgPrintf(errmsg,
-					     "unsupported file system: %ux",
-					     fs_info.f_type);
-#else
-				ErrMsgPrintf(errmsg,
-					     "unsupported file system: %zx",
-					     fs_info.f_type);
-#endif
+					     "unsupported file system: %llx",
+					     (unsigned long long)fs_info.f_type);
 				return RAFT_IOERR;
 		}
 	}
@@ -840,14 +834,6 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 		 * errors, since we allocated the file with posix_fallocate and
 		 * the block size is supposed to be correct. */
 		*ok = false;
-		if (event.res == -EAGAIN) {
-			/* If EAGAIN is encountered we assume the functionality
-			 * is supported but this write would have blocked for
-			 * some reason. UvWriter has a fallback mechanism to
-			 * schedule writes on the thread pool in case the async
-			 * write fails with EAGAIN, so this is safe. */
-			*ok = true;
-		}
 	}
 
 	return 0;

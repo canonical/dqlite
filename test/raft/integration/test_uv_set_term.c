@@ -9,6 +9,13 @@
  *
  *****************************************************************************/
 
+static char *format_versions[] = {"1", "2", NULL};
+
+static MunitParameterEnum format_params[] = {
+    {"format_version", format_versions},
+    {NULL, NULL},
+};
+
 struct fixture
 {
     FIXTURE_UV_DEPS;
@@ -34,6 +41,7 @@ static void closeCb(struct raft_io *io)
         int _rv;                                                     \
         _rv = raft_uv_init(&f->io, &f->loop, f->dir, &f->transport); \
         munit_assert_int(_rv, ==, 0);                                \
+        raft_uv_set_format_version(&f->io, f->format_version); \
         _rv = f->io.init(&f->io, 1, "1");                            \
         munit_assert_int(_rv, ==, 0);                                \
     } while (0)
@@ -88,7 +96,7 @@ static void closeCb(struct raft_io *io)
         char filename[strlen("metadataN") + 1];              \
         sprintf(filename, "metadata%d", N);                  \
         DirReadFile(f->dir, filename, buf2, sizeof buf2);    \
-        munit_assert_int(byteGet64(&cursor), ==, 1);         \
+        munit_assert_int(byteGet64(&cursor), ==, f->format_version); \
         munit_assert_int(byteGet64(&cursor), ==, VERSION);   \
         munit_assert_int(byteGet64(&cursor), ==, TERM);      \
         munit_assert_int(byteGet64(&cursor), ==, VOTED_FOR); \
@@ -106,6 +114,8 @@ static void *setUpDeps(const MunitParameter params[], void *user_data)
     SETUP_UV_DEPS;
     f->io.data = f;
     f->closed = false;
+    const char *format_version = munit_parameters_get(params, "format_version");
+    f->format_version = format_version != NULL ? atoi(format_version) : 1;
     return f;
 }
 
@@ -180,11 +190,11 @@ TEST(set_term, fourth, setUp, tearDown, 0, NULL)
 
 /* If the data directory has a single metadata1 file, the first time set_data()
  * is called, the second metadata file gets created. */
-TEST(set_term, metadataOneExists, setUpDeps, tearDown, 0, NULL)
+TEST(set_term, metadataOneExists, setUpDeps, tearDown, 0, format_params)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        1, /* Format                               */
+                        f->format_version,
                         1, /* Version                              */
                         1, /* Term                                 */
                         0 /* Voted for                            */);
@@ -196,16 +206,16 @@ TEST(set_term, metadataOneExists, setUpDeps, tearDown, 0, NULL)
 }
 
 /* The data directory has both metadata files, but metadata1 is greater. */
-TEST(set_term, metadataOneIsGreater, setUpDeps, tearDown, 0, NULL)
+TEST(set_term, metadataOneIsGreater, setUpDeps, tearDown, 0, format_params)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        1, /* Format                               */
+                        f->format_version,
                         3, /* Version                              */
                         3, /* Term                                 */
                         0 /* Voted for                            */);
     WRITE_METADATA_FILE(2, /* Metadata file index                  */
-                        1, /* Format                               */
+		        f->format_version,
                         2, /* Version                              */
                         2, /* Term                                 */
                         0 /* Voted for                            */);
@@ -219,16 +229,16 @@ TEST(set_term, metadataOneIsGreater, setUpDeps, tearDown, 0, NULL)
 }
 
 /* The data directory has both metadata files, but metadata2 is greater. */
-TEST(set_term, metadataTwoIsGreater, setUpDeps, tearDown, 0, NULL)
+TEST(set_term, metadataTwoIsGreater, setUpDeps, tearDown, 0, format_params)
 {
     struct fixture *f = data;
     WRITE_METADATA_FILE(1, /* Metadata file index                  */
-                        1, /* Format                               */
+                        f->format_version,
                         1, /* Version                              */
                         1, /* Term                                 */
                         0 /* Voted for                            */);
     WRITE_METADATA_FILE(2, /* Metadata file index                  */
-                        1, /* Format                               */
+		        f->format_version,
                         2, /* Version                              */
                         2, /* Term                                 */
                         0 /* Voted for                            */);

@@ -11,7 +11,6 @@
 #include "lib/serialize.h"
 
 #include "config.h"
-#include "id.h"
 #include "leader.h"
 #include "raft.h"
 #include "registry.h"
@@ -34,14 +33,12 @@ struct gateway {
 	struct barrier barrier;      /* Barrier for query requests */
 	uint64_t protocol;           /* Protocol format version */
 	uint64_t client_id;
-	struct id_state random_state; /* For generating IDs */
 };
 
 void gateway__init(struct gateway *g,
 		   struct config *config,
 		   struct registry *registry,
-		   struct raft *raft,
-		   struct id_state seed);
+		   struct raft *raft);
 
 void gateway__close(struct gateway *g);
 

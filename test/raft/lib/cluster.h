@@ -269,15 +269,15 @@
     }
 
 /* Request to apply an FSM command to add the given value to x. */
-#define CLUSTER_APPLY_ADD_X(I, REQ, VALUE, CB)      \
-    {                                               \
-        struct raft_buffer buf_;                    \
-        struct raft *raft_;                         \
-        int rv_;                                    \
-        FsmEncodeAddX(VALUE, &buf_);                \
-        raft_ = raft_fixture_get(&f->cluster, I);   \
-        rv_ = raft_apply(raft_, REQ, &buf_, 1, CB); \
-        munit_assert_int(rv_, ==, 0);               \
+#define CLUSTER_APPLY_ADD_X(I, REQ, VALUE, CB)            \
+    {                                                     \
+        struct raft_buffer buf_;                          \
+        struct raft *raft_;                               \
+        int rv_;                                          \
+        FsmEncodeAddX(VALUE, &buf_);                      \
+        raft_ = raft_fixture_get(&f->cluster, I);         \
+        rv_ = raft_apply(raft_, REQ, &buf_, NULL, 1, CB); \
+        munit_assert_int(rv_, ==, 0);                     \
     }
 
 /* Kill the I'th server. */

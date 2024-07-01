@@ -34,13 +34,19 @@
     TEAR_DOWN_HEAP;         \
     TEAR_DOWN_DIR
 
-#define FIXTURE_UV struct raft_io io
+#define FIXTURE_UV \
+    struct raft_io io; \
+    int format_version
 
 #define SETUP_UV                                                     \
     do {                                                             \
         int rv_;                                                     \
         rv_ = raft_uv_init(&f->io, &f->loop, f->dir, &f->transport); \
         munit_assert_int(rv_, ==, 0);                                \
+        \
+        const char *format_version_ = munit_parameters_get(params, "format_version"); \
+        f->format_version = format_version_ != NULL ? atoi(format_version_) : 1; \
+        raft_uv_set_format_version(&f->io, f->format_version); \
         raft_uv_set_auto_recovery(&f->io, false);                    \
         rv_ = f->io.init(&f->io, 1, "127.0.0.1:9001");               \
         munit_assert_int(rv_, ==, 0);                                \
