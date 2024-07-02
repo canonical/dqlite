@@ -1,4 +1,6 @@
-#include "recv_install_snapshot.h"
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
 
 #include "../tracing.h"
 #include "assert.h"
@@ -9,6 +11,10 @@
 #include "replication.h"
 
 #include "../lib/sm.h"
+#include "../raft.h"
+#include "../raft/recv_install_snapshot.h"
+#include "../raft/uv_os.h"
+#include "../utils.h"
 
 /**
  * =Overview
@@ -34,81 +40,12 @@
  * corresponding to the checksums and page numbers.
  */
 
-typedef unsigned int checksum_t;
-typedef unsigned long int pageno_t;
-
-struct page_checksum_t {
-	pageno_t   page_no;
-	checksum_t checksum;
-};
-
-struct page_from_to {
-	pageno_t from;
-	pageno_t to;
-};
-
-enum result {
-	OK = 0,
-	UNEXPECTED = 1,
-	DONE = 2,
-};
-
-struct raft_signature {
-	int version;
-
-	const char *db;
-	struct page_from_to page_from_to;
-	unsigned int cs_page_no;
-};
-
-struct raft_signature_result {
-	int version;
-
-	const char *db;
-	struct page_checksum_t *cs;
-	unsigned int cs_nr;
-	unsigned int cs_page_no;
-	enum result result;
-};
-
-struct raft_install_snapshot_mv {
-	int version;
-
-	const char *db;
-	struct page_from_to *mv;
-	unsigned int mv_nr;
-};
-
-struct raft_install_snapshot_mv_result {
-	int version;
-
-	const char *db;
-	pageno_t last_known_page_no; /* used for retries and message losses */
-	enum result result;
-};
-
-struct raft_install_snapshot_cp {
-	int version;
-
-	const char *db;
-	pageno_t page_no;
-	struct raft_buffer page_data;
-	enum result result;
-};
-
-struct raft_install_snapshot_cp_result {
-	int version;
-
-	pageno_t last_known_page_no; /* used for retries and message losses */
-	enum result result;
-};
-
 /**
  * =Operation
  *
  * 0. Leader creates one state machine per Follower to track of their states
- * and moves it to FOLLOWER_ONLINE state. Follower creates a state machine to
- * keep track of its states and moves it to NORMAL state.
+ * and moves it to F_ONLINE state. Follower creates a state machine to keep
+ * track of its states and moves it to NORMAL state.
  *
  * 1. The Leader learns the Follower’s follower.lastLogIndex during receiving
  * replies on AppendEntries() RPC, fails to find follower.lastLogIndex in its
@@ -117,45 +54,52 @@ struct raft_install_snapshot_cp_result {
  * understands that the snapshot installation procedure is required.
  *
  * Leader calls leader_tick() putting struct raft_message as a parameter which
- * logic moves it from FOLLOWER_ONLINE to FOLLOWER_NEEDS_SNAPSHOT state.
+ * logic moves it from F_ONLINE to F_NEEDS_SNAP state.
  *
- * 2. The Leader initiates the snapshot installation by sending
- * InstallSnapshot() message.
+ * 2. The Leader triggers the creation of its HT and initiates the snapshot
+ * installation by sending InstallSnapshot() message as soon as the HT is
+ * created.
  *
  * 3. Upon receiving this message on the Follower's side, Follower calls
- * follower_tick() putting struct raft_message as a parameter which logic moves
- * it from NORMAL to SIGNATURES_CALC_STARTED state. The Follower then creates
- * its HT and starts calculating checksums and recording them. Once finished it
- * sends the leader the InstallSnapshotResult() message and the Leader moves to
- * SIGNATURES_CALC_STARTED and creates its HT.
+ * follower_tick() putting struct raft_message as a parameter which triggers the
+ * creation of the HT on the follower side. Once HT is created follower moves
+ * to SIGS_CALC_STARTED and triggers a background job to calculate the checksum
+ * of its pages and inserting them in the HT.
  *
- * 3. The Leader sends Signature() messages to the Follower containing the page
+ * 4. The Leader probes the follower sending Signature(calculated?) messages
+ * and the Follower replies with either SignatureResult(calculated=false) if it
+ * is still calculating the chechsums or SignatureResult(calculated=true) if it
+ * has finished. If the process finishes, Follower moves into SIG_RECEIVING and
+ * Leader moves into REQ_SIG_LOOP.
+ *
+ * 5. The Leader sends Signature() messages to the Follower containing the page
  * range for which we want to get the checksums.
  *
  * The Follower sends the requested checksums in a SignatureResult() message
  * back to the Leader and the leader puts incomming payloads of Signature()
  * message into the HT.
  *
- * 4. When the follower sends the checksum of its highest numbered page to the
+ * 6. When the follower sends the checksum of its highest numbered page to the
  * Leader, it sends the SignatureResult() message using the done=true flag,
- * upon receiving it the Leader moves into SNAPSHOT_INSTALLATION_STARTED state.
+ * upon receiving it the Leader moves into READ_PAGES_LOOP state and the
+ * Follower moves into CHUNK_RECEIVING.
  *
- * 5. In SNAPSHOT_INSTALLATION_STARTED state, the Leader starts iterating over
+ * 7. In READ_PAGES_LOOP state, the Leader starts iterating over
  * the local persistent state, and calculates the checksum for each page the
  * state has. Then, it tries to find the checksum it calculated in HT. Based on
- * the result of this calculation, the Leader sends InstallShapshot(CP..) or
- * InstallShapshot(MV..) to the Follower.
+ * the result of this calculation, the Leader sends CP() or MV() to the
+ * Follower.
  *
- * Upon receving these messages, the Follower moves into
- * SNAPSHOT_CHUNCK_RECEIVED state. The Leader moves into SNAPSHOT_CHUNCK_SENT
- * state after receiving first reply from the Follower.
+ * The Follower receives the message and persists the page using a background
+ * job. Once the background job is finished, the Follower replies with
+ * CPResult() or MVResult().
  *
- * 6. When the iteration has finished the Leader sends
+ * 8. When the iteration has finished the Leader sends
  * InstallShapshot(..., done=true) message to the Follower. It moves the
  * Follower back to NORMAL state and the state machine corresponding to the
- * Follower on the Leader is moved to SNAPSHOT_DONE_SENT state.
+ * Follower on the Leader is moved to SNAPSHOT_DONE state.
  *
- * 7. The Leader sends AppendEntries() RPC to the Follower and restarts the
+ * 9. The Leader sends AppendEntries() RPC to the Follower and restarts the
  * algorithm from (1). The Leader's state machine is being moved to
  * FOLLOWER_ONLINE state.
  *
@@ -214,58 +158,94 @@ struct raft_install_snapshot_cp_result {
  *
   * Leader's state machine:
  *
- * +---------------------------------+
- * |                                 |     AppendEntriesResult() received
- * |        *Result(unexpected=true) |     raft_log.find(Rf) == "FOUND"
- * |        received                 |      +------------+
- * |        +---------------> FOLLOWER_ONLINE <----------+
- * |        |                        |
- * |        |                        | AppendEntriesResult() received
- * |        |                        V Rf << Rl && raft_log.find(Rf) == "ENOENTRY"
- * |        +------------- FOLLOWER_NEEDS_SNAPSHOT
- * |        |                        |
- * |        |                        | InstallSnapshotResult() received
- * |        |                        V
- * |        +------------ SIGNATURES_CALC_STARTED  -------+ SignatureResult() received
- * |        |                        |             <------+
- * |        |                        | SignatureResult(done=true) received
- * |        |                        V
- * |        +----------- SNAPSHOT_INSTALLATION_STARTED
- * |        |                        |
- * |        |                        | CP_Result()/MV_Result() received
- * |        |                        V
- * |        +--------------- SNAPSHOT_CHUNCK_SENT -------+ CP_Result()/MV_Result()
- * |        |                        |            <------+  received
- * |        |                        | Raw snapshot iteration done
- * |        |                        V
- * |        +--------------- SNAPSHOT_DONE_SENT
- * |                                 | InstallSnapshotResult() received
- * +---------------------------------+
+ * +-----------------------------+
+ * |                             |     AppendEntriesResult() received
+ * |    *Result(unexpected=true) |     raft_log.find(Rf) == "FOUND"
+ * |    received                 V    +------------+
+ * |        +------------->  F_ONLINE <------------+
+ * |        |                    |
+ * |        |                    | AppendEntriesResult() received
+ * |        |                    | Rf << Rl && raft_log.find(Rf) == "ENOENTRY"
+ * |        |                    V Trigger background job.
+ * |        +---------------  HT_WAIT
+ * |        |                    V HT creation finished,
+ * |        +-------------  F_NEEDS_SNAP*
+ * |        |                    | InstallSnapshot() sent,
+ * |        |                    V InstallSnapshotResult() received.
+ * |        +-----------  CHECK_F_HAS_SIGS* <-----------------------+ SignatureResult() had
+ * |        |                    | Signature(calculated?) sent,     | calculated=false and
+ * |        |                    V SignatureResult() received.      | timeout reached.
+ * |        +-------------   WAIT_SIGS -----------------------------+
+ * |        |                    V SignatureResult() had calculated=true.
+ * |        +-------------  REQ_SIG_LOOP* <-------------------------+
+ * |        |                    | Signature() sent,                | Signature persisted in HT,
+ * |        |                    V SignatureResult() received.      | there are some pending
+ * |        +-------------  RECV_SIG_PART                           | signatures.
+ * |        |                    V Background job triggered.        |
+ * |        +----------  PRESISTED_SIG_PART ------------------------+
+ * |        |                    | Signature persisted in HT,
+ * |        |                    V all signatures have been persisted.
+ * |        +-----------  READ_PAGES_LOOP <-------------------------+
+ * |        |                    V Background job triggered.        | There are pending pages to
+ * |        +--------------  PAGE_READ*                             | be sent.
+ * |        |                    | Page read from disk,             |
+ * |        |                    V CP()/MV() sent.                  |
+ * |        +--------------  PAGE_SENT -----------------------------+
+ * |        |                    V All pages sent and acked.
+ * |        +--------------  SNAP_DONE
+ * |        |                    | InstallSnapshot(done=true) sent,
+ * |        |                    V and reply received.
+ * |        +----------------  FINAL
+ * |                             |
+ * +-----------------------------+
+ *
+ * Note all states marked with (*) have an extra transition not represented in
+ * the diagram above. When the leader sends a message there is always a timeout
+ * sheduled. If the reply is not received and the timeout expires, we will stay
+ * in the same state and re-send the message.
  *
  * Follower's state machine:
  *
  *                            +------+ (%)
  * +-------------------> NORMAL <----+
  * |       +----------->   |
- * |       |               | InstallSnapshot() received
+ * |       |               | InstallSnapshot() received.
  * |       |               V
- * |       +--- SIGNATURES_CALC_STARTED
- * |       |               |
- * |       |               | Signatures for all db pages have been calculated.
+ * |       +---------  HT_CREATE
+ * |       |               V Trigger background job.
+ * |       +----------  HT_WAIT
+ * |       |               | Background job finishes,
  * |       |               | InstallSnapshotResult() sent.
  * |       |               V
- * |       +---- SIGNATURES_CALC_DONE
- * |       |               |
- * |       |               | First SignatureResult() sent
+ * |       +------  SIGS_CALC_STARTED
+ * |       |               V Trigger background job.
+ * |       +------  SIGS_CALC_LOOP <--------------------------+
+ * |       |               V Signature(calculated?) received. | SignatureResult(calculated=false) sent.
+ * |       +---  SIGS_CALC_MSG_RECEIVED ----------------------+
+ * |       |               | Signatures for all db pages have been calculated.
+ * |       |               V SignatureResult(calculated=true) sent.
+ * |       |        SIGS_CALC_DONE
  * |       |               V
- * |       +---- SIGNATURES_PART_SENT ---------+ Signature() received
- * |       |               |          <--------+ SignatureResult() sent
- * |       |               |
- * |       |               | CP()/MV() received
- * |       |               V
- * |       +--- SNAPSHOT_CHUNCK_RECEIVED -------+ CP()/MV() received
- * |    (@ || %)           |             <------+
- * |                       | InstallSnapshot(done=true) received
+ * |       +-------  SIG_RECEIVING <--------------------------+
+ * |       |               V Signature() received.            |
+ * |       +-------  SIG_PROCESSED                            |
+ * |       |               V Background job triggered.        | Signature() had done=false,
+ * |       +---------   SIG_READ                              | SignatureResult() sent.
+ * |       |               V Checksum is read from HT.        |
+ * |       +---------  SIG_REPLIED ---------------------------+
+ * |       |               | Signature() had done=true,
+ * |       |               V SignatureResult() sent.
+ * |       +-------  CHUNK_RECEIVING <------------------------+
+ * |       |               V CP()/MV() received.              |
+ * |       +-------  CHUNK_PROCESSED                          |
+ * |       |               V Background job triggered.        |
+ * |       +-------  CHUNK_APPLIED                            |
+ * |       |               V Chunk has been written to disk.  |
+ * |       +-------  CHUNK_REPLIED ---------------------------+
+ * |    (@ || %)           | CP()/MV() had done=true.
+ * |                       V CPResult()/MVResult() sent.
+ * |                     FINAL
+ * |                       |
  * +-----------------------+
  *
  * (@) -- AppendEntries() received && Tf < Tl
@@ -273,87 +253,551 @@ struct raft_install_snapshot_cp_result {
  *        message of such type is unexpected. *Result(unexpected=true) sent.
  */
 
-enum follower_states {
-	FS_NORMAL,
-	FS_SIGNATURES_CALC_STARTED,
-	FS_SIGNATURES_CALC_DONE,
-	FS_SIGNATURES_PART_SENT,
-	FS_SNAPSHOT_CHUNCK_RECEIVED,
-	FS_NR,
+/* TODO this uses several GNU extensions, do we use it?
+#define RC(rc) ({ \
+	typeof(rc) __rc = (rc); \
+	printf("< rc=%d\n", __rc); \
+	__rc; \
+}) */
+
+enum rpc_state {
+	RPC_INIT,
+	RPC_SENT,
+	RPC_TIMEDOUT,
+	RPC_REPLIED,
+	RPC_ERROR,
+	RPC_END,
+	RPC_NR,
 };
 
-static const struct sm_conf follower_states[FS_NR] = {
-	[FS_NORMAL] = {
-		.flags = SM_INITIAL | SM_FINAL,
-		.name = "normal",
-		.allowed = BITS(FS_SIGNATURES_CALC_STARTED),
+static const struct sm_conf rpc_sm_conf[RPC_NR] = {
+	[RPC_INIT] = {
+		.flags   = SM_INITIAL | SM_FINAL,
+		.name    = "init",
+		.allowed = BITS(RPC_SENT) | BITS(RPC_ERROR),
 	},
-/*	[PS_DRAINING] = {
-	    .name = "draining",
-	    .allowed = BITS(PS_DRAINING)
-		     | BITS(PS_NOTHING)
-		     | BITS(PS_BARRIER),
+	[RPC_SENT] = {
+		.name    = "sent",
+		.allowed = BITS(RPC_TIMEDOUT)
+		         | BITS(RPC_REPLIED)
+		         | BITS(RPC_ERROR)
+				 | BITS(RPC_END),
 	},
-*/
+	[RPC_TIMEDOUT] = {
+		.name    = "timedout",
+		.allowed = BITS(RPC_INIT),
+	},
+	[RPC_REPLIED] = {
+		.name    = "replied",
+		.allowed = BITS(RPC_INIT)
+				 | BITS(RPC_END),
+	},
+	[RPC_ERROR] = {
+		.name    = "error",
+		.allowed = BITS(RPC_INIT),
+	},
+	[RPC_END] = {
+		.name    = "end",
+		.allowed = BITS(RPC_INIT),
+	},
 };
 
- __attribute__((unused)) static void follower_tick(struct sm *follower, const struct raft_message *msg)
-{
-	(void) follower;
-	(void) msg;
-	(void) follower_states;
-	//switch (sm_state(follower)) {
-	//}
-}
+enum work_state {
+	WORK_INIT,
+	WORK_DONE,
+	WORK_ERROR,
+	WORK_NR,
+};
 
-__attribute__((unused)) static bool follower_invariant(const struct sm *m, int prev_state)
+static const struct sm_conf work_sm_conf[WORK_NR] = {
+	[WORK_INIT] = {
+		.flags   = SM_INITIAL | SM_FINAL,
+		.name    = "w_init",
+		.allowed = BITS(WORK_DONE) | BITS(WORK_ERROR),
+	},
+	[WORK_DONE] = {
+		.flags   = SM_FINAL,
+		.name    = "w_done",
+	},
+	[WORK_ERROR] = {
+		.flags   = SM_FINAL,
+		.name    = "w_error",
+	},
+};
+
+enum to_state {
+	TO_INIT,
+	TO_STARTED,
+	TO_EXPIRED,
+	TO_CANCELED,
+	TO_NR,
+};
+
+static const struct sm_conf to_sm_conf[TO_NR] = {
+	[TO_INIT] = {
+		.flags   = SM_INITIAL | SM_FINAL,
+		.name    = "to_init",
+		.allowed = BITS(TO_STARTED),
+	},
+	[TO_STARTED] = {
+		.flags   = SM_FINAL,
+		.name    = "to_started",
+		.allowed = BITS(TO_EXPIRED) | BITS(TO_CANCELED),
+	},
+	[TO_EXPIRED] = {
+		.flags   = SM_FINAL,
+		.name    = "to_expired",
+	},
+	[TO_CANCELED] = {
+		.flags   = SM_FINAL,
+		.name    = "w_canceled",
+	},
+};
+
+#define M_MSG_SENT   ((const struct raft_message *) 3)
+#define M_TIMEOUT    ((const struct raft_message *) 2)
+#define M_WORK_DONE  ((const struct raft_message *) 1)
+
+static bool is_main_thread(void)
 {
-	(void) m;
-	(void) prev_state;
-	//pool_impl_t *pi = CONTAINER_OF(m, pool_impl_t, planner_sm);
+	// TODO: thread local storage.
 	return true;
 }
 
-enum leader_states {
-	LS_FOLLOWER_ONLINE,
-	LS_FOLLOWER_NEEDS_SNAPSHOT,
-	LS_SIGNATURES_CALC_STARTED,
-	LS_SNAPSHOT_INSTALLATION_STARTED,
-	LS_SNAPSHOT_CHUNCK_SENT,
-	LS_SNAPSHOT_DONE_SENT,
-	LS_NR,
-};
-
-static const struct sm_conf leader_states[LS_NR] = {
-	[LS_FOLLOWER_ONLINE] = {
-		.flags = SM_INITIAL | SM_FINAL,
-		.name = "online",
-		.allowed = BITS(LS_FOLLOWER_NEEDS_SNAPSHOT),
-	},
-/*	[PS_DRAINING] = {
-	    .name = "draining",
-	    .allowed = BITS(PS_DRAINING)
-		     | BITS(PS_NOTHING)
-		     | BITS(PS_BARRIER),
-	},
-*/
-};
-
-__attribute__((unused)) static void leader_tick(struct sm *leader, const struct raft_message *msg)
+static bool work_sm_invariant(const struct sm *sm, int prev_state)
 {
-	(void) leader;
-	(void) msg;
-	(void) leader_states;
-	//switch (sm_state(leader)) {
-	//}
+	(void)sm;
+	(void)prev_state;
+	return true;
 }
 
-__attribute__((unused)) static bool leader_invariant(const struct sm *m, int prev_state)
+bool leader_sm_invariant(const struct sm *sm, int prev_state)
 {
-	(void) m;
-	(void) prev_state;
-	//pool_impl_t *pi = CONTAINER_OF(m, pool_impl_t, planner_sm);
+	(void)sm;
+	(void)prev_state;
 	return true;
+}
+
+bool follower_sm_invariant(const struct sm *sm, int prev_state)
+{
+	(void)sm;
+	(void)prev_state;
+	return true;
+}
+
+static bool rpc_sm_invariant(const struct sm *sm, int prev_state)
+{
+	(void)sm;
+	(void)prev_state;
+	return true;
+}
+
+static bool to_sm_invariant(const struct sm *sm, int prev_state)
+{
+	(void)sm;
+	(void)prev_state;
+	return true;
+}
+
+static void leader_work_done(struct work *w)
+{
+	struct leader *leader = CONTAINER_OF(w, struct leader, work);
+	sm_move(&w->sm, WORK_DONE);
+	leader_tick(leader, M_WORK_DONE);
+}
+
+static void follower_work_done(struct work *w)
+{
+	struct follower *follower = CONTAINER_OF(w, struct follower, work);
+	sm_move(&w->sm, WORK_DONE);
+	follower_tick(follower, M_WORK_DONE);
+}
+
+static void to_init(struct timeout *to)
+{
+	// static const char *to_sm_name = "to";
+	// to->sm = (struct sm){ .name = to_sm_name };
+	sm_init(&to->sm, to_sm_invariant, NULL, to_sm_conf, TO_INIT);
+}
+
+static void leader_to_cb(struct timeout *t, int rc)
+{
+	(void)rc;
+	struct leader *leader = CONTAINER_OF(t, struct leader, timeout);
+	sm_move(&t->sm, TO_EXPIRED);
+	leader_tick(leader, M_TIMEOUT);
+}
+
+static void to_start(struct timeout *to, unsigned delay, to_cb_op to_cb)
+{
+	(void)delay;
+	struct leader *leader = CONTAINER_OF(to, struct leader, timeout);
+
+	to_init(to);
+	leader->ops->to_start(&leader->timeout, 10000, to_cb);
+	// sm_to_sm_obs(&leader->sm, &to->sm);
+	sm_move(&to->sm, TO_STARTED);
+}
+
+static void leader_sent_cb(struct sender *s, int rc)
+{
+	struct rpc *rpc = CONTAINER_OF(s, struct rpc, sender);
+	struct leader *leader = CONTAINER_OF(rpc, struct leader, rpc);
+
+	if (UNLIKELY(rc != 0)) {
+		sm_move(&rpc->sm, RPC_ERROR);
+		return;
+	}
+
+	sm_move(&rpc->sm, RPC_SENT);
+	leader->ops->to_start(&rpc->timeout, 10000, leader_to_cb);
+	leader_tick(leader, M_MSG_SENT);
+}
+
+static void follower_sent_cb(struct sender *s, int rc)
+{
+	struct rpc *rpc = CONTAINER_OF(s, struct rpc, sender);
+	struct follower *follower = CONTAINER_OF(rpc, struct follower, rpc);
+
+	if (UNLIKELY(rc != 0)) {
+		sm_move(&rpc->sm, RPC_ERROR);
+		return;
+	}
+
+	sm_move(&rpc->sm, RPC_SENT);
+	follower_tick(follower, M_MSG_SENT);
+}
+
+static bool is_a_trigger_leader(const struct leader *leader, const struct raft_message *incoming)
+{
+	(void)leader;
+	/* Leader has no triggers on sending a message, it reacts when follower
+	 * replies */
+	return incoming != M_MSG_SENT;
+}
+
+static bool is_a_trigger_follower(const struct follower *follower,
+		const struct raft_message *incoming)
+{
+	switch (sm_state(&follower->sm)) {
+	case FS_SIGS_CALC_LOOP:
+		return incoming != M_WORK_DONE;
+	case FS_SIG_PROCESSED:
+	case FS_CHUNCK_PROCESSED:
+		return incoming == M_WORK_DONE;
+	}
+	return true;
+}
+
+static bool is_a_duplicate(const void *state,
+		const struct raft_message *incoming)
+{
+	(void)state;
+	(void)incoming;
+	return false;
+}
+
+static void work_init(struct work *w)
+{
+	// static const char *work_sm_name = "work";
+	// w->sm = (struct sm){ .name = work_sm_name };
+	sm_init(&w->sm, work_sm_invariant, NULL, work_sm_conf, WORK_INIT);
+}
+
+static void rpc_init(struct rpc *rpc)
+{
+	// static const char *rpc_sm_name = "rpc";
+	// rpc->sm = (struct sm){ .name = rpc_sm_name };
+	sm_init(&rpc->sm, rpc_sm_invariant, NULL, rpc_sm_conf, RPC_INIT);
+}
+
+static void rpc_fini(struct rpc *rpc)
+{
+	sm_move(&rpc->sm, RPC_END);
+}
+
+
+static void work_fill_leader(struct leader *leader)
+{
+	leader->work_cb = leader->ops->ht_create;
+	work_init(&leader->work);
+	// sm_to_sm_obs(&leader->sm, &leader->work.sm);
+}
+
+static void work_fill_follower(struct follower *follower)
+{
+	switch (sm_state(&follower->sm)) {
+	case FS_HT_CREATE:
+		follower->work_cb = follower->ops->ht_create;
+		break;
+	case FS_SIGS_CALC_STARTED:
+		follower->work_cb = follower->ops->fill_ht;
+		break;
+	case FS_SIG_RECEIVING:
+		follower->work_cb = follower->ops->read_sig;
+		break;
+	case FS_CHUNCK_RECEIVING:
+		follower->work_cb = follower->ops->write_chunk;
+		break;
+	}
+	work_init(&follower->work);
+	// sm_to_sm_obs(&follower->sm, &follower->work.sm);
+}
+
+static void rpc_fill_leader(struct leader *leader)
+{
+	rpc_init(&leader->rpc);
+	// sm_to_sm_obs(&leader->sm, &leader->rpc.sm);
+}
+
+static void rpc_fill_follower(struct follower *follower)
+{
+	rpc_init(&follower->rpc);
+	// sm_to_sm_obs(&follower->sm, &follower->rpc.sm);
+}
+
+static int rpc_send(struct rpc *rpc, sender_send_op op, to_cb_op to_cb,
+		sender_cb_op sent_cb)
+{
+	(void)to_cb;
+	int rc = op(&rpc->sender, &rpc->message, sent_cb);
+	return rc;
+}
+
+static void follower_rpc_tick(struct rpc *rpc)
+{
+	switch(sm_state(&rpc->sm)) {
+	case RPC_INIT:
+		break;
+	case RPC_SENT:
+	case RPC_TIMEDOUT:
+	case RPC_REPLIED:
+	case RPC_ERROR:
+	case RPC_END:
+	default:
+		break;
+	}
+}
+
+static void leader_rpc_tick(struct rpc *rpc)
+{
+	switch(sm_state(&rpc->sm)) {
+	case RPC_INIT:
+		break;
+	case RPC_SENT:
+		sm_move(&rpc->sm, RPC_REPLIED);
+		break;
+	case RPC_TIMEDOUT:
+	case RPC_REPLIED:
+	case RPC_ERROR:
+	case RPC_END:
+	default:
+		break;
+	}
+}
+
+static void leader_reset(struct leader *leader)
+{
+	(void)leader;
+}
+
+static bool is_an_unexpected_trigger(const struct leader *leader,
+				     const struct raft_message *msg)
+{
+	(void)leader;
+
+	if (msg == M_MSG_SENT || msg == M_TIMEOUT || msg == M_WORK_DONE) {
+		return false;
+	}
+
+	enum raft_result res = RAFT_RESULT_UNEXPECTED;
+	switch (msg->type) {
+	case RAFT_IO_APPEND_ENTRIES:
+		res = RAFT_RESULT_OK;
+		break;
+	case RAFT_IO_INSTALL_SNAPSHOT:
+		res = msg->install_snapshot.result;
+		break;
+	case RAFT_IO_INSTALL_SNAPSHOT_RESULT:
+		res = msg->install_snapshot_result.result;
+		break;
+	case RAFT_IO_INSTALL_SNAPSHOT_CP:
+		res = msg->install_snapshot_cp.result;
+		break;
+	case RAFT_IO_INSTALL_SNAPSHOT_CP_RESULT:
+		res = msg->install_snapshot_cp_result.result;
+		break;
+	case RAFT_IO_INSTALL_SNAPSHOT_MV:
+		res = msg->install_snapshot_mv.result;
+		break;
+	case RAFT_IO_INSTALL_SNAPSHOT_MV_RESULT:
+		res = msg->install_snapshot_mv_result.result;
+		break;
+	case RAFT_IO_SIGNATURE:
+		res = msg->signature.result;
+		break;
+	case RAFT_IO_SIGNATURE_RESULT:
+		res = msg->signature_result.result;
+		break;
+	}
+	return res == RAFT_RESULT_UNEXPECTED;
+}
+
+static int follower_next_state(struct sm *sm)
+{
+	struct follower *follower = CONTAINER_OF(sm, struct follower, sm);
+
+	switch (sm_state(sm)) {
+	case FS_SIGS_CALC_LOOP:
+		return follower->sigs_calculated ? FS_SIGS_CALC_DONE : FS_SIGS_CALC_MSG_RECEIVED;
+	case FS_SIGS_CALC_MSG_RECEIVED:
+		return FS_SIGS_CALC_LOOP;
+	case FS_SIG_REPLIED:
+		return FS_CHUNCK_RECEIVING;
+	case FS_FINAL:
+		return FS_NORMAL;
+	}
+	return sm_state(sm) + 1;
+}
+
+static int leader_next_state(struct sm *sm)
+{
+	struct leader *leader = CONTAINER_OF(sm, struct leader, sm);
+
+	switch (sm_state(sm)) {
+	case LS_WAIT_SIGS:
+		return sm_state(sm) + (leader->sigs_calculated ? +1 : -1);
+	case LS_FINAL:
+		return LS_F_ONLINE;
+	}
+
+	return sm_state(sm) + 1;
+}
+
+__attribute__((unused)) void leader_tick(struct leader *leader, const struct raft_message *incoming)
+{
+	(void)leader_sm_conf;
+	(void)leader_sm_invariant;
+	int rc;
+	struct sm *sm = &leader->sm;
+	const struct leader_ops *ops = leader->ops;
+
+	PRE(is_main_thread());
+
+	if (!is_a_trigger_leader(leader, incoming) ||
+	    is_a_duplicate(leader, incoming))
+		return;
+
+	if (is_an_unexpected_trigger(leader, incoming)) {
+		leader_reset(leader);
+		return;
+	}
+
+again:
+	switch(sm_state(sm)) {
+	case LS_F_ONLINE:
+	case LS_RECV_SIG_PART:
+	case LS_READ_PAGES_LOOP:
+		work_fill_leader(leader);
+		ops->work_queue(&leader->work, leader->work_cb, leader_work_done);
+		sm_move(sm, leader_next_state(sm));
+		break;
+	case LS_HT_WAIT:
+	case LS_PAGE_SENT:
+	case LS_PERSISTED_SIG_PART:
+		sm_move(sm, leader_next_state(sm));
+		goto again;
+	case LS_FINAL:
+		sm_move(sm, leader_next_state(sm));
+		break;
+	case LS_PAGE_READ:
+	case LS_SNAP_DONE:
+	case LS_F_NEEDS_SNAP:
+	case LS_REQ_SIG_LOOP:
+	case LS_CHECK_F_HAS_SIGS:
+		leader_rpc_tick(&leader->rpc);
+		if (sm_state(&leader->rpc.sm) == RPC_REPLIED) {
+			rpc_fini(&leader->rpc);
+			sm_move(sm, leader_next_state(sm));
+			goto again;
+		}
+
+		rpc_fill_leader(leader);
+		rc = rpc_send(&leader->rpc, ops->sender_send, leader_to_cb, leader_sent_cb);
+		if (rc == 0) {
+			break;
+		}
+		goto again;
+	case LS_WAIT_SIGS:
+		if (leader_next_state(sm) > sm_state(sm)) {
+			sm_move(sm, leader_next_state(sm));
+			goto again;
+		}
+
+		to_start(&leader->timeout, 10000, leader_to_cb);
+		sm_move(sm, leader_next_state(sm));
+		break;
+	default:
+		IMPOSSIBLE("");
+	}
+}
+
+__attribute__((unused)) void follower_tick(struct follower *follower, const struct raft_message *incoming)
+{
+	(void)follower_sm_conf;
+	(void)follower_sm_invariant;
+	int rc;
+	struct sm *sm = &follower->sm;
+	const struct follower_ops *ops = follower->ops;
+
+	if (!is_a_trigger_follower(follower, incoming) ||
+	    is_a_duplicate(follower, incoming))
+		return;
+
+	PRE(is_main_thread());
+
+again:
+	switch (sm_state(&follower->sm)) {
+	case FS_NORMAL:
+	case FS_SIGS_CALC_LOOP:
+	case FS_SIG_READ:
+	case FS_CHUNCK_APPLIED:
+		follower_rpc_tick(&follower->rpc);
+		if (sm_state(&follower->rpc.sm) == RPC_SENT) {
+			rpc_fini(&follower->rpc);
+			sm_move(sm, follower_next_state(sm));
+			goto again;
+		}
+		rpc_fill_follower(follower);
+		rc = rpc_send(&follower->rpc, ops->sender_send, NULL, follower_sent_cb);
+		if (rc == 0) {
+			break;
+		}
+		goto again;
+	case FS_SIG_PROCESSED:
+	case FS_CHUNCK_PROCESSED:
+	case FS_CHUNCK_REPLIED:
+	case FS_HT_WAIT:
+		sm_move(sm, follower_next_state(sm));
+		goto again;
+	case FS_HT_CREATE:
+	case FS_SIGS_CALC_STARTED:
+	case FS_SIG_RECEIVING:
+	case FS_CHUNCK_RECEIVING:
+		work_fill_follower(follower);
+		ops->work_queue(&follower->work, follower->work_cb, follower_work_done);
+		sm_move(sm, follower_next_state(sm));
+		break;
+	case FS_SIG_REPLIED:
+	case FS_SIGS_CALC_DONE:
+	case FS_SIGS_CALC_MSG_RECEIVED:
+	case FS_FINAL:
+		sm_move(sm, follower_next_state(sm));
+		break;
+	default:
+		IMPOSSIBLE("");
+	}
+
 }
 
 static void installSnapshotSendCb(struct raft_io_send *req, int status)
