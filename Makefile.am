@@ -274,6 +274,7 @@ raft_core_fuzzy_test_LDFLAGS = -no-install
 raft_core_fuzzy_test_LDADD = libtest.la libraft.la
 
 raft_uv_unit_test_SOURCES = \
+  src/tracing.c \
   src/raft/err.c \
   src/raft/heap.c \
   src/raft/syscall.c \

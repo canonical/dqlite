@@ -415,9 +415,7 @@ static void follower_work_done(struct work *w)
 
 static void to_init(struct timeout *to)
 {
-	// static const char *to_sm_name = "to";
-	// to->sm = (struct sm){ .name = to_sm_name };
-	sm_init(&to->sm, to_sm_invariant, NULL, to_sm_conf, TO_INIT);
+	sm_init(&to->sm, to_sm_invariant, NULL, to_sm_conf, "to", TO_INIT);
 }
 
 static void leader_to_cb(struct timeout *t, int rc)
@@ -435,7 +433,7 @@ static void to_start(struct timeout *to, unsigned delay, to_cb_op to_cb)
 
 	to_init(to);
 	leader->ops->to_start(&leader->timeout, 10000, to_cb);
-	// sm_to_sm_obs(&leader->sm, &to->sm);
+	sm_relate(&leader->sm, &to->sm);
 	sm_move(&to->sm, TO_STARTED);
 }
 
@@ -499,16 +497,12 @@ static bool is_a_duplicate(const void *state,
 
 static void work_init(struct work *w)
 {
-	// static const char *work_sm_name = "work";
-	// w->sm = (struct sm){ .name = work_sm_name };
-	sm_init(&w->sm, work_sm_invariant, NULL, work_sm_conf, WORK_INIT);
+	sm_init(&w->sm, work_sm_invariant, NULL, work_sm_conf, "work", WORK_INIT);
 }
 
 static void rpc_init(struct rpc *rpc)
 {
-	// static const char *rpc_sm_name = "rpc";
-	// rpc->sm = (struct sm){ .name = rpc_sm_name };
-	sm_init(&rpc->sm, rpc_sm_invariant, NULL, rpc_sm_conf, RPC_INIT);
+	sm_init(&rpc->sm, rpc_sm_invariant, NULL, rpc_sm_conf, "rpc", RPC_INIT);
 }
 
 static void rpc_fini(struct rpc *rpc)
@@ -521,7 +515,7 @@ static void work_fill_leader(struct leader *leader)
 {
 	leader->work_cb = leader->ops->ht_create;
 	work_init(&leader->work);
-	// sm_to_sm_obs(&leader->sm, &leader->work.sm);
+	sm_relate(&leader->sm, &leader->work.sm);
 }
 
 static void work_fill_follower(struct follower *follower)
@@ -541,19 +535,19 @@ static void work_fill_follower(struct follower *follower)
 		break;
 	}
 	work_init(&follower->work);
-	// sm_to_sm_obs(&follower->sm, &follower->work.sm);
+	sm_relate(&follower->sm, &follower->work.sm);
 }
 
 static void rpc_fill_leader(struct leader *leader)
 {
 	rpc_init(&leader->rpc);
-	// sm_to_sm_obs(&leader->sm, &leader->rpc.sm);
+	sm_relate(&leader->sm, &leader->rpc.sm);
 }
 
 static void rpc_fill_follower(struct follower *follower)
 {
 	rpc_init(&follower->rpc);
-	// sm_to_sm_obs(&follower->sm, &follower->rpc.sm);
+	sm_relate(&follower->sm, &follower->rpc.sm);
 }
 
 static int rpc_send(struct rpc *rpc, sender_send_op op, to_cb_op to_cb,

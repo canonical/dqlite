@@ -1,6 +1,9 @@
 #include "sm.h"
+#include <stdatomic.h>
 #include <stddef.h> /* NULL */
 #include <stdio.h> /* fprintf */
+#include <string.h>
+#include <unistd.h>
 #include "../tracing.h"
 #include "../utils.h"
 
@@ -16,18 +19,37 @@ int sm_state(const struct sm *m)
 	return m->state;
 }
 
+static inline void sm_obs(const struct sm *m)
+{
+	tracef("%s pid: %d sm_id: %lu %s |\n",
+		m->name, m->pid, m->id, m->conf[sm_state(m)].name);
+}
+
+void sm_relate(const struct sm *from, const struct sm *to)
+{
+	tracef("%s-to-%s opid: %d dpid: %d id: %lu id: %lu |\n",
+		from->name, to->name, from->pid, to->pid, from->id, to->id);
+}
+
 void sm_init(struct sm *m,
 	     bool (*invariant)(const struct sm *, int),
 	     bool (*is_locked)(const struct sm *),
 	     const struct sm_conf *conf,
+		 const char *name,
 	     int state)
 {
+	static atomic_uint_least64_t id = 0;
+
 	PRE(conf[state].flags & SM_INITIAL);
 
 	m->conf = conf;
 	m->state = state;
 	m->invariant = invariant;
 	m->is_locked = is_locked;
+	m->id = ++id;
+	m->pid = getpid();
+	snprintf(m->name, SM_MAX_NAME_LENGTH, "%s", name);
+	sm_obs(m);
 
 	POST(m->invariant != NULL && m->invariant(m, SM_PREV_NONE));
 }
@@ -42,11 +64,10 @@ void sm_move(struct sm *m, int next_state)
 {
 	int prev = sm_state(m);
 
-	tracef("SM_MOVE %s => %s", m->conf[prev].name, m->conf[next_state].name);
-
 	PRE(sm_is_locked(m));
 	PRE(m->conf[sm_state(m)].allowed & BITS(next_state));
 	m->state = next_state;
+	sm_obs(m);
 	POST(m->invariant != NULL && m->invariant(m, prev));
 }
 
@@ -65,7 +86,7 @@ void sm_fail(struct sm *m, int fail_state, int rc)
 
 static __attribute__((noinline)) bool check_failed(const char *f, int n, const char *s)
 {
-	fprintf(stderr, "%s:%d check failed: %s\n", f, n, s);
+	tracef("%s:%d check failed: %s\n", f, n, s);
 	return false;
 }
 

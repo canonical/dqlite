@@ -90,7 +90,7 @@ TEST_CASE(sm, simple, NULL)
 	struct op_states_sm sm = {};
 	struct sm *m = &sm.sm;
 
-	sm_init(&sm.sm, sm_invariant, NULL, op_states, S_ONLINE);
+	sm_init(&sm.sm, sm_invariant, NULL, op_states, "test", S_ONLINE);
 
 	sm.sm_trigger = BITS(T_CHECKED);
 	sm_move(m, S_ONLINE);
