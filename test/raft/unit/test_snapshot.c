@@ -177,11 +177,10 @@ TEST(snapshot, follower, set_up, tear_down, 0, NULL) {
 
 	struct follower follower = {
 		.ops = &ops,
-		// .sm = { .name = "leader" },
 	};
 
 	sm_init(&follower.sm, follower_sm_invariant,
-		NULL, follower_sm_conf, FS_NORMAL);
+		NULL, follower_sm_conf, "follower", FS_NORMAL);
 
 	PRE(sm_state(&follower.sm) == FS_NORMAL);
 	ut_follower_message_received(&follower, ut_install_snapshot());
@@ -237,7 +236,6 @@ TEST(snapshot, leader, set_up, tear_down, 0, NULL) {
 
 	struct leader leader = {
 		.ops = &ops,
-		// .sm = { .name = "leader" },
 
 		.sigs_more = false,
 		.pages_more = false,
@@ -245,7 +243,7 @@ TEST(snapshot, leader, set_up, tear_down, 0, NULL) {
 	};
 
 	sm_init(&leader.sm, leader_sm_invariant,
-		NULL, leader_sm_conf, LS_F_ONLINE);
+		NULL, leader_sm_conf, "leader", LS_F_ONLINE);
 
 	PRE(sm_state(&leader.sm) == LS_F_ONLINE);
 	ut_leader_message_received(&leader, append_entries());

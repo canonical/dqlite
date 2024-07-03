@@ -236,7 +236,7 @@ static void planner(void *arg)
 	queue *u = &pi->unordered;
 	queue *q;
 
-	sm_init(planner_sm, planner_invariant, NULL, planner_states,
+	sm_init(planner_sm, planner_invariant, NULL, planner_states, "ps",
 		PS_NOTHING);
 	uv_sem_post(sem);
 	uv_mutex_lock(mutex);

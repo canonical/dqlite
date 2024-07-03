@@ -3,7 +3,11 @@
 #ifndef TEST_RUNNER_H_
 #define TEST_RUNNER_H_
 
+#include <signal.h>
+
 #include "munit.h"
+
+#include "../../../src/tracing.h"
 
 /* Top-level suites array declaration.
  *
@@ -18,14 +22,16 @@ extern int _main_suites_n;
 
 /* Define the top-level suites array and the main() function of the test. */
 #define RUNNER(NAME)                                               \
-    MunitSuite _main_suites[SUITE__CAP];                           \
-    int _main_suites_n = 0;                                        \
+	MunitSuite _main_suites[SUITE__CAP];                           \
+	int _main_suites_n = 0;                                        \
                                                                    \
-    int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])        \
-    {                                                              \
-        MunitSuite suite = {(char *)"", NULL, _main_suites, 1, 0}; \
-        return munit_suite_main(&suite, (void *)NAME, argc, argv); \
-    }
+	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])        \
+	{                                                              \
+		signal(SIGPIPE, SIG_IGN);                                  \
+		dqliteTracingMaybeEnable(true);                            \
+		MunitSuite suite = {(char *)"", NULL, _main_suites, 1, 0}; \
+		return munit_suite_main(&suite, (void *)NAME, argc, argv); \
+	}
 
 /* Declare and register a new test suite #S belonging to the file's test module.
  *

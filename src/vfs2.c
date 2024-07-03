@@ -1207,7 +1207,7 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 
 	*e = (struct entry){};
 	e->common = common;
-	sm_init(&e->wtx_sm, wtx_invariant, NULL, wtx_states, WTX_CLOSED);
+	sm_init(&e->wtx_sm, wtx_invariant, NULL, wtx_states, "wtx", WTX_CLOSED);
 
 	e->refcount_main_db = 1;
 
