@@ -103,6 +103,11 @@ int UvList(struct uv *uv,
 		*segments = NULL;
 	}
 
+	if (rv != 0 && *snapshots != NULL) {
+		raft_free(*snapshots);
+		*snapshots = NULL;
+	}
+
 	if (*snapshots != NULL) {
 		UvSnapshotSort(*snapshots, *n_snapshots);
 	}
