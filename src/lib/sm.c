@@ -1,4 +1,5 @@
 #include "sm.h"
+#include <inttypes.h>
 #include <stdatomic.h>
 #include <stddef.h> /* NULL */
 #include <stdio.h> /* fprintf */
@@ -21,13 +22,13 @@ int sm_state(const struct sm *m)
 
 static inline void sm_obs(const struct sm *m)
 {
-	tracef("%s pid: %d sm_id: %lu %s |\n",
+	tracef("%s pid: %d sm_id: %" PRIu64 " %s |\n",
 		m->name, m->pid, m->id, m->conf[sm_state(m)].name);
 }
 
 void sm_relate(const struct sm *from, const struct sm *to)
 {
-	tracef("%s-to-%s opid: %d dpid: %d id: %lu id: %lu |\n",
+	tracef("%s-to-%s opid: %d dpid: %d id: %" PRIu64 " id: %" PRIu64 " |\n",
 		from->name, to->name, from->pid, to->pid, from->id, to->id);
 }
 
