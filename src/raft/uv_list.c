@@ -100,6 +100,12 @@ int UvList(struct uv *uv,
 
 	if (rv != 0 && *segments != NULL) {
 		raft_free(*segments);
+		*segments = NULL;
+	}
+
+	if (rv != 0 && *snapshots != NULL) {
+		raft_free(*snapshots);
+		*snapshots = NULL;
 	}
 
 	if (*snapshots != NULL) {
