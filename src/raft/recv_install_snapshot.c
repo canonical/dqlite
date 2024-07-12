@@ -279,10 +279,9 @@ static const struct sm_conf rpc_sm_conf[RPC_NR] = {
 		         | BITS(RPC_ERROR),
 	},
 	[RPC_FILLED] = {
-		.flags   = SM_INITIAL | SM_FINAL,
 		.name    = "filled",
 		.allowed = BITS(RPC_SENT)
-		        | BITS(RPC_ERROR),
+		         | BITS(RPC_ERROR),
 	},
 	[RPC_SENT] = {
 		.name    = "sent",
@@ -795,10 +794,10 @@ again:
 		}
 		rpc_fill_follower(follower);
 		rc = rpc_send(&follower->rpc, ops->sender_send, follower_sent_cb);
-		if (rc == 0) {
-			break;
+		if (rc != 0) {
+			goto again;
 		}
-		goto again;
+		break;
 	case FS_SIG_PROCESSED:
 	case FS_CHUNCK_PROCESSED:
 	case FS_CHUNCK_REPLIED:
