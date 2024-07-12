@@ -1,4 +1,5 @@
 #include <string.h>
+#include <uv.h>
 
 #include "assert.h"
 #include "uv.h"
@@ -36,7 +37,6 @@ int UvList(struct uv *uv,
 	int n;
 	int i;
 	int rv;
-	int rv2;
 
 	n = uv_fs_scandir(NULL, &req, uv->dir, 0, NULL);
 	if (n < 0) {
@@ -64,10 +64,8 @@ int UvList(struct uv *uv,
 		/* If an error occurred while processing a preceeding entry or
 		 * if we know that this is not a segment filename, just free it
 		 * and skip to the next one. */
-		if (rv != 0 || uvListShouldIgnore(filename)) {
-			if (rv == 0) {
-				tracef("ignore %s", filename);
-			}
+		if (uvListShouldIgnore(filename)) {
+			tracef("ignore %s", filename);
 			continue;
 		}
 
@@ -75,47 +73,44 @@ int UvList(struct uv *uv,
 		 * filename and a valid associated snapshot file exists. */
 		rv = UvSnapshotInfoAppendIfMatch(uv, filename, snapshots,
 						 n_snapshots, &appended);
-		if (appended || rv != 0) {
-			if (rv == 0) {
-				tracef("snapshot %s", filename);
-			}
+		if (rv != 0) {
+			goto error;
+		}
+		if (appended) {
+			tracef("snapshot %s", filename);
 			continue;
 		}
 
 		/* Append to the segment list if it's a segment filename */
 		rv = uvSegmentInfoAppendIfMatch(entry.name, segments,
 						n_segments, &appended);
-		if (appended || rv != 0) {
-			if (rv == 0) {
-				tracef("segment %s", filename);
-			}
+		if (rv != 0) {
+			goto error;
+		}
+		if (appended) {
+			tracef("segment %s", filename);
 			continue;
 		}
 
 		tracef("ignore %s", filename);
 	}
-
-	rv2 = uv_fs_scandir_next(&req, &entry);
-	assert(rv2 == UV_EOF);
-
-	if (rv != 0 && *segments != NULL) {
-		raft_free(*segments);
-		*segments = NULL;
-	}
-
-	if (rv != 0 && *snapshots != NULL) {
-		raft_free(*snapshots);
-		*snapshots = NULL;
-	}
+	rv = uv_fs_scandir_next(&req, &entry);
+	assert(rv == UV_EOF);
 
 	if (*snapshots != NULL) {
 		UvSnapshotSort(*snapshots, *n_snapshots);
 	}
-
 	if (*segments != NULL) {
 		uvSegmentSort(*segments, *n_segments);
 	}
+	return 0;
 
+error:
+	uv_fs_req_cleanup(&req);
+	raft_free(*segments);
+	*segments = NULL;
+	raft_free(*snapshots);
+	*snapshots = NULL;
 	return rv;
 }
 
