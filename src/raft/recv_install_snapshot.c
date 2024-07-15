@@ -346,21 +346,21 @@ enum to_state {
 static const struct sm_conf to_sm_conf[TO_NR] = {
 	[TO_INIT] = {
 		.flags   = SM_INITIAL | SM_FINAL,
-		.name    = "to_init",
+		.name    = "init",
 		.allowed = BITS(TO_STARTED),
 	},
 	[TO_STARTED] = {
 		.flags   = SM_FINAL,
-		.name    = "to_started",
+		.name    = "started",
 		.allowed = BITS(TO_EXPIRED) | BITS(TO_CANCELED),
 	},
 	[TO_EXPIRED] = {
 		.flags   = SM_FINAL,
-		.name    = "to_expired",
+		.name    = "expired",
 	},
 	[TO_CANCELED] = {
 		.flags   = SM_FINAL,
-		.name    = "to_canceled",
+		.name    = "canceled",
 	},
 };
 /* clang-format on */
@@ -454,7 +454,7 @@ static void leader_to_start(struct leader *leader,
 	sm_move(&to->sm, TO_STARTED);
 }
 
-static void leader_to_fini(struct leader *leader, struct timeout *to)
+static void leader_to_cancel(struct leader *leader, struct timeout *to)
 {
 	leader->ops->to_stop(to);
 	sm_move(&to->sm, TO_CANCELED);
@@ -740,7 +740,7 @@ again:
 			leader_to_start(leader, &leader->rpc.timeout, 10000, rpc_to_cb);
 			return;
 		case RPC_REPLIED:
-			leader_to_fini(leader, &leader->rpc.timeout);
+			leader_to_cancel(leader, &leader->rpc.timeout);
 			rpc_fini(&leader->rpc);
 			sm_move(sm, leader_next_state(sm));
 			goto again;
