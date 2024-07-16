@@ -58,13 +58,13 @@ int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice stop);
 
 int vfs2_commit_barrier(sqlite3_file *file);
 
-int vfs2_apply_uncommitted(sqlite3_file *file,
-			   uint32_t page_size,
-			   const struct vfs2_wal_frame *frames,
-			   unsigned n,
-			   struct vfs2_wal_slice *out);
+int vfs2_add_uncommitted(sqlite3_file *file,
+			 uint32_t page_size,
+			 const struct vfs2_wal_frame *frames,
+			 unsigned n,
+			 struct vfs2_wal_slice *out);
 
-int vfs2_unapply(sqlite3_file *file, struct vfs2_wal_slice stop);
+int vfs2_unadd(sqlite3_file *file, struct vfs2_wal_slice stop);
 
 struct vfs2_wal_txn {
 	struct vfs2_wal_slice meta;

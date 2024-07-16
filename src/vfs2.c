@@ -1523,18 +1523,18 @@ sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name)
 	return vfs;
 }
 
-int vfs2_unapply(sqlite3_file *file, struct vfs2_wal_slice first_to_unapply)
+int vfs2_unadd(sqlite3_file *file, struct vfs2_wal_slice first_to_unadd)
 {
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
-	PRE(salts_equal(first_to_unapply.salts, e->wal_cur_hdr.salts));
-	PRE(first_to_unapply.start + first_to_unapply.len <= e->wal_cursor);
+	PRE(salts_equal(first_to_unadd.salts, e->wal_cur_hdr.salts));
+	PRE(first_to_unadd.start + first_to_unadd.len <= e->wal_cursor);
 	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
-	PRE(first_to_unapply.start >= ihdr->basic[0].mxFrame);
+	PRE(first_to_unadd.start >= ihdr->basic[0].mxFrame);
 	PRE(e->shm_locks[WAL_WRITE_LOCK] == VFS2_EXCLUSIVE);
 
-	e->wal_cursor = first_to_unapply.start;
+	e->wal_cursor = first_to_unadd.start;
 
 	if (e->wal_cursor == ihdr->basic[0].mxFrame) {
 		e->shm_locks[WAL_WRITE_LOCK] = 0;
@@ -1673,8 +1673,7 @@ void vfs2_destroy(sqlite3_vfs *vfs)
 
 int vfs2_abort(sqlite3_file *file)
 {
-	/* TODO maybe can "followerize" this and get rid of vfs2_unapply_after?
-	 */
+	/* TODO maybe can "followerize" this and get rid of vfs2_unadd_after? */
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
@@ -1841,11 +1840,11 @@ static struct wal_frame_hdr txn_frame_hdr(struct entry *e,
 	return fhdr;
 }
 
-int vfs2_apply_uncommitted(sqlite3_file *file,
-			   uint32_t page_size,
-			   const struct vfs2_wal_frame *frames,
-			   unsigned len,
-			   struct vfs2_wal_slice *out)
+int vfs2_add_uncommitted(sqlite3_file *file,
+			 uint32_t page_size,
+			 const struct vfs2_wal_frame *frames,
+			 unsigned len,
+			 struct vfs2_wal_slice *out)
 {
 	PRE(len > 0);
 	PRE(is_valid_page_size(page_size));
@@ -1867,7 +1866,7 @@ int vfs2_apply_uncommitted(sqlite3_file *file,
 	 * it's held before returning.
 	 *
 	 * The write lock will be released when a call to vfs2_commit
-	 * or vfs2_unapply causes the number of committed frames in
+	 * or vfs2_unadd causes the number of committed frames in
 	 * WAL-cur (mxFrame) to equal the number of applies frames
 	 * (wal_cursor). */
 	e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
