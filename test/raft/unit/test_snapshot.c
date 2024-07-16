@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <uv.h>
 #include "../lib/runner.h"
 #include "../../../src/lib/sm.h"
 #include "../../../src/raft.h"
@@ -23,7 +24,8 @@ static void tear_down(void *data)
     free(data);
 }
 
-SUITE(snapshot)
+SUITE(snapshot_leader)
+SUITE(snapshot_follower)
 
 static void ut_leader_message_received(struct leader *leader,
 				const struct raft_message *incoming)
@@ -69,12 +71,17 @@ static void ut_disk_io_done(struct work *work)
 
 static void ut_to_expired(struct leader *leader)
 {
-	leader->timeout.cb(&leader->timeout, 0);
+	leader->timeout.cb(&leader->timeout.handle);
 }
 
 static void ut_rpc_sent(struct rpc *rpc)
 {
 	rpc->sender.cb(&rpc->sender, 0);
+}
+
+static void ut_rpc_to_expired(struct rpc *rpc)
+{
+	rpc->timeout.cb(&rpc->timeout.handle);
 }
 
 static const struct raft_message *append_entries(void)
@@ -140,19 +147,24 @@ static const struct raft_message *ut_page_result(void)
 	return &ut_page_result;
 }
 
-void ut_work_queue_op(struct work *w, work_op work_cb, work_op after_cb)
+static void ut_work_queue_op(struct work *w, work_op work_cb, work_op after_cb)
 {
 	w->work_cb = work_cb;
 	w->after_cb = after_cb;
 }
 
-void ut_to_start_op(struct timeout *to, unsigned delay, to_cb_op cb)
+static void ut_to_init_op(struct timeout *to)
+{
+	(void)to;
+}
+
+static void ut_to_start_op(struct timeout *to, unsigned delay, to_cb_op cb)
 {
 	(void)delay;
 	to->cb = cb;
 }
 
-void ut_to_stop_op(struct timeout *to)
+static void ut_to_stop_op(struct timeout *to)
 {
 	(void)to;
 }
@@ -165,7 +177,7 @@ int ut_sender_send_op(struct sender *s,
 	return 0;
 }
 
-TEST(snapshot, follower, set_up, tear_down, 0, NULL) {
+TEST(snapshot_follower, basic, set_up, tear_down, 0, NULL) {
 	struct follower_ops ops = {
 		.ht_create = ut_ht_create_op,
 		.work_queue = ut_work_queue_op,
@@ -225,8 +237,9 @@ TEST(snapshot, follower, set_up, tear_down, 0, NULL) {
 	return MUNIT_OK;
 }
 
-TEST(snapshot, leader, set_up, tear_down, 0, NULL) {
+TEST(snapshot_leader, basic, set_up, tear_down, 0, NULL) {
 	struct leader_ops ops = {
+		.to_init = ut_to_init_op,
 		.to_stop = ut_to_stop_op,
 		.to_start = ut_to_start_op,
 		.ht_create = ut_ht_create_op,
@@ -272,6 +285,192 @@ TEST(snapshot, leader, set_up, tear_down, 0, NULL) {
 	ut_disk_io_done(&leader.work);
 	ut_disk_io(&leader.work);
 	ut_disk_io_done(&leader.work);
+
+	PRE(sm_state(&leader.sm) == LS_PAGE_READ);
+	ut_rpc_sent(&leader.rpc);
+	ut_leader_message_received(&leader, ut_page_result());
+
+	PRE(sm_state(&leader.sm) == LS_SNAP_DONE);
+	ut_rpc_sent(&leader.rpc);
+	ut_leader_message_received(&leader, ut_install_snapshot_result());
+
+	sm_fini(&leader.sm);
+	return MUNIT_OK;
+}
+
+TEST(snapshot_leader, timeouts, set_up, tear_down, 0, NULL) {
+	struct leader_ops ops = {
+		.to_init = ut_to_init_op,
+		.to_stop = ut_to_stop_op,
+		.to_start = ut_to_start_op,
+		.ht_create = ut_ht_create_op,
+		.work_queue = ut_work_queue_op,
+		.sender_send = ut_sender_send_op,
+	};
+
+	struct leader leader = {
+		.ops = &ops,
+
+		.sigs_more = false,
+		.pages_more = false,
+		.sigs_calculated = false,
+	};
+
+	sm_init(&leader.sm, leader_sm_invariant,
+		NULL, leader_sm_conf, "leader", LS_F_ONLINE);
+
+	PRE(sm_state(&leader.sm) == LS_F_ONLINE);
+	ut_leader_message_received(&leader, append_entries());
+
+	PRE(sm_state(&leader.sm) == LS_HT_WAIT);
+	ut_disk_io(&leader.work);
+	ut_disk_io_done(&leader.work);
+
+	PRE(sm_state(&leader.sm) == LS_F_NEEDS_SNAP);
+	ut_rpc_sent(&leader.rpc);
+	ut_rpc_to_expired(&leader.rpc);
+
+	PRE(sm_state(&leader.sm) == LS_F_NEEDS_SNAP);
+	ut_rpc_sent(&leader.rpc);
+	ut_leader_message_received(&leader, ut_install_snapshot_result());
+
+	PRE(sm_state(&leader.sm) == LS_CHECK_F_HAS_SIGS);
+	ut_rpc_sent(&leader.rpc);
+	ut_leader_message_received(&leader, ut_sign_result());
+	ut_to_expired(&leader);
+
+	PRE(sm_state(&leader.sm) == LS_CHECK_F_HAS_SIGS);
+	ut_rpc_sent(&leader.rpc);
+	ut_rpc_to_expired(&leader.rpc);
+
+	PRE(sm_state(&leader.sm) == LS_CHECK_F_HAS_SIGS);
+	leader.sigs_calculated = true;
+	ut_rpc_sent(&leader.rpc);
+	ut_leader_message_received(&leader, ut_sign_result());
+
+	PRE(sm_state(&leader.sm) == LS_REQ_SIG_LOOP);
+	ut_rpc_sent(&leader.rpc);
+	PRE(sm_state(&leader.sm) == LS_REQ_SIG_LOOP);
+	ut_leader_message_received(&leader, ut_sign_result());
+	ut_disk_io(&leader.work);
+	ut_disk_io_done(&leader.work);
+	ut_disk_io(&leader.work);
+	ut_disk_io_done(&leader.work);
+
+	PRE(sm_state(&leader.sm) == LS_PAGE_READ);
+	ut_rpc_sent(&leader.rpc);
+	ut_rpc_to_expired(&leader.rpc);
+
+	PRE(sm_state(&leader.sm) == LS_PAGE_READ);
+	ut_rpc_sent(&leader.rpc);
+	ut_leader_message_received(&leader, ut_page_result());
+
+	PRE(sm_state(&leader.sm) == LS_SNAP_DONE);
+	ut_rpc_sent(&leader.rpc);
+	ut_leader_message_received(&leader, ut_install_snapshot_result());
+
+	sm_fini(&leader.sm);
+	return MUNIT_OK;
+}
+
+static void progress(void) {
+	for (unsigned i = 0; i < 100; i++) {
+		uv_run(uv_default_loop(), UV_RUN_NOWAIT);
+	}
+}
+
+static void pool_to_start_op(struct timeout *to, unsigned delay, to_cb_op cb)
+{
+	uv_timer_start(&to->handle, cb, delay, 0);
+	to->cb = cb;
+}
+
+static void pool_to_stop_op(struct timeout *to)
+{
+	uv_timer_stop(&to->handle);
+}
+
+static void pool_to_init_op(struct timeout *to)
+{
+	uv_timer_init(uv_default_loop(), &to->handle);
+}
+
+static void pool_to_expired(struct leader *leader)
+{
+	uv_timer_start(&leader->timeout.handle, leader->timeout.cb, 0, 0);
+	progress();
+}
+
+static void pool_rpc_to_expired(struct rpc *rpc)
+{
+	uv_timer_start(&rpc->timeout.handle, rpc->timeout.cb, 0, 0);
+	progress();
+}
+
+/* TODO(alberto): combine them with tests above once the rest is in place.
+ * Dispatch to one of two implementations ut or pool in general functions. */
+TEST(snapshot_leader, pool_timeouts, set_up, tear_down, 0, NULL) {
+	struct leader_ops ops = {
+		.to_init = pool_to_init_op,
+		.to_stop = pool_to_stop_op,
+		.to_start = pool_to_start_op,
+		.ht_create = ut_ht_create_op,
+		.work_queue = ut_work_queue_op,
+		.sender_send = ut_sender_send_op,
+	};
+
+	struct leader leader = {
+		.ops = &ops,
+
+		.sigs_more = false,
+		.pages_more = false,
+		.sigs_calculated = false,
+	};
+
+	sm_init(&leader.sm, leader_sm_invariant,
+		NULL, leader_sm_conf, "leader", LS_F_ONLINE);
+
+	PRE(sm_state(&leader.sm) == LS_F_ONLINE);
+	ut_leader_message_received(&leader, append_entries());
+
+	PRE(sm_state(&leader.sm) == LS_HT_WAIT);
+	ut_disk_io(&leader.work);
+	ut_disk_io_done(&leader.work);
+
+	PRE(sm_state(&leader.sm) == LS_F_NEEDS_SNAP);
+	ut_rpc_sent(&leader.rpc);
+	pool_rpc_to_expired(&leader.rpc);
+
+	PRE(sm_state(&leader.sm) == LS_F_NEEDS_SNAP);
+	ut_rpc_sent(&leader.rpc);
+	ut_leader_message_received(&leader, ut_install_snapshot_result());
+
+	PRE(sm_state(&leader.sm) == LS_CHECK_F_HAS_SIGS);
+	ut_rpc_sent(&leader.rpc);
+	ut_leader_message_received(&leader, ut_sign_result());
+	pool_to_expired(&leader);
+
+	PRE(sm_state(&leader.sm) == LS_CHECK_F_HAS_SIGS);
+	ut_rpc_sent(&leader.rpc);
+	pool_rpc_to_expired(&leader.rpc);
+
+	PRE(sm_state(&leader.sm) == LS_CHECK_F_HAS_SIGS);
+	leader.sigs_calculated = true;
+	ut_rpc_sent(&leader.rpc);
+	ut_leader_message_received(&leader, ut_sign_result());
+
+	PRE(sm_state(&leader.sm) == LS_REQ_SIG_LOOP);
+	ut_rpc_sent(&leader.rpc);
+	PRE(sm_state(&leader.sm) == LS_REQ_SIG_LOOP);
+	ut_leader_message_received(&leader, ut_sign_result());
+	ut_disk_io(&leader.work);
+	ut_disk_io_done(&leader.work);
+	ut_disk_io(&leader.work);
+	ut_disk_io_done(&leader.work);
+
+	PRE(sm_state(&leader.sm) == LS_PAGE_READ);
+	ut_rpc_sent(&leader.rpc);
+	pool_rpc_to_expired(&leader.rpc);
 
 	PRE(sm_state(&leader.sm) == LS_PAGE_READ);
 	ut_rpc_sent(&leader.rpc);

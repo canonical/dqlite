@@ -13,7 +13,6 @@
 #include "../lib/sm.h"
 #include "../raft.h"
 #include "../raft/recv_install_snapshot.h"
-#include "../raft/uv_os.h"
 #include "../utils.h"
 
 /**
@@ -262,6 +261,7 @@
 
 enum rpc_state {
 	RPC_INIT,
+	RPC_FILLED,
 	RPC_SENT,
 	RPC_TIMEDOUT,
 	RPC_REPLIED,
@@ -270,18 +270,25 @@ enum rpc_state {
 	RPC_NR,
 };
 
+/* clang-format off */
 static const struct sm_conf rpc_sm_conf[RPC_NR] = {
 	[RPC_INIT] = {
 		.flags   = SM_INITIAL | SM_FINAL,
 		.name    = "init",
-		.allowed = BITS(RPC_SENT) | BITS(RPC_ERROR),
+		.allowed = BITS(RPC_FILLED)
+		         | BITS(RPC_ERROR),
+	},
+	[RPC_FILLED] = {
+		.name    = "filled",
+		.allowed = BITS(RPC_SENT)
+		         | BITS(RPC_ERROR),
 	},
 	[RPC_SENT] = {
 		.name    = "sent",
 		.allowed = BITS(RPC_TIMEDOUT)
 		         | BITS(RPC_REPLIED)
 		         | BITS(RPC_ERROR)
-				 | BITS(RPC_END),
+		         | BITS(RPC_END),
 	},
 	[RPC_TIMEDOUT] = {
 		.name    = "timedout",
@@ -290,17 +297,19 @@ static const struct sm_conf rpc_sm_conf[RPC_NR] = {
 	[RPC_REPLIED] = {
 		.name    = "replied",
 		.allowed = BITS(RPC_INIT)
-				 | BITS(RPC_END),
+		         | BITS(RPC_END),
 	},
 	[RPC_ERROR] = {
 		.name    = "error",
 		.allowed = BITS(RPC_INIT),
+		.flags   = SM_FINAL,
 	},
 	[RPC_END] = {
 		.name    = "end",
-		.allowed = BITS(RPC_INIT),
+		.flags   = SM_FINAL,
 	},
 };
+/* clang-format on */
 
 enum work_state {
 	WORK_INIT,
@@ -333,26 +342,28 @@ enum to_state {
 	TO_NR,
 };
 
+/* clang-format off */
 static const struct sm_conf to_sm_conf[TO_NR] = {
 	[TO_INIT] = {
 		.flags   = SM_INITIAL | SM_FINAL,
-		.name    = "to_init",
+		.name    = "init",
 		.allowed = BITS(TO_STARTED),
 	},
 	[TO_STARTED] = {
 		.flags   = SM_FINAL,
-		.name    = "to_started",
+		.name    = "started",
 		.allowed = BITS(TO_EXPIRED) | BITS(TO_CANCELED),
 	},
 	[TO_EXPIRED] = {
 		.flags   = SM_FINAL,
-		.name    = "to_expired",
+		.name    = "expired",
 	},
 	[TO_CANCELED] = {
 		.flags   = SM_FINAL,
-		.name    = "w_canceled",
+		.name    = "canceled",
 	},
 };
+/* clang-format on */
 
 #define M_MSG_SENT   ((const struct raft_message *) 3)
 #define M_TIMEOUT    ((const struct raft_message *) 2)
@@ -413,28 +424,40 @@ static void follower_work_done(struct work *w)
 	follower_tick(follower, M_WORK_DONE);
 }
 
-static void to_init(struct timeout *to)
+static void rpc_to_cb(uv_timer_t *handle)
 {
-	sm_init(&to->sm, to_sm_invariant, NULL, to_sm_conf, "to", TO_INIT);
-}
-
-static void leader_to_cb(struct timeout *t, int rc)
-{
-	(void)rc;
-	struct leader *leader = CONTAINER_OF(t, struct leader, timeout);
-	sm_move(&t->sm, TO_EXPIRED);
+	struct timeout *to = CONTAINER_OF(handle, struct timeout, handle);
+	struct rpc *rpc = CONTAINER_OF(to, struct rpc, timeout);
+	struct leader *leader = CONTAINER_OF(rpc, struct leader, rpc);
+	sm_move(&to->sm, TO_EXPIRED);
+	sm_move(&rpc->sm, RPC_TIMEDOUT);
 	leader_tick(leader, M_TIMEOUT);
 }
 
-static void to_start(struct timeout *to, unsigned delay, to_cb_op to_cb)
+static void leader_to_cb(uv_timer_t *handle)
 {
-	(void)delay;
+	struct timeout *to = CONTAINER_OF(handle, struct timeout, handle);
 	struct leader *leader = CONTAINER_OF(to, struct leader, timeout);
+	sm_move(&to->sm, TO_EXPIRED);
+	leader_tick(leader, M_TIMEOUT);
+}
 
-	to_init(to);
-	leader->ops->to_start(&leader->timeout, 10000, to_cb);
+static void leader_to_start(struct leader *leader,
+		struct timeout *to,
+		unsigned delay,
+		to_cb_op to_cb)
+{
+	leader->ops->to_init(to);
+	sm_init(&to->sm, to_sm_invariant, NULL, to_sm_conf, "to", TO_INIT);
+	leader->ops->to_start(to, delay, to_cb);
 	sm_relate(&leader->sm, &to->sm);
 	sm_move(&to->sm, TO_STARTED);
+}
+
+static void leader_to_cancel(struct leader *leader, struct timeout *to)
+{
+	leader->ops->to_stop(to);
+	sm_move(&to->sm, TO_CANCELED);
 }
 
 static void leader_sent_cb(struct sender *s, int rc)
@@ -447,8 +470,6 @@ static void leader_sent_cb(struct sender *s, int rc)
 		return;
 	}
 
-	sm_move(&rpc->sm, RPC_SENT);
-	leader->ops->to_start(&rpc->timeout, 10000, leader_to_cb);
 	leader_tick(leader, M_MSG_SENT);
 }
 
@@ -462,16 +483,14 @@ static void follower_sent_cb(struct sender *s, int rc)
 		return;
 	}
 
-	sm_move(&rpc->sm, RPC_SENT);
 	follower_tick(follower, M_MSG_SENT);
 }
 
 static bool is_a_trigger_leader(const struct leader *leader, const struct raft_message *incoming)
 {
 	(void)leader;
-	/* Leader has no triggers on sending a message, it reacts when follower
-	 * replies */
-	return incoming != M_MSG_SENT;
+	(void)incoming;
+	return true;
 }
 
 static bool is_a_trigger_follower(const struct follower *follower,
@@ -542,18 +561,18 @@ static void rpc_fill_leader(struct leader *leader)
 {
 	rpc_init(&leader->rpc);
 	sm_relate(&leader->sm, &leader->rpc.sm);
+	sm_move(&leader->rpc.sm, RPC_FILLED);
 }
 
 static void rpc_fill_follower(struct follower *follower)
 {
 	rpc_init(&follower->rpc);
 	sm_relate(&follower->sm, &follower->rpc.sm);
+	sm_move(&follower->rpc.sm, RPC_FILLED);
 }
 
-static int rpc_send(struct rpc *rpc, sender_send_op op, to_cb_op to_cb,
-		sender_cb_op sent_cb)
+static int rpc_send(struct rpc *rpc, sender_send_op op, sender_cb_op sent_cb)
 {
-	(void)to_cb;
 	int rc = op(&rpc->sender, &rpc->message, sent_cb);
 	return rc;
 }
@@ -562,6 +581,9 @@ static void follower_rpc_tick(struct rpc *rpc)
 {
 	switch(sm_state(&rpc->sm)) {
 	case RPC_INIT:
+		break;
+	case RPC_FILLED:
+		sm_move(&rpc->sm, RPC_SENT);
 		break;
 	case RPC_SENT:
 	case RPC_TIMEDOUT:
@@ -577,6 +599,9 @@ static void leader_rpc_tick(struct rpc *rpc)
 {
 	switch(sm_state(&rpc->sm)) {
 	case RPC_INIT:
+		break;
+	case RPC_FILLED:
+		sm_move(&rpc->sm, RPC_SENT);
 		break;
 	case RPC_SENT:
 		sm_move(&rpc->sm, RPC_REPLIED);
@@ -710,25 +735,30 @@ again:
 	case LS_REQ_SIG_LOOP:
 	case LS_CHECK_F_HAS_SIGS:
 		leader_rpc_tick(&leader->rpc);
-		if (sm_state(&leader->rpc.sm) == RPC_REPLIED) {
+		switch (sm_state(&leader->rpc.sm)) {
+		case RPC_SENT:
+			leader_to_start(leader, &leader->rpc.timeout, 10000, rpc_to_cb);
+			return;
+		case RPC_REPLIED:
+			leader_to_cancel(leader, &leader->rpc.timeout);
 			rpc_fini(&leader->rpc);
 			sm_move(sm, leader_next_state(sm));
 			goto again;
 		}
 
 		rpc_fill_leader(leader);
-		rc = rpc_send(&leader->rpc, ops->sender_send, leader_to_cb, leader_sent_cb);
-		if (rc == 0) {
-			break;
+		rc = rpc_send(&leader->rpc, ops->sender_send, leader_sent_cb);
+		if (rc != 0) {
+			goto again;
 		}
-		goto again;
+		break;
 	case LS_WAIT_SIGS:
 		if (leader_next_state(sm) > sm_state(sm)) {
 			sm_move(sm, leader_next_state(sm));
 			goto again;
 		}
 
-		to_start(&leader->timeout, 10000, leader_to_cb);
+		leader_to_start(leader, &leader->timeout, 10000, leader_to_cb);
 		sm_move(sm, leader_next_state(sm));
 		break;
 	default:
@@ -763,11 +793,11 @@ again:
 			goto again;
 		}
 		rpc_fill_follower(follower);
-		rc = rpc_send(&follower->rpc, ops->sender_send, NULL, follower_sent_cb);
-		if (rc == 0) {
-			break;
+		rc = rpc_send(&follower->rpc, ops->sender_send, follower_sent_cb);
+		if (rc != 0) {
+			goto again;
 		}
-		goto again;
+		break;
 	case FS_SIG_PROCESSED:
 	case FS_CHUNCK_PROCESSED:
 	case FS_CHUNCK_REPLIED:
