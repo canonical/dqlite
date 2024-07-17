@@ -221,6 +221,7 @@ libraft_la_LDFLAGS = $(UV_LIBS)
 raft_core_unit_test_SOURCES = \
   $(libraft_la_SOURCES) \
   src/lib/sm.c \
+  src/lib/threadpool.c \
   src/tracing.c \
   test/raft/unit/main_core.c \
   test/raft/unit/test_byte.c \
@@ -238,6 +239,7 @@ raft_core_unit_test_LDADD = libtest.la
 raft_core_integration_test_SOURCES = \
   src/tracing.c \
   src/lib/sm.c \
+  src/lib/threadpool.c \
   test/raft/integration/main_core.c \
   test/raft/integration/test_apply.c \
   test/raft/integration/test_assign.c \
@@ -263,6 +265,7 @@ raft_core_integration_test_LDADD = libtest.la libraft.la
 
 raft_core_fuzzy_test_SOURCES = \
   src/lib/sm.c \
+  src/lib/threadpool.c \
   src/tracing.c \
   test/raft/fuzzy/main_core.c \
   test/raft/fuzzy/test_election.c \
@@ -295,6 +298,7 @@ raft_uv_integration_test_SOURCES = \
   $(libraft_la_SOURCES) \
   src/tracing.c \
   src/lib/sm.c \
+  src/lib/threadpool.c \
   test/raft/integration/main_uv.c \
   test/raft/integration/test_uv_init.c \
   test/raft/integration/test_uv_append.c \
