@@ -1468,7 +1468,6 @@ int vfs2_apply(sqlite3_file *file, struct vfs2_wal_slice stop)
 
 int vfs2_poll(sqlite3_file *file,
 	      dqlite_vfs_frame **frames,
-	      unsigned *n,
 	      struct vfs2_wal_slice *sl)
 {
 	struct file *xfile = (struct file *)file;
@@ -1488,8 +1487,7 @@ int vfs2_poll(sqlite3_file *file,
 
 	/* Note, not resetting pending_txn_{start,len} because they are used by
 	 * later states */
-	if (n != NULL && frames != NULL) {
-		*n = len;
+	if (frames != NULL) {
 		*frames = e->pending_txn_frames;
 	} else {
 		for (uint32_t i = 0; i < e->pending_txn_len; i++) {

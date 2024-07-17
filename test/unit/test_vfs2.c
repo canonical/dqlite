@@ -156,7 +156,7 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	struct vfs2_wal_slice sl;
-	rv = vfs2_poll(fp, NULL, NULL, &sl);
+	rv = vfs2_poll(fp, NULL, &sl);
 	munit_assert_int(rv, ==, 0);
 	rv = vfs2_unhide(fp);
 	munit_assert_int(rv, ==, 0);
@@ -173,7 +173,7 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	rv = sqlite3_exec(db, "INSERT INTO foo (bar) values (22)", NULL, NULL,
 			  NULL);
 	munit_assert_int(rv, ==, 0);
-	rv = vfs2_poll(fp, NULL, NULL, &sl);
+	rv = vfs2_poll(fp, NULL, &sl);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint32(sl.start, ==, 2);
 	munit_assert_uint32(sl.len, ==, 1);
@@ -213,10 +213,9 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	munit_assert_int(rv, ==, SQLITE_DONE);
 
 	dqlite_vfs_frame *frames;
-	unsigned n;
-	rv = vfs2_poll(fp, &frames, &n, &sl);
+	rv = vfs2_poll(fp, &frames, &sl);
 	munit_assert_int(rv, ==, 0);
-	munit_assert_uint(n, ==, 1);
+	munit_assert_uint(sl.len, ==, 1);
 	munit_assert_not_null(frames);
 	munit_assert_not_null(frames[0].data);
 	sqlite3_free(frames[0].data);
@@ -386,7 +385,7 @@ TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
 	sqlite3_file *fp;
 	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
 	struct vfs2_wal_slice sl;
-	rv = vfs2_poll(fp, NULL, NULL, &sl);
+	rv = vfs2_poll(fp, NULL, &sl);
 	munit_assert_int(rv, ==, 0);
 	rv = vfs2_unhide(fp);
 	rv = sqlite3_exec(db, "BEGIN", NULL, NULL, NULL);

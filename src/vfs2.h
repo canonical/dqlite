@@ -45,7 +45,6 @@ struct vfs2_wal_slice {
  */
 int vfs2_poll(sqlite3_file *file,
 	      dqlite_vfs_frame **frames,
-	      unsigned *n,
 	      struct vfs2_wal_slice *sl);
 
 int vfs2_unhide(sqlite3_file *file);
