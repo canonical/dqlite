@@ -1437,7 +1437,7 @@ int vfs2_unhide(sqlite3_file *file)
 	return 0;
 }
 
-int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice stop)
+int vfs2_apply(sqlite3_file *file, struct vfs2_wal_slice stop)
 {
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
@@ -1711,7 +1711,7 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	 * lock here before "acquiring" it, we just make sure that
 	 * it's held before returning.
 	 *
-	 * The write lock will be released when a call to vfs2_commit
+	 * The write lock will be released when a call to vfs2_apply
 	 * or vfs2_unadd causes the number of committed frames in
 	 * WAL-cur (mxFrame) to equal the number of applies frames
 	 * (wal_cursor). */
