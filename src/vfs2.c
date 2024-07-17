@@ -1649,6 +1649,12 @@ static int write_one_frame(struct entry *e,
 
 static struct wal_hdr next_wal_hdr(const struct entry *e)
 {
+	/* salt2 is randomized every time we generate a new WAL header.
+	 * We don't use the xRandomness method of the base VFS to do this,
+	 * because it always translates to a syscall (getrandom), and
+	 * SQLite intends that this should only be used for seeding the
+	 * internal PRNG. Instead, we call sqlite3_randomness, which gives
+	 * us access to this PRNG, seeded from the default (unix) VFS. */
 	struct wal_hdr ret;
 	struct wal_hdr old = e->wal_cur_hdr;
 	BytePutBe32(native_magic(), ret.magic);
@@ -1660,12 +1666,10 @@ static struct wal_hdr next_wal_hdr(const struct entry *e)
 	if (ckpoint_seqno == 0) {
 		salt1 = get_salt1(old.salts) + 1;
 	} else {
-		e->common->orig->xRandomness(e->common->orig, sizeof(salt1),
-					     (void *)&salt1);
+		sqlite3_randomness(sizeof(salt1), (void *)&salt1);
 	}
 	BytePutBe32(salt1, ret.salts.salt1);
-	e->common->orig->xRandomness(e->common->orig, sizeof(ret.salts.salt2),
-				     (void *)&ret.salts.salt2);
+	sqlite3_randomness(sizeof(ret.salts.salt2), (void *)&ret.salts.salt2);
 	return ret;
 }
 
