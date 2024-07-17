@@ -3,7 +3,6 @@
 #include "lib/byte.h"
 #include "lib/queue.h"
 #include "lib/sm.h"
-#include "tracing.h"
 #include "utils.h"
 
 #include <pthread.h>
@@ -49,9 +48,6 @@ enum {
 	WTX_EMPTY,
 	/* Non-leader, at least one transaction in WAL-cur is not committed. */
 	WTX_FOLLOWING,
-	/* Non-leader, all transactions in WAL-cur are committed (but at least
-	   one is not checkpointed). */
-	WTX_FLUSH,
 	/* Leader, all transactions in WAL-cur are committed (but at least one
 	   is not checkpointed). */
 	WTX_BASE,
@@ -67,43 +63,46 @@ static const struct sm_conf wtx_states[SM_STATES_MAX] = {
 	[WTX_CLOSED] = {
 		.flags = SM_INITIAL|SM_FINAL,
 		.name = "closed",
-		.allowed = BITS(WTX_EMPTY)|BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH),
+		.allowed = BITS(WTX_EMPTY)
+		          |BITS(WTX_BASE)
+			  |BITS(WTX_FOLLOWING),
 	},
-	[WTX_EMPTY] = {
-		.flags = 0,
-		.name = "empty",
-		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_ACTIVE)|BITS(WTX_CLOSED),
-	},
-	[WTX_FOLLOWING] = {
-		.flags = 0,
-		.name = "following",
-		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_CLOSED),
-	},
-	[WTX_FLUSH] = {
-		.flags = 0,
-		.name = "flush",
-		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_FLUSH)|BITS(WTX_ACTIVE)|BITS(WTX_CLOSED),
-	},
-	[WTX_BASE] = {
-		.flags = 0,
-		.name = "base",
-		.allowed = BITS(WTX_FOLLOWING)|BITS(WTX_BASE)|BITS(WTX_ACTIVE)|BITS(WTX_EMPTY)|BITS(WTX_CLOSED),
-	},
-	[WTX_ACTIVE] = {
-		.flags = 0,
-		.name = "active",
-		.allowed = BITS(WTX_BASE)|BITS(WTX_ACTIVE)|BITS(WTX_HIDDEN)|BITS(WTX_CLOSED),
-	},
-	[WTX_HIDDEN] = {
-		.flags = 0,
-		.name = "hidden",
-		.allowed = BITS(WTX_BASE)|BITS(WTX_POLLED)|BITS(WTX_CLOSED),
-	},
-	[WTX_POLLED] = {
-		.flags = 0,
-		.name = "polled",
-		.allowed = BITS(WTX_BASE)|BITS(WTX_CLOSED),
-	},
+        [WTX_EMPTY] = {
+                .name = "empty",
+                .allowed = BITS(WTX_FOLLOWING)
+                          |BITS(WTX_ACTIVE)
+                          |BITS(WTX_CLOSED),
+        },
+        [WTX_FOLLOWING] = {
+                .name = "following",
+                .allowed = BITS(WTX_BASE)
+                          |BITS(WTX_FOLLOWING)
+                          |BITS(WTX_CLOSED),
+        },
+        [WTX_BASE] = {
+                .name = "base",
+                .allowed = BITS(WTX_ACTIVE)
+                          |BITS(WTX_FOLLOWING)
+                          |BITS(WTX_EMPTY)
+                          |BITS(WTX_CLOSED),
+        },
+        [WTX_ACTIVE] = {
+                .name = "active",
+                .allowed = BITS(WTX_BASE)
+                          |BITS(WTX_HIDDEN)
+                          |BITS(WTX_CLOSED),
+        },
+        [WTX_HIDDEN] = {
+                .name = "hidden",
+                .allowed = BITS(WTX_BASE)
+                          |BITS(WTX_POLLED)
+                          |BITS(WTX_CLOSED),
+        },
+        [WTX_POLLED] = {
+                .name = "polled",
+                .allowed = BITS(WTX_BASE)
+                          |BITS(WTX_CLOSED),
+        },
 };
 
 /**
@@ -335,63 +334,15 @@ static bool no_pending_txn(const struct entry *e)
 	       e->pending_txn_last_frame_commit == 0;
 }
 
-static bool write_lock_held(const struct entry *e)
-{
-	return e->shm_locks[WAL_WRITE_LOCK] == VFS2_EXCLUSIVE;
-}
-
 static bool wal_index_basic_hdr_equal(struct wal_index_basic_hdr a,
 				      struct wal_index_basic_hdr b)
 {
 	return memcmp(&a, &b, sizeof(struct wal_index_basic_hdr)) == 0;
 }
 
-static bool wal_index_basic_hdr_zeroed(struct wal_index_basic_hdr h)
-{
-	return wal_index_basic_hdr_equal(h, (struct wal_index_basic_hdr){});
-}
-
-static bool wal_index_basic_hdr_advanced(struct wal_index_basic_hdr new,
-					 struct wal_index_basic_hdr old)
-{
-	return new.iChange == old.iChange + 1 &&
-	       new.nPage >= old.nPage /* no vacuums here */
-	       && ((get_salt1(new.salts) == get_salt1(old.salts) &&
-		    get_salt2(new.salts) == get_salt2(old.salts)) ||
-		   /* note the weirdness with zero salts */
-		   (get_salt1(old.salts) == 0 && get_salt2(old.salts) == 0)) &&
-	       new.mxFrame > old.mxFrame;
-}
-
-/* Check that the hash tables in the WAL index have been initialized
- * by looking for nonzero bytes after the WAL index header. (TODO:
- * actually parse the hash tables?) */
-static bool wal_index_recovered(const struct entry *e)
-{
-	PRE(e->shm_regions_len > 0);
-	char *p = e->shm_regions[0];
-	for (size_t i = sizeof(struct wal_index_full_hdr);
-	     i < VFS2_WAL_INDEX_REGION_SIZE; i++) {
-		if (p[i] != 0) {
-			return true;
-		}
-	}
-	return false;
-}
-
 static bool is_valid_page_size(unsigned long n)
 {
 	return n >= 1 << 9 && n <= 1 << 16 && is_po2(n);
-}
-
-static bool is_open(const struct entry *e)
-{
-	return e->main_db_name != NULL && e->wal_moving_name != NULL &&
-	       e->wal_cur_fixed_name != NULL && e->wal_cur != NULL &&
-	       e->wal_prev_fixed_name != NULL && e->wal_prev != NULL &&
-	       (e->refcount_main_db > 0 || e->refcount_wal > 0) &&
-	       e->shm_regions != NULL && e->shm_regions_len > 0 &&
-	       e->shm_regions[0] != NULL && e->common != NULL;
 }
 
 static bool basic_hdr_valid(struct wal_index_basic_hdr bhdr)
@@ -411,101 +362,9 @@ static bool full_hdr_valid(const struct wal_index_full_hdr *ihdr)
 
 static bool wtx_invariant(const struct sm *sm, int prev)
 {
-	/* TODO make use of this */
+	(void)sm;
 	(void)prev;
-
-	struct entry *e = CONTAINER_OF(sm, struct entry, wtx_sm);
-
-	if (sm_state(sm) == WTX_CLOSED) {
-		char *region = (char *)e;
-		char zeroed[offsetof(struct entry, wtx_sm)] = {};
-
-		return CHECK(memcmp(region, zeroed, sizeof(zeroed)) == 0) &&
-		       CHECK(e->common != NULL);
-	}
-
-	if (!CHECK(is_open(e))) {
-		return false;
-	}
-	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
-	if (!CHECK(full_hdr_valid(ihdr))) {
-		return false;
-	}
-	uint32_t mx = ihdr->basic[0].mxFrame;
-	uint32_t backfill = ihdr->nBackfill;
-	uint32_t cursor = e->wal_cursor;
-	if (!CHECK(backfill <= mx) || !CHECK(mx <= cursor)) {
-		return false;
-	}
-
-	/* TODO any checks applicable to the read marks and read locks? */
-
-	if (sm_state(sm) == WTX_EMPTY) {
-		return CHECK(mx == backfill) && CHECK(mx == cursor) &&
-		       CHECK(no_pending_txn(e)) && CHECK(!write_lock_held(e));
-	}
-
-	if (!CHECK(is_valid_page_size(e->page_size))) {
-		return false;
-	}
-
-	if (sm_state(sm) == WTX_FOLLOWING) {
-		return CHECK(no_pending_txn(e)) && CHECK(write_lock_held(e)) &&
-		       CHECK(mx < cursor);
-	}
-
-	if (sm_state(sm) == WTX_FLUSH) {
-		return CHECK(no_pending_txn(e)) && CHECK(!write_lock_held(e)) &&
-		       CHECK(ERGO(mx > 0, backfill < mx)) &&
-		       CHECK(mx == cursor);
-	}
-
-	if (sm_state(sm) == WTX_BASE) {
-		return CHECK(no_pending_txn(e)) && CHECK(!write_lock_held(e)) &&
-		       CHECK(ERGO(mx > 0, backfill < mx)) &&
-		       CHECK(mx == cursor) &&
-		       CHECK(ERGO(mx > 0, wal_index_recovered(e)));
-	}
-
-	if (sm_state(sm) == WTX_ACTIVE) {
-		return CHECK(wal_index_basic_hdr_equal(
-			   get_full_hdr(e)->basic[0], e->prev_txn_hdr)) &&
-		       CHECK(wal_index_basic_hdr_zeroed(e->pending_txn_hdr)) &&
-		       CHECK(write_lock_held(e));
-	}
-
-	if (!CHECK(mx < cursor) || !CHECK(e->pending_txn_len > 0) ||
-	    !CHECK(e->pending_txn_start + e->pending_txn_len ==
-		   e->wal_cursor)) {
-		return false;
-	}
-
-	if (sm_state(sm) == WTX_HIDDEN) {
-		bool res = CHECK(wal_index_basic_hdr_equal(
-			       get_full_hdr(e)->basic[0], e->prev_txn_hdr)) &&
-			   CHECK(wal_index_basic_hdr_advanced(
-			       e->pending_txn_hdr, e->prev_txn_hdr)) &&
-			   CHECK(!write_lock_held(e)) &&
-			   CHECK(e->pending_txn_frames != NULL);
-		if (!res) {
-			return false;
-		}
-		for (uint32_t i = 0; i < e->pending_txn_len; i++) {
-			res &= CHECK(e->pending_txn_frames[i].page != NULL);
-		}
-		return res;
-	}
-
-	if (sm_state(sm) == WTX_POLLED) {
-		return CHECK(wal_index_basic_hdr_equal(
-			   get_full_hdr(e)->basic[0], e->prev_txn_hdr)) &&
-		       CHECK(wal_index_basic_hdr_advanced(e->pending_txn_hdr,
-							  e->prev_txn_hdr)) &&
-		       CHECK(write_lock_held(e)) &&
-		       CHECK(e->pending_txn_frames == NULL);
-	}
-
-	assert(0);
+	return true;
 }
 
 static int check_wal_integrity(sqlite3_file *f)
@@ -1011,9 +870,7 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 			if (ihdr->nBackfill == ihdr->basic[0].mxFrame) {
 				sm_move(&e->wtx_sm, WTX_EMPTY);
 			}
-		} /* else if (ofst <= WAL_RECOVER_LOCK && WAL_RECOVER_LOCK <
-		ofst + n) { sm_move(&e->wtx_sm, WTX_BASE);
-		} */
+		}
 	} else {
 		assert(0);
 	}
@@ -1305,7 +1162,7 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 	    wal_offset_from_cursor(0 /* this doesn't matter */, 0)) {
 		/* TODO verify the header here */
 		e->page_size = ByteGetBe32(hdr_cur.page_size);
-		next = WTX_FLUSH;
+		next = WTX_BASE;
 	}
 	if (size_cur >= wal_offset_from_cursor(e->page_size, 1)) {
 		e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
@@ -1538,7 +1395,7 @@ int vfs2_unadd(sqlite3_file *file, struct vfs2_wal_slice first_to_unadd)
 
 	if (e->wal_cursor == ihdr->basic[0].mxFrame) {
 		e->shm_locks[WAL_WRITE_LOCK] = 0;
-		sm_move(&e->wtx_sm, WTX_FLUSH);
+		sm_move(&e->wtx_sm, WTX_BASE);
 	} else {
 		sm_move(&e->wtx_sm, WTX_FOLLOWING);
 	}
@@ -1586,34 +1443,9 @@ int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice stop)
 	set_mx_frame(get_full_hdr(e), commit, fhdr);
 	if (commit == e->wal_cursor) {
 		e->shm_locks[WAL_WRITE_LOCK] = 0;
-		sm_move(&e->wtx_sm, WTX_FLUSH);
+		sm_move(&e->wtx_sm, WTX_BASE);
 	} else {
 		sm_move(&e->wtx_sm, WTX_FOLLOWING);
-	}
-	return 0;
-}
-
-int vfs2_commit_barrier(sqlite3_file *file)
-{
-	struct file *xfile = (struct file *)file;
-	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
-	struct entry *e = xfile->entry;
-	if (e->wal_cursor > 0) {
-		sqlite3_file *wal_cur = e->wal_cur;
-		struct wal_frame_hdr fhdr;
-		int rv = wal_cur->pMethods->xRead(
-		    wal_cur, &fhdr, sizeof(fhdr),
-		    wal_offset_from_cursor(e->page_size, e->wal_cursor - 1));
-		if (rv == SQLITE_OK) {
-			return rv;
-		}
-		set_mx_frame(get_full_hdr(e), e->wal_cursor, fhdr);
-		/* It's okay if the write lock isn't held */
-		e->shm_locks[WAL_WRITE_LOCK] = 0;
-		get_full_hdr(e)->basic[0].isInit = 0;
-		/* The next transaction will cause SQLite to run recovery which
-		 * will complete the transition to BASE */
-		sm_move(&e->wtx_sm, WTX_FLUSH);
 	}
 	return 0;
 }
@@ -1880,7 +1712,6 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 		if (rv != SQLITE_OK) {
 			return 1;
 		}
-		/* sm_move(&e->wtx_sm, WTX_FLUSH); */
 	}
 
 	uint32_t start = e->wal_cursor;
