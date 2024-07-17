@@ -454,9 +454,6 @@ static int wal_swap(struct entry *e, const struct wal_hdr *wal_hdr)
 	sqlite3_file *phys_incoming = e->wal_prev;
 	char *name_incoming = e->wal_prev_fixed_name;
 
-	tracef("wal swap outgoing=%s incoming=%s", name_outgoing,
-	       name_incoming);
-
 	/* Write the new header of the incoming WAL. */
 	rv = phys_incoming->pMethods->xWrite(phys_incoming, wal_hdr,
 					     sizeof(struct wal_hdr), 0);
@@ -476,12 +473,10 @@ static int wal_swap(struct entry *e, const struct wal_hdr *wal_hdr)
 	/* Move the moving name. */
 	rv = unlink(e->wal_moving_name);
 	if (rv != 0 && errno != ENOENT) {
-		tracef("unlink = IOERR");
 		return SQLITE_IOERR;
 	}
 	rv = link(name_incoming, e->wal_moving_name);
 	if (rv != 0) {
-		tracef("link = IOERR");
 		return SQLITE_IOERR;
 	}
 
@@ -504,7 +499,6 @@ static int vfs2_wal_write_frame_hdr(struct entry *e,
 		e->pending_txn_start = x;
 	}
 	uint32_t n = e->pending_txn_len;
-	tracef("orig=%u start=%u n=%u", x, e->pending_txn_start, n);
 	x -= e->pending_txn_start;
 	assert(x <= n);
 	if (e->pending_txn_len == 0 && x == 0) {
@@ -586,7 +580,6 @@ static int vfs2_write(sqlite3_file *file,
 		assert(amt == sizeof(struct wal_hdr));
 		const struct wal_hdr *hdr = buf;
 		struct entry *e = xfile->entry;
-		tracef("about to wal swap");
 		rv = wal_swap(e, hdr);
 		if (rv != SQLITE_OK) {
 			return rv;
@@ -608,8 +601,6 @@ static int vfs2_write(sqlite3_file *file,
 
 	if (xfile->flags & SQLITE_OPEN_WAL) {
 		struct entry *e = xfile->entry;
-		tracef("wrote to WAL name=%s amt=%d ofst=%lld",
-		       e->wal_cur_fixed_name, amt, ofst);
 		return vfs2_wal_post_write(e, buf, amt, ofst);
 	}
 
@@ -849,14 +840,12 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 		}
 
 		if (ofst <= WAL_RECOVER_LOCK && WAL_RECOVER_LOCK < ofst + n) {
-			tracef("unlocking the recovery lock!");
 		}
 
 		if (ofst == WAL_WRITE_LOCK) {
 			/* Unlocking the write lock: roll back any uncommitted
 			 * transaction. */
 			assert(n == 1);
-			tracef("unlocking write lock");
 			/* TODO make sure this is correct */
 			if (e->pending_txn_last_frame_commit == 0) {
 				free_pending_txn(e);
