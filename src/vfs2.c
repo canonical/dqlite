@@ -201,12 +201,17 @@ struct wal_index_full_hdr {
 	uint8_t unused[4];
 };
 
+#define REGION0_PGNOS_LEN 4062
+#define REGION0_HT_LEN 8192
+
 /**
- * View of the zeroth shm region, which contains the WAL index header.
+ * View of the zeroth shm region, which contains the WAL index header
+ * and the first hash table.
  */
-union vfs2_shm_region0 {
+struct vfs2_shm_region0 {
 	struct wal_index_full_hdr hdr;
-	char bytes[VFS2_WAL_INDEX_REGION_SIZE];
+	uint32_t pgnos[REGION0_PGNOS_LEN];
+	uint16_t ht[REGION0_HT_LEN];
 };
 
 struct entry {
@@ -970,22 +975,42 @@ static struct wal_index_full_hdr initial_full_hdr(struct wal_hdr whdr)
 	return ihdr;
 }
 
-static void set_mx_frame(struct wal_index_full_hdr *ihdr,
+static void pgno_ht_insert(uint16_t *ht, size_t len, uint16_t fx, uint32_t pgno)
+{
+	uint32_t hash = pgno * 383;
+	while (ht[hash % len] != 0) {
+		hash++;
+	}
+	ht[hash % len] = fx;
+}
+
+static void set_mx_frame(struct entry *e,
 			 uint32_t mx,
 			 struct wal_frame_hdr fhdr)
 {
+	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
 	uint32_t num_pages = ByteGetBe32(fhdr.commit);
 	PRE(num_pages > 0);
+	uint32_t old_mx = ihdr->basic[0].mxFrame;
 	ihdr->basic[0].iChange += 1;
 	ihdr->basic[0].mxFrame = mx;
 	ihdr->basic[0].nPage = num_pages;
-	/* XXX byte order */
 	ihdr->basic[0].frame_cksums.cksum1 = ByteGetBe32(fhdr.cksum1);
 	ihdr->basic[0].frame_cksums.cksum2 = ByteGetBe32(fhdr.cksum2);
 	struct cksums sums = {};
-	update_cksums(native_magic(), (const void *)&ihdr->basic[0], 40, &sums);
+	update_cksums(native_magic(), (const uint8_t *)&ihdr->basic[0],
+		      sizeof(ihdr->basic[0]), &sums);
 	ihdr->basic[0].cksums = sums;
 	ihdr->basic[1] = ihdr->basic[0];
+	POST(full_hdr_valid(ihdr));
+
+	struct vfs2_shm_region0 *r0 = e->shm_regions[0];
+	PRE(mx <= REGION0_PGNOS_LEN);
+	for (uint32_t i = old_mx; i < mx; i++) {
+		PRE(i < REGION0_PGNOS_LEN);
+		pgno_ht_insert(r0->ht, REGION0_HT_LEN, (uint16_t)i,
+			       r0->pgnos[i]);
+	}
 }
 
 static void restart_full_hdr(struct wal_index_full_hdr *ihdr,
@@ -1429,7 +1454,7 @@ int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice stop)
 	if (rv == SQLITE_OK) {
 		return rv;
 	}
-	set_mx_frame(get_full_hdr(e), commit, fhdr);
+	set_mx_frame(e, commit, fhdr);
 	if (commit == e->wal_cursor) {
 		e->shm_locks[WAL_WRITE_LOCK] = 0;
 		sm_move(&e->wtx_sm, WTX_BASE);
@@ -1723,6 +1748,9 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 		sums.cksum2 = ByteGetBe32(e->wal_cur_hdr.cksum2);
 	}
 
+	struct vfs2_shm_region0 *r0 = e->shm_regions[0];
+	PRE(e->wal_cursor < REGION0_PGNOS_LEN);
+	r0->pgnos[e->wal_cursor] = frames[0].page_number;
 	struct wal_frame_hdr fhdr = txn_frame_hdr(e, sums, frames[0]);
 	rv = write_one_frame(e, fhdr, frames[0].page);
 	if (rv != SQLITE_OK) {
@@ -1730,6 +1758,8 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	}
 
 	for (unsigned i = 1; i < len; i++) {
+		PRE(e->wal_cursor < REGION0_PGNOS_LEN);
+		r0->pgnos[e->wal_cursor] = frames[i].page_number;
 		sums.cksum1 = ByteGetBe32(fhdr.cksum1);
 		sums.cksum2 = ByteGetBe32(fhdr.cksum2);
 		fhdr = txn_frame_hdr(e, sums, frames[i]);
