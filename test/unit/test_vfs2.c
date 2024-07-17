@@ -212,14 +212,14 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	rv = sqlite3_step(stmt);
 	munit_assert_int(rv, ==, SQLITE_DONE);
 
-	struct vfs2_wal_frame *frames;
+	dqlite_vfs_frame *frames;
 	unsigned n;
 	rv = vfs2_poll(fp, &frames, &n, &sl);
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint(n, ==, 1);
 	munit_assert_not_null(frames);
-	munit_assert_not_null(frames[0].page);
-	sqlite3_free(frames[0].page);
+	munit_assert_not_null(frames[0].data);
+	sqlite3_free(frames[0].data);
 	sqlite3_free(frames);
 
 	rv = vfs2_unhide(fp);
