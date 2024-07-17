@@ -1505,7 +1505,9 @@ int vfs2_poll(sqlite3_file *file,
 		sl->len = len;
 	}
 
-	sm_move(&xfile->entry->wtx_sm, WTX_POLLED);
+	if (len > 0) {
+		sm_move(&xfile->entry->wtx_sm, WTX_POLLED);
+	}
 
 	return 0;
 }
