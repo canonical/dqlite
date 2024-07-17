@@ -60,6 +60,9 @@ static void tear_down(void *data)
 	free(f);
 }
 
+/**
+ * Open a connection to a test database for this node.
+ */
 static sqlite3 *open_test_db(const struct node *node)
 {
 	char buf[PATH_MAX];
@@ -80,6 +83,9 @@ static sqlite3 *open_test_db(const struct node *node)
 	return db;
 }
 
+/**
+ * Write two WALs to disk with the given contents.
+ */
 static void prepare_wals(const char *dbname,
 			 const unsigned char *wal1,
 			 size_t wal1_len,
@@ -113,6 +119,9 @@ static void prepare_wals(const char *dbname,
 	}
 }
 
+/**
+ * Assert the lengths of WAL1 and WAL2 on disk.
+ */
 static void check_wals(const char *dbname, off_t wal1_len, off_t wal2_len)
 {
 	char buf[PATH_MAX];
@@ -130,6 +139,9 @@ static void check_wals(const char *dbname, off_t wal1_len, off_t wal2_len)
 			  (rv < 0 && errno == ENOENT && wal2_len == 0));
 }
 
+/**
+ * Single-node test with several transactions and a checkpoint.
+ */
 TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
@@ -233,6 +245,10 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 
 #define WAL_SIZE_FROM_FRAMES(n) (32 + (24 + PAGE_SIZE) * (n))
 
+/**
+ * Create a WAL header with the sequence number and salts set to the
+ * given values.
+ */
 static void make_wal_hdr(uint8_t *buf,
 			 uint32_t ckpoint_seqno,
 			 uint32_t salt1,
@@ -276,6 +292,9 @@ static void make_wal_hdr(uint8_t *buf,
 	p += 4;
 }
 
+/**
+ * When only one WAL is nonempty at startup, that WAL becomes WAL-cur.
+ */
 TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
@@ -305,6 +324,10 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 	return MUNIT_OK;
 }
 
+/**
+ * When both WALs are nonempty at startup, the one with the higher salt1
+ * value becomes WAL-cur.
+ */
 TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
@@ -339,6 +362,9 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 	return MUNIT_OK;
 }
 
+/**
+ * Single-node test of rolling back a transaction.
+ */
 TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
