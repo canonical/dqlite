@@ -89,6 +89,7 @@ static const struct sm_conf wtx_states[SM_STATES_MAX] = {
         [WTX_ACTIVE] = {
                 .name = "active",
                 .allowed = BITS(WTX_BASE)
+                          |BITS(WTX_ACTIVE)
                           |BITS(WTX_HIDDEN)
                           |BITS(WTX_CLOSED),
         },
