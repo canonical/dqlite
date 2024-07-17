@@ -1,5 +1,3 @@
-#pragma GCC diagnostic ignored "-Wformat-truncation"  // XXX
-
 #include "../../src/lib/byte.h"
 #include "../../src/vfs2.h"
 #include "../lib/fs.h"
@@ -14,14 +12,20 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#define NUM_NODES 3
 #define PAGE_SIZE 512
 #define PAGE_SIZE_STR "512"
 
 SUITE(vfs2);
 
-struct fixture {
+struct node {
 	sqlite3_vfs *vfs;
+	char *vfs_name;
 	char *dir;
+};
+
+struct fixture {
+	struct node nodes[NUM_NODES];
 };
 
 static void *set_up(const MunitParameter params[], void *user_data)
@@ -29,20 +33,51 @@ static void *set_up(const MunitParameter params[], void *user_data)
 	(void)params;
 	(void)user_data;
 	struct fixture *f = munit_malloc(sizeof(*f));
-	f->dir = test_dir_setup();
-	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), "dqlite-vfs2");
-	munit_assert_ptr_not_null(f->vfs);
-	sqlite3_vfs_register(f->vfs, 1 /* make default */);
+	struct node *node;
+	for (unsigned i = 0; i < NUM_NODES; i++) {
+		node = &f->nodes[i];
+		node->dir = test_dir_setup();
+		node->vfs_name = sqlite3_mprintf("vfs2-%u", i);
+		munit_assert_ptr_not_null(node->vfs_name);
+		node->vfs = vfs2_make(sqlite3_vfs_find("unix"), node->vfs_name);
+		munit_assert_ptr_not_null(node->vfs);
+		sqlite3_vfs_register(node->vfs, 0);
+	}
 	return f;
 }
 
 static void tear_down(void *data)
 {
 	struct fixture *f = data;
-	sqlite3_vfs_unregister(f->vfs);
-	vfs2_destroy(f->vfs);
-	test_dir_tear_down(f->dir);
+	const struct node *node;
+	for (unsigned i = 0; i < NUM_NODES; i++) {
+		node = &f->nodes[i];
+		sqlite3_vfs_unregister(node->vfs);
+		vfs2_destroy(node->vfs);
+		sqlite3_free(node->vfs_name);
+		test_dir_tear_down(node->dir);
+	}
 	free(f);
+}
+
+static sqlite3 *open_test_db(const struct node *node)
+{
+	char buf[PATH_MAX];
+	snprintf(buf, sizeof(buf), "%s/test.db", node->dir);
+	sqlite3 *db;
+	int rv = sqlite3_open_v2(buf, &db,
+				 SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+				 node->vfs_name);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	munit_assert_ptr_not_null(db);
+	rv = sqlite3_exec(db,
+			  "PRAGMA page_size=" PAGE_SIZE_STR
+			  ";"
+			  "PRAGMA journal_mode=WAL;"
+			  "PRAGMA wal_autocheckpoint=0",
+			  NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	return db;
 }
 
 static void prepare_wals(const char *dbname,
@@ -62,7 +97,7 @@ static void prepare_wals(const char *dbname,
 		rv = ftruncate(fd1, 0);
 		munit_assert_int(rv, ==, 0);
 		n = write(fd1, wal1, wal1_len);
-		munit_assert_llong(n, ==, wal1_len);
+		munit_assert_llong(n, ==, (ssize_t)wal1_len);
 		close(fd1);
 	}
 	if (wal2 != NULL) {
@@ -73,7 +108,7 @@ static void prepare_wals(const char *dbname,
 		rv = ftruncate(fd2, 0);
 		munit_assert_int(rv, ==, 0);
 		n = write(fd2, wal2, wal2_len);
-		munit_assert_llong(n, ==, wal2_len);
+		munit_assert_llong(n, ==, (ssize_t)wal2_len);
 		close(fd2);
 	}
 }
@@ -98,28 +133,12 @@ static void check_wals(const char *dbname, off_t wal1_len, off_t wal2_len)
 TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
+	struct node *node = &f->nodes[0];
 	int rv;
-	char buf[PATH_MAX];
 
-	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
-	sqlite3 *db;
-	rv = sqlite3_open(buf, &db);
-	munit_assert_int(rv, ==, SQLITE_OK);
-
-	rv = sqlite3_exec(db,
-			  "PRAGMA page_size=" PAGE_SIZE_STR
-			  ";"
-			  "PRAGMA journal_mode=WAL;"
-			  "PRAGMA wal_autocheckpoint=0",
-			  NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-
-	char *args[] = { NULL, "page_size", NULL };
-	rv = sqlite3_file_control(db, "main", SQLITE_FCNTL_PRAGMA, args);
+	sqlite3 *db = open_test_db(node);
 	sqlite3_file *fp;
 	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
-	rv = vfs2_commit_barrier(fp);
-	munit_assert_int(rv, ==, 0);
 	rv = sqlite3_exec(db, "CREATE TABLE foo (bar INTEGER)", NULL, NULL,
 			  NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
@@ -260,32 +279,20 @@ static void make_wal_hdr(uint8_t *buf,
 TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
+	struct node *node = &f->nodes[0];
 	char buf[PATH_MAX];
+	int rv;
 
-	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
+	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
 
 	check_wals(buf, 0, 0);
 
 	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
 	make_wal_hdr(wal2_hdronly, 0, 17, 103);
 	prepare_wals(buf, NULL, 0, wal2_hdronly, sizeof(wal2_hdronly));
-	sqlite3 *db;
-	tracef("opening...");
-	int rv = sqlite3_open(buf, &db);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	tracef("setup...");
-	rv = sqlite3_exec(db,
-			  "PRAGMA page_size=" PAGE_SIZE_STR
-			  ";"
-			  "PRAGMA journal_mode=WAL;"
-			  "PRAGMA wal_autocheckpoint=0",
-			  NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	sqlite3 *db = open_test_db(node);
 	sqlite3_file *fp;
 	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
-	tracef("barrier...");
-	rv = vfs2_commit_barrier(fp);
-	munit_assert_int(rv, ==, 0);
 	tracef("create table...");
 	rv = sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
@@ -301,10 +308,11 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
+	struct node *node = &f->nodes[0];
 	char buf[PATH_MAX];
+	int rv;
 
-	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
-
+	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
 	check_wals(buf, 0, 0);
 
 	uint8_t wal1_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
@@ -313,9 +321,7 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 	make_wal_hdr(wal2_hdronly, 0, 17, 103);
 	prepare_wals(buf, wal1_hdronly, sizeof(wal1_hdronly), wal2_hdronly,
 		     sizeof(wal2_hdronly));
-	sqlite3 *db;
-	int rv = sqlite3_open(buf, &db);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	sqlite3 *db = open_test_db(node);
 	rv = sqlite3_exec(db,
 			  "PRAGMA page_size=" PAGE_SIZE_STR
 			  ";"
@@ -336,13 +342,13 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
+	struct node *node = &f->nodes[0];
 	char buf[PATH_MAX];
+	int rv;
 
-	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
+	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
 
-	sqlite3 *db;
-	int rv = sqlite3_open(buf, &db);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	sqlite3 *db = open_test_db(node);
 
 	rv = sqlite3_exec(db,
 			  "PRAGMA journal_mode=WAL;"
