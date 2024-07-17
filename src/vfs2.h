@@ -103,7 +103,4 @@ int vfs2_pseudo_read_end(sqlite3_file *file, unsigned i);
  */
 void vfs2_destroy(sqlite3_vfs *vfs);
 
-// TODO access read marks and shm_locks
-// TODO access information about checkpoints
-
 #endif
