@@ -87,7 +87,7 @@ static size_t sizeofTimeoutNow(void)
 	       sizeof(uint64_t) /* Last log term. */;
 }
 
-size_t uvSizeofBatchHeader(size_t n, uint64_t format_version)
+size_t uvSizeofBatchHeader(size_t n, enum raft_uv_format_version format_version)
 {
 	size_t res = 8 + /* Number of entries in the batch, little endian */
 		16 * n; /* One header per entry */;
@@ -303,7 +303,7 @@ oom:
 void uvEncodeBatchHeader(const struct raft_entry *entries,
 			 unsigned n,
 			 void *buf,
-			 uint64_t format_version)
+			 enum raft_uv_format_version format_version)
 {
 	unsigned i;
 	void *cursor = buf;
@@ -378,7 +378,7 @@ int uvDecodeBatchHeader(const void *batch,
 			struct raft_entry **entries,
 			unsigned *n,
 			uint64_t *local_data_size,
-			uint64_t format_version)
+			enum raft_uv_format_version format_version)
 {
 	const void *cursor = batch;
 	size_t i;
@@ -581,7 +581,7 @@ int uvDecodeEntriesBatch(uint8_t *batch,
 			 struct raft_entry *entries,
 			 unsigned n,
 			 uint64_t local_data_size,
-			 uint64_t format_version)
+			 enum raft_uv_format_version format_version)
 {
 	uint8_t *cursor;
 

@@ -114,7 +114,7 @@ static int uvInit(struct raft_io *io, raft_id id, const char *address)
 	}
 	if (metadata.format_version != 0 &&
 	    metadata.format_version != uv->format_version) {
-		ErrMsgPrintf(io->errmsg, "decode metadata: bad format version %ju",
+		ErrMsgPrintf(io->errmsg, "decode metadata: bad format version %u",
 			     metadata.format_version);
 		return RAFT_MALFORMED;
 	}
@@ -821,7 +821,8 @@ void raft_uv_set_auto_recovery(struct raft_io *io, bool flag)
 	uv->auto_recovery = flag;
 }
 
-void raft_uv_set_format_version(struct raft_io *io, uint64_t version)
+void raft_uv_set_format_version(struct raft_io *io,
+                                enum raft_uv_format_version version)
 {
 	PRE(RAFT_UV_FORMAT_V1 <= version && version < RAFT_UV_FORMAT_NR);
 	struct uv *uv = io->impl;

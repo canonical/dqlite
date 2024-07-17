@@ -20,14 +20,14 @@ int uvDecodeBatchHeader(const void *batch,
 			struct raft_entry **entries,
 			unsigned *n,
 			uint64_t *local_data_size,
-			uint64_t format_version);
+			enum raft_uv_format_version format_version);
 
 int uvDecodeEntriesBatch(uint8_t *batch,
 			 size_t offset,
 			 struct raft_entry *entries,
 			 unsigned n,
 			 uint64_t local_data_size,
-			 uint64_t format_version);
+			 enum raft_uv_format_version format_version);
 
 /**
  * The layout of the memory pointed at by a @batch pointer is the following:
@@ -52,11 +52,11 @@ int uvDecodeEntriesBatch(uint8_t *batch,
  * arbitrary lengths, possibly padded with extra bytes to reach 8-byte boundary
  * (which means that all entry data pointers are 8-byte aligned).
  */
-size_t uvSizeofBatchHeader(size_t n, uint64_t format_version);
+size_t uvSizeofBatchHeader(size_t n, enum raft_uv_format_version format_version);
 
 void uvEncodeBatchHeader(const struct raft_entry *entries,
 			 unsigned n,
 			 void *buf,
-			 uint64_t format_version);
+			 enum raft_uv_format_version format_version);
 
 #endif /* UV_ENCODING_H_ */

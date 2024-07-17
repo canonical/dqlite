@@ -702,7 +702,7 @@ static int uvEnsureSegmentBufferIsLargeEnough(struct uvSegmentBuffer *b,
 }
 
 void uvSegmentBufferInit(struct uvSegmentBuffer *b,
-                         uint64_t format_version,
+                         enum raft_uv_format_version format_version,
                          size_t block_size)
 {
         b->format_version = format_version;
@@ -739,7 +739,7 @@ int uvSegmentBufferFormat(struct uvSegmentBuffer *b)
 int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 			  const struct raft_entry entries[],
 			  unsigned n_entries,
-			  uint64_t format_version)
+			  enum raft_uv_format_version format_version)
 {
 	size_t size;   /* Total size of the batch */
 	uint32_t crc1; /* Header checksum */

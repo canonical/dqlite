@@ -593,7 +593,8 @@ static void uvAliveSegmentReserveSegmentCapacity(struct uvAliveSegment *s,
 
 /* Return the number of bytes needed to store the batch of entries of this
  * append request on disk. */
-static size_t uvAppendSize(struct uvAppend *a, uint64_t format_version)
+static size_t uvAppendSize(struct uvAppend *a,
+                           enum raft_uv_format_version format_version)
 {
 	size_t size = sizeof(uint32_t) * 2; /* CRC checksums */
 	unsigned i;

@@ -1503,7 +1503,7 @@ RAFT_API void raft_uv_set_auto_recovery(struct raft_io *io, bool flag);
  * Values for the format version number that describes the segment and snapshot
  * files.
  */
-enum {
+enum raft_uv_format_version {
 	RAFT_UV_FORMAT_V1 = 1, /* Original */
 	RAFT_UV_FORMAT_V2,     /* Added local_data fields */
 	RAFT_UV_FORMAT_NR
@@ -1519,7 +1519,8 @@ enum {
  *
  * RAFT_UV_FORMAT_V1 is used by default.
  */
-RAFT_API void raft_uv_set_format_version(struct raft_io *io, uint64_t version);
+RAFT_API void raft_uv_set_format_version(struct raft_io *io,
+                                         enum raft_uv_format_version version);
 
 /**
  * Callback invoked by the transport implementation when a new incoming
