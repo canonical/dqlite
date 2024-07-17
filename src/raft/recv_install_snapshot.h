@@ -25,6 +25,7 @@ struct work {
 };
 
 struct sender {
+	// TODO embbed the uv req here.
 	sender_cb_op cb;
 };
 
