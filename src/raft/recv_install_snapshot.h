@@ -222,6 +222,7 @@ enum follower_states {
 	FS_CHUNCK_APPLIED,
 	FS_CHUNCK_REPLIED,
 
+	FS_SNAP_DONE,
 	FS_FINAL,
 
 	FS_NR,
@@ -305,7 +306,12 @@ static const struct sm_conf follower_sm_conf[FS_NR] = {
 	[FS_CHUNCK_REPLIED] = {
 		.name = "chunk_replied",
 		.allowed = BITS(FS_CHUNCK_PROCESSED)
-		         | BITS(FS_FINAL)
+		         | BITS(FS_SNAP_DONE)
+		         | BITS(FS_NORMAL),
+	},
+	[FS_SNAP_DONE] = {
+		.name = "snap_done",
+		.allowed = BITS(FS_FINAL)
 		         | BITS(FS_NORMAL),
 	},
 	[FS_FINAL] = {

@@ -94,10 +94,9 @@
  * job. Once the background job is finished, the Follower replies with
  * CPResult() or MVResult().
  *
- * 8. When the iteration has finished the Leader sends
- * InstallShapshot(..., done=true) message to the Follower. It moves the
- * Follower back to NORMAL state and the state machine corresponding to the
- * Follower on the Leader is moved to SNAPSHOT_DONE state.
+ * 8. When the iteration has finished the Leader moves into SNAP_DONE state and
+ * sends InstallShapshot(..., done=true) message to the Follower. When Follower
+ * replies, both state machines move to their FINAL states.
  *
  * 9. The Leader sends AppendEntries() RPC to the Follower and restarts the
  * algorithm from (1). The Leader's state machine is being moved to
@@ -242,8 +241,11 @@
  * |       +-------  CHUNK_APPLIED                            |
  * |       |               V Chunk has been written to disk.  |
  * |       +-------  CHUNK_REPLIED ---------------------------+
- * |    (@ || %)           | CP()/MV() had done=true.
- * |                       V CPResult()/MVResult() sent.
+ * |       |               | CP()/MV() had done=true.
+ * |       |               V CPResult()/MVResult() sent.
+ * |       +---------  SNAP_DONE
+ * |    (@ || %)           | InstallSnapshot(done=true) received,
+ * |                       V and reply sent.
  * |                     FINAL
  * |                       |
  * +-----------------------+
@@ -797,6 +799,7 @@ again:
 	case FS_SIGS_CALC_LOOP:
 	case FS_SIG_READ:
 	case FS_CHUNCK_APPLIED:
+	case FS_SNAP_DONE:
 		follower_rpc_tick(&follower->rpc);
 		if (sm_state(&follower->rpc.sm) == RPC_SENT) {
 			rpc_fini(&follower->rpc);

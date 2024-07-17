@@ -239,6 +239,10 @@ TEST(snapshot_follower, basic, set_up, tear_down, 0, NULL) {
 	PRE(sm_state(&follower.sm) == FS_CHUNCK_APPLIED);
 	ut_rpc_sent(&follower.rpc);
 
+	PRE(sm_state(&follower.sm) == FS_SNAP_DONE);
+	ut_follower_message_received(&follower, ut_install_snapshot());
+	ut_rpc_sent(&follower.rpc);
+
 	sm_fini(&follower.sm);
 	return MUNIT_OK;
 }
@@ -633,6 +637,10 @@ TEST(snapshot_follower, pool, set_up, tear_down, 0, NULL) {
 	wait_work();
 
 	PRE(sm_state(&follower->sm) == FS_CHUNCK_APPLIED);
+	ut_rpc_sent(&follower->rpc);
+
+	PRE(sm_state(&follower->sm) == FS_SNAP_DONE);
+	ut_follower_message_received(follower, ut_install_snapshot());
 	ut_rpc_sent(&follower->rpc);
 
 	sm_fini(&follower->sm);
