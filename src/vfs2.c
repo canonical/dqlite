@@ -1727,6 +1727,7 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	 * (wal_cursor). */
 	e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
 
+	uint32_t start = e->wal_cursor;
 	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
 	uint32_t mx = ihdr->basic[0].mxFrame;
 	if (mx > 0 && ihdr->nBackfill == mx) {
@@ -1736,9 +1737,16 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 		if (rv != SQLITE_OK) {
 			return 1;
 		}
+	} else if (start == 0) {
+		sqlite3_file *phys = e->wal_cur;
+		struct wal_hdr new_whdr = next_wal_hdr(e);
+		rv = phys->pMethods->xWrite(phys, &new_whdr, sizeof(new_whdr),
+					    0);
+		e->wal_cur_hdr = new_whdr;
+		if (rv != SQLITE_OK) {
+			return 1;
+		}
 	}
-
-	uint32_t start = e->wal_cursor;
 
 	struct cksums sums;
 	uint32_t db_size;
