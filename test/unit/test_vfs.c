@@ -69,7 +69,7 @@ static void setPageSizeDisk(const MunitParameter params[],
 	    "",
 	};
 
-	disk_mode = param_bool(params, "disk_mode");
+	disk_mode = param_get_bool(params, "disk_mode");
 	if (disk_mode) {
 		rc = f->pMethods->xFileControl(f, SQLITE_FCNTL_PRAGMA, fnctl);
 		munit_assert_int(rc, ==, rv);
@@ -87,7 +87,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	rv = VfsInit(&f->vfs, "dqlite");
 	munit_assert_int(rv, ==, 0);
 	f->dir = NULL;
-	disk_mode = param_bool(params, "disk_mode");
+	disk_mode = param_get_bool(params, "disk_mode");
 	if (disk_mode) {
 		rv = VfsEnableDisk(&f->vfs);
 		munit_assert_int(rv, ==, 0);

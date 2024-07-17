@@ -98,7 +98,7 @@ TEST(fsm, snapshotFreshDb, setUp, tearDown, 0, snapshot_params)
 	unsigned n_bufs = 0;
 	int rv;
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	rv = fsm->snapshot(fsm, &bufs, &n_bufs);
 	munit_assert_int(rv, ==, 0);
@@ -128,7 +128,7 @@ TEST(fsm, snapshotWrittenDb, setUp, tearDown, 0, snapshot_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	/* Add some data to database */
 	HANDSHAKE;
@@ -166,7 +166,7 @@ TEST(fsm, snapshotHeapFaultSingleDB, setUp, tearDown, 0, snapshot_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	/* Add some data to database */
 	HANDSHAKE;
@@ -218,7 +218,7 @@ TEST(fsm,
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	if (!disk_mode) {
 		return MUNIT_SKIP;
@@ -261,7 +261,7 @@ TEST(fsm, snapshotHeapFaultTwoDB, setUp, tearDown, 0, snapshot_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	/* Open 2 databases and add data to them */
 	HANDSHAKE;
@@ -325,7 +325,7 @@ TEST(fsm, snapshotHeapFaultTwoDBAsync, setUp, tearDown, 0, snapshot_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 	if (!disk_mode) {
 		return MUNIT_SKIP;
 	}
@@ -390,7 +390,7 @@ TEST(fsm, snapshotNewDbAddedBeforeFinalize, setUp, tearDown, 0, snapshot_params)
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	/* Add some data to database */
 	HANDSHAKE;
@@ -440,7 +440,7 @@ TEST(fsm, snapshotWritesBeforeFinalize, setUp, tearDown, 0, snapshot_params)
 	char sql[128];
 	int rv;
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	/* Add some data to database */
 	HANDSHAKE;
@@ -491,7 +491,7 @@ TEST(fsm, concurrentSnapshots, setUp, tearDown, 0, snapshot_params)
 	uint64_t rows_affected;
 	int rv;
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	/* Add some data to database */
 	HANDSHAKE;
@@ -583,7 +583,7 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, restore_params)
 	int rv;
 	char sql[128];
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	/* Add some data to database */
 	HANDSHAKE;
@@ -649,7 +649,7 @@ TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, snapshot_params)
 	char *msg;
 	int rv;
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	/* Create 2 databases and add data to them. */
 	HANDSHAKE;

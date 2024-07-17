@@ -45,7 +45,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 		sprintf(f->names[i], "%u", i + 1);
 		rv = dqlite_vfs_init(&f->vfs[i], f->names[i]);
 		munit_assert_int(rv, ==, 0);
-		bool disk_mode = param_bool(params, "disk_mode");
+		bool disk_mode = param_get_bool(params, "disk_mode");
 		if (disk_mode) {
 			f->dirs[i] = test_dir_setup();
 			rv = dqlite_vfs_enable_disk(&f->vfs[i]);

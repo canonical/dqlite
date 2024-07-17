@@ -38,7 +38,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 
 	f->dir = test_dir_setup();
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	rv = dqlite_node_create_v2(1, "1", f->dir, disk_mode, &f->node);
 	munit_assert_int(rv, ==, 0);
@@ -59,7 +59,7 @@ static void *setUpInet(const MunitParameter params[], void *user_data)
 
 	f->dir = test_dir_setup();
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	rv = dqlite_node_create_v2(1, "1", f->dir, disk_mode, &f->node);
 	munit_assert_int(rv, ==, 0);
@@ -86,7 +86,7 @@ static void *setUpForRecovery(const MunitParameter params[], void *user_data)
 	startStopNode(f);
 	dqlite_node_destroy(f->node);
 
-	bool disk_mode = param_bool(params, "disk_mode");
+	bool disk_mode = param_get_bool(params, "disk_mode");
 
 	rv = dqlite_node_create_v2(1, "1", f->dir, disk_mode, &f->node);
 	munit_assert_int(rv, ==, 0);
