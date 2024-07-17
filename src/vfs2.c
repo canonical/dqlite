@@ -1670,6 +1670,11 @@ static struct wal_hdr next_wal_hdr(const struct entry *e)
 	}
 	BytePutBe32(salt1, ret.salts.salt1);
 	sqlite3_randomness(sizeof(ret.salts.salt2), (void *)&ret.salts.salt2);
+	struct cksums sums = {};
+	update_cksums(native_magic(), (const uint8_t *)&ret,
+		      offsetof(struct wal_hdr, cksum1), &sums);
+	BytePutBe32(sums.cksum1, ret.cksum1);
+	BytePutBe32(sums.cksum2, ret.cksum2);
 	return ret;
 }
 
