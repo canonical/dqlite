@@ -349,39 +349,22 @@ TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
 	struct node *node = &f->nodes[0];
-	char buf[PATH_MAX];
-	int rv;
-
-	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
+	struct vfs2_wal_slice sl;
+	char sql[100];
 
 	sqlite3 *db = node_open_db(node, "test.db");
-
-	rv = sqlite3_exec(db,
-			  "PRAGMA journal_mode=WAL;"
-			  "PRAGMA wal_autocheckpoint=0",
-			  NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	sqlite3_file *fp;
-	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
-	struct vfs2_wal_slice sl;
-	rv = vfs2_poll(fp, NULL, &sl);
-	munit_assert_int(rv, ==, 0);
-	rv = vfs2_unhide(fp);
-	rv = sqlite3_exec(db, "BEGIN", NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	char sql[100];
+	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
+	sqlite3_file *fp = main_file(db);
+	OK(vfs2_poll(fp, NULL, &sl));
+	OK(vfs2_unhide(fp));
+	OK(sqlite3_exec(db, "BEGIN", NULL, NULL, NULL));
 	for (unsigned i = 0; i < 500; i++) {
 		snprintf(sql, sizeof(sql), "INSERT INTO foo (n) VALUES (%d)",
 			 i);
-		rv = sqlite3_exec(db, sql, NULL, NULL, NULL);
-		munit_assert_int(rv, ==, SQLITE_OK);
+		OK(sqlite3_exec(db, sql, NULL, NULL, NULL));
 	}
-	rv = sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = sqlite3_close(db);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	OK(sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL));
+	OK(sqlite3_close(db));
 
 	return MUNIT_OK;
 }
