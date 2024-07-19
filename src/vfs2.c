@@ -858,8 +858,11 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 		}
 
 		if (ofst == WAL_WRITE_LOCK) {
-			/* Unlocking the write lock: roll back any uncommitted
-			 * transaction. */
+			/* If the last frame of the pending transaction has no
+			 * commit marker when SQLite releases the write lock, it
+			 * means that the transaction rolled back before it
+			 * committed. We respond by throwing away our stored
+			 * frames and resetting the state machine. */
 			assert(n == 1);
 			if (sm_state(&e->wtx_sm) > WTX_BASE &&
 			    e->pending_txn_last_frame_commit == 0) {
