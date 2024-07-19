@@ -1005,6 +1005,7 @@ static void set_mx_frame(struct entry *e,
 	struct vfs2_shm_region0 *r0 = e->shm_regions[0];
 	PRE(mx <= REGION0_PGNOS_LEN);
 	for (uint32_t i = old_mx; i < mx; i++) {
+		/* TODO(cole) Support hash tables beyond the first. */
 		PRE(i < REGION0_PGNOS_LEN);
 		pgno_ht_insert(r0->ht, REGION0_HT_LEN, (uint16_t)i,
 			       r0->pgnos[i]);
@@ -1784,6 +1785,7 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	POST(db_size > 0);
 
 	struct vfs2_shm_region0 *r0 = e->shm_regions[0];
+	/* TODO(cole) Support hash tables beyond the first. */
 	PRE(e->wal_cursor < REGION0_PGNOS_LEN);
 	r0->pgnos[e->wal_cursor] = (uint32_t)frames[0].page_number;
 
