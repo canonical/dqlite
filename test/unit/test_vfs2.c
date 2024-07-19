@@ -385,3 +385,45 @@ TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
 
 	return MUNIT_OK;
 }
+
+/**
+ * Two-node test covering the full replication cycle.
+ */
+TEST(vfs2, leader_and_follower, set_up, tear_down, 0, NULL)
+{
+	struct fixture *f = data;
+	struct node *leader = &f->nodes[0];
+	struct node *follower = &f->nodes[1];
+
+	/* The leader executes and polls a transaction. */
+	sqlite3 *leader_db = open_test_db(leader);
+	OK(sqlite3_exec(leader_db, "CREATE TABLE foo (n INTEGER)", NULL, NULL,
+			NULL));
+	sqlite3_file *leader_fp = main_file(leader_db);
+	dqlite_vfs_frame *frames;
+	struct vfs2_wal_slice leader_sl;
+	OK(vfs2_poll(leader_fp, &frames, &leader_sl));
+	munit_assert_uint(leader_sl.len, ==, 2);
+
+	/* The follower receives the transaction. */
+	sqlite3 *follower_db = open_test_db(follower);
+	sqlite3_file *follower_fp = main_file(follower_db);
+	struct vfs2_wal_slice follower_sl;
+	OK(vfs2_add_uncommitted(follower_fp, PAGE_SIZE, frames, leader_sl.len,
+				&follower_sl));
+	sqlite3_free(frames[0].data);
+	sqlite3_free(frames[1].data);
+	sqlite3_free(frames);
+
+	/* The leader receives the follower's acknowledgement
+	 * and applies the transaction locally. */
+	OK(vfs2_unhide(leader_fp));
+
+	/* The follower learns the new commit index and applies
+	 * the transaction locally. */
+	OK(vfs2_apply(follower_fp, follower_sl));
+
+	sqlite3_close(follower_db);
+	sqlite3_close(leader_db);
+	return MUNIT_OK;
+}
