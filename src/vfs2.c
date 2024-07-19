@@ -411,6 +411,14 @@ static void maybe_close_entry(struct entry *e)
 
 	free_pending_txn(e);
 
+	assert(e->shm_refcount == 0);
+	for (int i = 0; i < e->shm_regions_len; i++) {
+		void *region = e->shm_regions[i];
+		assert(region != NULL);
+		sqlite3_free(region);
+	}
+	sqlite3_free(e->shm_regions);
+
 	pthread_rwlock_wrlock(&e->common->rwlock);
 	queue_remove(&e->link);
 	pthread_rwlock_unlock(&e->common->rwlock);
@@ -885,18 +893,6 @@ static int vfs2_shm_unmap(sqlite3_file *file, int delete)
 	struct file *xfile = (struct file *)file;
 	struct entry *e = xfile->entry;
 	e->shm_refcount--;
-	if (e->shm_refcount == 0) {
-		for (int i = 0; i < e->shm_regions_len; i++) {
-			void *region = e->shm_regions[i];
-			assert(region != NULL);
-			sqlite3_free(region);
-		}
-		sqlite3_free(e->shm_regions);
-
-		e->shm_regions = NULL;
-		e->shm_regions_len = 0;
-		memset(e->shm_locks, 0, sizeof(e->shm_locks));
-	}
 	return SQLITE_OK;
 }
 
