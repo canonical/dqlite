@@ -38,8 +38,8 @@
 
 #define READ_MARK_UNUSED 0xffffffff
 
-#define DB_HEADER_SIZE 100
-#define DB_HEADER_NPAGES_OFFSET 28
+#define DB_FILE_HEADER_SIZE 100
+#define DB_FILE_HEADER_NPAGES_OFFSET 28
 
 static const uint32_t invalid_magic = 0x17171717;
 
@@ -1772,14 +1772,14 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 		sums.cksum2 = ByteGetBe32(e->wal_cur_hdr.cksum2);
 		/* The database size in pages is kept in a field of the database
 		 * header. */
-		uint8_t b[DB_HEADER_SIZE];
+		uint8_t b[DB_FILE_HEADER_SIZE];
 		rv =
 		    xfile->orig->pMethods->xRead(xfile->orig, &b, sizeof(b), 0);
 		/* TODO(cole) this can't fail provided that the main file
 		 * has been created; ensure that this is the case even if
 		 * we haven't run a checkpoint yet. */
 		assert(rv == SQLITE_OK);
-		db_size = ByteGetBe32(b + DB_HEADER_NPAGES_OFFSET);
+		db_size = ByteGetBe32(b + DB_FILE_HEADER_NPAGES_OFFSET);
 	}
 	POST(db_size > 0);
 
