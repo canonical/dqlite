@@ -63,12 +63,12 @@ static void tear_down(void *data)
 }
 
 /**
- * Open a connection to a test database for this node.
+ * Open a connection to a database for this node.
  */
-static sqlite3 *open_test_db(const struct node *node)
+static sqlite3 *node_open_db(const struct node *node, const char *name)
 {
 	char buf[PATH_MAX];
-	snprintf(buf, sizeof(buf), "%s/test.db", node->dir);
+	snprintf(buf, sizeof(buf), "%s/%s", node->dir, name);
 	sqlite3 *db;
 	int rv = sqlite3_open_v2(buf, &db,
 				 SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
@@ -154,7 +154,7 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	struct node *node = &f->nodes[0];
 	int rv;
 
-	sqlite3 *db = open_test_db(node);
+	sqlite3 *db = node_open_db(node, "test.db");
 	sqlite3_file *fp = main_file(db);
 	OK(sqlite3_exec(db, "CREATE TABLE foo (bar INTEGER)", NULL, NULL,
 			NULL));
@@ -295,7 +295,7 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
 	make_wal_hdr(wal2_hdronly, 0, 17, 103);
 	prepare_wals(buf, NULL, 0, wal2_hdronly, sizeof(wal2_hdronly));
-	sqlite3 *db = open_test_db(node);
+	sqlite3 *db = node_open_db(node, "test.db");
 	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
 	OK(sqlite3_close(db));
 
@@ -324,7 +324,7 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 	make_wal_hdr(wal2_hdronly, 0, 17, 103);
 	prepare_wals(buf, wal1_hdronly, sizeof(wal1_hdronly), wal2_hdronly,
 		     sizeof(wal2_hdronly));
-	sqlite3 *db = open_test_db(node);
+	sqlite3 *db = node_open_db(node, "test.db");
 	rv = sqlite3_exec(db,
 			  "PRAGMA page_size=" PAGE_SIZE_STR
 			  ";"
@@ -354,7 +354,7 @@ TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
 
 	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
 
-	sqlite3 *db = open_test_db(node);
+	sqlite3 *db = node_open_db(node, "test.db");
 
 	rv = sqlite3_exec(db,
 			  "PRAGMA journal_mode=WAL;"
@@ -396,7 +396,7 @@ TEST(vfs2, leader_and_follower, set_up, tear_down, 0, NULL)
 	struct node *follower = &f->nodes[1];
 
 	/* The leader executes and polls a transaction. */
-	sqlite3 *leader_db = open_test_db(leader);
+	sqlite3 *leader_db = node_open_db(leader, "test.db");
 	OK(sqlite3_exec(leader_db, "CREATE TABLE foo (n INTEGER)", NULL, NULL,
 			NULL));
 	sqlite3_file *leader_fp = main_file(leader_db);
@@ -406,7 +406,7 @@ TEST(vfs2, leader_and_follower, set_up, tear_down, 0, NULL)
 	munit_assert_uint(leader_sl.len, ==, 2);
 
 	/* The follower receives the transaction. */
-	sqlite3 *follower_db = open_test_db(follower);
+	sqlite3 *follower_db = node_open_db(follower, "test.db");
 	sqlite3_file *follower_fp = main_file(follower_db);
 	struct vfs2_wal_slice follower_sl;
 	OK(vfs2_add_uncommitted(follower_fp, PAGE_SIZE, frames, leader_sl.len,
