@@ -1005,6 +1005,9 @@ static void set_mx_frame(struct entry *e,
 	struct vfs2_shm_region0 *r0 = e->shm_regions[0];
 	PRE(mx <= REGION0_PGNOS_LEN);
 	for (uint32_t i = old_mx; i < mx; i++) {
+		/* The page numbers array was already updated during the call
+		 * to add_uncommitted, so we just need to update the hash array.
+		 */
 		/* TODO(cole) Support hash tables beyond the first. */
 		PRE(i < REGION0_PGNOS_LEN);
 		pgno_ht_insert(r0->ht, REGION0_HT_LEN, (uint16_t)i,
@@ -1784,6 +1787,16 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	}
 	POST(db_size > 0);
 
+	/* Record the new frame in the appropriate page number array in the WAL
+	 * index. Note that this doesn't make the frame visible to readers: that
+	 * only happens once it is also recorded in the WAL-index hash array and
+	 * mxFrame exceeds the frame index. The hash array is updated only when
+	 * we increase mxFrame, so that we don't have to deal with the added
+	 * complexity of removing things from the hash table when frames are
+	 * overwritten before being committed. Updating the page number array
+	 * "early" like this is harmless and saves us from having to stash the
+	 * page numbers somewhere else in memory in between add_uncommitted and
+	 * apply, or (worse) read them back from WAL-cur. */
 	struct vfs2_shm_region0 *r0 = e->shm_regions[0];
 	/* TODO(cole) Support hash tables beyond the first. */
 	PRE(e->wal_cursor < REGION0_PGNOS_LEN);
