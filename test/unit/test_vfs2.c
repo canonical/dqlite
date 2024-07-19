@@ -16,7 +16,7 @@
 #define PAGE_SIZE 512
 #define PAGE_SIZE_STR "512"
 
-#define OK(rv) munit_assert_int(rv, ==, 0)
+#define OK(rv) munit_assert_int((rv), ==, 0)
 
 SUITE(vfs2);
 
