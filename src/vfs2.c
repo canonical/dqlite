@@ -129,27 +129,18 @@ static bool is_bigendian(void)
 	return *(char *)(&x) == 0;
 }
 
-static uint32_t native_magic(void)
+static void update_cksums(const uint8_t *p, size_t len, struct cksums *sums)
 {
-	return is_bigendian() ? BE_MAGIC : LE_MAGIC;
-}
-
-static void update_cksums(uint32_t magic,
-			  const uint8_t *p,
-			  size_t len,
-			  struct cksums *sums)
-{
-	PRE(magic == BE_MAGIC || magic == LE_MAGIC);
 	PRE(len % 8 == 0);
 	const uint8_t *end = p + len;
-	for (; p != end; p += 8) {
-		if (magic == BE_MAGIC) {
-			sums->cksum1 += ByteGetBe32(p) + sums->cksum2;
-			sums->cksum2 += ByteGetBe32(p + 4) + sums->cksum1;
-		} else {
-			sums->cksum1 += ByteGetLe32(p) + sums->cksum2;
-			sums->cksum2 += ByteGetLe32(p + 4) + sums->cksum1;
-		}
+	uint32_t n;
+	while (p != end) {
+		memcpy(&n, p, 4);
+		sums->cksum1 += n + sums->cksum2;
+		p += 4;
+		memcpy(&n, p, 4);
+		sums->cksum2 += n + sums->cksum1;
+		p += 4;
 	}
 }
 
@@ -354,18 +345,19 @@ static bool is_valid_page_size(unsigned long n)
 	return n >= 1 << 9 && n <= 1 << 16 && is_po2(n);
 }
 
-static bool basic_hdr_valid(struct wal_index_basic_hdr bhdr)
+static bool basic_hdr_valid(const struct wal_index_basic_hdr *bhdr)
 {
 	struct cksums sums = {};
-	update_cksums(bhdr.bigEndCksum ? BE_MAGIC : LE_MAGIC, (uint8_t *)&bhdr,
-		      offsetof(struct wal_index_basic_hdr, cksums), &sums);
-	return bhdr.iVersion == 3007000 && bhdr.isInit == 1 &&
-	       cksums_equal(sums, bhdr.cksums);
+	const uint8_t *p = (const uint8_t *)bhdr;
+	size_t len = offsetof(struct wal_index_basic_hdr, cksums);
+	update_cksums(p, len, &sums);
+	return bhdr->iVersion == 3007000 && bhdr->isInit == 1 &&
+	       cksums_equal(sums, bhdr->cksums);
 }
 
 static bool full_hdr_valid(const struct wal_index_full_hdr *ihdr)
 {
-	return basic_hdr_valid(ihdr->basic[0]) &&
+	return basic_hdr_valid(&ihdr->basic[0]) &&
 	       wal_index_basic_hdr_equal(ihdr->basic[0], ihdr->basic[1]);
 }
 
@@ -956,6 +948,15 @@ static int read_wal_hdr(sqlite3_file *wal,
 	return SQLITE_OK;
 }
 
+static void write_basic_hdr_cksums(struct wal_index_basic_hdr *bhdr)
+{
+	struct cksums sums = {};
+	const uint8_t *p = (const uint8_t *)bhdr;
+	size_t len = offsetof(struct wal_index_basic_hdr, cksums);
+	update_cksums(p, len, &sums);
+	bhdr->cksums = sums;
+}
+
 static struct wal_index_full_hdr initial_full_hdr(struct wal_hdr whdr)
 {
 	struct wal_index_full_hdr ihdr = {};
@@ -963,10 +964,7 @@ static struct wal_index_full_hdr initial_full_hdr(struct wal_hdr whdr)
 	ihdr.basic[0].isInit = 1;
 	ihdr.basic[0].bigEndCksum = is_bigendian();
 	ihdr.basic[0].szPage = (uint16_t)ByteGetBe32(whdr.page_size);
-	struct cksums sums = {};
-	update_cksums(native_magic(), (const void *)&ihdr.basic[0],
-		      offsetof(struct wal_index_basic_hdr, cksums), &sums);
-	ihdr.basic[0].cksums = sums;
+	write_basic_hdr_cksums(&ihdr.basic[0]);
 	ihdr.basic[1] = ihdr.basic[0];
 	ihdr.marks[0] = 0;
 	ihdr.marks[1] = READ_MARK_UNUSED;
@@ -998,10 +996,7 @@ static void set_mx_frame(struct entry *e,
 	ihdr->basic[0].nPage = num_pages;
 	ihdr->basic[0].frame_cksums.cksum1 = ByteGetBe32(fhdr.cksum1);
 	ihdr->basic[0].frame_cksums.cksum2 = ByteGetBe32(fhdr.cksum2);
-	struct cksums sums = {};
-	update_cksums(native_magic(), (const uint8_t *)&ihdr->basic[0],
-		      sizeof(ihdr->basic[0]), &sums);
-	ihdr->basic[0].cksums = sums;
+	write_basic_hdr_cksums(&ihdr->basic[0]);
 	ihdr->basic[1] = ihdr->basic[0];
 	POST(full_hdr_valid(ihdr));
 
@@ -1024,9 +1019,7 @@ static void restart_full_hdr(struct wal_index_full_hdr *ihdr,
 	/* cf. walRestartHdr */
 	ihdr->basic[0].mxFrame = 0;
 	ihdr->basic[0].salts = new_whdr.salts;
-	struct cksums sums = {};
-	update_cksums(native_magic(), (const void *)&ihdr->basic[0], 40, &sums);
-	ihdr->basic[0].cksums = sums;
+	write_basic_hdr_cksums(&ihdr->basic[0]);
 	ihdr->basic[1] = ihdr->basic[0];
 	ihdr->nBackfill = 0;
 	ihdr->nBackfillAttempted = 0;
@@ -1660,7 +1653,7 @@ static struct wal_hdr next_wal_hdr(const struct entry *e)
 	 * us access to this PRNG, seeded from the default (unix) VFS. */
 	struct wal_hdr ret;
 	struct wal_hdr old = e->wal_cur_hdr;
-	BytePutBe32(native_magic(), ret.magic);
+	BytePutBe32(is_bigendian() ? BE_MAGIC : LE_MAGIC, ret.magic);
 	BytePutBe32(3007000, ret.version);
 	BytePutBe32(e->page_size, ret.page_size);
 	uint32_t ckpoint_seqno = ByteGetBe32(old.ckpoint_seqno);
@@ -1674,8 +1667,8 @@ static struct wal_hdr next_wal_hdr(const struct entry *e)
 	BytePutBe32(salt1, ret.salts.salt1);
 	sqlite3_randomness(sizeof(ret.salts.salt2), (void *)&ret.salts.salt2);
 	struct cksums sums = {};
-	update_cksums(native_magic(), (const uint8_t *)&ret,
-		      offsetof(struct wal_hdr, cksum1), &sums);
+	update_cksums((const uint8_t *)&ret, offsetof(struct wal_hdr, cksum1),
+		      &sums);
 	BytePutBe32(sums.cksum1, ret.cksum1);
 	BytePutBe32(sums.cksum2, ret.cksum2);
 	return ret;
@@ -1690,10 +1683,8 @@ static struct wal_frame_hdr txn_frame_hdr(struct entry *e,
 
 	BytePutBe32((uint32_t)frame->page_number, fhdr.page_number);
 	BytePutBe32(commit, fhdr.commit);
-	update_cksums(ByteGetBe32(e->wal_cur_hdr.magic), (const void *)(&fhdr),
-		      8, &sums);
-	update_cksums(ByteGetBe32(e->wal_cur_hdr.magic), frame->data,
-		      e->page_size, &sums);
+	update_cksums((const void *)(&fhdr), 8, &sums);
+	update_cksums(frame->data, e->page_size, &sums);
 	fhdr.salts = e->wal_cur_hdr.salts;
 	BytePutBe32(sums.cksum1, fhdr.cksum1);
 	BytePutBe32(sums.cksum2, fhdr.cksum2);
