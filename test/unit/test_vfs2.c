@@ -388,9 +388,12 @@ TEST(vfs2, leader_and_follower, set_up, tear_down, 0, NULL)
 	OK(vfs2_poll(leader_fp, &frames, &leader_sl));
 	munit_assert_uint(leader_sl.len, ==, 2);
 
-	/* The follower receives the transaction. */
+	/* The follower opens its database. */
 	sqlite3 *follower_db = node_open_db(follower, "test.db");
 	sqlite3_file *follower_fp = main_file(follower_db);
+	vfs2_ut_sm_relate(leader_fp, follower_fp);
+
+	/* The follower receives the transaction. */
 	struct vfs2_wal_slice follower_sl;
 	OK(vfs2_add_uncommitted(follower_fp, PAGE_SIZE, frames, leader_sl.len,
 				&follower_sl));

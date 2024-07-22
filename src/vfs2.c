@@ -3,6 +3,7 @@
 #include "lib/byte.h"
 #include "lib/queue.h"
 #include "lib/sm.h"
+#include "tracing.h"
 #include "utils.h"
 
 #include <pthread.h>
@@ -1877,4 +1878,13 @@ int vfs2_pseudo_read_end(sqlite3_file *file, unsigned i)
 	PRE(e->shm_locks[i] > 0);
 	e->shm_locks[i] -= 1;
 	return 0;
+}
+
+void vfs2_ut_sm_relate(sqlite3_file *orig, sqlite3_file *targ)
+{
+	struct file *forig = (struct file *)orig;
+	PRE(forig->flags & SQLITE_OPEN_MAIN_DB);
+	struct file *ftarg = (struct file *)targ;
+	PRE(ftarg->flags & SQLITE_OPEN_MAIN_DB);
+	sm_relate(&forig->entry->wtx_sm, &ftarg->entry->wtx_sm);
 }

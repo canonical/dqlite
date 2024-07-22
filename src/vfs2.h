@@ -181,4 +181,13 @@ int vfs2_pseudo_read_end(sqlite3_file *file, unsigned i);
  */
 void vfs2_destroy(sqlite3_vfs *vfs);
 
+/**
+ * Declare a relationship between two databases opened by (possibly distinct)
+ * vfs2 instances.
+ *
+ * Intended for use by unit tests. The arguments are main file handles
+ * (SQLITE_FCNTL_FILE_POINTER).
+ */
+void vfs2_ut_sm_relate(sqlite3_file *orig, sqlite3_file *targ);
+
 #endif
