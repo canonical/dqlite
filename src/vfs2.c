@@ -1456,7 +1456,7 @@ int vfs2_apply(sqlite3_file *file, struct vfs2_wal_slice stop)
 	int rv = wal_cur->pMethods->xRead(
 	    wal_cur, &fhdr, sizeof(fhdr),
 	    wal_offset_from_cursor(e->page_size, stop.start + stop.len - 1));
-	if (rv == SQLITE_OK) {
+	if (rv != SQLITE_OK) {
 		return rv;
 	}
 	set_mx_frame(e, commit, fhdr);
