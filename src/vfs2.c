@@ -928,9 +928,29 @@ static int compare_wal_headers(struct wal_hdr a,
 	return SQLITE_OK;
 }
 
-static int read_wal_hdr(sqlite3_file *wal,
-			sqlite3_int64 *size,
-			struct wal_hdr *hdr)
+static bool wal_hdr_is_valid(const struct wal_hdr *hdr)
+{
+	/* TODO(cole) Add other validity constraints. */
+	struct cksums sums_found = {};
+	const uint8_t *p = (const uint8_t *)hdr;
+	size_t len = offsetof(struct wal_hdr, cksum1);
+	update_cksums(p, len, &sums_found);
+	struct cksums sums_expected = { ByteGetBe32(hdr->cksum1),
+					ByteGetBe32(hdr->cksum2) };
+	return cksums_equal(sums_expected, sums_found);
+}
+
+/**
+ * Read the header of the given WAL file and detect corruption.
+ *
+ * If the file contains a valid header, returns this header in `hdr` and the
+ * size of the file in `size`. If the file is too short to contain a header,
+ * returns the size only. If the file can't be read, or it contains an invalid
+ * header, returns an error.
+ */
+static int try_read_wal_hdr(sqlite3_file *wal,
+			    sqlite3_int64 *size,
+			    struct wal_hdr *hdr)
 {
 	int rv;
 
@@ -938,13 +958,15 @@ static int read_wal_hdr(sqlite3_file *wal,
 	if (rv != SQLITE_OK) {
 		return rv;
 	}
-	if (*size >= (sqlite3_int64)sizeof(struct wal_hdr)) {
-		rv = wal->pMethods->xRead(wal, hdr, sizeof(*hdr), 0);
-		if (rv != SQLITE_OK) {
-			return rv;
-		}
-	} else {
-		*hdr = (struct wal_hdr){};
+	if (*size < (sqlite3_int64)sizeof(*hdr)) {
+		return SQLITE_OK;
+	}
+	rv = wal->pMethods->xRead(wal, hdr, sizeof(*hdr), 0);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
+	if (!wal_hdr_is_valid(hdr)) {
+		return SQLITE_CORRUPT;
 	}
 	return SQLITE_OK;
 }
@@ -1105,13 +1127,13 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 
 	sqlite3_int64 size1;
 	struct wal_hdr hdr1;
-	rv = read_wal_hdr(e->wal_cur, &size1, &hdr1);
+	rv = try_read_wal_hdr(e->wal_cur, &size1, &hdr1);
 	if (rv != SQLITE_OK) {
 		return rv;
 	}
 	sqlite3_int64 size2;
 	struct wal_hdr hdr2;
-	rv = read_wal_hdr(e->wal_prev, &size2, &hdr2);
+	rv = try_read_wal_hdr(e->wal_prev, &size2, &hdr2);
 	if (rv != SQLITE_OK) {
 		return rv;
 	}
