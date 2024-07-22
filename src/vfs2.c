@@ -969,7 +969,7 @@ static struct wal_index_full_hdr initial_full_hdr(struct wal_hdr whdr)
 	ihdr.basic[0].cksums = sums;
 	ihdr.basic[1] = ihdr.basic[0];
 	ihdr.marks[0] = 0;
-	ihdr.marks[1] = 0;
+	ihdr.marks[1] = READ_MARK_UNUSED;
 	ihdr.marks[2] = READ_MARK_UNUSED;
 	ihdr.marks[3] = READ_MARK_UNUSED;
 	ihdr.marks[4] = READ_MARK_UNUSED;
