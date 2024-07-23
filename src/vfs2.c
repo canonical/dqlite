@@ -322,6 +322,14 @@ static bool salts_equal(struct vfs2_salts a, struct vfs2_salts b)
 	return get_salt1(a) == get_salt1(b) && get_salt2(a) == get_salt2(b);
 }
 
+static struct vfs2_salts make_salts(uint32_t salt1, uint32_t salt2)
+{
+	struct vfs2_salts ret;
+	BytePutBe32(salt1, ret.salt1);
+	BytePutBe32(salt2, ret.salt2);
+	return ret;
+}
+
 static struct wal_index_full_hdr *get_full_hdr(struct entry *e)
 {
 	PRE(e->shm_regions_len > 0);
@@ -1666,35 +1674,54 @@ static int write_one_frame(struct entry *e,
 	return SQLITE_OK;
 }
 
+/**
+ * Create a valid WAL header from the specified fields.
+ */
+static struct wal_hdr make_wal_hdr(uint32_t magic,
+				   uint32_t page_size,
+				   uint32_t ckpoint_seqno,
+				   struct vfs2_salts salts)
+{
+	struct wal_hdr ret;
+	BytePutBe32(magic, ret.magic);
+	BytePutBe32(3007000, ret.version);
+	BytePutBe32(page_size, ret.page_size);
+	BytePutBe32(ckpoint_seqno, ret.ckpoint_seqno);
+	ret.salts = salts;
+	struct cksums sums = {};
+	const uint8_t *p = (const uint8_t *)&ret;
+	size_t len = offsetof(struct wal_hdr, cksum1);
+	update_cksums(p, len, &sums);
+	BytePutBe32(sums.cksum1, ret.cksum1);
+	BytePutBe32(sums.cksum2, ret.cksum2);
+	return ret;
+}
+
+/**
+ * Derive the next header that should be written to start a new WAL.
+ *
+ * To get the next header, we start with the header of WAL-cur, increment
+ * salt1 and ckpoint_seqno, and randomize salt2.
+ */
 static struct wal_hdr next_wal_hdr(const struct entry *e)
 {
+	struct wal_hdr old = e->wal_cur_hdr;
+	uint32_t magic = is_bigendian() ? BE_MAGIC : LE_MAGIC;
+	uint32_t ckpoint_seqno = ByteGetBe32(old.ckpoint_seqno) + 1;
 	/* salt2 is randomized every time we generate a new WAL header.
 	 * We don't use the xRandomness method of the base VFS to do this,
 	 * because it always translates to a syscall (getrandom), and
 	 * SQLite intends that this should only be used for seeding the
 	 * internal PRNG. Instead, we call sqlite3_randomness, which gives
 	 * us access to this PRNG, seeded from the default (unix) VFS. */
-	struct wal_hdr ret;
-	struct wal_hdr old = e->wal_cur_hdr;
-	BytePutBe32(is_bigendian() ? BE_MAGIC : LE_MAGIC, ret.magic);
-	BytePutBe32(3007000, ret.version);
-	BytePutBe32(e->page_size, ret.page_size);
-	uint32_t ckpoint_seqno = ByteGetBe32(old.ckpoint_seqno);
-	BytePutBe32(ckpoint_seqno + 1, ret.ckpoint_seqno);
-	uint32_t salt1;
-	if (ckpoint_seqno == 0) {
-		salt1 = get_salt1(old.salts) + 1;
+	struct vfs2_salts salts;
+	if (ckpoint_seqno == 1) {
+		sqlite3_randomness(sizeof(salts.salt1), (void *)&salts.salt1);
 	} else {
-		sqlite3_randomness(sizeof(salt1), (void *)&salt1);
+		BytePutBe32(get_salt1(old.salts) + 1, salts.salt1);
 	}
-	BytePutBe32(salt1, ret.salts.salt1);
-	sqlite3_randomness(sizeof(ret.salts.salt2), (void *)&ret.salts.salt2);
-	struct cksums sums = {};
-	update_cksums((const uint8_t *)&ret, offsetof(struct wal_hdr, cksum1),
-		      &sums);
-	BytePutBe32(sums.cksum1, ret.cksum1);
-	BytePutBe32(sums.cksum2, ret.cksum2);
-	return ret;
+	sqlite3_randomness(sizeof(salts.salt2), (void *)&salts.salt2);
+	return make_wal_hdr(magic, e->page_size, ckpoint_seqno, salts);
 }
 
 static struct wal_frame_hdr txn_frame_hdr(struct entry *e,
@@ -1909,4 +1936,16 @@ void vfs2_ut_sm_relate(sqlite3_file *orig, sqlite3_file *targ)
 	struct file *ftarg = (struct file *)targ;
 	PRE(ftarg->flags & SQLITE_OPEN_MAIN_DB);
 	sm_relate(&forig->entry->wtx_sm, &ftarg->entry->wtx_sm);
+}
+
+void vfs2_ut_make_wal_hdr(uint8_t *buf,
+			  uint32_t page_size,
+			  uint32_t ckpoint_seqno,
+			  uint32_t salt1,
+			  uint32_t salt2)
+{
+	struct wal_hdr hdr =
+	    make_wal_hdr(is_bigendian() ? BE_MAGIC : LE_MAGIC, page_size,
+			 ckpoint_seqno, make_salts(salt1, salt2));
+	memcpy(buf, &hdr, sizeof(hdr));
 }

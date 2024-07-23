@@ -190,4 +190,17 @@ void vfs2_destroy(sqlite3_vfs *vfs);
  */
 void vfs2_ut_sm_relate(sqlite3_file *orig, sqlite3_file *targ);
 
+#define VFS2_WAL_HDR_SIZE 32
+
+/**
+ * Write a WAL header with the provided fields to the given buffer.
+ *
+ * The size of the buffer must be at least VFS2_WAL_HDR_SIZE bytes.
+ */
+void vfs2_ut_make_wal_hdr(uint8_t *buf,
+			  uint32_t page_size,
+			  uint32_t ckpoint_seqno,
+			  uint32_t salt1,
+			  uint32_t salt2);
+
 #endif

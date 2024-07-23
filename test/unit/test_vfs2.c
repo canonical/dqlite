@@ -230,54 +230,7 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	return MUNIT_OK;
 }
 
-#define WAL_SIZE_FROM_FRAMES(n) (32 + (24 + PAGE_SIZE) * (n))
-
-/**
- * Create a WAL header with the sequence number and salts set to the
- * given values.
- */
-static void make_wal_hdr(uint8_t *buf,
-			 uint32_t ckpoint_seqno,
-			 uint32_t salt1,
-			 uint32_t salt2)
-{
-	uint8_t *p = buf;
-
-	/* checksum */
-	BytePutBe32(0x377f0683, p);
-	p += 4;
-	BytePutBe32(3007000, p);
-	p += 4;
-	BytePutBe32(PAGE_SIZE, p);
-	p += 4;
-	BytePutBe32(ckpoint_seqno, p);
-	p += 4;
-	BytePutBe32(salt1, p);
-	p += 4;
-	BytePutBe32(salt2, p);
-	p += 4;
-
-	uint32_t s0 = 0;
-	uint32_t s1 = 0;
-	size_t off = 0;
-
-	s0 += ByteGetBe32(buf + off) + s1;
-	s1 += ByteGetBe32(buf + off + 4) + s0;
-	off += 8;
-
-	s0 += ByteGetBe32(buf + off) + s1;
-	s1 += ByteGetBe32(buf + off + 4) + s0;
-	off += 8;
-
-	s0 += ByteGetBe32(buf + off) + s1;
-	s1 += ByteGetBe32(buf + off + 4) + s0;
-	off += 8;
-
-	BytePutBe32(s0, p);
-	p += 4;
-	BytePutBe32(s1, p);
-	p += 4;
-}
+#define WAL_SIZE_FROM_FRAMES(n) (VFS2_WAL_HDR_SIZE + (24 + PAGE_SIZE) * (n))
 
 /**
  * When only one WAL is nonempty at startup, that WAL becomes WAL-cur.
@@ -293,7 +246,7 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 	assert_wal_sizes(buf, 0, 0);
 
 	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
-	make_wal_hdr(wal2_hdronly, 0, 17, 103);
+	vfs2_ut_make_wal_hdr(wal2_hdronly, PAGE_SIZE, 0, 17, 103);
 	prepare_wals(buf, NULL, 0, wal2_hdronly, sizeof(wal2_hdronly));
 	sqlite3 *db = node_open_db(node, "test.db");
 	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
@@ -319,9 +272,9 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 	assert_wal_sizes(buf, 0, 0);
 
 	uint8_t wal1_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
-	make_wal_hdr(wal1_hdronly, 0, 18, 103);
+	vfs2_ut_make_wal_hdr(wal1_hdronly, PAGE_SIZE, 0, 18, 103);
 	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
-	make_wal_hdr(wal2_hdronly, 0, 17, 103);
+	vfs2_ut_make_wal_hdr(wal2_hdronly, PAGE_SIZE, 0, 17, 103);
 	prepare_wals(buf, wal1_hdronly, sizeof(wal1_hdronly), wal2_hdronly,
 		     sizeof(wal2_hdronly));
 	sqlite3 *db = node_open_db(node, "test.db");
