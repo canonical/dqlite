@@ -2,6 +2,7 @@
 #define __THREAD_POOL__
 
 #include <uv.h>
+#include <stdbool.h>
 #include "queue.h"
 
 /**
@@ -111,6 +112,7 @@ void pool_queue_work(pool_t *pool,
 		     enum pool_work_type type,
 		     void (*work_cb)(pool_work_t *w),
 		     void (*after_work_cb)(pool_work_t *w));
+bool pool_is_pool_thread(void);
 
 pool_t *pool_ut_fallback(void);
 

@@ -426,7 +426,7 @@ static void leader_work_done(pool_work_t *w)
 	struct work *work = CONTAINER_OF(w, struct work, pool_work);
 	struct leader *leader = CONTAINER_OF(work, struct leader, work);
 
-	PRE(leader->ops->is_main_thread());
+	PRE(!leader->ops->is_pool_thread());
 	sm_move(&work->sm, WORK_DONE);
 	leader_tick(leader, M_WORK_DONE);
 }
@@ -436,7 +436,7 @@ static void follower_work_done(pool_work_t *w)
 	struct work *work = CONTAINER_OF(w, struct work, pool_work);
 	struct follower *follower = CONTAINER_OF(work, struct follower, work);
 
-	PRE(follower->ops->is_main_thread());
+	PRE(!follower->ops->is_pool_thread());
 	sm_move(&work->sm, WORK_DONE);
 	follower_tick(follower, M_WORK_DONE);
 }
@@ -447,7 +447,7 @@ static void rpc_to_cb(uv_timer_t *handle)
 	struct rpc *rpc = CONTAINER_OF(to, struct rpc, timeout);
 	struct leader *leader = CONTAINER_OF(rpc, struct leader, rpc);
 
-	PRE(leader->ops->is_main_thread());
+	PRE(!leader->ops->is_pool_thread());
 	if (sm_state(&to->sm) == TO_CANCELED) {
 		return;
 	}
@@ -461,7 +461,7 @@ static void leader_to_cb(uv_timer_t *handle)
 	struct timeout *to = CONTAINER_OF(handle, struct timeout, handle);
 	struct leader *leader = CONTAINER_OF(to, struct leader, timeout);
 
-	PRE(leader->ops->is_main_thread());
+	PRE(!leader->ops->is_pool_thread());
 	if (sm_state(&to->sm) == TO_CANCELED) {
 		return;
 	}
@@ -492,7 +492,7 @@ static void leader_sent_cb(struct sender *s, int rc)
 	struct rpc *rpc = CONTAINER_OF(s, struct rpc, sender);
 	struct leader *leader = CONTAINER_OF(rpc, struct leader, rpc);
 
-	PRE(leader->ops->is_main_thread());
+	PRE(!leader->ops->is_pool_thread());
 	if (UNLIKELY(rc != 0)) {
 		sm_move(&rpc->sm, RPC_ERROR);
 		return;
@@ -505,7 +505,7 @@ static void follower_sent_cb(struct sender *s, int rc)
 	struct rpc *rpc = CONTAINER_OF(s, struct rpc, sender);
 	struct follower *follower = CONTAINER_OF(rpc, struct follower, rpc);
 
-	PRE(follower->ops->is_main_thread());
+	PRE(!follower->ops->is_pool_thread());
 	if (UNLIKELY(rc != 0)) {
 		sm_move(&rpc->sm, RPC_ERROR);
 		return;
@@ -864,7 +864,7 @@ __attribute__((unused)) void leader_tick(struct leader *leader, const struct raf
 	struct sm *sm = &leader->sm;
 	const struct leader_ops *ops = leader->ops;
 
-	PRE(ops->is_main_thread());
+	PRE(!ops->is_pool_thread());
 
 	if (!is_a_trigger_leader(leader, incoming) ||
 	    is_a_duplicate(leader, incoming))
@@ -941,7 +941,7 @@ __attribute__((unused)) void follower_tick(struct follower *follower, const stru
 	    is_a_duplicate(follower, incoming))
 		return;
 
-	PRE(ops->is_main_thread());
+	PRE(!ops->is_pool_thread());
 
 again:
 	switch (sm_state(&follower->sm)) {

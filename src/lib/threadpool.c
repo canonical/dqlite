@@ -1,13 +1,15 @@
 #include "threadpool.h"
 #include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <uv.h>
+#include <uv/unix.h>
 #include "../../src/lib/queue.h"
 #include "../../src/lib/sm.h"
 #include "../../src/utils.h"
-#include "../tracing.h"
 
 /**
  *  Planner thread state machine.
@@ -74,6 +76,9 @@ static const struct sm_conf planner_states[PS_NR] = {
 	},
 };
 
+static const uint64_t pool_thread_magic = 0xf344e2;
+static uv_key_t thread_identifier_key;
+
 enum {
 	THREADPOOL_SIZE_MAX = 1024,
 };
@@ -124,6 +129,14 @@ struct pool_impl {
 	uint32_t       qos_prio;       /* QoS prio */
 };
 /* clang-format on */
+
+/* Callback does not allow passing data, we use a static variable to report
+ * errors back. */
+static int thread_key_create_err = 0;
+static void thread_key_create(void) {
+	PRE(thread_key_create_err == 0);
+	thread_key_create_err = uv_key_create(&thread_identifier_key);
+}
 
 static inline bool pool_is_inited(const pool_t *pool)
 {
@@ -325,6 +338,7 @@ static void worker(void *arg)
 	pool_work_t *w;
 	queue *q;
 
+	uv_key_set(&thread_identifier_key, (void*)pool_thread_magic);
 	uv_sem_post(ta->sem);
 	uv_mutex_lock(mutex);
 	for (;;) {
@@ -552,7 +566,17 @@ int pool_init(pool_t *pool,
 		return rc;
 	}
 
+	static uv_once_t once = UV_ONCE_INIT;
+	uv_once(&once, thread_key_create);
+	if (thread_key_create_err != 0) {
+		uv_close((uv_handle_t *)&pi->outq_async, NULL);
+		uv_mutex_destroy(&pi->outq_mutex);
+		free(pi);
+		return thread_key_create_err;
+	}
+
 	pool_threads_init(pool);
+
 	return 0;
 }
 
@@ -579,6 +603,10 @@ void pool_close(pool_t *pool)
 	uv_mutex_lock(&pi->mutex);
 	pi->exiting = true;
 	uv_mutex_unlock(&pi->mutex);
+}
+
+bool pool_is_pool_thread(void) {
+	return uv_key_get(&thread_identifier_key) == (void*)pool_thread_magic;
 }
 
 pool_t *pool_ut_fallback(void)

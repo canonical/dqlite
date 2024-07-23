@@ -58,7 +58,7 @@ struct leader_ops {
 
 	void (*work_queue)(struct work *w,
 			    work_op work, work_op after_cb);
-	bool (*is_main_thread)(void);
+	bool (*is_pool_thread)(void);
 };
 
 struct follower_ops {
@@ -70,7 +70,7 @@ struct follower_ops {
 	sender_send_op sender_send;
 	void (*work_queue)(struct work *w,
 			    work_op work, work_op after_cb);
-	bool (*is_main_thread)(void);
+	bool (*is_pool_thread)(void);
 };
 
 struct leader {

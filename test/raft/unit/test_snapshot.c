@@ -188,8 +188,8 @@ int ut_sender_send_op(struct sender *s,
 	return 0;
 }
 
-static bool ut_is_main_thread_op(void) {
-	return true;
+static bool ut_is_pool_thread_op(void) {
+	return false;
 }
 
 TEST(snapshot_follower, basic, set_up, tear_down, 0, NULL) {
@@ -200,7 +200,7 @@ TEST(snapshot_follower, basic, set_up, tear_down, 0, NULL) {
 		.read_sig = ut_read_sig_op,
 		.write_chunk = ut_write_chunk_op,
 		.fill_ht = ut_fill_ht_op,
-		.is_main_thread = ut_is_main_thread_op,
+		.is_pool_thread = ut_is_pool_thread_op,
 	};
 
 	struct follower follower = {
@@ -271,7 +271,7 @@ TEST(snapshot_leader, basic, set_up, tear_down, 0, NULL) {
 		.ht_create = ut_ht_create_op,
 		.work_queue = ut_work_queue_op,
 		.sender_send = ut_sender_send_op,
-		.is_main_thread = ut_is_main_thread_op,
+		.is_pool_thread = ut_is_pool_thread_op,
 	};
 
 	struct leader leader = {
@@ -339,7 +339,7 @@ TEST(snapshot_leader, timeouts, set_up, tear_down, 0, NULL) {
 		.ht_create = ut_ht_create_op,
 		.work_queue = ut_work_queue_op,
 		.sender_send = ut_sender_send_op,
-		.is_main_thread = ut_is_main_thread_op,
+		.is_pool_thread = ut_is_pool_thread_op,
 	};
 
 	struct leader leader = {
@@ -441,10 +441,6 @@ struct test_fixture {
 /* Not problematic because each test runs in a different process. */
 static struct test_fixture global_fixture;
 
-#define MAGIC_MAIN_THREAD 0xdef1
-
-static __thread int thread_identifier;
-
 static void *pool_set_up(MUNIT_UNUSED const MunitParameter params[],
                    MUNIT_UNUSED void *user_data)
 {
@@ -454,7 +450,6 @@ static void *pool_set_up(MUNIT_UNUSED const MunitParameter params[],
 	global_fixture = (struct test_fixture) { 0 };
 	pool_init(&global_fixture.pool, uv_default_loop(), 4, POOL_QOS_PRIO_FAIR);
 	global_fixture.pool.flags |= POOL_FOR_UT;
-	thread_identifier = MAGIC_MAIN_THREAD;
 
 	struct fixture *f = munit_malloc(sizeof *f);
 	return f;
@@ -473,17 +468,13 @@ static void progress(void) {
 	}
 }
 
-static bool pool_is_main_thread_op(void) {
-	return thread_identifier == MAGIC_MAIN_THREAD;
-}
-
 /* Advances libuv in the main thread until the in-flight background work is
  * finished.
  *
  * This function is designed with the constaint that there can only be one
  * request in-flight. It will hang until the work is finished. */
 static void wait_work(void) {
-	PRE(pool_is_main_thread_op());
+	PRE(!pool_is_pool_thread());
 
 	while (!global_fixture.work_done) {
 		uv_run(uv_default_loop(), UV_RUN_NOWAIT);
@@ -496,7 +487,7 @@ static void wait_work(void) {
  * This function is designed with the constaint that there can only be one
  * message in-flight. It will hang until the message is sent. */
 static void wait_msg_sent(void) {
-	PRE(pool_is_main_thread_op());
+	PRE(!pool_is_pool_thread());
 
 	while (!global_fixture.msg_valid) {
 		uv_run(uv_default_loop(), UV_RUN_NOWAIT);
@@ -549,9 +540,9 @@ static void pool_rpc_to_expired(struct rpc *rpc)
 static void pool_ht_create_op(pool_work_t *w)
 {
 	if (global_fixture.is_leader) {
-		PRE(!global_fixture.leader.ops->is_main_thread());
+		PRE(global_fixture.leader.ops->is_pool_thread());
 	} else {
-		PRE(!global_fixture.follower.ops->is_main_thread());
+		PRE(global_fixture.follower.ops->is_pool_thread());
 	}
 	(void)w;
 }
@@ -559,9 +550,9 @@ static void pool_ht_create_op(pool_work_t *w)
 static void pool_fill_ht_op(pool_work_t *w)
 {
 	if (global_fixture.is_leader) {
-		PRE(!global_fixture.leader.ops->is_main_thread());
+		PRE(global_fixture.leader.ops->is_pool_thread());
 	} else {
-		PRE(!global_fixture.follower.ops->is_main_thread());
+		PRE(global_fixture.follower.ops->is_pool_thread());
 	}
 	(void)w;
 }
@@ -570,14 +561,14 @@ static void pool_write_chunk_op(pool_work_t *w)
 {
 	struct work *work = CONTAINER_OF(w, struct work, pool_work);
 	struct follower *follower = CONTAINER_OF(work, struct follower, work);
-	PRE(!follower->ops->is_main_thread());
+	PRE(follower->ops->is_pool_thread());
 }
 
 static void pool_read_sig_op(pool_work_t *w)
 {
 	struct work *work = CONTAINER_OF(w, struct work, pool_work);
 	struct follower *follower = CONTAINER_OF(work, struct follower, work);
-	PRE(!follower->ops->is_main_thread());
+	PRE(follower->ops->is_pool_thread());
 }
 
 struct uv_sender_send_data {
@@ -632,7 +623,7 @@ TEST(snapshot_leader, pool_timeouts, pool_set_up, pool_tear_down, 0, NULL) {
 		.ht_create = pool_ht_create_op,
 		.work_queue = pool_work_queue_op,
 		.sender_send = uv_sender_send_op,
-		.is_main_thread = pool_is_main_thread_op,
+		.is_pool_thread = pool_is_pool_thread,
 	};
 
 	global_fixture.is_leader = true;
@@ -716,7 +707,7 @@ TEST(snapshot_follower, pool, pool_set_up, pool_tear_down, 0, NULL) {
 		.read_sig = pool_read_sig_op,
 		.write_chunk = pool_write_chunk_op,
 		.fill_ht = pool_fill_ht_op,
-		.is_main_thread = pool_is_main_thread_op,
+		.is_pool_thread = pool_is_pool_thread,
 	};
 
 	global_fixture.is_leader = false;
