@@ -197,18 +197,152 @@ struct wal_index_full_hdr {
 	uint8_t unused[4];
 };
 
-#define REGION0_PGNOS_LEN 4062
-#define REGION0_HT_LEN 8192
+#define SHM_SHORT_PGNOS_LEN 4062
+#define SHM_LONG_PGNOS_LEN 4096
+#define SHM_HT_LEN 8192
 
 /**
- * View of the zeroth shm region, which contains the WAL index header
- * and the first hash table.
+ * View of a shm region.
+ *
+ * The zeroth region looks like this (not to scale):
+ *
+ * | header | page numbers | hash table |
+ *
+ * The first and later regions look like this (also not to scale):
+ *
+ * |      page numbers     | hash table |
  */
-struct vfs2_shm_region0 {
-	struct wal_index_full_hdr hdr;
-	uint32_t pgnos[REGION0_PGNOS_LEN];
-	uint16_t ht[REGION0_HT_LEN];
+struct shm_region {
+	union {
+		/* region 0 */
+		struct {
+			struct wal_index_full_hdr hdr;
+			uint32_t pgnos_short[SHM_SHORT_PGNOS_LEN];
+		};
+		/* region 1 and later */
+		uint32_t pgnos_long[SHM_LONG_PGNOS_LEN];
+	};
+	uint16_t ht[SHM_HT_LEN];
 };
+
+/**
+ * "Shared" memory implementation for storing the WAL-index.
+ *
+ * All the regions are stored in a single allocation, whose size is a multiple
+ * of VFS2_WAL_INDEX_REGION_SIZE. We realloc to create additional regions as
+ * they are demanded.
+ */
+struct shm {
+	struct shm_region *regions;
+	int num_regions;
+	/* Counts the net number of times that SQLite has mapped the zeroth
+	 * region. As a sanity check, we assert that this value is zero before
+	 * we free the shm. */
+	unsigned refcount;
+};
+
+static_assert(sizeof(struct shm_region) == VFS2_WAL_INDEX_REGION_SIZE,
+	      "shm regions have the expected size");
+
+static void write_basic_hdr_cksums(struct wal_index_basic_hdr *bhdr)
+{
+	struct cksums sums = {};
+	const uint8_t *p = (const uint8_t *)bhdr;
+	size_t len = offsetof(struct wal_index_basic_hdr, cksums);
+	update_cksums(p, len, &sums);
+	bhdr->cksums = sums;
+}
+
+/**
+ * Perform initial setup of the WAL-index.
+ *
+ * This allocates the zeroth region and fills in the WAL-index header
+ * based on the provided header of WAL-cur.
+ */
+static int shm_init(struct shm *shm, struct wal_hdr whdr)
+{
+	shm->regions = sqlite3_malloc64(VFS2_WAL_INDEX_REGION_SIZE);
+	if (shm->regions == NULL) {
+		return SQLITE_NOMEM;
+	}
+	shm->regions[0] = (struct shm_region){};
+	shm->num_regions = 1;
+	shm->refcount = 0;
+
+	struct shm_region *r0 = &shm->regions[0];
+	struct wal_index_full_hdr *ihdr = &r0->hdr;
+	ihdr->basic[0].iVersion = 3007000;
+	ihdr->basic[0].isInit = 1;
+	ihdr->basic[0].bigEndCksum = is_bigendian();
+	ihdr->basic[0].szPage = (uint16_t)ByteGetBe32(whdr.page_size);
+	write_basic_hdr_cksums(&ihdr->basic[0]);
+	ihdr->basic[1] = ihdr->basic[0];
+	ihdr->marks[0] = 0;
+	ihdr->marks[1] = READ_MARK_UNUSED;
+	ihdr->marks[2] = READ_MARK_UNUSED;
+	ihdr->marks[3] = READ_MARK_UNUSED;
+	ihdr->marks[4] = READ_MARK_UNUSED;
+	return SQLITE_OK;
+}
+
+/**
+ * Clear out all data in the WAL-index after a WAL swap, and re-initialize the
+ * header.
+ */
+static void shm_restart(struct shm *shm, struct wal_hdr whdr)
+{
+	for (int i = 0; i < shm->num_regions; i++) {
+		shm->regions[i] = (struct shm_region){};
+	}
+
+	/* TODO(cole) eliminate redundancy with shm_init */
+	struct shm_region *r0 = &shm->regions[0];
+	struct wal_index_full_hdr *ihdr = &r0->hdr;
+	ihdr->basic[0].iVersion = 3007000;
+	ihdr->basic[0].isInit = 1;
+	ihdr->basic[0].bigEndCksum = is_bigendian();
+	ihdr->basic[0].szPage = (uint16_t)ByteGetBe32(whdr.page_size);
+	write_basic_hdr_cksums(&ihdr->basic[0]);
+	ihdr->basic[1] = ihdr->basic[0];
+	ihdr->marks[0] = 0;
+	ihdr->marks[1] = READ_MARK_UNUSED;
+	ihdr->marks[2] = READ_MARK_UNUSED;
+	ihdr->marks[3] = READ_MARK_UNUSED;
+	ihdr->marks[4] = READ_MARK_UNUSED;
+}
+
+/**
+ * Add the page number for a frame to the appropriate page number array
+ * in the WAL-index.
+ *
+ * This allocates a new shm region if necessary, and hence can fail with
+ * SQLITE_NOMEM.
+ */
+static int shm_add_pgno(struct shm *shm, uint32_t frame, uint32_t pgno)
+{
+	PRE(shm->num_regions > 0);
+	if (frame < SHM_SHORT_PGNOS_LEN) {
+		struct shm_region *r0 = &shm->regions[0];
+		r0->pgnos_short[frame] = pgno;
+		return SQLITE_OK;
+	}
+
+	uint32_t regno = (frame - SHM_SHORT_PGNOS_LEN) / SHM_LONG_PGNOS_LEN;
+	uint32_t index = (frame - SHM_SHORT_PGNOS_LEN) % SHM_LONG_PGNOS_LEN;
+	PRE(regno <= (uint32_t)shm->num_regions + 1);
+	if (regno == (uint32_t)shm->num_regions + 1) {
+		sqlite3_uint64 sz =
+		    (sqlite3_uint64)regno * VFS2_WAL_INDEX_REGION_SIZE;
+		struct shm_region *p = sqlite3_realloc64(shm->regions, sz);
+		if (p == NULL) {
+			return SQLITE_NOMEM;
+		}
+		shm->regions = p;
+		shm->num_regions++;
+	}
+	shm->regions[regno].pgnos_long[index] = pgno;
+	return SQLITE_OK;
+}
 
 struct entry {
 	/* Next/prev entries for this VFS. */
@@ -251,10 +385,8 @@ struct entry {
 	/* For ACTIVE, HIDDEN, POLLED: the header that shows the pending txn */
 	struct wal_index_basic_hdr pending_txn_hdr;
 
-	/* shm implementation; holds the WAL index */
-	void **shm_regions;
-	int shm_regions_len;
-	unsigned shm_refcount;
+	/* Shared memory implementation: holds the WAL-index. */
+	struct shm shm;
 	/* Zero for unlocked, positive for read-locked, UINT_MAX for
 	 * write-locked */
 	unsigned shm_locks[SQLITE_SHM_NLOCK];
@@ -332,9 +464,9 @@ static struct vfs2_salts make_salts(uint32_t salt1, uint32_t salt2)
 
 static struct wal_index_full_hdr *get_full_hdr(struct entry *e)
 {
-	PRE(e->shm_regions_len > 0);
-	PRE(e->shm_regions != NULL);
-	return e->shm_regions[0];
+	PRE(e->shm.num_regions > 0);
+	PRE(e->shm.regions != NULL);
+	return &e->shm.regions[0].hdr;
 }
 
 static bool no_pending_txn(const struct entry *e)
@@ -412,13 +544,8 @@ static void maybe_close_entry(struct entry *e)
 
 	free_pending_txn(e);
 
-	assert(e->shm_refcount == 0);
-	for (int i = 0; i < e->shm_regions_len; i++) {
-		void *region = e->shm_regions[i];
-		assert(region != NULL);
-		sqlite3_free(region);
-	}
-	sqlite3_free(e->shm_regions);
+	assert(e->shm.refcount == 0);
+	sqlite3_free(e->shm.regions);
 
 	pthread_rwlock_wrlock(&e->common->rwlock);
 	queue_remove(&e->link);
@@ -762,45 +889,39 @@ static int vfs2_shm_map(sqlite3_file *file,
 			int extend,
 			void volatile **out)
 {
+	PRE(regsz == VFS2_WAL_INDEX_REGION_SIZE);
 	struct file *xfile = (struct file *)file;
+	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
-	void *region;
+	struct shm *shm = &e->shm;
+	struct shm_region *region;
 	int rv;
 
-	if (e->shm_regions != NULL && regno < e->shm_regions_len) {
-		region = e->shm_regions[regno];
-		assert(region != NULL);
+	if (shm->regions != NULL && regno < shm->num_regions) {
+		region = &shm->regions[regno];
 	} else if (extend != 0) {
-		assert(regno == e->shm_regions_len);
-		region = sqlite3_malloc(regsz);
-		if (region == NULL) {
+		assert(regno == shm->num_regions);
+		sqlite3_uint64 sz =
+		    ((sqlite3_uint64)regno + 1) * (sqlite3_uint64)regsz;
+		struct shm_region *p = sqlite3_realloc64(shm->regions, sz);
+		if (p == NULL) {
 			rv = SQLITE_NOMEM;
 			goto err;
 		}
+		shm->regions = p;
+		region = &shm->regions[regno];
 		memset(region, 0, (size_t)regsz);
-		/* FIXME reallocating every time seems bad */
-		sqlite3_uint64 z = (sqlite3_uint64)sizeof(*e->shm_regions) *
-				   (sqlite3_uint64)(e->shm_regions_len + 1);
-		void **regions = sqlite3_realloc64(e->shm_regions, z);
-		if (regions == NULL) {
-			rv = SQLITE_NOMEM;
-			goto err_after_region_malloc;
-		}
-		e->shm_regions = regions;
-		e->shm_regions[regno] = region;
-		e->shm_regions_len++;
+		shm->num_regions++;
 	} else {
 		region = NULL;
 	}
 
 	*out = region;
 	if (regno == 0 && region != NULL) {
-		e->shm_refcount++;
+		e->shm.refcount++;
 	}
 	return SQLITE_OK;
 
-err_after_region_malloc:
-	sqlite3_free(region);
 err:
 	assert(rv != SQLITE_OK);
 	*out = NULL;
@@ -907,7 +1028,7 @@ static int vfs2_shm_unmap(sqlite3_file *file, int delete)
 	(void)delete;
 	struct file *xfile = (struct file *)file;
 	struct entry *e = xfile->entry;
-	e->shm_refcount--;
+	e->shm.refcount--;
 	return SQLITE_OK;
 }
 
@@ -990,39 +1111,37 @@ static int try_read_wal_hdr(sqlite3_file *wal,
 	return SQLITE_OK;
 }
 
-static void write_basic_hdr_cksums(struct wal_index_basic_hdr *bhdr)
-{
-	struct cksums sums = {};
-	const uint8_t *p = (const uint8_t *)bhdr;
-	size_t len = offsetof(struct wal_index_basic_hdr, cksums);
-	update_cksums(p, len, &sums);
-	bhdr->cksums = sums;
-}
-
-static struct wal_index_full_hdr initial_full_hdr(struct wal_hdr whdr)
-{
-	struct wal_index_full_hdr ihdr = {};
-	ihdr.basic[0].iVersion = 3007000;
-	ihdr.basic[0].isInit = 1;
-	ihdr.basic[0].bigEndCksum = is_bigendian();
-	ihdr.basic[0].szPage = (uint16_t)ByteGetBe32(whdr.page_size);
-	write_basic_hdr_cksums(&ihdr.basic[0]);
-	ihdr.basic[1] = ihdr.basic[0];
-	ihdr.marks[0] = 0;
-	ihdr.marks[1] = READ_MARK_UNUSED;
-	ihdr.marks[2] = READ_MARK_UNUSED;
-	ihdr.marks[3] = READ_MARK_UNUSED;
-	ihdr.marks[4] = READ_MARK_UNUSED;
-	return ihdr;
-}
-
-static void pgno_ht_insert(uint16_t *ht, size_t len, uint16_t fx, uint32_t pgno)
+static void pgno_ht_insert(uint16_t *ht, uint16_t fx, uint32_t pgno)
 {
 	uint32_t hash = pgno * 383;
-	while (ht[hash % len] != 0) {
+	while (ht[hash % SHM_HT_LEN] != 0) {
 		hash++;
 	}
-	ht[hash % len] = fx;
+	/* SQLite uses 1-based frame indices in this context, reserving
+	 * 0 for a sentinel value. */
+	ht[hash % SHM_HT_LEN] = fx + 1;
+}
+
+/**
+ * Grab the page number for the given frame from the appropriate array
+ * in the WAL-index and add it to the corresponding hash table.
+ */
+static void shm_update_ht(struct shm *shm, uint32_t frame)
+{
+	PRE(shm->num_regions > 0);
+	if (frame < SHM_SHORT_PGNOS_LEN) {
+		struct shm_region *r0 = &shm->regions[0];
+		uint32_t pgno = r0->pgnos_short[frame];
+		pgno_ht_insert(r0->ht, (uint16_t)frame, pgno);
+		return;
+	}
+
+	uint32_t regno = (frame - SHM_SHORT_PGNOS_LEN) / SHM_LONG_PGNOS_LEN;
+	uint32_t index = (frame - SHM_SHORT_PGNOS_LEN) % SHM_LONG_PGNOS_LEN;
+	PRE(regno <= (uint32_t)shm->num_regions);
+	struct shm_region *region = &shm->regions[regno];
+	uint32_t pgno = region->pgnos_long[index];
+	pgno_ht_insert(region->ht, (uint16_t)index, pgno);
 }
 
 static void set_mx_frame(struct entry *e,
@@ -1042,16 +1161,12 @@ static void set_mx_frame(struct entry *e,
 	ihdr->basic[1] = ihdr->basic[0];
 	POST(full_hdr_valid(ihdr));
 
-	struct vfs2_shm_region0 *r0 = e->shm_regions[0];
-	PRE(mx <= REGION0_PGNOS_LEN);
+	struct shm *shm = &e->shm;
 	for (uint32_t i = old_mx; i < mx; i++) {
 		/* The page numbers array was already updated during the call
 		 * to add_uncommitted, so we just need to update the hash array.
 		 */
-		/* TODO(cole) Support hash tables beyond the first. */
-		PRE(i < REGION0_PGNOS_LEN);
-		pgno_ht_insert(r0->ht, REGION0_HT_LEN, (uint16_t)i,
-			       r0->pgnos[i]);
+		shm_update_ht(shm, i);
 	}
 }
 
@@ -1196,17 +1311,7 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 	rv = link(e->wal_cur_fixed_name, e->wal_moving_name);
 	(void)rv;
 
-	e->shm_regions = sqlite3_malloc(sizeof(void *[1]));
-	if (e->shm_regions == NULL) {
-		return SQLITE_NOMEM;
-	}
-	e->shm_regions[0] = sqlite3_malloc(VFS2_WAL_INDEX_REGION_SIZE);
-	if (e->shm_regions[0] == NULL) {
-		return SQLITE_NOMEM;
-	}
-	memset(e->shm_regions[0], 0, VFS2_WAL_INDEX_REGION_SIZE);
-	e->shm_regions_len = 1;
-
+	rv = shm_init(&e->shm);
 	*get_full_hdr(e) = initial_full_hdr(hdr_cur);
 
 	e->wal_cursor = wal_cursor_from_size(e->page_size, size_cur);
@@ -1853,10 +1958,7 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	 * "early" like this is harmless and saves us from having to stash the
 	 * page numbers somewhere else in memory in between add_uncommitted and
 	 * apply, or (worse) read them back from WAL-cur. */
-	struct vfs2_shm_region0 *r0 = e->shm_regions[0];
-	/* TODO(cole) Support hash tables beyond the first. */
-	PRE(e->wal_cursor < REGION0_PGNOS_LEN);
-	r0->pgnos[e->wal_cursor] = (uint32_t)frames[0].page_number;
+	shm_add_pgno(&e->shm, e->wal_cursor, (uint32_t)frames[0].page_number);
 
 	uint32_t commit = len == 1 ? db_size : 0;
 	struct wal_frame_hdr fhdr = txn_frame_hdr(e, sums, &frames[0], commit);
@@ -1866,8 +1968,9 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	}
 
 	for (unsigned i = 1; i < len; i++) {
-		PRE(e->wal_cursor < REGION0_PGNOS_LEN);
-		r0->pgnos[e->wal_cursor] = (uint32_t)frames[i].page_number;
+		PRE(e->wal_cursor < SHM_SHORT_PGNOS_LEN);
+		shm_add_pgno(&e->shm, e->wal_cursor,
+			     (uint32_t)frames[i].page_number);
 		sums.cksum1 = ByteGetBe32(fhdr.cksum1);
 		sums.cksum2 = ByteGetBe32(fhdr.cksum2);
 		commit = i == len - 1 ? db_size : 0;
