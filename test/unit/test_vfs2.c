@@ -233,7 +233,9 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 #define WAL_SIZE_FROM_FRAMES(n) (VFS2_WAL_HDR_SIZE + (24 + PAGE_SIZE) * (n))
 
 /**
- * When only one WAL is nonempty at startup, that WAL becomes WAL-cur.
+ * When one WAL has a valid header and the other is empty,
+ * the nonempty one becomes WAL-cur. Then, the first write triggers a WAL
+ * swap, so the frames go to the *other* WAL.
  */
 TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 {
@@ -245,6 +247,7 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 
 	assert_wal_sizes(buf, 0, 0);
 
+	/* WAL2 has a header. */
 	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
 	vfs2_ut_make_wal_hdr(wal2_hdronly, PAGE_SIZE, 0, 17, 103);
 	prepare_wals(buf, NULL, 0, wal2_hdronly, sizeof(wal2_hdronly));
@@ -252,6 +255,7 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
 	OK(sqlite3_close(db));
 
+	/* WAL1 ends up with the frames. */
 	assert_wal_sizes(buf, WAL_SIZE_FROM_FRAMES(2), WAL_SIZE_FROM_FRAMES(0));
 
 	return MUNIT_OK;
@@ -259,7 +263,8 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 
 /**
  * When both WALs are nonempty at startup, the one with the higher salt1
- * value becomes WAL-cur.
+ * value becomes WAL-cur. Then, the first write triggers a WAL swap, so
+ * the frames go to the *other* WAL.
  */
 TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 {
@@ -271,6 +276,7 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
 	assert_wal_sizes(buf, 0, 0);
 
+	/* WAL1 has the higher salt1. */
 	uint8_t wal1_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
 	vfs2_ut_make_wal_hdr(wal1_hdronly, PAGE_SIZE, 0, 18, 103);
 	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
@@ -290,6 +296,7 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 	rv = sqlite3_close(db);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
+	/* WAL2 ends up with the frames. */
 	assert_wal_sizes(buf, WAL_SIZE_FROM_FRAMES(0), WAL_SIZE_FROM_FRAMES(2));
 
 	return MUNIT_OK;
