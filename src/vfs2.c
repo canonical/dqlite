@@ -1170,18 +1170,6 @@ static void set_mx_frame(struct entry *e,
 	}
 }
 
-static void restart_full_hdr(struct wal_index_full_hdr *ihdr,
-			     struct wal_hdr new_whdr)
-{
-	/* cf. walRestartHdr */
-	ihdr->basic[0].mxFrame = 0;
-	ihdr->basic[0].salts = new_whdr.salts;
-	write_basic_hdr_cksums(&ihdr->basic[0]);
-	ihdr->basic[1] = ihdr->basic[0];
-	ihdr->nBackfill = 0;
-	ihdr->nBackfillAttempted = 0;
-}
-
 static sqlite3_int64 wal_offset_from_cursor(uint32_t page_size, uint32_t cursor)
 {
 	return (sqlite3_int64)sizeof(struct wal_hdr) +
@@ -1906,7 +1894,17 @@ static struct wal_hdr make_wal_hdr(uint32_t magic,
 	update_cksums(p, len, &sums);
 	BytePutBe32(sums.cksum1, ret.cksum1);
 	BytePutBe32(sums.cksum2, ret.cksum2);
+	POST(wal_hdr_is_valid(&ret));
 	return ret;
+}
+
+static struct wal_hdr initial_wal_hdr(uint32_t page_size)
+{
+	struct vfs2_salts salts;
+	sqlite3_randomness(sizeof(salts.salt1), (void *)&salts.salt1);
+	sqlite3_randomness(sizeof(salts.salt2), (void *)&salts.salt2);
+	return make_wal_hdr(is_bigendian() ? BE_MAGIC : LE_MAGIC, page_size, 0,
+			    salts);
 }
 
 /**
@@ -1959,16 +1957,22 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 			 unsigned len,
 			 struct vfs2_wal_slice *out)
 {
-	PRE(len > 0);
-	PRE(is_valid_page_size(page_size));
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
 	int rv;
 
-	/* We require the page size to have been initialized by this point,
-	 * either by reading the WAL when opening the entry or by `PRAGMA
-	 * page_size`. */
+	/* TODO(cole) roll back wal_cursor and release the write lock if one of
+	 * the writes fails. */
+
+	PRE(len > 0);
+
+	/* We require the page size to have been set by the pragma before this
+	 * point. */
+	PRE(is_valid_page_size(page_size));
+
+	/* Sanity check that the leader isn't sending us pages of the wrong
+	 * size. */
 	PRE(page_size == e->page_size);
 
 	/* The write lock is always held if there is at least one
@@ -1984,27 +1988,50 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	 * (wal_cursor). */
 	e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
 
-	uint32_t start = e->wal_cursor;
-	struct wal_index_full_hdr *ihdr = get_full_hdr(e);
-	uint32_t mx = ihdr->basic[0].mxFrame;
-	if (mx > 0 && ihdr->nBackfill == mx) {
-		struct wal_hdr new_whdr = next_wal_hdr(e);
-		restart_full_hdr(ihdr, new_whdr);
-		rv = wal_swap(e, &new_whdr);
-		if (rv != SQLITE_OK) {
-			return 1;
+	/* This paragraph accomplishes a few related things: initializing the
+	 * shm if necessary, figuring out where to place the frames of the new
+	 * transaction in the WAL, and, if necessary, writing a new WAL header
+	 * and doing work related to the WAL swap.
+	 *
+	 * The shm will need to be initialized if this wasn't already done by
+	 * either open_entry or SQLite itself. This happens when we open the
+	 * database for the first time (so WAL-cur is empty) and then run
+	 * add_uncommitted before anything else.
+	 *
+	 * The new transaction will be placed at the offset given by
+	 * `e->wal_cursor`, after possibly resetting this to zero (when the WAL
+	 * has been fully backfilled).
+	 *
+	 * If the new transaction is to be placed at offset zero, we also write
+	 * a new WAL header, reset the shared memory (unless it was just
+	 * initialized for the first time!), and swap the WALs.
+	 */
+	PRE(ERGO(e->shm.num_regions == 0, e->wal_cursor == 0));
+	struct wal_index_full_hdr *ihdr =
+	    e->shm.num_regions > 0 ? &e->shm.regions[0].hdr : NULL;
+	uint32_t mx = ihdr != NULL ? ihdr->basic[0].mxFrame : 0;
+	uint32_t backfill = ihdr != NULL ? ihdr->nBackfill : 0;
+	if (e->wal_cursor == mx && mx == backfill) {
+		struct wal_hdr new_wal_hdr;
+		if (ihdr != NULL) {
+			new_wal_hdr = next_wal_hdr(e);
+			shm_restart(&e->shm, new_wal_hdr);
+		} else {
+			new_wal_hdr = initial_wal_hdr(e->page_size);
+			rv = shm_init(&e->shm, new_wal_hdr);
+			if (rv != SQLITE_OK) {
+				return 1;
+			}
 		}
-	} else if (start == 0) {
-		sqlite3_file *phys = e->wal_cur;
-		struct wal_hdr new_whdr = next_wal_hdr(e);
-		rv = phys->pMethods->xWrite(phys, &new_whdr, sizeof(new_whdr),
-					    0);
-		e->wal_cur_hdr = new_whdr;
+		wal_swap(e, &new_wal_hdr);
+		rv = e->wal_cur->pMethods->xWrite(e->wal_cur, &new_wal_hdr,
+						  sizeof(new_wal_hdr), 0);
 		if (rv != SQLITE_OK) {
 			return 1;
 		}
 	}
 
+	uint32_t start = e->wal_cursor;
 	struct cksums sums;
 	uint32_t db_size;
 	if (start > 0) {
