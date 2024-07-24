@@ -1752,11 +1752,12 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
-	if (e->page_size == 0) {
-		e->page_size = page_size;
-	}
-	PRE(page_size == e->page_size);
 	int rv;
+
+	/* We require the page size to have been initialized by this point,
+	 * either by reading the WAL when opening the entry or by `PRAGMA
+	 * page_size`. */
+	PRE(page_size == e->page_size);
 
 	/* The write lock is always held if there is at least one
 	 * uncommitted frame in WAL-cur. In FOLLOWING state, we allow
