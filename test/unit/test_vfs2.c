@@ -271,7 +271,6 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 	struct fixture *f = data;
 	struct node *node = &f->nodes[0];
 	char buf[PATH_MAX];
-	int rv;
 
 	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
 	assert_wal_sizes(buf, 0, 0);
@@ -284,17 +283,8 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 	prepare_wals(buf, wal1_hdronly, sizeof(wal1_hdronly), wal2_hdronly,
 		     sizeof(wal2_hdronly));
 	sqlite3 *db = node_open_db(node, "test.db");
-	rv = sqlite3_exec(db,
-			  "PRAGMA page_size=" PAGE_SIZE_STR
-			  ";"
-			  "PRAGMA journal_mode=WAL;"
-			  "PRAGMA wal_autocheckpoint=0",
-			  NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = sqlite3_close(db);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
+	OK(sqlite3_close(db));
 
 	/* WAL2 ends up with the frames. */
 	assert_wal_sizes(buf, WAL_SIZE_FROM_FRAMES(0), WAL_SIZE_FROM_FRAMES(2));
