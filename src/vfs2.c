@@ -456,13 +456,12 @@ static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 	return orig->pMethods->xRead(orig, buf, amt, ofst);
 }
 
-static int wal_swap(struct entry *e, const struct wal_hdr *wal_hdr)
+/**
+ * Update the volatile state by exchanging WAL-cur and WAL-prev.
+ */
+static void wal_swap(struct entry *e, const struct wal_hdr *hdr)
 {
-	PRE(e->pending_txn_len == 0);
-	PRE(e->pending_txn_frames == NULL);
 	int rv;
-
-	e->page_size = ByteGetBe32(wal_hdr->page_size);
 
 	/* Terminology: the outgoing WAL is the one that's moving
 	 * from cur to prev. The incoming WAL is the one that's moving
@@ -472,39 +471,37 @@ static int wal_swap(struct entry *e, const struct wal_hdr *wal_hdr)
 	sqlite3_file *phys_incoming = e->wal_prev;
 	char *name_incoming = e->wal_prev_fixed_name;
 
-	/* Write the new header of the incoming WAL. */
-	rv = phys_incoming->pMethods->xWrite(phys_incoming, wal_hdr,
-					     sizeof(struct wal_hdr), 0);
-	if (rv != SQLITE_OK) {
-		return rv;
-	}
-
-	/* In-memory WAL swap. */
 	e->wal_cur = phys_incoming;
 	e->wal_cur_fixed_name = name_incoming;
 	e->wal_prev = phys_outgoing;
 	e->wal_prev_fixed_name = name_outgoing;
 	e->wal_cursor = 0;
 	e->wal_prev_hdr = e->wal_cur_hdr;
-	e->wal_cur_hdr = *wal_hdr;
+	e->wal_cur_hdr = *hdr;
 
-	/* Move the moving name. */
+	/* Best-effort: flip the moving name.
+	 *
+	 * If these syscalls fail, we can end up with no moving name, or a
+	 * moving name that points to the wrong WAL. We don't use the moving
+	 * name as the source of truth, so this can't lead to dqlite operating
+	 * incorrectly. At worst, it's inconvenient for users who want to
+	 * inspect their database with SQLite (readonly! when dqlite is not
+	 * running!). */
 	rv = unlink(e->wal_moving_name);
-	if (rv != 0 && errno != ENOENT) {
-		return SQLITE_IOERR;
-	}
+	(void)rv;
 	rv = link(name_incoming, e->wal_moving_name);
-	if (rv != 0) {
-		return SQLITE_IOERR;
-	}
+	(void)rv;
 
-	/* TODO do we need an fsync here? */
+	/* Best-effort: invalidate the header of the outgoing physical WAL, so
+	* that it can't be mistakenly applied to the database.
 
-	/* Best-effort: invalidate the outgoing physical WAL so that nobody gets
-	 * confused. */
+	* This provides some protection against users manipulating the
+	* database with SQLite, or a bug in dqlite. But we don't rely on it
+	* for correctness. */
 	(void)phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic,
 					      sizeof(invalid_magic), 0);
-	return SQLITE_OK;
+
+	/* TODO do we need an fsync here? */
 }
 
 static int vfs2_wal_write_frame_hdr(struct entry *e,
@@ -558,7 +555,9 @@ static int vfs2_wal_post_write(struct entry *e,
 			       sqlite3_int64 ofst)
 {
 	uint32_t frame_size = VFS2_WAL_FRAME_HDR_SIZE + e->page_size;
-	if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
+	if (amt == (int)sizeof(struct wal_hdr)) {
+		return SQLITE_OK;
+	} else if (amt == VFS2_WAL_FRAME_HDR_SIZE) {
 		ofst -= (sqlite3_int64)sizeof(struct wal_hdr);
 		assert(ofst % frame_size == 0);
 		sqlite3_int64 frame_ofst = ofst / (sqlite3_int64)frame_size;
@@ -592,21 +591,22 @@ static int vfs2_write(sqlite3_file *file,
 	struct file *xfile = (struct file *)file;
 	int rv;
 
+	/* A write to the WAL at offset 0 must be a header write, and indicates
+	 * that SQLite has reset the WAL. We react by doing a WAL swap.
+	 */
 	if ((xfile->flags & SQLITE_OPEN_WAL) && ofst == 0) {
 		assert(amt == sizeof(struct wal_hdr));
 		const struct wal_hdr *hdr = buf;
 		struct entry *e = xfile->entry;
-		rv = wal_swap(e, hdr);
-		if (rv != SQLITE_OK) {
-			return rv;
-		}
-		/* check that the WAL-index hdr makes sense and save it */
+		wal_swap(e, hdr);
+		/* Save the WAL-index header so that we can roll back to it in
+		 * the future. The assertions check that the header we're
+		 * saving has been updated to match the new, empty WAL. */
 		struct wal_index_basic_hdr ihdr = get_full_hdr(e)->basic[0];
 		assert(ihdr.isInit == 1);
 		assert(ihdr.mxFrame == 0);
 		e->prev_txn_hdr = ihdr;
 		sm_move(&e->wtx_sm, WTX_ACTIVE);
-		return SQLITE_OK;
 	}
 
 	sqlite3_file *orig = get_orig(xfile);
