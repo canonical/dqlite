@@ -665,17 +665,28 @@ static int vfs2_check_reserved_lock(sqlite3_file *file, int *out)
 	return orig->pMethods->xCheckReservedLock(orig, out);
 }
 
-static int interpret_pragma(char **args)
+static int interpret_pragma(struct entry *e, char **args)
 {
-	char **e = &args[0];
+	char **err = &args[0];
 	char *left = args[1];
 	PRE(left != NULL);
 	char *right = args[2];
 
 	if (strcmp(left, "journal_mode") == 0 && right != NULL &&
 	    strcasecmp(right, "wal") != 0) {
-		*e = sqlite3_mprintf("dqlite requires WAL mode");
+		*err = sqlite3_mprintf("dqlite requires WAL mode");
 		return SQLITE_ERROR;
+	} else if (strcmp(left, "page_size") == 0 && right != NULL) {
+		char *end = right + strlen(right);
+		unsigned long val = strtoul(right, &end, 10);
+		if (right != end && *end == '\0' && is_valid_page_size(val)) {
+			if (e->page_size != 0 && val != e->page_size) {
+				*err = sqlite3_mprintf(
+				    "page size cannot be changed");
+				return SQLITE_ERROR;
+			}
+			e->page_size = (uint32_t)val;
+		}
 	}
 
 	return SQLITE_NOTFOUND;
@@ -698,7 +709,7 @@ static int vfs2_file_control(sqlite3_file *file, int op, void *arg)
 		e->wal_cursor += e->pending_txn_len;
 		sm_move(&xfile->entry->wtx_sm, WTX_HIDDEN);
 	} else if (op == SQLITE_FCNTL_PRAGMA) {
-		rv = interpret_pragma(arg);
+		rv = interpret_pragma(e, arg);
 		if (rv != SQLITE_NOTFOUND) {
 			return rv;
 		}
