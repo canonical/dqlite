@@ -1182,24 +1182,106 @@ static void restart_full_hdr(struct wal_index_full_hdr *ihdr,
 	ihdr->nBackfillAttempted = 0;
 }
 
-static uint32_t wal_cursor_from_size(uint32_t page_size, sqlite3_int64 size)
-{
-	sqlite3_int64 whdr_size = (sqlite3_int64)sizeof(struct wal_hdr);
-	if (size < whdr_size) {
-		return 0;
-	}
-	sqlite3_int64 x =
-	    (size - whdr_size) / ((sqlite3_int64)sizeof(struct wal_frame_hdr) +
-				  (sqlite3_int64)page_size);
-	return (uint32_t)x;
-}
-
 static sqlite3_int64 wal_offset_from_cursor(uint32_t page_size, uint32_t cursor)
 {
 	return (sqlite3_int64)sizeof(struct wal_hdr) +
 	       (sqlite3_int64)cursor *
 		   ((sqlite3_int64)sizeof(struct wal_frame_hdr) +
 		    (sqlite3_int64)page_size);
+}
+
+/**
+ * Read the given WAL file from beginning to end, initializing the WAL-index in
+ * the process.
+ *
+ * The process stops when we reach a frame whose checksums are invalid, or
+ * after the last valid commit frame, or on the first unsuccessful read, or at
+ * the end of the transaction designated by `stop`, if that argument is
+ * non-NULL.
+ *
+ * On return, the WAL-index header is initialized with mxFrame = 0 and other
+ * data matching the given WAL, and the page numbers for all frames up to the
+ * stopping point are recorded in the WAL-index; the hash tables are not
+ * initialized.
+ *
+ * Returns the stopping point in units of frames, which becomes the wal_cursor.
+ */
+static int walk_wal(sqlite3_file *wal,
+		    sqlite3_int64 size,
+		    struct wal_hdr hdr,
+		    const struct vfs2_wal_slice *stop,
+		    uint32_t *wal_cursor,
+		    struct shm *shm)
+{
+	uint32_t page_size = ByteGetBe32(hdr.page_size);
+	struct cksums sums = { ByteGetBe32(hdr.cksum1),
+			       ByteGetBe32(hdr.cksum2) };
+	int rv;
+
+	/* Check whether we have been provided a stopping point that corresponds
+	 * to a transaction in the current WAL. (It's possible that the stopping
+	 * point corresponds to a transaction that's in WAL-prev instead.) */
+	bool have_stop = stop != NULL && salts_equal(stop->salts, hdr.salts);
+
+	uint8_t *page_buf = sqlite3_malloc64(page_size);
+	if (page_buf == NULL) {
+		return SQLITE_NOMEM;
+	}
+
+	sqlite3_int64 off = sizeof(struct wal_hdr);
+	while (off < size) {
+		if (have_stop && *wal_cursor == stop->start + stop->len) {
+			break;
+		}
+
+		struct wal_frame_hdr fhdr;
+		rv = wal->pMethods->xRead(wal, &fhdr, sizeof(fhdr), off);
+		if (rv != SQLITE_OK) {
+			goto err;
+		}
+		if (!salts_equal(fhdr.salts, hdr.salts)) {
+			break;
+		}
+		off += (sqlite3_int64)sizeof(fhdr);
+		const uint8_t *p = (const uint8_t *)&fhdr;
+		size_t len = offsetof(struct wal_frame_hdr, salts);
+		update_cksums(p, len, &sums);
+
+		rv = wal->pMethods->xRead(wal, page_buf, (int)page_size, off);
+		if (rv != SQLITE_OK) {
+			goto err;
+		}
+		off += page_size;
+		update_cksums(page_buf, page_size, &sums);
+		struct cksums frame_sums = { ByteGetBe32(fhdr.cksum1),
+					     ByteGetBe32(fhdr.cksum2) };
+		if (!cksums_equal(frame_sums, sums)) {
+			break;
+		}
+
+		rv = shm_add_pgno(shm, *wal_cursor,
+				  ByteGetBe32(fhdr.page_number));
+		if (rv != SQLITE_OK) {
+			goto err;
+		}
+		*wal_cursor += 1;
+
+		/* We expect the last valid frame to have the commit marker.
+		 * That's because if the last transaction wasn't fully written
+		 * to the WAL, we should have been passed a `stop` argument
+		 * corresponding to some preceding transaction. */
+		if (off >= size) {
+			assert(ByteGetBe32(fhdr.commit) > 0);
+		}
+	}
+
+	sqlite3_free(page_buf);
+	return SQLITE_OK;
+
+err:
+	sqlite3_free(page_buf);
+	POST(rv != SQLITE_OK);
+	return rv;
 }
 
 static int open_entry(struct common *common, const char *name, struct entry *e)
@@ -1311,23 +1393,37 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 	rv = link(e->wal_cur_fixed_name, e->wal_moving_name);
 	(void)rv;
 
-	rv = shm_init(&e->shm);
-	*get_full_hdr(e) = initial_full_hdr(hdr_cur);
-
-	e->wal_cursor = wal_cursor_from_size(e->page_size, size_cur);
-
-	int next = WTX_EMPTY;
-	if (size_cur >=
-	    wal_offset_from_cursor(0 /* this doesn't matter */, 0)) {
-		/* TODO verify the header here */
+	/* If WAL-cur contains a valid header, walk it to initialize wal_cursor
+	 * and the WAL-index. Also, set the page size.
+	 *
+	 * If WAL-cur is empty, then we are starting up for the first time, and
+	 * we don't initialize the WAL-index. It will be initialized either by
+	 * SQLite running recovery or by add_uncommitted, whichever happens
+	 * first. (In general, we want to avoid letting SQLite run recovery, but
+	 * in this case it's harmless, since if the WAL is empty then it can't
+	 * read any uncommitted data.)
+	 */
+	if (size_cur > 0) {
 		e->page_size = ByteGetBe32(hdr_cur.page_size);
-		next = WTX_BASE;
+		rv = shm_init(&e->shm, hdr_cur);
+		if (rv != SQLITE_OK) {
+			return rv;
+		}
+		rv = walk_wal(e->wal_cur, size_cur, hdr_cur, NULL,
+			      &e->wal_cursor, &e->shm);
+		if (rv != SQLITE_OK) {
+			return rv;
+		}
 	}
-	if (size_cur >= wal_offset_from_cursor(e->page_size, 1)) {
+	/* If we found at least one valid transaction in the WAL, take the write
+	 * lock. */
+	if (e->wal_cursor > 0) {
 		e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
-		next = WTX_FOLLOWING;
 	}
-	sm_move(&e->wtx_sm, next);
+
+	sm_move(&e->wtx_sm, e->wal_cursor > 0 ? WTX_FOLLOWING
+			    : size_cur > 0    ? WTX_BASE
+					      : WTX_EMPTY);
 
 	return SQLITE_OK;
 }
