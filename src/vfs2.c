@@ -66,6 +66,41 @@ enum {
 	WTX_NR
 };
 
+/**
+ * Major transitions for this state machine:
+ *
+ *     +-----------CLOSED----------+
+ *     |                           |
+ * xOpen && no tx in WAL-cur   xOpen && tx in WAL-cur
+ *     |                           |
+ *     |                 (FB)      |
+ *     v      (BE)     <------     v  v-+ vfs2_add_uncommitted
+ *     EMPTY<------BASE------>FOLLOWING-+
+ *                 ^  |  (BF)
+ *                 |  |
+ *                 |  | sqlite3_step && xWrite(WAL)
+ *                 |  |
+ *                 |  v    v-+ xWrite(WAL)
+ *                 |--ACTIVE-+
+ *                 |  |
+ *      vfs2_abort |  | COMMIT_PHASETWO
+ *                 |  |
+ *                 |  v
+ *                 |--HIDDEN
+ *                 |  |
+ *                 |  | vfs2_poll
+ *                 |  |
+ *                 |  v
+ *                 +--POLLED
+ *
+ * Abbreviations and omissions:
+ * - BE occurs when we run a full checkpoint.
+ * - FB occurs when we call vfs2_apply or vfs2_unadd and no uncommitted
+ *   transactions remain afterward.
+ * - BF occurs via vfs2_add_uncommitted.
+ * - EMPTY may move to ACTIVE via sqlite3_step.
+ * - All states may move back to CLOSED.
+ */
 static const struct sm_conf wtx_states[WTX_NR] = {
 	[WTX_CLOSED] = {
 		.flags = SM_INITIAL|SM_FINAL,
