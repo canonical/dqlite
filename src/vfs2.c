@@ -1887,48 +1887,43 @@ int vfs2_apply(sqlite3_file *file, struct vfs2_wal_slice stop)
 }
 
 int vfs2_poll(sqlite3_file *file,
-	      dqlite_vfs_frame **frames,
-	      struct vfs2_wal_slice *sl)
+	      dqlite_vfs_frame **frames_out,
+	      struct vfs2_wal_slice *sl_out)
 {
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
+	PRE(e->shm_locks[WAL_WRITE_LOCK] == 0);
 
 	uint32_t len = e->pending_txn_len;
+	dqlite_vfs_frame *frames = NULL;
+	struct vfs2_wal_slice sl = {};
+	/* If some frames were produced, take the write lock. */
 	if (len > 0) {
-		/* Don't go through vfs2_shm_lock here since that has additional
-		 * checks that assume the context of being called from inside
-		 * SQLite. */
-		if (e->shm_locks[WAL_WRITE_LOCK] > 0) {
-			return 1;
-		}
 		e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
 		sm_move(&e->wlk_sm, WLK_LOCKED);
+		frames = e->pending_txn_frames;
+		e->pending_txn_frames = NULL;
+		sl = (struct vfs2_wal_slice){ .salts = e->pending_txn_hdr.salts,
+					      .start = e->prev_txn_hdr.mxFrame,
+					      .len = len };
+		/* We don't clear e->pending_txn_hdr here because it's used by
+		 * vfs2_unhide. (By contrast, pending_txn_frames only exists
+		 * to be returned by this function if requested.) */
+		sm_move(&e->wtx_sm, WTX_POLLED);
 	}
 
-	/* Note, not resetting pending_txn_{start,len} because they are used by
-	 * later states */
-	if (frames != NULL) {
-		*frames = e->pending_txn_frames;
+	if (frames_out != NULL) {
+		*frames_out = frames;
 	} else {
-		for (uint32_t i = 0; i < e->pending_txn_len; i++) {
-			sqlite3_free(e->pending_txn_frames[i].data);
+		for (uint32_t i = 0; i < len; i++) {
+			sqlite3_free(frames[i].data);
 		}
-		sqlite3_free(e->pending_txn_frames);
+		sqlite3_free(frames);
 	}
-	e->pending_txn_frames = NULL;
-
-	if (sl != NULL) {
-		sl->len = len;
-		sl->salts = e->pending_txn_hdr.salts;
-		sl->start = e->prev_txn_hdr.mxFrame;
-		sl->len = len;
+	if (sl_out != NULL) {
+		*sl_out = sl;
 	}
-
-	if (len > 0) {
-		sm_move(&xfile->entry->wtx_sm, WTX_POLLED);
-	}
-
 	return 0;
 }
 
