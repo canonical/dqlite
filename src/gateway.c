@@ -76,6 +76,15 @@ void gateway__leader_close(struct gateway *g, int reason)
 			 */
 			sqlite3_finalize(g->req->stmt);
 			g->req = NULL;
+		} else if (g->req->type == DQLITE_REQUEST_QUERY) {
+			/* In case the statement is a prepared one, it
+			 * will be finalized by the stmt__registry_close
+			 * call below. Nevertheless, we must signal that
+			 * the request is not in place anymore so that any
+			 * callback which is already in the queue will not
+			 * attempt to execute a finalized statement.
+			 */
+			g->req = NULL;
 		}
 	}
 	stmt__registry_close(&g->stmts);
