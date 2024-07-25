@@ -1260,7 +1260,8 @@ static void pgno_ht_insert(uint16_t *ht, uint16_t fx, uint32_t pgno)
 	}
 	/* SQLite uses 1-based frame indices in this context, reserving
 	 * 0 for a sentinel value. */
-	ht[hash % SHM_HT_LEN] = fx + 1;
+	fx++;
+	ht[hash % SHM_HT_LEN] = fx;
 }
 
 /**
