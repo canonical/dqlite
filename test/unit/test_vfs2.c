@@ -262,6 +262,52 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 }
 
 /**
+ * When one WAL has a valid transaction and the other is empty,
+ * the WAL with the transaction becomes WAL-cur. The first write does not
+ * trigger a WAL swap, but rather goes to that same WAL.
+ */
+TEST(vfs2, startup_frames_in_one, set_up, tear_down, 0, NULL)
+{
+	struct fixture *f = data;
+	struct node *node = &f->nodes[0];
+	char buf[PATH_MAX];
+	int rv;
+
+	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
+
+	/* Set up a transaction in WAL2. */
+	sqlite3 *db = node_open_db(node, "test.db");
+	sqlite3_file *fp = main_file(db);
+	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
+
+	struct vfs2_wal_slice sl;
+	OK(vfs2_poll(fp, NULL, &sl));
+	OK(sqlite3_close(db));
+	/* WAL2 has the frames. The value 4 here reflect the invalid magic
+	 * number that we write to the outgoing WAL. */
+	assert_wal_sizes(buf, 4, WAL_SIZE_FROM_FRAMES(2));
+
+	db = node_open_db(node, "test.db");
+	fp = main_file(db);
+	/* The transaction is not visible. */
+	rv = sqlite3_exec(db, "SELECT * FROM foo", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_ERROR);
+	/* The write lock is held. */
+	rv = sqlite3_exec(db, "CREATE TABLE bar (k INTEGER)", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_BUSY);
+	/* The transaction can be committed. */
+	OK(vfs2_apply(fp, sl));
+	/* The transaction is visible. */
+	OK(sqlite3_exec(db, "SELECT * FROM foo", NULL, NULL, NULL));
+	/* The write lock is not held. */
+	OK(sqlite3_exec(db, "CREATE TABLE bar (k, INTEGER)", NULL, NULL, NULL));
+	/* The write lock is released. */
+	sqlite3_close(db);
+
+	return MUNIT_OK;
+}
+
+/**
  * When both WALs are nonempty at startup, the one with the higher salt1
  * value becomes WAL-cur. Then, the first write triggers a WAL swap, so
  * the frames go to the *other* WAL.
