@@ -44,6 +44,8 @@
 
 static const uint32_t invalid_magic = 0x17171717;
 
+/* clang-format off */
+
 enum {
 	/* Entry is not yet open. */
 	WTX_CLOSED,
@@ -109,6 +111,125 @@ static const struct sm_conf wtx_states[SM_STATES_MAX] = {
                           |BITS(WTX_CLOSED),
         },
 };
+
+/**
+ * State machine that just tracks which WAL is WAL-cur, for observability.
+ */
+enum {
+	WAL_1,
+	WAL_2,
+	WAL_NR
+};
+
+static const struct sm_conf wal_states[WAL_NR] = {
+	[WAL_1] = {
+		.name = "wal1",
+		.allowed = BITS(WAL_2),
+		.flags = SM_INITIAL|SM_FINAL
+	},
+	[WAL_2] = {
+		.name = "wal2",
+		.allowed = BITS(WAL_1),
+		.flags = SM_INITIAL|SM_FINAL
+	}
+
+};
+
+/**
+ * State machine that just tracks the state of the WAL write lock, for
+ * observability.
+ */
+enum {
+	WLK_UNLOCKED,
+	WLK_LOCKED,
+	WLK_NR
+};
+
+static const struct sm_conf wlk_states[WLK_NR] = {
+	[WLK_UNLOCKED] = {
+		.name = "unlocked",
+		.allowed = BITS(WLK_LOCKED),
+		.flags = SM_INITIAL|SM_FINAL
+	},
+	[WLK_LOCKED] = {
+		.name = "locked",
+		.allowed = BITS(WLK_UNLOCKED),
+		.flags = SM_INITIAL|SM_FINAL
+	}
+};
+
+/**
+ * State machine that tracks who has been working on the shm, for
+ * observability.
+ *
+ * Other than observability, the point of this state machine is to check that
+ * SQLite does not run recovery on the shm after vfs2 has modified it.
+ */
+enum {
+	/* Nothing in the shm yet. */
+	SHM_EMPTY,
+	/* SQLite is holding the recovery lock, building up the shm. */
+	SHM_RECOVERING,
+	/* SQLite has finished building up the shm, vfs2 has not touched it. */
+	SHM_RECOVERED,
+	/* vfs2 made the last modification to the shm. */
+	SHM_MANAGED,
+	SHM_NR
+};
+
+static const struct sm_conf shm_states[SHM_NR] = {
+	[SHM_EMPTY] = {
+		.name = "empty",
+		.allowed = BITS(SHM_RECOVERING)|BITS(SHM_MANAGED),
+		.flags = SM_INITIAL
+	},
+	[SHM_RECOVERING] = {
+		.name = "recovering",
+		.allowed = BITS(SHM_RECOVERED),
+	},
+	[SHM_RECOVERED] = {
+		.name = "recovered",
+		.allowed = BITS(SHM_MANAGED)
+	},
+	[SHM_MANAGED] = {
+		.name = "managed",
+		.allowed = BITS(SHM_MANAGED)
+	},
+};
+
+/**
+ * State machine that just tracks whether a checkpoint is in progress or not,
+ * for observability.
+ */
+enum {
+	CKPT_QUIESCENT,
+	CKPT_CHECKPOINTING,
+	CKPT_NR
+};
+
+static const struct sm_conf ckpt_states[CKPT_NR] = {
+	[CKPT_QUIESCENT] = {
+		.name = "quiescent",
+		.allowed = BITS(CKPT_CHECKPOINTING),
+		.flags = SM_INITIAL
+	},
+	[CKPT_CHECKPOINTING] = {
+		.name = "checkpointing",
+		.allowed = BITS(CKPT_QUIESCENT)
+	}
+};
+
+/* clang-format on */
+
+/**
+ * A dummy invariant, for when you just don't care.
+ */
+static bool no_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
+}
 
 /**
  * Userdata owned by the VFS.
@@ -239,6 +360,7 @@ struct shm {
 	 * region. As a sanity check, we assert that this value is zero before
 	 * we free the shm. */
 	unsigned refcount;
+	struct sm sm;
 };
 
 static_assert(sizeof(struct shm_region) == VFS2_WAL_INDEX_REGION_SIZE,
@@ -282,6 +404,7 @@ static int shm_init(struct shm *shm, struct wal_hdr whdr)
 	ihdr->marks[2] = READ_MARK_UNUSED;
 	ihdr->marks[3] = READ_MARK_UNUSED;
 	ihdr->marks[4] = READ_MARK_UNUSED;
+	sm_move(&shm->sm, SHM_MANAGED);
 	return SQLITE_OK;
 }
 
@@ -309,6 +432,7 @@ static void shm_restart(struct shm *shm, struct wal_hdr whdr)
 	ihdr->marks[2] = READ_MARK_UNUSED;
 	ihdr->marks[3] = READ_MARK_UNUSED;
 	ihdr->marks[4] = READ_MARK_UNUSED;
+	sm_move(&shm->sm, SHM_MANAGED);
 }
 
 /**
@@ -341,6 +465,7 @@ static int shm_add_pgno(struct shm *shm, uint32_t frame, uint32_t pgno)
 		shm->num_regions++;
 	}
 	shm->regions[regno].pgnos_long[index] = pgno;
+	sm_move(&shm->sm, SHM_MANAGED);
 	return SQLITE_OK;
 }
 
@@ -406,6 +531,9 @@ struct entry {
 	struct wal_hdr wal_prev_hdr;
 
 	struct sm wtx_sm;
+	struct sm wal_sm;
+	struct sm wlk_sm;
+	struct sm ckpt_sm;
 	/* VFS-wide data (immutable) */
 	struct common *common;
 };
@@ -605,6 +733,8 @@ static void wal_swap(struct entry *e, const struct wal_hdr *hdr)
 	e->wal_cursor = 0;
 	e->wal_prev_hdr = e->wal_cur_hdr;
 	e->wal_cur_hdr = *hdr;
+
+	sm_move(&e->wal_sm, !sm_state(&e->wal_sm));
 
 	/* Best-effort: flip the moving name.
 	 *
@@ -969,12 +1099,20 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 
 		for (int i = ofst; i < ofst + n; i++) {
 			e->shm_locks[i] = VFS2_EXCLUSIVE;
+			if (i == WAL_RECOVER_LOCK) {
+				sm_move(&e->shm.sm, SHM_RECOVERING);
+			}
 		}
 
 		/* XXX maybe this shouldn't be an assertion */
 		if (ofst == WAL_WRITE_LOCK) {
 			assert(n == 1);
 			assert(e->pending_txn_len == 0);
+			sm_move(&e->wlk_sm, WLK_LOCKED);
+		}
+
+		if (ofst == WAL_CKPT_LOCK && n == 1) {
+			sm_move(&e->ckpt_sm, CKPT_CHECKPOINTING);
 		}
 	} else if (flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_SHARED)) {
 		for (int i = ofst; i < ofst + n; i++) {
@@ -988,9 +1126,11 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 		}
 
 		if (ofst <= WAL_RECOVER_LOCK && WAL_RECOVER_LOCK < ofst + n) {
+			sm_move(&e->shm.sm, SHM_RECOVERED);
 		}
 
 		if (ofst == WAL_WRITE_LOCK) {
+			sm_move(&e->wlk_sm, WLK_UNLOCKED);
 			/* If the last frame of the pending transaction has no
 			 * commit marker when SQLite releases the write lock, it
 			 * means that the transaction rolled back before it
@@ -1005,11 +1145,11 @@ static int vfs2_shm_lock(sqlite3_file *file, int ofst, int n, int flags)
 		} else if (ofst == WAL_CKPT_LOCK && n == 1) {
 			/* End of a checkpoint: if all frames have been
 			 * backfilled, move to EMPTY. */
-			assert(n == 1);
 			struct wal_index_full_hdr *ihdr = get_full_hdr(e);
 			if (ihdr->nBackfill == ihdr->basic[0].mxFrame) {
 				sm_move(&e->wtx_sm, WTX_EMPTY);
 			}
+			sm_move(&e->ckpt_sm, CKPT_QUIESCENT);
 		}
 	} else {
 		assert(0);
@@ -1129,6 +1269,7 @@ static void pgno_ht_insert(uint16_t *ht, uint16_t fx, uint32_t pgno)
 static void shm_update_ht(struct shm *shm, uint32_t frame)
 {
 	PRE(shm->num_regions > 0);
+	sm_move(&shm->sm, SHM_MANAGED);
 	if (frame < SHM_SHORT_PGNOS_LEN) {
 		struct shm_region *r0 = &shm->regions[0];
 		uint32_t pgno = r0->pgnos_short[frame];
@@ -1372,6 +1513,9 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 		size_cur = size2;
 		hdr_prev = hdr1;
 	}
+	sm_init(&e->wal_sm, no_invariant, NULL, wal_states, "wal",
+		wal1_is_fresh ? WAL_1 : WAL_2);
+	sm_relate(&e->wtx_sm, &e->wal_sm);
 
 	e->wal_cur_hdr = hdr_cur;
 	e->wal_prev_hdr = hdr_prev;
@@ -1380,6 +1524,9 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 	(void)rv;
 	rv = link(e->wal_cur_fixed_name, e->wal_moving_name);
 	(void)rv;
+
+	sm_init(&e->shm.sm, no_invariant, NULL, shm_states, "shm", SHM_EMPTY);
+	sm_relate(&e->wtx_sm, &e->shm.sm);
 
 	/* If WAL-cur contains a valid header, walk it to initialize wal_cursor
 	 * and the WAL-index. Also, set the page size.
@@ -1408,6 +1555,12 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 	if (e->wal_cursor > 0) {
 		e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
 	}
+	sm_init(&e->wlk_sm, no_invariant, NULL, wlk_states, "wlk",
+		e->wal_cursor > 0 ? WLK_LOCKED : WLK_UNLOCKED);
+	sm_relate(&e->wtx_sm, &e->wlk_sm);
+
+	sm_init(&e->ckpt_sm, no_invariant, NULL, ckpt_states, "ckpt", CKPT_QUIESCENT);
+	sm_relate(&e->wtx_sm, &e->ckpt_sm);
 
 	sm_move(&e->wtx_sm, e->wal_cursor > 0 ? WTX_FOLLOWING
 			    : size_cur > 0    ? WTX_BASE
@@ -1639,6 +1792,7 @@ int vfs2_unadd(sqlite3_file *file, struct vfs2_wal_slice first_to_unadd)
 	if (e->wal_cursor == ihdr->basic[0].mxFrame) {
 		e->shm_locks[WAL_WRITE_LOCK] = 0;
 		sm_move(&e->wtx_sm, WTX_BASE);
+		sm_move(&e->wlk_sm, WLK_UNLOCKED);
 	} else {
 		sm_move(&e->wtx_sm, WTX_FOLLOWING);
 	}
@@ -1651,6 +1805,7 @@ int vfs2_unhide(sqlite3_file *file)
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
 	PRE(e->shm_locks[WAL_WRITE_LOCK] == VFS2_EXCLUSIVE);
+	sm_move(&e->wlk_sm, WLK_UNLOCKED);
 	e->shm_locks[WAL_WRITE_LOCK] = 0;
 
 	struct wal_index_full_hdr *hdr = get_full_hdr(e);
@@ -1686,6 +1841,7 @@ int vfs2_apply(sqlite3_file *file, struct vfs2_wal_slice stop)
 	set_mx_frame(e, commit, fhdr);
 	if (commit == e->wal_cursor) {
 		e->shm_locks[WAL_WRITE_LOCK] = 0;
+		sm_move(&e->wlk_sm, WLK_UNLOCKED);
 		sm_move(&e->wtx_sm, WTX_BASE);
 	} else {
 		sm_move(&e->wtx_sm, WTX_FOLLOWING);
@@ -1710,6 +1866,7 @@ int vfs2_poll(sqlite3_file *file,
 			return 1;
 		}
 		e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
+		sm_move(&e->wlk_sm, WLK_LOCKED);
 	}
 
 	/* Note, not resetting pending_txn_{start,len} because they are used by
@@ -1986,6 +2143,9 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	 * or vfs2_unadd causes the number of committed frames in
 	 * WAL-cur (mxFrame) to equal the number of applies frames
 	 * (wal_cursor). */
+	if (e->shm_locks[WAL_WRITE_LOCK] == 0) {
+		sm_move(&e->wlk_sm, WLK_LOCKED);
+	}
 	e->shm_locks[WAL_WRITE_LOCK] = VFS2_EXCLUSIVE;
 
 	/* This paragraph accomplishes a few related things: initializing the
