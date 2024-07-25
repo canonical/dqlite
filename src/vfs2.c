@@ -62,10 +62,11 @@ enum {
 	/* Leader, transaction committed by SQLite and hidden. */
 	WTX_HIDDEN,
 	/* Leader, transation committed by SQLite, hidden, and polled. */
-	WTX_POLLED
+	WTX_POLLED,
+	WTX_NR
 };
 
-static const struct sm_conf wtx_states[SM_STATES_MAX] = {
+static const struct sm_conf wtx_states[WTX_NR] = {
 	[WTX_CLOSED] = {
 		.flags = SM_INITIAL|SM_FINAL,
 		.name = "closed",
