@@ -1596,7 +1596,8 @@ static int open_entry(struct common *common, const char *name, struct entry *e)
 		e->wal_cursor > 0 ? WLK_LOCKED : WLK_UNLOCKED);
 	sm_relate(&e->wtx_sm, &e->wlk_sm);
 
-	sm_init(&e->ckpt_sm, no_invariant, NULL, ckpt_states, "ckpt", CKPT_QUIESCENT);
+	sm_init(&e->ckpt_sm, no_invariant, NULL, ckpt_states, "ckpt",
+		CKPT_QUIESCENT);
 	sm_relate(&e->wtx_sm, &e->ckpt_sm);
 
 	sm_move(&e->wtx_sm, e->wal_cursor > 0 ? WTX_FOLLOWING
