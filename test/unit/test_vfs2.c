@@ -88,7 +88,8 @@ static sqlite3 *node_open_db(const struct node *node, const char *name)
 /**
  * Write two WALs to disk with the given contents.
  */
-static void prepare_wals(const char *dbname,
+static void prepare_wals(const struct node *node,
+			 const char *dbname,
 			 const unsigned char *wal1,
 			 size_t wal1_len,
 			 const unsigned char *wal2,
@@ -97,7 +98,7 @@ static void prepare_wals(const char *dbname,
 	char buf[PATH_MAX];
 	ssize_t n;
 	if (wal1 != NULL) {
-		snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
+		snprintf(buf, sizeof(buf), "%s/%s-xwal1", node->dir, dbname);
 		int fd1 = open(buf, O_RDWR | O_CREAT,
 			       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 		munit_assert_int(fd1, !=, -1);
@@ -107,7 +108,7 @@ static void prepare_wals(const char *dbname,
 		close(fd1);
 	}
 	if (wal2 != NULL) {
-		snprintf(buf, sizeof(buf), "%s-xwal2", dbname);
+		snprintf(buf, sizeof(buf), "%s/%s-xwal2", node->dir, dbname);
 		int fd2 = open(buf, O_RDWR | O_CREAT,
 			       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 		munit_assert_int(fd2, !=, -1);
@@ -121,18 +122,21 @@ static void prepare_wals(const char *dbname,
 /**
  * Assert the lengths of WAL1 and WAL2 on disk.
  */
-static void assert_wal_sizes(const char *dbname, off_t wal1_len, off_t wal2_len)
+static void assert_wal_sizes(const struct node *node,
+			     const char *dbname,
+			     off_t wal1_len,
+			     off_t wal2_len)
 {
 	char buf[PATH_MAX];
 	struct stat st;
 	int rv;
 
-	snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
+	snprintf(buf, sizeof(buf), "%s/%s-xwal1", node->dir, dbname);
 	rv = stat(buf, &st);
 	munit_assert_true((rv == 0 && st.st_size == wal1_len) ||
 			  (rv < 0 && errno == ENOENT && wal1_len == 0));
 
-	snprintf(buf, sizeof(buf), "%s-xwal2", dbname);
+	snprintf(buf, sizeof(buf), "%s/%s-xwal2", node->dir, dbname);
 	rv = stat(buf, &st);
 	munit_assert_true((rv == 0 && st.st_size == wal2_len) ||
 			  (rv < 0 && errno == ENOENT && wal2_len == 0));
@@ -241,22 +245,19 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
 	struct node *node = &f->nodes[0];
-	char buf[PATH_MAX];
-
-	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
-
-	assert_wal_sizes(buf, 0, 0);
 
 	/* WAL2 has a header. */
 	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
 	vfs2_ut_make_wal_hdr(wal2_hdronly, PAGE_SIZE, 0, 17, 103);
-	prepare_wals(buf, NULL, 0, wal2_hdronly, sizeof(wal2_hdronly));
+	prepare_wals(node, "test.db", NULL, 0, wal2_hdronly,
+		     sizeof(wal2_hdronly));
 	sqlite3 *db = node_open_db(node, "test.db");
 	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
 	OK(sqlite3_close(db));
 
 	/* WAL1 ends up with the frames. */
-	assert_wal_sizes(buf, WAL_SIZE_FROM_FRAMES(2), WAL_SIZE_FROM_FRAMES(0));
+	assert_wal_sizes(node, "test.db", WAL_SIZE_FROM_FRAMES(2),
+			 WAL_SIZE_FROM_FRAMES(0));
 
 	return MUNIT_OK;
 }
@@ -270,10 +271,7 @@ TEST(vfs2, startup_frames_in_one, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
 	struct node *node = &f->nodes[0];
-	char buf[PATH_MAX];
 	int rv;
-
-	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
 
 	/* Set up a transaction in WAL2. */
 	sqlite3 *db = node_open_db(node, "test.db");
@@ -285,7 +283,7 @@ TEST(vfs2, startup_frames_in_one, set_up, tear_down, 0, NULL)
 	OK(sqlite3_close(db));
 	/* WAL2 has the frames. The value 4 here reflect the invalid magic
 	 * number that we write to the outgoing WAL. */
-	assert_wal_sizes(buf, 4, WAL_SIZE_FROM_FRAMES(2));
+	assert_wal_sizes(node, "test.db", 4, WAL_SIZE_FROM_FRAMES(2));
 
 	db = node_open_db(node, "test.db");
 	fp = main_file(db);
@@ -316,24 +314,21 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
 	struct node *node = &f->nodes[0];
-	char buf[PATH_MAX];
-
-	snprintf(buf, PATH_MAX, "%s/%s", node->dir, "test.db");
-	assert_wal_sizes(buf, 0, 0);
 
 	/* WAL1 has the higher salt1. */
 	uint8_t wal1_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
 	vfs2_ut_make_wal_hdr(wal1_hdronly, PAGE_SIZE, 0, 18, 103);
 	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
 	vfs2_ut_make_wal_hdr(wal2_hdronly, PAGE_SIZE, 0, 17, 103);
-	prepare_wals(buf, wal1_hdronly, sizeof(wal1_hdronly), wal2_hdronly,
-		     sizeof(wal2_hdronly));
+	prepare_wals(node, "test.db", wal1_hdronly, sizeof(wal1_hdronly),
+		     wal2_hdronly, sizeof(wal2_hdronly));
 	sqlite3 *db = node_open_db(node, "test.db");
 	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
 	OK(sqlite3_close(db));
 
 	/* WAL2 ends up with the frames. */
-	assert_wal_sizes(buf, WAL_SIZE_FROM_FRAMES(0), WAL_SIZE_FROM_FRAMES(2));
+	assert_wal_sizes(node, "test.db", WAL_SIZE_FROM_FRAMES(0),
+			 WAL_SIZE_FROM_FRAMES(2));
 
 	return MUNIT_OK;
 }
