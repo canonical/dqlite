@@ -1631,6 +1631,56 @@ TEST_CASE(query, manyParams, NULL)
 	return MUNIT_OK;
 }
 
+
+/* Successfully query that yields a large number of rows that need to be split
+ * into several reponses. */
+TEST_CASE(query, close_while_in_flight, NULL)
+{
+	struct query_fixture *f = data;
+	unsigned i;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+	EXEC("BEGIN");
+
+	/* 16 = 8B header + 8B value (int) */
+	unsigned n_rows_buffer = max_rows_buffer(16);
+	/* Insert 1 less than 2 response buffers worth of rows, otherwise we
+	 * need 3 responses, of which the last one contains no rows. */
+	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
+		EXEC("INSERT INTO test(n) VALUES(123)");
+	}
+	EXEC("COMMIT");
+
+	PREPARE("SELECT n FROM test");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 0; i < n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, 123);
+	}
+
+	/* Simulate a gateway close */
+	gateway__close(f->gateway);
+	gateway__resume(f->gateway, &finished);
+
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * finalize
