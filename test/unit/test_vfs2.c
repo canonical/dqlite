@@ -82,6 +82,8 @@ static sqlite3 *node_open_db(const struct node *node, const char *name)
 			  "PRAGMA wal_autocheckpoint=0",
 			  NULL, NULL, NULL);
 	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
 	return db;
 }
 
