@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/param.h> /* MAX */
 #include <unistd.h>
 
 #define VFS2_WAL_FIXED_SUFFIX1 "-xwal1"
@@ -2274,7 +2275,14 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	 * "early" like this is harmless and saves us from having to stash the
 	 * page numbers somewhere else in memory in between add_uncommitted and
 	 * apply, or (worse) read them back from WAL-cur. */
-	shm_add_pgno(&e->shm, e->wal_cursor, (uint32_t)frames[0].page_number);
+	uint32_t pgno = (uint32_t)frames[0].page_number;
+	shm_add_pgno(&e->shm, e->wal_cursor, pgno);
+
+	/* With every frame, we make this update. The interpretation is that
+	 * db_size would be the size of the main file in pages if we
+	 * checkpointing up to and including the current frame. Then we use the
+	 * final value to write the commit marker of the last frame. */
+	db_size = MAX(db_size, pgno);
 
 	uint32_t commit = len == 1 ? db_size : 0;
 	struct wal_frame_hdr fhdr = txn_frame_hdr(e, sums, &frames[0], commit);
@@ -2284,9 +2292,9 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	}
 
 	for (unsigned i = 1; i < len; i++) {
-		PRE(e->wal_cursor < SHM_SHORT_PGNOS_LEN);
-		shm_add_pgno(&e->shm, e->wal_cursor,
-			     (uint32_t)frames[i].page_number);
+		pgno = (uint32_t)frames[i].page_number;
+		shm_add_pgno(&e->shm, e->wal_cursor, pgno);
+		db_size = MAX(db_size, pgno);
 		sums.cksum1 = ByteGetBe32(fhdr.cksum1);
 		sums.cksum2 = ByteGetBe32(fhdr.cksum2);
 		commit = i == len - 1 ? db_size : 0;
