@@ -370,11 +370,14 @@ TEST(vfs2, leader_and_follower, set_up, tear_down, 0, NULL)
 	struct fixture *f = data;
 	struct node *leader = &f->nodes[0];
 	struct node *follower = &f->nodes[1];
+	int rv;
 
 	/* The leader executes and polls a transaction. */
 	sqlite3 *leader_db = node_open_db(leader, "test.db");
 	OK(sqlite3_exec(leader_db, "CREATE TABLE foo (n INTEGER)", NULL, NULL,
 			NULL));
+	/* WAL2 gets the frames after a WAL swap. */
+	assert_wal_sizes(leader, "test.db", 4, WAL_SIZE_FROM_FRAMES(2));
 	sqlite3_file *leader_fp = main_file(leader_db);
 	dqlite_vfs_frame *frames;
 	struct vfs2_wal_slice leader_sl;
@@ -390,9 +393,16 @@ TEST(vfs2, leader_and_follower, set_up, tear_down, 0, NULL)
 	struct vfs2_wal_slice follower_sl;
 	OK(vfs2_add_uncommitted(follower_fp, PAGE_SIZE, frames, leader_sl.len,
 				&follower_sl));
+	/* WAL2 gets the frames after a WAL swap. */
+	assert_wal_sizes(follower, "test.db", 4, WAL_SIZE_FROM_FRAMES(2));
 	sqlite3_free(frames[0].data);
 	sqlite3_free(frames[1].data);
 	sqlite3_free(frames);
+	/* The transaction is not visible, and the write lock is held. */
+	rv = sqlite3_exec(follower_db, "SELECT * FROM foo", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_ERROR);
+	rv = sqlite3_exec(follower_db, "CREATE TABLE bar (k INTEGER)", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_BUSY);
 
 	/* The leader receives the follower's acknowledgement
 	 * and applies the transaction locally. */
@@ -401,6 +411,8 @@ TEST(vfs2, leader_and_follower, set_up, tear_down, 0, NULL)
 	/* The follower learns the new commit index and applies
 	 * the transaction locally. */
 	OK(vfs2_apply(follower_fp, follower_sl));
+	/* The transaction is visible and the write lock is released. */
+	OK(sqlite3_exec(follower_db, "INSERT INTO foo (n) VALUES (17)", NULL, NULL, NULL));
 
 	sqlite3_close(follower_db);
 	sqlite3_close(leader_db);
