@@ -386,12 +386,13 @@ struct shm_region {
 /**
  * "Shared" memory implementation for storing the WAL-index.
  *
- * All the regions are stored in a single allocation, whose size is a multiple
- * of VFS2_WAL_INDEX_REGION_SIZE. We realloc to create additional regions as
- * they are demanded.
+ * Each region is stored in its own heap allocation of size
+ * VFS2_WAL_INDEX_REGION_SIZE. Using separate allocations ensures that existing
+ * region pointers remain valid when new regions are mapped, as SQLite
+ * expects.
  */
 struct shm {
-	struct shm_region *regions;
+	struct shm_region **regions;
 	int num_regions;
 	/* Counts the net number of times that SQLite has mapped the zeroth
 	 * region. As a sanity check, we assert that this value is zero before
@@ -402,6 +403,37 @@ struct shm {
 
 static_assert(sizeof(struct shm_region) == VFS2_WAL_INDEX_REGION_SIZE,
 	      "shm regions have the expected size");
+
+/**
+ * Allocate a new shm region at the next-highest index.
+ *
+ * Returns a pointer to the new region, or NULL if allocation failed.
+ * In the latter case the shm is unchanged.
+ */
+static struct shm_region *shm_grow(struct shm *shm)
+{
+	int index = shm->num_regions;
+	struct shm_region *r = sqlite3_malloc64(VFS2_WAL_INDEX_REGION_SIZE);
+	if (r == NULL) {
+		goto err;
+	}
+	*r = (struct shm_region){};
+	sqlite3_uint64 size =
+	    (sqlite3_uint64)(index + 1) * (sqlite3_uint64)sizeof(*shm->regions);
+	struct shm_region **p = sqlite3_realloc64(shm->regions, size);
+	if (p == NULL) {
+		goto err_after_alloc_region;
+	}
+	p[index] = r;
+	shm->regions = p;
+	shm->num_regions++;
+	return r;
+
+err_after_alloc_region:
+	sqlite3_free(r);
+err:
+	return NULL;
+}
 
 static void write_basic_hdr_cksums(struct wal_index_basic_hdr *bhdr)
 {
@@ -420,15 +452,10 @@ static void write_basic_hdr_cksums(struct wal_index_basic_hdr *bhdr)
  */
 static int shm_init(struct shm *shm, struct wal_hdr whdr)
 {
-	shm->regions = sqlite3_malloc64(VFS2_WAL_INDEX_REGION_SIZE);
-	if (shm->regions == NULL) {
+	struct shm_region *r0 = shm_grow(shm);
+	if (r0 == NULL) {
 		return SQLITE_NOMEM;
 	}
-	shm->regions[0] = (struct shm_region){};
-	shm->num_regions = 1;
-	shm->refcount = 0;
-
-	struct shm_region *r0 = &shm->regions[0];
 	struct wal_index_full_hdr *ihdr = &r0->hdr;
 	ihdr->basic[0].iVersion = 3007000;
 	ihdr->basic[0].isInit = 1;
@@ -452,11 +479,11 @@ static int shm_init(struct shm *shm, struct wal_hdr whdr)
 static void shm_restart(struct shm *shm, struct wal_hdr whdr)
 {
 	for (int i = 0; i < shm->num_regions; i++) {
-		shm->regions[i] = (struct shm_region){};
+		*shm->regions[i] = (struct shm_region){};
 	}
 
 	/* TODO(cole) eliminate redundancy with shm_init */
-	struct shm_region *r0 = &shm->regions[0];
+	struct shm_region *r0 = shm->regions[0];
 	struct wal_index_full_hdr *ihdr = &r0->hdr;
 	ihdr->basic[0].iVersion = 3007000;
 	ihdr->basic[0].isInit = 1;
@@ -483,7 +510,7 @@ static int shm_add_pgno(struct shm *shm, uint32_t frame, uint32_t pgno)
 {
 	PRE(shm->num_regions > 0);
 	if (frame < SHM_SHORT_PGNOS_LEN) {
-		struct shm_region *r0 = &shm->regions[0];
+		struct shm_region *r0 = shm->regions[0];
 		r0->pgnos_short[frame] = pgno;
 		return SQLITE_OK;
 	}
@@ -491,19 +518,26 @@ static int shm_add_pgno(struct shm *shm, uint32_t frame, uint32_t pgno)
 	uint32_t regno = (frame - SHM_SHORT_PGNOS_LEN) / SHM_LONG_PGNOS_LEN;
 	uint32_t index = (frame - SHM_SHORT_PGNOS_LEN) % SHM_LONG_PGNOS_LEN;
 	PRE(regno <= (uint32_t)shm->num_regions + 1);
+	struct shm_region *region;
 	if (regno == (uint32_t)shm->num_regions + 1) {
-		sqlite3_uint64 sz =
-		    (sqlite3_uint64)regno * VFS2_WAL_INDEX_REGION_SIZE;
-		struct shm_region *p = sqlite3_realloc64(shm->regions, sz);
-		if (p == NULL) {
+		region = shm_grow(shm);
+		if (region == NULL) {
 			return SQLITE_NOMEM;
 		}
-		shm->regions = p;
-		shm->num_regions++;
+	} else {
+		region = shm->regions[regno];
 	}
-	shm->regions[regno].pgnos_long[index] = pgno;
+	region->pgnos_long[index] = pgno;
 	sm_move(&shm->sm, SHM_MANAGED);
 	return SQLITE_OK;
+}
+
+static void shm_free(struct shm *shm)
+{
+	for (int i = 0; i < shm->num_regions; i++) {
+		sqlite3_free(shm->regions[i]);
+	}
+	sqlite3_free(shm->regions);
 }
 
 struct entry {
@@ -631,7 +665,7 @@ static struct wal_index_full_hdr *get_full_hdr(struct entry *e)
 {
 	PRE(e->shm.num_regions > 0);
 	PRE(e->shm.regions != NULL);
-	return &e->shm.regions[0].hdr;
+	return &e->shm.regions[0]->hdr;
 }
 
 static bool no_pending_txn(const struct entry *e)
@@ -710,7 +744,7 @@ static void maybe_close_entry(struct entry *e)
 	free_pending_txn(e);
 
 	assert(e->shm.refcount == 0);
-	sqlite3_free(e->shm.regions);
+	shm_free(&e->shm);
 
 	pthread_rwlock_wrlock(&e->common->rwlock);
 	queue_remove(&e->link);
@@ -1062,23 +1096,15 @@ static int vfs2_shm_map(sqlite3_file *file,
 	struct entry *e = xfile->entry;
 	struct shm *shm = &e->shm;
 	struct shm_region *region;
-	int rv;
 
 	if (shm->regions != NULL && regno < shm->num_regions) {
-		region = &shm->regions[regno];
+		region = shm->regions[regno];
 	} else if (extend != 0) {
 		assert(regno == shm->num_regions);
-		sqlite3_uint64 sz =
-		    ((sqlite3_uint64)regno + 1) * (sqlite3_uint64)regsz;
-		struct shm_region *p = sqlite3_realloc64(shm->regions, sz);
-		if (p == NULL) {
-			rv = SQLITE_NOMEM;
-			goto err;
+		region = shm_grow(shm);
+		if (region == NULL) {
+			return SQLITE_NOMEM;
 		}
-		shm->regions = p;
-		region = &shm->regions[regno];
-		memset(region, 0, (size_t)regsz);
-		shm->num_regions++;
 	} else {
 		region = NULL;
 	}
@@ -1088,11 +1114,6 @@ static int vfs2_shm_map(sqlite3_file *file,
 		e->shm.refcount++;
 	}
 	return SQLITE_OK;
-
-err:
-	assert(rv != SQLITE_OK);
-	*out = NULL;
-	return rv;
 }
 
 static __attribute__((noinline)) int busy(void)
@@ -1309,7 +1330,7 @@ static void shm_update_ht(struct shm *shm, uint32_t frame)
 	PRE(shm->num_regions > 0);
 	sm_move(&shm->sm, SHM_MANAGED);
 	if (frame < SHM_SHORT_PGNOS_LEN) {
-		struct shm_region *r0 = &shm->regions[0];
+		struct shm_region *r0 = shm->regions[0];
 		uint32_t pgno = r0->pgnos_short[frame];
 		pgno_ht_insert(r0->ht, (uint16_t)frame, pgno);
 		return;
@@ -1318,7 +1339,7 @@ static void shm_update_ht(struct shm *shm, uint32_t frame)
 	uint32_t regno = (frame - SHM_SHORT_PGNOS_LEN) / SHM_LONG_PGNOS_LEN;
 	uint32_t index = (frame - SHM_SHORT_PGNOS_LEN) % SHM_LONG_PGNOS_LEN;
 	PRE(regno <= (uint32_t)shm->num_regions);
-	struct shm_region *region = &shm->regions[regno];
+	struct shm_region *region = shm->regions[regno];
 	uint32_t pgno = region->pgnos_long[index];
 	pgno_ht_insert(region->ht, (uint16_t)index, pgno);
 }
@@ -2202,7 +2223,7 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	 */
 	PRE(ERGO(e->shm.num_regions == 0, e->wal_cursor == 0));
 	struct wal_index_full_hdr *ihdr =
-	    e->shm.num_regions > 0 ? &e->shm.regions[0].hdr : NULL;
+	    e->shm.num_regions > 0 ? &e->shm.regions[0]->hdr : NULL;
 	uint32_t mx = ihdr != NULL ? ihdr->basic[0].mxFrame : 0;
 	uint32_t backfill = ihdr != NULL ? ihdr->nBackfill : 0;
 	if (e->wal_cursor == mx && mx == backfill) {
