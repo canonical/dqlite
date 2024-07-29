@@ -343,19 +343,23 @@ TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
 	struct fixture *f = data;
 	struct node *node = &f->nodes[0];
 	struct vfs2_wal_slice sl;
-	char sql[100];
+	int rv;
 
 	sqlite3 *db = node_open_db(node, "test.db");
 	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
 	sqlite3_file *fp = main_file(db);
 	OK(vfs2_poll(fp, NULL, &sl));
 	OK(vfs2_unhide(fp));
+	sqlite3_stmt *stmt;
+	OK(sqlite3_prepare_v2(db, "INSERT INTO foo (n) VALUES (?)", -1, &stmt, NULL));
 	OK(sqlite3_exec(db, "BEGIN", NULL, NULL, NULL));
 	for (unsigned i = 0; i < 500; i++) {
-		snprintf(sql, sizeof(sql), "INSERT INTO foo (n) VALUES (%d)",
-			 i);
-		OK(sqlite3_exec(db, sql, NULL, NULL, NULL));
+		OK(sqlite3_bind_int(stmt, 1, i));
+		rv = sqlite3_step(stmt);
+		munit_assert_int(rv, ==, SQLITE_DONE);
+		OK(sqlite3_reset(stmt));
 	}
+	OK(sqlite3_finalize(stmt));
 	OK(sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL));
 	OK(sqlite3_close(db));
 
