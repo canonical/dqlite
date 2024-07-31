@@ -177,7 +177,7 @@ int uvSegmentLoadAll(struct uv *uv,
  * The memory is aligned at disk block boundary, to allow for direct I/O. */
 struct uvSegmentBuffer
 {
-        enum raft_uv_format_version format_version;
+	enum raft_uv_format_version format_version;
 	size_t block_size; /* Disk block size for direct I/O */
 	uv_buf_t arena;    /* Previously allocated memory that can be re-used */
 	size_t n;          /* Write offset */

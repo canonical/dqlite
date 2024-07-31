@@ -43,7 +43,6 @@
         int rv_;                                                     \
         rv_ = raft_uv_init(&f->io, &f->loop, f->dir, &f->transport); \
         munit_assert_int(rv_, ==, 0);                                \
-        \
         const char *format_version_ = munit_parameters_get(params, "format_version"); \
         f->format_version = format_version_ != NULL ? atoi(format_version_) : 1; \
         raft_uv_set_format_version(&f->io, f->format_version); \
