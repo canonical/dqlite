@@ -57,7 +57,7 @@ int dqlite__init(struct dqlite_node *d,
 		 dqlite_node_id id,
 		 const char *address,
 		 const char *dir,
-		 bool disk_mode)
+		 int flags)
 {
 	char db_dir_path[1024];
 	int urandom;
@@ -68,6 +68,8 @@ int dqlite__init(struct dqlite_node *d,
 	d->initialized = false;
 	d->lock_fd = -1;
 	memset(d->errmsg, 0, sizeof d->errmsg);
+
+	bool disk_mode = flags & DQLITE_NODE_CREATE_DISKMODE;
 
 	rv = snprintf(db_dir_path, sizeof db_dir_path, DATABASE_DIR_FMT, dir);
 	if (rv == -1 || rv >= (int)(sizeof db_dir_path)) {
@@ -264,13 +266,13 @@ int dqlite_node_create(dqlite_node_id id,
 		return DQLITE_NOMEM;
 	}
 
-	return dqlite__init(*t, id, address, data_dir, false);
+	return dqlite__init(*t, id, address, data_dir, 0);
 }
 
 int dqlite_node_create_v2(dqlite_node_id id,
 			  const char *address,
 			  const char *data_dir,
-			  bool disk_mode,
+			  int flags,
 			  dqlite_node **t)
 {
 	*t = sqlite3_malloc(sizeof **t);
@@ -278,7 +280,7 @@ int dqlite_node_create_v2(dqlite_node_id id,
 		return DQLITE_NOMEM;
 	}
 
-	return dqlite__init(*t, id, address, data_dir, disk_mode);
+	return dqlite__init(*t, id, address, data_dir, flags);
 }
 
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)

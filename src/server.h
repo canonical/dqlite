@@ -99,7 +99,7 @@ int dqlite__init(struct dqlite_node *d,
 		 dqlite_node_id id,
 		 const char *address,
 		 const char *dir,
-		 bool disk_mode);
+		 int flags);
 
 void dqlite__close(struct dqlite_node *d);
 
