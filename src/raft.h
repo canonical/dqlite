@@ -379,6 +379,7 @@ struct raft_signature {
 	struct page_from_to page_from_to;
 	pageno_t cs_page_no;
 	enum raft_result result;
+	bool ask_calculated;
 };
 #define RAFT_SIGNATURE_VERSION 0
 
@@ -390,6 +391,7 @@ struct raft_signature_result {
 	unsigned int cs_nr;
 	pageno_t cs_page_no;
 	enum raft_result result;
+	bool calculated;
 };
 #define RAFT_SIGNATURE_RESULT_VERSION 0
 
