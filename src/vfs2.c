@@ -1416,8 +1416,19 @@ static int walk_wal(sqlite3_file *wal,
 	}
 
 	/* Check whether we have been provided a stopping point that corresponds
-	 * to a transaction in the current WAL. (It's possible that the stopping
-	 * point corresponds to a transaction that's in WAL-prev instead.) */
+	 * to a transaction in the current WAL.
+	 *
+	 * TODO(cole) we shouldn't just ignore the stopping point if the salts
+	 * don't match WAL-cur---there are a few possibilities that need to be
+	 * handled differently:
+	 *
+	 * - the stopping point could be at the end of WAL-prev; we should interpret
+	 *   this as an instruction to ignore all the frames in WAL-cur
+	 * - the stopping point could be in the interior of WAL-prev: this means
+	 *   something has gone badly wrong, since everything in WAL-prev should
+	 *   be committed
+	 * - the salts for the stopping point match neither WAL-cur nor WAL-prev:
+	 *   this indicates that something has gone wrong in a bizarre way */
 	bool have_stop = stop != NULL && salts_equal(stop->salts, hdr.salts);
 
 	uint8_t *page_buf = sqlite3_malloc64(page_size);
