@@ -228,11 +228,13 @@ static const struct sm_conf shm_states[SHM_NR] = {
 	},
 	[SHM_RECOVERED] = {
 		.name = "recovered",
-		.allowed = BITS(SHM_MANAGED)
+		.allowed = BITS(SHM_MANAGED),
+		.flags = SM_FINAL
 	},
 	[SHM_MANAGED] = {
 		.name = "managed",
-		.allowed = BITS(SHM_MANAGED)
+		.allowed = BITS(SHM_MANAGED),
+		.flags = SM_FINAL
 	},
 };
 
@@ -250,7 +252,7 @@ static const struct sm_conf ckpt_states[CKPT_NR] = {
 	[CKPT_QUIESCENT] = {
 		.name = "quiescent",
 		.allowed = BITS(CKPT_CHECKPOINTING),
-		.flags = SM_INITIAL
+		.flags = SM_INITIAL|SM_FINAL
 	},
 	[CKPT_CHECKPOINTING] = {
 		.name = "checkpointing",
