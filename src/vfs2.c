@@ -2364,6 +2364,8 @@ static unsigned read_lock(unsigned i)
 
 int vfs2_pseudo_read_begin(sqlite3_file *file, uint32_t target, unsigned *out)
 {
+	/* FIXME(cole) this implementation is incorrect and needs to be
+	 * replaced. */
 	struct file *xfile = (struct file *)file;
 	PRE(xfile->flags & SQLITE_OPEN_MAIN_DB);
 	struct entry *e = xfile->entry;
