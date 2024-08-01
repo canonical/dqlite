@@ -1450,6 +1450,9 @@ static int walk_wal(sqlite3_file *wal,
 		if (rv != SQLITE_OK) {
 			goto err;
 		}
+		/* If the salts for this frame don't match those in the WAL header,
+		 * the frame is (probably) left over from a previous generation of
+		 * the WAL, and so we've found the end of the current generation. */
 		if (!salts_equal(fhdr.salts, hdr.salts)) {
 			break;
 		}
