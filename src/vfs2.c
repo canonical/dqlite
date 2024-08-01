@@ -516,7 +516,7 @@ static int shm_add_pgno(struct shm *shm, uint32_t frame, uint32_t pgno)
 		return SQLITE_OK;
 	}
 
-	uint32_t regno = (frame - SHM_SHORT_PGNOS_LEN) / SHM_LONG_PGNOS_LEN;
+	uint32_t regno = 1 + (frame - SHM_SHORT_PGNOS_LEN) / SHM_LONG_PGNOS_LEN;
 	uint32_t index = (frame - SHM_SHORT_PGNOS_LEN) % SHM_LONG_PGNOS_LEN;
 	PRE(regno <= (uint32_t)shm->num_regions + 1);
 	struct shm_region *region;
@@ -1332,7 +1332,7 @@ static void shm_update_ht(struct shm *shm, uint32_t frame)
 		return;
 	}
 
-	uint32_t regno = (frame - SHM_SHORT_PGNOS_LEN) / SHM_LONG_PGNOS_LEN;
+	uint32_t regno = 1 + (frame - SHM_SHORT_PGNOS_LEN) / SHM_LONG_PGNOS_LEN;
 	uint32_t index = (frame - SHM_SHORT_PGNOS_LEN) % SHM_LONG_PGNOS_LEN;
 	PRE(regno <= (uint32_t)shm->num_regions);
 	struct shm_region *region = shm->regions[regno];
