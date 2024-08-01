@@ -56,8 +56,9 @@ enum {
 	WTX_EMPTY,
 	/* Non-leader, at least one transaction in WAL-cur is not committed. */
 	WTX_FOLLOWING,
-	/* Leader, all transactions in WAL-cur are committed (but at least one
-	   is not checkpointed). */
+	/* All transactions in WAL-cur are committed, but at least one is not
+	 * checkpointed. (Both leaders and non-leaders can be in this state).
+	 */
 	WTX_BASE,
 	/* Leader, transaction in progress. */
 	WTX_ACTIVE,
