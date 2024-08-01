@@ -46,8 +46,6 @@
 /* Fixed version number used by the WAL and WAL-index. */
 #define WAL_MAX_VERSION 3007000
 
-static const uint32_t invalid_magic = 0x17171717;
-
 /* clang-format off */
 
 enum {
@@ -786,15 +784,18 @@ static int vfs2_read(sqlite3_file *file, void *buf, int amt, sqlite3_int64 ofst)
 }
 
 /**
- * Update the volatile state by exchanging WAL-cur and WAL-prev.
+ * Update the volatile state so that WAL-cur becomes WAL-prev and vice versa.
+ *
+ * This is implemented by exchanging the wal_cur and wal_prev file handles and
+ * fixed names, and flipping the moving name hard link to point to the opposite
+ * file.
  */
 static void wal_swap(struct entry *e, const struct wal_hdr *hdr)
 {
 	int rv;
 
-	/* Terminology: the outgoing WAL is the one that's moving
-	 * from cur to prev. The incoming WAL is the one that's moving
-	 * from prev to cur. */
+	/* Terminology: the outgoing WAL is the one that's moving from cur to
+	 * prev. The incoming WAL is the one that's moving from prev to cur. */
 	sqlite3_file *phys_outgoing = e->wal_cur;
 	char *name_outgoing = e->wal_cur_fixed_name;
 	sqlite3_file *phys_incoming = e->wal_prev;
@@ -822,17 +823,6 @@ static void wal_swap(struct entry *e, const struct wal_hdr *hdr)
 	(void)rv;
 	rv = link(name_incoming, e->wal_moving_name);
 	(void)rv;
-
-	/* Best-effort: invalidate the header of the outgoing physical WAL, so
-	* that it can't be mistakenly applied to the database.
-
-	* This provides some protection against users manipulating the
-	* database with SQLite, or a bug in dqlite. But we don't rely on it
-	* for correctness. */
-	(void)phys_outgoing->pMethods->xWrite(phys_outgoing, &invalid_magic,
-					      sizeof(invalid_magic), 0);
-
-	/* TODO do we need an fsync here? */
 }
 
 static int vfs2_wal_write_frame_hdr(struct entry *e,
@@ -1285,8 +1275,8 @@ static bool wal_hdr_is_valid(const struct wal_hdr *hdr)
  * Read the header of the given WAL file and detect corruption.
  *
  * If the file contains a valid header, returns this header in `hdr` and the
- * size of the file in `size`. If the file is too short to contain a header,
- * returns the size only. If the file can't be read, or it contains an invalid
+ * size of the file in `size`. If the file is empty, returns 0 in `size` only.
+ * If the file can't be read, or it is nonempty but doesn't contain a valid
  * header, returns an error.
  */
 static int try_read_wal_hdr(sqlite3_file *wal,
@@ -1299,8 +1289,11 @@ static int try_read_wal_hdr(sqlite3_file *wal,
 	if (rv != SQLITE_OK) {
 		return rv;
 	}
-	if (*size < (sqlite3_int64)sizeof(*hdr)) {
+	if (*size == 0) {
 		return SQLITE_OK;
+	}
+	if (*size < (sqlite3_int64)sizeof(*hdr)) {
+		return SQLITE_CORRUPT;
 	}
 	rv = wal->pMethods->xRead(wal, hdr, sizeof(*hdr), 0);
 	if (rv != SQLITE_OK) {

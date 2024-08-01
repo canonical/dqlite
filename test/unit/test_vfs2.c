@@ -283,9 +283,8 @@ TEST(vfs2, startup_frames_in_one, set_up, tear_down, 0, NULL)
 	struct vfs2_wal_slice sl;
 	OK(vfs2_poll(fp, NULL, &sl));
 	OK(sqlite3_close(db));
-	/* WAL2 has the frames. The value 4 here reflect the invalid magic
-	 * number that we write to the outgoing WAL. */
-	assert_wal_sizes(node, "test.db", 4, WAL_SIZE_FROM_FRAMES(2));
+	/* WAL2 has the frames. */
+	assert_wal_sizes(node, "test.db", 0, WAL_SIZE_FROM_FRAMES(2));
 
 	db = node_open_db(node, "test.db");
 	fp = main_file(db);
@@ -381,7 +380,7 @@ TEST(vfs2, leader_and_follower, set_up, tear_down, 0, NULL)
 	OK(sqlite3_exec(leader_db, "CREATE TABLE foo (n INTEGER)", NULL, NULL,
 			NULL));
 	/* WAL2 gets the frames after a WAL swap. */
-	assert_wal_sizes(leader, "test.db", 4, WAL_SIZE_FROM_FRAMES(2));
+	assert_wal_sizes(leader, "test.db", 0, WAL_SIZE_FROM_FRAMES(2));
 	sqlite3_file *leader_fp = main_file(leader_db);
 	dqlite_vfs_frame *frames;
 	struct vfs2_wal_slice leader_sl;
@@ -398,7 +397,7 @@ TEST(vfs2, leader_and_follower, set_up, tear_down, 0, NULL)
 	OK(vfs2_add_uncommitted(follower_fp, PAGE_SIZE, frames, leader_sl.len,
 				&follower_sl));
 	/* WAL2 gets the frames after a WAL swap. */
-	assert_wal_sizes(follower, "test.db", 4, WAL_SIZE_FROM_FRAMES(2));
+	assert_wal_sizes(follower, "test.db", 0, WAL_SIZE_FROM_FRAMES(2));
 	sqlite3_free(frames[0].data);
 	sqlite3_free(frames[1].data);
 	sqlite3_free(frames);
