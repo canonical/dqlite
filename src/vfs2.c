@@ -86,8 +86,8 @@ enum {
  *                 |  v    v-+ xWrite(WAL)
  *                 |--ACTIVE-+
  *                 |  |
- *      vfs2_abort |  | COMMIT_PHASETWO
- *                 |  |
+ *     vfs2_abort, |  | COMMIT_PHASETWO
+ *     vfs2_unhide |  |
  *                 |  v
  *                 |--HIDDEN
  *                 |  |
