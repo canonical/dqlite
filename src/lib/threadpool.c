@@ -76,7 +76,7 @@ static const struct sm_conf planner_states[PS_NR] = {
 	},
 };
 
-static const uint64_t pool_thread_magic = 0xf344e2;
+static const uintptr_t pool_thread_magic = 0xf344e2;
 static uv_key_t thread_identifier_key;
 
 enum {
