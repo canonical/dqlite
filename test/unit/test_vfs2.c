@@ -1,7 +1,5 @@
-#pragma GCC diagnostic ignored "-Wformat-truncation" // XXX
-
-#include "../../src/vfs2.h"
 #include "../../src/lib/byte.h"
+#include "../../src/vfs2.h"
 #include "../lib/fs.h"
 #include "../lib/runner.h"
 
@@ -14,14 +12,22 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#define NUM_NODES 3
 #define PAGE_SIZE 512
 #define PAGE_SIZE_STR "512"
 
+#define OK(rv) munit_assert_int((rv), ==, 0)
+
 SUITE(vfs2);
 
-struct fixture {
+struct node {
 	sqlite3_vfs *vfs;
+	char *vfs_name;
 	char *dir;
+};
+
+struct fixture {
+	struct node nodes[NUM_NODES];
 };
 
 static void *set_up(const MunitParameter params[], void *user_data)
@@ -29,23 +35,63 @@ static void *set_up(const MunitParameter params[], void *user_data)
 	(void)params;
 	(void)user_data;
 	struct fixture *f = munit_malloc(sizeof(*f));
-	f->dir = test_dir_setup();
-	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), "dqlite-vfs2");
-	munit_assert_ptr_not_null(f->vfs);
-	sqlite3_vfs_register(f->vfs, 1 /* make default */);
+	struct node *node;
+	for (unsigned i = 0; i < NUM_NODES; i++) {
+		node = &f->nodes[i];
+		node->dir = test_dir_setup();
+		node->vfs_name = sqlite3_mprintf("vfs2-%u", i);
+		munit_assert_ptr_not_null(node->vfs_name);
+		node->vfs = vfs2_make(sqlite3_vfs_find("unix"), node->vfs_name);
+		munit_assert_ptr_not_null(node->vfs);
+		sqlite3_vfs_register(node->vfs, 0);
+	}
 	return f;
 }
 
 static void tear_down(void *data)
 {
 	struct fixture *f = data;
-	sqlite3_vfs_unregister(f->vfs);
-	vfs2_destroy(f->vfs);
-	test_dir_tear_down(f->dir);
+	const struct node *node;
+	for (unsigned i = 0; i < NUM_NODES; i++) {
+		node = &f->nodes[i];
+		sqlite3_vfs_unregister(node->vfs);
+		vfs2_destroy(node->vfs);
+		sqlite3_free(node->vfs_name);
+		test_dir_tear_down(node->dir);
+	}
 	free(f);
 }
 
-static void prepare_wals(const char *dbname,
+/**
+ * Open a connection to a database for this node.
+ */
+static sqlite3 *node_open_db(const struct node *node, const char *name)
+{
+	char buf[PATH_MAX];
+	snprintf(buf, sizeof(buf), "%s/%s", node->dir, name);
+	sqlite3 *db;
+	int rv = sqlite3_open_v2(buf, &db,
+				 SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+				 node->vfs_name);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	munit_assert_ptr_not_null(db);
+	rv = sqlite3_exec(db,
+			  "PRAGMA page_size=" PAGE_SIZE_STR
+			  ";"
+			  "PRAGMA journal_mode=WAL;"
+			  "PRAGMA wal_autocheckpoint=0",
+			  NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	rv = sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	return db;
+}
+
+/**
+ * Write two WALs to disk with the given contents.
+ */
+static void prepare_wals(const struct node *node,
+			 const char *dbname,
 			 const unsigned char *wal1,
 			 size_t wal1_len,
 			 const unsigned char *wal2,
@@ -53,102 +99,91 @@ static void prepare_wals(const char *dbname,
 {
 	char buf[PATH_MAX];
 	ssize_t n;
-	int rv;
 	if (wal1 != NULL) {
-		snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
+		snprintf(buf, sizeof(buf), "%s/%s-xwal1", node->dir, dbname);
 		int fd1 = open(buf, O_RDWR | O_CREAT,
 			       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 		munit_assert_int(fd1, !=, -1);
-		rv = ftruncate(fd1, 0);
-		munit_assert_int(rv, ==, 0);
+		OK(ftruncate(fd1, 0));
 		n = write(fd1, wal1, wal1_len);
-		munit_assert_llong(n, ==, wal1_len);
+		munit_assert_llong(n, ==, (ssize_t)wal1_len);
 		close(fd1);
 	}
 	if (wal2 != NULL) {
-		snprintf(buf, sizeof(buf), "%s-xwal2", dbname);
+		snprintf(buf, sizeof(buf), "%s/%s-xwal2", node->dir, dbname);
 		int fd2 = open(buf, O_RDWR | O_CREAT,
 			       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 		munit_assert_int(fd2, !=, -1);
-		rv = ftruncate(fd2, 0);
-		munit_assert_int(rv, ==, 0);
+		OK(ftruncate(fd2, 0));
 		n = write(fd2, wal2, wal2_len);
-		munit_assert_llong(n, ==, wal2_len);
+		munit_assert_llong(n, ==, (ssize_t)wal2_len);
 		close(fd2);
 	}
 }
 
-static void check_wals(const char *dbname, off_t wal1_len, off_t wal2_len)
+/**
+ * Assert the lengths of WAL1 and WAL2 on disk.
+ */
+static void assert_wal_sizes(const struct node *node,
+			     const char *dbname,
+			     off_t wal1_len,
+			     off_t wal2_len)
 {
 	char buf[PATH_MAX];
 	struct stat st;
 	int rv;
 
-	snprintf(buf, sizeof(buf), "%s-xwal1", dbname);
+	snprintf(buf, sizeof(buf), "%s/%s-xwal1", node->dir, dbname);
 	rv = stat(buf, &st);
-	munit_assert_true((rv == 0 && st.st_size == wal1_len) || (rv < 0 && errno == ENOENT && wal1_len == 0));
+	munit_assert_true((rv == 0 && st.st_size == wal1_len) ||
+			  (rv < 0 && errno == ENOENT && wal1_len == 0));
 
-	snprintf(buf, sizeof(buf), "%s-xwal2", dbname);
+	snprintf(buf, sizeof(buf), "%s/%s-xwal2", node->dir, dbname);
 	rv = stat(buf, &st);
-	munit_assert_true((rv == 0 && st.st_size == wal2_len) || (rv < 0 && errno == ENOENT && wal2_len == 0));
+	munit_assert_true((rv == 0 && st.st_size == wal2_len) ||
+			  (rv < 0 && errno == ENOENT && wal2_len == 0));
 }
 
+static sqlite3_file *main_file(sqlite3 *db)
+{
+	sqlite3_file *fp;
+	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	return fp;
+}
+
+/**
+ * Single-node test with several transactions and a checkpoint.
+ */
 TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
+	struct node *node = &f->nodes[0];
 	int rv;
-	char buf[PATH_MAX];
 
-	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
-	sqlite3 *db;
-	rv = sqlite3_open(buf, &db);
-	munit_assert_int(rv, ==, SQLITE_OK);
-
-	rv = sqlite3_exec(db,
-			  "PRAGMA page_size=" PAGE_SIZE_STR ";"
-			  "PRAGMA journal_mode=WAL;"
-			  "PRAGMA wal_autocheckpoint=0",
-			  NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-
-	char *args[] = {NULL, "page_size", NULL};
-	rv = sqlite3_file_control(db, "main", SQLITE_FCNTL_PRAGMA, args);
-	sqlite3_file *fp;
-	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
-	rv = vfs2_commit_barrier(fp);
-	munit_assert_int(rv, ==, 0);
-	rv = sqlite3_exec(db, "CREATE TABLE foo (bar INTEGER)", NULL, NULL,
-			  NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	sqlite3 *db = node_open_db(node, "test.db");
+	sqlite3_file *fp = main_file(db);
+	OK(sqlite3_exec(db, "CREATE TABLE foo (bar INTEGER)", NULL, NULL,
+			NULL));
 
 	struct vfs2_wal_slice sl;
-	rv = vfs2_poll(fp, NULL, NULL, &sl);
-	munit_assert_int(rv, ==, 0);
-	rv = vfs2_unhide(fp);
-	munit_assert_int(rv, ==, 0);
+	OK(vfs2_poll(fp, NULL, &sl));
+	OK(vfs2_unhide(fp));
 	munit_assert_uint32(sl.start, ==, 0);
 	munit_assert_uint32(sl.len, ==, 2);
 
-	rv = sqlite3_exec(db, "INSERT INTO foo (bar) VALUES (17)", NULL, NULL,
-			  NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	tracef("aborting...");
-	rv = vfs2_abort(fp);
-	munit_assert_int(rv, ==, 0);
+	OK(sqlite3_exec(db, "INSERT INTO foo (bar) VALUES (17)", NULL, NULL,
+			NULL));
+	OK(vfs2_abort(fp));
 
-	rv = sqlite3_exec(db, "INSERT INTO foo (bar) values (22)", NULL, NULL,
-			  NULL);
-	munit_assert_int(rv, ==, 0);
-	rv = vfs2_poll(fp, NULL, NULL, &sl);
-	munit_assert_int(rv, ==, 0);
+	OK(sqlite3_exec(db, "INSERT INTO foo (bar) values (22)", NULL, NULL,
+			NULL));
+	OK(vfs2_poll(fp, NULL, &sl));
 	munit_assert_uint32(sl.start, ==, 2);
 	munit_assert_uint32(sl.len, ==, 1);
-	rv = vfs2_unhide(fp);
-	munit_assert_int(rv, ==, 0);
+	OK(vfs2_unhide(fp));
 
 	sqlite3_stmt *stmt;
-	rv = sqlite3_prepare_v2(db, "SELECT * FROM foo", -1, &stmt, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	OK(sqlite3_prepare_v2(db, "SELECT * FROM foo", -1, &stmt, NULL));
 	rv = sqlite3_step(stmt);
 	munit_assert_int(rv, ==, SQLITE_ROW);
 	munit_assert_int(sqlite3_column_count(stmt), ==, 1);
@@ -158,18 +193,15 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 
 	int nlog;
 	int nckpt;
-	rv = sqlite3_wal_checkpoint_v2(db, "main", SQLITE_CHECKPOINT_PASSIVE,
-				       &nlog, &nckpt);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	OK(sqlite3_wal_checkpoint_v2(db, "main", SQLITE_CHECKPOINT_PASSIVE,
+				     &nlog, &nckpt));
 	munit_assert_int(nlog, ==, 3);
 	munit_assert_int(nckpt, ==, 3);
 
-	rv = sqlite3_exec(db, "INSERT INTO foo (bar) VALUES (101)", NULL, NULL,
-			  NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	OK(sqlite3_exec(db, "INSERT INTO foo (bar) VALUES (101)", NULL, NULL,
+			NULL));
 
-	rv = sqlite3_reset(stmt);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	OK(sqlite3_reset(stmt));
 	rv = sqlite3_step(stmt);
 	munit_assert_int(rv, ==, SQLITE_ROW);
 	munit_assert_int(sqlite3_column_count(stmt), ==, 1);
@@ -178,21 +210,17 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	rv = sqlite3_step(stmt);
 	munit_assert_int(rv, ==, SQLITE_DONE);
 
-	struct vfs2_wal_frame *frames;
-	unsigned n;
-	rv = vfs2_poll(fp, &frames, &n, &sl);
-	munit_assert_int(rv, ==, 0);
-	munit_assert_uint(n, ==, 1);
+	dqlite_vfs_frame *frames;
+	OK(vfs2_poll(fp, &frames, &sl));
+	munit_assert_uint(sl.len, ==, 1);
 	munit_assert_not_null(frames);
-	munit_assert_not_null(frames[0].page);
-	sqlite3_free(frames[0].page);
+	munit_assert_not_null(frames[0].data);
+	sqlite3_free(frames[0].data);
 	sqlite3_free(frames);
 
-	rv = vfs2_unhide(fp);
-	munit_assert_int(rv, ==, 0);
+	OK(vfs2_unhide(fp));
 
-	rv = sqlite3_reset(stmt);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	OK(sqlite3_reset(stmt));
 	rv = sqlite3_step(stmt);
 	munit_assert_int(rv, ==, SQLITE_ROW);
 	munit_assert_int(sqlite3_column_count(stmt), ==, 1);
@@ -203,163 +231,193 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	rv = sqlite3_step(stmt);
 	munit_assert_int(rv, ==, SQLITE_DONE);
 
-	rv = sqlite3_finalize(stmt);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	OK(sqlite3_finalize(stmt));
 	sqlite3_close(db);
 	return MUNIT_OK;
 }
 
-#define WAL_SIZE_FROM_FRAMES(n) (32 + (24 + PAGE_SIZE) * (n))
+#define WAL_SIZE_FROM_FRAMES(n) (VFS2_WAL_HDR_SIZE + (24 + PAGE_SIZE) * (n))
 
-static void make_wal_hdr(uint8_t *buf, uint32_t ckpoint_seqno, uint32_t salt1, uint32_t salt2)
-{
-	uint8_t *p = buf;
-
-	/* checksum */
-	BytePutBe32(0x377f0683, p);
-	p += 4;
-	BytePutBe32(3007000, p);
-	p += 4;
-	BytePutBe32(PAGE_SIZE, p);
-	p += 4;
-	BytePutBe32(ckpoint_seqno, p);
-	p += 4;
-	BytePutBe32(salt1, p);
-	p += 4;
-	BytePutBe32(salt2, p);
-	p += 4;
-
-	uint32_t s0 = 0;
-	uint32_t s1 = 0;
-	size_t off = 0;
-
-	s0 += ByteGetBe32(buf + off) + s1;
-	s1 += ByteGetBe32(buf + off + 4) + s0;
-	off += 8;
-
-	s0 += ByteGetBe32(buf + off) + s1;
-	s1 += ByteGetBe32(buf + off + 4) + s0;
-	off += 8;
-
-	s0 += ByteGetBe32(buf + off) + s1;
-	s1 += ByteGetBe32(buf + off + 4) + s0;
-	off += 8;
-
-	BytePutBe32(s0, p);
-	p += 4;
-	BytePutBe32(s1, p);
-	p += 4;
-}
-
+/**
+ * When one WAL has a valid header and the other is empty,
+ * the nonempty one becomes WAL-cur. Then, the first write triggers a WAL
+ * swap, so the frames go to the *other* WAL.
+ */
 TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
-	char buf[PATH_MAX];
+	struct node *node = &f->nodes[0];
 
-	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
+	/* WAL2 has a header. */
+	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
+	vfs2_ut_make_wal_hdr(wal2_hdronly, PAGE_SIZE, 0, 17, 103);
+	prepare_wals(node, "test.db", NULL, 0, wal2_hdronly,
+		     sizeof(wal2_hdronly));
+	sqlite3 *db = node_open_db(node, "test.db");
+	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
+	OK(sqlite3_close(db));
 
-	check_wals(buf, 0, 0);
-
-	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = {0};
-	make_wal_hdr(wal2_hdronly, 0, 17, 103);
-	prepare_wals(buf, NULL, 0, wal2_hdronly, sizeof(wal2_hdronly));
-	sqlite3 *db;
-	tracef("opening...");
-	int rv = sqlite3_open(buf, &db);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	tracef("setup...");
-	rv = sqlite3_exec(db,
-			  "PRAGMA page_size=" PAGE_SIZE_STR ";"
-			  "PRAGMA journal_mode=WAL;"
-			  "PRAGMA wal_autocheckpoint=0",
-			  NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	sqlite3_file *fp;
-	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
-	tracef("barrier...");
-	rv = vfs2_commit_barrier(fp);
-	munit_assert_int(rv, ==, 0);
-	tracef("create table...");
-	rv = sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	tracef("closing...");
-	rv = sqlite3_close(db);
-	munit_assert_int(rv, ==, SQLITE_OK);
-
-	check_wals(buf, WAL_SIZE_FROM_FRAMES(2), WAL_SIZE_FROM_FRAMES(0));
+	/* WAL1 ends up with the frames. */
+	assert_wal_sizes(node, "test.db", WAL_SIZE_FROM_FRAMES(2),
+			 WAL_SIZE_FROM_FRAMES(0));
 
 	return MUNIT_OK;
 }
 
+/**
+ * When one WAL has a valid transaction and the other is empty,
+ * the WAL with the transaction becomes WAL-cur. The first write does not
+ * trigger a WAL swap, but rather goes to that same WAL.
+ */
+TEST(vfs2, startup_frames_in_one, set_up, tear_down, 0, NULL)
+{
+	struct fixture *f = data;
+	struct node *node = &f->nodes[0];
+	int rv;
+
+	/* Set up a transaction in WAL2. */
+	sqlite3 *db = node_open_db(node, "test.db");
+	sqlite3_file *fp = main_file(db);
+	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
+
+	struct vfs2_wal_slice sl;
+	OK(vfs2_poll(fp, NULL, &sl));
+	OK(sqlite3_close(db));
+	/* WAL2 has the frames. */
+	assert_wal_sizes(node, "test.db", 0, WAL_SIZE_FROM_FRAMES(2));
+
+	db = node_open_db(node, "test.db");
+	fp = main_file(db);
+	/* The transaction is not visible. */
+	rv = sqlite3_exec(db, "SELECT * FROM foo", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_ERROR);
+	/* The write lock is held. */
+	rv = sqlite3_exec(db, "CREATE TABLE bar (k INTEGER)", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_BUSY);
+	/* The transaction can be committed. */
+	OK(vfs2_apply(fp, sl));
+	/* The transaction is visible. */
+	OK(sqlite3_exec(db, "SELECT * FROM foo", NULL, NULL, NULL));
+	/* The write lock is not held. */
+	OK(sqlite3_exec(db, "CREATE TABLE bar (k, INTEGER)", NULL, NULL, NULL));
+	/* The write lock is released. */
+	sqlite3_close(db);
+
+	return MUNIT_OK;
+}
+
+/**
+ * When both WALs are nonempty at startup, the one with the higher salt1
+ * value becomes WAL-cur. Then, the first write triggers a WAL swap, so
+ * the frames go to the *other* WAL.
+ */
 TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
-	char buf[PATH_MAX];
+	struct node *node = &f->nodes[0];
 
-	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
+	/* WAL1 has the higher salt1. */
+	uint8_t wal1_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
+	vfs2_ut_make_wal_hdr(wal1_hdronly, PAGE_SIZE, 0, 18, 103);
+	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = { 0 };
+	vfs2_ut_make_wal_hdr(wal2_hdronly, PAGE_SIZE, 0, 17, 103);
+	prepare_wals(node, "test.db", wal1_hdronly, sizeof(wal1_hdronly),
+		     wal2_hdronly, sizeof(wal2_hdronly));
+	sqlite3 *db = node_open_db(node, "test.db");
+	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
+	OK(sqlite3_close(db));
 
-	check_wals(buf, 0, 0);
-
-	uint8_t wal1_hdronly[WAL_SIZE_FROM_FRAMES(0)] = {0};
-	make_wal_hdr(wal1_hdronly, 0, 18, 103);
-	uint8_t wal2_hdronly[WAL_SIZE_FROM_FRAMES(0)] = {0};
-	make_wal_hdr(wal2_hdronly, 0, 17, 103);
-	prepare_wals(buf, wal1_hdronly, sizeof(wal1_hdronly), wal2_hdronly, sizeof(wal2_hdronly));
-	sqlite3 *db;
-	int rv = sqlite3_open(buf, &db);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = sqlite3_exec(db,
-			  "PRAGMA page_size=" PAGE_SIZE_STR ";"
-			  "PRAGMA journal_mode=WAL;"
-			  "PRAGMA wal_autocheckpoint=0",
-			  NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = sqlite3_close(db);
-	munit_assert_int(rv, ==, SQLITE_OK);
-
-	check_wals(buf, WAL_SIZE_FROM_FRAMES(0), WAL_SIZE_FROM_FRAMES(2));
+	/* WAL2 ends up with the frames. */
+	assert_wal_sizes(node, "test.db", WAL_SIZE_FROM_FRAMES(0),
+			 WAL_SIZE_FROM_FRAMES(2));
 
 	return MUNIT_OK;
 }
 
+/**
+ * Single-node test of rolling back a transaction.
+ */
 TEST(vfs2, rollback, set_up, tear_down, 0, NULL)
 {
 	struct fixture *f = data;
-	char buf[PATH_MAX];
-
-	snprintf(buf, PATH_MAX, "%s/%s", f->dir, "test.db");
-
-	sqlite3 *db;
-	int rv = sqlite3_open(buf, &db);
-	munit_assert_int(rv, ==, SQLITE_OK);
-
-	rv = sqlite3_exec(db,
-			  "PRAGMA journal_mode=WAL;"
-			  "PRAGMA wal_autocheckpoint=0",
-			  NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	sqlite3_file *fp;
-	sqlite3_file_control(db, "main", SQLITE_FCNTL_FILE_POINTER, &fp);
+	struct node *node = &f->nodes[0];
 	struct vfs2_wal_slice sl;
-	rv = vfs2_poll(fp, NULL, NULL, &sl);
-	munit_assert_int(rv, ==, 0);
-	rv = vfs2_unhide(fp);
-	rv = sqlite3_exec(db, "BEGIN", NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	char sql[100];
-	for (unsigned i = 0; i < 500; i++) {
-		snprintf(sql, sizeof(sql), "INSERT INTO foo (n) VALUES (%d)", i);
-		rv = sqlite3_exec(db, sql, NULL, NULL, NULL);
-		munit_assert_int(rv, ==, SQLITE_OK);
-	}
-	rv = sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
-	munit_assert_int(rv, ==, SQLITE_OK);
-	rv = sqlite3_close(db);
-	munit_assert_int(rv, ==, SQLITE_OK);
+	int rv;
 
+	sqlite3 *db = node_open_db(node, "test.db");
+	OK(sqlite3_exec(db, "CREATE TABLE foo (n INTEGER)", NULL, NULL, NULL));
+	sqlite3_file *fp = main_file(db);
+	OK(vfs2_poll(fp, NULL, &sl));
+	OK(vfs2_unhide(fp));
+	sqlite3_stmt *stmt;
+	OK(sqlite3_prepare_v2(db, "INSERT INTO foo (n) VALUES (?)", -1, &stmt, NULL));
+	OK(sqlite3_exec(db, "BEGIN", NULL, NULL, NULL));
+	for (unsigned i = 0; i < 500; i++) {
+		OK(sqlite3_bind_int(stmt, 1, i));
+		rv = sqlite3_step(stmt);
+		munit_assert_int(rv, ==, SQLITE_DONE);
+		OK(sqlite3_reset(stmt));
+	}
+	OK(sqlite3_finalize(stmt));
+	OK(sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL));
+	OK(sqlite3_close(db));
+
+	return MUNIT_OK;
+}
+
+/**
+ * Two-node test covering the full replication cycle.
+ */
+TEST(vfs2, leader_and_follower, set_up, tear_down, 0, NULL)
+{
+	struct fixture *f = data;
+	struct node *leader = &f->nodes[0];
+	struct node *follower = &f->nodes[1];
+	int rv;
+
+	/* The leader executes and polls a transaction. */
+	sqlite3 *leader_db = node_open_db(leader, "test.db");
+	OK(sqlite3_exec(leader_db, "CREATE TABLE foo (n INTEGER)", NULL, NULL,
+			NULL));
+	/* WAL2 gets the frames after a WAL swap. */
+	assert_wal_sizes(leader, "test.db", 0, WAL_SIZE_FROM_FRAMES(2));
+	sqlite3_file *leader_fp = main_file(leader_db);
+	dqlite_vfs_frame *frames;
+	struct vfs2_wal_slice leader_sl;
+	OK(vfs2_poll(leader_fp, &frames, &leader_sl));
+	munit_assert_uint(leader_sl.len, ==, 2);
+
+	/* The follower opens its database. */
+	sqlite3 *follower_db = node_open_db(follower, "test.db");
+	sqlite3_file *follower_fp = main_file(follower_db);
+	vfs2_ut_sm_relate(leader_fp, follower_fp);
+
+	/* The follower receives the transaction. */
+	struct vfs2_wal_slice follower_sl;
+	OK(vfs2_add_uncommitted(follower_fp, PAGE_SIZE, frames, leader_sl.len,
+				&follower_sl));
+	/* WAL2 gets the frames after a WAL swap. */
+	assert_wal_sizes(follower, "test.db", 0, WAL_SIZE_FROM_FRAMES(2));
+	sqlite3_free(frames[0].data);
+	sqlite3_free(frames[1].data);
+	sqlite3_free(frames);
+	/* The transaction is not visible, and the write lock is held. */
+	rv = sqlite3_exec(follower_db, "SELECT * FROM foo", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_ERROR);
+	rv = sqlite3_exec(follower_db, "CREATE TABLE bar (k INTEGER)", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_BUSY);
+
+	/* The leader receives the follower's acknowledgement
+	 * and applies the transaction locally. */
+	OK(vfs2_unhide(leader_fp));
+
+	/* The follower learns the new commit index and applies
+	 * the transaction locally. */
+	OK(vfs2_apply(follower_fp, follower_sl));
+	/* The transaction is visible and the write lock is released. */
+	OK(sqlite3_exec(follower_db, "INSERT INTO foo (n) VALUES (17)", NULL, NULL, NULL));
+
+	sqlite3_close(follower_db);
+	sqlite3_close(leader_db);
 	return MUNIT_OK;
 }

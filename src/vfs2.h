@@ -1,6 +1,8 @@
 #ifndef DQLITE_VFS2_H
 #define DQLITE_VFS2_H
 
+#include "../include/dqlite.h" /* dqlite_vfs_frame */
+
 #include <sqlite3.h>
 
 #include <stddef.h>
@@ -10,15 +12,20 @@
  * Create a new VFS object that wraps the given VFS object.
  *
  * The returned VFS is allocated on the heap and lives until vfs2_destroy is
- * called.  Its methods are thread-safe if those of the wrapped VFS are, but
- * the methods of the sqlite3_file objects it creates are not thread-safe.
- * Therefore, a database connection that's created using this VFS should only
- * be used on the thread that opened it. The functions below that operate on
- * sqlite3_file objects created by this VFS should also only be used on that
- * thread.
+ * called. The provided name is not copied or freed, and must outlive the VFS.
+ *
+ * The methods of the resulting sqlite3_vfs object are thread-safe, but the
+ * xOpen method creates sqlite3_file objects whose methods are not thread-safe.
+ * Therefore, when a database connection is opened using the returned VFS, it
+ * must not subsequently be used on other threads without additional
+ * synchronization. This also goes for the functions below that operate directly
+ * on sqlite3_file.
  */
 sqlite3_vfs *vfs2_make(sqlite3_vfs *orig, const char *name);
 
+/**
+ * A pair of salt values from the header of a WAL file.
+ */
 struct vfs2_salts {
 	uint8_t salt1[4];
 	uint8_t salt2[4];
@@ -26,6 +33,10 @@ struct vfs2_salts {
 
 /**
  * Identifying information about a write transaction.
+ *
+ * The salts identify a WAL file. The `start` and `len` fields have units of
+ * frames and identify a range of frames within that WAL file that represent a
+ * transaction.
  */
 struct vfs2_wal_slice {
 	struct vfs2_salts salts;
@@ -33,35 +44,91 @@ struct vfs2_wal_slice {
 	uint32_t len;
 };
 
-struct vfs2_wal_frame {
-	uint32_t page_number;
-	uint32_t commit;
-	void *page;
-};
-
 /**
- * Retrieve frames that were appended to the WAL by the last write transaction,
- * and reacquire the write lock.
+ * Retrieve a description of a write transaction that was just written to the
+ * WAL.
  *
- * Call this on the database main file object (SQLITE_FCNTL_FILE_POINTER).
+ * The first argument is the main file handle for the database. This function
+ * also acquires the WAL write lock, preventing another write transaction from
+ * overwriting the first one until vfs2_unhide is called.
+ *
+ * The `frames` out argument is populated with an array containing
+ * the frames of the transaction, and the `sl` out argument is populated with a
+ * WAL slice describing the transaction. The length of the frames array is
+ * `sl.len`.
  *
  * Polling the same transaction more than once is an error.
  */
-int vfs2_poll(sqlite3_file *file, struct vfs2_wal_frame **frames, unsigned *n, struct vfs2_wal_slice *sl);
+int vfs2_poll(sqlite3_file *file,
+	      dqlite_vfs_frame **frames,
+	      struct vfs2_wal_slice *sl);
 
+/**
+ * Mark a write transaction that was previously polled as committed, making it
+ * visible to future transactions.
+ *
+ * This function also releases the WAL write lock, allowing another write
+ * transaction to execute. It should be called on the main file handle
+ * (SQLITE_FCNTL_FILE_POINTER).
+ *
+ * It's an error to call this function if no write transaction is currently
+ * pending due to vfs2_poll.
+ */
 int vfs2_unhide(sqlite3_file *file);
 
-int vfs2_commit(sqlite3_file *file, struct vfs2_wal_slice stop);
+/**
+ * Make some transactions in the WAL visible to readers.
+ *
+ * The first argument is the main file for the database
+ * (SQLITE_FCNTL_FILE_POINTER). All transactions up to and including the one
+ * described by the second argument will be marked as committed and made
+ * visible. The WAL write lock is also released if there are no uncommitted
+ * transactions left in the WAL.
+ *
+ * The affected transactions must have been added to the WAL by
+ * vfs2_add_committed.
+ */
+int vfs2_apply(sqlite3_file *file, struct vfs2_wal_slice stop);
 
-int vfs2_commit_barrier(sqlite3_file *file);
+/**
+ * Add the frames of a write transaction directly to the end of the WAL.
+ *
+ * The first argument is the main file handle for the database. On success, the
+ * WAL write lock is acquired if it was not held already. The added frames are
+ * initially invisible to readers, and must be made visible by calling
+ * vfs2_commit or removed from the WAL by calling vfs2_unadd.
+ *
+ * A WAL slice describing the new transaction is written to the last argument.
+ *
+ * The `page_size` for the new frames must match the page size already set for
+ * this database.
+ */
+int vfs2_add_uncommitted(sqlite3_file *file,
+			 uint32_t page_size,
+			 const dqlite_vfs_frame *frames,
+			 unsigned n,
+			 struct vfs2_wal_slice *out);
 
-int vfs2_apply_uncommitted(sqlite3_file *file, uint32_t page_size, const struct vfs2_wal_frame *frames, unsigned n, struct vfs2_wal_slice *out);
+/**
+ * Remove some transactions from the WAL.
+ *
+ * The first argument is the main file handle for the database
+ * (SQLITE_FCNTL_FILE_POINTER). The second argument is a WAL slice. The
+ * transaction described by this slice, and all following transactions, will be
+ * removed from the WAL. The WAL write lock will be released if there are no
+ * uncommitted transactions in the WAL afterward.
+ *
+ * All removed transactions must have been added to the WAL by
+ * vfs2_add_uncommitted, and must not have been made visible using vfs2_commit.
+ */
+int vfs2_unadd(sqlite3_file *file, struct vfs2_wal_slice stop);
 
-int vfs2_unapply(sqlite3_file *file, struct vfs2_wal_slice stop);
-
+/**
+ * Request to read a specific transaction from a WAL file.
+ */
 struct vfs2_wal_txn {
 	struct vfs2_wal_slice meta;
-	struct vfs2_wal_frame *frames;
+	dqlite_vfs_frame *frames;
 };
 
 /**
@@ -87,8 +154,23 @@ int vfs2_read_wal(sqlite3_file *file,
  */
 int vfs2_abort(sqlite3_file *file);
 
+/**
+ * Try to set a read lock at a fixed place in the WAL-index.
+ *
+ * The first argument is the main file handle for the database
+ * (SQLITE_FCNTL_FILE_POINTER). The second argument is the desired value for the
+ * read mark, in units of frames. On success, the index of the read mark is
+ * written to the last argument, and the corresponding WAL read lock is held.
+ *
+ * This function may fail if all read marks are in used when it is called.
+ */
 int vfs2_pseudo_read_begin(sqlite3_file *file, uint32_t target, unsigned *out);
 
+/**
+ * Unset a read mark that was set by vfs2_pseudo_read_begin.
+ *
+ * This also releases the corresponding read lock.
+ */
 int vfs2_pseudo_read_end(sqlite3_file *file, unsigned i);
 
 /**
@@ -99,7 +181,26 @@ int vfs2_pseudo_read_end(sqlite3_file *file, unsigned i);
  */
 void vfs2_destroy(sqlite3_vfs *vfs);
 
-// TODO access read marks and shm_locks
-// TODO access information about checkpoints
+/**
+ * Declare a relationship between two databases opened by (possibly distinct)
+ * vfs2 instances.
+ *
+ * Intended for use by unit tests. The arguments are main file handles
+ * (SQLITE_FCNTL_FILE_POINTER).
+ */
+void vfs2_ut_sm_relate(sqlite3_file *orig, sqlite3_file *targ);
+
+#define VFS2_WAL_HDR_SIZE 32
+
+/**
+ * Write a WAL header with the provided fields to the given buffer.
+ *
+ * The size of the buffer must be at least VFS2_WAL_HDR_SIZE bytes.
+ */
+void vfs2_ut_make_wal_hdr(uint8_t *buf,
+			  uint32_t page_size,
+			  uint32_t ckpoint_seqno,
+			  uint32_t salt1,
+			  uint32_t salt2);
 
 #endif
