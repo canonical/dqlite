@@ -2300,49 +2300,44 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	}
 	POST(db_size > 0);
 
-	/* Record the new frame in the appropriate page number array in the WAL
-	 * index. Note that this doesn't make the frame visible to readers: that
-	 * only happens once it is also recorded in the WAL-index hash array and
-	 * mxFrame exceeds the frame index. The hash array is updated only when
-	 * we increase mxFrame, so that we don't have to deal with the added
-	 * complexity of removing things from the hash table when frames are
-	 * overwritten before being committed. Updating the page number array
-	 * "early" like this is harmless and saves us from having to stash the
-	 * page numbers somewhere else in memory in between add_uncommitted and
-	 * apply, or (worse) read them back from WAL-cur.
-	 *
-	 * TODO(cole) we can simplify the error handling by requesting the shm
-	 * to grow as much as necessary at this point, before we have written
-	 * the frames. */
-	uint32_t pgno = (uint32_t)frames[0].page_number;
-	rv = shm_add_pgno(&e->shm, e->wal_cursor, pgno);
-	if (rv != SQLITE_OK) {
-		return 1;
-	}
-
-	/* With every frame, we make this update. The interpretation is that
-	 * db_size would be the size of the main file in pages if we
-	 * checkpointing up to and including the current frame. Then we use the
-	 * final value to write the commit marker of the last frame. */
-	db_size = MAX(db_size, pgno);
-
-	uint32_t commit = len == 1 ? db_size : 0;
-	struct wal_frame_hdr fhdr = txn_frame_hdr(e, sums, &frames[0], commit);
-	rv = write_one_frame(e, fhdr, frames[0].data);
-	if (rv != SQLITE_OK) {
-		return 1;
-	}
-
-	for (unsigned i = 1; i < len; i++) {
-		pgno = (uint32_t)frames[i].page_number;
+	struct wal_frame_hdr fhdr;
+	for (unsigned i = 0; i < len; i++) {
+		/* Record the new frame in the appropriate page number array in
+		 * the WAL index. Note that this doesn't make the frame visible
+		 * to readers: that only happens once it is also recorded in
+		 * the WAL-index hash array and mxFrame exceeds the frame
+		 * index. The hash array is updated only when we increase
+		 * mxFrame, so that we don't have to deal with the added
+		 * complexity of removing things from the hash table when
+		 * frames are overwritten before being committed. Updating the
+		 * page number array "early" like this is harmless and saves us
+		 * from having to stash the page numbers somewhere else in
+		 * memory in between add_uncommitted and apply, or (worse) read
+		 * them back from WAL-cur.
+		 *
+		 * TODO(cole) we can simplify the error handling by requesting
+		 * the shm to grow as much as necessary up front, before we
+		 * have written the frames. */
+		uint32_t pgno = (uint32_t)frames[i].page_number;
 		rv = shm_add_pgno(&e->shm, e->wal_cursor, pgno);
 		if (rv != SQLITE_OK) {
 			return 1;
 		}
+
+		/* With every frame, we make this update. The interpretation is
+		 * that db_size would be the size of the main file in pages if
+		 * we checkpointing up to and including the current frame. Then
+		 * we use the final value to write the commit marker of the
+		 * last frame. */
 		db_size = MAX(db_size, pgno);
-		sums.cksum1 = ByteGetBe32(fhdr.cksum1);
-		sums.cksum2 = ByteGetBe32(fhdr.cksum2);
-		commit = i == len - 1 ? db_size : 0;
+		uint32_t commit = i == len - 1 ? db_size : 0;
+
+		/* Keep the checksums rolling. */
+		if (i > 0) {
+			sums.cksum1 = ByteGetBe32(fhdr.cksum1);
+			sums.cksum2 = ByteGetBe32(fhdr.cksum2);
+		}
+
 		fhdr = txn_frame_hdr(e, sums, &frames[i], commit);
 		rv = write_one_frame(e, fhdr, frames[i].data);
 		if (rv != SQLITE_OK) {
