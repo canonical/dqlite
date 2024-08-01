@@ -427,7 +427,7 @@ static struct shm_region *shm_grow(struct shm *shm)
 	}
 	p[index] = r;
 	shm->regions = p;
-	shm->num_regions++;
+	shm->num_regions = index + 1;
 	return r;
 
 err_after_alloc_region:
