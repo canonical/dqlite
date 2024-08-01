@@ -43,6 +43,9 @@
 #define DB_FILE_HEADER_SIZE 100
 #define DB_FILE_HEADER_NPAGES_OFFSET 28
 
+/* Fixed version number used by the WAL and WAL-index. */
+#define WAL_MAX_VERSION 3007000
+
 static const uint32_t invalid_magic = 0x17171717;
 
 /* clang-format off */
@@ -457,7 +460,7 @@ static int shm_init(struct shm *shm, struct wal_hdr whdr)
 		return SQLITE_NOMEM;
 	}
 	struct wal_index_full_hdr *ihdr = &r0->hdr;
-	ihdr->basic[0].iVersion = 3007000;
+	ihdr->basic[0].iVersion = WAL_MAX_VERSION;
 	ihdr->basic[0].isInit = 1;
 	ihdr->basic[0].bigEndCksum = is_bigendian();
 	ihdr->basic[0].szPage = (uint16_t)ByteGetBe32(whdr.page_size);
@@ -485,7 +488,7 @@ static void shm_restart(struct shm *shm, struct wal_hdr whdr)
 	/* TODO(cole) eliminate redundancy with shm_init */
 	struct shm_region *r0 = shm->regions[0];
 	struct wal_index_full_hdr *ihdr = &r0->hdr;
-	ihdr->basic[0].iVersion = 3007000;
+	ihdr->basic[0].iVersion = WAL_MAX_VERSION;
 	ihdr->basic[0].isInit = 1;
 	ihdr->basic[0].bigEndCksum = is_bigendian();
 	ihdr->basic[0].szPage = (uint16_t)ByteGetBe32(whdr.page_size);
@@ -691,7 +694,7 @@ static bool basic_hdr_valid(const struct wal_index_basic_hdr *bhdr)
 	const uint8_t *p = (const uint8_t *)bhdr;
 	size_t len = offsetof(struct wal_index_basic_hdr, cksums);
 	update_cksums(p, len, &sums);
-	return bhdr->iVersion == 3007000 && bhdr->isInit == 1 &&
+	return bhdr->iVersion == WAL_MAX_VERSION && bhdr->isInit == 1 &&
 	       cksums_equal(sums, bhdr->cksums);
 }
 
@@ -2103,7 +2106,7 @@ static struct wal_hdr make_wal_hdr(uint32_t magic,
 {
 	struct wal_hdr ret;
 	BytePutBe32(magic, ret.magic);
-	BytePutBe32(3007000, ret.version);
+	BytePutBe32(WAL_MAX_VERSION, ret.version);
 	BytePutBe32(page_size, ret.page_size);
 	BytePutBe32(ckpoint_seqno, ret.ckpoint_seqno);
 	ret.salts = salts;
