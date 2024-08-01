@@ -392,8 +392,8 @@ struct shm_region {
  *
  * Each region is stored in its own heap allocation of size
  * VFS2_WAL_INDEX_REGION_SIZE. Using separate allocations ensures that existing
- * region pointers remain valid when new regions are mapped, as SQLite
- * expects.
+ * region pointers held by SQLite remain valid when new regions are mapped, as
+ * SQLite expects.
  */
 struct shm {
 	struct shm_region **regions;
