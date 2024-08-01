@@ -427,6 +427,12 @@ DQLITE_API int dqlite_node_set_snapshot_params(dqlite_node *n,
 DQLITE_API int dqlite_node_set_block_size(dqlite_node *n, size_t size);
 
 /**
+ * This function was formerly used to request that database and WAL files be
+ * stored on disk, but is now a no-op. It is deprecated.
+ */
+DQLITE_API int dqlite_node_enable_disk_mode(dqlite_node *n);
+
+/**
  * Set the target number of voting nodes for the cluster.
  *
  * If automatic role management is enabled, the cluster leader will attempt to

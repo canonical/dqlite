@@ -478,6 +478,12 @@ int dqlite_node_set_block_size(dqlite_node *n, size_t size)
 	return 0;
 }
 
+int dqlite_node_enable_disk_mode(dqlite_node *n)
+{
+	(void)n;
+	return 0;
+}
+
 static int maybeBootstrap(dqlite_node *d,
 			  dqlite_node_id id,
 			  const char *address)
