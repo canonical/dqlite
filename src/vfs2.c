@@ -1214,11 +1214,17 @@ static void vfs2_shm_barrier(sqlite3_file *file)
 	(void)file;
 }
 
-static int vfs2_shm_unmap(sqlite3_file *file, int delete)
-{
-	(void)delete;
+static int vfs2_shm_unmap(sqlite3_file *file, int delete) {
+	/* SQLite sends this flag with the unmap method when the last
+	 * connection to a database runs a complete checkpoint in sqlite3_close
+	 * and then deletes the WAL file. The interpretation is that the
+	 * WAL-index should be deleted as well. dqlite both disables
+	 * checkpoint-on-close and instructs SQLite not to delete the WAL, so
+	 * we don't expect to ever receive the flag. */
+	PRE(delete == 0);
 	struct file *xfile = (struct file *)file;
 	struct entry *e = xfile->entry;
+	PRE(e->shm.refcount > 0);
 	e->shm.refcount--;
 	return SQLITE_OK;
 }
