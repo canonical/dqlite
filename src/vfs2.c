@@ -1406,6 +1406,13 @@ static int walk_wal(sqlite3_file *wal,
 			       ByteGetBe32(hdr.cksum2) };
 	int rv;
 
+	/* TODO(cole): support WALs that use a non-native byte order for the
+	 * checksums (because our data directory was transferred from another
+	 * machine). */
+	if (ByteGetBe32(hdr.magic) != (is_bigendian() ? BE_MAGIC : LE_MAGIC)) {
+		return SQLITE_ERROR;
+	}
+
 	/* Check whether we have been provided a stopping point that corresponds
 	 * to a transaction in the current WAL. (It's possible that the stopping
 	 * point corresponds to a transaction that's in WAL-prev instead.) */
