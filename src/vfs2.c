@@ -449,34 +449,6 @@ static void write_basic_hdr_cksums(struct wal_index_basic_hdr *bhdr)
 }
 
 /**
- * Perform initial setup of the WAL-index.
- *
- * This allocates the zeroth region and fills in the WAL-index header
- * based on the provided header of WAL-cur.
- */
-static int shm_init(struct shm *shm, struct wal_hdr whdr)
-{
-	struct shm_region *r0 = shm_grow(shm);
-	if (r0 == NULL) {
-		return SQLITE_NOMEM;
-	}
-	struct wal_index_full_hdr *ihdr = &r0->hdr;
-	ihdr->basic[0].iVersion = WAL_MAX_VERSION;
-	ihdr->basic[0].isInit = 1;
-	ihdr->basic[0].bigEndCksum = is_bigendian();
-	ihdr->basic[0].szPage = (uint16_t)ByteGetBe32(whdr.page_size);
-	write_basic_hdr_cksums(&ihdr->basic[0]);
-	ihdr->basic[1] = ihdr->basic[0];
-	ihdr->marks[0] = 0;
-	ihdr->marks[1] = READ_MARK_UNUSED;
-	ihdr->marks[2] = READ_MARK_UNUSED;
-	ihdr->marks[3] = READ_MARK_UNUSED;
-	ihdr->marks[4] = READ_MARK_UNUSED;
-	sm_move(&shm->sm, SHM_MANAGED);
-	return SQLITE_OK;
-}
-
-/**
  * Clear out all data in the WAL-index after a WAL swap, and re-initialize the
  * header.
  */
@@ -501,6 +473,22 @@ static void shm_restart(struct shm *shm, struct wal_hdr whdr)
 	ihdr->marks[3] = READ_MARK_UNUSED;
 	ihdr->marks[4] = READ_MARK_UNUSED;
 	sm_move(&shm->sm, SHM_MANAGED);
+}
+
+/**
+ * Perform initial setup of the WAL-index.
+ *
+ * This allocates the zeroth region and fills in the WAL-index header
+ * based on the provided header of WAL-cur.
+ */
+static int shm_init(struct shm *shm, struct wal_hdr whdr)
+{
+	struct shm_region *r0 = shm_grow(shm);
+	if (r0 == NULL) {
+		return SQLITE_NOMEM;
+	}
+	shm_restart(shm, whdr);
+	return SQLITE_OK;
 }
 
 /**
