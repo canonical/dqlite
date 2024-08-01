@@ -2304,9 +2304,16 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 	 * overwritten before being committed. Updating the page number array
 	 * "early" like this is harmless and saves us from having to stash the
 	 * page numbers somewhere else in memory in between add_uncommitted and
-	 * apply, or (worse) read them back from WAL-cur. */
+	 * apply, or (worse) read them back from WAL-cur.
+	 *
+	 * TODO(cole) we can simplify the error handling by requesting the shm
+	 * to grow as much as necessary at this point, before we have written
+	 * the frames. */
 	uint32_t pgno = (uint32_t)frames[0].page_number;
-	shm_add_pgno(&e->shm, e->wal_cursor, pgno);
+	rv = shm_add_pgno(&e->shm, e->wal_cursor, pgno);
+	if (rv != SQLITE_OK) {
+		return 1;
+	}
 
 	/* With every frame, we make this update. The interpretation is that
 	 * db_size would be the size of the main file in pages if we
@@ -2323,7 +2330,10 @@ int vfs2_add_uncommitted(sqlite3_file *file,
 
 	for (unsigned i = 1; i < len; i++) {
 		pgno = (uint32_t)frames[i].page_number;
-		shm_add_pgno(&e->shm, e->wal_cursor, pgno);
+		rv = shm_add_pgno(&e->shm, e->wal_cursor, pgno);
+		if (rv != SQLITE_OK) {
+			return 1;
+		}
 		db_size = MAX(db_size, pgno);
 		sums.cksum1 = ByteGetBe32(fhdr.cksum1);
 		sums.cksum2 = ByteGetBe32(fhdr.cksum2);
