@@ -270,7 +270,6 @@ int dqlite_node_create(dqlite_node_id id,
 int dqlite_node_create_v2(dqlite_node_id id,
 			  const char *address,
 			  const char *data_dir,
-			  bool disk_mode,
 			  dqlite_node **t)
 {
 	*t = sqlite3_malloc(sizeof **t);
@@ -278,7 +277,7 @@ int dqlite_node_create_v2(dqlite_node_id id,
 		return DQLITE_NOMEM;
 	}
 
-	return dqlite__init(*t, id, address, data_dir, disk_mode);
+	return dqlite__init(*t, id, address, data_dir, true);
 }
 
 int dqlite_node_set_bind_address(dqlite_node *t, const char *address)

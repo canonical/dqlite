@@ -64,7 +64,8 @@ void test_server_start(struct test_server *s, const MunitParameter params[])
 
 	bool disk_mode = param_get_bool(params, "disk_mode");
 
-	rv = dqlite_node_create_v2(s->id, s->address, s->dir, disk_mode, &s->dqlite);
+	rv = disk_mode ? dqlite_node_create_v2(s->id, s->address, s->dir, &s->dqlite)
+		       : dqlite_node_create(s->id, s->address, s->dir, &s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
 	rv = dqlite_node_set_bind_address(s->dqlite, s->address);
