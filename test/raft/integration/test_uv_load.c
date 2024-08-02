@@ -2,7 +2,6 @@
 
 #include "../../../src/raft/byte.h"
 #include "../../../src/raft/uv.h"
-#include "../../../src/raft/uv_encoding.h"
 #include "../lib/runner.h"
 #include "../lib/uv.h"
 
@@ -11,6 +10,13 @@
  * Fixture with a non-initialized libuv-based raft_io instance.
  *
  *****************************************************************************/
+
+static char *format_versions[] = {"1", "2", NULL};
+
+static MunitParameterEnum format_params[] = {
+    {"format_version", format_versions},
+    {NULL, NULL},
+};
 
 struct fixture
 {
@@ -108,6 +114,7 @@ struct snapshot
         munit_assert_int(_rv, ==, 0);                                        \
         raft_uv_set_block_size(&_io, SEGMENT_BLOCK_SIZE);                    \
         raft_uv_set_segment_size(&_io, SEGMENT_SIZE);                        \
+        raft_uv_set_format_version(&_io, f->format_version);                 \
         _rv = _io.load(&_io, &_term, &_voted_for, &_snapshot, &_start_index, \
                        &_entries, &_n);                                      \
         munit_assert_int(_rv, ==, 0);                                        \
@@ -190,6 +197,7 @@ struct snapshot
         munit_assert_int(_rv, ==, 0);                                         \
         raft_uv_set_block_size(&_io, SEGMENT_BLOCK_SIZE);                     \
         raft_uv_set_segment_size(&_io, SEGMENT_SIZE);                         \
+        raft_uv_set_format_version(&_io, f->format_version);                  \
         _rv = _io.load(&_io, &_term, &_voted_for, &_snapshot, &_start_index,  \
                        &_entries, &_n);                                       \
         munit_assert_int(_rv, ==, 0);                                         \
@@ -378,6 +386,8 @@ static void *setUp(const MunitParameter params[], void *user_data)
 {
     struct fixture *f = munit_malloc(sizeof *f);
     SETUP_UV_DEPS;
+    const char *format_version = munit_parameters_get(params, "format_version");
+    f->format_version = format_version != NULL ? atoi(format_version) : 1;
     return f;
 }
 
@@ -575,27 +585,41 @@ TEST(load, openSegmentWithIncompleteBatch, setUp, tearDown, 0, NULL)
 
 /* The data directory has an open segment whose first batch is only
  * partially written. In that case the segment gets removed. */
-TEST(load, openSegmentWithIncompleteFirstBatch, setUp, tearDown, 0, NULL)
+TEST(load, openSegmentWithIncompleteFirstBatch, setUp, tearDown, 0, format_params)
 {
     struct fixture *f = data;
+
+    uint8_t v = (uint8_t)f->format_version;
     uint8_t buf[5 * WORD_SIZE] = {
-        UV__DISK_FORMAT, 0, 0, 0, 0, 0, 0, 0, /* Format version */
+        v, 0, 0, 0, 0, 0, 0, 0, /* Format version */
         0, 0, 0, 0, 0, 0, 0, 0, /* CRC32 checksums */
         0, 0, 0, 0, 0, 0, 0, 0, /* Number of entries */
-	0, 0, 0, 0, 0, 0, 0, 0, /* Local data size */
-        0, 0, 0, 0, 0, 0, 0, 0  /* Batch data */
+        0, 0, 0, 0, 0, 0, 0, 0, /* Batch data (v1) or local data size (v2) */
+        0, 0, 0, 0, 0, 0, 0, 0  /* Batch data (v2) */
     };
+    size_t buf_len;
+    switch (v) {
+    case RAFT_UV_FORMAT_V1:
+        buf_len = 4 * WORD_SIZE;
+        break;
+    case RAFT_UV_FORMAT_V2:
+        buf_len = 5 * WORD_SIZE;
+        break;
+    default:
+        munit_error("impossible");
+    }
+
     APPEND(1, 1);
     UNFINALIZE(1, 1, 1);
 
-    DirOverwriteFile(f->dir, "open-1", buf, sizeof buf, 0);
+    DirOverwriteFile(f->dir, "open-1", buf, buf_len, 0);
 
-    LOAD(0,    /* term                                              */
-         0,    /* voted for                                         */
-         NULL, /* snapshot                                          */
-         1,    /* start index                                       */
-         0,    /* data for first loaded entry    */
-         0     /* n entries                                         */
+    LOAD(0,    /* term */
+         0,    /* voted for */
+         NULL, /* snapshot */
+         1,    /* start index */
+         0,    /* data for first loaded entry */
+         0     /* n entries */
     );
 
     return MUNIT_OK;
@@ -1621,7 +1645,7 @@ TEST(load, openSegmentWithIncompletePreamble, setUp, tearDown, 0, NULL)
 }
 
 /* The data directory has an open segment which has incomplete batch header. */
-TEST(load, openSegmentWithIncompleteBatchHeader, setUp, tearDown, 0, NULL)
+TEST(load, openSegmentWithIncompleteBatchHeader, setUp, tearDown, 0, format_params)
 {
     struct fixture *f = data;
     size_t offset = WORD_SIZE + /* Format version */
@@ -1632,21 +1656,25 @@ TEST(load, openSegmentWithIncompleteBatchHeader, setUp, tearDown, 0, NULL)
     APPEND(1, 1);
     UNFINALIZE(1, 1, 1);
     DirTruncateFile(f->dir, "open-1", offset);
-#ifdef DQLITE_NEXT
-    const char *msg =
-	    "load open segment open-1: entries batch 1 starting at byte 8: "
-	    "read header: short read: 8 bytes instead of 24";
-#else
-    const char *msg =
-	    "load open segment open-1: entries batch 1 starting at byte 8: "
-	    "read header: short read: 8 bytes instead of 16";
-#endif
+    const char *msg;
+    switch (f->format_version) {
+    case RAFT_UV_FORMAT_V1:
+        msg = "load open segment open-1: entries batch 1 starting at byte 8: "
+              "read header: short read: 8 bytes instead of 16";
+        break;
+    case RAFT_UV_FORMAT_V2:
+        msg = "load open segment open-1: entries batch 1 starting at byte 8: "
+              "read header: short read: 8 bytes instead of 24";
+        break;
+    default:
+        munit_error("impossible");
+    }
     LOAD_ERROR(RAFT_IOERR, msg);
     return MUNIT_OK;
 }
 
 /* The data directory has an open segment which has incomplete batch data. */
-TEST(load, openSegmentWithIncompleteBatchData, setUp, tearDown, 0, NULL)
+TEST(load, openSegmentWithIncompleteBatchData, setUp, tearDown, 0, format_params)
 {
     struct fixture *f = data;
     size_t offset = WORD_SIZE + /* Format version */
@@ -1656,23 +1684,27 @@ TEST(load, openSegmentWithIncompleteBatchData, setUp, tearDown, 0, NULL)
                     WORD_SIZE + /* Entry type and data size */
                     WORD_SIZE / 2 /* Partial entry data */;
 
-#ifdef DQLITE_NEXT
-    offset += WORD_SIZE; /* Local data size */
-#endif
+    if (f->format_version == RAFT_UV_FORMAT_V2) {
+        offset += WORD_SIZE;
+    }
 
     APPEND(1, 1);
     UNFINALIZE(1, 1, 1);
     DirTruncateFile(f->dir, "open-1", offset);
 
-#ifdef DQLITE_NEXT
-    const char *msg =
-	    "load open segment open-1: entries batch 1 starting at byte 8: "
-	    "read data: short read: 4 bytes instead of 24";
-#else
-    const char *msg =
-	    "load open segment open-1: entries batch 1 starting at byte 8: "
-	    "read data: short read: 4 bytes instead of 8";
-#endif
+    const char *msg;
+    switch (f->format_version) {
+    case RAFT_UV_FORMAT_V1:
+        msg = "load open segment open-1: entries batch 1 starting at byte 8: "
+              "read data: short read: 4 bytes instead of 8";
+        break;
+    case RAFT_UV_FORMAT_V2:
+        msg = "load open segment open-1: entries batch 1 starting at byte 8: "
+              "read data: short read: 4 bytes instead of 24";
+        break;
+    default:
+        munit_error("impossible");
+    }
     LOAD_ERROR(RAFT_IOERR, msg);
     return MUNIT_OK;
 }

@@ -24,4 +24,15 @@
 		}                                                           \
 	} while (0)
 
+/**
+ * Parse a numeric test parameter as a boolean. The result is false
+ * if the parameter is unset or set to "0", and true otherwise.
+ */
+static inline bool param_get_bool(const MunitParameter *params,
+                                  const char *name)
+{
+	const char *param = munit_parameters_get(params, name);
+	return param != NULL && (bool)atoi(param);
+}
+
 #endif /* TEST_UTIL_H */

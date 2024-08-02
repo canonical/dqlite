@@ -269,6 +269,18 @@ DQLITE_API int dqlite_node_create(dqlite_node_id id,
 				  dqlite_node **n);
 
 /**
+ * Create a new dqlite node object using experimental features.
+ *
+ * The created node will store the databases and WAL files on disk, instead of
+ * in memory. This feature is incomplete and not suitable for general use.
+ */
+DQLITE_API DQLITE_EXPERIMENTAL
+int dqlite_node_create_v2(dqlite_node_id id,
+			  const char *addr,
+			  const char *data_dir,
+			  dqlite_node **t);
+
+/**
  * Destroy a dqlite node object.
  *
  * This will release all memory that was allocated by the node. If
@@ -400,12 +412,9 @@ DQLITE_API int dqlite_node_set_snapshot_params(dqlite_node *n,
 DQLITE_API int dqlite_node_set_block_size(dqlite_node *n, size_t size);
 
 /**
- * WARNING: This is an experimental API.
- *
- * By default dqlite holds the SQLite database file and WAL in memory. By
- * enabling disk-mode, dqlite will hold the SQLite database file on-disk while
- * keeping the WAL in memory. Has to be called after `dqlite_node_create` and
- * before `dqlite_node_start`.
+ * This function was formerly used to request that database and WAL files be
+ * stored on disk, but is now a no-op. It is deprecated, and
+ * dqlite_node_create_v2 should be used instead.
  */
 DQLITE_API int dqlite_node_enable_disk_mode(dqlite_node *n);
 

@@ -16,9 +16,6 @@ jobs:
         compiler:
           - gcc
           - clang
-        dqlite-next:
-          - yes
-          - no
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -35,7 +32,7 @@ jobs:
       run: |
           autoreconf -i
           ./configure --enable-debug --enable-code-coverage --enable-sanitize \
-                      --enable-build-raft --enable-dqlite-next=${{ matrix.dqlite-next }}
+                      --enable-build-raft
           make -j4 unit-test integration-test \
                    raft-core-fuzzy-test \
                    raft-core-integration-test \

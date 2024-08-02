@@ -98,7 +98,8 @@ struct dqlite_server {
 int dqlite__init(struct dqlite_node *d,
 		 dqlite_node_id id,
 		 const char *address,
-		 const char *dir);
+		 const char *dir,
+		 bool disk_mode);
 
 void dqlite__close(struct dqlite_node *d);
 

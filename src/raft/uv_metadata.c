@@ -14,7 +14,7 @@
 static void uvMetadataEncode(const struct uvMetadata *metadata, void *buf)
 {
 	void *cursor = buf;
-	bytePut64(&cursor, UV__DISK_FORMAT);
+	bytePut64(&cursor, metadata->format_version);
 	bytePut64(&cursor, metadata->version);
 	bytePut64(&cursor, metadata->term);
 	bytePut64(&cursor, metadata->voted_for);
@@ -26,21 +26,22 @@ static int uvMetadataDecode(const void *buf,
 			    char *errmsg)
 {
 	const void *cursor = buf;
-	uint64_t format;
-	format = byteGet64(&cursor);
-	if (format != UV__DISK_FORMAT) {
-		ErrMsgPrintf(errmsg, "bad format version %ju", format);
+
+	uint64_t format_version = byteGet64(&cursor);
+	if (!(RAFT_UV_FORMAT_V1 <= format_version &&
+	      format_version < RAFT_UV_FORMAT_NR)) {
+		ErrMsgPrintf(errmsg, "bad format version %ju", format_version);
 		return RAFT_MALFORMED;
 	}
-	metadata->version = byteGet64(&cursor);
-	metadata->term = byteGet64(&cursor);
-	metadata->voted_for = byteGet64(&cursor);
-
-	/* Coherence checks that values make sense */
-	if (metadata->version == 0) {
+	metadata->format_version = (enum raft_uv_format_version)format_version;
+	uint64_t version = byteGet64(&cursor);
+	if (version == 0) {
 		ErrMsgPrintf(errmsg, "version is set to zero");
 		return RAFT_CORRUPT;
 	}
+	metadata->version = version;
+	metadata->term = byteGet64(&cursor);
+	metadata->voted_for = byteGet64(&cursor);
 
 	return 0;
 }
@@ -127,7 +128,9 @@ static int uvMetadataLoadN(const char *dir,
 	return 0;
 }
 
-int uvMetadataLoad(const char *dir, struct uvMetadata *metadata, char *errmsg)
+int uvMetadataLoad(const char *dir,
+		   struct uvMetadata *metadata,
+		   char *errmsg)
 {
 	struct uvMetadata metadata1;
 	struct uvMetadata metadata2;
@@ -146,9 +149,7 @@ int uvMetadataLoad(const char *dir, struct uvMetadata *metadata, char *errmsg)
 	/* Check the versions. */
 	if (metadata1.version == 0 && metadata2.version == 0) {
 		/* Neither metadata file exists: have a brand new server. */
-		metadata->version = 0;
-		metadata->term = 0;
-		metadata->voted_for = 0;
+		*metadata = (struct uvMetadata){};
 	} else if (metadata1.version == metadata2.version) {
 		/* The two metadata files can't have the same version. */
 		ErrMsgPrintf(errmsg,
@@ -182,7 +183,8 @@ int uvMetadataStore(struct uv *uv, const struct uvMetadata *metadata)
 	unsigned short n;
 	int rv;
 
-	assert(metadata->version > 0);
+	PRE(RAFT_UV_FORMAT_V1 <= metadata->format_version &&
+	    metadata->format_version < RAFT_UV_FORMAT_NR);
 
 	/* Encode the given metadata. */
 	uvMetadataEncode(metadata, content);
