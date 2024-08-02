@@ -594,6 +594,7 @@ static int appendLeader(struct raft *r, raft_index index)
 	struct raft_entry *entries = NULL;
 	unsigned n;
 	struct appendLeader *request;
+	const struct sm *entry_sm;
 	int rv;
 
 	assert(r->state == RAFT_LEADER);
@@ -631,6 +632,10 @@ static int appendLeader(struct raft *r, raft_index index)
 	request->req.data = request;
 
 	rv = r->io->append(r->io, &request->req, entries, n, appendLeaderCb);
+	for (unsigned i = 0; i < n; i++) {
+		entry_sm = log_get_entry_sm(r->log, entries[i].term, index + i);
+		sm_relate(entry_sm, &request->req.sm);
+	}
 	if (rv != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 		goto err_after_request_alloc;
@@ -1761,11 +1766,14 @@ int replicationApply(struct raft *r)
 			tracef("replicationApply - ENTRY NULL");
 			return 0;
 		}
+		struct sm *entry_sm = log_get_entry_sm(r->log, entry->term, index);
+		assert(entry_sm != NULL);
 
 		assert(entry->type == RAFT_COMMAND ||
 		       entry->type == RAFT_BARRIER ||
 		       entry->type == RAFT_CHANGE);
 
+		sm_move(entry_sm, ENTRY_COMMITTED);
 		switch (entry->type) {
 			case RAFT_COMMAND:
 				rv = applyCommand(r, index, &entry->buf);
@@ -1784,7 +1792,9 @@ int replicationApply(struct raft *r)
 				break;
 		}
 
-		if (rv != 0) {
+		if (rv == 0) {
+			sm_move(entry_sm, ENTRY_APPLIED);
+		} else {
 			break;
 		}
 	}

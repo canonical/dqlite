@@ -17,7 +17,10 @@ int raft_apply(struct raft *r,
 	       const unsigned n,
 	       raft_apply_cb cb)
 {
+	raft_index start;
 	raft_index index;
+	struct raft_entry_local_data loc;
+	const struct sm *entry_sm;
 	int rv;
 
 	tracef("raft_apply n %d", n);
@@ -34,10 +37,10 @@ int raft_apply(struct raft *r,
 	}
 
 	/* Index of the first entry being appended. */
-	index = logLastIndex(r->log) + 1;
-	tracef("%u commands starting at %lld", n, index);
+	start = logLastIndex(r->log) + 1;
+	tracef("%u commands starting at %lld", n, start);
 	req->type = RAFT_COMMAND;
-	req->index = index;
+	req->index = start;
 	req->cb = cb;
 
 	sm_init(&req->sm, request_invariant, NULL, request_states, "apply-request",
@@ -45,12 +48,20 @@ int raft_apply(struct raft *r,
 	queue_insert_tail(&r->leader_state.requests, &req->queue);
 
 	/* Append the new entries to the log. */
-	rv = logAppendCommands(r->log, r->current_term, bufs, local_data, n);
-	if (rv != 0) {
-		goto err_after_request_start;
+	index = start;
+	for (unsigned i = 0; i < n; i++) {
+		loc = (local_data != NULL) ? local_data[i] : (struct raft_entry_local_data){};
+		rv = logAppend(r->log, r->current_term, RAFT_COMMAND, bufs[i], loc, true, NULL);
+		if (rv != 0) {
+			goto err_after_request_start;
+		}
+		entry_sm = log_get_entry_sm(r->log, r->current_term, index);
+		assert(entry_sm != NULL);
+		sm_relate(&req->sm, entry_sm);
+		index++;
 	}
 
-	rv = replicationTrigger(r, index);
+	rv = replicationTrigger(r, start);
 	if (rv != 0) {
 		goto err_after_request_start;
 	}
