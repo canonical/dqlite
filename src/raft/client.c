@@ -1,13 +1,12 @@
+#include "../lib/queue.h"
 #include "../raft.h"
 #include "../tracing.h"
 #include "assert.h"
 #include "configuration.h"
 #include "err.h"
-#include "lifecycle.h"
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
-#include "../lib/queue.h"
 #include "replication.h"
 #include "request.h"
 
@@ -41,24 +40,27 @@ int raft_apply(struct raft *r,
 	req->index = index;
 	req->cb = cb;
 
+	sm_init(&req->sm, request_invariant, NULL, request_states, "apply-request",
+		REQUEST_START);
+	queue_insert_tail(&r->leader_state.requests, &req->queue);
+
 	/* Append the new entries to the log. */
 	rv = logAppendCommands(r->log, r->current_term, bufs, local_data, n);
 	if (rv != 0) {
-		goto err;
+		goto err_after_request_start;
 	}
-
-	lifecycleRequestStart(r, (struct request *)req);
 
 	rv = replicationTrigger(r, index);
 	if (rv != 0) {
-		goto err_after_log_append;
+		goto err_after_request_start;
 	}
 
 	return 0;
 
-err_after_log_append:
+err_after_request_start:
 	logDiscard(r->log, index);
 	queue_remove(&req->queue);
+	sm_fail(&req->sm, REQUEST_FAILED, rv);
 err:
 	assert(rv != 0);
 	return rv;
@@ -96,7 +98,7 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 		goto err_after_buf_alloc;
 	}
 
-	lifecycleRequestStart(r, (struct request *)req);
+	queue_insert_tail(&r->leader_state.requests, &req->queue);
 
 	rv = replicationTrigger(r, index);
 	if (rv != 0) {

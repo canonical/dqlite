@@ -396,7 +396,9 @@ static int leaderApplyFrames(struct exec *req,
 #else
 	/* TODO actual WAL slice goes here */
 	struct raft_entry_local_data local_data = {};
-	rv = raft_apply(l->raft, &apply->req, &buf, &local_data, 1, leaderApplyFramesCb);
+	rv = raft_apply(l->raft, &apply->req, &buf, &local_data, 1,
+			leaderApplyFramesCb);
+	sm_relate(&req->sm, &apply->req.sm);
 #endif
 	if (rv != 0) {
 		tracef("raft apply failed %d", rv);
@@ -409,6 +411,7 @@ static int leaderApplyFrames(struct exec *req,
 	return 0;
 
 err_after_command_encode:
+	sm_fini(&apply->req.sm);
 	raft_free(buf.base);
 err_after_apply_alloc:
 	raft_free(apply);

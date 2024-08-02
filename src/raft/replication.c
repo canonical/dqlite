@@ -7,15 +7,14 @@
 #ifdef __GLIBC__
 #include "error.h"
 #endif
+#include "../lib/queue.h"
 #include "../tracing.h"
 #include "err.h"
 #include "flags.h"
 #include "heap.h"
-#include "lifecycle.h"
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
-#include "../lib/queue.h"
 #include "replication.h"
 #include "request.h"
 #include "snapshot.h"
@@ -469,7 +468,6 @@ static struct request *getRequest(struct raft *r,
 			if (type != -1) {
 				assert(req->type == type);
 			}
-			lifecycleRequestEnd(r, req);
 			return req;
 		}
 	}
@@ -498,15 +496,18 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 	if (status != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 		for (unsigned i = 0; i < request->n; i++) {
-			const struct request *req =
+			struct request *req =
 			    getRequest(r, request->index + i, -1);
 			if (!req) {
 				tracef("no request found at index %llu",
 				       request->index + i);
 				continue;
 			}
+			queue_remove(&req->queue);
 			switch (req->type) {
 				case RAFT_COMMAND: {
+					sm_fail(&req->sm, REQUEST_FAILED, status);
+					sm_fini(&req->sm);
 					struct raft_apply *apply =
 					    (struct raft_apply *)req;
 					if (apply->cb) {
@@ -1473,6 +1474,7 @@ static int applyCommand(struct raft *r,
 	struct raft_apply *req;
 	void *result;
 	int rv;
+
 	rv = r->fsm->apply(r->fsm, buf, &result);
 	if (rv != 0) {
 		return rv;
@@ -1481,7 +1483,13 @@ static int applyCommand(struct raft *r,
 	r->last_applied = index;
 
 	req = (struct raft_apply *)getRequest(r, index, RAFT_COMMAND);
-	if (req != NULL && req->cb != NULL) {
+	if (req == NULL) {
+		return 0;
+	}
+	queue_remove(&req->queue);
+	sm_move(&req->sm, REQUEST_COMPLETE);
+	sm_fini(&req->sm);
+	if (req->cb != NULL) {
 		req->cb(req, 0, result);
 	}
 	return 0;
@@ -1494,7 +1502,11 @@ static void applyBarrier(struct raft *r, const raft_index index)
 
 	struct raft_barrier *req;
 	req = (struct raft_barrier *)getRequest(r, index, RAFT_BARRIER);
-	if (req != NULL && req->cb != NULL) {
+	if (req == NULL) {
+		return;
+	}
+	queue_remove(&req->queue);
+	if (req->cb != NULL) {
 		req->cb(req, 0);
 	}
 }

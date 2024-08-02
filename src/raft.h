@@ -16,8 +16,8 @@
 
 #include <uv.h>
 
-#include "lib/sm.h"
 #include "lib/queue.h"
+#include "lib/sm.h" /* struct sm */
 
 #ifndef RAFT_API
 #define RAFT_API __attribute__((visibility("default")))
@@ -1177,6 +1177,7 @@ RAFT_API int raft_voter_contacts(struct raft *r);
 	int type;              \
 	raft_index index;      \
 	queue queue;           \
+	struct sm sm;          \
 	uint8_t req_id[16];    \
 	uint8_t client_id[16]; \
 	uint8_t unique_id[16]; \
