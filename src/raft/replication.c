@@ -638,12 +638,13 @@ static int appendLeader(struct raft *r, raft_index index)
 	}
 	if (rv != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-		goto err_after_request_alloc;
+		goto err_in_append;
 	}
 
 	return 0;
 
-err_after_request_alloc:
+err_in_append:
+	sm_fini(&request->req.sm);
 	raft_free(request);
 err_after_entries_acquired:
 	logRelease(r->log, index, entries, n);
@@ -1268,13 +1269,15 @@ int replicationAppend(struct raft *r,
 			   request->args.n_entries, appendFollowerCb);
 	if (rv != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-		goto err_after_acquire_entries;
+		goto err_in_append;
 	}
 	r->follower_state.append_in_flight_count += 1;
 
 	entryBatchesDestroy(args->entries, args->n_entries);
 	return 0;
 
+err_in_append:
+	sm_fini(&request->req.sm);
 err_after_acquire_entries:
 	/* Release the entries related to the IO request */
 	logRelease(r->log, request->index, request->args.entries,

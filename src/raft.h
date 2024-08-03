@@ -558,6 +558,7 @@ typedef void (*raft_io_append_cb)(struct raft_io_append *req, int status);
 struct raft_io_append
 {
 	void *data;           /* User data */
+	struct sm sm;
 	raft_io_append_cb cb; /* Request callback */
 };
 
