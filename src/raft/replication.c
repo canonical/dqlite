@@ -1182,7 +1182,6 @@ int replicationAppend(struct raft *r,
 	size_t n;
 	size_t i;
 	size_t j;
-	size_t k;
 	bool reinstated;
 	const struct sm *entry_sm;
 	int rv;
@@ -1327,13 +1326,12 @@ int replicationAppend(struct raft *r,
 	request->req.data = request;
 	rv = r->io->append(r->io, &request->req, request->args.entries,
 			   request->args.n_entries, appendFollowerCb);
+	/* FIXME this relates the sm of the appendFollower request to that of
+	 * the UvAppend request. Ideally we would instead relate the sms of
+	 * each involved log entry to the UvAppend request, but this seems to
+	 * work poorly with chronoscope's chart visualization, causing it to
+	 * draw the same UvAppend request many times. */
 	sm_relate(&request->sm, &request->req.sm);
-	for (k = 0; k < n; k++) {
-		entry_sm = log_get_entry_sm(r->log, request->args.entries[k].term,
-						    request->index + k);
-		assert(entry_sm != NULL);
-		sm_relate(entry_sm, &request->req.sm);
-	}
 	if (rv != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 		goto err_in_append;
