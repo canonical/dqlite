@@ -83,6 +83,7 @@ void sm_fail(struct sm *m, int fail_state, int rc)
 
 	m->rc = rc;
 	m->state = fail_state;
+	sm_obs(m);
 	POST(m->invariant != NULL && m->invariant(m, prev));
 }
 
