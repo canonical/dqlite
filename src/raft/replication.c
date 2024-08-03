@@ -1225,6 +1225,7 @@ int replicationAppend(struct raft *r,
 	*rejected = 0;
 
 	n = args->n_entries - i; /* Number of new entries */
+	sm_attr(&request->sm, "n", "%zu", n);
 
 	/* If this is an empty AppendEntries, there's nothing to write. However
 	 * we still want to check if we can commit some entry. However, don't
