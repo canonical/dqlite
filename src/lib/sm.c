@@ -32,6 +32,17 @@ void sm_relate(const struct sm *from, const struct sm *to)
 		from->name, to->name, from->pid, to->pid, from->id, to->id);
 }
 
+void sm_attr(const struct sm *m, const char *k, const char *fmt, ...)
+{
+	char v[SM_MAX_ATTR_LENGTH];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(v, sizeof(v), fmt, ap);
+	va_end(ap);
+	tracef("%s-attr pid: %d sm_id: %" PRIu64 " %s %s |",
+	       m->name, m->pid, m->id, k, v);
+}
+
 void sm_init(struct sm *m,
 	     bool (*invariant)(const struct sm *, int),
 	     bool (*is_locked)(const struct sm *),

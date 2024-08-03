@@ -10,6 +10,7 @@
 #define CHECK(cond) sm_check((cond), __FILE__, __LINE__, #cond)
 
 #define SM_MAX_NAME_LENGTH 50
+#define SM_MAX_ATTR_LENGTH 100
 
 enum {
 	SM_PREV_NONE = -1,
@@ -54,5 +55,9 @@ int sm_state(const struct sm *m);
 bool sm_check(bool b, const char *f, int n, const char *s);
 /* Relates one state machine to another for observability. */
 void sm_relate(const struct sm *from, const struct sm *to);
+/**
+ * Records an attribute of a state machine for observability.
+ */
+void sm_attr(const struct sm *m, const char *k, const char *fmt, ...);
 
 #endif /* __LIB_SM__ */
