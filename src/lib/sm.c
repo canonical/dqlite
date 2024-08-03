@@ -22,13 +22,13 @@ int sm_state(const struct sm *m)
 
 static inline void sm_obs(const struct sm *m)
 {
-	tracef("%s pid: %d sm_id: %" PRIu64 " %s |\n",
+	tracef("%s pid: %d sm_id: %" PRIu64 " %s |",
 		m->name, m->pid, m->id, m->conf[sm_state(m)].name);
 }
 
 void sm_relate(const struct sm *from, const struct sm *to)
 {
-	tracef("%s-to-%s opid: %d dpid: %d id: %" PRIu64 " id: %" PRIu64 " |\n",
+	tracef("%s-to-%s opid: %d dpid: %d id: %" PRIu64 " id: %" PRIu64 " |",
 		from->name, to->name, from->pid, to->pid, from->id, to->id);
 }
 
@@ -89,7 +89,7 @@ void sm_fail(struct sm *m, int fail_state, int rc)
 
 static __attribute__((noinline)) bool check_failed(const char *f, int n, const char *s)
 {
-	tracef("%s:%d check failed: %s\n", f, n, s);
+	tracef("%s:%d check failed: %s", f, n, s);
 	return false;
 }
 
