@@ -887,6 +887,39 @@ static void sendAppendEntriesResult(
 	}
 }
 
+/**
+ * State machine for handling of AppendEntries on the follower side.
+ */
+enum {
+	AF_START,
+	AF_DONE,
+	AF_FAILED,
+	AF_NR,
+};
+
+static struct sm_conf af_states[AF_NR] = {
+	[AF_START] = {
+		.name = "start",
+		.allowed = BITS(AF_DONE)|BITS(AF_FAILED),
+		.flags = SM_INITIAL,
+	},
+	[AF_DONE] = {
+		.name = "done",
+		.flags = SM_FINAL,
+	},
+	[AF_FAILED] = {
+		.name = "failed",
+		.flags = SM_FAILURE|SM_FINAL,
+	},
+};
+
+static bool af_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
+}
+
 /* Context for a write log entries request that was submitted by a follower. */
 struct appendFollower
 {
@@ -894,7 +927,19 @@ struct appendFollower
 	raft_index index;  /* Index of the first entry in the request. */
 	struct raft_append_entries args;
 	struct raft_io_append req;
+	struct sm sm;
 };
+
+static void append_follower_done(struct appendFollower *req, int status)
+{
+	if (status == 0) {
+		sm_move(&req->sm, AF_DONE);
+	} else {
+		sm_fail(&req->sm, AF_FAILED, status);
+	}
+	sm_fini(&req->sm);
+	raft_free(req);
+}
 
 static void appendFollowerCb(struct raft_io_append *req, int status)
 {
@@ -1000,7 +1045,7 @@ out:
 		}
 	}
 
-	raft_free(request);
+	append_follower_done(request, status);
 }
 
 /* Check the log matching property against an incoming AppendEntries request.
@@ -1137,7 +1182,9 @@ int replicationAppend(struct raft *r,
 	size_t n;
 	size_t i;
 	size_t j;
+	size_t k;
 	bool reinstated;
+	const struct sm *entry_sm;
 	int rv;
 
 	assert(r != NULL);
@@ -1147,20 +1194,32 @@ int replicationAppend(struct raft *r,
 
 	assert(r->state == RAFT_FOLLOWER);
 
+	request = raft_malloc(sizeof *request);
+	if (request == NULL) {
+		rv = RAFT_NOMEM;
+		goto err;
+	}
+	sm_init(&request->sm, af_invariant, NULL, af_states, "append-follower",
+		AF_START);
+
 	*rejected = args->prev_log_index;
 	*async = false;
 
 	/* Check the log matching property. */
 	match = checkLogMatchingProperty(r, args);
-	if (match != 0) {
-		assert(match == 1 || match == -1);
-		return match == 1 ? 0 : RAFT_SHUTDOWN;
+	if (match == 1) {
+		append_follower_done(request, 0);
+		return 0;
+	} else if (match != 0) {
+		assert(match == -1);
+		rv = RAFT_SHUTDOWN;
+		goto err_after_request_alloc;
 	}
 
 	/* Delete conflicting entries. */
 	rv = deleteConflictingEntries(r, args, &i);
 	if (rv != 0) {
-		return rv;
+		goto err_after_request_alloc;
 	}
 
 	*rejected = 0;
@@ -1186,20 +1245,15 @@ int replicationAppend(struct raft *r,
 			    min(args->leader_commit, r->last_stored);
 			rv = replicationApply(r);
 			if (rv != 0) {
-				return rv;
+				goto err_after_request_alloc;
 			}
 		}
 
+		append_follower_done(request, 0);
 		return 0;
 	}
 
 	*async = true;
-
-	request = raft_malloc(sizeof *request);
-	if (request == NULL) {
-		rv = RAFT_NOMEM;
-		goto err;
-	}
 
 	request->raft = r;
 	request->args = *args;
@@ -1211,6 +1265,7 @@ int replicationAppend(struct raft *r,
 	 * request that we issue below actually completes.  */
 	for (j = 0; j < n; j++) {
 		struct raft_entry *entry = &args->entries[i + j];
+		struct raft_entry copy;
 
 		/* We are trying to append an entry at index X with term T to
 		 * our in-memory log. If we've gotten this far, we know that the
@@ -1226,26 +1281,30 @@ int replicationAppend(struct raft *r,
 		    logReinstate(r->log, entry->term, entry->type, &reinstated);
 		if (rv != 0) {
 			goto err_after_request_alloc;
-		} else if (reinstated) {
-			continue;
+		}
+		if (!reinstated) {
+			/* TODO This copy should not strictly be necessary, as
+			 * the batch logic will take care of freeing the batch
+			 * buffer in which the entries are received. However,
+			 * this would lead to memory spikes in certain edge
+			 * cases.
+			 * https://github.com/canonical/dqlite/issues/276
+			 */
+			rv = entryCopy(entry, &copy);
+			if (rv != 0) {
+				goto err_after_request_alloc;
+			}
+
+			rv = logAppend(r->log, copy.term, copy.type, copy.buf,
+				       (struct raft_entry_local_data){}, false, NULL);
+			if (rv != 0) {
+				goto err_after_request_alloc;
+			}
 		}
 
-		/* TODO This copy should not strictly be necessary, as the batch
-		 * logic will take care of freeing the batch buffer in which the
-		 * entries are received. However, this would lead to memory
-		 * spikes in certain edge cases.
-		 * https://github.com/canonical/dqlite/issues/276
-		 */
-		struct raft_entry copy = {0};
-		rv = entryCopy(entry, &copy);
-		if (rv != 0) {
-			goto err_after_request_alloc;
-		}
-
-		rv = logAppend(r->log, copy.term, copy.type, copy.buf, (struct raft_entry_local_data){}, false, NULL);
-		if (rv != 0) {
-			goto err_after_request_alloc;
-		}
+		entry_sm = log_get_entry_sm(r->log, entry->term, request->index + j);
+		assert(entry_sm != NULL);
+		sm_relate(&request->sm, entry_sm);
 	}
 
 	/* Acquire the relevant entries from the log. */
@@ -1267,6 +1326,13 @@ int replicationAppend(struct raft *r,
 	request->req.data = request;
 	rv = r->io->append(r->io, &request->req, request->args.entries,
 			   request->args.n_entries, appendFollowerCb);
+	sm_relate(&request->sm, &request->req.sm);
+	for (k = 0; k < n; k++) {
+		entry_sm = log_get_entry_sm(r->log, request->args.entries[k].term,
+						    request->index + k);
+		assert(entry_sm != NULL);
+		sm_relate(entry_sm, &request->req.sm);
+	}
 	if (rv != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 		goto err_in_append;
@@ -1291,7 +1357,7 @@ err_after_request_alloc:
 	if (j != 0) {
 		logTruncate(r->log, request->index);
 	}
-	raft_free(request);
+	append_follower_done(request, rv);
 
 err:
 	assert(rv != 0);
