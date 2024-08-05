@@ -39,6 +39,50 @@
  * callbacks.
  **/
 
+/**
+ * State machine for an append request.
+ */
+enum {
+	APPEND_START,
+	APPEND_PENDING,
+	APPEND_WRITING,
+	APPEND_DONE,
+	APPEND_FAILED,
+	APPEND_NR,
+};
+
+static struct sm_conf append_states[APPEND_NR] = {
+	[APPEND_START] = {
+		.name = "start",
+		.allowed = BITS(APPEND_PENDING)|BITS(APPEND_FAILED),
+		.flags = SM_INITIAL,
+	},
+	[APPEND_PENDING] = {
+		.name = "pending",
+		.allowed = BITS(APPEND_WRITING)|BITS(APPEND_FAILED),
+	},
+	[APPEND_WRITING] = {
+		.name = "writing",
+		.allowed = BITS(APPEND_DONE)|BITS(APPEND_FAILED),
+	},
+	[APPEND_DONE] = {
+		.name = "done",
+		.flags = SM_FINAL,
+	},
+	[APPEND_FAILED] = {
+		.name = "failed",
+		.flags = SM_FINAL|SM_FAILURE,
+	},
+};
+
+static inline bool append_invariant(const struct sm *sm, int prev)
+{
+	(void)append_states;
+	(void)sm;
+	(void)prev;
+	return true;
+}
+
 /* An open segment being written or waiting to be written. */
 struct uvAliveSegment
 {
@@ -68,6 +112,22 @@ struct uvAppend
 	struct uvAliveSegment *segment;   /* Segment to write to */
 	queue queue;
 };
+
+/**
+ * The end of an append request's lifecycle.
+ */
+static void append_done(struct uvAppend *append, int status)
+{
+	struct raft_io_append *req = append->req;
+	if (status == 0) {
+		sm_move(&req->sm, APPEND_DONE);
+	} else {
+		sm_fail(&req->sm, APPEND_FAILED, status);
+	}
+	sm_fini(&req->sm);
+	req->cb(req, status);
+	RaftHeapFree(append);
+}
 
 static void uvAliveSegmentWriterCloseCb(struct UvWriter *writer)
 {
@@ -121,13 +181,10 @@ static void uvAppendFinishRequestsInQueue(struct uv *uv, queue *q, int status)
 	}
 	while (!queue_empty(&queue_copy)) {
 		queue *head;
-		struct raft_io_append *req;
 		head = queue_head(&queue_copy);
 		append = QUEUE_DATA(head, struct uvAppend, queue);
 		queue_remove(head);
-		req = append->req;
-		RaftHeapFree(append);
-		req->cb(req, status);
+		append_done(append, status);
 	}
 }
 
@@ -387,6 +444,8 @@ start:
 		n_reqs++;
 		rv = uvAliveSegmentEncodeEntriesToWriteBuf(segment, append);
 		if (rv != 0) {
+			/* FIXME in this case we should take care that the
+			 * append requests already moved to `q` are not lost. */
 			goto err;
 		}
 	}
@@ -410,6 +469,8 @@ start:
 
 	while (!queue_empty(&q)) {
 		head = queue_head(&q);
+		append = QUEUE_DATA(head, struct uvAppend, queue);
+		sm_move(&append->req->sm, APPEND_WRITING);
 		queue_remove(head);
 		queue_insert_tail(&uv->append_writing_reqs, head);
 	}
@@ -648,6 +709,7 @@ static int uvAppendEnqueueRequest(struct uv *uv, struct uvAppend *append)
 
 	append->segment = segment;
 	queue_insert_tail(&uv->append_pending_reqs, &append->queue);
+	sm_move(&append->req->sm, APPEND_PENDING);
 	uv->append_next_index += append->n;
 	tracef("set uv->append_next_index %llu", uv->append_next_index);
 
@@ -690,6 +752,8 @@ int UvAppend(struct raft_io *io,
 	uv = io->impl;
 	assert(!uv->closing);
 
+	sm_init(&req->sm, append_invariant, NULL, append_states, "append", APPEND_START);
+
 	append = RaftHeapCalloc(1, sizeof *append);
 	if (append == NULL) {
 		rv = RAFT_NOMEM;
@@ -724,6 +788,7 @@ int UvAppend(struct raft_io *io,
 err_after_req_alloc:
 	RaftHeapFree(append);
 err:
+	sm_fail(&req->sm, APPEND_FAILED, rv);
 	assert(rv != 0);
 	return rv;
 }

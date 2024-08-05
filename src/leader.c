@@ -10,11 +10,60 @@
 #include "gateway.h"
 #include "id.h"
 #include "leader.h"
+#include "lib/sm.h"
 #include "lib/threadpool.h"
 #include "server.h"
 #include "tracing.h"
 #include "utils.h"
 #include "vfs.h"
+
+/**
+ * State machine for exec requests.
+ */
+enum {
+	EXEC_START,
+	EXEC_BARRIER,
+	EXEC_STEPPED,
+	EXEC_POLLED,
+	EXEC_DONE,
+	EXEC_FAILED,
+	EXEC_NR,
+};
+
+static const struct sm_conf exec_states[EXEC_NR] = {
+	[EXEC_START] = {
+		.name = "start",
+		.allowed = BITS(EXEC_BARRIER)|BITS(EXEC_FAILED)|BITS(EXEC_DONE),
+		.flags = SM_INITIAL,
+	},
+	[EXEC_BARRIER] = {
+		.name = "barrier",
+		.allowed = BITS(EXEC_STEPPED)|BITS(EXEC_FAILED)|BITS(EXEC_DONE),
+	},
+	[EXEC_STEPPED] = {
+		.name = "stepped",
+		.allowed = BITS(EXEC_POLLED)|BITS(EXEC_FAILED)|BITS(EXEC_DONE),
+	},
+	[EXEC_POLLED] = {
+		.name = "polled",
+		.allowed = BITS(EXEC_FAILED)|BITS(EXEC_DONE),
+	},
+	[EXEC_DONE] = {
+		.name = "done",
+		.flags = SM_FINAL,
+	},
+	[EXEC_FAILED] = {
+		.name = "failed",
+		.flags = SM_FAILURE|SM_FINAL,
+	},
+};
+
+static bool exec_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
+}
 
 /* Called when a leader exec request terminates and the associated callback can
  * be invoked. */
@@ -22,6 +71,12 @@ static void leaderExecDone(struct exec *req)
 {
 	tracef("leader exec done id:%" PRIu64, req->id);
 	req->leader->exec = NULL;
+	if (req->status == SQLITE_DONE) {
+		sm_move(&req->sm, EXEC_DONE);
+	} else {
+		sm_fail(&req->sm, EXEC_FAILED, req->status);
+	}
+	sm_fini(&req->sm);
 	if (req->cb != NULL) {
 		req->cb(req, req->status);
 	}
@@ -341,7 +396,9 @@ static int leaderApplyFrames(struct exec *req,
 #else
 	/* TODO actual WAL slice goes here */
 	struct raft_entry_local_data local_data = {};
-	rv = raft_apply(l->raft, &apply->req, &buf, &local_data, 1, leaderApplyFramesCb);
+	rv = raft_apply(l->raft, &apply->req, &buf, &local_data, 1,
+			leaderApplyFramesCb);
+	sm_relate(&req->sm, &apply->req.sm);
 #endif
 	if (rv != 0) {
 		tracef("raft apply failed %d", rv);
@@ -354,6 +411,9 @@ static int leaderApplyFrames(struct exec *req,
 	return 0;
 
 err_after_command_encode:
+#ifndef USE_SYSTEM_RAFT
+	sm_fini(&apply->req.sm);
+#endif
 	raft_free(buf.base);
 err_after_apply_alloc:
 	raft_free(apply);
@@ -376,10 +436,12 @@ static void leaderExecV2(struct exec *req, enum pool_half half)
 
 	if (half == POOL_TOP_HALF) {
 		req->status = sqlite3_step(req->stmt);
+		sm_move(&req->sm, EXEC_STEPPED);
 		return;
 	} /* else POOL_BOTTOM_HALF => */
 
 	rv = VfsPoll(vfs, db->path, &frames, &n);
+	sm_move(&req->sm, EXEC_POLLED);
 	if (rv != 0 || n == 0) {
 		tracef("vfs poll");
 		goto finish;
@@ -439,6 +501,8 @@ static void execBarrierCb(struct barrier *barrier, int status)
 	struct exec *req = barrier->data;
 	struct leader *l = req->leader;
 
+	sm_move(&req->sm, EXEC_BARRIER);
+
 	if (status != 0) {
 		l->exec->status = status;
 		leaderExecDone(l->exec);
@@ -478,6 +542,8 @@ int leader__exec(struct leader *l,
 	req->barrier.data = req;
 	req->barrier.cb = NULL;
 	req->work = (pool_work_t){};
+	sm_init(&req->sm, exec_invariant, NULL, exec_states, "exec",
+		EXEC_START);
 
 	rv = leader__barrier(l, &req->barrier, execBarrierCb);
 	if (rv != 0) {

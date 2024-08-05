@@ -9,6 +9,22 @@
 #define LOG__REFS_INITIAL_SIZE 256
 
 /**
+ * State machine for an entry in the in-memory log.
+ */
+enum {
+	ENTRY_CREATED,
+	ENTRY_COMMITTED,
+	ENTRY_APPLIED,
+	/* Entry failed to commit and was rolled back. */
+	ENTRY_TRUNCATED,
+	/* Entry was removed by installing a snapshot. */
+	ENTRY_REPLACED,
+	/* Entry was removed by creating a snapshot. */
+	ENTRY_SNAPSHOTTED,
+	ENTRY_NR,
+};
+
+/**
  * Counter for outstanding references to a log entry.
  *
  * When an entry is first appended to the log, its refcount is set to one (the
@@ -34,8 +50,13 @@ struct raft_entry_ref
 	 * raft_entry using them. */
 	struct raft_buffer buf;
 	void *batch;
-	struct raft_entry_ref
-	    *next; /* Next item in the bucket (for collisions). */
+	/* State machine for the tracked entry. We keep the sm here instead of
+	 * adding it to raft_entry so that raft_entry can remain a stateless
+	 * value type that does not necessarily represent a live entry in the
+	 * in-memory log. */
+	struct sm sm;
+	/* Next item in the bucket (for collisions). */
+	struct raft_entry_ref *next;
 };
 
 /**
@@ -100,6 +121,14 @@ raft_index logSnapshotIndex(struct raft_log *l);
  * invoked. Return #NULL if there is no such entry. */
 const struct raft_entry *logGet(struct raft_log *l, const raft_index index);
 
+/**
+ * Retrieve a reference to the state machine for an entry, or NULL if there is
+ * no such entry in the log.
+ */
+struct sm *log_get_entry_sm(const struct raft_log *l,
+			    raft_term term,
+			    raft_index index);
+
 /* Check whether the hash map is already tracking an entry with the given
  * @term and @index (that is not part of the "logical" log). If so, increment
  * the refcount of that entry and set @reinstated to true; otherwise, set
@@ -117,13 +146,6 @@ int logAppend(struct raft_log *l,
 	      struct raft_entry_local_data local_data,
 	      bool is_local,
 	      void *batch);
-
-/* Convenience to append a series of #RAFT_COMMAND entries. */
-int logAppendCommands(struct raft_log *l,
-		      const raft_term term,
-		      const struct raft_buffer bufs[],
-		      const struct raft_entry_local_data local_data[],
-		      const unsigned n);
 
 /* Convenience to encode and append a single #RAFT_CHANGE entry. */
 int logAppendConfiguration(struct raft_log *l,

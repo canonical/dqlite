@@ -357,7 +357,8 @@ TEST(append, truncate, setUp, tearDown, 0, NULL)
 
     APPEND_SUBMIT(0, 2, 64);
 
-    rv = f->io.truncate(&f->io, 2);
+    struct raft_io_truncate *trunc = munit_malloc(sizeof(*trunc));
+    rv = f->io.truncate(&f->io, trunc, 2);
     munit_assert_int(rv, ==, 0);
 
     APPEND_SUBMIT(1, 2, 64);
@@ -377,7 +378,8 @@ TEST(append, truncateClosing, setUp, tearDownDeps, 0, NULL)
     int rv;
     APPEND(2, 64);
     APPEND_SUBMIT(0, 2, 64);
-    rv = f->io.truncate(&f->io, 2);
+    struct raft_io_truncate *trunc = munit_malloc(sizeof(*trunc));
+    rv = f->io.truncate(&f->io, trunc, 2);
     munit_assert_int(rv, ==, 0);
     APPEND_SUBMIT(1, 2, 64);
     APPEND_EXPECT(1, RAFT_CANCELED);

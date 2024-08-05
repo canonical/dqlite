@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../lib/queue.h"
+#include "../lib/sm.h" /* struct sm */
 #include "../raft.h"
 #include "../tracing.h"
 #include "assert.h"
@@ -10,7 +12,6 @@
 #include "convert.h"
 #include "entry.h"
 #include "log.h"
-#include "../lib/queue.h"
 #include "snapshot.h"
 
 /* Defaults */
@@ -58,6 +59,40 @@ RAFT_API unsigned raft_fixture_event_server_index(
 	return event->server_index;
 }
 
+/**
+ * State machine for I/O requests in the fixture.
+ */
+enum {
+	FIO_START,
+	FIO_END,
+	FIO_FAIL,
+	FIO_NR,
+};
+
+static struct sm_conf fio_states[FIO_NR] = {
+	[FIO_START] = {
+		.name = "start",
+		.allowed = BITS(FIO_END)
+			  |BITS(FIO_FAIL),
+		.flags = SM_INITIAL,
+	},
+	[FIO_END] = {
+		.name = "end",
+		.flags = SM_FINAL,
+	},
+	[FIO_FAIL] = {
+		.name = "fail",
+		.flags = SM_FAILURE|SM_FINAL,
+	},
+};
+
+static bool fio_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
+}
+
 /* Fields common across all request types. */
 #define REQUEST                                                                \
 	int type;                  /* Request code type. */                    \
@@ -65,7 +100,15 @@ RAFT_API unsigned raft_fixture_event_server_index(
 	queue queue                /* Link the I/O pending requests queue. */
 
 /* Request type codes. */
-enum { APPEND = 1, SEND, TRANSMIT, SNAPSHOT_PUT, SNAPSHOT_GET, ASYNC_WORK };
+enum {
+	APPEND = 1,
+	TRUNCATE,
+	SEND,
+	TRANSMIT,
+	SNAPSHOT_PUT,
+	SNAPSHOT_GET,
+	ASYNC_WORK,
+};
 
 /* Abstract base type for an asynchronous request submitted to the stub I/o
  * implementation. */
@@ -82,6 +125,12 @@ struct append
 	const struct raft_entry *entries;
 	unsigned n;
 	unsigned start; /* Request timestamp. */
+};
+
+struct truncate {
+	REQUEST;
+	struct raft_io_truncate *req;
+	raft_index index;
 };
 
 /* Pending request to send a message. */
@@ -228,6 +277,7 @@ static void ioFlushAppend(struct io *s, struct append *append)
 	/* Simulates a disk write failure. */
 	if (faultTick(&s->append_fault_countdown)) {
 		status = RAFT_IOERR;
+		sm_fail(&append->req->sm, FIO_FAIL, status);
 		goto done;
 	}
 
@@ -247,11 +297,55 @@ static void ioFlushAppend(struct io *s, struct append *append)
 	s->entries = entries;
 	s->n += append->n;
 
+	sm_move(&append->req->sm, FIO_END);
+
 done:
+	sm_fini(&append->req->sm);
 	if (append->req->cb != NULL) {
 		append->req->cb(append->req, status);
 	}
 	raft_free(append);
+}
+
+static void ioFlushTruncate(struct io *io, struct truncate *r)
+{
+	size_t n = (size_t)(r->index - 1); /* Number of entries left after truncation */
+
+	if (n > 0) {
+		struct raft_entry *entries;
+
+		/* Create a new array of entries holding the non-truncated
+		 * entries */
+		entries = raft_malloc(n * sizeof *entries);
+		assert(entries != NULL);
+		memcpy(entries, io->entries, n * sizeof *io->entries);
+
+		/* Release any truncated entry */
+		if (io->entries != NULL) {
+			size_t i;
+			for (i = n; i < io->n; i++) {
+				raft_free(io->entries[i].buf.base);
+			}
+			raft_free(io->entries);
+		}
+		io->entries = entries;
+	} else {
+		/* Release everything we have */
+		if (io->entries != NULL) {
+			size_t i;
+			for (i = 0; i < io->n; i++) {
+				raft_free(io->entries[i].buf.base);
+			}
+			raft_free(io->entries);
+			io->entries = NULL;
+		}
+	}
+
+	io->n = n;
+	sm_move(&r->req->sm, FIO_END);
+	sm_fini(&r->req->sm);
+	raft_free(r->req);
+	raft_free(r);
 }
 
 /* Flush a snapshot put request, copying the snapshot data. */
@@ -270,7 +364,9 @@ static void ioFlushSnapshotPut(struct io *s, struct snapshot_put *r)
 	assert(rv == 0);
 
 	if (r->trailing == 0) {
-		rv = s->io->truncate(s->io, 1);
+		struct raft_io_truncate *trunc = raft_malloc(sizeof(*trunc));
+		assert(trunc != NULL);
+		rv = s->io->truncate(s->io, trunc, 1);
 		assert(rv == 0);
 	}
 
@@ -428,6 +524,9 @@ static void ioFlushAll(struct io *io)
 			case APPEND:
 				ioFlushAppend(io, (struct append *)r);
 				break;
+			case TRUNCATE:
+				ioFlushTruncate(io, (struct truncate *)r);
+				break;
 			case SEND:
 				ioFlushSend(io, (struct send *)r);
 				break;
@@ -584,6 +683,8 @@ static int ioMethodAppend(struct raft_io *raft_io,
 	r = raft_malloc(sizeof *r);
 	assert(r != NULL);
 
+	sm_init(&req->sm, fio_invariant, NULL, fio_states, "fio-append", FIO_START);
+
 	r->type = APPEND;
 	r->completion_time = *io->time + io->disk_latency;
 	r->req = req;
@@ -597,48 +698,23 @@ static int ioMethodAppend(struct raft_io *raft_io,
 	return 0;
 }
 
-static int ioMethodTruncate(struct raft_io *raft_io, raft_index index)
+static int ioMethodTruncate(struct raft_io *raft_io,
+			    struct raft_io_truncate *trunc,
+			    raft_index index)
 {
 	struct io *io = raft_io->impl;
-	size_t n;
+	struct truncate *r;
 
-	n = (size_t)(index - 1); /* Number of entries left after truncation */
-
-	if (n > 0) {
-		struct raft_entry *entries;
-
-		/* Create a new array of entries holding the non-truncated
-		 * entries */
-		entries = raft_malloc(n * sizeof *entries);
-		if (entries == NULL) {
-			return RAFT_NOMEM;
-		}
-		memcpy(entries, io->entries, n * sizeof *io->entries);
-
-		/* Release any truncated entry */
-		if (io->entries != NULL) {
-			size_t i;
-			for (i = n; i < io->n; i++) {
-				raft_free(io->entries[i].buf.base);
-			}
-			raft_free(io->entries);
-		}
-		io->entries = entries;
-	} else {
-		/* Release everything we have */
-		if (io->entries != NULL) {
-			size_t i;
-			for (i = 0; i < io->n; i++) {
-				raft_free(io->entries[i].buf.base);
-			}
-			raft_free(io->entries);
-			io->entries = NULL;
-		}
-	}
-
-	io->n = n;
-
+	sm_init(&trunc->sm, fio_invariant, NULL, fio_states, "fio-trunc", FIO_START);
+	r = raft_malloc(sizeof(*r));
+	assert(r != NULL);
+	r->type = TRUNCATE;
+	r->completion_time = *io->time + io->disk_latency;
+	r->req = trunc;
+	r->index = index;
+	queue_insert_tail(&io->requests, &r->queue);
 	return 0;
+
 }
 
 static int ioMethodSnapshotPut(struct raft_io *raft_io,
@@ -1405,6 +1481,10 @@ static void completeRequest(struct raft_fixture *f, unsigned i, raft_time t)
 	switch (r->type) {
 		case APPEND:
 			ioFlushAppend(io, (struct append *)r);
+			f->event->type = RAFT_FIXTURE_DISK;
+			break;
+		case TRUNCATE:
+			ioFlushTruncate(io, (struct truncate *)r);
 			f->event->type = RAFT_FIXTURE_DISK;
 			break;
 		case SEND:

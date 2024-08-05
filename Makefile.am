@@ -86,7 +86,6 @@ libraft_la_SOURCES = \
   src/raft/fixture.c \
   src/raft/flags.c \
   src/raft/heap.c \
-  src/raft/lifecycle.c \
   src/raft/log.c \
   src/raft/membership.c \
   src/raft/progress.c \
