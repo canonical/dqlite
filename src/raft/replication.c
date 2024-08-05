@@ -1157,6 +1157,13 @@ static int deleteConflictingEntries(struct raft *r,
 				raft_free(trunc);
 				return rv;
 			}
+			for (raft_index x = entry_index; x <= logLastIndex(r->log); x++) {
+				const struct raft_entry *e = logGet(r->log, x);
+				assert(e != NULL);
+				const struct sm *entry_sm = log_get_entry_sm(r->log, e->term, x);
+				assert(entry_sm != NULL);
+				sm_relate(append_sm, entry_sm);
+			}
 			logTruncate(r->log, entry_index);
 
 			/* Drop information about previously stored entries that
