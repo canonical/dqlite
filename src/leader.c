@@ -411,7 +411,9 @@ static int leaderApplyFrames(struct exec *req,
 	return 0;
 
 err_after_command_encode:
+#ifndef USE_SYSTEM_RAFT
 	sm_fini(&apply->req.sm);
+#endif
 	raft_free(buf.base);
 err_after_apply_alloc:
 	raft_free(apply);
