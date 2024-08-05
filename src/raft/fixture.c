@@ -309,7 +309,9 @@ static void ioFlushSnapshotPut(struct io *s, struct snapshot_put *r)
 	assert(rv == 0);
 
 	if (r->trailing == 0) {
-		rv = s->io->truncate(s->io, 1);
+		struct raft_io_truncate *trunc = raft_malloc(sizeof(*trunc));
+		assert(trunc != NULL);
+		rv = s->io->truncate(s->io, trunc, 1);
 		assert(rv == 0);
 	}
 
@@ -638,10 +640,14 @@ static int ioMethodAppend(struct raft_io *raft_io,
 	return 0;
 }
 
-static int ioMethodTruncate(struct raft_io *raft_io, raft_index index)
+static int ioMethodTruncate(struct raft_io *raft_io,
+			    struct raft_io_truncate *trunc,
+			    raft_index index)
 {
 	struct io *io = raft_io->impl;
 	size_t n;
+
+	sm_init(&trunc->sm, fio_invariant, NULL, fio_states, "fio-trunc", FIO_START);
 
 	n = (size_t)(index - 1); /* Number of entries left after truncation */
 
@@ -652,6 +658,7 @@ static int ioMethodTruncate(struct raft_io *raft_io, raft_index index)
 		 * entries */
 		entries = raft_malloc(n * sizeof *entries);
 		if (entries == NULL) {
+			sm_fail(&trunc->sm, FIO_FAIL, RAFT_NOMEM);
 			return RAFT_NOMEM;
 		}
 		memcpy(entries, io->entries, n * sizeof *io->entries);
@@ -678,7 +685,8 @@ static int ioMethodTruncate(struct raft_io *raft_io, raft_index index)
 	}
 
 	io->n = n;
-
+	sm_move(&trunc->sm, FIO_END);
+	raft_free(trunc);
 	return 0;
 }
 

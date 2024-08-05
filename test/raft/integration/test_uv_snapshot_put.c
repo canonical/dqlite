@@ -61,6 +61,7 @@ static void snapshotGetCbAssertResult(struct raft_io_snapshot_get *req,
 #define TRUNCATE(N)                      \
     {                                    \
         int _rv;                         \
+        struct raft_io_truncate *trunc = munit_malloc(sizeof(*trunc)); \
         _rv = f->io.truncate(&f->io, N); \
         munit_assert_int(_rv, ==, 0);    \
     }

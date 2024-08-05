@@ -1112,6 +1112,7 @@ static int checkLogMatchingProperty(struct raft *r,
  * AppendEntries request. */
 static int deleteConflictingEntries(struct raft *r,
 				    const struct raft_append_entries *args,
+				    const struct sm *append_sm,
 				    size_t *i)
 {
 	size_t j;
@@ -1145,8 +1146,15 @@ static int deleteConflictingEntries(struct raft *r,
 
 			/* Delete all entries from this index on because they
 			 * don't match. */
-			rv = r->io->truncate(r->io, entry_index);
+			struct raft_io_truncate *trunc = raft_malloc(sizeof(*trunc));
+			if (trunc == NULL) {
+				return RAFT_NOMEM;
+			}
+			rv = r->io->truncate(r->io, trunc, entry_index);
+			sm_relate(append_sm, &trunc->sm);
 			if (rv != 0) {
+				sm_fini(&trunc->sm);
+				raft_free(trunc);
 				return rv;
 			}
 			logTruncate(r->log, entry_index);
@@ -1216,7 +1224,7 @@ int replicationAppend(struct raft *r,
 	}
 
 	/* Delete conflicting entries. */
-	rv = deleteConflictingEntries(r, args, &i);
+	rv = deleteConflictingEntries(r, args, &request->sm, &i);
 	if (rv != 0) {
 		goto err_after_request_alloc;
 	}

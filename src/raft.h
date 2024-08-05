@@ -563,6 +563,15 @@ struct raft_io_append
 };
 
 /**
+ * Sort-of asynchronous request to truncate the log. (Note that there is no
+ * callback.)
+ */
+struct raft_io_truncate
+{
+	struct sm sm;
+};
+
+/**
  * Asynchronous request to store a new snapshot.
  */
 struct raft_io_snapshot_put;
@@ -687,7 +696,15 @@ struct raft_io
 		      const struct raft_entry entries[],
 		      unsigned n,
 		      raft_io_append_cb cb);
-	int (*truncate)(struct raft_io *io, raft_index index);
+	/* Contract: unlike other raft_io methods, truncate takes ownership
+	 * of the passed-in request and frees it using the raft allocator.
+	 * (This is because it doesn't accept a callback that the caller
+	 * could use to free the request itself.) Exception: if the return
+	 * value of truncate is nonzero, the caller must free the request.
+	 * (This is to allow the caller to do sm_relate.) */
+	int (*truncate)(struct raft_io *io,
+			struct raft_io_truncate *req,
+			raft_index index);
 	int (*snapshot_put)(struct raft_io *io,
 			    unsigned trailing,
 			    struct raft_io_snapshot_put *req,
