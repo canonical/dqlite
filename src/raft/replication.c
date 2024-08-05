@@ -1295,7 +1295,7 @@ int replicationAppend(struct raft *r,
 		rv =
 		    logReinstate(r->log, entry->term, entry->type, &reinstated);
 		if (rv != 0) {
-			goto err_after_request_alloc;
+			goto err_after_log_append;
 		}
 		if (!reinstated) {
 			/* TODO This copy should not strictly be necessary, as
@@ -1307,13 +1307,13 @@ int replicationAppend(struct raft *r,
 			 */
 			rv = entryCopy(entry, &copy);
 			if (rv != 0) {
-				goto err_after_request_alloc;
+				goto err_after_log_append;
 			}
 
 			rv = logAppend(r->log, copy.term, copy.type, copy.buf,
 				       (struct raft_entry_local_data){}, false, NULL);
 			if (rv != 0) {
-				goto err_after_request_alloc;
+				goto err_after_log_append;
 			}
 		}
 
@@ -1326,7 +1326,7 @@ int replicationAppend(struct raft *r,
 	rv = logAcquire(r->log, request->index, &request->args.entries,
 			&request->args.n_entries);
 	if (rv != 0) {
-		goto err_after_request_alloc;
+		goto err_after_log_append;
 	}
 
 	assert(request->args.n_entries == n);
@@ -1362,8 +1362,7 @@ err_after_acquire_entries:
 	/* Release the entries related to the IO request */
 	logRelease(r->log, request->index, request->args.entries,
 		   request->args.n_entries);
-
-err_after_request_alloc:
+err_after_log_append:
 	/* Release all entries added to the in-memory log, making
 	 * sure the in-memory log and disk don't diverge, leading
 	 * to future log entries not being persisted to disk.
@@ -1371,6 +1370,7 @@ err_after_request_alloc:
 	if (j != 0) {
 		logTruncate(r->log, request->index);
 	}
+err_after_request_alloc:
 	append_follower_done(request, rv);
 
 err:
