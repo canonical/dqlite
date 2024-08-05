@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../lib/queue.h"
+#include "../lib/sm.h" /* struct sm */
 #include "../raft.h"
 #include "../tracing.h"
 #include "assert.h"
@@ -10,7 +12,6 @@
 #include "convert.h"
 #include "entry.h"
 #include "log.h"
-#include "../lib/queue.h"
 #include "snapshot.h"
 
 /* Defaults */
@@ -56,6 +57,40 @@ RAFT_API unsigned raft_fixture_event_server_index(
 {
 	assert(event != NULL);
 	return event->server_index;
+}
+
+/**
+ * State machine for I/O requests in the fixture.
+ */
+enum {
+	FIO_START,
+	FIO_END,
+	FIO_FAIL,
+	FIO_NR,
+};
+
+static struct sm_conf fio_states[FIO_NR] = {
+	[FIO_START] = {
+		.name = "start",
+		.allowed = BITS(FIO_END)
+			  |BITS(FIO_FAIL),
+		.flags = SM_INITIAL,
+	},
+	[FIO_END] = {
+		.name = "end",
+		.flags = SM_FINAL,
+	},
+	[FIO_FAIL] = {
+		.name = "fail",
+		.flags = SM_FAILURE|SM_FINAL,
+	},
+};
+
+static bool fio_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
 }
 
 /* Fields common across all request types. */
@@ -228,6 +263,7 @@ static void ioFlushAppend(struct io *s, struct append *append)
 	/* Simulates a disk write failure. */
 	if (faultTick(&s->append_fault_countdown)) {
 		status = RAFT_IOERR;
+		sm_fail(&append->req->sm, FIO_FAIL, status);
 		goto done;
 	}
 
@@ -247,7 +283,10 @@ static void ioFlushAppend(struct io *s, struct append *append)
 	s->entries = entries;
 	s->n += append->n;
 
+	sm_move(&append->req->sm, FIO_END);
+
 done:
+	sm_fini(&append->req->sm);
 	if (append->req->cb != NULL) {
 		append->req->cb(append->req, status);
 	}
@@ -583,6 +622,8 @@ static int ioMethodAppend(struct raft_io *raft_io,
 
 	r = raft_malloc(sizeof *r);
 	assert(r != NULL);
+
+	sm_init(&req->sm, fio_invariant, NULL, fio_states, "fio-append", FIO_START);
 
 	r->type = APPEND;
 	r->completion_time = *io->time + io->disk_latency;
