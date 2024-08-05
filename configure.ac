@@ -118,6 +118,7 @@ CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -Wdate-time \
   -Wnested-externs \
   -Wconversion \
+  -Wno-format-nonliteral \
   -Werror \
 ])
 # To enable:
