@@ -1,7 +1,5 @@
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
-#include "src/lib/threadpool.h"
-#include "src/raft/recv_install_snapshot.h"
 
 /******************************************************************************
  *

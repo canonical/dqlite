@@ -3,30 +3,25 @@
 #include <string.h>
 #include <sys/types.h>
 #include <uv.h>
+#include "../lib/dir.h"
 #include "../lib/runner.h"
 #include "../../../src/lib/sm.h"
 #include "../../../src/raft.h"
 #include "../../../src/raft/recv_install_snapshot.h"
 #include "../../../src/utils.h"
 #include "../../../src/lib/threadpool.h"
-
-struct fixture {
-};
+#include "../../../src/tracing.h"
 
 static void *set_up(MUNIT_UNUSED const MunitParameter params[],
                    MUNIT_UNUSED void *user_data)
 {
-	struct fixture *f = munit_malloc(sizeof *f);
-	return f;
+	return NULL;
 }
 
 static void tear_down(void *data)
 {
-	free(data);
+	(void)data;
 }
-
-SUITE(snapshot_leader)
-SUITE(snapshot_follower)
 
 static void ut_leader_message_received(struct leader *leader,
 				const struct raft_message *incoming)
@@ -191,6 +186,9 @@ int ut_sender_send_op(struct sender *s,
 static bool ut_is_pool_thread_op(void) {
 	return false;
 }
+
+SUITE(snapshot_leader)
+SUITE(snapshot_follower)
 
 TEST(snapshot_follower, basic, set_up, tear_down, 0, NULL) {
 	struct follower_ops ops = {
@@ -416,20 +414,29 @@ TEST(snapshot_leader, timeouts, set_up, tear_down, 0, NULL) {
 	return MUNIT_OK;
 }
 
-struct test_fixture {
-	pool_t pool;
+struct peer
+{
+	struct raft_uv_transport transport;
+	struct raft_io io;
+};
 
-	union {
-		struct leader leader;
-		struct follower follower;
-	};
-	/* true when union contains leader, false when it contains follower. */
+struct test_fixture {
+	struct leader leader;
+	struct peer leader_peer;
+	struct follower follower;
+	struct peer follower_peer;
+	/* true when leader is active, false when follower is active. */
 	bool is_leader;
 
 	/* We only expect one message to be in-flight. */
 	struct raft_message last_msg_sent;
-	/* Message was sent and has not been consumed, see uv_get_msg_sent(). */
-	bool msg_valid;
+
+	bool msg_sent;
+	bool msg_received;
+	bool msg_consumed;
+
+	pool_t pool;
+	uv_loop_t loop;
 
 	/* TODO: should accomodate several background jobs in the future. Probably
 	 * by scheduling a barrier in the pool after all the works that toggles this
@@ -441,56 +448,25 @@ struct test_fixture {
 /* Not problematic because each test runs in a different process. */
 static struct test_fixture global_fixture;
 
-static void *pool_set_up(MUNIT_UNUSED const MunitParameter params[],
-                   MUNIT_UNUSED void *user_data)
-{
-	/* Prevent hangs. */
-	alarm(2);
-
-	global_fixture = (struct test_fixture) { 0 };
-	pool_init(&global_fixture.pool, uv_default_loop(), 4, POOL_QOS_PRIO_FAIR);
-	global_fixture.pool.flags |= POOL_FOR_UT;
-
-	struct fixture *f = munit_malloc(sizeof *f);
-	return f;
-}
-
-static void pool_tear_down(void *data)
-{
-	pool_close(&global_fixture.pool);
-	pool_fini(&global_fixture.pool);
-	free(data);
-}
-
+/* Advances libuv in the main thread for some steps. */
 static void progress(void) {
-	for (unsigned i = 0; i < 20; i++) {
-		uv_run(uv_default_loop(), UV_RUN_NOWAIT);
-	}
-}
-
-/* Advances libuv in the main thread until the in-flight background work is
- * finished.
- *
- * This function is designed with the constaint that there can only be one
- * request in-flight. It will hang until the work is finished. */
-static void wait_work(void) {
 	PRE(!pool_is_pool_thread());
 
-	while (!global_fixture.work_done) {
-		uv_run(uv_default_loop(), UV_RUN_NOWAIT);
+	for (unsigned i = 0; i < 20; i++) {
+		uv_run(&global_fixture.loop, UV_RUN_NOWAIT);
 	}
 }
 
 /* Advances libuv in the main thread until the in-flight message that was queued
- * is sent.
+ * is sent received and all background jobs finish.
  *
  * This function is designed with the constaint that there can only be one
- * message in-flight. It will hang until the message is sent. */
-static void wait_msg_sent(void) {
+ * message and one background job in-flight. It will hang until completion. */
+static void wait_all(void) {
 	PRE(!pool_is_pool_thread());
 
-	while (!global_fixture.msg_valid) {
-		uv_run(uv_default_loop(), UV_RUN_NOWAIT);
+	while (!global_fixture.msg_received || !global_fixture.msg_sent || !global_fixture.work_done) {
+		uv_run(&global_fixture.loop, UV_RUN_NOWAIT);
 	}
 }
 
@@ -514,7 +490,7 @@ static void pool_to_stop_op(struct timeout *to)
 
 static void pool_to_init_op(struct timeout *to)
 {
-	uv_timer_init(uv_default_loop(), &to->handle);
+	uv_timer_init(&global_fixture.loop, &to->handle);
 }
 
 static void pool_work_queue_op(struct work *w, work_op work_cb, work_op after_cb)
@@ -571,58 +547,127 @@ static void pool_read_sig_op(pool_work_t *w)
 	PRE(follower->ops->is_pool_thread());
 }
 
-struct uv_sender_send_data {
-	struct sender *s;
-	sender_cb_op cb;
+struct raft_pool_fixture
+{
+	FIXTURE_DIR;
 };
 
-static void uv_sender_send_cb(uv_work_t *req) {
-	(void)req;
+static void peer_setup(struct raft_pool_fixture *f, struct peer *peer, int id, char * address) {
+	struct raft_uv_transport *transport = &peer->transport;
+	struct raft_io *io = &peer->io;
+	int rv;
+	transport->version = 1;
+	rv = raft_uv_tcp_init(transport, &global_fixture.loop);
+	munit_assert_int(rv, ==, 0);
+	rv = raft_uv_init(io, &global_fixture.loop, f->dir, transport);
+	munit_assert_int(rv, ==, 0);
+	rv = io->init(io, id, address);
+	munit_assert_int(rv, ==, 0);
 }
 
-static void uv_sender_send_after_cb(uv_work_t *req, int status) {
-	global_fixture.msg_valid = true;
-	struct uv_sender_send_data *data = req->data;
-	data->cb(data->s, status);
+static void recv_cb(struct raft_io *io, struct raft_message *msg) {
+	(void)io;
+	tracef("msg received, msg.type:%d", msg->type);
+	global_fixture.last_msg_sent = *msg;
+	global_fixture.msg_consumed = false;
+	global_fixture.msg_received = true;
 }
 
-static int uv_sender_send_op(struct sender *s,
-		struct raft_message *payload,
-		sender_cb_op cb) {
-	/* We only expect one message to be in-flight. */
-	static uv_work_t req;
-	static struct uv_sender_send_data req_data;
+static void raft_pool_tear_down(void *data) {
+	struct raft_pool_fixture *f = data;
 
-	global_fixture.last_msg_sent = *payload;
-	/* Flag is only toggled when the after_cb is called, emulating the message
-	 * being sent. */
-	global_fixture.msg_valid = false;
-	s->cb = cb;
-	req_data = (struct uv_sender_send_data) {
-		.s = s,
-		.cb = cb,
-	};
-	req = (uv_work_t) {
-		.data = &req_data,
-	};
-	uv_queue_work(uv_default_loop(), &req, uv_sender_send_cb, uv_sender_send_after_cb);
-	return 0;
+	TEAR_DOWN_DIR;
+	free(f);
 }
 
-struct raft_message uv_get_msg_sent(void) {
-	munit_assert(global_fixture.msg_valid);
-	global_fixture.msg_valid = false;
+static void *raft_pool_set_up(MUNIT_UNUSED const MunitParameter params[],
+                   MUNIT_UNUSED void *user_data) {
+	int rv;
+	/* Prevent hangs. */
+	alarm(2);
+
+	struct raft_pool_fixture *f = munit_malloc(sizeof *f);
+	SET_UP_DIR;
+	rv = uv_loop_init(&global_fixture.loop);
+	munit_assert_int(rv, ==, 0);
+
+	global_fixture.msg_sent = false;
+	global_fixture.msg_received = false;
+	global_fixture.msg_consumed = false;
+
+	peer_setup(f, &global_fixture.leader_peer, 1, "127.0.0.1:9001");
+	raft_uv_set_auto_recovery(&global_fixture.leader_peer.io, false);
+
+	peer_setup(f, &global_fixture.follower_peer, 2, "127.0.0.1:9002");
+	raft_uv_set_auto_recovery(&global_fixture.follower_peer.io, false);
+
+	pool_init(&global_fixture.pool, &global_fixture.loop, 4, POOL_QOS_PRIO_FAIR);
+	global_fixture.pool.flags |= POOL_FOR_UT;
+
+	rv = global_fixture.leader_peer.io.start(&global_fixture.leader_peer.io, 1000, NULL, recv_cb);
+	munit_assert_int(rv, ==, 0);
+	rv = global_fixture.follower_peer.io.start(&global_fixture.follower_peer.io, 1000, NULL, recv_cb);
+	munit_assert_int(rv, ==, 0);
+	return f;
+}
+
+struct raft_message raft_get_msg_sent(void) {
+	tracef("%s: consume msg", global_fixture.is_leader ? "leader" : "follower");
+	munit_assert(!global_fixture.msg_consumed && global_fixture.msg_sent && global_fixture.msg_received);
+	global_fixture.msg_consumed = true;
 	return global_fixture.last_msg_sent;
 }
 
-TEST(snapshot_leader, pool_timeouts, pool_set_up, pool_tear_down, 0, NULL) {
+void raft_sender_send_after_cb(struct raft_io_send *req, int status) {
+	munit_assert_int(status, ==, 0);
+
+	struct sender *s = req->data;
+	s->cb(s, status);
+	tracef("msg sent");
+	global_fixture.msg_sent = true;
+}
+
+int raft_sender_send_op(struct sender *s,
+		struct raft_message *msg,
+		sender_cb_op cb) {
+	struct rpc *rpc = CONTAINER_OF(msg, struct rpc, message);
+	struct raft_io_send *req = &rpc->sender.req;
+
+	global_fixture.msg_sent = false;
+	global_fixture.msg_received = false;
+	s->cb = cb;
+	req->data = s;
+
+	struct raft_io *io;
+	if (global_fixture.is_leader) {
+		io = &global_fixture.leader_peer.io;
+	} else {
+		io = &global_fixture.follower_peer.io;
+	}
+
+	tracef("queue msg for sending, msg_type: %d", msg->type);
+	int rv = io->send(io, req, msg, raft_sender_send_after_cb);
+	munit_assert_int(rv, ==, 0);
+	return 0;
+}
+
+static void msg_assert_sender(const struct raft_message *msg, raft_id id,
+		const char *addr) {
+	munit_assert_int(msg->server_id, ==, id);
+	munit_assert_string_equal(msg->server_address, addr);
+}
+
+TEST(snapshot_leader, pool_timeouts, raft_pool_set_up, raft_pool_tear_down, 0, NULL) {
+	const int fid = 2;
+	const char *faddr = "127.0.0.1:9002";
+
 	struct leader_ops ops = {
 		.to_init = pool_to_init_op,
 		.to_stop = pool_to_stop_op,
 		.to_start = pool_to_start_op,
 		.ht_create = pool_ht_create_op,
 		.work_queue = pool_work_queue_op,
-		.sender_send = uv_sender_send_op,
+		.sender_send = raft_sender_send_op,
 		.is_pool_thread = pool_is_pool_thread,
 	};
 
@@ -630,6 +675,10 @@ TEST(snapshot_leader, pool_timeouts, pool_set_up, pool_tear_down, 0, NULL) {
 	struct leader *leader = &global_fixture.leader;
 	*leader = (struct leader) {
 		.ops = &ops,
+
+		.db_name = "test-db",
+		.fid = fid,
+		.faddr = faddr,
 
 		.sigs_more = false,
 		.pages_more = false,
@@ -642,68 +691,70 @@ TEST(snapshot_leader, pool_timeouts, pool_set_up, pool_tear_down, 0, NULL) {
 	PRE(sm_state(&leader->sm) == LS_F_ONLINE);
 	ut_leader_message_received(leader, append_entries_result());
 
-	wait_work();
+	wait_all();
 
 	PRE(sm_state(&leader->sm) == LS_F_NEEDS_SNAP);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
 	pool_rpc_to_expired(&leader->rpc);
 
 	PRE(sm_state(&leader->sm) == LS_F_NEEDS_SNAP);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
 	ut_leader_message_received(leader, ut_install_snapshot_result());
 
 	PRE(sm_state(&leader->sm) == LS_CHECK_F_HAS_SIGS);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
 	ut_leader_message_received(leader, ut_sign_result());
 	pool_to_expired(leader);
 
 	PRE(sm_state(&leader->sm) == LS_CHECK_F_HAS_SIGS);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
 	pool_rpc_to_expired(&leader->rpc);
 
 	PRE(sm_state(&leader->sm) == LS_CHECK_F_HAS_SIGS);
 	leader->sigs_calculated = true;
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
 	ut_leader_message_received(leader, ut_sign_result());
 
 	PRE(sm_state(&leader->sm) == LS_REQ_SIG_LOOP);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
 	PRE(sm_state(&leader->sm) == LS_REQ_SIG_LOOP);
 	ut_leader_message_received(leader, ut_sign_result());
 
-	wait_work();
-	wait_work();
+	wait_all();
 
 	PRE(sm_state(&leader->sm) == LS_PAGE_READ);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
 	pool_rpc_to_expired(&leader->rpc);
 
 	PRE(sm_state(&leader->sm) == LS_PAGE_READ);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
 	ut_leader_message_received(leader, ut_page_result());
 
 	PRE(sm_state(&leader->sm) == LS_SNAP_DONE);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
 	ut_leader_message_received(leader, ut_install_snapshot_result());
 
 	sm_fini(&leader->sm);
 	return MUNIT_OK;
 }
 
-TEST(snapshot_follower, pool, pool_set_up, pool_tear_down, 0, NULL) {
+TEST(snapshot_follower, pool, raft_pool_set_up, raft_pool_tear_down, 0, NULL) {
+	const int lid = 1;
+	const char *laddr = "127.0.0.1:9001";
+
 	struct follower_ops ops = {
 		.ht_create = pool_ht_create_op,
 		.work_queue = pool_work_queue_op,
-		.sender_send = uv_sender_send_op,
+		.sender_send = raft_sender_send_op,
 		.read_sig = pool_read_sig_op,
 		.write_chunk = pool_write_chunk_op,
 		.fill_ht = pool_fill_ht_op,
@@ -715,6 +766,10 @@ TEST(snapshot_follower, pool, pool_set_up, pool_tear_down, 0, NULL) {
 
 	*follower = (struct follower) {
 		.ops = &ops,
+
+		.db_name = "test-db",
+		.lid = lid,
+		.laddr = laddr,
 	};
 
 	sm_init(&follower->sm, follower_sm_invariant,
@@ -722,51 +777,134 @@ TEST(snapshot_follower, pool, pool_set_up, pool_tear_down, 0, NULL) {
 
 	PRE(sm_state(&follower->sm) == FS_NORMAL);
 	ut_follower_message_received(follower, ut_install_snapshot());
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_RESULT);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_RESULT);
 
-	wait_work();
+	wait_all();
 
 	PRE(sm_state(&follower->sm) == FS_SIGS_CALC_LOOP);
 	ut_follower_message_received(follower, ut_sign());
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE_RESULT);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_SIGNATURE_RESULT);
 
 	PRE(sm_state(&follower->sm) == FS_SIGS_CALC_LOOP);
 
 	follower->sigs_calculated = true;
-	wait_work();
+	wait_all();
 
 	PRE(sm_state(&follower->sm) == FS_SIGS_CALC_LOOP);
 	ut_follower_message_received(follower, ut_sign());
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE_RESULT);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_SIGNATURE_RESULT);
 
 	PRE(sm_state(&follower->sm) == FS_SIG_RECEIVING);
 	ut_follower_message_received(follower, ut_sign());
 
 	PRE(sm_state(&follower->sm) == FS_SIG_PROCESSED);
-
-	wait_work();
-
-	PRE(sm_state(&follower->sm) == FS_SIG_READ);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE_RESULT);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_SIGNATURE_RESULT);
 
 	PRE(sm_state(&follower->sm) == FS_CHUNCK_RECEIVING);
 	ut_follower_message_received(follower, ut_page());
-
-	wait_work();
-
-	PRE(sm_state(&follower->sm) == FS_CHUNCK_APPLIED);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP_RESULT);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP_RESULT);
 
 	PRE(sm_state(&follower->sm) == FS_SNAP_DONE);
 	ut_follower_message_received(follower, ut_install_snapshot());
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_RESULT);
+	wait_all();
+	munit_assert_int(raft_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_RESULT);
 
 	sm_fini(&follower->sm);
+	return MUNIT_OK;
+}
+
+SUITE(snapshot)
+
+TEST(snapshot, basic, raft_pool_set_up, raft_pool_tear_down, 0, NULL) {
+	const int lid = 1;
+	const char *laddr = "127.0.0.1:9001";
+	const int fid = 2;
+	const char *faddr = "127.0.0.1:9002";
+
+	struct follower_ops follower_ops = {
+		.ht_create = pool_ht_create_op,
+		.work_queue = pool_work_queue_op,
+		.sender_send = raft_sender_send_op,
+		.read_sig = pool_read_sig_op,
+		.write_chunk = pool_write_chunk_op,
+		.fill_ht = pool_fill_ht_op,
+		.is_pool_thread = pool_is_pool_thread,
+	};
+
+	struct follower *follower = &global_fixture.follower;
+
+	*follower = (struct follower) {
+		.ops = &follower_ops,
+
+		.db_name = "test-db",
+		.lid = lid,
+		.laddr = laddr,
+	};
+
+	sm_init(&follower->sm, follower_sm_invariant,
+		NULL, follower_sm_conf, "follower", FS_NORMAL);
+
+	struct leader_ops leader_ops = {
+		.to_init = pool_to_init_op,
+		.to_stop = pool_to_stop_op,
+		.to_start = pool_to_start_op,
+		.ht_create = pool_ht_create_op,
+		.work_queue = pool_work_queue_op,
+		.sender_send = raft_sender_send_op,
+		.is_pool_thread = pool_is_pool_thread,
+	};
+
+	struct leader *leader = &global_fixture.leader;
+	*leader = (struct leader) {
+		.ops = &leader_ops,
+
+		.db_name = "test-db",
+		.fid = fid,
+		.faddr = faddr,
+
+		.sigs_more = false,
+		.pages_more = false,
+		.sigs_calculated = false,
+	};
+
+	sm_init(&leader->sm, leader_sm_invariant,
+		NULL, leader_sm_conf, "leader", LS_F_ONLINE);
+
+	global_fixture.is_leader = true;
+	ut_leader_message_received(leader, append_entries_result());
+	wait_all();
+
+	struct raft_message msg;
+
+#define STEP \
+	global_fixture.is_leader = false; \
+	msg = raft_get_msg_sent(); \
+	msg_assert_sender(&msg, lid, laddr); \
+	ut_follower_message_received(follower, &msg); \
+	wait_all(); \
+\
+	global_fixture.is_leader = true; \
+	msg = raft_get_msg_sent(); \
+	msg_assert_sender(&msg, fid, faddr); \
+	ut_leader_message_received(leader, &msg); \
+	wait_all(); \
+
+	STEP;
+	follower->sigs_calculated = true;
+	leader->sigs_calculated = true;
+	STEP;
+	for (unsigned i = 0; i < 10; i++) {
+		STEP;
+		if (sm_state(&leader->sm) == LS_F_ONLINE) {
+			// Test finished.
+			break;
+		};
+	}
+
 	return MUNIT_OK;
 }
