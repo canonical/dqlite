@@ -3,7 +3,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 
 #if defined(__cplusplus)
 #define DQLITE_INLINE inline

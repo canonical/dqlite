@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include "../../src/utils.h"
 
 #if defined(__cplusplus)
 #define BYTE__INLINE inline
@@ -101,6 +102,8 @@ BYTE__INLINE void bytePut64(void **cursor, uint64_t value)
 
 BYTE__INLINE void bytePutString(void **cursor, const char *value)
 {
+	PRE(value != NULL);
+
 	char **p = (char **)cursor;
 	strcpy(*p, value);
 	*p += strlen(value) + 1;

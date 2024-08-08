@@ -25,7 +25,7 @@ struct work {
 };
 
 struct sender {
-	// TODO embbed the uv req here.
+	struct raft_io_send req;
 	sender_cb_op cb;
 };
 
@@ -81,6 +81,10 @@ struct leader {
 	struct timeout timeout;
 	const struct leader_ops *ops;
 
+	/* TODO interim values */
+	raft_id fid;
+	const char *faddr;
+	char *db_name; // TODO support more than 1 db.
 	/* TODO dummy flags */
 	bool sigs_calculated;
 	bool sigs_more;
@@ -94,6 +98,10 @@ struct follower {
 	work_op work_cb;
 	const struct follower_ops *ops;
 
+	/* TODO interim values */
+	raft_id lid;
+	const char *laddr;
+	char *db_name;
 	/* TODO dummy flags */
 	bool sigs_calculated;
 };

@@ -377,9 +377,8 @@ struct raft_signature {
 
 	const char *db;
 	struct page_from_to page_from_to;
-	pageno_t cs_page_no;
-	enum raft_result result;
 	bool ask_calculated;
+	enum raft_result result;
 };
 #define RAFT_SIGNATURE_VERSION 0
 
@@ -387,11 +386,15 @@ struct raft_signature_result {
 	int version;
 
 	const char *db;
-	struct page_checksum *cs;
-	unsigned int cs_nr;
+	uint64_t cs_nr;
+	// TODO: more appropriate size + constant? to avoid allocating memory for
+	// each message.
+	// PRE for signature to validate max size.
+	// PRE when decoding as well.
+	struct page_checksum cs[10];
 	pageno_t cs_page_no;
-	enum raft_result result;
 	bool calculated;
+	enum raft_result result;
 };
 #define RAFT_SIGNATURE_RESULT_VERSION 0
 
@@ -399,8 +402,9 @@ struct raft_install_snapshot_mv {
 	int version;
 
 	const char *db;
-	struct page_from_to *mv;
-	unsigned int mv_nr;
+	uint64_t mv_nr;
+	// TODO max size, same as checksums, with PREs.
+	struct page_from_to mv[10];
 	enum raft_result result;
 };
 #define RAFT_INSTALL_SNAPSHOT_MV_VERSION 0
