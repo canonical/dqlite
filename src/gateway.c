@@ -16,6 +16,7 @@
 
 void gateway__init(struct gateway *g,
 		   struct config *config,
+		   uv_loop_t *loop,
 		   struct registry *registry,
 		   struct raft *raft,
 		   struct id_state seed)
@@ -34,6 +35,10 @@ void gateway__init(struct gateway *g,
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 	g->client_id = 0;
 	g->random_state = seed;
+	g->sched = (uv_timer_t){};
+	if (loop != NULL) {
+		uv_timer_init(loop, &g->sched);
+	}
 }
 
 void gateway__leader_close(struct gateway *g, int reason)
@@ -96,6 +101,11 @@ void gateway__leader_close(struct gateway *g, int reason)
 void gateway__close(struct gateway *g)
 {
 	tracef("gateway close");
+
+	if (g->sched.loop != NULL) {
+		uv_close((uv_handle_t *)&g->sched, NULL);
+	}
+
 	if (g->leader == NULL) {
 		stmt__registry_close(&g->stmts);
 		return;
@@ -718,6 +728,25 @@ static void handle_exec_sql_next(struct gateway *g,
 				 struct handle *req,
 				 bool done);
 
+static void schedule_exec_sql_next_cb(uv_timer_t *t)
+{
+	struct gateway *g = t->data;
+	PRE(g->req != NULL);
+	PRE(g->req->type == DQLITE_REQUEST_EXEC_SQL);
+	handle_exec_sql_next(g, g->req, true);
+}
+
+static void schedule_exec_sql_next(struct gateway *g)
+{
+	PRE(g->req->type == DQLITE_REQUEST_EXEC_SQL);
+	g->sched.data = g;
+	if (g->sched.loop != NULL) {
+		uv_timer_start(&g->sched, schedule_exec_sql_next_cb, 0, 0);
+	} else {
+		schedule_exec_sql_next_cb(&g->sched);
+	}
+}
+
 static void handle_exec_sql_cb(struct exec *exec, int status)
 {
 	tracef("handle exec sql cb status %d", status);
@@ -728,7 +757,15 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 	sqlite3_finalize(exec->stmt);
 
 	if (status == SQLITE_DONE) {
-		handle_exec_sql_next(g, req, true);
+		/* The next line simply for the event loop to call
+		 * handle_exec_sql_next on the next iteration. We could just
+		 * call handle_exec_sql_next here, but that causes bounded
+		 * recursion when needsBarrier is false, with the maximum stack
+		 * depth being proportional to the number of `;`-separated
+		 * statements in the original SQL string. We don't want clients
+		 * to be able to trigger this, so we break the cycle here
+		 * instead. */
+		schedule_exec_sql_next(g);
 	} else {
 		assert(g->leader != NULL);
 		failure(req, status, error_message(g->leader->conn, status));

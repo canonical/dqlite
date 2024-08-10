@@ -55,8 +55,12 @@ struct connection {
 		struct id_state seed = { { 1 } };                       \
 		config = CLUSTER_CONFIG(i);                             \
 		config->page_size = 512;                                \
-		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
-			      CLUSTER_RAFT(i), seed);                   \
+		gateway__init(&c->gateway, \
+			      config, \
+			      NULL, \
+			      CLUSTER_REGISTRY(i), \
+			      CLUSTER_RAFT(i), \
+			      seed); \
 		c->handle.data = &c->context;                           \
 		rc = buffer__init(&c->buf1);                            \
 		munit_assert_int(rc, ==, 0);                            \

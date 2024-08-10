@@ -35,10 +35,20 @@ struct gateway {
 	uint64_t protocol;           /* Protocol format version */
 	uint64_t client_id;
 	struct id_state random_state; /* For generating IDs */
+	/* handle_exec_sql uses this to defer some work to the next loop
+	 * iteration. */
+	uv_timer_t sched;
 };
 
+/**
+ * Initialize a gateway.
+ *
+ * Passing NULL for the `loop` is permitted. Currently the loop is only used
+ * optionally to break potential recursion in handle_exec_sql.
+ */
 void gateway__init(struct gateway *g,
 		   struct config *config,
+		   uv_loop_t *loop,
 		   struct registry *registry,
 		   struct raft *raft,
 		   struct id_state seed);
