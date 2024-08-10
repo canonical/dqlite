@@ -127,6 +127,7 @@ static void raft_connect(struct conn *c)
 	/* Close the connection without actually closing the transport, since
 	 * the stream will be used by raft */
 	c->closed = true;
+	gateway__close(&c->gateway);
 	closeCb(&c->transport);
 }
 
