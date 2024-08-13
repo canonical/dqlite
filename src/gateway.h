@@ -35,8 +35,9 @@ struct gateway {
 	uint64_t protocol;           /* Protocol format version */
 	uint64_t client_id;
 	struct id_state random_state; /* For generating IDs */
-	/* handle_exec_sql uses this to defer some work to the next loop
-	 * iteration. */
+	/* The EXEC_SQL request handler uses this to defer work to the next
+	 * loop iteration, to avoid recursion when processing multi-statement
+	 * SQL strings. */
 	uv_timer_t sched;
 };
 
@@ -44,7 +45,8 @@ struct gateway {
  * Initialize a gateway.
  *
  * Passing NULL for the `loop` is permitted. Currently the loop is only used
- * optionally to break potential recursion in handle_exec_sql.
+ * optionally to break potential recursion when handling an EXEC_SQL request
+ * that containss multiple `;`-separated statements.
  */
 void gateway__init(struct gateway *g,
 		   struct config *config,

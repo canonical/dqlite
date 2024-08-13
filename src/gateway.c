@@ -731,7 +731,7 @@ static void handle_exec_sql_next(struct gateway *g,
 static void schedule_exec_sql_next_cb(uv_timer_t *t)
 {
 	struct gateway *g = t->data;
-	PRE(g->req != NULL);
+	PRE(g != NULL && g->req != NULL);
 	PRE(g->req->type == DQLITE_REQUEST_EXEC_SQL);
 	handle_exec_sql_next(g, g->req, true);
 }
@@ -739,8 +739,8 @@ static void schedule_exec_sql_next_cb(uv_timer_t *t)
 static void schedule_exec_sql_next(struct gateway *g)
 {
 	PRE(g->req->type == DQLITE_REQUEST_EXEC_SQL);
-	g->sched.data = g;
 	if (g->sched.loop != NULL) {
+		g->sched.data = g;
 		uv_timer_start(&g->sched, schedule_exec_sql_next_cb, 0, 0);
 	} else {
 		schedule_exec_sql_next_cb(&g->sched);
@@ -757,7 +757,7 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 	sqlite3_finalize(exec->stmt);
 
 	if (status == SQLITE_DONE) {
-		/* The next line simply for the event loop to call
+		/* The next line simply arranges for the event loop to call
 		 * handle_exec_sql_next on the next iteration. We could just
 		 * call handle_exec_sql_next here, but that causes bounded
 		 * recursion when needsBarrier is false, with the maximum stack
