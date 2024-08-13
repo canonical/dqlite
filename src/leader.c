@@ -295,6 +295,7 @@ static void leaderApplyFramesCb(struct raft_apply *req,
 finish:
 	l->inflight = NULL;
 	l->db->tx_id = 0;
+	l->exec->async = true;
 	leaderExecDone(l->exec);
 }
 
@@ -439,6 +440,8 @@ static void execBarrierCb(struct barrier *barrier, int status)
 	struct exec *req = barrier->data;
 	struct leader *l = req->leader;
 
+	req->async = req->barrier.async;
+
 	if (status != 0) {
 		l->exec->status = status;
 		leaderExecDone(l->exec);
@@ -505,6 +508,7 @@ static void raftBarrierCb(struct raft_barrier *req, int status)
 		return;
 	}
 	barrier->cb = NULL;
+	barrier->async = true;
 	cb(barrier, rv);
 }
 
@@ -514,6 +518,7 @@ int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
 	int rv;
 	if (!needsBarrier(l)) {
 		tracef("not needed");
+		barrier->async = false;
 		cb(barrier, 0);
 		return 0;
 	}

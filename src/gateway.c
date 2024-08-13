@@ -35,9 +35,9 @@ void gateway__init(struct gateway *g,
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 	g->client_id = 0;
 	g->random_state = seed;
-	g->sched = (uv_timer_t){};
+	g->defer = (uv_timer_t){};
 	if (loop != NULL) {
-		uv_timer_init(loop, &g->sched);
+		uv_timer_init(loop, &g->defer);
 	}
 }
 
@@ -102,8 +102,8 @@ void gateway__close(struct gateway *g)
 {
 	tracef("gateway close");
 
-	if (g->sched.loop != NULL) {
-		uv_close((uv_handle_t *)&g->sched, NULL);
+	if (g->defer.loop != NULL) {
+		uv_close((uv_handle_t *)&g->defer, NULL);
 	}
 
 	if (g->leader == NULL) {
@@ -728,23 +728,12 @@ static void handle_exec_sql_next(struct gateway *g,
 				 struct handle *req,
 				 bool done);
 
-static void schedule_exec_sql_next_cb(uv_timer_t *t)
+static void handle_exec_sql_next_defer_cb(uv_timer_t *t)
 {
 	struct gateway *g = t->data;
 	PRE(g != NULL && g->req != NULL);
 	PRE(g->req->type == DQLITE_REQUEST_EXEC_SQL);
 	handle_exec_sql_next(g, g->req, true);
-}
-
-static void schedule_exec_sql_next(struct gateway *g)
-{
-	PRE(g->req->type == DQLITE_REQUEST_EXEC_SQL);
-	if (g->sched.loop != NULL) {
-		g->sched.data = g;
-		uv_timer_start(&g->sched, schedule_exec_sql_next_cb, 0, 0);
-	} else {
-		schedule_exec_sql_next_cb(&g->sched);
-	}
 }
 
 static void handle_exec_sql_cb(struct exec *exec, int status)
@@ -756,20 +745,27 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 	req->exec_count += 1;
 	sqlite3_finalize(exec->stmt);
 
-	if (status == SQLITE_DONE) {
-		/* The next line simply arranges for the event loop to call
-		 * handle_exec_sql_next on the next iteration. We could just
-		 * call handle_exec_sql_next here, but that causes bounded
-		 * recursion when needsBarrier is false, with the maximum stack
-		 * depth being proportional to the number of `;`-separated
-		 * statements in the original SQL string. We don't want clients
-		 * to be able to trigger this, so we break the cycle here
-		 * instead. */
-		schedule_exec_sql_next(g);
-	} else {
+	if (status != SQLITE_DONE) {
 		assert(g->leader != NULL);
 		failure(req, status, error_message(g->leader->conn, status));
 		g->req = NULL;
+		return;
+	}
+
+	/* It would be valid to always invoke handle_exec_sql_next directly
+	 * here. But that can lead to bounded recursion when we have several
+	 * `;`-separated statements in a row that do not generate rows. To make
+	 * sure the stack depth stays under control, we defer have the event
+	 * loop invoke handle_exec_sql_next itself on the next iteration, but
+	 * only if there is a prior call to handle_exec_sql_next above us on
+	 * the stack. We also invoke handle_exec_sql_next directly if the
+	 * gateway doesn't have access to an event loop (this is only the case
+	 * in the unit tests). */
+	if (exec->async || g->defer.loop == NULL) {
+		handle_exec_sql_next(g, req, true);
+	} else {
+		g->defer.data = g;
+		uv_timer_start(&g->defer, handle_exec_sql_next_defer_cb, 0, 0);
 	}
 }
 

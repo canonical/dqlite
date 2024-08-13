@@ -38,7 +38,7 @@ struct gateway {
 	/* The EXEC_SQL request handler uses this to defer work to the next
 	 * loop iteration, to avoid recursion when processing multi-statement
 	 * SQL strings. */
-	uv_timer_t sched;
+	uv_timer_t defer;
 };
 
 /**
