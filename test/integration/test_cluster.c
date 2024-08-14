@@ -98,6 +98,7 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	long n_records =
 	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	char sql[128];
+	int rv;
 
 	HANDSHAKE;
 	OPEN;
@@ -112,7 +113,28 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 
 	struct test_server *server = &f->servers[0];
 	test_server_stop(server);
-	test_server_start(server, params);
+
+	test_server_prepare(server, params);
+	uint64_t last_entry_index;
+	uint64_t last_entry_term;
+	rv = dqlite_node_describe_last_entry(server->dqlite,
+					     &last_entry_index,
+					     &last_entry_term);
+	munit_assert_int(rv, ==, 0);
+	/* When we've inserted 0 records, there are two entries:
+	 * the initial configuration and the CREATE TABLE transaction.
+	 *
+	 * At 993 records, the leader has generated one legacy checkpoint
+	 * command entry.
+	 *
+	 * At 2200 records, the leader has generated a second checkpoint
+	 * command, plus two barrier entries, one for each snapshot. */
+	size_t fudge = n_records >= 2200 ? 6 :
+			n_records >= 993 ? 3 :
+			2;
+	munit_assert_ullong(last_entry_index, ==, n_records + fudge);
+	munit_assert_ullong(last_entry_term, ==, 1);
+	test_server_run(server);
 
 	/* The table is visible after restart. */
 	HANDSHAKE;

@@ -58,7 +58,7 @@ void test_server_tear_down(struct test_server *s)
 	test_dir_tear_down(s->dir);
 }
 
-void test_server_start(struct test_server *s, const MunitParameter params[])
+void test_server_prepare(struct test_server *s, const MunitParameter params[])
 {
 	int rv;
 
@@ -128,11 +128,22 @@ void test_server_start(struct test_server *s, const MunitParameter params[])
 			munit_assert_int(rv, ==, 0);
 		}
 	}
+}
+
+void test_server_run(struct test_server *s)
+{
+	int rv;
 
 	rv = dqlite_node_start(s->dqlite);
 	munit_assert_int(rv, ==, 0);
 
 	test_server_client_connect(s, &s->client);
+}
+
+void test_server_start(struct test_server *s, const MunitParameter params[])
+{
+	test_server_prepare(s, params);
+	test_server_run(s);
 }
 
 struct client_proto *test_server_client(struct test_server *s)
