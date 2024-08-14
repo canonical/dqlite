@@ -1065,6 +1065,25 @@ out:
 	return rv;
 }
 
+int dqlite_node_describe_last_entry(dqlite_node *n,
+				    uint64_t *index,
+				    uint64_t *term)
+{
+	static_assert(sizeof(*index) == sizeof(raft_index),
+		      "unexpected index type size");
+	raft_index *i = (raft_index *)index;
+	static_assert(sizeof(*term) == sizeof(raft_term),
+		      "unexpected term type size");
+	raft_term *t = (raft_term *)term;
+	int rv;
+
+	rv = raft_io_describe_last_entry(&n->raft_io, i, t);
+	if (rv != 0) {
+		return DQLITE_ERROR;
+	}
+	return 0;
+}
+
 dqlite_node_id dqlite_generate_node_id(const char *address)
 {
 	tracef("generate node id");

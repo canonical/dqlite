@@ -1061,6 +1061,27 @@ RAFT_API int raft_bootstrap(struct raft *r,
 RAFT_API int raft_recover(struct raft *r,
 			  const struct raft_configuration *conf);
 
+/**
+ * Read information about the last raft log entry that's stored on disk.
+ *
+ * "Last log entry" here should be understood as including snapshots,
+ * so if there is one snapshot on disk and no individual entries, the
+ * values returned in `index` and `term` are the index and term of the
+ * last entry included in the snapshot.
+ *
+ * This function is just a wrapper around the `load` method of raft_io.
+ * Note that the `load` method of the uv raft_io implementation is not
+ * read-only: as it walks the segment files on disk, it closes open
+ * segments that contain valid entries and deletes other open segments.
+ *
+ * This should be called after the raft_io instance is initialized (e.g.
+ * after calling raft_uv_init), but no active raft node should be using
+ * the instance.
+ */
+int raft_io_describe_last_entry(struct raft_io *io,
+				raft_index *index,
+				raft_term *term);
+
 RAFT_API int raft_start(struct raft *r);
 
 /**
