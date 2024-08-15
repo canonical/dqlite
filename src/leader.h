@@ -49,9 +49,6 @@ struct barrier {
 	void *data;
 	struct leader *leader;
 	struct raft_barrier req;
-	/* When the callback is invoked, this field is `true` if raft_barrier
-	 * was called and `false` if the callback was invoked immediately. */
-	bool async;
 	barrier_cb cb;
 };
 
@@ -66,12 +63,8 @@ struct exec {
 	uint64_t id;
 	int status;
 	queue queue;
-	pool_work_t work;
-	/* When the callback is invoked, this field is `true` if raft_barrier
-	 * or raft_apply was called and `false` if the callback was invoked
-	 * immediately. */
-	bool async;
 	exec_cb cb;
+	pool_work_t work;
 };
 
 /**

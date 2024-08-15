@@ -127,7 +127,6 @@ static void raft_connect(struct conn *c)
 	/* Close the connection without actually closing the transport, since
 	 * the stream will be used by raft */
 	c->closed = true;
-	gateway__close(&c->gateway);
 	closeCb(&c->transport);
 }
 
@@ -312,7 +311,7 @@ int conn__start(struct conn *c,
 	c->transport.data = c;
 	c->uv_transport = uv_transport;
 	c->close_cb = close_cb;
-	gateway__init(&c->gateway, config, loop, registry, raft, seed);
+	gateway__init(&c->gateway, config, registry, raft, seed);
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
 		goto err_after_transport_init;
