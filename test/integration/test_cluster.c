@@ -97,7 +97,6 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	struct rows rows;
 	long n_records =
 	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
-	char sql[128];
 	int rv;
 
 	HANDSHAKE;
@@ -105,10 +104,14 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
+	PREPARE("INSERT INTO TEST(n) VALUES(?)", &stmt_id);
 	for (int i = 0; i < n_records; ++i) {
-		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
-		PREPARE(sql, &stmt_id);
-		EXEC(stmt_id, &last_insert_id, &rows_affected);
+		struct value val = {.type = SQLITE_INTEGER, .integer = i};
+		rv = clientSendExec(f->client, stmt_id, &val, 1, NULL);
+		munit_assert_int(rv, ==, 0);
+		rv = clientRecvResult(f->client, &last_insert_id,
+				      &rows_affected, NULL);
+		munit_assert_int(rv, ==, 0);
 	}
 
 	struct test_server *server = &f->servers[0];
@@ -128,7 +131,8 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	 * command entry.
 	 *
 	 * At 2200 records, the leader has generated a second checkpoint
-	 * command, plus two barrier entries, one for each snapshot. */
+	 * command, plus two barriers. (The number of barriers is nondeterministic;
+	 * but we seem to get two of them pretty consistently in this test.) */
 	size_t fudge = n_records >= 2200 ? 6 :
 			n_records >= 993 ? 3 :
 			2;
