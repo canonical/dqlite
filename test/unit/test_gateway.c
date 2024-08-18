@@ -35,6 +35,12 @@ struct connection {
 	struct context context;
 };
 
+static void defer_but_not_really(void (*cb)(void *arg), void *arg, void *data)
+{
+	(void)data;
+	cb(arg);
+}
+
 #define FIXTURE                                   \
 	FIXTURE_CLUSTER;                          \
 	struct connection connections[N_SERVERS]; \
@@ -55,8 +61,13 @@ struct connection {
 		struct id_state seed = { { 1 } };                       \
 		config = CLUSTER_CONFIG(i);                             \
 		config->page_size = 512;                                \
-		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
-			      CLUSTER_RAFT(i), seed);                   \
+		gateway__init(&c->gateway, \
+			      config, \
+			      CLUSTER_REGISTRY(i), \
+			      CLUSTER_RAFT(i), \
+			      seed, \
+			      defer_but_not_really, \
+			      NULL); \
 		c->handle.data = &c->context;                           \
 		rc = buffer__init(&c->buf1);                            \
 		munit_assert_int(rc, ==, 0);                            \

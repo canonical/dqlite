@@ -100,14 +100,21 @@ abort:
 	conn__stop(c);
 }
 
-static void closeCb(struct transport *transport)
+static void conn_defer_close_cb(uv_handle_t *t)
+{
+	struct conn *c = t->data;
+	if (c->close_cb != NULL) {
+		c->close_cb(c);
+	}
+}
+
+static void conn_transport_close_cb(struct transport *transport)
 {
 	struct conn *c = transport->data;
 	buffer__close(&c->write);
 	buffer__close(&c->read);
-	if (c->close_cb != NULL) {
-		c->close_cb(c);
-	}
+	c->defer.data = c;
+	uv_close((uv_handle_t *)&c->defer, conn_defer_close_cb);
 }
 
 static void raft_connect(struct conn *c)
@@ -127,7 +134,8 @@ static void raft_connect(struct conn *c)
 	/* Close the connection without actually closing the transport, since
 	 * the stream will be used by raft */
 	c->closed = true;
-	closeCb(&c->transport);
+	gateway__close(&c->gateway);
+	conn_transport_close_cb(&c->transport);
 }
 
 static void read_request_cb(struct transport *transport, int status)
@@ -289,6 +297,28 @@ static int read_protocol(struct conn *c)
 	return 0;
 }
 
+static void conn_defer_cb(uv_timer_t *defer)
+{
+	struct conn *c = defer->data;
+	void (*cb)(void *) = c->defer_cb;
+	void *arg = c->defer_arg;
+	c->defer_cb = NULL;
+	c->defer_arg = NULL;
+	PRE(cb != NULL);
+	cb(arg);
+}
+
+static void conn_defer(void (*cb)(void *arg), void *arg, void *data)
+{
+	struct conn *c = data;
+	PRE(c->defer_cb == NULL);
+	PRE(c->defer_arg == NULL);
+	c->defer_cb = cb;
+	c->defer_arg = arg;
+	c->defer.data = c;
+	uv_timer_start(&c->defer, conn_defer_cb, 0, 0);
+}
+
 int conn__start(struct conn *c,
 		struct config *config,
 		struct uv_loop_s *loop,
@@ -311,7 +341,10 @@ int conn__start(struct conn *c,
 	c->transport.data = c;
 	c->uv_transport = uv_transport;
 	c->close_cb = close_cb;
-	gateway__init(&c->gateway, config, registry, raft, seed);
+	uv_timer_init(loop, &c->defer);
+	c->defer_cb = NULL;
+	c->defer_arg = NULL;
+	gateway__init(&c->gateway, config, registry, raft, seed, conn_defer, c);
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
 		goto err_after_transport_init;
@@ -347,5 +380,5 @@ void conn__stop(struct conn *c)
 	}
 	c->closed = true;
 	gateway__close(&c->gateway);
-	transport__close(&c->transport, closeCb);
+	transport__close(&c->transport, conn_transport_close_cb);
 }

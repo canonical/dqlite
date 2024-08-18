@@ -33,6 +33,11 @@ struct conn
 	struct message request;                 /* Request message meta data */
 	struct message response;                /* Response message meta data */
 	struct handle handle;
+	/* Callback that the gateway has asked to be invoked on the next loop
+	 * iteration, and its argument.  */
+	void (*defer_cb)(void *);
+	void *defer_arg;
+	uv_timer_t defer;
 	bool closed;
 	queue queue;
 };
