@@ -36,6 +36,8 @@ void gateway__init(struct gateway *g,
 	g->random_state = seed;
 }
 
+/* FIXME: This function becomes unsound when using the new thread pool, since
+ * the request callbacks will race with operations running in the pool. */
 void gateway__leader_close(struct gateway *g, int reason)
 {
 	if (g == NULL || g->leader == NULL) {
