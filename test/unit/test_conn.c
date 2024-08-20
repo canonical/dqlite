@@ -72,11 +72,11 @@ static void connCloseCb(struct conn *conn)
 
 #define TEAR_DOWN                         \
 	pool_close(pool_ut_fallback());   \
-	pool_fini(pool_ut_fallback());    \
 	conn__stop(&f->conn_test.conn);   \
 	while (!f->conn_test.closed) {    \
 		test_uv_run(&f->loop, 1); \
 	};                                \
+	pool_fini(pool_ut_fallback());    \
 	TEAR_DOWN_RAFT;                   \
 	TEAR_DOWN_CLIENT;                 \
 	TEAR_DOWN_REGISTRY;               \
