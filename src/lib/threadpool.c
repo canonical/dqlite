@@ -559,20 +559,19 @@ int pool_init(pool_t *pool,
 		return rc;
 	}
 
+	static uv_once_t once = UV_ONCE_INIT;
+	uv_once(&once, thread_key_create);
+	if (thread_key_create_err != 0) {
+		uv_mutex_destroy(&pi->outq_mutex);
+		free(pi);
+		return thread_key_create_err;
+	}
+
 	rc = uv_async_init(loop, &pi->outq_async, work_done);
 	if (rc != 0) {
 		uv_mutex_destroy(&pi->outq_mutex);
 		free(pi);
 		return rc;
-	}
-
-	static uv_once_t once = UV_ONCE_INIT;
-	uv_once(&once, thread_key_create);
-	if (thread_key_create_err != 0) {
-		uv_close((uv_handle_t *)&pi->outq_async, NULL);
-		uv_mutex_destroy(&pi->outq_mutex);
-		free(pi);
-		return thread_key_create_err;
 	}
 
 	pool_threads_init(pool);
