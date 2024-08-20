@@ -458,6 +458,7 @@ static void *pool_set_up(MUNIT_UNUSED const MunitParameter params[],
 static void pool_tear_down(void *data)
 {
 	pool_close(&global_fixture.pool);
+	uv_run(uv_default_loop(), UV_RUN_DEFAULT);
 	pool_fini(&global_fixture.pool);
 	free(data);
 }
