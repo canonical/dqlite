@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <sqlite3.h>
 
 #include "fault.h"
@@ -97,15 +98,6 @@ static void mem_wrap(sqlite3_mem_methods *m, sqlite3_mem_methods *wrap)
 	wrap->pAppData = &memFault;
 }
 
-/* Unwrap the given faulty memory management instance returning the original
- * one. */
-static void mem_unwrap(sqlite3_mem_methods *wrap, sqlite3_mem_methods *m)
-{
-	(void)wrap;
-
-	*m = memFault.m;
-}
-
 /* Get the current number of outstanding malloc()'s without a matching free()
  * and the total number of used memory. */
 static void mem_stats(int *malloc_count, int *memory_used)
@@ -126,22 +118,12 @@ static void mem_stats(int *malloc_count, int *memory_used)
 	}
 }
 
-/* Ensure we're starting from a clean memory state with no allocations and
- * optionally inject malloc failures. */
-void test_heap_setup(const MunitParameter params[], void *user_data)
+static void replace_sqlite_heap(void)
 {
-	int malloc_count;
-	int memory_used;
-	const char *fault_delay;
-	const char *fault_repeat;
 	sqlite3_mem_methods mem;
 	sqlite3_mem_methods mem_fault;
 	int rc;
 
-	(void)params;
-	(void)user_data;
-
-	/* Install the faulty malloc implementation */
 	rc = sqlite3_config(SQLITE_CONFIG_GETMALLOC, &mem);
 	if (rc != SQLITE_OK) {
 		munit_errorf("can't get default mem: %s", sqlite3_errstr(rc));
@@ -153,6 +135,24 @@ void test_heap_setup(const MunitParameter params[], void *user_data)
 	if (rc != SQLITE_OK) {
 		munit_errorf("can't set faulty mem: %s", sqlite3_errstr(rc));
 	}
+}
+
+/* Ensure we're starting from a clean memory state with no allocations and
+ * optionally inject malloc failures. */
+void test_heap_setup(const MunitParameter params[], void *user_data)
+{
+	int malloc_count;
+	int memory_used;
+	const char *fault_delay;
+	const char *fault_repeat;
+	int rc;
+
+	(void)params;
+	(void)user_data;
+
+	static pthread_once_t once = PTHREAD_ONCE_INIT;
+	rc = pthread_once(&once, replace_sqlite_heap);
+	munit_assert_int(rc, ==, 0);
 
 	/* Check that memory is clean. */
 	mem_stats(&malloc_count, &memory_used);
@@ -177,34 +177,7 @@ void test_heap_setup(const MunitParameter params[], void *user_data)
 /* Ensure we're starting leaving a clean memory behind. */
 void test_heap_tear_down(void *data)
 {
-	sqlite3_mem_methods mem;
-	sqlite3_mem_methods mem_fault;
-	int rc;
-
 	(void)data;
-
-	int malloc_count;
-	int memory_used;
-
-	mem_stats(&malloc_count, &memory_used);
-	if (malloc_count > 0 || memory_used > 0) {
-		/* munit_errorf(
-		    "teardown memory:\n    bytes: %11d\n    allocations: %5d\n",
-		    memory_used, malloc_count); */
-	}
-
-	/* Restore default memory management. */
-	rc = sqlite3_config(SQLITE_CONFIG_GETMALLOC, &mem_fault);
-	if (rc != SQLITE_OK) {
-		munit_errorf("can't get faulty mem: %s", sqlite3_errstr(rc));
-	}
-
-	mem_unwrap(&mem_fault, &mem);
-
-	rc = sqlite3_config(SQLITE_CONFIG_MALLOC, &mem);
-	if (rc != SQLITE_OK) {
-		munit_errorf("can't reset default mem: %s", sqlite3_errstr(rc));
-	}
 }
 
 void test_heap_fault_config(int delay, int repeat)
