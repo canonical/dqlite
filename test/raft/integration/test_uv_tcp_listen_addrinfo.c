@@ -1,5 +1,6 @@
 #include "../../../src/raft.h"
 #include "../../../src/raft/byte.h"
+#include "../lib/addrinfo.h"
 #include "../lib/heap.h"
 #include "../lib/loop.h"
 #include "../lib/runner.h"
@@ -94,6 +95,7 @@ static void *setUpDeps(const MunitParameter params[],
                        MUNIT_UNUSED void *user_data)
 {
     struct fixture *f = munit_malloc(sizeof *f);
+    SET_UP_ADDRINFO;
     SET_UP_HEAP;
     SETUP_LOOP;
     SETUP_TCP;
@@ -106,6 +108,7 @@ static void tearDownDeps(void *data)
     TEAR_DOWN_TCP;
     TEAR_DOWN_LOOP;
     TEAR_DOWN_HEAP;
+    TEAR_DOWN_ADDRINFO;
     free(f);
 }
 
@@ -187,23 +190,14 @@ static void tearDown(void *data)
 
 SUITE(tcp_listen)
 
-/* Parameters for listen address */
-
-static char *validAddresses[] = {"127.0.0.1:9000", "localhost:9000", NULL};
-
-static char *validBindAddresses[] = {
-    "", "127.0.0.1:9000", "localhost:9000", ":9000", "0.0.0.0:9000", NULL};
-
-static MunitParameterEnum validListenParams[] = {
-    {"address", validAddresses},
-    {"bind-address", validBindAddresses},
-    {NULL, NULL},
-};
-
-/* If the handshake is successful, the accept callback is invoked. */
-TEST(tcp_listen, success, setUp, tearDown, 0, validListenParams)
+/* Check success with addrinfo resolve to mutiple IP and first one is used to
+ * connect */
+TEST(tcp_listen, firstOfTwo, setUp, tearDown, 0, NULL)
 {
+    const struct AddrinfoResult results[] = {{"127.0.0.1", 9000},
+                                             {"127.0.0.2", 9000}};
     struct fixture *f = data;
+    AddrinfoInjectSetResponse(0, 2, results);
     LISTEN(0);
     PEER_CONNECT;
     PEER_HANDSHAKE;
@@ -211,126 +205,64 @@ TEST(tcp_listen, success, setUp, tearDown, 0, validListenParams)
     return MUNIT_OK;
 }
 
-/* Parameters for invalid listen addresses */
-static char *invalidAddresses[] = {"500.1.2.3:9000", "not-existing:9000",
-                                   "192.0.2.0:9000", NULL};
-
-static char *invalidBindAddresses[] = {
-    "", "500.1.2.3:9000", "not-existing:9000", "192.0.2.0:9000", NULL};
-
-static MunitParameterEnum invalidTcpListenParams[] = {
-    {"address", invalidAddresses},
-    {"bind-address", invalidBindAddresses},
-    {NULL, NULL},
-};
-
-/* Check error on invalid hostname specified */
-TEST(tcp_listen, invalidAddress, setUp, tearDown, 0, invalidTcpListenParams)
+/* Check success with addrinfo resolve to mutiple IP and second one is used to
+ * connect */
+TEST(tcp_listen, secondOfTwo, setUp, tearDown, 0, NULL)
 {
+    const struct AddrinfoResult results[] = {{"127.0.0.2", 9000},
+                                             {"127.0.0.1", 9000}};
     struct fixture *f = data;
+    AddrinfoInjectSetResponse(0, 2, results);
+
+    LISTEN(0);
+    PEER_CONNECT;
+    PEER_HANDSHAKE;
+    ACCEPT;
+    return MUNIT_OK;
+}
+
+/* Simulate port already in use error by addrinfo response contain the same IP
+ * twice */
+TEST(tcp_listen, alreadyBound, setUp, tearDown, 0, NULL)
+{
+    /* We need to use the same endpoint three times as a simple duplicate will
+     * be skipped due to a glib strange behavior
+     * https://bugzilla.redhat.com/show_bug.cgi?id=496300  */
+    const struct AddrinfoResult results[] = {
+        {"127.0.0.1", 9000}, {"127.0.0.1", 9000}, {"127.0.0.1", 9000}};
+    struct fixture *f = data;
+    AddrinfoInjectSetResponse(0, 3, results);
     LISTEN(RAFT_IOERR);
     return MUNIT_OK;
 }
 
-/* The client sends us a bad protocol version */
-TEST(tcp_listen, badProtocol, setUp, tearDown, 0, NULL)
+/* Error in bind first IP address */
+TEST(tcp_listen, cannotBindFirst, setUp, tearDown, 0, NULL)
 {
+    const struct AddrinfoResult results[] = {{"192.0.2.0", 9000},
+                                             {"127.0.0.1", 9000}};
     struct fixture *f = data;
-    LISTEN(0);
-    memset(f->handshake.buf, 999, sizeof(uint64_t));
-    PEER_CONNECT;
-    PEER_HANDSHAKE;
-    LOOP_RUN_UNTIL_CONNECTED;
-    LOOP_RUN_UNTIL_READ;
+    AddrinfoInjectSetResponse(0, 2, results);
+    LISTEN(RAFT_IOERR);
     return MUNIT_OK;
 }
 
-/* Parameters for sending a partial handshake */
-static char *partialHandshakeN[] = {"8", "16", "24", "32", NULL};
-
-static MunitParameterEnum peerAbortParams[] = {
-    {"n", partialHandshakeN},
-    {NULL, NULL},
-};
-
-/* The peer closes the connection after having sent a partial handshake. */
-TEST(tcp_listen, peerAbort, setUp, tearDown, 0, peerAbortParams)
+/* Error in bind of second IP address */
+TEST(tcp_listen, cannotBindSecond, setUp, tearDown, 0, NULL)
 {
+    const struct AddrinfoResult results[] = {{"127.0.0.1", 9000},
+                                             {"192.0.2.0", 9000}};
     struct fixture *f = data;
-    LISTEN(0);
-    const char *n = munit_parameters_get(params, "n");
-    PEER_CONNECT;
-    PEER_HANDSHAKE_PARTIAL(atoi(n));
-    LOOP_RUN_UNTIL_CONNECTED;
-    LOOP_RUN_UNTIL_READ;
-    PEER_CLOSE;
+    AddrinfoInjectSetResponse(0, 2, results);
+    LISTEN(RAFT_IOERR);
     return MUNIT_OK;
 }
 
-/* TODO: skip "2" because it makes libuv crash, as it calls abort(). See also
- * https://github.com/libuv/libuv/issues/1948 */
-static char *oomHeapFaultDelay[] = {"0", "1", "3", NULL};
-static char *oomHeapFaultRepeat[] = {"1", NULL};
-
-static MunitParameterEnum oomParams[] = {
-    {TEST_HEAP_FAULT_DELAY, oomHeapFaultDelay},
-    {TEST_HEAP_FAULT_REPEAT, oomHeapFaultRepeat},
-    {NULL, NULL},
-};
-
-/* Out of memory conditions */
-TEST(tcp_listen, oom, setUp, tearDown, 0, oomParams)
+/* Check error on general dns server failure */
+TEST(tcp_listen, resolveFailure, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    LISTEN(0);
-    PEER_CONNECT;
-    PEER_HANDSHAKE;
-    HEAP_FAULT_ENABLE;
-
-    /* Run as much as possible. */
-    uv_run(&f->loop, UV_RUN_NOWAIT);
-    uv_run(&f->loop, UV_RUN_NOWAIT);
-    uv_run(&f->loop, UV_RUN_NOWAIT);
-
-    return MUNIT_OK;
-}
-
-/* Close the transport right after an incoming connection becomes pending, but
- * it hasn't been accepted yet. */
-TEST(tcp_listen, pending, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    LISTEN(0);
-    PEER_CONNECT;
-    return MUNIT_OK;
-}
-
-/* Close the transport right after an incoming connection gets accepted, and the
- * peer hasn't sent handshake data yet. */
-TEST(tcp_listen, closeBeforeHandshake, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    LISTEN(0);
-    PEER_CONNECT;
-    LOOP_RUN_UNTIL_CONNECTED;
-    return MUNIT_OK;
-}
-
-static MunitParameterEnum closeDuringHandshake[] = {
-    {"n", partialHandshakeN},
-    {NULL, NULL},
-};
-
-/* Close the transport right after the peer has started to send handshake data,
- * but isn't done with it yet. */
-TEST(tcp_listen, handshake, setUp, tearDown, 0, closeDuringHandshake)
-{
-    struct fixture *f = data;
-    LISTEN(0);
-    const char *n_param = munit_parameters_get(params, "n");
-    PEER_CONNECT;
-    PEER_HANDSHAKE_PARTIAL(atoi(n_param));
-    LOOP_RUN_UNTIL_CONNECTED;
-    LOOP_RUN_UNTIL_READ;
+    AddrinfoInjectSetResponse(EAI_FAIL, 0, NULL);
+    LISTEN(RAFT_IOERR);
     return MUNIT_OK;
 }

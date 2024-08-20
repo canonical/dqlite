@@ -41,6 +41,7 @@ jobs:
                    raft-core-integration-test \
                    raft-core-unit-test \
                    raft-uv-integration-test \
+                   raft-addrinfo-integration-test \
                    raft-uv-unit-test
 
     - name: Test
