@@ -104,8 +104,20 @@ int pool_init(pool_t *pool,
 	      uv_loop_t *loop,
 	      uint32_t threads_nr,
 	      uint32_t qos_prio);
-void pool_fini(pool_t *pool);
+/**
+ * Start the closing sequence for the thread pool.
+ *
+ * This signals the threads of the pool to finish their work and exit. The pool
+ * threads will not be joined, and the resources held by the pool will not be
+ * released, until pool_fini is called. Before calling pool_fini, the event loop
+ * that was used to create this pool must be run to completion (that is, until
+ * uv_run returns 0).
+ */
 void pool_close(pool_t *pool);
+/**
+ * Finish the closing sequence for the thread pool and release resources.
+ */
+void pool_fini(pool_t *pool);
 void pool_queue_work(pool_t *pool,
 		     pool_work_t *w,
 		     uint32_t cookie,
