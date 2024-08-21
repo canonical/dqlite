@@ -108,15 +108,19 @@ static void conn_defer_close_cb(uv_handle_t *t)
 	}
 }
 
-static void conn_transport_close_cb(struct transport *transport)
+static void conn_fini(struct conn *c)
 {
-	struct conn *c = transport->data;
 	buffer__close(&c->write);
 	buffer__close(&c->read);
 	c->defer.data = c;
 	uv_close((uv_handle_t *)&c->defer, conn_defer_close_cb);
 }
 
+/**
+ * This is called when raft wants to take over the connection to use for
+ * node-to-node communication. It consumes the conn and gives ownership of the
+ * underlying stream to raft.
+ */
 static void raft_connect(struct conn *c)
 {
 	struct cursor *cursor = &c->handle.cursor;
@@ -131,11 +135,14 @@ static void raft_connect(struct conn *c)
 	}
 	raftProxyAccept(c->uv_transport, request.id, request.address,
 			c->transport.stream);
-	/* Close the connection without actually closing the transport, since
-	 * the stream will be used by raft */
+	/* Run the closing sequence to release resources held by the conn,
+	 * since raft doesn't use the conn object or its buffers to handle
+	 * incoming messages. However, don't close c->transport, because its
+	 * uv_stream_t has been stolen by raft. */
+	PRE(!c->closed);
 	c->closed = true;
 	gateway__close(&c->gateway);
-	conn_transport_close_cb(&c->transport);
+	conn_fini(c);
 }
 
 static void read_request_cb(struct transport *transport, int status)
@@ -370,6 +377,12 @@ err_after_transport_init:
 	transport__close(&c->transport, NULL);
 err:
 	return rv;
+}
+
+static void conn_transport_close_cb(struct transport *transport)
+{
+	struct conn *c = transport->data;
+	conn_fini(c);
 }
 
 void conn__stop(struct conn *c)

@@ -33,7 +33,7 @@ struct connection {
 	struct context context;
 };
 
-static void defer_but_not_really(void (*cb)(void *arg), void *arg, void *data)
+static void defer_run_now(void (*cb)(void *arg), void *arg, void *data)
 {
 	(void)data;
 	cb(arg);
@@ -60,7 +60,7 @@ static void defer_but_not_really(void (*cb)(void *arg), void *arg, void *data)
 			      CLUSTER_REGISTRY(0), \
 			      CLUSTER_RAFT(0), \
 			      seed, \
-			      defer_but_not_really, \
+			      defer_run_now, \
 			      NULL); \
 		c->handle.data = &c->context;                              \
 		rc = buffer__init(&c->request);                            \
