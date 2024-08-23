@@ -97,7 +97,6 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	struct rows rows;
 	long n_records =
 	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
-	int rv;
 
 	HANDSHAKE;
 	OPEN;
@@ -106,40 +105,13 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 
 	PREPARE("INSERT INTO TEST(n) VALUES(?)", &stmt_id);
 	for (int i = 0; i < n_records; ++i) {
-		struct value val = {.type = SQLITE_INTEGER, .integer = i};
-		rv = clientSendExec(f->client, stmt_id, &val, 1, NULL);
-		munit_assert_int(rv, ==, 0);
-		rv = clientRecvResult(f->client, &last_insert_id,
-				      &rows_affected, NULL);
-		munit_assert_int(rv, ==, 0);
+		EXEC_PARAMS(stmt_id, &last_insert_id, &rows_affected,
+			    {.type = SQLITE_INTEGER, .integer = i});
 	}
 
 	struct test_server *server = &f->servers[0];
 	test_server_stop(server);
-
-	test_server_prepare(server, params);
-	uint64_t last_entry_index;
-	uint64_t last_entry_term;
-	rv = dqlite_node_describe_last_entry(server->dqlite,
-					     &last_entry_index,
-					     &last_entry_term);
-	munit_assert_int(rv, ==, 0);
-	/* When we've inserted 0 records, there are two entries:
-	 * the initial configuration and the CREATE TABLE transaction.
-	 *
-	 * At 993 records, the leader has generated one legacy checkpoint
-	 * command entry.
-	 *
-	 * At 2200 records, the leader has generated a second checkpoint
-	 * command. */
-	size_t extra = n_records >= 2200 ? 4 :
-			n_records >= 993 ? 3 :
-			2;
-	/* This assertion isn't exact because we expect to see some barrier
-	 * log entries as well, and the number of these is not deterministic. */
-	munit_assert_ullong(last_entry_index, >=, n_records + extra);
-	munit_assert_ullong(last_entry_term, ==, 1);
-	test_server_run(server);
+	test_server_start(server, params);
 
 	/* The table is visible after restart. */
 	HANDSHAKE;
@@ -160,19 +132,19 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	struct rows rows;
 	long n_records =
 	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
-	char sql[128];
 	unsigned id = 2;
 	const char *address = "@2";
+	int rv;
 
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
+	PREPARE("INSERT INTO test(n) VALUES(?)", &stmt_id);
 	for (int i = 0; i < n_records; ++i) {
-		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
-		PREPARE(sql, &stmt_id);
-		EXEC(stmt_id, &last_insert_id, &rows_affected);
+		EXEC_PARAMS(stmt_id, &last_insert_id, &rows_affected,
+			    {.type = SQLITE_INTEGER, .integer = i});
 	}
 
 	/* Add a second voting server, this one will receive all data from the
@@ -185,6 +157,27 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	REMOVE(1);
 	sleep(1);
 
+	struct test_server *first = &f->servers[0];
+	test_server_stop(first);
+	test_server_prepare(first, params);
+	/* One entry per INSERT, plus one for the initial configuration, plus
+	 * one for the CREATE TABLE, plus one legacy checkpoint command entry
+	 * after 993 records or two after 2200 records. */
+	size_t extra = n_records >= 2200 ? 4 :
+			n_records >= 993 ? 3 :
+			2;
+	uint64_t last_entry_index;
+	uint64_t last_entry_term;
+	rv = dqlite_node_describe_last_entry(first->dqlite,
+					     &last_entry_index,
+					     &last_entry_term);
+	munit_assert_int(rv, ==, 0);
+	/* This assertion is not tight because the the leader also generates
+	 * a nondeterministic number of barrier entries. */
+	munit_assert_ullong(last_entry_index, >=, n_records + extra);
+	munit_assert_ullong(last_entry_term, ==, 1);
+	test_server_run(first);
+
 	/* The full table is visible from the new node */
 	SELECT(2);
 	HANDSHAKE;
@@ -193,6 +186,22 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	QUERY(stmt_id, &rows);
 	munit_assert_long(rows.next->values->integer, ==, n_records);
 	clientCloseRows(&rows);
+
+	/* One more entry on the new node. */
+	PREPARE("INSERT INTO test(n) VALUES(?)", &stmt_id);
+	EXEC_PARAMS(stmt_id, &last_insert_id, &rows_affected,
+		    {.type = SQLITE_INTEGER, .integer = 5000});
+
+	struct test_server *second = &f->servers[1];
+	test_server_stop(second);
+	test_server_prepare(second, params);
+	rv = dqlite_node_describe_last_entry(second->dqlite,
+					     &last_entry_index,
+					     &last_entry_term);
+	munit_assert_int(rv, ==, 0);
+	munit_assert_ullong(last_entry_index, >=, n_records + extra + 1);
+	munit_assert_ullong(last_entry_term, ==, 1);
+	test_server_run(second);
 	return MUNIT_OK;
 }
 
