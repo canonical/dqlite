@@ -323,9 +323,10 @@ int raft_io_describe_last_entry(struct raft_io *io,
 	if (rv != 0) {
 		return rv;
 	}
-	POST(ERGO(n_entries == 0, snapshot != NULL));
 	*index = start_index + n_entries - 1;
-	*term = n_entries > 0 ? entries[n_entries - 1].term : snapshot->term;
+	*term = n_entries > 0 ? entries[n_entries - 1].term :
+		snapshot != NULL ? snapshot->term :
+		0;
 	if (snapshot != NULL) {
 		snapshotDestroy(snapshot);
 	}

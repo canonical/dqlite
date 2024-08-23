@@ -324,3 +324,38 @@ TEST(cluster, modifyingQuerySql, setUp, tearDown, 0, cluster_params)
 	clientCloseRows(&rows);
 	return MUNIT_OK;
 }
+
+/* Edge cases for dqlite_node_describe_last_entry. */
+TEST(cluster, last_entry_edge_cases, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	uint64_t index;
+	uint64_t term;
+	int rv;
+
+	sleep(1);
+
+	struct test_server *first = &f->servers[0];
+	test_server_stop(first);
+	test_server_prepare(first, params);
+	rv = dqlite_node_describe_last_entry(first->dqlite, &index, &term);
+	munit_assert_int(rv, ==, 0);
+	/* The log contains only the bootstrap configuration. */
+	munit_assert_ullong(index, ==, 1);
+	/* The bootstrap configuration is always tagged with term 1. */
+	munit_assert_ullong(term, ==, 1);
+	test_server_run(first);
+
+	struct test_server *second = &f->servers[1];
+	test_server_stop(second);
+	test_server_prepare(second, params);
+	rv = dqlite_node_describe_last_entry(second->dqlite, &index, &term);
+	munit_assert_int(rv, ==, 0);
+	/* We didn't bootstrap and haven't joined the leader, so our log is
+	 * empty. */
+	munit_assert_ullong(index, ==, 0);
+	munit_assert_ullong(term, ==, 0);
+	test_server_run(second);
+
+	return MUNIT_OK;
+}

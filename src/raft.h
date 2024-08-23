@@ -1067,7 +1067,8 @@ RAFT_API int raft_recover(struct raft *r,
  * "Last log entry" here should be understood as including snapshots,
  * so if there is one snapshot on disk and no individual entries, the
  * values returned in `index` and `term` are the index and term of the
- * last entry included in the snapshot.
+ * last entry included in the snapshot. If there are no snapshot and no
+ * entries, then `index` and `term` are both set to 0.
  *
  * This function is just a wrapper around the `load` method of raft_io.
  * Note that the `load` method of the uv raft_io implementation is not
