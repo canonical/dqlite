@@ -131,12 +131,13 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	 * command entry.
 	 *
 	 * At 2200 records, the leader has generated a second checkpoint
-	 * command, plus two barriers. (The number of barriers is nondeterministic;
-	 * but we seem to get two of them pretty consistently in this test.) */
-	size_t fudge = n_records >= 2200 ? 6 :
+	 * command. */
+	size_t extra = n_records >= 2200 ? 4 :
 			n_records >= 993 ? 3 :
 			2;
-	munit_assert_ullong(last_entry_index, ==, n_records + fudge);
+	/* This assertion isn't exact because we expect to see some barrier
+	 * log entries as well, and the number of these is not deterministic. */
+	munit_assert_ullong(last_entry_index, >=, n_records + extra);
 	munit_assert_ullong(last_entry_term, ==, 1);
 	test_server_run(server);
 
