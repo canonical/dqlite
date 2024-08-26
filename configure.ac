@@ -36,12 +36,17 @@ AM_CONDITIONAL(BACKTRACE_ENABLED, test "x$enable_backtrace" = "xyes")
 AC_ARG_ENABLE(build-sqlite, AS_HELP_STRING([--enable-build-sqlite[=ARG]], [build libsqlite3 from sqlite3.c in the build root [default=no]]))
 AM_CONDITIONAL(BUILD_SQLITE_ENABLED, test "x$enable_build_sqlite" = "xyes")
 
-AC_ARG_ENABLE(build-raft, AS_HELP_STRING([--enable-build-raft[=ARG]], [use the bundled raft sources instead of linking to libraft [default=no]]))
-AM_CONDITIONAL(BUILD_RAFT_ENABLED, test "x$enable_build_raft" = "xyes")
+AC_ARG_ENABLE([build-raft],
+  [AS_HELP_STRING([--enable-build-raft[=ARG]],
+		  [use the bundled raft sources instead of linking libraft (default is yes, required)])],
+  [enable_build_raft=$enableval],
+  [enable_build_raft=yes])
+AS_IF([test "x$enable_build_raft" != "xyes"],
+      AC_MSG_ERROR([linking to a separately-built libraft is no longer supported]),
+      [])
 
 AC_ARG_ENABLE(dqlite-next, AS_HELP_STRING([--enable-dqlite-next[=ARG]], [build with the experimental dqlite backend [default=no]]))
 AM_CONDITIONAL(DQLITE_NEXT_ENABLED, test "x$enable_dqlite_next" = "xyes")
-AS_IF([test "x$enable_build_raft" != "xyes" -a "x$enable_dqlite_next" = "xyes"], [AC_MSG_ERROR([dqlite-next requires bundled raft])], [])
 
 # Whether to enable code coverage.
 AX_CODE_COVERAGE
@@ -60,24 +65,15 @@ AC_SYS_LARGEFILE
 # Checks for libraries
 PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.22.0], [], [])
 PKG_CHECK_MODULES(UV, [libuv >= 1.34.0], [], [])
-AS_IF([test "x$enable_build_raft" != "xyes"], [PKG_CHECK_MODULES(RAFT, [raft >= 0.18.1], [], [])], [])
-
 
 # Allow not linking to liblz4 even if it's present.
 AC_ARG_WITH([lz4], AS_HELP_STRING([--without-lz4], [never link to liblz4]))
-AS_IF([test "x$enable_build_raft" = "xyes"],
-      # Building raft
-      [AS_IF([test "x$with_lz4" != "xno"],
-	     [PKG_CHECK_MODULES(LZ4, [liblz4 >= 1.7.1], [have_lz4=yes], [have_lz4=no])],
-	     [have_lz4=no])
-       AS_IF([test "x$with_lz4" != "xno" -a "x$have_lz4" = "xno"],
-	     [AC_MSG_ERROR([liblz4 required but not found])],
-	     [])],
-      # Not building raft
-      [AS_IF([test "x$with_lz4" = "xyes"],
-	     [AC_MSG_ERROR([linking lz4 doesn't make sense unless building raft])],
-	     [])
-      have_lz4=no])
+AS_IF([test "x$with_lz4" != "xno"],
+     [PKG_CHECK_MODULES(LZ4, [liblz4 >= 1.7.1], [have_lz4=yes], [have_lz4=no])],
+     [have_lz4=no])
+AS_IF([test "x$with_lz4" != "xno" -a "x$have_lz4" = "xno"],
+     [AC_MSG_ERROR([liblz4 required but not found])],
+     [])
 
 AM_CONDITIONAL(LZ4_AVAILABLE, test "x$have_lz4" = "xyes")
 
