@@ -10,11 +10,13 @@
 #include "configuration.h"
 #include "convert.h"
 #include "election.h"
+#include "entry.h"
 #include "err.h"
 #include "flags.h"
 #include "heap.h"
 #include "log.h"
 #include "membership.h"
+#include "snapshot.h"
 
 #define DEFAULT_ELECTION_TIMEOUT 1000          /* One second */
 #define DEFAULT_HEARTBEAT_TIMEOUT 100          /* One tenth of a second */
@@ -301,5 +303,33 @@ static int ioFsmVersionCheck(struct raft *r,
 		return -1;
 	}
 
+	return 0;
+}
+
+int raft_io_describe_last_entry(struct raft_io *io,
+				raft_index *index,
+				raft_term *term)
+{
+	raft_term current_term;
+	raft_id voted_for;
+	struct raft_snapshot *snapshot;
+	raft_index start_index;
+	struct raft_entry *entries;
+	size_t n_entries;
+	int rv;
+
+	rv = io->load(io, &current_term, &voted_for, &snapshot,
+		      &start_index, &entries, &n_entries);
+	if (rv != 0) {
+		return rv;
+	}
+	*index = start_index + n_entries - 1;
+	*term = n_entries > 0 ? entries[n_entries - 1].term :
+		snapshot != NULL ? snapshot->term :
+		0;
+	if (snapshot != NULL) {
+		snapshotDestroy(snapshot);
+	}
+	entryBatchesDestroy(entries, n_entries);
 	return 0;
 }

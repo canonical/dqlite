@@ -140,6 +140,18 @@
 		munit_assert_int(rv_, ==, 0);                            \
 	}
 
+#define EXEC_PARAMS(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED, ...) \
+	{ \
+		int rv_; \
+		struct value vals_[] = {__VA_ARGS__}; \
+		size_t len_ = sizeof(vals_) / sizeof(vals_[0]); \
+		rv_ = clientSendExec(f->client, STMT_ID, vals_, len_, NULL); \
+		munit_assert_int(rv_, ==, 0); \
+		rv_ = clientRecvResult(f->client, LAST_INSERT_ID, \
+				       ROWS_AFFECTED, NULL); \
+		munit_assert_int(rv_, ==, 0); \
+	}
+
 #define EXEC_SQL(SQL, LAST_INSERT_ID, ROWS_AFFECTED)                    \
 	{                                                               \
 		int rv_;                                                \
