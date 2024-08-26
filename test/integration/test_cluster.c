@@ -134,7 +134,6 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
 	unsigned id = 2;
 	const char *address = "@2";
-	int rv;
 
 	HANDSHAKE;
 	OPEN;
@@ -160,6 +159,8 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	struct test_server *first = &f->servers[0];
 	test_server_stop(first);
 	test_server_prepare(first, params);
+#ifndef USE_SYSTEM_RAFT
+	int rv;
 	/* One entry per INSERT, plus one for the initial configuration, plus
 	 * one for the CREATE TABLE, plus one legacy checkpoint command entry
 	 * after 993 records or two after 2200 records. */
@@ -178,6 +179,7 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	munit_assert_uint64(expected_entries, <=, last_entry_index);
 	munit_assert_uint64(last_entry_index, <, expected_entries + max_barriers);
 	munit_assert_uint64(last_entry_term, ==, 1);
+#endif
 	test_server_run(first);
 
 	/* The full table is visible from the new node */
@@ -197,6 +199,7 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	struct test_server *second = &f->servers[1];
 	test_server_stop(second);
 	test_server_prepare(second, params);
+#ifndef USE_SYSTEM_RAFT
 	rv = dqlite_node_describe_last_entry(second->dqlite,
 					     &last_entry_index,
 					     &last_entry_term);
@@ -204,6 +207,7 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	munit_assert_uint64(expected_entries + 1, <=, last_entry_index);
 	munit_assert_uint64(last_entry_index, <, expected_entries + max_barriers + 1);
 	munit_assert_uint64(last_entry_term, ==, 1);
+#endif
 	test_server_run(second);
 	return MUNIT_OK;
 }
@@ -328,6 +332,8 @@ TEST(cluster, modifyingQuerySql, setUp, tearDown, 0, cluster_params)
 	return MUNIT_OK;
 }
 
+#ifndef USE_SYSTEM_RAFT
+
 /* Edge cases for dqlite_node_describe_last_entry. */
 TEST(cluster, last_entry_edge_cases, setUp, tearDown, 0, NULL)
 {
@@ -362,3 +368,5 @@ TEST(cluster, last_entry_edge_cases, setUp, tearDown, 0, NULL)
 
 	return MUNIT_OK;
 }
+
+#endif
