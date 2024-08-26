@@ -145,3 +145,29 @@ TEST(client, querySql, setUp, tearDown, 0, client_params)
 
 	return MUNIT_OK;
 }
+
+/* Stress test of an EXEC_SQL with many ';'-separated statements. */
+TEST(client, semicolons, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	(void)params;
+
+	static const char trivial_stmt[] = "CREATE TABLE IF NOT EXISTS foo (n INT);";
+
+	size_t n = 1000;
+	size_t unit = sizeof(trivial_stmt) - 1;
+	char *sql = munit_malloc(n * unit);
+	char *p = sql;
+	for (size_t i = 0; i < n; i++) {
+		memcpy(p, trivial_stmt, unit);
+		p += unit;
+	}
+	sql[n * unit - 1] = '\0';
+
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	EXEC_SQL(sql, &last_insert_id, &rows_affected);
+
+	free(sql);
+	return MUNIT_OK;
+}

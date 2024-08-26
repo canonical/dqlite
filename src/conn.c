@@ -100,16 +100,27 @@ abort:
 	conn__stop(c);
 }
 
-static void closeCb(struct transport *transport)
+static void conn_defer_close_cb(uv_handle_t *t)
 {
-	struct conn *c = transport->data;
-	buffer__close(&c->write);
-	buffer__close(&c->read);
+	struct conn *c = t->data;
 	if (c->close_cb != NULL) {
 		c->close_cb(c);
 	}
 }
 
+static void conn_fini(struct conn *c)
+{
+	buffer__close(&c->write);
+	buffer__close(&c->read);
+	c->defer.data = c;
+	uv_close((uv_handle_t *)&c->defer, conn_defer_close_cb);
+}
+
+/**
+ * This is called when raft wants to take over the connection to use for
+ * node-to-node communication. It consumes the conn and gives ownership of the
+ * underlying stream to raft.
+ */
 static void raft_connect(struct conn *c)
 {
 	struct cursor *cursor = &c->handle.cursor;
@@ -124,10 +135,14 @@ static void raft_connect(struct conn *c)
 	}
 	raftProxyAccept(c->uv_transport, request.id, request.address,
 			c->transport.stream);
-	/* Close the connection without actually closing the transport, since
-	 * the stream will be used by raft */
+	/* Run the closing sequence to release resources held by the conn,
+	 * since raft doesn't use the conn object or its buffers to handle
+	 * incoming messages. However, don't close c->transport, because its
+	 * uv_stream_t has been stolen by raft. */
+	PRE(!c->closed);
 	c->closed = true;
-	closeCb(&c->transport);
+	gateway__close(&c->gateway);
+	conn_fini(c);
 }
 
 static void read_request_cb(struct transport *transport, int status)
@@ -289,6 +304,28 @@ static int read_protocol(struct conn *c)
 	return 0;
 }
 
+static void conn_defer_cb(uv_timer_t *defer)
+{
+	struct conn *c = defer->data;
+	void (*cb)(void *) = c->defer_cb;
+	void *arg = c->defer_arg;
+	c->defer_cb = NULL;
+	c->defer_arg = NULL;
+	PRE(cb != NULL);
+	cb(arg);
+}
+
+static void conn_defer(void (*cb)(void *arg), void *arg, void *data)
+{
+	struct conn *c = data;
+	PRE(c->defer_cb == NULL);
+	PRE(c->defer_arg == NULL);
+	c->defer_cb = cb;
+	c->defer_arg = arg;
+	c->defer.data = c;
+	uv_timer_start(&c->defer, conn_defer_cb, 0, 0);
+}
+
 int conn__start(struct conn *c,
 		struct config *config,
 		struct uv_loop_s *loop,
@@ -311,7 +348,10 @@ int conn__start(struct conn *c,
 	c->transport.data = c;
 	c->uv_transport = uv_transport;
 	c->close_cb = close_cb;
-	gateway__init(&c->gateway, config, registry, raft, seed);
+	uv_timer_init(loop, &c->defer);
+	c->defer_cb = NULL;
+	c->defer_arg = NULL;
+	gateway__init(&c->gateway, config, registry, raft, seed, conn_defer, c);
 	rv = buffer__init(&c->read);
 	if (rv != 0) {
 		goto err_after_transport_init;
@@ -339,6 +379,12 @@ err:
 	return rv;
 }
 
+static void conn_transport_close_cb(struct transport *transport)
+{
+	struct conn *c = transport->data;
+	conn_fini(c);
+}
+
 void conn__stop(struct conn *c)
 {
 	tracef("conn stop");
@@ -347,5 +393,5 @@ void conn__stop(struct conn *c)
 	}
 	c->closed = true;
 	gateway__close(&c->gateway);
-	transport__close(&c->transport, closeCb);
+	transport__close(&c->transport, conn_transport_close_cb);
 }

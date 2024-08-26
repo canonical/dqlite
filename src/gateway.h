@@ -20,6 +20,21 @@
 struct handle;
 
 /**
+ * Interface for requesting that a callback be invoked "later".
+ *
+ * When running on a libuv event loop, "later" means "on the next loop
+ * iteration". In the unit tests, where no loop is available, "later" means
+ * "right now".
+ *
+ * The gateway uses this interface to prevent recursion in the handler for
+ * EXEC_SQL requests.
+ *
+ * `arg` is provided by the gateway to be passed to `cb`, while `data` is
+ * the userdata passed by the owner of the gateway into gateway__init.
+ */
+typedef void (*defer_impl)(void (*cb)(void *arg), void *arg, void *data);
+
+/**
  * Handle requests from a single connected client and forward them to
  * SQLite.
  */
@@ -35,13 +50,20 @@ struct gateway {
 	uint64_t protocol;           /* Protocol format version */
 	uint64_t client_id;
 	struct id_state random_state; /* For generating IDs */
+	defer_impl defer;
+	void *defer_data;
 };
 
+/**
+ * Initialize a gateway.
+ */
 void gateway__init(struct gateway *g,
 		   struct config *config,
 		   struct registry *registry,
 		   struct raft *raft,
-		   struct id_state seed);
+		   struct id_state seed,
+		   defer_impl defer,
+		   void *defer_data);
 
 void gateway__close(struct gateway *g);
 
