@@ -163,19 +163,21 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	/* One entry per INSERT, plus one for the initial configuration, plus
 	 * one for the CREATE TABLE, plus one legacy checkpoint command entry
 	 * after 993 records or two after 2200 records. */
-	size_t extra = n_records >= 2200 ? 4 :
-			n_records >= 993 ? 3 :
-			2;
+	uint64_t expected_entries = n_records + (n_records >= 2200 ? 4 :
+						 n_records >= 993 ? 3 :
+						 2);
+	/* We also expect a variable number of barrier entries. Just specify an
+	 * upper bound since we don't know the exact count. */
+	uint64_t max_barriers = 10;
 	uint64_t last_entry_index;
 	uint64_t last_entry_term;
 	rv = dqlite_node_describe_last_entry(first->dqlite,
 					     &last_entry_index,
 					     &last_entry_term);
 	munit_assert_int(rv, ==, 0);
-	/* This assertion is not tight because the the leader also generates
-	 * a nondeterministic number of barrier entries. */
-	munit_assert_ullong(last_entry_index, >=, n_records + extra);
-	munit_assert_ullong(last_entry_term, ==, 1);
+	munit_assert_uint64(expected_entries, <=, last_entry_index);
+	munit_assert_uint64(last_entry_index, <, expected_entries + max_barriers);
+	munit_assert_uint64(last_entry_term, ==, 1);
 	test_server_run(first);
 
 	/* The full table is visible from the new node */
@@ -199,8 +201,9 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 					     &last_entry_index,
 					     &last_entry_term);
 	munit_assert_int(rv, ==, 0);
-	munit_assert_ullong(last_entry_index, >=, n_records + extra + 1);
-	munit_assert_ullong(last_entry_term, ==, 1);
+	munit_assert_uint64(expected_entries + 1, <=, last_entry_index);
+	munit_assert_uint64(last_entry_index, <, expected_entries + max_barriers + 1);
+	munit_assert_uint64(last_entry_term, ==, 1);
 	test_server_run(second);
 	return MUNIT_OK;
 }
