@@ -99,7 +99,7 @@ CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -fexceptions \
   -fstack-clash-protection \
   -fstack-protector-strong \
-  -fasynchronous-unwind-tables \
+  -fno-exceptions \
   -fdiagnostics-show-option \
   -Wall \
   -Wextra \
