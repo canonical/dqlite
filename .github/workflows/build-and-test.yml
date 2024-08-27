@@ -50,6 +50,13 @@ jobs:
       run: |
            make check || (cat ./test-suite.log && false)
 
+    - name: OnTestFailure
+      if: ${{ failure() }}
+      uses: actions/upload-artifact@v3
+      with:
+	name: test-suite.log
+	path: test-suite.log
+
     - name: Coverage
       env:
         CC: ${{ matrix.compiler }}
