@@ -52,7 +52,7 @@ jobs:
           for bin in unit-test integration-test \
                      raft-core-fuzzy-test raft-core-integration-test \
                      raft-core-unit-test raft-uv-integration-test \
-                     raft-uv-unit-test
+                     raft-uv-unit-test raft-addrinfo-integration-test
           do ./$bin || touch any-failed
           done 2>&1 | tee -a test-suite.log
           test '!' -e any-failed
