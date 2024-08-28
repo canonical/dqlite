@@ -33,12 +33,6 @@ struct connection {
 	struct context context;
 };
 
-static void defer_run_now(void (*cb)(void *arg), void *arg, void *data)
-{
-	(void)data;
-	cb(arg);
-}
-
 #define FIXTURE          \
 	FIXTURE_CLUSTER; \
 	struct connection connections[N_GATEWAYS]
@@ -55,13 +49,8 @@ static void defer_run_now(void (*cb)(void *arg), void *arg, void *data)
 		struct request_open open;                                  \
 		struct response_db db;                                     \
 		struct id_state seed = { { 1 } };                          \
-		gateway__init(&c->gateway, \
-			      CLUSTER_CONFIG(0), \
-			      CLUSTER_REGISTRY(0), \
-			      CLUSTER_RAFT(0), \
-			      seed, \
-			      defer_run_now, \
-			      NULL); \
+		gateway__init(&c->gateway, CLUSTER_CONFIG(0),              \
+			      CLUSTER_REGISTRY(0), CLUSTER_RAFT(0), seed); \
 		c->handle.data = &c->context;                              \
 		rc = buffer__init(&c->request);                            \
 		munit_assert_int(rc, ==, 0);                               \

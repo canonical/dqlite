@@ -49,9 +49,6 @@ struct barrier {
 	void *data;
 	struct leader *leader;
 	struct raft_barrier req;
-	/* Whether we yielded control to the event loop at least once while
-	 * handling the request. */
-	bool async;
 	barrier_cb cb;
 };
 
@@ -66,11 +63,8 @@ struct exec {
 	uint64_t id;
 	int status;
 	queue queue;
-	pool_work_t work;
-	/* Whether we yielded control to the event loop at least once while
-	 * handling the request. */
-	bool async;
 	exec_cb cb;
+	pool_work_t work;
 };
 
 /**
@@ -87,10 +81,17 @@ void leader__close(struct leader *l);
 /**
  * Submit a request to step a SQLite statement.
  *
- * The callback may be invoked synchronously (i.e. while leader__exec is still
- * on the stack) or asynchronously after suspending to wait for a raft request
- * to finish. The callback can read the `async` field of the exec object to
- * determine how it's being invoked.
+ * The request will be dispatched to the leader loop coroutine, which will be
+ * resumed and will invoke sqlite_step(). If the statement triggers the
+ * replication hooks and one or more new Raft log entries need to be appended,
+ * then the loop coroutine will be paused and control will be transferred back
+ * to the main coroutine. In this state the leader loop coroutine call stack
+ * will be "blocked" on the xFrames() replication hook call triggered by the top
+ * sqlite_step() call. The leader loop coroutine will be resumed once the Raft
+ * append request completes (either successfully or not) and at that point the
+ * stack will rewind back to the @sqlite_step() call, returning to the leader
+ * loop which will then have completed the request and transfer control back to
+ * the main coroutine, pausing until the next request.
  */
 int leader__exec(struct leader *l,
 		 struct exec *req,
@@ -102,10 +103,7 @@ int leader__exec(struct leader *l,
  * Submit a raft barrier request if there is no transaction in progress in the
  * underlying database and the FSM is behind the last log index.
  *
- * If a barrier is needed, the callback is invoked asychronously after the
- * raft barrier request has completed. Otherwise, the callback is invoked
- * synchronously. The callback can read the `async` field of the barrier object
- * to determine how it's being invoked.
+ * Otherwise, just invoke the given @cb immediately.
  */
 int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb);
 
