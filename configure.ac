@@ -44,9 +44,8 @@ AS_IF([test "x$enable_build_raft" != "xyes" -a "x$enable_dqlite_next" = "xyes"],
 
 AC_ARG_WITH(static-deps,
 	    AS_HELP_STRING([--with-static-deps[=ARG]],
-			   [skip building a shared library and link test binaries statically])
-	    [], [with_static_deps=no])
-AM_CONDITIONAL(WITH_STATIC_DEPS, test "x$with_static_deps" != "xno")
+			   [skip building a shared library and link test binaries statically]))
+AM_CONDITIONAL(WITH_STATIC_DEPS, test "x$with_static_deps" = "xyes")
 
 # Whether to enable code coverage.
 AX_CODE_COVERAGE
