@@ -365,7 +365,7 @@ TESTS = $(check_PROGRAMS)
 
 check-norun: $(check_PROGRAMS)
 
-print-test-binaries:
+print-test-programs:
 	@echo '$(check_PROGRAMS)'
 
 if CODE_COVERAGE_ENABLED
