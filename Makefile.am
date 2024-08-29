@@ -51,6 +51,8 @@ basic_dqlite_sources = \
   src/lib/addr.c \
   src/lib/buffer.c \
   src/lib/fs.c \
+  src/lib/sm.c \
+  src/lib/threadpool.c \
   src/lib/transport.c \
   src/logger.c \
   src/message.c \
@@ -63,6 +65,7 @@ basic_dqlite_sources = \
   src/roles.c \
   src/server.c \
   src/stmt.c \
+  src/tracing.c \
   src/transport.c \
   src/translate.c \
   src/tuple.c \
@@ -73,7 +76,6 @@ lib_LTLIBRARIES = libdqlite.la
 libdqlite_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden -DRAFT_API=''
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = $(basic_dqlite_sources)
-libdqlite_la_LIBADD = libcommon.la
 
 if BUILD_RAFT_ENABLED
 libraft_la_SOURCES = \
@@ -131,10 +133,9 @@ libraft_la_SOURCES = \
 libdqlite_la_SOURCES += $(libraft_la_SOURCES)
 endif # BUILD_RAFT_ENABLED
 
-# When adding a new test binary, make sure to update CI.
 check_PROGRAMS = unit-test integration-test
 
-check_LTLIBRARIES = libtest.la libcommon.la
+check_LTLIBRARIES = libtest.la
 
 libtest_la_CFLAGS = $(AM_CFLAGS) -DMUNIT_TEST_NAME_LEN=60 -Wno-unknown-warning-option -Wno-unused-result -Wno-conversion -Wno-uninitialized -Wno-maybe-uninitialized -Wno-strict-prototypes -Wno-old-style-definition
 libtest_la_SOURCES = \
@@ -148,16 +149,6 @@ libtest_la_SOURCES = \
   test/lib/server.c \
   test/lib/sqlite.c \
   test/lib/uv.c
-
-# libcommon is the destination for code that is used by both the raft
-# half and the dqlite half of the codebase, but isn't part of the raft
-# API surface. It's also used to make these bits of code accessible to
-# the unit tests without compiling the same few files repeatedly.
-libcommon_la_CFLAGS = $(AM_CFLAGS)
-libcommon_la_SOURCES = \
-  src/tracing.c \
-  src/lib/sm.c \
-  src/lib/threadpool.c
 
 unit_test_SOURCES = $(basic_dqlite_sources)
 unit_test_SOURCES += \
@@ -186,7 +177,7 @@ unit_test_SOURCES += \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS) -Wno-unknown-warning-option -Wno-uninitialized -Wno-maybe-uninitialized -Wno-float-equal -Wno-conversion
 unit_test_LDFLAGS = $(AM_LDFLAGS)
-unit_test_LDADD = libcommon.la libtest.la
+unit_test_LDADD = libtest.la
 
 if BUILD_RAFT_ENABLED
 unit_test_LDADD += libraft.la
@@ -209,16 +200,15 @@ integration_test_LDADD = libtest.la libdqlite.la
 if BUILD_RAFT_ENABLED
 check_LTLIBRARIES += libraft.la
 
-# When adding a new test binary, make sure to update CI.
 check_PROGRAMS += \
   raft-core-unit-test \
   raft-core-integration-test \
   raft-uv-unit-test \
   raft-uv-integration-test \
-  raft-addrinfo-integration-test \
   raft-core-fuzzy-test
 
 libtest_la_SOURCES += \
+  test/raft/lib/addrinfo.c \
   test/raft/lib/fault.c \
   test/raft/lib/fsm.c \
   test/raft/lib/heap.c \
@@ -232,10 +222,12 @@ libtest_la_SOURCES += \
 
 libraft_la_CFLAGS = $(AM_CFLAGS)
 libraft_la_LDFLAGS = $(UV_LIBS)
-libraft_la_LIBADD = libcommon.la
 
 raft_core_unit_test_SOURCES = \
   $(libraft_la_SOURCES) \
+  src/lib/sm.c \
+  src/lib/threadpool.c \
+  src/tracing.c \
   test/raft/unit/main_core.c \
   test/raft/unit/test_byte.c \
   test/raft/unit/test_compress.c \
@@ -247,9 +239,12 @@ raft_core_unit_test_SOURCES = \
   test/raft/unit/test_snapshot.c
 
 raft_core_unit_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
-raft_core_unit_test_LDADD = libcommon.la libtest.la
+raft_core_unit_test_LDADD = libtest.la
 
 raft_core_integration_test_SOURCES = \
+  src/tracing.c \
+  src/lib/sm.c \
+  src/lib/threadpool.c \
   test/raft/integration/main_core.c \
   test/raft/integration/test_apply.c \
   test/raft/integration/test_assign.c \
@@ -274,6 +269,9 @@ raft_core_integration_test_LDFLAGS = -no-install
 raft_core_integration_test_LDADD = libtest.la libraft.la
 
 raft_core_fuzzy_test_SOURCES = \
+  src/lib/sm.c \
+  src/lib/threadpool.c \
+  src/tracing.c \
   test/raft/fuzzy/main_core.c \
   test/raft/fuzzy/test_election.c \
   test/raft/fuzzy/test_liveness.c \
@@ -284,6 +282,7 @@ raft_core_fuzzy_test_LDFLAGS = -no-install
 raft_core_fuzzy_test_LDADD = libtest.la libraft.la
 
 raft_uv_unit_test_SOURCES = \
+  src/tracing.c \
   src/raft/err.c \
   src/raft/heap.c \
   src/raft/syscall.c \
@@ -295,12 +294,16 @@ raft_uv_unit_test_SOURCES = \
   test/raft/unit/test_uv_os.c \
   test/raft/unit/test_uv_writer.c
 raft_uv_unit_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
-raft_uv_unit_test_LDADD = libcommon.la libtest.la $(UV_LIBS)
+raft_uv_unit_test_LDADD = libtest.la $(UV_LIBS)
 
 # The integration/uv test is not linked to libraft, but built
 # directly against the libraft sources in order to test some
 # non-visible, non-API functions.
 raft_uv_integration_test_SOURCES = \
+  $(libraft_la_SOURCES) \
+  src/tracing.c \
+  src/lib/sm.c \
+  src/lib/threadpool.c \
   test/raft/integration/main_uv.c \
   test/raft/integration/test_uv_init.c \
   test/raft/integration/test_uv_append.c \
@@ -318,22 +321,7 @@ raft_uv_integration_test_SOURCES = \
   test/raft/integration/test_uv_work.c
 raft_uv_integration_test_CFLAGS = $(AM_CFLAGS) -Wno-type-limits -Wno-conversion
 raft_uv_integration_test_LDFLAGS = -no-install
-raft_uv_integration_test_LDADD = libtest.la libraft.la $(UV_LIBS)
-
-# Some of the uv integration tests are broken out into a separate
-# binary because they use a trick to override libc's getaddrinfo
-# with a mock implementation. When libc is statically linked (a use-case
-# that we care about), this trick doesn't work, and prevents any
-# test in the same binary that calls getaddrinfo from working
-# correctly.
-raft_addrinfo_integration_test_SOURCES = \
-  test/raft/lib/addrinfo.c \
-  test/raft/integration/test_uv_tcp_connect_addrinfo.c \
-  test/raft/integration/test_uv_tcp_listen_addrinfo.c \
-  test/raft/integration/main_addrinfo.c
-raft_addrinfo_integration_test_CFLAGS = $(AM_CFLAGS) -Wno-type-limits -Wno-conversion
-raft_addrinfo_integration_test_LDFLAGS = -no-install
-raft_addrinfo_integration_test_LDADD = libtest.la libraft.la $(UV_LIBS)
+raft_uv_integration_test_LDADD = libtest.la $(UV_LIBS)
 
 if LZ4_AVAILABLE
 libdqlite_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
@@ -361,7 +349,7 @@ libsqlite3_la_SOURCES = sqlite3.c
 libsqlite3_la_CFLAGS = -g3
 
 unit_test_LDADD += libsqlite3.la
-libdqlite_la_LIBADD += libsqlite3.la
+libdqlite_la_LIBADD = libsqlite3.la
 else
 AM_LDFLAGS += $(SQLITE_LIBS)
 endif
