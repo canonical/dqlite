@@ -36,25 +36,17 @@ jobs:
           autoreconf -i
           ./configure --enable-debug --enable-code-coverage --enable-sanitize \
                       --enable-build-raft --enable-dqlite-next=${{ matrix.dqlite-next }}
-          make -j4 unit-test integration-test \
-                   raft-core-fuzzy-test \
-                   raft-core-integration-test \
-                   raft-core-unit-test \
-                   raft-uv-integration-test \
-                   raft-addrinfo-integration-test \
-                   raft-uv-unit-test
+          make -j$(nproc) check-norun
 
     - name: Test
       env:
         CC: ${{ matrix.compiler }}
         LIBDQLITE_TRACE: 1
       run: |
-          for bin in unit-test integration-test \
-                     raft-core-fuzzy-test raft-core-integration-test \
-                     raft-core-unit-test raft-uv-integration-test \
-                     raft-uv-unit-test raft-addrinfo-integration-test
-          do ./$bin || touch any-failed
-          done 2>&1 | tee -a test-suite.log
+          # Temporary measure: don't use `make check` because then we won't see
+          # the partial test output when there's a hang in CI.
+          bins="$(make print-test-programs)"
+          for bin in $bins; do ./$bin || touch any-failed; done 2>&1 | tee -a test-suite.log
           test '!' -e any-failed
 
     - name: OnTestFailure

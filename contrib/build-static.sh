@@ -132,18 +132,7 @@ if [ ! -f "${BUILD_DIR}/dqlite/libdqlite.la" ]; then
     autoreconf -i
     ./configure --disable-shared --enable-build-raft --prefix="${INSTALL_DIR}"
 
-    # Don't run the raft addrinfo tests since they rely on libc being
-    # dynamically linked.
-    bins="unit-test integration-test \
-          raft-core-fuzzy-test \
-          raft-core-integration-test \
-          raft-core-unit-test \
-          raft-uv-integration-test \
-          raft-uv-unit-test"
-    make -j LDFLAGS=-all-static $bins
-    for bin in $bins
-    do LIBDQLITE_TRACE=1 ./$bin || touch any-failed
-    done
-    test '!' -e any-failed
+    make -j LDFLAGS=-all-static check-norun
+    make check
   )
 fi

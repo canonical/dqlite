@@ -363,6 +363,11 @@ endif
 
 TESTS = $(check_PROGRAMS)
 
+check-norun: $(check_PROGRAMS)
+
+print-test-binaries:
+	@echo '$(check_PROGRAMS)'
+
 if CODE_COVERAGE_ENABLED
 
 include $(top_srcdir)/aminclude_static.am
