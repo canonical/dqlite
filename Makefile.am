@@ -212,7 +212,6 @@ check_PROGRAMS += \
   raft-core-fuzzy-test
 
 libtest_la_SOURCES += \
-  test/raft/lib/addrinfo.c \
   test/raft/lib/fault.c \
   test/raft/lib/fsm.c \
   test/raft/lib/heap.c \
@@ -223,6 +222,10 @@ libtest_la_SOURCES += \
   test/raft/lib/dir.c \
   test/raft/lib/tcp.c \
   test/raft/lib/loop.c
+
+if !WITH_STATIC_DEPS
+libtest_la_SOURCES += test/raft/lib/addrinfo.c
+endif
 
 libraft_la_CFLAGS = $(AM_CFLAGS)
 libraft_la_LDFLAGS = $(static) $(UV_LIBS)

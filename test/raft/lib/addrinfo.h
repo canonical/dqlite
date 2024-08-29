@@ -16,14 +16,38 @@
 
 #include "munit.h"
 
-#define SET_UP_ADDRINFO AddrinfoInjectSetUp(params)
-#define TEAR_DOWN_ADDRINFO AddrinfoInjectTearDown()
-
 typedef struct AddrinfoResult
 {
     const char *ip;
     const int port;
 } AddrinfoResult_t;
+
+#ifdef DQLITE_STATIC_LIBC
+
+#define ADDRINFO_TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS) \
+    TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS) \
+    { \
+        return MUNIT_SKIP; \
+    } \
+    static MUNIT_UNUSED MunitResult test_unused_##S##_##C( \
+        MUNIT_UNUSED const MunitParameter params[], MUNIT_UNUSED void *data)
+
+#define SET_UP_ADDRINFO
+#define TEAR_DOWN_ADDRINFO
+#define AddrinfoInjectSetResponse(a, b, c) \
+    do { \
+        (void)a; \
+        (void)b; \
+        (void)c; \
+    } while (0)
+
+#else /* ifndef DQLITE_STATIC_LIBC */
+
+#define ADDRINFO_TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS) \
+    TEST(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)
+
+#define SET_UP_ADDRINFO AddrinfoInjectSetUp(params)
+#define TEAR_DOWN_ADDRINFO AddrinfoInjectTearDown()
 
 void AddrinfoInjectSetResponse(int rv,
                                int num_results,
@@ -31,5 +55,7 @@ void AddrinfoInjectSetResponse(int rv,
 
 void AddrinfoInjectSetUp(const MunitParameter params[]);
 void AddrinfoInjectTearDown(void);
+
+#endif /* ifdef DQLITE_STATIC_LIBC ... else */
 
 #endif  // #ifndef TEST_ADDRINFO_H
