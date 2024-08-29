@@ -28,6 +28,11 @@ AM_CFLAGS += -DDQLITE_ASSERT_WITH_BACKTRACE -DRAFT_ASSERT_WITH_BACKTRACE
 AM_LDFLAGS += -lbacktrace
 endif
 
+if WITH_STATIC_DEPS
+AM_CFLAGS += -DDQLITE_STATIC_LIBC
+AM_LDFLAGS += -all-static
+endif
+
 include_HEADERS = include/dqlite.h
 
 basic_dqlite_sources = \

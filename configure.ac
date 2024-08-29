@@ -42,6 +42,12 @@ AC_ARG_ENABLE(dqlite-next, AS_HELP_STRING([--enable-dqlite-next[=ARG]], [build w
 AM_CONDITIONAL(DQLITE_NEXT_ENABLED, test "x$enable_dqlite_next" = "xyes")
 AS_IF([test "x$enable_build_raft" != "xyes" -a "x$enable_dqlite_next" = "xyes"], [AC_MSG_ERROR([dqlite-next requires bundled raft])], [])
 
+AC_ARG_WITH(static-deps,
+	    AS_HELP_STRING([--with-static-deps[=ARG]],
+			   [skip building a shared library and link test binaries statically])
+	    [], [with_static_deps=no])
+AM_CONDITIONAL(WITH_STATIC_DEPS, test "x$with_static_deps" != "xno")
+
 # Whether to enable code coverage.
 AX_CODE_COVERAGE
 

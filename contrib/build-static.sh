@@ -130,9 +130,8 @@ if [ ! -f "${BUILD_DIR}/dqlite/libdqlite.la" ]; then
     git clone "${REPO_DQLITE}" --depth 1 --branch "${TAG_DQLITE}"
     cd dqlite
     autoreconf -i
-    ./configure --disable-shared --enable-build-raft --prefix="${INSTALL_DIR}"
-
-    make -j LDFLAGS=-all-static check-norun
+    ./configure --enable-build-raft --with-static-deps --prefix="${INSTALL_DIR}"
+    make -j check-norun
     make check
   )
 fi
