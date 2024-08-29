@@ -16,6 +16,7 @@ jobs:
            sudo apt install -y build-essential automake libtool gettext autopoint tclsh tcl libsqlite3-dev pkg-config git
 
     - name: Build and test
+      env:
+        LIBDQLITE_TRACE: 1
       run: |
-           export LIBDQLITE_TRACE=1
            contrib/build-static.sh

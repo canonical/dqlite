@@ -8,15 +8,9 @@ REPO_LIBNSL="https://github.com/thkukuk/libnsl.git"
 REPO_LIBUV="https://github.com/libuv/libuv.git"
 REPO_LIBLZ4="https://github.com/lz4/lz4.git"
 REPO_SQLITE="https://github.com/sqlite/sqlite.git"
-REPO_DQLITE="https://github.com/cole-miller/dqlite.git"
 
-TAG_MUSL="v1.2.4"
-TAG_LIBTIRPC="upstream/1.3.3"
-TAG_LIBNSL="v2.0.1"
-TAG_LIBUV="v1.48.0"
-TAG_LIBLZ4="v1.9.4"
-TAG_SQLITE="version-3.45.1"
-TAG_DQLITE="musl-ci"
+TAG_MUSL="${TAG_MUSL:-v1.2.4}"
+DQLITE_PATH="${DQLITE_PATH:-$DIR/..}"
 
 BUILD_DIR="${DIR}/build"
 INSTALL_DIR="${DIR}/prefix"
@@ -31,6 +25,21 @@ if [ "${MACHINE_TYPE}" = "ppc64le" ]; then
   export CFLAGS="-mlong-double-64"
 fi
 export PKG_CONFIG_PATH="${INSTALL_DIR}/lib/pkgconfig"
+
+clone-latest-tag() {
+	name="$1"
+	repo="$2"
+	tagpattern="${3:-.*}"
+	mkdir "${name}"
+	pushd "${name}"
+	git init
+	git remote add upstream "${repo}"
+	git fetch upstream 'refs/tags/*:refs/tags/*'
+	tag="$(git tag | grep "${tagpattern}" | sort -V -r | head -n1)"
+	echo "Selected $name tag ${tag}"
+	git checkout "${tag}"
+	popd
+}
 
 # build musl
 if [ ! -f "${INSTALL_DIR}/musl/bin/musl-gcc" ]; then
@@ -61,7 +70,7 @@ if [ ! -f "${BUILD_DIR}/libtirpc/src/libtirpc.la" ]; then
   (
     cd "${BUILD_DIR}"
     rm -rf libtirpc
-    git clone "${REPO_LIBTIRPC}" --depth 1 --branch "${TAG_LIBTIRPC}"
+    clone-latest-tag libtirpc "${REPO_LIBTIRPC}" upstream
     cd libtirpc
     chmod +x autogen.sh
     ./autogen.sh
@@ -75,7 +84,7 @@ if [ ! -f "${BUILD_DIR}/libnsl/src/libnsl.la" ]; then
   (
     cd "${BUILD_DIR}"
     rm -rf libnsl
-    git clone "${REPO_LIBNSL}" --depth 1 --branch "${TAG_LIBNSL}"
+    clone-latest-tag libnsl "${REPO_LIBNSL}"
     cd libnsl
     ./autogen.sh
     autoreconf -i
@@ -90,7 +99,7 @@ if [ ! -f "${BUILD_DIR}/libuv/libuv.la" ]; then
   (
     cd "${BUILD_DIR}"
     rm -rf libuv
-    git clone "${REPO_LIBUV}" --depth 1 --branch "${TAG_LIBUV}"
+    clone-latest-tag libuv "${REPO_LIBUV}"
     cd libuv
     ./autogen.sh
     ./configure --disable-shared --prefix="${INSTALL_DIR}"
@@ -103,7 +112,7 @@ if [ ! -f "${BUILD_DIR}/lz4/lib/liblz4.a" ] || [ ! -f "${BUILD_DIR}/lz4/lib/libl
   (
     cd "${BUILD_DIR}"
     rm -rf lz4
-    git clone "${REPO_LIBLZ4}" --depth 1 --branch "${TAG_LIBLZ4}"
+    clone-latest-tag lz4 "${REPO_LIBLZ4}"
     cd lz4
     make install -j PREFIX="${INSTALL_DIR}" BUILD_SHARED=no
   )
@@ -114,7 +123,7 @@ if [ ! -f "${BUILD_DIR}/sqlite/libsqlite3.la" ]; then
   (
     cd "${BUILD_DIR}"
     rm -rf sqlite
-    git clone "${REPO_SQLITE}" --depth 1 --branch "${TAG_SQLITE}"
+    clone-latest-tag sqlite "${REPO_SQLITE}"
     cd sqlite
     ./configure --disable-shared --disable-readline --prefix="${INSTALL_DIR}" \
       CFLAGS="${CFLAGS} -DSQLITE_ENABLE_DBSTAT_VTAB=1"
@@ -125,10 +134,7 @@ fi
 # build dqlite
 if [ ! -f "${BUILD_DIR}/dqlite/libdqlite.la" ]; then
   (
-    cd "${BUILD_DIR}"
-    rm -rf dqlite
-    git clone "${REPO_DQLITE}" --depth 1 --branch "${TAG_DQLITE}"
-    cd dqlite
+    cd "${DQLITE_PATH}"
     autoreconf -i
     ./configure --enable-build-raft --with-static-deps --prefix="${INSTALL_DIR}"
     make -j check-norun
