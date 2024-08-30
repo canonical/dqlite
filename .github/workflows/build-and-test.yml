@@ -28,6 +28,8 @@ jobs:
       run: |
           sudo apt update
           sudo apt install -y lcov libsqlite3-dev liblz4-dev libuv1-dev
+          # TODO: remove once the mysterious hang is fixed
+          sudo apt install -y gdb
 
     - name: Build dqlite
       env:
@@ -48,20 +50,19 @@ jobs:
         CC: ${{ matrix.compiler }}
         LIBDQLITE_TRACE: 1
       run: |
-          for bin in unit-test integration-test \
-                     raft-core-fuzzy-test raft-core-integration-test \
-                     raft-core-unit-test raft-uv-integration-test \
-                     raft-uv-unit-test
-          do ./$bin || touch any-failed
-          done 2>&1 | tee -a test-suite.log
-          test '!' -e any-failed
+          # TODO: return to just `make check` once the mysterious hang is fixed
+          tests="integration-test \
+                 raft-core-fuzzy-test \
+                 raft-core-integration-test \
+                 raft-core-unit-test \
+                 raft-uv-integration-test \
+                 raft-uv-unit-test"
+          make check TESTS="$tests"
 
-    - name: OnTestFailure
-      if: ${{ failure() }}
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-suite.log
-        path: test-suite.log
+          ./unit-test --no-fork &
+          pid=$!
+          bash -c "sleep 10m; sudo gdb -p $pid -batch -ex 'thread apply all bt' -ex quit; false" &
+          wait -n
 
     - name: Coverage
       env:
