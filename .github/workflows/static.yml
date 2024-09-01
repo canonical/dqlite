@@ -19,4 +19,4 @@ jobs:
       env:
         LIBDQLITE_TRACE: 1
       run: |
-           contrib/build-static.sh
+           contrib/build-static.sh || (cat ./test-suite.log && false)
