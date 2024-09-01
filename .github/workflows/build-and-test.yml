@@ -28,6 +28,8 @@ jobs:
       run: |
           sudo apt update
           sudo apt install -y lcov libsqlite3-dev liblz4-dev libuv1-dev
+          # TODO: remove once the mysterious hang is fixed
+          sudo apt install -y gdb
 
     - name: Build dqlite
       env:
@@ -43,18 +45,16 @@ jobs:
         CC: ${{ matrix.compiler }}
         LIBDQLITE_TRACE: 1
       run: |
-          # Temporary measure: don't use `make check` because then we won't see
-          # the partial test output when there's a hang in CI.
-          bins="$(make print-test-programs)"
-          for bin in $bins; do ./$bin || touch any-failed; done 2>&1 | tee -a test-suite.log
-          test '!' -e any-failed
+          # TODO: return to just `make check` once the mysterious hang is fixed
+          tests="$(make print-test-programs | tr ' ' '\n' | grep -v '^unit-test$')"
+          make check TESTS="$tests"
 
-    - name: OnTestFailure
-      if: ${{ failure() }}
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-suite.log
-        path: test-suite.log
+          # Grab backtraces when the unit-test binary hangs (this is a heisenbug
+          # that we've only been able to trigger in GHA jobs)
+          ./unit-test --no-fork &
+          pid=$!
+          bash -c "sleep 10m; sudo gdb -p $pid -batch -ex 'thread apply all bt' -ex quit; false" &
+          wait -n
 
     - name: Coverage
       env:

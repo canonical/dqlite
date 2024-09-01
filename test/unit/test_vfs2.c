@@ -4,6 +4,7 @@
 #include "../../src/lib/byte.h"
 #include "../lib/fs.h"
 #include "../lib/runner.h"
+#include "../lib/sqlite.h"
 
 #include <sqlite3.h>
 
@@ -29,6 +30,9 @@ static void *set_up(const MunitParameter params[], void *user_data)
 	(void)params;
 	(void)user_data;
 	struct fixture *f = munit_malloc(sizeof(*f));
+
+	SETUP_SQLITE;
+
 	f->dir = test_dir_setup();
 	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), "dqlite-vfs2");
 	munit_assert_ptr_not_null(f->vfs);
@@ -43,6 +47,8 @@ static void tear_down(void *data)
 	vfs2_destroy(f->vfs);
 	test_dir_tear_down(f->dir);
 	free(f);
+
+	TEAR_DOWN_SQLITE;
 }
 
 static void prepare_wals(const char *dbname,
