@@ -22,14 +22,25 @@ int sm_state(const struct sm *m)
 
 static inline void sm_obs(const struct sm *m)
 {
-	tracef("%s pid: %d sm_id: %" PRIu64 " %s |\n",
+	tracef("%s pid: %d sm_id: %" PRIu64 " %s |",
 		m->name, m->pid, m->id, m->conf[sm_state(m)].name);
 }
 
 void sm_relate(const struct sm *from, const struct sm *to)
 {
-	tracef("%s-to-%s opid: %d dpid: %d id: %" PRIu64 " id: %" PRIu64 " |\n",
+	tracef("%s-to-%s opid: %d dpid: %d id: %" PRIu64 " id: %" PRIu64 " |",
 		from->name, to->name, from->pid, to->pid, from->id, to->id);
+}
+
+void sm_attr(const struct sm *m, const char *k, const char *fmt, ...)
+{
+	char v[SM_MAX_ATTR_LENGTH];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(v, sizeof(v), fmt, ap);
+	va_end(ap);
+	tracef("%s-attr pid: %d sm_id: %" PRIu64 " %s %s |",
+	       m->name, m->pid, m->id, k, v);
 }
 
 void sm_init(struct sm *m,
@@ -49,6 +60,7 @@ void sm_init(struct sm *m,
 	m->is_locked = is_locked;
 	m->id = ++id;
 	m->pid = getpid();
+	m->rc = 0;
 	snprintf(m->name, SM_MAX_NAME_LENGTH, "%s", name);
 	sm_obs(m);
 
@@ -82,12 +94,13 @@ void sm_fail(struct sm *m, int fail_state, int rc)
 
 	m->rc = rc;
 	m->state = fail_state;
+	sm_obs(m);
 	POST(m->invariant != NULL && m->invariant(m, prev));
 }
 
 static __attribute__((noinline)) bool check_failed(const char *f, int n, const char *s)
 {
-	tracef("%s:%d check failed: %s\n", f, n, s);
+	tracef("%s:%d check failed: %s", f, n, s);
 	return false;
 }
 
