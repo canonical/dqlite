@@ -2,7 +2,16 @@ ACLOCAL_AMFLAGS = -I m4
 
 AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
 AM_CFLAGS += $(SQLITE_CFLAGS) $(UV_CFLAGS) $(PTHREAD_CFLAGS)
-AM_LDFLAGS = $(UV_LIBS) $(PTHREAD_LIBS)
+
+if WITH_STATIC_DEPS
+AM_CFLAGS += -DDQLITE_STATIC_LIBC
+static = -all-static
+else
+static =
+endif
+
+AM_LDFLAGS = $(static)
+AM_LDFLAGS += $(UV_LIBS) $(PTHREAD_LIBS)
 
 if DQLITE_NEXT_ENABLED
 AM_CFLAGS += -DDQLITE_NEXT
@@ -216,7 +225,7 @@ libtest_la_SOURCES += \
   test/raft/lib/loop.c
 
 libraft_la_CFLAGS = $(AM_CFLAGS)
-libraft_la_LDFLAGS = $(UV_LIBS)
+libraft_la_LDFLAGS = $(static) $(UV_LIBS)
 
 raft_core_unit_test_SOURCES = \
   $(libraft_la_SOURCES) \
@@ -260,7 +269,7 @@ raft_core_integration_test_SOURCES = \
   test/raft/integration/test_transfer.c \
   test/raft/integration/test_voter_contacts.c
 raft_core_integration_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
-raft_core_integration_test_LDFLAGS = -no-install
+raft_core_integration_test_LDFLAGS = $(static) -no-install
 raft_core_integration_test_LDADD = libtest.la libraft.la
 
 raft_core_fuzzy_test_SOURCES = \
@@ -273,7 +282,7 @@ raft_core_fuzzy_test_SOURCES = \
   test/raft/fuzzy/test_membership.c \
   test/raft/fuzzy/test_replication.c
 raft_core_fuzzy_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
-raft_core_fuzzy_test_LDFLAGS = -no-install
+raft_core_fuzzy_test_LDFLAGS = $(static) -no-install
 raft_core_fuzzy_test_LDADD = libtest.la libraft.la
 
 raft_uv_unit_test_SOURCES = \
@@ -315,14 +324,14 @@ raft_uv_integration_test_SOURCES = \
   test/raft/integration/test_uv_truncate_snapshot.c \
   test/raft/integration/test_uv_work.c
 raft_uv_integration_test_CFLAGS = $(AM_CFLAGS) -Wno-type-limits -Wno-conversion
-raft_uv_integration_test_LDFLAGS = -no-install
+raft_uv_integration_test_LDFLAGS = $(static) -no-install
 raft_uv_integration_test_LDADD = libtest.la $(UV_LIBS)
 
 if LZ4_AVAILABLE
 libdqlite_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
 libdqlite_la_LDFLAGS += $(LZ4_LIBS)
 raft_core_unit_test_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
-raft_core_unit_test_LDFLAGS = $(LZ4_LIBS)
+raft_core_unit_test_LDFLAGS = $(static) $(LZ4_LIBS)
 libraft_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
 libraft_la_LDFLAGS += $(LZ4_LIBS)
 raft_uv_integration_test_CFLAGS += -DLZ4_AVAILABLE
@@ -350,6 +359,14 @@ AM_LDFLAGS += $(SQLITE_LIBS)
 endif
 
 TESTS = $(check_PROGRAMS)
+
+check-norun: $(TESTS)
+
+# Sometimes we want to run the test binaries manually. This target allows us to
+# get the list of binaries out of the build system for that use-case,
+# maintaining a single source of truth.
+print-test-programs:
+	@echo '$(TESTS)'
 
 if CODE_COVERAGE_ENABLED
 

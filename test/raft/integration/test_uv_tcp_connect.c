@@ -192,7 +192,7 @@ TEST(tcp_connect, connectByName, setUp, tearDown, 0, NULL)
 }
 
 /* Successfully connect to the peer by first IP  */
-TEST(tcp_connect, firstIP, setUp, tearDown, 0, NULL)
+ADDRINFO_TEST(tcp_connect, firstIP, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     const struct AddrinfoResult results[] = {{"127.0.0.1", TCP_SERVER_PORT},
@@ -203,7 +203,7 @@ TEST(tcp_connect, firstIP, setUp, tearDown, 0, NULL)
 }
 
 /* Successfully connect to the peer by second IP  */
-TEST(tcp_connect, secondIP, setUp, tearDown, 0, NULL)
+ADDRINFO_TEST(tcp_connect, secondIP, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     const struct AddrinfoResult results[] = {{"127.0.0.1", .6666},
@@ -332,7 +332,7 @@ TEST(tcp_connect, closeDuringConnectAbort, setUp, tearDownDeps, 0, NULL)
 
 /* The transport gets closed right after the first connection attempt failed,
  * while doing a second connection attempt. */
-TEST(tcp_connect, closeDuringSecondConnect, setUp, tearDownDeps, 0, NULL)
+ADDRINFO_TEST(tcp_connect, closeDuringSecondConnect, setUp, tearDownDeps, 0, NULL)
 {
     struct fixture *f = data;
     struct uv_check_s check;

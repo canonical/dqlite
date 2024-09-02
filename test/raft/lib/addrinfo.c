@@ -7,6 +7,28 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#ifdef DQLITE_STATIC_LIBC
+
+void AddrinfoInjectSetResponse(int rv,
+                               int num_results,
+                               const struct AddrinfoResult *results)
+{
+	(void)rv;
+	(void)num_results;
+	(void)results;
+}
+
+void AddrinfoInjectSetUp(const MunitParameter params[])
+{
+	(void)params;
+}
+
+void AddrinfoInjectTearDown(void)
+{
+}
+
+#else /* ifndef DQLITE_STATIC_LIBC */
+
 bool addrinfo_mock_enabled = false;
 
 enum addrinfo_mock_state { MockResultSet, MockResultReturned, SystemResult };
@@ -171,3 +193,5 @@ void freeaddrinfo(struct addrinfo *res)
     }
     free(response);
 }
+
+#endif /* ifdef DQLITE_STATIC_LIBC ... else */
