@@ -70,7 +70,7 @@ AS_IF([test "x$enable_build_raft" = "xyes"],
       [AS_IF([test "x$with_lz4" != "xno"],
 	     [PKG_CHECK_MODULES(LZ4, [liblz4 >= 1.7.1], [have_lz4=yes], [have_lz4=no])],
 	     [have_lz4=no])
-       AS_IF([test "x$with_lz4" != "xno" -a "x$have_lz4" = "xno"],
+       AS_IF([test "x$with_lz4" = "xyes" -a "x$have_lz4" = "xno"],
 	     [AC_MSG_ERROR([liblz4 required but not found])],
 	     [])],
       # Not building raft
