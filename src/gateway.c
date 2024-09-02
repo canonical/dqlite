@@ -761,66 +761,66 @@ static void handle_exec_sql_next(struct gateway *g,
 				 bool done)
 {
 	tracef("handle exec sql next");
+	struct leader *l = g->leader;
+	PRE(l != NULL);
 	struct cursor *cursor = &req->cursor;
-	struct response_result response = { 0 };
-	sqlite3_stmt *stmt = NULL;
+	int schema = req->schema;
+	struct response_result response = {};
+	sqlite3_stmt *stmt;
+	const char *sql;
 	const char *tail;
 	int tuple_format;
-	uint64_t req_id;
 	int rv;
 
-	if (req->sql == NULL || strcmp(req->sql, "") == 0) {
-		goto success;
-	}
+	tuple_format = schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 ?
+				 TUPLE__PARAMS :
+		       schema == DQLITE_REQUEST_PARAMS_SCHEMA_V1 ?
+				 TUPLE__PARAMS32 :
+		       (POST(false && "impossible"), 0);
 
-	/* stmt will be set to NULL by sqlite when an error occurs. */
-	assert(g->leader != NULL);
-	rv = sqlite3_prepare_v2(g->leader->conn, req->sql, -1, &stmt, &tail);
-	if (rv != SQLITE_OK) {
-		tracef("exec sql prepare failed %d", rv);
-		failure(req, rv, sqlite3_errmsg(g->leader->conn));
-		goto done;
-	}
-
-	if (stmt == NULL) {
-		goto success;
-	}
-
-	if (!done) {
-		switch (req->schema) {
-			case DQLITE_REQUEST_PARAMS_SCHEMA_V0:
-				tuple_format = TUPLE__PARAMS;
-				break;
-			case DQLITE_REQUEST_PARAMS_SCHEMA_V1:
-				tuple_format = TUPLE__PARAMS32;
-				break;
-			default:
-				/* Should have been caught by handle_exec_sql */
-				assert(0);
+	for (;;) {
+		stmt = NULL;
+		sql = req->sql;
+		if (sql == NULL || strcmp(sql, "") == 0) {
+			goto success;
 		}
-		rv = bind__params(stmt, cursor, tuple_format);
+		/* stmt will be set to NULL by sqlite when an error occurs. */
+		rv = sqlite3_prepare_v2(l->conn, sql, -1, &stmt, &tail);
 		if (rv != SQLITE_OK) {
-			failure(req, rv, "bind parameters");
+			tracef("exec sql prepare failed %d", rv);
+			failure(req, rv, sqlite3_errmsg(l->conn));
+			goto done;
+		}
+		if (stmt == NULL) {
+			goto success;
+		}
+		if (!done) {
+			rv = bind__params(stmt, cursor, tuple_format);
+			if (rv != SQLITE_OK) {
+				failure(req, rv, "bind parameters");
+				goto done_after_prepare;
+			}
+		}
+
+		req->sql = tail;
+		g->req = req;
+		rv = leader_exec_v2(g->leader, &g->exec, stmt, handle_exec_sql_cb);
+		if (rv == 0) {
+			return;
+		} else if (rv != LEADER_NOT_ASYNC) {
+			failure(req, rv, sqlite3_errmsg(l->conn));
+			goto done_after_prepare;
+		} else if (g->exec.status != SQLITE_DONE) {
+			/* XXX */
+			failure(req, g->exec.status, sqlite3_errmsg(l->conn));
 			goto done_after_prepare;
 		}
+		done = true;
+		sqlite3_finalize(stmt);
+		req->exec_count++;
 	}
-
-	req->sql = tail;
-	g->req = req;
-
-	req_id = idNext(&g->random_state);
-	/* At this point, leader__exec takes ownership of stmt */
-	rv =
-	    leader__exec(g->leader, &g->exec, stmt, req_id, handle_exec_sql_cb);
-	if (rv != SQLITE_OK) {
-		failure(req, rv, sqlite3_errmsg(g->leader->conn));
-		goto done_after_prepare;
-	}
-
-	return;
 
 success:
-	tracef("handle exec sql next success");
 	if (req->exec_count > 0) {
 		fill_result(g, &response);
 	}
