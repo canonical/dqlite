@@ -119,6 +119,28 @@ The `--enable-build-raft` option causes dqlite to use its bundled Raft
 implementation instead of linking to an external libraft; the latter is a
 legacy configuration that should not be used for new development.
 
+Building for static linking
+---------------------------
+
+If you're building dqlite for eventual use in a statically-linked
+binary, there are some additional considerations. You should pass
+`--with-static-deps` to the configure script; this disables code that
+relies on dependencies being dynamically linked. (Currently it only
+affects the test suite, but you should use it even when building
+`libdqlite.a` only for future compatibility.)
+
+When linking libdqlite with musl libc, it's recommended to increase
+the default stack size, which is otherwise too low for dqlite's
+needs:
+
+```
+LDFLAGS="-Wl,-z,stack-size=1048576"
+```
+
+The `contrib/build-static.sh` script demonstrates building and
+testing dqlite with all dependencies (including libc) statically
+linked.
+
 Usage Notes
 -----------
 
