@@ -227,6 +227,7 @@ int raft_recover(struct raft *r, const struct raft_configuration *conf)
 
 	rv = r->io->recover(r->io, conf);
 	if (rv != 0) {
+		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 		return rv;
 	}
 
