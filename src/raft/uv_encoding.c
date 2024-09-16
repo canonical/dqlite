@@ -90,11 +90,7 @@ size_t uvSizeofBatchHeader(size_t n, bool with_local_data)
 {
 	size_t res = 8 + /* Number of entries in the batch, little endian */
 		16 * n; /* One header per entry */;
-	if (with_local_data) {
-#ifdef DQLITE_NEXT
-		res += 8; /* Local data length, applies to all entries */
-#endif
-	}
+	(void)with_local_data;
 	return res;
 }
 
@@ -310,12 +306,7 @@ void uvEncodeBatchHeader(const struct raft_entry *entries,
 	/* Number of entries in the batch, little endian */
 	bytePut64(&cursor, n);
 
-	if (with_local_data) {
-#ifdef DQLITE_NEXT
-		/* Local data size per entry, little endian */
-		bytePut64(&cursor, (uint64_t)sizeof(struct raft_entry_local_data));
-#endif
-	}
+	(void)with_local_data;
 
 	for (i = 0; i < n; i++) {
 		const struct raft_entry *entry = &entries[i];
@@ -391,16 +382,7 @@ int uvDecodeBatchHeader(const void *batch,
 		return 0;
 	}
 
-	if (local_data_size != NULL) {
-#ifdef DQLITE_NEXT
-		uint64_t z = byteGet64(&cursor);
-		if (z == 0 || z > sizeof(struct raft_entry_local_data) || z % sizeof(uint64_t) != 0) {
-			rv = RAFT_MALFORMED;
-			goto err;
-		}
-		*local_data_size = z;
-#endif
-	}
+	(void)local_data_size;
 
 	*entries = raft_malloc(*n * sizeof **entries);
 
@@ -603,10 +585,6 @@ int uvDecodeEntriesBatch(uint8_t *batch,
 		entry->local_data = (struct raft_entry_local_data){};
 		assert(local_data_size <= sizeof(entry->local_data.buf));
 		assert(local_data_size % 8 == 0);
-#ifdef DQLITE_NEXT
-		memcpy(entry->local_data.buf, cursor, local_data_size);
-		cursor += local_data_size;
-#endif
 	}
 	return 0;
 }

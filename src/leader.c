@@ -417,22 +417,6 @@ finish:
 	leaderExecDone(l->exec);
 }
 
-#ifdef DQLITE_NEXT
-
-static void exec_top(pool_work_t *w)
-{
-	struct exec *req = CONTAINER_OF(w, struct exec, work);
-	leaderExecV2(req, POOL_TOP_HALF);
-}
-
-static void exec_bottom(pool_work_t *w)
-{
-	struct exec *req = CONTAINER_OF(w, struct exec, work);
-	leaderExecV2(req, POOL_BOTTOM_HALF);
-}
-
-#endif
-
 static void execBarrierCb(struct barrier *barrier, int status)
 {
 	tracef("exec barrier cb status %d", status);
@@ -445,16 +429,8 @@ static void execBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-#ifdef DQLITE_NEXT
-	struct dqlite_node *node = l->raft->data;
-	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
-		? pool_ut_fallback() : &node->pool;
-	pool_queue_work(pool, &req->work, l->db->cookie,
-			WT_UNORD, exec_top, exec_bottom);
-#else
 	leaderExecV2(req, POOL_TOP_HALF);
 	leaderExecV2(req, POOL_BOTTOM_HALF);
-#endif
 }
 
 int leader__exec(struct leader *l,

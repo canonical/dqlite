@@ -8,11 +8,7 @@
 #include "../raft.h"
 
 /* Current disk format version. */
-#ifdef DQLITE_NEXT
-#define UV__DISK_FORMAT 2
-#else
 #define UV__DISK_FORMAT 1
-#endif
 
 int uvEncodeMessage(const struct raft_message *message,
 		    uv_buf_t **bufs,

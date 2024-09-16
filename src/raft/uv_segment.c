@@ -299,9 +299,6 @@ static int uvLoadEntriesBatch(struct uv *uv,
 	data.len = 0;
 	for (i = 0; i < n; i++) {
 		data.len += (*entries)[i].buf.len;
-#ifdef DQLITE_NEXT
-		data.len += sizeof((*entries)[i].local_data);
-#endif
 	}
 	data.base = (uint8_t *)content->base + *offset;
 
@@ -751,9 +748,6 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 	size += uvSizeofBatchHeader(n_entries, true); /* Batch header */
 	for (i = 0; i < n_entries; i++) {       /* Entries data */
 		size += bytePad64(entries[i].buf.len);
-#ifdef DQLITE_NEXT
-		size += sizeof(struct raft_entry_local_data);
-#endif
 	}
 
 	rv = uvEnsureSegmentBufferIsLargeEnough(b, b->n + size);
@@ -784,12 +778,6 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
 		cursor = (uint8_t *)cursor + entry->buf.len;
 		static_assert(sizeof(entry->local_data.buf) % sizeof(uint64_t) == 0,
 			      "bad size for entry local data");
-#ifdef DQLITE_NEXT
-		size_t local_data_size = sizeof(entry->local_data.buf);
-		memcpy(cursor, entry->local_data.buf, local_data_size);
-		crc2 = byteCrc32(cursor, local_data_size, crc2);
-		cursor = (uint8_t *)cursor + local_data_size;
-#endif
 	}
 
 	bytePut32(&crc1_p, crc1);
