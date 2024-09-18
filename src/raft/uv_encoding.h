@@ -21,14 +21,12 @@ int uvDecodeMessage(uint16_t type,
 
 int uvDecodeBatchHeader(const void *batch,
 			struct raft_entry **entries,
-			unsigned *n,
-			uint64_t *local_data_size);
+			unsigned *n);
 
 int uvDecodeEntriesBatch(uint8_t *batch,
 			 size_t offset,
 			 struct raft_entry *entries,
-			 unsigned n,
-			 uint64_t local_data_size);
+			 unsigned n);
 
 /**
  * The layout of the memory pointed at by a @batch pointer is the following:
@@ -47,17 +45,15 @@ int uvDecodeEntriesBatch(uint8_t *batch,
  * [1 byte ] Message type (Either RAFT_COMMAND or RAFT_CHANGE)
  * [3 bytes] Currently unused.
  * [4 bytes] Size of the log entry data, little endian.
- * [8 bytes] Size of the local buffer, little endian.
  *
  * A payload data section for an entry is simply a sequence of bytes of
  * arbitrary lengths, possibly padded with extra bytes to reach 8-byte boundary
  * (which means that all entry data pointers are 8-byte aligned).
  */
-size_t uvSizeofBatchHeader(size_t n, bool with_local_data);
+size_t uvSizeofBatchHeader(size_t n);
 
 void uvEncodeBatchHeader(const struct raft_entry *entries,
 			 unsigned n,
-			 void *buf,
-			 bool with_local_data);
+			 void *buf);
 
 #endif /* UV_ENCODING_H_ */

@@ -546,7 +546,6 @@ int logAppend(struct raft_log *l,
 	      const raft_term term,
 	      const unsigned short type,
 	      struct raft_buffer buf,
-	      struct raft_entry_local_data local_data,
 	      bool is_local,
 	      void *batch)
 {
@@ -576,7 +575,6 @@ int logAppend(struct raft_log *l,
 	entry->type = type;
 	entry->buf = buf;
 	entry->batch = batch;
-	entry->local_data = local_data;
 	entry->is_local = is_local;
 
 	l->back += 1;
@@ -588,7 +586,6 @@ int logAppend(struct raft_log *l,
 int logAppendCommands(struct raft_log *l,
 		      const raft_term term,
 		      const struct raft_buffer bufs[],
-		      const struct raft_entry_local_data local_data[],
 		      const unsigned n)
 {
 	unsigned i;
@@ -600,8 +597,7 @@ int logAppendCommands(struct raft_log *l,
 	assert(n > 0);
 
 	for (i = 0; i < n; i++) {
-		struct raft_entry_local_data loc = (local_data != NULL) ? local_data[i] : (struct raft_entry_local_data){};
-		rv = logAppend(l, term, RAFT_COMMAND, bufs[i], loc, true, NULL);
+		rv = logAppend(l, term, RAFT_COMMAND, bufs[i], true, NULL);
 		if (rv != 0) {
 			return rv;
 		}
@@ -628,7 +624,7 @@ int logAppendConfiguration(struct raft_log *l,
 	}
 
 	/* Append the new entry to the log. */
-	rv = logAppend(l, term, RAFT_CHANGE, buf, (struct raft_entry_local_data){}, true, NULL);
+	rv = logAppend(l, term, RAFT_CHANGE, buf, true, NULL);
 	if (rv != 0) {
 		goto err_after_encode;
 	}
