@@ -6,8 +6,7 @@ AC_CONFIG_AUX_DIR([ac])
 AM_INIT_AUTOMAKE([subdir-objects -Wall -Werror -Wno-portability foreign])
 AM_SILENT_RULES([yes])
 
-# Without this line, AC_PROG_CC boneheadedly adds `-g -O2` to our CFLAGS.
-AC_SUBST(CFLAGS, "")
+AC_SUBST(AM_CFLAGS)
 AC_PROG_CC
 AC_USE_SYSTEM_EXTENSIONS
 
@@ -48,6 +47,11 @@ AS_IF([test "x$enable_build_raft" != "xyes"],
 AC_ARG_ENABLE(dqlite-next, AS_HELP_STRING([--enable-dqlite-next[=ARG]], [build with the experimental dqlite backend [default=no]]))
 AM_CONDITIONAL(DQLITE_NEXT_ENABLED, test "x$enable_dqlite_next" = "xyes")
 
+AC_ARG_WITH(static-deps,
+	    AS_HELP_STRING([--with-static-deps[=ARG]],
+			   [skip building a shared library and link test binaries statically]))
+AM_CONDITIONAL(WITH_STATIC_DEPS, test "x$with_static_deps" = "xyes")
+
 # Whether to enable code coverage.
 AX_CODE_COVERAGE
 
@@ -71,7 +75,7 @@ AC_ARG_WITH([lz4], AS_HELP_STRING([--without-lz4], [never link to liblz4]))
 AS_IF([test "x$with_lz4" != "xno"],
      [PKG_CHECK_MODULES(LZ4, [liblz4 >= 1.7.1], [have_lz4=yes], [have_lz4=no])],
      [have_lz4=no])
-AS_IF([test "x$with_lz4" != "xno" -a "x$have_lz4" = "xno"],
+AS_IF([test "x$with_lz4" = "xyes" -a "x$have_lz4" = "xno"],
      [AC_MSG_ERROR([liblz4 required but not found])],
      [])
 
@@ -92,10 +96,8 @@ CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -pipe \
   -fno-strict-aliasing \
   -fdiagnostics-color \
-  -fexceptions \
   -fstack-clash-protection \
   -fstack-protector-strong \
-  -fasynchronous-unwind-tables \
   -fdiagnostics-show-option \
   -Wall \
   -Wextra \
@@ -114,6 +116,7 @@ CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -Wdate-time \
   -Wnested-externs \
   -Wconversion \
+  -Wno-format-nonliteral \
   -Werror \
 ])
 # To enable:

@@ -1022,6 +1022,7 @@ int dqlite_node_recover_ext(dqlite_node *n,
 			    struct dqlite_node_info_ext infos[],
 			    int n_info)
 {
+	dqliteTracingMaybeEnable(true);
 	tracef("dqlite node recover ext");
 	struct raft_configuration configuration;
 	int i;
@@ -1031,6 +1032,7 @@ int dqlite_node_recover_ext(dqlite_node *n,
 	for (i = 0; i < n_info; i++) {
 		struct dqlite_node_info_ext *info = &infos[i];
 		if (!node_info_valid(info)) {
+			tracef("invalid node info");
 			rv = DQLITE_MISUSE;
 			goto out;
 		}
@@ -1040,6 +1042,7 @@ int dqlite_node_recover_ext(dqlite_node *n,
 		rv = raft_configuration_add(&configuration, info->id, address,
 					    raft_role);
 		if (rv != 0) {
+			tracef("unable to add server to raft configuration, error: %d", rv);
 			assert(rv == RAFT_NOMEM);
 			rv = DQLITE_NOMEM;
 			goto out;
@@ -1049,11 +1052,15 @@ int dqlite_node_recover_ext(dqlite_node *n,
 	int lock_fd;
 	rv = acquire_dir(n->config.raft_dir, &lock_fd);
 	if (rv != 0) {
+		tracef("couldn't acquire lock, error: %d", rv);
 		goto out;
 	}
 
 	rv = raft_recover(&n->raft, &configuration);
 	if (rv != 0) {
+		tracef("raft recovery failed, error: %d", rv);
+		snprintf(n->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_recover(): %s",
+			 raft_errmsg(&n->raft));
 		rv = DQLITE_ERROR;
 		goto out;
 	}

@@ -28,6 +28,8 @@ jobs:
       run: |
           sudo apt update
           sudo apt install -y lcov libsqlite3-dev liblz4-dev libuv1-dev
+          # TODO: remove once the mysterious hang is fixed
+          sudo apt install -y gdb
 
     - name: Build dqlite
       env:
@@ -36,19 +38,23 @@ jobs:
           autoreconf -i
           ./configure --enable-debug --enable-code-coverage --enable-sanitize \
                       --enable-build-raft --enable-dqlite-next=${{ matrix.dqlite-next }}
-          make -j4 unit-test integration-test \
-                   raft-core-fuzzy-test \
-                   raft-core-integration-test \
-                   raft-core-unit-test \
-                   raft-uv-integration-test \
-                   raft-uv-unit-test
+          make -j$(nproc) check-norun
 
     - name: Test
       env:
         CC: ${{ matrix.compiler }}
         LIBDQLITE_TRACE: 1
       run: |
-           make check || (cat ./test-suite.log && false)
+          # TODO: return to just `make check` once the mysterious hang is fixed
+          tests="$(make print-test-programs | tr ' ' '\n' | grep -v '^unit-test$')"
+          make check TESTS="$tests"
+
+          # Grab backtraces when the unit-test binary hangs (this is a heisenbug
+          # that we've only been able to trigger in GHA jobs)
+          ./unit-test --no-fork &
+          pid=$!
+          bash -c "sleep 10m; sudo gdb -p $pid -batch -ex 'thread apply all bt' -ex quit; false" &
+          wait -n
 
     - name: Coverage
       env:

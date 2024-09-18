@@ -1,0 +1,39 @@
+name: CI Tests (no liblz4)
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up dependencies
+      run: |
+          sudo apt update
+          sudo apt install -y libsqlite3-dev libuv1-dev
+          sudo apt remove -y liblz4-dev
+
+    - name: Build dqlite (liblz4 not present)
+      run: |
+          autoreconf -i
+          ./configure --enable-build-raft
+          make -j$(nproc)
+          make clean
+
+    - name: Build dqlite (liblz4 requested and not present)
+      run: |
+          autoreconf -i
+          ! ./configure --enable-build-raft --with-lz4
+    - name: Install liblz4
+      run: |
+          sudo apt install liblz4-dev
+
+    - name: Build dqlite (liblz4 present but ignored)
+      run: |
+          ./configure --enable-build-raft --without-lz4
+          make -j$(nproc)
+          ! ldd .libs/libdqlite.so | grep lz4

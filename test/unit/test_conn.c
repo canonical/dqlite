@@ -396,7 +396,7 @@ TEST_SETUP(query)
 	PREPARE_CONN("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC_CONN(stmt_id, &f->last_insert_id, &f->rows_affected, 7);
 	PREPARE_CONN("INSERT INTO test(n) VALUES (123)", &f->insert_stmt_id);
-	EXEC_CONN(f->insert_stmt_id, &f->last_insert_id, &f->rows_affected, 4);
+	EXEC_CONN(f->insert_stmt_id, &f->last_insert_id, &f->rows_affected, 9);
 	return f;
 }
 

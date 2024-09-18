@@ -4,6 +4,7 @@
 #include "../../src/lib/byte.h"
 #include "../lib/fs.h"
 #include "../lib/runner.h"
+#include "../lib/sqlite.h"
 
 #include <sqlite3.h>
 
@@ -14,8 +15,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define PAGE_SIZE 512
-#define PAGE_SIZE_STR "512"
+#define DB_PAGE_SIZE 512
+#define DB_PAGE_SIZE_STR "512"
 
 SUITE(vfs2);
 
@@ -29,6 +30,9 @@ static void *set_up(const MunitParameter params[], void *user_data)
 	(void)params;
 	(void)user_data;
 	struct fixture *f = munit_malloc(sizeof(*f));
+
+	SETUP_SQLITE;
+
 	f->dir = test_dir_setup();
 	f->vfs = vfs2_make(sqlite3_vfs_find("unix"), "dqlite-vfs2");
 	munit_assert_ptr_not_null(f->vfs);
@@ -43,6 +47,8 @@ static void tear_down(void *data)
 	vfs2_destroy(f->vfs);
 	test_dir_tear_down(f->dir);
 	free(f);
+
+	TEAR_DOWN_SQLITE;
 }
 
 static void prepare_wals(const char *dbname,
@@ -105,7 +111,7 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	rv = sqlite3_exec(db,
-			  "PRAGMA page_size=" PAGE_SIZE_STR ";"
+			  "PRAGMA page_size=" DB_PAGE_SIZE_STR ";"
 			  "PRAGMA journal_mode=WAL;"
 			  "PRAGMA wal_autocheckpoint=0",
 			  NULL, NULL, NULL);
@@ -209,7 +215,7 @@ TEST(vfs2, basic, set_up, tear_down, 0, NULL)
 	return MUNIT_OK;
 }
 
-#define WAL_SIZE_FROM_FRAMES(n) (32 + (24 + PAGE_SIZE) * (n))
+#define WAL_SIZE_FROM_FRAMES(n) (32 + (24 + DB_PAGE_SIZE) * (n))
 
 static void make_wal_hdr(uint8_t *buf, uint32_t ckpoint_seqno, uint32_t salt1, uint32_t salt2)
 {
@@ -220,7 +226,7 @@ static void make_wal_hdr(uint8_t *buf, uint32_t ckpoint_seqno, uint32_t salt1, u
 	p += 4;
 	BytePutBe32(3007000, p);
 	p += 4;
-	BytePutBe32(PAGE_SIZE, p);
+	BytePutBe32(DB_PAGE_SIZE, p);
 	p += 4;
 	BytePutBe32(ckpoint_seqno, p);
 	p += 4;
@@ -269,7 +275,7 @@ TEST(vfs2, startup_one_nonempty, set_up, tear_down, 0, NULL)
 	munit_assert_int(rv, ==, SQLITE_OK);
 	tracef("setup...");
 	rv = sqlite3_exec(db,
-			  "PRAGMA page_size=" PAGE_SIZE_STR ";"
+			  "PRAGMA page_size=" DB_PAGE_SIZE_STR ";"
 			  "PRAGMA journal_mode=WAL;"
 			  "PRAGMA wal_autocheckpoint=0",
 			  NULL, NULL, NULL);
@@ -309,7 +315,7 @@ TEST(vfs2, startup_both_nonempty, set_up, tear_down, 0, NULL)
 	int rv = sqlite3_open(buf, &db);
 	munit_assert_int(rv, ==, SQLITE_OK);
 	rv = sqlite3_exec(db,
-			  "PRAGMA page_size=" PAGE_SIZE_STR ";"
+			  "PRAGMA page_size=" DB_PAGE_SIZE_STR ";"
 			  "PRAGMA journal_mode=WAL;"
 			  "PRAGMA wal_autocheckpoint=0",
 			  NULL, NULL, NULL);

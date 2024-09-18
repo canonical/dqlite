@@ -18,9 +18,7 @@ void gateway__init(struct gateway *g,
 		   struct config *config,
 		   struct registry *registry,
 		   struct raft *raft,
-		   struct id_state seed,
-		   defer_impl defer,
-		   void *defer_data)
+		   struct id_state seed)
 {
 	tracef("gateway init");
 	g->config = config;
@@ -36,8 +34,6 @@ void gateway__init(struct gateway *g,
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 	g->client_id = 0;
 	g->random_state = seed;
-	g->defer = defer;
-	g->defer_data = defer_data;
 }
 
 /* FIXME: This function becomes unsound when using the new thread pool, since
@@ -102,7 +98,6 @@ void gateway__leader_close(struct gateway *g, int reason)
 void gateway__close(struct gateway *g)
 {
 	tracef("gateway close");
-
 	if (g->leader == NULL) {
 		stmt__registry_close(&g->stmts);
 		return;
@@ -725,14 +720,6 @@ static void handle_exec_sql_next(struct gateway *g,
 				 struct handle *req,
 				 bool done);
 
-static void handle_exec_sql_next_defer_cb(void *arg)
-{
-	struct gateway *g = arg;
-	PRE(g != NULL && g->req != NULL);
-	PRE(g->req->type == DQLITE_REQUEST_EXEC_SQL);
-	handle_exec_sql_next(g, g->req, true);
-}
-
 static void handle_exec_sql_cb(struct exec *exec, int status)
 {
 	tracef("handle exec sql cb status %d", status);
@@ -742,24 +729,12 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 	req->exec_count += 1;
 	sqlite3_finalize(exec->stmt);
 
-	if (status != SQLITE_DONE) {
+	if (status == SQLITE_DONE) {
+		handle_exec_sql_next(g, req, true);
+	} else {
 		assert(g->leader != NULL);
 		failure(req, status, error_message(g->leader->conn, status));
 		g->req = NULL;
-		return;
-	}
-
-	/* It would be valid to always invoke handle_exec_sql_next directly
-	 * here. But that can lead to bounded recursion when we have several
-	 * `;`-separated statements in a row that do not generate rows. To make
-	 * sure the stack depth stays under control, we have the event loop
-	 * loop invoke handle_exec_sql_next itself on the next iteration, but
-	 * only if there is a prior call to handle_exec_sql_next above us on
-	 * the stack. */
-	if (exec->async) {
-		handle_exec_sql_next(g, req, true);
-	} else {
-		g->defer(handle_exec_sql_next_defer_cb, g, g->defer_data);
 	}
 }
 
