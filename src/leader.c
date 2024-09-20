@@ -224,11 +224,7 @@ static void leaderMaybeCheckpointLegacy(struct leader *l)
 		tracef("raft_malloc - no mem");
 		goto err_after_buf_alloc;
 	}
-#ifdef USE_SYSTEM_RAFT
-	rv = raft_apply(l->raft, apply, &buf, 1, leaderCheckpointApplyCb);
-#else
 	rv = raft_apply(l->raft, apply, &buf, NULL, 1, leaderCheckpointApplyCb);
-#endif
 	if (rv != 0) {
 		tracef("raft_apply failed %d", rv);
 		raft_free(apply);
@@ -336,13 +332,9 @@ static int leaderApplyFrames(struct exec *req,
 	apply->type = COMMAND_FRAMES;
 	idSet(apply->req.req_id, req->id);
 
-#ifdef USE_SYSTEM_RAFT
-	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
-#else
 	/* TODO actual WAL slice goes here */
 	struct raft_entry_local_data local_data = {};
 	rv = raft_apply(l->raft, &apply->req, &buf, &local_data, 1, leaderApplyFramesCb);
-#endif
 	if (rv != 0) {
 		tracef("raft apply failed %d", rv);
 		goto err_after_command_encode;

@@ -17,11 +17,6 @@ if DQLITE_NEXT_ENABLED
 AM_CFLAGS += -DDQLITE_NEXT
 endif
 
-if !BUILD_RAFT_ENABLED
-AM_CFLAGS += $(RAFT_CFLAGS) -DUSE_SYSTEM_RAFT
-AM_LDFLAGS += $(RAFT_LIBS)
-endif
-
 if DEBUG_ENABLED
 AM_CFLAGS += -O0
 else
@@ -81,7 +76,6 @@ libdqlite_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden -DRAFT_API=''
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = $(basic_dqlite_sources)
 
-if BUILD_RAFT_ENABLED
 libraft_la_SOURCES = \
   src/raft/byte.c \
   src/raft/callbacks.c \
@@ -135,7 +129,6 @@ libraft_la_SOURCES = \
   src/raft/uv_writer.c
 
 libdqlite_la_SOURCES += $(libraft_la_SOURCES)
-endif # BUILD_RAFT_ENABLED
 
 check_PROGRAMS = unit-test integration-test
 
@@ -183,9 +176,7 @@ unit_test_CFLAGS = $(AM_CFLAGS) -Wno-unknown-warning-option -Wno-uninitialized -
 unit_test_LDFLAGS = $(AM_LDFLAGS)
 unit_test_LDADD = libtest.la
 
-if BUILD_RAFT_ENABLED
 unit_test_LDADD += libraft.la
-endif
 
 integration_test_SOURCES = \
   test/integration/test_client.c \
@@ -201,7 +192,6 @@ integration_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 integration_test_LDFLAGS = $(AM_LDFLAGS) -no-install
 integration_test_LDADD = libtest.la libdqlite.la
 
-if BUILD_RAFT_ENABLED
 check_LTLIBRARIES += libraft.la
 
 check_PROGRAMS += \
@@ -344,8 +334,6 @@ raft_uv_integration_test_CFLAGS += -DLZ4_ENABLED
 raft_core_unit_test_CFLAGS += -DLZ4_ENABLED
 libraft_la_CFLAGS += -DLZ4_ENABLED
 endif
-
-endif # BUILD_RAFT_ENABLED
 
 if BUILD_SQLITE_ENABLED
 noinst_LTLIBRARIES = libsqlite3.la
