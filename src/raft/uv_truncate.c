@@ -93,11 +93,7 @@ struct uvTruncate
 
 static void truncate_done(struct uvTruncate *trunc, int status)
 {
-	if (status == 0) {
-		sm_move(&trunc->orig->sm, TRUNC_DONE);
-	} else {
-		sm_fail(&trunc->orig->sm, TRUNC_FAIL, status);
-	}
+	sm_done(&trunc->orig->sm, TRUNC_DONE, TRUNC_FAIL, status);
 	sm_fini(&trunc->orig->sm);
 	RaftHeapFree(trunc->orig);
 	RaftHeapFree(trunc);

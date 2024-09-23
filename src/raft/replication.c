@@ -932,11 +932,7 @@ struct appendFollower
 
 static void append_follower_done(struct appendFollower *req, int status)
 {
-	if (status == 0) {
-		sm_move(&req->sm, AF_DONE);
-	} else {
-		sm_fail(&req->sm, AF_FAILED, status);
-	}
+	sm_done(&req->sm, AF_DONE, AF_FAILED, status);
 	sm_fini(&req->sm);
 	raft_free(req);
 }
@@ -1239,7 +1235,7 @@ int replicationAppend(struct raft *r,
 	*rejected = 0;
 
 	n = args->n_entries - i; /* Number of new entries */
-	sm_attr(&request->sm, "n", "%zu", n);
+	sm_attr(&request->sm, "new_entries_nr", "%zu", n);
 
 	/* If this is an empty AppendEntries, there's nothing to write. However
 	 * we still want to check if we can commit some entry. However, don't

@@ -310,37 +310,20 @@ done:
 static void ioFlushTruncate(struct io *io, struct truncate *r)
 {
 	size_t n = (size_t)(r->index - 1); /* Number of entries left after truncation */
+	struct raft_entry *entries;
 
-	if (n > 0) {
-		struct raft_entry *entries;
-
-		/* Create a new array of entries holding the non-truncated
-		 * entries */
-		entries = raft_malloc(n * sizeof *entries);
-		assert(entries != NULL);
-		memcpy(entries, io->entries, n * sizeof *io->entries);
-
-		/* Release any truncated entry */
-		if (io->entries != NULL) {
-			size_t i;
-			for (i = n; i < io->n; i++) {
-				raft_free(io->entries[i].buf.base);
-			}
-			raft_free(io->entries);
-		}
-		io->entries = entries;
-	} else {
-		/* Release everything we have */
-		if (io->entries != NULL) {
-			size_t i;
-			for (i = 0; i < io->n; i++) {
-				raft_free(io->entries[i].buf.base);
-			}
-			raft_free(io->entries);
-			io->entries = NULL;
-		}
+	PRE(n <= io->n);
+	PRE(ERGO(io->n > 0, io->entries != NULL));
+	for (size_t i = n; i < io->n; i++) {
+		raft_free(io->entries[i].buf.base);
 	}
+	entries = raft_realloc(io->entries, n * sizeof(*io->entries));
+	if (n == 0) {
+		entries = NULL;
+	}
+	POST(ERGO(n > 0, entries != NULL));
 
+	io->entries = entries;
 	io->n = n;
 	sm_move(&r->req->sm, FIO_END);
 	sm_fini(&r->req->sm);
@@ -708,10 +691,12 @@ static int ioMethodTruncate(struct raft_io *raft_io,
 	sm_init(&trunc->sm, fio_invariant, NULL, fio_states, "fio-trunc", FIO_START);
 	r = raft_malloc(sizeof(*r));
 	assert(r != NULL);
-	r->type = TRUNCATE;
-	r->completion_time = *io->time + io->disk_latency;
-	r->req = trunc;
-	r->index = index;
+	*r = (struct truncate){
+		.type = TRUNCATE,
+		.completion_time = *io->time + io->disk_latency,
+		.req = trunc,
+		.index = index,
+	};
 	queue_insert_tail(&io->requests, &r->queue);
 	return 0;
 

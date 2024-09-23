@@ -54,12 +54,12 @@ enum {
 static struct sm_conf append_states[APPEND_NR] = {
 	[APPEND_START] = {
 		.name = "start",
-		.allowed = BITS(APPEND_PENDING)|BITS(APPEND_FAILED),
+		.allowed = BITS(APPEND_PENDING)|BITS(APPEND_DONE)|BITS(APPEND_FAILED),
 		.flags = SM_INITIAL,
 	},
 	[APPEND_PENDING] = {
 		.name = "pending",
-		.allowed = BITS(APPEND_WRITING)|BITS(APPEND_FAILED),
+		.allowed = BITS(APPEND_WRITING)|BITS(APPEND_DONE)|BITS(APPEND_FAILED),
 	},
 	[APPEND_WRITING] = {
 		.name = "writing",
@@ -119,11 +119,7 @@ struct uvAppend
 static void append_done(struct uvAppend *append, int status)
 {
 	struct raft_io_append *req = append->req;
-	if (status == 0) {
-		sm_move(&req->sm, APPEND_DONE);
-	} else {
-		sm_fail(&req->sm, APPEND_FAILED, status);
-	}
+	sm_done(&req->sm, APPEND_DONE, APPEND_FAILED, status);
 	sm_fini(&req->sm);
 	req->cb(req, status);
 	RaftHeapFree(append);

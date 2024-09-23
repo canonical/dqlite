@@ -71,33 +71,35 @@ static size_t refsKey(const raft_index index, const size_t size)
 	return (size_t)((index - 1) % size);
 }
 
+#define COLLISION ((struct raft_entry_ref *)1)
+
 /* Try to insert a new reference count item for the given log entry index into
  * the given reference count hash table.
  *
- * A collision happens when the bucket associated with the hash key of the given
- * log entry index is already used to refcount log entries with a different
- * index. In that case the collision output parameter will be set to true and no
- * new reference count item is inserted into the hash table.
- *
- * If two log entries have the same index but different terms, the associated
+ * A collision happens when the bucket associated with the hash key of the
+ * given log entry index is already used to refcount log entries with a
+ * different index. In this case, no reference count item will be created. If
+ * two log entries have the same index but different terms, the associated
  * bucket will be grown accordingly.
  *
- * Returns a pointer to the new reference object on success, or NULL if a
- * memory allocation failed. */
+ * Returns a pointer to the new reference object on success, NULL if an
+ * allocation failed, or the sentinel COLLISION if a collision occurred. */
 static struct raft_entry_ref *refsTryInsert(struct raft_entry_ref *table,
 					    const size_t size,
 					    const raft_term term,
 					    const raft_index index,
 					    const unsigned short count,
 					    struct raft_buffer buf,
-					    void *batch,
-					    bool *collision)
+					    void *batch)
 {
-	struct raft_entry_ref *bucket; /* Bucket associated with this index. */
-	struct raft_entry_ref *next_slot; /* For traversing the bucket slots. */
-	struct raft_entry_ref
-	    *last_slot;              /* To track the last traversed slot. */
-	struct raft_entry_ref *slot; /* Actual slot to use for this entry. */
+	/* Bucket associated with this index. */
+	struct raft_entry_ref *bucket;
+	/* For traversing the bucket slots. */
+	struct raft_entry_ref *next_slot;
+	/* The last traversed slot. */
+	struct raft_entry_ref *last_slot;
+	/* Actual slot to use for this entry. */
+	struct raft_entry_ref *slot;
 	size_t key;
 
 	assert(table != NULL);
@@ -105,7 +107,6 @@ static struct raft_entry_ref *refsTryInsert(struct raft_entry_ref *table,
 	assert(term > 0);
 	assert(index > 0);
 	assert(count > 0);
-	assert(collision != NULL);
 
 	/* Calculate the hash table key for the given index. */
 	key = refsKey(index, size);
@@ -122,8 +123,7 @@ static struct raft_entry_ref *refsTryInsert(struct raft_entry_ref *table,
 	/* If the bucket is already used to refcount entries with a different
 	 * index, then we have a collision and we must abort here. */
 	if (bucket->index != index) {
-		*collision = true;
-		return NULL;
+		return COLLISION;
 	}
 
 	/* If we get here it means that the bucket is in use to refcount one or
@@ -165,8 +165,6 @@ fill:
 	slot->batch = batch;
 	slot->next = NULL;
 
-	*collision = false;
-
 	return slot;
 }
 
@@ -193,15 +191,16 @@ static int refsMove(struct raft_entry_ref *bucket,
 	while (next_slot != NULL) {
 		struct raft_entry_ref *ref;
 		struct sm sm;
-		bool collision;
 
 		slot = next_slot;
 
 		/* Insert the reference count for this entry into the new table.
 		 */
 		ref = refsTryInsert(table, size, slot->term, slot->index,
-				    slot->count, slot->buf, slot->batch,
-				    &collision);
+				    slot->count, slot->buf, slot->batch);
+		/* The given hash table is assumed to be large enough to hold
+		 * all ref counts without any conflict. */
+		POST(ref != COLLISION);
 
 		next_slot = slot->next;
 		sm = slot->sm;
@@ -210,15 +209,10 @@ static int refsMove(struct raft_entry_ref *bucket,
 		if (slot != bucket) {
 			raft_free(slot);
 		}
-		if (ref != NULL) {
-			ref->sm = sm;
-		} else {
+		if (ref == NULL) {
 			return RAFT_NOMEM;
 		}
-
-		/* The given hash table is assumed to be large enough to hold
-		 * all ref counts without any conflict. */
-		assert(!collision);
+		ref->sm = sm;
 	};
 
 	return 0;
@@ -297,15 +291,16 @@ static struct raft_entry_ref *refsInit(struct raft_log *l,
 	 * eating up too much memory. In practice, there should never be a case
 	 * where this is not enough. */
 	for (i = 0; i < 10; i++) {
-		bool collision;
 		struct raft_entry_ref *ref;
 		int rc;
 
-		ref = refsTryInsert(l->refs, l->refs_size, term, index, 1, buf,
-				    batch, &collision);
-		if (ref == NULL && !collision) {
+		ref = refsTryInsert(l->refs, l->refs_size, term, index,
+				    1, buf, batch);
+		if (ref == NULL) {
 			return NULL;
-		} else if (!collision) {
+		}
+
+		if (ref != COLLISION) {
 			sm_init(&ref->sm, entry_invariant, NULL, entry_states,
 				"entry", ENTRY_CREATED);
 			return ref;

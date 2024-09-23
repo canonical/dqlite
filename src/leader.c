@@ -71,11 +71,12 @@ static void leaderExecDone(struct exec *req)
 {
 	tracef("leader exec done id:%" PRIu64, req->id);
 	req->leader->exec = NULL;
-	if (req->status == SQLITE_DONE) {
-		sm_move(&req->sm, EXEC_DONE);
-	} else {
-		sm_fail(&req->sm, EXEC_FAILED, req->status);
-	}
+	/* SQLITE_DONE (= 101) indicates success, any other code including
+	 * SQLITE_OK (= 0) indicates failure. */
+	int status = req->status == SQLITE_DONE ? 0 :
+		     req->status == SQLITE_OK ? SQLITE_ERROR :
+		     req->status;
+	sm_done(&req->sm, EXEC_DONE, EXEC_FAILED, status);
 	sm_fini(&req->sm);
 	if (req->cb != NULL) {
 		req->cb(req, req->status);
