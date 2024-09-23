@@ -224,7 +224,7 @@ static void leaderMaybeCheckpointLegacy(struct leader *l)
 		tracef("raft_malloc - no mem");
 		goto err_after_buf_alloc;
 	}
-	rv = raft_apply(l->raft, apply, &buf, NULL, 1, leaderCheckpointApplyCb);
+	rv = raft_apply(l->raft, apply, &buf, 1, leaderCheckpointApplyCb);
 	if (rv != 0) {
 		tracef("raft_apply failed %d", rv);
 		raft_free(apply);
@@ -332,9 +332,7 @@ static int leaderApplyFrames(struct exec *req,
 	apply->type = COMMAND_FRAMES;
 	idSet(apply->req.req_id, req->id);
 
-	/* TODO actual WAL slice goes here */
-	struct raft_entry_local_data local_data = {};
-	rv = raft_apply(l->raft, &apply->req, &buf, &local_data, 1, leaderApplyFramesCb);
+	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
 	if (rv != 0) {
 		tracef("raft apply failed %d", rv);
 		goto err_after_command_encode;
@@ -409,22 +407,6 @@ finish:
 	leaderExecDone(l->exec);
 }
 
-#ifdef DQLITE_NEXT
-
-static void exec_top(pool_work_t *w)
-{
-	struct exec *req = CONTAINER_OF(w, struct exec, work);
-	leaderExecV2(req, POOL_TOP_HALF);
-}
-
-static void exec_bottom(pool_work_t *w)
-{
-	struct exec *req = CONTAINER_OF(w, struct exec, work);
-	leaderExecV2(req, POOL_BOTTOM_HALF);
-}
-
-#endif
-
 static void execBarrierCb(struct barrier *barrier, int status)
 {
 	tracef("exec barrier cb status %d", status);
@@ -437,16 +419,8 @@ static void execBarrierCb(struct barrier *barrier, int status)
 		return;
 	}
 
-#ifdef DQLITE_NEXT
-	struct dqlite_node *node = l->raft->data;
-	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
-		? pool_ut_fallback() : &node->pool;
-	pool_queue_work(pool, &req->work, l->db->cookie,
-			WT_UNORD, exec_top, exec_bottom);
-#else
 	leaderExecV2(req, POOL_TOP_HALF);
 	leaderExecV2(req, POOL_BOTTOM_HALF);
-#endif
 }
 
 int leader__exec(struct leader *l,

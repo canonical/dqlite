@@ -14,7 +14,6 @@
 int raft_apply(struct raft *r,
 	       struct raft_apply *req,
 	       const struct raft_buffer bufs[],
-	       const struct raft_entry_local_data local_data[],
 	       const unsigned n,
 	       raft_apply_cb cb)
 {
@@ -42,7 +41,7 @@ int raft_apply(struct raft *r,
 	req->cb = cb;
 
 	/* Append the new entries to the log. */
-	rv = logAppendCommands(r->log, r->current_term, bufs, local_data, n);
+	rv = logAppendCommands(r->log, r->current_term, bufs, n);
 	if (rv != 0) {
 		goto err;
 	}
@@ -91,7 +90,7 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 	req->index = index;
 	req->cb = cb;
 
-	rv = logAppend(r->log, r->current_term, RAFT_BARRIER, buf, (struct raft_entry_local_data){}, true, NULL);
+	rv = logAppend(r->log, r->current_term, RAFT_BARRIER, buf, true, NULL);
 	if (rv != 0) {
 		goto err_after_buf_alloc;
 	}

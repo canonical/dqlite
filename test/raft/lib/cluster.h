@@ -276,7 +276,7 @@
         int rv_;                                          \
         FsmEncodeAddX(VALUE, &buf_);                      \
         raft_ = raft_fixture_get(&f->cluster, I);         \
-        rv_ = raft_apply(raft_, REQ, &buf_, NULL, 1, CB); \
+        rv_ = raft_apply(raft_, REQ, &buf_, 1, CB); \
         munit_assert_int(rv_, ==, 0);                     \
     }
 

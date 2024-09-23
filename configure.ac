@@ -44,9 +44,6 @@ AS_IF([test "x$enable_build_raft" != "xyes"],
       AC_MSG_ERROR([linking to a separately-built libraft is no longer supported]),
       [])
 
-AC_ARG_ENABLE(dqlite-next, AS_HELP_STRING([--enable-dqlite-next[=ARG]], [build with the experimental dqlite backend [default=no]]))
-AM_CONDITIONAL(DQLITE_NEXT_ENABLED, test "x$enable_dqlite_next" = "xyes")
-
 AC_ARG_WITH(static-deps,
 	    AS_HELP_STRING([--with-static-deps[=ARG]],
 			   [skip building a shared library and link test binaries statically]))

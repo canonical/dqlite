@@ -192,28 +192,6 @@ enum {
 };
 
 /**
- * A small fixed-size inline buffer that stores extra data for a raft_entry
- * that is different for each node in the cluster.
- *
- * A leader initializes the local data for an entry before passing it into
- * raft_apply. This local data is stored in the volatile raft log and also
- * in the persistent raft log on the leader. AppendEntries messages sent by
- * the leader never contain the local data for entries.
- *
- * When a follower accepts an AppendEntries request, it invokes a callback
- * provided by the FSM to fill out the local data for each new entry before
- * appending the entries to its log (volatile and persistent). This local
- * data doesn't have to be the same as the local data that the leader computed.
- *
- * When starting up, a raft node reads the local data for each entry for its
- * persistent log as part of populating the volatile log.
- */
-struct raft_entry_local_data {
-	/* Must be the only member of this struct. */
-	uint8_t buf[16];
-};
-
-/**
  * A single entry in the raft log.
  *
  * An entry that originated from this raft instance while it was the leader
@@ -243,12 +221,6 @@ struct raft_entry_local_data {
  * message or in the persistent log. This field can be used by the FSM's `apply`
  * callback to handle a COMMAND entry differently depending on whether it
  * originated locally.
- *
- * Note: The @local_data and @is_local fields do not exist when we use an external
- * libraft, because the last separate release of libraft predates their addition.
- * The ifdef at the very top of this file ensures that we use the system raft headers
- * when we build against an external libraft, so there will be no ABI mismatch as
- * a result of incompatible struct layouts.
  */
 struct raft_entry
 {
@@ -256,7 +228,6 @@ struct raft_entry
 	unsigned short type;    /* Type (FSM command, barrier, config change). */
 	bool is_local;          /* Placed here so it goes in the padding after @type. */
 	struct raft_buffer buf; /* Entry data. */
-	struct raft_entry_local_data local_data;
 	void *batch;            /* Batch that buf's memory points to, if any. */
 };
 
@@ -1237,7 +1208,6 @@ struct raft_apply
 RAFT_API int raft_apply(struct raft *r,
 			struct raft_apply *req,
 			const struct raft_buffer bufs[],
-			const struct raft_entry_local_data local_data[],
 			const unsigned n,
 			raft_apply_cb cb);
 
