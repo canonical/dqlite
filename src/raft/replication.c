@@ -897,20 +897,14 @@ enum {
 	AF_NR,
 };
 
-static struct sm_conf af_states[AF_NR] = {
-	[AF_START] = {
-		.name = "start",
-		.allowed = BITS(AF_DONE)|BITS(AF_FAILED),
-		.flags = SM_INITIAL,
-	},
-	[AF_DONE] = {
-		.name = "done",
-		.flags = SM_FINAL,
-	},
-	[AF_FAILED] = {
-		.name = "failed",
-		.flags = SM_FAILURE|SM_FINAL,
-	},
+#define A(ident) BITS(AF_##ident)
+#define S(ident,allowed_,flags_) \
+	[AF_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf af_states[AF_NR] = {
+	S(START, A(DONE)|A(FAILED), SM_INITIAL),
+	S(DONE,  0,                 SM_FINAL),
+	S(FAILED,0,                 SM_FAILURE|SM_FINAL),
 };
 
 static bool af_invariant(const struct sm *sm, int prev)

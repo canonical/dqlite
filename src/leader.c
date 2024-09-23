@@ -30,32 +30,17 @@ enum {
 	EXEC_NR,
 };
 
+#define A(ident) BITS(EXEC_##ident)
+#define S(ident, allowed_, flags_) \
+	[EXEC_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
 static const struct sm_conf exec_states[EXEC_NR] = {
-	[EXEC_START] = {
-		.name = "start",
-		.allowed = BITS(EXEC_BARRIER)|BITS(EXEC_FAILED)|BITS(EXEC_DONE),
-		.flags = SM_INITIAL,
-	},
-	[EXEC_BARRIER] = {
-		.name = "barrier",
-		.allowed = BITS(EXEC_STEPPED)|BITS(EXEC_FAILED)|BITS(EXEC_DONE),
-	},
-	[EXEC_STEPPED] = {
-		.name = "stepped",
-		.allowed = BITS(EXEC_POLLED)|BITS(EXEC_FAILED)|BITS(EXEC_DONE),
-	},
-	[EXEC_POLLED] = {
-		.name = "polled",
-		.allowed = BITS(EXEC_FAILED)|BITS(EXEC_DONE),
-	},
-	[EXEC_DONE] = {
-		.name = "done",
-		.flags = SM_FINAL,
-	},
-	[EXEC_FAILED] = {
-		.name = "failed",
-		.flags = SM_FAILURE|SM_FINAL,
-	},
+	S(START,    A(BARRIER)|A(FAILED)|A(DONE), SM_INITIAL),
+	S(BARRIER,  A(STEPPED)|A(FAILED)|A(DONE), 0),
+	S(STEPPED,  A(POLLED)|A(FAILED)|A(DONE),  0),
+	S(POLLED,   A(FAILED)|A(DONE),            0),
+	S(DONE,     0,                            SM_FINAL),
+	S(FAILED,   0,                            SM_FAILURE|SM_FINAL),
 };
 
 static bool exec_invariant(const struct sm *sm, int prev)

@@ -21,57 +21,20 @@ enum {
 	TRUNC_NR,
 };
 
-static struct sm_conf trunc_states[TRUNC_NR] = {
-	[TRUNC_START] = {
-		.name = "start",
-		.allowed = BITS(TRUNC_BARRIER)
-			  |BITS(TRUNC_FAIL),
-		.flags = SM_INITIAL,
-	},
-	[TRUNC_BARRIER] = {
-		.name = "barrier",
-		.allowed = BITS(TRUNC_WORK)
-			  |BITS(TRUNC_DONE)
-			  |BITS(TRUNC_FAIL),
-	},
-	[TRUNC_WORK] = {
-		.name = "work",
-		.allowed = BITS(TRUNC_LISTED)
-			  |BITS(TRUNC_FAIL),
+#define A(ident) BITS(TRUNC_##ident)
+#define S(ident, allowed_, flags_) \
+	[TRUNC_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
 
-	},
-	[TRUNC_LISTED] = {
-		.name = "listed",
-		.allowed = BITS(TRUNC_TRUNCATED)
-			  |BITS(TRUNC_REMOVED)
-			  |BITS(TRUNC_SYNCED)
-			  |BITS(TRUNC_FAIL),
-	},
-	[TRUNC_TRUNCATED] = {
-		.name = "truncated",
-		.allowed = BITS(TRUNC_REMOVED)
-			  |BITS(TRUNC_SYNCED)
-			  |BITS(TRUNC_FAIL),
-	},
-	[TRUNC_REMOVED] = {
-		.name = "truncated",
-		.allowed = BITS(TRUNC_REMOVED)
-			  |BITS(TRUNC_SYNCED)
-			  |BITS(TRUNC_FAIL),
-	},
-	[TRUNC_SYNCED] = {
-		.name = "synced",
-		.allowed = BITS(TRUNC_DONE)
-			  |BITS(TRUNC_FAIL),
-	},
-	[TRUNC_DONE] = {
-		.name = "done",
-		.flags = SM_FINAL,
-	},
-	[TRUNC_FAIL] = {
-		.name = "fail",
-		.flags = SM_FINAL|SM_FAILURE,
-	},
+static struct sm_conf trunc_states[TRUNC_NR] = {
+	S(START,     A(BARRIER)|A(FAIL),                        SM_INITIAL),
+	S(BARRIER,   A(WORK)|A(DONE)|A(FAIL),                   0),
+	S(WORK,      A(LISTED)|A(FAIL),                         0),
+	S(LISTED,    A(TRUNCATED)|A(REMOVED)|A(SYNCED)|A(FAIL), 0),
+	S(TRUNCATED, A(REMOVED)|A(SYNCED)|A(FAIL),              0),
+	S(REMOVED,   A(REMOVED)|A(SYNCED)|A(FAIL),              0),
+	S(SYNCED,    A(DONE)|A(FAIL),                           0),
+	S(DONE,      0,                                         SM_FINAL),
+	S(FAIL,      0,                                         SM_FINAL|SM_FAILURE),
 };
 
 static bool trunc_invariant(const struct sm *sm, int prev)

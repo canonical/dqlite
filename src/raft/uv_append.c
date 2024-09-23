@@ -51,28 +51,16 @@ enum {
 	APPEND_NR,
 };
 
-static struct sm_conf append_states[APPEND_NR] = {
-	[APPEND_START] = {
-		.name = "start",
-		.allowed = BITS(APPEND_PENDING)|BITS(APPEND_DONE)|BITS(APPEND_FAILED),
-		.flags = SM_INITIAL,
-	},
-	[APPEND_PENDING] = {
-		.name = "pending",
-		.allowed = BITS(APPEND_WRITING)|BITS(APPEND_DONE)|BITS(APPEND_FAILED),
-	},
-	[APPEND_WRITING] = {
-		.name = "writing",
-		.allowed = BITS(APPEND_DONE)|BITS(APPEND_FAILED),
-	},
-	[APPEND_DONE] = {
-		.name = "done",
-		.flags = SM_FINAL,
-	},
-	[APPEND_FAILED] = {
-		.name = "failed",
-		.flags = SM_FINAL|SM_FAILURE,
-	},
+#define A(ident) BITS(APPEND_##ident)
+#define S(ident, allowed_, flags_) \
+	[APPEND_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf append_states[APPEND_NR] = {
+	S(START,   A(PENDING)|A(DONE)|A(FAILED), SM_INITIAL),
+	S(PENDING, A(WRITING)|A(DONE)|A(FAILED), 0),
+	S(WRITING, A(DONE)|A(FAILED),            0),
+	S(DONE,    0,                            SM_FINAL),
+	S(FAILED,  0,                            SM_FINAL|SM_FAILURE),
 };
 
 static inline bool append_invariant(const struct sm *sm, int prev)

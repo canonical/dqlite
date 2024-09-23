@@ -7,46 +7,17 @@
 #include "assert.h"
 #include "configuration.h"
 
-static struct sm_conf entry_states[ENTRY_NR] = {
-	[ENTRY_CREATED] = {
-		.name = "created",
-		/* Note: the inclusion of SNAPSHOTTED here is a concession to
-		 * practicality. Removing it causes some tests to fail because
-		 * they manipulate the log directly and have not been updated
-		 * to perform the CREATED -> COMMITTED -> APPLIED transition
-		 * (as replicationApply does). Also, the entry at the very
-		 * beginning of the log doesn't go through replicationApply in
-		 * all cases. */
-		.allowed = BITS(ENTRY_TRUNCATED)
-			  |BITS(ENTRY_COMMITTED)
-			  |BITS(ENTRY_REPLACED)
-			  |BITS(ENTRY_SNAPSHOTTED),
-		.flags = SM_INITIAL|SM_FINAL,
-	},
-	[ENTRY_COMMITTED] = {
-		.name = "committed",
-		.allowed = BITS(ENTRY_COMMITTED)
-			  |BITS(ENTRY_APPLIED),
-		.flags = SM_FINAL,
-	},
-	[ENTRY_APPLIED] = {
-		.name = "applied",
-		.allowed = BITS(ENTRY_REPLACED)
-			  |BITS(ENTRY_SNAPSHOTTED),
-		.flags = SM_FINAL,
-	},
-	[ENTRY_TRUNCATED] = {
-		.name = "truncated",
-		.flags = SM_FINAL,
-	},
-	[ENTRY_REPLACED] = {
-		.name = "replaced",
-		.flags = SM_FINAL,
-	},
-	[ENTRY_SNAPSHOTTED] = {
-		.name = "snapshotted",
-		.flags = SM_FINAL,
-	},
+#define A(ident) BITS(ENTRY_##ident)
+#define S(ident, allowed_, flags_) \
+	[ENTRY_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf entry_states[ENTRY_NR] = {
+	S(CREATED,     A(TRUNCATED)|A(COMMITTED)|A(REPLACED)|A(SNAPSHOTTED), SM_INITIAL|SM_FINAL),
+	S(COMMITTED,   A(COMMITTED)|A(APPLIED),                              SM_FINAL),
+	S(APPLIED,     A(REPLACED)|A(SNAPSHOTTED),                           SM_FINAL),
+	S(TRUNCATED,   0,                                                    SM_FINAL),
+	S(REPLACED,    0,                                                    SM_FINAL),
+	S(SNAPSHOTTED, 0,                                                    SM_FINAL),
 };
 
 static bool entry_invariant(const struct sm *sm, int prev)

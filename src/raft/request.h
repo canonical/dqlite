@@ -14,21 +14,18 @@ enum {
 	REQUEST_NR,
 };
 
-static struct sm_conf request_states[REQUEST_NR] = {
-	[REQUEST_START] = {
-		.name = "start",
-		.allowed = BITS(REQUEST_COMPLETE)|BITS(REQUEST_FAILED),
-		.flags = SM_INITIAL,
-	},
-	[REQUEST_COMPLETE] = {
-		.name = "complete",
-		.flags = SM_FINAL,
-	},
-	[REQUEST_FAILED] = {
-		.name = "failed",
-		.flags = SM_FAILURE|SM_FINAL,
-	},
+#define A(ident) BITS(REQUEST_##ident)
+#define S(ident, allowed_, flags_) \
+	[REQUEST_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf request_states[REQUEST_NR] = {
+	S(START,    A(COMPLETE)|A(FAILED), SM_INITIAL),
+	S(COMPLETE, 0,                     SM_FINAL),
+	S(FAILED,   0,                     SM_FAILURE|SM_FINAL),
 };
+
+#undef S
+#undef A
 
 static inline bool request_invariant(const struct sm *sm, int prev)
 {

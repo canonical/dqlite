@@ -69,21 +69,14 @@ enum {
 	FIO_NR,
 };
 
-static struct sm_conf fio_states[FIO_NR] = {
-	[FIO_START] = {
-		.name = "start",
-		.allowed = BITS(FIO_END)
-			  |BITS(FIO_FAIL),
-		.flags = SM_INITIAL,
-	},
-	[FIO_END] = {
-		.name = "end",
-		.flags = SM_FINAL,
-	},
-	[FIO_FAIL] = {
-		.name = "fail",
-		.flags = SM_FAILURE|SM_FINAL,
-	},
+#define A(ident) BITS(FIO_##ident)
+#define S(ident, allowed_, flags_) \
+	[FIO_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf fio_states[FIO_NR] = {
+	S(START, A(END)|A(FAIL), SM_INITIAL),
+	S(END,   0,              SM_FINAL),
+	S(FAIL,  0,              SM_FAILURE|SM_FINAL),
 };
 
 static bool fio_invariant(const struct sm *sm, int prev)
