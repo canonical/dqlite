@@ -1,11 +1,4 @@
-#if defined(USE_SYSTEM_RAFT)
-
-#include <raft.h>
-#include <raft/uv.h>
-#include <raft/fixture.h>
-
-#elif !defined(RAFT_H)
-
+#ifndef RAFT_H
 #define RAFT_H
 
 #include <stdarg.h>

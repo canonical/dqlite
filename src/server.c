@@ -1064,15 +1064,8 @@ int dqlite_node_describe_last_entry(dqlite_node *n,
 	raft_term *t = (raft_term *)term;
 	int rv;
 
-#ifdef USE_SYSTEM_RAFT
-	(void)i;
-	(void)t;
-	(void)rv;
-	return DQLITE_ERROR;
-#else
 	rv = raft_io_describe_last_entry(&n->raft_io, i, t);
 	return rv == 0 ? 0 : DQLITE_ERROR;
-#endif
 }
 
 dqlite_node_id dqlite_generate_node_id(const char *address)
