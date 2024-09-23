@@ -51,9 +51,7 @@ static void *heapRealloc(void *data, void *ptr, size_t size)
 
     ptr = realloc(ptr, size);
 
-    if (size == 0) {
-        munit_assert_ptr_null(ptr);
-    } else {
+    if (size != 0) {
         munit_assert_ptr_not_null(ptr);
     }
 
