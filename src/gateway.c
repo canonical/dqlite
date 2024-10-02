@@ -929,6 +929,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	}
 	readonly = (bool)sqlite3_stmt_readonly(stmt);
 	if (!(readonly || check_leader_strong(g, req))) {
+		sqlite3_finalize(stmt);
 		return;
 	}
 	switch (req->schema) {
