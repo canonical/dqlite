@@ -180,6 +180,7 @@ static void handleCb(struct handle *req,
 	{                                 \
 		struct request_open open; \
 		open.filename = "test";   \
+		open.flags = 0; \
 		open.vfs = "";            \
 		ENCODE(&open, open);      \
 		HANDLE(OPEN);             \

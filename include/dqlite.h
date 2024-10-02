@@ -220,6 +220,10 @@ enum {
 	DQLITE_NOMEM      /* A malloc() failed */
 };
 
+enum {
+	DQLITE_ALLOW_STALE = 1<<0,
+};
+
 /**
  * Dqlite node handle.
  *
