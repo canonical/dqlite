@@ -7,6 +7,7 @@
 
 #include "../../include/dqlite.h"
 #include "../../src/raft.h"
+#include "../../src/lib/byte.h"
 
 #include <sys/mman.h>
 
@@ -376,7 +377,7 @@ static struct dqlite_buffer n_bufs_to_buf(struct dqlite_buffer bufs[],
 		unsigned _n_pages;                                            \
 		struct dqlite_buffer *_bufs;                                  \
 		struct dqlite_buffer _all_data;                               \
-		_rv = dqlite_vfs_num_pages(vfs, "test.db", &_n_pages);        \
+		_rv = dqlite_vfs_num_alive_pages(vfs, "test.db", &_n_pages);  \
 		munit_assert_int(_rv, ==, 0);                                 \
 		_n = _n_pages;                                                \
 		_bufs = sqlite3_malloc64(_n * sizeof(*_bufs));                \
@@ -403,6 +404,8 @@ static struct dqlite_buffer n_bufs_to_buf(struct dqlite_buffer bufs[],
 		}                                                            \
 		if (_shallow && !_disk_mode) {                               \
 			SNAPSHOT_SHALLOW(VFS, SNAPSHOT);                     \
+		} else if (_shallow && _disk_mode) {                       \
+			return MUNIT_SKIP;			                        \
 		} else if (!_shallow && !_disk_mode) {                       \
 			SNAPSHOT_DEEP(VFS, SNAPSHOT);                        \
 		} else {                                                     \
@@ -1520,8 +1523,8 @@ TEST(vfs, snapshotAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
 	struct snapshot snapshot;
 	struct tx tx;
 	uint8_t *page;
-	uint8_t page_size[2] = {2, 0};           /* Big-endian page size */
-	uint8_t database_size[4] = {0, 0, 0, 1}; /* Big-endian database size */
+	const uint32_t database_size = 1;
+	const uint32_t wal_size = 2;
 
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
@@ -1534,11 +1537,17 @@ TEST(vfs, snapshotAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
 
 	SNAPSHOT("1", snapshot);
 
-	munit_assert_int(snapshot.n, ==, DB_PAGE_SIZE + 32 + (24 + DB_PAGE_SIZE) * 2);
 	page = snapshot.data;
+	munit_assert_int(ByteGetBe16(&page[16]), ==, DB_PAGE_SIZE);
 
-	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
-	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
+	bool shallow = atoi(munit_parameters_get(params, SNAPSHOT_SHALLOW_PARAM));
+	if (shallow) {
+		munit_assert_int(snapshot.n, ==, DB_PAGE_SIZE * wal_size);
+		munit_assert_int(ByteGetBe32(&page[28]), ==, 2);
+	} else {
+		munit_assert_int(snapshot.n, ==, database_size * DB_PAGE_SIZE + 32 + (24 + DB_PAGE_SIZE) * wal_size);
+		munit_assert_int(ByteGetBe32(&page[28]), ==, 1);
+	}
 
 	raft_free(snapshot.data);
 

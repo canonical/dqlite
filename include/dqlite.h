@@ -744,6 +744,13 @@ DQLITE_API int dqlite_vfs_num_pages(sqlite3_vfs *vfs,
 				    unsigned *n);
 
 /**
+ * Return the number of alive database pages.
+ */
+DQLITE_API int dqlite_vfs_num_alive_pages(sqlite3_vfs *vfs,
+				    const char *filename,
+				    unsigned *n);
+
+/**
  * This function is DEPRECATED and will be removed in a future major release.
  *
  * Restore a snapshot of the main database file and of the WAL file.
