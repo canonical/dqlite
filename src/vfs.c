@@ -2449,20 +2449,33 @@ static uint32_t vfsDatabaseGetNumberOfPages(struct vfsDatabase *d)
 	return ByteGetBe32(&page[28]);
 }
 
-int VfsDatabaseNumPages(sqlite3_vfs *vfs, const char *filename, uint32_t *n)
+static uint32_t vfsDatabaseNumPages(struct vfsDatabase *database, int useWal) {
+	uint32_t n;
+	if (useWal && database->wal.n_frames) {
+		n = vfsFrameGetDatabaseSize(database->wal.frames[database->wal.n_frames-1]);
+		// If the result is zero, it means that the WAL contains uncommitted transactions.
+		assert(n != 0);
+	} else {
+		n = vfsDatabaseGetNumberOfPages(database);
+	}
+	return n;
+}
+
+int VfsDatabaseNumPages(sqlite3_vfs *vfs, const char *filename, int useWal, uint32_t *n)
 {
 	struct vfs *v;
 	struct vfsDatabase *d;
-
+	
 	v = (struct vfs *)(vfs->pAppData);
 	d = vfsDatabaseLookup(v, filename);
 	if (d == NULL) {
 		return -1;
 	}
 
-	*n = vfsDatabaseGetNumberOfPages(d);
+	*n = vfsDatabaseNumPages(d, useWal);
 	return 0;
 }
+
 
 static void vfsDatabaseSnapshot(struct vfsDatabase *d, uint8_t **cursor)
 {
@@ -2545,17 +2558,42 @@ int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n)
 }
 
 static void vfsDatabaseShallowSnapshot(struct vfsDatabase *d,
-				       struct dqlite_buffer *bufs)
+				       struct dqlite_buffer *bufs, uint32_t n)
 {
 	uint32_t page_size;
 
 	page_size = vfsDatabaseGetPageSize(d);
 	assert(page_size > 0);
 
+	if (d->n_pages < n) {
+		n = d->n_pages;
+	}
+
 	/* Fill the buffers with pointers to all of the database pages */
-	for (unsigned i = 0; i < d->n_pages; ++i) {
+	for (unsigned i = 0; i < n; ++i) {
 		bufs[i].base = d->pages[i];
 		bufs[i].len = page_size;
+	}
+}
+
+static void vfsWalShallowSnapshot(struct vfsWal *w,
+				       struct dqlite_buffer *bufs, uint32_t n) {
+	uint32_t page_size;
+	unsigned i;
+
+	if (w->n_frames == 0) {
+		return;
+	}
+
+	page_size = vfsWalGetPageSize(w);
+	assert(page_size > 0);
+
+	for (i = 0; i < w->n_frames; i++) {
+		struct vfsFrame *frame = w->frames[i];
+		uint32_t page_number = vfsFrameGetPageNumber(frame);
+		assert(page_number <= n);
+		bufs[page_number-1].base = frame->page;
+		bufs[page_number-1].len = page_size;
 	}
 }
 
@@ -2567,8 +2605,6 @@ int VfsShallowSnapshot(sqlite3_vfs *vfs,
 	tracef("vfs snapshot filename %s", filename);
 	struct vfs *v;
 	struct vfsDatabase *database;
-	struct vfsWal *wal;
-	uint8_t *cursor;
 
 	v = (struct vfs *)(vfs->pAppData);
 	database = vfsDatabaseLookup(v, filename);
@@ -2583,24 +2619,17 @@ int VfsShallowSnapshot(sqlite3_vfs *vfs,
 		return SQLITE_CORRUPT;
 	}
 
-	if (database->n_pages != n - 1) {
+	if (vfsDatabaseNumPages(database, 1) != n) {
 		tracef("not enough buffers provided");
 		return SQLITE_MISUSE;
 	}
 
-	/* Copy WAL to last buffer. */
-	wal = &database->wal;
-	bufs[n - 1].len = vfsWalFileSize(wal);
-	bufs[n - 1].base = sqlite3_malloc64(bufs[n - 1].len);
-	/* WAL can have 0 length! */
-	if (bufs[n - 1].base == NULL && bufs[n - 1].len != 0) {
-		return SQLITE_NOMEM;
-	}
-	cursor = bufs[n - 1].base;
-	vfsWalSnapshot(wal, &cursor);
+	/* Copy page pointers to first n buffers */
+	vfsDatabaseShallowSnapshot(database, bufs, n);
 
-	/* Copy page pointers to first n-1 buffers */
-	vfsDatabaseShallowSnapshot(database, bufs);
+	/* Copy page pointers from wal */
+	vfsWalShallowSnapshot(&database->wal, bufs, n);
+
 	return 0;
 }
 

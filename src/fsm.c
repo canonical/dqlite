@@ -385,13 +385,15 @@ static int encodeDatabase(struct db *db,
 {
 	struct snapshotDatabase header;
 	sqlite3_vfs *vfs;
-	uint32_t database_size = 0;
-	uint8_t *page;
 	char *cursor;
 	struct dqlite_buffer *bufs = (struct dqlite_buffer *)r_bufs;
 	int rv;
 
 	header.filename = db->filename;
+	header.main_size = (n - 1) * (uint64_t)db->config->page_size;
+	// The database is checkpointed before writing it to disk.
+	// As such, wal_size is always 0.
+	header.wal_size = 0;
 
 	vfs = sqlite3_vfs_find(db->config->name);
 	rv = VfsShallowSnapshot(vfs, db->filename, &bufs[1], n - 1);
@@ -399,32 +401,18 @@ static int encodeDatabase(struct db *db,
 		goto err;
 	}
 
-	/* Extract the database size from the first page. */
-	page = bufs[1].base;
-	database_size += (uint32_t)(page[28] << 24);
-	database_size += (uint32_t)(page[29] << 16);
-	database_size += (uint32_t)(page[30] << 8);
-	database_size += (uint32_t)(page[31]);
-
-	header.main_size =
-	    (uint64_t)database_size * (uint64_t)db->config->page_size;
-	header.wal_size = bufs[n - 1].len;
-
 	/* Database header. */
 	bufs[0].len = snapshotDatabase__sizeof(&header);
 	bufs[0].base = sqlite3_malloc64(bufs[0].len);
 	if (bufs[0].base == NULL) {
 		rv = RAFT_NOMEM;
-		goto err_after_snapshot;
+		goto err;
 	}
 	cursor = bufs[0].base;
 	snapshotDatabase__encode(&header, &cursor);
 
 	return 0;
 
-err_after_snapshot:
-	/* Free the wal buffer */
-	sqlite3_free(bufs[n - 1].base);
 err:
 	assert(rv != 0);
 	return rv;
@@ -490,7 +478,7 @@ static unsigned dbNumPages(struct db *db)
 	uint32_t n;
 
 	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDatabaseNumPages(vfs, db->filename, &n);
+	rv = VfsDatabaseNumPages(vfs, db->filename, 1, &n);
 	assert(rv == 0);
 	return n;
 }
@@ -504,7 +492,7 @@ static unsigned snapshotNumBufs(struct fsm *f)
 
 	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
-		n += 2; /* database header & wal */
+		n += 1; /* database header */
 		db = QUEUE_DATA(head, struct db, queue);
 		n += dbNumPages(db); /* 1 buffer per page (zero copy) */
 	}
@@ -514,13 +502,12 @@ static unsigned snapshotNumBufs(struct fsm *f)
 
 /* An example array of snapshot buffers looks like this:
  *
- * bufs:  SH DH1 P1 P2 P3 WAL1 DH2 P1 P2 WAL2
- * index:  0   1  2  3  4    5   6  7  8    9
+ * bufs:  SH DH1 P1 P2 P3 DH2 P1 P2
+ * index:  0   1  2  3  4   6  7  8
  *
  * SH:   Snapshot Header
  * DHx:  Database Header
  * Px:   Database Page (not to be freed)
- * WALx: a WAL
  * */
 static void freeSnapshotBufs(struct fsm *f,
 			     struct raft_buffer bufs[],
@@ -548,9 +535,7 @@ static void freeSnapshotBufs(struct fsm *f,
 		/* i is the index of the database header */
 		sqlite3_free(bufs[i].base);
 		/* i is now the index of the next database header (if any) */
-		i += 1 /* db header */ + dbNumPages(db) + 1 /* WAL */;
-		/* free WAL buffer */
-		sqlite3_free(bufs[i - 1].base);
+		i += 1 /* db header */ + dbNumPages(db);
 	}
 }
 
@@ -601,8 +586,8 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE_DATA(head, struct db, queue);
-		/* database_header + num_pages + wal */
-		unsigned n = 1 + dbNumPages(db) + 1;
+		/* database_header + num_pages */
+		unsigned n = 1 + dbNumPages(db);
 		rv = encodeDatabase(db, &(*bufs)[i], n);
 		if (rv != 0) {
 			goto err_after_encode_header;
