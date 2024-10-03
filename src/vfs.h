@@ -72,7 +72,7 @@ int VfsDiskRestore(sqlite3_vfs *vfs,
 		   size_t wal_size);
 
 /* Number of pages in the database. */
-int VfsDatabaseNumPages(sqlite3_vfs *vfs, const char *filename, int useWal, uint32_t *n);
+int VfsDatabaseNumPages(sqlite3_vfs *vfs, const char *filename, uint32_t *n);
 
 /* Returns the resulting size of the main file, wal file and n additional WAL
  * frames with the specified page_size. */

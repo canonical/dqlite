@@ -378,13 +378,11 @@ static struct dqlite_buffer n_bufs_to_buf(struct dqlite_buffer bufs[],
 		struct dqlite_buffer _all_data;                               \
 		_rv = dqlite_vfs_num_pages(vfs, "test.db", &_n_pages);        \
 		munit_assert_int(_rv, ==, 0);                                 \
-		_n = _n_pages + 1; /* + 1 for WAL */                          \
+		_n = _n_pages;                                                \
 		_bufs = sqlite3_malloc64(_n * sizeof(*_bufs));                \
 		_rv = dqlite_vfs_shallow_snapshot(vfs, "test.db", _bufs, _n); \
 		munit_assert_int(_rv, ==, 0);                                 \
 		_all_data = n_bufs_to_buf(_bufs, _n);                         \
-		/* Free WAL buffer after copy. */                             \
-		sqlite3_free(_bufs[_n - 1].base);                             \
 		sqlite3_free(_bufs);                                          \
 		SNAPSHOT.data = _all_data.base;                               \
 		SNAPSHOT.n = _all_data.len;                                   \

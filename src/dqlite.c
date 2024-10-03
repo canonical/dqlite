@@ -73,7 +73,7 @@ int dqlite_vfs_snapshot_disk(sqlite3_vfs *vfs,
 
 int dqlite_vfs_num_pages(sqlite3_vfs *vfs, const char *filename, unsigned *n)
 {
-	return VfsDatabaseNumPages(vfs, filename, 0, n);
+	return VfsDatabaseNumPages(vfs, filename, n);
 }
 
 int dqlite_vfs_shallow_snapshot(sqlite3_vfs *vfs,

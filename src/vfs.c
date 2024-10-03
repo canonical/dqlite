@@ -2449,9 +2449,9 @@ static uint32_t vfsDatabaseGetNumberOfPages(struct vfsDatabase *d)
 	return ByteGetBe32(&page[28]);
 }
 
-static uint32_t vfsDatabaseNumPages(struct vfsDatabase *database, int useWal) {
+static uint32_t vfsDatabaseNumPages(struct vfsDatabase *database) {
 	uint32_t n;
-	if (useWal && database->wal.n_frames) {
+	if (database->wal.n_frames > 0) {
 		n = vfsFrameGetDatabaseSize(database->wal.frames[database->wal.n_frames-1]);
 		// If the result is zero, it means that the WAL contains uncommitted transactions.
 		assert(n != 0);
@@ -2461,7 +2461,7 @@ static uint32_t vfsDatabaseNumPages(struct vfsDatabase *database, int useWal) {
 	return n;
 }
 
-int VfsDatabaseNumPages(sqlite3_vfs *vfs, const char *filename, int useWal, uint32_t *n)
+int VfsDatabaseNumPages(sqlite3_vfs *vfs, const char *filename, uint32_t *n)
 {
 	struct vfs *v;
 	struct vfsDatabase *d;
@@ -2472,7 +2472,7 @@ int VfsDatabaseNumPages(sqlite3_vfs *vfs, const char *filename, int useWal, uint
 		return -1;
 	}
 
-	*n = vfsDatabaseNumPages(d, useWal);
+	*n = vfsDatabaseNumPages(d);
 	return 0;
 }
 
@@ -2619,7 +2619,7 @@ int VfsShallowSnapshot(sqlite3_vfs *vfs,
 		return SQLITE_CORRUPT;
 	}
 
-	if (vfsDatabaseNumPages(database, 1) != n) {
+	if (vfsDatabaseNumPages(database) != n) {
 		tracef("not enough buffers provided");
 		return SQLITE_MISUSE;
 	}

@@ -478,7 +478,7 @@ static unsigned dbNumPages(struct db *db)
 	uint32_t n;
 
 	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDatabaseNumPages(vfs, db->filename, 1, &n);
+	rv = VfsDatabaseNumPages(vfs, db->filename, &n);
 	assert(rv == 0);
 	return n;
 }
