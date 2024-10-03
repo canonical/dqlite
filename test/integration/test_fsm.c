@@ -203,7 +203,7 @@ TEST(fsm, snapshotHeapFaultSingleDB, setUp, tearDown, 0, snapshot_params)
 
 	/* disk_mode does fewer allocations */
 	if (!disk_mode) {
-		test_heap_fault_config(3, 1);
+		test_heap_fault_config(2, 1);
 		rv = fsm->snapshot(fsm, &bufs, &n_bufs);
 		munit_assert_int(rv, !=, 0);
 	}
@@ -320,11 +320,11 @@ TEST(fsm, snapshotHeapFaultTwoDB, setUp, tearDown, 0, snapshot_params)
 
 	/* disk_mode does fewer allocations */
 	if (!disk_mode) {
-		test_heap_fault_config(4, 1);
+		test_heap_fault_config(2, 1);
 		rv = fsm->snapshot(fsm, &bufs, &n_bufs);
 		munit_assert_int(rv, !=, 0);
 
-		test_heap_fault_config(5, 1);
+		test_heap_fault_config(3, 1);
 		rv = fsm->snapshot(fsm, &bufs, &n_bufs);
 		munit_assert_int(rv, !=, 0);
 	}
