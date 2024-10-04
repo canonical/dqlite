@@ -1241,7 +1241,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 
 	assert(left != NULL);
 
-	if (strcmp(left, "page_size") == 0 && right) {
+	if (sqlite3_stricmp(left, "page_size") == 0 && right) {
 		/* When the user executes 'PRAGMA page_size=N' we save the
 		 * size internally.
 		 *
@@ -1266,7 +1266,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 				return SQLITE_IOERR;
 			}
 		}
-	} else if (strcmp(left, "journal_mode") == 0 && right) {
+	} else if (sqlite3_stricmp(left, "journal_mode") == 0 && right) {
 		/* When the user executes 'PRAGMA journal_mode=x' we ensure
 		 * that the desired mode is 'wal'. */
 		if (strcasecmp(right, "wal") != 0) {
@@ -1274,6 +1274,10 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fnctl)
 			    sqlite3_mprintf("only WAL mode is supported");
 			return SQLITE_IOERR;
 		}
+	} else if (sqlite3_stricmp(left, "wal_checkpoint") == 0 
+			|| (sqlite3_stricmp(left, "wal_autocheckpoint") == 0 && right)) {
+		fnctl[0] = sqlite3_mprintf("custom checkpoint not allowed");
+		return SQLITE_IOERR;
 	}
 
 	/* We're returning NOTFOUND here to tell SQLite that we wish it to go on
