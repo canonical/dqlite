@@ -7,15 +7,14 @@
 #ifdef __GLIBC__
 #include "error.h"
 #endif
+#include "../lib/queue.h"
 #include "../tracing.h"
 #include "err.h"
 #include "flags.h"
 #include "heap.h"
-#include "lifecycle.h"
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
-#include "../lib/queue.h"
 #include "replication.h"
 #include "request.h"
 #include "snapshot.h"
@@ -469,7 +468,6 @@ static struct request *getRequest(struct raft *r,
 			if (type != -1) {
 				assert(req->type == type);
 			}
-			lifecycleRequestEnd(r, req);
 			return req;
 		}
 	}
@@ -498,15 +496,18 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 	if (status != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 		for (unsigned i = 0; i < request->n; i++) {
-			const struct request *req =
+			struct request *req =
 			    getRequest(r, request->index + i, -1);
 			if (!req) {
 				tracef("no request found at index %llu",
 				       request->index + i);
 				continue;
 			}
+			queue_remove(&req->queue);
 			switch (req->type) {
 				case RAFT_COMMAND: {
+					sm_fail(&req->sm, REQUEST_FAILED, status);
+					sm_fini(&req->sm);
 					struct raft_apply *apply =
 					    (struct raft_apply *)req;
 					if (apply->cb) {
@@ -593,6 +594,7 @@ static int appendLeader(struct raft *r, raft_index index)
 	struct raft_entry *entries = NULL;
 	unsigned n;
 	struct appendLeader *request;
+	const struct sm *entry_sm;
 	int rv;
 
 	assert(r->state == RAFT_LEADER);
@@ -630,14 +632,19 @@ static int appendLeader(struct raft *r, raft_index index)
 	request->req.data = request;
 
 	rv = r->io->append(r->io, &request->req, entries, n, appendLeaderCb);
+	for (unsigned i = 0; i < n; i++) {
+		entry_sm = log_get_entry_sm(r->log, entries[i].term, index + i);
+		sm_relate(entry_sm, &request->req.sm);
+	}
 	if (rv != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-		goto err_after_request_alloc;
+		goto err_in_append;
 	}
 
 	return 0;
 
-err_after_request_alloc:
+err_in_append:
+	sm_fini(&request->req.sm);
 	raft_free(request);
 err_after_entries_acquired:
 	logRelease(r->log, index, entries, n);
@@ -880,6 +887,33 @@ static void sendAppendEntriesResult(
 	}
 }
 
+/**
+ * State machine for handling of AppendEntries on the follower side.
+ */
+enum {
+	AF_START,
+	AF_DONE,
+	AF_FAILED,
+	AF_NR,
+};
+
+#define A(ident) BITS(AF_##ident)
+#define S(ident,allowed_,flags_) \
+	[AF_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf af_states[AF_NR] = {
+	S(START, A(DONE)|A(FAILED), SM_INITIAL),
+	S(DONE,  0,                 SM_FINAL),
+	S(FAILED,0,                 SM_FAILURE|SM_FINAL),
+};
+
+static bool af_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
+}
+
 /* Context for a write log entries request that was submitted by a follower. */
 struct appendFollower
 {
@@ -887,7 +921,15 @@ struct appendFollower
 	raft_index index;  /* Index of the first entry in the request. */
 	struct raft_append_entries args;
 	struct raft_io_append req;
+	struct sm sm;
 };
+
+static void append_follower_done(struct appendFollower *req, int status)
+{
+	sm_done(&req->sm, AF_DONE, AF_FAILED, status);
+	sm_fini(&req->sm);
+	raft_free(req);
+}
 
 static void appendFollowerCb(struct raft_io_append *req, int status)
 {
@@ -993,7 +1035,7 @@ out:
 		}
 	}
 
-	raft_free(request);
+	append_follower_done(request, status);
 }
 
 /* Check the log matching property against an incoming AppendEntries request.
@@ -1060,6 +1102,7 @@ static int checkLogMatchingProperty(struct raft *r,
  * AppendEntries request. */
 static int deleteConflictingEntries(struct raft *r,
 				    const struct raft_append_entries *args,
+				    const struct sm *append_sm,
 				    size_t *i)
 {
 	size_t j;
@@ -1093,9 +1136,23 @@ static int deleteConflictingEntries(struct raft *r,
 
 			/* Delete all entries from this index on because they
 			 * don't match. */
-			rv = r->io->truncate(r->io, entry_index);
+			struct raft_io_truncate *trunc = raft_malloc(sizeof(*trunc));
+			if (trunc == NULL) {
+				return RAFT_NOMEM;
+			}
+			rv = r->io->truncate(r->io, trunc, entry_index);
+			sm_relate(append_sm, &trunc->sm);
 			if (rv != 0) {
+				sm_fini(&trunc->sm);
+				raft_free(trunc);
 				return rv;
+			}
+			for (raft_index x = entry_index; x <= logLastIndex(r->log); x++) {
+				const struct raft_entry *e = logGet(r->log, x);
+				assert(e != NULL);
+				const struct sm *entry_sm = log_get_entry_sm(r->log, e->term, x);
+				assert(entry_sm != NULL);
+				sm_relate(append_sm, entry_sm);
 			}
 			logTruncate(r->log, entry_index);
 
@@ -1131,6 +1188,7 @@ int replicationAppend(struct raft *r,
 	size_t i;
 	size_t j;
 	bool reinstated;
+	const struct sm *entry_sm;
 	int rv;
 
 	assert(r != NULL);
@@ -1140,25 +1198,38 @@ int replicationAppend(struct raft *r,
 
 	assert(r->state == RAFT_FOLLOWER);
 
+	request = raft_malloc(sizeof *request);
+	if (request == NULL) {
+		rv = RAFT_NOMEM;
+		goto err;
+	}
+	sm_init(&request->sm, af_invariant, NULL, af_states, "append-follower",
+		AF_START);
+
 	*rejected = args->prev_log_index;
 	*async = false;
 
 	/* Check the log matching property. */
 	match = checkLogMatchingProperty(r, args);
-	if (match != 0) {
-		assert(match == 1 || match == -1);
-		return match == 1 ? 0 : RAFT_SHUTDOWN;
+	if (match == 1) {
+		append_follower_done(request, 0);
+		return 0;
+	} else if (match != 0) {
+		assert(match == -1);
+		rv = RAFT_SHUTDOWN;
+		goto err_after_request_alloc;
 	}
 
 	/* Delete conflicting entries. */
-	rv = deleteConflictingEntries(r, args, &i);
+	rv = deleteConflictingEntries(r, args, &request->sm, &i);
 	if (rv != 0) {
-		return rv;
+		goto err_after_request_alloc;
 	}
 
 	*rejected = 0;
 
 	n = args->n_entries - i; /* Number of new entries */
+	sm_attr(&request->sm, "new_entries_nr", "%zu", n);
 
 	/* If this is an empty AppendEntries, there's nothing to write. However
 	 * we still want to check if we can commit some entry. However, don't
@@ -1179,20 +1250,15 @@ int replicationAppend(struct raft *r,
 			    min(args->leader_commit, r->last_stored);
 			rv = replicationApply(r);
 			if (rv != 0) {
-				return rv;
+				goto err_after_request_alloc;
 			}
 		}
 
+		append_follower_done(request, 0);
 		return 0;
 	}
 
 	*async = true;
-
-	request = raft_malloc(sizeof *request);
-	if (request == NULL) {
-		rv = RAFT_NOMEM;
-		goto err;
-	}
 
 	request->raft = r;
 	request->args = *args;
@@ -1204,6 +1270,7 @@ int replicationAppend(struct raft *r,
 	 * request that we issue below actually completes.  */
 	for (j = 0; j < n; j++) {
 		struct raft_entry *entry = &args->entries[i + j];
+		struct raft_entry copy;
 
 		/* We are trying to append an entry at index X with term T to
 		 * our in-memory log. If we've gotten this far, we know that the
@@ -1218,34 +1285,37 @@ int replicationAppend(struct raft *r,
 		rv =
 		    logReinstate(r->log, entry->term, entry->type, &reinstated);
 		if (rv != 0) {
-			goto err_after_request_alloc;
-		} else if (reinstated) {
-			continue;
+			goto err_after_log_append;
+		}
+		if (!reinstated) {
+			/* TODO This copy should not strictly be necessary, as
+			 * the batch logic will take care of freeing the batch
+			 * buffer in which the entries are received. However,
+			 * this would lead to memory spikes in certain edge
+			 * cases.
+			 * https://github.com/canonical/dqlite/issues/276
+			 */
+			rv = entryCopy(entry, &copy);
+			if (rv != 0) {
+				goto err_after_log_append;
+			}
+
+			rv = logAppend(r->log, copy.term, copy.type, copy.buf, false, NULL);
+			if (rv != 0) {
+				goto err_after_log_append;
+			}
 		}
 
-		/* TODO This copy should not strictly be necessary, as the batch
-		 * logic will take care of freeing the batch buffer in which the
-		 * entries are received. However, this would lead to memory
-		 * spikes in certain edge cases.
-		 * https://github.com/canonical/dqlite/issues/276
-		 */
-		struct raft_entry copy = {0};
-		rv = entryCopy(entry, &copy);
-		if (rv != 0) {
-			goto err_after_request_alloc;
-		}
-
-		rv = logAppend(r->log, copy.term, copy.type, copy.buf, false, NULL);
-		if (rv != 0) {
-			goto err_after_request_alloc;
-		}
+		entry_sm = log_get_entry_sm(r->log, entry->term, request->index + j);
+		assert(entry_sm != NULL);
+		sm_relate(&request->sm, entry_sm);
 	}
 
 	/* Acquire the relevant entries from the log. */
 	rv = logAcquire(r->log, request->index, &request->args.entries,
 			&request->args.n_entries);
 	if (rv != 0) {
-		goto err_after_request_alloc;
+		goto err_after_log_append;
 	}
 
 	assert(request->args.n_entries == n);
@@ -1260,21 +1330,28 @@ int replicationAppend(struct raft *r,
 	request->req.data = request;
 	rv = r->io->append(r->io, &request->req, request->args.entries,
 			   request->args.n_entries, appendFollowerCb);
+	/* FIXME this relates the sm of the appendFollower request to that of
+	 * the UvAppend request. Ideally we would instead relate the sms of
+	 * each involved log entry to the UvAppend request, but this seems to
+	 * work poorly with chronoscope's chart visualization, causing it to
+	 * draw the same UvAppend request many times. */
+	sm_relate(&request->sm, &request->req.sm);
 	if (rv != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-		goto err_after_acquire_entries;
+		goto err_in_append;
 	}
 	r->follower_state.append_in_flight_count += 1;
 
 	entryBatchesDestroy(args->entries, args->n_entries);
 	return 0;
 
+err_in_append:
+	sm_fini(&request->req.sm);
 err_after_acquire_entries:
 	/* Release the entries related to the IO request */
 	logRelease(r->log, request->index, request->args.entries,
 		   request->args.n_entries);
-
-err_after_request_alloc:
+err_after_log_append:
 	/* Release all entries added to the in-memory log, making
 	 * sure the in-memory log and disk don't diverge, leading
 	 * to future log entries not being persisted to disk.
@@ -1282,7 +1359,8 @@ err_after_request_alloc:
 	if (j != 0) {
 		logTruncate(r->log, request->index);
 	}
-	raft_free(request);
+err_after_request_alloc:
+	append_follower_done(request, rv);
 
 err:
 	assert(rv != 0);
@@ -1473,6 +1551,7 @@ static int applyCommand(struct raft *r,
 	struct raft_apply *req;
 	void *result;
 	int rv;
+
 	rv = r->fsm->apply(r->fsm, buf, &result);
 	if (rv != 0) {
 		return rv;
@@ -1481,7 +1560,13 @@ static int applyCommand(struct raft *r,
 	r->last_applied = index;
 
 	req = (struct raft_apply *)getRequest(r, index, RAFT_COMMAND);
-	if (req != NULL && req->cb != NULL) {
+	if (req == NULL) {
+		return 0;
+	}
+	queue_remove(&req->queue);
+	sm_move(&req->sm, REQUEST_COMPLETE);
+	sm_fini(&req->sm);
+	if (req->cb != NULL) {
 		req->cb(req, 0, result);
 	}
 	return 0;
@@ -1494,7 +1579,11 @@ static void applyBarrier(struct raft *r, const raft_index index)
 
 	struct raft_barrier *req;
 	req = (struct raft_barrier *)getRequest(r, index, RAFT_BARRIER);
-	if (req != NULL && req->cb != NULL) {
+	if (req == NULL) {
+		return;
+	}
+	queue_remove(&req->queue);
+	if (req->cb != NULL) {
 		req->cb(req, 0);
 	}
 }
@@ -1749,11 +1838,14 @@ int replicationApply(struct raft *r)
 			tracef("replicationApply - ENTRY NULL");
 			return 0;
 		}
+		struct sm *entry_sm = log_get_entry_sm(r->log, entry->term, index);
+		assert(entry_sm != NULL);
 
 		assert(entry->type == RAFT_COMMAND ||
 		       entry->type == RAFT_BARRIER ||
 		       entry->type == RAFT_CHANGE);
 
+		sm_move(entry_sm, ENTRY_COMMITTED);
 		switch (entry->type) {
 			case RAFT_COMMAND:
 				rv = applyCommand(r, index, &entry->buf);
@@ -1772,7 +1864,9 @@ int replicationApply(struct raft *r)
 				break;
 		}
 
-		if (rv != 0) {
+		if (rv == 0) {
+			sm_move(entry_sm, ENTRY_APPLIED);
+		} else {
 			break;
 		}
 	}

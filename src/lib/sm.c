@@ -54,13 +54,15 @@ void sm_init(struct sm *m,
 
 	PRE(conf[state].flags & SM_INITIAL);
 
-	m->conf = conf;
-	m->state = state;
-	m->invariant = invariant;
-	m->is_locked = is_locked;
-	m->id = ++id;
-	m->pid = getpid();
-	m->rc = 0;
+	*m = (struct sm){
+		.conf = conf,
+		.state = state,
+		.invariant = invariant,
+		.is_locked = is_locked,
+		.id = ++id,
+		.pid = getpid(),
+		.rc = 0,
+	};
 	snprintf(m->name, SM_MAX_NAME_LENGTH, "%s", name);
 	sm_obs(m);
 
@@ -94,6 +96,22 @@ void sm_fail(struct sm *m, int fail_state, int rc)
 
 	m->rc = rc;
 	m->state = fail_state;
+	sm_obs(m);
+	POST(m->invariant != NULL && m->invariant(m, prev));
+}
+
+void sm_done(struct sm *m, int good_state, int bad_state, int rc)
+{
+	int prev = sm_state(m);
+
+	PRE(sm_is_locked(m));
+	PRE(m->conf[sm_state(m)].allowed & BITS(good_state));
+	PRE(m->conf[sm_state(m)].allowed & BITS(bad_state));
+	PRE(m->conf[good_state].flags & SM_FINAL);
+	PRE(m->conf[bad_state].flags & SM_FAILURE);
+
+	m->rc = rc;
+	m->state = rc == 0 ? good_state : bad_state;
 	sm_obs(m);
 	POST(m->invariant != NULL && m->invariant(m, prev));
 }

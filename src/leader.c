@@ -10,11 +10,45 @@
 #include "gateway.h"
 #include "id.h"
 #include "leader.h"
+#include "lib/sm.h"
 #include "lib/threadpool.h"
 #include "server.h"
 #include "tracing.h"
 #include "utils.h"
 #include "vfs.h"
+
+/**
+ * State machine for exec requests.
+ */
+enum {
+	EXEC_START,
+	EXEC_BARRIER,
+	EXEC_STEPPED,
+	EXEC_POLLED,
+	EXEC_DONE,
+	EXEC_FAILED,
+	EXEC_NR,
+};
+
+#define A(ident) BITS(EXEC_##ident)
+#define S(ident, allowed_, flags_) \
+	[EXEC_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf exec_states[EXEC_NR] = {
+	S(START,    A(BARRIER)|A(FAILED)|A(DONE), SM_INITIAL),
+	S(BARRIER,  A(STEPPED)|A(FAILED)|A(DONE), 0),
+	S(STEPPED,  A(POLLED)|A(FAILED)|A(DONE),  0),
+	S(POLLED,   A(FAILED)|A(DONE),            0),
+	S(DONE,     0,                            SM_FINAL),
+	S(FAILED,   0,                            SM_FAILURE|SM_FINAL),
+};
+
+static bool exec_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
+}
 
 /* Called when a leader exec request terminates and the associated callback can
  * be invoked. */
@@ -22,6 +56,13 @@ static void leaderExecDone(struct exec *req)
 {
 	tracef("leader exec done id:%" PRIu64, req->id);
 	req->leader->exec = NULL;
+	/* SQLITE_DONE (= 101) indicates success, any other code including
+	 * SQLITE_OK (= 0) indicates failure. */
+	int status = req->status == SQLITE_DONE ? 0 :
+		     req->status == SQLITE_OK ? SQLITE_ERROR :
+		     req->status;
+	sm_done(&req->sm, EXEC_DONE, EXEC_FAILED, status);
+	sm_fini(&req->sm);
 	if (req->cb != NULL) {
 		req->cb(req, req->status);
 	}
@@ -366,10 +407,12 @@ static void leaderExecV2(struct exec *req, enum pool_half half)
 
 	if (half == POOL_TOP_HALF) {
 		req->status = sqlite3_step(req->stmt);
+		sm_move(&req->sm, EXEC_STEPPED);
 		return;
 	} /* else POOL_BOTTOM_HALF => */
 
 	rv = VfsPoll(vfs, db->path, &frames, &n);
+	sm_move(&req->sm, EXEC_POLLED);
 	if (rv != 0 || n == 0) {
 		tracef("vfs poll");
 		goto finish;
@@ -413,6 +456,8 @@ static void execBarrierCb(struct barrier *barrier, int status)
 	struct exec *req = barrier->data;
 	struct leader *l = req->leader;
 
+	sm_move(&req->sm, EXEC_BARRIER);
+
 	if (status != 0) {
 		l->exec->status = status;
 		leaderExecDone(l->exec);
@@ -444,6 +489,8 @@ int leader__exec(struct leader *l,
 	req->barrier.data = req;
 	req->barrier.cb = NULL;
 	req->work = (pool_work_t){};
+	sm_init(&req->sm, exec_invariant, NULL, exec_states, "exec",
+		EXEC_START);
 
 	rv = leader__barrier(l, &req->barrier, execBarrierCb);
 	if (rv != 0) {
