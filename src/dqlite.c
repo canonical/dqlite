@@ -52,6 +52,14 @@ int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
 	return VfsSnapshot(vfs, filename, data, n);
 }
 
+int dqlite_vfs_snapshot_disk(sqlite3_vfs *vfs,
+			     const char *filename,
+			     struct dqlite_buffer bufs[],
+			     unsigned n)
+{
+	return VfsSnapshotDisk(vfs, filename, bufs, n);
+}
+
 int dqlite_vfs_num_pages(sqlite3_vfs *vfs, const char *filename, unsigned *n)
 {
 	return VfsDatabaseNumPages(vfs, filename, false, n);
