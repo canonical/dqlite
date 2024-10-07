@@ -2634,7 +2634,7 @@ int VfsShallowSnapshot(sqlite3_vfs *vfs,
 	}
 
 	vfsDatabaseShallowSnapshot(database, bufs, n);
-	/* Update the array of pages by  */
+	/* Update the bufs array with newer versions of pages from the WAL. */
 	vfsWalShallowSnapshot(&database->wal, bufs, n);
 
 	return 0;
