@@ -3,6 +3,7 @@
 #include "../../../src/lib/registry.h"
 
 #include "../../lib/runner.h"
+#include "../../lib/sqlite.h"
 
 TEST_MODULE(lib_registry);
 
@@ -45,6 +46,8 @@ static void *setup(const MunitParameter params[], void *user_data)
 	(void)params;
 	(void)user_data;
 
+	SETUP_SQLITE;
+
 	registry = (struct test_registry *)munit_malloc(sizeof(*registry));
 
 	test_registry_init(registry);
@@ -58,6 +61,8 @@ static void tear_down(void *data)
 
 	test_registry_close(registry);
 	free(registry);
+
+	TEAR_DOWN_SQLITE;
 }
 
 TEST_SUITE(add);

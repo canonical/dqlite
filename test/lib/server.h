@@ -35,7 +35,13 @@ void test_server_setup(struct test_server *s,
 /* Cleanup the test server. */
 void test_server_tear_down(struct test_server *s);
 
-/* Start the test server. */
+/* Set up the test server without running it. */
+void test_server_prepare(struct test_server *s, const MunitParameter params[]);
+
+/* Run the test server after setting it up. */
+void test_server_run(struct test_server *s);
+
+/* Start the test server. Equivalent to test_server_prepare + test_server_run. */
 void test_server_start(struct test_server *s, const MunitParameter params[]);
 
 /* Stop the test server. */

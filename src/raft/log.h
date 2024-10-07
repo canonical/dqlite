@@ -143,7 +143,6 @@ int logAppend(struct raft_log *l,
 	      raft_term term,
 	      unsigned short type,
 	      struct raft_buffer buf,
-	      struct raft_entry_local_data local_data,
 	      bool is_local,
 	      void *batch);
 

@@ -1,0 +1,22 @@
+name: CI Tests (musl build)
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+           sudo apt install -y build-essential automake libtool gettext autopoint tclsh tcl libsqlite3-dev pkg-config git
+
+    - name: Build and test
+      env:
+        LIBDQLITE_TRACE: 1
+      run: |
+           contrib/build-static.sh || (cat ./test-suite.log && false)

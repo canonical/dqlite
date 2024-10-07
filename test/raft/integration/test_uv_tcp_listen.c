@@ -237,7 +237,7 @@ TEST(tcp_listen, invalidAddress, setUp, tearDown, 0, invalidTcpListenParams)
 
 /* Check success with addrinfo resolve to mutiple IP and first one is used to
  * connect */
-TEST(tcp_listen, firstOfTwo, setUp, tearDown, 0, NULL)
+ADDRINFO_TEST(tcp_listen, firstOfTwo, setUp, tearDown, 0, NULL)
 {
     const struct AddrinfoResult results[] = {{"127.0.0.1", 9000},
                                              {"127.0.0.2", 9000}};
@@ -252,7 +252,7 @@ TEST(tcp_listen, firstOfTwo, setUp, tearDown, 0, NULL)
 
 /* Check success with addrinfo resolve to mutiple IP and second one is used to
  * connect */
-TEST(tcp_listen, secondOfTwo, setUp, tearDown, 0, NULL)
+ADDRINFO_TEST(tcp_listen, secondOfTwo, setUp, tearDown, 0, NULL)
 {
     const struct AddrinfoResult results[] = {{"127.0.0.2", 9000},
                                              {"127.0.0.1", 9000}};
@@ -268,7 +268,7 @@ TEST(tcp_listen, secondOfTwo, setUp, tearDown, 0, NULL)
 
 /* Simulate port already in use error by addrinfo response contain the same IP
  * twice */
-TEST(tcp_listen, alreadyBound, setUp, tearDown, 0, NULL)
+ADDRINFO_TEST(tcp_listen, alreadyBound, setUp, tearDown, 0, NULL)
 {
     /* We need to use the same endpoint three times as a simple duplicate will
      * be skipped due to a glib strange behavior
@@ -282,7 +282,7 @@ TEST(tcp_listen, alreadyBound, setUp, tearDown, 0, NULL)
 }
 
 /* Error in bind first IP address */
-TEST(tcp_listen, cannotBindFirst, setUp, tearDown, 0, NULL)
+ADDRINFO_TEST(tcp_listen, cannotBindFirst, setUp, tearDown, 0, NULL)
 {
     const struct AddrinfoResult results[] = {{"192.0.2.0", 9000},
                                              {"127.0.0.1", 9000}};
@@ -293,7 +293,7 @@ TEST(tcp_listen, cannotBindFirst, setUp, tearDown, 0, NULL)
 }
 
 /* Error in bind of second IP address */
-TEST(tcp_listen, cannotBindSecond, setUp, tearDown, 0, NULL)
+ADDRINFO_TEST(tcp_listen, cannotBindSecond, setUp, tearDown, 0, NULL)
 {
     const struct AddrinfoResult results[] = {{"127.0.0.1", 9000},
                                              {"192.0.2.0", 9000}};
@@ -304,7 +304,7 @@ TEST(tcp_listen, cannotBindSecond, setUp, tearDown, 0, NULL)
 }
 
 /* Check error on general dns server failure */
-TEST(tcp_listen, resolveFailure, setUp, tearDown, 0, NULL)
+ADDRINFO_TEST(tcp_listen, resolveFailure, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     AddrinfoInjectSetResponse(EAI_FAIL, 0, NULL);

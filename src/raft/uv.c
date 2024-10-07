@@ -324,6 +324,7 @@ static int uvFilterSegments(struct uv *uv,
 		ErrMsgPrintf(uv->io->errmsg,
 			     "closed segment %s is past last snapshot %s",
 			     segment->filename, snapshot_filename);
+		tracef("corrupted raft state, error: %s", uv->io->errmsg);
 		return RAFT_CORRUPT;
 	}
 
@@ -369,6 +370,7 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 	rv = UvList(uv, &snapshots, &n_snapshots, &segments, &n_segments,
 		    uv->io->errmsg);
 	if (rv != 0) {
+		tracef("failed to list snapshots and segments, error: %d", rv);
 		goto err;
 	}
 
@@ -377,12 +379,14 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 		char snapshot_filename[UV__FILENAME_LEN];
 		*snapshot = RaftHeapMalloc(sizeof **snapshot);
 		if (*snapshot == NULL) {
+			tracef("malloc failed");
 			rv = RAFT_NOMEM;
 			goto err;
 		}
 		rv = UvSnapshotLoad(uv, &snapshots[n_snapshots - 1], *snapshot,
 				    uv->io->errmsg);
 		if (rv != 0) {
+			tracef("snapshot load failed: %d", rv);
 			RaftHeapFree(*snapshot);
 			*snapshot = NULL;
 			goto err;
@@ -401,6 +405,7 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 		rv = uvFilterSegments(uv, (*snapshot)->index, snapshot_filename,
 				      &segments, &n_segments);
 		if (rv != 0) {
+			tracef("failed to filter segments: %d", rv);
 			goto err;
 		}
 		if (segments != NULL) {
@@ -420,6 +425,7 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 		rv = uvSegmentLoadAll(uv, *start_index, segments, n_segments,
 				      entries, n);
 		if (rv != 0) {
+			tracef("failed to load all segments: %d", rv);
 			goto err;
 		}
 
@@ -447,6 +453,9 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
 
 err:
 	assert(rv != 0);
+	tracef("auto-recovery: %d, load depth: %d, error: %s",
+		   uv->auto_recovery, depth, uv->io->errmsg);
+
 	if (*snapshot != NULL) {
 		snapshotDestroy(*snapshot);
 		*snapshot = NULL;
@@ -583,6 +592,7 @@ static int uvRecover(struct raft_io *io, const struct raft_configuration *conf)
 	rv = uvLoadSnapshotAndEntries(uv, &snapshot, &start_index, &entries,
 				      &n_entries, 0);
 	if (rv != 0) {
+		tracef("failed to load raft snapshot and entries, error: %d", rv);
 		return rv;
 	}
 
@@ -599,6 +609,7 @@ static int uvRecover(struct raft_io *io, const struct raft_configuration *conf)
 
 	rv = uvSegmentCreateClosedWithConfiguration(uv, next_index, conf);
 	if (rv != 0) {
+		tracef("failed to create segment, error: %d", rv);
 		return rv;
 	}
 

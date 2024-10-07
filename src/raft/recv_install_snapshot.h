@@ -1,5 +1,4 @@
 /* InstallSnapshot RPC handlers. */
-
 #ifndef RECV_INSTALL_SNAPSHOT_H_
 #define RECV_INSTALL_SNAPSHOT_H_
 
@@ -7,28 +6,32 @@
 #include <stdint.h>
 
 #include "../raft.h"
+#include "../lib/threadpool.h"
 
 struct work;
 struct sender;
 struct timeout;
 
 typedef void (*to_cb_op)(uv_timer_t *handle);
-typedef void (*work_op)(struct work *w);
+typedef void (*work_op)(pool_work_t *w);
 typedef void (*sender_cb_op)(struct sender *s, int rc);
 
 struct work {
+	struct sm sm;
 	work_op work_cb;
 	work_op after_cb;
-	struct sm sm;
+
+	pool_work_t pool_work;
 };
 
 struct sender {
+	// TODO embbed the uv req here.
 	sender_cb_op cb;
 };
 
 struct timeout {
-	to_cb_op cb;
 	struct sm sm;
+	to_cb_op cb;
 
 	uv_timer_t handle;
 };
@@ -55,6 +58,7 @@ struct leader_ops {
 
 	void (*work_queue)(struct work *w,
 			    work_op work, work_op after_cb);
+	bool (*is_pool_thread)(void);
 };
 
 struct follower_ops {
@@ -66,6 +70,7 @@ struct follower_ops {
 	sender_send_op sender_send;
 	void (*work_queue)(struct work *w,
 			    work_op work, work_op after_cb);
+	bool (*is_pool_thread)(void);
 };
 
 struct leader {
@@ -128,7 +133,7 @@ static const struct sm_conf leader_sm_conf[LS_NR] = {
 		.flags   = SM_INITIAL | SM_FINAL,
 		.name    = "online",
 		.allowed = BITS(LS_HT_WAIT)
-			 | BITS(LS_F_ONLINE),
+		         | BITS(LS_F_ONLINE),
 	},
 	[LS_HT_WAIT] = {
 		.name    = "ht-wait",
@@ -218,6 +223,7 @@ enum follower_states {
 	FS_CHUNCK_APPLIED,
 	FS_CHUNCK_REPLIED,
 
+	FS_SNAP_DONE,
 	FS_FINAL,
 
 	FS_NR,
@@ -301,7 +307,12 @@ static const struct sm_conf follower_sm_conf[FS_NR] = {
 	[FS_CHUNCK_REPLIED] = {
 		.name = "chunk_replied",
 		.allowed = BITS(FS_CHUNCK_PROCESSED)
-		         | BITS(FS_FINAL)
+		         | BITS(FS_SNAP_DONE)
+		         | BITS(FS_NORMAL),
+	},
+	[FS_SNAP_DONE] = {
+		.name = "snap_done",
+		.allowed = BITS(FS_FINAL)
 		         | BITS(FS_NORMAL),
 	},
 	[FS_FINAL] = {

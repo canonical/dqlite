@@ -28,7 +28,7 @@
  */
 #define DQLITE_VERSION_MAJOR 1
 #define DQLITE_VERSION_MINOR 16
-#define DQLITE_VERSION_RELEASE 5
+#define DQLITE_VERSION_RELEASE 7
 #define DQLITE_VERSION_NUMBER                                            \
 	(DQLITE_VERSION_MAJOR * 100 * 100 + DQLITE_VERSION_MINOR * 100 + \
 	 DQLITE_VERSION_RELEASE)
@@ -585,6 +585,29 @@ DQLITE_API int dqlite_node_recover(dqlite_node *n,
 DQLITE_API int dqlite_node_recover_ext(dqlite_node *n,
 				       dqlite_node_info_ext infos[],
 				       int n_info);
+
+/**
+ * Retrieve information about the last persisted raft log entry.
+ *
+ * This is intended to be used in combination with dqlite_node_recover_ext, to
+ * determine which of the surviving nodes in a cluster is most up-to-date. The
+ * raft rules for this are:
+ *
+ * - If the two logs have last entries with different terms, the log with the
+ *   higher term is more up-to-date.
+ * - Otherwise, the longer log is more up-to-date.
+ *
+ * Note that this function may result in physically modifying the raft-related
+ * files in the data directory. These modifications do not affect the logical
+ * state of the node. Deletion of invalid segment files can be disabled with
+ * dqlite_node_set_auto_recovery.
+ *
+ * This should be called after dqlite_node_init, but the node must not be
+ * running.
+ */
+DQLITE_API int dqlite_node_describe_last_entry(dqlite_node *n,
+					       uint64_t *last_entry_index,
+					       uint64_t *last_entry_term);
 
 /**
  * Return a human-readable description of the last error occurred.

@@ -88,7 +88,7 @@ static void tearDownRestorePendingByte(void *data)
 	tearDown(data);
 }
 
-#define PAGE_SIZE 512
+#define DB_PAGE_SIZE 512
 
 #define PRAGMA(DB, COMMAND)                                          \
 	_rv = sqlite3_exec(DB, "PRAGMA " COMMAND, NULL, NULL, NULL); \
@@ -216,12 +216,12 @@ struct tx
 		if (_frames != NULL) {                                     \
 			TX.page_numbers =                                  \
 			    munit_malloc(sizeof *TX.page_numbers * TX.n);  \
-			TX.frames = munit_malloc(PAGE_SIZE * TX.n);        \
+			TX.frames = munit_malloc(DB_PAGE_SIZE * TX.n);     \
 			for (_i = 0; _i < TX.n; _i++) {                    \
 				dqlite_vfs_frame *_frame = &_frames[_i];   \
 				TX.page_numbers[_i] = _frame->page_number; \
-				memcpy(TX.frames + _i * PAGE_SIZE,         \
-				       _frame->data, PAGE_SIZE);           \
+				memcpy(TX.frames + _i * DB_PAGE_SIZE,      \
+				       _frame->data, DB_PAGE_SIZE);        \
 				sqlite3_free(_frame->data);                \
 			}                                                  \
 			sqlite3_free(_frames);                             \
@@ -1502,7 +1502,7 @@ TEST(vfs, snapshotInitialDatabase, setUp, tearDown, 0, vfs_params)
 
 	SNAPSHOT("1", snapshot);
 
-	munit_assert_int(snapshot.n, ==, PAGE_SIZE);
+	munit_assert_int(snapshot.n, ==, DB_PAGE_SIZE);
 	page = snapshot.data;
 
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
@@ -1536,7 +1536,7 @@ TEST(vfs, snapshotAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
 
 	SNAPSHOT("1", snapshot);
 
-	munit_assert_int(snapshot.n, ==, PAGE_SIZE + 32 + (24 + PAGE_SIZE) * 2);
+	munit_assert_int(snapshot.n, ==, DB_PAGE_SIZE + 32 + (24 + DB_PAGE_SIZE) * 2);
 	page = snapshot.data;
 
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
@@ -1571,7 +1571,7 @@ TEST(vfs, snapshotAfterCheckpoint, setUp, tearDown, 0, vfs_params)
 
 	SNAPSHOT("1", snapshot);
 
-	munit_assert_int(snapshot.n, ==, PAGE_SIZE * 2);
+	munit_assert_int(snapshot.n, ==, DB_PAGE_SIZE * 2);
 	page = snapshot.data;
 
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);

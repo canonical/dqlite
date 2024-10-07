@@ -61,6 +61,7 @@ void sm_init(struct sm *m,
 		.is_locked = is_locked,
 		.id = ++id,
 		.pid = getpid(),
+		.rc = 0,
 	};
 	snprintf(m->name, SM_MAX_NAME_LENGTH, "%s", name);
 	sm_obs(m);

@@ -12,8 +12,8 @@ jobs:
         target:
           - focal
           - jammy
-          - mantic
           - noble
+          - oracular
     runs-on: ubuntu-20.04
     environment:
       name: ppa
@@ -27,6 +27,11 @@ jobs:
       run: |
           sudo apt-get update -qq
           sudo apt-get install -qq debhelper devscripts gnupg
+
+    - name: Work around GPG issue
+      run: |
+          mkdir -p ~/.gnupg
+          echo "pinentry-mode loopback" >~/.gnupg/gpg.conf
 
     - name: Setup GPG signing key
       env:

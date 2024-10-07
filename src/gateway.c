@@ -36,6 +36,8 @@ void gateway__init(struct gateway *g,
 	g->random_state = seed;
 }
 
+/* FIXME: This function becomes unsound when using the new thread pool, since
+ * the request callbacks will race with operations running in the pool. */
 void gateway__leader_close(struct gateway *g, int reason)
 {
 	if (g == NULL || g->leader == NULL) {
@@ -563,22 +565,6 @@ done:
 	}
 }
 
-#ifdef DQLITE_NEXT
-
-static void qb_top(pool_work_t *w)
-{
-	struct handle *req = CONTAINER_OF(w, struct handle, work);
-	query_batch_async(req, POOL_TOP_HALF);
-}
-
-static void qb_bottom(pool_work_t *w)
-{
-	struct handle *req = CONTAINER_OF(w, struct handle, work);
-	query_batch_async(req, POOL_BOTTOM_HALF);
-}
-
-#endif
-
 static void query_batch(struct gateway *g)
 {
 	struct handle *req = g->req;
@@ -586,16 +572,8 @@ static void query_batch(struct gateway *g)
 	g->req = NULL;
 	req->gw = g;
 
-#ifdef DQLITE_NEXT
-	struct dqlite_node *node = g->raft->data;
-	pool_t *pool = !!(pool_ut_fallback()->flags & POOL_FOR_UT)
-		? pool_ut_fallback() : &node->pool;
-	pool_queue_work(pool, &req->work, g->leader->db->cookie,
-			WT_UNORD, qb_top, qb_bottom);
-#else
 	query_batch_async(req, POOL_TOP_HALF);
 	query_batch_async(req, POOL_BOTTOM_HALF);
-#endif
 }
 
 static void query_barrier_cb(struct barrier *barrier, int status)

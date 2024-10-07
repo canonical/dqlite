@@ -97,17 +97,16 @@ TEST(cluster, restart, setUp, tearDown, 0, cluster_params)
 	struct rows rows;
 	long n_records =
 	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
-	char sql[128];
 
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
+	PREPARE("INSERT INTO TEST(n) VALUES(?)", &stmt_id);
 	for (int i = 0; i < n_records; ++i) {
-		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
-		PREPARE(sql, &stmt_id);
-		EXEC(stmt_id, &last_insert_id, &rows_affected);
+		EXEC_PARAMS(stmt_id, &last_insert_id, &rows_affected,
+			    {.type = SQLITE_INTEGER, .integer = i});
 	}
 
 	struct test_server *server = &f->servers[0];
@@ -133,19 +132,19 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	struct rows rows;
 	long n_records =
 	    strtol(munit_parameters_get(params, "num_records"), NULL, 0);
-	char sql[128];
 	unsigned id = 2;
 	const char *address = "@2";
+	int rv;
 
 	HANDSHAKE;
 	OPEN;
 	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
+	PREPARE("INSERT INTO test(n) VALUES(?)", &stmt_id);
 	for (int i = 0; i < n_records; ++i) {
-		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
-		PREPARE(sql, &stmt_id);
-		EXEC(stmt_id, &last_insert_id, &rows_affected);
+		EXEC_PARAMS(stmt_id, &last_insert_id, &rows_affected,
+			    {.type = SQLITE_INTEGER, .integer = i});
 	}
 
 	/* Add a second voting server, this one will receive all data from the
@@ -158,6 +157,29 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	REMOVE(1);
 	sleep(1);
 
+	struct test_server *first = &f->servers[0];
+	test_server_stop(first);
+	test_server_prepare(first, params);
+	/* One entry per INSERT, plus one for the initial configuration, plus
+	 * one for the CREATE TABLE, plus one legacy checkpoint command entry
+	 * after 993 records or two after 2200 records. */
+	uint64_t expected_entries = n_records + (n_records >= 2200 ? 4 :
+						 n_records >= 993 ? 3 :
+						 2);
+	/* We also expect a variable number of barrier entries. Just specify an
+	 * upper bound since we don't know the exact count. */
+	uint64_t max_barriers = 10;
+	uint64_t last_entry_index;
+	uint64_t last_entry_term;
+	rv = dqlite_node_describe_last_entry(first->dqlite,
+					     &last_entry_index,
+					     &last_entry_term);
+	munit_assert_int(rv, ==, 0);
+	munit_assert_uint64(expected_entries, <=, last_entry_index);
+	munit_assert_uint64(last_entry_index, <, expected_entries + max_barriers);
+	munit_assert_uint64(last_entry_term, ==, 1);
+	test_server_run(first);
+
 	/* The full table is visible from the new node */
 	SELECT(2);
 	HANDSHAKE;
@@ -166,6 +188,23 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	QUERY(stmt_id, &rows);
 	munit_assert_long(rows.next->values->integer, ==, n_records);
 	clientCloseRows(&rows);
+
+	/* One more entry on the new node. */
+	PREPARE("INSERT INTO test(n) VALUES(?)", &stmt_id);
+	EXEC_PARAMS(stmt_id, &last_insert_id, &rows_affected,
+		    {.type = SQLITE_INTEGER, .integer = 5000});
+
+	struct test_server *second = &f->servers[1];
+	test_server_stop(second);
+	test_server_prepare(second, params);
+	rv = dqlite_node_describe_last_entry(second->dqlite,
+					     &last_entry_index,
+					     &last_entry_term);
+	munit_assert_int(rv, ==, 0);
+	munit_assert_uint64(expected_entries + 1, <=, last_entry_index);
+	munit_assert_uint64(last_entry_index, <, expected_entries + max_barriers + 1);
+	munit_assert_uint64(last_entry_term, ==, 1);
+	test_server_run(second);
 	return MUNIT_OK;
 }
 
@@ -286,5 +325,40 @@ TEST(cluster, modifyingQuerySql, setUp, tearDown, 0, cluster_params)
 	QUERY(stmt_id, &rows);
 	munit_assert_long(rows.next->values->integer, ==, n_records);
 	clientCloseRows(&rows);
+	return MUNIT_OK;
+}
+
+/* Edge cases for dqlite_node_describe_last_entry. */
+TEST(cluster, last_entry_edge_cases, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	uint64_t index;
+	uint64_t term;
+	int rv;
+
+	sleep(1);
+
+	struct test_server *first = &f->servers[0];
+	test_server_stop(first);
+	test_server_prepare(first, params);
+	rv = dqlite_node_describe_last_entry(first->dqlite, &index, &term);
+	munit_assert_int(rv, ==, 0);
+	/* The log contains only the bootstrap configuration. */
+	munit_assert_uint64(index, ==, 1);
+	/* The bootstrap configuration is always tagged with term 1. */
+	munit_assert_uint64(term, ==, 1);
+	test_server_run(first);
+
+	struct test_server *second = &f->servers[1];
+	test_server_stop(second);
+	test_server_prepare(second, params);
+	rv = dqlite_node_describe_last_entry(second->dqlite, &index, &term);
+	munit_assert_int(rv, ==, 0);
+	/* We didn't bootstrap and haven't joined the leader, so our log is
+	 * empty. */
+	munit_assert_uint64(index, ==, 0);
+	munit_assert_uint64(term, ==, 0);
+	test_server_run(second);
+
 	return MUNIT_OK;
 }

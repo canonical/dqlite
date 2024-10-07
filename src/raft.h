@@ -1,11 +1,4 @@
-#if defined(USE_SYSTEM_RAFT)
-
-#include <raft.h>
-#include <raft/uv.h>
-#include <raft/fixture.h>
-
-#elif !defined(RAFT_H)
-
+#ifndef RAFT_H
 #define RAFT_H
 
 #include <stdarg.h>
@@ -199,28 +192,6 @@ enum {
 };
 
 /**
- * A small fixed-size inline buffer that stores extra data for a raft_entry
- * that is different for each node in the cluster.
- *
- * A leader initializes the local data for an entry before passing it into
- * raft_apply. This local data is stored in the volatile raft log and also
- * in the persistent raft log on the leader. AppendEntries messages sent by
- * the leader never contain the local data for entries.
- *
- * When a follower accepts an AppendEntries request, it invokes a callback
- * provided by the FSM to fill out the local data for each new entry before
- * appending the entries to its log (volatile and persistent). This local
- * data doesn't have to be the same as the local data that the leader computed.
- *
- * When starting up, a raft node reads the local data for each entry for its
- * persistent log as part of populating the volatile log.
- */
-struct raft_entry_local_data {
-	/* Must be the only member of this struct. */
-	uint8_t buf[16];
-};
-
-/**
  * A single entry in the raft log.
  *
  * An entry that originated from this raft instance while it was the leader
@@ -250,12 +221,6 @@ struct raft_entry_local_data {
  * message or in the persistent log. This field can be used by the FSM's `apply`
  * callback to handle a COMMAND entry differently depending on whether it
  * originated locally.
- *
- * Note: The @local_data and @is_local fields do not exist when we use an external
- * libraft, because the last separate release of libraft predates their addition.
- * The ifdef at the very top of this file ensures that we use the system raft headers
- * when we build against an external libraft, so there will be no ABI mismatch as
- * a result of incompatible struct layouts.
  */
 struct raft_entry
 {
@@ -263,7 +228,6 @@ struct raft_entry
 	unsigned short type;    /* Type (FSM command, barrier, config change). */
 	bool is_local;          /* Placed here so it goes in the padding after @type. */
 	struct raft_buffer buf; /* Entry data. */
-	struct raft_entry_local_data local_data;
 	void *batch;            /* Batch that buf's memory points to, if any. */
 };
 
@@ -379,6 +343,7 @@ struct raft_signature {
 	struct page_from_to page_from_to;
 	pageno_t cs_page_no;
 	enum raft_result result;
+	bool ask_calculated;
 };
 #define RAFT_SIGNATURE_VERSION 0
 
@@ -390,6 +355,7 @@ struct raft_signature_result {
 	unsigned int cs_nr;
 	pageno_t cs_page_no;
 	enum raft_result result;
+	bool calculated;
 };
 #define RAFT_SIGNATURE_RESULT_VERSION 0
 
@@ -1077,6 +1043,28 @@ RAFT_API int raft_bootstrap(struct raft *r,
 RAFT_API int raft_recover(struct raft *r,
 			  const struct raft_configuration *conf);
 
+/**
+ * Read information about the last raft log entry that's stored on disk.
+ *
+ * "Last log entry" here should be understood as including snapshots,
+ * so if there is one snapshot on disk and no individual entries, the
+ * values returned in `index` and `term` are the index and term of the
+ * last entry included in the snapshot. If there are no snapshot and no
+ * entries, then `index` and `term` are both set to 0.
+ *
+ * This function is just a wrapper around the `load` method of raft_io.
+ * Note that the `load` method of the uv raft_io implementation is not
+ * read-only: as it walks the segment files on disk, it closes open
+ * segments that contain valid entries and deletes other open segments.
+ *
+ * This should be called after the raft_io instance is initialized (e.g.
+ * after calling raft_uv_init), but no active raft node should be using
+ * the instance.
+ */
+int raft_io_describe_last_entry(struct raft_io *io,
+				raft_index *index,
+				raft_term *term);
+
 RAFT_API int raft_start(struct raft *r);
 
 /**
@@ -1239,7 +1227,6 @@ struct raft_apply
 RAFT_API int raft_apply(struct raft *r,
 			struct raft_apply *req,
 			const struct raft_buffer bufs[],
-			const struct raft_entry_local_data local_data[],
 			const unsigned n,
 			raft_apply_cb cb);
 

@@ -1371,7 +1371,7 @@ static void copyLeaderLog(struct raft_fixture *f)
 		assert(buf.base != NULL);
 		memcpy(buf.base, entry->buf.base, buf.len);
 		/* FIXME(cole) what to do here for is_local? */
-		rv = logAppend(f->log, entry->term, entry->type, buf, (struct raft_entry_local_data){}, false, NULL);
+		rv = logAppend(f->log, entry->term, entry->type, buf, false, NULL);
 		assert(rv == 0);
 	}
 	logRelease(raft->log, 1, entries, n);
