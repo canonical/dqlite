@@ -391,8 +391,8 @@ static int encodeDatabase(struct db *db,
 
 	header.filename = db->filename;
 	header.main_size = (n - 1) * (uint64_t)db->config->page_size;
-	// The database is checkpointed before writing it to disk.
-	// As such, wal_size is always 0.
+	/* The database is checkpointed before writing it to disk.  As such,
+	 * wal_size is always 0. */
 	header.wal_size = 0;
 
 	vfs = sqlite3_vfs_find(db->config->name);
@@ -478,7 +478,7 @@ static unsigned dbNumPages(struct db *db)
 	uint32_t n;
 
 	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDatabaseNumPages(vfs, db->filename, 1, &n);
+	rv = VfsDatabaseNumPages(vfs, db->filename, true, &n);
 	assert(rv == 0);
 	return n;
 }

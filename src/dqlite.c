@@ -52,33 +52,9 @@ int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
 	return VfsSnapshot(vfs, filename, data, n);
 }
 
-int dqlite_vfs_snapshot_disk(sqlite3_vfs *vfs,
-			     const char *filename,
-			     struct dqlite_buffer bufs[],
-			     unsigned n)
-{
-	int rv;
-	if (n != 2) {
-		return -1;
-	}
-
-	rv = VfsDiskSnapshotDb(vfs, filename, &bufs[0]);
-	if (rv != 0) {
-		return rv;
-	}
-
-	rv = VfsDiskSnapshotWal(vfs, filename, &bufs[1]);
-	return rv;
-}
-
 int dqlite_vfs_num_pages(sqlite3_vfs *vfs, const char *filename, unsigned *n)
 {
 	return VfsDatabaseNumPages(vfs, filename, 0, n);
-}
-
-int dqlite_vfs_num_alive_pages(sqlite3_vfs *vfs, const char *filename, unsigned *n)
-{
-	return VfsDatabaseNumPages(vfs, filename, 1, n);
 }
 
 int dqlite_vfs_shallow_snapshot(sqlite3_vfs *vfs,

@@ -38,11 +38,15 @@ int VfsAbort(sqlite3_vfs *vfs, const char *filename);
 /* Make a full snapshot of a database. */
 int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n);
 
-/* Makes a full, shallow snapshot of a database. The first n-1 buffers will each
- * contain a pointer to the actual database pages, while the n'th buffer
- * will contain a copy of the WAL. `bufs` MUST point to an array of n
- * `dqlite_buffer` structs and n MUST equal 1 + the number of pages in
- * the database. */
+/**
+ * Prepare a snapshot of the selected database, borrowing from the in-memory
+ * state of the VFS.
+ *
+ * The provided array of buffers will be populated with pointers to the
+ * in-memory database held by the VFS. It's forbidden to checkpoint the
+ * database while these pointers are still in use. VfsDatabaseNumPages (with
+ * `use_wal = true`) should be used to determine how many buffers are needed.
+ */
 int VfsShallowSnapshot(sqlite3_vfs *vfs,
 		       const char *filename,
 		       struct dqlite_buffer bufs[],
@@ -58,6 +62,11 @@ int VfsDiskSnapshotDb(sqlite3_vfs *vfs,
 		      const char *path,
 		      struct dqlite_buffer *buf);
 
+int VfsSnapshotDisk(sqlite3_vfs *vfs,
+		    const char *filename,
+		    struct dqlite_buffer bufs[],
+		    uint32_t n);
+
 /* Restore a database snapshot. */
 int VfsRestore(sqlite3_vfs *vfs,
 	       const char *filename,
@@ -71,8 +80,16 @@ int VfsDiskRestore(sqlite3_vfs *vfs,
 		   size_t main_size,
 		   size_t wal_size);
 
-/* Number of pages in the database. */
-int VfsDatabaseNumPages(sqlite3_vfs *vfs, const char *filename, int useWal, uint32_t *n);
+/**
+ * Number of pages in the database.
+ *
+ * If `use_wal` is set, returns the number of pages that the database would have
+ * after fully checkpointing the WAL.
+ */
+int VfsDatabaseNumPages(sqlite3_vfs *vfs,
+			const char *filename,
+			bool use_wal,
+			uint32_t *n);
 
 /* Returns the resulting size of the main file, wal file and n additional WAL
  * frames with the specified page_size. */
