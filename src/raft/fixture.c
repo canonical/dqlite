@@ -310,11 +310,13 @@ static void ioFlushTruncate(struct io *io, struct truncate *r)
 	for (size_t i = n; i < io->n; i++) {
 		raft_free(io->entries[i].buf.base);
 	}
-	entries = raft_realloc(io->entries, n * sizeof(*io->entries));
 	if (n == 0) {
+		raft_free(io->entries);
 		entries = NULL;
+	} else {
+		entries = raft_realloc(io->entries, n * sizeof(*io->entries));
+		POST(entries != NULL);
 	}
-	POST(ERGO(n > 0, entries != NULL));
 
 	io->entries = entries;
 	io->n = n;
