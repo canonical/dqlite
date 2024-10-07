@@ -18,7 +18,6 @@ int raft_apply(struct raft *r,
 {
 	raft_index start;
 	raft_index index;
-	struct raft_entry_local_data loc;
 	const struct sm *entry_sm;
 	int rv;
 
@@ -49,8 +48,7 @@ int raft_apply(struct raft *r,
 	/* Append the new entries to the log. */
 	index = start;
 	for (unsigned i = 0; i < n; i++) {
-		loc = (local_data != NULL) ? local_data[i] : (struct raft_entry_local_data){};
-		rv = logAppend(r->log, r->current_term, RAFT_COMMAND, bufs[i], loc, true, NULL);
+		rv = logAppend(r->log, r->current_term, RAFT_COMMAND, bufs[i], true, NULL);
 		if (rv != 0) {
 			goto err_after_request_start;
 		}
