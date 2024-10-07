@@ -165,6 +165,7 @@ unit_test_SOURCES += \
   test/unit/test_sm.c \
   test/unit/test_tuple.c \
   test/unit/test_vfs.c \
+  test/unit/test_vfs_extra.c \
   test/unit/test_vfs2.c \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS) -Wno-unknown-warning-option -Wno-uninitialized -Wno-maybe-uninitialized -Wno-float-equal -Wno-conversion
@@ -181,7 +182,6 @@ integration_test_SOURCES = \
   test/integration/test_node.c \
   test/integration/test_role_management.c \
   test/integration/test_server.c \
-  test/integration/test_vfs.c \
   test/integration/main.c
 integration_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 integration_test_LDFLAGS = $(AM_LDFLAGS) -no-install

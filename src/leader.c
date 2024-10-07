@@ -125,8 +125,7 @@ static int openConnection(const char *filename,
 		goto err;
 	}
 
-	rc = sqlite3_exec(*conn, "PRAGMA wal_autocheckpoint=0", NULL, NULL,
-			  &msg);
+	rc = sqlite3_wal_autocheckpoint(*conn, 0);
 	if (rc != SQLITE_OK) {
 		tracef("wal autocheckpoint off failed %d", rc);
 		goto err;
