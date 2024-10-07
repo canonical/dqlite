@@ -41,6 +41,7 @@ jobs:
       env:
         CC: ${{ matrix.compiler }}
         LIBDQLITE_TRACE: 1
+        ASAN_OPTIONS: fast_unwind_on_malloc=0
       run: |
           make check || (cat test-suite.log && false)
 
