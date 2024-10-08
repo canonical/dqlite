@@ -486,7 +486,7 @@ int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
 		tracef("not needed");
 		cb(barrier, 0);
 		return 0;
-	} else if (l->flags & DQLITE_ALLOW_STALE) {
+	} else if (l->flags & DQLITE_OPEN_ALLOW_STALE) {
 		cb(barrier, 0);
 		return 0;
 	}

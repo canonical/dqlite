@@ -204,7 +204,7 @@ static bool check_leader_weak(const struct gateway *g, struct handle *req)
 {
 	const struct leader *l = g->leader;
 	bool ok = raft_state(g->raft) == RAFT_LEADER ||
-		  (l != NULL && (l->flags & DQLITE_ALLOW_STALE));
+		  (l != NULL && (l->flags & DQLITE_OPEN_ALLOW_STALE));
 	if (!ok) {
 		failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
 	}
@@ -643,6 +643,7 @@ static int handle_query(struct gateway *g, struct handle *req)
 	struct stmt *stmt;
 	struct request_query request = { 0 };
 	int tuple_format;
+	bool readonly;
 	bool ok;
 	uint64_t req_id;
 	int rv;
@@ -675,8 +676,8 @@ static int handle_query(struct gateway *g, struct handle *req)
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
-	readonly = (bool)sqlite3_stmt_readonly(stmt->stmt);
-	if (!sqlite3_stmt_readonly(stmt->stmt)) {
+	readonly = sqlite3_stmt_readonly(stmt->stmt);
+	if (!readonly) {
 		ok = check_leader_strong(g, req);
 		if (!ok) {
 			return 0;
@@ -909,6 +910,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	const char *tail;
 	sqlite3_stmt *tail_stmt;
 	int tuple_format;
+	bool readonly;
 	bool ok;
 	uint64_t req_id;
 	int rv;
@@ -938,7 +940,8 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 		failure(req, SQLITE_ERROR, "nonempty statement tail");
 		return;
 	}
-	if (!sqlite3_stmt_readonly(stmt)) {
+	readonly = sqlite3_stmt_readonly(stmt);
+	if (!readonly) {
 		ok = check_leader_strong(g, req);
 		if (!ok) {
 			sqlite3_finalize(stmt);

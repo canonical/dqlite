@@ -187,11 +187,11 @@ static void handleCb(struct handle *req,
 		ASSERT_CALLBACK(0, DB);   \
 	}
 
-#define OPEN_ALLOWSTALE \
+#define OPEN_ALLOW_STALE \
 	{ \
 		struct request_open open; \
 		open.filename = "test"; \
-		open.flags = DQLITE_ALLOW_STALE; \
+		open.flags = DQLITE_OPEN_ALLOW_STALE; \
 		open.vfs = ""; \
 		ENCODE(&open, open); \
 		HANDLE(OPEN); \
@@ -693,7 +693,7 @@ TEST_CASE(prepare, non_leader_ok, NULL)
 
 	CLUSTER_ELECT(0);
 	SELECT(1);
-	OPEN_ALLOWSTALE;
+	OPEN_ALLOW_STALE;
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, prepare);
@@ -1235,7 +1235,7 @@ TEST_CASE(exec, not_leader_never_okay, NULL)
 	(void)params;
 	CLUSTER_ELECT(0);
 	SELECT(1);
-	OPEN_ALLOWSTALE;
+	OPEN_ALLOW_STALE;
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -1741,7 +1741,7 @@ TEST_CASE(query, allow_stale, NULL)
 
 	CLUSTER_APPLIED(4);
 	SELECT(1);
-	OPEN_ALLOWSTALE;
+	OPEN_ALLOW_STALE;
 	PREPARE("SELECT n FROM test");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -1765,7 +1765,7 @@ TEST_CASE(query, allow_stale_modifying, NULL)
 
 	CLUSTER_APPLIED(4);
 	SELECT(1);
-	OPEN_ALLOWSTALE;
+	OPEN_ALLOW_STALE;
 	PREPARE("INSERT INTO test (n) VALUES (17)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -1826,7 +1826,7 @@ TEST_CASE(finalize, not_leader, NULL)
 	(void)params;
 	CLUSTER_ELECT(0);
 	SELECT(1);
-	OPEN_ALLOWSTALE;
+	OPEN_ALLOW_STALE;
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -2032,7 +2032,7 @@ TEST_CASE(exec_sql, not_leader_never_ok, NULL)
 	(void)params;
 
 	SELECT(1);
-	OPEN_ALLOWSTALE;
+	OPEN_ALLOW_STALE;
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, exec_sql);
@@ -2438,7 +2438,7 @@ TEST_CASE(query_sql, allow_stale, NULL)
 
 	CLUSTER_APPLIED(4);
 	SELECT(1);
-	OPEN_ALLOWSTALE;
+	OPEN_ALLOW_STALE;
 	f->request.db_id = 0;
 	f->request.sql = "SELECT * FROM test";
 	ENCODE(&f->request, query_sql);
@@ -2460,7 +2460,7 @@ TEST_CASE(query_sql, allow_stale_modifying, NULL)
 
 	CLUSTER_APPLIED(4);
 	SELECT(1);
-	OPEN_ALLOWSTALE;
+	OPEN_ALLOW_STALE;
 	f->request.db_id = 0;
 	f->request.sql = "INSERT INTO test (n) VALUES (17)";
 	ENCODE(&f->request, query_sql);

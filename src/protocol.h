@@ -84,4 +84,14 @@ enum {
 	DQLITE_RESPONSE_METADATA
 };
 
+/**
+ * Flags for the OPEN request.
+ */
+enum {
+	/* When set, gives permission for the server to execute readonly QUERY
+	 * and QUERY_SQL requests against this database even if it is not the
+	 * leader. */
+	DQLITE_OPEN_ALLOW_STALE = 1 << 0,
+};
+
 #endif /* DQLITE_PROTOCOL_H_ */
