@@ -401,6 +401,7 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct stmt *stmt;
 	struct request_prepare request = { 0 };
+	bool ok;
 	int rc;
 
 	if (req->schema != DQLITE_PREPARE_STMT_SCHEMA_V0 &&
@@ -413,7 +414,8 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 		return rc;
 	}
 
-	if (!check_leader_weak(g, req)) {
+	ok = check_leader_weak(g, req);
+	if (!ok) {
 		return 0;
 	}
 	LOOKUP_DB(request.db_id);
@@ -495,6 +497,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	struct request_exec request = { 0 };
 	int tuple_format;
 	uint64_t req_id;
+	bool ok;
 	int rv;
 
 	switch (req->schema) {
@@ -517,7 +520,8 @@ static int handle_exec(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-	if (!check_leader_strong(g, req)) {
+	ok = check_leader_strong(g, req);
+	if (!ok) {
 		return 0;
 	}
 	LOOKUP_DB(request.db_id);
@@ -639,7 +643,7 @@ static int handle_query(struct gateway *g, struct handle *req)
 	struct stmt *stmt;
 	struct request_query request = { 0 };
 	int tuple_format;
-	bool readonly;
+	bool ok;
 	uint64_t req_id;
 	int rv;
 
@@ -663,15 +667,20 @@ static int handle_query(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-	if (!check_leader_weak(g, req)) {
+
+	ok = check_leader_weak(g, req);
+	if (!ok) {
 		return 0;
 	}
 	LOOKUP_DB(request.db_id);
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
 	readonly = (bool)sqlite3_stmt_readonly(stmt->stmt);
-	if (!(readonly || check_leader_strong(g, req))) {
-		return 0;
+	if (!sqlite3_stmt_readonly(stmt->stmt)) {
+		ok = check_leader_strong(g, req);
+		if (!ok) {
+			return 0;
+		}
 	}
 	rv = bind__params(stmt->stmt, cursor, tuple_format);
 	if (rv != 0) {
@@ -833,6 +842,7 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	tracef("handle exec sql schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct request_exec_sql request = { 0 };
+	bool ok;
 	int rc;
 
 	/* Fail early if the schema version isn't recognized, even though we
@@ -849,7 +859,8 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 		return rc;
 	}
 
-	if (!check_leader_strong(g, req)) {
+	ok = check_leader_strong(g, req);
+	if (!ok) {
 		return 0;
 	}
 	LOOKUP_DB(request.db_id);
@@ -898,7 +909,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	const char *tail;
 	sqlite3_stmt *tail_stmt;
 	int tuple_format;
-	bool readonly;
+	bool ok;
 	uint64_t req_id;
 	int rv;
 
@@ -927,10 +938,12 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 		failure(req, SQLITE_ERROR, "nonempty statement tail");
 		return;
 	}
-	readonly = (bool)sqlite3_stmt_readonly(stmt);
-	if (!(readonly || check_leader_strong(g, req))) {
-		sqlite3_finalize(stmt);
-		return;
+	if (!sqlite3_stmt_readonly(stmt)) {
+		ok = check_leader_strong(g, req);
+		if (!ok) {
+			sqlite3_finalize(stmt);
+			return;
+		}
 	}
 	switch (req->schema) {
 		case DQLITE_REQUEST_PARAMS_SCHEMA_V0:
@@ -973,6 +986,7 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	tracef("handle query sql schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct request_query_sql request = { 0 };
+	bool ok;
 	int rv;
 
 	/* Fail early if the schema version isn't recognized. */
@@ -987,7 +1001,8 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-	if (!check_leader_weak(g, req)) {
+	ok = check_leader_weak(g, req);
+	if (!ok) {
 		return 0;
 	}
 	LOOKUP_DB(request.db_id);
@@ -1047,11 +1062,14 @@ static int handle_add(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
 	uint64_t req_id;
+	bool ok;
 	int rv;
+
 	START_V0(add, empty);
 	(void)response;
 
-	if (!check_leader_strong(g, req)) {
+	ok = check_leader_strong(g, req);
+	if (!ok) {
 		return 0;
 	}
 
@@ -1085,11 +1103,14 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 	struct change *r;
 	uint64_t role = DQLITE_VOTER;
 	uint64_t req_id;
+	bool ok;
 	int rv;
+
 	START_V0(promote_or_assign, empty);
 	(void)response;
 
-	if (!check_leader_strong(g, req)) {
+	ok = check_leader_strong(g, req);
+	if (!ok) {
 		return 0;
 	}
 
@@ -1133,11 +1154,14 @@ static int handle_remove(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
 	uint64_t req_id;
+	bool ok;
 	int rv;
+
 	START_V0(remove, empty);
 	(void)response;
 
-	if (!check_leader_strong(g, req)) {
+	ok = check_leader_strong(g, req);
+	if (!ok) {
 		return 0;
 	}
 
@@ -1391,11 +1415,14 @@ static int handle_transfer(struct gateway *g, struct handle *req)
 	tracef("handle transfer");
 	struct cursor *cursor = &req->cursor;
 	struct raft_transfer *r;
+	bool ok;
 	int rv;
+
 	START_V0(transfer, empty);
 	(void)response;
 
-	if (!check_leader_strong(g, req)) {
+	ok = check_leader_strong(g, req);
+	if (!ok) {
 		return 0;
 	}
 
