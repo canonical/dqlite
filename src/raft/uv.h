@@ -98,7 +98,9 @@ struct uv
 };
 
 /* Implementation of raft_io->truncate. */
-int UvTruncate(struct raft_io *io, raft_index index);
+int UvTruncate(struct raft_io *io,
+	       struct raft_io_truncate *trunc,
+	       raft_index index);
 
 /* Load Raft metadata from disk, choosing the most recent version (either the
  * metadata1 or metadata2 file). */

@@ -71,7 +71,7 @@ static bool applyCbHasFired(struct raft_fixture *f, void *arg)
     int _rv;                                                                 \
     FsmEncodeSetX(N, &_buf);                                                 \
     _req.data = &_result;                                                    \
-    _rv = raft_apply(CLUSTER_RAFT(I), &_req, &_buf, NULL, 1, applyCbAssertResult); \
+    _rv = raft_apply(CLUSTER_RAFT(I), &_req, &_buf, 1, applyCbAssertResult); \
     munit_assert_int(_rv, ==, 0);
 
 /* Expect the apply callback to fire with the given status. */
@@ -96,7 +96,7 @@ static bool applyCbHasFired(struct raft_fixture *f, void *arg)
         struct raft_apply _req;                                   \
         int _rv;                                                  \
         FsmEncodeSetX(123, &_buf);                                \
-        _rv = raft_apply(CLUSTER_RAFT(I), &_req, &_buf, NULL, 1, NULL); \
+        _rv = raft_apply(CLUSTER_RAFT(I), &_req, &_buf, 1, NULL); \
         munit_assert_int(_rv, ==, RV);                            \
         munit_assert_string_equal(CLUSTER_ERRMSG(I), ERRMSG);     \
         raft_free(_buf.base);                                     \

@@ -1,24 +1,24 @@
+#include "../lib/queue.h"
 #include "../raft.h"
 #include "../tracing.h"
 #include "assert.h"
 #include "configuration.h"
 #include "err.h"
-#include "lifecycle.h"
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
-#include "../lib/queue.h"
 #include "replication.h"
 #include "request.h"
 
 int raft_apply(struct raft *r,
 	       struct raft_apply *req,
 	       const struct raft_buffer bufs[],
-	       const struct raft_entry_local_data local_data[],
 	       const unsigned n,
 	       raft_apply_cb cb)
 {
+	raft_index start;
 	raft_index index;
+	const struct sm *entry_sm;
 	int rv;
 
 	tracef("raft_apply n %d", n);
@@ -35,30 +35,40 @@ int raft_apply(struct raft *r,
 	}
 
 	/* Index of the first entry being appended. */
-	index = logLastIndex(r->log) + 1;
-	tracef("%u commands starting at %lld", n, index);
+	start = logLastIndex(r->log) + 1;
+	tracef("%u commands starting at %lld", n, start);
 	req->type = RAFT_COMMAND;
-	req->index = index;
+	req->index = start;
 	req->cb = cb;
 
+	sm_init(&req->sm, request_invariant, NULL, request_states, "apply-request",
+		REQUEST_START);
+	queue_insert_tail(&r->leader_state.requests, &req->queue);
+
 	/* Append the new entries to the log. */
-	rv = logAppendCommands(r->log, r->current_term, bufs, local_data, n);
-	if (rv != 0) {
-		goto err;
+	index = start;
+	for (unsigned i = 0; i < n; i++) {
+		rv = logAppend(r->log, r->current_term, RAFT_COMMAND, bufs[i], true, NULL);
+		if (rv != 0) {
+			goto err_after_request_start;
+		}
+		entry_sm = log_get_entry_sm(r->log, r->current_term, index);
+		assert(entry_sm != NULL);
+		sm_relate(&req->sm, entry_sm);
+		index++;
 	}
 
-	lifecycleRequestStart(r, (struct request *)req);
-
-	rv = replicationTrigger(r, index);
+	rv = replicationTrigger(r, start);
 	if (rv != 0) {
-		goto err_after_log_append;
+		goto err_after_request_start;
 	}
 
 	return 0;
 
-err_after_log_append:
+err_after_request_start:
 	logDiscard(r->log, index);
 	queue_remove(&req->queue);
+	sm_fail(&req->sm, REQUEST_FAILED, rv);
 err:
 	assert(rv != 0);
 	return rv;
@@ -91,12 +101,12 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 	req->index = index;
 	req->cb = cb;
 
-	rv = logAppend(r->log, r->current_term, RAFT_BARRIER, buf, (struct raft_entry_local_data){}, true, NULL);
+	rv = logAppend(r->log, r->current_term, RAFT_BARRIER, buf, true, NULL);
 	if (rv != 0) {
 		goto err_after_buf_alloc;
 	}
 
-	lifecycleRequestStart(r, (struct request *)req);
+	queue_insert_tail(&r->leader_state.requests, &req->queue);
 
 	rv = replicationTrigger(r, index);
 	if (rv != 0) {

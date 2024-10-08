@@ -51,6 +51,7 @@ void sm_init(struct sm *m,
 void sm_fini(struct sm *m);
 void sm_move(struct sm *m, int next_state);
 void sm_fail(struct sm *m, int fail_state, int rc);
+void sm_done(struct sm *m, int good_state, int bad_state, int rc);
 int sm_state(const struct sm *m);
 bool sm_check(bool b, const char *f, int n, const char *s);
 /* Relates one state machine to another for observability. */

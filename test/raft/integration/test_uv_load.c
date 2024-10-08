@@ -1632,15 +1632,9 @@ TEST(load, openSegmentWithIncompleteBatchHeader, setUp, tearDown, 0, NULL)
     APPEND(1, 1);
     UNFINALIZE(1, 1, 1);
     DirTruncateFile(f->dir, "open-1", offset);
-#ifdef DQLITE_NEXT
-    const char *msg =
-	    "load open segment open-1: entries batch 1 starting at byte 8: "
-	    "read header: short read: 8 bytes instead of 24";
-#else
     const char *msg =
 	    "load open segment open-1: entries batch 1 starting at byte 8: "
 	    "read header: short read: 8 bytes instead of 16";
-#endif
     LOAD_ERROR(RAFT_IOERR, msg);
     return MUNIT_OK;
 }
@@ -1656,23 +1650,13 @@ TEST(load, openSegmentWithIncompleteBatchData, setUp, tearDown, 0, NULL)
                     WORD_SIZE + /* Entry type and data size */
                     WORD_SIZE / 2 /* Partial entry data */;
 
-#ifdef DQLITE_NEXT
-    offset += WORD_SIZE; /* Local data size */
-#endif
-
     APPEND(1, 1);
     UNFINALIZE(1, 1, 1);
     DirTruncateFile(f->dir, "open-1", offset);
 
-#ifdef DQLITE_NEXT
-    const char *msg =
-	    "load open segment open-1: entries batch 1 starting at byte 8: "
-	    "read data: short read: 4 bytes instead of 24";
-#else
     const char *msg =
 	    "load open segment open-1: entries batch 1 starting at byte 8: "
 	    "read data: short read: 4 bytes instead of 8";
-#endif
     LOAD_ERROR(RAFT_IOERR, msg);
     return MUNIT_OK;
 }

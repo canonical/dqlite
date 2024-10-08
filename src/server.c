@@ -94,16 +94,6 @@ int dqlite__init(struct dqlite_node *d,
 		rv = DQLITE_ERROR;
 		goto err_after_vfs_init;
 	}
-#ifdef DQLITE_NEXT
-	rv = pool_init(&d->pool, &d->loop, d->config.pool_thread_count,
-		       POOL_QOS_PRIO_FAIR);
-	if (rv != 0) {
-		snprintf(d->errmsg, DQLITE_ERRMSG_BUF_SIZE, "pool_init(): %s",
-			 uv_strerror(rv));
-		rv = DQLITE_ERROR;
-		goto err_after_loop_init;
-	}
-#endif
 	rv = raftProxyInit(&d->raft_transport, &d->loop);
 	if (rv != 0) {
 		goto err_after_pool_init;
@@ -190,11 +180,6 @@ err_after_raft_io_init:
 err_after_raft_transport_init:
 	raftProxyClose(&d->raft_transport);
 err_after_pool_init:
-#ifdef DQLITE_NEXT
-	pool_close(&d->pool);
-	pool_fini(&d->pool);
-err_after_loop_init:
-#endif
 	uv_loop_close(&d->loop);
 err_after_vfs_init:
 	VfsClose(&d->vfs);
@@ -222,9 +207,6 @@ void dqlite__close(struct dqlite_node *d)
 	// the TODO above referencing the cleanup logic without running the
 	// node. See https://github.com/canonical/dqlite/issues/504.
 
-#ifdef DQLITE_NEXT
-	pool_fini(&d->pool);
-#endif
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);
@@ -559,9 +541,6 @@ static void stopCb(uv_async_t *stop)
 		tracef("not running or already stopped");
 		return;
 	}
-#ifdef DQLITE_NEXT
-	pool_close(&d->pool);
-#endif
 	if (d->role_management) {
 		rv = uv_timer_stop(&d->timer);
 		assert(rv == 0);
@@ -1022,6 +1001,7 @@ int dqlite_node_recover_ext(dqlite_node *n,
 			    struct dqlite_node_info_ext infos[],
 			    int n_info)
 {
+	dqliteTracingMaybeEnable(true);
 	tracef("dqlite node recover ext");
 	struct raft_configuration configuration;
 	int i;
@@ -1031,6 +1011,7 @@ int dqlite_node_recover_ext(dqlite_node *n,
 	for (i = 0; i < n_info; i++) {
 		struct dqlite_node_info_ext *info = &infos[i];
 		if (!node_info_valid(info)) {
+			tracef("invalid node info");
 			rv = DQLITE_MISUSE;
 			goto out;
 		}
@@ -1040,6 +1021,7 @@ int dqlite_node_recover_ext(dqlite_node *n,
 		rv = raft_configuration_add(&configuration, info->id, address,
 					    raft_role);
 		if (rv != 0) {
+			tracef("unable to add server to raft configuration, error: %d", rv);
 			assert(rv == RAFT_NOMEM);
 			rv = DQLITE_NOMEM;
 			goto out;
@@ -1049,11 +1031,15 @@ int dqlite_node_recover_ext(dqlite_node *n,
 	int lock_fd;
 	rv = acquire_dir(n->config.raft_dir, &lock_fd);
 	if (rv != 0) {
+		tracef("couldn't acquire lock, error: %d", rv);
 		goto out;
 	}
 
 	rv = raft_recover(&n->raft, &configuration);
 	if (rv != 0) {
+		tracef("raft recovery failed, error: %d", rv);
+		snprintf(n->errmsg, DQLITE_ERRMSG_BUF_SIZE, "raft_recover(): %s",
+			 raft_errmsg(&n->raft));
 		rv = DQLITE_ERROR;
 		goto out;
 	}
@@ -1078,15 +1064,8 @@ int dqlite_node_describe_last_entry(dqlite_node *n,
 	raft_term *t = (raft_term *)term;
 	int rv;
 
-#ifdef USE_SYSTEM_RAFT
-	(void)i;
-	(void)t;
-	(void)rv;
-	return DQLITE_ERROR;
-#else
 	rv = raft_io_describe_last_entry(&n->raft_io, i, t);
 	return rv == 0 ? 0 : DQLITE_ERROR;
-#endif
 }
 
 dqlite_node_id dqlite_generate_node_id(const char *address)

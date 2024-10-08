@@ -16,9 +16,6 @@ jobs:
         compiler:
           - gcc
           - clang
-        dqlite-next:
-          - yes
-          - no
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -37,24 +34,16 @@ jobs:
       run: |
           autoreconf -i
           ./configure --enable-debug --enable-code-coverage --enable-sanitize \
-                      --enable-build-raft --enable-dqlite-next=${{ matrix.dqlite-next }}
+                      --enable-build-raft
           make -j$(nproc) check-norun
 
     - name: Test
       env:
         CC: ${{ matrix.compiler }}
         LIBDQLITE_TRACE: 1
+        ASAN_OPTIONS: fast_unwind_on_malloc=0
       run: |
-          # TODO: return to just `make check` once the mysterious hang is fixed
-          tests="$(make print-test-programs | tr ' ' '\n' | grep -v '^unit-test$')"
-          make check TESTS="$tests"
-
-          # Grab backtraces when the unit-test binary hangs (this is a heisenbug
-          # that we've only been able to trigger in GHA jobs)
-          ./unit-test --no-fork &
-          pid=$!
-          bash -c "sleep 10m; sudo gdb -p $pid -batch -ex 'thread apply all bt' -ex quit; false" &
-          wait -n
+          make check || (cat test-suite.log && false)
 
     - name: Coverage
       env:

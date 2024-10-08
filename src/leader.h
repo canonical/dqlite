@@ -10,7 +10,7 @@
 
 #include "db.h"
 #include "lib/queue.h"
-#include "lib/sm.h"
+#include "lib/sm.h" /* struct sm */
 #include "lib/threadpool.h"
 #include "raft.h"
 
@@ -70,6 +70,7 @@ struct exec {
 	queue queue;
 	exec_cb cb;
 	pool_work_t work;
+	struct sm sm;
 };
 
 /**

@@ -13,15 +13,6 @@ endif
 AM_LDFLAGS = $(static)
 AM_LDFLAGS += $(UV_LIBS) $(PTHREAD_LIBS)
 
-if DQLITE_NEXT_ENABLED
-AM_CFLAGS += -DDQLITE_NEXT
-endif
-
-if !BUILD_RAFT_ENABLED
-AM_CFLAGS += $(RAFT_CFLAGS) -DUSE_SYSTEM_RAFT
-AM_LDFLAGS += $(RAFT_LIBS)
-endif
-
 if DEBUG_ENABLED
 AM_CFLAGS += -O0
 else
@@ -81,7 +72,6 @@ libdqlite_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden -DRAFT_API=''
 libdqlite_la_LDFLAGS = $(AM_LDFLAGS) -version-info 0:1:0
 libdqlite_la_SOURCES = $(basic_dqlite_sources)
 
-if BUILD_RAFT_ENABLED
 libraft_la_SOURCES = \
   src/raft/byte.c \
   src/raft/callbacks.c \
@@ -95,7 +85,6 @@ libraft_la_SOURCES = \
   src/raft/fixture.c \
   src/raft/flags.c \
   src/raft/heap.c \
-  src/raft/lifecycle.c \
   src/raft/log.c \
   src/raft/membership.c \
   src/raft/progress.c \
@@ -135,7 +124,6 @@ libraft_la_SOURCES = \
   src/raft/uv_writer.c
 
 libdqlite_la_SOURCES += $(libraft_la_SOURCES)
-endif # BUILD_RAFT_ENABLED
 
 check_PROGRAMS = unit-test integration-test
 
@@ -177,15 +165,14 @@ unit_test_SOURCES += \
   test/unit/test_sm.c \
   test/unit/test_tuple.c \
   test/unit/test_vfs.c \
+  test/unit/test_vfs_extra.c \
   test/unit/test_vfs2.c \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS) -Wno-unknown-warning-option -Wno-uninitialized -Wno-maybe-uninitialized -Wno-float-equal -Wno-conversion
 unit_test_LDFLAGS = $(AM_LDFLAGS)
 unit_test_LDADD = libtest.la
 
-if BUILD_RAFT_ENABLED
 unit_test_LDADD += libraft.la
-endif
 
 integration_test_SOURCES = \
   test/integration/test_client.c \
@@ -195,13 +182,11 @@ integration_test_SOURCES = \
   test/integration/test_node.c \
   test/integration/test_role_management.c \
   test/integration/test_server.c \
-  test/integration/test_vfs.c \
   test/integration/main.c
 integration_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 integration_test_LDFLAGS = $(AM_LDFLAGS) -no-install
 integration_test_LDADD = libtest.la libdqlite.la
 
-if BUILD_RAFT_ENABLED
 check_LTLIBRARIES += libraft.la
 
 check_PROGRAMS += \
@@ -344,8 +329,6 @@ raft_uv_integration_test_CFLAGS += -DLZ4_ENABLED
 raft_core_unit_test_CFLAGS += -DLZ4_ENABLED
 libraft_la_CFLAGS += -DLZ4_ENABLED
 endif
-
-endif # BUILD_RAFT_ENABLED
 
 if BUILD_SQLITE_ENABLED
 noinst_LTLIBRARIES = libsqlite3.la

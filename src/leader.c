@@ -10,11 +10,46 @@
 #include "gateway.h"
 #include "id.h"
 #include "leader.h"
+#include "lib/sm.h"
 #include "lib/threadpool.h"
 #include "server.h"
 #include "tracing.h"
 #include "utils.h"
 #include "vfs.h"
+
+/**
+ * State machine for exec requests.
+ */
+enum {
+	EXEC_START,
+	EXEC_BARRIER,
+	EXEC_STEPPED,
+	EXEC_POLLED,
+	EXEC_DONE,
+	EXEC_FAILED,
+	EXEC_NR,
+};
+
+#define A(ident) BITS(EXEC_##ident)
+#define S(ident, allowed_, flags_) \
+	[EXEC_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf exec_states[EXEC_NR] = {
+	S(START,    A(BARRIER)|A(FAILED)|A(DONE), SM_INITIAL),
+	S(BARRIER,  A(STEPPED)|A(FAILED)|A(DONE), 0),
+	S(STEPPED,  A(POLLED)|A(FAILED)|A(DONE),  0),
+	S(POLLED,   A(APPLIED)|A(FAILED)|A(DONE), 0),
+	S(APPLIED,  A(FAILED)|A(DONE),            0,
+	S(DONE,     0,                            SM_FINAL),
+	S(FAILED,   0,                            SM_FAILURE|SM_FINAL),
+};
+
+static bool exec_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
+}
 
 /* Open a SQLite connection and set it to leader replication mode. */
 static int openConnection(const char *filename,
@@ -73,8 +108,7 @@ static int openConnection(const char *filename,
 		goto err;
 	}
 
-	rc = sqlite3_exec(*conn, "PRAGMA wal_autocheckpoint=0", NULL, NULL,
-			  &msg);
+	rc = sqlite3_wal_autocheckpoint(*conn, 0);
 	if (rc != SQLITE_OK) {
 		tracef("wal autocheckpoint off failed %d", rc);
 		goto err;
@@ -215,11 +249,7 @@ static void leaderMaybeCheckpointLegacy(struct leader *l)
 		tracef("raft_malloc - no mem");
 		goto err_after_buf_alloc;
 	}
-#ifdef USE_SYSTEM_RAFT
 	rv = raft_apply(l->raft, apply, &buf, 1, leaderCheckpointApplyCb);
-#else
-	rv = raft_apply(l->raft, apply, &buf, NULL, 1, leaderCheckpointApplyCb);
-#endif
 	if (rv != 0) {
 		tracef("raft_apply failed %d", rv);
 		raft_free(apply);
@@ -271,13 +301,7 @@ static int leaderApplyFrames(struct exec *req,
 	apply->type = COMMAND_FRAMES;
 	idSet(apply->req.req_id, req->id);
 
-#ifdef USE_SYSTEM_RAFT
 	rv = raft_apply(l->raft, &apply->req, &buf, 1, cb);
-#else
-	/* TODO actual WAL slice goes here */
-	struct raft_entry_local_data local_data = {};
-	rv = raft_apply(l->raft, &apply->req, &buf, &local_data, 1, cb);
-#endif
 	if (rv != 0) {
 		tracef("raft apply failed %d", rv);
 		goto err_after_command_encode;
@@ -673,6 +697,8 @@ int leader_exec_v2(struct leader *l,
 	req->barrier.data = req;
 	req->barrier.cb = NULL;
 	req->work = (pool_work_t){};
+	sm_init(&req->sm, exec_invariant, NULL, exec_states, "exec",
+		EXEC_START);
 
 	return exec_async(req, 0);
 }
