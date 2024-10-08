@@ -17,34 +17,7 @@
 #include "utils.h"
 #include "vfs.h"
 
-/**
- * State machine for exec requests.
- */
-enum {
-	EXEC_START,
-	EXEC_BARRIER,
-	EXEC_STEPPED,
-	EXEC_POLLED,
-	EXEC_DONE,
-	EXEC_FAILED,
-	EXEC_NR,
-};
-
-#define A(ident) BITS(EXEC_##ident)
-#define S(ident, allowed_, flags_) \
-	[EXEC_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
-
-static const struct sm_conf exec_states[EXEC_NR] = {
-	S(START,    A(BARRIER)|A(FAILED)|A(DONE), SM_INITIAL),
-	S(BARRIER,  A(STEPPED)|A(FAILED)|A(DONE), 0),
-	S(STEPPED,  A(POLLED)|A(FAILED)|A(DONE),  0),
-	S(POLLED,   A(APPLIED)|A(FAILED)|A(DONE), 0),
-	S(APPLIED,  A(FAILED)|A(DONE),            0,
-	S(DONE,     0,                            SM_FINAL),
-	S(FAILED,   0,                            SM_FAILURE|SM_FINAL),
-};
-
-static bool exec_invariant(const struct sm *sm, int prev)
+static bool barrier_invariant(const struct sm *sm, int prev)
 {
 	(void)sm;
 	(void)prev;
@@ -167,6 +140,44 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 	l->inflight = NULL;
 	queue_insert_tail(&db->leaders, &l->queue);
 	return 0;
+}
+
+/**
+ * State machine for exec requests.
+ */
+enum {
+	EXEC_START,
+	EXEC_BARRIER,
+	EXEC_STEPPED,
+	EXEC_POLLED,
+	EXEC_APPLIED,
+	EXEC_DONE,
+	EXEC_FAILED,
+	EXEC_NR,
+};
+
+#define A(ident) BITS(EXEC_##ident)
+#define S(ident, allowed_, flags_) \
+	[EXEC_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf exec_states[EXEC_NR] = {
+	S(START,    A(BARRIER)|A(FAILED)|A(DONE), SM_INITIAL),
+	S(BARRIER,  A(STEPPED)|A(FAILED)|A(DONE), 0),
+	S(STEPPED,  A(POLLED)|A(FAILED)|A(DONE),  0),
+	S(POLLED,   A(APPLIED)|A(FAILED)|A(DONE), 0),
+	S(APPLIED,  A(FAILED)|A(DONE),            0),
+	S(DONE,     0,                            SM_FINAL),
+	S(FAILED,   0,                            SM_FAILURE|SM_FINAL),
+};
+
+#undef S
+#undef A
+
+static bool exec_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
 }
 
 static void exec_done(struct exec *, int);
@@ -329,35 +340,19 @@ enum {
 	BARRIER_NR,
 };
 
+#define A(ident) BITS(BARRIER_##ident)
+#define S(ident, allowed_, flags_) \
+	[BARRIER_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
 static const struct sm_conf barrier_states[BARRIER_NR] = {
-	[BARRIER_START] = {
-		.name = "start",
-		.allowed = BITS(BARRIER_PASSED)
-			  |BITS(BARRIER_DONE)
-			  |BITS(BARRIER_FAIL),
-		.flags = SM_INITIAL,
-	},
-	[BARRIER_PASSED] = {
-		.name = "passed",
-		.allowed = BITS(BARRIER_DONE)
-			  |BITS(BARRIER_FAIL),
-	},
-	[BARRIER_DONE] = {
-		.name = "done",
-		.flags = SM_FINAL,
-	},
-	[BARRIER_FAIL] = {
-		.name = "fail",
-		.flags = SM_FINAL|SM_FAILURE,
-	},
+	S(START,  A(PASSED)|A(DONE)|A(FAIL), SM_INITIAL),
+	S(PASSED, A(DONE)|A(FAIL),           0),
+	S(DONE,   0,                         SM_FINAL),
+	S(FAIL,   0,                         SM_FINAL|SM_FAILURE),
 };
 
-static bool barrier_invariant(const struct sm *sm, int prev)
-{
-	(void)sm;
-	(void)prev;
-	return true;
-}
+#undef S
+#undef A
 
 static void barrier_done(struct barrier *barrier, int status)
 {
@@ -438,65 +433,6 @@ int leader_barrier_v2(struct leader *l,
 	rv = barrier_async(barrier, 0);
 	POST(rv != LEADER_NOT_ASYNC);
 	return rv;
-}
-
-enum {
-	EXEC_START,
-	EXEC_BARRIER,
-	EXEC_STEPPED,
-	EXEC_POLLED,
-	EXEC_APPLIED,
-	EXEC_DONE,
-	EXEC_FAILED,
-	EXEC_NR,
-};
-
-static const struct sm_conf exec_states[EXEC_NR] = {
-	[EXEC_START] = {
-		.name = "start",
-		.allowed = BITS(EXEC_BARRIER)
-			  |BITS(EXEC_FAILED)
-			  |BITS(EXEC_DONE),
-		.flags = SM_INITIAL,
-	},
-	[EXEC_BARRIER] = {
-		.name = "barrier",
-		.allowed = BITS(EXEC_STEPPED)
-			  |BITS(EXEC_FAILED)
-			  |BITS(EXEC_DONE),
-	},
-	[EXEC_STEPPED] = {
-		.name = "stepped",
-		.allowed = BITS(EXEC_POLLED)
-			  |BITS(EXEC_FAILED)
-			  |BITS(EXEC_DONE),
-	},
-	[EXEC_POLLED] = {
-		.name = "polled",
-		.allowed = BITS(EXEC_APPLIED)
-			  |BITS(EXEC_FAILED)
-			  |BITS(EXEC_DONE),
-	},
-	[EXEC_APPLIED] = {
-		.name = "applied",
-		.allowed = BITS(EXEC_FAILED)
-			  |BITS(EXEC_DONE),
-	},
-	[EXEC_DONE] = {
-		.name = "done",
-		.flags = SM_FINAL,
-	},
-	[EXEC_FAILED] = {
-		.name = "failed",
-		.flags = SM_FAILURE|SM_FINAL,
-	},
-};
-
-static bool exec_invariant(const struct sm *sm, int prev)
-{
-	(void)sm;
-	(void)prev;
-	return true;
 }
 
 static void exec_done(struct exec *req, int asyncness)
@@ -697,8 +633,6 @@ int leader_exec_v2(struct leader *l,
 	req->barrier.data = req;
 	req->barrier.cb = NULL;
 	req->work = (pool_work_t){};
-	sm_init(&req->sm, exec_invariant, NULL, exec_states, "exec",
-		EXEC_START);
 
 	return exec_async(req, 0);
 }

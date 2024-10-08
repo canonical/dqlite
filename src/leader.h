@@ -70,7 +70,6 @@ struct exec {
 	queue queue;
 	exec_cb cb;
 	pool_work_t work;
-	struct sm sm;
 };
 
 /**
