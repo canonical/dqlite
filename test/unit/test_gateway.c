@@ -1731,6 +1731,8 @@ TEST_CASE(query, close_while_in_flight, NULL)
 	return MUNIT_OK;
 }
 
+/* A non-leader serves readonly QUERY requests for a database that was opened
+ * with the ALLOW_STALE flag. */
 TEST_CASE(query, allow_stale, NULL)
 {
 	(void)params;
@@ -1757,6 +1759,8 @@ TEST_CASE(query, allow_stale, NULL)
 	return MUNIT_OK;
 }
 
+/* A non-leader will not serve a QUERY request that modifies the database, even
+ * if opened with the ALLOW_STALE flag. */
 TEST_CASE(query, allow_stale_modifying, NULL)
 {
 	(void)params;
@@ -2429,6 +2433,8 @@ TEST_CASE(query_sql, nonemptyTail, NULL)
 	return MUNIT_OK;
 }
 
+/* A non-leader serves readonly QUERY_SQL requests for a database that was
+ * opened with the ALLOW_STALE flag. */
 TEST_CASE(query_sql, allow_stale, NULL)
 {
 	(void)params;
@@ -2453,6 +2459,8 @@ TEST_CASE(query_sql, allow_stale, NULL)
 	return MUNIT_OK;
 }
 
+/* A non-leader will not serve a QUERY_SQL request that modifies the database,
+ * even if opened with the ALLOW_STALE flag. */
 TEST_CASE(query_sql, allow_stale_modifying, NULL)
 {
 	(void)params;
