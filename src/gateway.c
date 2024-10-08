@@ -36,12 +36,19 @@ void gateway__init(struct gateway *g,
 	g->random_state = seed;
 }
 
-/* FIXME: This function becomes unsound when using the new thread pool, since
- * the request callbacks will race with operations running in the pool. */
 void gateway__leader_close(struct gateway *g, int reason)
 {
+	bool allow_stale;
+
 	if (g == NULL || g->leader == NULL) {
 		tracef("gateway:%p or gateway->leader are NULL", g);
+		return;
+	}
+
+	/* If the client has opted into reading potentially stale data, don't
+	 * shut down the connection unnecessarily when we lost leadership. */
+	allow_stale = g->leader->flags & DQLITE_OPEN_ALLOW_STALE;
+	if (allow_stale && reason == RAFT_LEADERSHIPLOST) {
 		return;
 	}
 
