@@ -150,15 +150,6 @@ void gateway__close(struct gateway *g)
  * using schema version 0. */
 #define SUCCESS_V0(LOWER, UPPER) SUCCESS(LOWER, UPPER, response, 0)
 
-/* Lookup the database with the given ID.
- *
- * TODO: support more than one database per connection? */
-#define LOOKUP_DB(ID)                                                \
-	if (ID != 0 || g->leader == NULL) {                          \
-		failure(req, SQLITE_NOTFOUND, "no database opened"); \
-		return 0;                                            \
-	}
-
 /* Lookup the statement with the given ID. */
 #define LOOKUP_STMT(ID)                                    \
 	stmt = stmt__registry_get(&g->stmts, ID);          \
@@ -207,24 +198,45 @@ static void failure(struct handle *req, int code, const char *message)
 	req->cb(req, 0, DQLITE_RESPONSE_FAILURE, 0);
 }
 
-static bool check_leader_weak(const struct gateway *g, struct handle *req)
+static struct leader *gw_get_readonly(const struct gateway *g,
+				      uint64_t db_id,
+				      struct handle *req)
 {
-	const struct leader *l = g->leader;
-	bool ok = raft_state(g->raft) == RAFT_LEADER ||
-		  (l != NULL && (l->flags & DQLITE_OPEN_ALLOW_STALE));
-	if (!ok) {
-		failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
+	struct leader *l = g->leader;
+	bool opened_readonly;
+
+	if (db_id != 0 || l == NULL) {
+		failure(req, SQLITE_NOTFOUND, "no database opened");
+		return NULL;
 	}
-	return ok;
+	opened_readonly = l->flags & DQLITE_OPEN_ALLOW_STALE;
+	if (raft_state(g->raft) != RAFT_LEADER && !opened_readonly) {
+		failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
+		return NULL;
+	}
+	return l;
 }
 
-static bool check_leader_strong(const struct gateway *g, struct handle *req)
+static struct leader *gw_get_readwrite(const struct gateway *g,
+				       uint64_t db_id,
+				       struct handle *req)
 {
-	bool ok = raft_state(g->raft) == RAFT_LEADER;
-	if (!ok) {
-		failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
+	struct leader *l = g->leader;
+	bool opened_readonly;
+
+	if (db_id != 0 || l == NULL) {
+		failure(req, SQLITE_NOTFOUND, "no database opened");
+		return NULL;
 	}
-	return ok;
+	opened_readonly = l->flags & DQLITE_OPEN_ALLOW_STALE;
+	if (raft_state(g->raft) != RAFT_LEADER) {
+		failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
+		return NULL;
+	} else if (opened_readonly) {
+		failure(req, SQLITE_READONLY, "dqlite connection is readonly");
+		return NULL;
+	}
+	return l;
 }
 
 static void emptyRows(struct handle *req)
@@ -408,7 +420,7 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct stmt *stmt;
 	struct request_prepare request = { 0 };
-	bool ok;
+	struct leader *l;
 	int rc;
 
 	if (req->schema != DQLITE_PREPARE_STMT_SCHEMA_V0 &&
@@ -421,11 +433,11 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 		return rc;
 	}
 
-	ok = check_leader_weak(g, req);
-	if (!ok) {
+	l = gw_get_readonly(g, request.db_id, req);
+	if (l == NULL) {
 		return 0;
 	}
-	LOOKUP_DB(request.db_id);
+
 	rc = stmt__registry_add(&g->stmts, &stmt);
 	if (rc != 0) {
 		tracef("handle prepare registry add failed %d", rc);
@@ -438,7 +450,7 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	req->stmt_id = stmt->id;
 	req->sql = request.sql;
 	g->req = req;
-	rc = leader__barrier(g->leader, &g->barrier, prepareBarrierCb);
+	rc = leader__barrier(l, &g->barrier, prepareBarrierCb);
 	if (rc != 0) {
 		tracef("handle prepare barrier failed %d", rc);
 		stmt__registry_del(&g->stmts, stmt);
@@ -503,8 +515,8 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	struct stmt *stmt;
 	struct request_exec request = { 0 };
 	int tuple_format;
+	struct leader *l;
 	uint64_t req_id;
-	bool ok;
 	int rv;
 
 	switch (req->schema) {
@@ -527,11 +539,11 @@ static int handle_exec(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-	ok = check_leader_strong(g, req);
-	if (!ok) {
+	l = gw_get_readwrite(g, request.db_id, req);
+	if (l == NULL) {
 		return 0;
 	}
-	LOOKUP_DB(request.db_id);
+
 	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
 	rv = bind__params(stmt->stmt, cursor, tuple_format);
@@ -543,8 +555,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	req->stmt_id = stmt->id;
 	g->req = req;
 	req_id = idNext(&g->random_state);
-	rv = leader__exec(g->leader, &g->exec, stmt->stmt, req_id,
-			  leader_exec_cb);
+	rv = leader__exec(l, &g->exec, stmt->stmt, req_id, leader_exec_cb);
 	if (rv != 0) {
 		tracef("handle exec leader exec failed %d", rv);
 		g->req = NULL;
@@ -650,8 +661,9 @@ static int handle_query(struct gateway *g, struct handle *req)
 	struct stmt *stmt;
 	struct request_query request = { 0 };
 	int tuple_format;
-	bool readonly;
-	bool ok;
+	struct leader *l;
+	bool conn_readonly;
+	bool stmt_readonly;
 	uint64_t req_id;
 	int rv;
 
@@ -675,21 +687,24 @@ static int handle_query(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-
-	ok = check_leader_weak(g, req);
-	if (!ok) {
-		return 0;
-	}
-	LOOKUP_DB(request.db_id);
-	LOOKUP_STMT(request.stmt_id);
-	FAIL_IF_CHECKPOINTING;
-	readonly = sqlite3_stmt_readonly(stmt->stmt);
-	if (!readonly) {
-		ok = check_leader_strong(g, req);
-		if (!ok) {
+	conn_readonly = false;
+	l = gw_get_readwrite(g, request.db_id, NULL);
+	if (l == NULL) {
+		conn_readonly = true;
+		l = gw_get_readonly(g, request.db_id, req);
+		if (l == NULL) {
 			return 0;
 		}
 	}
+	LOOKUP_STMT(request.stmt_id);
+	stmt_readonly = sqlite3_stmt_readonly(stmt->stmt);
+	if (!ERGO(conn_readonly, stmt_readonly)) {
+		failure(req, SQLITE_READONLY, "dqlite connection is readonly");
+		return 0;
+	}
+
+	FAIL_IF_CHECKPOINTING;
+
 	rv = bind__params(stmt->stmt, cursor, tuple_format);
 	if (rv != 0) {
 		tracef("handle query bind failed %d", rv);
@@ -699,11 +714,13 @@ static int handle_query(struct gateway *g, struct handle *req)
 	req->stmt_id = stmt->id;
 	g->req = req;
 
-	if (readonly) {
-		rv = leader__barrier(g->leader, &g->barrier, query_barrier_cb);
+	if (conn_readonly) {
+		rv = eager_query_stub();
+	} else if (stmt_readonly) {
+		rv = leader__barrier(l, &g->barrier, query_barrier_cb);
 	} else {
 		req_id = idNext(&g->random_state);
-		rv = leader__exec(g->leader, &g->exec, stmt->stmt, req_id,
+		rv = leader__exec(l, &g->exec, stmt->stmt, req_id,
 				  leaderModifyingQueryCb);
 	}
 	if (rv != 0) {
@@ -717,10 +734,15 @@ static int handle_finalize(struct gateway *g, struct handle *req)
 {
 	tracef("handle finalize");
 	struct cursor *cursor = &req->cursor;
+	struct leader *l;
 	struct stmt *stmt;
 	int rv;
+
 	START_V0(finalize, empty);
-	LOOKUP_DB(request.db_id);
+	l = gw_get_readonly(g, request.db_id, req);
+	if (l == NULL) {
+		return 0;
+	}
 	LOOKUP_STMT(request.stmt_id);
 	rv = stmt__registry_del(&g->stmts, stmt);
 	if (rv != 0) {
@@ -850,7 +872,7 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	tracef("handle exec sql schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct request_exec_sql request = { 0 };
-	bool ok;
+	struct leader *l;
 	int rc;
 
 	/* Fail early if the schema version isn't recognized, even though we
@@ -867,16 +889,16 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 		return rc;
 	}
 
-	ok = check_leader_strong(g, req);
-	if (!ok) {
+	l = gw_get_readwrite(g, request.db_id, req);
+	if (l == NULL) {
 		return 0;
 	}
-	LOOKUP_DB(request.db_id);
+
 	FAIL_IF_CHECKPOINTING;
 	req->sql = request.sql;
 	req->exec_count = 0;
 	g->req = req;
-	rc = leader__barrier(g->leader, &g->barrier, execSqlBarrierCb);
+	rc = leader__barrier(l, &g->barrier, execSqlBarrierCb);
 	if (rc != 0) {
 		tracef("handle exec sql barrier failed %d", rc);
 		g->req = NULL;
@@ -917,8 +939,6 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	const char *tail;
 	sqlite3_stmt *tail_stmt;
 	int tuple_format;
-	bool readonly;
-	bool ok;
 	uint64_t req_id;
 	int rv;
 
@@ -947,14 +967,6 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 		failure(req, SQLITE_ERROR, "nonempty statement tail");
 		return;
 	}
-	readonly = sqlite3_stmt_readonly(stmt);
-	if (!readonly) {
-		ok = check_leader_strong(g, req);
-		if (!ok) {
-			sqlite3_finalize(stmt);
-			return;
-		}
-	}
 	switch (req->schema) {
 		case DQLITE_REQUEST_PARAMS_SCHEMA_V0:
 			tuple_format = TUPLE__PARAMS;
@@ -977,7 +989,7 @@ static void querySqlBarrierCb(struct barrier *barrier, int status)
 	req->stmt = stmt;
 	g->req = req;
 
-	if (readonly) {
+	if (sqlite3_stmt_readonly(stmt)) {
 		query_batch(g);
 	} else {
 		req_id = idNext(&g->random_state);
@@ -996,7 +1008,8 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	tracef("handle query sql schema:%" PRIu8, req->schema);
 	struct cursor *cursor = &req->cursor;
 	struct request_query_sql request = { 0 };
-	bool ok;
+	struct leader *l;
+	bool conn_readonly;
 	int rv;
 
 	/* Fail early if the schema version isn't recognized. */
@@ -1011,15 +1024,26 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-	ok = check_leader_weak(g, req);
-	if (!ok) {
+	conn_readonly = false;
+	l = gw_get_readwrite(g, request.db_id, NULL);
+	if (l == NULL) {
+		conn_readonly = true;
+		l = gw_get_readonly(g, request.db_id, req);
+		if (l == NULL) {
+			return 0;
+		}
+	}
+
+	FAIL_IF_CHECKPOINTING;
+
+	if (conn_readonly) {
+		prepare_transient_and_query_readonly_stub();
 		return 0;
 	}
-	LOOKUP_DB(request.db_id);
-	FAIL_IF_CHECKPOINTING;
+
 	req->sql = request.sql;
 	g->req = req;
-	rv = leader__barrier(g->leader, &g->barrier, querySqlBarrierCb);
+	rv = leader__barrier(l, &g->barrier, querySqlBarrierCb);
 	if (rv != 0) {
 		tracef("handle query sql barrier failed %d", rv);
 		g->req = NULL;
@@ -1072,16 +1096,10 @@ static int handle_add(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
 	uint64_t req_id;
-	bool ok;
 	int rv;
 
 	START_V0(add, empty);
 	(void)response;
-
-	ok = check_leader_strong(g, req);
-	if (!ok) {
-		return 0;
-	}
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
@@ -1113,16 +1131,10 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 	struct change *r;
 	uint64_t role = DQLITE_VOTER;
 	uint64_t req_id;
-	bool ok;
 	int rv;
 
 	START_V0(promote_or_assign, empty);
 	(void)response;
-
-	ok = check_leader_strong(g, req);
-	if (!ok) {
-		return 0;
-	}
 
 	/* Detect if this is an assign role request, instead of the former
 	 * promote request. */
@@ -1164,16 +1176,10 @@ static int handle_remove(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
 	uint64_t req_id;
-	bool ok;
 	int rv;
 
 	START_V0(remove, empty);
 	(void)response;
-
-	ok = check_leader_strong(g, req);
-	if (!ok) {
-		return 0;
-	}
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
@@ -1425,16 +1431,10 @@ static int handle_transfer(struct gateway *g, struct handle *req)
 	tracef("handle transfer");
 	struct cursor *cursor = &req->cursor;
 	struct raft_transfer *r;
-	bool ok;
 	int rv;
 
 	START_V0(transfer, empty);
 	(void)response;
-
-	ok = check_leader_strong(g, req);
-	if (!ok) {
-		return 0;
-	}
 
 	r = sqlite3_malloc(sizeof *r);
 	if (r == NULL) {
