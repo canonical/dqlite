@@ -584,7 +584,7 @@ int exec_async(struct exec *req, int status)
 		} else if (apply_rv != LEADER_NOT_ASYNC) {
 			req->status = apply_rv;
 			exec_done(req, ret);
-			ret = 0;
+			ret = LEADER_NOT_ASYNC;
 			break;
 		} /* else apply_rv == LEADER_NOT_ASYNC => */
 		ret &= LEADER_NOT_ASYNC;
