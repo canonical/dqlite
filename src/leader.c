@@ -546,6 +546,24 @@ static void exec_barrier_cb(struct barrier *barrier, int status)
 
 /**
  * Exec request pseudo-coroutine, encapsulating the whole lifecycle.
+ *
+ * Exec processing is a sequence of steps, tracked by the embedded SM, in
+ * between which we possibly suspend execution. After every suspend, control
+ * returns to this function, and we jump to the appropriate arm of the switch
+ * statement based on the SM state. If we never suspend, control remains in
+ * this function, passing through each state from top to bottom.
+ *
+ * When invoked by leader_exec_v2, the return value indicates
+ * whether we suspended (0), finished without suspending (LEADER_NOT_ASYNC),
+ * or encountered an error (any other value). When invoked by a callback,
+ * the `status` argument indicates whether the async operation succeeded
+ * or failed, and the return value is ignored.
+ *
+ * There are some backward-compatibility warts here. In particular, when
+ * an error occurs, we sometimes signal it by returning an error code
+ * and sometimes by just setting `req->status` (and returning one of the two
+ * "success" codes). This is done to preserve exactly how each error was handled in
+ * the previous exec code.
  */
 int exec_async(struct exec *req, int status)
 {
@@ -553,6 +571,9 @@ int exec_async(struct exec *req, int status)
 	sqlite3_vfs *vfs;
 	int barrier_rv = 0;
 	int apply_rv = 0;
+	/* Eventual return value of this function. Also tracks whether we
+	 * previously suspended while processing this request (0) or not
+	 * (LEADER_NOT_ASYNC). */
 	int ret = 0;
 
 	switch (sm_state(&req->sm)) {
@@ -561,30 +582,44 @@ int exec_async(struct exec *req, int status)
 		l = req->leader;
 		PRE(l != NULL);
 		barrier_rv = leader_barrier_v2(l, &req->barrier, exec_barrier_cb);
-		ret = barrier_rv;
 		if (barrier_rv == 0) {
+			/* suspended */
+			ret = 0;
 			break;
 		} else if (barrier_rv != LEADER_NOT_ASYNC) {
-			l->exec = NULL;
+			/* return error to caller, don't invoke callback,
+			 * but set req->status so that that the SM will
+			 * record the failure */
+			req->status = barrier_rv;
+			exec_done(req, LEADER_NOT_ASYNC);
+			ret = barrier_rv;
 			break;
 		} /* else barrier_rv == LEADER_NOT_ASYNC => */
+		ret = LEADER_NOT_ASYNC;
 		sm_move(&req->sm, EXEC_BARRIER);
 		POST(status == 0);
 		/* fallthrough */
 	case EXEC_BARRIER:
 		if (status != 0) {
+			/* error, we must have suspended, so invoke the callback */
+			PRE(ret == 0);
 			req->status = status;
-			exec_done(req, ret);
+			exec_done(req, 0);
 			break;
 		}
 		apply_rv = exec_apply(req);
 		if (apply_rv == 0) {
+			/* suspended */
 			ret = 0;
 			break;
 		} else if (apply_rv != LEADER_NOT_ASYNC) {
+			/* error, record it in `req->status` and either invoke
+			 * the callback (if we suspended) or tell the caller to
+			 * invoke it (otherwise---it would be more consistent
+			 * to return the error code in this case, but for the
+			 * sake of compatibility we do it this way instead) */
 			req->status = apply_rv;
 			exec_done(req, ret);
-			ret = LEADER_NOT_ASYNC;
 			break;
 		} /* else apply_rv == LEADER_NOT_ASYNC => */
 		ret &= LEADER_NOT_ASYNC;
@@ -596,6 +631,10 @@ int exec_async(struct exec *req, int status)
 		PRE(l != NULL);
 		vfs = sqlite3_vfs_find(l->db->config->name);
 		PRE(vfs != NULL);
+		/* apply_rv == 0 if and only if we suspended at the previous step,
+		 * if and only if the transaction generated frames---this logic is
+		 * copied carefully from the previous version of the code */
+		PRE(apply_rv == 0 || apply_rv == LEADER_NOT_ASYNC);
 		if (apply_rv == 0) {
 			if (status == 0) {
 				leaderMaybeCheckpointLegacy(l);
@@ -606,6 +645,7 @@ int exec_async(struct exec *req, int status)
 			l->inflight = NULL;
 			l->db->tx_id = 0;
 		}
+		/* finished successfully */
 		exec_done(req, ret);
 		break;
 	default:

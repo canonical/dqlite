@@ -108,11 +108,10 @@ int leader_barrier_v2(struct leader *l,
  * - When replicating the transaction in raft. This is skipped if the
  *   statement doesn't generate any changed pages.
  *
- * If both of these yields are skipped, this function returns LEADER_NOT_ASYNC
- * and does not invoke the callback. In this case the caller must examine
- * `req->status` to determine whether the exec was successful. Otherwise,
- * this function returns 0 if it successfully scheduled the callback and
- * yielded, or any other value to indicate an error.
+ * This function returns 0 if it successfully suspended for one of these
+ * async operations. It returns LEADER_NOT_ASYNC to indicate that it
+ * did not suspend, and in this case `req->status` shows whether an error
+ * occurred. Any other return value indicates an error.
  */
 int leader_exec_v2(struct leader *l,
 		   struct exec *req,
