@@ -567,7 +567,7 @@ TEST_CASE(prepare, barrier_error, NULL)
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, prepare);
-	/* We rely on leader__barrier (called by handle_prepare) attempting
+	/* We rely on leader_barrier_v2 (called by handle_prepare) attempting
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(0, 1);
 	test_raft_heap_fault_enable();
@@ -918,8 +918,11 @@ TEST_CASE(exec, close_while_in_flight, NULL)
 		EXEC("INSERT INTO test(n) VALUES(1)");
 	}
 
+
 	/* Trigger a second page cache flush to the WAL, and abort before it's
 	 * done. */
+	/* FIXME(cole) it seems that this may no longer be successfully triggering
+	 * the page cache flush */
 	EXEC_SQL_SUBMIT("INSERT INTO test(n) VALUES(1)");
 	return MUNIT_OK;
 }
@@ -1869,7 +1872,7 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	f->request.db_id = 0;
 	f->request.sql = "INSERT INTO test VALUES(123)";
 	ENCODE(&f->request, exec_sql);
-	/* We rely on leader__barrier (called by handle_exec_sql) attempting
+	/* We rely on leader_barrier_v2 (called by handle_exec_sql) attempting
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(0, 1);
 	test_raft_heap_fault_enable();
@@ -2243,7 +2246,7 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
-	/* We rely on leader__barrier (called by handle_query_sql) attempting
+	/* We rely on leader_barrier_v2 (called by handle_query_sql) attempting
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(0, 1);
 	test_raft_heap_fault_enable();
