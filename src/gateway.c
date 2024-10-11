@@ -518,7 +518,6 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	g->req = req;
 	rv = leader_exec_v2(g->leader, &g->exec, stmt->stmt, leader_exec_cb);
 	if (rv == LEADER_NOT_ASYNC) {
-		/* XXX */
 		leader_exec_cb(&g->exec, g->exec.status);
 	} else if (rv != 0) {
 		tracef("handle exec leader exec failed %d", rv);
@@ -677,8 +676,8 @@ static int handle_query(struct gateway *g, struct handle *req)
 		rv = leader_exec_v2(g->leader, &g->exec, stmt->stmt,
 				    leaderModifyingQueryCb);
 		if (rv == LEADER_NOT_ASYNC) {
-			/* XXX */
 			leaderModifyingQueryCb(&g->exec, g->exec.status);
+			rv = 0;
 		}
 	}
 	if (rv != 0) {
@@ -729,6 +728,13 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 	}
 }
 
+/**
+ * handle_exec_sql_next does the bulk of processing for an EXEC_SQL request.
+ * A single call to this function iterates over the input SQL text, preparing
+ * and executing statements until execution of some statement needs to yield
+ * to the event loop. When that happens, a callback is scheduled that will
+ * call this function again to process more input.
+ */
 static void handle_exec_sql_next(struct gateway *g,
 				 struct handle *req,
 				 bool done)
@@ -745,19 +751,15 @@ static void handle_exec_sql_next(struct gateway *g,
 	int tuple_format;
 	int rv;
 
+	PRE(schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 ||
+	    schema == DQLITE_REQUEST_PARAMS_SCHEMA_V1);
 	tuple_format = schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 ?
 				 TUPLE__PARAMS :
-		       schema == DQLITE_REQUEST_PARAMS_SCHEMA_V1 ?
-				 TUPLE__PARAMS32 :
-		       (POST(false && "impossible"), 0);
+				 TUPLE__PARAMS32;
 
 	for (;;) {
 		stmt = NULL;
 		sql = req->sql;
-		if (sql == NULL || strcmp(sql, "") == 0) {
-			goto success;
-		}
-		/* stmt will be set to NULL by sqlite when an error occurs. */
 		rv = sqlite3_prepare_v2(l->conn, sql, -1, &stmt, &tail);
 		if (rv != SQLITE_OK) {
 			tracef("exec sql prepare failed %d", rv);
@@ -765,6 +767,7 @@ static void handle_exec_sql_next(struct gateway *g,
 			goto done;
 		}
 		if (stmt == NULL) {
+			/* nothing in the string to prepare */
 			goto success;
 		}
 		if (!done) {
@@ -784,7 +787,6 @@ static void handle_exec_sql_next(struct gateway *g,
 			failure(req, rv, sqlite3_errmsg(l->conn));
 			goto done_after_prepare;
 		} else if (g->exec.status != SQLITE_DONE) {
-			/* XXX */
 			failure(req, g->exec.status, sqlite3_errmsg(l->conn));
 			goto done_after_prepare;
 		}
@@ -951,7 +953,6 @@ static void query_sql_bottom_half(struct gateway *g, int status)
 		rv = leader_exec_v2(g->leader, &g->exec, stmt,
 				    leaderModifyingQuerySqlCb);
 		if (rv == LEADER_NOT_ASYNC) {
-			/* XXX */
 			leaderModifyingQuerySqlCb(&g->exec, g->exec.status);
 		} else if (rv != 0) {
 			sqlite3_finalize(stmt);

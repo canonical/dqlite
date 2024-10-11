@@ -8,7 +8,6 @@
 #include "command.h"
 #include "conn.h"
 #include "gateway.h"
-#include "id.h"
 #include "leader.h"
 #include "lib/sm.h"
 #include "lib/threadpool.h"
@@ -380,7 +379,7 @@ static void barrier_done(struct barrier *barrier, int status)
 
 static void barrier_raft_cb(struct raft_barrier *, int);
 
-static int barrier_async(struct barrier *barrier, int status)
+static int barrier_tick(struct barrier *barrier, int status)
 {
 	int rv;
 
@@ -411,7 +410,7 @@ static void barrier_raft_cb(struct raft_barrier *rb, int status)
 		return;
 	}
 	sm_move(&barrier->sm, BARRIER_PASSED);
-	(void)barrier_async(rb->data, status);
+	(void)barrier_tick(rb->data, status);
 }
 
 int leader_barrier_v2(struct leader *l,
@@ -429,7 +428,7 @@ int leader_barrier_v2(struct leader *l,
 	barrier->cb = cb;
 	barrier->leader = l;
 	barrier->req.data = barrier;
-	rv = barrier_async(barrier, 0);
+	rv = barrier_tick(barrier, 0);
 	POST(rv != LEADER_NOT_ASYNC);
 	return rv;
 }
@@ -479,15 +478,15 @@ static int exec_apply(struct exec *req)
 	size = VfsDatabaseSize(vfs, db->path, n, db->config->page_size);
 	if (size > VfsDatabaseSizeLimit(vfs)) {
 		rv = SQLITE_FULL;
-		goto err;
+		goto finish;
 	}
 
 	rv = leaderApplyFrames(req, frames, n, exec_apply_cb);
 	if (rv != 0) {
-		goto err;
+		goto finish;
 	}
 
-err:
+finish:
 	for (i = 0; i < n; i++) {
 		sqlite3_free(frames[i].data);
 	}
@@ -498,7 +497,7 @@ err:
 	return rv;
 }
 
-static int exec_async(struct exec *, int);
+static int exec_tick(struct exec *, int);
 
 static void exec_apply_cb(struct raft_apply *req,
 			  int status,
@@ -523,7 +522,7 @@ static void exec_apply_cb(struct raft_apply *req,
 	} else {
 		raft_free(apply);
 	}
-	exec_async(exec, status);
+	exec_tick(exec, status);
 }
 
 static int exec_status(int r)
@@ -540,7 +539,7 @@ static void exec_barrier_cb(struct barrier *barrier, int status)
 	struct exec *req = barrier->data;
 	PRE(req != NULL);
 	sm_move(&req->sm, EXEC_BARRIER);
-	exec_async(req, status);
+	exec_tick(req, status);
 }
 
 /**
@@ -564,7 +563,7 @@ static void exec_barrier_cb(struct barrier *barrier, int status)
  * "success" codes). This is done to preserve exactly how each error was handled in
  * the previous exec code.
  */
-int exec_async(struct exec *req, int status)
+int exec_tick(struct exec *req, int status)
 {
 	struct leader *l;
 	sqlite3_vfs *vfs;
@@ -673,5 +672,5 @@ int leader_exec_v2(struct leader *l,
 	req->barrier.cb = NULL;
 	req->work = (pool_work_t){};
 
-	return exec_async(req, 0);
+	return exec_tick(req, 0);
 }

@@ -52,11 +52,10 @@ struct connection {
 	for (i = 0; i < N_SERVERS; i++) {                               \
 		struct connection *c = &f->connections[i];              \
 		struct config *config;                                  \
-		struct id_state seed = { { 1 } };                       \
 		config = CLUSTER_CONFIG(i);                             \
 		config->page_size = 512;                                \
 		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
-			      CLUSTER_RAFT(i), seed);                   \
+			      CLUSTER_RAFT(i)); \
 		c->handle.data = &c->context;                           \
 		rc = buffer__init(&c->buf1);                            \
 		munit_assert_int(rc, ==, 0);                            \

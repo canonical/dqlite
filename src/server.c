@@ -12,7 +12,6 @@
 #include "client/protocol.h"
 #include "conn.h"
 #include "fsm.h"
-#include "id.h"
 #include "lib/addr.h"
 #include "lib/assert.h"
 #include "lib/fs.h"
@@ -60,8 +59,6 @@ int dqlite__init(struct dqlite_node *d,
 {
 	int rv;
 	char db_dir_path[1024];
-	int urandom;
-	ssize_t count;
 
 	d->initialized = false;
 	d->lock_fd = -1;
@@ -161,11 +158,6 @@ int dqlite__init(struct dqlite_node *d,
 	d->connect_func = transportDefaultConnect;
 	d->connect_func_arg = NULL;
 
-	urandom = open("/dev/urandom", O_RDONLY);
-	assert(urandom != -1);
-	count = read(urandom, d->random_state.data, sizeof(uint64_t[4]));
-	(void)count;
-	close(urandom);
 	d->initialized = true;
 	return 0;
 
@@ -648,7 +640,7 @@ static void listenCb(uv_stream_t *listener, int status)
 		goto err;
 	}
 	rv = conn__start(conn, &t->config, &t->loop, &t->registry, &t->raft,
-			 stream, &t->raft_transport, seed, destroy_conn);
+			 stream, &t->raft_transport, destroy_conn);
 	if (rv != 0) {
 		goto err_after_conn_alloc;
 	}
