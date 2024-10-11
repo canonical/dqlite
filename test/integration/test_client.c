@@ -152,22 +152,38 @@ TEST(client, semicolons, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	(void)params;
 
-	static const char trivial_stmt[] = "CREATE TABLE IF NOT EXISTS foo (n INT);";
+	static const char create_sql[] = "CREATE TABLE IF NOT EXISTS test (n INT);";
+	static const char insert_sql[] = "INSERT INTO test (n) VALUES (17);";
 
 	size_t n = 1000;
-	size_t unit = sizeof(trivial_stmt) - 1;
-	char *sql = munit_malloc(n * unit);
+	size_t create_len = sizeof(create_sql) - 1;
+	size_t insert_len = sizeof(insert_sql) - 1;
+	size_t len = n * create_len + insert_len + 1;
+	char *sql = munit_malloc(len);
 	char *p = sql;
 	for (size_t i = 0; i < n; i++) {
-		memcpy(p, trivial_stmt, unit);
-		p += unit;
+		memcpy(p, create_sql, create_len);
+		p += create_len;
 	}
-	sql[n * unit - 1] = '\0';
+	memcpy(p, insert_sql, insert_len);
+	p += insert_len;
+	munit_assert_ptr(p, ==, sql + len - 1);
+	*p = '\0';
 
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 	EXEC_SQL(sql, &last_insert_id, &rows_affected);
-
 	free(sql);
+
+	/* Check that all the statements were executed. */
+	struct row *row;
+	QUERY_SQL("SELECT n FROM test", &f->rows);
+	munit_assert_uint(f->rows.column_count, ==, 1);
+	munit_assert_string_equal(f->rows.column_names[0], "n");
+	row = f->rows.next;
+	munit_assert_int(row->values[0].type, ==, SQLITE_INTEGER);
+	munit_assert_int64(row->values[0].integer, ==, 17);
+	munit_assert_ptr_null(row->next);
+
 	return MUNIT_OK;
 }
