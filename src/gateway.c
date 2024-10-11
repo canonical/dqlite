@@ -306,8 +306,10 @@ static int handle_open(struct gateway *g, struct handle *req)
 	return 0;
 }
 
-static void prepare_bottom_half(struct gateway *g, int status)
+static void prepare_barrier_cb(struct barrier *barrier, int status)
 {
+	tracef("prepare barrier cb status:%d", status);
+	struct gateway *g = barrier->data;
 	struct handle *req = g->req;
 	struct response_stmt response_v0 = { 0 };
 	struct response_stmt_with_offset response_v1 = { 0 };
@@ -376,13 +378,6 @@ static void prepare_bottom_half(struct gateway *g, int status)
 	}
 }
 
-static void prepare_barrier_cb(struct barrier *barrier, int status)
-{
-	tracef("prepare barrier cb status:%d", status);
-	struct gateway *g = barrier->data;
-	prepare_bottom_half(g, status);
-}
-
 static int handle_prepare(struct gateway *g, struct handle *req)
 {
 	tracef("handle prepare");
@@ -417,7 +412,7 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	g->req = req;
 	rc = leader_barrier_v2(g->leader, &g->barrier, prepare_barrier_cb);
 	if (rc == LEADER_NOT_ASYNC) {
-		prepare_bottom_half(g, 0);
+		prepare_barrier_cb(&g->barrier, 0);
 	} else if (rc != 0) {
 		tracef("handle prepare barrier failed %d", rc);
 		stmt__registry_del(&g->stmts, stmt);
@@ -579,8 +574,10 @@ static void query_batch(struct gateway *g)
 	query_batch_async(req, POOL_BOTTOM_HALF);
 }
 
-static void query_bottom_half(struct gateway *g, int status)
+static void query_barrier_cb(struct barrier *barrier, int status)
 {
+	tracef("query barrier cb status:%d", status);
+	struct gateway *g = barrier->data;
 	struct handle *req = g->req;
 	assert(req != NULL);
 	g->req = NULL;
@@ -597,14 +594,7 @@ static void query_bottom_half(struct gateway *g, int status)
 	query_batch(g);
 }
 
-static void query_barrier_cb(struct barrier *barrier, int status)
-{
-	tracef("query barrier cb status:%d", status);
-	struct gateway *g = barrier->data;
-	query_bottom_half(g, status);
-}
-
-static void leaderModifyingQueryCb(struct exec *exec, int status)
+static void modifying_query_exec_cb(struct exec *exec, int status)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
@@ -669,14 +659,14 @@ static int handle_query(struct gateway *g, struct handle *req)
 	if (is_readonly) {
 		rv = leader_barrier_v2(g->leader, &g->barrier, query_barrier_cb);
 		if (rv == LEADER_NOT_ASYNC) {
-			query_bottom_half(g, 0);
+			query_barrier_cb(&g->barrier, 0);
 			rv = 0;
 		}
 	} else {
 		rv = leader_exec_v2(g->leader, &g->exec, stmt->stmt,
-				    leaderModifyingQueryCb);
+				    modifying_query_exec_cb);
 		if (rv == LEADER_NOT_ASYNC) {
-			leaderModifyingQueryCb(&g->exec, g->exec.status);
+			modifying_query_exec_cb(&g->exec, g->exec.status);
 			rv = 0;
 		}
 	}
@@ -806,8 +796,10 @@ done:
 	g->req = NULL;
 }
 
-static void exec_sql_bottom_half(struct gateway *g, int status)
+static void exec_sql_barrier_cb(struct barrier *barrier, int status)
 {
+	tracef("exec sql barrier cb status:%d", status);
+	struct gateway *g = barrier->data;
 	struct handle *req = g->req;
 	assert(req != NULL);
 	g->req = NULL;
@@ -818,13 +810,6 @@ static void exec_sql_bottom_half(struct gateway *g, int status)
 	}
 
 	handle_exec_sql_next(g, req, false);
-}
-
-static void exec_sql_barrier_cb(struct barrier *barrier, int status)
-{
-	tracef("exec sql barrier cb status:%d", status);
-	struct gateway *g = barrier->data;
-	exec_sql_bottom_half(g, status);
 }
 
 static int handle_exec_sql(struct gateway *g, struct handle *req)
@@ -856,7 +841,7 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	g->req = req;
 	rc = leader_barrier_v2(g->leader, &g->barrier, exec_sql_barrier_cb);
 	if (rc == LEADER_NOT_ASYNC) {
-		exec_sql_bottom_half(g, 0);
+		exec_sql_barrier_cb(&g->barrier, 0);
 	} else if (rc != 0) {
 		tracef("handle exec sql barrier failed %d", rc);
 		g->req = NULL;
@@ -865,7 +850,7 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	return 0;
 }
 
-static void leaderModifyingQuerySqlCb(struct exec *exec, int status)
+static void modifying_query_sql_exec_cb(struct exec *exec, int status)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
@@ -884,8 +869,10 @@ static void leaderModifyingQuerySqlCb(struct exec *exec, int status)
 	}
 }
 
-static void query_sql_bottom_half(struct gateway *g, int status)
+static void query_sql_barrier_cb(struct barrier *barrier, int status)
 {
+	tracef("query sql barrier cb status:%d", status);
+	struct gateway *g = barrier->data;
 	struct handle *req = g->req;
 	assert(req != NULL);
 	g->req = NULL;
@@ -951,22 +938,15 @@ static void query_sql_bottom_half(struct gateway *g, int status)
 		query_batch(g);
 	} else {
 		rv = leader_exec_v2(g->leader, &g->exec, stmt,
-				    leaderModifyingQuerySqlCb);
+				    modifying_query_sql_exec_cb);
 		if (rv == LEADER_NOT_ASYNC) {
-			leaderModifyingQuerySqlCb(&g->exec, g->exec.status);
+			modifying_query_sql_exec_cb(&g->exec, g->exec.status);
 		} else if (rv != 0) {
 			sqlite3_finalize(stmt);
 			g->req = NULL;
 			failure(req, rv, "leader exec");
 		}
 	}
-}
-
-static void query_sql_barrier_cb(struct barrier *barrier, int status)
-{
-	tracef("query sql barrier cb status:%d", status);
-	struct gateway *g = barrier->data;
-	query_sql_bottom_half(g, status);
 }
 
 static int handle_query_sql(struct gateway *g, struct handle *req)
@@ -995,7 +975,7 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	g->req = req;
 	rv = leader_barrier_v2(g->leader, &g->barrier, query_sql_barrier_cb);
 	if (rv == LEADER_NOT_ASYNC) {
-		query_sql_bottom_half(g, 0);
+		query_sql_barrier_cb(&g->barrier, 0);
 	} else if (rv != 0) {
 		tracef("handle query sql barrier failed %d", rv);
 		g->req = NULL;
