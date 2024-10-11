@@ -155,7 +155,7 @@ TEST(client, semicolons, setUp, tearDown, 0, NULL)
 	static const char create_sql[] = "CREATE TABLE IF NOT EXISTS test (n INT);";
 	static const char insert_sql[] = "INSERT INTO test (n) VALUES (17);";
 
-	size_t n = 1000;
+	size_t n = 10000;
 	size_t create_len = sizeof(create_sql) - 1;
 	size_t insert_len = sizeof(insert_sql) - 1;
 	size_t len = n * create_len + insert_len + 1;
