@@ -920,8 +920,6 @@ TEST_CASE(exec, close_while_in_flight, NULL)
 
 	/* Trigger a second page cache flush to the WAL, and abort before it's
 	 * done. */
-	/* FIXME(cole) it seems that this may no longer be successfully triggering
-	 * the page cache flush */
 	EXEC_SQL_SUBMIT("INSERT INTO test(n) VALUES(1)");
 	return MUNIT_OK;
 }
