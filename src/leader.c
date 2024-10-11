@@ -278,7 +278,7 @@ static int leaderApplyFrames(struct exec *req,
 			     unsigned n,
 			     raft_apply_cb cb)
 {
-	tracef("leader apply frames id:%" PRIu64, req->id);
+	tracef("leader apply frames");
 	struct leader *l = req->leader;
 	struct db *db = l->db;
 	struct command_frames c;
@@ -310,7 +310,6 @@ static int leaderApplyFrames(struct exec *req,
 	apply->leader = req->leader;
 	apply->req.data = apply;
 	apply->type = COMMAND_FRAMES;
-	idSet(apply->req.req_id, req->id);
 
 	rv = raft_apply(l->raft, &apply->req, &buf, 1, cb);
 	if (rv != 0) {

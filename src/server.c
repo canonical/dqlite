@@ -574,7 +574,6 @@ static void listenCb(uv_stream_t *listener, int status)
 	struct dqlite_node *t = listener->data;
 	struct uv_stream_s *stream;
 	struct conn *conn;
-	struct id_state seed;
 	int rv;
 
 	if (!t->running) {
@@ -643,9 +642,6 @@ static void listenCb(uv_stream_t *listener, int status)
 		goto err;
 #endif
 	}
-
-	seed = t->random_state;
-	idJump(&t->random_state);
 
 	conn = sqlite3_malloc(sizeof *conn);
 	if (conn == NULL) {

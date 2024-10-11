@@ -2,7 +2,6 @@
 
 #include "bind.h"
 #include "conn.h"
-#include "id.h"
 #include "lib/threadpool.h"
 #include "protocol.h"
 #include "query.h"
@@ -17,8 +16,7 @@
 void gateway__init(struct gateway *g,
 		   struct config *config,
 		   struct registry *registry,
-		   struct raft *raft,
-		   struct id_state seed)
+		   struct raft *raft)
 {
 	tracef("gateway init");
 	g->config = config;
@@ -33,7 +31,6 @@ void gateway__init(struct gateway *g,
 	g->barrier.leader = NULL;
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 	g->client_id = 0;
-	g->random_state = seed;
 }
 
 /* FIXME: This function becomes unsound when using the new thread pool, since
@@ -1028,8 +1025,7 @@ struct change {
 
 static void raftChangeCb(struct raft_change *change, int status)
 {
-	tracef("raft change cb id:%" PRIu64 " status:%d",
-	       idExtract(change->req_id), status);
+	tracef("raft change cb status:%d", status);
 	struct change *r = change->data;
 	struct gateway *g = r->gateway;
 	struct handle *req = g->req;
@@ -1049,7 +1045,6 @@ static int handle_add(struct gateway *g, struct handle *req)
 	tracef("handle add");
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
-	uint64_t req_id;
 	int rv;
 	START_V0(add, empty);
 	(void)response;
@@ -1062,8 +1057,6 @@ static int handle_add(struct gateway *g, struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
-	req_id = idNext(&g->random_state);
-	idSet(r->req.req_id, req_id);
 	g->req = req;
 
 	rv = raft_add(g->raft, &r->req, request.id, request.address,
@@ -1085,7 +1078,6 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
 	uint64_t role = DQLITE_VOTER;
-	uint64_t req_id;
 	int rv;
 	START_V0(promote_or_assign, empty);
 	(void)response;
@@ -1109,8 +1101,6 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
-	req_id = idNext(&g->random_state);
-	idSet(r->req.req_id, req_id);
 	g->req = req;
 
 	rv = raft_assign(g->raft, &r->req, request.id,
@@ -1131,7 +1121,6 @@ static int handle_remove(struct gateway *g, struct handle *req)
 	tracef("handle remove");
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
-	uint64_t req_id;
 	int rv;
 	START_V0(remove, empty);
 	(void)response;
@@ -1145,8 +1134,6 @@ static int handle_remove(struct gateway *g, struct handle *req)
 	}
 	r->gateway = g;
 	r->req.data = r;
-	req_id = idNext(&g->random_state);
-	idSet(r->req.req_id, req_id);
 	g->req = req;
 
 	rv = raft_remove(g->raft, &r->req, request.id, raftChangeCb);

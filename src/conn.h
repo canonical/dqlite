@@ -10,7 +10,6 @@
 #include "lib/transport.h"
 
 #include "gateway.h"
-#include "id.h"
 #include "message.h"
 #include "raft.h"
 
@@ -50,7 +49,6 @@ int conn__start(struct conn *c,
 		struct raft *raft,
 		struct uv_stream_s *stream,
 		struct raft_uv_transport *uv_transport,
-		struct id_state seed,
 		conn_close_cb close_cb);
 
 /**

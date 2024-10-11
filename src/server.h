@@ -7,7 +7,6 @@
 
 #include "client/protocol.h"
 #include "config.h"
-#include "id.h"
 #include "lib/assert.h"
 #include "lib/threadpool.h"
 #include "logger.h"
@@ -56,7 +55,6 @@ struct dqlite_node {
 	    int *);             /* Connection function for role management */
 	void *connect_func_arg; /* User data for connection function */
 	char errmsg[DQLITE_ERRMSG_BUF_SIZE]; /* Last error occurred */
-	struct id_state random_state;        /* For seeding ID generation */
 };
 
 /* Dynamic array of node info objects. This is the in-memory representation of
