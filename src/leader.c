@@ -8,23 +8,19 @@
 #include "command.h"
 #include "conn.h"
 #include "gateway.h"
-#include "id.h"
 #include "leader.h"
+#include "lib/sm.h"
 #include "lib/threadpool.h"
 #include "server.h"
 #include "tracing.h"
 #include "utils.h"
 #include "vfs.h"
 
-/* Called when a leader exec request terminates and the associated callback can
- * be invoked. */
-static void leaderExecDone(struct exec *req)
+static bool barrier_invariant(const struct sm *sm, int prev)
 {
-	tracef("leader exec done id:%" PRIu64, req->id);
-	req->leader->exec = NULL;
-	if (req->cb != NULL) {
-		req->cb(req, req->status);
-	}
+	(void)sm;
+	(void)prev;
+	return true;
 }
 
 /* Open a SQLite connection and set it to leader replication mode. */
@@ -84,8 +80,7 @@ static int openConnection(const char *filename,
 		goto err;
 	}
 
-	rc = sqlite3_exec(*conn, "PRAGMA wal_autocheckpoint=0", NULL, NULL,
-			  &msg);
+	rc = sqlite3_wal_autocheckpoint(*conn, 0);
 	if (rc != SQLITE_OK) {
 		tracef("wal autocheckpoint off failed %d", rc);
 		goto err;
@@ -150,6 +145,46 @@ int leader_init(struct leader *l,
 	return 0;
 }
 
+/**
+ * State machine for exec requests.
+ */
+enum {
+	EXEC_START,
+	EXEC_BARRIER,
+	EXEC_STEPPED,
+	EXEC_POLLED,
+	EXEC_APPLIED,
+	EXEC_DONE,
+	EXEC_FAILED,
+	EXEC_NR,
+};
+
+#define A(ident) BITS(EXEC_##ident)
+#define S(ident, allowed_, flags_) \
+	[EXEC_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf exec_states[EXEC_NR] = {
+	S(START,    A(BARRIER)|A(FAILED)|A(DONE), SM_INITIAL),
+	S(BARRIER,  A(STEPPED)|A(FAILED)|A(DONE), 0),
+	S(STEPPED,  A(POLLED)|A(FAILED)|A(DONE),  0),
+	S(POLLED,   A(APPLIED)|A(FAILED)|A(DONE), 0),
+	S(APPLIED,  A(FAILED)|A(DONE),            0),
+	S(DONE,     0,                            SM_FINAL),
+	S(FAILED,   0,                            SM_FAILURE|SM_FINAL),
+};
+
+#undef S
+#undef A
+
+static bool exec_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
+}
+
+static void exec_done(struct exec *, int);
+
 void leader__close(struct leader *l)
 {
 	tracef("leader close");
@@ -158,7 +193,7 @@ void leader__close(struct leader *l)
 	if (l->exec != NULL) {
 		assert(l->inflight == NULL);
 		l->exec->status = SQLITE_ERROR;
-		leaderExecDone(l->exec);
+		exec_done(l->exec, 0);
 	}
 	rc = sqlite3_close(l->conn);
 	assert(rc == 0);
@@ -241,68 +276,12 @@ err_after_buf_alloc:
 	raft_free(buf.base);
 }
 
-static void leaderApplyFramesCb(struct raft_apply *req,
-				int status,
-				void *result)
-{
-	tracef("apply frames cb id:%" PRIu64, idExtract(req->req_id));
-	struct apply *apply = req->data;
-	struct leader *l = apply->leader;
-	if (l == NULL) {
-		raft_free(apply);
-		return;
-	}
-
-	(void)result;
-
-	if (status != 0) {
-		tracef("apply frames cb failed status %d", status);
-		sqlite3_vfs *vfs = sqlite3_vfs_find(l->db->config->name);
-		switch (status) {
-			case RAFT_LEADERSHIPLOST:
-				l->exec->status = SQLITE_IOERR_LEADERSHIP_LOST;
-				break;
-			case RAFT_NOSPACE:
-				l->exec->status = SQLITE_IOERR_WRITE;
-				break;
-			case RAFT_SHUTDOWN:
-				/* If we got here it means we have manually
-				 * fired the apply callback from
-				 * gateway__close(). In this case we don't
-				 * free() the apply object, since it will be
-				 * freed when the callback is fired again by
-				 * raft.
-				 *
-				 * TODO: we should instead make gatewa__close()
-				 * itself asynchronous. */
-				apply->leader = NULL;
-				l->exec->status = SQLITE_ABORT;
-				goto finish;
-				break;
-			default:
-				l->exec->status = SQLITE_IOERR;
-				break;
-		}
-		VfsAbort(vfs, l->db->path);
-	}
-
-	raft_free(apply);
-
-	if (status == 0) {
-		leaderMaybeCheckpointLegacy(l);
-	}
-
-finish:
-	l->inflight = NULL;
-	l->db->tx_id = 0;
-	leaderExecDone(l->exec);
-}
-
 static int leaderApplyFrames(struct exec *req,
 			     dqlite_vfs_frame *frames,
-			     unsigned n)
+			     unsigned n,
+			     raft_apply_cb cb)
 {
-	tracef("leader apply frames id:%" PRIu64, req->id);
+	tracef("leader apply frames");
 	struct leader *l = req->leader;
 	struct db *db = l->db;
 	struct command_frames c;
@@ -334,9 +313,8 @@ static int leaderApplyFrames(struct exec *req,
 	apply->leader = req->leader;
 	apply->req.data = apply;
 	apply->type = COMMAND_FRAMES;
-	idSet(apply->req.req_id, req->id);
 
-	rv = raft_apply(l->raft, &apply->req, &buf, 1, leaderApplyFramesCb);
+	rv = raft_apply(l->raft, &apply->req, &buf, 1, cb);
 	if (rv != 0) {
 		tracef("raft apply failed %d", rv);
 		goto err_after_command_encode;
@@ -356,9 +334,129 @@ err:
 	return rv;
 }
 
-static void leaderExecV2(struct exec *req, enum pool_half half)
+enum {
+	BARRIER_START,
+	BARRIER_PASSED,
+	BARRIER_DONE,
+	BARRIER_FAIL,
+	BARRIER_NR,
+};
+
+#define A(ident) BITS(BARRIER_##ident)
+#define S(ident, allowed_, flags_) \
+	[BARRIER_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static const struct sm_conf barrier_states[BARRIER_NR] = {
+	S(START,  A(PASSED)|A(DONE)|A(FAIL), SM_INITIAL),
+	S(PASSED, A(DONE)|A(FAIL),           0),
+	S(DONE,   0,                         SM_FINAL),
+	S(FAIL,   0,                         SM_FINAL|SM_FAILURE),
+};
+
+#undef S
+#undef A
+
+static void barrier_done(struct barrier *barrier, int status)
 {
-	tracef("leader exec v2 id:%" PRIu64, req->id);
+	PRE(barrier != NULL);
+	int state = sm_state(&barrier->sm);
+	PRE(state == BARRIER_START || state == BARRIER_PASSED);
+	void (*cb)(struct barrier *, int) = barrier->cb;
+	PRE(cb != NULL);
+
+	if (status != 0) {
+		sm_fail(&barrier->sm, BARRIER_FAIL, status);
+	} else {
+		sm_move(&barrier->sm, BARRIER_DONE);
+	}
+	sm_fini(&barrier->sm);
+	/* TODO(cole) uncommment this once the barrier-callback-runs-twice
+	 * issue is fixed. */
+	/* barrier->req.data = NULL; */
+	barrier->leader = NULL;
+	barrier->cb = NULL;
+
+	if (state == BARRIER_PASSED) {
+		cb(barrier, status);
+	}
+}
+
+static void barrier_raft_cb(struct raft_barrier *, int);
+
+static int barrier_tick(struct barrier *barrier, int status)
+{
+	int rv;
+
+	if (sm_state(&barrier->sm) == BARRIER_START) {
+		PRE(status == 0);
+		rv = raft_barrier(barrier->leader->raft, &barrier->req, barrier_raft_cb);
+		if (rv != 0) {
+			barrier_done(barrier, rv);
+		}
+		return rv;
+	}
+
+	PRE(sm_state(&barrier->sm) == BARRIER_PASSED);
+	status = status == 0 ? 0 :
+		 status == RAFT_LEADERSHIPLOST ? SQLITE_IOERR_LEADERSHIP_LOST :
+		 SQLITE_ERROR;
+	barrier_done(barrier, status);
+	return 0;
+}
+
+static void barrier_raft_cb(struct raft_barrier *rb, int status)
+{
+	struct barrier *barrier = rb->data;
+	PRE(barrier != NULL);
+	/* TODO(cole) it seems that raft can invoke this callback more than
+	 * once, investigate and fix that and then remove this workaround. */
+	if (sm_state(&barrier->sm) > BARRIER_START) {
+		return;
+	}
+	sm_move(&barrier->sm, BARRIER_PASSED);
+	(void)barrier_tick(rb->data, status);
+}
+
+int leader_barrier_v2(struct leader *l,
+		      struct barrier *barrier,
+		      barrier_cb cb)
+{
+	int rv;
+
+	if (!needsBarrier(l)) {
+		return LEADER_NOT_ASYNC;
+	}
+
+	sm_init(&barrier->sm, barrier_invariant, NULL, barrier_states, "barrier",
+		BARRIER_START);
+	barrier->cb = cb;
+	barrier->leader = l;
+	barrier->req.data = barrier;
+	rv = barrier_tick(barrier, 0);
+	POST(rv != LEADER_NOT_ASYNC);
+	return rv;
+}
+
+static void exec_done(struct exec *req, int asyncness)
+{
+	int status = req->status;
+	status = status ? status : SQLITE_ERROR;
+	if (status == SQLITE_DONE) {
+		sm_move(&req->sm, EXEC_DONE);
+	} else {
+		sm_fail(&req->sm, EXEC_FAILED, status);
+	}
+	sm_fini(&req->sm);
+	req->leader->exec = NULL;
+	if (req->cb != NULL && asyncness == 0) {
+		req->cb(req, status);
+	}
+}
+
+static void exec_apply_cb(struct raft_apply *, int, void *);
+
+static int exec_apply(struct exec *req)
+{
 	struct leader *l = req->leader;
 	struct db *db = l->db;
 	sqlite3_vfs *vfs = sqlite3_vfs_find(db->config->name);
@@ -368,138 +466,215 @@ static void leaderExecV2(struct exec *req, enum pool_half half)
 	unsigned i;
 	int rv;
 
-	if (half == POOL_TOP_HALF) {
-		req->status = sqlite3_step(req->stmt);
-		return;
-	} /* else POOL_BOTTOM_HALF => */
+	req->status = sqlite3_step(req->stmt);
+	sm_move(&req->sm, EXEC_STEPPED);
 
 	rv = VfsPoll(vfs, db->path, &frames, &n);
-	if (rv != 0 || n == 0) {
-		tracef("vfs poll");
-		goto finish;
+	if (rv != 0) {
+		return rv;
+	}
+	sm_move(&req->sm, EXEC_POLLED);
+	if (n == 0) {
+		return LEADER_NOT_ASYNC;
 	}
 
 	/* Check if the new frames would create an overfull database */
 	size = VfsDatabaseSize(vfs, db->path, n, db->config->page_size);
 	if (size > VfsDatabaseSizeLimit(vfs)) {
 		rv = SQLITE_FULL;
-		goto abort;
+		goto finish;
 	}
 
-	rv = leaderApplyFrames(req, frames, n);
+	rv = leaderApplyFrames(req, frames, n, exec_apply_cb);
 	if (rv != 0) {
-		goto abort;
+		goto finish;
 	}
 
-	for (i = 0; i < n; i++) {
-		sqlite3_free(frames[i].data);
-	}
-	sqlite3_free(frames);
-	return;
-
-abort:
-	for (i = 0; i < n; i++) {
-		sqlite3_free(frames[i].data);
-	}
-	sqlite3_free(frames);
-	VfsAbort(vfs, l->db->path);
 finish:
-	if (rv != 0) {
-		tracef("exec v2 failed %d", rv);
-		l->exec->status = rv;
+	for (i = 0; i < n; i++) {
+		sqlite3_free(frames[i].data);
 	}
-	leaderExecDone(l->exec);
+	sqlite3_free(frames);
+	if (rv != 0) {
+		VfsAbort(vfs, l->db->path);
+	}
+	return rv;
 }
 
-static void execBarrierCb(struct barrier *barrier, int status)
-{
-	tracef("exec barrier cb status %d", status);
-	struct exec *req = barrier->data;
-	struct leader *l = req->leader;
+static int exec_tick(struct exec *, int);
 
-	if (status != 0) {
-		l->exec->status = status;
-		leaderExecDone(l->exec);
+static void exec_apply_cb(struct raft_apply *req,
+			  int status,
+			  void *result)
+{
+	(void)result;
+	struct apply *apply = req->data;
+	struct leader *l;
+	struct exec *exec;
+
+	l = apply->leader;
+	if (l == NULL) {
+		raft_free(apply);
 		return;
 	}
 
-	leaderExecV2(req, POOL_TOP_HALF);
-	leaderExecV2(req, POOL_BOTTOM_HALF);
+	exec = l->exec;
+	PRE(exec != NULL);
+	sm_move(&exec->sm, EXEC_APPLIED);
+	if (status == RAFT_SHUTDOWN) {
+		apply->leader = NULL;
+	} else {
+		raft_free(apply);
+	}
+	exec_tick(exec, status);
 }
 
-int leader__exec(struct leader *l,
-		 struct exec *req,
-		 sqlite3_stmt *stmt,
-		 uint64_t id,
-		 exec_cb cb)
+static int exec_status(int r)
 {
-	tracef("leader exec id:%" PRIu64, id);
-	int rv;
+	PRE(r != 0);
+	return r == RAFT_LEADERSHIPLOST ?  SQLITE_IOERR_LEADERSHIP_LOST :
+	       r == RAFT_NOSPACE ?  SQLITE_IOERR_WRITE :
+	       r == RAFT_SHUTDOWN ?  SQLITE_ABORT :
+	       SQLITE_IOERR;
+}
+
+static void exec_barrier_cb(struct barrier *barrier, int status)
+{
+	struct exec *req = barrier->data;
+	PRE(req != NULL);
+	sm_move(&req->sm, EXEC_BARRIER);
+	exec_tick(req, status);
+}
+
+/**
+ * Exec request pseudo-coroutine, encapsulating the whole lifecycle.
+ *
+ * Exec processing is a sequence of steps, tracked by the embedded SM, in
+ * between which we possibly suspend execution. After every suspend, control
+ * returns to this function, and we jump to the appropriate arm of the switch
+ * statement based on the SM state. If we never suspend, control remains in
+ * this function, passing through each state from top to bottom.
+ *
+ * When invoked by leader_exec_v2, the return value indicates
+ * whether we suspended (0), finished without suspending (LEADER_NOT_ASYNC),
+ * or encountered an error (any other value). When invoked by a callback,
+ * the `status` argument indicates whether the async operation succeeded
+ * or failed, and the return value is ignored.
+ *
+ * There are some backward-compatibility warts here. In particular, when
+ * an error occurs, we sometimes signal it by returning an error code
+ * and sometimes by just setting `req->status` (and returning one of the two
+ * "success" codes). This is done to preserve exactly how each error was handled in
+ * the previous exec code.
+ */
+int exec_tick(struct exec *req, int status)
+{
+	struct leader *l;
+	sqlite3_vfs *vfs;
+	int barrier_rv = 0;
+	int apply_rv = 0;
+	/* Eventual return value of this function. Also tracks whether we
+	 * previously suspended while processing this request (0) or not
+	 * (LEADER_NOT_ASYNC). */
+	int ret = 0;
+
+	switch (sm_state(&req->sm)) {
+	case EXEC_START:
+		PRE(status == 0);
+		l = req->leader;
+		PRE(l != NULL);
+		barrier_rv = leader_barrier_v2(l, &req->barrier, exec_barrier_cb);
+		if (barrier_rv == 0) {
+			/* suspended */
+			ret = 0;
+			break;
+		} else if (barrier_rv != LEADER_NOT_ASYNC) {
+			/* return error to caller, don't invoke callback,
+			 * but set req->status so that that the SM will
+			 * record the failure */
+			req->status = barrier_rv;
+			exec_done(req, LEADER_NOT_ASYNC);
+			ret = barrier_rv;
+			break;
+		} /* else barrier_rv == LEADER_NOT_ASYNC => */
+		ret = LEADER_NOT_ASYNC;
+		sm_move(&req->sm, EXEC_BARRIER);
+		POST(status == 0);
+		/* fallthrough */
+	case EXEC_BARRIER:
+		if (status != 0) {
+			/* error, we must have suspended, so invoke the callback */
+			PRE(ret == 0);
+			req->status = status;
+			exec_done(req, 0);
+			break;
+		}
+		apply_rv = exec_apply(req);
+		if (apply_rv == 0) {
+			/* suspended */
+			ret = 0;
+			break;
+		} else if (apply_rv != LEADER_NOT_ASYNC) {
+			/* error, record it in `req->status` and either invoke
+			 * the callback (if we suspended) or tell the caller to
+			 * invoke it (otherwise---it would be more consistent
+			 * to return the error code in this case, but for the
+			 * sake of compatibility we do it this way instead) */
+			req->status = apply_rv;
+			exec_done(req, ret);
+			break;
+		} /* else apply_rv == LEADER_NOT_ASYNC => */
+		ret &= LEADER_NOT_ASYNC;
+		sm_move(&req->sm, EXEC_APPLIED);
+		POST(status == 0);
+		/* fallthrough */
+	case EXEC_APPLIED:
+		l = req->leader;
+		PRE(l != NULL);
+		vfs = sqlite3_vfs_find(l->db->config->name);
+		PRE(vfs != NULL);
+		/* apply_rv == 0 if and only if we suspended at the previous step,
+		 * if and only if the transaction generated frames---this logic is
+		 * copied carefully from the previous version of the code */
+		PRE(apply_rv == 0 || apply_rv == LEADER_NOT_ASYNC);
+		if (apply_rv == 0) {
+			if (status == 0) {
+				leaderMaybeCheckpointLegacy(l);
+			} else {
+				req->status = exec_status(status);
+				VfsAbort(vfs, l->db->path);
+			}
+			l->inflight = NULL;
+			l->db->tx_id = 0;
+		}
+		/* finished successfully */
+		exec_done(req, ret);
+		break;
+	default:
+		POST(false && "impossible!");
+	}
+
+	return ret;
+}
+
+int leader_exec_v2(struct leader *l,
+		   struct exec *req,
+		   sqlite3_stmt *stmt,
+		   exec_cb cb)
+{
 	if (l->exec != NULL) {
-		tracef("busy");
 		return SQLITE_BUSY;
 	}
 	l->exec = req;
 
+	sm_init(&req->sm, exec_invariant, NULL, exec_states, "exec",
+		EXEC_START);
 	req->leader = l;
 	req->stmt = stmt;
-	req->id = id;
 	req->cb = cb;
 	req->barrier.data = req;
 	req->barrier.cb = NULL;
 	req->work = (pool_work_t){};
 
-	rv = leader__barrier(l, &req->barrier, execBarrierCb);
-	if (rv != 0) {
-		l->exec = NULL;
-		return rv;
-	}
-	return 0;
-}
-
-static void raftBarrierCb(struct raft_barrier *req, int status)
-{
-	tracef("raft barrier cb status %d", status);
-	struct barrier *barrier = req->data;
-	int rv = 0;
-	if (status != 0) {
-		if (status == RAFT_LEADERSHIPLOST) {
-			rv = SQLITE_IOERR_LEADERSHIP_LOST;
-		} else {
-			rv = SQLITE_ERROR;
-		}
-	}
-	barrier_cb cb = barrier->cb;
-	if (cb == NULL) {
-		tracef("barrier cb already fired");
-		return;
-	}
-	barrier->cb = NULL;
-	cb(barrier, rv);
-}
-
-int leader__barrier(struct leader *l, struct barrier *barrier, barrier_cb cb)
-{
-	tracef("leader barrier");
-	int rv;
-	if (!needsBarrier(l)) {
-		tracef("not needed");
-		cb(barrier, 0);
-		return 0;
-	} else if (l->flags & DQLITE_OPEN_ALLOW_STALE) {
-		cb(barrier, 0);
-		return 0;
-	}
-	barrier->cb = cb;
-	barrier->leader = l;
-	barrier->req.data = barrier;
-	rv = raft_barrier(l->raft, &barrier->req, raftBarrierCb);
-	if (rv != 0) {
-		tracef("raft barrier failed %d", rv);
-		barrier->req.data = NULL;
-		barrier->leader = NULL;
-		barrier->cb = NULL;
-		return rv;
-	}
-	return 0;
+	return exec_tick(req, 0);
 }

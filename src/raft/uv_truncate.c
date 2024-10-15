@@ -1,11 +1,48 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../lib/sm.h" /* struct sm */
 #include "assert.h"
 #include "byte.h"
 #include "heap.h"
 #include "uv.h"
 #include "uv_encoding.h"
+
+enum {
+	TRUNC_START,
+	TRUNC_BARRIER,
+	TRUNC_WORK,
+	TRUNC_LISTED,
+	TRUNC_TRUNCATED,
+	TRUNC_REMOVED,
+	TRUNC_SYNCED,
+	TRUNC_DONE,
+	TRUNC_FAIL,
+	TRUNC_NR,
+};
+
+#define A(ident) BITS(TRUNC_##ident)
+#define S(ident, allowed_, flags_) \
+	[TRUNC_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
+
+static struct sm_conf trunc_states[TRUNC_NR] = {
+	S(START,     A(BARRIER)|A(FAIL),                        SM_INITIAL),
+	S(BARRIER,   A(WORK)|A(DONE)|A(FAIL),                   0),
+	S(WORK,      A(LISTED)|A(FAIL),                         0),
+	S(LISTED,    A(TRUNCATED)|A(REMOVED)|A(SYNCED)|A(FAIL), 0),
+	S(TRUNCATED, A(REMOVED)|A(SYNCED)|A(FAIL),              0),
+	S(REMOVED,   A(REMOVED)|A(SYNCED)|A(FAIL),              0),
+	S(SYNCED,    A(DONE)|A(FAIL),                           0),
+	S(DONE,      0,                                         SM_FINAL),
+	S(FAIL,      0,                                         SM_FINAL|SM_FAILURE),
+};
+
+static bool trunc_invariant(const struct sm *sm, int prev)
+{
+	(void)sm;
+	(void)prev;
+	return true;
+}
 
 /* Track a truncate request. */
 struct uvTruncate
@@ -13,8 +50,17 @@ struct uvTruncate
 	struct uv *uv;
 	struct UvBarrierReq barrier;
 	raft_index index;
+	struct raft_io_truncate *orig;
 	int status;
 };
+
+static void truncate_done(struct uvTruncate *trunc, int status)
+{
+	sm_done(&trunc->orig->sm, TRUNC_DONE, TRUNC_FAIL, status);
+	sm_fini(&trunc->orig->sm);
+	RaftHeapFree(trunc->orig);
+	RaftHeapFree(trunc);
+}
 
 /* Execute a truncate request in a thread. */
 static void uvTruncateWorkCb(uv_work_t *work)
@@ -32,6 +78,8 @@ static void uvTruncateWorkCb(uv_work_t *work)
 	char errmsg[RAFT_ERRMSG_BUF_SIZE];
 	int rv;
 
+	sm_move(&truncate->orig->sm, TRUNC_WORK);
+
 	/* Load all segments on disk. */
 	rv = UvList(uv, &snapshots, &n_snapshots, &segments, &n_segments,
 		    errmsg);
@@ -42,6 +90,8 @@ static void uvTruncateWorkCb(uv_work_t *work)
 		RaftHeapFree(snapshots);
 	}
 	assert(segments != NULL);
+
+	sm_move(&truncate->orig->sm, TRUNC_LISTED);
 
 	/* Find the segment that contains the truncate point. */
 	segment = NULL; /* Suppress warnings. */
@@ -64,6 +114,7 @@ static void uvTruncateWorkCb(uv_work_t *work)
 		if (rv != 0) {
 			goto err_after_list;
 		}
+		sm_move(&truncate->orig->sm, TRUNC_TRUNCATED);
 	}
 
 	/* Remove all closed segments past the one containing the truncate
@@ -80,6 +131,7 @@ static void uvTruncateWorkCb(uv_work_t *work)
 			rv = RAFT_IOERR;
 			goto err_after_list;
 		}
+		sm_move(&truncate->orig->sm, TRUNC_REMOVED);
 	}
 	rv = UvFsSyncDir(uv->dir, errmsg);
 	if (rv != 0) {
@@ -87,6 +139,7 @@ static void uvTruncateWorkCb(uv_work_t *work)
 		rv = RAFT_IOERR;
 		goto err_after_list;
 	}
+	sm_move(&truncate->orig->sm, TRUNC_SYNCED);
 
 	RaftHeapFree(segments);
 	truncate->status = 0;
@@ -115,7 +168,7 @@ static void uvTruncateAfterWorkCb(uv_work_t *work, int status)
 	}
 	tracef("clear truncate work");
 	uv->truncate_work.data = NULL;
-	RaftHeapFree(truncate);
+	truncate_done(truncate, truncate->status);
 	UvUnblock(uv);
 }
 
@@ -129,10 +182,12 @@ static void uvTruncateBarrierCb(struct UvBarrierReq *barrier)
 	/* Ensure that we don't invoke this callback more than once. */
 	barrier->cb = NULL;
 
+	sm_move(&truncate->orig->sm, TRUNC_BARRIER);
+
 	/* If we're closing, don't perform truncation at all and abort here. */
 	if (uv->closing) {
 		tracef("closing => don't truncate");
-		RaftHeapFree(truncate);
+		truncate_done(truncate, 0);
 		uvMaybeFireCloseCb(uv);
 		return;
 	}
@@ -155,7 +210,9 @@ static void uvTruncateBarrierCb(struct UvBarrierReq *barrier)
 	}
 }
 
-int UvTruncate(struct raft_io *io, raft_index index)
+int UvTruncate(struct raft_io *io,
+	       struct raft_io_truncate *orig,
+	       raft_index index)
 {
 	struct uv *uv;
 	struct uvTruncate *truncate;
@@ -170,6 +227,7 @@ int UvTruncate(struct raft_io *io, raft_index index)
 	assert(index > 0);
 	assert(index < uv->append_next_index);
 
+	sm_init(&orig->sm, trunc_invariant, NULL, trunc_states, "trunc", TRUNC_START);
 	truncate = RaftHeapMalloc(sizeof *truncate);
 	if (truncate == NULL) {
 		rv = RAFT_NOMEM;
@@ -180,6 +238,7 @@ int UvTruncate(struct raft_io *io, raft_index index)
 	truncate->barrier.data = truncate;
 	truncate->barrier.blocking = true;
 	truncate->barrier.cb = uvTruncateBarrierCb;
+	truncate->orig = orig;
 
 	/* Make sure that we wait for any inflight writes to finish and then
 	 * close the current segment. */
@@ -194,6 +253,7 @@ err_after_req_alloc:
 	RaftHeapFree(truncate);
 err:
 	assert(rv != 0);
+	sm_fail(&orig->sm, TRUNC_FAIL, rv);
 	return rv;
 }
 

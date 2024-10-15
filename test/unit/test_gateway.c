@@ -52,11 +52,10 @@ struct connection {
 	for (i = 0; i < N_SERVERS; i++) {                               \
 		struct connection *c = &f->connections[i];              \
 		struct config *config;                                  \
-		struct id_state seed = { { 1 } };                       \
 		config = CLUSTER_CONFIG(i);                             \
 		config->page_size = 512;                                \
 		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
-			      CLUSTER_RAFT(i), seed);                   \
+			      CLUSTER_RAFT(i)); \
 		c->handle.data = &c->context;                           \
 		rc = buffer__init(&c->buf1);                            \
 		munit_assert_int(rc, ==, 0);                            \
@@ -579,7 +578,7 @@ TEST_CASE(prepare, barrier_error, NULL)
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, prepare);
-	/* We rely on leader__barrier (called by handle_prepare) attempting
+	/* We rely on leader_barrier_v2 (called by handle_prepare) attempting
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(0, 1);
 	test_raft_heap_fault_enable();
@@ -948,6 +947,7 @@ TEST_CASE(exec, close_while_in_flight, NULL)
 	for (i = 0; i < 162; i++) {
 		EXEC("INSERT INTO test(n) VALUES(1)");
 	}
+
 
 	/* Trigger a second page cache flush to the WAL, and abort before it's
 	 * done. */
@@ -1985,7 +1985,7 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	f->request.db_id = 0;
 	f->request.sql = "INSERT INTO test VALUES(123)";
 	ENCODE(&f->request, exec_sql);
-	/* We rely on leader__barrier (called by handle_exec_sql) attempting
+	/* We rely on leader_barrier_v2 (called by handle_exec_sql) attempting
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(0, 1);
 	test_raft_heap_fault_enable();
@@ -2375,7 +2375,7 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
-	/* We rely on leader__barrier (called by handle_query_sql) attempting
+	/* We rely on leader_barrier_v2 (called by handle_query_sql) attempting
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(0, 1);
 	test_raft_heap_fault_enable();
