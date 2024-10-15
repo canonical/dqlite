@@ -88,12 +88,16 @@ TEST_MODULE(replication_v1);
 	}
 
 /* Submit an exec request using the I'th leader. */
-#define EXEC(I)                                                    \
-	{                                                          \
-		int rc2;                                           \
-		rc2 = leader__exec(LEADER(I), &f->req, f->stmt, 0, \
-				   fixture_exec_cb);               \
-		munit_assert_int(rc2, ==, 0);                      \
+#define EXEC(I) \
+	{ \
+		int rc2; \
+		rc2 = leader_exec_v2(LEADER(I), &f->req, f->stmt, \
+				     fixture_exec_cb); \
+		if (rc2 == LEADER_NOT_ASYNC) { \
+			fixture_exec_cb(&f->req, f->req.status); \
+		} else { \
+			munit_assert_int(rc2, ==, 0); \
+		} \
 	}
 
 /* Convenience to prepare, execute and finalize a statement. */
@@ -167,7 +171,7 @@ TEST_CASE(init, conn, NULL)
 
 /******************************************************************************
  *
- * leader__exec
+ * leader_exec_v2
  *
  ******************************************************************************/
 
@@ -349,33 +353,41 @@ static void execCb(struct exec *req, int status)
 	f->status = status;
 }
 
+static void fixture_exec(struct fixture *f, unsigned i)
+{
+	int rv;
+
+	rv = leader_exec_v2(LEADER(i), &f->req, f->stmt, execCb);
+	if (rv == LEADER_NOT_ASYNC) {
+		execCb(&f->req, f->req.status);
+		return;
+	}
+	munit_assert_int(rv, ==, 0);
+}
+
 TEST(replication, exec, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	int rv;
 
 	CLUSTER_ELECT(0);
 
 	PREPARE(0, "BEGIN");
-	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);
+	fixture_exec(f, 0);
 	CLUSTER_APPLIED(3);
-	munit_assert_int(rv, ==, 0);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
 	f->invoked = false;
 	FINALIZE;
 
 	PREPARE(0, "CREATE TABLE test (a  INT)");
-	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);
-	munit_assert_int(rv, ==, 0);
+	fixture_exec(f, 0);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
 	f->invoked = false;
 	FINALIZE;
 
 	PREPARE(0, "COMMIT");
-	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);
-	munit_assert_int(rv, ==, 0);
+	fixture_exec(f, 0);
 	munit_assert_false(f->invoked);
 	FINALIZE;
 
@@ -400,21 +412,18 @@ TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	struct config *config = CLUSTER_CONFIG(0);
-	int rv;
 
 	config->checkpoint_threshold = 3;
 
 	CLUSTER_ELECT(0);
 
 	PREPARE(0, "CREATE TABLE test (n  INT)");
-	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);
-	munit_assert_int(rv, ==, 0);
+	fixture_exec(f, 0);
 	CLUSTER_APPLIED(4);
 	FINALIZE;
 
 	PREPARE(0, "INSERT INTO test(n) VALUES(1)");
-	rv = leader__exec(LEADER(0), &f->req, f->stmt, 0, execCb);
-	munit_assert_int(rv, ==, 0);
+	fixture_exec(f, 0);
 	CLUSTER_APPLIED(6);
 	FINALIZE;
 
