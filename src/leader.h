@@ -41,7 +41,7 @@ struct apply {
 
 struct leader {
 	struct db *db;          /* Database the connection. */
-	uint64_t flags;
+	bool readonly;
 	sqlite3 *conn;          /* Underlying SQLite connection. */
 	struct raft *raft;      /* Raft instance. */
 	struct exec *exec;      /* Exec request in progress, if any. */

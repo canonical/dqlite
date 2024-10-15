@@ -35,8 +35,6 @@ void gateway__init(struct gateway *g,
 
 void gateway__leader_close(struct gateway *g, int reason)
 {
-	bool allow_stale;
-
 	if (g == NULL || g->leader == NULL) {
 		tracef("gateway:%p or gateway->leader are NULL", g);
 		return;
@@ -44,8 +42,7 @@ void gateway__leader_close(struct gateway *g, int reason)
 
 	/* If the client has opted into reading potentially stale data, don't
 	 * shut down the connection unnecessarily when we lost leadership. */
-	allow_stale = g->leader->flags & DQLITE_OPEN_ALLOW_STALE;
-	if (allow_stale && reason == RAFT_LEADERSHIPLOST) {
+	if (g->leader->readonly && reason == RAFT_LEADERSHIPLOST) {
 		return;
 	}
 
@@ -196,46 +193,17 @@ static void failure(struct handle *req, int code, const char *message)
 	req->cb(req, 0, DQLITE_RESPONSE_FAILURE, 0);
 }
 
-static struct leader *gw_get_readonly(const struct gateway *g,
-				      uint64_t db_id,
-				      struct handle *req)
+static struct leader *gw_get_leader(const struct gateway *g,
+				    uint64_t db_id,
+				    struct handle *req)
 {
 	struct leader *l = g->leader;
-	bool opened_readonly;
 
 	if (db_id != 0 || l == NULL) {
 		failure(req, SQLITE_NOTFOUND, "no database opened");
 		return NULL;
-	}
-	opened_readonly = l->flags & DQLITE_OPEN_ALLOW_STALE;
-	if (raft_state(g->raft) != RAFT_LEADER && !opened_readonly) {
+	} else if (!l->readonly && raft_state(g->raft) != RAFT_LEADER) {
 		failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
-		return NULL;
-	}
-	return l;
-}
-
-static struct leader *gw_get_readwrite(const struct gateway *g,
-				       uint64_t db_id,
-				       struct handle *req)
-{
-	struct leader *l = g->leader;
-	bool opened_readonly;
-
-	if (db_id != 0 || l == NULL) {
-		failure(req, SQLITE_NOTFOUND, "no database opened");
-		return NULL;
-	}
-	opened_readonly = l->flags & DQLITE_OPEN_ALLOW_STALE;
-	if (raft_state(g->raft) != RAFT_LEADER) {
-		if (req != NULL) {
-			failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
-		}
-		return NULL;
-	} else if (opened_readonly) {
-		if (req != NULL) {
-			failure(req, SQLITE_READONLY, "dqlite connection is readonly");
-		}
 		return NULL;
 	}
 	return l;
@@ -423,7 +391,6 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	struct stmt *stmt;
 	struct request_prepare request = { 0 };
 	struct leader *l;
-	bool conn_readonly;
 	int rc;
 
 	if (req->schema != DQLITE_PREPARE_STMT_SCHEMA_V0 &&
@@ -436,14 +403,9 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 		return rc;
 	}
 
-	conn_readonly = false;
-	l = gw_get_readwrite(g, request.db_id, NULL);
+	l = gw_get_leader(g, request.db_id, req);
 	if (l == NULL) {
-		conn_readonly = true;
-		l = gw_get_readonly(g, request.db_id, req);
-		if (l == NULL) {
-			return 0;
-		}
+		return 0;
 	}
 
 	rc = stmt__registry_add(&g->stmts, &stmt);
@@ -458,13 +420,12 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	req->stmt_id = stmt->id;
 	req->sql = request.sql;
 	g->req = req;
-	if (conn_readonly) {
-		/* XXX */
+	if (l->readonly) {
 		g->barrier.data = g;
-		prepare_barrier_cb(&g->barrier, 0);
-		return 0;
+		rc = LEADER_NOT_ASYNC;
+	} else {
+		rc = leader_barrier_v2(l, &g->barrier, prepare_barrier_cb);
 	}
-	rc = leader_barrier_v2(g->leader, &g->barrier, prepare_barrier_cb);
 	if (rc == LEADER_NOT_ASYNC) {
 		prepare_barrier_cb(&g->barrier, 0);
 	} else if (rc != 0) {
@@ -554,8 +515,11 @@ static int handle_exec(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-	l = gw_get_readwrite(g, request.db_id, req);
+	l = gw_get_leader(g, request.db_id, req);
 	if (l == NULL) {
+		return 0;
+	} else if (l->readonly) {
+		failure(req, SQLITE_READONLY, "dqlite connection is readonly");
 		return 0;
 	}
 
@@ -678,8 +642,6 @@ static int handle_query(struct gateway *g, struct handle *req)
 	struct request_query request = { 0 };
 	int tuple_format;
 	struct leader *l;
-	bool conn_readonly;
-	bool stmt_readonly;
 	int rv;
 
 	switch (req->schema) {
@@ -702,22 +664,11 @@ static int handle_query(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-	conn_readonly = false;
-	l = gw_get_readwrite(g, request.db_id, NULL);
+	l = gw_get_leader(g, request.db_id, req);
 	if (l == NULL) {
-		conn_readonly = true;
-		l = gw_get_readonly(g, request.db_id, req);
-		if (l == NULL) {
-			return 0;
-		}
-	}
-	LOOKUP_STMT(request.stmt_id);
-	stmt_readonly = sqlite3_stmt_readonly(stmt->stmt);
-	if (!ERGO(conn_readonly, stmt_readonly)) {
-		failure(req, SQLITE_READONLY, "dqlite connection is readonly");
 		return 0;
 	}
-
+	LOOKUP_STMT(request.stmt_id);
 	FAIL_IF_CHECKPOINTING;
 
 	rv = bind__params(stmt->stmt, cursor, tuple_format);
@@ -726,32 +677,35 @@ static int handle_query(struct gateway *g, struct handle *req)
 		failure(req, rv, "bind parameters");
 		return 0;
 	}
+
 	req->stmt_id = stmt->id;
 	g->req = req;
 
-	if (conn_readonly) {
-		/* XXX */
-		g->barrier.data = g;
-		query_barrier_cb(&g->barrier, 0);
-		rv = 0;
-	} else if (stmt_readonly) {
-		rv = leader_barrier_v2(g->leader, &g->barrier, query_barrier_cb);
-		if (rv == LEADER_NOT_ASYNC) {
-			query_barrier_cb(&g->barrier, 0);
-			rv = 0;
+	if (!sqlite3_stmt_readonly(stmt->stmt)) {
+		if (l->readonly) {
+			failure(req, SQLITE_READONLY, "dqlite connection is readonly");
+			return 0;
 		}
-	} else {
-		rv = leader_exec_v2(g->leader, &g->exec, stmt->stmt,
-				    modifying_query_exec_cb);
+		rv = leader_exec_v2(l, &g->exec, stmt->stmt, modifying_query_exec_cb);
 		if (rv == LEADER_NOT_ASYNC) {
 			modifying_query_exec_cb(&g->exec, g->exec.status);
-			rv = 0;
 		}
+		return 0;
 	}
-	if (rv != 0) {
+
+	if (l->readonly) {
+		g->barrier.data = g;
+		rv = LEADER_NOT_ASYNC;
+	} else {
+		rv = leader_barrier_v2(l, &g->barrier, query_barrier_cb);
+	}
+	if (rv == LEADER_NOT_ASYNC) {
+		query_barrier_cb(&g->barrier, 0);
+	} else if (rv != 0) {
 		g->req = NULL;
 		return rv;
 	}
+
 	return 0;
 }
 
@@ -764,7 +718,7 @@ static int handle_finalize(struct gateway *g, struct handle *req)
 	int rv;
 
 	START_V0(finalize, empty);
-	l = gw_get_readonly(g, request.db_id, req);
+	l = gw_get_leader(g, request.db_id, req);
 	if (l == NULL) {
 		return 0;
 	}
@@ -917,8 +871,11 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 		return rc;
 	}
 
-	l = gw_get_readwrite(g, request.db_id, req);
+	l = gw_get_leader(g, request.db_id, req);
 	if (l == NULL) {
+		return 0;
+	} else if (l->readonly) {
+		failure(req, SQLITE_READONLY, "dqlite connection is readonly");
 		return 0;
 	}
 
@@ -926,7 +883,7 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	req->sql = request.sql;
 	req->exec_count = 0;
 	g->req = req;
-	rc = leader_barrier_v2(g->leader, &g->barrier, exec_sql_barrier_cb);
+	rc = leader_barrier_v2(l, &g->barrier, exec_sql_barrier_cb);
 	if (rc == LEADER_NOT_ASYNC) {
 		exec_sql_barrier_cb(&g->barrier, 0);
 	} else if (rc != 0) {
@@ -969,7 +926,6 @@ static void query_sql_barrier_cb(struct barrier *barrier, int status)
 	const char *tail;
 	sqlite3_stmt *tail_stmt;
 	int tuple_format;
-	struct leader *l;
 	int rv;
 
 	if (status != 0) {
@@ -1019,11 +975,9 @@ static void query_sql_barrier_cb(struct barrier *barrier, int status)
 	req->stmt = stmt;
 	g->req = req;
 
-	if (sqlite3_stmt_readonly(stmt)) {
-		query_batch(g);
-	} else {
-		l = gw_get_readwrite(g, req->db_id, req);
-		if (l == NULL) {
+	if (!sqlite3_stmt_readonly(stmt)) {
+		if (g->leader->readonly) {
+			failure(req, SQLITE_READONLY, "dqlite connection is readonly");
 			return;
 		}
 		rv = leader_exec_v2(g->leader, &g->exec, stmt,
@@ -1035,7 +989,10 @@ static void query_sql_barrier_cb(struct barrier *barrier, int status)
 			g->req = NULL;
 			failure(req, rv, "leader exec");
 		}
+		return;
 	}
+
+	query_batch(g);
 }
 
 static int handle_query_sql(struct gateway *g, struct handle *req)
@@ -1044,7 +1001,6 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct request_query_sql request = { 0 };
 	struct leader *l;
-	bool conn_readonly;
 	int rv;
 
 	/* Fail early if the schema version isn't recognized. */
@@ -1059,27 +1015,22 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-	conn_readonly = false;
-	l = gw_get_readwrite(g, request.db_id, NULL);
+	l = gw_get_leader(g, request.db_id, req);
 	if (l == NULL) {
-		conn_readonly = true;
-		l = gw_get_readonly(g, request.db_id, req);
-		if (l == NULL) {
-			return 0;
-		}
+		return 0;
 	}
 
 	FAIL_IF_CHECKPOINTING;
 
 	req->sql = request.sql;
 	g->req = req;
-	if (conn_readonly) {
-		g->barrier.data = g;
-		query_sql_barrier_cb(&g->barrier, 0);
-		return 0;
-	}
 
-	rv = leader_barrier_v2(g->leader, &g->barrier, query_sql_barrier_cb);
+	if (l->readonly) {
+		g->barrier.data = g;
+		rv = LEADER_NOT_ASYNC;
+	} else {
+		rv = leader_barrier_v2(g->leader, &g->barrier, query_sql_barrier_cb);
+	}
 	if (rv == LEADER_NOT_ASYNC) {
 		query_sql_barrier_cb(&g->barrier, 0);
 	} else if (rv != 0) {

@@ -186,11 +186,11 @@ static void handleCb(struct handle *req,
 		ASSERT_CALLBACK(0, DB);   \
 	}
 
-#define OPEN_ALLOW_STALE \
+#define OPEN_READONLY \
 	{ \
 		struct request_open open; \
 		open.filename = "test"; \
-		open.flags = DQLITE_OPEN_ALLOW_STALE; \
+		open.flags = DQLITE_OPEN_READONLY; \
 		open.vfs = ""; \
 		ENCODE(&open, open); \
 		HANDLE(OPEN); \
@@ -692,7 +692,7 @@ TEST_CASE(prepare, non_leader_ok, NULL)
 
 	CLUSTER_ELECT(0);
 	SELECT(1);
-	OPEN_ALLOW_STALE;
+	OPEN_READONLY;
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, prepare);
@@ -1228,14 +1228,14 @@ TEST_CASE(exec, unexpectedRow, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(exec, not_leader_never_okay, NULL)
+TEST_CASE(exec, readonly, NULL)
 {
 	struct exec_fixture *f = data;
 	uint64_t stmt_id;
 	(void)params;
 	CLUSTER_ELECT(0);
 	SELECT(1);
-	OPEN_ALLOW_STALE;
+	OPEN_READONLY;
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -1243,7 +1243,7 @@ TEST_CASE(exec, not_leader_never_okay, NULL)
 	HANDLE(EXEC);
 	WAIT;
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
+	ASSERT_FAILURE(SQLITE_READONLY, "dqlite connection is readonly");
 	return MUNIT_OK;
 }
 
@@ -1732,8 +1732,8 @@ TEST_CASE(query, close_while_in_flight, NULL)
 }
 
 /* A non-leader serves readonly QUERY requests for a database that was opened
- * with the ALLOW_STALE flag. */
-TEST_CASE(query, allow_stale, NULL)
+ * with the READONLY flag. */
+TEST_CASE(query, non_leader_readonly, NULL)
 {
 	(void)params;
 	struct query_fixture *f = data;
@@ -1743,7 +1743,7 @@ TEST_CASE(query, allow_stale, NULL)
 
 	CLUSTER_APPLIED(4);
 	SELECT(1);
-	OPEN_ALLOW_STALE;
+	OPEN_READONLY;
 	PREPARE("SELECT n FROM test");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -1760,8 +1760,8 @@ TEST_CASE(query, allow_stale, NULL)
 }
 
 /* A non-leader will not serve a QUERY request that modifies the database, even
- * if opened with the ALLOW_STALE flag. */
-TEST_CASE(query, allow_stale_modifying, NULL)
+ * if opened with the READONLY flag. */
+TEST_CASE(query, modifying_on_readonly_conn, NULL)
 {
 	(void)params;
 	struct query_fixture *f = data;
@@ -1769,7 +1769,7 @@ TEST_CASE(query, allow_stale_modifying, NULL)
 
 	CLUSTER_APPLIED(4);
 	SELECT(1);
-	OPEN_ALLOW_STALE;
+	OPEN_READONLY;
 	PREPARE("INSERT INTO test (n) VALUES (17)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -1830,7 +1830,7 @@ TEST_CASE(finalize, not_leader, NULL)
 	(void)params;
 	CLUSTER_ELECT(0);
 	SELECT(1);
-	OPEN_ALLOW_STALE;
+	OPEN_READONLY;
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -2030,19 +2030,19 @@ TEST_CASE(exec_sql, manyParams, NULL)
 	return MUNIT_OK;
 }
 
-TEST_CASE(exec_sql, not_leader_never_ok, NULL)
+TEST_CASE(exec_sql, readonly, NULL)
 {
 	struct exec_sql_fixture *f = data;
 	(void)params;
 
 	SELECT(1);
-	OPEN_ALLOW_STALE;
+	OPEN_READONLY;
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
+	ASSERT_FAILURE(SQLITE_READONLY, "dqlite connection is readonly");
 	return MUNIT_OK;
 }
 
@@ -2434,8 +2434,8 @@ TEST_CASE(query_sql, nonemptyTail, NULL)
 }
 
 /* A non-leader serves readonly QUERY_SQL requests for a database that was
- * opened with the ALLOW_STALE flag. */
-TEST_CASE(query_sql, allow_stale, NULL)
+ * opened with the READONLY flag. */
+TEST_CASE(query_sql, non_leader_readonly, NULL)
 {
 	(void)params;
 	struct query_sql_fixture *f = data;
@@ -2444,7 +2444,7 @@ TEST_CASE(query_sql, allow_stale, NULL)
 
 	CLUSTER_APPLIED(4);
 	SELECT(1);
-	OPEN_ALLOW_STALE;
+	OPEN_READONLY;
 	f->request.db_id = 0;
 	f->request.sql = "SELECT * FROM test";
 	ENCODE(&f->request, query_sql);
@@ -2460,21 +2460,21 @@ TEST_CASE(query_sql, allow_stale, NULL)
 }
 
 /* A non-leader will not serve a QUERY_SQL request that modifies the database,
- * even if opened with the ALLOW_STALE flag. */
-TEST_CASE(query_sql, allow_stale_modifying, NULL)
+ * even if opened with the READONLY flag. */
+TEST_CASE(query_sql, modifying_on_readonly_conn, NULL)
 {
 	(void)params;
 	struct query_sql_fixture *f = data;
 
 	CLUSTER_APPLIED(4);
 	SELECT(1);
-	OPEN_ALLOW_STALE;
+	OPEN_READONLY;
 	f->request.db_id = 0;
 	f->request.sql = "INSERT INTO test (n) VALUES (17)";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
+	ASSERT_FAILURE(SQLITE_READONLY, "dqlite connection is readonly");
 	return MUNIT_OK;
 }
 
