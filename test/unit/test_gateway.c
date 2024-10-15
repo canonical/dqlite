@@ -1776,7 +1776,7 @@ TEST_CASE(query, allow_stale_modifying, NULL)
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
+	ASSERT_FAILURE(SQLITE_READONLY, "dqlite connection is readonly");
 	return MUNIT_OK;
 }
 

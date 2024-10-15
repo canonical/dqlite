@@ -56,6 +56,7 @@ struct connection {
 		rc = buffer__init(&c->response);                           \
 		munit_assert_int(rc, ==, 0);                               \
 		open.filename = "test";                                    \
+		open.flags = 0; \
 		open.vfs = "";                                             \
 		ENCODE(c, &open, open);                                    \
 		HANDLE(c, OPEN);                                           \

@@ -180,6 +180,7 @@ void gateway__close(struct gateway *g)
 /* Encode fa failure response and invoke the request callback */
 static void failure(struct handle *req, int code, const char *message)
 {
+	tracef("failure %s", message);
 	struct response_failure failure;
 	size_t n;
 	char *cursor;
@@ -227,10 +228,14 @@ static struct leader *gw_get_readwrite(const struct gateway *g,
 	}
 	opened_readonly = l->flags & DQLITE_OPEN_ALLOW_STALE;
 	if (raft_state(g->raft) != RAFT_LEADER) {
-		failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
+		if (req != NULL) {
+			failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
+		}
 		return NULL;
 	} else if (opened_readonly) {
-		failure(req, SQLITE_READONLY, "dqlite connection is readonly");
+		if (req != NULL) {
+			failure(req, SQLITE_READONLY, "dqlite connection is readonly");
+		}
 		return NULL;
 	}
 	return l;
@@ -418,6 +423,7 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	struct stmt *stmt;
 	struct request_prepare request = { 0 };
 	struct leader *l;
+	bool conn_readonly;
 	int rc;
 
 	if (req->schema != DQLITE_PREPARE_STMT_SCHEMA_V0 &&
@@ -430,9 +436,14 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 		return rc;
 	}
 
-	l = gw_get_readonly(g, request.db_id, req);
+	conn_readonly = false;
+	l = gw_get_readwrite(g, request.db_id, NULL);
 	if (l == NULL) {
-		return 0;
+		conn_readonly = true;
+		l = gw_get_readonly(g, request.db_id, req);
+		if (l == NULL) {
+			return 0;
+		}
 	}
 
 	rc = stmt__registry_add(&g->stmts, &stmt);
@@ -447,6 +458,12 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	req->stmt_id = stmt->id;
 	req->sql = request.sql;
 	g->req = req;
+	if (conn_readonly) {
+		/* XXX */
+		g->barrier.data = g;
+		prepare_barrier_cb(&g->barrier, 0);
+		return 0;
+	}
 	rc = leader_barrier_v2(g->leader, &g->barrier, prepare_barrier_cb);
 	if (rc == LEADER_NOT_ASYNC) {
 		prepare_barrier_cb(&g->barrier, 0);
@@ -713,7 +730,10 @@ static int handle_query(struct gateway *g, struct handle *req)
 	g->req = req;
 
 	if (conn_readonly) {
-		rv = eager_query_stub();
+		/* XXX */
+		g->barrier.data = g;
+		query_barrier_cb(&g->barrier, 0);
+		rv = 0;
 	} else if (stmt_readonly) {
 		rv = leader_barrier_v2(g->leader, &g->barrier, query_barrier_cb);
 		if (rv == LEADER_NOT_ASYNC) {
@@ -949,6 +969,7 @@ static void query_sql_barrier_cb(struct barrier *barrier, int status)
 	const char *tail;
 	sqlite3_stmt *tail_stmt;
 	int tuple_format;
+	struct leader *l;
 	int rv;
 
 	if (status != 0) {
@@ -1001,6 +1022,10 @@ static void query_sql_barrier_cb(struct barrier *barrier, int status)
 	if (sqlite3_stmt_readonly(stmt)) {
 		query_batch(g);
 	} else {
+		l = gw_get_readwrite(g, req->db_id, req);
+		if (l == NULL) {
+			return;
+		}
 		rv = leader_exec_v2(g->leader, &g->exec, stmt,
 				    modifying_query_sql_exec_cb);
 		if (rv == LEADER_NOT_ASYNC) {
@@ -1046,13 +1071,14 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 
 	FAIL_IF_CHECKPOINTING;
 
+	req->sql = request.sql;
+	g->req = req;
 	if (conn_readonly) {
-		prepare_transient_and_query_readonly_stub();
+		g->barrier.data = g;
+		query_sql_barrier_cb(&g->barrier, 0);
 		return 0;
 	}
 
-	req->sql = request.sql;
-	g->req = req;
 	rv = leader_barrier_v2(g->leader, &g->barrier, query_sql_barrier_cb);
 	if (rv == LEADER_NOT_ASYNC) {
 		query_sql_barrier_cb(&g->barrier, 0);
