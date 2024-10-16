@@ -84,4 +84,17 @@ enum {
 	DQLITE_RESPONSE_METADATA
 };
 
+/**
+ * Flags for the OPEN request.
+ */
+enum {
+
+	/* This flag has two effects on the server: first, client requests to
+	 * modify the target database will be denied; second, client requests
+	 * to read the target database will be accepted even when the server is
+	 * not the leader, and the connection will not be closed when the
+	 * server loses leadership. */
+	DQLITE_OPEN_READONLY = 1 << 0,
+};
+
 #endif /* DQLITE_PROTOCOL_H_ */
