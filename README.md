@@ -97,7 +97,7 @@ library and headers as follows:
 
 ```
 $ autoreconf -i
-$ ./configure --enable-build-raft
+$ ./configure
 $ make
 $ sudo make install
 ```
@@ -112,12 +112,8 @@ to enable the linker to find `libdqlite.so`. To install to a different prefix,
 replace the configure step with something like
 
 ```
-$ ./configure --enable-build-raft --prefix=/usr
+$ ./configure --prefix=/usr
 ```
-
-The `--enable-build-raft` option causes dqlite to use its bundled Raft
-implementation instead of linking to an external libraft; the latter is a
-legacy configuration that should not be used for new development.
 
 Building for static linking
 ---------------------------
@@ -141,7 +137,7 @@ The `contrib/build-static.sh` script demonstrates building and
 testing dqlite with all dependencies (including libc) statically
 linked.
 
-Usage Notes
+Usage notes
 -----------
 
 Detailed tracing will be enabled when the environment variable
