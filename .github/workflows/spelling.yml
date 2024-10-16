@@ -1,0 +1,64 @@
+name: Check Spelling
+
+# Minimal workflow structure:
+#
+# on:
+#   push:
+#     ...
+#   pull_request_target:
+#     ...
+# jobs:
+#   # you only want the spelling job, all others should be omitted
+#   spelling:
+#     # remove `security-events: write` and `use_sarif: 1`
+#     # remove `experimental_apply_changes_via_bot: 1`
+#     ... otherwise adjust the `with:` as you wish
+
+on:
+  push:
+    branches:
+    - "**"
+    tags-ignore:
+    - "**"
+  pull_request_target:
+    branches:
+    - "**"
+    types:
+    - 'opened'
+    - 'reopened'
+    - 'synchronize'
+  issue_comment:
+    types:
+    - 'created'
+
+jobs:
+  check:
+    name: Check Spelling
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      followup: ${{ steps.spelling.outputs.followup }}
+    runs-on: ubuntu-latest
+    if: ${{ contains(github.event_name, 'pull_request') || github.event_name == 'push' }}
+    concurrency:
+      group: spelling-${{ github.event.pull_request.number || github.ref }}
+      # note: If you use only_check_changed_files, you do not want cancel-in-progress
+      cancel-in-progress: true
+    steps:
+    - name: check-spelling
+      id: spelling
+      uses: check-spelling/check-spelling@main
+      with:
+        suppress_push_for_open_pull_request: ${{ github.actor != 'dependabot[bot]' && 1 }}
+        checkout: true
+        check_file_names: 1
+        spell_check_this: check-spelling/spell-check-this@prerelease
+        post_comment: 0
+        use_magic_file: 1
+        report-timing: 1
+        warnings: bad-regex,binary-file,deprecated-feature,large-file,limited-references,no-newline-at-eof,noisy-file,non-alpha-in-dictionary,token-is-substring,unexpected-line-ending,whitespace-in-dictionary,minified-file,unsupported-configuration,no-files-to-check
+        extra_dictionary_limit: 20
+        extra_dictionaries:
+          cspell:software-terms/dict/softwareTerms.txt
