@@ -467,7 +467,7 @@ static int exec_apply(struct exec *req)
 
 	rv = VfsPoll(vfs, db->path, &frames, &n);
 	if (rv != 0) {
-		return rv;
+		goto finish;
 	}
 	sm_move(&req->sm, EXEC_POLLED);
 	if (n == 0) {
