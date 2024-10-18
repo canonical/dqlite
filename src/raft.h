@@ -766,6 +766,28 @@ struct raft_transfer; /* Forward declaration */
 struct raft_log;
 
 /**
+ * Strategy to compute the amount of trailing entries to keep.
+ * This can be tuned with raft_set_snapshot_trailing_strategy
+ */
+enum {
+	/**
+	 * The static strategy is to just keep a fixed amount of entries
+	 * in the log cache. The number of entries can be tuned with 
+	 * @raft_set_snapshot_trailing. This is the default.
+	 */
+	RAFT_TRAILING_STRATEGY_STATIC,
+	
+	/**
+	 * The dynamic strategy computes the number of entries to keep by 
+	 * comparing the size held by each entry to the size of the snapshot.
+	 * The idea behind this is that if the entries are too big, streaming
+	 * the snapshot might be better. The number of entries is still limited
+	 * by the value set by @raft_set_snapshot_trailing.
+	 */
+	RAFT_TRAILING_STRATEGY_DYNAMIC,
+};
+
+/**
  * Hold and drive the state of a single raft server in a cluster.
  * When replacing reserved fields in the middle of this struct, you MUST use a
  * type with the same size and alignment requirements as the original type.
@@ -964,7 +986,10 @@ struct raft
 		unsigned trailing;  /* N. of trailing entries to retain */
 		struct raft_snapshot pending;    /* In progress snapshot */
 		struct raft_io_snapshot_put put; /* Store snapshot request */
-		uint64_t reserved[8];            /* Future use */
+		uint8_t trailing_strategy;
+		/* Future use */
+		uint8_t reserved2[7];
+		uint64_t reserved[7];
 	} snapshot;
 
 	/*
@@ -1107,11 +1132,16 @@ RAFT_API void raft_set_snapshot_threshold(struct raft *r, unsigned n);
 RAFT_API void raft_set_pre_vote(struct raft *r, bool enabled);
 
 /**
- * Number of outstanding log entries to keep in the log after a snapshot has
- * been taken. This avoids sending snapshots when a follower is behind by just a
- * few entries. The default is 128.
+ * Number of maximum outstanding log entries to keep in the log after a snapshot
+ * has been taken. This avoids sending snapshots when a follower is behind by just
+ * a few entries. The default is 2048.
  */
 RAFT_API void raft_set_snapshot_trailing(struct raft *r, unsigned n);
+
+/**
+ * Strategy to compute trailing amount. The default is RAFT_TRAILING_STRATEGY_STATIC.
+ */
+RAFT_API void raft_set_snapshot_trailing_strategy(struct raft *r, int strategy);
 
 /**
  * Set the maximum number of a catch-up rounds to try when replicating entries

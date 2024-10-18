@@ -4,6 +4,7 @@
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
+#include "src/raft.h"
 #ifdef __GLIBC__
 #include "error.h"
 #endif
@@ -1674,6 +1675,47 @@ static void takeSnapshotClose(struct raft *r, struct raft_snapshot *s)
 	r->fsm->snapshot_finalize(r->fsm, &s->bufs, &s->n_bufs);
 }
 
+
+static unsigned dynamicTrailingIndex(struct raft *r, struct raft_snapshot *snapshot) {
+	struct raft_log *l = r->log;
+	unsigned threshold = (unsigned)(l->front - l->back);
+	size_t size = 0;
+	unsigned i;
+
+	/** 
+	 * This should never happen as it would mean that the snapshot
+	 * contains no new entry (i.e. either the snapshot is empty
+	 * or equal to the previous one).
+	 */
+	assert(threshold > 0);
+	threshold = min(r->snapshot.threshold, threshold);
+
+	for (i = 0; i < snapshot->n_bufs; i++) {
+		size += snapshot->bufs[i].len;
+	}
+
+	for (i = 1; i <= threshold; i++) {
+		struct raft_entry* entry = &(l->entries[l->back - i]);
+		if (entry->buf.len > size) {
+			return i;
+		}
+		size -= entry->buf.len;
+	}
+
+	return threshold;
+}
+
+
+static unsigned trailingSize(struct raft *r, struct raft_snapshot *snapshot) {
+	switch (r->snapshot.trailing_strategy) {
+	case RAFT_TRAILING_STRATEGY_DYNAMIC:
+		return dynamicTrailingIndex(r, snapshot);
+	case RAFT_TRAILING_STRATEGY_STATIC:
+	default:
+		return r->snapshot.trailing;
+	}
+}
+
 static void takeSnapshotCb(struct raft_io_snapshot_put *req, int status)
 {
 	struct raft *r = req->data;
@@ -1702,7 +1744,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *req, int status)
 		 * an aborted configuration change. */
 		tracef("failed to backup last committed configuration.");
 	}
-	logSnapshot(r->log, snapshot->index, r->snapshot.trailing);
+	logSnapshot(r->log, snapshot->index, trailingSize(r, snapshot));
 out:
 	takeSnapshotClose(r, snapshot);
 	r->snapshot.pending.term = 0;
