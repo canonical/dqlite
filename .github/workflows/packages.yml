@@ -63,7 +63,11 @@ jobs:
             --newversion ${VERSION}~${TARGET}1 \
             "Automatic build from Github"
           debuild -S -sa -d -k${{ vars.PPA_PUBLIC_KEY }}
+          echo $(pwd)
+          ls
 
     - name: Upload to Launchpad
       run: |
+          echo $(pwd)
+          ls
           dput -U -u ppa:dqlite/dev *.changes
