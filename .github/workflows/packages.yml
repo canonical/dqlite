@@ -18,11 +18,6 @@ jobs:
     environment:
       name: ppa
     steps:
-    - name: Clone the repositories
-      run: |
-          git clone https://github.com/canonical/dqlite
-          git clone https://github.com/canonical/dqlite-ppa -b dqlite-lts --depth 1
-
     - uses: actions/checkout@v4
 
     - uses: actions/checkout@v4
