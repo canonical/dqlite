@@ -142,6 +142,6 @@ Usage notes
 
 Detailed tracing will be enabled when the environment variable
 `LIBDQLITE_TRACE` is set before startup.  The value of it can be in `[0..5]`
-range and reperesents a tracing level, where `0` means "no traces" emitted, `5`
+range and represents a tracing level, where `0` means "no traces" emitted, `5`
 enables minimum (FATAL records only), and `1` enables maximum verbosity (all:
 DEBUG, INFO, WARN, ERROR, FATAL records).
