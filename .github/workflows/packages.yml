@@ -29,6 +29,7 @@ jobs:
       with:
         repository: canonical/dqlite-ppa
         ref: dqlite-lts
+        path: dqlite-ppa
 
     - name: Setup dependencies
       run: |
@@ -56,6 +57,7 @@ jobs:
         DEBEMAIL: "dqlitebot@lists.canonical.com"
         TARGET: ${{ matrix.target }}
       run: |
+          cp -R dqlite-ppa/debian .
           VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
           dch --create \
             --distribution ${TARGET} \
