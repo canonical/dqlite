@@ -2,7 +2,7 @@ name: Build PPA source packages
 on:
   push:
     branches:
-      - master
+      - 'lts-1.17.x'
 jobs:
   build:
     if: github.repository == 'canonical/dqlite'
@@ -21,7 +21,7 @@ jobs:
     - name: Clone the repositories
       run: |
           git clone https://github.com/canonical/dqlite
-          git clone https://github.com/canonical/dqlite-ppa -b dqlite --depth 1
+          git clone https://github.com/canonical/dqlite-ppa -b dqlite-lts --depth 1
 
     - name: Setup dependencies
       run: |
@@ -54,7 +54,7 @@ jobs:
           VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
           dch --create \
             --distribution ${TARGET} \
-            --package dqlite \
+            --package dqlite1.17 \
             --newversion ${VERSION}~${TARGET}1 \
             "Automatic build from Github"
           debuild -S -sa -d -k${{ vars.PPA_PUBLIC_KEY }}
