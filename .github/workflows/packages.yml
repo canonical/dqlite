@@ -23,6 +23,13 @@ jobs:
           git clone https://github.com/canonical/dqlite
           git clone https://github.com/canonical/dqlite-ppa -b dqlite-lts --depth 1
 
+    - uses: actions/checkout@v4
+
+    - uses: actions/checkout@v4
+      with:
+        repository: canonical/dqlite-ppa
+        ref: dqlite-lts
+
     - name: Setup dependencies
       run: |
           sudo apt-get update -qq
@@ -49,9 +56,6 @@ jobs:
         DEBEMAIL: "dqlitebot@lists.canonical.com"
         TARGET: ${{ matrix.target }}
       run: |
-          echo Version $VERSION
-          cp -R dqlite-ppa/debian dqlite/
-          cd dqlite/
           VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
           dch --create \
             --distribution ${TARGET} \
