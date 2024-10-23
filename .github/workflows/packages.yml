@@ -49,6 +49,7 @@ jobs:
         DEBEMAIL: "dqlitebot@lists.canonical.com"
         TARGET: ${{ matrix.target }}
       run: |
+          echo Version $VERSION
           cp -R dqlite-ppa/debian dqlite/
           cd dqlite/
           VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
