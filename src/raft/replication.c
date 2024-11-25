@@ -1838,7 +1838,10 @@ int replicationApply(struct raft *r)
 			tracef("replicationApply - ENTRY NULL");
 			return 0;
 		}
-		struct sm *entry_sm = log_get_entry_sm(r->log, entry->term, index);
+		raft_term entry_sm_term = entry->term;
+		raft_index entry_sm_index = index;
+		struct sm *entry_sm = log_get_entry_sm(r->log, entry_sm_term,
+						       entry_sm_index);
 		assert(entry_sm != NULL);
 
 		assert(entry->type == RAFT_COMMAND ||
@@ -1865,6 +1868,11 @@ int replicationApply(struct raft *r)
 		}
 
 		if (rv == 0) {
+			/* applyCommand() may change raft log thus the reference
+			 * to the entry_sm may be no longer valid. */
+			entry_sm = log_get_entry_sm(r->log, entry_sm_term,
+						    entry_sm_index);
+			assert(entry_sm != NULL);
 			sm_move(entry_sm, ENTRY_APPLIED);
 		} else {
 			break;
