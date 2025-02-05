@@ -421,6 +421,14 @@ static struct raft_entry *entryAt(struct raft_log *l, size_t i)
 	return &l->entries[positionAt(l, i)];
 }
 
+const struct raft_entry *logEntryAt(struct raft_log *l, size_t i)
+{
+	if (i < logNumEntries(l)) {
+		return entryAt(l, i);
+	}
+	return NULL;
+}
+
 void logClose(struct raft_log *l)
 {
 	void *batch = NULL; /* Last batch that has been freed */

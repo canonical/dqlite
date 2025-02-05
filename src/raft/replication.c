@@ -1677,22 +1677,21 @@ static void takeSnapshotClose(struct raft *r, struct raft_snapshot *s)
 
 static unsigned dynamicTrailingIndex(struct raft *r, struct raft_snapshot *snapshot) {
 	struct raft_log *l = r->log;
-	size_t snapshot_size = 0;
-	unsigned trailing = 0;
-	unsigned i;
+	size_t snapshot_size = 0, num_entries = logNumEntries(l);
+	unsigned trailing, i;
 	/** 
 	 * This should never happen as it would mean that the snapshot
 	 * contains no new entry (i.e. either the snapshot is empty
 	 * or equal to the previous one).
 	 */
-	assert(l->front > l->back);
+	assert(num_entries > 0);
 
 	for (i = 0; i < snapshot->n_bufs; i++) {
 		snapshot_size += snapshot->bufs[i].len;
 	}
 
-	for (trailing = 1; l->back - trailing >= l->front; i++) {
-		struct raft_entry* entry = &(l->entries[l->back - trailing]);
+	for (trailing = 0; trailing < num_entries; trailing++) {
+		const struct raft_entry* entry = logEntryAt(l, num_entries - trailing - 1);
 		if (entry->buf.len > snapshot_size) {
 			break;
 		}

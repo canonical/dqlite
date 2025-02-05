@@ -116,6 +116,13 @@ raft_term logTermOf(struct raft_log *l, raft_index index);
  * there are no snapshots. */
 raft_index logSnapshotIndex(struct raft_log *l);
 
+/**
+ * Return the i'th entry in the log. The returned pointer remains valid only as
+ * long as no API that might delete the entry with the given index is invoked.
+ * Return #NULL if there is no such entry.
+ */
+const struct raft_entry *logEntryAt(struct raft_log *l, size_t i);
+
 /* Get the entry with the given index. The returned pointer remains valid only
  * as long as no API that might delete the entry with the given index is
  * invoked. Return #NULL if there is no such entry. */
