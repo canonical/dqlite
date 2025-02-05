@@ -4,7 +4,6 @@
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
-#include "src/raft.h"
 #ifdef __GLIBC__
 #include "error.h"
 #endif
