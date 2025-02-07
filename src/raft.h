@@ -780,9 +780,10 @@ enum {
 	/**
 	 * The dynamic strategy computes the number of entries to keep by 
 	 * comparing the size held by each entry to the size of the snapshot.
-	 * The idea behind this is that if the entries are too big, streaming
-	 * the snapshot might be better. The number of entries is still limited
-	 * by the value set by @raft_set_snapshot_trailing.
+	 * The idea behind this is that if the amount of memory (on-disk or RAM)
+	 * needed to store log entities exceeds the amount of memory for snapshot,
+	 * streaming the snapshot is more efficient. The number of entries is still
+	 * limited by the value set by @raft_set_snapshot_trailing.
 	 */
 	RAFT_TRAILING_STRATEGY_DYNAMIC,
 };

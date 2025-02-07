@@ -183,7 +183,6 @@ void raft_set_snapshot_trailing_strategy(struct raft *r, int strategy)
 		break;
 	default:
 		r->snapshot.trailing_strategy = RAFT_TRAILING_STRATEGY_STATIC;
-		break;
 	}
 }
 

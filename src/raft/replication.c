@@ -1675,16 +1675,16 @@ static void takeSnapshotClose(struct raft *r, struct raft_snapshot *s)
 }
 
 
-static unsigned dynamicTrailingIndex(struct raft *r, struct raft_snapshot *snapshot) {
+static unsigned dynamicTrailingIndex(struct raft *r, const struct raft_snapshot *snapshot) {
 	struct raft_log *l = r->log;
-	size_t snapshot_size = 0, num_entries = logNumEntries(l);
-	unsigned trailing, i;
+	size_t trailing, snapshot_size = 0, num_entries = logNumEntries(l);
+	unsigned i;
 	/** 
 	 * This should never happen as it would mean that the snapshot
 	 * contains no new entry (i.e. either the snapshot is empty
 	 * or equal to the previous one).
 	 */
-	assert(num_entries > 0);
+	PRE(num_entries > 0);
 
 	for (i = 0; i < snapshot->n_bufs; i++) {
 		snapshot_size += snapshot->bufs[i].len;
@@ -1699,12 +1699,12 @@ static unsigned dynamicTrailingIndex(struct raft *r, struct raft_snapshot *snaps
 	}
 
 	if (trailing < r->snapshot.threshold) {
-		trailing = r->snapshot.threshold;
+		return r->snapshot.threshold;
 	} else if (trailing > r->snapshot.trailing) {
-		trailing = r->snapshot.trailing;
+		return r->snapshot.trailing;
 	}
 
-	return trailing;
+	return (unsigned)trailing;
 }
 
 
