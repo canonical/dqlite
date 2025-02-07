@@ -98,35 +98,35 @@ void logStart(struct raft_log *l,
 	      raft_index start_index);
 
 /* Get the number of entries the log currently contains. */
-size_t logNumEntries(struct raft_log *l);
+size_t logNumEntries(const struct raft_log *l);
 
 /* Get the index of the last entry in the log. Return #0 if the log is empty. */
-raft_index logLastIndex(struct raft_log *l);
+raft_index logLastIndex(const struct raft_log *l);
 
 /* Get the term of the last entry in the log. Return #0 if the log is empty. */
-raft_term logLastTerm(struct raft_log *l);
+raft_term logLastTerm(const struct raft_log *l);
 
 /* Get the term of the entry with the given index. Return #0 if @index is *
  * greater than the last index of the log, or if it's lower than oldest index we
  * know the term of (either because it's outstanding or because it's the last
  * entry in the most recent snapshot). */
-raft_term logTermOf(struct raft_log *l, raft_index index);
+raft_term logTermOf(const struct raft_log *l, const raft_index index);
 
 /* Get the index of the last entry in the most recent snapshot. Return #0 if
  * there are no snapshots. */
-raft_index logSnapshotIndex(struct raft_log *l);
+raft_index logSnapshotIndex(const struct raft_log *l);
 
 /**
  * Return the i'th entry in the log. The returned pointer remains valid only as
  * long as no API that might delete the entry with the given index is invoked.
  * Return #NULL if there is no such entry.
  */
-const struct raft_entry *logEntryAt(struct raft_log *l, size_t i);
+const struct raft_entry *logEntryAt(const struct raft_log *l, const size_t i);
 
 /* Get the entry with the given index. The returned pointer remains valid only
  * as long as no API that might delete the entry with the given index is
  * invoked. Return #NULL if there is no such entry. */
-const struct raft_entry *logGet(struct raft_log *l, const raft_index index);
+const struct raft_entry *logGet(const struct raft_log *l, const raft_index index);
 
 /**
  * Retrieve a reference to the state machine for an entry, or NULL if there is

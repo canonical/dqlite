@@ -404,24 +404,24 @@ struct raft_log *logInit(void)
 }
 
 /* Return the index of the i'th entry in the log. */
-static raft_index indexAt(struct raft_log *l, size_t i)
+static raft_index indexAt(const struct raft_log *l, size_t i)
 {
 	return l->offset + i + 1;
 }
 
 /* Return the circular buffer position of the i'th entry in the log. */
-static size_t positionAt(struct raft_log *l, size_t i)
+static size_t positionAt(const struct raft_log *l, size_t i)
 {
 	return (l->front + i) % l->size;
 }
 
 /* Return the i'th entry in the log. */
-static struct raft_entry *entryAt(struct raft_log *l, size_t i)
+static struct raft_entry *entryAt(const struct raft_log *l, size_t i)
 {
 	return &l->entries[positionAt(l, i)];
 }
 
-const struct raft_entry *logEntryAt(struct raft_log *l, size_t i)
+const struct raft_entry *logEntryAt(const struct raft_log *l, const size_t i)
 {
 	if (i < logNumEntries(l)) {
 		return entryAt(l, i);
@@ -659,7 +659,7 @@ err:
 	return rv;
 }
 
-size_t logNumEntries(struct raft_log *l)
+size_t logNumEntries(const struct raft_log *l)
 {
 	assert(l != NULL);
 
@@ -672,7 +672,7 @@ size_t logNumEntries(struct raft_log *l)
 	return l->size - l->front + l->back;
 }
 
-raft_index logLastIndex(struct raft_log *l)
+raft_index logLastIndex(const struct raft_log *l)
 {
 	/* If there are no entries in the log, but there is a snapshot available
 	 * check that it's last index is consistent with the offset. */
@@ -686,7 +686,7 @@ raft_index logLastIndex(struct raft_log *l)
  *
  * If no entry with the given index is in the log return the size of the entries
  * array. */
-static size_t locateEntry(struct raft_log *l, const raft_index index)
+static size_t locateEntry(const struct raft_log *l, const raft_index index)
 {
 	size_t n = logNumEntries(l);
 
@@ -700,7 +700,7 @@ static size_t locateEntry(struct raft_log *l, const raft_index index)
 	return positionAt(l, (size_t)((index - 1) - l->offset));
 }
 
-raft_term logTermOf(struct raft_log *l, const raft_index index)
+raft_term logTermOf(const struct raft_log *l, const raft_index index)
 {
 	size_t i;
 	assert(index > 0);
@@ -727,19 +727,19 @@ raft_term logTermOf(struct raft_log *l, const raft_index index)
 	return l->entries[i].term;
 }
 
-raft_index logSnapshotIndex(struct raft_log *l)
+raft_index logSnapshotIndex(const struct raft_log *l)
 {
 	return l->snapshot.last_index;
 }
 
-raft_term logLastTerm(struct raft_log *l)
+raft_term logLastTerm(const struct raft_log *l)
 {
 	raft_index last_index;
 	last_index = logLastIndex(l);
 	return last_index > 0 ? logTermOf(l, last_index) : 0;
 }
 
-const struct raft_entry *logGet(struct raft_log *l, const raft_index index)
+const struct raft_entry *logGet(const struct raft_log *l, const raft_index index)
 {
 	size_t i;
 
