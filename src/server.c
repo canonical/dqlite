@@ -367,9 +367,10 @@ int dqlite_node_set_failure_domain(dqlite_node *n, unsigned long long code)
 	return 0;
 }
 
-int dqlite_node_set_snapshot_params(dqlite_node *n,
-				    unsigned snapshot_threshold,
-				    unsigned snapshot_trailing)
+int dqlite_node_set_snapshot_params_v2(dqlite_node *n,
+					unsigned snapshot_threshold,
+					unsigned snapshot_trailing,
+					int      trailing_strategy)
 {
 	if (n->running) {
 		return DQLITE_MISUSE;
@@ -386,9 +387,27 @@ int dqlite_node_set_snapshot_params(dqlite_node *n,
 		return DQLITE_MISUSE;
 	}
 
+	switch (trailing_strategy) {
+	case DQLITE_SNAPSHOT_TRAILING_STATIC:
+		raft_set_snapshot_trailing_strategy(&n->raft, RAFT_TRAILING_STRATEGY_STATIC);
+		break;
+	case DQLITE_SNAPSHOT_TRAILING_DYNAMIC:
+		raft_set_snapshot_trailing_strategy(&n->raft, RAFT_TRAILING_STRATEGY_DYNAMIC);
+		break;
+	default:
+		return DQLITE_MISUSE;
+	}
+
 	raft_set_snapshot_threshold(&n->raft, snapshot_threshold);
 	raft_set_snapshot_trailing(&n->raft, snapshot_trailing);
 	return 0;
+}
+
+int dqlite_node_set_snapshot_params(dqlite_node *n,
+					unsigned snapshot_threshold,
+					unsigned snapshot_trailing)
+{
+	return dqlite_node_set_snapshot_params_v2(n, snapshot_threshold, snapshot_trailing, DQLITE_SNAPSHOT_TRAILING_STATIC);
 }
 
 #define KB(N) (1024 * N)

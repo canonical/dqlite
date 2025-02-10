@@ -370,6 +370,37 @@ DQLITE_API int dqlite_node_set_network_latency_ms(dqlite_node *t,
 DQLITE_API int dqlite_node_set_failure_domain(dqlite_node *n,
 					      unsigned long long code);
 
+enum {
+	DQLITE_SNAPSHOT_TRAILING_STATIC = 0,
+	DQLITE_SNAPSHOT_TRAILING_DYNAMIC = 1,
+};
+
+/**
+ * !!! Deprecated, use `dqlite_node_set_snapshot_params_v2` instead which also includes
+ * trailing computation strategy. !!!
+ *
+ * Set the snapshot parameters for this node.
+ *
+ * This function determines how frequently a node will snapshot the state
+ * of the database and how many raft log entries will be kept around after
+ * a snapshot has been taken.
+ *
+ * `snapshot_threshold` : Determines the frequency of taking a snapshot, the
+ * lower the number, the higher the frequency.
+ *
+ * `snapshot_trailing` : Determines the maximum amount of log entries kept around after
+ * taking a snapshot. Lowering this number decreases disk and memory footprint
+ * but increases the chance of having to send a full snapshot (instead of a
+ * number of log entries to a node that has fallen behind).
+ *
+ * By default this function uses static trailing computation.
+ *
+ * This function must be called before calling dqlite_node_start().
+ */
+DQLITE_API int dqlite_node_set_snapshot_params(dqlite_node *n,
+					       unsigned snapshot_threshold,
+					       unsigned snapshot_trailing);
+
 /**
  * Set the snapshot parameters for this node.
  *
@@ -380,16 +411,30 @@ DQLITE_API int dqlite_node_set_failure_domain(dqlite_node *n,
  * `snapshot_threshold` : Determines the frequency of taking a snapshot, the
  * lower the number, the higher the frequency.
  *
- * `snapshot_trailing` : Determines the amount of log entries kept around after
+ * `snapshot_trailing` : Determines the maximum amount of log entries kept around after
  * taking a snapshot. Lowering this number decreases disk and memory footprint
  * but increases the chance of having to send a full snapshot (instead of a
- * number of log entries to a node that has fallen behind.
+ * number of log entries to a node that has fallen behind).
+ *
+ * `trailing_strategy` : Determines the strategy used to compute the number of
+ * trailing entries to keep after a snapshot has been taken. Valid values are
+ * `DQLITE_SNAPSHOT_TRAILING_STATIC` and `DQLITE_SNAPSHOT_TRAILING_DYNAMIC`.
+ *
+ * `DQLITE_SNAPSHOT_TRAILING_STATIC` will use directly the value of `snapshot_trailing`
+ * as the number of entries to keep after a snapshot has been taken.
+ *
+ * `DQLITE_SNAPSHOT_TRAILING_DYNAMIC` will compute the number of entries to keep
+ * by comparing the size of the snapshot to the size of the entries. The idea behind
+ * this is that if the amount of memory (on-disk or RAM) needed to store log entities
+ * exceeds the amount of memory for snapshot, streaming the snapshot is more efficient.
+ * The amount of entries kept is still capped at `snapshot_trailing`.
  *
  * This function must be called before calling dqlite_node_start().
  */
-DQLITE_API int dqlite_node_set_snapshot_params(dqlite_node *n,
+DQLITE_API int dqlite_node_set_snapshot_params_v2(dqlite_node *n,
 					       unsigned snapshot_threshold,
-					       unsigned snapshot_trailing);
+					       unsigned snapshot_trailing,
+					       int      trailing_strategy);
 
 /**
  * Set the block size used for performing disk IO when writing raft log segments

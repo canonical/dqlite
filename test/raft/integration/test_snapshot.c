@@ -1,3 +1,4 @@
+#include "../../../src/raft/log.h"
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
 
@@ -60,6 +61,14 @@ static void tearDown(void *data)
         for (i = 0; i < CLUSTER_N; i++) {                              \
             raft_set_install_snapshot_timeout(CLUSTER_RAFT(i), VALUE); \
         }                                                              \
+    }
+
+#define SET_SNAPSHOT_STRATEGY(VALUE)                                     \
+    {                                                                    \
+        unsigned i;                                                      \
+        for (i = 0; i < CLUSTER_N; i++) {                                \
+            raft_set_snapshot_trailing_strategy(CLUSTER_RAFT(i), VALUE); \
+        }                                                                \
     }
 
 static int ioMethodSnapshotPutFail(struct raft_io *raft_io,
@@ -856,5 +865,112 @@ TEST(snapshot, newTermWhileInstalling, setUp, tearDown, 0, NULL)
     CLUSTER_DEPOSE;
     CLUSTER_ELECT(1);
     CLUSTER_STEP_UNTIL_ELAPSED(1000);
+    return MUNIT_OK;
+}
+
+
+static char *fsm_dynamic_trailing_version[] = {"1", NULL};
+static MunitParameterEnum fsm_snapshot_dynamic_trailing_params[] = {
+    {CLUSTER_FSM_VERSION_PARAM, fsm_dynamic_trailing_version},
+    {NULL, NULL},
+};
+
+/* At least `threshold` entries are kept in the log */
+TEST(snapshot,
+     dynamicTrailingKeepsThresholdEntries,
+     setUp,
+     tearDown,
+     0,
+     fsm_snapshot_dynamic_trailing_params)
+{
+    const int threshold = 10;
+    const int trailing = 100;
+    struct fixture *f = data;
+    (void)params;
+
+    SET_SNAPSHOT_THRESHOLD(threshold);
+    SET_SNAPSHOT_TRAILING(trailing);
+    SET_SNAPSHOT_STRATEGY(RAFT_TRAILING_STRATEGY_DYNAMIC);
+    CLUSTER_SET_DISK_LATENCY(1, 2000);
+
+    /* Apply a few of entries, to force a snapshot to be taken. */
+    const struct raft *r = CLUSTER_RAFT(1);
+    while (!server_taking_snapshot(&f->cluster, (void *)r)) {
+        CLUSTER_MAKE_PROGRESS;
+    }
+
+    /* Step the cluster until server 1 takes a snapshot */
+    CLUSTER_STEP_UNTIL(server_taking_snapshot, (void *)r, 3000);
+    CLUSTER_STEP_UNTIL(server_snapshot_done, (void *)r, 5000);
+
+    munit_assert_int(logNumEntries(r->log), >=, threshold);
+
+    /* Make sure the AppendEntries are applied and we can make progress */
+    CLUSTER_STEP_UNTIL_APPLIED(1, 9, 5000);
+    CLUSTER_MAKE_PROGRESS;
+    CLUSTER_MAKE_PROGRESS;
+    CLUSTER_STEP_UNTIL_APPLIED(1, 11, 5000);
+    return MUNIT_OK;
+}
+
+static int fsmBigSnapshot(MUNIT_UNUSED struct raft_fsm *fsm,
+                          struct raft_buffer *bufs[],
+                          unsigned *n_bufs)
+{
+    struct raft_buffer *buf;
+
+    *n_bufs = 1;
+
+    *bufs = raft_malloc(sizeof **bufs);
+    if (*bufs == NULL) {
+        return RAFT_NOMEM;
+    }
+
+    buf = &(*bufs)[0];
+    buf->len = 1024;
+    buf->base = raft_malloc(buf->len);
+    if (buf->base == NULL) {
+        return RAFT_NOMEM;
+    }
+    return RAFT_RESULT_OK;
+}
+
+/* At least `threshold` entries are kept in the log */
+TEST(snapshot,
+     dynamicTrailingKeepsAtMostTrailingEntries,
+     setUp,
+     tearDown,
+     0,
+     fsm_snapshot_dynamic_trailing_params)
+{
+    const int threshold = 20;
+    const int trailing = 10;
+    struct fixture *f = data;
+    (void)params;
+
+    // Replace the snapshot function with one that returns a big snapshot
+    f->fsms[CLUSTER_LEADER].snapshot = fsmBigSnapshot;
+
+    SET_SNAPSHOT_THRESHOLD(threshold);
+    SET_SNAPSHOT_TRAILING(trailing);
+    SET_SNAPSHOT_STRATEGY(RAFT_TRAILING_STRATEGY_DYNAMIC);
+    CLUSTER_SET_DISK_LATENCY(CLUSTER_LEADER, 2000);
+
+    /* Apply a few of entries, to force a snapshot to be taken. */
+    const struct raft *r = CLUSTER_RAFT(CLUSTER_LEADER);
+    while (!server_taking_snapshot(&f->cluster, (void *)r)) {
+        CLUSTER_MAKE_PROGRESS;
+    }
+
+    /* Step the cluster until server 1 takes a snapshot */
+    CLUSTER_STEP_UNTIL(server_snapshot_done, (void *)r, 5000);
+
+    munit_assert_int(logNumEntries(r->log), <=, trailing);
+
+    /* Make sure the AppendEntries are applied and we can make progress */
+    CLUSTER_STEP_UNTIL_APPLIED(CLUSTER_LEADER, 9, 5000);
+    CLUSTER_MAKE_PROGRESS;
+    CLUSTER_MAKE_PROGRESS;
+    CLUSTER_STEP_UNTIL_APPLIED(CLUSTER_LEADER, 11, 5000);
     return MUNIT_OK;
 }

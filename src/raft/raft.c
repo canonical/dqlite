@@ -1,6 +1,7 @@
 #include "../raft.h"
 
 #include <limits.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "../tracing.h"
@@ -94,6 +95,7 @@ int raft_init(struct raft *r,
 	r->snapshot.pending.term = 0;
 	r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
 	r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
+	r->snapshot.trailing_strategy = RAFT_TRAILING_STRATEGY_STATIC;
 	r->snapshot.put.data = NULL;
 	r->close_cb = NULL;
 	memset(r->errmsg, 0, sizeof r->errmsg);
@@ -170,6 +172,18 @@ void raft_set_snapshot_threshold(struct raft *r, unsigned n)
 void raft_set_snapshot_trailing(struct raft *r, unsigned n)
 {
 	r->snapshot.trailing = n;
+}
+
+void raft_set_snapshot_trailing_strategy(struct raft *r, int strategy)
+{
+	switch (strategy) {
+	case RAFT_TRAILING_STRATEGY_STATIC:
+	case RAFT_TRAILING_STRATEGY_DYNAMIC:
+		r->snapshot.trailing_strategy = (uint8_t)strategy;
+		break;
+	default:
+		r->snapshot.trailing_strategy = RAFT_TRAILING_STRATEGY_STATIC;
+	}
 }
 
 void raft_set_max_catch_up_rounds(struct raft *r, unsigned n)
