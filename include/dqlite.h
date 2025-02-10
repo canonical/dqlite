@@ -424,11 +424,10 @@ DQLITE_API int dqlite_node_set_snapshot_params(dqlite_node *n,
  * as the number of entries to keep after a snapshot has been taken.
  *
  * `DQLITE_SNAPSHOT_TRAILING_DYNAMIC` will compute the number of entries to keep
- * by comparing the size of the snapshot to the size of the entries. The idea is
- * that sending a snapshot can be cheaper than sending a big number of entries for
- * small databases. The amount of entries kept is still capped at `snapshot_trailing`.
- *
- * By default this function uses static trailing computation.
+ * by comparing the size of the snapshot to the size of the entries. The idea behind
+ * this is that if the amount of memory (on-disk or RAM) needed to store log entities
+ * exceeds the amount of memory for snapshot, streaming the snapshot is more efficient.
+ * The amount of entries kept is still capped at `snapshot_trailing`.
  *
  * This function must be called before calling dqlite_node_start().
  */
