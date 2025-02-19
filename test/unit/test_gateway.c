@@ -1079,7 +1079,7 @@ TEST_CASE(exec, vacuum, NULL)
 		"INSERT INTO test(n)        "
 		"SELECT n FROM seq          "
 	)
-	EXEC("DELETE FROM test LIMIT 5000");
+	EXEC("DELETE FROM test WHERE n <= 5000");
 
 	PREPARE("VACUUM");
 	f->request.db_id = 0;
@@ -1122,7 +1122,7 @@ TEST_CASE(exec, vacuum_variants, NULL)
 	};
 	for (size_t i = 0; i < sizeof(vacuum_variants) / sizeof(vacuum_variants[0]); i++) {
 		/* Create some free pages */
-		EXEC("DELETE FROM test LIMIT 1000");
+		EXEC("DELETE FROM test WHERE n < (SELECT MIN(n) + 1000 FROM test)");
 		PREPARE(vacuum_variants[i]);
 		f->request.db_id = 0;
 		f->request.stmt_id = stmt_id;
