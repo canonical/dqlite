@@ -1156,7 +1156,7 @@ TEST_CASE(exec, vacuum_into_fails, NULL)
 		"INSERT INTO test(n)        "
 		"SELECT n FROM seq          "
 	)
-	EXEC("DELETE FROM test LIMIT 5000");
+	EXEC("DELETE FROM test WHERE n <= 5000");
 
 	const char* vacuum_variants[] = {
 		" VACUUM \t\n  INTO 'other_db.sqlite' \r\t\n",
