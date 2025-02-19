@@ -637,7 +637,6 @@ struct vfsFile
 	enum vfsFileType type;        /* Associated file (main db or WAL). */
 	struct vfsDatabase *database; /* Underlying database content. */
 	int flags;                    /* Flags passed to xOpen */
-	sqlite3_file *temp;           /* For temp-files, actual VFS. */
 	sqlite3_file *db;             /* For on-disk DB files, actual VFS. */
 };
 
@@ -764,14 +763,6 @@ static int vfsFileClose(sqlite3_file *file)
 	int rc = SQLITE_OK;
 	struct vfsFile *f = (struct vfsFile *)file;
 	struct vfs *v = (struct vfs *)(f->vfs);
-
-	if (f->temp != NULL) {
-		/* Close the actual temporary file. */
-		rc = f->temp->pMethods->xClose(f->temp);
-		sqlite3_free(f->temp);
-
-		return rc;
-	}
 
 	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
 		rc = vfsDeleteDatabase(v, f->database->name);
@@ -933,11 +924,6 @@ static int vfsFileRead(sqlite3_file *file,
 	assert(offset >= 0);
 	assert(f != NULL);
 
-	if (f->temp != NULL) {
-		/* Read from the actual temporary file. */
-		return f->temp->pMethods->xRead(f->temp, buf, amount, offset);
-	}
-
 	switch (f->type) {
 		case VFS__DATABASE:
 			rv = vfsDatabaseRead(f->database, buf, amount, offset);
@@ -1087,11 +1073,6 @@ static int vfsFileWrite(sqlite3_file *file,
 	assert(buf != NULL);
 	assert(amount > 0);
 	assert(f != NULL);
-
-	if (f->temp != NULL) {
-		/* Write to the actual temporary file. */
-		return f->temp->pMethods->xWrite(f->temp, buf, amount, offset);
-	}
 
 	switch (f->type) {
 		case VFS__DATABASE:
@@ -1813,16 +1794,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	 */
 	assert(!exclusive || create);
 
-	v = (struct vfs *)(vfs->pAppData);
-	f = (struct vfsFile *)file;
-
-	/* This tells SQLite to not call Close() in case we return an error. */
-	f->base.pMethods = 0;
-	f->temp = NULL;
-
-	/* Save the flags */
-	f->flags = flags;
-
 	/* From SQLite documentation:
 	 *
 	 * If the zFilename parameter to xOpen is a NULL pointer then xOpen
@@ -1836,24 +1807,17 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		/* Open an actual temporary file. */
 		vfs = sqlite3_vfs_find("unix");
 		assert(vfs != NULL);
-
-		f->temp = sqlite3_malloc(vfs->szOsFile);
-		if (f->temp == NULL) {
-			v->error = ENOENT;
-			return SQLITE_CANTOPEN;
-		}
-		rc = vfs->xOpen(vfs, NULL, f->temp, flags, out_flags);
-		if (rc != SQLITE_OK) {
-			sqlite3_free(f->temp);
-			return rc;
-		}
-
-		f->base.pMethods = &vfsFileMethods;
-		f->vfs = NULL;
-		f->database = NULL;
-
-		return SQLITE_OK;
+		return vfs->xOpen(vfs, filename, file, flags, out_flags);
 	}
+
+	v = (struct vfs *)(vfs->pAppData);
+	f = (struct vfsFile *)file;
+
+	/* This tells SQLite to not call Close() in case we return an error. */
+	f->base.pMethods = 0;
+
+	/* Save the flags */
+	f->flags = flags;
 
 	/* Search if the database object exists already. */
 	database = vfsDatabaseLookup(v, filename);
@@ -2067,15 +2031,18 @@ int VfsInit(struct sqlite3_vfs *vfs, const char *name)
 	tracef("vfs init");
 
 	vfs->iVersion = 2;
-	vfs->szOsFile = sizeof(struct vfsFile);
 	vfs->mxPathname = VFS__MAX_PATHNAME;
 	vfs->pNext = NULL;
 
-	vfs->pAppData = vfsCreate();
-	if (vfs->pAppData == NULL) {
+	struct vfs *v = vfsCreate();
+	if (v == NULL) {
 		return DQLITE_NOMEM;
 	}
-
+	vfs->pAppData = v;
+	vfs->szOsFile = sizeof(struct vfsFile);
+	if (vfs->szOsFile < v->base_vfs->szOsFile) {
+		vfs->szOsFile = v->base_vfs->szOsFile;
+	}
 	vfs->xOpen = vfsOpen;
 	vfs->xDelete = vfsDelete;
 	vfs->xAccess = vfsAccess;
@@ -2817,13 +2784,6 @@ static int vfsDiskFileClose(sqlite3_file *file)
 	struct vfsFile *f = (struct vfsFile *)file;
 	struct vfs *v = (struct vfs *)(f->vfs);
 
-	if (f->temp != NULL) {
-		/* Close the actual temporary file. */
-		rc = f->temp->pMethods->xClose(f->temp);
-		sqlite3_free(f->temp);
-		return rc;
-	}
-
 	if (f->db != NULL) {
 		rc = f->db->pMethods->xClose(f->db);
 		sqlite3_free(f->db);
@@ -2852,11 +2812,6 @@ static int vfsDiskFileRead(sqlite3_file *file,
 	assert(buf != NULL);
 	assert(amount > 0);
 	assert(f != NULL);
-
-	if (f->temp != NULL) {
-		/* Read from the actual temporary file. */
-		return f->temp->pMethods->xRead(f->temp, buf, amount, offset);
-	}
 
 	if (f->db != NULL) {
 		/* Read from the actual database file. */
@@ -2929,11 +2884,6 @@ static int vfsDiskFileWrite(sqlite3_file *file,
 	assert(buf != NULL);
 	assert(amount > 0);
 	assert(f != NULL);
-
-	if (f->temp != NULL) {
-		/* Write to the actual temporary file. */
-		return f->temp->pMethods->xWrite(f->temp, buf, amount, offset);
-	}
 
 	if (f->db != NULL) {
 		/* Write to the actual database file. */
@@ -3218,15 +3168,6 @@ static int vfsDiskOpen(sqlite3_vfs *vfs,
 	assert(!exclusive || create);
 
 	v = (struct vfs *)(vfs->pAppData);
-	f = (struct vfsFile *)file;
-
-	/* This tells SQLite to not call Close() in case we return an error. */
-	f->base.pMethods = 0;
-	f->temp = NULL;
-	f->db = NULL;
-
-	/* Save the flags */
-	f->flags = flags;
 
 	/* From SQLite documentation:
 	 *
@@ -3239,25 +3180,17 @@ static int vfsDiskOpen(sqlite3_vfs *vfs,
 		assert(flags & SQLITE_OPEN_DELETEONCLOSE);
 
 		/* Open an actual temporary file. */
-		vfs = v->base_vfs;
-
-		f->temp = sqlite3_malloc(vfs->szOsFile);
-		if (f->temp == NULL) {
-			v->error = ENOENT;
-			return SQLITE_CANTOPEN;
-		}
-		rc = vfs->xOpen(vfs, NULL, f->temp, flags, out_flags);
-		if (rc != SQLITE_OK) {
-			sqlite3_free(f->temp);
-			return rc;
-		}
-
-		f->base.pMethods = &vfsDiskFileMethods;
-		f->vfs = NULL;
-		f->database = NULL;
-
-		return SQLITE_OK;
+		return v->base_vfs->xOpen(v->base_vfs, filename, file, flags, out_flags);
 	}
+
+	f = (struct vfsFile *)file;
+
+	/* This tells SQLite to not call Close() in case we return an error. */
+	f->base.pMethods = 0;
+	f->db = NULL;
+
+	/* Save the flags */
+	f->flags = flags;
 
 	/* Search if the database object exists already. */
 	database = vfsDatabaseLookup(v, filename);
