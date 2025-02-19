@@ -1094,6 +1094,49 @@ TEST_CASE(exec, vacuum, NULL)
 	return MUNIT_OK;
 }
 
+
+/* Succesfully vacuum a database */
+TEST_CASE(exec, vacuum_variants, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INTEGER PRIMARY KEY NOT NULL)");
+	EXEC("WITH RECURSIVE seq(n) AS ("
+		"    SELECT 1 UNION ALL     "
+		"    SELECT n+1 FROM seq    "
+		"    WHERE  n < 10000       "
+		")                          "
+		"INSERT INTO test(n)        "
+		"SELECT n FROM seq          "
+	)
+
+	const char* vacuum_variants[] = {
+		" VACUUM \r\t\n ",
+		" VACUUM \r\t\n main \t\n",
+		" VACUUM \r\t\n 'main' \t\n",
+		" VACUUM \r\t\n \"main\" \t\n",
+	};
+	for (size_t i = 0; i < sizeof(vacuum_variants) / sizeof(vacuum_variants[0]); i++) {
+		/* Create some free pages */
+		EXEC("DELETE FROM test LIMIT 1000");
+		PREPARE(vacuum_variants[i]);
+		f->request.db_id = 0;
+		f->request.stmt_id = stmt_id;
+		ENCODE(&f->request, exec);
+		HANDLE(EXEC);
+		WAIT;
+		ASSERT_CALLBACK(0, RESULT);
+		DECODE(&f->response, result);
+		munit_assert_int(f->response.last_insert_id, ==, 10000);
+		munit_assert_int(f->response.rows_affected, ==,   1000);
+	}
+	return MUNIT_OK;
+}
+
 /* Fail to vacume into a file */
 TEST_CASE(exec, vacuum_into_fails, NULL)
 {
@@ -1115,13 +1158,21 @@ TEST_CASE(exec, vacuum_into_fails, NULL)
 	)
 	EXEC("DELETE FROM test LIMIT 5000");
 
-	PREPARE("VACUUM INTO 'should_fail'");
-	f->request.db_id = 0;
-	f->request.stmt_id = stmt_id;
-	ENCODE(&f->request, exec);
-	HANDLE(EXEC);
-	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	const char* vacuum_variants[] = {
+		" VACUUM \t\n  INTO 'other_db.sqlite' \r\t\n",
+		" VACUUM \t\n main \t\n INTO 'other_db.sqlite' \r\t\n",
+		" VACUUM \t\n 'main' \t\n INTO 'other_db.sqlite' \r\t\n",
+		" VACUUM \t\n \"main\" \t\n INTO 'other_db.sqlite' \r\t\n",
+	};
+	for (size_t i = 0; i < sizeof(vacuum_variants) / sizeof(vacuum_variants[0]); i++) {
+		PREPARE("VACUUM INTO 'should_fail'");
+		f->request.db_id = 0;
+		f->request.stmt_id = stmt_id;
+		ENCODE(&f->request, exec);
+		HANDLE(EXEC);
+		WAIT;
+		ASSERT_CALLBACK(0, FAILURE);
+	}
 	return MUNIT_OK;
 }
 
