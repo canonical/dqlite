@@ -1,5 +1,6 @@
 #include <ctype.h>
 #include <sqlite3.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <strings.h>
@@ -464,9 +465,9 @@ static const char* skip_whitespace(const char* str) {
 
 struct vacuum_stmt {
     const char* schema;   // Pointer to the schema name (if any)
-    size_t schema_len;
+    ptrdiff_t schema_len;
     const char* target;   // Pointer to the target filename (if any)
-    size_t target_len;
+    ptrdiff_t target_len;
 };
 
 int parse_vacuum_stmt(const char* sql, struct vacuum_stmt* stmt) {
@@ -485,7 +486,7 @@ int parse_vacuum_stmt(const char* sql, struct vacuum_stmt* stmt) {
         sql++;
     }
 
-    size_t len = sql - start;
+    ptrdiff_t len = sql - start;
     sql = skip_whitespace(sql);
     
     stmt->schema = start;
