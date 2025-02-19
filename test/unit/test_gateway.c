@@ -1060,6 +1060,71 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 	return MUNIT_OK;
 }
 
+/* Succesfully vacuum a database */
+TEST_CASE(exec, vacuum, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Create some free pages */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INTEGER PRIMARY KEY NOT NULL)");
+	EXEC("WITH RECURSIVE seq(n) AS ("
+		"    SELECT 1 UNION ALL     "
+		"    SELECT n+1 FROM seq    "
+		"    WHERE  n < 10000       "
+		")                          "
+		"INSERT INTO test(n)        "
+		"SELECT n FROM seq          "
+	)
+	EXEC("DELETE FROM test LIMIT 5000");
+
+	PREPARE("VACUUM");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(0, RESULT);
+	DECODE(&f->response, result);
+	munit_assert_int(f->response.last_insert_id, ==, 10000);
+	munit_assert_int(f->response.rows_affected, ==,   5000);
+	return MUNIT_OK;
+}
+
+/* Fail to vacume into a file */
+TEST_CASE(exec, vacuum_into_fails, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Create some free pages */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INTEGER PRIMARY KEY NOT NULL)");
+	EXEC("WITH RECURSIVE seq(n) AS ("
+		"    SELECT 1 UNION ALL     "
+		"    SELECT n+1 FROM seq    "
+		"    WHERE  n < 10000       "
+		")                          "
+		"INSERT INTO test(n)        "
+		"SELECT n FROM seq          "
+	)
+	EXEC("DELETE FROM test LIMIT 5000");
+
+	PREPARE("VACUUM INTO 'should_fail'");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(0, FAILURE);
+	return MUNIT_OK;
+}
+
 /* A follower remains behind and needs to restore state from a snapshot. */
 TEST_CASE(exec, restore, NULL)
 {
