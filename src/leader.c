@@ -1,9 +1,5 @@
-#include <ctype.h>
-#include <sqlite3.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <strings.h>
 
 #include "../include/dqlite.h"
 
@@ -16,7 +12,6 @@
 #include "lib/sm.h"
 #include "lib/threadpool.h"
 #include "server.h"
-#include "stmt.h"
 #include "tracing.h"
 #include "utils.h"
 #include "vfs.h"
@@ -479,7 +474,6 @@ static int exec_apply(struct exec *req)
 	unsigned n;
 	unsigned i;
 	int rv;
-	
 
 	req->status = sqlite3_step(req->stmt);
 	sm_move(&req->sm, EXEC_STEPPED);
