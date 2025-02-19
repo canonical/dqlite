@@ -1951,7 +1951,7 @@ TEST_CASE(exec_sql, attach, NULL)
 	HANDLE(EXEC_SQL);
 	WAIT;
 	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_ERROR, "too many attached databases - max 0");
+	ASSERT_FAILURE(SQLITE_AUTH, "not authorized");
 	return MUNIT_OK;
 }
 

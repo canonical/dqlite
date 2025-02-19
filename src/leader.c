@@ -28,6 +28,21 @@ static bool barrier_invariant(const struct sm *sm, int prev)
 	return true;
 }
 
+static int dqlite_leader_authorizer(void *pUserData, int action, const char *third, const char *fourth, const char *fifth, const char *sixth) {
+	(void)pUserData;
+	(void)fourth;
+	(void)fifth;
+	(void)sixth;
+
+	if (action == SQLITE_ATTACH) {
+		// Only allow attaching temporary files
+		if (third != NULL && third[0] != '\0') {
+			return SQLITE_DENY;
+		}
+	}
+	return SQLITE_OK;
+}
+
 /* Open a SQLite connection and set it to leader replication mode. */
 static int openConnection(const char *filename,
 			  const char *vfs,
@@ -58,10 +73,8 @@ static int openConnection(const char *filename,
 	 * pair. Make sure that the client can't use ATTACH DATABASE to
 	 * break this assumption. We apply the same limit in open_follower_conn
 	 * in db.c.
-	 *
-	 * Note, 0 instead of 1 -- apparently the "initial database" is not
-	 * counted when evaluating this limit. */
-	sqlite3_limit(*conn, SQLITE_LIMIT_ATTACHED, 0);
+	 */
+	sqlite3_set_authorizer(*conn, dqlite_leader_authorizer, NULL);
 
 	/* Set the page size. */
 	sprintf(pragma, "PRAGMA page_size=%d", page_size);
@@ -456,81 +469,6 @@ static void exec_done(struct exec *req, int asyncness)
 
 static void exec_apply_cb(struct raft_apply *, int, void *);
 
-static const char* skip_whitespace(const char* str) {
-    while (*str && isspace(*str)) {
-        str++;
-    }
-    return str;
-}
-
-struct vacuum_stmt {
-    const char* schema;   // Pointer to the schema name (if any)
-    ptrdiff_t schema_len;
-    const char* target;   // Pointer to the target filename (if any)
-    ptrdiff_t target_len;
-};
-
-int parse_vacuum_stmt(const char* sql, struct vacuum_stmt* stmt) {
-	memset(stmt, 0, sizeof(*stmt));
-
-    sql = skip_whitespace(sql);
-    if (strncasecmp(sql, "VACUUM", 6) != 0) return SQLITE_ERROR;
-    sql = skip_whitespace(sql+6);
-
-    if (*sql == ';' || *sql == '\0') {
-        return SQLITE_OK;
-    }
-
-    const char* start = sql;
-    while (*sql && !isspace(*sql) && *sql != ';') {
-        sql++;
-    }
-
-    ptrdiff_t len = sql - start;
-    sql = skip_whitespace(sql);
-    
-    stmt->schema = start;
-    stmt->schema_len = len;
-
-    if (*sql == ';' || *sql == '\0') {
-        return SQLITE_OK;
-    }
-   
-    start = sql;
-    while (*sql && !isspace(*sql) && *sql != ';') {
-        sql++;
-    }
-    
-    stmt->target = (char*)start;
-    stmt->target_len = sql - start;
-	sql = skip_whitespace(sql);
-	if ((*sql != ';') && (*sql != '\0')) {
-		return SQLITE_ERROR;
-	}
-    return SQLITE_OK;
-}
-
-
-static int is_allowed_vacuum(struct sqlite3_stmt* stmt) {
-	struct vacuum_stmt vacuum;
-	if (parse_vacuum_stmt(sqlite3_sql(stmt), &vacuum) != SQLITE_OK) {
-		return 0;
-	}
-
-	bool main_target = 
-		// no-schema
-		((vacuum.target_len == 0) && (vacuum.schema_len == 0)) ||
-		// unquoted schema
-		(vacuum.schema_len == 4 && strncasecmp(vacuum.schema, "main", 4) == 0) ||
-		( // quoted schema
-			vacuum.schema_len == 6 && (
-				strncasecmp(vacuum.schema, "'main'", 6) == 0 ||
-				strncasecmp(vacuum.schema, "\"main\"", 6) == 0
-		));
-
-	return main_target;
-}
-
 static int exec_apply(struct exec *req)
 {
 	struct leader *l = req->leader;
@@ -542,13 +480,8 @@ static int exec_apply(struct exec *req)
 	unsigned i;
 	int rv;
 	
-	if (is_allowed_vacuum(req->stmt)) {
-		sqlite3_limit(sqlite3_db_handle(req->stmt), SQLITE_LIMIT_ATTACHED, 1);
-		req->status = sqlite3_step(req->stmt);
-		sqlite3_limit(sqlite3_db_handle(req->stmt), SQLITE_LIMIT_ATTACHED, 0);
-	} else {
-		req->status = sqlite3_step(req->stmt);
-	}
+
+	req->status = sqlite3_step(req->stmt);
 	sm_move(&req->sm, EXEC_STEPPED);
 
 	rv = VfsPoll(vfs, db->path, &frames, &n);
