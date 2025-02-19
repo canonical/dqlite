@@ -461,8 +461,14 @@ static int exec_apply(struct exec *req)
 	unsigned n;
 	unsigned i;
 	int rv;
-
-	req->status = sqlite3_step(req->stmt);
+	
+	if (sqlite3_stricmp(sqlite3_sql(req->stmt), "VACUUM") == 0) {
+		sqlite3_limit(sqlite3_db_handle(req->stmt), SQLITE_LIMIT_ATTACHED, 1);
+		req->status = sqlite3_step(req->stmt);
+		sqlite3_limit(sqlite3_db_handle(req->stmt), SQLITE_LIMIT_ATTACHED, 0);
+	} else {
+		req->status = sqlite3_step(req->stmt);
+	}
 	sm_move(&req->sm, EXEC_STEPPED);
 
 	rv = VfsPoll(vfs, db->path, &frames, &n);
