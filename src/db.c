@@ -60,7 +60,7 @@ int db__init(struct db *db, struct config *config, const char *filename)
 	db->follower = NULL;
 	db->tx_id = 0;
 	db->read_lock = 0;
-	queue_init(&db->leaders);
+	db->leaders = 0;
 	return 0;
 
 err_after_path_alloc:
@@ -73,7 +73,7 @@ err:
 
 void db__close(struct db *db)
 {
-	assert(queue_empty(&db->leaders));
+	assert(db->leaders == 0);
 	if (db->follower != NULL) {
 		int rc;
 		rc = sqlite3_close(db->follower);

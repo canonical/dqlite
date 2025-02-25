@@ -137,7 +137,7 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 
 	l->exec = NULL;
 	l->inflight = NULL;
-	queue_insert_tail(&db->leaders, &l->queue);
+	db->leaders++;
 	return 0;
 }
 
@@ -194,7 +194,8 @@ void leader__close(struct leader *l)
 	rc = sqlite3_close(l->conn);
 	assert(rc == 0);
 
-	queue_remove(&l->queue);
+	assert(l->db->leaders > 0);
+	l->db->leaders--;
 }
 
 /* A checkpoint command that fails to commit is not a huge issue.
