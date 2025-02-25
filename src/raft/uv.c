@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <uv.h>
 
 #include "../raft.h"
 #include "../tracing.h"
@@ -738,7 +739,7 @@ int raft_uv_init(struct raft_io *io,
 	uvSeedRand(uv);
 
 	/* Set the raft_io implementation. */
-	io->version = 2; /* future-proof'ing */
+	io->version = 3;
 	io->impl = uv;
 	io->init = uvInit;
 	io->close = uvClose;
@@ -756,6 +757,8 @@ int raft_uv_init(struct raft_io *io,
 	io->async_work = UvAsyncWork;
 	io->time = uvTime;
 	io->random = uvRandom;
+	io->timer_start = UvTimerStart;
+	io->timer_stop = UvTimerStop;
 
 	return 0;
 

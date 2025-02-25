@@ -101,6 +101,7 @@ enum {
 	SNAPSHOT_PUT,
 	SNAPSHOT_GET,
 	ASYNC_WORK,
+	TIMER,
 };
 
 /* Abstract base type for an asynchronous request submitted to the stub I/o
@@ -164,6 +165,12 @@ struct transmit
 	REQUEST;
 	struct raft_message message; /* Message to deliver */
 	int timer;                   /* Deliver after this n of msecs. */
+};
+
+struct timer {
+	REQUEST;
+	struct raft_timer *timer;
+	uint64_t repeat;
 };
 
 /* Information about a peer server. */
@@ -378,6 +385,15 @@ static void ioFlushAsyncWork(struct io *s, struct async_work *r)
 	raft_free(r);
 }
 
+static void ioFlushTimer(struct io *s, struct timer *r)
+{
+	if (r->repeat) {
+		r->completion_time = *s->time + r->repeat;
+		queue_insert_tail(&s->requests, &r->queue);
+	}
+	r->timer->cb(r->timer);
+}
+
 /* Search for the peer with the given ID. */
 static struct peer *ioGetPeer(struct io *io, raft_id id)
 {
@@ -521,6 +537,9 @@ static void ioFlushAll(struct io *io)
 				break;
 			case ASYNC_WORK:
 				ioFlushAsyncWork(io, (struct async_work *)r);
+				break;
+			case TIMER:
+				ioFlushTimer(io, (struct timer *)r);
 				break;
 			default:
 				assert(0);
@@ -779,6 +798,36 @@ static int ioMethodRandom(struct raft_io *raft_io, int min, int max)
 	}
 }
 
+int ioMethodTimerStart(struct raft_io *raft_io, struct raft_timer *req, uint64_t timeout, uint64_t repeat, raft_timer_cb cb)
+{
+	struct io *io = raft_io->impl;
+	struct timer *t;
+	t = raft_malloc(sizeof *t);
+	assert(t != NULL);
+	t->type = TIMER;
+	t->completion_time = *io->time + timeout;
+	t->timer = req;
+	t->repeat = repeat;
+
+	req->handle = t;
+	req->cb = cb;
+	queue_insert_tail(&io->requests, &t->queue);
+	return 0;
+}
+
+int ioMethodTimerStop(struct raft_io *raft_io, struct raft_timer *req)
+{
+	(void)raft_io;
+	struct timer *t = req->handle;
+	if (t == NULL) {
+		return 0;
+	}
+	queue_remove(&t->queue);
+	raft_free(t);
+	req->handle = NULL;
+	return 0;
+}
+
 /* Queue up a request which will be processed later, when io_stub_flush()
  * is invoked. */
 static int ioMethodSend(struct raft_io *raft_io,
@@ -953,7 +1002,7 @@ static int ioInit(struct raft_io *raft_io, unsigned index, raft_time *time)
 	io->n_append = 0;
 
 	raft_io->impl = io;
-	raft_io->version = 2;
+	raft_io->version = 3;
 	raft_io->init = ioMethodInit;
 	raft_io->close = ioMethodClose;
 	raft_io->start = ioMethodStart;
@@ -970,6 +1019,8 @@ static int ioInit(struct raft_io *raft_io, unsigned index, raft_time *time)
 	raft_io->snapshot_get = ioMethodSnapshotGet;
 	raft_io->time = ioMethodTime;
 	raft_io->random = ioMethodRandom;
+	raft_io->timer_start = ioMethodTimerStart;
+	raft_io->timer_stop = ioMethodTimerStop;
 
 	return 0;
 }
@@ -1485,6 +1536,10 @@ static void completeRequest(struct raft_fixture *f, unsigned i, raft_time t)
 			break;
 		case ASYNC_WORK:
 			ioFlushAsyncWork(io, (struct async_work *)r);
+			f->event->type = RAFT_FIXTURE_WORK;
+			break;
+		case TIMER:
+			ioFlushTimer(io, (struct timer *)r);
 			f->event->type = RAFT_FIXTURE_WORK;
 			break;
 		default:
