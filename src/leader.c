@@ -9,6 +9,7 @@
 #include "conn.h"
 #include "gateway.h"
 #include "leader.h"
+#include "lib/queue.h"
 #include "lib/sm.h"
 #include "lib/threadpool.h"
 #include "server.h"
@@ -137,6 +138,7 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 
 	l->exec = NULL;
 	l->inflight = NULL;
+	queue_init(&l->queue);
 	queue_insert_tail(&db->leaders, &l->queue);
 	return 0;
 }
