@@ -17,7 +17,8 @@ struct db
 	char *path;            /* Used for on-disk db */
 	uint32_t cookie;       /* Used to bind to the pool's thread */
 	sqlite3 *follower;     /* Follower connection */
-	queue leaders;         /* Open leader connections */
+	int leaders;           /* Open leader connections */
+	queue write_queue;     /* Queue of pending writers requests */
 	unsigned tx_id;        /* Current ongoing transaction ID, if any */
 	queue queue;           /* Prev/next database, used by the registry */
 	int read_lock;         /* Lock used by snapshots & checkpoints */
