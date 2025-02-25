@@ -118,6 +118,7 @@ libraft_la_SOURCES = \
   src/raft/uv_tcp.c \
   src/raft/uv_tcp_listen.c \
   src/raft/uv_tcp_connect.c \
+  src/raft/uv_timer.c \
   src/raft/uv_truncate.c \
   src/raft/uv_work.c \
   src/raft/uv_writer.c
@@ -304,6 +305,7 @@ raft_uv_integration_test_SOURCES = \
   test/raft/integration/test_uv_tcp_connect.c \
   test/raft/integration/test_uv_tcp_listen.c \
   test/raft/integration/test_uv_snapshot_put.c \
+  test/raft/integration/test_uv_timer.c \
   test/raft/integration/test_uv_truncate.c \
   test/raft/integration/test_uv_truncate_snapshot.c \
   test/raft/integration/test_uv_work.c
