@@ -1383,7 +1383,7 @@ RAFT_API int raft_timer_start(struct raft *r,
 
 /**
  * Stops a timer. If the timer wasn't started,
- * this is a noop.
+ * this is a
  */
 RAFT_API int raft_timer_stop(struct raft *r,
 				struct raft_timer *req);

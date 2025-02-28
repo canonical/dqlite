@@ -1,4 +1,5 @@
 #include "conn.h"
+#include "leader.h"
 #include "message.h"
 #include "protocol.h"
 #include "request.h"
@@ -71,7 +72,7 @@ static void gateway_handle_cb(struct handle *req,
 		return;
 	}
 
-	if (status != 0) {
+	if (status == SQLITE_IOERR_NOT_LEADER || status == SQLITE_IOERR_LEADERSHIP_LOST) {
 		tracef("gateway handle cb status %d", status);
 		goto abort;
 	}

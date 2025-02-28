@@ -246,13 +246,15 @@ TEST_CASE(exec, open, NULL)
 	EXEC(f->c1, f->stmt_id1);
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
-	ASSERT_CALLBACK(f->c2, 0, FAILURE);
+	ASSERT_CALLBACK(f->c2, SQLITE_BUSY, FAILURE);
 	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "database is locked");
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
 
 	return MUNIT_OK;
 }
+
+// TODO(marco6): add test where timeout != 0 with or without transaction
 
 /* If an exec request is already in progress on another leader connection,
  * SQLITE_BUSY is returned. */
@@ -272,7 +274,7 @@ TEST_CASE(exec, tx, NULL)
 	EXEC(f->c1, f->stmt_id1);
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
-	ASSERT_CALLBACK(f->c2, 0, FAILURE);
+	ASSERT_CALLBACK(f->c2, SQLITE_BUSY, FAILURE);
 	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "database is locked");
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
