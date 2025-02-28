@@ -122,11 +122,15 @@ static bool needsBarrier(struct leader *l)
 	       raft_last_applied(l->raft) < raft_last_index(l->raft);
 }
 
-int leader__init(struct leader *l, struct db *db, struct raft *raft)
+int leader_init(struct leader *l,
+		struct db *db,
+		uint64_t flags,
+		struct raft *raft)
 {
 	tracef("leader init");
 	int rc;
 	l->db = db;
+	l->readonly = flags & DQLITE_OPEN_READONLY;
 	l->raft = raft;
 	rc = openConnection(db->path, db->config->name, db->config->page_size,
 			    &l->conn);
