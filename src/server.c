@@ -760,6 +760,13 @@ int dqlite_node_enable_role_management(dqlite_node *n)
 	return 0;
 }
 
+int dqlite_node_set_busy_timeout(dqlite_node *n, unsigned msecs)
+{
+	n->config.busy_timeout = msecs;
+	return 0;
+}
+
+
 int dqlite_node_set_snapshot_compression(dqlite_node *n, bool enabled)
 {
 	return raft_uv_set_snapshot_compression(&n->raft_io, enabled);

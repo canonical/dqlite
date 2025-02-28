@@ -564,7 +564,7 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE_DATA(head, struct db, queue);
-		if (db->tx_id != 0 || db->read_lock) {
+		if (db->active_leader != NULL || db->read_lock) {
 			return RAFT_BUSY;
 		}
 		n_db++;
@@ -875,7 +875,7 @@ static int fsm__snapshot_disk(struct raft_fsm *fsm,
 	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE_DATA(head, struct db, queue);
-		if (db->tx_id != 0 || db->read_lock) {
+		if (db->active_leader != NULL || db->read_lock) {
 			return RAFT_BUSY;
 		}
 		n_db++;

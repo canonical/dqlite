@@ -432,7 +432,7 @@ TEST_CASE(open, error, twice, NULL)
 	ASSERT_CALLBACK(0, DB);
 	ENCODE(&f->request, open);
 	HANDLE(OPEN);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_BUSY, FAILURE);
 	ASSERT_FAILURE(SQLITE_BUSY,
 		       "a database for this connection is already open");
 	return MUNIT_OK;
@@ -527,7 +527,7 @@ TEST_CASE(prepare, invalid, NULL)
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
 	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
@@ -559,7 +559,7 @@ TEST_CASE(prepare, barrier_error, NULL)
 	PREPARE("CREATE TABLE test (n INT)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Submit a prepare request, forcing a barrier, which fails */
 	CLUSTER_ELECT(0);
@@ -570,7 +570,9 @@ TEST_CASE(prepare, barrier_error, NULL)
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(0, 1);
 	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_PREPARE, RAFT_NOMEM);
+	HANDLE_STATUS(DQLITE_REQUEST_PREPARE, RAFT_RESULT_OK);
+	WAIT;
+	ASSERT_CALLBACK(RAFT_NOMEM, FAILURE);
 	return MUNIT_OK;
 }
 
@@ -587,7 +589,7 @@ TEST_CASE(prepare, non_leader, NULL)
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 	return MUNIT_OK;
 }
@@ -603,7 +605,7 @@ TEST_CASE(prepare, nonempty_tail, NULL)
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "nonempty statement tail");
 	return MUNIT_OK;
 }
@@ -821,7 +823,7 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_re_elected, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
@@ -854,7 +856,7 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_other_elected, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Elect another leader and re-try */
@@ -890,7 +892,7 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
@@ -948,7 +950,7 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_other_elected, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 
 	/* Elect another leader and re-try */
 	CLUSTER_ELECT(1);
@@ -984,7 +986,7 @@ TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
 	PREPARE("COMMIT");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_LEADERSHIP_LOST, "disk I/O error");
 
 	/* Re-elect ourselves and re-try */
@@ -1016,7 +1018,7 @@ TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
 	PREPARE("ROLLBACK");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
@@ -1048,7 +1050,7 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 	PREPARE("ROLLBACK");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
@@ -1127,7 +1129,7 @@ TEST_CASE(exec, barrier_closing, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Now try to exec the other stmt (triggering a barrier) and close early
 	 */
@@ -1191,7 +1193,7 @@ TEST_CASE(exec, unexpectedRow, NULL)
 	ENCODE(&f->request, exec);
 	HANDLE(EXEC);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ROW, FAILURE);
 	ASSERT_FAILURE(SQLITE_ROW,
 		       "rows yielded when none expected for EXEC request");
 	return MUNIT_OK;
@@ -1512,7 +1514,7 @@ TEST_CASE(query, barrier, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Re-elect ourselves and issue a query request */
 	CLUSTER_ELECT(0);
@@ -1538,7 +1540,7 @@ TEST_CASE(query, barrierInFlightQuery, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Re-elect ourselves and issue a query request */
 	CLUSTER_ELECT(0);
@@ -1562,7 +1564,7 @@ TEST_CASE(query, barrierInFlightQuerySql, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Re-elect ourselves and issue a query request */
 	CLUSTER_ELECT(0);
@@ -1582,7 +1584,7 @@ TEST_CASE(query, barrierInFlightExec, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Re-elect ourselves and issue an exec request */
 	CLUSTER_ELECT(0);
@@ -1804,7 +1806,7 @@ TEST_CASE(exec_sql, invalid, NULL)
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
 	return MUNIT_OK;
 }
@@ -1834,7 +1836,7 @@ TEST_CASE(exec_sql, attach, NULL)
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "too many attached databases - max 0");
 	return MUNIT_OK;
 }
@@ -1862,7 +1864,7 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	PREPARE("CREATE TABLE test (n INT)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Submit an EXEC_SQL request, forcing a barrier, which fails */
 	CLUSTER_ELECT(0);
@@ -1873,7 +1875,9 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(0, 1);
 	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, RAFT_NOMEM);
+	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, RAFT_RESULT_OK);
+	WAIT;
+	ASSERT_CALLBACK(RAFT_NOMEM, FAILURE);
 	return MUNIT_OK;
 }
 
@@ -1997,7 +2001,7 @@ TEST_CASE(query_sql, invalid, NULL)
 	f->request.sql = "NOT SQL";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
 	return MUNIT_OK;
 }
@@ -2236,7 +2240,7 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	PREPARE("INSERT INTO test VALUES(123)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Submit a QUERY_SQL request, forcing a barrier, which fails */
 	CLUSTER_ELECT(0);
@@ -2247,7 +2251,9 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(0, 1);
 	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_NOMEM);
+	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_RESULT_OK);
+	WAIT;
+	ASSERT_CALLBACK(RAFT_NOMEM, FAILURE);
 	return MUNIT_OK;
 }
 
@@ -2296,7 +2302,7 @@ TEST_CASE(query_sql, nonemptyTail, NULL)
 	f->request.sql = "SELECT * FROM test; SELECT (n) FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "nonempty statement tail");
 	return MUNIT_OK;
 }
@@ -2336,7 +2342,7 @@ TEST_CASE(request_cluster, unrecognizedFormat, NULL)
 	f->request.format = 2;
 	ENCODE(&f->request, cluster);
 	HANDLE(CLUSTER);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(DQLITE_PARSE, FAILURE);
 	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized cluster format");
 	return MUNIT_OK;
 }
@@ -2375,7 +2381,7 @@ TEST_CASE(invalid, requestType, NULL)
 	(void)params;
 	ENCODE(&f->request, leader);
 	HANDLE_STATUS(123, 0);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(DQLITE_PARSE, FAILURE);
 	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized request type");
 	return MUNIT_OK;
 }

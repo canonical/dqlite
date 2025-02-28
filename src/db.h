@@ -12,16 +12,16 @@
 
 struct db
 {
-	struct config *config; /* Dqlite configuration */
-	char *filename;        /* Database filename */
-	char *path;            /* Used for on-disk db */
-	uint32_t cookie;       /* Used to bind to the pool's thread */
-	sqlite3 *follower;     /* Follower connection */
-	int leaders;           /* Open leader connections */
-	queue write_queue;     /* Queue of pending writers requests */
-	unsigned tx_id;        /* Current ongoing transaction ID, if any */
-	queue queue;           /* Prev/next database, used by the registry */
-	int read_lock;         /* Lock used by snapshots & checkpoints */
+	struct config *config;        /* Dqlite configuration */
+	char *filename;               /* Database filename */
+	char *path;                   /* Used for on-disk db */
+	uint32_t cookie;              /* Used to bind to the pool's thread */
+	sqlite3 *follower;            /* Follower connection */
+	int leaders;                  /* Open leader connections */
+	struct leader* active_leader; /* Current leader writing to the database */
+	queue pending_queue;          /* Queue of pending leaders waiting to write to the database */
+	queue queue;                  /* Prev/next database, used by the registry */
+	int read_lock;                /* Lock used by snapshots & checkpoints */
 };
 
 /**
