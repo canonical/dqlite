@@ -281,6 +281,111 @@ TEST_CASE(exec, tx, NULL)
 	return MUNIT_OK;
 }
 
+TEST_CASE(exec, busy_wait_statement, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	
+	f->servers[0].config.busy_timeout = 100;
+
+	/* Create a test table using connection 0 */
+	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	
+	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
+	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
+
+	EXEC(f->c1, f->stmt_id1);
+	EXEC(f->c2, f->stmt_id2);
+	WAIT(f->c2);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c2, 0, RESULT);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	return MUNIT_OK;
+}
+
+TEST_CASE(exec, busy_wait_transaction, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	
+	f->servers[0].config.busy_timeout = 100;
+
+	/* Create a test table using connection 0 */
+	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	PREPARE(f->c1, "BEGIN", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	
+	/* make sure the write lock is taken */
+	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	/* start another write */
+	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
+	EXEC(f->c2, f->stmt_id2);
+	
+	PREPARE(f->c1, "COMMIT", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	/* make sure the other write could not progress */
+	munit_assert_false(f->c2->context.invoked);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	/* make sure the other write is correctly dequeued */
+	WAIT(f->c2);
+	ASSERT_CALLBACK(f->c2, 0, RESULT);
+	return MUNIT_OK;
+}
+
+TEST_CASE(exec, busy_wait_timeout, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	
+	f->servers[0].config.busy_timeout = 10;
+
+	/* Create a test table using connection 0 */
+	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	PREPARE(f->c1, "BEGIN", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	
+	/* make sure the write lock is taken */
+	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	/* try to write from another connection should fail after some time */
+	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
+	EXEC(f->c2, f->stmt_id2);
+	WAIT(f->c2);
+	ASSERT_CALLBACK(f->c2, SQLITE_BUSY, FAILURE);
+	
+	/* the original write should still finish correctly */
+	PREPARE(f->c1, "COMMIT", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * Concurrent query requests
