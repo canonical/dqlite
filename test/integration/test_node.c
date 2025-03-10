@@ -164,6 +164,23 @@ TEST(node, startInet, setUpInet, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
+TEST(node, startInetStopTwice, setUpInet, tearDown, 0, node_params)
+{
+	struct fixture *f = data;
+	int rv;
+
+	rv = dqlite_node_start(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, EBADF);
+
+	return MUNIT_OK;
+}
+
 TEST(node, snapshotParams, setUp, tearDown, 0, node_params)
 {
 	struct fixture *f = data;

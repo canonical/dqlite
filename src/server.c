@@ -936,6 +936,11 @@ int dqlite_node_stop(dqlite_node *d)
 	void *result;
 	int rv;
 
+	/* Prevents using @d multiple times from different contexts */
+	if (d->lock_fd == -EBADF) {
+	    return EBADF;
+	}
+
 	rv = uv_async_send(&d->stop);
 	assert(rv == 0);
 
@@ -943,6 +948,7 @@ int dqlite_node_stop(dqlite_node *d)
 	assert(rv == 0);
 
 	release_dir(d->lock_fd);
+	d->lock_fd = -EBADF;
 
 	return (int)((uintptr_t)result);
 }
