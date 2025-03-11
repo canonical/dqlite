@@ -17,8 +17,6 @@
 #define SQLITE_IOERR_NOT_LEADER (SQLITE_IOERR | (40 << 8))
 #define SQLITE_IOERR_LEADERSHIP_LOST (SQLITE_IOERR | (41 << 8))
 
-#define LEADER_NOT_ASYNC INT_MAX
-
 struct exec;
 struct barrier;
 struct leader;
@@ -40,12 +38,12 @@ struct apply {
 };
 
 struct leader {
-	struct db *db;          /* Database the connection. */
-	sqlite3 *conn;          /* Underlying SQLite connection. */
-	struct raft *raft;      /* Raft instance. */
-	struct exec *exec;      /* Exec request in progress, if any. */
-	queue queue;            /* Prev/next leader, used by struct db. */
-	struct apply *inflight; /* TODO: make leader__close async */
+	struct db *db;            /* Database the connection. */
+	sqlite3 *conn;            /* Underlying SQLite connection. */
+	struct raft *raft;        /* Raft instance. */
+	struct exec *exec;        /* Exec request in progress, if any. */
+	queue queue;              /* Prev/next leader, used by struct db. */
+	struct apply *inflight;   /* TODO: make leader__close async */
 };
 
 struct barrier {
@@ -64,10 +62,12 @@ struct exec {
 	struct sm sm;
 	struct leader *leader;
 	struct barrier barrier;
+	struct raft_timer timer;
 	sqlite3_stmt *stmt;
 	int status;
 	queue queue;
 	exec_cb cb;
+	bool defer_cb;
 	pool_work_t work;
 };
 
@@ -89,8 +89,7 @@ void leader__close(struct leader *l);
  * The callback will only be invoked asynchronously: if no barrier is needed,
  * this function will return without invoking the callback.
  *
- * Returns 0 if the callback was scheduled successfully or LEADER_NOT_ASYNC
- * if no barrier is needed. Any other value indicates an error.
+ * Returns 0 if the callback was scheduled successfully.
  */
 int leader_barrier_v2(struct leader *l,
 		      struct barrier *barrier,
@@ -108,9 +107,7 @@ int leader_barrier_v2(struct leader *l,
  *   statement doesn't generate any changed pages.
  *
  * This function returns 0 if it successfully suspended for one of these
- * async operations. It returns LEADER_NOT_ASYNC to indicate that it
- * did not suspend, and in this case `req->status` shows whether an error
- * occurred. Any other return value indicates an error.
+ * async operations.
  */
 int leader_exec_v2(struct leader *l,
 		   struct exec *req,

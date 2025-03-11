@@ -19,12 +19,14 @@ void gateway__init(struct gateway *g,
 		   struct raft *raft)
 {
 	tracef("gateway init");
+	memset(g, 0, sizeof *g);
 	g->config = config;
 	g->registry = registry;
 	g->raft = raft;
 	g->leader = NULL;
 	g->req = NULL;
 	g->exec.data = g;
+	g->exec.timer.data = &g->exec;
 	stmt__registry_init(&g->stmts);
 	g->barrier.data = g;
 	g->barrier.cb = NULL;
@@ -42,6 +44,8 @@ void gateway__leader_close(struct gateway *g, int reason)
 		return;
 	}
 
+	raft_timer_stop(g->raft, &g->exec.timer);
+	// TODO: finish inflight exec
 	if (g->req != NULL) {
 		if (g->leader->inflight != NULL) {
 			tracef("finish inflight apply request");
@@ -188,11 +192,12 @@ void gateway__close(struct gateway *g)
 /* Encode fa failure response and invoke the request callback */
 static void failure(struct handle *req, int code, const char *message)
 {
-	struct response_failure failure;
 	size_t n;
 	char *cursor;
-	failure.code = (uint64_t)code;
-	failure.message = message;
+	struct response_failure failure = {
+		.code = (uint64_t)code,
+		.message = message,
+	};
 	n = response_failure__sizeof(&failure);
 	assert(n % 8 == 0);
 	cursor = buffer__advance(req->buffer, n);
@@ -200,7 +205,7 @@ static void failure(struct handle *req, int code, const char *message)
 	 * than that. So this can't fail. */
 	assert(cursor != NULL);
 	response_failure__encode(&failure, &cursor);
-	req->cb(req, 0, DQLITE_RESPONSE_FAILURE, 0);
+	req->cb(req, code, DQLITE_RESPONSE_FAILURE, 0);
 }
 
 static void emptyRows(struct handle *req)
@@ -411,9 +416,7 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	req->sql = request.sql;
 	g->req = req;
 	rc = leader_barrier_v2(g->leader, &g->barrier, prepare_barrier_cb);
-	if (rc == LEADER_NOT_ASYNC) {
-		prepare_barrier_cb(&g->barrier, 0);
-	} else if (rc != 0) {
+	if (rc != 0) {
 		tracef("handle prepare barrier failed %d", rc);
 		stmt__registry_del(&g->stmts, stmt);
 		g->req = NULL;
@@ -447,6 +450,9 @@ static const char *error_message(sqlite3 *db, int rc)
 			       "request";
 	}
 
+	if (sqlite3_errcode(db) == SQLITE_OK) {
+		return sqlite3_errstr(rc);
+	}
 	return sqlite3_errmsg(db);
 }
 
@@ -465,8 +471,8 @@ static void leader_exec_cb(struct exec *exec, int status)
 		SUCCESS_V0(result, RESULT);
 	} else {
 		assert(g->leader != NULL);
-		failure(req, status, error_message(g->leader->conn, status));
 		sqlite3_reset(stmt->stmt);
+		failure(req, status, error_message(g->leader->conn, status));
 	}
 }
 
@@ -512,9 +518,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	req->stmt_id = stmt->id;
 	g->req = req;
 	rv = leader_exec_v2(g->leader, &g->exec, stmt->stmt, leader_exec_cb);
-	if (rv == LEADER_NOT_ASYNC) {
-		leader_exec_cb(&g->exec, g->exec.status);
-	} else if (rv != 0) {
+	if (rv != 0) {
 		tracef("handle exec leader exec failed %d", rv);
 		g->req = NULL;
 		return rv;
@@ -658,17 +662,9 @@ static int handle_query(struct gateway *g, struct handle *req)
 	is_readonly = (bool)sqlite3_stmt_readonly(stmt->stmt);
 	if (is_readonly) {
 		rv = leader_barrier_v2(g->leader, &g->barrier, query_barrier_cb);
-		if (rv == LEADER_NOT_ASYNC) {
-			query_barrier_cb(&g->barrier, 0);
-			rv = 0;
-		}
 	} else {
 		rv = leader_exec_v2(g->leader, &g->exec, stmt->stmt,
 				    modifying_query_exec_cb);
-		if (rv == LEADER_NOT_ASYNC) {
-			modifying_query_exec_cb(&g->exec, g->exec.status);
-			rv = 0;
-		}
 	}
 	if (rv != 0) {
 		g->req = NULL;
@@ -696,9 +692,25 @@ static int handle_finalize(struct gateway *g, struct handle *req)
 	return 0;
 }
 
-static void handle_exec_sql_next(struct gateway *g,
-				 struct handle *req,
-				 bool done);
+static void handle_exec_sql_tick(struct gateway *g, struct handle *req);
+
+static void handle_exec_sql_fail(struct gateway *g, const char* err, int rv)
+{
+	failure(g->req, rv, err);
+	g->req = NULL;
+}
+
+static void handle_exec_sql_success(struct gateway *g)
+{
+	struct response_result response = {};
+	struct handle* req = g->req;
+	PRE(req != NULL);
+	g->req = NULL;
+	if (req->exec_count > 0) {
+		fill_result(g, &response);
+	}
+	SUCCESS_V0(result, RESULT);
+}
 
 static void handle_exec_sql_cb(struct exec *exec, int status)
 {
@@ -708,34 +720,30 @@ static void handle_exec_sql_cb(struct exec *exec, int status)
 
 	req->exec_count += 1;
 	sqlite3_finalize(exec->stmt);
+	req->stmt = NULL;
 
 	if (status == SQLITE_DONE) {
-		handle_exec_sql_next(g, req, true);
+		return handle_exec_sql_tick(g, req);
 	} else {
 		assert(g->leader != NULL);
-		failure(req, status, error_message(g->leader->conn, status));
-		g->req = NULL;
+		return handle_exec_sql_fail(g, error_message(g->leader->conn, status), status);
 	}
 }
 
 /**
- * handle_exec_sql_next does the bulk of processing for an EXEC_SQL request.
+ * handle_exec_sql_tick does the bulk of processing for an EXEC_SQL request.
  * A single call to this function iterates over the input SQL text, preparing
  * and executing statements until execution of some statement needs to yield
  * to the event loop. When that happens, a callback is scheduled that will
  * call this function again to process more input.
  */
-static void handle_exec_sql_next(struct gateway *g,
-				 struct handle *req,
-				 bool done)
+static void handle_exec_sql_tick(struct gateway *g, struct handle *req)
 {
 	tracef("handle exec sql next");
 	struct leader *l = g->leader;
 	PRE(l != NULL);
 	struct cursor *cursor = &req->cursor;
 	int schema = req->schema;
-	struct response_result response = {};
-	sqlite3_stmt *stmt;
 	const char *sql;
 	const char *tail;
 	int tuple_format;
@@ -747,53 +755,33 @@ static void handle_exec_sql_next(struct gateway *g,
 				 TUPLE__PARAMS :
 				 TUPLE__PARAMS32;
 
-	for (;;) {
-		stmt = NULL;
-		sql = req->sql;
-		rv = sqlite3_prepare_v2(l->conn, sql, -1, &stmt, &tail);
+	sql = req->sql;
+	rv = sqlite3_prepare_v2(l->conn, sql, -1, &req->stmt, &tail);
+	if (rv != SQLITE_OK) {
+		return handle_exec_sql_fail(g, sqlite3_errmsg(l->conn), rv);
+	}
+	if (req->stmt == NULL) {
+		/* nothing in the string to prepare, we're done */
+		return handle_exec_sql_success(g);
+	}
+	if (req->exec_count == 0) {
+		/* WARN: this means that only the first statement of the list can receive parameters */
+		rv = bind__params(req->stmt, cursor, tuple_format);
 		if (rv != SQLITE_OK) {
-			tracef("exec sql prepare failed %d", rv);
-			failure(req, rv, sqlite3_errmsg(l->conn));
-			goto done;
+			sqlite3_finalize(req->stmt);
+			req->stmt = NULL;
+			return handle_exec_sql_fail(g, "leader exec failed", rv);
 		}
-		if (stmt == NULL) {
-			/* nothing in the string to prepare */
-			goto success;
-		}
-		if (!done) {
-			rv = bind__params(stmt, cursor, tuple_format);
-			if (rv != SQLITE_OK) {
-				failure(req, rv, "bind parameters");
-				goto done_after_prepare;
-			}
-		}
-
-		req->sql = tail;
-		g->req = req;
-		rv = leader_exec_v2(g->leader, &g->exec, stmt, handle_exec_sql_cb);
-		if (rv == 0) {
-			return;
-		} else if (rv != LEADER_NOT_ASYNC) {
-			failure(req, rv, sqlite3_errmsg(l->conn));
-			goto done_after_prepare;
-		} else if (g->exec.status != SQLITE_DONE) {
-			failure(req, g->exec.status, sqlite3_errmsg(l->conn));
-			goto done_after_prepare;
-		}
-		done = true;
-		sqlite3_finalize(stmt);
-		req->exec_count++;
 	}
 
-success:
-	if (req->exec_count > 0) {
-		fill_result(g, &response);
+	req->sql = tail;
+	rv = leader_exec_v2(g->leader, &g->exec, req->stmt, handle_exec_sql_cb);
+	if (rv != 0) {
+		sqlite3_finalize(req->stmt);
+		req->stmt = NULL;
+		return handle_exec_sql_fail(g, "leader exec failed", rv);
 	}
-	SUCCESS_V0(result, RESULT);
-done_after_prepare:
-	sqlite3_finalize(stmt);
-done:
-	g->req = NULL;
+	/* suspended */
 }
 
 static void exec_sql_barrier_cb(struct barrier *barrier, int status)
@@ -802,14 +790,11 @@ static void exec_sql_barrier_cb(struct barrier *barrier, int status)
 	struct gateway *g = barrier->data;
 	struct handle *req = g->req;
 	assert(req != NULL);
-	g->req = NULL;
 
 	if (status != 0) {
-		failure(req, status, "barrier error");
-		return;
+		return handle_exec_sql_fail(g, "barrier error", status);
 	}
-
-	handle_exec_sql_next(g, req, false);
+	return handle_exec_sql_tick(g, req);
 }
 
 static int handle_exec_sql(struct gateway *g, struct handle *req)
@@ -836,13 +821,12 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
 	FAIL_IF_CHECKPOINTING;
+	PRE(g->req == NULL);
 	req->sql = request.sql;
 	req->exec_count = 0;
 	g->req = req;
 	rc = leader_barrier_v2(g->leader, &g->barrier, exec_sql_barrier_cb);
-	if (rc == LEADER_NOT_ASYNC) {
-		exec_sql_barrier_cb(&g->barrier, 0);
-	} else if (rc != 0) {
+	if (rc != 0) {
 		tracef("handle exec sql barrier failed %d", rc);
 		g->req = NULL;
 		return rc;
@@ -869,7 +853,7 @@ static void modifying_query_sql_exec_cb(struct exec *exec, int status)
 	}
 }
 
-static void query_sql_barrier_cb(struct barrier *barrier, int status)
+static void handle_query_sql_barrier_cb(struct barrier *barrier, int status)
 {
 	tracef("query sql barrier cb status:%d", status);
 	struct gateway *g = barrier->data;
@@ -939,9 +923,7 @@ static void query_sql_barrier_cb(struct barrier *barrier, int status)
 	} else {
 		rv = leader_exec_v2(g->leader, &g->exec, stmt,
 				    modifying_query_sql_exec_cb);
-		if (rv == LEADER_NOT_ASYNC) {
-			modifying_query_sql_exec_cb(&g->exec, g->exec.status);
-		} else if (rv != 0) {
+		if (rv != 0) {
 			sqlite3_finalize(stmt);
 			g->req = NULL;
 			failure(req, rv, "leader exec");
@@ -973,10 +955,8 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	FAIL_IF_CHECKPOINTING;
 	req->sql = request.sql;
 	g->req = req;
-	rv = leader_barrier_v2(g->leader, &g->barrier, query_sql_barrier_cb);
-	if (rv == LEADER_NOT_ASYNC) {
-		query_sql_barrier_cb(&g->barrier, 0);
-	} else if (rv != 0) {
+	rv = leader_barrier_v2(g->leader, &g->barrier, handle_query_sql_barrier_cb);
+	if (rv != 0) {
 		tracef("handle query sql barrier failed %d", rv);
 		g->req = NULL;
 		return rv;
