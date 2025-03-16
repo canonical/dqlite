@@ -23,6 +23,21 @@ static bool barrier_invariant(const struct sm *sm, int prev)
 	return true;
 }
 
+static int dqlite_leader_authorizer(void *pUserData, int action, const char *third, const char *fourth, const char *fifth, const char *sixth) {
+	(void)pUserData;
+	(void)fourth;
+	(void)fifth;
+	(void)sixth;
+
+	if (action == SQLITE_ATTACH) {
+		// Only allow attaching temporary files
+		if (third != NULL && third[0] != '\0') {
+			return SQLITE_DENY;
+		}
+	}
+	return SQLITE_OK;
+}
+
 /* Open a SQLite connection and set it to leader replication mode. */
 static int openConnection(const char *filename,
 			  const char *vfs,
@@ -53,10 +68,8 @@ static int openConnection(const char *filename,
 	 * pair. Make sure that the client can't use ATTACH DATABASE to
 	 * break this assumption. We apply the same limit in open_follower_conn
 	 * in db.c.
-	 *
-	 * Note, 0 instead of 1 -- apparently the "initial database" is not
-	 * counted when evaluating this limit. */
-	sqlite3_limit(*conn, SQLITE_LIMIT_ATTACHED, 0);
+	 */
+	sqlite3_set_authorizer(*conn, dqlite_leader_authorizer, NULL);
 
 	/* Set the page size. */
 	sprintf(pragma, "PRAGMA page_size=%d", page_size);

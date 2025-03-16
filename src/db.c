@@ -92,6 +92,21 @@ int db__open_follower(struct db *db)
 	return rc;
 }
 
+static int dqlite_follower_authorizer(void *pUserData, int action, const char *third, const char *fourth, const char *fifth, const char *sixth) {
+	(void)pUserData;
+	(void)fourth;
+	(void)fifth;
+	(void)sixth;
+
+	if (action == SQLITE_ATTACH) {
+		// Only allow attaching temporary files
+		if (third != NULL && third[0] != '\0') {
+			return SQLITE_DENY;
+		}
+	}
+	return SQLITE_OK;
+}
+
 static int open_follower_conn(const char *filename,
 			      const char *vfs,
 			      unsigned page_size,
@@ -119,11 +134,8 @@ static int open_follower_conn(const char *filename,
 	 * each connection will operate on only one DB file/WAL file
 	 * pair. Make sure that the client can't use ATTACH DATABASE to
 	 * break this assumption. We apply the same limit in openConnection
-	 * in leader.c.
-	 *
-	 * Note, 0 instead of 1 -- apparently the "initial database" is not
-	 * counted when evaluating this limit. */
-	sqlite3_limit(*conn, SQLITE_LIMIT_ATTACHED, 0);
+	 * in leader.c.*/
+	sqlite3_set_authorizer(*conn, dqlite_follower_authorizer, NULL);
 
 	/* Set the page size. */
 	sprintf(pragma, "PRAGMA page_size=%d", page_size);
