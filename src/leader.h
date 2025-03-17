@@ -41,6 +41,7 @@ struct apply {
 
 struct leader {
 	struct db *db;          /* Database the connection. */
+	bool readonly;
 	sqlite3 *conn;          /* Underlying SQLite connection. */
 	struct raft *raft;      /* Raft instance. */
 	struct exec *exec;      /* Exec request in progress, if any. */
@@ -78,7 +79,7 @@ struct exec {
  * transfering control back to main coroutine and then opening a new leader
  * connection against the given database.
  */
-int leader__init(struct leader *l, struct db *db, struct raft *raft);
+int leader_init(struct leader *l, struct db *db, uint64_t flags, struct raft *raft);
 
 void leader__close(struct leader *l);
 
