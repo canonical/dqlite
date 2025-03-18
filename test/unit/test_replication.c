@@ -88,16 +88,15 @@ TEST_MODULE(replication_v1);
 	}
 
 /* Submit an exec request using the I'th leader. */
-#define EXEC(I) \
-	{ \
-		int rc2; \
-		rc2 = leader_exec_v2(LEADER(I), &f->req, f->stmt, \
-				     fixture_exec_cb); \
-		if (rc2 == LEADER_NOT_ASYNC) { \
-			fixture_exec_cb(&f->req, f->req.status); \
-		} else { \
-			munit_assert_int(rc2, ==, 0); \
-		} \
+#define EXEC(I)                                                        \
+	{                                                                  \
+		int rc2;                                                       \
+		f->invoked = false;                                            \
+		rc2 = leader_exec_v2(LEADER(I), &f->req, f->stmt,              \
+				     fixture_exec_cb);                                 \
+		munit_assert_int(rc2, ==, 0);                                  \
+		raft_fixture_step_until(&f->cluster, fixture_invoked, f, 100); \
+		munit_assert_true(f->invoked);                                 \
 	}
 
 /* Convenience to prepare, execute and finalize a statement. */
@@ -189,12 +188,20 @@ static void fixture_exec_cb(struct exec *req, int status)
 	f->status = status;
 }
 
+static bool fixture_invoked(struct raft_fixture *fixture, void *data)
+{
+	(void)fixture;
+	struct exec_fixture *f = data;
+	return f->invoked;
+}
+
 TEST_SUITE(exec);
 TEST_SETUP(exec)
 {
 	struct exec_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	f->req.data = f;
+	f->req.timer.data = &f->req;
 	return f;
 }
 TEST_TEAR_DOWN(exec)
@@ -333,6 +340,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	SETUP_CLUSTER(V2);
 	SETUP_LEADER(0);
 	f->req.data = f;
+	f->req.timer.data = &f->req;
 	return f;
 }
 
@@ -355,13 +363,7 @@ static void execCb(struct exec *req, int status)
 
 static void fixture_exec(struct fixture *f, unsigned i)
 {
-	int rv;
-
-	rv = leader_exec_v2(LEADER(i), &f->req, f->stmt, execCb);
-	if (rv == LEADER_NOT_ASYNC) {
-		execCb(&f->req, f->req.status);
-		return;
-	}
+	int rv = leader_exec_v2(LEADER(i), &f->req, f->stmt, execCb);
 	munit_assert_int(rv, ==, 0);
 }
 
@@ -377,10 +379,12 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
 	f->invoked = false;
+	f->status = -1;
 	FINALIZE;
 
 	PREPARE(0, "CREATE TABLE test (a  INT)");
 	fixture_exec(f, 0);
+	CLUSTER_STEP;
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
 	f->invoked = false;
@@ -389,9 +393,9 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	PREPARE(0, "COMMIT");
 	fixture_exec(f, 0);
 	munit_assert_false(f->invoked);
-	FINALIZE;
 
 	CLUSTER_APPLIED(4);
+	FINALIZE;
 
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, SQLITE_DONE);
