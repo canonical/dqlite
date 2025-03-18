@@ -646,7 +646,8 @@ void exec_tick(struct exec *req, int status)
 			 * but also start a timer as this statement should not sit
 			 * in the queue for too long. In the case the timer expires
 			 * the statement will just fail with SQLITE_BUSY. */
-			err = raft_timer_start(l->raft, &req->timer, l->db->config->busy_timeout, 0, exec_timeout_cb);
+			err = raft_timer_start(l->raft, &req->timer,
+				l->db->config->busy_timeout, 0, exec_timeout_cb);
 			if (err != RAFT_RESULT_OK) {
 				/* given that it wasn't possible to wait for the other leader,
 				 * the only way out is to report to the user that the db is busy.*/

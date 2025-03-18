@@ -805,7 +805,7 @@ int ioMethodTimerStart(struct raft_io *raft_io, struct raft_timer *req, uint64_t
 	t = raft_malloc(sizeof *t);
 	assert(t != NULL);
 	t->type = TIMER;
-	t->completion_time = *io->time + (timeout ? timeout : 0);
+	t->completion_time = *io->time + timeout;
 	t->timer = req;
 	t->repeat = repeat;
 
