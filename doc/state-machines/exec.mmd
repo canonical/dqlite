@@ -1,0 +1,72 @@
+---
+config:
+    look: handDrawn
+---
+stateDiagram-v2
+    EXEC_INITED: EXEC_INITED
+    EXEC_INITED: req->stmt != NULL ^ req->sql != NULL
+
+    [*] --> EXEC_INITED
+    state needs_prepare <<choice>>
+    state needs_prepare_barrier <<choice>>
+
+    EXEC_PREPARED: EXEC_PREPARED
+    EXEC_PREPARED: req->stmt != NULL
+    EXEC_PREPARED: req->sql = tail
+
+    EXEC_INITED --> needs_prepare
+    needs_prepare --> EXEC_PREPARED: if req->stmt != NULL
+    needs_prepare --> needs_prepare_barrier: if req->stmt == NULL
+
+    needs_prepare_barrier --> EXEC_PREPARE_BARRIER_PASSED: if !needBarrier
+    needs_prepare_barrier --> EXEC_PREPARE_BARRIER: if needBarier
+
+    EXEC_PREPARE_BARRIER_PASSED --> EXEC_PREPARED
+    EXEC_PREPARE_BARRIER_PASSED --> EXEC_DONE: if sqlite3_prepare_v2 failed
+
+    EXEC_PREPARE_BARRIER --> EXEC_PREPARE_BARRIER_PASSED
+    EXEC_PREPARE_BARRIER --> EXEC_DONE: if raft_barrier failed
+
+    state is_write_txn <<choice>>
+    state is_db_busy <<choice>>
+    state needs_step_barrier <<choice>>
+
+    EXEC_PREPARED --> is_write_txn
+    is_write_txn --> EXEC_RUNNING: if sqlite3_stmt_readonly
+    is_write_txn --> is_db_busy: if !sqlite3_stmt_readonly
+
+    is_db_busy --> EXEC_RUNNING: if !db_busy
+    is_db_busy --> EXEC_ENQUEUED: if db_busy
+
+    EXEC_ENQUEUED --> needs_step_barrier: dequeued
+    EXEC_ENQUEUED --> EXEC_DONE: busy_timeout fired
+
+    needs_step_barrier --> EXEC_RUN_BARRIER_PASSED: if !needBarrier
+    needs_step_barrier --> EXEC_RUN_BARRIER: if needBarrier
+    
+    EXEC_RUN_BARRIER --> EXEC_RUN_BARRIER_PASSED
+    EXEC_RUN_BARRIER --> EXEC_DONE: if raft_barrier failed
+
+    EXEC_RUNNING: EXEC_RUNNING
+    EXEC_RUNNING: Runs the callback with the statement.
+    EXEC_RUNNING: The callback is responsible to schedule
+    EXEC_RUNNING: a call to exec_resume with the proper 
+    EXEC_RUNNING: status code (i.e. the sm is suspended).
+
+    EXEC_RUN_BARRIER_PASSED --> EXEC_RUNNING
+    EXEC_RUN_BARRIER_PASSED --> EXEC_DONE: if sqlite3_bind_* failed
+
+    state needs_replication <<choice>>
+    EXEC_RUNNING --> EXEC_DONE: if sqlite3_step errors
+    EXEC_RUNNING --> needs_replication
+
+    needs_replication --> EXEC_POLLED: if VfsPoll > 0
+    needs_replication --> EXEC_DONE: if VfsPoll == 0
+
+    EXEC_POLLED --> EXEC_DONE
+    
+    EXEC_DONE: EXEC_DONE
+    EXEC_DONE: status != 0 if failed
+    EXEC_DONE: req->stmt = NULL if prepared
+    EXEC_DONE: req->params = pointer to unused params
+    EXEC_DONE --> [*]

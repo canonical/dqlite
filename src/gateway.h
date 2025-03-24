@@ -28,9 +28,7 @@ struct gateway {
 	struct raft *raft;           /* Raft instance */
 	struct leader *leader;       /* Leader connection to the database */
 	struct handle *req;          /* Asynchronous request being handled */
-	struct exec exec;            /* Low-level exec async request */
 	struct stmt__registry stmts; /* Registry of prepared statements */
-	struct barrier barrier;      /* Barrier for query requests */
 	uint64_t protocol;           /* Protocol format version */
 	uint64_t client_id;
 };

@@ -21,10 +21,11 @@ struct exec;
 struct barrier;
 struct leader;
 
-typedef void (*exec_cb)(struct exec *req, int status);
-typedef void (*barrier_cb)(struct barrier *req, int status);
+typedef void (*exec_work_cb)(struct exec *req);
+typedef void (*exec_done_cb)(struct exec *req);
 
 /* Wrapper around raft_apply, saving context information. */
+// TODO remove this.
 struct apply {
 	struct raft_apply req; /* Raft apply request */
 	int status;            /* Raft apply result */
@@ -43,32 +44,59 @@ struct leader {
 	struct raft *raft;        /* Raft instance. */
 	struct exec *exec;        /* Exec request in progress, if any. */
 	queue queue;              /* Prev/next leader, used by struct db. */
-	struct apply *inflight;   /* TODO: make leader__close async */
-};
-
-struct barrier {
-	void *data;
-	struct sm sm;
-	struct leader *leader;
-	struct raft_barrier req;
-	barrier_cb cb;
+	struct apply *inflight;   /* TODO: remove this. */
 };
 
 /**
  * Asynchronous request to execute a statement.
  */
 struct exec {
+	/** User data. Not used by the tate machine */
 	void *data;
-	struct sm sm;
-	struct leader *leader;
-	struct barrier barrier;
-	struct raft_timer timer;
+
+	/** 
+	 * Already prepared statement to execute. 
+	 * Either this or sql must be set, but not both.
+	 *
+	 * If set, the statement will not be finalized.
+	 * It will always be NULL at the end of the execution.
+	 */
 	sqlite3_stmt *stmt;
+
+	/** 
+	 * SQL statement to execute.
+	 * Either this or stmt must be set, but not both.
+	 *
+	 * The prepared statement will be finalized at the end of the execution.
+	 * It will always be NULL at the end of the execution.
+	 */
+	const char *sql;
+
+	/**
+	 * Tail of the statement. It will be set to the tail of the sql statement
+	 * after a prepare, if set at the start of the execution.
+	 *
+	 * It might be NULL if there is no statement left to execute.
+	 * 
+	 * The lifetime of this pointer is tied to sql field as this will just be
+	 * a pointer to that memory.
+	 */
+	const char *tail;
+
+	/******* Internal state *******/
 	int status;
 	queue queue;
-	exec_cb cb;
-	bool defer_cb;
-	pool_work_t work;
+	struct sm sm;
+	struct leader *leader;
+	struct raft_barrier barrier;
+	struct raft_timer timer;
+	struct {
+		dqlite_vfs_frame *ptr;
+		unsigned          len;
+	} frames;
+
+	exec_work_cb work_cb;
+	exec_done_cb done_cb;
 };
 
 /**
@@ -83,35 +111,51 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft);
 void leader__close(struct leader *l);
 
 /**
- * Submit a raft barrier request if there is no transaction in progress on the
- * underlying database and the FSM is behind the last log index.
- *
- * The callback will only be invoked asynchronously: if no barrier is needed,
- * this function will return without invoking the callback.
- *
- * Returns 0 if the callback was scheduled successfully.
- */
-int leader_barrier_v2(struct leader *l,
-		      struct barrier *barrier,
-		      barrier_cb cb);
-
-/**
  * Submit a request to step a SQLite statement.
  *
- * This is an asynchronous operation in general. It can yield to the event
- * loop at two points:
+ * This is an asynchronous operation in general. 
  *
- * - When running the preliminary barrier (see leader_barrier_v2). This
- *   is skipped if no barrier is necessary.
- * - When replicating the transaction in raft. This is skipped if the
- *   statement doesn't generate any changed pages.
+ * If set, the work callback will be called for once the statement is prepared
+ * and ready to be executed. Once the query is done with the statement, it is
+ * the callback's responsibility to schedule a leader_exec_resume as the state
+ * machine is suspended. If the callback is not set, the state machine will not
+ * suspend. The work callback will not be called if the prepared statement
+ * contains no SQL (e.g. it is just spaces or just a comment).
  *
- * This function returns 0 if it successfully suspended for one of these
- * async operations.
+ * In case the statement generates an update on the database, this routine will make
+ * sure that it is replicated before calling the done callback. As such it is important
+ * not to inform the client of a successful transaction until the done callback is
+ * called. The done callback is always executed in the loop thread.
+ *
+ * The prepared statement is never freed by this routine.
  */
-int leader_exec_v2(struct leader *l,
-		   struct exec *req,
-		   sqlite3_stmt *stmt,
-		   exec_cb cb);
+void leader_exec(struct exec *req,
+		exec_work_cb work,
+		exec_done_cb done);
+
+void leader_exec_resume(struct exec *req, int status);
+
+inline void leader_exec_sql(struct exec *req,
+		const char *sql,
+		exec_work_cb work,
+		exec_done_cb done)
+{
+	req->stmt = NULL;
+	req->sql  = sql;
+
+	return leader_exec(req, work, done);
+}
+
+inline void leader_exec_stmt(struct exec *req,
+		sqlite3_stmt *stmt,
+		exec_work_cb  work,
+		exec_done_cb  done)
+{
+	req->stmt = stmt;
+	req->sql  = NULL;
+
+	return leader_exec(req, work, done);
+}
+
 
 #endif /* LEADER_H_*/

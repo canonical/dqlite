@@ -1,17 +1,30 @@
 #include "gateway.h"
 
 #include "bind.h"
-#include "conn.h"
+#include "lib/registry.h"
 #include "lib/threadpool.h"
 #include "protocol.h"
 #include "query.h"
+#include "raft.h"
 #include "request.h"
 #include "response.h"
-#include "server.h"
 #include "tracing.h"
 #include "translate.h"
 #include "tuple.h"
 #include "vfs.h"
+
+/**
+ * Silly in-memory sqlite3 connection used to check if statements contain only non-sql
+ * code like comments or spaces.
+ *
+ */
+static sqlite3 *check_connn;
+
+__attribute__((constructor)) static void init() {
+	int rc = sqlite3_open_v2(":memory:", &check_connn, SQLITE_OPEN_READONLY | SQLITE_OPEN_MEMORY, NULL);
+	assert(rc == 0);
+	assert(check_connn != NULL);
+}
 
 void gateway__init(struct gateway *g,
 		   struct config *config,
@@ -25,12 +38,7 @@ void gateway__init(struct gateway *g,
 	g->raft = raft;
 	g->leader = NULL;
 	g->req = NULL;
-	g->exec.data = g;
-	g->exec.timer.data = &g->exec;
 	stmt__registry_init(&g->stmts);
-	g->barrier.data = g;
-	g->barrier.cb = NULL;
-	g->barrier.leader = NULL;
 	g->protocol = DQLITE_PROTOCOL_VERSION;
 	g->client_id = 0;
 }
@@ -44,52 +52,55 @@ void gateway__leader_close(struct gateway *g, int reason)
 		return;
 	}
 
-	raft_timer_stop(g->raft, &g->exec.timer);
+	// raft_timer_stop(g->raft, &g->exec.timer);
 	// TODO: finish inflight exec
-	if (g->req != NULL) {
-		if (g->leader->inflight != NULL) {
-			tracef("finish inflight apply request");
-			struct raft_apply *req = &g->leader->inflight->req;
-			req->cb(req, reason, NULL);
-			assert(g->req == NULL);
-		} else if (g->barrier.cb != NULL) {
-			tracef("finish inflight barrier");
-			/* This is not a typo, g->barrier.req.cb is a wrapper
-			 * around g->barrier.cb and will set g->barrier.cb to
-			 * NULL when called. */
-			struct raft_barrier *b = &g->barrier.req;
-			b->cb(b, reason);
-			assert(g->barrier.cb == NULL);
-		} else if (g->leader->exec != NULL &&
-			   g->leader->exec->barrier.cb != NULL) {
-			tracef("finish inflight exec barrier");
-			struct raft_barrier *b = &g->leader->exec->barrier.req;
-			b->cb(b, reason);
-			assert(g->leader->exec == NULL);
-		} else if (g->req->type == DQLITE_REQUEST_QUERY_SQL) {
-			/* Finalize the statement that was in the process of
-			 * yielding rows. We only need to handle QUERY_SQL
-			 * because for QUERY and EXEC the statement is finalized
-			 * by the call to stmt__registry_close, below (and for
-			 * EXEC_SQL the lifetimes of the statements are managed
-			 * by leader__exec and the associated callback).
-			 *
-			 * It's okay if g->req->stmt is NULL since
-			 * sqlite3_finalize(NULL) is documented to be a no-op.
-			 */
-			sqlite3_finalize(g->req->stmt);
-			g->req = NULL;
-		} else if (g->req->type == DQLITE_REQUEST_QUERY) {
-			/* In case the statement is a prepared one, it
-			 * will be finalized by the stmt__registry_close
-			 * call below. Nevertheless, we must signal that
-			 * the request is not in place anymore so that any
-			 * callback which is already in the queue will not
-			 * attempt to execute a finalized statement.
-			 */
-			g->req = NULL;
-		}
-	}
+	// TODO: apply with RAFT_SHUTDOWN is buggy
+	// TODO: this must only be "exec_abort" or even be 
+	//       in leader_close as it has internal detail to exec
+	// if (g->req != NULL) {
+	// 	if (g->leader->inflight != NULL) {
+	// 		tracef("finish inflight apply request");
+	// 		struct raft_apply *req = &g->leader->inflight->req;
+	// 		req->cb(req, reason, NULL);
+	// 		assert(g->req == NULL);
+	// 	} else if (g->barrier.cb != NULL) {
+	// 		tracef("finish inflight barrier");
+	// 		/* This is not a typo, g->barrier.req.cb is a wrapper
+	// 		 * around g->barrier.cb and will set g->barrier.cb to
+	// 		 * NULL when called. */
+	// 		struct raft_barrier *b = &g->barrier.req;
+	// 		b->cb(b, reason);
+	// 		assert(g->barrier.cb == NULL);
+	// 	} else if (g->leader->exec != NULL &&
+	// 		   g->leader->exec->barrier.cb != NULL) {
+	// 		tracef("finish inflight exec barrier");
+	// 		struct raft_barrier *b = &g->leader->exec->barrier.req;
+	// 		b->cb(b, reason);
+	// 		assert(g->leader->exec == NULL);
+	// 	} else if (g->req->type == DQLITE_REQUEST_QUERY_SQL) {
+	// 		/* Finalize the statement that was in the process of
+	// 		 * yielding rows. We only need to handle QUERY_SQL
+	// 		 * because for QUERY and EXEC the statement is finalized
+	// 		 * by the call to stmt__registry_close, below (and for
+	// 		 * EXEC_SQL the lifetimes of the statements are managed
+	// 		 * by leader__exec and the associated callback).
+	// 		 *
+	// 		 * It's okay if g->req->stmt is NULL since
+	// 		 * sqlite3_finalize(NULL) is documented to be a no-op.
+	// 		 */
+	// 		sqlite3_finalize(g->req->stmt);
+	// 		g->req = NULL;
+	// 	} else if (g->req->type == DQLITE_REQUEST_QUERY) {
+	// 		/* In case the statement is a prepared one, it
+	// 		 * will be finalized by the stmt__registry_close
+	// 		 * call below. Nevertheless, we must signal that
+	// 		 * the request is not in place anymore so that any
+	// 		 * callback which is already in the queue will not
+	// 		 * attempt to execute a finalized statement.
+	// 		 */
+	// 		g->req = NULL;
+	// 	}
+	// }
 	stmt__registry_close(&g->stmts);
 	leader__close(g->leader);
 	sqlite3_free(g->leader);
@@ -98,6 +109,7 @@ void gateway__leader_close(struct gateway *g, int reason)
 
 void gateway__close(struct gateway *g)
 {
+	// TODO fix this race condition with exec_work_cb
 	tracef("gateway close");
 	if (g->leader == NULL) {
 		stmt__registry_close(&g->stmts);
@@ -311,75 +323,63 @@ static int handle_open(struct gateway *g, struct handle *req)
 	return 0;
 }
 
-static void prepare_barrier_cb(struct barrier *barrier, int status)
+static void handle_prepare_cb(struct exec *exec)
 {
-	tracef("prepare barrier cb status:%d", status);
-	struct gateway *g = barrier->data;
+	PRE(exec != NULL);
+	struct gateway *g = exec->data;
+	PRE(g != NULL && g->req != NULL);
 	struct handle *req = g->req;
-	struct response_stmt response_v0 = { 0 };
-	struct response_stmt_with_offset response_v1 = { 0 };
-	const char *sql = req->sql;
-	struct stmt *stmt;
-	const char *tail;
-	sqlite3_stmt *tail_stmt;
-	int rc;
 
-	assert(req != NULL);
-	stmt = stmt__registry_get(&g->stmts, req->stmt_id);
-	assert(stmt != NULL);
-	g->req = NULL;
-	if (status != 0) {
-		stmt__registry_del(&g->stmts, stmt);
-		failure(req, status, "barrier error");
-		return;
-	}
-
-	rc = sqlite3_prepare_v2(g->leader->conn, sql, -1, &stmt->stmt, &tail);
-	if (rc != SQLITE_OK) {
-		failure(req, rc, sqlite3_errmsg(g->leader->conn));
-		stmt__registry_del(&g->stmts, stmt);
-		return;
-	}
-
-	if (stmt->stmt == NULL) {
-		tracef("prepare barrier cb empty statement");
-		stmt__registry_del(&g->stmts, stmt);
+	if (exec->status != 0) {
+		failure(req, exec->status, sqlite3_errmsg(exec->leader->conn));
+	} else if (exec->stmt == NULL) {
 		/* FIXME Should we use a code other than 0 here? */
 		failure(req, 0, "empty statement");
-		return;
-	}
+	} else {
+		struct response_stmt response_v0 = { 0 };
+		struct response_stmt_with_offset response_v1 = { 0 };
+		struct stmt *stmt;
+		int rc;
 
-	if (req->schema == DQLITE_PREPARE_STMT_SCHEMA_V0) {
-		rc = sqlite3_prepare_v2(g->leader->conn, tail, -1, &tail_stmt,
-					NULL);
-		if (rc != 0 || tail_stmt != NULL) {
-			stmt__registry_del(&g->stmts, stmt);
-			sqlite3_finalize(tail_stmt);
-			failure(req, SQLITE_ERROR, "nonempty statement tail");
+		if (req->schema == DQLITE_PREPARE_STMT_SCHEMA_V0) {
+			sqlite3_stmt *tail_stmt;
+			rc = sqlite3_prepare_v2(check_connn, exec->tail, -1, &tail_stmt, NULL);
+			if (rc != 0 || tail_stmt != NULL) {
+				stmt__registry_del(&g->stmts, stmt);
+				sqlite3_finalize(tail_stmt);
+				failure(req, SQLITE_ERROR, "nonempty statement tail");
+				return;
+			}
+		}
+
+		rc = stmt__registry_add(&g->stmts, &stmt);
+		if (rc != 0) {
+			failure(req, SQLITE_NOMEM, "stmt registry add failed");
 			return;
 		}
-	}
+		stmt->stmt = exec->stmt;
 
-	switch (req->schema) {
-		case DQLITE_PREPARE_STMT_SCHEMA_V0:
-			response_v0.db_id = (uint32_t)req->db_id;
-			response_v0.id = (uint32_t)stmt->id;
-			response_v0.params =
-			    (uint64_t)sqlite3_bind_parameter_count(stmt->stmt);
-			SUCCESS(stmt, STMT, response_v0,
-				DQLITE_PREPARE_STMT_SCHEMA_V0);
-			break;
-		case DQLITE_PREPARE_STMT_SCHEMA_V1:
-			response_v1.db_id = (uint32_t)req->db_id;
-			response_v1.id = (uint32_t)stmt->id;
-			response_v1.params =
-			    (uint64_t)sqlite3_bind_parameter_count(stmt->stmt);
-			response_v1.offset = (uint64_t)(tail - sql);
-			SUCCESS(stmt_with_offset, STMT_WITH_OFFSET, response_v1,
-				DQLITE_PREPARE_STMT_SCHEMA_V1);
-			break;
-		default:
-			assert(0);
+		switch (req->schema) {
+			case DQLITE_PREPARE_STMT_SCHEMA_V0:
+				response_v0.db_id = (uint32_t)req->db_id;
+				response_v0.id = (uint32_t)stmt->id;
+				response_v0.params =
+					(uint64_t)sqlite3_bind_parameter_count(stmt->stmt);
+				SUCCESS(stmt, STMT, response_v0,
+					DQLITE_PREPARE_STMT_SCHEMA_V0);
+				break;
+			case DQLITE_PREPARE_STMT_SCHEMA_V1:
+				response_v1.db_id = (uint32_t)req->db_id;
+				response_v1.id = (uint32_t)stmt->id;
+				response_v1.params =
+					(uint64_t)sqlite3_bind_parameter_count(stmt->stmt);
+				response_v1.offset = (uint64_t)(exec->tail - exec->sql);
+				SUCCESS(stmt_with_offset, STMT_WITH_OFFSET, response_v1,
+					DQLITE_PREPARE_STMT_SCHEMA_V1);
+				break;
+			default:
+				assert(0);
+		}
 	}
 }
 
@@ -403,25 +403,37 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 
 	CHECK_LEADER(req);
 	LOOKUP_DB(request.db_id);
-	rc = stmt__registry_add(&g->stmts, &stmt);
-	if (rc != 0) {
-		tracef("handle prepare registry add failed %d", rc);
-		return rc;
-	}
-	assert(stmt != NULL);
+
+	// rc = stmt__registry_add(&g->stmts, &stmt);
+	// if (rc != 0) {
+	// 	tracef("handle prepare registry add failed %d", rc);
+	// 	return rc;
+	// }
+	// assert(stmt != NULL);
 	/* This cast is safe as long as the TODO in LOOKUP_DB is not
 	 * implemented. */
 	req->db_id = (size_t)request.db_id;
-	req->stmt_id = stmt->id;
-	req->sql = request.sql;
+	// req->stmt_id = stmt->id;
+	// req->sql = ;
 	g->req = req;
-	rc = leader_barrier_v2(g->leader, &g->barrier, prepare_barrier_cb);
-	if (rc != 0) {
-		tracef("handle prepare barrier failed %d", rc);
-		stmt__registry_del(&g->stmts, stmt);
-		g->req = NULL;
-		return rc;
+
+	struct exec *exec = raft_malloc(sizeof *exec);
+	if (exec == NULL) {
+		return DQLITE_NOMEM;
 	}
+	*exec = (struct exec) {
+		.data = g,
+		.sql = request.sql,
+	};
+
+	leader_exec(exec, NULL, handle_prepare_cb);
+	// rc = leader_barrier_v2(g->leader, &g->barrier, prepare_barrier_cb);
+	// if (rc != 0) {
+	// 	tracef("handle prepare barrier failed %d", rc);
+	// 	stmt__registry_del(&g->stmts, stmt);
+	// 	g->req = NULL;
+	// 	return rc;
+	// }
 	return 0;
 }
 
