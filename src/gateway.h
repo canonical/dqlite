@@ -71,23 +71,10 @@ struct handle {
 	 *
 	 * This is used by handle_prepare. */
 	size_t db_id;
-	/* ID of the statement associated with this request.
-	 *
-	 * This is used by handle_prepare. */
-	size_t stmt_id;
-	/* SQL string associated with this request.
-	 *
-	 * This is used by handle_prepare, handle_query_sql, and handle_exec_sql
-	 * to save the provided SQL string across calls to leader__barrier and
-	 * leader__exec, since there's no prepared statement that can be saved
-	 * instead. In the case of handle_exec_sql, after preparing each
-	 * statement we update this field to point to the "tail" that has not
-	 * been prepared yet. */
-	const char *sql;
 	/* Prepared statement that will be queried to process this request.
 	 *
 	 * This is used by handle_query and handle_query_sql. */
-	sqlite3_stmt *stmt;
+	sqlite3_stmt *stmt; // FIXME I think this is useless
 	/* Number of times a statement parsed from this request has been
 	 * executed.
 	 *

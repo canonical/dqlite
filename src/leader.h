@@ -108,8 +108,6 @@ struct exec {
  */
 int leader__init(struct leader *l, struct db *db, struct raft *raft);
 
-void leader__close(struct leader *l);
-
 /**
  * Submit a request to step a SQLite statement.
  *
@@ -129,33 +127,36 @@ void leader__close(struct leader *l);
  *
  * The prepared statement is never freed by this routine.
  */
-void leader_exec(struct exec *req,
-		exec_work_cb work,
-		exec_done_cb done);
+void leader_exec(struct leader *leader,
+	struct exec *req,
+	exec_work_cb work,
+	exec_done_cb done);
 
-void leader_exec_resume(struct exec *req, int status);
+/**
+ * Sets the result of the operation the state machine suspended on.
+ * 
+ * This should be called right before resuming after work is done.
+ */
+void leader_exec_result(struct exec *req, int result);
 
-inline void leader_exec_sql(struct exec *req,
-		const char *sql,
-		exec_work_cb work,
-		exec_done_cb done)
-{
-	req->stmt = NULL;
-	req->sql  = sql;
+/**
+ * Resumes the execution of the exec state machine.
+ */
+void leader_exec_resume(struct exec *req);
 
-	return leader_exec(req, work, done);
-}
+/**
+ * Aborts the current leader exec request, if possible.
+ *
+ * If the query is already finished (e.g. the work callback was already executed 
+ * and successfully scheduled the resume callback), the request cannot be aborted
+ * and will continue the replication phase to the end. Otherwise, the work callback
+ * will not be called and the query will fail with SQLITE_ABORT error code.
+ *
+ * If there is no request in progress, this function does nothing.
+ *
+ */
+void leader_abort(struct leader *leader);
 
-inline void leader_exec_stmt(struct exec *req,
-		sqlite3_stmt *stmt,
-		exec_work_cb  work,
-		exec_done_cb  done)
-{
-	req->stmt = stmt;
-	req->sql  = NULL;
-
-	return leader_exec(req, work, done);
-}
-
+void leader__close(struct leader *l);
 
 #endif /* LEADER_H_*/

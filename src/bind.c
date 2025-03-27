@@ -56,7 +56,7 @@ int bind__params(sqlite3_stmt *stmt, struct cursor *cursor, int format)
 
 	assert(format == TUPLE__PARAMS || format == TUPLE__PARAMS32);
 
-	sqlite3_reset(stmt);
+	sqlite3_reset(stmt); // FIXME: remove
 
 	/* If the payload has been fully consumed, it means there are no
 	 * parameters to bind. */
