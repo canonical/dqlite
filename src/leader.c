@@ -26,6 +26,19 @@
 # define TAIL
 #endif
 
+static int sqlite_errcode(int raft_errno) {
+	switch (raft_errno) {
+	case 0                  : return SQLITE_OK;
+	case RAFT_NOMEM         : return SQLITE_NOMEM;
+	case RAFT_NOTLEADER     : return SQLITE_IOERR_NOT_LEADER;
+	case RAFT_LEADERSHIPLOST: return SQLITE_IOERR_LEADERSHIP_LOST;
+	case RAFT_CORRUPT       : return SQLITE_CORRUPT;
+	case RAFT_BUSY          : return SQLITE_BUSY;
+	case RAFT_IOERR         : return SQLITE_IOERR;
+	case RAFT_NOTFOUND      : return SQLITE_NOTFOUND;
+	default                 : return SQLITE_ERROR;
+	}
+}
 
 /* Open a SQLite connection and set it to leader replication mode. */
 static int openConnection(const char *filename,
@@ -139,7 +152,6 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 	}
 
 	l->exec = NULL;
-	l->inflight = NULL;
 	db->leaders++;
 	return 0;
 }
@@ -151,21 +163,17 @@ static bool exec_invariant(const struct sm *sm, int prev)
 	return true;
 }
 
-void leader__close(struct leader *l)
+void leader__close(struct leader *leader)
 {
+	PRE(leader->db->leaders > 0);
 	tracef("leader close");
 	int rc;
-	// TODO
-	if (l->exec != NULL) {
-		leader_exec_abort(l->exec);
-		assert(l->inflight == NULL);
-		// exec_v2_abort(l->exec, SQLITE_ERROR);
+	if (leader->exec != NULL) {
+		leader_exec_abort(leader->exec);
 	}
-	rc = sqlite3_close(l->conn);
+	rc = sqlite3_close_v2(leader->conn);
 	assert(rc == 0);
-
-	assert(l->db->leaders > 0);
-	l->db->leaders--;
+	leader->db->leaders--;
 }
 
 /* A checkpoint command that fails to commit is not a huge issue.
@@ -174,16 +182,16 @@ void leader__close(struct leader *l)
  * threshold size again. It's improbable that the WAL in this way could grow
  * without bound, it would mean that apply frames commands commit without
  * issues, while the checkpoint command would somehow always fail to commit. */
-// static void leaderCheckpointApplyCb(struct raft_apply *req,
-// 				    int status,
-// 				    void *result)
-// {
-// 	(void)result;
-// 	raft_free(req);
-// 	if (status != 0) {
-// 		tracef("checkpoint apply failed %d", status);
-// 	}
-// }
+static void leaderCheckpointApplyCb(struct raft_apply *req,
+				    int status,
+				    void *result)
+{
+	(void)result;
+	raft_free(req);
+	if (status != 0) {
+		tracef("checkpoint apply failed %d", status);
+	}
+}
 
 /* Attempt to perform a checkpoint on nodes running a version of dqlite that
  * doens't perform autonomous checkpoints. For recent nodes, the checkpoint
@@ -191,118 +199,60 @@ void leader__close(struct leader *l)
  * This function will run after the WAL might have been checkpointed during a
  * call to `apply_frames`.
  * */
-// static void leaderMaybeCheckpointLegacy(struct leader *l)
-// {
-// 	tracef("leader maybe checkpoint legacy");
-// 	struct sqlite3_file *wal = NULL;
-// 	struct raft_buffer buf;
-// 	struct command_checkpoint command;
-// 	sqlite3_int64 size;
-// 	int rv;
-
-// 	/* Get the database file associated with this connection */
-// 	rv = sqlite3_file_control(l->conn, "main", SQLITE_FCNTL_JOURNAL_POINTER,
-// 				  &wal);
-// 	assert(rv == SQLITE_OK); /* Should never fail */
-// 	if (wal == NULL || wal->pMethods == NULL) {
-// 		/* This might happen at the beginning of the leader life cycle, 
-// 		 * when no pages have been applied yet. */
-// 		return;
-// 	}
-// 	rv = wal->pMethods->xFileSize(wal, &size);
-// 	assert(rv == SQLITE_OK); /* Should never fail */
-
-// 	/* size of the WAL will be 0 if it has just been checkpointed on this
-// 	 * leader as a result of running apply_frames. */
-// 	if (size != 0) {
-// 		return;
-// 	}
-
-// 	tracef("issue checkpoint command");
-
-// 	/* Attempt to perfom a checkpoint across nodes that don't perform
-// 	 * autonomous snapshots. */
-// 	command.filename = l->db->filename;
-// 	rv = command__encode(COMMAND_CHECKPOINT, &command, &buf);
-// 	if (rv != 0) {
-// 		tracef("encode failed %d", rv);
-// 		return;
-// 	}
-
-// 	struct raft_apply *apply = raft_malloc(sizeof(*apply));
-// 	if (apply == NULL) {
-// 		tracef("raft_malloc - no mem");
-// 		goto err_after_buf_alloc;
-// 	}
-// 	rv = raft_apply(l->raft, apply, &buf, 1, leaderCheckpointApplyCb);
-// 	if (rv != 0) {
-// 		tracef("raft_apply failed %d", rv);
-// 		raft_free(apply);
-// 		goto err_after_buf_alloc;
-// 	}
-
-// 	return;
-
-// err_after_buf_alloc:
-// 	raft_free(buf.base);
-// }
-
-static int leaderApplyFrames(struct exec *req,
-			     dqlite_vfs_frame *frames,
-			     unsigned n,
-			     raft_apply_cb cb)
+static void leaderMaybeCheckpointLegacy(struct leader *leader)
 {
-	PRE(req->leader != NULL);
-
-	tracef("leader apply frames");
-	struct leader *l = req->leader;
-	struct db *db = l->db;
-	struct command_frames c;
+	tracef("leader maybe checkpoint legacy");
+	struct sqlite3_file *wal = NULL;
 	struct raft_buffer buf;
-	struct apply *apply;
+	struct command_checkpoint command;
+	sqlite3_int64 size;
 	int rv;
 
-	c.filename = db->filename;
-	c.tx_id = 0;
-	c.truncate = 0;
-	c.is_commit = 1;
-	c.frames.n_pages = (uint32_t)n;
-	c.frames.page_size = (uint16_t)db->config->page_size;
-	c.frames.data = frames;
+	/* Get the database file associated with this connection */
+	rv = sqlite3_file_control(leader->conn, "main", SQLITE_FCNTL_JOURNAL_POINTER,
+				  &wal);
+	assert(rv == SQLITE_OK); /* Should never fail */
+	if (wal == NULL || wal->pMethods == NULL) {
+		/* This might happen at the beginning of the leader life cycle, 
+		 * when no pages have been applied yet. */
+		return;
+	}
+	rv = wal->pMethods->xFileSize(wal, &size);
+	assert(rv == SQLITE_OK); /* Should never fail */
 
-	rv = command__encode(COMMAND_FRAMES, &c, &buf);
-	if (rv != 0) {
-		tracef("encode %d", rv);
-		goto err_after_command_encode;
+	/* size of the WAL will be 0 if it has just been checkpointed on this
+	 * leader as a result of running apply_frames. */
+	if (size != 0) {
+		return;
 	}
 
-	apply = raft_malloc(sizeof *req);
+	tracef("issue checkpoint command");
+
+	/* Attempt to perfom a checkpoint across nodes that don't perform
+	 * autonomous snapshots. */
+	command.filename = leader->db->filename;
+	rv = command__encode(COMMAND_CHECKPOINT, &command, &buf);
+	if (rv != 0) {
+		tracef("encode failed %d", rv);
+		return;
+	}
+
+	struct raft_apply *apply = raft_malloc(sizeof(*apply));
 	if (apply == NULL) {
-		tracef("malloc");
-		rv = DQLITE_NOMEM;
-		goto err;
+		tracef("raft_malloc - no mem");
+		goto err_after_buf_alloc;
 	}
-	apply->leader = req->leader;
-	apply->req.data = apply;
-	apply->type = COMMAND_FRAMES;
-
-	rv = raft_apply(l->raft, &apply->req, &buf, 1, cb);
+	rv = raft_apply(leader->raft, apply, &buf, 1, leaderCheckpointApplyCb);
 	if (rv != 0) {
-		tracef("raft apply failed %d", rv);
-		goto err_after_apply_alloc;
+		tracef("raft_apply failed %d", rv);
+		raft_free(apply);
+		goto err_after_buf_alloc;
 	}
 
-	l->inflight = apply;
+	return;
 
-	return 0;
-
-err_after_apply_alloc:
-	raft_free(apply);
-err_after_command_encode:
+err_after_buf_alloc:
 	raft_free(buf.base);
-err:
-	assert(rv != 0);
-	return rv;
 }
 
 /**
@@ -318,7 +268,6 @@ enum {
 
 	EXEC_RUN_BARRIER,
 	EXEC_RUNNING,
-	EXEC_POLLED,
 
 	EXEC_DONE,
 	EXEC_NR,
@@ -334,8 +283,7 @@ static const struct sm_conf exec_states[EXEC_NR] = {
 	S(PREPARED,               A(ENQUEUED)|A(RUN_BARRIER)|A(RUNNING)|A(DONE), 0),
 	S(ENQUEUED,               A(RUN_BARRIER)|A(RUNNING)|A(DONE),             0),
 	S(RUN_BARRIER,            A(RUNNING)|A(DONE),                            0),
-	S(RUNNING,                A(POLLED)|A(DONE),                             0),
-	S(POLLED,                 A(DONE),                                       0),
+	S(RUNNING,                A(DONE),                                       0),
 	S(DONE,                   0,                                             SM_FAILURE|SM_FINAL),
 };
 
@@ -343,6 +291,7 @@ static const struct sm_conf exec_states[EXEC_NR] = {
 #undef A
 
 static void exec_tick(struct exec *req);
+static int  exec_apply(struct exec *req, dqlite_vfs_frame *pages, unsigned n_pages);
 static void exec_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_apply_cb(struct raft_apply *req, int status, void *result);
 static void exec_timer_cb(struct raft_timer *timer);
@@ -361,6 +310,7 @@ void leader_exec(struct leader *leader,
 	PRE(leader != NULL && leader->exec == NULL);
 	PRE(work != NULL && done != NULL);
 
+	leader->exec = req;
 	req->status = 0;
 	req->leader = leader;
 	req->work_cb = work;
@@ -368,27 +318,26 @@ void leader_exec(struct leader *leader,
 	sm_init(&req->sm, exec_invariant, NULL, exec_states, "exec",
 		EXEC_INITED);
 
-	leader->exec = req;	
-
 	return exec_tick(req);
 }
 
-void leader_abort(struct leader *leader)
+void leader_exec_abort(struct exec *req)
 {
-	struct exec *req = leader->exec;
-	if (req == NULL) {
-		return;
-	}
+	PRE(req->status == 0);
 
 	switch (sm_state(&req->sm)) {
 	case EXEC_ENQUEUED:
-
-	case EXEC_RUNNING: // FIXME how to do this?
-	case EXEC_POLLED:
+		raft_timer_stop(req->leader->raft, &req->timer);
+		queue_remove(&req->queue);
+		TAIL return leader_exec_resume(req);
+	case EXEC_RUNNING:
+		// FIXME: could be a datarace in case off-the-main loop execution
+		sqlite3_interrupt(req->leader->conn);
+	case EXEC_DONE: /* already done */
+		return;
 	}
 
-	leader_exec_result(leader->exec, SQLITE_ABORT);
-	return leader_exec_resume(leader->exec);
+	leader_exec_result(req, SQLITE_ABORT);
 }
 
 void leader_exec_result(struct exec *req, int status)
@@ -397,10 +346,20 @@ void leader_exec_result(struct exec *req, int status)
 	PRE(
 		sm_state(&req->sm) == EXEC_PREPARE_BARRIER ||
 		sm_state(&req->sm) == EXEC_ENQUEUED ||
-		sm_state(&req->sm) == EXEC_RUN_BARRIER ||
-		sm_state(&req->sm) == EXEC_POLLED
+		sm_state(&req->sm) == EXEC_RUNNING ||
+		sm_state(&req->sm) == EXEC_RUN_BARRIER
 	);
-	req->status = status;
+
+	/* This sets the result to status only if status was an error.
+	 * This is part of the best effort cancellation logic: if an
+	 * unstoppable request fails, it's better to keep the error
+	 * returned from that request.
+	 * However, if the request succeeded, but a cancellation was attempted
+	 * then we clearly cannot override the error code, as otherwise
+	 * the state machine will keep going. */
+	if (status != 0) {
+		req->status = status;
+	}
 }
 
 void leader_exec_resume(struct exec *req)
@@ -408,9 +367,50 @@ void leader_exec_resume(struct exec *req)
 	TAIL return exec_tick(req);
 }
 
+static int exec_apply(struct exec *req, dqlite_vfs_frame *frames, unsigned nframes)
+{
+	tracef("leader apply frames");
+	PRE(req != NULL);
+	PRE(frames != NULL);
+	PRE(nframes > 0);
+
+	struct leader *leader = req->leader;
+	struct db *db = leader->db;
+	struct raft_buffer buf;
+
+	if (exec_db_full(req->leader->db->vfs, req->leader->db, nframes)) {
+		return SQLITE_FULL;
+	}
+
+	const struct command_frames c = {
+		.filename = db->filename,
+		.tx_id = 0,
+		.truncate = 0,
+		.is_commit = 1,
+		.frames = {
+			.n_pages = (uint32_t)nframes,
+			.page_size = (uint16_t)db->config->page_size,
+			.data = frames,
+		}
+	};
+	int rv = command__encode(COMMAND_FRAMES, &c, &buf);
+	if (rv != 0) {
+		tracef("encode %d", rv);
+		return rv;
+	}
+
+	rv = raft_apply(leader->raft, &req->apply, &buf, 1, exec_apply_cb);
+	if (rv != 0) {
+		tracef("raft apply failed %d", rv);
+		raft_free(buf.base);
+		return rv;
+	}
+
+	return 0;
+}
+
 static void exec_tick(struct exec *req)
 {
-	// FIXME: req->status should become sm->rc
 	PRE(req != NULL);
 	PRE(req->leader != NULL);
 	PRE(req->leader->db != NULL);
@@ -423,8 +423,7 @@ static void exec_tick(struct exec *req)
 			if (req->stmt == NULL) {
 				sm_move(&req->sm, EXEC_PREPARE_BARRIER);
 				if (needsBarrier(req->leader)) {
-					// FIXME: result code should be SQLITE_XXX
-					req->status = raft_barrier(req->leader->raft, &req->barrier, exec_barrier_cb);
+					req->status = sqlite_errcode(raft_barrier(req->leader->raft, &req->barrier, exec_barrier_cb));
 					if (req->status == 0) {
 						return exec_suspend(req);
 					}
@@ -464,8 +463,8 @@ static void exec_tick(struct exec *req)
 				 * but also start a timer as this statement should not sit
 				 * in the queue for too long. In the case the timer expires
 				 * the statement will just fail with SQLITE_BUSY. */
-				req->status = raft_timer_start(leader->raft, &req->timer,
-					leader->db->config->busy_timeout, 0, exec_timer_cb);
+				req->status = sqlite_errcode(raft_timer_start(leader->raft, &req->timer,
+					leader->db->config->busy_timeout, 0, exec_timer_cb));
 				if (req->status != RAFT_RESULT_OK) {
 					sm_move(&req->sm, EXEC_DONE);
 					/* given that it wasn't possible to wait for the other leader,
@@ -485,8 +484,7 @@ static void exec_tick(struct exec *req)
 			} else {
 				sm_move(&req->sm, EXEC_RUN_BARRIER);
 				if (UNLIKELY(needsBarrier(req->leader))) {
-					// FIXME: result code should be SQLITE_XXX
-					req->status = raft_barrier(req->leader->raft, &req->barrier, exec_barrier_cb);
+					req->status = sqlite_errcode(raft_barrier(req->leader->raft, &req->barrier, exec_barrier_cb));
 					if (req->status == 0) {
 						return exec_suspend(req);
 					}
@@ -503,43 +501,31 @@ static void exec_tick(struct exec *req)
 			}
 			break;
 		case EXEC_RUNNING:
-			if (req->status != 0) {
+			sm_move(&req->sm, EXEC_DONE);
+			if (req->status == 0) {
 				sm_move(&req->sm, EXEC_DONE);
-			} else {
-				sm_move(&req->sm, EXEC_POLLED);
-				req->status = VfsPoll(leader->db->vfs, leader->db->path, &req->frames.ptr, &req->frames.len);
-				if (req->status == 0 && req->frames.len > 0) {
-					/* Check if the new frames would create an overfull database */
-					if (exec_db_full(leader->db->vfs, leader->db, req->frames.len)) {
-						req->status = SQLITE_FULL;
-					} else {
-						req->status = leaderApplyFrames(req, req->frames.ptr, req->frames.len, exec_apply_cb);
+				dqlite_vfs_frame *frames;
+				unsigned int nframes;
+				req->status = VfsPoll(leader->db->vfs, leader->db->path, &frames, &nframes);
+				if (req->status == 0 && nframes > 0) {
+					req->status = sqlite_errcode(exec_apply(req, frames, nframes));
+					for (unsigned i = 0; i < nframes; i++) {
+						sqlite3_free(frames[i].data);
+					}
+					sqlite3_free(frames);
+					if (req->status == 0) {
+						return exec_suspend(req);
 					}
 				} else {
-					POST(req->frames.len == 0);
-					POST(req->frames.ptr == NULL);
+					POST(nframes == 0 && frames == NULL);
 				}
 			}
 			break;
-		case EXEC_POLLED:
-			if (req->status != 0) {
-				VfsAbort(leader->db->vfs, leader->db->path);
-			}
-
-			for (unsigned i = 0; i < req->frames.len; i++) {
-				sqlite3_free(req->frames.ptr[i].data);
-			}
-			sqlite3_free(req->frames.ptr);
-			req->frames.ptr = NULL;
-			req->frames.len = 0;
-
-			sm_done(&req->sm, EXEC_DONE, EXEC_DONE, req->status);
-			break;
 		case EXEC_DONE:
+			leader->exec = NULL;
 			req->leader = NULL;
 			sm_fini(&req->sm);
 			TAIL return req->done_cb(req);
-			break;
 		default:
 			POST(false && "impossible!");
 		}
@@ -551,7 +537,7 @@ static void exec_barrier_cb(struct raft_barrier *barrier, int status)
 	PRE(barrier != NULL);
 	struct exec *req = CONTAINER_OF(barrier, struct exec, barrier);
 
-	leader_exec_result(req, status);
+	leader_exec_result(req, sqlite_errcode(status));
 	return leader_exec_resume(req);
 }
 
@@ -564,22 +550,18 @@ static void exec_timer_cb(struct raft_timer *timer)
 	return leader_exec_resume(req);
 }
 
-static void exec_apply_cb(struct raft_apply *req, int status, void *result)
+static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 {
 	(void)result;
+	struct exec *exec = CONTAINER_OF(apply, struct exec, apply);
+	struct leader *leader = exec->leader;
+	if (status != 0) {
+		VfsAbort(leader->db->vfs, leader->db->path);
+	} else {
+		leaderMaybeCheckpointLegacy(leader);
+	}
 
-	PRE(req != NULL && req->data != NULL);
-	struct apply *apply = req->data;
-
-	PRE(apply->leader != NULL);
-	PRE(apply->leader->exec != NULL);
-
-	struct leader *leader = apply->leader;
-	struct exec *exec = leader->exec;
-
-	raft_free(apply);
-
-	leader_exec_result(exec, status);
+	leader_exec_result(exec, sqlite_errcode(status));
 	return leader_exec_resume(exec);
 }
 

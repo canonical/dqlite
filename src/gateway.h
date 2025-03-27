@@ -71,6 +71,8 @@ struct handle {
 	 *
 	 * This is used by handle_prepare. */
 	size_t db_id;
+	/* Set to true when a cancellation has been requested. */
+	bool cancellation_requested;
 	/* Prepared statement that will be queried to process this request.
 	 *
 	 * This is used by handle_query and handle_query_sql. */

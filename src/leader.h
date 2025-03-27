@@ -24,27 +24,12 @@ struct leader;
 typedef void (*exec_work_cb)(struct exec *req);
 typedef void (*exec_done_cb)(struct exec *req);
 
-/* Wrapper around raft_apply, saving context information. */
-// TODO remove this.
-struct apply {
-	struct raft_apply req; /* Raft apply request */
-	int status;            /* Raft apply result */
-	struct leader *leader; /* Leader connection that triggered the hook */
-	int type;              /* Command type */
-	union {                /* Command-specific data */
-		struct {
-			bool is_commit;
-		} frames;
-	};
-};
-
 struct leader {
 	struct db *db;            /* Database the connection. */
 	sqlite3 *conn;            /* Underlying SQLite connection. */
 	struct raft *raft;        /* Raft instance. */
 	struct exec *exec;        /* Exec request in progress, if any. */
 	queue queue;              /* Prev/next leader, used by struct db. */
-	struct apply *inflight;   /* TODO: remove this. */
 };
 
 /**
@@ -90,10 +75,7 @@ struct exec {
 	struct leader *leader;
 	struct raft_barrier barrier;
 	struct raft_timer timer;
-	struct {
-		dqlite_vfs_frame *ptr;
-		unsigned          len;
-	} frames;
+	struct raft_apply apply;
 
 	exec_work_cb work_cb;
 	exec_done_cb done_cb;

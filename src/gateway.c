@@ -684,12 +684,17 @@ static void handle_query_work_cb(struct exec *exec)
 }
 
 
-static void handle_query_done_cb(struct exec *exec) {
+static void handle_query_done_cb(struct exec *exec)
+{
 	struct gateway *g   = exec->data;
 	PRE(g->leader != NULL && g->req != NULL);
 	struct handle *req = g->req;
 	g->req = NULL;
-	if (exec->status == 0) {
+
+	if (req->cancellation_requested) {
+		struct response_empty response = { 0 };
+		SUCCESS_V0(empty, EMPTY);
+	} else if (exec->status == 0) {
 		struct response_rows response = {
 			.eof = DQLITE_RESPONSE_ROWS_DONE,
 		};
@@ -806,12 +811,20 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 static int handle_interrupt(struct gateway *g, struct handle *req)
 {
 	tracef("handle interrupt");
+	if (g->req != NULL) {
+		g->req->cancellation_requested = true;
+		if (g->leader->exec != NULL) {
+			leader_exec_abort(g->leader->exec);
+		}
+	}
 	g->req = NULL;
 	struct cursor *cursor = &req->cursor;
-	START_V0(interrupt, empty);
-	sqlite3_finalize(req->stmt);
-	req->stmt = NULL;
-	SUCCESS_V0(empty, EMPTY);
+	struct request_interrupt request = { 0 };
+	int rv = request_interrupt__decode(cursor, &request);
+	if (rv != 0) {
+		return rv;
+	}
+	LOOKUP_DB(request.db_id);
 	return 0;
 }
 
