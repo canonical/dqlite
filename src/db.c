@@ -35,6 +35,11 @@ int db__init(struct db *db, struct config *config, const char *filename)
 	int rv;
 
 	db->config = config;
+	db->vfs = sqlite3_vfs_find(config->name);
+	if (db->vfs == NULL) {
+		rv = DQLITE_MISUSE;
+		goto err;
+	}
 	db->cookie = str_hash(filename);
 	db->filename = sqlite3_malloc((int)(strlen(filename) + 1));
 	if (db->filename == NULL) {

@@ -988,7 +988,6 @@ static int handle_dump(struct gateway *g, struct handle *req)
 	tracef("handle dump");
 	struct cursor *cursor = &req->cursor;
 	bool err = true;
-	sqlite3_vfs *vfs;
 	char *cur;
 	char filename[1024] = { 0 };
 	void *data;
@@ -1007,8 +1006,7 @@ static int handle_dump(struct gateway *g, struct handle *req)
 	assert(cur != NULL);
 	response_files__encode(&response, &cur);
 
-	vfs = sqlite3_vfs_find(g->config->name);
-	rv = VfsSnapshot(vfs, request.filename, &data, &n);
+	rv = VfsSnapshot(g->leader->db->vfs, request.filename, &data, &n);
 	if (rv != 0) {
 		tracef("dump failed");
 		failure(req, rv, "failed to dump database");

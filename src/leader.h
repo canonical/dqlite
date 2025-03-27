@@ -155,7 +155,7 @@ void leader_exec_resume(struct exec *req);
  * If there is no request in progress, this function does nothing.
  *
  */
-void leader_abort(struct leader *leader);
+void leader_exec_abort(struct exec *req);
 
 void leader__close(struct leader *l);
 

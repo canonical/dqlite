@@ -187,7 +187,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
 	tracef("fsm apply frames");
 	struct db *db;
-	sqlite3_vfs *vfs;
 	unsigned long *page_numbers = NULL;
 	void *pages;
 	int exists;
@@ -199,11 +198,9 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		return rv;
 	}
 
-	vfs = sqlite3_vfs_find(db->config->name);
-
 	/* Check if the database file exists, and create it by opening a
 	 * connection if it doesn't. */
-	rv = vfs->xAccess(vfs, db->path, 0, &exists);
+	rv = db->vfs->xAccess(db->vfs, db->path, 0, &exists);
 	assert(rv == 0);
 
 	if (!exists) {
@@ -242,7 +239,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 				return DQLITE_NOMEM;
 			}
 			rv =
-			    VfsApply(vfs, db->path, f->pending.n_pages,
+			    VfsApply(db->vfs, db->path, f->pending.n_pages,
 				     f->pending.page_numbers, f->pending.pages);
 			if (rv != 0) {
 				tracef("VfsApply failed %d", rv);
@@ -255,7 +252,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 			f->pending.page_numbers = NULL;
 			f->pending.pages = NULL;
 		} else {
-			rv = VfsApply(vfs, db->path, c->frames.n_pages,
+			rv = VfsApply(db->vfs, db->path, c->frames.n_pages,
 				      page_numbers, pages);
 			if (rv != 0) {
 				tracef("VfsApply failed %d", rv);
@@ -385,7 +382,6 @@ static int encodeDatabase(struct db *db,
 			  uint32_t n)
 {
 	struct snapshotDatabase header;
-	sqlite3_vfs *vfs;
 	char *cursor;
 	struct dqlite_buffer *bufs = (struct dqlite_buffer *)r_bufs;
 	int rv;
@@ -396,8 +392,7 @@ static int encodeDatabase(struct db *db,
 	 * wal_size is always 0. */
 	header.wal_size = 0;
 
-	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsShallowSnapshot(vfs, db->filename, &bufs[1], n - 1);
+	rv = VfsShallowSnapshot(db->vfs, db->filename, &bufs[1], n - 1);
 	if (rv != 0) {
 		goto err;
 	}
@@ -424,7 +419,6 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 {
 	struct snapshotDatabase header;
 	struct db *db;
-	sqlite3_vfs *vfs;
 	size_t n;
 	int exists;
 	int rv;
@@ -438,11 +432,9 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 		return rv;
 	}
 
-	vfs = sqlite3_vfs_find(db->config->name);
-
 	/* Check if the database file exists, and create it by opening a
 	 * connection if it doesn't. */
-	rv = vfs->xAccess(vfs, header.filename, 0, &exists);
+	rv = db->vfs->xAccess(db->vfs, header.filename, 0, &exists);
 	assert(rv == 0);
 
 	if (!exists) {
@@ -463,7 +455,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 
 	/* Due to the check above, this cast is safe. */
 	n = (size_t)(header.main_size + header.wal_size);
-	rv = VfsRestore(vfs, db->filename, cursor->p, n);
+	rv = VfsRestore(db->vfs, db->filename, cursor->p, n);
 	if (rv != 0) {
 		return rv;
 	}
@@ -474,12 +466,10 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 
 static unsigned dbNumPages(struct db *db)
 {
-	sqlite3_vfs *vfs;
 	int rv;
 	uint32_t n;
 
-	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDatabaseNumPages(vfs, db->filename, true, &n);
+	rv = VfsDatabaseNumPages(db->vfs, db->filename, true, &n);
 	assert(rv == 0);
 	return n;
 }
@@ -745,12 +735,10 @@ void fsm__close(struct raft_fsm *fsm)
 /* The synchronous part of the database encoding */
 static int encodeDiskDatabaseSync(struct db *db, struct raft_buffer *r_buf)
 {
-	sqlite3_vfs *vfs;
 	struct dqlite_buffer *buf = (struct dqlite_buffer *)r_buf;
 	int rv;
 
-	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDiskSnapshotWal(vfs, db->path, buf);
+	rv = VfsDiskSnapshotWal(db->vfs, db->path, buf);
 	if (rv != 0) {
 		goto err;
 	}
@@ -768,15 +756,13 @@ static int encodeDiskDatabaseAsync(struct db *db,
 				   uint32_t n)
 {
 	struct snapshotDatabase header;
-	sqlite3_vfs *vfs;
 	char *cursor;
 	struct dqlite_buffer *bufs = (struct dqlite_buffer *)r_bufs;
 	int rv;
 
 	assert(n == 3);
 
-	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDiskSnapshotDb(vfs, db->path, &bufs[1]);
+	rv = VfsDiskSnapshotDb(db->vfs, db->path, &bufs[1]);
 	if (rv != 0) {
 		goto err;
 	}
@@ -1043,7 +1029,6 @@ static int decodeDiskDatabase(struct fsm *f, struct cursor *cursor)
 {
 	struct snapshotDatabase header;
 	struct db *db;
-	sqlite3_vfs *vfs;
 	int exists;
 	int rv;
 
@@ -1056,11 +1041,9 @@ static int decodeDiskDatabase(struct fsm *f, struct cursor *cursor)
 		return rv;
 	}
 
-	vfs = sqlite3_vfs_find(db->config->name);
-
 	/* Check if the database file exists, and create it by opening a
 	 * connection if it doesn't. */
-	rv = vfs->xAccess(vfs, db->path, 0, &exists);
+	rv = db->vfs->xAccess(db->vfs, db->path, 0, &exists);
 	assert(rv == 0);
 
 	if (!exists) {
@@ -1084,7 +1067,7 @@ static int decodeDiskDatabase(struct fsm *f, struct cursor *cursor)
 	}
 
 	/* Due to the check above, these casts are safe. */
-	rv = VfsDiskRestore(vfs, db->path, cursor->p, (size_t)header.main_size,
+	rv = VfsDiskRestore(db->vfs, db->path, cursor->p, (size_t)header.main_size,
 			    (size_t)header.wal_size);
 	if (rv != 0) {
 		tracef("VfsDiskRestore %d", rv);

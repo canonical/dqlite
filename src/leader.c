@@ -155,9 +155,9 @@ void leader__close(struct leader *l)
 {
 	tracef("leader close");
 	int rc;
-	leader_abort(l);
 	// TODO
 	if (l->exec != NULL) {
+		leader_exec_abort(l->exec);
 		assert(l->inflight == NULL);
 		// exec_v2_abort(l->exec, SQLITE_ERROR);
 	}
@@ -415,9 +415,6 @@ static void exec_tick(struct exec *req)
 	PRE(req->leader != NULL);
 	PRE(req->leader->db != NULL);
 	struct leader *leader = req->leader;
-	struct db *db = leader->db;
-	// FIXME this must go in struct db*
-	sqlite3_vfs *vfs = sqlite3_vfs_find(db->config->name);
 
 	for (;;) {
 		switch (sm_state(&req->sm)) {
@@ -468,7 +465,7 @@ static void exec_tick(struct exec *req)
 				 * in the queue for too long. In the case the timer expires
 				 * the statement will just fail with SQLITE_BUSY. */
 				req->status = raft_timer_start(leader->raft, &req->timer,
-					db->config->busy_timeout, 0, exec_timer_cb);
+					leader->db->config->busy_timeout, 0, exec_timer_cb);
 				if (req->status != RAFT_RESULT_OK) {
 					sm_move(&req->sm, EXEC_DONE);
 					/* given that it wasn't possible to wait for the other leader,
@@ -476,7 +473,7 @@ static void exec_tick(struct exec *req)
 					req->status = SQLITE_BUSY;
 				} else {
 					sm_move(&req->sm, EXEC_ENQUEUED);
-					queue_insert_tail(&db->pending_queue, &req->queue);
+					queue_insert_tail(&leader->db->pending_queue, &req->queue);
 					return exec_suspend(req);
 				}
 			}
@@ -510,10 +507,10 @@ static void exec_tick(struct exec *req)
 				sm_move(&req->sm, EXEC_DONE);
 			} else {
 				sm_move(&req->sm, EXEC_POLLED);
-				req->status = VfsPoll(vfs, db->path, &req->frames.ptr, &req->frames.len);
+				req->status = VfsPoll(leader->db->vfs, leader->db->path, &req->frames.ptr, &req->frames.len);
 				if (req->status == 0 && req->frames.len > 0) {
 					/* Check if the new frames would create an overfull database */
-					if (exec_db_full(vfs, db, req->frames.len)) {
+					if (exec_db_full(leader->db->vfs, leader->db, req->frames.len)) {
 						req->status = SQLITE_FULL;
 					} else {
 						req->status = leaderApplyFrames(req, req->frames.ptr, req->frames.len, exec_apply_cb);
@@ -526,7 +523,7 @@ static void exec_tick(struct exec *req)
 			break;
 		case EXEC_POLLED:
 			if (req->status != 0) {
-				VfsAbort(vfs, leader->db->path);
+				VfsAbort(leader->db->vfs, leader->db->path);
 			}
 
 			for (unsigned i = 0; i < req->frames.len; i++) {

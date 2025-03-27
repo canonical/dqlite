@@ -13,6 +13,7 @@
 struct db
 {
 	struct config *config;        /* Dqlite configuration */
+	struct sqlite3_vfs *vfs;      /* Underlying VFS */
 	char *filename;               /* Database filename */
 	char *path;                   /* Used for on-disk db */
 	uint32_t cookie;              /* Used to bind to the pool's thread */
