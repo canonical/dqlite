@@ -165,13 +165,11 @@ static bool exec_invariant(const struct sm *sm, int prev)
 
 void leader__close(struct leader *leader)
 {
+	PRE(leader->exec == NULL);
 	PRE(leader->db->leaders > 0);
 	tracef("leader close");
 	int rc;
-	if (leader->exec != NULL) {
-		leader_exec_abort(leader->exec);
-	}
-	rc = sqlite3_close_v2(leader->conn);
+	rc = sqlite3_close(leader->conn);
 	assert(rc == 0);
 	leader->db->leaders--;
 }
@@ -308,13 +306,14 @@ void leader_exec(struct leader *leader,
 	PRE((req->stmt != NULL) ^ (req->sql != NULL));
 	PRE(req != NULL && req->leader == NULL);
 	PRE(leader != NULL && leader->exec == NULL);
-	PRE(work != NULL && done != NULL);
+	PRE(done != NULL);
 
 	leader->exec = req;
 	req->status = 0;
 	req->leader = leader;
 	req->work_cb = work;
 	req->done_cb = done;
+	queue_init(&req->queue);
 	sm_init(&req->sm, exec_invariant, NULL, exec_states, "exec",
 		EXEC_INITED);
 
@@ -326,6 +325,8 @@ void leader_exec_abort(struct exec *req)
 	PRE(req->status == 0);
 
 	switch (sm_state(&req->sm)) {
+	case EXEC_DONE: /* already done */
+		return;
 	case EXEC_ENQUEUED:
 		raft_timer_stop(req->leader->raft, &req->timer);
 		queue_remove(&req->queue);
@@ -333,8 +334,7 @@ void leader_exec_abort(struct exec *req)
 	case EXEC_RUNNING:
 		// FIXME: could be a datarace in case off-the-main loop execution
 		sqlite3_interrupt(req->leader->conn);
-	case EXEC_DONE: /* already done */
-		return;
+		break;
 	}
 
 	leader_exec_result(req, SQLITE_ABORT);
@@ -343,12 +343,6 @@ void leader_exec_abort(struct exec *req)
 void leader_exec_result(struct exec *req, int status)
 {
 	PRE(req != NULL);
-	PRE(
-		sm_state(&req->sm) == EXEC_PREPARE_BARRIER ||
-		sm_state(&req->sm) == EXEC_ENQUEUED ||
-		sm_state(&req->sm) == EXEC_RUNNING ||
-		sm_state(&req->sm) == EXEC_RUN_BARRIER
-	);
 
 	/* This sets the result to status only if status was an error.
 	 * This is part of the best effort cancellation logic: if an
@@ -412,8 +406,7 @@ static int exec_apply(struct exec *req, dqlite_vfs_frame *frames, unsigned nfram
 static void exec_tick(struct exec *req)
 {
 	PRE(req != NULL);
-	PRE(req->leader != NULL);
-	PRE(req->leader->db != NULL);
+	PRE(req->leader != NULL && req->leader->db != NULL);
 	struct leader *leader = req->leader;
 
 	for (;;) {
@@ -437,7 +430,7 @@ static void exec_tick(struct exec *req)
 				sm_move(&req->sm, EXEC_DONE);
 			} else {
 				req->status = sqlite3_prepare_v2(req->leader->conn, 
-					req->sql, -1, &req->stmt, &req->sql);
+					req->sql, -1, &req->stmt, &req->tail);
 				if (req->stmt == NULL) {
 					sm_move(&req->sm, EXEC_DONE);
 				} else {
@@ -454,9 +447,9 @@ static void exec_tick(struct exec *req)
 				sm_move(&req->sm, EXEC_DONE);
 			} else if (sqlite3_stmt_readonly(req->stmt)) {
 				/* database in in WAL mode, readers can always proceed */
-				sm_move(&req->sm, EXEC_RUNNING);
+				sm_move(&req->sm, EXEC_ENQUEUED);
 			} else if (!exec_db_busy(req)) {
-				sm_move(&req->sm, EXEC_RUNNING);
+				sm_move(&req->sm, EXEC_ENQUEUED);
 				req->leader->db->active_leader = req->leader; 
 			} else {
 				/* supend as another leader is keeping the database busy,
@@ -478,12 +471,13 @@ static void exec_tick(struct exec *req)
 			}
 			break;
 		case EXEC_ENQUEUED:
+			raft_timer_stop(leader->raft, &req->timer);
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
 				queue_remove(&req->queue);
 			} else {
 				sm_move(&req->sm, EXEC_RUN_BARRIER);
-				if (UNLIKELY(needsBarrier(req->leader))) {
+				if (needsBarrier(req->leader)) {
 					req->status = sqlite_errcode(raft_barrier(req->leader->raft, &req->barrier, exec_barrier_cb));
 					if (req->status == 0) {
 						return exec_suspend(req);
@@ -502,8 +496,7 @@ static void exec_tick(struct exec *req)
 			break;
 		case EXEC_RUNNING:
 			sm_move(&req->sm, EXEC_DONE);
-			if (req->status == 0) {
-				sm_move(&req->sm, EXEC_DONE);
+			if (req->status == SQLITE_DONE) {
 				dqlite_vfs_frame *frames;
 				unsigned int nframes;
 				req->status = VfsPoll(leader->db->vfs, leader->db->path, &frames, &nframes);
@@ -522,7 +515,7 @@ static void exec_tick(struct exec *req)
 			}
 			break;
 		case EXEC_DONE:
-			leader->exec = NULL;
+			leader->exec = NULL;				
 			req->leader = NULL;
 			sm_fini(&req->sm);
 			TAIL return req->done_cb(req);
@@ -555,10 +548,14 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	(void)result;
 	struct exec *exec = CONTAINER_OF(apply, struct exec, apply);
 	struct leader *leader = exec->leader;
-	if (status != 0) {
-		VfsAbort(leader->db->vfs, leader->db->path);
-	} else {
-		leaderMaybeCheckpointLegacy(leader);
+	if (leader) {
+		// FIXME: this only works if this was a shutdown. Otherwise the db is
+		// left in a weird state.
+		if (status != 0) {
+			VfsAbort(leader->db->vfs, leader->db->path);
+		} else {
+			leaderMaybeCheckpointLegacy(leader);
+		}
 	}
 
 	leader_exec_result(exec, sqlite_errcode(status));

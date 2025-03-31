@@ -19,6 +19,7 @@ TEST_MODULE(gateway);
 /* Context for a gateway handle request. */
 struct context {
 	bool invoked;
+	bool resume;  /* True to resume the request when closing */
 	int status;
 	uint8_t type;
 	uint8_t schema;
@@ -35,7 +36,7 @@ struct connection {
 	struct context context;
 };
 
-#define FIXTURE                                   \
+#define FIXTURE                               \
 	FIXTURE_CLUSTER;                          \
 	struct connection connections[N_SERVERS]; \
 	struct gateway *gateway;                  \
@@ -45,36 +46,43 @@ struct connection {
 	struct handle *handle;                    \
 	struct context *context;
 
-#define SETUP                                                           \
+#define SETUP                                                       \
 	unsigned i;                                                     \
 	int rc;                                                         \
 	SETUP_CLUSTER(V2);                                              \
 	for (i = 0; i < N_SERVERS; i++) {                               \
-		struct connection *c = &f->connections[i];              \
-		struct config *config;                                  \
-		config = CLUSTER_CONFIG(i);                             \
-		config->page_size = 512;                                \
-		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
-			      CLUSTER_RAFT(i)); \
-		c->handle.data = &c->context;                           \
-		rc = buffer__init(&c->buf1);                            \
-		munit_assert_int(rc, ==, 0);                            \
-		rc = buffer__init(&c->buf2);                            \
-		munit_assert_int(rc, ==, 0);                            \
+		struct connection *c = &f->connections[i];                  \
+		struct config *config;                                      \
+		config = CLUSTER_CONFIG(i);                                 \
+		config->page_size = 512;                                    \
+		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i),     \
+			      CLUSTER_RAFT(i));                                 \
+		c->handle.data = &c->context;                               \
+		rc = buffer__init(&c->buf1);                                \
+		munit_assert_int(rc, ==, 0);                                \
+		rc = buffer__init(&c->buf2);                                \
+		munit_assert_int(rc, ==, 0);                                \
 	}                                                               \
 	test_raft_heap_setup(params, user_data);                        \
 	pool_ut_fallback()->flags |= POOL_FOR_UT_NOT_ASYNC;             \
 	pool_ut_fallback()->flags |= POOL_FOR_UT;                       \
 	SELECT(0)
 
-#define TEAR_DOWN                                          \
+#define TEAR_DOWN                                      \
 	unsigned i;                                        \
 	test_raft_heap_tear_down(data);                    \
 	for (i = 0; i < N_SERVERS; i++) {                  \
-		struct connection *c = &f->connections[i]; \
-		gateway__close(&c->gateway);               \
-		buffer__close(&c->buf1);                   \
-		buffer__close(&c->buf2);                   \
+		struct connection *c = &f->connections[i];     \
+		f->context = &c->context;                      \
+		c->context.invoked = false;                    \
+		gateway__close(&c->gateway, closeCb);          \
+		if (c->context.resume) {                       \
+			bool finished;                             \
+			gateway__resume(&c->gateway, &finished);   \
+		}                                              \
+		WAIT;                                          \
+		buffer__close(&c->buf1);                       \
+		buffer__close(&c->buf2);                       \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 
@@ -83,11 +91,18 @@ static void handleCb(struct handle *req,
 		     uint8_t type,
 		     uint8_t schema)
 {
-	struct context *c = req->data;
-	c->invoked = true;
-	c->status = status;
-	c->type = type;
-	c->schema = schema;
+	struct connection *conn = CONTAINER_OF(req, struct connection, handle);
+	struct context *ctx = &conn->context;
+	ctx->invoked = true;
+	ctx->resume = true;
+	ctx->status = status;
+	ctx->type = type;
+	ctx->schema = schema;
+}
+
+static void closeCb(struct gateway *g) {
+	struct connection *c = CONTAINER_OF(g, struct connection, gateway);
+	c->context.invoked = true;
 }
 
 /******************************************************************************
@@ -161,6 +176,7 @@ static void handleCb(struct handle *req,
 		f->handle->cursor.cap = buffer__offset(f->buf1);           \
 		buffer__reset(f->buf2);                                    \
 		f->context->invoked = false;                               \
+		f->context->resume = false;                               \
 		f->context->status = -1;                                   \
 		f->context->type = -1;                                     \
 		rc2 = gateway__handle(f->gateway, f->handle, TYPE, SCHEMA, \
@@ -566,13 +582,13 @@ TEST_CASE(prepare, barrier_error, NULL)
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, prepare);
-	/* We rely on leader_barrier_v2 (called by handle_prepare) attempting
+	/* We rely on leader_exec (called by handle_prepare) attempting
 	 * an allocation using raft_malloc. */
-	test_raft_heap_fault_config(0, 1);
+	test_raft_heap_fault_config(1, 1);
 	test_raft_heap_fault_enable();
 	HANDLE_STATUS(DQLITE_REQUEST_PREPARE, RAFT_RESULT_OK);
 	WAIT;
-	ASSERT_CALLBACK(RAFT_NOMEM, FAILURE);
+	ASSERT_CALLBACK(SQLITE_NOMEM, FAILURE);
 	return MUNIT_OK;
 }
 
@@ -1185,9 +1201,7 @@ TEST_CASE(exec, unexpectedRow, NULL)
 	uint64_t stmt_id;
 	(void)params;
 	CLUSTER_ELECT(0);
-	EXEC("CREATE TABLE test (n INT)");
-	EXEC("INSERT INTO test (n) VALUES (1)");
-	PREPARE("SELECT n FROM test");
+	PREPARE("SELECT * FROM (VALUES (1), (2))");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, exec);
@@ -1406,20 +1420,23 @@ TEST_CASE(query, interrupt, NULL)
 	const char *column;
 	struct value value;
 	(void)params;
-	EXEC("BEGIN");
 
+	/* Query 2 response buffers worth of rows */
 	/* 16 = 8B header + 8B value (int) */
-	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 2 response buffers worth of rows */
-	for (i = 0; i < 2 * n_rows_buffer; i++) {
-		EXEC("INSERT INTO test(n) VALUES(123)");
-	}
-	EXEC("COMMIT");
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2 };
 
-	PREPARE("SELECT n FROM test");
+	PREPARE("WITH RECURSIVE seq(n) AS ("
+            "	SELECT 1               "
+            "	UNION ALL              "
+            "	SELECT n+1             "
+            "	FROM seq WHERE n < ?   "
+            ")                         "
+            "SELECT * FROM seq         ");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
@@ -1431,7 +1448,7 @@ TEST_CASE(query, interrupt, NULL)
 	for (i = 0; i < n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i+1);
 	}
 
 	DECODE(&f->response, rows);
@@ -1439,7 +1456,12 @@ TEST_CASE(query, interrupt, NULL)
 
 	ENCODE(&interrupt, interrupt);
 	HANDLE(INTERRUPT);
-
+	/* The interrupt should not return immediately, but wait for
+	 * the query to end. */
+	munit_assert_false(f->context->invoked);
+	bool finished;
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
 	ASSERT_CALLBACK(0, EMPTY);
 
 	return MUNIT_OK;
@@ -1469,20 +1491,22 @@ TEST_CASE(query, largeClose, NULL)
 	const char *column;
 	struct value value;
 	(void)params;
-	EXEC("BEGIN");
-
+	/* Query 2 response buffers worth of rows */
 	/* 16 = 8B header + 8B value (int) */
-	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 2 response buffers worth of rows */
-	for (i = 0; i < 2 * n_rows_buffer; i++) {
-		EXEC("INSERT INTO test(n) VALUES(123)");
-	}
-	EXEC("COMMIT");
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2 };
 
-	PREPARE("SELECT n FROM test");
+	PREPARE("WITH RECURSIVE seq(n) AS ("
+            "	SELECT 1               "
+            "	UNION ALL              "
+            "	SELECT n+1             "
+            "	FROM seq WHERE n < ?   "
+            ")                         "
+            "SELECT * FROM seq         ");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
@@ -1494,7 +1518,7 @@ TEST_CASE(query, largeClose, NULL)
 	for (i = 0; i < n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i+1);
 	}
 
 	DECODE(&f->response, rows);
@@ -1677,7 +1701,7 @@ TEST_CASE(query, close_while_in_flight, NULL)
 	}
 
 	/* Simulate a gateway close */
-	gateway__close(f->gateway);
+	gateway__close(f->gateway, closeCb);
 	gateway__resume(f->gateway, &finished);
 
 	return MUNIT_OK;
@@ -1873,11 +1897,11 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	ENCODE(&f->request, exec_sql);
 	/* We rely on leader_barrier_v2 (called by handle_exec_sql) attempting
 	 * an allocation using raft_malloc. */
-	test_raft_heap_fault_config(0, 1);
+	test_raft_heap_fault_config(1, 1);
 	test_raft_heap_fault_enable();
 	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, RAFT_RESULT_OK);
 	WAIT;
-	ASSERT_CALLBACK(RAFT_NOMEM, FAILURE);
+	ASSERT_CALLBACK(SQLITE_NOMEM, FAILURE);
 	return MUNIT_OK;
 }
 
@@ -2160,6 +2184,12 @@ TEST_CASE(query_sql, interrupt, NULL)
 
 	ENCODE(&interrupt, interrupt);
 	HANDLE(INTERRUPT);
+	/* The interrupt should not return immediately, but wait for
+	 * the query to end. */
+	munit_assert_false(f->context->invoked);
+	bool finished;
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
 	ASSERT_CALLBACK(0, EMPTY);
 
 	return MUNIT_OK;
@@ -2223,7 +2253,7 @@ TEST_CASE(query_sql, manyClosing, NULL)
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
-	gateway__close(f->gateway);
+	gateway__close(f->gateway, closeCb);
 	rv = gateway__resume(f->gateway, &finished);
 	munit_assert_int(rv, ==, 0);
 	return MUNIT_OK;
@@ -2249,11 +2279,11 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	ENCODE(&f->request, query_sql);
 	/* We rely on leader_barrier_v2 (called by handle_query_sql) attempting
 	 * an allocation using raft_malloc. */
-	test_raft_heap_fault_config(0, 1);
+	test_raft_heap_fault_config(1, 1);
 	test_raft_heap_fault_enable();
 	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_RESULT_OK);
 	WAIT;
-	ASSERT_CALLBACK(RAFT_NOMEM, FAILURE);
+	ASSERT_CALLBACK(SQLITE_NOMEM, FAILURE);
 	return MUNIT_OK;
 }
 

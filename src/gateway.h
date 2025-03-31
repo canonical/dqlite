@@ -17,6 +17,9 @@
 #include "stmt.h"
 
 struct handle;
+struct gateway;
+
+typedef void (*gateway_close_cb)(struct gateway *g);
 
 /**
  * Handle requests from a single connected client and forward them to
@@ -31,6 +34,7 @@ struct gateway {
 	struct stmt__registry stmts; /* Registry of prepared statements */
 	uint64_t protocol;           /* Protocol format version */
 	uint64_t client_id;
+	gateway_close_cb close_cb;   /* Callback to close the gateway */
 };
 
 void gateway__init(struct gateway *g,
@@ -38,7 +42,7 @@ void gateway__init(struct gateway *g,
 		   struct registry *registry,
 		   struct raft *raft);
 
-void gateway__close(struct gateway *g);
+void gateway__close(struct gateway *g, gateway_close_cb cb);
 
 /**
  * Closes the leader connection to the database, reason should contain a raft
@@ -73,10 +77,6 @@ struct handle {
 	size_t db_id;
 	/* Set to true when a cancellation has been requested. */
 	bool cancellation_requested;
-	/* Prepared statement that will be queried to process this request.
-	 *
-	 * This is used by handle_query and handle_query_sql. */
-	sqlite3_stmt *stmt; // FIXME I think this is useless
 	/* Number of times a statement parsed from this request has been
 	 * executed.
 	 *

@@ -70,7 +70,7 @@ struct connection {
 		struct connection *c = &f->connections[i]; \
 		buffer__close(&c->request);                \
 		buffer__close(&c->response);               \
-		gateway__close(&c->gateway);               \
+		gateway__close(&c->gateway, fixture_close_cb);               \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 
@@ -85,6 +85,8 @@ static void fixture_handle_cb(struct handle *req,
 	c->type = type;
 	c->schema = schema;
 }
+
+static void fixture_close_cb(struct gateway *g) { (void)g; }
 
 /******************************************************************************
  *

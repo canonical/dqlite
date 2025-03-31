@@ -14,11 +14,10 @@
 #include "lib/threadpool.h"
 #include "raft.h"
 
-#define SQLITE_IOERR_NOT_LEADER (SQLITE_IOERR | (40 << 8))
+#define SQLITE_IOERR_NOT_LEADER      (SQLITE_IOERR | (40 << 8))
 #define SQLITE_IOERR_LEADERSHIP_LOST (SQLITE_IOERR | (41 << 8))
 
 struct exec;
-struct barrier;
 struct leader;
 
 typedef void (*exec_work_cb)(struct exec *req);
@@ -30,6 +29,7 @@ struct leader {
 	struct raft *raft;        /* Raft instance. */
 	struct exec *exec;        /* Exec request in progress, if any. */
 	queue queue;              /* Prev/next leader, used by struct db. */
+	bool closing;             /* True if we are closing */
 };
 
 /**

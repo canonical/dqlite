@@ -1,4 +1,5 @@
 #include "gateway.h"
+#include <sqlite3.h>
 
 #include "bind.h"
 #include "leader.h"
@@ -20,20 +21,32 @@
 #endif
 
 /**
- * Silly in-memory sqlite3 connection used to check if statements contain only non-sql
- * code like comments or spaces.
- */
-static sqlite3 *check_connn;
+* Silly in-memory sqlite3 connection used to check if statements contain only non-sql
+* code like comments or spaces.
+*/
+static sqlite3 *check_connn = NULL;
 
-__attribute__((constructor)) static void init(void) {
-	int rc = sqlite3_open_v2(":memory:", &check_connn, SQLITE_OPEN_READONLY | SQLITE_OPEN_MEMORY, NULL);
-	assert(rc == 0);
+bool sqlite3_statement_empty(const char* sql) {
+	if (sql == NULL || sql[0] == '\0') {
+		return true;
+	}
+	if (check_connn == NULL) {
+		int rc = sqlite3_open_v2(":memory:", &check_connn, SQLITE_OPEN_READONLY | SQLITE_OPEN_MEMORY, NULL);
+		assert(rc == 0);
+	}
 	assert(check_connn != NULL);
+	sqlite3_stmt *tail_stmt = NULL;
+	int rc = sqlite3_prepare_v2(check_connn, sql, -1, &tail_stmt, NULL);
+	sqlite3_finalize(tail_stmt);
+	return rc == SQLITE_OK && tail_stmt == NULL;
 }
 
 __attribute__((destructor)) static void fini(void) {
 	sqlite3_close(check_connn);
+	check_connn = NULL;
 }
+
+static void interrupt(struct gateway *g);
 
 void gateway__init(struct gateway *g,
 		   struct config *config,
@@ -62,71 +75,37 @@ void gateway__leader_close(struct gateway *g, int reason)
 	}
 
 	(void)reason;
-	// raft_timer_stop(g->raft, &g->exec.timer);
-	// TODO: finish inflight exec
-	// TODO: apply with RAFT_SHUTDOWN is buggy
-	// TODO: this must only be "exec_abort" or even be 
-	//       in leader_close as it has internal detail to exec
-	// if (g->req != NULL) {
-	// 	if (g->leader->inflight != NULL) {
-	// 		tracef("finish inflight apply request");
-	// 		struct raft_apply *req = &g->leader->inflight->req;
-	// 		req->cb(req, reason, NULL);
-	// 		assert(g->req == NULL);
-	// 	} else if (g->barrier.cb != NULL) {
-	// 		tracef("finish inflight barrier");
-	// 		/* This is not a typo, g->barrier.req.cb is a wrapper
-	// 		 * around g->barrier.cb and will set g->barrier.cb to
-	// 		 * NULL when called. */
-	// 		struct raft_barrier *b = &g->barrier.req;
-	// 		b->cb(b, reason);
-	// 		assert(g->barrier.cb == NULL);
-	// 	} else if (g->leader->exec != NULL &&
-	// 		   g->leader->exec->barrier.cb != NULL) {
-	// 		tracef("finish inflight exec barrier");
-	// 		struct raft_barrier *b = &g->leader->exec->barrier.req;
-	// 		b->cb(b, reason);
-	// 		assert(g->leader->exec == NULL);
-	// 	} else if (g->req->type == DQLITE_REQUEST_QUERY_SQL) {
-	// 		/* Finalize the statement that was in the process of
-	// 		 * yielding rows. We only need to handle QUERY_SQL
-	// 		 * because for QUERY and EXEC the statement is finalized
-	// 		 * by the call to stmt__registry_close, below (and for
-	// 		 * EXEC_SQL the lifetimes of the statements are managed
-	// 		 * by leader__exec and the associated callback).
-	// 		 *
-	// 		 * It's okay if g->req->stmt is NULL since
-	// 		 * sqlite3_finalize(NULL) is documented to be a no-op.
-	// 		 */
-	// 		sqlite3_finalize(g->req->stmt);
-	// 		g->req = NULL;
-	// 	} else if (g->req->type == DQLITE_REQUEST_QUERY) {
-	// 		/* In case the statement is a prepared one, it
-	// 		 * will be finalized by the stmt__registry_close
-	// 		 * call below. Nevertheless, we must signal that
-	// 		 * the request is not in place anymore so that any
-	// 		 * callback which is already in the queue will not
-	// 		 * attempt to execute a finalized statement.
-	// 		 */
-	// 		g->req = NULL;
-	// 	}
-	// }
 	stmt__registry_close(&g->stmts);
 	leader__close(g->leader);
 	sqlite3_free(g->leader);
 	g->leader = NULL;
 }
 
-void gateway__close(struct gateway *g)
+static void gateway_close(struct gateway *g)
 {
-	// TODO fix this race condition with exec_work_cb
+	stmt__registry_close(&g->stmts);
+	if (g->leader != NULL) {
+		leader__close(g->leader);
+		sqlite3_free(g->leader);
+		g->leader = NULL;
+	}
+	if (g->close_cb != NULL) {
+		g->close_cb(g);
+	}
+}
+
+void gateway__close(struct gateway *g, gateway_close_cb cb)
+{
+	PRE(cb != NULL);
 	tracef("gateway close");
-	if (g->leader == NULL) {
-		stmt__registry_close(&g->stmts);
+	g->close_cb = cb;
+	if (g->req != NULL) {
+		interrupt(g);
+		/* An exec is still running, so it is not possible to close right away. 
+		 * Instead, we wait for the exec to finish and then call the close callback. */
 		return;
 	}
-
-	gateway__leader_close(g, RAFT_SHUTDOWN);
+	gateway_close(g);
 }
 
 /* Declare a request struct and a response struct of the appropriate types and
@@ -321,7 +300,7 @@ static int handle_open(struct gateway *g, struct handle *req)
 	return 0;
 }
 
-static void handle_prepare_cb(struct exec *exec)
+static void handle_prepare_done_cb(struct exec *exec)
 {
 	PRE(exec != NULL);
 	struct gateway *g = exec->data;
@@ -332,7 +311,13 @@ static void handle_prepare_cb(struct exec *exec)
 	const char *sql = exec->sql;
 	const char *tail = exec->tail;
 	raft_free(exec);
+	g->req = NULL;
 
+	if (g->close_cb) {
+		/* The gateway is closing. All resources should be closed. */
+		sqlite3_finalize(stmt);
+		return gateway_close(g);
+	}
 	if (status != 0) {
 		failure(req, status, sqlite3_errmsg(g->leader->conn));
 	} else if (stmt == NULL) {
@@ -345,10 +330,7 @@ static void handle_prepare_cb(struct exec *exec)
 		int rc;
 
 		if (req->schema == DQLITE_PREPARE_STMT_SCHEMA_V0) {
-			sqlite3_stmt *tail_stmt;
-			rc = sqlite3_prepare_v2(check_connn, tail, -1, &tail_stmt, NULL);
-			if (rc != 0 || tail_stmt != NULL) {
-				sqlite3_finalize(tail_stmt);
+			if (!sqlite3_statement_empty(tail)) {
 				sqlite3_finalize(stmt);
 				failure(req, SQLITE_ERROR, "nonempty statement tail");
 				return;
@@ -420,7 +402,7 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 		.sql = request.sql,
 	};
 	g->req = req;
-	leader_exec(g->leader, exec, NULL, handle_prepare_cb);
+	leader_exec(g->leader, exec, NULL, handle_prepare_done_cb);
 	return 0;
 }
 
@@ -459,10 +441,6 @@ static const char *error_message(sqlite3 *db, int rc)
 	switch (rc) {
 		case SQLITE_IOERR_LEADERSHIP_LOST:
 			return "disk I/O error";
-		case SQLITE_IOERR_WRITE:
-			return "disk I/O error";
-		case SQLITE_ABORT:
-			return "abort";
 		case SQLITE_ROW:
 			return "rows yielded when none expected for EXEC "
 			       "request";
@@ -497,14 +475,7 @@ static void handle_exec_work_cb(struct exec *exec)
 	} else {
 		rv = sqlite3_step(exec->stmt);
 		sqlite3_reset(exec->stmt);
-		if (rv == SQLITE_DONE) {
-			leader_exec_result(exec, 0);
-		} else if (rv == SQLITE_ROW) {
-			/* The exec request cannot handle a query which returns rows. */
-			leader_exec_result(exec, SQLITE_ERROR);
-		} else {
-			leader_exec_result(exec, rv);
-		}
+		leader_exec_result(exec, rv);
 	}
 
 	TAIL return leader_exec_resume(exec);
@@ -513,19 +484,24 @@ static void handle_exec_work_cb(struct exec *exec)
 static void handle_exec_done_cb(struct exec *exec)
 {
 	struct gateway *g = exec->data;
+	int status = exec->status;
 	PRE(g->leader != NULL && g->req != NULL);
 	struct handle *req = g->req;
 	struct response_result response;
 
+	raft_free(exec);
 	g->req = NULL;
 
-	if (exec->status == 0) {
+	if (g->close_cb != NULL) {
+		return gateway_close(g);
+	} else if (status == 0) {
 		fill_result(g, &response);
 		SUCCESS_V0(result, RESULT);
+	} else if (status == SQLITE_ROW) {
+		failure(req, status, "rows yielded when none expected for EXEC request");
 	} else {
-		failure(req, exec->status, error_message(g->leader->conn, exec->status));
+		failure(req, status, error_message(g->leader->conn, status));
 	}
-	raft_free(exec);
 }
 
 static int handle_exec(struct gateway *g, struct handle *req)
@@ -569,19 +545,19 @@ static int handle_exec(struct gateway *g, struct handle *req)
 }
 
 static void handle_exec_sql_done_cb(struct exec *exec) {
-	struct gateway *g   = exec->data;
-	PRE(g->leader != NULL && g->req != NULL);
-	struct handle  *req = g->req;
+	struct gateway *g = exec->data;
+	struct handle *req = g->req;
+	int status = exec->status;
 	struct response_result response = {};
 
 	sqlite3_finalize(exec->stmt);
 
-	if (exec->status != 0) {
-		g->req = NULL;
-		return failure(g->req, exec->status, error_message(g->leader->conn, exec->status));
+	if (g->close_cb != NULL) {
+		raft_free(exec);
+		return gateway_close(g);
 	}
 
-	if (exec->tail != NULL) {
+	if (status == 0 && exec->stmt != NULL && exec->tail != NULL && exec->tail[0] != '\0') {
 		exec->stmt = NULL;
 		exec->sql = exec->tail;
 		exec->tail = NULL;
@@ -590,13 +566,15 @@ static void handle_exec_sql_done_cb(struct exec *exec) {
 		// set callbacks. Is that worth it? I need to check which calls stay on the stack 
 		// is this loop as it is the only problem so far.
 		return leader_exec(g->leader, exec, handle_exec_work_cb, handle_exec_sql_done_cb);
+	} else if (status != 0) {
+		failure(g->req, status, error_message(g->leader->conn, status));
+	} else {
+		fill_result(g, &response);
+		SUCCESS_V0(result, RESULT);
 	}
 
+	raft_free(exec);
 	g->req = NULL;
-	if (req->exec_count > 0) {
-		fill_result(g, &response);
-	}
-	SUCCESS_V0(result, RESULT);
 }
 
 static int handle_exec_sql(struct gateway *g, struct handle *req)
@@ -644,6 +622,17 @@ static void handle_query_work_cb(struct exec *exec)
 	PRE(g->req != NULL && g->leader != NULL);
 	struct handle *req = g->req;
 
+	if (req->cancellation_requested) {
+		/* Nothing else to do. */
+		TAIL return leader_exec_resume(exec);
+	}
+	if (!sqlite3_statement_empty(exec->tail)) {
+		leader_exec_result(exec, SQLITE_ERROR);
+		TAIL return leader_exec_resume(exec);
+	} else {
+		exec->tail = NULL;
+	}
+	
 	int rc;
 	if (req->exec_count == 0) {
 		struct cursor *cursor = &req->cursor;
@@ -673,36 +662,32 @@ static void handle_query_work_cb(struct exec *exec)
 		return;
 	}
 	
-	if (rc == SQLITE_DONE) {
-		leader_exec_result(exec, 0);
-	} else {
-		sqlite3_reset(exec->stmt);
-		leader_exec_result(exec, rc);
-	}
-
+	sqlite3_reset(exec->stmt);
+	leader_exec_result(exec, rc);
 	TAIL return leader_exec_resume(exec);
 }
 
-
 static void handle_query_done_cb(struct exec *exec)
 {
-	struct gateway *g   = exec->data;
-	PRE(g->leader != NULL && g->req != NULL);
+	struct gateway *g  = exec->data;
 	struct handle *req = g->req;
+	int status = exec->status;
 	g->req = NULL;
+	raft_free(exec);
 
-	if (req->cancellation_requested) {
+	if (g->close_cb != NULL) {
+		return gateway_close(g);
+	} else if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
 		SUCCESS_V0(empty, EMPTY);
-	} else if (exec->status == 0) {
+	} else if (status == 0) {
 		struct response_rows response = {
 			.eof = DQLITE_RESPONSE_ROWS_DONE,
 		};
 		SUCCESS_V0(rows, ROWS);
 	} else {
-		failure(req, exec->status, error_message(g->leader->conn, exec->status));
+		failure(req, status, error_message(g->leader->conn, status));
 	}
-	raft_free(exec);
 }
 
 static int handle_query(struct gateway *g, struct handle *req)
@@ -745,15 +730,22 @@ static int handle_query(struct gateway *g, struct handle *req)
 	return 0;
 }
 
+
 static void handle_query_sql_done_cb(struct exec *exec)
 {
 	struct gateway *g   = exec->data;
-	PRE(g->leader != NULL && g->req != NULL);
 	struct handle *req = g->req;
+	int status = exec->status;
 	g->req = NULL;
-
 	sqlite3_finalize(exec->stmt);
-	if (exec->status == 0) {
+	raft_free(exec);
+
+	if (g->close_cb != NULL) {
+		return gateway_close(g);
+	} else if (req->cancellation_requested) {
+		struct response_empty response = { 0 };
+		SUCCESS_V0(empty, EMPTY);
+	} else if (status == 0) {
 		if (req->exec_count == 0) {
 			failure(req, 0, "empty statement");
 		} else {
@@ -763,9 +755,8 @@ static void handle_query_sql_done_cb(struct exec *exec)
 			SUCCESS_V0(rows, ROWS);
 		}
 	} else {
-		failure(req, exec->status, error_message(g->leader->conn, exec->status));
+		failure(req, status, error_message(g->leader->conn, status));
 	}
-	raft_free(exec);
 }
 
 static int handle_query_sql(struct gateway *g, struct handle *req)
@@ -811,21 +802,19 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 static int handle_interrupt(struct gateway *g, struct handle *req)
 {
 	tracef("handle interrupt");
-	if (g->req != NULL) {
-		g->req->cancellation_requested = true;
-		if (g->leader->exec != NULL) {
-			leader_exec_abort(g->leader->exec);
-		}
-	}
 	g->req = NULL;
 	struct cursor *cursor = &req->cursor;
-	struct request_interrupt request = { 0 };
-	int rv = request_interrupt__decode(cursor, &request);
-	if (rv != 0) {
-		return rv;
-	}
-	LOOKUP_DB(request.db_id);
+	START_V0(interrupt, empty);
+	SUCCESS_V0(empty, EMPTY);
 	return 0;
+}
+
+static void interrupt(struct gateway *g)
+{
+	g->req->cancellation_requested = true;
+	if (g->leader->exec != NULL) {
+		leader_exec_abort(g->leader->exec);
+	}
 }
 
 struct change {
@@ -1243,7 +1232,11 @@ int gateway__handle(struct gateway *g,
 {
 	tracef("gateway handle");
 	int rc = 0;
-	sqlite3_stmt *stmt = NULL;  // used for DQLITE_REQUEST_INTERRUPT
+
+	if (g->close_cb != NULL) {
+		/* The gateway is closing. */
+		return 0;
+	}
 
 	if (g->req == NULL) {
 		goto handle;
@@ -1254,14 +1247,16 @@ int gateway__handle(struct gateway *g,
 	 * gateway__resume in write_cb will indicate it has not finished
 	 * returning results and a new request (in this case, the interrupt)
 	 * will not be read. */
-	if (g->req->type == DQLITE_REQUEST_QUERY &&
-	    type == DQLITE_REQUEST_INTERRUPT) {
-		goto handle;
-	}
-	if (g->req->type == DQLITE_REQUEST_QUERY_SQL &&
-	    type == DQLITE_REQUEST_INTERRUPT) {
-		stmt = g->req->stmt;
-		goto handle;
+	if (type == DQLITE_REQUEST_INTERRUPT && 
+		(g->req->type == DQLITE_REQUEST_QUERY ||
+		 g->req->type == DQLITE_REQUEST_QUERY_SQL ||
+		 g->req->type == DQLITE_REQUEST_EXEC ||
+		 g->req->type == DQLITE_REQUEST_EXEC_SQL)
+	) {
+		/* In this case, the response will be sent by the callback of
+		 * the executing query once stopped or finished. */
+		interrupt(g);
+		return 0;
 	}
 
 	/* Receiving a request when one is ongoing on the same connection
@@ -1276,7 +1271,6 @@ handle:
 	req->cb = cb;
 	req->buffer = buffer;
 	req->db_id = 0;
-	req->stmt = stmt;
 	req->exec_count = 0;
 	req->work = (pool_work_t){};
 

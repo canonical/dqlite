@@ -90,11 +90,10 @@ TEST_MODULE(replication_v1);
 /* Submit an exec request using the I'th leader. */
 #define EXEC(I)                                                        \
 	{                                                                  \
-		int rc2;                                                       \
 		f->invoked = false;                                            \
-		/*rc2 = leader_exec_v2(LEADER(I), &f->req, f->stmt,              \ // TODO
-				     fixture_exec_cb);*/                                 \
-		munit_assert_int(rc2, ==, 0);                                  \
+		f->req.stmt = f->stmt;                                         \
+		leader_exec(LEADER(I), &f->req,                          \
+				    fixture_exec_work_cb, fixture_exec_done_cb);       \
 		raft_fixture_step_until(&f->cluster, fixture_invoked, f, 100); \
 		munit_assert_true(f->invoked);                                 \
 	}
@@ -170,7 +169,7 @@ TEST_CASE(init, conn, NULL)
 
 /******************************************************************************
  *
- * leader_exec_v2
+ * leader_exec
  *
  ******************************************************************************/
 
@@ -181,13 +180,22 @@ struct exec_fixture {
 	int status;
 };
 
-// TODO
-// static void fixture_exec_cb(struct exec *req, int status)
-// {
-// 	struct exec_fixture *f = req->data;
-// 	f->invoked = true;
-// 	f->status = status;
-// }
+
+static void fixture_exec_work_cb(struct exec *req)
+{
+	int rv = sqlite3_step(req->stmt);
+	sqlite3_reset(req->stmt);
+
+	leader_exec_result(req, rv);
+	return leader_exec_resume(req);
+}
+
+static void fixture_exec_done_cb(struct exec *req)
+{
+	struct exec_fixture *f = req->data;
+	f->invoked = true;
+	f->status = req->status;
+}
 
 static bool fixture_invoked(struct raft_fixture *fixture, void *data)
 {
@@ -221,7 +229,7 @@ TEST_CASE(exec, success, NULL)
 	EXEC(0);
 	CLUSTER_APPLIED(4);
 	munit_assert_true(f->invoked);
-	munit_assert_int(f->status, ==, SQLITE_DONE);
+	munit_assert_int(f->status, ==, 0);
 	FINALIZE;
 	return MUNIT_OK;
 }
@@ -241,7 +249,7 @@ TEST_CASE(exec, snapshot, NULL)
 	EXEC(0);
 	CLUSTER_APPLIED(5);
 	munit_assert_true(f->invoked);
-	munit_assert_int(f->status, ==, SQLITE_DONE);
+	munit_assert_int(f->status, ==, 0);
 	FINALIZE;
 	return MUNIT_OK;
 }
@@ -355,20 +363,17 @@ static void tearDown(void *data)
 
 SUITE(replication)
 
-// static void execCb(struct exec *req, int status)
-// {
-// 	struct fixture *f = req->data;
-// 	f->invoked = true;
-// 	f->status = status;
-// }
+static void execCb(struct exec *req)
+{
+	struct fixture *f = req->data;
+	f->invoked = true;
+	f->status = req->status;
+}
 
 static void fixture_exec(struct fixture *f, unsigned i)
 {
-	(void)f;
-	(void)i;
-	// TODO
-	// int rv = leader_exec_v2(LEADER(i), &f->req, f->stmt, execCb);
-	// munit_assert_int(rv, ==, 0);
+	f->req.stmt = f->stmt;
+	leader_exec(LEADER(i), &f->req, fixture_exec_work_cb, execCb);
 }
 
 TEST(replication, exec, setUp, tearDown, 0, NULL)
@@ -381,7 +386,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	fixture_exec(f, 0);
 	CLUSTER_APPLIED(3);
 	munit_assert_true(f->invoked);
-	munit_assert_int(f->status, ==, SQLITE_DONE);
+	munit_assert_int(f->status, ==, SQLITE_OK);
 	f->invoked = false;
 	f->status = -1;
 	FINALIZE;
@@ -390,7 +395,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	fixture_exec(f, 0);
 	CLUSTER_STEP;
 	munit_assert_true(f->invoked);
-	munit_assert_int(f->status, ==, SQLITE_DONE);
+	munit_assert_int(f->status, ==, SQLITE_OK);
 	f->invoked = false;
 	FINALIZE;
 
@@ -402,7 +407,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	FINALIZE;
 
 	munit_assert_true(f->invoked);
-	munit_assert_int(f->status, ==, SQLITE_DONE);
+	munit_assert_int(f->status, ==, SQLITE_OK);
 
 	PREPARE(0, "SELECT * FROM test");
 	FINALIZE;
