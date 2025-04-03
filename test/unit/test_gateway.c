@@ -586,7 +586,7 @@ TEST_CASE(prepare, barrier_error, NULL)
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(1, 1);
 	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_PREPARE, RAFT_RESULT_OK);
+	HANDLE_STATUS(DQLITE_REQUEST_PREPARE, RAFT_SNAPSHOT_OK);
 	WAIT;
 	ASSERT_CALLBACK(SQLITE_NOMEM, FAILURE);
 	return MUNIT_OK;
@@ -1899,7 +1899,7 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(1, 1);
 	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, RAFT_RESULT_OK);
+	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, RAFT_SNAPSHOT_OK);
 	WAIT;
 	ASSERT_CALLBACK(SQLITE_NOMEM, FAILURE);
 	return MUNIT_OK;
@@ -2281,7 +2281,7 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	 * an allocation using raft_malloc. */
 	test_raft_heap_fault_config(1, 1);
 	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_RESULT_OK);
+	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_SNAPSHOT_OK);
 	WAIT;
 	ASSERT_CALLBACK(SQLITE_NOMEM, FAILURE);
 	return MUNIT_OK;

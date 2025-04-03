@@ -15,6 +15,7 @@
 #include "raft.h"
 #include "registry.h"
 #include "stmt.h"
+#include "tuple.h"
 
 struct handle;
 struct gateway;
@@ -77,21 +78,15 @@ struct handle {
 	size_t db_id;
 	/* Set to true when a cancellation has been requested. */
 	bool cancellation_requested;
-	/* Number of times a statement parsed from this request has been
-	 * executed.
-	 *
-	 * This is used by handle_exec_sql, which parses zero or more statements
-	 * from the provided SQL string and executes them successively. Only if
-	 * at least one statement was executed should we fill the RESULT
-	 * response using sqlite3_last_insert_rowid and sqlite3_changes. */
-	unsigned exec_count;
+	/* Set to true when the parameters for the current query have been bound */
+	bool parameters_bound;
+	/* Tuple decoder for the parameters in this request. */
+	struct tuple_decoder decoder;
 	/* Callback that will be invoked at the end of request processing to
 	 * write the response. */
 	handle_cb cb;
 	/* A link into thread pool's queues. */
 	pool_work_t work;
-	/* Gateway the handle belongs to. */
-	struct gateway *gw;
 };
 
 /**

@@ -68,8 +68,12 @@ struct exec {
 	 */
 	const char *tail;
 
-	/******* Internal state *******/
+	/*
+	 * Result code for the operation. RAFT_OK if the operation was successful.
+	 */
 	int status;
+
+	/******* Internal state *******/
 	queue queue;
 	struct sm sm;
 	struct leader *leader;
@@ -107,6 +111,10 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft);
  * not to inform the client of a successful transaction until the done callback is
  * called. The done callback is always executed in the loop thread.
  *
+ * The status passed to the done callback is always one of the `RAFT_*` error codes.
+ * The `SQLITE_*` error code can be obtained by calling `sqlite3_errcode` on the 
+ * connection as only one exec is ever allowed on the same connection concurrently.
+ *
  * The prepared statement is never freed by this routine.
  */
 void leader_exec(struct leader *leader,
@@ -118,6 +126,8 @@ void leader_exec(struct leader *leader,
  * Sets the result of the operation the state machine suspended on.
  * 
  * This should be called right before resuming after work is done.
+ *
+ * Results should always be part of the RAFT_* series of error codes.
  */
 void leader_exec_result(struct exec *req, int result);
 

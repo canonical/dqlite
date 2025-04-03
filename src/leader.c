@@ -26,19 +26,19 @@
 # define TAIL
 #endif
 
-static int sqlite_errcode(int raft_errno) {
-	switch (raft_errno) {
-	case 0                  : return SQLITE_OK;
-	case RAFT_NOMEM         : return SQLITE_NOMEM;
-	case RAFT_NOTLEADER     : return SQLITE_IOERR_NOT_LEADER;
-	case RAFT_LEADERSHIPLOST: return SQLITE_IOERR_LEADERSHIP_LOST;
-	case RAFT_CORRUPT       : return SQLITE_CORRUPT;
-	case RAFT_BUSY          : return SQLITE_BUSY;
-	case RAFT_IOERR         : return SQLITE_IOERR;
-	case RAFT_NOTFOUND      : return SQLITE_NOTFOUND;
-	default                 : return SQLITE_ERROR;
-	}
-}
+// static int sqlite_errcode(int raft_errno) {
+// 	switch (raft_errno) {
+// 	case 0                  : return SQLITE_OK;
+// 	case RAFT_NOMEM         : return SQLITE_NOMEM;
+// 	case RAFT_NOTLEADER     : return SQLITE_IOERR_NOT_LEADER;
+// 	case RAFT_LEADERSHIPLOST: return SQLITE_IOERR_LEADERSHIP_LOST;
+// 	case RAFT_CORRUPT       : return SQLITE_CORRUPT;
+// 	case RAFT_BUSY          : return SQLITE_BUSY;
+// 	case RAFT_IOERR         : return SQLITE_IOERR;
+// 	case RAFT_NOTFOUND      : return SQLITE_NOTFOUND;
+// 	default                 : return SQLITE_ERROR;
+// 	}
+// }
 
 /* Open a SQLite connection and set it to leader replication mode. */
 static int openConnection(const char *filename,
@@ -133,7 +133,7 @@ err:
 /* Whether we need to submit a barrier request because there is no transaction
  * in progress in the underlying database and the FSM is behind the last log
  * index. */
-static bool needsBarrier(struct leader *l)
+static bool exec_needs_barrier(struct leader *l)
 {
 	return raft_last_applied(l->raft) < raft_last_index(l->raft);
 }
@@ -337,7 +337,7 @@ void leader_exec_abort(struct exec *req)
 		break;
 	}
 
-	leader_exec_result(req, SQLITE_ABORT);
+	leader_exec_result(req, RAFT_CANCELED);
 }
 
 void leader_exec_result(struct exec *req, int status)
@@ -415,8 +415,8 @@ static void exec_tick(struct exec *req)
 			PRE(req->status == 0);
 			if (req->stmt == NULL) {
 				sm_move(&req->sm, EXEC_PREPARE_BARRIER);
-				if (needsBarrier(req->leader)) {
-					req->status = sqlite_errcode(raft_barrier(req->leader->raft, &req->barrier, exec_barrier_cb));
+				if (exec_needs_barrier(req->leader)) {
+					req->status = raft_barrier(leader->raft, &req->barrier, exec_barrier_cb);
 					if (req->status == 0) {
 						return exec_suspend(req);
 					}
@@ -429,9 +429,12 @@ static void exec_tick(struct exec *req)
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
 			} else {
-				req->status = sqlite3_prepare_v2(req->leader->conn, 
+				int rc = sqlite3_prepare_v2(req->leader->conn, 
 					req->sql, -1, &req->stmt, &req->tail);
-				if (req->stmt == NULL) {
+				if (rc != 0) {
+					sm_move(&req->sm, EXEC_DONE);
+					req->status = RAFT_ERROR;
+				} else if (req->stmt == NULL) {
 					sm_move(&req->sm, EXEC_DONE);
 				} else {
 					sm_move(&req->sm, EXEC_PREPARED);
@@ -455,14 +458,11 @@ static void exec_tick(struct exec *req)
 				/* supend as another leader is keeping the database busy,
 				 * but also start a timer as this statement should not sit
 				 * in the queue for too long. In the case the timer expires
-				 * the statement will just fail with SQLITE_BUSY. */
-				req->status = sqlite_errcode(raft_timer_start(leader->raft, &req->timer,
-					leader->db->config->busy_timeout, 0, exec_timer_cb));
-				if (req->status != RAFT_RESULT_OK) {
+				 * the statement will just fail with RAFT_BUSY. */
+				req->status = raft_timer_start(leader->raft, &req->timer,
+					leader->db->config->busy_timeout, 0, exec_timer_cb);
+				if (req->status != RAFT_OK) {
 					sm_move(&req->sm, EXEC_DONE);
-					/* given that it wasn't possible to wait for the other leader,
-					* the only way out is to report to the user that the db is busy.*/
-					req->status = SQLITE_BUSY;
 				} else {
 					sm_move(&req->sm, EXEC_ENQUEUED);
 					queue_insert_tail(&leader->db->pending_queue, &req->queue);
@@ -477,8 +477,8 @@ static void exec_tick(struct exec *req)
 				queue_remove(&req->queue);
 			} else {
 				sm_move(&req->sm, EXEC_RUN_BARRIER);
-				if (needsBarrier(req->leader)) {
-					req->status = sqlite_errcode(raft_barrier(req->leader->raft, &req->barrier, exec_barrier_cb));
+				if (exec_needs_barrier(req->leader)) {
+					req->status = raft_barrier(req->leader->raft, &req->barrier, exec_barrier_cb);
 					if (req->status == 0) {
 						return exec_suspend(req);
 					}
@@ -496,12 +496,20 @@ static void exec_tick(struct exec *req)
 			break;
 		case EXEC_RUNNING:
 			sm_move(&req->sm, EXEC_DONE);
-			if (req->status == SQLITE_DONE) {
+			if (req->status == RAFT_OK) {
 				dqlite_vfs_frame *frames;
 				unsigned int nframes;
-				req->status = VfsPoll(leader->db->vfs, leader->db->path, &frames, &nframes);
-				if (req->status == 0 && nframes > 0) {
-					req->status = sqlite_errcode(exec_apply(req, frames, nframes));
+				/* 
+				 * FIXME: If this was a xFileControl:
+				 *  - it would be callable through sqlite3_file_control
+				 *  - it would set the error for the connection (so, no translation needed here)
+				 *  - it would not be necessary to keep a vfs pointer in the db
+				 *  - it would not necessary to lookup the database by path every time.
+				 */
+				int rc = VfsPoll(leader->db->vfs, leader->db->path, &frames, &nframes);
+				
+				if (rc == SQLITE_OK && nframes > 0) {
+					req->status = exec_apply(req, frames, nframes);
 					for (unsigned i = 0; i < nframes; i++) {
 						sqlite3_free(frames[i].data);
 					}
@@ -509,8 +517,8 @@ static void exec_tick(struct exec *req)
 					if (req->status == 0) {
 						return exec_suspend(req);
 					}
-				} else {
-					POST(nframes == 0 && frames == NULL);
+				} else if (rc != SQLITE_OK) {
+					req->status = RAFT_IOERR;
 				}
 			}
 			break;
@@ -530,7 +538,7 @@ static void exec_barrier_cb(struct raft_barrier *barrier, int status)
 	PRE(barrier != NULL);
 	struct exec *req = CONTAINER_OF(barrier, struct exec, barrier);
 
-	leader_exec_result(req, sqlite_errcode(status));
+	leader_exec_result(req, status); // FIXME(marco6): check if status can only be RAFT_*
 	return leader_exec_resume(req);
 }
 
@@ -539,7 +547,7 @@ static void exec_timer_cb(struct raft_timer *timer)
 	PRE(timer != NULL);
 	struct exec *req = CONTAINER_OF(timer, struct exec, timer);
 
-	leader_exec_result(req, SQLITE_BUSY);
+	leader_exec_result(req, RAFT_BUSY);
 	return leader_exec_resume(req);
 }
 
@@ -558,7 +566,8 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 		}
 	}
 
-	leader_exec_result(exec, sqlite_errcode(status));
+	// FIXME(marco6) inspect how to always return RAFT_* from this
+	leader_exec_result(exec, status);
 	return leader_exec_resume(exec);
 }
 

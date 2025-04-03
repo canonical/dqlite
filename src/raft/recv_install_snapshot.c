@@ -670,7 +670,7 @@ static void rpc_fill_leader(struct leader *leader)
 		rpc->message = (struct raft_message) {
 			.type = RAFT_IO_INSTALL_SNAPSHOT,
 			.install_snapshot = (struct raft_install_snapshot) {
-				.result = RAFT_RESULT_DONE,
+				.result = RAFT_SNAPSHOT_DONE,
 			},
 		};
 		break;
@@ -792,10 +792,10 @@ static bool is_an_unexpected_trigger(const struct leader *leader,
 		return false;
 	}
 
-	enum raft_result res = RAFT_RESULT_UNEXPECTED;
+	enum raft_snapshot_result res = RAFT_SNAPSHOT_UNEXPECTED;
 	switch (msg->type) {
 	case RAFT_IO_APPEND_ENTRIES_RESULT:
-		res = RAFT_RESULT_OK;
+		res = RAFT_SNAPSHOT_OK;
 		break;
 	case RAFT_IO_INSTALL_SNAPSHOT:
 		res = msg->install_snapshot.result;
@@ -822,7 +822,7 @@ static bool is_an_unexpected_trigger(const struct leader *leader,
 		res = msg->signature_result.result;
 		break;
 	}
-	return res == RAFT_RESULT_UNEXPECTED;
+	return res == RAFT_SNAPSHOT_UNEXPECTED;
 }
 
 static int follower_next_state(struct sm *sm)

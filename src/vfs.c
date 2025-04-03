@@ -2126,7 +2126,7 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 
 	*frames = sqlite3_malloc64(sizeof **frames * w->n_tx);
 	if (*frames == NULL) {
-		return DQLITE_NOMEM;
+		return SQLITE_NOMEM;
 	}
 	*n = w->n_tx;
 
@@ -2163,7 +2163,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 
 	if (database == NULL) {
 		tracef("not found");
-		return DQLITE_ERROR;
+		return SQLITE_NOTFOUND;
 	}
 
 	shm = &database->shm;

@@ -1,4 +1,6 @@
 #include "bind.h"
+#include <sqlite3.h>
+#include "protocol.h"
 #include "tuple.h"
 
 /* Bind a single parameter. */
@@ -12,7 +14,15 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 	 * returns, and we can reuse the message body buffer. The overhead of
 	 * the copy is typically low, but if it becomes a concern, this could be
 	 * optimized to make no copy and instead prevent the message body from
-	 * being reused. */
+	 * being reused.
+	 * marco6: the case above is in the case of queries only as all the other
+	 * queries bind the parameters before calling the gateway callback (i.e.
+	 * the response write) and that is the only real place where a new read
+	 * can start. As such, I think that the requirement above might be dropped
+	 * as long as we don't support multiple querys at the same time. This requirement
+	 * is not a big deal IMHO since the protocol does not support a change in row
+	 * count/name/types in the middle of a query.
+	 */
 	switch (value->type) {
 		case SQLITE_INTEGER:
 			rc = sqlite3_bind_int64(stmt, n, value->integer);
@@ -41,36 +51,24 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 						value->boolean == 0 ? 0 : 1);
 			break;
 		default:
-			rc = DQLITE_PROTO;
+			rc = SQLITE_ERROR;
 			break;
 	}
 
-	return rc;
+	if (rc != 0) {
+		return DQLITE_ERROR;
+	}
+	return DQLITE_OK;
 }
 
-int bind__params(sqlite3_stmt *stmt, struct cursor *cursor, int format)
+int bind__params_v2(sqlite3_stmt *stmt, struct tuple_decoder *decoder)
 {
-	struct tuple_decoder decoder;
-	unsigned long i;
-	int rc;
+	int requested = sqlite3_bind_parameter_count(stmt);
+	int available = (int)tuple_decoder__remaining(decoder);
 
-	assert(format == TUPLE__PARAMS || format == TUPLE__PARAMS32);
-
-	sqlite3_reset(stmt); // FIXME: remove
-
-	/* If the payload has been fully consumed, it means there are no
-	 * parameters to bind. */
-	if (cursor->cap == 0) {
-		return 0;
-	}
-
-	rc = tuple_decoder__init(&decoder, 0, format, cursor);
-	if (rc != 0) {
-		return rc;
-	}
-	for (i = 0; i < tuple_decoder__n(&decoder); i++) {
+	for (int i = 0; i < requested && i < available; i++) {
 		struct value value;
-		rc = tuple_decoder__next(&decoder, &value);
+		int rc = tuple_decoder__next(decoder, &value);
 		if (rc != 0) {
 			return rc;
 		}
@@ -80,5 +78,5 @@ int bind__params(sqlite3_stmt *stmt, struct cursor *cursor, int format)
 		}
 	}
 
-	return 0;
+	return DQLITE_OK;
 }

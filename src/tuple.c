@@ -97,6 +97,12 @@ unsigned long tuple_decoder__n(struct tuple_decoder *d)
 	return d->n;
 }
 
+unsigned long tuple_decoder__remaining(struct tuple_decoder *d)
+{
+	assert(d->n >= d->i);
+	return d->n - d->i;
+}
+
 /* Return the type of the i'th value of the tuple. */
 static int get_type(struct tuple_decoder *d, unsigned long i)
 {
