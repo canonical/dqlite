@@ -103,7 +103,7 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer)
 	int rc;
 
 	n = sqlite3_column_count(stmt);
-	if (n <= 0) {
+	if (n < 0) {
 		return SQLITE_ERROR;
 	}
 	n64 = (uint64_t)n;

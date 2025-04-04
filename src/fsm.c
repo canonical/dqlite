@@ -107,8 +107,8 @@ static void maybeCheckpoint(struct db *db)
 		return;
 	}
 
-	assert(db->follower == NULL);
-	rv = db__open_follower(db);
+	sqlite3 *conn = NULL;
+	rv = db__open(db, &conn);
 	if (rv != 0) {
 		tracef("open follower failed %d", rv);
 		goto err_after_db_lock;
@@ -116,7 +116,7 @@ static void maybeCheckpoint(struct db *db)
 
 	page_size = db->config->page_size;
 	/* Get the database wal file associated with this connection */
-	rv = sqlite3_file_control(db->follower, "main",
+	rv = sqlite3_file_control(conn, "main",
 				  SQLITE_FCNTL_JOURNAL_POINTER, &wal);
 	assert(rv == SQLITE_OK); /* Should never fail */
 
@@ -134,7 +134,7 @@ static void maybeCheckpoint(struct db *db)
 	}
 
 	/* Get the database file associated with this db->follower connection */
-	rv = sqlite3_file_control(db->follower, "main",
+	rv = sqlite3_file_control(conn, "main",
 				  SQLITE_FCNTL_FILE_POINTER, &main_f);
 	assert(rv == SQLITE_OK); /* Should never fail */
 
@@ -162,7 +162,7 @@ static void maybeCheckpoint(struct db *db)
 	}
 
 	rv = sqlite3_wal_checkpoint_v2(
-	    db->follower, "main", SQLITE_CHECKPOINT_TRUNCATE, &wal_size, &ckpt);
+	    conn, "main", SQLITE_CHECKPOINT_TRUNCATE, &wal_size, &ckpt);
 	/* TODO assert(rv == 0) here? Which failure modes do we expect? */
 	if (rv != 0) {
 		tracef("sqlite3_wal_checkpoint_v2 failed %d", rv);
@@ -176,8 +176,8 @@ static void maybeCheckpoint(struct db *db)
 	assert(ckpt == 0);
 
 err_after_db_open:
-	sqlite3_close(db->follower);
-	db->follower = NULL;
+	sqlite3_close(conn);
+	conn = NULL;
 err_after_db_lock:
 	rv = databaseReadUnlock(db);
 	assert(rv == 0);
@@ -204,13 +204,13 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	assert(rv == 0);
 
 	if (!exists) {
-		rv = db__open_follower(db);
+		sqlite3 *conn = NULL;
+		rv = db__open(db, &conn);
 		if (rv != 0) {
 			tracef("open follower failed %d", rv);
 			return rv;
 		}
-		sqlite3_close(db->follower);
-		db->follower = NULL;
+		sqlite3_close(conn);
 	}
 
 	rv = command_frames__page_numbers(c, &page_numbers);
@@ -438,12 +438,12 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	assert(rv == 0);
 
 	if (!exists) {
-		rv = db__open_follower(db);
+		sqlite3 *conn;
+		rv = db__open(db, &conn);
 		if (rv != 0) {
 			return rv;
 		}
-		sqlite3_close(db->follower);
-		db->follower = NULL;
+		sqlite3_close(conn);
 	}
 
 	tracef("main_size:%" PRIu64 " wal_size:%" PRIu64, header.main_size,
@@ -1047,12 +1047,12 @@ static int decodeDiskDatabase(struct fsm *f, struct cursor *cursor)
 	assert(rv == 0);
 
 	if (!exists) {
-		rv = db__open_follower(db);
+		sqlite3 *conn;
+		rv = db__open(db, &conn);
 		if (rv != 0) {
 			return rv;
 		}
-		sqlite3_close(db->follower);
-		db->follower = NULL;
+		sqlite3_close(conn);
 	}
 
 	/* The last check can overflow, but we would already be lost anyway, as

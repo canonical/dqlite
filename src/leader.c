@@ -1,3 +1,4 @@
+#include <sqlite3.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -5,18 +6,13 @@
 
 #include "../include/dqlite.h"
 
-#include "./lib/assert.h"
-
 #include "command.h"
 #include "db.h"
 #include "leader.h"
 #include "lib/queue.h"
 #include "lib/sm.h"
-#include "lib/threadpool.h"
 #include "raft.h"
-#include "server.h"
 #include "tracing.h"
-#include "translate.h"
 #include "utils.h"
 #include "vfs.h"
 
@@ -25,110 +21,6 @@
 #else
 # define TAIL
 #endif
-
-// static int sqlite_errcode(int raft_errno) {
-// 	switch (raft_errno) {
-// 	case 0                  : return SQLITE_OK;
-// 	case RAFT_NOMEM         : return SQLITE_NOMEM;
-// 	case RAFT_NOTLEADER     : return SQLITE_IOERR_NOT_LEADER;
-// 	case RAFT_LEADERSHIPLOST: return SQLITE_IOERR_LEADERSHIP_LOST;
-// 	case RAFT_CORRUPT       : return SQLITE_CORRUPT;
-// 	case RAFT_BUSY          : return SQLITE_BUSY;
-// 	case RAFT_IOERR         : return SQLITE_IOERR;
-// 	case RAFT_NOTFOUND      : return SQLITE_NOTFOUND;
-// 	default                 : return SQLITE_ERROR;
-// 	}
-// }
-
-/* Open a SQLite connection and set it to leader replication mode. */
-static int openConnection(const char *filename,
-			  const char *vfs,
-			  unsigned page_size,
-			  sqlite3 **conn)
-{
-	tracef("open connection filename %s", filename);
-	char pragma[255];
-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
-	char *msg = NULL;
-	int rc;
-
-	rc = sqlite3_open_v2(filename, conn, flags, vfs);
-	if (rc != SQLITE_OK) {
-		tracef("open failed %d", rc);
-		goto err;
-	}
-
-	/* Enable extended result codes */
-	rc = sqlite3_extended_result_codes(*conn, 1);
-	if (rc != SQLITE_OK) {
-		tracef("extended codes failed %d", rc);
-		goto err;
-	}
-
-	/* The vfs, db, gateway, and leader code currently assumes that
-	 * each connection will operate on only one DB file/WAL file
-	 * pair. Make sure that the client can't use ATTACH DATABASE to
-	 * break this assumption. We apply the same limit in open_follower_conn
-	 * in db.c.
-	 *
-	 * Note, 0 instead of 1 -- apparently the "initial database" is not
-	 * counted when evaluating this limit. */
-	sqlite3_limit(*conn, SQLITE_LIMIT_ATTACHED, 0);
-
-	/* Set the page size. */
-	sprintf(pragma, "PRAGMA page_size=%d", page_size);
-	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		tracef("page size set failed %d page size %u", rc, page_size);
-		goto err;
-	}
-
-	/* Disable syncs. */
-	rc = sqlite3_exec(*conn, "PRAGMA synchronous=OFF", NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		tracef("sync off failed %d", rc);
-		goto err;
-	}
-
-	/* Set WAL journaling. */
-	rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		tracef("wal on failed %d", rc);
-		goto err;
-	}
-
-	rc = sqlite3_wal_autocheckpoint(*conn, 0);
-	if (rc != SQLITE_OK) {
-		tracef("wal autocheckpoint off failed %d", rc);
-		goto err;
-	}
-
-	rc =
-	    sqlite3_db_config(*conn, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, NULL);
-	if (rc != SQLITE_OK) {
-		tracef("db config failed %d", rc);
-		goto err;
-	}
-
-	/* TODO: make setting foreign keys optional. */
-	rc = sqlite3_exec(*conn, "PRAGMA foreign_keys=1", NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		tracef("enable foreign keys failed %d", rc);
-		goto err;
-	}
-
-	return 0;
-
-err:
-	if (*conn != NULL) {
-		sqlite3_close(*conn);
-		*conn = NULL;
-	}
-	if (msg != NULL) {
-		sqlite3_free(msg);
-	}
-	return rc;
-}
 
 /* Whether we need to submit a barrier request because there is no transaction
  * in progress in the underlying database and the FSM is behind the last log
@@ -142,16 +34,19 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 {
 	tracef("leader init");
 	int rc;
-	l->db = db;
-	l->raft = raft;
-	rc = openConnection(db->path, db->config->name, db->config->page_size,
-			    &l->conn);
+	sqlite3 *conn;
+	rc = db__open(db, &conn);
 	if (rc != 0) {
 		tracef("open failed %d", rc);
 		return rc;
 	}
 
-	l->exec = NULL;
+	*l = (struct leader){
+		.db = db,
+		.conn = conn,
+		.raft = raft,
+	};
+	queue_init(&l->queue);
 	db->leaders++;
 	return 0;
 }
@@ -163,15 +58,25 @@ static bool exec_invariant(const struct sm *sm, int prev)
 	return true;
 }
 
-void leader__close(struct leader *leader)
+static void leader_close(struct leader *leader)
 {
 	PRE(leader->exec == NULL);
 	PRE(leader->db->leaders > 0);
 	tracef("leader close");
-	int rc;
-	rc = sqlite3_close(leader->conn);
+	sqlite3_interrupt(leader->conn);
+	int rc = sqlite3_close(leader->conn);
 	assert(rc == 0);
+	leader->db->active_leader = NULL;
 	leader->db->leaders--;
+	leader->close_cb(leader);
+}
+
+void leader__close(struct leader *leader, leader_close_cb close_cb)
+{
+	leader->close_cb = close_cb;
+	if (leader->exec == NULL) {
+		leader_close(leader);
+	}
 }
 
 /* A checkpoint command that fails to commit is not a huge issue.
@@ -262,7 +167,7 @@ enum {
 	EXEC_PREPARE_BARRIER,
 	EXEC_PREPARED,
 
-	EXEC_ENQUEUED,
+	EXEC_WAITING,
 
 	EXEC_RUN_BARRIER,
 	EXEC_RUNNING,
@@ -276,13 +181,13 @@ enum {
 	[EXEC_##ident] = { .name = #ident, .allowed = (allowed_), .flags = (flags_) }
 
 static const struct sm_conf exec_states[EXEC_NR] = {
-	S(INITED,                 A(PREPARE_BARRIER)|A(RUNNING)|A(PREPARED),     SM_INITIAL),
-	S(PREPARE_BARRIER,        A(PREPARED)|A(DONE),                           0),
-	S(PREPARED,               A(ENQUEUED)|A(RUN_BARRIER)|A(RUNNING)|A(DONE), 0),
-	S(ENQUEUED,               A(RUN_BARRIER)|A(RUNNING)|A(DONE),             0),
-	S(RUN_BARRIER,            A(RUNNING)|A(DONE),                            0),
-	S(RUNNING,                A(DONE),                                       0),
-	S(DONE,                   0,                                             SM_FAILURE|SM_FINAL),
+	S(INITED,                 A(PREPARE_BARRIER)|A(RUNNING)|A(PREPARED)|A(DONE),     SM_INITIAL),
+	S(PREPARE_BARRIER,        A(PREPARED)|A(DONE),                                   0),
+	S(PREPARED,               A(WAITING)|A(RUN_BARRIER)|A(RUNNING)|A(DONE),          0),
+	S(WAITING,                A(RUN_BARRIER)|A(RUNNING)|A(DONE),                     0),
+	S(RUN_BARRIER,            A(RUNNING)|A(DONE),                                    0),
+	S(RUNNING,                A(DONE),                                               0),
+	S(DONE,                   0,                                                     SM_FAILURE|SM_FINAL),
 };
 
 #undef S
@@ -293,8 +198,8 @@ static int  exec_apply(struct exec *req, dqlite_vfs_frame *pages, unsigned n_pag
 static void exec_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_apply_cb(struct raft_apply *req, int status, void *result);
 static void exec_timer_cb(struct raft_timer *timer);
-static bool exec_db_busy(struct exec *req);
 static bool exec_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes);
+static struct exec* exec_dequeue(struct db *db);
 
 inline static void exec_suspend(struct exec *req) { (void)req; }
 
@@ -305,10 +210,9 @@ void leader_exec(struct leader *leader,
 {
 	PRE((req->stmt != NULL) ^ (req->sql != NULL));
 	PRE(req != NULL && req->leader == NULL);
-	PRE(leader != NULL && leader->exec == NULL);
+	PRE(leader != NULL);
 	PRE(done != NULL);
 
-	leader->exec = req;
 	req->status = 0;
 	req->leader = leader;
 	req->work_cb = work;
@@ -317,7 +221,19 @@ void leader_exec(struct leader *leader,
 	sm_init(&req->sm, exec_invariant, NULL, exec_states, "exec",
 		EXEC_INITED);
 
-	return exec_tick(req);
+	if (leader->exec != NULL) {
+		/* This can only happen if a new exec is issued during a done
+		* callback. If the exec statements are part of a transaction 
+		* then the only way to proceed is to exec other queries from
+		* the same leader until it releases the lock. This means that
+		* it is safer to put this query at the beginning of the queue
+		* (give this query the precedence) and that it is not necessary
+		* to start the timer as a query is about to finish already. */
+		queue_insert_head(&leader->db->pending_queue, &req->queue);
+		return exec_suspend(req);
+	} else {
+		return exec_tick(req);
+	}
 }
 
 void leader_exec_abort(struct exec *req)
@@ -327,7 +243,7 @@ void leader_exec_abort(struct exec *req)
 	switch (sm_state(&req->sm)) {
 	case EXEC_DONE: /* already done */
 		return;
-	case EXEC_ENQUEUED:
+	case EXEC_WAITING:
 		raft_timer_stop(req->leader->raft, &req->timer);
 		queue_remove(&req->queue);
 		TAIL return leader_exec_resume(req);
@@ -403,19 +319,38 @@ static int exec_apply(struct exec *req, dqlite_vfs_frame *frames, unsigned nfram
 	return 0;
 }
 
+static struct exec* exec_dequeue(struct db *db) {
+	queue *item;
+	QUEUE_FOREACH(item, &db->pending_queue)
+	{
+		struct exec *exec = QUEUE_DATA(item, struct exec, queue);
+		if (db->active_leader == NULL || db->active_leader == exec->leader) {
+			return exec;
+		}
+	}
+	return NULL;
+}
+
 static void exec_tick(struct exec *req)
 {
 	PRE(req != NULL);
 	PRE(req->leader != NULL && req->leader->db != NULL);
 	struct leader *leader = req->leader;
+	struct db *db = leader->db;
 
 	for (;;) {
 		switch (sm_state(&req->sm)) {
 		case EXEC_INITED:
 			PRE(req->status == 0);
-			if (req->stmt == NULL) {
+			PRE(leader->exec == NULL);
+			leader->exec = req;
+			if (leader->close_cb != NULL) {
+				/* Close requested. Short-circuit to EXEC_DONE */
+				sm_move(&req->sm, EXEC_DONE);
+				req->status = RAFT_CANCELED;
+			} else if (req->stmt == NULL) {
 				sm_move(&req->sm, EXEC_PREPARE_BARRIER);
-				if (exec_needs_barrier(req->leader)) {
+				if (exec_needs_barrier(leader)) {
 					req->status = raft_barrier(leader->raft, &req->barrier, exec_barrier_cb);
 					if (req->status == 0) {
 						return exec_suspend(req);
@@ -429,7 +364,7 @@ static void exec_tick(struct exec *req)
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
 			} else {
-				int rc = sqlite3_prepare_v2(req->leader->conn, 
+				int rc = sqlite3_prepare_v2(leader->conn, 
 					req->sql, -1, &req->stmt, &req->tail);
 				if (rc != 0) {
 					sm_move(&req->sm, EXEC_DONE);
@@ -450,35 +385,35 @@ static void exec_tick(struct exec *req)
 				sm_move(&req->sm, EXEC_DONE);
 			} else if (sqlite3_stmt_readonly(req->stmt)) {
 				/* database in in WAL mode, readers can always proceed */
-				sm_move(&req->sm, EXEC_ENQUEUED);
-			} else if (!exec_db_busy(req)) {
-				sm_move(&req->sm, EXEC_ENQUEUED);
-				req->leader->db->active_leader = req->leader; 
+				sm_move(&req->sm, EXEC_WAITING);
+			} else if (db->active_leader == NULL || db->active_leader == leader) {
+				sm_move(&req->sm, EXEC_WAITING);
+				db->active_leader = leader;
 			} else {
-				/* supend as another leader is keeping the database busy,
+				/* Supend as another leader is keeping the database busy,
 				 * but also start a timer as this statement should not sit
 				 * in the queue for too long. In the case the timer expires
 				 * the statement will just fail with RAFT_BUSY. */
 				req->status = raft_timer_start(leader->raft, &req->timer,
-					leader->db->config->busy_timeout, 0, exec_timer_cb);
+					db->config->busy_timeout, 0, exec_timer_cb);
 				if (req->status != RAFT_OK) {
 					sm_move(&req->sm, EXEC_DONE);
 				} else {
-					sm_move(&req->sm, EXEC_ENQUEUED);
-					queue_insert_tail(&leader->db->pending_queue, &req->queue);
+					sm_move(&req->sm, EXEC_WAITING);
+					queue_insert_tail(&db->pending_queue, &req->queue);
 					return exec_suspend(req);
 				}
 			}
 			break;
-		case EXEC_ENQUEUED:
+		case EXEC_WAITING:
 			raft_timer_stop(leader->raft, &req->timer);
+			queue_remove(&req->queue);
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
-				queue_remove(&req->queue);
 			} else {
 				sm_move(&req->sm, EXEC_RUN_BARRIER);
-				if (exec_needs_barrier(req->leader)) {
-					req->status = raft_barrier(req->leader->raft, &req->barrier, exec_barrier_cb);
+				if (exec_needs_barrier(leader)) {
+					req->status = raft_barrier(leader->raft, &req->barrier, exec_barrier_cb);
 					if (req->status == 0) {
 						return exec_suspend(req);
 					}
@@ -488,7 +423,6 @@ static void exec_tick(struct exec *req)
 		case EXEC_RUN_BARRIER:
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
-				queue_remove(&req->queue);
 			} else {
 				sm_move(&req->sm, EXEC_RUNNING);
 				TAIL return req->work_cb(req);
@@ -506,8 +440,7 @@ static void exec_tick(struct exec *req)
 				 *  - it would not be necessary to keep a vfs pointer in the db
 				 *  - it would not necessary to lookup the database by path every time.
 				 */
-				int rc = VfsPoll(leader->db->vfs, leader->db->path, &frames, &nframes);
-				
+				int rc = VfsPoll(db->vfs, db->path, &frames, &nframes);
 				if (rc == SQLITE_OK && nframes > 0) {
 					req->status = exec_apply(req, frames, nframes);
 					for (unsigned i = 0; i < nframes; i++) {
@@ -522,11 +455,41 @@ static void exec_tick(struct exec *req)
 				}
 			}
 			break;
-		case EXEC_DONE:
-			leader->exec = NULL;				
-			req->leader = NULL;
+		case EXEC_DONE: 
 			sm_fini(&req->sm);
-			TAIL return req->done_cb(req);
+			req->leader = NULL;
+			req->done_cb(req);
+			leader->exec = NULL;
+			
+			if (db->active_leader == leader) {
+				if (sqlite3_txn_state(leader->conn, NULL) != SQLITE_TXN_WRITE) {
+					db->active_leader = NULL;
+				}
+			} else {
+				/* It should be impossible to run write transactions without 
+				 * keeping the leader busy. */
+				POST(sqlite3_txn_state(leader->conn, NULL) != SQLITE_TXN_WRITE);
+			}
+
+			req = exec_dequeue(db);
+
+			if (req == NULL) {
+				if (leader->close_cb != NULL) {
+					leader_close(leader);
+				}
+				return;
+			}
+
+			queue_remove(&req->queue);
+			
+			if (leader->close_cb != NULL && req->leader != leader) {
+				/* Close only if another request for the same leader wasn't
+				 * enqueued during the done callback. Otherwise, the leader
+				 * will wait a little bit more before closing. */
+				leader_close(leader);
+			}
+
+			TAIL return exec_tick(req);
 		default:
 			POST(false && "impossible!");
 		}
@@ -557,8 +520,6 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	struct exec *exec = CONTAINER_OF(apply, struct exec, apply);
 	struct leader *leader = exec->leader;
 	if (leader) {
-		// FIXME: this only works if this was a shutdown. Otherwise the db is
-		// left in a weird state.
 		if (status != 0) {
 			VfsAbort(leader->db->vfs, leader->db->path);
 		} else {
@@ -569,15 +530,6 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	// FIXME(marco6) inspect how to always return RAFT_* from this
 	leader_exec_result(exec, status);
 	return leader_exec_resume(exec);
-}
-
-static bool exec_db_busy(struct exec *req)
-{
-	PRE(req != NULL);
-	PRE(req->leader != NULL);
-	struct leader *l = req->leader;
-
-	return l->db->active_leader != NULL && l->db->active_leader != l;
 }
 
 static bool exec_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes)

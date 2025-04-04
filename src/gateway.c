@@ -63,9 +63,19 @@ void gateway__init(struct gateway *g,
 	stmt__registry_init(&g->stmts);
 }
 
+static void gateway__leader_close_cb(struct leader *leader) {
+	PRE(leader->data != NULL);
+	struct gateway *g = leader->data;
+	raft_free(leader);
+	g->leader = NULL;
+	if (g->close_cb != NULL) {
+		g->close_cb(g);
+	}
+}
+
 /* FIXME: This function becomes unsound when using the new thread pool, since
  * the request callbacks will race with operations running in the pool. */
-void gateway__leader_close(struct gateway *g, int reason)
+void gateway__leader_close(struct gateway *g, int reason) // FIXME: remove
 {
 	if (g == NULL || g->leader == NULL) {
 		tracef("gateway:%p or gateway->leader are NULL", g);
@@ -74,20 +84,15 @@ void gateway__leader_close(struct gateway *g, int reason)
 
 	(void)reason;
 	stmt__registry_close(&g->stmts);
-	leader__close(g->leader);
-	sqlite3_free(g->leader);
-	g->leader = NULL;
+	leader__close(g->leader, gateway__leader_close_cb);
 }
 
 static void gateway_close(struct gateway *g)
 {
 	stmt__registry_close(&g->stmts);
 	if (g->leader != NULL) {
-		leader__close(g->leader);
-		sqlite3_free(g->leader);
-		g->leader = NULL;
-	}
-	if (g->close_cb != NULL) {
+		leader__close(g->leader, gateway__leader_close_cb);
+	} else if (g->close_cb != NULL) {
 		g->close_cb(g);
 	}
 }
@@ -98,12 +103,12 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 	tracef("gateway close");
 	g->close_cb = cb;
 	if (g->req != NULL) {
-		interrupt(g);
 		/* An exec is still running, so it is not possible to close right away. 
 		 * Instead, we wait for the exec to finish and then call the close callback. */
-		return;
+		interrupt(g);
+	} else {
+		gateway_close(g);
 	}
-	gateway_close(g);
 }
 
 /* Declare a request struct and a response struct of the appropriate types and
@@ -304,7 +309,7 @@ static int handle_open(struct gateway *g, struct handle *req)
 		tracef("registry db get failed %d", rc);
 		return rc;
 	}
-	g->leader = sqlite3_malloc(sizeof *g->leader);
+	g->leader = raft_malloc(sizeof *g->leader);
 	if (g->leader == NULL) {
 		tracef("malloc failed");
 		return DQLITE_NOMEM;
@@ -312,10 +317,11 @@ static int handle_open(struct gateway *g, struct handle *req)
 	rc = leader__init(g->leader, db, g->raft);
 	if (rc != 0) {
 		tracef("leader init failed %d", rc);
-		sqlite3_free(g->leader);
+		raft_free(g->leader);
 		g->leader = NULL;
 		return rc;
 	}
+	g->leader->data = g;
 	response.id = 0;
 	SUCCESS_V0(db, DB);
 	return 0;
@@ -574,10 +580,6 @@ static void handle_exec_sql_done_cb(struct exec *exec) {
 			.data = g,
 			.sql = exec->tail,
 		};
-
-		// FIXME leader_exec *might* become tail call if I ask users to explicitly
-		// set callbacks. Is that worth it? I need to check which calls stay on the stack 
-		// is this loop as it is the only problem so far. Maybe with a leader_exec_init?
 		return leader_exec(g->leader, exec, handle_exec_work_cb, handle_exec_sql_done_cb);
 	}
 

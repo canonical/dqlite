@@ -22,14 +22,16 @@ struct leader;
 
 typedef void (*exec_work_cb)(struct exec *req);
 typedef void (*exec_done_cb)(struct exec *req);
+typedef void (*leader_close_cb)(struct leader *l);
 
 struct leader {
-	struct db *db;            /* Database the connection. */
-	sqlite3 *conn;            /* Underlying SQLite connection. */
-	struct raft *raft;        /* Raft instance. */
-	struct exec *exec;        /* Exec request in progress, if any. */
-	queue queue;              /* Prev/next leader, used by struct db. */
-	bool closing;             /* True if we are closing */
+	void           *data;     /* User data. */
+	struct db      *db;       /* Database for the connection. */
+	sqlite3        *conn;     /* Underlying SQLite connection. */
+	struct raft    *raft;     /* Raft instance. */
+	struct exec    *exec;     /* Exec request in progress, if any. */
+	queue           queue;    /* Prev/next leader, used by struct db. */
+	leader_close_cb close_cb; /* Close callback */
 };
 
 /**
@@ -149,6 +151,6 @@ void leader_exec_resume(struct exec *req);
  */
 void leader_exec_abort(struct exec *req);
 
-void leader__close(struct leader *l);
+void leader__close(struct leader *l, leader_close_cb close_cb);
 
 #endif /* LEADER_H_*/

@@ -322,7 +322,9 @@ int conn__start(struct conn *c,
 	if (rv != 0) {
 		goto err_after_read_buffer_init;
 	}
-	c->handle.data = c;
+	c->handle = (struct handle) {
+		.data = c,
+	};
 	c->closed = false;
 	/* First, we expect the client to send us the protocol version. */
 	rv = read_protocol(c);

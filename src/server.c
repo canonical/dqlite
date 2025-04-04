@@ -37,18 +37,21 @@ static void state_cb(struct raft *r,
 		     unsigned short old_state,
 		     unsigned short new_state)
 {
-	struct dqlite_node *d = r->data;
-	queue *head;
-	struct conn *conn;
+
+	// struct dqlite_node *d = r->data;
+	// queue *head;
+	// struct conn *conn;
 
 	if (old_state == RAFT_LEADER && new_state != RAFT_LEADER) {
 		tracef("node %llu@%s: leadership lost", r->id, r->address);
-		QUEUE_FOREACH(head, &d->conns)
-		{
-			conn = QUEUE_DATA(head, struct conn, queue);
-			gateway__leader_close(&conn->gateway,
-					      RAFT_LEADERSHIPLOST);
-		}
+	// 	QUEUE_FOREACH(head, &d->conns)
+	// 	{
+	// 		conn = QUEUE_DATA(head, struct conn, queue);
+	// 		// FIXME(marco6) I'm really not sure if this is the right way.
+	// 		// I think a better one would be to just let the connection
+	// 		// fail the next request.
+	// 		conn__stop(conn);
+	// 	}
 	}
 }
 
