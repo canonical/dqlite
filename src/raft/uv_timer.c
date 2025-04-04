@@ -32,7 +32,7 @@ int UvTimerStart(struct raft_io *io, struct raft_timer *req, uint64_t timeout, u
     }
     req->handle = timer;
     req->cb   = cb;
-    return RAFT_RESULT_OK;
+    return RAFT_OK;
 
 error:
     RaftHeapFree(timer);
@@ -45,7 +45,7 @@ int UvTimerStop(struct raft_io *io, struct raft_timer *req) {
     int rv;
     uv_timer_t *timer = req->handle;
     if (timer == NULL) {
-        return RAFT_RESULT_OK;
+        return RAFT_OK;
     }
 
     rv = uv_timer_stop(timer);
@@ -54,5 +54,5 @@ int UvTimerStop(struct raft_io *io, struct raft_timer *req) {
     }
     uv_close((uv_handle_t*)timer, uvTimerFree);
     req->handle = NULL;
-    return RAFT_RESULT_OK;
+    return RAFT_OK;
 }

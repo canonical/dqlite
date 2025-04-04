@@ -303,8 +303,8 @@ TEST_CASE(exec, busy_wait_statement, NULL)
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
 	WAIT(f->c1);
-	ASSERT_CALLBACK(f->c2, 0, RESULT);
-	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	ASSERT_CALLBACK(f->c2, SQLITE_OK, RESULT);
+	ASSERT_CALLBACK(f->c1, SQLITE_OK, RESULT);
 	return MUNIT_OK;
 }
 

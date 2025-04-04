@@ -186,7 +186,11 @@ static void fixture_exec_work_cb(struct exec *req)
 	int rv = sqlite3_step(req->stmt);
 	sqlite3_reset(req->stmt);
 
-	leader_exec_result(req, rv);
+	if (rv == SQLITE_DONE) {
+		leader_exec_result(req, RAFT_OK);
+	} else {
+		leader_exec_result(req, RAFT_ERROR);
+	}
 	return leader_exec_resume(req);
 }
 
@@ -386,7 +390,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	fixture_exec(f, 0);
 	CLUSTER_APPLIED(3);
 	munit_assert_true(f->invoked);
-	munit_assert_int(f->status, ==, SQLITE_OK);
+	munit_assert_int(f->status, ==, RAFT_OK);
 	f->invoked = false;
 	f->status = -1;
 	FINALIZE;
@@ -395,7 +399,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	fixture_exec(f, 0);
 	CLUSTER_STEP;
 	munit_assert_true(f->invoked);
-	munit_assert_int(f->status, ==, SQLITE_OK);
+	munit_assert_int(f->status, ==, RAFT_OK);
 	f->invoked = false;
 	FINALIZE;
 
@@ -407,7 +411,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	FINALIZE;
 
 	munit_assert_true(f->invoked);
-	munit_assert_int(f->status, ==, SQLITE_OK);
+	munit_assert_int(f->status, ==, RAFT_OK);
 
 	PREPARE(0, "SELECT * FROM test");
 	FINALIZE;

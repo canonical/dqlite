@@ -480,7 +480,7 @@ static void handle_exec_done_cb(struct exec *exec)
 {
 	struct gateway *g = exec->data;
 	int status = exec->status;
-	bool done = sqlite3_stmt_busy(exec->stmt);
+	bool done = !sqlite3_stmt_busy(exec->stmt);
 	PRE(g->leader != NULL && g->req != NULL);
 	struct handle *req = g->req;
 	struct response_result response;
@@ -559,11 +559,10 @@ static void handle_exec_sql_done_cb(struct exec *exec) {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
 	int status = exec->status;
-	bool done = sqlite3_stmt_busy(exec->stmt);
+	bool done = !sqlite3_stmt_busy(exec->stmt);
 	struct response_result response = {};
 
 	sqlite3_finalize(exec->stmt);
-	raft_free(exec);
 
 	if (
 		g->close_cb == NULL 
@@ -660,6 +659,7 @@ static void handle_query_work_cb(struct exec *exec)
 	}
 	
 	if (!sqlite3_statement_empty(exec->tail)) {
+		// FIXME(marco6) does this work? does it return the right error?
 		leader_exec_result(exec, RAFT_ERROR);
 		TAIL return leader_exec_resume(exec);
 	} else {
@@ -675,7 +675,8 @@ static void handle_query_work_cb(struct exec *exec)
 			leader_exec_result(exec, RAFT_ERROR);
 			TAIL return leader_exec_resume(exec);
 		}
-		/* FIXME(marco6): Should I check if all bindings were consumed? And moreover, should I allow parameters altogether in this case? */
+		/* FIXME(marco6): Should I check if all bindings were consumed?
+		 * And moreover, should I allow parameters altogether in this case? */
 		req->parameters_bound = true;
 	}
 
@@ -779,6 +780,7 @@ static void handle_query_sql_done_cb(struct exec *exec)
 	struct gateway *g   = exec->data;
 	struct handle *req = g->req;
 	int status = exec->status;
+	bool tail = exec->stmt != NULL && exec->tail != NULL;
 	g->req = NULL;
 	sqlite3_finalize(exec->stmt);
 	raft_free(exec);
@@ -789,7 +791,11 @@ static void handle_query_sql_done_cb(struct exec *exec)
 		struct response_empty response = { 0 };
 		SUCCESS_V0(empty, EMPTY);
 	} else if (status != RAFT_OK) {
-		exec_failure(g, req, status);
+		if (tail) {
+			failure(req, SQLITE_ERROR, "nonempty statement tail");
+		} else {
+			exec_failure(g, req, status);
+		}
 	} else if (!req->parameters_bound) {
 		failure(req, 0, "empty statement");
 	} else {
