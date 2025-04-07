@@ -73,20 +73,6 @@ static void gateway__leader_close_cb(struct leader *leader) {
 	}
 }
 
-/* FIXME: This function becomes unsound when using the new thread pool, since
- * the request callbacks will race with operations running in the pool. */
-void gateway__leader_close(struct gateway *g, int reason) // FIXME: remove
-{
-	if (g == NULL || g->leader == NULL) {
-		tracef("gateway:%p or gateway->leader are NULL", g);
-		return;
-	}
-
-	(void)reason;
-	stmt__registry_close(&g->stmts);
-	leader__close(g->leader, gateway__leader_close_cb);
-}
-
 static void gateway_close(struct gateway *g)
 {
 	stmt__registry_close(&g->stmts);
@@ -661,7 +647,6 @@ static void handle_query_work_cb(struct exec *exec)
 	}
 	
 	if (!sqlite3_statement_empty(exec->tail)) {
-		// FIXME(marco6) does this work? does it return the right error?
 		leader_exec_result(exec, RAFT_ERROR);
 		TAIL return leader_exec_resume(exec);
 	} else {
@@ -872,7 +857,7 @@ static int handle_interrupt(struct gateway *g, struct handle *req)
 static void interrupt(struct gateway *g)
 {
 	g->req->cancellation_requested = true;
-	if (g->leader->exec != NULL) {
+	if (g->leader != NULL && g->leader->exec != NULL) {
 		leader_exec_abort(g->leader->exec);
 	}
 }
@@ -891,7 +876,9 @@ static void raftChangeCb(struct raft_change *change, int status)
 	struct response_empty response = { 0 };
 	g->req = NULL;
 	sqlite3_free(r);
-	if (status != 0) {
+	if (g->close_cb != NULL) {
+		g->close_cb(g);
+	} else if (status != 0) {
 		failure(req, translateRaftErrCode(status),
 			raft_strerror(status));
 	} else {
@@ -1219,7 +1206,9 @@ void raftTransferCb(struct raft_transfer *r)
 	struct response_empty response = { 0 };
 	g->req = NULL;
 	sqlite3_free(r);
-	if (g->raft->state == RAFT_LEADER) {
+	if (g->close_cb != NULL) {
+		g->close_cb(g);
+	} else if (g->raft->state == RAFT_LEADER) {
 		tracef("transfer failed");
 		failure(req, DQLITE_ERROR, "leadership transfer failed");
 	} else {

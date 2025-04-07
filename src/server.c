@@ -37,21 +37,20 @@ static void state_cb(struct raft *r,
 		     unsigned short old_state,
 		     unsigned short new_state)
 {
-
-	// struct dqlite_node *d = r->data;
-	// queue *head;
-	// struct conn *conn;
-
+	// INFO(marco6): initially, this logic was also closing the leader connection
+	// on each connection. This relied on the ability to close the leader synchronously.
+	// Now that leader_close is async, this is not possible anymore.
+	// I suspect in general that it wasn't useful to begin with as a request needing
+	// a leader connnection can only be in few state:
+	//  - not run: in this case there is a check in each handle_XXX method
+	//  - waiting for barrier/apply: in this case the command fails if leadership is 
+	//    lost and the connection will be terminated. There is no need to add another
+	//    obscure error path
+	//  - executed: no need to close the leader here. It will be closed either with
+	//    the connection or at the next command.
+	// I left however the trace call, so that the trace looks the same.
 	if (old_state == RAFT_LEADER && new_state != RAFT_LEADER) {
 		tracef("node %llu@%s: leadership lost", r->id, r->address);
-	// 	QUEUE_FOREACH(head, &d->conns)
-	// 	{
-	// 		conn = QUEUE_DATA(head, struct conn, queue);
-	// 		// FIXME(marco6) I'm really not sure if this is the right way.
-	// 		// I think a better one would be to just let the connection
-	// 		// fail the next request.
-	// 		conn__stop(conn);
-	// 	}
 	}
 }
 
@@ -201,7 +200,6 @@ void dqlite__close(struct dqlite_node *d)
 	// TODO assert rv of uv_loop_close after fixing cleanup logic related to
 	// the TODO above referencing the cleanup logic without running the
 	// node. See https://github.com/canonical/dqlite/issues/504.
-
 	uv_loop_close(&d->loop);
 	raftProxyClose(&d->raft_transport);
 	registry__close(&d->registry);

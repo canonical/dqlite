@@ -549,12 +549,12 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	unsigned i;
 	int rv;
 
-	/* First count how many databases we have and check that no transaction
-	 * nor checkpoint nor other snapshot is in progress. */
+	/* First count how many databases we have and check that no checkpoint 
+	 * nor other snapshot is in progress. */
 	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE_DATA(head, struct db, queue);
-		if (db->active_leader != NULL || db->read_lock) {
+		if (db->read_lock) {
 			return RAFT_BUSY;
 		}
 		n_db++;
@@ -861,7 +861,7 @@ static int fsm__snapshot_disk(struct raft_fsm *fsm,
 	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE_DATA(head, struct db, queue);
-		if (db->active_leader != NULL || db->read_lock) {
+		if (db->read_lock) {
 			return RAFT_BUSY;
 		}
 		n_db++;
