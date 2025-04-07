@@ -1379,6 +1379,206 @@ TEST_CASE(query, large, NULL)
 	return MUNIT_OK;
 }
 
+TEST_CASE(query, modifying, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	uint64_t n;
+	bool finished;
+	(void)params;
+
+	PREPARE("INSERT INTO test(n) VALUES(123)");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 0);
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query, returning, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	PREPARE("INSERT INTO test(n) VALUES(123) RETURNING n");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, 123);
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query, returning_large, NULL)
+{
+	struct query_fixture *f = data;
+	int i;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	/* Query 2 response buffers worth of rows */
+	/* 16 = 8B header + 8B value (int) */
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+
+	PREPARE("WITH RECURSIVE seq(n) AS ("
+            "	SELECT 1               "
+            "	UNION ALL              "
+            "	SELECT n+1             "
+            "	FROM seq WHERE n < ?   "
+            ")                         "
+            "INSERT INTO test(n) SELECT n FROM seq RETURNING n");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 1; i <= n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
+
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* Second, and last, response contains 1 less than maximum amount */
+	for (; i < 2*n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query, returning_interrupt, NULL)
+{
+	struct query_fixture *f = data;
+	struct request_interrupt interrupt;
+	int i;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	/* Query 2 response buffers worth of rows */
+	/* 16 = 8B header + 8B value (int) */
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+
+	PREPARE("WITH RECURSIVE seq(n) AS ("
+            "	SELECT 1               "
+            "	UNION ALL              "
+            "	SELECT n+1             "
+            "	FROM seq WHERE n < ?   "
+            ")                         "
+            "INSERT INTO test(n) SELECT n FROM seq RETURNING n");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 1; i <= n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	ENCODE(&interrupt, interrupt);
+	HANDLE(INTERRUPT);
+	/* The interrupt should not return immediately, but wait for
+	 * the query to end. */
+	munit_assert_false(f->context->invoked);
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
+	ASSERT_CALLBACK(0, EMPTY);
+
+	/* Make sure rows are not there. */
+	PREPARE("SELECT * FROM test");
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, EMPTY);
+
+	return MUNIT_OK;
+}
+
 /* Perform a query using a prepared statement with parameters */
 TEST_CASE(query, params, NULL)
 {
@@ -2138,6 +2338,200 @@ TEST_CASE(query_sql, largeClose, NULL)
 
 	DECODE(&f->response, rows);
 	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	return MUNIT_OK;
+}
+
+TEST_CASE(query_sql, modifying, NULL)
+{
+	struct query_sql_fixture *f = data;
+	uint64_t n;
+	bool finished;
+	(void)params;
+
+	f->request.db_id = 0;
+	f->request.sql = "INSERT INTO test(n) VALUES(123)";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 0);
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query_sql, returning, NULL)
+{
+	struct query_sql_fixture *f = data;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	f->request.db_id = 0;
+	f->request.sql = "INSERT INTO test(n) VALUES(123) RETURNING n";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, 123);
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query_sql, returning_large, NULL)
+{
+	struct query_sql_fixture *f = data;
+	int i;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	/* Query 2 response buffers worth of rows */
+	/* 16 = 8B header + 8B value (int) */
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+
+	f->request.db_id = 0;
+	f->request.sql = 
+		"WITH RECURSIVE seq(n) AS ("
+		"	SELECT 1               "
+		"	UNION ALL              "
+		"	SELECT n+1             "
+		"	FROM seq WHERE n < ?   "
+		")                         "
+		"INSERT INTO test(n) SELECT n FROM seq RETURNING n";
+	ENCODE(&f->request, query_sql);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 1; i <= n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
+
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* Second, and last, response contains 1 less than maximum amount */
+	for (; i < 2*n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query_sql, returning_interrupt, NULL)
+{
+	struct query_sql_fixture *f = data;
+	struct request_interrupt interrupt;
+	int i;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	/* Query 2 response buffers worth of rows */
+	/* 16 = 8B header + 8B value (int) */
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+
+	f->request.db_id = 0;
+	f->request.sql = 
+		"WITH RECURSIVE seq(n) AS ("
+		"	SELECT 1               "
+		"	UNION ALL              "
+		"	SELECT n+1             "
+		"	FROM seq WHERE n < ?   "
+		")                         "
+		"INSERT INTO test(n) SELECT n FROM seq RETURNING n";
+	ENCODE(&f->request, query_sql);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 1; i <= n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	ENCODE(&interrupt, interrupt);
+	HANDLE(INTERRUPT);
+	/* The interrupt should not return immediately, but wait for
+	 * the query to end. */
+	munit_assert_false(f->context->invoked);
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
+	ASSERT_CALLBACK(0, EMPTY);
+
+	/* Make sure rows are not there. */
+	f->request.sql = "SELECT * FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(0, EMPTY);
 
 	return MUNIT_OK;
 }
