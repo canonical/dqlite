@@ -61,7 +61,7 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 	return DQLITE_OK;
 }
 
-int bind__params_v2(sqlite3_stmt *stmt, struct tuple_decoder *decoder)
+int bind__params(sqlite3_stmt *stmt, struct tuple_decoder *decoder)
 {
 	int requested = sqlite3_bind_parameter_count(stmt);
 	int available = (int)tuple_decoder__remaining(decoder);

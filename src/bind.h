@@ -17,6 +17,6 @@
  * parameters in the payload, the extra parameters are not bound and the
  * function returns success.
  */
-int bind__params_v2(sqlite3_stmt *stmt, struct tuple_decoder *decoder);
+int bind__params(sqlite3_stmt *stmt, struct tuple_decoder *decoder);
 
 #endif /* BIND_H_*/

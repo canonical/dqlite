@@ -456,7 +456,7 @@ static void handle_exec_work_cb(struct exec *exec)
 	struct handle *req = g->req;
 
 	int rv = 0;
-	rv = bind__params_v2(exec->stmt, &req->decoder);
+	rv = bind__params(exec->stmt, &req->decoder);
 	if (rv != DQLITE_OK) {
 		leader_exec_result(exec, RAFT_ERROR);
 	} else {
@@ -656,7 +656,7 @@ static void handle_query_work_cb(struct exec *exec)
 	int rc;
 	if (!req->parameters_bound) {
 		PRE(sqlite3_stmt_busy(exec->stmt) == false);
-		rc = bind__params_v2(exec->stmt, &req->decoder);
+		rc = bind__params(exec->stmt, &req->decoder);
 		if (rc != DQLITE_OK || tuple_decoder__remaining(&req->decoder) > 0) {
 			tracef("handle exec bind failed %d", rc);
 			leader_exec_result(exec, RAFT_ERROR);
