@@ -355,6 +355,7 @@ TEST_CASE(exec, busy_wait_transaction_dropped, NULL)
 	struct exec_fixture *f = data;
 	(void)params;
 	
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
 	f->servers[0].config.busy_timeout = 100;
 
 	/* Create a test table using connection 0 */
@@ -372,11 +373,14 @@ TEST_CASE(exec, busy_wait_transaction_dropped, NULL)
 	/* start another write */
 	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
 	EXEC(f->c2, f->stmt_id2);
-	
+	munit_assert_false(f->c2->context.invoked);
 
 	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
+	munit_assert_false(f->c2->context.invoked);
 	EXEC(f->c1, f->stmt_id1);
+	munit_assert_false(f->c2->context.invoked);
 	WAIT(f->c1);
+	munit_assert_false(f->c2->context.invoked);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
 	munit_assert_false(f->c2->context.invoked);
 
@@ -394,6 +398,7 @@ TEST_CASE(exec, busy_wait_timeout, NULL)
 	struct exec_fixture *f = data;
 	(void)params;
 	
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
 	f->servers[0].config.busy_timeout = 10;
 
 	/* Create a test table using connection 0 */
@@ -448,6 +453,7 @@ TEST_CASE(exec, busy_wait_timer_failed, NULL)
 	struct exec_fixture *f = data;
 	(void)params;
 	
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
 	f->servers[0].config.busy_timeout = 10;
 
 	/* Create a test table using connection 0 */

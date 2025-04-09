@@ -474,14 +474,13 @@ static void fill_result(struct gateway *g, struct response_result *response)
 	response->rows_affected = (uint64_t)sqlite3_changes(g->leader->conn);
 }
 
-static void handle_exec_work_cb(struct exec *exec)
+static int exec_work(struct raft_io_async_work *work)
 {
-	PRE(exec->stmt != NULL);
+	struct exec *exec = work->data;
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
 
-	int rv = 0;
-	rv = bind__params(exec->stmt, &req->decoder);
+	int rv = bind__params(exec->stmt, &req->decoder);
 	if (rv != DQLITE_OK) {
 		leader_exec_result(exec, RAFT_GATEWAY_PARSE);
 	} else {
@@ -491,7 +490,28 @@ static void handle_exec_work_cb(struct exec *exec)
 				   rv == SQLITE_DONE ? RAFT_OK : RAFT_ERROR);
 	}
 
-	TAIL return leader_exec_resume(exec);
+	return RAFT_OK;
+}
+
+static void exec_work_done(struct raft_io_async_work *req, int status)
+{
+	assert(status == RAFT_OK);
+	return leader_exec_resume(req->data);
+}
+
+static void handle_exec_work_cb(struct exec *exec)
+{
+	PRE(exec->stmt != NULL);
+	struct gateway *g = exec->data;
+	g->work = (struct raft_io_async_work){
+		.data = exec,
+		.work = exec_work,
+	};
+	int rv = g->raft->io->async_work(g->raft->io, &g->work, exec_work_done);
+	if (rv != RAFT_OK) {
+		leader_exec_result(exec, rv);
+		TAIL return leader_exec_resume(exec);
+	}
 }
 
 static void handle_exec_done_cb(struct exec *exec)
@@ -655,6 +675,60 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	return 0;
 }
 
+static int query_work(struct raft_io_async_work *work)
+{
+	struct exec *exec = work->data;
+	struct gateway *g = exec->data;
+	struct handle *req = g->req;
+
+	int rv;
+	if (!req->parameters_bound) {
+		PRE(!sqlite3_stmt_busy(exec->stmt));
+		rv = bind__params(exec->stmt, &req->decoder);
+		if (rv != DQLITE_OK) {
+			tracef("handle exec bind failed %d", rv);
+			leader_exec_result(exec, RAFT_GATEWAY_PARSE);
+			return SQLITE_ERROR;
+		}
+		if (tuple_decoder__remaining(&req->decoder) > 0) {
+			leader_exec_result(exec, RAFT_GATEWAY_PARSE);
+			return SQLITE_ERROR;
+		}
+		/* FIXME(marco6): Should I check if all bindings were consumed?
+		 * And moreover, should I allow parameters altogether in this case? */
+		req->parameters_bound = true;
+	}
+
+	return query__batch(exec->stmt, req->buffer);
+}
+
+static void query_work_done(struct raft_io_async_work *work, int rc)
+{
+	struct exec *exec = work->data;
+	struct gateway *g = exec->data;
+	struct handle *req = g->req;
+
+	if (req->cancellation_requested) {
+		/* Nothing else to do. */
+		return leader_exec_resume(exec);
+	}
+
+	if (rc == SQLITE_ROW) {
+		/* If the statement is still running, do not resume the
+		 * exec state machine, but send a response instead. The
+		 * execution will resume as soon as the data has been
+		 * sent. See gateway__resume. */
+		struct response_rows response = {
+			.eof = DQLITE_RESPONSE_ROWS_PART,
+		};
+		SUCCESS(rows, ROWS, response, 0);
+		return;
+	}
+
+	leader_exec_result(exec, rc == SQLITE_DONE ? RAFT_OK :RAFT_ERROR);		
+	return leader_exec_resume(exec);
+}
+
 static void handle_query_work_cb(struct exec *exec)
 {
 	struct gateway *g = exec->data;
@@ -672,36 +746,16 @@ static void handle_query_work_cb(struct exec *exec)
 	}
 
 	exec->tail = NULL;
-	int rc;
-	if (!req->parameters_bound) {
-		PRE(!sqlite3_stmt_busy(exec->stmt));
-		rc = bind__params(exec->stmt, &req->decoder);
-		if (rc != DQLITE_OK ||
-		    tuple_decoder__remaining(&req->decoder) > 0) {
-			leader_exec_result(exec, RAFT_GATEWAY_PARSE);
-			TAIL return leader_exec_resume(exec);
-		}
-		/* FIXME(marco6): Should I check if all bindings were consumed?
-		 * And moreover, should I allow parameters altogether in this
-		 * case? */
-		req->parameters_bound = true;
-	}
 
-	rc = query__batch(exec->stmt, req->buffer);
-	if (rc == SQLITE_ROW) {
-		/* If the statement is still running, do not resume the
-		 * exec state machine, but send a response instead. The
-		 * execution will resume as soon as the data has been
-		 * sent. See gateway__resume. */
-		struct response_rows response = {
-			.eof = DQLITE_RESPONSE_ROWS_PART,
-		};
-		SUCCESS(rows, ROWS, response, 0);
-		return;
+	g->work = (struct raft_io_async_work){
+		.data = exec,
+		.work = query_work,
+	};
+	int rv = g->raft->io->async_work(g->raft->io, &g->work, query_work_done);
+	if (rv != RAFT_OK) {
+		leader_exec_result(exec, rv);
+		TAIL return leader_exec_resume(exec);
 	}
-
-	leader_exec_result(exec, rc == SQLITE_DONE ? RAFT_OK : RAFT_ERROR);
-	TAIL return leader_exec_resume(exec);
 }
 
 static void handle_query_done_cb(struct exec *exec)
@@ -723,7 +777,6 @@ static void handle_query_done_cb(struct exec *exec)
 		exec_failure(g, req, status);
 		goto done;
 	}
-
 
 	if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
