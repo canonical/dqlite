@@ -636,7 +636,6 @@ struct vfsFile
 	struct vfs *vfs;              /* Pointer to volatile VFS data. */
 	enum vfsFileType type;        /* Associated file (main db or WAL). */
 	struct vfsDatabase *database; /* Underlying database content. */
-	int flags;                    /* Flags passed to xOpen */
 	sqlite3_file *db;             /* For on-disk DB files, actual VFS. */
 };
 
@@ -758,18 +757,7 @@ static int vfsDeleteDatabase(struct vfs *r, const char *name)
 	return SQLITE_IOERR_DELETE_NOENT;
 }
 
-static int vfsFileClose(sqlite3_file *file)
-{
-	int rc = SQLITE_OK;
-	struct vfsFile *f = (struct vfsFile *)file;
-	struct vfs *v = (struct vfs *)(f->vfs);
-
-	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
-		rc = vfsDeleteDatabase(v, f->database->name);
-	}
-
-	return rc;
-}
+static int vfsFileClose(sqlite3_file *file) { (void)file; return SQLITE_OK; }
 
 /* Read data from the main database. */
 static int vfsDatabaseRead(struct vfsDatabase *d,
@@ -1810,14 +1798,12 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		return vfs->xOpen(vfs, filename, file, flags, out_flags);
 	}
 
+	assert((flags & SQLITE_OPEN_DELETEONCLOSE) == 0);
 	v = (struct vfs *)(vfs->pAppData);
 	f = (struct vfsFile *)file;
 
 	/* This tells SQLite to not call Close() in case we return an error. */
 	f->base.pMethods = 0;
-
-	/* Save the flags */
-	f->flags = flags;
 
 	/* Search if the database object exists already. */
 	database = vfsDatabaseLookup(v, filename);
@@ -2782,7 +2768,6 @@ static int vfsDiskFileClose(sqlite3_file *file)
 {
 	int rc = SQLITE_OK;
 	struct vfsFile *f = (struct vfsFile *)file;
-	struct vfs *v = (struct vfs *)(f->vfs);
 
 	if (f->db != NULL) {
 		rc = f->db->pMethods->xClose(f->db);
@@ -2791,10 +2776,6 @@ static int vfsDiskFileClose(sqlite3_file *file)
 		if (rc != SQLITE_OK) {
 			return rc;
 		}
-	}
-
-	if (f->flags & SQLITE_OPEN_DELETEONCLOSE) {
-		rc = vfsDeleteDatabase(v, f->database->name);
 	}
 
 	return rc;
@@ -3183,14 +3164,12 @@ static int vfsDiskOpen(sqlite3_vfs *vfs,
 		return v->base_vfs->xOpen(v->base_vfs, filename, file, flags, out_flags);
 	}
 
+	assert((flags & SQLITE_OPEN_DELETEONCLOSE) == 0);
 	f = (struct vfsFile *)file;
 
 	/* This tells SQLite to not call Close() in case we return an error. */
 	f->base.pMethods = 0;
 	f->db = NULL;
-
-	/* Save the flags */
-	f->flags = flags;
 
 	/* Search if the database object exists already. */
 	database = vfsDatabaseLookup(v, filename);
