@@ -8,21 +8,6 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 {
 	int rc;
 
-	/* TODO: the binding calls below currently use SQLITE_TRANSIENT when
-	 * passing pointers to data (for TEXT or BLOB datatypes). This way
-	 * SQLite makes its private copy of the data before the bind call
-	 * returns, and we can reuse the message body buffer. The overhead of
-	 * the copy is typically low, but if it becomes a concern, this could be
-	 * optimized to make no copy and instead prevent the message body from
-	 * being reused.
-	 * marco6: the case above is in the case of queries only as all the other
-	 * queries bind the parameters before calling the gateway callback (i.e.
-	 * the response write) and that is the only real place where a new read
-	 * can start. As such, I think that the requirement above might be dropped
-	 * as long as we don't support multiple querys at the same time. This requirement
-	 * is not a big deal IMHO since the protocol does not support a change in row
-	 * count/name/types in the middle of a query.
-	 */
 	switch (value->type) {
 		case SQLITE_INTEGER:
 			rc = sqlite3_bind_int64(stmt, n, value->integer);
@@ -33,18 +18,18 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 		case SQLITE_BLOB:
 			rc = sqlite3_bind_blob(stmt, n, value->blob.base,
 					       (int)value->blob.len,
-					       SQLITE_TRANSIENT);
+					       SQLITE_STATIC);
 			break;
 		case SQLITE_NULL:
 			rc = sqlite3_bind_null(stmt, n);
 			break;
 		case SQLITE_TEXT:
 			rc = sqlite3_bind_text(stmt, n, value->text, -1,
-					       SQLITE_TRANSIENT);
+					       SQLITE_STATIC);
 			break;
 		case DQLITE_ISO8601:
 			rc = sqlite3_bind_text(stmt, n, value->text, -1,
-					       SQLITE_TRANSIENT);
+					       SQLITE_STATIC);
 			break;
 		case DQLITE_BOOLEAN:
 			rc = sqlite3_bind_int64(stmt, n,
