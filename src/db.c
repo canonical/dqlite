@@ -85,6 +85,14 @@ static int dqlite_authorizer(void *pUserData, int action, const char *third, con
 		if (third != NULL && third[0] != '\0') {
 			return SQLITE_DENY;
 		}
+	} else if (action == SQLITE_PRAGMA) {
+		if (strcasecmp(third, "journal_mode") == 0 && fourth) {
+			/* When the user executes 'PRAGMA journal_mode=x' we ensure
+			* that the desired mode is 'wal'. */
+			if (strcasecmp(fourth, "wal") != 0) {
+				return SQLITE_DENY;
+			}
+		}
 	}
 	return SQLITE_OK;
 }
