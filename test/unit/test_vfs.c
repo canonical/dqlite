@@ -1056,7 +1056,7 @@ TEST(VfsTruncate, unexpected, setUp, tearDown, 0, vfs_params)
 	rc = file->pMethods->xTruncate(file, 0);
 	munit_assert_int(rc, ==, SQLITE_IOERR_TRUNCATE);
 
-	rc = file->pMethods->xClose(main_db);
+	rc = main_db->pMethods->xClose(main_db);
 	munit_assert_int(rc, ==, 0);
 	free(main_db);
 
