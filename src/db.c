@@ -86,12 +86,15 @@ static int dqlite_follower_authorizer(void *pUserData, int action, const char *t
 			return SQLITE_DENY;
 		}
 	} else if (action == SQLITE_PRAGMA) {
-		if (strcasecmp(third, "journal_mode") == 0 && fourth) {
+		if (sqlite3_stricmp(third, "journal_mode") == 0 && fourth) {
 			/* When the user executes 'PRAGMA journal_mode=x' we ensure
 			* that the desired mode is 'wal'. */
-			if (strcasecmp(fourth, "wal") != 0) {
+			if (sqlite3_stricmp(fourth, "wal") != 0) {
 				return SQLITE_DENY;
 			}
+		} else if (sqlite3_stricmp(third, "wal_checkpoint") == 0
+			|| (sqlite3_stricmp(third, "wal_autocheckpoint") == 0 && fourth)) {
+			return SQLITE_DENY;
 		}
 	}
 	return SQLITE_OK;

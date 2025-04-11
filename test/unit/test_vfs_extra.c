@@ -1649,7 +1649,11 @@ TEST(vfs_extra, restoreAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
 
 	OPEN("2", db);
 
-	PREPARE(db, stmt, "SELECT * FROM test");
+	int rv = sqlite3_prepare_v2(db, "SELECT * FROM test", -1, &stmt, NULL); 
+	if (rv != SQLITE_OK) {
+		munit_errorf("prepare '%s': %s (%d)", "SELECT * FROM test", sqlite3_errmsg(db), rv);
+	}
+
 	STEP(stmt, SQLITE_DONE);
 	FINALIZE(stmt);
 
