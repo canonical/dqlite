@@ -91,13 +91,19 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 	}
 }
 
-/* Declare a request struct and a response struct of the appropriate types and
- * decode the request. This is used in the common case where only one schema
- * version is extant. */
-#define START_V0(REQ, RES, ...)                                       \
-	struct request_##REQ request = { 0 };                         \
-	struct response_##RES response = { 0 };                       \
-	{                                                             \
+
+#define DECLARE_REQUEST(REQ, ...) struct request_##REQ request = { 0 }
+#define DECLARE_RESPONSE(REQ, RES, ...) \
+    DECLARE_REQUEST(REQ); \
+    struct response_##RES response = { 0 }
+
+#define __GET_DECLARE_RESPONSE_MACRO(REQ, RES, MACRO, ...) MACRO
+
+#define DECLARE_V0(...) \
+	__GET_DECLARE_RESPONSE_MACRO(__VA_ARGS__, DECLARE_RESPONSE, DECLARE_REQUEST)(__VA_ARGS__)
+
+#define INIT_V0(REQ, ...) \
+    {                                                             \
 		int rv_;                                              \
 		if (req->schema != 0) {                               \
 			tracef("bad schema version %d", req->schema); \
@@ -110,6 +116,13 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 			return rv_;                                   \
 		}                                                     \
 	}
+
+/* Declare a request struct and a response struct of the appropriate types and
+ * decode the request. This is used in the common case where only one schema
+ * version is extant. */
+#define START_V0(...)                                       \
+	DECLARE_V0(__VA_ARGS__); \
+    INIT_V0(__VA_ARGS__)
 
 #define CHECK_LEADER(REQ)                                            \
 	if (raft_state(g->raft) != RAFT_LEADER) {                    \
@@ -493,7 +506,7 @@ static void handle_exec_done_cb(struct exec *exec)
 	} else {
 		PRE(done);
 		fill_result(g, &response);
-		SUCCESS_V0(result, RESULT);
+		SUCCESS(result, RESULT, response, 0);
 	}
 }
 
@@ -582,7 +595,7 @@ static void handle_exec_sql_done_cb(struct exec *exec) {
 	} else {
 		PRE(done);
 		fill_result(g, &response);
-		SUCCESS_V0(result, RESULT);
+		SUCCESS(result, RESULT, response, 0);
 	}
 }
 
@@ -675,7 +688,7 @@ static void handle_query_work_cb(struct exec *exec)
 		struct response_rows response = {
 			.eof = DQLITE_RESPONSE_ROWS_PART,
 		};
-		SUCCESS_V0(rows, ROWS);
+		SUCCESS(rows, ROWS, response, 0);
 		return;
 	}
 
@@ -698,14 +711,14 @@ static void handle_query_done_cb(struct exec *exec)
 		return gateway_close(g);
 	} else if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
-		SUCCESS_V0(empty, EMPTY);
+		SUCCESS(empty, EMPTY, response, 0);
 	} else if (status != 0) {
 		exec_failure(g, req, status);
 	} else {
 		struct response_rows response = {
 			.eof = DQLITE_RESPONSE_ROWS_DONE,
 		};
-		SUCCESS_V0(rows, ROWS);
+		SUCCESS(rows, ROWS, response, 0);
 	}
 }
 
@@ -772,7 +785,7 @@ static void handle_query_sql_done_cb(struct exec *exec)
 		return gateway_close(g);
 	} else if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
-		SUCCESS_V0(empty, EMPTY);
+		SUCCESS(empty, EMPTY, response, 0);
 	} else if (status != RAFT_OK) {
 		if (tail) {
 			failure(req, SQLITE_ERROR, "nonempty statement tail");
@@ -785,7 +798,7 @@ static void handle_query_sql_done_cb(struct exec *exec)
 		struct response_rows response = {
 			.eof = DQLITE_RESPONSE_ROWS_DONE,
 		};
-		SUCCESS_V0(rows, ROWS);
+		SUCCESS(rows, ROWS, response, 0);
 	}
 }
 
@@ -878,7 +891,7 @@ static void raftChangeCb(struct raft_change *change, int status)
 		failure(req, translateRaftErrCode(status),
 			raft_strerror(status));
 	} else {
-		SUCCESS_V0(empty, EMPTY);
+		SUCCESS(empty, EMPTY, response, 0);
 	}
 }
 
@@ -888,8 +901,7 @@ static int handle_add(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
 	int rv;
-	START_V0(add, empty);
-	(void)response;
+	START_V0(add);
 
 	CHECK_LEADER(req);
 
@@ -921,8 +933,7 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 	struct change *r;
 	uint64_t role = DQLITE_VOTER;
 	int rv;
-	START_V0(promote_or_assign, empty);
-	(void)response;
+	START_V0(promote_or_assign);
 
 	CHECK_LEADER(req);
 
@@ -964,8 +975,7 @@ static int handle_remove(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct change *r;
 	int rv;
-	START_V0(remove, empty);
-	(void)response;
+	START_V0(remove);
 
 	CHECK_LEADER(req);
 
@@ -1208,7 +1218,7 @@ void raftTransferCb(struct raft_transfer *r)
 		tracef("transfer failed");
 		failure(req, DQLITE_ERROR, "leadership transfer failed");
 	} else {
-		SUCCESS_V0(empty, EMPTY);
+		SUCCESS(empty, EMPTY, response, 0);
 	}
 }
 
@@ -1218,8 +1228,7 @@ static int handle_transfer(struct gateway *g, struct handle *req)
 	struct cursor *cursor = &req->cursor;
 	struct raft_transfer *r;
 	int rv;
-	START_V0(transfer, empty);
-	(void)response;
+	START_V0(transfer);
 
 	CHECK_LEADER(req);
 
