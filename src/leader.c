@@ -16,12 +16,6 @@
 #include "utils.h"
 #include "vfs.h"
 
-#if defined(__has_attribute) && __has_attribute (musttail)
-# define TAIL __attribute__ ((musttail))
-#else
-# define TAIL
-#endif
-
 /* Whether we need to submit a barrier request because there is no transaction
  * in progress in the underlying database and the FSM is behind the last log
  * index. */

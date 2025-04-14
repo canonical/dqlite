@@ -14,36 +14,30 @@
 #include "tuple.h"
 #include "vfs.h"
 
-#if defined(__has_attribute) && __has_attribute (musttail)
-# define TAIL __attribute__ ((musttail))
-#else
-# define TAIL
-#endif
-
 /**
 * Silly in-memory sqlite3 connection used to check if statements contain only non-sql
 * code like comments or spaces.
 */
-static sqlite3 *check_connn = NULL;
+static sqlite3 *check_conn = NULL;
 
 bool sqlite3_statement_empty(const char* sql) {
 	if (sql == NULL || sql[0] == '\0') {
 		return true;
 	}
-	if (check_connn == NULL) {
-		int rc = sqlite3_open_v2(":memory:", &check_connn, SQLITE_OPEN_READONLY | SQLITE_OPEN_MEMORY, NULL);
+	if (check_conn == NULL) {
+		int rc = sqlite3_open_v2(":memory:", &check_conn, SQLITE_OPEN_READONLY | SQLITE_OPEN_MEMORY, NULL);
 		assert(rc == 0);
 	}
-	assert(check_connn != NULL);
+	assert(check_conn != NULL);
 	sqlite3_stmt *tail_stmt = NULL;
-	int rc = sqlite3_prepare_v2(check_connn, sql, -1, &tail_stmt, NULL);
+	int rc = sqlite3_prepare_v2(check_conn, sql, -1, &tail_stmt, NULL);
 	sqlite3_finalize(tail_stmt);
 	return rc == SQLITE_OK && tail_stmt == NULL;
 }
 
 __attribute__((destructor)) static void fini(void) {
-	sqlite3_close(check_connn);
-	check_connn = NULL;
+	sqlite3_close(check_conn);
+	check_conn = NULL;
 }
 
 static void interrupt(struct gateway *g);
@@ -337,6 +331,15 @@ static void handle_prepare_done_cb(struct exec *exec)
 		/* FIXME Should we use a code other than 0 here? */
 		failure(req, 0, "empty statement");
 	} else {
+		union {
+			struct {
+				uint32_t db_id;
+				uint32_t id;
+				uint64_t params;
+			};
+			struct response_stmt v0;
+			struct response_stmt_with_offset v1;
+		} response;
 		struct response_stmt response_v0 = { 0 };
 		struct response_stmt_with_offset response_v1 = { 0 };
 		struct stmt *registry_stmt;
@@ -358,22 +361,17 @@ static void handle_prepare_done_cb(struct exec *exec)
 		}
 		registry_stmt->stmt = stmt;
 
+		response.db_id = (uint32_t)req->db_id;
+		response.id = (uint32_t)registry_stmt->id;
+		response.params = (uint64_t)sqlite3_bind_parameter_count(registry_stmt->stmt);
 		switch (req->schema) {
 			case DQLITE_PREPARE_STMT_SCHEMA_V0:
-				response_v0.db_id = (uint32_t)req->db_id;
-				response_v0.id = (uint32_t)registry_stmt->id;
-				response_v0.params =
-					(uint64_t)sqlite3_bind_parameter_count(registry_stmt->stmt);
-				SUCCESS(stmt, STMT, response_v0,
+				SUCCESS(stmt, STMT, response.v0,
 					DQLITE_PREPARE_STMT_SCHEMA_V0);
 				break;
 			case DQLITE_PREPARE_STMT_SCHEMA_V1:
-				response_v1.db_id = (uint32_t)req->db_id;
-				response_v1.id = (uint32_t)registry_stmt->id;
-				response_v1.params =
-					(uint64_t)sqlite3_bind_parameter_count(registry_stmt->stmt);
 				response_v1.offset = (uint64_t)(tail - sql);
-				SUCCESS(stmt_with_offset, STMT_WITH_OFFSET, response_v1,
+				SUCCESS(stmt_with_offset, STMT_WITH_OFFSET, response.v1,
 					DQLITE_PREPARE_STMT_SCHEMA_V1);
 				break;
 			default:
@@ -484,14 +482,16 @@ static void handle_exec_done_cb(struct exec *exec)
 
 	if (g->close_cb != NULL) {
 		return gateway_close(g);
-	} else if (status != 0) {
+	}
+	
+	if (status != 0) {
 		if (done) {
 			exec_failure(g, req, status);
 		} else {
 			failure(req, SQLITE_ERROR, "rows yielded when none expected for EXEC request");
 		}
 	} else {
-		PRE(done == true);
+		PRE(done);
 		fill_result(g, &response);
 		SUCCESS_V0(result, RESULT);
 	}
@@ -505,8 +505,7 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	struct request_exec request = { 0 };
 	int rv;
 
-	if (req->schema != DQLITE_REQUEST_PARAMS_SCHEMA_V0 &&
-			req->schema != DQLITE_REQUEST_PARAMS_SCHEMA_V1) {
+	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0, DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
 		return 0;
@@ -519,11 +518,12 @@ static int handle_exec(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
+	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
+		? TUPLE__PARAMS 
+		: TUPLE__PARAMS32;
 	rv = tuple_decoder__init(
 		&req->decoder, 0,
-		req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
-			? TUPLE__PARAMS 
-			: TUPLE__PARAMS32,
+		format,
 		cursor
 	);
 	if (rv != 0) {
@@ -556,11 +556,8 @@ static void handle_exec_sql_done_cb(struct exec *exec) {
 
 	sqlite3_finalize(exec->stmt);
 
-	if (
-		g->close_cb == NULL 
-		&& status == 0
-		&& exec->tail != NULL && exec->tail[0] != '\0'
-	) {
+	if (g->close_cb == NULL && status == 0 && 
+		exec->tail != NULL && exec->tail[0] != '\0') {
 		req->parameters_bound = false;
 		*exec = (struct exec){
 			.data = g,
@@ -574,14 +571,16 @@ static void handle_exec_sql_done_cb(struct exec *exec) {
 
 	if (g->close_cb != NULL) {
 		return gateway_close(g);
-	} else if (status != 0) {
+	} 
+	
+	if (status != 0) {
 		if (done) {
 			exec_failure(g, req, status);
 		} else {
 			failure(req, SQLITE_ERROR, "rows yielded when none expected for EXEC request");
 		}
 	} else {
-		PRE(done == true);
+		PRE(done);
 		fill_result(g, &response);
 		SUCCESS_V0(result, RESULT);
 	}
@@ -594,8 +593,7 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	struct request_exec_sql request = { 0 };
 	int rv;
 
-	if (req->schema != DQLITE_REQUEST_PARAMS_SCHEMA_V0 &&
-			req->schema != DQLITE_REQUEST_PARAMS_SCHEMA_V1) {
+	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0, DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
 		return 0;
@@ -607,11 +605,12 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
+	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
+		? TUPLE__PARAMS 
+		: TUPLE__PARAMS32;
 	rv = tuple_decoder__init(
-		&req->decoder, 0,
-		req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
-			? TUPLE__PARAMS 
-			: TUPLE__PARAMS32,
+		&req->decoder, 
+		format,0,
 		cursor
 	);
 	if (rv != 0) {
@@ -655,7 +654,7 @@ static void handle_query_work_cb(struct exec *exec)
 	
 	int rc;
 	if (!req->parameters_bound) {
-		PRE(sqlite3_stmt_busy(exec->stmt) == false);
+		PRE(!sqlite3_stmt_busy(exec->stmt));
 		rc = bind__params(exec->stmt, &req->decoder);
 		if (rc != DQLITE_OK || tuple_decoder__remaining(&req->decoder) > 0) {
 			tracef("handle exec bind failed %d", rc);
@@ -678,12 +677,9 @@ static void handle_query_work_cb(struct exec *exec)
 		};
 		SUCCESS_V0(rows, ROWS);
 		return;
-	} else if (rc == SQLITE_DONE) {
-		leader_exec_result(exec, RAFT_OK);
-	} else {
-		leader_exec_result(exec, RAFT_ERROR);
 	}
-	
+
+	leader_exec_result(exec, rc == SQLITE_DONE ? RAFT_OK :RAFT_ERROR);	
 	TAIL return leader_exec_resume(exec);
 }
 
@@ -721,8 +717,7 @@ static int handle_query(struct gateway *g, struct handle *req)
 	struct request_query request = { 0 };
 	int rv;
 
-	if (req->schema != DQLITE_REQUEST_PARAMS_SCHEMA_V0 &&
-			req->schema != DQLITE_REQUEST_PARAMS_SCHEMA_V1) {
+	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0, DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
 		return 0;
@@ -733,11 +728,12 @@ static int handle_query(struct gateway *g, struct handle *req)
 	if (rv != 0) {
 		return rv;
 	}
+	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
+		? TUPLE__PARAMS 
+		: TUPLE__PARAMS32;
 	rv = tuple_decoder__init(
-		&req->decoder, 0,
-		req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
-			? TUPLE__PARAMS 
-			: TUPLE__PARAMS32,
+		&req->decoder, 
+		format,0,
 		cursor
 	);
 	if (rv != 0) {
@@ -801,8 +797,7 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	int rv;
 
 	/* Fail early if the schema version isn't recognized. */
-	if (req->schema != DQLITE_REQUEST_PARAMS_SCHEMA_V0 &&
-			req->schema != DQLITE_REQUEST_PARAMS_SCHEMA_V1) {
+	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0, DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
 		return 0;
@@ -812,11 +807,12 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	if (rv != 0) {
 		return rv;
 	}
+	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
+		? TUPLE__PARAMS 
+		: TUPLE__PARAMS32;
 	rv = tuple_decoder__init(
-		&req->decoder, 0,
-		req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
-			? TUPLE__PARAMS 
-			: TUPLE__PARAMS32,
+		&req->decoder, 
+		format,0,
 		cursor
 	);
 	if (rv != 0) {
