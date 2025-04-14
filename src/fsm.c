@@ -88,7 +88,6 @@ static void maybeCheckpoint(struct db *db)
 	tracef("maybe checkpoint");
 	struct sqlite3_file *main_f;
 	struct sqlite3_file *wal;
-	volatile void *region;
 	sqlite3_int64 size;
 	unsigned page_size;
 	unsigned pages;
@@ -136,13 +135,6 @@ static void maybeCheckpoint(struct db *db)
 	/* Get the database file associated with this db->follower connection */
 	rv = sqlite3_file_control(conn, "main",
 				  SQLITE_FCNTL_FILE_POINTER, &main_f);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	/* Get the first SHM region, which contains the WAL header. */
-	rv = main_f->pMethods->xShmMap(main_f, 0, 0, 0, &region);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	rv = main_f->pMethods->xShmUnmap(main_f, 0);
 	assert(rv == SQLITE_OK); /* Should never fail */
 
 	/* Try to acquire all locks. */
