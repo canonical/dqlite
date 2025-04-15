@@ -86,6 +86,11 @@ struct connection {
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 
+static void closeCb(struct gateway *g) {
+	struct connection *c = CONTAINER_OF(g, struct connection, gateway);
+	c->context.invoked = true;
+}
+
 static void handleCb(struct handle *req,
 		     int status,
 		     uint8_t type,
@@ -98,11 +103,9 @@ static void handleCb(struct handle *req,
 	ctx->status = status;
 	ctx->type = type;
 	ctx->schema = schema;
-}
-
-static void closeCb(struct gateway *g) {
-	struct connection *c = CONTAINER_OF(g, struct connection, gateway);
-	c->context.invoked = true;
+	if (status == SQLITE_IOERR_NOT_LEADER || status == SQLITE_IOERR_LEADERSHIP_LOST) {
+		gateway__close(&conn->gateway, closeCb);
+	}
 }
 
 /******************************************************************************
@@ -189,6 +192,8 @@ static void closeCb(struct gateway *g) {
 
 /* Handle a request of the given type and check that no error occurs. */
 #define HANDLE(TYPE) HANDLE_STATUS(DQLITE_REQUEST_##TYPE, 0)
+
+#define CONNECT(i) gateway__init(f->gateway, CLUSTER_CONFIG(i), CLUSTER_REGISTRY(i), CLUSTER_RAFT(i))
 
 /* Open a leader connection against the "test" database */
 #define OPEN                              \
@@ -579,6 +584,8 @@ TEST_CASE(prepare, barrier_error, NULL)
 
 	/* Submit a prepare request, forcing a barrier, which fails */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, prepare);
@@ -844,6 +851,8 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_re_elected, NULL)
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 	EXEC("INSERT INTO test(n) VALUES(1)");
 
 	return MUNIT_OK;
@@ -913,6 +922,8 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 	EXEC("INSERT INTO test(n) VALUES(1)");
 
 	return MUNIT_OK;
@@ -1007,6 +1018,8 @@ TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 	EXEC("INSERT INTO test(n) VALUES(1)");
 
 	return MUNIT_OK;
@@ -1039,6 +1052,8 @@ TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 	EXEC("INSERT INTO test(n) VALUES(1)");
 
 	return MUNIT_OK;
@@ -1742,6 +1757,8 @@ TEST_CASE(query, barrier, NULL)
 
 	/* Re-elect ourselves and issue a query request */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 
 	PREPARE("SELECT n FROM test");
 	f->request.db_id = 0;
@@ -1768,6 +1785,8 @@ TEST_CASE(query, barrierInFlightQuery, NULL)
 
 	/* Re-elect ourselves and issue a query request */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 
 	PREPARE("SELECT n FROM test");
 	f->request.db_id = 0;
@@ -1792,6 +1811,8 @@ TEST_CASE(query, barrierInFlightQuerySql, NULL)
 
 	/* Re-elect ourselves and issue a query request */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 
 	QUERY_SQL_SUBMIT("SELECT n FROM test");
 	return MUNIT_OK;
@@ -1812,6 +1833,8 @@ TEST_CASE(query, barrierInFlightExec, NULL)
 
 	/* Re-elect ourselves and issue an exec request */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 
 	PREPARE("INSERT INTO test(n) VALUES(2)");
 	EXEC_SUBMIT(stmt_id);
@@ -2092,6 +2115,8 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 
 	/* Submit an EXEC_SQL request, forcing a barrier, which fails */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 	f->request.db_id = 0;
 	f->request.sql = "INSERT INTO test VALUES(123)";
 	ENCODE(&f->request, exec_sql);
@@ -2668,6 +2693,8 @@ TEST_CASE(query_sql, barrier_error, NULL)
 
 	/* Submit a QUERY_SQL request, forcing a barrier, which fails */
 	CLUSTER_ELECT(0);
+	CONNECT(0);
+	OPEN;
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
