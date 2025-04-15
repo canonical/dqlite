@@ -344,17 +344,8 @@ static void handle_prepare_done_cb(struct exec *exec)
 		/* FIXME Should we use a code other than 0 here? */
 		failure(req, 0, "empty statement");
 	} else {
-		union {
-			struct {
-				uint32_t db_id;
-				uint32_t id;
-				uint64_t params;
-			};
-			struct response_stmt v0;
-			struct response_stmt_with_offset v1;
-		} response;
-		struct response_stmt response_v0 = { 0 };
-		struct response_stmt_with_offset response_v1 = { 0 };
+		struct response_stmt response_v0 = {};
+		struct response_stmt_with_offset response_v1 = {};
 		struct stmt *registry_stmt;
 		int rc;
 
@@ -374,17 +365,20 @@ static void handle_prepare_done_cb(struct exec *exec)
 		}
 		registry_stmt->stmt = stmt;
 
-		response.db_id = (uint32_t)req->db_id;
-		response.id = (uint32_t)registry_stmt->id;
-		response.params = (uint64_t)sqlite3_bind_parameter_count(registry_stmt->stmt);
 		switch (req->schema) {
 			case DQLITE_PREPARE_STMT_SCHEMA_V0:
-				SUCCESS(stmt, STMT, response.v0,
+				response_v0.db_id = (uint32_t)req->db_id;
+				response_v0.id = (uint32_t)registry_stmt->id;
+				response_v0.params = (uint64_t)sqlite3_bind_parameter_count(registry_stmt->stmt);
+				SUCCESS(stmt, STMT, response_v0,
 					DQLITE_PREPARE_STMT_SCHEMA_V0);
 				break;
 			case DQLITE_PREPARE_STMT_SCHEMA_V1:
+				response_v1.db_id = (uint32_t)req->db_id;
+				response_v1.id = (uint32_t)registry_stmt->id;
+				response_v1.params = (uint64_t)sqlite3_bind_parameter_count(registry_stmt->stmt);
 				response_v1.offset = (uint64_t)(tail - sql);
-				SUCCESS(stmt_with_offset, STMT_WITH_OFFSET, response.v1,
+				SUCCESS(stmt_with_offset, STMT_WITH_OFFSET, response_v1,
 					DQLITE_PREPARE_STMT_SCHEMA_V1);
 				break;
 			default:
@@ -623,7 +617,7 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 		: TUPLE__PARAMS32;
 	rv = tuple_decoder__init(
 		&req->decoder, 
-		format,0,
+		0, format,
 		cursor
 	);
 	if (rv != 0) {
@@ -746,7 +740,7 @@ static int handle_query(struct gateway *g, struct handle *req)
 		: TUPLE__PARAMS32;
 	rv = tuple_decoder__init(
 		&req->decoder, 
-		format,0,
+		0, format,
 		cursor
 	);
 	if (rv != 0) {
@@ -825,7 +819,7 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 		: TUPLE__PARAMS32;
 	rv = tuple_decoder__init(
 		&req->decoder, 
-		format,0,
+		0, format,
 		cursor
 	);
 	if (rv != 0) {

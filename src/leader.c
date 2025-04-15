@@ -380,7 +380,7 @@ static void exec_tick(struct exec *req)
 			} else if (sqlite3_stmt_readonly(req->stmt)) {
 				/* database in in WAL mode, readers can always proceed */
 				sm_move(&req->sm, EXEC_WAITING);
-			} else if (db->active_leader == NULL || db->active_leader == leader) {
+			} else if (IN(db->active_leader, NULL, leader)) {
 				sm_move(&req->sm, EXEC_WAITING);
 				db->active_leader = leader;
 			} else {

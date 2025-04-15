@@ -31,14 +31,12 @@ int db__init(struct db *db, struct config *config, const char *filename)
 	db->config = config;
 	db->vfs = sqlite3_vfs_find(config->name);
 	if (db->vfs == NULL) {
-		rv = DQLITE_MISUSE;
-		goto err;
+		return DQLITE_MISUSE;
 	}
 	db->cookie = str_hash(filename);
 	db->filename = sqlite3_malloc((int)(strlen(filename) + 1));
 	if (db->filename == NULL) {
-		rv = DQLITE_NOMEM;
-		goto err;
+		return DQLITE_NOMEM;
 	}
 	strcpy(db->filename, filename);
 	db->path = sqlite3_malloc(MAX_PATHNAME + 1);
@@ -66,7 +64,6 @@ err_after_path_alloc:
 	sqlite3_free(db->path);
 err_after_filename_alloc:
 	sqlite3_free(db->filename);
-err:
 	return rv;
 }
 
