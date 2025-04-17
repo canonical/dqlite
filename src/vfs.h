@@ -26,8 +26,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 	    unsigned *n);
 
 /* Append the given frames to the WAL. */
-int VfsApply(sqlite3_vfs *vfs,
-	     const char *filename,
+int VfsApply(sqlite3 *conn,
 	     unsigned n,
 	     unsigned long *page_numbers,
 	     void *frames);

@@ -1,8 +1,8 @@
-#include "lib/assert.h"
 #include "lib/serialize.h"
 
 #include "command.h"
 #include "fsm.h"
+#include "leader.h"
 #include "raft.h"
 #include "tracing.h"
 #include "vfs.h"
@@ -181,28 +181,12 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	struct db *db;
 	unsigned long *page_numbers = NULL;
 	void *pages;
-	int exists;
 	int rv;
 
 	rv = registry__db_get(f->registry, c->filename, &db);
 	if (rv != 0) {
 		tracef("db get failed %d", rv);
 		return rv;
-	}
-
-	/* Check if the database file exists, and create it by opening a
-	 * connection if it doesn't. */
-	rv = db->vfs->xAccess(db->vfs, db->path, 0, &exists);
-	assert(rv == 0);
-
-	if (!exists) {
-		sqlite3 *conn = NULL;
-		rv = db__open(db, &conn);
-		if (rv != 0) {
-			tracef("open follower failed %d", rv);
-			return rv;
-		}
-		sqlite3_close(conn);
 	}
 
 	rv = command_frames__page_numbers(c, &page_numbers);
@@ -216,6 +200,20 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 	command_frames__pages(c, &pages);
 
+	sqlite3 *conn = NULL;
+	if (db->active_leader != NULL) {
+		/* Leader transaction */
+		conn = db->active_leader->conn;
+	} else {
+		/* Follower transaction */
+		rv = db__open(db, &conn);
+		if (rv != 0) {
+			tracef("open follower failed %d", rv);
+			sqlite3_free(page_numbers);
+			return rv;
+		}
+	}
+
 	/* If the commit marker is set, we apply the changes directly to the
 	 * VFS. Otherwise, if the commit marker is not set, this must be an
 	 * upgrade from V1, we accumulate uncommitted frames in memory until the
@@ -228,14 +226,15 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 			if (rv != 0) {
 				tracef("malloc");
 				sqlite3_free(page_numbers);
+				sqlite3_close(conn);
 				return DQLITE_NOMEM;
 			}
-			rv =
-			    VfsApply(db->vfs, db->path, f->pending.n_pages,
+			rv = VfsApply(conn, f->pending.n_pages,
 				     f->pending.page_numbers, f->pending.pages);
 			if (rv != 0) {
 				tracef("VfsApply failed %d", rv);
 				sqlite3_free(page_numbers);
+				sqlite3_close(conn);
 				return rv;
 			}
 			sqlite3_free(f->pending.page_numbers);
@@ -244,11 +243,11 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 			f->pending.page_numbers = NULL;
 			f->pending.pages = NULL;
 		} else {
-			rv = VfsApply(db->vfs, db->path, c->frames.n_pages,
-				      page_numbers, pages);
+			rv = VfsApply(conn, c->frames.n_pages, page_numbers, pages);
 			if (rv != 0) {
 				tracef("VfsApply failed %d", rv);
 				sqlite3_free(page_numbers);
+				sqlite3_close(conn);
 				return rv;
 			}
 		}
@@ -259,11 +258,15 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		if (rv != 0) {
 			tracef("add pending pages failed %d", rv);
 			sqlite3_free(page_numbers);
+			sqlite3_close(conn);
 			return DQLITE_NOMEM;
 		}
 	}
 
 	sqlite3_free(page_numbers);
+	if (db->active_leader == NULL) {
+		sqlite3_close(conn);
+	}
 	maybeCheckpoint(db);
 	return 0;
 }
