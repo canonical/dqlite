@@ -459,7 +459,7 @@ static void exec_tick(struct exec *req)
 				 *  - it would not be necessary to keep a vfs pointer in the db
 				 *  - it would not necessary to lookup the database by path every time.
 				 */
-				int rc = VfsPoll(db->vfs, db->path, &frames, &nframes);
+				int rc = VfsPoll(leader->conn, &frames, &nframes);
 				if (rc == SQLITE_OK && nframes > 0) {
 					leader_trace(leader, "polled connection (%d frames)", nframes);
 					req->status = exec_apply(req, frames, nframes);
@@ -472,7 +472,7 @@ static void exec_tick(struct exec *req)
 					}
 				} else if (rc != SQLITE_OK) {
 					leader_trace(leader, "aborted on leader");
-					rc = VfsAbort(leader->db->vfs, leader->db->path);
+					rc = VfsAbort(leader->conn);
 					assert(rc == SQLITE_OK);
 					req->status = RAFT_IOERR;
 				} else {
@@ -554,7 +554,7 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	leader_trace(leader, "query applied (status=%d)", status);
 	if (leader) {
 		if (status != 0) {
-			VfsAbort(leader->db->vfs, leader->db->path);
+			VfsAbort(leader->conn);
 		} else {
 			leaderMaybeCheckpointLegacy(leader);
 		}
