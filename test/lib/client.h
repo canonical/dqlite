@@ -90,17 +90,17 @@
 		munit_assert_int(rv_, ==, 0);               \
 	}
 
-#define OPEN_C(CLIENT)                                                   \
-	{                                                      \
-		int rv_;                                       \
-		rv_ = clientSendOpen(CLIENT, "test", NULL); \
-		munit_assert_int(rv_, ==, 0);                  \
+#define OPEN_C(CLIENT, NAME)                        \
+	{                                               \
+		int rv_;                                    \
+		rv_ = clientSendOpen(CLIENT, NAME, NULL);   \
+		munit_assert_int(rv_, ==, 0);               \
 		rv_ = clientRecvDb(CLIENT, NULL);           \
-		munit_assert_int(rv_, ==, 0);                  \
+		munit_assert_int(rv_, ==, 0);               \
 	}
 
 /* Open a test database. */
-#define OPEN OPEN_C(f->client)
+#define OPEN OPEN_C(f->client, "test")
 
 /* Open a test database with a specific name. */
 #define OPEN_NAME(NAME)                                      \
@@ -133,16 +133,18 @@
 		munit_assert_int(rv_, ==, 0);                      \
 	}
 
-/* Execute a statement. */
-#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)                     \
-	{                                                                \
+#define EXEC_C(CLIENT , STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)  \
+	{                                                            \
 		int rv_;                                                 \
-		rv_ = clientSendExec(f->client, STMT_ID, NULL, 0, NULL); \
+		rv_ = clientSendExec(CLIENT, STMT_ID, NULL, 0, NULL); \
 		munit_assert_int(rv_, ==, 0);                            \
-		rv_ = clientRecvResult(f->client, LAST_INSERT_ID,        \
-				       ROWS_AFFECTED, NULL);             \
+		rv_ = clientRecvResult(CLIENT, LAST_INSERT_ID,        \
+				       ROWS_AFFECTED, NULL);                     \
 		munit_assert_int(rv_, ==, 0);                            \
 	}
+
+/* Execute a statement. */
+#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED) EXEC_C(f->client, STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)
 
 #define EXEC_PARAMS(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED, ...) \
 	{ \

@@ -6,29 +6,83 @@
 
 #include <stdatomic.h>
 
-#define N_CLIENTS 20
-
-/******************************************************************************
- *
- * Handle client requests
- *
- ******************************************************************************/
-
 SUITE(stress);
 
+/* TODO: multiple databases (1, 2, 4) */
+/* TODO: multiple servers (1, 3, 5) */
 static char *bools[] = { "0", "1", NULL };
+static char *writers[] = { "1", "2", "4", NULL };
+static char *readers[] = { "1", "4", "16", NULL };
 
-static MunitParameterEnum client_params[] = {
+static MunitParameterEnum stress_params[] = {
 	{ "disk_mode", bools },
+	{ "writers", writers },
+	{ "readers", readers },
 	{ NULL, NULL },
 };
 
 struct fixture {
 	struct test_server server;
 	struct client_proto *client;
-	volatile int64_t query_count;
-	const char* read_query;
+	volatile int64_t read_count;
+	volatile int64_t write_count;
+	int readers, writers;
 };
+
+static void* client_read(void *data) {
+	const char *sql = "SELECT MAX(n) FROM test ORDER BY random() LIMIT 100";
+
+	struct fixture *f = data;
+	struct client_proto client;
+	struct rows rows;
+	uint32_t stmt_id;
+
+	test_server_client_connect(&f->server, &client);
+	HANDSHAKE_C(&client);
+	OPEN_C(&client, "test");
+	PREPARE_C(&client, sql, &stmt_id);
+
+	do {
+		int64_t prev = atomic_fetch_sub(&f->read_count, 10);
+		if (prev > 0) {
+			for (int i = 0; i < 10; i++) {
+				QUERY_DONE_C(&client, stmt_id, &rows, {});	
+			}
+		}
+	} while (atomic_load(&f->read_count) > 0);
+
+	test_server_client_close(&f->server, &client);
+	return NULL;
+}
+
+static void* client_write(void *data) {
+	const char *sql = "INSERT INTO test(n) VALUES (random())";
+
+	struct fixture *f = data;
+	struct client_proto client;
+	uint64_t last_insert_id;
+	uint64_t rows_affected;
+	uint32_t stmt_id;
+
+	test_server_client_connect(&f->server, &client);
+	HANDSHAKE_C(&client);
+	OPEN_C(&client, "test");
+	PREPARE_C(&client, sql, &stmt_id);
+
+	do {
+		int64_t prev = atomic_fetch_sub(&f->write_count, 10);
+		if (prev > 0) {
+			for (int i = 0; i < 10; i++) {
+				EXEC_C(&client, stmt_id, &last_insert_id, &rows_affected);
+				munit_assert_int(last_insert_id, >, 1);
+				munit_assert_int(rows_affected, ==, 1);
+			}
+		}
+	} while (atomic_load(&f->write_count) > 0);
+
+	test_server_client_close(&f->server, &client);
+	return NULL;
+}
 
 static void *setUp(const MunitParameter params[], void *user_data)
 {
@@ -37,11 +91,17 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	test_heap_setup(params, user_data);
 	test_sqlite_setup(params);
 	test_server_setup(&f->server, 1, params);
-	test_server_start(&f->server, params);
+	test_server_prepare(&f->server, params);
+	dqlite_node_set_busy_timeout(f->server.dqlite, 200);
+	test_server_run(&f->server);
 	f->client = test_server_client(&f->server);
 	HANDSHAKE;
 	OPEN;
-	f->query_count = 10000;
+	f->readers = atoi(munit_parameters_get(params, "readers"));
+	f->writers = atoi(munit_parameters_get(params, "writers"));
+	f->read_count = 1000 * f->readers;
+	f->write_count = 1000 * f->writers;
+
 	return f;
 }
 
@@ -55,31 +115,7 @@ static void tearDown(void *data)
 	free(f);
 }
 
-static void* client_read_only(void *data) {
-	struct fixture *f = data;
-	struct client_proto client;
-	struct rows rows;
-	uint32_t stmt_id;
-
-	test_server_client_connect(&f->server, &client);
-	HANDSHAKE_C(&client);
-	OPEN_C(&client);
-	PREPARE_C(&client, f->read_query, &stmt_id);
-
-	do {
-		int64_t prev = atomic_fetch_sub(&f->query_count, 10);
-		if (prev > 0) {
-			for (int i = 0; i < 10; i++) {
-				QUERY_DONE_C(&client, stmt_id, &rows, {});	
-			}
-		}
-	} while (atomic_load(&f->query_count) > 0);
-
-	test_server_client_close(&f->server, &client);
-	return NULL;
-}
-
-TEST(stress, read_only, setUp, tearDown, 0, client_params)
+TEST(stress, read_write, setUp, tearDown, 0, stress_params)
 {
 	struct fixture *f = data;
 	uint32_t stmt_id;
@@ -102,17 +138,22 @@ TEST(stress, read_only, setUp, tearDown, 0, client_params)
 	);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	f->read_query = "SELECT SUM(n) FROM test ORDER BY random() LIMIT 100";
+	pthread_t *workers = malloc((f->readers + f->writers) * sizeof(pthread_t));
+	pthread_t *write_workers = workers;
+	pthread_t *read_workers = write_workers + f->writers;
 
-	pthread_t threads[N_CLIENTS];
-
-	for (int i = 0; i < N_CLIENTS; i++) {
-		pthread_create(&threads[i], NULL, client_read_only, data);
+	for (int i = 0; i < f->readers; i++) {
+		pthread_create(&read_workers[i], NULL, client_read, data);
 	}
 
-	for (int i = 0; i < N_CLIENTS; i++) {
-		pthread_join(threads[i], NULL);
+	for (int i = 0; i < f->writers; i++) {
+		pthread_create(&write_workers[i], NULL, client_write, data);
 	}
 
+	for (int i = 0; i < f->readers + f->writers; i++) {
+		pthread_join(workers[i], NULL);
+	}
+
+	free(workers);
 	return MUNIT_OK;
 }
