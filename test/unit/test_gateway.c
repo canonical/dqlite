@@ -172,20 +172,30 @@ static void handleCb(struct handle *req,
 		}                                                              \
 	}
 
-#define HANDLE_SCHEMA_STATUS(TYPE, SCHEMA, RC)                             \
+#define HANDLE_SCHEMA_STATUS(TYPE, SCHEMA, RC)                         \
 	{                                                                  \
-		int rc2;                                                   \
-		f->handle->cursor.p = buffer__cursor(f->buf1, 0);          \
-		f->handle->cursor.cap = buffer__offset(f->buf1);           \
-		buffer__reset(f->buf2);                                    \
-		f->context->invoked = false;                               \
-		f->context->resume = false;                               \
-		f->context->status = -1;                                   \
-		f->context->type = -1;                                     \
-		rc2 = gateway__handle(f->gateway, f->handle, TYPE, SCHEMA, \
-				      f->buf2, handleCb);                  \
+		int rc2 = handle_schema_status(f->gateway, f->handle, f->buf1, \
+			f->buf2, f->context, TYPE, SCHEMA);                        \
 		munit_assert_int(rc2, ==, RC);                             \
 	}
+
+static int handle_schema_status(
+		struct gateway *g,
+		struct handle *h,
+		struct buffer* input, 
+		struct buffer* output, 
+		struct context *c,
+		int type,
+		int schema) {
+	h->cursor.p = buffer__cursor(input, 0);
+	h->cursor.cap = buffer__offset(input);
+	buffer__reset(output);
+	c->invoked = false;
+	c->resume = false;
+	c->status = -1;
+	c->type = -1;
+	return gateway__handle(g, h, type, schema, output, handleCb);
+}
 
 /* Handle a request of the given type and check for the given return code. */
 #define HANDLE_STATUS(TYPE, RC) HANDLE_SCHEMA_STATUS(TYPE, 0, RC)
@@ -263,17 +273,18 @@ static void handleCb(struct handle *req,
 	}
 
 /* Wait for the last request to complete */
-#define WAIT                                            \
-	{                                               \
-		unsigned _i;                            \
-		for (_i = 0; _i < 60; _i++) {           \
-			CLUSTER_STEP;                   \
-			if (f->context->invoked) {      \
-				break;                  \
-			}                               \
-		}                                       \
-		munit_assert_true(f->context->invoked); \
-	}
+#define WAIT                                \
+	wait(&f->cluster, f->context);          \
+	munit_assert_true(f->context->invoked); \
+
+static void wait(struct raft_fixture *cluster, struct context *ctx) {
+	for (unsigned i = 0; i < 50; i++) {
+		raft_fixture_step(cluster);
+		if (ctx->invoked) {
+			break;
+		}
+	}  
+}
 
 /* Prepare and exec a statement. */
 #define EXEC(SQL)                               \
@@ -329,6 +340,7 @@ static void handleCb(struct handle *req,
 		munit_assert_int(failure.code, ==, CODE);            \
 		munit_assert_string_equal(failure.message, MESSAGE); \
 	}
+
 
 /******************************************************************************
  *
@@ -803,6 +815,7 @@ TEST_CASE(exec, blob, NULL)
 	query.stmt_id = stmt_id;
 	ENCODE(&query, query);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -1374,6 +1387,7 @@ TEST_CASE(query, simple, NULL)
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 	uint64__decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
@@ -1401,6 +1415,7 @@ TEST_CASE(query, one_row, NULL)
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -1455,6 +1470,7 @@ TEST_CASE(query, large, NULL)
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -1474,7 +1490,7 @@ TEST_CASE(query, large, NULL)
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_false(finished);
-
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -1723,6 +1739,7 @@ TEST_CASE(query, params, NULL)
 	ENCODE_PARAMS(2, values, TUPLE__PARAMS);
 
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 	return MUNIT_OK;
 }
@@ -1756,6 +1773,7 @@ TEST_CASE(query, interrupt, NULL)
 	ENCODE(&f->request, query);
 	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -1826,6 +1844,7 @@ TEST_CASE(query, largeClose, NULL)
 	ENCODE(&f->request, query);
 	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2012,6 +2031,7 @@ TEST_CASE(query, close_while_in_flight, NULL)
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2165,6 +2185,7 @@ TEST_CASE(exec_sql, invalid, NULL)
 TEST_CASE(exec_sql, multi, NULL)
 {
 	struct exec_sql_fixture *f = data;
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql =
@@ -2304,6 +2325,7 @@ TEST_CASE(query_sql, small, NULL)
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 	return MUNIT_OK;
 }
@@ -2378,6 +2400,7 @@ TEST_CASE(query_sql, large, NULL)
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2397,7 +2420,7 @@ TEST_CASE(query_sql, large, NULL)
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_false(finished);
-
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2445,6 +2468,7 @@ TEST_CASE(query_sql, largeClose, NULL)
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2683,6 +2707,7 @@ TEST_CASE(query_sql, interrupt, NULL)
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2735,6 +2760,7 @@ TEST_CASE(query_sql, params, NULL)
 	ENCODE_PARAMS(2, values, TUPLE__PARAMS);
 
 	HANDLE(QUERY_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 	return MUNIT_OK;
 }
@@ -2763,16 +2789,20 @@ TEST_CASE(query_sql, manyClosing, NULL)
 	/* Insert more than maximum amount of rows that can fit in a single
 	 * response. 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
+	EXEC("BEGIN");
 	for (unsigned i = 0; i < n_rows_buffer + 32; i++) {
 		EXEC("INSERT INTO test VALUES(123)");
 	}
+	EXEC("COMMIT");
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
+	WAIT;
 	gateway__close(f->gateway, closeCb);
 	rv = gateway__resume(f->gateway, &finished);
 	munit_assert_int(rv, ==, 0);
+	WAIT;
 	return MUNIT_OK;
 }
 

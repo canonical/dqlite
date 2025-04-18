@@ -2111,6 +2111,10 @@ RAFT_API void raft_fixture_set_send_latency(struct raft_fixture *f,
 					    unsigned j,
 					    unsigned msecs);
 
+RAFT_API void raft_fixture_set_work_duration(struct raft_fixture *f, 
+					    unsigned i,
+						unsigned msecs);
+
 /**
  * Set the persisted term of the @i'th server.
  */
