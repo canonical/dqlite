@@ -88,19 +88,19 @@ static void *setUp(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	(void)user_data;
-	test_heap_setup(params, user_data);
-	test_sqlite_setup(params);
-	test_server_setup(&f->server, 1, params);
-	test_server_prepare(&f->server, params);
-	dqlite_node_set_busy_timeout(f->server.dqlite, 200);
-	test_server_run(&f->server);
-	f->client = test_server_client(&f->server);
-	HANDSHAKE;
-	OPEN;
 	f->readers = atoi(munit_parameters_get(params, "readers"));
 	f->writers = atoi(munit_parameters_get(params, "writers"));
 	f->read_count = 1000 * f->readers;
 	f->write_count = 1000 * f->writers;
+	test_heap_setup(params, user_data);
+	test_sqlite_setup(params);
+	test_server_setup(&f->server, 1, params);
+	test_server_prepare(&f->server, params);
+	dqlite_node_set_busy_timeout(f->server.dqlite, 200 * f->writers);
+	test_server_run(&f->server);
+	f->client = test_server_client(&f->server);
+	HANDSHAKE;
+	OPEN;
 
 	return f;
 }

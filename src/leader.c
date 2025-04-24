@@ -16,6 +16,8 @@
 #include "utils.h"
 #include "vfs.h"
 
+#define leader_trace(L, fmt, ...) tracef("[leader %p]"fmt"\n", L, ##__VA_ARGS__)
+
 /* Whether we need to submit a barrier request because there is no transaction
  * in progress in the underlying database and the FSM is behind the last log
  * index. */
@@ -60,7 +62,10 @@ static void leader_close(struct leader *leader)
 	sqlite3_interrupt(leader->conn);
 	int rc = sqlite3_close(leader->conn);
 	assert(rc == 0);
-	leader->db->active_leader = NULL;
+	if (leader->db->active_leader == leader) {
+		leader_trace(leader, "done");
+		leader->db->active_leader = NULL;
+	}
 	leader->db->leaders--;
 	leader->close_cb(leader);
 }
@@ -169,6 +174,19 @@ enum {
 	EXEC_DONE,
 	EXEC_NR,
 };
+
+static const char* exec_state_name(int state) {
+	switch (state) {
+	case EXEC_INITED:          return "EXEC_INITED";
+	case EXEC_PREPARE_BARRIER: return "EXEC_PREPARE_BARRIER";
+	case EXEC_PREPARED:        return "EXEC_PREPARED";
+	case EXEC_WAITING:         return "EXEC_WAITING";
+	case EXEC_RUN_BARRIER:     return "EXEC_RUN_BARRIER";
+	case EXEC_RUNNING:         return "EXEC_RUNNING";
+	case EXEC_DONE:            return "EXEC_DONE";
+	default:                   return "<invalid>";
+	}
+}
 
 #define A(ident) BITS(EXEC_##ident)
 #define S(ident, allowed_, flags_) \
@@ -333,6 +351,7 @@ static void exec_tick(struct exec *req)
 	struct db *db = leader->db;
 
 	for (;;) {
+		leader_trace(leader, "exec tick %s (status = %d)", exec_state_name(sm_state(&req->sm)), req->status);
 		switch (sm_state(&req->sm)) {
 		case EXEC_INITED:
 			PRE(req->status == 0);
@@ -383,6 +402,7 @@ static void exec_tick(struct exec *req)
 			} else if (IN(db->active_leader, NULL, leader)) {
 				sm_move(&req->sm, EXEC_WAITING);
 				db->active_leader = leader;
+				leader_trace(leader, "active leader = %p", leader);
 			} else {
 				/* Supend as another leader is keeping the database busy,
 				 * but also start a timer as this statement should not sit
@@ -409,7 +429,10 @@ static void exec_tick(struct exec *req)
 				if (exec_needs_barrier(leader)) {
 					req->status = raft_barrier(leader->raft, &req->barrier, exec_barrier_cb);
 					if (req->status == 0) {
+						leader_trace(leader, "requested barrier");
 						return exec_suspend(req);
+					} else {
+						leader_trace(leader, "barrier failed (status = %d)", req->status);
 					}
 				}
 			}
@@ -419,12 +442,14 @@ static void exec_tick(struct exec *req)
 				sm_move(&req->sm, EXEC_DONE);
 			} else {
 				sm_move(&req->sm, EXEC_RUNNING);
+				leader_trace(leader, "executing query");
 				TAIL return req->work_cb(req);
 			}
 			break;
 		case EXEC_RUNNING:
 			sm_move(&req->sm, EXEC_DONE);
-			if (req->status == RAFT_OK) {
+			leader_trace(leader, "executed query on leader (status=%d)", req->status);
+			if (req->status == RAFT_OK && leader == db->active_leader) {
 				dqlite_vfs_frame *frames;
 				unsigned int nframes;
 				/* 
@@ -436,6 +461,7 @@ static void exec_tick(struct exec *req)
 				 */
 				int rc = VfsPoll(db->vfs, db->path, &frames, &nframes);
 				if (rc == SQLITE_OK && nframes > 0) {
+					leader_trace(leader, "polled connection (%d frames)", nframes);
 					req->status = exec_apply(req, frames, nframes);
 					for (unsigned i = 0; i < nframes; i++) {
 						sqlite3_free(frames[i].data);
@@ -445,7 +471,12 @@ static void exec_tick(struct exec *req)
 						return exec_suspend(req);
 					}
 				} else if (rc != SQLITE_OK) {
+					leader_trace(leader, "aborted on leader");
+					rc = VfsAbort(leader->db->vfs, leader->db->path);
+					assert(rc == SQLITE_OK);
 					req->status = RAFT_IOERR;
+				} else {
+					leader_trace(leader, "nframes = 0 (%s)!", sqlite3_sql(req->stmt));
 				}
 			}
 			break;
@@ -457,7 +488,10 @@ static void exec_tick(struct exec *req)
 			
 			if (db->active_leader == leader) {
 				if (sqlite3_txn_state(leader->conn, NULL) != SQLITE_TXN_WRITE) {
+					leader_trace(leader, "done");
 					db->active_leader = NULL;
+				} else {
+					leader_trace(leader, "transaction open");
 				}
 			} else {
 				/* It should be impossible to run write transactions without 
@@ -474,6 +508,7 @@ static void exec_tick(struct exec *req)
 				return;
 			}
 
+			leader_trace(leader, "dequeued");
 			queue_remove(&req->queue);
 			
 			if (leader->close_cb != NULL && req->leader != leader) {
@@ -483,6 +518,9 @@ static void exec_tick(struct exec *req)
 				leader_close(leader);
 			}
 
+			PRE(IN(db->active_leader, NULL, req->leader));
+			db->active_leader = req->leader;
+			leader_trace(req->leader, "dequeued");
 			TAIL return exec_tick(req);
 		default:
 			POST(false && "impossible!");
@@ -513,6 +551,7 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	(void)result;
 	struct exec *exec = CONTAINER_OF(apply, struct exec, apply);
 	struct leader *leader = exec->leader;
+	leader_trace(leader, "query applied (status=%d)", status);
 	if (leader) {
 		if (status != 0) {
 			VfsAbort(leader->db->vfs, leader->db->path);
