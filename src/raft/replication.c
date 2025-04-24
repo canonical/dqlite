@@ -518,8 +518,12 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 				case RAFT_BARRIER: {
 					struct raft_barrier *barrier =
 					    (struct raft_barrier *)req;
-					if (barrier->cb) {
-						barrier->cb(barrier, status);
+					while (barrier != NULL) {
+						struct raft_barrier *next = barrier->next;
+						if (barrier->cb != NULL) {
+							barrier->cb(barrier, status);
+						}
+						barrier = next;
 					}
 					break;
 				}
