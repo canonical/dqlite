@@ -1583,8 +1583,13 @@ static void applyBarrier(struct raft *r, const raft_index index)
 		return;
 	}
 	queue_remove(&req->queue);
-	if (req->cb != NULL) {
-		req->cb(req, 0);
+
+	while (req != NULL) {
+		struct raft_barrier *next = req->next;
+		if (req->cb != NULL) {
+			req->cb(req, 0);
+		}
+		req = next;
 	}
 }
 

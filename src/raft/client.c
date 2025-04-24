@@ -74,33 +74,68 @@ err:
 	return rv;
 }
 
+/* Get the request matching the given @index and @type, if any.
+ * The type check is skipped when @type == -1. */
+static struct request *getRequest(struct raft *r,
+				  const raft_index index,
+				  int type)
+{
+	queue *head;
+	struct request *req;
+
+	if (r->state != RAFT_LEADER) {
+		return NULL;
+	}
+	QUEUE_FOREACH(head, &r->leader_state.requests)
+	{
+		req = QUEUE_DATA(head, struct request, queue);
+		if (req->index == index) {
+			if (type != req->type) {
+				return NULL;
+			}
+			return req;
+		}
+	}
+	return NULL;
+}
+
 int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 {
-	raft_index index;
 	struct raft_buffer buf;
-	int rv;
+	int rv = RAFT_OK;
 
 	if (r->state != RAFT_LEADER || r->transfer != NULL) {
-		rv = RAFT_NOTLEADER;
-		goto err;
+		return RAFT_NOTLEADER;
 	}
+
+	/* Index of the barrier entry being appended. */
+	req->type = RAFT_BARRIER;
+	req->index = logLastIndex(r->log);
+	req->cb = cb;
+
+	/* Is the last entry an unreplicated barrier itself? 
+	 * If so, it is possible to merge the requests together
+	 * and avoid another roundtrip. */
+	struct raft_barrier *existing_req = (struct raft_barrier *)getRequest(r, req->index, RAFT_BARRIER);
+	if (existing_req != NULL) {
+		req->next = existing_req->next;
+		existing_req->next = req;
+		return RAFT_OK;
+	}
+
+	req->index++;
+	req->next = NULL;
+	
 
 	/* TODO: use a completely empty buffer */
 	buf.len = 8;
 	buf.base = raft_malloc(buf.len);
 
 	if (buf.base == NULL) {
-		rv = RAFT_NOMEM;
-		goto err;
+		return RAFT_NOMEM;
 	}
 
-	/* Index of the barrier entry being appended. */
-	index = logLastIndex(r->log) + 1;
-	tracef("barrier starting at %lld", index);
-	req->type = RAFT_BARRIER;
-	req->index = index;
-	req->cb = cb;
-
+	tracef("barrier starting at %lld", req->index);
 	rv = logAppend(r->log, r->current_term, RAFT_BARRIER, buf, true, NULL);
 	if (rv != 0) {
 		goto err_after_buf_alloc;
@@ -108,19 +143,19 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 
 	queue_insert_tail(&r->leader_state.requests, &req->queue);
 
-	rv = replicationTrigger(r, index);
+	rv = replicationTrigger(r, req->index);
 	if (rv != 0) {
 		goto err_after_log_append;
 	}
 
-	return 0;
+	return RAFT_OK;
 
 err_after_log_append:
-	logDiscard(r->log, index);
+	logDiscard(r->log, req->index);
 	queue_remove(&req->queue);
 err_after_buf_alloc:
 	raft_free(buf.base);
-err:
+
 	return rv;
 }
 

@@ -36,7 +36,8 @@ int raft_version_number(void);
  * Error codes.
  */
 enum {
-	RAFT_NOMEM = 1,        /* Out of memory */
+	RAFT_OK = 0,
+	RAFT_NOMEM,            /* Out of memory */
 	RAFT_BADID,            /* Server ID is not valid */
 	RAFT_DUPLICATEID,      /* Server ID already in use */
 	RAFT_DUPLICATEADDRESS, /* Server address already in use */
@@ -1270,6 +1271,7 @@ struct raft_barrier
 {
 	RAFT__REQUEST;
 	raft_barrier_cb cb;
+	struct raft_barrier *next;
 };
 
 /**
