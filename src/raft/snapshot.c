@@ -7,7 +7,6 @@
 #include "assert.h"
 #include "configuration.h"
 #include "err.h"
-#include "log.h"
 
 void snapshotClose(struct raft_snapshot *s)
 {
