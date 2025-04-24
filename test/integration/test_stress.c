@@ -8,79 +8,77 @@
 
 SUITE(stress);
 
-/* TODO: multiple databases (1, 2, 4) */
-/* TODO: multiple servers (1, 3, 5) */
-static char *bools[] = { "0", "1", NULL };
-static char *writers[] = { "1", "2", "4", NULL };
-static char *readers[] = { "1", "4", "16", NULL };
+#define READ_COUNT 1000
+#define WRITE_COUNT 1000
+
+static char *disk_mode[] = { "0", "1", NULL };
+static char *databases[] = { "1", "2", "4", NULL };
+static char *writers[]   = { "1", "2", "4", NULL };
+static char *readers[]   = { "1", "4", "16", NULL };
 
 static MunitParameterEnum stress_params[] = {
-	{ "disk_mode", bools },
+	{ "disk_mode", disk_mode },
 	{ "writers", writers },
 	{ "readers", readers },
+	{ "databases", databases },
 	{ NULL, NULL },
 };
 
 struct fixture {
 	struct test_server server;
 	struct client_proto *client;
-	_Atomic int64_t read_count;
-	_Atomic int64_t write_count;
+	int databases;
 	int readers, writers;
+};
+
+struct worker {
+	pthread_t thread;
+	struct fixture *f;
+	char database[16];
 };
 
 static void* client_read(void *data) {
 	const char *sql = "SELECT MAX(n) FROM test ORDER BY random() LIMIT 100";
 
-	struct fixture *f = data;
+	struct worker *self = data;
 	struct client_proto client;
 	struct rows rows;
 	uint32_t stmt_id;
 
-	test_server_client_connect(&f->server, &client);
+	test_server_client_connect(&self->f->server, &client);
 	HANDSHAKE_C(&client);
-	OPEN_C(&client, "test");
+	OPEN_C(&client, self->database);
 	PREPARE_C(&client, sql, &stmt_id);
 
-	do {
-		int64_t prev = atomic_fetch_sub(&f->read_count, 10);
-		if (prev > 0) {
-			for (int i = 0; i < 10; i++) {
-				QUERY_DONE_C(&client, stmt_id, &rows, {});	
-			}
-		}
-	} while (atomic_load(&f->read_count) > 0);
+	for (int i = 0; i < READ_COUNT; i++) {
+		QUERY_DONE_C(&client, stmt_id, &rows, {});	
+	}
 
-	test_server_client_close(&f->server, &client);
+	test_server_client_close(&self->f->server, &client);
 	return NULL;
 }
 
 static void* client_write(void *data) {
 	const char *sql = "INSERT INTO test(n) VALUES (random())";
 
-	struct fixture *f = data;
+	struct worker *self = data;
 	struct client_proto client;
 	uint64_t last_insert_id;
 	uint64_t rows_affected;
 	uint32_t stmt_id;
 
-	test_server_client_connect(&f->server, &client);
+	test_server_client_connect(&self->f->server, &client);
 	HANDSHAKE_C(&client);
-	OPEN_C(&client, "test");
+	OPEN_C(&client, self->database);
 	PREPARE_C(&client, sql, &stmt_id);
 
-	do {
-		int64_t prev = atomic_fetch_sub(&f->write_count, 10);
-		if (prev > 0) {
-			for (int i = 0; i < 10; i++) {
-				EXEC_C(&client, stmt_id, &last_insert_id, &rows_affected);
-				munit_assert_int(last_insert_id, >, 1);
-				munit_assert_int(rows_affected, ==, 1);
-			}
-		}
-	} while (atomic_load(&f->write_count) > 0);
+	for (int i = 0; i < WRITE_COUNT; i++) {
+		EXEC_C(&client, stmt_id, &last_insert_id, &rows_affected);
+		munit_assert_int(last_insert_id, >, 1);
+		munit_assert_int(rows_affected, ==, 1);
+	}
 
-	test_server_client_close(&f->server, &client);
+	test_server_client_close(&self->f->server, &client);
 	return NULL;
 }
 
@@ -88,10 +86,9 @@ static void *setUp(const MunitParameter params[], void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	(void)user_data;
+	f->databases = atoi(munit_parameters_get(params, "databases"));
 	f->readers = atoi(munit_parameters_get(params, "readers"));
 	f->writers = atoi(munit_parameters_get(params, "writers"));
-	f->read_count = 1000 * f->readers;
-	f->write_count = 1000 * f->writers;
 	test_heap_setup(params, user_data);
 	test_sqlite_setup(params);
 	test_server_setup(&f->server, 1, params);
@@ -99,8 +96,33 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	dqlite_node_set_busy_timeout(f->server.dqlite, 200 * f->writers);
 	test_server_run(&f->server);
 	f->client = test_server_client(&f->server);
-	HANDSHAKE;
-	OPEN;
+	
+	for (int i = 0; i < f->databases; i++) {
+		char name[16];
+		uint32_t stmt_id;
+		uint64_t last_insert_id;
+		uint64_t rows_affected;
+
+		snprintf(name, 16, "test%d", i);
+		test_server_client_reconnect(&f->server, f->client);
+		HANDSHAKE;
+		OPEN_C(f->client, name);
+
+		PREPARE("CREATE TABLE test (n INT)", &stmt_id);
+		EXEC(stmt_id, &last_insert_id, &rows_affected);
+
+		PREPARE(
+			"WITH RECURSIVE seq(n) AS ("
+			"    SELECT 1 UNION ALL     "
+			"    SELECT n+1 FROM seq    "
+			"    WHERE  n < 10000       "
+			")                          "
+			"INSERT INTO test(n)        "
+			"SELECT n FROM seq          ", 
+			&stmt_id
+		);
+		EXEC(stmt_id, &last_insert_id, &rows_affected);
+	}
 
 	return f;
 }
@@ -118,40 +140,34 @@ static void tearDown(void *data)
 TEST(stress, read_write, setUp, tearDown, 0, stress_params)
 {
 	struct fixture *f = data;
-	uint32_t stmt_id;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
 	(void)params;
 	
-	PREPARE("CREATE TABLE test (n INT)", &stmt_id);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	PREPARE(
-		"WITH RECURSIVE seq(n) AS ("
-		"    SELECT 1 UNION ALL     "
-		"    SELECT n+1 FROM seq    "
-		"    WHERE  n < 10000       "
-		")                          "
-		"INSERT INTO test(n)        "
-		"SELECT n FROM seq          ", 
-		&stmt_id
-	);
-	EXEC(stmt_id, &last_insert_id, &rows_affected);
-
-	pthread_t *workers = malloc((f->readers + f->writers) * sizeof(pthread_t));
-	pthread_t *write_workers = workers;
-	pthread_t *read_workers = write_workers + f->writers;
+	int num_workers = (f->readers + f->writers) * f->databases;
+	struct worker *workers = malloc(num_workers* sizeof(struct worker));
+	struct worker *write_workers = workers;
+	struct worker *read_workers = write_workers + (f->writers * f->databases);
 
 	for (int i = 0; i < f->readers; i++) {
-		pthread_create(&read_workers[i], NULL, client_read, data);
+		for (int j = 0; j < f->databases; j++) {
+			struct worker *worker = &read_workers[i*f->databases + j];
+			worker->f = f;
+			snprintf(worker->database, 16, "test%d", j);
+			pthread_create(&worker->thread, NULL, client_read, worker);
+		}
 	}
 
 	for (int i = 0; i < f->writers; i++) {
-		pthread_create(&write_workers[i], NULL, client_write, data);
+		for (int j = 0; j < f->databases; j++) {
+			struct worker *worker = &write_workers[i*f->databases + j];
+			worker->f = f;
+			snprintf(worker->database, 16, "test%d", j);
+			pthread_create(&worker->thread, NULL, client_write, worker);
+		}
 	}
 
-	for (int i = 0; i < f->readers + f->writers; i++) {
-		pthread_join(workers[i], NULL);
+	for (int i = 0; i < num_workers; i++) {
+		pthread_join(workers[i].thread, NULL);
 	}
 
 	free(workers);
