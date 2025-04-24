@@ -23,6 +23,12 @@
 #define POST(cond) assert((cond))
 #define ERGO(a, b) (!(a) || (b))
 
+#if defined(__has_attribute) && __has_attribute (noinline)
+# define NOINLINE __attribute__ ((noinline))
+#else
+# define NOINLINE
+#endif
+
 static inline bool is_po2(unsigned long n) {
 	return n > 0 && (n & (n - 1)) == 0;
 }
