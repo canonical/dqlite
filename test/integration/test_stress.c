@@ -24,8 +24,8 @@ static MunitParameterEnum stress_params[] = {
 struct fixture {
 	struct test_server server;
 	struct client_proto *client;
-	volatile int64_t read_count;
-	volatile int64_t write_count;
+	_Atomic int64_t read_count;
+	_Atomic int64_t write_count;
 	int readers, writers;
 };
 
