@@ -2,7 +2,7 @@ name: Canonical CLA
 
 on:
   pull_request:
-    branches: [master, default]
+    branches: [master]
 
 jobs:
   cla-check:
