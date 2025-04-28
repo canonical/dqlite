@@ -70,7 +70,7 @@ struct value
 	int type;
 	union {
 		int64_t integer;
-		double float_;
+		double real;
 		uv_buf_t blob;
 		uint64_t null;
 		const char *text;

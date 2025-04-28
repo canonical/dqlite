@@ -128,7 +128,7 @@ int tuple_decoder__next(struct tuple_decoder *d, struct value *value)
 			rc = int64__decode(d->cursor, &value->integer);
 			break;
 		case SQLITE_FLOAT:
-			rc = float__decode(d->cursor, &value->float_);
+			rc = real__decode(d->cursor, &value->real);
 			break;
 		case SQLITE_BLOB:
 			rc = blob__decode(d->cursor, &value->blob);
@@ -244,7 +244,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 			size = int64__sizeof(&value->integer);
 			break;
 		case SQLITE_FLOAT:
-			size = float__sizeof(&value->float_);
+			size = real__sizeof(&value->real);
 			break;
 		case SQLITE_BLOB:
 			size = blob__sizeof(&value->blob);
@@ -280,7 +280,7 @@ int tuple_encoder__next(struct tuple_encoder *e, struct value *value)
 			int64__encode(&value->integer, &cursor);
 			break;
 		case SQLITE_FLOAT:
-			float__encode(&value->float_, &cursor);
+			real__encode(&value->real, &cursor);
 			break;
 		case SQLITE_BLOB:
 			blob__encode(&value->blob, &cursor);

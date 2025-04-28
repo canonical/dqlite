@@ -18,7 +18,7 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 			rc = sqlite3_bind_int64(stmt, n, value->integer);
 			break;
 		case SQLITE_FLOAT:
-			rc = sqlite3_bind_double(stmt, n, value->float_);
+			rc = sqlite3_bind_double(stmt, n, value->real);
 			break;
 		case SQLITE_BLOB:
 			rc = sqlite3_bind_blob(stmt, n, value->blob.base,

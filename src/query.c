@@ -51,7 +51,7 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 				value.integer = sqlite3_column_int64(stmt, i);
 				break;
 			case SQLITE_FLOAT:
-				value.float_ = sqlite3_column_double(stmt, i);
+				value.real = sqlite3_column_double(stmt, i);
 				break;
 			case SQLITE_BLOB:
 				value.blob.base =
