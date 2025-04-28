@@ -356,10 +356,8 @@ static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 		/* This page hasn't been written yet. */
 		return NULL;
 	}
-	if (n <= w->n_frames) {
-		frame = w->frames[n - 1];
-	}
-
+	
+	frame = w->frames[n - 1];
 	assert(frame != NULL);
 	return frame;
 }
