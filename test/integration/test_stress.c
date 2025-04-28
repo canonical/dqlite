@@ -13,8 +13,8 @@ SUITE(stress);
 
 static char *disk_mode[] = { "0", "1", NULL };
 static char *databases[] = { "1", "2", "4", NULL };
-static char *writers[]   = { "1", "2", "4", NULL };
-static char *readers[]   = { "1", "4", "16", NULL };
+static char *writers[]   = { "0", "1", "2", "4", NULL };
+static char *readers[]   = { "0", "1", "4", "16", NULL };
 
 static MunitParameterEnum stress_params[] = {
 	{ "disk_mode", disk_mode },
