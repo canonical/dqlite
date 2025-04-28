@@ -1,13 +1,8 @@
-name: Canonical CLA
-
-on:
-  pull_request:
-    branches: [master]
+name: cla-check
+on: [pull_request]
 
 jobs:
   cla-check:
-    permissions:
-      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Check if CLA signed
