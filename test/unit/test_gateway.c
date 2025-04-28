@@ -1158,21 +1158,13 @@ TEST_CASE(exec, vacuum_into_fails, NULL)
 	)
 	EXEC("DELETE FROM test WHERE n <= 5000");
 
-	const char* vacuum_variants[] = {
-		" VACUUM \t\n  INTO 'other_db.sqlite' \r\t\n",
-		" VACUUM \t\n main \t\n INTO 'other_db.sqlite' \r\t\n",
-		" VACUUM \t\n 'main' \t\n INTO 'other_db.sqlite' \r\t\n",
-		" VACUUM \t\n \"main\" \t\n INTO 'other_db.sqlite' \r\t\n",
-	};
-	for (size_t i = 0; i < sizeof(vacuum_variants) / sizeof(vacuum_variants[0]); i++) {
-		PREPARE("VACUUM INTO 'should_fail'");
-		f->request.db_id = 0;
-		f->request.stmt_id = stmt_id;
-		ENCODE(&f->request, exec);
-		HANDLE(EXEC);
-		WAIT;
-		ASSERT_CALLBACK(0, FAILURE);
-	}
+	PREPARE("VACUUM INTO 'should_fail'");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(0, FAILURE);
 	return MUNIT_OK;
 }
 
