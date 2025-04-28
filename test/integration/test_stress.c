@@ -141,7 +141,10 @@ TEST(stress, read_write, setUp, tearDown, 0, stress_params)
 {
 	struct fixture *f = data;
 	(void)params;
-	
+
+	if (f->readers == 0 && f->writers == 0) {
+		return MUNIT_SKIP;
+	}
 
 	int num_workers = (f->readers + f->writers) * f->databases;
 	struct worker *workers = malloc(num_workers* sizeof(struct worker));
