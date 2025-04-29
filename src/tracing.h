@@ -6,6 +6,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <time.h>
 
 #include "../include/dqlite.h"
@@ -21,15 +22,10 @@ DQLITE_VISIBLE_TO_TESTS void stderrTracerEmit(const char *file,
 					      unsigned int level,
 					      const char *message);
 
-#define tracef0(LEVEL, ...)                                            \
-	do {                                                           \
-		if (UNLIKELY(_dqliteTracingEnabled)) {                 \
-			char _msg[1024];                               \
-			snprintf(_msg, sizeof _msg, __VA_ARGS__);      \
-			stderrTracerEmit(__FILE__, __LINE__, __func__, \
-					 (LEVEL), _msg);               \
-		}                                                      \
-	} while (0)
+DQLITE_VISIBLE_TO_TESTS NOINLINE
+void _tracef0(const char *file, unsigned int line, const char *func, unsigned int level, const char *fmt, ...);
+
+#define tracef0(LEVEL, ...) _tracef0(__FILE__, __LINE__, __func__, LEVEL, __VA_ARGS__)
 
 enum dqlite_trace_level {
 	/** Represents an invalid trace level */
