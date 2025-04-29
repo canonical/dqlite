@@ -7,6 +7,7 @@
 #include "tracing.h"
 #include "vfs.h"
 
+#include <assert.h>
 #include <sys/mman.h>
 
 struct fsm
@@ -513,9 +514,11 @@ static void freeSnapshotBufs(struct fsm *f,
 			     struct raft_buffer bufs[],
 			     unsigned n_bufs)
 {
-	queue *head;
-	struct db *db;
+	(void)f;
 	unsigned i;
+	uint64_t skip_size;
+	struct cursor cursor;
+	struct snapshotDatabase header;
 
 	if (bufs == NULL || n_bufs == 0) {
 		return;
@@ -524,19 +527,25 @@ static void freeSnapshotBufs(struct fsm *f,
 	/* Free snapshot header */
 	sqlite3_free(bufs[0].base);
 
+	/* Free all database headers */
+	
 	i = 1;
-	/* Free all database headers & WAL buffers */
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		if (i == n_bufs) {
-			break;
+	skip_size = 0;
+	for (i = 1, skip_size = 0; i < n_bufs; i++) {
+		if (skip_size >= bufs[i].len) {
+			skip_size -= bufs[i].len;
+		} else {
+			assert(skip_size == 0);
+			cursor.p = bufs[i].base;
+			cursor.cap = bufs[i].len;
+			int rv = snapshotDatabase__decode(&cursor, &header);
+			assert(rv == 0);
+			sqlite3_free(bufs[i].base);
+
+			skip_size = header.main_size;
 		}
-		db = QUEUE_DATA(head, struct db, queue);
-		/* i is the index of the database header */
-		sqlite3_free(bufs[i].base);
-		/* i is now the index of the next database header (if any) */
-		i += 1 /* db header */ + dbNumPages(db);
 	}
+	assert(skip_size == 0);
 }
 
 static int fsm__snapshot(struct raft_fsm *fsm,
