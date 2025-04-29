@@ -1288,6 +1288,7 @@ struct raft_barrier
 {
 	RAFT__REQUEST;
 	raft_barrier_cb cb;
+	struct raft_barrier *next;
 };
 
 /**
