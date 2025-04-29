@@ -304,7 +304,7 @@ TEST_CASE(decoder, type, float, NULL)
 	DECODER_NEXT;
 
 	ASSERT_VALUE_TYPE(SQLITE_FLOAT);
-	munit_assert_double(value.float_, ==, 3.1415);
+	munit_assert_double(value.real, ==, 3.1415);
 
 	return MUNIT_OK;
 }
@@ -588,14 +588,14 @@ TEST_CASE(encoder, type, float, NULL)
 	ENCODER_INIT(1, TUPLE__ROW);
 
 	value.type = SQLITE_FLOAT;
-	value.float_ = 3.1415;
+	value.real = 3.1415;
 	ENCODER_NEXT;
 
 	munit_assert_int(buf[0][0], ==, SQLITE_FLOAT);
 	uint64_t *value_ptr =
 	    __builtin_assume_aligned(buf[1], sizeof(uint64_t));
 	munit_assert_uint64(*value_ptr, ==,
-			    ByteFlipLe64(*(uint64_t *)&value.float_));
+			    ByteFlipLe64(*(uint64_t *)&value.real));
 
 	return MUNIT_OK;
 }

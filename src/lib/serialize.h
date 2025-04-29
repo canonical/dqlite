@@ -37,7 +37,7 @@ static_assert(sizeof(double) == sizeof(uint64_t),
  * Basic type aliases to used by macro-based processing.
  */
 typedef const char *text_t;
-typedef double float_t;
+typedef double real_t;
 typedef uv_buf_t blob_t;
 
 /**
@@ -143,7 +143,7 @@ DQLITE_INLINE size_t int64__sizeof(const int64_t *value)
 	return sizeof(int64_t);
 }
 
-DQLITE_INLINE size_t float__sizeof(const float_t *value)
+DQLITE_INLINE size_t real__sizeof(const real_t *value)
 {
 	(void)value;
 	return sizeof(double);
@@ -194,7 +194,7 @@ DQLITE_INLINE void int64__encode(const int64_t *value, char **cursor)
 	*cursor += sizeof(int64_t);
 }
 
-DQLITE_INLINE void float__encode(const float_t *value, char **cursor)
+DQLITE_INLINE void real__encode(const real_t *value, char **cursor)
 {
 	uint64_t x = ByteFlipLe64(*(uint64_t *)value);
 	memcpy(*cursor, &x, sizeof(uint64_t));
@@ -282,7 +282,7 @@ DQLITE_INLINE int int64__decode(struct cursor *cursor, int64_t *value)
 	return 0;
 }
 
-DQLITE_INLINE int float__decode(struct cursor *cursor, float_t *value)
+DQLITE_INLINE int real__decode(struct cursor *cursor, real_t *value)
 {
 	size_t n = sizeof(double);
 	if (n > cursor->cap) {
