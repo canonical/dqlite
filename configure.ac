@@ -64,7 +64,7 @@ AC_CHECK_DECLS(RWF_NOWAIT, [], [AC_MSG_ERROR(Linux kernel >= 4.14 required.)], [
 AC_SYS_LARGEFILE
 
 # Checks for libraries
-PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.22.0], [], [])
+PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.34.0], [], [])
 PKG_CHECK_MODULES(UV, [libuv >= 1.34.0], [], [])
 
 # Allow not linking to liblz4 even if it's present.
