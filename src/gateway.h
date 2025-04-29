@@ -15,8 +15,12 @@
 #include "raft.h"
 #include "registry.h"
 #include "stmt.h"
+#include "tuple.h"
 
 struct handle;
+struct gateway;
+
+typedef void (*gateway_close_cb)(struct gateway *g);
 
 /**
  * Handle requests from a single connected client and forward them to
@@ -28,11 +32,10 @@ struct gateway {
 	struct raft *raft;           /* Raft instance */
 	struct leader *leader;       /* Leader connection to the database */
 	struct handle *req;          /* Asynchronous request being handled */
-	struct exec exec;            /* Low-level exec async request */
 	struct stmt__registry stmts; /* Registry of prepared statements */
-	struct barrier barrier;      /* Barrier for query requests */
 	uint64_t protocol;           /* Protocol format version */
 	uint64_t client_id;
+	gateway_close_cb close_cb;   /* Callback to close the gateway */
 };
 
 void gateway__init(struct gateway *g,
@@ -40,13 +43,7 @@ void gateway__init(struct gateway *g,
 		   struct registry *registry,
 		   struct raft *raft);
 
-void gateway__close(struct gateway *g);
-
-/**
- * Closes the leader connection to the database, reason should contain a raft
- * error code.
- */
-void gateway__leader_close(struct gateway *g, int reason);
+void gateway__close(struct gateway *g, gateway_close_cb cb);
 
 /**
  * Asynchronous request to handle a client command.
@@ -73,38 +70,17 @@ struct handle {
 	 *
 	 * This is used by handle_prepare. */
 	size_t db_id;
-	/* ID of the statement associated with this request.
-	 *
-	 * This is used by handle_prepare. */
-	size_t stmt_id;
-	/* SQL string associated with this request.
-	 *
-	 * This is used by handle_prepare, handle_query_sql, and handle_exec_sql
-	 * to save the provided SQL string across calls to leader__barrier and
-	 * leader__exec, since there's no prepared statement that can be saved
-	 * instead. In the case of handle_exec_sql, after preparing each
-	 * statement we update this field to point to the "tail" that has not
-	 * been prepared yet. */
-	const char *sql;
-	/* Prepared statement that will be queried to process this request.
-	 *
-	 * This is used by handle_query and handle_query_sql. */
-	sqlite3_stmt *stmt;
-	/* Number of times a statement parsed from this request has been
-	 * executed.
-	 *
-	 * This is used by handle_exec_sql, which parses zero or more statements
-	 * from the provided SQL string and executes them successively. Only if
-	 * at least one statement was executed should we fill the RESULT
-	 * response using sqlite3_last_insert_rowid and sqlite3_changes. */
-	unsigned exec_count;
+	/* Set to true when a cancellation has been requested. */
+	bool cancellation_requested;
+	/* Set to true when the parameters for the current query have been bound */
+	bool parameters_bound;
+	/* Tuple decoder for the parameters in this request. */
+	struct tuple_decoder decoder;
 	/* Callback that will be invoked at the end of request processing to
 	 * write the response. */
 	handle_cb cb;
 	/* A link into thread pool's queues. */
 	pool_work_t work;
-	/* Gateway the handle belongs to. */
-	struct gateway *gw;
 };
 
 /**

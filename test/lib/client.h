@@ -90,15 +90,17 @@
 		munit_assert_int(rv_, ==, 0);               \
 	}
 
-/* Open a test database. */
-#define OPEN                                                   \
-	{                                                      \
-		int rv_;                                       \
-		rv_ = clientSendOpen(f->client, "test", NULL); \
-		munit_assert_int(rv_, ==, 0);                  \
-		rv_ = clientRecvDb(f->client, NULL);           \
-		munit_assert_int(rv_, ==, 0);                  \
+#define OPEN_C(CLIENT, NAME)                        \
+	{                                               \
+		int rv_;                                    \
+		rv_ = clientSendOpen(CLIENT, NAME, NULL);   \
+		munit_assert_int(rv_, ==, 0);               \
+		rv_ = clientRecvDb(CLIENT, NULL);           \
+		munit_assert_int(rv_, ==, 0);               \
 	}
+
+/* Open a test database. */
+#define OPEN OPEN_C(f->client, "test")
 
 /* Open a test database with a specific name. */
 #define OPEN_NAME(NAME)                                      \
@@ -110,15 +112,17 @@
 		munit_assert_int(rv_, ==, 0);                \
 	}
 
-/* Prepare a statement. */
-#define PREPARE(SQL, STMT_ID)                                               \
+#define PREPARE_C(CLIENT, SQL, STMT_ID)                                                \
 	{                                                                   \
 		int rv_;                                                    \
-		rv_ = clientSendPrepare(f->client, SQL, NULL);              \
+		rv_ = clientSendPrepare(CLIENT, SQL, NULL);              \
 		munit_assert_int(rv_, ==, 0);                               \
-		rv_ = clientRecvStmt(f->client, STMT_ID, NULL, NULL, NULL); \
+		rv_ = clientRecvStmt(CLIENT, STMT_ID, NULL, NULL, NULL); \
 		munit_assert_int(rv_, ==, 0);                               \
 	}
+
+/* Prepare a statement. */
+#define PREPARE(SQL, STMT_ID) PREPARE_C(f->client, SQL, STMT_ID)
 
 #define PREPARE_FAIL(SQL, STMT_ID, RV, MSG)                        \
 	{                                                          \
@@ -129,16 +133,18 @@
 		munit_assert_int(rv_, ==, 0);                      \
 	}
 
-/* Execute a statement. */
-#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)                     \
-	{                                                                \
+#define EXEC_C(CLIENT , STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)  \
+	{                                                            \
 		int rv_;                                                 \
-		rv_ = clientSendExec(f->client, STMT_ID, NULL, 0, NULL); \
+		rv_ = clientSendExec(CLIENT, STMT_ID, NULL, 0, NULL); \
 		munit_assert_int(rv_, ==, 0);                            \
-		rv_ = clientRecvResult(f->client, LAST_INSERT_ID,        \
-				       ROWS_AFFECTED, NULL);             \
+		rv_ = clientRecvResult(CLIENT, LAST_INSERT_ID,        \
+				       ROWS_AFFECTED, NULL);                     \
 		munit_assert_int(rv_, ==, 0);                            \
 	}
+
+/* Execute a statement. */
+#define EXEC(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED) EXEC_C(f->client, STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED)
 
 #define EXEC_PARAMS(STMT_ID, LAST_INSERT_ID, ROWS_AFFECTED, ...) \
 	{ \
@@ -172,20 +178,23 @@
 		munit_assert_int(rv_, ==, 0);                             \
 	}
 
-#define QUERY_DONE(STMT_ID, ROWS, ROWS_HOOK)                                  \
+#define QUERY_DONE_C(CLIENT, STMT_ID, ROWS, ROWS_HOOK)                                  \
 	{                                                                     \
 		int rv_;                                                      \
 		bool done;                                                    \
-		rv_ = clientSendQuery(f->client, STMT_ID, NULL, 0, NULL);     \
+		rv_ = clientSendQuery(CLIENT, STMT_ID, NULL, 0, NULL);     \
 		munit_assert_int(rv_, ==, 0);                                 \
 		do {                                                          \
-			rv_ = clientRecvRows(f->client, (ROWS), &done, NULL); \
+			rv_ = clientRecvRows(CLIENT, (ROWS), &done, NULL); \
 			munit_assert_int(rv_, ==, 0);                         \
 			ROWS_HOOK;                                            \
 			clientCloseRows((ROWS));                              \
 			*(ROWS) = (struct rows){};                            \
 		} while (!done);                                              \
 	}
+
+
+#define QUERY_DONE(STMT_ID, ROWS, ROWS_HOOK) QUERY_DONE_C(f->client, STMT_ID, ROWS, ROWS_HOOK)
 
 #define QUERY_SQL(SQL, ROWS)                                             \
 	{                                                                \
