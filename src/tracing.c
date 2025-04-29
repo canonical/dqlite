@@ -96,3 +96,15 @@ void stderrTracerEmit(const char *file,
 	if (level >= tracer__level)
 		tracerEmit(file, line, func, level, message);
 }
+
+void _tracef0(const char *file, unsigned int line, const char *func, unsigned int level, const char *fmt, ...)
+{
+	va_list args;
+	char msg[1024];
+	if (UNLIKELY(_dqliteTracingEnabled)) {
+		va_start (args, fmt);
+		vsnprintf(msg, sizeof msg, fmt, args);
+		va_end (args);
+		stderrTracerEmit(file, line, func, level, msg);
+	}
+}
