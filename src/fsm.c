@@ -83,7 +83,7 @@ static int databaseReadUnlock(struct db *db)
 	}
 }
 
-static void maybeCheckpoint(struct db *db)
+static void maybeCheckpoint(struct db *db, sqlite3 *conn)
 {
 	tracef("maybe checkpoint");
 	struct sqlite3_file *main_f;
@@ -100,17 +100,11 @@ static void maybeCheckpoint(struct db *db)
 	 * snapshot is busy will result in illegal memory accesses by the
 	 * routines that try to access database page pointers contained in the
 	 * snapshot. */
+	/* FIXME: probably this should use normal ckpt_lock instead? */
 	rv = databaseReadLock(db);
 	if (rv != 0) {
 		tracef("busy snapshot %d", rv);
 		return;
-	}
-
-	sqlite3 *conn = NULL;
-	rv = db__open(db, &conn);
-	if (rv != 0) {
-		tracef("open follower failed %d", rv);
-		goto err_after_db_lock;
 	}
 
 	page_size = db->config->page_size;
@@ -129,7 +123,7 @@ static void maybeCheckpoint(struct db *db)
 	if (pages < db->config->checkpoint_threshold) {
 		tracef("wal size (%u) < threshold (%u)", pages,
 		       db->config->checkpoint_threshold);
-		goto err_after_db_open;
+		goto err_after_db_lock;
 	}
 
 	/* Get the database file associated with this db->follower connection */
@@ -144,7 +138,7 @@ static void maybeCheckpoint(struct db *db)
 		rv = main_f->pMethods->xShmLock(main_f, i, 1, flags);
 		if (rv == SQLITE_BUSY) {
 			tracef("busy reader or writer - retry next time");
-			goto err_after_db_open;
+			goto err_after_db_lock;
 		}
 
 		/* Not locked. Let's release the lock we just
@@ -158,7 +152,7 @@ static void maybeCheckpoint(struct db *db)
 	/* TODO assert(rv == 0) here? Which failure modes do we expect? */
 	if (rv != 0) {
 		tracef("sqlite3_wal_checkpoint_v2 failed %d", rv);
-		goto err_after_db_open;
+		goto err_after_db_lock;
 	}
 	tracef("sqlite3_wal_checkpoint_v2 success");
 
@@ -167,9 +161,6 @@ static void maybeCheckpoint(struct db *db)
 	assert(wal_size == 0);
 	assert(ckpt == 0);
 
-err_after_db_open:
-	sqlite3_close(conn);
-	conn = NULL;
 err_after_db_lock:
 	rv = databaseReadUnlock(db);
 	assert(rv == 0);
@@ -264,10 +255,10 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	}
 
 	sqlite3_free(page_numbers);
+	maybeCheckpoint(db, conn);
 	if (db->active_leader == NULL) {
 		sqlite3_close(conn);
 	}
-	maybeCheckpoint(db);
 	return 0;
 }
 
