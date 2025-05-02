@@ -974,6 +974,7 @@ struct raft
 			    round_index; /* Target of the current round. */
 			raft_time round_start; /* Start of current round. */
 			queue requests; /* Outstanding client requests. */
+			queue barriers; /* Outstanding barrier requests. */
 			uint32_t
 			    voter_contacts; /* Current number of voting nodes we
 					       are in contact with */
@@ -1287,7 +1288,6 @@ struct raft_barrier
 {
 	RAFT__REQUEST;
 	raft_barrier_cb cb;
-	struct raft_barrier *next;
 };
 
 /**

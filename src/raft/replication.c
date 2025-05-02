@@ -515,18 +515,7 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 					}
 					break;
 				}
-				case RAFT_BARRIER: {
-					struct raft_barrier *barrier =
-					    (struct raft_barrier *)req;
-					while (barrier != NULL) {
-						struct raft_barrier *next = barrier->next;
-						if (barrier->cb != NULL) {
-							barrier->cb(barrier, status);
-						}
-						barrier = next;
-					}
-					break;
-				}
+				case RAFT_BARRIER: break;
 				case RAFT_CHANGE: {
 					struct raft_change *change =
 					    (struct raft_change *)req;
@@ -540,6 +529,21 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 					    "unknown request type, shutdown.");
 					assert(false);
 					break;
+			}
+		}
+
+		if (r->state == RAFT_LEADER) {
+			while (!queue_empty(&r->leader_state.barriers)) {
+				queue *head = queue_head(&r->leader_state.barriers);
+				struct raft_barrier *barrier = QUEUE_DATA(head, struct raft_barrier, queue);
+				if (request->index <= barrier->index && barrier->index < request->index + request->n) {
+					queue_remove(head);
+					if (barrier->cb != NULL) {
+						barrier->cb(barrier, status);
+					}
+				} else {
+					break;
+				}
 			}
 		}
 		goto out;
@@ -1614,26 +1618,13 @@ static void finalizeRequest(struct raft *r, const raft_index index)
 		if (req->cb != NULL) {
 			req->cb(req, 0);
 		}
-	} else if (entry->type == RAFT_BARRIER) {
-		struct raft_barrier *req = (struct raft_barrier *)getRequest(r, index, RAFT_BARRIER);
-		if (req == NULL) {
-			return;
-		}
-		queue_remove(&req->queue);
-		while (req != NULL) {
-			struct raft_barrier *next = req->next;
-			if (req->cb != NULL) {
-				req->cb(req, 0);
-			}
-			req = next;
-		}
 	} else if (entry->type == RAFT_CHANGE) {
 		struct raft_change *req = r->leader_state.change;
 		r->leader_state.change = NULL;
 		if (req != NULL && req->cb != NULL) {
 			req->cb(req, 0);
 		}
-	} else {
+	} else if (entry->type != RAFT_BARRIER){
 		assert(false && "impossible!");
 	}
 }
@@ -1890,7 +1881,23 @@ int replicationApply(struct raft *r)
 		if (rv != 0) {
 			break;
 		}
+
+		if (r->state == RAFT_LEADER) {
+			while (!queue_empty(&r->leader_state.barriers)) {
+				queue *head = queue_head(&r->leader_state.barriers);
+				struct raft_barrier *barrier = QUEUE_DATA(head, struct raft_barrier, queue);
+				if (barrier->index <= r->last_applied) {
+					queue_remove(head);
+					if (barrier->cb != NULL) {
+						barrier->cb(barrier, 0);
+					}
+				} else {
+					break;
+				}
+			}
+		}
 	}
+	
 
 	for (index = apply_start; index <= r->last_applied; index++) {
 		finalizeRequest(r, index);
