@@ -65,7 +65,7 @@ static void convertClearCandidate(struct raft *r)
 static void convertFailApply(struct raft_apply *req)
 {
 	if (req != NULL && req->cb != NULL) {
-		req->cb(req, RAFT_LEADERSHIPLOST, NULL);
+		req->cb(req, RAFT_LEADERSHIPLOST);
 	}
 }
 
