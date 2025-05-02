@@ -11,6 +11,7 @@
 #include "../../src/vfs.h"
 
 #include <sys/mman.h>
+#include <time.h>
 
 SUITE(vfs_extra);
 
@@ -203,17 +204,13 @@ struct tx
 
 /* Poll the given VFS object and serialize the transaction data into the given
  * tx object. */
-#define POLL(VFS, TX)                                                      \
+#define POLL(DB, TX)                                                      \
 	do {                                                               \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                  \
 		dqlite_vfs_frame *_frames;                                 \
 		unsigned _i;                                               \
 		int _rv;                                                   \
 		memset(&TX, 0, sizeof TX);                                 \
-		char path[VFS_PATH_SZ];                                    \
-		struct fixture *f = data;                                  \
-		vfsFillDbPath(f, VFS, "test.db", path);                    \
-		_rv = VfsPoll(vfs, path, &_frames, &TX.n); \
+		_rv = VfsPoll(DB, &_frames, &TX.n); \
 		munit_assert_int(_rv, ==, 0);                              \
 		if (_frames != NULL) {                                     \
 			TX.page_numbers =                                  \
@@ -231,26 +228,17 @@ struct tx
 	} while (0)
 
 /* Apply WAL frames to the given VFS. */
-#define APPLY(VFS, TX)                                                   \
+#define APPLY(DB, TX)                                                   \
 	do {                                                             \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                \
 		int _rv;                                                 \
-		char path[VFS_PATH_SZ];                                  \
-		struct fixture *f = data;                                \
-		vfsFillDbPath(f, VFS, "test.db", path);                  \
-		_rv = VfsApply(vfs, path, TX.n, TX.page_numbers, TX.frames); \
+		_rv = VfsApply(DB, TX.n, TX.page_numbers, TX.frames); \
 		munit_assert_int(_rv, ==, 0);                            \
 	} while (0)
 
 /* Abort a transaction on the given VFS. */
-#define ABORT(VFS)                                        \
+#define ABORT(DB)                                        \
 	do {                                              \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS); \
-		int _rv;                                  \
-		char path[VFS_PATH_SZ];                   \
-		struct fixture *f = data;                 \
-		vfsFillDbPath(f, VFS, "test.db", path);   \
-		_rv = VfsAbort(vfs, path); \
+		int _rv = VfsAbort(DB); \
 		munit_assert_int(_rv, ==, 0);             \
 	} while (0)
 
@@ -485,7 +473,7 @@ TEST(vfs_extra, pollAfterWriteTransaction, setUp, tearDown, 0, vfs_params)
 	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
 	STEP(stmt, SQLITE_DONE);
 
-	POLL("1", tx);
+	POLL(db, tx);
 
 	munit_assert_ptr_not_null(tx.frames);
 	munit_assert_int(tx.n, ==, 2);
@@ -520,7 +508,7 @@ TEST(vfs_extra, pollAcquireWriteLock, setUp, tearDown, 0, vfs_params)
 	PREPARE(db2, stmt2, "CREATE TABLE test2(n INT)");
 
 	STEP(stmt1, SQLITE_DONE);
-	POLL("1", tx);
+	POLL(db1, tx);
 
 	STEP(stmt2, SQLITE_BUSY);
 	RESET(stmt2, SQLITE_BUSY);
@@ -552,26 +540,30 @@ TEST(vfs_extra, pollAfterPageStress, setUp, tearDown, 0, vfs_params)
 
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	EXEC(db, "BEGIN");
 	for (i = 0; i < 163; i++) {
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
-		EXEC(db, sql);
-		POLL("1", tx);
+		sqlite3_stmt *_stmt;
+		PREPARE(db, _stmt, sql);
+		STEP(_stmt, SQLITE_DONE);
+		FINALIZE(_stmt);
+
+		POLL(db, tx);
 		munit_assert_int(tx.n, ==, 0);
 	}
 	for (i = 0; i < 163; i++) {
 		sprintf(sql, "UPDATE test SET n=%d WHERE n=%d", i, i + 1);
 		EXEC(db, sql);
-		POLL("1", tx);
+		POLL(db, tx);
 		munit_assert_int(tx.n, ==, 0);
 	}
 	EXEC(db, "COMMIT");
 
-	POLL("1", tx);
+	POLL(db, tx);
 
 	/* Five frames were replicated and the first frame actually contains a
 	 * spill of the third page. */
@@ -582,7 +574,7 @@ TEST(vfs_extra, pollAfterPageStress, setUp, tearDown, 0, vfs_params)
 	munit_assert_int(tx.page_numbers[3], ==, 1);
 	munit_assert_int(tx.page_numbers[4], ==, 2);
 
-	APPLY("1", tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	/* All records have been inserted. */
@@ -620,8 +612,8 @@ TEST(vfs_extra, adaptPendingByte, setUp, tearDownRestorePendingByte, 0, vfs_para
 
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	EXEC(db, "BEGIN");
@@ -629,13 +621,13 @@ TEST(vfs_extra, adaptPendingByte, setUp, tearDownRestorePendingByte, 0, vfs_para
 	for (i = 0; i < n; i++) {
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i);
 		EXEC(db, sql);
-		POLL("1", tx);
+		POLL(db, tx);
 		munit_assert_uint(tx.n, ==, 0);
 	}
 	EXEC(db, "COMMIT");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	/* All records have been inserted. */
@@ -665,8 +657,8 @@ TEST(vfs_extra, applyMakesTransactionVisible, setUp, tearDown, 0, vfs_params)
 
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	PREPARE(db, stmt, "SELECT * FROM test");
@@ -691,21 +683,21 @@ TEST(vfs_extra, applyExplicitTransaction, setUp, tearDown, 0, vfs_params)
 
 	PREPARE(db, stmt, "BEGIN");
 	STEP(stmt, SQLITE_DONE);
-	POLL("1", tx);
+	POLL(db, tx);
 	munit_assert_int(tx.n, ==, 0);
 	FINALIZE(stmt);
 
 	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
 	STEP(stmt, SQLITE_DONE);
-	POLL("1", tx);
+	POLL(db, tx);
 	munit_assert_int(tx.n, ==, 0);
 	FINALIZE(stmt);
 
 	PREPARE(db, stmt, "COMMIT");
 	STEP(stmt, SQLITE_DONE);
-	POLL("1", tx);
+	POLL(db, tx);
 	munit_assert_int(tx.n, ==, 2);
-	APPLY("1", tx);
+	APPLY(db, tx);
 	DONE(tx);
 	FINALIZE(stmt);
 
@@ -731,14 +723,14 @@ TEST(vfs_extra, consecutiveWriteTransactions, setUp, tearDown, 0, vfs_params)
 
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	EXEC(db, "INSERT INTO test(n) VALUES(123)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	PREPARE(db, stmt, "SELECT * FROM test");
@@ -770,18 +762,18 @@ TEST(vfs_extra,
 	OPEN("1", db);
 
 	EXEC(db, "CREATE TABLE foo(id INT)");
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	EXEC(db, "CREATE TABLE bar (id INT)");
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	EXEC(db, "INSERT INTO foo(id) VALUES(1)");
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	CLOSE(db);
@@ -817,8 +809,8 @@ TEST(vfs_extra,
 
 	EXEC(db1, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
 	DONE(tx);
 
 	PREPARE(db2, stmt, "SELECT * FROM test");
@@ -845,8 +837,8 @@ TEST(vfs_extra, transactionIsVisibleFromNewConnection, setUp, tearDown, 0, vfs_p
 
 	EXEC(db1, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
 	DONE(tx);
 
 	OPEN("1", db2);
@@ -880,8 +872,8 @@ TEST(vfs_extra,
 
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	CLOSE(db);
@@ -910,14 +902,12 @@ TEST(vfs_extra, firstApplyOnDifferentVfs, setUp, tearDown, 0, vfs_params)
 
 	PREPARE(db1, stmt, "CREATE TABLE test(n INT)");
 	STEP(stmt, SQLITE_DONE);
-
-	POLL("1", tx);
-
-	APPLY("1", tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
 
 	OPEN("2", db2);
+	APPLY(db2, tx);
 	CLOSE(db2);
-	APPLY("2", tx);
 
 	DONE(tx);
 
@@ -939,24 +929,22 @@ TEST(vfs_extra, secondApplyOnDifferentVfs, setUp, tearDown, 0, vfs_params)
 	OPEN("1", db1);
 
 	EXEC(db1, "CREATE TABLE test(n INT)");
-
-	POLL("1", tx);
-
-	APPLY("1", tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
 
 	OPEN("2", db2);
-	CLOSE(db2);
-	APPLY("2", tx);
+	APPLY(db2, tx);
 
 	DONE(tx);
 
 	EXEC(db1, "INSERT INTO test(n) VALUES(123)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
-	APPLY("2", tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
+	APPLY(db2, tx);
 	DONE(tx);
 
+	CLOSE(db2);
 	CLOSE(db1);
 
 	return MUNIT_OK;
@@ -978,24 +966,22 @@ TEST(vfs_extra, applyOnDifferentVfsWithOpenConnection, setUp, tearDown, 0, vfs_p
 	STEP(stmt, SQLITE_DONE);
 	FINALIZE(stmt);
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
 	OPEN("2", db2);
+	APPLY(db2, tx);
 	CLOSE(db2);
-	APPLY("2", tx);
 	DONE(tx);
 
 	EXEC(db1, "INSERT INTO test(n) VALUES(123)");
-
-	POLL("1", tx);
-
+	POLL(db1, tx);
 	CLOSE(db1);
 
 	OPEN("2", db2);
 	PREPARE(db2, stmt, "PRAGMA cache_size=-5000");
 	FINALIZE(stmt);
 
-	APPLY("2", tx);
+	APPLY(db2, tx);
 
 	PREPARE(db2, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_ROW);
@@ -1021,11 +1007,11 @@ TEST(vfs_extra, transactionVisibleOnDifferentVfs, setUp, tearDown, 0, vfs_params
 
 	EXEC(db1, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
 	OPEN("2", db2);
+	APPLY(db2, tx);
 	CLOSE(db2);
-	APPLY("2", tx);
 	DONE(tx);
 
 	CLOSE(db1);
@@ -1056,8 +1042,8 @@ TEST(vfs_extra, abort, setUp, tearDown, 0, vfs_params)
 	PREPARE(db2, stmt2, "CREATE TABLE test2(n INT)");
 
 	STEP(stmt1, SQLITE_DONE);
-	POLL("1", tx);
-	ABORT("1");
+	POLL(db1, tx);
+	ABORT(db1);
 
 	STEP(stmt2, SQLITE_DONE);
 
@@ -1085,12 +1071,12 @@ TEST(vfs_extra, checkpoint, setUp, tearDown, 0, vfs_params)
 	OPEN("1", db1);
 
 	EXEC(db1, "CREATE TABLE test(n INT)");
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
 	DONE(tx);
 	EXEC(db1, "INSERT INTO test(n) VALUES(123)");
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
 	DONE(tx);
 
 	OPEN("1", db2);
@@ -1098,8 +1084,8 @@ TEST(vfs_extra, checkpoint, setUp, tearDown, 0, vfs_params)
 	CLOSE(db2);
 
 	EXEC(db1, "INSERT INTO test(n) VALUES(456)");
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
 	DONE(tx);
 
 	PREPARE(db1, stmt, "SELECT * FROM test");
@@ -1127,31 +1113,29 @@ TEST(vfs_extra, applyOnDifferentVfsAfterCheckpoint, setUp, tearDown, 0, vfs_para
 	OPEN("1", db);
 
 	EXEC(db, "CREATE TABLE test(n INT)");
-	POLL("1", tx1);
-	APPLY("1", tx1);
+	POLL(db, tx1);
+	APPLY(db, tx1);
 	EXEC(db, "INSERT INTO test(n) VALUES(123)");
-	POLL("1", tx2);
-	APPLY("1", tx2);
+	POLL(db, tx2);
+	APPLY(db, tx2);
 
 	CHECKPOINT(db);
 
 	EXEC(db, "INSERT INTO test(n) VALUES(456)");
-	POLL("1", tx3);
-	APPLY("1", tx3);
+	POLL(db, tx3);
+	APPLY(db, tx3);
 
 	CLOSE(db);
 
 	OPEN("2", db);
+	APPLY(db, tx1);
+	APPLY(db, tx2);
 	CLOSE(db);
-
-	APPLY("2", tx1);
-	APPLY("2", tx2);
 
 	OPEN("2", db);
 	CHECKPOINT(db);
+	APPLY(db, tx3);
 	CLOSE(db);
-
-	APPLY("2", tx3);
 
 	OPEN("2", db);
 	PREPARE(db, stmt, "SELECT * FROM test ORDER BY n");
@@ -1190,23 +1174,23 @@ TEST(vfs_extra,
 	OPEN("1", db);
 
 	EXEC(db, "CREATE TABLE test(n INT)");
-	POLL("1", tx1);
-	APPLY("1", tx1);
+	POLL(db, tx1);
+	APPLY(db, tx1);
 	CHECKPOINT_FRESH("1");
 
 	EXEC(db, "CREATE TABLE test2(n INT)");
-	POLL("1", tx2);
-	APPLY("1", tx2);
+	POLL(db, tx2);
+	APPLY(db, tx2);
 	CHECKPOINT_FRESH("1");
 
 	EXEC(db, "INSERT INTO test(n) VALUES(123)");
-	POLL("1", tx3);
-	APPLY("1", tx3);
+	POLL(db, tx3);
+	APPLY(db, tx3);
 	CHECKPOINT_FRESH("1");
 
 	EXEC(db, "INSERT INTO test2(n) VALUES(456)");
-	POLL("1", tx4);
-	APPLY("1", tx4);
+	POLL(db, tx4);
+	APPLY(db, tx4);
 	CHECKPOINT_FRESH("1");
 
 	CLOSE(db);
@@ -1215,10 +1199,10 @@ TEST(vfs_extra,
 	 * the DB in between. */
 	OPEN("2", db);
 
-	APPLY("2", tx1);
-	APPLY("2", tx2);
-	APPLY("2", tx3);
-	APPLY("2", tx4);
+	APPLY(db, tx1);
+	APPLY(db, tx2);
+	APPLY(db, tx3);
+	APPLY(db, tx4);
 
 	/* Ensure data is there. */
 	PREPARE(db, stmt, "SELECT * FROM test ORDER BY n");
@@ -1265,36 +1249,35 @@ TEST(vfs_extra,
 	OPEN("1", db);
 
 	EXEC(db, "CREATE TABLE test(n INT)");
-	POLL("1", tx1);
-	APPLY("1", tx1);
+	POLL(db, tx1);
+	APPLY(db, tx1);
 
 	EXEC(db, "CREATE TABLE test2(n INT)");
-	POLL("1", tx2);
-	APPLY("1", tx2);
+	POLL(db, tx2);
+	APPLY(db, tx2);
 
 	EXEC(db, "INSERT INTO test(n) VALUES(123)");
-	POLL("1", tx3);
-	APPLY("1", tx3);
+	POLL(db, tx3);
+	APPLY(db, tx3);
 
 	EXEC(db, "INSERT INTO test2(n) VALUES(456)");
-	POLL("1", tx4);
-	APPLY("1", tx4);
+	POLL(db, tx4);
+	APPLY(db, tx4);
 
 	CLOSE(db);
 
 	/* Create a second VFS and Apply the transactions while checkpointing
 	 * after every transaction. */
 	OPEN("2", db);
+	APPLY(db, tx1);
+	CHECKPOINT_FRESH("2");
+	APPLY(db, tx2);
+	CHECKPOINT_FRESH("2");
+	APPLY(db, tx3);
+	CHECKPOINT_FRESH("2");
+	APPLY(db, tx4);
+	CHECKPOINT_FRESH("2");
 	CLOSE(db);
-
-	APPLY("2", tx1);
-	CHECKPOINT_FRESH("2");
-	APPLY("2", tx2);
-	CHECKPOINT_FRESH("2");
-	APPLY("2", tx3);
-	CHECKPOINT_FRESH("2");
-	APPLY("2", tx4);
-	CHECKPOINT_FRESH("2");
 
 	/* Ensure all the data is there. */
 	OPEN("2", db);
@@ -1325,47 +1308,47 @@ TEST(vfs_extra,
  * perform a new write transaction on that other VFS. */
 TEST(vfs_extra, checkpointThenPerformTransaction, setUp, tearDown, 0, vfs_params)
 {
-	sqlite3 *db1;
+	sqlite3 *db;
 	struct tx tx1;
 	struct tx tx2;
 	struct tx tx3;
 
-	OPEN("1", db1);
+	OPEN("1", db);
 
-	EXEC(db1, "CREATE TABLE test(n INT)");
-	POLL("1", tx1);
-	APPLY("1", tx1);
-	EXEC(db1, "INSERT INTO test(n) VALUES(123)");
-	POLL("1", tx2);
-	APPLY("1", tx2);
+	EXEC(db, "CREATE TABLE test(n INT)");
+	POLL(db, tx1);
+	APPLY(db, tx1);
+	EXEC(db, "INSERT INTO test(n) VALUES(123)");
+	POLL(db, tx2);
+	APPLY(db, tx2);
 
-	CHECKPOINT(db1);
+	CHECKPOINT(db);
 
-	EXEC(db1, "INSERT INTO test(n) VALUES(456)");
-	POLL("1", tx3);
-	APPLY("1", tx3);
+	EXEC(db, "INSERT INTO test(n) VALUES(456)");
+	POLL(db, tx3);
+	APPLY(db, tx3);
 
-	CLOSE(db1);
+	CLOSE(db);
 
-	OPEN("2", db1);
+	OPEN("2", db);
 
-	APPLY("2", tx1);
-	APPLY("2", tx2);
+	APPLY(db, tx1);
+	APPLY(db, tx2);
 
 	CHECKPOINT_FRESH("2");
 
-	APPLY("2", tx3);
+	APPLY(db, tx3);
 
 	DONE(tx1);
 	DONE(tx2);
 	DONE(tx3);
 
-	EXEC(db1, "INSERT INTO test(n) VALUES(789)");
-	POLL("2", tx1);
-	APPLY("2", tx1);
+	EXEC(db, "INSERT INTO test(n) VALUES(789)");
+	POLL(db, tx1);
+	APPLY(db, tx1);
 	DONE(tx1);
 
-	CLOSE(db1);
+	CLOSE(db);
 
 	return MUNIT_OK;
 }
@@ -1381,15 +1364,15 @@ TEST(vfs_extra, rollbackTransactionWithoutPageStress, setUp, tearDown, 0, vfs_pa
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	EXEC(db, "BEGIN");
 	EXEC(db, "INSERT INTO test(n) VALUES(1)");
 	EXEC(db, "ROLLBACK");
 
-	POLL("1", tx);
+	POLL(db, tx);
 	munit_assert_int(tx.n, ==, 0);
 
 	PREPARE(db, stmt, "SELECT * FROM test");
@@ -1397,8 +1380,8 @@ TEST(vfs_extra, rollbackTransactionWithoutPageStress, setUp, tearDown, 0, vfs_pa
 	RESET(stmt, SQLITE_OK);
 
 	EXEC(db, "INSERT INTO test(n) VALUES(1)");
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	STEP(stmt, SQLITE_ROW);
@@ -1423,8 +1406,8 @@ TEST(vfs_extra, rollbackTransactionWithPageStress, setUp, tearDown, 0, vfs_param
 
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	EXEC(db, "BEGIN");
@@ -1432,20 +1415,20 @@ TEST(vfs_extra, rollbackTransactionWithPageStress, setUp, tearDown, 0, vfs_param
 		char sql[64];
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
 		EXEC(db, sql);
-		POLL("1", tx);
+		POLL(db, tx);
 		munit_assert_int(tx.n, ==, 0);
 	}
 	EXEC(db, "ROLLBACK");
 
-	POLL("1", tx);
+	POLL(db, tx);
 	munit_assert_int(tx.n, ==, 0);
 	PREPARE(db, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
 	RESET(stmt, SQLITE_OK);
 
 	EXEC(db, "INSERT INTO test(n) VALUES(1)");
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	STEP(stmt, SQLITE_ROW);
@@ -1469,8 +1452,8 @@ TEST(vfs_extra, checkpointTransactionWithPageStress, setUp, tearDown, 0, vfs_par
 
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	EXEC(db, "BEGIN");
@@ -1478,7 +1461,7 @@ TEST(vfs_extra, checkpointTransactionWithPageStress, setUp, tearDown, 0, vfs_par
 		char sql[64];
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
 		EXEC(db, sql);
-		POLL("1", tx);
+		POLL(db, tx);
 		munit_assert_int(tx.n, ==, 0);
 	}
 
@@ -1531,8 +1514,8 @@ TEST(vfs_extra, snapshotAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	CLOSE(db);
@@ -1579,8 +1562,8 @@ TEST(vfs_extra, snapshotAfterCheckpoint, setUp, tearDown, 0, vfs_params)
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	CHECKPOINT(db);
@@ -1634,8 +1617,8 @@ TEST(vfs_extra, restoreAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
 
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	CLOSE(db);
@@ -1649,7 +1632,11 @@ TEST(vfs_extra, restoreAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
 
 	OPEN("2", db);
 
-	PREPARE(db, stmt, "SELECT * FROM test");
+	int rv = sqlite3_prepare_v2(db, "SELECT * FROM test", -1, &stmt, NULL); 
+	if (rv != SQLITE_OK) {
+		munit_errorf("prepare '%s': %s (%d)", "SELECT * FROM test", sqlite3_errmsg(db), rv);
+	}
+
 	STEP(stmt, SQLITE_DONE);
 	FINALIZE(stmt);
 
@@ -1670,9 +1657,8 @@ TEST(vfs_extra, restoreWithOpenConnection, setUp, tearDown, 0, vfs_params)
 
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
-
-	POLL("1", tx);
-	APPLY("1", tx);
+	POLL(db, tx);
+	APPLY(db, tx);
 	DONE(tx);
 
 	CLOSE(db);
