@@ -70,7 +70,7 @@ struct connection {
 		struct connection *c = &f->connections[i]; \
 		buffer__close(&c->request);                \
 		buffer__close(&c->response);               \
-		gateway__close(&c->gateway);               \
+		gateway__close(&c->gateway, fixture_close_cb);               \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
 
@@ -85,6 +85,8 @@ static void fixture_handle_cb(struct handle *req,
 	c->type = type;
 	c->schema = schema;
 }
+
+static void fixture_close_cb(struct gateway *g) { (void)g; }
 
 /******************************************************************************
  *
@@ -246,13 +248,15 @@ TEST_CASE(exec, open, NULL)
 	EXEC(f->c1, f->stmt_id1);
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
-	ASSERT_CALLBACK(f->c2, 0, FAILURE);
+	ASSERT_CALLBACK(f->c2, SQLITE_BUSY, FAILURE);
 	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "database is locked");
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
 
 	return MUNIT_OK;
 }
+
+// TODO(marco6): add test where timeout != 0 with or without transaction
 
 /* If an exec request is already in progress on another leader connection,
  * SQLITE_BUSY is returned. */
@@ -272,10 +276,117 @@ TEST_CASE(exec, tx, NULL)
 	EXEC(f->c1, f->stmt_id1);
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
-	ASSERT_CALLBACK(f->c2, 0, FAILURE);
+	ASSERT_CALLBACK(f->c2, SQLITE_BUSY, FAILURE);
 	ASSERT_FAILURE(f->c2, SQLITE_BUSY, "database is locked");
 	WAIT(f->c1);
 	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	return MUNIT_OK;
+}
+
+TEST_CASE(exec, busy_wait_statement, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
+	f->servers[0].config.busy_timeout = 100;
+
+	/* Create a test table using connection 0 */
+	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	
+	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
+	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
+
+	EXEC(f->c1, f->stmt_id1);
+	EXEC(f->c2, f->stmt_id2);
+	WAIT(f->c2);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c2, SQLITE_OK, RESULT);
+	ASSERT_CALLBACK(f->c1, SQLITE_OK, RESULT);
+	return MUNIT_OK;
+}
+
+TEST_CASE(exec, busy_wait_transaction, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
+	f->servers[0].config.busy_timeout = 100;
+
+	/* Create a test table using connection 0 */
+	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	PREPARE(f->c1, "BEGIN", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	
+	/* make sure the write lock is taken */
+	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	/* start another write */
+	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
+	EXEC(f->c2, f->stmt_id2);
+	
+	PREPARE(f->c1, "COMMIT", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	/* make sure the other write could not progress */
+	munit_assert_false(f->c2->context.invoked);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	/* make sure the other write is correctly dequeued */
+	WAIT(f->c2);
+	ASSERT_CALLBACK(f->c2, 0, RESULT);
+	return MUNIT_OK;
+}
+
+TEST_CASE(exec, busy_wait_timeout, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	
+	f->servers[0].config.busy_timeout = 10;
+
+	/* Create a test table using connection 0 */
+	PREPARE(f->c1, "CREATE TABLE test (n INT)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	PREPARE(f->c1, "BEGIN", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+	
+	/* make sure the write lock is taken */
+	PREPARE(f->c1, "INSERT INTO test(n) VALUES(1)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	/* try to write from another connection should fail after some time */
+	PREPARE(f->c2, "INSERT INTO test(n) VALUES(1)", &f->stmt_id2);
+	EXEC(f->c2, f->stmt_id2);
+	WAIT(f->c2);
+	ASSERT_CALLBACK(f->c2, SQLITE_BUSY, FAILURE);
+	
+	/* the original write should still finish correctly */
+	PREPARE(f->c1, "COMMIT", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
 	return MUNIT_OK;
 }
 

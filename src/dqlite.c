@@ -22,28 +22,6 @@ void dqlite_vfs_close(sqlite3_vfs *vfs)
 	VfsClose(vfs);
 }
 
-int dqlite_vfs_poll(sqlite3_vfs *vfs,
-		    const char *filename,
-		    dqlite_vfs_frame **frames,
-		    unsigned *n)
-{
-	return VfsPoll(vfs, filename, frames, n);
-}
-
-int dqlite_vfs_apply(sqlite3_vfs *vfs,
-		     const char *filename,
-		     unsigned n,
-		     unsigned long *page_numbers,
-		     void *frames)
-{
-	return VfsApply(vfs, filename, n, page_numbers, frames);
-}
-
-int dqlite_vfs_abort(sqlite3_vfs *vfs, const char *filename)
-{
-	return VfsAbort(vfs, filename);
-}
-
 int dqlite_vfs_snapshot(sqlite3_vfs *vfs,
 			const char *filename,
 			void **data,

@@ -1,3 +1,4 @@
+#include <sqlite3.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -10,12 +11,6 @@
 
 /* Limit taken from sqlite unix vfs. */
 #define MAX_PATHNAME 512
-
-/* Open a SQLite connection and set it to follower mode. */
-static int open_follower_conn(const char *filename,
-			      const char *vfs,
-			      unsigned page_size,
-			      sqlite3 **conn);
 
 static uint32_t str_hash(const char* name)
 {
@@ -35,11 +30,14 @@ int db__init(struct db *db, struct config *config, const char *filename)
 	int rv;
 
 	db->config = config;
+	db->vfs = sqlite3_vfs_find(config->name);
+	if (db->vfs == NULL) {
+		return DQLITE_MISUSE;
+	}
 	db->cookie = str_hash(filename);
 	db->filename = sqlite3_malloc((int)(strlen(filename) + 1));
 	if (db->filename == NULL) {
-		rv = DQLITE_NOMEM;
-		goto err;
+		return DQLITE_NOMEM;
 	}
 	strcpy(db->filename, filename);
 	db->path = sqlite3_malloc(MAX_PATHNAME + 1);
@@ -57,79 +55,72 @@ int db__init(struct db *db, struct config *config, const char *filename)
 		goto err_after_path_alloc;
 	}
 
-	db->follower = NULL;
-	db->tx_id = 0;
+	db->active_leader = NULL;
+	queue_init(&db->pending_queue);
 	db->read_lock = 0;
-	queue_init(&db->leaders);
+	db->leaders = 0;
 	return 0;
 
 err_after_path_alloc:
 	sqlite3_free(db->path);
 err_after_filename_alloc:
 	sqlite3_free(db->filename);
-err:
 	return rv;
 }
 
 void db__close(struct db *db)
 {
-	assert(queue_empty(&db->leaders));
-	if (db->follower != NULL) {
-		int rc;
-		rc = sqlite3_close(db->follower);
-		assert(rc == SQLITE_OK);
-	}
+	assert(db->leaders == 0);
 	sqlite3_free(db->path);
 	sqlite3_free(db->filename);
 }
 
-int db__open_follower(struct db *db)
-{
-	int rc;
-	assert(db->follower == NULL);
-	rc = open_follower_conn(db->path, db->config->name,
-				db->config->page_size, &db->follower);
-	return rc;
+static int dqlite_follower_authorizer(void *pUserData, int action, const char *third, const char *fourth, const char *fifth, const char *sixth) {
+	(void)pUserData;
+	(void)fourth;
+	(void)fifth;
+	(void)sixth;
+
+	if (action == SQLITE_ATTACH) {
+		// Only allow attaching temporary files
+		if (third != NULL && third[0] != '\0') {
+			return SQLITE_DENY;
+		}
+	} else if (action == SQLITE_PRAGMA) {
+		if (sqlite3_stricmp(third, "journal_mode") == 0 && fourth) {
+			/* When the user executes 'PRAGMA journal_mode=x' we ensure
+			* that the desired mode is 'wal'. */
+			if (sqlite3_stricmp(fourth, "wal") != 0) {
+				return SQLITE_DENY;
+			}
+		} else if (sqlite3_stricmp(third, "wal_checkpoint") == 0
+			|| (sqlite3_stricmp(third, "wal_autocheckpoint") == 0 && fourth)) {
+			return SQLITE_DENY;
+		}
+	}
+	return SQLITE_OK;
 }
 
-static int open_follower_conn(const char *filename,
-			      const char *vfs,
-			      unsigned page_size,
-			      sqlite3 **conn)
+static int isWalMode(void* out, int argc, char **argv, char **unused)
 {
+	(void)unused;
+	assert(argc == 1);
+	*(int*)out = sqlite3_stricmp("WAL", argv[0]) == 0;
+	return SQLITE_OK;
+}
+
+int db__open(struct db *db, sqlite3 **conn)
+{
+	tracef("open conn: %s page_size:%u", db->path, db->config->page_size);
 	char pragma[255];
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	char *msg = NULL;
 	int rc;
 
-	tracef("open follower conn: %s page_size:%u", filename, page_size);
-	rc = sqlite3_open_v2(filename, conn, flags, vfs);
+
+	rc = sqlite3_open_v2(db->path, conn, flags, db->config->name);
 	if (rc != SQLITE_OK) {
 		tracef("open_v2 failed %d", rc);
-		goto err;
-	}
-
-	/* Enable extended result codes */
-	rc = sqlite3_extended_result_codes(*conn, 1);
-	if (rc != SQLITE_OK) {
-		goto err;
-	}
-
-	/* The vfs, db, gateway, and leader code currently assumes that
-	 * each connection will operate on only one DB file/WAL file
-	 * pair. Make sure that the client can't use ATTACH DATABASE to
-	 * break this assumption. We apply the same limit in openConnection
-	 * in leader.c.
-	 *
-	 * Note, 0 instead of 1 -- apparently the "initial database" is not
-	 * counted when evaluating this limit. */
-	sqlite3_limit(*conn, SQLITE_LIMIT_ATTACHED, 0);
-
-	/* Set the page size. */
-	sprintf(pragma, "PRAGMA page_size=%d", page_size);
-	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		tracef("page_size=%d failed", page_size);
 		goto err;
 	}
 
@@ -140,16 +131,64 @@ static int open_follower_conn(const char *filename,
 		goto err;
 	}
 
-	/* Set WAL journaling. */
-	rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
+	int initialized;
+	rc = sqlite3_exec(*conn, "PRAGMA journal_mode", isWalMode, &initialized, &msg);
 	if (rc != SQLITE_OK) {
-		tracef("journal_mode=WAL failed");
+		tracef("extended codes failed %d", rc);
+		goto err;
+	}
+	if (!initialized) {
+		/* Set the page size. */
+		sprintf(pragma, "PRAGMA page_size=%d", db->config->page_size);
+		rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
+		if (rc != SQLITE_OK) {
+			tracef("page_size=%d failed", db->config->page_size);
+			goto err;
+		}
+
+		/* Set WAL journaling. */
+		rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
+		if (rc != SQLITE_OK) {
+			tracef("journal_mode=WAL failed");
+			goto err;
+		}
+
+		/* Make sure a connection to the wal is opened. */
+		rc = sqlite3_exec(*conn, "BEGIN IMMEDIATE; ROLLBACK", NULL, NULL, &msg);
+		if (rc != SQLITE_OK) {
+			tracef("can't connect to WAL");
+			goto err;
+		}
+	}
+
+	/* Enable extended result codes */
+	rc = sqlite3_extended_result_codes(*conn, 1);
+	if (rc != SQLITE_OK) {
+		tracef("extended codes failed %d", rc);
+		goto err;
+	}
+
+	/* The vfs, db, gateway, and leader code currently assumes that
+	 * each connection will operate on only one DB file/WAL file
+	 * pair. Make sure that the client can't use ATTACH DATABASE to
+	 * break this assumption.*/
+	sqlite3_set_authorizer(*conn, dqlite_follower_authorizer, NULL);
+
+	rc = sqlite3_wal_autocheckpoint(*conn, 0);
+	if (rc != SQLITE_OK) {
+		tracef("sqlite3_wal_autocheckpoint off failed %d", rc);
 		goto err;
 	}
 
 	rc =
 	    sqlite3_db_config(*conn, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, NULL);
 	if (rc != SQLITE_OK) {
+		goto err;
+	}
+
+	rc = sqlite3_exec(*conn, "PRAGMA foreign_keys=1", NULL, NULL, &msg);
+	if (rc != SQLITE_OK) {
+		tracef("foreign_keys=1 failed");
 		goto err;
 	}
 
