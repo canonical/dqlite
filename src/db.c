@@ -1,3 +1,4 @@
+#include <sqlite3.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -95,6 +96,14 @@ static int dqlite_authorizer(void *pUserData, int action, const char *third, con
 	return SQLITE_OK;
 }
 
+static int isWalMode(void* out, int argc, char **argv, char **unused)
+{
+	(void)unused;
+	assert(argc == 1);
+	*(int*)out = sqlite3_stricmp("WAL", argv[0]) == 0;
+	return SQLITE_OK;
+}
+
 int db__open(struct db *db, sqlite3 **conn)
 {
 	tracef("open conn: %s page_size:%u", db->path, db->config->page_size);
@@ -109,21 +118,6 @@ int db__open(struct db *db, sqlite3 **conn)
 		goto err;
 	}
 
-	/* Enable extended result codes */
-	rc = sqlite3_extended_result_codes(*conn, 1);
-	if (rc != SQLITE_OK) {
-		tracef("extended codes failed %d", rc);
-		goto err;
-	}
-
-	/* Set the page size. */
-	sprintf(pragma, "PRAGMA page_size=%d", db->config->page_size);
-	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		tracef("page_size=%d failed", db->config->page_size);
-		goto err;
-	}
-
 	/* Disable syncs. */
 	rc = sqlite3_exec(*conn, "PRAGMA synchronous=OFF", NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
@@ -131,16 +125,40 @@ int db__open(struct db *db, sqlite3 **conn)
 		goto err;
 	}
 
-	/* Set WAL journaling. */
-	rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
+	int initialized;
+	rc = sqlite3_exec(*conn, "PRAGMA journal_mode", isWalMode, &initialized, &msg);
 	if (rc != SQLITE_OK) {
-		tracef("journal_mode=WAL failed");
+		tracef("extended codes failed %d", rc);
 		goto err;
 	}
+	if (!initialized) {
+		/* Set the page size. */
+		sprintf(pragma, "PRAGMA page_size=%d", db->config->page_size);
+		rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
+		if (rc != SQLITE_OK) {
+			tracef("page_size=%d failed", db->config->page_size);
+			goto err;
+		}
 
-	rc = sqlite3_exec(*conn, "PRAGMA foreign_keys=1", NULL, NULL, &msg);
+		/* Set WAL journaling. */
+		rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
+		if (rc != SQLITE_OK) {
+			tracef("journal_mode=WAL failed");
+			goto err;
+		}
+
+		/* Make sure a connection to the wal is opened. */
+		rc = sqlite3_exec(*conn, "BEGIN IMMEDIATE; ROLLBACK", NULL, NULL, &msg);
+		if (rc != SQLITE_OK) {
+			tracef("can't connect to WAL");
+			goto err;
+		}
+	}
+
+	/* Enable extended result codes */
+	rc = sqlite3_extended_result_codes(*conn, 1);
 	if (rc != SQLITE_OK) {
-		tracef("foreign_keys=1 failed");
+		tracef("extended codes failed %d", rc);
 		goto err;
 	}
 
