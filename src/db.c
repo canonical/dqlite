@@ -1,3 +1,4 @@
+#include <sqlite3.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -100,6 +101,14 @@ static int dqlite_follower_authorizer(void *pUserData, int action, const char *t
 	return SQLITE_OK;
 }
 
+static int isWalMode(void* out, int argc, char **argv, char **unused)
+{
+	(void)unused;
+	assert(argc == 1);
+	*(int*)out = sqlite3_stricmp("WAL", argv[0]) == 0;
+	return SQLITE_OK;
+}
+
 int db__open(struct db *db, sqlite3 **conn)
 {
 	tracef("open conn: %s page_size:%u", db->path, db->config->page_size);
@@ -108,10 +117,48 @@ int db__open(struct db *db, sqlite3 **conn)
 	char *msg = NULL;
 	int rc;
 
+
 	rc = sqlite3_open_v2(db->path, conn, flags, db->config->name);
 	if (rc != SQLITE_OK) {
 		tracef("open_v2 failed %d", rc);
 		goto err;
+	}
+
+	/* Disable syncs. */
+	rc = sqlite3_exec(*conn, "PRAGMA synchronous=OFF", NULL, NULL, &msg);
+	if (rc != SQLITE_OK) {
+		tracef("synchronous=OFF failed");
+		goto err;
+	}
+
+	int initialized;
+	rc = sqlite3_exec(*conn, "PRAGMA journal_mode", isWalMode, &initialized, &msg);
+	if (rc != SQLITE_OK) {
+		tracef("extended codes failed %d", rc);
+		goto err;
+	}
+	if (!initialized) {
+		/* Set the page size. */
+		sprintf(pragma, "PRAGMA page_size=%d", db->config->page_size);
+		rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
+		if (rc != SQLITE_OK) {
+			tracef("page_size=%d failed", db->config->page_size);
+			goto err;
+		}
+
+		/* Set WAL journaling. */
+		rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
+		if (rc != SQLITE_OK) {
+			tracef("journal_mode=WAL failed");
+			goto err;
+		}
+
+		/* Make sure a connection to the wal is opened. */
+		rc = sqlite3_exec(*conn, "BEGIN IMMEDIATE; ROLLBACK", NULL, NULL, &msg);
+		if (rc != SQLITE_OK) {
+			tracef("can't connect to WAL");
+			goto err;
+		}
 	}
 
 	/* Enable extended result codes */
@@ -126,28 +173,6 @@ int db__open(struct db *db, sqlite3 **conn)
 	 * pair. Make sure that the client can't use ATTACH DATABASE to
 	 * break this assumption.*/
 	sqlite3_set_authorizer(*conn, dqlite_follower_authorizer, NULL);
-
-	/* Set the page size. */
-	sprintf(pragma, "PRAGMA page_size=%d", db->config->page_size);
-	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		tracef("page_size=%d failed", db->config->page_size);
-		goto err;
-	}
-
-	/* Disable syncs. */
-	rc = sqlite3_exec(*conn, "PRAGMA synchronous=OFF", NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		tracef("synchronous=OFF failed");
-		goto err;
-	}
-
-	/* Set WAL journaling. */
-	rc = sqlite3_exec(*conn, "PRAGMA journal_mode=WAL", NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		tracef("journal_mode=WAL failed");
-		goto err;
-	}
 
 	rc = sqlite3_wal_autocheckpoint(*conn, 0);
 	if (rc != SQLITE_OK) {
