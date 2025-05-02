@@ -451,9 +451,7 @@ static size_t updateLastStored(struct raft *r,
 
 /* Get the request matching the given @index and @type, if any.
  * The type check is skipped when @type == -1. */
-static struct request *getRequest(struct raft *r,
-				  const raft_index index,
-				  int type)
+static struct request *getRequest(struct raft *r, const raft_index index)
 {
 	queue *head;
 	struct request *req;
@@ -465,9 +463,6 @@ static struct request *getRequest(struct raft *r,
 	{
 		req = QUEUE_DATA(head, struct request, queue);
 		if (req->index == index) {
-			if (type != -1) {
-				assert(req->type == type);
-			}
 			return req;
 		}
 	}
@@ -496,8 +491,7 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 	if (status != 0) {
 		ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 		for (unsigned i = 0; i < request->n; i++) {
-			struct request *req =
-			    getRequest(r, request->index + i, -1);
+			struct request *req = getRequest(r, request->index + i);
 			if (!req) {
 				tracef("no request found at index %llu",
 				       request->index + i);
@@ -511,7 +505,7 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 					struct raft_apply *apply =
 					    (struct raft_apply *)req;
 					if (apply->cb) {
-						apply->cb(apply, status, NULL);
+						apply->cb(apply, status);
 					}
 					break;
 				}
@@ -1547,68 +1541,7 @@ err:
 	return rv;
 }
 
-/* Apply a RAFT_COMMAND entry that has been committed. */
-static int applyCommand(struct raft *r,
-			const raft_index index,
-			const struct raft_buffer *buf)
-{
-	struct raft_apply *req;
-	void *result;
-	int rv;
-
-	rv = r->fsm->apply(r->fsm, buf, &result);
-	if (rv != 0) {
-		return rv;
-	}
-
-	r->last_applied = index;
-
-	req = (struct raft_apply *)getRequest(r, index, RAFT_COMMAND);
-	if (req == NULL) {
-		return 0;
-	}
-	queue_remove(&req->queue);
-	sm_move(&req->sm, REQUEST_COMPLETE);
-	sm_fini(&req->sm);
-	if (req->cb != NULL) {
-		req->cb(req, 0, result);
-	}
-	return 0;
-}
-
-/* Fire the callback of a barrier request whose entry has been committed. */
-static void applyBarrier(struct raft *r, const raft_index index)
-{
-	r->last_applied = index;
-
-	struct raft_barrier *req;
-	req = (struct raft_barrier *)getRequest(r, index, RAFT_BARRIER);
-	if (req == NULL) {
-		return;
-	}
-	queue_remove(&req->queue);
-
-	while (req != NULL) {
-		struct raft_barrier *next = req->next;
-		if (req->cb != NULL) {
-			req->cb(req, 0);
-		}
-		req = next;
-	}
-}
-
-/* Apply a RAFT_CHANGE entry that has been committed. */
-static void applyChange(struct raft *r, const raft_index index)
-{
-	struct raft_change *req;
-
-	assert(index > 0);
-
-	/* If this is an uncommitted configuration that we had already applied
-	 * when submitting the configuration change (for leaders) or upon
-	 * receiving it via an AppendEntries RPC (for followers), then reset the
-	 * uncommitted index, since that uncommitted configuration is now
-	 * committed. */
+static void applyChange(struct raft *r, raft_index index) {
 	if (r->configuration_uncommitted_index == index) {
 		tracef("configuration at index:%llu is committed.", index);
 		r->configuration_uncommitted_index = 0;
@@ -1618,30 +1551,53 @@ static void applyChange(struct raft *r, const raft_index index)
 	r->last_applied = index;
 
 	if (r->state == RAFT_LEADER) {
-		const struct raft_server *server;
-		req = r->leader_state.change;
-		r->leader_state.change = NULL;
-
 		/* If we are leader but not part of this new configuration, step
-		 * down.
-		 *
-		 * From Section 4.2.2:
-		 *
-		 *   In this approach, a leader that is removed from the
-		 * configuration steps down once the Cnew entry is committed.
-		 */
-		server = configurationGet(&r->configuration, r->id);
+		* down.
+		*
+		* From Section 4.2.2:
+		*
+		*   In this approach, a leader that is removed from the
+		* configuration steps down once the Cnew entry is committed.
+		*/
+		const struct raft_server *server = configurationGet(&r->configuration, r->id);
 		if (server == NULL || server->role != RAFT_VOTER) {
 			tracef(
-			    "leader removed from config or no longer voter "
-			    "server: %p",
-			    (void *)server);
+				"leader removed from config or no longer voter "
+				"server: %p",
+				(void *)server);
 			convertToFollower(r);
 		}
+	}
+}
 
-		if (req != NULL && req->cb != NULL) {
+static void finalizeRequest(struct request *r)
+{
+	if (r->type == RAFT_COMMAND) {
+		struct raft_apply *req = (struct raft_apply *)r;
+		if (req == NULL) {
+			return;
+		}
+		sm_move(&req->sm, REQUEST_COMPLETE);
+		sm_fini(&req->sm);
+		if (req->cb != NULL) {
 			req->cb(req, 0);
 		}
+	} else if (r->type == RAFT_BARRIER) {
+		struct raft_barrier *req = (struct raft_barrier *)r;
+		while (req != NULL) {
+			struct raft_barrier *next = req->next;
+			if (req->cb != NULL) {
+				req->cb(req, 0);
+			}
+			req = next;
+		}
+	} else if (r->type == RAFT_CHANGE) {
+		struct raft_change *req = (struct raft_change*)r;
+		if (req->cb != NULL) {
+			req->cb(req, 0);
+		}
+	} else {
+		assert(false && "impossible!");
 	}
 }
 
@@ -1884,55 +1840,62 @@ int replicationApply(struct raft *r)
 		return 0;
 	}
 
-	for (index = r->last_applied + 1; index <= r->commit_index; index++) {
+	const raft_index apply_start = r->last_applied + 1;
+	queue appliedRequests;
+	queue_init(&appliedRequests);
+	for (index = apply_start; index <= r->commit_index; index++) {
 		const struct raft_entry *entry = logGet(r->log, index);
 		if (entry == NULL) {
 			/* This can happen while installing a snapshot */
 			tracef("replicationApply - ENTRY NULL");
 			return 0;
 		}
-		raft_term entry_sm_term = entry->term;
-		raft_index entry_sm_index = index;
-		struct sm *entry_sm = log_get_entry_sm(r->log, entry_sm_term,
-						       entry_sm_index);
+
+		struct sm *entry_sm = log_get_entry_sm(r->log, entry->term, index);
 		assert(entry_sm != NULL);
-
-		assert(entry->type == RAFT_COMMAND ||
-		       entry->type == RAFT_BARRIER ||
-		       entry->type == RAFT_CHANGE);
-
 		sm_move(entry_sm, ENTRY_COMMITTED);
+
 		switch (entry->type) {
-			case RAFT_COMMAND:
-				rv = applyCommand(r, index, &entry->buf);
-				break;
-			case RAFT_BARRIER:
-				applyBarrier(r, index);
-				rv = 0;
-				break;
-			case RAFT_CHANGE:
-				applyChange(r, index);
-				rv = 0;
-				break;
-			default:
-				rv = 0; /* For coverity. This case can't be
-					   taken. */
-				break;
+		case RAFT_COMMAND:
+			rv = r->fsm->apply(r->fsm, &entry->buf);
+			break;
+		case RAFT_BARRIER:
+			/* Nothing to do for the barrier */
+			rv = RAFT_OK;
+			break;
+		case RAFT_CHANGE:
+			if (r->state == RAFT_LEADER && r->leader_state.change != NULL) {
+				queue_insert_tail(&appliedRequests, &r->leader_state.change->queue);
+				r->leader_state.change = NULL;
+			}
+			applyChange(r, index);
+			rv = RAFT_OK;
+			break;
 		}
 
-		if (rv == 0) {
-			/* applyCommand() may change raft log thus the reference
-			 * to the entry_sm may be no longer valid. */
-			entry_sm = log_get_entry_sm(r->log, entry_sm_term,
-						    entry_sm_index);
-			assert(entry_sm != NULL);
-			sm_move(entry_sm, ENTRY_APPLIED);
-		} else {
+		if (rv != 0) {
 			break;
+		}
+
+		sm_move(entry_sm, ENTRY_APPLIED);
+		r->last_applied = index;
+
+		struct request *req = getRequest(r, index);
+		if (req != NULL) {
+			assert(req->type == entry->type);
+			queue_remove(&req->queue);
+			queue_insert_tail(&appliedRequests, &req->queue);
 		}
 	}
 
-	if (shouldTakeSnapshot(r)) {
+	while (!queue_empty(&appliedRequests)) {
+		queue *item = queue_head(&appliedRequests);
+		queue_remove(item);
+		struct request *req = CONTAINER_OF(item, struct request, queue);
+		finalizeRequest(req);
+	}
+
+	if (rv == 0 && shouldTakeSnapshot(r)) {
 		rv = takeSnapshot(r);
 	}
 

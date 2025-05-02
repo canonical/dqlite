@@ -66,7 +66,7 @@ static void convertFailApply(struct raft_apply *req)
 {
 	PRE(req != NULL);
 	if (req->cb != NULL) {
-		req->cb(req, RAFT_LEADERSHIPLOST, NULL);
+		req->cb(req, RAFT_LEADERSHIPLOST);
 	}
 }
 

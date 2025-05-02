@@ -220,8 +220,7 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 }
 
 static int fsm__apply(struct raft_fsm *fsm,
-		      const struct raft_buffer *buf,
-		      void **result)
+		      const struct raft_buffer *buf)
 {
 	tracef("fsm apply");
 	struct fsm *f = fsm->data;
@@ -254,7 +253,6 @@ static int fsm__apply(struct raft_fsm *fsm,
 
 	raft_free(command);
 err:
-	*result = NULL;
 	return rc;
 }
 
