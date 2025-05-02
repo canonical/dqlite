@@ -73,12 +73,8 @@ static void convertFailApply(struct raft_apply *req)
 static void convertFailBarrier(struct raft_barrier *req)
 {
 	PRE(req != NULL);
-	while (req != NULL) {
-		struct raft_barrier *next = req->next;
-		if (req->cb != NULL) {
-			req->cb(req, RAFT_LEADERSHIPLOST);
-		}
-		req = next;
+	if (req->cb != NULL) {
+		req->cb(req, RAFT_LEADERSHIPLOST);
 	}
 }
 
@@ -101,20 +97,19 @@ static void convertClearLeader(struct raft *r)
 
 	/* Fail all outstanding requests */
 	while (!queue_empty(&r->leader_state.requests)) {
-		struct request *req;
-		queue *head;
-		head = queue_head(&r->leader_state.requests);
+		queue *head = queue_head(&r->leader_state.requests);
+		struct raft_apply *req = QUEUE_DATA(head, struct raft_apply, queue);
 		queue_remove(head);
-		req = QUEUE_DATA(head, struct request, queue);
-		assert(req->type == RAFT_COMMAND || req->type == RAFT_BARRIER);
-		switch (req->type) {
-			case RAFT_COMMAND:
-				convertFailApply((struct raft_apply *)req);
-				break;
-			case RAFT_BARRIER:
-				convertFailBarrier((struct raft_barrier *)req);
-				break;
-		};
+		assert(req->type == RAFT_COMMAND);
+		convertFailApply(req);
+	}
+
+	while (!queue_empty(&r->leader_state.barriers)) {
+		queue *head = queue_head(&r->leader_state.barriers);
+		struct raft_barrier *req = QUEUE_DATA(head, struct raft_barrier, queue);
+		queue_remove(head);
+		assert(req->type == RAFT_BARRIER);
+		convertFailBarrier(req);
 	}
 
 	/* Fail any promote request that is still outstanding because the server
@@ -197,10 +192,23 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 	return 0;
 }
 
-void convertInitialBarrierCb(struct raft_barrier *req, int status)
+static int convertInitialBarrier(struct raft *r)
 {
-	(void)status;
-	raft_free(req);
+	struct raft_buffer buf = {
+		.len = 8,
+		.base = raft_malloc(8),
+	};
+	if (buf.base == NULL) {
+		return RAFT_NOMEM;
+	}
+
+	int rv = logAppend(r->log, r->current_term, RAFT_BARRIER, buf, true, NULL);
+	if (rv != RAFT_OK) {
+		raft_free(buf.base);
+		return rv;
+	}
+
+	return replicationTrigger(r, logLastIndex(r->log));
 }
 
 int convertToLeader(struct raft *r)
@@ -217,10 +225,11 @@ int convertToLeader(struct raft *r)
 
 	/* Reset apply requests queue */
 	queue_init(&r->leader_state.requests);
+	queue_init(&r->leader_state.barriers);
 
 	/* Allocate and initialize the progress array. */
 	rv = progressBuildArray(r);
-	if (rv != 0) {
+	if (rv != RAFT_OK) {
 		return rv;
 	}
 
@@ -248,11 +257,7 @@ int convertToLeader(struct raft *r)
 		 * entry from its term. Raft handles this by having each leader
 		 * commit a blank no-op entry into the log at the start of its
 		 * term. */
-		struct raft_barrier *req = raft_malloc(sizeof(*req));
-		if (req == NULL) {
-			return RAFT_NOMEM;
-		}
-		rv = raft_barrier(r, req, convertInitialBarrierCb);
+		rv = convertInitialBarrier(r);
 		if (rv != 0) {
 			tracef(
 			    "failed to send no-op barrier entry after leader "

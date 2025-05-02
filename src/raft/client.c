@@ -74,24 +74,6 @@ err:
 	return rv;
 }
 
-static struct request *getRequest(const struct raft *r, const raft_index index)
-{
-	queue *head;
-	struct request *req;
-
-	if (r->state != RAFT_LEADER) {
-		return NULL;
-	}
-	QUEUE_FOREACH(head, &r->leader_state.requests)
-	{
-		req = QUEUE_DATA(head, struct request, queue);
-		if (req->index == index) {
-			return req;
-		}
-	}
-	return NULL;
-}
-
 int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 {
 	struct raft_buffer buf;
@@ -101,25 +83,18 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 		return RAFT_NOTLEADER;
 	}
 
-	/* Index of the barrier entry being appended. */
 	req->type = RAFT_BARRIER;
 	req->index = logLastIndex(r->log);
 	req->cb = cb;
 
-	/* Is the last entry an unreplicated barrier itself?
-	 * If so, it is possible to merge the requests together
-	 * and avoid another roundtrip. */
-	struct request *existing_req = getRequest(r, req->index);
-	if (existing_req != NULL && existing_req->type == RAFT_BARRIER) {
-		struct raft_barrier *existing_barrier =
-		    (struct raft_barrier *)existing_req;
-		req->next = existing_barrier->next;
-		existing_barrier->next = req;
+	if (r->last_applied != req->index) {
+		/* If a request is already in progress, it is possible to wait for 
+		 * it to complete instead of starting a new empty one. */
+		queue_insert_tail(&r->leader_state.barriers, &req->queue);
 		return RAFT_OK;
 	}
-
+	
 	req->index++;
-	req->next = NULL;
 
 	/* TODO: use a completely empty buffer */
 	buf = (struct raft_buffer) {
@@ -136,7 +111,7 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 		goto err_after_buf_alloc;
 	}
 
-	queue_insert_tail(&r->leader_state.requests, &req->queue);
+	queue_insert_tail(&r->leader_state.barriers, &req->queue);
 
 	rv = replicationTrigger(r, req->index);
 	if (rv != 0) {
