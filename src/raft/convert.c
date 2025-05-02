@@ -199,7 +199,7 @@ static int convertInitialBarrier(struct raft *r)
 {
 	struct raft_buffer buf = {
 		.len = 8,
-		.base = raft_malloc(buf.len),
+		.base = raft_malloc(8),
 	};
 	if (buf.base == NULL) {
 		return RAFT_NOMEM;
