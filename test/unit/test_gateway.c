@@ -179,10 +179,22 @@ static void handleCb(struct handle *req,
 	{                                 \
 		struct request_open open; \
 		open.filename = "test";   \
+		open.flags = 0; \
 		open.vfs = "";            \
 		ENCODE(&open, open);      \
 		HANDLE(OPEN);             \
 		ASSERT_CALLBACK(0, DB);   \
+	}
+
+#define OPEN_READONLY \
+	{ \
+		struct request_open open; \
+		open.filename = "test"; \
+		open.flags = DQLITE_OPEN_READONLY; \
+		open.vfs = ""; \
+		ENCODE(&open, open); \
+		HANDLE(OPEN); \
+		ASSERT_CALLBACK(0, DB); \
 	}
 
 /* Prepare a statement. The ID will be saved in stmt_id. */
@@ -582,6 +594,7 @@ TEST_CASE(prepare, non_leader, NULL)
 
 	CLUSTER_ELECT(0);
 	SELECT(1);
+	OPEN;
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, prepare);
@@ -668,6 +681,24 @@ TEST_CASE(prepare, nonempty_tail_v1, NULL)
 	munit_assert_int(response.id, ==, 1);
 	munit_assert_uint64(response.offset, ==, 19);
 
+	return MUNIT_OK;
+}
+
+/* Successfully prepare a statement on a non-leader when this is requested. */
+TEST_CASE(prepare, non_leader_ok, NULL)
+{
+	struct prepare_fixture *f = data;
+	(void)params;
+
+	CLUSTER_ELECT(0);
+	SELECT(1);
+	OPEN_READONLY;
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT)";
+	ENCODE(&f->request, prepare);
+	HANDLE(PREPARE);
+	WAIT;
+	ASSERT_CALLBACK(0, STMT);
 	return MUNIT_OK;
 }
 
@@ -1197,6 +1228,25 @@ TEST_CASE(exec, unexpectedRow, NULL)
 	return MUNIT_OK;
 }
 
+TEST_CASE(exec, readonly, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+	SELECT(1);
+	OPEN_READONLY;
+	PREPARE("CREATE TABLE test (n INT)");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_READONLY, "dqlite connection is readonly");
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * query
@@ -1681,6 +1731,55 @@ TEST_CASE(query, close_while_in_flight, NULL)
 	return MUNIT_OK;
 }
 
+/* A non-leader serves readonly QUERY requests for a database that was opened
+ * with the READONLY flag. */
+TEST_CASE(query, non_leader_readonly, NULL)
+{
+	(void)params;
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+
+	CLUSTER_APPLIED(4);
+	SELECT(1);
+	OPEN_READONLY;
+	PREPARE("SELECT n FROM test");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+	return MUNIT_OK;
+}
+
+/* A non-leader will not serve a QUERY request that modifies the database, even
+ * if opened with the READONLY flag. */
+TEST_CASE(query, modifying_on_readonly_conn, NULL)
+{
+	(void)params;
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+
+	CLUSTER_APPLIED(4);
+	SELECT(1);
+	OPEN_READONLY;
+	PREPARE("INSERT INTO test (n) VALUES (17)");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_READONLY, "dqlite connection is readonly");
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * finalize
@@ -1715,6 +1814,23 @@ TEST_CASE(finalize, success, NULL)
 	struct finalize_fixture *f = data;
 	(void)params;
 	CLUSTER_ELECT(0);
+	PREPARE("CREATE TABLE test (n INT)");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, finalize);
+	HANDLE(FINALIZE);
+	ASSERT_CALLBACK(0, EMPTY);
+	return MUNIT_OK;
+}
+
+TEST_CASE(finalize, not_leader, NULL)
+{
+	uint64_t stmt_id;
+	struct finalize_fixture *f = data;
+	(void)params;
+	CLUSTER_ELECT(0);
+	SELECT(1);
+	OPEN_READONLY;
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -1911,6 +2027,22 @@ TEST_CASE(exec_sql, manyParams, NULL)
 
 	free(values);
 	free(sql);
+	return MUNIT_OK;
+}
+
+TEST_CASE(exec_sql, readonly, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	(void)params;
+
+	SELECT(1);
+	OPEN_READONLY;
+	f->request.db_id = 0;
+	f->request.sql = "CREATE TABLE test (n INT)";
+	ENCODE(&f->request, exec_sql);
+	HANDLE(EXEC_SQL);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_READONLY, "dqlite connection is readonly");
 	return MUNIT_OK;
 }
 
@@ -2298,6 +2430,51 @@ TEST_CASE(query_sql, nonemptyTail, NULL)
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "nonempty statement tail");
+	return MUNIT_OK;
+}
+
+/* A non-leader serves readonly QUERY_SQL requests for a database that was
+ * opened with the READONLY flag. */
+TEST_CASE(query_sql, non_leader_readonly, NULL)
+{
+	(void)params;
+	struct query_sql_fixture *f = data;
+	uint64_t n;
+	const char *column;
+
+	CLUSTER_APPLIED(4);
+	SELECT(1);
+	OPEN_READONLY;
+	f->request.db_id = 0;
+	f->request.sql = "SELECT * FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+	return MUNIT_OK;
+}
+
+/* A non-leader will not serve a QUERY_SQL request that modifies the database,
+ * even if opened with the READONLY flag. */
+TEST_CASE(query_sql, modifying_on_readonly_conn, NULL)
+{
+	(void)params;
+	struct query_sql_fixture *f = data;
+
+	CLUSTER_APPLIED(4);
+	SELECT(1);
+	OPEN_READONLY;
+	f->request.db_id = 0;
+	f->request.sql = "INSERT INTO test (n) VALUES (17)";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_FAILURE(SQLITE_READONLY, "dqlite connection is readonly");
 	return MUNIT_OK;
 }
 
