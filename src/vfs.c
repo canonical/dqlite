@@ -68,6 +68,9 @@ const int vfsOne = 1;
 /* Size of a single memory-mapped WAL index region. */
 #define VFS__WAL_INDEX_REGION_SIZE 32768
 
+/* Offset of the "in header database size" field in the main database file. */
+#define VFS__IN_HEADER_DATABASE_SIZE_OFFSET 28
+
 #define vfsFrameSize(PAGE_SIZE) (VFS__FRAME_HEADER_SIZE + PAGE_SIZE)
 
 /* Hold content for a shared memory mapping. */
@@ -2223,12 +2226,12 @@ static uint32_t vfsWalGetChecksum2(struct vfsWal *w)
 }
 
 /* Append the given pages as new frames. */
-static int vfsWalAppend(struct vfsWal *w,
-			unsigned database_n_pages,
-			unsigned n,
-			unsigned long *page_numbers,
-			uint8_t *pages)
+static int vfsWalAppend(struct vfsDatabase *d,
+		unsigned n,
+		unsigned long *page_numbers,
+		uint8_t *pages)
 {
+	struct vfsWal *w = &d->wal;
 	struct vfsFrame **frames; /* New frames array. */
 	uint32_t page_size;
 	uint32_t database_size;
@@ -2253,7 +2256,7 @@ static int vfsWalAppend(struct vfsWal *w,
 	 * in the WAL header. Otherwise, the starting database size and checksum
 	 * will be the ones stored in the last frame of the WAL. */
 	if (w->n_frames == 0) {
-		database_size = (uint32_t)database_n_pages;
+		database_size = d->n_pages;
 		checksum[0] = vfsWalGetChecksum1(w);
 		checksum[1] = vfsWalGetChecksum2(w);
 	} else {
@@ -2280,8 +2283,10 @@ static int vfsWalAppend(struct vfsWal *w,
 			goto oom_after_frames_alloc;
 		}
 
-		if (page_number > database_size) {
-			database_size = page_number;
+		/* When writing the SQLite database header, make sure to sync 
+		 * the file size to the logical database size. */
+		if (page_number == 1) {
+			database_size = ByteGetBe32(&page[VFS__IN_HEADER_DATABASE_SIZE_OFFSET]);
 		}
 
 		/* For commit records, the size of the database file in pages
@@ -2388,7 +2393,7 @@ int VfsApply(sqlite3_vfs *vfs,
 		vfsWalStartHeader(wal, vfsDatabaseGetPageSize(database));
 	}
 
-	rv = vfsWalAppend(wal, database->n_pages, n, page_numbers, frames);
+	rv = vfsWalAppend(database, n, page_numbers, frames);
 	if (rv != 0) {
 		tracef("wal append failed rv:%d n_pages:%u n:%u", rv,
 		       database->n_pages, n);
@@ -2442,15 +2447,14 @@ int VfsAbort(sqlite3_vfs *vfs, const char *filename)
 /* Extract the number of pages field from the database header. */
 static uint32_t vfsDatabaseGetNumberOfPages(struct vfsDatabase *d)
 {
-	uint8_t *page;
-
-	assert(d->n_pages > 0);
-
-	page = d->pages[0];
+	if (d->n_pages == 0) {
+		return 0;
+	}
 
 	/* The page size is stored in the 16th and 17th bytes of the first
 	 * database page (big-endian) */
-	return ByteGetBe32(&page[28]);
+	uint8_t *page = d->pages[0];
+	return ByteGetBe32(&page[VFS__IN_HEADER_DATABASE_SIZE_OFFSET]);
 }
 
 static uint32_t vfsDatabaseNumPages(struct vfsDatabase *database, bool use_wal) {
