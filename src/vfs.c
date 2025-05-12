@@ -68,6 +68,9 @@ const int vfsOne = 1;
 /* Size of a single memory-mapped WAL index region. */
 #define VFS__WAL_INDEX_REGION_SIZE 32768
 
+/* Offset of the "in header database size" field in the main database file. */
+#define VFS__IN_HEADER_DATABASE_SIZE_OFFSET 28
+
 #define vfsFrameSize(PAGE_SIZE) (VFS__FRAME_HEADER_SIZE + PAGE_SIZE)
 
 /* Hold content for a shared memory mapping. */
@@ -2280,8 +2283,10 @@ static int vfsWalAppend(struct vfsDatabase *d,
 			goto oom_after_frames_alloc;
 		}
 
+		/* When writing the SQLite database header, make sure to sync 
+		 * the file size to the logical database size. */
 		if (page_number == 1) {
-			database_size = ByteGetBe32(&page[28]);
+			database_size = ByteGetBe32(&page[VFS__IN_HEADER_DATABASE_SIZE_OFFSET]);
 		}
 
 		/* For commit records, the size of the database file in pages
@@ -2449,7 +2454,7 @@ static uint32_t vfsDatabaseGetNumberOfPages(struct vfsDatabase *d)
 	/* The page size is stored in the 16th and 17th bytes of the first
 	 * database page (big-endian) */
 	uint8_t *page = d->pages[0];
-	return ByteGetBe32(&page[28]);
+	return ByteGetBe32(&page[VFS__IN_HEADER_DATABASE_SIZE_OFFSET]);
 }
 
 static uint32_t vfsDatabaseNumPages(struct vfsDatabase *database, bool use_wal) {
