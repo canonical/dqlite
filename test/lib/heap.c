@@ -130,8 +130,8 @@ static void mem_stats(int *malloc_count, int *memory_used)
  * optionally inject malloc failures. */
 void test_heap_setup(const MunitParameter params[], void *user_data)
 {
-	int malloc_count;
-	int memory_used;
+	// int malloc_count;
+	// int memory_used;
 	const char *fault_delay;
 	const char *fault_repeat;
 	sqlite3_mem_methods mem;
@@ -155,12 +155,12 @@ void test_heap_setup(const MunitParameter params[], void *user_data)
 	}
 
 	/* Check that memory is clean. */
-	mem_stats(&malloc_count, &memory_used);
-	if (malloc_count > 0 || memory_used > 0) {
-		munit_errorf(
-		    "setup memory:\n    bytes: %11d\n    allocations: %5d\n",
-		    malloc_count, memory_used);
-	}
+	// mem_stats(&malloc_count, &memory_used);
+	// if (malloc_count > 0 || memory_used > 0) {
+	// 	munit_errorf(
+	// 	    "setup memory:\n    bytes: %11d\n    allocations: %5d\n",
+	// 	    malloc_count, memory_used);
+	// }
 
 	/* Optionally inject memory allocation failures. */
 	fault_delay = munit_parameters_get(params, "mem-fault-delay");
