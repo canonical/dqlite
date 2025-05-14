@@ -1,12 +1,12 @@
 #ifndef _GNU_SOURCE
 # define _GNU_SOURCE
-#include <stdatomic.h>
 #include <time.h>
 #include "utils.h"
 #endif
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1511,12 +1511,13 @@ static int vfsCommitShm(struct vfsMainFile *f) {
 
 		const size_t nBackfillAttemptedOffset = 128;
 		int32_t *privateBackfillAttempted     = (first_region_private + nBackfillAttemptedOffset);
-		int32_t* sharedBackfillAttempted      = (first_region_shared + nBackfillAttemptedOffset);
+		int32_t *sharedBackfillAttempted      = (first_region_shared + nBackfillAttemptedOffset);
 		*sharedBackfillAttempted              = *privateBackfillAttempted;
 	}
 
 	/* Finally publish the two copies of the WAL Index information and remap. */
-	memcpy(first_region_shared, f->mappedShmRegions.ptr[0], VFS__WAL_INDEX_HEADER_SIZE*2);
+	memcpy(first_region_shared, f->mappedShmRegions.ptr[0], VFS__WAL_INDEX_HEADER_SIZE * 2);
+	atomic_thread_fence(memory_order_seq_cst);
 	void *remapped = mremap(first_region_shared,
 		VFS__WAL_INDEX_REGION_SIZE, VFS__WAL_INDEX_REGION_SIZE, 
 		MREMAP_MAYMOVE | MREMAP_FIXED, f->mappedShmRegions.ptr[0]);
@@ -1642,10 +1643,7 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 static void vfsMainFileShmBarrier(sqlite3_file *file)
 {
 	(void)file;
-	/* This is a no-op since we expect SQLite to be compiled with mutex
-	 * support (i.e. SQLITE_MUTEX_OMIT or SQLITE_MUTEX_NOOP are *not*
-	 * defined, see sqliteInt.h). */
-	/* FIXME: this should actually be implemented */
+	atomic_thread_fence(memory_order_seq_cst);
 }
 
 static int vfsMainFileShmUnmap(sqlite3_file *file, int delete_flag)
