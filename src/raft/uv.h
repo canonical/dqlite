@@ -430,4 +430,3 @@ int UvTimerStop(struct raft_io *io,
 	struct raft_timer *req);
 
 #endif /* UV_H_ */
- /* future-proof'ing */
