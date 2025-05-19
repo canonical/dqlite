@@ -14,7 +14,7 @@ static void uvTimerFree(uv_handle_t *handle) {
 int UvTimerStart(struct raft_io *io, struct raft_timer *req, uint64_t timeout, uint64_t repeat, raft_timer_cb cb) {
     int rv;
     struct uv *uv = io->impl;
-	assert(!uv->closing);
+    assert(!uv->closing);
 
     uv_timer_t *timer = RaftHeapMalloc(sizeof *timer);
     if (timer == NULL) {
@@ -31,7 +31,7 @@ int UvTimerStart(struct raft_io *io, struct raft_timer *req, uint64_t timeout, u
         goto error;
     }
     req->handle = timer;
-    req->cb   = cb;
+    req->cb = cb;
     return RAFT_OK;
 
 error:

@@ -37,7 +37,6 @@
 #define IN(E, ...) \
   (GET_IN_MACRO(__VA_ARGS__,IN_9,IN_8,IN_7,IN_6,IN_5,IN_4,IN_3,IN_2,IN_1)(E,__VA_ARGS__))
 
-
 #if defined(__has_attribute) && __has_attribute (musttail)
 # define TAIL __attribute__ ((musttail))
 #else
