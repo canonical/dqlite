@@ -73,9 +73,18 @@ static void* client_write(void *data) {
 	PREPARE_C(&client, sql, &stmt_id);
 
 	for (int i = 0; i < WRITE_COUNT; i++) {
-		EXEC_C(&client, stmt_id, &last_insert_id, &rows_affected);
-		munit_assert_int(last_insert_id, >, 1);
-		munit_assert_int(rows_affected, ==, 1);
+		int rv = clientSendExec(&client, stmt_id, NULL, 0, NULL);
+		munit_assert_int(rv, ==, DQLITE_OK);
+		
+		rv = clientRecvResult(&client, &last_insert_id, &rows_affected, NULL);
+		if (rv == DQLITE_CLIENT_PROTO_RECEIVED_FAILURE && client.errcode == SQLITE_BUSY) {
+			/* Just retry */
+			i--;
+		} else {
+			munit_assert_int(rv, ==, DQLITE_OK);
+			munit_assert_int(last_insert_id, >, 1);
+			munit_assert_int(rows_affected, ==, 1);
+		}
 	}
 
 	test_server_client_close(&self->f->server, &client);
