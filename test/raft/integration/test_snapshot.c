@@ -932,7 +932,7 @@ static int fsmBigSnapshot(MUNIT_UNUSED struct raft_fsm *fsm,
     if (buf->base == NULL) {
         return RAFT_NOMEM;
     }
-    return RAFT_RESULT_OK;
+    return RAFT_OK;
 }
 
 /* At least `threshold` entries are kept in the log */

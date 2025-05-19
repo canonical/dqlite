@@ -348,3 +348,21 @@ int raft_io_describe_last_entry(struct raft_io *io,
 	entryBatchesDestroy(entries, n_entries);
 	return 0;
 }
+
+RAFT_API int raft_timer_start(struct raft *r,
+				struct raft_timer *req,
+				uint64_t timeout, uint64_t repeat,
+				raft_timer_cb cb) {
+	if (r->io->version < 3) {
+		return RAFT_INVALID;
+	}
+	return r->io->timer_start(r->io, req, timeout, repeat, cb);
+}
+
+RAFT_API int raft_timer_stop(struct raft *r,
+				struct raft_timer *req) {
+	if (r->io->version < 3) {
+		return RAFT_INVALID;
+	}
+	return r->io->timer_stop(r->io, req);
+}
