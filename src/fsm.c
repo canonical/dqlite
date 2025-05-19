@@ -3,6 +3,7 @@
 
 #include "command.h"
 #include "fsm.h"
+#include "protocol.h"
 #include "raft.h"
 #include "tracing.h"
 #include "vfs.h"
@@ -14,12 +15,7 @@ struct fsm
 {
 	struct logger *logger;
 	struct registry *registry;
-	struct
-	{
-		unsigned n_pages;
-		unsigned long *page_numbers;
-		uint8_t *pages;
-	} pending; /* For upgrades from V1 */
+	struct vfsTransaction pending; /* For upgrades from V1 */
 };
 
 static int apply_open(struct fsm *f, const struct command_open *c)
@@ -27,39 +23,6 @@ static int apply_open(struct fsm *f, const struct command_open *c)
 	tracef("fsm apply open");
 	(void)f;
 	(void)c;
-	return 0;
-}
-
-static int add_pending_pages(struct fsm *f,
-			     unsigned long *page_numbers,
-			     uint8_t *pages,
-			     unsigned n_pages,
-			     unsigned page_size)
-{
-	unsigned n = f->pending.n_pages + n_pages;
-	unsigned i;
-
-	f->pending.page_numbers = sqlite3_realloc64(
-	    f->pending.page_numbers, n * sizeof *f->pending.page_numbers);
-
-	if (f->pending.page_numbers == NULL) {
-		return DQLITE_NOMEM;
-	}
-
-	f->pending.pages = sqlite3_realloc64(f->pending.pages, n * page_size);
-
-	if (f->pending.pages == NULL) {
-		return DQLITE_NOMEM;
-	}
-
-	for (i = 0; i < n_pages; i++) {
-		unsigned j = f->pending.n_pages + i;
-		f->pending.page_numbers[j] = page_numbers[i];
-		memcpy(f->pending.pages + j * page_size,
-		       (uint8_t *)pages + i * page_size, page_size);
-	}
-	f->pending.n_pages = n;
-
 	return 0;
 }
 
@@ -107,8 +70,8 @@ static void maybeCheckpoint(struct db *db)
 		return;
 	}
 
-	assert(db->follower == NULL);
-	rv = db__open_follower(db);
+	sqlite3 *conn = NULL;
+	rv = db__open(db, &conn);
 	if (rv != 0) {
 		tracef("open follower failed %d", rv);
 		goto err_after_db_lock;
@@ -116,7 +79,7 @@ static void maybeCheckpoint(struct db *db)
 
 	page_size = db->config->page_size;
 	/* Get the database wal file associated with this connection */
-	rv = sqlite3_file_control(db->follower, "main",
+	rv = sqlite3_file_control(conn, "main",
 				  SQLITE_FCNTL_JOURNAL_POINTER, &wal);
 	assert(rv == SQLITE_OK); /* Should never fail */
 
@@ -134,7 +97,7 @@ static void maybeCheckpoint(struct db *db)
 	}
 
 	/* Get the database file associated with this db->follower connection */
-	rv = sqlite3_file_control(db->follower, "main",
+	rv = sqlite3_file_control(conn, "main",
 				  SQLITE_FCNTL_FILE_POINTER, &main_f);
 	assert(rv == SQLITE_OK); /* Should never fail */
 
@@ -162,7 +125,7 @@ static void maybeCheckpoint(struct db *db)
 	}
 
 	rv = sqlite3_wal_checkpoint_v2(
-	    db->follower, "main", SQLITE_CHECKPOINT_TRUNCATE, &wal_size, &ckpt);
+	    conn, "main", SQLITE_CHECKPOINT_TRUNCATE, &wal_size, &ckpt);
 	/* TODO assert(rv == 0) here? Which failure modes do we expect? */
 	if (rv != 0) {
 		tracef("sqlite3_wal_checkpoint_v2 failed %d", rv);
@@ -176,8 +139,8 @@ static void maybeCheckpoint(struct db *db)
 	assert(ckpt == 0);
 
 err_after_db_open:
-	sqlite3_close(db->follower);
-	db->follower = NULL;
+	sqlite3_close(conn);
+	conn = NULL;
 err_after_db_lock:
 	rv = databaseReadUnlock(db);
 	assert(rv == 0);
@@ -187,9 +150,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
 	tracef("fsm apply frames");
 	struct db *db;
-	sqlite3_vfs *vfs;
-	unsigned long *page_numbers = NULL;
-	void *pages;
 	int exists;
 	int rv;
 
@@ -199,84 +159,45 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		return rv;
 	}
 
-	vfs = sqlite3_vfs_find(db->config->name);
-
 	/* Check if the database file exists, and create it by opening a
 	 * connection if it doesn't. */
-	rv = vfs->xAccess(vfs, db->path, 0, &exists);
+	rv = db->vfs->xAccess(db->vfs, db->path, 0, &exists);
 	assert(rv == 0);
 
 	if (!exists) {
-		rv = db__open_follower(db);
+		sqlite3 *conn = NULL;
+		rv = db__open(db, &conn);
 		if (rv != 0) {
 			tracef("open follower failed %d", rv);
 			return rv;
 		}
-		sqlite3_close(db->follower);
-		db->follower = NULL;
+		sqlite3_close(conn);
 	}
-
-	rv = command_frames__page_numbers(c, &page_numbers);
-	if (rv != 0) {
-		if (page_numbers != NULL) {
-			sqlite3_free(page_numbers);
-		}
-		tracef("page numbers failed %d", rv);
-		return rv;
-	}
-
-	command_frames__pages(c, &pages);
 
 	/* If the commit marker is set, we apply the changes directly to the
 	 * VFS. Otherwise, if the commit marker is not set, this must be an
 	 * upgrade from V1, we accumulate uncommitted frames in memory until the
 	 * final commit or a rollback. */
 	if (c->is_commit) {
-		if (f->pending.n_pages > 0) {
-			rv = add_pending_pages(f, page_numbers, pages,
-					       c->frames.n_pages,
-					       db->config->page_size);
-			if (rv != 0) {
-				tracef("malloc");
-				sqlite3_free(page_numbers);
-				return DQLITE_NOMEM;
-			}
-			rv =
-			    VfsApply(vfs, db->path, f->pending.n_pages,
-				     f->pending.page_numbers, f->pending.pages);
-			if (rv != 0) {
-				tracef("VfsApply failed %d", rv);
-				sqlite3_free(page_numbers);
-				return rv;
-			}
-			sqlite3_free(f->pending.page_numbers);
-			sqlite3_free(f->pending.pages);
-			f->pending.n_pages = 0;
-			f->pending.page_numbers = NULL;
-			f->pending.pages = NULL;
-		} else {
-			rv = VfsApply(vfs, db->path, c->frames.n_pages,
-				      page_numbers, pages);
-			if (rv != 0) {
-				tracef("VfsApply failed %d", rv);
-				sqlite3_free(page_numbers);
-				return rv;
-			}
+		struct vfsTransaction transaction = {
+			.n_pages      = c->frames.n_pages,
+			.page_numbers = c->frames.page_numbers,
+			.pages   	  = c->frames.pages,
+		};
+		rv = VfsApply(db->vfs, db->path, &transaction);
+		if (rv != 0) {
+			goto error;
 		}
 	} else {
-		rv =
-		    add_pending_pages(f, page_numbers, pages, c->frames.n_pages,
-				      db->config->page_size);
-		if (rv != 0) {
-			tracef("add pending pages failed %d", rv);
-			sqlite3_free(page_numbers);
-			return DQLITE_NOMEM;
-		}
+		rv = DQLITE_PROTO;
+		goto error;
 	}
 
-	sqlite3_free(page_numbers);
 	maybeCheckpoint(db);
-	return 0;
+error:
+	sqlite3_free(c->frames.page_numbers);
+	sqlite3_free(c->frames.pages);
+	return rv;
 }
 
 static int apply_undo(struct fsm *f, const struct command_undo *c)
@@ -385,7 +306,6 @@ static int encodeDatabase(struct db *db,
 			  uint32_t n)
 {
 	struct snapshotDatabase header;
-	sqlite3_vfs *vfs;
 	char *cursor;
 	struct dqlite_buffer *bufs = (struct dqlite_buffer *)r_bufs;
 	int rv;
@@ -396,8 +316,7 @@ static int encodeDatabase(struct db *db,
 	 * wal_size is always 0. */
 	header.wal_size = 0;
 
-	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsShallowSnapshot(vfs, db->filename, &bufs[1], n - 1);
+	rv = VfsShallowSnapshot(db->vfs, db->filename, &bufs[1], n - 1);
 	if (rv != 0) {
 		goto err;
 	}
@@ -424,7 +343,6 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 {
 	struct snapshotDatabase header;
 	struct db *db;
-	sqlite3_vfs *vfs;
 	size_t n;
 	int exists;
 	int rv;
@@ -438,20 +356,18 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 		return rv;
 	}
 
-	vfs = sqlite3_vfs_find(db->config->name);
-
 	/* Check if the database file exists, and create it by opening a
 	 * connection if it doesn't. */
-	rv = vfs->xAccess(vfs, header.filename, 0, &exists);
+	rv = db->vfs->xAccess(db->vfs, header.filename, 0, &exists);
 	assert(rv == 0);
 
 	if (!exists) {
-		rv = db__open_follower(db);
+		sqlite3 *conn;
+		rv = db__open(db, &conn);
 		if (rv != 0) {
 			return rv;
 		}
-		sqlite3_close(db->follower);
-		db->follower = NULL;
+		sqlite3_close(conn);
 	}
 
 	tracef("main_size:%" PRIu64 " wal_size:%" PRIu64, header.main_size,
@@ -463,7 +379,7 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 
 	/* Due to the check above, this cast is safe. */
 	n = (size_t)(header.main_size + header.wal_size);
-	rv = VfsRestore(vfs, db->filename, cursor->p, n);
+	rv = VfsRestore(db->vfs, db->filename, cursor->p, n);
 	if (rv != 0) {
 		return rv;
 	}
@@ -474,12 +390,10 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 
 static unsigned dbNumPages(struct db *db)
 {
-	sqlite3_vfs *vfs;
 	int rv;
 	uint32_t n;
 
-	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDatabaseNumPages(vfs, db->filename, true, &n);
+	rv = VfsDatabaseNumPages(db->vfs, db->filename, true, &n);
 	assert(rv == 0);
 	return n;
 }
@@ -559,12 +473,12 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 	unsigned i;
 	int rv;
 
-	/* First count how many databases we have and check that no transaction
-	 * nor checkpoint nor other snapshot is in progress. */
+	/* First count how many databases we have and check that no checkpoint 
+	 * nor other snapshot is in progress. */
 	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE_DATA(head, struct db, queue);
-		if (db->tx_id != 0 || db->read_lock) {
+		if (db->read_lock) {
 			return RAFT_BUSY;
 		}
 		n_db++;
@@ -745,12 +659,10 @@ void fsm__close(struct raft_fsm *fsm)
 /* The synchronous part of the database encoding */
 static int encodeDiskDatabaseSync(struct db *db, struct raft_buffer *r_buf)
 {
-	sqlite3_vfs *vfs;
 	struct dqlite_buffer *buf = (struct dqlite_buffer *)r_buf;
 	int rv;
 
-	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDiskSnapshotWal(vfs, db->path, buf);
+	rv = VfsDiskSnapshotWal(db->vfs, db->path, buf);
 	if (rv != 0) {
 		goto err;
 	}
@@ -768,15 +680,13 @@ static int encodeDiskDatabaseAsync(struct db *db,
 				   uint32_t n)
 {
 	struct snapshotDatabase header;
-	sqlite3_vfs *vfs;
 	char *cursor;
 	struct dqlite_buffer *bufs = (struct dqlite_buffer *)r_bufs;
 	int rv;
 
 	assert(n == 3);
 
-	vfs = sqlite3_vfs_find(db->config->name);
-	rv = VfsDiskSnapshotDb(vfs, db->path, &bufs[1]);
+	rv = VfsDiskSnapshotDb(db->vfs, db->path, &bufs[1]);
 	if (rv != 0) {
 		goto err;
 	}
@@ -875,7 +785,7 @@ static int fsm__snapshot_disk(struct raft_fsm *fsm,
 	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
 		db = QUEUE_DATA(head, struct db, queue);
-		if (db->tx_id != 0 || db->read_lock) {
+		if (db->read_lock) {
 			return RAFT_BUSY;
 		}
 		n_db++;
@@ -1043,7 +953,6 @@ static int decodeDiskDatabase(struct fsm *f, struct cursor *cursor)
 {
 	struct snapshotDatabase header;
 	struct db *db;
-	sqlite3_vfs *vfs;
 	int exists;
 	int rv;
 
@@ -1056,20 +965,18 @@ static int decodeDiskDatabase(struct fsm *f, struct cursor *cursor)
 		return rv;
 	}
 
-	vfs = sqlite3_vfs_find(db->config->name);
-
 	/* Check if the database file exists, and create it by opening a
 	 * connection if it doesn't. */
-	rv = vfs->xAccess(vfs, db->path, 0, &exists);
+	rv = db->vfs->xAccess(db->vfs, db->path, 0, &exists);
 	assert(rv == 0);
 
 	if (!exists) {
-		rv = db__open_follower(db);
+		sqlite3 *conn;
+		rv = db__open(db, &conn);
 		if (rv != 0) {
 			return rv;
 		}
-		sqlite3_close(db->follower);
-		db->follower = NULL;
+		sqlite3_close(conn);
 	}
 
 	/* The last check can overflow, but we would already be lost anyway, as
@@ -1084,7 +991,7 @@ static int decodeDiskDatabase(struct fsm *f, struct cursor *cursor)
 	}
 
 	/* Due to the check above, these casts are safe. */
-	rv = VfsDiskRestore(vfs, db->path, cursor->p, (size_t)header.main_size,
+	rv = VfsDiskRestore(db->vfs, db->path, cursor->p, (size_t)header.main_size,
 			    (size_t)header.wal_size);
 	if (rv != 0) {
 		tracef("VfsDiskRestore %d", rv);
