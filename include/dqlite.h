@@ -677,19 +677,6 @@ DQLITE_API const char *dqlite_node_errmsg(dqlite_node *n);
  */
 DQLITE_API dqlite_node_id dqlite_generate_node_id(const char *address);
 
-
-/**
- * This type is DEPRECATED and will be removed in a future major release.
- *
- * A single WAL frame to be replicated.
- */
-struct dqlite_vfs_frame
-{
-	unsigned long page_number; /* Database page number. */
-	void *data;                /* Content of the database page. */
-};
-typedef struct dqlite_vfs_frame dqlite_vfs_frame;
-
 /**
  * This type is DEPRECATED and will be removed in a future major release.
  *
