@@ -421,4 +421,12 @@ void UvRecvClose(struct uv *uv);
 
 void uvMaybeFireCloseCb(struct uv *uv);
 
+int UvTimerStart(struct raft_io *io,
+	struct raft_timer *req,
+	uint64_t timeout, uint64_t repeat,
+	raft_timer_cb cb);
+
+int UvTimerStop(struct raft_io *io,
+	struct raft_timer *req);
+
 #endif /* UV_H_ */

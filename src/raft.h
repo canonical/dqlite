@@ -36,7 +36,8 @@ int raft_version_number(void);
  * Error codes.
  */
 enum {
-	RAFT_NOMEM = 1,        /* Out of memory */
+	RAFT_OK = 0,
+	RAFT_NOMEM,            /* Out of memory */
 	RAFT_BADID,            /* Server ID is not valid */
 	RAFT_DUPLICATEID,      /* Server ID already in use */
 	RAFT_DUPLICATEADDRESS, /* Server address already in use */
@@ -58,7 +59,8 @@ enum {
 	RAFT_INVALID,      /* Invalid parameter */
 	RAFT_UNAUTHORIZED, /* No access to a resource */
 	RAFT_NOSPACE,      /* Not enough space on disk */
-	RAFT_TOOMANY       /* Some system or raft limit was hit */
+	RAFT_TOOMANY,      /* Some system or raft limit was hit */
+	RAFT_ERROR,        /* Generic error */
 };
 
 /**
@@ -307,10 +309,10 @@ struct page_from_to {
 	pageno_t to;
 };
 
-enum raft_result {
-	RAFT_RESULT_OK = 0,
-	RAFT_RESULT_UNEXPECTED = 1,
-	RAFT_RESULT_DONE = 2,
+enum raft_snapshot_result {
+	RAFT_SNAPSHOT_OK = 0,
+	RAFT_SNAPSHOT_UNEXPECTED = 1,
+	RAFT_SNAPSHOT_DONE = 2,
 };
 
 /**
@@ -325,14 +327,14 @@ struct raft_install_snapshot
 	struct raft_configuration conf; /* Config as of last_index. */
 	raft_index conf_index;          /* Commit index of conf. */
 	struct raft_buffer data;        /* Raw snapshot data. */
-	enum raft_result result;
+	enum raft_snapshot_result result;
 };
 #define RAFT_INSTALL_SNAPSHOT_VERSION 0
 
 struct raft_install_snapshot_result {
 	int version;
 
-	enum raft_result result;
+	enum raft_snapshot_result result;
 };
 #define RAFT_INSTALL_SNAPSHOT_RESULT_VERSION 0
 
@@ -342,7 +344,7 @@ struct raft_signature {
 	const char *db;
 	struct page_from_to page_from_to;
 	pageno_t cs_page_no;
-	enum raft_result result;
+	enum raft_snapshot_result result;
 	bool ask_calculated;
 };
 #define RAFT_SIGNATURE_VERSION 0
@@ -354,7 +356,7 @@ struct raft_signature_result {
 	struct page_checksum *cs;
 	unsigned int cs_nr;
 	pageno_t cs_page_no;
-	enum raft_result result;
+	enum raft_snapshot_result result;
 	bool calculated;
 };
 #define RAFT_SIGNATURE_RESULT_VERSION 0
@@ -365,7 +367,7 @@ struct raft_install_snapshot_mv {
 	const char *db;
 	struct page_from_to *mv;
 	unsigned int mv_nr;
-	enum raft_result result;
+	enum raft_snapshot_result result;
 };
 #define RAFT_INSTALL_SNAPSHOT_MV_VERSION 0
 
@@ -374,7 +376,7 @@ struct raft_install_snapshot_mv_result {
 
 	const char *db;
 	pageno_t last_known_page_no; /* used for retries and message losses */
-	enum raft_result result;
+	enum raft_snapshot_result result;
 };
 #define RAFT_INSTALL_SNAPSHOT_MV_RESULT_VERSION 0
 
@@ -384,7 +386,7 @@ struct raft_install_snapshot_cp {
 	const char *db;
 	pageno_t page_no;
 	struct raft_buffer page_data;
-	enum raft_result result;
+	enum raft_snapshot_result result;
 };
 #define RAFT_INSTALL_SNAPSHOT_CP_VERSION 0
 
@@ -392,7 +394,7 @@ struct raft_install_snapshot_cp_result {
 	int version;
 
 	pageno_t last_known_page_no; /* used for retries and message losses */
-	enum raft_result result;
+	enum raft_snapshot_result result;
 };
 #define RAFT_INSTALL_SNAPSHOT_CP_RESULT_VERSION 0
 
@@ -623,6 +625,15 @@ typedef void (*raft_io_recv_cb)(struct raft_io *io, struct raft_message *msg);
 
 typedef void (*raft_io_close_cb)(struct raft_io *io);
 
+struct raft_timer;
+typedef void (*raft_timer_cb)(struct raft_timer*);
+
+struct raft_timer {
+	void *data; /* User data */
+	raft_timer_cb cb; /* Request callback */
+	void *handle; /* Implementation handle */
+};
+
 /**
  * version field MUST be filled out by user.
  * When moving to a new version, the user MUST implement the newly added
@@ -630,7 +641,7 @@ typedef void (*raft_io_close_cb)(struct raft_io *io);
  */
 struct raft_io
 {
-	int version; /* 1 or 2 */
+	int version; /* 1 or 2 or 3 */
 	void *data;
 	void *impl;
 	char errmsg[RAFT_ERRMSG_BUF_SIZE];
@@ -683,8 +694,15 @@ struct raft_io
 	int (*random)(struct raft_io *io, int min, int max);
 	/* Field(s) below added since version 2. */
 	int (*async_work)(struct raft_io *io,
-			  struct raft_io_async_work *req,
-			  raft_io_async_work_cb cb);
+				struct raft_io_async_work *req,
+				raft_io_async_work_cb cb);
+	/* Field(s) below added since version 3. */
+	int (*timer_start)(struct raft_io *io,
+				struct raft_timer *req,
+				uint64_t timeout, uint64_t repeat,
+				raft_timer_cb cb);
+	int (*timer_stop)(struct raft_io *io,
+				struct raft_timer *req);
 };
 
 /**
@@ -1356,6 +1374,21 @@ RAFT_API int raft_transfer(struct raft *r,
 			   struct raft_transfer *req,
 			   raft_id id,
 			   raft_transfer_cb cb);
+
+/**
+ * Starts a timer.
+ */
+RAFT_API int raft_timer_start(struct raft *r,
+				struct raft_timer *req,
+				uint64_t timeout, uint64_t repeat,
+				raft_timer_cb cb);
+
+/**
+ * Stops a timer. If the timer wasn't started,
+ * this is a no-op.
+ */
+RAFT_API int raft_timer_stop(struct raft *r,
+				struct raft_timer *req);
 
 /**
  * User-definable dynamic memory allocation functions.
