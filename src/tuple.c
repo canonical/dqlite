@@ -51,24 +51,27 @@ int tuple_decoder__init(struct tuple_decoder *d,
 	uint32_t val = 0;
 	int rc = 0;
 
-	switch (format) {
-		case TUPLE__ROW:
-			assert(n > 0);
-			d->n = n;
-			break;
-		case TUPLE__PARAMS:
-			assert(n == 0);
+	if (format == TUPLE__ROW) {
+		assert(n > 0);
+		d->n = n;
+	} else {
+		assert(n == 0);
+		if (cursor->cap == 0) {
+			d->n = 0;
+			d->i = 0;
+			d->header = NULL;
+			return DQLITE_OK;
+		} else if (format == TUPLE__PARAMS) {
 			rc = uint8__decode(cursor, &byte);
 			d->n = byte;
-			break;
-		case TUPLE__PARAMS32:
-			assert(n == 0);
+		} else if (format == TUPLE__PARAMS32) {
 			rc = uint32__decode(cursor, &val);
 			d->n = val;
-			break;
-		default:
+		} else {
 			assert(0);
-	}
+		}
+	} 
+
 	if (rc != 0) {
 		return rc;
 	}
@@ -95,6 +98,12 @@ int tuple_decoder__init(struct tuple_decoder *d,
 unsigned long tuple_decoder__n(struct tuple_decoder *d)
 {
 	return d->n;
+}
+
+unsigned long tuple_decoder__remaining(struct tuple_decoder *d)
+{
+	assert(d->n >= d->i);
+	return d->n - d->i;
 }
 
 /* Return the type of the i'th value of the tuple. */
