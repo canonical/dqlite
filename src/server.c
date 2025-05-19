@@ -437,6 +437,7 @@ int dqlite_node_set_block_size(dqlite_node *n, size_t size)
 	raft_uv_set_block_size(&n->raft_io, size);
 	return 0;
 }
+
 int dqlite_node_enable_disk_mode(dqlite_node *n)
 {
 	int rv;
@@ -445,7 +446,7 @@ int dqlite_node_enable_disk_mode(dqlite_node *n)
 		return DQLITE_MISUSE;
 	}
 
-	rv = dqlite_vfs_enable_disk(&n->vfs);
+	rv = VfsEnableDisk(&n->vfs);
 	if (rv != 0) {
 		return rv;
 	}
