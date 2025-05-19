@@ -206,7 +206,7 @@ static const struct sm_conf exec_states[EXEC_NR] = {
 #undef A
 
 static void exec_tick(struct exec *req);
-static int  exec_apply(struct exec *req, dqlite_vfs_frame *pages, unsigned n_pages);
+static int  exec_apply(struct exec *req, const struct vfsTransaction *transaction);
 static void exec_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_apply_cb(struct raft_apply *req, int status, void *result);
 static void exec_timer_cb(struct raft_timer *timer);
@@ -289,18 +289,19 @@ void leader_exec_resume(struct exec *req)
 	TAIL return exec_tick(req);
 }
 
-static int exec_apply(struct exec *req, dqlite_vfs_frame *frames, unsigned nframes)
+static int exec_apply(struct exec *req, const struct vfsTransaction *transaction)
 {
 	tracef("leader apply frames");
 	PRE(req != NULL);
-	PRE(frames != NULL);
-	PRE(nframes > 0);
+	PRE(transaction->n_pages > 0);
+	PRE(transaction->page_numbers != NULL);
+	PRE(transaction->pages != NULL);
 
 	struct leader *leader = req->leader;
 	struct db *db = leader->db;
 	struct raft_buffer buf;
 
-	if (exec_db_full(req->leader->db->vfs, req->leader->db, nframes)) {
+	if (exec_db_full(req->leader->db->vfs, req->leader->db, transaction->n_pages)) {
 		return SQLITE_FULL;
 	}
 
@@ -310,9 +311,10 @@ static int exec_apply(struct exec *req, dqlite_vfs_frame *frames, unsigned nfram
 		.truncate = 0,
 		.is_commit = 1,
 		.frames = {
-			.n_pages = (uint32_t)nframes,
+			.n_pages = (uint32_t)transaction->n_pages,
 			.page_size = (uint16_t)db->config->page_size,
-			.data = frames,
+			.page_numbers = transaction->page_numbers,
+			.pages = transaction->pages,
 		}
 	};
 	int rv = command__encode(COMMAND_FRAMES, &c, &buf);
@@ -450,8 +452,7 @@ static void exec_tick(struct exec *req)
 			sm_move(&req->sm, EXEC_DONE);
 			leader_trace(leader, "executed query on leader (status=%d)", req->status);
 			if (req->status == RAFT_OK && leader == db->active_leader) {
-				dqlite_vfs_frame *frames;
-				unsigned int nframes;
+				struct vfsTransaction transaction;
 				/* 
 				 * FIXME: If this was a xFileControl:
 				 *  - it would be callable through sqlite3_file_control
@@ -459,14 +460,15 @@ static void exec_tick(struct exec *req)
 				 *  - it would not be necessary to keep a vfs pointer in the db
 				 *  - it would not necessary to lookup the database by path every time.
 				 */
-				int rc = VfsPoll(db->vfs, db->path, &frames, &nframes);
-				if (rc == SQLITE_OK && nframes > 0) {
-					leader_trace(leader, "polled connection (%d frames)", nframes);
-					req->status = exec_apply(req, frames, nframes);
-					for (unsigned i = 0; i < nframes; i++) {
-						sqlite3_free(frames[i].data);
+				int rc = VfsPoll(db->vfs, db->path, &transaction);
+				if (rc == SQLITE_OK && transaction.n_pages > 0) {
+					leader_trace(leader, "polled connection (%d frames)", transaction.n_pages);
+					req->status = exec_apply(req, &transaction);
+					for (unsigned i = 0; i < transaction.n_pages; i++) {
+						sqlite3_free(transaction.pages[i]);
 					}
-					sqlite3_free(frames);
+					sqlite3_free(transaction.pages);
+					sqlite3_free(transaction.page_numbers);
 					if (req->status == 0) {
 						return exec_suspend(req);
 					}
