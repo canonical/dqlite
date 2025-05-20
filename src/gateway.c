@@ -14,30 +14,14 @@
 #include "tuple.h"
 #include "vfs.h"
 
-/**
-* Silly in-memory sqlite3 connection used to check if statements contain only non-sql
-* code like comments or spaces.
-*/
-static sqlite3 *check_conn = NULL;
-
-bool sqlite3_statement_empty(const char* sql) {
+static bool sqlite3_statement_empty(sqlite3 *conn, const char* sql) {
 	if (sql == NULL || sql[0] == '\0') {
 		return true;
 	}
-	if (check_conn == NULL) {
-		int rc = sqlite3_open_v2(":memory:", &check_conn, SQLITE_OPEN_READONLY | SQLITE_OPEN_MEMORY, NULL);
-		assert(rc == 0);
-	}
-	assert(check_conn != NULL);
 	sqlite3_stmt *tail_stmt = NULL;
-	int rc = sqlite3_prepare_v2(check_conn, sql, -1, &tail_stmt, NULL);
+	int rc = sqlite3_prepare_v2(conn, sql, -1, &tail_stmt, NULL);
 	sqlite3_finalize(tail_stmt);
 	return rc == SQLITE_OK && tail_stmt == NULL;
-}
-
-__attribute__((destructor)) static void fini(void) {
-	sqlite3_close(check_conn);
-	check_conn = NULL;
 }
 
 static void interrupt(struct gateway *g);
@@ -350,7 +334,7 @@ static void handle_prepare_done_cb(struct exec *exec)
 		int rc;
 
 		if (req->schema == DQLITE_PREPARE_STMT_SCHEMA_V0) {
-			if (!sqlite3_statement_empty(tail)) {
+			if (!sqlite3_statement_empty(g->leader->conn, tail)) {
 				sqlite3_finalize(stmt);
 				failure(req, SQLITE_ERROR, "nonempty statement tail");
 				return;
@@ -652,7 +636,7 @@ static void handle_query_work_cb(struct exec *exec)
 		TAIL return leader_exec_resume(exec);
 	}
 	
-	if (!sqlite3_statement_empty(exec->tail)) {
+	if (!sqlite3_statement_empty(exec->leader->conn, exec->tail)) {
 		leader_exec_result(exec, RAFT_ERROR);
 		TAIL return leader_exec_resume(exec);
 	} else {
