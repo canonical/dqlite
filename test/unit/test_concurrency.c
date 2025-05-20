@@ -256,8 +256,6 @@ TEST_CASE(exec, open, NULL)
 	return MUNIT_OK;
 }
 
-// TODO(marco6): add test where timeout != 0 with or without transaction
-
 /* If an exec request is already in progress on another leader connection,
  * SQLITE_BUSY is returned. */
 TEST_CASE(exec, tx, NULL)
