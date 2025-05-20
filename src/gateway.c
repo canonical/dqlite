@@ -105,17 +105,19 @@ void gateway__close(struct gateway *g)
 }
 
 #define DECLARE_REQUEST(REQ, ...) struct request_##REQ request = { 0 }
-#define DECLARE_RESPONSE(REQ, RES, ...)    \
-    DECLARE_REQUEST(REQ);                  \
-    struct response_##RES response = { 0 }
+#define DECLARE_REQUEST_RESPONSE(REQ, RES, ...) \
+	DECLARE_REQUEST(REQ);                       \
+	struct response_##RES response = { 0 }
 
-#define __GET_DECLARE_RESPONSE_MACRO(REQ, RES, MACRO, ...) MACRO
+#define __GET_DECLARE_MACRO(_1, _2, MACRO, ...) MACRO
 
-#define DECLARE_V0(...) \
-	__GET_DECLARE_RESPONSE_MACRO(__VA_ARGS__, DECLARE_RESPONSE, DECLARE_REQUEST)(__VA_ARGS__)
+#define DECLARE_V0(...)                           \
+	__GET_DECLARE_MACRO(__VA_ARGS__,              \
+		DECLARE_REQUEST_RESPONSE, DECLARE_REQUEST \
+	)(__VA_ARGS__)
 
 #define INIT_V0(REQ, ...)                                 \
-    {                                                     \
+	{                                                     \
 		int rv_;                                          \
 		if (req->schema != 0) {                           \
 			tracef("bad schema version %d", req->schema); \
@@ -129,12 +131,12 @@ void gateway__close(struct gateway *g)
 		}                                                 \
 	}
 
-/* Declare a request struct and a response struct of the appropriate types and
- * decode the request. This is used in the common case where only one schema
- * version is extant. */
+/* START_V0(request_type[, response_type]) declares a request for protocol
+ * version 0 and decodes it. If response_type is also passed, a response will
+ * also be declared and initialized to 0. */
 #define START_V0(...)        \
 	DECLARE_V0(__VA_ARGS__); \
-    INIT_V0(__VA_ARGS__)
+	INIT_V0(__VA_ARGS__)
 
 #define CHECK_LEADER(REQ)                                            \
 	if (raft_state(g->raft) != RAFT_LEADER) {                    \
@@ -182,7 +184,6 @@ void gateway__close(struct gateway *g)
 		_rv = sqlite3_file_control(g->leader->conn, "main",            \
 					   SQLITE_FCNTL_FILE_POINTER, &_file); \
 		assert(_rv == SQLITE_OK); /* Should never fail */              \
-                                                                               \
 		_rv = _file->pMethods->xShmLock(                               \
 		    _file, 1 /* checkpoint lock */, 1,                         \
 		    SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);                   \
