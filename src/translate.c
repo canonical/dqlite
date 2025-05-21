@@ -9,14 +9,14 @@
 int translateRaftErrCode(int code)
 {
 	switch (code) {
-	case RAFT_NOTLEADER:
-		return SQLITE_IOERR_NOT_LEADER;
-	case RAFT_LEADERSHIPLOST:
-		return SQLITE_IOERR_LEADERSHIP_LOST;
-	case RAFT_CANTCHANGE:
-		return SQLITE_BUSY;
-	default:
-		return SQLITE_ERROR;
+		case RAFT_NOTLEADER:
+			return SQLITE_IOERR_NOT_LEADER;
+		case RAFT_LEADERSHIPLOST:
+			return SQLITE_IOERR_LEADERSHIP_LOST;
+		case RAFT_CANTCHANGE:
+			return SQLITE_BUSY;
+		default:
+			return SQLITE_ERROR;
 	}
 }
 
