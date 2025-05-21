@@ -153,7 +153,7 @@ TEST(stress, read_write, setUp, tearDown, 0, stress_params)
 	}
 
 	int num_workers = (f->readers + f->writers) * f->databases;
-	struct worker *workers = malloc(num_workers* sizeof(struct worker));
+	struct worker *workers = munit_malloc(num_workers* sizeof(struct worker));
 	struct worker *write_workers = workers;
 	struct worker *read_workers = write_workers + (f->writers * f->databases);
 
