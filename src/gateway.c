@@ -14,7 +14,8 @@
 #include "tuple.h"
 #include "vfs.h"
 
-static bool sqlite3_statement_empty(sqlite3 *conn, const char* sql) {
+static bool sqlite3_statement_empty(sqlite3 *conn, const char *sql)
+{
 	if (sql == NULL || sql[0] == '\0') {
 		return true;
 	}
@@ -41,7 +42,8 @@ void gateway__init(struct gateway *g,
 	stmt__registry_init(&g->stmts);
 }
 
-static void gateway__leader_close_cb(struct leader *leader) {
+static void gateway__leader_close_cb(struct leader *leader)
+{
 	PRE(leader->data != NULL);
 	struct gateway *g = leader->data;
 	raft_free(leader);
@@ -67,27 +69,29 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 	tracef("gateway close");
 	g->close_cb = cb;
 	if (g->req != NULL) {
-		/* An exec is still running, so it is not possible to close right away. 
-		 * Instead, we wait for the exec to finish and then call the close callback. */
+		/* An exec is still running, so it is not possible to close
+		 * right away. Instead, we wait for the exec to finish and then
+		 * call the close callback. */
 		interrupt(g);
 	} else {
 		gateway_close(g);
 	}
 }
 
-
 #define DECLARE_REQUEST(REQ, ...) struct request_##REQ request = { 0 }
 #define DECLARE_RESPONSE(REQ, RES, ...) \
-    DECLARE_REQUEST(REQ); \
-    struct response_##RES response = { 0 }
+	DECLARE_REQUEST(REQ);           \
+	struct response_##RES response = { 0 }
 
 #define __GET_DECLARE_RESPONSE_MACRO(REQ, RES, MACRO, ...) MACRO
 
-#define DECLARE_V0(...) \
-	__GET_DECLARE_RESPONSE_MACRO(__VA_ARGS__, DECLARE_RESPONSE, DECLARE_REQUEST)(__VA_ARGS__)
+#define DECLARE_V0(...)                                             \
+	__GET_DECLARE_RESPONSE_MACRO(__VA_ARGS__, DECLARE_RESPONSE, \
+				     DECLARE_REQUEST)               \
+	(__VA_ARGS__)
 
-#define INIT_V0(REQ, ...) \
-    {                                                             \
+#define INIT_V0(REQ, ...)                                             \
+	{                                                             \
 		int rv_;                                              \
 		if (req->schema != 0) {                               \
 			tracef("bad schema version %d", req->schema); \
@@ -101,12 +105,12 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 		}                                                     \
 	}
 
-/* Declare a request struct and a response struct of the appropriate types and
- * decode the request. This is used in the common case where only one schema
- * version is extant. */
-#define START_V0(...)                                       \
+/* START_V0(request_type[, response_type]) declares a request for protocol
+ * version 0 and decodes it. If response_type is also passed, a response will
+ * also be declared and initialized to 0. */
+#define START_V0(...)            \
 	DECLARE_V0(__VA_ARGS__); \
-    INIT_V0(__VA_ARGS__)
+	INIT_V0(__VA_ARGS__)
 
 #define CHECK_LEADER(REQ)                                            \
 	if (raft_state(g->raft) != RAFT_LEADER) {                    \
@@ -131,9 +135,7 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
  * using schema version 0. */
 #define SUCCESS_V0(LOWER, UPPER) SUCCESS(LOWER, UPPER, response, 0)
 
-/* Lookup the database with the given ID.
- *
- * TODO: support more than one database per connection? */
+/* Lookup the database with the given ID. */
 #define LOOKUP_DB(ID)                                                \
 	if (ID != 0 || g->leader == NULL) {                          \
 		failure(req, SQLITE_NOTFOUND, "no database opened"); \
@@ -156,7 +158,6 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 		_rv = sqlite3_file_control(g->leader->conn, "main",            \
 					   SQLITE_FCNTL_FILE_POINTER, &_file); \
 		assert(_rv == SQLITE_OK); /* Should never fail */              \
-                                                                               \
 		_rv = _file->pMethods->xShmLock(                               \
 		    _file, 1 /* checkpoint lock */, 1,                         \
 		    SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE);                   \
@@ -173,13 +174,12 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 /* Encode fa failure response and invoke the request callback */
 static void failure(struct handle *req, int code, const char *message)
 {
-	size_t n;
 	char *cursor;
 	struct response_failure failure = {
 		.code = (uint64_t)code,
 		.message = message,
 	};
-	n = response_failure__sizeof(&failure);
+	size_t n = response_failure__sizeof(&failure);
 	assert(n % 8 == 0);
 	cursor = buffer__advance(req->buffer, n);
 	/* The buffer has at least 4096 bytes, and error messages are shorter
@@ -189,17 +189,20 @@ static void failure(struct handle *req, int code, const char *message)
 	req->cb(req, code, DQLITE_RESPONSE_FAILURE, 0);
 }
 
-
-static void exec_failure(struct gateway *g, struct handle *req, int raft_rc) {
+static void exec_failure(struct gateway *g, struct handle *req, int raft_rc)
+{
 	PRE(raft_rc != 0);
 
 	if (raft_rc == RAFT_ERROR) {
-		/* Generic error, check if there is some more information in the connection */
+		/* Generic error, check if there is some more information in the
+		 * connection */
 		int sqlite_error = sqlite3_extended_errcode(g->leader->conn);
 		if (sqlite_error != 0) {
-			return failure(req, sqlite_error, sqlite3_errmsg(g->leader->conn));
+			return failure(req, sqlite_error,
+				       sqlite3_errmsg(g->leader->conn));
 		} else if (req->parameters_bound == false) {
-			/* Execution failed while binding parameters (likely for a protocol error) */
+			/* Execution failed while binding parameters (likely for
+			 * a protocol error) */
 			return failure(req, SQLITE_ERROR, "bind parameters");
 		}
 	} else if (raft_rc == RAFT_BUSY) {
@@ -207,7 +210,8 @@ static void exec_failure(struct gateway *g, struct handle *req, int raft_rc) {
 	} else if (raft_rc == RAFT_NOTLEADER) {
 		return failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
 	} else if (raft_rc == RAFT_LEADERSHIPLOST) {
-		return failure(req, SQLITE_IOERR_LEADERSHIP_LOST, "leadership lost");
+		return failure(req, SQLITE_IOERR_LEADERSHIP_LOST,
+			       "leadership lost");
 	}
 	return failure(req, SQLITE_IOERR, "leader exec failed");
 }
@@ -336,7 +340,8 @@ static void handle_prepare_done_cb(struct exec *exec)
 		if (req->schema == DQLITE_PREPARE_STMT_SCHEMA_V0) {
 			if (!sqlite3_statement_empty(g->leader->conn, tail)) {
 				sqlite3_finalize(stmt);
-				failure(req, SQLITE_ERROR, "nonempty statement tail");
+				failure(req, SQLITE_ERROR,
+					"nonempty statement tail");
 				return;
 			}
 		}
@@ -353,16 +358,21 @@ static void handle_prepare_done_cb(struct exec *exec)
 			case DQLITE_PREPARE_STMT_SCHEMA_V0:
 				response_v0.db_id = (uint32_t)req->db_id;
 				response_v0.id = (uint32_t)registry_stmt->id;
-				response_v0.params = (uint64_t)sqlite3_bind_parameter_count(registry_stmt->stmt);
+				response_v0.params =
+				    (uint64_t)sqlite3_bind_parameter_count(
+					registry_stmt->stmt);
 				SUCCESS(stmt, STMT, response_v0,
 					DQLITE_PREPARE_STMT_SCHEMA_V0);
 				break;
 			case DQLITE_PREPARE_STMT_SCHEMA_V1:
 				response_v1.db_id = (uint32_t)req->db_id;
 				response_v1.id = (uint32_t)registry_stmt->id;
-				response_v1.params = (uint64_t)sqlite3_bind_parameter_count(registry_stmt->stmt);
+				response_v1.params =
+				    (uint64_t)sqlite3_bind_parameter_count(
+					registry_stmt->stmt);
 				response_v1.offset = (uint64_t)(tail - sql);
-				SUCCESS(stmt_with_offset, STMT_WITH_OFFSET, response_v1,
+				SUCCESS(stmt_with_offset, STMT_WITH_OFFSET,
+					response_v1,
 					DQLITE_PREPARE_STMT_SCHEMA_V1);
 				break;
 			default:
@@ -378,8 +388,8 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	struct request_prepare request = { 0 };
 	int rc;
 
-	if (req->schema != DQLITE_PREPARE_STMT_SCHEMA_V0 &&
-	    req->schema != DQLITE_PREPARE_STMT_SCHEMA_V1) {
+	if (!IN(req->schema, DQLITE_PREPARE_STMT_SCHEMA_V0,
+		DQLITE_PREPARE_STMT_SCHEMA_V1)) {
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
 		return 0;
 	}
@@ -399,7 +409,7 @@ static int handle_prepare(struct gateway *g, struct handle *req)
 	if (exec == NULL) {
 		return DQLITE_NOMEM;
 	}
-	*exec = (struct exec) {
+	*exec = (struct exec){
 		.data = g,
 		.sql = request.sql,
 	};
@@ -451,7 +461,8 @@ static void handle_exec_work_cb(struct exec *exec)
 	} else {
 		req->parameters_bound = true;
 		rv = sqlite3_step(exec->stmt);
-		leader_exec_result(exec, rv == SQLITE_DONE ? RAFT_OK : RAFT_ERROR);
+		leader_exec_result(exec,
+				   rv == SQLITE_DONE ? RAFT_OK : RAFT_ERROR);
 	}
 
 	TAIL return leader_exec_resume(exec);
@@ -474,12 +485,14 @@ static void handle_exec_done_cb(struct exec *exec)
 	if (g->close_cb != NULL) {
 		return gateway_close(g);
 	}
-	
+
 	if (status != 0) {
 		if (done) {
 			exec_failure(g, req, status);
 		} else {
-			failure(req, SQLITE_ERROR, "rows yielded when none expected for EXEC request");
+			failure(
+			    req, SQLITE_ERROR,
+			    "rows yielded when none expected for EXEC request");
 		}
 	} else {
 		PRE(done);
@@ -496,7 +509,8 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	struct request_exec request = { 0 };
 	int rv;
 
-	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0, DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
+	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
+		DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
 		return 0;
@@ -509,14 +523,10 @@ static int handle_exec(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
-		? TUPLE__PARAMS 
-		: TUPLE__PARAMS32;
-	rv = tuple_decoder__init(
-		&req->decoder, 0,
-		format,
-		cursor
-	);
+	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0
+			 ? TUPLE__PARAMS
+			 : TUPLE__PARAMS32;
+	rv = tuple_decoder__init(&req->decoder, 0, format, cursor);
 	if (rv != 0) {
 		return rv;
 	}
@@ -538,7 +548,8 @@ static int handle_exec(struct gateway *g, struct handle *req)
 	return 0;
 }
 
-static void handle_exec_sql_done_cb(struct exec *exec) {
+static void handle_exec_sql_done_cb(struct exec *exec)
+{
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
 	int status = exec->status;
@@ -547,14 +558,15 @@ static void handle_exec_sql_done_cb(struct exec *exec) {
 
 	sqlite3_finalize(exec->stmt);
 
-	if (g->close_cb == NULL && status == 0 && 
-		exec->tail != NULL && exec->tail[0] != '\0') {
+	if (g->close_cb == NULL && status == 0 && exec->tail != NULL &&
+	    exec->tail[0] != '\0') {
 		req->parameters_bound = false;
 		*exec = (struct exec){
 			.data = g,
 			.sql = exec->tail,
 		};
-		return leader_exec(g->leader, exec, handle_exec_work_cb, handle_exec_sql_done_cb);
+		return leader_exec(g->leader, exec, handle_exec_work_cb,
+				   handle_exec_sql_done_cb);
 	}
 
 	raft_free(exec);
@@ -562,13 +574,15 @@ static void handle_exec_sql_done_cb(struct exec *exec) {
 
 	if (g->close_cb != NULL) {
 		return gateway_close(g);
-	} 
-	
+	}
+
 	if (status != 0) {
 		if (done) {
 			exec_failure(g, req, status);
 		} else {
-			failure(req, SQLITE_ERROR, "rows yielded when none expected for EXEC request");
+			failure(
+			    req, SQLITE_ERROR,
+			    "rows yielded when none expected for EXEC request");
 		}
 	} else {
 		PRE(done);
@@ -584,7 +598,8 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	struct request_exec_sql request = { 0 };
 	int rv;
 
-	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0, DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
+	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
+		DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
 		return 0;
@@ -596,14 +611,10 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 		return rv;
 	}
 
-	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
-		? TUPLE__PARAMS 
-		: TUPLE__PARAMS32;
-	rv = tuple_decoder__init(
-		&req->decoder, 
-		0, format,
-		cursor
-	);
+	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0
+			 ? TUPLE__PARAMS
+			 : TUPLE__PARAMS32;
+	rv = tuple_decoder__init(&req->decoder, 0, format, cursor);
 	if (rv != 0) {
 		return rv;
 	}
@@ -617,11 +628,12 @@ static int handle_exec_sql(struct gateway *g, struct handle *req)
 	if (exec == NULL) {
 		return DQLITE_NOMEM;
 	}
-	*exec = (struct exec) {
-		.data   = g,
-		.sql    = request.sql,
+	*exec = (struct exec){
+		.data = g,
+		.sql = request.sql,
 	};
-	leader_exec(g->leader, exec, handle_exec_work_cb, handle_exec_sql_done_cb);
+	leader_exec(g->leader, exec, handle_exec_work_cb,
+		    handle_exec_sql_done_cb);
 	return 0;
 }
 
@@ -635,25 +647,27 @@ static void handle_query_work_cb(struct exec *exec)
 		/* Nothing else to do. */
 		TAIL return leader_exec_resume(exec);
 	}
-	
+
 	if (!sqlite3_statement_empty(exec->leader->conn, exec->tail)) {
 		leader_exec_result(exec, RAFT_ERROR);
 		TAIL return leader_exec_resume(exec);
 	} else {
 		exec->tail = NULL;
 	}
-	
+
 	int rc;
 	if (!req->parameters_bound) {
 		PRE(!sqlite3_stmt_busy(exec->stmt));
 		rc = bind__params(exec->stmt, &req->decoder);
-		if (rc != DQLITE_OK || tuple_decoder__remaining(&req->decoder) > 0) {
+		if (rc != DQLITE_OK ||
+		    tuple_decoder__remaining(&req->decoder) > 0) {
 			tracef("handle exec bind failed %d", rc);
 			leader_exec_result(exec, RAFT_ERROR);
 			TAIL return leader_exec_resume(exec);
 		}
 		/* FIXME(marco6): Should I check if all bindings were consumed?
-		 * And moreover, should I allow parameters altogether in this case? */
+		 * And moreover, should I allow parameters altogether in this
+		 * case? */
 		req->parameters_bound = true;
 	}
 
@@ -670,13 +684,13 @@ static void handle_query_work_cb(struct exec *exec)
 		return;
 	}
 
-	leader_exec_result(exec, rc == SQLITE_DONE ? RAFT_OK :RAFT_ERROR);	
+	leader_exec_result(exec, rc == SQLITE_DONE ? RAFT_OK : RAFT_ERROR);
 	TAIL return leader_exec_resume(exec);
 }
 
 static void handle_query_done_cb(struct exec *exec)
 {
-	struct gateway *g  = exec->data;
+	struct gateway *g = exec->data;
 	struct handle *req = g->req;
 	int status = exec->status;
 	g->req = NULL;
@@ -708,7 +722,8 @@ static int handle_query(struct gateway *g, struct handle *req)
 	struct request_query request = { 0 };
 	int rv;
 
-	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0, DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
+	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
+		DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
 		return 0;
@@ -719,14 +734,10 @@ static int handle_query(struct gateway *g, struct handle *req)
 	if (rv != 0) {
 		return rv;
 	}
-	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
-		? TUPLE__PARAMS 
-		: TUPLE__PARAMS32;
-	rv = tuple_decoder__init(
-		&req->decoder, 
-		0, format,
-		cursor
-	);
+	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0
+			 ? TUPLE__PARAMS
+			 : TUPLE__PARAMS32;
+	rv = tuple_decoder__init(&req->decoder, 0, format, cursor);
 	if (rv != 0) {
 		return rv;
 	}
@@ -741,17 +752,18 @@ static int handle_query(struct gateway *g, struct handle *req)
 	if (exec == NULL) {
 		return DQLITE_ERROR;
 	}
-	*exec = (struct exec) {
-		.data   = g,
-		.stmt   = stmt->stmt,
+	*exec = (struct exec){
+		.data = g,
+		.stmt = stmt->stmt,
 	};
-	leader_exec(g->leader,exec, handle_query_work_cb, handle_query_done_cb);
+	leader_exec(g->leader, exec, handle_query_work_cb,
+		    handle_query_done_cb);
 	return 0;
 }
 
 static void handle_query_sql_done_cb(struct exec *exec)
 {
-	struct gateway *g   = exec->data;
+	struct gateway *g = exec->data;
 	struct handle *req = g->req;
 	int status = exec->status;
 	bool tail = exec->stmt != NULL && exec->tail != NULL;
@@ -788,7 +800,8 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	int rv;
 
 	/* Fail early if the schema version isn't recognized. */
-	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0, DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
+	if (!IN(req->schema, DQLITE_REQUEST_PARAMS_SCHEMA_V0,
+		DQLITE_REQUEST_PARAMS_SCHEMA_V1)) {
 		tracef("bad schema version %d", req->schema);
 		failure(req, SQLITE_ERROR, "unrecognized schema version");
 		return 0;
@@ -798,14 +811,10 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	if (rv != 0) {
 		return rv;
 	}
-	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0 
-		? TUPLE__PARAMS 
-		: TUPLE__PARAMS32;
-	rv = tuple_decoder__init(
-		&req->decoder, 
-		0, format,
-		cursor
-	);
+	int format = req->schema == DQLITE_REQUEST_PARAMS_SCHEMA_V0
+			 ? TUPLE__PARAMS
+			 : TUPLE__PARAMS32;
+	rv = tuple_decoder__init(&req->decoder, 0, format, cursor);
 	if (rv != 0) {
 		return rv;
 	}
@@ -819,12 +828,13 @@ static int handle_query_sql(struct gateway *g, struct handle *req)
 	if (exec == NULL) {
 		return DQLITE_ERROR;
 	}
-	*exec = (struct exec) {
-		.data   = g,
-		.sql    = request.sql,
+	*exec = (struct exec){
+		.data = g,
+		.sql = request.sql,
 	};
 
-	leader_exec(g->leader, exec, handle_query_work_cb, handle_query_sql_done_cb);
+	leader_exec(g->leader, exec, handle_query_work_cb,
+		    handle_query_sql_done_cb);
 	return 0;
 }
 
@@ -862,7 +872,7 @@ static void raftChangeCb(struct raft_change *change, int status)
 	struct handle *req = g->req;
 	struct response_empty response = { 0 };
 	g->req = NULL;
-	sqlite3_free(r);
+	raft_free(r);
 	if (g->close_cb != NULL) {
 		g->close_cb(g);
 	} else if (status != 0) {
@@ -883,7 +893,7 @@ static int handle_add(struct gateway *g, struct handle *req)
 
 	CHECK_LEADER(req);
 
-	r = sqlite3_malloc(sizeof *r);
+	r = raft_malloc(sizeof *r);
 	if (r == NULL) {
 		return DQLITE_NOMEM;
 	}
@@ -896,7 +906,7 @@ static int handle_add(struct gateway *g, struct handle *req)
 	if (rv != 0) {
 		tracef("raft add failed %d", rv);
 		g->req = NULL;
-		sqlite3_free(r);
+		raft_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
@@ -925,7 +935,7 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 		}
 	}
 
-	r = sqlite3_malloc(sizeof *r);
+	r = raft_malloc(sizeof *r);
 	if (r == NULL) {
 		tracef("malloc failed");
 		return DQLITE_NOMEM;
@@ -939,7 +949,7 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 	if (rv != 0) {
 		tracef("raft_assign failed %d", rv);
 		g->req = NULL;
-		sqlite3_free(r);
+		raft_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
@@ -957,7 +967,7 @@ static int handle_remove(struct gateway *g, struct handle *req)
 
 	CHECK_LEADER(req);
 
-	r = sqlite3_malloc(sizeof *r);
+	r = raft_malloc(sizeof *r);
 	if (r == NULL) {
 		tracef("malloc failed");
 		return DQLITE_NOMEM;
@@ -970,7 +980,7 @@ static int handle_remove(struct gateway *g, struct handle *req)
 	if (rv != 0) {
 		tracef("raft_remote failed %d", rv);
 		g->req = NULL;
-		sqlite3_free(r);
+		raft_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
@@ -1189,7 +1199,7 @@ void raftTransferCb(struct raft_transfer *r)
 	struct handle *req = g->req;
 	struct response_empty response = { 0 };
 	g->req = NULL;
-	sqlite3_free(r);
+	raft_free(r);
 	if (g->close_cb != NULL) {
 		g->close_cb(g);
 	} else if (g->raft->state == RAFT_LEADER) {
@@ -1210,7 +1220,7 @@ static int handle_transfer(struct gateway *g, struct handle *req)
 
 	CHECK_LEADER(req);
 
-	r = sqlite3_malloc(sizeof *r);
+	r = raft_malloc(sizeof *r);
 	if (r == NULL) {
 		tracef("malloc failed");
 		return DQLITE_NOMEM;
@@ -1222,7 +1232,7 @@ static int handle_transfer(struct gateway *g, struct handle *req)
 	if (rv != 0) {
 		tracef("raft_transfer failed %d", rv);
 		g->req = NULL;
-		sqlite3_free(r);
+		raft_free(r);
 		failure(req, translateRaftErrCode(rv), raft_strerror(rv));
 		return 0;
 	}
@@ -1279,12 +1289,11 @@ int gateway__handle(struct gateway *g,
 	 * gateway__resume in write_cb will indicate it has not finished
 	 * returning results and a new request (in this case, the interrupt)
 	 * will not be read. */
-	if (type == DQLITE_REQUEST_INTERRUPT && 
-		(g->req->type == DQLITE_REQUEST_QUERY ||
-		 g->req->type == DQLITE_REQUEST_QUERY_SQL ||
-		 g->req->type == DQLITE_REQUEST_EXEC ||
-		 g->req->type == DQLITE_REQUEST_EXEC_SQL)
-	) {
+	if (type == DQLITE_REQUEST_INTERRUPT &&
+	    (g->req->type == DQLITE_REQUEST_QUERY ||
+	     g->req->type == DQLITE_REQUEST_QUERY_SQL ||
+	     g->req->type == DQLITE_REQUEST_EXEC ||
+	     g->req->type == DQLITE_REQUEST_EXEC_SQL)) {
 		/* In this case, the response will be sent by the callback of
 		 * the executing query once stopped or finished. */
 		interrupt(g);
