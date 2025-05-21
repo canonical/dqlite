@@ -215,7 +215,8 @@ DQLITE_API DQLITE_EXPERIMENTAL void dqlite_server_destroy(
  * These are used only with the dqlite_node family of functions.
  */
 enum {
-	DQLITE_ERROR = 1, /* Generic error */
+	DQLITE_OK = 0,
+	DQLITE_ERROR, /* Generic error */
 	DQLITE_MISUSE,    /* Library used incorrectly */
 	DQLITE_NOMEM      /* A malloc() failed */
 };

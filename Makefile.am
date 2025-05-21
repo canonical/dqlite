@@ -182,6 +182,7 @@ integration_test_SOURCES = \
   test/integration/test_node.c \
   test/integration/test_role_management.c \
   test/integration/test_server.c \
+  test/integration/test_stress.c \
   test/integration/main.c
 integration_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 integration_test_LDFLAGS = $(AM_LDFLAGS) -no-install
