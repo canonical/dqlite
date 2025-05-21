@@ -11,8 +11,8 @@ SUITE(stress);
 
 static char *disk_mode[] = { "0", "1", NULL };
 static char *databases[] = { "1", "2", "4", NULL };
-static char *writers[]   = { "0", "1", "2", "4", NULL };
-static char *readers[]   = { "0", "1", "4", "16", NULL };
+static char *writers[] = { "0", "1", "2", "4", NULL };
+static char *readers[] = { "0", "1", "4", "16", NULL };
 
 static MunitParameterEnum stress_params[] = {
 	{ "disk_mode", disk_mode },
@@ -35,8 +35,16 @@ struct worker {
 	char database[16];
 };
 
-static void* client_read(void *data) {
-	const char *sql = "SELECT MAX(n) FROM test ORDER BY random() LIMIT 100";
+static void *client_read(void *data)
+{
+	const char *sql =
+	    "SELECT MAX(n)         "
+	    "FROM (                "
+	    "    SELECT n          "
+	    "    FROM test         "
+	    "    ORDER BY random() "
+	    "    LIMIT 100         "
+	    ")                     ";
 
 	struct worker *self = data;
 	struct client_proto client;
@@ -56,7 +64,8 @@ static void* client_read(void *data) {
 	return NULL;
 }
 
-static void* client_write(void *data) {
+static void *client_write(void *data)
+{
 	const char *sql = "INSERT INTO test(n) VALUES (random())";
 
 	struct worker *self = data;
@@ -74,8 +83,10 @@ static void* client_write(void *data) {
 		int rv = clientSendExec(&client, stmt_id, NULL, 0, NULL);
 		munit_assert_int(rv, ==, DQLITE_OK);
 
-		rv = clientRecvResult(&client, &last_insert_id, &rows_affected, NULL);
-		if (rv == DQLITE_CLIENT_PROTO_RECEIVED_FAILURE && client.errcode == SQLITE_BUSY) {
+		rv = clientRecvResult(&client, &last_insert_id, &rows_affected,
+				      NULL);
+		if (rv == DQLITE_CLIENT_PROTO_RECEIVED_FAILURE &&
+		    client.errcode == SQLITE_BUSY) {
 			/* Just retry */
 			i--;
 		} else {
@@ -118,15 +129,14 @@ static void *setUp(const MunitParameter params[], void *user_data)
 		EXEC(stmt_id, &last_insert_id, &rows_affected);
 
 		PREPARE(
-			"WITH RECURSIVE seq(n) AS ("
-			"    SELECT 1 UNION ALL     "
-			"    SELECT n+1 FROM seq    "
-			"    WHERE  n < 10000       "
-			")                          "
-			"INSERT INTO test(n)        "
-			"SELECT n FROM seq          ",
-			&stmt_id
-		);
+		    "WITH RECURSIVE seq(n) AS ("
+		    "    SELECT 1 UNION ALL     "
+		    "    SELECT n+1 FROM seq    "
+		    "    WHERE  n < 10000       "
+		    ")                          "
+		    "INSERT INTO test(n)        "
+		    "SELECT n FROM seq          ",
+		    &stmt_id);
 		EXEC(stmt_id, &last_insert_id, &rows_affected);
 	}
 
@@ -153,25 +163,31 @@ TEST(stress, read_write, setUp, tearDown, 0, stress_params)
 	}
 
 	int num_workers = (f->readers + f->writers) * f->databases;
-	struct worker *workers = munit_malloc(num_workers* sizeof(struct worker));
+	struct worker *workers =
+	    munit_malloc(num_workers * sizeof(struct worker));
 	struct worker *write_workers = workers;
-	struct worker *read_workers = write_workers + (f->writers * f->databases);
+	struct worker *read_workers =
+	    write_workers + (f->writers * f->databases);
 
 	for (int i = 0; i < f->readers; i++) {
 		for (int j = 0; j < f->databases; j++) {
-			struct worker *worker = &read_workers[i*f->databases + j];
+			struct worker *worker =
+			    &read_workers[i * f->databases + j];
 			worker->f = f;
 			snprintf(worker->database, 16, "test%d", j);
-			pthread_create(&worker->thread, NULL, client_read, worker);
+			pthread_create(&worker->thread, NULL, client_read,
+				       worker);
 		}
 	}
 
 	for (int i = 0; i < f->writers; i++) {
 		for (int j = 0; j < f->databases; j++) {
-			struct worker *worker = &write_workers[i*f->databases + j];
+			struct worker *worker =
+			    &write_workers[i * f->databases + j];
 			worker->f = f;
 			snprintf(worker->database, 16, "test%d", j);
-			pthread_create(&worker->thread, NULL, client_write, worker);
+			pthread_create(&worker->thread, NULL, client_write,
+				       worker);
 		}
 	}
 
