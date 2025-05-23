@@ -54,6 +54,11 @@ static bool exec_invariant(const struct sm *sm, int prev)
 	return true;
 }
 
+static inline bool leader_closing(struct leader *leader)
+{
+	return leader->close_cb != NULL;
+}
+
 static void leader_close(struct leader *leader)
 {
 	PRE(leader->exec == NULL);
@@ -207,7 +212,8 @@ static const struct sm_conf exec_states[EXEC_NR] = {
 
 static void exec_tick(struct exec *req);
 static int  exec_apply(struct exec *req, dqlite_vfs_frame *pages, unsigned n_pages);
-static void exec_barrier_cb(struct raft_barrier *barrier, int status);
+static void exec_prepare_barrier_cb(struct raft_barrier *barrier, int status);
+static void exec_run_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_apply_cb(struct raft_apply *req, int status, void *result);
 static void exec_timer_cb(struct raft_timer *timer);
 static bool exec_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes);
@@ -258,7 +264,7 @@ void leader_exec_abort(struct exec *req)
 	case EXEC_WAITING:
 		raft_timer_stop(req->leader->raft, &req->timer);
 		queue_remove(&req->queue);
-		TAIL return leader_exec_resume(req);
+		TAIL return exec_tick(req);
 	case EXEC_RUNNING:
 		// FIXME: could be a datarace in case off-the-main loop execution
 		sqlite3_interrupt(req->leader->conn);
@@ -286,6 +292,7 @@ void leader_exec_result(struct exec *req, int status)
 
 void leader_exec_resume(struct exec *req)
 {
+	PRE(sm_state(&req->sm) == EXEC_RUNNING);
 	TAIL return exec_tick(req);
 }
 
@@ -357,14 +364,14 @@ static void exec_tick(struct exec *req)
 			PRE(req->status == 0);
 			PRE(leader->exec == NULL);
 			leader->exec = req;
-			if (leader->close_cb != NULL) {
+			if (leader_closing(leader)) {
 				/* Close requested. Short-circuit to EXEC_DONE */
 				sm_move(&req->sm, EXEC_DONE);
 				req->status = RAFT_CANCELED;
 			} else if (req->stmt == NULL) {
 				sm_move(&req->sm, EXEC_PREPARE_BARRIER);
 				if (exec_needs_barrier(leader)) {
-					req->status = raft_barrier(leader->raft, &req->barrier, exec_barrier_cb);
+					req->status = raft_barrier(leader->raft, &req->barrier, exec_prepare_barrier_cb);
 					if (req->status == 0) {
 						return exec_suspend(req);
 					}
@@ -427,7 +434,7 @@ static void exec_tick(struct exec *req)
 			} else {
 				sm_move(&req->sm, EXEC_RUN_BARRIER);
 				if (exec_needs_barrier(leader)) {
-					req->status = raft_barrier(leader->raft, &req->barrier, exec_barrier_cb);
+					req->status = raft_barrier(leader->raft, &req->barrier, exec_run_barrier_cb);
 					if (req->status == 0) {
 						leader_trace(leader, "requested barrier");
 						return exec_suspend(req);
@@ -528,29 +535,39 @@ static void exec_tick(struct exec *req)
 	}
 }
 
-static void exec_barrier_cb(struct raft_barrier *barrier, int status)
+static inline void exec_barrier_cb(struct raft_barrier *barrier, int status, int event)
 {
-	PRE(barrier != NULL);
 	struct exec *req = CONTAINER_OF(barrier, struct exec, barrier);
 
-	leader_exec_result(req, status); // FIXME(marco6): check if status can only be RAFT_*
-	return leader_exec_resume(req);
+	PRE(sm_state(&req->sm) == event);
+	leader_exec_result(req, status);
+	return exec_tick(req);
+}
+
+static void exec_prepare_barrier_cb(struct raft_barrier *barrier, int status)
+{
+	return exec_barrier_cb(barrier, status, EXEC_PREPARE_BARRIER);
+}
+
+static void exec_run_barrier_cb(struct raft_barrier *barrier, int status)
+{
+	return exec_barrier_cb(barrier, status, EXEC_RUN_BARRIER);
 }
 
 static void exec_timer_cb(struct raft_timer *timer)
 {
-	PRE(timer != NULL);
 	struct exec *req = CONTAINER_OF(timer, struct exec, timer);
 
+	PRE(sm_state(&req->sm) == EXEC_WAITING);
 	leader_exec_result(req, RAFT_BUSY);
-	return leader_exec_resume(req);
+	return exec_tick(req);
 }
 
 static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 {
 	(void)result;
-	struct exec *exec = CONTAINER_OF(apply, struct exec, apply);
-	struct leader *leader = exec->leader;
+	struct exec *req = CONTAINER_OF(apply, struct exec, apply);
+	struct leader *leader = req->leader;
 	leader_trace(leader, "query applied (status=%d)", status);
 	if (leader) {
 		if (status != 0) {
@@ -560,9 +577,10 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 		}
 	}
 
-	// FIXME(marco6) inspect how to always return RAFT_* from this
-	leader_exec_result(exec, status);
-	return leader_exec_resume(exec);
+	PRE(sm_state(&req->sm) == EXEC_DONE);
+	// FIXME(marco6): inspect how to always return RAFT_* from this
+	leader_exec_result(req, status);
+	return exec_tick(req);
 }
 
 static bool exec_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes)
