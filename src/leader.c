@@ -226,18 +226,7 @@ static const struct sm_conf exec_states[EXEC_NR] = {
 #undef S
 #undef A
 
-static bool exec_invariant(const struct sm *sm, int prev)
-{
-	(void)prev;
-	struct exec *req = CONTAINER_OF(sm, struct exec, sm);
-	return CHECK(ERGO(sm_state(sm) == EXEC_INITED,
-			  (req->stmt != NULL) ^ (req->sql != NULL))) &&
-	       CHECK(ERGO(IN(sm_state(sm), EXEC_WAITING, EXEC_RUN_BARRIER,
-			     EXEC_RUNNING),
-			  req->stmt != NULL));
-}
-
-inline static void exec_suspend(struct exec *req) { (void)req; }
+#define suspend return
 
 void leader_exec(struct leader *leader, 
 	struct exec *req,
@@ -267,8 +256,7 @@ void leader_exec(struct leader *leader,
 		* it is safer to put this query at the beginning of the queue
 		* (give this query the precedence) and that it is not necessary
 		* to start the timer as a query is about to finish already. */
-		exec_enqueue(leader->db, req);
-		return exec_suspend(req);
+		return exec_enqueue(leader->db, req);
 	} else {
 		return exec_tick(req);
 	}
@@ -389,147 +377,198 @@ static struct exec *exec_dequeue(struct db *db)
 	return NULL;
 }
 
+static bool exec_invariant(const struct sm *sm, int prev)
+{
+	(void)prev;
+	struct exec *req = CONTAINER_OF(sm, struct exec, sm);
+
+	if (sm_state(sm) == EXEC_INITED) {
+		return CHECK((req->stmt != NULL) ^ (req->sql != NULL)) &&
+		       CHECK(req->status == 0);
+	}
+
+	if (IN(sm_state(sm), EXEC_WAITING, EXEC_RUN_BARRIER, EXEC_RUNNING)) {
+		return CHECK(req->stmt != NULL);
+	}
+	
+	return true;
+}
+
 static void exec_tick(struct exec *req)
 {
 	PRE(req != NULL);
 	PRE(req->leader != NULL && req->leader->db != NULL);
 	struct leader *leader = req->leader;
 	struct db *db = leader->db;
+	dqlite_vfs_frame *frames;
+	unsigned int nframes;
 
 	for (;;) {
-		leader_trace(leader, "exec tick %s (status = %d)", exec_state_name(sm_state(&req->sm)), req->status);
+		leader_trace(leader, "exec tick %s (status = %d)",
+			     exec_state_name(sm_state(&req->sm)), req->status);
 		switch (sm_state(&req->sm)) {
 		case EXEC_INITED:
-			PRE(req->status == 0);
 			PRE(leader->exec == NULL);
 			leader->exec = req;
 			if (leader_closing(leader)) {
 				/* Close requested. Short-circuit to EXEC_DONE */
-				sm_move(&req->sm, EXEC_DONE);
 				req->status = RAFT_CANCELED;
-			} else if (req->stmt == NULL) {
-				sm_move(&req->sm, EXEC_PREPARE_BARRIER);
-				if (exec_needs_barrier(leader)) {
-					req->status = raft_barrier(leader->raft, &req->barrier, exec_prepare_barrier_cb);
-					if (req->status == 0) {
-						return exec_suspend(req);
-					}
-				}
-			} else {
-				sm_move(&req->sm, EXEC_PREPARED);
+				sm_move(&req->sm, EXEC_DONE);
+				continue;
 			}
-			break;
+
+			if (req->stmt != NULL) {
+				sm_move(&req->sm, EXEC_PREPARED);
+				continue;
+			}
+
+			if (!exec_needs_barrier(leader)) {
+				sm_move(&req->sm, EXEC_PREPARE_BARRIER);
+				continue;
+			}
+
+			req->status = raft_barrier(leader->raft, &req->barrier, exec_prepare_barrier_cb);
+			if (req->status != 0) {
+				leader_trace(leader, "barrier failed (status = %d)", req->status);
+				sm_move(&req->sm, EXEC_DONE);
+				continue;
+			}
+
+			leader_trace(leader, "prepare barrier requested");
+			sm_move(&req->sm, EXEC_PREPARE_BARRIER);
+			suspend;
 		case EXEC_PREPARE_BARRIER:
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
-			} else {
-				int rc = sqlite3_prepare_v2(leader->conn, 
-					req->sql, -1, &req->stmt, &req->tail);
-				if (rc != 0) {
-					sm_move(&req->sm, EXEC_DONE);
-					req->status = RAFT_ERROR;
-				} else if (req->stmt == NULL) {
-					sm_move(&req->sm, EXEC_DONE);
-				} else {
-					sm_move(&req->sm, EXEC_PREPARED);
-					POST(req->stmt != NULL);
-				}
+				continue;
 			}
-			break;
+
+			req->status = sqlite3_prepare_v2(
+			    leader->conn, req->sql, -1, &req->stmt, &req->tail);
+			if (req->status != 0) {
+				req->status = RAFT_ERROR;
+				sm_move(&req->sm, EXEC_DONE);
+			} else if (req->stmt == NULL) {
+				sm_move(&req->sm, EXEC_DONE);
+			} else {
+				sm_move(&req->sm, EXEC_PREPARED);
+			}
+			continue;
 		case EXEC_PREPARED:
 			PRE(req->status == 0);
-			PRE(req->stmt != NULL);
 			if (req->work_cb == NULL) {
 				/* no work callback, we are done */
 				sm_move(&req->sm, EXEC_DONE);
-			} else if (sqlite3_stmt_readonly(req->stmt)) {
+				continue;
+			}
+			
+			if (sqlite3_stmt_readonly(req->stmt)) {
 				/* database in in WAL mode, readers can always proceed */
 				sm_move(&req->sm, EXEC_WAITING);
-			} else if (IN(db->active_leader, NULL, leader)) {
-				sm_move(&req->sm, EXEC_WAITING);
+				continue;
+			}
+
+			if (IN(db->active_leader, NULL, leader)) {
 				db->active_leader = leader;
 				leader_trace(leader, "active leader = %p", leader);
-			} else {
-				/* Supend as another leader is keeping the database busy,
-				 * but also start a timer as this statement should not sit
-				 * in the queue for too long. In the case the timer expires
-				 * the statement will just fail with RAFT_BUSY. */
-				req->status = raft_timer_start(leader->raft, &req->timer,
-					db->config->busy_timeout, 0, exec_timer_cb);
-				if (req->status != RAFT_OK) {
-					sm_move(&req->sm, EXEC_DONE);
-				} else {
-					sm_move(&req->sm, EXEC_WAITING);
-					exec_enqueue(db, req);
-					return exec_suspend(req);
-				}
+				sm_move(&req->sm, EXEC_WAITING);
+				continue;
+			} 
+		
+			/* Supend as another leader is keeping the database busy,
+				* but also start a timer as this statement should not sit
+				* in the queue for too long. In the case the timer expires
+				* the statement will just fail with RAFT_BUSY. */
+			req->status = raft_timer_start(
+			    leader->raft, &req->timer, db->config->busy_timeout,
+			    0, exec_timer_cb);
+			if (req->status != RAFT_OK) {
+				sm_move(&req->sm, EXEC_DONE);
+				continue;
 			}
-			break;
+			exec_enqueue(db, req);
+			sm_move(&req->sm, EXEC_WAITING);
+			suspend;
 		case EXEC_WAITING:
 			raft_timer_stop(leader->raft, &req->timer);
 			queue_remove(&req->queue);
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
-			} else {
-				sm_move(&req->sm, EXEC_RUN_BARRIER);
-				if (exec_needs_barrier(leader)) {
-					req->status = raft_barrier(leader->raft, &req->barrier, exec_run_barrier_cb);
-					if (req->status == 0) {
-						leader_trace(leader, "requested barrier");
-						return exec_suspend(req);
-					} else {
-						leader_trace(leader, "barrier failed (status = %d)", req->status);
-					}
-				}
+				continue;
 			}
-			break;
+
+			if (!exec_needs_barrier(leader)) {
+				sm_move(&req->sm, EXEC_RUN_BARRIER);
+				continue;
+			}
+
+			req->status = raft_barrier(leader->raft, &req->barrier, exec_run_barrier_cb);
+			if (req->status != 0) {
+				leader_trace(leader, "barrier failed (status = %d)", req->status);
+				sm_move(&req->sm, EXEC_DONE);
+				continue;
+			}
+
+			leader_trace(leader, "requested barrier");
+			sm_move(&req->sm, EXEC_RUN_BARRIER);
+			suspend;
 		case EXEC_RUN_BARRIER:
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
-			} else {
-				sm_move(&req->sm, EXEC_RUNNING);
-				leader_trace(leader, "executing query");
-				TAIL return req->work_cb(req);
+				continue;
 			}
-			break;
+
+			leader_trace(leader, "executing query");
+			sm_move(&req->sm, EXEC_RUNNING);
+			TAIL return req->work_cb(req);
 		case EXEC_RUNNING:
-			sm_move(&req->sm, EXEC_DONE);
 			leader_trace(leader, "executed query on leader (status=%d)", req->status);
-			if (req->status == RAFT_OK && leader == db->active_leader) {
-				dqlite_vfs_frame *frames;
-				unsigned int nframes;
-				/* 
-				 * FIXME: If this was a xFileControl:
-				 *  - it would be callable through sqlite3_file_control
-				 *  - it would set the error for the connection (so, no translation needed here)
-				 *  - it would not be necessary to keep a vfs pointer in the db
-				 *  - it would not necessary to lookup the database by path every time.
-				 */
-				int rc = VfsPoll(db->vfs, db->path, &frames, &nframes);
-				if (rc == SQLITE_OK && nframes > 0) {
-					leader_trace(leader, "polled connection (%d frames)", nframes);
-					req->status = exec_apply(req, frames, nframes);
-					for (unsigned i = 0; i < nframes; i++) {
-						sqlite3_free(frames[i].data);
-					}
-					sqlite3_free(frames);
-					if (req->status == 0) {
-						return exec_suspend(req);
-					}
-				} else if (rc != SQLITE_OK) {
-					leader_trace(leader, "poll failed on leader");
-					rc = VfsAbort(leader->db->vfs, leader->db->path);
-					assert(rc == SQLITE_OK);
-					req->status = RAFT_IOERR;
-				} else {
-					leader_trace(leader, "nframes = 0 (%s)!", sqlite3_sql(req->stmt));
-				}
+			if (req->status != RAFT_OK || leader != db->active_leader) {
+				sm_move(&req->sm, EXEC_DONE);
+				continue;
 			}
-			break;
+
+			/* 
+			 * FIXME: If this was a xFileControl:
+			 *  - it would be callable through sqlite3_file_control
+			 *  - it would set the error for the connection (so, no translation needed here)
+			 *  - it would not be necessary to keep a vfs pointer in the db
+			 *  - it would not necessary to lookup the database by path every time.
+			 */
+			int rc = VfsPoll(db->vfs, db->path, &frames, &nframes);
+			if (rc != SQLITE_OK) {
+				leader_trace(leader, "poll failed on leader");
+				rc = VfsAbort(leader->db->vfs, leader->db->path);
+				assert(rc == SQLITE_OK);
+				req->status = RAFT_IOERR;
+				sm_move(&req->sm, EXEC_DONE);
+				continue;
+			}
+
+			leader_trace(leader, "polled connection (%d frames)", nframes);
+			if (nframes == 0) {
+				sm_move(&req->sm, EXEC_DONE);
+				continue;
+			}
+
+			req->status = exec_apply(req, frames, nframes);
+			for (unsigned i = 0; i < nframes; i++) {
+				sqlite3_free(frames[i].data);
+			}
+			sqlite3_free(frames);
+
+			sm_move(&req->sm, EXEC_DONE);
+			if (req->status != 0) {
+				continue;
+			}
+			suspend;
 		case EXEC_DONE: 
 			sm_fini(&req->sm);
 			req->leader = NULL;
 			req->done_cb(req);
+
+			/* form here on `req` should never be accessed as the `done_cb` might have
+			 * released its memory or reused for another request. */
 			leader->exec = NULL;
 			leader->pending--;
 			
@@ -551,15 +590,14 @@ static void exec_tick(struct exec *req)
 			}
 
 			req = exec_dequeue(db);
-			if (req == NULL) {
-				return;
+			if (req != NULL) {
+				PRE(IN(db->active_leader, NULL, req->leader));
+				db->active_leader = req->leader;
+				TAIL return exec_tick(req);
 			}
-
-			PRE(IN(db->active_leader, NULL, req->leader));
-			db->active_leader = req->leader;
-			TAIL return exec_tick(req);
+			return;
 		default:
-			POST(false && "impossible!");
+			IMPOSSIBLE("unknown state");
 		}
 	}
 }
