@@ -18,6 +18,19 @@
 
 #define leader_trace(L, fmt, ...) tracef("[leader %p]"fmt"\n", L, ##__VA_ARGS__)
 
+static void exec_tick(struct exec *req);
+static int exec_apply(struct exec *req,
+		      dqlite_vfs_frame *pages,
+		      unsigned n_pages);
+static void exec_prepare_barrier_cb(struct raft_barrier *barrier, int status);
+static void exec_run_barrier_cb(struct raft_barrier *barrier, int status);
+static void exec_apply_cb(struct raft_apply *req, int status, void *result);
+static void exec_timer_cb(struct raft_timer *timer);
+static bool exec_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes);
+
+static struct exec *exec_dequeue(struct db *db);
+static void exec_enqueue(struct db *db, struct exec *exec);
+
 /* Whether we need to submit a barrier request because there is no transaction
  * in progress in the underlying database and the FSM is behind the last log
  * index. */
@@ -59,9 +72,9 @@ static inline bool leader_closing(struct leader *leader)
 	return leader->close_cb != NULL;
 }
 
-static void leader_close(struct leader *leader)
+static void leader_finalize(struct leader *leader)
 {
-	PRE(leader->exec == NULL);
+	PRE(leader->exec == NULL && leader->pending == 0);
 	PRE(leader->db->leaders > 0);
 	tracef("leader close");
 	sqlite3_interrupt(leader->conn);
@@ -78,8 +91,18 @@ static void leader_close(struct leader *leader)
 void leader__close(struct leader *leader, leader_close_cb close_cb)
 {
 	leader->close_cb = close_cb;
-	if (leader->exec == NULL) {
-		leader_close(leader);
+	if (leader->pending == 0) {
+		struct db *db = leader->db;
+		leader_finalize(leader);
+
+		struct exec *_req = exec_dequeue(db);
+		if (_req == NULL) {
+			return;
+		}
+
+		PRE(IN(db->active_leader, NULL, _req->leader));
+		db->active_leader = _req->leader;
+		return exec_tick(_req);
 	}
 }
 
@@ -210,14 +233,6 @@ static const struct sm_conf exec_states[EXEC_NR] = {
 #undef S
 #undef A
 
-static void exec_tick(struct exec *req);
-static int  exec_apply(struct exec *req, dqlite_vfs_frame *pages, unsigned n_pages);
-static void exec_prepare_barrier_cb(struct raft_barrier *barrier, int status);
-static void exec_run_barrier_cb(struct raft_barrier *barrier, int status);
-static void exec_apply_cb(struct raft_apply *req, int status, void *result);
-static void exec_timer_cb(struct raft_timer *timer);
-static bool exec_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes);
-static struct exec* exec_dequeue(struct db *db);
 
 inline static void exec_suspend(struct exec *req) { (void)req; }
 
@@ -238,8 +253,10 @@ void leader_exec(struct leader *leader,
 	queue_init(&req->queue);
 	sm_init(&req->sm, exec_invariant, NULL, exec_states, "exec",
 		EXEC_INITED);
-
-	if (leader->exec != NULL) {
+	
+	bool should_suspend = leader->pending > 0;
+	leader->pending++;
+	if (should_suspend) {
 		/* This can only happen if a new exec is issued during a done
 		* callback. If the exec statements are part of a transaction 
 		* then the only way to proceed is to exec other queries from
@@ -247,7 +264,7 @@ void leader_exec(struct leader *leader,
 		* it is safer to put this query at the beginning of the queue
 		* (give this query the precedence) and that it is not necessary
 		* to start the timer as a query is about to finish already. */
-		queue_insert_head(&leader->db->pending_queue, &req->queue);
+		exec_enqueue(leader->db, req);
 		return exec_suspend(req);
 	} else {
 		return exec_tick(req);
@@ -256,21 +273,21 @@ void leader_exec(struct leader *leader,
 
 void leader_exec_abort(struct exec *req)
 {
-	PRE(req->status == 0);
-
 	switch (sm_state(&req->sm)) {
 	case EXEC_DONE: /* already done */
 		return;
-	case EXEC_WAITING:
-		raft_timer_stop(req->leader->raft, &req->timer);
-		queue_remove(&req->queue);
-		TAIL return exec_tick(req);
 	case EXEC_RUNNING:
-		// FIXME: could be a datarace in case off-the-main loop execution
+		/* best-effort: there is no guarantee that this will interrupt the query */
 		sqlite3_interrupt(req->leader->conn);
-		break;
+		return;
+	case EXEC_WAITING:
+		/* timers are cancellable, so the request can move on directly. */
+		leader_exec_result(req, RAFT_CANCELED);
+		TAIL return exec_tick(req);
 	}
 
+	/* Raft-related requests canno be cancelled, so the only step that can be taken
+	 * is to mark the request as failed and wait for the callback */
 	leader_exec_result(req, RAFT_CANCELED);
 }
 
@@ -338,14 +355,25 @@ static int exec_apply(struct exec *req, dqlite_vfs_frame *frames, unsigned nfram
 	return 0;
 }
 
+static void exec_enqueue(struct db *db, struct exec *req) {
+	if (db->active_leader == req->leader) {
+		queue_insert_head(&db->pending_queue, &req->queue);
+	} else {
+		queue_insert_tail(&db->pending_queue, &req->queue);
+	}
+}
+
 static struct exec* exec_dequeue(struct db *db) {
-	queue *item;
-	QUEUE_FOREACH(item, &db->pending_queue)
-	{
-		struct exec *exec = QUEUE_DATA(item, struct exec, queue);
-		if (db->active_leader == NULL || db->active_leader == exec->leader) {
-			return exec;
-		}
+	if (queue_empty(&db->pending_queue)) {
+		return NULL;
+	}
+
+	queue *item = queue_head(&db->pending_queue);
+	struct exec *req = QUEUE_DATA(item, struct exec, queue);
+	if (db->active_leader == NULL || db->active_leader == req->leader) {
+		queue_remove(&req->queue);
+		leader_trace(req->leader, "dequeued");
+		return req;
 	}
 	return NULL;
 }
@@ -421,7 +449,7 @@ static void exec_tick(struct exec *req)
 					sm_move(&req->sm, EXEC_DONE);
 				} else {
 					sm_move(&req->sm, EXEC_WAITING);
-					queue_insert_tail(&db->pending_queue, &req->queue);
+					exec_enqueue(db, req);
 					return exec_suspend(req);
 				}
 			}
@@ -492,6 +520,7 @@ static void exec_tick(struct exec *req)
 			req->leader = NULL;
 			req->done_cb(req);
 			leader->exec = NULL;
+			leader->pending--;
 			
 			if (db->active_leader == leader) {
 				if (sqlite3_txn_state(leader->conn, NULL) != SQLITE_TXN_WRITE) {
@@ -506,28 +535,17 @@ static void exec_tick(struct exec *req)
 				POST(sqlite3_txn_state(leader->conn, NULL) != SQLITE_TXN_WRITE);
 			}
 
-			req = exec_dequeue(db);
-
-			if (req == NULL) {
-				if (leader->close_cb != NULL) {
-					leader_close(leader);
-				}
-				return;
+			if (leader_closing(leader) && leader->pending == 0) {
+				leader_finalize(leader);
 			}
 
-			leader_trace(leader, "dequeued");
-			queue_remove(&req->queue);
-			
-			if (leader->close_cb != NULL && req->leader != leader) {
-				/* Close only if another request for the same leader wasn't
-				 * enqueued during the done callback. Otherwise, the leader
-				 * will wait a little bit more before closing. */
-				leader_close(leader);
+			req = exec_dequeue(db);
+			if (req == NULL) {
+				return;
 			}
 
 			PRE(IN(db->active_leader, NULL, req->leader));
 			db->active_leader = req->leader;
-			leader_trace(req->leader, "dequeued");
 			TAIL return exec_tick(req);
 		default:
 			POST(false && "impossible!");

@@ -31,7 +31,8 @@ struct leader {
 	struct raft    *raft;     /* Raft instance. */
 	struct exec    *exec;     /* Exec request in progress, if any. */
 	queue           queue;    /* Prev/next leader, used by struct db. */
-	leader_close_cb close_cb; /* Close callback */
+	int             pending;  /* Number of pending requests. */
+	leader_close_cb close_cb; /* Close callback. */
 };
 
 /**
