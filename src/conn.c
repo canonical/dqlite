@@ -67,8 +67,7 @@ static void gateway_handle_cb(struct handle *req,
 
 	assert(schema <= req->schema);
 
-	/* Ignore results firing after we started closing. TODO: instead, we
-	 * should make gateway__close() asynchronous. */
+	/* Ignore results firing after we started closing. */
 	if (c->closed) {
 		tracef("gateway handle cb closed");
 		return;

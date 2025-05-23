@@ -18,6 +18,7 @@
 
 #define leader_trace(L, fmt, ...) tracef("[leader %p]"fmt"\n", L, ##__VA_ARGS__)
 
+static bool exec_invariant(const struct sm *sm, int prev);
 static void exec_tick(struct exec *req);
 static int exec_apply(struct exec *req,
 		      dqlite_vfs_frame *pages,
@@ -26,7 +27,7 @@ static void exec_prepare_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_run_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_apply_cb(struct raft_apply *req, int status, void *result);
 static void exec_timer_cb(struct raft_timer *timer);
-static bool exec_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes);
+static bool is_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes);
 
 static struct exec *exec_dequeue(struct db *db);
 static void exec_enqueue(struct db *db, struct exec *exec);
@@ -59,14 +60,6 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft)
 	db->leaders++;
 	return 0;
 }
-
-static bool exec_invariant(const struct sm *sm, int prev)
-{
-	(void)sm;
-	(void)prev;
-	return true;
-}
-
 static inline bool leader_closing(struct leader *leader)
 {
 	return leader->close_cb != NULL;
@@ -233,6 +226,16 @@ static const struct sm_conf exec_states[EXEC_NR] = {
 #undef S
 #undef A
 
+static bool exec_invariant(const struct sm *sm, int prev)
+{
+	(void)prev;
+	struct exec *req = CONTAINER_OF(sm, struct exec, sm);
+	return CHECK(ERGO(sm_state(sm) == EXEC_INITED,
+			  (req->stmt != NULL) ^ (req->sql != NULL))) &&
+	       CHECK(ERGO(IN(sm_state(sm), EXEC_WAITING, EXEC_RUN_BARRIER,
+			     EXEC_RUNNING),
+			  req->stmt != NULL));
+}
 
 inline static void exec_suspend(struct exec *req) { (void)req; }
 
@@ -324,7 +327,7 @@ static int exec_apply(struct exec *req, dqlite_vfs_frame *frames, unsigned nfram
 	struct db *db = leader->db;
 	struct raft_buffer buf;
 
-	if (exec_db_full(req->leader->db->vfs, req->leader->db, nframes)) {
+	if (is_db_full(req->leader->db->vfs, req->leader->db, nframes)) {
 		return SQLITE_FULL;
 	}
 
@@ -355,15 +358,23 @@ static int exec_apply(struct exec *req, dqlite_vfs_frame *frames, unsigned nfram
 	return 0;
 }
 
-static void exec_enqueue(struct db *db, struct exec *req) {
+static void exec_enqueue(struct db *db, struct exec *req)
+{
 	if (db->active_leader == req->leader) {
+		/* make sure requests from the active leader always come
+		 * first as they are the only ones that can proceed. */
 		queue_insert_head(&db->pending_queue, &req->queue);
 	} else {
 		queue_insert_tail(&db->pending_queue, &req->queue);
 	}
 }
 
-static struct exec* exec_dequeue(struct db *db) {
+/* exec_dequeue dequeues an executable request from the pending
+ * queue of db. A request is considered executable if:
+ *  - no leader is holding the database busy;
+ *  - the request comes from the leader holding the database busy.*/
+static struct exec *exec_dequeue(struct db *db)
+{
 	if (queue_empty(&db->pending_queue)) {
 		return NULL;
 	}
@@ -506,7 +517,7 @@ static void exec_tick(struct exec *req)
 						return exec_suspend(req);
 					}
 				} else if (rc != SQLITE_OK) {
-					leader_trace(leader, "aborted on leader");
+					leader_trace(leader, "poll failed on leader");
 					rc = VfsAbort(leader->db->vfs, leader->db->path);
 					assert(rc == SQLITE_OK);
 					req->status = RAFT_IOERR;
@@ -601,7 +612,7 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	return exec_tick(req);
 }
 
-static bool exec_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes)
+static bool is_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes)
 {
 	uint64_t size = VfsDatabaseSize(vfs, db->path, nframes, db->config->page_size);
 	return size > VfsDatabaseSizeLimit(vfs);

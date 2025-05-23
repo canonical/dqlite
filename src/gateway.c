@@ -53,7 +53,7 @@ static void gateway__leader_close_cb(struct leader *leader)
 	}
 }
 
-static void gateway_close(struct gateway *g)
+static void gateway_finalize(struct gateway *g)
 {
 	stmt__registry_close(&g->stmts);
 	if (g->leader != NULL) {
@@ -74,7 +74,7 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 		 * call the close callback. */
 		interrupt(g);
 	} else {
-		gateway_close(g);
+		gateway_finalize(g);
 	}
 }
 
@@ -324,7 +324,7 @@ static void handle_prepare_done_cb(struct exec *exec)
 	if (g->close_cb) {
 		/* The gateway is closing. All resources should be closed. */
 		sqlite3_finalize(stmt);
-		return gateway_close(g);
+		return gateway_finalize(g);
 	}
 	if (status != 0) {
 		exec_failure(g, req, status);
@@ -483,7 +483,7 @@ static void handle_exec_done_cb(struct exec *exec)
 	g->req = NULL;
 
 	if (g->close_cb != NULL) {
-		return gateway_close(g);
+		return gateway_finalize(g);
 	}
 
 	if (status != 0) {
@@ -573,7 +573,7 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 	g->req = NULL;
 
 	if (g->close_cb != NULL) {
-		return gateway_close(g);
+		return gateway_finalize(g);
 	}
 
 	if (status != 0) {
@@ -700,7 +700,7 @@ static void handle_query_done_cb(struct exec *exec)
 	raft_free(exec);
 
 	if (g->close_cb != NULL) {
-		return gateway_close(g);
+		return gateway_finalize(g);
 	} else if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
 		SUCCESS(empty, EMPTY, response, 0);
@@ -772,7 +772,7 @@ static void handle_query_sql_done_cb(struct exec *exec)
 	raft_free(exec);
 
 	if (g->close_cb != NULL) {
-		return gateway_close(g);
+		return gateway_finalize(g);
 	} else if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
 		SUCCESS(empty, EMPTY, response, 0);
