@@ -2129,7 +2129,7 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 
 	*frames = sqlite3_malloc64(sizeof **frames * w->n_tx);
 	if (*frames == NULL) {
-		return DQLITE_NOMEM;
+		return SQLITE_NOMEM;
 	}
 	*n = w->n_tx;
 
@@ -2166,7 +2166,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 
 	if (database == NULL) {
 		tracef("not found");
-		return DQLITE_ERROR;
+		return SQLITE_NOTFOUND;
 	}
 
 	shm = &database->shm;
@@ -2352,7 +2352,12 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 	unsigned i;
 
 	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
-		assert(shm->shared[i] == 0);
+		// This check assumed that all leaders alrady stopped reading when
+		// a membership change from leader to follower occurred. This assumption
+		// is both weird and false as a read transaction started on a leader is
+		// always correctly serialized as far as the sqlite transactional model 
+		// is concerned. As such, I removed it.
+		//  assert(shm->shared[i] == 0);
 		assert(shm->exclusive[i] == 0);
 	}
 
@@ -2361,6 +2366,8 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 	 * second copy of the WAL index header to see if it is valid. Changing
 	 * the first byte of each of the two copies is enough to make the check
 	 * fail. */
+	// FIXME(marco6): likely this needs a memory barrier. Clearly, on a single
+	// thread this works fine, but on multiple threads it might not.
 	header[0] = 1;
 	header[VFS__WAL_INDEX_HEADER_SIZE] = 0;
 }
