@@ -249,13 +249,14 @@ void leader_exec(struct leader *leader,
 	bool should_suspend = leader->pending > 0;
 	leader->pending++;
 	if (should_suspend) {
-		/* This can only happen if a new exec is issued during a done
-		* callback. If the exec statements are part of a transaction 
-		* then the only way to proceed is to exec other queries from
-		* the same leader until it releases the lock. This means that
-		* it is safer to put this query at the beginning of the queue
-		* (give this query the precedence) and that it is not necessary
-		* to start the timer as a query is about to finish already. */
+		/* When dealing with EXEC_SQL and QUERY_SQL requests that have
+		 * multiple statements like `BEGIN IMMEDIATE; ROLLBACK`, the
+		 * gateway will issue a new exec request for the next statement
+		 * during the done callback. If the exec statements are part of
+		 * a transaction then the only way to proceed is to exec other
+		 * queries from the same leader until it releases the lock. This
+		 * means that it is not necessary to start the timer as a query
+		 * is about to finish already. */
 		return exec_enqueue(leader->db, req);
 	} else {
 		return exec_tick(req);
