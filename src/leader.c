@@ -567,7 +567,7 @@ static void exec_tick(struct exec *req)
 			req->leader = NULL;
 			req->done_cb(req);
 
-			/* form here on `req` should never be accessed as the `done_cb` might have
+			/* From here on `req` should never be accessed as the `done_cb` might have
 			 * released its memory or reused for another request. */
 			leader->exec = NULL;
 			leader->pending--;
