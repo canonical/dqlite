@@ -2,6 +2,7 @@
 #include <sqlite3.h>
 #include "protocol.h"
 #include "tuple.h"
+#include "utils.h"
 
 /* Bind a single parameter. */
 static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
@@ -36,8 +37,7 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 					value->boolean == 0 ? 0 : 1);
 		break;
 	default:
-		rc = SQLITE_ERROR;
-		break;
+		IMPOSSIBLE("value outside of enum");
 	}
 
 	if (rc != 0) {
