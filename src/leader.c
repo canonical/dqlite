@@ -523,7 +523,7 @@ static void exec_tick(struct exec *req)
 			TAIL return req->work_cb(req);
 		case EXEC_RUNNING:
 			leader_trace(leader, "executed query on leader (status=%d)", req->status);
-			if (req->status != RAFT_OK || leader != db->active_leader) {
+			if (req->status != RAFT_OK) {
 				sm_move(&req->sm, EXEC_DONE);
 				continue;
 			}
