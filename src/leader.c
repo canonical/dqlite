@@ -88,14 +88,14 @@ void leader__close(struct leader *leader, leader_close_cb close_cb)
 		struct db *db = leader->db;
 		leader_finalize(leader);
 
-		struct exec *_req = exec_dequeue(db);
-		if (_req == NULL) {
+		struct exec *req = exec_dequeue(db);
+		if (req == NULL) {
 			return;
 		}
 
-		PRE(IN(db->active_leader, NULL, _req->leader));
-		db->active_leader = _req->leader;
-		return exec_tick(_req);
+		PRE(IN(db->active_leader, NULL, req->leader));
+		db->active_leader = req->leader;
+		return exec_tick(req);
 	}
 }
 
@@ -383,6 +383,13 @@ static bool exec_invariant(const struct sm *sm, int prev)
 	(void)prev;
 	struct exec *req = CONTAINER_OF(sm, struct exec, sm);
 
+	/* Ensure that only one write request can run at any point of time.
+	 * This can be checked by making sure that no progress happen while
+	 * enqueued. */
+	if (prev != sm_state(sm) && sm_state(sm) != EXEC_WAITING) {
+		return CHECK(queue_empty(&req->queue));
+	}
+
 	if (sm_state(sm) == EXEC_INITED) {
 		return CHECK((req->stmt != NULL) ^ (req->sql != NULL)) &&
 		       CHECK(req->status == 0);
@@ -513,7 +520,7 @@ static void exec_tick(struct exec *req)
 			leader_trace(leader, "requested barrier");
 			sm_move(&req->sm, EXEC_RUN_BARRIER);
 			suspend;
-		case EXEC_RUN_BARRIER:
+		case EXEC_RUN_BARRIER: /* -> EXEC_RUNNING */
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
 				continue;
@@ -522,7 +529,7 @@ static void exec_tick(struct exec *req)
 			leader_trace(leader, "executing query");
 			sm_move(&req->sm, EXEC_RUNNING);
 			TAIL return req->work_cb(req);
-		case EXEC_RUNNING:
+		case EXEC_RUNNING: /* -> EXEC_DONE */
 			leader_trace(leader, "executed query on leader (status=%d)", req->status);
 			if (req->status != RAFT_OK) {
 				sm_move(&req->sm, EXEC_DONE);
