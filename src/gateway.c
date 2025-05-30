@@ -19,10 +19,10 @@ static bool sqlite3_statement_empty(sqlite3 *conn, const char *sql)
 	if (sql == NULL || sql[0] == '\0') {
 		return true;
 	}
-	sqlite3_stmt *tail_stmt = NULL;
-	int rc = sqlite3_prepare_v2(conn, sql, -1, &tail_stmt, NULL);
-	sqlite3_finalize(tail_stmt);
-	return rc == SQLITE_OK && tail_stmt == NULL;
+	sqlite3_stmt *stmt = NULL;
+	int rc = sqlite3_prepare_v2(conn, sql, -1, &stmt, NULL);
+	sqlite3_finalize(stmt);
+	return rc == SQLITE_OK && stmt == NULL;
 }
 
 static void interrupt(struct gateway *g);
@@ -57,6 +57,8 @@ static void gateway_finalize(struct gateway *g)
 {
 	stmt__registry_close(&g->stmts);
 	if (g->leader != NULL) {
+		/* Before closing the gateway, signal to the existing leader that we
+		 * are closing and wait to drain the queue. */
 		leader__close(g->leader, gateway__leader_close_cb);
 	} else if (g->close_cb != NULL) {
 		g->close_cb(g);
@@ -327,57 +329,56 @@ static void handle_prepare_done_cb(struct exec *exec)
 		return gateway_finalize(g);
 	}
 	if (status != 0) {
-		exec_failure(g, req, status);
-	} else if (stmt == NULL) {
+		return exec_failure(g, req, status);
+	}
+
+	if (stmt == NULL) {
 		/* FIXME Should we use a code other than 0 here? */
-		failure(req, 0, "empty statement");
-	} else {
-		struct response_stmt response_v0 = {};
-		struct response_stmt_with_offset response_v1 = {};
-		struct stmt *registry_stmt;
-		int rc;
+		return failure(req, 0, "empty statement");
+	}
 
-		if (req->schema == DQLITE_PREPARE_STMT_SCHEMA_V0) {
-			if (!sqlite3_statement_empty(g->leader->conn, tail)) {
-				sqlite3_finalize(stmt);
-				failure(req, SQLITE_ERROR,
-					"nonempty statement tail");
-				return;
-			}
-		}
 
-		rc = stmt__registry_add(&g->stmts, &registry_stmt);
-		if (rc != 0) {
+	if (req->schema == DQLITE_PREPARE_STMT_SCHEMA_V0) {
+		if (!sqlite3_statement_empty(g->leader->conn, tail)) {
 			sqlite3_finalize(stmt);
-			failure(req, SQLITE_NOMEM, "stmt registry add failed");
-			return;
+			return failure(req, SQLITE_ERROR,
+				"nonempty statement tail");
 		}
-		registry_stmt->stmt = stmt;
+	}
 
-		switch (req->schema) {
-			case DQLITE_PREPARE_STMT_SCHEMA_V0:
-				response_v0.db_id = (uint32_t)req->db_id;
-				response_v0.id = (uint32_t)registry_stmt->id;
-				response_v0.params =
-				    (uint64_t)sqlite3_bind_parameter_count(
-					registry_stmt->stmt);
-				SUCCESS(stmt, STMT, response_v0,
-					DQLITE_PREPARE_STMT_SCHEMA_V0);
-				break;
-			case DQLITE_PREPARE_STMT_SCHEMA_V1:
-				response_v1.db_id = (uint32_t)req->db_id;
-				response_v1.id = (uint32_t)registry_stmt->id;
-				response_v1.params =
-				    (uint64_t)sqlite3_bind_parameter_count(
-					registry_stmt->stmt);
-				response_v1.offset = (uint64_t)(tail - sql);
-				SUCCESS(stmt_with_offset, STMT_WITH_OFFSET,
-					response_v1,
-					DQLITE_PREPARE_STMT_SCHEMA_V1);
-				break;
-			default:
-				assert(0);
-		}
+	struct stmt *registry_stmt;
+	int rc = stmt__registry_add(&g->stmts, &registry_stmt);
+	if (rc != 0) {
+		sqlite3_finalize(stmt);
+		return failure(req, SQLITE_NOMEM, "stmt registry add failed");
+	}
+	registry_stmt->stmt = stmt;
+
+	struct response_stmt response_v0 = {};
+	struct response_stmt_with_offset response_v1 = {};
+	switch (req->schema) {
+		case DQLITE_PREPARE_STMT_SCHEMA_V0:
+			response_v0.db_id = (uint32_t)req->db_id;
+			response_v0.id = (uint32_t)registry_stmt->id;
+			response_v0.params =
+				(uint64_t)sqlite3_bind_parameter_count(
+				registry_stmt->stmt);
+			SUCCESS(stmt, STMT, response_v0,
+				DQLITE_PREPARE_STMT_SCHEMA_V0);
+			break;
+		case DQLITE_PREPARE_STMT_SCHEMA_V1:
+			response_v1.db_id = (uint32_t)req->db_id;
+			response_v1.id = (uint32_t)registry_stmt->id;
+			response_v1.params =
+				(uint64_t)sqlite3_bind_parameter_count(
+				registry_stmt->stmt);
+			response_v1.offset = (uint64_t)(tail - sql);
+			SUCCESS(stmt_with_offset, STMT_WITH_OFFSET,
+				response_v1,
+				DQLITE_PREPARE_STMT_SCHEMA_V1);
+			break;
+		default:
+			assert(0);
 	}
 }
 
@@ -471,11 +472,10 @@ static void handle_exec_work_cb(struct exec *exec)
 static void handle_exec_done_cb(struct exec *exec)
 {
 	struct gateway *g = exec->data;
+	PRE(g->leader != NULL && g->req != NULL);
 	int status = exec->status;
 	bool done = !sqlite3_stmt_busy(exec->stmt);
-	PRE(g->leader != NULL && g->req != NULL);
 	struct handle *req = g->req;
-	struct response_result response;
 
 	sqlite3_clear_bindings(exec->stmt);
 	sqlite3_reset(exec->stmt);
@@ -486,19 +486,20 @@ static void handle_exec_done_cb(struct exec *exec)
 		return gateway_finalize(g);
 	}
 
-	if (status != 0) {
-		if (done) {
-			exec_failure(g, req, status);
-		} else {
-			failure(
-			    req, SQLITE_ERROR,
-			    "rows yielded when none expected for EXEC request");
-		}
-	} else {
-		PRE(done);
-		fill_result(g, &response);
-		SUCCESS(result, RESULT, response, 0);
+	if (status != 0 && done) {
+		return exec_failure(g, req, status);
 	}
+
+	if (status != 0 && !done) {
+		return failure(
+		    req, SQLITE_ERROR,
+		    "rows yielded when none expected for EXEC request");
+	}
+
+	PRE(done);
+	struct response_result response;
+	fill_result(g, &response);
+	SUCCESS(result, RESULT, response, 0);
 }
 
 static int handle_exec(struct gateway *g, struct handle *req)
@@ -576,19 +577,18 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 		return gateway_finalize(g);
 	}
 
-	if (status != 0) {
-		if (done) {
-			exec_failure(g, req, status);
-		} else {
-			failure(
-			    req, SQLITE_ERROR,
-			    "rows yielded when none expected for EXEC request");
-		}
-	} else {
-		PRE(done);
-		fill_result(g, &response);
-		SUCCESS(result, RESULT, response, 0);
+	if (status != 0 && done) {
+		return exec_failure(g, req, status);
 	}
+
+	if (status != 0 && !done) {
+		return failure(req, SQLITE_ERROR,
+			"rows yielded when none expected for EXEC request");
+	}
+
+	PRE(done);
+	fill_result(g, &response);
+	SUCCESS(result, RESULT, response, 0);
 }
 
 static int handle_exec_sql(struct gateway *g, struct handle *req)
@@ -651,10 +651,9 @@ static void handle_query_work_cb(struct exec *exec)
 	if (!sqlite3_statement_empty(exec->leader->conn, exec->tail)) {
 		leader_exec_result(exec, RAFT_ERROR);
 		TAIL return leader_exec_resume(exec);
-	} else {
-		exec->tail = NULL;
 	}
 
+	exec->tail = NULL;
 	int rc;
 	if (!req->parameters_bound) {
 		PRE(!sqlite3_stmt_busy(exec->stmt));
@@ -691,7 +690,9 @@ static void handle_query_work_cb(struct exec *exec)
 static void handle_query_done_cb(struct exec *exec)
 {
 	struct gateway *g = exec->data;
+	PRE(g != NULL);
 	struct handle *req = g->req;
+	PRE(req != NULL);
 	int status = exec->status;
 	g->req = NULL;
 
@@ -701,17 +702,22 @@ static void handle_query_done_cb(struct exec *exec)
 
 	if (g->close_cb != NULL) {
 		return gateway_finalize(g);
-	} else if (req->cancellation_requested) {
+	} 
+	
+	if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
 		SUCCESS(empty, EMPTY, response, 0);
-	} else if (status != 0) {
-		exec_failure(g, req, status);
-	} else {
-		struct response_rows response = {
-			.eof = DQLITE_RESPONSE_ROWS_DONE,
-		};
-		SUCCESS(rows, ROWS, response, 0);
+		return;
+	} 
+	
+	if (status != 0) {
+		return exec_failure(g, req, status);
 	}
+	
+	struct response_rows response = {
+		.eof = DQLITE_RESPONSE_ROWS_DONE,
+	};
+	SUCCESS(rows, ROWS, response, 0);
 }
 
 static int handle_query(struct gateway *g, struct handle *req)
@@ -764,7 +770,9 @@ static int handle_query(struct gateway *g, struct handle *req)
 static void handle_query_sql_done_cb(struct exec *exec)
 {
 	struct gateway *g = exec->data;
+	PRE(g != NULL);
 	struct handle *req = g->req;
+	PRE(req != NULL);
 	int status = exec->status;
 	bool tail = exec->stmt != NULL && exec->tail != NULL;
 	g->req = NULL;
@@ -773,23 +781,30 @@ static void handle_query_sql_done_cb(struct exec *exec)
 
 	if (g->close_cb != NULL) {
 		return gateway_finalize(g);
-	} else if (req->cancellation_requested) {
+	} 
+	
+	if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
 		SUCCESS(empty, EMPTY, response, 0);
-	} else if (status != RAFT_OK) {
-		if (tail) {
-			failure(req, SQLITE_ERROR, "nonempty statement tail");
-		} else {
-			exec_failure(g, req, status);
-		}
-	} else if (!req->parameters_bound) {
-		failure(req, 0, "empty statement");
-	} else {
-		struct response_rows response = {
-			.eof = DQLITE_RESPONSE_ROWS_DONE,
-		};
-		SUCCESS(rows, ROWS, response, 0);
+		return;
 	}
+	
+	if (status != RAFT_OK && tail) {
+		return failure(req, SQLITE_ERROR, "nonempty statement tail");
+	} 
+
+	if (status != RAFT_OK && !tail) {
+		return exec_failure(g, req, status);
+	}
+
+	if (!req->parameters_bound) {
+		return failure(req, 0, "empty statement");
+	}
+
+	struct response_rows response = {
+		.eof = DQLITE_RESPONSE_ROWS_DONE,
+	};
+	SUCCESS(rows, ROWS, response, 0);
 }
 
 static int handle_query_sql(struct gateway *g, struct handle *req)

@@ -77,12 +77,24 @@ struct exec {
 	 */
 	int status;
 
-	/******* Internal state *******/
-	queue queue;
+	/* Fields below should not be touched by the user. */
+
+	/*
+	 * Used to enqueue execs in the db queue.
+	 */
+	queue queue; 
 	struct sm sm;
+	
+	/* 
+	 * Leader on which this request is being executed.
+	 */
 	struct leader *leader;
 	struct raft_barrier barrier;
-	struct raft_timer timer;
+	
+	/*
+	 * Timer to limit the time spent in the queue.
+	 */
+	struct raft_timer timer; 
 	struct raft_apply apply;
 
 	exec_work_cb work_cb;
