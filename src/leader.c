@@ -187,10 +187,11 @@ enum {
 	EXEC_PREPARE_BARRIER,
 	EXEC_PREPARED,
 
-	EXEC_WAITING,
+	EXEC_WAITING_QUEUE,
 
 	EXEC_RUN_BARRIER,
 	EXEC_RUNNING,
+	EXEC_WAITING_APPLY,
 
 	EXEC_DONE,
 	EXEC_NR,
@@ -201,9 +202,10 @@ static const char* exec_state_name(int state) {
 	case EXEC_INITED:          return "EXEC_INITED";
 	case EXEC_PREPARE_BARRIER: return "EXEC_PREPARE_BARRIER";
 	case EXEC_PREPARED:        return "EXEC_PREPARED";
-	case EXEC_WAITING:         return "EXEC_WAITING";
+	case EXEC_WAITING_QUEUE:   return "EXEC_WAITING_QUEUE";
 	case EXEC_RUN_BARRIER:     return "EXEC_RUN_BARRIER";
 	case EXEC_RUNNING:         return "EXEC_RUNNING";
+	case EXEC_WAITING_APPLY:   return "EXEC_WAITING_APPLY";
 	case EXEC_DONE:            return "EXEC_DONE";
 	default:                   return "<invalid>";
 	}
@@ -216,10 +218,11 @@ static const char* exec_state_name(int state) {
 static const struct sm_conf exec_states[EXEC_NR] = {
 	S(INITED,                 A(PREPARE_BARRIER)|A(RUNNING)|A(PREPARED)|A(DONE),     SM_INITIAL),
 	S(PREPARE_BARRIER,        A(PREPARED)|A(DONE),                                   0),
-	S(PREPARED,               A(WAITING)|A(RUN_BARRIER)|A(RUNNING)|A(DONE),          0),
-	S(WAITING,                A(RUN_BARRIER)|A(RUNNING)|A(DONE),                     0),
+	S(PREPARED,               A(WAITING_QUEUE)|A(RUN_BARRIER)|A(RUNNING)|A(DONE),    0),
+	S(WAITING_QUEUE,          A(RUN_BARRIER)|A(RUNNING)|A(DONE),                     0),
 	S(RUN_BARRIER,            A(RUNNING)|A(DONE),                                    0),
-	S(RUNNING,                A(DONE),                                               0),
+	S(RUNNING,                A(WAITING_APPLY)|A(DONE),                              0),
+	S(WAITING_APPLY,          A(DONE),                                               0),
 	S(DONE,                   0,                                                     SM_FAILURE|SM_FINAL),
 };
 
@@ -272,7 +275,7 @@ void leader_exec_abort(struct exec *req)
 		/* best-effort: there is no guarantee that this will interrupt the query */
 		sqlite3_interrupt(req->leader->conn);
 		return;
-	case EXEC_WAITING:
+	case EXEC_WAITING_QUEUE:
 		/* timers are cancellable, so the request can move on directly. */
 		leader_exec_result(req, RAFT_CANCELED);
 		TAIL return exec_tick(req);
@@ -386,7 +389,7 @@ static bool exec_invariant(const struct sm *sm, int prev)
 	/* Ensure that only one write request can run at any point of time.
 	 * This can be checked by making sure that no progress happen while
 	 * enqueued. */
-	if (prev != sm_state(sm) && sm_state(sm) != EXEC_WAITING) {
+	if (prev != sm_state(sm) && sm_state(sm) != EXEC_WAITING_QUEUE) {
 		return CHECK(queue_empty(&req->queue));
 	}
 
@@ -395,7 +398,7 @@ static bool exec_invariant(const struct sm *sm, int prev)
 		       CHECK(req->status == 0);
 	}
 
-	if (IN(sm_state(sm), EXEC_WAITING, EXEC_RUN_BARRIER, EXEC_RUNNING)) {
+	if (IN(sm_state(sm), EXEC_WAITING_QUEUE, EXEC_RUN_BARRIER, EXEC_RUNNING, EXEC_WAITING_APPLY)) {
 		return CHECK(req->stmt != NULL);
 	}
 	
@@ -472,21 +475,22 @@ static void exec_tick(struct exec *req)
 			
 			if (sqlite3_stmt_readonly(req->stmt)) {
 				/* database in in WAL mode, readers can always proceed */
-				sm_move(&req->sm, EXEC_WAITING);
+				sm_move(&req->sm, EXEC_WAITING_QUEUE);
 				continue;
 			}
 
 			if (IN(db->active_leader, NULL, leader)) {
 				db->active_leader = leader;
 				leader_trace(leader, "active leader = %p", leader);
-				sm_move(&req->sm, EXEC_WAITING);
+				sm_move(&req->sm, EXEC_WAITING_QUEUE);
 				continue;
-			} 
-		
-			/* Supend as another leader is keeping the database busy,
-				* but also start a timer as this statement should not sit
-				* in the queue for too long. In the case the timer expires
-				* the statement will just fail with RAFT_BUSY. */
+			}
+
+			/* Supend as another leader is keeping the database
+			 * busy, but also start a timer as this statement should
+			 * not sit in the queue for too long. In the case the
+			 * timer expires the statement will just fail with
+			 * RAFT_BUSY. */
 			req->status = raft_timer_start(
 			    leader->raft, &req->timer, db->config->busy_timeout,
 			    0, exec_timer_cb);
@@ -495,9 +499,9 @@ static void exec_tick(struct exec *req)
 				continue;
 			}
 			exec_enqueue(db, req);
-			sm_move(&req->sm, EXEC_WAITING);
+			sm_move(&req->sm, EXEC_WAITING_QUEUE);
 			suspend;
-		case EXEC_WAITING:
+		case EXEC_WAITING_QUEUE:
 			raft_timer_stop(leader->raft, &req->timer);
 			queue_remove(&req->queue);
 			if (req->status != 0) {
@@ -520,7 +524,7 @@ static void exec_tick(struct exec *req)
 			leader_trace(leader, "requested barrier");
 			sm_move(&req->sm, EXEC_RUN_BARRIER);
 			suspend;
-		case EXEC_RUN_BARRIER: /* -> EXEC_RUNNING */
+		case EXEC_RUN_BARRIER:
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
 				continue;
@@ -565,11 +569,15 @@ static void exec_tick(struct exec *req)
 			}
 			sqlite3_free(frames);
 
-			sm_move(&req->sm, EXEC_DONE);
 			if (req->status != 0) {
+				sm_move(&req->sm, EXEC_DONE);
 				continue;
 			}
+			sm_move(&req->sm, EXEC_WAITING_APPLY);
 			suspend;
+		case EXEC_WAITING_APPLY:
+			sm_move(&req->sm, EXEC_DONE);
+			continue;
 		case EXEC_DONE: 
 			sm_fini(&req->sm);
 			req->leader = NULL;
@@ -633,7 +641,7 @@ static void exec_timer_cb(struct raft_timer *timer)
 {
 	struct exec *req = CONTAINER_OF(timer, struct exec, timer);
 
-	PRE(sm_state(&req->sm) == EXEC_WAITING);
+	PRE(sm_state(&req->sm) == EXEC_WAITING_QUEUE);
 	leader_exec_result(req, RAFT_BUSY);
 	return exec_tick(req);
 }
@@ -652,7 +660,7 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 		}
 	}
 
-	PRE(sm_state(&req->sm) == EXEC_DONE);
+	PRE(sm_state(&req->sm) == EXEC_WAITING_APPLY);
 	// FIXME(marco6): inspect how to always return RAFT_* from this
 	leader_exec_result(req, status);
 	return exec_tick(req);

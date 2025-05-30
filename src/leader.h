@@ -32,7 +32,8 @@ struct leader {
 	struct exec    *exec;     /* Exec request in progress, if any. */
 	queue           queue;    /* Prev/next leader, used by struct db. */
 	int             pending;  /* Number of pending requests. */
-	leader_close_cb close_cb; /* Close callback. */
+	leader_close_cb close_cb; /* Close callback. When not NULL it means that
+				     the leader is closing. */
 };
 
 /**
@@ -102,9 +103,9 @@ int leader__init(struct leader *l, struct db *db, struct raft *raft);
  *
  * This is an asynchronous operation in general. 
  *
- * If set, the work callback will be called for once the statement is prepared
- * and ready to be executed. Once the query is done with the statement, it is
- * the callback's responsibility to schedule a leader_exec_resume as the state
+ * If set, the work callback will be called once the statement is prepared
+ * and ready to be executed. Once the callback is done with the statement, it is
+ * the it's responsibility to schedule a leader_exec_resume as the state
  * machine is suspended. If the callback is not set, the state machine will not
  * suspend. The work callback will not be called if the prepared statement
  * contains no SQL (e.g. it is just spaces or just a comment).
