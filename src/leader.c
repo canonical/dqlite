@@ -180,6 +180,41 @@ err_after_buf_alloc:
 
 /**
  * State machine for exec requests.
+ *
+ * ┌───────── EXEC_INITED
+ * │                │
+ * │ stmt != NULL   │stmt == NULL
+ * │                ▼
+ * │      EXEC_PREPARE_BARRIER
+ * │                │
+ * │                ▼
+ * └───────► EXEC_PREPARED ────────────┐
+ *                  │                  │
+ *                  │work_cb != NULL   │work_cb == NULL
+ *                  ▼                  │
+ *         EXEC_WAITING_QUEUE          │
+ *                  │                  │
+ *                  ▼                  │
+ *          EXEC_RUN_BARRIER           │
+ *                  │                  │
+ *                  ▼                  │
+ * ┌────────── EXEC_RUNNING            │
+ * │                │                  │
+ * │VfsPoll == 0    │VfsPoll > 0       │
+ * │                ▼                  │
+ * │        EXEC_WAITING_APPLY         │
+ * │                │                  │
+ * │                ▼                  │
+ * └──────────► EXEC_DONE ◄────────────┘
+ *
+ * All states can also reach `EXEC_DONE` in case of an error.
+ * The state machine is suspended in the following states:
+ *  - EXEC_PREPARE_BARRIER: if exec_needs_barrier returns true
+ *  - EXEC_WAITING_QUEUE: if the statement is not readonly and the db is busy
+ *    with another leader
+ *  - EXEC_RUN_BARRIER: if exec_needs_barrier returns true; this is necessary
+ *    as time might have passed since the request was added to the queue
+ *  - EXEC_WAITING_APPLY: always suspended during the raft apply
  */
 enum {
 	EXEC_INITED,
