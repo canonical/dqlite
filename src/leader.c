@@ -410,6 +410,7 @@ static struct exec *exec_dequeue(struct db *db)
 	struct exec *req = QUEUE_DATA(item, struct exec, queue);
 	if (db->active_leader == NULL || db->active_leader == req->leader) {
 		queue_remove(&req->queue);
+		queue_init(&req->queue);
 		leader_trace(req->leader, "dequeued");
 		return req;
 	}
@@ -539,6 +540,7 @@ static void exec_tick(struct exec *req)
 		case EXEC_WAITING_QUEUE:
 			raft_timer_stop(leader->raft, &req->timer);
 			queue_remove(&req->queue);
+			queue_init(&req->queue);
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);
 				continue;

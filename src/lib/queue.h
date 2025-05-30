@@ -90,7 +90,6 @@ static inline void queue_remove(struct queue *q)
 {
 	q->prev->next = q->next;
 	q->next->prev = q->prev;
-	queue_init(q);
 }
 
 #endif /* LIB_QUEUE_H_*/
