@@ -2106,6 +2106,29 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	return MUNIT_OK;
 }
 
+/* Exec SQL text with a multiple queries and close the gateway early. */
+TEST_CASE(exec_sql, closingMulti, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql =
+	    "CREATE TABLE test (n INT);"
+		"INSERT INTO test(i) VALUES(0);"
+		"INSERT INTO test(i) VALUES(1);"
+		"INSERT INTO test(i) VALUES(2);"
+		"INSERT INTO test(i) VALUES(3);";
+	ENCODE(&f->request, exec_sql);
+	HANDLE(EXEC_SQL);
+
+	for (int i = 0; i < 10; i++) {
+		CLUSTER_STEP;
+	}
+
+	munit_assert_false(f->context->invoked);
+	return MUNIT_OK;
+}
+
 /* Send an EXEC_SQL request in the new (schema version 1) format, which
  * supports larger numbers of parameters. */
 TEST_CASE(exec_sql, manyParams, NULL)

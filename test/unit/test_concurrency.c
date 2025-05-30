@@ -426,6 +426,44 @@ TEST_CASE(exec, busy_wait_timeout, NULL)
 	return MUNIT_OK;
 }
 
+static int faultyStartTimer(struct raft_io *io,
+			    struct raft_timer *req,
+			    uint64_t timeout,
+			    uint64_t repeat,
+			    raft_timer_cb cb)
+{
+	(void)io;
+	(void)req;
+	(void)timeout;
+	(void)repeat;
+	(void)cb;
+	
+	return RAFT_ERROR;
+}
+
+TEST_CASE(exec, busy_wait_timer_failed, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	
+	f->servers[0].config.busy_timeout = 10;
+
+	/* Create a test table using connection 0 */
+	PREPARE(f->c1, "BEGIN IMMEDIATE", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	/* try to write from another connection should fail after some time */
+	CLUSTER_RAFT(0)->io->timer_start = faultyStartTimer;
+	PREPARE(f->c2, "BEGIN IMMEDIATE", &f->stmt_id2);
+	EXEC(f->c2, f->stmt_id2);
+	WAIT(f->c2);
+	ASSERT_CALLBACK(f->c2, SQLITE_ERROR, FAILURE);
+	
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * Concurrent query requests

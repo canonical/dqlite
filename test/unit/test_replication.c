@@ -240,6 +240,34 @@ TEST_CASE(exec, success, NULL)
 	return MUNIT_OK;
 }
 
+TEST_CASE(exec, barrier_fails, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	CLUSTER_ELECT(0);
+	PREPARE(0, "CREATE TABLE test (a  INT)");
+	raft_fixture_append_fault(&f->cluster, 0, 0);
+	EXEC(0);
+	munit_assert_true(f->invoked);
+	munit_assert_int(f->status, ==, RAFT_IOERR);
+	FINALIZE;
+	return MUNIT_OK;
+}
+
+TEST_CASE(exec, append_fails, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+	CLUSTER_ELECT(0);
+	PREPARE(0, "CREATE TABLE test (a  INT)");
+	raft_fixture_append_fault(&f->cluster, 0, 1);
+	EXEC(0);
+	munit_assert_true(f->invoked);
+	munit_assert_int(f->status, ==, RAFT_IOERR);
+	FINALIZE;
+	return MUNIT_OK;
+}
+
 /* A snapshot is taken after applying an entry. */
 TEST_CASE(exec, snapshot, NULL)
 {
