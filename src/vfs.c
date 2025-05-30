@@ -2366,8 +2366,6 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 	 * second copy of the WAL index header to see if it is valid. Changing
 	 * the first byte of each of the two copies is enough to make the check
 	 * fail. */
-	// FIXME(marco6): likely this needs a memory barrier. Clearly, on a single
-	// thread this works fine, but on multiple threads it might not.
 	header[0] = 1;
 	header[VFS__WAL_INDEX_HEADER_SIZE] = 0;
 }
