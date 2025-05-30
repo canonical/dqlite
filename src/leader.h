@@ -82,15 +82,15 @@ struct exec {
 	/*
 	 * Used to enqueue execs in the db queue.
 	 */
-	queue queue; 
+	queue queue;
 	struct sm sm;
-	
-	/* 
+
+	/*
 	 * Leader on which this request is being executed.
 	 */
 	struct leader *leader;
 	struct raft_barrier barrier;
-	
+
 	/*
 	 * Timer to limit the time spent in the queue.
 	 */

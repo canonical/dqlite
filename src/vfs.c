@@ -2351,7 +2351,6 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 {
 	struct vfsShm *shm = &d->shm;
 	uint8_t *header = shm->regions[0];
-	unsigned i;
 
 	assert(shm->exclusive[VFS__WAL_WRITE_LOCK] == 0);
 	assert(shm->exclusive[VFS__WAL_CKPT_LOCK] == 0);

@@ -702,18 +702,18 @@ static void handle_query_done_cb(struct exec *exec)
 
 	if (g->close_cb != NULL) {
 		return gateway_finalize(g);
-	} 
-	
+	}
+
 	if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
 		SUCCESS(empty, EMPTY, response, 0);
 		return;
-	} 
-	
+	}
+
 	if (status != 0) {
 		return exec_failure(g, req, status);
 	}
-	
+
 	struct response_rows response = {
 		.eof = DQLITE_RESPONSE_ROWS_DONE,
 	};
@@ -781,8 +781,8 @@ static void handle_query_sql_done_cb(struct exec *exec)
 
 	if (g->close_cb != NULL) {
 		return gateway_finalize(g);
-	} 
-	
+	}
+
 	if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
 		SUCCESS(empty, EMPTY, response, 0);
@@ -791,7 +791,7 @@ static void handle_query_sql_done_cb(struct exec *exec)
 	
 	if (status != RAFT_OK && tail) {
 		return failure(req, SQLITE_ERROR, "nonempty statement tail");
-	} 
+	}
 
 	if (status != RAFT_OK && !tail) {
 		return exec_failure(g, req, status);

@@ -1323,21 +1323,21 @@ TEST_CASE(query, large, NULL)
 	struct value value;
 	bool finished;
 	(void)params;
-	EXEC("BEGIN");
 
 	/* 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 1 less than 2 response buffers worth of rows, otherwise we
-	 * need 3 responses, of which the last one contains no rows. */
-	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
-		EXEC("INSERT INTO test(n) VALUES(123)");
-	}
-	EXEC("COMMIT");
-
-	PREPARE("SELECT n FROM test");
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+	PREPARE("WITH RECURSIVE seq(n) AS ("
+            "	SELECT 1               "
+            "	UNION ALL              "
+            "	SELECT n+1             "
+            "	FROM seq WHERE n < ?   "
+            ")                         "
+            "SELECT * FROM seq         ");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
@@ -1347,10 +1347,10 @@ TEST_CASE(query, large, NULL)
 	munit_assert_string_equal(column, "n");
 
 	/* First response contains max amount of rows */
-	for (i = 0; i < n_rows_buffer; i++) {
+	for (i = 1; i <= n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i);
 	}
 
 	DECODE(&f->response, rows);
@@ -1367,10 +1367,10 @@ TEST_CASE(query, large, NULL)
 	munit_assert_string_equal(column, "n");
 
 	/* Second, and last, response contains 1 less than maximum amount */
-	for (i = 0; i < n_rows_buffer - 1; i++) {
+	for (; i <= n_rows_buffer*2 - 1; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i);
 	}
 
 	DECODE(&f->response, rows);
@@ -2241,20 +2241,21 @@ TEST_CASE(query_sql, large, NULL)
 	const char *column;
 	struct value value;
 	bool finished;
-	EXEC("BEGIN");
 
 	/* 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 1 less than 2 response buffers worth of rows, otherwise we
-	 * need 3 responses, of which the last one contains no rows. */
-	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
-		EXEC("INSERT INTO test(n) VALUES(123)");
-	}
-	EXEC("COMMIT");
-
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
 	f->request.db_id = 0;
-	f->request.sql = "SELECT n FROM test";
+	f->request.sql =
+	    "WITH RECURSIVE seq(n) AS ("
+	    "	SELECT 1               "
+	    "	UNION ALL              "
+	    "	SELECT n+1             "
+	    "	FROM seq WHERE n < ?   "
+	    ")                         "
+	    "SELECT * FROM seq         ";
 	ENCODE(&f->request, query_sql);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, ROWS);
 
@@ -2264,10 +2265,10 @@ TEST_CASE(query_sql, large, NULL)
 	munit_assert_string_equal(column, "n");
 
 	/* First response contains max amount of rows */
-	for (i = 0; i < n_rows_buffer; i++) {
+	for (i = 1; i <= n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i);
 	}
 
 	DECODE(&f->response, rows);
@@ -2284,10 +2285,10 @@ TEST_CASE(query_sql, large, NULL)
 	munit_assert_string_equal(column, "n");
 
 	/* Second, and last, response contains 1 less than maximum amount */
-	for (i = 0; i < n_rows_buffer - 1; i++) {
+	for (; i <= n_rows_buffer*2 - 1; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i);
 	}
 
 	DECODE(&f->response, rows);
@@ -2308,20 +2309,20 @@ TEST_CASE(query_sql, largeClose, NULL)
 	uint64_t n;
 	const char *column;
 	struct value value;
-	EXEC("BEGIN");
 
-	/* 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 1 less than 2 response buffers worth of rows, otherwise we
-	 * need 3 responses, of which the last one contains no rows. */
-	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
-		EXEC("INSERT INTO test(n) VALUES(123)");
-	}
-	EXEC("COMMIT");
-
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
 	f->request.db_id = 0;
-	f->request.sql = "SELECT n FROM test";
+	f->request.sql =
+	    "WITH RECURSIVE seq(n) AS ("
+	    "	SELECT 1               "
+	    "	UNION ALL              "
+	    "	SELECT n+1             "
+	    "	FROM seq WHERE n < ?   "
+	    ")                         "
+	    "SELECT * FROM seq         ";
 	ENCODE(&f->request, query_sql);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, ROWS);
 
@@ -2331,10 +2332,10 @@ TEST_CASE(query_sql, largeClose, NULL)
 	munit_assert_string_equal(column, "n");
 
 	/* First response contains max amount of rows */
-	for (i = 0; i < n_rows_buffer; i++) {
+	for (i = 1; i <= n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i);
 	}
 
 	DECODE(&f->response, rows);
