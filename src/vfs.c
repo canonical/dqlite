@@ -55,6 +55,8 @@ const int vfsOne = 1;
 
 /* Index of the write lock in the WAL-index header locks area. */
 #define VFS__WAL_WRITE_LOCK 0
+#define VFS__WAL_CKPT_LOCK  1
+#define VFS__WAL_RECOVER_LOCK  2
 
 /* Write ahead log header size. */
 #define VFS__WAL_HEADER_SIZE 32
@@ -2351,15 +2353,9 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 	uint8_t *header = shm->regions[0];
 	unsigned i;
 
-	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
-		// This check assumed that all leaders alrady stopped reading when
-		// a membership change from leader to follower occurred. This assumption
-		// is both weird and false as a read transaction started on a leader is
-		// always correctly serialized as far as the sqlite transactional model 
-		// is concerned. As such, I removed it.
-		//  assert(shm->shared[i] == 0);
-		assert(shm->exclusive[i] == 0);
-	}
+	assert(shm->exclusive[VFS__WAL_WRITE_LOCK] == 0);
+	assert(shm->exclusive[VFS__WAL_CKPT_LOCK] == 0);
+	assert(shm->exclusive[VFS__WAL_RECOVER_LOCK] == 0);
 
 	/* The walIndexTryHdr function in sqlite/wal.c (which is indirectly
 	 * called by sqlite3WalBeginReadTransaction), compares the first and

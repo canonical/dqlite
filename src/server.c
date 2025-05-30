@@ -37,18 +37,6 @@ static void state_cb(struct raft *r,
 		     unsigned short old_state,
 		     unsigned short new_state)
 {
-	// INFO(marco6): initially, this logic was also closing the leader connection
-	// on each connection. This relied on the ability to close the leader synchronously.
-	// Now that leader_close is async, this is not possible anymore.
-	// I suspect in general that it wasn't useful to begin with as a request needing
-	// a leader connnection can only be in few state:
-	//  - not run: in this case there is a check in each handle_XXX method
-	//  - waiting for barrier/apply: in this case the command fails if leadership is 
-	//    lost and the connection will be terminated. There is no need to add another
-	//    obscure error path
-	//  - executed: no need to close the leader here. It will be closed either with
-	//    the connection or at the next command.
-	// I left however the trace call, so that the trace looks the same.
 	if (old_state == RAFT_LEADER && new_state != RAFT_LEADER) {
 		tracef("node %llu@%s: leadership lost", r->id, r->address);
 	}
