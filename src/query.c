@@ -96,25 +96,23 @@ static int encode_row(sqlite3_stmt *stmt, struct buffer *buffer, int n)
 
 int query__batch(sqlite3_stmt *stmt, struct buffer *buffer)
 {
-	int n; /* Column count */
-	int i;
-	uint64_t n64;
+	int column_count;
 	char *cursor;
 	int rc;
 
-	n = sqlite3_column_count(stmt);
-	if (n <= 0) {
+	column_count = sqlite3_column_count(stmt);
+	if (column_count < 0) {
 		return SQLITE_ERROR;
 	}
-	n64 = (uint64_t)n;
 
 	/* Insert the column count */
 	cursor = buffer__advance(buffer, sizeof(uint64_t));
 	assert(cursor != NULL);
-	uint64__encode(&n64, &cursor);
+	uint64_t column_count64 = (uint64_t)column_count;
+	uint64__encode(&column_count64, &cursor);
 
 	/* Insert the column names */
-	for (i = 0; i < n; i++) {
+	for (int i = 0; i < column_count; i++) {
 		const char *name = sqlite3_column_name(stmt, i);
 		cursor = buffer__advance(buffer, text__sizeof(&name));
 		if (cursor == NULL) {
@@ -136,7 +134,7 @@ int query__batch(sqlite3_stmt *stmt, struct buffer *buffer)
 		if (rc != SQLITE_ROW) {
 			break;
 		}
-		rc = encode_row(stmt, buffer, n);
+		rc = encode_row(stmt, buffer, column_count);
 		if (rc != SQLITE_OK) {
 			break;
 		}

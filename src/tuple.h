@@ -115,6 +115,12 @@ int tuple_decoder__init(struct tuple_decoder *d,
 unsigned long tuple_decoder__n(struct tuple_decoder *d);
 
 /**
+ * Returns the number of values remaining to be decoded.
+ *
+ */
+unsigned long tuple_decoder__remaining(struct tuple_decoder *d);
+
+/**
  * Decode the next value of the tuple.
  */
 int tuple_decoder__next(struct tuple_decoder *d, struct value *value);
