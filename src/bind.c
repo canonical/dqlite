@@ -1,5 +1,8 @@
 #include "bind.h"
+#include <sqlite3.h>
+#include "protocol.h"
 #include "tuple.h"
+#include "utils.h"
 
 /* Bind a single parameter. */
 static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
@@ -34,36 +37,23 @@ static int bind_one(sqlite3_stmt *stmt, int n, struct value *value)
 					value->boolean == 0 ? 0 : 1);
 		break;
 	default:
-		rc = DQLITE_PROTO;
-		break;
+		IMPOSSIBLE("value outside of enum");
 	}
 
-	return rc;
+	if (rc != 0) {
+		return DQLITE_ERROR;
+	}
+	return DQLITE_OK;
 }
 
-int bind__params(sqlite3_stmt *stmt, struct cursor *cursor, int format)
+int bind__params(sqlite3_stmt *stmt, struct tuple_decoder *decoder)
 {
-	struct tuple_decoder decoder;
-	unsigned long i;
-	int rc;
+	int requested = sqlite3_bind_parameter_count(stmt);
+	int available = (int)tuple_decoder__remaining(decoder);
 
-	assert(format == TUPLE__PARAMS || format == TUPLE__PARAMS32);
-
-	sqlite3_reset(stmt);
-
-	/* If the payload has been fully consumed, it means there are no
-	 * parameters to bind. */
-	if (cursor->cap == 0) {
-		return 0;
-	}
-
-	rc = tuple_decoder__init(&decoder, 0, format, cursor);
-	if (rc != 0) {
-		return rc;
-	}
-	for (i = 0; i < tuple_decoder__n(&decoder); i++) {
+	for (int i = 0; i < requested && i < available; i++) {
 		struct value value;
-		rc = tuple_decoder__next(&decoder, &value);
+		int rc = tuple_decoder__next(decoder, &value);
 		if (rc != 0) {
 			return rc;
 		}
@@ -73,5 +63,5 @@ int bind__params(sqlite3_stmt *stmt, struct cursor *cursor, int format)
 		}
 	}
 
-	return 0;
+	return DQLITE_OK;
 }

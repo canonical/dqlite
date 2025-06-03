@@ -111,6 +111,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	test_sqlite_setup(params);
 	test_server_setup(&f->server, 1, params);
 	test_server_prepare(&f->server, params);
+	dqlite_node_set_busy_timeout(f->server.dqlite, 200 * f->writers);
 	test_server_run(&f->server);
 	f->client = test_server_client(&f->server);
 

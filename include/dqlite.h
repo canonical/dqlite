@@ -520,6 +520,14 @@ DQLITE_API int dqlite_node_set_snapshot_compression(dqlite_node *n,
 DQLITE_API int dqlite_node_enable_role_management(dqlite_node *n);
 
 /**
+ * Set the amount of time in milliseconds a write query can stay in the write
+ * queue before failing with SQLITE_BUSY.
+ *
+ * This is 0ms by default to keep backward compatibility.
+ */
+DQLITE_API int dqlite_node_set_busy_timeout(dqlite_node *n, unsigned msecs);
+
+/**
  * Start a dqlite node.
  *
  * A background thread will be spawned which will run the node's main loop. If

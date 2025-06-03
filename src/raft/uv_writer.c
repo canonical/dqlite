@@ -261,6 +261,7 @@ int UvWriterInit(struct UvWriter *w,
 		rv = UvOsSetDirectIo(w->fd);
 		if (rv != 0) {
 			UvOsErrMsg(errmsg, "fcntl", rv);
+			rv = RAFT_IOERR;
 			goto err;
 		}
 	}

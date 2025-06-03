@@ -12,15 +12,16 @@
 
 struct db
 {
-	struct config *config; /* Dqlite configuration */
-	char *filename;        /* Database filename */
-	char *path;            /* Used for on-disk db */
-	uint32_t cookie;       /* Used to bind to the pool's thread */
-	sqlite3 *follower;     /* Follower connection */
-	queue leaders;         /* Open leader connections */
-	unsigned tx_id;        /* Current ongoing transaction ID, if any */
-	queue queue;           /* Prev/next database, used by the registry */
-	int read_lock;         /* Lock used by snapshots & checkpoints */
+	struct config *config;        /* Dqlite configuration */
+	struct sqlite3_vfs *vfs;      /* Underlying VFS */
+	char *filename;               /* Database filename */
+	char *path;                   /* Used for on-disk db */
+	uint32_t cookie;              /* Used to bind to the pool's thread */
+	int leaders;                  /* Open leader connections */
+	struct leader *active_leader; /* Current leader writing to the database */
+	queue pending_queue;          /* Queue of pending execs, used by leader */
+	queue queue;                  /* Prev/next database, used by the registry */
+	int read_lock;                /* Lock used by snapshots & checkpoints */
 };
 
 /**
@@ -39,8 +40,9 @@ int db__init(struct db *db, struct config *config, const char *filename);
 void db__close(struct db *db);
 
 /**
- * Open the follower connection associated with this database.
+ * Open a connection to the database.
  */
-int db__open_follower(struct db *db);
+int db__open(struct db *db, sqlite3 **conn);
+
 
 #endif /* DB_H_*/

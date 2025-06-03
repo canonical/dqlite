@@ -55,6 +55,8 @@ const int vfsOne = 1;
 
 /* Index of the write lock in the WAL-index header locks area. */
 #define VFS__WAL_WRITE_LOCK 0
+#define VFS__WAL_CKPT_LOCK  1
+#define VFS__WAL_RECOVER_LOCK  2
 
 /* Write ahead log header size. */
 #define VFS__WAL_HEADER_SIZE 32
@@ -2129,7 +2131,7 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 
 	*frames = sqlite3_malloc64(sizeof **frames * w->n_tx);
 	if (*frames == NULL) {
-		return DQLITE_NOMEM;
+		return SQLITE_NOMEM;
 	}
 	*n = w->n_tx;
 
@@ -2166,7 +2168,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 
 	if (database == NULL) {
 		tracef("not found");
-		return DQLITE_ERROR;
+		return SQLITE_NOTFOUND;
 	}
 
 	shm = &database->shm;
@@ -2349,12 +2351,10 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 {
 	struct vfsShm *shm = &d->shm;
 	uint8_t *header = shm->regions[0];
-	unsigned i;
 
-	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
-		assert(shm->shared[i] == 0);
-		assert(shm->exclusive[i] == 0);
-	}
+	assert(shm->exclusive[VFS__WAL_WRITE_LOCK] == 0);
+	assert(shm->exclusive[VFS__WAL_CKPT_LOCK] == 0);
+	assert(shm->exclusive[VFS__WAL_RECOVER_LOCK] == 0);
 
 	/* The walIndexTryHdr function in sqlite/wal.c (which is indirectly
 	 * called by sqlite3WalBeginReadTransaction), compares the first and
