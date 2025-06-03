@@ -19,6 +19,7 @@ TEST_MODULE(gateway);
 /* Context for a gateway handle request. */
 struct context {
 	bool invoked;
+	bool resume;  /* True to resume the request when closing */
 	int status;
 	uint8_t type;
 	uint8_t schema;
@@ -35,7 +36,7 @@ struct connection {
 	struct context context;
 };
 
-#define FIXTURE                                   \
+#define FIXTURE                               \
 	FIXTURE_CLUSTER;                          \
 	struct connection connections[N_SERVERS]; \
 	struct gateway *gateway;                  \
@@ -45,49 +46,63 @@ struct connection {
 	struct handle *handle;                    \
 	struct context *context;
 
-#define SETUP                                                           \
+#define SETUP                                                       \
 	unsigned i;                                                     \
 	int rc;                                                         \
 	SETUP_CLUSTER(V2);                                              \
 	for (i = 0; i < N_SERVERS; i++) {                               \
-		struct connection *c = &f->connections[i];              \
-		struct config *config;                                  \
-		config = CLUSTER_CONFIG(i);                             \
-		config->page_size = 512;                                \
-		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i), \
-			      CLUSTER_RAFT(i)); \
-		c->handle.data = &c->context;                           \
-		rc = buffer__init(&c->buf1);                            \
-		munit_assert_int(rc, ==, 0);                            \
-		rc = buffer__init(&c->buf2);                            \
-		munit_assert_int(rc, ==, 0);                            \
+		struct connection *c = &f->connections[i];                  \
+		struct config *config;                                      \
+		config = CLUSTER_CONFIG(i);                                 \
+		config->page_size = 512;                                    \
+		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i),     \
+			      CLUSTER_RAFT(i));                                 \
+		c->handle.data = &c->context;                               \
+		rc = buffer__init(&c->buf1);                                \
+		munit_assert_int(rc, ==, 0);                                \
+		rc = buffer__init(&c->buf2);                                \
+		munit_assert_int(rc, ==, 0);                                \
 	}                                                               \
 	test_raft_heap_setup(params, user_data);                        \
 	pool_ut_fallback()->flags |= POOL_FOR_UT_NOT_ASYNC;             \
 	pool_ut_fallback()->flags |= POOL_FOR_UT;                       \
 	SELECT(0)
 
-#define TEAR_DOWN                                          \
+#define TEAR_DOWN                                      \
 	unsigned i;                                        \
 	test_raft_heap_tear_down(data);                    \
 	for (i = 0; i < N_SERVERS; i++) {                  \
-		struct connection *c = &f->connections[i]; \
-		gateway__close(&c->gateway);               \
-		buffer__close(&c->buf1);                   \
-		buffer__close(&c->buf2);                   \
+		struct connection *c = &f->connections[i];     \
+		f->context = &c->context;                      \
+		c->context.invoked = false;                    \
+		gateway__close(&c->gateway, closeCb);          \
+		if (c->context.resume) {                       \
+			bool finished;                             \
+			gateway__resume(&c->gateway, &finished);   \
+		}                                              \
+		WAIT;                                          \
+		buffer__close(&c->buf1);                       \
+		buffer__close(&c->buf2);                       \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
+
+static void closeCb(struct gateway *g) {
+	struct connection *c = CONTAINER_OF(g, struct connection, gateway);
+	c->context.invoked = true;
+}
 
 static void handleCb(struct handle *req,
 		     int status,
 		     uint8_t type,
 		     uint8_t schema)
 {
-	struct context *c = req->data;
-	c->invoked = true;
-	c->status = status;
-	c->type = type;
-	c->schema = schema;
+	struct connection *conn = CONTAINER_OF(req, struct connection, handle);
+	struct context *ctx = &conn->context;
+	ctx->invoked = true;
+	ctx->resume = true;
+	ctx->status = status;
+	ctx->type = type;
+	ctx->schema = schema;
 }
 
 /******************************************************************************
@@ -161,6 +176,7 @@ static void handleCb(struct handle *req,
 		f->handle->cursor.cap = buffer__offset(f->buf1);           \
 		buffer__reset(f->buf2);                                    \
 		f->context->invoked = false;                               \
+		f->context->resume = false;                               \
 		f->context->status = -1;                                   \
 		f->context->type = -1;                                     \
 		rc2 = gateway__handle(f->gateway, f->handle, TYPE, SCHEMA, \
@@ -173,6 +189,8 @@ static void handleCb(struct handle *req,
 
 /* Handle a request of the given type and check that no error occurs. */
 #define HANDLE(TYPE) HANDLE_STATUS(DQLITE_REQUEST_##TYPE, 0)
+
+#define CONNECT(i) gateway__init(f->gateway, CLUSTER_CONFIG(i), CLUSTER_REGISTRY(i), CLUSTER_RAFT(i))
 
 /* Open a leader connection against the "test" database */
 #define OPEN                              \
@@ -432,7 +450,7 @@ TEST_CASE(open, error, twice, NULL)
 	ASSERT_CALLBACK(0, DB);
 	ENCODE(&f->request, open);
 	HANDLE(OPEN);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_BUSY, FAILURE);
 	ASSERT_FAILURE(SQLITE_BUSY,
 		       "a database for this connection is already open");
 	return MUNIT_OK;
@@ -527,7 +545,7 @@ TEST_CASE(prepare, invalid, NULL)
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
 	munit_assert_int(f->response.id, ==, 0);
 	return MUNIT_OK;
@@ -559,18 +577,20 @@ TEST_CASE(prepare, barrier_error, NULL)
 	PREPARE("CREATE TABLE test (n INT)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Submit a prepare request, forcing a barrier, which fails */
 	CLUSTER_ELECT(0);
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, prepare);
-	/* We rely on leader_barrier_v2 (called by handle_prepare) attempting
+	/* We rely on leader_exec (called by handle_prepare) attempting
 	 * an allocation using raft_malloc. */
-	test_raft_heap_fault_config(0, 1);
+	test_raft_heap_fault_config(1, 1);
 	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_PREPARE, RAFT_NOMEM);
+	HANDLE_STATUS(DQLITE_REQUEST_PREPARE, RAFT_SNAPSHOT_OK);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_IOERR, FAILURE);
 	return MUNIT_OK;
 }
 
@@ -587,7 +607,7 @@ TEST_CASE(prepare, non_leader, NULL)
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 	return MUNIT_OK;
 }
@@ -603,7 +623,7 @@ TEST_CASE(prepare, nonempty_tail, NULL)
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "nonempty statement tail");
 	return MUNIT_OK;
 }
@@ -821,7 +841,7 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_re_elected, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
@@ -854,7 +874,7 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_other_elected, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Elect another leader and re-try */
@@ -890,7 +910,7 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
@@ -948,7 +968,7 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_other_elected, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 
 	/* Elect another leader and re-try */
 	CLUSTER_ELECT(1);
@@ -984,8 +1004,8 @@ TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
 	PREPARE("COMMIT");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_IOERR_LEADERSHIP_LOST, "disk I/O error");
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR_LEADERSHIP_LOST, "leadership lost");
 
 	/* Re-elect ourselves and re-try */
 	CLUSTER_ELECT(0);
@@ -1016,7 +1036,7 @@ TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
 	PREPARE("ROLLBACK");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
@@ -1048,7 +1068,7 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 	PREPARE("ROLLBACK");
 	CLUSTER_DEPOSE;
 	EXEC_SUBMIT(stmt_id);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_NOT_LEADER, FAILURE);
 	ASSERT_FAILURE(SQLITE_IOERR_NOT_LEADER, "not leader");
 
 	/* Re-elect ourselves and re-try */
@@ -1164,7 +1184,7 @@ TEST_CASE(exec, vacuum_into_fails, NULL)
 	ENCODE(&f->request, exec);
 	HANDLE(EXEC);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_AUTH, FAILURE);
 	return MUNIT_OK;
 }
 
@@ -1235,7 +1255,7 @@ TEST_CASE(exec, barrier_closing, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Now try to exec the other stmt (triggering a barrier) and close early
 	 */
@@ -1291,16 +1311,14 @@ TEST_CASE(exec, unexpectedRow, NULL)
 	uint64_t stmt_id;
 	(void)params;
 	CLUSTER_ELECT(0);
-	EXEC("CREATE TABLE test (n INT)");
-	EXEC("INSERT INTO test (n) VALUES (1)");
-	PREPARE("SELECT n FROM test");
+	PREPARE("SELECT * FROM (VALUES (1), (2))");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, exec);
 	HANDLE(EXEC);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
-	ASSERT_FAILURE(SQLITE_ROW,
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR,
 		       "rows yielded when none expected for EXEC request");
 	return MUNIT_OK;
 }
@@ -1413,21 +1431,21 @@ TEST_CASE(query, large, NULL)
 	struct value value;
 	bool finished;
 	(void)params;
-	EXEC("BEGIN");
 
 	/* 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 1 less than 2 response buffers worth of rows, otherwise we
-	 * need 3 responses, of which the last one contains no rows. */
-	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
-		EXEC("INSERT INTO test(n) VALUES(123)");
-	}
-	EXEC("COMMIT");
-
-	PREPARE("SELECT n FROM test");
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+	PREPARE("WITH RECURSIVE seq(n) AS ("
+            "	SELECT 1               "
+            "	UNION ALL              "
+            "	SELECT n+1             "
+            "	FROM seq WHERE n < ?   "
+            ")                         "
+            "SELECT * FROM seq         ");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
@@ -1437,10 +1455,10 @@ TEST_CASE(query, large, NULL)
 	munit_assert_string_equal(column, "n");
 
 	/* First response contains max amount of rows */
-	for (i = 0; i < n_rows_buffer; i++) {
+	for (i = 1; i <= n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i);
 	}
 
 	DECODE(&f->response, rows);
@@ -1457,10 +1475,10 @@ TEST_CASE(query, large, NULL)
 	munit_assert_string_equal(column, "n");
 
 	/* Second, and last, response contains 1 less than maximum amount */
-	for (i = 0; i < n_rows_buffer - 1; i++) {
+	for (; i <= n_rows_buffer*2 - 1; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i);
 	}
 
 	DECODE(&f->response, rows);
@@ -1468,6 +1486,206 @@ TEST_CASE(query, large, NULL)
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query, modifying, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	uint64_t n;
+	bool finished;
+	(void)params;
+
+	PREPARE("INSERT INTO test(n) VALUES(123)");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 0);
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query, returning, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	PREPARE("INSERT INTO test(n) VALUES(123) RETURNING n");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, 123);
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query, returning_large, NULL)
+{
+	struct query_fixture *f = data;
+	int i;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	/* Query 2 response buffers worth of rows */
+	/* 16 = 8B header + 8B value (int) */
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+
+	PREPARE("WITH RECURSIVE seq(n) AS ("
+            "	SELECT 1               "
+            "	UNION ALL              "
+            "	SELECT n+1             "
+            "	FROM seq WHERE n < ?   "
+            ")                         "
+            "INSERT INTO test(n) SELECT n FROM seq RETURNING n");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 1; i <= n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
+
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* Second, and last, response contains 1 less than maximum amount */
+	for (; i < 2*n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query, returning_interrupt, NULL)
+{
+	struct query_fixture *f = data;
+	struct request_interrupt interrupt;
+	int i;
+	uint64_t stmt_id;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	/* Query 2 response buffers worth of rows */
+	/* 16 = 8B header + 8B value (int) */
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+
+	PREPARE("WITH RECURSIVE seq(n) AS ("
+            "	SELECT 1               "
+            "	UNION ALL              "
+            "	SELECT n+1             "
+            "	FROM seq WHERE n < ?   "
+            ")                         "
+            "INSERT INTO test(n) SELECT n FROM seq RETURNING n");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 1; i <= n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	ENCODE(&interrupt, interrupt);
+	HANDLE(INTERRUPT);
+	/* The interrupt should not return immediately, but wait for
+	 * the query to end. */
+	munit_assert_false(f->context->invoked);
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
+	ASSERT_CALLBACK(0, EMPTY);
+
+	/* Make sure rows are not there. */
+	PREPARE("SELECT * FROM test");
+	ENCODE(&f->request, query);
+	HANDLE(QUERY);
+	WAIT;
+	ASSERT_CALLBACK(0, EMPTY);
+
 	return MUNIT_OK;
 }
 
@@ -1512,20 +1730,23 @@ TEST_CASE(query, interrupt, NULL)
 	const char *column;
 	struct value value;
 	(void)params;
-	EXEC("BEGIN");
 
+	/* Query 2 response buffers worth of rows */
 	/* 16 = 8B header + 8B value (int) */
-	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 2 response buffers worth of rows */
-	for (i = 0; i < 2 * n_rows_buffer; i++) {
-		EXEC("INSERT INTO test(n) VALUES(123)");
-	}
-	EXEC("COMMIT");
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2 };
 
-	PREPARE("SELECT n FROM test");
+	PREPARE("WITH RECURSIVE seq(n) AS ("
+            "	SELECT 1               "
+            "	UNION ALL              "
+            "	SELECT n+1             "
+            "	FROM seq WHERE n < ?   "
+            ")                         "
+            "SELECT * FROM seq         ");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
@@ -1537,7 +1758,7 @@ TEST_CASE(query, interrupt, NULL)
 	for (i = 0; i < n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i+1);
 	}
 
 	DECODE(&f->response, rows);
@@ -1545,7 +1766,12 @@ TEST_CASE(query, interrupt, NULL)
 
 	ENCODE(&interrupt, interrupt);
 	HANDLE(INTERRUPT);
-
+	/* The interrupt should not return immediately, but wait for
+	 * the query to end. */
+	munit_assert_false(f->context->invoked);
+	bool finished;
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
 	ASSERT_CALLBACK(0, EMPTY);
 
 	return MUNIT_OK;
@@ -1575,20 +1801,22 @@ TEST_CASE(query, largeClose, NULL)
 	const char *column;
 	struct value value;
 	(void)params;
-	EXEC("BEGIN");
-
+	/* Query 2 response buffers worth of rows */
 	/* 16 = 8B header + 8B value (int) */
-	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 2 response buffers worth of rows */
-	for (i = 0; i < 2 * n_rows_buffer; i++) {
-		EXEC("INSERT INTO test(n) VALUES(123)");
-	}
-	EXEC("COMMIT");
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2 };
 
-	PREPARE("SELECT n FROM test");
+	PREPARE("WITH RECURSIVE seq(n) AS ("
+            "	SELECT 1               "
+            "	UNION ALL              "
+            "	SELECT n+1             "
+            "	FROM seq WHERE n < ?   "
+            ")                         "
+            "SELECT * FROM seq         ");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
 	ASSERT_CALLBACK(0, ROWS);
 
@@ -1600,7 +1828,7 @@ TEST_CASE(query, largeClose, NULL)
 	for (i = 0; i < n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i+1);
 	}
 
 	DECODE(&f->response, rows);
@@ -1620,11 +1848,10 @@ TEST_CASE(query, barrier, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Re-elect ourselves and issue a query request */
 	CLUSTER_ELECT(0);
-
 	PREPARE("SELECT n FROM test");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -1646,7 +1873,7 @@ TEST_CASE(query, barrierInFlightQuery, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Re-elect ourselves and issue a query request */
 	CLUSTER_ELECT(0);
@@ -1670,7 +1897,7 @@ TEST_CASE(query, barrierInFlightQuerySql, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Re-elect ourselves and issue a query request */
 	CLUSTER_ELECT(0);
@@ -1690,7 +1917,7 @@ TEST_CASE(query, barrierInFlightExec, NULL)
 	PREPARE("INSERT INTO test(n) VALUES(1)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Re-elect ourselves and issue an exec request */
 	CLUSTER_ELECT(0);
@@ -1783,7 +2010,7 @@ TEST_CASE(query, close_while_in_flight, NULL)
 	}
 
 	/* Simulate a gateway close */
-	gateway__close(f->gateway);
+	gateway__close(f->gateway, closeCb);
 	gateway__resume(f->gateway, &finished);
 
 	return MUNIT_OK;
@@ -1912,7 +2139,7 @@ TEST_CASE(exec_sql, invalid, NULL)
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
 	return MUNIT_OK;
 }
@@ -1942,7 +2169,7 @@ TEST_CASE(exec_sql, attach, NULL)
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
 	WAIT;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_AUTH, FAILURE);
 	ASSERT_FAILURE(SQLITE_AUTH, "not authorized");
 	return MUNIT_OK;
 }
@@ -1970,7 +2197,7 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	PREPARE("CREATE TABLE test (n INT)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Submit an EXEC_SQL request, forcing a barrier, which fails */
 	CLUSTER_ELECT(0);
@@ -1979,9 +2206,34 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	ENCODE(&f->request, exec_sql);
 	/* We rely on leader_barrier_v2 (called by handle_exec_sql) attempting
 	 * an allocation using raft_malloc. */
-	test_raft_heap_fault_config(0, 1);
+	test_raft_heap_fault_config(1, 1);
 	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, RAFT_NOMEM);
+	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, RAFT_SNAPSHOT_OK);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_IOERR, FAILURE);
+	return MUNIT_OK;
+}
+
+/* Exec SQL text with a multiple queries and close the gateway early. */
+TEST_CASE(exec_sql, closingMulti, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	(void)params;
+	f->request.db_id = 0;
+	f->request.sql =
+	    "CREATE TABLE test (n INT);"
+		"INSERT INTO test(i) VALUES(0);"
+		"INSERT INTO test(i) VALUES(1);"
+		"INSERT INTO test(i) VALUES(2);"
+		"INSERT INTO test(i) VALUES(3);";
+	ENCODE(&f->request, exec_sql);
+	HANDLE(EXEC_SQL);
+
+	for (int i = 0; i < 10; i++) {
+		CLUSTER_STEP;
+	}
+
+	munit_assert_false(f->context->invoked);
 	return MUNIT_OK;
 }
 
@@ -2105,7 +2357,7 @@ TEST_CASE(query_sql, invalid, NULL)
 	f->request.sql = "NOT SQL";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "near \"NOT\": syntax error");
 	return MUNIT_OK;
 }
@@ -2120,20 +2372,21 @@ TEST_CASE(query_sql, large, NULL)
 	const char *column;
 	struct value value;
 	bool finished;
-	EXEC("BEGIN");
 
 	/* 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 1 less than 2 response buffers worth of rows, otherwise we
-	 * need 3 responses, of which the last one contains no rows. */
-	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
-		EXEC("INSERT INTO test(n) VALUES(123)");
-	}
-	EXEC("COMMIT");
-
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
 	f->request.db_id = 0;
-	f->request.sql = "SELECT n FROM test";
+	f->request.sql =
+	    "WITH RECURSIVE seq(n) AS ("
+	    "	SELECT 1               "
+	    "	UNION ALL              "
+	    "	SELECT n+1             "
+	    "	FROM seq WHERE n < ?   "
+	    ")                         "
+	    "SELECT * FROM seq         ";
 	ENCODE(&f->request, query_sql);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, ROWS);
 
@@ -2143,10 +2396,10 @@ TEST_CASE(query_sql, large, NULL)
 	munit_assert_string_equal(column, "n");
 
 	/* First response contains max amount of rows */
-	for (i = 0; i < n_rows_buffer; i++) {
+	for (i = 1; i <= n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i);
 	}
 
 	DECODE(&f->response, rows);
@@ -2163,10 +2416,10 @@ TEST_CASE(query_sql, large, NULL)
 	munit_assert_string_equal(column, "n");
 
 	/* Second, and last, response contains 1 less than maximum amount */
-	for (i = 0; i < n_rows_buffer - 1; i++) {
+	for (; i <= n_rows_buffer*2 - 1; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i);
 	}
 
 	DECODE(&f->response, rows);
@@ -2187,20 +2440,20 @@ TEST_CASE(query_sql, largeClose, NULL)
 	uint64_t n;
 	const char *column;
 	struct value value;
-	EXEC("BEGIN");
 
-	/* 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
-	/* Insert 1 less than 2 response buffers worth of rows, otherwise we
-	 * need 3 responses, of which the last one contains no rows. */
-	for (i = 0; i < ((2 * n_rows_buffer) - 1); i++) {
-		EXEC("INSERT INTO test(n) VALUES(123)");
-	}
-	EXEC("COMMIT");
-
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
 	f->request.db_id = 0;
-	f->request.sql = "SELECT n FROM test";
+	f->request.sql =
+	    "WITH RECURSIVE seq(n) AS ("
+	    "	SELECT 1               "
+	    "	UNION ALL              "
+	    "	SELECT n+1             "
+	    "	FROM seq WHERE n < ?   "
+	    ")                         "
+	    "SELECT * FROM seq         ";
 	ENCODE(&f->request, query_sql);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY_SQL);
 	ASSERT_CALLBACK(0, ROWS);
 
@@ -2210,14 +2463,208 @@ TEST_CASE(query_sql, largeClose, NULL)
 	munit_assert_string_equal(column, "n");
 
 	/* First response contains max amount of rows */
-	for (i = 0; i < n_rows_buffer; i++) {
+	for (i = 1; i <= n_rows_buffer; i++) {
 		DECODE_ROW(1, &value);
 		munit_assert_int(value.type, ==, SQLITE_INTEGER);
-		munit_assert_int(value.integer, ==, 123);
+		munit_assert_int(value.integer, ==, i);
 	}
 
 	DECODE(&f->response, rows);
 	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	return MUNIT_OK;
+}
+
+TEST_CASE(query_sql, modifying, NULL)
+{
+	struct query_sql_fixture *f = data;
+	uint64_t n;
+	bool finished;
+	(void)params;
+
+	f->request.db_id = 0;
+	f->request.sql = "INSERT INTO test(n) VALUES(123)";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 0);
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query_sql, returning, NULL)
+{
+	struct query_sql_fixture *f = data;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	f->request.db_id = 0;
+	f->request.sql = "INSERT INTO test(n) VALUES(123) RETURNING n";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, 123);
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query_sql, returning_large, NULL)
+{
+	struct query_sql_fixture *f = data;
+	int i;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	/* Query 2 response buffers worth of rows */
+	/* 16 = 8B header + 8B value (int) */
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+
+	f->request.db_id = 0;
+	f->request.sql = 
+		"WITH RECURSIVE seq(n) AS ("
+		"	SELECT 1               "
+		"	UNION ALL              "
+		"	SELECT n+1             "
+		"	FROM seq WHERE n < ?   "
+		")                         "
+		"INSERT INTO test(n) SELECT n FROM seq RETURNING n";
+	ENCODE(&f->request, query_sql);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 1; i <= n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
+
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* Second, and last, response contains 1 less than maximum amount */
+	for (; i < 2*n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_DONE);
+
+	gateway__resume(f->gateway, &finished);
+	munit_assert_true(finished);
+	return MUNIT_OK;
+}
+
+TEST_CASE(query_sql, returning_interrupt, NULL)
+{
+	struct query_sql_fixture *f = data;
+	struct request_interrupt interrupt;
+	int i;
+	uint64_t n;
+	const char *column;
+	struct value value;
+	bool finished;
+	(void)params;
+
+	/* Query 2 response buffers worth of rows */
+	/* 16 = 8B header + 8B value (int) */
+	int64_t n_rows_buffer = max_rows_buffer(16);
+	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+
+	f->request.db_id = 0;
+	f->request.sql = 
+		"WITH RECURSIVE seq(n) AS ("
+		"	SELECT 1               "
+		"	UNION ALL              "
+		"	SELECT n+1             "
+		"	FROM seq WHERE n < ?   "
+		")                         "
+		"INSERT INTO test(n) SELECT n FROM seq RETURNING n";
+	ENCODE(&f->request, query_sql);
+	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "n");
+
+	/* First response contains max amount of rows */
+	for (i = 1; i <= n_rows_buffer; i++) {
+		DECODE_ROW(1, &value);
+		munit_assert_int(value.type, ==, SQLITE_INTEGER);
+		munit_assert_int(value.integer, ==, i);
+	}
+
+	DECODE(&f->response, rows);
+	munit_assert_ullong(f->response.eof, ==, DQLITE_RESPONSE_ROWS_PART);
+
+	ENCODE(&interrupt, interrupt);
+	HANDLE(INTERRUPT);
+	/* The interrupt should not return immediately, but wait for
+	 * the query to end. */
+	munit_assert_false(f->context->invoked);
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
+	ASSERT_CALLBACK(0, EMPTY);
+
+	/* Make sure rows are not there. */
+	f->request.sql = "SELECT * FROM test";
+	ENCODE(&f->request, query_sql);
+	HANDLE(QUERY_SQL);
+	WAIT;
+	ASSERT_CALLBACK(0, EMPTY);
 
 	return MUNIT_OK;
 }
@@ -2264,6 +2711,12 @@ TEST_CASE(query_sql, interrupt, NULL)
 
 	ENCODE(&interrupt, interrupt);
 	HANDLE(INTERRUPT);
+	/* The interrupt should not return immediately, but wait for
+	 * the query to end. */
+	munit_assert_false(f->context->invoked);
+	bool finished;
+	gateway__resume(f->gateway, &finished);
+	munit_assert_false(finished);
 	ASSERT_CALLBACK(0, EMPTY);
 
 	return MUNIT_OK;
@@ -2327,7 +2780,7 @@ TEST_CASE(query_sql, manyClosing, NULL)
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
-	gateway__close(f->gateway);
+	gateway__close(f->gateway, closeCb);
 	rv = gateway__resume(f->gateway, &finished);
 	munit_assert_int(rv, ==, 0);
 	return MUNIT_OK;
@@ -2344,7 +2797,7 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	PREPARE("INSERT INTO test VALUES(123)");
 	EXEC_SUBMIT(stmt_id);
 	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
 
 	/* Submit a QUERY_SQL request, forcing a barrier, which fails */
 	CLUSTER_ELECT(0);
@@ -2353,9 +2806,11 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	ENCODE(&f->request, query_sql);
 	/* We rely on leader_barrier_v2 (called by handle_query_sql) attempting
 	 * an allocation using raft_malloc. */
-	test_raft_heap_fault_config(0, 1);
+	test_raft_heap_fault_config(1, 1);
 	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_NOMEM);
+	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_SNAPSHOT_OK);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_IOERR, FAILURE);
 	return MUNIT_OK;
 }
 
@@ -2404,7 +2859,7 @@ TEST_CASE(query_sql, nonemptyTail, NULL)
 	f->request.sql = "SELECT * FROM test; SELECT (n) FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
 	ASSERT_FAILURE(SQLITE_ERROR, "nonempty statement tail");
 	return MUNIT_OK;
 }
@@ -2444,7 +2899,7 @@ TEST_CASE(request_cluster, unrecognizedFormat, NULL)
 	f->request.format = 2;
 	ENCODE(&f->request, cluster);
 	HANDLE(CLUSTER);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(DQLITE_PARSE, FAILURE);
 	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized cluster format");
 	return MUNIT_OK;
 }
@@ -2483,7 +2938,7 @@ TEST_CASE(invalid, requestType, NULL)
 	(void)params;
 	ENCODE(&f->request, leader);
 	HANDLE_STATUS(123, 0);
-	ASSERT_CALLBACK(0, FAILURE);
+	ASSERT_CALLBACK(DQLITE_PARSE, FAILURE);
 	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized request type");
 	return MUNIT_OK;
 }

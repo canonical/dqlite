@@ -1,9 +1,12 @@
 #include "conn.h"
+#include "gateway.h"
+#include "leader.h"
 #include "message.h"
 #include "protocol.h"
 #include "request.h"
 #include "tracing.h"
 #include "transport.h"
+#include "utils.h"
 
 #include <uv.h>
 
@@ -64,14 +67,13 @@ static void gateway_handle_cb(struct handle *req,
 
 	assert(schema <= req->schema);
 
-	/* Ignore results firing after we started closing. TODO: instead, we
-	 * should make gateway__close() asynchronous. */
+	/* Ignore results firing after we started closing. */
 	if (c->closed) {
 		tracef("gateway handle cb closed");
 		return;
 	}
 
-	if (status != 0) {
+	if (status == SQLITE_IOERR_NOT_LEADER || status == SQLITE_IOERR_LEADERSHIP_LOST) {
 		tracef("gateway handle cb status %d", status);
 		goto abort;
 	}
@@ -100,7 +102,7 @@ abort:
 	conn__stop(c);
 }
 
-static void closeCb(struct transport *transport)
+static void transportCloseCb(struct transport *transport)
 {
 	struct conn *c = transport->data;
 	buffer__close(&c->write);
@@ -127,7 +129,7 @@ static void raft_connect(struct conn *c)
 	/* Close the connection without actually closing the transport, since
 	 * the stream will be used by raft */
 	c->closed = true;
-	closeCb(&c->transport);
+	transportCloseCb(&c->transport);
 }
 
 static void read_request_cb(struct transport *transport, int status)
@@ -319,7 +321,9 @@ int conn__start(struct conn *c,
 	if (rv != 0) {
 		goto err_after_read_buffer_init;
 	}
-	c->handle.data = c;
+	c->handle = (struct handle) {
+		.data = c,
+	};
 	c->closed = false;
 	/* First, we expect the client to send us the protocol version. */
 	rv = read_protocol(c);
@@ -338,6 +342,11 @@ err:
 	return rv;
 }
 
+static void gatewayCloseCb(struct gateway *g) {
+	struct conn *c = CONTAINER_OF(g, struct conn, gateway);
+	transport__close(&c->transport, transportCloseCb);
+}
+
 void conn__stop(struct conn *c)
 {
 	tracef("conn stop");
@@ -345,6 +354,5 @@ void conn__stop(struct conn *c)
 		return;
 	}
 	c->closed = true;
-	gateway__close(&c->gateway);
-	transport__close(&c->transport, closeCb);
+	gateway__close(&c->gateway, gatewayCloseCb);
 }

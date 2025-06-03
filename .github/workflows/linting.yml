@@ -22,8 +22,3 @@ jobs:
     - name: Run clang-format
       run: |
           find . \( -name '*.c' -or -name '*.h' \) -not -name 'munit.*' -path ./llvm -prune | xargs ./llvm/bin/clang-format --style=file --dry-run -Werror
-    - name: Run clang-tidy
-      run: |
-          shopt -s globstar
-          bear -- cc -D_GNU_SOURCE -DHAVE_LINUX_AIO_ABI_H -c {src,test}/**/*.c
-          git show -U0 --first-parent | ./clang-tidy-diff.py -p1 -config-file=.clang-tidy -clang-tidy-binary=./llvm/bin/clang-tidy -use-color

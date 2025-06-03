@@ -14,61 +14,91 @@
 #include "lib/threadpool.h"
 #include "raft.h"
 
-#define SQLITE_IOERR_NOT_LEADER (SQLITE_IOERR | (40 << 8))
+#define SQLITE_IOERR_NOT_LEADER      (SQLITE_IOERR | (40 << 8))
 #define SQLITE_IOERR_LEADERSHIP_LOST (SQLITE_IOERR | (41 << 8))
 
-#define LEADER_NOT_ASYNC INT_MAX
-
 struct exec;
-struct barrier;
 struct leader;
 
-typedef void (*exec_cb)(struct exec *req, int status);
-typedef void (*barrier_cb)(struct barrier *req, int status);
-
-/* Wrapper around raft_apply, saving context information. */
-struct apply {
-	struct raft_apply req; /* Raft apply request */
-	int status;            /* Raft apply result */
-	struct leader *leader; /* Leader connection that triggered the hook */
-	int type;              /* Command type */
-	union {                /* Command-specific data */
-		struct {
-			bool is_commit;
-		} frames;
-	};
-};
+typedef void (*exec_work_cb)(struct exec *req);
+typedef void (*exec_done_cb)(struct exec *req);
+typedef void (*leader_close_cb)(struct leader *l);
 
 struct leader {
-	struct db *db;          /* Database the connection. */
-	sqlite3 *conn;          /* Underlying SQLite connection. */
-	struct raft *raft;      /* Raft instance. */
-	struct exec *exec;      /* Exec request in progress, if any. */
-	queue queue;            /* Prev/next leader, used by struct db. */
-	struct apply *inflight; /* TODO: make leader__close async */
-};
-
-struct barrier {
-	void *data;
-	struct sm sm;
-	struct leader *leader;
-	struct raft_barrier req;
-	barrier_cb cb;
+	void           *data;     /* User data. */
+	struct db      *db;       /* Database for the connection. */
+	sqlite3        *conn;     /* Underlying SQLite connection. */
+	struct raft    *raft;     /* Raft instance. */
+	struct exec    *exec;     /* Exec request in progress, if any. */
+	queue           queue;    /* Prev/next leader, used by struct db. */
+	int             pending;  /* Number of pending requests. */
+	leader_close_cb close_cb; /* Close callback. When not NULL it means that
+				     the leader is closing. */
 };
 
 /**
  * Asynchronous request to execute a statement.
  */
 struct exec {
+	/** User data. Not used by the tate machine */
 	void *data;
-	struct sm sm;
-	struct leader *leader;
-	struct barrier barrier;
+
+	/** 
+	 * Already prepared statement to execute. 
+	 * Either this or sql must be set, but not both.
+	 *
+	 * If set, the statement will not be finalized.
+	 * It will always be NULL at the end of the execution.
+	 */
 	sqlite3_stmt *stmt;
+
+	/** 
+	 * SQL statement to execute.
+	 * Either this or stmt must be set, but not both.
+	 *
+	 * The prepared statement will be finalized at the end of the execution.
+	 * It will always be NULL at the end of the execution.
+	 */
+	const char *sql;
+
+	/**
+	 * Tail of the statement. It will be set to the tail of the sql statement
+	 * after a prepare, if set at the start of the execution.
+	 *
+	 * It might be NULL if there is no statement left to execute.
+	 * 
+	 * The lifetime of this pointer is tied to sql field as this will just be
+	 * a pointer to that memory.
+	 */
+	const char *tail;
+
+	/*
+	 * Result code for the operation. RAFT_OK if the operation was successful.
+	 */
 	int status;
+
+	/* Fields below should not be touched by the user. */
+
+	/*
+	 * Used to enqueue execs in the db queue.
+	 */
 	queue queue;
-	exec_cb cb;
-	pool_work_t work;
+	struct sm sm;
+
+	/*
+	 * Leader on which this request is being executed.
+	 */
+	struct leader *leader;
+	struct raft_barrier barrier;
+
+	/*
+	 * Timer to limit the time spent in the queue.
+	 */
+	struct raft_timer timer; 
+	struct raft_apply apply;
+
+	exec_work_cb work_cb;
+	exec_done_cb done_cb;
 };
 
 /**
@@ -80,41 +110,61 @@ struct exec {
  */
 int leader__init(struct leader *l, struct db *db, struct raft *raft);
 
-void leader__close(struct leader *l);
-
-/**
- * Submit a raft barrier request if there is no transaction in progress on the
- * underlying database and the FSM is behind the last log index.
- *
- * The callback will only be invoked asynchronously: if no barrier is needed,
- * this function will return without invoking the callback.
- *
- * Returns 0 if the callback was scheduled successfully or LEADER_NOT_ASYNC
- * if no barrier is needed. Any other value indicates an error.
- */
-int leader_barrier_v2(struct leader *l,
-		      struct barrier *barrier,
-		      barrier_cb cb);
-
 /**
  * Submit a request to step a SQLite statement.
  *
- * This is an asynchronous operation in general. It can yield to the event
- * loop at two points:
+ * This is an asynchronous operation in general. 
  *
- * - When running the preliminary barrier (see leader_barrier_v2). This
- *   is skipped if no barrier is necessary.
- * - When replicating the transaction in raft. This is skipped if the
- *   statement doesn't generate any changed pages.
+ * If set, the work callback will be called once the statement is prepared
+ * and ready to be executed. Once the callback is done with the statement, it is
+ * the it's responsibility to schedule a leader_exec_resume as the state
+ * machine is suspended. If the callback is not set, the state machine will not
+ * suspend. The work callback will not be called if the prepared statement
+ * contains no SQL (e.g. it is just spaces or just a comment).
  *
- * This function returns 0 if it successfully suspended for one of these
- * async operations. It returns LEADER_NOT_ASYNC to indicate that it
- * did not suspend, and in this case `req->status` shows whether an error
- * occurred. Any other return value indicates an error.
+ * In case the statement generates an update on the database, this routine will make
+ * sure that it is replicated before calling the done callback. As such it is important
+ * not to inform the client of a successful transaction until the done callback is
+ * called. The done callback is always executed in the loop thread.
+ *
+ * The status passed to the done callback is always one of the `RAFT_*` error codes.
+ * The `SQLITE_*` error code can be obtained by calling `sqlite3_errcode` on the 
+ * connection as only one exec is ever allowed on the same connection concurrently.
+ *
+ * The prepared statement is never freed by this routine.
  */
-int leader_exec_v2(struct leader *l,
-		   struct exec *req,
-		   sqlite3_stmt *stmt,
-		   exec_cb cb);
+void leader_exec(struct leader *leader,
+	struct exec *req,
+	exec_work_cb work,
+	exec_done_cb done);
+
+/**
+ * Sets the result of the operation the state machine suspended on.
+ * 
+ * This should be called right before resuming after work is done.
+ *
+ * Results should always be part of the RAFT_* series of error codes.
+ */
+void leader_exec_result(struct exec *req, int result);
+
+/**
+ * Resumes the execution of the exec state machine.
+ */
+void leader_exec_resume(struct exec *req);
+
+/**
+ * Aborts the current leader exec request, if possible.
+ *
+ * If the query is already finished (e.g. the work callback was already executed 
+ * and successfully scheduled the resume callback), the request cannot be aborted
+ * and will continue the replication phase to the end. Otherwise, the work callback
+ * will not be called and the query will fail with SQLITE_ABORT error code.
+ *
+ * If there is no request in progress, this function does nothing.
+ *
+ */
+void leader_exec_abort(struct exec *req);
+
+void leader__close(struct leader *l, leader_close_cb close_cb);
 
 #endif /* LEADER_H_*/

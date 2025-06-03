@@ -1115,6 +1115,102 @@ TEST(vfs_extra, checkpoint, setUp, tearDown, 0, vfs_params)
 	return MUNIT_OK;
 }
 
+TEST(vfs_extra, checkpointReclaimsSpace, setUp, tearDown, 0, vfs_params)
+{
+	sqlite3 *conn;
+	struct tx tx;
+	struct sqlite3_file *main_f;
+	sqlite3_int64 pre_vacuum_size, post_vacuum_size;
+	int rv;
+
+
+	OPEN("1", conn);
+	rv = sqlite3_file_control(conn, "main", SQLITE_FCNTL_FILE_POINTER, &main_f);
+	assert(rv == SQLITE_OK);
+
+	EXEC(conn, "CREATE TABLE test(n INT)");
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	EXEC(conn, "DROP TABLE test");
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+	CHECKPOINT(conn);
+
+	rv = main_f->pMethods->xFileSize(main_f, &pre_vacuum_size);
+	assert(rv == SQLITE_OK);
+
+	EXEC(conn, "VACUUM");
+	POLL("1", tx);
+	APPLY("1", tx);
+	DONE(tx);
+
+	CHECKPOINT(conn);
+	
+	rv = main_f->pMethods->xFileSize(main_f, &post_vacuum_size);
+	assert(rv == SQLITE_OK);
+	CLOSE(conn);
+
+	munit_assert_int(post_vacuum_size, <, pre_vacuum_size);
+	munit_assert_int(post_vacuum_size, ==, 512);
+	return MUNIT_OK;
+}
+
+TEST(vfs_extra, applyOnDifferentVfsCheckpointReclaimsSpace, setUp, tearDown, 0, vfs_params)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	struct tx tx;
+	struct sqlite3_file *main_f;
+	sqlite3_int64 pre_vacuum_size, post_vacuum_size;
+	int rv;
+
+
+	OPEN("1", db1);
+	OPEN("2", db2);
+	CLOSE(db2);
+
+	EXEC(db1, "CREATE TABLE test(n INT)");
+	POLL("1", tx);
+	APPLY("1", tx);
+	APPLY("2", tx);
+	DONE(tx);
+
+	EXEC(db1, "DROP TABLE test");
+	POLL("1", tx);
+	APPLY("1", tx);
+	APPLY("2", tx);
+	DONE(tx);
+
+	OPEN("2", db2);
+	rv = sqlite3_file_control(db2, "main", SQLITE_FCNTL_FILE_POINTER, &main_f);
+	assert(rv == SQLITE_OK);
+	CHECKPOINT(db2);
+
+	rv = main_f->pMethods->xFileSize(main_f, &pre_vacuum_size);
+	assert(rv == SQLITE_OK);
+
+	EXEC(db1, "VACUUM");
+	POLL("1", tx);
+	APPLY("1", tx);
+	APPLY("2", tx);
+	DONE(tx);
+
+	CHECKPOINT(db2);
+	
+	rv = main_f->pMethods->xFileSize(main_f, &post_vacuum_size);
+	assert(rv == SQLITE_OK);
+	CLOSE(db1);
+	CLOSE(db2);
+
+	munit_assert_int(post_vacuum_size, <, pre_vacuum_size);
+	munit_assert_int(post_vacuum_size, ==, 512);
+	return MUNIT_OK;
+}
+
+
 /* Replicate a write transaction that happens after a checkpoint. */
 TEST(vfs_extra, applyOnDifferentVfsAfterCheckpoint, setUp, tearDown, 0, vfs_params)
 {
