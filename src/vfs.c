@@ -1795,7 +1795,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		/* Open an actual temporary file. */
 		vfs = sqlite3_vfs_find("unix");
 		assert(vfs != NULL);
-		return vfs->xOpen(vfs, filename, file, flags, out_flags);
+		return vfs->xOpen(vfs, NULL, file, flags, out_flags);
 	}
 
 	assert((flags & SQLITE_OPEN_DELETEONCLOSE) == 0);
