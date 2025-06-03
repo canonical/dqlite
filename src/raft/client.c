@@ -76,9 +76,7 @@ err:
 
 /* Get the request matching the given @index and @type, if any.
  * The type check is skipped when @type == -1. */
-static struct request *getRequest(struct raft *r,
-				  const raft_index index,
-				  int type)
+static struct request *getRequest(struct raft *r, const raft_index index)
 {
 	queue *head;
 	struct request *req;
@@ -90,9 +88,6 @@ static struct request *getRequest(struct raft *r,
 	{
 		req = QUEUE_DATA(head, struct request, queue);
 		if (req->index == index) {
-			if (type != req->type) {
-				return NULL;
-			}
 			return req;
 		}
 	}
@@ -113,13 +108,15 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 	req->index = logLastIndex(r->log);
 	req->cb = cb;
 
-	/* Is the last entry an unreplicated barrier itself? 
+	/* Is the last entry an unreplicated barrier itself?
 	 * If so, it is possible to merge the requests together
 	 * and avoid another roundtrip. */
-	struct raft_barrier *existing_req = (struct raft_barrier *)getRequest(r, req->index, RAFT_BARRIER);
-	if (existing_req != NULL) {
-		req->next = existing_req->next;
-		existing_req->next = req;
+	struct request *existing_req = getRequest(r, req->index);
+	if (existing_req != NULL && existing_req->type == RAFT_BARRIER) {
+		struct raft_barrier *barrier_req =
+		    (struct raft_barrier *)existing_req;
+		req->next = barrier_req->next;
+		barrier_req->next = req;
 		return RAFT_OK;
 	}
 
