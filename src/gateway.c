@@ -1065,6 +1065,8 @@ static int handle_dump(struct gateway *g, struct handle *req)
 	assert(cur != NULL);
 	response_files__encode(&response, &cur);
 
+	/* It is not possible to use g->leader->db->vfs as dump call can
+	 * be issued without opening the leader connection first. */
 	vfs = sqlite3_vfs_find(g->config->name);
 	rv = VfsSnapshot(vfs, request.filename, &data, &n);
 	if (rv != 0) {
