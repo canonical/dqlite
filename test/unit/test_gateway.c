@@ -2965,13 +2965,15 @@ TEST_CASE(dump, checkpointed, NULL)
 	OPEN;
 	EXEC("CREATE TABLE test (data BLOB)");
 	/* Make sure we force a checkpoint */
-	struct value pages = { .type = SQLITE_INTEGER,
-			       .integer =
-				   f->gateway->config->checkpoint_threshold };
+	struct config *config = f->gateway->config;
+	struct value blobsize = {
+		.type = SQLITE_INTEGER,
+		.integer = config->page_size * config->checkpoint_threshold,
+	};
 	PREPARE(
 	    "INSERT INTO test           "
 	    "SELECT RANDOMBLOB((        "
-	    "	SELECT page_size * ?    "
+	    "	SELECT ?                "
 	    "	FROM pragma_page_size() "
 	    "))                         ");
 	struct request_exec request = {
@@ -2980,7 +2982,7 @@ TEST_CASE(dump, checkpointed, NULL)
 	};
 	struct response_result response;
 	ENCODE(&request, exec);
-	ENCODE_PARAMS(1, &pages, TUPLE__PARAMS);
+	ENCODE_PARAMS(1, &blobsize, TUPLE__PARAMS);
 	HANDLE(EXEC);
 	WAIT;
 	ASSERT_CALLBACK(0, RESULT);
@@ -3000,7 +3002,7 @@ TEST_CASE(dump, checkpointed, NULL)
 	DECODE_FILE(&main);
 	munit_assert_string_equal(main.name, "test");
 	munit_assert_int(main.content.len, >=,
-			 f->gateway->config->checkpoint_threshold * 512);
+			 config->checkpoint_threshold * config->page_size);
 
 	struct file wal = {};
 	DECODE_FILE(&wal);
