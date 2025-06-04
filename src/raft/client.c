@@ -74,8 +74,6 @@ err:
 	return rv;
 }
 
-/* Get the request matching the given @index and @type, if any.
- * The type check is skipped when @type == -1. */
 static struct request *getRequest(struct raft *r, const raft_index index)
 {
 	queue *head;
@@ -113,16 +111,15 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 	 * and avoid another roundtrip. */
 	struct request *existing_req = getRequest(r, req->index);
 	if (existing_req != NULL && existing_req->type == RAFT_BARRIER) {
-		struct raft_barrier *barrier_req =
+		struct raft_barrier *existing_barrier =
 		    (struct raft_barrier *)existing_req;
-		req->next = barrier_req->next;
-		barrier_req->next = req;
+		req->next = existing_barrier->next;
+		existing_barrier->next = req;
 		return RAFT_OK;
 	}
 
 	req->index++;
 	req->next = NULL;
-	
 
 	/* TODO: use a completely empty buffer */
 	buf.len = 8;

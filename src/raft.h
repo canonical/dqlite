@@ -1288,6 +1288,9 @@ struct raft_barrier
 {
 	RAFT__REQUEST;
 	raft_barrier_cb cb;
+
+	/* Singly linked list for bundled requests targetting the same raft
+	 * index. */
 	struct raft_barrier *next;
 };
 
