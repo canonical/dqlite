@@ -2798,6 +2798,221 @@ TEST_CASE(request_cluster, unrecognizedFormat, NULL)
 
 /******************************************************************************
  *
+ * dump
+ *
+ ******************************************************************************/
+
+struct file {
+	text_t name;
+	blob_t content;
+};
+
+#define DECODE_FILE(file)                                         \
+	do {                                                      \
+		int _rv = text__decode(f->cursor, &(file)->name); \
+		munit_assert_int(_rv, ==, DQLITE_OK);             \
+		_rv = blob__decode(f->cursor, &(file)->content);  \
+	} while (0)
+
+struct request_dump_fixture {
+	FIXTURE;
+	struct request_dump request;
+	struct response_files response;
+};
+
+TEST_SUITE(dump);
+TEST_SETUP(dump)
+{
+	struct request_dump_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	CLUSTER_ELECT(0);
+	return f;
+}
+TEST_TEAR_DOWN(dump)
+{
+	struct request_dump_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(dump, empty, NULL)
+{
+	(void)params;
+	struct request_dump_fixture *f = data;
+	f->request = (struct request_dump){
+		.filename = "test",
+	};
+	ENCODE(&f->request, dump);
+	HANDLE(DUMP);
+	ASSERT_CALLBACK(DQLITE_OK, FILES);
+	DECODE(&f->response, files);
+
+	munit_assert_int(f->response.n, ==, 2);
+	struct file main = {};
+	DECODE_FILE(&main);
+	munit_assert_string_equal(main.name, "test");
+	munit_assert_int(main.content.len, ==, 0);
+
+	struct file wal = {};
+	DECODE_FILE(&wal);
+	munit_assert_string_equal(wal.name, "test-wal");
+	munit_assert_int(wal.content.len, ==, 0);
+
+	munit_assert_int(f->cursor->cap, ==, 0);
+	return MUNIT_OK;
+}
+
+TEST_CASE(dump, not_existent, NULL)
+{
+	(void)params;
+	struct request_dump_fixture *f = data;
+	f->request = (struct request_dump){
+		.filename = "foo",
+	};
+	ENCODE(&f->request, dump);
+	HANDLE(DUMP);
+	ASSERT_CALLBACK(DQLITE_OK, FILES);
+	DECODE(&f->response, files);
+
+	munit_assert_int(f->response.n, ==, 2);
+	struct file main = {};
+	DECODE_FILE(&main);
+	munit_assert_string_equal(main.name, "foo");
+	munit_assert_int(main.content.len, ==, 0);
+
+	struct file wal = {};
+	DECODE_FILE(&wal);
+	munit_assert_string_equal(wal.name, "foo-wal");
+	munit_assert_int(wal.content.len, ==, 0);
+
+	munit_assert_int(f->cursor->cap, ==, 0);
+
+	return MUNIT_OK;
+}
+
+TEST_CASE(dump, simple, NULL)
+{
+	(void)params;
+	struct request_dump_fixture *f = data;
+
+	OPEN;
+	EXEC("CREATE TABLE test (n INT, data BLOB)");
+	EXEC("INSERT INTO test (n, data) VALUES (1, randomblob(256))");
+
+	f->request = (struct request_dump){
+		.filename = "test",
+	};
+	ENCODE(&f->request, dump);
+	HANDLE(DUMP);
+	ASSERT_CALLBACK(DQLITE_OK, FILES);
+	DECODE(&f->response, files);
+
+	munit_assert_int(f->response.n, ==, 2);
+	struct file main = {};
+	DECODE_FILE(&main);
+	munit_assert_string_equal(main.name, "test");
+	munit_assert_int(main.content.len, >, 0);
+
+	struct file wal = {};
+	DECODE_FILE(&wal);
+	munit_assert_string_equal(wal.name, "test-wal");
+	munit_assert_int(wal.content.len, >, 0);
+
+	munit_assert_int(f->cursor->cap, ==, 0);
+	return MUNIT_OK;
+}
+
+TEST_CASE(dump, simple_follower, NULL)
+{
+	(void)params;
+	struct request_dump_fixture *f = data;
+
+	OPEN;
+	EXEC("CREATE TABLE test (n INT, data BLOB)");
+	EXEC("INSERT INTO test (n, data) VALUES (1, randomblob(256))");
+	CLUSTER_APPLIED(CLUSTER_LAST_INDEX(0));
+	SELECT(1);
+
+	f->request = (struct request_dump){
+		.filename = "test",
+	};
+	ENCODE(&f->request, dump);
+	HANDLE(DUMP);
+	ASSERT_CALLBACK(DQLITE_OK, FILES);
+	DECODE(&f->response, files);
+
+	munit_assert_int(f->response.n, ==, 2);
+	struct file main = {};
+	DECODE_FILE(&main);
+	munit_assert_string_equal(main.name, "test");
+	munit_assert_int(main.content.len, >, 0);
+
+	struct file wal = {};
+	DECODE_FILE(&wal);
+	munit_assert_string_equal(wal.name, "test-wal");
+	munit_assert_int(wal.content.len, >, 0);
+
+	munit_assert_int(f->cursor->cap, ==, 0);
+	return MUNIT_OK;
+}
+
+TEST_CASE(dump, checkpointed, NULL)
+{
+	(void)params;
+	struct request_dump_fixture *f = data;
+	uint64_t stmt_id;
+
+	OPEN;
+	EXEC("CREATE TABLE test (data BLOB)");
+	/* Make sure we force a checkpoint */
+	struct value pages = { .type = SQLITE_INTEGER,
+			       .integer =
+				   f->gateway->config->checkpoint_threshold };
+	PREPARE(
+	    "INSERT INTO test           "
+	    "SELECT RANDOMBLOB((        "
+	    "	SELECT page_size * ?    "
+	    "	FROM pragma_page_size() "
+	    "))                         ");
+	struct request_exec request = {
+		.db_id = 0,
+		.stmt_id = stmt_id,
+	};
+	struct response_result response;
+	ENCODE(&request, exec);
+	ENCODE_PARAMS(1, &pages, TUPLE__PARAMS);
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(0, RESULT);
+	DECODE(&response, result);
+	munit_assert_int(response.rows_affected, ==, 1);
+
+	f->request = (struct request_dump){
+		.filename = "test",
+	};
+	ENCODE(&f->request, dump);
+	HANDLE(DUMP);
+	ASSERT_CALLBACK(DQLITE_OK, FILES);
+	DECODE(&f->response, files);
+
+	munit_assert_int(f->response.n, ==, 2);
+	struct file main = {};
+	DECODE_FILE(&main);
+	munit_assert_string_equal(main.name, "test");
+	munit_assert_int(main.content.len, >=,
+			 f->gateway->config->checkpoint_threshold * 512);
+
+	struct file wal = {};
+	DECODE_FILE(&wal);
+	munit_assert_string_equal(wal.name, "test-wal");
+	munit_assert_int(wal.content.len, ==, 0);
+
+	munit_assert_int(f->cursor->cap, ==, 0);
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
  * invalid
  *
  ******************************************************************************/
