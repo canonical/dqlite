@@ -118,6 +118,7 @@ libraft_la_SOURCES = \
   src/raft/uv_tcp.c \
   src/raft/uv_tcp_listen.c \
   src/raft/uv_tcp_connect.c \
+  src/raft/uv_timer.c \
   src/raft/uv_truncate.c \
   src/raft/uv_work.c \
   src/raft/uv_writer.c
@@ -181,6 +182,7 @@ integration_test_SOURCES = \
   test/integration/test_node.c \
   test/integration/test_role_management.c \
   test/integration/test_server.c \
+  test/integration/test_stress.c \
   test/integration/main.c
 integration_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 integration_test_LDFLAGS = $(AM_LDFLAGS) -no-install
@@ -304,6 +306,7 @@ raft_uv_integration_test_SOURCES = \
   test/raft/integration/test_uv_tcp_connect.c \
   test/raft/integration/test_uv_tcp_listen.c \
   test/raft/integration/test_uv_snapshot_put.c \
+  test/raft/integration/test_uv_timer.c \
   test/raft/integration/test_uv_truncate.c \
   test/raft/integration/test_uv_truncate_snapshot.c \
   test/raft/integration/test_uv_work.c

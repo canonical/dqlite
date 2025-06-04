@@ -10,6 +10,7 @@ struct config {
 	dqlite_node_id id;             /* Unique instance ID */
 	char *address;                 /* Instance address */
 	unsigned heartbeat_timeout;    /* In milliseconds */
+	unsigned busy_timeout;         /* In milliseconds */
 	unsigned page_size;            /* Database page size */
 	unsigned checkpoint_threshold; /* In outstanding WAL frames */
 	struct logger logger;          /* Custom logger */

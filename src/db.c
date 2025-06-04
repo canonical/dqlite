@@ -11,12 +11,6 @@
 /* Limit taken from sqlite unix vfs. */
 #define MAX_PATHNAME 512
 
-/* Open a SQLite connection and set it to follower mode. */
-static int open_follower_conn(const char *filename,
-			      const char *vfs,
-			      unsigned page_size,
-			      sqlite3 **conn);
-
 static uint32_t str_hash(const char* name)
 {
 	const unsigned char *p;
@@ -35,11 +29,14 @@ int db__init(struct db *db, struct config *config, const char *filename)
 	int rv;
 
 	db->config = config;
+	db->vfs = sqlite3_vfs_find(config->name);
+	if (db->vfs == NULL) {
+		return DQLITE_MISUSE;
+	}
 	db->cookie = str_hash(filename);
 	db->filename = sqlite3_malloc((int)(strlen(filename) + 1));
 	if (db->filename == NULL) {
-		rv = DQLITE_NOMEM;
-		goto err;
+		return DQLITE_NOMEM;
 	}
 	strcpy(db->filename, filename);
 	db->path = sqlite3_malloc(MAX_PATHNAME + 1);
@@ -57,53 +54,36 @@ int db__init(struct db *db, struct config *config, const char *filename)
 		goto err_after_path_alloc;
 	}
 
-	db->follower = NULL;
-	db->tx_id = 0;
+	db->active_leader = NULL;
+	queue_init(&db->pending_queue);
 	db->read_lock = 0;
-	queue_init(&db->leaders);
+	db->leaders = 0;
 	return 0;
 
 err_after_path_alloc:
 	sqlite3_free(db->path);
 err_after_filename_alloc:
 	sqlite3_free(db->filename);
-err:
 	return rv;
 }
 
 void db__close(struct db *db)
 {
-	assert(queue_empty(&db->leaders));
-	if (db->follower != NULL) {
-		int rc;
-		rc = sqlite3_close(db->follower);
-		assert(rc == SQLITE_OK);
-	}
+	assert(db->leaders == 0);
 	sqlite3_free(db->path);
 	sqlite3_free(db->filename);
 }
 
-int db__open_follower(struct db *db)
-{
-	int rc;
-	assert(db->follower == NULL);
-	rc = open_follower_conn(db->path, db->config->name,
-				db->config->page_size, &db->follower);
-	return rc;
-}
 
-static int open_follower_conn(const char *filename,
-			      const char *vfs,
-			      unsigned page_size,
-			      sqlite3 **conn)
+int db__open(struct db *db, sqlite3 **conn)
 {
+	tracef("open conn: %s page_size:%u", db->path, db->config->page_size);
 	char pragma[255];
 	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
 	char *msg = NULL;
 	int rc;
 
-	tracef("open follower conn: %s page_size:%u", filename, page_size);
-	rc = sqlite3_open_v2(filename, conn, flags, vfs);
+	rc = sqlite3_open_v2(db->path, conn, flags, db->config->name);
 	if (rc != SQLITE_OK) {
 		tracef("open_v2 failed %d", rc);
 		goto err;
@@ -112,6 +92,7 @@ static int open_follower_conn(const char *filename,
 	/* Enable extended result codes */
 	rc = sqlite3_extended_result_codes(*conn, 1);
 	if (rc != SQLITE_OK) {
+		tracef("extended codes failed %d", rc);
 		goto err;
 	}
 
@@ -126,10 +107,10 @@ static int open_follower_conn(const char *filename,
 	sqlite3_limit(*conn, SQLITE_LIMIT_ATTACHED, 0);
 
 	/* Set the page size. */
-	sprintf(pragma, "PRAGMA page_size=%d", page_size);
+	sprintf(pragma, "PRAGMA page_size=%d", db->config->page_size);
 	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
 	if (rc != SQLITE_OK) {
-		tracef("page_size=%d failed", page_size);
+		tracef("page_size=%d failed", db->config->page_size);
 		goto err;
 	}
 
@@ -147,9 +128,21 @@ static int open_follower_conn(const char *filename,
 		goto err;
 	}
 
+	rc = sqlite3_wal_autocheckpoint(*conn, 0);
+	if (rc != SQLITE_OK) {
+		tracef("sqlite3_wal_autocheckpoint off failed %d", rc);
+		goto err;
+	}
+
 	rc =
 	    sqlite3_db_config(*conn, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, NULL);
 	if (rc != SQLITE_OK) {
+		goto err;
+	}
+
+	rc = sqlite3_exec(*conn, "PRAGMA foreign_keys=1", NULL, NULL, &msg);
+	if (rc != SQLITE_OK) {
+		tracef("foreign_keys=1 failed");
 		goto err;
 	}
 

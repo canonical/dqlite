@@ -215,7 +215,8 @@ DQLITE_API DQLITE_EXPERIMENTAL void dqlite_server_destroy(
  * These are used only with the dqlite_node family of functions.
  */
 enum {
-	DQLITE_ERROR = 1, /* Generic error */
+	DQLITE_OK = 0,
+	DQLITE_ERROR, /* Generic error */
 	DQLITE_MISUSE,    /* Library used incorrectly */
 	DQLITE_NOMEM      /* A malloc() failed */
 };
@@ -517,6 +518,14 @@ DQLITE_API int dqlite_node_set_snapshot_compression(dqlite_node *n,
  * By default, no automatic role management is performed.
  */
 DQLITE_API int dqlite_node_enable_role_management(dqlite_node *n);
+
+/**
+ * Set the amount of time in milliseconds a write query can stay in the write
+ * queue before failing with SQLITE_BUSY.
+ *
+ * This is 0ms by default to keep backward compatibility.
+ */
+DQLITE_API int dqlite_node_set_busy_timeout(dqlite_node *n, unsigned msecs);
 
 /**
  * Start a dqlite node.
