@@ -46,7 +46,6 @@ static void frames__encode(const frames_t *frames, char **cursor)
 	}
 }
 
-__attribute__((noinline))
 static int page_numbers__decode(struct cursor *cursor, frames_t *frames)
 {
 	if (frames->n_pages == 0) {
@@ -72,7 +71,6 @@ static int page_numbers__decode(struct cursor *cursor, frames_t *frames)
 	return DQLITE_OK;
 }
 
-__attribute__((noinline))
 static int pages__decode(struct cursor *cursor, frames_t *frames)
 {
 	if (frames->n_pages == 0) {
@@ -98,7 +96,6 @@ static int pages__decode(struct cursor *cursor, frames_t *frames)
 	return DQLITE_OK;
 }
 
-__attribute__((noinline))
 static int frames__decode(struct cursor *cursor, frames_t *frames)
 {
 	int rv;
