@@ -74,7 +74,7 @@ err:
 	return rv;
 }
 
-static struct request *getRequest(struct raft *r, const raft_index index)
+static struct request *getRequest(const struct raft *r, const raft_index index)
 {
 	queue *head;
 	struct request *req;
