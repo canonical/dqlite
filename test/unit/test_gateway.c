@@ -1080,6 +1080,130 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 	return MUNIT_OK;
 }
 
+/* Succesfully vacuum a database */
+TEST_CASE(exec, vacuum, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Create some free pages */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INTEGER PRIMARY KEY NOT NULL)");
+	EXEC("WITH RECURSIVE seq(n) AS ("
+		"    SELECT 1 UNION ALL     "
+		"    SELECT n+1 FROM seq    "
+		"    WHERE  n < 10000       "
+		")                          "
+		"INSERT INTO test(n)        "
+		"SELECT n FROM seq          "
+	)
+	EXEC("DELETE FROM test WHERE n <= 5000");
+
+	PREPARE("VACUUM");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(0, RESULT);
+	DECODE(&f->response, result);
+	munit_assert_int(f->response.last_insert_id, ==, 10000);
+	munit_assert_int(f->response.rows_affected, ==,   5000);
+
+	/* Make sure that the freelist is now empty. */
+	struct value value;
+	uint64_t n;
+	text_t column;
+	QUERY_SQL_SUBMIT("PRAGMA freelist_count");
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "freelist_count");
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, 0);
+	
+	return MUNIT_OK;
+}
+
+
+/* Succesfully vacuum a database */
+TEST_CASE(exec, vacuum_variants, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INTEGER PRIMARY KEY NOT NULL)");
+	EXEC("WITH RECURSIVE seq(n) AS ("
+		"    SELECT 1 UNION ALL     "
+		"    SELECT n+1 FROM seq    "
+		"    WHERE  n < 10000       "
+		")                          "
+		"INSERT INTO test(n)        "
+		"SELECT n FROM seq          "
+	)
+
+	const char* vacuum_variants[] = {
+		" VACUUM \r\t\n ",
+		" VACUUM \r\t\n main \t\n",
+		" VACUUM \r\t\n 'main' \t\n",
+		" VACUUM \r\t\n \"main\" \t\n",
+	};
+	for (size_t i = 0; i < sizeof(vacuum_variants) / sizeof(vacuum_variants[0]); i++) {
+		/* Create some free pages */
+		EXEC("DELETE FROM test WHERE n < (SELECT MIN(n) + 1000 FROM test)");
+		PREPARE(vacuum_variants[i]);
+		f->request.db_id = 0;
+		f->request.stmt_id = stmt_id;
+		ENCODE(&f->request, exec);
+		HANDLE(EXEC);
+		WAIT;
+		ASSERT_CALLBACK(0, RESULT);
+		DECODE(&f->response, result);
+		munit_assert_int(f->response.last_insert_id, ==, 10000);
+		munit_assert_int(f->response.rows_affected, ==,   1000);
+	}
+	return MUNIT_OK;
+}
+
+/* Fail to vacuum into a file */
+TEST_CASE(exec, vacuum_into_fails, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+
+	/* Create some free pages */
+	LOWER_CACHE_SIZE;
+	EXEC("CREATE TABLE test (n INTEGER PRIMARY KEY NOT NULL)");
+	EXEC("WITH RECURSIVE seq(n) AS ("
+		"    SELECT 1 UNION ALL     "
+		"    SELECT n+1 FROM seq    "
+		"    WHERE  n < 10000       "
+		")                          "
+		"INSERT INTO test(n)        "
+		"SELECT n FROM seq          "
+	)
+	EXEC("DELETE FROM test WHERE n <= 5000");
+
+	PREPARE("VACUUM INTO 'should_fail'");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_AUTH, FAILURE);
+	return MUNIT_OK;
+}
+
 /* A follower remains behind and needs to restore state from a snapshot. */
 TEST_CASE(exec, restore, NULL)
 {
@@ -2061,8 +2185,8 @@ TEST_CASE(exec_sql, attach, NULL)
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
 	WAIT;
-	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
-	ASSERT_FAILURE(SQLITE_ERROR, "too many attached databases - max 0");
+	ASSERT_CALLBACK(SQLITE_AUTH, FAILURE);
+	ASSERT_FAILURE(SQLITE_AUTH, "not authorized");
 	return MUNIT_OK;
 }
 

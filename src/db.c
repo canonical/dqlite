@@ -74,6 +74,20 @@ void db__close(struct db *db)
 	sqlite3_free(db->filename);
 }
 
+static int dqlite_authorizer(void *pUserData, int action, const char *third, const char *fourth, const char *fifth, const char *sixth) {
+	(void)pUserData;
+	(void)fourth;
+	(void)fifth;
+	(void)sixth;
+
+	if (action == SQLITE_ATTACH) {
+		// Only allow attaching temporary files
+		if (third != NULL && third[0] != '\0') {
+			return SQLITE_DENY;
+		}
+	}
+	return SQLITE_OK;
+}
 
 int db__open(struct db *db, sqlite3 **conn)
 {
@@ -99,12 +113,8 @@ int db__open(struct db *db, sqlite3 **conn)
 	/* The vfs, db, gateway, and leader code currently assumes that
 	 * each connection will operate on only one DB file/WAL file
 	 * pair. Make sure that the client can't use ATTACH DATABASE to
-	 * break this assumption. We apply the same limit in openConnection
-	 * in leader.c.
-	 *
-	 * Note, 0 instead of 1 -- apparently the "initial database" is not
-	 * counted when evaluating this limit. */
-	sqlite3_limit(*conn, SQLITE_LIMIT_ATTACHED, 0);
+	 * break this assumption.*/
+	sqlite3_set_authorizer(*conn, dqlite_authorizer, NULL);
 
 	/* Set the page size. */
 	sprintf(pragma, "PRAGMA page_size=%d", db->config->page_size);
