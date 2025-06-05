@@ -233,7 +233,7 @@ TEST_CASE(exec, success, NULL)
 	CLUSTER_ELECT(0);
 	PREPARE(0, "CREATE TABLE test (a  INT)");
 	EXEC(0);
-	CLUSTER_APPLIED(4);
+	CLUSTER_APPLIED(3);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, 0);
 	FINALIZE;
@@ -260,7 +260,7 @@ TEST_CASE(exec, append_fails, NULL)
 	(void)params;
 	CLUSTER_ELECT(0);
 	PREPARE(0, "CREATE TABLE test (a  INT)");
-	raft_fixture_append_fault(&f->cluster, 0, 1);
+	raft_fixture_append_fault(&f->cluster, 0, 0);
 	EXEC(0);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, RAFT_IOERR);
@@ -277,11 +277,11 @@ TEST_CASE(exec, snapshot, NULL)
 	CLUSTER_ELECT(0);
 	PREPARE(0, "CREATE TABLE test (n  INT)");
 	EXEC(0);
-	CLUSTER_APPLIED(4);
+	CLUSTER_APPLIED(3);
 	FINALIZE;
 	PREPARE(0, "INSERT INTO test(n) VALUES(1)");
 	EXEC(0);
-	CLUSTER_APPLIED(5);
+	CLUSTER_APPLIED(4);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, 0);
 	FINALIZE;
@@ -418,7 +418,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 
 	PREPARE(0, "BEGIN");
 	fixture_exec(f, 0);
-	CLUSTER_APPLIED(3);
+	CLUSTER_APPLIED(2);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, RAFT_OK);
 	f->invoked = false;
@@ -437,7 +437,7 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	fixture_exec(f, 0);
 	munit_assert_false(f->invoked);
 
-	CLUSTER_APPLIED(4);
+	CLUSTER_APPLIED(3);
 	FINALIZE;
 
 	munit_assert_true(f->invoked);
@@ -466,12 +466,12 @@ TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
 
 	PREPARE(0, "CREATE TABLE test (n  INT)");
 	fixture_exec(f, 0);
-	CLUSTER_APPLIED(4);
+	CLUSTER_APPLIED(3);
 	FINALIZE;
 
 	PREPARE(0, "INSERT INTO test(n) VALUES(1)");
 	fixture_exec(f, 0);
-	CLUSTER_APPLIED(6);
+	CLUSTER_APPLIED(5);
 	FINALIZE;
 
 	/* The WAL was truncated. */

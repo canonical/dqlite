@@ -105,6 +105,11 @@ static void handleCb(struct handle *req,
 	ctx->schema = schema;
 }
 
+static void barrierCb(struct raft_barrier *req, int status) {
+	(void)req;
+	(void)status;
+}
+
 /******************************************************************************
  *
  * Helper macros.
@@ -569,28 +574,24 @@ TEST_CASE(prepare, closing, NULL)
 TEST_CASE(prepare, barrier_error, NULL)
 {
 	struct prepare_fixture *f = data;
-	uint64_t stmt_id;
 	(void)params;
 
-	/* Set up an uncommitted exec operation */
 	CLUSTER_ELECT(0);
-	PREPARE("CREATE TABLE test (n INT)");
-	EXEC_SUBMIT(stmt_id);
-	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
+	CLUSTER_APPLIED(2);
 
-	/* Submit a prepare request, forcing a barrier, which fails */
-	CLUSTER_ELECT(0);
+	/* Send a barrier which will fail. */
+	struct raft_barrier faulty_barrier = {};
+	raft_fixture_append_fault(&f->cluster, 0, 0);
+	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
+	munit_assert_int(rv, ==, 0);
+
 	f->request.db_id = 0;
-	f->request.sql = "SELECT n FROM test";
+	f->request.sql = "SELECT 1";
 	ENCODE(&f->request, prepare);
-	/* We rely on leader_exec (called by handle_prepare) attempting
-	 * an allocation using raft_malloc. */
-	test_raft_heap_fault_config(1, 1);
-	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_PREPARE, RAFT_SNAPSHOT_OK);
+	HANDLE_STATUS(DQLITE_REQUEST_PREPARE, RAFT_OK);
 	WAIT;
 	ASSERT_CALLBACK(SQLITE_IOERR, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR, "leader exec failed");
 	return MUNIT_OK;
 }
 
@@ -1253,6 +1254,35 @@ TEST_CASE(exec, restore, NULL)
 	return MUNIT_OK;
 }
 
+
+/* Submit a prepare request that triggers a failed barrier operation. */
+TEST_CASE(exec, barrier_error, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+	CLUSTER_APPLIED(2);
+
+	PREPARE("CREATE TABLE test (n INT)");
+
+	/* Send a barrier which will fail. */
+	struct raft_barrier faulty_barrier = {};
+	raft_fixture_append_fault(&f->cluster, 0, 0);
+	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
+	munit_assert_int(rv, ==, 0);
+
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	HANDLE_STATUS(DQLITE_REQUEST_EXEC, RAFT_OK);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_IOERR, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR, "leader exec failed");
+
+	return MUNIT_OK;
+}
+
 /* Close the gateway early while an exec barrier is in flight. */
 TEST_CASE(exec, barrier_closing, NULL)
 {
@@ -1878,6 +1908,34 @@ TEST_CASE(query, barrier, NULL)
 	return MUNIT_OK;
 }
 
+/* Submit a prepare request that triggers a failed barrier operation. */
+TEST_CASE(query, barrier_error, NULL)
+{
+	struct query_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+
+	CLUSTER_APPLIED(3);
+
+	PREPARE("SELECT n FROM test");
+
+	/* Send a barrier which will fail. */
+	struct raft_barrier faulty_barrier = {};
+	raft_fixture_append_fault(&f->cluster, 0, 0);
+	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
+	munit_assert_int(rv, ==, 0);
+
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, query);
+	HANDLE_STATUS(DQLITE_REQUEST_QUERY, RAFT_OK);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_IOERR, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR, "leader exec failed");
+
+	return MUNIT_OK;
+}
+
 /* Submit a query request right after the server has been re-elected and needs
  * to catch up with logs, but close early */
 TEST_CASE(query, barrierInFlightQuery, NULL)
@@ -2112,7 +2170,7 @@ TEST_CASE(exec_sql, single, NULL)
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, exec_sql);
 	HANDLE(EXEC_SQL);
-	CLUSTER_APPLIED(4);
+	CLUSTER_APPLIED(3);
 	ASSERT_CALLBACK(0, RESULT);
 	return MUNIT_OK;
 }
@@ -2206,27 +2264,24 @@ TEST_CASE(exec_sql, closing, NULL)
 TEST_CASE(exec_sql, barrier_error, NULL)
 {
 	struct exec_sql_fixture *f = data;
-	uint64_t stmt_id;
 	(void)params;
 
-	/* Set up an uncommitted exec operation */
-	PREPARE("CREATE TABLE test (n INT)");
-	EXEC_SUBMIT(stmt_id);
-	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
+	CLUSTER_APPLIED(2);
 
-	/* Submit an EXEC_SQL request, forcing a barrier, which fails */
-	CLUSTER_ELECT(0);
+	/* Send a barrier which will fail. */
+	struct raft_barrier faulty_barrier = {};
+	raft_fixture_append_fault(&f->cluster, 0, 0);
+	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
+	munit_assert_int(rv, ==, 0);
+
 	f->request.db_id = 0;
-	f->request.sql = "INSERT INTO test VALUES(123)";
+	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, exec_sql);
-	/* We rely on leader_barrier_v2 (called by handle_exec_sql) attempting
-	 * an allocation using raft_malloc. */
-	test_raft_heap_fault_config(1, 1);
-	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, RAFT_SNAPSHOT_OK);
+	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, RAFT_OK);
 	WAIT;
 	ASSERT_CALLBACK(SQLITE_IOERR, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR, "leader exec failed");
+
 	return MUNIT_OK;
 }
 
@@ -2806,27 +2861,24 @@ TEST_CASE(query_sql, manyClosing, NULL)
 TEST_CASE(query_sql, barrier_error, NULL)
 {
 	struct query_sql_fixture *f = data;
-	uint64_t stmt_id;
 	(void)params;
 
-	/* Set up an uncommitted exec operation */
-	PREPARE("INSERT INTO test VALUES(123)");
-	EXEC_SUBMIT(stmt_id);
-	CLUSTER_DEPOSE;
-	ASSERT_CALLBACK(SQLITE_IOERR_LEADERSHIP_LOST, FAILURE);
+	CLUSTER_APPLIED(3);
 
-	/* Submit a QUERY_SQL request, forcing a barrier, which fails */
-	CLUSTER_ELECT(0);
+	/* Send a barrier which will fail. */
+	struct raft_barrier faulty_barrier = {};
+	raft_fixture_append_fault(&f->cluster, 0, 0);
+	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
+	munit_assert_int(rv, ==, 0);
+
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
-	/* We rely on leader_barrier_v2 (called by handle_query_sql) attempting
-	 * an allocation using raft_malloc. */
-	test_raft_heap_fault_config(1, 1);
-	test_raft_heap_fault_enable();
-	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_SNAPSHOT_OK);
+	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, RAFT_OK);
 	WAIT;
 	ASSERT_CALLBACK(SQLITE_IOERR, FAILURE);
+	ASSERT_FAILURE(SQLITE_IOERR, "leader exec failed");
+
 	return MUNIT_OK;
 }
 
