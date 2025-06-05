@@ -14,6 +14,8 @@
 #include "tuple.h"
 #include "vfs.h"
 
+#define RAFT_GATEWAY_PARSE 0xff01 /* Internal use only */
+
 static bool sqlite3_statement_empty(sqlite3 *conn, const char *sql)
 {
 	if (sql == NULL || sql[0] == '\0') {
@@ -208,7 +210,7 @@ static void exec_failure(struct gateway *g, struct handle *req, int raft_rc)
 			       "leadership lost");
 	}
 
-	if (raft_rc == RAFT_MALFORMED) {
+	if (raft_rc == RAFT_GATEWAY_PARSE) {
 		return failure(req, SQLITE_ERROR, "bind parameters");
 	}
 
@@ -471,7 +473,7 @@ static void handle_exec_work_cb(struct exec *exec)
 	int rv = 0;
 	rv = bind__params(exec->stmt, &req->decoder);
 	if (rv != DQLITE_OK) {
-		leader_exec_result(exec, RAFT_MALFORMED);
+		leader_exec_result(exec, RAFT_GATEWAY_PARSE);
 	} else {
 		req->parameters_bound = true;
 		rv = sqlite3_step(exec->stmt);
@@ -658,7 +660,7 @@ static void handle_query_work_cb(struct exec *exec)
 		rc = bind__params(exec->stmt, &req->decoder);
 		if (rc != DQLITE_OK ||
 		    tuple_decoder__remaining(&req->decoder) > 0) {
-			leader_exec_result(exec, RAFT_MALFORMED);
+			leader_exec_result(exec, RAFT_GATEWAY_PARSE);
 			TAIL return leader_exec_resume(exec);
 		}
 		/* FIXME(marco6): Should I check if all bindings were consumed?
