@@ -1111,6 +1111,22 @@ TEST_CASE(exec, vacuum, NULL)
 	DECODE(&f->response, result);
 	munit_assert_int(f->response.last_insert_id, ==, 10000);
 	munit_assert_int(f->response.rows_affected, ==,   5000);
+
+	/* Make sure that the freelist is now empty. */
+	struct value value;
+	uint64_t n;
+	text_t column;
+	QUERY_SQL_SUBMIT("PRAGMA freelist_count");
+	WAIT;
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "freelist_count");
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, 0);
+	
 	return MUNIT_OK;
 }
 
@@ -1157,7 +1173,7 @@ TEST_CASE(exec, vacuum_variants, NULL)
 	return MUNIT_OK;
 }
 
-/* Fail to vacume into a file */
+/* Fail to vacuum into a file */
 TEST_CASE(exec, vacuum_into_fails, NULL)
 {
 	struct exec_fixture *f = data;
