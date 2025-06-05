@@ -1215,6 +1215,42 @@ TEST_CASE(exec, unexpectedRow, NULL)
 	return MUNIT_OK;
 }
 
+TEST_CASE(exec, malformed_parameters, NULL)
+{
+	struct exec_fixture *f = data;
+	uint64_t stmt_id;
+	(void)params;
+	CLUSTER_ELECT(0);
+	EXEC("CREATE TABLE test(id CHECK (id <> 2))");
+
+	struct value param = {
+		.type = SQLITE_INTEGER,
+		.integer = 2,
+	};
+	PREPARE("INSERT INTO test VALUES (?)");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
+	ENCODE(&f->request, exec);
+	ENCODE_PARAMS(1, &param, TUPLE__PARAMS);
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_CONSTRAINT_CHECK, FAILURE);
+	ASSERT_FAILURE(SQLITE_CONSTRAINT_CHECK,
+		       "CHECK constraint failed: id <> 2");
+
+	ENCODE(&f->request, exec);
+	char *cursor = buffer__advance(f->buf1, 8);
+	cursor[0] = 1;
+	cursor[1] = 0xff;
+	HANDLE(EXEC);
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_ERROR, FAILURE);
+	ASSERT_FAILURE(SQLITE_ERROR, "bind parameters");
+
+	return MUNIT_OK;
+}
+
+
 /******************************************************************************
  *
  * query

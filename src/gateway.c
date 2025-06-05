@@ -195,26 +195,39 @@ static void exec_failure(struct gateway *g, struct handle *req, int raft_rc)
 {
 	PRE(raft_rc != 0);
 
-	if (raft_rc == RAFT_ERROR) {
-		/* Generic error, check if there is some more information in the
-		 * connection */
-		int sqlite_error = sqlite3_extended_errcode(g->leader->conn);
-		if (sqlite_error != 0) {
-			return failure(req, sqlite_error,
-				       sqlite3_errmsg(g->leader->conn));
-		} else if (req->parameters_bound == false) {
-			/* Execution failed while binding parameters (likely for
-			 * a protocol error) */
-			return failure(req, SQLITE_ERROR, "bind parameters");
-		}
-	} else if (raft_rc == RAFT_BUSY) {
+	if (raft_rc == RAFT_BUSY) {
 		return failure(req, SQLITE_BUSY, sqlite3_errstr(SQLITE_BUSY));
-	} else if (raft_rc == RAFT_NOTLEADER) {
+	}
+	
+	if (raft_rc == RAFT_NOTLEADER) {
 		return failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
-	} else if (raft_rc == RAFT_LEADERSHIPLOST) {
+	}
+	
+	if (raft_rc == RAFT_LEADERSHIPLOST) {
 		return failure(req, SQLITE_IOERR_LEADERSHIP_LOST,
 			       "leadership lost");
 	}
+
+	if (raft_rc == RAFT_MALFORMED) {
+		return failure(req, SQLITE_ERROR, "bind parameters");
+	}
+
+	if (raft_rc == RAFT_ERROR) {
+		/* Generic error, check if there is some more information in the
+		 * connection */
+		int sqlite_status = sqlite3_extended_errcode(g->leader->conn);
+		if (sqlite_status == SQLITE_ROW) {
+			return failure(
+			    req, SQLITE_ERROR,
+			    "rows yielded when none expected for EXEC request");
+		}
+
+		if (sqlite_status != SQLITE_OK && sqlite_status != SQLITE_DONE) {
+			return failure(req, sqlite_status,
+				       sqlite3_errmsg(g->leader->conn));
+		}
+	}
+
 	return failure(req, SQLITE_IOERR, "leader exec failed");
 }
 
@@ -458,7 +471,7 @@ static void handle_exec_work_cb(struct exec *exec)
 	int rv = 0;
 	rv = bind__params(exec->stmt, &req->decoder);
 	if (rv != DQLITE_OK) {
-		leader_exec_result(exec, RAFT_ERROR);
+		leader_exec_result(exec, RAFT_MALFORMED);
 	} else {
 		req->parameters_bound = true;
 		rv = sqlite3_step(exec->stmt);
@@ -473,8 +486,7 @@ static void handle_exec_done_cb(struct exec *exec)
 {
 	struct gateway *g = exec->data;
 	PRE(g->leader != NULL && g->req != NULL);
-	int status = exec->status;
-	bool done = !sqlite3_stmt_busy(exec->stmt);
+	int raft_status = exec->status;
 	struct handle *req = g->req;
 
 	sqlite3_clear_bindings(exec->stmt);
@@ -486,17 +498,10 @@ static void handle_exec_done_cb(struct exec *exec)
 		return gateway_finalize(g);
 	}
 
-	if (status != 0 && done) {
-		return exec_failure(g, req, status);
+	if (raft_status != 0) {
+		return exec_failure(g, req, raft_status);
 	}
 
-	if (status != 0 && !done) {
-		return failure(
-		    req, SQLITE_ERROR,
-		    "rows yielded when none expected for EXEC request");
-	}
-
-	PRE(done);
 	struct response_result response;
 	fill_result(g, &response);
 	SUCCESS(result, RESULT, response, 0);
@@ -553,13 +558,12 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
-	int status = exec->status;
-	bool done = !sqlite3_stmt_busy(exec->stmt);
+	int raft_status = exec->status;
 	struct response_result response = {};
 
 	sqlite3_finalize(exec->stmt);
 
-	if (g->close_cb == NULL && status == 0 && exec->tail != NULL &&
+	if (g->close_cb == NULL && raft_status == 0 && exec->tail != NULL &&
 	    exec->tail[0] != '\0') {
 		req->parameters_bound = false;
 		*exec = (struct exec){
@@ -577,16 +581,10 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 		return gateway_finalize(g);
 	}
 
-	if (status != 0 && done) {
-		return exec_failure(g, req, status);
+	if (raft_status != 0) {
+		return exec_failure(g, req, raft_status);
 	}
 
-	if (status != 0 && !done) {
-		return failure(req, SQLITE_ERROR,
-			"rows yielded when none expected for EXEC request");
-	}
-
-	PRE(done);
 	fill_result(g, &response);
 	SUCCESS(result, RESULT, response, 0);
 }
@@ -660,8 +658,7 @@ static void handle_query_work_cb(struct exec *exec)
 		rc = bind__params(exec->stmt, &req->decoder);
 		if (rc != DQLITE_OK ||
 		    tuple_decoder__remaining(&req->decoder) > 0) {
-			tracef("handle exec bind failed %d", rc);
-			leader_exec_result(exec, RAFT_ERROR);
+			leader_exec_result(exec, RAFT_MALFORMED);
 			TAIL return leader_exec_resume(exec);
 		}
 		/* FIXME(marco6): Should I check if all bindings were consumed?
