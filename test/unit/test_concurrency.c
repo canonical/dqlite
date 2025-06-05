@@ -459,8 +459,9 @@ TEST_CASE(exec, busy_wait_timer_failed, NULL)
 	PREPARE(f->c2, "BEGIN IMMEDIATE", &f->stmt_id2);
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
-	ASSERT_CALLBACK(f->c2, SQLITE_ERROR, FAILURE);
-	
+	ASSERT_CALLBACK(f->c2, SQLITE_IOERR, FAILURE);
+	ASSERT_FAILURE(f->c2, SQLITE_IOERR, "leader exec failed")
+
 	return MUNIT_OK;
 }
 
