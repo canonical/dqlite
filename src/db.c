@@ -74,7 +74,7 @@ void db__close(struct db *db)
 	sqlite3_free(db->filename);
 }
 
-static int dqlite_follower_authorizer(void *pUserData, int action, const char *third, const char *fourth, const char *fifth, const char *sixth) {
+static int dqlite_authorizer(void *pUserData, int action, const char *third, const char *fourth, const char *fifth, const char *sixth) {
 	(void)pUserData;
 	(void)fourth;
 	(void)fifth;
@@ -114,7 +114,7 @@ int db__open(struct db *db, sqlite3 **conn)
 	 * each connection will operate on only one DB file/WAL file
 	 * pair. Make sure that the client can't use ATTACH DATABASE to
 	 * break this assumption.*/
-	sqlite3_set_authorizer(*conn, dqlite_follower_authorizer, NULL);
+	sqlite3_set_authorizer(*conn, dqlite_authorizer, NULL);
 
 	/* Set the page size. */
 	sprintf(pragma, "PRAGMA page_size=%d", db->config->page_size);
