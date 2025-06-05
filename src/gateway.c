@@ -14,6 +14,8 @@
 #include "tuple.h"
 #include "vfs.h"
 
+#define RAFT_GATEWAY_PARSE 0xff01 /* Internal use only */
+
 static bool sqlite3_statement_empty(sqlite3 *conn, const char *sql)
 {
 	if (sql == NULL || sql[0] == '\0') {
@@ -191,30 +193,49 @@ static void failure(struct handle *req, int code, const char *message)
 	req->cb(req, code, DQLITE_RESPONSE_FAILURE, 0);
 }
 
+/**
+ * exec_failure translate the tuple (raft_error, sqlite_error) into
+ * a SQLITE_XXX error code and message and calls failure. It is important
+ * not to call any sqlite3_XXX function after the failure and before calling
+ * this function as it might change the error message in the connection.
+ */
 static void exec_failure(struct gateway *g, struct handle *req, int raft_rc)
 {
 	PRE(raft_rc != 0);
 
-	if (raft_rc == RAFT_ERROR) {
-		/* Generic error, check if there is some more information in the
-		 * connection */
-		int sqlite_error = sqlite3_extended_errcode(g->leader->conn);
-		if (sqlite_error != 0) {
-			return failure(req, sqlite_error,
-				       sqlite3_errmsg(g->leader->conn));
-		} else if (req->parameters_bound == false) {
-			/* Execution failed while binding parameters (likely for
-			 * a protocol error) */
-			return failure(req, SQLITE_ERROR, "bind parameters");
-		}
-	} else if (raft_rc == RAFT_BUSY) {
+	if (raft_rc == RAFT_BUSY) {
 		return failure(req, SQLITE_BUSY, sqlite3_errstr(SQLITE_BUSY));
-	} else if (raft_rc == RAFT_NOTLEADER) {
+	}
+	
+	if (raft_rc == RAFT_NOTLEADER) {
 		return failure(req, SQLITE_IOERR_NOT_LEADER, "not leader");
-	} else if (raft_rc == RAFT_LEADERSHIPLOST) {
+	}
+	
+	if (raft_rc == RAFT_LEADERSHIPLOST) {
 		return failure(req, SQLITE_IOERR_LEADERSHIP_LOST,
 			       "leadership lost");
 	}
+
+	if (raft_rc == RAFT_GATEWAY_PARSE) {
+		return failure(req, SQLITE_ERROR, "bind parameters");
+	}
+
+	if (raft_rc == RAFT_ERROR) {
+		/* Generic error, check if there is some more information in the
+		 * connection */
+		int sqlite_status = sqlite3_extended_errcode(g->leader->conn);
+		if (sqlite_status == SQLITE_ROW) {
+			return failure(
+			    req, SQLITE_ERROR,
+			    "rows yielded when none expected for EXEC request");
+		}
+
+		if (sqlite_status != SQLITE_OK && sqlite_status != SQLITE_DONE) {
+			return failure(req, sqlite_status,
+				       sqlite3_errmsg(g->leader->conn));
+		}
+	}
+
 	return failure(req, SQLITE_IOERR, "leader exec failed");
 }
 
@@ -458,7 +479,7 @@ static void handle_exec_work_cb(struct exec *exec)
 	int rv = 0;
 	rv = bind__params(exec->stmt, &req->decoder);
 	if (rv != DQLITE_OK) {
-		leader_exec_result(exec, RAFT_ERROR);
+		leader_exec_result(exec, RAFT_GATEWAY_PARSE);
 	} else {
 		req->parameters_bound = true;
 		rv = sqlite3_step(exec->stmt);
@@ -473,33 +494,29 @@ static void handle_exec_done_cb(struct exec *exec)
 {
 	struct gateway *g = exec->data;
 	PRE(g->leader != NULL && g->req != NULL);
-	int status = exec->status;
-	bool done = !sqlite3_stmt_busy(exec->stmt);
+	int raft_status = exec->status;
 	struct handle *req = g->req;
-
-	sqlite3_clear_bindings(exec->stmt);
-	sqlite3_reset(exec->stmt);
+	sqlite3_stmt *stmt = exec->stmt;
 	raft_free(exec);
+
 	g->req = NULL;
 
 	if (g->close_cb != NULL) {
 		return gateway_finalize(g);
 	}
 
-	if (status != 0 && done) {
-		return exec_failure(g, req, status);
+	if (raft_status != 0) {
+		exec_failure(g, req, raft_status);
+		goto done;
 	}
 
-	if (status != 0 && !done) {
-		return failure(
-		    req, SQLITE_ERROR,
-		    "rows yielded when none expected for EXEC request");
-	}
-
-	PRE(done);
 	struct response_result response;
 	fill_result(g, &response);
 	SUCCESS(result, RESULT, response, 0);
+
+done:
+	sqlite3_clear_bindings(stmt);
+	sqlite3_reset(stmt);
 }
 
 static int handle_exec(struct gateway *g, struct handle *req)
@@ -553,14 +570,24 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 {
 	struct gateway *g = exec->data;
 	struct handle *req = g->req;
-	int status = exec->status;
-	bool done = !sqlite3_stmt_busy(exec->stmt);
+	int raft_status = exec->status;
 	struct response_result response = {};
 
+	if (g->close_cb != NULL) {
+		/* Statement must be finalized manually as it is not in the registry */
+		sqlite3_finalize(exec->stmt);
+		gateway_finalize(g);
+		goto done;
+	}
+	
 	sqlite3_finalize(exec->stmt);
 
-	if (g->close_cb == NULL && status == 0 && exec->tail != NULL &&
-	    exec->tail[0] != '\0') {
+	if (raft_status != 0) {
+		exec_failure(g, req, raft_status);
+		goto done;
+	}
+
+	if (exec->tail != NULL && exec->tail[0] != '\0') {
 		req->parameters_bound = false;
 		*exec = (struct exec){
 			.data = g,
@@ -570,25 +597,12 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 				   handle_exec_sql_done_cb);
 	}
 
-	raft_free(exec);
-	g->req = NULL;
-
-	if (g->close_cb != NULL) {
-		return gateway_finalize(g);
-	}
-
-	if (status != 0 && done) {
-		return exec_failure(g, req, status);
-	}
-
-	if (status != 0 && !done) {
-		return failure(req, SQLITE_ERROR,
-			"rows yielded when none expected for EXEC request");
-	}
-
-	PRE(done);
 	fill_result(g, &response);
 	SUCCESS(result, RESULT, response, 0);
+
+done:
+	raft_free(exec);
+	g->req = NULL;
 }
 
 static int handle_exec_sql(struct gateway *g, struct handle *req)
@@ -660,8 +674,7 @@ static void handle_query_work_cb(struct exec *exec)
 		rc = bind__params(exec->stmt, &req->decoder);
 		if (rc != DQLITE_OK ||
 		    tuple_decoder__remaining(&req->decoder) > 0) {
-			tracef("handle exec bind failed %d", rc);
-			leader_exec_result(exec, RAFT_ERROR);
+			leader_exec_result(exec, RAFT_GATEWAY_PARSE);
 			TAIL return leader_exec_resume(exec);
 		}
 		/* FIXME(marco6): Should I check if all bindings were consumed?
@@ -694,30 +707,34 @@ static void handle_query_done_cb(struct exec *exec)
 	struct handle *req = g->req;
 	PRE(req != NULL);
 	int status = exec->status;
+	sqlite3_stmt *stmt = exec->stmt;
 	g->req = NULL;
-
-	sqlite3_clear_bindings(exec->stmt);
-	sqlite3_reset(exec->stmt);
 	raft_free(exec);
 
 	if (g->close_cb != NULL) {
 		return gateway_finalize(g);
 	}
 
+	if (status != 0) {
+		exec_failure(g, req, status);
+		goto done;
+	}
+
+
 	if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
 		SUCCESS(empty, EMPTY, response, 0);
-		return;
-	}
-
-	if (status != 0) {
-		return exec_failure(g, req, status);
+		goto done;
 	}
 
 	struct response_rows response = {
 		.eof = DQLITE_RESPONSE_ROWS_DONE,
 	};
 	SUCCESS(rows, ROWS, response, 0);
+
+done:
+	sqlite3_clear_bindings(stmt);
+	sqlite3_reset(stmt);
 }
 
 static int handle_query(struct gateway *g, struct handle *req)
@@ -775,36 +792,44 @@ static void handle_query_sql_done_cb(struct exec *exec)
 	PRE(req != NULL);
 	int status = exec->status;
 	bool tail = exec->stmt != NULL && exec->tail != NULL;
+	sqlite3_stmt *stmt = exec->stmt;
 	g->req = NULL;
-	sqlite3_finalize(exec->stmt);
 	raft_free(exec);
 
 	if (g->close_cb != NULL) {
+		/* Statement must be finalized manually as it is not in the registry */
+		sqlite3_finalize(stmt);
 		return gateway_finalize(g);
+	}
+
+	if (status != RAFT_OK && tail) {
+		failure(req, SQLITE_ERROR, "nonempty statement tail");
+		goto done;
+	}
+
+	if (status != RAFT_OK && !tail) {
+		exec_failure(g, req, status);
+		goto done;
 	}
 
 	if (req->cancellation_requested) {
 		struct response_empty response = { 0 };
 		SUCCESS(empty, EMPTY, response, 0);
-		return;
-	}
-	
-	if (status != RAFT_OK && tail) {
-		return failure(req, SQLITE_ERROR, "nonempty statement tail");
-	}
-
-	if (status != RAFT_OK && !tail) {
-		return exec_failure(g, req, status);
+		goto done;
 	}
 
 	if (!req->parameters_bound) {
-		return failure(req, 0, "empty statement");
+		failure(req, 0, "empty statement");
+		goto done;
 	}
 
 	struct response_rows response = {
 		.eof = DQLITE_RESPONSE_ROWS_DONE,
 	};
 	SUCCESS(rows, ROWS, response, 0);
+
+done:
+	sqlite3_finalize(stmt);
 }
 
 static int handle_query_sql(struct gateway *g, struct handle *req)
