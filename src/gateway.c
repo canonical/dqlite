@@ -202,6 +202,7 @@ static void failure(struct handle *req, int code, const char *message)
  */
 static void exec_failure(struct gateway *g, struct handle *req, int raft_rc)
 {
+	PRE(g->req == NULL);
 	PRE(raft_rc != 0);
 
 	if (raft_rc == RAFT_BUSY) {
@@ -574,21 +575,12 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 	int raft_status = exec->status;
 	struct response_result response = {};
 
-	if (g->close_cb != NULL) {
-		/* Statement must be finalized manually as it is not in the registry */
-		sqlite3_finalize(exec->stmt);
-		gateway_finalize(g);
-		goto done;
-	}
-	
-	sqlite3_finalize(exec->stmt);
+	/* Statement must be finalized manually as it is not in the registry */
+	sqlite3_stmt *stmt = exec->stmt;
 
-	if (raft_status != 0) {
-		exec_failure(g, req, raft_status);
-		goto done;
-	}
-
-	if (exec->tail != NULL && exec->tail[0] != '\0') {
+	if (raft_status == 0 && g->close_cb == NULL && 
+		exec->tail != NULL && exec->tail[0] != '\0') {
+		sqlite3_finalize(stmt);
 		req->parameters_bound = false;
 		*exec = (struct exec){
 			.data = g,
@@ -597,13 +589,22 @@ static void handle_exec_sql_done_cb(struct exec *exec)
 		return leader_exec(g->leader, exec, handle_exec_work_cb,
 				   handle_exec_sql_done_cb);
 	}
-
-	fill_result(g, &response);
-	SUCCESS(result, RESULT, response, 0);
-
-done:
-	raft_free(exec);
+	
 	g->req = NULL;
+	raft_free(exec);
+
+	if (g->close_cb != NULL) {
+		sqlite3_finalize(stmt);
+		return gateway_finalize(g);
+	}
+
+	if (raft_status != 0) {
+		exec_failure(g, req, raft_status);
+	} else {
+		fill_result(g, &response);
+		SUCCESS(result, RESULT, response, 0);
+	}
+	sqlite3_finalize(stmt);
 }
 
 static int handle_exec_sql(struct gateway *g, struct handle *req)
