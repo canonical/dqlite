@@ -2001,7 +2001,7 @@ static int vfsCurrentTime(sqlite3_vfs *vfs, double *piNow)
 	sqlite3_int64 iNow;
 	int rc = vfsCurrentTimeInt64(vfs, &iNow);
 	if (rc == SQLITE_OK) {
-		*piNow = (double)iNow;
+		*piNow = ((double)iNow) / 86400000.0;
 	}
 	return rc;
 }
