@@ -1998,9 +1998,12 @@ static int vfsCurrentTimeInt64(sqlite3_vfs *vfs, sqlite3_int64 *piNow)
 
 static int vfsCurrentTime(sqlite3_vfs *vfs, double *piNow)
 {
-	// TODO: check if it's always safe to cast a double* to a
-	// sqlite3_int64*.
-	return vfsCurrentTimeInt64(vfs, (sqlite3_int64 *)piNow);
+	sqlite3_int64 iNow;
+	int rc = vfsCurrentTimeInt64(vfs, &iNow);
+	if (rc == SQLITE_OK) {
+		*piNow = ((double)iNow) / 86400000.0;
+	}
+	return rc;
 }
 
 static int vfsGetLastError(sqlite3_vfs *vfs, int x, char *y)
