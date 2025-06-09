@@ -71,14 +71,15 @@ static void gateway_finalize(struct gateway *g)
 void gateway__close(struct gateway *g, gateway_close_cb cb)
 {
 	PRE(cb != NULL);
-	tracef("gateway close");
 	g->close_cb = cb;
 	if (g->req != NULL) {
+		tracef("gateway deferred close");
 		/* An exec is still running, so it is not possible to close
 		 * right away. Instead, we wait for the exec to finish and then
 		 * call the close callback. */
 		interrupt(g);
 	} else {
+		tracef("gateway close");
 		gateway_finalize(g);
 	}
 }

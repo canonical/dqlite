@@ -1,3 +1,5 @@
+#include <time.h>
+#include <unistd.h>
 #include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
@@ -6,7 +8,10 @@
 
 #include "../../include/dqlite.h"
 #include "../../src/protocol.h"
+#include "../../src/server.h"
 #include "../../src/utils.h"
+
+#define CLIENT_N 20
 
 /******************************************************************************
  *
@@ -180,6 +185,123 @@ TEST(node, startInetStopTwice, setUpInet, tearDown, 0, node_params)
 
 	return MUNIT_OK;
 }
+
+static int openDb(struct client_proto *c, struct dqlite_node *n, const char *db)
+{
+	int rv;
+	*c = (struct client_proto) {
+		.connect = n->connect_func,
+		.connect_arg = n->connect_func_arg,
+	};
+	rv = clientOpen(c, n->bind_address, n->config.id);
+	if (rv != RAFT_OK) {
+		return rv;
+	}
+	rv = clientSendHandshake(c, NULL);
+	if (rv != RAFT_OK) {
+		clientClose(c);
+		return rv;
+	}
+	rv = clientSendOpen(c, db, NULL);
+	if (rv != RAFT_OK) {
+		clientClose(c);
+		return rv;
+	}
+	rv = clientRecvDb(c, NULL);
+	if (rv != RAFT_OK) {
+		clientClose(c);
+		return rv;
+	}
+	return RAFT_OK;
+}
+
+
+TEST(node, stopInflightReads, setUpInet, tearDown, 0, node_params)
+{
+	struct fixture *f = data;
+	int rv;
+	rv = dqlite_node_set_busy_timeout(f->node, 10*1000);
+	munit_assert_int(rv, ==, 0);
+	rv = dqlite_node_start(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	/* Open a bunch of clients and do a query on them */
+	struct client_proto clients[CLIENT_N];
+	for (int i = 0; i < CLIENT_N; i++) {
+		struct rows rows;
+		bool done;
+
+		rv = openDb(&clients[i], f->node, "test");
+		munit_assert_int(rv, ==, RAFT_OK);
+		rv = clientSendQuerySQL(&clients[i], 
+			"WITH RECURSIVE inf(i) AS( "
+			"    SELECT 1              "
+			"	UNION ALL              "
+			"	SELECT i+1 FROM inf    "
+			")                         "
+			"SELECT * FROM inf         ",
+			NULL, 0, NULL
+		);
+		munit_assert_int(rv, ==, RAFT_OK);
+		
+		rv = clientRecvRows(&clients[i], &rows, &done, NULL);
+		munit_assert_int(rv, ==, RAFT_OK);
+		munit_assert_false(done);
+		munit_assert_int(rows.column_count, ==, 1);
+		munit_assert_string_equal(rows.column_names[0], "i");
+		clientCloseRows(&rows);
+	}
+
+	/* Make sure the node can be closed */
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	for (int i = 0; i < CLIENT_N; i++) {
+		clientClose(&clients[i]);
+	}
+	return MUNIT_OK;
+}
+
+TEST(node, stopInflightWrites, setUpInet, tearDown, 0, node_params)
+{
+	struct fixture *f = data;
+	int rv;
+	rv = dqlite_node_set_busy_timeout(f->node, 10*1000);
+	munit_assert_int(rv, ==, 0);
+	rv = dqlite_node_start(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	/* Open a bunch of clients and do a query on them */
+	struct client_proto clients[CLIENT_N];
+	for (int i = 0; i < CLIENT_N; i++) {
+		rv = openDb(&clients[i], f->node, "test");
+		munit_assert_int(rv, ==, RAFT_OK);
+	}
+
+	rv = clientSendExecSQL(&clients[0], "CREATE TABLE test_table(i)", NULL, 0, NULL);
+	munit_assert_int(rv, ==, RAFT_OK);
+	rv = clientRecvResult(&clients[0], NULL, NULL, NULL);
+	munit_assert_int(rv, ==, RAFT_OK);
+
+
+	for (int i = 0; i < CLIENT_N; i++) {
+		rv = clientSendExecSQL(&clients[i], 
+			"INSERT INTO test_table VALUES (1)", NULL, 0, NULL);
+		munit_assert_int(rv, ==, RAFT_OK);
+	}
+
+	usleep(1000);
+
+	/* Make sure the node can be closed */
+	rv = dqlite_node_stop(f->node);
+	munit_assert_int(rv, ==, 0);
+
+	for (int i = 0; i < CLIENT_N; i++) {
+		clientClose(&clients[i]);
+	}
+	return MUNIT_OK;
+}
+
 
 TEST(node, snapshotParams, setUp, tearDown, 0, node_params)
 {
