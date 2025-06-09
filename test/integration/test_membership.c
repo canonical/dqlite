@@ -156,7 +156,7 @@ TEST(membership, transfer, setUp, tearDown, 0, membership_params)
 	test_server_client_connect(&f->servers[0], &c_transfer);
 	HANDSHAKE_C(&c_transfer);
 	TRANSFER(2, &c_transfer);
-	test_server_client_close(&f->servers[0], &c_transfer);
+	clientClose(&c_transfer);
 	last_applied = f->servers[0].dqlite->raft.last_applied;
 
 	SELECT(2);
@@ -213,7 +213,7 @@ TEST(membership,
 	HANDSHAKE_C(&c_transfer);
 	last_applied = f->servers[0].dqlite->raft.last_applied;
 	TRANSFER(2, &c_transfer);
-	test_server_client_close(&f->servers[0], &c_transfer);
+	clientClose(&c_transfer);
 
 	/* Wait for new leader barrier to be applied. */
 	await_arg.f = f;
@@ -237,15 +237,9 @@ TEST(membership,
 	return MUNIT_OK;
 }
 
-struct fixture_id
+static bool transfer_started_cond(struct test_server *server)
 {
-	struct fixture *f;
-	int id;
-};
-
-static bool transfer_started_cond(struct fixture_id arg)
-{
-	return arg.f->servers[arg.id].dqlite->raft.transfer != NULL;
+	return server->dqlite->raft.transfer != NULL;
 }
 
 /* Transfer leadership away from a member and immediately try to EXEC a
@@ -257,10 +251,9 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 	unsigned id = 2;
 	const char *address = "@2";
 	uint32_t stmt_id;
-	uint64_t last_insert_id;
-	uint64_t rows_affected;
+	uint64_t errcode;
+	char *errmsg;
 	struct client_proto c_transfer; /* Client used for transfer requests */
-	struct fixture_id arg;
 
 	HANDSHAKE;
 	ADD(id, address);
@@ -277,9 +270,7 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 	munit_assert_int(rv, ==, 0);
 
 	/* Wait until transfer is started by raft so the barrier can fail. */
-	arg.f = f;
-	arg.id = 0;
-	AWAIT_TRUE(transfer_started_cond, arg, 2);
+	AWAIT_TRUE(transfer_started_cond, &f->servers[0], 2);
 
 	/* Force a barrier.
 	 * TODO this is hacky, but I can't seem to hit the codepath otherwise */
@@ -287,10 +278,13 @@ TEST(membership, transferAndSqlExecWithBarrier, setUp, tearDown, 0, NULL)
 
 	rv = clientSendExec(f->client, stmt_id, NULL, 0, NULL);
 	munit_assert_int(rv, ==, 0);
-	rv = clientRecvResult(f->client, &last_insert_id, &rows_affected, NULL);
-	munit_assert_int(rv, ==, DQLITE_CLIENT_PROTO_ERROR);
+	rv = clientRecvFailure(f->client, &errcode, &errmsg, NULL);
+	munit_assert_int(rv, ==, 0);
+	munit_assert_int(errcode, ==, SQLITE_IOERR_NOT_LEADER);
+	munit_assert_string_equal(errmsg, "not leader");
+	free(errmsg);
 
-	test_server_client_close(&f->servers[1], &c_transfer);
+	clientClose(&c_transfer);
 	return MUNIT_OK;
 }
 
@@ -335,7 +329,7 @@ TEST(membership,
 	HANDSHAKE_C(&c_transfer);
 	last_applied = f->servers[0].dqlite->raft.last_applied;
 	TRANSFER(2, &c_transfer);
-	test_server_client_close(&f->servers[0], &c_transfer);
+	clientClose(&c_transfer);
 
 	/* Wait for new leader barrier to be applied. */
 	await_arg.f = f;
@@ -361,7 +355,7 @@ TEST(membership,
 	test_server_client_connect(&f->servers[1], &c_transfer);
 	HANDSHAKE_C(&c_transfer);
 	TRANSFER(1, &c_transfer);
-	test_server_client_close(&f->servers[1], &c_transfer);
+	clientClose(&c_transfer);
 
 	last_applied = f->servers[1].dqlite->raft.last_applied;
 	test_server_client_reconnect(&f->servers[0], &f->servers[0].client);

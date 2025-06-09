@@ -39,7 +39,7 @@ void test_server_stop(struct test_server *s)
 {
 	int rv;
 
-	test_server_client_close(s, &s->client);
+	clientClose(&s->client);
 
 	if (s->role_management) {
 		dqlite_node_handover(s->dqlite);
@@ -153,7 +153,7 @@ struct client_proto *test_server_client(struct test_server *s)
 
 void test_server_client_reconnect(struct test_server *s, struct client_proto *c)
 {
-	test_server_client_close(s, c);
+	clientClose(c);
 	test_server_client_connect(s, c);
 }
 
@@ -169,12 +169,6 @@ void test_server_client_connect(struct test_server *s, struct client_proto *c)
 	buffer__init(&c->read);
 	buffer__init(&c->write);
 	c->fd = fd;
-}
-
-void test_server_client_close(struct test_server *s, struct client_proto *c)
-{
-	(void)s;
-	clientClose(c);
 }
 
 static void setOther(struct test_server *s, struct test_server *other)
