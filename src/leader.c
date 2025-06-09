@@ -71,7 +71,7 @@ static void leader_finalize(struct leader *leader)
 	PRE(leader->db->leaders > 0);
 	tracef("leader close");
 	sqlite3_interrupt(leader->conn);
-	int rc = sqlite3_close(leader->conn);
+	int rc = sqlite3_close_v2(leader->conn);
 	assert(rc == 0);
 	if (leader->db->active_leader == leader) {
 		leader_trace(leader, "done");
