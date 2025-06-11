@@ -1,3 +1,4 @@
+#include <semaphore.h>
 #include <time.h>
 #include <unistd.h>
 #include "../lib/fs.h"
@@ -262,9 +263,55 @@ TEST(node, stopInflightReads, setUpInet, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-TEST(node, stopInflightWrites, setUpInet, tearDown, 0, node_params)
+
+static void notify_transaction(sqlite3_context *context, int argc, sqlite3_value **argv);
+static int register_notify(sqlite3 *connection, char **pzErrMsg, struct sqlite3_api_routines *pThunk)
+{
+	(void)pzErrMsg;
+	(void)pThunk;
+	return sqlite3_create_function_v2(connection, "notify_transaction", 1,
+					  SQLITE_UTF8, NULL, notify_transaction,
+					  NULL, NULL, NULL);
+}
+
+static sem_t write_sem;
+static void notify_transaction(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
+	munit_assert_int(argc, ==, 1);
+	/* Just return the same value */
+	sqlite3_result_value(context, argv[0]);
+	/* Signal the application that we were able to get to the write part */
+	sem_post(&write_sem);
+}
+
+static void *setUpInflight(const MunitParameter params[], void *user_data)
+{
+	void *fixture = setUpInet(params, user_data);;
+
+	int rv = sem_init(&write_sem, 0, 0);
+	munit_assert_int(rv, ==, 0);
+
+	rv = sqlite3_auto_extension((void (*)(void))register_notify);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	return fixture;
+}
+
+static void tearDownInflight(void *data)
+{
+	int rv = sqlite3_cancel_auto_extension((void (*)(void))notify_transaction);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	rv = sem_destroy(&write_sem);
+	munit_assert_int(rv, ==, 0);
+
+	tearDown(data);
+}
+
+TEST(node, stopInflightWrites, setUpInflight, tearDownInflight, 0, node_params)
 {
 	struct fixture *f = data;
+	int started;
 	int rv;
 	rv = dqlite_node_set_busy_timeout(f->node, 10*1000);
 	munit_assert_int(rv, ==, 0);
@@ -283,18 +330,27 @@ TEST(node, stopInflightWrites, setUpInet, tearDown, 0, node_params)
 	rv = clientRecvResult(&clients[0], NULL, NULL, NULL);
 	munit_assert_int(rv, ==, RAFT_OK);
 
+	rv = sem_getvalue(&write_sem, &started);
+	munit_assert_int(rv, ==, 0);
+	munit_assert_int(started, ==, 0);
 
 	for (int i = 0; i < CLIENT_N; i++) {
 		rv = clientSendExecSQL(&clients[i], 
-			"INSERT INTO test_table VALUES (1)", NULL, 0, NULL);
+			"INSERT INTO test_table VALUES (notify_transaction(1))", NULL, 0, NULL);
 		munit_assert_int(rv, ==, RAFT_OK);
 	}
 
-	usleep(1000);
+	sem_wait(&write_sem);
 
 	/* Make sure the node can be closed */
 	rv = dqlite_node_stop(f->node);
 	munit_assert_int(rv, ==, 0);
+
+	rv = sem_getvalue(&write_sem, &started);
+	munit_assert_int(rv, ==, 0);
+	/* Check that some of the queries were still in flight */
+	munit_assert_int(started, <, CLIENT_N-1);
+	
 
 	for (int i = 0; i < CLIENT_N; i++) {
 		clientClose(&clients[i]);
