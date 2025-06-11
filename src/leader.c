@@ -16,7 +16,7 @@
 #include "utils.h"
 #include "vfs.h"
 
-#define leader_trace(L, fmt, ...) tracef("[leader %p]"fmt"\n", L, ##__VA_ARGS__)
+#define leader_trace(L, fmt, ...) tracef("[leader %p] "fmt, L, ##__VA_ARGS__)
 
 static bool exec_invariant(const struct sm *sm, int prev);
 static void exec_tick(struct exec *req);
@@ -71,7 +71,7 @@ static void leader_finalize(struct leader *leader)
 	PRE(leader->db->leaders > 0);
 	tracef("leader close");
 	sqlite3_interrupt(leader->conn);
-	int rc = sqlite3_close(leader->conn);
+	int rc = sqlite3_close_v2(leader->conn);
 	assert(rc == 0);
 	if (leader->db->active_leader == leader) {
 		leader_trace(leader, "done");
@@ -303,6 +303,8 @@ void leader_exec(struct leader *leader,
 
 void leader_exec_abort(struct exec *req)
 {
+	leader_trace(req->leader, "abort in state %s", exec_state_name(sm_state(&req->sm)));
+
 	switch (sm_state(&req->sm)) {
 	case EXEC_DONE: /* already done */
 		return;
