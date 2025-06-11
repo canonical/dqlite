@@ -10,6 +10,8 @@
 
 #include <uv.h>
 
+#define conn_trace(C, fmt, ...) tracef("[conn %p] "fmt, C, ##__VA_ARGS__)
+
 /* Initialize the given buffer for reading, ensure it has the given size. */
 static int init_read(struct conn *c, uv_buf_t *buf, size_t size)
 {
@@ -29,7 +31,7 @@ static void conn_write_cb(struct transport *transport, int status)
 	bool finished;
 	int rv;
 	if (status != 0) {
-		tracef("write cb status %d", status);
+		conn_trace(c, "write cb status %d", status);
 		goto abort;
 	}
 
@@ -69,12 +71,12 @@ static void gateway_handle_cb(struct handle *req,
 
 	/* Ignore results firing after we started closing. */
 	if (c->closed) {
-		tracef("gateway handle cb closed");
+		conn_trace(c, "gateway handle cb closed");
 		return;
 	}
 
 	if (status == SQLITE_IOERR_NOT_LEADER || status == SQLITE_IOERR_LEADERSHIP_LOST) {
-		tracef("gateway handle cb status %d", status);
+		conn_trace(c, "gateway handle cb status %d", status);
 		goto abort;
 	}
 
@@ -94,7 +96,7 @@ static void gateway_handle_cb(struct handle *req,
 
 	rv = transport__write(&c->transport, &buf, conn_write_cb);
 	if (rv != 0) {
-		tracef("transport write failed %d", rv);
+		conn_trace(c, "transport write failed %d", rv);
 		goto abort;
 	}
 	return;
@@ -117,10 +119,10 @@ static void raft_connect(struct conn *c)
 	struct cursor *cursor = &c->handle.cursor;
 	struct request_connect request;
 	int rv;
-	tracef("raft_connect");
+	conn_trace(c, "raft_connect");
 	rv = request_connect__decode(cursor, &request);
 	if (rv != 0) {
-		tracef("request connect decode failed %d", rv);
+		conn_trace(c, "request connect decode failed %d", rv);
 		conn__stop(c);
 		return;
 	}
@@ -139,7 +141,7 @@ static void read_request_cb(struct transport *transport, int status)
 	int rv;
 
 	if (status != 0) {
-		tracef("read error %d", status);
+		conn_trace(c, "read error %d", status);
 		// errorf(c->logger, "read error");
 		conn__stop(c);
 		return;
@@ -160,7 +162,7 @@ static void read_request_cb(struct transport *transport, int status)
 	rv = gateway__handle(&c->gateway, &c->handle, c->request.type,
 			     c->request.schema, &c->write, gateway_handle_cb);
 	if (rv != 0) {
-		tracef("read gateway handle error %d", rv);
+		conn_trace(c, "read gateway handle error %d", rv);
 		conn__stop(c);
 	}
 }
@@ -175,7 +177,7 @@ static int read_request(struct conn *c)
 	}
 	rv = init_read(c, &buf, c->request.words * 8);
 	if (rv != 0) {
-		tracef("init read failed %d", rv);
+		conn_trace(c, "init read failed %d", rv);
 		return rv;
 	}
 	if (c->request.words == 0) {
@@ -183,7 +185,7 @@ static int read_request(struct conn *c)
 	}
 	rv = transport__read(&c->transport, &buf, read_request_cb);
 	if (rv != 0) {
-		tracef("transport read failed %d", rv);
+		conn_trace(c, "transport read failed %d", rv);
 		return rv;
 	}
 	return 0;
@@ -197,7 +199,7 @@ static void read_message_cb(struct transport *transport, int status)
 
 	if (status != 0) {
 		// errorf(c->logger, "read error");
-		tracef("read error %d", status);
+		conn_trace(c, "read error %d", status);
 		conn__stop(c);
 		return;
 	}
@@ -210,7 +212,7 @@ static void read_message_cb(struct transport *transport, int status)
 
 	rv = read_request(c);
 	if (rv != 0) {
-		tracef("read request error %d", rv);
+		conn_trace(c, "read request error %d", rv);
 		conn__stop(c);
 		return;
 	}
@@ -223,12 +225,12 @@ static int read_message(struct conn *c)
 	int rv;
 	rv = init_read(c, &buf, message__sizeof(&c->request));
 	if (rv != 0) {
-		tracef("init read failed %d", rv);
+		conn_trace(c, "init read failed %d", rv);
 		return rv;
 	}
 	rv = transport__read(&c->transport, &buf, read_message_cb);
 	if (rv != 0) {
-		tracef("transport read failed %d", rv);
+		conn_trace(c, "transport read failed %d", rv);
 		return rv;
 	}
 	return 0;
@@ -242,7 +244,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 
 	if (status != 0) {
 		// errorf(c->logger, "read error");
-		tracef("read error %d", status);
+		conn_trace(c, "read error %d", status);
 		goto abort;
 	}
 
@@ -258,7 +260,7 @@ static void read_protocol_cb(struct transport *transport, int status)
 		/* c->protocol); */
 		/* TODO: instead of closing the connection we should return
 		 * error messages */
-		tracef("unknown protocol version %" PRIu64, c->protocol);
+		conn_trace(c, "unknown protocol version %" PRIu64, c->protocol);
 		goto abort;
 	}
 	c->gateway.protocol = c->protocol;
@@ -280,12 +282,12 @@ static int read_protocol(struct conn *c)
 	int rv;
 	rv = init_read(c, &buf, sizeof c->protocol);
 	if (rv != 0) {
-		tracef("init read failed %d", rv);
+		conn_trace(c, "init read failed %d", rv);
 		return rv;
 	}
 	rv = transport__read(&c->transport, &buf, read_protocol_cb);
 	if (rv != 0) {
-		tracef("transport read failed %d", rv);
+		conn_trace(c, "transport read failed %d", rv);
 		return rv;
 	}
 	return 0;
@@ -302,10 +304,10 @@ int conn__start(struct conn *c,
 {
 	int rv;
 	(void)loop;
-	tracef("conn start");
+	conn_trace(c, "start");
 	rv = transport__init(&c->transport, stream);
 	if (rv != 0) {
-		tracef("conn start - transport init failed %d", rv);
+		conn_trace(c, "start: transport init failed %d", rv);
 		goto err;
 	}
 	c->config = config;
@@ -349,10 +351,11 @@ static void gatewayCloseCb(struct gateway *g) {
 
 void conn__stop(struct conn *c)
 {
-	tracef("conn stop");
 	if (c->closed) {
+		conn_trace(c, "stop: already stopped");
 		return;
 	}
+	conn_trace(c, "stop");
 	c->closed = true;
 	gateway__close(&c->gateway, gatewayCloseCb);
 }

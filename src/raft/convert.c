@@ -64,21 +64,28 @@ static void convertClearCandidate(struct raft *r)
 
 static void convertFailApply(struct raft_apply *req)
 {
-	if (req != NULL && req->cb != NULL) {
+	PRE(req != NULL);
+	if (req->cb != NULL) {
 		req->cb(req, RAFT_LEADERSHIPLOST, NULL);
 	}
 }
 
 static void convertFailBarrier(struct raft_barrier *req)
 {
-	if (req != NULL && req->cb != NULL) {
-		req->cb(req, RAFT_LEADERSHIPLOST);
+	PRE(req != NULL);
+	while (req != NULL) {
+		struct raft_barrier *next = req->next;
+		if (req->cb != NULL) {
+			req->cb(req, RAFT_LEADERSHIPLOST);
+		}
+		req = next;
 	}
 }
 
 static void convertFailChange(struct raft_change *req)
 {
-	if (req != NULL && req->cb != NULL) {
+	PRE(req != NULL);
+	if (req->cb != NULL) {
 		req->cb(req, RAFT_LEADERSHIPLOST);
 	}
 }
