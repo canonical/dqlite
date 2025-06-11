@@ -60,7 +60,7 @@ static void *client_read(void *data)
 		QUERY_DONE_C(&client, stmt_id, &rows, {});
 	}
 
-	test_server_client_close(&self->f->server, &client);
+	clientClose(&client);
 	return NULL;
 }
 
@@ -96,7 +96,7 @@ static void *client_write(void *data)
 		}
 	}
 
-	test_server_client_close(&self->f->server, &client);
+	clientClose(&client);
 	return NULL;
 }
 

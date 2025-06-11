@@ -60,7 +60,4 @@ void test_server_client_reconnect(struct test_server *s,
 /* Opens a client connection to the server. */
 void test_server_client_connect(struct test_server *s, struct client_proto *c);
 
-/* Closes a client connection to ther server. */
-void test_server_client_close(struct test_server *s, struct client_proto *c);
-
 #endif /* TEST_SERVER_H */

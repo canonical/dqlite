@@ -61,6 +61,7 @@ static void gateway_handle_cb(struct handle *req,
 			      uint8_t type,
 			      uint8_t schema)
 {
+	(void)status;
 	struct conn *c = req->data;
 	size_t n;
 	char *cursor;
@@ -73,11 +74,6 @@ static void gateway_handle_cb(struct handle *req,
 	if (c->closed) {
 		conn_trace(c, "gateway handle cb closed");
 		return;
-	}
-
-	if (status == SQLITE_IOERR_NOT_LEADER || status == SQLITE_IOERR_LEADERSHIP_LOST) {
-		conn_trace(c, "gateway handle cb status %d", status);
-		goto abort;
 	}
 
 	n = buffer__offset(&c->write) - message__sizeof(&c->response);
@@ -97,11 +93,8 @@ static void gateway_handle_cb(struct handle *req,
 	rv = transport__write(&c->transport, &buf, conn_write_cb);
 	if (rv != 0) {
 		conn_trace(c, "transport write failed %d", rv);
-		goto abort;
+		conn__stop(c);
 	}
-	return;
-abort:
-	conn__stop(c);
 }
 
 static void transportCloseCb(struct transport *transport)
