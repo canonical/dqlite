@@ -276,6 +276,7 @@ static int register_notify(sqlite3 *connection, char **pzErrMsg, struct sqlite3_
 static sem_t write_sem;
 static void notify_transaction(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
+	(void)argc;
 	/* Just return the same value */
 	sqlite3_result_value(context, argv[0]);
 	/* Signal the application that we were able to get to the write part */
