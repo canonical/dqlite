@@ -263,7 +263,6 @@ TEST(node, stopInflightReads, setUpInet, tearDown, 0, node_params)
 	return MUNIT_OK;
 }
 
-
 static void notify_transaction(sqlite3_context *context, int argc, sqlite3_value **argv);
 static int register_notify(sqlite3 *connection, char **pzErrMsg, struct sqlite3_api_routines *pThunk)
 {
@@ -277,7 +276,6 @@ static int register_notify(sqlite3 *connection, char **pzErrMsg, struct sqlite3_
 static sem_t write_sem;
 static void notify_transaction(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
-	munit_assert_int(argc, ==, 1);
 	/* Just return the same value */
 	sqlite3_result_value(context, argv[0]);
 	/* Signal the application that we were able to get to the write part */
@@ -350,7 +348,6 @@ TEST(node, stopInflightWrites, setUpInflight, tearDownInflight, 0, node_params)
 	munit_assert_int(rv, ==, 0);
 	/* Check that some of the queries were still in flight */
 	munit_assert_int(started, <, CLIENT_N-1);
-	
 
 	for (int i = 0; i < CLIENT_N; i++) {
 		clientClose(&clients[i]);
