@@ -1911,8 +1911,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		/* Journal file is just a noop file as only WAL mode is supported */
 		file->pMethods = &vfsNoopMethods;
 		return SQLITE_OK;
-	} else {
-		assert((flags & SQLITE_OPEN_DELETEONCLOSE) == 0);
 	}
 
 	assert((flags & SQLITE_OPEN_DELETEONCLOSE) == 0);
