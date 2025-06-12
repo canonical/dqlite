@@ -48,7 +48,7 @@ if [ ! -f "${INSTALL_DIR}/musl/bin/musl-gcc" ]; then
     rm -rf musl
     git clone "${REPO_MUSL}" --depth 1 --branch "${TAG_MUSL}" musl
     cd musl
-    # workaround for missing stdatomic
+    # workaround for missing stdatomic.h see https://musl.openwall.narkive.com/3RCAs95G/patch-add-stdatomic-h-for-clang-3-1-and-gcc-4-1
     cp /usr/lib/clang/18/include/stdatomic.h include/stdatomic.h
     CC=clang ./configure --prefix="${INSTALL_DIR}/musl"
     make -j
