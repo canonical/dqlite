@@ -627,30 +627,29 @@ static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 	return SQLITE_OK;
 }
 
-
 typedef sqlite3_file vfsNoopFile;
 
-static int vfsNoopClose(sqlite3_file* file)
+static int vfsNoopClose(sqlite3_file *file)
 {
 	(void)file;
 	return SQLITE_OK;
 }
 
-static int vfsNoopTruncate(sqlite3_file* file, sqlite3_int64 size)
+static int vfsNoopTruncate(sqlite3_file *file, sqlite3_int64 size)
 {
 	(void)file;
 	(void)size;
 	return SQLITE_IOERR_TRUNCATE;
 }
 
-static int vfsNoopSync(sqlite3_file* file, int flags)
+static int vfsNoopSync(sqlite3_file *file, int flags)
 {
 	(void)file;
 	(void)flags;
 	return SQLITE_IOERR;
 }
 
-static int vfsNoopFileSize(sqlite3_file* file, sqlite3_int64 *pSize)
+static int vfsNoopFileSize(sqlite3_file *file, sqlite3_int64 *pSize)
 {
 	(void)file;
 	(void)pSize;
@@ -658,21 +657,21 @@ static int vfsNoopFileSize(sqlite3_file* file, sqlite3_int64 *pSize)
 	return SQLITE_OK;
 }
 
-static int vfsNoopLock(sqlite3_file* file, int lockType)
+static int vfsNoopLock(sqlite3_file *file, int lockType)
 {
 	(void)file;
 	(void)lockType;
 	return SQLITE_OK;
 }
 
-static int vfsNoopUnlock(sqlite3_file* file, int lockType)
+static int vfsNoopUnlock(sqlite3_file *file, int lockType)
 {
 	(void)file;
 	(void)lockType;
 	return SQLITE_OK;
 }
 
-static int vfsNoopFileControl(sqlite3_file* file, int op, void *pArg)
+static int vfsNoopFileControl(sqlite3_file *file, int op, void *pArg)
 {
 	(void)file;
 	(void)op;
@@ -680,52 +679,63 @@ static int vfsNoopFileControl(sqlite3_file* file, int op, void *pArg)
 	return SQLITE_NOTFOUND;
 }
 
-static int vfsNoopSectorSize(sqlite3_file* file)
+static int vfsNoopSectorSize(sqlite3_file *file)
 {
 	(void)file;
 	return 0;
 }
 
-static int vfsNoopRead(sqlite3_file* file, void* data, int iAmt, sqlite3_int64 iOfst) {
+static int vfsNoopRead(sqlite3_file *file,
+		       void *data,
+		       int iAmt,
+		       sqlite3_int64 iOfst)
+{
 	(void)file;
 	(void)iOfst;
-    memset(data, 0, (size_t)iAmt); // Always empty
-    return SQLITE_OK;
+	memset(data, 0, (size_t)iAmt);  // Always empty
+	return SQLITE_OK;
 }
 
-static int vfsNoopWrite(sqlite3_file* file, const void* data, int iAmt, sqlite3_int64 iOfst) {
+static int vfsNoopWrite(sqlite3_file *file,
+			const void *data,
+			int iAmt,
+			sqlite3_int64 iOfst)
+{
 	(void)file;
 	(void)data;
 	(void)iAmt;
 	(void)iOfst;
-    return SQLITE_OK;
+	return SQLITE_OK;
 }
 
-static int vfsNoopCheckReservedLock(sqlite3_file* file, int *pResOut) {
+static int vfsNoopCheckReservedLock(sqlite3_file *file, int *pResOut)
+{
 	(void)file;
-    *pResOut = 0;
-    return SQLITE_OK;
+	*pResOut = 0;
+	return SQLITE_OK;
 }
 
-static int vfsNoopDeviceCharacteristics(sqlite3_file* file) {
+static int vfsNoopDeviceCharacteristics(sqlite3_file *file)
+{
 	(void)file;
-    return SQLITE_IOCAP_ATOMIC | SQLITE_IOCAP_SAFE_APPEND | SQLITE_IOCAP_SEQUENTIAL | SQLITE_IOCAP_POWERSAFE_OVERWRITE;
+	return SQLITE_IOCAP_ATOMIC | SQLITE_IOCAP_SAFE_APPEND |
+	       SQLITE_IOCAP_SEQUENTIAL | SQLITE_IOCAP_POWERSAFE_OVERWRITE;
 }
 
 static const sqlite3_io_methods vfsNoopMethods = {
-    .iVersion               = 1,
-    .xClose                 = vfsNoopClose,
-    .xRead                  = vfsNoopRead,
-    .xWrite                 = vfsNoopWrite,
-    .xTruncate              = vfsNoopTruncate,
-    .xSync                  = vfsNoopSync,
-    .xFileSize              = vfsNoopFileSize,
-    .xLock                  = vfsNoopLock,
-    .xUnlock                = vfsNoopUnlock,
-    .xCheckReservedLock     = vfsNoopCheckReservedLock,
-    .xFileControl           = vfsNoopFileControl,
-    .xSectorSize            = vfsNoopSectorSize,
-    .xDeviceCharacteristics = vfsNoopDeviceCharacteristics,
+	.iVersion = 1,
+	.xClose = vfsNoopClose,
+	.xRead = vfsNoopRead,
+	.xWrite = vfsNoopWrite,
+	.xTruncate = vfsNoopTruncate,
+	.xSync = vfsNoopSync,
+	.xFileSize = vfsNoopFileSize,
+	.xLock = vfsNoopLock,
+	.xUnlock = vfsNoopUnlock,
+	.xCheckReservedLock = vfsNoopCheckReservedLock,
+	.xFileControl = vfsNoopFileControl,
+	.xSectorSize = vfsNoopSectorSize,
+	.xDeviceCharacteristics = vfsNoopDeviceCharacteristics,
 };
 
 enum vfsFileType {
@@ -764,7 +774,7 @@ static struct vfs *vfsCreate(void)
 		return NULL;
 	}
 
-	*v = (struct vfs) {
+	*v = (struct vfs){
 		.base_vfs = sqlite3_vfs_find("unix"),
 	};
 	assert(v->base_vfs != NULL);

@@ -81,17 +81,15 @@ static int dqlite_authorizer(void *pUserData, int action, const char *third, con
 	(void)sixth;
 
 	if (action == SQLITE_ATTACH) {
-		// Only allow attaching temporary files
+		/* Only allow attaching temporary files */
 		if (third != NULL && third[0] != '\0') {
 			return SQLITE_DENY;
 		}
 	} else if (action == SQLITE_PRAGMA) {
 		if (strcasecmp(third, "journal_mode") == 0 && fourth) {
-			/* When the user executes 'PRAGMA journal_mode=x' we ensure
-			* that the desired mode is 'wal'. */
-			if (strcasecmp(fourth, "wal") != 0) {
-				return SQLITE_DENY;
-			}
+			/* Block changes to the journal mode:
+			 * only WAL mode is supported */
+			return SQLITE_DENY;
 		}
 	}
 	return SQLITE_OK;
@@ -118,12 +116,6 @@ int db__open(struct db *db, sqlite3 **conn)
 		goto err;
 	}
 
-	/* The vfs, db, gateway, and leader code currently assumes that
-	 * each connection will operate on only one DB file/WAL file
-	 * pair. Make sure that the client can't use ATTACH DATABASE to
-	 * break this assumption.*/
-	sqlite3_set_authorizer(*conn, dqlite_authorizer, NULL);
-
 	/* Set the page size. */
 	sprintf(pragma, "PRAGMA page_size=%d", db->config->page_size);
 	rc = sqlite3_exec(*conn, pragma, NULL, NULL, &msg);
@@ -146,6 +138,12 @@ int db__open(struct db *db, sqlite3 **conn)
 		goto err;
 	}
 
+	rc = sqlite3_exec(*conn, "PRAGMA foreign_keys=1", NULL, NULL, &msg);
+	if (rc != SQLITE_OK) {
+		tracef("foreign_keys=1 failed");
+		goto err;
+	}
+
 	rc = sqlite3_wal_autocheckpoint(*conn, 0);
 	if (rc != SQLITE_OK) {
 		tracef("sqlite3_wal_autocheckpoint off failed %d", rc);
@@ -158,11 +156,11 @@ int db__open(struct db *db, sqlite3 **conn)
 		goto err;
 	}
 
-	rc = sqlite3_exec(*conn, "PRAGMA foreign_keys=1", NULL, NULL, &msg);
-	if (rc != SQLITE_OK) {
-		tracef("foreign_keys=1 failed");
-		goto err;
-	}
+	/* The vfs, db, gateway, and leader code currently assumes that
+	 * each connection will operate on only one DB file/WAL file
+	 * pair. Make sure that the client can't use ATTACH DATABASE to
+	 * break this assumption.*/
+	sqlite3_set_authorizer(*conn, dqlite_authorizer, NULL);
 
 	return 0;
 
