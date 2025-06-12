@@ -13,7 +13,6 @@
 
 #include "../include/dqlite.h"
 
-#include "lib/assert.h"
 #include "lib/byte.h"
 
 #include "format.h"
@@ -628,13 +627,124 @@ static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 	return SQLITE_OK;
 }
 
+typedef sqlite3_file vfsNoopFile;
+
+static int vfsNoopClose(sqlite3_file *file)
+{
+	(void)file;
+	return SQLITE_OK;
+}
+
+static int vfsNoopTruncate(sqlite3_file *file, sqlite3_int64 size)
+{
+	(void)file;
+	(void)size;
+	return SQLITE_IOERR_TRUNCATE;
+}
+
+static int vfsNoopSync(sqlite3_file *file, int flags)
+{
+	(void)file;
+	(void)flags;
+	return SQLITE_IOERR;
+}
+
+static int vfsNoopFileSize(sqlite3_file *file, sqlite3_int64 *pSize)
+{
+	(void)file;
+	(void)pSize;
+	*pSize = 0;
+	return SQLITE_OK;
+}
+
+static int vfsNoopLock(sqlite3_file *file, int lockType)
+{
+	(void)file;
+	(void)lockType;
+	return SQLITE_OK;
+}
+
+static int vfsNoopUnlock(sqlite3_file *file, int lockType)
+{
+	(void)file;
+	(void)lockType;
+	return SQLITE_OK;
+}
+
+static int vfsNoopFileControl(sqlite3_file *file, int op, void *pArg)
+{
+	(void)file;
+	(void)op;
+	(void)pArg;
+	return SQLITE_NOTFOUND;
+}
+
+static int vfsNoopSectorSize(sqlite3_file *file)
+{
+	(void)file;
+	return 0;
+}
+
+static int vfsNoopRead(sqlite3_file *file,
+		       void *data,
+		       int iAmt,
+		       sqlite3_int64 iOfst)
+{
+	(void)file;
+	(void)iOfst;
+	memset(data, 0, (size_t)iAmt);  // Always empty
+	return SQLITE_OK;
+}
+
+static int vfsNoopWrite(sqlite3_file *file,
+			const void *data,
+			int iAmt,
+			sqlite3_int64 iOfst)
+{
+	(void)file;
+	(void)data;
+	(void)iAmt;
+	(void)iOfst;
+	return SQLITE_OK;
+}
+
+static int vfsNoopCheckReservedLock(sqlite3_file *file, int *pResOut)
+{
+	(void)file;
+	*pResOut = 0;
+	return SQLITE_OK;
+}
+
+static int vfsNoopDeviceCharacteristics(sqlite3_file *file)
+{
+	(void)file;
+	return SQLITE_IOCAP_ATOMIC | SQLITE_IOCAP_SAFE_APPEND |
+	       SQLITE_IOCAP_SEQUENTIAL | SQLITE_IOCAP_POWERSAFE_OVERWRITE;
+}
+
+static const sqlite3_io_methods vfsNoopMethods = {
+	.iVersion = 1,
+	.xClose = vfsNoopClose,
+	.xRead = vfsNoopRead,
+	.xWrite = vfsNoopWrite,
+	.xTruncate = vfsNoopTruncate,
+	.xSync = vfsNoopSync,
+	.xFileSize = vfsNoopFileSize,
+	.xLock = vfsNoopLock,
+	.xUnlock = vfsNoopUnlock,
+	.xCheckReservedLock = vfsNoopCheckReservedLock,
+	.xFileControl = vfsNoopFileControl,
+	.xSectorSize = vfsNoopSectorSize,
+	.xDeviceCharacteristics = vfsNoopDeviceCharacteristics,
+};
+
 enum vfsFileType {
 	VFS__DATABASE, /* Main database file */
-	VFS__JOURNAL,  /* Default SQLite journal file */
 	VFS__WAL       /* Write-Ahead Log */
 };
 
-/* Implementation of the abstract sqlite3_file base class. */
+/* Implementation of the abstract sqlite3_file base class.
+ * for the main database file */
 struct vfsFile
 {
 	sqlite3_file base;            /* Base class. Must be first. */
@@ -664,13 +774,10 @@ static struct vfs *vfsCreate(void)
 		return NULL;
 	}
 
-	v->databases = NULL;
-	v->n_databases = 0;
-	v->error = 0;
-	v->disk = false;
-	v->base_vfs = sqlite3_vfs_find("unix");
+	*v = (struct vfs){
+		.base_vfs = sqlite3_vfs_find("unix"),
+	};
 	assert(v->base_vfs != NULL);
-
 	return v;
 }
 
@@ -762,7 +869,11 @@ static int vfsDeleteDatabase(struct vfs *r, const char *name)
 	return SQLITE_IOERR_DELETE_NOENT;
 }
 
-static int vfsFileClose(sqlite3_file *file) { (void)file; return SQLITE_OK; }
+static int vfsFileClose(sqlite3_file *file)
+{
+	(void)file;
+	return SQLITE_OK;
+}
 
 /* Read data from the main database. */
 static int vfsDatabaseRead(struct vfsDatabase *d,
@@ -1072,12 +1183,7 @@ static int vfsFileWrite(sqlite3_file *file,
 			rv = vfsDatabaseWrite(f->database, buf, amount, offset);
 			break;
 		case VFS__WAL:
-			rv =
-			    vfsWalWrite(&f->database->wal, buf, amount, offset);
-			break;
-		case VFS__JOURNAL:
-			/* Silently swallow writes to the journal */
-			rv = SQLITE_OK;
+			rv = vfsWalWrite(&f->database->wal, buf, amount, offset);
 			break;
 		default:
 			rv = SQLITE_IOERR_WRITE;
@@ -1248,7 +1354,7 @@ static int vfsFileControlPragma(struct vfsFile *f, char **fcntl)
 			    sqlite3_mprintf("only WAL mode is supported");
 			return SQLITE_IOERR;
 		}
-	} else if (sqlite3_stricmp(left, "wal_checkpoint") == 0 
+	} else if (sqlite3_stricmp(left, "wal_checkpoint") == 0
 			|| (sqlite3_stricmp(left, "wal_autocheckpoint") == 0 && right)) {
 		fcntl[0] = sqlite3_mprintf("custom checkpoint not allowed");
 		return SQLITE_IOERR;
@@ -1801,6 +1907,10 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		vfs = sqlite3_vfs_find("unix");
 		assert(vfs != NULL);
 		return vfs->xOpen(vfs, NULL, file, flags, out_flags);
+	} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
+		/* Journal file is just a noop file as only WAL mode is supported */
+		file->pMethods = &vfsNoopMethods;
+		return SQLITE_OK;
 	}
 
 	assert((flags & SQLITE_OPEN_DELETEONCLOSE) == 0);
@@ -1816,8 +1926,6 @@ static int vfsOpen(sqlite3_vfs *vfs,
 
 	if (flags & SQLITE_OPEN_MAIN_DB) {
 		type = VFS__DATABASE;
-	} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
-		type = VFS__JOURNAL;
 	} else if (flags & SQLITE_OPEN_WAL) {
 		type = VFS__WAL;
 	} else {
@@ -1835,7 +1943,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	if (!exists) {
 		/* When opening a WAL or journal file we expect the main
 		 * database file to have already been created. */
-		if (type == VFS__WAL || type == VFS__JOURNAL) {
+		if (type == VFS__WAL) {
 			v->error = ENOENT;
 			rc = SQLITE_CANTOPEN;
 			goto err;
@@ -1870,6 +1978,7 @@ err:
 	assert(rc != SQLITE_OK);
 	return rc;
 }
+
 static int vfsDelete(sqlite3_vfs *vfs, const char *filename, int dir_sync)
 {
 	struct vfs *v;
@@ -2794,7 +2903,6 @@ static int vfsDiskFileRead(sqlite3_file *file,
 			   sqlite_int64 offset)
 {
 	struct vfsFile *f = (struct vfsFile *)file;
-	struct vfs *v;
 	int rv;
 
 	assert(buf != NULL);
@@ -2809,13 +2917,6 @@ static int vfsDiskFileRead(sqlite3_file *file,
 	switch (f->type) {
 		case VFS__WAL:
 			rv = vfsWalRead(&f->database->wal, buf, amount, offset);
-			break;
-		case VFS__JOURNAL:
-			rv = SQLITE_IOERR_READ;
-			v = f->vfs;
-			if (v->disk) {
-				rv = SQLITE_OK;
-			}
 			break;
 		default:
 			rv = SQLITE_IOERR_READ;
@@ -2883,12 +2984,7 @@ static int vfsDiskFileWrite(sqlite3_file *file,
 
 	switch (f->type) {
 		case VFS__WAL:
-			rv =
-			    vfsWalWrite(&f->database->wal, buf, amount, offset);
-			break;
-		case VFS__JOURNAL:
-			/* Silently swallow writes to the journal */
-			rv = SQLITE_OK;
+			rv = vfsWalWrite(&f->database->wal, buf, amount, offset);
 			break;
 		default:
 			rv = SQLITE_IOERR_WRITE;
@@ -3171,6 +3267,12 @@ static int vfsDiskOpen(sqlite3_vfs *vfs,
 		return v->base_vfs->xOpen(v->base_vfs, filename, file, flags, out_flags);
 	}
 
+	if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
+		/* Journal file is just a noop file as only WAL mode is supported */
+		file->pMethods = &vfsNoopMethods;
+		return SQLITE_OK;
+	}
+
 	assert((flags & SQLITE_OPEN_DELETEONCLOSE) == 0);
 	f = (struct vfsFile *)file;
 
@@ -3184,8 +3286,6 @@ static int vfsDiskOpen(sqlite3_vfs *vfs,
 
 	if (flags & SQLITE_OPEN_MAIN_DB) {
 		type = VFS__DATABASE;
-	} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
-		type = VFS__JOURNAL;
 	} else if (flags & SQLITE_OPEN_WAL) {
 		type = VFS__WAL;
 	} else {
@@ -3203,7 +3303,7 @@ static int vfsDiskOpen(sqlite3_vfs *vfs,
 	if (!exists) {
 		/* When opening a WAL or journal file we expect the main
 		 * database file to have already been created. */
-		if (type == VFS__WAL || type == VFS__JOURNAL) {
+		if (type == VFS__WAL) {
 			v->error = ENOENT;
 			rc = SQLITE_CANTOPEN;
 			goto err;
