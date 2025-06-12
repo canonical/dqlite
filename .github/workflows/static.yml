@@ -13,7 +13,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-           sudo apt install -y build-essential automake libtool gettext autopoint tclsh tcl libsqlite3-dev pkg-config git
+           sudo apt install -y build-essential automake libtool gettext autopoint tclsh tcl libsqlite3-dev pkg-config git clang
 
     - name: Build and test
       env:

@@ -48,7 +48,9 @@ if [ ! -f "${INSTALL_DIR}/musl/bin/musl-gcc" ]; then
     rm -rf musl
     git clone "${REPO_MUSL}" --depth 1 --branch "${TAG_MUSL}" musl
     cd musl
-    ./configure --prefix="${INSTALL_DIR}/musl"
+    # workaround for missing stdatomic.h see https://musl.openwall.narkive.com/3RCAs95G/patch-add-stdatomic-h-for-clang-3-1-and-gcc-4-1
+    cp /usr/lib/clang/18/include/stdatomic.h include/stdatomic.h
+    CC=clang ./configure --prefix="${INSTALL_DIR}/musl"
     make -j
     make -j install
 
@@ -62,7 +64,7 @@ fi
 
 export PATH="${PATH}:${INSTALL_DIR}/musl/bin"
 export CFLAGS="${CFLAGS} -isystem ${INSTALL_DIR}/musl/include"
-export CC=musl-gcc
+export CC=musl-clang
 export LDFLAGS=-static
 
 # build libtirpc
