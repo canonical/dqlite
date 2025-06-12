@@ -16,16 +16,11 @@ enum { COMMAND_OPEN = 1, COMMAND_FRAMES, COMMAND_UNDO, COMMAND_CHECKPOINT };
 /* Hold information about an array of WAL frames. */
 struct frames
 {
-	uint32_t n_pages;
-	uint16_t page_size;
-	uint16_t __unused__;
-	/* TODO: because the sqlite3 replication APIs are asymmetrics, the
-	 * format differs between encode and decode. When encoding data is
-	 * expected to be a sqlite3_wal_replication_frame* array, and when
-	 * decoding it will be a pointer to raw memory which can be further
-	 * decoded with the command_frames__page_numbers() and
-	 * command_frames__pages() helpers. */
-	const void *data;
+	uint32_t   n_pages;
+	uint16_t   page_size;
+	uint16_t   __unused__;
+	uint64_t  *page_numbers;
+	void     **pages;
 };
 
 typedef struct frames frames_t;
@@ -62,12 +57,5 @@ DQLITE_VISIBLE_TO_TESTS int command__decode(const struct raft_buffer *buf,
 					    int *type,
 					    void **command);
 
-DQLITE_VISIBLE_TO_TESTS int command_frames__page_numbers(
-    const struct command_frames *c,
-    unsigned long *page_numbers[]);
-
-DQLITE_VISIBLE_TO_TESTS void command_frames__pages(
-    const struct command_frames *c,
-    void **pages);
 
 #endif /* COMMAND_H_*/

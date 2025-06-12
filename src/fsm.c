@@ -3,6 +3,7 @@
 
 #include "command.h"
 #include "fsm.h"
+#include "protocol.h"
 #include "raft.h"
 #include "tracing.h"
 #include "vfs.h"
@@ -14,12 +15,7 @@ struct fsm
 {
 	struct logger *logger;
 	struct registry *registry;
-	struct
-	{
-		unsigned n_pages;
-		unsigned long *page_numbers;
-		uint8_t *pages;
-	} pending; /* For upgrades from V1 */
+	struct vfsTransaction pending; /* For upgrades from V1 */
 };
 
 static int apply_open(struct fsm *f, const struct command_open *c)
@@ -27,39 +23,6 @@ static int apply_open(struct fsm *f, const struct command_open *c)
 	tracef("fsm apply open");
 	(void)f;
 	(void)c;
-	return 0;
-}
-
-static int add_pending_pages(struct fsm *f,
-			     unsigned long *page_numbers,
-			     uint8_t *pages,
-			     unsigned n_pages,
-			     unsigned page_size)
-{
-	unsigned n = f->pending.n_pages + n_pages;
-	unsigned i;
-
-	f->pending.page_numbers = sqlite3_realloc64(
-	    f->pending.page_numbers, n * sizeof *f->pending.page_numbers);
-
-	if (f->pending.page_numbers == NULL) {
-		return DQLITE_NOMEM;
-	}
-
-	f->pending.pages = sqlite3_realloc64(f->pending.pages, n * page_size);
-
-	if (f->pending.pages == NULL) {
-		return DQLITE_NOMEM;
-	}
-
-	for (i = 0; i < n_pages; i++) {
-		unsigned j = f->pending.n_pages + i;
-		f->pending.page_numbers[j] = page_numbers[i];
-		memcpy(f->pending.pages + j * page_size,
-		       (uint8_t *)pages + i * page_size, page_size);
-	}
-	f->pending.n_pages = n;
-
 	return 0;
 }
 
@@ -187,8 +150,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
 	tracef("fsm apply frames");
 	struct db *db;
-	unsigned long *page_numbers = NULL;
-	void *pages;
 	int exists;
 	int rv;
 
@@ -213,67 +174,30 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		sqlite3_close(conn);
 	}
 
-	rv = command_frames__page_numbers(c, &page_numbers);
-	if (rv != 0) {
-		if (page_numbers != NULL) {
-			sqlite3_free(page_numbers);
-		}
-		tracef("page numbers failed %d", rv);
-		return rv;
-	}
-
-	command_frames__pages(c, &pages);
-
 	/* If the commit marker is set, we apply the changes directly to the
 	 * VFS. Otherwise, if the commit marker is not set, this must be an
 	 * upgrade from V1, we accumulate uncommitted frames in memory until the
 	 * final commit or a rollback. */
 	if (c->is_commit) {
-		if (f->pending.n_pages > 0) {
-			rv = add_pending_pages(f, page_numbers, pages,
-					       c->frames.n_pages,
-					       db->config->page_size);
-			if (rv != 0) {
-				tracef("malloc");
-				sqlite3_free(page_numbers);
-				return DQLITE_NOMEM;
-			}
-			rv =
-			    VfsApply(db->vfs, db->path, f->pending.n_pages,
-				     f->pending.page_numbers, f->pending.pages);
-			if (rv != 0) {
-				tracef("VfsApply failed %d", rv);
-				sqlite3_free(page_numbers);
-				return rv;
-			}
-			sqlite3_free(f->pending.page_numbers);
-			sqlite3_free(f->pending.pages);
-			f->pending.n_pages = 0;
-			f->pending.page_numbers = NULL;
-			f->pending.pages = NULL;
-		} else {
-			rv = VfsApply(db->vfs, db->path, c->frames.n_pages,
-				      page_numbers, pages);
-			if (rv != 0) {
-				tracef("VfsApply failed %d", rv);
-				sqlite3_free(page_numbers);
-				return rv;
-			}
+		struct vfsTransaction transaction = {
+			.n_pages      = c->frames.n_pages,
+			.page_numbers = c->frames.page_numbers,
+			.pages   	  = c->frames.pages,
+		};
+		rv = VfsApply(db->vfs, db->path, &transaction);
+		if (rv != 0) {
+			goto error;
 		}
 	} else {
-		rv =
-		    add_pending_pages(f, page_numbers, pages, c->frames.n_pages,
-				      db->config->page_size);
-		if (rv != 0) {
-			tracef("add pending pages failed %d", rv);
-			sqlite3_free(page_numbers);
-			return DQLITE_NOMEM;
-		}
+		rv = DQLITE_PROTO;
+		goto error;
 	}
 
-	sqlite3_free(page_numbers);
 	maybeCheckpoint(db);
-	return 0;
+error:
+	sqlite3_free(c->frames.page_numbers);
+	sqlite3_free(c->frames.pages);
+	return rv;
 }
 
 static int apply_undo(struct fsm *f, const struct command_undo *c)
