@@ -74,107 +74,6 @@ const int vfsOne = 1;
 
 #define vfsFrameSize(PAGE_SIZE) (VFS__FRAME_HEADER_SIZE + PAGE_SIZE)
 
-typedef sqlite3_file vfsJournalFile;
-
-// Most of the journal methods are no-ops.
-static int vfsJournalClose(sqlite3_file* file)
-{
-	(void)file;
-	return SQLITE_OK;
-}
-
-static int vfsJournalTruncate(sqlite3_file* file, sqlite3_int64 size)
-{
-	(void)file;
-	(void)size;
-	return SQLITE_IOERR_TRUNCATE;
-}
-
-static int vfsJournalSync(sqlite3_file* file, int flags)
-{
-	(void)file;
-	(void)flags;
-	return SQLITE_IOERR;
-}
-
-static int vfsJournalFileSize(sqlite3_file* file, sqlite3_int64 *pSize)
-{
-	(void)file;
-	(void)pSize;
-	*pSize = 0;
-	return SQLITE_OK;
-}
-
-static int vfsJournalLock(sqlite3_file* file, int lockType)
-{
-	(void)file;
-	(void)lockType;
-	return SQLITE_OK;
-}
-
-static int vfsJournalUnlock(sqlite3_file* file, int lockType)
-{
-	(void)file;
-	(void)lockType;
-	return SQLITE_OK;
-}
-
-static int vfsJournalFileControl(sqlite3_file* file, int op, void *pArg)
-{
-	(void)file;
-	(void)op;
-	(void)pArg;
-	return SQLITE_NOTFOUND;
-}
-
-static int vfsJournalSectorSize(sqlite3_file* file)
-{
-	(void)file;
-	return 0;
-}
-
-static int vfsJournalRead(sqlite3_file* file, void* data, int iAmt, sqlite3_int64 iOfst) {
-	(void)file;
-	(void)iOfst;
-    memset(data, 0, (size_t)iAmt); // Always empty
-    return SQLITE_OK;
-}
-
-static int vfsJournalWrite(sqlite3_file* file, const void* data, int iAmt, sqlite3_int64 iOfst) {
-	(void)file;
-	(void)data;
-	(void)iAmt;
-	(void)iOfst;
-    return SQLITE_OK;
-}
-
-static int vfsJournalCheckReservedLock(sqlite3_file* file, int *pResOut) {
-	(void)file;
-    *pResOut = 0;
-    return SQLITE_OK;
-}
-
-static int vfsJournalDeviceCharacteristics(sqlite3_file* file) {
-	(void)file;
-    return SQLITE_IOCAP_ATOMIC | SQLITE_IOCAP_SAFE_APPEND | SQLITE_IOCAP_SEQUENTIAL | SQLITE_IOCAP_POWERSAFE_OVERWRITE;
-}
-
-static sqlite3_io_methods vfsJournalMethods = {
-    .iVersion               = 1,
-    .xClose                 = vfsJournalClose,
-    .xRead                  = vfsJournalRead,
-    .xWrite                 = vfsJournalWrite,
-    .xTruncate              = vfsJournalTruncate,
-    .xSync                  = vfsJournalSync,
-    .xFileSize              = vfsJournalFileSize,
-    .xLock                  = vfsJournalLock,
-    .xUnlock                = vfsJournalUnlock,
-    .xCheckReservedLock     = vfsJournalCheckReservedLock,
-    .xFileControl           = vfsJournalFileControl,
-    .xSectorSize            = vfsJournalSectorSize,
-    .xDeviceCharacteristics = vfsJournalDeviceCharacteristics,
-};
-
 /* Hold content for a shared memory mapping. */
 struct vfsShm
 {
@@ -727,6 +626,107 @@ static int vfsWalTruncate(struct vfsWal *w, sqlite3_int64 size)
 
 	return SQLITE_OK;
 }
+
+
+typedef sqlite3_file vfsNoopFile;
+
+static int vfsNoopClose(sqlite3_file* file)
+{
+	(void)file;
+	return SQLITE_OK;
+}
+
+static int vfsNoopTruncate(sqlite3_file* file, sqlite3_int64 size)
+{
+	(void)file;
+	(void)size;
+	return SQLITE_IOERR_TRUNCATE;
+}
+
+static int vfsNoopSync(sqlite3_file* file, int flags)
+{
+	(void)file;
+	(void)flags;
+	return SQLITE_IOERR;
+}
+
+static int vfsNoopFileSize(sqlite3_file* file, sqlite3_int64 *pSize)
+{
+	(void)file;
+	(void)pSize;
+	*pSize = 0;
+	return SQLITE_OK;
+}
+
+static int vfsNoopLock(sqlite3_file* file, int lockType)
+{
+	(void)file;
+	(void)lockType;
+	return SQLITE_OK;
+}
+
+static int vfsNoopUnlock(sqlite3_file* file, int lockType)
+{
+	(void)file;
+	(void)lockType;
+	return SQLITE_OK;
+}
+
+static int vfsNoopFileControl(sqlite3_file* file, int op, void *pArg)
+{
+	(void)file;
+	(void)op;
+	(void)pArg;
+	return SQLITE_NOTFOUND;
+}
+
+static int vfsNoopSectorSize(sqlite3_file* file)
+{
+	(void)file;
+	return 0;
+}
+
+static int vfsNoopRead(sqlite3_file* file, void* data, int iAmt, sqlite3_int64 iOfst) {
+	(void)file;
+	(void)iOfst;
+    memset(data, 0, (size_t)iAmt); // Always empty
+    return SQLITE_OK;
+}
+
+static int vfsNoopWrite(sqlite3_file* file, const void* data, int iAmt, sqlite3_int64 iOfst) {
+	(void)file;
+	(void)data;
+	(void)iAmt;
+	(void)iOfst;
+    return SQLITE_OK;
+}
+
+static int vfsNoopCheckReservedLock(sqlite3_file* file, int *pResOut) {
+	(void)file;
+    *pResOut = 0;
+    return SQLITE_OK;
+}
+
+static int vfsNoopDeviceCharacteristics(sqlite3_file* file) {
+	(void)file;
+    return SQLITE_IOCAP_ATOMIC | SQLITE_IOCAP_SAFE_APPEND | SQLITE_IOCAP_SEQUENTIAL | SQLITE_IOCAP_POWERSAFE_OVERWRITE;
+}
+
+static const sqlite3_io_methods vfsNoopMethods = {
+    .iVersion               = 1,
+    .xClose                 = vfsNoopClose,
+    .xRead                  = vfsNoopRead,
+    .xWrite                 = vfsNoopWrite,
+    .xTruncate              = vfsNoopTruncate,
+    .xSync                  = vfsNoopSync,
+    .xFileSize              = vfsNoopFileSize,
+    .xLock                  = vfsNoopLock,
+    .xUnlock                = vfsNoopUnlock,
+    .xCheckReservedLock     = vfsNoopCheckReservedLock,
+    .xFileControl           = vfsNoopFileControl,
+    .xSectorSize            = vfsNoopSectorSize,
+    .xDeviceCharacteristics = vfsNoopDeviceCharacteristics,
+};
 
 enum vfsFileType {
 	VFS__DATABASE, /* Main database file */
@@ -1899,7 +1899,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		return vfs->xOpen(vfs, NULL, file, flags, out_flags);
 	} else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
 		/* Journal file is just a noop file as only WAL mode is supported */
-		file->pMethods = &vfsJournalMethods;
+		file->pMethods = &vfsNoopMethods;
 		return SQLITE_OK;
 	} else {
 		assert((flags & SQLITE_OPEN_DELETEONCLOSE) == 0);
@@ -3258,7 +3258,7 @@ static int vfsDiskOpen(sqlite3_vfs *vfs,
 
 	if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
 		/* Journal file is just a noop file as only WAL mode is supported */
-		file->pMethods = &vfsJournalMethods;
+		file->pMethods = &vfsNoopMethods;
 		return SQLITE_OK;
 	}
 
