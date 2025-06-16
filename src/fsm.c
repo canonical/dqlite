@@ -200,10 +200,9 @@ error:
 
 static int apply_undo(struct fsm *f, const struct command_undo *c)
 {
-	tracef("apply undo %" PRIu64, c->tx_id);
 	(void)f;
 	(void)c;
-
+	tracef("apply undo %" PRIu64, c->tx_id);
 	return 0;
 }
 
