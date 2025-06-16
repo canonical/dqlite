@@ -29,7 +29,6 @@ typedef struct frames frames_t;
 #define COMMAND__DEFINE(LOWER, UPPER, _) \
 	SERIALIZE__DEFINE_STRUCT(command_##LOWER, COMMAND__##UPPER);
 
-#define COMMAND__OPEN(X, ...) X(text, filename, ##__VA_ARGS__)
 #define COMMAND__FRAMES(X, ...)               \
 	X(text, filename, ##__VA_ARGS__)      \
 	X(uint64, tx_id, ##__VA_ARGS__)       \
@@ -38,6 +37,9 @@ typedef struct frames frames_t;
 	X(uint8, __unused1__, ##__VA_ARGS__)  \
 	X(uint16, __unused2__, ##__VA_ARGS__) \
 	X(frames, frames, ##__VA_ARGS__)
+
+/* These commands are not used and are no-ops for now. */
+#define COMMAND__OPEN(X, ...) X(text, filename, ##__VA_ARGS__)
 #define COMMAND__UNDO(X, ...) X(uint64, tx_id, ##__VA_ARGS__)
 #define COMMAND__CHECKPOINT(X, ...) X(text, filename, ##__VA_ARGS__)
 

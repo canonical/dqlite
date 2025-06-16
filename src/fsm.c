@@ -17,6 +17,7 @@ struct fsm
 	struct registry *registry;
 };
 
+/* Not used */
 static int apply_open(struct fsm *f, const struct command_open *c)
 {
 	tracef("fsm apply open");
@@ -198,6 +199,7 @@ error:
 	return rv;
 }
 
+/* Not used */
 static int apply_undo(struct fsm *f, const struct command_undo *c)
 {
 	(void)f;
