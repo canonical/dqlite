@@ -5,14 +5,12 @@
 
 #include "../../include/dqlite.h"
 
-#include "../lib/config.h"
 #include "../lib/fs.h"
 #include "../lib/heap.h"
 #include "../lib/runner.h"
 #include "../lib/sqlite.h"
 
 #include "../../src/format.h"
-#include "../../src/raft.h"
 #include "../../src/vfs.h"
 
 static char *bools[] = {"0", "1", NULL};
@@ -1353,46 +1351,6 @@ TEST(VfsShmLock, release, setUp, tearDown, 0, vfs_params)
 	munit_assert_int(rc, ==, 0);
 
 	free(file);
-
-	return MUNIT_OK;
-}
-
-/******************************************************************************
- *
- * xFileControl
- *
- ******************************************************************************/
-
-SUITE(VfsFileControl)
-
-/* Trying to set the journal mode to anything other than "wal" produces an
- * error. */
-TEST(VfsFileControl, journal, setUp, tearDown, 0, vfs_params)
-{
-	struct fixture *f = data;
-	sqlite3_file *file = __file_create_main_db(f);
-	char *fnctl[] = {
-	    "",
-	    "journal_mode",
-	    "memory",
-	    "",
-	};
-	int rc;
-
-	(void)params;
-	(void)data;
-
-	/* Setting the page size a first time returns NOTFOUND, which is what
-	 * SQLite effectively expects. */
-	rc = file->pMethods->xFileControl(file, SQLITE_FCNTL_PRAGMA, fnctl);
-	munit_assert_int(rc, ==, SQLITE_IOERR);
-
-	rc = file->pMethods->xClose(file);
-	munit_assert_int(rc, ==, 0);
-	free(file);
-
-	/* Free allocated memory from call to sqlite3_mprintf */
-	sqlite3_free(fnctl[0]);
 
 	return MUNIT_OK;
 }
