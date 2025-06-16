@@ -183,6 +183,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		};
 		rv = VfsApply(db->vfs, db->path, &transaction);
 		if (rv != 0) {
+			tracef("VfsApply failed %d", rv);
 			goto error;
 		}
 	} else {
