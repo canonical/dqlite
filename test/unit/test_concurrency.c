@@ -459,8 +459,49 @@ TEST_CASE(exec, busy_wait_timer_failed, NULL)
 	PREPARE(f->c2, "BEGIN IMMEDIATE", &f->stmt_id2);
 	EXEC(f->c2, f->stmt_id2);
 	WAIT(f->c2);
-	ASSERT_CALLBACK(f->c2, SQLITE_ERROR, FAILURE);
-	
+	ASSERT_CALLBACK(f->c2, SQLITE_IOERR, FAILURE);
+	ASSERT_FAILURE(f->c2, SQLITE_IOERR, "leader exec failed")
+
+	return MUNIT_OK;
+}
+
+
+TEST_CASE(exec, serialization_error, NULL)
+{
+	struct exec_fixture *f = data;
+	(void)params;
+
+	PREPARE(f->c1, "CREATE TABLE test(id)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	/* Create a read transaction */
+	PREPARE(f->c1, "BEGIN", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, RESULT);
+
+	PREPARE(f->c1, "SELECT * FROM test", &f->stmt_id1);
+	QUERY(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, 0, ROWS);
+
+	/* From another connection, create an update, so that
+	 * the transaction above cannot be upgraded anymore
+	 * to a write transaction. */
+	PREPARE(f->c2, "INSERT INTO test(id) VALUES (1)", &f->stmt_id1);
+	EXEC(f->c2, f->stmt_id1);
+	WAIT(f->c2);
+	ASSERT_CALLBACK(f->c2, 0, RESULT);
+
+	/* The original transaction should receive a serialization error*/
+	PREPARE(f->c1, "INSERT INTO test(id) VALUES (2)", &f->stmt_id1);
+	EXEC(f->c1, f->stmt_id1);
+	WAIT(f->c1);
+	ASSERT_CALLBACK(f->c1, SQLITE_BUSY_SNAPSHOT, FAILURE);
+	ASSERT_FAILURE(f->c1, SQLITE_BUSY_SNAPSHOT, "database is locked");
+
 	return MUNIT_OK;
 }
 

@@ -7,26 +7,25 @@
  *
  *****************************************************************************/
 
-struct fixture
-{
-    FIXTURE_CLUSTER;
+struct fixture {
+	FIXTURE_CLUSTER;
 };
 
 static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
 {
-    struct fixture *f = munit_malloc(sizeof *f);
-    SETUP_CLUSTER(2);
-    CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
-    CLUSTER_ELECT(0);
-    return f;
+	struct fixture *f = munit_malloc(sizeof *f);
+	SETUP_CLUSTER(2);
+	CLUSTER_BOOTSTRAP;
+	CLUSTER_START;
+	CLUSTER_ELECT(0);
+	return f;
 }
 
 static void tearDown(void *data)
 {
-    struct fixture *f = data;
-    TEAR_DOWN_CLUSTER;
-    free(f);
+	struct fixture *f = data;
+	TEAR_DOWN_CLUSTER;
+	free(f);
 }
 
 /******************************************************************************
@@ -35,60 +34,89 @@ static void tearDown(void *data)
  *
  *****************************************************************************/
 
-struct result
-{
-    int status;
-    bool done;
+struct result {
+	int pending;
 };
 
-static void barrierCbAssertResult(struct raft_barrier *req, int status)
+static void barrierCb(struct raft_barrier *req, int status)
 {
-    struct result *result = req->data;
-    munit_assert_int(status, ==, result->status);
-    result->done = true;
+	struct result *result = req->data;
+	munit_assert_not_null(result);
+	munit_assert_int(status, ==, RAFT_OK);
+	munit_assert_int(result->pending, >, 0);
+	result->pending--;
+	req->data = NULL;
 }
 
-static bool barrierCbHasFired(struct raft_fixture *f, void *arg)
+static bool barrierDone(struct raft_fixture *f, void *arg)
 {
-    struct result *result = arg;
-    (void)f;
-    return result->done;
+	struct result *result = arg;
+	(void)f;
+	return result->pending == 0;
 }
-
-/* Submit a barrier request. */
-#define BARRIER_SUBMIT(I)                                              \
-    struct raft_barrier _req;                                          \
-    struct result _result = {0, false};                                \
-    int _rv;                                                           \
-    _req.data = &_result;                                              \
-    _rv = raft_barrier(CLUSTER_RAFT(I), &_req, barrierCbAssertResult); \
-    munit_assert_int(_rv, ==, 0);
-
-/* Expect the barrier callback to fire with the given status. */
-#define BARRIER_EXPECT(STATUS) _result.status = STATUS
-
-/* Wait until the barrier request completes. */
-#define BARRIER_WAIT CLUSTER_STEP_UNTIL(barrierCbHasFired, &_result, 2000)
-
-/* Submit to the I'th server a barrier request and wait for the operation to
- * succeed. */
-#define BARRIER(I)         \
-    do {                   \
-        BARRIER_SUBMIT(I); \
-        BARRIER_WAIT;      \
-    } while (0)
-
-/******************************************************************************
- *
- * Success scenarios
- *
- *****************************************************************************/
 
 SUITE(raft_barrier)
 
-TEST(raft_barrier, cb, setUp, tearDown, 0, NULL)
+TEST(raft_barrier, single_callback, setUp, tearDown, 0, NULL)
 {
-    struct fixture *f = data;
-    BARRIER(0);
-    return MUNIT_OK;
+	struct fixture *f = data;
+
+	struct result result = { 1 };
+	struct raft_barrier req = {
+		.data = &result,
+	};
+	int _rv = raft_barrier(CLUSTER_RAFT(0), &req, barrierCb);
+	munit_assert_int(_rv, ==, 0);
+	CLUSTER_STEP_UNTIL(barrierDone, &(result), 2000);
+
+	return MUNIT_OK;
+}
+
+static void barrierCb2(struct raft_barrier *req, int status)
+{
+	struct result *result = req->data;
+	munit_assert_not_null(result);
+	munit_assert_int(status, ==, RAFT_OK);
+	munit_assert_int(result->pending, >, 0);
+	result->pending -= 2;
+	req->data = NULL;
+}
+
+TEST(raft_barrier, multiple_callback, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+
+	struct result result = { 3 };
+	struct raft_barrier req[] = {
+		{.data = &result},
+		{.data = &result},
+	};
+	int rv = raft_barrier(CLUSTER_RAFT(0), &req[0], barrierCb);
+	munit_assert_int(rv, ==, 0);
+	rv = raft_barrier(CLUSTER_RAFT(0), &req[1], barrierCb2);
+	munit_assert_int(rv, ==, 0);
+
+	CLUSTER_STEP_UNTIL(barrierDone, &(result), 2000);
+
+	return MUNIT_OK;
+}
+
+TEST(raft_barrier, multiple, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	struct result result = {};
+
+#define REQ_N 100
+	struct raft_barrier reqs[REQ_N] = {};
+	for (int i = 0; i < REQ_N; i++) {
+		reqs[i] = (struct raft_barrier){
+			.data = &result,
+		};
+		result.pending++;
+		int rv = raft_barrier(CLUSTER_RAFT(0), &reqs[i], barrierCb);
+		munit_assert_int(rv, ==, 0);
+		munit_assert_int(result.pending, ==, i + 1);
+	}
+	CLUSTER_STEP_UNTIL(barrierDone, &(result), 2000);
+	return MUNIT_OK;
 }

@@ -14,9 +14,6 @@
 #include "lib/threadpool.h"
 #include "raft.h"
 
-#define SQLITE_IOERR_NOT_LEADER      (SQLITE_IOERR | (40 << 8))
-#define SQLITE_IOERR_LEADERSHIP_LOST (SQLITE_IOERR | (41 << 8))
-
 struct exec;
 struct leader;
 
