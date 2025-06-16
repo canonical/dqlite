@@ -21,8 +21,7 @@
 static bool exec_invariant(const struct sm *sm, int prev);
 static void exec_tick(struct exec *req);
 static int exec_apply(struct exec *req,
-		      dqlite_vfs_frame *pages,
-		      unsigned n_pages);
+		      const struct vfsTransaction *transaction);
 static void exec_prepare_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_run_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_apply_cb(struct raft_apply *req, int status, void *result);
@@ -345,18 +344,19 @@ void leader_exec_resume(struct exec *req)
 	TAIL return exec_tick(req);
 }
 
-static int exec_apply(struct exec *req, dqlite_vfs_frame *frames, unsigned nframes)
+static int exec_apply(struct exec *req, const struct vfsTransaction *transaction)
 {
 	tracef("leader apply frames");
 	PRE(req != NULL);
-	PRE(frames != NULL);
-	PRE(nframes > 0);
+	PRE(transaction->n_pages > 0);
+	PRE(transaction->page_numbers != NULL);
+	PRE(transaction->pages != NULL);
 
 	struct leader *leader = req->leader;
 	struct db *db = leader->db;
 	struct raft_buffer buf;
 
-	if (is_db_full(req->leader->db->vfs, req->leader->db, nframes)) {
+	if (is_db_full(req->leader->db->vfs, req->leader->db, transaction->n_pages)) {
 		return SQLITE_FULL;
 	}
 
@@ -366,9 +366,10 @@ static int exec_apply(struct exec *req, dqlite_vfs_frame *frames, unsigned nfram
 		.truncate = 0,
 		.is_commit = 1,
 		.frames = {
-			.n_pages = (uint32_t)nframes,
+			.n_pages = (uint32_t)transaction->n_pages,
 			.page_size = (uint16_t)db->config->page_size,
-			.data = frames,
+			.page_numbers = transaction->page_numbers,
+			.pages = transaction->pages,
 		}
 	};
 	int rv = command__encode(COMMAND_FRAMES, &c, &buf);
@@ -449,8 +450,7 @@ static void exec_tick(struct exec *req)
 	PRE(req->leader != NULL && req->leader->db != NULL);
 	struct leader *leader = req->leader;
 	struct db *db = leader->db;
-	dqlite_vfs_frame *frames;
-	unsigned int nframes;
+	struct vfsTransaction transaction;
 
 	for (;;) {
 		leader_trace(leader, "exec tick %s (status = %d)",
@@ -586,7 +586,7 @@ static void exec_tick(struct exec *req)
 			 *  - it would not be necessary to keep a vfs pointer in the db
 			 *  - it would not necessary to lookup the database by path every time.
 			 */
-			int rc = VfsPoll(db->vfs, db->path, &frames, &nframes);
+			int rc = VfsPoll(db->vfs, db->path, &transaction);
 			if (rc != SQLITE_OK) {
 				leader_trace(leader, "poll failed on leader");
 				rc = VfsAbort(leader->db->vfs, leader->db->path);
@@ -596,17 +596,18 @@ static void exec_tick(struct exec *req)
 				continue;
 			}
 
-			leader_trace(leader, "polled connection (%d frames)", nframes);
-			if (nframes == 0) {
+			leader_trace(leader, "polled connection (%d frames)", transaction.n_pages);
+			if (transaction.n_pages == 0) {
 				sm_move(&req->sm, EXEC_DONE);
 				continue;
 			}
 
-			req->status = exec_apply(req, frames, nframes);
-			for (unsigned i = 0; i < nframes; i++) {
-				sqlite3_free(frames[i].data);
+			req->status = exec_apply(req, &transaction);
+			for (unsigned i = 0; i < transaction.n_pages; i++) {
+				sqlite3_free(transaction.pages[i]);
 			}
-			sqlite3_free(frames);
+			sqlite3_free(transaction.pages);
+			sqlite3_free(transaction.page_numbers);
 
 			if (req->status != 0) {
 				sm_move(&req->sm, EXEC_DONE);

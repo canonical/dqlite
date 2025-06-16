@@ -2658,15 +2658,14 @@ void VfsClose(struct sqlite3_vfs *vfs)
 	sqlite3_free(v);
 }
 
-static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
+static int vfsWalPoll(struct vfsWal *w, struct vfsTransaction *transaction)
 {
 	struct vfsFrame *last;
 	uint32_t commit;
 	unsigned i;
 
 	if (w->n_tx == 0) {
-		*frames = NULL;
-		*n = 0;
+		*transaction = (struct vfsTransaction){ };
 		return 0;
 	}
 
@@ -2675,37 +2674,41 @@ static int vfsWalPoll(struct vfsWal *w, dqlite_vfs_frame **frames, unsigned *n)
 	commit = vfsFrameGetDatabaseSize(last);
 
 	if (commit == 0) {
-		*frames = NULL;
-		*n = 0;
+		*transaction = (struct vfsTransaction){ };
 		return 0;
 	}
 
-	*frames = sqlite3_malloc64(sizeof **frames * w->n_tx);
-	if (*frames == NULL) {
+	uint64_t *numbers = sqlite3_malloc64(sizeof(*numbers) * w->n_tx);
+	if (numbers == NULL) {
 		return SQLITE_NOMEM;
 	}
-	*n = w->n_tx;
+	void **pages = sqlite3_malloc64(sizeof(*pages) * w->n_tx);
+	if (pages == NULL) {
+		sqlite3_free(numbers);
+		return SQLITE_NOMEM;
+	}
 
 	for (i = 0; i < w->n_tx; i++) {
-		dqlite_vfs_frame *frame = &(*frames)[i];
-		uint32_t page_number = vfsFrameGetPageNumber(w->tx[i]);
-		frame->data = w->tx[i]->page;
-		frame->page_number = page_number;
+		numbers[i] = vfsFrameGetPageNumber(w->tx[i]);
+		pages[i] = w->tx[i]->page;
 		/* Release the vfsFrame object, but not its buf attribute, since
 		 * responsibility for that memory has been transferred to the
 		 * caller. */
 		sqlite3_free(w->tx[i]);
 	}
 
+	*transaction = (struct vfsTransaction) {
+		.n_pages     = w->n_tx,
+		.page_numbers = numbers,
+		.pages   = pages,
+	};
 	w->n_tx = 0;
-
 	return 0;
 }
 
 int VfsPoll(sqlite3_vfs *vfs,
 	    const char *filename,
-	    dqlite_vfs_frame **frames,
-	    unsigned *n)
+		struct vfsTransaction *transaction)
 {
 	tracef("vfs poll filename:%s", filename);
 	struct vfs *v;
@@ -2726,19 +2729,18 @@ int VfsPoll(sqlite3_vfs *vfs,
 	wal = &database->wal;
 
 	if (wal == NULL) {
-		*frames = NULL;
-		*n = 0;
+		*transaction = (struct vfsTransaction) {};
 		return 0;
 	}
 
-	rv = vfsWalPoll(wal, frames, n);
+	rv = vfsWalPoll(wal, transaction);
 	if (rv != 0) {
 		tracef("wal poll failed %d", rv);
 		return rv;
 	}
 
 	/* If some frames have been written take the write lock. */
-	if (*n > 0) {
+	if (transaction->n_pages > 0) {
 		rv = vfsShmLock(shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
 		if (rv != 0) {
 			tracef("shm lock failed %d", rv);
@@ -2752,9 +2754,7 @@ int VfsPoll(sqlite3_vfs *vfs,
 
 /* Append the given pages as new frames. */
 static int vfsWalAppend(struct vfsDatabase *d,
-		unsigned n,
-		unsigned long *page_numbers,
-		uint8_t *pages)
+	const struct vfsTransaction *transaction)
 {
 	struct vfsWal *w = &d->wal;
 	struct vfsFrame **frames; /* New frames array. */
@@ -2792,17 +2792,17 @@ static int vfsWalAppend(struct vfsDatabase *d,
 	}
 
 	frames =
-	    sqlite3_realloc64(w->frames, sizeof *frames * (w->n_frames + n));
+	    sqlite3_realloc64(w->frames, sizeof *frames * (w->n_frames + transaction->n_pages));
 	if (frames == NULL) {
 		goto oom;
 	}
 	w->frames = frames;
 
-	for (i = 0; i < n; i++) {
+	for (i = 0; i < transaction->n_pages; i++) {
 		struct vfsFrame *frame = vfsFrameCreate(page_size);
-		uint32_t page_number = (uint32_t)page_numbers[i];
+		uint32_t page_number = (uint32_t)transaction->page_numbers[i];
 		uint32_t commit = 0;
-		uint8_t *page = &pages[i * page_size];
+		uint8_t *page = transaction->pages[i];
 
 		if (frame == NULL) {
 			goto oom_after_frames_alloc;
@@ -2816,7 +2816,7 @@ static int vfsWalAppend(struct vfsDatabase *d,
 
 		/* For commit records, the size of the database file in pages
 		 * after the commit. For all other records, zero. */
-		if (i == n - 1) {
+		if (i == transaction->n_pages - 1) {
 			commit = database_size;
 		}
 
@@ -2826,7 +2826,7 @@ static int vfsWalAppend(struct vfsDatabase *d,
 		frames[w->n_frames + i] = frame;
 	}
 
-	w->n_frames += n;
+	w->n_frames += transaction->n_pages;
 
 	return 0;
 
@@ -2889,12 +2889,10 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 }
 
 int VfsApply(sqlite3_vfs *vfs,
-	     const char *filename,
-	     unsigned n,
-	     unsigned long *page_numbers,
-	     void *frames)
+		const char *filename,
+		const struct vfsTransaction *transaction)
 {
-	tracef("vfs apply filename %s n %u", filename, n);
+	tracef("vfs apply filename %s n %u", filename, transaction->n_pages);
 	struct vfs *v;
 	struct vfsDatabase *database;
 	struct vfsWal *wal;
@@ -2916,10 +2914,10 @@ int VfsApply(sqlite3_vfs *vfs,
 		vfsWalStartHeader(wal, vfsDatabaseGetPageSize(database));
 	}
 
-	rv = vfsWalAppend(database, n, page_numbers, frames);
+	rv = vfsWalAppend(database, transaction);
 	if (rv != 0) {
 		tracef("wal append failed rv:%d n_pages:%u n:%u", rv,
-		       database->n_pages, n);
+		       database->n_pages, transaction->n_pages);
 		return rv;
 	}
 

@@ -779,13 +779,14 @@ TEST(fsm, applyFail, setUp, tearDown, 0, NULL)
 	void *result = (void *)(uintptr_t)0xDEADBEEF;
 
 	/* Create a frames command without data. */
-	c.filename = "test";
-	c.tx_id = 0;
-	c.truncate = 0;
-	c.is_commit = 0;
-	c.frames.n_pages = 0;
-	c.frames.page_size = 4096;
-	c.frames.data = NULL;
+	c = (struct command_frames) {
+		.filename = "test",
+		.tx_id = 0,
+		.truncate = 0,
+		.is_commit = 0,
+		.frames.n_pages = 0,
+		.frames.page_size = 4096,
+	};
 	rv = command__encode(COMMAND_FRAMES, &c, &buf);
 
 	/* Apply the command and expect it to fail. */
@@ -807,13 +808,14 @@ TEST(fsm, applyUnknownTypeFail, setUp, tearDown, 0, NULL)
 	void *result = (void *)(uintptr_t)0xDEADBEEF;
 
 	/* Create a frames command without data. */
-	c.filename = "test";
-	c.tx_id = 0;
-	c.truncate = 0;
-	c.is_commit = 0;
-	c.frames.n_pages = 0;
-	c.frames.page_size = 4096;
-	c.frames.data = NULL;
+	c = (struct command_frames) {
+		.filename = "test",
+		.tx_id = 0,
+		.truncate = 0,
+		.is_commit = 0,
+		.frames.n_pages = 0,
+		.frames.page_size = 4096,
+	};
 	rv = command__encode(COMMAND_FRAMES, &c, &buf);
 
 	/* Command type does not exist. */

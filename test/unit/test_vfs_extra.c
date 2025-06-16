@@ -193,52 +193,28 @@ static void vfsFillDbPath(struct fixture *f,
 		}                                                             \
 	} while (0)
 
-/* Hold WAL replication information about a single transaction. */
-struct tx
-{
-	unsigned n;
-	unsigned long *page_numbers;
-	void *frames;
-};
-
 /* Poll the given VFS object and serialize the transaction data into the given
  * tx object. */
-#define POLL(VFS, TX)                                                      \
-	do {                                                               \
+#define POLL(VFS, TX)                                              \
+	do {                                                           \
 		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                  \
-		dqlite_vfs_frame *_frames;                                 \
-		unsigned _i;                                               \
-		int _rv;                                                   \
-		memset(&TX, 0, sizeof TX);                                 \
+		memset(&(TX), 0, sizeof(TX));                              \
 		char path[VFS_PATH_SZ];                                    \
 		struct fixture *f = data;                                  \
 		vfsFillDbPath(f, VFS, "test.db", path);                    \
-		_rv = VfsPoll(vfs, path, &_frames, &TX.n); \
+		int _rv = VfsPoll(vfs, path, &(TX));                       \
 		munit_assert_int(_rv, ==, 0);                              \
-		if (_frames != NULL) {                                     \
-			TX.page_numbers =                                  \
-			    munit_malloc(sizeof *TX.page_numbers * TX.n);  \
-			TX.frames = munit_malloc(DB_PAGE_SIZE * TX.n);     \
-			for (_i = 0; _i < TX.n; _i++) {                    \
-				dqlite_vfs_frame *_frame = &_frames[_i];   \
-				TX.page_numbers[_i] = _frame->page_number; \
-				memcpy(TX.frames + _i * DB_PAGE_SIZE,      \
-				       _frame->data, DB_PAGE_SIZE);        \
-				sqlite3_free(_frame->data);                \
-			}                                                  \
-			sqlite3_free(_frames);                             \
-		}                                                          \
 	} while (0)
 
 /* Apply WAL frames to the given VFS. */
-#define APPLY(VFS, TX)                                                   \
-	do {                                                             \
+#define APPLY(VFS, TX)                                           \
+	do {                                                         \
 		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                \
 		int _rv;                                                 \
 		char path[VFS_PATH_SZ];                                  \
 		struct fixture *f = data;                                \
 		vfsFillDbPath(f, VFS, "test.db", path);                  \
-		_rv = VfsApply(vfs, path, TX.n, TX.page_numbers, TX.frames); \
+		_rv = VfsApply(vfs, path, &(TX));                        \
 		munit_assert_int(_rv, ==, 0);                            \
 	} while (0)
 
@@ -255,10 +231,13 @@ struct tx
 	} while (0)
 
 /* Release all memory used by a struct tx object. */
-#define DONE(TX)                       \
-	do {                           \
-		free(TX.frames);       \
-		free(TX.page_numbers); \
+#define DONE(TX)                                         \
+	do {                                                 \
+		for (unsigned _i = 0; _i < (TX).n_pages; _i++) { \
+			sqlite3_free((TX).pages[_i]);                \
+		}                                                \
+		sqlite3_free((TX).pages);                        \
+		sqlite3_free((TX).page_numbers);                 \
 	} while (0)
 
 /* Peform a full checkpoint on the given database. */
@@ -477,7 +456,7 @@ TEST(vfs_extra, pollAfterWriteTransaction, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 	unsigned i;
 
 	OPEN("1", db);
@@ -487,9 +466,10 @@ TEST(vfs_extra, pollAfterWriteTransaction, setUp, tearDown, 0, vfs_params)
 
 	POLL("1", tx);
 
-	munit_assert_ptr_not_null(tx.frames);
-	munit_assert_int(tx.n, ==, 2);
-	for (i = 0; i < tx.n; i++) {
+	munit_assert_ptr_not_null(tx.pages);
+	munit_assert_ptr_not_null(tx.page_numbers);
+	munit_assert_int(tx.n_pages, ==, 2);
+	for (i = 0; i < tx.n_pages; i++) {
 		munit_assert_int(tx.page_numbers[i], ==, i + 1);
 	}
 
@@ -511,7 +491,7 @@ TEST(vfs_extra, pollAcquireWriteLock, setUp, tearDown, 0, vfs_params)
 	sqlite3 *db2;
 	sqlite3_stmt *stmt1;
 	sqlite3_stmt *stmt2;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db1);
 	OPEN("1", db2);
@@ -544,7 +524,7 @@ TEST(vfs_extra, pollAfterPageStress, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 	unsigned i;
 	char sql[64];
 
@@ -561,13 +541,13 @@ TEST(vfs_extra, pollAfterPageStress, setUp, tearDown, 0, vfs_params)
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
 		EXEC(db, sql);
 		POLL("1", tx);
-		munit_assert_int(tx.n, ==, 0);
+		munit_assert_int(tx.n_pages, ==, 0);
 	}
 	for (i = 0; i < 163; i++) {
 		sprintf(sql, "UPDATE test SET n=%d WHERE n=%d", i, i + 1);
 		EXEC(db, sql);
 		POLL("1", tx);
-		munit_assert_int(tx.n, ==, 0);
+		munit_assert_int(tx.n_pages, ==, 0);
 	}
 	EXEC(db, "COMMIT");
 
@@ -575,7 +555,7 @@ TEST(vfs_extra, pollAfterPageStress, setUp, tearDown, 0, vfs_params)
 
 	/* Five frames were replicated and the first frame actually contains a
 	 * spill of the third page. */
-	munit_assert_int(tx.n, ==, 6);
+	munit_assert_int(tx.n_pages, ==, 6);
 	munit_assert_int(tx.page_numbers[0], ==, 3);
 	munit_assert_int(tx.page_numbers[1], ==, 4);
 	munit_assert_int(tx.page_numbers[2], ==, 5);
@@ -606,7 +586,7 @@ TEST(vfs_extra, adaptPendingByte, setUp, tearDownRestorePendingByte, 0, vfs_para
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 	int i;
 	int n;
 	char sql[64];
@@ -630,7 +610,7 @@ TEST(vfs_extra, adaptPendingByte, setUp, tearDownRestorePendingByte, 0, vfs_para
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i);
 		EXEC(db, sql);
 		POLL("1", tx);
-		munit_assert_uint(tx.n, ==, 0);
+		munit_assert_uint(tx.n_pages, ==, 0);
 	}
 	EXEC(db, "COMMIT");
 
@@ -659,7 +639,7 @@ TEST(vfs_extra, applyMakesTransactionVisible, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db);
 
@@ -685,26 +665,26 @@ TEST(vfs_extra, applyExplicitTransaction, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db);
 
 	PREPARE(db, stmt, "BEGIN");
 	STEP(stmt, SQLITE_DONE);
 	POLL("1", tx);
-	munit_assert_int(tx.n, ==, 0);
+	munit_assert_int(tx.n_pages, ==, 0);
 	FINALIZE(stmt);
 
 	PREPARE(db, stmt, "CREATE TABLE test(n INT)");
 	STEP(stmt, SQLITE_DONE);
 	POLL("1", tx);
-	munit_assert_int(tx.n, ==, 0);
+	munit_assert_int(tx.n_pages, ==, 0);
 	FINALIZE(stmt);
 
 	PREPARE(db, stmt, "COMMIT");
 	STEP(stmt, SQLITE_DONE);
 	POLL("1", tx);
-	munit_assert_int(tx.n, ==, 2);
+	munit_assert_int(tx.n_pages, ==, 2);
 	APPLY("1", tx);
 	DONE(tx);
 	FINALIZE(stmt);
@@ -725,7 +705,7 @@ TEST(vfs_extra, consecutiveWriteTransactions, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db);
 
@@ -765,7 +745,7 @@ TEST(vfs_extra,
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db);
 
@@ -810,7 +790,7 @@ TEST(vfs_extra,
 	sqlite3 *db1;
 	sqlite3 *db2;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db1);
 	OPEN("1", db2);
@@ -839,7 +819,7 @@ TEST(vfs_extra, transactionIsVisibleFromNewConnection, setUp, tearDown, 0, vfs_p
 	sqlite3 *db1;
 	sqlite3 *db2;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db1);
 
@@ -874,7 +854,7 @@ TEST(vfs_extra,
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db);
 
@@ -904,7 +884,7 @@ TEST(vfs_extra, firstApplyOnDifferentVfs, setUp, tearDown, 0, vfs_params)
 	sqlite3 *db1;
 	sqlite3 *db2;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db1);
 
@@ -934,7 +914,7 @@ TEST(vfs_extra, secondApplyOnDifferentVfs, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db1);
 
@@ -970,7 +950,7 @@ TEST(vfs_extra, applyOnDifferentVfsWithOpenConnection, setUp, tearDown, 0, vfs_p
 	sqlite3 *db1;
 	sqlite3 *db2;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db1);
 
@@ -1015,7 +995,7 @@ TEST(vfs_extra, transactionVisibleOnDifferentVfs, setUp, tearDown, 0, vfs_params
 	sqlite3 *db1;
 	sqlite3 *db2;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db1);
 
@@ -1047,7 +1027,7 @@ TEST(vfs_extra, abort, setUp, tearDown, 0, vfs_params)
 	sqlite3 *db2;
 	sqlite3_stmt *stmt1;
 	sqlite3_stmt *stmt2;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db1);
 	OPEN("1", db2);
@@ -1080,7 +1060,7 @@ TEST(vfs_extra, checkpoint, setUp, tearDown, 0, vfs_params)
 	sqlite3 *db1;
 	sqlite3 *db2;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db1);
 
@@ -1118,7 +1098,7 @@ TEST(vfs_extra, checkpoint, setUp, tearDown, 0, vfs_params)
 TEST(vfs_extra, checkpointReclaimsSpace, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *conn;
-	struct tx tx;
+	struct vfsTransaction tx;
 	struct sqlite3_file *main_f;
 	sqlite3_int64 pre_vacuum_size, post_vacuum_size;
 	int rv;
@@ -1162,7 +1142,7 @@ TEST(vfs_extra, applyOnDifferentVfsCheckpointReclaimsSpace, setUp, tearDown, 0, 
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
-	struct tx tx;
+	struct vfsTransaction tx;
 	struct sqlite3_file *main_f;
 	sqlite3_int64 pre_vacuum_size, post_vacuum_size;
 	int rv;
@@ -1216,9 +1196,9 @@ TEST(vfs_extra, applyOnDifferentVfsAfterCheckpoint, setUp, tearDown, 0, vfs_para
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx1;
-	struct tx tx2;
-	struct tx tx3;
+	struct vfsTransaction tx1;
+	struct vfsTransaction tx2;
+	struct vfsTransaction tx3;
 
 	OPEN("1", db);
 
@@ -1277,10 +1257,10 @@ TEST(vfs_extra,
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx1;
-	struct tx tx2;
-	struct tx tx3;
-	struct tx tx4;
+	struct vfsTransaction tx1;
+	struct vfsTransaction tx2;
+	struct vfsTransaction tx3;
+	struct vfsTransaction tx4;
 
 	/* Create transactions and checkpoint the DB after every transaction */
 	OPEN("1", db);
@@ -1352,10 +1332,10 @@ TEST(vfs_extra,
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx1;
-	struct tx tx2;
-	struct tx tx3;
-	struct tx tx4;
+	struct vfsTransaction tx1;
+	struct vfsTransaction tx2;
+	struct vfsTransaction tx3;
+	struct vfsTransaction tx4;
 
 	/* Create transactions */
 	OPEN("1", db);
@@ -1422,9 +1402,9 @@ TEST(vfs_extra,
 TEST(vfs_extra, checkpointThenPerformTransaction, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db1;
-	struct tx tx1;
-	struct tx tx2;
-	struct tx tx3;
+	struct vfsTransaction tx1;
+	struct vfsTransaction tx2;
+	struct vfsTransaction tx3;
 
 	OPEN("1", db1);
 
@@ -1471,7 +1451,7 @@ TEST(vfs_extra, checkpointThenPerformTransaction, setUp, tearDown, 0, vfs_params
 TEST(vfs_extra, rollbackTransactionWithoutPageStress, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db;
-	struct tx tx;
+	struct vfsTransaction tx;
 	sqlite3_stmt *stmt;
 
 	OPEN("1", db);
@@ -1486,7 +1466,7 @@ TEST(vfs_extra, rollbackTransactionWithoutPageStress, setUp, tearDown, 0, vfs_pa
 	EXEC(db, "ROLLBACK");
 
 	POLL("1", tx);
-	munit_assert_int(tx.n, ==, 0);
+	munit_assert_int(tx.n_pages, ==, 0);
 
 	PREPARE(db, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
@@ -1512,7 +1492,7 @@ TEST(vfs_extra, rollbackTransactionWithPageStress, setUp, tearDown, 0, vfs_param
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
-	struct tx tx;
+	struct vfsTransaction tx;
 	unsigned i;
 
 	OPEN("1", db);
@@ -1529,12 +1509,12 @@ TEST(vfs_extra, rollbackTransactionWithPageStress, setUp, tearDown, 0, vfs_param
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
 		EXEC(db, sql);
 		POLL("1", tx);
-		munit_assert_int(tx.n, ==, 0);
+		munit_assert_int(tx.n_pages, ==, 0);
 	}
 	EXEC(db, "ROLLBACK");
 
 	POLL("1", tx);
-	munit_assert_int(tx.n, ==, 0);
+	munit_assert_int(tx.n_pages, ==, 0);
 	PREPARE(db, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
 	RESET(stmt, SQLITE_OK);
@@ -1558,7 +1538,7 @@ TEST(vfs_extra, rollbackTransactionWithPageStress, setUp, tearDown, 0, vfs_param
 TEST(vfs_extra, checkpointTransactionWithPageStress, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db;
-	struct tx tx;
+	struct vfsTransaction tx;
 	unsigned i;
 
 	OPEN("1", db);
@@ -1575,7 +1555,7 @@ TEST(vfs_extra, checkpointTransactionWithPageStress, setUp, tearDown, 0, vfs_par
 		sprintf(sql, "INSERT INTO test(n) VALUES(%d)", i + 1);
 		EXEC(db, sql);
 		POLL("1", tx);
-		munit_assert_int(tx.n, ==, 0);
+		munit_assert_int(tx.n_pages, ==, 0);
 	}
 
 	CHECKPOINT_FAIL(db, SQLITE_LOCKED);
@@ -1617,7 +1597,7 @@ TEST(vfs_extra, snapshotAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db;
 	struct snapshot snapshot;
-	struct tx tx;
+	struct vfsTransaction tx;
 	uint8_t *page;
 	uint32_t db_pages;
 	uint32_t wal_pages;
@@ -1667,7 +1647,7 @@ TEST(vfs_extra, snapshotAfterCheckpoint, setUp, tearDown, 0, vfs_params)
 {
 	sqlite3 *db;
 	struct snapshot snapshot;
-	struct tx tx;
+	struct vfsTransaction tx;
 	uint8_t *page;
 	uint8_t page_size[2] = {2, 0};           /* Big-endian page size */
 	uint8_t database_size[4] = {0, 0, 0, 2}; /* Big-endian database size */
@@ -1725,7 +1705,7 @@ TEST(vfs_extra, restoreAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
 	struct snapshot snapshot;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
@@ -1762,7 +1742,7 @@ TEST(vfs_extra, restoreWithOpenConnection, setUp, tearDown, 0, vfs_params)
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
 	struct snapshot snapshot;
-	struct tx tx;
+	struct vfsTransaction tx;
 
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");

@@ -1,4 +1,5 @@
 #include <sqlite3.h>
+#include <stdint.h>
 
 #include "../include/dqlite.h"
 
@@ -31,20 +32,68 @@ static size_t frames__sizeof(const frames_t *frames)
 
 static void frames__encode(const frames_t *frames, char **cursor)
 {
-	const dqlite_vfs_frame *list;
 	unsigned i;
 	uint32__encode(&frames->n_pages, cursor);
 	uint16__encode(&frames->page_size, cursor);
 	uint16__encode(&frames->__unused__, cursor);
-	list = frames->data;
+
 	for (i = 0; i < frames->n_pages; i++) {
-		uint64_t pgno = list[i].page_number;
-		uint64__encode(&pgno, cursor);
+		uint64__encode(&frames->page_numbers[i], cursor);
 	}
 	for (i = 0; i < frames->n_pages; i++) {
-		memcpy(*cursor, list[i].data, frames->page_size);
+		memcpy(*cursor, frames->pages[i], frames->page_size);
 		*cursor += frames->page_size;
 	}
+}
+
+static int page_numbers__decode(struct cursor *cursor, frames_t *frames)
+{
+	if (frames->n_pages == 0) {
+		frames->page_numbers = NULL;
+		return DQLITE_OK;
+	}
+	frames->page_numbers = sqlite3_malloc64(sizeof(*frames->page_numbers) * frames->n_pages);
+	if (frames->page_numbers == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	for (uint32_t i = 0; i < frames->n_pages; i++) {
+		uint64_t pgno;
+		int rv = uint64__decode(cursor, &pgno);
+		if (rv != 0) {
+			sqlite3_free(frames->page_numbers);
+			return rv;
+		}
+		assert(pgno <= INT32_MAX);
+		frames->page_numbers[i] = (unsigned long)pgno;
+	}
+
+	return DQLITE_OK;
+}
+
+static int pages__decode(struct cursor *cursor, frames_t *frames)
+{
+	if (frames->n_pages == 0) {
+		frames->pages = NULL;
+		return DQLITE_OK;
+	}
+
+	if (cursor->cap < frames->n_pages * frames->page_size) {
+		return DQLITE_PARSE;
+	}
+
+	frames->pages = sqlite3_malloc64(sizeof *frames->pages * frames->n_pages);
+	if (frames->pages == NULL) {
+		return DQLITE_NOMEM;
+	}
+
+	for (uint32_t i = 0; i < frames->n_pages; i++) {
+		frames->pages[i] = (void*)cursor->p;
+		cursor->p   += frames->page_size;
+		cursor->cap -= frames->page_size;
+	}
+
+	return DQLITE_OK;
 }
 
 static int frames__decode(struct cursor *cursor, frames_t *frames)
@@ -62,8 +111,17 @@ static int frames__decode(struct cursor *cursor, frames_t *frames)
 	if (rc != 0) {
 		return rc;
 	}
-	frames->data = cursor->p;
-	return 0;
+	rc = page_numbers__decode(cursor, frames);
+	if (rc != 0) {
+		return rc;
+	}
+	rc = pages__decode(cursor, frames);
+	if (rc != 0) {
+		sqlite3_free(frames->page_numbers);
+		return rc;
+	}
+
+	return DQLITE_OK;
 }
 
 #define COMMAND__IMPLEMENT(LOWER, UPPER, _) \
@@ -133,37 +191,4 @@ int command__decode(const struct raft_buffer *buf, int *type, void **command)
 	}
 	*type = h.type;
 	return 0;
-}
-
-int command_frames__page_numbers(const struct command_frames *c,
-				 unsigned long *page_numbers[])
-{
-	unsigned i;
-	struct cursor cursor;
-
-	cursor.p = c->frames.data;
-	cursor.cap = sizeof(uint64_t) * c->frames.n_pages;
-
-	*page_numbers =
-	    sqlite3_malloc64(sizeof **page_numbers * c->frames.n_pages);
-	if (*page_numbers == NULL) {
-		return DQLITE_NOMEM;
-	}
-
-	for (i = 0; i < c->frames.n_pages; i++) {
-		uint64_t pgno;
-		int r = uint64__decode(&cursor, &pgno);
-		if (r != 0) {
-			return r;
-		}
-		(*page_numbers)[i] = (unsigned long)pgno;
-	}
-
-	return 0;
-}
-
-void command_frames__pages(const struct command_frames *c, void **pages)
-{
-	*pages =
-	    (void *)(c->frames.data + (sizeof(uint64_t) * c->frames.n_pages));
 }
