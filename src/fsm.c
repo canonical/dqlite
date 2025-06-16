@@ -15,7 +15,6 @@ struct fsm
 {
 	struct logger *logger;
 	struct registry *registry;
-	struct vfsTransaction pending; /* For upgrades from V1 */
 };
 
 static int apply_open(struct fsm *f, const struct command_open *c)
@@ -174,10 +173,8 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		sqlite3_close(conn);
 	}
 
-	/* If the commit marker is set, we apply the changes directly to the
-	 * VFS. Otherwise, if the commit marker is not set, this must be an
-	 * upgrade from V1, we accumulate uncommitted frames in memory until the
-	 * final commit or a rollback. */
+	/* If the commit marker must be set as otherwise this must be an
+	 * upgrade from V1, which is not supported anymore. */
 	if (c->is_commit) {
 		struct vfsTransaction transaction = {
 			.n_pages      = c->frames.n_pages,
@@ -203,17 +200,8 @@ error:
 static int apply_undo(struct fsm *f, const struct command_undo *c)
 {
 	tracef("apply undo %" PRIu64, c->tx_id);
+	(void)f;
 	(void)c;
-
-	if (f->pending.n_pages == 0) {
-		return 0;
-	}
-
-	sqlite3_free(f->pending.page_numbers);
-	sqlite3_free(f->pending.pages);
-	f->pending.n_pages = 0;
-	f->pending.page_numbers = NULL;
-	f->pending.pages = NULL;
 
 	return 0;
 }
@@ -631,9 +619,6 @@ int fsm__init(struct raft_fsm *fsm,
 
 	f->logger = &config->logger;
 	f->registry = registry;
-	f->pending.n_pages = 0;
-	f->pending.page_numbers = NULL;
-	f->pending.pages = NULL;
 
 	fsm->version = 2;
 	fsm->data = f;
@@ -1048,9 +1033,6 @@ int fsm__init_disk(struct raft_fsm *fsm,
 
 	f->logger = &config->logger;
 	f->registry = registry;
-	f->pending.n_pages = 0;
-	f->pending.page_numbers = NULL;
-	f->pending.pages = NULL;
 
 	fsm->version = 3;
 	fsm->data = f;

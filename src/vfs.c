@@ -2127,11 +2127,11 @@ static int vfsWalPoll(struct vfsWal *w, struct vfsTransaction *transaction)
 		return 0;
 	}
 
-	uint64_t *numbers = sqlite3_malloc64(sizeof *numbers * w->n_tx);
+	uint64_t *numbers = sqlite3_malloc64(sizeof(*numbers) * w->n_tx);
 	if (numbers == NULL) {
 		return SQLITE_NOMEM;
 	}
-	void **pages = sqlite3_malloc64(sizeof *pages * w->n_tx);
+	void **pages = sqlite3_malloc64(sizeof(*pages) * w->n_tx);
 	if (pages == NULL) {
 		sqlite3_free(numbers);
 		return SQLITE_NOMEM;

@@ -98,27 +98,27 @@ static int pages__decode(struct cursor *cursor, frames_t *frames)
 
 static int frames__decode(struct cursor *cursor, frames_t *frames)
 {
-	int rv;
-	rv = uint32__decode(cursor, &frames->n_pages);
-	if (rv != 0) {
-		return rv;
+	int rc;
+	rc = uint32__decode(cursor, &frames->n_pages);
+	if (rc != 0) {
+		return rc;
 	}
-	rv = uint16__decode(cursor, &frames->page_size);
-	if (rv != 0) {
-		return rv;
+	rc = uint16__decode(cursor, &frames->page_size);
+	if (rc != 0) {
+		return rc;
 	}
-	rv = uint16__decode(cursor, &frames->__unused__);
-	if (rv != 0) {
-		return rv;
+	rc = uint16__decode(cursor, &frames->__unused__);
+	if (rc != 0) {
+		return rc;
 	}
-	rv = page_numbers__decode(cursor, frames);
-	if (rv != 0) {
-		return rv;
+	rc = page_numbers__decode(cursor, frames);
+	if (rc != 0) {
+		return rc;
 	}
-	rv = pages__decode(cursor, frames);
-	if (rv != 0) {
+	rc = pages__decode(cursor, frames);
+	if (rc != 0) {
 		sqlite3_free(frames->page_numbers);
-		return rv;
+		return rc;
 	}
 
 	return DQLITE_OK;

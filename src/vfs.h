@@ -24,6 +24,8 @@ struct vfsTransaction {
 	void      **pages;        /* Content of the pages. */
 };
 
+void VfsTransactionClose(struct vfsTransaction *transaction);
+
 /* Check if the last sqlite3_step() call triggered a write transaction, and
  * return its content if so. */
 int VfsPoll(sqlite3_vfs *vfs,
