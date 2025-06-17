@@ -494,16 +494,6 @@ static void vfsWalClose(struct vfsWal *w)
 	}
 }
 
-static void vfsWalTruncate(struct vfsWal *w)
-{
-	formatWalRestartHeader(w->hdr);
-	vfsWalClose(w);
-	w->frames = NULL;
-	w->n_frames = 0;
-	w->tx = NULL;
-	w->n_tx = 0;
-}
-
 /* Database-specific content */
 struct vfsDatabase
 {
@@ -1244,16 +1234,17 @@ static int vfsWalFileTruncate(sqlite3_file* file, sqlite3_int64 size)
 	struct vfsWalFile *f = (struct vfsWalFile *)file;
 
 	/* We expect SQLite to only truncate to zero, after a
-	 * full checkpoint.
-	 *
-	 * TODO: figure out other case where SQLite might
-	 * truncate to a different size.
-	 */
+	 * full checkpoint.	 */
 	if (size != 0) {
 		return SQLITE_PROTOCOL;
 	}
 
-	vfsWalTruncate(f->wal);
+	formatWalRestartHeader(f->wal->hdr);
+	vfsWalClose(f->wal);
+	f->wal->frames = NULL;
+	f->wal->n_frames = 0;
+	f->wal->tx = NULL;
+	f->wal->n_tx = 0;
 
 	return SQLITE_OK;
 }
@@ -2445,6 +2436,11 @@ static void vfsWalStartHeader(struct vfsWal *w, uint32_t page_size)
 static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 {
 	struct vfsShm *shm = &d->shm;
+
+	if (shm->n_regions == 0) {
+		return;
+	}
+
 	uint8_t *header = shm->regions[0];
 
 	assert(shm->exclusive[VFS__WAL_WRITE_LOCK] == 0);
@@ -2805,12 +2801,11 @@ static int vfsWalRestore(struct vfsWal *w,
 	size_t offset;
 
 	if (n == 0) {
-		return 0;
+		return SQLITE_OK;
 	}
 
+	assert(w->n_frames == 0);
 	assert(w->n_tx == 0);
-
-	vfsWalTruncate(w);
 
 	assert(n > VFS__WAL_HEADER_SIZE);
 	assert(((n - (size_t)VFS__WAL_HEADER_SIZE) %
@@ -2882,9 +2877,13 @@ int VfsRestore(sqlite3_vfs *vfs,
 		return rv;
 	}
 
+	vfsInvalidateWalIndexHeader(database);
+
+	vfsWalClose(wal);
+	vfsWalInit(wal);
+
 	page_size = vfsDatabaseGetPageSize(database);
 	offset = (size_t)database->n_pages * (size_t)page_size;
-
 	rv = vfsWalRestore(wal, data + offset, n - offset, page_size);
 	if (rv != 0) {
 		tracef("wal restore failed %d", rv);
@@ -3094,8 +3093,12 @@ int VfsDiskRestore(sqlite3_vfs *vfs,
 		return rv;
 	}
 
-	page_size = vfsDatabaseGetPageSize(database);
+	vfsInvalidateWalIndexHeader(database);
 
+	vfsWalClose(wal);
+	vfsWalInit(wal);
+
+	page_size = vfsDatabaseGetPageSize(database);
 	rv = vfsWalRestore(wal, data + main_size, wal_size, page_size);
 	if (rv != 0) {
 		tracef("wal restore failed %d", rv);
