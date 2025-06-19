@@ -1063,6 +1063,7 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 	void *page;
 
 	if (d->n_pages == 0) {
+		memset(buf, 0, (size_t)amount);
 		return SQLITE_IOERR_SHORT_READ;
 	}
 
@@ -1091,6 +1092,11 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 	assert(pgno > 0);
 
 	page = vfsDatabasePageLookup(d, pgno);
+
+	if (page == NULL) {
+		memset(buf, 0, (size_t)amount);
+		return SQLITE_IOERR_SHORT_READ;
+	}
 
 	if (pgno == 1) {
 		/* Read the desired part of page 1. */

@@ -297,6 +297,14 @@ static void barrierCb(struct raft_barrier *req, int status) {
 		FINALIZE(_stmt_id);             \
 	}
 
+/* Prepare and exec a statement. */
+#define EXEC_SQL(SQL)                       \
+	{                                   \
+		EXEC_SQL_SUBMIT(SQL);       \
+		WAIT;                       \
+		ASSERT_CALLBACK(0, RESULT); \
+	}
+
 /* Execute a pragma statement to lowers SQLite's page cache size, in order to
  * force it to write uncommitted dirty pages to the WAL and hance trigger calls
  * to the xFrames hook with non-commit batches. */
@@ -2378,6 +2386,36 @@ TEST_CASE(exec_sql, manyParams, NULL)
 
 	free(values);
 	free(sql);
+	return MUNIT_OK;
+}
+
+/* Check if autovacuum can be enabled */
+TEST_CASE(exec_sql, autovacuum_full, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	(void)params;
+
+	EXEC_SQL("PRAGMA auto_vacuum = FULL; VACUUM");
+	EXEC_SQL(
+		"CREATE TABLE IF NOT EXISTS test(                                   "
+		" id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT                     "
+		" -- When the definition of a table is big                          "
+		" -- enough to create an 'overflow page' and                        "
+		" -- auto_vacuum is enabled, the DROP TABLE                         "
+		" -- logic can try to access a page number which                    "
+		" -- is above the size of the database. In this                     "
+		" -- case, the VFS is required to return SQLITE_IOERR_SHORT_READ    "
+		" -- and zero out the buffer passed by sqlite.                      "
+		" -- From https://sqlite.org/c3ref/io_methods.html:                 "
+		" --   If xRead() returns SQLITE_IOERR_SHORT_READ it must also fill "
+		" --   in the unread portions of the buffer with zeros. A VFS that  "
+		" --   fails to zero-fill short reads might seem to work. However,  "
+		" --   failure to zero-fill short reads will eventually lead to     "
+		" --   database corruption.                                         "
+		"\n)"
+	);
+	EXEC_SQL("DROP INDEX IF EXISTS non_existing_index");
+
 	return MUNIT_OK;
 }
 
