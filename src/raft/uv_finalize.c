@@ -173,4 +173,3 @@ int UvFinalize(struct uv *uv,
 	return 0;
 }
 
-#undef tracef

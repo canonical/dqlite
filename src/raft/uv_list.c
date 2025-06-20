@@ -114,4 +114,3 @@ error:
 	return rv;
 }
 
-#undef tracef

@@ -322,4 +322,3 @@ bool progressSnapshotDone(struct raft *r, const unsigned i)
 	return p->match_index >= p->snapshot_index;
 }
 
-#undef tracef

@@ -222,4 +222,3 @@ int recvUpdateLeader(struct raft *r, const raft_id id, const char *address)
 	return 0;
 }
 
-#undef tracef

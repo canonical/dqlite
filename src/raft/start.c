@@ -229,4 +229,3 @@ int raft_start(struct raft *r)
 	return 0;
 }
 
-#undef tracef

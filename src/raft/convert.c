@@ -275,4 +275,3 @@ void convertToUnavailable(struct raft *r)
 	convertSetState(r, RAFT_UNAVAILABLE);
 }
 
-#undef tracef
