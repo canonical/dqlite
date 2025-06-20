@@ -24,7 +24,7 @@ static int exec_apply(struct exec *req,
 		      const struct vfsTransaction *transaction);
 static void exec_prepare_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_run_barrier_cb(struct raft_barrier *barrier, int status);
-static void exec_apply_cb(struct raft_apply *req, int status, void *result);
+static void exec_apply_cb(struct raft_apply *req, int status);
 static void exec_timer_cb(struct raft_timer *timer);
 static bool is_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes);
 
@@ -104,11 +104,8 @@ void leader__close(struct leader *leader, leader_close_cb close_cb)
  * threshold size again. It's improbable that the WAL in this way could grow
  * without bound, it would mean that apply frames commands commit without
  * issues, while the checkpoint command would somehow always fail to commit. */
-static void leaderCheckpointApplyCb(struct raft_apply *req,
-				    int status,
-				    void *result)
+static void leaderCheckpointApplyCb(struct raft_apply *req, int status)
 {
-	(void)result;
 	raft_free(req);
 	if (status != 0) {
 		tracef("checkpoint apply failed %d", status);
@@ -686,9 +683,8 @@ static void exec_timer_cb(struct raft_timer *timer)
 	return exec_tick(req);
 }
 
-static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
+static void exec_apply_cb(struct raft_apply *apply, int status)
 {
-	(void)result;
 	struct exec *req = CONTAINER_OF(apply, struct exec, apply);
 	struct leader *leader = req->leader;
 	leader_trace(leader, "query applied (status=%d)", status);

@@ -16,8 +16,7 @@ struct fsm
 enum { SET_X = 1, SET_Y, ADD_X, ADD_Y };
 
 static int fsmApply(struct raft_fsm *fsm,
-                    const struct raft_buffer *buf,
-                    void **result)
+                    const struct raft_buffer *buf)
 {
     struct fsm *f = fsm->data;
     const void *cursor = buf->base;
@@ -47,8 +46,6 @@ static int fsmApply(struct raft_fsm *fsm,
         default:
             return -1;
     }
-
-    *result = NULL;
 
     return 0;
 }

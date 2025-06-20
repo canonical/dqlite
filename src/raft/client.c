@@ -122,9 +122,10 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 	req->next = NULL;
 
 	/* TODO: use a completely empty buffer */
-	buf.len = 8;
-	buf.base = raft_malloc(buf.len);
-
+	buf = (struct raft_buffer) {
+		.len = 8,
+		.base = raft_malloc(8),
+	};
 	if (buf.base == NULL) {
 		return RAFT_NOMEM;
 	}
@@ -158,11 +159,9 @@ static int clientChangeConfiguration(
     struct raft_change *req,
     const struct raft_configuration *configuration)
 {
-	raft_index index;
 	raft_term term = r->current_term;
+	raft_index index;
 	int rv;
-
-	(void)req;
 
 	/* Index of the entry being appended. */
 	index = logLastIndex(r->log) + 1;
@@ -196,6 +195,7 @@ static int clientChangeConfiguration(
 	}
 
 	r->configuration_uncommitted_index = index;
+	req->index = index;
 
 	return 0;
 
@@ -235,6 +235,7 @@ int raft_add(struct raft *r,
 		goto err_after_configuration_copy;
 	}
 
+	req->type = RAFT_CHANGE;
 	req->cb = cb;
 
 	rv = clientChangeConfiguration(r, req, &configuration);
@@ -312,6 +313,7 @@ int raft_assign(struct raft *r,
 
 	last_index = logLastIndex(r->log);
 
+	req->type = RAFT_CHANGE;
 	req->cb = cb;
 
 	assert(r->leader_state.change == NULL);
@@ -391,6 +393,7 @@ int raft_remove(struct raft *r,
 		goto err_after_configuration_copy;
 	}
 
+	req->type = RAFT_CHANGE;
 	req->cb = cb;
 
 	rv = clientChangeConfiguration(r, req, &configuration);
