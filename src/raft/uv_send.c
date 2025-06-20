@@ -516,4 +516,3 @@ void UvSendClose(struct uv *uv)
 	}
 }
 
-#undef tracef

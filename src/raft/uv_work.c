@@ -75,4 +75,3 @@ err:
 	return rv;
 }
 
-#undef tracef

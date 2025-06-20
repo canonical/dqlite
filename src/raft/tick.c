@@ -256,4 +256,3 @@ void tickCb(struct raft_io *io)
 	}
 }
 
-#undef tracef
