@@ -1,6 +1,8 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1144,15 +1146,21 @@ static int vfsWalFileRead(sqlite3_file* file, void* buf, int amount, sqlite3_int
 	}
 
 	if (index == 0) {
-		// This is an attempt to read a page that was
-		// never written.
+		/* This is an attempt to read a page that was never written. */
 		memset(buf, 0, (size_t)amount);
 		return SQLITE_IOERR_SHORT_READ;
 	}
 
 	frame = vfsWalFrameLookup(f->wal, index);
 	if (frame == NULL) {
-		// Again, the requested page doesn't exist.
+		/* From SQLite docs:
+		*
+		*   If xRead() returns SQLITE_IOERR_SHORT_READ it must also fill
+		*   in the unread portions of the buffer with zeros.  A VFS that
+		*   fails to zero-fill short reads might seem to work.  However,
+		*   failure to zero-fill short reads will eventually lead to
+		*   database corruption.
+		*/
 		memset(buf, 0, (size_t)amount);
 		return SQLITE_IOERR_SHORT_READ;
 	}
@@ -1281,10 +1289,9 @@ static int vfsMainFileRead(sqlite3_file *file,
 {
 	struct vfsMainFile *f = (struct vfsMainFile *)file;
 
-
-	unsigned page_size;
+	int page_size;
 	unsigned pgno;
-	void *page;
+	const char *page;
 
 	if (f->database->n_pages == 0) {
 		/* From SQLite docs:
@@ -1301,13 +1308,14 @@ static int vfsMainFileRead(sqlite3_file *file,
 
 	/* If the main database file is not empty, we expect the
 	 * page size to have been set by an initial write. */
-	page_size = vfsDatabaseGetPageSize(f->database);
-	assert(page_size > 0);
+	uint32_t page_size_u32 = vfsDatabaseGetPageSize(f->database);
+	assert(page_size > 0 && page_size <= INT_MAX);
+	page_size = page_size_u32;
 
-	if (offset < (int)page_size) {
+	if (offset < page_size) {
 		/* Reading from page 1. We expect the read to be
 		 * at most page_size bytes. */
-		assert(amount <= (int)page_size);
+		assert(amount <= page_size);
 		pgno = 1;
 	} else {
 		/* For pages greater than 1, we expect an offset
@@ -1315,24 +1323,16 @@ static int vfsMainFileRead(sqlite3_file *file,
 		 * size can be less than a full page when SQLite
 		 * is compiled with SQLITE_DIRECT_OVERFLOW_READ
 		 * (enabled by default since 3.45.1). */
-		assert(amount <= (int)page_size);
+		assert(amount <= page_size);
 
-		assert((offset % (int)page_size) == 0);
-		pgno = (unsigned)(offset / (int)page_size) + 1;
+		assert((offset % page_size) == 0);
+		pgno = (unsigned)(offset / page_size) + 1;
 	}
 
 	assert(pgno > 0);
 
 	page = vfsDatabasePageLookup(f->database, pgno);
-
-	if (pgno == 1) {
-		/* Read the desired part of page 1. */
-		memcpy(buf, (char *)page + offset, (size_t)amount);
-	} else {
-		/* Read the page. */
-		memcpy(buf, page, (size_t)amount);
-	}
-
+	memcpy(buf, pgno == 1 ? page + offset : page, (size_t)amount);
 	return SQLITE_OK;
 }
 
@@ -2015,6 +2015,7 @@ static int vfsDelete(sqlite3_vfs *vfs, const char *filename, int dir_sync)
 {
 	(void)dir_sync;
 	struct vfs *v = vfs->pAppData;
+	assert(v != NULL);
 
 	if (vfsFilenameEndsWith(filename, "-journal")) {
 		return SQLITE_OK;
