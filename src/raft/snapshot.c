@@ -110,4 +110,3 @@ int snapshotCopy(const struct raft_snapshot *src, struct raft_snapshot *dst)
 	return 0;
 }
 
-#undef tracef

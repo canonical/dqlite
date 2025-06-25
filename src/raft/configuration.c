@@ -398,4 +398,3 @@ void configurationTrace(const struct raft *r,
 	}
 	tracef("=== CONFIG END ===");
 }
-#undef tracef
