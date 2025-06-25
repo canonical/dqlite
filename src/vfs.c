@@ -1309,8 +1309,8 @@ static int vfsMainFileRead(sqlite3_file *file,
 	/* If the main database file is not empty, we expect the
 	 * page size to have been set by an initial write. */
 	uint32_t page_size_u32 = vfsDatabaseGetPageSize(f->database);
-	assert(page_size > 0 && page_size <= INT_MAX);
-	page_size = page_size_u32;
+	assert(page_size_u32 > 0 && page_size_u32 <= INT_MAX);
+	page_size = (int)page_size_u32;
 
 	if (offset < page_size) {
 		/* Reading from page 1. We expect the read to be
