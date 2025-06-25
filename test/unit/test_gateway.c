@@ -2414,7 +2414,7 @@ TEST_CASE(exec_sql, autovacuum_full, NULL)
 		" --   database corruption.                                         "
 		"\n)"
 	);
-	EXEC_SQL("DROP INDEX IF EXISTS non_existing_index");
+	EXEC_SQL("DROP TABLE IF EXISTS non_existing_table");
 
 	return MUNIT_OK;
 }
