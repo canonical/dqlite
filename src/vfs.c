@@ -1063,6 +1063,14 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 	void *page;
 
 	if (d->n_pages == 0) {
+		/* From SQLite docs:
+		*
+		*   If xRead() returns SQLITE_IOERR_SHORT_READ it must also fill
+		*   in the unread portions of the buffer with zeros.  A VFS that
+		*   fails to zero-fill short reads might seem to work.  However,
+		*   failure to zero-fill short reads will eventually lead to
+		*   database corruption.
+		*/
 		memset(buf, 0, (size_t)amount);
 		return SQLITE_IOERR_SHORT_READ;
 	}
@@ -1094,6 +1102,14 @@ static int vfsDatabaseRead(struct vfsDatabase *d,
 	page = vfsDatabasePageLookup(d, pgno);
 
 	if (page == NULL) {
+		/* From SQLite docs:
+		*
+		*   If xRead() returns SQLITE_IOERR_SHORT_READ it must also fill
+		*   in the unread portions of the buffer with zeros.  A VFS that
+		*   fails to zero-fill short reads might seem to work.  However,
+		*   failure to zero-fill short reads will eventually lead to
+		*   database corruption.
+		*/
 		memset(buf, 0, (size_t)amount);
 		return SQLITE_IOERR_SHORT_READ;
 	}
