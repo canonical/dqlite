@@ -2401,7 +2401,7 @@ TEST_CASE(exec_sql, autovacuum_full, NULL)
 		" id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT                     "
 		" -- When the definition of a table is big                          "
 		" -- enough to create an 'overflow page' and                        "
-		" -- auto_vacuum is enabled, the DROP TABLE                         "
+		" -- auto_vacuum is enabled, the autovacuum                         "
 		" -- logic can try to access a page number which                    "
 		" -- is above the size of the database. In this                     "
 		" -- case, the VFS is required to return SQLITE_IOERR_SHORT_READ    "
@@ -2414,7 +2414,6 @@ TEST_CASE(exec_sql, autovacuum_full, NULL)
 		" --   database corruption.                                         "
 		"\n)"
 	);
-	EXEC_SQL("DROP TABLE IF EXISTS non_existing_table");
 
 	return MUNIT_OK;
 }
