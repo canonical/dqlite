@@ -1,8 +1,8 @@
-#include "lib/assert.h"
 #include "lib/serialize.h"
 
 #include "command.h"
 #include "fsm.h"
+#include "leader.h"
 #include "protocol.h"
 #include "raft.h"
 #include "tracing.h"
@@ -46,12 +46,11 @@ static int databaseReadUnlock(struct db *db)
 	}
 }
 
-static void maybeCheckpoint(struct db *db)
+static void maybeCheckpoint(struct db *db, sqlite3 *conn)
 {
 	tracef("maybe checkpoint");
 	struct sqlite3_file *main_f;
 	struct sqlite3_file *wal;
-	volatile void *region;
 	sqlite3_int64 size;
 	unsigned page_size;
 	unsigned pages;
@@ -70,17 +69,10 @@ static void maybeCheckpoint(struct db *db)
 		return;
 	}
 
-	sqlite3 *conn = NULL;
-	rv = db__open(db, &conn);
-	if (rv != 0) {
-		tracef("open follower failed %d", rv);
-		goto err_after_db_lock;
-	}
-
 	page_size = db->config->page_size;
 	/* Get the database wal file associated with this connection */
-	rv = sqlite3_file_control(conn, "main",
-				  SQLITE_FCNTL_JOURNAL_POINTER, &wal);
+	rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_JOURNAL_POINTER,
+				  &wal);
 	assert(rv == SQLITE_OK); /* Should never fail */
 
 	rv = wal->pMethods->xFileSize(wal, &size);
@@ -93,19 +85,12 @@ static void maybeCheckpoint(struct db *db)
 	if (pages < db->config->checkpoint_threshold) {
 		tracef("wal size (%u) < threshold (%u)", pages,
 		       db->config->checkpoint_threshold);
-		goto err_after_db_open;
+		goto err_after_db_lock;
 	}
 
 	/* Get the database file associated with this db->follower connection */
-	rv = sqlite3_file_control(conn, "main",
-				  SQLITE_FCNTL_FILE_POINTER, &main_f);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	/* Get the first SHM region, which contains the WAL header. */
-	rv = main_f->pMethods->xShmMap(main_f, 0, 0, 0, &region);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	rv = main_f->pMethods->xShmUnmap(main_f, 0);
+	rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_FILE_POINTER,
+				  &main_f);
 	assert(rv == SQLITE_OK); /* Should never fail */
 
 	/* Try to acquire all locks. */
@@ -115,7 +100,7 @@ static void maybeCheckpoint(struct db *db)
 		rv = main_f->pMethods->xShmLock(main_f, i, 1, flags);
 		if (rv == SQLITE_BUSY) {
 			tracef("busy reader or writer - retry next time");
-			goto err_after_db_open;
+			goto err_after_db_lock;
 		}
 
 		/* Not locked. Let's release the lock we just
@@ -124,12 +109,12 @@ static void maybeCheckpoint(struct db *db)
 		main_f->pMethods->xShmLock(main_f, i, 1, flags);
 	}
 
-	rv = sqlite3_wal_checkpoint_v2(
-	    conn, "main", SQLITE_CHECKPOINT_TRUNCATE, &wal_size, &ckpt);
+	rv = sqlite3_wal_checkpoint_v2(conn, NULL, SQLITE_CHECKPOINT_TRUNCATE,
+				       &wal_size, &ckpt);
 	/* TODO assert(rv == 0) here? Which failure modes do we expect? */
 	if (rv != 0) {
 		tracef("sqlite3_wal_checkpoint_v2 failed %d", rv);
-		goto err_after_db_open;
+		goto err_after_db_lock;
 	}
 	tracef("sqlite3_wal_checkpoint_v2 success");
 
@@ -138,9 +123,6 @@ static void maybeCheckpoint(struct db *db)
 	assert(wal_size == 0);
 	assert(ckpt == 0);
 
-err_after_db_open:
-	sqlite3_close(conn);
-	conn = NULL;
 err_after_db_lock:
 	rv = databaseReadUnlock(db);
 	assert(rv == 0);
@@ -150,7 +132,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
 	tracef("fsm apply frames");
 	struct db *db;
-	int exists;
 	int rv;
 
 	rv = registry__db_get(f->registry, c->filename, &db);
@@ -159,22 +140,20 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		return rv;
 	}
 
-	/* Check if the database file exists, and create it by opening a
-	 * connection if it doesn't. */
-	rv = db->vfs->xAccess(db->vfs, db->path, 0, &exists);
-	assert(rv == 0);
-
-	if (!exists) {
-		sqlite3 *conn = NULL;
+	sqlite3 *conn = NULL;
+	if (db->active_leader != NULL) {
+		/* Leader transaction */
+		conn = db->active_leader->conn;
+	} else {
+		/* Follower transaction */
 		rv = db__open(db, &conn);
 		if (rv != 0) {
 			tracef("open follower failed %d", rv);
 			return rv;
 		}
-		sqlite3_close(conn);
 	}
 
-	/* If the commit marker must be set as otherwise this must be an
+	/* The commit marker must be set as otherwise this must be an
 	 * upgrade from V1, which is not supported anymore. */
 	if (c->is_commit) {
 		struct vfsTransaction transaction = {
@@ -182,7 +161,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 			.page_numbers = c->frames.page_numbers,
 			.pages   	  = c->frames.pages,
 		};
-		rv = VfsApply(db->vfs, db->path, &transaction);
+		rv = VfsApply(conn, &transaction);
 		if (rv != 0) {
 			tracef("VfsApply failed %d", rv);
 			goto error;
@@ -192,8 +171,11 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		goto error;
 	}
 
-	maybeCheckpoint(db);
+	maybeCheckpoint(db, conn);
 error:
+	if (db->active_leader == NULL) {
+		sqlite3_close(conn);
+	}
 	sqlite3_free(c->frames.page_numbers);
 	sqlite3_free(c->frames.pages);
 	return rv;

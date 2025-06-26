@@ -26,17 +26,13 @@ struct vfsTransaction {
 
 /* Check if the last sqlite3_step() call triggered a write transaction, and
  * return its content if so. */
-int VfsPoll(sqlite3_vfs *vfs,
-	    const char *database,
-		struct vfsTransaction *transaction);
+int VfsPoll(sqlite3 *conn, struct vfsTransaction *transaction);
 
-/* Append the given frames to the WAL. */
-int VfsApply(sqlite3_vfs *vfs,
-		const char *filename,
-		const struct vfsTransaction *transaction);
+/* Append the given transaction to the WAL. */
+int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction);
 
 /* Cancel a pending transaction. */
-int VfsAbort(sqlite3_vfs *vfs, const char *filename);
+int VfsAbort(sqlite3 *conn);
 
 /* Make a full snapshot of a database. */
 int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n);

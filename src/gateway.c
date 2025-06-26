@@ -161,7 +161,7 @@ void gateway__close(struct gateway *g, gateway_close_cb cb)
 	{                                                                      \
 		struct sqlite3_file *_file;                                    \
 		int _rv;                                                       \
-		_rv = sqlite3_file_control(g->leader->conn, "main",            \
+		_rv = sqlite3_file_control(g->leader->conn, NULL,              \
 					   SQLITE_FCNTL_FILE_POINTER, &_file); \
 		assert(_rv == SQLITE_OK); /* Should never fail */              \
 		_rv = _file->pMethods->xShmLock(                               \
