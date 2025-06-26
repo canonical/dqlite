@@ -1146,7 +1146,14 @@ static int vfsWalFileRead(sqlite3_file* file, void* buf, int amount, sqlite3_int
 	}
 
 	if (index == 0) {
-		/* This is an attempt to read a page that was never written. */
+		/* From SQLite docs:
+		*
+		*   If xRead() returns SQLITE_IOERR_SHORT_READ it must also fill
+		*   in the unread portions of the buffer with zeros.  A VFS that
+		*   fails to zero-fill short reads might seem to work.  However,
+		*   failure to zero-fill short reads will eventually lead to
+		*   database corruption.
+		*/
 		memset(buf, 0, (size_t)amount);
 		return SQLITE_IOERR_SHORT_READ;
 	}
