@@ -1178,28 +1178,15 @@ static int vfsWalRead(struct vfsWal *w,
 	}
 
 	if (index == 0) {
-		/* From SQLite docs:
-		*
-		*   If xRead() returns SQLITE_IOERR_SHORT_READ it must also fill
-		*   in the unread portions of the buffer with zeros.  A VFS that
-		*   fails to zero-fill short reads might seem to work.  However,
-		*   failure to zero-fill short reads will eventually lead to
-		*   database corruption.
-		*/
+		// This is an attempt to read a page that was
+		// never written.
 		memset(buf, 0, (size_t)amount);
 		return SQLITE_IOERR_SHORT_READ;
 	}
 
 	frame = vfsWalFrameLookup(w, index);
 	if (frame == NULL) {
-		/* From SQLite docs:
-		*
-		*   If xRead() returns SQLITE_IOERR_SHORT_READ it must also fill
-		*   in the unread portions of the buffer with zeros.  A VFS that
-		*   fails to zero-fill short reads might seem to work.  However,
-		*   failure to zero-fill short reads will eventually lead to
-		*   database corruption.
-		*/
+		// Again, the requested page doesn't exist.
 		memset(buf, 0, (size_t)amount);
 		return SQLITE_IOERR_SHORT_READ;
 	}
