@@ -1339,6 +1339,20 @@ static int vfsMainFileRead(sqlite3_file *file,
 	assert(pgno > 0);
 
 	page = vfsDatabasePageLookup(f->database, pgno);
+
+	if (page == NULL) {
+		/* From SQLite docs:
+		 *
+		 *   If xRead() returns SQLITE_IOERR_SHORT_READ it must also
+		 *   fill in the unread portions of the buffer with zeros.  A VFS
+		 *   that fails to zero-fill short reads might seem to work.
+		 *   However, failure to zero-fill short reads will eventually
+		 *   lead to database corruption.
+		 */
+		memset(buf, 0, (size_t)amount);
+		return SQLITE_IOERR_SHORT_READ;
+	}
+
 	memcpy(buf, pgno == 1 ? page + offset : page, (size_t)amount);
 	return SQLITE_OK;
 }
