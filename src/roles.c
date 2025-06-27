@@ -198,7 +198,10 @@ static void startChange(struct dqlite_node *d)
 	if (change == NULL) {
 		return;
 	}
-	change->data = d;
+	*change = (struct raft_change) {
+		.data = d,
+	};
+
 	/* TODO request ID */
 	rv = raft_assign(&d->raft, change, id, translateDqliteRole(role),
 			 changeCb);
