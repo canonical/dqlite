@@ -63,8 +63,7 @@ basic_dqlite_sources = \
   src/transport.c \
   src/translate.c \
   src/tuple.c \
-  src/vfs.c \
-  src/vfs2.c
+  src/vfs.c
 
 lib_LTLIBRARIES = libdqlite.la
 libdqlite_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden -DRAFT_API=''
@@ -166,7 +165,6 @@ unit_test_SOURCES += \
   test/unit/test_tuple.c \
   test/unit/test_vfs.c \
   test/unit/test_vfs_extra.c \
-  test/unit/test_vfs2.c \
   test/unit/main.c
 unit_test_CFLAGS = $(AM_CFLAGS) -Wno-unknown-warning-option -Wno-uninitialized -Wno-maybe-uninitialized -Wno-float-equal -Wno-conversion
 unit_test_LDFLAGS = $(AM_LDFLAGS)
