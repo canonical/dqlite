@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/random.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -2147,11 +2148,13 @@ static void vfsDlClose(sqlite3_vfs *vfs, void *pHandle)
 static int vfsRandomness(sqlite3_vfs *vfs, int nByte, char *zByte)
 {
 	(void)vfs;
-	(void)nByte;
-	(void)zByte;
 
-	/* TODO (is this needed?) */
-	return SQLITE_OK;
+	ssize_t rv = getrandom(zByte, (size_t)nByte, 0);
+	if (rv == -1) {
+		/* Ignore failed attempts */
+		return 0;
+	}
+	return (int)rv;
 }
 
 static int vfsSleep(sqlite3_vfs *vfs, int microseconds)
