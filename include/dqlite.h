@@ -453,16 +453,6 @@ DQLITE_API int dqlite_node_set_snapshot_params_v2(dqlite_node *n,
 DQLITE_API int dqlite_node_set_block_size(dqlite_node *n, size_t size);
 
 /**
- * WARNING: This is an experimental API.
- *
- * By default dqlite holds the SQLite database file and WAL in memory. By
- * enabling disk-mode, dqlite will hold the SQLite database file on-disk while
- * keeping the WAL in memory. Has to be called after `dqlite_node_create` and
- * before `dqlite_node_start`.
- */
-DQLITE_API int dqlite_node_enable_disk_mode(dqlite_node *n);
-
-/**
  * Set the target number of voting nodes for the cluster.
  *
  * If automatic role management is enabled, the cluster leader will attempt to

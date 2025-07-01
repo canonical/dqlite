@@ -12,13 +12,6 @@
 
 SUITE(client);
 
-static char *bools[] = { "0", "1", NULL };
-
-static MunitParameterEnum client_params[] = {
-	{ "disk_mode", bools },
-	{ NULL, NULL },
-};
-
 struct fixture {
 	struct test_server server;
 	struct client_proto *client;
@@ -51,7 +44,7 @@ static void tearDown(void *data)
 	free(f);
 }
 
-TEST(client, exec, setUp, tearDown, 0, client_params)
+TEST(client, exec, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	uint32_t stmt_id;
@@ -63,7 +56,7 @@ TEST(client, exec, setUp, tearDown, 0, client_params)
 	return MUNIT_OK;
 }
 
-TEST(client, execWithOneParam, setUp, tearDown, 0, client_params)
+TEST(client, execWithOneParam, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	uint32_t stmt_id;
@@ -84,7 +77,7 @@ TEST(client, execWithOneParam, setUp, tearDown, 0, client_params)
 	return MUNIT_OK;
 }
 
-TEST(client, execSql, setUp, tearDown, 0, client_params)
+TEST(client, execSql, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	uint64_t last_insert_id;
@@ -94,7 +87,7 @@ TEST(client, execSql, setUp, tearDown, 0, client_params)
 	return MUNIT_OK;
 }
 
-TEST(client, query, setUp, tearDown, 0, client_params)
+TEST(client, query, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	uint32_t stmt_id;
@@ -123,7 +116,7 @@ TEST(client, query, setUp, tearDown, 0, client_params)
 	return MUNIT_OK;
 }
 
-TEST(client, querySql, setUp, tearDown, 0, client_params)
+TEST(client, querySql, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	uint32_t stmt_id;

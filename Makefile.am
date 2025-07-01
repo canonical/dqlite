@@ -44,7 +44,6 @@ basic_dqlite_sources = \
   src/leader.c \
   src/lib/addr.c \
   src/lib/buffer.c \
-  src/lib/fs.c \
   src/lib/sm.c \
   src/lib/threadpool.c \
   src/lib/transport.c \

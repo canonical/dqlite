@@ -93,15 +93,6 @@ void test_server_prepare(struct test_server *s, const MunitParameter params[])
 		munit_assert_int(rv, ==, 0);
 	}
 
-	const char *disk_mode_param = munit_parameters_get(params, "disk_mode");
-	if (disk_mode_param != NULL) {
-		bool disk_mode = (bool)atoi(disk_mode_param);
-		if (disk_mode) {
-			rv = dqlite_node_enable_disk_mode(s->dqlite);
-			munit_assert_int(rv, ==, 0);
-		}
-	}
-
 	const char *target_voters_param =
 	    munit_parameters_get(params, "target_voters");
 	if (target_voters_param != NULL) {

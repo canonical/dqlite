@@ -714,6 +714,6 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 
 static bool is_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes)
 {
-	uint64_t size = VfsDatabaseSize(vfs, db->path, nframes, db->config->page_size);
+	uint64_t size = VfsDatabaseSize(vfs, db->filename, nframes, db->config->page_size);
 	return size > VfsDatabaseSizeLimit(vfs);
 }
