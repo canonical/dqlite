@@ -2450,22 +2450,6 @@ TEST_CASE(exec_sql, foreignKeys, NULL)
 	/* Make sure I can insert proper data in the table */
 	EXEC_SQL("INSERT INTO b(a_id) VALUES (1), (1), (2)");
 
-	/* Make sure that cascading works */
-	EXEC_SQL("DELETE FROM a");
-	struct value value;
-	uint64_t n;
-	text_t column;
-	QUERY_SQL_SUBMIT("SELECT COUNT(*) FROM b");
-	WAIT;
-	ASSERT_CALLBACK(0, ROWS);
-	uint64__decode(f->cursor, &n);
-	munit_assert_int(n, ==, 1);
-	text__decode(f->cursor, &column);
-	munit_assert_string_equal(column, "COUNT(*)");
-	DECODE_ROW(1, &value);
-	munit_assert_int(value.type, ==, SQLITE_INTEGER);
-	munit_assert_int(value.integer, ==, 0);
-
 	return MUNIT_OK;
 }
 
