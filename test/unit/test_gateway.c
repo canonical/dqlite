@@ -812,6 +812,7 @@ TEST_CASE(exec, blob, NULL)
 	query.stmt_id = stmt_id;
 	ENCODE(&query, query);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -1456,6 +1457,7 @@ TEST_CASE(query, simple, NULL)
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 	uint64__decode(f->cursor, &n);
 	munit_assert_int(n, ==, 1);
@@ -1483,6 +1485,7 @@ TEST_CASE(query, one_row, NULL)
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -1537,6 +1540,7 @@ TEST_CASE(query, large, NULL)
 	ENCODE(&f->request, query);
 	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -1556,7 +1560,7 @@ TEST_CASE(query, large, NULL)
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_false(finished);
-
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -1805,6 +1809,7 @@ TEST_CASE(query, params, NULL)
 	ENCODE_PARAMS(2, values, TUPLE__PARAMS);
 
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 	return MUNIT_OK;
 }
@@ -1838,6 +1843,7 @@ TEST_CASE(query, interrupt, NULL)
 	ENCODE(&f->request, query);
 	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -1908,6 +1914,7 @@ TEST_CASE(query, largeClose, NULL)
 	ENCODE(&f->request, query);
 	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2113,6 +2120,7 @@ TEST_CASE(query, close_while_in_flight, NULL)
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2266,6 +2274,7 @@ TEST_CASE(exec_sql, invalid, NULL)
 TEST_CASE(exec_sql, multi, NULL)
 {
 	struct exec_sql_fixture *f = data;
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql =
@@ -2457,6 +2466,7 @@ TEST_CASE(query_sql, small, NULL)
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 	return MUNIT_OK;
 }
@@ -2532,6 +2542,7 @@ TEST_CASE(query_sql, large, NULL)
 	ENCODE(&f->request, query_sql);
 	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2551,7 +2562,7 @@ TEST_CASE(query_sql, large, NULL)
 
 	gateway__resume(f->gateway, &finished);
 	munit_assert_false(finished);
-
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2599,6 +2610,7 @@ TEST_CASE(query_sql, largeClose, NULL)
 	ENCODE(&f->request, query_sql);
 	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
 	HANDLE(QUERY_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2837,6 +2849,7 @@ TEST_CASE(query_sql, interrupt, NULL)
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 
 	uint64__decode(f->cursor, &n);
@@ -2889,6 +2902,7 @@ TEST_CASE(query_sql, params, NULL)
 	ENCODE_PARAMS(2, values, TUPLE__PARAMS);
 
 	HANDLE(QUERY_SQL);
+	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
 	return MUNIT_OK;
 }
@@ -2917,16 +2931,20 @@ TEST_CASE(query_sql, manyClosing, NULL)
 	/* Insert more than maximum amount of rows that can fit in a single
 	 * response. 16 = 8B header + 8B value (int) */
 	unsigned n_rows_buffer = max_rows_buffer(16);
+	EXEC("BEGIN");
 	for (unsigned i = 0; i < n_rows_buffer + 32; i++) {
 		EXEC("INSERT INTO test VALUES(123)");
 	}
+	EXEC("COMMIT");
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
+	WAIT;
 	gateway__close(f->gateway, closeCb);
 	rv = gateway__resume(f->gateway, &finished);
 	munit_assert_int(rv, ==, 0);
+	WAIT;
 	return MUNIT_OK;
 }
 

@@ -285,7 +285,8 @@ TEST_CASE(exec, busy_wait_statement, NULL)
 {
 	struct exec_fixture *f = data;
 	(void)params;
-	
+
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
 	f->servers[0].config.busy_timeout = 100;
 
 	/* Create a test table using connection 0 */
@@ -310,7 +311,8 @@ TEST_CASE(exec, busy_wait_transaction, NULL)
 {
 	struct exec_fixture *f = data;
 	(void)params;
-	
+
+	raft_fixture_set_work_duration(&f->cluster, 0, 50);
 	f->servers[0].config.busy_timeout = 100;
 
 	/* Create a test table using connection 0 */

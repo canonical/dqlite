@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -2045,6 +2046,14 @@ void raft_fixture_set_term(struct raft_fixture *f, unsigned i, raft_term term)
 {
 	struct io *io = f->servers[i]->io.impl;
 	io->term = term;
+}
+
+void raft_fixture_set_work_duration(struct raft_fixture *f,
+				    unsigned i,
+				    unsigned msecs)
+{
+	struct io *io = f->servers[i]->io.impl;
+	io->work_duration = msecs;
 }
 
 void raft_fixture_set_snapshot(struct raft_fixture *f,
