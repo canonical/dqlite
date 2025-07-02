@@ -128,6 +128,13 @@ int db__open(struct db *db, sqlite3 **conn)
 		goto err;
 	}
 
+	/* Enable foreign key support */
+	rc = sqlite3_exec(*conn, "PRAGMA foreign_keys=1", NULL, NULL, &msg);
+	if (rc != SQLITE_OK) {
+		tracef("foreign_keys=1 failed");
+		goto err;
+	}
+
 	int initialized;
 	rc = sqlite3_exec(*conn, "PRAGMA journal_mode", isWalMode, &initialized, &msg);
 	if (rc != SQLITE_OK) {
