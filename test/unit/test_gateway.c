@@ -2427,6 +2427,32 @@ TEST_CASE(exec_sql, autovacuum_full, NULL)
 	return MUNIT_OK;
 }
 
+TEST_CASE(exec_sql, foreignKeys, NULL)
+{
+	struct exec_sql_fixture *f = data;
+	(void)params;
+
+	EXEC_SQL("CREATE TABLE a(id INTEGER PRIMARY KEY NOT NULL)");
+	EXEC_SQL(
+	    "CREATE TABLE b(                                      "
+		"    id INTEGER PRIMARY KEY NOT NULL,                 "
+	    "    a_id NOT NULL REFERENCES a(id) ON DELETE CASCADE "
+		")                                                    ");
+
+	EXEC_SQL("INSERT INTO a(id) VALUES (1), (2)");
+
+	/* Make sure I cannot insert garbage in b */
+	EXEC_SQL_SUBMIT("INSERT INTO b(id, a_id) VALUES (1, 10)");
+	WAIT;
+	ASSERT_CALLBACK(SQLITE_CONSTRAINT_FOREIGNKEY, FAILURE);
+	ASSERT_FAILURE(SQLITE_CONSTRAINT_FOREIGNKEY, "FOREIGN KEY constraint failed");
+
+	/* Make sure I can insert proper data in the table */
+	EXEC_SQL("INSERT INTO b(a_id) VALUES (1), (1), (2)");
+
+	return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * query_sql
