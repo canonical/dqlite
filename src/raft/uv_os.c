@@ -71,16 +71,20 @@ int UvOsFallocateEmulation(int fd, off_t offset, off_t len)
 int UvOsFallocate(uv_file fd, off_t offset, off_t len)
 {
 	int rv;
+retry:
 	rv = posix_fallocate(fd, offset, len);
-	if (rv != 0) {
-		/* From the manual page:
-		 *
-		 *   posix_fallocate() returns zero on success, or an error
-		 * number on failure.  Note that errno is not set.
-		 */
-		return -rv;
+	if (rv == EINTR) {
+		goto retry;
 	}
-	return 0;
+
+	/* From the manual page:
+	 *
+	 *   posix_fallocate() returns zero on success, or an error
+	 *   number on failure.  Note that errno is not set.
+	 *   The negation is here as all UV_XXX errors are just the 
+	 *   negation of whatever POSIX error code is.
+	 */
+	return -rv;
 }
 
 int UvOsTruncate(uv_file fd, off_t offset)
