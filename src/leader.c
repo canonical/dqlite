@@ -131,8 +131,8 @@ static void leaderMaybeCheckpointLegacy(struct leader *leader)
 	int rv;
 
 	/* Get the database file associated with this connection */
-	rv = sqlite3_file_control(leader->conn, "main", SQLITE_FCNTL_JOURNAL_POINTER,
-				  &wal);
+	rv = sqlite3_file_control(leader->conn, NULL,
+				  SQLITE_FCNTL_JOURNAL_POINTER, &wal);
 	assert(rv == SQLITE_OK); /* Should never fail */
 	if (wal == NULL || wal->pMethods == NULL) {
 		/* This might happen at the beginning of the leader life cycle, 
@@ -579,17 +579,10 @@ static void exec_tick(struct exec *req)
 				continue;
 			}
 
-			/* 
-			 * FIXME: If this was a xFileControl:
-			 *  - it would be callable through sqlite3_file_control
-			 *  - it would set the error for the connection (so, no translation needed here)
-			 *  - it would not be necessary to keep a vfs pointer in the db
-			 *  - it would not necessary to lookup the database by path every time.
-			 */
-			int rc = VfsPoll(db->vfs, db->path, &transaction);
+			int rc = VfsPoll(leader->conn, &transaction);
 			if (rc != SQLITE_OK) {
 				leader_trace(leader, "poll failed on leader");
-				rc = VfsAbort(leader->db->vfs, leader->db->path);
+				rc = VfsAbort(leader->conn);
 				assert(rc == SQLITE_OK);
 				req->status = RAFT_IOERR;
 				sm_move(&req->sm, EXEC_DONE);
@@ -694,7 +687,7 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	leader_trace(leader, "query applied (status=%d)", status);
 	if (leader) {
 		if (status != 0) {
-			VfsAbort(leader->db->vfs, leader->db->path);
+			VfsAbort(leader->conn);
 		} else {
 			leaderMaybeCheckpointLegacy(leader);
 		}

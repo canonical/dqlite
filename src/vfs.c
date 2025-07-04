@@ -2246,98 +2246,74 @@ void VfsClose(struct sqlite3_vfs *vfs)
 	sqlite3_free(v);
 }
 
-static int vfsWalPoll(struct vfsWal *w, struct vfsTransaction *transaction)
+int VfsPoll(sqlite3 *conn, struct vfsTransaction *transaction)
 {
+	sqlite3_file *file;
+	struct vfsMainFile *f;
 	struct vfsFrame *last;
 	uint32_t commit;
 	unsigned i;
+	int rv;
 
-	if (w->n_tx == 0) {
-		*transaction = (struct vfsTransaction){ };
-		return 0;
+	rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
+	assert(rv == SQLITE_OK);
+	f = (struct vfsMainFile*)file;
+	tracef("vfs poll filename:%s", f->database->name);
+
+	if (f->database->wal.n_tx == 0) {
+		*transaction = (struct vfsTransaction){};
+		return SQLITE_OK;
 	}
 
 	/* Check if the last frame in the transaction has the commit marker. */
-	last = w->tx[w->n_tx - 1];
+	last = f->database->wal.tx[f->database->wal.n_tx - 1];
 	commit = vfsFrameGetDatabaseSize(last);
 
 	if (commit == 0) {
-		*transaction = (struct vfsTransaction){ };
-		return 0;
+		*transaction = (struct vfsTransaction){};
+		return SQLITE_OK;
 	}
 
-	uint64_t *numbers = sqlite3_malloc64(sizeof(*numbers) * w->n_tx);
+	uint64_t *numbers = sqlite3_malloc64(sizeof(*numbers) * f->database->wal.n_tx);
 	if (numbers == NULL) {
 		return SQLITE_NOMEM;
 	}
-	void **pages = sqlite3_malloc64(sizeof(*pages) * w->n_tx);
+
+	void **pages = sqlite3_malloc64(sizeof(*pages) * f->database->wal.n_tx);
 	if (pages == NULL) {
 		sqlite3_free(numbers);
 		return SQLITE_NOMEM;
 	}
 
-	for (i = 0; i < w->n_tx; i++) {
-		numbers[i] = vfsFrameGetPageNumber(w->tx[i]);
-		pages[i] = w->tx[i]->page;
+
+	for (i = 0; i < f->database->wal.n_tx; i++) {
+		numbers[i] = vfsFrameGetPageNumber(f->database->wal.tx[i]);
+		pages[i] = f->database->wal.tx[i]->page;
 		/* Release the vfsFrame object, but not its buf attribute, since
 		 * responsibility for that memory has been transferred to the
 		 * caller. */
-		sqlite3_free(w->tx[i]);
+		sqlite3_free(f->database->wal.tx[i]);
 	}
-
+	sqlite3_free(f->database->wal.tx);
 	*transaction = (struct vfsTransaction) {
-		.n_pages     = w->n_tx,
+		.n_pages     = f->database->wal.n_tx,
 		.page_numbers = numbers,
 		.pages   = pages,
 	};
-	w->n_tx = 0;
-	return 0;
-}
-
-int VfsPoll(sqlite3_vfs *vfs,
-	    const char *filename,
-		struct vfsTransaction *transaction)
-{
-	tracef("vfs poll filename:%s", filename);
-	struct vfs *v;
-	struct vfsDatabase *database;
-	struct vfsShm *shm;
-	struct vfsWal *wal;
-	int rv;
-
-	v = (struct vfs *)(vfs->pAppData);
-	database = vfsDatabaseLookup(v, filename);
-
-	if (database == NULL) {
-		tracef("not found");
-		return SQLITE_NOTFOUND;
-	}
-
-	shm = &database->shm;
-	wal = &database->wal;
-
-	if (wal == NULL) {
-		*transaction = (struct vfsTransaction) {};
-		return 0;
-	}
-
-	rv = vfsWalPoll(wal, transaction);
-	if (rv != 0) {
-		tracef("wal poll failed %d", rv);
-		return rv;
-	}
+	f->database->wal.n_tx = 0;
+	f->database->wal.tx = NULL;
 
 	/* If some frames have been written take the write lock. */
 	if (transaction->n_pages > 0) {
-		rv = vfsShmLock(shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
+		rv = vfsShmLock(&f->database->shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
 		if (rv != 0) {
 			tracef("shm lock failed %d", rv);
 			return rv;
 		}
-		vfsAmendWalIndexHeader(database);
+		vfsAmendWalIndexHeader(f->database);
 	}
 
-	return 0;
+	return SQLITE_OK;
 }
 
 /* Append the given pages as new frames. */
@@ -2481,36 +2457,29 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 	header[VFS__WAL_INDEX_HEADER_SIZE] = 0;
 }
 
-int VfsApply(sqlite3_vfs *vfs,
-		const char *filename,
-		const struct vfsTransaction *transaction)
+int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 {
-	tracef("vfs apply filename %s n %u", filename, transaction->n_pages);
-	struct vfs *v;
-	struct vfsDatabase *database;
-	struct vfsWal *wal;
-	struct vfsShm *shm;
+	sqlite3_file *file;
+	struct vfsMainFile *f;
 	int rv;
 
-	v = (struct vfs *)(vfs->pAppData);
-	database = vfsDatabaseLookup(v, filename);
+	rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
+	assert(rv == SQLITE_OK);
+	f = (struct vfsMainFile*)file;
+	tracef("vfs apply on %s %u pages", f->database->name, transaction->n_pages);
 
-	assert(database != NULL);
-
-	wal = &database->wal;
-	shm = &database->shm;
 
 	/* If there's no page size set in the WAL header, it must mean that WAL
 	 * file was never written. In that case we need to initialize the WAL
 	 * header. */
-	if (vfsWalGetPageSize(wal) == 0) {
-		vfsWalStartHeader(wal, vfsDatabaseGetPageSize(database));
+	if (vfsWalGetPageSize(&f->database->wal) == 0) {
+		vfsWalStartHeader(&f->database->wal, vfsDatabaseGetPageSize(f->database));
 	}
 
-	rv = vfsWalAppend(database, transaction);
+	rv = vfsWalAppend(f->database, transaction);
 	if (rv != 0) {
 		tracef("wal append failed rv:%d n_pages:%u n:%u", rv,
-		       database->n_pages, transaction->n_pages);
+		       f->database->n_pages, transaction->n_pages);
 		return rv;
 	}
 
@@ -2523,39 +2492,32 @@ int VfsApply(sqlite3_vfs *vfs,
 	 * originated the transaction (this can happen for example when applying
 	 * a Raft barrier and replaying the Raft log in order to serve a request
 	 * of a newly connected client). */
-	if (shm->exclusive[0] == 1) {
-		shm->exclusive[0] = 0;
-		vfsAmendWalIndexHeader(database);
+	if (f->database->shm.exclusive[0] == 1) {
+		f->database->shm.exclusive[0] = 0;
+		vfsAmendWalIndexHeader(f->database);
 	} else {
-		if (shm->n_regions > 0) {
-			vfsInvalidateWalIndexHeader(database);
+		if (f->database->shm.n_regions > 0) {
+			vfsInvalidateWalIndexHeader(f->database);
 		}
 	}
 
 	return 0;
 }
 
-int VfsAbort(sqlite3_vfs *vfs, const char *filename)
+int VfsAbort(sqlite3 *conn)
 {
-	tracef("vfs abort filename %s", filename);
-	struct vfs *v;
-	struct vfsDatabase *database;
-	int rv;
+	sqlite3_file *file;
+	int rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
+	assert(rv == SQLITE_OK);
+	struct vfsMainFile *f = (struct vfsMainFile*)file;
 
-	v = (struct vfs *)(vfs->pAppData);
-	database = vfsDatabaseLookup(v, filename);
-	if (database == NULL) {
-		tracef("database: %s does not exist", filename);
-		return DQLITE_ERROR;
-	}
-
-	rv = vfsShmUnlock(&database->shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
-	if (rv != 0) {
+	rv = vfsShmUnlock(&f->database->shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
+	if (rv != SQLITE_OK) {
 		tracef("shm unlock failed %d", rv);
 		return rv;
 	}
 
-	return 0;
+	return SQLITE_OK;
 }
 
 /* Extract the number of pages field from the database header. */

@@ -119,7 +119,7 @@ TEST_MODULE(replication_v1);
 		sqlite_int64 size_;                                      \
 		int pages_;                                              \
 		int rv_;                                                 \
-		rv_ = sqlite3_file_control(leader_->conn, "main",        \
+		rv_ = sqlite3_file_control(leader_->conn, NULL,          \
 					   SQLITE_FCNTL_JOURNAL_POINTER, \
 					   &file_);                      \
 		munit_assert_int(rv_, ==, 0);                            \
