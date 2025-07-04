@@ -155,19 +155,19 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 
 	/* The commit marker must be set as otherwise this must be an
 	 * upgrade from V1, which is not supported anymore. */
-	if (c->is_commit) {
-		struct vfsTransaction transaction = {
-			.n_pages      = c->frames.n_pages,
-			.page_numbers = c->frames.page_numbers,
-			.pages   	  = c->frames.pages,
-		};
-		rv = VfsApply(conn, &transaction);
-		if (rv != 0) {
-			tracef("VfsApply failed %d", rv);
-			goto error;
-		}
-	} else {
+	if (!c->is_commit) {
 		rv = DQLITE_PROTO;
+		goto error;
+	}
+
+	struct vfsTransaction transaction = {
+		.n_pages      = c->frames.n_pages,
+		.page_numbers = c->frames.page_numbers,
+		.pages   	  = c->frames.pages,
+	};
+	rv = VfsApply(conn, &transaction);
+	if (rv != 0) {
+		tracef("VfsApply failed %d", rv);
 		goto error;
 	}
 
