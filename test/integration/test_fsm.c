@@ -776,7 +776,6 @@ TEST(fsm, applyFail, setUp, tearDown, 0, NULL)
 	struct raft_buffer buf;
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
-	void *result = (void *)(uintptr_t)0xDEADBEEF;
 
 	/* Create a frames command without data. */
 	c = (struct command_frames) {
@@ -790,9 +789,8 @@ TEST(fsm, applyFail, setUp, tearDown, 0, NULL)
 	rv = command__encode(COMMAND_FRAMES, &c, &buf);
 
 	/* Apply the command and expect it to fail. */
-	rv = fsm->apply(fsm, &buf, &result);
+	rv = fsm->apply(fsm, &buf);
 	munit_assert_int(rv, !=, 0);
-	munit_assert_ptr_null(result);
 
 	raft_free(buf.base);
 	return MUNIT_OK;
@@ -805,7 +803,6 @@ TEST(fsm, applyUnknownTypeFail, setUp, tearDown, 0, NULL)
 	struct raft_buffer buf;
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
-	void *result = (void *)(uintptr_t)0xDEADBEEF;
 
 	/* Create a frames command without data. */
 	c = (struct command_frames) {
@@ -822,9 +819,8 @@ TEST(fsm, applyUnknownTypeFail, setUp, tearDown, 0, NULL)
 	((uint8_t *)(buf.base))[1] = COMMAND_CHECKPOINT + 8;
 
 	/* Apply the command and expect it to fail. */
-	rv = fsm->apply(fsm, &buf, &result);
+	rv = fsm->apply(fsm, &buf);
 	munit_assert_int(rv, ==, DQLITE_PROTO);
-	munit_assert_ptr_null(result);
 
 	raft_free(buf.base);
 	return MUNIT_OK;
