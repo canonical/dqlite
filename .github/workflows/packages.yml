@@ -20,6 +20,13 @@ jobs:
     environment:
       name: ppa
     steps:
+    - name: Setup dependencies
+      env:
+          DEBIAN_FRONTEND: noninteractive
+      run: |
+          apt-get update -qq
+          apt-get install -qq debhelper devscripts gnupg git
+
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
@@ -30,11 +37,6 @@ jobs:
         repository: canonical/dqlite-ppa
         ref: dqlite-lts
         path: dqlite-ppa
-
-    - name: Setup dependencies
-      run: |
-          sudo apt-get update -qq
-          sudo apt-get install -qq debhelper devscripts gnupg
 
       # Note for future maintainers: the secret key should be stored
       # in the GHA secret in ASCII-armored form, and must not be
@@ -57,6 +59,7 @@ jobs:
         DEBEMAIL: "dqlitebot@lists.canonical.com"
         TARGET: ${{ matrix.target }}
       run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           cp -R dqlite-ppa/debian .
           VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
           dch --create \
