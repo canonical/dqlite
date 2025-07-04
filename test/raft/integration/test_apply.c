@@ -43,10 +43,9 @@ struct result
     struct raft *raft;
 };
 
-static void applyCbAssertResult(struct raft_apply *req, int status, void *_)
+static void applyCbAssertResult(struct raft_apply *req, int status)
 {
     struct result *result = req->data;
-    (void)_;
     munit_assert_int(status, ==, result->status);
     if (status == 0) {
         munit_assert_ulong(result->prev_applied, <,

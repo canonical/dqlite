@@ -738,8 +738,7 @@ struct raft_fsm
 	int version; /* 1, 2 or 3 */
 	void *data;
 	int (*apply)(struct raft_fsm *fsm,
-		     const struct raft_buffer *buf,
-		     void **result);
+		     const struct raft_buffer *buf);
 	int (*snapshot)(struct raft_fsm *fsm,
 			struct raft_buffer *bufs[],
 			unsigned *n_bufs);
@@ -975,6 +974,7 @@ struct raft
 			    round_index; /* Target of the current round. */
 			raft_time round_start; /* Start of current round. */
 			queue requests; /* Outstanding client requests. */
+			queue barriers; /* Outstanding barrier requests. */
 			uint32_t
 			    voter_contacts; /* Current number of voting nodes we
 					       are in contact with */
@@ -1243,7 +1243,7 @@ RAFT_API int raft_voter_contacts(struct raft *r);
  * the FSM when a quorum is reached.
  */
 struct raft_apply;
-typedef void (*raft_apply_cb)(struct raft_apply *req, int status, void *result);
+typedef void (*raft_apply_cb)(struct raft_apply *req, int status);
 struct raft_apply
 {
 	RAFT__REQUEST;
@@ -1288,10 +1288,6 @@ struct raft_barrier
 {
 	RAFT__REQUEST;
 	raft_barrier_cb cb;
-
-	/* Singly linked list for bundled requests targetting the same raft
-	 * index. */
-	struct raft_barrier *next;
 };
 
 /**
@@ -1440,8 +1436,6 @@ DQLITE_VISIBLE_TO_TESTS void raft_heap_set_default(void);
  * the backing memory, is undefined.
  */
 DQLITE_VISIBLE_TO_TESTS const struct raft_heap *raft_heap_get(void);
-
-#undef RAFT__REQUEST
 
 struct raft_uv_transport;
 
