@@ -36,6 +36,11 @@ static void exec_enqueue(struct db *db, struct exec *exec);
  * index. */
 static bool exec_needs_barrier(struct leader *l)
 {
+	if (sqlite3_txn_state(l->conn, NULL) != SQLITE_TXN_NONE) {
+		/* If a transaction is already in progress, there is little benefit
+		 * in submitting a barrier as the read mark is already set. */
+		return false;
+	}
 	return raft_last_applied(l->raft) < raft_last_index(l->raft);
 }
 
