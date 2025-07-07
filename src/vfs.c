@@ -1,5 +1,6 @@
 #ifndef _GNU_SOURCE
 # define _GNU_SOURCE
+#include <cerrno>
 #endif
 
 #include <errno.h>
@@ -331,7 +332,9 @@ static int vfsShmUnlock(struct vfsShm *s, int ofst, int n, bool exclusive)
 static void vfsShmClose(struct vfsShm *s)
 {
 	int rv = close(s->fd);
-	assert((rv == 0) || (errno == EINTR));
+	if (rv != 0 && errno != EINTR) {
+		tracef("closing shared memory failed: %d", errno);
+	}
 }
 
 /* WAL-specific content.
