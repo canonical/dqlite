@@ -328,6 +328,10 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 		return rv;
 	}
 
+	if (db->leaders > 0) {
+		return RAFT_BUSY;
+	}
+
 	/* Check if the database file exists, and create it by opening a
 	 * connection if it doesn't. */
 	rv = db->vfs->xAccess(db->vfs, header.filename, 0, &exists);

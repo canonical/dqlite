@@ -305,6 +305,7 @@ static int handle_open(struct gateway *g, struct handle *req)
 	struct db *db;
 	int rc;
 	START_V0(open, db);
+	CHECK_LEADER(req);
 	if (g->leader != NULL) {
 		tracef("already open");
 		failure(req, SQLITE_BUSY,

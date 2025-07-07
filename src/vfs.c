@@ -262,7 +262,13 @@ struct vfsShm
 {
 	int fd;
 	int size;
-	int lock[SQLITE_SHM_NLOCK];  /* -1==excl lock */
+	/* Lock array. Each of these lock has the following semantics:
+	 *  -  0 means unlocked;
+	 *  - -1 means exclusive locked;
+	 *  - >0 means shared locked and the value is the count of 
+	 *       shared locks taken.
+	 */
+	int lock[SQLITE_SHM_NLOCK];
 };
 
 /* Initialize the shared memory mapping of a database file. */
@@ -325,7 +331,7 @@ static int vfsShmUnlock(struct vfsShm *s, int ofst, int n, bool exclusive)
 static void vfsShmClose(struct vfsShm *s)
 {
 	int rv = close(s->fd);
-	assert(rv == 0);
+	assert((rv == 0) || (errno == EINTR));
 }
 
 /* WAL-specific content.
@@ -533,7 +539,7 @@ static int vfsDatabaseGetPage(struct vfsDatabase *d,
 	bool pending_byte_page_reached =
 	    (page_size * d->n_pages == dq_sqlite_pending_byte);
 	if ((pgno > d->n_pages + 1) && !pending_byte_page_reached) {
-		tracef("tried to write far from end (requested %d, last %d)",
+		tracef("page number greater than length (requested %d, last %d)",
 		       pgno, d->n_pages);
 		*page = NULL;
 		return SQLITE_IOERR_WRITE;
@@ -1593,7 +1599,8 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 			if (rv == SQLITE_OK) {
 				f->sharedMask |= mask;
 			}
-		} else {  // (flags & SQLITE_SHM_EXCLUSIVE)
+		} else {
+			PRE(flags & SQLITE_SHM_EXCLUSIVE);
 			PRE((f->sharedMask & mask) == 0);
 			PRE((f->exclMask & mask) == 0);
 
@@ -2416,9 +2423,10 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 {
 	struct vfsShm *shm = &d->shm;
 
-	assert(shm->lock[VFS__WAL_WRITE_LOCK] >= 0);
-	assert(shm->lock[VFS__WAL_CKPT_LOCK] >= 0);
-	assert(shm->lock[VFS__WAL_RECOVER_LOCK] >= 0);
+	PRE(shm->lock[VFS__WAL_WRITE_LOCK] >= 0);
+	PRE(shm->lock[VFS__WAL_CKPT_LOCK] >= 0);
+	PRE(shm->lock[VFS__WAL_RECOVER_LOCK] >= 0);
+	PRE(shm->size >= VFS__WAL_INDEX_HEADER_SIZE * 2);
 
 	/* The walIndexTryHdr function in sqlite/wal.c (which is indirectly
 	 * called by sqlite3WalBeginReadTransaction), compares the first and
@@ -2469,7 +2477,6 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 	 * originated the transaction (this can happen for example when applying
 	 * a Raft barrier and replaying the Raft log in order to serve a request
 	 * of a newly connected client). */
-	// FIXME
 	if (f->database->shm.lock[0] < 0) {
 		f->database->shm.lock[0] = 0;
 		vfsAmendWalIndexHeader(f->database);

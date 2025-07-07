@@ -227,6 +227,7 @@ static void __db_close(sqlite3 *db)
  * given database. */
 static uint32_t __wal_idx_mx_frame(sqlite3 *db)
 {
+	const int WAL_INDEX_REGION_SIZE = 32768;
 	sqlite3_file *file;
 	volatile void *region;
 	uint32_t mx_frame;
@@ -235,7 +236,7 @@ static uint32_t __wal_idx_mx_frame(sqlite3 *db)
 	rc = sqlite3_file_control(db, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = file->pMethods->xShmMap(file, 0, 32768, 0, &region);
+	rc = file->pMethods->xShmMap(file, 0, WAL_INDEX_REGION_SIZE, 0, &region);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The mxFrame number is 16th byte of the WAL index header. See also
