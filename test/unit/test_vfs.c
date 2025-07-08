@@ -227,6 +227,7 @@ static void __db_close(sqlite3 *db)
  * given database. */
 static uint32_t __wal_idx_mx_frame(sqlite3 *db)
 {
+	const int WAL_INDEX_REGION_SIZE = 32768;
 	sqlite3_file *file;
 	volatile void *region;
 	uint32_t mx_frame;
@@ -235,7 +236,7 @@ static uint32_t __wal_idx_mx_frame(sqlite3 *db)
 	rc = sqlite3_file_control(db, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
+	rc = file->pMethods->xShmMap(file, 0, WAL_INDEX_REGION_SIZE, 0, &region);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The mxFrame number is 16th byte of the WAL index header. See also
@@ -260,7 +261,7 @@ static uint32_t *__wal_idx_read_marks(sqlite3 *db)
 	rc = sqlite3_file_control(db, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = file->pMethods->xShmMap(file, 0, 0, 0, &region);
+	rc = file->pMethods->xShmMap(file, 0, 32768, 0, &region);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
 	/* The read-mark array starts at the 100th byte of the WAL index
@@ -1147,7 +1148,7 @@ TEST(VfsTruncate, misaligned, setUp, tearDown, 0, NULL)
 
 SUITE(VfsShmMap);
 
-static char *test_shm_map_oom_delay[] = {"0", "1", NULL};
+static char *test_shm_map_oom_delay[] = {"0", NULL};
 static char *test_shm_map_oom_repeat[] = {"1", NULL};
 
 static MunitParameterEnum test_shm_map_oom_params[] = {
@@ -1215,6 +1216,9 @@ TEST(VfsShmLock, sharedBusy, setUp, tearDown, 0, vfs_params)
 	rc = file->pMethods->xShmLock(file, 3, 1, flags);
 	munit_assert_int(rc, ==, SQLITE_BUSY);
 
+	rc = file->pMethods->xShmUnmap(file, 0);
+	munit_assert_int(rc, ==, 0);
+
 	rc = file->pMethods->xClose(file);
 	munit_assert_int(rc, ==, 0);
 	free(file);
@@ -1227,7 +1231,8 @@ TEST(VfsShmLock, sharedBusy, setUp, tearDown, 0, vfs_params)
 TEST(VfsShmLock, exclBusy, setUp, tearDown, 0, vfs_params)
 {
 	struct fixture *f = data;
-	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
+	sqlite3_file *file1 = munit_malloc(f->vfs.szOsFile);
+	sqlite3_file *file2 = munit_malloc(f->vfs.szOsFile);
 	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
 	volatile void *region;
 	int rc;
@@ -1237,26 +1242,36 @@ TEST(VfsShmLock, exclBusy, setUp, tearDown, 0, vfs_params)
 
 	vfsFillPath(f, "test.db");
 
-	rc = f->vfs.xOpen(&f->vfs, f->path, file, flags, &flags);
+	rc = f->vfs.xOpen(&f->vfs, f->path, file1, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
-	rc = file->pMethods->xShmMap(file, 0, 32768, 1, &region);
+	rc = f->vfs.xOpen(&f->vfs, f->path, file2, flags, &flags);
+	munit_assert_int(rc, ==, 0);
+
+	rc = file1->pMethods->xShmMap(file1, 0, 32768, 1, &region);
 	munit_assert_int(rc, ==, 0);
 
 	/* Take a shared lock on index 3. */
 	flags = SQLITE_SHM_LOCK | SQLITE_SHM_SHARED;
-	rc = file->pMethods->xShmLock(file, 3, 1, flags);
+	rc = file1->pMethods->xShmLock(file1, 3, 1, flags);
 	munit_assert_int(rc, ==, 0);
 
 	/* Attempting to get an exclusive lock on a range that contains index 3
 	 * fails. */
 	flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
-	rc = file->pMethods->xShmLock(file, 2, 3, flags);
+	rc = file2->pMethods->xShmLock(file2, 2, 3, flags);
 	munit_assert_int(rc, ==, SQLITE_BUSY);
 
-	rc = file->pMethods->xClose(file);
+	rc = file1->pMethods->xShmUnmap(file1, 0);
 	munit_assert_int(rc, ==, 0);
-	free(file);
+
+	rc = file2->pMethods->xClose(file2);
+	munit_assert_int(rc, ==, 0);
+	free(file2);
+
+	rc = file1->pMethods->xClose(file1);
+	munit_assert_int(rc, ==, 0);
+	free(file1);
 
 	return MUNIT_OK;
 }

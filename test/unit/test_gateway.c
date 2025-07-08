@@ -425,6 +425,7 @@ TEST_SETUP(open)
 {
 	struct open_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
+	CLUSTER_ELECT(0);
 	return f;
 }
 TEST_TEAR_DOWN(open)
@@ -486,6 +487,7 @@ TEST_SETUP(prepare)
 {
 	struct prepare_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
+	CLUSTER_ELECT(0);
 	OPEN;
 	return f;
 }
@@ -503,7 +505,6 @@ TEST_CASE(prepare, success, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
-	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
@@ -520,7 +521,6 @@ TEST_CASE(prepare, empty1, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = "";
-	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
@@ -537,7 +537,6 @@ TEST_CASE(prepare, empty2, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = " -- This is a comment";
-	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
@@ -554,7 +553,6 @@ TEST_CASE(prepare, invalid, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = "NOT SQL";
-	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
@@ -573,7 +571,6 @@ TEST_CASE(prepare, closing, NULL)
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
 	ENCODE(&f->request, prepare);
-	CLUSTER_ELECT(0);
 	HANDLE(PREPARE);
 	return MUNIT_OK;
 }
@@ -584,7 +581,6 @@ TEST_CASE(prepare, barrier_error, NULL)
 	struct prepare_fixture *f = data;
 	(void)params;
 
-	CLUSTER_ELECT(0);
 	CLUSTER_APPLIED(2);
 
 	/* Send a barrier which will fail. */
@@ -609,7 +605,6 @@ TEST_CASE(prepare, non_leader, NULL)
 	struct prepare_fixture *f = data;
 	(void)params;
 
-	CLUSTER_ELECT(0);
 	SELECT(1);
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
@@ -628,7 +623,6 @@ TEST_CASE(prepare, nonempty_tail, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT); SELECT * FROM test";
-	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
@@ -644,7 +638,6 @@ TEST_CASE(prepare, comment_in_tail, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT); /* comment */";
-	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE(PREPARE);
 	WAIT;
@@ -664,7 +657,6 @@ TEST_CASE(prepare, nonempty_tail_v1, NULL)
 	(void)params;
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT); SELECT * FROM test";
-	CLUSTER_ELECT(0);
 	ENCODE(&f->request, prepare);
 	HANDLE_SCHEMA_STATUS(DQLITE_REQUEST_PREPARE, 1, 0);
 	WAIT;
@@ -717,6 +709,7 @@ TEST_SETUP(exec)
 {
 	struct exec_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
+	CLUSTER_ELECT(0);
 	OPEN;
 	return f;
 }
@@ -733,7 +726,6 @@ TEST_CASE(exec, simple, NULL)
 	struct exec_fixture *f = data;
 	uint64_t stmt_id;
 	(void)params;
-	CLUSTER_ELECT(0);
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -754,7 +746,6 @@ TEST_CASE(exec, one_param, NULL)
 	struct value value;
 	uint64_t stmt_id;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Create the test table */
 	EXEC("CREATE TABLE test (n INT)");
@@ -787,7 +778,6 @@ TEST_CASE(exec, blob, NULL)
 	uint64_t n;
 	const char *column;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Create the test table */
 	EXEC("CREATE TABLE test (data BLOB)");
@@ -836,7 +826,6 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_re_elected, NULL)
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Accumulate enough dirty data to fill the page cache */
 	LOWER_CACHE_SIZE;
@@ -869,7 +858,6 @@ TEST_CASE(exec, frames_not_leader_1st_non_commit_other_elected, NULL)
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Accumulate enough dirty data to fill the page cache */
 	LOWER_CACHE_SIZE;
@@ -904,7 +892,6 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_re_elected, NULL)
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Accumulate enough dirty data to fill the page cache a first time,
 	 * flush it and then fill it a second time. */
@@ -936,7 +923,6 @@ TEST_CASE(exec, close_while_in_flight, NULL)
 	struct exec_fixture *f = data;
 	unsigned i;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Accumulate enough dirty data to fill the page cache and trigger
 	 * an apply request. */
@@ -962,7 +948,6 @@ TEST_CASE(exec, frames_not_leader_2nd_non_commit_other_elected, NULL)
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Accumulate enough dirty data to fill the page cache a first time,
 	 * flush it and then fill it a second time. */
@@ -997,7 +982,6 @@ TEST_CASE(exec, frames_leadership_lost_1st_non_commit_re_elected, NULL)
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Accumulate enough dirty data to fill the page cache */
 	LOWER_CACHE_SIZE;
@@ -1032,7 +1016,6 @@ TEST_CASE(exec, undo_not_leader_pending_re_elected, NULL)
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Accumulate enough dirty data to fill the page cache a first time */
 	LOWER_CACHE_SIZE;
@@ -1064,7 +1047,6 @@ TEST_CASE(exec, undo_not_leader_pending_other_elected, NULL)
 	uint64_t stmt_id;
 	unsigned i;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Accumulate enough dirty data to fill the page cache a first time */
 	LOWER_CACHE_SIZE;
@@ -1096,7 +1078,6 @@ TEST_CASE(exec, vacuum, NULL)
 	struct exec_fixture *f = data;
 	uint64_t stmt_id;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Create some free pages */
 	LOWER_CACHE_SIZE;
@@ -1147,7 +1128,6 @@ TEST_CASE(exec, vacuum_variants, NULL)
 	struct exec_fixture *f = data;
 	uint64_t stmt_id;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	LOWER_CACHE_SIZE;
 	EXEC("CREATE TABLE test (n INTEGER PRIMARY KEY NOT NULL)");
@@ -1189,7 +1169,6 @@ TEST_CASE(exec, vacuum_into_fails, NULL)
 	struct exec_fixture *f = data;
 	uint64_t stmt_id;
 	(void)params;
-	CLUSTER_ELECT(0);
 
 	/* Create some free pages */
 	LOWER_CACHE_SIZE;
@@ -1227,7 +1206,6 @@ TEST_CASE(exec, restore, NULL)
 	(void)params;
 	CLUSTER_SNAPSHOT_THRESHOLD(0, 5);
 	CLUSTER_SNAPSHOT_TRAILING(0, 2);
-	CLUSTER_ELECT(0);
 	CLUSTER_DISCONNECT(0, 1);
 	EXEC("CREATE TABLE test (n INT)");
 	EXEC("INSERT INTO test(n) VALUES(1)");
@@ -1270,7 +1248,6 @@ TEST_CASE(exec, barrier_error, NULL)
 	struct exec_fixture *f = data;
 	uint64_t stmt_id;
 	(void)params;
-	CLUSTER_ELECT(0);
 	CLUSTER_APPLIED(2);
 
 	PREPARE("CREATE TABLE test (n INT)");
@@ -1299,7 +1276,6 @@ TEST_CASE(exec, barrier_closing, NULL)
 	uint64_t stmt_id, prev_stmt_id;
 	(void)params;
 
-	CLUSTER_ELECT(0);
 	EXEC("CREATE TABLE test (n INT)");
 
 	/* Save this stmt to exec later */
@@ -1343,7 +1319,6 @@ TEST_CASE(exec, manyParams, NULL)
 		values[i].integer = i;
 	}
 
-	CLUSTER_ELECT(0);
 	EXEC("CREATE TABLE test (n INT)");
 	PREPARE(sql);
 	f->request.db_id = 0;
@@ -1365,7 +1340,6 @@ TEST_CASE(exec, unexpectedRow, NULL)
 	struct exec_fixture *f = data;
 	uint64_t stmt_id;
 	(void)params;
-	CLUSTER_ELECT(0);
 	PREPARE("SELECT * FROM (VALUES (1), (2))");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -1383,7 +1357,6 @@ TEST_CASE(exec, malformed_parameters, NULL)
 	struct exec_fixture *f = data;
 	uint64_t stmt_id;
 	(void)params;
-	CLUSTER_ELECT(0);
 	EXEC("CREATE TABLE test(id CHECK (id <> 2))");
 
 	struct value param = {
@@ -1431,8 +1404,8 @@ TEST_SETUP(query)
 {
 	struct query_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
-	OPEN;
 	CLUSTER_ELECT(0);
+	OPEN;
 	EXEC("CREATE TABLE test (n INT, data BLOB)");
 	return f;
 }
@@ -2159,6 +2132,7 @@ TEST_SETUP(finalize)
 {
 	struct finalize_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
+	CLUSTER_ELECT(0);
 	OPEN;
 	return f;
 }
@@ -2175,7 +2149,6 @@ TEST_CASE(finalize, success, NULL)
 	uint64_t stmt_id;
 	struct finalize_fixture *f = data;
 	(void)params;
-	CLUSTER_ELECT(0);
 	PREPARE("CREATE TABLE test (n INT)");
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
