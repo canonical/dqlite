@@ -178,21 +178,26 @@
 		munit_assert_int(rv_, ==, 0);                             \
 	}
 
-#define QUERY_DONE_C(CLIENT, STMT_ID, ROWS, ROWS_HOOK)                                  \
-	{                                                                     \
-		int rv_;                                                      \
-		bool done;                                                    \
+#define QUERY_DONE_C(CLIENT, STMT_ID, ROWS, ROWS_HOOK)                     \
+	{                                                                  \
+		int rv_;                                                   \
+		bool done;                                                 \
 		rv_ = clientSendQuery(CLIENT, STMT_ID, NULL, 0, NULL);     \
-		munit_assert_int(rv_, ==, 0);                                 \
-		do {                                                          \
+		munit_assert_int(rv_, ==, 0);                              \
+		do {                                                       \
 			rv_ = clientRecvRows(CLIENT, (ROWS), &done, NULL); \
-			munit_assert_int(rv_, ==, 0);                         \
-			ROWS_HOOK;                                            \
-			clientCloseRows((ROWS));                              \
-			*(ROWS) = (struct rows){};                            \
-		} while (!done);                                              \
+			if (rv_ == DQLITE_CLIENT_PROTO_RECEIVED_FAILURE) { \
+				munit_errorf("failure: [%ld] %s",           \
+					     (CLIENT)->errcode,            \
+					     (CLIENT)->errmsg);            \
+			} else {                                           \
+				munit_assert_int(rv_, ==, DQLITE_OK);      \
+			}                                                  \
+			ROWS_HOOK;                                         \
+			clientCloseRows((ROWS));                           \
+			*(ROWS) = (struct rows){};                         \
+		} while (!done);                                           \
 	}
-
 
 #define QUERY_DONE(STMT_ID, ROWS, ROWS_HOOK) QUERY_DONE_C(f->client, STMT_ID, ROWS, ROWS_HOOK)
 
