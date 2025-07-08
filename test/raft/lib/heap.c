@@ -1,9 +1,8 @@
 #include "heap.h"
+#include "fault.h"
+#include "test/lib/munit.h"
 
 #include <stdlib.h>
-
-#include "fault.h"
-#include "munit.h"
 
 struct heap
 {

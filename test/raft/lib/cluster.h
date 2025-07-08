@@ -5,10 +5,10 @@
 
 #include <stdlib.h>
 
-#include "../../../src/raft.h"
+#include "src/raft.h"
 #include "fsm.h"
 #include "heap.h"
-#include "munit.h"
+#include "test/lib/munit.h"
 #include "snapshot.h"
 
 #define FIXTURE_CLUSTER                             \

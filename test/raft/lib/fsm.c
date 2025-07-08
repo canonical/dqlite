@@ -1,7 +1,7 @@
 #include "fsm.h"
 
-#include "../../../src/raft/byte.h"
-#include "munit.h"
+#include "src/raft/byte.h"
+#include "test/lib/munit.h"
 
 /* In-memory implementation of the raft_fsm interface. */
 struct fsm
