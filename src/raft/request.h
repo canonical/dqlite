@@ -43,16 +43,7 @@ static inline bool request_invariant(const struct sm *sm, int prev)
 
 /* Abstract request type */
 struct request {
-	/* Must be kept in sync with RAFT__REQUEST in raft.h */
-	void *data;
-	int type;
-	raft_index index;
-	queue queue;
-	struct sm sm;
-	uint8_t req_id[16];
-	uint8_t client_id[16];
-	uint8_t unique_id[16];
-	uint64_t reserved[4];
+	RAFT__REQUEST;
 };
 
 #endif /* REQUEST_H_ */
