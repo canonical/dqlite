@@ -1567,11 +1567,11 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 	PRE((f->exclMask & f->sharedMask) == 0);
 
 	int rv = SQLITE_OK;
-	if (((flags & SQLITE_SHM_UNLOCK) &&
-	     ((f->exclMask | f->sharedMask) & mask)) ||
-	    (flags == (SQLITE_SHM_SHARED | SQLITE_SHM_LOCK) &&
-	     0 == (f->sharedMask & mask)) ||
+	if (
+		((flags & SQLITE_SHM_UNLOCK) && ((f->exclMask | f->sharedMask) & mask)) ||
+	    (flags == (SQLITE_SHM_SHARED | SQLITE_SHM_LOCK) && 0 == (f->sharedMask & mask)) ||
 	    (flags == (SQLITE_SHM_EXCLUSIVE | SQLITE_SHM_LOCK))) {
+
 		if (flags & SQLITE_SHM_UNLOCK) {
 			PRE(!(flags & SQLITE_SHM_EXCLUSIVE) ||
 			    (f->exclMask & mask) == mask);
@@ -1623,6 +1623,8 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 			}
 		}
 
+		/* This code makes sure that when taking a lock no transaction
+		 * is pending. */
 		if (rv == SQLITE_OK && ofst == VFS__WAL_WRITE_LOCK) {
 			assert(n == 1);
 			if (flags == (SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE)) {
