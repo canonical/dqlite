@@ -4,8 +4,8 @@
 #ifndef TEST_HEAP_H
 #define TEST_HEAP_H
 
-#include "../../../src/raft.h"
-#include "munit.h"
+#include "src/raft.h"
+#include "test/lib/munit.h"
 
 /* Munit parameter defining after how many API calls the test raft_heap
  * implementation should start failing and return errors. The default is -1,

@@ -9,7 +9,7 @@
 
 #include <sys/types.h>
 
-#include "munit.h"
+#include "test/lib/munit.h"
 
 /* Munit parameter defining the file system type backing the temporary directory
  * created by test_dir_setup().

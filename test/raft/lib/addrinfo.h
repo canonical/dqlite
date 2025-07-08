@@ -16,7 +16,7 @@
 #ifndef TEST_ADDRINFO_H
 #define TEST_ADDRINFO_H
 
-#include "munit.h"
+#include "test/lib/munit.h"
 
 #ifdef DQLITE_STATIC_LIBC
 
