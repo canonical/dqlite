@@ -66,6 +66,8 @@ const int vfsOne = 1;
 #define VFS__WAL_WRITE_LOCK 0
 #define VFS__WAL_CKPT_LOCK  1
 #define VFS__WAL_RECOVER_LOCK  2
+#define VFS__WAL_READ_LOCK(I) (3+(I))
+
 
 /* Write ahead log header size. */
 #define VFS__WAL_HEADER_SIZE 32
@@ -1150,6 +1152,8 @@ static const sqlite3_io_methods vfsWalFileMethods = {
 	.xDeviceCharacteristics = vfsNoopDeviceCharacteristics,
 };
 
+#define VFS__CHECKPOINT_MASK 0xff
+
 /* Implementation of the abstract sqlite3_file base class.
  * for the main database file */
 struct vfsMainFile {
@@ -1157,7 +1161,9 @@ struct vfsMainFile {
 	struct vfs *vfs;              /* Pointer to volatile VFS data. */
 	struct vfsDatabase *database; /* Underlying database content. */
 	uint16_t sharedMask;          /* Mask of shared locks held */
-	uint16_t exclMask;            /* Mask of exclusive locks held */
+	/* Mask of exclusive locks held. The special value `CHECKPOINT_MASK` is
+	 * used during a checkpoint. See VfsCheckpoint for details. */
+	uint16_t exclMask;
 	struct {
 		void **ptr;
 		int len, cap;
@@ -1611,6 +1617,13 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 	    flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE));
 
 	PRE((f->exclMask & f->sharedMask) == 0);
+
+	/* In case a checkpoint is running, the locking logic is overridden, to
+	 * make sure nothing can happen concurrently. As such, it is just enough
+	 * to always return SQLITE_OK in this case. */
+	if (f->exclMask == VFS__CHECKPOINT_MASK) {
+		return SQLITE_OK;
+	}
 
 	int rv = SQLITE_OK;
 	if (
@@ -2576,6 +2589,57 @@ int VfsAbort(sqlite3 *conn)
 		}
 		return rv;
 	}
+
+	return SQLITE_OK;
+}
+
+int VfsCheckpoint(sqlite3 *conn, unsigned int threshold)
+{
+	sqlite3_file *file;
+	int rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
+	assert(rv == SQLITE_OK);
+	struct vfsMainFile *f = (struct vfsMainFile*)file;
+
+	PRE(f->sharedMask == 0);
+	PRE(f->exclMask == 0);
+	tracef("[database %p] checkpoint start", f->database);
+
+	/* Try to lock everything, so that nothing can proceed. */
+	mtx_lock(&f->database->lock);
+	rv = vfsShmLock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
+	mtx_unlock(&f->database->lock);
+	if (rv != SQLITE_OK) {
+		tracef("[database %p] checkpoint busy", f->database);
+		return rv;
+	}
+
+	PRE(f->database->wal.n_tx == 0);
+	if (f->database->wal.n_frames < threshold) {
+		mtx_lock(&f->database->lock);
+		rv = vfsShmUnlock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
+		mtx_unlock(&f->database->lock);
+		assert(rv == SQLITE_OK);
+		tracef("[database %p] checkpoint below threshold (%d < %d)", f->database, f->database->wal.n_frames, threshold);
+		return SQLITE_OK;
+	}
+
+	int wal_size;
+	int ckpt;
+	f->exclMask = VFS__CHECKPOINT_MASK;
+	rv = sqlite3_wal_checkpoint_v2(conn, NULL, SQLITE_CHECKPOINT_TRUNCATE,
+				       &wal_size, &ckpt);
+	/* Since no reader transaction is in progress, we must be able to
+	 * checkpoint the entire WAL */
+	assert(rv == SQLITE_OK);
+	assert(wal_size == 0);
+	assert(ckpt == 0);
+	tracef("[database %p] checkpointed");
+
+	f->exclMask = 0;
+	mtx_lock(&f->database->lock);
+	rv = vfsShmUnlock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
+	mtx_unlock(&f->database->lock);
+	assert(rv == SQLITE_OK);
 
 	return SQLITE_OK;
 }
