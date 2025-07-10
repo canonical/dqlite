@@ -941,8 +941,10 @@ static int handle_add(struct gateway *g, struct handle *req)
 	if (r == NULL) {
 		return DQLITE_NOMEM;
 	}
-	r->gateway = g;
-	r->req.data = r;
+	*r = (struct change) {
+		.gateway = g,
+		.req = { .data = r },
+	};
 	g->req = req;
 
 	rv = raft_add(g->raft, &r->req, request.id, request.address,
@@ -984,8 +986,10 @@ static int handle_promote_or_assign(struct gateway *g, struct handle *req)
 		tracef("malloc failed");
 		return DQLITE_NOMEM;
 	}
-	r->gateway = g;
-	r->req.data = r;
+	*r = (struct change) {
+		.gateway = g,
+		.req = { .data = r },
+	};
 	g->req = req;
 
 	rv = raft_assign(g->raft, &r->req, request.id,
@@ -1016,8 +1020,10 @@ static int handle_remove(struct gateway *g, struct handle *req)
 		tracef("malloc failed");
 		return DQLITE_NOMEM;
 	}
-	r->gateway = g;
-	r->req.data = r;
+	*r = (struct change) {
+		.gateway = g,
+		.req = { .data = r },
+	};
 	g->req = req;
 
 	rv = raft_remove(g->raft, &r->req, request.id, raftChangeCb);
