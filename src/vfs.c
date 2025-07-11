@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
+#include <stdalign.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -667,7 +668,7 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 {
 	struct vfsShm *shm = &d->shm;
 	struct vfsWal *wal = &d->wal;
-	uint8_t index[VFS__WAL_INDEX_HEADER_SIZE * 2];
+	_Alignas(8) uint8_t index[VFS__WAL_INDEX_HEADER_SIZE * 2];
 	uint32_t frame_checksum[2] = { 0, 0 };
 	uint32_t n_pages = (uint32_t)d->n_pages;
 	uint32_t checksum[2] = { 0, 0 };
