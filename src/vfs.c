@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -15,6 +16,7 @@
 #include <sys/random.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <threads.h>
 #include <unistd.h>
 
 #include <sqlite3.h>
@@ -152,7 +154,7 @@ static void vfsChecksum(
 #define vfsWalGetChecksum1(w) ByteGetBe32(&(w)->hdr[24])
 
 /* Return the checksum-2 field stored in the WAL header.*/
-#define vfsWalGetChecksum2(w) ByteGetBe32(&(w)->hdr[28]);
+#define vfsWalGetChecksum2(w) ByteGetBe32(&(w)->hdr[28])
 
 /* Parse the page size ("Must be a power of two between 512 and 32768
  * inclusive, or the value 1 representing a page size of 65536").
@@ -260,8 +262,9 @@ static void vfsFrameDestroy(struct vfsFrame *f)
 /* Hold content for a shared memory mapping. */
 struct vfsShm
 {
-	int fd;
-	int size;
+	mtx_t mtx; /* Mutex to protect fields below. */
+	int fd;     /* Read-only */
+	int size;   /* Total size of the in-memory file */
 	/* Lock array. Each of these lock has the following semantics:
 	 *  -  0 means unlocked;
 	 *  - -1 means exclusive locked;
@@ -288,15 +291,14 @@ static int vfsShmLock(struct vfsShm *s, int ofst, int n, bool exclusive)
 {
 	PRE(ofst >= 0 && n > 0 && ofst + n <= SQLITE_SHM_NLOCK);
 
+	mtx_lock(&s->mtx);
 	for (int i = ofst; i < ofst + n; i++) {
-		if (exclusive) {
-			if (s->lock[i] != 0) {
-				return SQLITE_BUSY;
-			}
-		} else {
-			if (s->lock[i] < 0) {
-				return SQLITE_BUSY;
-			}
+		if (exclusive && s->lock[i] != 0) {
+			mtx_unlock(&s->mtx);
+			return SQLITE_BUSY;
+		} else if (!exclusive && s->lock[i] < 0) {
+			mtx_unlock(&s->mtx);
+			return SQLITE_BUSY;
 		}
 	}
 
@@ -308,6 +310,7 @@ static int vfsShmLock(struct vfsShm *s, int ofst, int n, bool exclusive)
 		}
 	}
 
+	mtx_unlock(&s->mtx);
 	return SQLITE_OK;
 }
 
@@ -315,6 +318,7 @@ static int vfsShmUnlock(struct vfsShm *s, int ofst, int n, bool exclusive)
 {
 	PRE(ofst >= 0 && n > 0 && ofst + n <= SQLITE_SHM_NLOCK);
 
+	mtx_lock(&s->mtx);
 	for (int i = ofst; i < ofst + n; i++) {
 		if (exclusive) {
 			PRE(s->lock[i] < 0);
@@ -324,6 +328,7 @@ static int vfsShmUnlock(struct vfsShm *s, int ofst, int n, bool exclusive)
 			s->lock[i]--;
 		}
 	}
+	mtx_unlock(&s->mtx);
 	return SQLITE_OK;
 }
 
@@ -342,16 +347,23 @@ static void vfsShmClose(struct vfsShm *s)
 struct vfsWal
 {
 	uint8_t hdr[VFS__WAL_HEADER_SIZE]; /* Header. */
-	struct vfsFrame **frames;          /* All frames committed. */
-	unsigned n_frames;                 /* Number of committed frames. */
-	struct vfsFrame **tx;              /* Frames added by a transaction. */
-	unsigned n_tx;                     /* Number of added frames. */
+
+	/* Transaction-related frames are private to the connection owning the
+	 * WRITE lock. They don't need synchronization as such */
+	struct vfsFrame **tx; /* Frames added by a transaction. */
+	unsigned n_tx;        /* Number of added frames. */
+
+	mtx_t mtx;                /* Lock for fields below. */
+	struct vfsFrame **frames; /* All frames committed. */
+	unsigned n_frames;        /* Number of committed frames. */
 };
 
 /* Initialize a new WAL object. */
 static void vfsWalInit(struct vfsWal *w)
 {
 	*w = (struct vfsWal){};
+	int rv = mtx_init(&w->mtx, mtx_plain);
+	assert(rv == 0);
 }
 
 /* Lookup a frame from the WAL, returning NULL if it doesn't exist. */
@@ -362,82 +374,29 @@ static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 	assert(w != NULL);
 	assert(n > 0);
 
-	if (n > w->n_frames + w->n_tx) {
-		/* This page hasn't been written yet. */
-		return NULL;
-	}
+	mtx_lock(&w->mtx);
 	if (n <= w->n_frames) {
 		frame = w->frames[n - 1];
 	} else {
-		frame = w->tx[n - w->n_frames - 1];
+		frame = NULL;
 	}
+	mtx_unlock(&w->mtx);
 
-	assert(frame != NULL);
+	/* In case of a cache spill, it is possible that SQLite will try to
+	 * re-populate the cache reading from the uncommitted part of the WAL. 
+	 * unfortunately, it is not possible to reliably link a WAL file to
+	 * its main file and checking this way that this is the connection
+	 * holding the write lock. As such, the best we can do is to trust
+	 * SQLite. This is also the reason why this code is in an unprotected
+	 * section (outside the protection of the mtx). */
+	if (frame == NULL && w->n_tx > 0) {
+		n -= w->n_frames;
+		if (n <= w->n_tx) {
+			frame = w->tx[n - 1];
+		}
+	}
 
 	return frame;
-}
-
-/* Get a frame from the current transaction, possibly creating a new one. */
-static int vfsWalFrameGet(struct vfsWal *w,
-			  unsigned index,
-			  uint32_t page_size,
-			  struct vfsFrame **frame)
-{
-	int rv;
-
-	assert(w != NULL);
-	assert(index > 0);
-
-	/* SQLite should access pages progressively, without jumping more than
-	 * one page after the end. */
-	if (index > w->n_frames + w->n_tx + 1) {
-		rv = SQLITE_IOERR_WRITE;
-		goto err;
-	}
-
-	if (index == w->n_frames + w->n_tx + 1) {
-		/* Create a new frame, grow the transaction array, and append
-		 * the new frame to it. */
-		struct vfsFrame **tx;
-
-		/* We assume that the page size has been set, either by
-		 * intervepting the first main database file write, or by
-		 * handling a 'PRAGMA page_size=N' command in
-		 * vfs__file_control(). This assumption is enforved in
-		 * vfsFileWrite(). */
-		assert(page_size > 0);
-
-		*frame = vfsFrameCreate(page_size);
-		if (*frame == NULL) {
-			rv = SQLITE_NOMEM;
-			goto err;
-		}
-
-		tx = sqlite3_realloc64(w->tx, sizeof *tx * w->n_tx + 1);
-		if (tx == NULL) {
-			rv = SQLITE_NOMEM;
-			goto err_after_vfs_frame_create;
-		}
-
-		/* Append the new page to the new page array. */
-		tx[index - w->n_frames - 1] = *frame;
-
-		/* Update the page array. */
-		w->tx = tx;
-		w->n_tx++;
-	} else {
-		/* Return the existing page. */
-		assert(w->tx != NULL);
-		*frame = w->tx[index - w->n_frames - 1];
-	}
-
-	return SQLITE_OK;
-
-err_after_vfs_frame_create:
-	vfsFrameDestroy(*frame);
-err:
-	*frame = NULL;
-	return rv;
 }
 
 /* Get the page size stored in the WAL header. */
@@ -448,33 +407,64 @@ static uint32_t vfsWalGetPageSize(struct vfsWal *w)
 	return vfsParsePageSize(ByteGetBe32(&w->hdr[8]));
 }
 
+/* Return the size of the WAL file in bytes. */
+static int64_t vfsWalSize(struct vfsWal *w)
+{
+	mtx_lock(&w->mtx);
+	int64_t size = 0;
+	if (w->n_frames > 0) {
+		uint32_t page_size;
+		page_size = vfsWalGetPageSize(w);
+		size += VFS__WAL_HEADER_SIZE;
+		size += (int64_t)w->n_frames *
+			(int64_t)(FORMAT__WAL_FRAME_HDR_SIZE + page_size);
+	}
+	mtx_unlock(&w->mtx);
+	/* TODO dqlite is limited to a max database size of SIZE_MAX */
+	assert(size >= 0 && (uint64_t)size <= SIZE_MAX);
+	return size;
+}
+
+static void vfsWalTruncate(struct vfsWal *w)
+{
+	mtx_lock(&w->mtx);
+	PRE(w->n_tx == 0);
+	PRE(w->tx == NULL);
+	for (unsigned i = 0; i < w->n_frames; i++) {
+		vfsFrameDestroy(w->frames[i]);
+	}
+	sqlite3_free(w->frames);
+
+	w->frames = NULL;
+	w->n_frames = 0;
+	mtx_unlock(&w->mtx);
+}
+
 /* Release all memory used by a WAL object. */
 static void vfsWalClose(struct vfsWal *w)
 {
-	unsigned i;
-	for (i = 0; i < w->n_frames; i++) {
-		vfsFrameDestroy(w->frames[i]);
-	}
-	if (w->frames != NULL) {
-		sqlite3_free(w->frames);
-	}
-	for (i = 0; i < w->n_tx; i++) {
+	for (unsigned i = 0; i < w->n_tx; i++) {
 		vfsFrameDestroy(w->tx[i]);
 	}
-	if (w->tx != NULL) {
-		sqlite3_free(w->tx);
-	}
+	sqlite3_free(w->tx);
+	w->tx = NULL;
+	w->n_tx = 0;
+
+	vfsWalTruncate(w);
+	mtx_destroy(&w->mtx);
 }
 
 /* Database-specific content */
 struct vfsDatabase
 {
 	char *name;         /* Database name. Read only. */
-	void **pages;       /* All database. */
 	unsigned page_size; /* Only used for on-disk db */
-	unsigned n_pages;   /* Number of pages. */
 	struct vfsShm shm;  /* Shared memory. */
 	struct vfsWal wal;  /* Associated WAL. */
+
+	mtx_t mtx;
+	void **pages;       /* All database. */
+	unsigned n_pages;   /* Number of pages. */
 };
 
 /*
@@ -521,6 +511,8 @@ static int vfsDatabaseInit(struct vfsDatabase *d, const char *name)
 		return rv;
 	}
 	vfsWalInit(&d->wal);
+	rv = mtx_init(&d->mtx, mtx_plain);
+	assert(rv == 0);
 	return SQLITE_OK;
 }
 
@@ -562,6 +554,7 @@ static int vfsDatabaseGetPage(struct vfsDatabase *d,
 		goto err;
 	}
 
+	mtx_lock(&d->mtx);
 	void **pages = sqlite3_realloc64(d->pages, sizeof *pages * pgno);
 	if (pages == NULL) {
 		rc = SQLITE_NOMEM;
@@ -583,13 +576,14 @@ static int vfsDatabaseGetPage(struct vfsDatabase *d,
 	/* Update the page array. */
 	d->pages = pages;
 	d->n_pages = pgno;
-
+	mtx_unlock(&d->mtx);
 	return SQLITE_OK;
 
 err_after_pending_byte_page:
 	d->pages = pages;
 
 err_after_vfs_page_create:
+	mtx_unlock(&d->mtx);
 	sqlite3_free(*page);
 err:
 	*page = NULL;
@@ -599,6 +593,9 @@ err:
 /* Lookup a page from the given database, returning NULL if it doesn't exist. */
 static void *vfsDatabasePageLookup(struct vfsDatabase *d, unsigned pgno)
 {
+	/* == Safety==
+	 * See vfsMainFileRead and vfsMainFileWrite for a rationale
+	 * on why this logic is unguarded by d->mtx. */
 	void *page;
 
 	assert(d != NULL);
@@ -625,8 +622,10 @@ static uint32_t vfsDatabaseGetPageSize(struct vfsDatabase *d)
 		return d->page_size;
 	}
 
+	mtx_lock(&d->mtx);
 	assert(d->n_pages > 0);
 	page = d->pages[0];
+	mtx_unlock(&d->mtx);
 
 	/* The page size is stored in the 16th and 17th bytes of the first
 	 * database page (big-endian) */
@@ -636,85 +635,19 @@ static uint32_t vfsDatabaseGetPageSize(struct vfsDatabase *d)
 /* Return the size of the database file in bytes. */
 static int64_t vfsDatabaseFileSize(struct vfsDatabase *d)
 {
-	int64_t size = 0;
-	if (d->n_pages > 0) {
-		size = (int64_t)d->n_pages * (int64_t)vfsDatabaseGetPageSize(d);
+	mtx_lock(&d->mtx);
+	int64_t pages = (int64_t)d->n_pages;
+	mtx_unlock(&d->mtx);
+
+	if (pages == 0) {
+		return 0;
 	}
-	/* TODO dqlite is limited to a max database size of SIZE_MAX */
-	assert((uint64_t)size <= SIZE_MAX);
-	return size;
-}
-
-/* This function modifies part of the WAL index header to reflect the current
- * content of the WAL.
- *
- * It is called in two cases. First, after a write transaction gets completed
- * and the SQLITE_FCNTL_COMMIT_PHASETWO file control op code is triggered, in
- * order to "rewind" the mxFrame and szPage fields of the WAL index header back
- * to when the write transaction started, effectively "shadowing" the
- * transaction, which will be replicated asynchronously. Second, when the
- * replication actually succeeds and dqlite_vfs_apply() is called on the VFS
- * that originated the transaction, in order to make the transaction visible.
- *
- * Note that the hash table contained in the WAL index does not get modified,
- * and even after a rewind following a write transaction it will still contain
- * entries for the frames committed by the transaction. That's safe because
- * mxFrame will make clients ignore those hash table entries. However it means
- * that in case the replication is not actually successful and
- * dqlite_vfs_abort() is called the WAL index must be invalidated.
- **/
-static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
-{
-	struct vfsShm *shm = &d->shm;
-	struct vfsWal *wal = &d->wal;
-	uint8_t index[VFS__WAL_INDEX_HEADER_SIZE * 2];
-	uint32_t frame_checksum[2] = { 0, 0 };
-	uint32_t n_pages = (uint32_t)d->n_pages;
-	uint32_t checksum[2] = { 0, 0 };
-
-	assert(shm->size > 0);
-	ssize_t rv = pread(shm->fd, index, sizeof(index), 0);
-	assert(rv == sizeof(index));
-
-	if (wal->n_frames > 0) {
-		struct vfsFrame *last = wal->frames[wal->n_frames - 1];
-		frame_checksum[0] = vfsFrameGetChecksum1(last);
-		frame_checksum[1] = vfsFrameGetChecksum2(last);
-		n_pages = vfsFrameGetDatabaseSize(last);
-	}
-
-	/* index is an alias for shm->regions[0] which is a void* that points to
-	 * memory allocated by `sqlite3_malloc64` and has the required alignment
-	 */
-	assert(*(uint32_t *)(&index[0]) == VFS__WAL_VERSION); /* iVersion */
-	assert(index[12] == 1);                               /* isInit */
-	assert(index[13] == VFS__BIGENDIAN);                  /* bigEndCksum */
-
-	*(uint32_t *)(&index[16]) = wal->n_frames;
-	*(uint32_t *)(&index[20]) = n_pages;
-	*(uint32_t *)(&index[24]) = frame_checksum[0];
-	*(uint32_t *)(&index[28]) = frame_checksum[1];
-
-	vfsChecksum(index, 40, checksum, checksum);
-
-	*(uint32_t *)(&index[40]) = checksum[0];
-	*(uint32_t *)(&index[44]) = checksum[1];
-
-	/* Update the second copy of the first part of the WAL index header. */
-	memcpy(index + VFS__WAL_INDEX_HEADER_SIZE, index,
-	       VFS__WAL_INDEX_HEADER_SIZE);
-	rv = pwrite(shm->fd, index, sizeof(index), 0);
-	assert(rv == sizeof(index));
+	return pages * (int64_t)vfsDatabaseGetPageSize(d);
 }
 
 /* Truncate a database file to be exactly the given number of pages. */
 static int vfsDatabaseTruncate(struct vfsDatabase *d, sqlite_int64 size)
 {
-	void **cursor;
-	uint32_t page_size;
-	unsigned n_pages;
-	unsigned i;
-
 	if (d->n_pages == 0) {
 		if (size > 0) {
 			return SQLITE_IOERR_TRUNCATE;
@@ -724,14 +657,14 @@ static int vfsDatabaseTruncate(struct vfsDatabase *d, sqlite_int64 size)
 
 	/* Since the file size is not zero, some content must
 	 * have been written and the page size must be known. */
-	page_size = vfsDatabaseGetPageSize(d);
+	uint32_t page_size = vfsDatabaseGetPageSize(d);
 	assert(page_size > 0);
 
 	if ((size % page_size) != 0) {
 		return SQLITE_IOERR_TRUNCATE;
 	}
 
-	n_pages = (unsigned)(size / page_size);
+	unsigned n_pages = (unsigned)(size / page_size);
 
 	/* We expect callers to only invoke us if some actual content has been
 	 * written already. */
@@ -741,20 +674,26 @@ static int vfsDatabaseTruncate(struct vfsDatabase *d, sqlite_int64 size)
 	assert(n_pages <= d->n_pages);
 	assert(d->pages != NULL);
 
+	mtx_lock(&d->mtx);
 	/* Destroy pages beyond pages_len. */
-	cursor = d->pages + n_pages;
-	for (i = 0; i < (d->n_pages - n_pages); i++) {
+	void **cursor = d->pages + n_pages;
+	for (unsigned i = 0; i < (d->n_pages - n_pages); i++) {
 		sqlite3_free(*cursor);
 		cursor++;
 	}
 
-	/* Shrink the page array, possibly to 0.
-	 *
-	 * TODO: in principle realloc could fail also when shrinking. */
-	d->pages = sqlite3_realloc64(d->pages, sizeof *d->pages * n_pages);
+	/* Shrink the page array, possibly to 0. */
+	void **pages = sqlite3_realloc64(d->pages, sizeof *d->pages * n_pages);
+	if (pages != NULL || n_pages == 0) {
+		/* Failing to shrink will not release memory, but that memory could be
+		 * reused later: it is not an error to hold a bigger memory segment than
+		 * we need (and likely to happen nevertheless). */
+		d->pages = pages;
+	}
 
 	/* Update the page count. */
 	d->n_pages = n_pages;
+	mtx_unlock(&d->mtx);
 
 	return SQLITE_OK;
 }
@@ -769,6 +708,7 @@ static void vfsDatabaseClose(struct vfsDatabase *d)
 	sqlite3_free(d->name);
 	vfsWalClose(&d->wal);
 	vfsShmClose(&d->shm);
+	mtx_destroy(&d->mtx);
 }
 
 /* Custom dqlite VFS. Contains pointers to all databases that were created. */
@@ -1018,36 +958,26 @@ static const sqlite3_io_methods vfsNoopMethods = {
 
 struct vfsWalFile
 {
-	sqlite3_file base;  /* Base class. Must be first. */
-	struct vfsWal *wal; /* Underlying in-memory wal. */
+	sqlite3_file base;            /* Base class. Must be first. */
+	struct vfsDatabase *database; /* Underlying database file. */
 };
-
-/* Return the size of the WAL file in bytes. */
-static int64_t vfsWalSize(struct vfsWal *w)
-{
-	int64_t size = 0;
-	if (w->n_frames > 0) {
-		uint32_t page_size;
-		page_size = vfsWalGetPageSize(w);
-		size += VFS__WAL_HEADER_SIZE;
-		size += (int64_t)w->n_frames *
-			(int64_t)(FORMAT__WAL_FRAME_HDR_SIZE + page_size);
-	}
-	/* TODO dqlite is limited to a max database size of SIZE_MAX */
-	assert((size >= 0) && ((uint64_t)size <= SIZE_MAX));
-	return (int64_t)size;
-}
-
-static int vfsWalFileSize(sqlite3_file* file, sqlite3_int64 *pSize)
-{
-	struct vfsWalFile *f = (struct vfsWalFile *)file;
-	*pSize = (sqlite3_int64)vfsWalSize(f->wal);
-	return SQLITE_OK;
-}
 
 static int vfsWalFileRead(sqlite3_file* file, void* buf, int amount, sqlite3_int64 offset)
 {
 	struct vfsWalFile *f = (struct vfsWalFile *)file;
+	/* == Safety ==
+	 * This method can be called by any read or write transaction.
+	 * The vfsWal datastructure is split in two parts:
+	 * - the unpolled transaction (which should be private to the only
+	 *   connection holding the WRITE lock)
+	 * - the "committed" WAL which can only be updated by VfsApply which
+	 *   always runs from libuv thread, which might run concurrently to
+	 *   read transactions, in an increase-only fashion. As such, it needs
+	 *   a mutex guard as resizing the array might invalidate the pointer.
+	 *   Last, truncation can happen only while holding all locks exclusively
+	 *   and as such it can never happen concurrently on this mehtods (so the
+	 *   increase-only invariant holds for this method).
+	 */
 
 	uint32_t page_size;
 	unsigned index;
@@ -1056,11 +986,11 @@ static int vfsWalFileRead(sqlite3_file* file, void* buf, int amount, sqlite3_int
 	if (offset == 0) {
 		/* Read the header. */
 		assert(amount == VFS__WAL_HEADER_SIZE);
-		memcpy(buf, f->wal->hdr, VFS__WAL_HEADER_SIZE);
+		memcpy(buf, f->database->wal.hdr, VFS__WAL_HEADER_SIZE);
 		return SQLITE_OK;
 	}
 
-	page_size = vfsWalGetPageSize(f->wal);
+	page_size = vfsWalGetPageSize(&f->database->wal);
 	assert(page_size > 0);
 
 	/* For any other frame, we expect either a header read,
@@ -1074,7 +1004,7 @@ static int vfsWalFileRead(sqlite3_file* file, void* buf, int amount, sqlite3_int
 		if (offset == FORMAT__WAL_FRAME_HDR_SIZE) {
 			/* Read the checksum from the WAL
 			 * header. */
-			memcpy(buf, f->wal->hdr + offset, (size_t)amount);
+			memcpy(buf, f->database->wal.hdr + offset, (size_t)amount);
 			return SQLITE_OK;
 		}
 		assert(((offset - 16 - VFS__WAL_HEADER_SIZE) %
@@ -1108,7 +1038,14 @@ static int vfsWalFileRead(sqlite3_file* file, void* buf, int amount, sqlite3_int
 		return SQLITE_IOERR_SHORT_READ;
 	}
 
-	frame = vfsWalFrameLookup(f->wal, index);
+	/* If ever really needed, there exists lock-free algorithms. I think
+	 * that here contention will always be very small the only thing that
+	 * can be contended is the access to the wal page pointer and not
+	 * on the content: it is guaranteed by the sqlite3 WAL protocol that
+	 * the WAL will not be restarted or checkpointed if a READ lock is
+	 * held, which is always true when reading the WAL. */
+	frame = vfsWalFrameLookup(&f->database->wal, index);
+
 	if (frame == NULL) {
 		/* From SQLite docs:
 		*
@@ -1140,6 +1077,9 @@ static int vfsWalFileRead(sqlite3_file* file, void* buf, int amount, sqlite3_int
 static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqlite3_int64 offset)
 {
 	struct vfsWalFile *f = (struct vfsWalFile *)file;
+	/* == Safety ==
+	 * See vfsWalFile read.
+	 */
 	uint32_t page_size;
 	unsigned index;
 	struct vfsFrame *frame;
@@ -1150,12 +1090,46 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 		 * bytes. */
 		assert(amount == VFS__WAL_HEADER_SIZE);
 
-		memcpy(f->wal->hdr, buf, (size_t)amount);
+		memcpy(f->database->wal.hdr, buf, (size_t)amount);
 		return SQLITE_OK;
 	}
 
-	page_size = vfsWalGetPageSize(f->wal);
+	/* There is no need to lock here as only one writer is allowed to
+	 * ever change the WAL and this routine is that writer. */
+	page_size = vfsWalGetPageSize(&f->database->wal);
 	assert(page_size > 0);
+
+	/* It is expected that once committed the WAL cannot be changed. 
+	 * As such, it's index must be above the already committed part */
+	index = (unsigned)formatWalCalcFrameIndex((int)page_size, offset);
+	if (index <= f->database->wal.n_frames) {
+		return SQLITE_IOERR_WRITE;
+	}
+
+	unsigned tx_index = index - f->database->wal.n_frames;
+	if (tx_index > f->database->wal.n_tx) {
+		/* SQLite should access frames progressively, without jumping more than
+		 * one page after the end. */
+		unsigned new_n_tx = f->database->wal.n_tx + 1;
+		assert(tx_index == new_n_tx);
+		/* Also, new frames always start by writing the header first */
+		assert(amount == FORMAT__WAL_FRAME_HDR_SIZE);
+
+		frame = vfsFrameCreate(page_size);
+		if (frame == NULL) {
+			return SQLITE_NOMEM;
+		}
+		struct vfsFrame **new_tx = sqlite3_realloc(f->database->wal.tx, (int)(sizeof(*new_tx) * new_n_tx));
+		if (new_tx == NULL) {
+			return SQLITE_NOMEM;
+		}
+		new_tx[f->database->wal.n_tx] = frame;
+		f->database->wal.tx = new_tx;
+		f->database->wal.n_tx = new_n_tx;
+	}
+
+	frame = f->database->wal.tx[tx_index - 1];
+	assert(frame != NULL);
 
 	/* This is a WAL frame write. We expect either a frame
 	 * header or page write. */
@@ -1163,31 +1137,13 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 		/* Frame header write. */
 		assert(((offset - VFS__WAL_HEADER_SIZE) %
 			((int)page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-
-		index =
-		    (unsigned)formatWalCalcFrameIndex((int)page_size, offset);
-
-		vfsWalFrameGet(f->wal, index, page_size, &frame);
-		if (frame == NULL) {
-			return SQLITE_NOMEM;
-		}
-		memcpy(frame->header, buf, (size_t)amount);
+		memcpy(frame->header, buf, FORMAT__WAL_FRAME_HDR_SIZE);
 	} else {
 		/* Frame page write. */
 		assert(amount == (int)page_size);
 		assert(((offset - VFS__WAL_HEADER_SIZE -
 			 FORMAT__WAL_FRAME_HDR_SIZE) %
 			((int)page_size + FORMAT__WAL_FRAME_HDR_SIZE)) == 0);
-
-		index =
-		    (unsigned)formatWalCalcFrameIndex((int)page_size, offset);
-
-		/* The header for the this frame must already
-		 * have been written, so the page is there. */
-		frame = vfsWalFrameLookup(f->wal, index);
-
-		assert(frame != NULL);
-
 		memcpy(frame->page, buf, (size_t)amount);
 	}
 
@@ -1204,13 +1160,14 @@ static int vfsWalFileTruncate(sqlite3_file* file, sqlite3_int64 size)
 		return SQLITE_PROTOCOL;
 	}
 
-	formatWalRestartHeader(f->wal->hdr);
-	vfsWalClose(f->wal);
-	f->wal->frames = NULL;
-	f->wal->n_frames = 0;
-	f->wal->tx = NULL;
-	f->wal->n_tx = 0;
+	vfsWalTruncate(&f->database->wal);
+	return SQLITE_OK;
+}
 
+static int vfsWalFileSize(sqlite3_file *file, sqlite3_int64 *pSize)
+{
+	struct vfsWalFile *f = (struct vfsWalFile *)file;
+	*pSize = (sqlite3_int64)vfsWalSize(&f->database->wal);
 	return SQLITE_OK;
 }
 
@@ -1230,6 +1187,8 @@ static const sqlite3_io_methods vfsWalFileMethods = {
 	.xDeviceCharacteristics = vfsNoopDeviceCharacteristics,
 };
 
+#define VFS__CHECKPOINT_MASK 0xff
+
 /* Implementation of the abstract sqlite3_file base class.
  * for the main database file */
 struct vfsMainFile {
@@ -1237,7 +1196,9 @@ struct vfsMainFile {
 	struct vfs *vfs;              /* Pointer to volatile VFS data. */
 	struct vfsDatabase *database; /* Underlying database content. */
 	uint16_t sharedMask;          /* Mask of shared locks held */
-	uint16_t exclMask;            /* Mask of exclusive locks held */
+	/* Mask of exclusive locks held. The special value `CHECKPOINT_MASK` is
+	 * used during a checkpoint. See VfsCheckpoint for details. */
+	uint16_t exclMask;
 	struct {
 		void **ptr;
 		int len, cap;
@@ -1250,6 +1211,35 @@ static int vfsMainFileRead(sqlite3_file *file,
 			   sqlite_int64 offset)
 {
 	struct vfsMainFile *f = (struct vfsMainFile *)file;
+
+	/* == Safety==
+	 * It is expected for this call to be done in two different cases:
+	 * - when the database is empty, while holding an EXCLUSIVE DELETE-mode
+	 *   lock on the file, during the transition from DELETE-mode to
+	 *   WAL-mode; in that case, no synchronization is necessary as there
+	 *   can only ever be one connection open (on the libuv thread).
+	 * - when holding a shared memory read-lock; in this case, the guarantee
+	 *   we get from SQLite is that pages accessed are never changed. While
+	 *   for a file that is enough, it is not enough for an array in memory
+	 *   that might be resized (as in realloc). So, while the content of
+	 *   each page in f->database->pages can be considered constant, the
+	 *   array holding each page might change. The resizing of this array
+	 *   and/or the overwriting of unread pages is always done during a
+	 *   checkpoint, holding the checkpoint lock. On top of these guarantees
+	 *   from SQLite, dqlite adds a more strict behaviour: only TRUNCATE
+	 *   checkpoint are allowed and they always block all readers (i.e. they
+	 *   hold all locks exclusively) and are always TRUNCATE checkpo. This
+	 *   means that during this call it is not necessary to synchronize at
+	 *   all.
+	 *
+	 * Regarding reading values from memory shared across multiple threads,
+	 * it is guaranteed that after all checkpoints, a full memory barrier is
+	 * issued from the checkpoint thread (the libuv main thread). A full
+	 * memory barrier is also issued by the thead the transaction runs in
+	 * when starting a read transaction. This creates a thread-fence chain
+	 * that guarantees that no stale data is read after a checkpoint by read
+	 * transactions.
+	 */
 
 	int page_size;
 	unsigned pgno;
@@ -1292,7 +1282,6 @@ static int vfsMainFileRead(sqlite3_file *file,
 	}
 
 	assert(pgno > 0);
-
 	page = vfsDatabasePageLookup(f->database, pgno);
 
 	if (page == NULL) {
@@ -1319,9 +1308,25 @@ static int vfsMainFileWrite(sqlite3_file *file,
 {
 	struct vfsMainFile *f = (struct vfsMainFile *)file;
 
+	/* == Safety==
+	 * It is expected for this call to be done in two different cases:
+	 * - when the database is empty, while holding an EXCLUSIVE DELETE-mode
+	 *   lock on the file, during the transition from DELETE-mode to
+	 *   WAL-mode; in that case, no synchronization is necessary as there
+	 *   can only ever be one connection open (on the libuv thread).
+	 * - when holding all locks exclusively (see VfsCheckpoint). In this case,
+	 *   no readers are allowed and no other operation on the database is allowed.
+	 *   Moreover, this logic will always run in the libuv thread.
+	 *
+	 * The above reasoning would look like synchronization through mutexes is not
+	 * strictly needed here, however that is only partially true: SQLite might 
+	 * use the `xFileSize` (vfsMainFileSize) to check for file existance without
+	 * taking any lock first (i.e. the only locking guarantee is on read and write).
+	 * As such, the code below will still use a (likely uncontended) mutex to guard
+	 * resizing of the page array. See `vfsDatabaseGetPage` and `vfsDatabaseTruncate`.
+	 */
 	assert(buf != NULL);
 	assert(amount > 0);
-	assert(f != NULL);
 
 	unsigned pgno;
 	uint32_t page_size;
@@ -1370,12 +1375,20 @@ static int vfsMainFileWrite(sqlite3_file *file,
 static int vfsMainFileTruncate(sqlite3_file *file, sqlite_int64 size)
 {
 	struct vfsMainFile *f = (struct vfsMainFile *)file;
-	return vfsDatabaseTruncate(f->database, size);
+	/* == Safety==
+	 * See vfsMainFileWrite.
+	 */
+
+	int rv = vfsDatabaseTruncate(f->database, size);
+	return rv;
 }
 
 static int vfsMainFileSize(sqlite3_file *file, sqlite_int64 *size)
 {
 	struct vfsMainFile *f = (struct vfsMainFile *)file;
+	/* == Safety==
+	 * See vfsMainFileWrite.
+	 */
 	*size = vfsDatabaseFileSize(f->database);
 	return SQLITE_OK;
 }
@@ -1409,12 +1422,23 @@ static int vfsFileControlPragma(struct vfsMainFile *f, char **fcntl)
 		 */
 		int page_size = atoi(right);
 
-		if (page_size >= FORMAT__PAGE_SIZE_MIN &&
-		    page_size <= FORMAT__PAGE_SIZE_MAX &&
-		    ((page_size - 1) & page_size) == 0) {
-			if (f->database->n_pages > 0 &&
-			    page_size !=
-				(int)vfsDatabaseGetPageSize(f->database)) {
+		if (page_size < FORMAT__PAGE_SIZE_MIN ||
+		    page_size > FORMAT__PAGE_SIZE_MAX) {
+			fcntl[0] =
+			    sqlite3_mprintf("page size outside of valid range");
+			return SQLITE_IOERR;
+		}
+
+		if (!is_po2((unsigned long)page_size)) {
+			fcntl[0] =
+			    sqlite3_mprintf("page size must be a power of 2");
+			return SQLITE_IOERR;
+		}
+
+		if (f->database->n_pages > 0) {
+			int db_page_size =
+			    (int)vfsDatabaseGetPageSize(f->database);
+			if (db_page_size != page_size) {
 				fcntl[0] = sqlite3_mprintf(
 				    "changing page size is not supported");
 				return SQLITE_IOERR;
@@ -1429,7 +1453,6 @@ static int vfsFileControlPragma(struct vfsMainFile *f, char **fcntl)
 	return SQLITE_NOTFOUND;
 }
 
-
 static int vfsMainFileControl(sqlite3_file *file, int op, void *arg)
 {
 	struct vfsMainFile *f = (struct vfsMainFile *)file;
@@ -1437,11 +1460,6 @@ static int vfsMainFileControl(sqlite3_file *file, int op, void *arg)
 	switch (op) {
 		case SQLITE_FCNTL_PRAGMA:
 			return vfsFileControlPragma(f, arg);
-		case SQLITE_FCNTL_COMMIT_PHASETWO:
-			if (f->database->wal.n_tx > 0) {
-				vfsAmendWalIndexHeader(f->database);
-			}
-			return SQLITE_OK;
 		case SQLITE_FCNTL_PERSIST_WAL:
 			/* This prevents SQLite from deleting the WAL after the
 			 * last connection is closed. */
@@ -1467,19 +1485,23 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	PRE(region_size == VFS__WAL_INDEX_REGION_SIZE);
 
 	int rv;
+	mtx_lock(&s->mtx);
 	if (s->size < offset + region_size) {
 		if (extend) {
 			/* The file is not big enough */
 			rv = ftruncate(s->fd, offset + region_size);
 			if (rv < 0) {
+				mtx_unlock(&s->mtx);
 				return SQLITE_NOMEM;
 			}
 			s->size = offset + region_size;
 		} else {
 			*out = NULL;
+			mtx_unlock(&s->mtx);
 			return SQLITE_OK;
 		}
 	}
+	mtx_unlock(&s->mtx);
 
 	while (f->mappedShmRegions.cap <= region_index) {
 		int newCap = 2 * f->mappedShmRegions.cap + 1;
@@ -1506,7 +1528,8 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 
 	void *region =
 	    mmap(NULL, VFS__WAL_INDEX_REGION_SIZE, PROT_READ | PROT_WRITE,
-		 MAP_SHARED, s->fd, region_index * region_size);
+		 f->exclMask ? MAP_PRIVATE : MAP_SHARED, s->fd,
+		 region_index * region_size);
 	if (region == MAP_FAILED) {
 		return SQLITE_IOERR_SHMMAP;
 	}
@@ -1540,8 +1563,124 @@ static void vfsWalRollbackIfUncommitted(struct vfsWal *w)
 	for (i = 0; i < w->n_tx; i++) {
 		vfsFrameDestroy(w->tx[i]);
 	}
-
+	sqlite3_free(w->tx);
 	w->n_tx = 0;
+	w->tx = NULL;
+}
+
+static int vfsRedirectShm(struct vfsMainFile *f) {
+	/* When taking a write lock also make all mappings private. 
+	 * This effectively shadows the transaction as all other
+	 * connections cannot see the update to the mxFrames field. */
+	for (int regionIndex = 0; regionIndex < f->mappedShmRegions.len; regionIndex++) {
+		void *region = f->mappedShmRegions.ptr[regionIndex];
+		void *new_region = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
+		PROT_READ | PROT_WRITE, MAP_PRIVATE, f->database->shm.fd, regionIndex * VFS__WAL_INDEX_REGION_SIZE);
+		if (new_region == MAP_FAILED) {
+			/* This should never happen. Also, this means that we might leave the 
+			* connection in a werid state. */
+			return SQLITE_NOMEM;
+		}
+		void *remapped = mremap(new_region, 
+			VFS__WAL_INDEX_REGION_SIZE, VFS__WAL_INDEX_REGION_SIZE, 
+			MREMAP_MAYMOVE | MREMAP_FIXED, region);
+		assert(remapped == region);
+	}
+	return SQLITE_OK;
+}
+
+static int vfsCommitShm(struct vfsMainFile *f) {
+	/* Releasing memory means "publishing" changes back to the
+	 * shared map and remove the COW behavior from the regions. */
+	if (f->mappedShmRegions.len == 0) {
+		return SQLITE_OK;
+	}
+
+	/* The shared memory needs to be written in the proper order so that we don't end up
+	 * with concurrency issues. 
+	 * It is possible to split the shared memory in 2 parts:
+	 *  - the header, composed by
+	 *    - two copies actually of the WAL Index Information section
+	 *    - a synchronization section (read marks and backfill);
+	 *  - the hash map array
+	 * The right order to do that is to first write the hash map array, then header.
+	 * Also, only the backfill of the synchronization section of the header should
+	 * be written and only when appropriate to do so. */
+
+	/* Copy the hash map array in all the secondary regions */
+	for (int i = 1; i < f->mappedShmRegions.len; i++) {
+		void *region = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
+			PROT_READ | PROT_WRITE, MAP_SHARED, f->database->shm.fd, i * VFS__WAL_INDEX_REGION_SIZE);
+		assert(region != MAP_FAILED);
+		memcpy(region, f->mappedShmRegions.ptr[i], VFS__WAL_INDEX_REGION_SIZE);
+		void *remapped = mremap(region, 
+			VFS__WAL_INDEX_REGION_SIZE, VFS__WAL_INDEX_REGION_SIZE, 
+			MREMAP_MAYMOVE | MREMAP_FIXED, f->mappedShmRegions.ptr[i]);
+		assert(remapped == f->mappedShmRegions.ptr[i]);
+	}
+
+	const size_t headerSize = VFS__WAL_INDEX_HEADER_SIZE * 2 + 40;
+
+	void *first_region_private = f->mappedShmRegions.ptr[0];
+	void *first_region_shared  = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
+		PROT_READ | PROT_WRITE, MAP_SHARED, f->database->shm.fd, 0);
+	assert(first_region_shared != MAP_FAILED);
+
+	/* Copy the hash map array for the first region */
+	memcpy(first_region_shared + headerSize, first_region_private + headerSize, VFS__WAL_INDEX_REGION_SIZE - headerSize);
+	atomic_thread_fence(memory_order_relaxed);
+
+	/* Finally publish the two copies of the WAL Index information and remap. */
+	memcpy(first_region_shared + VFS__WAL_INDEX_HEADER_SIZE, f->mappedShmRegions.ptr[0] + VFS__WAL_INDEX_HEADER_SIZE, VFS__WAL_INDEX_HEADER_SIZE);
+	atomic_thread_fence(memory_order_seq_cst);
+	memcpy(first_region_shared, f->mappedShmRegions.ptr[0], VFS__WAL_INDEX_HEADER_SIZE);
+
+	/* Now it is necessary to merge the synchronization part.
+	 * Read marks are never changed by a write transaction as a write transaction can
+	 * only be started after a read transaction and as such the marker and the read lock is
+	 * already acquired.
+	 * For the other fields, quoting the documentation:
+	 *  > The nBackfill can only be increased while holding the WAL_CKPT_LOCK. However, nBackfill
+	 *  > is changed to zero during a WAL reset, and this happens while holding the WAL_WRITE_LOCK. 
+	 * And also:
+	 *  > The mxFrame value is always greater than or equal to both nBackfill and nBackfillAttempted.
+	 * Which means that only when holding the checkpoint lock those fields should be published */
+	if (f->exclMask & (1 << VFS__WAL_CKPT_LOCK)) {
+		const size_t nBackfillOffset          =  96;
+		int32_t *privateBackfill              = (first_region_private + nBackfillOffset);
+		_Atomic int32_t *sharedBackfill       = (first_region_shared + nBackfillOffset);
+		atomic_store_explicit(sharedBackfill, *privateBackfill, memory_order_relaxed);
+
+		const size_t nBackfillAttemptedOffset = 128;
+		int32_t *privateBackfillAttempted     = (first_region_private + nBackfillAttemptedOffset);
+		int32_t *sharedBackfillAttempted      = (first_region_shared + nBackfillAttemptedOffset);
+		*sharedBackfillAttempted              = *privateBackfillAttempted;
+	}
+
+	void *remapped = mremap(first_region_shared,
+		VFS__WAL_INDEX_REGION_SIZE, VFS__WAL_INDEX_REGION_SIZE, 
+		MREMAP_MAYMOVE | MREMAP_FIXED, f->mappedShmRegions.ptr[0]);
+	assert(remapped == f->mappedShmRegions.ptr[0]);
+
+	return SQLITE_OK;
+}
+
+static int vfsRollbackShm(struct vfsMainFile *f) {
+	for (int i = f->mappedShmRegions.len - 1; i >= 0; i--) {
+		void *new_region = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
+			PROT_READ | PROT_WRITE, MAP_SHARED, f->database->shm.fd, i * VFS__WAL_INDEX_REGION_SIZE);
+		if (new_region == MAP_FAILED) {
+			/* This should never happen. Also, this means that we might leave the 
+				* connection in a werid state. */
+			return SQLITE_NOMEM;
+		}
+		/* Now the private map can be unmapped safely going back to the shared one. */
+		void *remapped = mremap(new_region, 
+			VFS__WAL_INDEX_REGION_SIZE, VFS__WAL_INDEX_REGION_SIZE, 
+			MREMAP_MAYMOVE | MREMAP_FIXED, f->mappedShmRegions.ptr[i]);
+		assert(remapped == f->mappedShmRegions.ptr[i]);
+	}
+	return SQLITE_OK;
 }
 
 static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
@@ -1554,7 +1693,6 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 	/* Legal values for the offset and the range */
 	PRE(n > 0);
 	PRE(ofst >= 0 && ofst + n <= SQLITE_SHM_NLOCK);
-	PRE(n == 1 || (flags & SQLITE_SHM_EXCLUSIVE) != 0);
 
 	/* Legal values for the flags.
 	 *
@@ -1565,6 +1703,13 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 	    flags == (SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE));
 
 	PRE((f->exclMask & f->sharedMask) == 0);
+
+	/* In case a checkpoint is running, the locking logic is overridden, to
+	 * make sure nothing can happen concurrently. As such, it is just enough
+	 * to always return SQLITE_OK in this case. */
+	if (f->exclMask == VFS__CHECKPOINT_MASK) {
+		return SQLITE_OK;
+	}
 
 	int rv = SQLITE_OK;
 	if (
@@ -1578,23 +1723,19 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 			PRE(!(flags & SQLITE_SHM_SHARED) ||
 			    (f->sharedMask & mask) == mask);
 
-			rv = vfsShmUnlock(&f->database->shm, ofst, n,
-					  flags & SQLITE_SHM_EXCLUSIVE);
+			if (ofst == VFS__WAL_WRITE_LOCK && flags & SQLITE_SHM_EXCLUSIVE) {
+				vfsWalRollbackIfUncommitted(&f->database->wal);
+				/* Keep the lock if not polled. It will be released later after
+				 * during VfsAbort. */
+				if (f->database->wal.n_tx > 0) {
+					return SQLITE_OK;
+				}
+			}
+
+			rv = vfsShmUnlock(&f->database->shm, ofst, n, flags & SQLITE_SHM_EXCLUSIVE);
 			if (rv == SQLITE_OK) {
 				f->exclMask &= ~mask;
 				f->sharedMask &= ~mask;
-
-				if (ofst == VFS__WAL_WRITE_LOCK &&
-				    flags & SQLITE_SHM_EXCLUSIVE) {
-					/* When releasing the write lock, if we
-					 * find a pending uncommitted
-					 * transaction then a rollback must have
-					 * occurred. In that case we delete the
-					 * pending transaction. */
-					tracef("ROLLBACK");
-					vfsWalRollbackIfUncommitted(
-					    &f->database->wal);
-				}
 			}
 		} else if (flags & SQLITE_SHM_SHARED) {
 			rv = vfsShmLock(&f->database->shm, ofst, n, false);
@@ -1626,12 +1767,16 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 		/* This code makes sure that when taking a lock no transaction
 		 * is pending. */
 		if (rv == SQLITE_OK && ofst == VFS__WAL_WRITE_LOCK) {
-			assert(n == 1);
 			if (flags == (SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE)) {
 				assert(f->database->wal.n_tx == 0);
 			}
 		}
 	}
+
+	if (rv == SQLITE_OK && ofst == VFS__WAL_WRITE_LOCK && n == 1 && flags & SQLITE_SHM_EXCLUSIVE) {
+		rv = flags & SQLITE_SHM_LOCK ? vfsRedirectShm(f) : vfsCommitShm(f);
+	}
+
 	POST((f->exclMask & f->sharedMask) == 0);
 	return rv;
 }
@@ -1639,9 +1784,7 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 static void vfsMainFileShmBarrier(sqlite3_file *file)
 {
 	(void)file;
-	/* This is a no-op since we expect SQLite to be compiled with mutex
-	 * support (i.e. SQLITE_MUTEX_OMIT or SQLITE_MUTEX_NOOP are *not*
-	 * defined, see sqliteInt.h). */
+	atomic_thread_fence(memory_order_seq_cst);
 }
 
 static int vfsMainFileShmUnmap(sqlite3_file *file, int delete_flag)
@@ -1661,7 +1804,7 @@ static int vfsMainFileShmUnmap(sqlite3_file *file, int delete_flag)
 	return SQLITE_OK;
 }
 
-static const sqlite3_io_methods vfsFileMethods = {
+static const sqlite3_io_methods vfsMainFileMethods = {
 	.iVersion = 2,
 	.xClose = vfsNoopClose,
 	.xRead = vfsMainFileRead,
@@ -1820,6 +1963,8 @@ static int vfsDiskFileControlPragma(struct vfsDiskMainFile *f, char **fcntl)
 		}
 	}
 
+	/* FIXME: are we not passing the pragma down the chain? */
+
 	/* We're returning NOTFOUND here to tell SQLite that we wish it to go on
 	 * with its own handling as well. If we returned SQLITE_OK the page size
 	 * of the journal mode wouldn't be effectively set, as the processing of
@@ -1836,11 +1981,6 @@ static int vfsDiskFileControl(sqlite3_file *file, int op, void *arg)
 		case SQLITE_FCNTL_PRAGMA:
 			rv = vfsDiskFileControlPragma(f, arg);
 			break;
-		case SQLITE_FCNTL_COMMIT_PHASETWO:
-			if (f->base.database->wal.n_tx > 0) {
-				vfsAmendWalIndexHeader(f->base.database);
-			}
-			return SQLITE_OK;
 		case SQLITE_FCNTL_PERSIST_WAL:
 			/* This prevents SQLite from deleting the WAL after the
 			 * last connection is closed. */
@@ -1968,7 +2108,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 			.base = {
 				.pMethods = &vfsWalFileMethods,
 			},
-			.wal = &database->wal,
+			.database = database,
 		};
 
 		return SQLITE_OK;
@@ -2013,7 +2153,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 	} else {
 		*(struct vfsMainFile *)file = (struct vfsMainFile){
 			.base = {
-				.pMethods = &vfsFileMethods,
+				.pMethods = &vfsMainFileMethods,
 			},
 			.vfs = v,
 			.database = database,
@@ -2150,7 +2290,11 @@ static int vfsSleep(sqlite3_vfs *vfs, int microseconds)
 {
 	(void)vfs;
 
-	/* TODO (is this needed?) */
+	struct timespec sp;
+	sp.tv_sec = microseconds / 1000000;
+	sp.tv_nsec = (microseconds % 1000000) * 1000;
+	nanosleep(&sp, NULL);
+
 	return microseconds;
 }
 
@@ -2249,6 +2393,13 @@ int VfsPoll(sqlite3 *conn, struct vfsTransaction *transaction)
 	f = (struct vfsMainFile*)file;
 	tracef("vfs poll filename:%s", f->database->name);
 
+	if (!(f->exclMask & (1 << VFS__WAL_WRITE_LOCK))) {
+		/* There could be an in-progress transaction, but not from this
+		 * connection. */
+		*transaction = (struct vfsTransaction){};
+		return SQLITE_OK;
+	}
+
 	if (f->database->wal.n_tx == 0) {
 		*transaction = (struct vfsTransaction){};
 		return SQLITE_OK;
@@ -2292,16 +2443,6 @@ int VfsPoll(sqlite3 *conn, struct vfsTransaction *transaction)
 	f->database->wal.n_tx = 0;
 	f->database->wal.tx = NULL;
 
-	/* If some frames have been written take the write lock. */
-	if (transaction->n_pages > 0) {
-		rv = vfsShmLock(&f->database->shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
-		if (rv != 0) {
-			tracef("shm lock failed %d", rv);
-			return rv;
-		}
-		vfsAmendWalIndexHeader(f->database);
-	}
-
 	return SQLITE_OK;
 }
 
@@ -2344,12 +2485,15 @@ static int vfsWalAppend(struct vfsDatabase *d,
 		database_size = vfsFrameGetDatabaseSize(frame);
 	}
 
+	mtx_lock(&w->mtx);
 	frames = sqlite3_realloc64(
 	    w->frames, sizeof(*frames) * (w->n_frames + transaction->n_pages));
 	if (frames == NULL) {
+		mtx_unlock(&w->mtx);
 		goto oom;
 	}
 	w->frames = frames;
+	mtx_unlock(&w->mtx);
 
 	for (i = 0; i < transaction->n_pages; i++) {
 		struct vfsFrame *frame = vfsFrameCreate(page_size);
@@ -2379,7 +2523,9 @@ static int vfsWalAppend(struct vfsDatabase *d,
 		frames[w->n_frames + i] = frame;
 	}
 
+	mtx_lock(&w->mtx);
 	w->n_frames += transaction->n_pages;
+	mtx_unlock(&w->mtx);
 
 	return 0;
 
@@ -2481,9 +2627,8 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 	 * originated the transaction (this can happen for example when applying
 	 * a Raft barrier and replaying the Raft log in order to serve a request
 	 * of a newly connected client). */
-	if (f->database->shm.lock[0] < 0) {
-		f->database->shm.lock[0] = 0;
-		vfsAmendWalIndexHeader(f->database);
+	if (f->database->shm.lock[VFS__WAL_WRITE_LOCK] < 0) {
+		vfsMainFileShmLock(file, VFS__WAL_WRITE_LOCK, 1, SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);
 	} else {
 		if (f->database->shm.size > 0) {
 			vfsInvalidateWalIndexHeader(f->database);
@@ -2500,11 +2645,68 @@ int VfsAbort(sqlite3 *conn)
 	assert(rv == SQLITE_OK);
 	struct vfsMainFile *f = (struct vfsMainFile*)file;
 
-	rv = vfsShmUnlock(&f->database->shm, 0, 1, SQLITE_SHM_EXCLUSIVE);
-	if (rv != SQLITE_OK) {
-		tracef("shm unlock failed %d", rv);
+	if (f->exclMask & (1 << VFS__WAL_WRITE_LOCK)) {
+		/* The write lock is held, the transaction was polled.
+		 * This logic should then:
+		 *  - drop the changes to the shared memory
+		 *  - release the write lock */
+		rv = vfsRollbackShm(f);
+		if (rv != SQLITE_OK) {
+			return rv;
+		}
+		rv = vfsShmUnlock(&f->database->shm, VFS__WAL_WRITE_LOCK, 1,
+				  true);
+		if (rv == SQLITE_OK) {
+			tracef("shm unlock failed %d", rv);
+			f->exclMask &= (uint16_t)(~(1 << VFS__WAL_WRITE_LOCK));
+		}
 		return rv;
 	}
+
+	return SQLITE_OK;
+}
+
+int VfsCheckpoint(sqlite3 *conn, unsigned int threshold)
+{
+	sqlite3_file *file;
+	int rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
+	assert(rv == SQLITE_OK);
+	struct vfsMainFile *f = (struct vfsMainFile*)file;
+
+	PRE(f->sharedMask == 0);
+	PRE(f->exclMask == 0);
+	tracef("[database %p] checkpoint start", f->database);
+
+	/* Try to lock everything, so that nothing can proceed. */
+	rv = vfsShmLock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
+	if (rv != SQLITE_OK) {
+		tracef("[database %p] checkpoint busy", f->database);
+		return rv;
+	}
+
+	PRE(f->database->wal.n_tx == 0);
+	if (f->database->wal.n_frames < threshold) {
+		rv = vfsShmUnlock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
+		assert(rv == SQLITE_OK);
+		tracef("[database %p] checkpoint below threshold (%d < %d)", f->database, f->database->wal.n_frames, threshold);
+		return SQLITE_OK;
+	}
+
+	int wal_size;
+	int ckpt;
+	f->exclMask = VFS__CHECKPOINT_MASK;
+	rv = sqlite3_wal_checkpoint_v2(conn, NULL, SQLITE_CHECKPOINT_TRUNCATE,
+				       &wal_size, &ckpt);
+	/* Since no reader transaction is in progress, we must be able to
+	 * checkpoint the entire WAL */
+	assert(rv == SQLITE_OK);
+	assert(wal_size == 0);
+	assert(ckpt == 0);
+	tracef("[database %p] checkpointed");
+
+	f->exclMask = 0;
+	rv = vfsShmUnlock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
+	assert(rv == SQLITE_OK);
 
 	return SQLITE_OK;
 }
@@ -2655,7 +2857,8 @@ static void vfsDatabaseShallowSnapshot(struct vfsDatabase *d,
 
 static void vfsWalShallowSnapshot(struct vfsWal *w,
 				  struct dqlite_buffer *bufs,
-				  uint32_t n) {
+				  uint32_t n)
+{
 	uint32_t page_size;
 	unsigned i;
 
@@ -2845,14 +3048,12 @@ int VfsRestore(sqlite3_vfs *vfs,
 	/* Lock the database. The locking scheme here is similar to the one used
 	 * when transitioning from WAL to DELETE mode. The WAL-Index recovery is
 	 * not enough as it lets connections read the content of the main file.
-	 * This means that:
-	 *  - all WAL-Index locks must be held exclusively, including READ(0).
-	 *  - an exclusive lock must be held on the main file.
-	 * Given that only WAL mode is supported, a lock on the database object
-	 * should be enough to emulate the file lock. */
+	 * This means that all WAL-Index locks must be held exclusively,
+	 * including READ(0) to simulate a hard lock on the file.
+	 */
 	rv = vfsShmLock(&database->shm, 0, SQLITE_SHM_NLOCK, true);
 	if (rv != SQLITE_OK) {
-		goto err_locked;
+		return rv;
 	}
 
 	/* Restore the content of the main database and of the WAL. */
@@ -3081,11 +3282,8 @@ int VfsDiskRestore(sqlite3_vfs *vfs,
 	/* Lock the database. The locking scheme here is similar to the one used
 	 * when transitioning from WAL to DELETE mode. The WAL-Index recovery is
 	 * not enough as it lets connections read the content of the main file.
-	 * This means that:
-	 *  - all WAL-Index locks must be held exclusively, including READ(0).
-	 *  - a exclusive lock must be held on the main file.
-	 * Given that only WAL mode is supported, a lock on the database object
-	 * should be enough to emulate the file lock.
+	 * This means that all WAL-Index locks must be held exclusively,
+	 * including READ(0) to simulate a hard lock on the file.
 	 */
 	rv = vfsShmLock(&database->shm, 0, SQLITE_SHM_NLOCK, true);
 	if (rv != SQLITE_OK) {
