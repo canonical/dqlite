@@ -16,7 +16,7 @@
 
 #define RAFT_GATEWAY_PARSE 0xff01 /* Internal use only */
 
-static bool sqlite3_statement_empty(sqlite3 *conn, const char *sql)
+static bool is_statement_empty(sqlite3 *conn, const char *sql)
 {
 	if (sql == NULL || sql[0] == '\0') {
 		return true;
@@ -364,7 +364,7 @@ static void handle_prepare_done_cb(struct exec *exec)
 
 
 	if (req->schema == DQLITE_PREPARE_STMT_SCHEMA_V0) {
-		if (!sqlite3_statement_empty(g->leader->conn, tail)) {
+		if (!is_statement_empty(g->leader->conn, tail)) {
 			sqlite3_finalize(stmt);
 			return failure(req, SQLITE_ERROR,
 				"nonempty statement tail");
@@ -725,7 +725,7 @@ static void query_work_done(struct raft_io_async_work *work, int rc)
 		return;
 	}
 
-	leader_exec_result(exec, rc == SQLITE_DONE ? RAFT_OK :RAFT_ERROR);		
+	leader_exec_result(exec, rc == SQLITE_DONE ? RAFT_OK : RAFT_ERROR);		
 	return leader_exec_resume(exec);
 }
 
@@ -740,7 +740,7 @@ static void handle_query_work_cb(struct exec *exec)
 		TAIL return leader_exec_resume(exec);
 	}
 
-	if (!sqlite3_statement_empty(exec->leader->conn, exec->tail)) {
+	if (!is_statement_empty(exec->leader->conn, exec->tail)) {
 		leader_exec_result(exec, RAFT_ERROR);
 		TAIL return leader_exec_resume(exec);
 	}

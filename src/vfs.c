@@ -66,7 +66,6 @@ const int vfsOne = 1;
 #define VFS__WAL_WRITE_LOCK 0
 #define VFS__WAL_CKPT_LOCK  1
 #define VFS__WAL_RECOVER_LOCK  2
-#define VFS__WAL_READ_LOCK(I) (3+(I))
 
 /* Write ahead log header size. */
 #define VFS__WAL_HEADER_SIZE 32
@@ -422,8 +421,8 @@ static int64_t vfsWalSize(struct vfsWal *w)
 	}
 	mtx_unlock(&w->mtx);
 	/* TODO dqlite is limited to a max database size of SIZE_MAX */
-	assert((size >= 0) && ((uint64_t)size <= SIZE_MAX));
-	return (int64_t)size;
+	assert(size >= 0 && (uint64_t)size <= SIZE_MAX);
+	return size;
 }
 
 static void vfsWalTruncate(struct vfsWal *w)
@@ -1095,8 +1094,8 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 		return SQLITE_OK;
 	}
 
-	/* There is no need to lock here are only one writer is alloed to
-	 * ever change the wal and this routine is that writer. */
+	/* There is no need to lock here as only one writer is allowed to
+	 * ever change the WAL and this routine is that writer. */
 	page_size = vfsWalGetPageSize(&f->database->wal);
 	assert(page_size > 0);
 
@@ -1111,7 +1110,8 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 	if (tx_index > f->database->wal.n_tx) {
 		/* SQLite should access frames progressively, without jumping more than
 		 * one page after the end. */
-		assert(tx_index == f->database->wal.n_tx + 1);
+		unsigned new_n_tx = f->database->wal.n_tx + 1;
+		assert(tx_index == new_n_tx);
 		/* Also, new frames always start by writing the header first */
 		assert(amount == FORMAT__WAL_FRAME_HDR_SIZE);
 
@@ -1119,7 +1119,6 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 		if (frame == NULL) {
 			return SQLITE_NOMEM;
 		}
-		unsigned new_n_tx = f->database->wal.n_tx + 1;
 		struct vfsFrame **new_tx = sqlite3_realloc(f->database->wal.tx, (int)(sizeof(*new_tx) * new_n_tx));
 		if (new_tx == NULL) {
 			return SQLITE_NOMEM;
@@ -1570,6 +1569,9 @@ static void vfsWalRollbackIfUncommitted(struct vfsWal *w)
 }
 
 static int vfsRedirectShm(struct vfsMainFile *f) {
+	/* When taking a write lock also make all mappings private. 
+	 * This effectively shadows the transaction as all other
+	 * connections cannot see the update to the mxFrames field. */
 	for (int regionIndex = 0; regionIndex < f->mappedShmRegions.len; regionIndex++) {
 		void *region = f->mappedShmRegions.ptr[regionIndex];
 		void *new_region = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
@@ -1588,6 +1590,12 @@ static int vfsRedirectShm(struct vfsMainFile *f) {
 }
 
 static int vfsCommitShm(struct vfsMainFile *f) {
+	/* Releasing memory means "publishing" changes back to the
+	 * shared map and remove the COW behavior from the regions. */
+	if (f->mappedShmRegions.len == 0) {
+		return SQLITE_OK;
+	}
+
 	/* The shared memory needs to be written in the proper order so that we don't end up
 	 * with concurrency issues. 
 	 * It is possible to split the shared memory in 2 parts:
@@ -1598,9 +1606,6 @@ static int vfsCommitShm(struct vfsMainFile *f) {
 	 * The right order to do that is to first write the hash map array, then header.
 	 * Also, only the backfill of the synchronization section of the header should
 	 * be written and only when appropriate to do so. */
-	if (f->mappedShmRegions.len == 0) {
-		return SQLITE_OK;
-	}
 
 	/* Copy the hash map array in all the secondary regions */
 	for (int i = 1; i < f->mappedShmRegions.len; i++) {
@@ -1769,16 +1774,7 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 	}
 
 	if (rv == SQLITE_OK && ofst == VFS__WAL_WRITE_LOCK && n == 1 && flags & SQLITE_SHM_EXCLUSIVE) {
-		if (flags & SQLITE_SHM_LOCK) {
-			/* When taking a write lock also make all mappings private. 
-			 * This effectively shadows the transaction as all other
-			 * connections cannot see the update to the mxFrames field. */
-			rv = vfsRedirectShm(f);
-		} else {
-			/* Releasing memory means "publishing" changes back to the
-			 * shared map and remove the COW behavior from the regions. */
-			rv = vfsCommitShm(f);
-		}
+		rv = flags & SQLITE_SHM_LOCK ? vfsRedirectShm(f) : vfsCommitShm(f);
 	}
 
 	POST((f->exclMask & f->sharedMask) == 0);
