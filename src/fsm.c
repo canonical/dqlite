@@ -49,14 +49,6 @@ static int databaseReadUnlock(struct db *db)
 static void maybeCheckpoint(struct db *db, sqlite3 *conn)
 {
 	tracef("maybe checkpoint");
-	struct sqlite3_file *main_f;
-	struct sqlite3_file *wal;
-	sqlite3_int64 size;
-	unsigned page_size;
-	unsigned pages;
-	int wal_size;
-	int ckpt;
-	int i;
 	int rv;
 
 	/* Don't run when a snapshot is busy. Running a checkpoint while a
@@ -69,61 +61,13 @@ static void maybeCheckpoint(struct db *db, sqlite3 *conn)
 		return;
 	}
 
-	page_size = db->config->page_size;
-	/* Get the database wal file associated with this connection */
-	rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_JOURNAL_POINTER,
-				  &wal);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	rv = wal->pMethods->xFileSize(wal, &size);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	/* Calculate the number of frames. */
-	pages = (unsigned)((size - 32) / (24 + page_size));
-
-	/* Check if the size of the WAL is beyond the threshold. */
-	if (pages < db->config->checkpoint_threshold) {
-		tracef("wal size (%u) < threshold (%u)", pages,
-		       db->config->checkpoint_threshold);
-		goto err_after_db_lock;
+	rv = VfsCheckpoint(conn, db->config->checkpoint_threshold);
+	if (rv == SQLITE_BUSY) {
+		tracef("checkpoint: busy reader or writer");
+	} else if (rv != SQLITE_OK) {
+		tracef("checkpoint failed: %d", rv);
 	}
 
-	/* Get the database file associated with this db->follower connection */
-	rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_FILE_POINTER,
-				  &main_f);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	/* Try to acquire all locks. */
-	for (i = 0; i < SQLITE_SHM_NLOCK; i++) {
-		int flags = SQLITE_SHM_LOCK | SQLITE_SHM_EXCLUSIVE;
-
-		rv = main_f->pMethods->xShmLock(main_f, i, 1, flags);
-		if (rv == SQLITE_BUSY) {
-			tracef("busy reader or writer - retry next time");
-			goto err_after_db_lock;
-		}
-
-		/* Not locked. Let's release the lock we just
-		 * acquired. */
-		flags = SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE;
-		main_f->pMethods->xShmLock(main_f, i, 1, flags);
-	}
-
-	rv = sqlite3_wal_checkpoint_v2(conn, NULL, SQLITE_CHECKPOINT_TRUNCATE,
-				       &wal_size, &ckpt);
-	/* TODO assert(rv == 0) here? Which failure modes do we expect? */
-	if (rv != 0) {
-		tracef("sqlite3_wal_checkpoint_v2 failed %d", rv);
-		goto err_after_db_lock;
-	}
-	tracef("sqlite3_wal_checkpoint_v2 success");
-
-	/* Since no reader transaction is in progress, we must be able to
-	 * checkpoint the entire WAL */
-	assert(wal_size == 0);
-	assert(ckpt == 0);
-
-err_after_db_lock:
 	rv = databaseReadUnlock(db);
 	assert(rv == 0);
 }

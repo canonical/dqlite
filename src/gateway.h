@@ -27,13 +27,14 @@ typedef void (*gateway_close_cb)(struct gateway *g);
  * SQLite.
  */
 struct gateway {
-	struct config *config;       /* Configuration */
-	struct registry *registry;   /* Register of existing databases */
-	struct raft *raft;           /* Raft instance */
-	struct leader *leader;       /* Leader connection to the database */
-	struct handle *req;          /* Asynchronous request being handled */
-	struct stmt__registry stmts; /* Registry of prepared statements */
-	uint64_t protocol;           /* Protocol format version */
+	struct config *config;          /* Configuration */
+	struct registry *registry;      /* Register of existing databases */
+	struct raft *raft;              /* Raft instance */
+	struct leader *leader;          /* Leader connection to the database */
+	struct handle *req;             /* Asynchronous request being handled */
+	struct raft_io_async_work work; /* Work request for off-the-loop execution */
+	struct stmt__registry stmts;    /* Registry of prepared statements */
+	uint64_t protocol;              /* Protocol format version */
 	uint64_t client_id;
 	gateway_close_cb close_cb;   /* Callback to close the gateway */
 };

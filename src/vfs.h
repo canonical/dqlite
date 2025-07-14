@@ -34,6 +34,9 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction);
 /* Cancel a pending transaction. */
 int VfsAbort(sqlite3 *conn);
 
+/* Performs a controlled checkpoint on conn */
+int VfsCheckpoint(sqlite3 *conn, unsigned int threshold);
+
 /* Make a full snapshot of a database. */
 int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n);
 
