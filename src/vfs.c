@@ -266,7 +266,7 @@ struct vfsShm
 	/* Lock array. Each of these lock has the following semantics:
 	 *  -  0 means unlocked;
 	 *  - -1 means exclusive locked;
-	 *  - >0 means shared locked and the value is the count of 
+	 *  - >0 means shared locked and the value is the count of
 	 *       shared locks taken.
 	 */
 	int lock[SQLITE_SHM_NLOCK];
@@ -668,7 +668,7 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 {
 	struct vfsShm *shm = &d->shm;
 	struct vfsWal *wal = &d->wal;
-	_Alignas(8) uint8_t index[VFS__WAL_INDEX_HEADER_SIZE * 2];
+	uint8_t index[VFS__WAL_INDEX_HEADER_SIZE * 2];
 	uint32_t frame_checksum[2] = { 0, 0 };
 	uint32_t n_pages = (uint32_t)d->n_pages;
 	uint32_t checksum[2] = { 0, 0 };
@@ -687,19 +687,21 @@ static void vfsAmendWalIndexHeader(struct vfsDatabase *d)
 	/* index is an alias for shm->regions[0] which is a void* that points to
 	 * memory allocated by `sqlite3_malloc64` and has the required alignment
 	 */
-	assert(*(uint32_t *)(&index[0]) == VFS__WAL_VERSION); /* iVersion */
-	assert(index[12] == 1);                               /* isInit */
-	assert(index[13] == VFS__BIGENDIAN);                  /* bigEndCksum */
+	uint32_t index0;
+	memcpy(&index0, &index[0], sizeof(uint32_t));
+	assert(index0 == VFS__WAL_VERSION);  /* iVersion */
+	assert(index[12] == 1);              /* isInit */
+	assert(index[13] == VFS__BIGENDIAN); /* bigEndCksum */
 
-	*(uint32_t *)(&index[16]) = wal->n_frames;
-	*(uint32_t *)(&index[20]) = n_pages;
-	*(uint32_t *)(&index[24]) = frame_checksum[0];
-	*(uint32_t *)(&index[28]) = frame_checksum[1];
+	memcpy(&index[16], &wal->n_frames, sizeof(uint32_t));
+	memcpy(&index[20], &n_pages, sizeof(uint32_t));
+	memcpy(&index[24], &frame_checksum[0], sizeof(uint32_t));
+	memcpy(&index[28], &frame_checksum[1], sizeof(uint32_t));
 
 	vfsChecksum(index, 40, checksum, checksum);
 
-	*(uint32_t *)(&index[40]) = checksum[0];
-	*(uint32_t *)(&index[44]) = checksum[1];
+	memcpy(&index[40], &checksum[0], sizeof(uint32_t));
+	memcpy(&index[44], &checksum[1], sizeof(uint32_t));
 
 	/* Update the second copy of the first part of the WAL index header. */
 	memcpy(index + VFS__WAL_INDEX_HEADER_SIZE, index,
@@ -1745,7 +1747,7 @@ static int vfsDiskFileWrite(sqlite3_file *file,
 			    sqlite_int64 offset)
 {
 	struct vfsDiskMainFile *f = (struct vfsDiskMainFile *)file;
-	
+
 	/* Write to the actual database file. */
 	vfsDiskDatabaseTrackNumPages(f->base.database, offset);
 	int rv = f->underlying->pMethods->xWrite(f->underlying, buf, amount, offset);
@@ -2362,7 +2364,7 @@ static int vfsWalAppend(struct vfsDatabase *d,
 			goto oom_after_frames_alloc;
 		}
 
-		/* When writing the SQLite database header, make sure to sync 
+		/* When writing the SQLite database header, make sure to sync
 		 * the file size to the logical database size. */
 		if (page_number == 1) {
 			database_size = ByteGetBe32(&page[VFS__IN_HEADER_DATABASE_SIZE_OFFSET]);
