@@ -464,8 +464,16 @@ static int uvRemoveOldSegmentsAndSnapshots(struct uv *uv,
 		goto out;
 	}
 	if (segments != NULL) {
-		rv = uvSegmentKeepTrailing(uv, segments, n_segments, last_index,
-					   trailing, errmsg);
+		/* Use current raft index only if no snapshot exists yet */
+		raft_index cleanup_index = last_index;
+		/* If a snapshot exists, use its index and trailing for the
+		 * cleanup. Using the current raft index can lead to segments
+		 * staying behind and not getting cleaned up. */
+		if (n_snapshots > 0) {
+			cleanup_index = snapshots[n_snapshots - 1].index;
+		}
+		rv = uvSegmentKeepTrailing(uv, segments, n_segments,
+					   cleanup_index, trailing, errmsg);
 		if (rv != 0) {
 			goto out;
 		}
