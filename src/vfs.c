@@ -384,7 +384,7 @@ static struct vfsFrame *vfsWalFrameLookup(struct vfsWal *w, unsigned n)
 
 	/* In case of a cache spill, it is possible that SQLite will try to
 	 * re-populate the cache reading from the uncommitted part of the WAL. 
-	 * unfortunately, it is not possible to reliably link a WAL file to
+	 * Unfortunately, it is not possible to reliably link a WAL file to
 	 * its main file and checking this way that this is the connection
 	 * holding the write lock. As such, the best we can do is to trust
 	 * SQLite. This is also the reason why this code is in an unprotected
@@ -1078,7 +1078,7 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 {
 	struct vfsWalFile *f = (struct vfsWalFile *)file;
 	/* == Safety ==
-	 * See vfsWalFile read.
+	 * See vfsWalFileRead.
 	 */
 	uint32_t page_size;
 	unsigned index;
@@ -1100,7 +1100,7 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 	assert(page_size > 0);
 
 	/* It is expected that once committed the WAL cannot be changed. 
-	 * As such, it's index must be above the already committed part */
+	 * As such, its index must be above the already committed part */
 	index = (unsigned)formatWalCalcFrameIndex((int)page_size, offset);
 	if (index <= f->database->wal.n_frames) {
 		return SQLITE_IOERR_WRITE;
@@ -1196,7 +1196,7 @@ struct vfsMainFile {
 	struct vfs *vfs;              /* Pointer to volatile VFS data. */
 	struct vfsDatabase *database; /* Underlying database content. */
 	uint16_t sharedMask;          /* Mask of shared locks held */
-	/* Mask of exclusive locks held. The special value `CHECKPOINT_MASK` is
+	/* Mask of exclusive locks held. The special value `VFS__CHECKPOINT_MASK` is
 	 * used during a checkpoint. See VfsCheckpoint for details. */
 	uint16_t exclMask;
 	struct {
@@ -1228,9 +1228,8 @@ static int vfsMainFileRead(sqlite3_file *file,
 	 *   checkpoint, holding the checkpoint lock. On top of these guarantees
 	 *   from SQLite, dqlite adds a more strict behaviour: only TRUNCATE
 	 *   checkpoint are allowed and they always block all readers (i.e. they
-	 *   hold all locks exclusively) and are always TRUNCATE checkpo. This
-	 *   means that during this call it is not necessary to synchronize at
-	 *   all.
+	 *   hold all locks exclusively). This means that during this call it is
+	 *   not necessary to synchronize at all.
 	 *
 	 * Regarding reading values from memory shared across multiple threads,
 	 * it is guaranteed that after all checkpoints, a full memory barrier is
@@ -1578,7 +1577,7 @@ static int vfsRedirectShm(struct vfsMainFile *f) {
 		PROT_READ | PROT_WRITE, MAP_PRIVATE, f->database->shm.fd, regionIndex * VFS__WAL_INDEX_REGION_SIZE);
 		if (new_region == MAP_FAILED) {
 			/* This should never happen. Also, this means that we might leave the 
-			* connection in a werid state. */
+			* connection in a weird state. */
 			return SQLITE_NOMEM;
 		}
 		void *remapped = mremap(new_region, 
@@ -1619,7 +1618,8 @@ static int vfsCommitShm(struct vfsMainFile *f) {
 		assert(remapped == f->mappedShmRegions.ptr[i]);
 	}
 
-	const size_t headerSize = VFS__WAL_INDEX_HEADER_SIZE * 2 + 40;
+	const size_t ckptInfoSize = 40;
+	const size_t headerSize = VFS__WAL_INDEX_HEADER_SIZE * 2 + ckptInfoSize;
 
 	void *first_region_private = f->mappedShmRegions.ptr[0];
 	void *first_region_shared  = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
@@ -1635,6 +1635,8 @@ static int vfsCommitShm(struct vfsMainFile *f) {
 	atomic_thread_fence(memory_order_seq_cst);
 	memcpy(first_region_shared, f->mappedShmRegions.ptr[0], VFS__WAL_INDEX_HEADER_SIZE);
 
+	/* Check that no checkpointing happened during the write transaction. */
+	
 	/* Now it is necessary to merge the synchronization part.
 	 * Read marks are never changed by a write transaction as a write transaction can
 	 * only be started after a read transaction and as such the marker and the read lock is
@@ -1642,7 +1644,7 @@ static int vfsCommitShm(struct vfsMainFile *f) {
 	 * For the other fields, quoting the documentation:
 	 *  > The nBackfill can only be increased while holding the WAL_CKPT_LOCK. However, nBackfill
 	 *  > is changed to zero during a WAL reset, and this happens while holding the WAL_WRITE_LOCK. 
-	 * And also:
+	 * And also:`
 	 *  > The mxFrame value is always greater than or equal to both nBackfill and nBackfillAttempted.
 	 * Which means that only when holding the checkpoint lock those fields should be published */
 	if (f->exclMask & (1 << VFS__WAL_CKPT_LOCK)) {
@@ -1671,7 +1673,7 @@ static int vfsRollbackShm(struct vfsMainFile *f) {
 			PROT_READ | PROT_WRITE, MAP_SHARED, f->database->shm.fd, i * VFS__WAL_INDEX_REGION_SIZE);
 		if (new_region == MAP_FAILED) {
 			/* This should never happen. Also, this means that we might leave the 
-				* connection in a werid state. */
+				* connection in a weird state. */
 			return SQLITE_NOMEM;
 		}
 		/* Now the private map can be unmapped safely going back to the shared one. */
