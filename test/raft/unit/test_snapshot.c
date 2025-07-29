@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include <uv.h>
 #include "../lib/runner.h"
 #include "../../../src/lib/sm.h"
@@ -455,10 +456,20 @@ static void *pool_set_up(MUNIT_UNUSED const MunitParameter params[],
 	return f;
 }
 
+static void walk_cb(uv_handle_t* handle, void* arg) {
+	(void)arg;
+	uv_handle_type type = uv_handle_get_type(handle);
+	munit_errorf("handle alive: %p %s (%d)", handle, uv_handle_type_name(type), type);
+}
+
 static void pool_tear_down(void *data)
 {
 	pool_close(&global_fixture.pool);
-	uv_run(uv_default_loop(), UV_RUN_DEFAULT);
+	munit_log(MUNIT_LOG_DEBUG, "running uv loop to the end");
+	int rv = uv_run(uv_default_loop(), UV_RUN_NOWAIT);
+	if (rv != 0) {
+		uv_walk(uv_default_loop(), walk_cb, NULL);
+	}
 	pool_fini(&global_fixture.pool);
 	free(data);
 }
