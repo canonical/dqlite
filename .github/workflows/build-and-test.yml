@@ -44,4 +44,4 @@ jobs:
         LIBDQLITE_TRACE: 1
         ASAN_OPTIONS: fast_unwind_on_malloc=0
       run: |
-          ./raft-core-unit-test snapshot_leader/pool_timeouts snapshot_follower/pool
+          ./raft-core-unit-test --log-visible debug --show-stderr snapshot_leader/pool_timeouts snapshot_follower/pool
