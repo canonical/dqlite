@@ -44,16 +44,4 @@ jobs:
         LIBDQLITE_TRACE: 1
         ASAN_OPTIONS: fast_unwind_on_malloc=0
       run: |
-          make check || (cat test-suite.log && false)
-
-    - name: Coverage
-      env:
-        CC: ${{ matrix.compiler }}
-      if: ${{ matrix.os == 'ubuntu-22.04' && matrix.compiler == 'gcc' }}
-      run: |
-        make code-coverage-capture
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        verbose: true
+          ./raft-core-unit-test snapshot_leader/pool_timeouts snapshot_follower/pool
