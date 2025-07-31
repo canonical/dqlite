@@ -686,7 +686,6 @@ static int query_work(struct raft_io_async_work *work)
 		PRE(!sqlite3_stmt_busy(exec->stmt));
 		rv = bind__params(exec->stmt, &req->decoder);
 		if (rv != DQLITE_OK) {
-			tracef("handle exec bind failed %d", rv);
 			leader_exec_result(exec, RAFT_GATEWAY_PARSE);
 			return SQLITE_ERROR;
 		}

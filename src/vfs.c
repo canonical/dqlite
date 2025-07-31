@@ -792,7 +792,6 @@ static struct vfsDatabase *vfsDatabaseLookup(struct vfs *v,
 		struct vfsDatabase *database = v->databases[i];
 		if (strlen(database->name) == n &&
 		    strncmp(database->name, filename, n) == 0) {
-			// Found matching file.
 			return database;
 		}
 	}
@@ -910,7 +909,7 @@ static int vfsNoopRead(sqlite3_file *file,
 {
 	(void)file;
 	(void)iOfst;
-	memset(data, 0, (size_t)iAmt);  // Always empty
+	memset(data, 0, (size_t)iAmt);
 	return SQLITE_OK;
 }
 
@@ -1101,6 +1100,7 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 
 	/* It is expected that once committed the WAL cannot be changed. 
 	 * As such, its index must be above the already committed part */
+	/* FIXME: this should likely be called "pageno" as it's 1-based. */
 	index = (unsigned)formatWalCalcFrameIndex((int)page_size, offset);
 	if (index <= f->database->wal.n_frames) {
 		return SQLITE_IOERR_WRITE;
@@ -1119,6 +1119,7 @@ static int vfsWalFileWrite(sqlite3_file* file, const void* buf, int amount, sqli
 		if (frame == NULL) {
 			return SQLITE_NOMEM;
 		}
+		/* TODO: use a capacity so that we don't reallocate for every frame */
 		struct vfsFrame **new_tx = sqlite3_realloc(f->database->wal.tx, (int)(sizeof(*new_tx) * new_n_tx));
 		if (new_tx == NULL) {
 			return SQLITE_NOMEM;
@@ -1567,6 +1568,15 @@ static void vfsWalRollbackIfUncommitted(struct vfsWal *w)
 	w->tx = NULL;
 }
 
+/* vfsRedirectShm will turn the shared memory held by the SQLite connection
+ * using this file into a private mapping, so that changes to this region will
+ * not be seen by other connections open on the same file.
+ *
+ * The reson to use this kind of dark magic is that SQLite stores a pointer to
+ * the shared memory inside the connection and performs reads and writes
+ * directly.
+ *
+ * See also vfsPublishShm and vfsRollbackShm. */
 static int vfsRedirectShm(struct vfsMainFile *f) {
 	/* When taking a write lock also make all mappings private. 
 	 * This effectively shadows the transaction as all other
@@ -1588,7 +1598,12 @@ static int vfsRedirectShm(struct vfsMainFile *f) {
 	return SQLITE_OK;
 }
 
-static int vfsCommitShm(struct vfsMainFile *f) {
+/* vfsPublishShm will make the changes made to the shared memory by a write
+ * transaction visible to the other open SQLite connections on the same
+ * database.
+ *
+ * See vfsRedirectShm for a rationale. */
+static int vfsPublishShm(struct vfsMainFile *f) {
 	/* Releasing memory means "publishing" changes back to the
 	 * shared map and remove the COW behavior from the regions. */
 	if (f->mappedShmRegions.len == 0) {
@@ -1632,6 +1647,7 @@ static int vfsCommitShm(struct vfsMainFile *f) {
 
 	/* Finally publish the two copies of the WAL Index information and remap. */
 	memcpy(first_region_shared + VFS__WAL_INDEX_HEADER_SIZE, f->mappedShmRegions.ptr[0] + VFS__WAL_INDEX_HEADER_SIZE, VFS__WAL_INDEX_HEADER_SIZE);
+	/* See https://github.com/sqlite/sqlite/blob/1ea6a53/src/wal.c#L2585 */
 	atomic_thread_fence(memory_order_seq_cst);
 	memcpy(first_region_shared, f->mappedShmRegions.ptr[0], VFS__WAL_INDEX_HEADER_SIZE);
 
@@ -1650,6 +1666,9 @@ static int vfsCommitShm(struct vfsMainFile *f) {
 	if (f->exclMask & (1 << VFS__WAL_CKPT_LOCK)) {
 		const size_t nBackfillOffset          =  96;
 		int32_t *privateBackfill              = (first_region_private + nBackfillOffset);
+		/* We must use atomic write here as it's read atomically by the
+		 * SQLite checkpoint logic which might happen in a different
+		 * thread. */
 		_Atomic int32_t *sharedBackfill       = (first_region_shared + nBackfillOffset);
 		atomic_store_explicit(sharedBackfill, *privateBackfill, memory_order_relaxed);
 
@@ -1667,6 +1686,10 @@ static int vfsCommitShm(struct vfsMainFile *f) {
 	return SQLITE_OK;
 }
 
+/* vfsRollbackShm will discard the changes made to the shared memory by a write
+ * transaction.
+ *
+ * See vfsRedirectShm for a rationale. */
 static int vfsRollbackShm(struct vfsMainFile *f) {
 	for (int i = f->mappedShmRegions.len - 1; i >= 0; i--) {
 		void *new_region = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
@@ -1752,8 +1775,6 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 			/* When acquiring a write lock, make sure there's no
 			 * transaction that hasn't been rolled back or polled.
 			 * If there is, just return SQLITE_BUSY. */
-			// FIXME: this check is strange because we need to
-			// support a weird way to check for checkpointing.
 			if (ofst == VFS__WAL_WRITE_LOCK &&
 			    f->database->wal.n_tx > 0) {
 				rv = SQLITE_BUSY;
@@ -1776,7 +1797,7 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 	}
 
 	if (rv == SQLITE_OK && ofst == VFS__WAL_WRITE_LOCK && n == 1 && flags & SQLITE_SHM_EXCLUSIVE) {
-		rv = flags & SQLITE_SHM_LOCK ? vfsRedirectShm(f) : vfsCommitShm(f);
+		rv = (flags & SQLITE_SHM_LOCK) ? vfsRedirectShm(f) : vfsPublishShm(f);
 	}
 
 	POST((f->exclMask & f->sharedMask) == 0);
