@@ -4,7 +4,6 @@
 #include "array.h"
 #include "assert.h"
 #include "byte.h"
-#include "compress.h"
 #include "configuration.h"
 #include "heap.h"
 #include "uv.h"
@@ -328,23 +327,14 @@ static int uvSnapshotLoadData(struct uv *uv,
 
 	uvSnapshotFilenameOf(info, filename);
 
-	rv = UvFsReadFile(uv->dir, filename, &buf, errmsg);
+	if (uv->snapshot_compression) {
+		rv = UvFsReadCompressedFile(uv->dir, filename, &buf, errmsg);
+	} else {
+		rv = UvFsReadFile(uv->dir, filename, &buf, errmsg);
+	}
 	if (rv != 0) {
 		tracef("stat %s: %s", filename, errmsg);
 		goto err;
-	}
-
-	if (IsCompressed(buf.base, buf.len)) {
-		struct raft_buffer decompressed = {0};
-		tracef("snapshot decompress start");
-		rv = Decompress(buf, &decompressed, errmsg);
-		tracef("snapshot decompress end %d", rv);
-		if (rv != 0) {
-			tracef("decompress failed rv:%d", rv);
-			goto err_after_read_file;
-		}
-		RaftHeapFree(buf.base);
-		buf = decompressed;
 	}
 
 	snapshot->bufs = RaftHeapMalloc(sizeof *snapshot->bufs);
@@ -482,26 +472,6 @@ out:
 	return rv;
 }
 
-static int makeFileCompressed(const char *dir,
-			      const char *filename,
-			      struct raft_buffer *bufs,
-			      unsigned n_bufs,
-			      char *errmsg)
-{
-	int rv;
-
-	struct raft_buffer compressed = {0};
-	rv = Compress(bufs, n_bufs, &compressed, errmsg);
-	if (rv != 0) {
-		ErrMsgWrapf(errmsg, "compress %s", filename);
-		return RAFT_IOERR;
-	}
-
-	rv = UvFsMakeFile(dir, filename, &compressed, 1, errmsg);
-	raft_free(compressed.base);
-	return rv;
-}
-
 static void uvSnapshotPutWorkCb(uv_work_t *work)
 {
 	struct uvSnapshotPut *put = work->data;
@@ -527,7 +497,7 @@ static void uvSnapshotPutWorkCb(uv_work_t *work)
 
 	tracef("snapshot write start");
 	if (uv->snapshot_compression) {
-		rv = makeFileCompressed(uv->dir, snapshot, put->snapshot->bufs,
+		rv = UvFsMakeCompressedFile(uv->dir, snapshot, put->snapshot->bufs,
 					put->snapshot->n_bufs, put->errmsg);
 	} else {
 		rv = UvFsMakeFile(uv->dir, snapshot, put->snapshot->bufs,

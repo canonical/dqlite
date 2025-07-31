@@ -74,7 +74,6 @@ libraft_la_SOURCES = \
   src/raft/byte.c \
   src/raft/callbacks.c \
   src/raft/client.c \
-  src/raft/compress.c \
   src/raft/configuration.c \
   src/raft/convert.c \
   src/raft/election.c \

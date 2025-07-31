@@ -3,6 +3,7 @@
 #endif
 
 #include <fcntl.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/vfs.h>
@@ -10,16 +11,19 @@
 #include <unistd.h>
 
 #include "assert.h"
-#include "compress.h"
 #include "err.h"
 #include "heap.h"
 #include "uv_fs.h"
 #include "uv_os.h"
 
-
 #ifdef HAVE_XFS_XFS_H
 # include <xfs/xfs.h> 
 # include <linux/magic.h> 
+#endif
+
+#ifdef LZ4_AVAILABLE
+# include <lz4.h>
+# include <lz4frame.h>
 #endif
 
 #define UV__FS_PROBE_FILE ".probe"
@@ -500,6 +504,170 @@ err_after_tmp_create:
 	return rv;
 }
 
+#ifdef LZ4_AVAILABLE
+static inline int uvOsWriteOne(uv_os_fd_t fd, void *data, size_t length, int64_t offset, char *errmsg) {
+	const uv_buf_t buffer = {
+		.base = data,
+		.len = length,
+	};
+	int rv = UvOsWrite(fd, &buffer, 1, offset);
+	if (rv == (int)length) {
+		return RAFT_OK;
+	} else if (rv < 0) {
+		UvOsErrMsg(errmsg, "write", rv);
+	} else {
+		ErrMsgPrintf(errmsg, "short write: %d only bytes written", rv);
+	}
+	return RAFT_IOERR;
+}
+#endif
+
+int UvFsMakeCompressedFile(const char *dir,
+		 const char *filename,
+		 struct raft_buffer *bufs,
+		 unsigned n_bufs,
+		 char *errmsg)
+{
+#ifndef LZ4_AVAILABLE
+	(void)dir;
+	(void)filename;
+	(void)bufs;
+	(void)n_bufs;
+
+	ErrMsgPrintf(errmsg, "LZ4 not available");
+	return RAFT_INVALID;
+#else
+	char path[UV__PATH_SZ] = {};
+	int rv = UvOsJoin(dir, TMP_FILE_PREFIX"XXXXXX", path);
+	if (rv != 0) {
+		return RAFT_INVALID;
+	}
+
+	uv_fs_t temp_file;
+	rv = uv_fs_mkstemp(NULL, &temp_file, path, NULL);
+	if (rv == -1) {
+		UvOsErrMsg(errmsg, "mkstemp", rv);
+        return RAFT_IOERR;
+    }
+	uv_file fd = (uv_file)temp_file.result;
+	
+	size_t chunk_size = 0;
+	size_t content_size = 0;
+	for (unsigned i = 0; i < n_bufs; i++) {
+		if (bufs[i].len > chunk_size) {
+			chunk_size = bufs[i].len;
+		}
+		content_size += bufs[i].len;
+	}
+	
+	LZ4F_preferences_t lz4_pref = {
+		.frameInfo = {
+			/* Detect data corruption when decompressing */
+			.contentChecksumFlag = 1,
+			/* For allocating a suitable buffer when decompressing */
+			.contentSize = content_size,
+		}
+	};
+	
+	const size_t output_cap = LZ4F_compressBound(chunk_size, &lz4_pref);
+	char *output_buffer = raft_malloc(output_cap);
+	if (output_buffer == NULL) {
+		rv = RAFT_NOMEM;
+		goto err_after_open;
+	}
+
+	LZ4F_compressionContext_t ctx;
+	LZ4F_errorCode_t err = LZ4F_createCompressionContext(&ctx, LZ4F_VERSION);
+	if (LZ4F_isError(err)) {
+		ErrMsgPrintf(errmsg, "LZ4F_createDecompressionContext %s",
+			     LZ4F_getErrorName(err));
+		rv = RAFT_NOMEM;
+		goto err_after_buf_alloc;
+	}
+
+	size_t output_len = LZ4F_compressBegin(ctx, output_buffer, output_cap, &lz4_pref);
+	if (LZ4F_isError(output_len)) {
+		ErrMsgPrintf(errmsg, "LZ4F_compressBegin %s",
+			     LZ4F_getErrorName(output_len));
+		rv = RAFT_IOERR;
+		goto err_after_ctx_alloc;
+	}
+
+	rv = uvOsWriteOne(fd, output_buffer, output_len, -1, errmsg);
+	if (rv != RAFT_OK) {
+		goto err_after_ctx_alloc;
+	}
+
+	for (unsigned i = 0; i < n_bufs; i++) {
+		output_len = LZ4F_compressUpdate(ctx, output_buffer, output_cap, bufs[i].base, bufs[i].len, NULL);
+		if (output_len == 0) {
+			continue;
+		} else if (LZ4F_isError(output_len)) {
+			ErrMsgPrintf(errmsg, "LZ4F_compressUpdate %s",
+						LZ4F_getErrorName(output_len));
+			rv = RAFT_IOERR;
+			goto err_after_ctx_alloc;
+		}
+
+		rv = uvOsWriteOne(fd, output_buffer, output_len, -1, errmsg);
+		if (rv != RAFT_OK) {
+			goto err_after_ctx_alloc;
+		}
+	}
+
+	output_len = LZ4F_compressEnd(ctx, output_buffer, output_cap, NULL);
+	if (LZ4F_isError(output_len)) {
+		ErrMsgPrintf(errmsg, "LZ4F_compressEnd %s",
+					LZ4F_getErrorName(output_len));
+		rv = RAFT_IOERR;
+		goto err_after_ctx_alloc;
+	} else if (output_len > 0) {
+		rv = uvOsWriteOne(fd, output_buffer, output_len, -1, errmsg);
+
+		if (rv != RAFT_OK) {
+			goto err_after_ctx_alloc;
+		}
+	}
+
+	rv = UvOsFsync(fd);
+	if (rv != 0) {
+		UvOsErrMsg(errmsg, "fsync", rv);
+		goto err_after_ctx_alloc;
+	}
+
+	rv = UvOsJoin(dir, filename, path);
+	if (rv != 0) {
+		rv = RAFT_INVALID;
+		goto err_after_ctx_alloc;
+	}
+
+	rv = UvOsRename(temp_file.path, path);
+	if (rv != 0) {
+		rv = RAFT_IOERR;
+		goto err_after_ctx_alloc;
+	}
+
+	rv = UvFsSyncDir(dir, errmsg);
+	if (rv != 0) {
+		/* Try to unlink the new file. */
+		UvOsUnlink(path);
+	}
+
+err_after_ctx_alloc:
+	LZ4F_freeCompressionContext(ctx);
+err_after_buf_alloc:
+	raft_free(output_buffer);
+err_after_open:
+	UvOsClose(fd);
+	if (rv != RAFT_OK) {
+		/* Try to unlink the temp file. */
+		UvOsUnlink(temp_file.path);
+	}
+	uv_fs_req_cleanup(&temp_file);
+	return rv;
+#endif
+}
+
 int UvFsMakeOrOverwriteFile(const char *dir,
 			    const char *filename,
 			    const struct raft_buffer *buf,
@@ -653,6 +821,145 @@ err_after_open:
 	UvOsClose(fd);
 err:
 	return rv;
+}
+
+int UvFsReadCompressedFile(const char *dir,
+			   const char *filename,
+			   struct raft_buffer *buf,
+			   char *errmsg)
+{
+#ifndef LZ4_AVAILABLE
+	(void)dir;
+	(void)filename;
+	(void)buf;
+
+	ErrMsgPrintf(errmsg, "LZ4 not available");
+	return RAFT_INVALID;
+#else
+	char path[UV__PATH_SZ] = {};
+	int rv = UvOsJoin(dir, filename, path);
+	if (rv != 0) {
+		return RAFT_INVALID;
+	}
+
+	uv_file fd;
+	rv = uvFsOpenFile(dir, filename, O_RDONLY, 0, &fd, errmsg);
+	if (rv != 0) {
+		return rv;
+	}
+
+	LZ4F_decompressionContext_t ctx;
+	size_t lzrv = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
+	if (LZ4F_isError(lzrv)) {
+		// FIXME errmsg
+		ErrMsgPrintf(errmsg, "LZ4F_createDecompressionContext %s",
+			LZ4F_getErrorName(lzrv));
+		rv = RAFT_NOMEM;
+		goto err_after_open;
+	}
+
+	/* The proper input size depends a lot on what the maximum block size is, but 
+	 * in general it is possible to be a little bit pessimistic here and use the
+	 * max value, which is 4MiB. */
+	const size_t input_buffer_size =  LZ4_COMPRESSBOUND(4 * 1024 * 1024);
+	void *input_buffer = raft_malloc(input_buffer_size);
+	if (input_buffer == NULL) {
+		rv = RAFT_NOMEM;
+		goto err_after_ctx_alloc;
+	}
+
+	/* Read at least LZ4F_HEADER_SIZE_MAX bytes. */
+	size_t input_size = 0;
+	while (input_size < LZ4F_HEADER_SIZE_MAX) {
+		ssize_t read_rv = read(fd, (char *)input_buffer + input_size, input_buffer_size - input_size);
+		if (read_rv == -1) {
+			rv = RAFT_IOERR;
+			UvOsErrMsg(errmsg, "read", -errno);
+			goto done;
+		} else if (read_rv == 0) {
+			break;
+		}
+		input_size += (size_t)read_rv;
+	}
+	if (input_size < LZ4F_HEADER_SIZE_MIN) {
+		ErrMsgPrintf(errmsg, "compressed file is too short");
+		rv = RAFT_INVALID;
+		goto done;
+	}
+
+	LZ4F_frameInfo_t frameInfo = {};
+	size_t input_offset = (size_t)input_size;
+	lzrv = LZ4F_getFrameInfo(ctx, &frameInfo, input_buffer, &input_offset);
+	if (LZ4F_isError(lzrv)) {
+		ErrMsgPrintf(errmsg, "LZ4F_getFrameInfo %s",
+			     LZ4F_getErrorName(lzrv));
+		rv = RAFT_IOERR;
+		goto done;
+	}
+
+	if (frameInfo.contentSize == 0) {
+		rv = RAFT_OK;
+		goto done; // Not really an error here...
+	}
+
+	const size_t output_size = (size_t)frameInfo.contentSize;
+	void *output_buffer = raft_malloc(output_size);
+	if (output_buffer == NULL) {
+		rv = RAFT_NOMEM;
+		goto done;
+	}
+
+	size_t output_offset = 0;
+	while (output_offset < output_size) {
+		if (input_offset == input_size) {
+			/* try to read some */
+			ssize_t read_rv = read(fd, input_buffer, input_buffer_size);
+			if (read_rv < 0) {
+				UvOsErrMsg(errmsg, "read", -errno);
+				rv = RAFT_IOERR;
+				goto err_after_output_alloc;
+			} else if (read_rv == 0) {
+				ErrMsgPrintf(errmsg, "short read: %zu bytes instead of %zu",
+			     	output_offset, output_size);
+				rv = RAFT_IOERR;
+				goto err_after_output_alloc;
+			}
+			input_size = (size_t)read_rv;
+			input_offset = 0;
+		}
+
+		size_t output_written = output_size - output_offset;
+		size_t input_read = input_size - input_offset;
+		lzrv = LZ4F_decompress(ctx, output_buffer + output_offset,
+				&output_written, input_buffer + input_offset,
+				&input_read, NULL);
+		if (LZ4F_isError(lzrv)) {
+			ErrMsgPrintf(errmsg, "LZ4F_decompress %s",
+					LZ4F_getErrorName(lzrv));
+			rv = RAFT_IOERR;
+			goto err_after_output_alloc;
+		}
+
+		output_offset += output_written;
+		input_offset += input_read;
+	}
+	rv = RAFT_OK;
+	*buf = (struct raft_buffer) {
+		.base = output_buffer,
+		.len = output_size,
+	};
+	goto done;
+
+err_after_output_alloc:
+	raft_free(output_buffer);
+done:
+	raft_free(input_buffer);
+err_after_ctx_alloc:
+	LZ4F_freeDecompressionContext(ctx);
+err_after_open:
+	UvOsClose(fd);
+	return rv;
+#endif
 }
 
 int UvFsReadFileInto(const char *dir,
