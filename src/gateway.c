@@ -663,6 +663,7 @@ static void handle_query_work_cb(struct exec *exec)
 
 	if (req->cancellation_requested) {
 		/* Nothing else to do. */
+		sqlite3_reset(exec->stmt);
 		TAIL return leader_exec_resume(exec);
 	}
 
@@ -1357,10 +1358,11 @@ int gateway__handle(struct gateway *g,
 handle:
 	req->type = type;
 	req->schema = schema;
-	req->cb = cb;
 	req->buffer = buffer;
 	req->db_id = 0;
+	req->cancellation_requested = false;
 	req->parameters_bound = 0;
+	req->cb = cb;
 	req->work = (pool_work_t){};
 
 	switch (type) {
