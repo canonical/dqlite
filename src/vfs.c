@@ -2651,6 +2651,8 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 	 * a Raft barrier and replaying the Raft log in order to serve a request
 	 * of a newly connected client). */
 	if (f->database->shm.lock[VFS__WAL_WRITE_LOCK] < 0) {
+		/* Make sure that this is the connection holding the lock. */
+		PRE(f->exclMask & (1 << VFS__WAL_WRITE_LOCK));
 		vfsMainFileShmLock(file, VFS__WAL_WRITE_LOCK, 1, SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);
 	} else {
 		if (f->database->shm.size > 0) {

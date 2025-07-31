@@ -1705,7 +1705,8 @@ TEST_CASE(query, returning_interrupt, NULL)
 	/* Query 2 response buffers worth of rows */
 	/* 16 = 8B header + 8B value (int) */
 	int64_t n_rows_buffer = max_rows_buffer(16);
-	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+	int64_t n_rows = n_rows_buffer * 2 - 1;
+	struct value n_rows_value = { .type = SQLITE_INTEGER, .integer = n_rows };
 
 	PREPARE("WITH RECURSIVE seq(n) AS ("
             "	SELECT 1               "
@@ -1717,7 +1718,7 @@ TEST_CASE(query, returning_interrupt, NULL)
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
-	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
+	ENCODE_PARAMS(1, &n_rows_value, TUPLE__PARAMS);
 	HANDLE(QUERY);
 	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
@@ -1744,14 +1745,24 @@ TEST_CASE(query, returning_interrupt, NULL)
 	munit_assert_false(f->context->invoked);
 	gateway__resume(f->gateway, &finished);
 	munit_assert_false(finished);
+	WAIT;
 	ASSERT_CALLBACK(0, EMPTY);
 
-	/* Make sure rows are not there. */
-	PREPARE("SELECT * FROM test");
+	/* Make sure all rows are there. */
+	PREPARE("SELECT COUNT(*) FROM test");
+	f->request.db_id = 0;
+	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
 	HANDLE(QUERY);
 	WAIT;
-	ASSERT_CALLBACK(0, EMPTY);
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "COUNT(*)");
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, n_rows);
 
 	return MUNIT_OK;
 }
@@ -2773,7 +2784,8 @@ TEST_CASE(query_sql, returning_interrupt, NULL)
 	/* Query 2 response buffers worth of rows */
 	/* 16 = 8B header + 8B value (int) */
 	int64_t n_rows_buffer = max_rows_buffer(16);
-	struct value n_rows = { .type = SQLITE_INTEGER, .integer = n_rows_buffer*2-1 };
+	int64_t n_rows = n_rows_buffer * 2 - 1;
+	struct value n_rows_value = { .type = SQLITE_INTEGER, .integer = n_rows };
 
 	f->request.db_id = 0;
 	f->request.sql = 
@@ -2785,7 +2797,7 @@ TEST_CASE(query_sql, returning_interrupt, NULL)
 		")                         "
 		"INSERT INTO test(n) SELECT n FROM seq RETURNING n";
 	ENCODE(&f->request, query_sql);
-	ENCODE_PARAMS(1, &n_rows, TUPLE__PARAMS);
+	ENCODE_PARAMS(1, &n_rows_value, TUPLE__PARAMS);
 	HANDLE(QUERY_SQL);
 	WAIT;
 	ASSERT_CALLBACK(0, ROWS);
@@ -2812,14 +2824,22 @@ TEST_CASE(query_sql, returning_interrupt, NULL)
 	munit_assert_false(f->context->invoked);
 	gateway__resume(f->gateway, &finished);
 	munit_assert_false(finished);
+	WAIT;
 	ASSERT_CALLBACK(0, EMPTY);
 
-	/* Make sure rows are not there. */
-	f->request.sql = "SELECT * FROM test";
+	/* Make sure all rows are there. */
+	f->request.sql = "SELECT COUNT(*) FROM test";
 	ENCODE(&f->request, query_sql);
 	HANDLE(QUERY_SQL);
 	WAIT;
-	ASSERT_CALLBACK(0, EMPTY);
+	ASSERT_CALLBACK(0, ROWS);
+	uint64__decode(f->cursor, &n);
+	munit_assert_int(n, ==, 1);
+	text__decode(f->cursor, &column);
+	munit_assert_string_equal(column, "COUNT(*)");
+	DECODE_ROW(1, &value);
+	munit_assert_int(value.type, ==, SQLITE_INTEGER);
+	munit_assert_int(value.integer, ==, n_rows);
 
 	return MUNIT_OK;
 }
