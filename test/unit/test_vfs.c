@@ -440,7 +440,7 @@ TEST(VfsOpen, synchronous, setUp, tearDown, 0, vfs_params)
 	rc = sqlite3_open_v2(f->path, &db, flags, f->vfs.zName);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	__db_exec(db, "PRAGMA page_size=4092");
+	__db_exec(db, "PRAGMA page_size=4096");
 
 	rc = sqlite3_exec(db, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
 	munit_assert_int(rc, ==, SQLITE_IOERR);
