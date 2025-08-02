@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include <uv.h>
 #include "../lib/runner.h"
 #include "../../../src/lib/sm.h"
@@ -455,10 +456,20 @@ static void *pool_set_up(MUNIT_UNUSED const MunitParameter params[],
 	return f;
 }
 
+static void walk_cb(uv_handle_t* handle, void* arg) {
+	(void)arg;
+	uv_handle_type type = uv_handle_get_type(handle);
+	munit_errorf("handle alive: %p %s (%d)", handle, uv_handle_type_name(type), type);
+}
+
 static void pool_tear_down(void *data)
 {
 	pool_close(&global_fixture.pool);
-	uv_run(uv_default_loop(), UV_RUN_DEFAULT);
+	munit_log(MUNIT_LOG_DEBUG, "running uv loop to the end");
+	int rv = uv_run(uv_default_loop(), UV_RUN_NOWAIT);
+	if (rv != 0) {
+		uv_walk(uv_default_loop(), walk_cb, NULL);
+	}
 	pool_fini(&global_fixture.pool);
 	free(data);
 }
@@ -640,63 +651,77 @@ TEST(snapshot_leader, pool_timeouts, pool_set_up, pool_tear_down, 0, NULL) {
 	sm_init(&leader->sm, leader_sm_invariant,
 		NULL, leader_sm_conf, "leader", LS_F_ONLINE);
 
+	munit_log(MUNIT_LOG_DEBUG, "here 1");
 	PRE(sm_state(&leader->sm) == LS_F_ONLINE);
 	ut_leader_message_received(leader, append_entries_result());
-
 	wait_work();
 
+	munit_log(MUNIT_LOG_DEBUG, "here 2");
 	PRE(sm_state(&leader->sm) == LS_F_NEEDS_SNAP);
 	wait_msg_sent();
 	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
 	pool_rpc_to_expired(&leader->rpc);
 
+	munit_log(MUNIT_LOG_DEBUG, "here 3");
 	PRE(sm_state(&leader->sm) == LS_F_NEEDS_SNAP);
 	wait_msg_sent();
 	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
 	ut_leader_message_received(leader, ut_install_snapshot_result());
 
+	munit_log(MUNIT_LOG_DEBUG, "here 4");
 	PRE(sm_state(&leader->sm) == LS_CHECK_F_HAS_SIGS);
 	wait_msg_sent();
 	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
 	ut_leader_message_received(leader, ut_sign_result());
 	pool_to_expired(leader);
 
+	munit_log(MUNIT_LOG_DEBUG, "here 5");
 	PRE(sm_state(&leader->sm) == LS_CHECK_F_HAS_SIGS);
 	wait_msg_sent();
 	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
 	pool_rpc_to_expired(&leader->rpc);
 
+	munit_log(MUNIT_LOG_DEBUG, "here 6");
 	PRE(sm_state(&leader->sm) == LS_CHECK_F_HAS_SIGS);
 	leader->sigs_calculated = true;
 	wait_msg_sent();
 	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
 	ut_leader_message_received(leader, ut_sign_result());
 
+	munit_log(MUNIT_LOG_DEBUG, "here 7");
 	PRE(sm_state(&leader->sm) == LS_REQ_SIG_LOOP);
 	wait_msg_sent();
 	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
 	PRE(sm_state(&leader->sm) == LS_REQ_SIG_LOOP);
 	ut_leader_message_received(leader, ut_sign_result());
 
+	munit_log(MUNIT_LOG_DEBUG, "here 8");
 	wait_work();
+	munit_log(MUNIT_LOG_DEBUG, "here 9");
 	wait_work();
 
+	munit_log(MUNIT_LOG_DEBUG, "here 10");
 	PRE(sm_state(&leader->sm) == LS_PAGE_READ);
 	wait_msg_sent();
 	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
 	pool_rpc_to_expired(&leader->rpc);
 
+	munit_log(MUNIT_LOG_DEBUG, "here 11");
 	PRE(sm_state(&leader->sm) == LS_PAGE_READ);
 	wait_msg_sent();
 	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
 	ut_leader_message_received(leader, ut_page_result());
 
+	munit_log(MUNIT_LOG_DEBUG, "here 12");
 	PRE(sm_state(&leader->sm) == LS_SNAP_DONE);
 	wait_msg_sent();
 	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
 	ut_leader_message_received(leader, ut_install_snapshot_result());
 
 	sm_fini(&leader->sm);
+
+	munit_log(MUNIT_LOG_DEBUG, "ended");
+
 	return MUNIT_OK;
 }
 
