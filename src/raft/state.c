@@ -43,6 +43,11 @@ raft_index raft_last_applied(struct raft *r)
 	return r->last_applied;
 }
 
+raft_index raft_commit_index(const struct raft *r)
+{
+	return r->commit_index;
+}
+
 int raft_role(struct raft *r)
 {
 	const struct raft_server *local =

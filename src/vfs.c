@@ -1196,6 +1196,7 @@ struct vfsMainFile {
 	sqlite3_file base;            /* Base class. Must be first. */
 	struct vfs *vfs;              /* Pointer to volatile VFS data. */
 	struct vfsDatabase *database; /* Underlying database content. */
+	bool polled;                  /* Wether this WAL was polled or not. */
 	uint16_t sharedMask;          /* Mask of shared locks held */
 	/* Mask of exclusive locks held. The special value `VFS__CHECKPOINT_MASK` is
 	 * used during a checkpoint. See VfsCheckpoint for details. */
@@ -2448,7 +2449,6 @@ int VfsPoll(sqlite3 *conn, struct vfsTransaction *transaction)
 		return SQLITE_NOMEM;
 	}
 
-
 	for (i = 0; i < f->database->wal.n_tx; i++) {
 		numbers[i] = vfsFrameGetPageNumber(f->database->wal.tx[i]);
 		pages[i] = f->database->wal.tx[i]->page;
@@ -2465,6 +2465,7 @@ int VfsPoll(sqlite3 *conn, struct vfsTransaction *transaction)
 	};
 	f->database->wal.n_tx = 0;
 	f->database->wal.tx = NULL;
+	f->polled = true;
 
 	return SQLITE_OK;
 }
@@ -2596,7 +2597,7 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 {
 	struct vfsShm *shm = &d->shm;
 
-	PRE(shm->lock[VFS__WAL_WRITE_LOCK] >= 0);
+	PRE(shm->lock[VFS__WAL_WRITE_LOCK] < 0);
 	PRE(shm->lock[VFS__WAL_CKPT_LOCK] >= 0);
 	PRE(shm->lock[VFS__WAL_RECOVER_LOCK] >= 0);
 	PRE(shm->size >= VFS__WAL_INDEX_HEADER_SIZE * 2);
@@ -2626,6 +2627,16 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 	f = (struct vfsMainFile*)file;
 	tracef("vfs apply on %s %u pages", f->database->name, transaction->n_pages);
 
+	
+	if (!f->polled) {
+		/* If this connection wasn't the one originating the transaction and there is 
+		* another on-going write transaction it is not possible to change the underlying 
+		* WAL object as that would cause corruption of the database. */
+		rv = vfsShmLock(&f->database->shm, VFS__WAL_WRITE_LOCK, 1, true);
+		if (rv != SQLITE_OK) {
+			return rv;
+		}
+	}
 
 	/* If there's no page size set in the WAL header, it must mean that WAL
 	 * file was never written. In that case we need to initialize the WAL
@@ -2650,17 +2661,18 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 	 * originated the transaction (this can happen for example when applying
 	 * a Raft barrier and replaying the Raft log in order to serve a request
 	 * of a newly connected client). */
-	if (f->database->shm.lock[VFS__WAL_WRITE_LOCK] < 0) {
-		/* Make sure that this is the connection holding the lock. */
+	if (f->polled) {
 		PRE(f->exclMask & (1 << VFS__WAL_WRITE_LOCK));
 		vfsMainFileShmLock(file, VFS__WAL_WRITE_LOCK, 1, SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);
+		f->polled = false;
 	} else {
 		if (f->database->shm.size > 0) {
 			vfsInvalidateWalIndexHeader(f->database);
 		}
+		vfsShmUnlock(&f->database->shm, VFS__WAL_WRITE_LOCK, 1, true);
 	}
 
-	return 0;
+	return SQLITE_OK;
 }
 
 int VfsAbort(sqlite3 *conn)
@@ -2670,9 +2682,10 @@ int VfsAbort(sqlite3 *conn)
 	assert(rv == SQLITE_OK);
 	struct vfsMainFile *f = (struct vfsMainFile*)file;
 
-	if (f->exclMask & (1 << VFS__WAL_WRITE_LOCK)) {
-		/* The write lock is held, the transaction was polled.
-		 * This logic should then:
+	if (f->polled) {
+		/* The write lock must be held if the transaction was polled. */
+		PRE(f->exclMask & (1 << VFS__WAL_WRITE_LOCK));
+		/* This logic should then:
 		 *  - drop the changes to the shared memory
 		 *  - release the write lock */
 		rv = vfsRollbackShm(f);
@@ -2681,9 +2694,11 @@ int VfsAbort(sqlite3 *conn)
 		}
 		rv = vfsShmUnlock(&f->database->shm, VFS__WAL_WRITE_LOCK, 1,
 				  true);
-		if (rv == SQLITE_OK) {
+		if (rv != SQLITE_OK) {
 			tracef("shm unlock failed %d", rv);
+		} else {
 			f->exclMask &= (uint16_t)(~(1 << VFS__WAL_WRITE_LOCK));
+			f->polled = false;
 		}
 		return rv;
 	}

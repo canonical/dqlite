@@ -404,10 +404,19 @@ static void execCb(struct exec *req)
 	f->status = req->status;
 }
 
+static bool executed(struct raft_fixture *rf, void *unused)
+{
+	(void)unused;
+	struct fixture *f = CONTAINER_OF(rf, struct fixture, cluster);
+	return f->invoked; 
+}
+
 static void fixture_exec(struct fixture *f, unsigned i)
 {
 	f->req.stmt = f->stmt;
+	f->invoked = false;
 	leader_exec(LEADER(i), &f->req, fixture_exec_work_cb, execCb);
+	raft_fixture_step_until(&f->cluster, executed, NULL, 1000);
 }
 
 TEST(replication, exec, setUp, tearDown, 0, NULL)
@@ -421,8 +430,6 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	CLUSTER_APPLIED(2);
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, RAFT_OK);
-	f->invoked = false;
-	f->status = -1;
 	FINALIZE;
 
 	PREPARE(0, "CREATE TABLE test (a  INT)");
@@ -430,12 +437,10 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 	CLUSTER_STEP;
 	munit_assert_true(f->invoked);
 	munit_assert_int(f->status, ==, RAFT_OK);
-	f->invoked = false;
 	FINALIZE;
 
 	PREPARE(0, "COMMIT");
 	fixture_exec(f, 0);
-	munit_assert_false(f->invoked);
 
 	CLUSTER_APPLIED(3);
 	FINALIZE;
@@ -476,6 +481,39 @@ TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
 
 	/* The WAL was truncated. */
 	ASSERT_WAL_PAGES(0, 0);
+
+	return MUNIT_OK;
+}
+
+TEST(replication, leaderToFollowerBusy, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+
+	CLUSTER_ELECT(0);
+	PREPARE(0, "BEGIN IMMEDIATE");
+	fixture_exec(f, 0);
+	FINALIZE;
+
+	/* Lose leadership in the middle of a write transaction */
+	CLUSTER_DEPOSE;
+	SETUP_LEADER(1);
+	CLUSTER_ELECT(1);
+	PREPARE(1, "CREATE TABLE test(i ANY)")
+	fixture_exec(f, 1);
+	FINALIZE;
+	TEAR_DOWN_LEADER(1);
+	CLUSTER_COMMITTED(4);
+	raft_fixture_step_until_applied(&f->cluster, 1, 4, 1000);
+	raft_fixture_step_until_applied(&f->cluster, 2, 4, 1000);
+
+	/* Re-elect the first one and make sure that the table is there */
+	TEAR_DOWN_LEADER(0);
+	CLUSTER_DEPOSE;
+	SETUP_LEADER(0);
+	CLUSTER_ELECT(0);
+	PREPARE(0, "DROP TABLE test");
+	fixture_exec(f, 0);
+	FINALIZE;
 
 	return MUNIT_OK;
 }

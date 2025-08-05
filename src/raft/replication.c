@@ -1252,6 +1252,8 @@ int replicationAppend(struct raft *r,
 		    !replicationInstallSnapshotBusy(r)) {
 			r->commit_index =
 			    min(args->leader_commit, r->last_stored);
+		}
+		if (r->last_applied < r->commit_index) {
 			rv = replicationApply(r);
 			if (rv != 0) {
 				goto err_after_request_alloc;
@@ -1934,6 +1936,8 @@ int replicationApply(struct raft *r)
 
 	if (shouldTakeSnapshot(r)) {
 		rv = takeSnapshot(r);
+	} else if (rv == RAFT_BUSY) {
+		rv = RAFT_OK;
 	}
 
 	return rv;
