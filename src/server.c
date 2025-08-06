@@ -45,7 +45,7 @@ static void state_cb(struct raft *r,
 		QUEUE_FOREACH(head, &d->conns)
 		{
 			struct conn *conn = QUEUE_DATA(head, struct conn, queue);
-			conn__stop(conn);
+			conn__on_leadership_lost(conn);
 		}
 	}
 }

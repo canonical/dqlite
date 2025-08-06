@@ -46,6 +46,8 @@ void gateway__init(struct gateway *g,
 
 void gateway__close(struct gateway *g, gateway_close_cb cb);
 
+void gateway__close_leader(struct gateway *g);
+
 /**
  * Asynchronous request to handle a client command.
  *
