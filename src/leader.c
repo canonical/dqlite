@@ -80,6 +80,11 @@ static void leader_finalize(struct leader *leader)
 	leader->close_cb(leader);
 }
 
+static int progress_abort(void *db) {
+	(void)db;
+	return SQLITE_ABORT;
+}
+
 void leader__close(struct leader *leader, leader_close_cb close_cb)
 {
 	leader->close_cb = close_cb;
@@ -95,6 +100,9 @@ void leader__close(struct leader *leader, leader_close_cb close_cb)
 		PRE(IN(db->active_leader, NULL, req->leader));
 		db->active_leader = req->leader;
 		return exec_tick(req);
+	} else {
+		/* Abort all queries as soon as possible. */
+		sqlite3_progress_handler(leader->conn, 1, progress_abort, NULL);
 	}
 }
 
@@ -308,8 +316,9 @@ void leader_exec_abort(struct exec *req)
 	case EXEC_DONE: /* already done */
 		return;
 	case EXEC_RUNNING:
-		/* best-effort: there is no guarantee that this will interrupt the query */
-		sqlite3_interrupt(req->leader->conn);
+		/* This will abort only if the query is not already done. 
+		 * This will be reset when a new query is executed. */
+		sqlite3_progress_handler(req->leader->conn, 1, progress_abort, NULL);
 		return;
 	case EXEC_WAITING_QUEUE:
 		/* timers are cancellable, so the request can move on directly. */
@@ -317,7 +326,7 @@ void leader_exec_abort(struct exec *req)
 		TAIL return exec_tick(req);
 	}
 
-	/* Raft-related requests canno be cancelled, so the only step that can be taken
+	/* Raft-related requests cannot be cancelled, so the only step that can be taken
 	 * is to mark the request as failed and wait for the callback */
 	leader_exec_result(req, RAFT_CANCELED);
 }
@@ -465,6 +474,10 @@ static void exec_tick(struct exec *req)
 				sm_move(&req->sm, EXEC_DONE);
 				continue;
 			}
+
+			/* Unset the abort handler that might have been set to abort the
+			 * previous statement. */
+			sqlite3_progress_handler(req->leader->conn, 0, NULL, NULL);
 
 			if (req->stmt != NULL) {
 				sm_move(&req->sm, EXEC_PREPARED);
