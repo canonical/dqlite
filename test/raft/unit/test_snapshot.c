@@ -523,6 +523,7 @@ static void pool_tear_down(struct test_fixture *f)
 		uv_walk(&f->loop, walk_cb, NULL);
 	}
 	munit_assert_int(rv, ==, 0);
+	alarm(0);
 }
 
 /* Advances libuv in the main thread until the in-flight background work is
