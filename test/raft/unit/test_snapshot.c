@@ -475,7 +475,7 @@ static int fixture_progress(struct test_fixture *f, int n)
 static struct test_fixture *pool_set_up(void)
 {
 	/* Prevent hangs. */
-	// alarm(2);
+	alarm(2);
 
 	struct test_fixture *f = munit_malloc(sizeof(struct test_fixture));
 	*f = (struct test_fixture){};
