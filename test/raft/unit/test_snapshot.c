@@ -491,10 +491,14 @@ static void close_cb(uv_handle_t *handle)
 	(void)handle;
 	munit_logf(MUNIT_LOG_INFO, "closed timer %p", handle);
 	switch (uv_handle_get_type(handle)) {
-#define RESET(UPPER, lower) case UV_##UPPER: *(uv_##lower##_t*)handle = (uv_ ##lower##_t){}; break;
-	UV_HANDLE_TYPE_MAP(RESET)
+#define RESET(UPPER, lower)                                     \
+	case UV_##UPPER:                                        \
+		*(uv_##lower##_t *)handle = (uv_##lower##_t){}; \
+		break;
+		UV_HANDLE_TYPE_MAP(RESET)
 #undef RESET
-	default: break;
+		default:
+			break;
 	}
 }
 
@@ -555,7 +559,8 @@ static void wait_msg_sent(struct test_fixture *f)
  * fixture flag to true, then calls the original callback.*/
 static void test_fixture_work_cb(pool_work_t *w)
 {
-	struct test_fixture *f = CONTAINER_OF(w->pool, struct test_fixture, pool);
+	struct test_fixture *f =
+	    CONTAINER_OF(w->pool, struct test_fixture, pool);
 	f->work_done = true;
 	f->orig_work_cb(w);
 }
@@ -684,7 +689,7 @@ static int uv_sender_send_op(struct sender *s,
 	f->msg_valid = false;
 	s->cb = cb;
 	f->req.data = s;
-	
+
 	uv_queue_work(&f->loop, &f->req, uv_sender_send_cb,
 		      uv_sender_send_after_cb);
 	return RAFT_OK;
@@ -702,7 +707,7 @@ static void *setUpLeader(MUNIT_UNUSED const MunitParameter params[],
 {
 	struct test_fixture *f = pool_set_up();
 	f->is_leader = true;
-	f->leader_ops = (struct leader_ops) {
+	f->leader_ops = (struct leader_ops){
 		.to_init = ut_to_init_op,
 		.to_stop = pool_to_stop_op,
 		.to_start = pool_to_start_op,
@@ -729,12 +734,12 @@ static void *setUpLeader(MUNIT_UNUSED const MunitParameter params[],
 static void tearDownLeader(void *data)
 {
 	struct test_fixture *f = data;
-	
+
 	uv_timer_stop(&f->leader.rpc.timeout.handle);
-	uv_close((uv_handle_t*)&f->leader.rpc.timeout.handle, close_cb);
+	uv_close((uv_handle_t *)&f->leader.rpc.timeout.handle, close_cb);
 
 	uv_timer_stop(&f->leader.timeout.handle);
-	uv_close((uv_handle_t*)&f->leader.timeout.handle, close_cb);
+	uv_close((uv_handle_t *)&f->leader.timeout.handle, close_cb);
 	pool_tear_down(f);
 	free(data);
 }
@@ -821,11 +826,11 @@ TEST(snapshot_leader, pool_timeouts, setUpLeader, tearDownLeader, 0, NULL)
 }
 
 static void *setUpFollower(MUNIT_UNUSED const MunitParameter params[],
-			 MUNIT_UNUSED void *user_data)
+			   MUNIT_UNUSED void *user_data)
 {
 	struct test_fixture *f = pool_set_up();
 	f->is_leader = false;
-	f->follower_ops = (struct follower_ops) {
+	f->follower_ops = (struct follower_ops){
 		.ht_create = pool_ht_create_op,
 		.work_queue = pool_work_queue_op_follower,
 		.sender_send = uv_sender_send_op,
