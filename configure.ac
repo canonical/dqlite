@@ -121,5 +121,18 @@ CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
 #  -Wpedantic \
 AC_SUBST(AM_CFLAGS)
 
+
+AC_MSG_CHECKING([for Git version])
+
+GIT_BUILD_TAG=""
+if (git --version >/dev/null 2>&1) && (git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
+  GIT_BUILD_TAG=$(git describe --abbrev=4 --dirty --always 2>/dev/null)
+  AC_MSG_RESULT([$GIT_BUILD_TAG])
+else
+  AC_MSG_RESULT([not a git repo or git not available])
+fi
+
+AC_SUBST([GIT_BUILD_TAG])
+
 AC_CONFIG_FILES([dqlite.pc Makefile])
 AC_OUTPUT
