@@ -461,6 +461,7 @@ static void pool_tear_down(void *data)
 	uv_run(uv_default_loop(), UV_RUN_DEFAULT);
 	pool_fini(&global_fixture.pool);
 	free(data);
+	/* Make sure to cleanup the alarm for 22.04 */
 	alarm(0);
 }
 
