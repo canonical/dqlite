@@ -124,7 +124,7 @@ libraft_la_SOURCES = \
 
 libdqlite_la_SOURCES += $(libraft_la_SOURCES)
 
-check_PROGRAMS = unit-test
+check_PROGRAMS = unit-test integration-test
 
 check_LTLIBRARIES = libtest.la
 
@@ -171,6 +171,20 @@ unit_test_LDFLAGS = $(AM_LDFLAGS)
 unit_test_LDADD = libtest.la
 
 unit_test_LDADD += libraft.la
+
+integration_test_SOURCES = \
+  test/integration/test_client.c \
+  test/integration/test_cluster.c \
+  test/integration/test_fsm.c \
+  test/integration/test_membership.c \
+  test/integration/test_node.c \
+  test/integration/test_role_management.c \
+  test/integration/test_server.c \
+  test/integration/test_stress.c \
+  test/integration/main.c
+integration_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
+integration_test_LDFLAGS = $(AM_LDFLAGS) -no-install
+integration_test_LDADD = libtest.la libdqlite.la
 
 check_LTLIBRARIES += libraft.la
 
