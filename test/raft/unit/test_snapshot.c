@@ -461,6 +461,7 @@ static void pool_tear_down(void *data)
 	uv_run(uv_default_loop(), UV_RUN_DEFAULT);
 	pool_fini(&global_fixture.pool);
 	free(data);
+	alarm(0);
 }
 
 static void progress(void) {
