@@ -4,18 +4,17 @@
 #include <sys/types.h>
 #include <time.h>
 #include <uv.h>
-#include "../lib/runner.h"
 #include "../../../src/lib/sm.h"
+#include "../../../src/lib/threadpool.h"
 #include "../../../src/raft.h"
 #include "../../../src/raft/recv_install_snapshot.h"
 #include "../../../src/utils.h"
-#include "../../../src/lib/threadpool.h"
+#include "../lib/runner.h"
 
-struct fixture {
-};
+struct fixture {};
 
 static void *set_up(MUNIT_UNUSED const MunitParameter params[],
-                   MUNIT_UNUSED void *user_data)
+		    MUNIT_UNUSED void *user_data)
 {
 	struct fixture *f = munit_malloc(sizeof *f);
 	return f;
@@ -30,13 +29,13 @@ SUITE(snapshot_leader)
 SUITE(snapshot_follower)
 
 static void ut_leader_message_received(struct leader *leader,
-				const struct raft_message *incoming)
+				       const struct raft_message *incoming)
 {
 	leader_tick(leader, incoming);
 }
 
 static void ut_follower_message_received(struct follower *follower,
-				const struct raft_message *incoming)
+					 const struct raft_message *incoming)
 {
 	follower_tick(follower, incoming);
 }
@@ -174,26 +173,30 @@ static void ut_to_stop_op(struct timeout *to)
 static bool ut_msg_consumed = false;
 static struct raft_message ut_last_msg_sent;
 
-struct raft_message ut_get_msg_sent(void) {
+struct raft_message ut_get_msg_sent(void)
+{
 	munit_assert(!ut_msg_consumed);
 	ut_msg_consumed = true;
 	return ut_last_msg_sent;
 }
 
 int ut_sender_send_op(struct sender *s,
-		struct raft_message *payload,
-		sender_cb_op cb) {
+		      struct raft_message *payload,
+		      sender_cb_op cb)
+{
 	ut_last_msg_sent = *payload;
 	ut_msg_consumed = false;
 	s->cb = cb;
 	return 0;
 }
 
-static bool ut_is_pool_thread_op(void) {
+static bool ut_is_pool_thread_op(void)
+{
 	return false;
 }
 
-TEST(snapshot_follower, basic, set_up, tear_down, 0, NULL) {
+TEST(snapshot_follower, basic, set_up, tear_down, 0, NULL)
+{
 	struct follower_ops ops = {
 		.ht_create = ut_ht_create_op,
 		.work_queue = ut_work_queue_op,
@@ -208,13 +211,14 @@ TEST(snapshot_follower, basic, set_up, tear_down, 0, NULL) {
 		.ops = &ops,
 	};
 
-	sm_init(&follower.sm, follower_sm_invariant,
-		NULL, follower_sm_conf, "follower", FS_NORMAL);
+	sm_init(&follower.sm, follower_sm_invariant, NULL, follower_sm_conf,
+		"follower", FS_NORMAL);
 
 	PRE(sm_state(&follower.sm) == FS_NORMAL);
 	ut_follower_message_received(&follower, ut_install_snapshot());
 	ut_rpc_sent(&follower.rpc);
-	munit_assert_int(ut_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_RESULT);
+	munit_assert_int(ut_get_msg_sent().type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_RESULT);
 	ut_disk_io(&follower.work);
 
 	PRE(sm_state(&follower.sm) == FS_HT_WAIT);
@@ -253,18 +257,21 @@ TEST(snapshot_follower, basic, set_up, tear_down, 0, NULL) {
 
 	PRE(sm_state(&follower.sm) == FS_CHUNCK_APPLIED);
 	ut_rpc_sent(&follower.rpc);
-	munit_assert_int(ut_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP_RESULT);
+	munit_assert_int(ut_get_msg_sent().type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_CP_RESULT);
 
 	PRE(sm_state(&follower.sm) == FS_SNAP_DONE);
 	ut_follower_message_received(&follower, ut_install_snapshot());
 	ut_rpc_sent(&follower.rpc);
-	munit_assert_int(ut_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_RESULT);
+	munit_assert_int(ut_get_msg_sent().type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_RESULT);
 
 	sm_fini(&follower.sm);
 	return MUNIT_OK;
 }
 
-TEST(snapshot_leader, basic, set_up, tear_down, 0, NULL) {
+TEST(snapshot_leader, basic, set_up, tear_down, 0, NULL)
+{
 	struct leader_ops ops = {
 		.to_init = ut_to_init_op,
 		.to_stop = ut_to_stop_op,
@@ -283,8 +290,8 @@ TEST(snapshot_leader, basic, set_up, tear_down, 0, NULL) {
 		.sigs_calculated = false,
 	};
 
-	sm_init(&leader.sm, leader_sm_invariant,
-		NULL, leader_sm_conf, "leader", LS_F_ONLINE);
+	sm_init(&leader.sm, leader_sm_invariant, NULL, leader_sm_conf, "leader",
+		LS_F_ONLINE);
 
 	PRE(sm_state(&leader.sm) == LS_F_ONLINE);
 	ut_leader_message_received(&leader, append_entries_result());
@@ -319,7 +326,8 @@ TEST(snapshot_leader, basic, set_up, tear_down, 0, NULL) {
 	ut_disk_io_done(&leader.work);
 
 	PRE(sm_state(&leader.sm) == LS_PAGE_READ);
-	munit_assert_int(ut_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
+	munit_assert_int(ut_get_msg_sent().type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_CP);
 	ut_rpc_sent(&leader.rpc);
 	ut_leader_message_received(&leader, ut_page_result());
 
@@ -332,7 +340,8 @@ TEST(snapshot_leader, basic, set_up, tear_down, 0, NULL) {
 	return MUNIT_OK;
 }
 
-TEST(snapshot_leader, timeouts, set_up, tear_down, 0, NULL) {
+TEST(snapshot_leader, timeouts, set_up, tear_down, 0, NULL)
+{
 	struct leader_ops ops = {
 		.to_init = ut_to_init_op,
 		.to_stop = ut_to_stop_op,
@@ -351,8 +360,8 @@ TEST(snapshot_leader, timeouts, set_up, tear_down, 0, NULL) {
 		.sigs_calculated = false,
 	};
 
-	sm_init(&leader.sm, leader_sm_invariant,
-		NULL, leader_sm_conf, "leader", LS_F_ONLINE);
+	sm_init(&leader.sm, leader_sm_invariant, NULL, leader_sm_conf, "leader",
+		LS_F_ONLINE);
 
 	PRE(sm_state(&leader.sm) == LS_F_ONLINE);
 	ut_leader_message_received(&leader, append_entries_result());
@@ -400,12 +409,14 @@ TEST(snapshot_leader, timeouts, set_up, tear_down, 0, NULL) {
 
 	PRE(sm_state(&leader.sm) == LS_PAGE_READ);
 	ut_rpc_sent(&leader.rpc);
-	munit_assert_int(ut_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
+	munit_assert_int(ut_get_msg_sent().type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_CP);
 	ut_rpc_to_expired(&leader.rpc);
 
 	PRE(sm_state(&leader.sm) == LS_PAGE_READ);
 	ut_rpc_sent(&leader.rpc);
-	munit_assert_int(ut_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
+	munit_assert_int(ut_get_msg_sent().type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_CP);
 	ut_leader_message_received(&leader, ut_page_result());
 
 	PRE(sm_state(&leader.sm) == LS_SNAP_DONE);
@@ -418,66 +429,96 @@ TEST(snapshot_leader, timeouts, set_up, tear_down, 0, NULL) {
 }
 
 struct test_fixture {
+	uv_loop_t loop;
 	pool_t pool;
 
-	union {
-		struct leader leader;
-		struct follower follower;
-	};
 	/* true when union contains leader, false when it contains follower. */
 	bool is_leader;
+	union {
+		struct {
+			struct leader leader;
+			struct leader_ops leader_ops;
+		};
+		struct {
+			struct follower follower;
+			struct follower_ops follower_ops;
+		};
+	};
 
 	/* We only expect one message to be in-flight. */
 	struct raft_message last_msg_sent;
 	/* Message was sent and has not been consumed, see uv_get_msg_sent(). */
 	bool msg_valid;
 
-	/* TODO: should accomodate several background jobs in the future. Probably
-	 * by scheduling a barrier in the pool after all the works that toggles this
-	 * flag. */
+	/* TODO: should accomodate several background jobs in the future.
+	 * Probably by scheduling a barrier in the pool after all the works that
+	 * toggles this flag. */
 	work_op orig_work_cb;
 	bool work_done;
+
+	/* Work request */
+	uv_work_t req;
 };
 
-/* Not problematic because each test runs in a different process. */
-static struct test_fixture global_fixture;
+static int fixture_progress(struct test_fixture *f, int n)
+{
+	int rv;
+	for (int i = 0; i < n; i++) {
+		rv = uv_run(&f->loop, UV_RUN_NOWAIT);
+		if (rv == 0) {
+			break;
+		}
+	}
+	return rv;
+}
 
-static void *pool_set_up(MUNIT_UNUSED const MunitParameter params[],
-                   MUNIT_UNUSED void *user_data)
+static struct test_fixture *pool_set_up(void)
 {
 	/* Prevent hangs. */
-	alarm(2);
+	// alarm(2);
 
-	global_fixture = (struct test_fixture) { 0 };
-	pool_init(&global_fixture.pool, uv_default_loop(), 4, POOL_QOS_PRIO_FAIR);
-	global_fixture.pool.flags |= POOL_FOR_UT;
+	struct test_fixture *f = munit_malloc(sizeof(struct test_fixture));
+	*f = (struct test_fixture){};
+	uv_loop_init(&f->loop);
+	pool_init(&f->pool, &f->loop, 4, POOL_QOS_PRIO_FAIR);
+	f->pool.flags |= POOL_FOR_UT;
 
-	struct fixture *f = munit_malloc(sizeof *f);
 	return f;
 }
 
-static void walk_cb(uv_handle_t* handle, void* arg) {
+static void close_cb(uv_handle_t *handle)
+{
+	(void)handle;
+	munit_logf(MUNIT_LOG_INFO, "closed timer %p", handle);
+	switch (uv_handle_get_type(handle)) {
+#define RESET(UPPER, lower) case UV_##UPPER: *(uv_##lower##_t*)handle = (uv_ ##lower##_t){}; break;
+	UV_HANDLE_TYPE_MAP(RESET)
+#undef RESET
+	default: break;
+	}
+}
+
+static void walk_cb(uv_handle_t *handle, void *arg)
+{
 	(void)arg;
 	uv_handle_type type = uv_handle_get_type(handle);
-	munit_errorf("handle alive: %p %s (%d)", handle, uv_handle_type_name(type), type);
+	munit_errorf("handle alive: %p %s (%d)", handle,
+		     uv_handle_type_name(type), type);
 }
 
-static void pool_tear_down(void *data)
+static void pool_tear_down(struct test_fixture *f)
 {
-	pool_close(&global_fixture.pool);
+	pool_close(&f->pool);
 	munit_log(MUNIT_LOG_DEBUG, "running uv loop to the end");
-	int rv = uv_run(uv_default_loop(), UV_RUN_NOWAIT);
-	if (rv != 0) {
-		uv_walk(uv_default_loop(), walk_cb, NULL);
-	}
-	pool_fini(&global_fixture.pool);
-	free(data);
-}
+	int rv = fixture_progress(f, 100);
+	munit_assert_int(rv, ==, 0);
+	pool_fini(&f->pool);
 
-static void progress(void) {
-	for (unsigned i = 0; i < 20; i++) {
-		uv_run(uv_default_loop(), UV_RUN_NOWAIT);
+	rv = uv_loop_close(&f->loop);
+	if (rv != 0) {
+		uv_walk(&f->loop, walk_cb, NULL);
 	}
+	munit_assert_int(rv, ==, 0);
 }
 
 /* Advances libuv in the main thread until the in-flight background work is
@@ -485,11 +526,13 @@ static void progress(void) {
  *
  * This function is designed with the constaint that there can only be one
  * request in-flight. It will hang until the work is finished. */
-static void wait_work(void) {
+static void wait_work(struct test_fixture *f)
+{
 	PRE(!pool_is_pool_thread());
 
-	while (!global_fixture.work_done) {
-		uv_run(uv_default_loop(), UV_RUN_NOWAIT);
+	// FIXME: don't wait forever.
+	while (!f->work_done) {
+		uv_run(&f->loop, UV_RUN_NOWAIT);
 	}
 }
 
@@ -498,25 +541,29 @@ static void wait_work(void) {
  *
  * This function is designed with the constaint that there can only be one
  * message in-flight. It will hang until the message is sent. */
-static void wait_msg_sent(void) {
+static void wait_msg_sent(struct test_fixture *f)
+{
 	PRE(!pool_is_pool_thread());
 
-	while (!global_fixture.msg_valid) {
-		uv_run(uv_default_loop(), UV_RUN_NOWAIT);
+	// FIXME: don't wait forever.
+	while (!f->msg_valid) {
+		uv_run(&f->loop, UV_RUN_NOWAIT);
 	}
 }
 
 /* Decorates the callback used when the pool work is done to set the test
  * fixture flag to true, then calls the original callback.*/
-static void test_fixture_work_cb(pool_work_t *w) {
-	global_fixture.work_done = true;
-	global_fixture.orig_work_cb(w);
+static void test_fixture_work_cb(pool_work_t *w)
+{
+	struct test_fixture *f = CONTAINER_OF(w->pool, struct test_fixture, pool);
+	f->work_done = true;
+	f->orig_work_cb(w);
 }
 
 static void pool_to_start_op(struct timeout *to, unsigned delay, to_cb_op cb)
 {
-	uv_timer_start(&to->handle, cb, delay, 0);
 	to->cb = cb;
+	uv_timer_start(&to->handle, cb, delay, 0);
 }
 
 static void pool_to_stop_op(struct timeout *to)
@@ -524,49 +571,74 @@ static void pool_to_stop_op(struct timeout *to)
 	uv_timer_stop(&to->handle);
 }
 
-static void pool_to_init_op(struct timeout *to)
+static void pool_work_queue_op_leader(struct work *w,
+				      work_op work_cb,
+				      work_op after_cb)
 {
-	uv_timer_init(uv_default_loop(), &to->handle);
+	struct leader *leader = CONTAINER_OF(w, struct leader, work);
+	struct test_fixture *f =
+	    CONTAINER_OF(leader, struct test_fixture, leader);
+	w->pool_work = (pool_work_t){};
+	f->orig_work_cb = after_cb;
+	f->work_done = false;
+	pool_queue_work(&f->pool, &w->pool_work, 0, WT_UNORD, work_cb,
+			test_fixture_work_cb);
 }
 
-static void pool_work_queue_op(struct work *w, work_op work_cb, work_op after_cb)
+static void pool_work_queue_op_follower(struct work *w,
+					work_op work_cb,
+					work_op after_cb)
 {
-	w->pool_work = (pool_work_t) { 0 };
-	global_fixture.orig_work_cb = after_cb;
-	global_fixture.work_done = false;
-	pool_queue_work(&global_fixture.pool, &w->pool_work, 0, WT_UNORD, work_cb, test_fixture_work_cb);
+	struct follower *follower = CONTAINER_OF(w, struct follower, work);
+	struct test_fixture *f =
+	    CONTAINER_OF(follower, struct test_fixture, follower);
+	w->pool_work = (pool_work_t){};
+	f->orig_work_cb = after_cb;
+	f->work_done = false;
+	pool_queue_work(&f->pool, &w->pool_work, 0, WT_UNORD, work_cb,
+			test_fixture_work_cb);
 }
 
 static void pool_to_expired(struct leader *leader)
 {
 	uv_timer_start(&leader->timeout.handle, leader->timeout.cb, 0, 0);
-	progress();
+
+	uv_loop_t *loop =
+	    uv_handle_get_loop((uv_handle_t *)&leader->timeout.handle);
+	struct test_fixture *f = CONTAINER_OF(loop, struct test_fixture, loop);
+	fixture_progress(f, 20);
 }
 
 static void pool_rpc_to_expired(struct rpc *rpc)
 {
 	uv_timer_start(&rpc->timeout.handle, rpc->timeout.cb, 0, 0);
-	progress();
+
+	uv_loop_t *loop =
+	    uv_handle_get_loop((uv_handle_t *)&rpc->timeout.handle);
+	struct test_fixture *f = CONTAINER_OF(loop, struct test_fixture, loop);
+	fixture_progress(f, 20);
 }
 
 static void pool_ht_create_op(pool_work_t *w)
 {
-	if (global_fixture.is_leader) {
-		PRE(global_fixture.leader.ops->is_pool_thread());
+	struct test_fixture *f =
+	    CONTAINER_OF(w->pool, struct test_fixture, pool);
+	if (f->is_leader) {
+		PRE(f->leader.ops->is_pool_thread());
 	} else {
-		PRE(global_fixture.follower.ops->is_pool_thread());
+		PRE(f->follower.ops->is_pool_thread());
 	}
-	(void)w;
 }
 
 static void pool_fill_ht_op(pool_work_t *w)
 {
-	if (global_fixture.is_leader) {
-		PRE(global_fixture.leader.ops->is_pool_thread());
+	struct test_fixture *f =
+	    CONTAINER_OF(w->pool, struct test_fixture, pool);
+	if (f->is_leader) {
+		PRE(f->leader.ops->is_pool_thread());
 	} else {
-		PRE(global_fixture.follower.ops->is_pool_thread());
+		PRE(f->follower.ops->is_pool_thread());
 	}
-	(void)w;
 }
 
 static void pool_write_chunk_op(pool_work_t *w)
@@ -583,139 +655,162 @@ static void pool_read_sig_op(pool_work_t *w)
 	PRE(follower->ops->is_pool_thread());
 }
 
-struct uv_sender_send_data {
-	struct sender *s;
-	sender_cb_op cb;
-};
-
-static void uv_sender_send_cb(uv_work_t *req) {
+static void uv_sender_send_cb(uv_work_t *req)
+{
 	(void)req;
 }
 
-static void uv_sender_send_after_cb(uv_work_t *req, int status) {
-	global_fixture.msg_valid = true;
-	struct uv_sender_send_data *data = req->data;
-	data->cb(data->s, status);
+static void uv_sender_send_after_cb(uv_work_t *req, int status)
+{
+	struct test_fixture *f = CONTAINER_OF(req, struct test_fixture, req);
+	f->msg_valid = true;
+	struct sender *s = req->data;
+	s->cb(s, status);
 }
 
 static int uv_sender_send_op(struct sender *s,
-		struct raft_message *payload,
-		sender_cb_op cb) {
-	/* We only expect one message to be in-flight. */
-	static uv_work_t req;
-	static struct uv_sender_send_data req_data;
+			     struct raft_message *payload,
+			     sender_cb_op cb)
+{
+	/* This is a bit messy, but so is this whole interface. */
+	struct rpc *rpc = CONTAINER_OF(s, struct rpc, sender);
+	struct leader *leader = CONTAINER_OF(rpc, struct leader, rpc);
+	struct test_fixture *f =
+	    CONTAINER_OF(leader, struct test_fixture, leader);
 
-	global_fixture.last_msg_sent = *payload;
-	/* Flag is only toggled when the after_cb is called, emulating the message
-	 * being sent. */
-	global_fixture.msg_valid = false;
+	f->last_msg_sent = *payload;
+	/* Flag is only toggled when the after_cb is called, emulating the
+	 * message being sent. */
+	f->msg_valid = false;
 	s->cb = cb;
-	req_data = (struct uv_sender_send_data) {
-		.s = s,
-		.cb = cb,
-	};
-	req = (uv_work_t) {
-		.data = &req_data,
-	};
-	uv_queue_work(uv_default_loop(), &req, uv_sender_send_cb, uv_sender_send_after_cb);
-	return 0;
+	f->req.data = s;
+	
+	uv_queue_work(&f->loop, &f->req, uv_sender_send_cb,
+		      uv_sender_send_after_cb);
+	return RAFT_OK;
 }
 
-struct raft_message uv_get_msg_sent(void) {
-	munit_assert(global_fixture.msg_valid);
-	global_fixture.msg_valid = false;
-	return global_fixture.last_msg_sent;
+struct raft_message uv_get_msg_sent(struct test_fixture *f)
+{
+	munit_assert(f->msg_valid);
+	f->msg_valid = false;
+	return f->last_msg_sent;
 }
 
-TEST(snapshot_leader, pool_timeouts, pool_set_up, pool_tear_down, 0, NULL) {
-	struct leader_ops ops = {
-		.to_init = pool_to_init_op,
+static void *setUpLeader(MUNIT_UNUSED const MunitParameter params[],
+			 MUNIT_UNUSED void *user_data)
+{
+	struct test_fixture *f = pool_set_up();
+	f->is_leader = true;
+	f->leader_ops = (struct leader_ops) {
+		.to_init = ut_to_init_op,
 		.to_stop = pool_to_stop_op,
 		.to_start = pool_to_start_op,
 		.ht_create = pool_ht_create_op,
-		.work_queue = pool_work_queue_op,
+		.work_queue = pool_work_queue_op_leader,
 		.sender_send = uv_sender_send_op,
 		.is_pool_thread = pool_is_pool_thread,
 	};
-
-	global_fixture.is_leader = true;
-	struct leader *leader = &global_fixture.leader;
-	*leader = (struct leader) {
-		.ops = &ops,
+	f->leader = (struct leader){
+		.ops = &f->leader_ops,
 
 		.sigs_more = false,
 		.pages_more = false,
 		.sigs_calculated = false,
 	};
+	sm_init(&f->leader.sm, leader_sm_invariant, NULL, leader_sm_conf,
+		"leader", LS_F_ONLINE);
+	uv_timer_init(&f->loop, &f->leader.timeout.handle);
+	uv_timer_init(&f->loop, &f->leader.rpc.timeout.handle);
 
-	sm_init(&leader->sm, leader_sm_invariant,
-		NULL, leader_sm_conf, "leader", LS_F_ONLINE);
+	return f;
+}
+
+static void tearDownLeader(void *data)
+{
+	struct test_fixture *f = data;
+	
+	uv_timer_stop(&f->leader.rpc.timeout.handle);
+	uv_close((uv_handle_t*)&f->leader.rpc.timeout.handle, close_cb);
+
+	uv_timer_stop(&f->leader.timeout.handle);
+	uv_close((uv_handle_t*)&f->leader.timeout.handle, close_cb);
+	pool_tear_down(f);
+	free(data);
+}
+
+TEST(snapshot_leader, pool_timeouts, setUpLeader, tearDownLeader, 0, NULL)
+{
+	struct test_fixture *f = data;
+	struct leader *leader = &f->leader;
 
 	munit_log(MUNIT_LOG_DEBUG, "here 1");
 	PRE(sm_state(&leader->sm) == LS_F_ONLINE);
 	ut_leader_message_received(leader, append_entries_result());
-	wait_work();
+	wait_work(f);
 
 	munit_log(MUNIT_LOG_DEBUG, "here 2");
 	PRE(sm_state(&leader->sm) == LS_F_NEEDS_SNAP);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==, RAFT_IO_INSTALL_SNAPSHOT);
 	pool_rpc_to_expired(&leader->rpc);
 
 	munit_log(MUNIT_LOG_DEBUG, "here 3");
 	PRE(sm_state(&leader->sm) == LS_F_NEEDS_SNAP);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==, RAFT_IO_INSTALL_SNAPSHOT);
 	ut_leader_message_received(leader, ut_install_snapshot_result());
 
 	munit_log(MUNIT_LOG_DEBUG, "here 4");
 	PRE(sm_state(&leader->sm) == LS_CHECK_F_HAS_SIGS);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==, RAFT_IO_SIGNATURE);
 	ut_leader_message_received(leader, ut_sign_result());
 	pool_to_expired(leader);
 
 	munit_log(MUNIT_LOG_DEBUG, "here 5");
 	PRE(sm_state(&leader->sm) == LS_CHECK_F_HAS_SIGS);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==, RAFT_IO_SIGNATURE);
 	pool_rpc_to_expired(&leader->rpc);
 
 	munit_log(MUNIT_LOG_DEBUG, "here 6");
 	PRE(sm_state(&leader->sm) == LS_CHECK_F_HAS_SIGS);
 	leader->sigs_calculated = true;
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==, RAFT_IO_SIGNATURE);
 	ut_leader_message_received(leader, ut_sign_result());
 
 	munit_log(MUNIT_LOG_DEBUG, "here 7");
 	PRE(sm_state(&leader->sm) == LS_REQ_SIG_LOOP);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==, RAFT_IO_SIGNATURE);
 	PRE(sm_state(&leader->sm) == LS_REQ_SIG_LOOP);
 	ut_leader_message_received(leader, ut_sign_result());
 
 	munit_log(MUNIT_LOG_DEBUG, "here 8");
-	wait_work();
+	wait_work(f);
 	munit_log(MUNIT_LOG_DEBUG, "here 9");
-	wait_work();
+	wait_work(f);
 
 	munit_log(MUNIT_LOG_DEBUG, "here 10");
 	PRE(sm_state(&leader->sm) == LS_PAGE_READ);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_CP);
 	pool_rpc_to_expired(&leader->rpc);
 
 	munit_log(MUNIT_LOG_DEBUG, "here 11");
 	PRE(sm_state(&leader->sm) == LS_PAGE_READ);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_CP);
 	ut_leader_message_received(leader, ut_page_result());
 
 	munit_log(MUNIT_LOG_DEBUG, "here 12");
 	PRE(sm_state(&leader->sm) == LS_SNAP_DONE);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==, RAFT_IO_INSTALL_SNAPSHOT);
 	ut_leader_message_received(leader, ut_install_snapshot_result());
 
 	sm_fini(&leader->sm);
@@ -725,73 +820,90 @@ TEST(snapshot_leader, pool_timeouts, pool_set_up, pool_tear_down, 0, NULL) {
 	return MUNIT_OK;
 }
 
-TEST(snapshot_follower, pool, pool_set_up, pool_tear_down, 0, NULL) {
-	struct follower_ops ops = {
+static void *setUpFollower(MUNIT_UNUSED const MunitParameter params[],
+			 MUNIT_UNUSED void *user_data)
+{
+	struct test_fixture *f = pool_set_up();
+	f->is_leader = false;
+	f->follower_ops = (struct follower_ops) {
 		.ht_create = pool_ht_create_op,
-		.work_queue = pool_work_queue_op,
+		.work_queue = pool_work_queue_op_follower,
 		.sender_send = uv_sender_send_op,
 		.read_sig = pool_read_sig_op,
 		.write_chunk = pool_write_chunk_op,
 		.fill_ht = pool_fill_ht_op,
 		.is_pool_thread = pool_is_pool_thread,
+
 	};
-
-	global_fixture.is_leader = false;
-	struct follower *follower = &global_fixture.follower;
-
-	*follower = (struct follower) {
-		.ops = &ops,
+	f->follower = (struct follower){
+		.ops = &f->follower_ops,
 	};
+	sm_init(&f->follower.sm, follower_sm_invariant, NULL, follower_sm_conf,
+		"follower", FS_NORMAL);
 
-	sm_init(&follower->sm, follower_sm_invariant,
-		NULL, follower_sm_conf, "follower", FS_NORMAL);
+	return f;
+}
+
+static void tearDownFollower(void *data)
+{
+	pool_tear_down(data);
+	free(data);
+}
+
+TEST(snapshot_follower, pool, setUpFollower, tearDownFollower, 0, NULL)
+{
+	struct test_fixture *f = data;
+	struct follower *follower = &f->follower;
 
 	PRE(sm_state(&follower->sm) == FS_NORMAL);
 	ut_follower_message_received(follower, ut_install_snapshot());
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_RESULT);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_RESULT);
 
-	wait_work();
+	wait_work(f);
 
 	PRE(sm_state(&follower->sm) == FS_SIGS_CALC_LOOP);
 	ut_follower_message_received(follower, ut_sign());
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE_RESULT);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==, RAFT_IO_SIGNATURE_RESULT);
 
 	PRE(sm_state(&follower->sm) == FS_SIGS_CALC_LOOP);
 
 	follower->sigs_calculated = true;
-	wait_work();
+	wait_work(f);
 
 	PRE(sm_state(&follower->sm) == FS_SIGS_CALC_LOOP);
 	ut_follower_message_received(follower, ut_sign());
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE_RESULT);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==, RAFT_IO_SIGNATURE_RESULT);
 
 	PRE(sm_state(&follower->sm) == FS_SIG_RECEIVING);
 	ut_follower_message_received(follower, ut_sign());
 
 	PRE(sm_state(&follower->sm) == FS_SIG_PROCESSED);
 
-	wait_work();
+	wait_work(f);
 
 	PRE(sm_state(&follower->sm) == FS_SIG_READ);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_SIGNATURE_RESULT);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==, RAFT_IO_SIGNATURE_RESULT);
 
 	PRE(sm_state(&follower->sm) == FS_CHUNCK_RECEIVING);
 	ut_follower_message_received(follower, ut_page());
 
-	wait_work();
+	wait_work(f);
 
 	PRE(sm_state(&follower->sm) == FS_CHUNCK_APPLIED);
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_CP_RESULT);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_CP_RESULT);
 
 	PRE(sm_state(&follower->sm) == FS_SNAP_DONE);
 	ut_follower_message_received(follower, ut_install_snapshot());
-	wait_msg_sent();
-	munit_assert_int(uv_get_msg_sent().type, ==, RAFT_IO_INSTALL_SNAPSHOT_RESULT);
+	wait_msg_sent(f);
+	munit_assert_int(uv_get_msg_sent(f).type, ==,
+			 RAFT_IO_INSTALL_SNAPSHOT_RESULT);
 
 	sm_fini(&follower->sm);
 	return MUNIT_OK;
