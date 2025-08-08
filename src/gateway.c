@@ -56,16 +56,23 @@ static void gateway__leader_close_cb(struct leader *leader)
 	}
 }
 
-static void gateway_finalize(struct gateway *g)
+void gateway__close_leader(struct gateway *g)
 {
 	if (g->leader != NULL) {
 		/* Before closing the gateway, signal to the existing leader that we
 		 * are closing and wait to drain the queue. */
 		leader__close(g->leader, gateway__leader_close_cb);
-	} else if (g->close_cb != NULL) {
+	} else {
 		stmt__registry_close(&g->stmts);
-		g->close_cb(g);
+		if (g->close_cb != NULL) {
+			g->close_cb(g);
+		}
 	}
+}
+
+static void gateway_finalize(struct gateway *g)
+{
+	gateway__close_leader(g);
 }
 
 void gateway__close(struct gateway *g, gateway_close_cb cb)

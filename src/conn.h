@@ -57,4 +57,6 @@ int conn__start(struct conn *c,
  */
 void conn__stop(struct conn *c);
 
+void conn__on_leadership_lost(struct conn *c);
+
 #endif /* DQLITE_CONN_H_ */
