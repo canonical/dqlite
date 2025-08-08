@@ -87,6 +87,10 @@ static int progress_abort(void *db) {
 
 void leader__close(struct leader *leader, leader_close_cb close_cb)
 {
+	if (leader->close_cb != NULL) {
+		return;
+	}
+
 	leader->close_cb = close_cb;
 	if (leader->pending == 0) {
 		struct db *db = leader->db;

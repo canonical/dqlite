@@ -1208,6 +1208,11 @@ RAFT_API raft_index raft_last_index(struct raft *r);
 RAFT_API raft_index raft_last_applied(struct raft *r);
 
 /**
+ * Return the index of the last entry that was committed.
+ */
+RAFT_API raft_index raft_commit_index(const struct raft *r);
+
+/**
  * Return the number of voting servers that the leader has recently been in
  * contact with. This can be used to help determine whether the cluster may be
  * in a degraded/at risk state.
@@ -1977,6 +1982,17 @@ RAFT_API bool raft_fixture_step_until_applied(struct raft_fixture *f,
 					      unsigned i,
 					      raft_index index,
 					      unsigned max_msecs);
+
+/**
+ * Step the cluster until the @i'th server has committed the entry at the given
+ * index, or @max_msecs have elapsed. If @i equals the number of servers, then
+ * step until all servers have committed the given entry.
+ */
+RAFT_API bool raft_fixture_step_until_committed(struct raft_fixture *f,
+				     unsigned i,
+				     raft_index index,
+				     unsigned max_msecs);
+
 
 /**
  * Step the cluster until the state of the @i'th server matches the given one,

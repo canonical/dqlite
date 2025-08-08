@@ -112,6 +112,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	rv = VfsApply(conn, &transaction);
 	if (rv != 0) {
 		tracef("VfsApply failed %d", rv);
+		rv = rv == SQLITE_BUSY ? RAFT_BUSY : RAFT_IOERR;
 		goto error;
 	}
 

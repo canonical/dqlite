@@ -352,3 +352,10 @@ void conn__stop(struct conn *c)
 	c->closed = true;
 	gateway__close(&c->gateway, gatewayCloseCb);
 }
+
+void conn__on_leadership_lost(struct conn *c)
+{
+	if (!c->closed) {
+		gateway__close_leader(&c->gateway);
+	}
+}

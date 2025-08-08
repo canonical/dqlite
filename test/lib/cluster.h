@@ -127,16 +127,20 @@ struct server
 
 #define CLUSTER_ELECT(I) raft_fixture_elect(&f->cluster, I)
 #define CLUSTER_DEPOSE raft_fixture_depose(&f->cluster)
-#define CLUSTER_APPLIED(N)                                                   \
-	{                                                                    \
-		int _i;                                                      \
-		for (_i = 0; _i < N_SERVERS; _i++) {                         \
-			bool done;                                           \
-			done = raft_fixture_step_until_applied(&f->cluster,  \
-							       _i, N, 1000); \
-			munit_assert_true(done);                             \
-		}                                                            \
-	}
+
+#define CLUSTER_APPLIED(N)                                   \
+	do {                                                 \
+		bool done = raft_fixture_step_until_applied( \
+		    &f->cluster, N_SERVERS, N, 1000);        \
+		munit_assert_true(done);                     \
+	} while (0)
+
+#define CLUSTER_COMMITTED(N)                                   \
+	do {                                                   \
+		bool done = raft_fixture_step_until_committed( \
+		    &f->cluster, N_SERVERS, N, 1000);          \
+		munit_assert_true(done);                       \
+	} while (0)
 
 #define CLUSTER_STEP raft_fixture_step(&f->cluster)
 

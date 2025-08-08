@@ -1797,6 +1797,36 @@ bool raft_fixture_step_until_applied(struct raft_fixture *f,
 	return raft_fixture_step_until(f, hasAppliedIndex, &apply, max_msecs);
 }
 
+static bool hasCommittedIndex(struct raft_fixture *f, void *arg)
+{
+	const struct step_apply *apply = (struct step_apply *)arg;
+	struct raft *raft;
+	unsigned n = 0;
+	unsigned i;
+
+	if (apply->i < f->n) {
+		raft = raft_fixture_get(f, apply->i);
+		return raft_commit_index(raft) >= apply->index;
+	}
+
+	for (i = 0; i < f->n; i++) {
+		raft = raft_fixture_get(f, i);
+		if (raft_commit_index(raft) >= apply->index) {
+			n++;
+		}
+	}
+	return n == f->n;
+}
+
+bool raft_fixture_step_until_committed(struct raft_fixture *f,
+				     unsigned i,
+				     raft_index index,
+				     unsigned max_msecs)
+{
+	struct step_apply apply = {i, index};
+	return raft_fixture_step_until(f, hasCommittedIndex, &apply, max_msecs);
+}
+
 struct step_state
 {
 	unsigned i;

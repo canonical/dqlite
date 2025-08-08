@@ -1247,11 +1247,14 @@ int replicationAppend(struct raft *r,
 	 *   entry).
 	 */
 	if (n == 0) {
+		PRE(r->last_applied <= r->commit_index);
 		if ((args->leader_commit > r->commit_index) &&
 		    r->last_stored >= r->commit_index &&
 		    !replicationInstallSnapshotBusy(r)) {
 			r->commit_index =
 			    min(args->leader_commit, r->last_stored);
+		}
+		if (r->last_applied < r->commit_index) {
 			rv = replicationApply(r);
 			if (rv != 0) {
 				goto err_after_request_alloc;
@@ -1884,6 +1887,7 @@ int replicationApply(struct raft *r)
 		return 0;
 	}
 
+	tracef("Apply indexed %d...%d", r->last_applied, r->commit_index);
 	for (index = r->last_applied + 1; index <= r->commit_index; index++) {
 		const struct raft_entry *entry = logGet(r->log, index);
 		if (entry == NULL) {
@@ -1934,6 +1938,8 @@ int replicationApply(struct raft *r)
 
 	if (shouldTakeSnapshot(r)) {
 		rv = takeSnapshot(r);
+	} else if (rv == RAFT_BUSY) {
+		rv = RAFT_OK;
 	}
 
 	return rv;

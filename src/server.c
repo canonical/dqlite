@@ -36,8 +36,15 @@ static void state_cb(struct raft *r,
 		     unsigned short old_state,
 		     unsigned short new_state)
 {
+	struct dqlite_node *d = r->data;
 	if (old_state == RAFT_LEADER && new_state != RAFT_LEADER) {
 		tracef("node %llu@%s: leadership lost", r->id, r->address);
+		queue *head;
+		QUEUE_FOREACH(head, &d->conns)
+		{
+			struct conn *conn = QUEUE_DATA(head, struct conn, queue);
+			conn__on_leadership_lost(conn);
+		}
 	}
 }
 
