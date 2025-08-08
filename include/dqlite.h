@@ -42,6 +42,8 @@
 
 DQLITE_API int dqlite_version_number(void);
 
+DQLITE_API extern const char *dqlite_version_string;
+
 /**
  * Hold the value of a dqlite node ID. Guaranteed to be at least 64-bit long.
  */
