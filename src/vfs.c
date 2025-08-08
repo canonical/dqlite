@@ -1196,11 +1196,14 @@ struct vfsMainFile {
 	sqlite3_file base;            /* Base class. Must be first. */
 	struct vfs *vfs;              /* Pointer to volatile VFS data. */
 	struct vfsDatabase *database; /* Underlying database content. */
-	bool polled;                  /* Wether this WAL was polled or not. */
-	uint16_t sharedMask;          /* Mask of shared locks held */
-	/* Mask of exclusive locks held. The special value `VFS__CHECKPOINT_MASK` is
-	 * used during a checkpoint. See VfsCheckpoint for details. */
-	uint16_t exclMask;
+	bool polled; /* Whether this connection was polled or not. Marking the
+			connection in the leader allows us to ensure that the
+			connection that is polled is the one applied or aborted.
+		      */
+	uint16_t sharedMask; /* Mask of shared locks held */
+	uint16_t exclMask;   /* Mask of exclusive locks held. The special value
+		     `VFS__CHECKPOINT_MASK` is used during a
+		     checkpoint. See VfsCheckpoint for details. */
 	struct {
 		void **ptr;
 		int len, cap;
@@ -2637,6 +2640,7 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 			return rv;
 		}
 	}
+	PRE(f->database->shm.lock[VFS__WAL_WRITE_LOCK] < 0);
 
 	/* If there's no page size set in the WAL header, it must mean that WAL
 	 * file was never written. In that case we need to initialize the WAL
@@ -2652,9 +2656,9 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 		return rv;
 	}
 
-	/* If a write lock is held it means that this is the VFS that orginated
-	 * this commit and on which dqlite_vfs_poll() was called. In that case
-	 * we release the lock and update the WAL index.
+	/* If this is the connection that orginated this commit and on which
+	 * dqlite_vfs_poll() was called. The lock must be released and the WAL
+	 * index can be published.
 	 *
 	 * Otherwise, if the WAL index header is mapped it means that this VFS
 	 * has one or more open connections even if it's not the one that

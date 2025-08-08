@@ -1799,7 +1799,7 @@ bool raft_fixture_step_until_applied(struct raft_fixture *f,
 
 static bool hasCommittedIndex(struct raft_fixture *f, void *arg)
 {
-	struct step_apply *apply = (struct step_apply *)arg;
+	const struct step_apply *apply = (struct step_apply *)arg;
 	struct raft *raft;
 	unsigned n = 0;
 	unsigned i;

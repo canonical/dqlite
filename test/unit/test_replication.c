@@ -490,6 +490,7 @@ TEST(replication, leaderToFollowerBusy, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 
 	CLUSTER_ELECT(0);
+	/* Make sure the leader write-locks the database. */
 	PREPARE(0, "BEGIN IMMEDIATE");
 	fixture_exec(f, 0);
 	FINALIZE;
