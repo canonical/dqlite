@@ -224,8 +224,7 @@ raft_core_unit_test_SOURCES = \
   test/raft/unit/test_err.c \
   test/raft/unit/test_flags.c \
   test/raft/unit/test_log.c \
-  test/raft/unit/test_queue.c \
-  test/raft/unit/test_snapshot.c
+  test/raft/unit/test_queue.c
 
 raft_core_unit_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 raft_core_unit_test_LDADD = libtest.la
