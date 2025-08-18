@@ -461,6 +461,8 @@ struct vfsDatabase
 	char *name;         /* Database name. Read only. */
 	struct vfsShm shm;  /* Shared memory. */
 	struct vfsWal wal;  /* Associated WAL. */
+	int fdCount; /* Number of (sqlite3) file descriptor opened for this
+			database. */
 
 	mtx_t mtx;
 	void **pages;       /* All database. */
@@ -713,6 +715,9 @@ struct vfs
 	unsigned n_databases;           /* Number of databases */
 	int error;                      /* Last error occurred. */
 	struct sqlite3_vfs *base_vfs; /* Base VFS. */
+
+	void (*delete_hook)(void *, const char*);
+	void *delete_hook_data;
 };
 
 /* Create a new vfs object. */
@@ -793,29 +798,29 @@ static struct vfsDatabase *vfsDatabaseLookup(struct vfs *v,
 	return NULL;
 }
 
-static int vfsDeleteDatabase(struct vfs *r, const char *name)
+static int vfsDeleteDatabase(struct vfs *vfs, struct vfsDatabase *database)
 {
-	for (unsigned i = 0; i < r->n_databases; i++) {
-		struct vfsDatabase *database = r->databases[i];
-		unsigned j;
-
-		if (strcmp(database->name, name) != 0) {
+	for (unsigned i = 0; i < vfs->n_databases; i++) {
+		if (vfs->databases[i] != database) {
 			continue;
 		}
 
+		if (vfs->delete_hook != NULL) {
+			vfs->delete_hook(vfs->delete_hook_data, database->name);
+		}
 		vfsDatabaseClose(database);
 		sqlite3_free(database);
 
 		/* Shift all other contents objects. */
-		for (j = i + 1; j < r->n_databases; j++) {
-			r->databases[j - 1] = r->databases[j];
+		for (unsigned j = i + 1; j < vfs->n_databases; j++) {
+			vfs->databases[j - 1] = vfs->databases[j];
 		}
-		r->n_databases--;
+		vfs->n_databases--;
 
 		return SQLITE_OK;
 	}
 
-	r->error = ENOENT;
+	vfs->error = ENOENT;
 	return SQLITE_IOERR_DELETE_NOENT;
 }
 
@@ -1184,16 +1189,27 @@ static const sqlite3_io_methods vfsWalFileMethods = {
 
 #define VFS__CHECKPOINT_MASK 0xff
 
+enum vfsMainFileState {
+	NORMAL = 0,
+
+	/* The connection was polled or not. Marking the connection in the
+	* leader allows us to ensure that the connection that is polled is the
+	* one applied or aborted.*/
+	POLLED,
+
+	/* A deletion was requested. This will create a transaction that will be
+	 * distributed as a normal transaction and will force all replicas to
+	 * delete the database at the first chance. */
+	DELETING,
+};
+
 /* Implementation of the abstract sqlite3_file base class.
  * for the main database file */
 struct vfsMainFile {
 	sqlite3_file base;            /* Base class. Must be first. */
 	struct vfs *vfs;              /* Pointer to volatile VFS data. */
 	struct vfsDatabase *database; /* Underlying database content. */
-	bool polled; /* Whether this connection was polled or not. Marking the
-			connection in the leader allows us to ensure that the
-			connection that is polled is the one applied or aborted.
-		      */
+	enum vfsMainFileState state;  /* The current connection status. */
 	uint16_t sharedMask; /* Mask of shared locks held */
 	uint16_t exclMask;   /* Mask of exclusive locks held. The special value
 		     `VFS__CHECKPOINT_MASK` is used during a
@@ -1203,6 +1219,58 @@ struct vfsMainFile {
 		int len, cap;
 	} mappedShmRegions;
 };
+
+static uint32_t vfsDatabaseNumPages(struct vfsDatabase *database, bool use_wal);
+
+static int vfsMainFileClose(sqlite3_file *file)
+{
+	/* == Safety==
+	 * This method can only run in the libuv loop thread. This means that in
+	 * the meanwhile no new connection can happen and no
+	 * VfsPoll/VfsAbort/VfsCheckpoint/VfsApply can happen. */
+	struct vfsMainFile *f = (struct vfsMainFile *)file;
+
+	PRE(f->database->fdCount > 0);
+	f->database->fdCount--;
+	if (f->database->fdCount > 0) {
+		/* Some other connection is still open, no need to run any
+		 * finalizer here. */
+		return SQLITE_OK;
+	}
+
+	PRE(f->database->shm.lock[VFS__WAL_WRITE_LOCK] == 0);
+	PRE(f->database->wal.n_tx == 0);
+
+	/* This was the last open connection for this database. It is
+	 * possible now to run finalizers for this database. */
+	if (vfsDatabaseNumPages(f->database, true) != 1) {
+		/* A deleted database only has 1 page. */
+		return SQLITE_OK;
+	}
+
+	/* A deleted database has the in-header size set to 0. */
+	uint8_t *header;
+	if (f->database->wal.n_frames == 0) {
+		assert(f->database->n_pages > 0);
+		header = f->database->pages[0];
+	} else {
+		struct vfsFrame *frame =
+		    f->database->wal.frames[f->database->wal.n_frames - 1];
+		// assert( commit mark == 1);
+		header = frame->page;
+	}
+
+	/* If the in-header database size is not 0, then the database is still
+	 * alive and it must not be removed */
+	uint32_t num_pages = ByteGetBe32(&header[VFS__IN_HEADER_DATABASE_SIZE_OFFSET]);
+	if (num_pages != 0) {
+		return SQLITE_OK;
+	}
+
+	int rv = vfsDeleteDatabase(f->vfs, f->database);
+	assert(rv == SQLITE_OK);
+	return SQLITE_OK;
+}
 
 static int vfsMainFileRead(sqlite3_file *file,
 			   void *buf,
@@ -1391,63 +1459,156 @@ static int vfsMainFileSize(sqlite3_file *file, sqlite_int64 *size)
 	return SQLITE_OK;
 }
 
-/* Handle pragma a pragma file control. See the xFileControl
- * docstring in sqlite.h.in for more details. */
-static int vfsFileControlPragma(struct vfsMainFile *f, char **fcntl)
+static int vfsWalAppend(struct vfsDatabase *d,
+	const struct vfsTransaction *transaction);
+
+static void vfsResetHeader(uint8_t *header)
 {
-	const char *left;
-	const char *right;
+	static const uint8_t le_one[] = { 1, 0, 0, 0 };
 
-	assert(f != NULL);
-	assert(fcntl != NULL);
+	/* See https://sqlite.org/fileformat2.html for details. */
 
-	left = fcntl[1];
-	right = fcntl[2];
+	/* Reset the file change counter to 1 */
+	const size_t change_counter_offset = 24;
+	memcpy(header + change_counter_offset, le_one, 4);
 
-	assert(left != NULL);
+	/* Set the file size to 0 */
+	const size_t file_size_offset = 28;
+	memset(header + file_size_offset, 0, 4);
 
-	if (sqlite3_stricmp(left, "page_size") == 0 && right) {
-		/* When the user executes 'PRAGMA page_size=N' we save the
-		 * size internally.
-		 *
-		 * The page size must be between 512 and 65536, and be a
-		 * power of two. The check below was copied from
-		 * sqlite3BtreeSetPageSize in btree.c.
-		 *
-		 * Invalid sizes are simply ignored, SQLite will do the same.
-		 *
-		 * It's not possible to change the size after it's set.
-		 */
-		int page_size = atoi(right);
+	/* Set freelist head to 0 */
+	const size_t freelist_head_offset = 32;
+	memset(header + freelist_head_offset, 0, 4);
 
-		if (page_size < FORMAT__PAGE_SIZE_MIN ||
-		    page_size > FORMAT__PAGE_SIZE_MAX) {
-			fcntl[0] =
-			    sqlite3_mprintf("page size outside of valid range");
+	/* Set the freelist count to 0 */
+	const size_t freelist_count_offset = 36;
+	memset(header + freelist_count_offset, 0, 4);
+
+	/* Set the schema cookie to 0 */
+	const size_t schema_cookine_offset = 40;
+	memset(header + schema_cookine_offset, 0, 4);
+
+	/* Set default page cache to 0 */
+	const size_t default_page_cache_size_offset = 48;
+	memset(header + default_page_cache_size_offset, 0, 4);
+
+	/* Set autovacuum root pointer to 0 */
+	const size_t autovacuum_root_pointer_offset = 52;
+	memset(header + autovacuum_root_pointer_offset, 0, 4);
+
+	/* Set user_version to 0 */	
+	const size_t user_version_offset = 60;
+	memset(header + user_version_offset, 0, 4);
+
+	/* Switch off autovacuum mode */
+	const size_t autovacuum_mode_offset = 64;
+	memset(header + autovacuum_mode_offset, 0, 4);
+
+	/* Set application id to 0 */
+	const size_t application_id_offset = 68;
+	memset(header + application_id_offset, 0, 4);
+
+	/* Copy the change counter to version-valid-for number. */
+	const size_t version_valid_for_number_offset = 92;
+	memcpy(header + version_valid_for_number_offset, le_one, 4); 
+}
+
+static int vfsPragmaDeleteDatabase(struct vfsMainFile *f, char **fcntl)
+{
+	if (fcntl[2]) {
+		/* Support only `PRAGMA delete_database` syntax */
+		return SQLITE_NOTFOUND;
+	}
+
+	/* To correctly sequence this transaction with other ones, the
+	 * connection must already hold the write lock */
+	if ((f->exclMask & (1 << VFS__WAL_WRITE_LOCK)) == 0) {
+		fcntl[0] = sqlite3_mprintf(
+		    "PRAGMA delete_database must be run in a write "
+		    "transaction. Use BEGIN IMMEDIATE to start one.");
+		return SQLITE_ERROR;
+	}
+
+	/* The transaction must not contain any other change to the database. 
+	 * As such, it will be necessary for the client to perform precisely
+	 * this sequence of commands:
+	 *   BEGIN IMMEDIATE;
+	 *   PRAGMA delete_database;
+	 *   COMMIT;
+	 */
+	if (f->database->wal.n_tx != 0) {
+		/* This check is weak as this will only be true if a cache spill
+		 * occurs. A more strict check about the current transaction is done
+		 * in vfsFinalizeTransaction. */
+		fcntl[0] = sqlite3_mprintf(
+		    "PRAGMA delete_database must be the only statement run in "
+		    "the transaction.");
+		return SQLITE_ERROR;
+	}
+
+	PRE(f->state == NORMAL);
+	f->state = DELETING;
+
+	return SQLITE_OK;
+}
+
+static int vfsPragmaPageSize(struct vfsMainFile *f, char **fcntl)
+{
+	if (fcntl[2] == NULL) {
+		/* Support only the setter. */
+		return SQLITE_NOTFOUND;
+	}
+	/* When the user executes 'PRAGMA page_size=N' we save the
+	 * size internally.
+	 *
+	 * The page size must be between 512 and 65536, and be a
+	 * power of two. The check below was copied from
+	 * sqlite3BtreeSetPageSize in btree.c.
+	 *
+	 * Invalid sizes are simply ignored, SQLite will do the same.
+	 *
+	 * It's not possible to change the size after it's set.
+	 */
+	int page_size = atoi(fcntl[2]);
+
+	if (page_size < FORMAT__PAGE_SIZE_MIN ||
+	    page_size > FORMAT__PAGE_SIZE_MAX) {
+		fcntl[0] = sqlite3_mprintf("page size outside of valid range");
+		return SQLITE_IOERR;
+	}
+
+	if (!is_po2((unsigned long)page_size)) {
+		fcntl[0] = sqlite3_mprintf("page size must be a power of 2");
+		return SQLITE_IOERR;
+	}
+
+	if (f->database->n_pages > 0) {
+		int db_page_size = (int)vfsDatabaseGetPageSize(f->database);
+		if (db_page_size != page_size) {
+			fcntl[0] = sqlite3_mprintf(
+			    "changing page size is not supported");
 			return SQLITE_IOERR;
-		}
-
-		if (!is_po2((unsigned long)page_size)) {
-			fcntl[0] =
-			    sqlite3_mprintf("page size must be a power of 2");
-			return SQLITE_IOERR;
-		}
-
-		if (f->database->n_pages > 0) {
-			int db_page_size =
-			    (int)vfsDatabaseGetPageSize(f->database);
-			if (db_page_size != page_size) {
-				fcntl[0] = sqlite3_mprintf(
-				    "changing page size is not supported");
-				return SQLITE_IOERR;
-			}
 		}
 	}
 
-	/* We're returning NOTFOUND here to tell SQLite that we wish it to go on
-	 * with its own handling as well. If we returned SQLITE_OK the page size
-	 * of the journal mode wouldn't be effectively set, as the processing of
-	 * the PRAGMA would stop here. */
+	/* Read case not handled */
+	return SQLITE_NOTFOUND;
+}
+
+/* Handle pragma a pragma file control. See the xFileControl
+ * docstring in sqlite.h for more details. */
+static int vfsFileControlPragma(struct vfsMainFile *f, char **fcntl)
+{
+	PRE(f && fcntl && fcntl[1]);
+	const char *pragma_name = fcntl[1];
+
+	if (sqlite3_stricmp(pragma_name, "page_size") == 0) {
+		return vfsPragmaPageSize(f, fcntl);
+	}
+	if (sqlite3_stricmp(pragma_name, "delete_database") == 0) {
+		return vfsPragmaDeleteDatabase(f, fcntl);
+	}
+
 	return SQLITE_NOTFOUND;
 }
 
@@ -1538,27 +1699,128 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	return SQLITE_OK;
 }
 
-/* If there's a uncommitted transaction, roll it back. */
-static void vfsWalRollbackIfUncommitted(struct vfsWal *w)
+static void vfsForgeDeleteTransaction(struct vfsMainFile *f)
 {
-	struct vfsFrame *last;
-	uint32_t commit;
-	unsigned i;
+	PRE(f->exclMask & (1 << VFS__WAL_WRITE_LOCK));
+	PRE(f->state == DELETING);
+
+	/* Deleting a database in dqlite means just resetting it to a 0-page
+	 * file. This allows other (read) transactions to properly cohexist. The
+	 * real deletion will happen later on when the number of connections to
+	 * the database becomes 0. If some other write statements are executed
+	 * on that database in the meanwhile, deletion will not happen and the
+	 * database will act as-if a database was deleted and recreated from
+	 * scratch.
+	 *
+	 * The above is achieved by abusing the in-header size field in the
+	 * header:
+	 *  - for historical reasons, SQLite will accept a 0-value and use the
+	 *    file size instead in that case but SQLite will never write 0 in
+	 * that field see
+	 * https://sqlite.org/fileformat2.html#in_header_database_size
+	 *  - the VfsApply logic will use 1 as size for the commit record in the
+	 *    WAL, forcing all pages except the header to be ignored by new
+	 * readers (like a database reset) and forcing the next checkpoint to
+	 * reset the database to a single page
+	 *  - during a snapshot, if the database is only 1 page and that page
+	 *    contains 0 in that field, then the database can be removed if no
+	 *    connection is open. TODO: or when closing the last file? I can
+	 * count them here
+	 */
+	if (f->database->wal.n_tx != 0) {
+		/* The transaction in which the delete was asked was polluted by
+		 * other changes. The behaviour here is then to just ignore that
+		 * request. */
+		return;
+	}
+
+	uint32_t page_size = vfsDatabaseGetPageSize(f->database);
+
+	struct vfsFrame **frames = sqlite3_malloc(sizeof(struct vfsFrame *));
+	if (frames == NULL) {
+		return;
+	}
+
+	frames[0] = vfsFrameCreate(page_size);
+	if (frames[0] == NULL) {
+		sqlite3_free(frames);
+		return;
+	}
+
+	uint8_t *page = frames[0]->page;
+
+	assert(page_size > 100);
+	assert(f->database->n_pages > 0);
+
+	/* Now craft the header */
+	const size_t header_size = 100;
+	memcpy(page, f->database->pages[0], header_size);
+	vfsResetHeader(page);
+
+	/* frame->page 1 is used as the b-tree root for the sqlite_schema table.
+	 * Since this logic removes everything, it is ok to just mark it
+	 * as a blank leaf frame->page. */
+	memset(page + header_size, 0, page_size - header_size);
+
+	const uint8_t leaf_table_page_type = 0x0d;
+	page[header_size] = leaf_table_page_type;
+
+	const size_t leaf_table_page_cell_content_area_start_offset = 5;
+	if (page_size != FORMAT__PAGE_SIZE_MAX) {
+		page[header_size +
+		     leaf_table_page_cell_content_area_start_offset] =
+		    (uint8_t)(page_size >> 8);
+		page[header_size +
+		     leaf_table_page_cell_content_area_start_offset + 1] =
+		    (uint8_t)(page_size);
+	}
+
+	/* Fill the header with just about the information necessary for the
+	 * VfsPoll to succeed as it is never expected for this frame to be read
+	 * by SQLite. See VfsPoll */
+	BytePutBe32(1, &frames[0]->header[0]);
+	BytePutBe32(1, &frames[0]->header[4]);
+
+	f->database->wal.n_tx = 1;
+	f->database->wal.tx = frames;
+
+	/* Now restart the header, so that new transactions will notice the new
+	 * page (including this one). This is the same logic found in
+	 * vfsInvalidateWalIndexHeader except that it is executed on the private
+	 * map of this file, so that it is "invisible" to other transaction
+	 * until VfsApply is executed */
+	PRE(f->mappedShmRegions.len > 0);
+	uint8_t *walIndex = f->mappedShmRegions.ptr[0];
+	walIndex[0] = 1;
+	walIndex[VFS__WAL_INDEX_HEADER_SIZE] = 0;
+
+	return;
+}
+
+/* Finalizes a transaction by removing unused WAL frames and forging delete
+ * requests, if any. */
+static void vfsFinalizeTransaction(struct vfsMainFile *f)
+{
+	struct vfsWal *w = &f->database->wal;
+	
+	if (f->state == DELETING) {
+		vfsForgeDeleteTransaction(f);
+		f->state = NORMAL;
+	}
 
 	if (w->n_tx == 0) {
 		return;
 	}
 
-	tracef("rollback n_tx:%d", w->n_tx);
-	last = w->tx[w->n_tx - 1];
-	commit = vfsFrameGetDatabaseSize(last);
+	struct vfsFrame *last = w->tx[w->n_tx - 1];
+	uint32_t commit = vfsFrameGetDatabaseSize(last);
 
 	if (commit > 0) {
-		tracef("rollback commit:%u", commit);
 		return;
 	}
 
-	for (i = 0; i < w->n_tx; i++) {
+	tracef("rollback n_tx: %d", w->n_tx);
+	for (unsigned i = 0; i < w->n_tx; i++) {
 		vfsFrameDestroy(w->tx[i]);
 	}
 	sqlite3_free(w->tx);
@@ -1747,7 +2009,7 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 			    (f->sharedMask & mask) == mask);
 
 			if (ofst == VFS__WAL_WRITE_LOCK && flags & SQLITE_SHM_EXCLUSIVE) {
-				vfsWalRollbackIfUncommitted(&f->database->wal);
+				vfsFinalizeTransaction(f);
 				/* Keep the lock if not polled. It will be released later after
 				 * during VfsAbort. */
 				if (f->database->wal.n_tx > 0) {
@@ -1827,7 +2089,7 @@ static int vfsMainFileShmUnmap(sqlite3_file *file, int delete_flag)
 
 static const sqlite3_io_methods vfsMainFileMethods = {
 	.iVersion = 2,
-	.xClose = vfsNoopClose,
+	.xClose = vfsMainFileClose,
 	.xRead = vfsMainFileRead,
 	.xWrite = vfsMainFileWrite,
 	.xTruncate = vfsMainFileTruncate,
@@ -1954,6 +2216,7 @@ static int vfsOpen(sqlite3_vfs *vfs,
 		.vfs = v,
 		.database = database,
 	};
+	database->fdCount++;
 	return SQLITE_OK;
 }
 
@@ -1971,12 +2234,9 @@ static int vfsDelete(sqlite3_vfs *vfs, const char *filename, int dir_sync)
 		return SQLITE_OK;
 	}
 
-	int rv = vfsDeleteDatabase(v, filename);
-	if (rv != SQLITE_OK) {
-		return rv;
-	}
-
-	return SQLITE_OK;
+	/* This should never happen. */
+	assert(false && "impossible");
+	return SQLITE_PROTOCOL;
 }
 
 static int vfsAccess(sqlite3_vfs *vfs,
@@ -2149,6 +2409,15 @@ int VfsInit(struct sqlite3_vfs *vfs, const char *name)
 	return 0;
 }
 
+void VfsDeleteHook(struct sqlite3_vfs *vfs,
+		  void (*hook)(void *, const char *),
+		  void *data)
+{
+	struct vfs *v = vfs->pAppData;
+	v->delete_hook = hook;
+	v->delete_hook_data = data;
+}
+
 void VfsClose(struct sqlite3_vfs *vfs)
 {
 	tracef("vfs close");
@@ -2219,7 +2488,7 @@ int VfsPoll(sqlite3 *conn, struct vfsTransaction *transaction)
 	};
 	f->database->wal.n_tx = 0;
 	f->database->wal.tx = NULL;
-	f->polled = true;
+	f->state = POLLED;
 
 	return SQLITE_OK;
 }
@@ -2287,6 +2556,11 @@ static int vfsWalAppend(struct vfsDatabase *d,
 		 * the file size to the logical database size. */
 		if (page_number == 1) {
 			database_size = ByteGetBe32(&page[VFS__IN_HEADER_DATABASE_SIZE_OFFSET]);
+			/* Delete database page found! */
+			if (database_size == 0) {
+				assert(transaction->n_pages == 1);
+				database_size = 1;
+			}
 		}
 
 		/* For commit records, the size of the database file in pages
@@ -2382,7 +2656,7 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 	tracef("vfs apply on %s %u pages", f->database->name, transaction->n_pages);
 
 	
-	if (!f->polled) {
+	if (f->state != POLLED) {
 		/* If this connection wasn't the one originating the transaction and there is 
 		* another on-going write transaction it is not possible to change the underlying 
 		* WAL object as that would cause corruption of the database. */
@@ -2416,10 +2690,10 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 	 * originated the transaction (this can happen for example when applying
 	 * a Raft barrier and replaying the Raft log in order to serve a request
 	 * of a newly connected client). */
-	if (f->polled) {
+	if (f->state == POLLED) {
 		PRE(f->exclMask & (1 << VFS__WAL_WRITE_LOCK));
 		vfsMainFileShmLock(file, VFS__WAL_WRITE_LOCK, 1, SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);
-		f->polled = false;
+		f->state = NORMAL;
 	} else {
 		if (f->database->shm.size > 0) {
 			vfsInvalidateWalIndexHeader(f->database);
@@ -2437,7 +2711,7 @@ int VfsAbort(sqlite3 *conn)
 	assert(rv == SQLITE_OK);
 	struct vfsMainFile *f = (struct vfsMainFile*)file;
 
-	if (f->polled) {
+	if (f->state == POLLED) {
 		/* The write lock must be held if the transaction was polled. */
 		PRE(f->exclMask & (1 << VFS__WAL_WRITE_LOCK));
 		/* This logic should then:
@@ -2453,7 +2727,7 @@ int VfsAbort(sqlite3 *conn)
 			tracef("shm unlock failed %d", rv);
 		} else {
 			f->exclMask &= (uint16_t)(~(1 << VFS__WAL_WRITE_LOCK));
-			f->polled = false;
+			f->state = NORMAL;
 		}
 		return rv;
 	}

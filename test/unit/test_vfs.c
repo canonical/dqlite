@@ -507,7 +507,7 @@ TEST(VfsDelete, success, setUp, tearDown, 0, NULL)
 
 	(void)params;
 
-	vfsFillPath(f, "test.db");
+	vfsFillPath(f, "test.db-wal");
 	rc = f->vfs.xOpen(&f->vfs, f->path, file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
@@ -523,23 +523,6 @@ TEST(VfsDelete, success, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 
 	free(file);
-
-	return MUNIT_OK;
-}
-
-/* Trying to delete a non-existing file results in an error. */
-TEST(VfsDelete, enoent, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-
-	int rc;
-
-	(void)params;
-
-	vfsFillPath(f, "test.db");
-	rc = f->vfs.xDelete(&f->vfs, f->path, 0);
-	munit_assert_int(rc, ==, SQLITE_IOERR_DELETE_NOENT);
-	munit_assert_int(ENOENT, ==, f->vfs.xGetLastError(&f->vfs, 0, 0));
 
 	return MUNIT_OK;
 }
@@ -648,7 +631,7 @@ TEST(VfsClose, thenDelete, setUp, tearDown, 0, NULL)
 	int rc;
 
 	(void)params;
-	vfsFillPath(f, "test.db");
+	vfsFillPath(f, "test.db-wal");
 
 	rc = f->vfs.xOpen(&f->vfs, f->path, file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
