@@ -13,14 +13,25 @@ struct registry
 {
 	struct config *config;
 	queue dbs;
+	size_t size;
 };
 
 void registry__init(struct registry *r, struct config *config);
 void registry__close(struct registry *r);
 
 /**
- * Get the db with the given filename. If no one is registered, create one.
+ * Returns the db with the given filename. If the db does not exists, it is created.
  */
-int registry__db_get(struct registry *r, const char *filename, struct db **db);
+int registry__create(struct registry *r, const char *filename, struct db **db);
+
+/**
+ * Returns the db with the given filename. If the db does not exists it returns NULL.
+ */
+struct db *registry__get(const struct registry *r, const char *filename);
+
+/**
+ * Returns the number of databases in the registry. 
+ */
+inline size_t registry__size(const struct registry *r) { return r->size; }
 
 #endif /* REGISTRY_H_*/

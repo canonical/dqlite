@@ -42,7 +42,6 @@ int db__init(struct db *db, struct config *config, const char *filename)
 
 	db->active_leader = NULL;
 	queue_init(&db->pending_queue);
-	db->read_lock = 0;
 	db->leaders = 0;
 	return 0;
 }

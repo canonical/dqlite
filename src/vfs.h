@@ -35,28 +35,22 @@ int VfsAbort(sqlite3 *conn);
 /* Performs a controlled checkpoint on conn */
 int VfsCheckpoint(sqlite3 *conn, unsigned int threshold);
 
-/* Make a full snapshot of a database. */
-int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n);
+struct vfsFile {
+	void **pages;
+	size_t page_count;
+	size_t page_size;
+};
 
-/**
- * Prepare a snapshot of the selected database, borrowing from the in-memory
- * state of the VFS.
- *
- * The provided array of buffers will be populated with pointers to the
- * in-memory database held by the VFS. It's forbidden to checkpoint the
- * database while these pointers are still in use. VfsDatabaseNumPages (with
- * `use_wal = true`) should be used to determine how many buffers are needed.
- */
-int VfsShallowSnapshot(sqlite3_vfs *vfs,
-		       const char *filename,
-		       struct dqlite_buffer bufs[],
-		       uint32_t n);
+struct vfsSnapshot {
+	struct vfsFile main;
+	struct vfsFile wal;
+};
+
+int VfsAcquireSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot);
+int VfsReleaseSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot);
 
 /* Restore a database snapshot. */
-int VfsRestore(sqlite3_vfs *vfs,
-	       const char *filename,
-	       const void *data,
-	       size_t n);
+int VfsRestore(sqlite3 *conn, const struct vfsSnapshot *snapshot);
 
 /**
  * Number of pages in the database.
