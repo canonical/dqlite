@@ -20,7 +20,6 @@ struct db
 	struct leader *active_leader; /* Current leader writing to the database */
 	queue pending_queue;          /* Queue of pending execs, used by leader */
 	queue queue;                  /* Prev/next database, used by the registry */
-	int read_lock;                /* Lock used by snapshots & checkpoints */
 };
 
 /**

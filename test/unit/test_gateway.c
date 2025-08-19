@@ -3112,6 +3112,7 @@ TEST_SETUP(dump)
 	struct request_dump_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	CLUSTER_ELECT(0);
+	OPEN;
 	return f;
 }
 TEST_TEAR_DOWN(dump)
@@ -3128,6 +3129,7 @@ TEST_CASE(dump, empty, NULL)
 	f->request = (struct request_dump){
 		.filename = "test",
 	};
+
 	ENCODE(&f->request, dump);
 	HANDLE(DUMP);
 	ASSERT_CALLBACK(DQLITE_OK, FILES);
@@ -3137,7 +3139,7 @@ TEST_CASE(dump, empty, NULL)
 	struct file main = {};
 	DECODE_FILE(&main);
 	munit_assert_string_equal(main.name, "test");
-	munit_assert_int(main.content.len, ==, 0);
+	munit_assert_int(main.content.len, ==, 512);
 
 	struct file wal = {};
 	DECODE_FILE(&wal);
@@ -3157,21 +3159,8 @@ TEST_CASE(dump, not_existent, NULL)
 	};
 	ENCODE(&f->request, dump);
 	HANDLE(DUMP);
-	ASSERT_CALLBACK(DQLITE_OK, FILES);
-	DECODE(&f->response, files);
-
-	munit_assert_int(f->response.n, ==, 2);
-	struct file main = {};
-	DECODE_FILE(&main);
-	munit_assert_string_equal(main.name, "foo");
-	munit_assert_int(main.content.len, ==, 0);
-
-	struct file wal = {};
-	DECODE_FILE(&wal);
-	munit_assert_string_equal(wal.name, "foo-wal");
-	munit_assert_int(wal.content.len, ==, 0);
-
-	munit_assert_int(f->cursor->cap, ==, 0);
+	ASSERT_CALLBACK(DQLITE_NOTFOUND, FAILURE);
+	ASSERT_FAILURE(DQLITE_NOTFOUND, "database does not exists");
 
 	return MUNIT_OK;
 }
@@ -3181,7 +3170,6 @@ TEST_CASE(dump, simple, NULL)
 	(void)params;
 	struct request_dump_fixture *f = data;
 
-	OPEN;
 	EXEC("CREATE TABLE test (n INT, data BLOB)");
 	EXEC("INSERT INTO test (n, data) VALUES (1, randomblob(256))");
 
@@ -3202,7 +3190,7 @@ TEST_CASE(dump, simple, NULL)
 	struct file wal = {};
 	DECODE_FILE(&wal);
 	munit_assert_string_equal(wal.name, "test-wal");
-	munit_assert_int(wal.content.len, >, 0);
+	munit_assert_int(wal.content.len, ==, 0);
 
 	munit_assert_int(f->cursor->cap, ==, 0);
 	return MUNIT_OK;
@@ -3213,7 +3201,6 @@ TEST_CASE(dump, simple_follower, NULL)
 	(void)params;
 	struct request_dump_fixture *f = data;
 
-	OPEN;
 	EXEC("CREATE TABLE test (n INT, data BLOB)");
 	EXEC("INSERT INTO test (n, data) VALUES (1, randomblob(256))");
 	CLUSTER_APPLIED(CLUSTER_LAST_INDEX(0));
@@ -3236,7 +3223,7 @@ TEST_CASE(dump, simple_follower, NULL)
 	struct file wal = {};
 	DECODE_FILE(&wal);
 	munit_assert_string_equal(wal.name, "test-wal");
-	munit_assert_int(wal.content.len, >, 0);
+	munit_assert_int(wal.content.len, ==, 0);
 
 	munit_assert_int(f->cursor->cap, ==, 0);
 	return MUNIT_OK;
@@ -3248,7 +3235,6 @@ TEST_CASE(dump, checkpointed, NULL)
 	struct request_dump_fixture *f = data;
 	uint64_t stmt_id;
 
-	OPEN;
 	EXEC("CREATE TABLE test (data BLOB)");
 	/* Make sure we force a checkpoint */
 	struct config *config = f->gateway->config;
