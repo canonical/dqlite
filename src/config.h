@@ -18,8 +18,6 @@ struct config {
 	unsigned long long failure_domain; /* User-provided failure domain */
 	unsigned long long int weight;     /* User-provided node weight */
 	char raft_dir[1024];               /* Directory used by raft */
-	char database_dir[1024];           /* Data dir for on-disk database */
-	bool disk;                         /* Disk-mode or not */
 	int voters;                        /* Target number of voters */
 	int standbys;                      /* Target number of standbys */
 	unsigned pool_thread_count;    /* Number of threads in thread pool */
@@ -32,8 +30,7 @@ struct config {
 int config__init(struct config *c,
 		 dqlite_node_id id,
 		 const char *address,
-		 const char *raft_dir,
-		 const char *database_dir);
+		 const char *raft_dir);
 
 /**
  * Release any memory held by the config object.

@@ -37,7 +37,6 @@ struct server
 	struct config config;
 	sqlite3_vfs vfs;
 	struct registry registry;
-	char *dir;
 };
 
 #define FIXTURE_CLUSTER                   \
@@ -79,10 +78,8 @@ struct server
                                                                             \
 		sprintf(address, "%d", I + 1);                              \
                                                                             \
-		char *dir = test_dir_setup();                               \
-		_s->dir = dir;                                              \
                                                                             \
-		_rc = config__init(&_s->config, I + 1, address, NULL, dir); \
+		_rc = config__init(&_s->config, I + 1, address, NULL); \
 		munit_assert_int(_rc, ==, 0);                               \
                                                                             \
 		registry__init(&_s->registry, &_s->config);                 \
@@ -116,7 +113,6 @@ struct server
 		sqlite3_vfs_unregister(&s->vfs);    \
 		VfsClose(&s->vfs);                  \
 		config__close(&s->config);          \
-		test_dir_tear_down(s->dir);         \
 		test_logger_tear_down(&s->logger);  \
 	}
 
