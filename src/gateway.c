@@ -1126,6 +1126,7 @@ static int dumpFile(const char *filename,
 
 	for (size_t i = 0; i < file->page_count; i++) {
 		memcpy(cur, file->pages[i], file->page_size);
+		cur += file->page_size;
 	}
 
 	return DQLITE_OK;
