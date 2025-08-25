@@ -321,7 +321,7 @@ static int handle_open(struct gateway *g, struct handle *req)
 			"a database for this connection is already open");
 		return 0;
 	}
-	rc = registry__create(g->registry, request.filename, &db);
+	rc = registry__get_or_create(g->registry, request.filename, &db);
 	if (rc != 0) {
 		tracef("registry db get failed %d", rc);
 		return rc;
@@ -1096,7 +1096,7 @@ static int handle_remove(struct gateway *g, struct handle *req)
 }
 
 static int dumpFile(const char *filename,
-		     const struct vfsFile *file,
+		     const struct vfsSnapshotFile *file,
 		     struct buffer *buffer)
 {
 	char *cur;

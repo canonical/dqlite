@@ -2653,7 +2653,7 @@ int VfsReleaseSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot)
 	return SQLITE_OK;
 }
 
-static int vfsDatabaseRestore(struct vfsDatabase *d, const struct vfsFile *file)
+static int vfsDatabaseRestore(struct vfsDatabase *d, const struct vfsSnapshotFile *file)
 {
 	if (file->page_count == 0) {
 		return SQLITE_CORRUPT;
@@ -2720,7 +2720,6 @@ int VfsRestore(sqlite3 *conn, const struct vfsSnapshot *snapshot)
 	assert(rv == 0);
 	f->database->shm.size = 0;
 
-	assert(snapshot->wal.page_count == 0);
 	vfsWalClose(&f->database->wal);
 	vfsWalInit(&f->database->wal);
 

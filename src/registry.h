@@ -22,7 +22,7 @@ void registry__close(struct registry *r);
 /**
  * Returns the db with the given filename. If the db does not exists, it is created.
  */
-int registry__create(struct registry *r, const char *filename, struct db **db);
+int registry__get_or_create(struct registry *r, const char *filename, struct db **db);
 
 /**
  * Returns the db with the given filename. If the db does not exists it returns NULL.

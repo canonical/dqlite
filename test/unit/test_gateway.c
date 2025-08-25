@@ -100,16 +100,16 @@ struct connection {
 		snprintf(path, PATH_MAX, "%s/%s", f->temp_dir, (file).name);  \
 		int fd = open(path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);     \
 		munit_assert_int(fd, >, 0);                                   \
-		ssize_t rv =                                                  \
+		ssize_t write_rv =                                            \
 		    write(fd, (file).content.base, (file).content.len);       \
-		munit_assert_int(rv, ==, (file).content.len);                 \
+		munit_assert_int(write_rv, ==, (file).content.len);           \
 		sqlite3 *conn;                                                \
-		int sqlite_err =                                              \
+		int sqlite_rv =                                               \
 		    sqlite3_open_v2(path, &conn, SQLITE_OPEN_READONLY, NULL); \
-		munit_assert_int(sqlite_err, ==, SQLITE_OK);                  \
-		sqlite_err = sqlite3_exec(conn, "PRAGMA integrity_check",     \
-					  integrityCheckCb, NULL, NULL);      \
-		munit_assert_int(sqlite_err, ==, SQLITE_OK);                  \
+		munit_assert_int(sqlite_rv, ==, SQLITE_OK);                   \
+		sqlite_rv = sqlite3_exec(conn, "PRAGMA integrity_check",      \
+					 integrityCheckCb, NULL, NULL);       \
+		munit_assert_int(sqlite_rv, ==, SQLITE_OK);                   \
 		sqlite3_close(conn);                                          \
 		close(fd);                                                    \
 	} while (0)
@@ -3153,7 +3153,6 @@ TEST_SETUP(dump)
 	struct request_dump_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	CLUSTER_ELECT(0);
-	OPEN;
 	f->temp_dir = test_dir_setup();
 	return f;
 }
@@ -3169,10 +3168,11 @@ TEST_CASE(dump, empty, NULL)
 {
 	(void)params;
 	struct request_dump_fixture *f = data;
+	OPEN;
+	
 	f->request = (struct request_dump){
 		.filename = "test",
 	};
-
 	ENCODE(&f->request, dump);
 	HANDLE(DUMP);
 	ASSERT_CALLBACK(DQLITE_OK, FILES);
@@ -3215,6 +3215,7 @@ TEST_CASE(dump, simple, NULL)
 	(void)params;
 	struct request_dump_fixture *f = data;
 
+	OPEN;
 	EXEC("CREATE TABLE test (n INT, data BLOB)");
 	EXEC("INSERT INTO test (n, data) VALUES (1, randomblob(256))");
 
@@ -3248,6 +3249,7 @@ TEST_CASE(dump, simple_follower, NULL)
 	(void)params;
 	struct request_dump_fixture *f = data;
 
+	OPEN;
 	EXEC("CREATE TABLE test (n INT, data BLOB)");
 	EXEC("INSERT INTO test (n, data) VALUES (1, randomblob(256))");
 	CLUSTER_APPLIED(CLUSTER_LAST_INDEX(0));
@@ -3285,6 +3287,7 @@ TEST_CASE(dump, checkpointed, NULL)
 	struct request_dump_fixture *f = data;
 	uint64_t stmt_id;
 
+	OPEN;
 	EXEC("CREATE TABLE test (data BLOB)");
 	/* Make sure we force a checkpoint */
 	struct config *config = f->gateway->config;

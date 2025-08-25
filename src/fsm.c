@@ -46,7 +46,7 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 	struct db *db;
 	int rv;
 
-	rv = registry__create(f->registry, c->filename, &db);
+	rv = registry__get_or_create(f->registry, c->filename, &db);
 	if (rv != 0) {
 		tracef("db get failed %d", rv);
 		return rv;
@@ -201,21 +201,9 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 	}
 
 	struct db *db;
-	rv = registry__create(f->registry, header.filename, &db);
+	rv = registry__get_or_create(f->registry, header.filename, &db);
 	if (rv != DQLITE_OK) {
-		if (rv == DQLITE_NOMEM) {
-			return RAFT_NOMEM;
-		}
-		return RAFT_ERROR;
-	}
-
-	sqlite3 *conn;
-	rv = db__open(db, &conn);
-	if (rv != SQLITE_OK) {
-		if (rv == SQLITE_NOMEM) {
-			return RAFT_NOMEM;
-		}
-		return RAFT_ERROR;
+		return rv == DQLITE_NOMEM ? RAFT_NOMEM : RAFT_ERROR;
 	}
 
 	tracef("main_size:%" PRIu64 " wal_size:%" PRIu64, header.main_size,
@@ -233,7 +221,6 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 
 	void **pages = raft_malloc(sizeof(void*) * page_count);
 	if (pages == NULL) {
-		sqlite3_close(conn);
 		return RAFT_NOMEM;
 	}
 	for (size_t i = 0; i < page_count; i++) {
@@ -254,7 +241,13 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 		}
 	};
 
-	/* Due to the check above, this cast is safe. */
+
+	sqlite3 *conn;
+	rv = db__open(db, &conn);
+	if (rv != SQLITE_OK) {
+		raft_free(pages);
+		return rv == SQLITE_NOMEM ? RAFT_NOMEM : RAFT_ERROR;
+	}
 	rv = VfsRestore(conn, &snapshot);
 	/* TODO: we could run PRAGMA integrity_check here or PRAGMA quick_check... */
 	raft_free(pages);

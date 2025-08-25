@@ -35,18 +35,30 @@ int VfsAbort(sqlite3 *conn);
 /* Performs a controlled checkpoint on conn */
 int VfsCheckpoint(sqlite3 *conn, unsigned int threshold);
 
-struct vfsFile {
+struct vfsSnapshotFile {
 	void **pages;
 	size_t page_count;
 	size_t page_size;
 };
 
 struct vfsSnapshot {
-	struct vfsFile main;
-	struct vfsFile wal;
+	struct vfsSnapshotFile main;
+	struct vfsSnapshotFile wal;
 };
 
+/* Acquires a snapshot from the connection conn. The snapshot wil be valid until
+ * VfsReleaseSnapshot is called.
+ *
+ * An acquired snapshot will take relevant lock on the database to make sure
+ * that memory remains valid until released.
+ *
+ * The logic will also attempt a checkpoint before returning to reduce the
+ * snapshot size.
+ */
 int VfsAcquireSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot);
+
+/* Releases a snapshot taken on conn. This means both releasing the locks on the
+ * database and the memory associated with the snapshot. */
 int VfsReleaseSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot);
 
 /* Restore a database snapshot. */
