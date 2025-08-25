@@ -16,14 +16,6 @@ SUITE(vfs_extra);
 
 #define N_VFS 2
 
-static char *bools[] = {"0", "1", NULL};
-
-#define SNAPSHOT_SHALLOW_PARAM "snapshot-shallow-param"
-static MunitParameterEnum vfs_params[] = {
-    {SNAPSHOT_SHALLOW_PARAM, bools},
-    {NULL, NULL},
-};
-
 struct fixture
 {
 	struct sqlite3_vfs vfs[N_VFS]; /* A "cluster" of VFS objects. */
@@ -231,98 +223,8 @@ static void tearDownRestorePendingByte(void *data)
 		munit_assert_int(_rv, ==, RV);                             \
 	} while (0)
 
-struct snapshot
-{
-	void *data;
-	size_t n;
-	size_t main_size;
-	size_t wal_size;
-};
-
-/* Copies n dqlite_buffers to a single dqlite buffer */
-static struct dqlite_buffer n_bufs_to_buf(struct dqlite_buffer bufs[],
-					  unsigned n)
-{
-	uint8_t *cursor;
-	struct dqlite_buffer buf = {0};
-
-	/* Allocate a suitable buffer */
-	for (unsigned i = 0; i < n; ++i) {
-		buf.len += bufs[i].len;
-		tracef("buf.len %zu", buf.len);
-	}
-	buf.base = raft_malloc(buf.len);
-	munit_assert_ptr_not_null(buf.base);
-
-	/* Copy all data */
-	cursor = buf.base;
-	for (unsigned i = 0; i < n; ++i) {
-		memcpy(cursor, bufs[i].base, bufs[i].len);
-		cursor += bufs[i].len;
-	}
-	munit_assert_ullong((uintptr_t)(cursor - (uint8_t *)buf.base), ==,
-			    buf.len);
-
-	return buf;
-}
-
-/* Take a snapshot of the database on the given VFS. */
-#define SNAPSHOT_DEEP(VFS, SNAPSHOT)                                      \
-	do {                                                              \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                 \
-		int _rv;                                                  \
-		_rv = VfsSnapshot(vfs, "test.db", \
-				  &SNAPSHOT.data, &SNAPSHOT.n); \
-		munit_assert_int(_rv, ==, 0);                             \
-	} while (0)
-
-/* Take a shallow snapshot of the database on the given VFS. */
-#define SNAPSHOT_SHALLOW(VFS, SNAPSHOT)                                       \
-	do {                                                                  \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                     \
-		int _rv;                                                      \
-		unsigned _n;                                                  \
-		unsigned _n_pages;                                            \
-		struct dqlite_buffer *_bufs;                                  \
-		struct dqlite_buffer _all_data;                               \
-		_rv = VfsDatabaseNumPages(vfs, "test.db", true, &_n_pages); \
-		munit_assert_int(_rv, ==, 0);                                 \
-		_n = _n_pages;                                                \
-		_bufs = sqlite3_malloc64(_n * sizeof(*_bufs));                \
-		_rv = VfsShallowSnapshot(vfs, "test.db", _bufs, _n); \
-		munit_assert_int(_rv, ==, 0);                                 \
-		_all_data = n_bufs_to_buf(_bufs, _n);                         \
-		sqlite3_free(_bufs);                                          \
-		SNAPSHOT.data = _all_data.base;                               \
-		SNAPSHOT.n = _all_data.len;                                   \
-	} while (0)
-
-#define SNAPSHOT(VFS, SNAPSHOT)                                             \
-	do {                                                                \
-		bool _shallow = false;                                      \
-		if (munit_parameters_get(params, SNAPSHOT_SHALLOW_PARAM) != \
-		    NULL) {                                                 \
-			_shallow = atoi(munit_parameters_get(               \
-			    params, SNAPSHOT_SHALLOW_PARAM));               \
-		}                                                           \
-		if (_shallow) {                                             \
-			SNAPSHOT_SHALLOW(VFS, SNAPSHOT);                    \
-		} else {                                                    \
-			SNAPSHOT_DEEP(VFS, SNAPSHOT);                       \
-		}                                                           \
-	} while (0)
-
-/* Restore a snapshot onto the given VFS. */
-#define RESTORE(VFS, SNAPSHOT)                                            \
-	do {                                                              \
-		sqlite3_vfs *vfs = sqlite3_vfs_find(VFS);                 \
-		int _rv =                                                 \
-		    VfsRestore(vfs, VFS_PATH, SNAPSHOT.data, SNAPSHOT.n); \
-		munit_assert_int(_rv, ==, 0);                             \
-	} while (0)
-
 /* Open and close a new connection using the dqlite VFS. */
-TEST(vfs_extra, open, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, open, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	OPEN("1", db);
@@ -333,7 +235,7 @@ TEST(vfs_extra, open, setUp, tearDown, 0, vfs_params)
 /* New frames appended to the WAL file by a sqlite3_step() call that has
  * triggered a write transactions are not immediately visible to other
  * connections after sqlite3_step() has returned. */
-TEST(vfs_extra, writeTransactionNotImmediatelyVisible, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, writeTransactionNotImmediatelyVisible, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -348,6 +250,11 @@ TEST(vfs_extra, writeTransactionNotImmediatelyVisible, setUp, tearDown, 0, vfs_p
 	munit_assert_int(rv, ==, SQLITE_ERROR);
 	munit_assert_string_equal(sqlite3_errmsg(db2), "no such table: test");
 
+	struct vfsTransaction tx;
+	POLL(db1, tx);
+	ABORT(db1);
+	DONE(tx);
+
 	CLOSE(db1);
 	CLOSE(db2);
 
@@ -356,7 +263,7 @@ TEST(vfs_extra, writeTransactionNotImmediatelyVisible, setUp, tearDown, 0, vfs_p
 
 /* Invoking VfsPoll() after a call to sqlite3_step() has triggered a
  * write transaction returns the newly appended WAL frames. */
-TEST(vfs_extra, pollAfterWriteTransaction, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, pollAfterWriteTransaction, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -380,6 +287,7 @@ TEST(vfs_extra, pollAfterWriteTransaction, setUp, tearDown, 0, vfs_params)
 	DONE(tx);
 
 	FINALIZE(stmt);
+	ABORT(db);
 	CLOSE(db);
 
 	return MUNIT_OK;
@@ -389,7 +297,7 @@ TEST(vfs_extra, pollAfterWriteTransaction, setUp, tearDown, 0, vfs_params)
  * write transaction sets a write lock on the WAL, so calls to sqlite3_step()
  * from other connections return SQLITE_BUSY if they try to start a write
  * transaction. */
-TEST(vfs_extra, pollAcquireWriteLock, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, pollAcquireWriteLock, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -405,6 +313,7 @@ TEST(vfs_extra, pollAcquireWriteLock, setUp, tearDown, 0, vfs_params)
 
 	STEP(stmt1, SQLITE_DONE);
 	POLL(db1, tx);
+	DONE(tx);
 
 	STEP(stmt2, SQLITE_BUSY);
 	RESET(stmt2, SQLITE_BUSY);
@@ -412,10 +321,9 @@ TEST(vfs_extra, pollAcquireWriteLock, setUp, tearDown, 0, vfs_params)
 	FINALIZE(stmt1);
 	FINALIZE(stmt2);
 
-	CLOSE(db1);
 	CLOSE(db2);
-
-	DONE(tx);
+	ABORT(db1);
+	CLOSE(db1);
 
 	return MUNIT_OK;
 }
@@ -424,7 +332,7 @@ TEST(vfs_extra, pollAcquireWriteLock, setUp, tearDown, 0, vfs_params)
  * triggered a write transaction, some WAL frames will be written and then
  * overwritten before the final commit. Only the final version of the frame is
  * included in the set returned by VfsPoll(). */
-TEST(vfs_extra, pollAfterPageStress, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, pollAfterPageStress, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -486,7 +394,7 @@ TEST(vfs_extra, pollAfterPageStress, setUp, tearDown, 0, vfs_params)
 /* Set the SQLite PENDING_BYTE at the start of the second page and make sure
  * all data entry is successful.
  */
-TEST(vfs_extra, adaptPendingByte, setUp, tearDownRestorePendingByte, 0, vfs_params)
+TEST(vfs_extra, adaptPendingByte, setUp, tearDownRestorePendingByte, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -539,7 +447,7 @@ TEST(vfs_extra, adaptPendingByte, setUp, tearDownRestorePendingByte, 0, vfs_para
 /* Use VfsApply() to actually modify the WAL after a write transaction
  * was triggered by a call to sqlite3_step(), then perform a read transaction
  * and check that it can see the transaction changes. */
-TEST(vfs_extra, applyMakesTransactionVisible, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, applyMakesTransactionVisible, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -565,7 +473,7 @@ TEST(vfs_extra, applyMakesTransactionVisible, setUp, tearDown, 0, vfs_params)
 /* Use VfsApply() to actually modify the WAL after a write transaction
  * was triggered by an explicit "COMMIT" statement and check that changes are
  * visible. */
-TEST(vfs_extra, applyExplicitTransaction, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, applyExplicitTransaction, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -605,7 +513,7 @@ TEST(vfs_extra, applyExplicitTransaction, setUp, tearDown, 0, vfs_params)
 /* Perform two consecutive full write transactions using sqlite3_step(),
  * VfsPoll() and VfsApply(), then run a read transaction and
  * check that it can see all committed changes. */
-TEST(vfs_extra, consecutiveWriteTransactions, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, consecutiveWriteTransactions, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -645,7 +553,7 @@ TEST(vfs_extra,
      setUp,
      tearDown,
      0,
-     vfs_params)
+     NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -689,7 +597,7 @@ TEST(vfs_extra,
      setUp,
      tearDown,
      0,
-     vfs_params)
+     NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -718,7 +626,7 @@ TEST(vfs_extra,
 /* Use VfsApply() to actually modify the WAL after a write transaction
  * was triggered by sqlite3_step(), and verify that the transaction is visible
  * from a brand new connection. */
-TEST(vfs_extra, transactionIsVisibleFromNewConnection, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, transactionIsVisibleFromNewConnection, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -754,7 +662,7 @@ TEST(vfs_extra,
      setUp,
      tearDown,
      0,
-     vfs_params)
+     NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -783,7 +691,7 @@ TEST(vfs_extra,
  * different VFS than the one that initially generated it. In that case it's
  * necessary to initialize the database file on the other VFS by opening and
  * closing a connection. */
-TEST(vfs_extra, firstApplyOnDifferentVfs, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, firstApplyOnDifferentVfs, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -812,7 +720,7 @@ TEST(vfs_extra, firstApplyOnDifferentVfs, setUp, tearDown, 0, vfs_params)
 /* Use VfsApply() to replicate a second write transaction on a different
  * VFS than the one that initially generated it. In that case it's not necessary
  * to do anything special before calling VfsApply(). */
-TEST(vfs_extra, secondApplyOnDifferentVfs, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, secondApplyOnDifferentVfs, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -845,7 +753,7 @@ TEST(vfs_extra, secondApplyOnDifferentVfs, setUp, tearDown, 0, vfs_params)
 /* Use VfsApply() to replicate a second write transaction on a different
  * VFS than the one that initially generated it and that has an open connection
  * which has built the WAL index header by preparing a statement. */
-TEST(vfs_extra, applyOnDifferentVfsWithOpenConnection, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, applyOnDifferentVfsWithOpenConnection, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -867,6 +775,7 @@ TEST(vfs_extra, applyOnDifferentVfsWithOpenConnection, setUp, tearDown, 0, vfs_p
 
 	EXEC(db1, "INSERT INTO test(n) VALUES(123)");
 	POLL(db1, tx);
+	ABORT(db1);
 	CLOSE(db1);
 
 	OPEN("2", db2);
@@ -888,7 +797,7 @@ TEST(vfs_extra, applyOnDifferentVfsWithOpenConnection, setUp, tearDown, 0, vfs_p
 
 /* A write transaction that gets replicated to a different VFS is visible to a
  * new connection opened on that VFS. */
-TEST(vfs_extra, transactionVisibleOnDifferentVfs, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, transactionVisibleOnDifferentVfs, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -919,7 +828,7 @@ TEST(vfs_extra, transactionVisibleOnDifferentVfs, setUp, tearDown, 0, vfs_params
 
 /* Calling VfsAbort() to cancel a transaction releases the write
  * lock on the WAL. */
-TEST(vfs_extra, abort, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, abort, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -936,8 +845,12 @@ TEST(vfs_extra, abort, setUp, tearDown, 0, vfs_params)
 	STEP(stmt1, SQLITE_DONE);
 	POLL(db1, tx);
 	ABORT(db1);
+	DONE(tx);
 
 	STEP(stmt2, SQLITE_DONE);
+	POLL(db2, tx);
+	ABORT(db2);
+	DONE(tx);
 
 	FINALIZE(stmt1);
 	FINALIZE(stmt2);
@@ -945,7 +858,6 @@ TEST(vfs_extra, abort, setUp, tearDown, 0, vfs_params)
 	CLOSE(db1);
 	CLOSE(db2);
 
-	DONE(tx);
 
 	return MUNIT_OK;
 }
@@ -953,7 +865,7 @@ TEST(vfs_extra, abort, setUp, tearDown, 0, vfs_params)
 /* Perform a checkpoint after a write transaction has completed, then perform
  * another write transaction and check that changes both before and after the
  * checkpoint are visible. */
-TEST(vfs_extra, checkpoint, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, checkpoint, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -993,7 +905,7 @@ TEST(vfs_extra, checkpoint, setUp, tearDown, 0, vfs_params)
 	return MUNIT_OK;
 }
 
-TEST(vfs_extra, checkpointReclaimsSpace, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, checkpointReclaimsSpace, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *conn;
 	struct vfsTransaction tx;
@@ -1037,7 +949,7 @@ TEST(vfs_extra, checkpointReclaimsSpace, setUp, tearDown, 0, vfs_params)
 	return MUNIT_OK;
 }
 
-TEST(vfs_extra, applyOnDifferentVfsCheckpointReclaimsSpace, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, applyOnDifferentVfsCheckpointReclaimsSpace, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
 	sqlite3 *db2;
@@ -1091,7 +1003,7 @@ TEST(vfs_extra, applyOnDifferentVfsCheckpointReclaimsSpace, setUp, tearDown, 0, 
 }
 
 /* Replicate a write transaction that happens after a checkpoint. */
-TEST(vfs_extra, applyOnDifferentVfsAfterCheckpoint, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, applyOnDifferentVfsAfterCheckpoint, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -1150,7 +1062,7 @@ TEST(vfs_extra,
      setUp,
      tearDown,
      0,
-     vfs_params)
+     NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -1225,7 +1137,7 @@ TEST(vfs_extra,
      setUp,
      tearDown,
      0,
-     vfs_params)
+     NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -1295,7 +1207,7 @@ TEST(vfs_extra,
 
 /* Replicate to another VFS a series of changes including a checkpoint, then
  * perform a new write transaction on that other VFS. */
-TEST(vfs_extra, checkpointThenPerformTransaction, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, checkpointThenPerformTransaction, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	struct vfsTransaction tx1;
@@ -1344,7 +1256,7 @@ TEST(vfs_extra, checkpointThenPerformTransaction, setUp, tearDown, 0, vfs_params
 
 /* Rollback a transaction that didn't hit the page cache limit and hence didn't
  * perform any pre-commit WAL writes. */
-TEST(vfs_extra, rollbackTransactionWithoutPageStress, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, rollbackTransactionWithoutPageStress, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	struct vfsTransaction tx;
@@ -1384,7 +1296,7 @@ TEST(vfs_extra, rollbackTransactionWithoutPageStress, setUp, tearDown, 0, vfs_pa
 
 /* Rollback a transaction that hit the page cache limit and hence performed some
  * pre-commit WAL writes. */
-TEST(vfs_extra, rollbackTransactionWithPageStress, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, rollbackTransactionWithPageStress, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
@@ -1431,7 +1343,7 @@ TEST(vfs_extra, rollbackTransactionWithPageStress, setUp, tearDown, 0, vfs_param
 
 /* Try and fail to checkpoint a WAL that performed some pre-commit WAL writes.
  */
-TEST(vfs_extra, checkpointTransactionWithPageStress, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, checkpointTransactionWithPageStress, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	struct vfsTransaction tx;
@@ -1463,42 +1375,41 @@ TEST(vfs_extra, checkpointTransactionWithPageStress, setUp, tearDown, 0, vfs_par
 
 /* A snapshot of a brand new database that has been just initialized contains
  * just the first page of the main database file. */
-TEST(vfs_extra, snapshotInitialDatabase, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, snapshotInitialDatabase, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
-	struct snapshot snapshot;
+	struct vfsSnapshot snapshot;
 	uint8_t *page;
 	uint8_t page_size[2] = {2, 0};           /* Big-endian page size */
 	uint8_t database_size[4] = {0, 0, 0, 1}; /* Big-endian database size */
 
 	OPEN("1", db);
-	CLOSE(db);
 
-	SNAPSHOT("1", snapshot);
+	int rv = VfsAcquireSnapshot(db, &snapshot);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	munit_assert_int(snapshot.main.page_count, ==, 1);
+	munit_assert_int(snapshot.main.page_size, ==, DB_PAGE_SIZE);
+	munit_assert_int(snapshot.wal.page_count, ==, 0);
+	munit_assert_int(snapshot.wal.page_size, ==, DB_PAGE_SIZE);
 
-	munit_assert_int(snapshot.n, ==, DB_PAGE_SIZE);
-	page = snapshot.data;
+	page = snapshot.main.pages[0];
 
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
 	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
 
-	raft_free(snapshot.data);
+	VfsReleaseSnapshot(db, &snapshot);
+	CLOSE(db);
 
 	return MUNIT_OK;
 }
 
 /* Take a snapshot of a database after the first write transaction has been
  * applied. */
-TEST(vfs_extra, snapshotAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, snapshotAfterFirstTransaction, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
-	struct snapshot snapshot;
+	struct vfsSnapshot snapshot;
 	struct vfsTransaction tx;
-	uint8_t *page;
-	uint32_t db_pages;
-	uint32_t wal_pages;
-	size_t total_size;
-	bool shallow = atoi(munit_parameters_get(params, SNAPSHOT_SHALLOW_PARAM));
 
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
@@ -1507,46 +1418,35 @@ TEST(vfs_extra, snapshotAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
 	APPLY(db, tx);
 	DONE(tx);
 
-	CLOSE(db);
+	int rv = VfsAcquireSnapshot(db, &snapshot);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	/*
+	 * Page number 1 contains the header and the schema root.
+	 * Page number 2 contains the (empty) root for test table.
+	 */
+	const uint32_t pages = 2;
+	munit_assert_int(snapshot.main.page_count, ==, pages);
+	munit_assert_int(snapshot.main.page_size, ==, DB_PAGE_SIZE);
+	munit_assert_int(snapshot.wal.page_count, ==, 0);
+	munit_assert_int(snapshot.wal.page_size, ==, DB_PAGE_SIZE);
 
-	SNAPSHOT("1", snapshot);
-
-	page = snapshot.data;
+	uint8_t *page = snapshot.main.pages[0];
 	munit_assert_int(ByteGetBe16(&page[16]), ==, DB_PAGE_SIZE);
+	munit_assert_int(ByteGetBe32(&page[28]), ==, pages);
 
-	/* Page number 1 is written directly to the main file during the first
-	 * write transaction.  The WAL contains an updated version of page 1
-	 * and a new page 2. */
-	db_pages = 1;
-	wal_pages = 2;
-	if (shallow) {
-		/* A shallow snapshot captures what the database would look
-		 * like if we fully checkpointed the WAL. */
-		munit_assert_int(snapshot.n, ==, DB_PAGE_SIZE * wal_pages);
-		munit_assert_int(ByteGetBe32(&page[28]), ==, wal_pages);
-	} else {
-		/* A deep snapshot captures the database and WAL separately,
-		 * as they are. */
-		total_size = db_pages * DB_PAGE_SIZE + 32 + (24 + DB_PAGE_SIZE) * wal_pages;
-		munit_assert_int(snapshot.n, ==, total_size);
-		munit_assert_int(ByteGetBe32(&page[28]), ==, db_pages);
-	}
-
-	raft_free(snapshot.data);
+	VfsReleaseSnapshot(db, &snapshot);
+	CLOSE(db);
 
 	return MUNIT_OK;
 }
 
 /* A snapshot of a database after a checkpoint contains all checkpointed pages
  * and no WAL frames. */
-TEST(vfs_extra, snapshotAfterCheckpoint, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, snapshotAfterCheckpoint, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
-	struct snapshot snapshot;
+	struct vfsSnapshot snapshot;
 	struct vfsTransaction tx;
-	uint8_t *page;
-	uint8_t page_size[2] = {2, 0};           /* Big-endian page size */
-	uint8_t database_size[4] = {0, 0, 0, 2}; /* Big-endian database size */
 
 	OPEN("1", db);
 	EXEC(db, "CREATE TABLE test(n INT)");
@@ -1557,116 +1457,125 @@ TEST(vfs_extra, snapshotAfterCheckpoint, setUp, tearDown, 0, vfs_params)
 
 	CHECKPOINT(db);
 
+	int rv = VfsAcquireSnapshot(db, &snapshot);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	const uint32_t pages = 2;
+	munit_assert_int(snapshot.main.page_count, ==, pages);
+	munit_assert_int(snapshot.main.page_size, ==, DB_PAGE_SIZE);
+	munit_assert_int(snapshot.wal.page_count, ==, 0);
+	munit_assert_int(snapshot.wal.page_size, ==, DB_PAGE_SIZE);
+
+	uint8_t *page = snapshot.main.pages[0];
+	munit_assert_int(ByteGetBe16(&page[16]), ==, DB_PAGE_SIZE);
+	munit_assert_int(ByteGetBe32(&page[28]), ==, pages);
+
 	CLOSE(db);
-
-	SNAPSHOT("1", snapshot);
-
-	munit_assert_int(snapshot.n, ==, DB_PAGE_SIZE * 2);
-	page = snapshot.data;
-
-	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
-	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
-
-	raft_free(snapshot.data);
 
 	return MUNIT_OK;
 }
 
 /* Restore a snapshot taken after a brand new database has been just
  * initialized. */
-TEST(vfs_extra, restoreInitialDatabase, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, restoreInitialDatabase, setUp, tearDown, 0, NULL)
 {
-	sqlite3 *db;
-	struct snapshot snapshot;
+	sqlite3 *db1, *db2;
+	struct vfsSnapshot snapshot;
 
-	OPEN("1", db);
-	CLOSE(db);
+	OPEN("1", db1);
 
-	SNAPSHOT("1", snapshot);
+	// TODO
+	int rv = VfsAcquireSnapshot(db1, &snapshot);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
-	OPEN("2", db);
-	CLOSE(db);
+	OPEN("2", db2);
+	rv = VfsRestore(db2, &snapshot);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	CLOSE(db2);
 
-	RESTORE("2", snapshot);
-
-	raft_free(snapshot.data);
+	VfsReleaseSnapshot(db1, &snapshot);
+	CLOSE(db1);
 
 	return MUNIT_OK;
 }
 
 /* Restore a snapshot of a database taken after the first write transaction gets
  * applied. */
-TEST(vfs_extra, restoreAfterFirstTransaction, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, restoreAfterFirstTransaction, setUp, tearDown, 0, NULL)
 {
-	sqlite3 *db;
+	sqlite3 *db1, *db2;
 	sqlite3_stmt *stmt;
-	struct snapshot snapshot;
+	struct vfsSnapshot snapshot;
 	struct vfsTransaction tx;
 
-	OPEN("1", db);
-	EXEC(db, "CREATE TABLE test(n INT)");
+	OPEN("1", db1);
+	EXEC(db1, "CREATE TABLE test(n INT)");
 
-	POLL(db, tx);
-	APPLY(db, tx);
+	POLL(db1, tx);
+	APPLY(db1, tx);
 	DONE(tx);
 
-	CLOSE(db);
+	int rv = VfsAcquireSnapshot(db1, &snapshot);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
-	SNAPSHOT("1", snapshot);
+	OPEN("2", db2);
 
-	OPEN("2", db);
-	CLOSE(db);
+	rv = VfsRestore(db2, &snapshot);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
-	RESTORE("2", snapshot);
+	VfsReleaseSnapshot(db1, &snapshot);
 
-	OPEN("2", db);
+	CLOSE(db2);
+	CLOSE(db1);
 
-	PREPARE(db, stmt, "SELECT * FROM test");
+
+	OPEN("2", db2);
+
+	PREPARE(db2, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
 	FINALIZE(stmt);
-
-	CLOSE(db);
-
-	raft_free(snapshot.data);
+	CLOSE(db2);
 
 	return MUNIT_OK;
 }
 
 /* Restore a snapshot of a database while a connection is open. */
-TEST(vfs_extra, restoreWithOpenConnection, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, restoreWithOpenConnection, setUp, tearDown, 0, NULL)
 {
-	sqlite3 *db;
+	sqlite3 *db1, *db2;
 	sqlite3_stmt *stmt;
-	struct snapshot snapshot;
+	struct vfsSnapshot snapshot;
 	struct vfsTransaction tx;
 
-	OPEN("1", db);
-	EXEC(db, "CREATE TABLE test(n INT)");
-	POLL(db, tx);
-	APPLY(db, tx);
+	OPEN("1", db1);
+	EXEC(db1, "CREATE TABLE test(n INT)");
+	POLL(db1, tx);
+	APPLY(db1, tx);
 	DONE(tx);
 
-	CLOSE(db);
 
-	SNAPSHOT("1", snapshot);
+	int rv = VfsAcquireSnapshot(db1, &snapshot);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
-	OPEN("2", db);
+	OPEN("2", db2);
 
-	RESTORE("2", snapshot);
+	rv = VfsRestore(db2, &snapshot);
+	munit_assert_int(rv, ==, SQLITE_OK);
 
-	PREPARE(db, stmt, "SELECT * FROM test");
+	VfsReleaseSnapshot(db1, &snapshot);
+	CLOSE(db1);
+
+	PREPARE(db2, stmt, "SELECT * FROM test");
 	STEP(stmt, SQLITE_DONE);
 	FINALIZE(stmt);
 
-	CLOSE(db);
-
-	raft_free(snapshot.data);
+	CLOSE(db2);
 
 	return MUNIT_OK;
 }
 
 /* Changing page_size to non-default value fails. */
-TEST(vfs_extra, changePageSize, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, changePageSize, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	int rv;
@@ -1682,7 +1591,7 @@ TEST(vfs_extra, changePageSize, setUp, tearDown, 0, vfs_params)
 }
 
 /* Changing page_size to current value succeeds. */
-TEST(vfs_extra, changePageSizeSameValue, setUp, tearDown, 0, vfs_params)
+TEST(vfs_extra, changePageSizeSameValue, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
 	int rv;

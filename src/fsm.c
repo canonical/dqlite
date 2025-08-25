@@ -5,16 +5,30 @@
 #include "leader.h"
 #include "protocol.h"
 #include "raft.h"
+#include "registry.h"
 #include "tracing.h"
 #include "vfs.h"
 
 #include <assert.h>
 #include <sys/mman.h>
 
+struct fsmDatabaseSnapshot {
+	sqlite3 *conn;
+	struct raft_buffer header;
+	struct vfsSnapshot files;
+};
+
+struct fsmSnapshot {
+	struct raft_buffer header;
+	struct fsmDatabaseSnapshot *databases;
+	size_t database_count;
+};
+
 struct fsm
 {
 	struct logger *logger;
 	struct registry *registry;
+	struct fsmSnapshot snapshot;
 };
 
 /* Not used */
@@ -26,59 +40,13 @@ static int apply_open(struct fsm *f, const struct command_open *c)
 	return 0;
 }
 
-static int databaseReadLock(struct db *db)
-{
-	if (!db->read_lock) {
-		db->read_lock = 1;
-		return 0;
-	} else {
-		return -1;
-	}
-}
-
-static int databaseReadUnlock(struct db *db)
-{
-	if (db->read_lock) {
-		db->read_lock = 0;
-		return 0;
-	} else {
-		return -1;
-	}
-}
-
-static void maybeCheckpoint(struct db *db, sqlite3 *conn)
-{
-	tracef("maybe checkpoint");
-	int rv;
-
-	/* Don't run when a snapshot is busy. Running a checkpoint while a
-	 * snapshot is busy will result in illegal memory accesses by the
-	 * routines that try to access database page pointers contained in the
-	 * snapshot. */
-	rv = databaseReadLock(db);
-	if (rv != 0) {
-		tracef("busy snapshot %d", rv);
-		return;
-	}
-
-	rv = VfsCheckpoint(conn, db->config->checkpoint_threshold);
-	if (rv == SQLITE_BUSY) {
-		tracef("checkpoint: busy reader or writer");
-	} else if (rv != SQLITE_OK) {
-		tracef("checkpoint failed: %d", rv);
-	}
-
-	rv = databaseReadUnlock(db);
-	assert(rv == 0);
-}
-
 static int apply_frames(struct fsm *f, const struct command_frames *c)
 {
 	tracef("fsm apply frames");
 	struct db *db;
 	int rv;
 
-	rv = registry__db_get(f->registry, c->filename, &db);
+	rv = registry__get_or_create(f->registry, c->filename, &db);
 	if (rv != 0) {
 		tracef("db get failed %d", rv);
 		return rv;
@@ -116,7 +84,13 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		goto error;
 	}
 
-	maybeCheckpoint(db, conn);
+	int ckpt_rv = VfsCheckpoint(conn, db->config->checkpoint_threshold);
+	if (ckpt_rv == SQLITE_BUSY) {
+		tracef("checkpoint: busy reader or writer");
+	} else if (ckpt_rv != SQLITE_OK) {
+		tracef("checkpoint failed: %d", ckpt_rv);
+	}
+
 error:
 	if (db->active_leader == NULL) {
 		sqlite3_close(conn);
@@ -201,14 +175,14 @@ SERIALIZE__DEFINE(snapshotDatabase, SNAPSHOT_DATABASE);
 SERIALIZE__IMPLEMENT(snapshotDatabase, SNAPSHOT_DATABASE);
 
 /* Encode the global snapshot header. */
-static int encodeSnapshotHeader(unsigned n, struct raft_buffer *buf)
+static int encodeSnapshotHeader(size_t n, struct raft_buffer *buf)
 {
 	struct snapshotHeader header;
 	char *cursor;
 	header.format = SNAPSHOT_FORMAT;
 	header.n = n;
 	buf->len = snapshotHeader__sizeof(&header);
-	buf->base = sqlite3_malloc64(buf->len);
+	buf->base = raft_malloc(buf->len);
 	if (buf->base == NULL) {
 		return RAFT_NOMEM;
 	}
@@ -217,170 +191,163 @@ static int encodeSnapshotHeader(unsigned n, struct raft_buffer *buf)
 	return 0;
 }
 
-/* Encode the given database. */
-static int encodeDatabase(struct db *db,
-			  struct raft_buffer r_bufs[],
-			  uint32_t n)
+static int decodeDatabase(const struct registry *r,
+			  struct cursor *cursor,
+			  struct vfsSnapshot *snapshot,
+			  const char **filename)
 {
 	struct snapshotDatabase header;
-	char *cursor;
-	struct dqlite_buffer *bufs = (struct dqlite_buffer *)r_bufs;
-	int rv;
-
-	header.filename = db->filename;
-	header.main_size = (n - 1) * (uint64_t)db->config->page_size;
-	/* The database is checkpointed before writing it to disk.  As such,
-	 * wal_size is always 0. */
-	header.wal_size = 0;
-
-	rv = VfsShallowSnapshot(db->vfs, db->filename, &bufs[1], n - 1);
+	int rv = snapshotDatabase__decode(cursor, &header);
 	if (rv != 0) {
-		goto err;
-	}
-
-	/* Database header. */
-	bufs[0].len = snapshotDatabase__sizeof(&header);
-	bufs[0].base = sqlite3_malloc64(bufs[0].len);
-	if (bufs[0].base == NULL) {
-		rv = RAFT_NOMEM;
-		goto err;
-	}
-	cursor = bufs[0].base;
-	snapshotDatabase__encode(&header, &cursor);
-
-	return 0;
-
-err:
-	assert(rv != 0);
-	return rv;
-}
-
-/* Decode the database contained in a snapshot. */
-static int decodeDatabase(struct fsm *f, struct cursor *cursor)
-{
-	struct snapshotDatabase header;
-	struct db *db;
-	size_t n;
-	int exists;
-	int rv;
-
-	rv = snapshotDatabase__decode(cursor, &header);
-	if (rv != 0) {
-		return rv;
-	}
-	rv = registry__db_get(f->registry, header.filename, &db);
-	if (rv != 0) {
-		return rv;
-	}
-
-	if (db->leaders > 0) {
-		return RAFT_BUSY;
-	}
-
-	/* Check if the database file exists, and create it by opening a
-	 * connection if it doesn't. */
-	rv = db->vfs->xAccess(db->vfs, header.filename, 0, &exists);
-	assert(rv == 0);
-
-	if (!exists) {
-		sqlite3 *conn;
-		rv = db__open(db, &conn);
-		if (rv != 0) {
-			return rv;
-		}
-		sqlite3_close(conn);
+		return RAFT_INVALID;
 	}
 
 	tracef("main_size:%" PRIu64 " wal_size:%" PRIu64, header.main_size,
 	       header.wal_size);
-	if (header.main_size + header.wal_size > SIZE_MAX) {
+	if (header.main_size > SIZE_MAX - header.wal_size) {
 		tracef("main_size + wal_size would overflow max DB size");
-		return -1;
+		return RAFT_INVALID;
 	}
 
-	/* Due to the check above, this cast is safe. */
-	n = (size_t)(header.main_size + header.wal_size);
-	rv = VfsRestore(db->vfs, db->filename, cursor->p, n);
-	if (rv != 0) {
-		return rv;
+	const size_t page_size = r->config->page_size;
+	assert((header.main_size % page_size) == 0);
+	assert(header.wal_size == 0);
+
+	const size_t page_count = header.main_size / page_size;
+
+	void **pages = raft_malloc(sizeof(void *) * page_count);
+	if (pages == NULL) {
+		return RAFT_NOMEM;
 	}
-	cursor->p += n;
+	for (size_t i = 0; i < page_count; i++) {
+		pages[i] = (void *)(cursor->p + i * page_size);
+	}
+	cursor->p += header.main_size;
 
-	return 0;
+	*snapshot = (struct vfsSnapshot) {
+		.main = {
+			.page_count = header.main_size / page_size,
+			.page_size = page_size,
+			.pages = pages,
+		},
+		// FIXME this breaks compatibility with very old dqlite 1.17.x (the one before shallow snapshot got in)
+		.wal = {
+			.page_count = 0,
+			.page_size = page_size,
+			.pages = NULL,
+		}
+	};
+	*filename = header.filename;
+
+	return RAFT_OK;
 }
 
-static unsigned dbNumPages(struct db *db)
-{
-	int rv;
-	uint32_t n;
+static int integrityCheckCb(void *pArg, int n, char **values, char **names) {
+	bool *check_passed = pArg;
 
-	rv = VfsDatabaseNumPages(db->vfs, db->filename, true, &n);
-	assert(rv == 0);
-	return n;
+	PRE(check_passed != NULL);
+	PRE(n == 1);
+	PRE(sqlite3_stricmp(names[0], "quick_check") == 0);
+
+	if (sqlite3_stricmp(values[0], "ok") != 0) {
+		tracef("PRAGMA quick_check: %s", values[0]);
+		*check_passed = false;
+	}
+
+	return SQLITE_OK;
 }
 
-/* Determine the total number of raft buffers needed for a snapshot */
-static unsigned snapshotNumBufs(struct fsm *f)
+static int restoreDatabase(struct registry *r,
+			   const char *filename,
+			   const struct vfsSnapshot *snapshot)
 {
 	struct db *db;
-	queue *head;
-	unsigned n = 1; /* snapshot header */
-
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		n += 1; /* database header */
-		db = QUEUE_DATA(head, struct db, queue);
-		n += dbNumPages(db); /* 1 buffer per page (zero copy) */
+	int rv = registry__get_or_create(r, filename, &db);
+	if (rv != DQLITE_OK) {
+		return rv == DQLITE_NOMEM ? RAFT_NOMEM : RAFT_ERROR;
 	}
 
-	return n;
-}
-
-/* An example array of snapshot buffers looks like this:
- *
- * bufs:  SH DH1 P1 P2 P3 DH2 P1 P2
- * index:  0   1  2  3  4   6  7  8
- *
- * SH:   Snapshot Header
- * DHx:  Database Header
- * Px:   Database Page (not to be freed)
- * */
-static void freeSnapshotBufs(struct fsm *f,
-			     struct raft_buffer bufs[],
-			     unsigned n_bufs)
-{
-	(void)f;
-	unsigned i;
-	uint64_t skip_size;
-	struct cursor cursor;
-	struct snapshotDatabase header;
-
-	if (bufs == NULL || n_bufs == 0) {
-		return;
+	sqlite3 *conn;
+	rv = db__open(db, &conn);
+	if (rv != SQLITE_OK) {
+		return rv == SQLITE_NOMEM ? RAFT_NOMEM : RAFT_ERROR;
 	}
+	rv = VfsRestore(conn, snapshot);
 
-	/* Free snapshot header */
-	sqlite3_free(bufs[0].base);
-
-	/* Free all database headers */
-	
-	i = 1;
-	skip_size = 0;
-	for (i = 1, skip_size = 0; i < n_bufs; i++) {
-		if (skip_size >= bufs[i].len) {
-			skip_size -= bufs[i].len;
-		} else {
-			assert(skip_size == 0);
-			cursor.p = bufs[i].base;
-			cursor.cap = bufs[i].len;
-			int rv = snapshotDatabase__decode(&cursor, &header);
-			assert(rv == 0);
-			sqlite3_free(bufs[i].base);
-
-			skip_size = header.main_size;
+	if (rv == SQLITE_OK) {
+		bool check_passed = true;
+		char *errmsg;
+		rv = sqlite3_exec(conn, "PRAGMA quick_check", integrityCheckCb, &check_passed, &errmsg);
+		if (rv != SQLITE_OK) {
+			tracef("PRAGMA quick_check failed: %s (%d)", errmsg, rv);
+		} else if (!check_passed) {
+			rv = SQLITE_CORRUPT;
 		}
 	}
-	assert(skip_size == 0);
+
+	sqlite3_close(conn);
+	if (rv != SQLITE_OK) {
+		if (rv == SQLITE_CORRUPT) {
+			return RAFT_CORRUPT;
+		} else if (rv == SQLITE_NOMEM) {
+			return RAFT_NOMEM;
+		} else if (rv == SQLITE_BUSY) {
+			return RAFT_BUSY;
+		}
+		return RAFT_ERROR;
+	}
+	return RAFT_OK;
+}
+
+static int snapshotDatabase(struct db *db, struct fsmDatabaseSnapshot *snapshot)
+{
+	int rv = db__open(db, &snapshot->conn);
+	if (rv == SQLITE_NOMEM) {
+		return RAFT_NOMEM;
+	}
+	if (rv != SQLITE_OK) {
+		return RAFT_ERROR;
+	}
+
+	rv = VfsCheckpoint(snapshot->conn, 0);
+	if (rv == SQLITE_BUSY) {
+		tracef("checkpoint: busy reader or writer");
+	} else if (rv != SQLITE_OK) {
+		tracef("checkpoint failed: %d", rv);
+	}
+
+	rv = VfsAcquireSnapshot(snapshot->conn, &snapshot->files);
+	/* I think this can be an assert. */
+	if (rv != SQLITE_OK) {
+		sqlite3_close(snapshot->conn);
+		if (rv == SQLITE_NOMEM) {
+			return RAFT_NOMEM;
+		}
+		return RAFT_ERROR;
+	}
+
+	const struct snapshotDatabase header = {
+		.filename = db->filename,
+		.main_size = snapshot->files.main.page_count * snapshot->files.main.page_size,
+		.wal_size = snapshot->files.wal.page_count * snapshot->files.wal.page_size,
+	};
+
+	const size_t header_size = snapshotDatabase__sizeof(&header);
+	void *header_buffer = raft_malloc(header_size);
+	if (header_buffer == NULL) {
+		VfsReleaseSnapshot(snapshot->conn, &snapshot->files);
+		sqlite3_close(snapshot->conn);
+		return RAFT_NOMEM;
+	}
+	char *cursor = header_buffer;
+	snapshotDatabase__encode(&header, &cursor);
+
+	snapshot->header = (struct raft_buffer) {
+		.base = header_buffer,
+		.len = header_size,
+	};
+
+	return RAFT_OK;
 }
 
 static int fsm__snapshot(struct raft_fsm *fsm,
@@ -388,71 +355,107 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 			 unsigned *n_bufs)
 {
 	struct fsm *f = fsm->data;
-	queue *head;
-	struct db *db;
-	unsigned n_db = 0;
-	unsigned i;
-	int rv;
 
-	/* First count how many databases we have and check that no checkpoint 
+	/* Only one running snapshot can be active per fsm */
+	if (f->snapshot.header.len != 0) {
+		return RAFT_BUSY;
+	}
+
+	PRE(f->snapshot.header.len == 0 && f->snapshot.header.base == NULL);
+	PRE(f->snapshot.database_count == 0 && f->snapshot.databases == NULL);
+
+	const size_t database_count = registry__size(f->registry);
+
+	struct raft_buffer header;
+	int rv = encodeSnapshotHeader(database_count, &header);
+	if (rv != 0) {
+		return rv;
+	}
+
+	struct fsmDatabaseSnapshot *databases =
+	    raft_calloc(database_count, sizeof(*databases));
+	if (databases == NULL) {
+		raft_free(header.base);
+		return RAFT_NOMEM;
+	}
+
+	/* First count how many databases we have and check that no checkpoint
 	 * nor other snapshot is in progress. */
+	size_t buffer_count = 1; /* For the snapshot header. */
+	unsigned i = 0;
+	queue *head;
 	QUEUE_FOREACH(head, &f->registry->dbs)
 	{
-		db = QUEUE_DATA(head, struct db, queue);
-		if (db->read_lock) {
-			return RAFT_BUSY;
+		struct db *db = QUEUE_DATA(head, struct db, queue);
+		rv = snapshotDatabase(db, &databases[i]);
+		if (rv != RAFT_OK) {
+			goto err;
 		}
-		n_db++;
+
+		buffer_count += 1 /* For the database header */ +
+				databases[i].files.main.page_count +
+				databases[i].files.wal.page_count;
+		i++;
 	}
 
-	/* Lock all databases, preventing the checkpoint from running */
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		db = QUEUE_DATA(head, struct db, queue);
-		rv = databaseReadLock(db);
-		assert(rv == 0);
-	}
-
-	*n_bufs = snapshotNumBufs(f);
-	*bufs = sqlite3_malloc64(*n_bufs * sizeof **bufs);
-	if (*bufs == NULL) {
+	struct raft_buffer *buffers = raft_malloc(buffer_count * sizeof(struct raft_buffer));
+	if (buffers == NULL) {
 		rv = RAFT_NOMEM;
 		goto err;
 	}
+	*bufs = buffers;
+	*n_bufs = (unsigned)buffer_count;
 
-	rv = encodeSnapshotHeader(n_db, &(*bufs)[0]);
-	if (rv != 0) {
-		goto err_after_bufs_alloc;
-	}
+	/* Just copy all buffers in the right order. */
+	buffers[0] = header;
+	unsigned buff_i = 1;
+	for (i = 0; i < database_count; i++) {
+		assert(buff_i < buffer_count);
+		buffers[buff_i] = databases[i].header;
+		buff_i++;
 
-	/* Encode individual databases. */
-	i = 1;
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		db = QUEUE_DATA(head, struct db, queue);
-		/* database_header + num_pages */
-		unsigned n = 1 + dbNumPages(db);
-		rv = encodeDatabase(db, &(*bufs)[i], n);
-		if (rv != 0) {
-			goto err_after_encode_header;
+		assert((buff_i + databases[i].files.main.page_count) <=
+		       buffer_count);
+		for (unsigned j = 0; j < databases[i].files.main.page_count;
+		     j++) {
+			buffers[buff_i] = (struct raft_buffer){
+				.base = databases[i].files.main.pages[j],
+				.len = databases[i].files.main.page_size,
+			};
+			buff_i++;
 		}
-		i += n;
+
+		assert((buff_i + databases[i].files.wal.page_count) <=
+		       buffer_count);
+		for (unsigned j = 0; j < databases[i].files.wal.page_count;
+		     j++) {
+			buffers[buff_i] = (struct raft_buffer){
+				.base = databases[i].files.wal.pages[j],
+				.len = databases[i].files.wal.page_size,
+			};
+			buff_i++;
+		}
 	}
+	assert(buff_i == buffer_count);
 
-	assert(i == *n_bufs);
-	return 0;
+	f->snapshot = (struct fsmSnapshot){
+		.header = header,
+		.databases = databases,
+		.database_count = database_count,
+	};
+	return RAFT_OK;
 
-err_after_encode_header:
-	freeSnapshotBufs(f, *bufs, i);
-err_after_bufs_alloc:
-	sqlite3_free(*bufs);
 err:
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		db = QUEUE_DATA(head, struct db, queue);
-		databaseReadUnlock(db);
+	for (i = 0; i < database_count; i++) {
+		if (databases[i].conn != NULL) {
+			raft_free(databases[i].header.base);
+			VfsReleaseSnapshot(databases[i].conn,
+					   &databases[i].files);
+			sqlite3_close(databases[i].conn);
+		}
 	}
-	assert(rv != 0);
+	raft_free(databases);
+	raft_free(header.base);
 	return rv;
 }
 
@@ -460,50 +463,30 @@ static int fsm__snapshot_finalize(struct raft_fsm *fsm,
 				  struct raft_buffer *bufs[],
 				  unsigned *n_bufs)
 {
+	(void)n_bufs;
+
 	struct fsm *f = fsm->data;
-	queue *head;
-	struct db *db;
-	unsigned n_db;
-	struct snapshotHeader header;
-	int rv;
 
-	if (bufs == NULL) {
-		return 0;
-	}
+	PRE(f->snapshot.header.len != 0 && f->snapshot.header.base != NULL);
+	PRE(f->snapshot.database_count == 0 || f->snapshot.databases != NULL);
 
-	/* Decode the header to determine the number of databases. */
-	struct cursor cursor = {(*bufs)[0].base, (*bufs)[0].len};
-	rv = snapshotHeader__decode(&cursor, &header);
-	if (rv != 0) {
-		tracef("decode failed %d", rv);
-		return -1;
-	}
-	if (header.format != SNAPSHOT_FORMAT) {
-		tracef("bad format");
-		return -1;
-	}
-
-	/* Free allocated buffers */
-	freeSnapshotBufs(f, *bufs, *n_bufs);
-	sqlite3_free(*bufs);
+	raft_free(*bufs);
 	*bufs = NULL;
 	*n_bufs = 0;
 
-	/* Unlock all databases that were locked for the snapshot, this is safe
-	 * because DB's are only ever added at the back of the queue. */
-	n_db = 0;
-	QUEUE_FOREACH(head, &f->registry->dbs)
-	{
-		if (n_db == header.n) {
-			break;
+	for (unsigned int i = 0; i < f->snapshot.database_count; i++) {
+		if (f->snapshot.databases[i].conn != NULL) {
+			raft_free(f->snapshot.databases[i].header.base);
+			VfsReleaseSnapshot(f->snapshot.databases[i].conn,
+					   &f->snapshot.databases[i].files);
+			sqlite3_close(f->snapshot.databases[i].conn);
 		}
-		db = QUEUE_DATA(head, struct db, queue);
-		rv = databaseReadUnlock(db);
-		assert(rv == 0);
-		n_db++;
 	}
+	raft_free(f->snapshot.databases);
+	raft_free(f->snapshot.header.base);
 
-	return 0;
+	f->snapshot = (struct fsmSnapshot){};
+	return RAFT_OK;
 }
 
 static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
@@ -526,9 +509,17 @@ static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 	}
 
 	for (i = 0; i < header.n; i++) {
-		rv = decodeDatabase(f, &cursor);
-		if (rv != 0) {
+		struct vfsSnapshot snapshot;
+		const char *filename;
+		rv = decodeDatabase(f->registry, &cursor, &snapshot, &filename);
+		if (rv != RAFT_OK) {
 			tracef("decode failed");
+			return rv;
+		}
+		rv = restoreDatabase(f->registry, filename, &snapshot);
+		raft_free(snapshot.main.pages);
+		if (rv != RAFT_OK) {
+			tracef("restore failed");
 			return rv;
 		}
 	}
@@ -545,13 +536,13 @@ int fsm__init(struct raft_fsm *fsm,
 {
 	tracef("fsm init");
 	struct fsm *f = raft_malloc(sizeof *f);
-
 	if (f == NULL) {
 		return DQLITE_NOMEM;
 	}
-
-	f->logger = &config->logger;
-	f->registry = registry;
+	*f = (struct fsm) {
+		.logger = &config->logger,
+		.registry = registry,
+	};
 
 	fsm->version = 2;
 	fsm->data = f;
