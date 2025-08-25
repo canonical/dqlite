@@ -27,7 +27,7 @@ void registry__close(struct registry *r)
 	r->size = 0;
 }
 
-int registry__create(struct registry *r, const char *filename, struct db **db)
+int registry__get_or_create(struct registry *r, const char *filename, struct db **db)
 {
 	*db = registry__get(r, filename);
 	if (*db != NULL) {
