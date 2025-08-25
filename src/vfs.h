@@ -49,7 +49,7 @@ struct vfsSnapshot {
 /* Acquires a snapshot from the connection conn. The snapshot wil be valid until
  * VfsReleaseSnapshot is called.
  *
- * An acquired snapshot will take relevant lock on the database to make sure
+ * An acquired snapshot will take relevant locks on the database to make sure
  * that memory remains valid until released.
  *
  * The logic will also attempt a checkpoint before returning to reduce the
