@@ -2716,14 +2716,12 @@ int VfsRestore(sqlite3 *conn, const struct vfsSnapshot *snapshot)
 		goto err_locked;
 	}
 
-	rv = ftruncate(f->database->shm.fd, 0);
-	assert(rv == 0);
-	f->database->shm.size = 0;
+	for (int i = 0; i < f->mappedShmRegions.len; i++) {
+		memset(f->mappedShmRegions.ptr[i], 0, VFS__WAL_INDEX_REGION_SIZE);
+	}
 
 	vfsWalClose(&f->database->wal);
 	vfsWalInit(&f->database->wal);
-
-	// TODO now that we have a connection, we can at least try to verify if the database is ok
 
 err_locked:
 	vfsShmUnlock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);

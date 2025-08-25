@@ -191,43 +191,40 @@ static int encodeSnapshotHeader(size_t n, struct raft_buffer *buf)
 	return 0;
 }
 
-/* Decode the database contained in a snapshot. */
-static int decodeDatabase(struct fsm *f, struct cursor *cursor)
+static int decodeDatabase(const struct registry *r,
+			  struct cursor *cursor,
+			  struct vfsSnapshot *snapshot,
+			  const char **filename)
 {
 	struct snapshotDatabase header;
 	int rv = snapshotDatabase__decode(cursor, &header);
 	if (rv != 0) {
-		return rv;
-	}
-
-	struct db *db;
-	rv = registry__get_or_create(f->registry, header.filename, &db);
-	if (rv != DQLITE_OK) {
-		return rv == DQLITE_NOMEM ? RAFT_NOMEM : RAFT_ERROR;
+		return RAFT_INVALID;
 	}
 
 	tracef("main_size:%" PRIu64 " wal_size:%" PRIu64, header.main_size,
 	       header.wal_size);
 	if (header.main_size > SIZE_MAX - header.wal_size) {
 		tracef("main_size + wal_size would overflow max DB size");
-		return -1;
+		return RAFT_INVALID;
 	}
 
-	const size_t page_size = f->registry->config->page_size;
+	const size_t page_size = r->config->page_size;
 	assert((header.main_size % page_size) == 0);
 	assert(header.wal_size == 0);
 
 	const size_t page_count = header.main_size / page_size;
 
-	void **pages = raft_malloc(sizeof(void*) * page_count);
+	void **pages = raft_malloc(sizeof(void *) * page_count);
 	if (pages == NULL) {
 		return RAFT_NOMEM;
 	}
 	for (size_t i = 0; i < page_count; i++) {
-		pages[i] = (void*)(cursor->p + i * page_size);
+		pages[i] = (void *)(cursor->p + i * page_size);
 	}
+	cursor->p += header.main_size;
 
-	const struct vfsSnapshot snapshot = {
+	*snapshot = (struct vfsSnapshot) {
 		.main = {
 			.page_count = header.main_size / page_size,
 			.page_size = page_size,
@@ -240,17 +237,54 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 			.pages = NULL,
 		}
 	};
+	*filename = header.filename;
 
+	return RAFT_OK;
+}
+
+static int integrityCheckCb(void *pArg, int n, char **values, char **names) {
+	bool *check_passed = pArg;
+
+	PRE(check_passed != NULL);
+	PRE(n == 1);
+	PRE(sqlite3_stricmp(names[0], "quick_check") == 0);
+
+	if (sqlite3_stricmp(values[0], "ok") != 0) {
+		tracef("PRAGMA quick_check: %s", values[0]);
+		*check_passed = false;
+	}
+
+	return SQLITE_OK;
+}
+
+static int restoreDatabase(struct registry *r,
+			   const char *filename,
+			   const struct vfsSnapshot *snapshot)
+{
+	struct db *db;
+	int rv = registry__get_or_create(r, filename, &db);
+	if (rv != DQLITE_OK) {
+		return rv == DQLITE_NOMEM ? RAFT_NOMEM : RAFT_ERROR;
+	}
 
 	sqlite3 *conn;
 	rv = db__open(db, &conn);
 	if (rv != SQLITE_OK) {
-		raft_free(pages);
 		return rv == SQLITE_NOMEM ? RAFT_NOMEM : RAFT_ERROR;
 	}
-	rv = VfsRestore(conn, &snapshot);
-	/* TODO: we could run PRAGMA integrity_check here or PRAGMA quick_check... */
-	raft_free(pages);
+	rv = VfsRestore(conn, snapshot);
+
+	if (rv == SQLITE_OK) {
+		bool check_passed = true;
+		char *errmsg;
+		rv = sqlite3_exec(conn, "PRAGMA quick_check", integrityCheckCb, &check_passed, &errmsg);
+		if (rv != SQLITE_OK) {
+			tracef("PRAGMA quick_check failed: %s (%d)", errmsg, rv);
+		} else if (!check_passed) {
+			rv = SQLITE_CORRUPT;
+		}
+	}
+
 	sqlite3_close(conn);
 	if (rv != SQLITE_OK) {
 		if (rv == SQLITE_CORRUPT) {
@@ -262,8 +296,6 @@ static int decodeDatabase(struct fsm *f, struct cursor *cursor)
 		}
 		return RAFT_ERROR;
 	}
-	cursor->p += header.main_size + header.wal_size;
-
 	return RAFT_OK;
 }
 
@@ -477,9 +509,17 @@ static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 	}
 
 	for (i = 0; i < header.n; i++) {
-		rv = decodeDatabase(f, &cursor);
-		if (rv != 0) {
+		struct vfsSnapshot snapshot;
+		const char *filename;
+		rv = decodeDatabase(f->registry, &cursor, &snapshot, &filename);
+		if (rv != RAFT_OK) {
 			tracef("decode failed");
+			return rv;
+		}
+		rv = restoreDatabase(f->registry, filename, &snapshot);
+		raft_free(snapshot.main.pages);
+		if (rv != RAFT_OK) {
+			tracef("restore failed");
 			return rv;
 		}
 	}
