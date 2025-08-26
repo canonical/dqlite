@@ -2842,17 +2842,10 @@ int VfsAcquireSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot)
 	if (vfsWalSize(&f->database->wal) == 0) {
 		/* Fast path: when the WAL is empty, there is no need to
 		 * allocate anything */
-		*snapshot = (struct vfsSnapshot) {
-			.main = {
-				.pages = f->database->pages,
-				.page_count = f->database->n_pages,
-				.page_size = page_size,
-			},
-			.wal = {
-				.pages = NULL,
-				.page_count = 0,
-				.page_size = page_size
-			},
+		*snapshot = (struct vfsSnapshot){
+			.pages = f->database->pages,
+			.page_count = f->database->n_pages,
+			.page_size = page_size,
 		};
 		return SQLITE_OK;
 	}
@@ -2888,17 +2881,10 @@ int VfsAcquireSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot)
 		pages[page_number - 1] = frame->page;
 	}
 
-	*snapshot = (struct vfsSnapshot) {
-		.main = {
-			.pages = pages,
-			.page_count = page_count,
-			.page_size = page_size,
-		},
-		.wal = {
-			.pages = NULL,
-			.page_count = 0,
-			.page_size = page_size
-		},
+	*snapshot = (struct vfsSnapshot){
+		.pages = pages,
+		.page_count = page_count,
+		.page_size = page_size,
 	};
 	return SQLITE_OK;
 }
@@ -2912,10 +2898,10 @@ int VfsReleaseSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot)
 
 	PRE(f->sharedMask & (1 << VFS__WAL_READ_LOCK(0)));
 
-	if (snapshot->main.pages != f->database->pages) {
+	if (snapshot->pages != f->database->pages) {
 		assert(f->database->wal.n_frames > 0);
 
-		sqlite3_free(snapshot->main.pages);
+		sqlite3_free(snapshot->pages);
 	}
 
 	*snapshot = (struct vfsSnapshot){};
@@ -2927,19 +2913,19 @@ int VfsReleaseSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot)
 	return SQLITE_OK;
 }
 
-static int vfsDatabaseRestore(struct vfsDatabase *d, const struct vfsSnapshotFile *file)
+static int vfsDatabaseRestore(struct vfsDatabase *d, const struct vfsSnapshot *snapshot)
 {
-	if (file->page_count == 0) {
+	if (snapshot->page_count == 0) {
 		return SQLITE_CORRUPT;
 	}
 
-	void **pages = sqlite3_malloc64(sizeof(void*) * file->page_count);
+	void **pages = sqlite3_malloc64(sizeof(void*) * snapshot->page_count);
 	if (pages == NULL) {
 		return SQLITE_NOMEM;
 	}
 
-	for (size_t i = 0; i < file->page_count; i++) {
-		void *page = sqlite3_malloc64(file->page_size);
+	for (size_t i = 0; i < snapshot->page_count; i++) {
+		void *page = sqlite3_malloc64(snapshot->page_size);
 		if (page == NULL) {
 			for (size_t j = 0; j < i; j++) {
 				sqlite3_free(pages[j]);
@@ -2949,7 +2935,7 @@ static int vfsDatabaseRestore(struct vfsDatabase *d, const struct vfsSnapshotFil
 		}
 
 		pages[i] = page;
-		memcpy(page, file->pages[i], file->page_size);
+		memcpy(page, snapshot->pages[i], snapshot->page_size);
 	}
 
 	/* Truncate any existing content. */
@@ -2957,7 +2943,7 @@ static int vfsDatabaseRestore(struct vfsDatabase *d, const struct vfsSnapshotFil
 	assert(rv == 0);
 
 	d->pages = pages;
-	d->n_pages = (unsigned)file->page_count;
+	d->n_pages = (unsigned)snapshot->page_count;
 
 	return SQLITE_OK;
 }
@@ -2969,9 +2955,8 @@ int VfsRestore(sqlite3 *conn, const struct vfsSnapshot *snapshot)
 	assert(rv == SQLITE_OK);
 	struct vfsMainFile *f = (struct vfsMainFile*)file;
 
-	assert(snapshot->wal.page_count == 0);
 
-	tracef("restore %s of %zd pages", f->database->name, snapshot->main.page_count);
+	tracef("restore %s of %zd pages", f->database->name, snapshot->page_count);
 
 	/* Lock the database. The locking scheme here is similar to the one used
 	 * when transitioning from WAL to DELETE mode. The WAL-Index recovery is
@@ -2984,7 +2969,7 @@ int VfsRestore(sqlite3 *conn, const struct vfsSnapshot *snapshot)
 		return rv;
 	}
 
-	rv = vfsDatabaseRestore(f->database, &snapshot->main);
+	rv = vfsDatabaseRestore(f->database, snapshot);
 	if (rv != SQLITE_OK) {
 		tracef("database restore failed %d", rv);
 		goto err_locked;
