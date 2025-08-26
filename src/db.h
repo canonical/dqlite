@@ -15,13 +15,11 @@ struct db
 	struct config *config;        /* Dqlite configuration */
 	struct sqlite3_vfs *vfs;      /* Underlying VFS */
 	char *filename;               /* Database filename */
-	char *path;                   /* Used for on-disk db */
 	uint32_t cookie;              /* Used to bind to the pool's thread */
 	int leaders;                  /* Open leader connections */
 	struct leader *active_leader; /* Current leader writing to the database */
 	queue pending_queue;          /* Queue of pending execs, used by leader */
 	queue queue;                  /* Prev/next database, used by the registry */
-	int read_lock;                /* Lock used by snapshots & checkpoints */
 };
 
 /**
