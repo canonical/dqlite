@@ -1188,9 +1188,9 @@ TEST(vfs_extra, applyOnDifferentVfsCheckpointReclaimsSpace, setUp, tearDown, 0, 
 	rv = sqlite3_file_control(db2, "main", SQLITE_FCNTL_FILE_POINTER, &main_f);
 	assert(rv == SQLITE_OK);
 	CHECKPOINT(db2);
-
 	rv = main_f->pMethods->xFileSize(main_f, &pre_vacuum_size);
 	assert(rv == SQLITE_OK);
+	CLOSE(db2);
 
 	EXEC(db1, "VACUUM");
 	POLL("1", tx);
@@ -1198,12 +1198,15 @@ TEST(vfs_extra, applyOnDifferentVfsCheckpointReclaimsSpace, setUp, tearDown, 0, 
 	APPLY("2", tx);
 	DONE(tx);
 
-	CHECKPOINT(db2);
-	
+	OPEN("2", db2);
+	rv = sqlite3_file_control(db2, "main", SQLITE_FCNTL_FILE_POINTER, &main_f);
+	assert(rv == SQLITE_OK);
+	CHECKPOINT(db2);	
 	rv = main_f->pMethods->xFileSize(main_f, &post_vacuum_size);
 	assert(rv == SQLITE_OK);
-	CLOSE(db1);
 	CLOSE(db2);
+
+	CLOSE(db1);
 
 	munit_assert_int(post_vacuum_size, <, pre_vacuum_size);
 	munit_assert_int(post_vacuum_size, ==, 512);
