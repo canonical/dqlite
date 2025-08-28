@@ -10,10 +10,9 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          - focal
           - jammy
           - noble
-          - oracular
+          - plucky
     runs-on: ubuntu-22.04
     environment:
       name: ppa
