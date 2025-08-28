@@ -2,6 +2,8 @@
 
 #include "endpoint.h"
 
+#include <inttypes.h>
+
 #ifndef TEST_CLIENT_H
 #define TEST_CLIENT_H
 
@@ -187,7 +189,7 @@
 		do {                                                       \
 			rv_ = clientRecvRows(CLIENT, (ROWS), &done, NULL); \
 			if (rv_ == DQLITE_CLIENT_PROTO_RECEIVED_FAILURE) { \
-				munit_errorf("failure: [%ld] %s",           \
+				munit_errorf("failure: [%" PRIu64 "] %s",           \
 					     (CLIENT)->errcode,            \
 					     (CLIENT)->errmsg);            \
 			} else {                                           \

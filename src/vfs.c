@@ -1763,8 +1763,8 @@ static int vfsMainFileShmLock(sqlite3_file *file, int ofst, int n, int flags)
 
 			rv = vfsShmUnlock(&f->database->shm, ofst, n, flags & SQLITE_SHM_EXCLUSIVE);
 			if (rv == SQLITE_OK) {
-				f->exclMask &= ~mask;
-				f->sharedMask &= ~mask;
+				f->exclMask &= (uint16_t)~mask;
+				f->sharedMask &= (uint16_t)~mask;
 			}
 		} else if (flags & SQLITE_SHM_SHARED) {
 			rv = vfsShmLock(&f->database->shm, ofst, n, false);

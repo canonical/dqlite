@@ -4,6 +4,8 @@
 #include "../lib/server.h"
 #include "../lib/sqlite.h"
 
+#include <inttypes.h>
+
 SUITE(stress);
 
 #define READ_COUNT 1000
@@ -97,7 +99,7 @@ static void *client_write(void *data)
 				i--;
 				continue;
 			}
-			munit_errorf("failure: [%ld] %s", client.errcode,
+			munit_errorf("failure: [%" PRIu64 "] %s", client.errcode,
 				     client.errmsg);
 		}
 		munit_assert_int(rv, ==, DQLITE_OK);
