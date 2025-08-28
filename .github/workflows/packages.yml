@@ -1,6 +1,7 @@
 name: Build PPA source packages
 on:
-  push:
+  release:
+    types: [published]
     branches:
       - 'lts-1.17.x'
 jobs:
