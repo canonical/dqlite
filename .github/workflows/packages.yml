@@ -5,7 +5,9 @@ on:
       - master
 jobs:
   build:
-    if: github.repository == 'canonical/dqlite'
+    runs-on: ubuntu-22.04
+    environment:
+      name: ppa
     strategy:
       fail-fast: false
       matrix:
@@ -13,14 +15,8 @@ jobs:
           - jammy
           - noble
           - plucky
-    runs-on: ubuntu-22.04
-    environment:
-      name: ppa
     steps:
-    - name: Clone the repositories
-      run: |
-          git clone https://github.com/canonical/dqlite
-          git clone https://github.com/canonical/dqlite-ppa -b dqlite --depth 1
+    - uses: actions/checkout@v5
 
     - name: Setup dependencies
       run: |
@@ -36,10 +32,6 @@ jobs:
       run: |
           echo "$PPA_SECRET_KEY" > private-key.asc
           gpg --import --batch private-key.asc
-
-    - name: Delete GPG signing key file
-      if: always()
-      run: |
           rm -f private-key.asc
 
     - name: Build source package
@@ -48,8 +40,6 @@ jobs:
         DEBEMAIL: "dqlitebot@lists.canonical.com"
         TARGET: ${{ matrix.target }}
       run: |
-          cp -R dqlite-ppa/debian dqlite/
-          cd dqlite/
           VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
           dch --create \
             --distribution ${TARGET} \

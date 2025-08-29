@@ -1,0 +1,37 @@
+Source: dqlite
+Section: devel
+Priority: optional
+Maintainer: Marco Manino <marco.manino@canonical.com>
+Build-Depends: debhelper (>= 10),
+               pkgconf,
+               libsqlite3-dev,
+               libuv1-dev,
+               liblz4-dev
+Homepage: https://github.com/canonical/dqlite
+Standards-Version: 4.5.1
+Rules-Requires-Root: no
+
+Package: libdqlite1.18-unstable
+Section: libs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Description: Distributed SQLite database using Raft - library
+ libdqlite is a SQLite and Raft based distributed database.
+ .
+ This package contains the library itself.
+
+Package: libdqlite1.18-unstable-dev
+Section: libdevel
+Architecture: any
+Depends: libdqlite1.18-unstable (= ${binary:Version}),
+         ${misc:Depends},
+         libsqlite3-dev,
+         libuv1-dev,
+         liblz4-dev
+Multi-Arch: same
+Description: Distributed SQLite database using Raft - library
+ libdqlite is a SQLite and Raft based distributed database.
+ .
+ This package contains the development files (headers, static libraries)
