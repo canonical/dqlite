@@ -5,7 +5,7 @@
 
 #include <sys/random.h>
 #ifdef LZ4_AVAILABLE
-# include <lz4frame.h>
+#include <lz4frame.h>
 #endif
 
 SUITE(Compress)
