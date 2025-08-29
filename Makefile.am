@@ -197,11 +197,11 @@ check_PROGRAMS += \
   raft-core-fuzzy-test
 
 libtest_la_SOURCES += \
+  test/lib/munit.c \
   test/raft/lib/addrinfo.c \
   test/raft/lib/fault.c \
   test/raft/lib/fsm.c \
   test/raft/lib/heap.c \
-  test/raft/lib/munit.c \
   test/raft/lib/tcp.c \
   test/raft/lib/cluster.c \
   test/raft/lib/aio.c \

@@ -3,11 +3,10 @@
 #ifndef TEST_RUNNER_H_
 #define TEST_RUNNER_H_
 
+#include "src/tracing.h"
+#include "test/lib/munit.h"
+
 #include <signal.h>
-
-#include "munit.h"
-
-#include "../../../src/tracing.h"
 
 /* Top-level suites array declaration.
  *
