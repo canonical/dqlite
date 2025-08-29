@@ -5,7 +5,9 @@ on:
       - master
 jobs:
   build:
-    if: github.repository == 'canonical/dqlite'
+    runs-on: ubuntu-22.04
+    environment:
+      name: ppa
     strategy:
       fail-fast: false
       matrix:
@@ -13,19 +15,27 @@ jobs:
           - jammy
           - noble
           - plucky
-    runs-on: ubuntu-22.04
-    environment:
-      name: ppa
     steps:
-    - name: Clone the repositories
-      run: |
-          git clone https://github.com/canonical/dqlite
-          git clone https://github.com/canonical/dqlite-ppa -b dqlite --depth 1
+    - uses: actions/checkout@v5
 
     - name: Setup dependencies
       run: |
           sudo apt-get update -qq
           sudo apt-get install -qq debhelper devscripts gnupg
+
+    - name: Build source package
+      env:
+        DEBFULLNAME: "Github Actions"
+        DEBEMAIL: "dqlitebot@lists.canonical.com"
+        TARGET: ${{ matrix.target }}
+      run: |
+          VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
+          dch --create \
+            --distribution ${TARGET} \
+            --package dqlite \
+            --newversion ${VERSION}~${TARGET}1 \
+            "Automatic build from Github"
+          debuild -S -sa -d -k${{ vars.PPA_PUBLIC_KEY }}
 
       # Note for future maintainers: the secret key should be stored
       # in the GHA secret in ASCII-armored form, and must not be
@@ -36,27 +46,7 @@ jobs:
       run: |
           echo "$PPA_SECRET_KEY" > private-key.asc
           gpg --import --batch private-key.asc
-
-    - name: Delete GPG signing key file
-      if: always()
-      run: |
           rm -f private-key.asc
-
-    - name: Build source package
-      env:
-        DEBFULLNAME: "Github Actions"
-        DEBEMAIL: "dqlitebot@lists.canonical.com"
-        TARGET: ${{ matrix.target }}
-      run: |
-          cp -R dqlite-ppa/debian dqlite/
-          cd dqlite/
-          VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
-          dch --create \
-            --distribution ${TARGET} \
-            --package dqlite \
-            --newversion ${VERSION}~${TARGET}1 \
-            "Automatic build from Github"
-          debuild -S -sa -d -k${{ vars.PPA_PUBLIC_KEY }}
 
     - name: Upload to Launchpad
       run: |
