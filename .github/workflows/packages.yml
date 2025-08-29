@@ -23,17 +23,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -qq debhelper devscripts gnupg
 
-      # Note for future maintainers: the secret key should be stored
-      # in the GHA secret in ASCII-armored form, and must not be
-      # password-protected.
-    - name: Setup GPG signing key
-      env:
-          PPA_SECRET_KEY: ${{ secrets.PPA_SECRET_KEY }}
-      run: |
-          echo "$PPA_SECRET_KEY" > private-key.asc
-          gpg --import --batch private-key.asc
-          rm -f private-key.asc
-
     - name: Build source package
       env:
         DEBFULLNAME: "Github Actions"
@@ -47,6 +36,17 @@ jobs:
             --newversion ${VERSION}~${TARGET}1 \
             "Automatic build from Github"
           debuild -S -sa -d -k${{ vars.PPA_PUBLIC_KEY }}
+
+      # Note for future maintainers: the secret key should be stored
+      # in the GHA secret in ASCII-armored form, and must not be
+      # password-protected.
+    - name: Setup GPG signing key
+      env:
+          PPA_SECRET_KEY: ${{ secrets.PPA_SECRET_KEY }}
+      run: |
+          echo "$PPA_SECRET_KEY" > private-key.asc
+          gpg --import --batch private-key.asc
+          rm -f private-key.asc
 
     - name: Upload to Launchpad
       run: |
