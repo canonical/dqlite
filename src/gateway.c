@@ -2,7 +2,9 @@
 #include <sqlite3.h>
 
 #include "bind.h"
+#include "db.h"
 #include "leader.h"
+#include "lib/registry.h"
 #include "lib/threadpool.h"
 #include "protocol.h"
 #include "query.h"
@@ -319,7 +321,7 @@ static int handle_open(struct gateway *g, struct handle *req)
 			"a database for this connection is already open");
 		return 0;
 	}
-	rc = registry__db_get(g->registry, request.filename, &db);
+	rc = registry__get_or_create(g->registry, request.filename, &db);
 	if (rc != 0) {
 		tracef("registry db get failed %d", rc);
 		return rc;
@@ -1094,104 +1096,80 @@ static int handle_remove(struct gateway *g, struct handle *req)
 }
 
 static int dumpFile(const char *filename,
-		    uint8_t *data,
-		    size_t n,
-		    struct buffer *buffer)
+		     const struct vfsSnapshotFile *file,
+		     struct buffer *buffer)
 {
 	char *cur;
-	uint64_t len = n;
+	uint64_t len = file->page_count * file->page_size;
 
 	cur = buffer__advance(buffer, text__sizeof(&filename));
 	if (cur == NULL) {
-		goto oom;
+		return DQLITE_NOMEM;
 	}
 	text__encode(&filename, &cur);
 	cur = buffer__advance(buffer, uint64__sizeof(&len));
 	if (cur == NULL) {
-		goto oom;
+		return DQLITE_NOMEM;
 	}
 	uint64__encode(&len, &cur);
 
-	if (n == 0) {
-		return 0;
+	if (len == 0) {
+		return DQLITE_OK;
 	}
 
-	assert(n % 8 == 0);
-	assert(data != NULL);
+	assert(len % 8 == 0);
 
-	cur = buffer__advance(buffer, n);
+	cur = buffer__advance(buffer, len);
 	if (cur == NULL) {
-		goto oom;
+		return DQLITE_NOMEM;
 	}
-	memcpy(cur, data, n);
 
-	return 0;
+	for (size_t i = 0; i < file->page_count; i++) {
+		memcpy(cur, file->pages[i], file->page_size);
+		cur += file->page_size;
+	}
 
-oom:
-	return DQLITE_NOMEM;
+	return DQLITE_OK;
 }
 
 static int handle_dump(struct gateway *g, struct handle *req)
 {
 	tracef("handle dump");
 	struct cursor *cursor = &req->cursor;
-	bool err = true;
-	sqlite3_vfs *vfs;
 	char *cur;
 	char filename[1024] = { 0 };
-	void *data;
-	size_t n;
-	uint8_t *page;
-	uint32_t database_size = 0;
-	uint8_t *database;
-	uint8_t *wal;
-	size_t n_database;
-	size_t n_wal;
-	int rv;
 	START_V0(dump, files);
+
+	struct db *db = registry__get(g->registry, request.filename);
+	if (db == NULL) {
+		failure(req, DQLITE_NOTFOUND, "database does not exists");
+		return SQLITE_OK;
+	}
+
+	sqlite3 *conn;
+	int rv = db__open(db, &conn);
+	if (rv != SQLITE_OK) {
+		failure(req, rv, "failed to open database");
+		return DQLITE_OK;
+	}
+
+	struct vfsSnapshot snapshot;
+	rv = VfsAcquireSnapshot(conn, &snapshot);
+	if (rv != SQLITE_OK) {
+		failure(req, rv, "failed to open database");
+		sqlite3_close(conn);
+		return DQLITE_OK;
+	}
 
 	response.n = 2;
 	cur = buffer__advance(req->buffer, response_files__sizeof(&response));
 	assert(cur != NULL);
 	response_files__encode(&response, &cur);
 
-	/* It is not possible to use g->leader->db->vfs as dump call can
-	 * be issued without opening the leader connection first. */
-	vfs = sqlite3_vfs_find(g->config->name);
-	rv = VfsSnapshot(vfs, request.filename, &data, &n);
+	rv = dumpFile(request.filename, &snapshot.main, req->buffer);
 	if (rv != 0) {
-		tracef("dump failed");
-		failure(req, rv, "failed to dump database");
-		return 0;
-	}
-
-	if (data != NULL) {
-		/* Extract the database size from the first page. */
-		page = data;
-		database_size += (uint32_t)(page[28] << 24);
-		database_size += (uint32_t)(page[29] << 16);
-		database_size += (uint32_t)(page[30] << 8);
-		database_size += (uint32_t)(page[31]);
-
-		n_database = database_size * g->config->page_size;
-		n_wal = n - n_database;
-
-		database = data;
-		wal = database + n_database;
-	} else {
-		assert(n == 0);
-
-		n_database = 0;
-		n_wal = 0;
-
-		database = NULL;
-		wal = NULL;
-	}
-
-	rv = dumpFile(request.filename, database, n_database, req->buffer);
-	if (rv != 0) {
-		tracef("dump failed");
-		failure(req, rv, "failed to dump database");
+		tracef("main dump failed");
+		failure(req, rv, "failed to dump main database file");
 		goto out_free_data;
 	}
 
@@ -1203,25 +1181,19 @@ static int handle_dump(struct gateway *g, struct handle *req)
 	strncpy(filename, request.filename,
 		sizeof(filename) - strlen(wal_suffix) - 1);
 	strcat(filename, wal_suffix);
-	rv = dumpFile(filename, wal, n_wal, req->buffer);
+	rv = dumpFile(filename, &snapshot.wal, req->buffer);
 	if (rv != 0) {
-		tracef("wal dump failed");
-		failure(req, rv, "failed to dump wal file");
+		tracef("WAL dump failed");
+		failure(req, rv, "failed to dump WAL file");
 		goto out_free_data;
 	}
 
-	err = false;
+	req->cb(req, 0, DQLITE_RESPONSE_FILES, 0);
 
 out_free_data:
-	if (data != NULL) {
-		raft_free(data);
-	}
-
-	if (!err) {
-		req->cb(req, 0, DQLITE_RESPONSE_FILES, 0);
-	}
-
-	return 0;
+	VfsReleaseSnapshot(conn, &snapshot);
+	sqlite3_close(conn);
+	return DQLITE_OK;
 }
 
 static int encodeServer(struct gateway *g,

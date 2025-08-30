@@ -37,7 +37,6 @@ struct server
 	struct config config;
 	sqlite3_vfs vfs;
 	struct registry registry;
-	char *dir;
 };
 
 #define FIXTURE_CLUSTER                   \
@@ -68,33 +67,30 @@ struct server
 		munit_assert_int(_rv, ==, 0);                               \
 	}
 
-#define SETUP_SERVER(I, VERSION)                                            \
-	{                                                                   \
-		struct server *_s = &f->servers[I];                         \
-		struct raft_fsm *_fsm = &f->fsms[I];                        \
-		char address[16];                                           \
-		int _rc;                                                    \
-                                                                            \
-		test_logger_setup(params, &_s->logger);                     \
-                                                                            \
-		sprintf(address, "%d", I + 1);                              \
-                                                                            \
-		char *dir = test_dir_setup();                               \
-		_s->dir = dir;                                              \
-                                                                            \
-		_rc = config__init(&_s->config, I + 1, address, NULL, dir); \
-		munit_assert_int(_rc, ==, 0);                               \
-                                                                            \
-		registry__init(&_s->registry, &_s->config);                 \
-                                                                            \
-		_rc = VfsInit(&_s->vfs, _s->config.name);                   \
-		munit_assert_int(_rc, ==, 0);                               \
-		_rc = sqlite3_vfs_register(&_s->vfs, 0);                    \
-		munit_assert_int(_rc, ==, 0);                               \
-                                                                            \
-		_rc = fsm__init(_fsm, &_s->config, &_s->registry);          \
-		munit_assert_int(_rc, ==, 0);                               \
-	}
+#define SETUP_SERVER(I, VERSION)                                       \
+	do {                                                           \
+		struct server *_s = &f->servers[I];                    \
+		struct raft_fsm *_fsm = &f->fsms[I];                   \
+		char address[16];                                      \
+		int _rc;                                               \
+                                                                       \
+		test_logger_setup(params, &_s->logger);                \
+                                                                       \
+		sprintf(address, "%d", I + 1);                         \
+                                                                       \
+		_rc = config__init(&_s->config, I + 1, address, NULL); \
+		munit_assert_int(_rc, ==, 0);                          \
+                                                                       \
+		_rc = VfsInit(&_s->vfs, _s->config.name);              \
+		munit_assert_int(_rc, ==, 0);                          \
+		_rc = sqlite3_vfs_register(&_s->vfs, 0);               \
+		munit_assert_int(_rc, ==, 0);                          \
+                                                                       \
+		registry__init(&_s->registry, &_s->config);            \
+                                                                       \
+		_rc = fsm__init(_fsm, &_s->config, &_s->registry);     \
+		munit_assert_int(_rc, ==, 0);                          \
+	} while (0)
 
 #define TEAR_DOWN_CLUSTER                            \
 	{                                            \
@@ -116,7 +112,6 @@ struct server
 		sqlite3_vfs_unregister(&s->vfs);    \
 		VfsClose(&s->vfs);                  \
 		config__close(&s->config);          \
-		test_dir_tear_down(s->dir);         \
 		test_logger_tear_down(&s->logger);  \
 	}
 
