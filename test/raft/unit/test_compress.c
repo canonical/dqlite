@@ -1,7 +1,7 @@
-#include "../../../src/raft/byte.h"
-#include "../../../src/raft/compress.h"
-#include "../lib/munit.h"
-#include "../lib/runner.h"
+#include "src/raft/byte.h"
+#include "src/raft/compress.h"
+#include "test/lib/munit.h"
+#include "test/lib/runner.h"
 
 #include <sys/random.h>
 #ifdef LZ4_AVAILABLE

@@ -5,7 +5,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "munit.h"
+#include "test/lib/munit.h"
 
 int AioFill(aio_context_t *ctx, unsigned n)
 {

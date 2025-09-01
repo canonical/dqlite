@@ -3,10 +3,10 @@
 #ifndef TEST_LOOP_H
 #define TEST_LOOP_H
 
-#include <uv.h>
+#include "src/raft.h"
+#include "test/lib/munit.h"
 
-#include "../../../src/raft.h"
-#include "munit.h"
+#include <uv.h>
 
 /* Max n. of loop iterations ran by a single function call */
 #define LOOP_MAX_RUN 20

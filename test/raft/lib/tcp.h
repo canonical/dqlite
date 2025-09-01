@@ -7,7 +7,7 @@
 #ifndef TEST_TCP_H
 #define TEST_TCP_H
 
-#include "munit.h"
+#include "test/lib/munit.h"
 
 /* Macro helpers. */
 #define FIXTURE_TCP_SERVER struct TcpServer server
