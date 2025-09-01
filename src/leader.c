@@ -36,7 +36,16 @@ static void exec_enqueue(struct db *db, struct exec *exec);
  * index. */
 static bool exec_needs_barrier(struct leader *l)
 {
-	return raft_last_applied(l->raft) < raft_last_index(l->raft);
+	if (sqlite3_txn_state(l->conn, NULL) != SQLITE_TXN_NONE) {
+		/* If a transaction is already in progress, there is little
+		 * benefit in submitting a barrier as the read mark is already
+		 * set. */
+		return false;
+	}
+	if (l->db->read_index == 0) {
+		l->db->read_index = raft_last_index(l->raft);
+	}
+	return l->db->read_index > raft_last_applied(l->raft);
 }
 
 int leader__init(struct leader *l, struct db *db, struct raft *raft)
@@ -631,6 +640,9 @@ static void exec_tick(struct exec *req)
 			sm_move(&req->sm, EXEC_WAITING_APPLY);
 			suspend;
 		case EXEC_WAITING_APPLY:
+			if (req->status != RAFT_OK) {
+				VfsAbort(leader->conn);
+			}
 			sm_move(&req->sm, EXEC_DONE);
 			continue;
 		case EXEC_DONE: 
@@ -707,13 +719,11 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	(void)result;
 	struct exec *req = CONTAINER_OF(apply, struct exec, apply);
 	struct leader *leader = req->leader;
+	PRE(leader != NULL);
 	leader_trace(leader, "query applied (status=%d)", status);
-	if (leader) {
-		if (status != 0) {
-			VfsAbort(leader->conn);
-		} else {
-			leaderMaybeCheckpointLegacy(leader);
-		}
+	if (status == RAFT_OK) {
+		leader->db->read_index = apply->index;
+		leaderMaybeCheckpointLegacy(leader);
 	}
 
 	PRE(sm_state(&req->sm) == EXEC_WAITING_APPLY);
