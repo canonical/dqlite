@@ -9,6 +9,7 @@
 #include "lib/queue.h"
 
 #include "config.h"
+#include "raft.h"
 
 struct db
 {
@@ -16,6 +17,7 @@ struct db
 	struct sqlite3_vfs *vfs;      /* Underlying VFS */
 	char *filename;               /* Database filename */
 	uint32_t cookie;              /* Used to bind to the pool's thread */
+	raft_index read_index;        /* Raft index to linearize reads */
 	int leaders;                  /* Open leader connections */
 	struct leader *active_leader; /* Current leader writing to the database */
 	queue pending_queue;          /* Queue of pending execs, used by leader */
