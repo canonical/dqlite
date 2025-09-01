@@ -1,4 +1,4 @@
-Source: dqlite
+Source: dqlite1.18-unstable
 Section: devel
 Priority: optional
 Maintainer: Marco Manino <marco.manino@canonical.com>
