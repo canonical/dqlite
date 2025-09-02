@@ -60,11 +60,8 @@ jobs:
           go get -tags libsqlite3 -t ./...
           go test -asan -v ./...
           VERBOSE=1 ASAN=-asan ./test/dqlite-demo.sh
-          VERBOSE=1 ASAN=-asan DISK=1 ./test/dqlite-demo.sh
           VERBOSE=1 ASAN=-asan ./test/roles.sh
-          VERBOSE=1 ASAN=-asan DISK=1 ./test/roles.sh
           VERBOSE=1 ASAN=-asan ./test/recover.sh
-          VERBOSE=1 ASAN=-asan DISK=1 ./test/recover.sh
 
   jepsen:
     if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, 'please test downstream') }}

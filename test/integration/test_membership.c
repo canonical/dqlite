@@ -59,13 +59,6 @@
  *
  ******************************************************************************/
 
-static char *bools[] = {"0", "1", NULL};
-
-static MunitParameterEnum membership_params[] = {
-    {"disk_mode", bools},
-    {NULL, NULL},
-};
-
 SUITE(membership)
 
 struct fixture
@@ -87,7 +80,7 @@ static void tearDown(void *data)
 	free(f);
 }
 
-TEST(membership, join, setUp, tearDown, 0, membership_params)
+TEST(membership, join, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	unsigned id = 2;
@@ -130,7 +123,7 @@ static bool last_applied_cond(struct id_last_applied arg)
 	       arg.last_applied;
 }
 
-TEST(membership, transfer, setUp, tearDown, 0, membership_params)
+TEST(membership, transfer, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	unsigned id = 2;
@@ -179,7 +172,7 @@ TEST(membership,
      setUp,
      tearDown,
      0,
-     membership_params)
+     NULL)
 {
 	struct fixture *f = data;
 	unsigned id = 2;
@@ -295,7 +288,7 @@ TEST(membership,
      setUp,
      tearDown,
      0,
-     membership_params)
+     NULL)
 {
 	struct fixture *f = data;
 	unsigned id = 2;

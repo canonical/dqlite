@@ -11,13 +11,11 @@ SUITE(stress);
 #define READ_COUNT 1000
 #define WRITE_COUNT 1000
 
-static char *disk_mode[] = { "0", "1", NULL };
 static char *databases[] = { "1", "2", "4", NULL };
 static char *writers[] = { "0", "1", "2", "4", NULL };
 static char *readers[] = { "0", "1", "4", "16", NULL };
 
 static MunitParameterEnum stress_params[] = {
-	{ "disk_mode", disk_mode },
 	{ "writers", writers },
 	{ "readers", readers },
 	{ "databases", databases },
