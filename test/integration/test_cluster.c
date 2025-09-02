@@ -71,8 +71,6 @@ static void tearDown(void *data)
 	free(f);
 }
 
-static char *bools[] = { "0", "1", NULL };
-
 static char *num_records[] = {
 	"0", "1", "256",
 	/* WAL will just have been checkpointed after 993 writes. */
@@ -83,7 +81,6 @@ static char *num_records[] = {
 
 static MunitParameterEnum cluster_params[] = {
 	{ "num_records", num_records },
-	{ "disk_mode", bools },
 	{ NULL, NULL },
 };
 

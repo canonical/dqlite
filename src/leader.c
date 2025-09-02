@@ -36,7 +36,16 @@ static void exec_enqueue(struct db *db, struct exec *exec);
  * index. */
 static bool exec_needs_barrier(struct leader *l)
 {
-	return raft_last_applied(l->raft) < raft_last_index(l->raft);
+	if (sqlite3_txn_state(l->conn, NULL) != SQLITE_TXN_NONE) {
+		/* If a transaction is already in progress, there is little
+		 * benefit in submitting a barrier as the read mark is already
+		 * set. */
+		return false;
+	}
+	if (l->db->read_index == 0) {
+		l->db->read_index = raft_last_index(l->raft);
+	}
+	return l->db->read_index > raft_last_applied(l->raft);
 }
 
 int leader__init(struct leader *l, struct db *db, struct raft *raft)
@@ -64,20 +73,27 @@ static inline bool leader_closing(struct leader *leader)
 	return leader->close_cb != NULL;
 }
 
-static void leader_finalize(struct leader *leader)
+static struct exec *leader_finalize(struct leader *leader)
 {
 	PRE(leader->exec == NULL && leader->pending == 0);
 	PRE(leader->db->leaders > 0);
 	tracef("leader close");
-	sqlite3_interrupt(leader->conn);
-	int rc = sqlite3_close_v2(leader->conn);
-	assert(rc == 0);
+
+	leader->db->leaders--;
 	if (leader->db->active_leader == leader) {
 		leader_trace(leader, "done");
 		leader->db->active_leader = NULL;
 	}
-	leader->db->leaders--;
+
+	struct exec *next = exec_dequeue(leader->db);
+
+	sqlite3_interrupt(leader->conn);
+	int rc = sqlite3_close_v2(leader->conn);
+	assert(rc == 0);
+
 	leader->close_cb(leader);
+
+	return  next;
 }
 
 static int progress_abort(void *db) {
@@ -93,14 +109,12 @@ void leader__close(struct leader *leader, leader_close_cb close_cb)
 
 	leader->close_cb = close_cb;
 	if (leader->pending == 0) {
-		struct db *db = leader->db;
-		leader_finalize(leader);
-
-		struct exec *req = exec_dequeue(db);
+		struct exec *req = leader_finalize(leader);
 		if (req == NULL) {
 			return;
 		}
 
+		struct db *db = req->leader->db;
 		PRE(IN(db->active_leader, NULL, req->leader));
 		db->active_leader = req->leader;
 		return exec_tick(req);
@@ -626,6 +640,9 @@ static void exec_tick(struct exec *req)
 			sm_move(&req->sm, EXEC_WAITING_APPLY);
 			suspend;
 		case EXEC_WAITING_APPLY:
+			if (req->status != RAFT_OK) {
+				VfsAbort(leader->conn);
+			}
 			sm_move(&req->sm, EXEC_DONE);
 			continue;
 		case EXEC_DONE: 
@@ -652,10 +669,11 @@ static void exec_tick(struct exec *req)
 			}
 
 			if (leader_closing(leader) && leader->pending == 0) {
-				leader_finalize(leader);
+				req = leader_finalize(leader);
+			} else {
+				req = exec_dequeue(db);
 			}
 
-			req = exec_dequeue(db);
 			if (req != NULL) {
 				PRE(IN(db->active_leader, NULL, req->leader));
 				db->active_leader = req->leader;
@@ -701,13 +719,11 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	(void)result;
 	struct exec *req = CONTAINER_OF(apply, struct exec, apply);
 	struct leader *leader = req->leader;
+	PRE(leader != NULL);
 	leader_trace(leader, "query applied (status=%d)", status);
-	if (leader) {
-		if (status != 0) {
-			VfsAbort(leader->conn);
-		} else {
-			leaderMaybeCheckpointLegacy(leader);
-		}
+	if (status == RAFT_OK) {
+		leader->db->read_index = apply->index;
+		leaderMaybeCheckpointLegacy(leader);
 	}
 
 	PRE(sm_state(&req->sm) == EXEC_WAITING_APPLY);
@@ -718,6 +734,6 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 
 static bool is_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes)
 {
-	uint64_t size = VfsDatabaseSize(vfs, db->path, nframes, db->config->page_size);
+	uint64_t size = VfsDatabaseSize(vfs, db->filename, nframes, db->config->page_size);
 	return size > VfsDatabaseSizeLimit(vfs);
 }
