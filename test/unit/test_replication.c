@@ -476,7 +476,7 @@ TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
 
 	PREPARE(0, "INSERT INTO test(n) VALUES(1)");
 	fixture_exec(f, 0);
-	CLUSTER_APPLIED(5);
+	CLUSTER_APPLIED(4);
 	FINALIZE;
 
 	/* The WAL was truncated. */

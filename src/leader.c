@@ -110,85 +110,6 @@ void leader__close(struct leader *leader, leader_close_cb close_cb)
 	}
 }
 
-/* A checkpoint command that fails to commit is not a huge issue.
- * The WAL will not be checkpointed this time around on these nodes,
- * a new checkpoint command will be issued once the WAL on the leader reaches
- * threshold size again. It's improbable that the WAL in this way could grow
- * without bound, it would mean that apply frames commands commit without
- * issues, while the checkpoint command would somehow always fail to commit. */
-static void leaderCheckpointApplyCb(struct raft_apply *req,
-				    int status,
-				    void *result)
-{
-	(void)result;
-	raft_free(req);
-	if (status != 0) {
-		tracef("checkpoint apply failed %d", status);
-	}
-}
-
-/* Attempt to perform a checkpoint on nodes running a version of dqlite that
- * doens't perform autonomous checkpoints. For recent nodes, the checkpoint
- * command will just be a no-op.
- * This function will run after the WAL might have been checkpointed during a
- * call to `apply_frames`.
- * */
-static void leaderMaybeCheckpointLegacy(struct leader *leader)
-{
-	tracef("leader maybe checkpoint legacy");
-	struct sqlite3_file *wal = NULL;
-	struct raft_buffer buf;
-	struct command_checkpoint command;
-	sqlite3_int64 size;
-	int rv;
-
-	/* Get the database file associated with this connection */
-	rv = sqlite3_file_control(leader->conn, NULL,
-				  SQLITE_FCNTL_JOURNAL_POINTER, &wal);
-	assert(rv == SQLITE_OK); /* Should never fail */
-	if (wal == NULL || wal->pMethods == NULL) {
-		/* This might happen at the beginning of the leader life cycle, 
-		 * when no pages have been applied yet. */
-		return;
-	}
-	rv = wal->pMethods->xFileSize(wal, &size);
-	assert(rv == SQLITE_OK); /* Should never fail */
-
-	/* size of the WAL will be 0 if it has just been checkpointed on this
-	 * leader as a result of running apply_frames. */
-	if (size != 0) {
-		return;
-	}
-
-	tracef("issue checkpoint command");
-
-	/* Attempt to perfom a checkpoint across nodes that don't perform
-	 * autonomous snapshots. */
-	command.filename = leader->db->filename;
-	rv = command__encode(COMMAND_CHECKPOINT, &command, &buf);
-	if (rv != 0) {
-		tracef("encode failed %d", rv);
-		return;
-	}
-
-	struct raft_apply *apply = raft_malloc(sizeof(*apply));
-	if (apply == NULL) {
-		tracef("raft_malloc - no mem");
-		goto err_after_buf_alloc;
-	}
-	rv = raft_apply(leader->raft, apply, &buf, 1, leaderCheckpointApplyCb);
-	if (rv != 0) {
-		tracef("raft_apply failed %d", rv);
-		raft_free(apply);
-		goto err_after_buf_alloc;
-	}
-
-	return;
-
-err_after_buf_alloc:
-	raft_free(buf.base);
-}
-
 /**
  * State machine for exec requests.
  *
@@ -701,13 +622,10 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	(void)result;
 	struct exec *req = CONTAINER_OF(apply, struct exec, apply);
 	struct leader *leader = req->leader;
+	PRE(leader != NULL);
 	leader_trace(leader, "query applied (status=%d)", status);
-	if (leader) {
-		if (status != 0) {
-			VfsAbort(leader->conn);
-		} else {
-			leaderMaybeCheckpointLegacy(leader);
-		}
+	if (status != 0) {
+		VfsAbort(leader->conn);
 	}
 
 	PRE(sm_state(&req->sm) == EXEC_WAITING_APPLY);
