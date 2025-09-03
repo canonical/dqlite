@@ -1,3 +1,10 @@
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE
+#include <fcntl.h>
+#endif
+
+#include <stdlib.h>
+
 #include "../../include/dqlite.h"
 #include "../../src/gateway.h"
 #include "../../src/lib/threadpool.h"
@@ -7,6 +14,7 @@
 #include "../lib/cluster.h"
 #include "../lib/raft_heap.h"
 #include "../lib/runner.h"
+
 
 TEST_MODULE(gateway);
 
@@ -85,6 +93,38 @@ struct connection {
 		buffer__close(&c->buf2);                       \
 	}                                                  \
 	TEAR_DOWN_CLUSTER;
+
+#define INTEGRITY_CHECK(file)                                                 \
+	do {                                                                  \
+		char path[PATH_MAX] = {};                                     \
+		snprintf(path, PATH_MAX, "%s/%s", f->temp_dir, (file).name);  \
+		int fd = open(path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);     \
+		munit_assert_int(fd, >, 0);                                   \
+		ssize_t write_rv =                                            \
+		    write(fd, (file).content.base, (file).content.len);       \
+		munit_assert_int(write_rv, ==, (file).content.len);           \
+		sqlite3 *conn;                                                \
+		int sqlite_rv =                                               \
+		    sqlite3_open_v2(path, &conn, SQLITE_OPEN_READONLY, NULL); \
+		munit_assert_int(sqlite_rv, ==, SQLITE_OK);                   \
+		sqlite_rv = sqlite3_exec(conn, "PRAGMA integrity_check",      \
+					 integrityCheckCb, NULL, NULL);       \
+		munit_assert_int(sqlite_rv, ==, SQLITE_OK);                   \
+		sqlite3_close(conn);                                          \
+		close(fd);                                                    \
+	} while (0)
+
+static int integrityCheckCb(void *ctx, int n, char **values, char **names) {
+	munit_assert_null(ctx);
+	munit_assert_int(n, ==, 1);
+	munit_assert_string_equal(names[0], "integrity_check");
+
+	if (sqlite3_stricmp(values[0], "ok") != 0) {
+		munit_errorf("integrity fail: %s", values[0]);
+	}
+
+	return SQLITE_OK;
+}
 
 static void closeCb(struct gateway *g) {
 	struct connection *c = CONTAINER_OF(g, struct connection, gateway);
@@ -3104,6 +3144,7 @@ struct request_dump_fixture {
 	FIXTURE;
 	struct request_dump request;
 	struct response_files response;
+	char *temp_dir;
 };
 
 TEST_SUITE(dump);
@@ -3112,12 +3153,14 @@ TEST_SETUP(dump)
 	struct request_dump_fixture *f = munit_malloc(sizeof *f);
 	SETUP;
 	CLUSTER_ELECT(0);
+	f->temp_dir = test_dir_setup();
 	return f;
 }
 TEST_TEAR_DOWN(dump)
 {
 	struct request_dump_fixture *f = data;
 	TEAR_DOWN;
+	test_dir_tear_down(f->temp_dir);
 	free(f);
 }
 
@@ -3125,6 +3168,8 @@ TEST_CASE(dump, empty, NULL)
 {
 	(void)params;
 	struct request_dump_fixture *f = data;
+	OPEN;
+	
 	f->request = (struct request_dump){
 		.filename = "test",
 	};
@@ -3137,14 +3182,16 @@ TEST_CASE(dump, empty, NULL)
 	struct file main = {};
 	DECODE_FILE(&main);
 	munit_assert_string_equal(main.name, "test");
-	munit_assert_int(main.content.len, ==, 0);
+	munit_assert_int(main.content.len, ==, 512);
 
 	struct file wal = {};
 	DECODE_FILE(&wal);
 	munit_assert_string_equal(wal.name, "test-wal");
 	munit_assert_int(wal.content.len, ==, 0);
-
 	munit_assert_int(f->cursor->cap, ==, 0);
+
+	INTEGRITY_CHECK(main);
+
 	return MUNIT_OK;
 }
 
@@ -3157,21 +3204,8 @@ TEST_CASE(dump, not_existent, NULL)
 	};
 	ENCODE(&f->request, dump);
 	HANDLE(DUMP);
-	ASSERT_CALLBACK(DQLITE_OK, FILES);
-	DECODE(&f->response, files);
-
-	munit_assert_int(f->response.n, ==, 2);
-	struct file main = {};
-	DECODE_FILE(&main);
-	munit_assert_string_equal(main.name, "foo");
-	munit_assert_int(main.content.len, ==, 0);
-
-	struct file wal = {};
-	DECODE_FILE(&wal);
-	munit_assert_string_equal(wal.name, "foo-wal");
-	munit_assert_int(wal.content.len, ==, 0);
-
-	munit_assert_int(f->cursor->cap, ==, 0);
+	ASSERT_CALLBACK(DQLITE_NOTFOUND, FAILURE);
+	ASSERT_FAILURE(DQLITE_NOTFOUND, "database does not exists");
 
 	return MUNIT_OK;
 }
@@ -3202,9 +3236,11 @@ TEST_CASE(dump, simple, NULL)
 	struct file wal = {};
 	DECODE_FILE(&wal);
 	munit_assert_string_equal(wal.name, "test-wal");
-	munit_assert_int(wal.content.len, >, 0);
-
+	munit_assert_int(wal.content.len, ==, 0);
 	munit_assert_int(f->cursor->cap, ==, 0);
+
+	INTEGRITY_CHECK(main);
+
 	return MUNIT_OK;
 }
 
@@ -3236,9 +3272,12 @@ TEST_CASE(dump, simple_follower, NULL)
 	struct file wal = {};
 	DECODE_FILE(&wal);
 	munit_assert_string_equal(wal.name, "test-wal");
-	munit_assert_int(wal.content.len, >, 0);
+	munit_assert_int(wal.content.len, ==, 0);
 
 	munit_assert_int(f->cursor->cap, ==, 0);
+
+	INTEGRITY_CHECK(main);
+
 	return MUNIT_OK;
 }
 
@@ -3296,6 +3335,9 @@ TEST_CASE(dump, checkpointed, NULL)
 	munit_assert_int(wal.content.len, ==, 0);
 
 	munit_assert_int(f->cursor->cap, ==, 0);
+
+	INTEGRITY_CHECK(main);
+
 	return MUNIT_OK;
 }
 

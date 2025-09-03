@@ -35,28 +35,34 @@ int VfsAbort(sqlite3 *conn);
 /* Performs a controlled checkpoint on conn */
 int VfsCheckpoint(sqlite3 *conn, unsigned int threshold);
 
-/* Make a full snapshot of a database. */
-int VfsSnapshot(sqlite3_vfs *vfs, const char *filename, void **data, size_t *n);
+struct vfsSnapshotFile {
+	void **pages;
+	size_t page_count;
+	size_t page_size;
+};
 
-/**
- * Prepare a snapshot of the selected database, borrowing from the in-memory
- * state of the VFS.
+struct vfsSnapshot {
+	struct vfsSnapshotFile main;
+	struct vfsSnapshotFile wal;
+};
+
+/* Acquires a snapshot from the connection conn. The snapshot wil be valid until
+ * VfsReleaseSnapshot is called.
  *
- * The provided array of buffers will be populated with pointers to the
- * in-memory database held by the VFS. It's forbidden to checkpoint the
- * database while these pointers are still in use. VfsDatabaseNumPages (with
- * `use_wal = true`) should be used to determine how many buffers are needed.
+ * An acquired snapshot will take relevant locks on the database to make sure
+ * that memory remains valid until released.
+ *
+ * The logic will also attempt a checkpoint before returning to reduce the
+ * snapshot size.
  */
-int VfsShallowSnapshot(sqlite3_vfs *vfs,
-		       const char *filename,
-		       struct dqlite_buffer bufs[],
-		       uint32_t n);
+int VfsAcquireSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot);
+
+/* Releases a snapshot taken on conn. This means both releasing the locks on the
+ * database and the memory associated with the snapshot. */
+int VfsReleaseSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot);
 
 /* Restore a database snapshot. */
-int VfsRestore(sqlite3_vfs *vfs,
-	       const char *filename,
-	       const void *data,
-	       size_t n);
+int VfsRestore(sqlite3 *conn, const struct vfsSnapshot *snapshot);
 
 /**
  * Number of pages in the database.

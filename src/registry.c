@@ -1,14 +1,15 @@
+#include <assert.h>
 #include <string.h>
 
 #include "../include/dqlite.h"
-
-#include "lib/assert.h"
 
 #include "registry.h"
 
 void registry__init(struct registry *r, struct config *config)
 {
-	r->config = config;
+	*r = (struct registry) {
+		.config = config,
+	};
 	queue_init(&r->dbs);
 }
 
@@ -23,23 +24,35 @@ void registry__close(struct registry *r)
 		db__close(db);
 		sqlite3_free(db);
 	}
+	r->size = 0;
 }
 
-int registry__db_get(struct registry *r, const char *filename, struct db **db)
+int registry__get_or_create(struct registry *r, const char *filename, struct db **db)
 {
-	queue *head;
-	QUEUE_FOREACH(head, &r->dbs)
-	{
-		*db = QUEUE_DATA(head, struct db, queue);
-		if (strcmp((*db)->filename, filename) == 0) {
-			return 0;
-		}
+	*db = registry__get(r, filename);
+	if (*db != NULL) {
+		return DQLITE_OK;
 	}
-	*db = sqlite3_malloc(sizeof **db);
+
+	*db = sqlite3_malloc(sizeof(struct db));
 	if (*db == NULL) {
 		return DQLITE_NOMEM;
 	}
 	db__init(*db, r->config, filename);
 	queue_insert_tail(&r->dbs, &(*db)->queue);
-	return 0;
+	r->size++;
+	return DQLITE_OK;
+}
+
+struct db *registry__get(const struct registry *r, const char *filename)
+{
+	queue *head;
+	QUEUE_FOREACH(head, &r->dbs)
+	{
+		struct db *db = QUEUE_DATA(head, struct db, queue);
+		if (strcmp(db->filename, filename) == 0) {
+			return db;
+		}
+	}
+	return NULL;
 }
