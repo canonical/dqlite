@@ -1072,13 +1072,10 @@ TEST(replication, resultRetry, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-static void applyAssertStatusCb(struct raft_apply *req,
-                                int status,
-                                void *result)
+static void applyAssertStatusCb(struct raft_apply *req, int status)
 {
-    (void)result;
-    int status_expected = (int)(intptr_t)(req->data);
-    munit_assert_int(status_expected, ==, status);
+	int status_expected = (int)(intptr_t)(req->data);
+	munit_assert_int(status_expected, ==, status);
 }
 
 /* When the leader fails to write some new entries to disk, it steps down. */

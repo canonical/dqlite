@@ -24,7 +24,7 @@ static int exec_apply(struct exec *req,
 		      const struct vfsTransaction *transaction);
 static void exec_prepare_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_run_barrier_cb(struct raft_barrier *barrier, int status);
-static void exec_apply_cb(struct raft_apply *req, int status, void *result);
+static void exec_apply_cb(struct raft_apply *req, int status);
 static void exec_timer_cb(struct raft_timer *timer);
 static bool is_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes);
 
@@ -617,9 +617,8 @@ static void exec_timer_cb(struct raft_timer *timer)
 	return exec_tick(req);
 }
 
-static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
+static void exec_apply_cb(struct raft_apply *apply, int status)
 {
-	(void)result;
 	struct exec *req = CONTAINER_OF(apply, struct exec, apply);
 	struct leader *leader = req->leader;
 	PRE(leader != NULL);

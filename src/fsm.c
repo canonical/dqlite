@@ -120,9 +120,7 @@ static int apply_checkpoint(struct fsm *f, const struct command_checkpoint *c)
 	return 0;
 }
 
-static int fsm__apply(struct raft_fsm *fsm,
-		      const struct raft_buffer *buf,
-		      void **result)
+static int fsm__apply(struct raft_fsm *fsm, const struct raft_buffer *buf)
 {
 	tracef("fsm apply");
 	struct fsm *f = fsm->data;
@@ -155,7 +153,6 @@ static int fsm__apply(struct raft_fsm *fsm,
 
 	raft_free(command);
 err:
-	*result = NULL;
 	return rc;
 }
 
@@ -460,8 +457,8 @@ err:
 }
 
 static int fsm__snapshot_finalize(struct raft_fsm *fsm,
-				  struct raft_buffer *bufs[],
-				  unsigned *n_bufs)
+				  struct raft_buffer bufs[],
+				  unsigned n_bufs)
 {
 	(void)n_bufs;
 
@@ -470,9 +467,7 @@ static int fsm__snapshot_finalize(struct raft_fsm *fsm,
 	PRE(f->snapshot.header.len != 0 && f->snapshot.header.base != NULL);
 	PRE(f->snapshot.database_count == 0 || f->snapshot.databases != NULL);
 
-	raft_free(*bufs);
-	*bufs = NULL;
-	*n_bufs = 0;
+	raft_free(bufs);
 
 	for (unsigned int i = 0; i < f->snapshot.database_count; i++) {
 		if (f->snapshot.databases[i].conn != NULL) {
