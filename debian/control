@@ -11,7 +11,7 @@ Homepage: https://github.com/canonical/dqlite
 Standards-Version: 4.5.1
 Rules-Requires-Root: no
 
-Package: libdqlite1.18-unstable
+Package: libdqlite1.18-unstable-0
 Section: libs
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
@@ -25,7 +25,7 @@ Description: Distributed SQLite database using Raft - library
 Package: libdqlite1.18-unstable-dev
 Section: libdevel
 Architecture: any
-Depends: libdqlite1.18-unstable (= ${binary:Version}),
+Depends: libdqlite1.18-unstable-0 (= ${binary:Version}),
          ${misc:Depends},
          libsqlite3-dev,
          libuv1-dev,
