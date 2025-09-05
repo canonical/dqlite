@@ -9,6 +9,12 @@
  * implementation. */
 int VfsInit(struct sqlite3_vfs *vfs, const char *name);
 
+/* Register a function that will be called when a database is deleted. 
+ * The callback is passed two arguments:
+ *  - the data provided in this method;
+ *  - the main file name of the deleted database. */
+void VfsDeleteHook(struct sqlite3_vfs *vfs, void (*hook)(void *, const char*), void *data);
+
 /* Release all memory associated with the given dqlite in-memory VFS
  * implementation.
  *
