@@ -25,6 +25,8 @@ jobs:
         fetch-tags: true
 
     - name: Setup dependencies
+      env:
+          DEBIAN_FRONTEND: noninteractive
       run: |
           apt-get update -qq
           apt-get install -qq debhelper devscripts gnupg git
