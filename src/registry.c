@@ -29,7 +29,7 @@ void registry__init(struct registry *r, struct config *config)
 		.config = config,
 	};
 	queue_init(&r->dbs);
-	sqlite3_vfs *vfs = sqlite3_vfs_find(config->name);
+	sqlite3_vfs *vfs = sqlite3_vfs_find(config->vfs.name);
 	assert(vfs != NULL);
 	VfsDeleteHook(vfs, registryDeleteHook, r);
 }
@@ -46,6 +46,9 @@ void registry__close(struct registry *r)
 		sqlite3_free(db);
 	}
 	r->size = 0;
+	sqlite3_vfs *vfs = sqlite3_vfs_find(r->config->vfs.name);
+	assert(vfs != NULL);
+	VfsDeleteHook(vfs, NULL, NULL);
 }
 
 int registry__get_or_create(struct registry *r, const char *filename, struct db **db)

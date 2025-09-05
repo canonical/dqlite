@@ -62,7 +62,7 @@ struct connection {
 		struct connection *c = &f->connections[i];                  \
 		struct config *config;                                      \
 		config = CLUSTER_CONFIG(i);                                 \
-		config->page_size = 512;                                    \
+		config->vfs.page_size = 512;                                    \
 		gateway__init(&c->gateway, config, CLUSTER_REGISTRY(i),     \
 			      CLUSTER_RAFT(i));                                 \
 		c->handle.data = &c->context;                               \
@@ -3293,7 +3293,7 @@ TEST_CASE(dump, checkpointed, NULL)
 	struct config *config = f->gateway->config;
 	struct value blobsize = {
 		.type = SQLITE_INTEGER,
-		.integer = config->page_size * config->checkpoint_threshold,
+		.integer = config->vfs.page_size * config->vfs.checkpoint_threshold,
 	};
 	PREPARE(
 	    "INSERT INTO test           "
@@ -3327,7 +3327,7 @@ TEST_CASE(dump, checkpointed, NULL)
 	DECODE_FILE(&main);
 	munit_assert_string_equal(main.name, "test");
 	munit_assert_int(main.content.len, >=,
-			 config->checkpoint_threshold * config->page_size);
+			 config->vfs.checkpoint_threshold * config->vfs.page_size);
 
 	struct file wal = {};
 	DECODE_FILE(&wal);
