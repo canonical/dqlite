@@ -875,6 +875,8 @@ TEST(VfsFileControl, persistWal, setUp, tearDown, 0, NULL)
 	munit_assert_int(rv, ==, SQLITE_OK);
 	munit_assert_int(value, ==, 1);
 
+	free(file);
+
 	return MUNIT_OK;
 }
 
