@@ -19,17 +19,17 @@ jobs:
           - noble
           - plucky
     steps:
-    - uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-        fetch-tags: true
-
     - name: Setup dependencies
       env:
           DEBIAN_FRONTEND: noninteractive
       run: |
           apt-get update -qq
           apt-get install -qq debhelper devscripts gnupg git
+
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+        fetch-tags: true
 
       # Note for future maintainers: the secret key should be stored
       # in the GHA secret in ASCII-armored form, and must not be
