@@ -84,13 +84,6 @@ static int apply_frames(struct fsm *f, const struct command_frames *c)
 		goto error;
 	}
 
-	int ckpt_rv = VfsCheckpoint(conn, db->config->checkpoint_threshold);
-	if (ckpt_rv == SQLITE_BUSY) {
-		tracef("checkpoint: busy reader or writer");
-	} else if (ckpt_rv != SQLITE_OK) {
-		tracef("checkpoint failed: %d", ckpt_rv);
-	}
-
 error:
 	if (db->active_leader == NULL) {
 		sqlite3_close(conn);
@@ -209,7 +202,7 @@ static int decodeDatabase(const struct registry *r,
 		return RAFT_INVALID;
 	}
 
-	const size_t page_size = r->config->page_size;
+	const size_t page_size = r->config->vfs.page_size;
 	assert((header.main_size % page_size) == 0);
 	assert(header.wal_size == 0);
 
@@ -309,7 +302,7 @@ static int snapshotDatabase(struct db *db, struct fsmDatabaseSnapshot *snapshot)
 		return RAFT_ERROR;
 	}
 
-	rv = VfsCheckpoint(snapshot->conn, 0);
+	rv = VfsCheckpoint(snapshot->conn);
 	if (rv == SQLITE_BUSY) {
 		tracef("checkpoint: busy reader or writer");
 	} else if (rv != SQLITE_OK) {

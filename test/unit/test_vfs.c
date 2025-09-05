@@ -25,6 +25,7 @@ struct fixture
 	struct sqlite3_vfs vfs;
 	char *dir;
 	char path[VFS_PATH_SZ];
+	struct vfsConfig config;
 };
 
 static void vfsFillPath(struct fixture *f, char *filename)
@@ -47,7 +48,11 @@ static void *setUp(const MunitParameter params[], void *user_data)
 
 	SETUP_HEAP;
 	SETUP_SQLITE;
-	rv = VfsInit(&f->vfs, "dqlite");
+	f->config = (struct vfsConfig) {
+		.name = "dqlite",
+		.page_size = 512,
+	};
+	rv = VfsInit(&f->vfs, &f->config);
 	munit_assert_int(rv, ==, 0);
 	f->dir = NULL;
 	rv = sqlite3_vfs_register(&f->vfs, 0);
@@ -141,29 +146,22 @@ static void *__buf_page_2(void)
 	return buf;
 }
 
-/* Helper to execute a SQL statement. */
-static void __db_exec(sqlite3 *db, const char *sql)
-{
-	int rc;
-
-	rc = sqlite3_exec(db, sql, NULL, NULL, NULL);
-	munit_assert_int(rc, ==, SQLITE_OK);
-}
+#define EXEC(DB, SQL)                                                  \
+	do {                                                           \
+		int exec_rc = sqlite3_exec(DB, SQL, NULL, NULL, NULL); \
+		munit_assert_int(exec_rc, ==, SQLITE_OK);                   \
+	} while (0)
 
 /* Helper to open and initialize a database, setting the page size and
  * WAL mode. */
-static sqlite3 *__db_open(void)
+static sqlite3 *test_db_open(void)
 {
 	sqlite3 *db;
-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXRESCODE;
 	int rc;
 
 	rc = sqlite3_open_v2("test.db", &db, flags, "dqlite");
 	munit_assert_int(rc, ==, SQLITE_OK);
-
-	__db_exec(db, "PRAGMA page_size=512");
-	__db_exec(db, "PRAGMA synchronous=OFF");
-	__db_exec(db, "PRAGMA journal_mode=WAL");
 
 	return db;
 }
@@ -375,13 +373,12 @@ TEST(VfsOpen, walBeforeDb, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Trying to run queries against a database that hasn't turned off the
- * synchronous flag results in an error. */
+/* Opening a connection also sets synchronous to OFF */
 TEST(VfsOpen, synchronous, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	sqlite3 *db;
-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXRESCODE;
 	int rc;
 
 	(void)params;
@@ -393,12 +390,18 @@ TEST(VfsOpen, synchronous, setUp, tearDown, 0, NULL)
 	rc = sqlite3_open_v2(f->path, &db, flags, f->vfs.zName);
 	munit_assert_int(rc, ==, SQLITE_OK);
 
-	__db_exec(db, "PRAGMA page_size=4096");
+	sqlite3_stmt *stmt;
+	rc = sqlite3_prepare_v2(db, "PRAGMA synchronous", -1, &stmt, NULL);
+	munit_assert_int(rc, ==, SQLITE_OK);
 
-	rc = sqlite3_exec(db, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
-	munit_assert_int(rc, ==, SQLITE_IOERR);
+	rc = sqlite3_step(stmt);
+	munit_assert_int(rc, ==, SQLITE_ROW);
+	munit_assert_int(sqlite3_column_int(stmt, 0), ==, 0);
 
-	munit_assert_string_equal(sqlite3_errmsg(db), "disk I/O error");
+	rc = sqlite3_step(stmt);
+	munit_assert_int(rc, ==, SQLITE_DONE);
+
+	sqlite3_finalize(stmt);
 
 	__db_close(db);
 
@@ -457,16 +460,13 @@ TEST(VfsOpen, tmp, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
 	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
-	int flags = 0;
 	char buf[16];
 	int rc;
 
 	(void)params;
 
-	flags |= SQLITE_OPEN_CREATE;
-	flags |= SQLITE_OPEN_READWRITE;
-	flags |= SQLITE_OPEN_TEMP_JOURNAL;
-	flags |= SQLITE_OPEN_DELETEONCLOSE;
+	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE |
+		    SQLITE_OPEN_TEMP_JOURNAL | SQLITE_OPEN_DELETEONCLOSE;
 
 	rc = f->vfs.xOpen(&f->vfs, NULL, file, flags, &flags);
 	munit_assert_int(rc, ==, SQLITE_OK);
@@ -1366,15 +1366,16 @@ static MunitParameterEnum test_create_oom_params[] = {
 
 TEST(VfsInit, oom, setUp, tearDown, 0, test_create_oom_params)
 {
-	struct sqlite3_vfs vfs;
-	int rv;
-
 	(void)params;
 	(void)data;
 
 	test_heap_fault_enable();
-
-	rv = VfsInit(&vfs, "dqlite");
+	struct vfsConfig conf = {
+		.name = "dqlite",
+		.page_size = 512,
+	};
+	struct sqlite3_vfs vfs;
+	int rv = VfsInit(&vfs, &conf);
 	munit_assert_int(rv, ==, DQLITE_NOMEM);
 
 	return MUNIT_OK;
@@ -1401,10 +1402,10 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 
 	return MUNIT_SKIP;
 
-	db1 = __db_open();
-	db2 = __db_open();
+	db1 = test_db_open();
+	db2 = test_db_open();
 
-	__db_exec(db1, "CREATE TABLE test (n INT)");
+	EXEC(db1, "CREATE TABLE test (n INT)");
 
 	munit_assert_int(__wal_idx_mx_frame(db1), ==, 2);
 
@@ -1417,8 +1418,8 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	free(read_marks);
 
 	/* Start a read transaction on db2 */
-	__db_exec(db2, "BEGIN");
-	__db_exec(db2, "SELECT * FROM test");
+	EXEC(db2, "BEGIN");
+	EXEC(db2, "SELECT * FROM test");
 
 	/* The max frame is set to 2, which is the current size of the WAL. */
 	munit_assert_int(__wal_idx_mx_frame(db2), ==, 2);
@@ -1437,10 +1438,10 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	munit_assert_true(__shm_shared_lock_held(db2, 3 + 1));
 
 	/* Start a write transaction on db1 */
-	__db_exec(db1, "BEGIN");
+	EXEC(db1, "BEGIN");
 
 	for (i = 0; i < 100; i++) {
-		__db_exec(db1, "INSERT INTO test(n) VALUES(1)");
+		EXEC(db1, "INSERT INTO test(n) VALUES(1)");
 	}
 
 	/* The mx frame is still 2 since the transaction is not committed. */
@@ -1455,7 +1456,7 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	munit_assert_uint32(read_marks[4], ==, 0xffffffff);
 	free(read_marks);
 
-	__db_exec(db1, "COMMIT");
+	EXEC(db1, "COMMIT");
 
 	/* The mx frame is now 6. */
 	munit_assert_int(__wal_idx_mx_frame(db1), ==, 6);
@@ -1464,8 +1465,8 @@ TEST(VfsIntegration, wal, setUp, tearDown, 0, NULL)
 	munit_assert_true(__shm_shared_lock_held(db2, 3 + 1));
 
 	/* Start a read transaction on db1 */
-	__db_exec(db1, "BEGIN");
-	__db_exec(db1, "SELECT * FROM test");
+	EXEC(db1, "BEGIN");
+	EXEC(db1, "SELECT * FROM test");
 
 	/* The mx frame is still unchanged. */
 	munit_assert_int(__wal_idx_mx_frame(db1), ==, 6);
@@ -1511,19 +1512,19 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 
 	return MUNIT_SKIP;
 
-	db1 = __db_open();
+	db1 = test_db_open();
 
-	__db_exec(db1, "CREATE TABLE test (n INT)");
+	EXEC(db1, "CREATE TABLE test (n INT)");
 
 	/* Insert a few rows so we grow the size of the WAL. */
-	__db_exec(db1, "BEGIN");
+	EXEC(db1, "BEGIN");
 
 	for (i = 0; i < 500; i++) {
 		sprintf(stmt, "INSERT INTO test(n) VALUES(%d)", i);
-		__db_exec(db1, stmt);
+		EXEC(db1, stmt);
 	}
 
-	__db_exec(db1, "COMMIT");
+	EXEC(db1, "COMMIT");
 
 	/* Get the file objects for the main database and the WAL. */
 	rv = sqlite3_file_control(db1, NULL, SQLITE_FCNTL_FILE_POINTER, &file1);
@@ -1542,9 +1543,9 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 
 	/* Start a read transaction on a different connection, acquiring a
 	 * shared lock on all WAL pages. */
-	db2 = __db_open();
-	__db_exec(db2, "BEGIN");
-	__db_exec(db2, "SELECT * FROM test");
+	db2 = test_db_open();
+	EXEC(db2, "BEGIN");
+	EXEC(db2, "SELECT * FROM test");
 
 	read_marks = __wal_idx_read_marks(db1);
 	munit_assert_int(read_marks[1], ==, 13);
@@ -1558,15 +1559,15 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 
 	/* Execute a new write transaction, deleting some of the pages we
 	 * inserted and creating new ones. */
-	__db_exec(db1, "BEGIN");
-	__db_exec(db1, "DELETE FROM test WHERE n > 200");
+	EXEC(db1, "BEGIN");
+	EXEC(db1, "DELETE FROM test WHERE n > 200");
 
 	for (i = 0; i < 1000; i++) {
 		sprintf(stmt, "INSERT INTO test(n) VALUES(%d)", i);
-		__db_exec(db1, stmt);
+		EXEC(db1, stmt);
 	}
 
-	__db_exec(db1, "COMMIT");
+	EXEC(db1, "COMMIT");
 
 	/* Since there's a shared read lock, a full checkpoint will fail. */
 	rv = sqlite3_wal_checkpoint_v2(db1, NULL, SQLITE_CHECKPOINT_TRUNCATE,
@@ -1575,7 +1576,7 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 
 	/* If we complete the read transaction the shared lock is realeased and
 	 * the checkpoint succeeds. */
-	__db_exec(db2, "COMMIT");
+	EXEC(db2, "COMMIT");
 
 	rv = sqlite3_wal_checkpoint_v2(db1, NULL, SQLITE_CHECKPOINT_TRUNCATE,
 				       &log, &ckpt);

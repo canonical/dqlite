@@ -1,11 +1,11 @@
+#include <assert.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <sqlite3.h>
 
 #include "../include/dqlite.h"
-
-#include "./lib/assert.h"
 
 #include "config.h"
 #include "logger.h"
@@ -23,39 +23,45 @@
  * soon as possible. */
 #define DEFAULT_CHECKPOINT_THRESHOLD 1000
 
-/* For generating unique replication/VFS registration names.
- *
- * TODO: make this thread safe. */
-static unsigned serial = 1;
+/* For generating unique replication/VFS registration names. */
+static _Atomic unsigned serial = 1;
 
 int config__init(struct config *c,
 		 dqlite_node_id id,
 		 const char *address,
 		 const char *raft_dir)
 {
-	int rv;
-	c->id = id;
+
+	*c = (struct config) {
+		.id = id,
+		.heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT,
+		.vfs = {
+			.page_size = DEFAULT_PAGE_SIZE,
+			.checkpoint_threshold = DEFAULT_CHECKPOINT_THRESHOLD,
+		},
+		.logger = {
+			.data = NULL,
+			.emit = loggerDefaultEmit,
+		},
+		.failure_domain = 0,
+		.weight = 0,
+		.voters = 3,
+		.standbys = 0,
+		.pool_thread_count = 4,
+	};
+
 	c->address = sqlite3_malloc((int)strlen(address) + 1);
 	if (c->address == NULL) {
 		return DQLITE_NOMEM;
 	}
 	strcpy(c->address, address);
-	c->heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT;
-	c->page_size = DEFAULT_PAGE_SIZE;
-	c->checkpoint_threshold = DEFAULT_CHECKPOINT_THRESHOLD;
-	rv = snprintf(c->name, sizeof c->name, "dqlite-%u", serial);
-	assert(rv < (int)(sizeof c->name));
-	c->logger.data = NULL;
-	c->logger.emit = loggerDefaultEmit;
-	c->failure_domain = 0;
-	c->weight = 0;
+	
+	unsigned vfs_id = atomic_fetch_add_explicit(&serial, 1, memory_order_relaxed);
+	int rv = snprintf(c->vfs.name, sizeof c->vfs.name, "dqlite-%u", vfs_id);
+	assert(rv < (int)(sizeof c->vfs.name));
 
 	snprintf(c->raft_dir, sizeof(c->raft_dir), "%s", (raft_dir != NULL) ? raft_dir : "");
 
-	c->voters = 3;
-	c->standbys = 0;
-	c->pool_thread_count = 4;
-	serial++;
 	return 0;
 }
 

@@ -35,6 +35,8 @@
 #define __builtin_assume_aligned(x, y) x
 #endif
 
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
 /* Byte order */
 #if defined(DQLITE_LITTLE_ENDIAN)
 #define VFS__BIGENDIAN 0
@@ -736,17 +738,18 @@ static void vfsDatabaseClose(struct vfsDatabase *d)
 /* Custom dqlite VFS. Contains pointers to all databases that were created. */
 struct vfs
 {
+	const struct vfsConfig *config; /* Database configuration */
 	struct vfsDatabase **databases; /* Database objects */
 	unsigned n_databases;           /* Number of databases */
 	int error;                      /* Last error occurred. */
-	struct sqlite3_vfs *base_vfs; /* Base VFS. */
+	struct sqlite3_vfs *base_vfs;   /* Base VFS. */
 
 	void (*delete_hook)(void *, const char*);
 	void *delete_hook_data;
 };
 
 /* Create a new vfs object. */
-static struct vfs *vfsCreate(void)
+static struct vfs *vfsCreate(const struct vfsConfig *config)
 {
 	struct vfs *v;
 
@@ -756,6 +759,7 @@ static struct vfs *vfsCreate(void)
 	}
 
 	*v = (struct vfs) {
+		.config = config,
 		.base_vfs = sqlite3_vfs_find("unix"),
 	};
 	assert(v->base_vfs != NULL);
@@ -1607,37 +1611,12 @@ static int vfsPragmaPageSize(struct vfsMainFile *f, char **fcntl)
 		/* Support only the setter. */
 		return SQLITE_NOTFOUND;
 	}
-	/* When the user executes 'PRAGMA page_size=N' we save the
-	 * size internally.
-	 *
-	 * The page size must be between 512 and 65536, and be a
-	 * power of two. The check below was copied from
-	 * sqlite3BtreeSetPageSize in btree.c.
-	 *
-	 * Invalid sizes are simply ignored, SQLite will do the same.
-	 *
-	 * It's not possible to change the size after it's set.
-	 */
-	int page_size = atoi(fcntl[2]);
 
-	if (page_size < FORMAT__PAGE_SIZE_MIN ||
-	    page_size > FORMAT__PAGE_SIZE_MAX) {
-		fcntl[0] = sqlite3_mprintf("page size outside of valid range");
+	unsigned page_size = (unsigned)atoi(fcntl[2]);
+	if (page_size != f->vfs->config->page_size) {
+		fcntl[0] = sqlite3_mprintf(
+			"changing page size is not supported");
 		return SQLITE_IOERR;
-	}
-
-	if (!is_po2((unsigned long)page_size)) {
-		fcntl[0] = sqlite3_mprintf("page size must be a power of 2");
-		return SQLITE_IOERR;
-	}
-
-	if (f->database->n_pages > 0) {
-		int db_page_size = (int)vfsDatabaseGetPageSize(f->database);
-		if (db_page_size != page_size) {
-			fcntl[0] = sqlite3_mprintf(
-			    "changing page size is not supported");
-			return SQLITE_IOERR;
-		}
 	}
 
 	/* Read case not handled */
@@ -2479,20 +2458,145 @@ static int vfsGetLastError(sqlite3_vfs *vfs, int x, char *y)
 	return rc;
 }
 
-int VfsInit(struct sqlite3_vfs *vfs, const char *name)
+static int vfsAuthorizer(void *pUserData, int action, const char *third, const char *fourth, const char *fifth, const char *sixth) {
+	(void)pUserData;
+	(void)fourth;
+	(void)fifth;
+	(void)sixth;
+
+	if (action == SQLITE_ATTACH) {
+		/* The vfs, db, gateway, and leader code currently assumes that
+		 * each connection will operate on only one DB file/WAL file
+		 * pair. Make sure that the client can't use ATTACH DATABASE to
+		 * break this assumption: only allow attaching temporary files. */
+		if (third != NULL && third[0] != '\0') {
+			return SQLITE_DENY;
+		}
+	} else if (action == SQLITE_PRAGMA) {
+		struct {
+			const char *name; /* The name of the disabled PRAGMA. */
+			bool setter_only; /* `true` if only the setter is denied. */
+		} denied_pragmas[] = {{
+			.name = "journal_mode",
+			.setter_only = true,
+		}, {
+			.name = "page_size",
+			.setter_only = true,
+		}, {
+			.name = "wal_autocheckpoint",
+			.setter_only = true,
+		}, {
+			.name = "synchronous",
+			.setter_only = true,
+		}, {
+			.name = "wal_checkpoint",
+		}, {
+			.name = "busy_timeout"
+		}, {
+			.name = "read_uncommitted",
+		}, {
+			.name = "locking_mode",
+		}};
+
+		for (size_t i = 0; i < (sizeof(denied_pragmas) / sizeof(denied_pragmas[0])); i++) {
+			if (denied_pragmas[i].setter_only && !fourth) {
+				continue;
+			}
+			if (sqlite3_stricmp(third, denied_pragmas[i].name) == 0) {
+				return SQLITE_DENY;
+			}
+		}
+	}
+	return SQLITE_OK;
+}
+
+static int vfsOpenHook(sqlite3 *db,
+		       char **pzErrMsg,
+		       const struct sqlite3_api_routines *pThunk)
+{
+	(void)pThunk;
+	sqlite3_file *file = NULL;
+	int rv = sqlite3_file_control(db, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
+	assert(rv == SQLITE_OK);
+	if (file->pMethods->xRead != vfsMainFileRead) {
+		/* Not this vfs. */
+		return SQLITE_OK;
+	}
+	struct vfsMainFile *f = (struct vfsMainFile*)file;
+
+	/* Disable syncs. */
+	rv = sqlite3_exec(db, "PRAGMA synchronous=OFF", NULL, NULL, pzErrMsg);
+	if (rv != SQLITE_OK) {
+		tracef("synchronous=OFF failed");
+		return rv;
+	}
+
+	if (f->database->n_pages == 0) {
+		/* Set the page size. */
+		char pragma[255];
+		char *msg = NULL;
+		sprintf(pragma, "PRAGMA page_size=%d", f->vfs->config->page_size);
+		rv = sqlite3_exec(db, pragma, NULL, NULL, &msg);
+		if (rv != SQLITE_OK) {
+			tracef("page_size=%d failed", f->vfs->config->page_size);
+			return rv;
+		}
+
+		/* Set WAL journaling. */
+		rv = sqlite3_exec(db, "PRAGMA journal_mode=WAL", NULL, NULL,
+				  pzErrMsg);
+		if (rv != SQLITE_OK) {
+			tracef("journal_mode=WAL failed");
+			return rv;
+		}
+
+		/* Make sure a connection to the wal is opened. */
+		rv = sqlite3_exec(db, "BEGIN IMMEDIATE; ROLLBACK", NULL, NULL,
+				  pzErrMsg);
+		if (rv != SQLITE_OK) {
+			tracef("can't connect to WAL");
+			return rv;
+		}
+	}
+
+	rv = sqlite3_wal_autocheckpoint(db, 0);
+	if (rv != SQLITE_OK) {
+		tracef("sqlite3_wal_autocheckpoint off failed %d", rv);
+		return rv;
+	}
+
+	rv = sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, NULL);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
+
+	rv = sqlite3_db_config(db, SQLITE_DBCONFIG_ENABLE_FKEY, 1, NULL);
+	if (rv != SQLITE_OK) {
+		return rv;
+	}
+
+	sqlite3_set_authorizer(db, vfsAuthorizer, NULL);
+
+	return SQLITE_OK;
+}
+
+int VfsInit(struct sqlite3_vfs *vfs, const struct vfsConfig *config)
 {
 	tracef("vfs init");
+
+	int rv = sqlite3_auto_extension((void(*)(void))vfsOpenHook);
+	assert(rv == SQLITE_OK);
 
 	vfs->iVersion = 2;
 	vfs->mxPathname = VFS__MAX_PATHNAME;
 	vfs->pNext = NULL;
 
-	struct vfs *v = vfsCreate();
+	struct vfs *v = vfsCreate(config);
 	if (v == NULL) {
 		return DQLITE_NOMEM;
 	}
 	vfs->pAppData = v;
-	vfs->szOsFile = MAX(sizeof(struct vfsMainFile), sizeof(struct vfsWalFile));
+	vfs->szOsFile = max(sizeof(struct vfsMainFile), sizeof(struct vfsWalFile));
 	if (vfs->szOsFile < v->base_vfs->szOsFile) {
 		vfs->szOsFile = v->base_vfs->szOsFile;
 	}
@@ -2509,9 +2613,9 @@ int VfsInit(struct sqlite3_vfs *vfs, const char *name)
 	vfs->xCurrentTime = vfsCurrentTime;
 	vfs->xGetLastError = vfsGetLastError;
 	vfs->xCurrentTimeInt64 = vfsCurrentTimeInt64;
-	vfs->zName = name;
+	vfs->zName = config->name;
 
-	return 0;
+	return SQLITE_OK;
 }
 
 void VfsDeleteHook(struct sqlite3_vfs *vfs,
@@ -2749,6 +2853,8 @@ static void vfsInvalidateWalIndexHeader(struct vfsDatabase *d)
 	assert(rv == 1);
 }
 
+static int vfsCheckpoint(sqlite3 *conn, struct vfsMainFile *f);
+
 int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 {
 	sqlite3_file *file;
@@ -2786,6 +2892,9 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 		return rv;
 	}
 
+	/* While holding the lock, check if a checkpoint should be attempted */
+	bool checkpoint = f->database->wal.n_frames >= f->vfs->config->checkpoint_threshold;
+
 	/* If this is the connection that orginated this commit and on which
 	 * dqlite_vfs_poll() was called. The lock must be released and the WAL
 	 * index can be published.
@@ -2804,6 +2913,15 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction)
 			vfsInvalidateWalIndexHeader(f->database);
 		}
 		vfsShmUnlock(&f->database->shm, VFS__WAL_WRITE_LOCK, 1, true);
+	}
+
+	if (checkpoint) {
+		rv = vfsCheckpoint(conn, f);
+		if (rv == SQLITE_BUSY) {
+			tracef("checkpoint: busy reader or writer");
+		} else if (rv != SQLITE_OK) {
+			tracef("checkpoint failed: %d", rv);
+		}
 	}
 
 	return SQLITE_OK;
@@ -2840,35 +2958,24 @@ int VfsAbort(sqlite3 *conn)
 	return SQLITE_OK;
 }
 
-int VfsCheckpoint(sqlite3 *conn, unsigned int threshold)
+static int vfsCheckpoint(sqlite3 *conn, struct vfsMainFile *f)
 {
-	sqlite3_file *file;
-	int rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
-	assert(rv == SQLITE_OK);
-	struct vfsMainFile *f = (struct vfsMainFile*)file;
-
 	PRE(f->sharedMask == 0);
 	PRE(f->exclMask == 0);
 	tracef("[database %p] checkpoint start", f->database);
 
 	/* Try to lock everything, so that nothing can proceed. */
-	rv = vfsShmLock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
+	int rv = vfsShmLock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
 	if (rv != SQLITE_OK) {
 		tracef("[database %p] checkpoint busy", f->database);
 		return rv;
 	}
+	f->exclMask = VFS__CHECKPOINT_MASK;
 
 	PRE(f->database->wal.n_tx == 0);
-	if (f->database->wal.n_frames < threshold) {
-		rv = vfsShmUnlock(&f->database->shm, 0, SQLITE_SHM_NLOCK, true);
-		assert(rv == SQLITE_OK);
-		tracef("[database %p] checkpoint below threshold (%d < %d)", f->database, f->database->wal.n_frames, threshold);
-		return SQLITE_OK;
-	}
 
 	int wal_size;
 	int ckpt;
-	f->exclMask = VFS__CHECKPOINT_MASK;
 	rv = sqlite3_wal_checkpoint_v2(conn, NULL, SQLITE_CHECKPOINT_TRUNCATE,
 				       &wal_size, &ckpt);
 	/* Since no reader transaction is in progress, we must be able to
@@ -2883,6 +2990,15 @@ int VfsCheckpoint(sqlite3 *conn, unsigned int threshold)
 	assert(rv == SQLITE_OK);
 
 	return SQLITE_OK;
+}
+
+int VfsCheckpoint(sqlite3 *conn)
+{
+	sqlite3_file *file;
+	int rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
+	assert(rv == SQLITE_OK);
+
+	return vfsCheckpoint(conn, (struct vfsMainFile*)file);
 }
 
 /* Extract the number of pages field from the database header. */
@@ -2909,24 +3025,6 @@ static uint32_t vfsDatabaseNumPages(struct vfsDatabase *database, bool use_wal) 
 		n = vfsDatabaseGetNumberOfPages(database);
 	}
 	return n;
-}
-
-int VfsDatabaseNumPages(sqlite3_vfs *vfs,
-			const char *filename,
-			bool use_wal,
-			uint32_t *n)
-{
-	struct vfs *v;
-	struct vfsDatabase *d;
-
-	v = (struct vfs *)(vfs->pAppData);
-	d = vfsDatabaseLookup(v, filename);
-	if (d == NULL) {
-		return -1;
-	}
-
-	*n = vfsDatabaseNumPages(d, use_wal);
-	return 0;
 }
 
 int VfsAcquireSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot)
@@ -3107,31 +3205,23 @@ err_locked:
 	return rv;
 }
 
-uint64_t VfsDatabaseSize(sqlite3_vfs *vfs,
-			 const char *path,
-			 unsigned n,
-			 unsigned page_size)
+uint64_t VfsDatabaseSize(sqlite3 *conn, unsigned n)
 {
-	struct vfs *v;
-	struct vfsDatabase *database;
-	struct vfsWal *wal;
-	uint64_t new_wal_size;
+	sqlite3_file *file;
+	int rv = sqlite3_file_control(conn, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
+	assert(rv == SQLITE_OK);
+	struct vfsMainFile *f = (struct vfsMainFile*)file;
 
-	v = (struct vfs *)(vfs->pAppData);
-	database = vfsDatabaseLookup(v, path);
-	assert(database != NULL);
-
-	wal = &database->wal;
-	new_wal_size = (uint64_t)vfsWalSize(wal);
+	uint64_t new_wal_size = (uint64_t)vfsWalSize(&f->database->wal);
 	if (new_wal_size == 0) {
-		new_wal_size += (uint64_t)VFS__WAL_HEADER_SIZE;
+		new_wal_size = (uint64_t)VFS__WAL_HEADER_SIZE;
 	}
-	new_wal_size += (uint64_t)n * (uint64_t)vfsFrameSize(page_size);
-	return (uint64_t)vfsDatabaseFileSize(database) + new_wal_size;
+	new_wal_size += (uint64_t)n * (uint64_t)vfsFrameSize(f->vfs->config->page_size);
+	return (uint64_t)vfsDatabaseFileSize(f->database) + new_wal_size;
 }
 
-uint64_t VfsDatabaseSizeLimit(sqlite3_vfs *vfs)
+uint64_t VfsDatabaseSizeLimit(sqlite3 *conn)
 {
-	(void)vfs;
+	(void)conn;
 	return (uint64_t)SIZE_MAX;
 }

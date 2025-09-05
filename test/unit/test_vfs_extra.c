@@ -16,11 +16,13 @@
 SUITE(vfs_extra);
 
 #define N_VFS 2
+#define DB_PAGE_SIZE 512
+#define VFS_PATH "test.db"
 
 struct fixture
 {
 	struct sqlite3_vfs vfs[N_VFS]; /* A "cluster" of VFS objects. */
-	char names[8][N_VFS];          /* Registration names */
+	struct vfsConfig conf[N_VFS];  /* Configuration for VFS objects. */
 };
 
 static void *setUp(const MunitParameter params[], void *user_data)
@@ -33,8 +35,12 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	SETUP_SQLITE;
 
 	for (i = 0; i < N_VFS; i++) {
-		sprintf(f->names[i], "%u", i + 1);
-		rv = VfsInit(&f->vfs[i], f->names[i]);
+		f->conf[i] = (struct vfsConfig) {
+			.page_size = DB_PAGE_SIZE,
+			.checkpoint_threshold = 1000,
+		};
+		sprintf(f->conf[i].name, "%u", i + 1);
+		rv = VfsInit(&f->vfs[i], &f->conf[i]);
 		munit_assert_int(rv, ==, 0);
 		rv = sqlite3_vfs_register(&f->vfs[i], 0);
 		munit_assert_int(rv, ==, 0);
@@ -69,32 +75,19 @@ static void tearDownRestorePendingByte(void *data)
 	tearDown(data);
 }
 
-#define DB_PAGE_SIZE 512
-
-#define PRAGMA(DB, COMMAND)                                          \
-	_rv = sqlite3_exec(DB, "PRAGMA " COMMAND, NULL, NULL, NULL); \
-	if (_rv != SQLITE_OK) {                                      \
-		munit_errorf("PRAGMA " COMMAND ": %s (%d)",          \
-			     sqlite3_errmsg(DB), _rv);               \
-	}
-
-#define VFS_PATH "test.db"
-
 /* Open a new database connection on the given VFS. */
-#define OPEN(VFS, DB)                                                         \
-	do {                                                                  \
-		int _flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;      \
-		int _rv = sqlite3_open_v2(VFS_PATH, &DB, _flags, VFS);        \
-		munit_assert_int(_rv, ==, SQLITE_OK);                         \
-		_rv = sqlite3_extended_result_codes(DB, 1);                   \
-		munit_assert_int(_rv, ==, SQLITE_OK);                         \
-		PRAGMA(DB, "page_size=512");                                  \
-		PRAGMA(DB, "synchronous=OFF");                                \
-		PRAGMA(DB, "journal_mode=WAL");                               \
-		PRAGMA(DB, "cache_size=1");                                   \
-		_rv = sqlite3_db_config(DB, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, \
-					1, NULL);                             \
-		munit_assert_int(_rv, ==, SQLITE_OK);                         \
+#define OPEN(VFS, DB)                                                          \
+	do {                                                                   \
+		int _flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |      \
+			     SQLITE_OPEN_EXRESCODE;                            \
+		int _rv = sqlite3_open_v2(VFS_PATH, &DB, _flags, VFS);         \
+		munit_assert_int(_rv, ==, SQLITE_OK);                          \
+		_rv =                                                          \
+		    sqlite3_exec(DB, "PRAGMA cache_size=1", NULL, NULL, NULL); \
+		if (_rv != SQLITE_OK) {                                        \
+			munit_errorf("PRAGMA cache_size=1: %s (%d)",           \
+				     sqlite3_errmsg(DB), _rv);                 \
+		}                                                              \
 	} while (0)
 
 /* Close a database connection. */
@@ -404,12 +397,12 @@ TEST(vfs_extra, adaptPendingByte, setUp, tearDownRestorePendingByte, 0, NULL)
 	int n;
 	char sql[64];
 
+	OPEN("1", db);
+
 	/* Set the pending byte at the start of the second page */
 	const unsigned new_pending_byte = 512;
 	dq_sqlite_pending_byte = new_pending_byte;
 	sqlite3_test_control(SQLITE_TESTCTRL_PENDING_BYTE, new_pending_byte);
-
-	OPEN("1", db);
 
 	EXEC(db, "CREATE TABLE test(n INT)");
 
@@ -1485,7 +1478,6 @@ TEST(vfs_extra, restoreInitialDatabase, setUp, tearDown, 0, NULL)
 
 	OPEN("1", db1);
 
-	// TODO
 	int rv = VfsAcquireSnapshot(db1, &snapshot);
 	munit_assert_int(rv, ==, SQLITE_OK);
 
@@ -1592,15 +1584,23 @@ TEST(vfs_extra, changePageSize, setUp, tearDown, 0, NULL)
 }
 
 /* Changing page_size to current value succeeds. */
-TEST(vfs_extra, changePageSizeSameValue, setUp, tearDown, 0, NULL)
+TEST(vfs_extra, queryPageSize, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
-	int rv;
-
 	OPEN("1", db);
 
-	rv = sqlite3_exec(db, "PRAGMA page_size=512", NULL, NULL, NULL);
-	munit_assert_int(rv, ==, 0);
+	sqlite3_stmt *stmt;
+	int rv = sqlite3_prepare_v2(db, "PRAGMA page_size", -1, &stmt, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+
+	rv = sqlite3_step(stmt);
+	munit_assert_int(rv, ==, SQLITE_ROW);
+	munit_assert_int(sqlite3_column_int(stmt, 0), ==, 512);
+
+	rv = sqlite3_step(stmt);
+	munit_assert_int(rv, ==, SQLITE_DONE);
+
+	sqlite3_finalize(stmt);
 
 	CLOSE(db);
 

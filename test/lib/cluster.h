@@ -81,7 +81,7 @@ struct server
 		_rc = config__init(&_s->config, I + 1, address, NULL); \
 		munit_assert_int(_rc, ==, 0);                          \
                                                                        \
-		_rc = VfsInit(&_s->vfs, _s->config.name);              \
+		_rc = VfsInit(&_s->vfs, &_s->config.vfs);              \
 		munit_assert_int(_rc, ==, 0);                          \
 		_rc = sqlite3_vfs_register(&_s->vfs, 0);               \
 		munit_assert_int(_rc, ==, 0);                          \
