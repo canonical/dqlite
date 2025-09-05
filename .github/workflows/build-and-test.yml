@@ -46,7 +46,7 @@ jobs:
       run: |
           ./test/raft/lib/fs.sh setup tmpfs ext4 btrfs zfs
           export $(./test/raft/lib/fs.sh detect tmpfs ext4 btrfs zfs)
-          make check || (cat test-suite.log && false)
+          UV_THREADPOOL_SIZE=$(($(nproc) * 2)) make check || (cat test-suite.log && false)
           ./test/raft/lib/fs.sh teardown tmpfs ext4 btrfs zfs
 
     - name: Coverage
