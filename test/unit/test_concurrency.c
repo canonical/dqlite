@@ -200,18 +200,20 @@ static void fixture_close_cb(struct gateway *g) { (void)g; }
 		HANDLE(C, QUERY);           \
 	}
 
-/* Wait for the gateway of the given connection to finish handling a request. */
-#define WAIT(C)                                        \
-	{                                              \
-		unsigned _i;                           \
-		for (_i = 0; _i < 150; _i++) {          \
-			CLUSTER_STEP;                  \
+#define WAIT_FOR(C, STEPS)                               \
+	{                                                \
+		unsigned _i;                             \
+		for (_i = 0; _i < STEPS; _i++) {         \
+			CLUSTER_STEP;                    \
 			if ((C)->context.invoked) {      \
-				break;                 \
-			}                              \
-		}                                      \
+				break;                   \
+			}                                \
+		}                                        \
 		munit_assert_true((C)->context.invoked); \
 	}
+
+/* Wait for the gateway of the given connection to finish handling a request. */
+#define WAIT(C) WAIT_FOR(C, 50)
 
 /******************************************************************************
  *
@@ -607,8 +609,7 @@ TEST_CASE(query, tx, NULL)
 }
 
 struct delete_fixture {
-	FIXTURE_CLUSTER; \
-
+	FIXTURE_CLUSTER;
 };
 
 TEST_SUITE(delete);
@@ -668,12 +669,12 @@ TEST_CASE(delete, ignored, NULL)
 		munit_assert_true(db_exists(&f->servers[i].registry, "test"));
 	}
 
-	EXEC_SQL(&conn, 
+	EXEC_SQL(&conn,
 		"BEGIN IMMEDIATE;"
 		"PRAGMA delete_database;"
 		"INSERT INTO test VALUES (1), (2), (3);" /* This invalidates the delete request */
 		"COMMIT;");
-	WAIT(&conn);
+	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 	CLUSTER_APPLIED(4);
 	for (int i = 0; i < N_SERVERS; i++) {
@@ -701,8 +702,11 @@ TEST_CASE(delete, single_connection, NULL)
 		munit_assert_true(db_exists(&f->servers[i].registry, "test"));
 	}
 
-	EXEC_SQL(&conn, "BEGIN IMMEDIATE; PRAGMA delete_database; COMMIT;");
-	WAIT(&conn);
+	EXEC_SQL(&conn,
+		"BEGIN IMMEDIATE;"
+		"PRAGMA delete_database;"
+		"COMMIT;");
+	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 	CLUSTER_APPLIED(4);
 	/* The leader has an open connection, so it must be still there. */
@@ -736,7 +740,7 @@ TEST_CASE(delete, read_statement, NULL)
 		"INSERT INTO test(n)        "
 		"SELECT n FROM seq;         "
 		"COMMIT;");
-	WAIT(&conn);
+	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 	CLUSTER_APPLIED(3);
 	for (int i = 0; i < N_SERVERS; i++) {
@@ -749,8 +753,11 @@ TEST_CASE(delete, read_statement, NULL)
 	WAIT(&conn2);
 	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
 
-	EXEC_SQL(&conn, "BEGIN IMMEDIATE; PRAGMA delete_database; COMMIT;");
-	WAIT(&conn);
+	EXEC_SQL(&conn, 
+		"BEGIN IMMEDIATE;"
+		"PRAGMA delete_database;"
+		"COMMIT;");
+	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 	CLUSTER_APPLIED(4);
 	/* The leader has an open connection, so it must be still there. */
@@ -792,7 +799,7 @@ TEST_CASE(delete, read_empty, NULL)
 		"INSERT INTO test(n)        "
 		"SELECT n FROM seq;         "
 		"COMMIT;");
-	WAIT(&conn);
+	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 	CLUSTER_APPLIED(3);
 	for (int i = 0; i < N_SERVERS; i++) {
@@ -805,8 +812,11 @@ TEST_CASE(delete, read_empty, NULL)
 	WAIT(&conn2);
 	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
 
-	EXEC_SQL(&conn, "BEGIN IMMEDIATE; PRAGMA delete_database; COMMIT;");
-	WAIT(&conn);
+	EXEC_SQL(&conn, 
+		"BEGIN IMMEDIATE;"
+		"PRAGMA delete_database;"
+		"COMMIT;");
+	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 	CLUSTER_APPLIED(4);
 	/* The leader has an open connection, so it must be still there. */
@@ -845,11 +855,14 @@ TEST_CASE(delete, new_connection, NULL)
 		"BEGIN;"
 		"CREATE TABLE test (n INT);"
 		"COMMIT;");
-	WAIT(&conn);
+	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 
-	EXEC_SQL(&conn, "BEGIN IMMEDIATE; PRAGMA delete_database; COMMIT;");
-	WAIT(&conn);
+	EXEC_SQL(&conn, 
+		"BEGIN IMMEDIATE;"
+		"PRAGMA delete_database;"
+		"COMMIT;");
+	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 
 	struct connection conn2;
@@ -888,7 +901,7 @@ TEST_CASE(delete, write_statement, NULL)
 		"INSERT INTO test(n)        "
 		"SELECT n FROM seq;         "
 		"COMMIT;");
-	WAIT(&conn);
+	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 	CLUSTER_APPLIED(3);
 	for (int i = 0; i < N_SERVERS; i++) {
@@ -901,8 +914,11 @@ TEST_CASE(delete, write_statement, NULL)
 	WAIT(&conn2);
 	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
 
-	EXEC_SQL(&conn, "BEGIN IMMEDIATE; PRAGMA delete_database; COMMIT;");
-	WAIT(&conn);
+	EXEC_SQL(&conn, 
+		"BEGIN IMMEDIATE;"
+		"PRAGMA delete_database;"
+		"COMMIT;");
+	WAIT_FOR(&conn, 150);
 	ASSERT_CALLBACK(&conn, SQLITE_OK, RESULT);
 	CLUSTER_APPLIED(4);
 	/* The leader has an open connection, so it must be still there. */
