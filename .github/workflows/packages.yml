@@ -5,7 +5,11 @@ on:
       - 'lts-1.17.x'
 jobs:
   build:
-    if: github.repository == 'canonical/dqlite'
+    runs-on: ubuntu-22.04
+    container:
+      image: ubuntu:20.04
+    environment:
+      name: ppa
     strategy:
       fail-fast: false
       matrix:
@@ -14,27 +18,16 @@ jobs:
           - jammy
           - noble
           - plucky
-    runs-on: ubuntu-22.04
-    container:
-      image: ubuntu:20.04
-    environment:
-      name: ppa
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
         fetch-tags: true
 
-    - uses: actions/checkout@v4
-      with:
-        repository: canonical/dqlite-ppa
-        ref: dqlite-lts
-        path: dqlite-ppa
-
     - name: Setup dependencies
       run: |
-          sudo apt-get update -qq
-          sudo apt-get install -qq debhelper devscripts gnupg
+          apt-get update -qq
+          apt-get install -qq debhelper devscripts gnupg git
 
       # Note for future maintainers: the secret key should be stored
       # in the GHA secret in ASCII-armored form, and must not be
@@ -45,10 +38,6 @@ jobs:
       run: |
           echo "$PPA_SECRET_KEY" > private-key.asc
           gpg --import --batch private-key.asc
-
-    - name: Delete GPG signing key file
-      if: always()
-      run: |
           rm -f private-key.asc
 
     - name: Build source package
@@ -57,7 +46,6 @@ jobs:
         DEBEMAIL: "dqlitebot@lists.canonical.com"
         TARGET: ${{ matrix.target }}
       run: |
-          cp -R dqlite-ppa/debian .
           VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
           dch --create \
             --distribution ${TARGET} \
@@ -68,6 +56,4 @@ jobs:
 
     - name: Upload to Launchpad
       run: |
-          cd ..
-          shopt -s globstar
-          dput -U -u ppa:dqlite/dev **/*.changes
+          (cd .. && dput -U -u ppa:dqlite/dev *.changes)
