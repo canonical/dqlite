@@ -738,16 +738,15 @@ struct raft_fsm
 	int version; /* 1, 2 or 3 */
 	void *data;
 	int (*apply)(struct raft_fsm *fsm,
-		     const struct raft_buffer *buf,
-		     void **result);
+		     const struct raft_buffer *buf);
 	int (*snapshot)(struct raft_fsm *fsm,
 			struct raft_buffer *bufs[],
 			unsigned *n_bufs);
 	int (*restore)(struct raft_fsm *fsm, struct raft_buffer *buf);
 	/* Fields below added since version 2. */
 	int (*snapshot_finalize)(struct raft_fsm *fsm,
-				 struct raft_buffer *bufs[],
-				 unsigned *n_bufs);
+				 struct raft_buffer bufs[],
+				 unsigned n_bufs);
 	/* Fields below added since version 3. */
 	int (*snapshot_async)(struct raft_fsm *fsm,
 			      struct raft_buffer *bufs[],
@@ -1248,7 +1247,7 @@ RAFT_API int raft_voter_contacts(struct raft *r);
  * the FSM when a quorum is reached.
  */
 struct raft_apply;
-typedef void (*raft_apply_cb)(struct raft_apply *req, int status, void *result);
+typedef void (*raft_apply_cb)(struct raft_apply *req, int status);
 struct raft_apply
 {
 	RAFT__REQUEST;
@@ -1445,8 +1444,6 @@ DQLITE_VISIBLE_TO_TESTS void raft_heap_set_default(void);
  * the backing memory, is undefined.
  */
 DQLITE_VISIBLE_TO_TESTS const struct raft_heap *raft_heap_get(void);
-
-#undef RAFT__REQUEST
 
 struct raft_uv_transport;
 
