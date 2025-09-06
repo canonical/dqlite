@@ -26,16 +26,16 @@ TEST_MODULE(replication_v1);
 		SETUP_LEADER(i);                            \
 	}
 
-#define SETUP_LEADER(I)                                           \
-	do {                                                      \
-		struct leader *leader = &f->leaders[I];           \
-		struct registry *registry = CLUSTER_REGISTRY(I);  \
-		struct db *db;                                    \
-		int rc2;                                          \
+#define SETUP_LEADER(I)                                                  \
+	do {                                                             \
+		struct leader *leader = &f->leaders[I];                  \
+		struct registry *registry = CLUSTER_REGISTRY(I);         \
+		struct db *db;                                           \
+		int rc2;                                                 \
 		rc2 = registry__get_or_create(registry, "test.db", &db); \
-		munit_assert_int(rc2, ==, 0);                     \
-		rc2 = leader__init(leader, db, CLUSTER_RAFT(I));  \
-		munit_assert_int(rc2, ==, 0);                     \
+		munit_assert_int(rc2, ==, 0);                            \
+		rc2 = leader__init(leader, db, CLUSTER_RAFT(I));         \
+		munit_assert_int(rc2, ==, 0);                            \
 	} while (0)
 
 #define TEAR_DOWN                         \
@@ -126,7 +126,7 @@ TEST_MODULE(replication_v1);
 		rv_ = file_->pMethods->xFileSize(file_, &size_);         \
 		munit_assert_int(rv_, ==, 0);                            \
 		pages_ = formatWalCalcFramesNumber(                      \
-		    leader_->db->config->page_size, size_);              \
+		    leader_->db->config->vfs.page_size, size_);          \
 		munit_assert_int(pages_, ==, N);                         \
 	}
 
@@ -312,7 +312,7 @@ TEST_CASE(exec, checkpoint, NULL)
 	struct exec_fixture *f = data;
 	struct config *config = CLUSTER_CONFIG(0);
 	(void)params;
-	config->checkpoint_threshold = 3;
+	config->vfs.checkpoint_threshold = 3;
 	CLUSTER_ELECT(0);
 	EXEC_SQL(0, "CREATE TABLE test (n  INT)");
 	EXEC_SQL(0, "INSERT INTO test(n) VALUES(1)");
@@ -332,7 +332,7 @@ TEST_CASE(exec, checkpoint_read_lock, NULL)
 	char *errmsg;
 	int rv;
 	(void)params;
-	config->checkpoint_threshold = 3;
+	config->vfs.checkpoint_threshold = 3;
 
 	CLUSTER_ELECT(0);
 	EXEC_SQL(0, "CREATE TABLE test (n  INT)");
@@ -465,7 +465,7 @@ TEST(replication, checkpoint, setUp, tearDown, 0, NULL)
 	struct fixture *f = data;
 	struct config *config = CLUSTER_CONFIG(0);
 
-	config->checkpoint_threshold = 3;
+	config->vfs.checkpoint_threshold = 3;
 
 	CLUSTER_ELECT(0);
 
