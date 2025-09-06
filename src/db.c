@@ -59,7 +59,10 @@ static int dqlite_authorizer(void *pUserData, int action, const char *third, con
 	(void)sixth;
 
 	if (action == SQLITE_ATTACH) {
-		/* Only allow attaching temporary files */
+		/* The vfs, db, gateway, and leader code currently assumes that
+		 * each connection will operate on only one DB file/WAL file
+		 * pair. Make sure that the client can't use ATTACH DATABASE to
+		 * break this assumption: only allow attaching temporary files. */
 		if (third != NULL && third[0] != '\0') {
 			return SQLITE_DENY;
 		}
@@ -161,10 +164,6 @@ int db__open(struct db *db, sqlite3 **conn)
 		goto err;
 	}
 
-	/* The vfs, db, gateway, and leader code currently assumes that
-	 * each connection will operate on only one DB file/WAL file
-	 * pair. Make sure that the client can't use ATTACH DATABASE to
-	 * break this assumption.*/
 	sqlite3_set_authorizer(*conn, dqlite_authorizer, NULL);
 
 	return 0;

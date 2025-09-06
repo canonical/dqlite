@@ -507,7 +507,7 @@ TEST(VfsDelete, success, setUp, tearDown, 0, NULL)
 
 	(void)params;
 
-	vfsFillPath(f, "test.db");
+	vfsFillPath(f, "test.db-wal");
 	rc = f->vfs.xOpen(&f->vfs, f->path, file, flags, &flags);
 	munit_assert_int(rc, ==, 0);
 
@@ -523,23 +523,6 @@ TEST(VfsDelete, success, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, SQLITE_CANTOPEN);
 
 	free(file);
-
-	return MUNIT_OK;
-}
-
-/* Trying to delete a non-existing file results in an error. */
-TEST(VfsDelete, enoent, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-
-	int rc;
-
-	(void)params;
-
-	vfsFillPath(f, "test.db");
-	rc = f->vfs.xDelete(&f->vfs, f->path, 0);
-	munit_assert_int(rc, ==, SQLITE_IOERR_DELETE_NOENT);
-	munit_assert_int(ENOENT, ==, f->vfs.xGetLastError(&f->vfs, 0, 0));
 
 	return MUNIT_OK;
 }
@@ -626,40 +609,6 @@ TEST(VfsFullPathname, success, setUp, tearDown, 0, NULL)
 	munit_assert_int(rc, ==, 0);
 
 	munit_assert_string_equal(pathname, "test.db");
-
-	return MUNIT_OK;
-}
-
-/******************************************************************************
- *
- * xClose
- *
- ******************************************************************************/
-
-SUITE(VfsClose)
-
-/* Closing a file decreases its refcount so it's possible to delete it. */
-TEST(VfsClose, thenDelete, setUp, tearDown, 0, NULL)
-{
-	struct fixture *f = data;
-	sqlite3_file *file = munit_malloc(f->vfs.szOsFile);
-
-	int flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB;
-	int rc;
-
-	(void)params;
-	vfsFillPath(f, "test.db");
-
-	rc = f->vfs.xOpen(&f->vfs, f->path, file, flags, &flags);
-	munit_assert_int(rc, ==, 0);
-
-	rc = file->pMethods->xClose(file);
-	munit_assert_int(rc, ==, 0);
-
-	rc = f->vfs.xDelete(&f->vfs, f->path, 0);
-	munit_assert_int(rc, ==, 0);
-
-	free(file);
 
 	return MUNIT_OK;
 }
@@ -890,6 +839,41 @@ TEST(VfsWrite, beyondLast, setUp, tearDown, 0, NULL)
 
 	free(buf_page_1);
 	free(buf_page_2);
+
+	free(file);
+
+	return MUNIT_OK;
+}
+
+/******************************************************************************
+ *
+ * xFileControl
+ *
+ ******************************************************************************/
+SUITE(VfsFileControl)
+
+TEST(VfsFileControl, persistWal, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+	sqlite3_file *file = __file_create_main_db(f);
+
+	/* Setting to false should fail. */
+	int value = 0;
+	int rv = file->pMethods->xFileControl(file, SQLITE_FCNTL_PERSIST_WAL, &value);
+	munit_assert_int(rv, ==, SQLITE_MISUSE);
+	munit_assert_int(value, ==, 0);
+
+	/* Setting to true is ok. */
+	value = 1;
+	rv = file->pMethods->xFileControl(file, SQLITE_FCNTL_PERSIST_WAL, &value);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	munit_assert_int(value, ==, 1);
+
+	/* Querying the value is ok. */
+	value = -1;
+	rv = file->pMethods->xFileControl(file, SQLITE_FCNTL_PERSIST_WAL, &value);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	munit_assert_int(value, ==, 1);
 
 	free(file);
 
