@@ -11,6 +11,55 @@ SUITE(stress);
 #define READ_COUNT 1000
 #define WRITE_COUNT 1000
 
+/* Below a very simple implementation of an RNG. The reason for this is that the
+ * `random()` function in sqlite uses a global state, similarly to the C
+ * standard `rand` function. As such, it makes the below test interacting a lot
+ * and reduces parallelism as computation for random is most of the execution of
+ * the test. */
+typedef struct random_s {
+    uint64_t state;
+} random_t;
+
+void random_init(random_t *r) {
+    sqlite3_randomness(sizeof(r->state), &r->state);
+}
+
+int64_t random_i64(random_t *r) {
+    uint64_t x = r->state;
+    x ^= x >> 12;
+    x ^= x << 25;
+    x ^= x >> 27;
+    r->state = x;
+    
+    return (int64_t)(x * 0x2545F4914F6CDD1D);
+}
+
+void random_func(sqlite3_context *ctx, int nargs, sqlite3_value **args)
+{
+    (void)nargs;
+    (void)args;
+    random_t *rand = sqlite3_user_data(ctx);
+    sqlite3_result_int64(ctx, random_i64(rand));
+}
+
+int random_entry_point(
+    sqlite3 *db,
+    const char **pzErrMsg,
+    const struct sqlite3_api_routines *pThunk
+) {
+    (void)pzErrMsg;
+    (void)pThunk;
+
+    random_t *rand = malloc(sizeof(random_t));
+    munit_assert_not_null(rand);
+    random_init(rand);
+
+    return sqlite3_create_function_v2(
+        db,
+        "random_i64", 0, SQLITE_UTF8,
+        rand, random_func, NULL, NULL, free);
+}
+
 static char *databases[] = { "1", "2", "4", NULL };
 static char *writers[] = { "0", "1", "2", "4", NULL };
 static char *readers[] = { "0", "1", "4", "16", NULL };
@@ -39,9 +88,9 @@ static void *client_read(void *data)
 {
 	const char *sql =
 		"WITH RECURSIVE seq(n, id) AS ("
-		"    SELECT 1, random()        "
+		"    SELECT 1, random_i64()        "
 		"    UNION ALL                 "
-		"    SELECT n+1, random()      "
+		"    SELECT n+1, random_i64()      "
 		"    FROM seq                  "
 		"    WHERE n < 100             "
 		")                             "
@@ -92,7 +141,7 @@ static void *client_read(void *data)
 
 static void *client_write(void *data)
 {
-	const char *sql = "INSERT INTO test(n) VALUES (random())";
+	const char *sql = "INSERT INTO test(n) VALUES (random_i64())";
 
 	struct worker *self = data;
 	struct client_proto client;
@@ -138,6 +187,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 	f->writers = atoi(munit_parameters_get(params, "writers"));
 	test_heap_setup(params, user_data);
 	test_sqlite_setup(params);
+	sqlite3_auto_extension((void (*)(void))random_entry_point);
 	test_server_setup(&f->server, 1, params);
 	test_server_prepare(&f->server, params);
 	dqlite_node_set_busy_timeout(f->server.dqlite, 200 * f->writers);
@@ -176,7 +226,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
 static void tearDown(void *data)
 {
 	struct fixture *f = data;
-
+	sqlite3_cancel_auto_extension((void (*)(void))random_entry_point);
 	test_server_tear_down(&f->server);
 	test_sqlite_tear_down();
 	test_heap_tear_down(data);
