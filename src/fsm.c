@@ -213,7 +213,7 @@ static int decodeDatabase(const struct registry *r,
 	assert((header.main_size % page_size) == 0);
 	assert(header.wal_size == 0);
 
-	const size_t page_count = header.main_size / page_size;
+	const size_t page_count = (size_t)header.main_size / page_size;
 
 	void **pages = raft_malloc(sizeof(void *) * page_count);
 	if (pages == NULL) {
@@ -226,7 +226,7 @@ static int decodeDatabase(const struct registry *r,
 
 	*snapshot = (struct vfsSnapshot) {
 		.main = {
-			.page_count = header.main_size / page_size,
+			.page_count = (size_t)header.main_size / page_size,
 			.page_size = page_size,
 			.pages = pages,
 		},
