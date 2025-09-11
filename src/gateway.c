@@ -1119,7 +1119,7 @@ static int dumpFile(const char *filename,
 
 	assert(len % 8 == 0);
 
-	cur = buffer__advance(buffer, len);
+	cur = buffer__advance(buffer, (size_t)len);
 	if (cur == NULL) {
 		return DQLITE_NOMEM;
 	}
