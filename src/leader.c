@@ -4,8 +4,6 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "../include/dqlite.h"
-
 #include "command.h"
 #include "db.h"
 #include "leader.h"

@@ -36,7 +36,7 @@ struct connection {
 	FIXTURE_CLUSTER; \
 	struct connection connections[N_GATEWAYS]
 
-#define CONNECT(C, I)                                                \
+#define CONNECT_TO(C, I, DBNAME)                                     \
 	do {                                                         \
 		struct request_open open;                            \
 		struct response_db db;                               \
@@ -47,7 +47,7 @@ struct connection {
 		munit_assert_int(connect_rv, ==, 0);                 \
 		connect_rv = buffer__init(&(C)->response);           \
 		munit_assert_int(connect_rv, ==, 0);                 \
-		open.filename = "test";                              \
+		open.filename = DBNAME;                              \
 		open.vfs = "";                                       \
 		ENCODE(C, &open, open);                              \
 		HANDLE(C, OPEN);                                     \
@@ -55,6 +55,8 @@ struct connection {
 		DECODE(C, &db, db);                                  \
 		munit_assert_int(db.id, ==, 0);                      \
 	} while (0)
+
+#define CONNECT(C, I) CONNECT_TO(C, I, "test")
 
 #define HANGUP(C)                                                \
 	do {                                                     \
@@ -794,7 +796,7 @@ TEST_CASE(delete, read_empty, NULL)
 		"WITH RECURSIVE seq(n) AS ("
 		"    SELECT 1 UNION ALL     "
 		"    SELECT n+1 FROM seq    "
-		"    WHERE  n < 300         "
+		"    WHERE  n < 10000       "
 		")                          "
 		"INSERT INTO test(n)        "
 		"SELECT n FROM seq;         "
@@ -808,7 +810,7 @@ TEST_CASE(delete, read_empty, NULL)
 
 	struct connection conn2;
 	CONNECT(&conn2, 0);
-	QUERY_SQL(&conn2, "SELECT * FROM test");
+	QUERY_SQL(&conn2, "SELECT * FROM test LIMIT 300");
 	WAIT(&conn2);
 	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
 
@@ -896,7 +898,7 @@ TEST_CASE(delete, write_statement, NULL)
 		"WITH RECURSIVE seq(n) AS ("
 		"    SELECT 1 UNION ALL     "
 		"    SELECT n+1 FROM seq    "
-		"    WHERE  n < 300         "
+		"    WHERE  n < 10000       "
 		")                          "
 		"INSERT INTO test(n)        "
 		"SELECT n FROM seq;         "
@@ -910,7 +912,7 @@ TEST_CASE(delete, write_statement, NULL)
 
 	struct connection conn2;
 	CONNECT(&conn2, 0);
-	QUERY_SQL(&conn2, "SELECT * FROM test");
+	QUERY_SQL(&conn2, "SELECT * FROM test LIMIT 300");
 	WAIT(&conn2);
 	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
 
@@ -934,7 +936,7 @@ TEST_CASE(delete, write_statement, NULL)
 	ASSERT_CALLBACK(&conn2, SQLITE_OK, ROWS);
 
 	/* Make sure that after the read lock is released we find an empty database. */
-	EXEC_SQL(&conn2, "CREATE TABLE test(n INT)");
+	EXEC_SQL(&conn2, "CREATE TABLE test(n INT);");
 	WAIT(&conn2);
 	ASSERT_CALLBACK(&conn2, SQLITE_OK, RESULT);
 
@@ -947,6 +949,66 @@ TEST_CASE(delete, write_statement, NULL)
 	for (int i = 0; i < N_SERVERS; i++) {
 		munit_assert_true(db_exists(&f->servers[i].registry, "test"));
 	}
+
+	return MUNIT_OK;
+}
+
+/* This test creates two databases and makes sure that deleting one doesn't
+ * affect the other. */
+TEST_CASE(delete, multiple_dbs, NULL)
+{
+	(void)params;
+	
+	struct delete_fixture *f = data;
+	struct connection conn_a, conn_b;
+	CONNECT_TO(&conn_a, 0, "a");
+	CONNECT_TO(&conn_b, 0, "b");
+
+	EXEC_SQL(&conn_a, 
+		"BEGIN;"
+		"CREATE TABLE test (n INT);"
+		"WITH RECURSIVE seq(n) AS ("
+		"    SELECT 1 UNION ALL     "
+		"    SELECT n+1 FROM seq    "
+		"    WHERE  n < 10000       "
+		")                          "
+		"INSERT INTO test(n)        "
+		"SELECT n FROM seq;         "
+		"COMMIT;");
+	EXEC_SQL(&conn_b, 
+		"BEGIN;"
+		"CREATE TABLE test (n INT);"
+		"WITH RECURSIVE seq(n) AS ("
+		"    SELECT 1 UNION ALL     "
+		"    SELECT n+1 FROM seq    "
+		"    WHERE  n < 10000       "
+		")                          "
+		"INSERT INTO test(n)        "
+		"SELECT n FROM seq;         "
+		"COMMIT;");
+	WAIT_FOR(&conn_a, 150);
+	ASSERT_CALLBACK(&conn_a, SQLITE_OK, RESULT);
+
+	WAIT_FOR(&conn_b, 150);
+	ASSERT_CALLBACK(&conn_b, SQLITE_OK, RESULT);
+
+	EXEC_SQL(&conn_a,
+		"BEGIN IMMEDIATE;"
+		"PRAGMA delete_database;"
+		"COMMIT;");
+	WAIT_FOR(&conn_a, 150);
+	HANGUP(&conn_a);
+
+	CLUSTER_APPLIED(5);
+	for (int i = 0; i < N_SERVERS; i++) {
+		munit_assert_false(db_exists(&f->servers[i].registry, "a"));
+		munit_assert_true(db_exists(&f->servers[i].registry, "b"));
+	}
+
+	QUERY_SQL(&conn_b, "SELECT COUNT(*) FROM test");
+	WAIT(&conn_b);
+	ASSERT_CALLBACK(&conn_b, SQLITE_OK, ROWS);
+	HANGUP(&conn_b);
 
 	return MUNIT_OK;
 }

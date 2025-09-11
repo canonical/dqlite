@@ -26,7 +26,6 @@
 #include "lib/byte.h"
 
 #include "format.h"
-#include "raft.h"
 #include "tracing.h"
 #include "vfs.h"
 
@@ -1462,15 +1461,11 @@ static int vfsMainFileSize(sqlite3_file *file, sqlite_int64 *size)
 static int vfsWalAppend(struct vfsDatabase *d,
 	const struct vfsTransaction *transaction);
 
-static void vfsResetDatabaseFileHeader(uint8_t *header)
+static void vfsResetDatabaseFileHeader(uint8_t *header, uint32_t max_transaction_count)
 {
 	static const uint8_t le_one[] = { 1, 0, 0, 0 };
 
 	/* See https://sqlite.org/fileformat2.html for details. */
-
-	/* Reset the file change counter to 1 */
-	const size_t change_counter_offset = 24;
-	memcpy(header + change_counter_offset, le_one, 4);
 
 	/* Set the file size to 0 */
 	const size_t file_size_offset = 28;
@@ -1484,9 +1479,12 @@ static void vfsResetDatabaseFileHeader(uint8_t *header)
 	const size_t freelist_count_offset = 36;
 	memset(header + freelist_count_offset, 0, 4);
 
-	/* Set the schema cookie to 0 */
-	const size_t schema_cookine_offset = 40;
-	memset(header + schema_cookine_offset, 0, 4);
+	/* Set the schema cookie to 1 plus the old value. */
+	const size_t schema_cookie_offset = 40;
+	const uint32_t schema_cookie =
+	    ByteGetBe32(header + schema_cookie_offset);
+	BytePutBe32(schema_cookie + max_transaction_count + 1,
+		    header + schema_cookie_offset);
 
 	/* Set default page cache to 0 */
 	const size_t default_page_cache_size_offset = 48;
@@ -1767,9 +1765,21 @@ static void vfsForgeDeleteTransaction(struct vfsMainFile *f)
 
 	assert(f->database->n_pages > 0);
 
-	/* Now craft the header */
+	/* Now craft the header. The starting point is the database header and
+	 * not the WAL header. The reasoning is that most of the fields will be
+	 * reset to 0 or to the default value, with the exception of:
+	 *  - the file change counter;
+	 *  - the schema cookie.
+	 * While the first can be kept still as it is only updated during a
+	 * checkpoint (so it should match the value of any page-1 frame in the
+	 * WAL), the second must be updated to make sure statements are
+	 * reprepared.
+	 * To achive this logic takes a worst-case approach: the worst case is
+	 * that all frames in the WAL are schema changes that only touch page 1,
+	 * as such the schema cookie can only be incremented that number of
+	 * times. */
 	memcpy(page, f->database->pages[0], header_size);
-	vfsResetDatabaseFileHeader(page);
+	vfsResetDatabaseFileHeader(page, (uint32_t)f->database->wal.n_frames);
 
 	/* frame->page 1 is used as the b-tree root for the sqlite_schema table.
 	 * Since this logic removes everything, it is ok to just mark it
