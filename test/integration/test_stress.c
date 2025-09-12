@@ -63,7 +63,27 @@ static void *client_read(void *data)
 	PREPARE_C(&client, sql, &stmt_id);
 
 	for (int i = 0; i < READ_COUNT; i++) {
-		QUERY_DONE_C(&client, stmt_id, &rows, {});
+		int rv = clientSendQuery(&client, stmt_id, NULL, 0, NULL);
+		munit_assert_int(rv, ==, 0);
+		for (bool done = false; !done;) {
+			rv = clientRecvRows(&client, &rows, &done, NULL);
+			if (rv != DQLITE_OK) {
+				break;
+			}
+			clientCloseRows(&rows);
+			rows = (struct rows){};
+		}
+		if (rv == DQLITE_CLIENT_PROTO_RECEIVED_FAILURE) {
+			if (client.errcode == SQLITE_BUSY) {
+				/* Just retry */
+				i--;
+				continue;
+			}
+			munit_errorf("failure: [%" PRIu64 "] %s",
+				     client.errcode, client.errmsg);
+		} else {
+			munit_assert_int(rv, ==, DQLITE_OK);
+		}
 	}
 
 	clientClose(&client);

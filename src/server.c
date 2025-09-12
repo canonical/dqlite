@@ -65,7 +65,7 @@ int dqlite__init(struct dqlite_node *d,
 			 "config__init(rv:%d)", rv);
 		goto err;
 	}
-	rv = VfsInit(&d->vfs, d->config.name);
+	rv = VfsInit(&d->vfs, &d->config.vfs);
 	sqlite3_vfs_register(&d->vfs, 0);
 	if (rv != 0) {
 		goto err_after_config_init;

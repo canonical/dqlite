@@ -2,12 +2,18 @@
 #define VFS_H_
 
 #include <sqlite3.h>
+#include <stddef.h> /* for size_t */
+#include <stdint.h> /* for uint{32,64}_t */
 
-#include "config.h"
+struct vfsConfig {
+	char name[256];                /* VFS/replication registriatio name */
+	unsigned page_size;            /* Database page size */
+	unsigned checkpoint_threshold; /* In outstanding WAL frames */
+};
 
 /* Initialize the given SQLite VFS interface with dqlite's custom
  * implementation. */
-int VfsInit(struct sqlite3_vfs *vfs, const char *name);
+int VfsInit(struct sqlite3_vfs *vfs, const struct vfsConfig *config);
 
 /* Register a function that will be called immediately before a database is
  * deleted. The callback is passed two arguments:
@@ -39,7 +45,7 @@ int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction);
 int VfsAbort(sqlite3 *conn);
 
 /* Performs a controlled checkpoint on conn */
-int VfsCheckpoint(sqlite3 *conn, unsigned int threshold);
+int VfsCheckpoint(sqlite3 *conn);
 
 struct vfsSnapshotFile {
 	void **pages;
@@ -70,25 +76,11 @@ int VfsReleaseSnapshot(sqlite3 *conn, struct vfsSnapshot *snapshot);
 /* Restore a database snapshot. */
 int VfsRestore(sqlite3 *conn, const struct vfsSnapshot *snapshot);
 
-/**
- * Number of pages in the database.
- *
- * If `use_wal` is set, returns the number of pages that the database would have
- * after fully checkpointing the WAL.
- */
-int VfsDatabaseNumPages(sqlite3_vfs *vfs,
-			const char *filename,
-			bool use_wal,
-			uint32_t *n);
-
 /* Returns the resulting size of the main file, wal file and n additional WAL
  * frames with the specified page_size. */
-uint64_t VfsDatabaseSize(sqlite3_vfs *vfs,
-			 const char *path,
-			 unsigned n,
-			 unsigned page_size);
+uint64_t VfsDatabaseSize(sqlite3 *conn, unsigned n);
 
 /* Returns the the maximum size of the main file and wal file. */
-uint64_t VfsDatabaseSizeLimit(sqlite3_vfs *vfs);
+uint64_t VfsDatabaseSizeLimit(sqlite3 *conn);
 
 #endif /* VFS_H_ */

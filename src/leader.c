@@ -24,7 +24,7 @@ static void exec_prepare_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_run_barrier_cb(struct raft_barrier *barrier, int status);
 static void exec_apply_cb(struct raft_apply *req, int status, void *result);
 static void exec_timer_cb(struct raft_timer *timer);
-static bool is_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes);
+static bool is_db_full(sqlite3 *conn, unsigned nframes);
 
 static struct exec *exec_dequeue(struct db *db);
 static void exec_enqueue(struct db *db, struct exec *exec);
@@ -293,7 +293,7 @@ static int exec_apply(struct exec *req, const struct vfsTransaction *transaction
 	struct db *db = leader->db;
 	struct raft_buffer buf;
 
-	if (is_db_full(req->leader->db->vfs, req->leader->db, transaction->n_pages)) {
+	if (is_db_full(req->leader->conn, transaction->n_pages)) {
 		return SQLITE_FULL;
 	}
 
@@ -304,7 +304,7 @@ static int exec_apply(struct exec *req, const struct vfsTransaction *transaction
 		.is_commit = 1,
 		.frames = {
 			.n_pages = (uint32_t)transaction->n_pages,
-			.page_size = (uint16_t)db->config->page_size,
+			.page_size = (uint16_t)db->config->vfs.page_size,
 			.page_numbers = transaction->page_numbers,
 			.pages = transaction->pages,
 		}
@@ -642,8 +642,8 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	return exec_tick(req);
 }
 
-static bool is_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes)
+static bool is_db_full(sqlite3 *conn, unsigned nframes)
 {
-	uint64_t size = VfsDatabaseSize(vfs, db->filename, nframes, db->config->page_size);
-	return size > VfsDatabaseSizeLimit(vfs);
+	uint64_t size = VfsDatabaseSize(conn, nframes);
+	return size > VfsDatabaseSizeLimit(conn);
 }
