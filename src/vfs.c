@@ -90,6 +90,18 @@ const int vfsOne = 1;
 
 #define vfsFrameSize(PAGE_SIZE) (VFS__FRAME_HEADER_SIZE + PAGE_SIZE)
 
+/*
+ * Return a size that can be used to allocate at least one of 32KiB shm regions,
+ * assuming that each mapping must be an integer multiple of the current system
+ * page-size.
+ *
+ * Usually, this is 32KiB. The exception seems to be systems that are configured
+ * to use 64KB pages like POWER architecture, where the default is 64KiB - in
+ * this case each mapping must cover at least two regions or the mmap call will
+ * fail.
+ *
+ * See also https://github.com/sqlite/sqlite/blob/eb8089e/src/os_unix.c#L4546
+ */
 static size_t vfsGetMapSize(void)
 {
 	const int os_page_size = (int)sysconf(_SC_PAGESIZE);
@@ -1656,6 +1668,7 @@ static int vfsPublishShm(struct vfsMainFile *f)
 		void *region = mmap(
 		    NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED,
 		    f->database->shm.fd, i * VFS__WAL_INDEX_REGION_SIZE);
+		assert(region != MAP_FAILED);
 		memcpy(region, f->mappedShmRegions.ptr[i], map_size);
 		void *remapped = mremap(
 		    region, map_size, map_size,

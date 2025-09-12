@@ -205,10 +205,8 @@ TEST(cluster, dataOnNewNode, setUp, tearDown, 0, cluster_params)
 	return MUNIT_OK;
 }
 
-/* Insert a huge row, causing SQLite to allocate overflow pages.
- * Then insert the same row again to make sure that it also needs an additional
- * shared memory region. (Reproducer for
- * https://github.com/canonical/raft/issues/432.) */
+/* Insert a huge row, causing SQLite to allocate overflow pages and additional
+ * shm regions. Then insert the same row again. */
 TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
@@ -241,9 +239,10 @@ TEST(cluster, hugeRow, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Insert a huge row, causing SQLite to allocate overflow pages. Then
- * insert the same row again. (Reproducer for
- * https://github.com/canonical/raft/issues/432.) */
+/* Insert a huge row, causing SQLite to allocate overflow pages and additional
+ * shm regions. Then insert the same row again.
+ * Then rollback so that the rollback logic spawning multiple regions is
+ * exercised. */
 TEST(cluster, hugeRow_rollback, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
