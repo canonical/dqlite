@@ -384,7 +384,6 @@ static void exec_tick(struct exec *req)
 	PRE(req->leader != NULL && req->leader->db != NULL);
 	struct leader *leader = req->leader;
 	struct db *db = leader->db;
-	struct vfsTransaction transaction;
 
 	for (;;) {
 		leader_trace(leader, "exec tick %s (status = %d)",
@@ -515,37 +514,42 @@ static void exec_tick(struct exec *req)
 			if (req->status != RAFT_OK) {
 				sm_move(&req->sm, EXEC_DONE);
 				continue;
-			}
+			} else {
+				struct vfsTransaction transaction = {};
+				int rc = VfsPoll(leader->conn, &transaction);
+				if (rc != SQLITE_OK) {
+					leader_trace(leader,
+						     "poll failed on leader");
+					rc = VfsAbort(leader->conn);
+					assert(rc == SQLITE_OK);
+					req->status = RAFT_IOERR;
+					sm_move(&req->sm, EXEC_DONE);
+					continue;
+				}
 
-			int rc = VfsPoll(leader->conn, &transaction);
-			if (rc != SQLITE_OK) {
-				leader_trace(leader, "poll failed on leader");
-				rc = VfsAbort(leader->conn);
-				assert(rc == SQLITE_OK);
-				req->status = RAFT_IOERR;
-				sm_move(&req->sm, EXEC_DONE);
-				continue;
-			}
+				leader_trace(leader,
+					     "polled connection (%d frames)",
+					     transaction.n_pages);
+				if (transaction.n_pages == 0) {
+					sm_move(&req->sm, EXEC_DONE);
+					continue;
+				}
 
-			leader_trace(leader, "polled connection (%d frames)", transaction.n_pages);
-			if (transaction.n_pages == 0) {
-				sm_move(&req->sm, EXEC_DONE);
-				continue;
-			}
+				req->status = exec_apply(req, &transaction);
+				for (unsigned i = 0; i < transaction.n_pages;
+				     i++) {
+					sqlite3_free(transaction.pages[i]);
+				}
+				sqlite3_free(transaction.pages);
+				sqlite3_free(transaction.page_numbers);
 
-			req->status = exec_apply(req, &transaction);
-			for (unsigned i = 0; i < transaction.n_pages; i++) {
-				sqlite3_free(transaction.pages[i]);
+				if (req->status != 0) {
+					sm_move(&req->sm, EXEC_DONE);
+					continue;
+				}
+				sm_move(&req->sm, EXEC_WAITING_APPLY);
+				suspend;
 			}
-			sqlite3_free(transaction.pages);
-			sqlite3_free(transaction.page_numbers);
-
-			if (req->status != 0) {
-				sm_move(&req->sm, EXEC_DONE);
-				continue;
-			}
-			sm_move(&req->sm, EXEC_WAITING_APPLY);
-			suspend;
 		case EXEC_WAITING_APPLY:
 			sm_move(&req->sm, EXEC_DONE);
 			continue;
