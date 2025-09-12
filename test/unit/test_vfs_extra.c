@@ -1,3 +1,4 @@
+#include <sqlite3.h>
 #include <stdio.h>
 
 #include "../lib/fs.h"
@@ -1605,3 +1606,68 @@ TEST(vfs_extra, changePageSizeSameValue, setUp, tearDown, 0, NULL)
 
 	return MUNIT_OK;
 }
+
+static void deleteHook(void *data, const char *name)
+{
+	bool *deleted = data;
+	munit_assert_string_equal(name, VFS_PATH);
+	*deleted = true;
+}
+
+TEST(vfs_extra, delete, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db;
+	struct vfsTransaction tx;
+
+	bool deleted = false;
+	VfsDeleteHook(sqlite3_vfs_find("1"),deleteHook, &deleted);
+
+	OPEN("1", db);
+	int rv = sqlite3_exec(db, "BEGIN IMMEDIATE; PRAGMA delete_database; COMMIT;", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	POLL(db, tx);
+	APPLY(db, tx);
+	DONE(tx);
+	CLOSE(db);
+
+	/* Make sure the database is not there anymore */
+	munit_assert_true(deleted);
+	rv = sqlite3_open_v2(VFS_PATH, &db, SQLITE_OPEN_READONLY, "1");
+	munit_assert_int(rv, ==, SQLITE_CANTOPEN);
+	munit_assert_int(sqlite3_system_errno(db), ==, ENOENT);
+	sqlite3_close(db);
+
+	return MUNIT_OK;
+}
+
+TEST(vfs_extra, delete_multiple, setUp, tearDown, 0, NULL)
+{
+	sqlite3 *db1;
+	sqlite3 *db2;
+	struct vfsTransaction tx;
+
+	bool deleted = false;
+	VfsDeleteHook(sqlite3_vfs_find("1"),deleteHook, &deleted);
+
+	OPEN("1", db1);
+	OPEN("1", db2);
+
+	int rv = sqlite3_exec(db1, "BEGIN IMMEDIATE; PRAGMA delete_database; COMMIT;", NULL, NULL, NULL);
+	munit_assert_int(rv, ==, SQLITE_OK);
+	POLL(db1, tx);
+	APPLY(db1, tx);
+	DONE(tx);
+	CLOSE(db1);
+
+	/* Make sure the database is deleted only when the last file is closed. */
+	munit_assert_false(deleted);
+	CLOSE(db2);
+	munit_assert_true(deleted);
+	rv = sqlite3_open_v2(VFS_PATH, &db1, SQLITE_OPEN_READONLY, "1");
+	munit_assert_int(rv, ==, SQLITE_CANTOPEN);
+	munit_assert_int(sqlite3_system_errno(db1), ==, ENOENT);
+	sqlite3_close(db1);
+
+	return MUNIT_OK;
+}
+

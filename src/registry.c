@@ -4,6 +4,24 @@
 #include "../include/dqlite.h"
 
 #include "registry.h"
+#include "vfs.h"
+
+static void registryDeleteHook(void *data, const char *filename)
+{
+	struct registry *r = data;
+	queue *head;
+	QUEUE_FOREACH(head, &r->dbs)
+	{
+		struct db *db = QUEUE_DATA(head, struct db, queue);
+		if (strcmp(db->filename, filename) == 0) {
+			queue_remove(head);
+			db__close(db);
+			sqlite3_free(db);
+			r->size--;
+			return;
+		}
+	}
+}
 
 void registry__init(struct registry *r, struct config *config)
 {
@@ -11,6 +29,9 @@ void registry__init(struct registry *r, struct config *config)
 		.config = config,
 	};
 	queue_init(&r->dbs);
+	sqlite3_vfs *vfs = sqlite3_vfs_find(config->name);
+	assert(vfs != NULL);
+	VfsDeleteHook(vfs, registryDeleteHook, r);
 }
 
 void registry__close(struct registry *r)

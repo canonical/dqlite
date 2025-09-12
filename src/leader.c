@@ -4,8 +4,6 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "../include/dqlite.h"
-
 #include "command.h"
 #include "db.h"
 #include "leader.h"
@@ -64,20 +62,27 @@ static inline bool leader_closing(struct leader *leader)
 	return leader->close_cb != NULL;
 }
 
-static void leader_finalize(struct leader *leader)
+static struct exec *leader_finalize(struct leader *leader)
 {
 	PRE(leader->exec == NULL && leader->pending == 0);
 	PRE(leader->db->leaders > 0);
 	tracef("leader close");
-	sqlite3_interrupt(leader->conn);
-	int rc = sqlite3_close_v2(leader->conn);
-	assert(rc == 0);
+
+	leader->db->leaders--;
 	if (leader->db->active_leader == leader) {
 		leader_trace(leader, "done");
 		leader->db->active_leader = NULL;
 	}
-	leader->db->leaders--;
+
+	struct exec *next = exec_dequeue(leader->db);
+
+	sqlite3_interrupt(leader->conn);
+	int rc = sqlite3_close_v2(leader->conn);
+	assert(rc == 0);
+
 	leader->close_cb(leader);
+
+	return  next;
 }
 
 static int progress_abort(void *db) {
@@ -93,14 +98,12 @@ void leader__close(struct leader *leader, leader_close_cb close_cb)
 
 	leader->close_cb = close_cb;
 	if (leader->pending == 0) {
-		struct db *db = leader->db;
-		leader_finalize(leader);
-
-		struct exec *req = exec_dequeue(db);
+		struct exec *req = leader_finalize(leader);
 		if (req == NULL) {
 			return;
 		}
 
+		struct db *db = req->leader->db;
 		PRE(IN(db->active_leader, NULL, req->leader));
 		db->active_leader = req->leader;
 		return exec_tick(req);
@@ -577,10 +580,11 @@ static void exec_tick(struct exec *req)
 			}
 
 			if (leader_closing(leader) && leader->pending == 0) {
-				leader_finalize(leader);
+				req = leader_finalize(leader);
+			} else {
+				req = exec_dequeue(db);
 			}
 
-			req = exec_dequeue(db);
 			if (req != NULL) {
 				PRE(IN(db->active_leader, NULL, req->leader));
 				db->active_leader = req->leader;
