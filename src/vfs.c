@@ -799,6 +799,7 @@ static struct vfsDatabase *vfsDatabaseLookup(struct vfs *v,
 
 static int vfsDeleteDatabase(struct vfs *vfs, struct vfsDatabase *database)
 {
+	tracef("[%s] finalizing database delete", database->name);
 	for (unsigned i = 0; i < vfs->n_databases; i++) {
 		if (vfs->databases[i] != database) {
 			continue;
@@ -1461,6 +1462,27 @@ static int vfsMainFileSize(sqlite3_file *file, sqlite_int64 *size)
 static int vfsWalAppend(struct vfsDatabase *d,
 	const struct vfsTransaction *transaction);
 
+/* Forges a header for deleteion. The starting point is the database
+ * header and not the WAL header. The reasoning is that most of the fields
+ * will be reset to 0 or to the default value, with the exception of:
+ * - The header string;
+ * - The database page size in bytes;
+ * - ThefFile format read/write version;
+ * - The maximum embedded payload fraction;
+ * - The minimum embedded payload fraction;
+ * - The leaf payload fraction;
+ * - The file change counter;
+ * - The database text encoding;
+ * - The version-valid-for number and the version number.
+ *
+ * The file change counter can be kept still as it is only updated during a
+ * checkpoint (so it should match the value of any page-1 frame in the
+ * WAL).
+ * The schema cookie must be updated to make sure statements are
+ * reprepared. To achive this, this method takes a worst-case approach:
+ * the worst case is that all frames in the WAL are schema changes
+ * that only touch page 1, as such the schema cookie can only be incremented
+ * that number of times. */
 static void vfsResetDatabaseFileHeader(uint8_t *header, uint32_t max_transaction_count)
 {
 	static const uint8_t le_one[] = { 1, 0, 0, 0 };
@@ -1479,11 +1501,14 @@ static void vfsResetDatabaseFileHeader(uint8_t *header, uint32_t max_transaction
 	const size_t freelist_count_offset = 36;
 	memset(header + freelist_count_offset, 0, 4);
 
-	/* Set the schema cookie to 1 plus the old value. */
+	/* To achive this logic takes a worst-case approach: the worst case is
+	 * that all frames in the WAL are schema changes that only touch page 1,
+	 * as such the schema cookie can only be incremented at most that number
+	 * of times. */
 	const size_t schema_cookie_offset = 40;
-	const uint32_t schema_cookie =
+	const uint32_t old_schema_cookie =
 	    ByteGetBe32(header + schema_cookie_offset);
-	BytePutBe32(schema_cookie + max_transaction_count + 1,
+	BytePutBe32(old_schema_cookie + max_transaction_count + 1,
 		    header + schema_cookie_offset);
 
 	/* Set default page cache to 0 */
@@ -1711,6 +1736,10 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	return SQLITE_OK;
 }
 
+/* Forges a transaction that will:
+ *  - reset the header to the default;
+ *  - remove all content from the database.
+ * The result will be a pristine database with only one empty leaf page. */
 static void vfsForgeDeleteTransaction(struct vfsMainFile *f)
 {
 	PRE(f->exclMask & (1 << VFS__WAL_WRITE_LOCK));
@@ -1765,19 +1794,6 @@ static void vfsForgeDeleteTransaction(struct vfsMainFile *f)
 
 	assert(f->database->n_pages > 0);
 
-	/* Now craft the header. The starting point is the database header and
-	 * not the WAL header. The reasoning is that most of the fields will be
-	 * reset to 0 or to the default value, with the exception of:
-	 *  - the file change counter;
-	 *  - the schema cookie.
-	 * While the first can be kept still as it is only updated during a
-	 * checkpoint (so it should match the value of any page-1 frame in the
-	 * WAL), the second must be updated to make sure statements are
-	 * reprepared.
-	 * To achive this logic takes a worst-case approach: the worst case is
-	 * that all frames in the WAL are schema changes that only touch page 1,
-	 * as such the schema cookie can only be incremented that number of
-	 * times. */
 	memcpy(page, f->database->pages[0], header_size);
 	vfsResetDatabaseFileHeader(page, (uint32_t)f->database->wal.n_frames);
 
@@ -1826,6 +1842,7 @@ static void vfsFinalizeTransaction(struct vfsMainFile *f)
 	struct vfsWal *w = &f->database->wal;
 	
 	if (f->state == DELETING) {
+		tracef("[%s] forged delete transaction", f->database->name);
 		vfsForgeDeleteTransaction(f);
 		f->state = NORMAL;
 	}

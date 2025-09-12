@@ -1614,7 +1614,6 @@ static void deleteHook(void *data, const char *name)
 	*deleted = true;
 }
 
-/* Changing page_size to current value succeeds. */
 TEST(vfs_extra, delete, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db;
@@ -1641,7 +1640,6 @@ TEST(vfs_extra, delete, setUp, tearDown, 0, NULL)
 	return MUNIT_OK;
 }
 
-/* Changing page_size to current value succeeds. */
 TEST(vfs_extra, delete_multiple, setUp, tearDown, 0, NULL)
 {
 	sqlite3 *db1;
