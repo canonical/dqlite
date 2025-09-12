@@ -1388,12 +1388,10 @@ TEST(vfs_extra, snapshotInitialDatabase, setUp, tearDown, 0, NULL)
 
 	int rv = VfsAcquireSnapshot(db, &snapshot);
 	munit_assert_int(rv, ==, SQLITE_OK);
-	munit_assert_int(snapshot.main.page_count, ==, 1);
-	munit_assert_int(snapshot.main.page_size, ==, DB_PAGE_SIZE);
-	munit_assert_int(snapshot.wal.page_count, ==, 0);
-	munit_assert_int(snapshot.wal.page_size, ==, DB_PAGE_SIZE);
+	munit_assert_int(snapshot.page_count, ==, 1);
+	munit_assert_int(snapshot.page_size, ==, DB_PAGE_SIZE);
 
-	page = snapshot.main.pages[0];
+	page = snapshot.pages[0];
 
 	munit_assert_int(memcmp(&page[16], page_size, 2), ==, 0);
 	munit_assert_int(memcmp(&page[28], database_size, 4), ==, 0);
@@ -1426,12 +1424,10 @@ TEST(vfs_extra, snapshotAfterFirstTransaction, setUp, tearDown, 0, NULL)
 	 * Page number 2 contains the (empty) root for test table.
 	 */
 	const uint32_t pages = 2;
-	munit_assert_int(snapshot.main.page_count, ==, pages);
-	munit_assert_int(snapshot.main.page_size, ==, DB_PAGE_SIZE);
-	munit_assert_int(snapshot.wal.page_count, ==, 0);
-	munit_assert_int(snapshot.wal.page_size, ==, DB_PAGE_SIZE);
+	munit_assert_int(snapshot.page_count, ==, pages);
+	munit_assert_int(snapshot.page_size, ==, DB_PAGE_SIZE);
 
-	uint8_t *page = snapshot.main.pages[0];
+	uint8_t *page = snapshot.pages[0];
 	munit_assert_int(ByteGetBe16(&page[16]), ==, DB_PAGE_SIZE);
 	munit_assert_int(ByteGetBe32(&page[28]), ==, pages);
 
@@ -1462,12 +1458,10 @@ TEST(vfs_extra, snapshotAfterCheckpoint, setUp, tearDown, 0, NULL)
 	munit_assert_int(rv, ==, SQLITE_OK);
 
 	const uint32_t pages = 2;
-	munit_assert_int(snapshot.main.page_count, ==, pages);
-	munit_assert_int(snapshot.main.page_size, ==, DB_PAGE_SIZE);
-	munit_assert_int(snapshot.wal.page_count, ==, 0);
-	munit_assert_int(snapshot.wal.page_size, ==, DB_PAGE_SIZE);
+	munit_assert_int(snapshot.page_count, ==, pages);
+	munit_assert_int(snapshot.page_size, ==, DB_PAGE_SIZE);
 
-	uint8_t *page = snapshot.main.pages[0];
+	uint8_t *page = snapshot.pages[0];
 	munit_assert_int(ByteGetBe16(&page[16]), ==, DB_PAGE_SIZE);
 	munit_assert_int(ByteGetBe32(&page[28]), ==, pages);
 
@@ -1485,7 +1479,6 @@ TEST(vfs_extra, restoreInitialDatabase, setUp, tearDown, 0, NULL)
 
 	OPEN("1", db1);
 
-	// TODO
 	int rv = VfsAcquireSnapshot(db1, &snapshot);
 	munit_assert_int(rv, ==, SQLITE_OK);
 

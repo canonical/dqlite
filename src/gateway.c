@@ -1096,7 +1096,7 @@ static int handle_remove(struct gateway *g, struct handle *req)
 }
 
 static int dumpFile(const char *filename,
-		     const struct vfsSnapshotFile *file,
+		     const struct vfsSnapshot *file,
 		     struct buffer *buffer)
 {
 	char *cur;
@@ -1166,7 +1166,7 @@ static int handle_dump(struct gateway *g, struct handle *req)
 	assert(cur != NULL);
 	response_files__encode(&response, &cur);
 
-	rv = dumpFile(request.filename, &snapshot.main, req->buffer);
+	rv = dumpFile(request.filename, &snapshot, req->buffer);
 	if (rv != 0) {
 		tracef("main dump failed");
 		failure(req, rv, "failed to dump main database file");
@@ -1181,7 +1181,8 @@ static int handle_dump(struct gateway *g, struct handle *req)
 	strncpy(filename, request.filename,
 		sizeof(filename) - strlen(wal_suffix) - 1);
 	strcat(filename, wal_suffix);
-	rv = dumpFile(filename, &snapshot.wal, req->buffer);
+	static const struct vfsSnapshot empty_wal = {}; 
+	rv = dumpFile(filename, &empty_wal, req->buffer);
 	if (rv != 0) {
 		tracef("WAL dump failed");
 		failure(req, rv, "failed to dump WAL file");
