@@ -91,6 +91,33 @@ const int vfsOne = 1;
 #define vfsFrameSize(PAGE_SIZE) (VFS__FRAME_HEADER_SIZE + PAGE_SIZE)
 
 /*
+ * Return a size that can be used to allocate at least one of 32KiB shm regions,
+ * assuming that each mapping must be an integer multiple of the current system
+ * page-size.
+ *
+ * Usually, this is 32KiB. The exception seems to be systems that are configured
+ * to use 64KB pages like POWER architecture, where the default is 64KiB - in
+ * this case each mapping must cover at least two regions or the mmap call will
+ * fail.
+ *
+ * See also https://github.com/sqlite/sqlite/blob/eb8089e/src/os_unix.c#L4546
+ */
+static size_t vfsGetMapSize(void)
+{
+	const int os_page_size = (int)sysconf(_SC_PAGESIZE);
+	/* Page size must be a power of 2 */
+	PRE(((os_page_size - 1) & os_page_size) == 0);
+
+	if (os_page_size < VFS__WAL_INDEX_REGION_SIZE) {
+		PRE((VFS__WAL_INDEX_REGION_SIZE % os_page_size) == 0);
+		return VFS__WAL_INDEX_REGION_SIZE;
+	} else {
+		PRE((os_page_size % VFS__WAL_INDEX_REGION_SIZE) == 0);
+		return (size_t)os_page_size;
+	}
+}
+
+/*
  * Generate or extend an 8 byte checksum based on the data in array data[] and
  * the initial values of in[0] and in[1] (or initial values of 0 and 0 if
  * in==NULL).
@@ -261,15 +288,14 @@ static void vfsFrameDestroy(struct vfsFrame *f)
 }
 
 /* Hold content for a shared memory mapping. */
-struct vfsShm
-{
-	mtx_t mtx; /* Mutex to protect fields below. */
+struct vfsShm {
+	mtx_t mtx;  /* Mutex to protect fields below. */
 	int fd;     /* Read-only */
-	int size;   /* Total size of the in-memory file */
+	off_t size; /* Total size of the in-memory file */
 	/* Lock array. Each of these lock has the following semantics:
 	 *  -  0 means unlocked;
 	 *  - -1 means exclusive locked;
-	 *  - >0 means shared locked and the value is the count of 
+	 *  - >0 means shared locked and the value is the count of
 	 *       shared locks taken.
 	 */
 	int lock[SQLITE_SHM_NLOCK];
@@ -1476,23 +1502,33 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 			 void volatile **out /* OUT: Mapped memory */
 )
 {
-	const int offset = region_index * region_size;
+	const off_t offset = (off_t)(region_index * region_size);
 	struct vfsMainFile *f = (struct vfsMainFile *)file;
 	struct vfsShm *s = &f->database->shm;
 
 	PRE(region_size == VFS__WAL_INDEX_REGION_SIZE);
+	if (region_index < f->mappedShmRegions.len) {
+		*out = f->mappedShmRegions.ptr[region_index];
+		return SQLITE_OK;
+	}
+
+	const size_t map_size = vfsGetMapSize();
+	/* If an allocation is required, then it must be aligned with the
+	 * mapping size. */
+	PRE(((size_t)(region_index * VFS__WAL_INDEX_REGION_SIZE) % map_size) == 0);
 
 	int rv;
 	mtx_lock(&s->mtx);
-	if (s->size < offset + region_size) {
+	const off_t min_file_size = offset + (off_t)map_size;
+	if (s->size < min_file_size) {
 		if (extend) {
 			/* The file is not big enough */
-			rv = ftruncate(s->fd, offset + region_size);
+			rv = ftruncate(s->fd, min_file_size);
 			if (rv < 0) {
 				mtx_unlock(&s->mtx);
 				return SQLITE_NOMEM;
 			}
-			s->size = offset + region_size;
+			s->size = min_file_size;
 		} else {
 			*out = NULL;
 			mtx_unlock(&s->mtx);
@@ -1501,7 +1537,8 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 	}
 	mtx_unlock(&s->mtx);
 
-	while (f->mappedShmRegions.cap <= region_index) {
+	const int region_count = (int)(map_size / VFS__WAL_INDEX_REGION_SIZE);
+	while (f->mappedShmRegions.cap < (region_index + region_count)) {
 		int newCap = 2 * f->mappedShmRegions.cap + 1;
 		void **newPtr = sqlite3_realloc64(
 		    f->mappedShmRegions.ptr,
@@ -1517,23 +1554,19 @@ static int vfsMainFileShmMap(sqlite3_file *file, /* Handle open on database file
 		f->mappedShmRegions.ptr = newPtr;
 	}
 
-	if (region_index < f->mappedShmRegions.len) {
-		*out = f->mappedShmRegions.ptr[region_index];
-		return SQLITE_OK;
-	}
-
 	PRE(region_index == f->mappedShmRegions.len);
-
 	void *region =
-	    mmap(NULL, VFS__WAL_INDEX_REGION_SIZE, PROT_READ | PROT_WRITE,
+	    mmap(NULL, (size_t)map_size, PROT_READ | PROT_WRITE,
 		 f->exclMask ? MAP_PRIVATE : MAP_SHARED, s->fd,
-		 region_index * region_size);
+		 region_index * VFS__WAL_INDEX_REGION_SIZE);
 	if (region == MAP_FAILED) {
 		return SQLITE_IOERR_SHMMAP;
 	}
 
-	f->mappedShmRegions.len = region_index + 1;
-	f->mappedShmRegions.ptr[region_index] = region;
+	for (int i = 0; i < region_count; i++) {
+		f->mappedShmRegions.ptr[region_index + i] = region + (i * VFS__WAL_INDEX_REGION_SIZE);
+	}
+	f->mappedShmRegions.len = region_index + region_count;
 	*out = region;
 	return SQLITE_OK;
 }
@@ -1575,22 +1608,28 @@ static void vfsWalRollbackIfUncommitted(struct vfsWal *w)
  * directly.
  *
  * See also vfsPublishShm and vfsRollbackShm. */
-static int vfsRedirectShm(struct vfsMainFile *f) {
-	/* When taking a write lock also make all mappings private. 
+static int vfsRedirectShm(struct vfsMainFile *f)
+{
+	const size_t map_size = vfsGetMapSize();
+
+	/* When taking a write lock also make all mappings private.
 	 * This effectively shadows the transaction as all other
 	 * connections cannot see the update to the mxFrames field. */
-	for (int regionIndex = 0; regionIndex < f->mappedShmRegions.len; regionIndex++) {
+	int region_per_map = (int)(map_size / VFS__WAL_INDEX_REGION_SIZE);
+	for (int regionIndex = 0; regionIndex < f->mappedShmRegions.len;
+	     regionIndex += region_per_map) {
 		void *region = f->mappedShmRegions.ptr[regionIndex];
-		void *new_region = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
-		PROT_READ | PROT_WRITE, MAP_PRIVATE, f->database->shm.fd, regionIndex * VFS__WAL_INDEX_REGION_SIZE);
+		void *new_region =
+		    mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_PRIVATE,
+			 f->database->shm.fd,
+			 regionIndex * VFS__WAL_INDEX_REGION_SIZE);
 		if (new_region == MAP_FAILED) {
-			/* This should never happen. Also, this means that we might leave the 
-			* connection in a weird state. */
+			/* This should never happen. Also, this means that we
+			 * might leave the connection in a weird state. */
 			return SQLITE_NOMEM;
 		}
-		void *remapped = mremap(new_region, 
-			VFS__WAL_INDEX_REGION_SIZE, VFS__WAL_INDEX_REGION_SIZE, 
-			MREMAP_MAYMOVE | MREMAP_FIXED, region);
+		void *remapped = mremap(new_region, map_size, map_size,
+					MREMAP_MAYMOVE | MREMAP_FIXED, region);
 		assert(remapped == region);
 	}
 	return SQLITE_OK;
@@ -1601,33 +1640,39 @@ static int vfsRedirectShm(struct vfsMainFile *f) {
  * database.
  *
  * See vfsRedirectShm for a rationale. */
-static int vfsPublishShm(struct vfsMainFile *f) {
+static int vfsPublishShm(struct vfsMainFile *f)
+{
 	/* Releasing memory means "publishing" changes back to the
 	 * shared map and remove the COW behavior from the regions. */
 	if (f->mappedShmRegions.len == 0) {
 		return SQLITE_OK;
 	}
 
-	/* The shared memory needs to be written in the proper order so that we don't end up
-	 * with concurrency issues. 
-	 * It is possible to split the shared memory in 2 parts:
+	/* The shared memory needs to be written in the proper order so that we
+	 * don't end up with concurrency issues. It is possible to split the
+	 * shared memory in 2 parts:
 	 *  - the header, composed by
 	 *    - two copies actually of the WAL Index Information section
 	 *    - a synchronization section (read marks and backfill);
 	 *  - the hash map array
-	 * The right order to do that is to first write the hash map array, then header.
-	 * Also, only the backfill of the synchronization section of the header should
-	 * be written and only when appropriate to do so. */
+	 * The right order to do that is to first write the hash map array, then
+	 * header. Also, only the backfill of the synchronization section of the
+	 * header should be written and only when appropriate to do so. */
+	const size_t map_size = vfsGetMapSize();
+	const int region_per_map = (int)(map_size / VFS__WAL_INDEX_REGION_SIZE);
+	PRE((f->mappedShmRegions.len % region_per_map) == 0);
 
 	/* Copy the hash map array in all the secondary regions */
-	for (int i = 1; i < f->mappedShmRegions.len; i++) {
-		void *region = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
-			PROT_READ | PROT_WRITE, MAP_SHARED, f->database->shm.fd, i * VFS__WAL_INDEX_REGION_SIZE);
+	for (int i = region_per_map; i < f->mappedShmRegions.len;
+	     i += region_per_map) {
+		void *region = mmap(
+		    NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+		    f->database->shm.fd, i * VFS__WAL_INDEX_REGION_SIZE);
 		assert(region != MAP_FAILED);
-		memcpy(region, f->mappedShmRegions.ptr[i], VFS__WAL_INDEX_REGION_SIZE);
-		void *remapped = mremap(region, 
-			VFS__WAL_INDEX_REGION_SIZE, VFS__WAL_INDEX_REGION_SIZE, 
-			MREMAP_MAYMOVE | MREMAP_FIXED, f->mappedShmRegions.ptr[i]);
+		memcpy(region, f->mappedShmRegions.ptr[i], map_size);
+		void *remapped = mremap(
+		    region, map_size, map_size,
+		    MREMAP_MAYMOVE | MREMAP_FIXED, f->mappedShmRegions.ptr[i]);
 		assert(remapped == f->mappedShmRegions.ptr[i]);
 	}
 
@@ -1635,50 +1680,61 @@ static int vfsPublishShm(struct vfsMainFile *f) {
 	const size_t headerSize = VFS__WAL_INDEX_HEADER_SIZE * 2 + ckptInfoSize;
 
 	void *first_region_private = f->mappedShmRegions.ptr[0];
-	void *first_region_shared  = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
-		PROT_READ | PROT_WRITE, MAP_SHARED, f->database->shm.fd, 0);
+	void *first_region_shared = mmap(NULL, map_size, PROT_READ | PROT_WRITE,
+					 MAP_SHARED, f->database->shm.fd, 0);
 	assert(first_region_shared != MAP_FAILED);
 
 	/* Copy the hash map array for the first region */
-	memcpy(first_region_shared + headerSize, first_region_private + headerSize, VFS__WAL_INDEX_REGION_SIZE - headerSize);
+	memcpy(first_region_shared + headerSize,
+	       first_region_private + headerSize, map_size - headerSize);
 	atomic_thread_fence(memory_order_relaxed);
 
-	/* Finally publish the two copies of the WAL Index information and remap. */
-	memcpy(first_region_shared + VFS__WAL_INDEX_HEADER_SIZE, f->mappedShmRegions.ptr[0] + VFS__WAL_INDEX_HEADER_SIZE, VFS__WAL_INDEX_HEADER_SIZE);
+	/* Finally publish the two copies of the WAL Index information and
+	 * remap. */
+	memcpy(first_region_shared + VFS__WAL_INDEX_HEADER_SIZE,
+	       f->mappedShmRegions.ptr[0] + VFS__WAL_INDEX_HEADER_SIZE,
+	       VFS__WAL_INDEX_HEADER_SIZE);
 	/* See https://github.com/sqlite/sqlite/blob/1ea6a53/src/wal.c#L2585 */
 	atomic_thread_fence(memory_order_seq_cst);
-	memcpy(first_region_shared, f->mappedShmRegions.ptr[0], VFS__WAL_INDEX_HEADER_SIZE);
+	memcpy(first_region_shared, f->mappedShmRegions.ptr[0],
+	       VFS__WAL_INDEX_HEADER_SIZE);
 
 	/* Check that no checkpointing happened during the write transaction. */
-	
+
 	/* Now it is necessary to merge the synchronization part.
-	 * Read marks are never changed by a write transaction as a write transaction can
-	 * only be started after a read transaction and as such the marker and the read lock is
-	 * already acquired.
-	 * For the other fields, quoting the documentation:
-	 *  > The nBackfill can only be increased while holding the WAL_CKPT_LOCK. However, nBackfill
-	 *  > is changed to zero during a WAL reset, and this happens while holding the WAL_WRITE_LOCK. 
-	 * And also:`
-	 *  > The mxFrame value is always greater than or equal to both nBackfill and nBackfillAttempted.
-	 * Which means that only when holding the checkpoint lock those fields should be published */
+	 * Read marks are never changed by a write transaction as a write
+	 * transaction can only be started after a read transaction and as such
+	 * the marker and the read lock is already acquired. For the other
+	 * fields, quoting the documentation: > The nBackfill can only be
+	 * increased while holding the WAL_CKPT_LOCK. However, nBackfill > is
+	 * changed to zero during a WAL reset, and this happens while holding
+	 * the WAL_WRITE_LOCK. And also:` > The mxFrame value is always greater
+	 * than or equal to both nBackfill and nBackfillAttempted. Which means
+	 * that only when holding the checkpoint lock those fields should be
+	 * published */
 	if (f->exclMask & (1 << VFS__WAL_CKPT_LOCK)) {
-		const size_t nBackfillOffset          =  96;
-		int32_t *privateBackfill              = (first_region_private + nBackfillOffset);
+		const size_t nBackfillOffset = 96;
+		int32_t *privateBackfill =
+		    (first_region_private + nBackfillOffset);
 		/* We must use atomic write here as it's read atomically by the
 		 * SQLite checkpoint logic which might happen in a different
 		 * thread. */
-		_Atomic int32_t *sharedBackfill       = (first_region_shared + nBackfillOffset);
-		atomic_store_explicit(sharedBackfill, *privateBackfill, memory_order_relaxed);
+		_Atomic int32_t *sharedBackfill =
+		    (first_region_shared + nBackfillOffset);
+		atomic_store_explicit(sharedBackfill, *privateBackfill,
+				      memory_order_relaxed);
 
 		const size_t nBackfillAttemptedOffset = 128;
-		int32_t *privateBackfillAttempted     = (first_region_private + nBackfillAttemptedOffset);
-		int32_t *sharedBackfillAttempted      = (first_region_shared + nBackfillAttemptedOffset);
-		*sharedBackfillAttempted              = *privateBackfillAttempted;
+		int32_t *privateBackfillAttempted =
+		    (first_region_private + nBackfillAttemptedOffset);
+		int32_t *sharedBackfillAttempted =
+		    (first_region_shared + nBackfillAttemptedOffset);
+		*sharedBackfillAttempted = *privateBackfillAttempted;
 	}
 
-	void *remapped = mremap(first_region_shared,
-		VFS__WAL_INDEX_REGION_SIZE, VFS__WAL_INDEX_REGION_SIZE, 
-		MREMAP_MAYMOVE | MREMAP_FIXED, f->mappedShmRegions.ptr[0]);
+	void *remapped =
+	    mremap(first_region_shared, map_size, map_size,
+		   MREMAP_MAYMOVE | MREMAP_FIXED, f->mappedShmRegions.ptr[0]);
 	assert(remapped == f->mappedShmRegions.ptr[0]);
 
 	return SQLITE_OK;
@@ -1689,18 +1745,24 @@ static int vfsPublishShm(struct vfsMainFile *f) {
  *
  * See vfsRedirectShm for a rationale. */
 static int vfsRollbackShm(struct vfsMainFile *f) {
-	for (int i = f->mappedShmRegions.len - 1; i >= 0; i--) {
-		void *new_region = mmap(NULL, VFS__WAL_INDEX_REGION_SIZE,
-			PROT_READ | PROT_WRITE, MAP_SHARED, f->database->shm.fd, i * VFS__WAL_INDEX_REGION_SIZE);
+	const size_t map_size = vfsGetMapSize();
+	const int region_per_map = (int)(map_size / VFS__WAL_INDEX_REGION_SIZE);
+	PRE((f->mappedShmRegions.len % region_per_map) == 0);
+
+	for (int i = 0; i < f->mappedShmRegions.len; i += region_per_map) {
+		void *new_region =
+		    mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+			 f->database->shm.fd, i * VFS__WAL_INDEX_REGION_SIZE);
 		if (new_region == MAP_FAILED) {
-			/* This should never happen. Also, this means that we might leave the 
-				* connection in a weird state. */
+			/* This should never happen. Also, this means that we
+			 * might leave the connection in a weird state. */
 			return SQLITE_NOMEM;
 		}
-		/* Now the private map can be unmapped safely going back to the shared one. */
-		void *remapped = mremap(new_region, 
-			VFS__WAL_INDEX_REGION_SIZE, VFS__WAL_INDEX_REGION_SIZE, 
-			MREMAP_MAYMOVE | MREMAP_FIXED, f->mappedShmRegions.ptr[i]);
+		/* Now the private map can be unmapped safely going back to the
+		 * shared one. */
+		void *remapped = mremap(new_region, map_size, map_size,
+					MREMAP_MAYMOVE | MREMAP_FIXED,
+					f->mappedShmRegions.ptr[i]);
 		assert(remapped == f->mappedShmRegions.ptr[i]);
 	}
 	return SQLITE_OK;
@@ -1811,10 +1873,14 @@ static void vfsMainFileShmBarrier(sqlite3_file *file)
 static int vfsMainFileShmUnmap(sqlite3_file *file, int delete_flag)
 {
 	(void)delete_flag;
+
 	struct vfsMainFile *f = (struct vfsMainFile *)file;
-	for (int i = 0; i < f->mappedShmRegions.len; i++) {
+	const size_t map_size = vfsGetMapSize();
+	const int region_per_map = (int)(map_size / VFS__WAL_INDEX_REGION_SIZE);
+	PRE((f->mappedShmRegions.len % region_per_map) == 0);
+	for (int i = 0; i < f->mappedShmRegions.len; i += region_per_map) {
 		if (f->mappedShmRegions.ptr[i] != NULL) {
-			int rv = munmap(f->mappedShmRegions.ptr[i], VFS__WAL_INDEX_REGION_SIZE);
+			int rv = munmap(f->mappedShmRegions.ptr[i], map_size);
 			assert(rv == 0);
 		}
 	}
