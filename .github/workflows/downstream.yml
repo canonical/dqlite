@@ -44,7 +44,7 @@ jobs:
           sudo ldconfig
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
 
       - name: Check out go-dqlite
         uses: actions/checkout@v5
