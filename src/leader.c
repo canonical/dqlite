@@ -29,6 +29,11 @@ static bool is_db_full(sqlite3_vfs *vfs, struct db *db, unsigned nframes);
 static struct exec *exec_dequeue(struct db *db);
 static void exec_enqueue(struct db *db, struct exec *exec);
 
+static int progress_abort(void *db) {
+	(void)db;
+	return SQLITE_ABORT;
+}
+
 /* Whether we need to submit a barrier request because there is no transaction
  * in progress in the underlying database and the FSM is behind the last log
  * index. */
@@ -76,18 +81,13 @@ static struct exec *leader_finalize(struct leader *leader)
 
 	struct exec *next = exec_dequeue(leader->db);
 
-	sqlite3_interrupt(leader->conn);
+	sqlite3_progress_handler(leader->conn, 1, progress_abort, NULL);
 	int rc = sqlite3_close_v2(leader->conn);
 	assert(rc == 0);
 
 	leader->close_cb(leader);
 
 	return  next;
-}
-
-static int progress_abort(void *db) {
-	(void)db;
-	return SQLITE_ABORT;
 }
 
 void leader__close(struct leader *leader, leader_close_cb close_cb)
@@ -512,7 +512,7 @@ static void exec_tick(struct exec *req)
 			leader_trace(leader, "executing query");
 			sm_move(&req->sm, EXEC_RUNNING);
 			TAIL return req->work_cb(req);
-		case EXEC_RUNNING: /* -> EXEC_DONE */
+		case EXEC_RUNNING:
 			leader_trace(leader, "executed query on leader (status=%d)", req->status);
 			if (req->status != RAFT_OK) {
 				sm_move(&req->sm, EXEC_DONE);
@@ -523,10 +523,8 @@ static void exec_tick(struct exec *req)
 				if (rc != SQLITE_OK) {
 					leader_trace(leader,
 						     "poll failed on leader");
-					rc = VfsAbort(leader->conn);
-					assert(rc == SQLITE_OK);
 					req->status = RAFT_IOERR;
-					sm_move(&req->sm, EXEC_DONE);
+					sm_move(&req->sm, EXEC_WAITING_APPLY);
 					continue;
 				}
 
@@ -546,14 +544,16 @@ static void exec_tick(struct exec *req)
 				sqlite3_free(transaction.pages);
 				sqlite3_free(transaction.page_numbers);
 
-				if (req->status != 0) {
-					sm_move(&req->sm, EXEC_DONE);
-					continue;
-				}
 				sm_move(&req->sm, EXEC_WAITING_APPLY);
-				suspend;
+				if (req->status == 0) {
+					suspend;
+				}
+				continue;
 			}
 		case EXEC_WAITING_APPLY:
+			if (req->status != 0) {
+				VfsAbort(leader->conn);
+			}
 			sm_move(&req->sm, EXEC_DONE);
 			continue;
 		case EXEC_DONE: 
@@ -632,9 +632,6 @@ static void exec_apply_cb(struct raft_apply *apply, int status, void *result)
 	struct leader *leader = req->leader;
 	PRE(leader != NULL);
 	leader_trace(leader, "query applied (status=%d)", status);
-	if (status != 0) {
-		VfsAbort(leader->conn);
-	}
 
 	PRE(sm_state(&req->sm) == EXEC_WAITING_APPLY);
 	// FIXME(marco6): inspect how to always return RAFT_* from this
