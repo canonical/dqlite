@@ -552,7 +552,8 @@ static void exec_tick(struct exec *req)
 			}
 		case EXEC_WAITING_APPLY:
 			if (req->status != 0) {
-				VfsAbort(leader->conn);
+				int rv = VfsAbort(leader->conn);
+				assert(rv == SQLITE_OK);
 			}
 			sm_move(&req->sm, EXEC_DONE);
 			continue;
