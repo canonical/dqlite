@@ -388,9 +388,9 @@ static void exec_tick(struct exec *req)
 	struct leader *leader = req->leader;
 	struct db *db = leader->db;
 
+	leader_trace(leader, "exec resume %s (status = %d)",
+		     exec_state_name(sm_state(&req->sm)), req->status);
 	for (;;) {
-		leader_trace(leader, "exec tick %s (status = %d)",
-			     exec_state_name(sm_state(&req->sm)), req->status);
 		switch (sm_state(&req->sm)) {
 		case EXEC_INITED:
 			PRE(leader->exec == NULL);
