@@ -25,7 +25,7 @@ jobs:
     - name: Set up dependencies
       run: |
           sudo apt update
-          sudo apt install -y libsqlite3-dev liblz4-dev libuv1-dev \
+          sudo apt install -y libsqlite3-dev liblz4-dev libuv1-dev xfslibs-dev \
                               linux-libc-dev btrfs-progs xfsprogs zfsutils-linux \
                               lcov
 
@@ -44,10 +44,10 @@ jobs:
         LIBDQLITE_TRACE: 1
         ASAN_OPTIONS: fast_unwind_on_malloc=0
       run: |
-          ./test/raft/lib/fs.sh setup tmpfs ext4 btrfs zfs
-          export $(./test/raft/lib/fs.sh detect tmpfs ext4 btrfs zfs)
-          UV_THREADPOOL_SIZE=$(($(nproc) * 2)) make check || (cat test-suite.log && false)
-          ./test/raft/lib/fs.sh teardown tmpfs ext4 btrfs zfs
+          ./test/raft/lib/fs.sh setup
+          export $(./test/raft/lib/fs.sh detect)
+          sudo UV_THREADPOOL_SIZE=$(($(nproc) * 2)) make check || (cat test-suite.log && false)
+          ./test/raft/lib/fs.sh teardown
 
     - name: Coverage
       env:
