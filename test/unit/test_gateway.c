@@ -3379,3 +3379,83 @@ TEST_CASE(invalid, requestType, NULL)
 	ASSERT_FAILURE(DQLITE_PARSE, "unrecognized request type");
 	return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * transfer
+ *
+ ******************************************************************************/
+
+struct transfer_fixture {
+	FIXTURE;
+};
+
+TEST_SUITE(transfer);
+TEST_SETUP(transfer)
+{
+	struct transfer_fixture *f = munit_malloc(sizeof *f);
+	SETUP;
+	CLUSTER_ELECT(0);
+	return f;
+}
+TEST_TEAR_DOWN(transfer)
+{
+	struct transfer_fixture *f = data;
+	TEAR_DOWN;
+	free(f);
+}
+
+TEST_CASE(transfer, any, NULL)
+{
+	(void)params;
+	struct transfer_fixture *f = data;
+	const raft_id initial_leader = f->cluster.leader_id;
+
+	struct request_transfer request = {
+		.id = 0,
+	};
+	ENCODE(&request, transfer);
+	HANDLE(TRANSFER);
+	WAIT;
+	ASSERT_CALLBACK(DQLITE_OK, EMPTY);
+
+	raft_fixture_step_until_has_leader(&f->cluster, 20000);
+
+	/* Make sure there's a leader. */
+	munit_assert_int(f->cluster.leader_id, !=, 0);
+	/* Make sure the leader changed. */
+	munit_assert_int(f->cluster.leader_id, !=, initial_leader);
+
+	return MUNIT_OK;
+}
+
+TEST_CASE(transfer, target, NULL)
+{
+	(void)params;
+	struct transfer_fixture *f = data;
+	const raft_id initial_leader = f->cluster.leader_id;
+
+	struct request_transfer request = {};
+	for (unsigned i = 0; i < N_SERVERS; i++) {
+		const struct raft *r = raft_fixture_get(&f->cluster, i);
+		if (r->id == initial_leader) {
+			continue;
+		}
+		request.id = r->id;
+	}
+	munit_assert_int(request.id, !=, 0);
+
+	ENCODE(&request, transfer);
+	HANDLE(TRANSFER);
+	WAIT;
+	ASSERT_CALLBACK(DQLITE_OK, EMPTY);
+
+	raft_fixture_step_until_has_leader(&f->cluster, 20000);
+
+	/* Make sure there's a leader. */
+	munit_assert_int(f->cluster.leader_id, !=, 0);
+	/* Make sure the leader changed. */
+	munit_assert_int(f->cluster.leader_id, !=, initial_leader);
+
+	return MUNIT_OK;
+}
