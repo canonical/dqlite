@@ -11,6 +11,9 @@
 #include "heap.h"
 #include "uv_os.h"
 
+#define UV__FS_PROBE_FILE ".probe"
+#define UV__FS_PROBE_FILE_SIZE 4096
+
 int UvFsCheckDir(const char *dir, char *errmsg)
 {
 	struct uv_fs_s req;
@@ -712,7 +715,7 @@ static int probeDirectIO(int fd, size_t *size, char *errmsg)
 	}
 
 	/* Try to perform direct I/O, using various buffer size. */
-	*size = 4096;
+	*size = UV__FS_PROBE_FILE_SIZE;
 	while (*size >= 512) {
 		buf = raft_aligned_alloc(*size, *size);
 		if (buf == NULL) {
@@ -866,8 +869,6 @@ out:
 	UvFsRemoveFile(dir, UV__FS_PROBE_FALLOCATE_FILE, ignored);
 }
 
-#define UV__FS_PROBE_FILE ".probe"
-#define UV__FS_PROBE_FILE_SIZE 4096
 int UvFsProbeCapabilities(const char *dir,
 			  size_t *direct,
 			  bool *async,

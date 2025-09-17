@@ -1,3 +1,4 @@
+#include <sys/utsname.h>
 #include <unistd.h>
 
 #include "../../../src/raft/uv_fs.h"
@@ -31,6 +32,14 @@
         munit_assert_int(_rv, ==, RV);              \
         munit_assert_string_equal(_errmsg, ERRMSG); \
     }
+
+static bool kernel_version_above_equal(const char *min)
+{
+    struct utsname kernel_info;
+    int rv = uname(&kernel_info);
+    munit_assert_int(rv, ==, 0);
+    return strverscmp(kernel_info.release, min) >= 0;
+}
 
 SUITE(UvFsCheckDir)
 
@@ -310,7 +319,11 @@ TEST(UvFsProbeCapabilities, tmpfs, DirTmpfsSetUp, DirTearDown, 0, NULL)
     if (dir == NULL) {
         return MUNIT_SKIP;
     }
-    PROBE_CAPABILITIES(dir, 0, false, true);
+    size_t direct_io = 0;
+    if (kernel_version_above_equal("6.8")) {
+        direct_io = 4096;
+    }
+    PROBE_CAPABILITIES(dir, direct_io, false, true);
     return MUNIT_OK;
 }
 
@@ -335,11 +348,6 @@ TEST(UvFsProbeCapabilities, aio, DirSetUp, DirTearDown, 0, DirAioParams)
 {
     const char *dir = data;
     if (dir == NULL) {
-        return MUNIT_SKIP;
-    }
-    /* FIXME: btrfs doesn't like that we perform a first write to the probe file
-     * to detect the direct I/O buffer size. */
-    if (strcmp(munit_parameters_get(params, DIR_FS_PARAM), "btrfs") == 0) {
         return MUNIT_SKIP;
     }
     PROBE_CAPABILITIES(dir, 4096, true, true);

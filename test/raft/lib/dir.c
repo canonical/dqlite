@@ -20,9 +20,9 @@ static char *dirAll[] = {"tmpfs", "ext4", "btrfs", "xfs", "zfs", NULL};
 
 static char *dirTmpfs[] = {"tmpfs", NULL};
 
-static char *dirAio[] = {"btrfs", "ext4", "xfs", NULL};
+static char *dirAio[] = {"ext4", "xfs", NULL};
 
-static char *dirNoAio[] = {"tmpfs", "zfs", NULL};
+static char *dirNoAio[] = {"btrfs",  "tmpfs", "zfs", NULL};
 
 MunitParameterEnum DirTmpfsParams[] = {
     {DIR_FS_PARAM, dirTmpfs},
