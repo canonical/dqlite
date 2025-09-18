@@ -251,7 +251,7 @@ void leader_exec_abort(struct exec *req)
 	case EXEC_WAITING_QUEUE:
 		/* timers are cancellable, so the request can move on directly. */
 		leader_exec_result(req, RAFT_CANCELED);
-		TAIL return exec_tick(req);
+		return exec_tick(req);
 	}
 
 	/* Raft-related requests cannot be cancelled, so the only step that can be taken
@@ -278,7 +278,7 @@ void leader_exec_result(struct exec *req, int status)
 void leader_exec_resume(struct exec *req)
 {
 	PRE(sm_state(&req->sm) == EXEC_RUNNING);
-	TAIL return exec_tick(req);
+	return exec_tick(req);
 }
 
 static int exec_apply(struct exec *req, const struct vfsTransaction *transaction)
@@ -511,7 +511,7 @@ static void exec_tick(struct exec *req)
 
 			leader_trace(leader, "executing query");
 			sm_move(&req->sm, EXEC_RUNNING);
-			TAIL return req->work_cb(req);
+			return req->work_cb(req);
 		case EXEC_RUNNING:
 			leader_trace(leader, "executed query on leader (status=%d)", req->status);
 			if (req->status != RAFT_OK) {
@@ -589,7 +589,7 @@ static void exec_tick(struct exec *req)
 			if (req != NULL) {
 				PRE(IN(db->active_leader, NULL, req->leader));
 				db->active_leader = req->leader;
-				TAIL return exec_tick(req);
+				return exec_tick(req);
 			}
 			return;
 		default:
