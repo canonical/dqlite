@@ -100,10 +100,8 @@ TEST(fsm, snapshotFreshDb, setUp, tearDown, 0, snapshot_params)
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint(n_bufs, ==, 1); /* Snapshot header */
 
-	rv = fsm->snapshot_finalize(fsm, &bufs, &n_bufs);
+	rv = fsm->snapshot_finalize(fsm, bufs, n_bufs);
 	munit_assert_int(rv, ==, 0);
-	munit_assert_ptr_null(bufs);
-	munit_assert_uint(n_bufs, ==, 0);
 	return MUNIT_OK;
 }
 
@@ -131,10 +129,8 @@ TEST(fsm, snapshotWrittenDb, setUp, tearDown, 0, snapshot_params)
 	munit_assert_int(rv, ==, 0);
 	munit_assert_uint(n_bufs, >, 1);
 
-	rv = fsm->snapshot_finalize(fsm, &bufs, &n_bufs);
+	rv = fsm->snapshot_finalize(fsm, bufs, n_bufs);
 	munit_assert_int(rv, ==, 0);
-	munit_assert_ptr_null(bufs);
-	munit_assert_uint(n_bufs, ==, 0);
 	return MUNIT_OK;
 }
 
@@ -262,10 +258,8 @@ TEST(fsm, snapshotNewDbAddedBeforeFinalize, setUp, tearDown, 0, snapshot_params)
 	PREPARE("INSERT INTO test(n) VALUES(1)", &stmt_id);
 	EXEC(stmt_id, &last_insert_id, &rows_affected);
 
-	rv = fsm->snapshot_finalize(fsm, &bufs, &n_bufs);
+	rv = fsm->snapshot_finalize(fsm, bufs, n_bufs);
 	munit_assert_int(rv, ==, 0);
-	munit_assert_ptr_null(bufs);
-	munit_assert_uint(n_bufs, ==, 0);
 	return MUNIT_OK;
 }
 
@@ -301,10 +295,8 @@ TEST(fsm, snapshotWritesBeforeFinalize, setUp, tearDown, 0, snapshot_params)
 	}
 
 	/* Finalize succeeds */
-	rv = fsm->snapshot_finalize(fsm, &bufs, &n_bufs);
+	rv = fsm->snapshot_finalize(fsm, bufs, n_bufs);
 	munit_assert_int(rv, ==, 0);
-	munit_assert_ptr_null(bufs);
-	munit_assert_uint(n_bufs, ==, 0);
 
 	/* Triggers a checkpoint */
 	PREPARE("INSERT INTO test(n) VALUES(1001)", &stmt_id);
@@ -338,14 +330,14 @@ TEST(fsm, concurrentSnapshots, setUp, tearDown, 0, snapshot_params)
 	rv = fsm->snapshot(fsm, &bufs2, &n_bufs2);
 	munit_assert_int(rv, ==, RAFT_BUSY);
 
-	rv = fsm->snapshot_finalize(fsm, &bufs, &n_bufs);
+	rv = fsm->snapshot_finalize(fsm, bufs, n_bufs);
 	munit_assert_int(rv, ==, 0);
 
 	/* Second snapshot succeeds after first is finalized */
 	rv = fsm->snapshot(fsm, &bufs2, &n_bufs2);
 	munit_assert_int(rv, ==, 0);
 
-	rv = fsm->snapshot_finalize(fsm, &bufs2, &n_bufs2);
+	rv = fsm->snapshot_finalize(fsm, bufs2, n_bufs2);
 	munit_assert_int(rv, ==, 0);
 
 	return MUNIT_OK;
@@ -423,7 +415,7 @@ TEST(fsm, snapshotRestore, setUp, tearDown, 0, restore_params)
 	/* Deep copy snapshot */
 	snapshot = n_bufs_to_buf(bufs, n_bufs);
 
-	rv = fsm->snapshot_finalize(fsm, &bufs, &n_bufs);
+	rv = fsm->snapshot_finalize(fsm, bufs, n_bufs);
 	munit_assert_int(rv, ==, 0);
 	clientClose(f->client);
 
@@ -490,7 +482,7 @@ TEST(fsm, snapshotRestoreMultipleDBs, setUp, tearDown, 0, snapshot_params)
 
 	/* Copy the snapshot to restore it */
 	snapshot = n_bufs_to_buf(bufs, n_bufs);
-	rv = fsm->snapshot_finalize(fsm, &bufs, &n_bufs);
+	rv = fsm->snapshot_finalize(fsm, bufs, n_bufs);
 	munit_assert_int(rv, ==, 0);
 
 	/* Create a new table in test2 that shouldn't be visible after
@@ -548,7 +540,6 @@ TEST(fsm, applyFail, setUp, tearDown, 0, NULL)
 	struct raft_buffer buf;
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
-	void *result = (void *)(uintptr_t)0xDEADBEEF;
 
 	/* Create a frames command without data. */
 	c = (struct command_frames) {
@@ -562,9 +553,8 @@ TEST(fsm, applyFail, setUp, tearDown, 0, NULL)
 	rv = command__encode(COMMAND_FRAMES, &c, &buf);
 
 	/* Apply the command and expect it to fail. */
-	rv = fsm->apply(fsm, &buf, &result);
+	rv = fsm->apply(fsm, &buf);
 	munit_assert_int(rv, !=, 0);
-	munit_assert_ptr_null(result);
 
 	raft_free(buf.base);
 	return MUNIT_OK;
@@ -577,7 +567,6 @@ TEST(fsm, applyUnknownTypeFail, setUp, tearDown, 0, NULL)
 	struct raft_buffer buf;
 	struct fixture *f = data;
 	struct raft_fsm *fsm = &f->servers[0].dqlite->raft_fsm;
-	void *result = (void *)(uintptr_t)0xDEADBEEF;
 
 	/* Create a frames command without data. */
 	c = (struct command_frames) {
@@ -594,9 +583,8 @@ TEST(fsm, applyUnknownTypeFail, setUp, tearDown, 0, NULL)
 	((uint8_t *)(buf.base))[1] = COMMAND_CHECKPOINT + 8;
 
 	/* Apply the command and expect it to fail. */
-	rv = fsm->apply(fsm, &buf, &result);
+	rv = fsm->apply(fsm, &buf);
 	munit_assert_int(rv, ==, DQLITE_PROTO);
-	munit_assert_ptr_null(result);
 
 	raft_free(buf.base);
 	return MUNIT_OK;

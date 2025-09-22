@@ -15,9 +15,7 @@ struct fsm
 /* Command codes */
 enum { SET_X = 1, SET_Y, ADD_X, ADD_Y };
 
-static int fsmApply(struct raft_fsm *fsm,
-                    const struct raft_buffer *buf,
-                    void **result)
+static int fsmApply(struct raft_fsm *fsm, const struct raft_buffer *buf)
 {
     struct fsm *f = fsm->data;
     const void *cursor = buf->base;
@@ -47,8 +45,6 @@ static int fsmApply(struct raft_fsm *fsm,
         default:
             return -1;
     }
-
-    *result = NULL;
 
     return 0;
 }
@@ -144,20 +140,18 @@ static int fsmSnapshotAsync(struct raft_fsm *fsm,
 }
 
 static int fsmSnapshotFinalize(struct raft_fsm *fsm,
-                               struct raft_buffer *bufs[],
-                               unsigned *n_bufs)
+                               struct raft_buffer bufs[],
+                               unsigned n_bufs)
 {
     (void)bufs;
     (void)n_bufs;
     struct fsm *f = fsm->data;
-    if (*bufs != NULL) {
-        for (unsigned i = 0; i < *n_bufs; ++i) {
-            raft_free((*bufs)[i].base);
+    if (bufs != NULL) {
+        for (unsigned i = 0; i < n_bufs; ++i) {
+            raft_free(bufs[i].base);
         }
-        raft_free(*bufs);
+        raft_free(bufs);
     }
-    *bufs = NULL;
-    *n_bufs = 0;
     munit_assert_int(f->lock, ==, 1);
     f->lock = 0;
     munit_assert_ptr_not_null(f->data);

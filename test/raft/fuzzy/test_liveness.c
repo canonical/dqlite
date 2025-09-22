@@ -120,11 +120,10 @@ static void tear_down(void *data)
 
 SUITE(liveness)
 
-static void apply_cb(struct raft_apply *req, int status, void *result)
+static void apply_cb(struct raft_apply *req, int status)
 {
-    (void)status;
-    (void)result;
-    free(req);
+	(void)status;
+	free(req);
 }
 
 /* The system makes progress even in case of network disruptions. */

@@ -511,7 +511,7 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 					struct raft_apply *apply =
 					    (struct raft_apply *)req;
 					if (apply->cb) {
-						apply->cb(apply, status, NULL);
+						apply->cb(apply, status);
 					}
 					break;
 				}
@@ -1556,10 +1556,9 @@ static int applyCommand(struct raft *r,
 			const struct raft_buffer *buf)
 {
 	struct raft_apply *req;
-	void *result;
 	int rv;
 
-	rv = r->fsm->apply(r->fsm, buf, &result);
+	rv = r->fsm->apply(r->fsm, buf);
 	if (rv != 0) {
 		return rv;
 	}
@@ -1574,7 +1573,7 @@ static int applyCommand(struct raft *r,
 	sm_move(&req->sm, REQUEST_COMPLETE);
 	sm_fini(&req->sm);
 	if (req->cb != NULL) {
-		req->cb(req, 0, result);
+		req->cb(req, 0);
 	}
 	return 0;
 }
@@ -1683,7 +1682,9 @@ static void takeSnapshotClose(struct raft *r, struct raft_snapshot *s)
 	}
 
 	configurationClose(&s->configuration);
-	r->fsm->snapshot_finalize(r->fsm, &s->bufs, &s->n_bufs);
+	r->fsm->snapshot_finalize(r->fsm, s->bufs, s->n_bufs);
+	s->bufs = NULL;
+	s->n_bufs = 0;
 }
 
 

@@ -92,11 +92,10 @@ TEST(replication, availability, setup, tear_down, 0, _params)
     return MUNIT_OK;
 }
 
-static void apply_cb(struct raft_apply *req, int status, void *result)
+static void apply_cb(struct raft_apply *req, int status)
 {
-    (void)status;
-    (void)result;
-    free(req);
+	(void)status;
+	free(req);
 }
 
 /* If no quorum is available, entries don't get committed. */
