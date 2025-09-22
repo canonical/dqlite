@@ -15,7 +15,7 @@
 struct fsmDatabaseSnapshot {
 	sqlite3 *conn;
 	struct raft_buffer header;
-	struct vfsSnapshot files;
+	struct vfsSnapshot content;
 };
 
 struct fsmSnapshot {
@@ -222,17 +222,9 @@ static int decodeDatabase(const struct registry *r,
 	cursor->p += header.main_size;
 
 	*snapshot = (struct vfsSnapshot) {
-		.main = {
-			.page_count = (size_t)header.main_size / page_size,
-			.page_size = page_size,
-			.pages = pages,
-		},
-		// FIXME this breaks compatibility with very old dqlite 1.17.x (the one before shallow snapshot got in)
-		.wal = {
-			.page_count = 0,
-			.page_size = page_size,
-			.pages = NULL,
-		}
+		.page_count = header.main_size / page_size,
+		.page_size = page_size,
+		.pages = pages,
 	};
 	*filename = header.filename;
 
@@ -313,7 +305,7 @@ static int snapshotDatabase(struct db *db, struct fsmDatabaseSnapshot *snapshot)
 		tracef("checkpoint failed: %d", rv);
 	}
 
-	rv = VfsAcquireSnapshot(snapshot->conn, &snapshot->files);
+	rv = VfsAcquireSnapshot(snapshot->conn, &snapshot->content);
 	/* I think this can be an assert. */
 	if (rv != SQLITE_OK) {
 		sqlite3_close(snapshot->conn);
@@ -325,14 +317,14 @@ static int snapshotDatabase(struct db *db, struct fsmDatabaseSnapshot *snapshot)
 
 	const struct snapshotDatabase header = {
 		.filename = db->filename,
-		.main_size = snapshot->files.main.page_count * snapshot->files.main.page_size,
-		.wal_size = snapshot->files.wal.page_count * snapshot->files.wal.page_size,
+		.main_size = snapshot->content.page_count * snapshot->content.page_size,
+		.wal_size = 0,
 	};
 
 	const size_t header_size = snapshotDatabase__sizeof(&header);
 	void *header_buffer = raft_malloc(header_size);
 	if (header_buffer == NULL) {
-		VfsReleaseSnapshot(snapshot->conn, &snapshot->files);
+		VfsReleaseSnapshot(snapshot->conn, &snapshot->content);
 		sqlite3_close(snapshot->conn);
 		return RAFT_NOMEM;
 	}
@@ -390,8 +382,7 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 		}
 
 		buffer_count += 1 /* For the database header */ +
-				databases[i].files.main.page_count +
-				databases[i].files.wal.page_count;
+				databases[i].content.page_count;
 		i++;
 	}
 
@@ -411,24 +402,13 @@ static int fsm__snapshot(struct raft_fsm *fsm,
 		buffers[buff_i] = databases[i].header;
 		buff_i++;
 
-		assert((buff_i + databases[i].files.main.page_count) <=
+		assert((buff_i + databases[i].content.page_count) <=
 		       buffer_count);
-		for (unsigned j = 0; j < databases[i].files.main.page_count;
+		for (unsigned j = 0; j < databases[i].content.page_count;
 		     j++) {
 			buffers[buff_i] = (struct raft_buffer){
-				.base = databases[i].files.main.pages[j],
-				.len = databases[i].files.main.page_size,
-			};
-			buff_i++;
-		}
-
-		assert((buff_i + databases[i].files.wal.page_count) <=
-		       buffer_count);
-		for (unsigned j = 0; j < databases[i].files.wal.page_count;
-		     j++) {
-			buffers[buff_i] = (struct raft_buffer){
-				.base = databases[i].files.wal.pages[j],
-				.len = databases[i].files.wal.page_size,
+				.base = databases[i].content.pages[j],
+				.len = databases[i].content.page_size,
 			};
 			buff_i++;
 		}
@@ -447,7 +427,7 @@ err:
 		if (databases[i].conn != NULL) {
 			raft_free(databases[i].header.base);
 			VfsReleaseSnapshot(databases[i].conn,
-					   &databases[i].files);
+					   &databases[i].content);
 			sqlite3_close(databases[i].conn);
 		}
 	}
@@ -473,7 +453,7 @@ static int fsm__snapshot_finalize(struct raft_fsm *fsm,
 		if (f->snapshot.databases[i].conn != NULL) {
 			raft_free(f->snapshot.databases[i].header.base);
 			VfsReleaseSnapshot(f->snapshot.databases[i].conn,
-					   &f->snapshot.databases[i].files);
+					   &f->snapshot.databases[i].content);
 			sqlite3_close(f->snapshot.databases[i].conn);
 		}
 	}
@@ -512,7 +492,7 @@ static int fsm__restore(struct raft_fsm *fsm, struct raft_buffer *buf)
 			return rv;
 		}
 		rv = restoreDatabase(f->registry, filename, &snapshot);
-		raft_free(snapshot.main.pages);
+		raft_free(snapshot.pages);
 		if (rv != RAFT_OK) {
 			tracef("restore failed");
 			return rv;

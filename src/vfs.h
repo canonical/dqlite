@@ -41,15 +41,10 @@ int VfsAbort(sqlite3 *conn);
 /* Performs a controlled checkpoint on conn */
 int VfsCheckpoint(sqlite3 *conn, unsigned int threshold);
 
-struct vfsSnapshotFile {
+struct vfsSnapshot {
 	void **pages;
 	size_t page_count;
 	size_t page_size;
-};
-
-struct vfsSnapshot {
-	struct vfsSnapshotFile main;
-	struct vfsSnapshotFile wal;
 };
 
 /* Acquires a snapshot from the connection conn. The snapshot wil be valid until
