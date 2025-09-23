@@ -222,7 +222,7 @@ static int decodeDatabase(const struct registry *r,
 	cursor->p += header.main_size;
 
 	*snapshot = (struct vfsSnapshot) {
-		.page_count = header.main_size / page_size,
+		.page_count = page_count,
 		.page_size = page_size,
 		.pages = pages,
 	};

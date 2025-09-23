@@ -60,3 +60,71 @@ jobs:
       uses: codecov/codecov-action@v5
       with:
         verbose: true
+  
+  crossbuild:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - i386
+          - arm64
+          - armhf
+          - ppc64el
+          - riscv64
+          - s390x
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - name: Set up cross-compilation for ${{ matrix.arch }}
+      if: ${{ matrix.arch != 'i386' }}
+      env:
+        ARCH: ${{ matrix.arch }}
+      run: |
+        set -e
+        NATIVE_ARCH=$(dpkg --print-architecture)
+        UBUNTU_CODENAME=$(lsb_release -cs)
+
+        # Replace default sources with an arch-specific one
+        sudo rm /etc/apt/sources.list.d/*
+
+        sudo tee "/etc/apt/sources.list.d/ubuntu-native.sources" <<EOF
+        Types: deb
+        URIs: http://archive.ubuntu.com/ubuntu
+        Suites: ${UBUNTU_CODENAME} ${UBUNTU_CODENAME}-updates ${UBUNTU_CODENAME}-backports
+        Components: main restricted universe multiverse
+        Architectures: ${NATIVE_ARCH}
+        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+        Types: deb
+        URIs: http://security.ubuntu.com/ubuntu
+        Suites: ${UBUNTU_CODENAME}-security
+        Components: main restricted universe multiverse
+        Architectures: ${NATIVE_ARCH}
+        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+        EOF
+
+        # Add the ports repository for the foreign architecture
+        sudo tee "/etc/apt/sources.list.d/ubuntu-ports-$ARCH.sources" <<EOF
+        Types: deb
+        URIs: http://ports.ubuntu.com/ubuntu-ports
+        Suites: ${UBUNTU_CODENAME} ${UBUNTU_CODENAME}-updates ${UBUNTU_CODENAME}-backports ${UBUNTU_CODENAME}-security
+        Components: main restricted universe multiverse
+        Architectures: $ARCH
+        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+        EOF
+    - name: Set up dependencies
+      env:
+        ARCH: ${{ matrix.arch }}
+      run: |
+        set -e
+        sudo dpkg --add-architecture $ARCH
+        sudo apt update
+        sudo apt install -y crossbuild-essential-$ARCH libsqlite3-dev libsqlite3-dev:$ARCH liblz4-dev liblz4-dev:$ARCH libuv1-dev libuv1-dev:$ARCH \
+                            linux-libc-dev:$ARCH xfslibs-dev:$ARCH lcov pkg-config libtool-bin
+    - name: Build dqlite
+      env:
+        ARCH: ${{ matrix.arch }}
+      run: |
+          autoreconf -i
+          ./configure --host=$(dpkg-architecture -a $ARCH -qDEB_HOST_GNU_TYPE 2>/dev/null)
+          make -j$(nproc) all check-norun
