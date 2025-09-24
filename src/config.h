@@ -2,25 +2,24 @@
 #define CONFIG_H_
 
 #include "logger.h"
+#include "vfs.h"
 
 /**
  * Value object holding dqlite configuration.
  */
 struct config {
-	dqlite_node_id id;             /* Unique instance ID */
-	char *address;                 /* Instance address */
-	unsigned heartbeat_timeout;    /* In milliseconds */
-	unsigned busy_timeout;         /* In milliseconds */
-	unsigned page_size;            /* Database page size */
-	unsigned checkpoint_threshold; /* In outstanding WAL frames */
-	struct logger logger;          /* Custom logger */
-	char name[256];                /* VFS/replication registriatio name */
+	dqlite_node_id id;                 /* Unique instance ID */
+	char *address;                     /* Instance address */
+	unsigned heartbeat_timeout;        /* In milliseconds */
+	unsigned busy_timeout;             /* In milliseconds */
+	struct vfsConfig vfs;              /* VFS configuration */
+	struct logger logger;              /* Custom logger */
 	unsigned long long failure_domain; /* User-provided failure domain */
 	unsigned long long int weight;     /* User-provided node weight */
 	char raft_dir[1024];               /* Directory used by raft */
 	int voters;                        /* Target number of voters */
 	int standbys;                      /* Target number of standbys */
-	unsigned pool_thread_count;    /* Number of threads in thread pool */
+	unsigned pool_thread_count; /* Number of threads in thread pool */
 };
 
 /**
