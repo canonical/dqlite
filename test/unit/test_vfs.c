@@ -152,8 +152,6 @@ static void *__buf_page_2(void)
 		munit_assert_int(exec_rc, ==, SQLITE_OK);                   \
 	} while (0)
 
-/* Helper to open and initialize a database, setting the page size and
- * WAL mode. */
 static sqlite3 *test_db_open(void)
 {
 	sqlite3 *db;

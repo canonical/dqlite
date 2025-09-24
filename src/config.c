@@ -58,7 +58,7 @@ int config__init(struct config *c,
 	
 	unsigned vfs_id = atomic_fetch_add_explicit(&serial, 1, memory_order_relaxed);
 	int rv = snprintf(c->vfs.name, sizeof c->vfs.name, "dqlite-%u", vfs_id);
-	assert(rv < (int)(sizeof c->vfs.name));
+	assert(rv > 0 && rv < (int)(sizeof c->vfs.name));
 
 	snprintf(c->raft_dir, sizeof(c->raft_dir), "%s", (raft_dir != NULL) ? raft_dir : "");
 

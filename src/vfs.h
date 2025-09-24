@@ -6,7 +6,7 @@
 #include <stdint.h> /* for uint{32,64}_t */
 
 struct vfsConfig {
-	char name[256];                /* VFS/replication registriatio name */
+	char name[256];                /* VFS/replication registration name */
 	unsigned page_size;            /* Database page size */
 	unsigned checkpoint_threshold; /* In outstanding WAL frames */
 };
@@ -38,7 +38,8 @@ struct vfsTransaction {
  * return its content if so. */
 int VfsPoll(sqlite3 *conn, struct vfsTransaction *transaction);
 
-/* Append the given transaction to the WAL. */
+/* Append the given transaction to the WAL. It might attempt a checkpoint if the
+ * number of frames in the WAL exceedes the threshold */
 int VfsApply(sqlite3 *conn, const struct vfsTransaction *transaction);
 
 /* Cancel a pending transaction. */
