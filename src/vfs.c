@@ -1605,6 +1605,8 @@ static int vfsPragmaDeleteDatabase(struct vfsMainFile *f, char **fcntl)
 	return SQLITE_OK;
 }
 
+/* The support for the setter of this PRAGMA is necessary for backward
+ * compatibility. */
 static int vfsPragmaPageSize(struct vfsMainFile *f, char **fcntl)
 {
 	if (fcntl[2] == NULL) {
