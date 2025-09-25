@@ -2520,7 +2520,7 @@ static int vfsOpenHook(sqlite3 *db,
 	sqlite3_file *file = NULL;
 	int rv = sqlite3_file_control(db, NULL, SQLITE_FCNTL_FILE_POINTER, &file);
 	assert(rv == SQLITE_OK);
-	if (file->pMethods->xRead != vfsMainFileRead) {
+	if (file->pMethods == NULL || file->pMethods->xRead != vfsMainFileRead) {
 		/* Not this vfs. */
 		return SQLITE_OK;
 	}

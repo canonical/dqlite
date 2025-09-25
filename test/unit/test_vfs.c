@@ -1585,3 +1585,29 @@ TEST(VfsIntegration, checkpoint, setUp, tearDown, 0, NULL)
 
 	return SQLITE_OK;
 }
+
+/* Check that the VFS does not interfere with normal sqlite execution */
+TEST(VfsIntegration, sqlite, setUp, tearDown, 0, NULL)
+{
+	(void)data;
+	(void)params;
+
+	const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXRESCODE | SQLITE_OPEN_DELETEONCLOSE;
+
+	const char *filenames[] = {
+		"/tmp/dqlite-test-normal-sqlite",
+		"", /* temp db */
+		":memory:", /* in-memory db*/
+		NULL,
+	};
+
+	for (int i = 0; filenames[i]; i++) {
+		sqlite3 *db;
+		int rc = sqlite3_open_v2(filenames[i], &db, flags, NULL);
+		munit_assert_int(rc, ==, SQLITE_OK);
+		EXEC(db, "CREATE TABLE asd(i)");
+		sqlite3_close(db);
+	}
+
+	return SQLITE_OK;
+}
