@@ -629,7 +629,7 @@ TEST_CASE(prepare, barrier_error, NULL)
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
 	
-	/* Make sure all database require reading the last index. */
+	/* Make sure all databases require reading the last index. */
 	queue *item;
 	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
 		struct db *db = QUEUE_DATA(item, struct db, queue);
@@ -1305,7 +1305,7 @@ TEST_CASE(exec, barrier_error, NULL)
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
 
-	/* Make sure all database require reading the last index. */
+	/* Make sure all databases require reading the last index. */
 	queue *item;
 	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
 		struct db *db = QUEUE_DATA(item, struct db, queue);
@@ -2014,7 +2014,7 @@ TEST_CASE(query, barrier_error, NULL)
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
 
-	/* Make sure all database require reading the last index. */
+	/* Make sure all databases require reading the last index. */
 	queue *item;
 	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
 		struct db *db = QUEUE_DATA(item, struct db, queue);
@@ -2372,7 +2372,7 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
 
-	/* Make sure all database require reading the last index. */
+	/* Make sure all databases require reading the last index. */
 	queue *item;
 	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
 		struct db *db = QUEUE_DATA(item, struct db, queue);
@@ -3049,7 +3049,7 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
 
-	/* Make sure all database require reading the last index. */
+	/* Make sure all databases require reading the last index. */
 	queue *item;
 	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
 		struct db *db = QUEUE_DATA(item, struct db, queue);
