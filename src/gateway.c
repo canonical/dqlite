@@ -519,7 +519,7 @@ static void handle_exec_work_cb(struct exec *exec)
 	int rv = g->raft->io->async_work(g->raft->io, &g->work, exec_work_done);
 	if (rv != RAFT_OK) {
 		leader_exec_result(exec, rv);
-		TAIL return leader_exec_resume(exec);
+		return leader_exec_resume(exec);
 	}
 }
 
@@ -747,12 +747,12 @@ static void handle_query_work_cb(struct exec *exec)
 	if (req->cancellation_requested) {
 		/* Nothing else to do. */
 		sqlite3_reset(exec->stmt);
-		TAIL return leader_exec_resume(exec);
+		return leader_exec_resume(exec);
 	}
 
 	if (!is_statement_empty(exec->leader->conn, exec->tail)) {
 		leader_exec_result(exec, RAFT_ERROR);
-		TAIL return leader_exec_resume(exec);
+		return leader_exec_resume(exec);
 	}
 
 	exec->tail = NULL;
@@ -764,7 +764,7 @@ static void handle_query_work_cb(struct exec *exec)
 	int rv = g->raft->io->async_work(g->raft->io, &g->work, query_work_done);
 	if (rv != RAFT_OK) {
 		leader_exec_result(exec, rv);
-		TAIL return leader_exec_resume(exec);
+		return leader_exec_resume(exec);
 	}
 }
 
