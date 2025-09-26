@@ -39,7 +39,16 @@ static int progress_abort(void *db) {
  * index. */
 static bool exec_needs_barrier(struct leader *l)
 {
-	return raft_last_applied(l->raft) < raft_last_index(l->raft);
+	if (sqlite3_txn_state(l->conn, NULL) != SQLITE_TXN_NONE) {
+		/* If a transaction is already in progress, there is little
+		 * benefit in submitting a barrier as the read mark is already
+		 * set. */
+		return false;
+	}
+	if (l->db->read_index == 0) {
+		l->db->read_index = raft_last_index(l->raft);
+	}
+	return l->db->read_index > raft_last_applied(l->raft);
 }
 
 int leader__init(struct leader *l, struct db *db, struct raft *raft)
@@ -551,7 +560,7 @@ static void exec_tick(struct exec *req)
 				continue;
 			}
 		case EXEC_WAITING_APPLY:
-			if (req->status != 0) {
+			if (req->status != RAFT_OK) {
 				int rv = VfsAbort(leader->conn);
 				assert(rv == SQLITE_OK);
 			}
@@ -632,6 +641,9 @@ static void exec_apply_cb(struct raft_apply *apply, int status)
 	struct leader *leader = req->leader;
 	PRE(leader != NULL);
 	leader_trace(leader, "query applied (status=%d)", status);
+	if (status == RAFT_OK) {
+		leader->db->read_index = apply->index;
+	}
 
 	PRE(sm_state(&req->sm) == EXEC_WAITING_APPLY);
 	// FIXME(marco6): inspect how to always return RAFT_* from this

@@ -628,6 +628,13 @@ TEST_CASE(prepare, barrier_error, NULL)
 	raft_fixture_append_fault(&f->cluster, 0, 0);
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
+	
+	/* Make sure all databases require reading the last index. */
+	queue *item;
+	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
+		struct db *db = QUEUE_DATA(item, struct db, queue);
+		db->read_index = faulty_barrier.index;
+	}
 
 	f->request.db_id = 0;
 	f->request.sql = "SELECT 1";
@@ -1297,6 +1304,13 @@ TEST_CASE(exec, barrier_error, NULL)
 	raft_fixture_append_fault(&f->cluster, 0, 0);
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
+
+	/* Make sure all databases require reading the last index. */
+	queue *item;
+	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
+		struct db *db = QUEUE_DATA(item, struct db, queue);
+		db->read_index = faulty_barrier.index;
+	}
 
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
@@ -2000,6 +2014,13 @@ TEST_CASE(query, barrier_error, NULL)
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
 
+	/* Make sure all databases require reading the last index. */
+	queue *item;
+	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
+		struct db *db = QUEUE_DATA(item, struct db, queue);
+		db->read_index = faulty_barrier.index;
+	}
+
 	f->request.db_id = 0;
 	f->request.stmt_id = stmt_id;
 	ENCODE(&f->request, query);
@@ -2350,6 +2371,13 @@ TEST_CASE(exec_sql, barrier_error, NULL)
 	raft_fixture_append_fault(&f->cluster, 0, 0);
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
+
+	/* Make sure all databases require reading the last index. */
+	queue *item;
+	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
+		struct db *db = QUEUE_DATA(item, struct db, queue);
+		db->read_index = faulty_barrier.index;
+	}
 
 	f->request.db_id = 0;
 	f->request.sql = "CREATE TABLE test (n INT)";
@@ -3020,6 +3048,13 @@ TEST_CASE(query_sql, barrier_error, NULL)
 	raft_fixture_append_fault(&f->cluster, 0, 0);
 	int rv = raft_barrier(CLUSTER_RAFT(0), &faulty_barrier, barrierCb);
 	munit_assert_int(rv, ==, 0);
+
+	/* Make sure all databases require reading the last index. */
+	queue *item;
+	QUEUE_FOREACH(item, &f->servers[0].registry.dbs) {
+		struct db *db = QUEUE_DATA(item, struct db, queue);
+		db->read_index = faulty_barrier.index;
+	}
 
 	f->request.db_id = 0;
 	f->request.sql = "SELECT n FROM test";

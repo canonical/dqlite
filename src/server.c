@@ -14,9 +14,11 @@
 #include "fsm.h"
 #include "lib/addr.h"
 #include "lib/assert.h"
+#include "lib/queue.h"
 #include "lib/threadpool.h"
 #include "logger.h"
 #include "protocol.h"
+#include "raft.h"
 #include "roles.h"
 #include "tracing.h"
 #include "translate.h"
@@ -42,8 +44,19 @@ static void state_cb(struct raft *r,
 		queue *head;
 		QUEUE_FOREACH(head, &d->conns)
 		{
-			struct conn *conn = QUEUE_DATA(head, struct conn, queue);
+			struct conn *conn =
+			    QUEUE_DATA(head, struct conn, queue);
 			conn__on_leadership_lost(conn);
+		}
+	} else if (old_state != RAFT_LEADER && new_state == RAFT_LEADER) {
+		/* Invalidate read index for all databases, so that they will
+		 * wait for the leader to have all entries applied before
+		 * reading. */
+		queue *head;
+		QUEUE_FOREACH(head, &d->registry.dbs)
+		{
+			struct db *db = QUEUE_DATA(head, struct db, queue);
+			db->read_index = 0;
 		}
 	}
 }
