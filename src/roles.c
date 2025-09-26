@@ -565,8 +565,8 @@ static void handoverVoterAfterWorkCb(uv_work_t *work, int status)
 static void handoverVoterCb(struct polling *polling)
 {
 	struct dqlite_node *node;
-	raft_id leader_id;
-	const char *borrowed_addr;
+	raft_id leader_id = 0;
+	const char *borrowed_addr = NULL;
 	char *leader_addr;
 	struct compare_data voter_compare = {0};
 	unsigned i;
