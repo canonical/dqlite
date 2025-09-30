@@ -488,7 +488,7 @@ TEST(replication, barriers, setUp, tearDown, 0, NULL)
 	/* Right after becoming a leader, the node needs to append a barrier
 	 * before being able to append new items. Make sure that executing a SQL
 	 * statement will not issue another barrier, but will wait for the cluster
-	 * to apply the barrier. */
+	 * to apply that barrier. */
 	struct raft *r = raft_fixture_get(&f->cluster, 0);
 	int last_index = raft_last_index(r);
 	munit_assert_int(raft_last_applied(r), <, last_index);
@@ -498,8 +498,10 @@ TEST(replication, barriers, setUp, tearDown, 0, NULL)
 	munit_assert_int(raft_last_index(r), ==, last_index);
 	munit_assert_int(raft_last_applied(r), ==, last_index);
 
-
-	/* Insert an empty command */
+	/* Insert a custom barrier in the log. It is then possible to check if
+	 * any command issues a real barrier because then the custom one will be
+	 * awaited. If the custom barrier didn't complete it means no query
+	 * issued another barrier. */
 	bool barrier_done = false;
 	struct raft_barrier barrier = {
 		.data = &barrier_done,
