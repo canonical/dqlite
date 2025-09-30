@@ -892,7 +892,7 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 	struct iocb iocb = {
 		.aio_lio_opcode = IOCB_CMD_PWRITE,
 		.aio_fildes = (__u32)fd,
-		.aio_buf = (__u64)buf,
+		.aio_buf = (__u64)(uintptr_t)buf,
 		.aio_nbytes = (__u64)size,
 		.aio_rw_flags = RWF_NOWAIT,
 	};
