@@ -166,8 +166,11 @@ int UvFsFileIsEmpty(const char *dir,
  * this flow to suceed.
  *
  * This is special as in the case of XFS, `O_DSYNC` is problematic when used in
- * conjunction with libaio as it fails to be non blocking because it needs to
- * also update the file metadata (the ctime and mtime fields).
+ * conjunction with libaio as it fails to be non blocking because it will also
+ * update the file metadata (the ctime and mtime fields) unlike in other
+ * filesystems. Updating metadata has to be done synchronously and makes async IO
+ * fail on XFS. Dqlite only needs to perform a fdatasync to work correctly which
+ * is why we need to disable metadata writing on XFS.
  *
  * As of Linux 6.17, there is no userland way to properly control this
  * behaviour, but there is a comment around FMODE_NOCMTIME that gives
@@ -1007,7 +1010,6 @@ int UvFsProbeCapabilities(const char *dir,
 		*async = false;
 		goto out;
 	}
-	fprintf(stderr, "probing aio with: %d\n", fd);
 	rv = probeAsyncIO(fd, *direct, async, errmsg);
 	if (rv != 0) {
 		ErrMsgWrapf(errmsg, "probe Async I/O");
