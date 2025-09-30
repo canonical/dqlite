@@ -161,12 +161,12 @@ int UvFsFileIsEmpty(const char *dir,
 
 /* Reopens a file descriptor with FMODE_NOCMTIME flag on for XFS. Given that if
  * this fails the worst thing happening is going back to the thread pool, errors
- * here are ignored and the reopening just dosn't happen. This will likely be
+ * here are ignored and the reopening just doesn't happen. This will likely be
  * the case, given that (as of Linux 6.17) SYS_ADMIN capability is required for
  * this flow to suceed.
  *
  * This is special as in the case of XFS, `O_DSYNC` is problematic when used in
- * conjunction with libaio as it fail to be non blocking because it needs to
+ * conjunction with libaio as it fails to be non blocking because it needs to
  * also update the file metadata (the ctime and mtime fields).
  *
  * As of Linux 6.17, there is no userland way to properly control this
