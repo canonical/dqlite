@@ -486,7 +486,7 @@ TEST(replication, barriers, setUp, tearDown, 0, NULL)
 	CLUSTER_ELECT(0);
 
 	/* Right after becoming a leader, the node needs to append a barrier
-	 * before being able to append new items. Make sure that executin an SQL
+	 * before being able to append new items. Make sure that executing a SQL
 	 * statement will not issue another barrier, but will wait for the cluster
 	 * to apply the barrier. */
 	struct raft *r = raft_fixture_get(&f->cluster, 0);
