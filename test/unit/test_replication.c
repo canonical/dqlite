@@ -495,6 +495,7 @@ TEST(replication, barriers, setUp, tearDown, 0, NULL)
 	PREPARE(0, "SELECT 1");
 	EXEC(0);
 	munit_assert_int(raft_last_index(r), ==, last_index);
+	munit_assert_int(raft_last_applied(r), ==, last_index);
 
 
 	/* Insert an empty command */
