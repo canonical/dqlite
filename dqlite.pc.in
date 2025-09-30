@@ -7,5 +7,5 @@ Name: dqlite
 Description: Distributed SQLite engine
 Version:  @PACKAGE_VERSION@
 Libs: -L${libdir} -ldqlite
-Libs.private: @SQLITE_LIBS@ @UV_LIBS@
+Libs.private: @SQLITE_LIBS@ @UV_LIBS@ @LZ4_LIBS@
 Cflags: -I${includedir}
