@@ -494,6 +494,7 @@ TEST(replication, barriers, setUp, tearDown, 0, NULL)
 	munit_assert_int(raft_last_applied(r), <, last_index);
 	PREPARE(0, "SELECT 1");
 	EXEC(0);
+	FINALIZE;
 	munit_assert_int(raft_last_index(r), ==, last_index);
 	munit_assert_int(raft_last_applied(r), ==, last_index);
 
@@ -508,11 +509,13 @@ TEST(replication, barriers, setUp, tearDown, 0, NULL)
 	/* Read transactions do not need a barrier */
 	PREPARE(0, "SELECT 1");
 	EXEC(0);
+	FINALIZE;
 	munit_assert_false(barrier_done);
 
 	/* Write transactions do not need a barrier, too */
 	PREPARE(0, "BEGIN IMMEDIATE");
 	EXEC(0);
+	FINALIZE;
 	munit_assert_false(barrier_done);
 
 	raft_fixture_step_until(&f->cluster, barrierDone, &barrier_done, 1000);
