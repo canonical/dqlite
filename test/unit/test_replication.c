@@ -185,7 +185,10 @@ struct exec_fixture {
 
 static void fixture_exec_work_cb(struct exec *req)
 {
-	int rv = sqlite3_step(req->stmt);
+	int rv = SQLITE_ROW;
+	while (rv == SQLITE_ROW) {
+		rv = sqlite3_step(req->stmt);
+	}
 	sqlite3_reset(req->stmt);
 
 	if (rv == SQLITE_DONE) {
@@ -419,6 +422,7 @@ static void fixture_exec(struct fixture *f, unsigned i)
 	raft_fixture_step_until(&f->cluster, executed, NULL, 1000);
 }
 
+
 TEST(replication, exec, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
@@ -458,6 +462,69 @@ TEST(replication, exec, setUp, tearDown, 0, NULL)
 
 	return MUNIT_OK;
 }
+
+static void barrierCb(struct raft_barrier *req, int status) {
+	munit_assert_int(status, ==, RAFT_OK);
+	bool *barrier_done = req->data;
+	*barrier_done = true;
+}
+
+static bool barrierDone(struct raft_fixture *f, void *arg) {
+	(void)f;
+	bool *barrier_done = arg;
+	return *barrier_done;
+}
+
+/* Make sure that no barrier is ever issued for a write transaction. */
+TEST(replication, barriers, setUp, tearDown, 0, NULL)
+{
+	struct fixture *f = data;
+
+	/* Make sure work is faster than applying a barrier */
+	raft_fixture_set_work_duration(&f->cluster, 0, 0);
+
+	CLUSTER_ELECT(0);
+
+	/* Right after becoming a leader, the node needs to append a barrier
+	 * before being able to append new items. Make sure that executing a SQL
+	 * statement will not issue another barrier, but will wait for the cluster
+	 * to apply that barrier. */
+	struct raft *r = raft_fixture_get(&f->cluster, 0);
+	int last_index = raft_last_index(r);
+	munit_assert_int(raft_last_applied(r), <, last_index);
+	PREPARE(0, "SELECT 1");
+	EXEC(0);
+	FINALIZE;
+	munit_assert_int(raft_last_index(r), ==, last_index);
+	munit_assert_int(raft_last_applied(r), ==, last_index);
+
+	/* Insert a custom barrier in the log. It is then possible to check if
+	 * any command issues a real barrier because then the custom one will be
+	 * awaited. If the custom barrier didn't complete it means no query
+	 * issued another barrier. */
+	bool barrier_done = false;
+	struct raft_barrier barrier = {
+		.data = &barrier_done,
+	};
+	raft_barrier(CLUSTER_RAFT(0), &barrier, barrierCb);
+
+	/* Read transactions do not need a barrier */
+	PREPARE(0, "SELECT 1");
+	EXEC(0);
+	FINALIZE;
+	munit_assert_false(barrier_done);
+
+	/* Write transactions do not need a barrier, too */
+	PREPARE(0, "BEGIN IMMEDIATE");
+	EXEC(0);
+	FINALIZE;
+	munit_assert_false(barrier_done);
+
+	raft_fixture_step_until(&f->cluster, barrierDone, &barrier_done, 1000);
+
+	return MUNIT_OK;
+}
+
 
 /* If the WAL size grows beyond the configured threshold, checkpoint it. */
 TEST(replication, checkpoint, setUp, tearDown, 0, NULL)

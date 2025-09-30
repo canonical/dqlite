@@ -27,23 +27,26 @@ static uint32_t str_hash(const char* name)
 int db__init(struct db *db, struct config *config, const char *filename)
 {
 	tracef("db init filename=`%s'", filename);
-
-	db->config = config;
-	db->vfs = sqlite3_vfs_find(config->vfs.name);
-	if (db->vfs == NULL) {
+	
+	sqlite3_vfs *vfs = sqlite3_vfs_find(config->vfs.name);
+	if (vfs == NULL) {
 		return DQLITE_MISUSE;
 	}
-	db->cookie = str_hash(filename);
-	db->filename = sqlite3_malloc((int)(strlen(filename) + 1));
-	if (db->filename == NULL) {
+
+	char *db_filename = sqlite3_malloc((int)(strlen(filename) + 1));
+	if (db_filename == NULL) {
 		return DQLITE_NOMEM;
 	}
-	strcpy(db->filename, filename);
+	strcpy(db_filename, filename);
 
-	db->active_leader = NULL;
+	*db = (struct db) {
+		.config = config,
+		.vfs = vfs,
+		.filename = db_filename,
+		.cookie = str_hash(filename),
+	};
 	queue_init(&db->pending_queue);
-	db->leaders = 0;
-	return 0;
+	return DQLITE_OK;
 }
 
 void db__close(struct db *db)
