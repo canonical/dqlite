@@ -1,15 +1,26 @@
-#include "uv_fs.h"
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE
+#endif
 
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/vfs.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "assert.h"
 #include "compress.h"
 #include "err.h"
 #include "heap.h"
+#include "uv_fs.h"
 #include "uv_os.h"
+
+
+#ifdef HAVE_XFS_XFS_H
+# include <xfs/xfs.h> 
+# include <linux/magic.h> 
+#endif
 
 #define UV__FS_PROBE_FILE ".probe"
 #define UV__FS_PROBE_FILE_SIZE 4096
@@ -148,6 +159,99 @@ int UvFsFileIsEmpty(const char *dir,
 	return 0;
 }
 
+/* Reopens a file descriptor with FMODE_NOCMTIME flag on for XFS.
+ *
+ * This is needed because XFS does not work correctly with async I/O when using
+ * O_DSYNC: unlike other filesystems, it also updates metadata (ctime/mtime)
+ * synchronously, which breaks async behavior. Disabling metadata updates allows
+ * dqlite to use fdatasync as intended.
+ *
+ * TODO: remove this hack if/when we get `O_CMTIME` flag.
+ */
+static int uvXfsMaybeReopen(int fd, const char *dir, int flags)
+{
+	/* Given that if this fails the worst thing happening is going back to
+	 * the thread pool, errors here are ignored and the reopening just
+	 * doesn't happen. This will likely be the case, given that (as of
+	 * Linux 6.17) SYS_ADMIN capability is required for this flow to suceed.
+	 *
+	 * As of Linux 6.17, there is no userland way to properly control this
+	 * behaviour, but there is a comment around FMODE_NOCMTIME that gives
+	 * some insight (linux/fs.h):
+	 *
+	 *    Don't update ctime and mtime.
+	 *
+	 *    Currently a special hack for the XFS open_by_handle ioctl, but
+	 *    we'll hopefully graduate it to a proper O_CMTIME flag supported
+	 *    by open(2) soon.
+	 *
+	 * Which points to the idea that it is possible to opt-out this
+	 * behaviour using the syscall `open_by_handle_at` that, as a hack, will
+	 * set the internal FMODE_NOCMTIME flag to suppress this behaviour.
+	 *
+	 * See the linux kernel functions:
+	 *  - xfs_file_write_checks
+	 *  - kiocb_modified
+	 *  - file_modified_flags
+	 * for a rational on the checks and:
+	 *  - xfs_open_by_handle
+	 * for the mentioned hack.
+	 */
+#ifdef HAVE_XFS_XFS_H
+	/* Only for synchronized I/O */
+	if (!(flags & O_DSYNC)) {
+		return fd;
+	}
+
+	/* Fix for xfs */
+	struct statfs fs_info;
+	if (fstatfs(fd, &fs_info) == -1) {
+		return fd;
+	}
+
+	if (fs_info.f_type != XFS_SUPER_MAGIC) {
+		return fd;
+	}
+
+	/* Open the containing directory. */
+	int dirfd = open(dir, O_RDONLY);
+	if (dirfd < 0) {
+		return fd;
+	}
+
+    xfs_handle_t handle = {};
+    __u32 handle_length = sizeof(handle);
+	xfs_fsop_handlereq_t req = {
+		.fd = (unsigned)fd,
+	    .ohandle = &handle,
+	    .ohandlen = &handle_length, 
+	};
+
+	int rv = ioctl(dirfd, XFS_IOC_FD_TO_HANDLE, &req);
+	if (rv != 0) {
+		close(dirfd);
+		return fd;
+	}
+	
+	req = (xfs_fsop_handlereq_t){
+	    .ihandle = &handle,
+	    .ihandlen = handle_length,
+        .oflags = (__u32)(flags & ~(O_CREAT | O_EXCL)),
+	};
+	int new_fd = ioctl(dirfd, XFS_IOC_OPEN_BY_HANDLE, &req);
+	close(dirfd);
+	if (new_fd < 0) {
+		return fd;
+	}
+	close(fd);
+	return new_fd;
+#else
+	(void)dir;
+	(void)flags;
+	return fd;
+#endif
+}
+
 /* Open a file in a directory. */
 static int uvFsOpenFile(const char *dir,
 			const char *filename,
@@ -167,6 +271,9 @@ static int uvFsOpenFile(const char *dir,
 		UvOsErrMsg(errmsg, "open", rv);
 		return RAFT_IOERR;
 	}
+
+	*fd = uvXfsMaybeReopen(*fd, dir, flags);
+
 	return 0;
 }
 
@@ -195,7 +302,9 @@ int UvFsAllocateFile(const char *dir,
 		     char *errmsg)
 {
 	char path[UV__PATH_SZ];
-	int flags = O_WRONLY | O_CREAT | O_EXCL; /* Common open flags */
+	/* TODO: use RWF_DSYNC instead, if available. */
+	const int create_flags = O_CREAT | O_EXCL;
+	const int open_flags = O_WRONLY | O_DSYNC; /* Common open flags */
 	int rv = 0;
 
 	rv = UvOsJoin(dir, filename, path);
@@ -205,10 +314,8 @@ int UvFsAllocateFile(const char *dir,
 
 	/* Allocate the desired size. */
 	if (fallocate) {
-		/* TODO: use RWF_DSYNC instead, if available. */
-		flags |= O_DSYNC;
-		rv = uvFsOpenFile(dir, filename, flags, S_IRUSR | S_IWUSR, fd,
-				  errmsg);
+		rv = uvFsOpenFile(dir, filename, open_flags | create_flags,
+				  S_IRUSR | S_IWUSR, fd, errmsg);
 		if (rv != 0) {
 			goto err;
 		}
@@ -229,8 +336,9 @@ int UvFsAllocateFile(const char *dir,
 	} else {
 		/* Emulate fallocate, open without O_DSYNC, because we risk
 		 * doing a lot of synced writes. */
-		rv = uvFsOpenFile(dir, filename, flags, S_IRUSR | S_IWUSR, fd,
-				  errmsg);
+		rv = uvFsOpenFile(dir, filename,
+				  (open_flags | create_flags) & ~O_DSYNC,
+				  S_IRUSR | S_IWUSR, fd, errmsg);
 		if (rv != 0) {
 			goto err;
 		}
@@ -259,15 +367,14 @@ int UvFsAllocateFile(const char *dir,
 			goto err_unlink;
 		}
 		/* TODO: use RWF_DSYNC instead, if available. */
-		flags = O_WRONLY | O_DSYNC;
-		rv = uvFsOpenFile(dir, filename, flags, S_IRUSR | S_IWUSR, fd,
-				  errmsg);
+		rv = uvFsOpenFile(dir, filename, open_flags, S_IRUSR | S_IWUSR,
+				  fd, errmsg);
 		if (rv != 0) {
 			goto err_unlink;
 		}
 	}
 
-	return 0;
+	return RAFT_OK;
 
 err_after_open:
 	UvOsClose(*fd);
@@ -277,6 +384,7 @@ err:
 	assert(rv != 0);
 	return rv;
 }
+
 
 static int uvFsWriteFile(const char *dir,
 			 const char *filename,
@@ -761,9 +869,6 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 {
 	void *buf;                  /* Buffer to use for the probe write */
 	aio_context_t ctx = 0;      /* KAIO context handle */
-	struct iocb iocb;           /* KAIO request object */
-	struct iocb *iocbs = &iocb; /* Because the io_submit() API sucks */
-	struct io_event event;      /* KAIO response object */
 	int n_events;
 	int rv;
 
@@ -784,16 +889,16 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 	memset(buf, 0, size);
 
 	/* Prepare the KAIO request object */
-	memset(&iocb, 0, sizeof iocb);
-	iocb.aio_lio_opcode = IOCB_CMD_PWRITE;
-	*((void **)(&iocb.aio_buf)) = buf;
-	iocb.aio_nbytes = size;
-	iocb.aio_offset = 0;
-	iocb.aio_fildes = (uint32_t)fd;
-	iocb.aio_reqprio = 0;
-	iocb.aio_rw_flags |= RWF_NOWAIT | RWF_DSYNC;
+	struct iocb iocb = {
+		.aio_lio_opcode = IOCB_CMD_PWRITE,
+		.aio_fildes = (__u32)fd,
+		.aio_buf = (__u64)(uintptr_t)buf,
+		.aio_nbytes = (__u64)size,
+		.aio_rw_flags = RWF_NOWAIT,
+	};
 
 	/* Submit the KAIO request */
+	struct iocb *iocbs = &iocb; /* Because the io_submit() API sucks */
 	rv = UvOsIoSubmit(ctx, 1, &iocbs);
 	if (rv != 0) {
 		/* UNTESTED: in practice this should fail only with ENOMEM */
@@ -811,6 +916,7 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
 	}
 
 	/* Fetch the response: will block until done. */
+	struct io_event event = {}; /* KAIO response object */
 	n_events = UvOsIoGetevents(ctx, 1, 1, &event, NULL);
 	assert(n_events == 1);
 	if (n_events != 1) {

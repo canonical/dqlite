@@ -53,7 +53,7 @@ AM_CONDITIONAL(WITH_STATIC_DEPS, test "x$with_static_deps" = "xyes")
 AX_CODE_COVERAGE
 
 # Checks for header files.
-AC_CHECK_HEADERS([linux/io_uring.h linux/aio_abi.h])
+AC_CHECK_HEADERS([linux/io_uring.h linux/aio_abi.h xfs/xfs.h])
 
 # Checks for library functions and definitions.
 AC_CHECK_DECLS(RWF_NOWAIT, [], [AC_MSG_ERROR(Linux kernel >= 4.14 required.)], [#include <linux/aio_abi.h>])
