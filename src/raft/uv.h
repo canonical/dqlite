@@ -153,6 +153,13 @@ int uvSegmentKeepTrailing(struct uv *uv,
 			  size_t trailing,
 			  char *errmsg);
 
+/* Load all entries contained in an open segment. */
+int uvSegmentLoadOpen(struct uv *uv,
+			     struct uvSegmentInfo *info,
+			     struct raft_entry *entries[],
+			     size_t *n,
+			     raft_index *next_index);
+
 /* Load all entries contained in the given closed segment. */
 int uvSegmentLoadClosed(struct uv *uv,
 			struct uvSegmentInfo *segment,
