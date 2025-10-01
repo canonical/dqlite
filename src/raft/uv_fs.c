@@ -159,46 +159,46 @@ int UvFsFileIsEmpty(const char *dir,
 	return 0;
 }
 
-/* Reopens a file descriptor with FMODE_NOCMTIME flag on for XFS. Given that if
- * this fails the worst thing happening is going back to the thread pool, errors
- * here are ignored and the reopening just doesn't happen. This will likely be
- * the case, given that (as of Linux 6.17) SYS_ADMIN capability is required for
- * this flow to suceed.
+/* Reopens a file descriptor with FMODE_NOCMTIME flag on for XFS.
  *
- * This is special as in the case of XFS, `O_DSYNC` is problematic when used in
- * conjunction with libaio as it fails to be non blocking because it will also
- * update the file metadata (the ctime and mtime fields) unlike in other
- * filesystems. Updating metadata has to be done synchronously and makes async IO
- * fail on XFS. Dqlite only needs to perform a fdatasync to work correctly which
- * is why we need to disable metadata writing on XFS.
+ * This is needed because XFS does not work correctly with async I/O when using
+ * O_DSYNC: unlike other filesystems, it also updates metadata (ctime/mtime)
+ * synchronously, which breaks async behavior. Disabling metadata updates allows
+ * dqlite to use fdatasync as intended.
  *
- * As of Linux 6.17, there is no userland way to properly control this
- * behaviour, but there is a comment around FMODE_NOCMTIME that gives
- * some insight (linux/fs.h):
- *
- *    Don't update ctime and mtime.
- *
- *    Currently a special hack for the XFS open_by_handle ioctl, but
- *    we'll hopefully graduate it to a proper O_CMTIME flag supported
- *    by open(2) soon.
- *
- * Which points to the idea that it is possible to opt-out this
- * behaviour using the syscall `open_by_handle_at` that, as a hack, will
- * set the internal FMODE_NOCMTIME flag to suppress this behaviour.
- *
- * See the linux kernel functions:
- *  - xfs_file_write_checks
- *  - kiocb_modified
- *  - file_modified_flags
- * for a rational on the checks and:
- *  - xfs_open_by_handle
- * for the mentioned hack.
- *
- * TODO: remove this hack if/when we get `O_CMTIME` flag. */
+ * TODO: remove this hack if/when we get `O_CMTIME` flag.
+ */
 static int uvXfsMaybeReopen(int fd, const char *dir, int flags)
 {
+	/* Given that if this fails the worst thing happening is going back to
+	 * the thread pool, errors here are ignored and the reopening just
+	 * doesn't happen. This will likely be the case, given that (as of
+	 * Linux 6.17) SYS_ADMIN capability is required for this flow to suceed.
+	 *
+	 * As of Linux 6.17, there is no userland way to properly control this
+	 * behaviour, but there is a comment around FMODE_NOCMTIME that gives
+	 * some insight (linux/fs.h):
+	 *
+	 *    Don't update ctime and mtime.
+	 *
+	 *    Currently a special hack for the XFS open_by_handle ioctl, but
+	 *    we'll hopefully graduate it to a proper O_CMTIME flag supported
+	 *    by open(2) soon.
+	 *
+	 * Which points to the idea that it is possible to opt-out this
+	 * behaviour using the syscall `open_by_handle_at` that, as a hack, will
+	 * set the internal FMODE_NOCMTIME flag to suppress this behaviour.
+	 *
+	 * See the linux kernel functions:
+	 *  - xfs_file_write_checks
+	 *  - kiocb_modified
+	 *  - file_modified_flags
+	 * for a rational on the checks and:
+	 *  - xfs_open_by_handle
+	 * for the mentioned hack.
+	 */
 #ifdef HAVE_XFS_XFS_H
-	/* Only for direct I/O */
+	/* Only for synchronized I/O */
 	if (!(flags & O_DSYNC)) {
 		return fd;
 	}
