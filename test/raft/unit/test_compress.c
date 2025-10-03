@@ -79,7 +79,7 @@ static int compare_bufs(const struct raft_buffer *original,
 	return 0;
 }
 
-#define TEST_COMPRESS_IMPL(file, bufs, len, ...)                             \
+#define TEST_COMPRESS(file, bufs, len)                                       \
 	do {                                                                 \
 		int compress_rv = UvFsMakeCompressedFile(f->dir, file, bufs, \
 							 len, f->errmsg);    \
@@ -93,10 +93,6 @@ static int compare_bufs(const struct raft_buffer *original,
 		raft_free(decompressed.base);                                \
 	} while (0)
 
-#define TEST_COMPRESS(file, bufs, ...)                \
-	TEST_COMPRESS_IMPL(file, bufs, ##__VA_ARGS__, \
-			   (sizeof(bufs) / sizeof(bufs[0])))
-
 TEST(compress, compressDecompressZeroLength, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
@@ -106,7 +102,7 @@ TEST(compress, compressDecompressZeroLength, setUp, tearDown, 0, NULL)
 
 	TEST_COMPRESS("temp1", &empty, 1);
 	TEST_COMPRESS("temp2", &empty_invalid_ptr, 1);
-	TEST_COMPRESS("temp3", many_empty);
+	TEST_COMPRESS("temp3", many_empty, 2);
 
 	return MUNIT_OK;
 }
@@ -240,7 +236,7 @@ TEST(compress,
 					  .len = len2,
 				      } };
 
-	TEST_COMPRESS("temp", bufs);
+	TEST_COMPRESS("temp", bufs, 2);
 
 	free(bufs[0].base);
 	free(bufs[1].base);
