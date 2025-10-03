@@ -1,319 +1,304 @@
-#include "src/raft/byte.h"
-#include "src/raft/compress.h"
+#include "src/raft/uv_fs.h"
+#include "src/raft/uv_os.h"
 #include "test/lib/munit.h"
 #include "test/lib/runner.h"
+#include "test/raft/lib/dir.h"
 
+#include <fcntl.h>
+#include <linux/limits.h>
+#include <stdlib.h>
 #include <sys/random.h>
+#include <uv.h>
+
 #ifdef LZ4_AVAILABLE
-#include <lz4frame.h>
+#include <lz4frame.h> /* for LZ4F_HEADER_SIZE_MAX */
 #endif
 
-SUITE(Compress)
+SUITE(compress)
 
-struct raft_buffer getBufWithRandom(size_t len)
+void *random_buffer(size_t len)
 {
-    struct raft_buffer buf = {0};
-    buf.len = len;
-    buf.base = munit_malloc(buf.len);
-    if (len != 0) {
-        munit_assert_ptr_not_null(buf.base);
-    }
-
-    size_t offset = 0;
-    /* Write as many random ints in buf as possible */
-    for (size_t n = buf.len / sizeof(int); n > 0; n--) {
-        *((int *)(buf.base) + offset) = rand();
-        offset += 1;
-    }
-
-    /* Fill the remaining bytes */
-    size_t rem = buf.len % sizeof(int);
-    /* Offset will now be used in char* arithmetic */
-    offset *= sizeof(int);
-    if (rem) {
-        int r_int = rand();
-        for (unsigned i = 0; i < rem; i++) {
-            *((char *)buf.base + offset) = *((char *)&r_int + i);
-            offset++;
-        }
-    }
-
-    munit_assert_ulong(offset, ==, buf.len);
-    return buf;
+	void *result = munit_malloc(len);
+	size_t offset = 0;
+	while (offset < len) {
+		ssize_t r = getrandom((char *)result + offset, len - offset, 0);
+		if (r < 0) {
+			if (errno == EINTR)
+				continue;  // retry
+			free(result);
+			return NULL;
+		}
+		offset += r;
+	}
+	return result;
 }
 
-struct raft_buffer getBufWithNonRandom(size_t len)
-{
-    struct raft_buffer buf = {0};
-    buf.len = len;
-    buf.base = munit_malloc(buf.len);
-    if (len != 0) {
-        munit_assert_ptr_not_null(buf.base);
-    }
+struct fixture {
+	char *dir;
+	char errmsg[RAFT_ERRMSG_BUF_SIZE];
+};
 
-    memset(buf.base, 0xAC, buf.len);
-    return buf;
+static void *setUp(const MunitParameter params[], void *user_data)
+{
+	struct fixture *f = munit_malloc(sizeof *f);
+	SET_UP_DIR;
+	return f;
+}
+
+static void tearDown(void *data)
+{
+	struct fixture *f = data;
+	TEAR_DOWN_DIR;
+	free(f);
 }
 
 #ifdef LZ4_AVAILABLE
 
-static void sha1(struct raft_buffer bufs[], unsigned n_bufs, uint8_t value[20])
+static int compare_bufs(const struct raft_buffer *original,
+			int original_len,
+			const struct raft_buffer *decompressed)
 {
-    struct byteSha1 sha;
-    byteSha1Init(&sha);
-    for (unsigned i = 0; i < n_bufs; i++) {
-        byteSha1Update(&sha, (const uint8_t *)bufs[i].base,
-                       (uint32_t)bufs[i].len);
-    }
-    byteSha1Digest(&sha, value);
+	size_t offset = 0;
+	for (int i = 0; i < original_len; i++) {
+		if (original[i].len > (decompressed->len - offset)) {
+			assert(false);
+			return -1;
+		}
+		int rv = memcmp(original[i].base, decompressed->base + offset,
+				original[i].len);
+		if (rv != 0) {
+			return rv;
+		}
+		offset += original[i].len;
+	}
+
+	if (offset != decompressed->len) {
+		assert(false);
+		return -1;
+	}
+	return 0;
 }
 
-TEST(Compress, compressDecompressZeroLength, NULL, NULL, 0, NULL)
+#define TEST_COMPRESS(file, bufs, len)                                       \
+	do {                                                                 \
+		int compress_rv = UvFsMakeCompressedFile(f->dir, file, bufs, \
+							 len, f->errmsg);    \
+		munit_assert_int(compress_rv, ==, RAFT_OK);                  \
+		struct raft_buffer decompressed = {};                        \
+		int decompress_rv = UvFsReadCompressedFile(                  \
+		    f->dir, file, &decompressed, f->errmsg);                 \
+		munit_assert_int(decompress_rv, ==, RAFT_OK);                \
+		int compare_rv = compare_bufs(bufs, len, &decompressed);     \
+		munit_assert_int(compare_rv, ==, RAFT_OK);                   \
+		raft_free(decompressed.base);                                \
+	} while (0)
+
+TEST(compress, compressDecompressZeroLength, setUp, tearDown, 0, NULL)
 {
-    char errmsg[RAFT_ERRMSG_BUF_SIZE] = {0};
-    struct raft_buffer bufs1[2] = {{NULL, 0},
-                                   {(void *)0xDEADBEEF, 0}}; /* 0 length */
-    struct raft_buffer bufs2[2] = {{(void *)0xDEADBEEF, 0},
-                                   {NULL, 0}}; /* 0 length */
-    struct raft_buffer compressed = {0};
-    munit_assert_int(Compress(&bufs1[0], 1, &compressed, errmsg), ==,
-                     RAFT_INVALID);
-    munit_assert_int(Compress(&bufs1[1], 1, &compressed, errmsg), ==,
-                     RAFT_INVALID);
-    munit_assert_int(Compress(bufs1, 2, &compressed, errmsg), ==, RAFT_INVALID);
-    munit_assert_int(Compress(bufs2, 2, &compressed, errmsg), ==, RAFT_INVALID);
-    return MUNIT_OK;
+	struct fixture *f = data;
+	struct raft_buffer empty = {};
+	struct raft_buffer empty_invalid_ptr = {};
+	struct raft_buffer many_empty[] = { empty, empty_invalid_ptr };
+
+	TEST_COMPRESS("temp1", &empty, 1);
+	TEST_COMPRESS("temp2", &empty_invalid_ptr, 1);
+	TEST_COMPRESS("temp3", many_empty, 2);
+
+	return MUNIT_OK;
 }
 
 static char *len_one_params[] = {
-    /*    16B   1KB     64KB     4MB        128MB */
-    "16", "1024", "65536", "4194304", "134217728",
-    /*    Around Blocksize*/
-    "65516", "65517", "65518", "65521", "65535", "65537", "65551", "65555",
-    "65556",
-    /*    Ugly lengths */
-    "0", "1", "9", "123450", "1337", "6655111", NULL};
-
-static MunitParameterEnum random_one_params[] = {
-    {"len_one", len_one_params},
-    {NULL, NULL},
+	/*    16B   1KB     64KB     4MB        128MB */
+	"16", "1024", "65536", "4194304", "134217728",
+	/*    Around Blocksize*/
+	"65516", "65517", "65518", "65521", "65535", "65537", "65551", "65555",
+	"65556",
+	/*    Ugly lengths */
+	"0", "1", "9", "123450", "1337", "6655111", NULL
 };
 
-TEST(Compress, compressDecompressRandomOne, NULL, NULL, 0, random_one_params)
+static MunitParameterEnum random_one_params[] = {
+	{ "len_one", len_one_params },
+	{ NULL, NULL },
+};
+
+TEST(compress,
+     compressDecompressRandomOne,
+     setUp,
+     tearDown,
+     0,
+     random_one_params)
 {
-    char errmsg[RAFT_ERRMSG_BUF_SIZE] = {0};
-    struct raft_buffer compressed = {0};
-    struct raft_buffer decompressed = {0};
-    uint8_t sha1_virgin[20] = {0};
-    uint8_t sha1_decompressed[20] = {1};
+	struct fixture *f = data;
 
-    /* Fill a buffer with random data */
-    size_t len = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
-    if (len == 0) {
-        return MUNIT_SKIP;
-    }
-    struct raft_buffer buf = getBufWithRandom(len);
-
-    /* Assert that after compression and decompression the data is unchanged */
-    sha1(&buf, 1, sha1_virgin);
-    munit_assert_int(Compress(&buf, 1, &compressed, errmsg), ==, 0);
-    free(buf.base);
-    munit_assert_true(IsCompressed(compressed.base, compressed.len));
-    munit_assert_int(Decompress(compressed, &decompressed, errmsg), ==, 0);
-    munit_assert_ulong(decompressed.len, ==, len);
-    sha1(&decompressed, 1, sha1_decompressed);
-    munit_assert_int(memcmp(sha1_virgin, sha1_decompressed, 20), ==, 0);
-
-    raft_free(compressed.base);
-    raft_free(decompressed.base);
-    return MUNIT_OK;
+	/* Fill a buffer with random data */
+	size_t len = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
+	if (len == 0) {
+		return MUNIT_SKIP;
+	}
+	struct raft_buffer buf = {
+		.base = random_buffer(len),
+		.len = len,
+	};
+	TEST_COMPRESS("temp", &buf, 1);
+	free(buf.base);
+	return MUNIT_OK;
 }
 
 static char *len_nonrandom_one_params[] = {
 #if !defined(__LP64__) && \
     (defined(__arm__) || defined(__i386__) || defined(__mips__))
-    /*    4KB     64KB     4MB        1GB           INT_MAX (larger allocations
-       fail on 32-bit archs */
-    "4096", "65536", "4194304", "1073741824", "2147483647",
+	/*    4KB     64KB     4MB        1GB           INT_MAX (larger
+	   allocations fail on 32-bit archs */
+	"4096", "65536", "4194304", "1073741824", "2147483647",
 #else
-    /*    4KB     64KB     4MB        1GB           2GB + 200MB */
-    "4096", "65536", "4194304", "1073741824", "2357198848",
+	/*    4KB     64KB     4MB        1GB           2GB + 200MB */
+	"4096", "65536", "4194304", "1073741824", "2357198848",
 #endif
-    /*    Around Blocksize*/
-    "65516", "65517", "65518", "65521", "65535", "65537", "65551", "65555",
-    "65556",
-    /*    Ugly lengths */
-    "0", "993450", "31337", "83883825", NULL};
-
-static MunitParameterEnum nonrandom_one_params[] = {
-    {"len_one", len_nonrandom_one_params},
-    {NULL, NULL},
+	/*    Around Blocksize*/
+	"65516", "65517", "65518", "65521", "65535", "65537", "65551", "65555",
+	"65556",
+	/*    Ugly lengths */
+	"0", "993450", "31337", "83883825", NULL
 };
 
-TEST(Compress,
+static MunitParameterEnum nonrandom_one_params[] = {
+	{ "len_one", len_nonrandom_one_params },
+	{ NULL, NULL },
+};
+
+TEST(compress,
      compressDecompressNonRandomOne,
-     NULL,
-     NULL,
+     setUp,
+     tearDown,
      0,
      nonrandom_one_params)
 {
-    char errmsg[RAFT_ERRMSG_BUF_SIZE] = {0};
-    struct raft_buffer compressed = {0};
-    struct raft_buffer decompressed = {0};
-    uint8_t sha1_virgin[20] = {0};
-    uint8_t sha1_decompressed[20] = {1};
+	struct fixture *f = data;
 
-    /* Fill a buffer with non-random data */
-    size_t len = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
-    if (len == 0) {
-        return MUNIT_SKIP;
-    }
-    struct raft_buffer buf = getBufWithNonRandom(len);
+	size_t len = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
+	if (len == 0) {
+		return MUNIT_SKIP;
+	}
 
-    /* Assert that after compression and decompression the data is unchanged and
-     * that the compressed data is actually smaller */
-    sha1(&buf, 1, sha1_virgin);
-    munit_assert_int(Compress(&buf, 1, &compressed, errmsg), ==, 0);
-    free(buf.base);
-    munit_assert_true(IsCompressed(compressed.base, compressed.len));
-    if (len > 0) {
-        munit_assert_ulong(compressed.len, <, buf.len);
-    }
-    munit_assert_int(Decompress(compressed, &decompressed, errmsg), ==, 0);
-    munit_assert_ulong(decompressed.len, ==, len);
-    sha1(&decompressed, 1, sha1_decompressed);
-    munit_assert_int(memcmp(sha1_virgin, sha1_decompressed, 20), ==, 0);
+	/* Fill a buffer with easy-to-compress data */
+	struct raft_buffer buf = {
+		.base = munit_malloc(len),
+		.len = len,
+	};
+	memset(buf.base, 0xAC, buf.len);
 
-    raft_free(compressed.base);
-    raft_free(decompressed.base);
-    return MUNIT_OK;
+	TEST_COMPRESS("test", &buf, 1);
+
+	char path[PATH_MAX] = {};
+	int rv = UvOsJoin(f->dir, "test", path);
+	munit_assert_int(rv, ==, 0);
+
+	uv_stat_t sb = {};
+	rv = UvOsStat(path, &sb);
+	munit_assert_int(rv, ==, 0);
+	munit_assert_ulong(sb.st_size, >, 0);
+	munit_assert_ulong(sb.st_size, <, len);
+
+	free(buf.base);
+	return MUNIT_OK;
 }
 
-static char *len_two_params[] = {"4194304", "13373", "66", "0", NULL};
+static char *len_two_params[] = { "4194304", "13373", "66", "0", NULL };
 
 static MunitParameterEnum random_two_params[] = {
-    {"len_one", len_one_params},
-    {"len_two", len_two_params},
-    {NULL, NULL},
+	{ "len_one", len_one_params },
+	{ "len_two", len_two_params },
+	{ NULL, NULL },
 };
 
-TEST(Compress, compressDecompressRandomTwo, NULL, NULL, 0, random_two_params)
+TEST(compress,
+     compressDecompressRandomTwo,
+     setUp,
+     tearDown,
+     0,
+     random_two_params)
 {
-    char errmsg[RAFT_ERRMSG_BUF_SIZE] = {0};
-    struct raft_buffer compressed = {0};
-    struct raft_buffer decompressed = {0};
-    uint8_t sha1_virgin[20] = {0};
-    uint8_t sha1_single[20] = {0};
-    uint8_t sha1_decompressed[20] = {1};
+	struct fixture *f = data;
 
-    /* Fill two buffers with random data */
-    size_t len1 = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
-    size_t len2 = strtoul(munit_parameters_get(params, "len_two"), NULL, 0);
-    if (len1 + len2 == 0) {
-        return MUNIT_SKIP;
-    }
-    struct raft_buffer buf1 = getBufWithRandom(len1);
-    struct raft_buffer buf2 = getBufWithRandom(len2);
-    struct raft_buffer bufs[2] = {buf1, buf2};
+	/* Fill two buffers with random data */
+	size_t len1 = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
+	size_t len2 = strtoul(munit_parameters_get(params, "len_two"), NULL, 0);
+	if (len1 + len2 == 0) {
+		return MUNIT_SKIP;
+	}
+	struct raft_buffer bufs[] = { {
+					  .base = random_buffer(len1),
+					  .len = len1,
+				      },
+				      {
+					  .base = random_buffer(len2),
+					  .len = len2,
+				      } };
 
-    /* If one of the buffers is empty ensure data is identical to single buffer
-     * case. */
-    if (len1 == 0) {
-        sha1(&buf2, 1, sha1_single);
-    } else if (len2 == 0) {
-        sha1(&buf1, 1, sha1_single);
-    }
+	TEST_COMPRESS("temp", bufs, 2);
 
-    /* Assert that after compression and decompression the data is unchanged */
-    sha1(bufs, 2, sha1_virgin);
-    munit_assert_int(Compress(bufs, 2, &compressed, errmsg), ==, 0);
-    free(buf1.base);
-    free(buf2.base);
-    munit_assert_true(IsCompressed(compressed.base, compressed.len));
-    munit_assert_int(Decompress(compressed, &decompressed, errmsg), ==, 0);
-    munit_assert_ulong(decompressed.len, ==, buf1.len + buf2.len);
-    sha1(&decompressed, 1, sha1_decompressed);
-    munit_assert_int(memcmp(sha1_virgin, sha1_decompressed, 20), ==, 0);
-
-    if (len1 == 0 || len2 == 0) {
-        munit_assert_int(memcmp(sha1_single, sha1_virgin, 20), ==, 0);
-        munit_assert_int(memcmp(sha1_single, sha1_decompressed, 20), ==, 0);
-    }
-
-    raft_free(compressed.base);
-    raft_free(decompressed.base);
-    return MUNIT_OK;
+	free(bufs[0].base);
+	free(bufs[1].base);
+	return MUNIT_OK;
 }
 
-TEST(Compress, compressDecompressCorruption, NULL, NULL, 0, NULL)
+TEST(compress, compressDecompressCorruption, setUp, tearDown, 0, NULL)
 {
-    char errmsg[RAFT_ERRMSG_BUF_SIZE] = {0};
-    struct raft_buffer compressed = {0};
-    struct raft_buffer decompressed = {0};
+	struct fixture *f = data;
 
-    /* Fill a buffer with random data */
-    size_t len = 2048;
-    struct raft_buffer buf = getBufWithRandom(len);
+	/* Fill a buffer with random data */
+	const size_t len = 2048;
+	struct raft_buffer buf = {
+		.base = random_buffer(len),
+		.len = len,
+	};
 
-    munit_assert_int(Compress(&buf, 1, &compressed, errmsg), ==, 0);
-    munit_assert_true(IsCompressed(compressed.base, compressed.len));
+	int rv = UvFsMakeCompressedFile(f->dir, "temp", &buf, 1, f->errmsg);
+	munit_assert_int(rv, ==, RAFT_OK);
 
-    /* Corrupt the a data byte after the header */
-    munit_assert_ulong(LZ4F_HEADER_SIZE_MAX_RAFT, <, compressed.len);
-    ((char *)compressed.base)[LZ4F_HEADER_SIZE_MAX_RAFT] += 1;
+	/* Corrupt the a data byte after the header */
+	char path[PATH_MAX] = {};
+	rv = UvOsJoin(f->dir, "temp", path);
+	munit_assert_int(rv, ==, 0);
+	int fd = open(path, O_RDWR);
+	munit_assert_int(fd, !=, -1);
+	char b;
+	rv = pread(fd, &b, 1, LZ4F_HEADER_SIZE_MAX);
+	munit_assert_int(rv, ==, 1);
+	b++;
+	rv = pwrite(fd, &b, 1, LZ4F_HEADER_SIZE_MAX);
+	munit_assert_int(rv, ==, 1);
+	close(fd);
 
-    munit_assert_int(Decompress(compressed, &decompressed, errmsg), !=, 0);
-    munit_assert_string_equal(errmsg,
-                              "LZ4F_decompress ERROR_contentChecksum_invalid");
-    munit_assert_ptr_null(decompressed.base);
+	struct raft_buffer decompressed = {};
+	rv = UvFsReadCompressedFile(f->dir, "temp", &decompressed, f->errmsg);
+	munit_assert_int(rv, ==, RAFT_IOERR);
+	munit_assert_string_equal(
+	    f->errmsg, "LZ4F_decompress ERROR_contentChecksum_invalid");
+	munit_assert_ptr_null(decompressed.base);
 
-    raft_free(compressed.base);
-    free(buf.base);
-    return MUNIT_OK;
+	free(buf.base);
+	return MUNIT_OK;
 }
 
 #else
 
-TEST(Compress, lz4Disabled, NULL, NULL, 0, NULL)
+TEST(compress, lz4Disabled, setUp, tearDown, 0, NULL)
 {
-    char errmsg[RAFT_ERRMSG_BUF_SIZE] = {0};
-    struct raft_buffer compressed = {0};
+	struct fixture *f = data;
 
-    /* Fill a buffer with random data */
-    size_t len = 2048;
-    struct raft_buffer buf = getBufWithRandom(len);
+	const size_t len = 2048;
+	struct raft_buffer buf = {
+		.base = random_buffer(len),
+		.len = len,
+	};
 
-    munit_assert_int(Compress(&buf, 1, &compressed, errmsg), ==, RAFT_INVALID);
-    munit_assert_ptr_null(compressed.base);
+	int rv = UvFsMakeCompressedFile(f->dir, "temp", &buf, 1, f->errmsg);
+	munit_assert_int(rv, ==, RAFT_INVALID);
 
-    free(buf.base);
-    return MUNIT_OK;
+	free(buf.base);
+	return MUNIT_OK;
 }
 
 #endif /* LZ4_AVAILABLE */
-
-static const char LZ4_MAGIC[4] = {0x04, 0x22, 0x4d, 0x18};
-TEST(Compress, isCompressedTooSmall, NULL, NULL, 0, NULL)
-{
-    munit_assert_false(IsCompressed(&LZ4_MAGIC[1], sizeof(LZ4_MAGIC) - 1));
-    return MUNIT_OK;
-}
-
-TEST(Compress, isCompressedNull, NULL, NULL, 0, NULL)
-{
-    munit_assert_false(IsCompressed(NULL, sizeof(LZ4_MAGIC)));
-    return MUNIT_OK;
-}
-
-TEST(Compress, isCompressed, NULL, NULL, 0, NULL)
-{
-    munit_assert_true(IsCompressed(LZ4_MAGIC, sizeof(LZ4_MAGIC)));
-    return MUNIT_OK;
-}
-
-TEST(Compress, notCompressed, NULL, NULL, 0, NULL)
-{
-    char not_compressed[4] = {0x18, 0x4d, 0x22, 0x04};
-    munit_assert_false(IsCompressed(not_compressed, sizeof(not_compressed)));
-    return MUNIT_OK;
-}
