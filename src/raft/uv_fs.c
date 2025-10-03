@@ -798,6 +798,9 @@ int UvFsReadFile(const char *dir,
 		goto err;
 	}
 
+	rv = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+	assert(rv == 0);
+
 	buf->len = (size_t)sb.st_size;
 	buf->base = RaftHeapMalloc(buf->len);
 	if (buf->base == NULL) {
@@ -847,6 +850,9 @@ int UvFsReadCompressedFile(const char *dir,
 	if (rv != 0) {
 		return rv;
 	}
+
+	rv = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+	assert(rv == 0);
 
 	LZ4F_decompressionContext_t ctx;
 	size_t lzrv = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
