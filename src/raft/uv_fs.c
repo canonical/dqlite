@@ -523,10 +523,10 @@ static inline int uvOsWriteOne(uv_os_fd_t fd, void *data, size_t length, int64_t
 #endif
 
 int UvFsMakeCompressedFile(const char *dir,
-		 const char *filename,
-		 struct raft_buffer *bufs,
-		 unsigned n_bufs,
-		 char *errmsg)
+			   const char *filename,
+			   struct raft_buffer *bufs,
+			   unsigned n_bufs,
+			   char *errmsg)
 {
 #ifndef LZ4_AVAILABLE
 	(void)dir;
@@ -538,7 +538,7 @@ int UvFsMakeCompressedFile(const char *dir,
 	return RAFT_INVALID;
 #else
 	char path[UV__PATH_SZ] = {};
-	int rv = UvOsJoin(dir, TMP_FILE_PREFIX"XXXXXX", path);
+	int rv = UvOsJoin(dir, TMP_FILE_PREFIX "XXXXXX", path);
 	if (rv != 0) {
 		return RAFT_INVALID;
 	}
@@ -547,10 +547,10 @@ int UvFsMakeCompressedFile(const char *dir,
 	rv = uv_fs_mkstemp(NULL, &temp_file, path, NULL);
 	if (rv == -1) {
 		UvOsErrMsg(errmsg, "mkstemp", rv);
-        return RAFT_IOERR;
-    }
+		return RAFT_IOERR;
+	}
 	uv_file fd = (uv_file)temp_file.result;
-	
+
 	size_t chunk_size = 0;
 	size_t content_size = 0;
 	for (unsigned i = 0; i < n_bufs; i++) {
@@ -559,16 +559,16 @@ int UvFsMakeCompressedFile(const char *dir,
 		}
 		content_size += bufs[i].len;
 	}
-	
-	LZ4F_preferences_t lz4_pref = {
-		.frameInfo = {
-			/* Detect data corruption when decompressing */
-			.contentChecksumFlag = 1,
-			/* For allocating a suitable buffer when decompressing */
-			.contentSize = content_size,
-		}
-	};
-	
+
+	LZ4F_preferences_t
+	    lz4_pref = { .frameInfo = {
+			     /* Detect data corruption when decompressing */
+			     .contentChecksumFlag = 1,
+			     /* For allocating a suitable buffer when
+				decompressing */
+			     .contentSize = content_size,
+			 } };
+
 	const size_t output_cap = LZ4F_compressBound(chunk_size, &lz4_pref);
 	char *output_buffer = raft_malloc(output_cap);
 	if (output_buffer == NULL) {
@@ -577,7 +577,8 @@ int UvFsMakeCompressedFile(const char *dir,
 	}
 
 	LZ4F_compressionContext_t ctx;
-	LZ4F_errorCode_t err = LZ4F_createCompressionContext(&ctx, LZ4F_VERSION);
+	LZ4F_errorCode_t err =
+	    LZ4F_createCompressionContext(&ctx, LZ4F_VERSION);
 	if (LZ4F_isError(err)) {
 		ErrMsgPrintf(errmsg, "LZ4F_createDecompressionContext %s",
 			     LZ4F_getErrorName(err));
@@ -585,7 +586,8 @@ int UvFsMakeCompressedFile(const char *dir,
 		goto err_after_buf_alloc;
 	}
 
-	size_t output_len = LZ4F_compressBegin(ctx, output_buffer, output_cap, &lz4_pref);
+	size_t output_len =
+	    LZ4F_compressBegin(ctx, output_buffer, output_cap, &lz4_pref);
 	if (LZ4F_isError(output_len)) {
 		ErrMsgPrintf(errmsg, "LZ4F_compressBegin %s",
 			     LZ4F_getErrorName(output_len));
@@ -593,18 +595,23 @@ int UvFsMakeCompressedFile(const char *dir,
 		goto err_after_ctx_alloc;
 	}
 
+	/* Write the header */
 	rv = uvOsWriteOne(fd, output_buffer, output_len, -1, errmsg);
 	if (rv != RAFT_OK) {
 		goto err_after_ctx_alloc;
 	}
 
 	for (unsigned i = 0; i < n_bufs; i++) {
-		output_len = LZ4F_compressUpdate(ctx, output_buffer, output_cap, bufs[i].base, bufs[i].len, NULL);
+		output_len =
+		    LZ4F_compressUpdate(ctx, output_buffer, output_cap,
+					bufs[i].base, bufs[i].len, NULL);
 		if (output_len == 0) {
+			/* In this case the output is buffered internally by
+			 * liblz4 */
 			continue;
 		} else if (LZ4F_isError(output_len)) {
 			ErrMsgPrintf(errmsg, "LZ4F_compressUpdate %s",
-						LZ4F_getErrorName(output_len));
+				     LZ4F_getErrorName(output_len));
 			rv = RAFT_IOERR;
 			goto err_after_ctx_alloc;
 		}
@@ -618,12 +625,11 @@ int UvFsMakeCompressedFile(const char *dir,
 	output_len = LZ4F_compressEnd(ctx, output_buffer, output_cap, NULL);
 	if (LZ4F_isError(output_len)) {
 		ErrMsgPrintf(errmsg, "LZ4F_compressEnd %s",
-					LZ4F_getErrorName(output_len));
+			     LZ4F_getErrorName(output_len));
 		rv = RAFT_IOERR;
 		goto err_after_ctx_alloc;
 	} else if (output_len > 0) {
 		rv = uvOsWriteOne(fd, output_buffer, output_len, -1, errmsg);
-
 		if (rv != RAFT_OK) {
 			goto err_after_ctx_alloc;
 		}
@@ -857,7 +863,6 @@ int UvFsReadCompressedFile(const char *dir,
 	LZ4F_decompressionContext_t ctx;
 	size_t lzrv = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
 	if (LZ4F_isError(lzrv)) {
-		// FIXME errmsg
 		ErrMsgPrintf(errmsg, "LZ4F_createDecompressionContext %s",
 			LZ4F_getErrorName(lzrv));
 		rv = RAFT_NOMEM;
@@ -908,15 +913,15 @@ int UvFsReadCompressedFile(const char *dir,
 		goto done; // Not really an error here...
 	}
 
-	const size_t output_size = (size_t)frameInfo.contentSize;
-	void *output_buffer = raft_malloc(output_size);
+	const size_t output_buffer_size = (size_t)frameInfo.contentSize;
+	void *output_buffer = raft_malloc(output_buffer_size);
 	if (output_buffer == NULL) {
 		rv = RAFT_NOMEM;
 		goto done;
 	}
 
 	size_t output_offset = 0;
-	while (output_offset < output_size) {
+	while (output_offset < output_buffer_size) {
 		if (input_offset == input_size) {
 			/* try to read some */
 			ssize_t read_rv = read(fd, input_buffer, input_buffer_size);
@@ -926,7 +931,7 @@ int UvFsReadCompressedFile(const char *dir,
 				goto err_after_output_alloc;
 			} else if (read_rv == 0) {
 				ErrMsgPrintf(errmsg, "short read: %zu bytes instead of %zu",
-			     	output_offset, output_size);
+			     	output_offset, output_buffer_size);
 				rv = RAFT_IOERR;
 				goto err_after_output_alloc;
 			}
@@ -934,10 +939,10 @@ int UvFsReadCompressedFile(const char *dir,
 			input_offset = 0;
 		}
 
-		size_t output_written = output_size - output_offset;
+		size_t output_size = output_buffer_size - output_offset;
 		size_t input_read = input_size - input_offset;
 		lzrv = LZ4F_decompress(ctx, output_buffer + output_offset,
-				&output_written, input_buffer + input_offset,
+				&output_size, input_buffer + input_offset,
 				&input_read, NULL);
 		if (LZ4F_isError(lzrv)) {
 			ErrMsgPrintf(errmsg, "LZ4F_decompress %s",
@@ -946,13 +951,13 @@ int UvFsReadCompressedFile(const char *dir,
 			goto err_after_output_alloc;
 		}
 
-		output_offset += output_written;
+		output_offset += output_size;
 		input_offset += input_read;
 	}
 	rv = RAFT_OK;
 	*buf = (struct raft_buffer) {
 		.base = output_buffer,
-		.len = output_size,
+		.len = output_buffer_size,
 	};
 	goto done;
 

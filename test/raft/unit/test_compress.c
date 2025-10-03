@@ -11,30 +11,31 @@
 #include <uv.h>
 
 #ifdef LZ4_AVAILABLE
-# include <lz4frame.h> /* for LZ4F_HEADER_SIZE_MAX */
+#include <lz4frame.h> /* for LZ4F_HEADER_SIZE_MAX */
 #endif
 
 SUITE(compress)
 
-void *random_buffer(size_t len) {
-    void *result = munit_malloc(len);
-    size_t offset = 0;
-    while (offset < len) {
-        ssize_t r = getrandom((char *)result + offset, len - offset, 0);
-        if (r < 0) {
-            if (errno == EINTR) continue; // retry
-            free(result);
-            return NULL;
-        }
-        offset += r;
-    }
-    return result;
+void *random_buffer(size_t len)
+{
+	void *result = munit_malloc(len);
+	size_t offset = 0;
+	while (offset < len) {
+		ssize_t r = getrandom((char *)result + offset, len - offset, 0);
+		if (r < 0) {
+			if (errno == EINTR)
+				continue;  // retry
+			free(result);
+			return NULL;
+		}
+		offset += r;
+	}
+	return result;
 }
 
-
 struct fixture {
-    char *dir;
-    char errmsg[RAFT_ERRMSG_BUF_SIZE];
+	char *dir;
+	char errmsg[RAFT_ERRMSG_BUF_SIZE];
 };
 
 static void *setUp(const MunitParameter params[], void *user_data)
@@ -60,7 +61,7 @@ static int compare_bufs(const struct raft_buffer *original,
 	size_t offset = 0;
 	for (int i = 0; i < original_len; i++) {
 		if (original[i].len > (decompressed->len - offset)) {
-            assert(false);
+			assert(false);
 			return -1;
 		}
 		int rv = memcmp(original[i].base, decompressed->base + offset,
@@ -72,13 +73,13 @@ static int compare_bufs(const struct raft_buffer *original,
 	}
 
 	if (offset != decompressed->len) {
-        assert(false);
+		assert(false);
 		return -1;
 	}
 	return 0;
 }
 
-#define COMPRESS_IMPL(file, bufs, len, ...)                                  \
+#define TEST_COMPRESS_IMPL(file, bufs, len, ...)                             \
 	do {                                                                 \
 		int compress_rv = UvFsMakeCompressedFile(f->dir, file, bufs, \
 							 len, f->errmsg);    \
@@ -92,22 +93,22 @@ static int compare_bufs(const struct raft_buffer *original,
 		raft_free(decompressed.base);                                \
 	} while (0)
 
-#define COMPRESS(file, bufs, ...)                \
-	COMPRESS_IMPL(file, bufs, ##__VA_ARGS__, \
-		      (sizeof(bufs) / sizeof(bufs[0])))
+#define TEST_COMPRESS(file, bufs, ...)                \
+	TEST_COMPRESS_IMPL(file, bufs, ##__VA_ARGS__, \
+			   (sizeof(bufs) / sizeof(bufs[0])))
 
 TEST(compress, compressDecompressZeroLength, setUp, tearDown, 0, NULL)
 {
-    struct fixture *f = data;
-    struct raft_buffer empty = {};
-    struct raft_buffer empty_invalid_ptr = {};
-    struct raft_buffer many_empty[] = { empty, empty_invalid_ptr };
+	struct fixture *f = data;
+	struct raft_buffer empty = {};
+	struct raft_buffer empty_invalid_ptr = {};
+	struct raft_buffer many_empty[] = { empty, empty_invalid_ptr };
 
-    COMPRESS("temp1", &empty, 1);
-    COMPRESS("temp2", &empty_invalid_ptr, 1);
-    COMPRESS("temp3", many_empty);
+	TEST_COMPRESS("temp1", &empty, 1);
+	TEST_COMPRESS("temp2", &empty_invalid_ptr, 1);
+	TEST_COMPRESS("temp3", many_empty);
 
-    return MUNIT_OK;
+	return MUNIT_OK;
 }
 
 static char *len_one_params[] = {
@@ -132,7 +133,7 @@ TEST(compress,
      0,
      random_one_params)
 {
-    struct fixture *f = data;
+	struct fixture *f = data;
 
 	/* Fill a buffer with random data */
 	size_t len = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
@@ -140,10 +141,10 @@ TEST(compress,
 		return MUNIT_SKIP;
 	}
 	struct raft_buffer buf = {
-        .base = random_buffer(len),
-        .len = len,
-    };
-    COMPRESS("temp", &buf, 1);
+		.base = random_buffer(len),
+		.len = len,
+	};
+	TEST_COMPRESS("temp", &buf, 1);
 	free(buf.base);
 	return MUNIT_OK;
 }
@@ -153,8 +154,7 @@ static char *len_nonrandom_one_params[] = {
     (defined(__arm__) || defined(__i386__) || defined(__mips__))
 	/*    4KB     64KB     4MB        1GB           INT_MAX (larger
 	   allocations fail on 32-bit archs */
-	"4096",
-	"65536", "4194304", "1073741824", "2147483647",
+	"4096", "65536", "4194304", "1073741824", "2147483647",
 #else
 	/*    4KB     64KB     4MB        1GB           2GB + 200MB */
 	"4096", "65536", "4194304", "1073741824", "2357198848",
@@ -178,7 +178,7 @@ TEST(compress,
      0,
      nonrandom_one_params)
 {
-    struct fixture *f = data;
+	struct fixture *f = data;
 
 	size_t len = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
 	if (len == 0) {
@@ -187,22 +187,22 @@ TEST(compress,
 
 	/* Fill a buffer with easy-to-compress data */
 	struct raft_buffer buf = {
-        .base = munit_malloc(len),
-        .len = len,
-    };
-    memset(buf.base, 0xAC, buf.len);
+		.base = munit_malloc(len),
+		.len = len,
+	};
+	memset(buf.base, 0xAC, buf.len);
 
-    COMPRESS("test", &buf, 1);
+	TEST_COMPRESS("test", &buf, 1);
 
-    char path[PATH_MAX] = {};
+	char path[PATH_MAX] = {};
 	int rv = UvOsJoin(f->dir, "test", path);
-    munit_assert_int(rv, ==, 0);
+	munit_assert_int(rv, ==, 0);
 
-    uv_stat_t sb = {};
-    rv = UvOsStat(path, &sb);
-    munit_assert_int(rv, ==, 0);
-    munit_assert_ulong(sb.st_size, >, 0);
-    munit_assert_ulong(sb.st_size, <, len);
+	uv_stat_t sb = {};
+	rv = UvOsStat(path, &sb);
+	munit_assert_int(rv, ==, 0);
+	munit_assert_ulong(sb.st_size, >, 0);
+	munit_assert_ulong(sb.st_size, <, len);
 
 	free(buf.base);
 	return MUNIT_OK;
@@ -223,7 +223,7 @@ TEST(compress,
      0,
      random_two_params)
 {
-    struct fixture *f = data;
+	struct fixture *f = data;
 
 	/* Fill two buffers with random data */
 	size_t len1 = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
@@ -240,7 +240,7 @@ TEST(compress,
 					  .len = len2,
 				      } };
 
-	COMPRESS("temp", bufs);
+	TEST_COMPRESS("temp", bufs);
 
 	free(bufs[0].base);
 	free(bufs[1].base);
@@ -249,34 +249,34 @@ TEST(compress,
 
 TEST(compress, compressDecompressCorruption, setUp, tearDown, 0, NULL)
 {
-    struct fixture *f = data;
+	struct fixture *f = data;
 
 	/* Fill a buffer with random data */
 	const size_t len = 2048;
 	struct raft_buffer buf = {
-        .base = random_buffer(len),
-        .len = len,
-    };
+		.base = random_buffer(len),
+		.len = len,
+	};
 
-    int rv = UvFsMakeCompressedFile(f->dir, "temp", &buf, 1, f->errmsg);
-    munit_assert_int(rv, ==, RAFT_OK);
+	int rv = UvFsMakeCompressedFile(f->dir, "temp", &buf, 1, f->errmsg);
+	munit_assert_int(rv, ==, RAFT_OK);
 
 	/* Corrupt the a data byte after the header */
-    char path[PATH_MAX] = {};
+	char path[PATH_MAX] = {};
 	rv = UvOsJoin(f->dir, "temp", path);
-    munit_assert_int(rv, ==, 0);
-    int fd = open(path, O_RDWR);
-    munit_assert_int(fd, !=, -1);
-    char b;
-    rv = pread(fd, &b, 1, LZ4F_HEADER_SIZE_MAX);
-    munit_assert_int(rv, ==, 1);
-    b++;
-    rv = pwrite(fd, &b, 1, LZ4F_HEADER_SIZE_MAX);
-    munit_assert_int(rv, ==, 1);
-    close(fd);
+	munit_assert_int(rv, ==, 0);
+	int fd = open(path, O_RDWR);
+	munit_assert_int(fd, !=, -1);
+	char b;
+	rv = pread(fd, &b, 1, LZ4F_HEADER_SIZE_MAX);
+	munit_assert_int(rv, ==, 1);
+	b++;
+	rv = pwrite(fd, &b, 1, LZ4F_HEADER_SIZE_MAX);
+	munit_assert_int(rv, ==, 1);
+	close(fd);
 
-    struct raft_buffer decompressed = {};
-    rv = UvFsReadCompressedFile(f->dir, "temp", &decompressed, f->errmsg);
+	struct raft_buffer decompressed = {};
+	rv = UvFsReadCompressedFile(f->dir, "temp", &decompressed, f->errmsg);
 	munit_assert_int(rv, ==, RAFT_IOERR);
 	munit_assert_string_equal(
 	    f->errmsg, "LZ4F_decompress ERROR_contentChecksum_invalid");
@@ -290,15 +290,15 @@ TEST(compress, compressDecompressCorruption, setUp, tearDown, 0, NULL)
 
 TEST(compress, lz4Disabled, setUp, tearDown, 0, NULL)
 {
-    struct fixture *f = data;
+	struct fixture *f = data;
 
 	const size_t len = 2048;
 	struct raft_buffer buf = {
-        .base = random_buffer(len),
-        .len = len,
-    };
+		.base = random_buffer(len),
+		.len = len,
+	};
 
-    int rv = UvFsMakeCompressedFile(f->dir, "temp", &buf, 1, f->errmsg);
+	int rv = UvFsMakeCompressedFile(f->dir, "temp", &buf, 1, f->errmsg);
 	munit_assert_int(rv, ==, RAFT_INVALID);
 
 	free(buf.base);
