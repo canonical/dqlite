@@ -559,6 +559,8 @@ int UvFsMakeCompressedFile(const char *dir,
 		}
 		content_size += bufs[i].len;
 	}
+	const size_t lz4_max_block_size = 4 * 1024 * 1024;
+	assert(chunk_size <= lz4_max_block_size);
 
 	LZ4F_preferences_t
 	    lz4_pref = { .frameInfo = {

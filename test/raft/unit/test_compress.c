@@ -136,12 +136,21 @@ TEST(compress,
 	if (len == 0) {
 		return MUNIT_SKIP;
 	}
-	struct raft_buffer buf = {
-		.base = random_buffer(len),
-		.len = len,
-	};
-	TEST_COMPRESS("temp", &buf, 1);
-	free(buf.base);
+	void *buf = random_buffer(len);
+
+	/* Split the buffer into many chunks of at most 4096 bytes */
+	size_t n_bufs = (len + 4095) / 4096;
+	struct raft_buffer *bufs = raft_malloc(n_bufs * sizeof *bufs);
+	for (size_t i = 0; i < n_bufs; i++) {
+		size_t offset = i * 4096;
+		bufs[i].base = buf + offset;
+		bufs[i].len = MIN(4096, len - offset);
+	}
+
+	TEST_COMPRESS("temp", bufs, n_bufs);
+
+	free(bufs);
+	free(buf);
 	return MUNIT_OK;
 }
 
@@ -182,13 +191,18 @@ TEST(compress,
 	}
 
 	/* Fill a buffer with easy-to-compress data */
-	struct raft_buffer buf = {
-		.base = munit_malloc(len),
-		.len = len,
-	};
-	memset(buf.base, 0xAC, buf.len);
+	void *buf = munit_malloc(len);
+	memset(buf, 0xAC, len);
 
-	TEST_COMPRESS("test", &buf, 1);
+	size_t n_bufs = (len + 4095) / 4096;
+	struct raft_buffer *bufs = raft_malloc(n_bufs * sizeof *bufs);
+	for (size_t i = 0; i < n_bufs; i++) {
+		size_t offset = i * 4096;
+		bufs[i].base = buf + offset;
+		bufs[i].len = MIN(4096, len - offset);
+	}
+
+	TEST_COMPRESS("test", bufs, n_bufs);
 
 	char path[PATH_MAX] = {};
 	int rv = UvOsJoin(f->dir, "test", path);
@@ -200,7 +214,8 @@ TEST(compress,
 	munit_assert_ulong(sb.st_size, >, 0);
 	munit_assert_ulong(sb.st_size, <, len);
 
-	free(buf.base);
+	free(bufs);
+	free(buf);
 	return MUNIT_OK;
 }
 
@@ -224,7 +239,7 @@ TEST(compress,
 	/* Fill two buffers with random data */
 	size_t len1 = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
 	size_t len2 = strtoul(munit_parameters_get(params, "len_two"), NULL, 0);
-	if (len1 + len2 == 0) {
+	if (len1 + len2 == 0 || len1 > 4 * 1024 * 1024) {
 		return MUNIT_SKIP;
 	}
 	struct raft_buffer bufs[] = { {
