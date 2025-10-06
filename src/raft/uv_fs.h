@@ -51,6 +51,13 @@ int UvFsMakeFile(const char *dir,
 		 unsigned n_bufs,
 		 char *errmsg);
 
+/* Create a file and write the given content into it. */
+int UvFsMakeCompressedFile(const char *dir,
+		 const char *filename,
+		 struct raft_buffer *bufs,
+		 unsigned n_bufs,
+		 char *errmsg);
+
 /* Create or overwrite a file.
  *
  * If the file does not exists yet, it gets created, the given content written
@@ -77,6 +84,12 @@ int UvFsReadInto(uv_file fd, struct raft_buffer *buf, char *errmsg);
 
 /* Read all the content of the given file. */
 int UvFsReadFile(const char *dir,
+		 const char *filename,
+		 struct raft_buffer *buf,
+		 char *errmsg);
+
+/* Read all the content of the given compressed file. */
+int UvFsReadCompressedFile(const char *dir,
 		 const char *filename,
 		 struct raft_buffer *buf,
 		 char *errmsg);
