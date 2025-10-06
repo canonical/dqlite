@@ -559,6 +559,9 @@ int UvFsMakeCompressedFile(const char *dir,
 		}
 		content_size += bufs[i].len;
 	}
+
+	/* Limit the size of each chunk to 4MB to make sure this logic doesn't
+	 * need too much memory. */
 	const size_t lz4_max_block_size = 4 * 1024 * 1024;
 	assert(chunk_size <= lz4_max_block_size);
 

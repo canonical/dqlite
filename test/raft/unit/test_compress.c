@@ -194,6 +194,7 @@ TEST(compress,
 	void *buf = munit_malloc(len);
 	memset(buf, 0xAC, len);
 
+	/* Split the buffer into many chunks of at most 4096 bytes */
 	size_t n_bufs = (len + 4095) / 4096;
 	struct raft_buffer *bufs = raft_malloc(n_bufs * sizeof *bufs);
 	for (size_t i = 0; i < n_bufs; i++) {
