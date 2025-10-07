@@ -1,4 +1,4 @@
-Source: dqlite1.18-unstable
+Source: dqlite1.18
 Section: devel
 Priority: optional
 Maintainer: Marco Manino <marco.manino@canonical.com>
@@ -11,7 +11,7 @@ Homepage: https://github.com/canonical/dqlite
 Standards-Version: 4.5.1
 Rules-Requires-Root: no
 
-Package: libdqlite1.18-unstable-0
+Package: libdqlite1.18
 Section: libs
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
@@ -22,10 +22,10 @@ Description: Distributed SQLite database using Raft - library
  .
  This package contains the library itself.
 
-Package: libdqlite1.18-unstable-dev
+Package: libdqlite1.18-dev
 Section: libdevel
 Architecture: any
-Depends: libdqlite1.18-unstable-0 (= ${binary:Version}),
+Depends: libdqlite1.18 (= ${binary:Version}),
          ${misc:Depends},
          libsqlite3-dev,
          libuv1-dev,

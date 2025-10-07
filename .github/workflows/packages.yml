@@ -1,8 +1,8 @@
 name: Build PPA source packages
 on:
-  push:
-    branches:
-      - master
+  release:
+    types: [published]
+    branches: [v1.18.x]
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -46,7 +46,7 @@ jobs:
           VERSION="$(git describe --tags | sed -e "s/^v//" -e "s/-/+git/")"
           dch --create \
             --distribution ${TARGET} \
-            --package dqlite1.18-unstable \
+            --package dqlite1.18 \
             --newversion ${VERSION}~${TARGET}1 \
             "Automatic build from Github"
           debuild -S -sa -d -k${{ vars.PPA_PUBLIC_KEY }}
