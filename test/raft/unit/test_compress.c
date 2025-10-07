@@ -1,3 +1,4 @@
+#include "src/raft/byte.h"
 #include "src/raft/uv_fs.h"
 #include "src/raft/uv_os.h"
 #include "test/lib/munit.h"
@@ -6,6 +7,7 @@
 
 #include <fcntl.h>
 #include <linux/limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <sys/random.h>
 #include <uv.h>
@@ -54,55 +56,52 @@ static void tearDown(void *data)
 
 #ifdef LZ4_AVAILABLE
 
-static int compare_bufs(const struct raft_buffer *original,
-			int original_len,
-			const struct raft_buffer *decompressed)
+static void sha1(const uint8_t *buffer, size_t size, uint8_t value[20])
 {
-	size_t offset = 0;
-	for (int i = 0; i < original_len; i++) {
-		if (original[i].len > (decompressed->len - offset)) {
-			assert(false);
-			return -1;
-		}
-		int rv = memcmp(original[i].base, decompressed->base + offset,
-				original[i].len);
-		if (rv != 0) {
-			return rv;
-		}
-		offset += original[i].len;
-	}
-
-	if (offset != decompressed->len) {
-		assert(false);
-		return -1;
-	}
-	return 0;
+    struct byteSha1 sha;
+    byteSha1Init(&sha);
+	byteSha1Update(&sha, buffer, (uint32_t)size);
+    byteSha1Digest(&sha, value);
 }
 
-#define TEST_COMPRESS(file, bufs, len)                                       \
-	do {                                                                 \
-		int compress_rv = UvFsMakeCompressedFile(f->dir, file, bufs, \
-							 len, f->errmsg);    \
-		munit_assert_int(compress_rv, ==, RAFT_OK);                  \
-		struct raft_buffer decompressed = {};                        \
-		int decompress_rv = UvFsReadCompressedFile(                  \
-		    f->dir, file, &decompressed, f->errmsg);                 \
-		munit_assert_int(decompress_rv, ==, RAFT_OK);                \
-		int compare_rv = compare_bufs(bufs, len, &decompressed);     \
-		munit_assert_int(compare_rv, ==, RAFT_OK);                   \
-		raft_free(decompressed.base);                                \
+/* Split a buffer into n chunks */
+static struct raft_buffer* chunk_buffer(void* buf, size_t size, size_t n) {
+	struct raft_buffer* bufs = munit_malloc(n * sizeof *bufs);
+	const size_t chunk_size = (size + n - 1) / n;
+	for (size_t i = 0; i < n; i++) {
+		bufs[i].base = buf + i * chunk_size;
+		bufs[i].len = MIN(chunk_size, size - i * chunk_size);
+	}
+	return bufs;
+}
+
+#define TEST_COMPRESS2(file, buf, size, n)                                    \
+	do {                                                                  \
+		uint8_t sha_uncompressed[20];                                 \
+		sha1(buf, size, sha_uncompressed);                            \
+		struct raft_buffer *bufs = chunk_buffer(buf, size, n);        \
+		int compress_rv =                                             \
+		    UvFsMakeCompressedFile(f->dir, file, bufs, n, f->errmsg); \
+		munit_assert_int(compress_rv, ==, RAFT_OK);                   \
+		free(bufs);                                                   \
+		free(buf);                                                    \
+		struct raft_buffer decompressed = {};                         \
+		int decompress_rv = UvFsReadCompressedFile(                   \
+		    f->dir, file, &decompressed, f->errmsg);                  \
+		munit_assert_int(decompress_rv, ==, RAFT_OK);                 \
+		uint8_t sha_decompressed[20];                                 \
+		sha1(decompressed.base, decompressed.len, sha_decompressed);  \
+		munit_assert_memory_equal(20, sha_uncompressed,               \
+					  sha_decompressed);                  \
+		free(decompressed.base);                                      \
 	} while (0)
 
 TEST(compress, compressDecompressZeroLength, setUp, tearDown, 0, NULL)
 {
 	struct fixture *f = data;
-	struct raft_buffer empty = {};
-	struct raft_buffer empty_invalid_ptr = {};
-	struct raft_buffer many_empty[] = { empty, empty_invalid_ptr };
 
-	TEST_COMPRESS("temp1", &empty, 1);
-	TEST_COMPRESS("temp2", &empty_invalid_ptr, 1);
-	TEST_COMPRESS("temp3", many_empty, 2);
+	TEST_COMPRESS2("temp1", NULL, 0, 1);
+	TEST_COMPRESS2("temp2", NULL, 0, 2);
 
 	return MUNIT_OK;
 }
@@ -118,7 +117,7 @@ static char *len_one_params[] = {
 };
 
 static MunitParameterEnum random_one_params[] = {
-	{ "len_one", len_one_params },
+	{ "len", len_one_params },
 	{ NULL, NULL },
 };
 
@@ -132,7 +131,7 @@ TEST(compress,
 	struct fixture *f = data;
 
 	/* Fill a buffer with random data */
-	size_t len = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
+	size_t len = strtoul(munit_parameters_get(params, "len"), NULL, 0);
 	if (len == 0) {
 		return MUNIT_SKIP;
 	}
@@ -140,19 +139,13 @@ TEST(compress,
 
 	/* Split the buffer into many chunks of at most 4096 bytes */
 	size_t n_bufs = (len + 4095) / 4096;
-	struct raft_buffer *bufs = raft_malloc(n_bufs * sizeof *bufs);
-	for (size_t i = 0; i < n_bufs; i++) {
-		size_t offset = i * 4096;
-		bufs[i].base = buf + offset;
-		bufs[i].len = MIN(4096, len - offset);
-	}
 
-	TEST_COMPRESS("temp", bufs, n_bufs);
+	TEST_COMPRESS2("temp", buf, len, n_bufs);
 
-	free(bufs);
-	free(buf);
 	return MUNIT_OK;
 }
+
+
 
 static char *len_nonrandom_one_params[] = {
 #if !defined(__LP64__) && \
@@ -172,7 +165,7 @@ static char *len_nonrandom_one_params[] = {
 };
 
 static MunitParameterEnum nonrandom_one_params[] = {
-	{ "len_one", len_nonrandom_one_params },
+	{ "len", len_nonrandom_one_params },
 	{ NULL, NULL },
 };
 
@@ -185,7 +178,7 @@ TEST(compress,
 {
 	struct fixture *f = data;
 
-	size_t len = strtoul(munit_parameters_get(params, "len_one"), NULL, 0);
+	size_t len = strtoul(munit_parameters_get(params, "len"), NULL, 0);
 	if (len == 0) {
 		return MUNIT_SKIP;
 	}
@@ -196,14 +189,8 @@ TEST(compress,
 
 	/* Split the buffer into many chunks of at most 4096 bytes */
 	size_t n_bufs = (len + 4095) / 4096;
-	struct raft_buffer *bufs = raft_malloc(n_bufs * sizeof *bufs);
-	for (size_t i = 0; i < n_bufs; i++) {
-		size_t offset = i * 4096;
-		bufs[i].base = buf + offset;
-		bufs[i].len = MIN(4096, len - offset);
-	}
 
-	TEST_COMPRESS("test", bufs, n_bufs);
+	TEST_COMPRESS2("test", buf, len, n_bufs); 
 
 	char path[PATH_MAX] = {};
 	int rv = UvOsJoin(f->dir, "test", path);
@@ -215,8 +202,6 @@ TEST(compress,
 	munit_assert_ulong(sb.st_size, >, 0);
 	munit_assert_ulong(sb.st_size, <, len);
 
-	free(bufs);
-	free(buf);
 	return MUNIT_OK;
 }
 
@@ -243,19 +228,33 @@ TEST(compress,
 	if (len1 + len2 == 0 || len1 > 4 * 1024 * 1024) {
 		return MUNIT_SKIP;
 	}
+	void *buf = random_buffer(len1 + len2);
+	uint8_t sha_uncompressed[20];
+	sha1(buf, len1 + len2, sha_uncompressed);
+
 	struct raft_buffer bufs[] = { {
-					  .base = random_buffer(len1),
+					  .base = buf,
 					  .len = len1,
 				      },
 				      {
-					  .base = random_buffer(len2),
+					  .base = buf + len1,
 					  .len = len2,
 				      } };
 
-	TEST_COMPRESS("temp", bufs, 2);
+	int compress_rv =
+	    UvFsMakeCompressedFile(f->dir, "test", bufs, 2, f->errmsg);
+	munit_assert_int(compress_rv, ==, RAFT_OK);
+	free(buf);
 
-	free(bufs[0].base);
-	free(bufs[1].base);
+	struct raft_buffer decompressed = {};
+	int decompress_rv =
+	    UvFsReadCompressedFile(f->dir, "test", &decompressed, f->errmsg);
+	munit_assert_int(decompress_rv, ==, RAFT_OK);
+	uint8_t sha_decompressed[20];
+	sha1(decompressed.base, decompressed.len, sha_decompressed);
+	munit_assert_memory_equal(20, sha_uncompressed, sha_decompressed);
+	free(decompressed.base);
+
 	return MUNIT_OK;
 }
 
