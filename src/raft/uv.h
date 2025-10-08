@@ -259,7 +259,7 @@ int UvSnapshotMetaIsOrphan(const char *dir, const char *filename, bool *orphan);
 /* Append a new item to the given snapshot info list if the given filename
  * matches the pattern of a snapshot metadata file (snapshot-xxx-yyy-zzz.meta)
  * and there is actually a matching non-empty snapshot file on disk. */
-int UvSnapshotInfoAppendIfMatch(struct uv *uv,
+int UvSnapshotInfoAppendIfMatch(const char *dir,
 				const char *filename,
 				struct uvSnapshotInfo *infos[],
 				size_t *n_infos,
@@ -295,7 +295,7 @@ int UvAsyncWork(struct raft_io *io,
 /* Return a list of all snapshots and segments found in the data directory. Both
  * snapshots and segments are ordered by filename (closed segments come before
  * open ones). */
-int UvList(struct uv *uv,
+int UvList(const char* dir,
 	   struct uvSnapshotInfo *snapshots[],
 	   size_t *n_snapshots,
 	   struct uvSegmentInfo *segments[],
