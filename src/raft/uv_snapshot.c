@@ -68,7 +68,7 @@ void uvSnapshotFilenameOf(struct uvSnapshotInfo *info, char *filename)
 	filename[len] = 0;
 }
 
-int UvSnapshotInfoAppendIfMatch(struct uv *uv,
+int UvSnapshotInfoAppendIfMatch(const char *dir,
 				const char *filename,
 				struct uvSnapshotInfo *infos[],
 				size_t *n_infos,
@@ -94,7 +94,7 @@ int UvSnapshotInfoAppendIfMatch(struct uv *uv,
 	 * before finishing the snapshot, or that another thread is still busy
 	 * writing the snapshot. */
 	uvSnapshotFilenameOf(&info, snapshot_filename);
-	rv = UvFsFileExists(uv->dir, snapshot_filename, &exists, errmsg);
+	rv = UvFsFileExists(dir, snapshot_filename, &exists, errmsg);
 	if (rv != 0) {
 		tracef("stat %s: %s", snapshot_filename, errmsg);
 		rv = RAFT_IOERR;
@@ -109,7 +109,7 @@ int UvSnapshotInfoAppendIfMatch(struct uv *uv,
 	 * renaming fully written and synced tmp-files. Leaving it here, just to
 	 * be extra-safe. Can probably be removed once more data integrity
 	 * checks are performed at startup. */
-	rv = UvFsFileIsEmpty(uv->dir, snapshot_filename, &is_empty, errmsg);
+	rv = UvFsFileIsEmpty(dir, snapshot_filename, &is_empty, errmsg);
 	if (rv != 0) {
 		tracef("is_empty %s: %s", snapshot_filename, errmsg);
 		rv = RAFT_IOERR;
@@ -444,7 +444,7 @@ static int uvRemoveOldSegmentsAndSnapshots(struct uv *uv,
 	size_t n_segments;
 	int rv = 0;
 
-	rv = UvList(uv, &snapshots, &n_snapshots, &segments, &n_segments,
+	rv = UvList(uv->dir, &snapshots, &n_snapshots, &segments, &n_segments,
 		    errmsg);
 	if (rv != 0) {
 		goto out;
@@ -692,7 +692,7 @@ static void uvSnapshotGetWorkCb(uv_work_t *work)
 	size_t n_segments;
 	int rv;
 	get->status = 0;
-	rv = UvList(uv, &snapshots, &n_snapshots, &segments, &n_segments,
+	rv = UvList(uv->dir, &snapshots, &n_snapshots, &segments, &n_segments,
 		    get->errmsg);
 	if (rv != 0) {
 		get->status = rv;
