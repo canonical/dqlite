@@ -1,4 +1,4 @@
-dqlite [![CI Tests](https://github.com/canonical/dqlite/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/canonical/dqlite/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/canonical/dqlite/branch/master/graph/badge.svg)](https://codecov.io/gh/canonical/dqlite)
+dqlite [![CI Tests](https://github.com/canonical/dqlite/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/canonical/dqlite/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/canonical/dqlite/branch/main/graph/badge.svg)](https://codecov.io/gh/canonical/dqlite)
 ======
 
 [English](./README.md)|[简体中文](./README_CH.md)
@@ -25,7 +25,7 @@ License
 The dqlite library is released under a slightly modified version of LGPLv3,
 that includes a copyright exception allowing users to statically link the
 library code in their project and release the final work under their own terms.
-See the full [license](https://github.com/canonical/dqlite/blob/master/LICENSE)
+See the full [license](https://github.com/canonical/dqlite/blob/main/LICENSE)
 text.
 
 Compatibility
