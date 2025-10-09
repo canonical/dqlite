@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include <sqlite3.h>
@@ -1592,10 +1593,14 @@ TEST(VfsIntegration, sqlite, setUp, tearDown, 0, NULL)
 	(void)data;
 	(void)params;
 
-	const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXRESCODE | SQLITE_OPEN_DELETEONCLOSE;
+	const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXRESCODE;
+	
+	char filename[] = "/tmp/dqlite-test-normal-sqlite-XXXXXX";
+	int fd = mkstemp(filename);
+	munit_assert_int(fd, >, 0);
 
 	const char *filenames[] = {
-		"/tmp/dqlite-test-normal-sqlite",
+		filename,
 		"", /* temp db */
 		":memory:", /* in-memory db*/
 		NULL,
@@ -1608,6 +1613,9 @@ TEST(VfsIntegration, sqlite, setUp, tearDown, 0, NULL)
 		EXEC(db, "CREATE TABLE asd(i)");
 		sqlite3_close(db);
 	}
+
+	close(fd);
+	unlink(filename);
 
 	return SQLITE_OK;
 }
