@@ -1,7 +1,7 @@
 #include "../../../src/raft/configuration.h"
 #include "../../../src/raft/log.h"
 #include "../lib/heap.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 
 /******************************************************************************
  *

@@ -1,6 +1,6 @@
 #include "../../../src/raft/uv.h"
 #include "../lib/aio.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 #include "../lib/uv.h"
 #include "append_helpers.h"
 

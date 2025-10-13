@@ -3,7 +3,7 @@
 #include "../../../src/raft/byte.h"
 #include "../../../src/raft/uv.h"
 #include "../../../src/raft/uv_encoding.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 #include "../lib/uv.h"
 
 /******************************************************************************

@@ -29,8 +29,20 @@ AM_COND_IF(SANITIZE_ENABLED,
    [true],
    [AC_MSG_ERROR([address sanitizer not supported])]))
 
-AC_ARG_ENABLE(backtrace, AS_HELP_STRING([--enable-backtrace[=ARG]], [print backtrace on assertion failure [default=no]]))
-AM_CONDITIONAL(BACKTRACE_ENABLED, test "x$enable_backtrace" = "xyes")
+AC_ARG_ENABLE([backtrace], AS_HELP_STRING([--enable-backtrace[=ARG]], [print backtrace on assertion failure (default=yes)]))
+AM_CONDITIONAL(BACKTRACE_ENABLED, test "x$enable_backtrace" != "xno")
+
+BACKTRACE_LDFLAGS=
+AM_COND_IF(BACKTRACE_ENABLED, [
+    AC_CHECK_HEADERS([backtrace.h], [
+      BACKTRACE_LDFLAGS=-lbacktrace
+    ], [ AC_CHECK_HEADERS([execinfo.h], [
+      BACKTRACE_LDFLAGS=-rdynamic
+    ], [
+      AC_MSG_ERROR([backtrace support was requested, but <backtrace.h> nor <execinfo.h> was not found. Use --disable-backtrace to build without it.])
+    ])])
+], [])
+AC_SUBST([BACKTRACE_LDFLAGS])
 
 AC_ARG_ENABLE(build-sqlite, AS_HELP_STRING([--enable-build-sqlite[=ARG]], [build libsqlite3 from sqlite3.c in the build root [default=no]]))
 AM_CONDITIONAL(BUILD_SQLITE_ENABLED, test "x$enable_build_sqlite" = "xyes")

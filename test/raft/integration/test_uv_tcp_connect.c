@@ -1,9 +1,8 @@
 #include "../../../src/raft.h"
-#include "../../../src/raft.h"
 #include "../lib/addrinfo.h"
 #include "../lib/heap.h"
 #include "../lib/loop.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 #include "../lib/tcp.h"
 
 /******************************************************************************

@@ -1,7 +1,7 @@
 #include "../../../src/raft/configuration.h"
 #include "../../../src/raft/progress.h"
 #include "../lib/cluster.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 
 /******************************************************************************
  *

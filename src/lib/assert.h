@@ -3,19 +3,19 @@
 
 #include <assert.h>
 
-#ifdef HAVE_BACKTRACE_H
+#ifdef DQLITE_ASSERT_WITH_BACKTRACE
 
-# include <backtrace.h>
-# include <stdio.h>
-# define dqlite_assert(x)                                                             \
-	do {                                                                  \
-		struct backtrace_state *state_;                               \
-		if (!(x)) {                                                   \
-			state_ = backtrace_create_state(NULL, 0, NULL, NULL); \
-			backtrace_print(state_, 0, stderr);                   \
-			__assert_fail(#x, __FILE__, __LINE__, __func__);      \
-		}                                                             \
+#define dqlite_assert(x)                                               \
+	do {                                                           \
+		if (!(x)) {                                            \
+			dqlite_fail(#x, __FILE__, __LINE__, __func__); \
+		}                                                      \
 	} while (0)
+
+void dqlite_fail (const char *__assertion, const char *__file,
+			   unsigned int __line, const char *__function)
+     __attribute__ ((__noreturn__, weak, visibility("default")));
+
 #else
 # define dqlite_assert(x) assert(x)
 #endif

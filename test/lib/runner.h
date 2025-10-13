@@ -7,9 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "munit.h"
-
 #include "../../src/tracing.h"
+#include "munit.h"
 
 /* Top-level suites array declaration.
  *
@@ -23,24 +22,52 @@ extern int _main_suites_n;
 #define SUITE__CAP 128
 #define TEST__CAP SUITE__CAP
 
-static inline void log_sqlite_error(void *arg, int e, const char *msg)
-{
-	(void)arg;
-	fprintf(stderr, "SQLITE %d %s\n", e, msg);
-}
+#if defined(HAVE_BACKTRACE_H)
+#include <backtrace.h>
+#define PRINT_BACKTRACE                                               \
+	do {                                                          \
+		struct backtrace_state *state_;                       \
+		state_ = backtrace_create_state(NULL, 1, NULL, NULL); \
+		backtrace_print(state_, 0, stderr);                   \
+	} while (0)
+
+#elif defined(HAVE_EXECINFO_H) /* HAVE_BACKTRACE_H */
+#include <execinfo.h>
+#include <unistd.h>
+
+#define PRINT_BACKTRACE                                             \
+	do {                                                        \
+		void *buffer[100];                                  \
+		int nptrs = backtrace(buffer, 100);                 \
+		backtrace_symbols_fd(buffer, nptrs, STDERR_FILENO); \
+	} while (0)
+
+#endif /* HAVE_EXECINFO_H */
 
 /* Define the top-level suites array and the main() function of the test. */
-#define RUNNER(NAME)                                                       \
-	MunitSuite _main_suites[SUITE__CAP];                               \
-	int _main_suites_n = 0;                                            \
-                                                                           \
-	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])            \
-	{                                                                  \
-		signal(SIGPIPE, SIG_IGN);                                  \
-		dqliteTracingMaybeEnable(true);                            \
-		sqlite3_config(SQLITE_CONFIG_LOG, log_sqlite_error, NULL); \
-		MunitSuite suite = {(char *)"", NULL, _main_suites, 1, 0}; \
-		return munit_suite_main(&suite, (void *)NAME, argc, argv); \
+#define RUNNER(NAME)                                                         \
+	void dqlite_fail(const char *__assertion, const char *__file,        \
+			 unsigned int __line, const char *__function)        \
+	{                                                                    \
+		__assert_fail(__assertion, __file, __line, __function);      \
+	}                                                                    \
+                                                                             \
+	static void print_backtrace(int sig)                                 \
+	{                                                                    \
+		(void)sig;                                                   \
+		PRINT_BACKTRACE;                                             \
+	}                                                                    \
+                                                                             \
+	MunitSuite _main_suites[SUITE__CAP];                                 \
+	int _main_suites_n = 0;                                              \
+                                                                             \
+	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])              \
+	{                                                                    \
+		signal(SIGPIPE, SIG_IGN);                                    \
+		signal(SIGABRT, print_backtrace);                            \
+		dqliteTracingMaybeEnable(true);                              \
+		MunitSuite suite = { (char *)"", NULL, _main_suites, 1, 0 }; \
+		return munit_suite_main(&suite, (void *)NAME, argc, argv);   \
 	}
 
 /* Declare and register a new test suite #S belonging to the file's test module.

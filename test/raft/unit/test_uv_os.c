@@ -1,5 +1,5 @@
 #include "../../../src/raft/uv_os.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 
 SUITE(UvOsJoin)
 

@@ -1,6 +1,6 @@
 #include "../../../src/raft/log.h"
 #include "../lib/cluster.h"
-#include "../lib/runner.h"
+#include "../../lib/runner.h"
 
 /******************************************************************************
  *
