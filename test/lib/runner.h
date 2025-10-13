@@ -22,27 +22,9 @@ extern int _main_suites_n;
 #define SUITE__CAP 128
 #define TEST__CAP SUITE__CAP
 
-#if defined(HAVE_BACKTRACE_H)
-#include <backtrace.h>
-#define PRINT_BACKTRACE                                               \
-	do {                                                          \
-		struct backtrace_state *state_;                       \
-		state_ = backtrace_create_state(NULL, 1, NULL, NULL); \
-		backtrace_print(state_, 0, stderr);                   \
-	} while (0)
-
-#elif defined(HAVE_EXECINFO_H) /* HAVE_BACKTRACE_H */
-#include <execinfo.h>
-#include <unistd.h>
-
-#define PRINT_BACKTRACE                                             \
-	do {                                                        \
-		void *buffer[100];                                  \
-		int nptrs = backtrace(buffer, 100);                 \
-		backtrace_symbols_fd(buffer, nptrs, STDERR_FILENO); \
-	} while (0)
-
-#endif /* HAVE_EXECINFO_H */
+#ifdef DQLITE_ASSERT_WITH_BACKTRACE
+void dqlite_print_trace(int skip);
+#endif
 
 /* Define the top-level suites array and the main() function of the test. */
 #define RUNNER(NAME)                                                         \
@@ -55,7 +37,7 @@ extern int _main_suites_n;
 	static void print_backtrace(int sig)                                 \
 	{                                                                    \
 		(void)sig;                                                   \
-		PRINT_BACKTRACE;                                             \
+		dqlite_print_trace(3);                                       \
 	}                                                                    \
                                                                              \
 	MunitSuite _main_suites[SUITE__CAP];                                 \

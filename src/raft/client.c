@@ -1,4 +1,4 @@
-#include "../assert.h"
+#include "../lib/assert.h"
 #include "../lib/queue.h"
 #include "../raft.h"
 #include "../tracing.h"
