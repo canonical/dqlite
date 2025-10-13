@@ -4,7 +4,7 @@
 
 void dqlite_print_trace(int skip);
 
-/* This is negessary as dqlite is using -Werror, but glibc defines __assert_fail
+/* This is necessary as dqlite is using -Werror, but glibc defines __assert_fail
  * with an unsigned __line argument while musl with an int. On one of them there
  * would be then a conversion which will generate a warning (turned into an
  * error by -Werror). */

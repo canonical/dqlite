@@ -26,6 +26,77 @@ extern int _main_suites_n;
 void dqlite_print_trace(int skip);
 #endif
 
+#ifdef DQLITE_ASSERT_WITH_BACKTRACE
+
+#if defined(HAVE_BACKTRACE_H)
+#include <backtrace.h>
+#include <stdio.h>
+
+#define PRINT_BACKTRACE(skip)                                            \
+	do {                                                             \
+		struct backtrace_state *state_;                          \
+		state_ = backtrace_create_state(NULL, skip, NULL, NULL); \
+		backtrace_print(state_, 0, stderr);                      \
+	} while (0)
+
+#elif defined(HAVE_EXECINFO_H) /* HAVE_BACKTRACE_H */
+#include <execinfo.h>
+#include <unistd.h>
+
+#define PRINT_BACKTRACE(skip)                                             \
+	do {                                                              \
+		void *buffer[100];                                        \
+		int nptrs = backtrace(buffer, 100);                       \
+		if (nptrs > skip) {                                       \
+			backtrace_symbols_fd(buffer + skip, nptrs - skip, \
+					     STDERR_FILENO);              \
+		}                                                         \
+	} while (0)
+
+#elif defined(HAVE_LIBUNWIND_H)
+#include <libunwind.h>
+#include <stdio.h>
+
+#define PRINT_BACKTRACE(skip)                                            \
+	do {                                                             \
+		unw_cursor_t cursor;                                     \
+		unw_context_t context;                                   \
+		unw_getcontext(&context);                                \
+		unw_init_local(&cursor, &context);                       \
+                                                                         \
+		while (unw_step(&cursor) > 0) {                          \
+			if (skip > 0) {                                  \
+				skip--;                                  \
+				continue;                                \
+			}                                                \
+                                                                         \
+			unw_word_t offset, pc;                           \
+			char sym[256];                                   \
+                                                                         \
+			unw_get_reg(&cursor, UNW_REG_IP, &pc);           \
+			if (pc == 0) {                                   \
+				break;                                   \
+			}                                                \
+			fprintf(stderr, "0x%lx: ", (long)pc);            \
+                                                                         \
+			if (unw_get_proc_name(&cursor, sym, sizeof(sym), \
+					      &offset) == 0) {           \
+				fprintf(stderr, "(%s+0x%lx)\n", sym,     \
+					(long)offset);                   \
+			} else {                                         \
+				fprintf(stderr, "??\n");                 \
+			}                                                \
+		}                                                        \
+	} while (0)
+
+#endif /* HAVE_EXECINFO_H */
+
+#else
+
+#define PRINT_BACKTRACE(skip) do {} while (0)
+
+#endif /* DQLITE_ASSERT_WITH_BACKTRACE */
+
 /* Define the top-level suites array and the main() function of the test. */
 #define RUNNER(NAME)                                                         \
 	void dqlite_fail(const char *__assertion, const char *__file,        \
@@ -37,7 +108,7 @@ void dqlite_print_trace(int skip);
 	static void print_backtrace(int sig)                                 \
 	{                                                                    \
 		(void)sig;                                                   \
-		dqlite_print_trace(3);                                       \
+		PRINT_BACKTRACE(3);                                          \
 	}                                                                    \
                                                                              \
 	MunitSuite _main_suites[SUITE__CAP];                                 \

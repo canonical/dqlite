@@ -226,7 +226,7 @@ raft_core_unit_test_SOURCES = \
   test/raft/unit/test_queue.c
 
 raft_core_unit_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
-raft_core_unit_test_LDADD = libtest.la libdqlite.la
+raft_core_unit_test_LDADD = libtest.la
 
 raft_core_integration_test_SOURCES = \
   src/tracing.c \
@@ -253,7 +253,7 @@ raft_core_integration_test_SOURCES = \
   test/raft/integration/test_voter_contacts.c
 raft_core_integration_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 raft_core_integration_test_LDFLAGS = $(static) -no-install
-raft_core_integration_test_LDADD = libtest.la libraft.la libdqlite.la
+raft_core_integration_test_LDADD = libtest.la libraft.la
 
 raft_core_fuzzy_test_SOURCES = \
   src/lib/sm.c \
@@ -266,7 +266,7 @@ raft_core_fuzzy_test_SOURCES = \
   test/raft/fuzzy/test_replication.c
 raft_core_fuzzy_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 raft_core_fuzzy_test_LDFLAGS = $(static) -no-install
-raft_core_fuzzy_test_LDADD = libtest.la libraft.la libdqlite.la
+raft_core_fuzzy_test_LDADD = libtest.la libraft.la
 
 raft_uv_unit_test_SOURCES = \
   src/tracing.c \
@@ -281,7 +281,7 @@ raft_uv_unit_test_SOURCES = \
   test/raft/unit/test_uv_os.c \
   test/raft/unit/test_uv_writer.c
 raft_uv_unit_test_CFLAGS = $(AM_CFLAGS) -Wno-conversion
-raft_uv_unit_test_LDADD = libtest.la $(UV_LIBS) libdqlite.la
+raft_uv_unit_test_LDADD = libtest.la $(UV_LIBS)
 
 # The integration/uv test is not linked to libraft, but built
 # directly against the libraft sources in order to test some
@@ -309,7 +309,7 @@ raft_uv_integration_test_SOURCES = \
   test/raft/integration/test_uv_work.c
 raft_uv_integration_test_CFLAGS = $(AM_CFLAGS) -Wno-type-limits -Wno-conversion
 raft_uv_integration_test_LDFLAGS = $(static) -no-install
-raft_uv_integration_test_LDADD = libtest.la $(UV_LIBS) libdqlite.la
+raft_uv_integration_test_LDADD = libtest.la $(UV_LIBS)
 
 if LZ4_AVAILABLE
 libdqlite_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
