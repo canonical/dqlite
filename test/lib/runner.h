@@ -32,10 +32,10 @@ void dqlite_print_trace(int skip);
 #include <backtrace.h>
 #include <stdio.h>
 
-#define PRINT_BACKTRACE(skip)                                            \
+#define PRINT_BACKTRACE(SKIP)                                            \
 	do {                                                             \
 		struct backtrace_state *state_;                          \
-		state_ = backtrace_create_state(NULL, skip, NULL, NULL); \
+		state_ = backtrace_create_state(NULL, SKIP, NULL, NULL); \
 		backtrace_print(state_, 0, stderr);                      \
 	} while (0)
 
@@ -43,12 +43,12 @@ void dqlite_print_trace(int skip);
 #include <execinfo.h>
 #include <unistd.h>
 
-#define PRINT_BACKTRACE(skip)                                             \
+#define PRINT_BACKTRACE(SKIP)                                             \
 	do {                                                              \
 		void *buffer[100];                                        \
 		int nptrs = backtrace(buffer, 100);                       \
-		if (nptrs > skip) {                                       \
-			backtrace_symbols_fd(buffer + skip, nptrs - skip, \
+		if (nptrs > SKIP) {                                       \
+			backtrace_symbols_fd(buffer + SKIP, nptrs - SKIP, \
 					     STDERR_FILENO);              \
 		}                                                         \
 	} while (0)
@@ -57,13 +57,14 @@ void dqlite_print_trace(int skip);
 #include <libunwind.h>
 #include <stdio.h>
 
-#define PRINT_BACKTRACE(skip)                                            \
+#define PRINT_BACKTRACE(SKIP)                                            \
 	do {                                                             \
 		unw_cursor_t cursor;                                     \
 		unw_context_t context;                                   \
 		unw_getcontext(&context);                                \
 		unw_init_local(&cursor, &context);                       \
                                                                          \
+		int skip = SKIP;                                         \
 		while (unw_step(&cursor) > 0) {                          \
 			if (skip > 0) {                                  \
 				skip--;                                  \
@@ -93,7 +94,7 @@ void dqlite_print_trace(int skip);
 
 #else
 
-#define PRINT_BACKTRACE(skip) do {} while (0)
+#define PRINT_BACKTRACE(SKIP) do {} while (0)
 
 #endif /* DQLITE_ASSERT_WITH_BACKTRACE */
 
