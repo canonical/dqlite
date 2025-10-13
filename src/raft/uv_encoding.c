@@ -3,8 +3,8 @@
 #include <limits.h>
 #include <string.h>
 
+#include "../lib/assert.h"
 #include "../raft.h"
-#include "assert.h"
 #include "byte.h"
 #include "configuration.h"
 
@@ -409,7 +409,7 @@ err_after_alloc:
 	*entries = NULL;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 
 	return rv;
 }
@@ -420,8 +420,8 @@ static int decodeAppendEntries(const uv_buf_t *buf,
 	const void *cursor;
 	int rv;
 
-	assert(buf != NULL);
-	assert(args != NULL);
+	dqlite_assert(buf != NULL);
+	dqlite_assert(args != NULL);
 
 	cursor = buf->base;
 
@@ -464,8 +464,8 @@ static int decodeInstallSnapshot(const uv_buf_t *buf,
 	struct raft_buffer conf;
 	int rv;
 
-	assert(buf != NULL);
-	assert(args != NULL);
+	dqlite_assert(buf != NULL);
+	dqlite_assert(args != NULL);
 
 	cursor = buf->base;
 
@@ -557,7 +557,7 @@ int uvDecodeEntriesBatch(uint8_t *batch,
 {
 	uint8_t *cursor;
 
-	assert(batch != NULL);
+	dqlite_assert(batch != NULL);
 
 	cursor = batch + offset;
 

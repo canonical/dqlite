@@ -1,8 +1,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../lib/assert.h"
 #include "../lib/sm.h" /* struct sm */
-#include "assert.h"
 #include "byte.h"
 #include "heap.h"
 #include "uv.h"
@@ -89,7 +89,7 @@ static void uvTruncateWorkCb(uv_work_t *work)
 	if (snapshots != NULL) {
 		RaftHeapFree(snapshots);
 	}
-	assert(segments != NULL);
+	dqlite_assert(segments != NULL);
 
 	sm_move(&truncate->orig->sm, TRUNC_LISTED);
 
@@ -105,7 +105,7 @@ static void uvTruncateWorkCb(uv_work_t *work)
 			break;
 		}
 	}
-	assert(i < n_segments);
+	dqlite_assert(i < n_segments);
 
 	/* If the truncate index is not the first of the segment, we need to
 	 * truncate it. */
@@ -150,19 +150,19 @@ static void uvTruncateWorkCb(uv_work_t *work)
 err_after_list:
 	RaftHeapFree(segments);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	truncate->status = rv;
 }
 
 static void uvTruncateAfterWorkCb(uv_work_t *work, int status)
 {
-	assert(work != NULL);
+	dqlite_assert(work != NULL);
 	struct uvTruncate *truncate = work->data;
-	assert(truncate != NULL);
+	dqlite_assert(truncate != NULL);
 	struct uv *uv = truncate->uv;
-	assert(uv != NULL);
+	dqlite_assert(uv != NULL);
 	tracef("uv truncate after work cb status:%d", status);
-	assert(status == 0);
+	dqlite_assert(status == 0);
 	if (truncate->status != 0) {
 		uv->errored = true;
 	}
@@ -192,10 +192,10 @@ static void uvTruncateBarrierCb(struct UvBarrierReq *barrier)
 		return;
 	}
 
-	assert(queue_empty(&uv->append_writing_reqs));
-	assert(queue_empty(&uv->finalize_reqs));
-	assert(uv->finalize_work.data == NULL);
-	assert(uv->truncate_work.data == NULL);
+	dqlite_assert(queue_empty(&uv->append_writing_reqs));
+	dqlite_assert(queue_empty(&uv->finalize_reqs));
+	dqlite_assert(uv->finalize_work.data == NULL);
+	dqlite_assert(uv->truncate_work.data == NULL);
 
 	tracef("set truncate work");
 	uv->truncate_work.data = truncate;
@@ -220,12 +220,12 @@ int UvTruncate(struct raft_io *io,
 
 	uv = io->impl;
 	tracef("uv truncate %llu", index);
-	assert(!uv->closing);
+	dqlite_assert(!uv->closing);
 
 	/* We should truncate only entries that we were requested to append in
 	 * the first place. */
-	assert(index > 0);
-	assert(index < uv->append_next_index);
+	dqlite_assert(index > 0);
+	dqlite_assert(index < uv->append_next_index);
 
 	sm_init(&orig->sm, trunc_invariant, NULL, trunc_states, "trunc", TRUNC_START);
 	truncate = RaftHeapMalloc(sizeof *truncate);
@@ -252,7 +252,7 @@ int UvTruncate(struct raft_io *io,
 err_after_req_alloc:
 	RaftHeapFree(truncate);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	sm_fail(&orig->sm, TRUNC_FAIL, rv);
 	return rv;
 }

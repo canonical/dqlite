@@ -1,7 +1,7 @@
 #include "recv_timeout_now.h"
 
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "convert.h"
 #include "log.h"
@@ -18,9 +18,9 @@ int recvTimeoutNow(struct raft *r,
 	int match;
 	int rv;
 
-	assert(r != NULL);
-	assert(id > 0);
-	assert(args != NULL);
+	dqlite_assert(r != NULL);
+	dqlite_assert(id > 0);
+	dqlite_assert(args != NULL);
 
 	(void)address;
 

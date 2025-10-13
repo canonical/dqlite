@@ -1,7 +1,7 @@
 #include <string.h>
 
+#include "../lib/assert.h"
 #include "../raft.h"
-#include "assert.h"
 #include "heap.h"
 #include "uv.h"
 #include "uv_encoding.h"
@@ -93,7 +93,7 @@ static int uvClientInit(struct uvClient *c,
 		return RAFT_NOMEM;
 	}
 	rv = uv_timer_init(c->uv->loop, &c->timer);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	strcpy(c->address, address);
 	queue_init(&c->pending);
 	c->closing = false;
@@ -107,7 +107,7 @@ static void uvClientMaybeDestroy(struct uvClient *c)
 {
 	struct uv *uv = c->uv;
 
-	assert(c->stream == NULL);
+	dqlite_assert(c->stream == NULL);
 
 	if (c->connect.data != NULL) {
 		return;
@@ -135,7 +135,7 @@ static void uvClientMaybeDestroy(struct uvClient *c)
 
 	queue_remove(&c->queue);
 
-	assert(c->address != NULL);
+	dqlite_assert(c->address != NULL);
 	RaftHeapFree(c->address);
 	RaftHeapFree(c);
 
@@ -148,9 +148,9 @@ static void uvClientConnect(struct uvClient *c);
 static void uvClientDisconnectCloseCb(struct uv_handle_s *handle)
 {
 	struct uvClient *c = handle->data;
-	assert(c->old_stream != NULL);
-	assert(c->stream == NULL);
-	assert(handle == (struct uv_handle_s *)c->old_stream);
+	dqlite_assert(c->old_stream != NULL);
+	dqlite_assert(c->stream == NULL);
+	dqlite_assert(handle == (struct uv_handle_s *)c->old_stream);
 	RaftHeapFree(c->old_stream);
 	c->old_stream = NULL;
 	if (c->closing) {
@@ -163,8 +163,8 @@ static void uvClientDisconnectCloseCb(struct uv_handle_s *handle)
 /* Close the current connection. */
 static void uvClientDisconnect(struct uvClient *c)
 {
-	assert(c->stream != NULL);
-	assert(c->old_stream == NULL);
+	dqlite_assert(c->stream != NULL);
+	dqlite_assert(c->old_stream == NULL);
 	c->old_stream = c->stream;
 	c->stream = NULL;
 	uv_close((struct uv_handle_s *)c->old_stream,
@@ -204,7 +204,7 @@ static void uvSendWriteCb(struct uv_write_s *write, const int status)
 static int uvClientSend(struct uvClient *c, struct uvSend *send)
 {
 	int rv;
-	assert(!c->closing);
+	dqlite_assert(!c->closing);
 	send->client = c;
 
 	/* If there's no connection available, let's queue the request. */
@@ -232,7 +232,7 @@ static int uvClientSend(struct uvClient *c, struct uvSend *send)
 static void uvClientSendPending(struct uvClient *c)
 {
 	int rv;
-	assert(c->stream != NULL);
+	dqlite_assert(c->stream != NULL);
 	tracef("send pending messages");
 	while (!queue_empty(&c->pending)) {
 		queue *head;
@@ -281,10 +281,10 @@ static void uvClientConnectCb(struct raft_uv_connect *req,
 	tracef("connect attempt completed -> status %s",
 	       errCodeToString(status));
 
-	assert(c->connect.data != NULL);
-	assert(c->stream == NULL);
-	assert(c->old_stream == NULL);
-	assert(!uv_is_active((struct uv_handle_s *)&c->timer));
+	dqlite_assert(c->connect.data != NULL);
+	dqlite_assert(c->stream == NULL);
+	dqlite_assert(c->old_stream == NULL);
+	dqlite_assert(!uv_is_active((struct uv_handle_s *)&c->timer));
 
 	c->connect.data = NULL;
 
@@ -292,7 +292,7 @@ static void uvClientConnectCb(struct raft_uv_connect *req,
 	 */
 	if (c->closing) {
 		if (status == 0) {
-			assert(stream != NULL);
+			dqlite_assert(stream != NULL);
 			c->stream = stream;
 			c->stream->data = c;
 			uvClientDisconnect(c);
@@ -305,7 +305,7 @@ static void uvClientConnectCb(struct raft_uv_connect *req,
 	/* If, the connection attempt was successful, we're good. If we have
 	 * pending requests, let's try to execute them. */
 	if (status == 0) {
-		assert(stream != NULL);
+		dqlite_assert(stream != NULL);
 		c->stream = stream;
 		c->n_connect_attempt = 0;
 		c->stream->data = c;
@@ -336,7 +336,7 @@ static void uvClientConnectCb(struct raft_uv_connect *req,
 	/* Let's schedule another attempt. */
 	rv = uv_timer_start(&c->timer, uvClientTimerCb,
 			    c->uv->connect_retry_delay, 0);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 }
 
 /* Perform a single connection attempt, scheduling a retry if it fails. */
@@ -344,11 +344,11 @@ static void uvClientConnect(struct uvClient *c)
 {
 	int rv;
 
-	assert(!c->closing);
-	assert(c->stream == NULL);
-	assert(c->old_stream == NULL);
-	assert(!uv_is_active((struct uv_handle_s *)&c->timer));
-	assert(c->connect.data == NULL);
+	dqlite_assert(!c->closing);
+	dqlite_assert(c->stream == NULL);
+	dqlite_assert(c->old_stream == NULL);
+	dqlite_assert(!uv_is_active((struct uv_handle_s *)&c->timer));
+	dqlite_assert(c->connect.data == NULL);
 
 	c->n_connect_attempt++;
 
@@ -360,7 +360,7 @@ static void uvClientConnect(struct uvClient *c)
 		c->connect.data = NULL;
 		rv = uv_timer_start(&c->timer, uvClientTimerCb,
 				    c->uv->connect_retry_delay, 0);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 	}
 }
 
@@ -368,7 +368,7 @@ static void uvClientConnect(struct uvClient *c)
 static void uvClientTimerCloseCb(struct uv_handle_s *handle)
 {
 	struct uvClient *c = handle->data;
-	assert(handle == (struct uv_handle_s *)&c->timer);
+	dqlite_assert(handle == (struct uv_handle_s *)&c->timer);
 	c->timer.data = NULL;
 	uvClientMaybeDestroy(c);
 }
@@ -380,7 +380,7 @@ static void uvClientAbort(struct uvClient *c)
 	struct uv *uv = c->uv;
 	int rv;
 
-	assert(c->stream != NULL || c->old_stream != NULL ||
+	dqlite_assert(c->stream != NULL || c->old_stream != NULL ||
 	       uv_is_active((struct uv_handle_s *)&c->timer) ||
 	       c->connect.data != NULL);
 
@@ -388,7 +388,7 @@ static void uvClientAbort(struct uvClient *c)
 	queue_insert_tail(&uv->aborting, &c->queue);
 
 	rv = uv_timer_stop(&c->timer);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	/* If we are connected, let's close the outbound stream handle. This
 	 * will eventually complete all inflight write requests, possibly with
@@ -451,7 +451,7 @@ static int uvGetClient(struct uv *uv,
 err_after_client_alloc:
 	RaftHeapFree(*client);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -465,7 +465,7 @@ int UvSend(struct raft_io *io,
 	struct uvClient *client;
 	int rv;
 
-	assert(!uv->closing);
+	dqlite_assert(!uv->closing);
 
 	/* Allocate a new request object. */
 	send = RaftHeapMalloc(sizeof *send);
@@ -500,13 +500,13 @@ int UvSend(struct raft_io *io,
 err_after_send_alloc:
 	uvSendDestroy(send);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
 void UvSendClose(struct uv *uv)
 {
-	assert(uv->closing);
+	dqlite_assert(uv->closing);
 	while (!queue_empty(&uv->clients)) {
 		queue *head;
 		struct uvClient *client;

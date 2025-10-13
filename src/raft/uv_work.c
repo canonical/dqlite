@@ -1,4 +1,4 @@
-#include "assert.h"
+#include "../lib/assert.h"
 #include "heap.h"
 #include "uv.h"
 
@@ -14,7 +14,7 @@ struct uvAsyncWork
 static void uvAsyncWorkCb(uv_work_t *work)
 {
 	struct uvAsyncWork *w = work->data;
-	assert(w != NULL);
+	dqlite_assert(w != NULL);
 	int rv;
 	rv = w->req->work(w->req);
 	w->status = rv;
@@ -26,7 +26,7 @@ static void uvAsyncAfterWorkCb(uv_work_t *work, int status)
 	struct raft_io_async_work *req = w->req;
 	int req_status = w->status;
 	struct uv *uv = w->uv;
-	assert(status == 0);
+	dqlite_assert(status == 0);
 
 	queue_remove(&w->queue);
 	RaftHeapFree(w);
@@ -43,7 +43,7 @@ int UvAsyncWork(struct raft_io *io,
 	int rv;
 
 	uv = io->impl;
-	assert(!uv->closing);
+	dqlite_assert(!uv->closing);
 
 	async_work = RaftHeapMalloc(sizeof *async_work);
 	if (async_work == NULL) {
@@ -71,7 +71,7 @@ int UvAsyncWork(struct raft_io *io,
 err_after_req_alloc:
 	RaftHeapFree(async_work);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 

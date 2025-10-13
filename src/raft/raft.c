@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "byte.h"
 #include "callbacks.h"
 #include "configuration.h"
@@ -46,7 +46,7 @@ int raft_init(struct raft *r,
 	      const char *address)
 {
 	int rv;
-	assert(r != NULL);
+	dqlite_assert(r != NULL);
 
 	rv = ioFsmVersionCheck(r, io, fsm);
 	if (rv != 0) {
@@ -114,7 +114,7 @@ err_after_callbacks_alloc:
 err_after_address_alloc:
 	RaftHeapFree(r->address);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -134,7 +134,7 @@ static void ioCloseCb(struct raft_io *io)
 
 void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
-	assert(r->close_cb == NULL);
+	dqlite_assert(r->close_cb == NULL);
 	if (r->state != RAFT_UNAVAILABLE) {
 		convertToUnavailable(r);
 	}
@@ -145,7 +145,7 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
 void raft_register_state_cb(struct raft *r, raft_state_cb cb)
 {
 	struct raft_callbacks *cbs = raftGetCallbacks(r);
-	assert(cbs != NULL);
+	dqlite_assert(cbs != NULL);
 	cbs->state_cb = cb;
 }
 

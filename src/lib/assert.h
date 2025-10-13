@@ -1,19 +1,13 @@
-/**
- * Define the assert() macro, either as the standard one or the test one.
- */
-
 #ifndef LIB_ASSERT_H_
 #define LIB_ASSERT_H_
 
-#if defined(DQLITE_TEST)
-#include "../../test/lib/munit.h"
-#define assert(expr) munit_assert(expr)
-#elif defined(DQLITE_ASSERT_WITH_BACKTRACE)
-#include <assert.h> /* for __assert_fail */
-#include <backtrace.h>
-#include <stdio.h>
-#undef assert
-#define assert(x)                                                             \
+#include <assert.h>
+
+#ifdef HAVE_BACKTRACE_H
+
+# include <backtrace.h>
+# include <stdio.h>
+# define dqlite_assert(x)                                                             \
 	do {                                                                  \
 		struct backtrace_state *state_;                               \
 		if (!(x)) {                                                   \
@@ -23,7 +17,7 @@
 		}                                                             \
 	} while (0)
 #else
-#include <assert.h>
+# define dqlite_assert(x) assert(x)
 #endif
 
 #endif /* LIB_ASSERT_H_ */

@@ -3,9 +3,9 @@
 
 #include "../include/dqlite.h"
 
-#include "lib/serialize.h"
-
 #include "command.h"
+#include "lib/assert.h"
+#include "lib/serialize.h"
 #include "protocol.h"
 
 #define FORMAT 1 /* Format version */
@@ -64,7 +64,7 @@ static int page_numbers__decode(struct cursor *cursor, frames_t *frames)
 			sqlite3_free(frames->page_numbers);
 			return rv;
 		}
-		assert(pgno <= INT32_MAX);
+		dqlite_assert(pgno <= INT32_MAX);
 		frames->page_numbers[i] = (unsigned long)pgno;
 	}
 

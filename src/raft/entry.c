@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "assert.h"
+#include "../lib/assert.h"
 #include "entry.h"
 
 void entryBatchesDestroy(struct raft_entry *entries, const size_t n)
@@ -9,12 +9,12 @@ void entryBatchesDestroy(struct raft_entry *entries, const size_t n)
 	void *batch = NULL;
 	size_t i;
 	if (entries == NULL) {
-		assert(n == 0);
+		dqlite_assert(n == 0);
 		return;
 	}
-	assert(n > 0);
+	dqlite_assert(n > 0);
 	for (i = 0; i < n; i++) {
-		assert(entries[i].batch != NULL);
+		dqlite_assert(entries[i].batch != NULL);
 		if (entries[i].batch != batch) {
 			batch = entries[i].batch;
 			raft_free(batch);

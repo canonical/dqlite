@@ -1,7 +1,7 @@
+#include "../assert.h"
 #include "../lib/queue.h"
 #include "../raft.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "err.h"
 #include "log.h"
@@ -23,9 +23,9 @@ int raft_apply(struct raft *r,
 
 	tracef("raft_apply n %d", n);
 
-	assert(r != NULL);
-	assert(bufs != NULL);
-	assert(n > 0);
+	dqlite_assert(r != NULL);
+	dqlite_assert(bufs != NULL);
+	dqlite_assert(n > 0);
 
 	if (r->state != RAFT_LEADER || r->transfer != NULL) {
 		rv = RAFT_NOTLEADER;
@@ -53,7 +53,7 @@ int raft_apply(struct raft *r,
 			goto err_after_request_start;
 		}
 		entry_sm = log_get_entry_sm(r->log, r->current_term, index);
-		assert(entry_sm != NULL);
+		dqlite_assert(entry_sm != NULL);
 		sm_relate(&req->sm, entry_sm);
 		index++;
 	}
@@ -70,7 +70,7 @@ err_after_request_start:
 	queue_remove(&req->queue);
 	sm_fail(&req->sm, REQUEST_FAILED, rv);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -203,7 +203,7 @@ err_after_log_append:
 	logTruncate(r->log, index);
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -242,7 +242,7 @@ int raft_add(struct raft *r,
 		goto err_after_configuration_copy;
 	}
 
-	assert(r->leader_state.change == NULL);
+	dqlite_assert(r->leader_state.change == NULL);
 	r->leader_state.change = req;
 
 	return 0;
@@ -250,7 +250,7 @@ int raft_add(struct raft *r,
 err_after_configuration_copy:
 	raft_configuration_close(&configuration);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -300,7 +300,7 @@ int raft_assign(struct raft *r,
 				break;
 			default:
 				name = NULL;
-				assert(0);
+				dqlite_assert(0);
 				break;
 		}
 		ErrMsgPrintf(r->errmsg, "server is already %s", name);
@@ -308,13 +308,13 @@ int raft_assign(struct raft *r,
 	}
 
 	server_index = configurationIndexOf(&r->configuration, id);
-	assert(server_index < r->configuration.n);
+	dqlite_assert(server_index < r->configuration.n);
 
 	last_index = logLastIndex(r->log);
 
 	req->cb = cb;
 
-	assert(r->leader_state.change == NULL);
+	dqlite_assert(r->leader_state.change == NULL);
 	r->leader_state.change = req;
 
 	/* If we are not promoting to the voter role or if the log of this
@@ -353,7 +353,7 @@ int raft_assign(struct raft *r,
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -398,7 +398,7 @@ int raft_remove(struct raft *r,
 		goto err_after_configuration_copy;
 	}
 
-	assert(r->leader_state.change == NULL);
+	dqlite_assert(r->leader_state.change == NULL);
 	r->leader_state.change = req;
 
 	return 0;
@@ -407,7 +407,7 @@ err_after_configuration_copy:
 	raft_configuration_close(&configuration);
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -473,7 +473,7 @@ int raft_transfer(struct raft *r,
 	/* If this follower is up-to-date, we can send it the TimeoutNow message
 	 * right away. */
 	i = configurationIndexOf(&r->configuration, server->id);
-	assert(i < r->configuration.n);
+	dqlite_assert(i < r->configuration.n);
 
 	membershipLeadershipTransferInit(r, req, id, cb);
 
@@ -488,7 +488,7 @@ int raft_transfer(struct raft *r,
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 

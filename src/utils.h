@@ -1,9 +1,10 @@
 #ifndef DQLITE_UTILS_H_
 #define DQLITE_UTILS_H_
 
-#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+
+#include "lib/assert.h"
 
 /* Various utility functions and macros */
 
@@ -12,15 +13,15 @@
 
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
-#define IMPOSSIBLE(why) assert(false && why)
+#define IMPOSSIBLE(why) dqlite_assert(false && why)
 
 #define DBG() fprintf(stderr, "%s:%d\n", __func__, __LINE__)
 
 #define CONTAINER_OF(e, type, field) \
 	((type *)(uintptr_t)((char *)(e)-offsetof(type, field)))
 
-#define PRE(cond) assert((cond))
-#define POST(cond) assert((cond))
+#define PRE(cond) dqlite_assert((cond))
+#define POST(cond) dqlite_assert((cond))
 #define ERGO(a, b) (!(a) || (b))
 
 #define IN_1(E, X) E == X

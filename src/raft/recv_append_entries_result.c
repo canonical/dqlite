@@ -1,7 +1,7 @@
-#include "recv_append_entries_result.h"
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
+#include "recv_append_entries_result.h"
 #include "recv.h"
 #include "replication.h"
 
@@ -14,10 +14,10 @@ int recvAppendEntriesResult(struct raft *r,
 	const struct raft_server *server;
 	int rv;
 
-	assert(r != NULL);
-	assert(id > 0);
-	assert(address != NULL);
-	assert(result != NULL);
+	dqlite_assert(r != NULL);
+	dqlite_assert(id > 0);
+	dqlite_assert(address != NULL);
+	dqlite_assert(result != NULL);
 
 	tracef(
 	    "self:%llu from:%llu@%s last_log_index:%llu rejected:%llu "
@@ -49,11 +49,11 @@ int recvAppendEntriesResult(struct raft *r,
 	 * follower.
 	 */
 	if (match > 0) {
-		assert(r->state == RAFT_FOLLOWER);
+		dqlite_assert(r->state == RAFT_FOLLOWER);
 		return 0;
 	}
 
-	assert(result->term == r->current_term);
+	dqlite_assert(result->term == r->current_term);
 
 	/* Ignore responses from servers that have been removed */
 	server = configurationGet(&r->configuration, id);

@@ -1,7 +1,7 @@
 #include <string.h>
 #include <uv.h>
 
-#include "assert.h"
+#include "../lib/assert.h"
 #include "uv.h"
 
 static const char *uvListIgnored[] = {".", "..", "metadata1", "metadata2",
@@ -57,7 +57,7 @@ int UvList(struct uv *uv,
 		bool appended;
 
 		rv = uv_fs_scandir_next(&req, &entry);
-		assert(rv == 0); /* Can't fail in libuv */
+		dqlite_assert(rv == 0); /* Can't fail in libuv */
 
 		filename = entry.name;
 
@@ -95,7 +95,7 @@ int UvList(struct uv *uv,
 		tracef("ignore %s", filename);
 	}
 	rv = uv_fs_scandir_next(&req, &entry);
-	assert(rv == UV_EOF);
+	dqlite_assert(rv == UV_EOF);
 
 	if (*snapshots != NULL) {
 		UvSnapshotSort(*snapshots, *n_snapshots);

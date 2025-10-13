@@ -1,7 +1,7 @@
 #include "recv_append_entries.h"
 
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "convert.h"
 #include "entry.h"
 #include "flags.h"
@@ -29,10 +29,10 @@ int recvAppendEntries(struct raft *r,
 	bool async;
 	int rv;
 
-	assert(r != NULL);
-	assert(id > 0);
-	assert(args != NULL);
-	assert(address != NULL);
+	dqlite_assert(r != NULL);
+	dqlite_assert(id > 0);
+	dqlite_assert(args != NULL);
+	dqlite_assert(address != NULL);
 	tracef(
 	    "self:%llu from:%llu@%s leader_commit:%llu n_entries:%d "
 	    "prev_log_index:%llu prev_log_term:%llu, term:%llu",
@@ -88,19 +88,19 @@ int recvAppendEntries(struct raft *r,
 	 * higher term (and in that case we step down). It can't have the same
 	 * term because at most one leader can be elected at any given term.
 	 */
-	assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE);
-	assert(r->current_term == args->term);
+	dqlite_assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE);
+	dqlite_assert(r->current_term == args->term);
 
 	if (r->state == RAFT_CANDIDATE) {
 		/* The current term and the peer one must match, otherwise we
 		 * would have either rejected the request or stepped down to
 		 * followers. */
-		assert(match == 0);
+		dqlite_assert(match == 0);
 		tracef("discovered leader -> step down ");
 		convertToFollower(r);
 	}
 
-	assert(r->state == RAFT_FOLLOWER);
+	dqlite_assert(r->state == RAFT_FOLLOWER);
 
 	/* Update current leader because the term in this AppendEntries RPC is
 	 * up to date. */

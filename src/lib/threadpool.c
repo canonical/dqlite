@@ -7,9 +7,9 @@
 #include <unistd.h>
 #include <uv.h>
 #include <uv/unix.h>
-#include "../../src/lib/queue.h"
-#include "../../src/lib/sm.h"
-#include "../../src/utils.h"
+#include "queue.h"
+#include "sm.h"
+#include "../utils.h"
 
 /**
  *  Planner thread state machine.
@@ -364,7 +364,7 @@ static void worker(void *arg)
 
 		uv_mutex_lock(mutex);
 		if (wtype > WT_BAR) {
-			assert(pi->ord_in_flight > 0);
+			dqlite_assert(pi->ord_in_flight > 0);
 			if (--pi->ord_in_flight == 0) {
 				uv_cond_signal(&pi->planner_cond);
 			}

@@ -1,15 +1,14 @@
-#include "convert.h"
-
+#include "../lib/assert.h"
+#include "../lib/queue.h"
 #include "../raft.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "callbacks.h"
 #include "configuration.h"
+#include "convert.h"
 #include "election.h"
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
-#include "../lib/queue.h"
 #include "replication.h"
 #include "request.h"
 
@@ -22,7 +21,7 @@ static void convertSetState(struct raft *r, unsigned short new_state)
 	 * is the initial or final state. */
 	unsigned short old_state = r->state;
 	tracef("old_state:%u new_state:%u", old_state, new_state);
-	assert((r->state == RAFT_UNAVAILABLE && new_state == RAFT_FOLLOWER) ||
+	dqlite_assert((r->state == RAFT_UNAVAILABLE && new_state == RAFT_FOLLOWER) ||
 	       (r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
 	       (r->state == RAFT_CANDIDATE && new_state == RAFT_FOLLOWER) ||
 	       (r->state == RAFT_CANDIDATE && new_state == RAFT_LEADER) ||
@@ -106,7 +105,7 @@ static void convertClearLeader(struct raft *r)
 		head = queue_head(&r->leader_state.requests);
 		queue_remove(head);
 		req = QUEUE_DATA(head, struct request, queue);
-		assert(req->type == RAFT_COMMAND || req->type == RAFT_BARRIER);
+		dqlite_assert(req->type == RAFT_COMMAND || req->type == RAFT_BARRIER);
 		switch (req->type) {
 			case RAFT_COMMAND:
 				convertFailApply((struct raft_apply *)req);
@@ -128,7 +127,7 @@ static void convertClearLeader(struct raft *r)
 /* Clear the current state */
 static void convertClear(struct raft *r)
 {
-	assert(r->state == RAFT_UNAVAILABLE || r->state == RAFT_FOLLOWER ||
+	dqlite_assert(r->state == RAFT_UNAVAILABLE || r->state == RAFT_FOLLOWER ||
 	       r->state == RAFT_CANDIDATE || r->state == RAFT_LEADER);
 	switch (r->state) {
 		case RAFT_FOLLOWER:
@@ -178,8 +177,8 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 	/* Fast-forward to leader if we're the only voting server in the
 	 * configuration. */
 	server = configurationGet(&r->configuration, r->id);
-	assert(server != NULL);
-	assert(server->role == RAFT_VOTER);
+	dqlite_assert(server != NULL);
+	dqlite_assert(server->role == RAFT_VOTER);
 
 	if (n_voters == 1) {
 		tracef("self elect and convert to leader");

@@ -1,17 +1,17 @@
 #include "recv.h"
 
+#include "../lib/assert.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "convert.h"
 #include "entry.h"
 #include "heap.h"
 #include "log.h"
 #include "membership.h"
-#include "recv_append_entries.h"
 #include "recv_append_entries_result.h"
+#include "recv_append_entries.h"
 #include "recv_install_snapshot.h"
-#include "recv_request_vote.h"
 #include "recv_request_vote_result.h"
+#include "recv_request_vote.h"
 #include "recv_timeout_now.h"
 #include "string.h"
 
@@ -117,8 +117,8 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
 	int rv;
 	char msg[128];
 
-	assert(r != NULL);
-	assert(term > r->current_term);
+	dqlite_assert(r != NULL);
+	dqlite_assert(term > r->current_term);
 
 	sprintf(msg, "remote term %lld is higher than %lld -> bump local term",
 		term, r->current_term);
@@ -160,8 +160,8 @@ int recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
 {
 	int rv;
 
-	assert(r != NULL);
-	assert(match != NULL);
+	dqlite_assert(r != NULL);
+	dqlite_assert(match != NULL);
 
 	recvCheckMatchingTerms(r, term, match);
 
@@ -198,7 +198,7 @@ int recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
 
 int recvUpdateLeader(struct raft *r, const raft_id id, const char *address)
 {
-	assert(r->state == RAFT_FOLLOWER);
+	dqlite_assert(r->state == RAFT_FOLLOWER);
 
 	r->follower_state.current_leader.id = id;
 

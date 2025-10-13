@@ -3,8 +3,8 @@
 
 #include <string.h>
 
+#include "../lib/assert.h"
 #include "../raft.h"
-#include "assert.h"
 #include "err.h"
 #include "heap.h"
 
@@ -14,8 +14,8 @@ static int uvTcpInit(struct raft_uv_transport *transport,
 		     const char *address)
 {
 	struct UvTcp *t = transport->impl;
-	assert(id > 0);
-	assert(address != NULL);
+	dqlite_assert(id > 0);
+	dqlite_assert(address != NULL);
 	t->id = id;
 	t->address = address;
 	return 0;
@@ -26,7 +26,7 @@ static void uvTcpClose(struct raft_uv_transport *transport,
 		       raft_uv_transport_close_cb cb)
 {
 	struct UvTcp *t = transport->impl;
-	assert(!t->closing);
+	dqlite_assert(!t->closing);
 	t->closing = true;
 	t->close_cb = cb;
 	UvTcpListenClose(t);
@@ -40,8 +40,8 @@ void UvTcpMaybeFireCloseCb(struct UvTcp *t)
 		return;
 	}
 
-	assert(queue_empty(&t->accepting));
-	assert(queue_empty(&t->connecting));
+	dqlite_assert(queue_empty(&t->accepting));
+	dqlite_assert(queue_empty(&t->connecting));
 	if (!queue_empty(&t->aborting)) {
 		return;
 	}

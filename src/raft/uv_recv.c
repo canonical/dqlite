@@ -2,7 +2,7 @@
 
 #include "../raft.h"
 
-#include "assert.h"
+#include "../lib/assert.h"
 #include "byte.h"
 #include "configuration.h"
 #include "err.h"
@@ -116,18 +116,18 @@ static void uvServerAllocCb(uv_handle_t *handle,
 	struct uvServer *s = handle->data;
 	(void)suggested_size;
 
-	assert(!s->uv->closing);
+	dqlite_assert(!s->uv->closing);
 
 	/* If this is the first read of the preamble, or of the header, or of
 	 * the payload, then initialize the read buffer, according to the chunk
 	 * of data that we expect next. */
 	if (s->buf.len == 0) {
-		assert(s->buf.base == NULL);
+		dqlite_assert(s->buf.base == NULL);
 
 		/* Check if we expect the preamble. */
 		if (s->header.len == 0) {
-			assert(s->preamble[0] == 0);
-			assert(s->preamble[1] == 0);
+			dqlite_assert(s->preamble[0] == 0);
+			dqlite_assert(s->preamble[1] == 0);
 			s->buf.base = (char *)s->preamble;
 			s->buf.len = sizeof s->preamble;
 			goto out;
@@ -135,8 +135,8 @@ static void uvServerAllocCb(uv_handle_t *handle,
 
 		/* Check if we expect the header. */
 		if (s->payload.len == 0) {
-			assert(s->header.len > 0);
-			assert(s->header.base == NULL);
+			dqlite_assert(s->header.len > 0);
+			dqlite_assert(s->header.base == NULL);
 			s->header.base = RaftHeapMalloc(s->header.len);
 			if (s->header.base == NULL) {
 				/* Setting all buffer fields to 0 will make
@@ -149,7 +149,7 @@ static void uvServerAllocCb(uv_handle_t *handle,
 		}
 
 		/* If we get here we should be expecting the payload. */
-		assert(s->payload.len > 0);
+		dqlite_assert(s->payload.len > 0);
 		s->payload.base = RaftHeapMalloc(s->payload.len);
 		if (s->payload.base == NULL) {
 			/* Setting all buffer fields to 0 will make read_cb fail
@@ -211,7 +211,7 @@ static void uvServerReadCb(uv_stream_t *stream,
 
 	(void)buf;
 
-	assert(!s->uv->closing);
+	dqlite_assert(!s->uv->closing);
 
 	/* If the read was successful, let's check if we have received all the
 	 * data we expected. */
@@ -219,7 +219,7 @@ static void uvServerReadCb(uv_stream_t *stream,
 		size_t n = (size_t)nread;
 
 		/* We shouldn't have read more data than the pending amount. */
-		assert(n <= s->buf.len);
+		dqlite_assert(n <= s->buf.len);
 
 		/* Advance the read window */
 		s->buf.base += n;
@@ -234,7 +234,7 @@ static void uvServerReadCb(uv_stream_t *stream,
 		if (s->header.len == 0) {
 			/* If the header buffer is not set, it means that we've
 			 * just completed reading the preamble. */
-			assert(s->header.base == NULL);
+			dqlite_assert(s->header.base == NULL);
 
 			s->header.len = (size_t)byteFlip64(s->preamble[1]);
 
@@ -249,7 +249,7 @@ static void uvServerReadCb(uv_stream_t *stream,
 			 * completed reading the message header. */
 			uint64_t type;
 
-			assert(s->header.base != NULL);
+			dqlite_assert(s->header.base != NULL);
 
 			type = byteFlip64(s->preamble[0]);
 
@@ -283,8 +283,8 @@ static void uvServerReadCb(uv_stream_t *stream,
 			 * reading the payload. TODO: avoid converting from
 			 * uv_buf_t */
 			struct raft_buffer payload;
-			assert(s->payload.base != NULL);
-			assert(s->payload.len > 0);
+			dqlite_assert(s->payload.base != NULL);
+			dqlite_assert(s->payload.len > 0);
 
 			switch (s->message.type) {
 				case RAFT_IO_APPEND_ENTRIES:
@@ -303,7 +303,7 @@ static void uvServerReadCb(uv_stream_t *stream,
 				default:
 					/* We should never have read a payload
 					 * in the first place */
-					assert(0);
+					dqlite_assert(0);
 			}
 
 			uvFireRecvCb(s);
@@ -312,7 +312,7 @@ static void uvServerReadCb(uv_stream_t *stream,
 		/* Mark that we're done with this chunk. When the alloc callback
 		 * will trigger again it will notice that it needs to change the
 		 * read buffer. */
-		assert(s->buf.len == 0);
+		dqlite_assert(s->buf.len == 0);
 		s->buf.base = NULL;
 
 		return;
@@ -320,7 +320,7 @@ static void uvServerReadCb(uv_stream_t *stream,
 
 	/* The if nread>0 condition above should always exit the function with a
 	 * goto abort or a return. */
-	assert(nread <= 0);
+	dqlite_assert(nread <= 0);
 
 	if (nread == 0) {
 		/* Empty read */
@@ -379,7 +379,7 @@ err_after_init_server:
 err_after_server_alloc:
 	raft_free(server);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -390,7 +390,7 @@ static void uvRecvAcceptCb(struct raft_uv_transport *transport,
 {
 	struct uv *uv = transport->data;
 	int rv;
-	assert(!uv->closing);
+	dqlite_assert(!uv->closing);
 	rv = uvAddServer(uv, id, address, stream);
 	if (rv != 0) {
 		tracef("add server: %s", errCodeToString(rv));

@@ -4,11 +4,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../lib/assert.h"
 #include "../lib/queue.h"
 #include "../lib/sm.h" /* struct sm */
 #include "../raft.h"
 #include "../tracing.h"
-#include "assert.h"
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
@@ -49,14 +49,14 @@ struct raft_fixture_event
 
 RAFT_API int raft_fixture_event_type(struct raft_fixture_event *event)
 {
-	assert(event != NULL);
+	dqlite_assert(event != NULL);
 	return event->type;
 }
 
 RAFT_API unsigned raft_fixture_event_server_index(
     struct raft_fixture_event *event)
 {
-	assert(event != NULL);
+	dqlite_assert(event != NULL);
 	return event->server_index;
 }
 
@@ -285,14 +285,14 @@ static void ioFlushAppend(struct io *s, struct append *append)
 	/* Allocate an array for the old entries plus the new ones. */
 	entries =
 	    raft_realloc(s->entries, (s->n + append->n) * sizeof *s->entries);
-	assert(entries != NULL);
+	dqlite_assert(entries != NULL);
 
 	/* Copy new entries into the new array. */
 	for (i = 0; i < append->n; i++) {
 		const struct raft_entry *src = &append->entries[i];
 		struct raft_entry *dst = &entries[s->n + i];
 		int rv = entryCopy(src, dst);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 	}
 
 	s->entries = entries;
@@ -341,19 +341,19 @@ static void ioFlushSnapshotPut(struct io *s, struct snapshot_put *r)
 
 	if (s->snapshot == NULL) {
 		s->snapshot = raft_malloc(sizeof *s->snapshot);
-		assert(s->snapshot != NULL);
+		dqlite_assert(s->snapshot != NULL);
 	} else {
 		snapshotClose(s->snapshot);
 	}
 
 	rv = snapshotCopy(r->snapshot, s->snapshot);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	if (r->trailing == 0) {
 		struct raft_io_truncate *trunc = raft_malloc(sizeof(*trunc));
-		assert(trunc != NULL);
+		dqlite_assert(trunc != NULL);
 		rv = s->io->truncate(s->io, trunc, 1);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 	}
 
 	if (r->req->cb != NULL) {
@@ -369,9 +369,9 @@ static void ioFlushSnapshotGet(struct io *s, struct snapshot_get *r)
 	struct raft_snapshot *snapshot;
 	int rv;
 	snapshot = raft_malloc(sizeof *snapshot);
-	assert(snapshot != NULL);
+	dqlite_assert(snapshot != NULL);
 	rv = snapshotCopy(s->snapshot, snapshot);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	r->req->cb(r->req, snapshot, 0);
 	raft_free(r);
 }
@@ -414,7 +414,7 @@ static void copyAppendEntries(const struct raft_append_entries *src,
 {
 	int rv;
 	rv = entryBatchCopy(src->entries, &dst->entries, src->n_entries);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	dst->n_entries = src->n_entries;
 }
 
@@ -424,9 +424,9 @@ static void copyInstallSnapshot(const struct raft_install_snapshot *src,
 {
 	int rv;
 	rv = configurationCopy(&src->conf, &dst->conf);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	dst->data.base = raft_malloc(dst->data.len);
-	assert(dst->data.base != NULL);
+	dqlite_assert(dst->data.base != NULL);
 	memcpy(dst->data.base, src->data.base, src->data.len);
 }
 
@@ -448,7 +448,7 @@ static void ioFlushSend(struct io *io, struct send *send)
 	}
 
 	transmit = raft_calloc(1, sizeof *transmit);
-	assert(transmit != NULL);
+	dqlite_assert(transmit != NULL);
 
 	transmit->type = TRANSMIT;
 	transmit->completion_time = *io->time + io->network_latency;
@@ -543,7 +543,7 @@ static void ioFlushAll(struct io *io)
 				ioFlushTimer(io, (struct timer *)r);
 				break;
 			default:
-				assert(0);
+				dqlite_assert(0);
 		}
 	}
 }
@@ -577,13 +577,13 @@ static int ioMethodLoad(struct raft_io *io,
 	/* Make a copy of the persisted entries, storing their data into a
 	 * single batch. */
 	rv = entryBatchCopy(s->entries, entries, s->n);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 
 	if (s->snapshot != NULL) {
 		*snapshot = raft_malloc(sizeof **snapshot);
-		assert(*snapshot != NULL);
+		dqlite_assert(*snapshot != NULL);
 		rv = snapshotCopy(s->snapshot, *snapshot);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 		*start_index = (*snapshot)->index + 1;
 	} else {
 		*snapshot = NULL;
@@ -604,10 +604,10 @@ static int ioMethodBootstrap(struct raft_io *raft_io,
 		return RAFT_CANTBOOTSTRAP;
 	}
 
-	assert(io->voted_for == 0);
-	assert(io->snapshot == NULL);
-	assert(io->entries == NULL);
-	assert(io->n == 0);
+	dqlite_assert(io->voted_for == 0);
+	dqlite_assert(io->snapshot == NULL);
+	dqlite_assert(io->entries == NULL);
+	dqlite_assert(io->n == 0);
 
 	/* Encode the given configuration. */
 	rv = configurationEncode(conf, &buf);
@@ -679,7 +679,7 @@ static int ioMethodAppend(struct raft_io *raft_io,
 	struct append *r;
 
 	r = raft_malloc(sizeof *r);
-	assert(r != NULL);
+	dqlite_assert(r != NULL);
 
 	sm_init(&req->sm, fio_invariant, NULL, fio_states, "fio-append", FIO_START);
 
@@ -705,7 +705,7 @@ static int ioMethodTruncate(struct raft_io *raft_io,
 
 	sm_init(&trunc->sm, fio_invariant, NULL, fio_states, "fio-trunc", FIO_START);
 	r = raft_malloc(sizeof(*r));
-	assert(r != NULL);
+	dqlite_assert(r != NULL);
 	*r = (struct truncate){
 		.type = TRUNCATE,
 		.completion_time = *io->time + io->disk_latency,
@@ -727,7 +727,7 @@ static int ioMethodSnapshotPut(struct raft_io *raft_io,
 	struct snapshot_put *r;
 
 	r = raft_malloc(sizeof *r);
-	assert(r != NULL);
+	dqlite_assert(r != NULL);
 
 	r->type = SNAPSHOT_PUT;
 	r->req = req;
@@ -749,7 +749,7 @@ static int ioMethodAsyncWork(struct raft_io *raft_io,
 	struct async_work *r;
 
 	r = raft_malloc(sizeof *r);
-	assert(r != NULL);
+	dqlite_assert(r != NULL);
 
 	r->type = ASYNC_WORK;
 	r->req = req;
@@ -768,7 +768,7 @@ static int ioMethodSnapshotGet(struct raft_io *raft_io,
 	struct snapshot_get *r;
 
 	r = raft_malloc(sizeof *r);
-	assert(r != NULL);
+	dqlite_assert(r != NULL);
 
 	r->type = SNAPSHOT_GET;
 	r->req = req;
@@ -804,7 +804,7 @@ int ioMethodTimerStart(struct raft_io *raft_io, struct raft_timer *req, uint64_t
 	struct io *io = raft_io->impl;
 	struct timer *t;
 	t = raft_malloc(sizeof *t);
-	assert(t != NULL);
+	dqlite_assert(t != NULL);
 	t->type = TIMER;
 	t->completion_time = *io->time + timeout;
 	t->timer = req;
@@ -845,7 +845,7 @@ static int ioMethodSend(struct raft_io *raft_io,
 	}
 
 	r = raft_malloc(sizeof *r);
-	assert(r != NULL);
+	dqlite_assert(r != NULL);
 
 	r->type = SEND;
 	r->req = req;
@@ -901,7 +901,7 @@ static void ioConnect(struct raft_io *raft_io, struct raft_io *other)
 {
 	struct io *io = raft_io->impl;
 	struct io *io_other = other->impl;
-	assert(io->n_peers < MAX_PEERS);
+	dqlite_assert(io->n_peers < MAX_PEERS);
 	io->peers[io->n_peers].io = io_other;
 	io->peers[io->n_peers].connected = true;
 	io->peers[io->n_peers].saturated = false;
@@ -927,7 +927,7 @@ static void ioDisconnect(struct raft_io *raft_io, struct raft_io *other)
 	struct io *io_other = other->impl;
 	struct peer *peer;
 	peer = ioGetPeer(io, io_other->id);
-	assert(peer != NULL);
+	dqlite_assert(peer != NULL);
 	peer->connected = false;
 }
 
@@ -938,7 +938,7 @@ static void ioReconnect(struct raft_io *raft_io, struct raft_io *other)
 	struct io *io_other = other->impl;
 	struct peer *peer;
 	peer = ioGetPeer(io, io_other->id);
-	assert(peer != NULL);
+	dqlite_assert(peer != NULL);
 	peer->connected = true;
 }
 
@@ -952,7 +952,7 @@ static void ioSaturate(struct raft_io *io, struct raft_io *other)
 	s = io->impl;
 	s_other = other->impl;
 	peer = ioGetPeer(s, s_other->id);
-	assert(peer != NULL && peer->connected);
+	dqlite_assert(peer != NULL && peer->connected);
 	peer->saturated = true;
 }
 
@@ -964,7 +964,7 @@ static void ioDesaturate(struct raft_io *raft_io, struct raft_io *other)
 	struct io *io_other = other->impl;
 	struct peer *peer;
 	peer = ioGetPeer(io, io_other->id);
-	assert(peer != NULL && peer->connected);
+	dqlite_assert(peer != NULL && peer->connected);
 	peer->saturated = false;
 }
 
@@ -978,7 +978,7 @@ static int ioInit(struct raft_io *raft_io, unsigned index, raft_time *time)
 {
 	struct io *io;
 	io = raft_malloc(sizeof *io);
-	assert(io != NULL);
+	dqlite_assert(io != NULL);
 	io->io = raft_io;
 	io->index = index;
 	io->time = time;
@@ -1145,9 +1145,9 @@ int raft_fixture_configuration(struct raft_fixture *f,
 			       struct raft_configuration *configuration)
 {
 	unsigned i;
-	assert(f->n > 0);
-	assert(n_voting > 0);
-	assert(n_voting <= f->n);
+	dqlite_assert(f->n > 0);
+	dqlite_assert(n_voting > 0);
+	dqlite_assert(n_voting <= f->n);
 	raft_configuration_init(configuration);
 	for (i = 0; i < f->n; i++) {
 		struct raft_fixture_server *s;
@@ -1204,13 +1204,13 @@ raft_time raft_fixture_time(struct raft_fixture *f)
 
 struct raft *raft_fixture_get(struct raft_fixture *f, unsigned i)
 {
-	assert(i < f->n);
+	dqlite_assert(i < f->n);
 	return &f->servers[i]->raft;
 }
 
 bool raft_fixture_alive(struct raft_fixture *f, unsigned i)
 {
-	assert(i < f->n);
+	dqlite_assert(i < f->n);
 	return f->servers[i]->alive;
 }
 
@@ -1381,19 +1381,19 @@ static void checkLeaderAppendOnly(struct raft_fixture *f)
 		entry1 = logGet(f->log, index);
 		entry2 = logGet(raft->log, index);
 
-		assert(entry1 != NULL);
+		dqlite_assert(entry1 != NULL);
 
 		/* Check if the entry was snapshotted. */
 		if (entry2 == NULL) {
-			assert(raft->log->snapshot.last_index >= index);
+			dqlite_assert(raft->log->snapshot.last_index >= index);
 			continue;
 		}
 
 		/* Entry was not overwritten. */
-		assert(entry1->type == entry2->type);
-		assert(entry1->term == entry2->term);
+		dqlite_assert(entry1->type == entry2->type);
+		dqlite_assert(entry1->term == entry2->term);
 		for (i = 0; i < entry1->buf.len; i++) {
-			assert(((uint8_t *)entry1->buf.base)[i] ==
+			dqlite_assert(((uint8_t *)entry1->buf.base)[i] ==
 			       ((uint8_t *)entry2->buf.base)[i]);
 		}
 	}
@@ -1411,22 +1411,22 @@ static void copyLeaderLog(struct raft_fixture *f)
 	logClose(f->log);
 	f->log = logInit();
 	if (f->log == NULL) {
-		assert(false);
+		dqlite_assert(false);
 		return;
 	}
 
 	rv = logAcquire(raft->log, 1, &entries, &n);
-	assert(rv == 0);
+	dqlite_assert(rv == 0);
 	for (i = 0; i < n; i++) {
 		struct raft_entry *entry = &entries[i];
 		struct raft_buffer buf;
 		buf.len = entry->buf.len;
 		buf.base = raft_malloc(buf.len);
-		assert(buf.base != NULL);
+		dqlite_assert(buf.base != NULL);
 		memcpy(buf.base, entry->buf.base, buf.len);
 		/* FIXME(cole) what to do here for is_local? */
 		rv = logAppend(f->log, entry->term, entry->type, buf, false, NULL);
-		assert(rv == 0);
+		dqlite_assert(rv == 0);
 	}
 	logRelease(raft->log, 1, entries, n);
 }
@@ -1508,7 +1508,7 @@ static void completeRequest(struct raft_fixture *f, unsigned i, raft_time t)
 			break;
 		}
 	}
-	assert(found);
+	dqlite_assert(found);
 	queue_remove(head);
 	switch (r->type) {
 		case APPEND:
@@ -1544,7 +1544,7 @@ static void completeRequest(struct raft_fixture *f, unsigned i, raft_time t)
 			f->event->type = RAFT_FIXTURE_WORK;
 			break;
 		default:
-			assert(0);
+			dqlite_assert(0);
 	}
 }
 
@@ -1558,7 +1558,7 @@ struct raft_fixture_event *raft_fixture_step(struct raft_fixture *f)
 	getLowestTickTime(f, &tick_time, &i);
 	getLowestRequestCompletionTime(f, &completion_time, &j);
 
-	assert(i < f->n || j < f->n);
+	dqlite_assert(i < f->n || j < f->n);
 
 	if (tick_time < completion_time ||
 	    (tick_time == completion_time && i <= j)) {
@@ -1590,7 +1590,7 @@ struct raft_fixture_event *raft_fixture_step_n(struct raft_fixture *f,
 					       unsigned n)
 {
 	unsigned i;
-	assert(n > 0);
+	dqlite_assert(n > 0);
 	for (i = 0; i < n - 1; i++) {
 		raft_fixture_step(f);
 	}
@@ -1672,7 +1672,7 @@ static void minimizeRandomizedElectionTimeout(struct raft_fixture *f,
 	struct raft *raft = &f->servers[i]->raft;
 	raft_time now = raft->io->time(raft->io);
 	unsigned timeout = raft->election_timeout;
-	assert(raft->state == RAFT_FOLLOWER);
+	dqlite_assert(raft->state == RAFT_FOLLOWER);
 
 	/* If the minimum election timeout value would make the timer expire in
 	 * the past, cap it. */
@@ -1695,7 +1695,7 @@ static void maximizeAllRandomizedElectionTimeoutsExcept(struct raft_fixture *f,
 		if (j == i) {
 			continue;
 		}
-		assert(raft->state == RAFT_FOLLOWER);
+		dqlite_assert(raft->state == RAFT_FOLLOWER);
 		raft->follower_state.randomized_election_timeout = timeout;
 	}
 }
@@ -1711,15 +1711,15 @@ void raft_fixture_start_elect(struct raft_fixture *f, unsigned i)
 	unsigned j;
 
 	/* Make sure there's currently no leader. */
-	assert(f->leader_id == 0);
+	dqlite_assert(f->leader_id == 0);
 
 	/* Make sure that the given server is voting. */
-	assert(configurationGet(&raft->configuration, raft->id)->role ==
+	dqlite_assert(configurationGet(&raft->configuration, raft->id)->role ==
 	       RAFT_VOTER);
 
 	/* Make sure all servers are currently followers. */
 	for (j = 0; j < f->n; j++) {
-		assert(raft_state(&f->servers[j]->raft) == RAFT_FOLLOWER);
+		dqlite_assert(raft_state(&f->servers[j]->raft) == RAFT_FOLLOWER);
 	}
 
 	/* Pretend that the last randomized election timeout was set at the
@@ -1735,7 +1735,7 @@ void raft_fixture_elect(struct raft_fixture *f, unsigned i)
 	struct raft *raft = raft_fixture_get(f, i);
 	raft_fixture_start_elect(f, i);
 	raft_fixture_step_until_has_leader(f, ELECTION_TIMEOUT * 20);
-	assert(f->leader_id == raft->id);
+	dqlite_assert(f->leader_id == raft->id);
 }
 
 void raft_fixture_depose(struct raft_fixture *f)
@@ -1743,9 +1743,9 @@ void raft_fixture_depose(struct raft_fixture *f)
 	unsigned leader_i;
 
 	/* Make sure there's a leader. */
-	assert(f->leader_id != 0);
+	dqlite_assert(f->leader_id != 0);
 	leader_i = (unsigned)f->leader_id - 1;
-	assert(raft_state(&f->servers[leader_i]->raft) == RAFT_LEADER);
+	dqlite_assert(raft_state(&f->servers[leader_i]->raft) == RAFT_LEADER);
 
 	/* Set a very large election timeout on all followers, to prevent them
 	 * from starting an election. */
@@ -1756,7 +1756,7 @@ void raft_fixture_depose(struct raft_fixture *f)
 	dropAllExcept(f, RAFT_IO_APPEND_ENTRIES_RESULT, true, leader_i);
 
 	raft_fixture_step_until_has_no_leader(f, ELECTION_TIMEOUT * 3);
-	assert(f->leader_id == 0);
+	dqlite_assert(f->leader_id == 0);
 
 	dropAllExcept(f, RAFT_IO_APPEND_ENTRIES_RESULT, false, leader_i);
 }
@@ -2101,7 +2101,7 @@ void raft_fixture_add_entry(struct raft_fixture *f,
 	struct io *io = f->servers[i]->io.impl;
 	struct raft_entry *entries;
 	entries = raft_realloc(io->entries, (io->n + 1) * sizeof *entries);
-	assert(entries != NULL);
+	dqlite_assert(entries != NULL);
 	entries[io->n] = *entry;
 	io->entries = entries;
 	io->n++;

@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <uv.h>
 
-#include "assert.h"
+#include "../lib/assert.h"
 #include "err.h"
 #include "syscall.h"
 
@@ -177,7 +177,7 @@ int UvOsIoSubmit(aio_context_t ctx, long nr, struct iocb **iocbpp)
 	if (rv == -1) {
 		return -errno;
 	}
-	assert(rv == nr); /* TODO: can something else be returned? */
+	dqlite_assert(rv == nr); /* TODO: can something else be returned? */
 	return 0;
 }
 
@@ -195,8 +195,8 @@ int UvOsIoGetevents(aio_context_t ctx,
 	if (rv == -1) {
 		return -errno;
 	}
-	assert(rv >= min_nr);
-	assert(rv <= max_nr);
+	dqlite_assert(rv >= min_nr);
+	dqlite_assert(rv <= max_nr);
 	return rv;
 }
 
@@ -204,7 +204,7 @@ int UvOsEventfd(unsigned int initval, int flags)
 {
 	int rv;
 	/* At the moment only UV_FS_O_NONBLOCK is supported */
-	assert(flags == UV_FS_O_NONBLOCK);
+	dqlite_assert(flags == UV_FS_O_NONBLOCK);
 	flags = EFD_NONBLOCK | EFD_CLOEXEC;
 	rv = eventfd(initval, flags);
 	if (rv == -1) {

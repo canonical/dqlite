@@ -1,8 +1,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../lib/assert.h"
 #include "array.h"
-#include "assert.h"
 #include "byte.h"
 #include "configuration.h"
 #include "heap.h"
@@ -26,7 +26,7 @@ static bool uvSnapshotParseFilename(const char *filename,
 	int consumed = 0;
 	int matched;
 	size_t filename_len = strlen(filename);
-	assert(filename_len < UV__FILENAME_LEN);
+	dqlite_assert(filename_len < UV__FILENAME_LEN);
 	if (meta) {
 		matched = sscanf(filename, UV__SNAPSHOT_META_TEMPLATE "%n",
 				 term, index, timestamp, &consumed);
@@ -63,7 +63,7 @@ static bool uvSnapshotInfoMatch(const char *filename,
 void uvSnapshotFilenameOf(struct uvSnapshotInfo *info, char *filename)
 {
 	size_t len = strlen(info->filename) - strlen(".meta");
-	assert(len < UV__FILENAME_LEN);
+	dqlite_assert(len < UV__FILENAME_LEN);
 	strcpy(filename, info->filename);
 	filename[len] = 0;
 }
@@ -310,7 +310,7 @@ err_after_open:
 	close(fd);
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -350,7 +350,7 @@ static int uvSnapshotLoadData(struct uv *uv,
 err_after_read_file:
 	RaftHeapFree(buf.base);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -539,7 +539,7 @@ static void uvSnapshotPutFinish(struct uvSnapshotPut *put)
 	struct raft_io_snapshot_put *req = put->req;
 	int status = put->status;
 	struct uv *uv = put->uv;
-	assert(uv->snapshot_put_work.data == NULL);
+	dqlite_assert(uv->snapshot_put_work.data == NULL);
 	RaftHeapFree(put->meta.bufs[1].base);
 	RaftHeapFree(put);
 	req->cb(req, status);
@@ -549,7 +549,7 @@ static void uvSnapshotPutAfterWorkCb(uv_work_t *work, int status)
 {
 	struct uvSnapshotPut *put = work->data;
 	struct uv *uv = put->uv;
-	assert(status == 0);
+	dqlite_assert(status == 0);
 	uv->snapshot_put_work.data = NULL;
 	uvSnapshotPutFinish(put);
 	UvUnblock(uv);
@@ -564,7 +564,7 @@ static void uvSnapshotPutStart(struct uvSnapshotPut *put)
 	/* If this is an install request, the barrier callback must have fired.
 	 */
 	if (put->trailing == 0) {
-		assert(put->barrier.data == NULL);
+		dqlite_assert(put->barrier.data == NULL);
 	}
 
 	uv->snapshot_put_work.data = put;
@@ -616,7 +616,7 @@ int UvSnapshotPut(struct raft_io *io,
 		return RAFT_CANCELED;
 	}
 
-	assert(uv->snapshot_put_work.data == NULL);
+	dqlite_assert(uv->snapshot_put_work.data == NULL);
 
 	tracef("put snapshot at %lld, keeping %d", snapshot->index, trailing);
 
@@ -678,7 +678,7 @@ err_after_configuration_encode:
 err_after_req_alloc:
 	RaftHeapFree(put);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
@@ -720,7 +720,7 @@ static void uvSnapshotGetAfterWorkCb(uv_work_t *work, int status)
 	struct raft_snapshot *snapshot = get->snapshot;
 	int req_status = get->status;
 	struct uv *uv = get->uv;
-	assert(status == 0);
+	dqlite_assert(status == 0);
 	queue_remove(&get->queue);
 	RaftHeapFree(get);
 	req->cb(req, snapshot, req_status);
@@ -736,7 +736,7 @@ int UvSnapshotGet(struct raft_io *io,
 	int rv;
 
 	uv = io->impl;
-	assert(!uv->closing);
+	dqlite_assert(!uv->closing);
 
 	get = RaftHeapMalloc(sizeof *get);
 	if (get == NULL) {
@@ -771,7 +771,7 @@ err_after_snapshot_alloc:
 err_after_req_alloc:
 	RaftHeapFree(get);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 

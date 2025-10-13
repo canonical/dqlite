@@ -3,8 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../lib/assert.h"
 #include "../raft.h"
-#include "assert.h"
 #include "heap.h"
 
 /* Copy the error message from the request object to the writer object. */
@@ -108,7 +108,7 @@ static void uvWriterWorkCb(uv_work_t *work)
 
 	/* Wait for the request to complete */
 	n_events = UvOsIoGetevents(ctx, 1, 1, &event, NULL);
-	assert(n_events == 1);
+	dqlite_assert(n_events == 1);
 	if (n_events != 1) {
 		/* UNTESTED */
 		rv = n_events >= 0 ? -1 : n_events;
@@ -134,7 +134,7 @@ out:
 static void uvWriterAfterWorkCb(uv_work_t *work, int status)
 {
 	struct UvWriterReq *req = work->data; /* Write file request object */
-	assert(status == 0); /* We don't cancel worker requests */
+	dqlite_assert(status == 0); /* We don't cancel worker requests */
 	uvWriterReqFinish(req);
 }
 
@@ -148,8 +148,8 @@ static void uvWriterPollCb(uv_poll_t *poller, int status, int events)
 	int n_events;
 	int rv;
 
-	assert(w->event_fd >= 0);
-	assert(status == 0);
+	dqlite_assert(w->event_fd >= 0);
+	dqlite_assert(status == 0);
 	if (status != 0) {
 		/* UNTESTED libuv docs: If an error happens while polling,
 		 * status will be < 0 and corresponds with one of the UV_E*
@@ -157,7 +157,7 @@ static void uvWriterPollCb(uv_poll_t *poller, int status, int events)
 		goto fail_requests;
 	}
 
-	assert(events & UV_READABLE);
+	dqlite_assert(events & UV_READABLE);
 
 	/* Read the event file descriptor */
 	rv = (int)read(w->event_fd, &completed, sizeof completed);
@@ -165,12 +165,12 @@ static void uvWriterPollCb(uv_poll_t *poller, int status, int events)
 		/* UNTESTED: According to eventfd(2) this is the only possible
 		 * failure mode, meaning that epoll has indicated that the event
 		 * FD is not yet ready. */
-		assert(errno == EAGAIN);
+		dqlite_assert(errno == EAGAIN);
 		return;
 	}
 
 	/* TODO: this assertion fails in unit tests */
-	/* assert(completed == 1); */
+	/* dqlite_assert(completed == 1); */
 
 	/* Try to fetch the write responses.
 	 *
@@ -178,7 +178,7 @@ static void uvWriterPollCb(uv_poll_t *poller, int status, int events)
 	 * should return immediately without blocking. */
 	n_events =
 	    UvOsIoGetevents(w->ctx, 1, (long int)w->n_events, w->events, NULL);
-	assert(n_events >= 1);
+	dqlite_assert(n_events >= 1);
 	if (n_events < 1) {
 		/* UNTESTED */
 		status = n_events == 0 ? -1 : n_events;
@@ -196,7 +196,7 @@ static void uvWriterPollCb(uv_poll_t *poller, int status, int events)
 			req->iocb.aio_flags &= (unsigned)~IOCB_FLAG_RESFD;
 			req->iocb.aio_resfd = 0;
 			req->iocb.aio_rw_flags &= ~RWF_NOWAIT;
-			assert(req->work.data == NULL);
+			dqlite_assert(req->work.data == NULL);
 			req->work.data = req;
 			rv = uv_queue_work(w->loop, &req->work, uvWriterWorkCb,
 					   uvWriterAfterWorkCb);
@@ -330,13 +330,13 @@ err_after_events_alloc:
 err_after_io_setup:
 	UvOsIoDestroy(w->ctx);
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
 
 static void uvWriterCleanUpAndFireCloseCb(struct UvWriter *w)
 {
-	assert(w->closing);
+	dqlite_assert(w->closing);
 
 	UvOsClose(w->fd);
 	RaftHeapFree(w->events);
@@ -358,7 +358,7 @@ static void uvWriterPollerCloseCb(struct uv_handle_s *handle)
 		struct UvWriterReq *req;
 		head = queue_head(&w->poll_queue);
 		req = QUEUE_DATA(head, struct UvWriterReq, queue);
-		assert(req->work.data == NULL);
+		dqlite_assert(req->work.data == NULL);
 		req->status = RAFT_CANCELED;
 		uvWriterReqFinish(req);
 	}
@@ -392,7 +392,7 @@ static void uvWriterCheckCb(struct uv_check_s *check)
 void UvWriterClose(struct UvWriter *w, UvWriterCloseCb cb)
 {
 	int rv;
-	assert(!w->closing);
+	dqlite_assert(!w->closing);
 	w->closing = true;
 	w->close_cb = cb;
 
@@ -402,7 +402,7 @@ void UvWriterClose(struct UvWriter *w, UvWriterCloseCb cb)
 	UvOsClose(w->event_fd);
 
 	rv = uv_poll_stop(&w->event_poller);
-	assert(rv == 0); /* Can this ever fail? */
+	dqlite_assert(rv == 0); /* Can this ever fail? */
 
 	uv_close((struct uv_handle_s *)&w->event_poller, uvWriterPollerCloseCb);
 
@@ -435,22 +435,22 @@ int UvWriterSubmit(struct UvWriter *w,
 {
 	int rv = 0;
 	struct iocb *iocbs = &req->iocb;
-	assert(!w->closing);
+	dqlite_assert(!w->closing);
 
 	/* TODO: at the moment we are not leveraging the support for concurrent
 	 *       writes, so ensure that we're getting write requests
 	 *       sequentially. */
 	if (w->n_events == 1) {
-		assert(queue_empty(&w->poll_queue));
-		assert(queue_empty(&w->work_queue));
+		dqlite_assert(queue_empty(&w->poll_queue));
+		dqlite_assert(queue_empty(&w->work_queue));
 	}
 
-	assert(w->fd >= 0);
-	assert(w->event_fd >= 0);
-	assert(w->ctx != 0);
-	assert(req != NULL);
-	assert(bufs != NULL);
-	assert(n > 0);
+	dqlite_assert(w->fd >= 0);
+	dqlite_assert(w->event_fd >= 0);
+	dqlite_assert(w->ctx != 0);
+	dqlite_assert(req != NULL);
+	dqlite_assert(bufs != NULL);
+	dqlite_assert(n > 0);
 
 	req->writer = w;
 	req->len = lenOfBufs(bufs, n);
@@ -540,6 +540,6 @@ done:
 	return 0;
 
 err:
-	assert(rv != 0);
+	dqlite_assert(rv != 0);
 	return rv;
 }
