@@ -90,6 +90,8 @@ void dqlite_print_trace(int skip);
 		}                                                        \
 	} while (0)
 
+#else
+# error "backtrace enabled, but no library to support it"
 #endif /* HAVE_EXECINFO_H */
 
 #else
@@ -99,29 +101,34 @@ void dqlite_print_trace(int skip);
 #endif /* DQLITE_ASSERT_WITH_BACKTRACE */
 
 /* Define the top-level suites array and the main() function of the test. */
-#define RUNNER(NAME)                                                         \
-	void dqlite_fail(const char *__assertion, const char *__file,        \
-			 unsigned int __line, const char *__function)        \
-	{                                                                    \
-		__assert_fail(__assertion, __file, __line, __function);      \
-	}                                                                    \
-                                                                             \
-	static void print_backtrace(int sig)                                 \
-	{                                                                    \
-		(void)sig;                                                   \
-		PRINT_BACKTRACE(3);                                          \
-	}                                                                    \
-                                                                             \
-	MunitSuite _main_suites[SUITE__CAP];                                 \
-	int _main_suites_n = 0;                                              \
-                                                                             \
-	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])              \
-	{                                                                    \
-		signal(SIGPIPE, SIG_IGN);                                    \
-		signal(SIGABRT, print_backtrace);                            \
-		dqliteTracingMaybeEnable(true);                              \
-		MunitSuite suite = { (char *)"", NULL, _main_suites, 1, 0 }; \
-		return munit_suite_main(&suite, (void *)NAME, argc, argv);   \
+#define RUNNER(NAME)                                                          \
+	/* This overrides the weak symbol defined in assert.h and will remove \
+	 * any diagnostic printed by dqlite by default. This way tests can    \
+	 * provide a global `SIGABRT` hook that will also print a trace in    \
+	 * case an assert is triggered by another library (libuv, liblz4,     \
+	 * libsqlite3) and provide useful diagnositcs there as well. */       \
+	void dqlite_fail(const char *__assertion, const char *__file,         \
+			 unsigned int __line, const char *__function)         \
+	{                                                                     \
+		__assert_fail(__assertion, __file, __line, __function);       \
+	}                                                                     \
+                                                                              \
+	static void print_backtrace(int sig)                                  \
+	{                                                                     \
+		(void)sig;                                                    \
+		PRINT_BACKTRACE(3);                                           \
+	}                                                                     \
+                                                                              \
+	MunitSuite _main_suites[SUITE__CAP];                                  \
+	int _main_suites_n = 0;                                               \
+                                                                              \
+	int main(int argc, char *argv[MUNIT_ARRAY_PARAM(argc)])               \
+	{                                                                     \
+		signal(SIGPIPE, SIG_IGN);                                     \
+		signal(SIGABRT, print_backtrace);                             \
+		dqliteTracingMaybeEnable(true);                               \
+		MunitSuite suite = { (char *)"", NULL, _main_suites, 1, 0 };  \
+		return munit_suite_main(&suite, (void *)NAME, argc, argv);    \
 	}
 
 /* Declare and register a new test suite #S belonging to the file's test module.

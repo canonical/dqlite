@@ -12,6 +12,8 @@
 		}                                                      \
 	} while (0)
 
+/* This symbol is weak to allow test switching this off and provide their own
+ * global trace implementation. */
 void dqlite_fail (const char *__assertion, const char *__file,
 			   unsigned int __line, const char *__function)
      __attribute__ ((__noreturn__, weak, visibility("default")));
